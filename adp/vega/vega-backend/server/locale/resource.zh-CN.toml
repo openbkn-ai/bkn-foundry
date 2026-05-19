@@ -3,6 +3,11 @@ Description = "无效的数据资源参数"
 Solution = "请检查参数"
 ErrorLink = "暂无"
 
+[VegaBackend.Resource.CategoryNotCreatable]
+Description = "该类型资源不允许通过 API 创建"
+Solution = "通过该 API 仅可创建 'dataset' 与 'logicview' 类型资源，其他类型请通过发现任务（discover）创建。"
+ErrorLink = "暂无"
+
 [VegaBackend.Resource.InvalidParameter.Type]
 Description = "无效的数据资源类型"
 Solution = "请检查参数"

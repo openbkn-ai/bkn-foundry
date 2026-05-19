@@ -136,6 +136,51 @@ func Test_Validate_ResourceRequest_ID(t *testing.T) {
 	})
 }
 
+func Test_Validate_CreateResourceCategory(t *testing.T) {
+	Convey("Test validateCreateResourceCategory\n", t, func() {
+		Convey("Allow dataset\n", func() {
+			err := validateCreateResourceCategory(context.Background(), interfaces.ResourceCategoryDataset)
+			So(err, ShouldBeNil)
+		})
+
+		Convey("Allow logicview\n", func() {
+			err := validateCreateResourceCategory(context.Background(), interfaces.ResourceCategoryLogicView)
+			So(err, ShouldBeNil)
+		})
+
+		Convey("Reject discover-owned categories\n", func() {
+			rejected := []string{
+				interfaces.ResourceCategoryTable,
+				interfaces.ResourceCategoryFile,
+				interfaces.ResourceCategoryFileset,
+				interfaces.ResourceCategoryAPI,
+				interfaces.ResourceCategoryMetric,
+				interfaces.ResourceCategoryTopic,
+				interfaces.ResourceCategoryIndex,
+			}
+			for _, category := range rejected {
+				err := validateCreateResourceCategory(context.Background(), category)
+				So(err, ShouldNotBeNil)
+			}
+		})
+
+		Convey("Reject empty category\n", func() {
+			err := validateCreateResourceCategory(context.Background(), "")
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Reject unknown category\n", func() {
+			err := validateCreateResourceCategory(context.Background(), "foo")
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Category match is case sensitive\n", func() {
+			err := validateCreateResourceCategory(context.Background(), "Dataset")
+			So(err, ShouldNotBeNil)
+		})
+	})
+}
+
 func Test_Validate_Tags(t *testing.T) {
 	Convey("Test ValidateTags\n", t, func() {
 		Convey("Valid tags\n", func() {

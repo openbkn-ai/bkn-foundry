@@ -3,6 +3,11 @@ Description = "Invalid resource parameter"
 Solution = "Please check the parameter"
 ErrorLink = "None"
 
+[VegaBackend.Resource.CategoryNotCreatable]
+Description = "Resource category cannot be created via API"
+Solution = "Only 'dataset' and 'logicview' resources can be created via this API. Other categories must be created via a discover task."
+ErrorLink = "None"
+
 [VegaBackend.Resource.InvalidParameter.Type]
 Description = "Invalid resource type"
 Solution = "Please check the parameter"

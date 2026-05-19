@@ -174,6 +174,13 @@ func (r *restHandler) createResource(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 
+	if err := validateCreateResourceCategory(ctx, req.Category); err != nil {
+		httpErr := err.(*rest.HTTPError)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
 	// Check catelog exists
 	csExists, csErr := r.cs.CheckExistByID(ctx, req.CatalogID)
 	if csErr != nil {
