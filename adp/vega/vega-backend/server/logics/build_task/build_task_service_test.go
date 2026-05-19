@@ -52,7 +52,7 @@ func TestStartBuildTaskRejectsDisabledCatalog(t *testing.T) {
 	mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
 		Return(&interfaces.Catalog{ID: "catalog-1", Enabled: false}, nil)
 
-	_, err := service.StartBuildTask(context.Background(), "task-1", interfaces.BuildTaskExecuteTypeIncremental)
+	err := service.StartBuildTask(context.Background(), "task-1", interfaces.BuildTaskExecuteTypeIncremental)
 	assertCatalogDisabledError(t, err)
 }
 

@@ -429,6 +429,7 @@ CREATE INDEX IF NOT EXISTS idx_t_build_task_catalog_id ON t_build_task(f_catalog
 CREATE TABLE IF NOT EXISTS t_discover_schedule (
     -- 主键与关联信息
     f_id                      VARCHAR(40 CHAR) NOT NULL DEFAULT '',
+    f_name                    VARCHAR(255 CHAR) NOT NULL DEFAULT '',
     f_catalog_id              VARCHAR(40 CHAR) NOT NULL DEFAULT '',
     f_cron_expr               VARCHAR(100 CHAR) NOT NULL DEFAULT '',
 
@@ -458,3 +459,4 @@ CREATE TABLE IF NOT EXISTS t_discover_schedule (
 CREATE INDEX IF NOT EXISTS idx_t_discover_schedule_catalog_id ON t_discover_schedule (f_catalog_id);
 CREATE INDEX IF NOT EXISTS idx_t_discover_schedule_enabled ON t_discover_schedule (f_enabled);
 CREATE INDEX IF NOT EXISTS idx_t_discover_schedule_next_run ON t_discover_schedule (f_next_run);
+CREATE INDEX IF NOT EXISTS idx_t_discover_schedule_name ON t_discover_schedule (f_name);

@@ -70,12 +70,13 @@ func Test_CatalogRestHandler_ListCatalogs(t *testing.T) {
 		Convey("Success list catalogs with name type and health check status\n", func() {
 			cs.EXPECT().List(gomock.Any(), gomock.Any()).
 				DoAndReturn(func(_ context.Context, params interfaces.CatalogsQueryParams) ([]*interfaces.Catalog, int64, error) {
+					So(params.Name, ShouldEqual, "lake")
 					So(params.Type, ShouldEqual, interfaces.CatalogTypePhysical)
 					So(params.HealthCheckStatus, ShouldEqual, interfaces.CatalogHealthStatusHealthy)
 					return []*interfaces.Catalog{}, int64(0), nil
 				})
 
-			req := httptest.NewRequest(http.MethodGet, url+"?type=physical&health_check_status=healthy", nil)
+			req := httptest.NewRequest(http.MethodGet, url+"?name=lake&type=physical&health_check_status=healthy", nil)
 			w := httptest.NewRecorder()
 			engine.ServeHTTP(w, req)
 

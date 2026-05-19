@@ -414,6 +414,7 @@ CREATE TABLE IF NOT EXISTS t_build_task (
 CREATE TABLE IF NOT EXISTS t_discover_schedule (
     -- 主键与关联信息
     f_id                      VARCHAR(40) NOT NULL DEFAULT '' COMMENT '调度唯一标识',
+    f_name                    VARCHAR(255) NOT NULL DEFAULT '' COMMENT '调度名称',
     f_catalog_id              VARCHAR(40) NOT NULL DEFAULT '' COMMENT '所属catalog ID',
     f_cron_expr               VARCHAR(100) NOT NULL DEFAULT '' COMMENT 'Cron表达式',
 
@@ -440,5 +441,6 @@ CREATE TABLE IF NOT EXISTS t_discover_schedule (
     PRIMARY KEY (f_id),
     INDEX idx_catalog_id (f_catalog_id),
     INDEX idx_enabled (f_enabled),
-    INDEX idx_next_run (f_next_run)
+    INDEX idx_next_run (f_next_run),
+    INDEX idx_name (f_name)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT='资源发现调度表，记录定时资源发现的配置和执行状态';
