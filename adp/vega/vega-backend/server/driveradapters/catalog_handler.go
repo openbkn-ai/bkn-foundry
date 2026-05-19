@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
+	"strconv"
 	"strings"
 	"vega-backend/common"
 	"vega-backend/common/visitor"
@@ -78,7 +79,20 @@ func (r *restHandler) listCatalogs(c *gin.Context, visitor hydra.Visitor) {
 	// 获取查询参数
 	tag := strings.TrimSpace(c.Query("tag"))
 	typ := c.Query("type")
+	var enabled *bool
+	if enabledStr := strings.TrimSpace(c.Query("enabled")); enabledStr != "" {
+		b, err := strconv.ParseBool(enabledStr)
+		if err != nil {
+			httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Catalog_InvalidParameter).
+				WithErrorDetails(fmt.Sprintf("invalid enabled: %s", enabledStr))
+			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+			rest.ReplyError(c, httpErr)
+			return
+		}
+		enabled = &b
+	}
 	healthCheckStatus := c.Query("health_check_status")
+
 	offset := common.GetQueryOrDefault(c, "offset", interfaces.DEFAULT_OFFSET)
 	limit := common.GetQueryOrDefault(c, "limit", interfaces.DEFAULT_LIMIT)
 	sort := common.GetQueryOrDefault(c, "sort", "update_time")
@@ -105,6 +119,7 @@ func (r *restHandler) listCatalogs(c *gin.Context, visitor hydra.Visitor) {
 		PaginationQueryParams: pageParam,
 		Tag:                   tag,
 		Type:                  typ,
+		Enabled:               enabled,
 		HealthCheckStatus:     healthCheckStatus,
 		ExtensionKeys:         extKeys,
 		ExtensionValues:       extVals,
@@ -393,6 +408,14 @@ func (r *restHandler) updateCatalog(c *gin.Context, visitor hydra.Visitor) {
 		rest.ReplyError(c, httpErr)
 		return
 	}
+	if req.Enabled != catalog.Enabled {
+		span.SetStatus(codes.Error, "Catalog enabled state cannot be modified by PUT")
+		httpErr := rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Catalog_InvalidParameter).
+			WithErrorDetails("use POST /catalogs/{id}/enable or /disable to change enabled state")
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
 
 	// connector_config immutable fields: host, port, database, databases, schemas, paths, protocol
 	// These fields cannot be modified or removed if they exist in the original catalog
@@ -464,6 +487,79 @@ func (r *restHandler) updateCatalog(c *gin.Context, visitor hydra.Visitor) {
 		interfaces.GenerateCatalogAuditObject(id, req.Name), "")
 
 	logger.Debug("Handler UpdateCatalog Success")
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusNoContent)
+	rest.ReplyOK(c, http.StatusNoContent, nil)
+}
+
+// ========== Enable / Disable Catalog ==========
+
+// EnableCatalogByEx handles POST /api/vega-backend/v1/catalogs/:id/enable (External)
+func (r *restHandler) EnableCatalogByEx(c *gin.Context) {
+	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	if err != nil {
+		return
+	}
+	r.setCatalogEnabled(c, visitor, true)
+}
+
+// EnableCatalogByIn handles POST /api/vega-backend/in/v1/catalogs/:id/enable (Internal)
+func (r *restHandler) EnableCatalogByIn(c *gin.Context) {
+	visitor := visitor.GenerateVisitor(c)
+	r.setCatalogEnabled(c, visitor, true)
+}
+
+// DisableCatalogByEx handles POST /api/vega-backend/v1/catalogs/:id/disable (External)
+func (r *restHandler) DisableCatalogByEx(c *gin.Context) {
+	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	if err != nil {
+		return
+	}
+	r.setCatalogEnabled(c, visitor, false)
+}
+
+// DisableCatalogByIn handles POST /api/vega-backend/in/v1/catalogs/:id/disable (Internal)
+func (r *restHandler) DisableCatalogByIn(c *gin.Context) {
+	visitor := visitor.GenerateVisitor(c)
+	r.setCatalogEnabled(c, visitor, false)
+}
+
+func (r *restHandler) setCatalogEnabled(c *gin.Context, visitor hydra.Visitor, enabled bool) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+
+	accountInfo := interfaces.AccountInfo{
+		ID:   visitor.ID,
+		Type: string(visitor.Type),
+	}
+	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	id := c.Param("id")
+	catalog, err := r.cs.GetByID(ctx, id, false)
+	if err != nil {
+		httpErr := err.(*rest.HTTPError)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	if catalog.Enabled == enabled {
+		oteltrace.AddHttpAttrs4Ok(span, http.StatusNoContent)
+		rest.ReplyOK(c, http.StatusNoContent, nil)
+		return
+	}
+
+	if err := r.cs.SetEnabled(ctx, catalog, enabled); err != nil {
+		httpErr := err.(*rest.HTTPError)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	audit.NewInfoLog(audit.OPERATION, audit.UPDATE, audit.TransforOperator(visitor),
+		interfaces.GenerateCatalogAuditObject(id, catalog.Name), "")
+
+	logger.Debug("Handler SetCatalogEnabled Success")
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusNoContent)
 	rest.ReplyOK(c, http.StatusNoContent, nil)
 }
@@ -676,7 +772,7 @@ func (r *restHandler) testConnection(c *gin.Context, visitor hydra.Visitor) {
 	}
 
 	// 映射缓存的健康状态为对外契约：
-	// 严格 healthy = success=true，其它（degraded / unhealthy / offline / disabled）= false。
+	// 严格 healthy = success=true，其它（unchecked / degraded / unhealthy / offline）= false。
 	result := map[string]any{
 		"success": status.HealthCheckStatus == interfaces.CatalogHealthStatusHealthy,
 		"message": status.HealthCheckResult,
@@ -731,6 +827,13 @@ func (r *restHandler) discoverCatalogResources(c *gin.Context, visitor hydra.Vis
 	}
 	if catalog == nil {
 		httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+	if !catalog.Enabled {
+		httpErr := rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Catalog_IsDisabled).
+			WithErrorDetails("catalog is disabled")
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return

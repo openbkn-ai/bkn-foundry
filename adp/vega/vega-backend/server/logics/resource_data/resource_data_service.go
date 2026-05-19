@@ -75,22 +75,27 @@ func (rds *resourceDataService) Query(ctx context.Context, resource *interfaces.
 
 	logger.Debugf("Query, resourceID: %s, params: %v", resource.ID, params)
 
-	var err error
-	var catalog *interfaces.Catalog
+	catalog, err := rds.cs.GetByID(ctx, resource.CatalogID, true)
+	if err != nil {
+		otellog.LogError(ctx, "Get catalog failed", err)
+		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
+			WithErrorDetails(fmt.Sprintf("failed to get catalog: %v", err))
+	}
+	if catalog == nil {
+		httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_CatalogNotFound).
+			WithErrorDetails(fmt.Sprintf("catalog %s not found", resource.CatalogID))
+		otellog.LogError(ctx, "Catalog not found", httpErr)
+		return nil, 0, httpErr
+	}
+	if !catalog.Enabled {
+		httpErr := rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Catalog_IsDisabled).
+			WithErrorDetails("catalog is disabled")
+		otellog.LogError(ctx, "Catalog is disabled", httpErr)
+		return nil, 0, httpErr
+	}
+
 	maxConcurrentQueries := int64(0)
 	if resource.Category != interfaces.ResourceCategoryLogicView {
-		catalog, err = rds.cs.GetByID(ctx, resource.CatalogID, true)
-		if err != nil {
-			otellog.LogError(ctx, "Get catalog failed", err)
-			return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
-				WithErrorDetails(fmt.Sprintf("failed to get catalog: %v", err))
-		}
-		if catalog == nil {
-			httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_CatalogNotFound).
-				WithErrorDetails(fmt.Sprintf("catalog %s not found", resource.CatalogID))
-			otellog.LogError(ctx, "Catalog not found", httpErr)
-			return nil, 0, httpErr
-		}
 		if concurrent, existsInCatalog := catalog.ConnectorCfg["concurrent"]; existsInCatalog {
 			maxConcurrentQueries = int64(concurrent.(float64))
 		}

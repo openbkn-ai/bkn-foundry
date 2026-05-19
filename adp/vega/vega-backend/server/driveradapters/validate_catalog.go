@@ -79,7 +79,7 @@ func validateCatalogHealthCheckStatusQueryParam(ctx context.Context, status stri
 		interfaces.CatalogHealthStatusDegraded,
 		interfaces.CatalogHealthStatusUnhealthy,
 		interfaces.CatalogHealthStatusOffline,
-		interfaces.CatalogHealthStatusDisabled:
+		interfaces.CatalogHealthStatusUnchecked:
 		return nil
 	default:
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Catalog_InvalidParameter).

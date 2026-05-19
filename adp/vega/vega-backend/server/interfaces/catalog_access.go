@@ -31,6 +31,8 @@ type CatalogAccess interface {
 	DeleteByIDs(ctx context.Context, ids []string) error
 	// UpdateHealthCheckStatus updates Catalog health check status.
 	UpdateHealthCheckStatus(ctx context.Context, id string, status CatalogHealthCheckStatus) error
+	// UpdateEnabled updates Catalog enabled status and health check status.
+	UpdateEnabled(ctx context.Context, id string, enabled bool, status CatalogHealthCheckStatus, updateTime int64, updater AccountInfo) error
 
 	// UpdateMetadata updates a Catalog metadata.
 	UpdateMetadata(ctx context.Context, id string, metadata map[string]any) error

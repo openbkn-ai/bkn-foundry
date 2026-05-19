@@ -114,6 +114,10 @@ func (s *rawQueryService) Execute(ctx context.Context, req *interfaces.RawQueryR
 				otellog.LogError(ctx, "Catalog not found", httpErr)
 				return nil, httpErr
 			}
+			if err := ensureCatalogEnabled(ctx, catalog); err != nil {
+				otellog.LogError(ctx, "Catalog is disabled", err)
+				return nil, err
+			}
 
 			return s.executeOpenSearchQuery(ctx, req, []string{}, catalog)
 		}
@@ -163,6 +167,10 @@ func (s *rawQueryService) Execute(ctx context.Context, req *interfaces.RawQueryR
 				WithErrorDetails(fmt.Sprintf("catalog %s not found", resource.CatalogID))
 			otellog.LogError(ctx, "Catalog not found", httpErr)
 			return nil, httpErr
+		}
+		if err := ensureCatalogEnabled(ctx, catalog); err != nil {
+			otellog.LogError(ctx, "Catalog is disabled", err)
+			return nil, err
 		}
 
 		return s.executeOpenSearchQuery(ctx, req, []string{}, catalog)
@@ -214,6 +222,10 @@ func (s *rawQueryService) Execute(ctx context.Context, req *interfaces.RawQueryR
 				WithErrorDetails(fmt.Sprintf("catalog %s not found", resource.CatalogID))
 			otellog.LogError(ctx, "Catalog not found", httpErr)
 			return nil, httpErr
+		}
+		if err := ensureCatalogEnabled(ctx, catalog); err != nil {
+			otellog.LogError(ctx, "Catalog is disabled", err)
+			return nil, err
 		}
 
 		// 根据catalog的ConnectorType来决定调用哪个方法
@@ -458,8 +470,19 @@ func (s *rawQueryService) checkSameDataSource(ctx context.Context, resourceIds [
 		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_CatalogNotFound).
 			WithErrorDetails(fmt.Sprintf("catalog %s not found", catalogID))
 	}
+	if err := ensureCatalogEnabled(ctx, catalog); err != nil {
+		return nil, err
+	}
 
 	return catalog, nil
+}
+
+func ensureCatalogEnabled(ctx context.Context, catalog *interfaces.Catalog) error {
+	if catalog != nil && !catalog.Enabled {
+		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Catalog_IsDisabled).
+			WithErrorDetails("catalog is disabled")
+	}
+	return nil
 }
 
 // replaceResourceIdWithSchemaTable 将resource_id替换为catalog.schema.table格式
@@ -726,6 +749,9 @@ func (s *rawQueryService) executeStreamQueryNewSession(ctx context.Context, req 
 		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_CatalogNotFound).
 			WithErrorDetails(fmt.Sprintf("catalog %s not found", resource.CatalogID))
 	}
+	if err := ensureCatalogEnabled(ctx, catalog); err != nil {
+		return nil, err
+	}
 
 	// 4. 检查是否支持流式查询
 	if catalog.ConnectorType != interfaces.ConnectorTypeMariaDB && catalog.ConnectorType != interfaces.ConnectorTypeMySQL && catalog.ConnectorType != interfaces.ConnectorTypePostgreSQL {
@@ -803,7 +829,17 @@ func (s *rawQueryService) executeSQLWithSession(ctx context.Context, req *interf
 		}
 	} else {
 		// 否则使用会话中的catalog和resourceIds
-		catalog = session.Catalog
+		catalog, err = s.cs.GetByID(ctx, session.CatalogID, true)
+		if err != nil {
+			return nil, err.(*rest.HTTPError)
+		}
+		if catalog == nil {
+			return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_CatalogNotFound).
+				WithErrorDetails(fmt.Sprintf("catalog %s not found", session.CatalogID))
+		}
+		if err := ensureCatalogEnabled(ctx, catalog); err != nil {
+			return nil, err
+		}
 		effectiveResourceIds = session.ResourceIds
 		// 使用会话中保存的原始SQL
 		effectiveQuery = session.OriginalSQL

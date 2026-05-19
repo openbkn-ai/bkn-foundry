@@ -168,6 +168,14 @@ func (bh *batchBuildHandler) executeBuild(ctx context.Context, resource *interfa
 		// Catalog not found, return nil to stop the task
 		return nil
 	}
+	if !catalog.Enabled {
+		logger.Errorf("Catalog is disabled for task %s, catalogID: %s", buildTaskInfo.ID, resource.CatalogID)
+		err = bh.taskAccess.UpdateStatus(ctx, buildTaskInfo.ID, map[string]interface{}{"status": interfaces.BuildTaskStatusFailed, "errorMsg": "catalog is disabled"})
+		if err != nil {
+			return fmt.Errorf("update build task status failed: %w", err)
+		}
+		return nil
+	}
 
 	// Batch read data from MySQL and write to dataset
 	batchSize := 1000

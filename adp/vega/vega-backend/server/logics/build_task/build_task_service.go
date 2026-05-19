@@ -93,6 +93,11 @@ func (bts *buildTaskService) CreateBuildTask(ctx context.Context, req *interface
 		span.SetStatus(codes.Error, "Catalog not found")
 		return "", rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound)
 	}
+	if !cat.Enabled {
+		span.SetStatus(codes.Error, "Catalog is disabled")
+		return "", rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Catalog_IsDisabled).
+			WithErrorDetails("catalog is disabled")
+	}
 
 	existing, err := bts.bta.GetByResourceID(ctx, resourceID)
 	if err != nil {
@@ -245,6 +250,22 @@ func (bts *buildTaskService) StartBuildTask(ctx context.Context, taskID string, 
 		span.SetStatus(codes.Error, "Invalid state transition for start")
 		return nil, rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_InvalidStateTransition).
 			WithErrorDetails(fmt.Sprintf("cannot start task in status: %s", buildTask.Status))
+	}
+
+	cat, err := bts.cs.GetByID(ctx, buildTask.CatalogID, false)
+	if err != nil {
+		span.SetStatus(codes.Error, "Get catalog failed")
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Catalog_InternalError_GetFailed).
+			WithErrorDetails(err.Error())
+	}
+	if cat == nil {
+		span.SetStatus(codes.Error, "Catalog not found")
+		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound)
+	}
+	if !cat.Enabled {
+		span.SetStatus(codes.Error, "Catalog is disabled")
+		return nil, rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Catalog_IsDisabled).
+			WithErrorDetails("catalog is disabled")
 	}
 
 	// status transition to running is performed by worker on actual execution，only need to enqueue the task

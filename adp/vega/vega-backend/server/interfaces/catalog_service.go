@@ -21,6 +21,8 @@ type CatalogService interface {
 	List(ctx context.Context, params CatalogsQueryParams) ([]*Catalog, int64, error)
 	// Update updates a Catalog.
 	Update(ctx context.Context, catalog *Catalog, req *CatalogRequest) error
+	// SetEnabled updates Catalog enabled state.
+	SetEnabled(ctx context.Context, catalog *Catalog, enabled bool) error
 	// DeleteByIDs deletes Catalogs by IDs.
 	DeleteByIDs(ctx context.Context, ids []string) error
 	// CheckExistByID checks if a Catalog exists by ID.

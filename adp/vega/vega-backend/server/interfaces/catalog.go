@@ -15,7 +15,7 @@ const (
 	CatalogHealthStatusDegraded  string = "degraded"
 	CatalogHealthStatusUnhealthy string = "unhealthy"
 	CatalogHealthStatusOffline   string = "offline"
-	CatalogHealthStatusDisabled  string = "disabled"
+	CatalogHealthStatusUnchecked string = "unchecked"
 )
 
 type CatalogHealthCheckStatus struct {
@@ -65,6 +65,7 @@ type CatalogsQueryParams struct {
 	PaginationQueryParams
 	Tag               string
 	Type              string
+	Enabled           *bool
 	HealthCheckStatus string
 	// ExtensionKeys / ExtensionValues 成对等长，多对 AND（列表筛选）
 	ExtensionKeys        []string
@@ -79,6 +80,7 @@ type CatalogRequest struct {
 	Name          string          `json:"name"`
 	Tags          []string        `json:"tags"`
 	Description   string          `json:"description"`
+	Enabled       bool            `json:"enabled"`
 	ConnectorType string          `json:"connector_type"`
 	ConnectorCfg  ConnectorConfig `json:"connector_config"`
 

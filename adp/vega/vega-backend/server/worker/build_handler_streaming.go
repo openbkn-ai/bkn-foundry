@@ -122,6 +122,14 @@ func (sh *streamingBuildHandler) HandleTask(ctx context.Context, task *asynq.Tas
 		// Catalog not found, return nil to stop the task
 		return nil
 	}
+	if !catalog.Enabled {
+		logger.Errorf("Catalog is disabled for task %s, catalogID: %s", buildTaskInfo.ID, resource.CatalogID)
+		err = sh.taskAccess.UpdateStatus(ctx, buildTaskInfo.ID, map[string]interface{}{"status": interfaces.BuildTaskStatusFailed, "errorMsg": "catalog is disabled"})
+		if err != nil {
+			return fmt.Errorf("update build task status failed: %w", err)
+		}
+		return nil
+	}
 	if catalog.ConnectorType != interfaces.ConnectorTypeMySQL && catalog.ConnectorType != interfaces.ConnectorTypePostgreSQL {
 		logger.Errorf("Streaming build only supports MySQL and PostgreSQL connectors. Unsupported connector type: %s", catalog.ConnectorType)
 		err = sh.taskAccess.UpdateStatus(ctx, buildTaskInfo.ID, map[string]interface{}{"status": interfaces.BuildTaskStatusFailed, "errorMsg": "unsupported connector type"})

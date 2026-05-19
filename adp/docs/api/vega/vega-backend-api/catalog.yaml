@@ -81,7 +81,12 @@ paths:
               - degraded
               - unhealthy
               - offline
-              - disabled
+              - unchecked
+        - name: enabled
+          description: 按 catalog 启用状态过滤
+          in: query
+          schema:
+            type: boolean
         - name: offset
           description: 分页偏移量，>=0，默认 0
           in: query
@@ -262,6 +267,9 @@ paths:
 
         `name` 改动后若新名称已被其它 catalog 占用，返回 409 `VegaBackend.Catalog.NameExists`。
 
+        `enabled` 不能通过 PUT 切换；请求体中的 `enabled` 必须与当前 catalog 状态一致。
+        如需启用/禁用，使用 `POST /catalogs/{id}/enable` 或 `POST /catalogs/{id}/disable`。
+
         **extensions**：请求体若包含 **`extensions` 键**（含空对象 `{}`），则对该 catalog **整包替换**
         `t_entity_extension` 中 `f_entity_id = id` 的全部行；**键未出现**则不修改副表。
       requestBody:
@@ -286,10 +294,55 @@ paths:
             主键 / 名称冲突。可能的错误码：
             - `VegaBackend.Catalog.IDMismatch`
             - `VegaBackend.Catalog.NameExists`
+            - `VegaBackend.Catalog.InvalidParameter`（尝试通过 PUT 切换 enabled）
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+  /api/vega-backend/v1/catalogs/{id}/enable:
+    parameters:
+      - name: id
+        description: catalog ID
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      summary: 启用 catalog
+      description: |
+        启用 catalog。接口幂等：已启用的 catalog 再次启用返回 204。
+        从禁用切换为启用时，`health_check_status` 重置为 `unchecked`。
+      responses:
+        "204":
+          description: 启用成功或已启用
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+  /api/vega-backend/v1/catalogs/{id}/disable:
+    parameters:
+      - name: id
+        description: catalog ID
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      summary: 禁用 catalog
+      description: |
+        禁用 catalog。接口幂等：已禁用的 catalog 再次禁用返回 204。
+        禁用不会覆盖 `health_check_status`，健康状态保留最近一次检查结果。
+      responses:
+        "204":
+          description: 禁用成功或已禁用
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalServerError"
   /api/vega-backend/v1/catalogs/{id}/health-status:
@@ -500,7 +553,7 @@ components:
             - degraded
             - unhealthy
             - offline
-            - disabled
+            - unchecked
         last_check_time:
           description: 最近一次健康检查时间（毫秒时间戳）
           type: integer
@@ -529,11 +582,13 @@ components:
 
         - POST：`id` 可省略，由后端生成；若携带且已存在，返回 409 `VegaBackend.Catalog.IdExists`。
         - PUT：`id` **必填**，且必须与路径参数 `id` 完全一致。缺失或格式非法返回 400 `VegaBackend.InvalidParameter.ID`，不一致返回 409 `VegaBackend.Catalog.IDMismatch`。
+        - `enabled` 使用 boolean 零值语义：未传按 `false` 处理。PUT 时该值必须与当前 catalog 状态一致；启停切换请使用专用 enable/disable 接口。
 
         可选 **`extensions`**（见 `EntityExtensions`）：写入规则见 `info.description`。
       type: object
       required:
         - name
+        - enabled
         - connector_type
       properties:
         id:
@@ -558,6 +613,9 @@ components:
           description: 描述，最大长度 1000
           type: string
           maxLength: 1000
+        enabled:
+          description: 是否启用；未传按 false 处理。PUT 不允许切换该字段，启停切换请使用专用 enable/disable 接口。
+          type: boolean
         connector_type:
           description: 连接器类型标识；必须是已注册且 enabled 的类型
           type: string
@@ -608,7 +666,7 @@ components:
             - degraded
             - unhealthy
             - offline
-            - disabled
+            - unchecked
         last_check_time:
           description: 最近一次检查时间（毫秒时间戳）
           type: integer
