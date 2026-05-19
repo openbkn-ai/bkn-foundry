@@ -179,6 +179,8 @@ paths:
 
         无 request body。本端点保留 RPC 风格嵌套形态——是对 catalog 的动作而非创建顶层
         task；详见 [discover_task_redesign.md] §1 非目标。
+
+        仅支持 `type=physical` 的 catalog；`type=logical` 会返回 400。
       responses:
         "200":
           description: 触发成功，DiscoverTask 已创建并入队
@@ -186,6 +188,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DiscoverTriggerResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":

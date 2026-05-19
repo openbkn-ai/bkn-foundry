@@ -237,3 +237,32 @@ func Test_CatalogRestHandler_DiscoverRejectsDisabledCatalog(t *testing.T) {
 		So(w.Body.String(), ShouldContainSubstring, "VegaBackend.Catalog.IsDisabled")
 	})
 }
+
+func Test_CatalogRestHandler_DiscoverRejectsLogicalCatalog(t *testing.T) {
+	Convey("Test CatalogHandler Discover rejects logical catalog\n", t, func() {
+		test := setGinMode()
+		defer test()
+
+		engine := gin.New()
+		engine.Use(gin.Recovery())
+
+		mockCtrl := gomock.NewController(t)
+		defer mockCtrl.Finish()
+
+		cs := vmock.NewMockCatalogService(mockCtrl)
+		dts := vmock.NewMockDiscoverTaskService(mockCtrl)
+		handler := MockNewRestHandler(&common.AppSetting{}, nil, cs, nil, nil, nil, nil, dts, nil, nil, nil)
+		handler.RegisterPublic(engine)
+
+		cs.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
+			Return(&interfaces.Catalog{ID: "catalog-1", Name: "catalog", Type: interfaces.CatalogTypeLogical, Enabled: true}, nil)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/catalogs/catalog-1/discover", nil)
+		w := httptest.NewRecorder()
+		engine.ServeHTTP(w, req)
+
+		So(w.Result().StatusCode, ShouldEqual, http.StatusBadRequest)
+		So(w.Body.String(), ShouldContainSubstring, "VegaBackend.Catalog.InvalidParameter.Type")
+		So(w.Body.String(), ShouldContainSubstring, "discover only supports physical catalogs")
+	})
+}

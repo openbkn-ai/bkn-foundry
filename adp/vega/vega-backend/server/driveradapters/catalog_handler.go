@@ -840,6 +840,13 @@ func (r *restHandler) discoverCatalogResources(c *gin.Context, visitor hydra.Vis
 		rest.ReplyError(c, httpErr)
 		return
 	}
+	if catalog.Type != interfaces.CatalogTypePhysical {
+		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Catalog_InvalidParameter_Type).
+			WithErrorDetails("discover only supports physical catalogs")
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
 
 	// Create discover task (async)
 	taskID, err := r.dts.Create(ctx, catalog.ID)
