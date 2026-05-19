@@ -106,7 +106,7 @@ var TypeMapping = map[string]string{
 }
 
 // MapType returns VEGA type for OpenSearch native type.
-func MapType(nativeType string) string {
+func (c *OpenSearchConnector) MapType(nativeType string) string {
 	if vegaType, ok := TypeMapping[nativeType]; ok {
 		return vegaType
 	}

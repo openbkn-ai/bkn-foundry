@@ -1,0 +1,79 @@
+[VegaBackend.Dataset.InvalidParameter.SchemaDefinition]
+Description = "无效的数据集 schema 定义"
+Solution = "schema_definition 不能为空，至少包含一个字段"
+ErrorLink = "暂无"
+
+[VegaBackend.Dataset.InvalidParameter.FieldName]
+Description = "无效的字段名称"
+Solution = "请检查字段参数"
+ErrorLink = "暂无"
+
+[VegaBackend.Dataset.LengthExceeded.FieldName]
+Description = "字段名称长度超限"
+Solution = "请缩短名称"
+ErrorLink = "暂无"
+
+[VegaBackend.Dataset.LengthExceeded.FieldDisplayName]
+Description = "字段显示名称长度超限"
+Solution = "请缩短显示名称"
+ErrorLink = "暂无"
+
+[VegaBackend.Dataset.LengthExceeded.FieldComment]
+Description = "字段备注长度超限"
+Solution = "请缩短备注内容"
+ErrorLink = "暂无"
+
+[VegaBackend.Dataset.Duplicated.FieldName]
+Description = "数据集字段名称已存在"
+Solution = "请使用不同的字段名称"
+ErrorLink = "暂无"
+
+[VegaBackend.Dataset.Duplicated.FieldDisplayName]
+Description = "数据集字段显示名称已存在"
+Solution = "请使用不同的显示名称"
+ErrorLink = "暂无"
+
+[VegaBackend.Dataset.InvalidParameter.FieldType]
+Description = "无效的字段类型"
+Solution = "请使用 VEGA 支持的字段类型"
+ErrorLink = "暂无"
+
+[VegaBackend.Dataset.InvalidParameter.FieldFeatureName]
+Description = "无效的字段特征名称"
+Solution = "请检查特征名称"
+ErrorLink = "暂无"
+
+[VegaBackend.Dataset.LengthExceeded.FieldFeatureName]
+Description = "字段特征名称长度超限"
+Solution = "请缩短特征名称"
+ErrorLink = "暂无"
+
+[VegaBackend.Dataset.Duplicated.FieldFeatureName]
+Description = "字段特征名称已存在"
+Solution = "请使用不同的特征名称"
+ErrorLink = "暂无"
+
+[VegaBackend.Dataset.LengthExceeded.FieldFeatureComment]
+Description = "字段特征备注长度超限"
+Solution = "请缩短特征备注内容"
+ErrorLink = "暂无"
+
+[VegaBackend.Dataset.InvalidParameter.FieldFeatureType]
+Description = "无效的字段特征类型"
+Solution = "请使用 keyword/fulltext/vector 之一"
+ErrorLink = "暂无"
+
+[VegaBackend.Dataset.InvalidParameter.FieldFeatureRef]
+Description = "字段特征引用字段无效"
+Solution = "请确认 ref_property 非空且存在于字段列表"
+ErrorLink = "暂无"
+
+[VegaBackend.Dataset.Unsupported.FieldFeatureRefType]
+Description = "字段特征引用字段类型不匹配"
+Solution = "请确认引用字段类型与特征类型兼容（如 fulltext 需要 text，keyword 需要 string，vector 需要 vector）"
+ErrorLink = "暂无"
+
+[VegaBackend.Dataset.Duplicated.DefaultFeaturePerType]
+Description = "同一特征类型只能有一个默认特征"
+Solution = "请取消其他默认特征"
+ErrorLink = "暂无"

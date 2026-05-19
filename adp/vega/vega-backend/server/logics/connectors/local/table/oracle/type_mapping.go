@@ -65,7 +65,7 @@ var TypeMapping = map[string]string{
 }
 
 // MapType returns VEGA type for Oracle native type.
-func MapType(nativeType string) string {
+func (c *OracleConnector) MapType(nativeType string) string {
 	if vegaType, ok := TypeMapping[nativeType]; ok {
 		return vegaType
 	}

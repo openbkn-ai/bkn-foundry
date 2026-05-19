@@ -1,0 +1,79 @@
+[VegaBackend.Dataset.InvalidParameter.SchemaDefinition]
+Description = "Invalid dataset schema definition"
+Solution = "schema_definition cannot be empty; at least one field is required"
+ErrorLink = "None"
+
+[VegaBackend.Dataset.InvalidParameter.FieldName]
+Description = "Invalid field name"
+Solution = "Please check the field parameters"
+ErrorLink = "None"
+
+[VegaBackend.Dataset.LengthExceeded.FieldName]
+Description = "Field name length exceeded"
+Solution = "Please shorten the name"
+ErrorLink = "None"
+
+[VegaBackend.Dataset.LengthExceeded.FieldDisplayName]
+Description = "Field display name length exceeded"
+Solution = "Please shorten the display name"
+ErrorLink = "None"
+
+[VegaBackend.Dataset.LengthExceeded.FieldComment]
+Description = "Field comment length exceeded"
+Solution = "Please shorten the description"
+ErrorLink = "None"
+
+[VegaBackend.Dataset.Duplicated.FieldName]
+Description = "Dataset field name already exists"
+Solution = "Please use a different field name"
+ErrorLink = "None"
+
+[VegaBackend.Dataset.Duplicated.FieldDisplayName]
+Description = "Dataset field display name already exists"
+Solution = "Please use a different display name"
+ErrorLink = "None"
+
+[VegaBackend.Dataset.InvalidParameter.FieldType]
+Description = "Invalid field type"
+Solution = "Please use a supported VEGA field type"
+ErrorLink = "None"
+
+[VegaBackend.Dataset.InvalidParameter.FieldFeatureName]
+Description = "Invalid field feature name"
+Solution = "Please check the feature name"
+ErrorLink = "None"
+
+[VegaBackend.Dataset.LengthExceeded.FieldFeatureName]
+Description = "Field feature name length exceeded"
+Solution = "Please shorten the feature name"
+ErrorLink = "None"
+
+[VegaBackend.Dataset.Duplicated.FieldFeatureName]
+Description = "Field feature name already exists"
+Solution = "Please use a different feature name"
+ErrorLink = "None"
+
+[VegaBackend.Dataset.LengthExceeded.FieldFeatureComment]
+Description = "Field feature comment length exceeded"
+Solution = "Please shorten the feature description"
+ErrorLink = "None"
+
+[VegaBackend.Dataset.InvalidParameter.FieldFeatureType]
+Description = "Invalid field feature type"
+Solution = "Please use one of: keyword, fulltext, vector"
+ErrorLink = "None"
+
+[VegaBackend.Dataset.InvalidParameter.FieldFeatureRef]
+Description = "Field feature ref_property is invalid"
+Solution = "Ensure ref_property is non-empty and refers to an existing field"
+ErrorLink = "None"
+
+[VegaBackend.Dataset.Unsupported.FieldFeatureRefType]
+Description = "Field feature ref_property type does not match feature type"
+Solution = "Ensure ref field type is compatible with the feature type (fulltext requires text, keyword requires string, vector requires vector)"
+ErrorLink = "None"
+
+[VegaBackend.Dataset.Duplicated.DefaultFeaturePerType]
+Description = "Only one default feature is allowed per feature type"
+Solution = "Please unset other defaults"
+ErrorLink = "None"

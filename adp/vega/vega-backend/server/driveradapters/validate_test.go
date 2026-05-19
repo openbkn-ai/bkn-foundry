@@ -180,6 +180,116 @@ func Test_Validate_CreateResourceCategory(t *testing.T) {
 		})
 	})
 }
+func Test_Validate_DatasetRequest(t *testing.T) {
+	baseReq := func(props []*interfaces.Property) *interfaces.ResourceRequest {
+		return &interfaces.ResourceRequest{
+			Name:             "ds",
+			Category:         interfaces.ResourceCategoryDataset,
+			SchemaDefinition: props,
+		}
+	}
+
+	Convey("Test ValidateResourceRequest for dataset\n", t, func() {
+		Convey("Reject nil schema_definition\n", func() {
+			err := ValidateResourceRequest(context.Background(), baseReq(nil))
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Reject empty schema_definition\n", func() {
+			err := ValidateResourceRequest(context.Background(), baseReq([]*interfaces.Property{}))
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Reject empty field name\n", func() {
+			err := ValidateResourceRequest(context.Background(), baseReq([]*interfaces.Property{
+				{Name: "", Type: interfaces.DataType_String},
+			}))
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Reject field name length exceeded\n", func() {
+			err := ValidateResourceRequest(context.Background(), baseReq([]*interfaces.Property{
+				{Name: strings.Repeat("a", interfaces.MaxLength_PropertyName+1), Type: interfaces.DataType_String},
+			}))
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Reject display name length exceeded\n", func() {
+			err := ValidateResourceRequest(context.Background(), baseReq([]*interfaces.Property{
+				{Name: "f1", DisplayName: strings.Repeat("a", interfaces.MaxLength_PropertyDisplayName+1), Type: interfaces.DataType_String},
+			}))
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Reject description length exceeded\n", func() {
+			err := ValidateResourceRequest(context.Background(), baseReq([]*interfaces.Property{
+				{Name: "f1", Description: strings.Repeat("a", interfaces.MaxLength_PropertyDescription+1), Type: interfaces.DataType_String},
+			}))
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Reject duplicate field name\n", func() {
+			err := ValidateResourceRequest(context.Background(), baseReq([]*interfaces.Property{
+				{Name: "f1", Type: interfaces.DataType_String},
+				{Name: "f1", Type: interfaces.DataType_Integer},
+			}))
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Reject duplicate display name\n", func() {
+			err := ValidateResourceRequest(context.Background(), baseReq([]*interfaces.Property{
+				{Name: "f1", DisplayName: "same", Type: interfaces.DataType_String},
+				{Name: "f2", DisplayName: "same", Type: interfaces.DataType_String},
+			}))
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Reject invalid feature type\n", func() {
+			err := ValidateResourceRequest(context.Background(), baseReq([]*interfaces.Property{
+				{Name: "f1", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{
+					{FeatureName: "feat1", FeatureType: "bogus", RefProperty: "f1", IsNative: true},
+				}},
+			}))
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Reject non-native feature with missing ref_property\n", func() {
+			err := ValidateResourceRequest(context.Background(), baseReq([]*interfaces.Property{
+				{Name: "f1", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{
+					{FeatureName: "feat1", FeatureType: interfaces.PropertyFeatureType_Fulltext, RefProperty: "missing"},
+				}},
+			}))
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Reject feature with mismatched ref type\n", func() {
+			err := ValidateResourceRequest(context.Background(), baseReq([]*interfaces.Property{
+				{Name: "f1", Type: interfaces.DataType_Integer},
+				{Name: "f2", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{
+					{FeatureName: "feat1", FeatureType: interfaces.PropertyFeatureType_Keyword, RefProperty: "f1"},
+				}},
+			}))
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Accept minimal valid dataset\n", func() {
+			err := ValidateResourceRequest(context.Background(), baseReq([]*interfaces.Property{
+				{Name: "id", Type: interfaces.DataType_Integer},
+				{Name: "name", Type: interfaces.DataType_String},
+			}))
+			So(err, ShouldBeNil)
+		})
+
+		Convey("Accept dataset with native fulltext feature\n", func() {
+			err := ValidateResourceRequest(context.Background(), baseReq([]*interfaces.Property{
+				{Name: "body", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{
+					{FeatureName: "body.ft", FeatureType: interfaces.PropertyFeatureType_Fulltext, RefProperty: "body", IsNative: true},
+				}},
+			}))
+			So(err, ShouldBeNil)
+		})
+	})
+}
 
 func Test_Validate_Tags(t *testing.T) {
 	Convey("Test ValidateTags\n", t, func() {

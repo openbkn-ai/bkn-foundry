@@ -257,7 +257,7 @@ func (c *PostgresqlConnector) ExecuteRawSQL(ctx context.Context, sql string) (*i
 	for i, col := range columns {
 		response.Columns[i] = interfaces.ColumnInfo{
 			Name: col,
-			Type: MapType(columnTypes[i].DatabaseTypeName(), ""),
+			Type: c.MapType(columnTypes[i].DatabaseTypeName()),
 		}
 	}
 

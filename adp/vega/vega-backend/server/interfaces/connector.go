@@ -25,12 +25,12 @@ type TableMeta struct {
 
 // TableColumnMeta represents column metadata.
 type TableColumnMeta struct {
-	Name              string `json:"name"`
-	Type              string `json:"type"`
-	OrigType          string `json:"orig_type"`
+	Name        string `json:"name"`
+	Type        string `json:"type"`
+	Description string `json:"description"`
+
 	Nullable          bool   `json:"nullable"`
-	DefaultValue      string `json:"default_value,omitempty"` // 默认值
-	Description       string `json:"description"`
+	DefaultValue      string `json:"default_value,omitempty"`      // 默认值
 	CharMaxLen        int    `json:"char_max_len,omitempty"`       // 字符最大长度
 	NumPrecision      int    `json:"num_precision,omitempty"`      // 数值精度
 	NumScale          int    `json:"num_scale,omitempty"`          // 数值小数位
@@ -86,9 +86,8 @@ type FilesetMeta struct {
 
 // FilesetColumnMeta represents column metadata.
 type FilesetColumnMeta struct {
-	Name     string `json:"name"`
-	Type     string `json:"type"`
-	OrigType string `json:"orig_type"`
+	Name string `json:"name"`
+	Type string `json:"type"`
 }
 
 // TopicMeta represents message topic metadata.
@@ -120,17 +119,24 @@ type IndexMeta struct {
 
 // IndexFieldMeta represents index field metadata.
 type IndexFieldMeta struct {
-	Name       string                 `json:"name"`
-	Type       string                 `json:"type"`
-	OrigType   string                 `json:"orig_type"`
-	Analyzer   string                 `json:"analyzer,omitempty"`
-	Searchable bool                   `json:"searchable"`
-	Features   map[string]interface{} `json:"features"`
+	Name       string         `json:"name"`
+	Type       string         `json:"type"`
+	Analyzer   string         `json:"analyzer,omitempty"`
+	Searchable bool           `json:"searchable"`
+	Attributes map[string]any `json:"attributes"`
+	// SubFields multi-fields 子字段，按 Name 字母序排列以保证序列化稳定
+	SubFields []IndexSubFieldMeta `json:"sub_fields,omitempty"`
+}
+
+// IndexSubFieldMeta represents an OpenSearch multi-field sub-field.
+type IndexSubFieldMeta struct {
+	Name       string         `json:"name"`       // 子字段名（如 "keyword"）
+	Type       string         `json:"type"`       // 子字段 type（如 "keyword"）
+	Attributes map[string]any `json:"attributes"` // 子字段除 type 外的属性
 }
 
 // HealthStatus represents connection health status.
 type HealthStatus struct {
-	Status    string `json:"status"` // green, yellow, red, unknown
-	Message   string `json:"message"`
-	LatencyMs int64  `json:"latency_ms"`
+	Status  string `json:"status"` // green, yellow, red, unknown
+	Message string `json:"message"`
 }

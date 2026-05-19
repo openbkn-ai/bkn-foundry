@@ -322,12 +322,12 @@ func (c *MariaDBConnector) fetchColumns(ctx context.Context, table *interfaces.T
 		}
 
 		col := interfaces.TableColumnMeta{
-			Name:              name.String,
-			Type:              MapType(columnType.String), // 使用 COLUMN_TYPE 以正确识别 unsigned（如 "int unsigned"）
-			OrigType:          columnType.String,
+			Name:        name.String,
+			Type:        columnType.String, // 使用 COLUMN_TYPE 以正确识别 unsigned（如 "int unsigned"）
+			Description: description.String,
+
 			Nullable:          isNullable.String == "YES",
 			DefaultValue:      columnDefault.String,
-			Description:       description.String,
 			CharMaxLen:        int(charMaxLen.Int64),
 			NumPrecision:      int(numPrecision.Int64),
 			NumScale:          int(numScale.Int64),

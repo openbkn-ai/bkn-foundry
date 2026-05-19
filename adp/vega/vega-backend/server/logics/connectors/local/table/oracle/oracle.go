@@ -507,12 +507,12 @@ func (c *OracleConnector) fetchColumns(ctx context.Context, table *interfaces.Ta
 		}
 
 		col := interfaces.TableColumnMeta{
-			Name:            name.String,
-			Type:            MapType(dataType.String),
-			OrigType:        dataType.String,
+			Name:        name.String,
+			Type:        dataType.String,
+			Description: description.String,
+
 			Nullable:        isNullable.String == "Y",
 			DefaultValue:    columnDefault.String,
-			Description:     description.String,
 			CharMaxLen:      int(charMaxLen.Int64),
 			NumPrecision:    int(numPrecision.Int64),
 			NumScale:        int(numScale.Int64),

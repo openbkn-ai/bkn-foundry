@@ -244,9 +244,10 @@ ORDER BY ordinal_position`
 		}
 
 		columns = append(columns, interfaces.TableColumnMeta{
-			Name:              name.String,
-			Type:              MapType(udtName.String, dataType.String),
-			OrigType:          orig,
+			Name:        name.String,
+			Type:        orig,
+			Description: "",
+
 			Nullable:          strings.EqualFold(isNullable.String, "YES"),
 			DefaultValue:      colDefault.String,
 			CharMaxLen:        int(charMax.Int64),

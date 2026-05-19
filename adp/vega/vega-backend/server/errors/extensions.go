@@ -7,12 +7,12 @@
 package errors
 
 const (
-	VegaBackend_Extensions_InvalidFormat              = "VegaBackend.Extensions.InvalidFormat"
-	VegaBackend_Extensions_QuotaExceeded              = "VegaBackend.Extensions.QuotaExceeded"
-	VegaBackend_Extensions_ReservedKey                = "VegaBackend.Extensions.ReservedKey"
-	VegaBackend_Extensions_MismatchedQueryPairs       = "VegaBackend.Extensions.MismatchedQueryPairs"
-	VegaBackend_Extensions_TooManyFilterPairs         = "VegaBackend.Extensions.TooManyFilterPairs"
-	VegaBackend_Extensions_PropertyQuotaExceeded      = "VegaBackend.Extensions.PropertyQuotaExceeded"
+	VegaBackend_Extensions_InvalidFormat         = "VegaBackend.Extensions.InvalidFormat"
+	VegaBackend_Extensions_QuotaExceeded         = "VegaBackend.Extensions.QuotaExceeded"
+	VegaBackend_Extensions_ReservedKey           = "VegaBackend.Extensions.ReservedKey"
+	VegaBackend_Extensions_MismatchedQueryPairs  = "VegaBackend.Extensions.MismatchedQueryPairs"
+	VegaBackend_Extensions_TooManyFilterPairs    = "VegaBackend.Extensions.TooManyFilterPairs"
+	VegaBackend_Extensions_PropertyQuotaExceeded = "VegaBackend.Extensions.PropertyQuotaExceeded"
 )
 
 // ExtensionsErrCodeList 须在 init 中 rest.Register，否则返回该码时进程会 fatal（missing errorCode）。

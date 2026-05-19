@@ -79,7 +79,7 @@ func (dh *discoverHandler) HandleTask(ctx context.Context, task *asynq.Task) err
 
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, taskInfo.Creator)
 
-	catalogInfo, err := dh.cs.GetByID(ctx, taskInfo.CatalogID, true)
+	catalog, err := dh.cs.GetByID(ctx, taskInfo.CatalogID, true)
 	if err != nil {
 		logger.Errorf("Failed to get catalog for task %s: %v", taskID, err)
 		return err
@@ -98,7 +98,7 @@ func (dh *discoverHandler) HandleTask(ctx context.Context, task *asynq.Task) err
 	//然后根据 connector 信息获取 connector 实例，
 	//然后根据 connector 实例获取 catalog 的元数据，
 	//然后根据 catalog 的元数据获取 catalog 的资源信息：元数据
-	result, err := dh.discoverCatalog(ctx, catalogInfo, taskID)
+	result, err := dh.discoverCatalog(ctx, catalog, taskInfo)
 	if err != nil {
 		// Update task status to failed
 		now = time.Now().UnixMilli()
@@ -113,7 +113,7 @@ func (dh *discoverHandler) HandleTask(ctx context.Context, task *asynq.Task) err
 		return err
 	}
 
-	logger.Infof("Discover completed for task: %s, catalog: %s", taskID, catalogInfo.ID)
+	logger.Infof("Discover completed for task: %s, catalog: %s", taskID, catalog.ID)
 	return nil
 }
 
@@ -127,7 +127,8 @@ func (dh *discoverHandler) HandleTask(ctx context.Context, task *asynq.Task) err
 // 返回值:
 //   - *interfaces.DiscoverResult: 发现结果，包含发现的资源信息
 //   - error: 错误信息，如果发现过程中出现错误
-func (dh *discoverHandler) discoverCatalog(ctx context.Context, catalog *interfaces.Catalog, taskID string) (*interfaces.DiscoverResult, error) {
+func (dh *discoverHandler) discoverCatalog(ctx context.Context, catalog *interfaces.Catalog,
+	task *interfaces.DiscoverTask) (*interfaces.DiscoverResult, error) {
 
 	logger.Infof("Starting discover for catalog: %s", catalog.ID)
 
@@ -156,7 +157,7 @@ func (dh *discoverHandler) discoverCatalog(ctx context.Context, catalog *interfa
 	switch category {
 	// table类型的会到这里，例如mysql
 	case interfaces.ConnectorCategoryTable:
-		return dh.discoverTableResources(ctx, catalog, connector, taskID)
+		return dh.discoverTableResources(ctx, catalog, connector, task)
 	// index类型的会到这里，例如open search
 	case interfaces.ConnectorCategoryIndex:
 		return dh.discoverIndexResources(ctx, catalog, connector)
@@ -267,7 +268,12 @@ func filesetSourceIdentifier(fs *interfaces.FilesetMeta) string {
 }
 
 func (dh *discoverHandler) createFilesetResource(ctx context.Context, catalog *interfaces.Catalog, fs *interfaces.FilesetMeta, sourceIdentifier string) (*interfaces.Resource, error) {
-	meta := cloneMetadata(fs.SourceMetadata)
+	meta := fs.SourceMetadata
+	if meta == nil {
+		meta = make(map[string]any)
+	}
+	meta["original_name"] = fs.Name
+	meta["original_description"] = ""
 	req := &interfaces.ResourceRequest{
 		CatalogID:        catalog.ID,
 		Name:             fs.Name,
@@ -284,35 +290,27 @@ func (dh *discoverHandler) createFilesetResource(ctx context.Context, catalog *i
 	return resource, nil
 }
 
-func cloneMetadata(m map[string]any) map[string]any {
-	out := make(map[string]any, len(m))
-	if m == nil {
-		return out
-	}
-	for k, v := range m {
-		out[k] = v
-	}
-	return out
-}
-
 func (dh *discoverHandler) enrichFilesetMetadata(ctx context.Context, items []filesetDiscoverItem) error {
 	for _, item := range items {
 		fs := item.meta
 		resource := item.resource
 
-		sourceMetadata := cloneMetadata(resource.SourceMetadata)
-		if fs.SourceMetadata != nil {
-			for k, v := range fs.SourceMetadata {
-				sourceMetadata[k] = v
-			}
+		sourceMetadata := resource.SourceMetadata
+		if sourceMetadata == nil {
+			sourceMetadata = make(map[string]any)
 		}
+		for k, v := range fs.SourceMetadata {
+			sourceMetadata[k] = v
+		}
+		sourceMetadata["original_name"] = fs.Name
+		sourceMetadata["original_description"] = ""
 		resource.SourceMetadata = sourceMetadata
 		resource.SchemaDefinition = []*interfaces.Property{}
 		for _, col := range fs.Columns {
 			resource.SchemaDefinition = append(resource.SchemaDefinition, &interfaces.Property{
 				Name:         col.Name,
 				Type:         col.Type,
-				OrigType:     col.OrigType,
+				OriginalType: col.Type,
 				DisplayName:  col.Name,
 				OriginalName: col.Name,
 				Description:  "",
@@ -347,7 +345,8 @@ func (dh *discoverHandler) createAndConnectConnector(ctx context.Context, catalo
 
 // discoverTableResources discovers table resources from a table connector.
 // 分步执行：1. 获取表名列表 2. 创建/更新 Resource 3. 逐个补齐详细元数据
-func (dh *discoverHandler) discoverTableResources(ctx context.Context, catalog *interfaces.Catalog, connector connectors.Connector, taskID string) (*interfaces.DiscoverResult, error) {
+func (dh *discoverHandler) discoverTableResources(ctx context.Context, catalog *interfaces.Catalog,
+	connector connectors.Connector, task *interfaces.DiscoverTask) (*interfaces.DiscoverResult, error) {
 
 	tableConnector, ok := connector.(connectors.TableConnector)
 	if !ok {
@@ -368,7 +367,7 @@ func (dh *discoverHandler) discoverTableResources(ctx context.Context, catalog *
 	}
 
 	// Step 3: 对比并创建/更新 Resource（基础信息）
-	result, items, err := dh.reconcileTableResources(ctx, catalog, sourceTables, existingResources, taskID)
+	result, items, err := dh.reconcileTableResources(ctx, catalog, sourceTables, existingResources, task)
 	if err != nil {
 		return nil, fmt.Errorf("failed to reconcile resources: %w", err)
 	}
@@ -410,11 +409,14 @@ func (dh *discoverHandler) enrichTableMetadata(ctx context.Context, tableConnect
 		resource.SchemaDefinition = []*interfaces.Property{}
 		for _, column := range table.Columns {
 			resource.SchemaDefinition = append(resource.SchemaDefinition, &interfaces.Property{
-				Name:         column.Name,
-				Type:         column.Type,
-				DisplayName:  column.Name,
-				OriginalName: column.Name,
-				Description:  column.Description,
+				Name:        column.Name,
+				DisplayName: column.Name,
+				Type:        tableConnector.MapType(column.Type),
+				Description: column.Description,
+
+				OriginalName:        column.Name,
+				OriginalType:        column.Type,
+				OriginalDescription: column.Description,
 			})
 		}
 		// 填充 Resource 元数据 ：source_metadata 字段
@@ -423,6 +425,8 @@ func (dh *discoverHandler) enrichTableMetadata(ctx context.Context, tableConnect
 			sourceMetadata = resource.SourceMetadata
 		}
 		sourceMetadata["columns"] = table.Columns
+		sourceMetadata["original_name"] = resource.SourceIdentifier
+		sourceMetadata["original_description"] = table.Description
 		if table.TableType != "" {
 			sourceMetadata["table_type"] = table.TableType
 		}
@@ -452,7 +456,8 @@ func (dh *discoverHandler) enrichTableMetadata(ctx context.Context, tableConnect
 }
 
 // reconcileTableResources reconciles source tables with existing resources.
-func (dh *discoverHandler) reconcileTableResources(ctx context.Context, catalog *interfaces.Catalog, sourceTables []*interfaces.TableMeta, existingResources []*interfaces.Resource, taskID string) (*interfaces.DiscoverResult, []tableDiscoverItem, error) {
+func (dh *discoverHandler) reconcileTableResources(ctx context.Context, catalog *interfaces.Catalog, sourceTables []*interfaces.TableMeta,
+	existingResources []*interfaces.Resource, task *interfaces.DiscoverTask) (*interfaces.DiscoverResult, []tableDiscoverItem, error) {
 
 	result := &interfaces.DiscoverResult{
 		CatalogID: catalog.ID,
@@ -466,12 +471,7 @@ func (dh *discoverHandler) reconcileTableResources(ctx context.Context, catalog 
 	for _, r := range existingResources {
 		existingMap[r.SourceIdentifier] = r
 	}
-	// 查出来执行的task
-	task, err := dh.dts.GetByID(ctx, taskID)
-	if err != nil {
-		logger.Errorf("Failed to get task %s: %v", taskID, err)
-		return nil, nil, err
-	}
+
 	// 构建源端表的 map
 	sourceMap := make(map[string]*interfaces.TableMeta)
 	for _, t := range sourceTables {
@@ -562,6 +562,10 @@ func (dh *discoverHandler) createResource(ctx context.Context, catalog *interfac
 		Status:           interfaces.ResourceStatusActive,
 		Database:         table.Database,
 		SourceIdentifier: sourceIdentifier,
+		SourceMetadata: map[string]any{
+			"original_name":        sourceIdentifier,
+			"original_description": table.Description,
+		},
 	}
 	resource, err := dh.rs.Create(ctx, req)
 	if err != nil {
@@ -708,6 +712,10 @@ func (dh *discoverHandler) createIndexResource(ctx context.Context, catalog *int
 		Category:         interfaces.ResourceCategoryIndex,
 		Status:           interfaces.ResourceStatusActive,
 		SourceIdentifier: index.Name,
+		SourceMetadata: map[string]any{
+			"original_name":        index.Name,
+			"original_description": "",
+		},
 	}
 	resource, err := dh.rs.Create(ctx, req)
 	if err != nil {
@@ -743,16 +751,19 @@ func (dh *discoverHandler) enrichIndexMetadata(ctx context.Context, indexConnect
 		var columns []*interfaces.Property
 		for _, field := range idx.Mapping {
 			// {"ignore_above":256,"type":"keyword"} : 去掉type
-			delete(field.Features, "type")
+			delete(field.Attributes, "type")
 
 			columns = append(columns, &interfaces.Property{
-				Name:         field.Name,
-				Type:         field.Type,
-				OrigType:     field.OrigType,
-				DisplayName:  field.Name,
-				OriginalName: field.Name,
-				Description:  "",
-				Attributes:   field.Features,
+				Name:        field.Name,
+				DisplayName: field.Name,
+				Type:        field.Type,
+				Description: "",
+
+				OriginalName:        field.Name,
+				OriginalType:        field.Type,
+				OriginalDescription: "",
+				Attributes:          field.Attributes,
+				Features:            buildSubFieldFeatures(field.Name, field.SubFields),
 			})
 		}
 		resource.SchemaDefinition = columns
@@ -765,6 +776,8 @@ func (dh *discoverHandler) enrichIndexMetadata(ctx context.Context, indexConnect
 
 		sourceMetadata["properties"] = idx.Properties
 		sourceMetadata["mapping"] = idx.Mapping
+		sourceMetadata["original_name"] = idx.Name
+		sourceMetadata["original_description"] = ""
 		resource.SourceMetadata = sourceMetadata
 
 		// Update Resource
@@ -778,4 +791,47 @@ func (dh *discoverHandler) enrichIndexMetadata(ctx context.Context, indexConnect
 		logger.Infof("Enriched index %s: fields=%d", idx.Name, len(columns))
 	}
 	return nil
+}
+
+// osSubFieldTypeToFeatureType maps OpenSearch multi-field type to VEGA PropertyFeature type.
+// 不识别的类型返回空串，调用方应跳过并记 warn。
+func osSubFieldTypeToFeatureType(osType string) string {
+	switch osType {
+	case "keyword":
+		return interfaces.PropertyFeatureType_Keyword
+	case "text":
+		return interfaces.PropertyFeatureType_Fulltext
+	case "dense_vector", "knn_vector":
+		return interfaces.PropertyFeatureType_Vector
+	default:
+		return ""
+	}
+}
+
+// buildSubFieldFeatures 将 OpenSearch multi-field 子字段转换为 VEGA PropertyFeature。
+// parentName: 父字段全名（如 "user.name"）；subFields: 已按 Name 字母序排列的子字段元数据。
+func buildSubFieldFeatures(parentName string, subFields []interfaces.IndexSubFieldMeta) []interfaces.PropertyFeature {
+	if len(subFields) == 0 {
+		return nil
+	}
+	features := make([]interfaces.PropertyFeature, 0, len(subFields))
+	for _, sub := range subFields {
+		featureType := osSubFieldTypeToFeatureType(sub.Type)
+		if featureType == "" {
+			logger.Warnf("Skip unsupported opensearch sub-field type: parent=%s sub=%s type=%s", parentName, sub.Name, sub.Type)
+			continue
+		}
+		fullName := parentName + "." + sub.Name
+		features = append(features, interfaces.PropertyFeature{
+			FeatureName: fullName,
+			DisplayName: fullName,
+			FeatureType: featureType,
+			IsNative:    true,
+			Config:      sub.Attributes,
+		})
+	}
+	if len(features) == 0 {
+		return nil
+	}
+	return features
 }

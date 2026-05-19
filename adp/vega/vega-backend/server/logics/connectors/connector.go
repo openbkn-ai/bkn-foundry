@@ -45,6 +45,9 @@ type LocalConnectorBuilder func(cfg *interfaces.ConnectorConfig) (Connector, err
 type TableConnector interface {
 	Connector
 
+	// MapType 将源端原生类型映射为 VEGA 统一类型；不识别一律返回 Other
+	MapType(nativeType string) string
+
 	// ListDatabases 列出实例下所有可访问的数据库
 	ListDatabases(ctx context.Context) ([]string, error)
 	ListTables(ctx context.Context) ([]*interfaces.TableMeta, error)
@@ -87,6 +90,9 @@ type MetricConnector interface {
 // Implementations: opensearch, elasticsearch, etc.
 type IndexConnector interface {
 	Connector
+
+	// MapType 将源端原生类型映射为 VEGA 统一类型；不识别一律返回 Other
+	MapType(nativeType string) string
 
 	ListIndexes(ctx context.Context) ([]*interfaces.IndexMeta, error)
 	GetIndexMeta(ctx context.Context, index *interfaces.IndexMeta) error

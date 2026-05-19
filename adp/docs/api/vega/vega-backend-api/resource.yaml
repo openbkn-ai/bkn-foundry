@@ -189,10 +189,13 @@ paths:
         `VegaBackend.Resource.CatalogNotFound`。
 
         - `id` 字段可选；后端在不指定时生成。
-        - `category` 必须为支持的取值之一。
+        - `category` 必须为支持的取值之一。**仅 `dataset` 与 `logicview` 允许通过本 API 创建**；
+          其他类别（`table` / `file` / `fileset` / `api` / `metric` / `topic` / `index`）由 discover 任务产出，
+          直接调用本接口创建会返回 400 `VegaBackend.Resource.CategoryNotCreatable`。
         - `name` 在 catalog 内唯一；冲突返回 409 `VegaBackend.Resource.NameExists`。
-        - `schema_definition` / `logic_definition` 视 category 而定（如 `logicview`
-          需要 `logic_definition`，`table` / `index` 通常需要 `schema_definition`）。
+        - `category=logicview` 必须给 `logic_definition`。
+        - `category=dataset` 必须给非空 `schema_definition`；字段名/长度/重复/类型/特征均会校验，
+          违反返回 400 `VegaBackend.Dataset.*`（详见错误码族）。
         - 可选 **`extensions`**：与插入 `t_resource` **同一事务**内写入 `t_entity_extension`。
       requestBody:
         required: true
@@ -317,6 +320,9 @@ components:
         请求参数 / 请求体非法。常见 errcode：
         - `VegaBackend.InvalidParameter.RequestBody`：body schema 不合法
         - `VegaBackend.Resource.InvalidParameter.*`：具体字段非法
+        - `VegaBackend.Resource.CategoryNotCreatable`：尝试通过 API 创建非 `dataset`/`logicview` 类资源
+        - `VegaBackend.Dataset.*`：dataset 创建时 `schema_definition` 为空 / 字段名 / 长度 / 重复 / 类型 / 特征校验失败
+        - `VegaBackend.LogicView.*`：logicview 创建时 `logic_definition` / 字段 / 特征校验失败
         - `VegaBackend.Extensions.*`：`extensions` 形状、配额、保留 key；或 query 数组未成对
       content:
         application/json:
@@ -418,16 +424,25 @@ components:
             integer / unsigned_integer / float / decimal / string / text /
             date / datetime / time / boolean / binary / json / vector
           type: string
-        orig_type:
-          description: 源端原始类型字符串（如 mysql 的 `varchar(255)`）
-          type: string
         display_name:
           description: 显示名
           type: string
-        original_name:
-          description: 源端字段原名（建表脚本里的字段名）
-          type: string
         description:
+          type: string
+        original_name:
+          description: |
+            源端字段原名（建表脚本里的字段名）。
+            discover 每次刷新，**永远反映源端当前值**，不是首次扫描快照。
+          type: string
+        original_type:
+          description: |
+            源端原始类型字符串（如 mysql 的 `varchar(255)`）。
+            discover 每次刷新，永远反映源端当前值。
+          type: string
+        original_description:
+          description: |
+            源端字段原始描述（如 mysql COLUMN_COMMENT）。
+            discover 每次刷新，永远反映源端当前值。
           type: string
         features:
           description: 字段特性集合

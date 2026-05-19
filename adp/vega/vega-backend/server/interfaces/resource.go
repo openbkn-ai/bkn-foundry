@@ -67,15 +67,27 @@ type Resource struct {
 	Operations []string `json:"operations"`
 }
 
+const (
+	// Property 字段名称、显示名、备注、特征名、特征备注的最大长度
+	MaxLength_PropertyName               = 255
+	MaxLength_PropertyDisplayName        = 255
+	MaxLength_PropertyFeatureName        = 255
+	MaxLength_PropertyDescription        = 1000
+	MaxLength_PropertyFeatureDescription = 1000
+)
+
 type Property struct {
-	Name         string            `json:"name"`
-	Type         string            `json:"type"`
-	OrigType     string            `json:"orig_type"`
-	DisplayName  string            `json:"display_name"`
-	OriginalName string            `json:"original_name"`
-	Description  string            `json:"description"`
-	Features     []PropertyFeature `json:"features"`
-	Attributes   map[string]any    `json:"attributes"`
+	Name        string `json:"name"`
+	DisplayName string `json:"display_name"`
+	Type        string `json:"type"`
+	Description string `json:"description"`
+
+	OriginalName        string `json:"original_name"`
+	OriginalType        string `json:"original_type"`
+	OriginalDescription string `json:"original_description"`
+
+	Features   []PropertyFeature `json:"features"`
+	Attributes map[string]any    `json:"attributes"`
 	// Extensions 字段级展示用（schema_definition JSON 内），不参与列表筛选
 	Extensions map[string]string `json:"extensions,omitempty"`
 }

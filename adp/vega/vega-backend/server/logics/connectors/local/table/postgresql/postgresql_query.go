@@ -78,7 +78,7 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 			for _, colAny := range columnsAny {
 				if col, ok := colAny.(map[string]any); ok {
 					if name, ok := col["name"].(string); ok {
-						if origType, ok := col["orig_type"].(string); ok {
+						if origType, ok := col["original_type"].(string); ok {
 							origTypeMap[name] = origType
 						}
 					}

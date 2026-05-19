@@ -40,11 +40,162 @@ func ValidateResourceRequest(ctx context.Context, req *interfaces.ResourceReques
 	switch req.Category {
 	case interfaces.ResourceCategoryLogicView:
 		return validateLogicViewRequest(ctx, req)
+	case interfaces.ResourceCategoryDataset:
+		return validateDatasetRequest(ctx, req)
 	default:
+		// 物理类资源在 createResource 入口已被 validateCreateResourceCategory 拦截，
+		// 此处仅作 extensions 兜底校验。
 		if err := extensions.ValidateSchemaPropertiesExtensions(ctx, req.SchemaDefinition); err != nil {
 			return err
 		}
 		return nil
+	}
+}
+
+// validateDatasetRequest 校验 dataset 类资源：schema_definition 必填且字段名/长度/重复/类型/特征均合法。
+func validateDatasetRequest(ctx context.Context, req *interfaces.ResourceRequest) error {
+	if len(req.SchemaDefinition) == 0 {
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Dataset_InvalidParameter_SchemaDefinition).
+			WithErrorDetails("schema_definition is required and must contain at least one field")
+	}
+	if err := validateDatasetFields(ctx, req.SchemaDefinition); err != nil {
+		return err
+	}
+	return extensions.ValidateSchemaPropertiesExtensions(ctx, req.SchemaDefinition)
+}
+
+// validateDatasetFields 校验字段名/长度/重复/类型/特征。
+func validateDatasetFields(ctx context.Context, props []*interfaces.Property) error {
+	fieldsMap := make(map[string]*interfaces.Property, len(props))
+	for _, p := range props {
+		fieldsMap[p.Name] = p
+	}
+
+	nameMap := make(map[string]struct{})
+	displayNameMap := make(map[string]struct{})
+	for _, field := range props {
+		if field.Name == "" {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Dataset_InvalidParameter_FieldName).
+				WithErrorDetails("The field name is null")
+		}
+		if utf8.RuneCountInString(field.Name) > interfaces.MaxLength_PropertyName {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Dataset_LengthExceeded_FieldName).
+				WithErrorDetails(fmt.Sprintf("The length of the field name %s exceeds %d", field.Name, interfaces.MaxLength_PropertyName))
+		}
+		if field.DisplayName == "" {
+			field.DisplayName = field.Name
+		}
+		if utf8.RuneCountInString(field.DisplayName) > interfaces.MaxLength_PropertyDisplayName {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Dataset_LengthExceeded_FieldDisplayName).
+				WithErrorDetails(fmt.Sprintf("The length of the field display name %s exceeds %d", field.DisplayName, interfaces.MaxLength_PropertyDisplayName))
+		}
+		if utf8.RuneCountInString(field.Description) > interfaces.MaxLength_PropertyDescription {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Dataset_LengthExceeded_FieldComment).
+				WithErrorDetails(fmt.Sprintf("The length of the field comment %s exceeds %d", field.Description, interfaces.MaxLength_PropertyDescription))
+		}
+		if _, dup := nameMap[field.Name]; dup {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Dataset_Duplicated_FieldName).
+				WithDescription(map[string]any{"FieldName": field.Name}).
+				WithErrorDetails(fmt.Sprintf("Dataset field '%s' already exists", field.Name))
+		}
+		nameMap[field.Name] = struct{}{}
+
+		if _, dup := displayNameMap[field.DisplayName]; dup {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Dataset_Duplicated_FieldDisplayName).
+				WithDescription(map[string]any{"FieldName": field.Name, "DisplayName": field.DisplayName}).
+				WithErrorDetails(fmt.Sprintf("Dataset field '%s' display name '%s' already exists", field.Name, field.DisplayName))
+		}
+		displayNameMap[field.DisplayName] = struct{}{}
+
+		if !isValidDataType(field.Type) {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Dataset_InvalidParameter_FieldType).
+				WithErrorDetails(fmt.Sprintf("Dataset field '%s' type '%s' is invalid", field.Name, field.Type))
+		}
+
+		if err := validateDatasetFeatures(ctx, fieldsMap, field.Features); err != nil {
+			return err
+		}
+
+		if len(field.Extensions) > 0 {
+			if err := extensions.ValidatePropertyExtensionsMap(ctx, field.Extensions); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func validateDatasetFeatures(ctx context.Context, fieldsMap map[string]*interfaces.Property, features []interfaces.PropertyFeature) error {
+	enabledMap := make(map[string]bool)
+	featureNameMap := make(map[string]struct{})
+	for _, f := range features {
+		if f.FeatureName == "" {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Dataset_InvalidParameter_FieldFeatureName).
+				WithErrorDetails("The field feature name is null")
+		}
+		if utf8.RuneCountInString(f.FeatureName) > interfaces.MaxLength_PropertyFeatureName {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Dataset_LengthExceeded_FieldFeatureName).
+				WithErrorDetails(fmt.Sprintf("The length of the field feature name %s exceeds %d", f.FeatureName, interfaces.MaxLength_PropertyFeatureName))
+		}
+		if _, dup := featureNameMap[f.FeatureName]; dup {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Dataset_Duplicated_FieldFeatureName).
+				WithDescription(map[string]any{"FieldFeatureName": f.FeatureName}).
+				WithErrorDetails(fmt.Sprintf("Dataset field feature '%s' already exists", f.FeatureName))
+		}
+		featureNameMap[f.FeatureName] = struct{}{}
+
+		if _, ok := interfaces.PropertyFeatureTypeMap[f.FeatureType]; !ok {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Dataset_InvalidParameter_FieldFeatureType).
+				WithErrorDetails(fmt.Sprintf("The field feature type '%s' is invalid", f.FeatureType))
+		}
+
+		if utf8.RuneCountInString(f.Description) > interfaces.MaxLength_PropertyFeatureDescription {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Dataset_LengthExceeded_FieldFeatureComment).
+				WithErrorDetails(fmt.Sprintf("The length of the field feature comment %s exceeds %d", f.Description, interfaces.MaxLength_PropertyFeatureDescription))
+		}
+
+		if f.RefProperty == "" {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Dataset_InvalidParameter_FieldFeatureRef).
+				WithErrorDetails("The field feature ref_property is null")
+		}
+
+		refField, exists := fieldsMap[f.RefProperty]
+		if !f.IsNative {
+			if !exists {
+				return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Dataset_InvalidParameter_FieldFeatureRef).
+					WithErrorDetails(fmt.Sprintf("The field feature ref_property '%s' is not in the field list", f.RefProperty))
+			}
+			if !IsFeatureSupported(refField.Type, f.FeatureType) {
+				return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Dataset_Unsupported_FieldFeatureRefType).
+					WithErrorDetails(fmt.Sprintf("The field feature ref_property '%s' type '%s' does not match feature type '%s'", f.RefProperty, refField.Type, f.FeatureType))
+			}
+		}
+
+		if f.IsDefault {
+			if enabledMap[f.FeatureType] {
+				return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Dataset_Duplicated_DefaultFeaturePerType).
+					WithErrorDetails(fmt.Sprintf("Same feature type can only have one default; field feature '%s' type '%s'", f.FeatureName, f.FeatureType))
+			}
+			enabledMap[f.FeatureType] = true
+		}
+	}
+	return nil
+}
+
+func isValidDataType(t string) bool {
+	switch t {
+	case interfaces.DataType_Integer, interfaces.DataType_UnsignedInteger,
+		interfaces.DataType_Float, interfaces.DataType_Decimal,
+		interfaces.DataType_String, interfaces.DataType_Text,
+		interfaces.DataType_Date, interfaces.DataType_Time,
+		interfaces.DataType_Datetime, interfaces.DataType_Timestamp,
+		interfaces.DataType_Ip, interfaces.DataType_Boolean,
+		interfaces.DataType_Binary, interfaces.DataType_Json,
+		interfaces.DataType_Point, interfaces.DataType_Shape,
+		interfaces.DataType_Vector, interfaces.DataType_Other:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -172,8 +323,8 @@ func validateViewFields(ctx context.Context, viewFields []*interfaces.ViewProper
 		}
 
 		// 校验字段名称长度, 长度限制255
-		if utf8.RuneCountInString(field.Name) > interfaces.MaxLength_ViewPropertyName {
-			errDetails := fmt.Sprintf("The length of the field name %s exceeds %d", field.Name, interfaces.MaxLength_ViewPropertyName)
+		if utf8.RuneCountInString(field.Name) > interfaces.MaxLength_PropertyName {
+			errDetails := fmt.Sprintf("The length of the field name %s exceeds %d", field.Name, interfaces.MaxLength_PropertyName)
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_LogicView_LengthExceeded_FieldName).
 				WithErrorDetails(errDetails)
 		}
@@ -184,15 +335,15 @@ func validateViewFields(ctx context.Context, viewFields []*interfaces.ViewProper
 		}
 
 		// 校验字段显示名长度, 长度限制255
-		if utf8.RuneCountInString(field.DisplayName) > interfaces.MaxLength_ViewPropertyDisplayName {
-			errDetails := fmt.Sprintf("The length of the field display name %s exceeds %d", field.DisplayName, interfaces.MaxLength_ViewPropertyDisplayName)
+		if utf8.RuneCountInString(field.DisplayName) > interfaces.MaxLength_PropertyDisplayName {
+			errDetails := fmt.Sprintf("The length of the field display name %s exceeds %d", field.DisplayName, interfaces.MaxLength_PropertyDisplayName)
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_LogicView_LengthExceeded_FieldDisplayName).
 				WithErrorDetails(errDetails)
 		}
 
 		// 校验字段备注长度，长度限制1000
-		if utf8.RuneCountInString(field.Description) > interfaces.MaxLength_ViewPropertyDescription {
-			errDetails := fmt.Sprintf("The length of the field comment %s exceeds %d", field.Description, interfaces.MaxLength_ViewPropertyDescription)
+		if utf8.RuneCountInString(field.Description) > interfaces.MaxLength_PropertyDescription {
+			errDetails := fmt.Sprintf("The length of the field comment %s exceeds %d", field.Description, interfaces.MaxLength_PropertyDescription)
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_LogicView_LengthExceeded_FieldComment).
 				WithErrorDetails(errDetails)
 		}
@@ -243,8 +394,8 @@ func validateFeatures(ctx context.Context, fieldsMap map[string]*interfaces.View
 		}
 
 		// 校验特征名称长度, 长度限制255
-		if utf8.RuneCountInString(f.FeatureName) > interfaces.MaxLength_ViewPropertyFeatureName {
-			errDetails := fmt.Sprintf("The length of the field feature name %s exceeds %d", f.FeatureName, interfaces.MaxLength_ViewPropertyFeatureName)
+		if utf8.RuneCountInString(f.FeatureName) > interfaces.MaxLength_PropertyFeatureName {
+			errDetails := fmt.Sprintf("The length of the field feature name %s exceeds %d", f.FeatureName, interfaces.MaxLength_PropertyFeatureName)
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_LogicView_LengthExceeded_FieldFeatureName).
 				WithErrorDetails(errDetails)
 		}
@@ -266,9 +417,9 @@ func validateFeatures(ctx context.Context, fieldsMap map[string]*interfaces.View
 		}
 
 		// 校验特征备注，长度限制1000
-		if utf8.RuneCountInString(f.Description) > interfaces.MaxLength_ViewPropertyFeatureDescription {
+		if utf8.RuneCountInString(f.Description) > interfaces.MaxLength_PropertyFeatureDescription {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_LogicView_LengthExceeded_FieldFeatureComment).
-				WithErrorDetails(fmt.Sprintf("The length of the field feature comment %s exceeds %d", f.Description, interfaces.MaxLength_ViewPropertyFeatureDescription))
+				WithErrorDetails(fmt.Sprintf("The length of the field feature comment %s exceeds %d", f.Description, interfaces.MaxLength_PropertyFeatureDescription))
 		}
 
 		if f.RefProperty == "" {

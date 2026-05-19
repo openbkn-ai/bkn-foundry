@@ -42,15 +42,6 @@ const (
 	MaxRecursionDepth = 10
 )
 
-const (
-	// 视图字段名称、字段显示名、字段备注、字段特征备注的最大长度
-	MaxLength_ViewPropertyName               = 255
-	MaxLength_ViewPropertyDisplayName        = 255
-	MaxLength_ViewPropertyFeatureName        = 255
-	MaxLength_ViewPropertyDescription        = 1000
-	MaxLength_ViewPropertyFeatureDescription = 1000
-)
-
 var (
 	LogicDefinitionNodeTypeMap = map[string]struct{}{
 		LogicDefinitionNodeType_Resource: {},

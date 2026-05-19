@@ -77,17 +77,8 @@ var TypeMapping = map[string]string{
 	"jsonb": interfaces.DataType_Json,
 }
 
-// MapType 根据 information_schema 的 udt_name 或 data_type 映射到 VEGA 类型。
-func MapType(udtName, dataType string) string {
-	u := strings.ToLower(strings.TrimSpace(udtName))
-	if u != "" {
-		if vegaType, ok := TypeMapping[u]; ok {
-			return vegaType
-		}
-		if strings.HasPrefix(u, "_") {
-			return interfaces.DataType_Other
-		}
-	}
+// MapType 根据 information_schema 的 data_type 映射到 VEGA 类型。
+func (c *PostgresqlConnector) MapType(dataType string) string {
 	d := strings.ToLower(strings.TrimSpace(dataType))
 	if vegaType, ok := TypeMapping[d]; ok {
 		return vegaType

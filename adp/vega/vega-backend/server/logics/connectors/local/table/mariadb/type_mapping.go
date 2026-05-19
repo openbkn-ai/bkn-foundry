@@ -78,7 +78,7 @@ var TypeMapping = map[string]string{
 
 // MapType returns VEGA type for MariaDB native type.
 // nativeType 应使用 COLUMN_TYPE（如 "int unsigned"）以正确识别 unsigned 类型。
-func MapType(nativeType string) string {
+func (c *MariaDBConnector) MapType(nativeType string) string {
 	t := strings.ToLower(strings.TrimSpace(nativeType))
 
 	// 检查是否包含括号，如果包含则去除括号及其内容
