@@ -37,10 +37,6 @@ type CatalogAccess interface {
 	// UpdateMetadata updates a Catalog metadata.
 	UpdateMetadata(ctx context.Context, id string, metadata map[string]any) error
 
-	// ListCatalogSrcs lists Catalog Sources with filters.
-	ListCatalogSrcs(ctx context.Context, params ListCatalogsQueryParams) ([]*ListCatalogEntry, int64, error)
-	// ListCatalogSrcsIDs lists Catalog Source IDs with filters.
-	ListCatalogSrcsIDs(ctx context.Context, params ListCatalogsQueryParams) ([]string, error)
-	// ListCatalogSrcsByIDs lists Catalog Sources by IDs.
-	ListCatalogSrcsByIDs(ctx context.Context, ids []string) ([]*ListCatalogEntry, error)
+	// ListAuthResources lists catalog auth resources with filters.
+	ListAuthResources(ctx context.Context, params AuthResourceQueryParams) ([]*AuthResourceEntry, error)
 }

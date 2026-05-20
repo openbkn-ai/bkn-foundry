@@ -18,9 +18,9 @@ const (
 	RESOURCE_ID_ALL = "*"
 
 	// 资源类型
-	RESOURCE_TYPE_CATALOG        = "catalog"
-	RESOURCE_TYPE_CONNECTOR_TYPE = "connector_type"
-	RESOURCE_TYPE_RESOURCE       = "resource"
+	AUTH_RESOURCE_TYPE_CATALOG        = "catalog"
+	AUTH_RESOURCE_TYPE_RESOURCE       = "resource"
+	AUTH_RESOURCE_TYPE_CONNECTOR_TYPE = "connector_type"
 
 	// 资源操作类型
 	OPERATION_TYPE_VIEW_DETAIL = "view_detail"

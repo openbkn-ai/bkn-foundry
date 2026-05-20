@@ -30,6 +30,8 @@ var (
 	ctService     interfaces.ConnectorTypeService
 )
 
+const connectorTypeAuthResourcePermissionBatchSize = 10000
+
 type connectorTypeService struct {
 	appSetting *common.AppSetting
 	cta        interfaces.ConnectorTypeAccess
@@ -57,7 +59,7 @@ func (cts *connectorTypeService) Register(ctx context.Context, req *interfaces.C
 
 	// 判断userid是否有创建业务知识网络的权限（策略决策）
 	err := cts.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: interfaces.RESOURCE_TYPE_CONNECTOR_TYPE,
+		Type: interfaces.AUTH_RESOURCE_TYPE_CONNECTOR_TYPE,
 		ID:   interfaces.RESOURCE_ID_ALL,
 	}, []string{interfaces.OPERATION_TYPE_CREATE})
 	if err != nil {
@@ -110,7 +112,7 @@ func (cts *connectorTypeService) GetByType(ctx context.Context, tp string) (*int
 	}
 
 	// 根据权限过滤有查看权限的对象，过滤后的数组的总长度就是总数，无需再请求总数
-	matchResoucesMap, err := cts.ps.FilterResources(ctx, interfaces.RESOURCE_TYPE_CONNECTOR_TYPE, []string{ct.Type},
+	matchResoucesMap, err := cts.ps.FilterResources(ctx, interfaces.AUTH_RESOURCE_TYPE_CONNECTOR_TYPE, []string{ct.Type},
 		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, interfaces.COMMON_OPERATIONS)
 	if err != nil {
 		span.SetStatus(codes.Error, "Filter resources error")
@@ -147,7 +149,7 @@ func (cts *connectorTypeService) List(ctx context.Context, params interfaces.Con
 	}
 
 	// 根据权限过滤有查看权限的对象，过滤后的数组的总长度就是总数，无需再请求总数
-	matchResoucesMap, err := cts.ps.FilterResources(ctx, interfaces.RESOURCE_TYPE_CONNECTOR_TYPE, types,
+	matchResoucesMap, err := cts.ps.FilterResources(ctx, interfaces.AUTH_RESOURCE_TYPE_CONNECTOR_TYPE, types,
 		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, interfaces.COMMON_OPERATIONS)
 	if err != nil {
 		span.SetStatus(codes.Error, "Filter resources error")
@@ -185,6 +187,89 @@ func (cts *connectorTypeService) List(ctx context.Context, params interfaces.Con
 	return connectorTypes, total, nil
 }
 
+// ListAuthResources lists connector type auth resources with filters.
+func (cts *connectorTypeService) ListAuthResources(ctx context.Context, params interfaces.AuthResourceQueryParams) ([]*interfaces.AuthResourceEntry, int64, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ListAuthResources")
+	defer span.End()
+
+	entries, err := cts.cta.ListAuthResources(ctx, params)
+	if err != nil {
+		span.SetStatus(codes.Error, "ListAuthResources failed")
+		return []*interfaces.AuthResourceEntry{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_ConnectorType_InternalError_GetFailed).WithErrorDetails(err.Error())
+	}
+	if len(entries) == 0 {
+		return []*interfaces.AuthResourceEntry{}, 0, nil
+	}
+
+	authorizedEntries, err := cts.filterAuthorizedConnectorTypeAuthResources(ctx, entries)
+	if err != nil {
+		return []*interfaces.AuthResourceEntry{}, 0, err
+	}
+	total := int64(len(authorizedEntries))
+	if total == 0 {
+		span.SetStatus(codes.Ok, "")
+		return []*interfaces.AuthResourceEntry{}, total, nil
+	}
+
+	span.SetStatus(codes.Ok, "")
+	return paginateConnectorTypeAuthResources(authorizedEntries, params.Offset, params.Limit), total, nil
+}
+
+func (cts *connectorTypeService) filterAuthorizedConnectorTypeAuthResources(ctx context.Context, entries []*interfaces.AuthResourceEntry) ([]*interfaces.AuthResourceEntry, error) {
+	ids := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if entry == nil {
+			continue
+		}
+		ids = append(ids, entry.ID)
+	}
+
+	authorizedIDs := make(map[string]struct{}, len(ids))
+	for i := 0; i < len(ids); i += connectorTypeAuthResourcePermissionBatchSize {
+		end := i + connectorTypeAuthResourcePermissionBatchSize
+		if end > len(ids) {
+			end = len(ids)
+		}
+
+		batchMatchResources, err := cts.ps.FilterResources(ctx, interfaces.AUTH_RESOURCE_TYPE_CONNECTOR_TYPE, ids[i:end],
+			[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, false, interfaces.COMMON_OPERATIONS)
+		if err != nil {
+			return nil, err
+		}
+		for _, resourceOps := range batchMatchResources {
+			authorizedIDs[resourceOps.ResourceID] = struct{}{}
+		}
+	}
+
+	results := make([]*interfaces.AuthResourceEntry, 0, len(authorizedIDs))
+	for _, entry := range entries {
+		if entry == nil {
+			continue
+		}
+		if _, exist := authorizedIDs[entry.ID]; exist {
+			results = append(results, entry)
+		}
+	}
+
+	return results, nil
+}
+
+func paginateConnectorTypeAuthResources(entries []*interfaces.AuthResourceEntry, offset, limit int) []*interfaces.AuthResourceEntry {
+	if limit == -1 {
+		return entries
+	}
+	if offset < 0 || offset >= len(entries) {
+		return []*interfaces.AuthResourceEntry{}
+	}
+
+	end := offset + limit
+	if end > len(entries) {
+		end = len(entries)
+	}
+	return entries[offset:end]
+}
+
 // Update updates a ConnectorType.
 func (cts *connectorTypeService) Update(ctx context.Context, ct *interfaces.ConnectorType, req *interfaces.ConnectorTypeReq) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Update connector type")
@@ -198,7 +283,7 @@ func (cts *connectorTypeService) Update(ctx context.Context, ct *interfaces.Conn
 
 	// 判断userid是否有创建业务知识网络的权限（策略决策）
 	err := cts.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: interfaces.RESOURCE_TYPE_CONNECTOR_TYPE,
+		Type: interfaces.AUTH_RESOURCE_TYPE_CONNECTOR_TYPE,
 		ID:   ct.Type,
 	}, []string{interfaces.OPERATION_TYPE_MODIFY})
 	if err != nil {
@@ -245,7 +330,7 @@ func (cts *connectorTypeService) Update(ctx context.Context, ct *interfaces.Conn
 	if nameModified {
 		err = cts.ps.UpdateResource(ctx, interfaces.PermissionResource{
 			ID:   ct.Type,
-			Type: interfaces.RESOURCE_TYPE_CONNECTOR_TYPE,
+			Type: interfaces.AUTH_RESOURCE_TYPE_CONNECTOR_TYPE,
 			Name: ct.Name,
 		})
 		if err != nil {
@@ -264,7 +349,7 @@ func (cts *connectorTypeService) DeleteByType(ctx context.Context, tp string) er
 
 	// 判断userid是否有删除权限
 	err := cts.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: interfaces.RESOURCE_TYPE_CONNECTOR_TYPE,
+		Type: interfaces.AUTH_RESOURCE_TYPE_CONNECTOR_TYPE,
 		ID:   tp,
 	}, []string{interfaces.OPERATION_TYPE_DELETE})
 	if err != nil {
@@ -284,7 +369,7 @@ func (cts *connectorTypeService) DeleteByType(ctx context.Context, tp string) er
 	}
 
 	//  清除资源策略
-	err = cts.ps.DeleteResources(ctx, interfaces.RESOURCE_TYPE_CONNECTOR_TYPE, []string{tp})
+	err = cts.ps.DeleteResources(ctx, interfaces.AUTH_RESOURCE_TYPE_CONNECTOR_TYPE, []string{tp})
 	if err != nil {
 		return err
 	}
@@ -300,7 +385,7 @@ func (cts *connectorTypeService) SetEnabled(ctx context.Context, tp string, enab
 
 	// 判断userid是否有修改权限
 	err := cts.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: interfaces.RESOURCE_TYPE_CONNECTOR_TYPE,
+		Type: interfaces.AUTH_RESOURCE_TYPE_CONNECTOR_TYPE,
 		ID:   tp,
 	}, []string{interfaces.OPERATION_TYPE_MODIFY})
 	if err != nil {

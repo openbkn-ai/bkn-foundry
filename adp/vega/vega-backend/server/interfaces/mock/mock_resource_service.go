@@ -191,20 +191,20 @@ func (mr *MockResourceServiceMockRecorder) List(ctx, params any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "List", reflect.TypeOf((*MockResourceService)(nil).List), ctx, params)
 }
 
-// ListResourceSrcs mocks base method.
-func (m *MockResourceService) ListResourceSrcs(ctx context.Context, params interfaces.ListResourcesQueryParams) ([]*interfaces.ListResourceEntry, int64, error) {
+// ListAuthResources mocks base method.
+func (m *MockResourceService) ListAuthResources(ctx context.Context, params interfaces.AuthResourceQueryParams) ([]*interfaces.AuthResourceEntry, int64, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListResourceSrcs", ctx, params)
-	ret0, _ := ret[0].([]*interfaces.ListResourceEntry)
+	ret := m.ctrl.Call(m, "ListAuthResources", ctx, params)
+	ret0, _ := ret[0].([]*interfaces.AuthResourceEntry)
 	ret1, _ := ret[1].(int64)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
 }
 
-// ListResourceSrcs indicates an expected call of ListResourceSrcs.
-func (mr *MockResourceServiceMockRecorder) ListResourceSrcs(ctx, params any) *gomock.Call {
+// ListAuthResources indicates an expected call of ListAuthResources.
+func (mr *MockResourceServiceMockRecorder) ListAuthResources(ctx, params any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListResourceSrcs", reflect.TypeOf((*MockResourceService)(nil).ListResourceSrcs), ctx, params)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListAuthResources", reflect.TypeOf((*MockResourceService)(nil).ListAuthResources), ctx, params)
 }
 
 // Update mocks base method.

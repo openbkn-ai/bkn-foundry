@@ -38,6 +38,8 @@ import (
 const (
 	// EncryptedPrefix is the prefix for encrypted values.
 	EncryptedPrefix = "ENC:"
+
+	catalogAuthResourcePermissionBatchSize = 10000
 )
 
 var (
@@ -84,7 +86,7 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 
 	// 判断userid是否有创建业务知识网络的权限（策略决策）
 	err := cs.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: interfaces.RESOURCE_TYPE_CATALOG,
+		Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG,
 		ID:   interfaces.RESOURCE_ID_ALL,
 	}, []string{interfaces.OPERATION_TYPE_CREATE})
 	if err != nil {
@@ -177,7 +179,7 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 	// 注册资源
 	err = cs.ps.CreateResources(ctx, []interfaces.PermissionResource{{
 		ID:   catalog.ID,
-		Type: interfaces.RESOURCE_TYPE_CATALOG,
+		Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG,
 		Name: catalog.Name,
 	}}, interfaces.COMMON_OPERATIONS)
 	if err != nil {
@@ -209,7 +211,7 @@ func (cs *catalogService) GetByID(ctx context.Context, id string, withSensitiveF
 	}
 
 	// 根据权限过滤有查看权限的对象，过滤后的数组的总长度就是总数，无需再请求总数
-	matchResoucesMap, err := cs.ps.FilterResources(ctx, interfaces.RESOURCE_TYPE_CATALOG, []string{catalog.ID},
+	matchResoucesMap, err := cs.ps.FilterResources(ctx, interfaces.AUTH_RESOURCE_TYPE_CATALOG, []string{catalog.ID},
 		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, interfaces.COMMON_OPERATIONS)
 	if err != nil {
 		span.SetStatus(codes.Error, "Filter resources error")
@@ -280,7 +282,7 @@ func (cs *catalogService) GetByIDs(ctx context.Context, ids []string) ([]*interf
 	}
 
 	// 根据权限过滤有查看权限的对象，过滤后的数组的总长度就是总数，无需再请求总数
-	matchResoucesMap, err := cs.ps.FilterResources(ctx, interfaces.RESOURCE_TYPE_CATALOG, ids,
+	matchResoucesMap, err := cs.ps.FilterResources(ctx, interfaces.AUTH_RESOURCE_TYPE_CATALOG, ids,
 		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, interfaces.COMMON_OPERATIONS)
 	if err != nil {
 		span.SetStatus(codes.Error, "Filter resources error")
@@ -342,7 +344,7 @@ func (cs *catalogService) List(ctx context.Context, params interfaces.CatalogsQu
 
 		var batchMatchResources map[string]interfaces.PermissionResourceOps
 		// 校验权限管理的操作权限
-		batchMatchResources, err = cs.ps.FilterResources(ctx, interfaces.RESOURCE_TYPE_CATALOG,
+		batchMatchResources, err = cs.ps.FilterResources(ctx, interfaces.AUTH_RESOURCE_TYPE_CATALOG,
 			batchIDs, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, interfaces.COMMON_OPERATIONS)
 		if err != nil {
 			span.SetStatus(codes.Error, "Filter resources error")
@@ -455,7 +457,7 @@ func (cs *catalogService) Update(ctx context.Context, catalog *interfaces.Catalo
 
 	// 判断userid是否有修改权限
 	err := cs.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: interfaces.RESOURCE_TYPE_CATALOG,
+		Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG,
 		ID:   catalog.ID,
 	}, []string{interfaces.OPERATION_TYPE_MODIFY})
 	if err != nil {
@@ -534,7 +536,7 @@ func (cs *catalogService) Update(ctx context.Context, catalog *interfaces.Catalo
 	if nameModified {
 		err = cs.ps.UpdateResource(ctx, interfaces.PermissionResource{
 			ID:   catalog.ID,
-			Type: interfaces.RESOURCE_TYPE_CATALOG,
+			Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG,
 			Name: catalog.Name,
 		})
 		if err != nil {
@@ -556,7 +558,7 @@ func (cs *catalogService) SetEnabled(ctx context.Context, catalog *interfaces.Ca
 	}
 
 	err := cs.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: interfaces.RESOURCE_TYPE_CATALOG,
+		Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG,
 		ID:   catalog.ID,
 	}, []string{interfaces.OPERATION_TYPE_MODIFY})
 	if err != nil {
@@ -601,7 +603,7 @@ func (cs *catalogService) DeleteByIDs(ctx context.Context, ids []string) error {
 	}
 
 	// 判断userid是否有删除权限
-	matchResoucesMap, err := cs.ps.FilterResources(ctx, interfaces.RESOURCE_TYPE_CATALOG, ids,
+	matchResoucesMap, err := cs.ps.FilterResources(ctx, interfaces.AUTH_RESOURCE_TYPE_CATALOG, ids,
 		[]string{interfaces.OPERATION_TYPE_DELETE}, true, interfaces.COMMON_OPERATIONS)
 	if err != nil {
 		span.SetStatus(codes.Error, "Filter resources error")
@@ -633,7 +635,7 @@ func (cs *catalogService) DeleteByIDs(ctx context.Context, ids []string) error {
 	}
 
 	//  清除资源策略
-	err = cs.ps.DeleteResources(ctx, interfaces.RESOURCE_TYPE_CATALOG, ids)
+	err = cs.ps.DeleteResources(ctx, interfaces.AUTH_RESOURCE_TYPE_CATALOG, ids)
 	if err != nil {
 		return err
 	}
@@ -784,111 +786,86 @@ func (cs *catalogService) UpdateMetadata(ctx context.Context, id string, metadat
 	return nil
 }
 
-// ListCatalogSrcs lists Catalog Sources with filters.
-func (cs *catalogService) ListCatalogSrcs(ctx context.Context,
-	params interfaces.ListCatalogsQueryParams) ([]*interfaces.ListCatalogEntry, int64, error) {
-	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ListCatalogSrcs catalogs")
+// ListAuthResources lists catalog auth resources with filters.
+func (cs *catalogService) ListAuthResources(ctx context.Context,
+	params interfaces.AuthResourceQueryParams) ([]*interfaces.AuthResourceEntry, int64, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ListAuthResources")
 	defer span.End()
 
-	// 先查询所有catalog源的ID
-	ids, err := cs.ca.ListCatalogSrcsIDs(ctx, params)
+	entries, err := cs.ca.ListAuthResources(ctx, params)
 	if err != nil {
-		span.SetStatus(codes.Error, "ListCatalogSrcsIDs failed")
-		return []*interfaces.ListCatalogEntry{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		span.SetStatus(codes.Error, "ListAuthResources failed")
+		return []*interfaces.AuthResourceEntry{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Catalog_InternalError_GetFailed).WithErrorDetails(err.Error())
 	}
-
-	if len(ids) == 0 {
-		return []*interfaces.ListCatalogEntry{}, 0, nil
+	if len(entries) == 0 {
+		return []*interfaces.AuthResourceEntry{}, 0, nil
 	}
 
-	// 使用分批处理的方式过滤权限，每批处理1万个ID
-	batchSize := 10000
-	// 所有有权限的catalog及其操作权限
-	matchResourceOpsMap := make(map[string]interfaces.PermissionResourceOps)
+	authorizedEntries, err := cs.filterAuthorizedCatalogAuthResources(ctx, entries)
+	if err != nil {
+		return []*interfaces.AuthResourceEntry{}, 0, err
+	}
+	total := int64(len(authorizedEntries))
+	if total == 0 {
+		span.SetStatus(codes.Ok, "")
+		return []*interfaces.AuthResourceEntry{}, total, nil
+	}
 
-	for i := 0; i < len(ids); i += batchSize {
-		end := i + batchSize
+	span.SetStatus(codes.Ok, "")
+	return paginateCatalogAuthResources(authorizedEntries, params.Offset, params.Limit), total, nil
+}
+
+func (cs *catalogService) filterAuthorizedCatalogAuthResources(ctx context.Context, entries []*interfaces.AuthResourceEntry) ([]*interfaces.AuthResourceEntry, error) {
+	ids := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if entry == nil {
+			continue
+		}
+		ids = append(ids, entry.ID)
+	}
+
+	authorizedIDs := make(map[string]struct{}, len(ids))
+	for i := 0; i < len(ids); i += catalogAuthResourcePermissionBatchSize {
+		end := i + catalogAuthResourcePermissionBatchSize
 		if end > len(ids) {
 			end = len(ids)
 		}
-		batchIDs := ids[i:end]
 
-		var batchMatchResources map[string]interfaces.PermissionResourceOps
-		// 校验权限管理的操作权限
-		batchMatchResources, err = cs.ps.FilterResources(ctx, interfaces.RESOURCE_TYPE_CATALOG,
-			batchIDs, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, false, interfaces.COMMON_OPERATIONS)
+		batchMatchResources, err := cs.ps.FilterResources(ctx, interfaces.AUTH_RESOURCE_TYPE_CATALOG, ids[i:end],
+			[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, false, interfaces.COMMON_OPERATIONS)
 		if err != nil {
-			return []*interfaces.ListCatalogEntry{}, 0, err
+			return nil, err
 		}
-
-		// 合并结果
 		for _, resourceOps := range batchMatchResources {
-			matchResourceOpsMap[resourceOps.ResourceID] = resourceOps
+			authorizedIDs[resourceOps.ResourceID] = struct{}{}
 		}
 	}
 
-	// 提取有权限的catalog ID，保持与ids的顺序一致
-	authorizedIDs := make([]string, 0, len(matchResourceOpsMap))
-	for _, id := range ids {
-		if _, exist := matchResourceOpsMap[id]; exist {
-			authorizedIDs = append(authorizedIDs, id)
-		}
-	}
-	total := int64(len(authorizedIDs))
-
-	// 如果没有有权限的catalog，直接返回空结果
-	if total == 0 {
-		span.SetStatus(codes.Ok, "")
-		return []*interfaces.ListCatalogEntry{}, total, nil
-	}
-
-	// 根据有权限的ID数组应用分页
-	if params.Limit != -1 {
-		// 分页处理authorizedIDs
-		// 检查起始位置是否越界
-		if params.Offset < 0 || params.Offset >= len(authorizedIDs) {
-			span.SetStatus(codes.Ok, "")
-			return []*interfaces.ListCatalogEntry{}, total, nil
-		}
-		// 计算结束位置
-		end := params.Offset + params.Limit
-		if end > len(authorizedIDs) {
-			end = len(authorizedIDs)
-		}
-		// 只查询当前页的catalog ID
-		authorizedIDs = authorizedIDs[params.Offset:end]
-	}
-
-	// 根据有权限的ID数组查询完整catalog
-	// 分批处理，每批10000个ids, 避免prepared statement contains too many placeholders错误
-	entries := make([]*interfaces.ListCatalogEntry, 0, len(authorizedIDs))
-	queryBatchSize := 10000
-	for i := 0; i < len(authorizedIDs); i += queryBatchSize {
-		end := i + queryBatchSize
-		if end > len(authorizedIDs) {
-			end = len(authorizedIDs)
-		}
-		batchIDs := authorizedIDs[i:end]
-
-		batchEntries, err := cs.ca.ListCatalogSrcsByIDs(ctx, batchIDs)
-		if err != nil {
-			span.SetStatus(codes.Error, "ListCatalogSrcsByIDs failed")
-			return []*interfaces.ListCatalogEntry{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-				verrors.VegaBackend_Catalog_InternalError_GetFailed).WithErrorDetails(err.Error())
-		}
-
-		entries = append(entries, batchEntries...)
-	}
-
-	// 据有权限的ID过滤结果
-	results := make([]*interfaces.ListCatalogEntry, 0)
+	results := make([]*interfaces.AuthResourceEntry, 0, len(authorizedIDs))
 	for _, entry := range entries {
-		if _, exist := matchResourceOpsMap[entry.ID]; exist {
+		if entry == nil {
+			continue
+		}
+		if _, exist := authorizedIDs[entry.ID]; exist {
 			results = append(results, entry)
 		}
 	}
 
-	span.SetStatus(codes.Ok, "")
-	return results, total, nil
+	return results, nil
+}
+
+func paginateCatalogAuthResources(entries []*interfaces.AuthResourceEntry, offset, limit int) []*interfaces.AuthResourceEntry {
+	if limit == -1 {
+		return entries
+	}
+	if offset < 0 || offset >= len(entries) {
+		return []*interfaces.AuthResourceEntry{}
+	}
+
+	end := offset + limit
+	if end > len(entries) {
+		end = len(entries)
+	}
+	return entries[offset:end]
 }

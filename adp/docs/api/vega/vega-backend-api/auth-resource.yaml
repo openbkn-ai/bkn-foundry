@@ -1,0 +1,152 @@
+---
+openapi: 3.1.1
+info:
+  title: Auth Resource
+  description: |
+    Vega Backend 授权资源列表 API。
+
+    该端点按 `resource_type` 查询可授权资源的简要列表，供 ISF / 权限配置场景选择资源使用。
+
+    支持的 `resource_type`：
+
+    - `catalog`：Catalog 授权资源。
+    - `resource`：Resource 授权资源。
+    - `connector-type`：ConnectorType 授权资源。
+  version: 0.1.0
+servers:
+  - url: /api/vega-backend/v1
+paths:
+  /api/vega-backend/v1/auth-resources:
+    get:
+      operationId: listAuthResources
+      summary: 获取授权资源列表
+      parameters:
+        - name: resource_type
+          description: 授权资源类型
+          in: query
+          required: true
+          schema:
+            type: string
+            enum:
+              - catalog
+              - resource
+              - connector-type
+        - name: id
+          description: 按资源 ID 精确过滤
+          in: query
+          schema:
+            type: string
+        - name: keyword
+          description: 按名称关键字过滤
+          in: query
+          schema:
+            type: string
+        - name: offset
+          description: 分页偏移量，>=0，默认 0
+          in: query
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+            default: 0
+        - name: limit
+          description: 每页数量，默认 50
+          in: query
+          schema:
+            type: integer
+            format: int64
+            default: 50
+        - name: sort
+          description: 排序字段；仅支持 `name`
+          in: query
+          schema:
+            type: string
+            enum:
+              - name
+            default: name
+        - name: direction
+          description: 排序方向
+          in: query
+          schema:
+            type: string
+            enum:
+              - asc
+              - desc
+            default: desc
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListAuthResources"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+components:
+  schemas:
+    AuthResource:
+      description: 可授权资源简要信息
+      type: object
+      required:
+        - id
+        - type
+        - name
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum:
+            - catalog
+            - resource
+            - connector-type
+        name:
+          type: string
+    ListAuthResources:
+      description: 授权资源列表响应
+      type: object
+      required:
+        - entries
+        - total_count
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuthResource"
+        total_count:
+          type: integer
+          format: int64
+    Error:
+      type: object
+      properties:
+        error_code:
+          type: string
+        error_details:
+          type: string
+        description:
+          type: string
+        solution:
+          type: string
+  responses:
+    BadRequest:
+      description: 请求参数错误
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Unauthorized:
+      description: 未认证
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    InternalServerError:
+      description: 服务端错误
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"

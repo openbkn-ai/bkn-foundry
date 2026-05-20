@@ -36,12 +36,8 @@ type ResourceAccess interface {
 	// DeleteByIDs deletes Resources by IDs.
 	DeleteByIDs(ctx context.Context, ids []string) error
 
-	// ListResourceSrcs lists Resource Sources with filters.
-	ListResourceSrcs(ctx context.Context, params ListResourcesQueryParams) ([]*ListResourceEntry, int64, error)
-	// ListResourceSrcsIDs lists Resource Source IDs with filters.
-	ListResourceSrcsIDs(ctx context.Context, params ListResourcesQueryParams) ([]string, error)
-	// ListResourceSrcsByIDs lists Resource Sources by IDs.
-	ListResourceSrcsByIDs(ctx context.Context, ids []string) ([]*ListResourceEntry, error)
+	// ListAuthResources lists resource auth resources with filters.
+	ListAuthResources(ctx context.Context, params AuthResourceQueryParams) ([]*AuthResourceEntry, error)
 
 	// CheckExistByCategories checks if Resources exists by catalog ID and categories.
 	CheckExistByCategories(ctx context.Context, catalogID string, categories []string) (bool, error)

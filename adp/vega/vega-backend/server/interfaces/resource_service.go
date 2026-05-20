@@ -37,8 +37,8 @@ type ResourceService interface {
 	// UpdateResource updates a Resource directly.
 	UpdateResource(ctx context.Context, resource *Resource) error
 
-	// ListResourceSrcs lists Resource Sources with filters.
-	ListResourceSrcs(ctx context.Context, params ListResourcesQueryParams) ([]*ListResourceEntry, int64, error)
+	// ListAuthResources lists resource auth resources with filters.
+	ListAuthResources(ctx context.Context, params AuthResourceQueryParams) ([]*AuthResourceEntry, int64, error)
 
 	// CheckExistByCategories checks if Resources exists by catalog ID and categories.
 	CheckExistByCategories(ctx context.Context, catalogID string, categories []string) (bool, error)

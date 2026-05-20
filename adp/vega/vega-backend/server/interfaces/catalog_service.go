@@ -35,6 +35,6 @@ type CatalogService interface {
 	// UpdateMetadata updates a Catalog metadata.
 	UpdateMetadata(ctx context.Context, id string, metadata map[string]any) error
 
-	// ListCatalogSrcs lists Catalog Sources with filters.
-	ListCatalogSrcs(ctx context.Context, params ListCatalogsQueryParams) ([]*ListCatalogEntry, int64, error)
+	// ListAuthResources lists catalog auth resources with filters.
+	ListAuthResources(ctx context.Context, params AuthResourceQueryParams) ([]*AuthResourceEntry, int64, error)
 }

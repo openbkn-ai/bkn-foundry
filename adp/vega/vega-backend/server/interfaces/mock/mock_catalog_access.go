@@ -144,50 +144,19 @@ func (mr *MockCatalogAccessMockRecorder) List(ctx, params any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "List", reflect.TypeOf((*MockCatalogAccess)(nil).List), ctx, params)
 }
 
-// ListCatalogSrcs mocks base method.
-func (m *MockCatalogAccess) ListCatalogSrcs(ctx context.Context, params interfaces.ListCatalogsQueryParams) ([]*interfaces.ListCatalogEntry, int64, error) {
+// ListAuthResources mocks base method.
+func (m *MockCatalogAccess) ListAuthResources(ctx context.Context, params interfaces.AuthResourceQueryParams) ([]*interfaces.AuthResourceEntry, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListCatalogSrcs", ctx, params)
-	ret0, _ := ret[0].([]*interfaces.ListCatalogEntry)
-	ret1, _ := ret[1].(int64)
-	ret2, _ := ret[2].(error)
-	return ret0, ret1, ret2
-}
-
-// ListCatalogSrcs indicates an expected call of ListCatalogSrcs.
-func (mr *MockCatalogAccessMockRecorder) ListCatalogSrcs(ctx, params any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListCatalogSrcs", reflect.TypeOf((*MockCatalogAccess)(nil).ListCatalogSrcs), ctx, params)
-}
-
-// ListCatalogSrcsByIDs mocks base method.
-func (m *MockCatalogAccess) ListCatalogSrcsByIDs(ctx context.Context, ids []string) ([]*interfaces.ListCatalogEntry, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListCatalogSrcsByIDs", ctx, ids)
-	ret0, _ := ret[0].([]*interfaces.ListCatalogEntry)
+	ret := m.ctrl.Call(m, "ListAuthResources", ctx, params)
+	ret0, _ := ret[0].([]*interfaces.AuthResourceEntry)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// ListCatalogSrcsByIDs indicates an expected call of ListCatalogSrcsByIDs.
-func (mr *MockCatalogAccessMockRecorder) ListCatalogSrcsByIDs(ctx, ids any) *gomock.Call {
+// ListAuthResources indicates an expected call of ListAuthResources.
+func (mr *MockCatalogAccessMockRecorder) ListAuthResources(ctx, params any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListCatalogSrcsByIDs", reflect.TypeOf((*MockCatalogAccess)(nil).ListCatalogSrcsByIDs), ctx, ids)
-}
-
-// ListCatalogSrcsIDs mocks base method.
-func (m *MockCatalogAccess) ListCatalogSrcsIDs(ctx context.Context, params interfaces.ListCatalogsQueryParams) ([]string, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListCatalogSrcsIDs", ctx, params)
-	ret0, _ := ret[0].([]string)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ListCatalogSrcsIDs indicates an expected call of ListCatalogSrcsIDs.
-func (mr *MockCatalogAccessMockRecorder) ListCatalogSrcsIDs(ctx, params any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListCatalogSrcsIDs", reflect.TypeOf((*MockCatalogAccess)(nil).ListCatalogSrcsIDs), ctx, params)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListAuthResources", reflect.TypeOf((*MockCatalogAccess)(nil).ListAuthResources), ctx, params)
 }
 
 // ListIDs mocks base method.

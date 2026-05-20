@@ -21,6 +21,8 @@ type ConnectorTypeService interface {
 	GetByType(ctx context.Context, tp string) (*ConnectorType, error)
 	// List 列出 connector 类型
 	List(ctx context.Context, params ConnectorTypesQueryParams) ([]*ConnectorType, int64, error)
+	// ListAuthResources lists connector type auth resources with filters.
+	ListAuthResources(ctx context.Context, params AuthResourceQueryParams) ([]*AuthResourceEntry, int64, error)
 	// CheckExistByType 检查 connector 类型是否存在
 	CheckExistByType(ctx context.Context, tp string) (bool, error)
 	// CheckExistByName 检查 connector 类型名称是否存在

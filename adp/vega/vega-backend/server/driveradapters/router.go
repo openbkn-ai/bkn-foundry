@@ -163,6 +163,8 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 			connectorTypes.POST("/:type/enable", r.EnableConnectorType)
 			connectorTypes.POST("/:type/disable", r.DisableConnectorType)
 		}
+
+		apiV1.GET("/auth-resources", r.ListAuthResources)
 	}
 
 	// 内部 API (Internal)

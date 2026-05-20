@@ -6,6 +6,7 @@
 
 | 文件 | 资源 | 包含的端点 |
 |---|---|---|
+| [auth-resource.yaml](auth-resource.yaml) | AuthResource | `GET /auth-resources`（按 `resource_type` 获取可授权资源） |
 | [catalog.yaml](catalog.yaml) | Catalog | `GET/POST /catalogs`、`GET/PUT/DELETE /catalogs/{id(s)}`、`POST .../enable`、`POST .../disable`、`GET /catalogs/{id}/health-status`、`POST /catalogs/{id}/test-connection` |
 | [connector-type.yaml](connector-type.yaml) | ConnectorType | `GET/POST /connector-types`、`GET/PUT/DELETE /connector-types/{type}`、`POST .../enable`、`POST .../disable` |
 | [discover-task.yaml](discover-task.yaml) | DiscoverTask | `POST /catalogs/{cid}/discover`（手动触发）、`GET /discover-tasks`、`GET /discover-tasks/{id}` |

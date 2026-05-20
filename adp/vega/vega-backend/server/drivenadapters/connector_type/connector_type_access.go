@@ -290,6 +290,59 @@ func (cta *connectorTypeAccess) List(ctx context.Context, params interfaces.Conn
 	return connectorTypes, total, nil
 }
 
+// ListAuthResources lists connector type auth resources with filters.
+func (cta *connectorTypeAccess) ListAuthResources(ctx context.Context, params interfaces.AuthResourceQueryParams) ([]*interfaces.AuthResourceEntry, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "ListAuthResources")
+	defer span.End()
+
+	builder := sq.Select(
+		"f_type",
+		"f_name",
+	).From(CONNECTOR_TYPE_TABLE_NAME)
+
+	if params.ID != "" {
+		builder = builder.Where(sq.Eq{"f_type": params.ID})
+	}
+
+	if params.Keyword != "" {
+		keyword := "%" + common.EscapeLikePattern(params.Keyword) + "%"
+		builder = builder.Where(sq.Like{"f_name": keyword})
+	}
+
+	if params.Sort != "" {
+		builder = builder.OrderBy(fmt.Sprintf("%s %s", params.Sort, params.Direction))
+	} else {
+		builder = builder.OrderBy("f_name ASC")
+	}
+
+	sqlStr, vals, err := builder.ToSql()
+	if err != nil {
+		span.SetStatus(codes.Error, "Build sql failed")
+		return nil, err
+	}
+
+	rows, err := cta.db.QueryContext(ctx, sqlStr, vals...)
+	if err != nil {
+		span.SetStatus(codes.Error, "Query failed")
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	entries := make([]*interfaces.AuthResourceEntry, 0)
+	for rows.Next() {
+		entry := &interfaces.AuthResourceEntry{}
+		if err := rows.Scan(&entry.ID, &entry.Name); err != nil {
+			span.SetStatus(codes.Error, "Scan row failed")
+			return nil, err
+		}
+		entry.Type = interfaces.AuthResourceTypeConnectorType
+		entries = append(entries, entry)
+	}
+
+	span.SetStatus(codes.Ok, "")
+	return entries, nil
+}
+
 // Update updates a ConnectorType.
 func (cta *connectorTypeAccess) Update(ctx context.Context, ct *interfaces.ConnectorType) error {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Update connector_type")

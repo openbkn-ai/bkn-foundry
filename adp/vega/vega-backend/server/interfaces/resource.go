@@ -137,15 +137,3 @@ type ResourceRequest struct {
 
 	Extensions *map[string]string `json:"extensions,omitempty"`
 }
-
-type ListResourcesQueryParams struct {
-	PaginationQueryParams
-	ID      string
-	Keyword string
-}
-
-type ListResourceEntry struct {
-	ID   string `json:"id"`
-	Type string `json:"type"`
-	Name string `json:"name"`
-}

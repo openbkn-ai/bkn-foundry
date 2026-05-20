@@ -681,107 +681,9 @@ func (ca *catalogAccess) List(ctx context.Context, params interfaces.CatalogsQue
 	return catalogs, total, nil
 }
 
-// ListCatalogSrcsIDs lists Catalog Source IDs with filters.
-func (ca *catalogAccess) ListCatalogSrcsIDs(ctx context.Context, params interfaces.ListCatalogsQueryParams) ([]string, error) {
-	ctx, span := oteltrace.StartNamedClientSpan(ctx, "ListCatalogSrcsIDs")
-	defer span.End()
-
-	builder := sq.Select("f_id").From(CATALOG_TABLE_NAME)
-
-	if params.ID != "" {
-		builder = builder.Where(sq.Eq{"f_id": params.ID})
-	}
-
-	if params.Keyword != "" {
-		keyword := "%" + params.Keyword + "%"
-		builder = builder.Where(sq.Like{"f_name": keyword})
-	}
-
-	// 排序
-	if params.Sort != "" {
-		builder = builder.OrderBy(fmt.Sprintf("%s %s", params.Sort, params.Direction))
-	} else {
-		builder = builder.OrderBy("f_update_time DESC")
-	}
-
-	sqlStr, vals, err := builder.ToSql()
-	if err != nil {
-		span.SetStatus(codes.Error, "Build sql failed")
-		return nil, err
-	}
-
-	rows, err := ca.db.QueryContext(ctx, sqlStr, vals...)
-	if err != nil {
-		span.SetStatus(codes.Error, "Query failed")
-		return nil, err
-	}
-	defer func() { _ = rows.Close() }()
-
-	ids := make([]string, 0)
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			span.SetStatus(codes.Error, "Scan row failed")
-			return nil, err
-		}
-		ids = append(ids, id)
-	}
-
-	span.SetStatus(codes.Ok, "")
-	return ids, nil
-}
-
-// ListCatalogSrcsByIDs lists Catalog Sources by IDs.
-func (ca *catalogAccess) ListCatalogSrcsByIDs(ctx context.Context, ids []string) ([]*interfaces.ListCatalogEntry, error) {
-	ctx, span := oteltrace.StartNamedClientSpan(ctx, "ListCatalogSrcsByIDs")
-	defer span.End()
-
-	if len(ids) == 0 {
-		return []*interfaces.ListCatalogEntry{}, nil
-	}
-
-	builder := sq.Select(
-		"f_id",
-		"f_name",
-	).From(CATALOG_TABLE_NAME).Where(sq.Eq{"f_id": ids})
-
-	sqlStr, vals, err := builder.ToSql()
-	if err != nil {
-		span.SetStatus(codes.Error, "Build sql failed")
-		return nil, err
-	}
-
-	rows, err := ca.db.QueryContext(ctx, sqlStr, vals...)
-	if err != nil {
-		span.SetStatus(codes.Error, "Query failed")
-		return nil, err
-	}
-	defer func() { _ = rows.Close() }()
-
-	entries := make([]*interfaces.ListCatalogEntry, 0)
-	for rows.Next() {
-		entry := &interfaces.ListCatalogEntry{}
-
-		err := rows.Scan(
-			&entry.ID,
-			&entry.Name,
-		)
-		if err != nil {
-			span.SetStatus(codes.Error, "Scan row failed")
-			return nil, err
-		}
-
-		entry.Type = interfaces.RESOURCE_TYPE_CATALOG
-		entries = append(entries, entry)
-	}
-
-	span.SetStatus(codes.Ok, "")
-	return entries, nil
-}
-
-// ListCatalogSrcs lists Catalog Sources with filters.
-func (ca *catalogAccess) ListCatalogSrcs(ctx context.Context, params interfaces.ListCatalogsQueryParams) ([]*interfaces.ListCatalogEntry, int64, error) {
-	ctx, span := oteltrace.StartNamedClientSpan(ctx, "ListCatalogSrcs catalogs")
+// ListAuthResources lists catalog auth resources with filters.
+func (ca *catalogAccess) ListAuthResources(ctx context.Context, params interfaces.AuthResourceQueryParams) ([]*interfaces.AuthResourceEntry, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "ListAuthResources")
 	defer span.End()
 
 	builder := sq.Select(
@@ -789,26 +691,13 @@ func (ca *catalogAccess) ListCatalogSrcs(ctx context.Context, params interfaces.
 		"f_name",
 	).From(CATALOG_TABLE_NAME)
 
-	countBuilder := sq.Select("COUNT(*)").From(CATALOG_TABLE_NAME)
-
 	if params.ID != "" {
 		builder = builder.Where(sq.Eq{"f_id": params.ID})
-		countBuilder = countBuilder.Where(sq.Eq{"f_id": params.ID})
 	}
 
 	if params.Keyword != "" {
 		keyword := "%" + params.Keyword + "%"
 		builder = builder.Where(sq.Like{"f_name": keyword})
-		countBuilder = countBuilder.Where(sq.Like{"f_name": keyword})
-	}
-
-	countSql, countVals, _ := countBuilder.ToSql()
-	var total int64
-	err := ca.db.QueryRowContext(ctx, countSql, countVals...).Scan(&total)
-	if err != nil {
-		logger.Errorf("Failed to count catalog sources: %v", err)
-		span.SetStatus(codes.Error, "Count failed")
-		return nil, 0, err
 	}
 
 	// 排序
@@ -821,19 +710,19 @@ func (ca *catalogAccess) ListCatalogSrcs(ctx context.Context, params interfaces.
 	sqlStr, vals, err := builder.ToSql()
 	if err != nil {
 		span.SetStatus(codes.Error, "Build sql failed")
-		return nil, 0, err
+		return nil, err
 	}
 
 	rows, err := ca.db.QueryContext(ctx, sqlStr, vals...)
 	if err != nil {
 		span.SetStatus(codes.Error, "Query failed")
-		return nil, 0, err
+		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
 
-	entries := make([]*interfaces.ListCatalogEntry, 0)
+	entries := make([]*interfaces.AuthResourceEntry, 0)
 	for rows.Next() {
-		entry := &interfaces.ListCatalogEntry{}
+		entry := &interfaces.AuthResourceEntry{}
 
 		err := rows.Scan(
 			&entry.ID,
@@ -841,15 +730,15 @@ func (ca *catalogAccess) ListCatalogSrcs(ctx context.Context, params interfaces.
 		)
 		if err != nil {
 			span.SetStatus(codes.Error, "Scan row failed")
-			return nil, 0, err
+			return nil, err
 		}
 
-		entry.Type = interfaces.RESOURCE_TYPE_CATALOG
+		entry.Type = interfaces.AUTH_RESOURCE_TYPE_CATALOG
 		entries = append(entries, entry)
 	}
 
 	span.SetStatus(codes.Ok, "")
-	return entries, total, nil
+	return entries, nil
 }
 
 // Update updates ca Catalog.

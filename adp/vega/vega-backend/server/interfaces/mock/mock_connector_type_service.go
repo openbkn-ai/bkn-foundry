@@ -116,6 +116,22 @@ func (mr *MockConnectorTypeServiceMockRecorder) List(ctx, params any) *gomock.Ca
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "List", reflect.TypeOf((*MockConnectorTypeService)(nil).List), ctx, params)
 }
 
+// ListAuthResources mocks base method.
+func (m *MockConnectorTypeService) ListAuthResources(ctx context.Context, params interfaces.AuthResourceQueryParams) ([]*interfaces.AuthResourceEntry, int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListAuthResources", ctx, params)
+	ret0, _ := ret[0].([]*interfaces.AuthResourceEntry)
+	ret1, _ := ret[1].(int64)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// ListAuthResources indicates an expected call of ListAuthResources.
+func (mr *MockConnectorTypeServiceMockRecorder) ListAuthResources(ctx, params any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListAuthResources", reflect.TypeOf((*MockConnectorTypeService)(nil).ListAuthResources), ctx, params)
+}
+
 // Register mocks base method.
 func (m *MockConnectorTypeService) Register(ctx context.Context, ct *interfaces.ConnectorTypeReq) error {
 	m.ctrl.T.Helper()

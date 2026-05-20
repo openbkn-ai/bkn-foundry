@@ -963,106 +963,9 @@ func (ra *resourceAccess) DeleteByIDs(ctx context.Context, ids []string) error {
 	return nil
 }
 
-// ListResourceSrcsIDs lists Resource Source IDs with filters.
-func (ra *resourceAccess) ListResourceSrcsIDs(ctx context.Context, params interfaces.ListResourcesQueryParams) ([]string, error) {
-	ctx, span := oteltrace.StartNamedClientSpan(ctx, "ListResourceSrcsIDs")
-	defer span.End()
-
-	builder := sq.Select("f_id").From(RESOURCE_TABLE_NAME)
-
-	if params.ID != "" {
-		builder = builder.Where(sq.Eq{"f_id": params.ID})
-	}
-
-	if params.Keyword != "" {
-		keyword := "%" + common.EscapeLikePattern(params.Keyword) + "%"
-		builder = builder.Where(sq.Like{"f_name": keyword})
-	}
-
-	// 排序
-	if params.Sort != "" {
-		builder = builder.OrderBy(fmt.Sprintf("%s %s", params.Sort, params.Direction))
-	} else {
-		builder = builder.OrderBy("f_update_time DESC")
-	}
-
-	sqlStr, vals, err := builder.ToSql()
-	if err != nil {
-		span.SetStatus(codes.Error, "Build sql failed")
-		return nil, err
-	}
-
-	rows, err := ra.db.QueryContext(ctx, sqlStr, vals...)
-	if err != nil {
-		span.SetStatus(codes.Error, "Query failed")
-		return nil, err
-	}
-	defer func() { _ = rows.Close() }()
-
-	ids := make([]string, 0)
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			span.SetStatus(codes.Error, "Scan row failed")
-			return nil, err
-		}
-		ids = append(ids, id)
-	}
-
-	span.SetStatus(codes.Ok, "")
-	return ids, nil
-}
-
-// ListResourceSrcsByIDs lists Resource Sources by IDs.
-func (ra *resourceAccess) ListResourceSrcsByIDs(ctx context.Context, ids []string) ([]*interfaces.ListResourceEntry, error) {
-	ctx, span := oteltrace.StartNamedClientSpan(ctx, "ListResourceSrcsByIDs")
-	defer span.End()
-
-	if len(ids) == 0 {
-		return []*interfaces.ListResourceEntry{}, nil
-	}
-
-	builder := sq.Select(
-		"f_id",
-		"f_name",
-	).From(RESOURCE_TABLE_NAME).Where(sq.Eq{"f_id": ids})
-
-	sqlStr, vals, err := builder.ToSql()
-	if err != nil {
-		span.SetStatus(codes.Error, "Build sql failed")
-		return nil, err
-	}
-
-	rows, err := ra.db.QueryContext(ctx, sqlStr, vals...)
-	if err != nil {
-		span.SetStatus(codes.Error, "Query failed")
-		return nil, err
-	}
-	defer func() { _ = rows.Close() }()
-
-	entries := make([]*interfaces.ListResourceEntry, 0)
-	for rows.Next() {
-		entry := &interfaces.ListResourceEntry{}
-
-		err := rows.Scan(
-			&entry.ID,
-			&entry.Name,
-		)
-		if err != nil {
-			span.SetStatus(codes.Error, "Scan row failed")
-			return nil, err
-		}
-		entry.Type = interfaces.RESOURCE_TYPE_RESOURCE
-		entries = append(entries, entry)
-	}
-
-	span.SetStatus(codes.Ok, "")
-	return entries, nil
-}
-
-// ListResourceSrcs lists Resource Sources with filters.
-func (ra *resourceAccess) ListResourceSrcs(ctx context.Context, params interfaces.ListResourcesQueryParams) ([]*interfaces.ListResourceEntry, int64, error) {
-	ctx, span := oteltrace.StartNamedClientSpan(ctx, "ListResourceSrcs")
+// ListAuthResources lists resource auth resources with filters.
+func (ra *resourceAccess) ListAuthResources(ctx context.Context, params interfaces.AuthResourceQueryParams) ([]*interfaces.AuthResourceEntry, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "ListAuthResources")
 	defer span.End()
 
 	builder := sq.Select(
@@ -1070,26 +973,13 @@ func (ra *resourceAccess) ListResourceSrcs(ctx context.Context, params interface
 		"f_name",
 	).From(RESOURCE_TABLE_NAME)
 
-	countBuilder := sq.Select("COUNT(*)").From(RESOURCE_TABLE_NAME)
-
 	if params.ID != "" {
 		builder = builder.Where(sq.Eq{"f_id": params.ID})
-		countBuilder = countBuilder.Where(sq.Eq{"f_id": params.ID})
 	}
 
 	if params.Keyword != "" {
 		keyword := "%" + common.EscapeLikePattern(params.Keyword) + "%"
 		builder = builder.Where(sq.Like{"f_name": keyword})
-		countBuilder = countBuilder.Where(sq.Like{"f_name": keyword})
-	}
-
-	countSql, countVals, _ := countBuilder.ToSql()
-	var total int64
-	err := ra.db.QueryRowContext(ctx, countSql, countVals...).Scan(&total)
-	if err != nil {
-		logger.Errorf("Failed to count resource sources: %v", err)
-		span.SetStatus(codes.Error, "Count failed")
-		return nil, 0, err
 	}
 
 	// 排序
@@ -1102,19 +992,19 @@ func (ra *resourceAccess) ListResourceSrcs(ctx context.Context, params interface
 	sqlStr, vals, err := builder.ToSql()
 	if err != nil {
 		span.SetStatus(codes.Error, "Build sql failed")
-		return nil, 0, err
+		return nil, err
 	}
 
 	rows, err := ra.db.QueryContext(ctx, sqlStr, vals...)
 	if err != nil {
 		span.SetStatus(codes.Error, "Query failed")
-		return nil, 0, err
+		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
 
-	entries := make([]*interfaces.ListResourceEntry, 0)
+	entries := make([]*interfaces.AuthResourceEntry, 0)
 	for rows.Next() {
-		entry := &interfaces.ListResourceEntry{}
+		entry := &interfaces.AuthResourceEntry{}
 
 		err := rows.Scan(
 			&entry.ID,
@@ -1122,14 +1012,14 @@ func (ra *resourceAccess) ListResourceSrcs(ctx context.Context, params interface
 		)
 		if err != nil {
 			span.SetStatus(codes.Error, "Scan row failed")
-			return nil, 0, err
+			return nil, err
 		}
-		entry.Type = interfaces.RESOURCE_TYPE_RESOURCE
+		entry.Type = interfaces.AUTH_RESOURCE_TYPE_RESOURCE
 		entries = append(entries, entry)
 	}
 
 	span.SetStatus(codes.Ok, "")
-	return entries, total, nil
+	return entries, nil
 }
 
 func (ra *resourceAccess) CheckExistByCategories(ctx context.Context, catalogID string, categories []string) (bool, error) {

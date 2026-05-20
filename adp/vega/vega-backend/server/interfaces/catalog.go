@@ -88,15 +88,3 @@ type CatalogRequest struct {
 	// Extensions 根对象出现该键（含 null 需客户端避免）时整包替换；指针为 nil 表示请求体未携带该字段
 	Extensions *map[string]string `json:"extensions,omitempty"`
 }
-
-type ListCatalogsQueryParams struct {
-	PaginationQueryParams
-	ID      string
-	Keyword string
-}
-
-type ListCatalogEntry struct {
-	ID   string `json:"id"`
-	Type string `json:"type"`
-	Name string `json:"name"`
-}

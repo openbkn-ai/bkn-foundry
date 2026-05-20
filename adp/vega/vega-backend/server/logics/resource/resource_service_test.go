@@ -121,7 +121,7 @@ func TestGetByID_Success(t *testing.T) {
 	rs, mockRA, mockPS, _, mockUMS, _, _ := newTestService(t)
 	mockRA.EXPECT().GetByID(gomock.Any(), "r1").
 		Return(&interfaces.Resource{ID: "r1", Name: "test"}, nil)
-	mockPS.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_RESOURCE,
+	mockPS.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
 		[]string{"r1"}, gomock.Any(), true, gomock.Any()).
 		Return(map[string]interfaces.PermissionResourceOps{
 			"r1": {ResourceID: "r1", Operations: []string{"view_detail"}},
@@ -166,7 +166,7 @@ func TestGetByIDs_Success(t *testing.T) {
 	mockRA.EXPECT().GetByIDs(gomock.Any(), []string{"r1", "r2"}).
 		Return([]*interfaces.Resource{{ID: "r1"}, {ID: "r2"}}, nil)
 	mockRA.EXPECT().AttachListExtensions(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-	mockPS.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_RESOURCE,
+	mockPS.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
 		[]string{"r1", "r2"}, gomock.Any(), true, gomock.Any()).
 		Return(map[string]interfaces.PermissionResourceOps{
 			"r1": {ResourceID: "r1", Operations: []string{"view_detail"}},
@@ -312,7 +312,7 @@ func TestDeleteByIDs_Empty(t *testing.T) {
 
 func TestDeleteByIDs_Success(t *testing.T) {
 	rs, mockRA, mockPS, _, _, _, mockBTA := newTestService(t)
-	mockPS.EXPECT().FilterResources(gomock.Any(), interfaces.RESOURCE_TYPE_RESOURCE,
+	mockPS.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
 		[]string{"r1"}, gomock.Any(), true, gomock.Any()).
 		Return(map[string]interfaces.PermissionResourceOps{
 			"r1": {ResourceID: "r1"},
@@ -320,7 +320,7 @@ func TestDeleteByIDs_Success(t *testing.T) {
 	mockRA.EXPECT().GetByIDs(gomock.Any(), []string{"r1"}).
 		Return([]*interfaces.Resource{{ID: "r1", Category: "table"}}, nil)
 	mockRA.EXPECT().DeleteByIDs(gomock.Any(), []string{"r1"}).Return(nil)
-	mockPS.EXPECT().DeleteResources(gomock.Any(), interfaces.RESOURCE_TYPE_RESOURCE, []string{"r1"}).Return(nil)
+	mockPS.EXPECT().DeleteResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE, []string{"r1"}).Return(nil)
 	mockBTA.EXPECT().GetByResourceID(gomock.Any(), "r1").Return(nil, nil)
 	err := rs.DeleteByIDs(context.Background(), []string{"r1"})
 	if err != nil {
