@@ -10,7 +10,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"reflect"
 	"strconv"
 	"strings"
 	"vega-backend/common"
@@ -400,7 +399,6 @@ func (r *restHandler) updateCatalog(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 
-	// Validate immutable fields
 	// connector_type cannot be modified
 	if req.ConnectorType != catalog.ConnectorType {
 		span.SetStatus(codes.Error, "Connector type cannot be modified")
@@ -417,47 +415,6 @@ func (r *restHandler) updateCatalog(c *gin.Context, visitor hydra.Visitor) {
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
-	}
-
-	// connector_config immutable fields: host, port, database, databases, schemas, paths, protocol
-	// These fields cannot be modified or removed if they exist in the original catalog
-	immutableFields := []string{"host", "port", "database", "databases", "schemas", "paths", "protocol", "concurrent"}
-	for _, field := range immutableFields {
-		if _, existsInCatalog := catalog.ConnectorCfg[field]; existsInCatalog {
-			if _, existsInReq := req.ConnectorCfg[field]; existsInReq {
-				// Field exists in both, check if it's being modified
-				// Handle different types: string, number, array
-				catalogValue := catalog.ConnectorCfg[field]
-				reqValue := req.ConnectorCfg[field]
-
-				var isModified bool
-				switch v := catalogValue.(type) {
-				case []interface{}:
-					// Compare arrays using reflect.DeepEqual
-					isModified = !reflect.DeepEqual(v, reqValue)
-				default:
-					// Compare other types (string, number, etc.)
-					isModified = (reqValue != catalogValue)
-				}
-
-				if isModified {
-					span.SetStatus(codes.Error, fmt.Sprintf("Connector config field %s cannot be modified", field))
-					httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Catalog_InvalidParameter_ConnectorConfig).
-						WithErrorDetails(fmt.Sprintf("connector_config.%s cannot be modified", field))
-					oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-					rest.ReplyError(c, httpErr)
-					return
-				}
-			} else {
-				// Field exists in catalog but not in request - cannot remove immutable fields
-				span.SetStatus(codes.Error, fmt.Sprintf("Connector config field %s cannot be removed", field))
-				httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Catalog_InvalidParameter_ConnectorConfig).
-					WithErrorDetails(fmt.Sprintf("connector_config.%s cannot be removed", field))
-				oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-				rest.ReplyError(c, httpErr)
-				return
-			}
-		}
 	}
 
 	// Apply updates

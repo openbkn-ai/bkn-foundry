@@ -275,6 +275,9 @@ paths:
         `enabled` 不能通过 PUT 切换；请求体中的 `enabled` 必须与当前 catalog 状态一致。
         如需启用/禁用，使用 `POST /catalogs/{id}/enable` 或 `POST /catalogs/{id}/disable`。
 
+        `connector_config` 可修改；修改影响发现范围的字段后，旧 Resource 会在下一次
+        discover 对齐时标记为 `stale`。
+
         **extensions**：请求体若包含 **`extensions` 键**（含空对象 `{}`），则对该 catalog **整包替换**
         `t_entity_extension` 中 `f_entity_id = id` 的全部行；**键未出现**则不修改副表。
       requestBody:

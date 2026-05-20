@@ -210,6 +210,48 @@ func Test_CatalogRestHandler_UpdateRejectsEnabledChange(t *testing.T) {
 	})
 }
 
+func Test_CatalogRestHandler_UpdateAllowsDatabaseChange(t *testing.T) {
+	Convey("Test CatalogHandler Update allows database change\n", t, func() {
+		test := setGinMode()
+		defer test()
+
+		engine := gin.New()
+		engine.Use(gin.Recovery())
+
+		mockCtrl := gomock.NewController(t)
+		defer mockCtrl.Finish()
+
+		cs := vmock.NewMockCatalogService(mockCtrl)
+		handler := MockNewRestHandler(&common.AppSetting{}, nil, cs, nil, nil, nil, nil, nil, nil, nil, nil)
+		handler.RegisterPublic(engine)
+
+		cs.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
+			Return(&interfaces.Catalog{
+				ID:            "catalog-1",
+				Name:          "catalog",
+				Enabled:       true,
+				ConnectorType: "mariadb",
+				ConnectorCfg: interfaces.ConnectorConfig{
+					"host":     "localhost",
+					"database": "db1",
+				},
+			}, nil)
+		cs.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ *interfaces.Catalog, req *interfaces.CatalogRequest) error {
+				So(req.ConnectorCfg["database"], ShouldEqual, "db2")
+				return nil
+			})
+
+		body := `{"id":"catalog-1","name":"catalog","enabled":true,"connector_type":"mariadb","connector_config":{"host":"localhost","database":"db2"}}`
+		req := httptest.NewRequest(http.MethodPut, "/api/vega-backend/in/v1/catalogs/catalog-1", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		engine.ServeHTTP(w, req)
+
+		So(w.Result().StatusCode, ShouldEqual, http.StatusNoContent)
+	})
+}
+
 func Test_CatalogRestHandler_DiscoverRejectsDisabledCatalog(t *testing.T) {
 	Convey("Test CatalogHandler Discover rejects disabled catalog\n", t, func() {
 		test := setGinMode()
