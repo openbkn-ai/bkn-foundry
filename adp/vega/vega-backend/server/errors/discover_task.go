@@ -8,11 +8,11 @@ package errors
 
 // DiscoverTask 相关错误码
 const (
-	// 404 Not Found
-	VegaBackend_DiscoverTask_NotFound = "VegaBackend.DiscoverTask.NotFound"
-
 	// 400 Bad Request
 	VegaBackend_DiscoverTask_InvalidStatus = "VegaBackend.DiscoverTask.InvalidStatus"
+
+	// 404 Not Found
+	VegaBackend_DiscoverTask_NotFound = "VegaBackend.DiscoverTask.NotFound"
 
 	// 409 Conflict
 	VegaBackend_DiscoverTask_HasRunningExecution = "VegaBackend.DiscoverTask.HasRunningExecution"
@@ -24,9 +24,16 @@ const (
 )
 
 var DiscoverTaskErrCodeList = []string{
-	VegaBackend_DiscoverTask_NotFound,
+	// 400 Bad Request
 	VegaBackend_DiscoverTask_InvalidStatus,
+
+	// 404 Not Found
+	VegaBackend_DiscoverTask_NotFound,
+
+	// 409 Conflict
 	VegaBackend_DiscoverTask_HasRunningExecution,
+
+	// 500 Internal Server Error
 	VegaBackend_DiscoverTask_InternalError_GetFailed,
 	VegaBackend_DiscoverTask_InternalError_DeleteFailed,
 	VegaBackend_DiscoverTask_InternalError_GetAccountNamesFailed,

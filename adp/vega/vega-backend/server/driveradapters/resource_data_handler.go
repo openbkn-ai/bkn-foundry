@@ -25,6 +25,7 @@ import (
 	"vega-backend/common/visitor"
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
+	resourcelogic "vega-backend/logics/resource"
 )
 
 // PostResourceDataByEx handles POST /api/vega-backend/v1/resources/:id/data (External).
@@ -114,6 +115,18 @@ func (r *restHandler) queryResourceData(c *gin.Context, ctx context.Context, spa
 		return
 	}
 
+	warning, err := resourcelogic.EnsureResourceQueryable(ctx, resource)
+	if err != nil {
+		httpErr := err.(*rest.HTTPError)
+		otellog.LogError(ctx, "Resource is not queryable", httpErr)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+	if warning != "" {
+		otellog.LogWarn(ctx, "Query hit deprecated resource: "+warning)
+	}
+
 	entries, total, err := r.rds.Query(ctx, resource, &params)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
@@ -128,6 +141,9 @@ func (r *restHandler) queryResourceData(c *gin.Context, ctx context.Context, spa
 	}
 	if params.NeedTotal {
 		resultData["total_count"] = total
+	}
+	if warning != "" {
+		resultData["warnings"] = []string{warning}
 	}
 
 	logger.Debug("Handler queryResourceData Success")

@@ -68,6 +68,11 @@ Description = "数据资源已处于禁用状态"
 Solution = "无需操作"
 ErrorLink = "暂无"
 
+[VegaBackend.Resource.NotQueryable]
+Description = "数据资源当前状态不支持查询"
+Solution = "仅 active/deprecated 状态可查询；请先启用资源或刷新 schema"
+ErrorLink = "暂无"
+
 [VegaBackend.Resource.InternalError]
 Description = "数据资源内部错误"
 Solution = "请联系管理员"

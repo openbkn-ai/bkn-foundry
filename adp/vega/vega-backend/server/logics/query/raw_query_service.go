@@ -26,7 +26,7 @@ import (
 	"vega-backend/logics/connectors/local/table/mariadb"
 	"vega-backend/logics/connectors/local/table/postgresql"
 	"vega-backend/logics/query/sqlglot"
-	"vega-backend/logics/resource"
+	resourcelogic "vega-backend/logics/resource"
 )
 
 var (
@@ -44,27 +44,37 @@ func NewRawQueryService(appSetting *common.AppSetting) interfaces.RawQueryServic
 	rawQueryServiceOnce.Do(func() {
 		rawQueryServiceInstance = &rawQueryService{
 			cs: catalog.NewCatalogService(appSetting),
-			rs: resource.NewResourceService(appSetting),
+			rs: resourcelogic.NewResourceService(appSetting),
 		}
 	})
 	return rawQueryServiceInstance
 }
 
-// NewRawQueryServiceWithDeps 创建SQL查询服务（用于测试）
-func NewRawQueryServiceWithDeps(cs interfaces.CatalogService, rs interfaces.ResourceService) interfaces.RawQueryService {
-	return &rawQueryService{cs: cs, rs: rs}
-}
-
 // Execute 执行SQL查询
-func (s *rawQueryService) Execute(ctx context.Context, req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
+func (rqs *rawQueryService) Execute(ctx context.Context, req *interfaces.RawQueryRequest) (resp *interfaces.RawQueryResponse, err error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "SQLQueryExecute")
 	defer span.End()
+
+	// 收集资源状态告警（deprecated 命中），在每个成功返回路径上附加到响应，
+	// 同时落到当前 span 关联的日志里，便于事后审计。
+	var warnings []string
+	defer func() {
+		if len(warnings) == 0 {
+			return
+		}
+		for _, w := range warnings {
+			otellog.LogWarn(ctx, "Query hit deprecated resource: "+w)
+		}
+		if resp != nil {
+			resp.Warnings = append(resp.Warnings, warnings...)
+		}
+	}()
 
 	// 记录请求参数
 	logger.Infof("RawQueryRequest - query_type: %s, resource_type: %s, query: %v", req.QueryType, req.ResourceType, req.Query)
 
 	// 1. 校验请求
-	if err := s.validateRequest(ctx, req); err != nil {
+	if err := rqs.validateRequest(ctx, req); err != nil {
 		otellog.LogError(ctx, "Validate request failed", err)
 		return nil, err
 	}
@@ -90,7 +100,7 @@ func (s *rawQueryService) Execute(ctx context.Context, req *interfaces.RawQueryR
 			}
 
 			// 获取资源信息
-			resource, err := s.rs.GetByID(ctx, resourceID)
+			resource, err := rqs.rs.GetByID(ctx, resourceID)
 			if err != nil {
 				otellog.LogError(ctx, "Get resource failed", err)
 				return nil, err.(*rest.HTTPError)
@@ -101,9 +111,17 @@ func (s *rawQueryService) Execute(ctx context.Context, req *interfaces.RawQueryR
 				otellog.LogError(ctx, "Resource not found", httpErr)
 				return nil, httpErr
 			}
+			w, err := resourcelogic.EnsureResourceQueryable(ctx, resource)
+			if err != nil {
+				otellog.LogError(ctx, "Resource is not queryable", err)
+				return nil, err
+			}
+			if w != "" {
+				warnings = append(warnings, w)
+			}
 
 			// 获取catalog
-			catalog, err := s.cs.GetByID(ctx, resource.CatalogID, true)
+			catalog, err := rqs.cs.GetByID(ctx, resource.CatalogID, true)
 			if err != nil {
 				otellog.LogError(ctx, "Get catalog failed", err)
 				return nil, err.(*rest.HTTPError)
@@ -119,10 +137,10 @@ func (s *rawQueryService) Execute(ctx context.Context, req *interfaces.RawQueryR
 				return nil, err
 			}
 
-			return s.executeOpenSearchQuery(ctx, req, []string{}, catalog)
+			return rqs.executeOpenSearchQuery(ctx, req, []string{}, catalog)
 		}
 		// SQL流式查询
-		return s.executeStreamQuery(ctx, req)
+		return rqs.executeStreamQuery(ctx, req)
 	}
 
 	// 优先检查resource_type，因为OpenSearch查询的query是JSON对象，不包含resource_id占位符
@@ -144,7 +162,7 @@ func (s *rawQueryService) Execute(ctx context.Context, req *interfaces.RawQueryR
 		}
 
 		// 获取资源信息
-		resource, err := s.rs.GetByID(ctx, resourceID)
+		resource, err := rqs.rs.GetByID(ctx, resourceID)
 		if err != nil {
 			otellog.LogError(ctx, "Get resource failed", err)
 			return nil, err.(*rest.HTTPError)
@@ -155,9 +173,17 @@ func (s *rawQueryService) Execute(ctx context.Context, req *interfaces.RawQueryR
 			otellog.LogError(ctx, "Resource not found", httpErr)
 			return nil, httpErr
 		}
+		w, err := resourcelogic.EnsureResourceQueryable(ctx, resource)
+		if err != nil {
+			otellog.LogError(ctx, "Resource is not queryable", err)
+			return nil, err
+		}
+		if w != "" {
+			warnings = append(warnings, w)
+		}
 
 		// 获取catalog
-		catalog, err := s.cs.GetByID(ctx, resource.CatalogID, true)
+		catalog, err := rqs.cs.GetByID(ctx, resource.CatalogID, true)
 		if err != nil {
 			otellog.LogError(ctx, "Get catalog failed", err)
 			return nil, err.(*rest.HTTPError)
@@ -173,11 +199,11 @@ func (s *rawQueryService) Execute(ctx context.Context, req *interfaces.RawQueryR
 			return nil, err
 		}
 
-		return s.executeOpenSearchQuery(ctx, req, []string{}, catalog)
+		return rqs.executeOpenSearchQuery(ctx, req, []string{}, catalog)
 	}
 
 	// 3. 从SQL中提取所有{{.resource_id}}占位符
-	resourceIds, err := s.extractResourceIds(req.Query)
+	resourceIDs, err := rqs.extractResourceIDs(req.Query)
 	if err != nil {
 		otellog.LogError(ctx, "Extract resource ids failed", err)
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
@@ -185,7 +211,7 @@ func (s *rawQueryService) Execute(ctx context.Context, req *interfaces.RawQueryR
 	}
 
 	// 4. 判断查询类型
-	if len(resourceIds) == 0 {
+	if len(resourceIDs) == 0 {
 		// 没有resource_id，直接执行原生SQL（需要指定resource_type）
 		if req.ResourceType == "" {
 			httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
@@ -193,26 +219,44 @@ func (s *rawQueryService) Execute(ctx context.Context, req *interfaces.RawQueryR
 			otellog.LogError(ctx, "Resource type is required", httpErr)
 			return nil, httpErr
 		}
-		return s.executeNativeSQL(ctx, req)
+		return rqs.executeNativeSQL(ctx, req)
 	}
 
 	// 5. 判断所有resource_id是否来自同一个数据源
 	// 获取catalog（从第一个resource_id获取）
-	if len(resourceIds) > 0 {
-		// 如果有resource_id，使用第一个resource_id获取catalog
-		resource, err := s.rs.GetByID(ctx, resourceIds[0])
+	if len(resourceIDs) > 0 {
+		// 批量获取所有 resource_id 对应的资源，统一做存在性 + 状态校验。
+		// 即便后续 fast-path（OpenSearch/MySQL）只用 resources[0] 拿 catalog，
+		// 多 resource 场景下也必须全部检查，否则非 active 资源会被绕过。
+		resources, err := rqs.rs.GetByIDs(ctx, resourceIDs)
 		if err != nil {
-			otellog.LogError(ctx, "Get resource failed", err)
+			otellog.LogError(ctx, "Get resources failed", err)
 			return nil, err.(*rest.HTTPError)
 		}
-		if resource == nil {
-			httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_ResourceNotFound).
-				WithErrorDetails(fmt.Sprintf("resource %s not found", resourceIds[0]))
-			otellog.LogError(ctx, "Resource not found", httpErr)
-			return nil, httpErr
+		if len(resources) != len(resourceIDs) {
+			existing := make(map[string]bool, len(resources))
+			for _, r := range resources {
+				existing[r.ID] = true
+			}
+			for _, id := range resourceIDs {
+				if !existing[id] {
+					httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_ResourceNotFound).
+						WithErrorDetails(fmt.Sprintf("resource %s not found", id))
+					otellog.LogError(ctx, "Resource not found", httpErr)
+					return nil, httpErr
+				}
+			}
 		}
+		ws, err := resourcelogic.EnsureResourcesQueryable(ctx, resources)
+		if err != nil {
+			otellog.LogError(ctx, "Resource is not queryable", err)
+			return nil, err
+		}
+		warnings = append(warnings, ws...)
+
+		resource := resources[0]
 		// 获取catalog
-		catalog, err := s.cs.GetByID(ctx, resource.CatalogID, true)
+		catalog, err := rqs.cs.GetByID(ctx, resource.CatalogID, true)
 		if err != nil {
 			otellog.LogError(ctx, "Get catalog failed", err)
 			return nil, err.(*rest.HTTPError)
@@ -230,20 +274,20 @@ func (s *rawQueryService) Execute(ctx context.Context, req *interfaces.RawQueryR
 
 		// 根据catalog的ConnectorType来决定调用哪个方法
 		if catalog.ConnectorType == interfaces.ConnectorTypeOpenSearch {
-			return s.executeOpenSearchQuery(ctx, req, resourceIds, catalog)
+			return rqs.executeOpenSearchQuery(ctx, req, resourceIDs, catalog)
 		}
 
 		// 如果指定了resource_type为mysql/mariadb/postgresql，则不进行SQL转换，直接执行
 		if req.ResourceType == interfaces.ConnectorTypeMySQL || req.ResourceType == interfaces.ConnectorTypeMariaDB || req.ResourceType == interfaces.ConnectorTypePostgreSQL {
 			// 将resource_id替换为catalog.schema.table格式
-			replacedSQL, err := s.replaceResourceIdWithSchemaTable(ctx, req.Query, resourceIds, catalog)
+			replacedSQL, err := rqs.replaceResourceIDWithSchemaTable(ctx, req.Query, resourceIDs, catalog)
 			if err != nil {
 				otellog.LogError(ctx, "Replace resource id failed", err)
 				return nil, err
 			}
 
 			// 直接执行SQL，不进行转换
-			result, err := s.executeSQLWithQueryType(ctx, catalog, replacedSQL, req.QueryType)
+			result, err := rqs.executeSQLWithQueryType(ctx, catalog, replacedSQL, req.QueryType)
 			if err != nil {
 				otellog.LogError(ctx, "Execute SQL failed", err)
 				return nil, err
@@ -266,14 +310,15 @@ func (s *rawQueryService) Execute(ctx context.Context, req *interfaces.RawQueryR
 	}
 
 	// 6. 判断所有resource_id是否来自同一个数据源
-	dataSource, err := s.checkSameDataSource(ctx, resourceIds)
+	dataSource, ws, err := rqs.checkSameDataSource(ctx, resourceIDs)
 	if err != nil {
 		otellog.LogError(ctx, "Check data source failed", err)
 		return nil, err
 	}
+	warnings = append(warnings, ws...)
 
 	// 7. 将resource_id替换为catalog.schema.table格式
-	replacedSQL, err := s.replaceResourceIdWithSchemaTable(ctx, req.Query, resourceIds, dataSource)
+	replacedSQL, err := rqs.replaceResourceIDWithSchemaTable(ctx, req.Query, resourceIDs, dataSource)
 	if err != nil {
 		otellog.LogError(ctx, "Replace resource id failed", err)
 		return nil, err
@@ -322,7 +367,7 @@ func (s *rawQueryService) Execute(ctx context.Context, req *interfaces.RawQueryR
 	}
 
 	// 11. 执行转换后的SQL
-	result, err := s.executeSQLWithQueryType(ctx, dataSource, finalSQL, req.QueryType)
+	result, err := rqs.executeSQLWithQueryType(ctx, dataSource, finalSQL, req.QueryType)
 	if err != nil {
 		return nil, err
 	}
@@ -334,7 +379,7 @@ func (s *rawQueryService) Execute(ctx context.Context, req *interfaces.RawQueryR
 }
 
 // validateRequest 校验请求
-func (s *rawQueryService) validateRequest(ctx context.Context, req *interfaces.RawQueryRequest) error {
+func (rqs *rawQueryService) validateRequest(ctx context.Context, req *interfaces.RawQueryRequest) error {
 	// 校验查询类型
 	if req.QueryType != "" && req.QueryType != "standard" && req.QueryType != "stream" {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
@@ -393,27 +438,27 @@ func (s *rawQueryService) validateRequest(ctx context.Context, req *interfaces.R
 	return nil
 }
 
-// extractResourceIds 从SQL中提取所有{{.resource_id}}占位符
-func (s *rawQueryService) extractResourceIds(query any) ([]string, error) {
+// extractResourceIDs 从SQL中提取所有{{.resource_id}}占位符
+func (rqs *rawQueryService) extractResourceIDs(query any) ([]string, error) {
 	// 如果query是字符串类型，使用正则表达式提取resource_id
 	if queryStr, ok := query.(string); ok {
 		re := regexp.MustCompile(`\{\{\.?(\w+)\}\}`)
 		matches := re.FindAllStringSubmatch(queryStr, -1)
 
-		resourceIds := make([]string, 0, len(matches))
+		resourceIDs := make([]string, 0, len(matches))
 		seen := make(map[string]bool)
 
 		for _, match := range matches {
 			if len(match) > 1 {
-				resourceId := match[1]
-				if !seen[resourceId] {
-					seen[resourceId] = true
-					resourceIds = append(resourceIds, resourceId)
+				resourceID := match[1]
+				if !seen[resourceID] {
+					seen[resourceID] = true
+					resourceIDs = append(resourceIDs, resourceID)
 				}
 			}
 		}
 
-		return resourceIds, nil
+		return resourceIDs, nil
 	}
 
 	// 如果query是map类型（OpenSearch DSL），返回空数组
@@ -421,28 +466,35 @@ func (s *rawQueryService) extractResourceIds(query any) ([]string, error) {
 	return []string{}, nil
 }
 
-// checkSameDataSource 检查所有resource_id是否来自同一个数据源
-func (s *rawQueryService) checkSameDataSource(ctx context.Context, resourceIds []string) (*interfaces.Catalog, error) {
-	if len(resourceIds) == 0 {
-		return nil, fmt.Errorf("no resource ids provided")
+// checkSameDataSource 检查所有resource_id是否来自同一个数据源，
+// 同时校验每个资源的状态。返回 catalog、deprecated 资源的告警列表与错误。
+func (rqs *rawQueryService) checkSameDataSource(ctx context.Context, resourceIDs []string) (*interfaces.Catalog, []string, error) {
+	if len(resourceIDs) == 0 {
+		return nil, nil, fmt.Errorf("no resource ids provided")
 	}
 
 	// 获取所有资源
-	resources, err := s.rs.GetByIDs(ctx, resourceIds)
+	resources, err := rqs.rs.GetByIDs(ctx, resourceIDs)
 	if err != nil {
-		return nil, err.(*rest.HTTPError)
+		return nil, nil, err.(*rest.HTTPError)
 	}
-	if len(resources) != len(resourceIds) {
+	if len(resources) != len(resourceIDs) {
 		resourceMap := make(map[string]bool)
 		for _, r := range resources {
 			resourceMap[r.ID] = true
 		}
-		for _, id := range resourceIds {
+		for _, id := range resourceIDs {
 			if !resourceMap[id] {
-				return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_ResourceNotFound).
+				return nil, nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_ResourceNotFound).
 					WithErrorDetails(fmt.Sprintf("resource %s not found", id))
 			}
 		}
+	}
+
+	// 校验每个 resource 的状态：disabled/stale 拒绝，deprecated 仅告警
+	warnings, err := resourcelogic.EnsureResourcesQueryable(ctx, resources)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	// 检查是否来自同一个catalog
@@ -451,7 +503,7 @@ func (s *rawQueryService) checkSameDataSource(ctx context.Context, resourceIds [
 		catalogIDs[r.CatalogID] = true
 	}
 	if len(catalogIDs) > 1 {
-		return nil, rest.NewHTTPError(ctx, http.StatusNotImplemented, verrors.VegaBackend_Query_MultiCatalogNotSupported).
+		return nil, nil, rest.NewHTTPError(ctx, http.StatusNotImplemented, verrors.VegaBackend_Query_MultiCatalogNotSupported).
 			WithErrorDetails("暂不支持多数据源 JOIN，计划使用 Trino/DuckDB 实现。")
 	}
 
@@ -462,19 +514,19 @@ func (s *rawQueryService) checkSameDataSource(ctx context.Context, resourceIds [
 		break
 	}
 
-	catalog, err := s.cs.GetByID(ctx, catalogID, true)
+	catalog, err := rqs.cs.GetByID(ctx, catalogID, true)
 	if err != nil {
-		return nil, err.(*rest.HTTPError)
+		return nil, nil, err.(*rest.HTTPError)
 	}
 	if catalog == nil {
-		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_CatalogNotFound).
+		return nil, nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_CatalogNotFound).
 			WithErrorDetails(fmt.Sprintf("catalog %s not found", catalogID))
 	}
 	if err := ensureCatalogEnabled(ctx, catalog); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return catalog, nil
+	return catalog, warnings, nil
 }
 
 func ensureCatalogEnabled(ctx context.Context, catalog *interfaces.Catalog) error {
@@ -485,20 +537,20 @@ func ensureCatalogEnabled(ctx context.Context, catalog *interfaces.Catalog) erro
 	return nil
 }
 
-// replaceResourceIdWithSchemaTable 将resource_id替换为catalog.schema.table格式
-func (s *rawQueryService) replaceResourceIdWithSchemaTable(ctx context.Context, sql any, resourceIds []string, catalog *interfaces.Catalog) (string, error) {
+// replaceResourceIDWithSchemaTable 将resource_id替换为catalog.schema.table格式
+func (rqs *rawQueryService) replaceResourceIDWithSchemaTable(ctx context.Context, sql any, resourceIDs []string, catalog *interfaces.Catalog) (string, error) {
 	replacedSQL := sql.(string)
-	logger.Infof("Before replace - sql: %s, resource_ids: %v", replacedSQL, resourceIds)
+	logger.Infof("Before replace - sql: %s, resource_ids: %v", replacedSQL, resourceIDs)
 
-	for _, resourceId := range resourceIds {
+	for _, resourceID := range resourceIDs {
 		// 获取资源信息
-		resource, err := s.rs.GetByID(ctx, resourceId)
+		resource, err := rqs.rs.GetByID(ctx, resourceID)
 		if err != nil {
 			return "", err.(*rest.HTTPError)
 		}
 		if resource == nil {
 			return "", rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_ResourceNotFound).
-				WithErrorDetails(fmt.Sprintf("resource %s not found", resourceId))
+				WithErrorDetails(fmt.Sprintf("resource %s not found", resourceID))
 		}
 
 		// 构建catalog.schema.table格式
@@ -506,8 +558,8 @@ func (s *rawQueryService) replaceResourceIdWithSchemaTable(ctx context.Context, 
 		// schemaTable := fmt.Sprintf(`%s.%s`, catalog.Name, resource.SourceIdentifier)
 
 		// 替换{{.resource_id}}和{{resource_id}}为schema.table
-		placeholder1 := fmt.Sprintf("{{.%s}}", resourceId)
-		placeholder2 := fmt.Sprintf("{{%s}}", resourceId)
+		placeholder1 := fmt.Sprintf("{{.%s}}", resourceID)
+		placeholder2 := fmt.Sprintf("{{%s}}", resourceID)
 		replacedSQL = regexp.MustCompile(regexp.QuoteMeta(placeholder1)).ReplaceAllString(replacedSQL, resource.SourceIdentifier)
 		replacedSQL = regexp.MustCompile(regexp.QuoteMeta(placeholder2)).ReplaceAllString(replacedSQL, resource.SourceIdentifier)
 	}
@@ -517,7 +569,7 @@ func (s *rawQueryService) replaceResourceIdWithSchemaTable(ctx context.Context, 
 }
 
 // executeSQLWithQueryType 执行SQL查询并记录日志
-func (s *rawQueryService) executeSQLWithQueryType(ctx context.Context, catalog *interfaces.Catalog, sql string, queryType string) (*interfaces.RawQueryResponse, error) {
+func (rqs *rawQueryService) executeSQLWithQueryType(ctx context.Context, catalog *interfaces.Catalog, sql string, queryType string) (*interfaces.RawQueryResponse, error) {
 	// 打印SQL日志，包含查询类型
 	logger.Infof("Executing %s query - sql: %s, catalog: %s", queryType, sql, catalog.Name)
 
@@ -554,7 +606,7 @@ func (s *rawQueryService) executeSQLWithQueryType(ctx context.Context, catalog *
 }
 
 // executeNativeSQL 执行原生SQL（不包含resource_id）
-func (s *rawQueryService) executeNativeSQL(ctx context.Context, req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
+func (rqs *rawQueryService) executeNativeSQL(ctx context.Context, req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
 	// 获取SQL语句
 	sql, ok := req.Query.(string)
 	if !ok {
@@ -581,7 +633,7 @@ func (s *rawQueryService) executeNativeSQL(ctx context.Context, req *interfaces.
 	}
 
 	// 直接执行SQL，不添加任何LIMIT限制
-	result, err := s.executeSQLWithQueryType(ctx, catalog, sql, req.QueryType)
+	result, err := rqs.executeSQLWithQueryType(ctx, catalog, sql, req.QueryType)
 	if err != nil {
 		return nil, err
 	}
@@ -600,7 +652,7 @@ func (s *rawQueryService) executeNativeSQL(ctx context.Context, req *interfaces.
 }
 
 // executeOpenSearchQuery 执行OpenSearch DSL查询
-func (s *rawQueryService) executeOpenSearchQuery(ctx context.Context, req *interfaces.RawQueryRequest, resourceIds []string, catalog *interfaces.Catalog) (*interfaces.RawQueryResponse, error) {
+func (rqs *rawQueryService) executeOpenSearchQuery(ctx context.Context, req *interfaces.RawQueryRequest, resourceIDs []string, catalog *interfaces.Catalog) (*interfaces.RawQueryResponse, error) {
 	// 验证query字段是否为有效的JSON对象
 	queryMap, ok := req.Query.(map[string]any)
 	if !ok {
@@ -615,9 +667,9 @@ func (s *rawQueryService) executeOpenSearchQuery(ctx context.Context, req *inter
 		resourceID = rid
 		// 从query中移除resource_id，避免传递给OpenSearch
 		delete(queryMap, "resource_id")
-	} else if len(resourceIds) > 0 {
-		// 如果query中没有resource_id，从resourceIds中获取
-		resourceID = resourceIds[0]
+	} else if len(resourceIDs) > 0 {
+		// 如果query中没有resource_id，从resourceIDs中获取
+		resourceID = resourceIDs[0]
 	} else {
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 			WithErrorDetails("resource_id is required for opensearch queries")
@@ -632,7 +684,7 @@ func (s *rawQueryService) executeOpenSearchQuery(ctx context.Context, req *inter
 	}
 
 	// 获取资源信息
-	resource, err := s.rs.GetByID(ctx, resourceID)
+	resource, err := rqs.rs.GetByID(ctx, resourceID)
 	if err != nil {
 		return nil, err.(*rest.HTTPError)
 	}
@@ -706,42 +758,42 @@ func (s *rawQueryService) executeOpenSearchQuery(ctx context.Context, req *inter
 }
 
 // executeStreamQuery 执行流式查询
-func (s *rawQueryService) executeStreamQuery(ctx context.Context, req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
+func (rqs *rawQueryService) executeStreamQuery(ctx context.Context, req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
 	// 1. 如果提供了query_id，则使用已有会话
 	if req.QueryID != "" {
-		return s.executeStreamQueryWithSession(ctx, req)
+		return rqs.executeStreamQueryWithSession(ctx, req)
 	}
 
 	// 2. 如果没有提供query_id，则创建新会话
-	return s.executeStreamQueryNewSession(ctx, req)
+	return rqs.executeStreamQueryNewSession(ctx, req)
 }
 
 // executeStreamQueryNewSession 创建新会话并执行流式查询
-func (s *rawQueryService) executeStreamQueryNewSession(ctx context.Context, req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
+func (rqs *rawQueryService) executeStreamQueryNewSession(ctx context.Context, req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
 	// 1. 从SQL中提取resource_id
-	resourceIds, err := s.extractResourceIds(req.Query)
+	resourceIDs, err := rqs.extractResourceIDs(req.Query)
 	if err != nil {
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 			WithErrorDetails(fmt.Sprintf("extract resource ids failed: %v", err))
 	}
 
-	if len(resourceIds) == 0 {
+	if len(resourceIDs) == 0 {
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 			WithErrorDetails("resource_id is required for stream query")
 	}
 
 	// 2. 获取资源信息
-	resource, err := s.rs.GetByID(ctx, resourceIds[0])
+	resource, err := rqs.rs.GetByID(ctx, resourceIDs[0])
 	if err != nil {
 		return nil, err.(*rest.HTTPError)
 	}
 	if resource == nil {
 		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_ResourceNotFound).
-			WithErrorDetails(fmt.Sprintf("resource %s not found", resourceIds[0]))
+			WithErrorDetails(fmt.Sprintf("resource %s not found", resourceIDs[0]))
 	}
 
 	// 3. 获取catalog
-	catalog, err := s.cs.GetByID(ctx, resource.CatalogID, true)
+	catalog, err := rqs.cs.GetByID(ctx, resource.CatalogID, true)
 	if err != nil {
 		return nil, err.(*rest.HTTPError)
 	}
@@ -767,7 +819,7 @@ func (s *rawQueryService) executeStreamQueryNewSession(ctx context.Context, req 
 
 	// 6. 创建流式查询会话
 	streamManager := GetStreamQueryManager()
-	session, err := streamManager.CreateSession(catalog.ConnectorType, catalog.Name, catalog.ID, catalog, req.StreamSize, originalSQL, resourceIds)
+	session, err := streamManager.CreateSession(catalog.ConnectorType, catalog.Name, catalog.ID, catalog, req.StreamSize, originalSQL, resourceIDs)
 	if err != nil {
 		otellog.LogError(ctx, "Create stream query session failed", err)
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
@@ -775,14 +827,14 @@ func (s *rawQueryService) executeStreamQueryNewSession(ctx context.Context, req 
 	}
 
 	// 记录query_id和query的对应关系
-	logger.Infof("Created stream query session - query_id: %s, query: %s, resource_ids: %v", session.QueryID, originalSQL, resourceIds)
+	logger.Infof("Created stream query session - query_id: %s, query: %s, resource_ids: %v", session.QueryID, originalSQL, resourceIDs)
 
 	// 7. 执行查询
-	return s.executeSQLWithSession(ctx, req, resourceIds, session)
+	return rqs.executeSQLWithSession(ctx, req, resourceIDs, session)
 }
 
 // executeStreamQueryWithSession 使用已有会话执行流式查询
-func (s *rawQueryService) executeStreamQueryWithSession(ctx context.Context, req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
+func (rqs *rawQueryService) executeStreamQueryWithSession(ctx context.Context, req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
 	// 1. 获取会话
 	streamManager := GetStreamQueryManager()
 	session, ok := streamManager.GetSession(req.QueryID)
@@ -792,10 +844,10 @@ func (s *rawQueryService) executeStreamQueryWithSession(ctx context.Context, req
 	}
 
 	// 2. 如果提供了query参数，从SQL中提取resource_id
-	var resourceIds []string
+	var resourceIDs []string
 	if req.Query != nil {
 		var err error
-		resourceIds, err = s.extractResourceIds(req.Query)
+		resourceIDs, err = rqs.extractResourceIDs(req.Query)
 		if err != nil {
 			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 				WithErrorDetails(fmt.Sprintf("extract resource ids failed: %v", err))
@@ -804,32 +856,33 @@ func (s *rawQueryService) executeStreamQueryWithSession(ctx context.Context, req
 
 	// 记录使用已有会话时的query_id和query的对应关系
 	logger.Infof("Using existing stream query session - query_id: %s, query: %s, resource_ids: %v, offset: %d",
-		session.QueryID, session.OriginalSQL, session.ResourceIds, session.Offset)
+		session.QueryID, session.OriginalSQL, session.ResourceIDs, session.Offset)
 
 	// 3. 执行查询
-	return s.executeSQLWithSession(ctx, req, resourceIds, session)
+	return rqs.executeSQLWithSession(ctx, req, resourceIDs, session)
 }
 
 // executeSQLWithSession 使用会话执行SQL查询
-func (s *rawQueryService) executeSQLWithSession(ctx context.Context, req *interfaces.RawQueryRequest, resourceIds []string, session *StreamQuerySession) (*interfaces.RawQueryResponse, error) {
-	// 1. 获取catalog和resourceIds
+func (rqs *rawQueryService) executeSQLWithSession(ctx context.Context, req *interfaces.RawQueryRequest, resourceIDs []string, session *StreamQuerySession) (*interfaces.RawQueryResponse, error) {
+	// 1. 获取catalog和resourceIDs
 	var catalog *interfaces.Catalog
 	var err error
-	var effectiveResourceIds []string
+	var effectiveResourceIDs []string
 	var effectiveQuery any
+	var sessionWarnings []string
 
-	// 如果请求中提供了resourceIds，则使用请求中的
-	if len(resourceIds) > 0 {
-		effectiveResourceIds = resourceIds
+	// 如果请求中提供了resourceIDs，则使用请求中的
+	if len(resourceIDs) > 0 {
+		effectiveResourceIDs = resourceIDs
 		effectiveQuery = req.Query
-		// 从resourceIds获取catalog
-		catalog, err = s.checkSameDataSource(ctx, effectiveResourceIds)
+		// 从resourceIDs获取catalog
+		catalog, sessionWarnings, err = rqs.checkSameDataSource(ctx, effectiveResourceIDs)
 		if err != nil {
 			return nil, err
 		}
 	} else {
-		// 否则使用会话中的catalog和resourceIds
-		catalog, err = s.cs.GetByID(ctx, session.CatalogID, true)
+		// 否则使用会话中的catalog和resourceIDs
+		catalog, err = rqs.cs.GetByID(ctx, session.CatalogID, true)
 		if err != nil {
 			return nil, err.(*rest.HTTPError)
 		}
@@ -840,13 +893,13 @@ func (s *rawQueryService) executeSQLWithSession(ctx context.Context, req *interf
 		if err := ensureCatalogEnabled(ctx, catalog); err != nil {
 			return nil, err
 		}
-		effectiveResourceIds = session.ResourceIds
+		effectiveResourceIDs = session.ResourceIDs
 		// 使用会话中保存的原始SQL
 		effectiveQuery = session.OriginalSQL
 	}
 
 	// 2. 将resource_id替换为catalog.schema.table格式
-	replacedSQL, err := s.replaceResourceIdWithSchemaTable(ctx, effectiveQuery, effectiveResourceIds, catalog)
+	replacedSQL, err := rqs.replaceResourceIDWithSchemaTable(ctx, effectiveQuery, effectiveResourceIDs, catalog)
 	if err != nil {
 		return nil, err
 	}
@@ -917,7 +970,7 @@ func (s *rawQueryService) executeSQLWithSession(ctx context.Context, req *interf
 		currentSession.QueryID, currentSession.Offset, currentSession.StreamSize, finalSQL)
 
 	// 7. 使用会话中的catalog执行查询
-	result, err := s.executeSQLWithQueryType(ctx, currentSession.Catalog, finalSQL, "stream")
+	result, err := rqs.executeSQLWithQueryType(ctx, currentSession.Catalog, finalSQL, "stream")
 	if err != nil {
 		return nil, err
 	}
@@ -931,6 +984,13 @@ func (s *rawQueryService) executeSQLWithSession(ctx context.Context, req *interf
 
 	logger.Infof("Stream query result - query_id: %s, returned rows: %d, stream_size: %d, has_more: %v, offset: %d",
 		currentSession.QueryID, len(result.Entries), currentSession.StreamSize, result.Stats.HasMore, currentSession.Offset)
+
+	if len(sessionWarnings) > 0 {
+		for _, w := range sessionWarnings {
+			otellog.LogWarn(ctx, "Stream query hit deprecated resource: "+w)
+		}
+		result.Warnings = append(result.Warnings, sessionWarnings...)
+	}
 
 	// 9. 只有在还有更多数据时才更新偏移量，为下一次查询做准备
 	if result.Stats.HasMore {

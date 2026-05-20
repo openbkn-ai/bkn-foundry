@@ -38,6 +38,16 @@ Description = "Catalog description length exceeded"
 Solution = "Please shorten the description"
 ErrorLink = "None"
 
+[VegaBackend.Catalog.EnabledFieldNotAllowed]
+Description = "Catalog enabled state cannot be modified via PUT /catalogs/{id}"
+Solution = "Use POST /catalogs/{id}/enable or /disable to change enabled state"
+ErrorLink = "None"
+
+[VegaBackend.Catalog.InternalError.GetAccountNamesFailed]
+Description = "Failed to get account names"
+Solution = "Please contact the administrator"
+ErrorLink = "None"
+
 [VegaBackend.Catalog.NotFound]
 Description = "Catalog not found"
 Solution = "Please check the catalog ID"

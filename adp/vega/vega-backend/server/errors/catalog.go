@@ -9,22 +9,26 @@ package errors
 // Catalog 错误码
 const (
 	// 400 Bad Request
-	VegaBackend_Catalog_InvalidParameter                 = "VegaBackend.Catalog.InvalidParameter"
-	VegaBackend_Catalog_InvalidParameter_Type            = "VegaBackend.Catalog.InvalidParameter.Type"
-	VegaBackend_Catalog_InvalidParameter_Name            = "VegaBackend.Catalog.InvalidParameter.Name"
-	VegaBackend_Catalog_InvalidParameter_ID              = "VegaBackend.Catalog.InvalidParameter.ID"
-	VegaBackend_Catalog_InvalidParameter_ConnectorType   = "VegaBackend.Catalog.InvalidParameter.ConnectorType"
-	VegaBackend_Catalog_InvalidParameter_ConnectorConfig = "VegaBackend.Catalog.InvalidParameter.ConnectorConfig"
-	VegaBackend_Catalog_LengthExceeded_Name              = "VegaBackend.Catalog.LengthExceeded.Name"
-	VegaBackend_Catalog_LengthExceeded_Description       = "VegaBackend.Catalog.LengthExceeded.Description"
+	VegaBackend_Catalog_InvalidParameter                            = "VegaBackend.Catalog.InvalidParameter"
+	VegaBackend_Catalog_InvalidParameter_Type                       = "VegaBackend.Catalog.InvalidParameter.Type"
+	VegaBackend_Catalog_InvalidParameter_Name                       = "VegaBackend.Catalog.InvalidParameter.Name"
+	VegaBackend_Catalog_InvalidParameter_ID                         = "VegaBackend.Catalog.InvalidParameter.ID"
+	VegaBackend_Catalog_InvalidParameter_ConnectorType              = "VegaBackend.Catalog.InvalidParameter.ConnectorType"
+	VegaBackend_Catalog_InvalidParameter_ConnectorConfig            = "VegaBackend.Catalog.InvalidParameter.ConnectorConfig"
+	VegaBackend_Catalog_InvalidParameter_SensitiveFieldNotEncrypted = "VegaBackend.Catalog.InvalidParameter.SensitiveFieldNotEncrypted"
+	VegaBackend_Catalog_LengthExceeded_Name                         = "VegaBackend.Catalog.LengthExceeded.Name"
+	VegaBackend_Catalog_LengthExceeded_Description                  = "VegaBackend.Catalog.LengthExceeded.Description"
 
-	// 403 Forbidden
-	VegaBackend_Catalog_NotFound   = "VegaBackend.Catalog.NotFound"
-	VegaBackend_Catalog_NameExists = "VegaBackend.Catalog.NameExists"
-	VegaBackend_Catalog_IDExists   = "VegaBackend.Catalog.IDExists"
-	VegaBackend_Catalog_IDMismatch = "VegaBackend.Catalog.IDMismatch"
-	VegaBackend_Catalog_HasAssets  = "VegaBackend.Catalog.HasAssets"
-	VegaBackend_Catalog_IsDisabled = "VegaBackend.Catalog.IsDisabled"
+	// 404 Not Found
+	VegaBackend_Catalog_NotFound = "VegaBackend.Catalog.NotFound"
+
+	// 409 Conflict（命名冲突 / 状态冲突）
+	VegaBackend_Catalog_NameExists              = "VegaBackend.Catalog.NameExists"
+	VegaBackend_Catalog_IDExists                = "VegaBackend.Catalog.IDExists"
+	VegaBackend_Catalog_IDMismatch              = "VegaBackend.Catalog.IDMismatch"
+	VegaBackend_Catalog_HasAssets               = "VegaBackend.Catalog.HasAssets"
+	VegaBackend_Catalog_IsDisabled              = "VegaBackend.Catalog.IsDisabled"
+	VegaBackend_Catalog_EnabledFieldNotAllowed  = "VegaBackend.Catalog.EnabledFieldNotAllowed"
 
 	// 500 Internal Server Error
 	VegaBackend_Catalog_InternalError                       = "VegaBackend.Catalog.InternalError"
@@ -36,32 +40,39 @@ const (
 	VegaBackend_Catalog_InternalError_DeleteFailed          = "VegaBackend.Catalog.InternalError.DeleteFailed"
 	VegaBackend_Catalog_InternalError_TestConnectionFailed  = "VegaBackend.Catalog.InternalError.TestConnectionFailed"
 	VegaBackend_Catalog_InternalError_EncryptFailed         = "VegaBackend.Catalog.InternalError.EncryptFailed"
-
-	VegaBackend_Catalog_InvalidParameter_SensitiveFieldNotEncrypted = "VegaBackend.Catalog.InvalidParameter.SensitiveFieldNotEncrypted"
 )
 
 var CatalogErrCodeList = []string{
+	// 400 Bad Request
 	VegaBackend_Catalog_InvalidParameter,
 	VegaBackend_Catalog_InvalidParameter_Type,
 	VegaBackend_Catalog_InvalidParameter_Name,
 	VegaBackend_Catalog_InvalidParameter_ID,
 	VegaBackend_Catalog_InvalidParameter_ConnectorType,
 	VegaBackend_Catalog_InvalidParameter_ConnectorConfig,
+	VegaBackend_Catalog_InvalidParameter_SensitiveFieldNotEncrypted,
 	VegaBackend_Catalog_LengthExceeded_Name,
 	VegaBackend_Catalog_LengthExceeded_Description,
+
+	// 404 Not Found
 	VegaBackend_Catalog_NotFound,
+
+	// 409 Conflict
 	VegaBackend_Catalog_NameExists,
 	VegaBackend_Catalog_IDExists,
 	VegaBackend_Catalog_IDMismatch,
 	VegaBackend_Catalog_HasAssets,
 	VegaBackend_Catalog_IsDisabled,
+	VegaBackend_Catalog_EnabledFieldNotAllowed,
+
+	// 500 Internal Server Error
 	VegaBackend_Catalog_InternalError,
 	VegaBackend_Catalog_InternalError_CreateFailed,
 	VegaBackend_Catalog_InternalError_CreateResourcesFailed,
+	VegaBackend_Catalog_InternalError_GetAccountNamesFailed,
 	VegaBackend_Catalog_InternalError_GetFailed,
 	VegaBackend_Catalog_InternalError_UpdateFailed,
 	VegaBackend_Catalog_InternalError_DeleteFailed,
 	VegaBackend_Catalog_InternalError_TestConnectionFailed,
 	VegaBackend_Catalog_InternalError_EncryptFailed,
-	VegaBackend_Catalog_InvalidParameter_SensitiveFieldNotEncrypted,
 }

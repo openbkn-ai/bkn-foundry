@@ -19,29 +19,40 @@ const (
 	VegaBackend_Query_CatalogNotFound  = "VegaBackend.Query.CatalogNotFound"
 	VegaBackend_Query_ResourceNotFound = "VegaBackend.Query.ResourceNotFound"
 
-	// 410 Gone - Session 过期
+	// 410 Gone（流式 session 过期）
 	VegaBackend_Query_SessionExpired = "VegaBackend.Query.SessionExpired"
 
-	// 429 Too Many Requests - 并发限流
+	// 429 Too Many Requests（并发限流）
 	VegaBackend_Query_ConcurrencyLimitExceeded = "VegaBackend.Query.ConcurrencyLimitExceeded"
-
-	// 501 Not Implemented
-	VegaBackend_Query_MultiCatalogNotSupported = "VegaBackend.Query.MultiCatalogNotSupported"
 
 	// 500 Internal Server Error
 	VegaBackend_Query_ExecuteFailed = "VegaBackend.Query.ExecuteFailed"
+
+	// 501 Not Implemented
+	VegaBackend_Query_MultiCatalogNotSupported = "VegaBackend.Query.MultiCatalogNotSupported"
 )
 
 var QueryErrCodeList = []string{
+	// 400 Bad Request
 	VegaBackend_Query_InvalidParameter,
 	VegaBackend_Query_InvalidParameter_QueryIDRequired,
 	VegaBackend_Query_InvalidParameter_LimitExceeded,
 	VegaBackend_Query_InvalidParameter_JoinTableNotInTables,
 	VegaBackend_Query_InvalidParameter_QueryTimeout,
+
+	// 404 Not Found
 	VegaBackend_Query_CatalogNotFound,
 	VegaBackend_Query_ResourceNotFound,
+
+	// 410 Gone
 	VegaBackend_Query_SessionExpired,
+
+	// 429 Too Many Requests
 	VegaBackend_Query_ConcurrencyLimitExceeded,
-	VegaBackend_Query_MultiCatalogNotSupported,
+
+	// 500 Internal Server Error
 	VegaBackend_Query_ExecuteFailed,
+
+	// 501 Not Implemented
+	VegaBackend_Query_MultiCatalogNotSupported,
 }

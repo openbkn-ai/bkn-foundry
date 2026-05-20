@@ -6,17 +6,20 @@
 // Package errors Extensions（Issue #382 方案 B）错误码
 package errors
 
+// Extensions 错误码（当前全部为 400 Bad Request）
 const (
+	// 400 Bad Request
 	VegaBackend_Extensions_InvalidFormat         = "VegaBackend.Extensions.InvalidFormat"
 	VegaBackend_Extensions_QuotaExceeded         = "VegaBackend.Extensions.QuotaExceeded"
+	VegaBackend_Extensions_PropertyQuotaExceeded = "VegaBackend.Extensions.PropertyQuotaExceeded"
 	VegaBackend_Extensions_ReservedKey           = "VegaBackend.Extensions.ReservedKey"
 	VegaBackend_Extensions_MismatchedQueryPairs  = "VegaBackend.Extensions.MismatchedQueryPairs"
 	VegaBackend_Extensions_TooManyFilterPairs    = "VegaBackend.Extensions.TooManyFilterPairs"
-	VegaBackend_Extensions_PropertyQuotaExceeded = "VegaBackend.Extensions.PropertyQuotaExceeded"
 )
 
 // ExtensionsErrCodeList 须在 init 中 rest.Register，否则返回该码时进程会 fatal（missing errorCode）。
 var ExtensionsErrCodeList = []string{
+	// 400 Bad Request
 	VegaBackend_Extensions_InvalidFormat,
 	VegaBackend_Extensions_QuotaExceeded,
 	VegaBackend_Extensions_PropertyQuotaExceeded,

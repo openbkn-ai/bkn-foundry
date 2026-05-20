@@ -8,9 +8,6 @@ package errors
 
 // BuildTask 相关错误码
 const (
-	// 404 Not Found
-	VegaBackend_BuildTask_NotFound = "VegaBackend.BuildTask.NotFound"
-
 	// 400 Bad Request
 	VegaBackend_BuildTask_Exist                       = "VegaBackend.BuildTask.Exist"
 	VegaBackend_BuildTask_Running                     = "VegaBackend.BuildTask.Running"
@@ -18,6 +15,9 @@ const (
 	VegaBackend_BuildTask_InvalidExecuteType          = "VegaBackend.BuildTask.InvalidExecuteType"
 	VegaBackend_BuildTask_InvalidParameter_ResourceID = "VegaBackend.BuildTask.InvalidParameter.ResourceID"
 	VegaBackend_BuildTask_InvalidParameter_Mode       = "VegaBackend.BuildTask.InvalidParameter.Mode"
+
+	// 404 Not Found
+	VegaBackend_BuildTask_NotFound = "VegaBackend.BuildTask.NotFound"
 
 	// 409 Conflict
 	VegaBackend_BuildTask_InvalidStateTransition = "VegaBackend.BuildTask.InvalidStateTransition"
@@ -32,15 +32,22 @@ const (
 )
 
 var BuildTaskErrCodeList = []string{
-	VegaBackend_BuildTask_NotFound,
+	// 400 Bad Request
 	VegaBackend_BuildTask_Exist,
 	VegaBackend_BuildTask_Running,
 	VegaBackend_BuildTask_InvalidStatus,
 	VegaBackend_BuildTask_InvalidExecuteType,
 	VegaBackend_BuildTask_InvalidParameter_ResourceID,
 	VegaBackend_BuildTask_InvalidParameter_Mode,
+
+	// 404 Not Found
+	VegaBackend_BuildTask_NotFound,
+
+	// 409 Conflict
 	VegaBackend_BuildTask_InvalidStateTransition,
 	VegaBackend_BuildTask_HasRunningExecution,
+
+	// 500 Internal Server Error
 	VegaBackend_BuildTask_InternalError_CreateFailed,
 	VegaBackend_BuildTask_InternalError_GetFailed,
 	VegaBackend_BuildTask_InternalError_UpdateFailed,

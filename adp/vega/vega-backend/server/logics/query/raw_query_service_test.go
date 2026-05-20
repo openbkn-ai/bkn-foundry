@@ -18,6 +18,11 @@ import (
 	mock_interfaces "vega-backend/interfaces/mock"
 )
 
+// NewRawQueryServiceWithDeps 创建SQL查询服务（用于测试）
+func NewRawQueryServiceWithDeps(cs interfaces.CatalogService, rs interfaces.ResourceService) interfaces.RawQueryService {
+	return &rawQueryService{cs: cs, rs: rs}
+}
+
 func TestExecuteRejectsDisabledCatalogForOpenSearchQuery(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockCS := mock_interfaces.NewMockCatalogService(ctrl)

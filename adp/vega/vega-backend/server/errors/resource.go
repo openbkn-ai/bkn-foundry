@@ -22,14 +22,17 @@ const (
 	VegaBackend_InvalidParameter_Having             = "VegaBackend.InvalidParameter.Having"
 	VegaBackend_InvalidParameter_CalendarInterval   = "VegaBackend.InvalidParameter.CalendarInterval"
 
-	// 403 Forbidden
+	// 404 Not Found
 	VegaBackend_Resource_NotFound        = "VegaBackend.Resource.NotFound"
+	VegaBackend_Resource_CatalogNotFound = "VegaBackend.Resource.CatalogNotFound"
+
+	// 409 Conflict（命名冲突 / 状态冲突）
 	VegaBackend_Resource_NameExists      = "VegaBackend.Resource.NameExists"
 	VegaBackend_Resource_IDExists        = "VegaBackend.Resource.IDExists"
-	VegaBackend_Resource_CatalogNotFound = "VegaBackend.Resource.CatalogNotFound"
 	VegaBackend_Resource_IsDisabled      = "VegaBackend.Resource.IsDisabled"
 	VegaBackend_Resource_AlreadyEnabled  = "VegaBackend.Resource.AlreadyEnabled"
 	VegaBackend_Resource_AlreadyDisabled = "VegaBackend.Resource.AlreadyDisabled"
+	VegaBackend_Resource_NotQueryable    = "VegaBackend.Resource.NotQueryable"
 
 	// 500 Internal Server Error
 	VegaBackend_Resource_InternalError                       = "VegaBackend.Resource.InternalError"
@@ -43,6 +46,7 @@ const (
 )
 
 var ResourceErrCodeList = []string{
+	// 400 Bad Request
 	VegaBackend_Resource_InvalidParameter,
 	VegaBackend_Resource_InvalidParameter_Type,
 	VegaBackend_Resource_InvalidParameter_Name,
@@ -55,13 +59,20 @@ var ResourceErrCodeList = []string{
 	VegaBackend_InvalidParameter_OrderBy,
 	VegaBackend_InvalidParameter_Having,
 	VegaBackend_InvalidParameter_CalendarInterval,
+
+	// 404 Not Found
 	VegaBackend_Resource_NotFound,
+	VegaBackend_Resource_CatalogNotFound,
+
+	// 409 Conflict（命名冲突 / 状态冲突）
 	VegaBackend_Resource_NameExists,
 	VegaBackend_Resource_IDExists,
-	VegaBackend_Resource_CatalogNotFound,
 	VegaBackend_Resource_IsDisabled,
 	VegaBackend_Resource_AlreadyEnabled,
 	VegaBackend_Resource_AlreadyDisabled,
+	VegaBackend_Resource_NotQueryable,
+
+	// 500 Internal Server Error
 	VegaBackend_Resource_InternalError,
 	VegaBackend_Resource_InternalError_CreateFailed,
 	VegaBackend_Resource_InternalError_GetFailed,

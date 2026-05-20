@@ -410,7 +410,7 @@ func (r *restHandler) updateCatalog(c *gin.Context, visitor hydra.Visitor) {
 	}
 	if req.Enabled != catalog.Enabled {
 		span.SetStatus(codes.Error, "Catalog enabled state cannot be modified by PUT")
-		httpErr := rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Catalog_InvalidParameter).
+		httpErr := rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Catalog_EnabledFieldNotAllowed).
 			WithErrorDetails("use POST /catalogs/{id}/enable or /disable to change enabled state")
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)

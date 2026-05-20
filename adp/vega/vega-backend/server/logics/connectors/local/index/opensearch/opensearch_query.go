@@ -40,7 +40,7 @@ func (c *OpenSearchConnector) ExecuteQueryWithDsl(ctx context.Context, resourceN
 	}
 
 	// Execute search request with the provided DSL
-	// resourceId is used as the index name
+	// resourceID is used as the index name
 	req := opensearchapi.SearchRequest{
 		Index: []string{resourceName},
 		Body:  strings.NewReader(dsl),

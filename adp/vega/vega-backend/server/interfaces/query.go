@@ -24,10 +24,11 @@ type RawQueryRequest struct {
 
 // RawQueryResponse SQL查询响应
 type RawQueryResponse struct {
-	Columns    []ColumnInfo     `json:"columns"`     // 列信息
-	Entries    []map[string]any `json:"entries"`     // 查询结果
-	Stats      QueryStats       `json:"stats"`       // 查询统计
-	TotalCount int64            `json:"total_count"` // 总条数
+	Columns    []ColumnInfo     `json:"columns"`            // 列信息
+	Entries    []map[string]any `json:"entries"`            // 查询结果
+	Stats      QueryStats       `json:"stats"`              // 查询统计
+	TotalCount int64            `json:"total_count"`        // 总条数
+	Warnings   []string         `json:"warnings,omitempty"` // 非阻断告警（如 deprecated 资源命中提示）
 }
 
 // ColumnInfo 列信息

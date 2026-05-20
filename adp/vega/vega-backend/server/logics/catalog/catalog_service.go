@@ -470,6 +470,9 @@ func (cs *catalogService) Update(ctx context.Context, catalog *interfaces.Catalo
 	catalog.Description = req.Description
 
 	if req.ConnectorType != "" {
+		// 注：connector_type 不可变性由 PUT handler 兜底校验（catalog_handler.go），
+		// 此处不重复，仅按 req.ConnectorType 走解密 + 试连 + 持久化流程。
+
 		// 验证敏感字段是否为合法 RSA 密文，获取明文用于连接测试
 		sensitiveFields := factory.GetFactory().GetSensitiveFields(req.ConnectorType)
 		decryptedConfig, err := cs.validateAndDecryptSensitiveFields(sensitiveFields, req.ConnectorCfg)

@@ -68,6 +68,11 @@ Description = "Resource is already disabled"
 Solution = "No action needed"
 ErrorLink = "None"
 
+[VegaBackend.Resource.NotQueryable]
+Description = "Resource is not queryable in its current status"
+Solution = "Only resources in active or deprecated status are queryable; enable the resource or refresh its schema"
+ErrorLink = "None"
+
 [VegaBackend.Resource.InternalError]
 Description = "Resource internal error"
 Solution = "Please contact the administrator"

@@ -15,10 +15,14 @@ const (
 	VegaBackend_ConnectorType_InvalidParameter_Mode     = "VegaBackend.ConnectorType.InvalidParameter.Mode"
 	VegaBackend_ConnectorType_InvalidParameter_Category = "VegaBackend.ConnectorType.InvalidParameter.Category"
 	VegaBackend_ConnectorType_InvalidParameter_Endpoint = "VegaBackend.ConnectorType.InvalidParameter.Endpoint"
-	VegaBackend_ConnectorType_BadRequest                = "VegaBackend.ConnectorType.BadRequest"
 
-	// 404 Not Found / 409 Conflict
-	VegaBackend_ConnectorType_NotFound     = "VegaBackend.ConnectorType.NotFound"
+	// 403 Forbidden（命名带 BadRequest 但实际作为 403 使用，参见 handler 调用点）
+	VegaBackend_ConnectorType_BadRequest = "VegaBackend.ConnectorType.BadRequest"
+
+	// 404 Not Found
+	VegaBackend_ConnectorType_NotFound = "VegaBackend.ConnectorType.NotFound"
+
+	// 409 Conflict
 	VegaBackend_ConnectorType_TypeExists   = "VegaBackend.ConnectorType.TypeExists"
 	VegaBackend_ConnectorType_NameExists   = "VegaBackend.ConnectorType.NameExists"
 	VegaBackend_ConnectorType_TypeMismatch = "VegaBackend.ConnectorType.TypeMismatch"
@@ -32,17 +36,26 @@ const (
 )
 
 var ConnectorTypeErrCodeList = []string{
+	// 400 Bad Request
 	VegaBackend_ConnectorType_InvalidParameter,
 	VegaBackend_ConnectorType_InvalidParameter_Type,
 	VegaBackend_ConnectorType_InvalidParameter_Name,
 	VegaBackend_ConnectorType_InvalidParameter_Mode,
 	VegaBackend_ConnectorType_InvalidParameter_Category,
 	VegaBackend_ConnectorType_InvalidParameter_Endpoint,
+
+	// 403 Forbidden
 	VegaBackend_ConnectorType_BadRequest,
+
+	// 404 Not Found
 	VegaBackend_ConnectorType_NotFound,
-	VegaBackend_ConnectorType_NameExists,
+
+	// 409 Conflict
 	VegaBackend_ConnectorType_TypeExists,
+	VegaBackend_ConnectorType_NameExists,
 	VegaBackend_ConnectorType_TypeMismatch,
+
+	// 500 Internal Server Error
 	VegaBackend_ConnectorType_InternalError,
 	VegaBackend_ConnectorType_InternalError_RegisterFailed,
 	VegaBackend_ConnectorType_InternalError_GetFailed,

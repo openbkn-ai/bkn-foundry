@@ -38,6 +38,16 @@ Description = "目录描述长度超限"
 Solution = "请缩短描述"
 ErrorLink = "暂无"
 
+[VegaBackend.Catalog.EnabledFieldNotAllowed]
+Description = "目录的启用状态不能通过 PUT /catalogs/{id} 修改"
+Solution = "请改用 POST /catalogs/{id}/enable 或 /disable 切换启用状态"
+ErrorLink = "暂无"
+
+[VegaBackend.Catalog.InternalError.GetAccountNamesFailed]
+Description = "获取账号名称失败"
+Solution = "请联系管理员"
+ErrorLink = "暂无"
+
 [VegaBackend.Catalog.NotFound]
 Description = "目录不存在"
 Solution = "请检查目录ID"

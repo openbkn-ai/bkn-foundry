@@ -54,10 +54,10 @@ const (
 
 var (
 	commonErrCodeList = []string{
+		// 400 Bad Request
 		VegaBackend_InvalidParameter_Name,
 		VegaBackend_InvalidParameter_Description,
 		VegaBackend_InvalidParameter_Tag,
-
 		VegaBackend_InvalidParameter_RequestBody,
 		VegaBackend_InvalidParameter_ResourceType,
 		VegaBackend_InvalidParameter_StreamSize,
@@ -77,8 +77,10 @@ var (
 		VegaBackend_CountExceeded_FilterConditionSubConds,
 		VegaBackend_UnsupportFilterConditionOperation,
 
+		// 406 Not Acceptable
 		VegaBackend_InvalidRequestHeader_ContentType,
 
+		// 500 Internal Server Error
 		VegaBackend_InternalError_BeginTransactionFailed,
 		VegaBackend_InternalError_CommitTransactionFailed,
 		VegaBackend_InternalError_MarshalDataFailed,

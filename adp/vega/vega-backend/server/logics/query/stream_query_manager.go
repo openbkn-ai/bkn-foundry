@@ -27,7 +27,7 @@ type StreamQuerySession struct {
 	LastAccessed time.Time
 	CreatedAt    time.Time
 	OriginalSQL  string   // 原始SQL查询语句
-	ResourceIds  []string // 资源ID列表
+	ResourceIDs  []string // 资源ID列表
 }
 
 // StreamQueryManager 流式查询管理器
@@ -54,7 +54,9 @@ func GetStreamQueryManager() *StreamQueryManager {
 }
 
 // CreateSession 创建新的流式查询会话
-func (m *StreamQueryManager) CreateSession(connector, database, catalogID string, catalog *interfaces.Catalog, streamSize int, originalSQL string, resourceIds []string) (*StreamQuerySession, error) {
+func (sqm *StreamQueryManager) CreateSession(connector, database, catalogID string, catalog *interfaces.Catalog,
+	streamSize int, originalSQL string, resourceIDs []string) (*StreamQuerySession, error) {
+
 	queryID := uuid.New().String()
 
 	// 如果streamSize未设置或小于等于0，使用默认值10000
@@ -73,23 +75,23 @@ func (m *StreamQueryManager) CreateSession(connector, database, catalogID string
 		LastAccessed: time.Now(),
 		CreatedAt:    time.Now(),
 		OriginalSQL:  originalSQL,
-		ResourceIds:  resourceIds,
+		ResourceIDs:  resourceIDs,
 	}
 
-	m.mu.Lock()
-	m.sessions[queryID] = session
-	m.mu.Unlock()
+	sqm.mu.Lock()
+	sqm.sessions[queryID] = session
+	sqm.mu.Unlock()
 
 	logger.Infof("Created stream query session: %s for connector: %s, database: %s, stream_size: %d", queryID, connector, database, streamSize)
 	return session, nil
 }
 
 // GetSession 获取流式查询会话
-func (m *StreamQueryManager) GetSession(queryID string) (*StreamQuerySession, bool) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+func (sqm *StreamQueryManager) GetSession(queryID string) (*StreamQuerySession, bool) {
+	sqm.mu.Lock()
+	defer sqm.mu.Unlock()
 
-	session, ok := m.sessions[queryID]
+	session, ok := sqm.sessions[queryID]
 	if ok {
 		session.LastAccessed = time.Now()
 	}
@@ -97,31 +99,31 @@ func (m *StreamQueryManager) GetSession(queryID string) (*StreamQuerySession, bo
 }
 
 // RemoveSession 移除流式查询会话
-func (m *StreamQueryManager) RemoveSession(queryID string) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+func (sqm *StreamQueryManager) RemoveSession(queryID string) {
+	sqm.mu.Lock()
+	defer sqm.mu.Unlock()
 
-	if _, ok := m.sessions[queryID]; ok {
-		delete(m.sessions, queryID)
+	if _, ok := sqm.sessions[queryID]; ok {
+		delete(sqm.sessions, queryID)
 		logger.Infof("Removed stream query session: %s", queryID)
 	}
 }
 
 // cleanupExpiredSessions 清理过期的会话
-func (m *StreamQueryManager) cleanupExpiredSessions() {
+func (sqm *StreamQueryManager) cleanupExpiredSessions() {
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
 
 	for range ticker.C {
-		m.mu.Lock()
+		sqm.mu.Lock()
 		now := time.Now()
-		for queryID, session := range m.sessions {
+		for queryID, session := range sqm.sessions {
 			// 清理超过30分钟未使用的会话
 			if now.Sub(session.LastAccessed) > 30*time.Minute {
-				delete(m.sessions, queryID)
+				delete(sqm.sessions, queryID)
 				logger.Infof("Cleaned up expired stream query session: %s", queryID)
 			}
 		}
-		m.mu.Unlock()
+		sqm.mu.Unlock()
 	}
 }
