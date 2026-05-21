@@ -24,12 +24,9 @@ import (
 	"go.opentelemetry.io/otel/codes"
 
 	"vega-backend/common"
-	asynqAccess "vega-backend/drivenadapters/asynq"
-	taskAccess "vega-backend/drivenadapters/build_task"
-	"vega-backend/drivenadapters/model_factory"
-	resourceAccess "vega-backend/drivenadapters/resource"
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
+	"vega-backend/logics"
 	"vega-backend/logics/catalog"
 	"vega-backend/logics/user_mgmt"
 )
@@ -54,9 +51,9 @@ func NewBuildTaskService(appSetting *common.AppSetting) interfaces.BuildTaskServ
 		btsInst = &buildTaskService{
 			appSetting: appSetting,
 			cs:         catalog.NewCatalogService(appSetting),
-			ra:         resourceAccess.NewResourceAccess(appSetting),
-			bta:        taskAccess.NewBuildTaskAccess(appSetting),
-			mfa:        model_factory.NewModelFactoryAccess(appSetting),
+			ra:         logics.RA,
+			bta:        logics.BTA,
+			mfa:        logics.MFA,
 			ums:        user_mgmt.NewUserMgmtService(appSetting),
 		}
 	})
@@ -313,7 +310,7 @@ func (bts *buildTaskService) StartBuildTask(ctx context.Context, taskID string, 
 			typename = interfaces.BuildTaskTypeStreaming
 		}
 		asynqTask := asynq.NewTask(typename, payload)
-		client := asynqAccess.NewAsynqAccess(bts.appSetting).CreateClient(context.Background())
+		client := logics.AQA.CreateClient()
 		if _, err := client.Enqueue(asynqTask,
 			asynq.Queue(interfaces.DefaultQueue),
 			asynq.MaxRetry(interfaces.BUILD_TASK_MAX_RETRY_COUNT),

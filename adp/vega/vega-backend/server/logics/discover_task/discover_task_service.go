@@ -23,10 +23,9 @@ import (
 	"go.opentelemetry.io/otel/codes"
 
 	"vega-backend/common"
-	asynq_access "vega-backend/drivenadapters/asynq"
-	discovertaskaccess "vega-backend/drivenadapters/discover_task"
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
+	"vega-backend/logics"
 	"vega-backend/logics/user_mgmt"
 )
 
@@ -35,25 +34,39 @@ var (
 	dtsService interfaces.DiscoverTaskService
 )
 
+const debugDiscoverTaskQueueSize = 100
+
 type discoverTaskService struct {
 	appSetting *common.AppSetting
 	client     *asynq.Client
 	dta        interfaces.DiscoverTaskAccess
 	ums        interfaces.UserMgmtService
+
+	debugTaskQueue chan *asynq.Task
 }
 
 // NewDiscoverTaskService creates or returns the singleton DiscoverTaskService.
 func NewDiscoverTaskService(appSetting *common.AppSetting) interfaces.DiscoverTaskService {
 	dtsOnce.Do(func() {
-		asynqAccess := asynq_access.NewAsynqAccess(appSetting)
+		var client *asynq.Client
+		if !common.GetDebugMode() {
+			client = logics.AQA.CreateClient()
+		}
 		dtsService = &discoverTaskService{
 			appSetting: appSetting,
-			client:     asynqAccess.CreateClient(context.Background()),
-			dta:        discovertaskaccess.NewDiscoverTaskAccess(appSetting),
+			client:     client,
+			dta:        logics.DTA,
 			ums:        user_mgmt.NewUserMgmtService(appSetting),
+
+			debugTaskQueue: make(chan *asynq.Task, debugDiscoverTaskQueueSize),
 		}
 	})
 	return dtsService
+}
+
+// DebugTaskQueue returns the in-process discover task queue used in DEBUG_MODE.
+func (dts *discoverTaskService) DebugTaskQueue() <-chan *asynq.Task {
+	return dts.debugTaskQueue
 }
 
 // Create creates a new DiscoverTask and enqueues it to the task queue.
@@ -124,18 +137,24 @@ func (dts *discoverTaskService) Create(ctx context.Context, catalogID string, di
 	}
 	// 设置任务执行超时时间为 30 分钟
 	asynqTask := asynq.NewTask(interfaces.DiscoverTaskType, payload)
-	info, err := dts.client.Enqueue(asynqTask,
-		asynq.Queue(interfaces.HighQueue),
-		asynq.MaxRetry(3),
-		asynq.Timeout(30*time.Minute),
-		asynq.Deadline(time.Now().Add(12*time.Hour)),
-	)
-	if err != nil {
-		otellog.LogError(ctx, "Failed to enqueue discover task", err)
-		return "", err
+	if common.GetDebugMode() {
+		dts.debugTaskQueue <- asynqTask
+		logger.Infof("Enqueued debug discover task: id=%s, type=%s", task.ID, asynqTask.Type())
+	} else {
+		info, err := dts.client.Enqueue(asynqTask,
+			asynq.Queue(interfaces.HighQueue),
+			asynq.MaxRetry(3),
+			asynq.Timeout(30*time.Minute),
+			asynq.Deadline(time.Now().Add(12*time.Hour)),
+		)
+		if err != nil {
+			otellog.LogError(ctx, "Failed to enqueue discover task", err)
+			return "", err
+		}
+
+		logger.Infof("Enqueued task: id=%s, type=%s, queue=%s", info.ID, info.Type, info.Queue)
 	}
 
-	logger.Infof("Enqueued task: id=%s, type=%s, queue=%s", info.ID, info.Type, info.Queue)
 	return task.ID, nil
 }
 

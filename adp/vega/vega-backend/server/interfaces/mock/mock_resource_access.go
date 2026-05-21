@@ -203,21 +203,6 @@ func (mr *MockResourceAccessMockRecorder) List(ctx, params any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "List", reflect.TypeOf((*MockResourceAccess)(nil).List), ctx, params)
 }
 
-// ListIDs mocks base method.
-func (m *MockResourceAccess) ListIDs(ctx context.Context, params interfaces.ResourcesQueryParams) ([]string, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListIDs", ctx, params)
-	ret0, _ := ret[0].([]string)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ListIDs indicates an expected call of ListIDs.
-func (mr *MockResourceAccessMockRecorder) ListIDs(ctx, params any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListIDs", reflect.TypeOf((*MockResourceAccess)(nil).ListIDs), ctx, params)
-}
-
 // ListAuthResources mocks base method.
 func (m *MockResourceAccess) ListAuthResources(ctx context.Context, params interfaces.AuthResourceQueryParams) ([]*interfaces.AuthResourceEntry, error) {
 	m.ctrl.T.Helper()
@@ -233,6 +218,21 @@ func (mr *MockResourceAccessMockRecorder) ListAuthResources(ctx, params any) *go
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListAuthResources", reflect.TypeOf((*MockResourceAccess)(nil).ListAuthResources), ctx, params)
 }
 
+// ListIDs mocks base method.
+func (m *MockResourceAccess) ListIDs(ctx context.Context, params interfaces.ResourcesQueryParams) ([]string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListIDs", ctx, params)
+	ret0, _ := ret[0].([]string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListIDs indicates an expected call of ListIDs.
+func (mr *MockResourceAccessMockRecorder) ListIDs(ctx, params any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListIDs", reflect.TypeOf((*MockResourceAccess)(nil).ListIDs), ctx, params)
+}
+
 // Update mocks base method.
 func (m *MockResourceAccess) Update(ctx context.Context, resource *interfaces.Resource) error {
 	m.ctrl.T.Helper()
@@ -245,6 +245,20 @@ func (m *MockResourceAccess) Update(ctx context.Context, resource *interfaces.Re
 func (mr *MockResourceAccessMockRecorder) Update(ctx, resource any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Update", reflect.TypeOf((*MockResourceAccess)(nil).Update), ctx, resource)
+}
+
+// UpdateDiscoverStatus mocks base method.
+func (m *MockResourceAccess) UpdateDiscoverStatus(ctx context.Context, id, status string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateDiscoverStatus", ctx, id, status)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateDiscoverStatus indicates an expected call of UpdateDiscoverStatus.
+func (mr *MockResourceAccessMockRecorder) UpdateDiscoverStatus(ctx, id, status any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateDiscoverStatus", reflect.TypeOf((*MockResourceAccess)(nil).UpdateDiscoverStatus), ctx, id, status)
 }
 
 // UpdateStatus mocks base method.

@@ -4,7 +4,7 @@
 // See the LICENSE file in the project root for details.
 
 // Package drivenadapters provides Asynq task queue implementation.
-package drivenadapters
+package asynq
 
 import (
 	"context"
@@ -40,13 +40,13 @@ func NewAsynqAccess(appSetting *common.AppSetting) interfaces.AsynqAccess {
 }
 
 // CreateClient creates and returns the Asynq client for enqueueing tasks.
-func (aqa *asynqAccess) CreateClient(ctx context.Context) *asynq.Client {
+func (aqa *asynqAccess) CreateClient() *asynq.Client {
 	redisOpt := aqa.getRedisClientOpt()
 	return asynq.NewClient(redisOpt)
 }
 
 // CreateServer creates and returns the Asynq server for processing tasks.
-func (aqa *asynqAccess) CreateServer(ctx context.Context) *asynq.Server {
+func (aqa *asynqAccess) CreateServer() *asynq.Server {
 	redisOpt := aqa.getRedisClientOpt()
 	return asynq.NewServer(redisOpt, asynq.Config{
 		Concurrency: 10,

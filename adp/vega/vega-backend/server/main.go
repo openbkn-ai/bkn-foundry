@@ -22,14 +22,23 @@ import (
 	_ "go.uber.org/automaxprocs"
 
 	"vega-backend/common"
+	"vega-backend/drivenadapters/asynq"
 	"vega-backend/drivenadapters/auth"
+	"vega-backend/drivenadapters/build_task"
+	"vega-backend/drivenadapters/catalog"
+	"vega-backend/drivenadapters/connector_type"
+	"vega-backend/drivenadapters/discover_schedule"
+	"vega-backend/drivenadapters/discover_task"
+	"vega-backend/drivenadapters/kafka"
+	"vega-backend/drivenadapters/model_factory"
 	"vega-backend/drivenadapters/permission"
+	"vega-backend/drivenadapters/resource"
 	"vega-backend/drivenadapters/user_mgmt"
 	"vega-backend/driveradapters"
 	"vega-backend/logics"
 	"vega-backend/logics/connectors/factory"
-	"vega-backend/logics/discover_schedule"
-	"vega-backend/logics/discover_task"
+	logicsDiscoverSchedule "vega-backend/logics/discover_schedule"
+	logicsDiscoverTask "vega-backend/logics/discover_task"
 	"vega-backend/worker"
 )
 
@@ -122,6 +131,16 @@ func main() {
 		logics.SetUserMgmtAccess(user_mgmt.NewUserMgmtAccess(appSetting))
 	}
 
+	logics.SetAsynqAccess(asynq.NewAsynqAccess(appSetting))
+	logics.SetBuildTaskAccess(build_task.NewBuildTaskAccess(appSetting))
+	logics.SetCatalogAccess(catalog.NewCatalogAccess(appSetting))
+	logics.SetConnectorTypeAccess(connector_type.NewConnectorTypeAccess(appSetting))
+	logics.SetDiscoverScheduleAccess(discover_schedule.NewDiscoverScheduleAccess(appSetting))
+	logics.SetDiscoverTaskAccess(discover_task.NewDiscoverTaskAccess(appSetting))
+	logics.SetKafkaAccess(kafka.NewKafkaAccess(appSetting))
+	logics.SetModelFactoryAccess(model_factory.NewModelFactoryAccess(appSetting))
+	logics.SetResourceAccess(resource.NewResourceAccess(appSetting))
+
 	// 初始化 Connector Factory 并注册内置的 Local Connector Builder
 	factory.Init(appSetting)
 	logger.Info("VEGA Manager Init Connector Factory Success")
@@ -132,8 +151,8 @@ func main() {
 	logger.Info("VEGA Manager Init Task Worker Success")
 
 	// 初始化并启动调度器
-	dts := discover_task.NewDiscoverTaskService(appSetting)
-	dss := discover_schedule.NewDiscoverScheduleService(appSetting, dts)
+	dts := logicsDiscoverTask.NewDiscoverTaskService(appSetting)
+	dss := logicsDiscoverSchedule.NewDiscoverScheduleService(appSetting, dts)
 	sw := worker.NewScheduleWorker(appSetting, dss)
 	if err := sw.Start(); err != nil {
 		logger.Fatalf("Failed to start scheduler: %v", err)

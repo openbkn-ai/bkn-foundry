@@ -7,8 +7,6 @@
 package interfaces
 
 import (
-	"context"
-
 	"github.com/hibiken/asynq"
 )
 
@@ -23,7 +21,7 @@ const (
 //go:generate mockgen -source ../interfaces/asynq_access.go -destination ../interfaces/mock/mock_asynq_access.go
 type AsynqAccess interface {
 	// CreateClient creates and returns the Asynq client for enqueueing tasks.
-	CreateClient(ctx context.Context) *asynq.Client
+	CreateClient() *asynq.Client
 	// CreateServer creates and returns the Asynq server for processing tasks.
-	CreateServer(ctx context.Context) *asynq.Server
+	CreateServer() *asynq.Server
 }

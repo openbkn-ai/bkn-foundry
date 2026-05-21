@@ -322,6 +322,13 @@ func GetAuthEnabled() bool {
 	return envVal != "false" && envVal != "0"
 }
 
+// GetDebugMode 获取调试模式状态
+// 通过环境变量 DEBUG_MODE 控制，显式设置为 true 或 1 时启用
+func GetDebugMode() bool {
+	envVal := strings.TrimSpace(os.Getenv("DEBUG_MODE"))
+	return strings.EqualFold(envVal, "true") || envVal == "1"
+}
+
 func SetHydraAdminSetting() {
 	if !GetAuthEnabled() {
 		logger.Info("ISF authentication disabled via AUTH_ENABLED env, skipping hydra-admin configuration")

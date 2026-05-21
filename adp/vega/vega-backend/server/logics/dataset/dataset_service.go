@@ -13,9 +13,9 @@ import (
 	"go.opentelemetry.io/otel/codes"
 
 	"vega-backend/common"
-	resourceAccess "vega-backend/drivenadapters/resource"
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
+	"vega-backend/logics"
 	"vega-backend/logics/catalog"
 	"vega-backend/logics/connectors"
 	opensearchConnector "vega-backend/logics/connectors/local/index/opensearch"
@@ -61,7 +61,7 @@ func NewDatasetService(appSetting *common.AppSetting) interfaces.DatasetService 
 		dsService = &datasetService{
 			appSetting: appSetting,
 			c:          connector.(connectors.IndexConnector),
-			ra:         resourceAccess.NewResourceAccess(appSetting),
+			ra:         logics.RA,
 			cs:         catalog.NewCatalogService(appSetting),
 		}
 	})

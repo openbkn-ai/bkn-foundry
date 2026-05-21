@@ -4,7 +4,7 @@
 // See the LICENSE file in the project root for details.
 
 // Package connectortype provides ConnectorType data access operations.
-package connectortype
+package connector_type
 
 import (
 	"context"

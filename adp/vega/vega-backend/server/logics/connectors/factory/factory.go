@@ -15,8 +15,8 @@ import (
 	"github.com/kweaver-ai/kweaver-go-lib/logger"
 
 	"vega-backend/common"
-	connectorTypeAccess "vega-backend/drivenadapters/connector_type"
 	"vega-backend/interfaces"
+	"vega-backend/logics"
 	"vega-backend/logics/connectors"
 	"vega-backend/logics/connectors/remote"
 )
@@ -49,7 +49,7 @@ func Init(appSetting *common.AppSetting) *ConnectorFactory {
 	factoryOnce.Do(func() {
 		factory = &ConnectorFactory{
 			appSetting: appSetting,
-			cta:        connectorTypeAccess.NewConnectorTypeAccess(appSetting),
+			cta:        logics.CTA,
 			connectors: make(map[string]connectors.Connector, 0),
 		}
 

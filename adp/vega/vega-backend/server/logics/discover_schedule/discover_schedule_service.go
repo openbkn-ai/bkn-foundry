@@ -21,9 +21,9 @@ import (
 	"go.opentelemetry.io/otel/codes"
 
 	"vega-backend/common"
-	"vega-backend/drivenadapters/discover_schedule"
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
+	"vega-backend/logics"
 	"vega-backend/logics/user_mgmt"
 )
 
@@ -48,7 +48,7 @@ func NewDiscoverScheduleService(appSetting *common.AppSetting, dts interfaces.Di
 	dsServiceOnce.Do(func() {
 		dsService = &discoverScheduleService{
 			appSetting: appSetting,
-			dsa:        discover_schedule.NewDiscoverScheduleAccess(appSetting),
+			dsa:        logics.DSA,
 			dts:        dts,
 			ums:        user_mgmt.NewUserMgmtService(appSetting),
 		}

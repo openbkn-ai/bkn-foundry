@@ -16,8 +16,8 @@ import (
 	"github.com/kweaver-ai/kweaver-go-lib/logger"
 
 	"vega-backend/common"
-	asynq_access "vega-backend/drivenadapters/asynq"
 	"vega-backend/interfaces"
+	"vega-backend/logics"
 )
 
 var (
@@ -29,7 +29,7 @@ var (
 type TaskWorkerManger struct {
 	appSetting       *common.AppSetting
 	aqa              interfaces.AsynqAccess
-	discoverHandler  *discoverHandler
+	discoverHandler  *DiscoverHandler
 	btBuildHandler   *batchBuildHandler
 	stBuildHandler   *streamingBuildHandler
 	embeddingHandler *embeddingHandler
@@ -40,7 +40,7 @@ func NewTaskWorkerManager(appSetting *common.AppSetting) *TaskWorkerManger {
 	taskWorkerOnce.Do(func() {
 		taskWorkerMgr = &TaskWorkerManger{
 			appSetting:       appSetting,
-			aqa:              asynq_access.NewAsynqAccess(appSetting),
+			aqa:              logics.AQA,
 			discoverHandler:  NewDiscoverHandler(appSetting),
 			btBuildHandler:   NewBatchBuildHandler(appSetting),
 			stBuildHandler:   NewStreamingBuildHandler(appSetting),
@@ -61,6 +61,17 @@ func (tw *TaskWorkerManger) Start() {
 			time.Sleep(1 * time.Second)
 		}
 	}()
+
+	if common.GetDebugMode() {
+		go func() {
+			logger.Info("debug task channel subscriber started")
+			for task := range tw.discoverHandler.dts.DebugTaskQueue() {
+				if err := tw.ProcessTask(context.Background(), task); err != nil {
+					logger.Errorf("debug task failed: %v", err)
+				}
+			}
+		}()
+	}
 }
 
 // Run runs the task worker.
@@ -71,7 +82,7 @@ func (tw *TaskWorkerManger) Run(ctx context.Context) error {
 		}
 	}()
 
-	srv := tw.aqa.CreateServer(ctx)
+	srv := tw.aqa.CreateServer()
 
 	// Register task handlers
 	mux := asynq.NewServeMux()

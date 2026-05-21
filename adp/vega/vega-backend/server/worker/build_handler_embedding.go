@@ -18,11 +18,8 @@ import (
 	"github.com/kweaver-ai/kweaver-go-lib/logger"
 
 	"vega-backend/common"
-	taskAccess "vega-backend/drivenadapters/build_task"
-	kafkaAccess "vega-backend/drivenadapters/kafka"
-	"vega-backend/drivenadapters/model_factory"
-	resourceAccess "vega-backend/drivenadapters/resource"
 	"vega-backend/interfaces"
+	"vega-backend/logics"
 	"vega-backend/logics/connectors"
 	opensearchConnector "vega-backend/logics/connectors/local/index/opensearch"
 	"vega-backend/logics/dataset"
@@ -58,12 +55,12 @@ func NewEmbeddingBuildHandler(appSetting *common.AppSetting) *embeddingHandler {
 	}
 	return &embeddingHandler{
 		appSetting:  appSetting,
-		taskAccess:  taskAccess.NewBuildTaskAccess(appSetting),
-		resAccess:   resourceAccess.NewResourceAccess(appSetting),
+		taskAccess:  logics.BTA,
+		resAccess:   logics.RA,
 		ds:          dataset.NewDatasetService(appSetting),
 		connector:   connector.(connectors.IndexConnector),
-		kafkaAccess: kafkaAccess.NewKafkaAccess(appSetting),
-		mfa:         model_factory.NewModelFactoryAccess(appSetting),
+		kafkaAccess: logics.KA,
+		mfa:         logics.MFA,
 	}
 }
 

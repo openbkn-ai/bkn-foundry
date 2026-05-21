@@ -21,11 +21,10 @@ import (
 	"go.opentelemetry.io/otel/codes"
 
 	"vega-backend/common"
-	taskAccess "vega-backend/drivenadapters/build_task"
 	"vega-backend/drivenadapters/entityextension"
-	resourceAccess "vega-backend/drivenadapters/resource"
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
+	"vega-backend/logics"
 	"vega-backend/logics/catalog"
 	dataset "vega-backend/logics/dataset"
 	"vega-backend/logics/extensions"
@@ -58,9 +57,9 @@ func NewResourceService(appSetting *common.AppSetting) interfaces.ResourceServic
 			cs:         catalog.NewCatalogService(appSetting),
 			ds:         dataset.NewDatasetService(appSetting),
 			ps:         permission.NewPermissionService(appSetting),
-			ra:         resourceAccess.NewResourceAccess(appSetting),
+			ra:         logics.RA,
 			ums:        user_mgmt.NewUserMgmtService(appSetting),
-			bta:        taskAccess.NewBuildTaskAccess(appSetting),
+			bta:        logics.BTA,
 		}
 	})
 	return rService
@@ -561,6 +560,21 @@ func (rs *resourceService) UpdateStatus(ctx context.Context, id string, status s
 
 	if err := rs.ra.UpdateStatus(ctx, id, status, statusMessage); err != nil {
 		span.SetStatus(codes.Error, "Update resource status failed")
+		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_UpdateFailed).
+			WithErrorDetails(err.Error())
+	}
+
+	span.SetStatus(codes.Ok, "")
+	return nil
+}
+
+// UpdateDiscoverStatus updates a Resource's last discover status.
+func (rs *resourceService) UpdateDiscoverStatus(ctx context.Context, id string, status string) error {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Update resource discover status")
+	defer span.End()
+
+	if err := rs.ra.UpdateDiscoverStatus(ctx, id, status); err != nil {
+		span.SetStatus(codes.Error, "Update resource discover status failed")
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_UpdateFailed).
 			WithErrorDetails(err.Error())
 	}

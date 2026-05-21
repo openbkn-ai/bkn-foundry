@@ -18,11 +18,8 @@ import (
 	"github.com/segmentio/kafka-go"
 
 	"vega-backend/common"
-	asynqAccess "vega-backend/drivenadapters/asynq"
-	taskAccess "vega-backend/drivenadapters/build_task"
-	kafkaAccess "vega-backend/drivenadapters/kafka"
-	resourceAccess "vega-backend/drivenadapters/resource"
 	"vega-backend/interfaces"
+	"vega-backend/logics"
 	"vega-backend/logics/catalog"
 	"vega-backend/logics/connectors"
 	"vega-backend/logics/connectors/factory"
@@ -45,12 +42,12 @@ type batchBuildHandler struct {
 func NewBatchBuildHandler(appSetting *common.AppSetting) *batchBuildHandler {
 	return &batchBuildHandler{
 		appSetting:  appSetting,
-		taskAccess:  taskAccess.NewBuildTaskAccess(appSetting),
-		resAccess:   resourceAccess.NewResourceAccess(appSetting),
+		taskAccess:  logics.BTA,
+		resAccess:   logics.RA,
 		cs:          catalog.NewCatalogService(appSetting),
 		ds:          dataset.NewDatasetService(appSetting),
-		client:      asynqAccess.NewAsynqAccess(appSetting).CreateClient(context.Background()),
-		kafkaAccess: kafkaAccess.NewKafkaAccess(appSetting),
+		client:      logics.AQA.CreateClient(),
+		kafkaAccess: logics.KA,
 	}
 }
 

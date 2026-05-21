@@ -406,6 +406,41 @@ func TestUpdateStatus_Error(t *testing.T) {
 	}
 }
 
+func TestUpdateResource_PreservesDiscoverStatus(t *testing.T) {
+	rs, mockRA, _, _, _, _, _ := newTestService(t)
+	resource := &interfaces.Resource{ID: "r1", LastDiscoverStatus: interfaces.DiscoverStatusUpdated}
+	mockRA.EXPECT().Update(gomock.Any(), resource).Return(nil)
+
+	err := rs.UpdateResource(context.Background(), resource)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resource.LastDiscoverStatus != interfaces.DiscoverStatusUpdated {
+		t.Fatalf("expected resource discover status to be set, got %q", resource.LastDiscoverStatus)
+	}
+}
+
+func TestUpdateDiscoverStatus_Success(t *testing.T) {
+	rs, mockRA, _, _, _, _, _ := newTestService(t)
+	mockRA.EXPECT().UpdateDiscoverStatus(gomock.Any(), "r1", interfaces.DiscoverStatusUpdated).Return(nil)
+
+	err := rs.UpdateDiscoverStatus(context.Background(), "r1", interfaces.DiscoverStatusUpdated)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestUpdateDiscoverStatus_Error(t *testing.T) {
+	rs, mockRA, _, _, _, _, _ := newTestService(t)
+	mockRA.EXPECT().UpdateDiscoverStatus(gomock.Any(), "r1", interfaces.DiscoverStatusUpdated).
+		Return(fmt.Errorf("db error"))
+
+	err := rs.UpdateDiscoverStatus(context.Background(), "r1", interfaces.DiscoverStatusUpdated)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
 // ===== Update =====
 
 func TestUpdate_NilResource(t *testing.T) {

@@ -23,11 +23,8 @@ import (
 	"github.com/segmentio/kafka-go"
 
 	"vega-backend/common"
-	asynqAccess "vega-backend/drivenadapters/asynq"
-	taskAccess "vega-backend/drivenadapters/build_task"
-	kafkaAccess "vega-backend/drivenadapters/kafka"
-	resourceAccess "vega-backend/drivenadapters/resource"
 	"vega-backend/interfaces"
+	"vega-backend/logics"
 	"vega-backend/logics/catalog"
 	"vega-backend/logics/dataset"
 )
@@ -62,13 +59,13 @@ type streamingBuildHandler struct {
 func NewStreamingBuildHandler(appSetting *common.AppSetting) *streamingBuildHandler {
 	return &streamingBuildHandler{
 		appSetting:  appSetting,
-		taskAccess:  taskAccess.NewBuildTaskAccess(appSetting),
-		resAccess:   resourceAccess.NewResourceAccess(appSetting),
+		taskAccess:  logics.BTA,
+		resAccess:   logics.RA,
 		cs:          catalog.NewCatalogService(appSetting),
 		ds:          dataset.NewDatasetService(appSetting),
-		client:      asynqAccess.NewAsynqAccess(appSetting).CreateClient(context.Background()),
+		client:      logics.AQA.CreateClient(),
 		httpClient:  common.NewHTTPClient(),
-		kafkaAccess: kafkaAccess.NewKafkaAccess(appSetting),
+		kafkaAccess: logics.KA,
 	}
 }
 

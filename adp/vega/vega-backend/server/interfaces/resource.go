@@ -24,6 +24,14 @@ const (
 	ResourceStatusStale      string = "stale"
 )
 
+const (
+	DiscoverStatusNew       string = "new"
+	DiscoverStatusUnchanged string = "unchanged"
+	DiscoverStatusUpdated   string = "updated"
+	DiscoverStatusRestored  string = "restored"
+	DiscoverStatusMissing   string = "missing"
+)
+
 var (
 	RESOURCE_SORT = map[string]string{
 		"name":        "f_name",
@@ -42,8 +50,9 @@ type Resource struct {
 
 	Category string `json:"category"` // 资源类别：table/file/fileset/...
 
-	Status        string `json:"status"`         // 状态：active/stale/disabled
-	StatusMessage string `json:"status_message"` // 状态消息
+	Status             string `json:"status"`               // 状态：active/stale/disabled
+	StatusMessage      string `json:"status_message"`       // 状态消息
+	LastDiscoverStatus string `json:"last_discover_status"` // 最近一次扫描观察状态
 
 	// 新增字段：支持自动发现
 	Database         string         `json:"database,omitempty"`          // 所属数据库（实例级 Catalog 时填充）

@@ -6,7 +6,11 @@
 // Package interfaces defines entities, DTOs, and service interfaces.
 package interfaces
 
-import "context"
+import (
+	"context"
+
+	"github.com/hibiken/asynq"
+)
 
 // DiscoverTaskService defines discover task business logic interface.
 //
@@ -31,4 +35,7 @@ type DiscoverTaskService interface {
 	// Pre-validates: any pending/running id returns 409 (cannot be skipped); any missing id returns 404
 	// unless ignoreMissing=true. Duplicate ids in the input are de-duplicated.
 	Delete(ctx context.Context, ids []string, ignoreMissing bool) error
+
+	// DebugTaskQueue returns the in-process discover task queue used in DEBUG_MODE.
+	DebugTaskQueue() <-chan *asynq.Task
 }

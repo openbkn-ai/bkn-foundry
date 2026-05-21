@@ -221,6 +221,20 @@ func (mr *MockResourceServiceMockRecorder) Update(ctx, resource, req any) *gomoc
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Update", reflect.TypeOf((*MockResourceService)(nil).Update), ctx, resource, req)
 }
 
+// UpdateDiscoverStatus mocks base method.
+func (m *MockResourceService) UpdateDiscoverStatus(ctx context.Context, id, status string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateDiscoverStatus", ctx, id, status)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateDiscoverStatus indicates an expected call of UpdateDiscoverStatus.
+func (mr *MockResourceServiceMockRecorder) UpdateDiscoverStatus(ctx, id, status any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateDiscoverStatus", reflect.TypeOf((*MockResourceService)(nil).UpdateDiscoverStatus), ctx, id, status)
+}
+
 // UpdateResource mocks base method.
 func (m *MockResourceService) UpdateResource(ctx context.Context, resource *interfaces.Resource) error {
 	m.ctrl.T.Helper()

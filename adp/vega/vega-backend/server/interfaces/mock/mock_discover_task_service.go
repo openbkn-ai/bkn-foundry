@@ -14,6 +14,7 @@ import (
 	reflect "reflect"
 	interfaces "vega-backend/interfaces"
 
+	asynq "github.com/hibiken/asynq"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -88,6 +89,20 @@ func (m *MockDiscoverTaskService) Delete(ctx context.Context, ids []string, igno
 func (mr *MockDiscoverTaskServiceMockRecorder) Delete(ctx, ids, ignoreMissing any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*MockDiscoverTaskService)(nil).Delete), ctx, ids, ignoreMissing)
+}
+
+// DebugTaskQueue mocks base method.
+func (m *MockDiscoverTaskService) DebugTaskQueue() <-chan *asynq.Task {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DebugTaskQueue")
+	ret0, _ := ret[0].(<-chan *asynq.Task)
+	return ret0
+}
+
+// DebugTaskQueue indicates an expected call of DebugTaskQueue.
+func (mr *MockDiscoverTaskServiceMockRecorder) DebugTaskQueue() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DebugTaskQueue", reflect.TypeOf((*MockDiscoverTaskService)(nil).DebugTaskQueue))
 }
 
 // GetByID mocks base method.

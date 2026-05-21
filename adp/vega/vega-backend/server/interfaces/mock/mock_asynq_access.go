@@ -10,7 +10,6 @@
 package mock_interfaces
 
 import (
-	context "context"
 	reflect "reflect"
 
 	asynq "github.com/hibiken/asynq"
@@ -42,29 +41,29 @@ func (m *MockAsynqAccess) EXPECT() *MockAsynqAccessMockRecorder {
 }
 
 // CreateClient mocks base method.
-func (m *MockAsynqAccess) CreateClient(ctx context.Context) *asynq.Client {
+func (m *MockAsynqAccess) CreateClient() *asynq.Client {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateClient", ctx)
+	ret := m.ctrl.Call(m, "CreateClient")
 	ret0, _ := ret[0].(*asynq.Client)
 	return ret0
 }
 
 // CreateClient indicates an expected call of CreateClient.
-func (mr *MockAsynqAccessMockRecorder) CreateClient(ctx any) *gomock.Call {
+func (mr *MockAsynqAccessMockRecorder) CreateClient() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateClient", reflect.TypeOf((*MockAsynqAccess)(nil).CreateClient), ctx)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateClient", reflect.TypeOf((*MockAsynqAccess)(nil).CreateClient))
 }
 
 // CreateServer mocks base method.
-func (m *MockAsynqAccess) CreateServer(ctx context.Context) *asynq.Server {
+func (m *MockAsynqAccess) CreateServer() *asynq.Server {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateServer", ctx)
+	ret := m.ctrl.Call(m, "CreateServer")
 	ret0, _ := ret[0].(*asynq.Server)
 	return ret0
 }
 
 // CreateServer indicates an expected call of CreateServer.
-func (mr *MockAsynqAccessMockRecorder) CreateServer(ctx any) *gomock.Call {
+func (mr *MockAsynqAccessMockRecorder) CreateServer() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateServer", reflect.TypeOf((*MockAsynqAccess)(nil).CreateServer), ctx)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateServer", reflect.TypeOf((*MockAsynqAccess)(nil).CreateServer))
 }

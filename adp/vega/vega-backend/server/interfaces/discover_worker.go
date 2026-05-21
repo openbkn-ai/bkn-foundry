@@ -17,6 +17,8 @@ type DiscoverResult struct {
 	NewCount       int    `json:"new_count"`
 	StaleCount     int    `json:"stale_count"`
 	UnchangedCount int    `json:"unchanged_count"`
+	UpdatedCount   int    `json:"updated_count"`
+	RestoredCount  int    `json:"restored_count"`
 	Message        string `json:"message"`
 }
 

@@ -18,9 +18,9 @@ import (
 	"go.opentelemetry.io/otel/codes"
 
 	"vega-backend/common"
-	connectorTypeAccess "vega-backend/drivenadapters/connector_type"
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
+	"vega-backend/logics"
 	"vega-backend/logics/connectors/factory"
 	"vega-backend/logics/permission"
 )
@@ -44,7 +44,7 @@ func NewConnectorTypeService(appSetting *common.AppSetting) interfaces.Connector
 	ctServiceOnce.Do(func() {
 		ctService = &connectorTypeService{
 			appSetting: appSetting,
-			cta:        connectorTypeAccess.NewConnectorTypeAccess(appSetting),
+			cta:        logics.CTA,
 			cf:         factory.GetFactory(),
 			ps:         permission.NewPermissionService(appSetting),
 		}

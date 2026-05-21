@@ -15,7 +15,16 @@ import (
 var (
 	DB  *sql.DB
 	AA  interfaces.AuthAccess
+	AQA interfaces.AsynqAccess
+	BTA interfaces.BuildTaskAccess
+	CA  interfaces.CatalogAccess
+	CTA interfaces.ConnectorTypeAccess
+	DSA interfaces.DiscoverScheduleAccess
+	DTA interfaces.DiscoverTaskAccess
+	KA  interfaces.KafkaAccess
+	MFA interfaces.ModelFactoryAccess
 	PA  interfaces.PermissionAccess
+	RA  interfaces.ResourceAccess
 	UMA interfaces.UserMgmtAccess
 )
 
@@ -27,8 +36,44 @@ func SetAuthAccess(aa interfaces.AuthAccess) {
 	AA = aa
 }
 
+func SetAsynqAccess(aqa interfaces.AsynqAccess) {
+	AQA = aqa
+}
+
+func SetBuildTaskAccess(bta interfaces.BuildTaskAccess) {
+	BTA = bta
+}
+
+func SetCatalogAccess(ca interfaces.CatalogAccess) {
+	CA = ca
+}
+
+func SetConnectorTypeAccess(cta interfaces.ConnectorTypeAccess) {
+	CTA = cta
+}
+
+func SetDiscoverScheduleAccess(dsa interfaces.DiscoverScheduleAccess) {
+	DSA = dsa
+}
+
+func SetDiscoverTaskAccess(dta interfaces.DiscoverTaskAccess) {
+	DTA = dta
+}
+
+func SetKafkaAccess(ka interfaces.KafkaAccess) {
+	KA = ka
+}
+
+func SetModelFactoryAccess(mfa interfaces.ModelFactoryAccess) {
+	MFA = mfa
+}
+
 func SetPermissionAccess(pa interfaces.PermissionAccess) {
 	PA = pa
+}
+
+func SetResourceAccess(ra interfaces.ResourceAccess) {
+	RA = ra
 }
 
 func SetUserMgmtAccess(uma interfaces.UserMgmtAccess) {

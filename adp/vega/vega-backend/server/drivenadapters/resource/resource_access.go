@@ -9,11 +9,11 @@ package resource
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"sync"
 
 	sq "github.com/Masterminds/squirrel"
+	"github.com/bytedance/sonic"
 	libCommon "github.com/kweaver-ai/kweaver-go-lib/common"
 	libdb "github.com/kweaver-ai/kweaver-go-lib/db"
 	"github.com/kweaver-ai/kweaver-go-lib/logger"
@@ -65,15 +65,15 @@ func (ra *resourceAccess) Create(ctx context.Context, resource *interfaces.Resou
 	tagsStr := libCommon.TagSlice2TagString(resource.Tags)
 
 	// 序列化 SourceMetadata, SchemaDefinition, LogicDefinition
-	sourceMetadataBytes, _ := json.Marshal(resource.SourceMetadata)
+	sourceMetadataBytes, _ := sonic.Marshal(resource.SourceMetadata)
 	if resource.SourceMetadata == nil {
 		sourceMetadataBytes = []byte("{}")
 	}
-	schemaDefinitionBytes, _ := json.Marshal(resource.SchemaDefinition)
+	schemaDefinitionBytes, _ := sonic.Marshal(resource.SchemaDefinition)
 	if resource.SchemaDefinition == nil {
 		schemaDefinitionBytes = []byte("[]")
 	}
-	logicDefinitionBytes, _ := json.Marshal(resource.LogicDefinition)
+	logicDefinitionBytes, _ := sonic.Marshal(resource.LogicDefinition)
 	if resource.LogicDefinition == nil {
 		logicDefinitionBytes = []byte("[]")
 	}
@@ -88,6 +88,7 @@ func (ra *resourceAccess) Create(ctx context.Context, resource *interfaces.Resou
 			"f_category",
 			"f_status",
 			"f_status_message",
+			"f_last_discover_status",
 			"f_database",
 			"f_source_identifier",
 			"f_source_metadata",
@@ -123,6 +124,7 @@ func (ra *resourceAccess) Create(ctx context.Context, resource *interfaces.Resou
 			resource.Category,
 			resource.Status,
 			resource.StatusMessage,
+			resource.LastDiscoverStatus,
 			resource.Database,
 			resource.SourceIdentifier,
 			string(sourceMetadataBytes),
@@ -182,6 +184,7 @@ func (ra *resourceAccess) GetByID(ctx context.Context, id string) (*interfaces.R
 		"f_category",
 		"f_status",
 		"f_status_message",
+		"f_last_discover_status",
 		"f_database",
 		"f_source_identifier",
 		"f_source_metadata",
@@ -218,6 +221,7 @@ func (ra *resourceAccess) GetByID(ctx context.Context, id string) (*interfaces.R
 		&resource.Category,
 		&resource.Status,
 		&resource.StatusMessage,
+		&resource.LastDiscoverStatus,
 		&database,
 		&sourceIdentifier,
 		&sourceMetadata,
@@ -247,13 +251,13 @@ func (ra *resourceAccess) GetByID(ctx context.Context, id string) (*interfaces.R
 	resource.Database = database.String
 	resource.SourceIdentifier = sourceIdentifier.String
 	if sourceMetadata.Valid && sourceMetadata.String != "" {
-		_ = json.Unmarshal([]byte(sourceMetadata.String), &resource.SourceMetadata)
+		_ = sonic.Unmarshal([]byte(sourceMetadata.String), &resource.SourceMetadata)
 	}
 	if schemaDefinition.Valid && schemaDefinition.String != "" {
-		_ = json.Unmarshal([]byte(schemaDefinition.String), &resource.SchemaDefinition)
+		_ = sonic.Unmarshal([]byte(schemaDefinition.String), &resource.SchemaDefinition)
 	}
 	if logicDefinition.Valid && logicDefinition.String != "" {
-		_ = json.Unmarshal([]byte(logicDefinition.String), &resource.LogicDefinition)
+		_ = sonic.Unmarshal([]byte(logicDefinition.String), &resource.LogicDefinition)
 	}
 
 	if err := attachSingleResourceExtensions(ctx, ra.appSetting, resource); err != nil {
@@ -281,6 +285,7 @@ func (ra *resourceAccess) GetByIDs(ctx context.Context, ids []string) ([]*interf
 		"f_category",
 		"f_status",
 		"f_status_message",
+		"f_last_discover_status",
 		"f_database",
 		"f_source_identifier",
 		"f_source_metadata",
@@ -326,6 +331,7 @@ func (ra *resourceAccess) GetByIDs(ctx context.Context, ids []string) ([]*interf
 			&resource.Category,
 			&resource.Status,
 			&resource.StatusMessage,
+			&resource.LastDiscoverStatus,
 			&database,
 			&sourceIdentifier,
 			&sourceMetadata,
@@ -352,13 +358,13 @@ func (ra *resourceAccess) GetByIDs(ctx context.Context, ids []string) ([]*interf
 		resource.Database = database.String
 		resource.SourceIdentifier = sourceIdentifier.String
 		if sourceMetadata.Valid && sourceMetadata.String != "" {
-			_ = json.Unmarshal([]byte(sourceMetadata.String), &resource.SourceMetadata)
+			_ = sonic.Unmarshal([]byte(sourceMetadata.String), &resource.SourceMetadata)
 		}
 		if schemaDefinition.Valid && schemaDefinition.String != "" {
-			_ = json.Unmarshal([]byte(schemaDefinition.String), &resource.SchemaDefinition)
+			_ = sonic.Unmarshal([]byte(schemaDefinition.String), &resource.SchemaDefinition)
 		}
 		if logicDefinition.Valid && logicDefinition.String != "" {
-			_ = json.Unmarshal([]byte(logicDefinition.String), &resource.LogicDefinition)
+			_ = sonic.Unmarshal([]byte(logicDefinition.String), &resource.LogicDefinition)
 		}
 
 		resources = append(resources, resource)
@@ -395,6 +401,7 @@ func (ra *resourceAccess) GetByIDsBasic(ctx context.Context, ids []string) ([]*i
 		"f_category",
 		"f_status",
 		"f_status_message",
+		"f_last_discover_status",
 		"f_database",
 		"f_source_identifier",
 		"f_logic_type",
@@ -436,6 +443,7 @@ func (ra *resourceAccess) GetByIDsBasic(ctx context.Context, ids []string) ([]*i
 			&resource.Category,
 			&resource.Status,
 			&resource.StatusMessage,
+			&resource.LastDiscoverStatus,
 			&database,
 			&sourceIdentifier,
 			&resource.LogicType,
@@ -483,6 +491,7 @@ func (ra *resourceAccess) GetByName(ctx context.Context, catalogID string, name 
 		"f_category",
 		"f_status",
 		"f_status_message",
+		"f_last_discover_status",
 		"f_database",
 		"f_source_identifier",
 		"f_source_metadata",
@@ -517,6 +526,7 @@ func (ra *resourceAccess) GetByName(ctx context.Context, catalogID string, name 
 		&resource.Category,
 		&resource.Status,
 		&resource.StatusMessage,
+		&resource.LastDiscoverStatus,
 		&database,
 		&sourceIdentifier,
 		&sourceMetadata,
@@ -543,10 +553,10 @@ func (ra *resourceAccess) GetByName(ctx context.Context, catalogID string, name 
 	resource.Database = database.String
 	resource.SourceIdentifier = sourceIdentifier.String
 	if sourceMetadata.Valid && sourceMetadata.String != "" {
-		_ = json.Unmarshal([]byte(sourceMetadata.String), &resource.SourceMetadata)
+		_ = sonic.Unmarshal([]byte(sourceMetadata.String), &resource.SourceMetadata)
 	}
 	if schemaDefinition.Valid && schemaDefinition.String != "" {
-		_ = json.Unmarshal([]byte(schemaDefinition.String), &resource.SchemaDefinition)
+		_ = sonic.Unmarshal([]byte(schemaDefinition.String), &resource.SchemaDefinition)
 	}
 
 	span.SetStatus(codes.Ok, "")
@@ -631,6 +641,7 @@ func (ra *resourceAccess) List(ctx context.Context, params interfaces.ResourcesQ
 		resourceExtCol(params, "f_category"),
 		resourceExtCol(params, "f_status"),
 		resourceExtCol(params, "f_status_message"),
+		resourceExtCol(params, "f_last_discover_status"),
 		resourceExtCol(params, "f_database"),
 		resourceExtCol(params, "f_source_identifier"),
 		resourceExtCol(params, "f_source_metadata"),
@@ -719,6 +730,7 @@ func (ra *resourceAccess) List(ctx context.Context, params interfaces.ResourcesQ
 			&resource.Category,
 			&resource.Status,
 			&resource.StatusMessage,
+			&resource.LastDiscoverStatus,
 			&database,
 			&sourceIdentifier,
 			&sourceMetadata,
@@ -740,10 +752,10 @@ func (ra *resourceAccess) List(ctx context.Context, params interfaces.ResourcesQ
 		resource.Database = database.String
 		resource.SourceIdentifier = sourceIdentifier.String
 		if sourceMetadata.Valid && sourceMetadata.String != "" {
-			_ = json.Unmarshal([]byte(sourceMetadata.String), &resource.SourceMetadata)
+			_ = sonic.Unmarshal([]byte(sourceMetadata.String), &resource.SourceMetadata)
 		}
 		if schemaDefinition.Valid && schemaDefinition.String != "" {
-			_ = json.Unmarshal([]byte(schemaDefinition.String), &resource.SchemaDefinition)
+			_ = sonic.Unmarshal([]byte(schemaDefinition.String), &resource.SchemaDefinition)
 		}
 
 		resources = append(resources, resource)
@@ -769,20 +781,20 @@ func (ra *resourceAccess) Update(ctx context.Context, resource *interfaces.Resou
 	tagsStr := libCommon.TagSlice2TagString(resource.Tags)
 
 	// 序列化 SourceMetadata, SchemaDefinition, logicDefinition
-	sourceMetadataBytes, _ := json.Marshal(resource.SourceMetadata)
+	sourceMetadataBytes, _ := sonic.Marshal(resource.SourceMetadata)
 	if resource.SourceMetadata == nil {
 		sourceMetadataBytes = []byte("{}")
 	}
-	schemaDefinitionBytes, _ := json.Marshal(resource.SchemaDefinition)
+	schemaDefinitionBytes, _ := sonic.Marshal(resource.SchemaDefinition)
 	if resource.SchemaDefinition == nil {
 		schemaDefinitionBytes = []byte("[]")
 	}
-	logicDefinitionBytes, _ := json.Marshal(resource.LogicDefinition)
+	logicDefinitionBytes, _ := sonic.Marshal(resource.LogicDefinition)
 	if resource.LogicDefinition == nil {
 		logicDefinitionBytes = []byte("[]")
 	}
 
-	sqlStr, vals, err := sq.Update(RESOURCE_TABLE_NAME).
+	builder := sq.Update(RESOURCE_TABLE_NAME).
 		Set("f_catalog_id", resource.CatalogID).
 		Set("f_name", resource.Name).
 		Set("f_tags", tagsStr).
@@ -795,8 +807,12 @@ func (ra *resourceAccess) Update(ctx context.Context, resource *interfaces.Resou
 		Set("f_updater_type", resource.Updater.Type).
 		Set("f_update_time", resource.UpdateTime).
 		Set("f_local_index_name", resource.LocalIndexName).
-		Where(sq.Eq{"f_id": resource.ID}).
-		ToSql()
+		Where(sq.Eq{"f_id": resource.ID})
+	if resource.LastDiscoverStatus != "" {
+		builder = builder.Set("f_last_discover_status", resource.LastDiscoverStatus)
+	}
+
+	sqlStr, vals, err := builder.ToSql()
 	if err != nil {
 		span.SetStatus(codes.Error, "Build sql failed")
 		return err
@@ -828,6 +844,7 @@ func (ra *resourceAccess) GetByCatalogID(ctx context.Context, catalogID string) 
 		"f_category",
 		"f_status",
 		"f_status_message",
+		"f_last_discover_status",
 		"f_database",
 		"f_source_identifier",
 		"f_source_metadata",
@@ -870,6 +887,7 @@ func (ra *resourceAccess) GetByCatalogID(ctx context.Context, catalogID string) 
 			&resource.Category,
 			&resource.Status,
 			&resource.StatusMessage,
+			&resource.LastDiscoverStatus,
 			&database,
 			&sourceIdentifier,
 			&sourceMetadata,
@@ -891,10 +909,10 @@ func (ra *resourceAccess) GetByCatalogID(ctx context.Context, catalogID string) 
 		resource.Database = database.String
 		resource.SourceIdentifier = sourceIdentifier.String
 		if sourceMetadata.Valid && sourceMetadata.String != "" {
-			_ = json.Unmarshal([]byte(sourceMetadata.String), &resource.SourceMetadata)
+			_ = sonic.Unmarshal([]byte(sourceMetadata.String), &resource.SourceMetadata)
 		}
 		if schemaDefinition.Valid && schemaDefinition.String != "" {
-			_ = json.Unmarshal([]byte(schemaDefinition.String), &resource.SchemaDefinition)
+			_ = sonic.Unmarshal([]byte(schemaDefinition.String), &resource.SchemaDefinition)
 		}
 
 		resources = append(resources, resource)
@@ -917,6 +935,35 @@ func (ra *resourceAccess) UpdateStatus(ctx context.Context, id string, status st
 	sqlStr, vals, err := sq.Update(RESOURCE_TABLE_NAME).
 		Set("f_status", status).
 		Set("f_status_message", statusMessage).
+		Where(sq.Eq{"f_id": id}).
+		ToSql()
+	if err != nil {
+		span.SetStatus(codes.Error, "Build sql failed")
+		return err
+	}
+
+	_, err = ra.db.ExecContext(ctx, sqlStr, vals...)
+	if err != nil {
+		span.SetStatus(codes.Error, "Update failed")
+		return err
+	}
+
+	span.SetStatus(codes.Ok, "")
+	return nil
+}
+
+// UpdateDiscoverStatus updates a Resource's last discover status.
+func (ra *resourceAccess) UpdateDiscoverStatus(ctx context.Context, id string, status string) error {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Update resource discover status")
+	defer span.End()
+
+	span.SetAttributes(
+		attr.Key("resource_id").String(id),
+		attr.Key("last_discover_status").String(status),
+	)
+
+	sqlStr, vals, err := sq.Update(RESOURCE_TABLE_NAME).
+		Set("f_last_discover_status", status).
 		Where(sq.Eq{"f_id": id}).
 		ToSql()
 	if err != nil {

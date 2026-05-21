@@ -33,6 +33,8 @@ type ResourceAccess interface {
 	Update(ctx context.Context, resource *Resource) error
 	// UpdateStatus updates a Resource's status.
 	UpdateStatus(ctx context.Context, id string, status string, statusMessage string) error
+	// UpdateDiscoverStatus updates a Resource's last discover status.
+	UpdateDiscoverStatus(ctx context.Context, id string, status string) error
 	// DeleteByIDs deletes Resources by IDs.
 	DeleteByIDs(ctx context.Context, ids []string) error
 

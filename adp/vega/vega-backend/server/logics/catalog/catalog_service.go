@@ -24,11 +24,10 @@ import (
 	"go.opentelemetry.io/otel/codes"
 
 	"vega-backend/common"
-	catalogAccess "vega-backend/drivenadapters/catalog"
 	"vega-backend/drivenadapters/entityextension"
-	resourceAccess "vega-backend/drivenadapters/resource"
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
+	"vega-backend/logics"
 	"vega-backend/logics/connectors/factory"
 	"vega-backend/logics/extensions"
 	"vega-backend/logics/permission"
@@ -70,8 +69,8 @@ func NewCatalogService(appSetting *common.AppSetting) interfaces.CatalogService 
 		cService = &catalogService{
 			appSetting: appSetting,
 			cipher:     cipher,
-			ca:         catalogAccess.NewCatalogAccess(appSetting),
-			ra:         resourceAccess.NewResourceAccess(appSetting),
+			ca:         logics.CA,
+			ra:         logics.RA,
 			ps:         permission.NewPermissionService(appSetting),
 			ums:        user_mgmt.NewUserMgmtService(appSetting),
 		}

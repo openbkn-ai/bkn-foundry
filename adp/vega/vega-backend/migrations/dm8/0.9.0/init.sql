@@ -155,6 +155,7 @@ CREATE TABLE IF NOT EXISTS t_resource (
     -- 状态管理
     f_status                  VARCHAR(20 CHAR) NOT NULL DEFAULT 'active',
     f_status_message          VARCHAR(500 CHAR) NOT NULL DEFAULT '',
+    f_last_discover_status    VARCHAR(32 CHAR) NOT NULL DEFAULT '',
 
     -- 物理数据资源专属字段
     f_database                VARCHAR(128 CHAR) NOT NULL DEFAULT '',

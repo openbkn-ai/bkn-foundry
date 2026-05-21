@@ -152,6 +152,7 @@ CREATE TABLE IF NOT EXISTS t_resource (
     -- 状态管理
     f_status                  VARCHAR(20) NOT NULL DEFAULT 'active' COMMENT '数据资源状态: active, disabled, deprecated, stale',
     f_status_message          VARCHAR(500) NOT NULL DEFAULT '' COMMENT '状态说明',
+    f_last_discover_status    VARCHAR(32) NOT NULL DEFAULT '' COMMENT '最近一次扫描观察状态',
 
     -- 物理数据资源专属字段
     f_database                VARCHAR(128) NOT NULL DEFAULT '' COMMENT '所属数据库名称（实例级连接时使用）',
