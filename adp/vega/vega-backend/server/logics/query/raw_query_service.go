@@ -213,13 +213,10 @@ func (rqs *rawQueryService) Execute(ctx context.Context, req *interfaces.RawQuer
 	// 4. 判断查询类型
 	if len(resourceIDs) == 0 {
 		// 没有resource_id，直接执行原生SQL（需要指定resource_type）
-		if req.ResourceType == "" {
-			httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
-				WithErrorDetails("resource_type is required when no resource_id in query")
-			otellog.LogError(ctx, "Resource type is required", httpErr)
-			return nil, httpErr
-		}
-		return rqs.executeNativeSQL(ctx, req)
+		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+			WithErrorDetails("resource_type is required when no resource_id in query")
+		otellog.LogError(ctx, "Resource type is required", httpErr)
+		return nil, httpErr
 	}
 
 	// 5. 判断所有resource_id是否来自同一个数据源
@@ -602,52 +599,6 @@ func (rqs *rawQueryService) executeSQLWithQueryType(ctx context.Context, catalog
 	}
 
 	logger.Infof("SQL query executed successfully - query_type: %s, returned rows: %d", queryType, len(result.Entries))
-	return result, nil
-}
-
-// executeNativeSQL 执行原生SQL（不包含resource_id）
-func (rqs *rawQueryService) executeNativeSQL(ctx context.Context, req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
-	// 获取SQL语句
-	sql, ok := req.Query.(string)
-	if !ok {
-		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
-			WithErrorDetails("query must be a string for native SQL execution")
-	}
-
-	// 根据resource_type确定connector类型
-	var connectorType string
-	switch req.ResourceType {
-	case interfaces.ConnectorTypeMySQL, interfaces.ConnectorTypeMariaDB:
-		connectorType = interfaces.ConnectorTypeMariaDB
-	case interfaces.ConnectorTypePostgreSQL:
-		connectorType = interfaces.ConnectorTypePostgreSQL
-	default:
-		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
-			WithErrorDetails(fmt.Sprintf("unsupported resource_type: %s", req.ResourceType))
-	}
-
-	// 创建catalog对象用于执行SQL
-	catalog := &interfaces.Catalog{
-		ConnectorType: connectorType,
-		ConnectorCfg:  map[string]any{},
-	}
-
-	// 直接执行SQL，不添加任何LIMIT限制
-	result, err := rqs.executeSQLWithQueryType(ctx, catalog, sql, req.QueryType)
-	if err != nil {
-		return nil, err
-	}
-
-	// standard模式下，限制最大返回数据量为10000
-	if req.QueryType == "" || req.QueryType == "standard" {
-		if len(result.Entries) > 10000 {
-			result.Entries = result.Entries[:10000]
-			result.Stats.HasMore = true
-		}
-		// 更新TotalCount为实际返回的数据条数
-		result.TotalCount = int64(len(result.Entries))
-	}
-
 	return result, nil
 }
 
