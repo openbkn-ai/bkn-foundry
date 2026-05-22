@@ -186,6 +186,18 @@ func TestConvertGte(t *testing.T) {
 	}
 }
 
+func TestConvertDateGteUsesFromUnixTime(t *testing.T) {
+	c := &MariaDBConnector{}
+	cond := mustNewCond(t, "created_at", ">=", float64(1710000000000))
+	sql, args := toSQL(t, c, cond)
+	if sql != "`created_at` >= FROM_UNIXTIME(?/1000)" {
+		t.Errorf("unexpected SQL: %s", sql)
+	}
+	if len(args) != 1 || args[0] != int64(1710000000000) {
+		t.Errorf("unexpected args: %v", args)
+	}
+}
+
 func TestConvertLt(t *testing.T) {
 	c := &MariaDBConnector{}
 	cond := mustNewCond(t, "age", "<", 65)
@@ -303,6 +315,45 @@ func TestConvertRange(t *testing.T) {
 	}
 	if len(args) != 2 {
 		t.Errorf("expected 2 args, got %d", len(args))
+	}
+}
+
+func TestConvertDateRangeUsesFromUnixTime(t *testing.T) {
+	c := &MariaDBConnector{}
+	cond := mustNewCond(t, "created_at", "range", []any{1710000000000, 1710003600000})
+	sql, args := toSQL(t, c, cond)
+	if !strings.Contains(sql, "`created_at` >= FROM_UNIXTIME(?/1000)") ||
+		!strings.Contains(sql, "`created_at` <= FROM_UNIXTIME(?/1000)") {
+		t.Errorf("unexpected SQL: %s", sql)
+	}
+	if len(args) != 2 || args[0] != int64(1710000000000) || args[1] != int64(1710003600000) {
+		t.Errorf("unexpected args: %v", args)
+	}
+}
+
+func TestConvertDateOutRangeUsesFromUnixTime(t *testing.T) {
+	c := &MariaDBConnector{}
+	cond := mustNewCond(t, "created_at", "out_range", []any{1710000000000, 1710003600000})
+	sql, args := toSQL(t, c, cond)
+	if !strings.Contains(sql, "`created_at` < FROM_UNIXTIME(?/1000)") ||
+		!strings.Contains(sql, "`created_at` > FROM_UNIXTIME(?/1000)") {
+		t.Errorf("unexpected SQL: %s", sql)
+	}
+	if len(args) != 2 || args[0] != int64(1710000000000) || args[1] != int64(1710003600000) {
+		t.Errorf("unexpected args: %v", args)
+	}
+}
+
+func TestConvertDateBetweenUsesFromUnixTime(t *testing.T) {
+	c := &MariaDBConnector{}
+	cond := mustNewCond(t, "created_at", "between", []any{1710000000000, 1710003600000})
+	sql, args := toSQL(t, c, cond)
+	if !strings.Contains(sql, "`created_at` >= FROM_UNIXTIME(?/1000)") ||
+		!strings.Contains(sql, "`created_at` <= FROM_UNIXTIME(?/1000)") {
+		t.Errorf("unexpected SQL: %s", sql)
+	}
+	if len(args) != 2 || args[0] != int64(1710000000000) || args[1] != int64(1710003600000) {
+		t.Errorf("unexpected args: %v", args)
 	}
 }
 

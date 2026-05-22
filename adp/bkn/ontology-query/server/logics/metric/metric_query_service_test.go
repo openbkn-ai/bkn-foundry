@@ -190,6 +190,60 @@ func Test_metricQueryService_QueryMetricData(t *testing.T) {
 			So(captured.GroupBy[0]["calendar_interval"], ShouldEqual, "day")
 		})
 
+		Convey("Instant query maps time window to vega range filter condition\n", func() {
+			defInstant := &interfaces.MetricDefinition{
+				ID:        "m1",
+				KnID:      "kn1",
+				ScopeType: interfaces.ScopeTypeObjectType,
+				ScopeRef:  "ot1",
+				UnitType:  "numUnit",
+				Unit:      "none",
+				TimeDimension: &interfaces.MetricTimeDimension{
+					Property: "evt_time",
+				},
+				CalculationFormula: &interfaces.MetricCalculationFormula{
+					Aggregation: interfaces.MetricAggregation{Property: "amount", Aggr: "sum"},
+				},
+			}
+			instant := true
+			start := int64(1_000)
+			end := int64(2_000)
+			var captured *interfaces.ResourceDataQueryParams
+			oma.EXPECT().GetMetricDefinition(gomock.Any(), "kn1", "main", "m1").Return(defInstant, true, nil)
+			oma.EXPECT().GetObjectType(gomock.Any(), "kn1", "main", "ot1").Return(interfaces.ObjectType{
+				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+					OTID: "ot1",
+					DataSource: &interfaces.ResourceInfo{
+						Type: interfaces.DATA_SOURCE_TYPE_RESOURCE,
+						ID:   "res1",
+					},
+					DataProperties: []cond.DataProperty{
+						{Name: "amount", Type: dtype.DATATYPE_DOUBLE, MappedField: cond.Field{Name: "amount_res"}},
+						{Name: "evt_time", Type: dtype.DATATYPE_DATETIME, MappedField: cond.Field{Name: "evt_time_res"}},
+					},
+				},
+			}, true, nil)
+			vba.EXPECT().QueryResourceData(gomock.Any(), "res1", gomock.Any()).DoAndReturn(
+				func(_ context.Context, _ string, p *interfaces.ResourceDataQueryParams) (*interfaces.DatasetQueryResponse, error) {
+					captured = p
+					return &interfaces.DatasetQueryResponse{
+						Entries: []map[string]any{{"__value": 2.0}},
+					}, nil
+				},
+			)
+
+			_, err := svc.QueryMetricData(ctx, "kn1", "main", "m1", &interfaces.MetricQueryRequest{
+				Time: &interfaces.MetricTimeWindow{
+					Start: &start, End: &end, Instant: &instant,
+				},
+			})
+			So(err, ShouldBeNil)
+			So(captured, ShouldNotBeNil)
+			So(captured.FilterCondition["field"], ShouldEqual, "evt_time_res")
+			So(captured.FilterCondition["operation"], ShouldEqual, cond.OperationRange)
+			So(captured.FilterCondition["value"], ShouldResemble, []any{float64(start), float64(end) + 1})
+		})
+
 		Convey("Not found when bkn returns nil definition\n", func() {
 			oma.EXPECT().GetMetricDefinition(gomock.Any(), "kn1", "main", "m1").Return(nil, false, nil)
 			_, err := svc.QueryMetricData(ctx, "kn1", "main", "m1", &interfaces.MetricQueryRequest{})
