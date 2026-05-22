@@ -49,7 +49,7 @@ func discoverTaskColumns() []string {
 		"f_id",
 		"f_catalog_id",
 		"f_schedule_id",
-		"f_strategies",
+		"f_strategy",
 		"f_trigger_type",
 		"f_status",
 		"f_progress",
@@ -66,13 +66,12 @@ func discoverTaskColumns() []string {
 func scanDiscoverTask(scanner discoverTaskScanner) (*interfaces.DiscoverTask, error) {
 	task := &interfaces.DiscoverTask{}
 	var resultStr sql.NullString
-	var strategiesStr sql.NullString
 
 	err := scanner.Scan(
 		&task.ID,
 		&task.CatalogID,
 		&task.ScheduleID,
-		&strategiesStr,
+		&task.Strategy,
 		&task.TriggerType,
 		&task.Status,
 		&task.Progress,
@@ -86,15 +85,6 @@ func scanDiscoverTask(scanner discoverTaskScanner) (*interfaces.DiscoverTask, er
 	)
 	if err != nil {
 		return nil, err
-	}
-
-	if strategiesStr.Valid && strategiesStr.String != "" {
-		if err := sonic.Unmarshal([]byte(strategiesStr.String), &task.Strategies); err != nil {
-			logger.Errorf("Failed to unmarshal strategies: %v", err)
-			task.Strategies = []string{}
-		}
-	} else {
-		task.Strategies = []string{}
 	}
 
 	if resultStr.Valid && resultStr.String != "" {
@@ -116,8 +106,8 @@ func NewDiscoverTaskAccess(appSetting *common.AppSetting) interfaces.DiscoverTas
 	return dtAccess
 }
 
-// GetScheduledTaskStrategies retrieves strategies from t_discover_schedule table by ID.
-func (dta *discoverTaskAccess) GetScheduledTaskStrategies(ctx context.Context, scheduledTaskID string) ([]string, error) {
+// GetScheduledTaskStrategy retrieves strategy from t_discover_schedule table by ID.
+func (dta *discoverTaskAccess) GetScheduledTaskStrategy(ctx context.Context, scheduledTaskID string) (string, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Query discover_schedule by ID")
 	defer span.End()
 
@@ -125,39 +115,29 @@ func (dta *discoverTaskAccess) GetScheduledTaskStrategies(ctx context.Context, s
 		attr.Key("db_url").String(libdb.GetDBUrl()),
 		attr.Key("db_type").String(libdb.GetDBType()))
 
-	sqlStr, vals, err := sq.Select("f_strategies").
+	sqlStr, vals, err := sq.Select("f_strategy").
 		From("t_discover_schedule").
 		Where(sq.Eq{"f_id": scheduledTaskID}).
 		ToSql()
 	if err != nil {
 		otellog.LogError(ctx, "Failed to build select discover_schedule sql", err)
-		return nil, err
+		return "", err
 	}
 
-	var strategiesStr string
-	err = dta.db.QueryRowContext(ctx, sqlStr, vals...).Scan(&strategiesStr)
+	var strategy string
+	err = dta.db.QueryRowContext(ctx, sqlStr, vals...).Scan(&strategy)
 	if err == sql.ErrNoRows {
 		span.SetStatus(codes.Ok, "")
-		return []string{}, nil
+		return "", nil
 	}
 	if err != nil {
 		logger.Errorf("Scan discover_schedule failed: %v", err)
 		span.SetStatus(codes.Error, "Scan failed")
-		return nil, err
-	}
-
-	// Parse strategies string to array
-	if strategiesStr == "" {
-		return []string{}, nil
-	}
-	var strategies []string
-	if err := sonic.Unmarshal([]byte(strategiesStr), &strategies); err != nil {
-		logger.Errorf("Failed to unmarshal strategies: %v", err)
-		return []string{}, nil
+		return "", err
 	}
 
 	span.SetStatus(codes.Ok, "")
-	return strategies, nil
+	return strategy, nil
 }
 
 // Create creates a new DiscoverTask.
@@ -169,24 +149,13 @@ func (dta *discoverTaskAccess) Create(ctx context.Context, task *interfaces.Disc
 		attr.Key("db_url").String(libdb.GetDBUrl()),
 		attr.Key("db_type").String(libdb.GetDBType()))
 
-	// Serialize strategies to JSON string
-	strategiesStr := ""
-	if len(task.Strategies) > 0 {
-		strategiesBytes, err := sonic.Marshal(task.Strategies)
-		if err != nil {
-			otellog.LogError(ctx, "Failed to marshal strategies", err)
-			return err
-		}
-		strategiesStr = string(strategiesBytes)
-	}
-
 	sqlStr, vals, err := sq.Insert(DISCOVER_TASK_TABLE_NAME).
 		Columns(discoverTaskColumns()...).
 		Values(
 			task.ID,
 			task.CatalogID,
 			task.ScheduleID,
-			strategiesStr,
+			task.Strategy,
 			task.TriggerType,
 			task.Status,
 			task.Progress,

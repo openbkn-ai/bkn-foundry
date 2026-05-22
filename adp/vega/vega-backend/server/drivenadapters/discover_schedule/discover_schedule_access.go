@@ -9,12 +9,10 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
 	sq "github.com/Masterminds/squirrel"
-	"github.com/bytedance/sonic"
 	libdb "github.com/kweaver-ai/kweaver-go-lib/db"
 	"github.com/kweaver-ai/kweaver-go-lib/logger"
 	"github.com/kweaver-ai/kweaver-go-lib/otel/otellog"
@@ -27,30 +25,6 @@ import (
 	"vega-backend/common"
 	"vega-backend/interfaces"
 )
-
-// Helper functions for strategies array handling
-func strategiesToString(strategies []string) string {
-	if len(strategies) == 0 {
-		return ""
-	}
-	data, err := sonic.Marshal(strategies)
-	if err != nil {
-		return ""
-	}
-	return string(data)
-}
-
-func stringToStrategies(s string) []string {
-	if s == "" {
-		return []string{}
-	}
-	var strategies []string
-	if err := sonic.Unmarshal([]byte(s), &strategies); err != nil {
-		// Fallback: try comma-separated format
-		return strings.Split(s, ",")
-	}
-	return strategies
-}
 
 const (
 	DISCOVER_SCHEDULE_TABLE_NAME = "t_discover_schedule"
@@ -79,7 +53,7 @@ func discoverScheduleColumns() []string {
 		"f_start_time",
 		"f_end_time",
 		"f_enabled",
-		"f_strategies",
+		"f_strategy",
 		"f_last_run",
 		"f_next_run",
 		"f_creator",
@@ -93,7 +67,6 @@ func discoverScheduleColumns() []string {
 
 func scanDiscoverSchedule(scanner discoverScheduleScanner) (*interfaces.DiscoverSchedule, error) {
 	schedule := &interfaces.DiscoverSchedule{}
-	var strategiesStr string
 
 	err := scanner.Scan(
 		&schedule.ID,
@@ -103,7 +76,7 @@ func scanDiscoverSchedule(scanner discoverScheduleScanner) (*interfaces.Discover
 		&schedule.StartTime,
 		&schedule.EndTime,
 		&schedule.Enabled,
-		&strategiesStr,
+		&schedule.Strategy,
 		&schedule.LastRun,
 		&schedule.NextRun,
 		&schedule.Creator.ID,
@@ -117,7 +90,6 @@ func scanDiscoverSchedule(scanner discoverScheduleScanner) (*interfaces.Discover
 		return nil, err
 	}
 
-	schedule.Strategies = stringToStrategies(strategiesStr)
 	return schedule, nil
 }
 
@@ -229,8 +201,6 @@ func (dsa *discoverScheduleAccess) Create(ctx context.Context, schedule *interfa
 	}
 	schedule.NextRun = nextRun.UnixMilli()
 
-	// Build insert SQL
-	strategiesStr := strategiesToString(schedule.Strategies)
 	sqlStr, vals, err := sq.Insert(DISCOVER_SCHEDULE_TABLE_NAME).
 		Columns(
 			"f_id",
@@ -240,7 +210,7 @@ func (dsa *discoverScheduleAccess) Create(ctx context.Context, schedule *interfa
 			"f_start_time",
 			"f_end_time",
 			"f_enabled",
-			"f_strategies",
+			"f_strategy",
 			"f_last_run",
 			"f_next_run",
 			"f_creator",
@@ -255,7 +225,7 @@ func (dsa *discoverScheduleAccess) Create(ctx context.Context, schedule *interfa
 			schedule.StartTime,
 			schedule.EndTime,
 			schedule.Enabled,
-			strategiesStr,
+			schedule.Strategy,
 			schedule.LastRun,
 			schedule.NextRun,
 			schedule.Creator.ID,
@@ -414,8 +384,6 @@ func (dsa *discoverScheduleAccess) Update(ctx context.Context, schedule *interfa
 
 	span.SetAttributes(attr.Key("schedule_id").String(schedule.ID))
 
-	strategiesStr := strategiesToString(schedule.Strategies)
-
 	// Recalculate next run time if cron expression changed
 	nextRun, err := calculateNextRun(schedule.CronExpr, time.Now())
 	if err != nil {
@@ -431,7 +399,7 @@ func (dsa *discoverScheduleAccess) Update(ctx context.Context, schedule *interfa
 		Set("f_cron_expr", schedule.CronExpr).
 		Set("f_start_time", schedule.StartTime).
 		Set("f_end_time", schedule.EndTime).
-		Set("f_strategies", strategiesStr).
+		Set("f_strategy", schedule.Strategy).
 		Set("f_next_run", schedule.NextRun).
 		Set("f_enabled", schedule.Enabled).
 		Set("f_updater", schedule.Updater.ID).
@@ -527,6 +495,7 @@ func (dsa *discoverScheduleAccess) GetEnabledSchedules(ctx context.Context) ([]*
 		"f_start_time",
 		"f_end_time",
 		"f_enabled",
+		"f_strategy",
 		"f_last_run",
 		"f_next_run",
 		"f_creator",
@@ -568,6 +537,7 @@ func (dsa *discoverScheduleAccess) GetEnabledSchedules(ctx context.Context) ([]*
 			&schedule.StartTime,
 			&schedule.EndTime,
 			&schedule.Enabled,
+			&schedule.Strategy,
 			&schedule.LastRun,
 			&schedule.NextRun,
 			&schedule.Creator.ID,

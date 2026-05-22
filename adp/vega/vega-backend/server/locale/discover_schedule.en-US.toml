@@ -9,8 +9,8 @@ Solution = "Please provide a valid 5/6-field cron expression"
 ErrorLink = "No solution"
 
 [VegaBackend.DiscoverSchedule.InvalidStrategies]
-Description = "Invalid discover strategies"
-Solution = "Strategies must be a subset of [insert, delete, update]; empty array means all"
+Description = "Invalid discover strategy"
+Solution = "Strategy must be one of [full_sync, create_only, cleanup_only]; empty means full_sync"
 ErrorLink = "No solution"
 
 [VegaBackend.DiscoverSchedule.InvalidTimeRange]

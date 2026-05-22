@@ -33,7 +33,8 @@ type indexDiscoverItem struct {
 // 返回值:
 //   - *interfaces.DiscoverResult: 发现结果，包含新资源、过期资源和未变化资源的统计信息
 //   - error: 错误信息，如果在发现过程中出现错误则返回
-func (dh *DiscoverHandler) discoverIndexResources(ctx context.Context, catalog *interfaces.Catalog, connector connectors.Connector) (*interfaces.DiscoverResult, error) {
+func (dh *DiscoverHandler) discoverIndexResources(ctx context.Context, catalog *interfaces.Catalog,
+	connector connectors.Connector, task *interfaces.DiscoverTask) (*interfaces.DiscoverResult, error) {
 
 	// 检查连接器是否实现了IndexConnector接口
 	indexConnector, ok := connector.(connectors.IndexConnector)
@@ -55,7 +56,7 @@ func (dh *DiscoverHandler) discoverIndexResources(ctx context.Context, catalog *
 	}
 
 	// Step 3: Reconcile:将index数据获取并插入：
-	result, items, err := dh.reconcileIndexResources(ctx, catalog, sourceIndices, existingResources)
+	result, items, err := dh.reconcileIndexResources(ctx, catalog, sourceIndices, existingResources, task.DiscoverActions)
 	if err != nil {
 		return nil, fmt.Errorf("failed to reconcile resources: %w", err)
 	}
@@ -84,7 +85,7 @@ func (dh *DiscoverHandler) discoverIndexResources(ctx context.Context, catalog *
 //   - []indexDiscoverItem: 索引发现项目列表，包含资源和索引元数据
 //   - error: 错误信息，如果处理过程中出现错误则返回
 func (dh *DiscoverHandler) reconcileIndexResources(ctx context.Context, catalog *interfaces.Catalog, sourceIndices []*interfaces.IndexMeta,
-	existingResources []*interfaces.Resource) (*interfaces.DiscoverResult, []indexDiscoverItem, error) {
+	existingResources []*interfaces.Resource, actions *interfaces.DiscoverActions) (*interfaces.DiscoverResult, []indexDiscoverItem, error) {
 
 	// 初始化发现结果，设置目录ID
 	result := &interfaces.DiscoverResult{
@@ -96,6 +97,9 @@ func (dh *DiscoverHandler) reconcileIndexResources(ctx context.Context, catalog 
 	// 创建已存在资源的映射，以源标识符为键
 	existingMap := make(map[string]*interfaces.Resource)
 	for _, r := range existingResources {
+		if r.Category != interfaces.ResourceCategoryIndex {
+			continue
+		}
 		existingMap[r.SourceIdentifier] = r
 	}
 
@@ -110,48 +114,54 @@ func (dh *DiscoverHandler) reconcileIndexResources(ctx context.Context, catalog 
 		sourceIdentifier := idx.Name //test-index
 
 		if resource, ok := existingMap[sourceIdentifier]; ok {
-			markAfterEnrich := true
-			if resource.Status == interfaces.ResourceStatusStale {
-				if err := dh.rs.UpdateStatus(ctx, resource.ID, interfaces.ResourceStatusActive, ""); err != nil {
-					logger.Errorf("Failed to reactivate resource %s: %v", resource.ID, err)
-				} else {
-					dh.markDiscover(ctx, resource.ID, interfaces.DiscoverStatusRestored)
-					resource.Status = interfaces.ResourceStatusActive
-					resource.LastDiscoverStatus = interfaces.DiscoverStatusRestored
-					result.RestoredCount++
-					markAfterEnrich = false
+			if actions != nil && actions.Refresh {
+				markAfterEnrich := true
+				if resource.Status == interfaces.ResourceStatusStale {
+					if err := dh.rs.UpdateStatus(ctx, resource.ID, interfaces.ResourceStatusActive, ""); err != nil {
+						logger.Errorf("Failed to reactivate resource %s: %v", resource.ID, err)
+					} else {
+						dh.markDiscover(ctx, resource.ID, interfaces.DiscoverStatusRestored)
+						resource.Status = interfaces.ResourceStatusActive
+						resource.LastDiscoverStatus = interfaces.DiscoverStatusRestored
+						result.RestoredCount++
+						markAfterEnrich = false
+					}
 				}
-			}
-			items = append(items, indexDiscoverItem{
-				resource:        resource,
-				indexMeta:       idx,
-				markAfterEnrich: markAfterEnrich,
-			})
-		} else {
-			resource, err := dh.createIndexResource(ctx, catalog, idx)
-			if err != nil {
-				logger.Errorf("Failed to create resource %s: %v", sourceIdentifier, err)
-			} else {
-				dh.markDiscover(ctx, resource.ID, interfaces.DiscoverStatusNew)
-				resource.LastDiscoverStatus = interfaces.DiscoverStatusNew
-				result.NewCount++
 				items = append(items, indexDiscoverItem{
-					resource:  resource,
-					indexMeta: idx,
+					resource:        resource,
+					indexMeta:       idx,
+					markAfterEnrich: markAfterEnrich,
 				})
+			}
+		} else {
+			if actions != nil && actions.Create {
+				resource, err := dh.createIndexResource(ctx, catalog, idx)
+				if err != nil {
+					logger.Errorf("Failed to create resource %s: %v", sourceIdentifier, err)
+				} else {
+					dh.markDiscover(ctx, resource.ID, interfaces.DiscoverStatusNew)
+					resource.LastDiscoverStatus = interfaces.DiscoverStatusNew
+					result.NewCount++
+					items = append(items, indexDiscoverItem{
+						resource:  resource,
+						indexMeta: idx,
+					})
+				}
 			}
 		}
 	}
 
 	// Handle stale
-	for sourceIdentifier, existing := range existingMap {
-		if _, ok := sourceMap[sourceIdentifier]; !ok {
-			dh.markDiscover(ctx, existing.ID, interfaces.DiscoverStatusMissing)
-			if existing.Status == interfaces.ResourceStatusActive {
-				if err := dh.rs.UpdateStatus(ctx, existing.ID, interfaces.ResourceStatusStale, ""); err != nil {
-					logger.Errorf("Failed to mark resource %s as stale: %v", existing.ID, err)
-				} else {
-					result.StaleCount++
+	if actions != nil && actions.MarkStale {
+		for sourceIdentifier, existing := range existingMap {
+			if _, ok := sourceMap[sourceIdentifier]; !ok {
+				dh.markDiscover(ctx, existing.ID, interfaces.DiscoverStatusMissing)
+				if existing.Status == interfaces.ResourceStatusActive {
+					if err := dh.rs.UpdateStatus(ctx, existing.ID, interfaces.ResourceStatusStale, ""); err != nil {
+						logger.Errorf("Failed to mark resource %s as stale: %v", existing.ID, err)
+					} else {
+						result.StaleCount++
+					}
 				}
 			}
 		}

@@ -10,7 +10,7 @@ ErrorLink = "暂无"
 
 [VegaBackend.DiscoverSchedule.InvalidStrategies]
 Description = "采集策略非法"
-Solution = "strategies 必须是 [insert, delete, update] 的子集；空数组表示全部"
+Solution = "strategy 必须是 [full_sync, create_only, cleanup_only] 之一；空值表示 full_sync"
 ErrorLink = "暂无"
 
 [VegaBackend.DiscoverSchedule.InvalidTimeRange]

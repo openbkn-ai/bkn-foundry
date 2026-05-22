@@ -47,7 +47,8 @@ func discoverStatusAfterEnrich(resource *interfaces.Resource, beforeHash string)
 	}
 	resource.SourceMetadata = sourceMetadata
 
-	if sourceSnapshotHash(resource) != beforeHash {
+	newHash := sourceSnapshotHash(resource)
+	if newHash != beforeHash {
 		status = interfaces.DiscoverStatusUpdated
 	}
 	return status
@@ -63,7 +64,8 @@ func sourceSnapshotHash(resource *interfaces.Resource) string {
 	}
 	sum := sha1.Sum(bytes)
 	hashStr := hex.EncodeToString(sum[:])
-	logger.Infof("SourceMetadata hash: %s, orig: %s", hashStr, bytes)
+	//logger.Infof("SourceMetadata hash: %s, orig: %s", hashStr, bytes)
+
 	return hashStr
 }
 

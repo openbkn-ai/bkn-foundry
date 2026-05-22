@@ -7,7 +7,6 @@ package discover_schedule
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"sync"
@@ -81,14 +80,14 @@ func (dss *discoverScheduleService) Create(ctx context.Context, req *interfaces.
 
 	now := time.Now().UnixMilli()
 	schedule := &interfaces.DiscoverSchedule{
-		ID:         xid.New().String(),
-		Name:       req.Name,
-		CatalogID:  req.CatalogID,
-		CronExpr:   req.CronExpr,
-		StartTime:  req.StartTime,
-		EndTime:    req.EndTime,
-		Enabled:    req.Enabled,
-		Strategies: req.Strategies,
+		ID:        xid.New().String(),
+		Name:      req.Name,
+		CatalogID: req.CatalogID,
+		CronExpr:  req.CronExpr,
+		StartTime: req.StartTime,
+		EndTime:   req.EndTime,
+		Enabled:   req.Enabled,
+		Strategy:  req.Strategy,
 
 		Creator:    accountInfo,
 		CreateTime: now,
@@ -166,7 +165,7 @@ func (dss *discoverScheduleService) Update(ctx context.Context, schedule *interf
 	schedule.Name = req.Name
 	schedule.StartTime = req.StartTime
 	schedule.EndTime = req.EndTime
-	schedule.Strategies = req.Strategies
+	schedule.Strategy = req.Strategy
 	schedule.Updater = accountInfo
 	schedule.UpdateTime = time.Now().UnixMilli()
 
@@ -255,9 +254,15 @@ func (dss *discoverScheduleService) ExecuteSchedule(ctx context.Context, schedul
 		return nil
 	}
 
+	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, schedule.Creator)
+
 	// Create discover task：这里会创建一个task然后发送到redis mq里面去
-	strategiesStr := strategiesToString(schedule.Strategies)
-	_, err = dss.dts.Create(ctx, schedule.CatalogID, interfaces.DiscoverTaskTriggerScheduled, schedule.ID, strategiesStr)
+	_, err = dss.dts.Create(ctx, &interfaces.CreateDiscoverTaskRequest{
+		CatalogID:   schedule.CatalogID,
+		TriggerType: interfaces.DiscoverTaskTriggerScheduled,
+		ScheduleID:  schedule.ID,
+		Strategy:    schedule.Strategy,
+	})
 	if err != nil {
 		otellog.LogError(ctx, "Failed to create discover task", err)
 		return err
@@ -271,16 +276,4 @@ func (dss *discoverScheduleService) ExecuteSchedule(ctx context.Context, schedul
 	}
 	logger.Infof("Executed discover schedule: id=%s, catalog_id=%s", schedule.ID, schedule.CatalogID)
 	return nil
-}
-
-// Helper functions for strategies array handling
-func strategiesToString(strategies []string) string {
-	if len(strategies) == 0 {
-		return ""
-	}
-	data, err := json.Marshal(strategies)
-	if err != nil {
-		return ""
-	}
-	return string(data)
 }

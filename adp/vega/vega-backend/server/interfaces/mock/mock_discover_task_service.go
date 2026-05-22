@@ -58,23 +58,18 @@ func (mr *MockDiscoverTaskServiceMockRecorder) CheckExistByStatuses(ctx, catalog
 }
 
 // Create mocks base method.
-func (m *MockDiscoverTaskService) Create(ctx context.Context, catalogID string, taskType ...string) (string, error) {
+func (m *MockDiscoverTaskService) Create(ctx context.Context, req *interfaces.CreateDiscoverTaskRequest) (string, error) {
 	m.ctrl.T.Helper()
-	varargs := []any{ctx, catalogID}
-	for _, a := range taskType {
-		varargs = append(varargs, a)
-	}
-	ret := m.ctrl.Call(m, "Create", varargs...)
+	ret := m.ctrl.Call(m, "Create", ctx, req)
 	ret0, _ := ret[0].(string)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Create indicates an expected call of Create.
-func (mr *MockDiscoverTaskServiceMockRecorder) Create(ctx, catalogID any, taskType ...any) *gomock.Call {
+func (mr *MockDiscoverTaskServiceMockRecorder) Create(ctx, req any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	varargs := append([]any{ctx, catalogID}, taskType...)
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockDiscoverTaskService)(nil).Create), varargs...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockDiscoverTaskService)(nil).Create), ctx, req)
 }
 
 // Delete mocks base method.

@@ -18,12 +18,12 @@ func Test_ValidateDiscoverScheduleRequest(t *testing.T) {
 	Convey("Test ValidateDiscoverScheduleRequest\n", t, func() {
 		validReq := func() *interfaces.DiscoverScheduleRequest {
 			return &interfaces.DiscoverScheduleRequest{
-				Name:       "schedule-1",
-				CatalogID:  "catalog-1",
-				CronExpr:   "*/5 * * * *",
-				StartTime:  1000,
-				EndTime:    2000,
-				Strategies: []string{"insert", "update"},
+				Name:      "schedule-1",
+				CatalogID: "catalog-1",
+				CronExpr:  "*/5 * * * *",
+				StartTime: 1000,
+				EndTime:   2000,
+				Strategy:  interfaces.DiscoverStrategyFullSync,
 			}
 		}
 
@@ -62,7 +62,7 @@ func Test_ValidateDiscoverScheduleRequest(t *testing.T) {
 
 		Convey("Invalid strategy\n", func() {
 			req := validReq()
-			req.Strategies = []string{"unknown"}
+			req.Strategy = "unknown"
 			err := ValidateDiscoverScheduleRequest(context.Background(), req)
 			So(err, ShouldNotBeNil)
 		})

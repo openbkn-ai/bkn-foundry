@@ -24,7 +24,7 @@ type filesetDiscoverItem struct {
 
 // discoverFilesetResources discovers fileset resources from a fileset connector.
 func (dh *DiscoverHandler) discoverFilesetResources(ctx context.Context, catalog *interfaces.Catalog,
-	connector connectors.Connector) (*interfaces.DiscoverResult, error) {
+	connector connectors.Connector, task *interfaces.DiscoverTask) (*interfaces.DiscoverResult, error) {
 
 	filesetConnector, ok := connector.(connectors.FilesetConnector)
 	if !ok {
@@ -42,7 +42,7 @@ func (dh *DiscoverHandler) discoverFilesetResources(ctx context.Context, catalog
 		return nil, fmt.Errorf("failed to get existing resources: %w", err)
 	}
 
-	result, items, err := dh.reconcileFilesetResources(ctx, catalog, sourceFilesets, existingResources)
+	result, items, err := dh.reconcileFilesetResources(ctx, catalog, sourceFilesets, existingResources, task.DiscoverActions)
 	if err != nil {
 		return nil, fmt.Errorf("failed to reconcile fileset resources: %w", err)
 	}
@@ -58,7 +58,7 @@ func (dh *DiscoverHandler) discoverFilesetResources(ctx context.Context, catalog
 }
 
 func (dh *DiscoverHandler) reconcileFilesetResources(ctx context.Context, catalog *interfaces.Catalog, source []*interfaces.FilesetMeta,
-	existingResources []*interfaces.Resource) (*interfaces.DiscoverResult, []filesetDiscoverItem, error) {
+	existingResources []*interfaces.Resource, actions *interfaces.DiscoverActions) (*interfaces.DiscoverResult, []filesetDiscoverItem, error) {
 	result := &interfaces.DiscoverResult{
 		CatalogID: catalog.ID,
 	}
@@ -82,39 +82,45 @@ func (dh *DiscoverHandler) reconcileFilesetResources(ctx context.Context, catalo
 		sourceIdentifier := filesetSourceIdentifier(fs)
 		if resource, ok := existingMap[sourceIdentifier]; ok {
 			markAfterEnrich := true
-			if resource.Status == interfaces.ResourceStatusStale {
-				if err := dh.rs.UpdateStatus(ctx, resource.ID, interfaces.ResourceStatusActive, ""); err != nil {
-					logger.Errorf("Failed to reactivate resource %s: %v", resource.ID, err)
-				} else {
-					dh.markDiscover(ctx, resource.ID, interfaces.DiscoverStatusRestored)
-					resource.Status = interfaces.ResourceStatusActive
-					resource.LastDiscoverStatus = interfaces.DiscoverStatusRestored
-					result.RestoredCount++
-					markAfterEnrich = false
+			if actions != nil && actions.Refresh {
+				if resource.Status == interfaces.ResourceStatusStale {
+					if err := dh.rs.UpdateStatus(ctx, resource.ID, interfaces.ResourceStatusActive, ""); err != nil {
+						logger.Errorf("Failed to reactivate resource %s: %v", resource.ID, err)
+					} else {
+						dh.markDiscover(ctx, resource.ID, interfaces.DiscoverStatusRestored)
+						resource.Status = interfaces.ResourceStatusActive
+						resource.LastDiscoverStatus = interfaces.DiscoverStatusRestored
+						result.RestoredCount++
+						markAfterEnrich = false
+					}
 				}
+				items = append(items, filesetDiscoverItem{resource: resource, meta: fs, markAfterEnrich: markAfterEnrich})
 			}
-			items = append(items, filesetDiscoverItem{resource: resource, meta: fs, markAfterEnrich: markAfterEnrich})
 		} else {
-			resource, err := dh.createFilesetResource(ctx, catalog, fs, sourceIdentifier)
-			if err != nil {
-				logger.Errorf("Failed to create fileset resource %s: %v", sourceIdentifier, err)
-			} else {
-				dh.markDiscover(ctx, resource.ID, interfaces.DiscoverStatusNew)
-				resource.LastDiscoverStatus = interfaces.DiscoverStatusNew
-				result.NewCount++
-				items = append(items, filesetDiscoverItem{resource: resource, meta: fs})
+			if actions != nil && actions.Create {
+				resource, err := dh.createFilesetResource(ctx, catalog, fs, sourceIdentifier)
+				if err != nil {
+					logger.Errorf("Failed to create fileset resource %s: %v", sourceIdentifier, err)
+				} else {
+					dh.markDiscover(ctx, resource.ID, interfaces.DiscoverStatusNew)
+					resource.LastDiscoverStatus = interfaces.DiscoverStatusNew
+					result.NewCount++
+					items = append(items, filesetDiscoverItem{resource: resource, meta: fs})
+				}
 			}
 		}
 	}
 
-	for sourceIdentifier, existing := range existingMap {
-		if _, ok := sourceMap[sourceIdentifier]; !ok {
-			dh.markDiscover(ctx, existing.ID, interfaces.DiscoverStatusMissing)
-			if existing.Status == interfaces.ResourceStatusActive {
-				if err := dh.rs.UpdateStatus(ctx, existing.ID, interfaces.ResourceStatusStale, ""); err != nil {
-					logger.Errorf("Failed to mark resource %s as stale: %v", existing.ID, err)
-				} else {
-					result.StaleCount++
+	if actions != nil && actions.MarkStale {
+		for sourceIdentifier, existing := range existingMap {
+			if _, ok := sourceMap[sourceIdentifier]; !ok {
+				dh.markDiscover(ctx, existing.ID, interfaces.DiscoverStatusMissing)
+				if existing.Status == interfaces.ResourceStatusActive {
+					if err := dh.rs.UpdateStatus(ctx, existing.ID, interfaces.ResourceStatusStale, ""); err != nil {
+						logger.Errorf("Failed to mark resource %s as stale: %v", existing.ID, err)
+					} else {
+						result.StaleCount++
+					}
 				}
 			}
 		}

@@ -58,6 +58,8 @@ func (dh *DiscoverHandler) HandleTask(ctx context.Context, task *asynq.Task) err
 		logger.Errorf("Failed to get task info for task %s: %v", taskID, err)
 		return err
 	}
+	actions := interfaces.ActionsFromDiscoverStrategy(taskInfo.Strategy)
+	taskInfo.DiscoverActions = &actions
 
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, taskInfo.Creator)
 
@@ -142,10 +144,10 @@ func (dh *DiscoverHandler) discoverCatalog(ctx context.Context, catalog *interfa
 		return dh.discoverTableResources(ctx, catalog, connector, task)
 	// index类型的会到这里，例如open search
 	case interfaces.ConnectorCategoryIndex:
-		return dh.discoverIndexResources(ctx, catalog, connector)
+		return dh.discoverIndexResources(ctx, catalog, connector, task)
 	// fileset类型的会到这里，例如anyshare
 	case interfaces.ConnectorCategoryFileset:
-		return dh.discoverFilesetResources(ctx, catalog, connector)
+		return dh.discoverFilesetResources(ctx, catalog, connector, task)
 	default:
 		return nil, fmt.Errorf("unsupported connector category for discover: %s", category)
 	}

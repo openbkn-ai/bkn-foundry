@@ -17,8 +17,7 @@ import (
 //go:generate mockgen -source ../interfaces/discover_task_service.go -destination ../interfaces/mock/mock_discover_task_service.go
 type DiscoverTaskService interface {
 	// Create creates a new DiscoverTask and sends message to Kafka.
-	// taskType is optional, defaults to DiscoverTaskTriggerManual if not provided.
-	Create(ctx context.Context, catalogID string, taskType ...string) (string, error)
+	Create(ctx context.Context, req *CreateDiscoverTaskRequest) (string, error)
 	// GetByID retrieves a DiscoverTask by ID.
 	GetByID(ctx context.Context, id string) (*DiscoverTask, error)
 	// List lists DiscoverTasks for a catalog.

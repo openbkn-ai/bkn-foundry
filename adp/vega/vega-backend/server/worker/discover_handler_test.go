@@ -24,9 +24,10 @@ func TestReconcileTableResourcesMarksNew(t *testing.T) {
 	created := &interfaces.Resource{ID: "r1", SourceIdentifier: "users", Status: interfaces.ResourceStatusActive}
 	rs.EXPECT().Create(gomock.Any(), gomock.Any()).Return(created, nil)
 	rs.EXPECT().UpdateDiscoverStatus(gomock.Any(), "r1", interfaces.DiscoverStatusNew).Return(nil)
+	actions := interfaces.ActionsFromDiscoverStrategy(interfaces.DiscoverStrategyFullSync)
 
 	result, items, err := dh.reconcileTableResources(context.Background(), &interfaces.Catalog{ID: "cat1"},
-		[]*interfaces.TableMeta{table}, nil, &interfaces.DiscoverTask{})
+		[]*interfaces.TableMeta{table}, nil, &actions)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -44,13 +45,15 @@ func TestReconcileTableResourcesRefreshesMissingWhenAlreadyStale(t *testing.T) {
 	dh := &DiscoverHandler{rs: rs}
 
 	rs.EXPECT().UpdateDiscoverStatus(gomock.Any(), "r1", interfaces.DiscoverStatusMissing).Return(nil)
+	actions := interfaces.ActionsFromDiscoverStrategy(interfaces.DiscoverStrategyFullSync)
 
 	result, _, err := dh.reconcileTableResources(context.Background(), &interfaces.Catalog{ID: "cat1"}, nil,
 		[]*interfaces.Resource{{
 			ID:               "r1",
 			SourceIdentifier: "users",
+			Category:         interfaces.ResourceCategoryTable,
 			Status:           interfaces.ResourceStatusStale,
-		}}, &interfaces.DiscoverTask{})
+		}}, &actions)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -65,13 +68,15 @@ func TestReconcileTableResourcesDoesNotDisableUserDisabledResource(t *testing.T)
 	dh := &DiscoverHandler{rs: rs}
 
 	rs.EXPECT().UpdateDiscoverStatus(gomock.Any(), "r1", interfaces.DiscoverStatusMissing).Return(nil)
+	actions := interfaces.ActionsFromDiscoverStrategy(interfaces.DiscoverStrategyFullSync)
 
 	result, _, err := dh.reconcileTableResources(context.Background(), &interfaces.Catalog{ID: "cat1"}, nil,
 		[]*interfaces.Resource{{
 			ID:               "r1",
 			SourceIdentifier: "users",
+			Category:         interfaces.ResourceCategoryTable,
 			Status:           interfaces.ResourceStatusDisabled,
-		}}, &interfaces.DiscoverTask{})
+		}}, &actions)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -87,14 +92,16 @@ func TestReconcileTableResourcesMarksRestored(t *testing.T) {
 
 	rs.EXPECT().UpdateStatus(gomock.Any(), "r1", interfaces.ResourceStatusActive, "").Return(nil)
 	rs.EXPECT().UpdateDiscoverStatus(gomock.Any(), "r1", interfaces.DiscoverStatusRestored).Return(nil)
+	actions := interfaces.ActionsFromDiscoverStrategy(interfaces.DiscoverStrategyFullSync)
 
 	result, items, err := dh.reconcileTableResources(context.Background(), &interfaces.Catalog{ID: "cat1"},
 		[]*interfaces.TableMeta{{Name: "users"}},
 		[]*interfaces.Resource{{
 			ID:               "r1",
 			SourceIdentifier: "users",
+			Category:         interfaces.ResourceCategoryTable,
 			Status:           interfaces.ResourceStatusStale,
-		}}, &interfaces.DiscoverTask{})
+		}}, &actions)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

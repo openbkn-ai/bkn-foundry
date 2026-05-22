@@ -10,6 +10,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"sort"
 	"strings"
 
 	sq "github.com/Masterminds/squirrel"
@@ -404,6 +405,10 @@ func (c *MariaDBConnector) fetchIndexes(ctx context.Context, table *interfaces.T
 	for _, idx := range indexMap {
 		indices = append(indices, *idx)
 	}
+	sort.Slice(indices, func(i, j int) bool {
+		return indices[i].Name < indices[j].Name
+	})
+
 	table.Indices = indices
 	return nil
 }
@@ -465,6 +470,9 @@ func (c *MariaDBConnector) fetchForeignKeys(ctx context.Context, table *interfac
 	for _, fk := range fkMap {
 		fks = append(fks, *fk)
 	}
+	sort.Slice(fks, func(i, j int) bool {
+		return fks[i].Name < fks[j].Name
+	})
 	table.ForeignKeys = fks
 	return nil
 }

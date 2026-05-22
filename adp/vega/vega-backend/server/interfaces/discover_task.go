@@ -34,11 +34,11 @@ var (
 
 // DiscoverTask represents a discover task entity.
 type DiscoverTask struct {
-	ID          string   `json:"id"`
-	CatalogID   string   `json:"catalog_id"`
-	ScheduleID  string   `json:"schedule_id"`
-	Strategies  []string `json:"strategies"`   // Strategies for discover: can be one or more of ["insert", "delete", "update"], or empty for all
-	TriggerType string   `json:"trigger_type"` // manual/scheduled
+	ID          string `json:"id"`
+	CatalogID   string `json:"catalog_id"`
+	ScheduleID  string `json:"schedule_id"`
+	Strategy    string `json:"strategy"`     // Discover strategy: full_sync/create_only/cleanup_only
+	TriggerType string `json:"trigger_type"` // manual/scheduled
 
 	Status     string          `json:"status"`   // pending/running/completed/failed
 	Progress   int             `json:"progress"` // 0-100
@@ -49,6 +49,9 @@ type DiscoverTask struct {
 
 	Creator    AccountInfo `json:"creator"`
 	CreateTime int64       `json:"create_time"`
+
+	// DiscoverActions is derived from Strategy by the worker and is not persisted.
+	DiscoverActions *DiscoverActions `json:"-"`
 }
 
 // DiscoverTaskQueryParams holds discover task list query parameters.
@@ -63,4 +66,11 @@ type DiscoverTaskQueryParams struct {
 // DiscoverTaskMessage represents the Kafka message for discover task.
 type DiscoverTaskMessage struct {
 	TaskID string `json:"task_id"`
+}
+
+type CreateDiscoverTaskRequest struct {
+	CatalogID   string
+	TriggerType string
+	ScheduleID  string
+	Strategy    string
 }

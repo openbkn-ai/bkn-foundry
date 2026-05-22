@@ -352,7 +352,7 @@ CREATE TABLE IF NOT EXISTS t_discover_task (
     f_id                      VARCHAR(40 CHAR) NOT NULL DEFAULT '',
     f_catalog_id              VARCHAR(40 CHAR) NOT NULL DEFAULT '',
     f_schedule_id             VARCHAR(40 CHAR) NOT NULL DEFAULT '',
-    f_strategies              VARCHAR(100 CHAR) NOT NULL DEFAULT '',
+    f_strategy                VARCHAR(32 CHAR) NOT NULL DEFAULT 'full_sync',
     f_trigger_type            VARCHAR(20 CHAR) NOT NULL DEFAULT 'manual',
 
     -- 任务状态
@@ -440,7 +440,7 @@ CREATE TABLE IF NOT EXISTS t_discover_schedule (
 
     -- 调度状态
     f_enabled                 TINYINT NOT NULL DEFAULT 0,
-    f_strategies              VARCHAR(100 CHAR) NOT NULL DEFAULT '',
+    f_strategy                VARCHAR(32 CHAR) NOT NULL DEFAULT 'full_sync',
 
     f_last_run                BIGINT NOT NULL DEFAULT 0,
     f_next_run                BIGINT NOT NULL DEFAULT 0,

@@ -28,21 +28,6 @@ import (
 	"vega-backend/interfaces"
 )
 
-// Helper function to validate strategies array
-func validateStrategies(strategies []string) error {
-	validStrategies := map[string]bool{
-		"insert": true,
-		"delete": true,
-		"update": true,
-	}
-	for _, strategy := range strategies {
-		if !validStrategies[strategy] {
-			return fmt.Errorf("invalid strategy: %s, must be one of: insert, delete, update", strategy)
-		}
-	}
-	return nil
-}
-
 // ========== ListCatalogs ==========
 
 // ListCatalogsByEx handles GET /api/vega-backend/v1/catalogs (External)
@@ -776,6 +761,35 @@ func (r *restHandler) discoverCatalogResources(c *gin.Context, visitor hydra.Vis
 
 	id := c.Param("id")
 
+	strategy := interfaces.DiscoverStrategyFullSync
+	if c.Request.ContentLength > 0 {
+		var req struct {
+			Strategy string `json:"strategy,omitempty"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+				WithErrorDetails(err.Error())
+			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+			rest.ReplyError(c, httpErr)
+			return
+		}
+		strategy = req.Strategy
+	}
+	if strategy == "" {
+		strategy = interfaces.DiscoverStrategyFullSync
+	}
+	if !interfaces.IsValidDiscoverStrategy(strategy) {
+		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_DiscoverSchedule_InvalidStrategies).
+			WithErrorDetails(fmt.Sprintf("invalid strategy: %s, must be one of: %s, %s, %s",
+				strategy,
+				interfaces.DiscoverStrategyFullSync,
+				interfaces.DiscoverStrategyCreateOnly,
+				interfaces.DiscoverStrategyCleanupOnly))
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
 	// Get catalog to verify it exists
 	catalog, err := r.cs.GetByID(ctx, id, false)
 	if err != nil {
@@ -806,7 +820,11 @@ func (r *restHandler) discoverCatalogResources(c *gin.Context, visitor hydra.Vis
 	}
 
 	// Create discover task (async)
-	taskID, err := r.dts.Create(ctx, catalog.ID)
+	taskID, err := r.dts.Create(ctx, &interfaces.CreateDiscoverTaskRequest{
+		CatalogID:   catalog.ID,
+		TriggerType: interfaces.DiscoverTaskTriggerManual,
+		Strategy:    strategy,
+	})
 	if err != nil {
 		httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Catalog_InternalError).
 			WithErrorDetails(err.Error())

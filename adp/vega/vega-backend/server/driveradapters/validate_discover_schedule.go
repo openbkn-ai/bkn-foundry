@@ -33,11 +33,16 @@ func ValidateDiscoverScheduleRequest(ctx context.Context, req *interfaces.Discov
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_DiscoverSchedule_InvalidCronExpr).
 			WithErrorDetails(fmt.Sprintf("invalid cron expression: %v", err))
 	}
-	if len(req.Strategies) > 0 {
-		if err := validateStrategies(req.Strategies); err != nil {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_DiscoverSchedule_InvalidStrategies).
-				WithErrorDetails(err.Error())
-		}
+	if req.Strategy == "" {
+		req.Strategy = interfaces.DiscoverStrategyFullSync
+	}
+	if !interfaces.IsValidDiscoverStrategy(req.Strategy) {
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_DiscoverSchedule_InvalidStrategies).
+			WithErrorDetails(fmt.Sprintf("invalid strategy: %s, must be one of: %s, %s, %s",
+				req.Strategy,
+				interfaces.DiscoverStrategyFullSync,
+				interfaces.DiscoverStrategyCreateOnly,
+				interfaces.DiscoverStrategyCleanupOnly))
 	}
 	var errDetails string
 	switch {

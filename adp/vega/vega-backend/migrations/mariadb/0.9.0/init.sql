@@ -343,7 +343,8 @@ CREATE TABLE IF NOT EXISTS t_discover_task (
     f_id                      VARCHAR(40) NOT NULL DEFAULT '' COMMENT '任务唯一标识',
     f_catalog_id              VARCHAR(40) NOT NULL DEFAULT '' COMMENT '所属catalog ID',
     f_schedule_id             VARCHAR(40) NOT NULL DEFAULT '' COMMENT '关联的 DiscoverSchedule ID',
-    f_strategies              VARCHAR(100) NOT NULL DEFAULT '' COMMENT '策略',
+    f_strategy                VARCHAR(32) NOT NULL DEFAULT 'full_sync' COMMENT '发现策略: full_sync, create_only, cleanup_only',
+    f_strategies              VARCHAR(100) NOT NULL DEFAULT '' COMMENT '历史策略数组字段',
     f_trigger_type            VARCHAR(20) NOT NULL DEFAULT 'manual' COMMENT '触发类型: manual(立即执行), scheduled(定时驱动)',
 
     -- 任务状态
@@ -425,7 +426,7 @@ CREATE TABLE IF NOT EXISTS t_discover_schedule (
 
     -- 调度状态
     f_enabled                 TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否启用: 0-禁用, 1-启用',
-    f_strategies              VARCHAR(100) NOT NULL DEFAULT '' COMMENT '策略',
+    f_strategy                VARCHAR(32) NOT NULL DEFAULT 'full_sync' COMMENT '发现策略: full_sync, create_only, cleanup_only',
 
     f_last_run                BIGINT(20) NOT NULL DEFAULT 0 COMMENT '最后执行时间（Unix毫秒时间戳）',
     f_next_run                BIGINT(20) NOT NULL DEFAULT 0 COMMENT '下次执行时间（Unix毫秒时间戳）',

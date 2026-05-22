@@ -46,7 +46,7 @@ func (dh *DiscoverHandler) discoverTableResources(ctx context.Context, catalog *
 	}
 
 	// Step 3: 对比并创建/更新 Resource（基础信息）
-	result, items, err := dh.reconcileTableResources(ctx, catalog, sourceTables, existingResources, task)
+	result, items, err := dh.reconcileTableResources(ctx, catalog, sourceTables, existingResources, task.DiscoverActions)
 	if err != nil {
 		return nil, fmt.Errorf("failed to reconcile resources: %w", err)
 	}
@@ -146,7 +146,7 @@ func (dh *DiscoverHandler) enrichTableMetadata(ctx context.Context, tableConnect
 
 // reconcileTableResources reconciles source tables with existing resources.
 func (dh *DiscoverHandler) reconcileTableResources(ctx context.Context, catalog *interfaces.Catalog, sourceTables []*interfaces.TableMeta,
-	existingResources []*interfaces.Resource, task *interfaces.DiscoverTask) (*interfaces.DiscoverResult, []tableDiscoverItem, error) {
+	existingResources []*interfaces.Resource, actions *interfaces.DiscoverActions) (*interfaces.DiscoverResult, []tableDiscoverItem, error) {
 
 	result := &interfaces.DiscoverResult{
 		CatalogID: catalog.ID,
@@ -158,6 +158,9 @@ func (dh *DiscoverHandler) reconcileTableResources(ctx context.Context, catalog 
 	// 构建现有资源的 map（按 SourceIdentifier 索引）
 	existingMap := make(map[string]*interfaces.Resource)
 	for _, r := range existingResources {
+		if r.Category != interfaces.ResourceCategoryTable {
+			continue
+		}
 		existingMap[r.SourceIdentifier] = r
 	}
 
@@ -167,18 +170,13 @@ func (dh *DiscoverHandler) reconcileTableResources(ctx context.Context, catalog 
 		sourceIdentifier := dh.buildSourceIdentifier(t)
 		sourceMap[sourceIdentifier] = t
 	}
-	// 将策略转换为 map 以便快速查找
-	strategyMap := make(map[string]bool)
-	for _, strategy := range task.Strategies {
-		strategyMap[strategy] = true
-	}
 	// 处理新增和保持的资源
 	for _, table := range sourceTables {
 		sourceIdentifier := dh.buildSourceIdentifier(table)
 
 		if resource, ok := existingMap[sourceIdentifier]; ok {
 			// 已存在，检查状态
-			if len(task.Strategies) == 0 || strategyMap["update"] {
+			if actions != nil && actions.Refresh {
 				markAfterEnrich := true
 				if resource.Status == interfaces.ResourceStatusStale {
 					// 之前标记为 stale，现在重新激活
@@ -199,8 +197,8 @@ func (dh *DiscoverHandler) reconcileTableResources(ctx context.Context, catalog 
 				})
 			}
 		} else {
-			// 新增资源 - 只在策略包含 "insert" 或没有策略时处理
-			if len(task.Strategies) == 0 || strategyMap["insert"] {
+			// 新增资源 - 只在策略允许 create 时处理
+			if actions != nil && actions.Create {
 				resource, err := dh.createResource(ctx, catalog, table, sourceIdentifier)
 				if err != nil {
 					logger.Errorf("Failed to create resource %s: %v", sourceIdentifier, err)
@@ -217,8 +215,8 @@ func (dh *DiscoverHandler) reconcileTableResources(ctx context.Context, catalog 
 		}
 	}
 
-	// 处理已删除的资源（标记为 stale） - 只在策略包含 "delete" 或没有策略时处理
-	if len(task.Strategies) == 0 || strategyMap["delete"] {
+	// 处理已删除的资源（标记为 stale） - 只在策略允许 mark_stale 时处理
+	if actions != nil && actions.MarkStale {
 		for sourceIdentifier, existing := range existingMap {
 			if _, ok := sourceMap[sourceIdentifier]; !ok {
 				dh.markDiscover(ctx, existing.ID, interfaces.DiscoverStatusMissing)

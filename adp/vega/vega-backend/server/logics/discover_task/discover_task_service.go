@@ -78,7 +78,7 @@ func (dts *discoverTaskService) DebugTaskQueue() <-chan *asynq.Task {
 // 返回值:
 //   - string: 创建的任务ID
 //   - error: 错误信息，如果创建失败则返回错误
-func (dts *discoverTaskService) Create(ctx context.Context, catalogID string, discoverSchedule ...string) (string, error) {
+func (dts *discoverTaskService) Create(ctx context.Context, req *interfaces.CreateDiscoverTaskRequest) (string, error) {
 	// 使用分布式追踪系统创建一个span，用于追踪服务调用
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DiscoverTaskService.Create")
 	defer span.End() // 确保span在函数结束时结束
@@ -89,31 +89,13 @@ func (dts *discoverTaskService) Create(ctx context.Context, catalogID string, di
 		accountInfo = ai
 	}
 
-	// 处理可选的taskType参数
-	// 默认根据上下文判断：如果是从定时任务服务调用，则默认为scheduled，否则为manual
-	triggerType := interfaces.DiscoverTaskTriggerManual
-	scheduleID := ""
-	strategies := []string{}
-	if len(discoverSchedule) > 0 && discoverSchedule[0] != "" {
-		triggerType = discoverSchedule[0]
-		if len(discoverSchedule) > 1 {
-			scheduleID = discoverSchedule[1]
-		}
-		if len(discoverSchedule) > 2 && discoverSchedule[2] != "" {
-			// 反序列化 strategies 字符串为 []string
-			if err := sonic.Unmarshal([]byte(discoverSchedule[2]), &strategies); err != nil {
-				logger.Warnf("Failed to unmarshal strategies: %v", err)
-				strategies = []string{}
-			}
-		}
-	}
 	now := time.Now().UnixMilli()
 	task := &interfaces.DiscoverTask{
 		ID:          xid.New().String(),
-		CatalogID:   catalogID,
-		ScheduleID:  scheduleID,
-		Strategies:  strategies,
-		TriggerType: triggerType,
+		CatalogID:   req.CatalogID,
+		ScheduleID:  req.ScheduleID,
+		Strategy:    req.Strategy,
+		TriggerType: req.TriggerType,
 		Status:      interfaces.DiscoverTaskStatusPending,
 		Progress:    0,
 		Message:     "",
