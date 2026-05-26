@@ -9,6 +9,10 @@ on:
       - '.github/workflows/reusable-*.yml'
   workflow_dispatch:
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   test:
     uses: ./.github/workflows/reusable-test.yml
