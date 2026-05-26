@@ -47,6 +47,6 @@ jobs:
       - name: Push to GHCR
         if: ${{ inputs.publish }}
         run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
+          echo "${{ github.token }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
           CHART_FILE="/tmp/charts/${{ inputs.chart-name }}-${{ inputs.version }}.tgz"
           helm push "$CHART_FILE" oci://ghcr.io/${{ github.repository_owner }}/charts
