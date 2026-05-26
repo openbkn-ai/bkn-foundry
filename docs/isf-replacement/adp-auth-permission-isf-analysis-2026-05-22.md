@@ -8,7 +8,7 @@
 
 ## 1. 背景：ISF 是什么
 
-ISF = **Information Security Fabric**，KWeaver 的安全/认证底座，**可选组件**（文档里 Info Security Fabric / Internal Security Framework 命名混用，实体一个）。由 Helm 安装的一组服务构成（见 `deploy/release-manifests/0.7.0/isf.yaml`）：
+ISF = **Information Security Fabric**，Kowell 的安全/认证底座，**可选组件**（文档里 Info Security Fabric / Internal Security Framework 命名混用，实体一个）。由 Helm 安装的一组服务构成（见 `deploy/release-manifests/0.7.0/isf.yaml`）：
 
 | 组件 | 职责 |
 |---|---|

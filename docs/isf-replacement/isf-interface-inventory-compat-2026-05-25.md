@@ -1,17 +1,17 @@
-# kweaver 依赖的 ISF 接口清单 与 兼容性评估
+# Kowell 依赖的 ISF 接口清单 与 兼容性评估
 
 > 日期：2026-05-25
 > 范围：`adp/`、`decision-agent/`（infra 不接 ISF）
-> 目的：盘清 kweaver 各服务调用了 ISF 的哪些接口，评估「自研轻量服务能否保证兼容（应用零改）」
+> 目的：盘清 Kowell 各服务调用了 ISF 的哪些接口，评估「自研轻量服务能否保证兼容（应用零改）」
 
 ---
 
 ## 0. 结论先行
 
-- kweaver 对 ISF 的依赖面 = **3 个核心契约 + 2 个 anyshare 耦合接口**。
+- Kowell 对 ISF 的依赖面 = **3 个核心契约 + 2 个 anyshare 耦合接口**。
 - **核心 3 块兼容可行**（自研服务保契约，应用零改）：hydra token 内省、authorization 7 端点（实际只用 RBAC 子集）、user-management 目录查询。
 - **anyshare 耦合 2 块**（eacp 文档权限、authentication/jwt）**仅 flow-automation 使用**，且绑定 anyshare 文档体系；是否需要替换取决于 anyshare 集成是否保留。
-- 鉴权实测只用「accessor + resource(type+id) + allow operation」纯 RBAC，**Casbin 足以承接**（ISF 自研 ABAC 的 obligation/层级/condition/deny/过期，kweaver 零使用）。
+- 鉴权实测只用「accessor + resource(type+id) + allow operation」纯 RBAC，**Casbin 足以承接**（ISF 自研 ABAC 的 obligation/层级/condition/deny/过期，Kowell 零使用）。
 
 ---
 

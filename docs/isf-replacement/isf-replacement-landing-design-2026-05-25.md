@@ -15,7 +15,7 @@
                        └──────┬───────┘
                               │ login/consent + introspect
                        ┌──────▼───────────────────────────┐
-  9 个 kweaver 应用 ──▶│        auth-service (新)           │
+  9 个 Kowell 应用  ──▶│        auth-service (新)           │
    (零改契约)          │  · login/consent provider + 验证页 │
                        │  · 用户/组织目录 (user-mgmt 契约)  │
                        │  · 鉴权：内嵌 Casbin (authz 契约)  │
@@ -43,7 +43,7 @@
 
 **不做**（划清边界，避免重蹈 ISF 之重）：
 - anyshare 文档 ACL（eacp）、组织架构深度权限
-- obligation / resource-type 层级 / condition / deny / 过期（kweaver 零使用）
+- obligation / resource-type 层级 / condition / deny / 过期（Kowell 零使用）
 - 独立审计服务（用 `go-lib/audit`）
 
 ---
@@ -96,7 +96,7 @@ m = g(r.sub, p.sub) && keyMatch2(r.obj, p.obj) && r.act == p.act
 - **资源类型 `*`**（`RESOURCE_ID_ALL`）：`keyMatch2` 支持 `agent:*`
 - policy 存储：Casbin adapter → 共享 DB（MariaDB/Postgres），auth-service 单写
 
-> kweaver 不用 deny / condition / obligation，故 effect 仅 allow，无需 priority/ABAC matcher。
+> Kowell 不用 deny / condition / obligation，故 effect 仅 allow，无需 priority/ABAC matcher。
 
 ---
 

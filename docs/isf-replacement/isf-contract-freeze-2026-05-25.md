@@ -65,7 +65,7 @@ isf Authorization 注册两组（`driveradapters/policy_calc_rest_handler.go:83-
 **关键**：
 - `accessor.type` 枚举 = **user / department / group / role / app** —— 策略可直接绑**角色/部门/组**（DA 给 app_admin 授权即 `type=role`）。→ Casbin 需多段 `g` 表达 user→role、user→dept、user→group 归属。
 - `method` 字段所有 policy_calc 端点**必填**（值=被代理真实 HTTP 方法）。
-- `operation`（create policy）= `{allow:[{id}], deny:[]}`，二者 required；kweaver 实测 deny 恒空。
+- `operation`（create policy）= `{allow:[{id}], deny:[]}`，二者 required；Kowell 实测 deny 恒空。
 
 **DoD**：
 - [x] 抓现 ISF 对 operation-check / resource-operation 的真实 req/resp（见 §2.1，环境 dip-poc.aishu.cn，`kweaver call` 注入 token）。
@@ -128,7 +128,7 @@ m = g(r.sub, p.sub) && keyMatch2(r.obj, p.obj) && r.act == p.act
 
 **DoD**：
 - [ ] 用 §2 golden 报文驱动 Casbin，断言 operation-check/filter/list 结果与 ISF 一致。
-- [ ] 确认无需 deny/condition/obligation（已证 kweaver 不用）。
+- [ ] 确认无需 deny/condition/obligation（已证 Kowell 不用）。
 
 ---
 
