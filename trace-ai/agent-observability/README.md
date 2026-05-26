@@ -130,3 +130,4 @@ Chart 会推送到：
 ```text
 ghcr.io/<github-owner>/charts
 ```
+# test trigger
