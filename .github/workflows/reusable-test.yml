@@ -70,6 +70,8 @@ jobs:
   test:
     runs-on: ubuntu-latest
     needs: resolve-version
+    outputs:
+      version: ${{ needs.resolve-version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
 
