@@ -10,14 +10,13 @@ on:
   workflow_dispatch:
 
 jobs:
-  diag-inline:
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo "inline job started OK"
-
-  diag-call-test:
-    uses: ./.github/workflows/reusable-test.yml
+  diag-build:
+    uses: ./.github/workflows/reusable-build.yml
     with:
       service-path: trace-ai/agent-observability
-      stack: go
-      go-mod-file: go.mod
+      dockerfile: Dockerfile
+      context: '.'
+      image-name: agent-observability
+      version: 'diag-0.0.1'
+      publish: false
+    secrets: inherit
