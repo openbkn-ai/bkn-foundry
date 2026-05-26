@@ -10,13 +10,21 @@ on:
   workflow_dispatch:
 
 jobs:
-  diag-build:
+  test:
+    uses: ./.github/workflows/reusable-test.yml
+    with:
+      service-path: trace-ai/agent-observability
+      stack: go
+      go-mod-file: go.mod
+
+  build:
+    needs: test
     uses: ./.github/workflows/reusable-build.yml
     with:
       service-path: trace-ai/agent-observability
       dockerfile: Dockerfile
       context: '.'
       image-name: agent-observability
-      version: 'diag-0.0.1'
-      publish: false
+      version: ${{ needs.test.outputs.version }}
+      publish: ${{ github.event_name == 'push' }}
     secrets: inherit
