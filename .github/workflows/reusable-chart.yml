@@ -1,0 +1,55 @@
+name: reusable-chart
+
+on:
+  workflow_call:
+    inputs:
+      service-path:
+        type: string
+        required: true
+      chart-path:
+        type: string
+        required: true
+        description: 'Path to helm chart (e.g., helm/my-chart)'
+      chart-name:
+        type: string
+        required: true
+        description: 'Chart name for package output'
+      version:
+        type: string
+        required: true
+      publish:
+        type: boolean
+        default: false
+    secrets:
+      GITHUB_TOKEN:
+        required: false
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+
+      - name: Update chart version
+        run: |
+          CHART_FILE="${{ inputs.service-path }}/${{ inputs.chart-path }}/Chart.yaml"
+          sed -i "s/^version: .*/version: ${{ inputs.version }}/" "$CHART_FILE"
+          sed -i "s/^appVersion: .*/appVersion: \"${{ inputs.version }}\"/" "$CHART_FILE"
+
+      - name: Helm lint
+        run: helm lint ${{ inputs.service-path }}/${{ inputs.chart-path }}
+
+      - name: Package chart
+        run: helm package ${{ inputs.service-path }}/${{ inputs.chart-path }} --destination /tmp/charts
+
+      - name: Push to GHCR
+        if: ${{ inputs.publish }}
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
+          CHART_FILE="/tmp/charts/${{ inputs.chart-name }}-${{ inputs.version }}.tgz"
+          helm push "$CHART_FILE" oci://ghcr.io/${{ github.repository_owner }}/charts

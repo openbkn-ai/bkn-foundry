@@ -1,0 +1,65 @@
+name: release-decision-agent
+
+on:
+  push:
+    branches: ['**']
+    paths:
+      - 'decision-agent/**'
+      - '.github/workflows/release-decision-agent.yml'
+      - '.github/workflows/reusable-*.yml'
+  workflow_dispatch:
+
+jobs:
+  test:
+    uses: ./.github/workflows/reusable-test.yml
+    with:
+      service-path: decision-agent/agent-backend/agent-factory
+      stack: go
+      go-mod-file: agent-factory/go.mod
+
+  build-factory:
+    needs: test
+    uses: ./.github/workflows/reusable-build.yml
+    with:
+      service-path: decision-agent/agent-backend/agent-factory
+      dockerfile: Dockerfile
+      context: '.'
+      image-name: agent-factory
+      version: ${{ needs.test.outputs.version }}
+      publish: ${{ github.event_name == 'push' }}
+    secrets: inherit
+
+  build-executor:
+    needs: test
+    uses: ./.github/workflows/reusable-build.yml
+    with:
+      service-path: decision-agent/agent-backend/agent-executor
+      dockerfile: Dockerfile
+      context: '.'
+      image-name: agent-executor
+      version: ${{ needs.test.outputs.version }}
+      publish: ${{ github.event_name == 'push' }}
+    secrets: inherit
+
+  build-memory:
+    needs: test
+    uses: ./.github/workflows/reusable-build.yml
+    with:
+      service-path: decision-agent/agent-backend/agent-memory
+      dockerfile: Dockerfile
+      context: '.'
+      image-name: agent-memory
+      version: ${{ needs.test.outputs.version }}
+      publish: ${{ github.event_name == 'push' }}
+    secrets: inherit
+
+  chart:
+    needs: [test, build-factory, build-executor, build-memory]
+    uses: ./.github/workflows/reusable-chart.yml
+    with:
+      service-path: decision-agent/agent-backend/deploy
+      chart-path: helm/agent-backend
+      chart-name: agent-backend
+      version: ${{ needs.test.outputs.version }}
+      publish: ${{ github.event_name == 'push' }}
+    secrets: inherit
