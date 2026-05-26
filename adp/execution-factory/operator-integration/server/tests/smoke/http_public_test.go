@@ -6,8 +6,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/interfaces"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/utils"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/utils"
 )
 
 func TestPublicSmokeOperatorInfo(t *testing.T) {
@@ -67,7 +67,7 @@ type ExecuteToolReq struct {
 }
 
 func TestPublicSmokeExecuteTool(t *testing.T) {
-	local := "/root/go/src/github.com/kweaver-ai/adp/execution-factory/operator-integration/server/tests/file/auth.json"
+	local := "/root/go/src/github.com/kowell-ai/adp/execution-factory/operator-integration/server/tests/file/auth.json"
 	client := NewPublicSmokeClient("127.0.0.1:9000")
 	data, err := os.ReadFile(local)
 	if err != nil {

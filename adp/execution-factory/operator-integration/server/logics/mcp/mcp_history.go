@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/interfaces"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/interfaces/model"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/utils"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces/model"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/utils"
 )
 
 const (

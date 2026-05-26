@@ -3,15 +3,15 @@ package daconfp2e
 import (
 	"context"
 
-	"github.com/kweaver-ai/kweaver-core/decision-agent/agent-backend/agent-factory/locale"
-	"github.com/kweaver-ai/kweaver-core/decision-agent/agent-backend/agent-factory/src/domain/entity/daconfeo"
-	"github.com/kweaver-ai/kweaver-core/decision-agent/agent-backend/agent-factory/src/domain/valueobject/daconfvalobj"
-	"github.com/kweaver-ai/kweaver-core/decision-agent/agent-backend/agent-factory/src/infra/cmp/umcmp/dto/umarg"
-	"github.com/kweaver-ai/kweaver-core/decision-agent/agent-backend/agent-factory/src/infra/cmp/umcmp/umtypes"
-	"github.com/kweaver-ai/kweaver-core/decision-agent/agent-backend/agent-factory/src/infra/common/cutil"
-	"github.com/kweaver-ai/kweaver-core/decision-agent/agent-backend/agent-factory/src/infra/persistence/dapo"
-	"github.com/kweaver-ai/kweaver-core/decision-agent/agent-backend/agent-factory/src/port/driven/idbaccess"
-	"github.com/kweaver-ai/kweaver-core/decision-agent/agent-backend/agent-factory/src/port/driven/ihttpaccess/iumacc"
+	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/locale"
+	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/domain/entity/daconfeo"
+	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/domain/valueobject/daconfvalobj"
+	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/infra/cmp/umcmp/dto/umarg"
+	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/infra/cmp/umcmp/umtypes"
+	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/infra/common/cutil"
+	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/infra/persistence/dapo"
+	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/port/driven/idbaccess"
+	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/port/driven/ihttpaccess/iumacc"
 	"github.com/pkg/errors"
 )
 

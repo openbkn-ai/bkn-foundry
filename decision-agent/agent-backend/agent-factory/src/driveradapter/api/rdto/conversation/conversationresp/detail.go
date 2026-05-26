@@ -1,8 +1,8 @@
 package conversationresp
 
 import (
-	"github.com/kweaver-ai/kweaver-core/decision-agent/agent-backend/agent-factory/src/domain/entity/conversationeo"
-	"github.com/kweaver-ai/kweaver-core/decision-agent/agent-backend/agent-factory/src/domain/enum/cdaenum"
+	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/domain/entity/conversationeo"
+	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/domain/enum/cdaenum"
 )
 
 type ConversationDetail struct {

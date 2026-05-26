@@ -7,12 +7,12 @@ import (
 	"sync"
 
 	"github.com/gin-gonic/gin"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/drivenadapters"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/infra/config"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/infra/validator"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/interfaces"
-	lcategory "github.com/kweaver-ai/adp/execution-factory/operator-integration/server/logics/category"
-	loperator "github.com/kweaver-ai/adp/execution-factory/operator-integration/server/logics/operator"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/drivenadapters"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/config"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/validator"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces"
+	lcategory "github.com/kowell-ai/adp/execution-factory/operator-integration/server/logics/category"
+	loperator "github.com/kowell-ai/adp/execution-factory/operator-integration/server/logics/operator"
 )
 
 // OperatorHandler 算子注册接口

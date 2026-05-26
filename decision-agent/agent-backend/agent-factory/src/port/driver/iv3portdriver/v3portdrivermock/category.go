@@ -13,7 +13,7 @@ import (
 	context "context"
 	reflect "reflect"
 
-	categoryresp "github.com/kweaver-ai/kweaver-core/decision-agent/agent-backend/agent-factory/src/driveradapter/api/rdto/category/categoryresp"
+	categoryresp "github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/driveradapter/api/rdto/category/categoryresp"
 	gomock "go.uber.org/mock/gomock"
 )
 

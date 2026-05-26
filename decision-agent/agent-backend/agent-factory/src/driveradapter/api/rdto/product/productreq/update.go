@@ -1,8 +1,8 @@
 package productreq
 
 import (
-	"github.com/kweaver-ai/kweaver-core/decision-agent/agent-backend/agent-factory/src/domain/entity/producteo"
-	"github.com/kweaver-ai/kweaver-core/decision-agent/agent-backend/agent-factory/src/infra/common/cutil"
+	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/domain/entity/producteo"
+	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/infra/common/cutil"
 )
 
 // UpdateReq 表示更新产品的请求

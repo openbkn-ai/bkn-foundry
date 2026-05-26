@@ -3,10 +3,10 @@ package sandboxplatformhttp
 import (
 	"sync"
 
-	"github.com/kweaver-ai/kweaver-core/decision-agent/agent-backend/agent-factory/conf"
-	"github.com/kweaver-ai/kweaver-core/decision-agent/agent-backend/agent-factory/src/infra/cmp/icmp"
-	"github.com/kweaver-ai/kweaver-core/decision-agent/agent-backend/agent-factory/src/infra/common/cutil"
-	"github.com/kweaver-ai/kweaver-core/decision-agent/agent-backend/agent-factory/src/port/driven/ihttpaccess/isandboxhtpp"
+	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/conf"
+	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/infra/cmp/icmp"
+	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/infra/common/cutil"
+	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/port/driven/ihttpaccess/isandboxhtpp"
 	"github.com/kweaver-ai/kweaver-go-lib/rest"
 )
 

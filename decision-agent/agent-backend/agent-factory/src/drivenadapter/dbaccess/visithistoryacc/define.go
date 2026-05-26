@@ -3,10 +3,10 @@ package visithistoryacc
 import (
 	"sync"
 
-	"github.com/kweaver-ai/kweaver-core/decision-agent/agent-backend/agent-factory/src/drivenadapter"
-	"github.com/kweaver-ai/kweaver-core/decision-agent/agent-backend/agent-factory/src/infra/cmp/icmp"
-	"github.com/kweaver-ai/kweaver-core/decision-agent/agent-backend/agent-factory/src/infra/common/global"
-	"github.com/kweaver-ai/kweaver-core/decision-agent/agent-backend/agent-factory/src/port/driven/idbaccess"
+	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/drivenadapter"
+	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/infra/cmp/icmp"
+	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/infra/common/global"
+	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/port/driven/idbaccess"
 	"github.com/kweaver-ai/kweaver-go-lib/logger"
 
 	"github.com/kweaver-ai/proton-rds-sdk-go/sqlx"

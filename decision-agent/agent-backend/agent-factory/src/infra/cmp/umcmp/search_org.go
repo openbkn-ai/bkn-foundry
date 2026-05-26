@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/kweaver-ai/kweaver-core/decision-agent/agent-backend/agent-factory/src/infra/cmp/umcmp/dto/umarg"
-	"github.com/kweaver-ai/kweaver-core/decision-agent/agent-backend/agent-factory/src/infra/cmp/umcmp/dto/umret"
-	"github.com/kweaver-ai/kweaver-core/decision-agent/agent-backend/agent-factory/src/infra/common/chelper/httphelper"
-	"github.com/kweaver-ai/kweaver-core/decision-agent/agent-backend/agent-factory/src/infra/common/cutil"
+	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/infra/cmp/umcmp/dto/umarg"
+	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/infra/cmp/umcmp/dto/umret"
+	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/infra/common/chelper/httphelper"
+	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/infra/common/cutil"
 )
 
 // SearchOrg 组织范围搜索【内部接口】

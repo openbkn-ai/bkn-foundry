@@ -6,10 +6,10 @@ import (
 	"sync"
 
 	"github.com/gin-gonic/gin"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/infra/config"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/interfaces"
-	logicsmcp "github.com/kweaver-ai/adp/execution-factory/operator-integration/server/logics/mcp"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/logics/mcpinstance"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/config"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces"
+	logicsmcp "github.com/kowell-ai/adp/execution-factory/operator-integration/server/logics/mcp"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/logics/mcpinstance"
 )
 
 type MCPPublicHandler interface {

@@ -3,9 +3,9 @@ package mcp
 import (
 	"net/http"
 
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/infra/errors"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/infra/rest"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/errors"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/rest"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/creasty/defaults"
 	"github.com/gin-gonic/gin"
 )

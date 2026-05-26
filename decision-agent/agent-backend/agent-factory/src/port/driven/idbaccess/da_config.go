@@ -4,11 +4,11 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/kweaver-ai/kweaver-core/decision-agent/agent-backend/agent-factory/src/domain/enum/cdaenum"
-	"github.com/kweaver-ai/kweaver-core/decision-agent/agent-backend/agent-factory/src/infra/persistence/dapo"
+	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/domain/enum/cdaenum"
+	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/infra/persistence/dapo"
 )
 
-//go:generate mockgen -package idbaccessmock -destination ./idbaccessmock/da_config.go github.com/kweaver-ai/kweaver-core/decision-agent/agent-backend/agent-factory/src/port/driven/idbaccess IDataAgentConfigRepo
+//go:generate mockgen -package idbaccessmock -destination ./idbaccessmock/da_config.go github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/port/driven/idbaccess IDataAgentConfigRepo
 type IDataAgentConfigRepo interface {
 	IDBAccBaseRepo
 

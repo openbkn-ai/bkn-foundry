@@ -13,7 +13,7 @@ import (
 	context "context"
 	reflect "reflect"
 
-	icmp "github.com/kweaver-ai/kweaver-core/decision-agent/agent-backend/agent-factory/src/infra/cmp/icmp"
+	icmp "github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/infra/cmp/icmp"
 	gomock "go.uber.org/mock/gomock"
 )
 

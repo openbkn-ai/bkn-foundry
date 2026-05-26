@@ -7,10 +7,10 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/common"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/errors"
-	commonLog "github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/libs/go/log"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/utils"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/common"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/errors"
+	commonLog "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/log"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/utils"
 )
 
 //go:generate mockgen -package mock_drivenadapters -source ../drivenadapters/user_management.go -destination ../tests/mock_drivenadapters/user_management_mock.go

@@ -1,4 +1,5 @@
 -- Source: bkn/bkn-backend/migrations/mariadb/0.4.0/pre/init.sql
+-- Copyright 2026 kowell.ai
 -- Copyright The kweaver.ai Authors.
 --
 -- Licensed under the Apache License, Version 2.0.
@@ -223,6 +224,7 @@ CREATE TABLE IF NOT EXISTS t_action_schedule (
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT = 'Action schedule for cron-based execution';
 
 -- Source: vega/vega-backend/migrations/mariadb/0.4.0/pre/init.sql
+-- Copyright 2026 kowell.ai
 -- Copyright The kweaver.ai Authors.
 --
 -- Licensed under the Apache License, Version 2.0.
@@ -577,6 +579,7 @@ CREATE TABLE IF NOT EXISTS t_discover_task (
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT='发现任务表，记录异步资源发现任务的状态和结果';
 
 -- Source: vega/data-connection/migrations/mariadb/0.2.0/pre/init.sql
+-- Copyright 2026 kowell.ai
 -- Copyright The kweaver.ai Authors.
 --
 -- Licensed under the Apache License, Version 2.0.
@@ -1337,6 +1340,7 @@ INSERT INTO t_lineage_graph_info (app_id,graph_id) SELECT '5',0 FROM DUAL WHERE 
 INSERT INTO t_lineage_graph_info (app_id,graph_id) SELECT '6',0 FROM DUAL WHERE NOT EXISTS ( SELECT app_id from t_lineage_graph_info where app_id = 6);
 
 -- Source: vega/mdl-data-model/migrations/mariadb/0.1.0/pre/init.sql
+-- Copyright 2026 kowell.ai
 -- Copyright The kweaver.ai Authors.
 --
 -- Licensed under the Apache License, Version 2.0.
@@ -1750,6 +1754,7 @@ WHERE NOT EXISTS(
 );
 
 -- Source: vega/vega-gateway/migrations/mariadb/0.2.0/pre/init.sql
+-- Copyright 2026 kowell.ai
 -- Copyright The kweaver.ai Authors.
 --
 -- Licensed under the Apache License, Version 2.0.

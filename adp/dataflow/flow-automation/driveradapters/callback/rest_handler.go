@@ -5,11 +5,11 @@ import (
 	"sync"
 
 	"github.com/gin-gonic/gin"
-	commonLog "github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/libs/go/log"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/libs/go/telemetry/trace"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/logics/mgnt"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/pkg/dependency"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/pkg/entity"
+	commonLog "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/log"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/telemetry/trace"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/logics/mgnt"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/dependency"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/entity"
 )
 
 type RESTHandler interface {

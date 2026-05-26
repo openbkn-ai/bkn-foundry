@@ -12,10 +12,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/common"
-	otelHttp "github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/libs/go/http"
-	traceLog "github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/libs/go/telemetry/log"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/utils"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/common"
+	otelHttp "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/http"
+	traceLog "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/telemetry/log"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/utils"
 )
 
 // 响应结构定义

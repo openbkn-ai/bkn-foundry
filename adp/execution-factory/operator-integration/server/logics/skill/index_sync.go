@@ -7,10 +7,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/drivenadapters"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/infra/config"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/interfaces"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/interfaces/model"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/drivenadapters"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/config"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces/model"
 	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
 )
 

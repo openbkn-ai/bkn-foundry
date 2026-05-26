@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/getkin/kin-openapi/openapi3"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/infra/errors"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/errors"
 )
 
 const (

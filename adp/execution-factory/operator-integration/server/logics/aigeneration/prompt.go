@@ -9,9 +9,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/drivenadapters"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/infra/config"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/drivenadapters"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/config"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces"
 )
 
 // prompt加载及解析

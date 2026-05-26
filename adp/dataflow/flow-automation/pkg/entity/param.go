@@ -3,7 +3,7 @@ package entity
 import (
 	"strings"
 
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/pkg/render"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/render"
 )
 
 type ParamsRender struct {

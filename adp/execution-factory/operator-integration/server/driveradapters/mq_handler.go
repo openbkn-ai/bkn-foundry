@@ -3,10 +3,10 @@ package driveradapters
 import (
 	"sync"
 
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/infra/config"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/infra/mq"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/interfaces"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/logics/toolbox"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/config"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/mq"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/logics/toolbox"
 )
 
 type mqHandler struct {

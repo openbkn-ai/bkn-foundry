@@ -3,7 +3,7 @@ package iuniqueryhttp
 import (
 	"context"
 
-	"github.com/kweaver-ai/kweaver-core/decision-agent/agent-backend/agent-factory/src/drivenadapter/httpaccess/uniqueryaccess/uniquerydto"
+	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/drivenadapter/httpaccess/uniqueryaccess/uniquerydto"
 )
 
 type IUniquery interface {

@@ -6,15 +6,15 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/common"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/drivenadapters"
-	aerr "github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/errors"
-	ierr "github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/libs/go/errors"
-	traceLog "github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/libs/go/telemetry/log"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/libs/go/telemetry/trace"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/pkg/entity"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/pkg/mod"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/utils"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/common"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/drivenadapters"
+	aerr "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/errors"
+	ierr "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/errors"
+	traceLog "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/telemetry/log"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/telemetry/trace"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/entity"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/mod"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/utils"
 )
 
 //go:generate mockgen -package mock_logics -source ../../logics/perm/perm_policy.go -destination ../../tests/mock_logics/perm_policy_mock.go

@@ -14,8 +14,8 @@ import (
 	sql "database/sql"
 	reflect "reflect"
 
-	ormhelper "github.com/kweaver-ai/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
-	model "github.com/kweaver-ai/adp/execution-factory/operator-integration/server/interfaces/model"
+	ormhelper "github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
+	model "github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces/model"
 	gomock "go.uber.org/mock/gomock"
 )
 

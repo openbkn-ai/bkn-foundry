@@ -7,8 +7,8 @@ import (
 	"sync"
 
 	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/infra/config"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/config"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces"
 	msqclient "github.com/kweaver-ai/proton-mq-sdk-go"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"

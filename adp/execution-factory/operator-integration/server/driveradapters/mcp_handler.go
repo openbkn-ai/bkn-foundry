@@ -4,9 +4,9 @@ import (
 	"sync"
 
 	"github.com/gin-gonic/gin"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/driveradapters/mcp"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/interfaces"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/logics/business_domain"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/driveradapters/mcp"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/logics/business_domain"
 )
 
 type MCPRestHandler interface {

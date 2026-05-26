@@ -7,7 +7,7 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/smartystreets/goconvey/convey"
 
-	"github.com/kweaver-ai/adp/context-loader/agent-retrieval/server/infra/rest"
+	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/infra/rest"
 )
 
 // helper to build a CallToolRequest with simple arguments

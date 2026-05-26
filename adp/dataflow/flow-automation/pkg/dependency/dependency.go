@@ -3,8 +3,8 @@ package dependency
 import (
 	"context"
 
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/drivenadapters"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/pkg/rds"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/drivenadapters"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/rds"
 )
 
 // 依赖倒置的接口

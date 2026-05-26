@@ -13,17 +13,17 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/common"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/drivenadapters"
-	ierrors "github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/errors"
-	traceLog "github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/libs/go/telemetry/log"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/libs/go/telemetry/trace"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/pkg/dependency"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/pkg/entity"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/pkg/log"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/pkg/mod"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/pkg/rds"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/utils"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/common"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/drivenadapters"
+	ierrors "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/errors"
+	traceLog "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/telemetry/log"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/telemetry/trace"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/dependency"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/entity"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/log"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/mod"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/rds"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/utils"
 )
 
 const extractFileSizeLimit int64 = 20 * 1024 * 1024

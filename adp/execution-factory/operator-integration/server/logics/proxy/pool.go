@@ -5,9 +5,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/infra/config"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/infra/rest"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/config"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/rest"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces"
 )
 
 const (

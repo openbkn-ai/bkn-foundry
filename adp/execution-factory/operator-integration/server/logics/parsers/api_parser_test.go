@@ -9,8 +9,8 @@ import (
 	"testing"
 
 	jsoniter "github.com/json-iterator/go"
-	myErr "github.com/kweaver-ai/adp/execution-factory/operator-integration/server/infra/errors"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/infra/logger"
+	myErr "github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/errors"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/logger"
 	. "github.com/smartystreets/goconvey/convey"
 )
 

@@ -1,3 +1,4 @@
+// Copyright 2026 kowell.ai
 // Copyright The kweaver.ai Authors.
 //
 // Licensed under the Apache License, Version 2.0.
@@ -7,7 +8,7 @@
 package validator
 
 import (
-	myErr "github.com/kweaver-ai/adp/context-loader/agent-retrieval/server/infra/errors"
+	myErr "github.com/kowell-ai/adp/context-loader/agent-retrieval/server/infra/errors"
 )
 
 // TagToErrorType Validate tag 映射到错误分类

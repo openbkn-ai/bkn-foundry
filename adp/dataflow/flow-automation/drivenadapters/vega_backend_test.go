@@ -9,9 +9,9 @@ import (
 	"testing"
 
 	"github.com/go-playground/assert/v2"
-	commonLog "github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/libs/go/log"
-	traceCommon "github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/libs/go/telemetry/common"
-	traceLog "github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/libs/go/telemetry/log"
+	commonLog "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/log"
+	traceCommon "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/telemetry/common"
+	traceLog "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/telemetry/log"
 )
 
 func init() {

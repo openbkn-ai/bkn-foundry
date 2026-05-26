@@ -7,16 +7,16 @@ import (
 	"io"
 	"time"
 
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/common"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/drivenadapters"
-	ierrors "github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/errors"
-	traceLog "github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/libs/go/telemetry/log"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/libs/go/telemetry/trace"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/logics/perm"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/pkg/entity"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/pkg/rds"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/store"
-	normalizeutil "github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/utils/normalize"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/common"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/drivenadapters"
+	ierrors "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/errors"
+	traceLog "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/telemetry/log"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/telemetry/trace"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/logics/perm"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/entity"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/rds"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/store"
+	normalizeutil "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/utils/normalize"
 )
 
 // TriggerDataflowDocParams 触发Dataflow文档处理的参数

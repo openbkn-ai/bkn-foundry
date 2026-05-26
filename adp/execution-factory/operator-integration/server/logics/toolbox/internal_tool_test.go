@@ -9,7 +9,7 @@ package toolbox
 // 		OpenAPIParser: parsers.NewOpenAPIParser(),
 // 	}
 // 	// 读取OpenAPI文档
-// 	localPath := "/root/go/src/github.com/kweaver-ai/adp/execution-factory/operator-integration/server/tests/file/yaml/test.yaml"
+// 	localPath := "/root/go/src/github.com/kowell-ai/adp/execution-factory/operator-integration/server/tests/file/yaml/test.yaml"
 // 	data, err := os.ReadFile(localPath)
 // 	if err != nil {
 // 		t.Errorf("ReadFile err: %+v", err)

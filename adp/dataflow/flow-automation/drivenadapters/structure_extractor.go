@@ -14,11 +14,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/common"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/errors"
-	traceLog "github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/libs/go/telemetry/log"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/store"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/utils"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/common"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/errors"
+	traceLog "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/telemetry/log"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/store"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/utils"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 

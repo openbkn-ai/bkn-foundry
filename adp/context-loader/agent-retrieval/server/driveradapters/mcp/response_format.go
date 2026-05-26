@@ -1,3 +1,4 @@
+// Copyright 2026 kowell.ai
 // Copyright The kweaver.ai Authors.
 //
 // Licensed under the Apache License, Version 2.0.
@@ -8,8 +9,8 @@ package mcp
 import (
 	"github.com/mark3labs/mcp-go/mcp"
 
-	"github.com/kweaver-ai/adp/context-loader/agent-retrieval/server/infra/rest"
-	"github.com/kweaver-ai/adp/context-loader/agent-retrieval/server/utils"
+	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/infra/rest"
+	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/utils"
 )
 
 // GetResponseFormatFromRequest 从 MCP CallToolRequest 的 arguments 中解析 response_format，未传时默认 toon

@@ -1,4 +1,4 @@
-module github.com/kweaver-ai/adp/execution-factory/operator-integration
+module github.com/kowell-ai/adp/execution-factory/operator-integration
 
 go 1.24.11
 

@@ -3,7 +3,7 @@ package efastarg
 import (
 	"strings"
 
-	"github.com/kweaver-ai/kweaver-core/decision-agent/agent-backend/agent-factory/src/infra/common/cutil"
+	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/infra/common/cutil"
 )
 
 // IbField 查询哪一个信息（查询字段）

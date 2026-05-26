@@ -3,7 +3,7 @@ package initial
 import (
 	"testing"
 
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/common"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/common"
 	"github.com/stretchr/testify/assert"
 )
 

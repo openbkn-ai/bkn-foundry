@@ -6,13 +6,13 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/common"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/drivenadapters"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/errors"
-	ierr "github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/libs/go/errors"
-	commonLog "github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/libs/go/log"
-	traceLog "github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/libs/go/telemetry/log"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/utils"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/common"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/drivenadapters"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/errors"
+	ierr "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/errors"
+	commonLog "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/log"
+	traceLog "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/telemetry/log"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/utils"
 )
 
 var (

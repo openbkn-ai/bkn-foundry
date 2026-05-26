@@ -1,4 +1,5 @@
 -- Source: vega/vega-backend/migrations/mariadb/0.5.0/init.sql
+-- Copyright 2026 kowell.ai
 -- Copyright The kweaver.ai Authors.
 --
 -- Licensed under the Apache License, Version 2.0.
@@ -398,6 +399,7 @@ CREATE TABLE IF NOT EXISTS t_build_task (
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT='构建任务表';
 
 -- Source: vega/data-connection/migrations/mariadb/0.2.0/init.sql
+-- Copyright 2026 kowell.ai
 -- Copyright The kweaver.ai Authors.
 --
 -- Licensed under the Apache License, Version 2.0.
@@ -1158,6 +1160,7 @@ INSERT INTO t_lineage_graph_info (app_id,graph_id) SELECT '5',0 FROM DUAL WHERE 
 INSERT INTO t_lineage_graph_info (app_id,graph_id) SELECT '6',0 FROM DUAL WHERE NOT EXISTS ( SELECT app_id from t_lineage_graph_info where app_id = 6);
 
 -- Source: vega/mdl-data-model/migrations/mariadb/0.1.0/init.sql
+-- Copyright 2026 kowell.ai
 -- Copyright The kweaver.ai Authors.
 --
 -- Licensed under the Apache License, Version 2.0.
@@ -1571,6 +1574,7 @@ WHERE NOT EXISTS(
 );
 
 -- Source: vega/vega-gateway/migrations/mariadb/0.2.0/init.sql
+-- Copyright 2026 kowell.ai
 -- Copyright The kweaver.ai Authors.
 --
 -- Licensed under the Apache License, Version 2.0.

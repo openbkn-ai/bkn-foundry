@@ -1,3 +1,4 @@
+// Copyright 2026 kowell.ai
 // Copyright The kweaver.ai Authors.
 //
 // Licensed under the Apache License, Version 2.0.
@@ -14,11 +15,11 @@ import (
 	"github.com/gin-gonic/gin"
 	validator "github.com/go-playground/validator/v10"
 
-	"github.com/kweaver-ai/adp/context-loader/agent-retrieval/server/infra/config"
-	"github.com/kweaver-ai/adp/context-loader/agent-retrieval/server/infra/errors"
-	"github.com/kweaver-ai/adp/context-loader/agent-retrieval/server/infra/rest"
-	"github.com/kweaver-ai/adp/context-loader/agent-retrieval/server/interfaces"
-	logicskn "github.com/kweaver-ai/adp/context-loader/agent-retrieval/server/logics/knretrieval"
+	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/infra/config"
+	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/infra/errors"
+	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/infra/rest"
+	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/interfaces"
+	logicskn "github.com/kowell-ai/adp/context-loader/agent-retrieval/server/logics/knretrieval"
 )
 
 // KnRetrievalHandler 基于业务知识网络实现统一Retrieval

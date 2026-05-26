@@ -9,9 +9,9 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/pkg/entity"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/pkg/mod"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/utils"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/entity"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/mod"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/utils"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )

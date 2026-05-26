@@ -10,14 +10,14 @@ import (
 	"sync"
 
 	"github.com/gin-gonic/gin"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/common"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/drivenadapters"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/driveradapters/middleware"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/errors"
-	traceLog "github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/libs/go/telemetry/log"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/libs/go/telemetry/trace"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/logics/mgnt"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/pkg/entity"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/common"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/drivenadapters"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/driveradapters/middleware"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/errors"
+	traceLog "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/telemetry/log"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/telemetry/trace"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/logics/mgnt"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/entity"
 )
 
 const kcinfoSchema = "base/kcinfo.json"

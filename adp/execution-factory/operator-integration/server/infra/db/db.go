@@ -7,8 +7,8 @@ import (
 	"database/sql"
 	"sync"
 
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/infra/config"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/infra/telemetry"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/config"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/telemetry"
 	"github.com/qustavo/sqlhooks/v2"
 
 	// _ 注册proton-rds驱动

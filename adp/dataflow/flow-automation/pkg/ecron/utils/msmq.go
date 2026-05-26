@@ -3,7 +3,7 @@ package utils
 import (
 	"sync"
 
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/pkg/ecron/common"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/ecron/common"
 	msqclient "github.com/kweaver-ai/proton-mq-sdk-go"
 )
 

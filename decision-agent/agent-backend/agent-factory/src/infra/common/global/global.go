@@ -1,7 +1,7 @@
 package global
 
 import (
-	"github.com/kweaver-ai/kweaver-core/decision-agent/agent-backend/agent-factory/conf"
+	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/conf"
 
 	"github.com/kweaver-ai/proton-rds-sdk-go/sqlx"
 )

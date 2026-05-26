@@ -4,13 +4,13 @@ import (
 	"context"
 	"net/http"
 
-	docs "github.com/kweaver-ai/kweaver-core/trace-ai/agent-observability/docs/swagger"
-	"github.com/kweaver-ai/kweaver-core/trace-ai/agent-observability/src/conf"
-	"github.com/kweaver-ai/kweaver-core/trace-ai/agent-observability/src/domain/service/tracesvc"
-	"github.com/kweaver-ai/kweaver-core/trace-ai/agent-observability/src/drivenadapter/httpaccess/opensearchtraceaccess"
-	"github.com/kweaver-ai/kweaver-core/trace-ai/agent-observability/src/driveradapter/api/httphandler"
-	"github.com/kweaver-ai/kweaver-core/trace-ai/agent-observability/src/infra/opensearch"
-	"github.com/kweaver-ai/kweaver-core/trace-ai/agent-observability/src/infra/server/httpserver"
+	docs "github.com/kowell-ai/kowell-core/trace-ai/agent-observability/docs/swagger"
+	"github.com/kowell-ai/kowell-core/trace-ai/agent-observability/src/conf"
+	"github.com/kowell-ai/kowell-core/trace-ai/agent-observability/src/domain/service/tracesvc"
+	"github.com/kowell-ai/kowell-core/trace-ai/agent-observability/src/drivenadapter/httpaccess/opensearchtraceaccess"
+	"github.com/kowell-ai/kowell-core/trace-ai/agent-observability/src/driveradapter/api/httphandler"
+	"github.com/kowell-ai/kowell-core/trace-ai/agent-observability/src/infra/opensearch"
+	"github.com/kowell-ai/kowell-core/trace-ai/agent-observability/src/infra/server/httpserver"
 	httpSwagger "github.com/swaggo/http-swagger/v2"
 )
 

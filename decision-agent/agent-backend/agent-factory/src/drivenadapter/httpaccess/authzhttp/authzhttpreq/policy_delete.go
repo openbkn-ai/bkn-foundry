@@ -1,6 +1,6 @@
 package authzhttpreq
 
-import "github.com/kweaver-ai/kweaver-core/decision-agent/agent-backend/agent-factory/src/domain/enum/cdaenum"
+import "github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/domain/enum/cdaenum"
 
 // PolicyDeleteParams 策略删除参数
 type PolicyDeleteParams struct {

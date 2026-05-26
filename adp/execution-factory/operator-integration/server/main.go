@@ -8,14 +8,14 @@ import (
 	"syscall"
 
 	"github.com/gin-gonic/gin"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/driveradapters"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/infra/common"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/infra/config"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/infra/telemetry"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/interfaces"
-	logicscommon "github.com/kweaver-ai/adp/execution-factory/operator-integration/server/logics/common"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/logics/mcpinstance"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/logics/skill"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/driveradapters"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/common"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/config"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/telemetry"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces"
+	logicscommon "github.com/kowell-ai/adp/execution-factory/operator-integration/server/logics/common"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/logics/mcpinstance"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/logics/skill"
 )
 
 // Server 服务

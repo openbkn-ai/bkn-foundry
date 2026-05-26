@@ -23,7 +23,6 @@ Workflow YAML files must stay in this directory (flat layout). GitHub does not l
 | [`lint-workflow-files.yml`](./lint-workflow-files.yml) | Workflow File Naming | `pull_request` (`.github/workflows/**`) | Enforces allowed filename prefixes (see table above) |
 | [`lint-branch-name.yml`](./lint-branch-name.yml) | Branch Name Lint | `pull_request` | Branch naming rules |
 | [`lint-commit.yml`](./lint-commit.yml) | Commit Message Lint | `pull_request` | Commit message checks |
-| [`deploy-pages.yml`](./deploy-pages.yml) | Deploy to GitHub Pages | `push` to `main` (`website/**`), `workflow_dispatch` | Docusaurus site |
 | [`release-agent-observability.yml`](./release-agent-observability.yml) | agent-observability-release | `push` (`trace-ai/agent-observability/**`, …), `workflow_dispatch` | Agent observability image + Helm chart |
 | [`release-otelcol-chart.yaml`](./release-otelcol-chart.yaml) | otelcol-chart-release | `push` (`trace-ai/otelcol-contribute-chart/**`, …), `workflow_dispatch` | OTel collector Helm chart to GHCR |
 

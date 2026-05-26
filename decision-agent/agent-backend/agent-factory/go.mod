@@ -1,4 +1,4 @@
-module github.com/kweaver-ai/kweaver-core/decision-agent/agent-backend/agent-factory
+module github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory
 
 go 1.24.1
 

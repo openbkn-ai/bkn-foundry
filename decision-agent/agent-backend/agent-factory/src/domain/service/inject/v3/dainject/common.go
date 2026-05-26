@@ -3,8 +3,8 @@ package dainject
 import (
 	"fmt"
 
-	"github.com/kweaver-ai/kweaver-core/decision-agent/agent-backend/agent-factory/cconf"
-	"github.com/kweaver-ai/kweaver-core/decision-agent/agent-backend/agent-factory/src/infra/common/cutil"
+	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/cconf"
+	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/infra/common/cutil"
 )
 
 func getModelApiUrlPrefix(_conf *cconf.ModelFactoryConf) (urlPrefix string) {

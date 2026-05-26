@@ -11,9 +11,9 @@ import (
 
 	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/interfaces"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/interfaces/model"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/utils"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces/model"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/utils"
 	"gopkg.in/yaml.v3"
 )
 

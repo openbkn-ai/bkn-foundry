@@ -1,4 +1,4 @@
-module github.com/kweaver-ai/adp/context-loader/agent-retrieval
+module github.com/kowell-ai/adp/context-loader/agent-retrieval
 
 go 1.24.11
 

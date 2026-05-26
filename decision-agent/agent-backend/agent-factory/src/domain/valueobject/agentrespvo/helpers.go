@@ -2,7 +2,7 @@ package agentrespvo
 
 import (
 	"github.com/bytedance/sonic"
-	"github.com/kweaver-ai/kweaver-core/decision-agent/agent-backend/agent-factory/src/infra/common/util"
+	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/infra/common/util"
 )
 
 // -------prompt start--------

@@ -11,9 +11,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/assert/v2"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/pkg/dependency"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/pkg/entity"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/tests/mock_logics"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/dependency"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/entity"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/tests/mock_logics"
 	"go.uber.org/mock/gomock"
 )
 

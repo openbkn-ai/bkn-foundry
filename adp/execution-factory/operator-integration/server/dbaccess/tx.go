@@ -4,8 +4,8 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/infra/db"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/interfaces/model"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/db"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/kweaver-ai/proton-rds-sdk-go/sqlx"
 )
 

@@ -36,8 +36,7 @@ trace-ai/**                                @guodawn
 # ── Deployment ───────────────────────────────────────────────
 deploy/**                                  @sh00tg0a1 @tangkelu
 
-# ── Website / Docs ───────────────────────────────────────────
-website/**                                 @xforce-io
+# ── Docs ───────────────────────────────────────────
 help/**                                    @FennyXCHF @sh00tg0a1 @xforce-io
 
 # ── CI / CD / GitHub config ─────────────────────────────────

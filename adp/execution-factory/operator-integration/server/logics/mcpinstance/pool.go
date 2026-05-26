@@ -9,11 +9,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/dbaccess"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/infra/config"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/interfaces"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/interfaces/model"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/utils"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/dbaccess"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/config"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces/model"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/utils"
 )
 
 // InstancePool 负责 MCP 实例的运行态管理：

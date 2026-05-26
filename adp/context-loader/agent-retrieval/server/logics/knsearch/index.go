@@ -1,3 +1,4 @@
+// Copyright 2026 kowell.ai
 // Copyright The kweaver.ai Authors.
 //
 // Licensed under the Apache License, Version 2.0.
@@ -10,9 +11,9 @@ import (
 	"context"
 	"sync"
 
-	"github.com/kweaver-ai/adp/context-loader/agent-retrieval/server/drivenadapters"
-	"github.com/kweaver-ai/adp/context-loader/agent-retrieval/server/infra/config"
-	"github.com/kweaver-ai/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/drivenadapters"
+	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/infra/config"
+	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
 // localSearchImpl 本地检索实现体

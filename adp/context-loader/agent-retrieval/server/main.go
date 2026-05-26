@@ -1,3 +1,4 @@
+// Copyright 2026 kowell.ai
 // Copyright The kweaver.ai Authors.
 //
 // Licensed under the Apache License, Version 2.0.
@@ -9,12 +10,12 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/kweaver-ai/adp/context-loader/agent-retrieval/server/bootstrap"
-	"github.com/kweaver-ai/adp/context-loader/agent-retrieval/server/driveradapters"
-	"github.com/kweaver-ai/adp/context-loader/agent-retrieval/server/infra/common"
-	"github.com/kweaver-ai/adp/context-loader/agent-retrieval/server/infra/config"
-	"github.com/kweaver-ai/adp/context-loader/agent-retrieval/server/infra/telemetry"
-	"github.com/kweaver-ai/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/bootstrap"
+	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/driveradapters"
+	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/infra/common"
+	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/infra/config"
+	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/infra/telemetry"
+	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/interfaces"
 
 	"github.com/gin-gonic/gin"
 )

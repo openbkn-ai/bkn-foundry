@@ -1,3 +1,4 @@
+// Copyright 2026 kowell.ai
 // Copyright The kweaver.ai Authors.
 //
 // Licensed under the Apache License, Version 2.0.
@@ -19,11 +20,11 @@ import (
 	validator "github.com/go-playground/validator/v10"
 	errorwrap "github.com/pkg/errors"
 
-	"github.com/kweaver-ai/adp/context-loader/agent-retrieval/server/infra/common"
-	myErr "github.com/kweaver-ai/adp/context-loader/agent-retrieval/server/infra/errors"
-	"github.com/kweaver-ai/adp/context-loader/agent-retrieval/server/infra/localize"
-	"github.com/kweaver-ai/adp/context-loader/agent-retrieval/server/infra/logger"
-	validatorv "github.com/kweaver-ai/adp/context-loader/agent-retrieval/server/infra/validator"
+	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/infra/common"
+	myErr "github.com/kowell-ai/adp/context-loader/agent-retrieval/server/infra/errors"
+	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/infra/localize"
+	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/infra/logger"
+	validatorv "github.com/kowell-ai/adp/context-loader/agent-retrieval/server/infra/validator"
 )
 
 const (

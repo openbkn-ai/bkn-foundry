@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/kweaver-ai/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
 func TestDefaultConceptRetrievalConfig(t *testing.T) {

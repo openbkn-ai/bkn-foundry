@@ -20,7 +20,7 @@ KWeaver Core is a **monorepo** ([`kweaver-ai/kweaver-core`](https://github.com/k
 | **Infra** | [`infra/`](../infra) | `mf-model-manager` (model registry), `oss-gateway-backend`, `sandbox` runtime |
 | **BKN samples** | [`bkn/`](../bkn) | Reference Business Knowledge Networks (e.g. `smart_home_supply_chain`) |
 | **Examples** | [`examples/`](../examples) | End-to-end CLI walkthroughs (DB / CSV / actions) |
-| **Help / Website** | [`help/`](../help), [`website/`](../website) | Bilingual product docs and the public docs site |
+| **Help** | [`help/`](../help) | Bilingual product docs |
 | **Deploy** | [`deploy/`](../deploy) | One-click `deploy.sh` for Kubernetes (k8s + KWeaver Core charts) |
 
 External CLI/SDKs that interact with this backend live in their own repositories:
@@ -439,6 +439,7 @@ The goal is to ensure:
 Use the following header for all core source files:
 
 ```go
+// Copyright 2026 kowell.ai
 // Copyright The kweaver.ai Authors.
 //
 // Licensed under the Apache License, Version 2.0.
@@ -450,6 +451,7 @@ Use the following header for all core source files:
 #### Python
 
 ```python
+# Copyright 2026 kowell.ai
 # Copyright The kweaver.ai Authors.
 #
 # Licensed under the Apache License, Version 2.0.
@@ -471,6 +473,7 @@ Use the following header for all core source files:
 
 ```bash
 #!/usr/bin/env bash
+# Copyright 2026 kowell.ai
 # Copyright The kweaver.ai Authors.
 # Licensed under the Apache License, Version 2.0.
 # See the LICENSE file in the project root for details.
@@ -492,6 +495,7 @@ If a file was originally derived from another project, you may add an origin not
 after the license header (for key files only):
 
 ```go
+// Copyright 2026 kowell.ai
 // Copyright The kweaver.ai Authors.
 //
 // Licensed under the Apache License, Version 2.0.
@@ -550,7 +554,7 @@ KWeaver Core is polyglot. You only need the toolchain(s) for the module(s) you t
 - **Java** (JDK 17+) and Maven for most ADP / decision-agent backend modules
 - **Go** (1.23+) for `infra/oss-gateway-backend`, several CLIs and small services
 - **Python** (3.11+) for `infra/mf-model-manager`, model / data utilities
-- **Node.js** — kweaver CLIs require **22+** (per [`@kweaver-ai/kweaver-sdk` on npm](https://www.npmjs.com/package/@kweaver-ai/kweaver-sdk)). For `website/`, use `package.json` `engines` (e.g. >= 20).
+- **Node.js** — kweaver CLIs require **22+** (per [`@kweaver-ai/kweaver-sdk` on npm](https://www.npmjs.com/package/@kweaver-ai/kweaver-sdk)).
 - **Docker** + a Kubernetes (single-node K3s / kubeadm / Docker Desktop) for end-to-end testing
 - **MariaDB 11.4+** (or DM8), **OpenSearch 2.x**, **Redis**, **Kafka** when running services that need them — usually provided by `deploy.sh`
 
@@ -582,9 +586,6 @@ Each module's `README.md` / `AGENTS.md` lists the exact prerequisites, build com
 
    # Python module
    cd infra/mf-model-manager && pip install -r requirements.txt && pytest
-
-   # Docs site
-   cd website && npm install && npm run start
    ```
 
 4. **(Optional) Spin up a full cluster** to test end-to-end via `deploy/` (see [`help/en/install.md`](../help/en/install.md)):

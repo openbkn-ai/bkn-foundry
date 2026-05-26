@@ -15,7 +15,7 @@ import (
 
 	gomock "go.uber.org/mock/gomock"
 
-	interfaces "github.com/kweaver-ai/adp/context-loader/agent-retrieval/server/interfaces"
+	interfaces "github.com/kowell-ai/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
 // MockDrivenOperatorIntegration is a mock of DrivenOperatorIntegration interface.

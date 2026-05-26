@@ -14,8 +14,8 @@ import (
 	sql "database/sql"
 	reflect "reflect"
 
-	interfaces "github.com/kweaver-ai/adp/execution-factory/operator-integration/server/interfaces"
-	model "github.com/kweaver-ai/adp/execution-factory/operator-integration/server/interfaces/model"
+	interfaces "github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces"
+	model "github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces/model"
 	gomock "go.uber.org/mock/gomock"
 )
 

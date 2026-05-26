@@ -16,9 +16,9 @@ import (
 	"github.com/asaskevich/govalidator"
 	"github.com/gin-gonic/gin"
 	validatorv10 "github.com/go-playground/validator/v10"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/interfaces"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/mocks"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/utils"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/mocks"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/utils"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 )

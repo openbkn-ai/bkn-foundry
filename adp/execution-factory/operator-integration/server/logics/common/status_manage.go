@@ -7,8 +7,8 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/infra/errors"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/errors"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces"
 )
 
 var statusTransitions = map[interfaces.BizStatus][]interfaces.BizStatus{

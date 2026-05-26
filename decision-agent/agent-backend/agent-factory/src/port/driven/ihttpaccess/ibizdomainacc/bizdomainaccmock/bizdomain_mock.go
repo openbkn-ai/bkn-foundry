@@ -13,8 +13,8 @@ import (
 	context "context"
 	reflect "reflect"
 
-	bizdomainhttpreq "github.com/kweaver-ai/kweaver-core/decision-agent/agent-backend/agent-factory/src/drivenadapter/httpaccess/bizdomainhttp/bizdomainhttpreq"
-	bizdomainhttpres "github.com/kweaver-ai/kweaver-core/decision-agent/agent-backend/agent-factory/src/drivenadapter/httpaccess/bizdomainhttp/bizdomainhttpres"
+	bizdomainhttpreq "github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/drivenadapter/httpaccess/bizdomainhttp/bizdomainhttpreq"
+	bizdomainhttpres "github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/drivenadapter/httpaccess/bizdomainhttp/bizdomainhttpres"
 	gomock "go.uber.org/mock/gomock"
 )
 

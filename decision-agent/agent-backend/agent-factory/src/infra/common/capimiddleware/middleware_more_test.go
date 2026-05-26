@@ -6,14 +6,14 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/kweaver-ai/kweaver-core/decision-agent/agent-backend/agent-factory/cconf"
-	"github.com/kweaver-ai/kweaver-core/decision-agent/agent-backend/agent-factory/conf"
+	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/cconf"
+	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/conf"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/kweaver-ai/kweaver-core/decision-agent/agent-backend/agent-factory/src/domain/enum/cdaenum"
-	"github.com/kweaver-ai/kweaver-core/decision-agent/agent-backend/agent-factory/src/domain/enum/cdapmsenum"
-	"github.com/kweaver-ai/kweaver-core/decision-agent/agent-backend/agent-factory/src/infra/common/cenum"
-	"github.com/kweaver-ai/kweaver-core/decision-agent/agent-backend/agent-factory/src/infra/common/global"
+	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/domain/enum/cdaenum"
+	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/domain/enum/cdapmsenum"
+	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/infra/common/cenum"
+	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/infra/common/global"
 )
 
 func init() {

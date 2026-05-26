@@ -8,14 +8,14 @@ import (
 	"sync"
 
 	"github.com/gin-gonic/gin"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/common"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/drivenadapters"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/driveradapters/middleware"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/errors"
-	aerr "github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/errors"
-	ierr "github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/libs/go/errors"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/logics/mgnt"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/logics/policy"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/common"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/drivenadapters"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/driveradapters/middleware"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/errors"
+	aerr "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/errors"
+	ierr "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/errors"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/logics/mgnt"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/logics/policy"
 )
 
 type RESTHandler interface {

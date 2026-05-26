@@ -1,3 +1,4 @@
+// Copyright 2026 kowell.ai
 // Copyright The kweaver.ai Authors.
 //
 // Licensed under the Apache License, Version 2.0.
@@ -12,8 +13,8 @@ import (
 
 	"github.com/smartystreets/goconvey/convey"
 
-	"github.com/kweaver-ai/adp/context-loader/agent-retrieval/server/interfaces"
-	"github.com/kweaver-ai/adp/context-loader/agent-retrieval/server/logics/knrerank"
+	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/logics/knrerank"
 )
 
 type testLogger struct{}

@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"time"
 
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
 )
 
 // 示例：如何在现有项目中使用ORM Helper

@@ -11,9 +11,9 @@ import (
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/go-playground/validator/v10"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/infra/errors"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/interfaces"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/interfaces/model"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/errors"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces/model"
 	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
 )
 

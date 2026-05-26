@@ -14,7 +14,7 @@ import (
 	io "io"
 	reflect "reflect"
 
-	interfaces "github.com/kweaver-ai/adp/execution-factory/operator-integration/server/interfaces"
+	interfaces "github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces"
 	gomock "go.uber.org/mock/gomock"
 )
 

@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	jsoniter "github.com/json-iterator/go"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/interfaces"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/utils"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/utils"
 	. "github.com/smartystreets/goconvey/convey"
 )
 

@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/kweaver-ai/kweaver-core/trace-ai/agent-observability/src/domain/valueobject/opensearchvo"
+	"github.com/kowell-ai/kowell-core/trace-ai/agent-observability/src/domain/valueobject/opensearchvo"
 )
 
 type TraceQueryPort interface {

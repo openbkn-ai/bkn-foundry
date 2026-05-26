@@ -14,9 +14,9 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/infra/logger"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/infra/telemetry"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/logger"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/telemetry"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces"
 )
 
 // httpClient HTTP客户端结构

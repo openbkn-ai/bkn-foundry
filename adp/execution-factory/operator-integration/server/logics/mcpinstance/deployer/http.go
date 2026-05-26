@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/mark3labs/mcp-go/server"
 )
 

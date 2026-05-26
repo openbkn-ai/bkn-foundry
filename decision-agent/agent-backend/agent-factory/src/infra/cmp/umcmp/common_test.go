@@ -3,7 +3,7 @@ package umcmp
 import (
 	"testing"
 
-	"github.com/kweaver-ai/kweaver-core/decision-agent/agent-backend/agent-factory/cconf"
+	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/cconf"
 	"github.com/stretchr/testify/assert"
 )
 

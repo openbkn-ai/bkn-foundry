@@ -1,3 +1,4 @@
+// Copyright 2026 kowell.ai
 // Copyright The kweaver.ai Authors.
 //
 // Licensed under the Apache License, Version 2.0.
@@ -13,7 +14,7 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/smartystreets/goconvey/convey"
 
-	"github.com/kweaver-ai/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
 // ==================== Stub Implementations ====================

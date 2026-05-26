@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/infra/common"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/infra/localize"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/common"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/localize"
 	jsoniter "github.com/json-iterator/go"
 )
 

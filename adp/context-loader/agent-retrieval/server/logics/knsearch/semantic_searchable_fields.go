@@ -1,3 +1,4 @@
+// Copyright 2026 kowell.ai
 // Copyright The kweaver.ai Authors.
 //
 // Licensed under the Apache License, Version 2.0.
@@ -10,7 +11,7 @@ package knsearch
 import (
 	"strings"
 
-	"github.com/kweaver-ai/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
 // searchableField 可参与语义检索的字段信息

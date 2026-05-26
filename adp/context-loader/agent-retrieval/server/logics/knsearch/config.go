@@ -1,3 +1,4 @@
+// Copyright 2026 kowell.ai
 // Copyright The kweaver.ai Authors.
 //
 // Licensed under the Apache License, Version 2.0.
@@ -7,7 +8,7 @@
 // file: config.go
 package knsearch
 
-import "github.com/kweaver-ai/adp/context-loader/agent-retrieval/server/interfaces"
+import "github.com/kowell-ai/adp/context-loader/agent-retrieval/server/interfaces"
 
 // DefaultConceptRetrievalConfig 返回概念召回默认配置
 func DefaultConceptRetrievalConfig() *interfaces.KnSearchConceptRetrievalConfig {

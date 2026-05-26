@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
 )
 
 //go:generate mockgen -source=mcp_server_config.go -destination=../../mocks/model_mcp_server_config.go -package=mocks

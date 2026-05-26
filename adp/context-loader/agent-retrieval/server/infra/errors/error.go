@@ -1,3 +1,4 @@
+// Copyright 2026 kowell.ai
 // Copyright The kweaver.ai Authors.
 //
 // Licensed under the Apache License, Version 2.0.
@@ -15,8 +16,8 @@ import (
 
 	jsoniter "github.com/json-iterator/go"
 
-	"github.com/kweaver-ai/adp/context-loader/agent-retrieval/server/infra/common"
-	"github.com/kweaver-ai/adp/context-loader/agent-retrieval/server/infra/localize"
+	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/infra/common"
+	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/infra/localize"
 )
 
 // HTTPError HTTP错误

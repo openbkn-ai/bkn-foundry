@@ -1,3 +1,4 @@
+// Copyright 2026 kowell.ai
 // Copyright The kweaver.ai Authors.
 //
 // Licensed under the Apache License, Version 2.0.
@@ -16,12 +17,12 @@ import (
 
 	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
 
-	"github.com/kweaver-ai/adp/context-loader/agent-retrieval/server/drivenadapters"
-	"github.com/kweaver-ai/adp/context-loader/agent-retrieval/server/infra/common"
-	"github.com/kweaver-ai/adp/context-loader/agent-retrieval/server/infra/config"
-	infraErr "github.com/kweaver-ai/adp/context-loader/agent-retrieval/server/infra/errors"
-	"github.com/kweaver-ai/adp/context-loader/agent-retrieval/server/infra/localize"
-	"github.com/kweaver-ai/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/drivenadapters"
+	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/infra/common"
+	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/infra/config"
+	infraErr "github.com/kowell-ai/adp/context-loader/agent-retrieval/server/infra/errors"
+	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/infra/localize"
+	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
 var requiredSkillsDataProperties = []string{"skill_id", "name"}

@@ -7,18 +7,18 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/common"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/drivenadapters"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/common"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/drivenadapters"
 
-	// "github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/drivenadapters/thirft" // disabled: go-lib dependency
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/errors"
-	commonLog "github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/libs/go/log"
-	traceLog "github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/libs/go/telemetry/log"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/libs/go/telemetry/trace"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/pkg/entity"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/pkg/mod"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/pkg/rds"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/utils"
+	// "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/drivenadapters/thirft" // disabled: go-lib dependency
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/errors"
+	commonLog "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/log"
+	traceLog "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/telemetry/log"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/telemetry/trace"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/entity"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/mod"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/rds"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/utils"
 	"go.mongodb.org/mongo-driver/bson"
 	"gorm.io/gorm"
 )

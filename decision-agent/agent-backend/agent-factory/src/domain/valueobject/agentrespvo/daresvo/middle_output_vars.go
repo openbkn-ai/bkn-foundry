@@ -1,7 +1,7 @@
 package daresvo
 
 import (
-	"github.com/kweaver-ai/kweaver-core/decision-agent/agent-backend/agent-factory/src/domain/valueobject/agentrespvo"
+	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/domain/valueobject/agentrespvo"
 )
 
 func (r *DataAgentRes) GetMiddleOutputVars() (middleOutputVarRes *agentrespvo.MiddleOutputVarRes, err error) {

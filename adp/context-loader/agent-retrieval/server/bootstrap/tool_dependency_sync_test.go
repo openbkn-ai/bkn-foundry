@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kweaver-ai/adp/context-loader/agent-retrieval/server/infra/config"
-	"github.com/kweaver-ai/adp/context-loader/agent-retrieval/server/interfaces"
-	"github.com/kweaver-ai/adp/context-loader/agent-retrieval/server/mocks"
+	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/infra/config"
+	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/mocks"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 )

@@ -1,6 +1,6 @@
 package drivenadapters
 
-import "github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/common"
+import "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/common"
 
 const (
 	mockUserManagementUserID         = "mock-user-id"

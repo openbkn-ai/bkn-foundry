@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/libs/go/store"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/store"
 )
 
 const internalTime = 3 * time.Second

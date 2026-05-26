@@ -9,16 +9,16 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/infra/config"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/infra/errors"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/infra/rest"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/config"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/errors"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/rest"
 
 	"github.com/creasty/defaults"
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/infra/validator"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/interfaces"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/logics/impex"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/validator"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/logics/impex"
 )
 
 type ImpexHandler interface {

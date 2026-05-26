@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	myErr "github.com/kweaver-ai/adp/execution-factory/operator-integration/server/infra/errors"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/infra/logger"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/interfaces"
+	myErr "github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/errors"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/logger"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 )

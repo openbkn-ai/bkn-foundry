@@ -1,3 +1,4 @@
+// Copyright 2026 kowell.ai
 // Copyright The kweaver.ai Authors.
 //
 // Licensed under the Apache License, Version 2.0.
@@ -10,7 +11,7 @@ import (
 
 	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
 
-	"github.com/kweaver-ai/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
 // KeywordVectorRetrieval 基于关键词+向量召回

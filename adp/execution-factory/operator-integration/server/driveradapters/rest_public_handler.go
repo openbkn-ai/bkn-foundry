@@ -5,11 +5,11 @@ package driveradapters
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/drivenadapters"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/driveradapters/common"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/infra/config"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/interfaces"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/logics/business_domain"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/drivenadapters"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/driveradapters/common"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/config"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/logics/business_domain"
 )
 
 type restPublicHandler struct {

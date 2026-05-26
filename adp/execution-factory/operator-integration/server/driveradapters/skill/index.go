@@ -4,9 +4,9 @@ import (
 	"sync"
 
 	"github.com/gin-gonic/gin"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/infra/config"
-	"github.com/kweaver-ai/adp/execution-factory/operator-integration/server/interfaces"
-	logicsskill "github.com/kweaver-ai/adp/execution-factory/operator-integration/server/logics/skill"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/config"
+	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces"
+	logicsskill "github.com/kowell-ai/adp/execution-factory/operator-integration/server/logics/skill"
 )
 
 type SkillHandler interface {

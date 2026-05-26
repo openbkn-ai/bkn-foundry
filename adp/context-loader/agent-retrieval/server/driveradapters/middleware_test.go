@@ -9,10 +9,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/smartystreets/goconvey/convey"
 
-	"github.com/kweaver-ai/adp/context-loader/agent-retrieval/server/infra/common"
-	"github.com/kweaver-ai/adp/context-loader/agent-retrieval/server/infra/logger"
-	"github.com/kweaver-ai/adp/context-loader/agent-retrieval/server/infra/rest"
-	"github.com/kweaver-ai/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/infra/common"
+	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/infra/logger"
+	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/infra/rest"
+	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
 func TestMiddlewareResponseFormat_DefaultAndValid(t *testing.T) {

@@ -8,7 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/smartystreets/goconvey/convey"
 
-	"github.com/kweaver-ai/adp/context-loader/agent-retrieval/server/infra/logger"
+	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/infra/logger"
 )
 
 func (stubKnSearchHandler) SearchSchema(c *gin.Context) {

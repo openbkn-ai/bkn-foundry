@@ -4,9 +4,9 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/driveradapters/middleware"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/errors"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/pkg/dependency"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/driveradapters/middleware"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/errors"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/dependency"
 	"github.com/gin-gonic/gin"
 )
 

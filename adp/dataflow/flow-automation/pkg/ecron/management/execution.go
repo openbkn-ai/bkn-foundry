@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	jsoniter "github.com/json-iterator/go"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/pkg/ecron/common"
-	"github.com/kweaver-ai/kweaver-core/adp/dataflow/flow-automation/pkg/ecron/utils"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/ecron/common"
+	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/ecron/utils"
 	"github.com/mitchellh/mapstructure"
 )
 

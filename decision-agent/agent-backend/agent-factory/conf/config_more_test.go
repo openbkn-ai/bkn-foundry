@@ -3,7 +3,7 @@ package conf
 import (
 	"testing"
 
-	otelcfg "github.com/kweaver-ai/kweaver-core/decision-agent/agent-backend/agent-factory/src/infra/otel"
+	otelcfg "github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/infra/otel"
 	"github.com/stretchr/testify/assert"
 )
 

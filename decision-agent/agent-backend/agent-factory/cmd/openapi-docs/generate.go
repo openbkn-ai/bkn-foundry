@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/kweaver-ai/kweaver-core/decision-agent/agent-backend/agent-factory/internal/openapidoc"
+	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/internal/openapidoc"
 	pkgerrors "github.com/pkg/errors"
 )
 

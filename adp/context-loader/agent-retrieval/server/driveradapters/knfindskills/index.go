@@ -1,3 +1,4 @@
+// Copyright 2026 kowell.ai
 // Copyright The kweaver.ai Authors.
 //
 // Licensed under the Apache License, Version 2.0.
@@ -14,11 +15,11 @@ import (
 	"github.com/gin-gonic/gin"
 	validator "github.com/go-playground/validator/v10"
 
-	"github.com/kweaver-ai/adp/context-loader/agent-retrieval/server/infra/config"
-	"github.com/kweaver-ai/adp/context-loader/agent-retrieval/server/infra/errors"
-	"github.com/kweaver-ai/adp/context-loader/agent-retrieval/server/infra/rest"
-	"github.com/kweaver-ai/adp/context-loader/agent-retrieval/server/interfaces"
-	logicsFS "github.com/kweaver-ai/adp/context-loader/agent-retrieval/server/logics/knfindskills"
+	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/infra/config"
+	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/infra/errors"
+	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/infra/rest"
+	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/interfaces"
+	logicsFS "github.com/kowell-ai/adp/context-loader/agent-retrieval/server/logics/knfindskills"
 )
 
 // KnFindSkillsHandler HTTP handler interface for find_skills

@@ -1,4 +1,4 @@
-module github.com/kweaver-ai/kweaver-core/trace-ai/agent-observability
+module github.com/kowell-ai/kowell-core/trace-ai/agent-observability
 
 go 1.24.0
 
