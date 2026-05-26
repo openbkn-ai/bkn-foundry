@@ -28,3 +28,14 @@ jobs:
       version: ${{ needs.test.outputs.version }}
       publish: ${{ github.event_name == 'push' }}
     secrets: inherit
+
+  chart:
+    needs: [test, build]
+    uses: ./.github/workflows/reusable-chart.yml
+    with:
+      service-path: trace-ai/agent-observability
+      chart-path: charts/agent-observability
+      chart-name: agent-observability
+      version: ${{ needs.test.outputs.version }}
+      publish: ${{ github.event_name == 'push' }}
+    secrets: inherit
