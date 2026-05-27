@@ -19,6 +19,10 @@ on:
         type: string
         default: '3.11'
         description: 'Python version for setup'
+      test-flags:
+        type: string
+        default: ''
+        description: 'Extra flags for go test (e.g. -skip <pattern>)'
     outputs:
       version:
         value: ${{ jobs.resolve-version.outputs.version }}
@@ -71,7 +75,7 @@ jobs:
       - name: Run Go test
         if: ${{ inputs.stack == 'go' }}
         working-directory: ${{ inputs.service-path }}
-        run: go test ./...
+        run: go test ${{ inputs.test-flags }} ./...
 
       - name: GolangCI-Lint
         if: ${{ inputs.stack == 'go' }}
