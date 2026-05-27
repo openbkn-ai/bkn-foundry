@@ -23,6 +23,10 @@ on:
         type: string
         default: ''
         description: 'Extra flags for go test (e.g. -skip <pattern>)'
+      skip-lint:
+        type: boolean
+        default: false
+        description: 'Skip golangci-lint (for services with incompatible lint config)'
     outputs:
       version:
         value: ${{ jobs.resolve-version.outputs.version }}
@@ -78,7 +82,7 @@ jobs:
         run: go test ${{ inputs.test-flags }} ./...
 
       - name: GolangCI-Lint
-        if: ${{ inputs.stack == 'go' }}
+        if: ${{ inputs.stack == 'go' && !inputs.skip-lint }}
         uses: golangci/golangci-lint-action@v7
         with:
           version: v2.6.2
