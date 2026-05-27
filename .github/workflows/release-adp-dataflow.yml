@@ -1,0 +1,48 @@
+name: release-adp-dataflow
+
+# Single image bundling two components (flow-automation + flow-stream-data-pipeline);
+# the dataflow chart starts each via its own command/args.
+
+on:
+  push:
+    branches: ['**']
+    paths:
+      - 'adp/dataflow/flow-automation/**'
+      - 'adp/dataflow/flow-stream-data-pipeline/**'
+      - 'adp/dataflow/Dockerfile.dataflow'
+      - 'adp/dataflow/charts/dataflow/**'
+      - '.github/workflows/release-adp-dataflow.yml'
+      - '.github/workflows/reusable-*.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  test:
+    uses: ./.github/workflows/reusable-test.yml
+    with:
+      service-path: adp/dataflow/charts/dataflow
+      stack: chart-only
+
+  build:
+    needs: test
+    uses: ./.github/workflows/reusable-build.yml
+    with:
+      service-path: adp/dataflow
+      dockerfile: Dockerfile.dataflow
+      context: '.'
+      image-name: dataflow
+      version: ${{ needs.test.outputs.version }}
+      publish: ${{ github.event_name == 'push' }}
+
+  chart:
+    needs: [test, build]
+    uses: ./.github/workflows/reusable-chart.yml
+    with:
+      service-path: adp/dataflow
+      chart-path: charts/dataflow
+      chart-name: dataflow
+      version: ${{ needs.test.outputs.version }}
+      publish: ${{ github.event_name == 'push' }}
