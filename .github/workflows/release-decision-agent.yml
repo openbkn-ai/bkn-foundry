@@ -32,8 +32,9 @@ jobs:
     needs: test
     uses: ./.github/workflows/reusable-build.yml
     with:
-      service-path: decision-agent/agent-backend
-      dockerfile: deploy/docker/Dockerfile
+      # Dockerfile COPYs agent-backend/... so build context root must be decision-agent
+      service-path: decision-agent
+      dockerfile: agent-backend/deploy/docker/Dockerfile
       context: '.'
       image-name: agent-backend
       version: ${{ needs.test.outputs.version }}
