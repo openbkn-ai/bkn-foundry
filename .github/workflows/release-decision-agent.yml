@@ -31,8 +31,6 @@ jobs:
       image-name: agent-factory
       version: ${{ needs.test.outputs.version }}
       publish: ${{ github.event_name == 'push' }}
-    secrets: inherit
-
   build-executor:
     needs: test
     uses: ./.github/workflows/reusable-build.yml
@@ -43,8 +41,6 @@ jobs:
       image-name: agent-executor
       version: ${{ needs.test.outputs.version }}
       publish: ${{ github.event_name == 'push' }}
-    secrets: inherit
-
   build-memory:
     needs: test
     uses: ./.github/workflows/reusable-build.yml
@@ -55,8 +51,6 @@ jobs:
       image-name: agent-memory
       version: ${{ needs.test.outputs.version }}
       publish: ${{ github.event_name == 'push' }}
-    secrets: inherit
-
   chart:
     needs: [test, build-factory, build-executor, build-memory]
     uses: ./.github/workflows/reusable-chart.yml
@@ -66,4 +60,3 @@ jobs:
       chart-name: agent-backend
       version: ${{ needs.test.outputs.version }}
       publish: ${{ github.event_name == 'push' }}
-    secrets: inherit

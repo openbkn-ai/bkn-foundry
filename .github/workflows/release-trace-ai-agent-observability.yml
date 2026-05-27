@@ -31,7 +31,6 @@ jobs:
       image-name: agent-observability
       version: ${{ needs.test.outputs.version }}
       publish: ${{ github.event_name == 'push' }}
-    secrets: inherit
 
   chart:
     needs: [test, build]
