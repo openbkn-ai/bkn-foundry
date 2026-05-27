@@ -14,10 +14,10 @@ securityContext:
   runAsGroup: 5000
 
 image:
-  registry: docker.io
+  registry: ghcr.io/kowell-ai
   service:
-    repository: dip/agent-operator-integration
-    tag: latest
+    repository: agent-operator-integration
+    tag: "__VERSION__"
     pullPolicy: IfNotPresent
 
 service:

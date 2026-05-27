@@ -38,6 +38,15 @@ jobs:
           sed -i "s/^version: .*/version: ${{ inputs.version }}/" "$CHART_FILE"
           sed -i "s/^appVersion: .*/appVersion: \"${{ inputs.version }}\"/" "$CHART_FILE"
 
+      - name: Substitute image version placeholder
+        run: |
+          # Charts reference image tags via the __VERSION__ placeholder; replace
+          # with the resolved version so packaged charts point at the matching image.
+          VALUES_FILE="${{ inputs.service-path }}/${{ inputs.chart-path }}/values.yaml"
+          if [ -f "$VALUES_FILE" ]; then
+            sed -i "s/__VERSION__/${{ inputs.version }}/g" "$VALUES_FILE"
+          fi
+
       - name: Helm lint
         run: helm lint ${{ inputs.service-path }}/${{ inputs.chart-path }}
 

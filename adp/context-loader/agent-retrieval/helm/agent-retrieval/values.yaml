@@ -14,10 +14,10 @@ securityContext:
   runAsGroup: 5000
 
 image:
-  registry: acr.aishu.cn
+  registry: ghcr.io/kowell-ai
   service:
-    repository: dip/agent-retrieval
-    tag: data-581755
+    repository: agent-retrieval
+    tag: "__VERSION__"
     pullPolicy: IfNotPresent
 
 service:

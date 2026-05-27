@@ -3,9 +3,9 @@ replicaCount: 1
 namespace: dip
 
 image:
-  registry: acr.aishu.cn
-  repository: /dip/oss-gateway-backend
-  tag: 5.0.0
+  registry: ghcr.io/kowell-ai
+  repository: oss-gateway-backend
+  tag: "__VERSION__"
   pullPolicy: IfNotPresent
   name: oss-gateway-backend
 

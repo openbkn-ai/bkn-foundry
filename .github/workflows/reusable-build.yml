@@ -28,6 +28,14 @@ on:
       publish:
         type: boolean
         default: false
+      build-args:
+        type: string
+        default: ''
+        description: 'Extra docker build args, one KEY=VALUE per line (e.g. BASE_IMAGE=ubuntu:22.04)'
+      target:
+        type: string
+        default: ''
+        description: 'Dockerfile target stage (empty = final stage)'
 
 jobs:
   build:
@@ -56,6 +64,8 @@ jobs:
           context: ${{ inputs.service-path }}/${{ inputs.context }}
           file: ${{ inputs.service-path }}/${{ inputs.dockerfile }}
           platforms: ${{ inputs.platforms }}
+          build-args: ${{ inputs.build-args }}
+          target: ${{ inputs.target }}
           push: ${{ inputs.publish }}
           provenance: false
           sbom: false

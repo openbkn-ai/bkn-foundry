@@ -13,9 +13,9 @@ replicaCount: 1
 nodeSelector: {}
 
 image:
-  registry: acr.aishu.cn
-  repository: dip/ontology-query
-  tag: tag
+  registry: ghcr.io/kowell-ai
+  repository: ontology-query
+  tag: "__VERSION__"
   pullPolicy: IfNotPresent
 
 service:

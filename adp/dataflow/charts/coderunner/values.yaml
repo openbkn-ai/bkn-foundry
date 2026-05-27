@@ -6,12 +6,12 @@ replicaCount: 1
 namespace: anyshare
 
 image:
-  registry: acr.aishu.cn
-  repository: dip/coderunner
-  tag: 1.6.2-feature-680406
+  registry: ghcr.io/kowell-ai
+  repository: coderunner
+  tag: "__VERSION__"
   dataflowtools:
-    repository: dip/dataflowtools
-    tag: 1.6.2-feature-680406
+    repository: dataflowtools
+    tag: "__VERSION__"
   pullPolicy: IfNotPresent
 
 auth:

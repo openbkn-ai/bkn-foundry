@@ -3,9 +3,9 @@ replicaCount: 1
 namespace: dip
 
 image:
-  registry: acr.aishu.cn
-  repository: /dip/mf-model-manager
-  tag: 5.0.0
+  registry: ghcr.io/kowell-ai
+  repository: mf-model-manager
+  tag: "__VERSION__"
   pullPolicy: IfNotPresent
   name: mf-model-manager
 
