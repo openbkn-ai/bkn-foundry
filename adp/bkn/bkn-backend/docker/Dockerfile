@@ -12,7 +12,7 @@ FROM ${BUILD_IMAGE} AS builder
 COPY ./server /go/src
 
 ARG SERVER_VERSION=0.1.0
-ARG GOPROXY_URL="http://goproxy.cn,direct"
+ARG GOPROXY_URL="https://proxy.golang.org,direct"
 
 ENV GOPROXY=${GOPROXY_URL}
 

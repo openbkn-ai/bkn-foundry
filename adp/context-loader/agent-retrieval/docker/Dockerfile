@@ -5,7 +5,7 @@ ARG baseImage=ubuntu:22.04
 
 FROM ${BUILD_IMAGE} AS builder
 
-ARG GOPROXY_URL="http://goproxy.cn,direct"
+ARG GOPROXY_URL="https://proxy.golang.org,direct"
 ENV GOPROXY=${GOPROXY_URL}
 
 WORKDIR /src
