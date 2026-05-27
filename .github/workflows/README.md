@@ -25,5 +25,11 @@ Workflow YAML files must stay in this directory (flat layout). GitHub does not l
 | [`lint-commit.yml`](./lint-commit.yml) | Commit Message Lint | `pull_request` | Commit message checks |
 | [`release-agent-observability.yml`](./release-agent-observability.yml) | agent-observability-release | `push` (`trace-ai/agent-observability/**`, …), `workflow_dispatch` | Agent observability image + Helm chart |
 | [`release-otelcol-chart.yaml`](./release-otelcol-chart.yaml) | otelcol-chart-release | `push` (`trace-ai/otelcol-contribute-chart/**`, …), `workflow_dispatch` | OTel collector Helm chart to GHCR |
+| [`release-infra-model-factory-base.yml`](./release-infra-model-factory-base.yml) | release-infra-model-factory-base | `push` (`infra/model-factory-base/**`), `workflow_dispatch` | Shared base image for mf-model-* → GHCR (`model-factory-base:v2`) |
+| [`release-infra-oss-gateway.yml`](./release-infra-oss-gateway.yml) | release-infra-oss-gateway | `push` (`infra/oss-gateway-backend/**`), `workflow_dispatch` | oss-gateway-backend image + Helm chart |
+| [`release-infra-mf-model-api.yml`](./release-infra-mf-model-api.yml) | release-infra-mf-model-api | `push` (`infra/mf-model-api/**`), `workflow_dispatch` | mf-model-api image + Helm chart (base: model-factory-base) |
+| [`release-infra-mf-model-manager.yml`](./release-infra-mf-model-manager.yml) | release-infra-mf-model-manager | `push` (`infra/mf-model-manager/**`), `workflow_dispatch` | mf-model-manager image + Helm chart (base: model-factory-base) |
+| [`release-proton-mariadb.yml`](./release-proton-mariadb.yml) | release-proton-mariadb | `push` (`deploy/charts/proton-mariadb/**`), `workflow_dispatch` | proton-mariadb Helm chart (chart-only) → GHCR |
+| [`release-trace-ai-otelcol.yml`](./release-trace-ai-otelcol.yml) | release-trace-ai-otelcol | `push` (`trace-ai/otelcol-contribute-chart/**`), `workflow_dispatch` | otelcol-contrib Helm chart (chart-only) → GHCR |
 
 When you add a workflow, append a row here and use a `paths` filter when it should only run for part of the monorepo.

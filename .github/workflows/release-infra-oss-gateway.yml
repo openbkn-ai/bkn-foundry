@@ -1,0 +1,47 @@
+name: release-infra-oss-gateway
+
+on:
+  push:
+    branches: ['**']
+    paths:
+      - 'infra/oss-gateway-backend/**'
+      - '.github/workflows/release-infra-oss-gateway.yml'
+      - '.github/workflows/reusable-*.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  test:
+    uses: ./.github/workflows/reusable-test.yml
+    with:
+      service-path: infra/oss-gateway-backend
+      stack: go
+      go-mod-file: go.mod
+
+  build:
+    needs: test
+    uses: ./.github/workflows/reusable-build.yml
+    with:
+      service-path: infra/oss-gateway-backend
+      dockerfile: Dockerfile
+      context: '.'
+      image-name: oss-gateway-backend
+      version: ${{ needs.test.outputs.version }}
+      publish: ${{ github.event_name == 'push' }}
+      # 内网 swr base 覆盖为公网镜像
+      build-args: |
+        GO_BUILD_IMAGE=golang:1.24.11
+        BASE_IMAGE=ubuntu:24.04
+
+  chart:
+    needs: [test, build]
+    uses: ./.github/workflows/reusable-chart.yml
+    with:
+      service-path: infra/oss-gateway-backend
+      chart-path: charts
+      chart-name: oss-gateway-backend
+      version: ${{ needs.test.outputs.version }}
+      publish: ${{ github.event_name == 'push' }}
