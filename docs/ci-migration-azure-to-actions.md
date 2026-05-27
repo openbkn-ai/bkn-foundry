@@ -112,11 +112,25 @@
 **依赖闭包来源（实证）：**
 
 - 全量 import 扫描（144 个 .py）确认：**代码不直接 import torch/transformers/spacy/datasets/nltk/sklearn** —— ML 重型栈非运行时直接依赖。
-- 大量内部顶层模块（`llmadapter`、`exporter`、`tlogging`、`rdsdriver`、`dbutilsx`、`t_small_model`、`t_llm_model` 等）非本地目录、非公网包。
-- mf-model-manager README：base 依赖 = `requirements.txt` + `llmadapter-1.0.3-py3-none-any.whl`；mf-model-api README：与 manager 共用同一 base。
-- **关键发现**：`llmadapter==1.0.3` **公开发布在 PyPI**（`py3-none-any`，`requires_python <4.0,>=3.8.1`，PyPI 仅构建 3.9–3.11）。它把上述内部顶层模块作为**自带模块**打包，故 README 只需装它一个。→ **无需 vendor wheel，公网 `pip install` 即可。**
+- `t_small_model`/`t_llm_model` **不是 Python 模块，是数据库表名**（出现在 SQL 字符串 `select ... from t_small_model`），与 base 无关。
+- 真正的内部顶层 Python 包：`llmadapter`、`exporter`（`exporter.ar_trace.trace_exporter` / `ar_log` / `public.public.WithAnyRobotURL` / `resource.resource`，即 AnyRobot 可观测 SDK）、`tlogging`（`SamplerLogger`）、`rdsdriver`、`dbutilsx`（`pooled_db.PooledDB/PooledDBInfo`）。
+- mf-model-manager README：base 依赖 = `requirements.txt` + `llmadapter-1.0.3-py3-none-any.whl`；mf-model-api README：与 manager 共用同一 base。但 README **未提** exporter/tlogging/rdsdriver/dbutilsx —— 它们在旧 base 里由更早的层预装。
 
-`llmadapter==1.0.3` 的 `requires_dist`：
+**逐个落定（实证：下载并解包各 wheel 比对 import 路径）：**
+
+| 内部包 | 解决方式 | 依据 |
+|---|---|---|
+| `llmadapter` | ✅ 公网 `llmadapter==1.0.3` | wheel 含 `llmadapter/llms`、`llmadapter/schema` 等，匹配代码 import |
+| `dbutilsx` | ✅ 公网 `DBUtilsX==1.3.3` | 含 `dbutilsx/pooled_db.py`，且确认有 `PooledDBInfo` |
+| `rdsdriver` | ✅ 公网 `RDSDriver==1.3.3`（DBUtilsX 亦捆带） | `rdsdriver/{mysql,dm}`，匹配 `import rdsdriver` |
+| `exporter`（AnyRobot） | ❌ **内部独有，需提供 wheel** | 公网同名 `exporter-0.0.4` 是无关包（无 ar_trace/ar_log/public/resource） |
+| `tlogging` | ❌ **内部独有，需提供 wheel** | PyPI 无此包；候选名（anyrobot-*/ar-*）均无匹配 |
+
+> 演进：先前"llmadapter 打包全部内部模块、无需 wheel"判断有误（公网 `llmadapter` 仅含 `llmadapter` 一个顶层包）。`exporter`(AnyRobot)、`tlogging` 公网无、属内部独有。
+>
+> **决策（已采纳）：去掉 AR 相关依赖** —— `exporter`(AnyRobot trace/log) 与 `tlogging` 从两个 service 代码中移除（见 §6.3），base **不再需要这 2 个内部 wheel**。base 依赖闭包变为**全公网可建**。
+
+`llmadapter==1.0.3` 的 `requires_dist`（`requires_python <4.0,>=3.8.1`；PyPI 仅构建 3.9–3.11）：
 
 ```
 PyYAML>=5.4.1 ; SQLAlchemy<3,>=1.4 ; dataclasses-json<0.6.0,>=0.5.7 ; gptcache>=0.1.7
@@ -125,7 +139,7 @@ redis<5,>=4 ; requests<3,>=2 ; spacy<4,>=3 ; tenacity<9.0.0,>=8.1.0
 tiktoken<0.4.0,>=0.3.2 ; python>=3.9
 ```
 
-**base 重建配方**（新增 `infra/model-factory-base/`，构建后推 `ghcr.io/kowell-ai/model-factory-base:v2`）：
+**base 重建配方**（`infra/model-factory-base/`，构建后推 `ghcr.io/kowell-ai/model-factory-base:v2`，由 `release-infra-model-factory-base.yml` 触发；AR 去除后**无 vendor wheel**）：
 
 ```dockerfile
 FROM python:3.11-bookworm
@@ -133,21 +147,37 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       librdkafka-dev libgomp1 && rm -rf /var/lib/apt/lists/*
 WORKDIR /opt/base
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt \
- && pip install --no-cache-dir llmadapter==1.0.3 \
- && pip install --no-cache-dir confluent-kafka aiohttp sse-starlette \
-      opentelemetry-sdk opentelemetry-api
-# 验证: python -c "import llmadapter,exporter,rdsdriver,dbutilsx,tlogging"
+RUN pip install --no-cache-dir -r requirements.txt
+# 冒烟验证关键内部模块全可解析
+RUN python -c "import llmadapter, rdsdriver, dbutilsx.pooled_db; \
+from llmadapter.llms.llm_factory import llm_factory; \
+from dbutilsx.pooled_db import PooledDB, PooledDBInfo; print('model-factory-base OK')"
 ```
+
+`requirements.txt` 含：公网内部包 `llmadapter==1.0.3` / `DBUtilsX==1.3.3` / `RDSDriver==1.3.3`；服务运行栈（fastapi/uvicorn/pydantic~=1.10.9/openai 0.28.1/…，源自 mf-model-manager）；代码 import 但上游未声明的 `confluent-kafka`（需 `librdkafka` 系统库）/`aiohttp`/`sse-starlette`/`opentelemetry-{sdk,api,instrumentation-fastapi}`。
 
 两个 service Dockerfile 补 `ARG BASE_IMAGE=ghcr.io/kowell-ai/model-factory-base:v2` 并 `FROM ${BASE_IMAGE}`。
 
 **约束与待验证（build 时实跑确认）：**
 
 1. **Python 锁 3.11**：`pydantic~=1.10.9`（v1，1.10.9 不支持 3.12）+ llmadapter PyPI 仅构建到 3.11。**不可升 3.12。**
-2. **tiktoken 冲突** ⚠️：llmadapter 要 `<0.4.0`，manager `requirements.txt` 钉 `tiktoken==0.5.1`。pip 会冲突，需实测定夺（放宽到满足 llmadapter，或确认 0.5.1 可用）。
-3. **requirements 漏声明、但代码实际 import**：`confluent_kafka`（需 `librdkafka` 系统库）、`aiohttp`、`sse_starlette`、`opentelemetry-*` —— 已在配方中补；最终清单以 build 跑通为准。
-4. spacy 是否需下载语言模型（如 `en_core_web_sm`）待确认。
+2. **tiktoken 冲突** ⚠️：llmadapter 要 `<0.4.0`，manager `requirements.txt` 钉 `tiktoken==0.5.1`。base `requirements.txt` 已去掉该 pin，交 resolver 取 <0.4.0；以 build 跑通为准。
+3. spacy 是否需下载语言模型（如 `en_core_web_sm`）待确认。
+
+### 6.3 去掉 AR（AnyRobot）可观测依赖
+
+`exporter`(AnyRobot trace/log) 与 `tlogging`(SamplerLogger) 公网无、属内部独有，是 base 全公网化的唯一障碍。**决策：从 service 代码移除 AR，base 即全公网可建。** trace 改为 **no-op provider**（保留 OTel 埋点，无 exporter），日志统一走 stdlib logging。改动集中、两服务镜像（文件字节一致）：
+
+| 文件 | 改动 |
+|---|---|
+| `app/utils/observability/observability_trace.py` | `init_trace_provider` 改 no-op；删 `exporter.*`（ARTraceExporter/HTTPClient/WithAnyRobotURL/trace_resource/set_service_info） |
+| `app/utils/observability/observability_log.py` | 删 `tlogging`/`exporter.*`；`SamplerLogger` → stdlib logging 小 shim（保留 `info(message=,ctx=)` 等接口） |
+| `app/utils/observability/trace_wrapper.py`、`trace_context.py` | `from exporter.ar_trace.trace_exporter import tracer` → `tracer = opentelemetry.trace.get_tracer(__name__)` |
+| `app/logs/stand_log.py` | 删 `SamplerLogger`/`log_resource`，`_stand_logger` 路径移除，统一 `_info_logger`（控制台+文件） |
+| `app/core/config.py` | `LOG_EXPORTER` 默认 `"http"` → `"console"` |
+| `app/test/conftest.py`（仅 api） | AR mock（tlogging/exporter）改为注释保留 |
+
+> **未来（trace-ai）**：可观测后端将改用仓库自有的 **trace-ai**（OTel collector + agent-observability）。no-op 是干净过渡态 —— 埋点（`@internal_span`/`TraceContext`/上下文传播）原样保留，将来仅需加一个指向 trace-ai 的 `OTLPSpanExporter`，无需改埋点。
 
 ## 7. Chart 镜像引用标准化
 
@@ -246,9 +276,11 @@ RUN pip install --no-cache-dir -r requirements.txt \
 
 ## 13. 未决问题 / 待验证
 
-1. **tiktoken 版本冲突**（§6.2）：llmadapter `<0.4.0` vs manager `==0.5.1`，build 实测定夺。
-2. **tika 上游 tag** `apache/tika:3.3.0.0-full` 是否对应内部 `dip/tika:3.3.0.0`，待确认。
-3. **spacy 语言模型**是否需在 base 内预下载。
-4. **coderunner numpy/pandas bump** 后需回归 coderunner 用例。
-5. **旧 Chart 产物可得性**：能否从 Harbor / 旧 pipeline 取到 `.tgz` 用于 §9 直接比对；不可得则用"复现旧变换"路径。
-6. `_componentMeta.json` 是否保留 / 同步 version（§9.3）。
+1. ~~2 个内部 wheel 阻塞~~ **已解**：去掉 AR 依赖（§6.3）后 base 全公网可建，`exporter`/`tlogging` 不再需要。
+2. **tiktoken 版本冲突**（§6.2）：llmadapter `<0.4.0` vs manager `==0.5.1`，base requirements 已去 pin，build 实测确认。
+3. **AR 移除后服务回归**：mf-model-api/manager 起服务冒烟，确认 trace no-op + stdlib 日志不破坏请求路径。
+4. **tika 上游 tag** `apache/tika:3.3.0.0-full` 是否对应内部 `dip/tika:3.3.0.0`，待确认。
+5. **spacy 语言模型**是否需在 base 内预下载。
+6. **coderunner numpy/pandas bump** 后需回归 coderunner 用例。
+7. **旧 Chart 产物可得性**：能否从 Harbor / 旧 pipeline 取到 `.tgz` 用于 §9 直接比对；不可得则用"复现旧变换"路径。
+8. `_componentMeta.json` 是否保留 / 同步 version（§9.3）。

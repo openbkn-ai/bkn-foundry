@@ -117,7 +117,7 @@ server_info = ServerInfo(
 observability_config = ObservabilitySetting(
     log=LogSetting(
         log_enabled=os.getenv("LOG_ENABLED", "false") == "true",
-        log_exporter=os.getenv("LOG_EXPORTER", "http"),
+        log_exporter=os.getenv("LOG_EXPORTER", "console"),
         log_load_interval=int(os.getenv("LOG_LOAD_INTERNAL", "10")),
         log_load_max_log=int(os.getenv("LOG_LOAD_MAX_LOG", "1000")),
         http_log_feed_ingester_url=os.getenv("httpLogFeedIngesterUrl",

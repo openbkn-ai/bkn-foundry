@@ -1,0 +1,29 @@
+name: release-infra-model-factory-base
+
+# Shared base image for mf-model-api / mf-model-manager.
+# Tagged with a stable tag (v2), not the repo VERSION: the two service Dockerfiles
+# pin `FROM ghcr.io/<owner>/model-factory-base:v2`. Rebuilt only when its files change.
+
+on:
+  push:
+    branches: ['**']
+    paths:
+      - 'infra/model-factory-base/**'
+      - '.github/workflows/release-infra-model-factory-base.yml'
+      - '.github/workflows/reusable-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    uses: ./.github/workflows/reusable-build.yml
+    with:
+      service-path: infra/model-factory-base
+      dockerfile: Dockerfile
+      context: '.'
+      image-name: model-factory-base
+      version: v2
+      publish: ${{ github.event_name == 'push' }}

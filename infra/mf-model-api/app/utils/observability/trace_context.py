@@ -4,10 +4,12 @@ from opentelemetry import trace
 from opentelemetry.trace import SpanKind, Tracer
 from functools import wraps
 from typing import Optional, Callable, Any, Awaitable
-from exporter.ar_trace.trace_exporter import tracer
 from opentelemetry.trace import SpanKind, Tracer, Status, StatusCode
 from contextlib import contextmanager, asynccontextmanager
 from typing import Optional, Any, AsyncGenerator, Generator
+
+# 原 AnyRobot tracer 已移除，改用 OTel 默认 tracer（无 provider 时为 no-op）
+tracer = trace.get_tracer(__name__)
 
 
 

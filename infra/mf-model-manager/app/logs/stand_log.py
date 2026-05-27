@@ -2,19 +2,18 @@
 # @Author  : Cerfly.xie
 # @Time    : 2022/12/27 17:30
 
-from tlogging import SamplerLogger
 import time
 import logging
 from logging.handlers import TimedRotatingFileHandler
 import os
 import arrow
 from fastapi import Request
-from exporter.resource.resource import log_resource
 
 from app.utils.common import GetCallerInfo, IsInPod
 
 '''
 标准日志StandLog类
+原 AnyRobot(AR) SamplerLogger 已移除，统一走标准库 logging（控制台 + 文件）。
 '''
 
 SYSTEM_LOG = "SystemLog"
@@ -30,26 +29,15 @@ LOGIN = "login"  # 登录
 
 class Logger(object):
     _info_logger = None
-    _stand_logger = None
 
     def stand_log_shutdown(self):
-        if self._stand_logger:
-            self._stand_logger.shutdown()
+        # AR SamplerLogger 已移除，无需关闭
+        pass
 
     def __init__(self):
         try:
-            # print 只允许在此（日志对象初始化时）使用
-            print("-----------------------------------标准输出工具初始化-----------------------------------")
-            stand_logger = SamplerLogger(log_resource())
-            # 赋值"TraceLevel",表示所有等级日志都输出
-            stand_logger.loglevel = "TraceLevel"
-            self._stand_logger = stand_logger
-
             print("-----------------------------------INFO级别日志输出工具初始化-----------------------------------")
             self._info_logger = logging.getLogger(__name__)
-            # 输出到标准输出，并设置格式
-            # logging.basicConfig(format='%(asctime)s %(levelname)s %(message)s',
-            #                     level=logging.INFO)
             self._info_logger.setLevel(logging.DEBUG)
 
             # 先添加控制台输出，确保即使文件句柄失败也能输出到控制台
@@ -77,14 +65,6 @@ class Logger(object):
         except Exception as e:
             print("-----------------------------------stad_log init errors :", e)
 
-    # 后续等AR那边完成工具改造后，该强制推送函数应该删除
-    def __notify(self):
-        self._stand_logger.shutdown()
-        stand_logger = SamplerLogger(log_resource())
-        # 赋值"TraceLevel",表示所有等级日志都输出
-        stand_logger.loglevel = "TraceLevel"
-        self._stand_logger = stand_logger
-
     def __need_print(self, etype):
         # 在pod中运行时，需要判断是否打印系统日志
         if IsInPod():
@@ -94,38 +74,20 @@ class Logger(object):
         return True
 
     def info(self, log_info, etype=SYSTEM_LOG):
-        # 始终输出到标准控制台/文件（_info_logger）
         caller_filename, caller_lineno = GetCallerInfo()
         self._info_logger.info(f"{caller_filename}:{caller_lineno} " + str(log_info))
-        # 仅在需要时输出到 SamplerLogger
-        if self.__need_print(etype):
-            self._stand_logger.info(log_info, etype=etype)
-            self.__notify()
 
     def warn(self, log_info, etype=SYSTEM_LOG):
-        # 始终输出到标准控制台/文件（_info_logger）
         caller_filename, caller_lineno = GetCallerInfo()
         self._info_logger.warning(f"{caller_filename}:{caller_lineno} " + str(log_info))
-        # 仅在需要时输出到 SamplerLogger
-        if self.__need_print(etype):
-            self._stand_logger.warn(log_info, etype=etype)
-            self.__notify()
 
     def error(self, log_info, etype=SYSTEM_LOG):
-        # 始终输出到标准控制台/文件（_info_logger）
         caller_filename, caller_lineno = GetCallerInfo()
         self._info_logger.error(f"{caller_filename}:{caller_lineno} " + str(log_info))
-        # 仅在需要时输出到 SamplerLogger
-        if self.__need_print(etype):
-            self._stand_logger.error(log_info, etype=etype)
-            self.__notify()
 
     def info_log(self, body):
         """ INFO级别的日志打印（不遵循标准规则，特殊的系统日志） """
         self.info(str(body))
-        # if self.__need_print(SYSTEM_LOG):
-        #     caller_filename, caller_lineno = GetCallerInfo()
-        #     self._info_logger.info(f"{caller_filename}:{caller_lineno} "+str(body))
 
     def debug_log(self, body):
         """ DEBUG级别的日志打印（不遵循标准规则，特殊的系统日志） """
