@@ -1,0 +1,50 @@
+namespace: dip
+moduleName: data-migrator
+
+env:
+  timezone: Asia/Shanghai
+  language: en_US.UTF-8
+
+image:
+  registry: acr.aishu.cn
+  repository: kweaver-ai/data-migrator
+  tag: latest
+  pullPolicy: IfNotPresent
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 5000
+  runAsGroup: 5000
+
+resources: {}
+#  limits:
+#    cpu: 200m
+#    memory: 500Mi
+#  requests:
+#    cpu: 100m
+#    memory: 128Mi
+
+activeDeadlineSeconds: 3600
+
+backoffLimit: 0
+
+restartPolicy: Never
+
+nodeSelector: {}
+
+depServices:
+  rds:
+    source_type: internal
+    type: mariadb
+    host: mariadb-mariadb-master.resource.svc.cluster.local.
+    port: 3306
+    user: anyshare
+    password: eisoo.com123
+    hostRead: mariadb-mariadb-cluster.resource.svc.cluster.local.
+    portRead: 3306
+    admin_key: ""
+    mgmt_host: ""
+    mgmt_port: 8888
+  mongodb: {}
+  opensearch: {}
+  redis: {}

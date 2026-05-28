@@ -1,0 +1,9 @@
+# 各部门部署镜像构建模板
+# 使用方式：复制此文件到部门仓库，按需修改 BASE_IMAGE
+# 构建命令：docker build -f Dockerfile -t <registry>/<dept>/data-migrator:<tag> .
+
+ARG BASE_IMAGE=acr.aishu.cn/dip/data-migrator-base:latest
+FROM ${BASE_IMAGE}
+
+COPY config.yaml ./config.yaml
+COPY repos ./repos

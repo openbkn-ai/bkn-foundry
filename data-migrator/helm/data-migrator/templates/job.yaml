@@ -1,0 +1,56 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Values.moduleName }}-job
+  namespace: {{ .Values.namespace }}
+  annotations:
+    module: {{ .Values.moduleName }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+    helm.sh/hook: "pre-install, pre-upgrade"
+    helm.sh/hook-delete-policy: "before-hook-creation"
+    helm.sh/hook-weight: "10"
+spec:
+  activeDeadlineSeconds: {{ .Values.activeDeadlineSeconds }}
+  backoffLimit: {{ .Values.backoffLimit }}
+  template:
+    metadata:
+      labels:
+        module: {{ .Values.moduleName }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+    spec:
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ .Values.moduleName }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: {{ template "data-migrator.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          env:
+            - name: TZ
+              value: {{ .Values.env.timezone | quote }}
+            - name: LANG
+              value: {{ .Values.env.language | quote }}
+          command:
+            - python3
+            - server/data-migrator.py
+            - migrate
+            - --config
+            - /app/config.yaml
+            - --secret-config
+            - /etc/data-migrator/secret-config.yaml
+          volumeMounts:
+            - name: {{ .Values.moduleName }}-secret
+              mountPath: /etc/data-migrator/secret-config.yaml
+              subPath: secret-config.yaml
+      volumes:
+        - name: {{ .Values.moduleName }}-secret
+          secret:
+            secretName: {{ .Values.moduleName }}-secret
+      restartPolicy: {{ .Values.restartPolicy }}

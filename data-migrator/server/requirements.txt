@@ -1,0 +1,13 @@
+PyYAML>=6.0
+sqlparse>=0.5.0
+GitPython>=3.1.0
+pymongo>=4.16.0
+opensearch-py>=3.1.0
+
+# RDS 多数据库驱动
+git+https://github.com/kweaver-ai/proton-rds-sdk-py.git@release/2.0.0
+# 其传递依赖：
+# pymysql[rsa]==1.1.2
+# dmPython==2.5.26       # 达梦数据库，需官方驱动包，按需安装
+# ksycopg2==2.9.0        # 人大金仓，需官方驱动包，按需安装
+

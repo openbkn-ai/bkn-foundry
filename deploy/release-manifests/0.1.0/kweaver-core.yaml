@@ -5,7 +5,18 @@ version: 0.1.0
 source:
   type: oci
   registry: oci://ghcr.io/kowell-ai/charts
+dependencies:
+- product: isf
+  version: 0.8.0
+  manifest: ./isf.yaml
+  optional: true
+  defaultEnabled: true
+  enabledIf: auth.enabled
 releases:
+  data-migrator:
+    chart: data-migrator
+    version: 0.1.0
+    stage: pre
   mf-model-manager:
     chart: mf-model-manager
     version: 0.1.0

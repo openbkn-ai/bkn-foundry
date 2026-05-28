@@ -1,0 +1,49 @@
+# CI 校验用数据库连接配置（多 DB 类型对比）
+# 用于 verify 命令：在两个同类型数据库间执行并对比 schema
+# 使用方式：cp verify_rds_config.yaml.example verify_rds_config.yaml，填入真实连接信息
+# 可通过 --verify-rds-config 参数指定自定义路径：
+#   python3 server/data-migrator.py verify --config config.yaml --verify-rds-config /path/to/verify_rds_config.yaml
+
+mariadb:
+  primary:
+    host: "127.0.0.1"
+    user: "root"
+    password: "your_password"
+    port: 3330
+    charset: "utf8mb4"
+    autocommit: true
+  secondary:
+    host: "127.0.0.1"
+    user: "root"
+    password: "your_password"
+    port: 3331
+    charset: "utf8mb4"
+    autocommit: true
+
+dm8:
+  primary:
+    host: "127.0.0.1"
+    user: "SYSDBA"
+    password: "your_password"
+    port: 5237
+    autocommit: true
+  secondary:
+    host: "127.0.0.1"
+    user: "SYSDBA"
+    password: "your_password"
+    port: 5238
+    autocommit: true
+
+kdb9:
+  primary:
+    host: "127.0.0.1"
+    user: "system"
+    password: "your_password"
+    port: 54322
+    autocommit: true
+  secondary:
+    host: "127.0.0.1"
+    user: "system"
+    password: "your_password"
+    port: 54323
+    autocommit: true
