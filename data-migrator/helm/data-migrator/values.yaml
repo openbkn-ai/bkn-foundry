@@ -6,9 +6,9 @@ env:
   language: en_US.UTF-8
 
 image:
-  registry: acr.aishu.cn
-  repository: kweaver-ai/data-migrator
-  tag: latest
+  registry: ghcr.io
+  repository: kowell-ai/data-migrator
+  tag: __VERSION__
   pullPolicy: IfNotPresent
 
 securityContext:

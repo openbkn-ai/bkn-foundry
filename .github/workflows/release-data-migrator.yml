@@ -1,0 +1,47 @@
+name: release-data-migrator
+
+on:
+  push:
+    branches: ['**']
+    paths:
+      - 'data-migrator/**'
+      - '.github/workflows/release-data-migrator.yml'
+      - '.github/workflows/reusable-*.yml'
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish to GHCR (true) or verify build only (false)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  test:
+    uses: ./.github/workflows/reusable-test.yml
+    with:
+      service-path: data-migrator
+      stack: chart-only
+
+  build:
+    needs: test
+    uses: ./.github/workflows/reusable-build.yml
+    with:
+      service-path: data-migrator
+      dockerfile: Dockerfile
+      context: '.'
+      image-name: data-migrator
+      version: ${{ needs.test.outputs.version }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+
+  chart:
+    needs: [test, build]
+    uses: ./.github/workflows/reusable-chart.yml
+    with:
+      service-path: data-migrator
+      chart-path: helm/data-migrator
+      chart-name: data-migrator
+      version: ${{ needs.test.outputs.version }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
