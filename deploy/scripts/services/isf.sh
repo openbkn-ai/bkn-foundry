@@ -225,7 +225,8 @@ install_isf() {
     else
         log_info "No explicit local ISF charts directory provided, using Helm repo."
         log_info "Adding Helm repo: ${HELM_CHART_REPO_NAME} -> ${HELM_CHART_REPO_URL}"
-        ensure_helm_repo "${HELM_CHART_REPO_NAME}" "${HELM_CHART_REPO_URL}"
+        parse_manifest_source "${ISF_VERSION_MANIFEST_FILE:-}"
+        ensure_chart_source "${HELM_CHART_REPO_NAME}" "${HELM_CHART_REPO_URL}"
     fi
     
     # Initialize database first
@@ -341,7 +342,8 @@ install_isf_release() {
     log_info "Installing ${release_name}..."
     
     # Build Helm chart reference
-    local chart_ref="${helm_repo_name}/${chart_name}"
+    local chart_ref
+    chart_ref="$(build_chart_ref "${helm_repo_name}" "${chart_name}")"
 
     local target_version="${release_version}"
     if [[ -z "${target_version}" ]]; then
@@ -389,7 +391,8 @@ download_isf() {
     local charts_dir
     charts_dir="$(_isf_download_charts_dir)"
 
-    ensure_helm_repo "${HELM_CHART_REPO_NAME}" "${HELM_CHART_REPO_URL}"
+    parse_manifest_source "${ISF_VERSION_MANIFEST_FILE:-}"
+    ensure_chart_source "${HELM_CHART_REPO_NAME}" "${HELM_CHART_REPO_URL}"
 
     local -a release_names=()
     kweaver_mapfile_compat release_names _isf_release_names

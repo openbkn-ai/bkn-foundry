@@ -155,6 +155,10 @@ get_installed_chart_version() {
 get_repo_chart_latest_version() {
     local repo_name="$1"
     local chart_name="$2"
+    if [[ "${MANIFEST_SOURCE_TYPE:-http}" == "oci" ]]; then
+        log_error "OCI source requires explicit chart version in manifest (no 'latest' resolution)."
+        return 1
+    fi
     helm search repo "${repo_name}/${chart_name}" --devel -l 2>/dev/null | awk 'NR==2 {print $2}'
 }
 
@@ -309,8 +313,10 @@ download_chart_to_cache() {
         fi
     fi
 
-    log_info "Downloading ${repo_name}/${chart_name} ${target_version} to ${charts_dir}..."
-    helm pull "${repo_name}/${chart_name}" \
+    local chart_ref
+    chart_ref="$(build_chart_ref "${repo_name}" "${chart_name}")"
+    log_info "Downloading ${chart_ref} ${target_version} to ${charts_dir}..."
+    helm pull "${chart_ref}" \
         --version "${target_version}" \
         --devel \
         --destination "${charts_dir}"
@@ -328,6 +334,104 @@ kweaver_mapfile_compat() {
         [[ -n "${_l}" ]] && _lines+=("${_l}")
     done < <("$@")
     eval "${_dst}=(\"\${_lines[@]}\")"
+}
+
+# Globals populated by parse_manifest_source(). Read by ensure_chart_source(),
+# build_chart_ref(), and get_repo_chart_latest_version() to dispatch HTTP vs OCI.
+MANIFEST_SOURCE_TYPE=""        # "oci" | "http"
+MANIFEST_SOURCE_REGISTRY=""    # OCI base, e.g. "oci://ghcr.io/kowell-ai/charts"
+MANIFEST_SOURCE_REPO_NAME=""   # HTTP helm repo name (alias used by helm repo add)
+MANIFEST_SOURCE_REPO_URL=""    # HTTP helm repo URL
+
+# Parse the top-level `source:` block of a release manifest. Falls back to
+# `http` when only legacy `helmRepoUrl/helmRepoName` fields are present.
+# Args: <manifest_yaml_path>
+parse_manifest_source() {
+    local manifest="$1"
+    MANIFEST_SOURCE_TYPE=""; MANIFEST_SOURCE_REGISTRY=""
+    MANIFEST_SOURCE_REPO_NAME=""; MANIFEST_SOURCE_REPO_URL=""
+
+    if [[ -z "${manifest}" || ! -f "${manifest}" ]]; then
+        MANIFEST_SOURCE_TYPE="http"
+        return 0
+    fi
+
+    # Extract the top-level source: block. Stops at next top-level key.
+    local kv
+    kv="$(awk '
+        /^source:[[:space:]]*$/ { inblock=1; next }
+        inblock && /^[^[:space:]#]/ { inblock=0 }
+        inblock && /^[[:space:]]+[a-zA-Z]/ {
+            key=$1; sub(":","",key)
+            $1=""; sub(/^[[:space:]]+/,"")
+            gsub(/^"|"$/,"")
+            gsub(/^'\''|'\''$/,"")
+            print key "=" $0
+        }
+    ' "${manifest}")"
+
+    local line k v
+    while IFS= read -r line; do
+        [[ -z "${line}" ]] && continue
+        k="${line%%=*}"
+        v="${line#*=}"
+        case "${k}" in
+            type)         MANIFEST_SOURCE_TYPE="${v}" ;;
+            registry)     MANIFEST_SOURCE_REGISTRY="${v}" ;;
+            helmRepoName) MANIFEST_SOURCE_REPO_NAME="${v}" ;;
+            helmRepoUrl)  MANIFEST_SOURCE_REPO_URL="${v}" ;;
+        esac
+    done <<< "${kv}"
+
+    # Legacy manifests carry only helmRepoUrl — treat as http.
+    if [[ -z "${MANIFEST_SOURCE_TYPE}" && -n "${MANIFEST_SOURCE_REPO_URL}" ]]; then
+        MANIFEST_SOURCE_TYPE="http"
+    fi
+    [[ -z "${MANIFEST_SOURCE_TYPE}" ]] && MANIFEST_SOURCE_TYPE="http"
+}
+
+# Prepare the chart source (login for OCI, helm repo add for HTTP).
+# Reads MANIFEST_SOURCE_* globals set by parse_manifest_source().
+# HTTP arg pair is accepted for back-compat with --helm_repo* CLI flags.
+# Args: [http_repo_name] [http_repo_url]
+ensure_chart_source() {
+    local http_name="${1:-${MANIFEST_SOURCE_REPO_NAME}}"
+    local http_url="${2:-${MANIFEST_SOURCE_REPO_URL}}"
+
+    case "${MANIFEST_SOURCE_TYPE}" in
+        oci)
+            # Public ghcr packages allow anonymous pull; login only if creds present.
+            local token="${GHCR_TOKEN:-${GITHUB_TOKEN:-}}"
+            if [[ -n "${token}" ]]; then
+                local registry_host
+                registry_host="$(printf '%s' "${MANIFEST_SOURCE_REGISTRY}" | sed -E 's#^oci://##; s#/.*##')"
+                [[ -z "${registry_host}" ]] && registry_host="ghcr.io"
+                printf '%s' "${token}" | \
+                    helm registry login "${registry_host}" \
+                        -u "${GHCR_USER:-anonymous}" --password-stdin 2>/dev/null || true
+            fi
+            ;;
+        http)
+            ensure_helm_repo "${http_name}" "${http_url}"
+            ;;
+        *)
+            log_error "Unknown manifest source.type: ${MANIFEST_SOURCE_TYPE}"
+            return 1
+            ;;
+    esac
+}
+
+# Build a chart reference suitable for `helm pull` / `helm upgrade --install`.
+# Args: <http_repo_name> <chart_name>
+# - OCI:  oci://<registry>/<chart_name>
+# - HTTP: <http_repo_name>/<chart_name>
+build_chart_ref() {
+    local http_repo_name="$1"
+    local chart_name="$2"
+    case "${MANIFEST_SOURCE_TYPE}" in
+        oci)  printf '%s/%s' "${MANIFEST_SOURCE_REGISTRY}" "${chart_name}" ;;
+        *)    printf '%s/%s' "${http_repo_name}" "${chart_name}" ;;
+    esac
 }
 
 # Ensure a Helm repo is registered and refreshed.

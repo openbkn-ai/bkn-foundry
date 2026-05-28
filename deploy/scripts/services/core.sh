@@ -277,7 +277,8 @@ download_core() {
     local charts_dir
     charts_dir="$(_core_download_charts_dir)"
 
-    ensure_helm_repo "${HELM_CHART_REPO_NAME}" "${HELM_CHART_REPO_URL}"
+    parse_manifest_source "${CORE_VERSION_MANIFEST_FILE:-}"
+    ensure_chart_source "${HELM_CHART_REPO_NAME}" "${HELM_CHART_REPO_URL}"
 
     # Check if ISF dependency is declared in manifest
     local isf_dep_version=""
@@ -393,7 +394,8 @@ _install_core_release_repo() {
     local chart_name
     chart_name="$(_core_resolve_chart_name "${release_name}")"
 
-    local chart_ref="${helm_repo_name}/${chart_name}"
+    local chart_ref
+    chart_ref="$(build_chart_ref "${helm_repo_name}" "${chart_name}")"
 
     local target_version="${release_version}"
     if [[ -z "${target_version}" ]]; then
@@ -522,7 +524,8 @@ install_core() {
         log_info "  Helm Repo: ${HELM_CHART_REPO_NAME:-kweaver} -> ${HELM_CHART_REPO_URL:-https://kweaver-ai.github.io/helm-repo/}"
         HELM_CHART_REPO_NAME="${HELM_CHART_REPO_NAME:-kweaver}"
         HELM_CHART_REPO_URL="${HELM_CHART_REPO_URL:-https://kweaver-ai.github.io/helm-repo/}"
-        ensure_helm_repo "${HELM_CHART_REPO_NAME}" "${HELM_CHART_REPO_URL}"
+        parse_manifest_source "${CORE_VERSION_MANIFEST_FILE:-}"
+        ensure_chart_source "${HELM_CHART_REPO_NAME}" "${HELM_CHART_REPO_URL}"
     fi
 
     log_info "Target namespace: ${namespace}"
