@@ -39,5 +39,6 @@ Workflow YAML files must stay in this directory (flat layout). GitHub does not l
 | [`release-adp-coderunner.yml`](./release-adp-coderunner.yml) | release-adp-coderunner | `push` (`adp/dataflow/coderunner/**`, …), `workflow_dispatch` | coderunner + dataflowtools images + Helm chart |
 | [`release-adp-doc-convert.yml`](./release-adp-doc-convert.yml) | release-adp-doc-convert | `push` (`adp/dataflow/doc-convert/**`, …), `workflow_dispatch` | gotenberg + tika images + Helm chart |
 | [`release-adp-vega-backend.yml`](./release-adp-vega-backend.yml) | release-adp-vega-backend | `push` (`adp/vega/vega-backend/**`), `workflow_dispatch` | vega-backend + kafka-connect images + 2 Helm charts |
+| [`release-infra-sandbox.yml`](./release-infra-sandbox.yml) | release-infra-sandbox | `push` (`infra/sandbox/**`), `workflow_dispatch` | sandbox bases (v1) + control-plane + web + 2 templates + 2 Helm charts |
 
 When you add a workflow, append a row here and use a `paths` filter when it should only run for part of the monorepo.

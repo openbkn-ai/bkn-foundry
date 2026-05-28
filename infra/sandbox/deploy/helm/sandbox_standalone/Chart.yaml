@@ -1,5 +1,5 @@
 apiVersion: v2
-name: sandbox
+name: sandbox-standalone
 description: Standalone Sandbox Platform chart with Control Plane, Web Console, MariaDB, and MinIO
 type: application
 version: 1.0.0
