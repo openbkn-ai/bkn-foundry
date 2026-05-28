@@ -40,5 +40,6 @@ Workflow YAML files must stay in this directory (flat layout). GitHub does not l
 | [`release-adp-doc-convert.yml`](./release-adp-doc-convert.yml) | release-adp-doc-convert | `push` (`adp/dataflow/doc-convert/**`, …), `workflow_dispatch` | gotenberg + tika images + Helm chart |
 | [`release-adp-vega-backend.yml`](./release-adp-vega-backend.yml) | release-adp-vega-backend | `push` (`adp/vega/vega-backend/**`), `workflow_dispatch` | vega-backend + kafka-connect images + 2 Helm charts |
 | [`release-infra-sandbox.yml`](./release-infra-sandbox.yml) | release-infra-sandbox | `push` (`infra/sandbox/**`), `workflow_dispatch` | sandbox bases (v1) + control-plane + web + 2 templates + 2 Helm charts |
+| [`automation-ghcr-cleanup.yml`](./automation-ghcr-cleanup.yml) | automation-ghcr-cleanup | `schedule` (weekly Sun 03:00 UTC), `workflow_dispatch` | Delete old GHCR container packages (branch-suffixed tags > 30d, untagged orphans); keeps semver/v1/v2/latest |
 
 When you add a workflow, append a row here and use a `paths` filter when it should only run for part of the monorepo.
