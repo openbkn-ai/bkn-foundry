@@ -67,14 +67,20 @@ while IFS= read -r chart_yaml; do
   esac
 
   # 找 helm-repo/packages 里该 chart 的最新版本（按版本号自然排序，取最大）
+  # 查找老 .tgz 的两个来源（按优先级）：
+  #   1) 仓库内 vendored —— deploy/charts/<name>-*.tgz（如 proton-mariadb-1.0.0.tgz）
+  #   2) 远端发布 —— kweaver-ai/helm-repo/packages/<name>-*.tgz
   # 用 find 而非 ls：无匹配时 find 返 0，避免 set -e + pipefail 中断
   old_tgz=""
-  for ln in "${lookup_names[@]}"; do
-    cand=$(find "$HELM_REPO/packages" -maxdepth 1 -name "${ln}-[0-9]*.tgz" 2>/dev/null \
-      | sort -V 2>/dev/null | tail -1)
-    [ -z "$cand" ] && \
-      cand=$(find "$HELM_REPO/packages" -maxdepth 1 -name "${ln}-[0-9]*.tgz" 2>/dev/null | sort | tail -1)
-    if [ -n "$cand" ]; then old_tgz="$cand"; break; fi
+  for lookup_dir in "$REPO_ROOT/deploy/charts" "$HELM_REPO/packages"; do
+    [ -d "$lookup_dir" ] || continue
+    for ln in "${lookup_names[@]}"; do
+      cand=$(find "$lookup_dir" -maxdepth 1 -name "${ln}-[0-9]*.tgz" 2>/dev/null \
+        | sort -V 2>/dev/null | tail -1)
+      [ -z "$cand" ] && \
+        cand=$(find "$lookup_dir" -maxdepth 1 -name "${ln}-[0-9]*.tgz" 2>/dev/null | sort | tail -1)
+      if [ -n "$cand" ]; then old_tgz="$cand"; break 2; fi
+    done
   done
 
   if [ -z "$old_tgz" ] || [ ! -f "$old_tgz" ]; then
