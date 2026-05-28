@@ -2,4 +2,4 @@ apiVersion: v1
 appVersion: "0.3.0"
 description: helm chart for kafka-connect
 name: kafka-connect
-version: 0.3.0
+version: 0.1.0
