@@ -1,4 +1,4 @@
-namespace: dip
+namespace: kweaver
 moduleName: data-migrator
 
 env:

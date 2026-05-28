@@ -1,6 +1,6 @@
 replicaCount: 1
 
-namespace: dip
+namespace: kweaver
 
 image:
   registry: ghcr.io/kowell-ai

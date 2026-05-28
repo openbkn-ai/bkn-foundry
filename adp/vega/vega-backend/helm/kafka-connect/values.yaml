@@ -1,4 +1,4 @@
-namespace: dip
+namespace: kweaver
 moduleName: kafka-connect
 
 # 环境变量：语言/时区

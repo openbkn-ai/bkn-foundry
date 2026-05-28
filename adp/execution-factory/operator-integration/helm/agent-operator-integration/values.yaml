@@ -2,7 +2,7 @@ replicaCount: 1
 
 nodeSelector: {}
 
-namespace: dip
+namespace: kweaver
 moduleName: agent-operator-integration
 
 # 设置为dev则为开发模式.

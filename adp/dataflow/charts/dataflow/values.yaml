@@ -4,7 +4,7 @@
 # =============================================================================
 # Global Configuration (Common Settings)
 # =============================================================================
-namespace: anyshare
+namespace: kweaver
 replicaCount: 1
 
 image:

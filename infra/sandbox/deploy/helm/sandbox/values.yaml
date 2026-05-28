@@ -1,6 +1,6 @@
 # Default values for sandbox-platform Helm chart
 
-namespace: anyshare
+namespace: kweaver
 imagePullPolicy: IfNotPresent
 imagePullSecrets: []
 image:

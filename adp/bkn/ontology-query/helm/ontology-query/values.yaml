@@ -1,4 +1,4 @@
-namespace: dip
+namespace: kweaver
 moduleName: ontology-query
 
 # 环境变量：语言/时区/执行限制

@@ -1,4 +1,4 @@
-namespace: sandbox-system
+namespace: kweaver
 imagePullPolicy: IfNotPresent
 imagePullSecrets: []
 image:
