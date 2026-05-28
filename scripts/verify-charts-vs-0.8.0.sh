@@ -60,11 +60,12 @@ while IFS= read -r chart_yaml; do
   name=$(awk -F': ' '/^name:/{gsub(/[[:space:]]/,"",$2); print $2; exit}' "$chart_yaml")
 
   # 找 helm-repo/packages 里该 chart 的最新版本（按版本号自然排序，取最大）
-  old_tgz=$(ls "$HELM_REPO/packages/${name}-"*.tgz 2>/dev/null \
-    | sort -V 2>/dev/null | tail -1)
+  # 用 find 而非 ls：无匹配时 find 返 0，避免 set -e + pipefail 中断
+  old_tgz=$(find "$HELM_REPO/packages" -maxdepth 1 -name "${name}-[0-9]*.tgz" 2>/dev/null \
+    | sort -V | tail -1)
   # 若 sort -V 不可用（旧 BSD），退化为字母排序（对常见 0.x.y 仍 OK）
   [ -z "$old_tgz" ] && \
-    old_tgz=$(ls "$HELM_REPO/packages/${name}-"*.tgz 2>/dev/null | sort | tail -1)
+    old_tgz=$(find "$HELM_REPO/packages" -maxdepth 1 -name "${name}-[0-9]*.tgz" 2>/dev/null | sort | tail -1)
 
   if [ -z "$old_tgz" ] || [ ! -f "$old_tgz" ]; then
     printf "  SKIP   %-34s  (no published version in helm-repo)\n" "$name"
