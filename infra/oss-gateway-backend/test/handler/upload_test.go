@@ -85,6 +85,12 @@ func (m *MockURLService) GetDeleteURL(ctx context.Context, storageID, objectKey 
 	return args.Get(0).(*adapter.PresignedURL), args.Error(1)
 }
 
+// 补齐 URLService 接口新增的 CleanExpiredTasks 方法（issue #3）
+func (m *MockURLService) CleanExpiredTasks(ctx context.Context) error {
+	args := m.Called(ctx)
+	return args.Error(0)
+}
+
 func TestUploadHandler_GetUploadURL_Success(t *testing.T) {
 	mockService := new(MockURLService)
 	h := handler.NewUploadHandler(mockService)
