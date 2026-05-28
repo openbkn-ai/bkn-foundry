@@ -8,7 +8,11 @@ on:
       - '.github/workflows/release-trace-ai-agent-observability.yml'
       - '.github/workflows/reusable-*.yml'
   workflow_dispatch:
-
+    inputs:
+      publish:
+        description: 'Publish to GHCR (true) or verify build only (false)'
+        type: boolean
+        default: false
 permissions:
   contents: read
   packages: write
@@ -30,7 +34,7 @@ jobs:
       context: '.'
       image-name: agent-observability
       version: ${{ needs.test.outputs.version }}
-      publish: ${{ github.event_name == 'push' }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
 
   chart:
     needs: [test, build]
@@ -40,4 +44,4 @@ jobs:
       chart-path: charts/agent-observability
       chart-name: agent-observability
       version: ${{ needs.test.outputs.version }}
-      publish: ${{ github.event_name == 'push' }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}

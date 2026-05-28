@@ -11,7 +11,11 @@ on:
       - '.github/workflows/release-adp-coderunner.yml'
       - '.github/workflows/reusable-*.yml'
   workflow_dispatch:
-
+    inputs:
+      publish:
+        description: 'Publish to GHCR (true) or verify build only (false)'
+        type: boolean
+        default: false
 permissions:
   contents: read
   packages: write
@@ -32,7 +36,7 @@ jobs:
       context: '.'
       image-name: coderunner
       version: ${{ needs.test.outputs.version }}
-      publish: ${{ github.event_name == 'push' }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
 
   build-dataflowtools:
     needs: test
@@ -43,7 +47,7 @@ jobs:
       context: '.'
       image-name: dataflowtools
       version: ${{ needs.test.outputs.version }}
-      publish: ${{ github.event_name == 'push' }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
       build-args: |
         BASE_IMAGE=ubuntu:22.04
 
@@ -55,4 +59,4 @@ jobs:
       chart-path: charts/coderunner
       chart-name: coderunner
       version: ${{ needs.test.outputs.version }}
-      publish: ${{ github.event_name == 'push' }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}

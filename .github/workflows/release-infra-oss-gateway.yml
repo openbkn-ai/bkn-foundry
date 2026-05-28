@@ -8,7 +8,11 @@ on:
       - '.github/workflows/release-infra-oss-gateway.yml'
       - '.github/workflows/reusable-*.yml'
   workflow_dispatch:
-
+    inputs:
+      publish:
+        description: 'Publish to GHCR (true) or verify build only (false)'
+        type: boolean
+        default: false
 permissions:
   contents: read
   packages: write
@@ -32,7 +36,7 @@ jobs:
       context: '.'
       image-name: oss-gateway-backend
       version: ${{ needs.test.outputs.version }}
-      publish: ${{ github.event_name == 'push' }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
       # 内网 swr base 覆盖为公网镜像
       build-args: |
         GO_BUILD_IMAGE=golang:1.24.11
@@ -46,4 +50,4 @@ jobs:
       chart-path: charts
       chart-name: oss-gateway-backend
       version: ${{ needs.test.outputs.version }}
-      publish: ${{ github.event_name == 'push' }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}

@@ -14,7 +14,11 @@ on:
       - '.github/workflows/release-adp-dataflow.yml'
       - '.github/workflows/reusable-*.yml'
   workflow_dispatch:
-
+    inputs:
+      publish:
+        description: 'Publish to GHCR (true) or verify build only (false)'
+        type: boolean
+        default: false
 permissions:
   contents: read
   packages: write
@@ -35,7 +39,7 @@ jobs:
       context: '.'
       image-name: dataflow
       version: ${{ needs.test.outputs.version }}
-      publish: ${{ github.event_name == 'push' }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
 
   chart:
     needs: [test, build]
@@ -45,4 +49,4 @@ jobs:
       chart-path: charts/dataflow
       chart-name: dataflow
       version: ${{ needs.test.outputs.version }}
-      publish: ${{ github.event_name == 'push' }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}

@@ -13,7 +13,11 @@ on:
       - '.github/workflows/release-infra-sandbox.yml'
       - '.github/workflows/reusable-*.yml'
   workflow_dispatch:
-
+    inputs:
+      publish:
+        description: 'Publish to GHCR (true) or verify build only (false)'
+        type: boolean
+        default: false
 permissions:
   contents: read
   packages: write
@@ -35,7 +39,7 @@ jobs:
       context: '.'
       image-name: sandbox-python-executor-base
       version: v1
-      publish: ${{ github.event_name != 'pull_request' }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
 
   build-multi-language-base:
     needs: [test, build-python-base]
@@ -46,7 +50,7 @@ jobs:
       context: '.'
       image-name: sandbox-multi-executor-base
       version: v1
-      publish: ${{ github.event_name != 'pull_request' }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
       build-args: |
         BASE_IMAGE=ghcr.io/${{ github.repository_owner }}/sandbox-python-executor-base:v1
 
@@ -60,7 +64,7 @@ jobs:
       context: '.'
       image-name: sandbox-control-plane
       version: ${{ needs.test.outputs.version }}
-      publish: ${{ github.event_name == 'push' }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
 
   build-web:
     needs: test
@@ -71,7 +75,7 @@ jobs:
       context: '.'
       image-name: sandbox-web
       version: ${{ needs.test.outputs.version }}
-      publish: ${{ github.event_name == 'push' }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
 
   build-template-python-basic:
     needs: [test, build-python-base]
@@ -82,7 +86,7 @@ jobs:
       context: '.'
       image-name: sandbox-template-python-basic
       version: ${{ needs.test.outputs.version }}
-      publish: ${{ github.event_name == 'push' }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
       build-args: |
         BASE_IMAGE=ghcr.io/${{ github.repository_owner }}/sandbox-python-executor-base:v1
 
@@ -95,7 +99,7 @@ jobs:
       context: '.'
       image-name: sandbox-template-multi-language
       version: ${{ needs.test.outputs.version }}
-      publish: ${{ github.event_name == 'push' }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
       build-args: |
         BASE_IMAGE=ghcr.io/${{ github.repository_owner }}/sandbox-multi-executor-base:v1
 
@@ -108,7 +112,7 @@ jobs:
       chart-path: .
       chart-name: sandbox
       version: ${{ needs.test.outputs.version }}
-      publish: ${{ github.event_name == 'push' }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
 
   chart-sandbox-standalone:
     needs: [test, build-control-plane, build-web, build-template-python-basic, build-template-multi-language]
@@ -118,4 +122,4 @@ jobs:
       chart-path: .
       chart-name: sandbox-standalone
       version: ${{ needs.test.outputs.version }}
-      publish: ${{ github.event_name == 'push' }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}

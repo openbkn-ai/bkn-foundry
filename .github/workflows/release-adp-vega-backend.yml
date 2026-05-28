@@ -10,7 +10,11 @@ on:
       - '.github/workflows/release-adp-vega-backend.yml'
       - '.github/workflows/reusable-*.yml'
   workflow_dispatch:
-
+    inputs:
+      publish:
+        description: 'Publish to GHCR (true) or verify build only (false)'
+        type: boolean
+        default: false
 permissions:
   contents: read
   packages: write
@@ -31,7 +35,7 @@ jobs:
       context: '.'
       image-name: vega-backend
       version: ${{ needs.test.outputs.version }}
-      publish: ${{ github.event_name == 'push' }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
 
   build-kafka-connect:
     needs: test
@@ -42,7 +46,7 @@ jobs:
       context: docker
       image-name: kafka-connect
       version: ${{ needs.test.outputs.version }}
-      publish: ${{ github.event_name == 'push' }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
       build-args: |
         BASE_IMAGE=bitnamilegacy/kafka:3.9.0-debian-12-r10
 
@@ -54,7 +58,7 @@ jobs:
       chart-path: helm/vega-backend
       chart-name: vega-backend
       version: ${{ needs.test.outputs.version }}
-      publish: ${{ github.event_name == 'push' }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
 
   chart-kafka-connect:
     needs: [test, build-kafka-connect]
@@ -64,4 +68,4 @@ jobs:
       chart-path: helm/kafka-connect
       chart-name: kafka-connect
       version: ${{ needs.test.outputs.version }}
-      publish: ${{ github.event_name == 'push' }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}

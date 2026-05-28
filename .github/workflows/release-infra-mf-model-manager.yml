@@ -12,7 +12,11 @@ on:
       - '.github/workflows/release-infra-mf-model-manager.yml'
       - '.github/workflows/reusable-*.yml'
   workflow_dispatch:
-
+    inputs:
+      publish:
+        description: 'Publish to GHCR (true) or verify build only (false)'
+        type: boolean
+        default: false
 permissions:
   contents: read
   packages: write
@@ -33,7 +37,7 @@ jobs:
       context: '.'
       image-name: mf-model-manager
       version: ${{ needs.test.outputs.version }}
-      publish: ${{ github.event_name == 'push' }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
 
   chart:
     needs: [test, build]
@@ -43,4 +47,4 @@ jobs:
       chart-path: charts
       chart-name: mf-model-manager
       version: ${{ needs.test.outputs.version }}
-      publish: ${{ github.event_name == 'push' }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}

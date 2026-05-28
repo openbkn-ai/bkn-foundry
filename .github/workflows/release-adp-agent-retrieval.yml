@@ -8,7 +8,11 @@ on:
       - '.github/workflows/release-adp-agent-retrieval.yml'
       - '.github/workflows/reusable-*.yml'
   workflow_dispatch:
-
+    inputs:
+      publish:
+        description: 'Publish to GHCR (true) or verify build only (false)'
+        type: boolean
+        default: false
 permissions:
   contents: read
   packages: write
@@ -29,7 +33,7 @@ jobs:
       context: '.'
       image-name: agent-retrieval
       version: ${{ needs.test.outputs.version }}
-      publish: ${{ github.event_name == 'push' }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
 
   chart:
     needs: [test, build]
@@ -39,4 +43,4 @@ jobs:
       chart-path: helm/agent-retrieval
       chart-name: agent-retrieval
       version: ${{ needs.test.outputs.version }}
-      publish: ${{ github.event_name == 'push' }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}

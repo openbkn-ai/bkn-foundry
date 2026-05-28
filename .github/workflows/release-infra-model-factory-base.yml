@@ -12,7 +12,11 @@ on:
       - '.github/workflows/release-infra-model-factory-base.yml'
       - '.github/workflows/reusable-build.yml'
   workflow_dispatch:
-
+    inputs:
+      publish:
+        description: 'Publish to GHCR (true) or verify build only (false)'
+        type: boolean
+        default: false
 permissions:
   contents: read
   packages: write
@@ -26,4 +30,4 @@ jobs:
       context: '.'
       image-name: model-factory-base
       version: v2
-      publish: ${{ github.event_name == 'push' }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}

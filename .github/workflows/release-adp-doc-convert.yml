@@ -11,7 +11,11 @@ on:
       - '.github/workflows/release-adp-doc-convert.yml'
       - '.github/workflows/reusable-*.yml'
   workflow_dispatch:
-
+    inputs:
+      publish:
+        description: 'Publish to GHCR (true) or verify build only (false)'
+        type: boolean
+        default: false
 permissions:
   contents: read
   packages: write
@@ -32,7 +36,7 @@ jobs:
       context: gotenberg
       image-name: gotenberg
       version: ${{ needs.test.outputs.version }}
-      publish: ${{ github.event_name == 'push' }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
       build-args: |
         BASE_IMAGE=gotenberg/gotenberg:8
 
@@ -45,7 +49,7 @@ jobs:
       context: tika
       image-name: tika
       version: ${{ needs.test.outputs.version }}
-      publish: ${{ github.event_name == 'push' }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
       build-args: |
         BASE_IMAGE=apache/tika:3.3.0.0-full
 
@@ -57,4 +61,4 @@ jobs:
       chart-path: charts/doc-convert
       chart-name: doc-convert
       version: ${{ needs.test.outputs.version }}
-      publish: ${{ github.event_name == 'push' }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
