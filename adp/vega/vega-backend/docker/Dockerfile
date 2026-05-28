@@ -33,7 +33,7 @@ RUN groupadd -r -g $GID kweaver \
     && useradd -r -u $UID -g $GID kweaver \
     && apt-get update \
     && apt-get install -y python3 python3-pip \
-    && pip3 install sqlglot -i https://mirrors.aliyun.com/pypi/simple/ \
+    && pip3 install --break-system-packages --index-url https://pypi.org/simple/ sqlglot \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder --chown=$UID:$GID /go/src/bin /opt/vega-backend
