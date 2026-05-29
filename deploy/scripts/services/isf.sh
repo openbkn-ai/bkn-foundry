@@ -123,11 +123,11 @@ init_isf_database() {
         return 0
     fi
 
-    # Check if ISF manifest has pre-stage data-migrator (0.6.0+)
-    # If so, skip SQL initialization - the data-migrator chart will handle it
+    # If the manifest declares a stage:pre data-migrator release, the chart
+    # hook owns DB init; the script must not also run the SQL files.
     _isf_require_version_manifest || return 1
     if should_skip_db_init_for_manifest "${ISF_VERSION_MANIFEST_FILE}"; then
-        log_info "ISF manifest ${ISF_VERSION_MANIFEST_FILE} has pre-stage data-migrator (0.6.0+), skipping SQL initialization"
+        log_info "ISF manifest ${ISF_VERSION_MANIFEST_FILE} has pre-stage data-migrator, skipping SQL initialization"
         return 0
     fi
 

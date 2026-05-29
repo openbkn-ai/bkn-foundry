@@ -239,11 +239,11 @@ init_core_databases() {
         return 0
     fi
 
-    # Check if Core manifest has pre-stage data-migrator (0.6.0+)
-    # If so, skip SQL initialization - the data-migrator chart will handle it
+    # If the manifest declares a stage:pre data-migrator release, the chart
+    # hook owns DB init; the script must not also run the SQL files.
     _core_require_version_manifest || return 1
     if should_skip_db_init_for_manifest "${CORE_VERSION_MANIFEST_FILE}"; then
-        log_info "Core manifest ${CORE_VERSION_MANIFEST_FILE} has pre-stage data-migrator (0.6.0+), skipping SQL initialization"
+        log_info "Core manifest ${CORE_VERSION_MANIFEST_FILE} has pre-stage data-migrator, skipping SQL initialization"
         return 0
     fi
 
