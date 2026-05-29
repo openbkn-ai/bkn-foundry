@@ -434,6 +434,22 @@ build_chart_ref() {
     esac
 }
 
+# Print the resolved chart source. Call AFTER parse_manifest_source so the
+# logged values reflect the manifest, not the legacy env defaults.
+# Args: [http_repo_name_fallback] [http_repo_url_fallback]
+log_chart_source() {
+    local http_name="${1:-${MANIFEST_SOURCE_REPO_NAME}}"
+    local http_url="${2:-${MANIFEST_SOURCE_REPO_URL}}"
+    case "${MANIFEST_SOURCE_TYPE}" in
+        oci)
+            log_info "  Chart Source: OCI ${MANIFEST_SOURCE_REGISTRY}"
+            ;;
+        *)
+            log_info "  Chart Source: Helm repo ${http_name} -> ${http_url}"
+            ;;
+    esac
+}
+
 # Ensure a Helm repo is registered and refreshed.
 # Args: <repo_name> <repo_url>
 ensure_helm_repo() {
@@ -1912,40 +1928,9 @@ manifest_has_pre_stage_db_init() {
     return 1
 }
 
-# Check if the manifest version is 0.6.0 or higher (semver comparison).
-# Args: <manifest_file>
-# Returns: 0 if version >= 0.6.0, 1 otherwise
-manifest_version_gte_060() {
-    local manifest_file="$1"
-
-    if [[ -z "${manifest_file}" || ! -f "${manifest_file}" ]]; then
-        return 1
-    fi
-
-    local version
-    version="$(_manifest_strip_quotes "$(_manifest_read_top_level_field "${manifest_file}" "version")")"
-
-    if [[ -z "${version}" ]]; then
-        return 1
-    fi
-
-    # Extract major.minor.patch
-    local major minor
-    major="$(echo "${version}" | cut -d. -f1)"
-    minor="$(echo "${version}" | cut -d. -f2)"
-
-    # Compare: >= 0.6.0
-    if [[ "${major}" -gt 0 ]] || [[ "${major}" -eq 0 && "${minor}" -ge 6 ]]; then
-        return 0
-    fi
-
-    return 1
-}
-
 # Check if database initialization should be skipped for this manifest.
-# Returns true (0) if:
-#   1. Manifest version is >= 0.6.0 AND
-#   2. Manifest has a stage="pre" data-migrator release
+# Returns true (0) if the manifest declares a stage="pre" data-migrator release
+# (the chart hook owns DB init; the script must not run it as well).
 # Args: <manifest_file>
 # Returns: 0 if DB init should be skipped, 1 otherwise
 should_skip_db_init_for_manifest() {
@@ -1955,8 +1940,7 @@ should_skip_db_init_for_manifest() {
         return 1
     fi
 
-    # Check version >= 0.6.0 and has pre-stage data-migrator
-    if manifest_version_gte_060 "${manifest_file}" && manifest_has_pre_stage_db_init "${manifest_file}"; then
+    if manifest_has_pre_stage_db_init "${manifest_file}"; then
         return 0
     fi
 

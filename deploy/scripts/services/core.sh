@@ -516,15 +516,15 @@ install_core() {
         use_local=true
         log_info "Using local Core charts from: ${charts_dir}"
     else
-        log_info "No explicit local Core charts directory provided, using Helm repo."
+        log_info "No explicit local Core charts directory provided, using remote chart source."
         log_info "  Version:   ${HELM_CHART_VERSION}"
         if [[ -n "${CORE_VERSION_MANIFEST_FILE:-}" ]]; then
             log_info "  Version Manifest: ${CORE_VERSION_MANIFEST_FILE}"
         fi
-        log_info "  Helm Repo: ${HELM_CHART_REPO_NAME:-kweaver} -> ${HELM_CHART_REPO_URL:-https://kweaver-ai.github.io/helm-repo/}"
         HELM_CHART_REPO_NAME="${HELM_CHART_REPO_NAME:-kweaver}"
         HELM_CHART_REPO_URL="${HELM_CHART_REPO_URL:-https://kweaver-ai.github.io/helm-repo/}"
         parse_manifest_source "${CORE_VERSION_MANIFEST_FILE:-}"
+        log_chart_source "${HELM_CHART_REPO_NAME}" "${HELM_CHART_REPO_URL}"
         ensure_chart_source "${HELM_CHART_REPO_NAME}" "${HELM_CHART_REPO_URL}"
     fi
 
@@ -644,7 +644,7 @@ uninstall_core() {
     kubectl delete pod -n "${namespace}" -l sandbox-type=execution --ignore-not-found >/dev/null 2>&1 || true
 
     log_info "Deleting leftover Core Jobs in ${namespace} (e.g. data-migrator / chart hooks)"
-    kweaver_delete_jobs_name_match_ere_in_ns "${namespace}" 'migrator|data-migrator|mdl-data-model-job'
+    kweaver_delete_jobs_name_match_ere_in_ns "${namespace}" 'migrator|data-migrator'
 
     log_info "KWeaver Core services uninstallation completed."
 }

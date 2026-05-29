@@ -111,7 +111,7 @@ usage() {
     echo "  # Install from remote repo with version and devel:"
     echo "  ZOOKEEPER_CHART_REF=dip/zookeeper ZOOKEEPER_CHART_VERSION=0.0.0-feature-800792 ZOOKEEPER_CHART_DEVEL=true $0 zookeeper install"
     echo "  # Install with additional values file and --set:"
-    echo "  ZOOKEEPER_VALUES_FILE=~/.kweaver-ai/config.yaml ZOOKEEPER_EXTRA_SET_VALUES='image.registry=swr.cn-east-3.myhuaweicloud.com/kweaver-ai' $0 zookeeper install"
+    echo "  ZOOKEEPER_VALUES_FILE=~/.kweaver-ai/config.yaml ZOOKEEPER_EXTRA_SET_VALUES='image.registry=<your-mirror>/bitnami' $0 zookeeper install"
     echo "  $0 ingress-nginx install      # Install ingress-nginx-controller"
     echo "  $0 ingress-nginx uninstall    # Uninstall ingress-nginx-controller"
     echo "  $0 kweaver-dip install        # Install KWeaver DIP (auto-installs K8s/data services if absent)"

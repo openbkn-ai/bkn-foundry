@@ -575,7 +575,7 @@ preflight_check_dns() {
         return
     fi
     local h okc=0
-    for h in swr.cn-east-3.myhuaweicloud.com kweaver-ai.github.io; do
+    for h in ghcr.io swr.cn-east-3.myhuaweicloud.com kweaver-ai.github.io; do
         if getent hosts "${h}" &>/dev/null; then
             preflight_ok "DNS: ${h} resolves"
             okc=$((okc + 1))
@@ -1177,6 +1177,7 @@ preflight_check_network() {
     fi
 
     local hosts=(
+        "ghcr.io"
         "mirrors.aliyun.com"
         "mirrors.tuna.tsinghua.edu.cn"
         "registry.aliyuncs.com"

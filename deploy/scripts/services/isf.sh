@@ -197,11 +197,12 @@ _isf_release_names() {
 install_isf() {
     log_info "Installing ISF services via Helm..."
     _isf_require_version_manifest || return 1
+    parse_manifest_source "${ISF_VERSION_MANIFEST_FILE:-}"
     log_info "  Version: ${HELM_CHART_VERSION}"
     if [[ -n "${ISF_VERSION_MANIFEST_FILE:-}" ]]; then
         log_info "  Version Manifest: ${ISF_VERSION_MANIFEST_FILE}"
     fi
-    log_info "  Helm Repo: ${HELM_CHART_REPO_NAME:-kweaver} -> ${HELM_CHART_REPO_URL:-https://kweaver-ai.github.io/helm-repo/}"
+    log_chart_source "${HELM_CHART_REPO_NAME:-kweaver}" "${HELM_CHART_REPO_URL:-https://kweaver-ai.github.io/helm-repo/}"
 
     if ! ensure_platform_prerequisites; then
         log_error "Failed to ensure platform prerequisites for ISF"
@@ -223,9 +224,7 @@ install_isf() {
         use_local=true
         log_info "Using local ISF charts from: ${charts_dir}"
     else
-        log_info "No explicit local ISF charts directory provided, using Helm repo."
-        log_info "Adding Helm repo: ${HELM_CHART_REPO_NAME} -> ${HELM_CHART_REPO_URL}"
-        parse_manifest_source "${ISF_VERSION_MANIFEST_FILE:-}"
+        log_info "No explicit local ISF charts directory provided, using remote chart source."
         ensure_chart_source "${HELM_CHART_REPO_NAME}" "${HELM_CHART_REPO_URL}"
     fi
     
