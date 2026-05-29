@@ -6,42 +6,56 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# Same as deploy.sh: generated install config lives under $HOME/.kweaver-ai/config.yaml.
-# Prefer it when CONFIG_YAML_PATH is unset so accessAddress matches the machine that ran deploy
-# (vendored deploy/conf/config.yaml is only a template).
-if [[ -z "${CONFIG_YAML_PATH:-}" ]]; then
-    _ob_rt="${HOME}/.kweaver-ai/config.yaml"
-    if [[ -f "${_ob_rt}" ]]; then
-        export CONFIG_YAML_PATH="${_ob_rt}"
+
+# Auto-migrate legacy ~/.kweaver-ai to ~/.kowell-ai (one-time, when target absent).
+if [[ -d "${HOME}/.kweaver-ai" && ! -e "${HOME}/.kowell-ai" ]]; then
+    if mv "${HOME}/.kweaver-ai" "${HOME}/.kowell-ai" 2>/dev/null; then
+        echo "[migrate] moved ${HOME}/.kweaver-ai -> ${HOME}/.kowell-ai" >&2
+    else
+        echo "[migrate][warn] failed to move ${HOME}/.kweaver-ai -> ${HOME}/.kowell-ai" >&2
     fi
+fi
+
+# Same as deploy.sh: generated install config lives under $HOME/.kowell-ai/config.yaml.
+# Prefer it when CONFIG_YAML_PATH is unset so accessAddress matches the machine that ran deploy
+# (vendored deploy/conf/config.yaml is only a template). Legacy ~/.kweaver-ai is honored as a fallback
+# when the auto-migration above could not move the directory (e.g. perms).
+if [[ -z "${CONFIG_YAML_PATH:-}" ]]; then
+    for _ob_rt in "${HOME}/.kowell-ai/config.yaml" "${HOME}/.kweaver-ai/config.yaml"; do
+        if [[ -f "${_ob_rt}" ]]; then
+            export CONFIG_YAML_PATH="${_ob_rt}"
+            break
+        fi
+    done
     unset _ob_rt
 fi
 # shellcheck source=scripts/lib/common.sh
 source "${SCRIPT_DIR}/scripts/lib/common.sh"
 
-# Linux: deploy.sh persists accessAddress / depServices to $HOME/.kweaver-ai/config.yaml of the user that
+# Linux: deploy.sh persists accessAddress / depServices to $HOME/.kowell-ai/config.yaml of the user that
 # ran it (root when invoked via sudo). When onboard runs as a non-root user without that file, it falls
 # back to the vendored deploy/conf/config.yaml template — accessAddress diverges from deploy. Hint the
-# operator. /root/.kweaver-ai/config.yaml cannot be stat'd from a regular shell (perm 700), so we trigger
+# operator. /root/.kowell-ai/config.yaml cannot be stat'd from a regular shell (perm 700), so we trigger
 # whenever the current user lacks the runtime yaml. Skipped on macOS (kind dev path) or when silenced.
 if [[ "$(uname -s 2>/dev/null || true)" != "Darwin" ]] \
         && [[ "${EUID:-$(id -u)}" -ne 0 ]] \
         && [[ -z "${ONBOARD_SUDO_HINT_DISABLED:-}" ]] \
+        && [[ ! -f "${HOME}/.kowell-ai/config.yaml" ]] \
         && [[ ! -f "${HOME}/.kweaver-ai/config.yaml" ]] \
         && [[ -z "${CONFIG_YAML_PATH:-}" ]]; then
-    printf '\033[0;33m[onboard][hint] No %s found for user %s.\n' "${HOME}/.kweaver-ai/config.yaml" "${USER:-$(id -un)}" >&2
-    printf '              If deploy.sh ran via sudo, accessAddress/depServices live at /root/.kweaver-ai/config.yaml (root home, mode 700).\n' >&2
+    printf '\033[0;33m[onboard][hint] No %s found for user %s.\n' "${HOME}/.kowell-ai/config.yaml" "${USER:-$(id -un)}" >&2
+    printf '              If deploy.sh ran via sudo, accessAddress/depServices live at /root/.kowell-ai/config.yaml (root home, mode 700).\n' >&2
     printf '              Re-run onboard with sudo so it reads the same yaml:\n' >&2
     printf '                  sudo bash ./onboard.sh %s\n' "$*" >&2
     printf '              Or pin it explicitly:\n' >&2
-    printf '                  sudo -E env CONFIG_YAML_PATH=/root/.kweaver-ai/config.yaml bash ./onboard.sh\n' >&2
+    printf '                  sudo -E env CONFIG_YAML_PATH=/root/.kowell-ai/config.yaml bash ./onboard.sh\n' >&2
     printf '              Otherwise onboard falls back to deploy/conf/config.yaml (template) and may show a different access URL.\n' >&2
     printf '              Set ONBOARD_SUDO_HINT_DISABLED=1 to silence.\033[0m\n' >&2
 fi
 
 # macOS kind dev: vendored deploy/conf lacks accessAddress; switch to mac-config when still using defaults.
 _onboard_default_conf="${SCRIPT_DIR}/conf/config.yaml"
-_onboard_default_home="${HOME}/.kweaver-ai/config.yaml"
+_onboard_default_home="${HOME}/.kowell-ai/config.yaml"
 _onboard_mac_cfg="${SCRIPT_DIR}/dev/conf/mac-config.yaml"
 if [[ "$(uname -s 2>/dev/null || true)" == "Darwin" ]] && [[ -f "${_onboard_mac_cfg}" ]]; then
     if [[ "${CONFIG_YAML_PATH:-}" == "${_onboard_default_conf}" ]] || [[ "${CONFIG_YAML_PATH:-}" == "${_onboard_default_home}" ]]; then
@@ -219,8 +233,8 @@ usage() {
     echo "Usage: sudo bash ./onboard.sh [options]   # Linux (matches sudo deploy.sh)"
     echo "       bash ./dev/mac.sh onboard           # macOS dev (kind path; no sudo)"
     echo "  Requires: Node 22+ (see @kweaver-ai/kweaver-sdk on npm), kweaver, kubectl, python3; run from deploy/"
-    echo "  Config YAML: unset CONFIG_YAML_PATH and onboard uses \$HOME/.kweaver-ai/config.yaml when that file exists (same as deploy.sh); otherwise scripts/lib/common.sh default (deploy/conf/config.yaml)."
-    echo "  Why sudo on Linux: deploy.sh runs as root and writes \$HOME/.kweaver-ai/config.yaml under /root/.kweaver-ai/ (mode 700); onboard.sh also writes \$HOME/.kweaver auth state. sudo keeps both pointing at the same root home (silence the startup hint with ONBOARD_SUDO_HINT_DISABLED=1; not needed on macOS dev)."
+    echo "  Config YAML: unset CONFIG_YAML_PATH and onboard uses \$HOME/.kowell-ai/config.yaml when that file exists (same as deploy.sh); otherwise scripts/lib/common.sh default (deploy/conf/config.yaml)."
+    echo "  Why sudo on Linux: deploy.sh runs as root and writes \$HOME/.kowell-ai/config.yaml under /root/.kowell-ai/ (mode 700); onboard.sh also writes \$HOME/.kweaver auth state. sudo keeps both pointing at the same root home (silence the startup hint with ONBOARD_SUDO_HINT_DISABLED=1; not needed on macOS dev)."
     echo "  (no flags)                Interactive: nvm+Node 22 and npm -g (Y/n) in your terminal, then models/BKN"
     echo "  -y, --yes                 Auto nvm+Node 22, npm -g, context-loader import, ISF [test] user+roles (no Y/n)"
     echo "  --config=PATH            YAML: deploy/conf/models.yaml.example; model prompts off, but nvm/kweaver still Y/n in a TTY (use -y to skip those asks)"
@@ -251,7 +265,7 @@ usage() {
     echo "                ONBOARD_FORCE_INSECURE_LOGIN=true  always pass -k (--insecure) to kweaver/kweaver-admin auth login (even for http:// bases; default false)"
     echo "                ONBOARD_SKIP_CONFIG_ACCESS_URL=true  do not derive default URL from CONFIG_YAML_PATH accessAddress"
     echo "  Default KWeaver access URL (kweaver auth): accessAddress in CONFIG_YAML_PATH when present;"
-    echo "                on macOS, if CONFIG_YAML_PATH is still deploy/conf/config.yaml (~/.kweaver-ai not used yet),"
+    echo "                on macOS, if CONFIG_YAML_PATH is still deploy/conf/config.yaml (~/.kowell-ai not used yet),"
     echo "                onboard uses deploy/dev/conf/mac-config.yaml when that file exists (same as mac.sh)."
     echo "                Else host primary IPv4 + ONBOARD_DEFAULT_ACCESS_SCHEME (https by default)."
     echo "                Set ONBOARD_DEFAULT_ACCESS_BASE to force a URL; ONBOARD_DEFAULT_ACCESS_PORT / SCHEME override fallback IP path."

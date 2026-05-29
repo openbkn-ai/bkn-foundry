@@ -2,7 +2,18 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CONF_DIR="${CONF_DIR:-${HOME}/.kweaver-ai}"
+
+# Auto-migrate legacy ~/.kweaver-ai to ~/.kowell-ai (one-time, when target absent).
+if [[ -z "${CONF_DIR:-}" && -d "${HOME}/.kweaver-ai" && ! -e "${HOME}/.kowell-ai" ]]; then
+    if mv "${HOME}/.kweaver-ai" "${HOME}/.kowell-ai" 2>/dev/null; then
+        echo "[migrate] moved ${HOME}/.kweaver-ai -> ${HOME}/.kowell-ai" >&2
+    else
+        echo "[migrate][warn] failed to move ${HOME}/.kweaver-ai -> ${HOME}/.kowell-ai; using legacy path" >&2
+        CONF_DIR="${HOME}/.kweaver-ai"
+    fi
+fi
+
+CONF_DIR="${CONF_DIR:-${HOME}/.kowell-ai}"
 CONFIG_YAML_PATH="${CONFIG_YAML_PATH:-${CONF_DIR}/config.yaml}"
 
 # Global flag: skip all interactive prompts and use defaults
@@ -68,17 +79,6 @@ usage() {
     echo "  kweaver-core uninstall        Uninstall KWeaver Core services"
     echo "  kweaver-core status           Show KWeaver Core services status"
     echo "                                Use --set to pass custom values to all charts"
-    echo "  isf install                   Install ISF services; auto-installs K8s/data services if missing"
-    echo "  isf download                  Download/update ISF charts into deploy/.tmp/charts"
-    echo "  isf uninstall                 Uninstall ISF services"
-    echo "  isf status                    Show ISF services status"
-    echo "  kweaver-dip install           Install KWeaver DIP services (17 charts); auto-installs K8s/data services if missing"
-    echo "  kweaver-dip download          Download/update DIP + Core + ISF charts into deploy/.tmp/charts"
-    echo "  kweaver-dip uninstall         Uninstall KWeaver DIP services"
-    echo "  kweaver-dip status            Show KWeaver DIP services status"
-    echo "  etrino install                Install Etrino services (vega-hdfs, vega-calculate, vega-metadata)"
-    echo "  etrino uninstall              Uninstall Etrino services"
-    echo "  etrino status                 Show Etrino services status"
     echo "  all install                   Run full initialization (k8s + mariadb + redis + ingress-nginx)"
     echo ""
     echo "Examples:"
@@ -111,20 +111,10 @@ usage() {
     echo "  # Install from remote repo with version and devel:"
     echo "  ZOOKEEPER_CHART_REF=dip/zookeeper ZOOKEEPER_CHART_VERSION=0.0.0-feature-800792 ZOOKEEPER_CHART_DEVEL=true $0 zookeeper install"
     echo "  # Install with additional values file and --set:"
-    echo "  ZOOKEEPER_VALUES_FILE=~/.kweaver-ai/config.yaml ZOOKEEPER_EXTRA_SET_VALUES='image.registry=<your-mirror>/bitnami' $0 zookeeper install"
+    echo "  ZOOKEEPER_VALUES_FILE=~/.kowell-ai/config.yaml ZOOKEEPER_EXTRA_SET_VALUES='image.registry=<your-mirror>/bitnami' $0 zookeeper install"
     echo "  $0 ingress-nginx install      # Install ingress-nginx-controller"
     echo "  $0 ingress-nginx uninstall    # Uninstall ingress-nginx-controller"
-    echo "  $0 kweaver-dip install        # Install KWeaver DIP (auto-installs K8s/data services if absent)"
-    echo "  $0 kweaver-dip download       # Download DIP + dependency charts into deploy/.tmp/charts"
-    echo "  $0 kweaver-dip download --charts_dir=/path/to/charts # Download DIP charts into a specific local directory"
-    echo "  $0 kweaver-dip install --charts_dir=/path/to/charts  # Install DIP from a local charts directory"
-    echo "  $0 kweaver-dip uninstall      # Uninstall KWeaver DIP services"
-    echo "  $0 kweaver-dip status         # Show KWeaver DIP services status"
-    echo "  $0 kweaver-dip install --confirm-missing-openclaw-paths  # Continue even if configured dipStudio OpenClaw paths do not exist"
-    echo "  $0 etrino install             # Install Etrino services only"
-    echo "  $0 etrino status              # Show Etrino services status"
-    echo "  $0 etrino uninstall           # Uninstall Etrino services"
-    echo "  $0 config generate            # Generate/update ~/.kweaver-ai/config.yaml"
+    echo "  $0 config generate            # Generate/update ~/.kowell-ai/config.yaml"
     echo "  $0 all install                # Full initialization with all components"
     echo ""
     echo "Global Options (must appear BEFORE <module> <action>, e.g. $0 --distro=k8s kweaver-core install --minimum):"
@@ -137,14 +127,11 @@ usage() {
     echo "                                Same as env KUBE_DISTRO=k8s|k3s (legacy: kubeadm means k8s). Use k3s for single-node lightweight."
     echo "  --config=<path>               Specify config.yaml path (values file for helm installs). May appear"
     echo "                                before <module> (global) or on the module command line (e.g. kweaver-core)."
-    echo "                                Default: ~/.kweaver-ai/config.yaml or \$CONFIG_YAML_PATH env var"
+    echo "                                Default: ~/.kowell-ai/config.yaml or \$CONFIG_YAML_PATH env var"
     echo "  --charts_dir=<path>           Use a specific local chart directory for download/install"
     echo "                                install only uses local charts when this option is explicitly set"
     echo "  --version_file=<path>         Use an aggregate release manifest to resolve exact chart versions"
     echo "                                (default auto path: deploy/release-manifests/<version>/<product>.yaml)"
-    echo "  --confirm-missing-openclaw-paths"
-    echo "                                Continue DIP install when dipStudio OpenClaw host paths are configured"
-    echo "                                but missing on disk. Only applies to the dip-studio chart."
     echo "  --access_address=<addr>       KWeaver access address: host, host:port, or scheme://host:port/path"
     echo "                                Example: --access_address=10.0.0.5 or --access_address=https://kweaver.example.com:443"
     echo "  --api_server_address=<ip>     Kubernetes API server advertise address (must be a local interface IP)"
@@ -166,13 +153,7 @@ usage() {
     echo "  $0 kweaver-core install --charts_dir=/path/to/charts  # Install Core from a local charts directory"
     echo "  $0 kweaver-core download --version=0.4.0  # Auto-uses ./release-manifests/0.4.0/kweaver-core.yaml when present"
     echo "  $0 kweaver-core download --version=0.4.0 --version_file=./release-manifests/0.4.0/kweaver-core.yaml"
-    echo "  $0 kweaver-core install --config=/root/.kweaver-ai/config.yaml --helm_repo_name=kweaver"
-    echo "  $0 isf download --charts_dir=/path/to/charts         # Download ISF charts into a specific local directory"
-    echo "  $0 isf install --charts_dir=/path/to/charts          # Install ISF from a local charts directory; auto-installs K8s/data services if absent"
-    echo "  $0 isf install --config=/root/.kweaver-ai/config.yaml --helm_repo_name=kweaver"
-    echo "  $0 isf download --force-refresh              # Force re-download ISF charts to deploy/.tmp/charts"
-    echo "  $0 kweaver-dip install --config=/root/.kweaver-ai/config.yaml"
-    echo "  $0 etrino install --config=/root/.kweaver-ai/config.yaml"
+    echo "  $0 kweaver-core install --config=/root/.kowell-ai/config.yaml --helm_repo_name=kweaver"
 }
 
 _detect_node_ip() {

@@ -8,8 +8,7 @@
 #   4. data-services install  — MariaDB / Redis / Kafka / Zookeeper / OpenSearch (required before Core on mac)
 #   5. kweaver-core download  — optional; cache charts locally (mac.sh defaults --minimum unless --full)
 #   6. kweaver-core install   — Helm install Core (mac.sh adds --minimum unless you pass --full)
-#   7. isf / etrino (vega)    — optional; same Helm path as Linux when cluster + config are ready
-#   8. onboard                — optional; needs kweaver CLI + Core up (add -y for non-interactive)
+#   7. onboard                — optional; needs kweaver CLI + Core up (add -y for non-interactive)
 #   Teardown: cluster down
 #   Full write-up: deploy/dev/README.md (EN) · deploy/dev/README.zh.md (中文)
 #
@@ -22,8 +21,6 @@
 #   bash deploy/dev/mac.sh data-services install
 #   bash deploy/dev/mac.sh kweaver-core install
 #   bash deploy/dev/mac.sh kweaver-core download
-#   bash deploy/dev/mac.sh isf install
-#   bash deploy/dev/mac.sh etrino install   # Vega stack (alias: vega)
 #   bash deploy/dev/mac.sh onboard
 #
 # Global flags (same as deploy.sh; must come first):
@@ -67,8 +64,7 @@ Typical order (shortest path: doctor? → cluster up → kweaver-core install [-
   3) data-services install      optional if you use kweaver-core install (it runs the same bundled data layer first); run alone to pre-stage or refresh only
   4) kweaver-core download      optional; charts cache only (minimum profile by default)
   5) kweaver-core install ...   Helm install (--minimum implied; bundled data-services first unless KWEAVER_SKIP_DATA_SERVICES_BUNDLE=true)
-  6) isf / etrino|vega          optional; deploy.sh modules (cluster + config must be ready)
-  7) onboard                    optional; after Core is up
+  6) onboard                    optional; after Core is up
   cluster down                  delete kind cluster
   See ${readme}
 
@@ -77,8 +73,6 @@ Commands:
   cluster up|down|status           kind cluster + ingress-nginx (kind manifest)
   data-services install|uninstall  Platform data layer (optional before Core: kweaver-core install runs it automatically on mac); uninstall tears down bundled charts
   kweaver-core|core <action> ...   Delegates to deploy.sh (see deploy.sh help)
-  isf <action> ...                 ISF via deploy.sh (install|download|uninstall|status)
-  etrino|vega <action> ...         Vega charts (vega-hdfs/calculate/metadata) via deploy.sh; vega = alias of etrino
   onboard [args ...]               Runs deploy/onboard.sh
 
 Examples:
@@ -88,18 +82,14 @@ Examples:
   ${cmd} doctor --fix -y
   ${cmd} cluster up
   ${cmd} data-services install
-  ${cmd} kweaver-core install --full   # full manifest / ISF when manifest says so
+  ${cmd} kweaver-core install --full   # full manifest profile
   ${cmd} kweaver-core install
   ${cmd} kweaver-core download
-  ${cmd} isf install
-  ${cmd} vega status
   ${cmd} onboard
-
-Not wired on mac.sh: kweaver-dip|dip (use Linux deploy.sh).
 
 Environment:
   KIND_CLUSTER_NAME       Default: kweaver-dev
-  CONFIG_YAML_PATH        Default: ${mac_cfg} when unset (kweaver-core|core|isf|etrino|vega|data-services)
+  CONFIG_YAML_PATH        Default: ${mac_cfg} when unset (kweaver-core|core|data-services)
 
 Note: data-services install runs deploy.sh data-services (Helm charts into the current kube context). Other deploy.sh modules on mac still skip host k3s bootstrap unless you install infra yourself. See ${readme}.
 
@@ -260,12 +250,17 @@ main() {
                         ;;
                 esac
             done
+            if [[ ${#_kw_pos[@]} -eq 0 ]]; then
+                mac_log_error "kweaver-core|core needs an action (e.g. download, install, status)."
+                exit 1
+            fi
             local -a _kw_final=()
-            if [[ "${_kw_saw_full}" != "true" ]] && [[ "${_kw_saw_min}" != "true" ]]; then
-                if [[ ${#_kw_pos[@]} -eq 0 ]]; then
-                    mac_log_error "kweaver-core|core needs an action (e.g. download, install, status)."
-                    exit 1
-                fi
+            # Only `install` gets --minimum auto-injected. For download/uninstall/status it would
+            # either reshape the chart set unexpectedly (download) or scope teardown (uninstall),
+            # so pass through verbatim.
+            if [[ "${_kw_pos[0]}" == "install" ]] \
+                    && [[ "${_kw_saw_full}" != "true" ]] \
+                    && [[ "${_kw_saw_min}" != "true" ]]; then
                 # Insert --minimum after deploy action (index 0), bash 3.2–safe (no ${arr[@]:1}).
                 _kw_final=("${_kw_pos[0]}" --minimum)
                 local _kw_i
