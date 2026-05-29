@@ -5,7 +5,7 @@ env:
   language: en_US.UTF-8
   timezone: Asia/Shanghai
 image:
-  registry: swr.cn-east-3.myhuaweicloud.com/kweaver-ai
+  registry: ghcr.io/kowell-ai
 # accessAddress: sudo deploy.sh writes the real URL to $HOME/.kowell-ai/config.yaml by default.
 # This file is an in-repo template. Leave host empty so onboard can auto-detect primary IPv4 when
 # CONFIG_YAML_PATH points here (e.g. ubuntu user without overriding CONFIG_YAML_PATH).

@@ -6,8 +6,8 @@ env:
   language: en_US.UTF-8
 
 image:
-  registry: ghcr.io
-  repository: kowell-ai/core-data-migrator
+  registry: ghcr.io/kowell-ai
+  repository: core-data-migrator
   tag: __VERSION__
   pullPolicy: IfNotPresent
 
