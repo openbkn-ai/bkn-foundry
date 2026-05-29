@@ -13,8 +13,8 @@ dependencies:
   defaultEnabled: true
   enabledIf: auth.enabled
 releases:
-  data-migrator:
-    chart: data-migrator
+  kweaver-core-data-migrator:
+    chart: kweaver-core-data-migrator
     version: 0.1.0
     stage: pre
   mf-model-manager:

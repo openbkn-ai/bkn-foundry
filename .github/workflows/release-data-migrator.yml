@@ -5,6 +5,7 @@ on:
     branches: ['**']
     paths:
       - 'data-migrator/**'
+      - '**/migrations/**'                          # rebuild when any service's SQL changes
       - '.github/workflows/release-data-migrator.yml'
       - '.github/workflows/reusable-*.yml'
   workflow_dispatch:
@@ -31,8 +32,8 @@ jobs:
     with:
       service-path: data-migrator
       dockerfile: Dockerfile
-      context: '.'
-      image-name: data-migrator
+      context: '..'                                 # monorepo root: Dockerfile needs to see all */migrations/**
+      image-name: kweaver-core-data-migrator
       version: ${{ needs.test.outputs.version }}
       publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
 
@@ -41,7 +42,7 @@ jobs:
     uses: ./.github/workflows/reusable-chart.yml
     with:
       service-path: data-migrator
-      chart-path: helm/data-migrator
-      chart-name: data-migrator
+      chart-path: helm/kweaver-core-data-migrator
+      chart-name: kweaver-core-data-migrator
       version: ${{ needs.test.outputs.version }}
       publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}

@@ -1,0 +1,74 @@
+# config.monorepo.yaml — data-migrator config for the kweaver-core monorepo.
+#
+# Build-time flow:
+#   python3 copy_repos.py <monorepo-root> repos --config config.monorepo.yaml
+# copies each service's migrations/ tree into ./repos/<service>/<db_type>/<version>/
+# so the image can ship pre-baked SQL — no git fetch / no PAT at runtime.
+#
+# Runtime flow (chart pre-install Job):
+#   python3 server/data-migrator.py migrate \
+#     --config /app/config.yaml \
+#     --secret-config /etc/data-migrator/secret-config.yaml
+#
+# `path` is the only field copy_repos.py reads; project/repo/ref are unused
+# in monorepo mode and intentionally omitted (ServiceConfig defaults them to "").
+# Path is relative to the monorepo root passed to copy_repos.py.
+
+module: kweaver-core
+description: kweaver-core data-migrator config (monorepo edition)
+
+db_types:
+  - mariadb
+  - dm8
+
+# Logical databases owned by kweaver-core services. Kept aligned with the
+# legacy core config so the runtime initialises the same set of schemas.
+databases:
+  - kweaver
+  - adp
+  - model_management
+  - dip_data_agent
+
+check_rules:
+  check_type: 3 # CheckLatest = 1, CheckRecently = 2, CheckAll = 3
+  allow_none_primary_key: false
+  allow_foreign_key: false
+  allow_python_exception: true
+
+renamed_services:
+
+services:
+  # ---- adp ----
+  bkn-backend:
+    path: adp/bkn/bkn-backend/migrations
+  vega-backend:
+    path: adp/vega/vega-backend/migrations
+  agent-operator-integration:
+    path: adp/execution-factory/operator-integration/migrations
+  flow-stream-data-pipeline:
+    path: adp/dataflow/flow-stream-data-pipeline/migrations
+  flow-automation:
+    path: adp/dataflow/flow-automation/migrations
+  coderunner:
+    path: adp/dataflow/coderunner/migrations
+
+  # ---- decision-agent (agent-backend chart deploys both components) ----
+  agent-factory:
+    path: decision-agent/agent-backend/agent-factory/migrations
+  agent-memory:
+    path: decision-agent/agent-backend/agent-memory/migrations
+
+  # ---- infra ----
+  mf-model-manager:
+    path: infra/mf-model-manager/migrations
+  oss-gateway-backend:
+    path: infra/oss-gateway-backend/migrations
+  sandbox:
+    path: infra/sandbox/migrations
+  # sandbox_control_plane/scripts/migrations uses its own python migration
+  # runner (single .py file, not <db_type>/<version>/init.sql layout) and is
+  # intentionally excluded from data-migrator.
+
+  # ---- trace-ai ----
+  agent-observability:
+    path: trace-ai/agent-observability/migrations
