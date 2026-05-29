@@ -387,7 +387,10 @@ parse_manifest_source() {
     if [[ -z "${MANIFEST_SOURCE_TYPE}" && -n "${MANIFEST_SOURCE_REPO_URL}" ]]; then
         MANIFEST_SOURCE_TYPE="http"
     fi
-    [[ -z "${MANIFEST_SOURCE_TYPE}" ]] && MANIFEST_SOURCE_TYPE="http"
+    if [[ -z "${MANIFEST_SOURCE_TYPE}" ]]; then
+        MANIFEST_SOURCE_TYPE="http"
+    fi
+    return 0
 }
 
 # Prepare the chart source (login for OCI, helm repo add for HTTP).
