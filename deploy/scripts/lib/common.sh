@@ -1732,7 +1732,7 @@ load_image_registry_from_config() {
     IMAGE_REGISTRY="$(get_config_image_registry)"
     IMAGE_REGISTRY="${IMAGE_REGISTRY%/}"
     if [[ -z "${IMAGE_REGISTRY}" ]]; then
-        IMAGE_REGISTRY="swr.cn-east-3.myhuaweicloud.com/kweaver-ai"
+        IMAGE_REGISTRY="ghcr.io/kowell-ai"
     fi
 }
 
