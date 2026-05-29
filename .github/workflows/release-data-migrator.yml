@@ -33,7 +33,7 @@ jobs:
       service-path: data-migrator
       dockerfile: Dockerfile
       context: '..'                                 # monorepo root: Dockerfile needs to see all */migrations/**
-      image-name: kweaver-core-data-migrator
+      image-name: core-data-migrator
       version: ${{ needs.test.outputs.version }}
       publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
 
@@ -42,7 +42,7 @@ jobs:
     uses: ./.github/workflows/reusable-chart.yml
     with:
       service-path: data-migrator
-      chart-path: helm/kweaver-core-data-migrator
-      chart-name: kweaver-core-data-migrator
+      chart-path: helm/core-data-migrator
+      chart-name: core-data-migrator
       version: ${{ needs.test.outputs.version }}
       publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}

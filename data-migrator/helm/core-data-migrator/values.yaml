@@ -1,5 +1,5 @@
 namespace: kweaver
-moduleName: kweaver-core-data-migrator
+moduleName: core-data-migrator
 
 env:
   timezone: Asia/Shanghai
@@ -7,7 +7,7 @@ env:
 
 image:
   registry: ghcr.io
-  repository: kowell-ai/kweaver-core-data-migrator
+  repository: kowell-ai/core-data-migrator
   tag: __VERSION__
   pullPolicy: IfNotPresent
 
