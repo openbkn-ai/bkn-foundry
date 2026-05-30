@@ -193,6 +193,23 @@ install_mariadb_helm() {
             generate_config_yaml
             update_rds_type_to_internal
         fi
+        # Reapply grants + ensure DB seed even when chart is already deployed.
+        # First-time installs grant kweaver ALL on *.* via setup_mariadb_databases
+        # below; without this re-entry, a re-run on an existing cluster (typical
+        # for verification or recovery flows) would skip grants entirely, and
+        # data-migrator would fail with 'Access denied for kweaver to deploy'.
+        local existing_root_pass
+        existing_root_pass=$(get_existing_password "mariadb.root_password")
+        if [[ -n "${existing_root_pass}" ]]; then
+            MARIADB_ROOT_PASSWORD="${existing_root_pass}"
+            MARIADB_USER="${MARIADB_USER:-$(get_existing_password "mariadb.user")}"
+            MARIADB_USER="${MARIADB_USER:-kweaver}"
+            MARIADB_DATABASE="${MARIADB_DATABASE:-$(get_existing_password "mariadb.database")}"
+            MARIADB_DATABASE="${MARIADB_DATABASE:-kweaver}"
+            setup_mariadb_databases || log_warn "MariaDB re-entry setup returned non-zero (continuing)"
+        else
+            log_warn "MariaDB root password unavailable; skipping grant re-apply on existing install"
+        fi
         return 0
     fi
 
