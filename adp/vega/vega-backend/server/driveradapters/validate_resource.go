@@ -462,7 +462,11 @@ func IsFeatureSupported(fieldType string, featureType string) bool {
 	case interfaces.PropertyFeatureType_Fulltext:
 		return fieldType == interfaces.DataType_Text
 	case interfaces.PropertyFeatureType_Keyword:
-		return fieldType == interfaces.DataType_String
+		// OpenSearch multi-field 模式：text 字段允许带 keyword 子字段（同一个
+		// 物理字段同时支持全文检索 + 精确匹配），这是 ES/OpenSearch 行业标准，
+		// 也是本服务自己 parseProperties 收编 sub-fields 时产出的 mapping 形态。
+		// 因此 keyword 特征允许引用 string 或 text 字段。
+		return fieldType == interfaces.DataType_String || fieldType == interfaces.DataType_Text
 	case interfaces.PropertyFeatureType_Vector:
 		return fieldType == interfaces.DataType_Vector
 	default:
