@@ -740,6 +740,13 @@ func GetBKNConceptSchemaDefinition(vectorDim int, defaultSmallModelEnabled bool)
 			Description:  "BKN对象类概念的数据属性索引配置",
 		},
 		{
+			Name:         "data_properties.index_config",
+			Type:         data_type.DATATYPE_JSON,
+			DisplayName:  "data_properties.index_config",
+			OriginalName: "data_properties.index_config",
+			Description:  "BKN对象类概念的数据属性索引配置",
+		},
+		{
 			Name:         "logic_properties.name",
 			Type:         data_type.DATATYPE_TEXT,
 			DisplayName:  "logic_properties.name",
