@@ -23,6 +23,9 @@ RUN set -ex; \
         --add-data "src/schema/*:src/schema" \
         --hidden-import=pymysql \
         --hidden-import=dmPython \
+        --hidden-import=mq_sdk \
+        --hidden-import=mq_sdk.proton_mq \
+        --collect-submodules=mq_sdk \
         src/main.py
 
 ########################### Stage 1: prod ########################

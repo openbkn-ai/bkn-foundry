@@ -54,7 +54,10 @@ spec:
             periodSeconds: 10
             timeoutSeconds: 5
             successThreshold: 1
-            failureThreshold: 3
+            # Cold-start needs ~30-60s to wait for Redis sentinel DNS +
+            # connection. Old threshold (3 -> 30s grace) made the pod
+            # CrashLoop before the connection ever succeeded.
+            failureThreshold: 30
           volumeMounts:
             - name: host-time
               mountPath: /etc/localtime
