@@ -1107,7 +1107,7 @@ func GetBKNConceptSchemaDefinition(vectorDim int, defaultSmallModelEnabled bool)
 		{
 			Name:         "unit_type",
 			Type:         data_type.DATATYPE_STRING,
-			DisplayName:  "unit_type",
+			DisplayName:  "schedule",
 			OriginalName: "unit_type",
 			Description:  "BKN指标的单位类型",
 			Features: []PropertyFeature{
