@@ -6,7 +6,7 @@ generate_config_yaml() {
 
     load_image_registry_from_config
 
-    local cfg_namespace="kweaver"
+    local cfg_namespace="kowell"
     local cfg_lang="en_US.UTF-8"
     local cfg_tz="Asia/Shanghai"
     local cfg_access_host=""
