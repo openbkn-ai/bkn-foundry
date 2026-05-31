@@ -28,6 +28,14 @@ class MQ:
 
     @classmethod
     def init_connector_from_file(cls, config_file_path):
+        if Connector is None:
+            logger.warning(
+                "mq_sdk 不在 bundle 里，跳过 MQ 初始化 (config_file_path=%s)。"
+                "依赖 MQ 的运行时路径调用时会失败。",
+                config_file_path,
+            )
+            cls.con = None
+            return
         cls.con = Connector.get_connector_from_file(config_file_path)
 
     @classmethod
