@@ -39,22 +39,16 @@ def start_scheduler():
 
 
 async def start_event():
-    # 步骤打点：lifespan startup 历史上常卡在某一步，不打点定位不到。
-    print("[start_event] step 1: write_log", flush=True)
     await write_log(msg='系统启动')
     # 在应用启动时调用
-    print("[start_event] step 2: get_redis_util", flush=True)
     try:
         await get_redis_util()
     except Exception as e:
         raise e
     # 初始化可观测模块
-    print("[start_event] step 3: init_observability", flush=True)
     init_observability(server_info, observability_config)
     # 启动定时任务
-    print("[start_event] step 4: start_scheduler", flush=True)
     start_scheduler()
-    print("[start_event] step 5: done", flush=True)
 
 
 async def shutdown_event():
