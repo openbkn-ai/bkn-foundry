@@ -1,0 +1,117 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.name }}
+  namespace: {{ .Values.namespace }}
+data:
+  application.yml: |-
+    server:
+      port: 8098
+      max-http-header-size: 512KB
+    spring:
+      main:
+        allow-circular-references: true
+      application:
+        name: data-connection
+        version: 1.0.0
+        queryName: vega-calculate-coordinator
+        dbType: {{ .Values.depServices.rds.type }}
+      mvc:
+        throw-exception-if-no-handler-found: true
+        pathmatch:
+          matching-strategy: ANT_PATH_MATCHER
+      servlet:
+        multipart:
+          max-file-size: 10MB
+          max-request-size: 10MB
+      datasource:
+        dynamic:
+          primary: default  # 指定默认数据源
+          strict: false # true：xx找不到数据源报错
+          lazy: true
+          datasource:
+            default:
+              {{- if eq .Values.depServices.rds.type "DM8" }}
+              driver-class-name: dm.jdbc.driver.DmDriver
+              url: jdbc:dm://{{ .Values.depServices.rds.host }}:{{ .Values.depServices.rds.port }}?schema=adp
+              {{- else }}
+              driver-class-name: org.mariadb.jdbc.Driver
+              url: jdbc:mariadb://{{ .Values.depServices.rds.host }}:{{ .Values.depServices.rds.port }}/adp?maxAllowedPacket=134217728&socketTimeout=300000&autoReconnect=true&useUnicode=true&useSSL=false&characterEncoding=utf8mb4&serverTimezone=GMT%2B8
+              {{- end }}
+              username: {{ .Values.depServices.rds.user }}
+              password: {{ .Values.depServices.rds.password }}
+              type: com.alibaba.druid.pool.DruidDataSource
+              druid:
+                initial-size: 5
+                min-idle: 5
+                max-active: 300
+                max-wait: 60000
+                test-while-idle: true
+                time-between-eviction-runs-millis: 60000
+                min-evictable-idle-time-millis: 30000
+                validation-query: select 'x'
+                test-on-borrow: false
+                test-on-return: false
+                pool-prepared-statements: true
+                max-pool-prepared-statement-per-connection-size: 20
+    mybatis-plus:
+      global-config:
+        banner: false
+        enable-sql-runner: true
+      mapper-locations: classpath*:mapper/*.xml
+      configuration:
+        log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+    openlookeng:
+      jdbc:
+        pushdown-module: FULL_PUSHDOWN
+    olk:
+      view:
+        catalog: olk_view_vdm
+
+    services:
+      is-local: false
+      vega-calculate-coordinator: {{ .Values.depServices.vegaCalculateCoordinator.protocol }}://{{ .Values.depServices.vegaCalculateCoordinator.host }}:{{ .Values.depServices.vegaCalculateCoordinator.port }}
+      hydra-admin: {{ .Values.depServices.hydra.administrativeProtocol }}://{{ .Values.depServices.hydra.administrativeHost }}:{{ .Values.depServices.hydra.administrativePort }}
+      user-management-private: {{ .Values.depServices.userManagement.privateProtocol }}://{{ .Values.depServices.userManagement.privateHost }}:{{ .Values.depServices.userManagement.privatePort }}
+      authorization-private: {{ .Values.depServices.authorization.privateProtocol }}://{{ .Values.depServices.authorization.privateHost }}:{{ .Values.depServices.authorization.privatePort }}
+      efast-private: {{ .Values.depServices.efast.privateProtocol }}://{{ .Values.depServices.efast.privateHost }}:{{ .Values.depServices.efast.privatePort }}
+      efast-public: {{ .Values.depServices.efast.publicProtocol }}://{{ .Values.depServices.efast.publicHost }}:{{ .Values.depServices.efast.publicPort }}
+      vega-gateway: {{ .Values.depServices.vegaGateWay.protocol }}://{{ .Values.depServices.vegaGateWay.host }}:{{ .Values.depServices.vegaGateWay.port }}
+    anyrobot:
+      log:
+        enabled: {{ .Values.service.telemetry.log.enabled }}
+        endpoint: {{ .Values.service.telemetry.log.endpoint }}
+        level: {{ .Values.service.telemetry.log.level }}
+      trace:
+        enabled: {{ .Values.service.telemetry.trace.enabled }}
+        endpoint: {{ .Values.service.telemetry.trace.endpoint }}
+    logging:
+      config: classpath:logback-spring.xml
+
+    collector-data-source: {{ .Values.collectorDataSource }} #扫描用数据源，列表过滤时使用
+
+    mq:
+      mqHost: {{ .Values.depServices.mq.mqHost }}
+      mqPort: {{ .Values.depServices.mq.mqPort }}
+      mqLookupdHost: {{ .Values.depServices.mq.mqLookupdHost }}
+      mqLookupdPort: {{ .Values.depServices.mq.mqLookupdPort }}
+      mqType: {{ .Values.depServices.mq.mqType }}
+      connectorType: {{ .Values.depServices.mq.connectorType }}
+      auth:
+        username: {{ .Values.depServices.mq.auth.username }}
+        password: {{ .Values.depServices.mq.auth.password }}
+        mechanism: {{ .Values.depServices.mq.auth.mechanism }}
+
+    http:
+      client:
+        connect-timeout: 60000    # 连接超时时间（毫秒）
+        read-timeout: 60000      # 读超时时间（毫秒）
+
+    metadata:
+      scanUrl: {{ .Values.depServices.metadata.protocol }}://{{ .Values.depServices.metadata.host }}/api/metadata-manage/v1/task/fillMetaDataByVirtual/%s
+    scan:
+      numThread: 5
+
+    rsa:
+      publicKeyPath: public_key.pem
+      privateKeyPath: private_key.pem

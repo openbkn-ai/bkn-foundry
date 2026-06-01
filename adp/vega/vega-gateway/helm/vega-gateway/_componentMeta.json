@@ -1,0 +1,91 @@
+{
+    "conponentDefineType": "helm/service",
+    "name": "vega-gateway",
+    "version": "1.0.0",
+    "configSchema": {
+        "title": "session",
+        "description": "组件配置定义",
+        "type": "object",
+        "properties": {
+            "resources": {
+                "type": "object",
+                "title": "容器资源控制",
+                "properties": {
+                    "requests": {
+                        "type": "object",
+                        "description": "容器运行需要的最小资源分配",
+                        "properties": {
+                            "memory": {
+                                "type": "string",
+                                "title": "内存"
+                            },
+                            "cpu": {
+                                "type": "string",
+                                "title": "cpu"
+                            }
+                        }
+                    },
+                    "limits": {
+                        "type": "object",
+                        "description": "容器运行最大资源限制",
+                        "properties": {
+                            "memory": {
+                                "type": "string",
+                                "title": "内存"
+                            },
+                            "cpu": {
+                                "type": "string",
+                                "title": "cpu"
+                            }
+                        }
+                    }
+                }
+            },
+            "depServices": {
+                "type": "object",
+                "title": "虚拟化引擎网关的配置",
+                "properties": {
+                    "vega_jdbc":{
+                        "type": "object",
+                        "description": "虚拟化引擎jdbc服务的入口",
+                        "properties": {
+                            "host": {
+                                "type": "string",
+                                "description": "jdbc服务开放的地址"
+                            },
+                            "port": {
+                                "type": "integer",
+                                "description": "jdbc服务开放的端口"
+                            }
+                        }
+                    },
+                    "vega_schedule":{
+                        "type": "object",
+                        "description": "调度引擎服务的入口",
+                        "properties": {
+                            "engine_host": {
+                                "type": "string",
+                                "description": "宿主机的地址"
+                            }
+                        }
+                    }
+                }
+            },
+            "replicaCount": {
+                "type": "number",
+                "title": "服务副本数"
+            }
+        }
+    },
+    "dependence": [
+        {
+            "name": "vega-dm-pre"
+        },
+        {
+            "name": "rds"
+        },
+        {
+            "name": "class-443"
+        }
+    ]
+}

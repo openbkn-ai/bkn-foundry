@@ -1,0 +1,62 @@
+[
+  {
+    "db_name": "vega",
+    "table_name": "cache_table",
+    "object_type": "TABLE",
+    "operation_type": "RENAME",
+    "new_name": "adp.cache_table",
+    "object_name": "",
+    "object_property": "",
+    "object_comment": ""
+  },
+  {
+    "db_name": "vega",
+    "table_name": "client_id",
+    "object_type": "TABLE",
+    "operation_type": "RENAME",
+    "new_name": "adp.client_id",
+    "object_name": "",
+    "object_property": "",
+    "object_comment": ""
+  },
+  {
+    "db_name": "vega",
+    "table_name": "excel_column_type",
+    "object_type": "TABLE",
+    "operation_type": "RENAME",
+    "new_name": "adp.excel_column_type",
+    "object_name": "",
+    "object_property": "",
+    "object_comment": ""
+  },
+  {
+    "db_name": "vega",
+    "table_name": "excel_table_config",
+    "object_type": "TABLE",
+    "operation_type": "RENAME",
+    "new_name": "adp.excel_table_config",
+    "object_name": "",
+    "object_property": "",
+    "object_comment": ""
+  },
+  {
+    "db_name": "vega",
+    "table_name": "query_info",
+    "object_type": "TABLE",
+    "operation_type": "RENAME",
+    "new_name": "adp.query_info",
+    "object_name": "",
+    "object_property": "",
+    "object_comment": ""
+  },
+  {
+    "db_name": "vega",
+    "table_name": "task_info",
+    "object_type": "TABLE",
+    "operation_type": "RENAME",
+    "new_name": "adp.task_info",
+    "object_name": "",
+    "object_property": "",
+    "object_comment": ""
+  }
+]

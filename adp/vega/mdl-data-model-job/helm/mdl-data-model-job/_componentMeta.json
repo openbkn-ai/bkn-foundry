@@ -1,0 +1,98 @@
+{
+    "conponentDefineType": "helm/service",
+    "name": "mdl-data-model-job",
+    "version": "6.0.0",
+    "configSchema": {
+        "title": "data-model-job",
+        "description": "组件配置定义",
+        "type": "object",
+        "properties": {
+            "resources": {
+                "type": "object",
+                "title": "容器资源控制",
+                "properties": {
+                    "requests": {
+                        "type": "object",
+                        "description": "容器运行需要的最小资源分配",
+                        "properties": {
+                            "memory": {
+                                "type": "string",
+                                "title": "内存"
+                            },
+                            "cpu": {
+                                "type": "string",
+                                "title": "cpu"
+                            }
+                        }
+                    },
+                    "limits": {
+                        "type": "object",
+                        "description": "容器运行最大资源限制",
+                        "properties": {
+                            "memory": {
+                                "type": "string",
+                                "title": "内存"
+                            },
+                            "cpu": {
+                                "type": "string",
+                                "title": "cpu"
+                            }
+                        }
+                    }
+                }
+            },
+            "replicaCount": {
+                "type": "number",
+                "title": "服务副本数"
+            },
+            "config": {
+                "type": "object",
+                "title": "配置",
+                "properties": {
+                    "server": {
+                        "type": "object",
+                        "title": "服务配置",
+                        "properties": {
+                            "flushMiB": {
+                                "type": "number",
+                                "title": "缓存刷新大小(MiB)",
+                                "default": 5
+                            },
+                            "flushItems": {
+                                "type": "number",
+                                "title": "缓存刷新数据量(条)",
+                                "default": 10000
+                            },
+                            "flushIntervalSec": {
+                                "type": "number",
+                                "title": "缓存刷新间隔时间(s)",
+                                "default": 3
+                            },
+                            "packagePoolSize": {
+                                "type": "number",
+                                "title": "协程池大小",
+                                "default": 500
+                            },
+                            "watchJobsIntervalMin": {
+                                "type": "number",
+                                "title": "任务监控间隔时间(m)",
+                                "default": 10
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "dependence": [
+        {
+            "name": "rds"
+        },
+        {
+            "name": "mq"
+        },
+        {
+            "name": "vega-dm-pre"
+        }
+    ]
+}

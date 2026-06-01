@@ -1,0 +1,62 @@
+[
+  {
+    "db_name": "vega",
+    "table_name": "data_source",
+    "object_type": "TABLE",
+    "operation_type": "RENAME",
+    "new_name": "adp.data_source",
+    "object_name": "",
+    "object_property": "",
+    "object_comment": ""
+  },
+  {
+    "db_name": "vega",
+    "table_name": "t_data_source_info",
+    "object_type": "TABLE",
+    "operation_type": "RENAME",
+    "new_name": "adp.t_data_source_info",
+    "object_name": "",
+    "object_property": "",
+    "object_comment": ""
+  },
+  {
+    "db_name": "vega",
+    "table_name": "t_task_scan",
+    "object_type": "TABLE",
+    "operation_type": "RENAME",
+    "new_name": "adp.t_task_scan",
+    "object_name": "",
+    "object_property": "",
+    "object_comment": ""
+  },
+  {
+    "db_name": "vega",
+    "table_name": "t_task_scan_table",
+    "object_type": "TABLE",
+    "operation_type": "RENAME",
+    "new_name": "adp.t_task_scan_table",
+    "object_name": "",
+    "object_property": "",
+    "object_comment": ""
+  },
+  {
+    "db_name": "vega",
+    "table_name": "t_table_scan",
+    "object_type": "TABLE",
+    "operation_type": "RENAME",
+    "new_name": "adp.t_table_scan",
+    "object_name": "",
+    "object_property": "",
+    "object_comment": ""
+  },
+  {
+    "db_name": "vega",
+    "table_name": "t_table_field_scan",
+    "object_type": "TABLE",
+    "operation_type": "RENAME",
+    "new_name": "adp.t_table_field_scan",
+    "object_name": "",
+    "object_property": "",
+    "object_comment": ""
+  }
+]

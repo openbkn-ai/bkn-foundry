@@ -1,0 +1,56 @@
+[
+  {
+    "db_name": "adp",
+    "table_name": "t_data_view",
+    "object_type": "COLUMN",
+    "operation_type": "ADD",
+    "object_name": "f_delete_time",
+    "object_property": "bigint(20) NOT NULL DEFAULT 0",
+    "object_comment": "删除时间"
+  },
+  {
+    "db_name": "adp",
+    "table_name": "t_data_view_group",
+    "object_type": "COLUMN",
+    "operation_type": "ADD",
+    "object_name": "f_delete_time",
+    "object_property": "bigint(20) NOT NULL DEFAULT 0",
+    "object_comment": "删除时间"
+  },
+  {
+    "db_name": "adp",
+    "table_name": "t_data_view",
+    "object_type": "UNIQUE INDEX",
+    "operation_type": "DROP",
+    "object_name": "uk_f_view_name",
+    "object_property": "",
+    "object_comment": ""
+  },
+  {
+    "db_name": "adp",
+    "table_name": "t_data_view",
+    "object_type": "UNIQUE INDEX",
+    "operation_type": "ADD",
+    "object_name": "uk_f_view_name",
+    "object_property": "f_group_id, f_view_name, f_delete_time",
+    "object_comment": ""
+  },
+  {
+    "db_name": "adp",
+    "table_name": "t_data_view_group",
+    "object_type": "UNIQUE INDEX",
+    "operation_type": "DROP",
+    "object_name": "uk_f_group_name",
+    "object_property": "",
+    "object_comment": ""
+  },
+  {
+    "db_name": "adp",
+    "table_name": "t_data_view_group",
+    "object_type": "UNIQUE INDEX",
+    "operation_type": "ADD",
+    "object_name": "uk_f_group_name",
+    "object_property": "f_builtin, f_group_name, f_delete_time",
+    "object_comment": ""
+  }
+]

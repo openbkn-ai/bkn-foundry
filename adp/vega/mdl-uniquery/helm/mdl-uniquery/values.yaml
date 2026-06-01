@@ -1,0 +1,189 @@
+namespace: dip
+moduleName: mdl-uniquery
+
+# 环境变量：语言/时区
+env:
+  timezone: Asia/Shanghai
+  language: en_US.UTF-8
+
+replicaCount: 1
+
+# 节点选择器
+nodeSelector: {}
+
+image:
+  registry: ghcr.io/kowell-ai
+  repository: mdl-uniquery
+  tag: "0.6.0"
+  pullPolicy: IfNotPresent
+
+service:
+  uniquery:
+    type: ClusterIP
+    port: 13011
+    nodePort: 31011
+    ingress:
+      enabled: true
+      interface:
+        path:
+          - /api/mdl-uniquery/v1
+          - /api/mdl-uniquery/v2
+
+# 反亲和性设置
+antiAffinity:
+  enabled: true
+  rule: "soft" # 可选参数 hard, soft
+
+# 微服务通信依赖配置
+depServices:
+  class-443:
+    ingressClass: class-443
+  rds:
+    host: mariadb-mariadb-master.resource.svc.cluster.local.
+    port: 3330
+    user: test
+    password: testpwd
+    type: MariaDB
+  mq:
+    auth:
+      mechanism: PLAIN
+      username: test
+      password: testpwd
+    mqHost: kafka-headless.resource.svc.cluster.local.
+    mqPort: 9097
+    mqType: kafka
+    protocol: sasl_plaintext
+    tenant: default
+  opensearch:
+    host: opensearch-master.resource.svc.cluster.local.
+    port: 9200
+    protocol: http
+    user: test
+    password: testpwd
+  authorization-private:
+    host: authorization-private
+    port: 30920
+    protocol: http
+  data-manager:
+    host: data-manager-svc
+    port: 13013
+    protocol: http
+  data-model:
+    host: mdl-data-model-svc
+    port: 13020
+    protocol: http
+  hydra-admin:
+    host: hydra-admin
+    port: 4445
+    protocol: http
+  index-base:
+    host: mdl-index-base-svc
+    port: 13013
+    protocol: http
+  search:
+    host: search-svc
+    port: 13013
+    protocol: http
+  data-connection:
+    host: data-connection
+    port: 8098
+    protocol: http
+  vega-gateway:
+    host: vega-gateway
+    port: 8099
+    protocol: http
+  vega-gateway-pro:
+    host: vega-gateway-pro-svc
+    port: 8097
+    protocol: http
+  vega-logic-view:
+    host: vega-logic-view
+    port: 8123
+    protocol: http
+
+config:
+  server:
+    runMode: release
+    httpPort: 13011
+    language: zh-CN
+    readTimeOut: 120
+    writeTimeOut: 600
+    fullCacheRefreshInterval: 24h
+    ignoringHcts: false
+    eventSubscribeEnabled: true
+    fixedQuerySteps:
+      - 15s
+      - 30s
+      - 1m
+      - 2m
+      - 5m
+      - 10m
+      - 15m
+      - 20m
+      - 30m
+      - 1h
+      - 2h
+      - 3h
+      - 6h
+      - 12h
+      - 1d
+      - 1y
+  log:
+    logLevel: info
+    developMode: false
+    maxAge: 100
+    maxBackups: 20
+    maxSize: 100
+  pool:
+    executePoolSize: 300
+    megerPoolSize: 500
+    batchSubmitPoolSize: 300
+    viewPoolSize: 500
+    objectivePoolSize: 500
+  promql:
+    lookbackDelta: 5m
+    maxSearchSeriesSize: 10000
+  trace:
+    maxSearchSpanSize: 1000
+  thirdParty:
+    tingYunMaxTimePeriod: 172800 # 单位为分钟, 120天
+  kafka:
+    batchSize: 1000                      # 一次事务发送的最大消息数量
+    retries: 5                            # Kafka管理客户端重试次数
+    retryBackoffMs: 500                   # 生产者每次重试之间的间隔
+    transactionTimeoutMs: 60000           # 事务生产者事务超时时间
+    produceFlushTimeoutMs: 1000          # 事务生产者发送消息的超时时间
+    transactionOperationTimeoutMs: 60000  # 事务相关方法超时时间 (initTransactions, sendOffsetToTransaction(), CommitTransaction(), AbortTransaction())
+    sessionTimeoutMs: 45000               # 组管理协议用来监测消费者是否失效的超时时间
+    fetchWaitMaxMs: 3000                  # 消费者拉取一字节消息的超时时间
+    socketTimeoutMs: 60000                # 消费者拉取消息的超时时间，等于socketTimeoutMs + fetchWaitMaxms
+    maxPollIntervalMs: 300000             # 两次 poll操作之间的间隔
+    maxPollRecords: 1000                  # 每次poll的最大条数
+    heartbeatIntervalMs: 10000            # 消费者向coordinator发送心跳包的间隔时间
+    adminClientRequestTimeoutMs: 30000    # 获取源集群 topics 的超时时间
+    adminClientOperationTimeoutMs: 60000  # 向目标集群创建 topic 的超时时间
+  observability:
+    logEnabled: false
+    traceEnabled: false
+    metricEnabled: false
+    logExporter: console
+    traceProvider: http
+    metricProvider: http
+    logLoadInternal: 1
+    logLoadMaxLog: 10
+    traceMaxQueueSize: 50000
+    metricIntervalSecond: 60
+    httpLogFeedIngesterUrl: http://feed-ingester-service:13031/api/feed_ingester/v1/jobs/dip-o11y-log/events
+    httpTraceFeedIngesterUrl: http://feed-ingester-service:13031/api/feed_ingester/v1/jobs/dip-o11y-trace/events
+    httpMetricFeedIngesterUrl: http://feed-ingester-service:13031/api/feed_ingester/v1/jobs/dip-o11y-metric/events
+    grpcTraceFeedIngesterUrl: feed-ingester-service:30013
+    grpcTraceJobId: dip-o11y-trace-grpc
+
+# 资源配置
+resources:
+  requests:
+    cpu: 0
+    memory: 0Gi
+  limits:
+    cpu: 6
+    memory: 4Gi

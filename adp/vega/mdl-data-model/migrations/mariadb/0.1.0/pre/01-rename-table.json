@@ -1,0 +1,202 @@
+[
+  {
+    "db_name": "dip_mdl",
+    "table_name": "t_metric_model",
+    "object_type": "TABLE",
+    "operation_type": "RENAME",
+    "new_name": "adp.t_metric_model",
+    "object_name": "",
+    "object_property": "",
+    "object_comment": ""
+  },
+  {
+    "db_name": "dip_mdl",
+    "table_name": "t_metric_model_group",
+    "object_type": "TABLE",
+    "operation_type": "RENAME",
+    "new_name": "adp.t_metric_model_group",
+    "object_name": "",
+    "object_property": "",
+    "object_comment": ""
+  },
+  {
+    "db_name": "dip_mdl",
+    "table_name": "t_metric_model_task",
+    "object_type": "TABLE",
+    "operation_type": "RENAME",
+    "new_name": "adp.t_metric_model_task",
+    "object_name": "",
+    "object_property": "",
+    "object_comment": ""
+  },
+  {
+    "db_name": "dip_mdl",
+    "table_name": "t_static_metric_index",
+    "object_type": "TABLE",
+    "operation_type": "RENAME",
+    "new_name": "adp.t_static_metric_index",
+    "object_name": "",
+    "object_property": "",
+    "object_comment": ""
+  },
+  {
+    "db_name": "dip_mdl",
+    "table_name": "t_event_model_aggregate_rules",
+    "object_type": "TABLE",
+    "operation_type": "RENAME",
+    "new_name": "adp.t_event_model_aggregate_rules",
+    "object_name": "",
+    "object_property": "",
+    "object_comment": ""
+  },
+  {
+    "db_name": "dip_mdl",
+    "table_name": "t_event_models",
+    "object_type": "TABLE",
+    "operation_type": "RENAME",
+    "new_name": "adp.t_event_models",
+    "object_name": "",
+    "object_property": "",
+    "object_comment": ""
+  },
+  {
+    "db_name": "dip_mdl",
+    "table_name": "t_event_model_detect_rules",
+    "object_type": "TABLE",
+    "operation_type": "RENAME",
+    "new_name": "adp.t_event_model_detect_rules",
+    "object_name": "",
+    "object_property": "",
+    "object_comment": ""
+  },
+  {
+    "db_name": "dip_mdl",
+    "table_name": "t_event_model_task",
+    "object_type": "TABLE",
+    "operation_type": "RENAME",
+    "new_name": "adp.t_event_model_task",
+    "object_name": "",
+    "object_property": "",
+    "object_comment": ""
+  },
+  {
+    "db_name": "dip_mdl",
+    "table_name": "t_event_model_task_execution_records",
+    "object_type": "TABLE",
+    "operation_type": "RENAME",
+    "new_name": "adp.t_event_model_task_execution_records",
+    "object_name": "",
+    "object_property": "",
+    "object_comment": ""
+  },
+  {
+    "db_name": "dip_mdl",
+    "table_name": "t_data_view",
+    "object_type": "TABLE",
+    "operation_type": "RENAME",
+    "new_name": "adp.t_data_view",
+    "object_name": "",
+    "object_property": "",
+    "object_comment": ""
+  },
+  {
+    "db_name": "dip_mdl",
+    "table_name": "t_data_view_group",
+    "object_type": "TABLE",
+    "operation_type": "RENAME",
+    "new_name": "adp.t_data_view_group",
+    "object_name": "",
+    "object_property": "",
+    "object_comment": ""
+  },
+  {
+    "db_name": "dip_mdl",
+    "table_name": "t_scan_record",
+    "object_type": "TABLE",
+    "operation_type": "RENAME",
+    "new_name": "adp.t_scan_record",
+    "object_name": "",
+    "object_property": "",
+    "object_comment": ""
+  },
+  {
+    "db_name": "dip_mdl",
+    "table_name": "t_data_view_row_column_rule",
+    "object_type": "TABLE",
+    "operation_type": "RENAME",
+    "new_name": "adp.t_data_view_row_column_rule",
+    "object_name": "",
+    "object_property": "",
+    "object_comment": ""
+  },
+  {
+    "db_name": "dip_mdl",
+    "table_name": "t_data_dict",
+    "object_type": "TABLE",
+    "operation_type": "RENAME",
+    "new_name": "adp.t_data_dict",
+    "object_name": "",
+    "object_property": "",
+    "object_comment": ""
+  },
+  {
+    "db_name": "dip_mdl",
+    "table_name": "t_data_dict_item",
+    "object_type": "TABLE",
+    "operation_type": "RENAME",
+    "new_name": "adp.t_data_dict_item",
+    "object_name": "",
+    "object_property": "",
+    "object_comment": ""
+  },
+  {
+    "db_name": "dip_mdl",
+    "table_name": "t_data_connection",
+    "object_type": "TABLE",
+    "operation_type": "RENAME",
+    "new_name": "adp.t_data_connection",
+    "object_name": "",
+    "object_property": "",
+    "object_comment": ""
+  },
+  {
+    "db_name": "dip_mdl",
+    "table_name": "t_data_connection_status",
+    "object_type": "TABLE",
+    "operation_type": "RENAME",
+    "new_name": "adp.t_data_connection_status",
+    "object_name": "",
+    "object_property": "",
+    "object_comment": ""
+  },
+  {
+    "db_name": "dip_mdl",
+    "table_name": "t_trace_model",
+    "object_type": "TABLE",
+    "operation_type": "RENAME",
+    "new_name": "adp.t_trace_model",
+    "object_name": "",
+    "object_property": "",
+    "object_comment": ""
+  },
+  {
+    "db_name": "dip_mdl",
+    "table_name": "t_data_model_job",
+    "object_type": "TABLE",
+    "operation_type": "RENAME",
+    "new_name": "adp.t_data_model_job",
+    "object_name": "",
+    "object_property": "",
+    "object_comment": ""
+  },
+  {
+    "db_name": "dip_mdl",
+    "table_name": "t_objective_model",
+    "object_type": "TABLE",
+    "operation_type": "RENAME",
+    "new_name": "adp.t_objective_model",
+    "object_name": "",
+    "object_property": "",
+    "object_comment": ""
+  }
+]

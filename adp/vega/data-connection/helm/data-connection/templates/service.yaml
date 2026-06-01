@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: {{.Values.namespace}}
+  name: {{.Values.service.name}}
+  labels:
+{{ toYaml .Values.labels.service | indent 4}}
+spec:
+  type: {{.Values.service.type}}
+  selector:
+{{toYaml .Values.labels.pod | indent 4}}
+  ports:
+    - port: {{ .Values.service.port}}
+      targetPort: {{ .Values.service.port}}
