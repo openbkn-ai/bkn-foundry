@@ -54,7 +54,12 @@ spec:
             periodSeconds: 10
             timeoutSeconds: 5
             successThreshold: 1
-            failureThreshold: 3
+            # Cold-start grace: app must finish module imports + Redis pool
+            # warmup + Kafka admin handshake (which itself includes one IPv6
+            # getaddrinfo wait window on stacks where pod IPv6 is enabled)
+            # before binding :9898. Default 3 (30s grace) routinely kills the
+            # pod before it ever serves. 30 -> ~5 min grace.
+            failureThreshold: 30
           volumeMounts:
             - name: host-time
               mountPath: /etc/localtime

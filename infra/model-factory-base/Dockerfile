@@ -8,6 +8,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       librdkafka-dev libgomp1 \
  && rm -rf /var/lib/apt/lists/*
 
+# Force libc getaddrinfo to prefer IPv4. On clusters where pods land with
+# IPv6 enabled in their netns (k3s + flannel default — host-level IPv6
+# disable does not propagate), the default precedence makes glibc try AAAA
+# first and wait ~10s for that path to time out before falling back to A.
+# This bites every short-timeout client (Kafka admin, Redis dial, DB
+# connect retry budgets, requests.get with low timeout). Bumping the
+# ::ffff:0:0/96 precedence to the top reorders the candidate list so
+# getaddrinfo returns A records first and the IPv6 attempt is only made
+# when A fails. Idempotent across rebuilds.
+RUN printf 'precedence ::ffff:0:0/96  100\n' >> /etc/gai.conf
+
 WORKDIR /opt/base
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
