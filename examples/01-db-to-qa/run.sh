@@ -2,11 +2,19 @@
 # =============================================================================
 # 01-db-to-qa: From Database to Intelligent Q&A
 #
-# End-to-end flow: MySQL → Datasource → Knowledge Network → Semantic Search → Agent Chat
+# End-to-end flow (Vega catalog model):
+#   MySQL → Vega Catalog → Discover → Knowledge Network → Real-time Query → Agent Chat
+#
+# Note: this example uses the Vega catalog/connector model (vega-backend), NOT the
+# legacy data-connection datasource flow. Object types bind to Vega *resource* IDs
+# and are queried in real time — no `bkn build` needed.
 # =============================================================================
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# Self-signed ingress: kweaver (node) talks https to the platform.
+export NODE_TLS_REJECT_UNAUTHORIZED="${NODE_TLS_REJECT_UNAUTHORIZED:-0}"
 
 # ── CLI flags ────────────────────────────────────────────────────────────────
 SEED_ONLY=0
@@ -16,8 +24,6 @@ Usage: $(basename "$0") [options]
 
 Options:
   -s, --seed-only   Run Step 0 only: import seed.sql into MySQL, then exit.
-                    Skips datasource / KN / agent steps. Useful for resetting
-                    the demo database without touching the platform.
   -h, --help        Show this help.
 
 Environment variables are read from .env (see env.sample).
@@ -32,24 +38,8 @@ while [ $# -gt 0 ]; do
     shift
 done
 
-# ── Debug helpers (set DEBUG=1 or DEBUG=true in .env) ───────────────────────
-# Never logs DB_PASS.
 DEBUG="${DEBUG:-0}"
-debug() {
-    if [ "$DEBUG" = "1" ] || [ "$DEBUG" = "true" ]; then
-        echo "[debug] $*" >&2
-    fi
-}
-
-debug_dump_json() {
-    local label="$1"
-    local payload="$2"
-    if [ "$DEBUG" = "1" ] || [ "$DEBUG" = "true" ]; then
-        echo "[debug] --- ${label} (raw) ---" >&2
-        echo "$payload" >&2
-        echo "[debug] --- end ${label} ---" >&2
-    fi
-}
+debug() { if [ "$DEBUG" = "1" ] || [ "$DEBUG" = "true" ]; then echo "[debug] $*" >&2; fi; }
 
 # ── Load config ──────────────────────────────────────────────────────────────
 if [ -f "$SCRIPT_DIR/.env" ]; then
@@ -58,238 +48,175 @@ if [ -f "$SCRIPT_DIR/.env" ]; then
 fi
 
 DB_HOST="${DB_HOST:?Set DB_HOST in .env}"
-# Optional: host for Step 0 only (mysql on your PC). Use public IP / VPN-reachable address if your laptop
-# cannot reach DB_HOST (e.g. DB_HOST is a cloud internal IP like 172.x for kweaver ds connect).
 DB_HOST_SEED="${DB_HOST_SEED:-$DB_HOST}"
 DB_PORT="${DB_PORT:-3306}"
 DB_NAME="${DB_NAME:?Set DB_NAME in .env}"
 DB_USER="${DB_USER:?Set DB_USER in .env}"
 DB_PASS="${DB_PASS:?Set DB_PASS in .env}"
 
-# MySQL client binary (must be installed locally; only `kweaver` talks to the platform)
+# MySQL client binary (Step 0 seeds locally; only `kweaver` talks to the platform)
 MYSQL_BIN="${MYSQL_BIN:-mysql}"
 if ! command -v "$MYSQL_BIN" >/dev/null 2>&1; then
-    # Default name not on PATH: common Homebrew layouts (Intel / Apple Silicon) without requiring PATH
     if [ "$MYSQL_BIN" = "mysql" ]; then
         _brew_mysql="$(brew --prefix mysql-client 2>/dev/null)/bin/mysql"
         for _p in "$_brew_mysql" /opt/homebrew/opt/mysql-client/bin/mysql /usr/local/opt/mysql-client/bin/mysql; do
-            if [ -x "$_p" ]; then
-                MYSQL_BIN="$_p"
-                break
-            fi
+            [ -x "$_p" ] && { MYSQL_BIN="$_p"; break; }
         done
     fi
 fi
 if ! command -v "$MYSQL_BIN" >/dev/null 2>&1; then
-    echo "Error: MySQL client not found (${MYSQL_BIN}). Step 0 runs mysql on your machine to import seed.sql."
-    echo "  macOS:  brew install mysql-client"
-    echo "          export PATH=\"\$(brew --prefix mysql-client)/bin:\$PATH\""
-    echo "  Ubuntu: sudo apt install -y mysql-client"
-    echo "  Or set MYSQL_BIN in .env to the full path of the mysql executable."
+    echo "Error: MySQL client not found (${MYSQL_BIN}). Step 0 runs mysql to import seed.sql."
+    echo "  macOS: brew install mysql-client | Ubuntu: sudo apt install -y mysql-client"
     exit 1
 fi
 
-debug "script: $SCRIPT_DIR/run.sh"
-debug "host: $(hostname 2>/dev/null || true) date: $(date -Iseconds 2>/dev/null || date)"
-debug "MYSQL_BIN=$MYSQL_BIN"
-debug "kweaver=$(command -v kweaver 2>/dev/null || echo 'not found')"
-if command -v kweaver >/dev/null 2>&1; then
-    debug "kweaver version: $(kweaver --version 2>&1 || true)"
-fi
-if [ "$DEBUG" = "1" ] || [ "$DEBUG" = "true" ]; then
-    echo "[debug] DB_HOST=$DB_HOST (kweaver ds connect / platform) DB_HOST_SEED=$DB_HOST_SEED (local mysql Step 0) DB_PORT=$DB_PORT DB_NAME=$DB_NAME DB_USER=$DB_USER DB_PASS=***" >&2
-    echo "[debug] kweaver config (first lines):" >&2
-    kweaver config show 2>&1 | head -25 >&2 || true
-fi
+# ── JSON helper: read a top-level field from stdin ───────────────────────────
+jget() { python3 -c "import json,sys;d=json.load(sys.stdin);print(d.get('$1','') if isinstance(d,dict) else '')" 2>/dev/null || true; }
 
 TIMESTAMP=$(date +%s)
-DS_NAME="example_ds_${TIMESTAMP}"
+CAT_NAME="example_cat_${TIMESTAMP}"
 KN_NAME="example_kn_${TIMESTAMP}"
 
-# Track created resources for cleanup
-DS_ID=""
+CAT_ID=""
 KN_ID=""
 
 cleanup() {
-    if [ -z "$KN_ID" ] && [ -z "$DS_ID" ]; then
-        return 0
-    fi
+    [ -z "$KN_ID" ] && [ -z "$CAT_ID" ] && return 0
     echo ""
     echo "=== Cleanup ==="
-    [ -n "$KN_ID" ] && kweaver bkn delete "$KN_ID" -y 2>/dev/null && echo "  Deleted KN $KN_ID"
-    [ -n "$DS_ID" ] && kweaver ds delete "$DS_ID" -y 2>/dev/null && echo "  Deleted datasource $DS_ID"
+    [ -n "$KN_ID" ]  && kweaver bkn delete "$KN_ID" -y 2>/dev/null && echo "  Deleted KN $KN_ID"
+    [ -n "$CAT_ID" ] && kweaver vega catalog delete "$CAT_ID" -y 2>/dev/null && echo "  Deleted catalog $CAT_ID"
     echo "Done."
 }
 trap cleanup EXIT
 
 # ── Step 0: Seed the database ───────────────────────────────────────────────
 echo "=== Step 0: Seed sample data into MySQL ==="
-if [ "$DB_HOST_SEED" != "$DB_HOST" ]; then
-    echo "  (from this PC: $DB_HOST_SEED:$DB_PORT — platform will use $DB_HOST in Step 1)"
-fi
-debug "Step 0: mysql client imports seed.sql into default database $DB_NAME"
-debug "Step 0: note — this runs on YOUR machine; platform pods use DB_HOST from Step 1."
-debug "Step 0: mysql args (password hidden): -h $DB_HOST_SEED -P $DB_PORT -u $DB_USER -p*** $DB_NAME < seed.sql"
-# Pass DB_NAME as the default database (seed.sql has no USE — works with schema-only users)
 "$MYSQL_BIN" -h "$DB_HOST_SEED" -P "$DB_PORT" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" < "$SCRIPT_DIR/seed.sql"
 echo "  Imported seed.sql → ${DB_NAME} (erp_material_bom, erp_purchase_order)"
 
 if [ "$SEED_ONLY" = "1" ]; then
     echo ""
     echo "=== Seed-only mode: stopping after Step 0 ==="
-    echo "  Database '${DB_NAME}' on ${DB_HOST_SEED}:${DB_PORT} is ready."
-    echo "  Re-run without --seed-only to continue with datasource / KN / agent steps."
     exit 0
 fi
 
-# ── Step 1: Connect datasource ──────────────────────────────────────────────
+# ── Step 1: Register a Vega catalog + discover tables ────────────────────────
 echo ""
-echo "=== Step 1: Connect MySQL datasource ==="
+echo "=== Step 1: Register Vega catalog (MySQL connector) ==="
 echo "  Host: $DB_HOST:$DB_PORT  Database: $DB_NAME"
 
-debug "Step 1: kweaver ds connect mysql $DB_HOST $DB_PORT $DB_NAME --name $DS_NAME"
-DS_JSON=$(kweaver ds connect mysql "$DB_HOST" "$DB_PORT" "$DB_NAME" \
-    --account "$DB_USER" --password "$DB_PASS" --name "$DS_NAME")
-debug_dump_json "ds connect response" "$DS_JSON"
-
-DS_ID=$(echo "$DS_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin).get('datasource_id',''))" 2>/dev/null || true)
-if [ -z "$DS_ID" ]; then
-    echo "Error: could not parse datasource_id from kweaver ds connect output." >&2
-    debug_dump_json "ds connect (parse failed)" "$DS_JSON"
+CONN_CFG=$(python3 -c "import json,sys;print(json.dumps({'host':sys.argv[1],'port':int(sys.argv[2]),'username':sys.argv[3],'password':sys.argv[4],'databases':[sys.argv[5]]}))" \
+    "$DB_HOST" "$DB_PORT" "$DB_USER" "$DB_PASS" "$DB_NAME")
+debug "Step 1: vega catalog create --connector-type mysql"
+CAT_ID=$(kweaver vega catalog create --name "$CAT_NAME" --connector-type mysql --connector-config "$CONN_CFG" 2>/dev/null | jget id)
+if [ -z "$CAT_ID" ]; then
+    echo "Error: catalog create failed (check DB_HOST is reachable from vega-backend pods, and connector config)." >&2
     exit 1
 fi
-echo "  Datasource created: $DS_ID"
+echo "  Catalog created: $CAT_ID"
 
-# ── Step 2: Create Knowledge Network ────────────────────────────────────────
-echo ""
-echo "=== Step 2: Create Knowledge Network from datasource ==="
+# Catalogs are created disabled — enable before discovery.
+kweaver call "/api/vega-backend/v1/catalogs/${CAT_ID}/enable" -X POST >/dev/null 2>&1 || true
+echo "  Catalog enabled"
 
-debug "Step 2: kweaver bkn create-from-ds $DS_ID --name $KN_NAME --build"
-KN_JSON=$(kweaver bkn create-from-ds "$DS_ID" --name "$KN_NAME" --build)
-debug_dump_json "create-from-ds response" "$KN_JSON"
+echo "  Discovering tables ..."
+kweaver vega catalog discover "$CAT_ID" --wait >/dev/null 2>&1 || true
 
-KN_ID=$(echo "$KN_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin).get('kn_id',''))" 2>/dev/null || true)
-if [ -z "$KN_ID" ]; then
-    echo "Error: could not parse kn_id from kweaver bkn create-from-ds output." >&2
-    debug_dump_json "create-from-ds (parse failed)" "$KN_JSON"
+# Discovery is asynchronous — poll the resource list until tables appear (~60s max).
+RES_JSON='{}'; RES_COUNT=0
+for _i in $(seq 1 20); do
+    RES_JSON=$(kweaver vega resource list --catalog-id "$CAT_ID" --category table --json 2>/dev/null || echo '{}')
+    RES_COUNT=$(echo "$RES_JSON" | python3 -c "import json,sys;d=json.load(sys.stdin);print(len(d.get('entries',[])))" 2>/dev/null || echo 0)
+    [ "${RES_COUNT:-0}" -gt 0 ] && break
+    sleep 3
+done
+if [ "${RES_COUNT:-0}" -eq 0 ]; then
+    echo "Error: no table resources discovered for catalog $CAT_ID (after polling)." >&2
     exit 1
+fi
+echo "  Discovered ${RES_COUNT} table resource(s):"
+echo "$RES_JSON" | python3 -c "import json,sys
+for r in json.load(sys.stdin).get('entries',[]): print('    -', r.get('name'), '('+r.get('id','')+')')"
+
+# Resolve resource IDs by table name suffix
+res_id() { echo "$RES_JSON" | python3 -c "import json,sys
+for r in json.load(sys.stdin).get('entries',[]):
+  if r.get('name','').endswith('$1'): print(r['id']); break"; }
+BOM_RES=$(res_id "erp_material_bom")
+PO_RES=$(res_id "erp_purchase_order")
+
+# ── Step 2: Create Knowledge Network + object types (resource binding) ───────
+echo ""
+echo "=== Step 2: Create Knowledge Network ==="
+KN_ID=$(kweaver bkn create --name "$KN_NAME" 2>/dev/null | jget kn_id)
+[ -z "$KN_ID" ] && KN_ID=$(kweaver bkn create --name "${KN_NAME}_b" 2>/dev/null | jget id)
+if [ -z "$KN_ID" ]; then
+    echo "Error: could not create knowledge network." >&2; exit 1
 fi
 echo "  Knowledge Network created: $KN_ID"
 
-# Show auto-discovered object types
-OT_COUNT=$(echo "$KN_JSON" | python3 -c "
-import sys,json
-d = json.load(sys.stdin)
-ots = d.get('object_types', [])
-print(len(ots))
-for ot in ots[:5]:
-    print(f\"    - {ot.get('name', '?')}\")
-if len(ots) > 5:
-    print(f'    ... and {len(ots)-5} more')
-")
-echo "  Auto-discovered object types:"
-echo "$OT_COUNT"
+# Object types bound to Vega resources (real-time, no bkn build).
+# PK/DK per the seed schema (see README).
+if [ -n "$BOM_RES" ]; then
+    kweaver bkn object-type create "$KN_ID" --name 物料BOM --resource-id "$BOM_RES" \
+        --primary-key material_code --display-key material_name >/dev/null 2>&1 \
+        && echo "  + Object type 物料BOM  → $BOM_RES"
+fi
+if [ -n "$PO_RES" ]; then
+    kweaver bkn object-type create "$KN_ID" --name 采购订单 --resource-id "$PO_RES" \
+        --primary-key id --display-key material_name >/dev/null 2>&1 \
+        && echo "  + Object type 采购订单 → $PO_RES"
+fi
 
 # ── Step 3: Explore schema ──────────────────────────────────────────────────
 echo ""
 echo "=== Step 3: Explore Knowledge Network schema ==="
+OT_LIST=$(kweaver bkn object-type list "$KN_ID" 2>/dev/null || echo '{}')
+echo "$OT_LIST" | python3 -c "import json,sys
+d=json.load(sys.stdin); es=d.get('entries',d if isinstance(d,list) else [])
+print(f'  Object types ({len(es)}):')
+for e in es: print('    -', e.get('name','?'), e.get('id',''))"
+FIRST_OT=$(echo "$OT_LIST" | python3 -c "import json,sys
+d=json.load(sys.stdin); es=d.get('entries',d if isinstance(d,list) else [])
+print(es[0].get('id','') if es else '')")
 
-OT_LIST=$(kweaver bkn object-type list "$KN_ID")
-echo "$OT_LIST" | python3 -c "
-import sys, json
-data = json.load(sys.stdin)
-entries = data.get('entries', data) if isinstance(data, dict) else data
-if isinstance(entries, list):
-    print(f'  Object types ({len(entries)}):')
-    for e in entries[:8]:
-        name = e.get('name', '?')
-        props = e.get('data_properties', [])
-        print(f'    - {name} ({len(props)} properties)')
-"
-
-# Pick the first OT and show its properties
-FIRST_OT_ID=$(echo "$OT_LIST" | python3 -c "
-import sys, json
-data = json.load(sys.stdin)
-entries = data.get('entries', data) if isinstance(data, dict) else data
-if isinstance(entries, list) and entries:
-    print(entries[0].get('id', ''))
-")
-
-if [ -n "$FIRST_OT_ID" ]; then
-    echo ""
-    echo "  Properties of first object type:"
-    kweaver bkn object-type get "$KN_ID" "$FIRST_OT_ID" --pretty 2>/dev/null | python3 -c "
-import sys, json
-data = json.load(sys.stdin)
-entry = data.get('entries', [data])[0] if isinstance(data, dict) else data
-if isinstance(entry, dict):
-    for p in (entry.get('data_properties') or [])[:10]:
-        print(f\"    - {p.get('name', '?')} ({p.get('type', '?')})\")
-" 2>/dev/null || true
+# ── Step 4: Query real data through the knowledge network ────────────────────
+echo ""
+echo "=== Step 4: Query data (real-time via Vega) ==="
+if [ -n "$FIRST_OT" ]; then
+    echo "  Sample rows from first object type:"
+    kweaver bkn object-type query "$KN_ID" "$FIRST_OT" '{"limit":3}' 2>/dev/null | python3 -c "import json,sys
+d=json.load(sys.stdin); rows=d.get('datas',d.get('entries',[]))
+print(f'    {len(rows)} row(s)')
+for r in rows[:3]:
+    vals=[str(v) for v in list(r.values())[:4] if not str(v).startswith('_')]
+    print('    -', ' | '.join(vals[:4]))" 2>/dev/null || echo "    (query returned no rows)"
 fi
 
-# ── Step 4: Semantic search via context-loader ──────────────────────────────
-echo ""
-echo "=== Step 4: Semantic search ==="
-
-kweaver context-loader config set --kn-id "$KN_ID" --name example-e2e >/dev/null 2>&1
-echo "  Context-loader configured for KN $KN_ID"
-
-echo "  Searching schema: \"采购订单 物料\""
-SCHEMA_RAW=$(kweaver context-loader kn-search "采购订单 物料" --only-schema 2>/dev/null \
-    | python3 -c "import sys,json; print(json.load(sys.stdin).get('raw',''))" 2>/dev/null || true)
-
-echo "$SCHEMA_RAW" | head -10 | sed 's/^/    /'
-[ "$(echo "$SCHEMA_RAW" | wc -l)" -gt 10 ] && echo "    ..."
+echo "  Semantic search: \"物料\""
+kweaver bkn search "$KN_ID" "物料" 2>/dev/null | python3 -c "import json,sys
+try:
+  d=json.load(sys.stdin); cs=d.get('concepts',d.get('entries',[]))
+  print(f'    {len(cs)} concept(s) matched')
+except Exception: print('    (no search index for real-time resources)')" 2>/dev/null || true
 
 # ── Step 5: Chat with Agent ─────────────────────────────────────────────────
 echo ""
 echo "=== Step 5: Chat with Agent ==="
-
-# Use provided AGENT_ID or find the first available agent
 if [ -z "${AGENT_ID:-}" ]; then
-    AGENT_ID=$(kweaver agent list --limit 1 2>/dev/null | python3 -c "
-import sys, json
-data = json.load(sys.stdin)
-if isinstance(data, list) and data:
-    print(data[0].get('id', ''))
-" 2>/dev/null || true)
+    AGENT_ID=$(kweaver agent list --limit 1 2>/dev/null | python3 -c "import json,sys
+d=json.load(sys.stdin); a=d if isinstance(d,list) else d.get('entries',[])
+print(a[0].get('id','') if a else '')" 2>/dev/null || true)
 fi
-
-if [ -z "$AGENT_ID" ]; then
-    echo "  No agent available. Set AGENT_ID in .env or create one."
-    echo "  Skipping chat step."
+if [ -z "${AGENT_ID:-}" ]; then
+    echo "  No agent available. Set AGENT_ID in .env or create one. Skipping chat."
 else
     echo "  Agent: $AGENT_ID"
-
-    QUESTION="这个数据库里有哪些核心的业务表？它们之间是什么关系？"
-
-    # Inject schema context so the agent answers with real table info
-    if [ -n "$SCHEMA_RAW" ]; then
-        PROMPT="以下是通过知识网络检索到的数据库 schema 信息：
-
-${SCHEMA_RAW}
-
-基于以上 schema，请回答：${QUESTION}"
-    else
-        PROMPT="$QUESTION"
-    fi
-
+    QUESTION="这个供应链数据库里有哪些核心业务表？物料和采购订单之间是什么关系？"
     echo "  Question: $QUESTION"
-    echo ""
-
-    debug "Step 5: kweaver agent chat $AGENT_ID --stream"
     echo "  Agent response:"
-    if [ "$DEBUG" = "1" ] || [ "$DEBUG" = "true" ]; then
-        kweaver agent chat "$AGENT_ID" \
-            -m "$PROMPT" \
-            --stream --verbose 2>&1 | sed 's/^/    /'
-    else
-        kweaver agent chat "$AGENT_ID" \
-            -m "$PROMPT" \
-            --stream 2>/dev/null | sed 's/^/    /'
-    fi
+    kweaver agent chat "$AGENT_ID" -m "$QUESTION" --stream 2>/dev/null | sed 's/^/    /' || true
 fi
 
 echo ""

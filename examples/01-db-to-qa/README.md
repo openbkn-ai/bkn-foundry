@@ -18,8 +18,8 @@ MySQL Database
      │
      ▼
 ┌─────────────┐     ┌──────────────┐     ┌─────────────────┐
-│  Datasource │────▶│  Knowledge   │────▶│ Context-Loader  │
-│  Connect    │     │  Network     │     │ Semantic Search  │
+│ Vega Catalog│────▶│  Knowledge   │────▶│  Real-time      │
+│ + Discover  │     │  Network     │     │  Query (Vega)   │
 └─────────────┘     └──────────────┘     └─────────────────┘
                            │
                            ▼
@@ -30,11 +30,15 @@ MySQL Database
 ```
 
 0. **Seed** sample data into MySQL (`seed.sql` — fictional smart-home supply chain)
-1. **Connect** a MySQL datasource to the platform
-2. **Create & Build** a Knowledge Network from the datasource
-3. **Explore** auto-discovered object types and properties
-4. **Search** the knowledge network with natural language
+1. **Register** a Vega catalog (MySQL connector) and **discover** its tables
+2. **Create** a Knowledge Network with object types bound to Vega resources
+3. **Explore** the object types
+4. **Query** the data in real time through the knowledge network
 5. **Chat** with an Agent to answer questions about the data
+
+> This example uses the **Vega catalog/connector** model (vega-backend). Object types
+> bind to Vega *resource* IDs and are queried in real time — no `bkn build` step. The
+> legacy `data-connection` datasource flow is not used.
 
 ## Prerequisites
 
@@ -76,13 +80,21 @@ to the internal address and `DB_HOST_SEED` to the public one.
 ## Key Commands
 
 ```bash
-kweaver ds connect mysql $DB_HOST $DB_PORT $DB_NAME \
-  --account $DB_USER --password $DB_PASS --name "my-datasource"
+# 1. Register a Vega catalog (MySQL connector) and discover tables
+kweaver vega catalog create --name "my-cat" --connector-type mysql \
+  --connector-config '{"host":"'$DB_HOST'","port":'$DB_PORT',"username":"'$DB_USER'","password":"'$DB_PASS'","databases":["'$DB_NAME'"]}'
+kweaver call "/api/vega-backend/v1/catalogs/<catalog-id>/enable" -X POST   # catalogs start disabled
+kweaver vega catalog discover <catalog-id> --wait
+kweaver vega resource list --catalog-id <catalog-id> --category table       # → resource IDs
 
-kweaver bkn create-from-ds <datasource-id> --name "my-kn" --build
+# 2. Build a KN with object types bound to Vega resources (real-time, no build)
+kweaver bkn create --name "my-kn"
+kweaver bkn object-type create <kn-id> --name 物料 --resource-id <resource-id> \
+  --primary-key material_code --display-key material_name
 
+# 3. Explore + query + chat
 kweaver bkn object-type list <kn-id>
-kweaver context-loader kn-search "supply chain" --kn-id <kn-id>
+kweaver bkn object-type query <kn-id> <ot-id> '{"limit":5}'
 kweaver agent chat <agent-id> -m "What are the main suppliers?"
 ```
 
