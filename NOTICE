@@ -43,13 +43,12 @@ are licensed by OpenBKN under the Apache License, Version 2.0:
 Full license text: LICENSE-APACHE.txt
 
 ================================================================
-3. OpenBKN proprietary modules (OpenBKN Source-Available License)
+3. OpenBKN modules (OpenBKN License)
 ================================================================
 The following components are independently developed by OpenBKN, do
 not contain upstream kweaver-core code, are copyright OpenBKN, and
-are licensed under the OpenBKN Source-Available License (Apache License
-2.0 with Additional Conditions). These modules are source-available
-and are NOT OSI-approved open source:
+are licensed under the OpenBKN License (a modified version of the
+Apache License, Version 2.0, with Additional Conditions):
 
   - BKN Safe
   - BKN Studio

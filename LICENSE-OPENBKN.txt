@@ -1,5 +1,7 @@
-OpenBKN Source-Available License
-(Based on the Apache License, Version 2.0, with Additional Conditions)
+OpenBKN License
+
+OpenBKN is licensed under a modified version of the Apache License,
+Version 2.0, with the following additional conditions.
 
 Copyright (c) 2026 OpenBKN. All rights reserved.
 
@@ -7,21 +9,21 @@ Copyright (c) 2026 OpenBKN. All rights reserved.
 PREAMBLE
 ================================================================
 
-This license applies only to the OpenBKN proprietary modules that
-expressly reference this file in their source headers (the "Licensed
-Modules"), including but not limited to BKN Safe and BKN Studio.
+This license applies only to the OpenBKN modules that expressly
+reference this file in their source headers (the "Licensed Modules"),
+including but not limited to BKN Safe and BKN Studio.
 
 The Licensed Modules are licensed under the terms of the Apache
 License, Version 2.0 (the "Apache License"), the full text of which is
 provided in the file LICENSE-APACHE.txt and is also available at
-http://www.apache.org/licenses/LICENSE-2.0, AS MODIFIED AND
-SUPPLEMENTED by the Additional Conditions set out below.
+http://www.apache.org/licenses/LICENSE-2.0, as modified and
+supplemented by the Additional Conditions set out below.
 
 In the event of any conflict between the Additional Conditions and the
 Apache License, the Additional Conditions shall control with respect to
 the Licensed Modules.
 
-This license does NOT apply to:
+This license does not apply to:
   (a) components that originate from the upstream project
       kweaver-ai/kweaver-core, which remain licensed solely under the
       Apache License, Version 2.0, with their original copyright
@@ -29,12 +31,6 @@ This license does NOT apply to:
   (b) OpenBKN components expressly licensed under the plain Apache
       License, Version 2.0 (e.g., BKN SDK / CLI and BKN Skill).
 See the NOTICE file for the per-component breakdown.
-
-NOTE ON CLASSIFICATION: Because the Additional Conditions impose
-restrictions beyond those of the Apache License, the Licensed Modules
-are "source-available" and are NOT an OSI-approved open source license.
-They should be referred to as the "Community Edition" or
-"source-available", not as "open source".
 
 ================================================================
 ADDITIONAL CONDITIONS

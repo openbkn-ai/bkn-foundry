@@ -526,12 +526,11 @@ BKN Foundry is multi-licensed:
   remain under the Apache License 2.0 (see LICENSE-APACHE.txt).
 - OpenBKN access-layer components (BKN SDK / CLI, BKN Skill) are under
   the Apache License 2.0 (see LICENSE-APACHE.txt).
-- OpenBKN proprietary modules (BKN Safe, BKN Studio) are under the
-  OpenBKN Source-Available License — Apache 2.0 with additional
-  conditions, including a restriction on providing the software as a
-  service to third parties without a commercial license
-  (see LICENSE-OPENBKN.txt). These modules are source-available and are
-  NOT OSI-approved open source.
+- OpenBKN modules (BKN Safe, BKN Studio) are under the OpenBKN
+  License — a modified version of the Apache License 2.0 with
+  additional conditions, including a restriction on providing the
+  software as a service to third parties without a commercial license
+  (see LICENSE-OPENBKN.txt).
 
 The license for each file is stated in its header. See NOTICE for a
 per-component breakdown.

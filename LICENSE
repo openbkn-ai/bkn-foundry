@@ -27,16 +27,13 @@ For a per-component breakdown and attribution, see the NOTICE file.
    Examples: BKN SDK / CLI, BKN Skill.
 
 --------------------------------------------------------------------
-3. OpenBKN proprietary modules (source-available)
+3. OpenBKN modules
 --------------------------------------------------------------------
-   Licensed under the OpenBKN Source-Available License (the Apache
-   License, Version 2.0, with Additional Conditions, including a
-   restriction on providing the software as a service to third
+   Licensed under the OpenBKN License (a modified version of the
+   Apache License, Version 2.0, with Additional Conditions, including
+   a restriction on providing the software as a service to third
    parties without a commercial license).
    Full text: LICENSE-OPENBKN.txt
-
-   These modules are source-available and are NOT OSI-approved open
-   source. Refer to them as the "Community Edition", not "open source".
 
    Examples: BKN Safe, BKN Studio.
 
