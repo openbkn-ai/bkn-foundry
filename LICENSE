@@ -30,9 +30,7 @@ For a per-component breakdown and attribution, see the NOTICE file.
 3. OpenBKN modules
 --------------------------------------------------------------------
    Licensed under the OpenBKN License (a modified version of the
-   Apache License, Version 2.0, with Additional Conditions, including
-   a restriction on providing the software as a service to third
-   parties without a commercial license).
+   Apache License, Version 2.0, with Additional Conditions).
    Full text: LICENSE-OPENBKN.txt
 
    Examples: BKN Safe, BKN Studio.

@@ -525,7 +525,7 @@ BKN Foundry 采用多许可（multi-licensed）：
 - OpenBKN 自研接入层组件（BKN SDK / CLI、BKN Skill）采用
   Apache License 2.0（见 LICENSE-APACHE.txt）。
 - OpenBKN 自研模块（BKN Safe、BKN Studio）采用 OpenBKN License
-  —— 即 Apache License 2.0 的修改版本，附加若干条件，包括未经
-  商业许可不得将本软件作为服务提供给第三方（见 LICENSE-OPENBKN.txt）。
+  —— 即 Apache License 2.0 的修改版本，附加若干条件
+  （见 LICENSE-OPENBKN.txt）。
 
 每个文件适用的许可在其文件头注明。按组件的归属明细见 NOTICE。
