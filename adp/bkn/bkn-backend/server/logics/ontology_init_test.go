@@ -14,6 +14,26 @@ import (
 	"bkn-backend/interfaces"
 )
 
+// ── bknCatalogRequest ─────────────────────────────────────────────────────────
+
+// Regression for issue #7: the BKN logical namespace catalog must be created with
+// Enabled=true, otherwise it lands disabled and BKN search/query fails with
+// VegaBackend.Catalog.IsDisabled.
+func Test_bknCatalogRequest(t *testing.T) {
+	Convey("Test bknCatalogRequest\n", t, func() {
+		req := bknCatalogRequest()
+
+		Convey("Catalog is enabled at creation (issue #7)\n", func() {
+			So(req.Enabled, ShouldBeTrue)
+		})
+
+		Convey("Uses the BKN catalog id and name\n", func() {
+			So(req.ID, ShouldEqual, interfaces.BKN_CATALOG_ID)
+			So(req.Name, ShouldEqual, interfaces.BKN_CATALOG_NAME)
+		})
+	})
+}
+
 // ── comparePropertyFeature ────────────────────────────────────────────────────
 
 func Test_comparePropertyFeature(t *testing.T) {
