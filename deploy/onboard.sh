@@ -87,6 +87,8 @@ unset _ns_cfg
 
 # shellcheck source=scripts/lib/onboard_models.sh
 source "${SCRIPT_DIR}/scripts/lib/onboard_models.sh"
+# shellcheck source=scripts/lib/onboard_oss_storage.sh
+source "${SCRIPT_DIR}/scripts/lib/onboard_oss_storage.sh"
 
 CONFIG_FILE=""
 BKN_NAME=""
@@ -925,6 +927,7 @@ onboard_probe() {
     onboard_prepend_npm_global_bin_to_path
     onboard_ensure_kweaver_admin_auth_for_isf
     onboard_offer_isf_test_user
+    onboard_provision_oss_default_storage "${NAMESPACE}"
     onboard_offer_context_loader_toolset
 }
 
