@@ -809,7 +809,7 @@ install_dip() {
     # Resolve chart source: local directory takes priority over remote repo
     if [[ "${use_local}" != "true" ]]; then
         if [[ -z "${HELM_CHART_REPO_NAME}" ]]; then
-            HELM_CHART_REPO_NAME="kweaver"
+            HELM_CHART_REPO_NAME="openbkn"
         fi
         log_info "No explicit local DIP charts directory provided, using Helm repo."
         log_info "  Version:   ${HELM_CHART_VERSION:-latest}"
@@ -858,7 +858,7 @@ download_dip() {
     ensure_helm_available
     _dip_require_version_manifest || return 1
 
-    HELM_CHART_REPO_NAME="${HELM_CHART_REPO_NAME:-kweaver}"
+    HELM_CHART_REPO_NAME="${HELM_CHART_REPO_NAME:-openbkn}"
     HELM_CHART_REPO_URL="${HELM_CHART_REPO_URL:-https://kweaver-ai.github.io/helm-repo/}"
 
     local charts_dir

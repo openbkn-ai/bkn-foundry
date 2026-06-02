@@ -1154,7 +1154,7 @@ HELM_TARBALL_BASEURL="${HELM_TARBALL_BASEURL:-https://repo.huaweicloud.com/helm/
 # Global Helm Chart Configuration (for Studio, BKN, and other modules)
 HELM_CHART_VERSION="${HELM_CHART_VERSION:-}"
 HELM_CHART_REPO_URL="${HELM_CHART_REPO_URL:-https://kweaver-ai.github.io/helm-repo/}"
-HELM_CHART_REPO_NAME="${HELM_CHART_REPO_NAME:-kweaver}"
+HELM_CHART_REPO_NAME="${HELM_CHART_REPO_NAME:-openbkn}"
 RELEASE_MANIFESTS_DIR="${RELEASE_MANIFESTS_DIR:-${VERSION_MANIFESTS_DIR:-${SCRIPT_DIR}/release-manifests}}"
 
 DOCKER_IO_MIRROR_PREFIX="${DOCKER_IO_MIRROR_PREFIX:-swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/}"

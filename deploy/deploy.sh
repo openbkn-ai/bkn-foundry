@@ -72,12 +72,12 @@ usage() {
     echo "  zookeeper uninstall           Uninstall Zookeeper (PVCs will be deleted by default)"
     echo "  ingress-nginx install         Install ingress-nginx-controller"
     echo "  ingress-nginx uninstall       Uninstall ingress-nginx-controller"
-    echo "  kweaver-core install          Install BKN Foundry services; auto-installs K8s/data services if missing"
-    echo "  kweaver-core install          On BYOK (KWEAVER_SKIP_PLATFORM_BOOTSTRAP=true), runs ensure_data_services first unless KWEAVER_SKIP_DATA_SERVICES_BUNDLE=true"
-    echo "  kweaver-core install --minimum  Minimum install (skip auth & business-domain modules)"
-    echo "  kweaver-core download         Download/update BKN Foundry charts into deploy/.tmp/charts"
-    echo "  kweaver-core uninstall        Uninstall BKN Foundry services"
-    echo "  kweaver-core status           Show BKN Foundry services status"
+    echo "  bkn-foundry install          Install BKN Foundry services; auto-installs K8s/data services if missing"
+    echo "  bkn-foundry install          On BYOK (KWEAVER_SKIP_PLATFORM_BOOTSTRAP=true), runs ensure_data_services first unless KWEAVER_SKIP_DATA_SERVICES_BUNDLE=true"
+    echo "  bkn-foundry install --minimum  Minimum install (skip auth & business-domain modules)"
+    echo "  bkn-foundry download         Download/update BKN Foundry charts into deploy/.tmp/charts"
+    echo "  bkn-foundry uninstall        Uninstall BKN Foundry services"
+    echo "  bkn-foundry status           Show BKN Foundry services status"
     echo "                                Use --set to pass custom values to all charts"
     echo "  all install                   Run full initialization (k8s + mariadb + redis + ingress-nginx)"
     echo ""
@@ -86,7 +86,7 @@ usage() {
     echo "  $0 k8s reset                  # Reset cluster state before re-install"
     echo "  $0 k8s status                 # Show cluster status"
     echo "  $0 k3s install                # Install single-node k3s + ingress-nginx (Linux)"
-    echo "  $0 --distro=k3s kweaver-core install --minimum  # k3s path; default is k8s/kubeadm (omit flag or KUBE_DISTRO=k8s)"
+    echo "  $0 --distro=k3s bkn-foundry install --minimum  # k3s path; default is k8s/kubeadm (omit flag or KUBE_DISTRO=k8s)"
     echo "  POD_CIDR=10.0.0.0/16 $0 k8s install  # Initialize with custom POD_CIDR"
     echo "  $0 mariadb install            # Install MariaDB"
     echo "  $0 mariadb uninstall          # Uninstall MariaDB"
@@ -117,7 +117,7 @@ usage() {
     echo "  $0 config generate            # Generate/update ~/.openbkn-ai/config.yaml"
     echo "  $0 all install                # Full initialization with all components"
     echo ""
-    echo "Global Options (must appear BEFORE <module> <action>, e.g. $0 --distro=k8s kweaver-core install --minimum):"
+    echo "Global Options (must appear BEFORE <module> <action>, e.g. $0 --distro=k8s bkn-foundry install --minimum):"
     echo "                                Trailing flags like ... install --minimum --distro=k8s are NOT parsed here;"
     echo "                                use env KUBE_DISTRO=k8s or move --distro (same rule as -y, --force-upgrade)."
     echo "  -y, --yes                     Skip all interactive prompts and use defaults"
@@ -126,7 +126,7 @@ usage() {
     echo "  --distro=k8s|k3s              Cluster bootstrap when modules auto-ensure K8s (default: k8s = kubeadm stack)."
     echo "                                Same as env KUBE_DISTRO=k8s|k3s (legacy: kubeadm means k8s). Use k3s for single-node lightweight."
     echo "  --config=<path>               Specify config.yaml path (values file for helm installs). May appear"
-    echo "                                before <module> (global) or on the module command line (e.g. kweaver-core)."
+    echo "                                before <module> (global) or on the module command line (e.g. bkn-foundry)."
     echo "                                Default: ~/.openbkn-ai/config.yaml or \$CONFIG_YAML_PATH env var"
     echo "  --charts_dir=<path>           Use a specific local chart directory for download/install"
     echo "                                install only uses local charts when this option is explicitly set"
@@ -141,19 +141,19 @@ usage() {
     echo "  --set <key>=<value>           Pass custom values to helm charts (can be used multiple times)"
     echo "                                Example: --set auth.enabled=false --set image.tag=latest"
     echo ""
-    echo "Environment (optional, kweaver-core install):"
+    echo "Environment (optional, bkn-foundry install):"
     echo "  (Context Loader ADP import moved to deploy/onboard.sh after kweaver auth — kweaver call impex; see onboard -h.)"
     echo "  DEPLOY_BUSINESS_DOMAIN        x-business-domain for kweaver/onboard (default: bd_public)."
     echo ""
-    echo "  $0 kweaver-core install --minimum                 # Minimum install (skip auth & business-domain)"
-    echo "  $0 kweaver-core install --set auth.enabled=false  # Install BKN Foundry without ISF"
-    echo "  $0 kweaver-core install --set auth.enabled=false --set businessDomain.enabled=false  # Same as --minimum"
-    echo "  $0 kweaver-core install --set image.registry=my-registry.com --set image.tag=v1.0.0  # Custom image settings"
-    echo "  $0 kweaver-core download --charts_dir=/path/to/charts # Download Core charts into a specific local directory"
-    echo "  $0 kweaver-core install --charts_dir=/path/to/charts  # Install Core from a local charts directory"
-    echo "  $0 kweaver-core download --version=0.4.0  # Auto-uses ./release-manifests/0.4.0/kweaver-core.yaml when present"
-    echo "  $0 kweaver-core download --version=0.4.0 --version_file=./release-manifests/0.4.0/kweaver-core.yaml"
-    echo "  $0 kweaver-core install --config=/root/.openbkn-ai/config.yaml --helm_repo_name=kweaver"
+    echo "  $0 bkn-foundry install --minimum                 # Minimum install (skip auth & business-domain)"
+    echo "  $0 bkn-foundry install --set auth.enabled=false  # Install BKN Foundry without ISF"
+    echo "  $0 bkn-foundry install --set auth.enabled=false --set businessDomain.enabled=false  # Same as --minimum"
+    echo "  $0 bkn-foundry install --set image.registry=my-registry.com --set image.tag=v1.0.0  # Custom image settings"
+    echo "  $0 bkn-foundry download --charts_dir=/path/to/charts # Download Core charts into a specific local directory"
+    echo "  $0 bkn-foundry install --charts_dir=/path/to/charts  # Install Core from a local charts directory"
+    echo "  $0 bkn-foundry download --version=0.4.0  # Auto-uses ./release-manifests/0.4.0/kweaver-core.yaml when present"
+    echo "  $0 bkn-foundry download --version=0.4.0 --version_file=./release-manifests/0.4.0/kweaver-core.yaml"
+    echo "  $0 bkn-foundry install --config=/root/.openbkn-ai/config.yaml --helm_repo_name=openbkn"
 }
 
 _detect_node_ip() {
@@ -718,7 +718,7 @@ main() {
     fi
     
     # Handle kweaver-core module
-    if [[ "${module}" == "kweaver-core" ]] || [[ "${module}" == "core" ]]; then
+    if [[ "${module}" == "bkn-foundry" ]] || [[ "${module}" == "kweaver-core" ]] || [[ "${module}" == "core" ]]; then
         case "${action}" in
             install|init)
                 parse_core_args "install" "$@"
@@ -747,7 +747,7 @@ main() {
     fi
     
     # Handle kweaver-dip module
-    if [[ "${module}" == "kweaver-dip" ]] || [[ "${module}" == "dip" ]]; then
+    if [[ "${module}" == "bkn-dip" ]] || [[ "${module}" == "kweaver-dip" ]] || [[ "${module}" == "dip" ]]; then
         case "${action}" in
             install|init)
                 check_root
@@ -904,7 +904,7 @@ main() {
     fi
     
     # Handle kweaver module (application services)
-    if [[ "${module}" == "kweaver" ]]; then
+    if [[ "${module}" == "bkn" ]] || [[ "${module}" == "kweaver" ]]; then
         case "${action}" in
             init)
                 check_root

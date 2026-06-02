@@ -271,7 +271,7 @@ download_core() {
     ensure_helm_available
     _core_require_version_manifest || return 1
 
-    HELM_CHART_REPO_NAME="${HELM_CHART_REPO_NAME:-kweaver}"
+    HELM_CHART_REPO_NAME="${HELM_CHART_REPO_NAME:-openbkn}"
     HELM_CHART_REPO_URL="${HELM_CHART_REPO_URL:-https://kweaver-ai.github.io/helm-repo/}"
 
     local charts_dir
@@ -521,7 +521,7 @@ install_core() {
         if [[ -n "${CORE_VERSION_MANIFEST_FILE:-}" ]]; then
             log_info "  Version Manifest: ${CORE_VERSION_MANIFEST_FILE}"
         fi
-        HELM_CHART_REPO_NAME="${HELM_CHART_REPO_NAME:-kweaver}"
+        HELM_CHART_REPO_NAME="${HELM_CHART_REPO_NAME:-openbkn}"
         HELM_CHART_REPO_URL="${HELM_CHART_REPO_URL:-https://kweaver-ai.github.io/helm-repo/}"
         parse_manifest_source "${CORE_VERSION_MANIFEST_FILE:-}"
         log_chart_source "${HELM_CHART_REPO_NAME}" "${HELM_CHART_REPO_URL}"
