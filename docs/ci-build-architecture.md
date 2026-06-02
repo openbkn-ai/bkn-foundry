@@ -84,7 +84,7 @@ adp/vega/vega-backend/ci.yaml        ──▶   .github/workflows/reusable-buil
 ### 5.1 Schema
 
 ```yaml
-apiVersion: kowell-ci/v1
+apiVersion: openbkn-ci/v1
 service: vega-backend            # 唯一名，用于矩阵 / 日志 / 镜像默认名
 
 # 版本来源；相对仓库根。缺省回退到服务目录内 VERSION，再回退根 VERSION。

@@ -270,13 +270,13 @@ npx skills add https://github.com/kweaver-ai/kweaver-sdk --skill create-bkn
 **使用任意 skill 前**，需先完成 OpenBKN 实例认证：
 
 ```bash
-kweaver auth login https://your-kowell-instance.com
+kweaver auth login https://your-openbkn-instance.com
 ```
 
 > **注意** 如果你的实例使用了自签名或不受信任的 TLS 证书（新部署且未配置 CA 签发证书时很常见），添加 `-k` 参数跳过证书验证：
 >
 > ```bash
-> kweaver auth login https://your-kowell-instance.com -k
+> kweaver auth login https://your-openbkn-instance.com -k
 > ```
 
 ### 无浏览器环境认证（SSH、CI、容器等）
@@ -347,7 +347,7 @@ Paste URL or code>
 ### CLI
 
 ```bash
-kweaver auth login https://your-kowell.com -k    # 登录（自签名证书加 -k）
+kweaver auth login https://your-openbkn.com -k    # 登录（自签名证书加 -k）
 kweaver bkn list                                 # 列出知识网络
 kweaver bkn search <kn-id> "关键词"              # 语义搜索
 kweaver agent chat <agent-id> -m "你好"         # 与 Decision Agent 对话

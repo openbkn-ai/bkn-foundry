@@ -272,13 +272,13 @@ npx skills add https://github.com/kweaver-ai/kweaver-sdk --skill create-bkn
 **Before using any skill**, authenticate with your OpenBKN instance:
 
 ```bash
-kweaver auth login https://your-kowell-instance.com
+kweaver auth login https://your-openbkn-instance.com
 ```
 
 > **Self-signed certificate?** If your instance uses a self-signed or untrusted TLS certificate (common for fresh deployments without a CA-issued cert), add `-k` to skip certificate verification:
 >
 > ```bash
-> kweaver auth login https://your-kowell-instance.com -k
+> kweaver auth login https://your-openbkn-instance.com -k
 > ```
 
 ### Headless / no-browser authentication (SSH, CI, containers)
@@ -349,7 +349,7 @@ Full details: [kweaver-sdk — Authentication](https://github.com/kweaver-ai/kwe
 ### CLI
 
 ```bash
-kweaver auth login https://your-kowell.com -k    # authenticate (-k for self-signed TLS)
+kweaver auth login https://your-openbkn.com -k    # authenticate (-k for self-signed TLS)
 kweaver bkn list                                 # list knowledge networks
 kweaver bkn search <kn-id> "query"               # semantic search
 kweaver agent chat <agent-id> -m "Hello"         # chat with a Decision Agent
