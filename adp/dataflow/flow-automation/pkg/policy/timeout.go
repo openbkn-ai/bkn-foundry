@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/telemetry/trace"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/libs/go/telemetry/trace"
 )
 
 const TimeOutPolicyName = "TimeOutPolicy"

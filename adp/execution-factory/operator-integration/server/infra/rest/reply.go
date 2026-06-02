@@ -10,11 +10,11 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/common"
-	myErr "github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/errors"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/logger"
-	validatorv "github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/validator"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/common"
+	myErr "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/errors"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/logger"
+	validatorv "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/validator"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
 	errorwrap "github.com/pkg/errors"
 )
 

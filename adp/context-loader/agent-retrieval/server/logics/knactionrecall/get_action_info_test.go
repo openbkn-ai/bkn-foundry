@@ -1,4 +1,4 @@
-// Copyright 2026 kowell.ai
+// Copyright 2026 openbkn.ai
 // Copyright The kweaver.ai Authors.
 //
 // Licensed under the Apache License, Version 2.0.
@@ -14,9 +14,9 @@ import (
 	"github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
-	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/infra/config"
-	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/interfaces"
-	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/mocks"
+	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/config"
+	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/mocks"
 )
 
 // TestGetActionInfo_QueryActionsError 测试 QueryActions 调用失败的场景

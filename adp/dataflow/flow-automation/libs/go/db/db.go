@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/go-sql-driver/mysql"
-	dm "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/dialect/dm"
-	kdb "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/dialect/kdb"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/utils"
+	dm "github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/libs/go/dialect/dm"
+	kdb "github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/libs/go/dialect/kdb"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/libs/go/utils"
 	_ "github.com/kweaver-ai/proton-rds-sdk-go/driver" // 注册数据库驱动
 	mysqld "gorm.io/driver/mysql"
 	"gorm.io/gorm"

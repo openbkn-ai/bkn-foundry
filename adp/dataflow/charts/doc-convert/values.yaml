@@ -1,11 +1,11 @@
 # 统一副本数配置（因为已合并为一个多容器 Pod）
 replicaCount: 1
-namespace: kweaver
+namespace: openbkn
 enableDualStack: false
 type: ClusterIP
 
 image:
-  registry: ghcr.io/kowell-ai
+  registry: ghcr.io/openbkn-ai
   gotenberg:
     repository: gotenberg
     tag: "__VERSION__"

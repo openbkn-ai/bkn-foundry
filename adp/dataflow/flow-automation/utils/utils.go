@@ -26,7 +26,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/log"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/pkg/log"
 	"github.com/sony/sonyflake"
 	"go.mongodb.org/mongo-driver/bson"
 	"golang.org/x/text/encoding/simplifiedchinese"

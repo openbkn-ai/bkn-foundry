@@ -2,7 +2,7 @@ replicaCount: 1
 
 nodeSelector: {}
 
-namespace: kweaver
+namespace: openbkn
 moduleName: agent-operator-integration
 
 # 设置为dev则为开发模式.
@@ -14,7 +14,7 @@ securityContext:
   runAsGroup: 5000
 
 image:
-  registry: ghcr.io/kowell-ai
+  registry: ghcr.io/openbkn-ai
   service:
     repository: agent-operator-integration
     tag: "__VERSION__"

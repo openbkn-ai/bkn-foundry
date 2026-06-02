@@ -6,10 +6,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/common"
-	commonLog "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/log"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/telemetry/trace"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/mod"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/common"
+	commonLog "github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/libs/go/log"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/libs/go/telemetry/trace"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/pkg/mod"
 	"github.com/robfig/cron/v3"
 )
 

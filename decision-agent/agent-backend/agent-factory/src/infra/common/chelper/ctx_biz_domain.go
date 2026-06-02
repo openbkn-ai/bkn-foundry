@@ -5,7 +5,7 @@ import (
 	"errors"
 
 	"github.com/gin-gonic/gin"
-	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/infra/common/cenum"
+	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/infra/common/cenum"
 )
 
 // GetBizDomainIDFromGinHeader 从Gin请求头中获取业务域ID

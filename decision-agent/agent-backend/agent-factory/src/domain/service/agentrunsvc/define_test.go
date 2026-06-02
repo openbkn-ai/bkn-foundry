@@ -3,9 +3,9 @@ package agentsvc
 import (
 	"testing"
 
-	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/conf"
-	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/domain/service"
-	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/infra/cmp/icmp/cmpmock"
+	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/conf"
+	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/domain/service"
+	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/infra/cmp/icmp/cmpmock"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
 )

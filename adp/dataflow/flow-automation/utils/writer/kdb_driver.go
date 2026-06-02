@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	kdb "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/dialect/kdb"
+	kdb "github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/libs/go/dialect/kdb"
 	"gorm.io/gorm"
 )
 

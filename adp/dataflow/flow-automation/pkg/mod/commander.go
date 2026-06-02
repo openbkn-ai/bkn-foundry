@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/entity"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/pkg/entity"
 )
 
 // DefCommander used to execute command

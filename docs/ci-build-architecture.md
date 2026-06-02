@@ -1,7 +1,7 @@
 # 微服务构建机制设计：清单随服务走（Manifest-per-Service）
 
 > 状态：设计稿（待评审）
-> 适用范围：kowell-core monorepo 的镜像 / Helm Chart 构建与发布
+> 适用范围：bkn-foundry monorepo 的镜像 / Helm Chart 构建与发布
 > 目标读者：维护 CI 的工程师、新增微服务的开发者
 
 ## 1. 背景与问题

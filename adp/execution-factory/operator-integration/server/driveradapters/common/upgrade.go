@@ -11,13 +11,13 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"
 	"github.com/go-playground/validator/v10"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/dbaccess"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/config"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/errors"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/rest"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces/model"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/utils"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/dbaccess"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/config"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/errors"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/rest"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces/model"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/utils"
 )
 
 type UpgradeHandler interface {

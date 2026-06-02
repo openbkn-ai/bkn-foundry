@@ -8,7 +8,7 @@ import (
 
 	// DM8 and KDB drivers are now implemented in this package
 	"github.com/go-sql-driver/mysql"
-	dm "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/dialect/dm"
+	dm "github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/libs/go/dialect/dm"
 	"gorm.io/gorm"
 )
 

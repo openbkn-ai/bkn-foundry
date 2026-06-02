@@ -3,7 +3,7 @@ package skillvalobj
 import (
 	"encoding/json"
 
-	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/domain/enum/cdaenum/skillenum"
+	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/domain/enum/cdaenum/skillenum"
 	"github.com/pkg/errors"
 )
 

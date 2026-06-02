@@ -3,10 +3,10 @@ package idbaccess
 import (
 	"context"
 
-	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/infra/persistence/dapo"
+	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/infra/persistence/dapo"
 )
 
-//go:generate mockgen -package idbaccessmock -destination ./idbaccessmock/product.go github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/port/driven/idbaccess IProductRepo
+//go:generate mockgen -package idbaccessmock -destination ./idbaccessmock/product.go github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/port/driven/idbaccess IProductRepo
 type IProductRepo interface {
 	// 基本CRUD操作
 	Create(ctx context.Context, po *dapo.ProductPo) (key string, err error)

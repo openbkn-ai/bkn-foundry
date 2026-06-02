@@ -6,9 +6,9 @@ import (
 	"testing"
 
 	"github.com/go-playground/assert/v2"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/drivenadapters"
-	ierr "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/errors"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/tests/mock_drivenadapters"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/drivenadapters"
+	ierr "github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/libs/go/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/tests/mock_drivenadapters"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 )

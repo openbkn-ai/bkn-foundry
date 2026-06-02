@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/ecron/common"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/ecron/utils"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/pkg/ecron/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/pkg/ecron/utils"
 
 	"github.com/gin-gonic/gin"
 	jsoniter "github.com/json-iterator/go"

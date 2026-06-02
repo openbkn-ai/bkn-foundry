@@ -2,7 +2,7 @@
 # ${VAR} is replaced from the environment (for CI: export the keys first).
 
 # Optional: Kubernetes namespace of KWeaver Core (default kweaver)
-# namespace: kweaver
+# namespace: openbkn
 
 llm:
   - model_name: deepseek-chat

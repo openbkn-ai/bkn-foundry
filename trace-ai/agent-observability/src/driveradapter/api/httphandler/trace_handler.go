@@ -5,8 +5,8 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/kowell-ai/kowell-core/trace-ai/agent-observability/src/domain/service/tracesvc"
-	"github.com/kowell-ai/kowell-core/trace-ai/agent-observability/src/driveradapter/api/rdto"
+	"github.com/openbkn-ai/bkn-foundry/trace-ai/agent-observability/src/domain/service/tracesvc"
+	"github.com/openbkn-ai/bkn-foundry/trace-ai/agent-observability/src/driveradapter/api/rdto"
 )
 
 type TraceHandler struct {

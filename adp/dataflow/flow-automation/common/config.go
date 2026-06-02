@@ -8,7 +8,7 @@ import (
 	"reflect"
 	"strings"
 
-	wlCommon "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/telemetry/common"
+	wlCommon "github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/libs/go/telemetry/common"
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v2"
 )

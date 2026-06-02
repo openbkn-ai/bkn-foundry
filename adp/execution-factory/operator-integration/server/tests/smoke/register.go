@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"net/url"
 
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/rest"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/rest"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
 )
 
 // 冒烟测试用例

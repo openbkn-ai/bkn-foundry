@@ -27,7 +27,7 @@ sudo bash ./onboard.sh -y     # non-interactive (defaults)
 # macOS dev path:  bash ./dev/mac.sh onboard       # no sudo needed
 ```
 
-> `sudo` keeps `onboard.sh` reading the same `$HOME/.kowell-ai/config.yaml` that `sudo deploy.sh` wrote (`/root/.kowell-ai/`) and writing `kweaver` auth state to the same `$HOME/.kweaver`. Skip it on macOS dev. See [Install — Post-install: `onboard.sh`](install.md#post-install-onboardsh).
+> `sudo` keeps `onboard.sh` reading the same `$HOME/.openbkn-ai/config.yaml` that `sudo deploy.sh` wrote (`/root/.openbkn-ai/`) and writing `kweaver` auth state to the same `$HOME/.kweaver`. Skip it on macOS dev. See [Install — Post-install: `onboard.sh`](install.md#post-install-onboardsh).
 
 After it finishes you usually do **nothing more** — jump to [Sign in](#sign-in) below; on a different machine just sign in again. Full sequence: [Install — Post-install: `onboard.sh`](install.md#post-install-onboardsh).
 

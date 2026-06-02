@@ -1,4 +1,4 @@
-namespace: kweaver
+namespace: openbkn
 moduleName: core-data-migrator
 
 env:
@@ -6,7 +6,7 @@ env:
   language: en_US.UTF-8
 
 image:
-  registry: ghcr.io/kowell-ai
+  registry: ghcr.io/openbkn-ai
   repository: core-data-migrator
   tag: __VERSION__
   pullPolicy: IfNotPresent

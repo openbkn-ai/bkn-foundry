@@ -13,8 +13,8 @@ import (
 	context "context"
 	reflect "reflect"
 
-	personalspacereq "github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/driveradapter/api/rdto/personal_space/personalspacereq"
-	personalspaceresp "github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/driveradapter/api/rdto/personal_space/personalspaceresp"
+	personalspacereq "github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/driveradapter/api/rdto/personal_space/personalspacereq"
+	personalspaceresp "github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/driveradapter/api/rdto/personal_space/personalspaceresp"
 	gomock "go.uber.org/mock/gomock"
 )
 

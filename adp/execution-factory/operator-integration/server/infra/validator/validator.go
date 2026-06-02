@@ -16,10 +16,10 @@ import (
 
 	"github.com/asaskevich/govalidator"
 	validatorv10 "github.com/go-playground/validator/v10"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/config"
-	myErr "github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/errors"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/utils"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/config"
+	myErr "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/errors"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/utils"
 )
 
 const (

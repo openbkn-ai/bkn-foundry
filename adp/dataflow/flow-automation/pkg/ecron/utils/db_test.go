@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/ecron/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/pkg/ecron/common"
 	"github.com/kweaver-ai/proton-rds-sdk-go/sqlx"
 	"github.com/robfig/cron/v3"
 	uuid "github.com/satori/go.uuid"

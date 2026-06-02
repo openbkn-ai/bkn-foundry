@@ -1,5 +1,5 @@
 -- Source: bkn/bkn-backend/migrations/mariadb/0.5.0/init.sql
--- Copyright 2026 kowell.ai
+-- Copyright 2026 openbkn.ai
 -- Copyright The kweaver.ai Authors.
 --
 -- Licensed under the Apache License, Version 2.0.

@@ -3,7 +3,7 @@ package validatorhelper
 import (
 	"github.com/gin-gonic/gin/binding"
 	"github.com/go-playground/validator/v10"
-	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/infra/common/chelper/validatorhelper/persrecvalid"
+	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/infra/common/chelper/validatorhelper/persrecvalid"
 )
 
 // CommonCustomValidator 注册自定义common校验器

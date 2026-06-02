@@ -14,7 +14,7 @@ import (
 	reflect "reflect"
 
 	gin "github.com/gin-gonic/gin"
-	interfaces "github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces"
+	interfaces "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
 	mcp "github.com/mark3labs/mcp-go/mcp"
 	gomock "go.uber.org/mock/gomock"
 )

@@ -1,5 +1,5 @@
 # 基于镜像基础（公网重建版，推 GHCR；可经 build-arg 覆盖）
-ARG BASE_IMAGE=ghcr.io/kowell-ai/model-factory-base:v2
+ARG BASE_IMAGE=ghcr.io/openbkn-ai/model-factory-base:v2
 FROM ${BASE_IMAGE}
 # 设置代码文件夹工作目录 /app
 WORKDIR /app

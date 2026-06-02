@@ -7,7 +7,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/kowell-ai/kowell-core/trace-ai/agent-observability/src/boot"
+	"github.com/openbkn-ai/bkn-foundry/trace-ai/agent-observability/src/boot"
 )
 
 // @title Agent Observability API

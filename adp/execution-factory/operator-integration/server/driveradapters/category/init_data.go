@@ -4,8 +4,8 @@ import (
 	"context"
 	_ "embed"
 
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/config"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/config"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
 	jsoniter "github.com/json-iterator/go"
 )
 

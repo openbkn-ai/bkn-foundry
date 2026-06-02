@@ -1,8 +1,8 @@
-# Kowell Core
+# BKN Foundry
 
 [中文](README.zh.md) | English
 
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE.txt)
+[![License](https://img.shields.io/badge/license-multi--licensed-blue.svg)](LICENSE)
 
 Kowell Core is a harness-first foundation for enterprise decision agents. It turns fragmented data, knowledge, tools, and policies into governed context, safe execution, and verifiable feedback loops. With semantic modeling, real-time access, runtime control, and TraceAI, it helps AI systems reason, adapt, and act reliably in complex enterprises.
 
@@ -33,8 +33,8 @@ Kowell Core is a harness-first foundation for enterprise decision agents. It tur
    On the **target install host**, run a system check before `deploy.sh`. It verifies kernel / sysctl / containerd / `kubectl` / `helm` / Node / Kowell CLIs and can fix what's missing (each fix is opt-in unless `-y`):
 
 ```bash
-git clone https://github.com/kowell-ai/kowell-core.git
-cd kowell-core/deploy
+git clone https://github.com/openbkn-ai/bkn-foundry.git
+cd bkn-foundry/deploy
 chmod +x preflight.sh deploy.sh onboard.sh
 
 sudo bash ./preflight.sh                # check-only (default)
@@ -90,7 +90,7 @@ sudo bash ./onboard.sh        # interactive; or:  sudo bash ./onboard.sh -y
 sudo bash ./onboard.sh --help # all flags (--config=models.yaml, --enable-bkn-search, --skip-context-loader, …)
 ```
 
-   > **Why `sudo`?** `onboard.sh` reads `$HOME/.kowell-ai/config.yaml` (written by `sudo deploy.sh` into `/root/.kowell-ai/`) and writes the `kweaver` auth token to `$HOME/.kweaver`. Running it without `sudo` falls back to the in-repo template `deploy/conf/config.yaml` and may resolve a different access URL. **macOS dev path** (`bash deploy/dev/mac.sh onboard`) does **not** need `sudo`.
+   > **Why `sudo`?** `onboard.sh` reads `$HOME/.openbkn-ai/config.yaml` (written by `sudo deploy.sh` into `/root/.openbkn-ai/`) and writes the `kweaver` auth token to `$HOME/.kweaver`. Running it without `sudo` falls back to the in-repo template `deploy/conf/config.yaml` and may resolve a different access URL. **macOS dev path** (`bash deploy/dev/mac.sh onboard`) does **not** need `sudo`.
 
    Re-runs are safe: existing models / BKN defaults are detected and skipped. For the full sequence, the Mermaid flow, and the `kweaver` / `kweaver-admin` two-CLI authentication notes (full ISF), see [help/en/install.md — Post-install: `onboard.sh`](help/en/install.md#post-install-onboardsh).
 
@@ -516,3 +516,22 @@ F1 Bench is based on the BIRD test set with the Formula-1 database mixed with 30
 | **SQL Waste Rate** | **8.2%** | 24.5% |
 | **SQL Hit Efficiency** | **0.226** | 0.137 |
 | **Total SQL Calls** | **292** | 408 |
+
+## License
+
+BKN Foundry is multi-licensed:
+
+- Components originating from the upstream
+  [kweaver-ai/kweaver-core](https://github.com/kweaver-ai/kweaver-core)
+  remain under the Apache License 2.0 (see LICENSE-APACHE.txt).
+- OpenBKN access-layer components (BKN SDK / CLI, BKN Skill) are under
+  the Apache License 2.0 (see LICENSE-APACHE.txt).
+- OpenBKN proprietary modules (BKN Safe, BKN Studio) are under the
+  OpenBKN Source-Available License — Apache 2.0 with additional
+  conditions, including a restriction on providing the software as a
+  service to third parties without a commercial license
+  (see LICENSE-OPENBKN.txt). These modules are source-available and are
+  NOT OSI-approved open source.
+
+The license for each file is stated in its header. See NOTICE for a
+per-component breakdown.

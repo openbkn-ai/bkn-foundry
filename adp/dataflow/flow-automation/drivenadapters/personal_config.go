@@ -7,9 +7,9 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/common"
-	otelHttp "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/http"
-	traceLog "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/telemetry/log"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/common"
+	otelHttp "github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/libs/go/http"
+	traceLog "github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/libs/go/telemetry/log"
 )
 
 var (

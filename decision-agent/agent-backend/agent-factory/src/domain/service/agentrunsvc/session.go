@@ -3,7 +3,7 @@ package agentsvc
 import (
 	"sync"
 
-	agentresp "github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/driveradapter/api/rdto/agent/resp"
+	agentresp "github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/driveradapter/api/rdto/agent/resp"
 )
 
 type Session struct {

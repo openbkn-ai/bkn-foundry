@@ -9,11 +9,11 @@ import (
 	"time"
 
 	redis_v8 "github.com/go-redis/redis/v8"
-	lock "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/lock"
-	commonLog "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/log"
-	rds "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/store"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/event"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/store"
+	lock "github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/libs/go/lock"
+	commonLog "github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/libs/go/log"
+	rds "github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/libs/go/store"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/pkg/event"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/store"
 	"github.com/shiningrush/goevent"
 )
 

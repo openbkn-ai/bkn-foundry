@@ -7,16 +7,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/common"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/actions"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/entity"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/policy"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/rds"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/vm"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/pkg/actions"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/pkg/entity"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/pkg/policy"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/pkg/rds"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/pkg/vm"
 
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/drivenadapters"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/dependency"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/utils"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/drivenadapters"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/pkg/dependency"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/pkg/utils"
 )
 
 type extfunc struct {

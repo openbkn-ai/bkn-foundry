@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/internal/openapidoc"
+	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/internal/openapidoc"
 	pkgerrors "github.com/pkg/errors"
 )
 

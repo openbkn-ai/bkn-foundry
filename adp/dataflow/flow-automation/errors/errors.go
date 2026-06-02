@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	liberrors "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/errors"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/utils"
+	liberrors "github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/libs/go/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/utils"
 	"go.mongodb.org/mongo-driver/mongo"
 	"gorm.io/gorm"
 )

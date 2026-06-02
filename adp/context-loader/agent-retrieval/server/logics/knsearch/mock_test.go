@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
 // mockLogger 模拟 Logger 接口

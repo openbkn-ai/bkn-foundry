@@ -12,10 +12,10 @@ import (
 	"time"
 
 	jsoniter "github.com/json-iterator/go"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/common"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/errors"
-	otelHttp "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/http"
-	commonLog "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/log"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/errors"
+	otelHttp "github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/libs/go/http"
+	commonLog "github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/libs/go/log"
 )
 
 //go:generate mockgen -package mock_httpclient -source ../drivenadapters/http_client.go -destination ../tests/mock_httpclient/http_client_mock.go

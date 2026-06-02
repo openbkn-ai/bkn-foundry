@@ -7,10 +7,10 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/common"
-	otelHttp "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/http"
-	traceLog "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/telemetry/log"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/utils"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/common"
+	otelHttp "github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/libs/go/http"
+	traceLog "github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/libs/go/telemetry/log"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/utils"
 )
 
 //go:generate mockgen -package mock_drivenadapters -source ../drivenadapters/dp_datasource.go -destination ../tests/mock_drivenadapters/dp_datasource_mock.go

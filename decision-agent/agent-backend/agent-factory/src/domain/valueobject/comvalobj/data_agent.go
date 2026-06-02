@@ -3,7 +3,7 @@ package comvalobj
 import (
 	"errors"
 
-	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/domain/constant/cdaconstant"
+	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/domain/constant/cdaconstant"
 )
 
 type DataAgentUniqFlag struct {

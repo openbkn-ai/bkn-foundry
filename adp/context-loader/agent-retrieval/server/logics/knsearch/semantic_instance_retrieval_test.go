@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
 func TestSemanticInstanceRetrieval_MainFlow(t *testing.T) {

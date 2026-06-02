@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/drivenadapters"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/drivenadapters"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
 )
 
 //go:generate mockgen -source=asset_store.go -destination=../../mocks/skill_asset_store.go -package=mocks

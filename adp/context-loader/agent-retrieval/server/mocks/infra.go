@@ -14,7 +14,7 @@ import (
 	url "net/url"
 	reflect "reflect"
 
-	interfaces "github.com/kowell-ai/adp/context-loader/agent-retrieval/server/interfaces"
+	interfaces "github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/interfaces"
 	gomock "go.uber.org/mock/gomock"
 )
 

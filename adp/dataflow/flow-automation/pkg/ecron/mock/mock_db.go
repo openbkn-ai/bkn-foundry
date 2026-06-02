@@ -12,7 +12,7 @@ package mock
 import (
 	reflect "reflect"
 
-	common "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/ecron/common"
+	common "github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/pkg/ecron/common"
 	gomock "go.uber.org/mock/gomock"
 )
 

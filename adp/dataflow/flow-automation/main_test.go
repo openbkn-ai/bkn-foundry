@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/common"
-	liberrors "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/errors"
-	i18n "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/common"
+	liberrors "github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/libs/go/errors"
+	i18n "github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/libs/go/i18n"
 )
 
 func TestMain(t *testing.T) {

@@ -7,7 +7,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/s3"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/libs/go/s3"
 )
 
 type ossGatetWayS3 struct {

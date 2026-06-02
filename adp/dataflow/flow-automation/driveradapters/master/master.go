@@ -6,13 +6,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/common"
-	lock "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/lock"
-	commonLog "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/log"
-	store "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/store"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/logics/alarm"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/logics/cronjob"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/logics/outbox"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/common"
+	lock "github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/libs/go/lock"
+	commonLog "github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/libs/go/log"
+	store "github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/libs/go/store"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/logics/alarm"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/logics/cronjob"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/logics/outbox"
 )
 
 const defaultInternal = 30 * time.Second

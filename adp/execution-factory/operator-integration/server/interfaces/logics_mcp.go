@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
 	"github.com/mark3labs/mcp-go/mcp"
 )
 

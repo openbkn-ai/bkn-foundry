@@ -439,7 +439,7 @@ The goal is to ensure:
 Use the following header for all core source files:
 
 ```go
-// Copyright 2026 kowell.ai
+// Copyright 2026 openbkn.ai
 // Copyright The kweaver.ai Authors.
 //
 // Licensed under the Apache License, Version 2.0.
@@ -451,7 +451,7 @@ Use the following header for all core source files:
 #### Python
 
 ```python
-# Copyright 2026 kowell.ai
+# Copyright 2026 openbkn.ai
 # Copyright The kweaver.ai Authors.
 #
 # Licensed under the Apache License, Version 2.0.
@@ -473,7 +473,7 @@ Use the following header for all core source files:
 
 ```bash
 #!/usr/bin/env bash
-# Copyright 2026 kowell.ai
+# Copyright 2026 openbkn.ai
 # Copyright The kweaver.ai Authors.
 # Licensed under the Apache License, Version 2.0.
 # See the LICENSE file in the project root for details.
@@ -495,7 +495,7 @@ If a file was originally derived from another project, you may add an origin not
 after the license header (for key files only):
 
 ```go
-// Copyright 2026 kowell.ai
+// Copyright 2026 openbkn.ai
 // Copyright The kweaver.ai Authors.
 //
 // Licensed under the Apache License, Version 2.0.

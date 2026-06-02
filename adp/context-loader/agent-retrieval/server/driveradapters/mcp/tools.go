@@ -1,4 +1,4 @@
-// Copyright 2026 kowell.ai
+// Copyright 2026 openbkn.ai
 // Copyright The kweaver.ai Authors.
 //
 // Licensed under the Apache License, Version 2.0.
@@ -14,11 +14,11 @@ import (
 	validator "github.com/go-playground/validator/v10"
 	"github.com/mark3labs/mcp-go/mcp"
 
-	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/infra/common"
-	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/infra/rest"
-	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/interfaces"
-	logicsKqs "github.com/kowell-ai/adp/context-loader/agent-retrieval/server/logics/knquerysubgraph"
-	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/logics/knsearch"
+	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/common"
+	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/rest"
+	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/interfaces"
+	logicsKqs "github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/logics/knquerysubgraph"
+	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/logics/knsearch"
 )
 
 const (

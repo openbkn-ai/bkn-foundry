@@ -3,17 +3,17 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Auto-migrate legacy ~/.kweaver-ai to ~/.kowell-ai (one-time, when target absent).
-if [[ -z "${CONF_DIR:-}" && -d "${HOME}/.kweaver-ai" && ! -e "${HOME}/.kowell-ai" ]]; then
-    if mv "${HOME}/.kweaver-ai" "${HOME}/.kowell-ai" 2>/dev/null; then
-        echo "[migrate] moved ${HOME}/.kweaver-ai -> ${HOME}/.kowell-ai" >&2
+# Auto-migrate legacy ~/.kweaver-ai to ~/.openbkn-ai (one-time, when target absent).
+if [[ -z "${CONF_DIR:-}" && -d "${HOME}/.kweaver-ai" && ! -e "${HOME}/.openbkn-ai" ]]; then
+    if mv "${HOME}/.kweaver-ai" "${HOME}/.openbkn-ai" 2>/dev/null; then
+        echo "[migrate] moved ${HOME}/.kweaver-ai -> ${HOME}/.openbkn-ai" >&2
     else
-        echo "[migrate][warn] failed to move ${HOME}/.kweaver-ai -> ${HOME}/.kowell-ai; using legacy path" >&2
+        echo "[migrate][warn] failed to move ${HOME}/.kweaver-ai -> ${HOME}/.openbkn-ai; using legacy path" >&2
         CONF_DIR="${HOME}/.kweaver-ai"
     fi
 fi
 
-CONF_DIR="${CONF_DIR:-${HOME}/.kowell-ai}"
+CONF_DIR="${CONF_DIR:-${HOME}/.openbkn-ai}"
 CONFIG_YAML_PATH="${CONFIG_YAML_PATH:-${CONF_DIR}/config.yaml}"
 
 # Global flag: skip all interactive prompts and use defaults
@@ -111,10 +111,10 @@ usage() {
     echo "  # Install from remote repo with version and devel:"
     echo "  ZOOKEEPER_CHART_REF=dip/zookeeper ZOOKEEPER_CHART_VERSION=0.0.0-feature-800792 ZOOKEEPER_CHART_DEVEL=true $0 zookeeper install"
     echo "  # Install with additional values file and --set:"
-    echo "  ZOOKEEPER_VALUES_FILE=~/.kowell-ai/config.yaml ZOOKEEPER_EXTRA_SET_VALUES='image.registry=<your-mirror>/bitnami' $0 zookeeper install"
+    echo "  ZOOKEEPER_VALUES_FILE=~/.openbkn-ai/config.yaml ZOOKEEPER_EXTRA_SET_VALUES='image.registry=<your-mirror>/bitnami' $0 zookeeper install"
     echo "  $0 ingress-nginx install      # Install ingress-nginx-controller"
     echo "  $0 ingress-nginx uninstall    # Uninstall ingress-nginx-controller"
-    echo "  $0 config generate            # Generate/update ~/.kowell-ai/config.yaml"
+    echo "  $0 config generate            # Generate/update ~/.openbkn-ai/config.yaml"
     echo "  $0 all install                # Full initialization with all components"
     echo ""
     echo "Global Options (must appear BEFORE <module> <action>, e.g. $0 --distro=k8s kweaver-core install --minimum):"
@@ -127,7 +127,7 @@ usage() {
     echo "                                Same as env KUBE_DISTRO=k8s|k3s (legacy: kubeadm means k8s). Use k3s for single-node lightweight."
     echo "  --config=<path>               Specify config.yaml path (values file for helm installs). May appear"
     echo "                                before <module> (global) or on the module command line (e.g. kweaver-core)."
-    echo "                                Default: ~/.kowell-ai/config.yaml or \$CONFIG_YAML_PATH env var"
+    echo "                                Default: ~/.openbkn-ai/config.yaml or \$CONFIG_YAML_PATH env var"
     echo "  --charts_dir=<path>           Use a specific local chart directory for download/install"
     echo "                                install only uses local charts when this option is explicitly set"
     echo "  --version_file=<path>         Use an aggregate release manifest to resolve exact chart versions"
@@ -153,7 +153,7 @@ usage() {
     echo "  $0 kweaver-core install --charts_dir=/path/to/charts  # Install Core from a local charts directory"
     echo "  $0 kweaver-core download --version=0.4.0  # Auto-uses ./release-manifests/0.4.0/kweaver-core.yaml when present"
     echo "  $0 kweaver-core download --version=0.4.0 --version_file=./release-manifests/0.4.0/kweaver-core.yaml"
-    echo "  $0 kweaver-core install --config=/root/.kowell-ai/config.yaml --helm_repo_name=kweaver"
+    echo "  $0 kweaver-core install --config=/root/.openbkn-ai/config.yaml --helm_repo_name=kweaver"
 }
 
 _detect_node_ip() {
