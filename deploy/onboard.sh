@@ -97,7 +97,6 @@ SKIP_BKN="false"
 INTERACTIVE="true"
 ONBOARD_ASSUME_YES="false"
 ONBOARD_SKIP_ISF_TEST_USER="${ONBOARD_SKIP_ISF_TEST_USER:-false}"
-ONBOARD_SKIP_CONTEXT_LOADER="${ONBOARD_SKIP_CONTEXT_LOADER:-false}"
 # Populated by onboard_kweaver_tls_insecure_args_to_array (usually empty or -k).
 declare -a ONBOARD_TLS_INSECURE_ARGS=()
 
@@ -120,8 +119,6 @@ onboard_is_bootstrap_tty() {
 
 # shellcheck source=scripts/lib/onboard_isf_test_user.sh
 source "${SCRIPT_DIR}/scripts/lib/onboard_isf_test_user.sh"
-# shellcheck source=scripts/lib/onboard_context_loader.sh
-source "${SCRIPT_DIR}/scripts/lib/onboard_context_loader.sh"
 # shellcheck source=scripts/lib/onboard_report.sh
 source "${SCRIPT_DIR}/scripts/lib/onboard_report.sh"
 
@@ -238,12 +235,11 @@ usage() {
     echo "  Config YAML: unset CONFIG_YAML_PATH and onboard uses \$HOME/.kowell-ai/config.yaml when that file exists (same as deploy.sh); otherwise scripts/lib/common.sh default (deploy/conf/config.yaml)."
     echo "  Why sudo on Linux: deploy.sh runs as root and writes \$HOME/.kowell-ai/config.yaml under /root/.kowell-ai/ (mode 700); onboard.sh also writes \$HOME/.kweaver auth state. sudo keeps both pointing at the same root home (silence the startup hint with ONBOARD_SUDO_HINT_DISABLED=1; not needed on macOS dev)."
     echo "  (no flags)                Interactive: nvm+Node 22 and npm -g (Y/n) in your terminal, then models/BKN"
-    echo "  -y, --yes                 Auto nvm+Node 22, npm -g, context-loader import, ISF [test] user+roles (no Y/n)"
+    echo "  -y, --yes                 Auto nvm+Node 22, npm -g, ISF [test] user+roles (no Y/n)"
     echo "  --config=PATH            YAML: deploy/conf/models.yaml.example; model prompts off, but nvm/kweaver still Y/n in a TTY (use -y to skip those asks)"
     echo "  --skip-isf-test-user     Do not offer: kweaver-admin user test + all roles (full install only)"
-    echo "  --skip-context-loader   Do not offer Context Loader ADP import (kweaver call impex); same as ONBOARD_SKIP_CONTEXT_LOADER=true"
     echo ""
-    echo "  Context Loader (impex):  kweaver call  uses ~/.kweaver from  kweaver auth login ."
+    echo "  ADP impex / auth:  kweaver call  uses ~/.kweaver from  kweaver auth login ."
     echo "    - ISF (full):  kweaver-admin  / console  admin  for user ops. ADP impex uses user  test  with all  role list"
     echo "      roles (typically three business admins), then  kweaver auth  as  test .  -y  uses password  ${ONBOARD_DEFAULT_TEST_USER_PASSWORD:-111111}  (override: ONBOARD_TEST_USER_PASSWORD) ."
     echo "    - Minimum (no ISF):  kweaver auth login  only; kweaver-admin is not required."
@@ -257,9 +253,6 @@ usage() {
     echo "                ONBOARD_SKIP_KWEAVER_INSTALL=true  never run npm -g for kweaver in onboard"
     echo "                ONBOARD_SKIP_KWEAVER_ADMIN_INSTALL=true  on ISF: do not auto/offer  npm -g  kweaver-admin  (also skipped with  -y )"
     echo "                ONBOARD_SKIP_ISF_TEST_USER=true  same as --skip-isf-test-user"
-    echo "                ONBOARD_SKIP_CONTEXT_LOADER=true  same as --skip-context-loader"
-    echo "                IMPORT_CONTEXT_LOADER_TOOLSET=false  skip Context Loader (legacy name; same effect)"
-    echo "                CONTEXT_LOADER_TOOLSET_ADP_PATH=...  default ADP under repo adp/context-loader/.../context_loader_toolset.adp"
     echo "                ONBOARD_TEST_USER_PASSWORD=...  override default password for  test  (ISF; default: ONBOARD_DEFAULT_TEST_USER_PASSWORD, built-in 111111)"
     echo "                ONBOARD_DEFAULT_TEST_USER_PASSWORD=...  first-user  test  password (default 111111;  -y  non-interactive)"
     echo "                ONBOARD_KWEAVER_IMPEX_NO_RELLOGIN=1  skip  kweaver auth  as  test  before impex (use current kweaver session)"
@@ -283,7 +276,6 @@ for _ob_arg in "$@"; do
         --config=*) INTERACTIVE="false" ;;
         -y | --yes) ONBOARD_ASSUME_YES="true" ;;
         --skip-isf-test-user) ONBOARD_SKIP_ISF_TEST_USER="true" ;;
-        --skip-context-loader) ONBOARD_SKIP_CONTEXT_LOADER="true" ;;
     esac
 done
 
@@ -507,10 +499,6 @@ while [[ $# -gt 0 ]]; do
             ;;
         --skip-isf-test-user)
             ONBOARD_SKIP_ISF_TEST_USER="true"
-            shift
-            ;;
-        --skip-context-loader)
-            ONBOARD_SKIP_CONTEXT_LOADER="true"
             shift
             ;;
         --config=*)
@@ -928,7 +916,6 @@ onboard_probe() {
     onboard_ensure_kweaver_admin_auth_for_isf
     onboard_offer_isf_test_user
     onboard_provision_oss_default_storage "${NAMESPACE}"
-    onboard_offer_context_loader_toolset
 }
 
 # Detect ISF (full install) and recommend kweaver-admin when present.
