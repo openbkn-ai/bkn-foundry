@@ -20,7 +20,7 @@ This document defines the version management, branching strategy, and release pr
 
 ### Trunk-based Development
 
-KWeaver follows the **Trunk-based Development** model with these core principles:
+BKN Foundry follows the **Trunk-based Development** model with these core principles:
 
 | Principle | Description |
 | --- | --- |
@@ -62,7 +62,7 @@ main ─────────────────────────
 
 ### Semantic Versioning
 
-KWeaver follows [Semantic Versioning 2.0.0](https://semver.org/):
+BKN Foundry follows [Semantic Versioning 2.0.0](https://semver.org/):
 
 ```
 vMAJOR.MINOR.PATCH[-PRERELEASE]
@@ -118,7 +118,7 @@ git tag v1.0.0.rc.1
 
 ## 🚀 Release Process
 
-KWeaver uses the **Release With Freeze** model: every minor / major release must go through an RC validation cycle, and tag-triggered GitHub Actions perform artifact build & publish.
+BKN Foundry uses the **Release With Freeze** model: every minor / major release must go through an RC validation cycle, and tag-triggered GitHub Actions perform artifact build & publish.
 
 ### End-to-end Overview
 
@@ -250,7 +250,7 @@ The final tag triggers GitHub Actions to produce:
 
 #### 6. Merge Back to main
 
-KWeaver defaults to "fix directly on the release branch, then merge the whole release branch back into main with `--no-ff`":
+BKN Foundry defaults to "fix directly on the release branch, then merge the whole release branch back into main with `--no-ff`":
 
 ```bash
 git checkout main
@@ -301,7 +301,7 @@ Before creating a release tag, confirm:
 
 ### Keep a Changelog
 
-KWeaver follows the [Keep a Changelog](https://keepachangelog.com/) format.
+BKN Foundry follows the [Keep a Changelog](https://keepachangelog.com/) format.
 
 ### File Format
 

@@ -3,7 +3,7 @@ package deployer
 import (
 	"context"
 
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
 )
 
 // Deployer is the interface for deploying and undeploying MCP server instances.

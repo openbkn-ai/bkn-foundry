@@ -7,8 +7,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/common"
-	otelHttp "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/http"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/common"
+	otelHttp "github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/libs/go/http"
 )
 
 //go:generate mockgen -package mock_drivenadapters -source ../drivenadapters/authorization.go -destination ../tests/mock_drivenadapters/authorization_mock.go

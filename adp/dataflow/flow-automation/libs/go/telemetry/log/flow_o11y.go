@@ -16,7 +16,7 @@ import (
 	spanLog "github.com/kweaver-ai/TelemetrySDK-Go/span/v2/log"
 	"github.com/kweaver-ai/TelemetrySDK-Go/span/v2/open_standard"
 	"github.com/kweaver-ai/TelemetrySDK-Go/span/v2/runtime"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/telemetry/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/libs/go/telemetry/common"
 )
 
 var (

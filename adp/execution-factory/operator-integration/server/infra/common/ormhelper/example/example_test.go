@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
 )
 
 // MCPConfigTest 测试用的配置结构体

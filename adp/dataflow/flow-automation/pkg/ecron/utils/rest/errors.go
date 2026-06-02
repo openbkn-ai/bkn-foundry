@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	jsoniter "github.com/json-iterator/go"
-	errorv2 "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/ecron/utils/rest/error"
+	errorv2 "github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/pkg/ecron/utils/rest/error"
 )
 
 var (

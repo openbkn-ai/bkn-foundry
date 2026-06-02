@@ -2,7 +2,7 @@
 
 [中文](WORKFLOW.zh.md) | English
 
-This document defines KWeaver's team R&D collaboration standards, covering Issue management, Feature tracking, design documentation, and team notification processes. Every rule includes concrete steps and file paths to ensure practical execution.
+This document defines BKN Foundry's team R&D collaboration standards, covering Issue management, Feature tracking, design documentation, and team notification processes. Every rule includes concrete steps and file paths to ensure practical execution.
 
 ---
 
@@ -414,9 +414,9 @@ After the PR is merged, the merger or Assignee must:
 #### Release Announcement
 
 ```
-Subject: [KWeaver] vX.Y.Z Official Release
+Subject: [BKN Foundry] vX.Y.Z Official Release
 
-KWeaver vX.Y.Z has been officially released!
+BKN Foundry vX.Y.Z has been officially released!
 
 ## Key Changes
 
@@ -442,9 +442,9 @@ Thank you to all contributors!
 #### RC Release Notification
 
 ```
-Subject: [KWeaver] vX.Y.Z-rc.N Test Release — Feedback Requested
+Subject: [BKN Foundry] vX.Y.Z-rc.N Test Release — Feedback Requested
 
-KWeaver vX.Y.Z-rc.N has been released. Please validate and provide feedback.
+BKN Foundry vX.Y.Z-rc.N has been released. Please validate and provide feedback.
 
 ## Test Scope
 - Change list (with design doc links)
@@ -462,7 +462,7 @@ YYYY-MM-DD
 #### Code Freeze Notification
 
 ```
-Subject: [KWeaver] vX.Y.Z Code Freeze Notice
+Subject: [BKN Foundry] vX.Y.Z Code Freeze Notice
 
 The vX.Y.Z release branch has been created. Code freeze begins YYYY-MM-DD.
 
@@ -482,7 +482,7 @@ YYYY-MM-DD
 | Item | Requirement |
 | --- | --- |
 | Delivery method | Team mailing list; major Releases may use CI automation |
-| Subject prefix | Always use `[KWeaver]` for easy filtering and archiving |
+| Subject prefix | Always use `[BKN Foundry]` for easy filtering and archiving |
 | Language | English; Chinese version may be added for domestic team |
 | CC | **All emails must CC the QA lead**; Release announcements must also CC the project lead |
 | Attachments | No attachments; use links to reference documents or artifacts |

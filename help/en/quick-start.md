@@ -1,6 +1,6 @@
 # 🚀 Quick start
 
-This walkthrough assumes KWeaver Core is already [installed and deployed](install.md), including the post-install checks on that page. **Full installs assume Linux**; optional **macOS** + kind flow: [`deploy/dev/README.md`](../../deploy/dev/README.md) ([中文](../../deploy/dev/README.zh.md)).
+This walkthrough assumes BKN Foundry is already [installed and deployed](install.md), including the post-install checks on that page. **Full installs assume Linux**; optional **macOS** + kind flow: [`deploy/dev/README.md`](../../deploy/dev/README.md) ([中文](../../deploy/dev/README.zh.md)).
 
 > Before installing on a new host, run **`sudo bash deploy/preflight.sh`** (check / `--fix`) to validate kernel, sysctl, containerd, kubectl, helm, Node and the `kweaver` CLIs. After `deploy.sh kweaver-core install`, run **`sudo bash deploy/onboard.sh`** (Linux — matches `sudo deploy.sh`; macOS dev path uses plain `bash`) to register an LLM + embedding, patch the BKN ConfigMap (only when the default actually changes), and on a full install create the business user **`test`** + import the Context Loader toolset. Both are documented in [Install — Pre-install host check / fix: `preflight.sh`](install.md#-pre-install-host-check--fix-preflightsh) and [Install — Post-install: `onboard.sh`](install.md#post-install-onboardsh).
 
@@ -10,7 +10,7 @@ This walkthrough assumes KWeaver Core is already [installed and deployed](instal
 
 ## 🎯 Scenario: First semantic search in 5 minutes
 
-**Story**: You just deployed KWeaver Core. You have a MySQL database with ERP data. Your goal is to turn the database into a knowledge network and search it with natural language — "which orders are overdue?"
+**Story**: You just deployed BKN Foundry. You have a MySQL database with ERP data. Your goal is to turn the database into a knowledge network and search it with natural language — "which orders are overdue?"
 
 ### Step 1: Authenticate
 
@@ -27,7 +27,7 @@ sudo bash ./onboard.sh -y     # non-interactive (defaults)
 # macOS dev path:  bash ./dev/mac.sh onboard       # no sudo needed
 ```
 
-> `sudo` keeps `onboard.sh` reading the same `$HOME/.kowell-ai/config.yaml` that `sudo deploy.sh` wrote (`/root/.kowell-ai/`) and writing `kweaver` auth state to the same `$HOME/.kweaver`. Skip it on macOS dev. See [Install — Post-install: `onboard.sh`](install.md#post-install-onboardsh).
+> `sudo` keeps `onboard.sh` reading the same `$HOME/.openbkn-ai/config.yaml` that `sudo deploy.sh` wrote (`/root/.openbkn-ai/`) and writing `kweaver` auth state to the same `$HOME/.kweaver`. Skip it on macOS dev. See [Install — Post-install: `onboard.sh`](install.md#post-install-onboardsh).
 
 After it finishes you usually do **nothing more** — jump to [Sign in](#sign-in) below; on a different machine just sign in again. Full sequence: [Install — Post-install: `onboard.sh`](install.md#post-install-onboardsh).
 

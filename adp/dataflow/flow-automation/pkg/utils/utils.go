@@ -4,7 +4,7 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/log"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/pkg/log"
 )
 
 // StringsContain

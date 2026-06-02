@@ -2,7 +2,7 @@
 package download_pool
 
 import (
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/common"
 )
 
 // Config 下载线程池配置

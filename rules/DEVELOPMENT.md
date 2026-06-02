@@ -1,8 +1,8 @@
 ---
 name: development
-title: KWeaver Development Specification (DEVELOPMENT)
+title: BKN Foundry Development Specification (DEVELOPMENT)
 version: 0.1.0
-scope: All services in KWeaver-Core and related products (Decision Agent, ISF, TraceAI, etc.)
+scope: All services in BKN Foundry and related products (Decision Agent, ISF, TraceAI, etc.)
 authors: [freeman.xu]
 created: 2026-03-20
 status: draft
@@ -14,11 +14,11 @@ related:
   - RELEASE.md
 ---
 
-# KWeaver Development Specification (DEVELOPMENT)
+# BKN Foundry Development Specification (DEVELOPMENT)
 
 [中文](DEVELOPMENT.zh.md) | English
 
-This document defines the development standards for KWeaver services, covering API design, HTTP semantics, request/response conventions, authentication, and observability. Complements [ARCHITECTURE](ARCHITECTURE.md) (how to decompose the system) and [TESTING](TESTING.md) (how to test).
+This document defines the development standards for BKN Foundry services, covering API design, HTTP semantics, request/response conventions, authentication, and observability. Complements [ARCHITECTURE](ARCHITECTURE.md) (how to decompose the system) and [TESTING](TESTING.md) (how to test).
 
 ## Terminology
 

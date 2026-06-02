@@ -3,8 +3,8 @@ package productsvc
 import (
 	"context"
 
-	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/domain/p2e/productp2e"
-	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/driveradapter/api/rdto/product/productresp"
+	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/domain/p2e/productp2e"
+	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/driveradapter/api/rdto/product/productresp"
 )
 
 func (s *productSvc) List(ctx context.Context, offset, limit int) (res *productresp.ListRes, err error) {

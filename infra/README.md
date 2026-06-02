@@ -2,7 +2,7 @@
 
 [中文](README.zh.md) | English
 
-Infrastructure services that provide foundational capabilities for the KWeaver platform.
+Infrastructure services that provide foundational capabilities for the BKN Foundry.
 
 ## Services
 

@@ -1,7 +1,7 @@
 # 微服务构建机制设计：清单随服务走（Manifest-per-Service）
 
 > 状态：设计稿（待评审）
-> 适用范围：kowell-core monorepo 的镜像 / Helm Chart 构建与发布
+> 适用范围：bkn-foundry monorepo 的镜像 / Helm Chart 构建与发布
 > 目标读者：维护 CI 的工程师、新增微服务的开发者
 
 ## 1. 背景与问题
@@ -84,7 +84,7 @@ adp/vega/vega-backend/ci.yaml        ──▶   .github/workflows/reusable-buil
 ### 5.1 Schema
 
 ```yaml
-apiVersion: kowell-ci/v1
+apiVersion: openbkn-ci/v1
 service: vega-backend            # 唯一名，用于矩阵 / 日志 / 镜像默认名
 
 # 版本来源；相对仓库根。缺省回退到服务目录内 VERSION，再回退根 VERSION。

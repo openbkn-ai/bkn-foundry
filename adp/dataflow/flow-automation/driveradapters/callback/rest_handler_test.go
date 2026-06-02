@@ -11,9 +11,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/assert/v2"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/dependency"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/entity"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/tests/mock_logics"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/pkg/dependency"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/pkg/entity"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/tests/mock_logics"
 	"go.uber.org/mock/gomock"
 )
 

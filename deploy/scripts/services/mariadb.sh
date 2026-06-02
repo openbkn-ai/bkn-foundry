@@ -116,7 +116,7 @@ setup_mariadb_databases() {
     # If so, skip manual database creation - the data-migrator chart will handle it
     local isf_manifest core_manifest
     isf_manifest="${ISF_VERSION_MANIFEST_FILE:-$(resolve_embedded_release_manifest "isf" "${HELM_CHART_VERSION:-}")}"
-    core_manifest="${CORE_VERSION_MANIFEST_FILE:-$(resolve_embedded_release_manifest "kweaver-core" "${HELM_CHART_VERSION:-}")}"
+    core_manifest="${CORE_VERSION_MANIFEST_FILE:-$(resolve_embedded_release_manifest "bkn-foundry" "${HELM_CHART_VERSION:-}")}"
 
     if [[ -f "${isf_manifest}" ]] && should_skip_db_init_for_manifest "${isf_manifest}"; then
         log_info "ISF manifest ${isf_manifest} has pre-stage data-migrator (0.6.0+), skipping manual database creation"

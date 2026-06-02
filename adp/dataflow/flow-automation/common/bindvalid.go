@@ -9,8 +9,8 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/errors"
-	ierr "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/errors"
+	ierr "github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/libs/go/errors"
 	"github.com/xeipuuv/gojsonschema"
 )
 

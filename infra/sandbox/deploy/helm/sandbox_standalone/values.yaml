@@ -1,4 +1,4 @@
-namespace: kweaver
+namespace: openbkn
 imagePullPolicy: IfNotPresent
 imagePullSecrets: []
 image:

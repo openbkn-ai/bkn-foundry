@@ -3,7 +3,7 @@ package iv3portdriver
 import (
 	"context"
 
-	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/driveradapter/api/rdto/category/categoryresp"
+	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/driveradapter/api/rdto/category/categoryresp"
 )
 
 //go:generate mockgen -source=./category.go -destination ./v3portdrivermock/category.go -package v3portdrivermock

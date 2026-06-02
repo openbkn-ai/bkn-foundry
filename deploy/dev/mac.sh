@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# KWeaver — macOS dev helper (kind + Helm). Does NOT run Linux preflight/k3s/kubeadm.
+# BKN Foundry — macOS dev helper (kind + Helm). Does NOT run Linux preflight/k3s/kubeadm.
 #
 # Typical order (from repo deploy/: cd deploy):
 #   1. doctor                 — optional; check docker / kind / kubectl / helm / node
 #   2. doctor --fix           — optional; install missing CLIs via Homebrew (prompts; -y skips)
 #   3. cluster up             — kind + ingress-nginx; context becomes kind-<KIND_CLUSTER_NAME>
 #   4. data-services install  — MariaDB / Redis / Kafka / Zookeeper / OpenSearch (required before Core on mac)
-#   5. kweaver-core download  — optional; cache charts locally (mac.sh defaults --minimum unless --full)
-#   6. kweaver-core install   — Helm install Core (mac.sh adds --minimum unless you pass --full)
+#   5. bkn-foundry download  — optional; cache charts locally (mac.sh defaults --minimum unless --full)
+#   6. bkn-foundry install   — Helm install Core (mac.sh adds --minimum unless you pass --full)
 #   7. onboard                — optional; needs kweaver CLI + Core up (add -y for non-interactive)
 #   Teardown: cluster down
 #   Full write-up: deploy/dev/README.md (EN) · deploy/dev/README.zh.md (中文)
@@ -19,8 +19,8 @@
 #   bash deploy/dev/mac.sh cluster down
 #   bash deploy/dev/mac.sh cluster status
 #   bash deploy/dev/mac.sh data-services install
-#   bash deploy/dev/mac.sh kweaver-core install
-#   bash deploy/dev/mac.sh kweaver-core download
+#   bash deploy/dev/mac.sh bkn-foundry install
+#   bash deploy/dev/mac.sh bkn-foundry download
 #   bash deploy/dev/mac.sh onboard
 #
 # Global flags (same as deploy.sh; must come first):
@@ -56,14 +56,14 @@ usage() {
     local readme="${SELF_DIR}/README.md"
     local mac_cfg="${SELF_DIR}/conf/mac-config.yaml"
     cat <<EOF
-KWeaver mac dev (kind) — thin wrapper around deploy/onboard.
+BKN Foundry mac dev (kind) — thin wrapper around deploy/onboard.
 
-Typical order (shortest path: doctor? → cluster up → kweaver-core install [--minimum]):
+Typical order (shortest path: doctor? → cluster up → bkn-foundry install [--minimum]):
   1) doctor                     optional toolchain check
   2) cluster up                 kind + ingress; kubectl context kind-<name>
-  3) data-services install      optional if you use kweaver-core install (it runs the same bundled data layer first); run alone to pre-stage or refresh only
-  4) kweaver-core download      optional; charts cache only (minimum profile by default)
-  5) kweaver-core install ...   Helm install (--minimum implied; bundled data-services first unless KWEAVER_SKIP_DATA_SERVICES_BUNDLE=true)
+  3) data-services install      optional if you use bkn-foundry install (it runs the same bundled data layer first); run alone to pre-stage or refresh only
+  4) bkn-foundry download      optional; charts cache only (minimum profile by default)
+  5) bkn-foundry install ...   Helm install (--minimum implied; bundled data-services first unless KWEAVER_SKIP_DATA_SERVICES_BUNDLE=true)
   6) onboard                    optional; after Core is up
   cluster down                  delete kind cluster
   See ${readme}
@@ -71,8 +71,8 @@ Typical order (shortest path: doctor? → cluster up → kweaver-core install [-
 Commands:
   doctor [--fix] [-y|--yes]        Check toolchain; --fix runs brew after confirm (use -y to skip prompt)
   cluster up|down|status           kind cluster + ingress-nginx (kind manifest)
-  data-services install|uninstall  Platform data layer (optional before Core: kweaver-core install runs it automatically on mac); uninstall tears down bundled charts
-  kweaver-core|core <action> ...   Delegates to deploy.sh (see deploy.sh help)
+  data-services install|uninstall  Platform data layer (optional before Core: bkn-foundry install runs it automatically on mac); uninstall tears down bundled charts
+  bkn-foundry|core <action> ...   Delegates to deploy.sh (see deploy.sh help)
   onboard [args ...]               Runs deploy/onboard.sh
 
 Examples:
@@ -82,18 +82,18 @@ Examples:
   ${cmd} doctor --fix -y
   ${cmd} cluster up
   ${cmd} data-services install
-  ${cmd} kweaver-core install --full   # full manifest profile
-  ${cmd} kweaver-core install
-  ${cmd} kweaver-core download
+  ${cmd} bkn-foundry install --full   # full manifest profile
+  ${cmd} bkn-foundry install
+  ${cmd} bkn-foundry download
   ${cmd} onboard
 
 Environment:
   KIND_CLUSTER_NAME       Default: kweaver-dev
-  CONFIG_YAML_PATH        Default: ${mac_cfg} when unset (kweaver-core|core|data-services)
+  CONFIG_YAML_PATH        Default: ${mac_cfg} when unset (bkn-foundry|core|data-services)
 
 Note: data-services install runs deploy.sh data-services (Helm charts into the current kube context). Other deploy.sh modules on mac still skip host k3s bootstrap unless you install infra yourself. See ${readme}.
 
-Mac default: kweaver-core / core add --minimum unless you pass --minimum / --min already or opt out with --full.
+Mac default: bkn-foundry / core add --minimum unless you pass --minimum / --min already or opt out with --full.
 
 EOF
 }
@@ -217,7 +217,7 @@ main() {
             fi
             exec bash "${DEPLOY_ROOT}/deploy.sh" data-services "$@"
             ;;
-        kweaver-core | core)
+        bkn-foundry | foundry | kweaver-core | core)
             mac_require_darwin
             if ! mac_doctor; then
                 exit 1
@@ -229,7 +229,7 @@ main() {
                 export CONFIG_YAML_PATH="${MAC_DEV_ROOT}/conf/mac-config.yaml"
             fi
             export KWEAVER_SKIP_PLATFORM_BOOTSTRAP="${KWEAVER_SKIP_PLATFORM_BOOTSTRAP:-true}"
-            # kind already has ingress-nginx; ensure_data_services (pulled in by kweaver-core install) must not add a second controller.
+            # kind already has ingress-nginx; ensure_data_services (pulled in by bkn-foundry install) must not add a second controller.
             export AUTO_INSTALL_INGRESS_NGINX="${AUTO_INSTALL_INGRESS_NGINX:-false}"
             export AUTO_INSTALL_LOCALPV="${AUTO_INSTALL_LOCALPV:-true}"
             # IMPORTANT: deploy.sh parses argv as  module  action  [flags...]  — never put --minimum before
@@ -251,7 +251,7 @@ main() {
                 esac
             done
             if [[ ${#_kw_pos[@]} -eq 0 ]]; then
-                mac_log_error "kweaver-core|core needs an action (e.g. download, install, status)."
+                mac_log_error "bkn-foundry|core needs an action (e.g. download, install, status)."
                 exit 1
             fi
             local -a _kw_final=()
@@ -341,10 +341,10 @@ main() {
             if ! mac_kube_context_guard; then
                 exit 1
             fi
-            export NAMESPACE="${NAMESPACE:-kweaver}"
+            export NAMESPACE="${NAMESPACE:-openbkn}"
             exec bash "${DEPLOY_ROOT}/onboard.sh" "$@"
             ;;
-        kweaver-dip | dip)
+        bkn-dip | kweaver-dip | dip)
             mac_log_error "Module '${cmd}' is not wired in mac.sh. Use deploy.sh on Linux."
             exit 1
             ;;

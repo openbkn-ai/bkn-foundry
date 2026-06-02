@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	liberrors "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/errors"
+	liberrors "github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/libs/go/errors"
 )
 
 func GetLanguageFromRequest(c *gin.Context) (string, bool) {

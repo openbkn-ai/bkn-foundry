@@ -1,6 +1,6 @@
 package psdbarg
 
-import "github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/driveradapter/api/rdto/personal_space/personalspacereq"
+import "github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/driveradapter/api/rdto/personal_space/personalspacereq"
 
 type TplListArg struct {
 	ListReq   *personalspacereq.AgentTplListReq

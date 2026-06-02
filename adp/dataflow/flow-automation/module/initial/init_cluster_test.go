@@ -3,7 +3,7 @@ package initial
 import (
 	"testing"
 
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/common"
 	"github.com/stretchr/testify/assert"
 )
 

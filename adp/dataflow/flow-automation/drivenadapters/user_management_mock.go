@@ -1,6 +1,6 @@
 package drivenadapters
 
-import "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/common"
+import "github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/common"
 
 const (
 	mockUserManagementUserID         = "mock-user-id"

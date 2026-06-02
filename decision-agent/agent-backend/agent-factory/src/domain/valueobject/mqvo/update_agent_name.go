@@ -1,6 +1,6 @@
 package mqvo
 
-import "github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/domain/enum/cdaenum"
+import "github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/domain/enum/cdaenum"
 
 type UpdateAgentNameMqMsg struct {
 	ID   string               `json:"id"`

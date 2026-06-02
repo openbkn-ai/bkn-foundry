@@ -54,7 +54,7 @@ CSV Files (local)
 # 1. Install the KWeaver CLI
 npm install -g @kweaver-ai/kweaver-sdk
 
-# 2. Authenticate to a KWeaver platform
+# 2. Authenticate to a BKN Foundry
 kweaver auth login https://<platform-url>
 
 # 3. Prepare a MySQL database reachable from the platform

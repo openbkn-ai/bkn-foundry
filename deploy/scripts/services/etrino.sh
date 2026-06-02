@@ -4,7 +4,7 @@
 # Supports install/status/uninstall for vega-hdfs, vega-calculate, and vega-metadata.
 
 NAMESPACE="${NAMESPACE:-kweaver}"
-CONFIG_FILE="${CONFIG_FILE:-$HOME/.kowell-ai/config.yaml}"
+CONFIG_FILE="${CONFIG_FILE:-$HOME/.openbkn-ai/config.yaml}"
 
 VEGA_METADATA_VERSION="3.3.1-release"
 VEGA_CALCULATE_VERSION="3.3.4-release"

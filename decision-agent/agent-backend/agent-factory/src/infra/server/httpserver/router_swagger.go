@@ -7,9 +7,9 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/internal/openapidoc"
-	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/infra/common/global"
-	apidocs "github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/infra/server/apidocs"
+	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/internal/openapidoc"
+	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/infra/common/global"
+	apidocs "github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/infra/server/apidocs"
 	"github.com/tidwall/sjson"
 )
 

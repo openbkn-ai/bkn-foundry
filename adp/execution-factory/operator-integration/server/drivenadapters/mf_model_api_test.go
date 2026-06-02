@@ -5,10 +5,10 @@ package drivenadapters
 // 	"fmt"
 // 	"testing"
 
-// 	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/logger"
-// 	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/rest"
-// 	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces"
-// 	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/utils"
+// 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/logger"
+// 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/rest"
+// 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
+// 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/utils"
 // 	. "github.com/smartystreets/goconvey/convey"
 // )
 

@@ -1,7 +1,7 @@
 # 构建迁移设计：Azure DevOps Pipeline → GitHub Actions
 
 > 状态：设计稿（待评审）
-> 适用范围：kowell-core monorepo 中、原 Azure DevOps Pipeline（`ref/kweaver-github-build`）所覆盖、且落在本仓库的可部署单元
+> 适用范围：bkn-foundry monorepo 中、原 Azure DevOps Pipeline（`ref/kweaver-github-build`）所覆盖、且落在本仓库的可部署单元
 > 目标读者：维护 CI 的工程师、各服务 owner
 > 关联文档：[`ci-build-architecture.md`](./ci-build-architecture.md)（目标架构愿景：manifest-per-service）。本文记录的是**当前已落地实现**（per-service `release-*.yml` + `reusable-*`，产物推 GHCR）下的**具体迁移决策与验收口径**。
 
@@ -23,7 +23,7 @@
 
 ## 2. 范围界定
 
-旧 pipeline 横跨多个产品，但**只有落在本仓库 `kowell-core` 的服务在迁移范围内**。判定依据：旧 pipeline 的 `SOURCE_CODE_REPO` 是否为 `kweaver-ai/kweaver-core`，以及本仓库是否存在对应 Dockerfile / Chart。
+旧 pipeline 横跨多个产品，但**只有落在本仓库 `bkn-foundry` 的服务在迁移范围内**。判定依据：旧 pipeline 的 `SOURCE_CODE_REPO` 是否为 `kweaver-ai/kweaver-core`，以及本仓库是否存在对应 Dockerfile / Chart。
 
 ### 2.1 旧 pipeline → 本仓库服务映射
 
@@ -61,7 +61,7 @@
 
 **ARM（要求 2）已满足**：`reusable-build.yml` 的 `platforms` 默认 `linux/amd64,linux/arm64`，由 buildx + QEMU 一次产出多架构镜像，**无需**旧 pipeline 那套双 pool + manifest 合并。
 
-**GHCR（要求 3）已满足**：镜像 `ghcr.io/<owner>/<name>:<version>`；Chart `oci://ghcr.io/<owner>/charts`。`<owner>` = `kowell-ai`。
+**GHCR（要求 3）已满足**：镜像 `ghcr.io/<owner>/<name>:<version>`；Chart `oci://ghcr.io/<owner>/charts`。`<owner>` = `openbkn-ai`。
 
 ## 4. 复用工作流需要的改动
 
@@ -87,7 +87,7 @@
 | doc-convert / gotenberg | `acr.aishu.cn/dip/gotenberg:8-*` | build-arg 覆盖 | `gotenberg/gotenberg:8`（官方上游） |
 | doc-convert / tika | `acr.aishu.cn/dip/tika:3.3.0.0-*` | build-arg 覆盖 | `apache/tika:3.3.0.0-full`（**版本待确认**） |
 | coderunner | `acr.aishu.cn/dip/python:3.9.13-ubuntu22.04.*` | 见 §6.1（升级 3.12） | `python:3.12-bookworm` |
-| mf-model-api / mf-model-manager | `acr.aishu.cn/ad/model-factory-base:v2`（自定义、无源、写死 `FROM`） | 见 §6.2（重建 base） | `ghcr.io/kowell-ai/model-factory-base:<ver>` |
+| mf-model-api / mf-model-manager | `acr.aishu.cn/ad/model-factory-base:v2`（自定义、无源、写死 `FROM`） | 见 §6.2（重建 base） | `ghcr.io/openbkn-ai/model-factory-base:<ver>` |
 
 > **判定依据说明**：`acr.aishu.cn/public/*` 命名空间是内部对 Docker Hub 官方镜像的代理，可直接对应官方镜像；tag 中的日期戳（如 `.20251014`）是镜像快照，公网用滚动 tag 会拉到更新补丁版（需更严可 pin digest）。`acr.aishu.cn/dip/*` 为内部自建，需逐个判断上游（gotenberg/tika/kafka 均有官方上游）。
 
@@ -139,7 +139,7 @@ redis<5,>=4 ; requests<3,>=2 ; spacy<4,>=3 ; tenacity<9.0.0,>=8.1.0
 tiktoken<0.4.0,>=0.3.2 ; python>=3.9
 ```
 
-**base 重建配方**（`infra/model-factory-base/`，构建后推 `ghcr.io/kowell-ai/model-factory-base:v2`，由 `release-infra-model-factory-base.yml` 触发；AR 去除后**无 vendor wheel**）：
+**base 重建配方**（`infra/model-factory-base/`，构建后推 `ghcr.io/openbkn-ai/model-factory-base:v2`，由 `release-infra-model-factory-base.yml` 触发；AR 去除后**无 vendor wheel**）：
 
 ```dockerfile
 FROM python:3.11-bookworm
@@ -156,7 +156,7 @@ from dbutilsx.pooled_db import PooledDB, PooledDBInfo; print('model-factory-base
 
 `requirements.txt` 含：公网内部包 `llmadapter==1.0.3` / `DBUtilsX==1.3.3` / `RDSDriver==1.3.3`；服务运行栈（fastapi/uvicorn/pydantic~=1.10.9/openai 0.28.1/…，源自 mf-model-manager）；代码 import 但上游未声明的 `confluent-kafka`（需 `librdkafka` 系统库）/`aiohttp`/`sse-starlette`/`opentelemetry-{sdk,api,instrumentation-fastapi}`。
 
-两个 service Dockerfile 补 `ARG BASE_IMAGE=ghcr.io/kowell-ai/model-factory-base:v2` 并 `FROM ${BASE_IMAGE}`。
+两个 service Dockerfile 补 `ARG BASE_IMAGE=ghcr.io/openbkn-ai/model-factory-base:v2` 并 `FROM ${BASE_IMAGE}`。
 
 **约束与待验证（build 时实跑确认）：**
 
@@ -189,7 +189,7 @@ from dbutilsx.pooled_db import PooledDB, PooledDBInfo; print('model-factory-base
 
   ```yaml
   image:
-    registry: ghcr.io/kowell-ai
+    registry: ghcr.io/openbkn-ai
     repository: <image-name>
     tag: "__VERSION__"
   ```
@@ -206,7 +206,7 @@ from dbutilsx.pooled_db import PooledDB, PooledDBInfo; print('model-factory-base
 
 **要求：构建产出的 Chart 与旧 pipeline 产出逐个比对，验证一致性。**
 
-两套 Chart **不会字节相同**——registry（`acr.aishu.cn` → `ghcr.io/kowell-ai`）、tag 命名、`_componentMeta.json` 处理是**有意差异**。一致性指：**模板与结构等价，差异仅限于上述有意变更**；任何 templates / 依赖 / 非镜像 values 的差异都属**意外**，需排查。
+两套 Chart **不会字节相同**——registry（`acr.aishu.cn` → `ghcr.io/openbkn-ai`）、tag 命名、`_componentMeta.json` 处理是**有意差异**。一致性指：**模板与结构等价，差异仅限于上述有意变更**；任何 templates / 依赖 / 非镜像 values 的差异都属**意外**，需排查。
 
 ### 9.1 比对方法（每个 Chart 独立执行）
 

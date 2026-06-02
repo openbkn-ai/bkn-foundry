@@ -1,0 +1,39 @@
+BKN Foundry — Licensing Overview
+Copyright (c) 2026 OpenBKN
+
+BKN Foundry is multi-licensed. Different components are governed by
+different licenses depending on their origin and copyright ownership.
+The license applicable to each file is stated in that file's header.
+For a per-component breakdown and attribution, see the NOTICE file.
+
+--------------------------------------------------------------------
+1. Components originating from the upstream project
+   kweaver-ai/kweaver-core
+--------------------------------------------------------------------
+   Licensed under the Apache License, Version 2.0.
+   Full text: LICENSE-APACHE.txt
+   Original copyright notices are retained in the source files as
+   required by Section 4 of the Apache License, Version 2.0.
+
+   Examples: BKN Engine, Context Loader, VEGA, Dataflow,
+   Exec Factory.
+
+--------------------------------------------------------------------
+2. OpenBKN access-layer components
+--------------------------------------------------------------------
+   Licensed under the Apache License, Version 2.0.
+   Full text: LICENSE-APACHE.txt
+
+   Examples: BKN SDK / CLI, BKN Skill.
+
+--------------------------------------------------------------------
+3. OpenBKN modules
+--------------------------------------------------------------------
+   Licensed under the OpenBKN License (a modified version of the
+   Apache License, Version 2.0, with Additional Conditions).
+   Full text: LICENSE-OPENBKN.txt
+
+   Examples: BKN Safe, BKN Studio.
+
+--------------------------------------------------------------------
+For commercial licensing inquiries: <CONTACT EMAIL / URL>

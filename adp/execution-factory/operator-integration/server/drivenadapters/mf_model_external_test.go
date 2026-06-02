@@ -6,10 +6,10 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/common"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/logger"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/mocks"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/common"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/logger"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/mocks"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 )

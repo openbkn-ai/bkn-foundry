@@ -1,7 +1,7 @@
 package validator
 
 import (
-	myErr "github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/errors"
+	myErr "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/errors"
 )
 
 // TagToErrorType Validate tag 映射到错误分类

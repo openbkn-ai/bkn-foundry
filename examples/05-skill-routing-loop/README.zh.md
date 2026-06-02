@@ -27,7 +27,7 @@
 ## 前置条件
 
 - `kweaver` CLI ≥ 0.7.1
-- 启用了 Decision Agent + execution-factory + Vega 的 KWeaver 平台
+- 启用了 Decision Agent + execution-factory + Vega 的 BKN Foundry 平台
   （先 `kweaver auth login <平台地址> [--insecure]`）
 - **平台能访问到**的 MySQL（不是你笔记本上的），且账号有 CREATE/INSERT/SELECT/UPDATE 权限
 - `python3`（依赖 Flask + mysql-connector-python，

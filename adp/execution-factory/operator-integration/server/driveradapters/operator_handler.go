@@ -4,10 +4,10 @@ import (
 	"sync"
 
 	"github.com/gin-gonic/gin"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/driveradapters/category"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/driveradapters/operator"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/logics/business_domain"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/driveradapters/category"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/driveradapters/operator"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/business_domain"
 )
 
 // OperatorRestHandler operator RESTfual API Handler 接口

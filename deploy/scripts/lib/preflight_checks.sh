@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# KWeaver deploy preflight checks (sourced by deploy/preflight.sh)
+# BKN Foundry deploy preflight checks (sourced by deploy/preflight.sh)
 # =============================================================================
 
 # shellcheck disable=SC2034
@@ -534,7 +534,7 @@ preflight_check_arch() {
             if [[ "${PREFLIGHT_REQUIRE_AMD64:-false}" == "true" ]]; then
                 preflight_fail "Architecture: ${m}; PREFLIGHT_REQUIRE_AMD64=true (need x86_64/amd64 images)"
             else
-                preflight_warn "Architecture: ${m} (verify KWeaver image availability for your platform)"
+                preflight_warn "Architecture: ${m} (verify BKN Foundry image availability for your platform)"
             fi
             ;;
         *)
@@ -823,7 +823,7 @@ preflight_check_k8s_version() {
     if [[ "$((maj*100+min))" -lt 124 ]]; then
         preflight_fail "Kubernetes server too old: ${ver} (minimum supported 1.24 for this preflight policy)"
     elif [[ "$((maj*100+min))" -ge 132 ]]; then
-        preflight_fail "Kubernetes server very new: ${ver} (verify KWeaver chart compatibility; not validated beyond 1.31 here)"
+        preflight_fail "Kubernetes server very new: ${ver} (verify BKN Foundry chart compatibility; not validated beyond 1.31 here)"
     elif [[ "$((maj*100+min))" -lt 126 || "$((maj*100+min))" -gt 130 ]]; then
         preflight_warn "Kubernetes server version ${ver} (recommended 1.26.x–1.30.x for this track)"
     else
@@ -1587,7 +1587,7 @@ preflight_check_pkg_repos() {
     else
         # Linux without apt/dnf/yum is not supported — no way for --fix to install kubeadm/containerd/Node.
         if [[ "$(uname -s)" == "Linux" ]]; then
-            preflight_fail "No supported package manager (apt-get / dnf / yum) found. KWeaver deploy/preflight needs one of them to install kubeadm/containerd/helm/Node."
+            preflight_fail "No supported package manager (apt-get / dnf / yum) found. BKN Foundry deploy/preflight needs one of them to install kubeadm/containerd/helm/Node."
         else
             preflight_warn "No supported package manager (apt-get / dnf / yum) found (non-Linux host; preflight is intended for the Linux install host)."
         fi
@@ -2097,7 +2097,7 @@ preflight_fix_iptables_legacy() {
 preflight_fix_kernel_limits_sysctl() {
     preflight_backup_file /etc/sysctl.d/99-kweaver-preflight.conf
     cat > /etc/sysctl.d/99-kweaver-preflight.conf <<'EOF' || true
-# Added by KWeaver preflight
+# Added by BKN Foundry preflight
 vm.max_map_count = 262144
 fs.inotify.max_user_watches = 524288
 fs.inotify.max_user_instances = 8192
@@ -2118,7 +2118,7 @@ preflight_fix_nofile_limits() {
 
     preflight_backup_file /etc/security/limits.d/99-kweaver-nofile.conf
     cat > /etc/security/limits.d/99-kweaver-nofile.conf <<EOF || true
-# Added by KWeaver preflight (nofile-limits fix)
+# Added by BKN Foundry preflight (nofile-limits fix)
 * soft nofile ${soft}
 * hard nofile ${hard}
 root soft nofile ${soft}
@@ -2128,7 +2128,7 @@ EOF
     if [[ -d /etc/systemd/system.conf.d ]] || mkdir -p /etc/systemd/system.conf.d 2>/dev/null; then
         preflight_backup_file /etc/systemd/system.conf.d/99-kweaver-nofile.conf
         cat > /etc/systemd/system.conf.d/99-kweaver-nofile.conf <<EOF || true
-# Added by KWeaver preflight (nofile-limits fix)
+# Added by BKN Foundry preflight (nofile-limits fix)
 [Manager]
 DefaultLimitNOFILE=${soft}:${hard}
 EOF
@@ -2140,7 +2140,7 @@ EOF
         mkdir -p "${dropin}" 2>/dev/null || true
         preflight_backup_file "${dropin}/99-kweaver-nofile.conf"
         cat > "${dropin}/99-kweaver-nofile.conf" <<EOF || true
-# Added by KWeaver preflight (nofile-limits fix)
+# Added by BKN Foundry preflight (nofile-limits fix)
 [Service]
 LimitNOFILE=${soft}:${hard}
 EOF
@@ -2166,7 +2166,7 @@ preflight_fix_ipv6_disable() {
 
     preflight_backup_file /etc/sysctl.d/99-kweaver-disable-ipv6.conf
     cat > /etc/sysctl.d/99-kweaver-disable-ipv6.conf <<'EOF' || true
-# Added by KWeaver preflight (ipv6-disable fix).
+# Added by BKN Foundry preflight (ipv6-disable fix).
 # Disables the IPv6 kernel stack so docker/containerd skip the IPv6 connect
 # path on hosts where AAAA resolves but routing is broken. Without this,
 # image pulls (helper-pod busybox, metrics-server, ...) stall ~30s on IPv6
@@ -2188,7 +2188,7 @@ EOF
 preflight_fix_bridge_sysctl() {
     preflight_backup_file /etc/sysctl.d/99-kweaver-bridge.conf
     cat > /etc/sysctl.d/99-kweaver-bridge.conf <<'EOF' || true
-# Added by KWeaver preflight
+# Added by BKN Foundry preflight
 net.bridge.bridge-nf-call-iptables = 1
 net.bridge.bridge-nf-call-ip6tables = 1
 EOF
@@ -2283,7 +2283,7 @@ preflight_remember_no() {
     f="$(_preflight_decision_file "${name}")"
     mkdir -p "${PREFLIGHT_DECISION_DIR}" 2>/dev/null || return 0
     {
-        echo "# Saved by KWeaver preflight $(date -Iseconds 2>/dev/null || date)"
+        echo "# Saved by BKN Foundry preflight $(date -Iseconds 2>/dev/null || date)"
         echo "# Operator answered No to: ${name}"
         echo "# Re-prompt on next run by removing this file:"
         echo "#   sudo rm ${f}"

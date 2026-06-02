@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/store"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/libs/go/store"
 )
 
 const internalTime = 3 * time.Second

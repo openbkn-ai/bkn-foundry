@@ -1,6 +1,6 @@
-# 📘 KWeaver Core 文档
+# 📘 BKN Foundry 文档
 
-KWeaver Core 为**纯后台**平台，请通过 CLI、各语言 SDK 或 HTTP API 操作各子系统。
+BKN Foundry 为**纯后台**平台，请通过 CLI、各语言 SDK 或 HTTP API 操作各子系统。
 
 ---
 
@@ -38,6 +38,6 @@ KWeaver Core 为**纯后台**平台，请通过 CLI、各语言 SDK 或 HTTP API
 
 ## 💬 交流群
 
-<img src="../qrcode.png" width="200" alt="KWeaver 交流群二维码" />
+<img src="../qrcode.png" width="200" alt="BKN Foundry 交流群二维码" />
 
 > 💡 CLI 安装：业务用户用 `npm install -g @kweaver-ai/kweaver-sdk`；平台管理员另装 `npm install -g @kweaver-ai/kweaver-admin`。更详细的集群运维说明以随产品提供的部署文档为准。

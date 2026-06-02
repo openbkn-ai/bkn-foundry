@@ -1,20 +1,20 @@
-# Kowell Core
+# BKN Foundry
 
 [中文](README.zh.md) | English
 
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE.txt)
+[![License](https://img.shields.io/badge/license-multi--licensed-blue.svg)](LICENSE)
 
-Kowell Core is a harness-first foundation for enterprise decision agents. It turns fragmented data, knowledge, tools, and policies into governed context, safe execution, and verifiable feedback loops. With semantic modeling, real-time access, runtime control, and TraceAI, it helps AI systems reason, adapt, and act reliably in complex enterprises.
+BKN Foundry is a harness-first foundation for enterprise decision agents. It turns fragmented data, knowledge, tools, and policies into governed context, safe execution, and verifiable feedback loops. With semantic modeling, real-time access, runtime control, and TraceAI, it helps AI systems reason, adapt, and act reliably in complex enterprises.
 
-**On this page:** [📚 Quick links](#toc-quick-links) · [🚀 Quick start](#toc-quick-start) · [🛠️ KWeaver SDK](#toc-kweaver-sdk) · [🛡️ KWeaver Admin CLI](#toc-kweaver-admin) · [🏗️ Kowell Core](#toc-kweaver-core) · [📐 BKN Lang](#toc-bkn-lang) · [📊 Benchmarks](#toc-benchmarks)
+**On this page:** [📚 Quick links](#toc-quick-links) · [🚀 Quick start](#toc-quick-start) · [🛠️ KWeaver SDK](#toc-kweaver-sdk) · [🛡️ KWeaver Admin CLI](#toc-kweaver-admin) · [🏗️ BKN Foundry](#toc-kweaver-core) · [📐 BKN Lang](#toc-bkn-lang) · [📊 Benchmarks](#toc-benchmarks)
 
-> **Note:** Kowell Core is a **backend-only framework** — it does not include a web UI. All interactions are through the CLI, SDK, or API.
+> **Note:** BKN Foundry is a **backend-only framework** — it does not include a web UI. All interactions are through the CLI, SDK, or API.
 
 <a id="toc-quick-links"></a>
 
 ## 📚 Quick Links
 
-- 🛠️ [KWeaver SDK](https://github.com/kweaver-ai/kweaver-sdk) - End-user / agent Kowell CLI, TypeScript / Python SDK, and AI agent skills
+- 🛠️ [KWeaver SDK](https://github.com/kweaver-ai/kweaver-sdk) - End-user / agent BKN CLI, TypeScript / Python SDK, and AI agent skills
 - 🛡️ [kweaver-admin](https://github.com/kweaver-ai/kweaver-admin) - Platform administrator CLI (users / orgs / roles / models / audit) for full installs
 - 🤝 [Contributing](rules/CONTRIBUTING.md) - Guidelines for contributing to the project
 - 🚢 [Deployment](deploy/README.md) - One-click deploy to Kubernetes
@@ -30,11 +30,11 @@ Kowell Core is a harness-first foundation for enterprise decision agents. It tur
 1. **Prerequisites & planning** — read the [Deployment Guide](deploy/README.md) and satisfy its prerequisites. **Linux** is the supported target for full installs; **macOS** local dev (kind) is optional — see [Mac install (dev)](deploy/dev/README.md) ([中文](deploy/dev/README.zh.md)).
 2. **Pre-install host check / fix with `preflight.sh`** (recommended)
 
-   On the **target install host**, run a system check before `deploy.sh`. It verifies kernel / sysctl / containerd / `kubectl` / `helm` / Node / Kowell CLIs and can fix what's missing (each fix is opt-in unless `-y`):
+   On the **target install host**, run a system check before `deploy.sh`. It verifies kernel / sysctl / containerd / `kubectl` / `helm` / Node / BKN CLIs and can fix what's missing (each fix is opt-in unless `-y`):
 
 ```bash
-git clone https://github.com/kowell-ai/kowell-core.git
-cd kowell-core/deploy
+git clone https://github.com/openbkn-ai/bkn-foundry.git
+cd bkn-foundry/deploy
 chmod +x preflight.sh deploy.sh onboard.sh
 
 sudo bash ./preflight.sh                # check-only (default)
@@ -60,7 +60,7 @@ sudo bash ./preflight.sh --help         # all flags (--role, --skip, --report, -
 ./deploy.sh core install
 
 # Or specify addresses explicitly (skips interactive prompts):
-#   --access_address       Address for clients to reach Kowell services (can be IP or domain)
+#   --access_address       Address for clients to reach OpenBKN services (can be IP or domain)
 #   --api_server_address   IP bound to a local network interface for K8s API server (must be a real NIC IP)
 ./deploy.sh core install \
   --access_address=<your-ip> \
@@ -90,13 +90,13 @@ sudo bash ./onboard.sh        # interactive; or:  sudo bash ./onboard.sh -y
 sudo bash ./onboard.sh --help # all flags (--config=models.yaml, --enable-bkn-search, --skip-context-loader, …)
 ```
 
-   > **Why `sudo`?** `onboard.sh` reads `$HOME/.kowell-ai/config.yaml` (written by `sudo deploy.sh` into `/root/.kowell-ai/`) and writes the `kweaver` auth token to `$HOME/.kweaver`. Running it without `sudo` falls back to the in-repo template `deploy/conf/config.yaml` and may resolve a different access URL. **macOS dev path** (`bash deploy/dev/mac.sh onboard`) does **not** need `sudo`.
+   > **Why `sudo`?** `onboard.sh` reads `$HOME/.openbkn-ai/config.yaml` (written by `sudo deploy.sh` into `/root/.openbkn-ai/`) and writes the `kweaver` auth token to `$HOME/.kweaver`. Running it without `sudo` falls back to the in-repo template `deploy/conf/config.yaml` and may resolve a different access URL. **macOS dev path** (`bash deploy/dev/mac.sh onboard`) does **not** need `sudo`.
 
    Re-runs are safe: existing models / BKN defaults are detected and skipped. For the full sequence, the Mermaid flow, and the `kweaver` / `kweaver-admin` two-CLI authentication notes (full ISF), see [help/en/install.md — Post-install: `onboard.sh`](help/en/install.md#post-install-onboardsh).
 
 6. **Verify API access**
 
-   Kowell Core is backend-only and does not provide a web console. On the machine you use to reach the cluster (laptop, bastion, etc.), use the Kowell CLI from [**kweaver-sdk**](https://github.com/kweaver-ai/kweaver-sdk): either `npm install -g @kweaver-ai/kweaver-sdk` or `npx kweaver` (no global install; see [KWeaver SDK](#toc-kweaver-sdk) below). Then run:
+   BKN Foundry is backend-only and does not provide a web console. On the machine you use to reach the cluster (laptop, bastion, etc.), use the BKN CLI from [**kweaver-sdk**](https://github.com/kweaver-ai/kweaver-sdk): either `npm install -g @kweaver-ai/kweaver-sdk` or `npx kweaver` (no global install; see [KWeaver SDK](#toc-kweaver-sdk) below). Then run:
 
 ```bash
 # Minimum install (no auth):
@@ -123,9 +123,9 @@ For full product documentation, see the [Documentation](help/README.md) ([EN](he
 
 <a id="toc-kweaver-core"></a>
 
-## 🏗️ Kowell Core
+## 🏗️ BKN Foundry
 
-**Kowell Core** is the AI-native platform foundation for autonomous decision-making. It sits between AI Agents (above) and AI/Data infrastructure (below), with the **Business Knowledge Network (BKN)** at its center, providing unified data access, execution, and security governance for Agents.
+**BKN Foundry** is the AI-native platform foundation for autonomous decision-making. It sits between AI Agents (above) and AI/Data infrastructure (below), with the **Business Knowledge Network (BKN)** at its center, providing unified data access, execution, and security governance for Agents.
 
 ```text
             ┌─────────────────────────────────┐
@@ -135,7 +135,7 @@ For full product documentation, see the [Documentation](help/README.md) ([EN](he
                             │
             ┌───────────────▼─────────────────┐
             │     Business Knowledge Network   │
-            │         Kowell Core             │
+            │         BKN Foundry             │
             └───────────────┬─────────────────┘
                             │
             ┌───────────────▼─────────────────┐
@@ -144,11 +144,11 @@ For full product documentation, see the [Documentation](help/README.md) ([EN](he
             └─────────────────────────────────┘
 ```
 
-Kowell Core solves two critical pain points when connecting proprietary data with autonomous AI Agents:
+BKN Foundry solves two critical pain points when connecting proprietary data with autonomous AI Agents:
 
 ### Context Engineering — High-Quality Context for Agents
 
-In long-running agent scenarios, context inevitably faces explosion, decay, pollution, and high token costs. Kowell Core addresses these through the Business Knowledge Network:
+In long-running agent scenarios, context inevitably faces explosion, decay, pollution, and high token costs. BKN Foundry addresses these through the Business Knowledge Network:
 
 - **Context explosion containment** — Multi-source candidates are first organized and aggregated via the BKN semantic network, then unified by Context Loader (recall → coarse ranking → fine ranking) to retain only key evidence and constraints, avoiding massive prompt fragments that cause decision drift. Overall accuracy reaches **93%+**.
 - **Context decay mitigation** — Replaces long-text stacking with "real-time facts + evidence citations", keeping reasoning grounded around specific objects and reducing forgetting and hallucination risks in long inputs. Accuracy improves **15%+** over baselines across scenario types.
@@ -157,7 +157,7 @@ In long-running agent scenarios, context inevitably faces explosion, decay, poll
 
 ### Harness Engineering — Safe & Controllable Execution
 
-Beyond "seeing more", Agents must "do it right". Kowell Core provides constraint engineering capabilities for enterprise-grade safe execution:
+Beyond "seeing more", Agents must "do it right". BKN Foundry provides constraint engineering capabilities for enterprise-grade safe execution:
 
 - **Explainable decisions** — Uses "Object → Action → Rule → Constraint" knowledge structures to express business intent graphs, grounding tool invocation and parameter selection to explicit semantic boundaries and rule dependencies, making it clear "why this action was taken".
 - **Traceable evidence chain** — From action intent → knowledge node → data source → mapping/operator → final invocation, full-chain tracing is supported. Entities and relationships can be traced back to source data and active rules, enabling audit and review.
@@ -167,7 +167,7 @@ Beyond "seeing more", Agents must "do it right". Kowell Core provides constraint
 ### Core Architecture
 
 ```text
-┌──────────────────────── Kowell Core ────────────────────────┐
+┌──────────────────────── BKN Foundry ────────────────────────┐
 │         │                                          │         │
 │         │  Decision Agent                          │         │
 │  Info   │  (Dolphin Runtime / Agent Executor)       │  Trace │
@@ -231,9 +231,9 @@ BKN Lang is a Markdown-based business knowledge modeling language, designed for 
 
 ### Install the SDK on the client
 
-After deploying Kowell Core, we recommend installing [kweaver-sdk](https://github.com/kweaver-ai/kweaver-sdk) as your next step. The SDK provides the Kowell CLI (the `kweaver` command) and AI Agent Skills — the primary way to interact with the platform.
+After deploying BKN Foundry, we recommend installing [kweaver-sdk](https://github.com/kweaver-ai/kweaver-sdk) as your next step. The SDK provides the BKN CLI (the `kweaver` command) and AI Agent Skills — the primary way to interact with the platform.
 
-[**kweaver-sdk**](https://github.com/kweaver-ai/kweaver-sdk) gives AI agents (Claude Code, GPT, custom agents, etc.) access to Kowell knowledge networks and Decision Agents via the Kowell CLI. It also provides Python and TypeScript SDKs for programmatic integration.
+[**kweaver-sdk**](https://github.com/kweaver-ai/kweaver-sdk) gives AI agents (Claude Code, GPT, custom agents, etc.) access to OpenBKN knowledge networks and Decision Agents via the BKN CLI. It also provides Python and TypeScript SDKs for programmatic integration.
 
 Install the CLI with:
 
@@ -269,21 +269,21 @@ npx skills add https://github.com/kweaver-ai/kweaver-sdk --skill kweaver-core
 npx skills add https://github.com/kweaver-ai/kweaver-sdk --skill create-bkn
 ```
 
-**Before using any skill**, authenticate with your Kowell instance:
+**Before using any skill**, authenticate with your OpenBKN instance:
 
 ```bash
-kweaver auth login https://your-kowell-instance.com
+kweaver auth login https://your-openbkn-instance.com
 ```
 
 > **Self-signed certificate?** If your instance uses a self-signed or untrusted TLS certificate (common for fresh deployments without a CA-issued cert), add `-k` to skip certificate verification:
 >
 > ```bash
-> kweaver auth login https://your-kowell-instance.com -k
+> kweaver auth login https://your-openbkn-instance.com -k
 > ```
 
 ### Headless / no-browser authentication (SSH, CI, containers)
 
-The Kowell CLI supports authenticating without a local browser or without pasting callback URLs.
+The BKN CLI supports authenticating without a local browser or without pasting callback URLs.
 
 **Which option to use**
 
@@ -305,7 +305,7 @@ kweaver auth login https://your-instance -u <username> -p <password> -k
 
 **Method 2 — Export & replay (kweaver-sdk installed; export and replay)**
 
-On a machine that **has** the Kowell CLI, sign in with the browser once, then `export` a one-line command for the headless host — you do not need to transcribe the OAuth callback URL or code in the terminal by hand.
+On a machine that **has** the BKN CLI, sign in with the browser once, then `export` a one-line command for the headless host — you do not need to transcribe the OAuth callback URL or code in the terminal by hand.
 
 1. On a machine **with** a browser, run `kweaver auth login https://your-instance`. After success, export credentials:
 
@@ -344,12 +344,12 @@ Paste URL or code>
 
 > With saved `~/.kweaver/` sessions, the CLI automatically exchanges `refresh_token` for a new access token when it expires — no extra flags needed. You can also set environment variables (`KWEAVER_BASE_URL`, `KWEAVER_TOKEN`) instead of persisting credentials to disk.
 
-Full details: [kweaver-sdk — Authentication](https://github.com/kweaver-ai/kweaver-sdk#authentication) and [Headless / Server Authentication](https://github.com/kweaver-ai/kweaver-sdk/blob/main/packages/typescript/README.md#headless--server-authentication). The Python Kowell CLI still uses interactive browser login; reuse the `~/.kweaver/` directory from a machine where the Node CLI finished login, or set the environment variables above.
+Full details: [kweaver-sdk — Authentication](https://github.com/kweaver-ai/kweaver-sdk#authentication) and [Headless / Server Authentication](https://github.com/kweaver-ai/kweaver-sdk/blob/main/packages/typescript/README.md#headless--server-authentication). The Python BKN CLI still uses interactive browser login; reuse the `~/.kweaver/` directory from a machine where the Node CLI finished login, or set the environment variables above.
 
 ### CLI
 
 ```bash
-kweaver auth login https://your-kowell.com -k    # authenticate (-k for self-signed TLS)
+kweaver auth login https://your-openbkn.com -k    # authenticate (-k for self-signed TLS)
 kweaver bkn list                                 # list knowledge networks
 kweaver bkn search <kn-id> "query"               # semantic search
 kweaver agent chat <agent-id> -m "Hello"         # chat with a Decision Agent
@@ -383,7 +383,7 @@ For streaming, `KWeaverClient`, and the full API surface, see the [kweaver-sdk](
 
 ## 🛡️ KWeaver Admin CLI
 
-[`kweaver-admin`](https://github.com/kweaver-ai/kweaver-admin) is a separate npm CLI for **platform administrators**, complementary to the Kowell CLI from `kweaver-sdk`:
+[`kweaver-admin`](https://github.com/kweaver-ai/kweaver-admin) is a separate npm CLI for **platform administrators**, complementary to the BKN CLI from `kweaver-sdk`:
 
 | CLI | Audience | Scope |
 | --- | --- | --- |
@@ -433,7 +433,7 @@ kweaver-admin call /api/user-management/v1/management/users -X GET   # raw HTTP 
 
 > Respect the **separation-of-duties** built-in accounts (`system`, `admin`, `security`, `audit`) — operators should use individual accounts, not the shared `admin`.
 
-Full command tree, security notes, and `auth change-password` (EACP `modifypassword`, same `401001017` first-login flow as the Kowell CLI): see [kweaver-admin README](https://github.com/kweaver-ai/kweaver-admin) and [help/en/install.md — Administrator tool after a full install](help/en/install.md#-administrator-tool-after-a-full-install-kweaver-admin).
+Full command tree, security notes, and `auth change-password` (EACP `modifypassword`, same `401001017` first-login flow as the BKN CLI): see [kweaver-admin README](https://github.com/kweaver-ai/kweaver-admin) and [help/en/install.md — Administrator tool after a full install](help/en/install.md#-administrator-tool-after-a-full-install-kweaver-admin).
 
 ### AI Agent Skill — `kweaver-admin`
 
@@ -453,7 +453,7 @@ Show login audit for alice in the last 7 days
 Register an embedding model named bge-m3 against https://api.siliconflow.cn
 ```
 
-Skill source: [skills/kweaver-admin/SKILL.md](https://github.com/kweaver-ai/kweaver-admin/blob/main/skills/kweaver-admin/SKILL.md). It complements the `kweaver-core` / `create-bkn` skills above (which target the Kowell CLI).
+Skill source: [skills/kweaver-admin/SKILL.md](https://github.com/kweaver-ai/kweaver-admin/blob/main/skills/kweaver-admin/SKILL.md). It complements the `kweaver-core` / `create-bkn` skills above (which target the BKN CLI).
 
 <a id="toc-benchmarks"></a>
 
@@ -463,20 +463,20 @@ Skill source: [skills/kweaver-admin/SKILL.md](https://github.com/kweaver-ai/kwea
 
 Based on 145 HR scenario samples (resume corpus with 118 multi-format PDFs), covering simple information lookup, cross-section experience analysis, and multi-hop comprehensive reasoning. All platforms used DeepSeek V3.2 + BGE M3-Embedding with identical data sources, tested in Agentic mode.
 
-| Metric | Kowell Core (v0.3.0) | BiSheng | Dify (v0.15.3) | RAGFlow (v0.17.0) |
+| Metric | BKN Foundry (v0.3.0) | BiSheng | Dify (v0.15.3) | RAGFlow (v0.17.0) |
 | --- | --- | --- | --- | --- |
 | **Accuracy** | **99.31%** (144/145) | 86.90% (126/145) | 96.55% (140/145) | 86.90% (126/145) |
 | **Avg Latency** | 43.69s | **19.52s** | 63.82s | 71.56s |
 | **P90 Latency** | 56.92s | 32.53s | 79.15s | 95.37s |
 | **Avg Token** | 21.36K | **4.98K** | 36.25K | 16.28K |
 
-Kowell Core is the only platform that breaks the traditional RAG "performance impossible triangle" — achieving >99% accuracy while keeping inference cost and latency at production-ready levels. Dify trades high token consumption (1.7x) for decent accuracy; BiSheng sacrifices reasoning depth for speed; RAGFlow falls behind on both accuracy and latency.
+BKN Foundry is the only platform that breaks the traditional RAG "performance impossible triangle" — achieving >99% accuracy while keeping inference cost and latency at production-ready levels. Dify trades high token consumption (1.7x) for decent accuracy; BiSheng sacrifices reasoning depth for speed; RAGFlow falls behind on both accuracy and latency.
 
 ### Ablation Studies — Key Technical Levers
 
-The following ablation experiments identify the contribution of each Kowell Core component:
+The following ablation experiments identify the contribution of each BKN Foundry component:
 
-**Retrieval Depth** — Increasing retrieval limit from 10 to 20 raised accuracy from 96.67% to 100%, with only +6.48s latency. Context Loader's semantic reranking and compression enable Kowell Core to effectively handle the increased context without "Lost in the Middle" effects.
+**Retrieval Depth** — Increasing retrieval limit from 10 to 20 raised accuracy from 96.67% to 100%, with only +6.48s latency. Context Loader's semantic reranking and compression enable BKN Foundry to effectively handle the increased context without "Lost in the Middle" effects.
 
 **Schema Preloading** — With Context Loader preloading the BKN schema:
 
@@ -510,9 +510,25 @@ Path guidance tells Agents "how to walk" for efficiency; tool curation "reduces 
 
 F1 Bench is based on the BIRD test set with the Formula-1 database mixed with 30 unstructured documents, testing Agent capabilities in structured + unstructured heterogeneous data reasoning.
 
-| Metric | Kowell Core | Dify Retrieval Baseline |
+| Metric | BKN Foundry | Dify Retrieval Baseline |
 | --- | --- | --- |
 | **Overall Accuracy** | **92.96%** | 78.87% |
 | **SQL Waste Rate** | **8.2%** | 24.5% |
 | **SQL Hit Efficiency** | **0.226** | 0.137 |
 | **Total SQL Calls** | **292** | 408 |
+
+## License
+
+BKN Foundry is multi-licensed:
+
+- Components originating from the upstream
+  [kweaver-ai/kweaver-core](https://github.com/kweaver-ai/kweaver-core)
+  remain under the Apache License 2.0 (see LICENSE-APACHE.txt).
+- OpenBKN access-layer components (BKN SDK / CLI, BKN Skill) are under
+  the Apache License 2.0 (see LICENSE-APACHE.txt).
+- OpenBKN modules (BKN Safe, BKN Studio) are under the OpenBKN
+  License — a modified version of the Apache License 2.0 with
+  additional conditions (see LICENSE-OPENBKN.txt).
+
+The license for each file is stated in its header. See NOTICE for a
+per-component breakdown.

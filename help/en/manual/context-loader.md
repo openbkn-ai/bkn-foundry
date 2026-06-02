@@ -96,7 +96,7 @@ kweaver context-loader tools
 ### Configuration Management
 
 ```bash
-# Set active KWeaver server configuration
+# Set active BKN Foundry server configuration
 kweaver config set <alias> --url https://<access-address> --token <token>
 
 # Use a saved configuration

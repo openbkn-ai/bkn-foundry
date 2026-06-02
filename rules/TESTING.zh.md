@@ -1,13 +1,13 @@
-# KWeaver-Core 研发测试规范
+# BKN Foundry 研发测试规范
 
 > 版本：0.2.0
-> 适用范围：KWeaver-Core 及关联产品（Decision Agent、ISF、TraceAI 等）的所有模块
+> 适用范围：BKN Foundry 及关联产品（Decision Agent、ISF、TraceAI 等）的所有模块
 
 ---
 
 ## 1. 背景
 
-KWeaver-Core 由多个模块组成，分属多个业务域（ontology、vega、execution-factory、dataflow 等），由多个小组并行开发。本规范同样适用于 Decision Agent、ISF、TraceAI 等关联产品的模块。
+BKN Foundry 由多个模块组成，分属多个业务域（ontology、vega、execution-factory、dataflow 等），由多个小组并行开发。本规范同样适用于 Decision Agent、ISF、TraceAI 等关联产品的模块。
 
 测试的编写、运行、修复主要由 AI Agent 完成，人工负责审核和决策。
 

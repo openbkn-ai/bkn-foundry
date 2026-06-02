@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# KWeaver Core — pre-install environment check and safe fixes
+# BKN Foundry — pre-install environment check and safe fixes
 # See help/zh/install.md. Must run on the target Linux host as root (sudo), except -h/--help.
 
 set -euo pipefail
@@ -181,7 +181,7 @@ fi
 if [[ -n "${PREFLIGHT_REPORT_FILE}" ]]; then
     mkdir -p "$(dirname "${PREFLIGHT_REPORT_FILE}")" 2>/dev/null || true
     {
-        echo "=== KWeaver preflight $(date -Iseconds) ==="
+        echo "=== BKN Foundry preflight $(date -Iseconds) ==="
     } > "${PREFLIGHT_REPORT_FILE}"
 fi
 
@@ -201,7 +201,7 @@ _pf_section() {
     fi
 }
 
-_pf_section "KWeaver preflight checks"
+_pf_section "BKN Foundry preflight checks"
 preflight_run_all_checks
 PREFLIGHT_FAIL_COUNT_INITIAL="${PREFLIGHT_FAIL_COUNT}"
 export PREFLIGHT_FAIL_COUNT_INITIAL
@@ -283,7 +283,7 @@ if [[ "${PREFLIGHT_OUTPUT_JSON}" != "true" ]]; then
     _pf_total="${PREFLIGHT_KWEAVER_RELEASE_TOTAL:-0}"
     _pf_bad="${PREFLIGHT_KWEAVER_RELEASE_BAD:-0}"
     if [[ "${_pf_total}" -gt 0 ]]; then
-        echo "  KWeaver appears INSTALLED on this cluster (${_pf_total} helm release(s))."
+        echo "  BKN Foundry appears INSTALLED on this cluster (${_pf_total} helm release(s))."
         echo "  You probably do NOT need to run a fresh install — the components below already exist:"
         if [[ -n "${PREFLIGHT_KWEAVER_RELEASE_NAMES:-}" ]]; then
             _pf_first=true
@@ -317,14 +317,14 @@ if [[ "${PREFLIGHT_OUTPUT_JSON}" != "true" ]]; then
         fi
     else
         if [[ ${exit_code} -eq 0 ]]; then
-            echo "  No KWeaver releases detected. Environment looks ready for a first-time install:"
+            echo "  No BKN Foundry releases detected. Environment looks ready for a first-time install:"
             echo "    sudo bash ./deploy.sh kweaver-core install --minimum    # try first / for evaluation"
             echo "    sudo bash ./deploy.sh kweaver-core install              # full install (auth + business-domain)"
             echo ""
             echo "  After deploy: from this repo's deploy/ directory run sudo bash ./onboard.sh (Linux; macOS dev uses plain bash; needs Node ${PREFLIGHT_KWEAVER_MIN_NODE_MAJOR}+ + kweaver CLI on that host)."
             echo "  If this host still lacks Node/CLIs: sudo bash ./preflight.sh --fix"
         else
-            echo "  No KWeaver releases detected, but preflight above is NOT all clear — fix that before treating deploy as ready."
+            echo "  No BKN Foundry releases detected, but preflight above is NOT all clear — fix that before treating deploy as ready."
             echo "  Typical loop:"
             echo "    sudo bash ./preflight.sh --fix          # applies safe fixes / opt-in tooling (y/N unless -y)"
             echo "    sudo bash ./preflight.sh --check-only   # re-check until blocking [FAIL] items are addressed (or sudo bash ./preflight.sh --check-only --lenient if you accept the caveats)"

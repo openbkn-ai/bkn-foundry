@@ -3,7 +3,7 @@ package entity
 import (
 	"testing"
 
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/store"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/store"
 	"github.com/stretchr/testify/assert"
 )
 

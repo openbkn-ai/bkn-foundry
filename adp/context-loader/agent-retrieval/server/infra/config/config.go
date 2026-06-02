@@ -1,4 +1,4 @@
-// Copyright 2026 kowell.ai
+// Copyright 2026 openbkn.ai
 // Copyright The kweaver.ai Authors.
 //
 // Licensed under the Apache License, Version 2.0.
@@ -24,10 +24,10 @@ import (
 	"github.com/spf13/viper"
 	yaml "gopkg.in/yaml.v3"
 
-	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/infra/logger"
-	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/infra/telemetry"
-	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/interfaces"
-	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/utils"
+	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/logger"
+	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/telemetry"
+	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/utils"
 )
 
 // Config configuration

@@ -9,13 +9,13 @@ import (
 
 	"github.com/creasty/defaults"
 	"github.com/google/uuid"
-	icommon "github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/common"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/errors"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces/model"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/logics/metadata"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/logics/metric"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/utils"
+	icommon "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/common"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/errors"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces/model"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/metadata"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/metric"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/utils"
 	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
 )
 

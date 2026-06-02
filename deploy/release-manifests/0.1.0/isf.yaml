@@ -1,9 +1,9 @@
-apiVersion: deploy.kweaver.ai/v1alpha1
+apiVersion: deploy.openbkn.ai/v1alpha1
 kind: VersionSet
 product: isf
 version: 0.8.0
 source:
-  helmRepoName: kweaver
+  helmRepoName: openbkn
   helmRepoUrl: https://kweaver-ai.github.io/helm-repo/
 releases:
   isf-data-migrator:

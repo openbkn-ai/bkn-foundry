@@ -13,9 +13,9 @@ import (
 	context "context"
 	reflect "reflect"
 
-	sessionreq "github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/driveradapter/api/rdto/session/sessionreq"
-	sessionresp "github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/driveradapter/api/rdto/session/sessionresp"
-	ctype "github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/infra/common/ctype"
+	sessionreq "github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/driveradapter/api/rdto/session/sessionreq"
+	sessionresp "github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/driveradapter/api/rdto/session/sessionresp"
+	ctype "github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/infra/common/ctype"
 	gomock "go.uber.org/mock/gomock"
 )
 

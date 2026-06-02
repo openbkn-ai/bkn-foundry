@@ -5,7 +5,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/infra/common/cutil"
+	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/infra/common/cutil"
 )
 
 func (c *httpClient) Do(ctx context.Context, req *http.Request) (resp *http.Response, err error) {

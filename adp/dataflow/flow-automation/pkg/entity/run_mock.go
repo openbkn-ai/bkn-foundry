@@ -13,9 +13,9 @@ import (
 	context "context"
 	reflect "reflect"
 
-	drivenadapters "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/drivenadapters"
-	dependency "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/dependency"
-	utils "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/utils"
+	drivenadapters "github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/drivenadapters"
+	dependency "github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/pkg/dependency"
+	utils "github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/pkg/utils"
 	gomock "go.uber.org/mock/gomock"
 )
 

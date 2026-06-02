@@ -3,7 +3,7 @@ package icmp
 import (
 	"context"
 	"io"
-	//"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/models"
+	//"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/models"
 )
 
 //go:generate mockgen -package cmpmock -source open_search.go -destination ./cmpmock/open_search_mock.go

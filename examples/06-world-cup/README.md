@@ -47,7 +47,7 @@ Keep attribution and the share-alike notice on derived data. **Pin a revision** 
 
 `run.sh` only automates the 7 steps above. On a fresh machine + fresh cluster you still need these one-shot platform tasks:
 
-1. **Install the KWeaver Core platform** (k8s + bkn-backend + ontology-query + vega-backend + agent-* + mf-model-* + opensearch + minio + mariadb). Use `deploy/onboard.sh` from the repo root — see [deploy/README.md](../../deploy/README.md). Recommended `0.8.0+` (fixes the `_score` resource-path bug and the toolbox-import write bug).
+1. **Install the BKN Foundry platform** (k8s + bkn-backend + ontology-query + vega-backend + agent-* + mf-model-* + opensearch + minio + mariadb). Use `deploy/onboard.sh` from the repo root — see [deploy/README.md](../../deploy/README.md). Recommended `0.8.0+` (fixes the `_score` resource-path bug and the toolbox-import write bug).
 2. **Authenticate the CLI**: `kweaver auth login https://<your-platform-url>` (writes `~/.kweaver/`).
 3. **Register an LLM model** (agent chat needs it):
    ```bash

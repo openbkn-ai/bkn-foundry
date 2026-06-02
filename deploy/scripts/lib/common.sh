@@ -339,7 +339,7 @@ kweaver_mapfile_compat() {
 # Globals populated by parse_manifest_source(). Read by ensure_chart_source(),
 # build_chart_ref(), and get_repo_chart_latest_version() to dispatch HTTP vs OCI.
 MANIFEST_SOURCE_TYPE=""        # "oci" | "http"
-MANIFEST_SOURCE_REGISTRY=""    # OCI base, e.g. "oci://ghcr.io/kowell-ai/charts"
+MANIFEST_SOURCE_REGISTRY=""    # OCI base, e.g. "oci://ghcr.io/openbkn-ai/charts"
 MANIFEST_SOURCE_REPO_NAME=""   # HTTP helm repo name (alias used by helm repo add)
 MANIFEST_SOURCE_REPO_URL=""    # HTTP helm repo URL
 
@@ -1154,7 +1154,7 @@ HELM_TARBALL_BASEURL="${HELM_TARBALL_BASEURL:-https://repo.huaweicloud.com/helm/
 # Global Helm Chart Configuration (for Studio, BKN, and other modules)
 HELM_CHART_VERSION="${HELM_CHART_VERSION:-}"
 HELM_CHART_REPO_URL="${HELM_CHART_REPO_URL:-https://kweaver-ai.github.io/helm-repo/}"
-HELM_CHART_REPO_NAME="${HELM_CHART_REPO_NAME:-kweaver}"
+HELM_CHART_REPO_NAME="${HELM_CHART_REPO_NAME:-openbkn}"
 RELEASE_MANIFESTS_DIR="${RELEASE_MANIFESTS_DIR:-${VERSION_MANIFESTS_DIR:-${SCRIPT_DIR}/release-manifests}}"
 
 DOCKER_IO_MIRROR_PREFIX="${DOCKER_IO_MIRROR_PREFIX:-swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/}"
@@ -1732,7 +1732,7 @@ load_image_registry_from_config() {
     IMAGE_REGISTRY="$(get_config_image_registry)"
     IMAGE_REGISTRY="${IMAGE_REGISTRY%/}"
     if [[ -z "${IMAGE_REGISTRY}" ]]; then
-        IMAGE_REGISTRY="ghcr.io/kowell-ai"
+        IMAGE_REGISTRY="ghcr.io/openbkn-ai"
     fi
 }
 

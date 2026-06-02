@@ -4,9 +4,9 @@ import (
 	"context"
 	"sync"
 
-	commonLog "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/log"
-	cmq "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/mq"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/entity"
+	commonLog "github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/libs/go/log"
+	cmq "github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/libs/go/mq"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/pkg/entity"
 )
 
 // MQHandler interface

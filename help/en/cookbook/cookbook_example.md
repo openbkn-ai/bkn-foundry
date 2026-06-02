@@ -15,7 +15,7 @@
 
 - Logged in via `kweaver auth login <platform-url>`.
 - Correct business domain: `kweaver config show`; if it's wrong, run `kweaver config set-bd <uuid>`.
-- A **datasource** that KWeaver can reach (the CSV files are imported into it first as the staging store).
+- A **datasource** that BKN Foundry can reach (the CSV files are imported into it first as the staging store).
 - Your local CSV files (header on row 1, UTF-8). This recipe uses two files — `materials.csv` and `inventory.csv`, both with `material_code` and `material_name` columns.
 
 ## 3. Steps

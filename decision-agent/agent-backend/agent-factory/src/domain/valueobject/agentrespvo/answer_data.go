@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 
 	"github.com/bytedance/sonic"
-	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/infra/common/util"
+	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/infra/common/util"
 )
 
 // AnswerS 表示回答数据的结构体（外层answer结构体，里面包含具体的final answer等相关变量的值）

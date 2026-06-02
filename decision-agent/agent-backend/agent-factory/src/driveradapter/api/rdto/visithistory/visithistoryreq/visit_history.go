@@ -1,7 +1,7 @@
 package visithistoryreq
 
 import (
-	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/driveradapter/api/rdto/common"
+	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/driveradapter/api/rdto/common"
 )
 
 // VisitHistoryReq 访问日志列表请求

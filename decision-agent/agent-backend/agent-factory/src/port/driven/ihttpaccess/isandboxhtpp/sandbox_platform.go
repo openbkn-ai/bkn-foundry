@@ -3,7 +3,7 @@ package isandboxhtpp
 import (
 	"context"
 
-	sandboxdto "github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/drivenadapter/httpaccess/sandboxplatformhttp/sandboxplatformdto"
+	sandboxdto "github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/drivenadapter/httpaccess/sandboxplatformhttp/sandboxplatformdto"
 )
 
 // ISandboxPlatform Sandbox Platform 接口

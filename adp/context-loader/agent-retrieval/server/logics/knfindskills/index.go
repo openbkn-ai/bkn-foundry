@@ -1,4 +1,4 @@
-// Copyright 2026 kowell.ai
+// Copyright 2026 openbkn.ai
 // Copyright The kweaver.ai Authors.
 //
 // Licensed under the Apache License, Version 2.0.
@@ -17,12 +17,12 @@ import (
 
 	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
 
-	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/drivenadapters"
-	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/infra/common"
-	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/infra/config"
-	infraErr "github.com/kowell-ai/adp/context-loader/agent-retrieval/server/infra/errors"
-	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/infra/localize"
-	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/drivenadapters"
+	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/common"
+	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/config"
+	infraErr "github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/errors"
+	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/localize"
+	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
 var requiredSkillsDataProperties = []string{"skill_id", "name"}

@@ -1,4 +1,4 @@
-// Copyright 2026 kowell.ai
+// Copyright 2026 openbkn.ai
 // Copyright The kweaver.ai Authors.
 //
 // Licensed under the Apache License, Version 2.0.
@@ -15,12 +15,12 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 
-	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/drivenadapters"
-	logicsKar "github.com/kowell-ai/adp/context-loader/agent-retrieval/server/logics/knactionrecall"
-	logicsFs "github.com/kowell-ai/adp/context-loader/agent-retrieval/server/logics/knfindskills"
-	logicsKlp "github.com/kowell-ai/adp/context-loader/agent-retrieval/server/logics/knlogicpropertyresolver"
-	logicsKqs "github.com/kowell-ai/adp/context-loader/agent-retrieval/server/logics/knquerysubgraph"
-	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/logics/knsearch"
+	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/drivenadapters"
+	logicsKar "github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/logics/knactionrecall"
+	logicsFs "github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/logics/knfindskills"
+	logicsKlp "github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/logics/knlogicpropertyresolver"
+	logicsKqs "github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/logics/knquerysubgraph"
+	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/logics/knsearch"
 )
 
 const (

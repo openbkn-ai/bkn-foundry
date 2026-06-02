@@ -1,10 +1,10 @@
-apiVersion: deploy.kweaver.ai/v1alpha1
+apiVersion: deploy.openbkn.ai/v1alpha1
 kind: VersionSet
-product: kweaver-core
+product: bkn-foundry
 version: 0.1.0
 source:
   type: oci
-  registry: oci://ghcr.io/kowell-ai/charts
+  registry: oci://ghcr.io/openbkn-ai/charts
 dependencies:
 - product: isf
   version: 0.8.0

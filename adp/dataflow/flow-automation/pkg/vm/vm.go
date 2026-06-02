@@ -4,13 +4,13 @@ import (
 	"context"
 	"fmt"
 
-	commonErrors "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/errors"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/entity"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/vm/errors"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/vm/funcs"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/vm/hook"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/vm/opcode"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/vm/state"
+	commonErrors "github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/pkg/entity"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/pkg/vm/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/pkg/vm/funcs"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/pkg/vm/hook"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/pkg/vm/opcode"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/pkg/vm/state"
 )
 
 type ContextKey string

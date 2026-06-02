@@ -1,6 +1,6 @@
 package dapo
 
-import "github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/domain/enum/cdaenum"
+import "github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/domain/enum/cdaenum"
 
 type ConversationPO struct {
 	ID          string `json:"id" db:"f_id"`

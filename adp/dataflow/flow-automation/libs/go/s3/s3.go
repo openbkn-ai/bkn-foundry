@@ -5,7 +5,7 @@ import (
 	"sync"
 
 	"github.com/goccy/go-yaml"
-	commonLog "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/log"
+	commonLog "github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/libs/go/log"
 )
 
 const (

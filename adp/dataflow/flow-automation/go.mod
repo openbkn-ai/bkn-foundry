@@ -1,4 +1,4 @@
-module github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation
+module github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation
 
 go 1.24.0
 

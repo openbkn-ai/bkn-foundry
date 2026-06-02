@@ -1,4 +1,4 @@
-namespace: kweaver
+namespace: openbkn
 moduleName: ontology-query
 
 # 环境变量：语言/时区/执行限制
@@ -13,7 +13,7 @@ replicaCount: 1
 nodeSelector: {}
 
 image:
-  registry: ghcr.io/kowell-ai
+  registry: ghcr.io/openbkn-ai
   repository: ontology-query
   tag: "__VERSION__"
   pullPolicy: IfNotPresent

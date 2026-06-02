@@ -1,6 +1,6 @@
 # 📒 Cookbook (English)
 
-Task-oriented recipes for KWeaver: each entry is a self-contained "**one goal / a few commands / one output**" guide that you can copy and run.
+Task-oriented recipes for BKN Foundry: each entry is a self-contained "**one goal / a few commands / one output**" guide that you can copy and run.
 
 > The sibling [module docs](../README.md) are the reference manual organized **by subsystem**. The cookbook is organized **by "what do I want to do"**. They cross-link instead of duplicating each other.
 

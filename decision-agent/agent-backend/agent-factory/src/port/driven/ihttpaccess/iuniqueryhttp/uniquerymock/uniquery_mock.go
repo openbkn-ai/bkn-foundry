@@ -13,7 +13,7 @@ import (
 	context "context"
 	reflect "reflect"
 
-	uniquerydto "github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/drivenadapter/httpaccess/uniqueryaccess/uniquerydto"
+	uniquerydto "github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/drivenadapter/httpaccess/uniqueryaccess/uniquerydto"
 	gomock "go.uber.org/mock/gomock"
 )
 

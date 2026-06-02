@@ -6,7 +6,7 @@
 
 ## 它证明了什么
 
-KWeaver 平台支持通过 `custom_querys.session_id` 向 agent 注入自定义会话标识。这个 demo 验证：
+BKN Foundry 平台支持通过 `custom_querys.session_id` 向 agent 注入自定义会话标识。这个 demo 验证：
 该字段不仅由 father agent 接收到，还能被 father 的 dolphin DSL 显式传递给下游的 son agents，最终被 son 调用的 SKILL (`exp_session_echo`) 原文回显出来。
 
 整个链路没有任何硬编码的 session_id 值——SKILL 必须从运行时的 `input.session_id` 读取并原文输出。

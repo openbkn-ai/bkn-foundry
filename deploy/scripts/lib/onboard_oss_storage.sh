@@ -16,7 +16,7 @@
 #   ONBOARD_SKIP_OSS_STORAGE  set true to skip entirely
 
 onboard_provision_oss_default_storage() {
-    local ns="${1:-${NAMESPACE:-kowell}}"
+    local ns="${1:-${NAMESPACE:-openbkn}}"
     [[ "${ONBOARD_SKIP_OSS_STORAGE:-false}" == "true" ]] && return 0
     command -v kubectl >/dev/null 2>&1 || return 0
 

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/common"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/common"
 	validatorv10 "github.com/go-playground/validator/v10"
 	. "github.com/smartystreets/goconvey/convey"
 )

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# KWeaver Core — onboard: register models, BKN, rollout (run after `deploy.sh` install)
+# BKN Foundry — onboard: register models, BKN, rollout (run after `deploy.sh` install)
 # Requires: kweaver, kubectl, python3, PyYAML (pip3 install pyyaml) for --config; interactive is lighter.
 # Run from the deploy/ directory (symmetric with preflight.sh).
 
@@ -7,21 +7,21 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Auto-migrate legacy ~/.kweaver-ai to ~/.kowell-ai (one-time, when target absent).
-if [[ -d "${HOME}/.kweaver-ai" && ! -e "${HOME}/.kowell-ai" ]]; then
-    if mv "${HOME}/.kweaver-ai" "${HOME}/.kowell-ai" 2>/dev/null; then
-        echo "[migrate] moved ${HOME}/.kweaver-ai -> ${HOME}/.kowell-ai" >&2
+# Auto-migrate legacy ~/.kweaver-ai to ~/.openbkn-ai (one-time, when target absent).
+if [[ -d "${HOME}/.kweaver-ai" && ! -e "${HOME}/.openbkn-ai" ]]; then
+    if mv "${HOME}/.kweaver-ai" "${HOME}/.openbkn-ai" 2>/dev/null; then
+        echo "[migrate] moved ${HOME}/.kweaver-ai -> ${HOME}/.openbkn-ai" >&2
     else
-        echo "[migrate][warn] failed to move ${HOME}/.kweaver-ai -> ${HOME}/.kowell-ai" >&2
+        echo "[migrate][warn] failed to move ${HOME}/.kweaver-ai -> ${HOME}/.openbkn-ai" >&2
     fi
 fi
 
-# Same as deploy.sh: generated install config lives under $HOME/.kowell-ai/config.yaml.
+# Same as deploy.sh: generated install config lives under $HOME/.openbkn-ai/config.yaml.
 # Prefer it when CONFIG_YAML_PATH is unset so accessAddress matches the machine that ran deploy
 # (vendored deploy/conf/config.yaml is only a template). Legacy ~/.kweaver-ai is honored as a fallback
 # when the auto-migration above could not move the directory (e.g. perms).
 if [[ -z "${CONFIG_YAML_PATH:-}" ]]; then
-    for _ob_rt in "${HOME}/.kowell-ai/config.yaml" "${HOME}/.kweaver-ai/config.yaml"; do
+    for _ob_rt in "${HOME}/.openbkn-ai/config.yaml" "${HOME}/.kweaver-ai/config.yaml"; do
         if [[ -f "${_ob_rt}" ]]; then
             export CONFIG_YAML_PATH="${_ob_rt}"
             break
@@ -32,30 +32,30 @@ fi
 # shellcheck source=scripts/lib/common.sh
 source "${SCRIPT_DIR}/scripts/lib/common.sh"
 
-# Linux: deploy.sh persists accessAddress / depServices to $HOME/.kowell-ai/config.yaml of the user that
+# Linux: deploy.sh persists accessAddress / depServices to $HOME/.openbkn-ai/config.yaml of the user that
 # ran it (root when invoked via sudo). When onboard runs as a non-root user without that file, it falls
 # back to the vendored deploy/conf/config.yaml template — accessAddress diverges from deploy. Hint the
-# operator. /root/.kowell-ai/config.yaml cannot be stat'd from a regular shell (perm 700), so we trigger
+# operator. /root/.openbkn-ai/config.yaml cannot be stat'd from a regular shell (perm 700), so we trigger
 # whenever the current user lacks the runtime yaml. Skipped on macOS (kind dev path) or when silenced.
 if [[ "$(uname -s 2>/dev/null || true)" != "Darwin" ]] \
         && [[ "${EUID:-$(id -u)}" -ne 0 ]] \
         && [[ -z "${ONBOARD_SUDO_HINT_DISABLED:-}" ]] \
-        && [[ ! -f "${HOME}/.kowell-ai/config.yaml" ]] \
+        && [[ ! -f "${HOME}/.openbkn-ai/config.yaml" ]] \
         && [[ ! -f "${HOME}/.kweaver-ai/config.yaml" ]] \
         && [[ -z "${CONFIG_YAML_PATH:-}" ]]; then
-    printf '\033[0;33m[onboard][hint] No %s found for user %s.\n' "${HOME}/.kowell-ai/config.yaml" "${USER:-$(id -un)}" >&2
-    printf '              If deploy.sh ran via sudo, accessAddress/depServices live at /root/.kowell-ai/config.yaml (root home, mode 700).\n' >&2
+    printf '\033[0;33m[onboard][hint] No %s found for user %s.\n' "${HOME}/.openbkn-ai/config.yaml" "${USER:-$(id -un)}" >&2
+    printf '              If deploy.sh ran via sudo, accessAddress/depServices live at /root/.openbkn-ai/config.yaml (root home, mode 700).\n' >&2
     printf '              Re-run onboard with sudo so it reads the same yaml:\n' >&2
     printf '                  sudo bash ./onboard.sh %s\n' "$*" >&2
     printf '              Or pin it explicitly:\n' >&2
-    printf '                  sudo -E env CONFIG_YAML_PATH=/root/.kowell-ai/config.yaml bash ./onboard.sh\n' >&2
+    printf '                  sudo -E env CONFIG_YAML_PATH=/root/.openbkn-ai/config.yaml bash ./onboard.sh\n' >&2
     printf '              Otherwise onboard falls back to deploy/conf/config.yaml (template) and may show a different access URL.\n' >&2
     printf '              Set ONBOARD_SUDO_HINT_DISABLED=1 to silence.\033[0m\n' >&2
 fi
 
 # macOS kind dev: vendored deploy/conf lacks accessAddress; switch to mac-config when still using defaults.
 _onboard_default_conf="${SCRIPT_DIR}/conf/config.yaml"
-_onboard_default_home="${HOME}/.kowell-ai/config.yaml"
+_onboard_default_home="${HOME}/.openbkn-ai/config.yaml"
 _onboard_mac_cfg="${SCRIPT_DIR}/dev/conf/mac-config.yaml"
 if [[ "$(uname -s 2>/dev/null || true)" == "Darwin" ]] && [[ -f "${_onboard_mac_cfg}" ]]; then
     if [[ "${CONFIG_YAML_PATH:-}" == "${_onboard_default_conf}" ]] || [[ "${CONFIG_YAML_PATH:-}" == "${_onboard_default_home}" ]]; then
@@ -63,7 +63,7 @@ if [[ "$(uname -s 2>/dev/null || true)" == "Darwin" ]] && [[ -f "${_onboard_mac_
     fi
 fi
 
-# Top-level "namespace:" from CONFIG_YAML_PATH (Helm values); default NAMESPACE=kweaver unless set in env or yaml.
+# Top-level "namespace:" from CONFIG_YAML_PATH (Helm values); default NAMESPACE=openbkn unless set in env or yaml.
 onboard_namespace_from_config_yaml() {
     local cfg="${CONFIG_YAML_PATH:-}"
     if [[ -z "${cfg}" ]] || [[ ! -f "${cfg}" ]]; then
@@ -73,12 +73,12 @@ onboard_namespace_from_config_yaml() {
 }
 
 # Apply helm values namespace unless NAMESPACE was set in the parent environment.
-if [[ -z "${NAMESPACE+x}" ]] || [[ "${NAMESPACE}" == "kweaver" ]]; then
+if [[ -z "${NAMESPACE+x}" ]] || [[ "${NAMESPACE}" == "openbkn" ]]; then
     _ns_cfg="$(onboard_namespace_from_config_yaml || true)"
     if [[ -n "${_ns_cfg}" ]]; then
         export NAMESPACE="${_ns_cfg}"
     else
-        export NAMESPACE="${NAMESPACE:-kweaver}"
+        export NAMESPACE="${NAMESPACE:-openbkn}"
     fi
 else
     export NAMESPACE="${NAMESPACE}"
@@ -122,7 +122,7 @@ source "${SCRIPT_DIR}/scripts/lib/onboard_isf_test_user.sh"
 # shellcheck source=scripts/lib/onboard_report.sh
 source "${SCRIPT_DIR}/scripts/lib/onboard_report.sh"
 
-# Primary IPv4 of this host (for default KWeaver access URL). Override: ONBOARD_DEFAULT_ACCESS_IP=...
+# Primary IPv4 of this host (for default BKN Foundry access URL). Override: ONBOARD_DEFAULT_ACCESS_IP=...
 onboard_default_local_ipv4() {
     if [[ -n "${ONBOARD_DEFAULT_ACCESS_IP:-}" ]]; then
         echo "${ONBOARD_DEFAULT_ACCESS_IP}"
@@ -232,8 +232,8 @@ usage() {
     echo "Usage: sudo bash ./onboard.sh [options]   # Linux (matches sudo deploy.sh)"
     echo "       bash ./dev/mac.sh onboard           # macOS dev (kind path; no sudo)"
     echo "  Requires: Node 22+ (see @kweaver-ai/kweaver-sdk on npm), kweaver, kubectl, python3; run from deploy/"
-    echo "  Config YAML: unset CONFIG_YAML_PATH and onboard uses \$HOME/.kowell-ai/config.yaml when that file exists (same as deploy.sh); otherwise scripts/lib/common.sh default (deploy/conf/config.yaml)."
-    echo "  Why sudo on Linux: deploy.sh runs as root and writes \$HOME/.kowell-ai/config.yaml under /root/.kowell-ai/ (mode 700); onboard.sh also writes \$HOME/.kweaver auth state. sudo keeps both pointing at the same root home (silence the startup hint with ONBOARD_SUDO_HINT_DISABLED=1; not needed on macOS dev)."
+    echo "  Config YAML: unset CONFIG_YAML_PATH and onboard uses \$HOME/.openbkn-ai/config.yaml when that file exists (same as deploy.sh); otherwise scripts/lib/common.sh default (deploy/conf/config.yaml)."
+    echo "  Why sudo on Linux: deploy.sh runs as root and writes \$HOME/.openbkn-ai/config.yaml under /root/.openbkn-ai/ (mode 700); onboard.sh also writes \$HOME/.kweaver auth state. sudo keeps both pointing at the same root home (silence the startup hint with ONBOARD_SUDO_HINT_DISABLED=1; not needed on macOS dev)."
     echo "  (no flags)                Interactive: nvm+Node 22 and npm -g (Y/n) in your terminal, then models/BKN"
     echo "  -y, --yes                 Auto nvm+Node 22, npm -g, ISF [test] user+roles (no Y/n)"
     echo "  --config=PATH            YAML: deploy/conf/models.yaml.example; model prompts off, but nvm/kweaver still Y/n in a TTY (use -y to skip those asks)"
@@ -243,7 +243,7 @@ usage() {
     echo "    - ISF (full):  kweaver-admin  / console  admin  for user ops. ADP impex uses user  test  with all  role list"
     echo "      roles (typically three business admins), then  kweaver auth  as  test .  -y  uses password  ${ONBOARD_DEFAULT_TEST_USER_PASSWORD:-111111}  (override: ONBOARD_TEST_USER_PASSWORD) ."
     echo "    - Minimum (no ISF):  kweaver auth login  only; kweaver-admin is not required."
-    echo "  --namespace=NS           Override K8s namespace (default: NAMESPACE env, else namespace: in CONFIG_YAML_PATH, else kweaver)"
+    echo "  --namespace=NS           Override K8s namespace (default: NAMESPACE env, else namespace: in CONFIG_YAML_PATH, else openbkn)"
     echo "  --enable-bkn-search      Only patch bkn/ontology ConfigMaps and rollout"
     echo "  --bkn-embedding-name=X   Required with --enable-bkn-search (registered model_name)"
     echo "  --skip-bkn               With --config: register models but skip BKN + rollout"
@@ -259,8 +259,8 @@ usage() {
     echo "                ONBOARD_NO_COMPLETION_REPORT=1  do not print the English completion report at the end"
     echo "                ONBOARD_FORCE_INSECURE_LOGIN=true  always pass -k (--insecure) to kweaver/kweaver-admin auth login (even for http:// bases; default false)"
     echo "                ONBOARD_SKIP_CONFIG_ACCESS_URL=true  do not derive default URL from CONFIG_YAML_PATH accessAddress"
-    echo "  Default KWeaver access URL (kweaver auth): accessAddress in CONFIG_YAML_PATH when present;"
-    echo "                on macOS, if CONFIG_YAML_PATH is still deploy/conf/config.yaml (~/.kowell-ai not used yet),"
+    echo "  Default BKN Foundry access URL (kweaver auth): accessAddress in CONFIG_YAML_PATH when present;"
+    echo "                on macOS, if CONFIG_YAML_PATH is still deploy/conf/config.yaml (~/.openbkn-ai not used yet),"
     echo "                onboard uses deploy/dev/conf/mac-config.yaml when that file exists (same as mac.sh)."
     echo "                Else host primary IPv4 + ONBOARD_DEFAULT_ACCESS_SCHEME (https by default)."
     echo "                Set ONBOARD_DEFAULT_ACCESS_BASE to force a URL; ONBOARD_DEFAULT_ACCESS_PORT / SCHEME override fallback IP path."

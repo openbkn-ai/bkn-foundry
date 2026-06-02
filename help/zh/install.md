@@ -1,6 +1,6 @@
 # 🚢 安装与部署
 
-本页说明 KWeaver Core 的**环境要求**、**部署步骤**与**安装后检查**。
+本页说明 BKN Foundry 的**环境要求**、**部署步骤**与**安装后检查**。
 
 > **平台：** **Linux** 是完整安装（`preflight.sh`、k3s/kubeadm、数据服务等）的**推荐**目标环境。**macOS** 仅适合用 Docker + **kind** 做**本机开发/验证** —— 见 **[`deploy/dev/README.zh.md`](../../deploy/dev/README.zh.md)**（[English](../../deploy/dev/README.md)）与 `deploy/dev/mac.sh`（Mac 上不跑 `preflight.sh`，也与生产环境不对齐）。常见顺序：先起 **Docker Desktop**（或任意提供 Docker API 的引擎），再 **`bash ./dev/mac.sh cluster up`**，然后 **`bash ./dev/mac.sh kweaver-core install`**；当前 **`kweaver-core install` 会先执行 `ensure_data_services`**（与单独 **`data-services install`** 一致），除非设置 **`KWEAVER_SKIP_DATA_SERVICES_BUNDLE=true`**。
 
@@ -64,7 +64,7 @@ setenforce 0
 | `mirrors.aliyun.com` | RPM 镜像 |
 | `mirrors.tuna.tsinghua.edu.cn` | containerd RPM 镜像 |
 | `registry.aliyuncs.com` | Kubernetes 镜像 |
-| `swr.cn-east-3.myhuaweicloud.com` | KWeaver 镜像 |
+| `swr.cn-east-3.myhuaweicloud.com` | BKN Foundry 镜像 |
 | `repo.huaweicloud.com` | Helm 二进制 |
 | `kweaver-ai.github.io` | Helm Chart 仓库 |
 
@@ -166,7 +166,7 @@ sudo bash deploy/preflight.sh --help         # 全部参数
 ================================================================
   Conclusion
 ================================================================
-  No KWeaver releases detected, but preflight above is NOT all clear — fix that before treating deploy as ready.
+  No BKN Foundry releases detected, but preflight above is NOT all clear — fix that before treating deploy as ready.
   Typical loop:
     sudo bash ./preflight.sh --fix          # …（默认每项 y/N；加 -y 全自动）
     sudo bash ./preflight.sh --check-only   # 再检查直到关键 [FAIL] 消失（或配合 --lenient）
@@ -186,7 +186,7 @@ sudo bash deploy/preflight.sh --help         # 全部参数
 
 ---
 
-## 🚀 安装 KWeaver Core
+## 🚀 安装 BKN Foundry
 
 ### ⚡ 最小化安装（首次体验推荐）
 
@@ -222,7 +222,7 @@ sudo bash deploy/preflight.sh --help         # 全部参数
   --api_server_address=<K8s API 绑定的网卡 IP>
 ```
 
-- `--access_address` — 客户端访问 KWeaver（Ingress）所用的地址
+- `--access_address` — 客户端访问 BKN Foundry（Ingress）所用的地址
 - `--api_server_address` — Kubernetes API Server 绑定的真实网卡 IP
 
 ### 🔌 自定义 Ingress 端口（可选）
@@ -245,7 +245,7 @@ export INGRESS_NGINX_HTTPS_PORT=8443
 
 1. 单节点 Kubernetes（如需要）、存储、Ingress
 2. 数据服务：MariaDB、Redis、Kafka、ZooKeeper、OpenSearch（以发布清单为准）
-3. KWeaver Core 应用 Helm Chart
+3. BKN Foundry 应用 Helm Chart
 
 > ℹ️ 卸载与集群重置以随产品提供的部署说明为准。
 
@@ -260,7 +260,7 @@ cd deploy
 sudo bash ./onboard.sh --help
 ```
 
-> **为什么要 `sudo`？** `onboard.sh` 读安装期写下的 `$HOME/.kowell-ai/config.yaml`（`sudo deploy.sh` 会写到 `/root/.kowell-ai/`，权限 700），并把 `kweaver` 认证状态写到 `$HOME/.kweaver`。不加 `sudo` 时读到的是当前用户的 home——若该用户没有这个文件就会回退到仓库内模板 `deploy/conf/config.yaml`，**可能解析出和安装时不一致的 access URL**。命中此路径时脚本启动会打印黄色的 `[onboard][hint]`；可用 `ONBOARD_SUDO_HINT_DISABLED=1` 关闭。**macOS 开发路径**（`bash deploy/dev/mac.sh onboard`）**不要**加 `sudo`：Docker Desktop / `kind` / `$HOME` 都属于当前用户，`sudo` 会把它们重定向到 `/var/root` 并割裂安装与 onboard；`deploy.sh` 在 `Darwin` 上已跳过 root 检查。详见 [`deploy/dev/README.zh.md`](../../deploy/dev/README.zh.md) · [`deploy/dev/README.md`](../../deploy/dev/README.md)。
+> **为什么要 `sudo`？** `onboard.sh` 读安装期写下的 `$HOME/.openbkn-ai/config.yaml`（`sudo deploy.sh` 会写到 `/root/.openbkn-ai/`，权限 700），并把 `kweaver` 认证状态写到 `$HOME/.kweaver`。不加 `sudo` 时读到的是当前用户的 home——若该用户没有这个文件就会回退到仓库内模板 `deploy/conf/config.yaml`，**可能解析出和安装时不一致的 access URL**。命中此路径时脚本启动会打印黄色的 `[onboard][hint]`；可用 `ONBOARD_SUDO_HINT_DISABLED=1` 关闭。**macOS 开发路径**（`bash deploy/dev/mac.sh onboard`）**不要**加 `sudo`：Docker Desktop / `kind` / `$HOME` 都属于当前用户，`sudo` 会把它们重定向到 `/var/root` 并割裂安装与 onboard；`deploy.sh` 在 `Darwin` 上已跳过 root 检查。详见 [`deploy/dev/README.zh.md`](../../deploy/dev/README.zh.md) · [`deploy/dev/README.md`](../../deploy/dev/README.md)。
 
 常用参数：
 
@@ -533,7 +533,7 @@ curl -sk "https://<访问地址>/health" || true
 
 ## 🧮 可选：Etrino（数据视图自定义 SQL）
 
-仅安装 **KWeaver Core** 时，`kweaver dataview query <id>` 不带 `--sql` 通常已可用（按视图定义分页查询等）。
+仅安装 **BKN Foundry** 时，`kweaver dataview query <id>` 不带 `--sql` 通常已可用（按视图定义分页查询等）。
 
 > ⚠️ `kweaver dataview query --sql "..."` 自定义 SQL 依赖集群内的 `vega-calculate-coordinator`，由 **Etrino** 相关 Chart 提供（与 `vega-hdfs`、`vega-calculate`（内含 coordinator）、`vega-metadata` 一并部署）。
 
@@ -553,7 +553,7 @@ curl -sk "https://<访问地址>/health" || true
 
 ## 🧠 配置模型
 
-KWeaver 默认不包含预置模型。如需使用 **语义搜索**（`kweaver bkn search`）或 **Decision Agent**，需先注册 LLM 与 Embedding 小模型。
+BKN Foundry 默认不包含预置模型。如需使用 **语义搜索**（`kweaver bkn search`）或 **Decision Agent**，需先注册 LLM 与 Embedding 小模型。
 
 > 🔧 详细操作见 [模型管理](manual/model.md)。以下为最小注册示例：
 

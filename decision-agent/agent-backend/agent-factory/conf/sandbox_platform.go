@@ -1,6 +1,6 @@
 package conf
 
-import "github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/cconf"
+import "github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/cconf"
 
 // SandboxPlatformConf Sandbox Platform 配置
 type SandboxPlatformConf struct {

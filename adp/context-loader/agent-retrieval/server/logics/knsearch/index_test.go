@@ -1,4 +1,4 @@
-// Copyright 2026 kowell.ai
+// Copyright 2026 openbkn.ai
 // Copyright The kweaver.ai Authors.
 //
 // Licensed under the Apache License, Version 2.0.
@@ -14,8 +14,8 @@ import (
 	"github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
-	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/interfaces"
-	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/mocks"
+	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/mocks"
 )
 
 // TestKnSearch_Success 测试 KnSearch 固定走本地检索成功

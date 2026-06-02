@@ -1,6 +1,6 @@
 package event
 
-import "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/entity"
+import "github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/pkg/entity"
 
 const (
 	KeyDagInstanceUpdated = "DagInstanceUpdated"
