@@ -143,7 +143,7 @@ _dip_ensure_kweaver_core() {
     local -a isf_release_names=()
     kweaver_mapfile_compat isf_release_names _dip_list_manifest_release_names "isf" "${isf_dependency_manifest}" "${isf_dependency_version}"
     local -a core_release_names=()
-    kweaver_mapfile_compat core_release_names _dip_list_manifest_release_names "kweaver-core" "${core_dependency_manifest}" "${core_dependency_version}"
+    kweaver_mapfile_compat core_release_names _dip_list_manifest_release_names "bkn-foundry" "${core_dependency_manifest}" "${core_dependency_version}"
 
     for release_name in "${isf_release_names[@]}"; do
         if _dip_helm_release_exists "${release_name}" "${namespace}"; then
@@ -298,12 +298,12 @@ _dip_release_names_reverse() {
 
 _dip_resolve_core_dependency_version() {
     _dip_require_version_manifest || return 1
-    get_release_manifest_dependency_version "${DIP_VERSION_MANIFEST_FILE}" "kweaver-core"
+    get_release_manifest_dependency_version "${DIP_VERSION_MANIFEST_FILE}" "bkn-foundry"
 }
 
 _dip_resolve_core_dependency_manifest() {
     _dip_require_version_manifest || return 1
-    get_release_manifest_dependency_manifest "${DIP_VERSION_MANIFEST_FILE}" "kweaver-core"
+    get_release_manifest_dependency_manifest "${DIP_VERSION_MANIFEST_FILE}" "bkn-foundry"
 }
 
 _dip_has_direct_dependency() {

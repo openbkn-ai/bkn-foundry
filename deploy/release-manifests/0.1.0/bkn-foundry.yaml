@@ -1,6 +1,6 @@
-apiVersion: deploy.kweaver.ai/v1alpha1
+apiVersion: deploy.openbkn.ai/v1alpha1
 kind: VersionSet
-product: kweaver-core
+product: bkn-foundry
 version: 0.1.0
 source:
   type: oci

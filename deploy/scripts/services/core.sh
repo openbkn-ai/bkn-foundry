@@ -178,9 +178,9 @@ _core_auto_resolve_version_manifest() {
 
     local embedded_manifest
     if [[ -n "${HELM_CHART_VERSION:-}" ]]; then
-        embedded_manifest="$(resolve_embedded_release_manifest "kweaver-core" "${HELM_CHART_VERSION}")"
+        embedded_manifest="$(resolve_embedded_release_manifest "bkn-foundry" "${HELM_CHART_VERSION}")"
     else
-        embedded_manifest="$(resolve_latest_embedded_release_manifest "kweaver-core")"
+        embedded_manifest="$(resolve_latest_embedded_release_manifest "bkn-foundry")"
     fi
     if [[ -n "${embedded_manifest}" ]]; then
         CORE_VERSION_MANIFEST_FILE="${embedded_manifest}"
@@ -199,18 +199,18 @@ _core_require_version_manifest() {
 _core_resolve_release_version() {
     local release_name="$1"
     _core_require_version_manifest || return 1
-    resolve_release_chart_version "${CORE_VERSION_MANIFEST_FILE:-}" "kweaver-core" "${HELM_CHART_VERSION:-}" "${release_name}" "${HELM_CHART_VERSION:-}"
+    resolve_release_chart_version "${CORE_VERSION_MANIFEST_FILE:-}" "bkn-foundry" "${HELM_CHART_VERSION:-}" "${release_name}" "${HELM_CHART_VERSION:-}"
 }
 
 _core_resolve_chart_name() {
     local release_name="$1"
     _core_require_version_manifest || return 1
-    resolve_release_chart_name "${CORE_VERSION_MANIFEST_FILE:-}" "kweaver-core" "${HELM_CHART_VERSION:-}" "${release_name}" "${release_name}"
+    resolve_release_chart_name "${CORE_VERSION_MANIFEST_FILE:-}" "bkn-foundry" "${HELM_CHART_VERSION:-}" "${release_name}" "${release_name}"
 }
 
 _core_release_names() {
     _core_require_version_manifest || return 1
-    get_release_manifest_release_names "${CORE_VERSION_MANIFEST_FILE}" "kweaver-core" "${HELM_CHART_VERSION:-}"
+    get_release_manifest_release_names "${CORE_VERSION_MANIFEST_FILE}" "bkn-foundry" "${HELM_CHART_VERSION:-}"
 }
 
 _core_resolve_isf_dependency_version() {
@@ -231,7 +231,7 @@ _core_resolve_isf_dependency_manifest() {
 
 init_core_databases() {
     local sql_base_dir
-    sql_base_dir="$(resolve_versioned_sql_dir "kweaver-core" "${HELM_CHART_VERSION:-}")"
+    sql_base_dir="$(resolve_versioned_sql_dir "bkn-foundry" "${HELM_CHART_VERSION:-}")"
 
     if ! is_rds_internal; then
         warn_external_rds_sql_required "BKN Foundry" "${sql_base_dir}"
@@ -248,7 +248,7 @@ init_core_databases() {
     fi
 
     local -a sql_modules=()
-    kweaver_mapfile_compat sql_modules list_versioned_sql_modules "kweaver-core" "${HELM_CHART_VERSION:-}"
+    kweaver_mapfile_compat sql_modules list_versioned_sql_modules "bkn-foundry" "${HELM_CHART_VERSION:-}"
     if [[ ${#sql_modules[@]} -eq 0 ]]; then
         log_info "Skipping BKN Foundry database initialization: no SQL module directories found in ${sql_base_dir}"
         return 0
