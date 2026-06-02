@@ -205,7 +205,7 @@ mac_doctor_apply_fixes() {
     return 0
 }
 
-# Inspect Docker engine memory budget and warn when it is too low for KWeaver Core
+# Inspect Docker engine memory budget and warn when it is too low for BKN Foundry
 # + bundled data services (mariadb/redis/kafka/zookeeper/opensearch). Warning only —
 # does NOT set fail=1, since the user can still proceed (just slower / OOM-prone).
 # Threshold defaults are tuned for --minimum profile + data-services on kind:
@@ -223,7 +223,7 @@ mac_doctor_check_docker_memory() {
     min_gb="${MAC_DOCTOR_MIN_MEM_GB:-12}"
     rec_gb="${MAC_DOCTOR_REC_MEM_GB:-16}"
     if (( $(awk -v m="${mem_gb}" -v t="${min_gb}" 'BEGIN{print (m+0 < t+0)}') )); then
-        printf '%b[WARNING]%b docker memory %s GB < %s GB minimum (KWeaver Core + data-services likely to OOM; redis/bkn-backend will crash-restart)\n' \
+        printf '%b[WARNING]%b docker memory %s GB < %s GB minimum (BKN Foundry + data-services likely to OOM; redis/bkn-backend will crash-restart)\n' \
             "${MAC_D_WARN}" "${MAC_D_RESET}" "${mem_gb}" "${min_gb}"
         printf '  %bto fix:%b Docker Desktop → Settings → Resources → %bMemory ≥ %s GB%b → Apply & restart\n' \
             "${MAC_D_DIM}" "${MAC_D_RESET}" "${MAC_D_BOLD}" "${rec_gb}" "${MAC_D_RESET}"

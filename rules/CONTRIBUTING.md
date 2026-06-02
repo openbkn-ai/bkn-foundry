@@ -2,7 +2,7 @@
 
 [中文](CONTRIBUTING.zh.md) | English
 
-Thank you for your interest in contributing to KWeaver! We welcome all forms of contributions, including bug fixes, feature proposals, documentation improvements, answering questions, and more.
+Thank you for your interest in contributing to BKN Foundry! We welcome all forms of contributions, including bug fixes, feature proposals, documentation improvements, answering questions, and more.
 
 Please read this guide before submitting contributions to ensure consistent processes and standardized submissions.
 
@@ -10,7 +10,7 @@ Please read this guide before submitting contributions to ensure consistent proc
 
 ## 🏗 Repository Layout
 
-KWeaver Core is a **monorepo** ([`kweaver-ai/kweaver-core`](https://github.com/kweaver-ai/kweaver-core)) that ships the platform's backend modules together. Pick the directory matching the component you want to change:
+BKN Foundry is a **monorepo** ([`kweaver-ai/kweaver-core`](https://github.com/kweaver-ai/kweaver-core)) that ships the platform's backend modules together. Pick the directory matching the component you want to change:
 
 | Module | Path | Description |
 | --- | --- | --- |
@@ -21,7 +21,7 @@ KWeaver Core is a **monorepo** ([`kweaver-ai/kweaver-core`](https://github.com/k
 | **BKN samples** | [`bkn/`](../bkn) | Reference Business Knowledge Networks (e.g. `smart_home_supply_chain`) |
 | **Examples** | [`examples/`](../examples) | End-to-end CLI walkthroughs (DB / CSV / actions) |
 | **Help** | [`help/`](../help) | Bilingual product docs |
-| **Deploy** | [`deploy/`](../deploy) | One-click `deploy.sh` for Kubernetes (k8s + KWeaver Core charts) |
+| **Deploy** | [`deploy/`](../deploy) | One-click `deploy.sh` for Kubernetes (k8s + BKN Foundry charts) |
 
 External CLI/SDKs that interact with this backend live in their own repositories:
 
@@ -68,7 +68,7 @@ You can contribute in the following ways:
 When reporting a bug, please provide the following information:
 
 - **Version/Environment**:
-  - KWeaver Core version (`git describe --tags` or `VERSION` file, e.g. `v0.6.0`)
+  - BKN Foundry version (`git describe --tags` or `VERSION` file, e.g. `v0.6.0`)
   - Module affected (e.g. `adp/bkn`, `decision-agent/agent-backend/agent-executor`, `infra/sandbox`)
   - Runtime (Java / Go / Python / Node — and version, e.g. JDK 17, Go 1.23, Python 3.11)
   - OS (Linux distro + kernel, macOS, Windows)
@@ -87,7 +87,7 @@ When reporting a bug, please provide the following information:
 
 ```markdown
 **Environment:**
-- KWeaver Core: v0.6.0
+- BKN Foundry: v0.6.0
 - Module: adp/bkn
 - Runtime: JDK 17
 - OS: Linux Ubuntu 22.04
@@ -548,7 +548,7 @@ the Apache License, Version 2.0.
 
 ### Prerequisites
 
-KWeaver Core is polyglot. You only need the toolchain(s) for the module(s) you touch:
+BKN Foundry is polyglot. You only need the toolchain(s) for the module(s) you touch:
 
 - **Git** (always)
 - **Java** (JDK 17+) and Maven for most ADP / decision-agent backend modules
@@ -620,8 +620,8 @@ We will acknowledge receipt and work with you to address the issue. Please inclu
 
 ## 📜 License
 
-By contributing to KWeaver, you agree that your contributions will be licensed under the Apache License 2.0.
+By contributing to BKN Foundry, you agree that your contributions will be licensed under the Apache License 2.0.
 
 ---
 
-Thank you for contributing to KWeaver! 🎉
+Thank you for contributing to BKN Foundry! 🎉

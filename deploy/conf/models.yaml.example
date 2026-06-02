@@ -1,7 +1,7 @@
 # Copy to models.yaml and fill in. Run: ./onboard.sh --config models.yaml
 # ${VAR} is replaced from the environment (for CI: export the keys first).
 
-# Optional: Kubernetes namespace of KWeaver Core (default kweaver)
+# Optional: Kubernetes namespace of BKN Foundry (default kweaver)
 # namespace: openbkn
 
 llm:

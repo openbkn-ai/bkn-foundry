@@ -72,12 +72,12 @@ usage() {
     echo "  zookeeper uninstall           Uninstall Zookeeper (PVCs will be deleted by default)"
     echo "  ingress-nginx install         Install ingress-nginx-controller"
     echo "  ingress-nginx uninstall       Uninstall ingress-nginx-controller"
-    echo "  kweaver-core install          Install KWeaver Core services; auto-installs K8s/data services if missing"
+    echo "  kweaver-core install          Install BKN Foundry services; auto-installs K8s/data services if missing"
     echo "  kweaver-core install          On BYOK (KWEAVER_SKIP_PLATFORM_BOOTSTRAP=true), runs ensure_data_services first unless KWEAVER_SKIP_DATA_SERVICES_BUNDLE=true"
     echo "  kweaver-core install --minimum  Minimum install (skip auth & business-domain modules)"
-    echo "  kweaver-core download         Download/update KWeaver Core charts into deploy/.tmp/charts"
-    echo "  kweaver-core uninstall        Uninstall KWeaver Core services"
-    echo "  kweaver-core status           Show KWeaver Core services status"
+    echo "  kweaver-core download         Download/update BKN Foundry charts into deploy/.tmp/charts"
+    echo "  kweaver-core uninstall        Uninstall BKN Foundry services"
+    echo "  kweaver-core status           Show BKN Foundry services status"
     echo "                                Use --set to pass custom values to all charts"
     echo "  all install                   Run full initialization (k8s + mariadb + redis + ingress-nginx)"
     echo ""
@@ -132,7 +132,7 @@ usage() {
     echo "                                install only uses local charts when this option is explicitly set"
     echo "  --version_file=<path>         Use an aggregate release manifest to resolve exact chart versions"
     echo "                                (default auto path: deploy/release-manifests/<version>/<product>.yaml)"
-    echo "  --access_address=<addr>       KWeaver access address: host, host:port, or scheme://host:port/path"
+    echo "  --access_address=<addr>       BKN Foundry access address: host, host:port, or scheme://host:port/path"
     echo "                                Example: --access_address=10.0.0.5 or --access_address=https://kweaver.example.com:443"
     echo "  --api_server_address=<ip>     Kubernetes API server advertise address (must be a local interface IP)"
     echo "                                Defaults to auto-detect from hostname -I"
@@ -146,7 +146,7 @@ usage() {
     echo "  DEPLOY_BUSINESS_DOMAIN        x-business-domain for kweaver/onboard (default: bd_public)."
     echo ""
     echo "  $0 kweaver-core install --minimum                 # Minimum install (skip auth & business-domain)"
-    echo "  $0 kweaver-core install --set auth.enabled=false  # Install KWeaver Core without ISF"
+    echo "  $0 kweaver-core install --set auth.enabled=false  # Install BKN Foundry without ISF"
     echo "  $0 kweaver-core install --set auth.enabled=false --set businessDomain.enabled=false  # Same as --minimum"
     echo "  $0 kweaver-core install --set image.registry=my-registry.com --set image.tag=v1.0.0  # Custom image settings"
     echo "  $0 kweaver-core download --charts_dir=/path/to/charts # Download Core charts into a specific local directory"
@@ -328,7 +328,7 @@ confirm_access_address_before_install() {
 
     echo ""
     echo "============================================"
-    echo "  KWeaver Access Address Configuration"
+    echo "  BKN Foundry Access Address Configuration"
     echo "============================================"
     echo "  Current detected values:"
     echo "    Host     : ${host}"
@@ -910,7 +910,7 @@ main() {
                 check_root
                 shift 2
                 log_info "=========================================="
-                log_info "  Deploying KWeaver Application Services"
+                log_info "  Deploying BKN Foundry Application Services"
                 log_info "=========================================="
                 
                 # Parse common args for all kweaver services
@@ -938,21 +938,21 @@ main() {
                     esac
                 done
                 
-                # Install all KWeaver services in order
+                # Install all BKN Foundry services in order
                 install_isf
                 install_core
 
-                log_info "KWeaver application services deployment completed!"
+                log_info "BKN Foundry application services deployment completed!"
                 ;;
             uninstall)
                 check_root
-                log_info "Uninstalling KWeaver application services..."
+                log_info "Uninstalling BKN Foundry application services..."
                 uninstall_core || true
                 uninstall_isf || true
-                log_info "KWeaver application services uninstalled!"
+                log_info "BKN Foundry application services uninstalled!"
                 ;;
             status)
-                log_info "KWeaver application services status:"
+                log_info "BKN Foundry application services status:"
                 show_isf_status
                 show_core_status
                 show_dip_status
@@ -973,7 +973,7 @@ main() {
                 check_root
                 shift 2
                 log_info "╔════════════════════════════════════════════════════════════════╗"
-                log_info "║       Full Deployment: Infrastructure + KWeaver Services       ║"
+                log_info "║       Full Deployment: Infrastructure + BKN Foundry Services       ║"
                 log_info "╚════════════════════════════════════════════════════════════════╝"
                 
                 # Save args for kweaver
@@ -1013,9 +1013,9 @@ main() {
                     generate_config_yaml
                 fi
                 
-                # Step 2: Deploy KWeaver services
+                # Step 2: Deploy BKN Foundry services
                 log_info ""
-                log_info "Step 2/2: Deploying KWeaver Application Services..."
+                log_info "Step 2/2: Deploying BKN Foundry Application Services..."
                 log_info ""
                 
                 # Parse kweaver args
@@ -1049,7 +1049,7 @@ main() {
                 check_root
                 log_info "Full reset: Uninstalling all components..."
                 
-                # Uninstall KWeaver services first
+                # Uninstall BKN Foundry services first
                 uninstall_sandboxruntime || true
                 uninstall_flowautomation || true
                 uninstall_decisionagent || true

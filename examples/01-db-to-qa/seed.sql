@@ -1,4 +1,4 @@
--- supply_chain sample data for KWeaver 01-db-to-qa example
+-- supply_chain sample data for BKN Foundry 01-db-to-qa example
 -- Fictional smart-home company — all names are fabricated
 --
 -- The database must already exist. run.sh connects with: mysql ... "$DB_NAME" < seed.sql

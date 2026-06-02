@@ -2,7 +2,7 @@
 
 中文 | [English](RELEASE.md)
 
-本文档定义了 KWeaver 项目的版本管理、分支策略和发布流程规范。
+本文档定义了 BKN Foundry 项目的版本管理、分支策略和发布流程规范。
 
 ---
 
@@ -20,7 +20,7 @@
 
 ### Trunk-based Development
 
-KWeaver 采用 **Trunk-based Development** 模型，核心原则：
+BKN Foundry 采用 **Trunk-based Development** 模型，核心原则：
 
 | 原则 | 说明 |
 | --- | --- |
@@ -62,7 +62,7 @@ main ─────────────────────────
 
 ### 语义化版本 (Semantic Versioning)
 
-KWeaver 遵循 [Semantic Versioning 2.0.0](https://semver.org/lang/zh-CN/) 规范：
+BKN Foundry 遵循 [Semantic Versioning 2.0.0](https://semver.org/lang/zh-CN/) 规范：
 
 ```
 vMAJOR.MINOR.PATCH[-PRERELEASE]
@@ -118,7 +118,7 @@ git tag v1.0.0.rc.1
 
 ## 🚀 发布流程
 
-KWeaver 采用 **冻结发布（Release With Freeze）** 模式：所有 minor / major 版本都需要经过 RC 验证周期，由 tag 触发 GitHub Actions 完成产物构建与发布。
+BKN Foundry 采用 **冻结发布（Release With Freeze）** 模式：所有 minor / major 版本都需要经过 RC 验证周期，由 tag 触发 GitHub Actions 完成产物构建与发布。
 
 ### 端到端流程概览
 
@@ -250,7 +250,7 @@ git push origin v1.2.0
 
 #### 6. 合回 main
 
-KWeaver 默认采用「fix 直接在 release 分支提交，最终整体 `--no-ff` 合回 main」的回流策略：
+BKN Foundry 默认采用「fix 直接在 release 分支提交，最终整体 `--no-ff` 合回 main」的回流策略：
 
 ```bash
 # 将 release 分支合并回 main
@@ -302,7 +302,7 @@ git branch -D release/1.2.0
 
 ### Keep a Changelog
 
-KWeaver 遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/) 规范。
+BKN Foundry 遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/) 规范。
 
 ### 文件格式
 

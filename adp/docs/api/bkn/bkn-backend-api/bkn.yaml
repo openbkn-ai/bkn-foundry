@@ -5,7 +5,7 @@ info:
     BKN (Business Knowledge Network) Backend API 提供了业务知识网络的导入导出功能。
   version: 1.0.0
   contact:
-    name: KWeaver Team
+    name: BKN Foundry Team
 
 servers:
   - url: http://localhost:13014

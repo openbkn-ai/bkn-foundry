@@ -1,4 +1,4 @@
-# KWeaver Core 0.3.1 Release Notes
+# BKN Foundry 0.3.1 Release Notes
 
 This release focuses on quality optimization and user experience improvements, building on the core capabilities of 0.3.0. It addresses issues found through user feedback and production environments, with emphasis on stability fixes in the BKN engine, VEGA data virtualization, and Execution Factory modules, along with Decision Agent frontend experience improvements.
 

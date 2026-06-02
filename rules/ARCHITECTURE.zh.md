@@ -1,8 +1,8 @@
-# KWeaver 架构设计规范（ARCHITECTURE）
+# BKN Foundry 架构设计规范（ARCHITECTURE）
 
 中文 | [English](ARCHITECTURE.md)
 
-本文件为 KWeaver 的架构设计规范。**日常研发只需要阅读第 1～2 章**；附录仅用于查术语与复制示例。
+本文件为 BKN Foundry 的架构设计规范。**日常研发只需要阅读第 1～2 章**；附录仅用于查术语与复制示例。
 
 ## 1. 架构规范
 

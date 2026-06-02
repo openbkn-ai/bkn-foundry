@@ -181,7 +181,7 @@ _dip_ensure_kweaver_core() {
     fi
 
     if [[ "${missing_core}" == "true" ]]; then
-        log_info "Installing missing KWeaver Core releases..."
+        log_info "Installing missing BKN Foundry releases..."
         if [[ -n "${core_dependency_manifest}" ]]; then
             CORE_VERSION_MANIFEST_FILE="${core_dependency_manifest}"
             HELM_CHART_VERSION="${core_dependency_version}"
@@ -190,7 +190,7 @@ _dip_ensure_kweaver_core() {
             HELM_CHART_VERSION="${original_chart_version}"
             CORE_VERSION_MANIFEST_FILE="${original_core_manifest}"
             ISF_VERSION_MANIFEST_FILE="${original_isf_manifest}"
-            log_error "Failed to install missing KWeaver Core releases"
+            log_error "Failed to install missing BKN Foundry releases"
             return 1
         fi
         HELM_CHART_VERSION="${original_chart_version}"
@@ -382,9 +382,9 @@ _dip_show_access_hints() {
         return 0
     fi
 
-    log_info "Access KWeaver deploy console: ${base_url}/deploy"
-    log_info "Access KWeaver studio: ${base_url}/studio"
-    log_info "Access KWeaver dip-hub: ${base_url}/dip-hub"
+    log_info "Access BKN Foundry deploy console: ${base_url}/deploy"
+    log_info "Access BKN Foundry studio: ${base_url}/studio"
+    log_info "Access BKN Foundry dip-hub: ${base_url}/dip-hub"
 }
 
 _dip_confirm_missing_openclaw_paths() {

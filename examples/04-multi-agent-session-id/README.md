@@ -35,7 +35,7 @@ agent-executor injects that prefix via the son's Dolphin DSL.
 - Business domain `bd_public` (default)
 
 No database, no CSV files, no `.env` setup. The example uses the platform's default
-LLM and the toolboxes that ship with KWeaver Core.
+LLM and the toolboxes that ship with BKN Foundry.
 
 ## Quick Start
 

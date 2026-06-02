@@ -1,22 +1,22 @@
-# KWeaver Core 0.6.0 版本发布通知
+# BKN Foundry 0.6.0 版本发布通知
 
 ---
 
 ## 版本概述
 
-### KWeaver Core 0.6.0 版本正式发布
+### BKN Foundry 0.6.0 版本正式发布
 
 **企业决策智能生态，Skill 能力全链路贯通**
 
-KWeaver Core 0.6.0 以 **Skill 全链路打通**为核心主题，将Skill能力从业务知识网络建模、Context Loader 语义召回、执行工厂统一执行，到 Decision Agent 智能体感知与调用，形成端到端完整闭环。本版本同步完成 VEGA 对 AnyShare 企业知识库的无缝接入，将主流企业非结构化数据源纳入业务知识网络统一管理体系；沙箱运行时新增压缩包上传自动解压与 Shell 脚本执行能力，大幅提升智能体代码执行的灵活性；整体部署内存压缩至 24G，显著降低企业落地门槛。与此同时，`kweaver-eval` 首版 Acceptance 模块正式建成，覆盖 6 大核心模块 104 个用例，以"确定性断言 + Agent Judge 语义评估"双维度体系对平台全栈进行独立验收，标志着 KWeaver Core 的工程质量治理能力进入系统化阶段。
+BKN Foundry 0.6.0 以 **Skill 全链路打通**为核心主题，将Skill能力从业务知识网络建模、Context Loader 语义召回、执行工厂统一执行，到 Decision Agent 智能体感知与调用，形成端到端完整闭环。本版本同步完成 VEGA 对 AnyShare 企业知识库的无缝接入，将主流企业非结构化数据源纳入业务知识网络统一管理体系；沙箱运行时新增压缩包上传自动解压与 Shell 脚本执行能力，大幅提升智能体代码执行的灵活性；整体部署内存压缩至 24G，显著降低企业落地门槛。与此同时，`kweaver-eval` 首版 Acceptance 模块正式建成，覆盖 6 大核心模块 104 个用例，以"确定性断言 + Agent Judge 语义评估"双维度体系对平台全栈进行独立验收，标志着 BKN Foundry 的工程质量治理能力进入系统化阶段。
 
 ---
 
-## KWeaver Core 0.6.0 版本核心亮点速览
+## BKN Foundry 0.6.0 版本核心亮点速览
 
 **1. Skill 全链路打通，技能能力贯穿平台各层**
 
-0.6.0 版本完成 Skill 在 KWeaver 核心平台的全链路打通：BKN 支持在知识网络中建模 Skill 对象类；Context Loader 新增 `find_skills` 工具，支持在知识网络边界内语义召回 Skill 候选；执行工厂新增 Skill 执行接口并支持双写 Dataset；Decision Agent 完成对执行工厂 Skill 的读取与加载；KWeaver SDK 同步对接执行工厂 Skill 管理模块。技能不再是孤立的功能单元，而是与业务知识网络深度融合的可治理、可召回、可执行的智能体能力。
+0.6.0 版本完成 Skill 在 BKN Foundry 核心平台的全链路打通：BKN 支持在知识网络中建模 Skill 对象类；Context Loader 新增 `find_skills` 工具，支持在知识网络边界内语义召回 Skill 候选；执行工厂新增 Skill 执行接口并支持双写 Dataset；Decision Agent 完成对执行工厂 Skill 的读取与加载；KWeaver SDK 同步对接执行工厂 Skill 管理模块。技能不再是孤立的功能单元，而是与业务知识网络深度融合的可治理、可召回、可执行的智能体能力。
 
 **2. AnyShare 企业知识库接入，非结构化数据源统一纳管**
 
@@ -49,7 +49,7 @@ VEGA Catalog 完成对 AnyShare 企业知识库的接入支持，通过 Discover
 支持三种认证方式以适配不同企业部署场景：
 - **应用账号**：提供 AppID + Secret，适合集成部署
 - **永久 Token**：适合高权限运维场景
-- **SSO 一键登录**：与 KWeaver 账号体系打通，当前登录者权限透传至 AnyShare，实现用户级数据权限隔离
+- **SSO 一键登录**：与 BKN Foundry 账号体系打通，当前登录者权限透传至 AnyShare，实现用户级数据权限隔离
 
 当前版本优先支持 AnyShare 知识库类型接入，文档库等其他类型将在后续迭代中逐步覆盖。
 
@@ -206,7 +206,7 @@ SDK CLI 新增 `kweaver skill` 命令族，覆盖 Skill 从注册到执行的完
 
 **4. 多账号管理与认证增强**
 
-新增多账号 Profile 管理支持，开发者可在同一机器上管理多个 KWeaver 实例的登录态：
+新增多账号 Profile 管理支持，开发者可在同一机器上管理多个 BKN Foundry 实例的登录态：
 
 - `--alias` 参数支持为登录账号命名，`auth use` 在多账号间快速切换
 - 全局 `--user` 标志支持单条命令级别的凭证覆盖，无需切换全局账号
@@ -223,7 +223,7 @@ SDK CLI 新增 `kweaver skill` 命令族，覆盖 Skill 从注册到执行的完
 
 ### 【kweaver-eval】
 
-0.6.0 版本完成 `kweaver-eval` 模块初版建设，对 KWeaver Core 全栈进行独立验收，覆盖 **Agent、BKN、VEGA、数据源（DS）、数据视图（Dataview）、Context Loader** 6 大核心模块，共 **104 个用例**，当前 **79 个用例通过（76%）**。
+0.6.0 版本完成 `kweaver-eval` 模块初版建设，对 BKN Foundry 全栈进行独立验收，覆盖 **Agent、BKN、VEGA、数据源（DS）、数据视图（Dataview）、Context Loader** 6 大核心模块，共 **104 个用例**，当前 **79 个用例通过（76%）**。
 
 **1. 用例覆盖概览**
 
@@ -255,7 +255,7 @@ Agent 模块覆盖了 CRUD 生命周期、单轮/多轮/流式对话、对话健
 
 ### 1. GitHub 安装包和技术文档
 
-**KWeaver Core**
+**BKN Foundry**
 - GitHub Release: https://github.com/kweaver-ai/kweaver-core/tree/release/0.6.0
 
 **KWeaver SDK**

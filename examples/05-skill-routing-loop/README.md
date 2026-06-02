@@ -29,9 +29,9 @@ Five components co-operate in a verifiable end-to-end loop:
 ## Prerequisites
 
 - `kweaver` CLI ≥ 0.7.1 (`brew install kweaver-ai/tap/kweaver` or npm)
-- KWeaver platform with **Decision Agent + execution-factory + Vega** enabled
+- BKN Foundry with **Decision Agent + execution-factory + Vega** enabled
   (use `kweaver auth login <platform-url> [--insecure]` first)
-- A MySQL instance reachable from the KWeaver platform (NOT from your laptop)
+- A MySQL instance reachable from the BKN Foundry (NOT from your laptop)
   with CREATE/INSERT/SELECT/UPDATE on a chosen database
 - `python3` (Flask + mysql-connector-python — install via
   `pip install -r tool_backend/requirements.txt`)

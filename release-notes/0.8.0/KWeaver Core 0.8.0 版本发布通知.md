@@ -1,18 +1,18 @@
-# KWeaver Core 0.8.0 版本发布通知
+# BKN Foundry 0.8.0 版本发布通知
 
 ---
 
 ## 版本概述
 
-### KWeaver Core 0.8.0 版本正式发布
+### BKN Foundry 0.8.0 版本正式发布
 
 **工具链开箱即用，全链路可观测性落地，多语言运行时就绪，单机部署降低准入门槛**
 
-KWeaver Core 0.8.0 以 **开发者体验提升** 为核心主线，在工具链交付、可观测性基础设施与沙箱运行时三个方向完成重要突破。Context Loader 工具集正式内置为平台默认工具箱，平台部署后自动完成工具箱注册，无需在执行工厂中手动导入；`search_schema` 新增 `concept_groups` 参数，支持按 BKN 概念分组精确限定语义召回范围，解决多业务场景共用同一知识网络时的召回边界问题。BKN 引擎将 ActionType 语义升级为"行动意图（Action Intent）"声明，并将影响对象类扩展为支持多目标的"影响契约（Impact Contract）"，进一步精化智能体对业务动作副作用的建模能力。可观测性方面，`bkn-backend`、`ontology-query`、`vega-backend` 三大服务完成 OpenTelemetry 链路追踪全量接入，跨服务调用链可通过 OpenSearch 统一关联查看，为 TraceAI 证据链能力的持续建设奠定基础。沙箱运行时升级至 v0.4.0，新增多语言复合模板环境并正式补齐 Go 运行支持。VEGA 同步完成生产级限流控制能力上线，为数据查询并发场景提供双层保护；同时对 BuildTask、DiscoverTask、Dataset、DiscoverSchedule 等核心资源域完成 API 体系全面重构，统一设计风格，消除历史遗留的路径不一致问题。部署方面，本版本新增基于 K3s（Linux）和 Docker + Kind（macOS）的单机部署方案，并重新设计部署流程，提供预检脚本与安装后上架向导，显著降低首次部署与运维的试错成本。
+BKN Foundry 0.8.0 以 **开发者体验提升** 为核心主线，在工具链交付、可观测性基础设施与沙箱运行时三个方向完成重要突破。Context Loader 工具集正式内置为平台默认工具箱，平台部署后自动完成工具箱注册，无需在执行工厂中手动导入；`search_schema` 新增 `concept_groups` 参数，支持按 BKN 概念分组精确限定语义召回范围，解决多业务场景共用同一知识网络时的召回边界问题。BKN 引擎将 ActionType 语义升级为"行动意图（Action Intent）"声明，并将影响对象类扩展为支持多目标的"影响契约（Impact Contract）"，进一步精化智能体对业务动作副作用的建模能力。可观测性方面，`bkn-backend`、`ontology-query`、`vega-backend` 三大服务完成 OpenTelemetry 链路追踪全量接入，跨服务调用链可通过 OpenSearch 统一关联查看，为 TraceAI 证据链能力的持续建设奠定基础。沙箱运行时升级至 v0.4.0，新增多语言复合模板环境并正式补齐 Go 运行支持。VEGA 同步完成生产级限流控制能力上线，为数据查询并发场景提供双层保护；同时对 BuildTask、DiscoverTask、Dataset、DiscoverSchedule 等核心资源域完成 API 体系全面重构，统一设计风格，消除历史遗留的路径不一致问题。部署方面，本版本新增基于 K3s（Linux）和 Docker + Kind（macOS）的单机部署方案，并重新设计部署流程，提供预检脚本与安装后上架向导，显著降低首次部署与运维的试错成本。
 
 ---
 
-## KWeaver Core 0.8.0 版本核心亮点速览
+## BKN Foundry 0.8.0 版本核心亮点速览
 
 **1. Context Loader 工具集开箱即用，concept_group 语义精确召回**
 
@@ -36,7 +36,7 @@ VEGA Resource 数据查询新增完整限流控制机制，支持全局并发限
 
 **6. 单机部署方案就绪，一键完成本地安装**
 
-KWeaver Core 新增基于 K3s（Linux）和 Docker + Kind（macOS）的低资源单机部署方案，一键完成本地或单机服务器安装，适用于开发测试、评估验证与资源受限的生产环境。同步提供部署前预检脚本与安装后上架向导，降低首次部署与重复运维的试错成本。
+BKN Foundry 新增基于 K3s（Linux）和 Docker + Kind（macOS）的低资源单机部署方案，一键完成本地或单机服务器安装，适用于开发测试、评估验证与资源受限的生产环境。同步提供部署前预检脚本与安装后上架向导，降低首次部署与重复运维的试错成本。
 
 ---
 
@@ -307,19 +307,19 @@ ZIP 压缩包解压处理新增多项安全防护：
 
 ### 【部署与基础设施】
 
-**1. KWeaver Core 部署流程优化**
+**1. BKN Foundry 部署流程优化**
 
-重新设计 KWeaver Core 部署流程，降低出错风险
+重新设计 BKN Foundry 部署流程，降低出错风险
 
 - 提供部署前预检脚本，便于提前发现环境问题并在需要时辅助修复
 - 提供安装完成后的上架向导脚本，基础初始化等收尾步骤
 - 安装流程与文档说明同步更新，降低首次部署与重复运维的试错成本
 
-**2. KWeaver Core 单机部署支持**
+**2. BKN Foundry 单机部署支持**
 
-KWeaver Core 新增基于K3s（Linux） 和 Docker + Kind（MacOS） 的低资源单机部署方案：
+BKN Foundry 新增基于K3s（Linux） 和 Docker + Kind（MacOS） 的低资源单机部署方案：
 
-- 一键完成 KWeaver Core 的本地或单机服务器安装，适用于开发测试、评估验证与资源受限的生产环境
+- 一键完成 BKN Foundry 的本地或单机服务器安装，适用于开发测试、评估验证与资源受限的生产环境
 - 一键完成环境检查和修复和初始化配置
 - 详细安装指引见：[https://github.com/kweaver-ai/kweaver-core/tree/main/deploy](https://github.com/kweaver-ai/kweaver-core/tree/main/deploy)
 
@@ -377,7 +377,7 @@ Dataflow 流水线新增 `@dataset/write-docs` 写入节点，支持将流水线
 
 ### 1. GitHub 安装包和技术文档
 
-**KWeaver Core**
+**BKN Foundry**
 - GitHub Release: https://github.com/kweaver-ai/kweaver-core/tree/release/0.8.0
 
 **KWeaver SDK**

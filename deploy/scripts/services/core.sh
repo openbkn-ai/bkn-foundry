@@ -234,8 +234,8 @@ init_core_databases() {
     sql_base_dir="$(resolve_versioned_sql_dir "kweaver-core" "${HELM_CHART_VERSION:-}")"
 
     if ! is_rds_internal; then
-        warn_external_rds_sql_required "KWeaver Core" "${sql_base_dir}"
-        log_warn "Skipping automatic KWeaver Core database initialization (external RDS)"
+        warn_external_rds_sql_required "BKN Foundry" "${sql_base_dir}"
+        log_warn "Skipping automatic BKN Foundry database initialization (external RDS)"
         return 0
     fi
 
@@ -250,7 +250,7 @@ init_core_databases() {
     local -a sql_modules=()
     kweaver_mapfile_compat sql_modules list_versioned_sql_modules "kweaver-core" "${HELM_CHART_VERSION:-}"
     if [[ ${#sql_modules[@]} -eq 0 ]]; then
-        log_info "Skipping KWeaver Core database initialization: no SQL module directories found in ${sql_base_dir}"
+        log_info "Skipping BKN Foundry database initialization: no SQL module directories found in ${sql_base_dir}"
         return 0
     fi
 
@@ -267,7 +267,7 @@ init_core_databases() {
 }
 
 download_core() {
-    log_info "Downloading KWeaver Core charts..."
+    log_info "Downloading BKN Foundry charts..."
     ensure_helm_available
     _core_require_version_manifest || return 1
 
@@ -482,14 +482,14 @@ _core_apply_default_set_values() {
     fi
 }
 
-# Install KWeaver Core services via Helm
+# Install BKN Foundry services via Helm
 install_core() {
-    log_info "Installing KWeaver Core services via Helm..."
+    log_info "Installing BKN Foundry services via Helm..."
     _core_require_version_manifest || return 1
     _core_apply_default_set_values
 
     if ! ensure_platform_prerequisites; then
-        log_error "Failed to ensure platform prerequisites for KWeaver Core"
+        log_error "Failed to ensure platform prerequisites for BKN Foundry"
         return 1
     fi
 
@@ -498,7 +498,7 @@ install_core() {
     if [[ "${KWEAVER_SKIP_PLATFORM_BOOTSTRAP:-false}" == "true" ]] && [[ "${KWEAVER_SKIP_DATA_SERVICES_BUNDLE:-false}" != "true" ]]; then
         log_info "Bring-your-own cluster: ensuring bundled data services before Core (skip with KWEAVER_SKIP_DATA_SERVICES_BUNDLE=true)"
         if ! ensure_data_services; then
-            log_error "Failed to ensure data services before KWeaver Core"
+            log_error "Failed to ensure data services before BKN Foundry"
             return 1
         fi
     fi
@@ -574,7 +574,7 @@ install_core() {
     fi
 
     if ! init_core_databases; then
-        log_error "Failed to initialize KWeaver Core databases"
+        log_error "Failed to initialize BKN Foundry databases"
         return 1
     fi
 
@@ -590,7 +590,7 @@ install_core() {
         fi
     done
 
-    log_info "KWeaver Core services installation completed."
+    log_info "BKN Foundry services installation completed."
 
     log_info "Context Loader toolset is auto-imported by agent-retrieval at startup (no manual onboard step needed)."
 
@@ -615,9 +615,9 @@ install_core() {
     echo "============================================"
 }
 
-# Uninstall KWeaver Core services
+# Uninstall BKN Foundry services
 uninstall_core() {
-    log_info "Uninstalling KWeaver Core services..."
+    log_info "Uninstalling BKN Foundry services..."
 
     local namespace
     namespace="$(_core_resolve_target_namespace)"
@@ -646,12 +646,12 @@ uninstall_core() {
     log_info "Deleting leftover Core Jobs in ${namespace} (e.g. data-migrator / chart hooks)"
     kweaver_delete_jobs_name_match_ere_in_ns "${namespace}" 'migrator|data-migrator'
 
-    log_info "KWeaver Core services uninstallation completed."
+    log_info "BKN Foundry services uninstallation completed."
 }
 
-# Show KWeaver Core services status
+# Show BKN Foundry services status
 show_core_status() {
-    log_info "KWeaver Core services status:"
+    log_info "BKN Foundry services status:"
 
     local namespace
     namespace="$(_core_resolve_target_namespace)"

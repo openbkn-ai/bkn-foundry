@@ -50,7 +50,7 @@ CSV 来自 Joshua C. Fjelstul 的 **The Fjelstul World Cup Database**（[仓库]
 
 `run.sh` 只自动化上述 7 步。换一台机器 + 一个新集群，下面这 6 件平台级事必须先手动做完一次：
 
-1. **安装 KWeaver Core 平台**（k8s + bkn-backend + ontology-query + vega-backend + agent-* + mf-model-* + opensearch + minio + mariadb）。用仓库根目录的 `deploy/onboard.sh`，详见 [deploy/README.zh.md](../../deploy/README.zh.md)。**建议 `0.8.0+`**（修了 `_score` resource-path bug 与 toolbox import 写入 bug）。
+1. **安装 BKN Foundry 平台**（k8s + bkn-backend + ontology-query + vega-backend + agent-* + mf-model-* + opensearch + minio + mariadb）。用仓库根目录的 `deploy/onboard.sh`，详见 [deploy/README.zh.md](../../deploy/README.zh.md)。**建议 `0.8.0+`**（修了 `_score` resource-path bug 与 toolbox import 写入 bug）。
 2. **CLI 登录**：`kweaver auth login https://<你的平台地址>`（凭据写入 `~/.kweaver/`）。
 3. **注册 LLM 模型**（agent chat 必需）：
    ```bash

@@ -1,18 +1,18 @@
-# KWeaver Core 0.8.0 Release Notes
+# BKN Foundry 0.8.0 Release Notes
 
 ---
 
 ## Overview
 
-### KWeaver Core 0.8.0 Now Available
+### BKN Foundry 0.8.0 Now Available
 
 **Out-of-the-box toolchain · Full-stack observability · Multi-language runtime · Single-node deployment**
 
-KWeaver Core 0.8.0 centers on **developer experience** as its core theme, delivering major advances across three areas: toolchain delivery, observability infrastructure, and sandbox runtime. The Context Loader toolset is now built into the platform as the default toolbox — registration happens automatically on deployment, eliminating the need to manually import it in the Execution Factory. The `search_schema` tool gains a `concept_groups` parameter, allowing semantic recall to be scoped precisely to designated BKN concept groups, resolving boundary confusion when multiple business domains share a single knowledge network. The BKN engine upgrades ActionType semantics to an **Action Intent** declaration, and extends Impact Object Type to a multi-target **Impact Contract**, giving agents a richer model of the business side-effects of any action before execution. On the observability front, `bkn-backend`, `ontology-query`, and `vega-backend` complete full OpenTelemetry trace instrumentation — cross-service call spans are now correlatable in OpenSearch, laying the groundwork for TraceAI's evidence-chain capability. The sandbox runtime advances to v0.4.0 with a new multi-language composite template environment and official Go language support. VEGA ships production-grade rate limiting for concurrent data queries, alongside a comprehensive API restructuring of BuildTask, DiscoverTask, Dataset, and DiscoverSchedule — unifying design conventions and eliminating legacy inconsistencies. On the deployment front, this release introduces single-node deployment via K3s (Linux) and Docker + Kind (macOS), together with a redesigned installation flow featuring pre-flight check scripts and a post-install onboarding wizard, significantly reducing the cost of first-time deployment and ongoing operations.
+BKN Foundry 0.8.0 centers on **developer experience** as its core theme, delivering major advances across three areas: toolchain delivery, observability infrastructure, and sandbox runtime. The Context Loader toolset is now built into the platform as the default toolbox — registration happens automatically on deployment, eliminating the need to manually import it in the Execution Factory. The `search_schema` tool gains a `concept_groups` parameter, allowing semantic recall to be scoped precisely to designated BKN concept groups, resolving boundary confusion when multiple business domains share a single knowledge network. The BKN engine upgrades ActionType semantics to an **Action Intent** declaration, and extends Impact Object Type to a multi-target **Impact Contract**, giving agents a richer model of the business side-effects of any action before execution. On the observability front, `bkn-backend`, `ontology-query`, and `vega-backend` complete full OpenTelemetry trace instrumentation — cross-service call spans are now correlatable in OpenSearch, laying the groundwork for TraceAI's evidence-chain capability. The sandbox runtime advances to v0.4.0 with a new multi-language composite template environment and official Go language support. VEGA ships production-grade rate limiting for concurrent data queries, alongside a comprehensive API restructuring of BuildTask, DiscoverTask, Dataset, and DiscoverSchedule — unifying design conventions and eliminating legacy inconsistencies. On the deployment front, this release introduces single-node deployment via K3s (Linux) and Docker + Kind (macOS), together with a redesigned installation flow featuring pre-flight check scripts and a post-install onboarding wizard, significantly reducing the cost of first-time deployment and ongoing operations.
 
 ---
 
-## KWeaver Core 0.8.0 Highlights
+## BKN Foundry 0.8.0 Highlights
 
 **1. Context Loader — Out-of-the-Box with Concept Group Scoped Recall**
 
@@ -36,7 +36,7 @@ VEGA Resource data queries now enforce a complete rate-limiting mechanism with i
 
 **6. Single-Node Deployment — One Command to Install Locally**
 
-KWeaver Core adds a lightweight single-node deployment path using K3s (Linux) and Docker + Kind (macOS). A single command installs the full platform on a local machine or standalone server, suitable for development, evaluation, and resource-constrained production environments. Pre-flight check scripts and a post-install onboarding wizard are included to reduce trial-and-error during initial setup and routine maintenance.
+BKN Foundry adds a lightweight single-node deployment path using K3s (Linux) and Docker + Kind (macOS). A single command installs the full platform on a local machine or standalone server, suitable for development, evaluation, and resource-constrained production environments. Pre-flight check scripts and a post-install onboarding wizard are included to reduce trial-and-error during initial setup and routine maintenance.
 
 ---
 
@@ -306,19 +306,19 @@ ZIP archive extraction gains multiple security safeguards:
 
 ### 【Deployment & Infrastructure】
 
-**1. KWeaver Core Deployment Flow Improvements**
+**1. BKN Foundry Deployment Flow Improvements**
 
-The KWeaver Core deployment flow is redesigned to reduce the risk of errors:
+The BKN Foundry deployment flow is redesigned to reduce the risk of errors:
 
 - Pre-flight check script to detect environment issues early and assist with remediation when needed
 - Post-install onboarding wizard script covering basic initialization and setup finalization
 - Installation flow and documentation updated in sync, reducing trial-and-error for both first-time deployments and routine operations
 
-**2. KWeaver Core Single-Node Deployment**
+**2. BKN Foundry Single-Node Deployment**
 
-KWeaver Core adds a lightweight single-node deployment path based on K3s (Linux) and Docker + Kind (macOS):
+BKN Foundry adds a lightweight single-node deployment path based on K3s (Linux) and Docker + Kind (macOS):
 
-- One command installs the complete KWeaver Core platform on a local machine or standalone server — suitable for development, evaluation, and resource-constrained production environments
+- One command installs the complete BKN Foundry platform on a local machine or standalone server — suitable for development, evaluation, and resource-constrained production environments
 - One-command environment check, repair, and initialization configuration
 - Detailed installation guide: [https://github.com/kweaver-ai/kweaver-core/tree/main/deploy](https://github.com/kweaver-ai/kweaver-core/tree/main/deploy)
 
@@ -376,7 +376,7 @@ Demonstrates how an agent uses BKN knowledge network semantics to dynamically ro
 
 ### 1. Installation Packages and Technical Documentation
 
-**KWeaver Core**
+**BKN Foundry**
 - GitHub Release: https://github.com/kweaver-ai/kweaver-core/tree/release/0.8.0
 
 **KWeaver SDK**

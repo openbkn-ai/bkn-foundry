@@ -1,18 +1,18 @@
-# KWeaver Core 0.7.0 版本发布通知
+# BKN Foundry 0.7.0 版本发布通知
 
 ---
 
 ## 版本概述
 
-### KWeaver Core 0.7.0 版本正式发布
+### BKN Foundry 0.7.0 版本正式发布
 
 **指标语义融合，流式构建就绪，智能体能力多维跃升**
 
-KWeaver Core 0.7.0 以 **BKN 引擎双向升级**为核心主题。在语义建模层，指标类型（Metric）正式成为业务知识网络的第四类一等公民，与对象类、关系类、行动类共同表达业务实体与量化逻辑；关系映射新增 `FilteredCrossJoinMapping` 类型，支持在两个数据源的笛卡尔积上施加过滤条件精确筛选关联实例，覆盖复杂多表关联场景；BKN Specification SDK 同步升级至 v0.1.3，并新增 Exchange 邮件恢复领域知识网络模板。本版本同步完成 VEGA 对 PostgreSQL 流式索引构建的支持，三种构建模式（全量、增量、流式）至此完整覆盖；逻辑视图引擎新增多表 JOIN、UNION 视图类型及自定义 SQL 能力；执行工厂完成 Skill 生命周期管理闭环，支持整包更新、版本控制与历史回滚；Context Loader 完成工具合并并新增指标类型概念召回，覆盖对象、关系、行动、指标四类实体的统一语义搜索能力；Decision Agent 新增 React Agent 运行模式。整体系统在 API 错误语义、并发稳定性与部署运维体验方面同步完成多项专项改进。
+BKN Foundry 0.7.0 以 **BKN 引擎双向升级**为核心主题。在语义建模层，指标类型（Metric）正式成为业务知识网络的第四类一等公民，与对象类、关系类、行动类共同表达业务实体与量化逻辑；关系映射新增 `FilteredCrossJoinMapping` 类型，支持在两个数据源的笛卡尔积上施加过滤条件精确筛选关联实例，覆盖复杂多表关联场景；BKN Specification SDK 同步升级至 v0.1.3，并新增 Exchange 邮件恢复领域知识网络模板。本版本同步完成 VEGA 对 PostgreSQL 流式索引构建的支持，三种构建模式（全量、增量、流式）至此完整覆盖；逻辑视图引擎新增多表 JOIN、UNION 视图类型及自定义 SQL 能力；执行工厂完成 Skill 生命周期管理闭环，支持整包更新、版本控制与历史回滚；Context Loader 完成工具合并并新增指标类型概念召回，覆盖对象、关系、行动、指标四类实体的统一语义搜索能力；Decision Agent 新增 React Agent 运行模式。整体系统在 API 错误语义、并发稳定性与部署运维体验方面同步完成多项专项改进。
 
 ---
 
-## KWeaver Core 0.7.0 版本核心亮点速览
+## BKN Foundry 0.7.0 版本核心亮点速览
 
 **1. BKN 引擎双向升级：指标模型语义化与过滤交叉关联映射**
 
@@ -339,7 +339,7 @@ npx skills add https://github.com/kweaver-ai/kweaver-admin --skill kweaver-admin
 
 ### 1. GitHub 安装包和技术文档
 
-**KWeaver Core**
+**BKN Foundry**
 - GitHub Release: https://github.com/kweaver-ai/kweaver-core/tree/release/0.7.0
 
 **KWeaver SDK**

@@ -2,7 +2,7 @@
 
 中文 | [English](WORKFLOW.md)
 
-本文档定义了 KWeaver 团队的研发协作规范，覆盖 Issue 管理、Feature 追踪、设计文档管理，以及团队通知流程。每个规则都有明确的操作步骤和文件路径，确保可落地执行。
+本文档定义了 BKN Foundry 团队的研发协作规范，覆盖 Issue 管理、Feature 追踪、设计文档管理，以及团队通知流程。每个规则都有明确的操作步骤和文件路径，确保可落地执行。
 
 ---
 
@@ -414,9 +414,9 @@ PR 合并后由合并者或 Assignee 完成：
 #### Release 发布通知
 
 ```
-主题：[KWeaver] vX.Y.Z 正式发布
+主题：[BKN Foundry] vX.Y.Z 正式发布
 
-KWeaver vX.Y.Z 已正式发布！
+BKN Foundry vX.Y.Z 已正式发布！
 
 ## 主要变更
 
@@ -440,9 +440,9 @@ KWeaver vX.Y.Z 已正式发布！
 #### RC 版本通知
 
 ```
-主题：[KWeaver] vX.Y.Z-rc.N 测试版发布，邀请测试反馈
+主题：[BKN Foundry] vX.Y.Z-rc.N 测试版发布，邀请测试反馈
 
-KWeaver vX.Y.Z-rc.N 已发布，请测试团队进行验证。
+BKN Foundry vX.Y.Z-rc.N 已发布，请测试团队进行验证。
 
 ## 测试范围
 - 变更列表（关联设计文档链接）
@@ -460,7 +460,7 @@ YYYY-MM-DD
 #### 代码冻结通知
 
 ```
-主题：[KWeaver] vX.Y.Z 代码冻结通知
+主题：[BKN Foundry] vX.Y.Z 代码冻结通知
 
 vX.Y.Z release 分支已创建，代码冻结自 YYYY-MM-DD 开始。
 
@@ -480,7 +480,7 @@ YYYY-MM-DD
 | 规范项 | 要求 |
 | --- | --- |
 | 发送方式 | 团队邮件列表，重要 Release 可由 CI 自动触发 |
-| 主题前缀 | 统一使用 `[KWeaver]`，便于过滤和归档 |
+| 主题前缀 | 统一使用 `[BKN Foundry]`，便于过滤和归档 |
 | 语言 | 中文为主，重要 Release 可附英文版 |
 | 抄送 | **所有邮件必须抄送测试负责人**；Release 通知同时抄送项目负责人 |
 | 附件 | 禁止附件，统一使用链接引用文档或制品 |

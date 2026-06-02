@@ -1,4 +1,4 @@
-# KWeaver Core 0.3.2 Release Notes
+# BKN Foundry 0.3.2 Release Notes
 
 KWeaver DIP 0.3.2 focuses on enhancing data analysis capabilities and improving product stability, with improvements in three key areas: **intelligent data discovery enhancements, smart data querying experience optimization, and bug fixes**.
 

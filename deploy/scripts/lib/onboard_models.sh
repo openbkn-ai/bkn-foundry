@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# KWeaver onboard: model registration + BKN ConfigMap (sourced by onboard.sh)
+# BKN Foundry onboard: model registration + BKN ConfigMap (sourced by onboard.sh)
 # =============================================================================
 
 onboard_log_info() { echo -e "${GREEN}[onboard]${NC} $*"; }

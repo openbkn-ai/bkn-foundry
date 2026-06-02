@@ -1,18 +1,18 @@
-# KWeaver Core 0.7.0 Release Notes
+# BKN Foundry 0.7.0 Release Notes
 
 ---
 
 ## Version Overview
 
-### KWeaver Core 0.7.0 Is Now Generally Available
+### BKN Foundry 0.7.0 Is Now Generally Available
 
 **Metric Semantic Fusion, Streaming Build Ready, Multi-Dimensional Agent Capability Leap**
 
-KWeaver Core 0.7.0 is centered on a **dual-direction upgrade to the BKN Engine**. At the semantic modeling layer, the Metric type officially becomes the fourth first-class citizen of the Business Knowledge Network, standing alongside Object Types, Relation Types, and Action Types to express business entities and quantitative logic. Relation Mapping gains a new `FilteredCrossJoinMapping` type, which supports applying filter conditions on the Cartesian product of two data sources to precisely select matching instance pairs — covering complex multi-table join scenarios. The BKN Specification SDK is simultaneously upgraded to v0.1.3, with a new Exchange email recovery domain knowledge network template added. This release also completes VEGA's support for PostgreSQL streaming index builds; with full, incremental, and streaming modes now all covered. The Logic View engine gains multi-table JOIN, UNION view types, and custom SQL capability. The Execution Factory completes the Skill lifecycle management loop, supporting full-package updates, version control, and rollback. Context Loader consolidates its tools and adds Metric type concept recall, providing unified semantic search across Object, Relation, Action, and Metric entities. Decision Agent introduces a React Agent running mode. The overall system also includes multiple targeted improvements to API error semantics, concurrency stability, and deployment/operations experience.
+BKN Foundry 0.7.0 is centered on a **dual-direction upgrade to the BKN Engine**. At the semantic modeling layer, the Metric type officially becomes the fourth first-class citizen of the Business Knowledge Network, standing alongside Object Types, Relation Types, and Action Types to express business entities and quantitative logic. Relation Mapping gains a new `FilteredCrossJoinMapping` type, which supports applying filter conditions on the Cartesian product of two data sources to precisely select matching instance pairs — covering complex multi-table join scenarios. The BKN Specification SDK is simultaneously upgraded to v0.1.3, with a new Exchange email recovery domain knowledge network template added. This release also completes VEGA's support for PostgreSQL streaming index builds; with full, incremental, and streaming modes now all covered. The Logic View engine gains multi-table JOIN, UNION view types, and custom SQL capability. The Execution Factory completes the Skill lifecycle management loop, supporting full-package updates, version control, and rollback. Context Loader consolidates its tools and adds Metric type concept recall, providing unified semantic search across Object, Relation, Action, and Metric entities. Decision Agent introduces a React Agent running mode. The overall system also includes multiple targeted improvements to API error semantics, concurrency stability, and deployment/operations experience.
 
 ---
 
-## KWeaver Core 0.7.0 — Core Highlights
+## BKN Foundry 0.7.0 — Core Highlights
 
 **1. Dual-Direction BKN Engine Upgrade: Metric Semantic Modeling & Filtered Cross-Join Mapping**
 
@@ -339,7 +339,7 @@ npx skills add https://github.com/kweaver-ai/kweaver-admin --skill kweaver-admin
 
 ### 1. GitHub Packages & Technical Documentation
 
-**KWeaver Core**
+**BKN Foundry**
 - GitHub Release: https://github.com/kweaver-ai/kweaver-core/tree/release/0.7.0
 
 **KWeaver SDK**

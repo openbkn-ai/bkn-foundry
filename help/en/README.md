@@ -1,6 +1,6 @@
-# KWeaver Core documentation
+# BKN Foundry documentation
 
-KWeaver Core is a **backend-only** platform. Use the CLI, SDKs, or HTTP APIs to operate each subsystem.
+BKN Foundry is a **backend-only** platform. Use the CLI, SDKs, or HTTP APIs to operate each subsystem.
 
 ---
 

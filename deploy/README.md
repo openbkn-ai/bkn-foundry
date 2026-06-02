@@ -1,10 +1,10 @@
-# KWeaver Core Deploy
+# BKN Foundry Deploy
 
 [中文](README.zh.md) | English
 
-One-click deployment of **KWeaver Core** onto a single-node Kubernetes cluster.
+One-click deployment of **BKN Foundry** onto a single-node Kubernetes cluster.
 
-This `deploy` directory provides scripts to install KWeaver Core along with its dependencies including Kubernetes, infrastructure services, and data services.
+This `deploy` directory provides scripts to install BKN Foundry along with its dependencies including Kubernetes, infrastructure services, and data services.
 
 **Platforms:** **Linux** is the recommended and fully documented install target (`preflight.sh`, k3s or kubeadm, data services). **macOS** is **optional** for **local development only** (Docker + kind + `dev/mac.sh`); see **[Mac install (dev)](dev/README.md)** ([中文](dev/README.zh.md)) — not a substitute for Linux production installs.
 
@@ -85,7 +85,7 @@ setenforce 0
 dnf install containerd.io
 ```
 
-### Install KWeaver Core
+### Install BKN Foundry
 
 ```bash
 # 1. Clone the repository
@@ -101,7 +101,7 @@ sudo bash ./preflight.sh --help         # all flags (--role, --skip, --report, -
 # Default checks match k8s/kubeadm; for single-node k3s use: sudo bash ./preflight.sh --distro=k3s
 # (same as env KUBE_DISTRO=k3s — shared with deploy.sh)
 
-# 3. Install KWeaver Core
+# 3. Install BKN Foundry
 # Minimum installation — recommended for first-time experience
 bash ./deploy.sh kweaver-core install --minimum
 # Default is kubeadm (k8s). For single-node k3s instead (--distro must be BEFORE kweaver-core):
@@ -116,7 +116,7 @@ bash ./deploy.sh kweaver-core install
 # The script will interactively prompt for the access address and auto-detect the API server address.
 
 # Or specify addresses explicitly (skips interactive prompts):
-#   --access_address       Address for clients to reach KWeaver services (can be IP or domain)
+#   --access_address       Address for clients to reach BKN Foundry services (can be IP or domain)
 #   --api_server_address   IP bound to a local network interface for K8s API server (must be a real NIC IP)
 bash ./deploy.sh kweaver-core install \
   --access_address=<your-ip> \
@@ -162,7 +162,7 @@ The deployment scripts need access to these domains:
 | `mirrors.aliyun.com` | RPM package mirrors |
 | `mirrors.tuna.tsinghua.edu.cn` | `containerd.io` RPM mirror |
 | `registry.aliyuncs.com` | Kubernetes component images |
-| `swr.cn-east-3.myhuaweicloud.com` | KWeaver application image registry |
+| `swr.cn-east-3.myhuaweicloud.com` | BKN Foundry application image registry |
 | `repo.huaweicloud.com` | Helm binary download |
 | `kweaver-ai.github.io` | KWeaver Helm chart repository |
 | `rancher-mirror.rancher.cn` | k3s install script / binary (k3s quickstart path; override with `K3S_INSTALL_URL`) |
@@ -173,7 +173,7 @@ The deployment scripts need access to these domains:
 
 1. Install or repair single-node Kubernetes, local-path storage, and ingress-nginx.
 2. Install or repair data services: MariaDB, Redis, Kafka, ZooKeeper, and OpenSearch.
-3. Deploy the KWeaver Core application charts.
+3. Deploy the BKN Foundry application charts.
 
 The Core application layer includes charts for data services management, application deployment, and task orchestration.
 
@@ -182,7 +182,7 @@ The Core application layer includes charts for data services management, applica
 ### Recommended commands
 
 ```bash
-# Install KWeaver Core
+# Install BKN Foundry
 ./deploy.sh kweaver-core install
 
 # Show Core status

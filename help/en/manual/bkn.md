@@ -2,7 +2,7 @@
 
 ## 📖 Overview
 
-The **Business Knowledge Network (BKN)** is the semantic layer of KWeaver Core. It models your domain with **object types**, **relation types**, and **action types**, stores **instances** and **relations**, and powers agents and analytics.
+The **Business Knowledge Network (BKN)** is the semantic layer of BKN Foundry. It models your domain with **object types**, **relation types**, and **action types**, stores **instances** and **relations**, and powers agents and analytics.
 
 **Related modules:** [VEGA Engine](vega.md) (data behind views), [Context Loader](context-loader.md) (context from ontology), [Decision Agent](decision-agent.md) (uses BKN at runtime).
 

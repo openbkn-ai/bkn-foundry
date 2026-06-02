@@ -1,13 +1,13 @@
-# KWeaver-Core Testing Specification
+# BKN Foundry Testing Specification
 
 > Version: 0.2.0
-> Scope: All modules of KWeaver-Core and related products (Decision Agent, ISF, TraceAI, etc.)
+> Scope: All modules of BKN Foundry and related products (Decision Agent, ISF, TraceAI, etc.)
 
 ---
 
 ## 1. Background
 
-KWeaver-Core consists of multiple modules across business domains (ontology, vega, execution-factory, dataflow, etc.), developed in parallel by multiple teams. This specification applies to Decision Agent, ISF, TraceAI, and other related product modules.
+BKN Foundry consists of multiple modules across business domains (ontology, vega, execution-factory, dataflow, etc.), developed in parallel by multiple teams. This specification applies to Decision Agent, ISF, TraceAI, and other related product modules.
 
 Tests are primarily authored, executed, and maintained by AI Agents; humans review and approve.
 

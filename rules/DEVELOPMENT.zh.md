@@ -1,8 +1,8 @@
 ---
 name: development
-title: KWeaver 研发规范（DEVELOPMENT）
+title: BKN Foundry 研发规范（DEVELOPMENT）
 version: 0.1.0
-scope: KWeaver-Core 及关联产品（Decision Agent、ISF、TraceAI 等）的所有服务
+scope: BKN Foundry 及关联产品（Decision Agent、ISF、TraceAI 等）的所有服务
 authors: [freeman.xu]
 created: 2026-03-20
 status: draft
@@ -14,11 +14,11 @@ related:
   - RELEASE.zh.md
 ---
 
-# KWeaver 研发规范（DEVELOPMENT）
+# BKN Foundry 研发规范（DEVELOPMENT）
 
 中文 | [English](DEVELOPMENT.md)
 
-本文件定义 KWeaver 服务的研发规范，覆盖 API 设计、HTTP 语义、请求与响应约定、认证、可观测性等。与 [ARCHITECTURE](ARCHITECTURE.zh.md)（系统怎么拆）、[TESTING](TESTING.zh.md)（怎么测）互补。
+本文件定义 BKN Foundry 服务的研发规范，覆盖 API 设计、HTTP 语义、请求与响应约定、认证、可观测性等。与 [ARCHITECTURE](ARCHITECTURE.zh.md)（系统怎么拆）、[TESTING](TESTING.zh.md)（怎么测）互补。
 
 ## 术语约定
 

@@ -43,7 +43,7 @@ npm install -g @kweaver-ai/kweaver-sdk
 #    macOS:  brew install mysql-client
 #    Ubuntu: sudo apt install -y mysql-client
 
-# 3. 登录 KWeaver 平台
+# 3. 登录 BKN Foundry 平台
 kweaver auth login https://<platform-url>
 
 # 4. 准备一个平台可访问的 MySQL 数据库

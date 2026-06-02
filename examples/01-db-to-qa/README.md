@@ -50,7 +50,7 @@ npm install -g @kweaver-ai/kweaver-sdk
 #    macOS:  brew install mysql-client
 #    Ubuntu: sudo apt install -y mysql-client
 
-# 3. Authenticate to a KWeaver platform
+# 3. Authenticate to a BKN Foundry
 kweaver auth login https://<platform-url>
 
 # 4. Prepare a MySQL database reachable from the platform

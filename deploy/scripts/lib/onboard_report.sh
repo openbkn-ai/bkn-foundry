@@ -48,7 +48,7 @@ onboard_print_completion_report() {
     {
         echo ""
         echo "============================================"
-        echo "  KWeaver Onboard — completion report"
+        echo "  BKN Foundry Onboard — completion report"
         echo "  Time (UTC)  $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
         echo "  Mode        ${ONBOARD_REPORT_MAIN_MODE:-interactive}"
         echo "${_line}"
@@ -90,7 +90,7 @@ onboard_print_completion_report() {
     } 2>/dev/null || {
         echo ""
         echo "============================================"
-        echo "  KWeaver Onboard — done"
+        echo "  BKN Foundry Onboard — done"
         echo "============================================"
         echo ""
     }

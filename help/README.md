@@ -1,6 +1,6 @@
-# KWeaver Core help
+# BKN Foundry help
 
-Product documentation for **KWeaver Core** (backend APIs, CLI, and SDKs).
+Product documentation for **BKN Foundry** (backend APIs, CLI, and SDKs).
 
 - **English:** [help/en/README.md](en/README.md)
 - **中文:** [help/zh/README.md](zh/README.md)

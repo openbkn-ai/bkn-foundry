@@ -1,4 +1,4 @@
-# KWeaver Core 0.3.0 Release Notes
+# BKN Foundry 0.3.0 Release Notes
 
 This release focuses on deep integration of business and technology alongside a comprehensive overhaul of the agent architecture. The new sandbox architecture achieves separation of reasoning (LLM) and logic (Code), and combined with action-driven visualization and human intervention mechanisms, delivers a full-stack solution for building safe, controllable, and reliable enterprise-grade agent applications.
 

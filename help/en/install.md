@@ -1,6 +1,6 @@
 # 🚢 Ship and deploy
 
-This page covers **prerequisites**, **install steps**, and **post-install checks** for KWeaver Core.
+This page covers **prerequisites**, **install steps**, and **post-install checks** for BKN Foundry.
 
 > **Platform:** **Linux** is the recommended install target for full stacks (`preflight.sh`, k3s/kubeadm, data services). **macOS** is supported only for **local dev validation** with Docker + **kind** — see [`deploy/dev/README.md`](../../deploy/dev/README.md) ([`README.zh.md`](../../deploy/dev/README.zh.md) in Chinese) and `deploy/dev/mac.sh` (no `preflight.sh` / production parity on the Mac host). Typical flow: start **Docker Desktop** (or any engine that exposes the Docker API), **`bash ./dev/mac.sh cluster up`**, then **`bash ./dev/mac.sh kweaver-core install`** — `install_core` runs **`ensure_data_services`** first (same Helm bundle as `data-services install`) unless **`KWEAVER_SKIP_DATA_SERVICES_BUNDLE=true`**.
 
@@ -64,7 +64,7 @@ The deploy scripts may need outbound access to mirrors and registries, for examp
 | `mirrors.aliyun.com` | RPM mirrors |
 | `mirrors.tuna.tsinghua.edu.cn` | containerd RPM mirror |
 | `registry.aliyuncs.com` | Kubernetes images |
-| `swr.cn-east-3.myhuaweicloud.com` | KWeaver images |
+| `swr.cn-east-3.myhuaweicloud.com` | BKN Foundry images |
 | `repo.huaweicloud.com` | Helm binary |
 | `kweaver-ai.github.io` | Helm chart repo |
 
@@ -185,7 +185,7 @@ For more troubleshooting and manual fallbacks, see **`deploy/README.md` → Trou
 
 ---
 
-## 🚀 Install KWeaver Core
+## 🚀 Install BKN Foundry
 
 ### Minimum install (recommended for first try)
 
@@ -219,7 +219,7 @@ Includes auth and business-domain related components:
   --api_server_address=<nic-ip-for-k8s-api>
 ```
 
-- `--access_address` — URL or IP clients use to reach KWeaver (ingress)
+- `--access_address` — URL or IP clients use to reach BKN Foundry (ingress)
 - `--api_server_address` — real NIC IP bound for the Kubernetes API server
 
 ### Custom ingress ports (optional)
@@ -242,7 +242,7 @@ export INGRESS_NGINX_HTTPS_PORT=8443
 
 1. Single-node Kubernetes (if needed), storage, ingress
 2. Data services: MariaDB, Redis, Kafka, ZooKeeper, OpenSearch (as defined by release manifests)
-3. KWeaver Core application Helm charts
+3. BKN Foundry application Helm charts
 
 > For uninstall and cluster reset, follow the operations guide bundled with your release.
 
@@ -530,7 +530,7 @@ curl -sk "https://<access-address>/health" || true
 
 ## 🧮 Optional: Etrino (dataview `--sql`)
 
-On a **KWeaver Core–only** install, `kweaver dataview query <id>` without `--sql` usually works (paging against the view definition).
+On a **BKN Foundry–only** install, `kweaver dataview query <id>` without `--sql` usually works (paging against the view definition).
 
 > **Ad-hoc SQL** via `kweaver dataview query --sql "..."` requires **`vega-calculate-coordinator`** in the cluster. That comes from the **Etrino** Helm stack: **`vega-hdfs`**, **`vega-calculate`** (includes the coordinator), and **`vega-metadata`**.
 
@@ -550,7 +550,7 @@ On a cluster where Core is already running:
 
 ## 🧠 Configure models
 
-KWeaver does not include pre-configured models by default. To use **semantic search** (`kweaver bkn search`) or **Decision Agent**, register an LLM and an Embedding model first.
+BKN Foundry does not include pre-configured models by default. To use **semantic search** (`kweaver bkn search`) or **Decision Agent**, register an LLM and an Embedding model first.
 
 > Full details: [Model management](manual/model.md). Minimal registration example:
 

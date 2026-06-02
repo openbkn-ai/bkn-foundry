@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# KWeaver — macOS dev helper (kind + Helm). Does NOT run Linux preflight/k3s/kubeadm.
+# BKN Foundry — macOS dev helper (kind + Helm). Does NOT run Linux preflight/k3s/kubeadm.
 #
 # Typical order (from repo deploy/: cd deploy):
 #   1. doctor                 — optional; check docker / kind / kubectl / helm / node
@@ -56,7 +56,7 @@ usage() {
     local readme="${SELF_DIR}/README.md"
     local mac_cfg="${SELF_DIR}/conf/mac-config.yaml"
     cat <<EOF
-KWeaver mac dev (kind) — thin wrapper around deploy/onboard.
+BKN Foundry mac dev (kind) — thin wrapper around deploy/onboard.
 
 Typical order (shortest path: doctor? → cluster up → kweaver-core install [--minimum]):
   1) doctor                     optional toolchain check

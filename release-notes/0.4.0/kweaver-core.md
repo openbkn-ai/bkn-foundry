@@ -1,6 +1,6 @@
-# KWeaver Core 0.4.0 Release Notes
+# BKN Foundry 0.4.0 Release Notes
 
-KWeaver Core 0.4.0 is a significant milestone release representing a deep optimization of the KWeaver platform architecture. This release targets "engineering architecture upgrade, significant performance improvement, and comprehensive quality hardening" as its core objectives, achieving major breakthroughs in BKN engine capability expansion, VEGA data virtualization self-developed engine upgrade, and end-to-end observability establishment — while completing an overall simplification of the platform engineering architecture: memory footprint reduced to 48GB, microservice count reduced by 12, with significant improvements in accuracy and latency metrics for both structured and unstructured scenarios.
+BKN Foundry 0.4.0 is a significant milestone release representing a deep optimization of the BKN Foundry architecture. This release targets "engineering architecture upgrade, significant performance improvement, and comprehensive quality hardening" as its core objectives, achieving major breakthroughs in BKN engine capability expansion, VEGA data virtualization self-developed engine upgrade, and end-to-end observability establishment — while completing an overall simplification of the platform engineering architecture: memory footprint reduced to 48GB, microservice count reduced by 12, with significant improvements in accuracy and latency metrics for both structured and unstructured scenarios.
 
 ---
 
@@ -66,7 +66,7 @@ Corrected the custom data query framework, officially opening cross-datasource J
 
 ## 3. TraceAI
 
-TraceAI is KWeaver platform's end-to-end observability component, responsible for data collection, chain tracing, and behavioral auditing of Agent execution processes. Version 0.4.0 completes core collection specification establishment and cross-component instrumentation advancement.
+TraceAI is BKN Foundry's end-to-end observability component, responsible for data collection, chain tracing, and behavioral auditing of Agent execution processes. Version 0.4.0 completes core collection specification establishment and cross-component instrumentation advancement.
 
 **1. TracingCollector Collection Specification Establishment**
 
@@ -84,7 +84,7 @@ Simultaneously advancing the BKN engine, Execution Factory, and Dataflow to impr
 
 ## 4. Dataflow
 
-Dataflow is KWeaver platform's data stream processing engine, responsible for document parsing, data flow transfer, and multi-node orchestration. Version 0.4.0 completes two important architectural improvements.
+Dataflow is BKN Foundry's data stream processing engine, responsible for document parsing, data flow transfer, and multi-node orchestration. Version 0.4.0 completes two important architectural improvements.
 
 **1. Platform-Wide MongoDB Dependency Removal**
 
@@ -98,7 +98,7 @@ The document parsing node has completed adaptation to the MinerU official API, r
 
 ## 5. Context Loader
 
-Context Loader is the context loading and management component for KWeaver platform agents, responsible for providing precise and efficient knowledge context retrieval and injection for Agents. Version 0.4.0 completes important optimizations in interface specifications and compression capabilities.
+Context Loader is the context loading and management component for BKN Foundry agents, responsible for providing precise and efficient knowledge context retrieval and injection for Agents. Version 0.4.0 completes important optimizations in interface specifications and compression capabilities.
 
 **1. Interface Form Optimization — Improving Agent Accuracy and Efficiency**
 
@@ -112,7 +112,7 @@ Added context compression capability in TOON format, supporting compressed data 
 
 ## 6. Execution Factory
 
-The Execution Factory is the core of KWeaver platform's function computation and sandbox execution scheduling, responsible for managing interactions between user-defined functions and sandbox runtimes. Version 0.4.0 completes the closed-loop development of function dependency library management capabilities.
+The Execution Factory is the core of BKN Foundry's function computation and sandbox execution scheduling, responsible for managing interactions between user-defined functions and sandbox runtimes. Version 0.4.0 completes the closed-loop development of function dependency library management capabilities.
 
 **1. Function Dependency Library Installation Support**
 
@@ -126,7 +126,7 @@ The operator platform function editor adds a dependency package configuration in
 
 ## 7. ISF Information Security Fabric
 
-ISF (Information Security Fabric) is responsible for permission management, identity authentication, and access control systems of the KWeaver platform. Version 0.4.0 completes service architecture reconstruction and authorization management capability expansion.
+ISF (Information Security Fabric) is responsible for permission management, identity authentication, and access control systems of the BKN Foundry. Version 0.4.0 completes service architecture reconstruction and authorization management capability expansion.
 
 **1. Refactored eacp-single Service Removal**
 
@@ -140,7 +140,7 @@ Authorization management adds access control configuration capabilities at the r
 
 ## 8. Sandbox Runtime
 
-The Sandbox Runtime provides a secure isolated code execution environment for the KWeaver platform, supporting Python function execution, file workspace management, and multi-runtime scheduling. Version 0.4.0 (corresponding to Sandbox v0.3.0) adds session-level Python dependency management capabilities.
+The Sandbox Runtime provides a secure isolated code execution environment for the BKN Foundry, supporting Python function execution, file workspace management, and multi-runtime scheduling. Version 0.4.0 (corresponding to Sandbox v0.3.0) adds session-level Python dependency management capabilities.
 
 **1. Session-Level Python Dependency Management**
 
@@ -162,7 +162,7 @@ Added automatic database upgrade capability, automatically completing database s
 
 ## 9. Decision Agent
 
-Decision Agent is the core agent component of the KWeaver platform for business decision scenarios, providing multi-step reasoning, tool invocation, and conversation management capabilities. Version 0.4.0 completes permission handling enhancement and API routing fixes.
+Decision Agent is the core agent component of the BKN Foundry for business decision scenarios, providing multi-step reasoning, tool invocation, and conversation management capabilities. Version 0.4.0 completes permission handling enhancement and API routing fixes.
 
 **1. agent-executor Log Directory Permission Handling Enhancement**
 
@@ -193,8 +193,8 @@ Fixed the issue of historical version API endpoints being unavailable, restoring
 **2. Product Release Materials**
 
 - **Release Date**: 2026-03-14
-- **Version Target Document**: KWeaver Core 0.4.0 Key Planning
+- **Version Target Document**: BKN Foundry 0.4.0 Key Planning
 
 ---
 
-**KWeaver — Intelligent Data Platform and Decision Engine for AI Agents**
+**BKN Foundry — Intelligent Data Platform and Decision Engine for AI Agents**

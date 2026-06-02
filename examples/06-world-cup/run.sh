@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# 06-world-cup · KWeaver Core end-to-end (single script):
+# 06-world-cup · BKN Foundry end-to-end (single script):
 #
 #   Step 1  Download CSVs      : jfjelstul/worldcup → data/ (skips cached files)
 #   Step 2  Import to MySQL    : kweaver ds connect + ds import-csv --recreate

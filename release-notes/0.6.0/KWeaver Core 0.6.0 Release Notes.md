@@ -1,14 +1,14 @@
-# KWeaver Core 0.6.0 Release Notes
+# BKN Foundry 0.6.0 Release Notes
 
 ---
 
 ## Overview
 
-### KWeaver Core 0.6.0 is Now Available
+### BKN Foundry 0.6.0 is Now Available
 
 **Enterprise Decision Intelligence Ecosystem — End-to-End Skill Pipeline**
 
-KWeaver Core 0.6.0 is centered on **end-to-end Skill pipeline integration**, connecting Skill capabilities across every platform layer: from business knowledge network modeling and Context Loader semantic retrieval, through the Execution Factory unified execution layer, to Decision Agent perception and invocation — forming a complete closed loop. This release also delivers seamless integration of VEGA with the AnyShare enterprise knowledge base, bringing mainstream enterprise unstructured data sources under unified business knowledge network management. The sandbox runtime gains archive upload with auto-extraction and shell script execution capabilities, greatly expanding agent code execution flexibility. Deployment memory footprint has been reduced to 24 GB. `kweaver-eval` ships its first Acceptance module, covering 104 test cases across 6 core modules with a dual-scoring framework (deterministic assertions + Agent Judge), marking a new phase of systematic quality governance for KWeaver Core.
+BKN Foundry 0.6.0 is centered on **end-to-end Skill pipeline integration**, connecting Skill capabilities across every platform layer: from business knowledge network modeling and Context Loader semantic retrieval, through the Execution Factory unified execution layer, to Decision Agent perception and invocation — forming a complete closed loop. This release also delivers seamless integration of VEGA with the AnyShare enterprise knowledge base, bringing mainstream enterprise unstructured data sources under unified business knowledge network management. The sandbox runtime gains archive upload with auto-extraction and shell script execution capabilities, greatly expanding agent code execution flexibility. Deployment memory footprint has been reduced to 24 GB. `kweaver-eval` ships its first Acceptance module, covering 104 test cases across 6 core modules with a dual-scoring framework (deterministic assertions + Agent Judge), marking a new phase of systematic quality governance for BKN Foundry.
 
 ---
 
@@ -16,7 +16,7 @@ KWeaver Core 0.6.0 is centered on **end-to-end Skill pipeline integration**, con
 
 **1. End-to-End Skill Pipeline — Skills Integrated Across All Platform Layers**
 
-0.6.0 completes the full Skill pipeline across KWeaver Core: BKN supports modeling Skill object types within knowledge networks; Context Loader adds the `find_skills` tool for semantic Skill candidate retrieval within knowledge network boundaries; the Execution Factory adds a Skill execution endpoint with dual Dataset writes; Decision Agent gains native Skill loading from the Execution Factory; and KWeaver SDK fully integrates with the Execution Factory Skill management module. Skills are no longer isolated functional units — they are governable, retrievable, and executable agent capabilities deeply integrated with business knowledge networks.
+0.6.0 completes the full Skill pipeline across BKN Foundry: BKN supports modeling Skill object types within knowledge networks; Context Loader adds the `find_skills` tool for semantic Skill candidate retrieval within knowledge network boundaries; the Execution Factory adds a Skill execution endpoint with dual Dataset writes; Decision Agent gains native Skill loading from the Execution Factory; and KWeaver SDK fully integrates with the Execution Factory Skill management module. Skills are no longer isolated functional units — they are governable, retrievable, and executable agent capabilities deeply integrated with business knowledge networks.
 
 **2. AnyShare Enterprise Knowledge Base Integration — Unified Unstructured Data Source Management**
 
@@ -49,7 +49,7 @@ VEGA Catalog now supports AnyShare enterprise knowledge base connectivity. The D
 Three authentication methods are supported to accommodate different enterprise deployment scenarios:
 - **Application Account**: AppID + Secret, suitable for integrated deployments
 - **Permanent Token**: suitable for high-privilege operations environments
-- **SSO Single Sign-On**: integrated with the KWeaver account system; the current user's permissions are passed through to AnyShare, enabling user-level data permission isolation
+- **SSO Single Sign-On**: integrated with the BKN Foundry account system; the current user's permissions are passed through to AnyShare, enabling user-level data permission isolation
 
 The current version prioritizes AnyShare knowledge library type; document libraries and other types will be covered in subsequent iterations.
 
@@ -206,7 +206,7 @@ Combined with Dataflow document parsing nodes, Execution Factory Skill dual-writ
 
 **4. Multi-Account Management and Auth Enhancements**
 
-Multi-account profile management support is added, allowing developers to manage login sessions for multiple KWeaver instances on a single machine:
+Multi-account profile management support is added, allowing developers to manage login sessions for multiple BKN Foundry instances on a single machine:
 
 - `--alias` parameter names login accounts; `auth use` switches between accounts quickly
 - Global `--user` flag enables per-command credential override without changing the global account
@@ -223,7 +223,7 @@ Multi-account profile management support is added, allowing developers to manage
 
 ### [kweaver-eval]
 
-0.6.0 ships the first version of the `kweaver-eval` Acceptance module, providing independent acceptance testing for the full KWeaver Core stack. Coverage spans **6 core modules** — **Agent, BKN, VEGA, Data Sources (DS), Dataview, and Context Loader** — with **104 test cases**, of which **79 pass (76%)**.
+0.6.0 ships the first version of the `kweaver-eval` Acceptance module, providing independent acceptance testing for the full BKN Foundry stack. Coverage spans **6 core modules** — **Agent, BKN, VEGA, Data Sources (DS), Dataview, and Context Loader** — with **104 test cases**, of which **79 pass (76%)**.
 
 **1. Test Case Coverage Overview**
 
@@ -255,7 +255,7 @@ A built-in cross-run issue tracking mechanism (`feedback.json` persistence) auto
 
 ### GitHub Repositories
 
-**KWeaver Core**
+**BKN Foundry**
 - GitHub Release: https://github.com/kweaver-ai/kweaver-core/tree/release/0.6.0
 
 **KWeaver SDK**

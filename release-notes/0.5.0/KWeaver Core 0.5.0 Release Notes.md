@@ -1,10 +1,10 @@
-# KWeaver Core 0.5.0 Release Notes
+# BKN Foundry 0.5.0 Release Notes
 
 ---
 
 ## Overview
 
-KWeaver Core 0.5.0 is a major release that significantly accelerates platform capabilities. This release marks the **official launch of KWeaver SDK**, opening the full platform capabilities to developers for the first time. **TraceAI** establishes a complete end-to-end TraceID mechanism with agent execution trace collection and query now generally available. **Context Loader** achieves ≥30% token compression and unified action recall management via BKN. Both **VEGA** and **Dataflow** reach important milestones in data indexing and data lake decoupling. Additionally, BKN, Execution Factory, Context Loader, and Dataflow all complete architectural decoupling from business domains and ISF, further improving platform modularity and deployment flexibility.
+BKN Foundry 0.5.0 is a major release that significantly accelerates platform capabilities. This release marks the **official launch of KWeaver SDK**, opening the full platform capabilities to developers for the first time. **TraceAI** establishes a complete end-to-end TraceID mechanism with agent execution trace collection and query now generally available. **Context Loader** achieves ≥30% token compression and unified action recall management via BKN. Both **VEGA** and **Dataflow** reach important milestones in data indexing and data lake decoupling. Additionally, BKN, Execution Factory, Context Loader, and Dataflow all complete architectural decoupling from business domains and ISF, further improving platform modularity and deployment flexibility.
 
 ---
 
@@ -36,7 +36,7 @@ Dataflow decouples from the content data lake by introducing the DFS file protoc
 
 ### 【KWeaver SDK】
 
-KWeaver SDK is the official developer integration toolkit for the KWeaver platform. This is its first official release, providing dual-language implementations in TypeScript and Python — covering CLI tools, SDK libraries, and companion Skills — to give developers and AI agents full access to core platform capabilities.
+KWeaver SDK is the official developer integration toolkit for the BKN Foundry. This is its first official release, providing dual-language implementations in TypeScript and Python — covering CLI tools, SDK libraries, and companion Skills — to give developers and AI agents full access to core platform capabilities.
 
 **1. Dual-Language SDK & CLI**
 
@@ -48,7 +48,7 @@ Both TypeScript and Python implementations are released simultaneously:
 
 **2. Core Platform API Coverage**
 
-The SDK wraps the main API capabilities of the KWeaver platform, accessible through a unified client:
+The SDK wraps the main API capabilities of the BKN Foundry, accessible through a unified client:
 
 - **Business Knowledge Networks**: BKN list query, instance search, subgraph query, action invocation
 - **Agent Conversation**: Single Q&A and streaming conversation, with Session management
@@ -58,7 +58,7 @@ The SDK wraps the main API capabilities of the KWeaver platform, accessible thro
 
 **3. Companion Skills**
 
-Companion Skills are released alongside the SDK, enabling AI agents to invoke KWeaver platform capabilities directly — with automatic technical parameter resolution and no manual user input required.
+Companion Skills are released alongside the SDK, enabling AI agents to invoke BKN Foundry capabilities directly — with automatic technical parameter resolution and no manual user input required.
 
 ---
 

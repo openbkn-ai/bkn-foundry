@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# KWeaver Core — onboard: register models, BKN, rollout (run after `deploy.sh` install)
+# BKN Foundry — onboard: register models, BKN, rollout (run after `deploy.sh` install)
 # Requires: kweaver, kubectl, python3, PyYAML (pip3 install pyyaml) for --config; interactive is lighter.
 # Run from the deploy/ directory (symmetric with preflight.sh).
 
@@ -122,7 +122,7 @@ source "${SCRIPT_DIR}/scripts/lib/onboard_isf_test_user.sh"
 # shellcheck source=scripts/lib/onboard_report.sh
 source "${SCRIPT_DIR}/scripts/lib/onboard_report.sh"
 
-# Primary IPv4 of this host (for default KWeaver access URL). Override: ONBOARD_DEFAULT_ACCESS_IP=...
+# Primary IPv4 of this host (for default BKN Foundry access URL). Override: ONBOARD_DEFAULT_ACCESS_IP=...
 onboard_default_local_ipv4() {
     if [[ -n "${ONBOARD_DEFAULT_ACCESS_IP:-}" ]]; then
         echo "${ONBOARD_DEFAULT_ACCESS_IP}"
@@ -259,7 +259,7 @@ usage() {
     echo "                ONBOARD_NO_COMPLETION_REPORT=1  do not print the English completion report at the end"
     echo "                ONBOARD_FORCE_INSECURE_LOGIN=true  always pass -k (--insecure) to kweaver/kweaver-admin auth login (even for http:// bases; default false)"
     echo "                ONBOARD_SKIP_CONFIG_ACCESS_URL=true  do not derive default URL from CONFIG_YAML_PATH accessAddress"
-    echo "  Default KWeaver access URL (kweaver auth): accessAddress in CONFIG_YAML_PATH when present;"
+    echo "  Default BKN Foundry access URL (kweaver auth): accessAddress in CONFIG_YAML_PATH when present;"
     echo "                on macOS, if CONFIG_YAML_PATH is still deploy/conf/config.yaml (~/.kowell-ai not used yet),"
     echo "                onboard uses deploy/dev/conf/mac-config.yaml when that file exists (same as mac.sh)."
     echo "                Else host primary IPv4 + ONBOARD_DEFAULT_ACCESS_SCHEME (https by default)."

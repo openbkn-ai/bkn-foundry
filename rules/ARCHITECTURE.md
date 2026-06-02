@@ -1,8 +1,8 @@
-# KWeaver Architecture Design Specification (ARCHITECTURE)
+# BKN Foundry Architecture Design Specification (ARCHITECTURE)
 
 [中文](ARCHITECTURE.zh.md) | English
 
-This document defines the KWeaver architecture rules. **For day-to-day work, read Sections 1–2**. The appendix is only for terminology and copy-paste examples.
+This document defines the BKN Foundry architecture rules. **For day-to-day work, read Sections 1–2**. The appendix is only for terminology and copy-paste examples.
 
 ## 1. Architecture Rules (MUST)
 
