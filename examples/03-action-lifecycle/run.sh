@@ -267,17 +267,6 @@ echo "  Action would target $AFFECTED material instance(s) (candidate set for �
 echo "  Note: the action condition (material_risk == critical) filters at data_view-backed query time."
 echo "        On real-time resource-backed object types it is not applied here, so all rows are listed."
 
-# Capture first identity for use in Step 10
-FIRST_IDENTITY=$(echo "$QUERY_JSON" | python3 -c "
-import sys,json
-d=json.load(sys.stdin)
-actions=d.get('actions',[])
-if actions:
-    print(json.dumps(actions[0].get('_instance_identity',{})))
-else:
-    print('{}')
-" 2>/dev/null || echo "{}")
-
 # ── Step 8: Create action schedule ────────────────────────────────────────────
 echo ""
 echo "=== Step 8: Schedule — every day at 08:00 ==="
@@ -317,23 +306,24 @@ echo "=== Step 10: Trigger action — first run ==="
 echo "  (In production this runs automatically at 08:00.)"
 echo "  Executing now so you can see results immediately..."
 
-EXEC_BODY=$(python3 -c "import json,sys; print(json.dumps({'_instance_identities': [json.loads('$FIRST_IDENTITY')]}))" 2>/dev/null \
-    || python3 -c "import json; print(json.dumps({'_instance_identities': [{}]}))")
+# Execute on the whole candidate set (empty _instance_identities) rather than a
+# single derived identity. On real-time resource-backed object types, passing a
+# specific identity hits a backend defect that rewrites it into an empty
+# condition ("sub condition size is 0", see issue #10); the all-instances form
+# is unaffected and exercises the same tool dispatch + audit path.
+EXEC_BODY='{"_instance_identities": []}'
 EXEC_JSON=$(kweaver bkn action-type execute "$KN_ID" "$AT_ID" "$EXEC_BODY" \
-    --timeout 60 2>&1 || true)
+    --timeout 60 2>/dev/null || true)
 debug_dump_json "action-type execute" "$EXEC_JSON"
 
 EXEC_ID=$(echo "$EXEC_JSON" | python3 -c \
-    "import sys,json; print(json.load(sys.stdin).get('id',''))" 2>/dev/null || true)
+    "import sys,json; d=json.load(sys.stdin); print(d.get('execution_id') or d.get('id',''))" 2>/dev/null || true)
 EXEC_STATUS=$(echo "$EXEC_JSON" | python3 -c \
     "import sys,json; print(json.load(sys.stdin).get('status','unknown'))" 2>/dev/null || true)
-EXEC_TOTAL=$(echo "$EXEC_JSON" | python3 -c \
-    "import sys,json; print(json.load(sys.stdin).get('total_count',0))" 2>/dev/null || true)
 
 echo "  Execution ID : ${EXEC_ID:-n/a}"
-echo "  Instances    : $EXEC_TOTAL"
-echo "  Status       : $EXEC_STATUS"
-echo "  (demo tool has no real backend — the execution record is what matters)"
+echo "  Status       : ${EXEC_STATUS:-unknown}"
+echo "  The action's tool was dispatched; see the audit log below for the record."
 
 # ── Step 11: Audit log ────────────────────────────────────────────────────────
 echo ""
