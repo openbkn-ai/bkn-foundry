@@ -82,9 +82,9 @@ onboard_print_completion_report() {
         esac
         echo "   • Verify:    kweaver bkn list -bd ${_bd} --pretty"
         echo "   • Toolbox:   the Context Loader toolset is auto-imported by agent-retrieval at startup (no manual step)."
-        echo "   • Docs:      https://github.com/kweaver-ai/kweaver-core/blob/main/help/README.md"
-        echo "                https://github.com/kweaver-ai/kweaver-core/blob/main/help/en/README.md  (EN)"
-        echo "                https://github.com/kweaver-ai/kweaver-core/blob/main/help/zh/README.md  (中文)"
+        echo "   • Docs:      https://github.com/openbkn-ai/bkn-foundry/blob/main/help/README.md"
+        echo "                https://github.com/openbkn-ai/bkn-foundry/blob/main/help/en/README.md  (EN)"
+        echo "                https://github.com/openbkn-ai/bkn-foundry/blob/main/help/zh/README.md  (中文)"
         echo "============================================"
         echo ""
     } 2>/dev/null || {

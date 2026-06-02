@@ -133,7 +133,7 @@ usage() {
     echo "  --version_file=<path>         Use an aggregate release manifest to resolve exact chart versions"
     echo "                                (default auto path: deploy/release-manifests/<version>/<product>.yaml)"
     echo "  --access_address=<addr>       BKN Foundry access address: host, host:port, or scheme://host:port/path"
-    echo "                                Example: --access_address=10.0.0.5 or --access_address=https://kweaver.example.com:443"
+    echo "                                Example: --access_address=10.0.0.5 or --access_address=https://openbkn.example.com:443"
     echo "  --api_server_address=<ip>     Kubernetes API server advertise address (must be a local interface IP)"
     echo "                                Defaults to auto-detect from hostname -I"
     echo "  --minimum, --min              Minimum install: skip auth & business-domain modules"
@@ -718,7 +718,7 @@ main() {
     fi
     
     # Handle kweaver-core module
-    if [[ "${module}" == "bkn-foundry" ]] || [[ "${module}" == "kweaver-core" ]] || [[ "${module}" == "core" ]]; then
+    if [[ "${module}" == "bkn-foundry" ]] || [[ "${module}" == "foundry" ]] || [[ "${module}" == "kweaver-core" ]] || [[ "${module}" == "core" ]]; then
         case "${action}" in
             install|init)
                 parse_core_args "install" "$@"

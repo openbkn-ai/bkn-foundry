@@ -47,7 +47,7 @@ mac_common_init() {
     export ZOOKEEPER_RESOURCES_LIMITS_CPU="${ZOOKEEPER_RESOURCES_LIMITS_CPU:-300m}"
     export ZOOKEEPER_RESOURCES_LIMITS_MEMORY="${ZOOKEEPER_RESOURCES_LIMITS_MEMORY:-256Mi}"
     export ZOOKEEPER_JVMFLAGS="${ZOOKEEPER_JVMFLAGS:--Xms64m -Xmx128m}"
-    # kweaver-core app services (chart defaults: limits=4-8Gi, mostly request=0).
+    # bkn-foundry app services (chart defaults: limits=4-8Gi, mostly request=0).
     # Tiny request keeps QoS=Burstable (not BestEffort) without hogging scheduling budget;
     # generous 2Gi limit so heavier services (agent-retrieval, ontology-query) don't OOM
     # during normal dev exercises.
@@ -341,7 +341,7 @@ mac_doctor() {
         printf '\n'
         printf '  %bNext:%b run from your %bdeploy/%b directory:\n' "${MAC_D_DIM}" "${MAC_D_RESET}" "${MAC_D_BOLD}" "${MAC_D_RESET}"
         printf '    bash ./dev/mac.sh cluster up\n'
-        printf '    bash ./dev/mac.sh kweaver-core install\n'
+        printf '    bash ./dev/mac.sh bkn-foundry install\n'
         printf '  %bOptional:%b bash ./dev/mac.sh onboard -y\n' "${MAC_D_DIM}" "${MAC_D_RESET}"
         printf '  %bGuide:%b deploy/dev/README.md · README.zh.md\n' "${MAC_D_DIM}" "${MAC_D_RESET}"
     fi
@@ -385,12 +385,12 @@ mac_prepare_isf_https() {
     rm -rf "${tmp}"
     mac_log_info "TLS Secret ${ns}/${secret} ready (cert valid 825 days, CN=${host})"
 
-    # If kweaver-core releases already exist they were rendered with the old http
+    # If bkn-foundry releases already exist they were rendered with the old http
     # accessAddress; refresh them so the in-cluster URLs/issuers match the new https.
     if helm list -n "${ns}" -q 2>/dev/null | grep -qE '.'; then
-        mac_log_info "kweaver-core releases already in ${ns}; running 'kweaver-core install --minimum' to refresh accessAddress (https/443)"
-        bash "${DEPLOY_ROOT}/deploy.sh" kweaver-core install --minimum || \
-            mac_log_warn "kweaver-core refresh failed; you may need to re-run 'mac.sh kweaver-core install --minimum' manually"
+        mac_log_info "bkn-foundry releases already in ${ns}; running 'bkn-foundry install --minimum' to refresh accessAddress (https/443)"
+        bash "${DEPLOY_ROOT}/deploy.sh" bkn-foundry install --minimum || \
+            mac_log_warn "bkn-foundry refresh failed; you may need to re-run 'mac.sh bkn-foundry install --minimum' manually"
     fi
 }
 
