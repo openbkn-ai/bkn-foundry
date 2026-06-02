@@ -80,6 +80,11 @@ AT_ID=""
 SCHED_ID=""
 
 cleanup() {
+    if [ "${KEEP_RESOURCES:-0}" = "1" ]; then
+        echo ""; echo "=== Cleanup skipped (KEEP_RESOURCES=1) ==="
+        echo "  Inspect: kweaver toolbox list | grep eval_action_toolbox ; kweaver bkn action-log list $KN_ID"
+        return 0
+    fi
     echo ""
     echo "=== Cleanup ==="
     [ -n "$SCHED_ID" ] && kweaver bkn action-schedule delete "$KN_ID" "$SCHED_ID" -y 2>/dev/null \
@@ -165,7 +170,7 @@ echo ""
 echo "=== Step 3: Register action tool backend ==="
 BOX_JSON=$(kweaver toolbox create \
     --name "eval_action_toolbox_${TIMESTAMP}" \
-    --service-url "http://ontology-manager-svc:13014" \
+    --service-url "http://bkn-backend-svc:13014" \
     --description "Demo toolbox for action-lifecycle example")
 debug_dump_json "create toolbox" "$BOX_JSON"
 BOX_ID=$(echo "$BOX_JSON" | python3 -c \
@@ -183,9 +188,9 @@ cat > "$_OPENAPI_TMP" <<'OPENAPI'
 {
   "openapi": "3.0.0",
   "info": {"title": "采购单风险跟进", "version": "1.0.0"},
-  "servers": [{"url": "http://ontology-manager-svc:13014"}],
+  "servers": [{"url": "http://bkn-backend-svc:13014"}],
   "paths": {
-    "/api/ontology-manager/in/v1/health": {
+    "/health": {
       "get": {
         "summary": "采购单风险跟进",
         "operationId": "follow_up_at_risk_po",
@@ -229,10 +234,11 @@ body = {
         'box_id': '$BOX_ID',
         'tool_id': '$TOOL_ID'
     },
-    'condition': {
+    'cond': {
         'object_type_id': '$MAT_OT_ID',
         'field': 'material_risk',
         'operation': '==',
+        'value_from': 'const',
         'value': 'critical'
     }
 }
@@ -253,12 +259,13 @@ echo "  Action type: $AT_ID"
 # ── Step 7: Query — verify affected instances ─────────────────────────────────
 echo ""
 echo "=== Step 7: Query — which materials need replenishment? ==="
-QUERY_JSON=$(kweaver bkn action-type query "$KN_ID" "$AT_ID" '{}' 2>&1 || true)
+QUERY_JSON=$(kweaver bkn action-type query "$KN_ID" "$AT_ID" '{}' 2>/dev/null || true)
 debug_dump_json "action-type query" "$QUERY_JSON"
 AFFECTED=$(echo "$QUERY_JSON" | python3 -c \
-    "import sys,json; d=json.load(sys.stdin); print(d.get('total_count',0))" 2>/dev/null || echo "unknown")
-echo "  Found $AFFECTED material(s) with critically low inventory"
-echo "  (The knowledge network identified these via inventory-material-order relationships)"
+    "import sys,json; d=json.load(sys.stdin); print(d.get('total_count') or len(d.get('actions') or d.get('entries') or []))" 2>/dev/null || echo "0")
+echo "  Action would target $AFFECTED material instance(s) (candidate set for 物料库存告急补货预警)"
+echo "  Note: the action condition (material_risk == critical) filters at data_view-backed query time."
+echo "        On real-time resource-backed object types it is not applied here, so all rows are listed."
 
 # Capture first identity for use in Step 10
 FIRST_IDENTITY=$(echo "$QUERY_JSON" | python3 -c "
