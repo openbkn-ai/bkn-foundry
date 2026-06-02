@@ -1,5 +1,0 @@
-apiVersion: v1
-appVersion: "3.2.0"
-description: helm chart for vega-gateway-pro
-name: vega-gateway-pro
-version: 0.6.0

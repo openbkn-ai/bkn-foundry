@@ -43,15 +43,6 @@ services:
     path: adp/bkn/bkn-backend/migrations
   vega-backend:
     path: adp/vega/vega-backend/migrations
-  # Vega data-access stack (vendored from adp 0.6.0). Only services that own
-  # tables ship migrations; mdl-uniquery / mdl-data-model-job / vega-gateway-pro
-  # reuse shared schema and have no migrations of their own.
-  data-connection:
-    path: adp/vega/data-connection/migrations
-  mdl-data-model:
-    path: adp/vega/mdl-data-model/migrations
-  vega-gateway:
-    path: adp/vega/vega-gateway/migrations
   agent-operator-integration:
     path: adp/execution-factory/operator-integration/migrations
   flow-stream-data-pipeline:

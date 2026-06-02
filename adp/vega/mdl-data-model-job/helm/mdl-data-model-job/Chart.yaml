@@ -1,5 +1,0 @@
-apiVersion: v1
-appVersion: "6.0.0"
-description: helm chart for mdl-data-model-job
-name: mdl-data-model-job
-version: 0.6.0

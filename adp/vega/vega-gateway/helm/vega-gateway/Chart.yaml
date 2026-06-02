@@ -1,5 +1,0 @@
-apiVersion: v1
-appVersion: 0.1.0
-description: A Helm chart for vega-gateway
-name: vega-gateway
-version: 0.6.0
