@@ -5,13 +5,13 @@ enableDualStack: false
 type: ClusterIP
 
 image:
-  registry: acr.aishu.cn
+  registry: ghcr.io/kowell-ai
   gotenberg:
-    repository: dip/gotenberg
-    tag: "7"
+    repository: gotenberg
+    tag: "__VERSION__"
   tika:
-    repository: dip/tika
-    tag: "3.2.3"
+    repository: tika
+    tag: "__VERSION__"
   pullPolicy: IfNotPresent
 
 # Gotenberg 配置

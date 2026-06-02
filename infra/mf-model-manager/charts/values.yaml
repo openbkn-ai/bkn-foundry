@@ -1,11 +1,11 @@
 replicaCount: 1
 
-namespace: dip
+namespace: kweaver
 
 image:
-  registry: acr.aishu.cn
-  repository: /dip/mf-model-manager
-  tag: 5.0.0
+  registry: ghcr.io/kowell-ai
+  repository: mf-model-manager
+  tag: "__VERSION__"
   pullPolicy: IfNotPresent
   name: mf-model-manager
 
@@ -117,9 +117,14 @@ observability:
     logEnabled: "false"
     traceEnabled: "false"
     metricEnabled: "false"
-    logExporter: "http"
-    traceProvider: "http"
-    metricProvider: "http"
+    # console exporter 走 stdlib logging（_StdLogger），不依赖 feed-ingester-service。
+    # 老默认 "http" 让 StandLogger 后台 thread 对 "feed-ingester-service" 跑
+    # getaddrinfo（集群里没这个 service）一直 hang -> asyncio.run() 在关闭时
+    # 等 executor -> FastAPI lifespan 不完成 -> startup probe 一直 connection
+    # refused -> CrashLoop。AR 后端已经下线，没理由还 default 到 http exporter。
+    logExporter: "console"
+    traceProvider: "console"
+    metricProvider: "console"
     logLoadInternal: "10"
     logLoadMaxLog: "1000"
     traceMaxQueueSize: "50000"

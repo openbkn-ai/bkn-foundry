@@ -48,12 +48,22 @@ DB_PASS="${DB_PASS:?Set DB_PASS in .env}"
 TOOL_BACKEND_PORT="${TOOL_BACKEND_PORT:-8765}"
 TOOL_BACKEND_PUBLIC_URL="${TOOL_BACKEND_PUBLIC_URL:-http://127.0.0.1:$TOOL_BACKEND_PORT}"
 
-DS_NAME="ex05_ds_${TIMESTAMP}"
+CAT_NAME="ex05_cat_${TIMESTAMP}"
 KN_ID="ex05_skill_routing"   # fixed, must match network.bkn frontmatter
 TABLE_PREFIX="ex05_${TIMESTAMP}_"
+export NODE_TLS_REJECT_UNAUTHORIZED="${NODE_TLS_REJECT_UNAUTHORIZED:-0}"
+
+MYSQL_BIN="${MYSQL_BIN:-mysql}"
+if ! command -v "$MYSQL_BIN" >/dev/null 2>&1; then
+    for _p in "$(brew --prefix mysql-client 2>/dev/null)/bin/mysql" /opt/homebrew/opt/mysql-client/bin/mysql /usr/local/opt/mysql-client/bin/mysql; do
+        [ -x "$_p" ] && { MYSQL_BIN="$_p"; break; }
+    done
+fi
+command -v "$MYSQL_BIN" >/dev/null 2>&1 || { echo "Error: mysql client not found (Ubuntu: sudo apt install -y mysql-client)"; exit 1; }
+jget() { python3 -c "import json,sys;d=json.load(sys.stdin);print(d.get('$1','') if isinstance(d,dict) else '')" 2>/dev/null || true; }
 
 # Track resources for cleanup
-DS_ID="" TMP_KN_ID="" MCP_ID="" AGENT_ID=""
+CAT_ID="" TMP_KN_ID="" MCP_ID="" AGENT_ID=""
 SKILL_IDS=()
 TOOL_BACKEND_PID=""
 STANDARD_REPLENISH_ID=""
@@ -81,36 +91,18 @@ cleanup() {
     done
     kweaver bkn delete "$KN_ID" -y >/dev/null 2>&1 && echo "  ✓ kn $KN_ID" || true
     [ -n "$TMP_KN_ID" ] && kweaver bkn delete "$TMP_KN_ID" -y >/dev/null 2>&1 && echo "  ✓ tmp kn $TMP_KN_ID" || true
-    [ -n "$DS_ID" ] && kweaver ds delete "$DS_ID" -y >/dev/null 2>&1 && echo "  ✓ ds $DS_ID" || true
+    [ -n "$CAT_ID" ] && kweaver vega catalog delete "$CAT_ID" -y >/dev/null 2>&1 && echo "  ✓ catalog $CAT_ID" || true
     [ -n "$TOOL_BACKEND_PID" ] && kill "$TOOL_BACKEND_PID" 2>/dev/null && echo "  ✓ mock backend pid $TOOL_BACKEND_PID" || true
 }
 trap cleanup EXIT
 
-# ── Step 1: Connect MySQL datasource ─────────────────────────────────────────
-echo "=== Step 1: Connect MySQL datasource ==="
-DS_RAW=$(kweaver ds connect mysql "$DB_HOST" "$DB_PORT" "$DB_NAME" \
-    --account "$DB_USER" --password "$DB_PASS" --name "$DS_NAME" 2>&1)
-DS_ID=$(echo "$DS_RAW" | python3 -c "
-import sys, json
-raw = sys.stdin.read()
-def find_objs(s):
-    depth = 0; start = -1
-    for i, ch in enumerate(s):
-        if ch == '{':
-            if depth == 0: start = i
-            depth += 1
-        elif ch == '}':
-            depth -= 1
-            if depth == 0 and start >= 0:
-                yield s[start:i+1]; start = -1
-for chunk in find_objs(raw):
-    try: obj = json.loads(chunk)
-    except Exception: continue
-    if isinstance(obj, dict) and 'datasource_id' in obj:
-        print(obj['datasource_id']); break
-")
-[ -z "$DS_ID" ] && { echo "ERROR: ds connect failed" >&2; exit 1; }
-echo "  Datasource: $DS_ID"
+# ── Step 1: Check MySQL connectivity ─────────────────────────────────────────
+# Vega catalogs connect to an existing DB; CSVs are loaded with the mysql
+# client in Step 4 (the legacy data-connection datasource flow is gone).
+echo "=== Step 1: Check MySQL connectivity ==="
+MYSQL_PWD="$DB_PASS" "$MYSQL_BIN" -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" "$DB_NAME" -e "SELECT 1;" >/dev/null 2>&1 \
+    || { echo "ERROR: cannot reach MySQL $DB_HOST:$DB_PORT/$DB_NAME as $DB_USER" >&2; exit 1; }
+echo "  MySQL reachable: $DB_HOST:$DB_PORT/$DB_NAME"
 
 # ── Step 2: Register Skill packages first; BKN must store real skill IDs ─────
 echo ""
@@ -205,64 +197,55 @@ with (script_dir / "data" / "skills.csv").open(newline="") as src, (rendered / "
 PY
 echo "  ✓ rendered data in $RENDERED_DATA"
 
-# ── Step 4: Import CSVs (creates dataviews and a temp KN we discard) ─────────
+# ── Step 4: Load CSVs into MySQL + provision Vega resources ──────────────────
 echo ""
-echo "=== Step 4: Import CSVs and provision Vega dataviews ==="
-TMP_KN_RAW=$(kweaver bkn create-from-csv "$DS_ID" \
-    --files "$RENDERED_DATA/*.csv" \
-    --name "ex05_tmp_${TIMESTAMP}" \
-    --table-prefix "$TABLE_PREFIX" \
-    --build --timeout 180 2>&1)
-TMP_KN_ID=$(echo "$TMP_KN_RAW" | python3 -c "
-import sys, json, re
-raw = sys.stdin.read()
-# Find balanced JSON objects; pick the last one containing kn_id at top level
-def find_objs(s):
-    depth = 0
-    start = -1
-    for i, ch in enumerate(s):
-        if ch == '{':
-            if depth == 0:
-                start = i
-            depth += 1
-        elif ch == '}':
-            depth -= 1
-            if depth == 0 and start >= 0:
-                yield s[start:i+1]
-                start = -1
-for chunk in reversed(list(find_objs(raw))):
-    try:
-        obj = json.loads(chunk)
-    except Exception:
-        continue
-    if isinstance(obj, dict) and 'kn_id' in obj:
-        print(obj['kn_id'])
-        break
-")
-[ -z "$TMP_KN_ID" ] && { echo "ERROR: failed to parse kn_id from create-from-csv" >&2; exit 1; }
-echo "  Tmp KN (will discard, keep dataviews): $TMP_KN_ID"
-
-# Look up dataview IDs by name
-DV_LIST=$(kweaver dataview list --datasource-id "$DS_ID" --limit 50 2>&1)
-get_dv_id() {
-    local table="$1"
-    echo "$DV_LIST" | python3 -c "
-import sys, json
-raw = sys.stdin.read()
-i = raw.find('[')
-for v in json.loads(raw[i:]):
-    if v.get('name') == '$table':
-        print(v.get('id'))
-        break
-"
-}
-MATERIALS_DV_ID=$(get_dv_id "${TABLE_PREFIX}materials")
-SUPPLIERS_DV_ID=$(get_dv_id "${TABLE_PREFIX}suppliers")
-SKILLS_DV_ID=$(get_dv_id "${TABLE_PREFIX}skills")
-echo "  Dataview IDs: materials=$MATERIALS_DV_ID, suppliers=$SUPPLIERS_DV_ID, skills=$SKILLS_DV_ID"
-
-# Discard the auto-generated KN; we'll push our own with controlled OT IDs
-kweaver bkn delete "$TMP_KN_ID" -y >/dev/null
+echo "=== Step 4: Load CSVs into MySQL + register Vega catalog ==="
+# Load the rendered CSVs as prefixed tables (ex05_<ts>_materials, …).
+python3 - "$RENDERED_DATA" "$TABLE_PREFIX" <<'PY' | MYSQL_PWD="$DB_PASS" "$MYSQL_BIN" -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" --default-character-set=utf8mb4 "$DB_NAME"
+import csv,glob,os,sys,re
+ddir,prefix=sys.argv[1],sys.argv[2]
+def coltype(vals):
+    vals=[v for v in vals if v!='']
+    if vals and all(re.fullmatch(r'-?\d+',v) for v in vals): return 'BIGINT'
+    if vals and all(re.fullmatch(r'-?\d+(\.\d+)?',v) for v in vals): return 'DECIMAL(18,2)'
+    return 'VARCHAR(1024)'
+def sqlval(v): return 'NULL' if v=='' else "'"+v.replace("\\","\\\\").replace("'","''")+"'"
+for path in sorted(glob.glob(os.path.join(ddir,'*.csv'))):
+    tbl=prefix+re.sub(r'[^0-9a-zA-Z_]','_',os.path.splitext(os.path.basename(path))[0])
+    rows=list(csv.reader(open(path,encoding='utf-8'))); hdr=rows[0]; data=rows[1:]
+    types=[coltype([r[i] for r in data if i<len(r)]) for i in range(len(hdr))]
+    print(f"DROP TABLE IF EXISTS `{tbl}`;")
+    print(f"CREATE TABLE `{tbl}` ({', '.join(f'`{c}` {t}' for c,t in zip(hdr,types))}) DEFAULT CHARSET=utf8mb4;")
+    for r in data:
+        r=(r+['']*len(hdr))[:len(hdr)]
+        print(f"INSERT INTO `{tbl}` VALUES ({', '.join(sqlval(v) for v in r)});")
+PY
+CONN_CFG=$(python3 -c "import json,sys;print(json.dumps({'host':sys.argv[1],'port':int(sys.argv[2]),'username':sys.argv[3],'password':sys.argv[4],'databases':[sys.argv[5]]}))" "$DB_HOST" "$DB_PORT" "$DB_USER" "$DB_PASS" "$DB_NAME")
+CAT_ID=$(kweaver vega catalog create --name "$CAT_NAME" --connector-type mysql --connector-config "$CONN_CFG" 2>/dev/null | jget id)
+[ -z "$CAT_ID" ] && { echo "ERROR: vega catalog create failed (is DB_HOST reachable from vega-backend pods?)" >&2; exit 1; }
+kweaver call "/api/vega-backend/v1/catalogs/${CAT_ID}/enable" -X POST >/dev/null 2>&1 || true
+kweaver vega catalog discover "$CAT_ID" --wait >/dev/null 2>&1 || true
+# Discovery is asynchronous — poll for the three prefixed tables.
+RES_JSON='{}'
+for _i in $(seq 1 25); do
+    RES_JSON=$(kweaver vega resource list --catalog-id "$CAT_ID" --category table --limit 200 --json 2>/dev/null || echo '{}')
+    _hit=$(echo "$RES_JSON" | python3 -c "import json,sys
+es=json.load(sys.stdin).get('entries',[])
+print(sum(1 for r in es if r.get('name','').endswith('${TABLE_PREFIX}materials') or r.get('name','').endswith('${TABLE_PREFIX}suppliers') or r.get('name','').endswith('${TABLE_PREFIX}skills')))" 2>/dev/null || echo 0)
+    [ "${_hit:-0}" -ge 3 ] && break; sleep 3
+done
+res_id() { echo "$RES_JSON" | python3 -c "import json,sys
+for r in json.load(sys.stdin).get('entries',[]):
+  if r.get('name','').endswith('$1'): print(r['id']);break"; }
+# Reuse the *_DV_ID variable names — they now carry Vega *resource* IDs,
+# rendered into the resource-bound .bkn templates.
+MATERIALS_DV_ID=$(res_id "${TABLE_PREFIX}materials")
+SUPPLIERS_DV_ID=$(res_id "${TABLE_PREFIX}suppliers")
+SKILLS_DV_ID=$(res_id "${TABLE_PREFIX}skills")
+[ -z "$MATERIALS_DV_ID" ] || [ -z "$SUPPLIERS_DV_ID" ] || [ -z "$SKILLS_DV_ID" ] \
+    && { echo "ERROR: could not resolve Vega resource IDs for the three tables" >&2; exit 1; }
+echo "  Catalog: $CAT_ID"
+echo "  Resource IDs: materials=$MATERIALS_DV_ID, suppliers=$SUPPLIERS_DV_ID, skills=$SKILLS_DV_ID"
 TMP_KN_ID=""
 
 # ── Step 5: Render BKN templates with dataview IDs ───────────────────────────
@@ -298,8 +281,12 @@ echo "  ✓ KN: $KN_ID"
 
 # ── Step 7: Build KN ─────────────────────────────────────────────────────────
 echo ""
-echo "=== Step 7: Build KN (sync) ==="
-kweaver bkn build "$KN_ID" --wait --timeout 60 2>&1 | tail -2
+echo "=== Step 7: Build KN (resource-bound OTs query in real time) ==="
+# Object types bind to Vega resources, so data is queried live and no index
+# build is required. Run build best-effort for any non-resource OTs; ignore
+# failures (a resource-only KN may report nothing to build).
+kweaver bkn build "$KN_ID" --wait --timeout 60 2>&1 | tail -2 || true
+echo "  (resource-bound object types are queried in real time — no build needed)"
 
 # ── Step 8: Start mock business backend ──────────────────────────────────────
 echo ""

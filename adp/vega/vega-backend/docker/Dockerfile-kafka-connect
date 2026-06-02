@@ -5,7 +5,9 @@
 
 # amd64: docker buildx build -t swr.cn-east-3.myhuaweicloud.com/kweaver-ai/dip/kafka-connect:3.5.0-amd64 -f Dockerfile --platform=linux/amd64 .
 # arm64: docker buildx build -t swr.cn-east-3.myhuaweicloud.com/kweaver-ai/dip/kafka-connect:3.5.0-arm64 -f Dockerfile --platform=linux/arm64 .
-FROM swr.cn-east-3.myhuaweicloud.com/kweaver-ai/bitnami/kafka:3.9.0-debian-12-r10
+# 内网 swr bitnami/kafka 改为可经 build-arg 覆盖（公网 docker.io/bitnami/kafka）
+ARG BASE_IMAGE=swr.cn-east-3.myhuaweicloud.com/kweaver-ai/bitnami/kafka:3.9.0-debian-12-r10
+FROM ${BASE_IMAGE}
 
 USER root
 

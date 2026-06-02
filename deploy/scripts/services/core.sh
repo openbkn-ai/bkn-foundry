@@ -1,6 +1,6 @@
 
 # Default kweaver-core namespace
-CORE_NAMESPACE="${CORE_NAMESPACE:-kweaver}"
+CORE_NAMESPACE="${CORE_NAMESPACE:-kowell}"
 
 # Set to true in parse_core_args when user passes --namespace/--namespace=… (overrides namespace: in YAML).
 CORE_NAMESPACE_FROM_CLI="${CORE_NAMESPACE_FROM_CLI:-false}"
@@ -239,11 +239,11 @@ init_core_databases() {
         return 0
     fi
 
-    # Check if Core manifest has pre-stage data-migrator (0.6.0+)
-    # If so, skip SQL initialization - the data-migrator chart will handle it
+    # If the manifest declares a stage:pre data-migrator release, the chart
+    # hook owns DB init; the script must not also run the SQL files.
     _core_require_version_manifest || return 1
     if should_skip_db_init_for_manifest "${CORE_VERSION_MANIFEST_FILE}"; then
-        log_info "Core manifest ${CORE_VERSION_MANIFEST_FILE} has pre-stage data-migrator (0.6.0+), skipping SQL initialization"
+        log_info "Core manifest ${CORE_VERSION_MANIFEST_FILE} has pre-stage data-migrator, skipping SQL initialization"
         return 0
     fi
 
@@ -277,7 +277,8 @@ download_core() {
     local charts_dir
     charts_dir="$(_core_download_charts_dir)"
 
-    ensure_helm_repo "${HELM_CHART_REPO_NAME}" "${HELM_CHART_REPO_URL}"
+    parse_manifest_source "${CORE_VERSION_MANIFEST_FILE:-}"
+    ensure_chart_source "${HELM_CHART_REPO_NAME}" "${HELM_CHART_REPO_URL}"
 
     # Check if ISF dependency is declared in manifest
     local isf_dep_version=""
@@ -393,7 +394,8 @@ _install_core_release_repo() {
     local chart_name
     chart_name="$(_core_resolve_chart_name "${release_name}")"
 
-    local chart_ref="${helm_repo_name}/${chart_name}"
+    local chart_ref
+    chart_ref="$(build_chart_ref "${helm_repo_name}" "${chart_name}")"
 
     local target_version="${release_version}"
     if [[ -z "${target_version}" ]]; then
@@ -514,15 +516,16 @@ install_core() {
         use_local=true
         log_info "Using local Core charts from: ${charts_dir}"
     else
-        log_info "No explicit local Core charts directory provided, using Helm repo."
+        log_info "No explicit local Core charts directory provided, using remote chart source."
         log_info "  Version:   ${HELM_CHART_VERSION}"
         if [[ -n "${CORE_VERSION_MANIFEST_FILE:-}" ]]; then
             log_info "  Version Manifest: ${CORE_VERSION_MANIFEST_FILE}"
         fi
-        log_info "  Helm Repo: ${HELM_CHART_REPO_NAME:-kweaver} -> ${HELM_CHART_REPO_URL:-https://kweaver-ai.github.io/helm-repo/}"
         HELM_CHART_REPO_NAME="${HELM_CHART_REPO_NAME:-kweaver}"
         HELM_CHART_REPO_URL="${HELM_CHART_REPO_URL:-https://kweaver-ai.github.io/helm-repo/}"
-        ensure_helm_repo "${HELM_CHART_REPO_NAME}" "${HELM_CHART_REPO_URL}"
+        parse_manifest_source "${CORE_VERSION_MANIFEST_FILE:-}"
+        log_chart_source "${HELM_CHART_REPO_NAME}" "${HELM_CHART_REPO_URL}"
+        ensure_chart_source "${HELM_CHART_REPO_NAME}" "${HELM_CHART_REPO_URL}"
     fi
 
     log_info "Target namespace: ${namespace}"
@@ -589,7 +592,7 @@ install_core() {
 
     log_info "KWeaver Core services installation completed."
 
-    log_info "Context Loader toolset import: run ./onboard.sh after kweaver auth (uses kweaver call impex), or set IMPORT_CONTEXT_LOADER_TOOLSET=false to skip that step in onboard."
+    log_info "Context Loader toolset is auto-imported by agent-retrieval at startup (no manual onboard step needed)."
 
     local _host _port _scheme
     _host="$(_read_access_address_field "host" 2>/dev/null || true)"
@@ -641,7 +644,7 @@ uninstall_core() {
     kubectl delete pod -n "${namespace}" -l sandbox-type=execution --ignore-not-found >/dev/null 2>&1 || true
 
     log_info "Deleting leftover Core Jobs in ${namespace} (e.g. data-migrator / chart hooks)"
-    kweaver_delete_jobs_name_match_ere_in_ns "${namespace}" 'migrator|data-migrator|mdl-data-model-job'
+    kweaver_delete_jobs_name_match_ere_in_ns "${namespace}" 'migrator|data-migrator'
 
     log_info "KWeaver Core services uninstallation completed."
 }

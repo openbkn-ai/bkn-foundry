@@ -1,0 +1,62 @@
+name: release-adp-coderunner
+
+# Two images (coderunner, dataflowtools) feeding one chart.
+
+on:
+  push:
+    branches: ['**']
+    paths:
+      - 'adp/dataflow/coderunner/**'
+      - 'adp/dataflow/charts/coderunner/**'
+      - '.github/workflows/release-adp-coderunner.yml'
+      - '.github/workflows/reusable-*.yml'
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish to GHCR (true) or verify build only (false)'
+        type: boolean
+        default: false
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  test:
+    uses: ./.github/workflows/reusable-test.yml
+    with:
+      service-path: adp/dataflow/charts/coderunner
+      stack: chart-only
+
+  build-coderunner:
+    needs: test
+    uses: ./.github/workflows/reusable-build.yml
+    with:
+      service-path: adp/dataflow/coderunner
+      dockerfile: Dockerfile.coderunner
+      context: '.'
+      image-name: coderunner
+      version: ${{ needs.test.outputs.version }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+
+  build-dataflowtools:
+    needs: test
+    uses: ./.github/workflows/reusable-build.yml
+    with:
+      service-path: adp/dataflow/coderunner
+      dockerfile: Dockerfile.dataflowtools
+      context: '.'
+      image-name: dataflowtools
+      version: ${{ needs.test.outputs.version }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+      build-args: |
+        BASE_IMAGE=ubuntu:22.04
+
+  chart:
+    needs: [test, build-coderunner, build-dataflowtools]
+    uses: ./.github/workflows/reusable-chart.yml
+    with:
+      service-path: adp/dataflow
+      chart-path: charts/coderunner
+      chart-name: coderunner
+      version: ${{ needs.test.outputs.version }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}

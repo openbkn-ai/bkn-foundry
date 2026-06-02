@@ -89,8 +89,8 @@ precision = 2
 
 
 [tool.uv]
-# 使用清华大学 PyPI 镜像源加速依赖下载
-index-url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+# 公网 PyPI（GitHub runner 上必达）；境内开发可用 UV_INDEX_URL 环境变量覆盖
+index-url = "https://pypi.org/simple"
 
 [tool.ruff]
 target-version = "py313"

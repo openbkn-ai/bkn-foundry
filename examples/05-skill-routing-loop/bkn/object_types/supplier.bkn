@@ -29,4 +29,4 @@ Incremental Key:
 
 | Type | ID | Name |
 |------|-----|------|
-| data_view | {{SUPPLIERS_DV_ID}} | {{SUPPLIERS_DV_NAME}} |
+| resource | {{SUPPLIERS_DV_ID}} | {{SUPPLIERS_DV_NAME}} |

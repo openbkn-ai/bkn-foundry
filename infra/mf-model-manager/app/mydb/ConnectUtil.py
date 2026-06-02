@@ -663,8 +663,11 @@ class MyKafkaClient(object):
     def _check_and_create_topic(self):
         """检查topic是否存在，如果不存在则创建"""
         try:
-            # 获取集群元数据
-            metadata = self.admin_client.list_topics(timeout=10)
+            # 获取集群元数据。timeout 30s 而不是 10s：在 IPv6 未禁的 pod 里
+            # libc getaddrinfo 先解 AAAA 失败要 10s 才 fallback 到 A 记录，
+            # 原 10s 卡死在 DNS 上，导致 _TRANSPORT 失败 -> 业务启动整体卡住
+            # -> startup probe kill。给足时间让 IPv6 超时后走 IPv4。
+            metadata = self.admin_client.list_topics(timeout=30)
             
             # 检查topic是否存在
             if self.topic_name not in metadata.topics:

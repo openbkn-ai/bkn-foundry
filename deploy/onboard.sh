@@ -6,42 +6,56 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# Same as deploy.sh: generated install config lives under $HOME/.kweaver-ai/config.yaml.
-# Prefer it when CONFIG_YAML_PATH is unset so accessAddress matches the machine that ran deploy
-# (vendored deploy/conf/config.yaml is only a template).
-if [[ -z "${CONFIG_YAML_PATH:-}" ]]; then
-    _ob_rt="${HOME}/.kweaver-ai/config.yaml"
-    if [[ -f "${_ob_rt}" ]]; then
-        export CONFIG_YAML_PATH="${_ob_rt}"
+
+# Auto-migrate legacy ~/.kweaver-ai to ~/.kowell-ai (one-time, when target absent).
+if [[ -d "${HOME}/.kweaver-ai" && ! -e "${HOME}/.kowell-ai" ]]; then
+    if mv "${HOME}/.kweaver-ai" "${HOME}/.kowell-ai" 2>/dev/null; then
+        echo "[migrate] moved ${HOME}/.kweaver-ai -> ${HOME}/.kowell-ai" >&2
+    else
+        echo "[migrate][warn] failed to move ${HOME}/.kweaver-ai -> ${HOME}/.kowell-ai" >&2
     fi
+fi
+
+# Same as deploy.sh: generated install config lives under $HOME/.kowell-ai/config.yaml.
+# Prefer it when CONFIG_YAML_PATH is unset so accessAddress matches the machine that ran deploy
+# (vendored deploy/conf/config.yaml is only a template). Legacy ~/.kweaver-ai is honored as a fallback
+# when the auto-migration above could not move the directory (e.g. perms).
+if [[ -z "${CONFIG_YAML_PATH:-}" ]]; then
+    for _ob_rt in "${HOME}/.kowell-ai/config.yaml" "${HOME}/.kweaver-ai/config.yaml"; do
+        if [[ -f "${_ob_rt}" ]]; then
+            export CONFIG_YAML_PATH="${_ob_rt}"
+            break
+        fi
+    done
     unset _ob_rt
 fi
 # shellcheck source=scripts/lib/common.sh
 source "${SCRIPT_DIR}/scripts/lib/common.sh"
 
-# Linux: deploy.sh persists accessAddress / depServices to $HOME/.kweaver-ai/config.yaml of the user that
+# Linux: deploy.sh persists accessAddress / depServices to $HOME/.kowell-ai/config.yaml of the user that
 # ran it (root when invoked via sudo). When onboard runs as a non-root user without that file, it falls
 # back to the vendored deploy/conf/config.yaml template — accessAddress diverges from deploy. Hint the
-# operator. /root/.kweaver-ai/config.yaml cannot be stat'd from a regular shell (perm 700), so we trigger
+# operator. /root/.kowell-ai/config.yaml cannot be stat'd from a regular shell (perm 700), so we trigger
 # whenever the current user lacks the runtime yaml. Skipped on macOS (kind dev path) or when silenced.
 if [[ "$(uname -s 2>/dev/null || true)" != "Darwin" ]] \
         && [[ "${EUID:-$(id -u)}" -ne 0 ]] \
         && [[ -z "${ONBOARD_SUDO_HINT_DISABLED:-}" ]] \
+        && [[ ! -f "${HOME}/.kowell-ai/config.yaml" ]] \
         && [[ ! -f "${HOME}/.kweaver-ai/config.yaml" ]] \
         && [[ -z "${CONFIG_YAML_PATH:-}" ]]; then
-    printf '\033[0;33m[onboard][hint] No %s found for user %s.\n' "${HOME}/.kweaver-ai/config.yaml" "${USER:-$(id -un)}" >&2
-    printf '              If deploy.sh ran via sudo, accessAddress/depServices live at /root/.kweaver-ai/config.yaml (root home, mode 700).\n' >&2
+    printf '\033[0;33m[onboard][hint] No %s found for user %s.\n' "${HOME}/.kowell-ai/config.yaml" "${USER:-$(id -un)}" >&2
+    printf '              If deploy.sh ran via sudo, accessAddress/depServices live at /root/.kowell-ai/config.yaml (root home, mode 700).\n' >&2
     printf '              Re-run onboard with sudo so it reads the same yaml:\n' >&2
     printf '                  sudo bash ./onboard.sh %s\n' "$*" >&2
     printf '              Or pin it explicitly:\n' >&2
-    printf '                  sudo -E env CONFIG_YAML_PATH=/root/.kweaver-ai/config.yaml bash ./onboard.sh\n' >&2
+    printf '                  sudo -E env CONFIG_YAML_PATH=/root/.kowell-ai/config.yaml bash ./onboard.sh\n' >&2
     printf '              Otherwise onboard falls back to deploy/conf/config.yaml (template) and may show a different access URL.\n' >&2
     printf '              Set ONBOARD_SUDO_HINT_DISABLED=1 to silence.\033[0m\n' >&2
 fi
 
 # macOS kind dev: vendored deploy/conf lacks accessAddress; switch to mac-config when still using defaults.
 _onboard_default_conf="${SCRIPT_DIR}/conf/config.yaml"
-_onboard_default_home="${HOME}/.kweaver-ai/config.yaml"
+_onboard_default_home="${HOME}/.kowell-ai/config.yaml"
 _onboard_mac_cfg="${SCRIPT_DIR}/dev/conf/mac-config.yaml"
 if [[ "$(uname -s 2>/dev/null || true)" == "Darwin" ]] && [[ -f "${_onboard_mac_cfg}" ]]; then
     if [[ "${CONFIG_YAML_PATH:-}" == "${_onboard_default_conf}" ]] || [[ "${CONFIG_YAML_PATH:-}" == "${_onboard_default_home}" ]]; then
@@ -73,6 +87,8 @@ unset _ns_cfg
 
 # shellcheck source=scripts/lib/onboard_models.sh
 source "${SCRIPT_DIR}/scripts/lib/onboard_models.sh"
+# shellcheck source=scripts/lib/onboard_oss_storage.sh
+source "${SCRIPT_DIR}/scripts/lib/onboard_oss_storage.sh"
 
 CONFIG_FILE=""
 BKN_NAME=""
@@ -81,7 +97,6 @@ SKIP_BKN="false"
 INTERACTIVE="true"
 ONBOARD_ASSUME_YES="false"
 ONBOARD_SKIP_ISF_TEST_USER="${ONBOARD_SKIP_ISF_TEST_USER:-false}"
-ONBOARD_SKIP_CONTEXT_LOADER="${ONBOARD_SKIP_CONTEXT_LOADER:-false}"
 # Populated by onboard_kweaver_tls_insecure_args_to_array (usually empty or -k).
 declare -a ONBOARD_TLS_INSECURE_ARGS=()
 
@@ -104,8 +119,6 @@ onboard_is_bootstrap_tty() {
 
 # shellcheck source=scripts/lib/onboard_isf_test_user.sh
 source "${SCRIPT_DIR}/scripts/lib/onboard_isf_test_user.sh"
-# shellcheck source=scripts/lib/onboard_context_loader.sh
-source "${SCRIPT_DIR}/scripts/lib/onboard_context_loader.sh"
 # shellcheck source=scripts/lib/onboard_report.sh
 source "${SCRIPT_DIR}/scripts/lib/onboard_report.sh"
 
@@ -219,15 +232,14 @@ usage() {
     echo "Usage: sudo bash ./onboard.sh [options]   # Linux (matches sudo deploy.sh)"
     echo "       bash ./dev/mac.sh onboard           # macOS dev (kind path; no sudo)"
     echo "  Requires: Node 22+ (see @kweaver-ai/kweaver-sdk on npm), kweaver, kubectl, python3; run from deploy/"
-    echo "  Config YAML: unset CONFIG_YAML_PATH and onboard uses \$HOME/.kweaver-ai/config.yaml when that file exists (same as deploy.sh); otherwise scripts/lib/common.sh default (deploy/conf/config.yaml)."
-    echo "  Why sudo on Linux: deploy.sh runs as root and writes \$HOME/.kweaver-ai/config.yaml under /root/.kweaver-ai/ (mode 700); onboard.sh also writes \$HOME/.kweaver auth state. sudo keeps both pointing at the same root home (silence the startup hint with ONBOARD_SUDO_HINT_DISABLED=1; not needed on macOS dev)."
+    echo "  Config YAML: unset CONFIG_YAML_PATH and onboard uses \$HOME/.kowell-ai/config.yaml when that file exists (same as deploy.sh); otherwise scripts/lib/common.sh default (deploy/conf/config.yaml)."
+    echo "  Why sudo on Linux: deploy.sh runs as root and writes \$HOME/.kowell-ai/config.yaml under /root/.kowell-ai/ (mode 700); onboard.sh also writes \$HOME/.kweaver auth state. sudo keeps both pointing at the same root home (silence the startup hint with ONBOARD_SUDO_HINT_DISABLED=1; not needed on macOS dev)."
     echo "  (no flags)                Interactive: nvm+Node 22 and npm -g (Y/n) in your terminal, then models/BKN"
-    echo "  -y, --yes                 Auto nvm+Node 22, npm -g, context-loader import, ISF [test] user+roles (no Y/n)"
+    echo "  -y, --yes                 Auto nvm+Node 22, npm -g, ISF [test] user+roles (no Y/n)"
     echo "  --config=PATH            YAML: deploy/conf/models.yaml.example; model prompts off, but nvm/kweaver still Y/n in a TTY (use -y to skip those asks)"
     echo "  --skip-isf-test-user     Do not offer: kweaver-admin user test + all roles (full install only)"
-    echo "  --skip-context-loader   Do not offer Context Loader ADP import (kweaver call impex); same as ONBOARD_SKIP_CONTEXT_LOADER=true"
     echo ""
-    echo "  Context Loader (impex):  kweaver call  uses ~/.kweaver from  kweaver auth login ."
+    echo "  ADP impex / auth:  kweaver call  uses ~/.kweaver from  kweaver auth login ."
     echo "    - ISF (full):  kweaver-admin  / console  admin  for user ops. ADP impex uses user  test  with all  role list"
     echo "      roles (typically three business admins), then  kweaver auth  as  test .  -y  uses password  ${ONBOARD_DEFAULT_TEST_USER_PASSWORD:-111111}  (override: ONBOARD_TEST_USER_PASSWORD) ."
     echo "    - Minimum (no ISF):  kweaver auth login  only; kweaver-admin is not required."
@@ -241,9 +253,6 @@ usage() {
     echo "                ONBOARD_SKIP_KWEAVER_INSTALL=true  never run npm -g for kweaver in onboard"
     echo "                ONBOARD_SKIP_KWEAVER_ADMIN_INSTALL=true  on ISF: do not auto/offer  npm -g  kweaver-admin  (also skipped with  -y )"
     echo "                ONBOARD_SKIP_ISF_TEST_USER=true  same as --skip-isf-test-user"
-    echo "                ONBOARD_SKIP_CONTEXT_LOADER=true  same as --skip-context-loader"
-    echo "                IMPORT_CONTEXT_LOADER_TOOLSET=false  skip Context Loader (legacy name; same effect)"
-    echo "                CONTEXT_LOADER_TOOLSET_ADP_PATH=...  default ADP under repo adp/context-loader/.../context_loader_toolset.adp"
     echo "                ONBOARD_TEST_USER_PASSWORD=...  override default password for  test  (ISF; default: ONBOARD_DEFAULT_TEST_USER_PASSWORD, built-in 111111)"
     echo "                ONBOARD_DEFAULT_TEST_USER_PASSWORD=...  first-user  test  password (default 111111;  -y  non-interactive)"
     echo "                ONBOARD_KWEAVER_IMPEX_NO_RELLOGIN=1  skip  kweaver auth  as  test  before impex (use current kweaver session)"
@@ -251,7 +260,7 @@ usage() {
     echo "                ONBOARD_FORCE_INSECURE_LOGIN=true  always pass -k (--insecure) to kweaver/kweaver-admin auth login (even for http:// bases; default false)"
     echo "                ONBOARD_SKIP_CONFIG_ACCESS_URL=true  do not derive default URL from CONFIG_YAML_PATH accessAddress"
     echo "  Default KWeaver access URL (kweaver auth): accessAddress in CONFIG_YAML_PATH when present;"
-    echo "                on macOS, if CONFIG_YAML_PATH is still deploy/conf/config.yaml (~/.kweaver-ai not used yet),"
+    echo "                on macOS, if CONFIG_YAML_PATH is still deploy/conf/config.yaml (~/.kowell-ai not used yet),"
     echo "                onboard uses deploy/dev/conf/mac-config.yaml when that file exists (same as mac.sh)."
     echo "                Else host primary IPv4 + ONBOARD_DEFAULT_ACCESS_SCHEME (https by default)."
     echo "                Set ONBOARD_DEFAULT_ACCESS_BASE to force a URL; ONBOARD_DEFAULT_ACCESS_PORT / SCHEME override fallback IP path."
@@ -267,7 +276,6 @@ for _ob_arg in "$@"; do
         --config=*) INTERACTIVE="false" ;;
         -y | --yes) ONBOARD_ASSUME_YES="true" ;;
         --skip-isf-test-user) ONBOARD_SKIP_ISF_TEST_USER="true" ;;
-        --skip-context-loader) ONBOARD_SKIP_CONTEXT_LOADER="true" ;;
     esac
 done
 
@@ -491,10 +499,6 @@ while [[ $# -gt 0 ]]; do
             ;;
         --skip-isf-test-user)
             ONBOARD_SKIP_ISF_TEST_USER="true"
-            shift
-            ;;
-        --skip-context-loader)
-            ONBOARD_SKIP_CONTEXT_LOADER="true"
             shift
             ;;
         --config=*)
@@ -911,7 +915,7 @@ onboard_probe() {
     onboard_prepend_npm_global_bin_to_path
     onboard_ensure_kweaver_admin_auth_for_isf
     onboard_offer_isf_test_user
-    onboard_offer_context_loader_toolset
+    onboard_provision_oss_default_storage "${NAMESPACE}"
 }
 
 # Detect ISF (full install) and recommend kweaver-admin when present.

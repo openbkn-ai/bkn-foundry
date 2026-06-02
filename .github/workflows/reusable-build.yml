@@ -1,0 +1,72 @@
+name: reusable-build
+
+on:
+  workflow_call:
+    inputs:
+      service-path:
+        type: string
+        required: true
+      dockerfile:
+        type: string
+        required: true
+        description: 'Path to Dockerfile'
+      context:
+        type: string
+        default: '.'
+        description: 'Docker build context (relative to service-path)'
+      platforms:
+        type: string
+        default: 'linux/amd64,linux/arm64'
+        description: 'Docker platforms'
+      image-name:
+        type: string
+        required: true
+        description: 'Image name (without registry/tag)'
+      version:
+        type: string
+        required: true
+      publish:
+        type: boolean
+        default: false
+      build-args:
+        type: string
+        default: ''
+        description: 'Extra docker build args, one KEY=VALUE per line (e.g. BASE_IMAGE=ubuntu:22.04)'
+      target:
+        type: string
+        default: ''
+        description: 'Dockerfile target stage (empty = final stage)'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        if: ${{ inputs.publish }}
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ inputs.service-path }}/${{ inputs.context }}
+          file: ${{ inputs.service-path }}/${{ inputs.dockerfile }}
+          platforms: ${{ inputs.platforms }}
+          build-args: ${{ inputs.build-args }}
+          target: ${{ inputs.target }}
+          push: ${{ inputs.publish }}
+          provenance: false
+          sbom: false
+          tags: ghcr.io/${{ github.repository_owner }}/${{ inputs.image-name }}:${{ inputs.version }}

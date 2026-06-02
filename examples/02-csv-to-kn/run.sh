@@ -2,328 +2,160 @@
 # =============================================================================
 # 02-csv-to-kn: From CSV Files to Knowledge Network
 #
-# Import local CSV files → Knowledge Network → Graph Exploration → Agent Q&A
+# Load local CSVs into MySQL → Vega catalog → Knowledge Network → Agent Q&A
+#
+# Uses the Vega catalog/connector model (vega-backend). Catalogs connect to an
+# existing database, so the CSVs are first loaded into MySQL with the standard
+# `mysql` client (the legacy `create-from-csv` data-connection import is gone).
+# Object types bind to Vega resource IDs and query in real time — no bkn build.
 # =============================================================================
 set -euo pipefail
-
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+export NODE_TLS_REJECT_UNAUTHORIZED="${NODE_TLS_REJECT_UNAUTHORIZED:-0}"
 
-# ── CLI flags ────────────────────────────────────────────────────────────────
-usage() {
-    cat <<EOF
-Usage: $(basename "$0") [options]
+usage() { echo "Usage: $(basename "$0") [-h]   (config from .env, see env.sample)"; }
+while [ $# -gt 0 ]; do case "$1" in -h|--help) usage; exit 0;; *) echo "Unknown: $1">&2; usage>&2; exit 2;; esac; shift; done
 
-Options:
-  -h, --help   Show this help.
-
-Environment variables are read from .env (see env.sample).
-EOF
-}
-while [ $# -gt 0 ]; do
-    case "$1" in
-        -h|--help) usage; exit 0 ;;
-        *) echo "Unknown argument: $1" >&2; usage >&2; exit 2 ;;
-    esac
-    shift
-done
-
-# ── Debug helpers ─────────────────────────────────────────────────────────────
 DEBUG="${DEBUG:-0}"
-debug() {
-    [ "$DEBUG" = "1" ] || [ "$DEBUG" = "true" ] && echo "[debug] $*" >&2 || true
-}
-debug_json() {
-    local label="$1" payload="$2"
-    if [ "$DEBUG" = "1" ] || [ "$DEBUG" = "true" ]; then
-        echo "[debug] --- ${label} ---" >&2
-        echo "$payload" >&2
-        echo "[debug] --- end ${label} ---" >&2
-    fi
-}
-
-# ── Load config ──────────────────────────────────────────────────────────────
 [ -f "$SCRIPT_DIR/.env" ] && source "$SCRIPT_DIR/.env"
+DB_HOST="${DB_HOST:?Set DB_HOST in .env}"; DB_PORT="${DB_PORT:-3306}"
+DB_NAME="${DB_NAME:?Set DB_NAME in .env}"; DB_USER="${DB_USER:?Set DB_USER in .env}"; DB_PASS="${DB_PASS:?Set DB_PASS in .env}"
+DB_HOST_SEED="${DB_HOST_SEED:-$DB_HOST}"
 
-DB_HOST="${DB_HOST:?Set DB_HOST in .env}"
-DB_PORT="${DB_PORT:-3306}"
-DB_NAME="${DB_NAME:?Set DB_NAME in .env}"
-DB_USER="${DB_USER:?Set DB_USER in .env}"
-DB_PASS="${DB_PASS:?Set DB_PASS in .env}"
+MYSQL_BIN="${MYSQL_BIN:-mysql}"
+if ! command -v "$MYSQL_BIN" >/dev/null 2>&1; then
+    for _p in "$(brew --prefix mysql-client 2>/dev/null)/bin/mysql" /opt/homebrew/opt/mysql-client/bin/mysql /usr/local/opt/mysql-client/bin/mysql; do
+        [ -x "$_p" ] && { MYSQL_BIN="$_p"; break; }
+    done
+fi
+command -v "$MYSQL_BIN" >/dev/null 2>&1 || { echo "Error: mysql client not found. macOS: brew install mysql-client | Ubuntu: sudo apt install -y mysql-client"; exit 1; }
+
+jget() { python3 -c "import json,sys;d=json.load(sys.stdin);print(d.get('$1','') if isinstance(d,dict) else '')" 2>/dev/null || true; }
 
 TIMESTAMP=$(date +%s)
-DS_NAME="csv_example_ds_${TIMESTAMP}"
-KN_NAME="csv_example_kn_${TIMESTAMP}"
-
-DS_ID=""
-KN_ID=""
+CAT_NAME="csv_cat_${TIMESTAMP}"
+KN_NAME="csv_kn_${TIMESTAMP}"
+CAT_ID=""; KN_ID=""
 
 cleanup() {
-    [ -z "$KN_ID" ] && [ -z "$DS_ID" ] && return 0
-    echo ""
-    echo "=== Cleanup ==="
-    [ -n "$KN_ID" ] && kweaver bkn delete "$KN_ID" -y 2>/dev/null && echo "  Deleted KN $KN_ID"
-    [ -n "$DS_ID" ] && kweaver ds delete "$DS_ID" -y 2>/dev/null && echo "  Deleted datasource $DS_ID"
+    [ -z "$KN_ID" ] && [ -z "$CAT_ID" ] && return 0
+    echo ""; echo "=== Cleanup ==="
+    [ -n "$KN_ID" ]  && kweaver bkn delete "$KN_ID" -y 2>/dev/null && echo "  Deleted KN $KN_ID"
+    [ -n "$CAT_ID" ] && kweaver vega catalog delete "$CAT_ID" -y 2>/dev/null && echo "  Deleted catalog $CAT_ID"
     echo "Done."
 }
 trap cleanup EXIT
 
-# ── Step 1: Connect datasource ────────────────────────────────────────────────
-echo "=== Step 1: Connect datasource ==="
-echo "  Host: $DB_HOST:$DB_PORT  Database: $DB_NAME"
-
-DS_JSON=$(kweaver ds connect mysql "$DB_HOST" "$DB_PORT" "$DB_NAME" \
-    --account "$DB_USER" --password "$DB_PASS" --name "$DS_NAME")
-debug_json "ds connect" "$DS_JSON"
-
-DS_ID=$(echo "$DS_JSON" | python3 -c \
-    "import sys,json; d=json.load(sys.stdin); \
-     r=d[0] if isinstance(d,list) else d; \
-     print(r.get('datasource_id') or r.get('id',''))" 2>/dev/null || true)
-
-[ -z "$DS_ID" ] && { echo "Error: ds connect failed — check credentials." >&2; exit 1; }
-echo "  Datasource: $DS_ID"
-
-# ── Step 2: Import CSVs + build Knowledge Network ─────────────────────────────
-echo ""
-echo "=== Step 2: Import CSVs and build Knowledge Network ==="
+# ── Step 1: Load CSVs into MySQL ─────────────────────────────────────────────
+echo "=== Step 1: Load CSVs into MySQL ==="
 echo "  Files: $(ls "$SCRIPT_DIR/data/"*.csv | xargs -n1 basename | tr '\n' ' ')"
+# CSV → CREATE TABLE + INSERT (light type inference), piped to the mysql client.
+python3 - "$SCRIPT_DIR/data" <<'PY' | "$MYSQL_BIN" -h "$DB_HOST_SEED" -P "$DB_PORT" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME"
+import csv,glob,os,sys,re
+ddir=sys.argv[1]
+def coltype(vals):
+    vals=[v for v in vals if v!='']
+    if vals and all(re.fullmatch(r'-?\d+',v) for v in vals): return 'BIGINT'
+    if vals and all(re.fullmatch(r'-?\d+(\.\d+)?',v) for v in vals): return 'DECIMAL(18,2)'
+    return 'VARCHAR(512)'
+def sqlval(v): return 'NULL' if v=='' else "'"+v.replace("\\","\\\\").replace("'","''")+"'"
+for path in sorted(glob.glob(os.path.join(ddir,'*.csv'))):
+    tbl=re.sub(r'[^0-9a-zA-Z_]','_',os.path.splitext(os.path.basename(path))[0])
+    rows=list(csv.reader(open(path,encoding='utf-8')))
+    hdr=rows[0]; data=rows[1:]
+    types=[coltype([r[i] for r in data if i<len(r)]) for i in range(len(hdr))]
+    print(f"DROP TABLE IF EXISTS `{tbl}`;")
+    cols=', '.join(f"`{c}` {t}" for c,t in zip(hdr,types))
+    print(f"CREATE TABLE `{tbl}` ({cols});")
+    for r in data:
+        r=(r+['']*len(hdr))[:len(hdr)]
+        print(f"INSERT INTO `{tbl}` VALUES ({', '.join(sqlval(v) for v in r)});")
+PY
+echo "  Loaded: departments, employees, projects"
 
-KN_JSON=$(kweaver bkn create-from-csv "$DS_ID" \
-    --files "$SCRIPT_DIR/data/*.csv" \
-    --name "$KN_NAME" \
-    --build \
-    --timeout 300)
-debug_json "create-from-csv" "$KN_JSON"
+# ── Step 2: Register Vega catalog + discover ─────────────────────────────────
+echo ""
+echo "=== Step 2: Register Vega catalog + discover tables ==="
+CONN_CFG=$(python3 -c "import json,sys;print(json.dumps({'host':sys.argv[1],'port':int(sys.argv[2]),'username':sys.argv[3],'password':sys.argv[4],'databases':[sys.argv[5]]}))" "$DB_HOST" "$DB_PORT" "$DB_USER" "$DB_PASS" "$DB_NAME")
+CAT_ID=$(kweaver vega catalog create --name "$CAT_NAME" --connector-type mysql --connector-config "$CONN_CFG" 2>/dev/null | jget id)
+[ -z "$CAT_ID" ] && { echo "Error: catalog create failed (is DB_HOST reachable from vega-backend pods?)." >&2; exit 1; }
+echo "  Catalog: $CAT_ID"
+kweaver call "/api/vega-backend/v1/catalogs/${CAT_ID}/enable" -X POST >/dev/null 2>&1 || true
+kweaver vega catalog discover "$CAT_ID" --wait >/dev/null 2>&1 || true
+RES_JSON='{}'; RES_N=0
+for _i in $(seq 1 20); do
+    RES_JSON=$(kweaver vega resource list --catalog-id "$CAT_ID" --category table --json 2>/dev/null || echo '{}')
+    RES_N=$(echo "$RES_JSON" | python3 -c "import json,sys;print(len(json.load(sys.stdin).get('entries',[])))" 2>/dev/null || echo 0)
+    [ "${RES_N:-0}" -gt 0 ] && break; sleep 3
+done
+[ "${RES_N:-0}" -eq 0 ] && { echo "Error: no tables discovered." >&2; exit 1; }
+echo "  Discovered ${RES_N} table resource(s)"
+res_id() { echo "$RES_JSON" | python3 -c "import json,sys
+for r in json.load(sys.stdin).get('entries',[]):
+  if r.get('name','').endswith('$1'): print(r['id']);break"; }
 
-KN_ID=$(echo "$KN_JSON" | python3 -c \
-    "import sys,json; d=json.load(sys.stdin); \
-     print(d.get('kn_id') or d.get('id',''))" 2>/dev/null || true)
-
-[ -z "$KN_ID" ] && { echo "Error: create-from-csv failed." >&2; exit 1; }
+# ── Step 3: Build Knowledge Network (object types bound to resources) ────────
+echo ""
+echo "=== Step 3: Build Knowledge Network ==="
+KN_ID=$(kweaver bkn create --name "$KN_NAME" 2>/dev/null | jget kn_id)
+[ -z "$KN_ID" ] && KN_ID=$(kweaver bkn create --name "${KN_NAME}_b" 2>/dev/null | jget id)
+[ -z "$KN_ID" ] && { echo "Error: KN create failed." >&2; exit 1; }
 echo "  Knowledge Network: $KN_ID"
+# All three CSV tables use id (PK) + name (display key).
+declare -a OTS=("departments:部门" "employees:员工" "projects:项目")
+for spec in "${OTS[@]}"; do
+    tbl="${spec%%:*}"; label="${spec##*:}"; rid=$(res_id "$tbl")
+    [ -z "$rid" ] && continue
+    kweaver bkn object-type create "$KN_ID" --name "$label" --resource-id "$rid" \
+        --primary-key id --display-key name >/dev/null 2>&1 && echo "  + $label ($tbl) → $rid"
+done
 
-# Show auto-discovered object types
-echo "$KN_JSON" | python3 -c "
-import sys, json
-d = json.load(sys.stdin)
-ots = d.get('object_types', [])
-if ots:
-    print(f'  Auto-discovered object types ({len(ots)}):')
-    for ot in ots:
-        print(f'    - {ot.get(\"name\",\"?\")}')
-" 2>/dev/null || true
+# Resolve OT ids from the KN, by name (list order is not guaranteed)
+OT_LIST=$(kweaver bkn object-type list "$KN_ID" 2>/dev/null || echo '{}')
+ot_by_name() { echo "$OT_LIST" | python3 -c "import json,sys
+d=json.load(sys.stdin);es=d.get('entries',d if isinstance(d,list) else [])
+[print(e.get('id','')) for e in es if e.get('name')=='$1']" 2>/dev/null | head -1; }
+DEPT_OT=$(ot_by_name 部门); EMP_OT=$(ot_by_name 员工)
+FIRST_OT="$DEPT_OT"; SECOND_OT="$EMP_OT"
 
-# ── Step 3: Explore schema ────────────────────────────────────────────────────
+# ── Step 4: Explore schema ───────────────────────────────────────────────────
 echo ""
-echo "=== Step 3: Explore schema ==="
+echo "=== Step 4: Explore schema ==="
+echo "$OT_LIST" | python3 -c "import json,sys
+d=json.load(sys.stdin);es=d.get('entries',d if isinstance(d,list) else [])
+print(f'  Object types ({len(es)}):')
+for e in es: print('    -', e.get('name','?'), e.get('id',''))" 2>/dev/null || true
 
-OT_LIST=$(kweaver bkn object-type list "$KN_ID")
-debug_json "object-type list" "$OT_LIST"
-
-OT_IDS=$(echo "$OT_LIST" | python3 -c "
-import sys, json
-data = json.load(sys.stdin)
-entries = data.get('entries', data) if isinstance(data, dict) else data
-print(f'  Object types ({len(entries)}):')
-ids = []
-for e in entries:
-    name = e.get('name','?')
-    props = e.get('data_properties', [])
-    ot_id = e.get('id') or e.get('ot_id','')
-    print(f'    - {name}  ({len(props)} properties)  id={ot_id}')
-    ids.append(ot_id)
-# Print first two IDs for later steps
-print('__IDS__:' + ','.join(ids[:2]))
-" 2>/dev/null || true)
-
-echo "$OT_IDS" | grep -v "^__IDS__"
-FIRST_OT=$(echo "$OT_IDS" | grep "^__IDS__" | cut -d: -f2 | cut -d, -f1)
-SECOND_OT=$(echo "$OT_IDS" | grep "^__IDS__" | cut -d: -f2 | cut -d, -f2)
-
-if [ -n "$FIRST_OT" ]; then
-    echo ""
-    echo "  Properties of '$(echo "$OT_LIST" | python3 -c \
-        "import sys,json; d=json.load(sys.stdin); \
-         e=d.get('entries',d) if isinstance(d,dict) else d; \
-         print(e[0].get('name','?') if e else '?')" 2>/dev/null)':"
-    kweaver bkn object-type get "$KN_ID" "$FIRST_OT" --pretty 2>/dev/null | python3 -c "
-import sys, json
-data = json.load(sys.stdin)
-entry = data
-if isinstance(data, dict) and 'entries' in data:
-    entry = data['entries'][0] if data['entries'] else data
-for p in (entry.get('data_properties') or [])[:8]:
-    print(f'    - {p.get(\"name\",\"?\")}  ({p.get(\"type\",\"?\")})')
-" 2>/dev/null || true
-fi
-
-# ── Step 4: Query instances ───────────────────────────────────────────────────
+# ── Step 5: Query instances (real-time via Vega) ─────────────────────────────
 echo ""
-echo "=== Step 4: Query instances ==="
+echo "=== Step 5: Query instances ==="
+qrows() { kweaver bkn object-type query "$KN_ID" "$1" "{\"limit\":${2:-5}}" 2>/dev/null | python3 -c "import json,sys
+d=json.load(sys.stdin);rows=d.get('datas',d.get('entries',[]))
+for r in rows: print(', '.join(f'{k}={v}' for k,v in r.items() if not str(k).startswith('_')))" 2>/dev/null; }
+if [ -n "$FIRST_OT" ]; then echo "  departments (first 5):"; qrows "$FIRST_OT" 5 | sed 's/^/    /'; fi
 
-if [ -n "$FIRST_OT" ]; then
-    echo "  Querying first 5 records from object type '$FIRST_OT':"
-    kweaver bkn object-type query "$KN_ID" "$FIRST_OT" --limit 5 2>/dev/null | python3 -c "
-import sys, json
-data = json.load(sys.stdin)
-instances = data.get('datas') or data.get('instances') or data.get('entries') or (data if isinstance(data, list) else [])
-for inst in instances[:5]:
-    items = [(k,v) for k,v in inst.items() if not k.startswith('_')][:4]
-    print('    ' + '  '.join(f'{k}={v}' for k,v in items))
-" 2>/dev/null || echo "    (no instances returned)"
-fi
-
-# ── Step 5: Subgraph traversal ────────────────────────────────────────────────
+# ── Step 6: Agent Q&A ────────────────────────────────────────────────────────
 echo ""
-echo "=== Step 5: Subgraph traversal ==="
-
-# Get an instance ID from the first object type
-if [ -n "$FIRST_OT" ]; then
-    INSTANCE_ID=$(kweaver bkn object-type query "$KN_ID" "$FIRST_OT" --limit 1 2>/dev/null | python3 -c "
-import sys, json
-data = json.load(sys.stdin)
-instances = data.get('datas') or data.get('instances') or data.get('entries') or (data if isinstance(data,list) else [])
-if instances:
-    print(instances[0].get('_instance_id') or instances[0].get('id') or instances[0].get('rid',''))
-" 2>/dev/null || true)
-fi
-
-if [ -n "${INSTANCE_ID:-}" ]; then
-    echo "  Starting from instance: $INSTANCE_ID"
-    SUBGRAPH=$(kweaver bkn subgraph "$KN_ID" "$INSTANCE_ID" --depth 2 2>/dev/null \
-        || kweaver bkn subgraph "$KN_ID" "$INSTANCE_ID" 2>/dev/null || true)
-    if [ -n "$SUBGRAPH" ]; then
-        echo "$SUBGRAPH" | python3 -c "
-import sys, json
-try:
-    data = json.load(sys.stdin)
-    nodes = data.get('nodes') or data.get('vertices') or []
-    edges = data.get('edges') or data.get('relations') or []
-    print(f'  Graph: {len(nodes)} nodes, {len(edges)} edges')
-except Exception:
-    pass
-" 2>/dev/null || true
-    fi
-else
-    echo "  (no instances available for subgraph — skipping)"
-fi
-
-# ── Step 6: Semantic search ───────────────────────────────────────────────────
-echo ""
-echo "=== Step 6: Semantic search via context-loader ==="
-
-kweaver context-loader config set --kn-id "$KN_ID" >/dev/null 2>&1 || true
-
-SEARCH_RESULT=$(kweaver context-loader kn-search "部门 预算 人员" \
-    --kn-id "$KN_ID" --only-schema 2>/dev/null || true)
-
-if [ -n "$SEARCH_RESULT" ]; then
-    SCHEMA_RAW=$(echo "$SEARCH_RESULT" | python3 -c \
-        "import sys,json; print(json.load(sys.stdin).get('raw',''))" 2>/dev/null || true)
-    echo "  Schema context (first 8 lines):"
-    echo "$SCHEMA_RAW" | head -8 | sed 's/^/    /'
-    [ "$(echo "$SCHEMA_RAW" | wc -l)" -gt 8 ] && echo "    ..."
-else
-    echo "  (context-loader not available on this deployment)"
-    SCHEMA_RAW=""
-fi
-
-# ── Step 7: Export KN ────────────────────────────────────────────────────────
-echo ""
-echo "=== Step 7: Export Knowledge Network ==="
-
-EXPORT=$(kweaver bkn export "$KN_ID" 2>/dev/null || true)
-if [ -n "$EXPORT" ]; then
-    echo "$EXPORT" | python3 -c "
-import sys, json
-try:
-    data = json.load(sys.stdin)
-    ots = data.get('object_types', [])
-    rts = data.get('relation_types', [])
-    print(f'  Exported: {len(ots)} object types, {len(rts)} relation types')
-except Exception:
-    pass
-" 2>/dev/null || true
-fi
-
-# ── Step 8: Agent Q&A ─────────────────────────────────────────────────────────
-echo ""
-echo "=== Step 8: Agent Q&A ==="
-
+echo "=== Step 6: Agent Q&A ==="
 AGENT_ID="${AGENT_ID:-}"
+[ -z "$AGENT_ID" ] && AGENT_ID=$(kweaver agent list --limit 1 2>/dev/null | python3 -c "import json,sys
+d=json.load(sys.stdin);a=d if isinstance(d,list) else d.get('entries',[]);print(a[0].get('id','') if a else '')" 2>/dev/null || true)
 if [ -z "$AGENT_ID" ]; then
-    AGENT_ID=$(kweaver agent list --limit 1 2>/dev/null | python3 -c \
-        "import sys,json; d=json.load(sys.stdin); \
-         print(d[0].get('id','') if isinstance(d,list) and d else '')" 2>/dev/null || true)
-fi
-
-if [ -z "$AGENT_ID" ]; then
-    echo "  No agent available — set AGENT_ID in .env or create one with \`kweaver agent create\`."
-    echo "  Skipping Q&A step."
+    echo "  No agent available — set AGENT_ID in .env. Skipping Q&A."
 else
-    QUESTION="这份数据里，哪个部门的预算最高？Engineering 部门有多少员工？"
-
-    # Query actual instance data for departments and employees
-    DEPT_DATA=""
-    EMP_DATA=""
-    if [ -n "$FIRST_OT" ]; then
-        DEPT_DATA=$(kweaver bkn object-type query "$KN_ID" "$FIRST_OT" --limit 20 2>/dev/null | python3 -c "
-import sys, json
-data = json.load(sys.stdin)
-rows = data.get('datas') or data.get('instances') or data.get('entries') or []
-lines = []
-for r in rows:
-    lines.append('  ' + ', '.join(f'{k}={v}' for k,v in r.items() if not k.startswith('_')))
-print('\n'.join(lines))
-" 2>/dev/null || true)
-    fi
-    if [ -n "$SECOND_OT" ]; then
-        EMP_DATA=$(kweaver bkn object-type query "$KN_ID" "$SECOND_OT" --limit 20 2>/dev/null | python3 -c "
-import sys, json
-data = json.load(sys.stdin)
-rows = data.get('datas') or data.get('instances') or data.get('entries') or []
-lines = []
-for r in rows:
-    lines.append('  ' + ', '.join(f'{k}={v}' for k,v in r.items() if not k.startswith('_')))
-print('\n'.join(lines))
-" 2>/dev/null || true)
-    fi
-
-    PROMPT=""
-    if [ -n "${SCHEMA_RAW:-}" ]; then
-        PROMPT="以下是通过知识网络检索到的 schema 信息：
-
-${SCHEMA_RAW}
-"
-    fi
-    if [ -n "${DEPT_DATA:-}" ]; then
-        PROMPT="${PROMPT}
-departments 表实际数据：
+    DEPT_DATA=$([ -n "$FIRST_OT" ] && qrows "$FIRST_OT" 20 || true)
+    EMP_DATA=$([ -n "$SECOND_OT" ] && qrows "$SECOND_OT" 20 || true)
+    Q="这份数据里，哪个部门的预算最高？Engineering 部门有多少员工？"
+    PROMPT="departments 数据：
 ${DEPT_DATA}
-"
-    fi
-    if [ -n "${EMP_DATA:-}" ]; then
-        PROMPT="${PROMPT}
-employees 表实际数据：
-${EMP_DATA}
-"
-    fi
-    PROMPT="${PROMPT}
-请基于以上数据回答：${QUESTION}"
 
-    echo "  Agent: $AGENT_ID"
-    echo "  Question: $QUESTION"
-    echo ""
-    echo "  Response:"
-    kweaver agent chat "$AGENT_ID" \
-        -m "$PROMPT" \
-        --stream 2>/dev/null | sed 's/^/    /' || \
-    kweaver agent chat "$AGENT_ID" \
-        -m "$PROMPT" \
-        --no-stream 2>/dev/null | sed 's/^/    /' || \
-    echo "    (agent unavailable)"
+employees 数据：
+${EMP_DATA}
+
+请基于以上数据回答：${Q}"
+    echo "  Agent: $AGENT_ID"; echo "  Question: $Q"; echo "  Response:"
+    kweaver agent chat "$AGENT_ID" -m "$PROMPT" --stream 2>/dev/null | sed 's/^/    /' || echo "    (agent unavailable)"
 fi
 
 echo ""
 echo "=== Example complete ==="
-echo "  KN '$KN_NAME' ($KN_ID) will be deleted on exit."

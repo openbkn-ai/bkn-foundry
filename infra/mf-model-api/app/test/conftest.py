@@ -7,10 +7,10 @@ from unittest.mock import Mock, AsyncMock, MagicMock, patch
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
 # Mock私有依赖模块（在导入项目代码之前）
-# Mock tlogging
-tlogging_mock = MagicMock()
-tlogging_mock.SamplerLogger = MagicMock()
-sys.modules['tlogging'] = tlogging_mock
+# Mock tlogging —— AR 相关已从代码移除；保留注释以便将来恢复
+# tlogging_mock = MagicMock()
+# tlogging_mock.SamplerLogger = MagicMock()
+# sys.modules['tlogging'] = tlogging_mock
 
 # Mock rdsdriver
 rdsdriver_mock = MagicMock()
@@ -47,18 +47,18 @@ dbutilsx_mock.pooled_db.PooledDBInfo = MagicMock()
 sys.modules['dbutilsx'] = dbutilsx_mock
 sys.modules['dbutilsx.pooled_db'] = dbutilsx_mock.pooled_db
 
-# Mock exporter (私有日志导出器)
-exporter_mock = MagicMock()
-sys.modules['exporter'] = exporter_mock
-sys.modules['exporter.resource'] = MagicMock()
-sys.modules['exporter.resource.resource'] = MagicMock()
-sys.modules['exporter.ar_log'] = MagicMock()
-sys.modules['exporter.ar_log.log_exporter'] = MagicMock()
-sys.modules['exporter.ar_trace'] = MagicMock()
-sys.modules['exporter.ar_trace.trace_exporter'] = MagicMock()
-sys.modules['exporter.public'] = MagicMock()
-sys.modules['exporter.public.client'] = MagicMock()
-sys.modules['exporter.public.public'] = MagicMock()
+# Mock exporter (私有日志导出器) —— AR 相关已从代码移除；保留注释以便将来恢复
+# exporter_mock = MagicMock()
+# sys.modules['exporter'] = exporter_mock
+# sys.modules['exporter.resource'] = MagicMock()
+# sys.modules['exporter.resource.resource'] = MagicMock()
+# sys.modules['exporter.ar_log'] = MagicMock()
+# sys.modules['exporter.ar_log.log_exporter'] = MagicMock()
+# sys.modules['exporter.ar_trace'] = MagicMock()
+# sys.modules['exporter.ar_trace.trace_exporter'] = MagicMock()
+# sys.modules['exporter.public'] = MagicMock()
+# sys.modules['exporter.public.client'] = MagicMock()
+# sys.modules['exporter.public.public'] = MagicMock()
 
 # Mock llmadapter (私有LLM适配器)
 llmadapter_mock = MagicMock()

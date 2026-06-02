@@ -41,12 +41,28 @@ func NewRedisClient(cfg *config.AppConfig, log *logrus.Entry) (*RedisClient, err
 		return nil, err
 	}
 
-	// Test connection
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	if err := client.Ping(ctx).Err(); err != nil {
-		return nil, fmt.Errorf("failed to ping redis: %w", err)
+	// Test connection. On cold k8s clusters CoreDNS occasionally takes
+	// 5+ seconds to answer the first sentinel lookup, racing the Go
+	// pure-resolver's own dial timeout (CGO is disabled in this image so
+	// libc retries are unavailable). Retry with backoff for ~60s before
+	// giving up so the pod doesn't crashloop while DNS warms.
+	const pingMaxAttempts = 12
+	const pingPerAttempt = 5 * time.Second
+	var pingErr error
+	for attempt := 1; attempt <= pingMaxAttempts; attempt++ {
+		ctx, cancel := context.WithTimeout(context.Background(), pingPerAttempt)
+		pingErr = client.Ping(ctx).Err()
+		cancel()
+		if pingErr == nil {
+			break
+		}
+		log.Warnf("redis ping attempt %d/%d failed: %v", attempt, pingMaxAttempts, pingErr)
+		if attempt < pingMaxAttempts {
+			time.Sleep(pingPerAttempt)
+		}
+	}
+	if pingErr != nil {
+		return nil, fmt.Errorf("failed to ping redis after %d attempts: %w", pingMaxAttempts, pingErr)
 	}
 
 	log.Infof("Redis connected successfully in %s mode", clusterMode)

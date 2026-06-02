@@ -1,0 +1,64 @@
+name: release-adp-doc-convert
+
+# Two images (gotenberg, tika) built on upstream bases, feeding one chart.
+
+on:
+  push:
+    branches: ['**']
+    paths:
+      - 'adp/dataflow/doc-convert/**'
+      - 'adp/dataflow/charts/doc-convert/**'
+      - '.github/workflows/release-adp-doc-convert.yml'
+      - '.github/workflows/reusable-*.yml'
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish to GHCR (true) or verify build only (false)'
+        type: boolean
+        default: false
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  test:
+    uses: ./.github/workflows/reusable-test.yml
+    with:
+      service-path: adp/dataflow/charts/doc-convert
+      stack: chart-only
+
+  build-gotenberg:
+    needs: test
+    uses: ./.github/workflows/reusable-build.yml
+    with:
+      service-path: adp/dataflow/doc-convert
+      dockerfile: gotenberg/Dockerfile
+      context: gotenberg
+      image-name: gotenberg
+      version: ${{ needs.test.outputs.version }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+      build-args: |
+        BASE_IMAGE=gotenberg/gotenberg:8
+
+  build-tika:
+    needs: test
+    uses: ./.github/workflows/reusable-build.yml
+    with:
+      service-path: adp/dataflow/doc-convert
+      dockerfile: tika/Dockerfile
+      context: tika
+      image-name: tika
+      version: ${{ needs.test.outputs.version }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+      build-args: |
+        BASE_IMAGE=apache/tika:3.3.0.0-full
+
+  chart:
+    needs: [test, build-gotenberg, build-tika]
+    uses: ./.github/workflows/reusable-chart.yml
+    with:
+      service-path: adp/dataflow
+      chart-path: charts/doc-convert
+      chart-name: doc-convert
+      version: ${{ needs.test.outputs.version }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}

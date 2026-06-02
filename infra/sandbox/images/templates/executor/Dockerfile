@@ -1,7 +1,7 @@
 # Sandbox Template Executor Image
 # Final versioned executor/template image built from a stable runtime base.
 
-ARG BASE_IMAGE=sandbox-python-executor-base:python3.11-v1
+ARG BASE_IMAGE=ghcr.io/kowell-ai/sandbox-python-executor-base:v1
 ARG USE_MIRROR=false
 ARG PIP_MIRROR=mirrors.ustc.edu.cn
 

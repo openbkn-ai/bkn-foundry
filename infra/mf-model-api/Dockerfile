@@ -1,5 +1,6 @@
-# 基于镜像基础
-FROM  acr.aishu.cn/ad/model-factory-base:v2
+# 基于镜像基础（公网重建版，推 GHCR；可经 build-arg 覆盖）
+ARG BASE_IMAGE=ghcr.io/kowell-ai/model-factory-base:v2
+FROM ${BASE_IMAGE}
 # 设置代码文件夹工作目录 /app
 WORKDIR /app
 # 复制当前代码文件到容器中 /app

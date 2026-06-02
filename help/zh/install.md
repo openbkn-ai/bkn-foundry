@@ -260,7 +260,7 @@ cd deploy
 sudo bash ./onboard.sh --help
 ```
 
-> **为什么要 `sudo`？** `onboard.sh` 读安装期写下的 `$HOME/.kweaver-ai/config.yaml`（`sudo deploy.sh` 会写到 `/root/.kweaver-ai/`，权限 700），并把 `kweaver` 认证状态写到 `$HOME/.kweaver`。不加 `sudo` 时读到的是当前用户的 home——若该用户没有这个文件就会回退到仓库内模板 `deploy/conf/config.yaml`，**可能解析出和安装时不一致的 access URL**。命中此路径时脚本启动会打印黄色的 `[onboard][hint]`；可用 `ONBOARD_SUDO_HINT_DISABLED=1` 关闭。**macOS 开发路径**（`bash deploy/dev/mac.sh onboard`）**不要**加 `sudo`：Docker Desktop / `kind` / `$HOME` 都属于当前用户，`sudo` 会把它们重定向到 `/var/root` 并割裂安装与 onboard；`deploy.sh` 在 `Darwin` 上已跳过 root 检查。详见 [`deploy/dev/README.zh.md`](../../deploy/dev/README.zh.md) · [`deploy/dev/README.md`](../../deploy/dev/README.md)。
+> **为什么要 `sudo`？** `onboard.sh` 读安装期写下的 `$HOME/.kowell-ai/config.yaml`（`sudo deploy.sh` 会写到 `/root/.kowell-ai/`，权限 700），并把 `kweaver` 认证状态写到 `$HOME/.kweaver`。不加 `sudo` 时读到的是当前用户的 home——若该用户没有这个文件就会回退到仓库内模板 `deploy/conf/config.yaml`，**可能解析出和安装时不一致的 access URL**。命中此路径时脚本启动会打印黄色的 `[onboard][hint]`；可用 `ONBOARD_SUDO_HINT_DISABLED=1` 关闭。**macOS 开发路径**（`bash deploy/dev/mac.sh onboard`）**不要**加 `sudo`：Docker Desktop / `kind` / `$HOME` 都属于当前用户，`sudo` 会把它们重定向到 `/var/root` 并割裂安装与 onboard；`deploy.sh` 在 `Darwin` 上已跳过 root 检查。详见 [`deploy/dev/README.zh.md`](../../deploy/dev/README.zh.md) · [`deploy/dev/README.md`](../../deploy/dev/README.md)。
 
 常用参数：
 

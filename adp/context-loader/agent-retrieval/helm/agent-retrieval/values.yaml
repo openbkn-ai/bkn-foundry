@@ -2,7 +2,7 @@ replicaCount: 1
 
 nodeSelector: {}
 
-namespace: dip
+namespace: kweaver
 moduleName: agent-retrieval
 
 # 设置为dev则为开发模式.
@@ -14,10 +14,10 @@ securityContext:
   runAsGroup: 5000
 
 image:
-  registry: acr.aishu.cn
+  registry: ghcr.io/kowell-ai
   service:
-    repository: dip/agent-retrieval
-    tag: data-581755
+    repository: agent-retrieval
+    tag: "__VERSION__"
     pullPolicy: IfNotPresent
 
 service:

@@ -1,0 +1,16 @@
+{
+    "conponentDefineType": "helm/task",
+    "name": "data-migrator",
+    "configSchema": {
+        "title": "data-migrator",
+        "description": "数据迁移器任务组件",
+        "type": "object",
+        "properties": {},
+        "timeout": 1800
+    },
+    "dependence": [
+        {
+            "name": "rds"
+        }
+    ]
+}

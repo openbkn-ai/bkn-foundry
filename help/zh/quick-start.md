@@ -33,7 +33,7 @@ sudo bash ./onboard.sh -y     # 非交互（按默认）
 # macOS 开发路径： bash ./dev/mac.sh onboard       # 无需 sudo
 ```
 
-> 加 `sudo` 是为了让 `onboard.sh` 读到 `sudo deploy.sh` 写到 `/root/.kweaver-ai/config.yaml` 的同一份 `$HOME/.kweaver-ai/config.yaml`，并把 `kweaver` 认证状态写到同一个 `$HOME/.kweaver`；macOS dev 用普通 `bash` 即可。详见 [安装与部署 — Post-install：`onboard.sh`](install.md#post-installonboardsh安装后引导)。
+> 加 `sudo` 是为了让 `onboard.sh` 读到 `sudo deploy.sh` 写到 `/root/.kowell-ai/config.yaml` 的同一份 `$HOME/.kowell-ai/config.yaml`，并把 `kweaver` 认证状态写到同一个 `$HOME/.kweaver`；macOS dev 用普通 `bash` 即可。详见 [安装与部署 — Post-install：`onboard.sh`](install.md#post-installonboardsh安装后引导)。
 
 跑完之后通常**什么都不用再做**，直接进入下节「[登录平台](#-登录平台)」；只需在新机器上重新登录即可。完整流程见 [安装与部署 — Post-install：`onboard.sh`](install.md#post-installonboardsh安装后引导)。
 

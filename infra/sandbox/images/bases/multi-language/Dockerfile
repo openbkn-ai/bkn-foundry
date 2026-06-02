@@ -2,7 +2,7 @@
 # Stable base image with Python, Go, Bash, and common toolchain dependencies.
 # This image does not contain executor application code.
 
-ARG BASE_IMAGE=sandbox-python-executor-base:python3.11-v1
+ARG BASE_IMAGE=ghcr.io/kowell-ai/sandbox-python-executor-base:v1
 FROM ${BASE_IMAGE}
 
 ARG USE_MIRROR=false

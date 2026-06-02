@@ -1,0 +1,125 @@
+name: release-infra-sandbox
+
+# 单工作流：bases (稳定 v1) → control-plane / web / templates (repo VERSION) → 2 charts.
+# 链：python-base → multi-language-base；python-base → template-python-basic；
+#     multi-language-base → template-multi-language。`needs:` 在工作流内排好序，
+#     避免跨工作流首次推送竞态（base 必须先存在 GHCR，templates 才能 FROM）。
+
+on:
+  push:
+    branches: ['**']
+    paths:
+      - 'infra/sandbox/**'
+      - '.github/workflows/release-infra-sandbox.yml'
+      - '.github/workflows/reusable-*.yml'
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish to GHCR (true) or verify build only (false)'
+        type: boolean
+        default: false
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  test:
+    uses: ./.github/workflows/reusable-test.yml
+    with:
+      service-path: infra/sandbox/deploy/helm
+      stack: chart-only
+
+  # ===== Bases (稳定 v1，链顶) =====
+  build-python-base:
+    needs: test
+    uses: ./.github/workflows/reusable-build.yml
+    with:
+      service-path: infra/sandbox/images/bases/python
+      dockerfile: Dockerfile
+      context: '.'
+      image-name: sandbox-python-executor-base
+      version: v1
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+
+  build-multi-language-base:
+    needs: [test, build-python-base]
+    uses: ./.github/workflows/reusable-build.yml
+    with:
+      service-path: infra/sandbox/images/bases/multi-language
+      dockerfile: Dockerfile
+      context: '.'
+      image-name: sandbox-multi-executor-base
+      version: v1
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+      build-args: |
+        BASE_IMAGE=ghcr.io/${{ github.repository_owner }}/sandbox-python-executor-base:v1
+
+  # ===== 业务镜像（repo VERSION） =====
+  build-control-plane:
+    needs: test
+    uses: ./.github/workflows/reusable-build.yml
+    with:
+      service-path: infra/sandbox
+      dockerfile: sandbox_control_plane/Dockerfile
+      context: '.'
+      image-name: sandbox-control-plane
+      version: ${{ needs.test.outputs.version }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+
+  build-web:
+    needs: test
+    uses: ./.github/workflows/reusable-build.yml
+    with:
+      service-path: infra/sandbox/sandbox_web
+      dockerfile: Dockerfile
+      context: '.'
+      image-name: sandbox-web
+      version: ${{ needs.test.outputs.version }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+
+  build-template-python-basic:
+    needs: [test, build-python-base]
+    uses: ./.github/workflows/reusable-build.yml
+    with:
+      service-path: infra/sandbox
+      dockerfile: images/templates/executor/Dockerfile
+      context: '.'
+      image-name: sandbox-template-python-basic
+      version: ${{ needs.test.outputs.version }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+      build-args: |
+        BASE_IMAGE=ghcr.io/${{ github.repository_owner }}/sandbox-python-executor-base:v1
+
+  build-template-multi-language:
+    needs: [test, build-multi-language-base]
+    uses: ./.github/workflows/reusable-build.yml
+    with:
+      service-path: infra/sandbox
+      dockerfile: images/templates/executor/Dockerfile
+      context: '.'
+      image-name: sandbox-template-multi-language
+      version: ${{ needs.test.outputs.version }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+      build-args: |
+        BASE_IMAGE=ghcr.io/${{ github.repository_owner }}/sandbox-multi-executor-base:v1
+
+  # ===== Charts =====
+  chart-sandbox:
+    needs: [test, build-control-plane, build-web, build-template-python-basic, build-template-multi-language]
+    uses: ./.github/workflows/reusable-chart.yml
+    with:
+      service-path: infra/sandbox/deploy/helm/sandbox
+      chart-path: .
+      chart-name: sandbox
+      version: ${{ needs.test.outputs.version }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+
+  chart-sandbox-standalone:
+    needs: [test, build-control-plane, build-web, build-template-python-basic, build-template-multi-language]
+    uses: ./.github/workflows/reusable-chart.yml
+    with:
+      service-path: infra/sandbox/deploy/helm/sandbox_standalone
+      chart-path: .
+      chart-name: sandbox-standalone
+      version: ${{ needs.test.outputs.version }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
