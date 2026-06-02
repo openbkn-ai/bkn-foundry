@@ -522,6 +522,10 @@ _extract_bkn_archive() {
     rm -rf "$BKN_EXTRACT_DIR"
     mkdir -p "$(dirname "$BKN_EXTRACT_DIR")"
     tar xf "$BKN_ARCHIVE" -C "$(dirname "$BKN_EXTRACT_DIR")"
+    # The archive was packed on macOS and carries AppleDouble (._*) sidecar
+    # files; they match the *.bkn glob and fail bkn validate ("must have YAML
+    # frontmatter"). Purge them.
+    find "$BKN_EXTRACT_DIR" -name '._*' -delete 2>/dev/null || true
     [ -f "$BKN_EXTRACT_DIR/network.bkn" ] || {
         echo "Error: extracted tree missing network.bkn (expected $BKN_EXTRACT_DIR/network.bkn)." >&2
         exit 1
