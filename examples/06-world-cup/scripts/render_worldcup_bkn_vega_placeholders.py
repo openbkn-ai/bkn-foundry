@@ -69,8 +69,15 @@ def main() -> None:
         return PLACEHOLDER_RE.sub(repl, text)
 
     for path in sorted(dst.rglob("*.bkn")):
-        old = path.read_text(encoding="utf-8")
+        # Some bundled .bkn files carry latin-1 bytes (e.g. £); decode
+        # tolerantly and write back in the same encoding so non-ASCII data is
+        # preserved while UUID placeholders (ASCII) are substituted.
+        try:
+            old = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            old = path.read_text(encoding="latin-1")
         new = sub_text(old)
+        # Always normalize to UTF-8 so downstream `kweaver bkn push` parses it.
         path.write_text(new, encoding="utf-8")
 
     if missing:
