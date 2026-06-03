@@ -3,12 +3,12 @@ package permissionhandler
 import (
 	"sync"
 
-	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/domain/service/inject/v3/dainject"
-	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/driveradapter/api/httphandler/apiv3common"
-	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/infra/cmp/icmp"
-	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/infra/common/cenum"
-	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/port/driver/ihandlerportdriver"
-	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/port/driver/iv3portdriver"
+	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/domain/service/inject/v3/dainject"
+	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/driveradapter/api/httphandler/apiv3common"
+	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/infra/cmp/icmp"
+	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/infra/common/cenum"
+	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/port/driver/ihandlerportdriver"
+	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/port/driver/iv3portdriver"
 	"github.com/kweaver-ai/kweaver-go-lib/logger"
 
 	"github.com/gin-gonic/gin"

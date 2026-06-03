@@ -4,13 +4,13 @@
 # =============================================================================
 # Global Configuration (Common Settings)
 # =============================================================================
-namespace: anyshare
+namespace: openbkn
 replicaCount: 1
 
 image:
-  registry: acr.aishu.cn
-  repository: dip/flow-automation
-  tag: 1.0.0-feature-744853.76f808f
+  registry: ghcr.io/openbkn-ai
+  repository: dataflow
+  tag: "__VERSION__"
   pullPolicy: IfNotPresent
 
 # Common Environment Settings

@@ -155,6 +155,10 @@ get_installed_chart_version() {
 get_repo_chart_latest_version() {
     local repo_name="$1"
     local chart_name="$2"
+    if [[ "${MANIFEST_SOURCE_TYPE:-http}" == "oci" ]]; then
+        log_error "OCI source requires explicit chart version in manifest (no 'latest' resolution)."
+        return 1
+    fi
     helm search repo "${repo_name}/${chart_name}" --devel -l 2>/dev/null | awk 'NR==2 {print $2}'
 }
 
@@ -309,8 +313,10 @@ download_chart_to_cache() {
         fi
     fi
 
-    log_info "Downloading ${repo_name}/${chart_name} ${target_version} to ${charts_dir}..."
-    helm pull "${repo_name}/${chart_name}" \
+    local chart_ref
+    chart_ref="$(build_chart_ref "${repo_name}" "${chart_name}")"
+    log_info "Downloading ${chart_ref} ${target_version} to ${charts_dir}..."
+    helm pull "${chart_ref}" \
         --version "${target_version}" \
         --devel \
         --destination "${charts_dir}"
@@ -328,6 +334,123 @@ kweaver_mapfile_compat() {
         [[ -n "${_l}" ]] && _lines+=("${_l}")
     done < <("$@")
     eval "${_dst}=(\"\${_lines[@]}\")"
+}
+
+# Globals populated by parse_manifest_source(). Read by ensure_chart_source(),
+# build_chart_ref(), and get_repo_chart_latest_version() to dispatch HTTP vs OCI.
+MANIFEST_SOURCE_TYPE=""        # "oci" | "http"
+MANIFEST_SOURCE_REGISTRY=""    # OCI base, e.g. "oci://ghcr.io/openbkn-ai/charts"
+MANIFEST_SOURCE_REPO_NAME=""   # HTTP helm repo name (alias used by helm repo add)
+MANIFEST_SOURCE_REPO_URL=""    # HTTP helm repo URL
+
+# Parse the top-level `source:` block of a release manifest. Falls back to
+# `http` when only legacy `helmRepoUrl/helmRepoName` fields are present.
+# Args: <manifest_yaml_path>
+parse_manifest_source() {
+    local manifest="$1"
+    MANIFEST_SOURCE_TYPE=""; MANIFEST_SOURCE_REGISTRY=""
+    MANIFEST_SOURCE_REPO_NAME=""; MANIFEST_SOURCE_REPO_URL=""
+
+    if [[ -z "${manifest}" || ! -f "${manifest}" ]]; then
+        MANIFEST_SOURCE_TYPE="http"
+        return 0
+    fi
+
+    # Extract the top-level source: block. Stops at next top-level key.
+    local kv
+    kv="$(awk '
+        /^source:[[:space:]]*$/ { inblock=1; next }
+        inblock && /^[^[:space:]#]/ { inblock=0 }
+        inblock && /^[[:space:]]+[a-zA-Z]/ {
+            key=$1; sub(":","",key)
+            $1=""; sub(/^[[:space:]]+/,"")
+            gsub(/^"|"$/,"")
+            gsub(/^'\''|'\''$/,"")
+            print key "=" $0
+        }
+    ' "${manifest}")"
+
+    local line k v
+    while IFS= read -r line; do
+        [[ -z "${line}" ]] && continue
+        k="${line%%=*}"
+        v="${line#*=}"
+        case "${k}" in
+            type)         MANIFEST_SOURCE_TYPE="${v}" ;;
+            registry)     MANIFEST_SOURCE_REGISTRY="${v}" ;;
+            helmRepoName) MANIFEST_SOURCE_REPO_NAME="${v}" ;;
+            helmRepoUrl)  MANIFEST_SOURCE_REPO_URL="${v}" ;;
+        esac
+    done <<< "${kv}"
+
+    # Legacy manifests carry only helmRepoUrl — treat as http.
+    if [[ -z "${MANIFEST_SOURCE_TYPE}" && -n "${MANIFEST_SOURCE_REPO_URL}" ]]; then
+        MANIFEST_SOURCE_TYPE="http"
+    fi
+    if [[ -z "${MANIFEST_SOURCE_TYPE}" ]]; then
+        MANIFEST_SOURCE_TYPE="http"
+    fi
+    return 0
+}
+
+# Prepare the chart source (login for OCI, helm repo add for HTTP).
+# Reads MANIFEST_SOURCE_* globals set by parse_manifest_source().
+# HTTP arg pair is accepted for back-compat with --helm_repo* CLI flags.
+# Args: [http_repo_name] [http_repo_url]
+ensure_chart_source() {
+    local http_name="${1:-${MANIFEST_SOURCE_REPO_NAME}}"
+    local http_url="${2:-${MANIFEST_SOURCE_REPO_URL}}"
+
+    case "${MANIFEST_SOURCE_TYPE}" in
+        oci)
+            # Public ghcr packages allow anonymous pull; login only if creds present.
+            local token="${GHCR_TOKEN:-${GITHUB_TOKEN:-}}"
+            if [[ -n "${token}" ]]; then
+                local registry_host
+                registry_host="$(printf '%s' "${MANIFEST_SOURCE_REGISTRY}" | sed -E 's#^oci://##; s#/.*##')"
+                [[ -z "${registry_host}" ]] && registry_host="ghcr.io"
+                printf '%s' "${token}" | \
+                    helm registry login "${registry_host}" \
+                        -u "${GHCR_USER:-anonymous}" --password-stdin 2>/dev/null || true
+            fi
+            ;;
+        http)
+            ensure_helm_repo "${http_name}" "${http_url}"
+            ;;
+        *)
+            log_error "Unknown manifest source.type: ${MANIFEST_SOURCE_TYPE}"
+            return 1
+            ;;
+    esac
+}
+
+# Build a chart reference suitable for `helm pull` / `helm upgrade --install`.
+# Args: <http_repo_name> <chart_name>
+# - OCI:  oci://<registry>/<chart_name>
+# - HTTP: <http_repo_name>/<chart_name>
+build_chart_ref() {
+    local http_repo_name="$1"
+    local chart_name="$2"
+    case "${MANIFEST_SOURCE_TYPE}" in
+        oci)  printf '%s/%s' "${MANIFEST_SOURCE_REGISTRY}" "${chart_name}" ;;
+        *)    printf '%s/%s' "${http_repo_name}" "${chart_name}" ;;
+    esac
+}
+
+# Print the resolved chart source. Call AFTER parse_manifest_source so the
+# logged values reflect the manifest, not the legacy env defaults.
+# Args: [http_repo_name_fallback] [http_repo_url_fallback]
+log_chart_source() {
+    local http_name="${1:-${MANIFEST_SOURCE_REPO_NAME}}"
+    local http_url="${2:-${MANIFEST_SOURCE_REPO_URL}}"
+    case "${MANIFEST_SOURCE_TYPE}" in
+        oci)
+            log_info "  Chart Source: OCI ${MANIFEST_SOURCE_REGISTRY}"
+            ;;
+        *)
+            log_info "  Chart Source: Helm repo ${http_name} -> ${http_url}"
+            ;;
+    esac
 }
 
 # Ensure a Helm repo is registered and refreshed.
@@ -1031,7 +1154,7 @@ HELM_TARBALL_BASEURL="${HELM_TARBALL_BASEURL:-https://repo.huaweicloud.com/helm/
 # Global Helm Chart Configuration (for Studio, BKN, and other modules)
 HELM_CHART_VERSION="${HELM_CHART_VERSION:-}"
 HELM_CHART_REPO_URL="${HELM_CHART_REPO_URL:-https://kweaver-ai.github.io/helm-repo/}"
-HELM_CHART_REPO_NAME="${HELM_CHART_REPO_NAME:-kweaver}"
+HELM_CHART_REPO_NAME="${HELM_CHART_REPO_NAME:-openbkn}"
 RELEASE_MANIFESTS_DIR="${RELEASE_MANIFESTS_DIR:-${VERSION_MANIFESTS_DIR:-${SCRIPT_DIR}/release-manifests}}"
 
 DOCKER_IO_MIRROR_PREFIX="${DOCKER_IO_MIRROR_PREFIX:-swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/}"
@@ -1609,7 +1732,7 @@ load_image_registry_from_config() {
     IMAGE_REGISTRY="$(get_config_image_registry)"
     IMAGE_REGISTRY="${IMAGE_REGISTRY%/}"
     if [[ -z "${IMAGE_REGISTRY}" ]]; then
-        IMAGE_REGISTRY="swr.cn-east-3.myhuaweicloud.com/kweaver-ai"
+        IMAGE_REGISTRY="ghcr.io/openbkn-ai"
     fi
 }
 
@@ -1808,40 +1931,9 @@ manifest_has_pre_stage_db_init() {
     return 1
 }
 
-# Check if the manifest version is 0.6.0 or higher (semver comparison).
-# Args: <manifest_file>
-# Returns: 0 if version >= 0.6.0, 1 otherwise
-manifest_version_gte_060() {
-    local manifest_file="$1"
-
-    if [[ -z "${manifest_file}" || ! -f "${manifest_file}" ]]; then
-        return 1
-    fi
-
-    local version
-    version="$(_manifest_strip_quotes "$(_manifest_read_top_level_field "${manifest_file}" "version")")"
-
-    if [[ -z "${version}" ]]; then
-        return 1
-    fi
-
-    # Extract major.minor.patch
-    local major minor
-    major="$(echo "${version}" | cut -d. -f1)"
-    minor="$(echo "${version}" | cut -d. -f2)"
-
-    # Compare: >= 0.6.0
-    if [[ "${major}" -gt 0 ]] || [[ "${major}" -eq 0 && "${minor}" -ge 6 ]]; then
-        return 0
-    fi
-
-    return 1
-}
-
 # Check if database initialization should be skipped for this manifest.
-# Returns true (0) if:
-#   1. Manifest version is >= 0.6.0 AND
-#   2. Manifest has a stage="pre" data-migrator release
+# Returns true (0) if the manifest declares a stage="pre" data-migrator release
+# (the chart hook owns DB init; the script must not run it as well).
 # Args: <manifest_file>
 # Returns: 0 if DB init should be skipped, 1 otherwise
 should_skip_db_init_for_manifest() {
@@ -1851,8 +1943,7 @@ should_skip_db_init_for_manifest() {
         return 1
     fi
 
-    # Check version >= 0.6.0 and has pre-stage data-migrator
-    if manifest_version_gte_060 "${manifest_file}" && manifest_has_pre_stage_db_init "${manifest_file}"; then
+    if manifest_has_pre_stage_db_init "${manifest_file}"; then
         return 0
     fi
 

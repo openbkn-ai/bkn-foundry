@@ -3,8 +3,8 @@ package releasereq
 import (
 	"strings"
 
-	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/domain/enum/daenum"
-	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/domain/valueobject/publishvo"
+	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/domain/enum/daenum"
+	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/domain/valueobject/publishvo"
 	"github.com/pkg/errors"
 )
 

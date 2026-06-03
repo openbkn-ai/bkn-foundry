@@ -1,0 +1,51 @@
+# model-factory-base 依赖清单
+# 从公网重建 legacy acr.aishu.cn/ad/model-factory-base:v2。
+# mf-model-api 与 mf-model-manager 共用本 base。
+# 单次 pip install，让 resolver 一次看到全部约束（尤其 llmadapter 的 pin）。
+# 注：AnyRobot(AR) 的 exporter / tlogging 已从服务代码移除，base 不再需要内部 wheel。
+
+# --- 内部 SDK（已公开发布到 PyPI）---
+llmadapter==1.0.3          # 拉 sqlalchemy/redis/spacy/openai/pandas/pydantic<2/tiktoken<0.4/gptcache/langchainplus-sdk
+DBUtilsX==1.3.3            # dbutilsx.pooled_db (PooledDB/PooledDBInfo)，并捆带 rdsdriver
+RDSDriver==1.3.3           # rdsdriver（mysql / dm 后端）
+
+# --- 服务运行栈（源自 mf-model-manager/requirements.txt）---
+uvicorn~=0.23.2
+fastapi~=0.104.0
+pydantic~=1.10.9           # v1；与 llmadapter 的 pydantic<2 兼容
+python-dotenv==0.13.0
+openai==0.28.1
+coverage==7.3.2
+xmlrunner==1.7.7
+eventlet==0.33.3
+func_timeout==4.3.5
+requests==2.31.0
+arrow==0.15.8
+tzlocal==5.2
+pytz==2022.1
+datasets==2.18.0
+circuitbreaker==2.0.0
+APScheduler==3.6.3
+urllib3==1.26.7
+tenacity==8.3.0
+pycryptodome==3.20.0
+spacy==3.7.5
+transformers==4.38.0
+sentencepiece==0.2.0
+# tiktoken: 不钉版本 —— mf-model-manager 原钉 0.5.1，但 llmadapter 要求 <0.4.0（冲突）。
+#           交由 resolver 取 llmadapter 兼容版本（<0.4.0）。
+
+# --- 指标上传功能组（源自 mf-model-manager/requirements.txt）---
+absl-py==2.1.0
+nltk==3.9.1
+jieba==0.42.1
+rouge-score==0.1.2
+evaluate==0.4.3
+
+# --- 代码 import 但上游未声明（补全 base）---
+confluent-kafka            # 需系统库 librdkafka
+aiohttp
+sse-starlette
+opentelemetry-sdk
+opentelemetry-api
+opentelemetry-instrumentation-fastapi

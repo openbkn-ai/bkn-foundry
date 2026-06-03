@@ -1,6 +1,6 @@
 package conversationresp
 
-import "github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/infra/common/cenum"
+import "github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/infra/common/cenum"
 
 type InitConversationResp struct {
 	ID               string            `json:"id"`

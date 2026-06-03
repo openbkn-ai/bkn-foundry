@@ -8,15 +8,15 @@ import (
 	"sync"
 	"time"
 
-	aerr "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/errors"
-	liberrors "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/errors"
-	traceLog "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/telemetry/log"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/entity"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/log"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/rds"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/vm"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/vm/opcode"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/vm/state"
+	aerr "github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/errors"
+	liberrors "github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/libs/go/errors"
+	traceLog "github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/libs/go/telemetry/log"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/pkg/entity"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/pkg/log"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/pkg/rds"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/pkg/vm"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/pkg/vm/opcode"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/pkg/vm/state"
 )
 
 type VMExt struct {

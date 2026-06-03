@@ -1,0 +1,46 @@
+name: release-adp-bkn-backend
+
+on:
+  push:
+    branches: ['**']
+    paths:
+      - 'adp/bkn/bkn-backend/**'
+      - '.github/workflows/release-adp-bkn-backend.yml'
+      - '.github/workflows/reusable-*.yml'
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish to GHCR (true) or verify build only (false)'
+        type: boolean
+        default: false
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  test:
+    uses: ./.github/workflows/reusable-test.yml
+    with:
+      service-path: adp/bkn/bkn-backend
+      stack: chart-only
+
+  build:
+    needs: test
+    uses: ./.github/workflows/reusable-build.yml
+    with:
+      service-path: adp/bkn/bkn-backend
+      dockerfile: docker/Dockerfile
+      context: '.'
+      image-name: bkn-backend
+      version: ${{ needs.test.outputs.version }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+
+  chart:
+    needs: [test, build]
+    uses: ./.github/workflows/reusable-chart.yml
+    with:
+      service-path: adp/bkn/bkn-backend
+      chart-path: helm/bkn-backend
+      chart-name: bkn-backend
+      version: ${{ needs.test.outputs.version }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}

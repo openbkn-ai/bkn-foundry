@@ -19,6 +19,18 @@ spec:
         app: {{ .Values.image.name }}
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum | trunc 10 | quote }}
     spec:
+      # 把 ndots 从 ClusterFirst 默认 5 降到 1：sentinel 返回的
+      # redis-proton-redis-announce-0.resource.svc.cluster.local 是带 4 个
+      # 点的 FQDN，ndots=5 让 libc 先用所有 search domain 拼接试一遍
+      # (kweaver.svc.cluster.local / svc.cluster.local / cluster.local /
+      # localdomain)，每个 ~1s NXDOMAIN，FQDN 解析硬生生耗 6s。redis-py
+      # sentinel pool 启动期会做多次此查询，叠出分钟级 startup hang ->
+      # startup probe CrashLoop。降到 ndots=1 后直接以 FQDN 查询，毫秒返回。
+      # 不影响业务里 ClusterFirst 短名查询（短名仍 < ndots，走 search list）。
+      dnsConfig:
+        options:
+          - name: ndots
+            value: "1"
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
@@ -32,7 +44,7 @@ spec:
             limits:
               cpu: {{ .Values.resources.limits.cpu }}
               memory: {{ .Values.resources.limits.memory }}
-          image: "{{ .Values.image.registry }}{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          image: "{{- if .Values.image.registry }}{{ .Values.image.registry }}/{{ end }}{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - name: model-factory
@@ -54,7 +66,10 @@ spec:
             periodSeconds: 10
             timeoutSeconds: 5
             successThreshold: 1
-            failureThreshold: 3
+            # Cold-start needs ~30-60s to wait for Redis sentinel DNS +
+            # connection. Old threshold (3 -> 30s grace) made the pod
+            # CrashLoop before the connection ever succeeded.
+            failureThreshold: 30
           volumeMounts:
             - name: host-time
               mountPath: /etc/localtime

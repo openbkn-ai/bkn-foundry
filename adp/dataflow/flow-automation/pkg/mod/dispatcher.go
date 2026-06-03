@@ -6,12 +6,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/common"
-	commonLog "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/log"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/entity"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/event"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/log"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/utils/data"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/common"
+	commonLog "github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/libs/go/log"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/pkg/entity"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/pkg/event"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/pkg/log"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/pkg/utils/data"
 	"github.com/panjf2000/ants/v2"
 	"github.com/shiningrush/goevent"
 )

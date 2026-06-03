@@ -1,11 +1,11 @@
 replicaCount: 1
 
-namespace: dip
+namespace: openbkn
 
 image:
-  registry: acr.aishu.cn
-  repository: /dip/mf-model-api
-  tag: 5.0.0
+  registry: ghcr.io/openbkn-ai
+  repository: mf-model-api
+  tag: "__VERSION__"
   pullPolicy: IfNotPresent
   name: mf-model-api
 
@@ -117,9 +117,11 @@ observability:
     logEnabled: "false"
     traceEnabled: "false"
     metricEnabled: "false"
-    logExporter: "http"
-    traceProvider: "http"
-    metricProvider: "http"
+    # 同 mf-model-manager: AR 后端下线后 http exporter 没目标 service，
+    # default 走 console (stdlib logging) 防止后台日志线程卡在 getaddrinfo。
+    logExporter: "console"
+    traceProvider: "console"
+    metricProvider: "console"
     logLoadInternal: "10"
     logLoadMaxLog: "1000"
     traceMaxQueueSize: "50000"

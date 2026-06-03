@@ -1,4 +1,4 @@
-# Copyright 2026 kowell.ai
+# Copyright 2026 openbkn.ai
 # Copyright The kweaver.ai Authors.
 # Licensed under the Apache License, Version 2.0.
 # See the LICENSE file in the project root for details.
@@ -12,7 +12,7 @@ FROM ${BUILD_IMAGE} AS builder
 COPY ./server /go/src
 
 ARG SERVER_VERSION=0.1.0
-ARG GOPROXY_URL="http://goproxy.cn,direct"
+ARG GOPROXY_URL="https://proxy.golang.org,direct"
 
 ENV GOPROXY=${GOPROXY_URL}
 
@@ -33,7 +33,7 @@ RUN groupadd -r -g $GID kweaver \
     && useradd -r -u $UID -g $GID kweaver \
     && apt-get update \
     && apt-get install -y python3 python3-pip \
-    && pip3 install sqlglot -i https://mirrors.aliyun.com/pypi/simple/ \
+    && pip3 install --break-system-packages --index-url https://pypi.org/simple/ sqlglot \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder --chown=$UID:$GID /go/src/bin /opt/vega-backend

@@ -1,4 +1,34 @@
-ARG BASE_IMAGE=acr.aishu.cn/public/ubuntu:22.04.20251014
+# 多阶段：内联老 Azure pipeline (templates/dataflowtools.yaml) 的 pyinstaller 编译。
+# builder = python + pyinstaller 把 src/main.py 打成自包含二进制；prod = ubuntu + pandoc/texlive 运行时。
+########################### Stage 0: builder ########################
+ARG BUILDER_IMAGE=python:3.11-bookworm
+ARG BASE_IMAGE=ubuntu:22.04
+
+FROM ${BUILDER_IMAGE} AS builder
+
+WORKDIR /build
+# 构建上下文 = adp/dataflow/coderunner（含 deps/ 与 dataflowtools/）
+COPY deps deps
+COPY dataflowtools dataflowtools
+
+RUN set -ex; \
+    pip3 config set global.index-url https://pypi.org/simple; \
+    pip3 install --no-cache-dir pyinstaller; \
+    pip3 install --no-cache-dir deps/*; \
+    pip3 install --no-cache-dir -r dataflowtools/requirements.txt; \
+    pip3 install --no-cache-dir charset-normalizer==3.4.4; \
+    cd dataflowtools; \
+    pyinstaller -y --workpath build --distpath dist \
+        --name dataflowtools \
+        --add-data "src/schema/*:src/schema" \
+        --hidden-import=pymysql \
+        --hidden-import=dmPython \
+        --hidden-import=mq_sdk \
+        --hidden-import=mq_sdk.proton_mq \
+        --collect-submodules=mq_sdk \
+        src/main.py
+
+########################### Stage 1: prod ########################
 FROM ${BASE_IMAGE}
 
 WORKDIR /opt
@@ -7,8 +37,7 @@ RUN groupadd -g 5000 -f coderunner && \
     useradd coderunner -u 5000 -g 5000 -m -s /bin/bash && \
     chown -R coderunner:coderunner /opt
 
-ADD --chown=coderunner:coderunner dataflowtools/dist dist
-
+# pandoc + LaTeX/字体 运行时依赖
 RUN apt-get update -y && \
     apt-get install -y --no-install-recommends \
       pandoc \
@@ -25,6 +54,9 @@ RUN apt-get update -y && \
     && rm -rf /usr/share/doc/* /usr/share/man/* /usr/share/info/* /usr/share/locale/* || true \
     && rm -rf /usr/share/texlive/texmf-dist/doc \
     && rm -rf /usr/share/texlive/texmf-dist/source
+
+# 从 builder 拷 pyinstaller 产物 → /opt/dist/dataflowtools/dataflowtools
+COPY --from=builder --chown=coderunner:coderunner /build/dataflowtools/dist dist
 
 USER coderunner
 

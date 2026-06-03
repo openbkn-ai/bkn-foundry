@@ -9,7 +9,7 @@ import (
 	"github.com/kweaver-ai/kweaver-go-lib/rest"
 	"github.com/pkg/errors"
 
-	sandboxdto "github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/drivenadapter/httpaccess/sandboxplatformhttp/sandboxplatformdto"
+	sandboxdto "github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/drivenadapter/httpaccess/sandboxplatformhttp/sandboxplatformdto"
 )
 
 func (s *sandboxPlatformHttpAcc) CreateSession(ctx context.Context, req sandboxdto.CreateSessionReq) (*sandboxdto.CreateSessionResp, error) {

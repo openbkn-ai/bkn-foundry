@@ -9,6 +9,37 @@ INSTALL_K3S_EXEC="${INSTALL_K3S_EXEC:-server --disable=traefik --write-kubeconfi
 # Passed to rancher k3s-install.sh. Empty = auto (see install_k3s); set true/false to force.
 INSTALL_K3S_SKIP_SELINUX_RPM="${INSTALL_K3S_SKIP_SELINUX_RPM:-}"
 
+# Pre-seed k3s containerd with system images that the rancher k3s installer
+# does NOT bundle (busybox for local-path-provisioner helper-pod, ...).
+# k3s auto-imports any *.tar / *.tar.gz / *.tar.zst in /var/lib/rancher/k3s/agent/images/
+# on first agent boot. Must run BEFORE the rancher installer, otherwise the
+# agent dir is owned by k3s and our copy may race the first reconcile.
+_seed_k3s_system_images() {
+    local target_dir=/var/lib/rancher/k3s/agent/images
+    local src_dir
+    src_dir="${SCRIPT_DIR}/images"
+    if [[ ! -d "${src_dir}" ]]; then
+        log_warn "k3s system-image cache ${src_dir} missing; skipping seed (helper-pod busybox may need to be pulled from docker.io)"
+        return 0
+    fi
+
+    local -a tarballs=()
+    local f
+    for f in "${src_dir}"/*.tar "${src_dir}"/*.tar.gz "${src_dir}"/*.tar.zst; do
+        [[ -f "${f}" ]] && tarballs+=("${f}")
+    done
+    if [[ ${#tarballs[@]} -eq 0 ]]; then
+        log_warn "No tarballs in ${src_dir}; skipping k3s system-image seed"
+        return 0
+    fi
+
+    mkdir -p "${target_dir}"
+    for f in "${tarballs[@]}"; do
+        cp -f "${f}" "${target_dir}/"
+        log_info "Seeded k3s image: ${target_dir}/$(basename "${f}")"
+    done
+}
+
 _export_k3s_kubeconfig() {
     if [[ -f /root/.kube/config ]]; then
         export KUBECONFIG=/root/.kube/config
@@ -70,6 +101,8 @@ install_k3s() {
     log_info "K3S_INSTALL_URL=${K3S_INSTALL_URL}"
     log_info "INSTALL_K3S_MIRROR=${INSTALL_K3S_MIRROR}"
     log_info "INSTALL_K3S_EXEC=${INSTALL_K3S_EXEC}"
+
+    _seed_k3s_system_images
 
     # k3s-install.sh maps HCE VERSION_ID (e.g. 2.0) to el9 k3s-selinux, which requires
     # container-selinux >= 3:2.191 — often missing on Huawei/yum mirrors → dnf aborts before k3s starts.

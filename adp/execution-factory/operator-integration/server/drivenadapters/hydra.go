@@ -11,11 +11,11 @@ import (
 
 	"github.com/gin-gonic/gin"
 	jsoniter "github.com/json-iterator/go"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/config"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/errors"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/rest"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/utils"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/config"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/errors"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/rest"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/utils"
 )
 
 type hydraService struct {

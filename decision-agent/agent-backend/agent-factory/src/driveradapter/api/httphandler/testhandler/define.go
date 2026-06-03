@@ -4,9 +4,9 @@ import (
 	"sync"
 
 	"github.com/gin-gonic/gin"
-	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/driveradapter/api/httphandler/apiv3common"
-	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/driveradapter/api/httphandler/testhandler/bizdomain"
-	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/port/driver/ihandlerportdriver"
+	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/driveradapter/api/httphandler/apiv3common"
+	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/driveradapter/api/httphandler/testhandler/bizdomain"
+	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/port/driver/ihandlerportdriver"
 )
 
 type testHTTPHandler struct {

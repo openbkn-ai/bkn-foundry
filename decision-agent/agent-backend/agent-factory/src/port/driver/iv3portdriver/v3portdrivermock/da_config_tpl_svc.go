@@ -14,9 +14,9 @@ import (
 	sql "database/sql"
 	reflect "reflect"
 
-	auditlogdto "github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/driveradapter/api/auditlogdto"
-	agenttplreq "github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/driveradapter/api/rdto/agent_tpl/agenttplreq"
-	agenttplresp "github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/driveradapter/api/rdto/agent_tpl/agenttplresp"
+	auditlogdto "github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/driveradapter/api/auditlogdto"
+	agenttplreq "github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/driveradapter/api/rdto/agent_tpl/agenttplreq"
+	agenttplresp "github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/driveradapter/api/rdto/agent_tpl/agenttplresp"
 	gomock "go.uber.org/mock/gomock"
 )
 

@@ -1,7 +1,7 @@
 package ginrequestlogger
 
 import (
-	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/infra/common/chelper/httprequesthelper"
+	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/infra/common/chelper/httprequesthelper"
 )
 
 // NewRequestLogger 创建请求日志记录器

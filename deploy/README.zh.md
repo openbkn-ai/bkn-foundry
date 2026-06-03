@@ -1,10 +1,10 @@
-# KWeaver Core Deploy
+# BKN Foundry Deploy
 
 中文 | [English](README.md)
 
-一键将 **KWeaver Core** 部署到单节点 Kubernetes 集群。
+一键将 **BKN Foundry** 部署到单节点 Kubernetes 集群。
 
-这个 `deploy` 目录提供脚本安装 KWeaver Core 及其依赖，包括 Kubernetes、基础设施服务和数据服务。
+这个 `deploy` 目录提供脚本安装 BKN Foundry 及其依赖，包括 Kubernetes、基础设施服务和数据服务。
 
 **平台说明：** **Linux** 是推荐且文档最完整的目标环境（`preflight.sh`、k3s/kubeadm、数据服务等）。**macOS** 仅作**本机开发/验证**可选方案（Docker + kind + `dev/mac.sh`），详见 **[Mac 安装（开发向）](dev/README.zh.md)**（[English](dev/README.md)），**不能**替代 Linux 上的生产安装。
 
@@ -12,17 +12,17 @@
 
 ## Linux：默认 `k8s`（kubeadm）与可选 k3s
 
-**`KUBE_DISTRO` 默认为 `k8s`**（包管理安装 Kubernetes + 单节点 **kubeadm**）。**k3s** 为可选的更轻的单节点栈。若已用 `deploy.sh k3s install` 装好集群，后续的 **`preflight.sh`** / **`kweaver-core`** 请保持 distro 一致：在子模块名前加 **`--distro=k3s`**，或 **`export KUBE_DISTRO=k3s`**，否则 `preflight` 可能报 k3s 与 kubeadm 路径不一致，bootstrap 行为也容易对不上。
+**`KUBE_DISTRO` 默认为 `k8s`**（包管理安装 Kubernetes + 单节点 **kubeadm**）。**k3s** 为可选的更轻的单节点栈。若已用 `deploy.sh k3s install` 装好集群，后续的 **`preflight.sh`** / **`foundry`** 请保持 distro 一致：在子模块名前加 **`--distro=k3s`**，或 **`export KUBE_DISTRO=k3s`**，否则 `preflight` 可能报 k3s 与 kubeadm 路径不一致，bootstrap 行为也容易对不上。
 
 ### kubeadm / `KUBE_DISTRO=k8s`（默认）
 
-单节点 kubeadm 流程为 **`bash ./deploy.sh k8s install`**（`deploy/scripts/services/k8s.sh`）。若 `kubectl` 已可用，`ensure_k8s` 会跳过重复安装；随后 **`ensure_platform_prerequisites`** 会安装随平台一起交付的 **data-services**（MariaDB、Redis、Kafka、ZooKeeper、OpenSearch 等），再装 Core。**macOS kind** 不写宿主机 kubeadm：**`KWEAVER_SKIP_PLATFORM_BOOTSTRAP` 下，`kweaver-core install` 会先跑与 `data-services install` 相同的 Helm 数据层**，见下文 macOS。历史写法 **`kubeadm`** 仍可作为 **`k8s`** 的别名。
+单节点 kubeadm 流程为 **`bash ./deploy.sh k8s install`**（`deploy/scripts/services/k8s.sh`）。若 `kubectl` 已可用，`ensure_k8s` 会跳过重复安装；随后 **`ensure_platform_prerequisites`** 会安装随平台一起交付的 **data-services**（MariaDB、Redis、Kafka、ZooKeeper、OpenSearch 等），再装 Core。**macOS kind** 不写宿主机 kubeadm：**`KWEAVER_SKIP_PLATFORM_BOOTSTRAP` 下，`foundry install` 会先跑与 `data-services install` 相同的 Helm 数据层**，见下文 macOS。历史写法 **`kubeadm`** 仍可作为 **`k8s`** 的别名。
 
-**`deploy.sh` 全局参数**（`--distro`、`-y`、`--force-upgrade`、`--config` 等）必须写在**子模块名之前**。正确：`bash ./deploy.sh --distro=k3s kweaver-core install --minimum`。错误：`bash ./deploy.sh kweaver-core install --minimum --distro=k3s`（末尾的 `--distro` 不会按全局参数解析）。不想改命令顺序时可用：`export KUBE_DISTRO=k3s` 再执行 `bash ./deploy.sh kweaver-core install --minimum`。
+**`deploy.sh` 全局参数**（`--distro`、`-y`、`--force-upgrade`、`--config` 等）必须写在**子模块名之前**。正确：`bash ./deploy.sh --distro=k3s foundry install --minimum`。错误：`bash ./deploy.sh foundry install --minimum --distro=k3s`（末尾的 `--distro` 不会按全局参数解析）。不想改命令顺序时可用：`export KUBE_DISTRO=k3s` 再执行 `bash ./deploy.sh foundry install --minimum`。
 
 ```bash
 bash ./deploy.sh k8s install
-bash ./deploy.sh kweaver-core install --minimum
+bash ./deploy.sh foundry install --minimum
 ```
 
 ### k3s（可选 — 轻量单节点）
@@ -30,13 +30,13 @@ bash ./deploy.sh kweaver-core install --minimum
 使用官方 k3s 安装脚本（禁用 Traefik；仍会安装 **ingress-nginx** 以保持与现有 chart/accessAddress 一致）。可通过 `K3S_INSTALL_URL`、`INSTALL_K3S_VERSION`、`INSTALL_K3S_MIRROR` 等环境变量切换镜像或版本。
 
 ```bash
-cd kweaver-core/deploy
+cd foundry/deploy
 
 bash ./deploy.sh k3s install
 
 # 与 k3s 对齐 distro，供 preflight 与平台 bootstrap 使用：
-bash ./deploy.sh --distro=k3s kweaver-core install --minimum
-# 或：export KUBE_DISTRO=k3s && bash ./deploy.sh kweaver-core install --minimum
+bash ./deploy.sh --distro=k3s foundry install --minimum
+# 或：export KUBE_DISTRO=k3s && bash ./deploy.sh foundry install --minimum
 ```
 
 查看状态：`bash ./deploy.sh k3s status`；卸载：`bash ./deploy.sh k3s uninstall`。
@@ -49,16 +49,16 @@ bash ./deploy.sh --distro=k3s kweaver-core install --minimum
 
 ### macOS（可选 — 本机 kind 开发）
 
-**仅供 Mac 上做验证；正式安装请以本文 Linux 章节为准。** 本机用 **kind** 起 Kubernetes，不在 Mac 上跑 `preflight.sh` / `k3s install`。**`mac.sh` 设置 `KWEAVER_SKIP_PLATFORM_BOOTSTRAP`**。**`kweaver-core install` 会先执行 `ensure_data_services`**（与单独跑 `data-services install` 一致：MariaDB、Redis、Kafka、Zookeeper、OpenSearch）；**`mac.sh` 默认 `AUTO_INSTALL_INGRESS_NGINX=false`**，避免重复装 ingress。需要跳过自带数据层时使用 **`KWEAVER_SKIP_DATA_SERVICES_BUNDLE=true`**（高级用法 / 外接中间件）。仍可单独执行 **`data-services install`** 只做数据层或刷新。**Apple Silicon：** kind 节点为 **arm64**；**步骤见 [dev/README.zh.md](dev/README.zh.md)。**
+**仅供 Mac 上做验证；正式安装请以本文 Linux 章节为准。** 本机用 **kind** 起 Kubernetes，不在 Mac 上跑 `preflight.sh` / `k3s install`。**`mac.sh` 设置 `KWEAVER_SKIP_PLATFORM_BOOTSTRAP`**。**`foundry install` 会先执行 `ensure_data_services`**（与单独跑 `data-services install` 一致：MariaDB、Redis、Kafka、Zookeeper、OpenSearch）；**`mac.sh` 默认 `AUTO_INSTALL_INGRESS_NGINX=false`**，避免重复装 ingress。需要跳过自带数据层时使用 **`KWEAVER_SKIP_DATA_SERVICES_BUNDLE=true`**（高级用法 / 外接中间件）。仍可单独执行 **`data-services install`** 只做数据层或刷新。**Apple Silicon：** kind 节点为 **arm64**；**步骤见 [dev/README.zh.md](dev/README.zh.md)。**
 
 ```bash
 cd deploy   # 仓库的 deploy/ 目录
 bash ./dev/mac.sh doctor
 # 可选：用 Homebrew 补全缺失工具 — bash ./dev/mac.sh doctor --fix（或 -y doctor --fix 跳过确认）
 bash ./dev/mac.sh cluster up
-bash ./dev/mac.sh kweaver-core install --minimum   # 默认带 --minimum；前置自动装 data-services（与 data-services install 相同）
+bash ./dev/mac.sh foundry install --minimum   # 默认带 --minimum；前置自动装 data-services（与 data-services install 相同）
 # 可选：bash ./dev/mac.sh data-services install   # 仅数据层 / 刷新
-# 可选：bash ./dev/mac.sh kweaver-core download
+# 可选：bash ./dev/mac.sh foundry download
 # 可选：bash ./dev/mac.sh onboard；需非交互时在命令前加 -y
 ```
 
@@ -84,12 +84,12 @@ setenforce 0
 dnf install containerd.io
 ```
 
-### 安装 KWeaver Core
+### 安装 BKN Foundry
 
 ```bash
 # 1. 克隆仓库
-git clone https://github.com/kweaver-ai/kweaver-core.git
-cd kweaver-core/deploy
+git clone https://github.com/kweaver-ai/foundry.git
+cd foundry/deploy
 
 # 2.（推荐）装机前体检 / 修复
 sudo bash ./preflight.sh                # 仅检查（默认）
@@ -100,24 +100,24 @@ sudo bash ./preflight.sh --help         # 全部参数（--role、--skip、--rep
 # 默认体检对齐 k8s/kubeadm；走单节点 k3s 时用：sudo bash ./preflight.sh --distro=k3s
 #（与 deploy 共用环境变量 KUBE_DISTRO=k3s）
 
-# 3. 安装 KWeaver Core
+# 3. 安装 BKN Foundry
 # 最小化安装 — 首次体验推荐
-bash ./deploy.sh kweaver-core install --minimum
-# 默认走 kubeadm（k8s）。若改用单节点 k3s（--distro 须写在 kweaver-core 之前）：
-# bash ./deploy.sh --distro=k3s kweaver-core install --minimum
-# 或：export KUBE_DISTRO=k3s && bash ./deploy.sh kweaver-core install --minimum
+bash ./deploy.sh foundry install --minimum
+# 默认走 kubeadm（k8s）。若改用单节点 k3s（--distro 须写在 foundry 之前）：
+# bash ./deploy.sh --distro=k3s foundry install --minimum
+# 或：export KUBE_DISTRO=k3s && bash ./deploy.sh foundry install --minimum
 # 等价于:
-# bash ./deploy.sh kweaver-core install --set auth.enabled=false --set businessDomain.enabled=false
+# bash ./deploy.sh foundry install --set auth.enabled=false --set businessDomain.enabled=false
 
 # 完整安装（包含 auth 和 business-domain 模块）
-bash ./deploy.sh kweaver-core install
+bash ./deploy.sh foundry install
 
 # 脚本会交互式提示输入访问地址，并自动检测 API Server 地址。
 
 # 或显式指定地址（跳过交互提示）：
-#   --access_address       客户端访问 KWeaver 服务的地址（可以是 IP 或域名）
+#   --access_address       客户端访问 BKN Foundry 服务的地址（可以是 IP 或域名）
 #   --api_server_address   K8s API Server 绑定的本机网卡 IP（必须是真实的网卡地址）
-bash ./deploy.sh kweaver-core install \
+bash ./deploy.sh foundry install \
   --access_address=<你的IP> \
   --api_server_address=<你的IP>
 
@@ -134,11 +134,36 @@ sudo bash ./onboard.sh -y     # 非交互模式（按默认）
 sudo bash ./onboard.sh --help # 全部参数（--config=models.yaml、--enable-bkn-search、--skip-context-loader 等）
 ```
 
-> **为什么要 `sudo`？** `onboard.sh` 会读 `$HOME/.kweaver-ai/config.yaml`（由 `sudo deploy.sh` 写到 `/root/.kweaver-ai/` 下）并把 `kweaver` 认证 token 写到 `$HOME/.kweaver`。不加 `sudo` 会回退到仓库内模板 `deploy/conf/config.yaml`，可能解析出和安装时不一致的 access URL。**macOS 开发路径**（`bash ./dev/mac.sh onboard`）**不需要** `sudo`。脚本启动时也会打印这条提示；可用 `ONBOARD_SUDO_HINT_DISABLED=1` 关闭。
+> **为什么要 `sudo`？** `onboard.sh` 会读 `$HOME/.openbkn-ai/config.yaml`（由 `sudo deploy.sh` 写到 `/root/.openbkn-ai/` 下）并把 `kweaver` 认证 token 写到 `$HOME/.kweaver`。不加 `sudo` 会回退到仓库内模板 `deploy/conf/config.yaml`，可能解析出和安装时不一致的 access URL。**macOS 开发路径**（`bash ./dev/mac.sh onboard`）**不需要** `sudo`。脚本启动时也会打印这条提示；可用 `ONBOARD_SUDO_HINT_DISABLED=1` 关闭。
 
 > 完整的 preflight / onboard 流程、ISF 双 CLI 鉴权与 Mermaid 流程图见 [help/zh/install.md — Post-install：`onboard.sh`](../help/zh/install.md#post-installonboardsh安装后引导)。
 
 > **`onboard.sh` 终端输出为英文**；ISF HTTP **401001017** 且 **stdin/stdout 为 TTY** 时脚本会**先询问**：（**默认回车**）**`auth change-password`**；（**o / oauth**）浏览器 **`auth login` -k**。说明见 [`dev/README.zh.md`](../dev/README.zh.md)。产品文档 [`help/zh/install.md`](../help/zh/install.md)、[`help/en/install.md`](../help/en/install.md)。
+
+### 开发/测试：选择 chart 版本（`--version_file`）
+
+正式安装会在提交进仓库的 manifest（`release-manifests/<版本>/bkn-foundry.yaml`）里
+**钉死**各 chart 版本 —— 即 lockfile，可复现。
+
+**开发/测试**通常想要最新构建，而 CI 只会重新发布某分支**实际改动到**的组件。
+`scripts/gen-dev-manifest.sh` 会从 GHCR 逐 chart 解析版本，生成一份 manifest，
+用 `--version_file` 传入安装：
+
+```bash
+# 最新 stable —— 每个 chart 取最高干净 semver（如 0.1.0）
+./scripts/gen-dev-manifest.sh --out=/tmp/m.yaml
+
+# 测某分支 —— 该分支重建过的组件用分支构建；其余回退到最新 stable，
+# 再回退到 --base 分支（默认 main）
+./scripts/gen-dev-manifest.sh --branch=fix/my-thing --out=/tmp/m.yaml
+
+# 用生成的 manifest 安装
+sudo bash ./deploy.sh --distro=k3s foundry install --minimum --version_file=/tmp/m.yaml
+```
+
+逐 chart 解析（stable 优先）：`--branch` 最新构建 → 最新 stable → `--base` 最新构建 → 报错。
+生成的 manifest 会逐 chart 标注来源（`branch` / `stable` / `base`）。
+需要 `gh`（已登录，`package:read`）+ `python3`；详见 `./scripts/gen-dev-manifest.sh -h`。
 
 ## 📋 Prerequisites
 
@@ -160,18 +185,18 @@ sudo bash ./onboard.sh --help # 全部参数（--config=models.yaml、--enable-b
 | `mirrors.aliyun.com` | RPM 软件包源 |
 | `mirrors.tuna.tsinghua.edu.cn` | `containerd.io` RPM 源 |
 | `registry.aliyuncs.com` | Kubernetes 组件镜像 |
-| `swr.cn-east-3.myhuaweicloud.com` | KWeaver 应用镜像仓库 |
+| `swr.cn-east-3.myhuaweicloud.com` | BKN Foundry 应用镜像仓库 |
 | `repo.huaweicloud.com` | Helm 二进制下载 |
 | `kweaver-ai.github.io` | KWeaver Helm Chart 仓库 |
 | `rancher-mirror.rancher.cn` | k3s 安装脚本/二进制（k3s 快速路径；可用 `K3S_INSTALL_URL` 覆盖） |
 
 ## 📦 部署模型
 
-`kweaver-core` 是这个 `deploy` 目录里的产品入口，安装链路如下：
+`foundry` 是这个 `deploy` 目录里的产品入口，安装链路如下：
 
 1. 安装或补齐单节点 Kubernetes、local-path storage、ingress-nginx。
 2. 安装或补齐数据服务：MariaDB、Redis、Kafka、ZooKeeper、OpenSearch。
-3. 部署 KWeaver Core 应用层 chart。
+3. 部署 BKN Foundry 应用层 chart。
 
 Core 应用层包括数据服务管理、应用部署和任务编排相关的 chart。
 
@@ -182,14 +207,14 @@ Core 应用层包括数据服务管理、应用部署和任务编排相关的 ch
 ### 推荐命令
 
 ```bash
-# 安装 KWeaver Core（推荐入口）
-./deploy.sh kweaver-core install
+# 安装 BKN Foundry（推荐入口）
+./deploy.sh foundry install
 
 # 查看 Core 状态
-./deploy.sh kweaver-core status
+./deploy.sh foundry status
 
 # 卸载 Core
-./deploy.sh kweaver-core uninstall
+./deploy.sh foundry uninstall
 
 # 集群与 Pod 状态
 kubectl get nodes
@@ -212,11 +237,11 @@ deploy/
 
 ## 🗑️ Uninstall
 
-`bash deploy.sh kweaver-core uninstall` 只卸载 Core 应用层。
+`bash deploy.sh foundry uninstall` 只卸载 Core 应用层。
 
 ```bash
 # 1. 卸载 Core 应用层
-./deploy.sh kweaver-core uninstall
+./deploy.sh foundry uninstall
 
 ```
 `bash deploy.sh k8s reset` 重置 Kubernetes 集群，包括数据服务和core。

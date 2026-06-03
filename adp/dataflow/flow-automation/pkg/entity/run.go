@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/drivenadapters"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/dependency"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/utils"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/drivenadapters"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/pkg/dependency"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/pkg/utils"
 )
 
 // PushMessage NSQ Publish method

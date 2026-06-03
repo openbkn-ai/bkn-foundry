@@ -3,11 +3,11 @@ package agentsvc
 // import (
 // 	"context"
 
-// 	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/drivenadapter/httpaccess/agentexecutoraccess/agentexecutoraccreq"
-// 	agentreq "github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/driveradapter/api/rdto/agent/req"
-// 	agentresp "github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/driveradapter/api/rdto/agent/resp"
-// 	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/infra/common/cenum"
-// 	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/infra/common/ctype"
+// 	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/drivenadapter/httpaccess/agentexecutoraccess/agentexecutoraccreq"
+// 	agentreq "github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/driveradapter/api/rdto/agent/req"
+// 	agentresp "github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/driveradapter/api/rdto/agent/resp"
+// 	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/infra/common/cenum"
+// 	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/infra/common/ctype"
 // 	"github.com/pkg/errors"
 // )
 

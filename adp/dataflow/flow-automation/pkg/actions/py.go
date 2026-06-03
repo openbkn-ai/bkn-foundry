@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/common"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/drivenadapters"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/telemetry/trace"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/entity"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/drivenadapters"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/libs/go/telemetry/trace"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/pkg/entity"
 )
 
 const pyExe = "@internal/tool/py3"

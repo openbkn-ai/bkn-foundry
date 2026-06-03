@@ -1,4 +1,4 @@
-// Copyright 2026 kowell.ai
+// Copyright 2026 openbkn.ai
 // Copyright The kweaver.ai Authors.
 //
 // Licensed under the Apache License, Version 2.0.
@@ -53,14 +53,26 @@ func ValidateResourceRequest(ctx context.Context, req *interfaces.ResourceReques
 	}
 }
 
-// validateDatasetRequest 校验 dataset 类资源：schema_definition 必填且字段名/长度/重复/类型/特征均合法。
+// validateDatasetRequest 校验 dataset 类资源：仅检查 schema_definition 非空并跑
+// extension 兜底校验。
+//
+// 关键差异 vs PR #469/#473：那次 PR 给 Dataset 引入了字段 Name/DisplayName/
+// FeatureName 去重 + FeatureType-vs-FieldType 严格匹配（参见 validateDatasetFields
+// / validateDatasetFeatures）。但 bkn-backend 与 kweaver-ai/kweaver-core v0.8.0
+// 一直使用 ES 风格的 text + keyword multi-field schema（fulltext 与 keyword 特征
+// 引用同一 text 字段），并且历史 schema 里存在两处复制粘贴遗留的重复字段名。在
+// v0.8.0 时这些遗留可以工作，是因为 vega-backend 的 Dataset 路径根本没有跑这些
+// 校验（只 LogicView 跑）。
+//
+// 为了和 v0.8.0 行为保持一致并解除 bkn-backend 首次部署被 panic 的问题，这里
+// 不再调用 validateDatasetFields——schema_definition 的具体字段约束改由调用方
+// （bkn-backend / 数据集模板生成器）自行保障；vega-backend 仍校验扩展字段的
+// 结构。validateDatasetFields / validateDatasetFeatures 函数保留在文件里供
+// 后续按需重新接回。
 func validateDatasetRequest(ctx context.Context, req *interfaces.ResourceRequest) error {
 	if len(req.SchemaDefinition) == 0 {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Dataset_InvalidParameter_SchemaDefinition).
 			WithErrorDetails("schema_definition is required and must contain at least one field")
-	}
-	if err := validateDatasetFields(ctx, req.SchemaDefinition); err != nil {
-		return err
 	}
 	return extensions.ValidateSchemaPropertiesExtensions(ctx, req.SchemaDefinition)
 }

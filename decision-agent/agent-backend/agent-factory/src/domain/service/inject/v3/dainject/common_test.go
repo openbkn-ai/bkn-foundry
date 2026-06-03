@@ -4,10 +4,10 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/cconf"
-	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/conf"
-	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/infra/common/cglobal"
-	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/infra/common/global"
+	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/cconf"
+	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/conf"
+	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/infra/common/cglobal"
+	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/infra/common/global"
 	"github.com/stretchr/testify/assert"
 )
 

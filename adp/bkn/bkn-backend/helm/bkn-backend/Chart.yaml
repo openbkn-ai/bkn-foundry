@@ -2,4 +2,4 @@ apiVersion: v1
 appVersion: "0.5.0"
 description: helm chart for bkn-backend
 name: bkn-backend
-version: 0.5.0
+version: 0.1.0

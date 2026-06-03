@@ -1,4 +1,4 @@
-# Copyright 2026 kowell.ai
+# Copyright 2026 openbkn.ai
 # Copyright The kweaver.ai Authors.
 # Licensed under the Apache License, Version 2.0.
 # See the LICENSE file in the project root for details.
@@ -12,7 +12,7 @@ FROM ${BUILD_IMAGE} AS builder
 COPY ./server /go/src
 
 ARG SERVER_VERSION=0.1.0
-ARG GOPROXY_URL="http://goproxy.cn,direct"
+ARG GOPROXY_URL="https://proxy.golang.org,direct"
 
 ENV GOPROXY=${GOPROXY_URL}
 

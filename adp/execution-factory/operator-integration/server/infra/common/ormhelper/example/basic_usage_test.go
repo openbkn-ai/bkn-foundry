@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
 )
 
 // TestBasicUsage 基本使用示例测试

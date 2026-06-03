@@ -13,8 +13,8 @@ import (
 	"time"
 
 	jsoniter "github.com/json-iterator/go"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/errors"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/log"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/libs/go/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/libs/go/log"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 

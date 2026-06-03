@@ -14,7 +14,7 @@ python-dateutil==2.8.2
 pydantic==2.5.3
 annotated-types==0.6.0
 pyahocorasick==2.1.0
-pandas==2.0.3
+pandas==2.2.3
 PyMuPDF==1.24.2
 pyzbar==0.1.9
 pdfplumber==0.11.8
@@ -23,4 +23,4 @@ opencv-python==4.9.0.80
 PyMySQL==1.1.2
 python-dotenv==1.0.1
 beautifulsoup4==4.12.3
-numpy==1.24.4
+numpy==1.26.4

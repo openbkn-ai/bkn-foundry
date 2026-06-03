@@ -1,4 +1,4 @@
-module github.com/kowell-ai/kowell-core/trace-ai/agent-observability
+module github.com/openbkn-ai/bkn-foundry/trace-ai/agent-observability
 
 go 1.24.0
 

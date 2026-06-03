@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/kowell-ai/kowell-core/trace-ai/agent-observability/src/domain/valueobject/opensearchvo"
-	"github.com/kowell-ai/kowell-core/trace-ai/agent-observability/src/port/driven/ihttpaccess/tracequeryport"
+	"github.com/openbkn-ai/bkn-foundry/trace-ai/agent-observability/src/domain/valueobject/opensearchvo"
+	"github.com/openbkn-ai/bkn-foundry/trace-ai/agent-observability/src/port/driven/ihttpaccess/tracequeryport"
 )
 
 type TraceQueryService struct {

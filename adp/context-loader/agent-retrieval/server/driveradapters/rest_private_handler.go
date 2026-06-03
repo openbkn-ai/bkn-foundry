@@ -1,4 +1,4 @@
-// Copyright 2026 kowell.ai
+// Copyright 2026 openbkn.ai
 // Copyright The kweaver.ai Authors.
 //
 // Licensed under the Apache License, Version 2.0.
@@ -12,16 +12,16 @@ package driveradapters
 import (
 	"github.com/gin-gonic/gin"
 
-	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/driveradapters/knactionrecall"
-	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/driveradapters/knfindskills"
-	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/driveradapters/knlogicpropertyresolver"
-	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/driveradapters/knontologyjob"
-	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/driveradapters/knqueryobjectinstance"
-	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/driveradapters/knquerysubgraph"
-	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/driveradapters/knretrieval"
-	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/driveradapters/knsearch"
-	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/driveradapters/mcpproxy"
-	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/driveradapters/knactionrecall"
+	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/driveradapters/knfindskills"
+	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/driveradapters/knlogicpropertyresolver"
+	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/driveradapters/knontologyjob"
+	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/driveradapters/knqueryobjectinstance"
+	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/driveradapters/knquerysubgraph"
+	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/driveradapters/knretrieval"
+	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/driveradapters/knsearch"
+	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/driveradapters/mcpproxy"
+	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
 type restPrivateHandler struct {

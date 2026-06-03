@@ -7,11 +7,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/common"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/errors"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces/model"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/logics/metric"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/common"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/errors"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces/model"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/metric"
 	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
 )
 

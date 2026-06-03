@@ -1,6 +1,6 @@
 package umtypes
 
-import "github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/infra/cmp/umcmp/dto/umret"
+import "github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/infra/cmp/umcmp/dto/umret"
 
 type OsnInfoMapS struct {
 	UserNameMap       map[string]string `json:"user_name_map"`

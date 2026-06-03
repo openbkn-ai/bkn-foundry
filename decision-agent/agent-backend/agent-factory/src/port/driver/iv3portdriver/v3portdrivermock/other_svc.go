@@ -13,8 +13,8 @@ import (
 	context "context"
 	reflect "reflect"
 
-	otherreq "github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/driveradapter/api/rdto/other/otherreq"
-	otherresp "github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/driveradapter/api/rdto/other/otherresp"
+	otherreq "github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/driveradapter/api/rdto/other/otherreq"
+	otherresp "github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/driveradapter/api/rdto/other/otherresp"
 	gomock "go.uber.org/mock/gomock"
 )
 

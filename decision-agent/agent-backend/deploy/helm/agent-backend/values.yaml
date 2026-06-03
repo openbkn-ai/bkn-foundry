@@ -2,7 +2,7 @@ replicaCount: 1
 
 nodeSelector: {}
 
-namespace: dip
+namespace: openbkn
 moduleName: agent-factory
 
 # 设置为dev则为开发模式.
@@ -14,10 +14,10 @@ securityContext:
   runAsGroup: 1001
 
 image:
-  registry: acr.aishu.cn
+  registry: ghcr.io/openbkn-ai
   service:
-    repository: dip/agent-backend
-    tag: data-581755
+    repository: agent-backend
+    tag: "__VERSION__"
     pullPolicy: IfNotPresent
 
 service:

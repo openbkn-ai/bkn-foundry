@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/common"
 )
 
 var (

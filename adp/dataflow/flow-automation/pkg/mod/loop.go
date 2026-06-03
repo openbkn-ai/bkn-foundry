@@ -7,11 +7,11 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/common"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/entity"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/log"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/render"
-	normalizeutil "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/utils/normalize"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/pkg/entity"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/pkg/log"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/pkg/render"
+	normalizeutil "github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/utils/normalize"
 )
 
 // LoopHandler 循环处理器，从DefExecutor中独立出来

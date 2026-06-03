@@ -6,7 +6,6 @@
 # Optional state (set by probe steps):
 #   ONBOARD_REPORT_MAIN_MODE   interactive | bkn-only | config-yaml
 #   ONBOARD_REPORT_ISF_TEST_USER  human-readable status
-#   ONBOARD_REPORT_CONTEXT_LOADER  human-readable status
 #   ONBOARD_REPORT_MODELS         human-readable status (e.g. "skipped — N LLM, M small/embedding already registered")
 #   ONBOARD_REPORT_BKN_CM         human-readable status (e.g. "skipped — already patched (defaultSmallModelName=…)")
 
@@ -15,8 +14,7 @@ onboard_print_completion_report() {
         return 0
     fi
 
-    local _ctx _isfu _line _kwh _kctx _bd _acurl _isf _isf_styled
-    _ctx="${ONBOARD_REPORT_CONTEXT_LOADER:-}"
+    local _isfu _line _kwh _kctx _bd _acurl _isf _isf_styled
     _isfu="${ONBOARD_REPORT_ISF_TEST_USER:-}"
     _line="--------------------------------------------"
 
@@ -50,7 +48,7 @@ onboard_print_completion_report() {
     {
         echo ""
         echo "============================================"
-        echo "  KWeaver Onboard — completion report"
+        echo "  BKN Foundry Onboard — completion report"
         echo "  Time (UTC)  $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
         echo "  Mode        ${ONBOARD_REPORT_MAIN_MODE:-interactive}"
         echo "${_line}"
@@ -65,7 +63,6 @@ onboard_print_completion_report() {
         echo "  User [test]    ${_isfu:-(not run or not recorded)}"
         echo "  Models         ${ONBOARD_REPORT_MODELS:-(not run or not recorded)}"
         echo "  BKN ConfigMap  ${ONBOARD_REPORT_BKN_CM:-(not run or not recorded)}"
-        echo "  Context Loader ${_ctx:-(not run or not recorded)}"
         echo "${_line}"
         case "${_isfu}" in
             created*)
@@ -84,20 +81,16 @@ onboard_print_completion_report() {
                 ;;
         esac
         echo "   • Verify:    kweaver bkn list -bd ${_bd} --pretty"
-        if [[ "${_ctx}" == *"imported_ok"* ]]; then
-            echo "   • Toolbox:   Context Loader was imported (re-check above for HTTP 2xx and no error in body)."
-        else
-            echo "   • Toolbox:   re-run deploy/onboard.sh to import Context Loader (or import manually with kweaver call impex; see ./onboard.sh -h)."
-        fi
-        echo "   • Docs:      https://github.com/kweaver-ai/kweaver-core/blob/main/help/README.md"
-        echo "                https://github.com/kweaver-ai/kweaver-core/blob/main/help/en/README.md  (EN)"
-        echo "                https://github.com/kweaver-ai/kweaver-core/blob/main/help/zh/README.md  (中文)"
+        echo "   • Toolbox:   the Context Loader toolset is auto-imported by agent-retrieval at startup (no manual step)."
+        echo "   • Docs:      https://github.com/openbkn-ai/bkn-foundry/blob/main/help/README.md"
+        echo "                https://github.com/openbkn-ai/bkn-foundry/blob/main/help/en/README.md  (EN)"
+        echo "                https://github.com/openbkn-ai/bkn-foundry/blob/main/help/zh/README.md  (中文)"
         echo "============================================"
         echo ""
     } 2>/dev/null || {
         echo ""
         echo "============================================"
-        echo "  KWeaver Onboard — done"
+        echo "  BKN Foundry Onboard — done"
         echo "============================================"
         echo ""
     }

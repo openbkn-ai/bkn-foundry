@@ -1,4 +1,4 @@
-namespace: dip
+namespace: openbkn
 moduleName: ontology-query
 
 # 环境变量：语言/时区/执行限制
@@ -13,9 +13,9 @@ replicaCount: 1
 nodeSelector: {}
 
 image:
-  registry: acr.aishu.cn
-  repository: dip/ontology-query
-  tag: tag
+  registry: ghcr.io/openbkn-ai
+  repository: ontology-query
+  tag: "__VERSION__"
   pullPolicy: IfNotPresent
 
 service:

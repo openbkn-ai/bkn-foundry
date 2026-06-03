@@ -11,8 +11,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/infra/logger"
-	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/logger"
+	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
 type stubKnSearchService struct {

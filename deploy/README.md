@@ -1,10 +1,10 @@
-# KWeaver Core Deploy
+# BKN Foundry Deploy
 
 [中文](README.zh.md) | English
 
-One-click deployment of **KWeaver Core** onto a single-node Kubernetes cluster.
+One-click deployment of **BKN Foundry** onto a single-node Kubernetes cluster.
 
-This `deploy` directory provides scripts to install KWeaver Core along with its dependencies including Kubernetes, infrastructure services, and data services.
+This `deploy` directory provides scripts to install BKN Foundry along with its dependencies including Kubernetes, infrastructure services, and data services.
 
 **Platforms:** **Linux** is the recommended and fully documented install target (`preflight.sh`, k3s or kubeadm, data services). **macOS** is **optional** for **local development only** (Docker + kind + `dev/mac.sh`); see **[Mac install (dev)](dev/README.md)** ([中文](dev/README.zh.md)) — not a substitute for Linux production installs.
 
@@ -12,17 +12,17 @@ This `deploy` directory provides scripts to install KWeaver Core along with its 
 
 ## Linux: default `k8s` (kubeadm) vs optional k3s
 
-**`KUBE_DISTRO` defaults to `k8s`** (package-manager Kubernetes + **kubeadm** on a single node). **k3s** is an optional lighter single-node stack. If you install k3s with `deploy.sh k3s install`, keep **`preflight.sh`** / **`kweaver-core`** aligned by passing **`--distro=k3s`** **before** the module (or **`export KUBE_DISTRO=k3s`**) — otherwise `preflight` may flag a k3s/kubeadm mismatch and installs can disagree on bootstrap.
+**`KUBE_DISTRO` defaults to `k8s`** (package-manager Kubernetes + **kubeadm** on a single node). **k3s** is an optional lighter single-node stack. If you install k3s with `deploy.sh k3s install`, keep **`preflight.sh`** / **`foundry`** aligned by passing **`--distro=k3s`** **before** the module (or **`export KUBE_DISTRO=k3s`**) — otherwise `preflight` may flag a k3s/kubeadm mismatch and installs can disagree on bootstrap.
 
 ### kubeadm / `KUBE_DISTRO=k8s` (default)
 
-Single-node kubeadm flow is **`bash ./deploy.sh k8s install`** (`deploy/scripts/services/k8s.sh`). Product modules reuse an existing cluster when `kubectl` already works (`ensure_k8s` skips reinstall), then **`ensure_platform_prerequisites`** installs the bundled **data-services** layer (MariaDB, Redis, Kafka, ZooKeeper, OpenSearch, …) before Core. **macOS kind** skips host kubeadm but **`kweaver-core install` still runs `ensure_data_services` first** (see macOS section). Legacy **`kubeadm`** is still accepted as an alias for **`k8s`**.
+Single-node kubeadm flow is **`bash ./deploy.sh k8s install`** (`deploy/scripts/services/k8s.sh`). Product modules reuse an existing cluster when `kubectl` already works (`ensure_k8s` skips reinstall), then **`ensure_platform_prerequisites`** installs the bundled **data-services** layer (MariaDB, Redis, Kafka, ZooKeeper, OpenSearch, …) before Core. **macOS kind** skips host kubeadm but **`foundry install` still runs `ensure_data_services` first** (see macOS section). Legacy **`kubeadm`** is still accepted as an alias for **`k8s`**.
 
-**`deploy.sh` global flags** (`--distro`, `-y`, `--force-upgrade`, `--config`, …) must appear **before** the module name. Correct: `bash ./deploy.sh --distro=k3s kweaver-core install --minimum`. Wrong: `bash ./deploy.sh kweaver-core install --minimum --distro=k3s` (that `--distro` is not read as a global option). Equivalent without moving flags: `export KUBE_DISTRO=k3s` then `bash ./deploy.sh kweaver-core install --minimum`.
+**`deploy.sh` global flags** (`--distro`, `-y`, `--force-upgrade`, `--config`, …) must appear **before** the module name. Correct: `bash ./deploy.sh --distro=k3s foundry install --minimum`. Wrong: `bash ./deploy.sh foundry install --minimum --distro=k3s` (that `--distro` is not read as a global option). Equivalent without moving flags: `export KUBE_DISTRO=k3s` then `bash ./deploy.sh foundry install --minimum`.
 
 ```bash
 bash ./deploy.sh k8s install
-bash ./deploy.sh kweaver-core install --minimum
+bash ./deploy.sh foundry install --minimum
 ```
 
 ### k3s (optional — lightweight single-node)
@@ -30,13 +30,13 @@ bash ./deploy.sh kweaver-core install --minimum
 Uses the upstream k3s installer (Traefik disabled; this stack still installs **ingress-nginx** for a consistent chart/accessAddress setup). Override `K3S_INSTALL_URL`, `INSTALL_K3S_VERSION`, or `INSTALL_K3S_MIRROR` if you need a mirror or air-gapped tuning.
 
 ```bash
-cd kweaver-core/deploy
+cd foundry/deploy
 
 bash ./deploy.sh k3s install
 
 # Align distro with k3s for preflight and platform bootstrap:
-bash ./deploy.sh --distro=k3s kweaver-core install --minimum
-# or: export KUBE_DISTRO=k3s && bash ./deploy.sh kweaver-core install --minimum
+bash ./deploy.sh --distro=k3s foundry install --minimum
+# or: export KUBE_DISTRO=k3s && bash ./deploy.sh foundry install --minimum
 ```
 
 Check status: `bash ./deploy.sh k3s status` — remove: `bash ./deploy.sh k3s uninstall`.
@@ -49,16 +49,16 @@ On the **same Linux host as k3s**, use the file **`/etc/rancher/k3s/k3s.yaml`** 
 
 ### macOS (optional — local dev with kind)
 
-**Use this only for Mac validation; for real installs use Linux above.** Local Kubernetes via **kind** — no `preflight.sh` / `k3s` on the Mac host. **`mac.sh` sets `KWEAVER_SKIP_PLATFORM_BOOTSTRAP`** (no host k3s/kubeadm bootstrap). **`kweaver-core install` now runs `ensure_data_services` first** — same Helm layer as **`data-services install`** (MariaDB, Redis, Kafka, ZooKeeper, OpenSearch); **`mac.sh` defaults `AUTO_INSTALL_INGRESS_NGINX=false`** so kind’s existing ingress is not duplicated. Set **`KWEAVER_SKIP_DATA_SERVICES_BUNDLE=true`** to skip bundled data installs (advanced / external infra). **`data-services install`** alone remains useful to pre-stage or refresh the data layer. **Apple Silicon:** kind nodes are **arm64**; use arm64/multi-arch images (see `dev/conf/mac-config.yaml`). **Step order:** [dev/README.md](dev/README.md).
+**Use this only for Mac validation; for real installs use Linux above.** Local Kubernetes via **kind** — no `preflight.sh` / `k3s` on the Mac host. **`mac.sh` sets `KWEAVER_SKIP_PLATFORM_BOOTSTRAP`** (no host k3s/kubeadm bootstrap). **`foundry install` now runs `ensure_data_services` first** — same Helm layer as **`data-services install`** (MariaDB, Redis, Kafka, ZooKeeper, OpenSearch); **`mac.sh` defaults `AUTO_INSTALL_INGRESS_NGINX=false`** so kind’s existing ingress is not duplicated. Set **`KWEAVER_SKIP_DATA_SERVICES_BUNDLE=true`** to skip bundled data installs (advanced / external infra). **`data-services install`** alone remains useful to pre-stage or refresh the data layer. **Apple Silicon:** kind nodes are **arm64**; use arm64/multi-arch images (see `dev/conf/mac-config.yaml`). **Step order:** [dev/README.md](dev/README.md).
 
 ```bash
 cd deploy   # repository deploy/ directory
 bash ./dev/mac.sh doctor
 # optional: install missing tools via Homebrew — bash ./dev/mac.sh doctor --fix (or -y doctor --fix to skip confirm)
 bash ./dev/mac.sh cluster up
-bash ./dev/mac.sh kweaver-core install --minimum   # implies --minimum; bundled data-services first (same as data-services install)
+bash ./dev/mac.sh foundry install --minimum   # implies --minimum; bundled data-services first (same as data-services install)
 # optional: bash ./dev/mac.sh data-services install   # only if you want the data layer without Core, or to refresh it
-# optional: bash ./dev/mac.sh kweaver-core download
+# optional: bash ./dev/mac.sh foundry download
 # optional: bash ./dev/mac.sh onboard
 # add leading -y for non-interactive (deploy.sh / onboard)
 ```
@@ -85,12 +85,12 @@ setenforce 0
 dnf install containerd.io
 ```
 
-### Install KWeaver Core
+### Install BKN Foundry
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/kweaver-ai/kweaver-core.git
-cd kweaver-core/deploy
+git clone https://github.com/kweaver-ai/foundry.git
+cd foundry/deploy
 
 # 2. (Recommended) Pre-install host check / fix
 sudo bash ./preflight.sh                # check-only (default)
@@ -101,24 +101,24 @@ sudo bash ./preflight.sh --help         # all flags (--role, --skip, --report, -
 # Default checks match k8s/kubeadm; for single-node k3s use: sudo bash ./preflight.sh --distro=k3s
 # (same as env KUBE_DISTRO=k3s — shared with deploy.sh)
 
-# 3. Install KWeaver Core
+# 3. Install BKN Foundry
 # Minimum installation — recommended for first-time experience
-bash ./deploy.sh kweaver-core install --minimum
-# Default is kubeadm (k8s). For single-node k3s instead (--distro must be BEFORE kweaver-core):
-# bash ./deploy.sh --distro=k3s kweaver-core install --minimum
-# or: export KUBE_DISTRO=k3s && bash ./deploy.sh kweaver-core install --minimum
+bash ./deploy.sh foundry install --minimum
+# Default is kubeadm (k8s). For single-node k3s instead (--distro must be BEFORE foundry):
+# bash ./deploy.sh --distro=k3s foundry install --minimum
+# or: export KUBE_DISTRO=k3s && bash ./deploy.sh foundry install --minimum
 # Equivalent to:
-# bash ./deploy.sh kweaver-core install --set auth.enabled=false --set businessDomain.enabled=false
+# bash ./deploy.sh foundry install --set auth.enabled=false --set businessDomain.enabled=false
 
 # Full installation (includes auth & business-domain modules)
-bash ./deploy.sh kweaver-core install
+bash ./deploy.sh foundry install
 
 # The script will interactively prompt for the access address and auto-detect the API server address.
 
 # Or specify addresses explicitly (skips interactive prompts):
-#   --access_address       Address for clients to reach KWeaver services (can be IP or domain)
+#   --access_address       Address for clients to reach BKN Foundry services (can be IP or domain)
 #   --api_server_address   IP bound to a local network interface for K8s API server (must be a real NIC IP)
-bash ./deploy.sh kweaver-core install \
+bash ./deploy.sh foundry install \
   --access_address=<your-ip> \
   --api_server_address=<your-ip>
 
@@ -136,11 +136,37 @@ sudo bash ./onboard.sh -y     # non-interactive (uses defaults)
 sudo bash ./onboard.sh --help # all flags (--config=models.yaml, --enable-bkn-search, --skip-context-loader, …)
 ```
 
-> **Why `sudo`?** `onboard.sh` reads `$HOME/.kweaver-ai/config.yaml` (written by `sudo deploy.sh` into `/root/.kweaver-ai/`) and writes the `kweaver` auth token to `$HOME/.kweaver`. Running it without `sudo` falls back to the in-repo template `deploy/conf/config.yaml` and may resolve a different access URL. **macOS dev path** (`bash ./dev/mac.sh onboard`) does **not** need `sudo`. The script also prints this hint at startup; silence with `ONBOARD_SUDO_HINT_DISABLED=1`.
+> **Why `sudo`?** `onboard.sh` reads `$HOME/.openbkn-ai/config.yaml` (written by `sudo deploy.sh` into `/root/.openbkn-ai/`) and writes the `kweaver` auth token to `$HOME/.kweaver`. Running it without `sudo` falls back to the in-repo template `deploy/conf/config.yaml` and may resolve a different access URL. **macOS dev path** (`bash ./dev/mac.sh onboard`) does **not** need `sudo`. The script also prints this hint at startup; silence with `ONBOARD_SUDO_HINT_DISABLED=1`.
 
 > Full preflight / onboard flow, ISF dual-CLI auth and Mermaid diagrams: see [help/en/install.md — Post-install: `onboard.sh`](../help/en/install.md#post-install-onboardsh).
 
 > **`onboard.sh` runtime messages** are **English**; on ISF HTTP **401001017**, a **TTY** prompts (**Enter**=`auth change-password` default; **`o`**=OAuth browser). Chinese + English context: [`dev/README.md`](../dev/README.md#onboard-and-kweaver-admin-full-isf) · [`dev/README.zh.md`](../dev/README.zh.md); product docs [`help/zh/install.md`](../help/zh/install.md) / [`help/en/install.md`](../help/en/install.md).
+
+### Dev/test: pick chart versions (`--version_file`)
+
+Release installs pin exact chart versions in a committed manifest
+(`release-manifests/<version>/bkn-foundry.yaml`) — a lockfile, reproducible.
+
+For **dev/test** you usually want the newest builds, and CI only republishes the
+components a branch actually changed. `scripts/gen-dev-manifest.sh` resolves each
+chart's version from GHCR and writes a manifest you pass with `--version_file`:
+
+```bash
+# latest stable — every chart = highest clean semver (e.g. 0.1.0)
+./scripts/gen-dev-manifest.sh --out=/tmp/m.yaml
+
+# test a branch — components it rebuilt use the branch build; the rest fall back
+# to latest stable, then to the --base branch (default: main)
+./scripts/gen-dev-manifest.sh --branch=fix/my-thing --out=/tmp/m.yaml
+
+# install the generated manifest
+sudo bash ./deploy.sh --distro=k3s foundry install --minimum --version_file=/tmp/m.yaml
+```
+
+Per-chart resolution (stable-first): `--branch` newest build → latest stable →
+`--base` newest build → error. The generated manifest annotates each chart's
+source (`branch` / `stable` / `base`). Requires `gh` (authenticated,
+`package:read`) + `python3`; see `./scripts/gen-dev-manifest.sh -h`.
 
 ## 📋 Prerequisites
 
@@ -162,18 +188,18 @@ The deployment scripts need access to these domains:
 | `mirrors.aliyun.com` | RPM package mirrors |
 | `mirrors.tuna.tsinghua.edu.cn` | `containerd.io` RPM mirror |
 | `registry.aliyuncs.com` | Kubernetes component images |
-| `swr.cn-east-3.myhuaweicloud.com` | KWeaver application image registry |
+| `swr.cn-east-3.myhuaweicloud.com` | BKN Foundry application image registry |
 | `repo.huaweicloud.com` | Helm binary download |
 | `kweaver-ai.github.io` | KWeaver Helm chart repository |
 | `rancher-mirror.rancher.cn` | k3s install script / binary (k3s quickstart path; override with `K3S_INSTALL_URL`) |
 
 ## 📦 Deployment Model
 
-`kweaver-core` is the product-level entrypoint in this repository. The install flow is:
+`foundry` is the product-level entrypoint in this repository. The install flow is:
 
 1. Install or repair single-node Kubernetes, local-path storage, and ingress-nginx.
 2. Install or repair data services: MariaDB, Redis, Kafka, ZooKeeper, and OpenSearch.
-3. Deploy the KWeaver Core application charts.
+3. Deploy the BKN Foundry application charts.
 
 The Core application layer includes charts for data services management, application deployment, and task orchestration.
 
@@ -182,14 +208,14 @@ The Core application layer includes charts for data services management, applica
 ### Recommended commands
 
 ```bash
-# Install KWeaver Core
-./deploy.sh kweaver-core install
+# Install BKN Foundry
+./deploy.sh foundry install
 
 # Show Core status
-./deploy.sh kweaver-core status
+./deploy.sh foundry status
 
 # Uninstall Core
-./deploy.sh kweaver-core uninstall
+./deploy.sh foundry uninstall
 
 # Cluster and Pod status
 kubectl get nodes
@@ -212,11 +238,11 @@ deploy/
 
 ## 🗑️ Uninstall
 
-`bash deploy.sh kweaver-core uninstall` removes only the Core application layer.
+`bash deploy.sh foundry uninstall` removes only the Core application layer.
 
 ```bash
 # Remove the Core application layer
-./deploy.sh kweaver-core uninstall
+./deploy.sh foundry uninstall
 ```
 
 `bash deploy.sh k8s reset` resets the Kubernetes cluster, including data services and core.

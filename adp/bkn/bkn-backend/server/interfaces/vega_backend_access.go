@@ -1,4 +1,4 @@
-// Copyright 2026 kowell.ai
+// Copyright 2026 openbkn.ai
 // Copyright The kweaver.ai Authors.
 //
 // Licensed under the Apache License, Version 2.0.
@@ -38,6 +38,7 @@ type CatalogRequest struct {
 	Name        string   `json:"name"`
 	Tags        []string `json:"tags"`
 	Description string   `json:"description"`
+	Enabled     bool     `json:"enabled"`
 	// ConnectorType string         `json:"connector_type"`
 	// ConnectorCfg  map[string]any `json:"connector_config"`
 }

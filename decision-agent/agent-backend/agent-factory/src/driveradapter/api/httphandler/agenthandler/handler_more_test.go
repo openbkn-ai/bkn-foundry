@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"testing"
 
-	agentreq "github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/driveradapter/api/rdto/agent/req"
-	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/port/driver/iportdriver/iportdrivermock"
+	agentreq "github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/driveradapter/api/rdto/agent/req"
+	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/port/driver/iportdriver/iportdrivermock"
 	"github.com/kweaver-ai/kweaver-go-lib/rest"
 
 	"github.com/stretchr/testify/assert"

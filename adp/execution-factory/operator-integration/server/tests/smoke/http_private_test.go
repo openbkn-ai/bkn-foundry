@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/utils"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/utils"
 )
 
 func TestPrivateSmokeOperatorInfo(t *testing.T) {

@@ -1,4 +1,4 @@
-namespace: dip
+namespace: openbkn
 moduleName: vega-backend
 
 # 环境变量：语言/时区
@@ -12,9 +12,9 @@ replicaCount: 1
 nodeSelector: {}
 
 image:
-  registry: acr.aishu.cn
-  repository: dip/vega-backend
-  tag: tag
+  registry: ghcr.io/openbkn-ai
+  repository: vega-backend
+  tag: "__VERSION__"
   pullPolicy: IfNotPresent
 
 service:

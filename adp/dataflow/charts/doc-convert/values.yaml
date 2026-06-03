@@ -1,17 +1,17 @@
 # 统一副本数配置（因为已合并为一个多容器 Pod）
 replicaCount: 1
-namespace: kweaver
+namespace: openbkn
 enableDualStack: false
 type: ClusterIP
 
 image:
-  registry: acr.aishu.cn
+  registry: ghcr.io/openbkn-ai
   gotenberg:
-    repository: dip/gotenberg
-    tag: "7"
+    repository: gotenberg
+    tag: "__VERSION__"
   tika:
-    repository: dip/tika
-    tag: "3.2.3"
+    repository: tika
+    tag: "__VERSION__"
   pullPolicy: IfNotPresent
 
 # Gotenberg 配置

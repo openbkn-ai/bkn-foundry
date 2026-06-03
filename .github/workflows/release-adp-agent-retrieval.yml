@@ -1,0 +1,46 @@
+name: release-adp-agent-retrieval
+
+on:
+  push:
+    branches: ['**']
+    paths:
+      - 'adp/context-loader/agent-retrieval/**'
+      - '.github/workflows/release-adp-agent-retrieval.yml'
+      - '.github/workflows/reusable-*.yml'
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish to GHCR (true) or verify build only (false)'
+        type: boolean
+        default: false
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  test:
+    uses: ./.github/workflows/reusable-test.yml
+    with:
+      service-path: adp/context-loader/agent-retrieval
+      stack: chart-only
+
+  build:
+    needs: test
+    uses: ./.github/workflows/reusable-build.yml
+    with:
+      service-path: adp/context-loader/agent-retrieval
+      dockerfile: docker/Dockerfile
+      context: '.'
+      image-name: agent-retrieval
+      version: ${{ needs.test.outputs.version }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+
+  chart:
+    needs: [test, build]
+    uses: ./.github/workflows/reusable-chart.yml
+    with:
+      service-path: adp/context-loader/agent-retrieval
+      chart-path: helm/agent-retrieval
+      chart-name: agent-retrieval
+      version: ${{ needs.test.outputs.version }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}

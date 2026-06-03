@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
 )
 
 // MCPServerReleaseDB MCP Server发布表对应的结构体

@@ -42,7 +42,7 @@ kweaver call GET /api/agent-operator-integration/v1/tools
 
 # 调用工具
 kweaver call POST /api/agent-operator-integration/v1/tools/tool_web_search/invoke \
-  -d '{"query": "KWeaver 最新版本", "limit": 5}'
+  -d '{"query": "BKN Foundry 最新版本", "limit": 5}'
 ```
 
 #### 技能包管理
@@ -120,7 +120,7 @@ for tool in tools["data"]:
 
 tool_result = client.execution_factory.invoke_tool(
     tool_id="tool_web_search",
-    input={"query": "KWeaver 最新版本", "limit": 5}
+    input={"query": "BKN Foundry 最新版本", "limit": 5}
 )
 for item in tool_result["results"]:
     print(item["title"], item["url"])
@@ -167,7 +167,7 @@ tools.data.forEach((tool) => console.log(tool.id, tool.name));
 
 const toolResult = await client.executionFactory.invokeTool({
   toolId: 'tool_web_search',
-  input: { query: 'KWeaver 最新版本', limit: 5 },
+  input: { query: 'BKN Foundry 最新版本', limit: 5 },
 });
 toolResult.results.forEach((item) => console.log(item.title, item.url));
 
@@ -214,7 +214,7 @@ curl -sk -X POST "https://<访问地址>/api/agent-operator-integration/v1/tools
   -H "Authorization: Bearer $(kweaver token)" \
   -H "Content-Type: application/json" \
   -d '{
-    "query": "KWeaver 最新版本",
+    "query": "BKN Foundry 最新版本",
     "limit": 5
   }'
 

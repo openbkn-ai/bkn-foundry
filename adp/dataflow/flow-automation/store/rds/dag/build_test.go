@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/entity"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/mod"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/pkg/entity"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/pkg/mod"
 	"go.mongodb.org/mongo-driver/bson"
 )
 

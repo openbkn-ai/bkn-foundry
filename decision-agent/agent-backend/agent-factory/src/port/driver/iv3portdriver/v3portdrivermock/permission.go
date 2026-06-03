@@ -13,11 +13,11 @@ import (
 	context "context"
 	reflect "reflect"
 
-	cdaenum "github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/domain/enum/cdaenum"
-	cdapmsenum "github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/domain/enum/cdapmsenum"
-	authzhttpres "github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/drivenadapter/httpaccess/authzhttp/authzhttpres"
-	cpmsreq "github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/drivenadapter/rdto/agent_permission/cpmsreq"
-	cpmsresp "github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/drivenadapter/rdto/agent_permission/cpmsresp"
+	cdaenum "github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/domain/enum/cdaenum"
+	cdapmsenum "github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/domain/enum/cdapmsenum"
+	authzhttpres "github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/drivenadapter/httpaccess/authzhttp/authzhttpres"
+	cpmsreq "github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/drivenadapter/rdto/agent_permission/cpmsreq"
+	cpmsresp "github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/drivenadapter/rdto/agent_permission/cpmsresp"
 	gomock "go.uber.org/mock/gomock"
 )
 

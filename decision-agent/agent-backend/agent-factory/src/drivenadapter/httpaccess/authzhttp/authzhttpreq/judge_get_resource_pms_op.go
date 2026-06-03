@@ -1,6 +1,6 @@
 package authzhttpreq
 
-import "github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/infra/common/cenum"
+import "github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/infra/common/cenum"
 
 // ResourceOperationReq 获取资源操作请求
 type ResourceOperationReq struct {

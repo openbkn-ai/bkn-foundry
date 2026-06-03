@@ -8,7 +8,7 @@ import (
 )
 
 func TestNewAESCrypto_ValidKey(t *testing.T) {
-	key := "" // 32 bytes
+	key := "01234567890123456789012345678901" // 32 bytes
 	aes, err := crypto.NewAESCrypto(key)
 
 	assert.NoError(t, err)

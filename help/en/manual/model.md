@@ -2,7 +2,7 @@
 
 ## 📖 Overview
 
-KWeaver Core manages LLMs and small models through a unified **Model Manager** (`mf-model-manager`). No models are pre-configured by default — you must register them before using semantic search or Agent features.
+BKN Foundry manages LLMs and small models through a unified **Model Manager** (`mf-model-manager`). No models are pre-configured by default — you must register them before using semantic search or Agent features.
 
 | Model Type | Purpose | Required For |
 |------------|---------|--------------|

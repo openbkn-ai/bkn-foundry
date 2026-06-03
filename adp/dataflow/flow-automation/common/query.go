@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/utils"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/utils"
 )
 
 var dagFieldQueryLimits = []string{"name", "description", "status", "created_at", "updated_at", "type", "creator", "trigger"}

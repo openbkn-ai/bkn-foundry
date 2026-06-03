@@ -30,4 +30,4 @@ Incremental Key:
 
 | Type | ID | Name |
 |------|-----|------|
-| data_view | {{SKILLS_DV_ID}} | {{SKILLS_DV_NAME}} |
+| resource | {{SKILLS_DV_ID}} | {{SKILLS_DV_NAME}} |

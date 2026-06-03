@@ -1,0 +1,18 @@
+[tool.pytest.ini_options]
+testpaths = ["tests/unit"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+
+[tool.ruff]
+# 设置目标Python版本，例如 Python 3.10
+target-version = "py310"
+# 设置缩进宽度为 2 个空格
+indent-width = 2
+line-length = 150
+
+[tool.ruff.format]
+# 确保缩进风格为空格
+indent-style = "space"
+# 其他格式化设置（例如引号风格）
+quote-style = "double"

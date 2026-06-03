@@ -3,8 +3,8 @@ package boot
 import (
 	"context"
 
-	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/domain/service/inject/v3/dainject"
-	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/infra/common/global"
+	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/domain/service/inject/v3/dainject"
+	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/infra/common/global"
 )
 
 func initPermission() (err error) {

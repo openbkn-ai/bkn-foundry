@@ -1,4 +1,4 @@
-// Copyright 2026 kowell.ai
+// Copyright 2026 openbkn.ai
 // Copyright The kweaver.ai Authors.
 //
 // Licensed under the Apache License, Version 2.0.
@@ -15,11 +15,11 @@ import (
 	"github.com/gin-gonic/gin"
 	validator "github.com/go-playground/validator/v10"
 
-	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/infra/config"
-	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/infra/errors"
-	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/infra/rest"
-	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/interfaces"
-	logicsKAR "github.com/kowell-ai/adp/context-loader/agent-retrieval/server/logics/knactionrecall"
+	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/config"
+	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/errors"
+	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/rest"
+	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/interfaces"
+	logicsKAR "github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/logics/knactionrecall"
 )
 
 // KnActionRecallHandler 业务知识网络行动召回处理器

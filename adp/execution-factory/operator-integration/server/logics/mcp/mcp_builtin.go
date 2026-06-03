@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"net/http"
 
-	icommon "github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/common"
-	infraerrors "github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/errors"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces/model"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/utils"
+	icommon "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/common"
+	infraerrors "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/errors"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces/model"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/utils"
 	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
 )
 

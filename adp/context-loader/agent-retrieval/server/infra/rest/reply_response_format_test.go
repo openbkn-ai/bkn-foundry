@@ -9,7 +9,7 @@ import (
 	"github.com/smartystreets/goconvey/convey"
 	"github.com/toon-format/toon-go"
 
-	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/infra/common"
+	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/common"
 )
 
 func TestReplyOK_WithTOONResponseFormatFromContext(t *testing.T) {

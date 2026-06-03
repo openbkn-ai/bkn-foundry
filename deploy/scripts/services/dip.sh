@@ -143,7 +143,7 @@ _dip_ensure_kweaver_core() {
     local -a isf_release_names=()
     kweaver_mapfile_compat isf_release_names _dip_list_manifest_release_names "isf" "${isf_dependency_manifest}" "${isf_dependency_version}"
     local -a core_release_names=()
-    kweaver_mapfile_compat core_release_names _dip_list_manifest_release_names "kweaver-core" "${core_dependency_manifest}" "${core_dependency_version}"
+    kweaver_mapfile_compat core_release_names _dip_list_manifest_release_names "bkn-foundry" "${core_dependency_manifest}" "${core_dependency_version}"
 
     for release_name in "${isf_release_names[@]}"; do
         if _dip_helm_release_exists "${release_name}" "${namespace}"; then
@@ -181,7 +181,7 @@ _dip_ensure_kweaver_core() {
     fi
 
     if [[ "${missing_core}" == "true" ]]; then
-        log_info "Installing missing KWeaver Core releases..."
+        log_info "Installing missing BKN Foundry releases..."
         if [[ -n "${core_dependency_manifest}" ]]; then
             CORE_VERSION_MANIFEST_FILE="${core_dependency_manifest}"
             HELM_CHART_VERSION="${core_dependency_version}"
@@ -190,7 +190,7 @@ _dip_ensure_kweaver_core() {
             HELM_CHART_VERSION="${original_chart_version}"
             CORE_VERSION_MANIFEST_FILE="${original_core_manifest}"
             ISF_VERSION_MANIFEST_FILE="${original_isf_manifest}"
-            log_error "Failed to install missing KWeaver Core releases"
+            log_error "Failed to install missing BKN Foundry releases"
             return 1
         fi
         HELM_CHART_VERSION="${original_chart_version}"
@@ -298,12 +298,12 @@ _dip_release_names_reverse() {
 
 _dip_resolve_core_dependency_version() {
     _dip_require_version_manifest || return 1
-    get_release_manifest_dependency_version "${DIP_VERSION_MANIFEST_FILE}" "kweaver-core"
+    get_release_manifest_dependency_version "${DIP_VERSION_MANIFEST_FILE}" "bkn-foundry"
 }
 
 _dip_resolve_core_dependency_manifest() {
     _dip_require_version_manifest || return 1
-    get_release_manifest_dependency_manifest "${DIP_VERSION_MANIFEST_FILE}" "kweaver-core"
+    get_release_manifest_dependency_manifest "${DIP_VERSION_MANIFEST_FILE}" "bkn-foundry"
 }
 
 _dip_has_direct_dependency() {
@@ -382,9 +382,9 @@ _dip_show_access_hints() {
         return 0
     fi
 
-    log_info "Access KWeaver deploy console: ${base_url}/deploy"
-    log_info "Access KWeaver studio: ${base_url}/studio"
-    log_info "Access KWeaver dip-hub: ${base_url}/dip-hub"
+    log_info "Access BKN Foundry deploy console: ${base_url}/deploy"
+    log_info "Access BKN Foundry studio: ${base_url}/studio"
+    log_info "Access BKN Foundry dip-hub: ${base_url}/dip-hub"
 }
 
 _dip_confirm_missing_openclaw_paths() {
@@ -809,7 +809,7 @@ install_dip() {
     # Resolve chart source: local directory takes priority over remote repo
     if [[ "${use_local}" != "true" ]]; then
         if [[ -z "${HELM_CHART_REPO_NAME}" ]]; then
-            HELM_CHART_REPO_NAME="kweaver"
+            HELM_CHART_REPO_NAME="openbkn"
         fi
         log_info "No explicit local DIP charts directory provided, using Helm repo."
         log_info "  Version:   ${HELM_CHART_VERSION:-latest}"
@@ -817,7 +817,8 @@ install_dip() {
             log_info "  Version Manifest: ${DIP_VERSION_MANIFEST_FILE}"
         fi
         log_info "  Helm Repo: ${HELM_CHART_REPO_NAME} -> ${HELM_CHART_REPO_URL}"
-        ensure_helm_repo "${HELM_CHART_REPO_NAME}" "${HELM_CHART_REPO_URL}"
+        parse_manifest_source "${DIP_VERSION_MANIFEST_FILE:-}"
+        ensure_chart_source "${HELM_CHART_REPO_NAME}" "${HELM_CHART_REPO_URL}"
     fi
 
     log_info "Target namespace: ${namespace}"
@@ -857,7 +858,7 @@ download_dip() {
     ensure_helm_available
     _dip_require_version_manifest || return 1
 
-    HELM_CHART_REPO_NAME="${HELM_CHART_REPO_NAME:-kweaver}"
+    HELM_CHART_REPO_NAME="${HELM_CHART_REPO_NAME:-openbkn}"
     HELM_CHART_REPO_URL="${HELM_CHART_REPO_URL:-https://kweaver-ai.github.io/helm-repo/}"
 
     local charts_dir
@@ -872,7 +873,8 @@ download_dip() {
     ISF_LOCAL_CHARTS_DIR="${charts_dir}"
     ENABLE_ISF="true"
 
-    ensure_helm_repo "${HELM_CHART_REPO_NAME}" "${HELM_CHART_REPO_URL}"
+    parse_manifest_source "${DIP_VERSION_MANIFEST_FILE:-}"
+    ensure_chart_source "${HELM_CHART_REPO_NAME}" "${HELM_CHART_REPO_URL}"
     if [[ -n "${DIP_VERSION_MANIFEST_FILE:-}" ]]; then
         CORE_VERSION_MANIFEST_FILE="$(_dip_resolve_core_dependency_manifest)"
         HELM_CHART_VERSION="$(_dip_resolve_core_dependency_version)"
@@ -981,7 +983,8 @@ _install_dip_release_repo() {
 
     log_info "Installing ${release_name} from repo..."
 
-    local chart_ref="${helm_repo_name}/${chart_name}"
+    local chart_ref
+    chart_ref="$(build_chart_ref "${helm_repo_name}" "${chart_name}")"
 
     local -a helm_args=(
         "upgrade" "--install" "${release_name}"

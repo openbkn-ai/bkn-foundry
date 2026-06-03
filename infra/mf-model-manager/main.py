@@ -1,3 +1,4 @@
+import asyncio
 import os
 import signal
 import multiprocessing
@@ -18,22 +19,37 @@ app = create_app()
 kafka_consumer_process = None
 
 
-# 在 FastAPI 启动/停止事件中管理 Kafka 消费者，确保在 uvicorn main:app 模式下也会启动
+# 在 FastAPI 启动/停止事件中管理 Kafka 消费者，确保在 uvicorn main:app 模式下也会启动。
+#
+# 关键约束：FastAPI lifespan startup 是 *同步* 阶段——所有 on_event("startup")
+# handler 顺序 await 完成后，uvicorn 才会绑定端口并响应请求（含 /api/v1/health/ready）。
+# start_kafka_consumer_process() 里有 time.sleep(2) 同步阻塞 + subprocess.Popen
+# 可能进一步因 Kafka broker 握手慢而拖时间；放在 startup handler 里直接 await，
+# 会让端口绑定推迟到 Kafka 子进程稳定后才发生，startup probe 早就探到
+# connection refused -> CrashLoopBackOff。
+#
+# 改成 fire-and-forget：startup handler 立刻安排一个后台任务，handler 本身
+# 立刻返回，uvicorn 接着完成 lifespan、绑定端口、响应 /health/ready。Kafka
+# 消费者起不来不阻塞业务接口，符合 _check_and_create_topic 的现有降级语义。
 @app.on_event("startup")
 async def _startup_kafka_consumer():
+    asyncio.get_event_loop().run_in_executor(None, _start_kafka_consumer_safely)
+
+
+def _start_kafka_consumer_safely():
     try:
         global kafka_consumer_process
         if kafka_consumer_process is None or kafka_consumer_process.poll() is not None:
-            StandLogger.info_log("FastAPI 启动事件：准备启动 Kafka 消费者进程")
+            StandLogger.info_log("后台任务：准备启动 Kafka 消费者进程")
             ok = start_kafka_consumer_process()
             if ok:
-                StandLogger.info_log("FastAPI 启动事件：Kafka 消费者进程启动成功")
+                StandLogger.info_log("后台任务：Kafka 消费者进程启动成功")
             else:
-                StandLogger.warn("FastAPI 启动事件：Kafka 消费者进程启动失败")
+                StandLogger.warn("后台任务：Kafka 消费者进程启动失败（业务接口不受影响）")
         else:
-            StandLogger.info_log("FastAPI 启动事件：检测到 Kafka 消费者进程已在运行，跳过启动")
+            StandLogger.info_log("后台任务：检测到 Kafka 消费者进程已在运行，跳过启动")
     except Exception as e:
-        StandLogger.error(f"FastAPI 启动事件：启动 Kafka 消费者进程异常: {e}")
+        StandLogger.error(f"后台任务：启动 Kafka 消费者进程异常: {e}")
 
 
 @app.on_event("shutdown")

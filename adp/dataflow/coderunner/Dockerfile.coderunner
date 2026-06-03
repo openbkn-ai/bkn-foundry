@@ -1,4 +1,5 @@
-ARG BASE_IMAGE=acr.aishu.cn/dip/python:3.9.13-ubuntu22.04.20251014-2
+# 公网 Python 3.12（原内网 dip/python:3.9.13 已 EOL；可经 build-arg 覆盖）
+ARG BASE_IMAGE=python:3.12-bookworm
 FROM ${BASE_IMAGE}
 
 WORKDIR /opt
@@ -17,7 +18,7 @@ RUN set -ex && \
     apt-get -y install --only-upgrade linux-libc-dev && \
     rm -rf /var/lib/apt/lists/*
 
-RUN pip3 config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple && \
+RUN pip3 config set global.index-url https://pypi.org/simple && \
     pip3 install --no-cache-dir setuptools==78.1.1 && \
     pip3 install --no-cache-dir deps/* && \
     cd coderunner && \
@@ -25,9 +26,9 @@ RUN pip3 config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple &&
     rm -rf /opt/coderunner/deps && \
     rm -rf /opt/coderunner/requirements.txt && \
     rm -rf /root/.cache/pip /tmp/* /opt/deps /opt/requirements.txt && \
-    find /usr/local/lib/python3.9/site-packages -name "*.pyc" -delete && \
-    find /usr/local/lib/python3.9/site-packages -name "__pycache__" -type d -exec rm -rf {} + && \
-    find /usr/local/lib/python3.9/site-packages -type d \( -name "tests" -o -name "test" -o -name "docs" -o -name "examples" \) -exec rm -rf {} +
+    find /usr/local/lib/python3.12/site-packages -name "*.pyc" -delete && \
+    find /usr/local/lib/python3.12/site-packages -name "__pycache__" -type d -exec rm -rf {} + && \
+    find /usr/local/lib/python3.12/site-packages -type d \( -name "tests" -o -name "test" -o -name "docs" -o -name "examples" \) -exec rm -rf {} +
 
 RUN cp -r /usr/local /usr/local.bk && \
     cp init_site_packages.sh /opt/coderunner/ && \

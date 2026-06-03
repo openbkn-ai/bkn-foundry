@@ -6,19 +6,19 @@ package mcp
 import (
 	"sync"
 
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/dbaccess"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/drivenadapters"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/config"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/validator"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces/model"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/logics/auth"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/logics/business_domain"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/logics/category"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/logics/intcomp"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/logics/mcpinstance"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/logics/metric"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/logics/toolbox"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/dbaccess"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/drivenadapters"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/config"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/validator"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces/model"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/auth"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/business_domain"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/category"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/intcomp"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/mcpinstance"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/metric"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/toolbox"
 )
 
 var (

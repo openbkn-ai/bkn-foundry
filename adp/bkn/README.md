@@ -6,7 +6,7 @@
 
 The Ontology Engine is a distributed business knowledge network management system developed in Go, providing ontology modeling, data management, and intelligent query capabilities. The system adopts a microservices architecture, divided into ontology management and ontology query modules, supporting the construction, storage, and querying of large-scale knowledge networks.
 
-As a core component of the KWeaver AI platform, the Ontology Engine focuses on building enterprise-level business knowledge networks, enabling business knowledge modeling, storage, querying, and application. The system follows clean architecture principles and SOLID design, offering excellent scalability and maintainability.
+As a core component of the OpenBKN platform, the Ontology Engine focuses on building enterprise-level business knowledge networks, enabling business knowledge modeling, storage, querying, and application. The system follows clean architecture principles and SOLID design, offering excellent scalability and maintainability.
 
 ### Core Features
 
@@ -78,7 +78,7 @@ Provides efficient knowledge graph query services. Main features include:
 - **Go**: 1.24.0 or higher
 - **Database**: MariaDB 11.4+ or DM8 (for data storage)
 - **Search Engine**: OpenSearch 2.x (for search and indexing)
-- **Dependency Services**: Requires other KWeaver platform services
+- **Dependency Services**: Requires other BKN Foundry services
 - **Docker**: Optional, for containerized deployment
 - **Kubernetes**: Optional, for cluster deployment
 

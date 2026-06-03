@@ -1,4 +1,4 @@
-// Copyright 2026 kowell.ai
+// Copyright 2026 openbkn.ai
 // Copyright The kweaver.ai Authors.
 //
 // Licensed under the Apache License, Version 2.0.
@@ -47,15 +47,7 @@ func Init(ctx context.Context, appSetting *common.AppSetting) error {
 	if catalog == nil {
 		// Create catalog
 		logger.Infof("Catalog %s not found, creating...", interfaces.BKN_CATALOG_NAME)
-		catalogReq := &interfaces.CatalogRequest{
-			ID:          interfaces.BKN_CATALOG_ID,
-			Name:        interfaces.BKN_CATALOG_NAME,
-			Description: "BKN的逻辑命名空间",
-			Tags:        []string{"BKN", "概念索引"},
-			// ConnectorType: "logical",
-			// ConnectorCfg:  make(map[string]any),
-		}
-		catalog, err = VBA.CreateCatalog(ctx, catalogReq)
+		catalog, err = VBA.CreateCatalog(ctx, bknCatalogRequest())
 		if err != nil {
 			logger.Errorf("CreateCatalog err:%v", err)
 			return err
@@ -114,6 +106,20 @@ func Init(ctx context.Context, appSetting *common.AppSetting) error {
 
 	logger.Info("Init BKN Dataset Success")
 	return nil
+}
+
+// bknCatalogRequest builds the create request for the BKN logical namespace catalog.
+// Enabled MUST be true: a logical catalog has no connector/connectivity gate, and if
+// it is created disabled, BKN search/query fails with VegaBackend.Catalog.IsDisabled
+// because bkn-backend never enables it afterward (issue #7).
+func bknCatalogRequest() *interfaces.CatalogRequest {
+	return &interfaces.CatalogRequest{
+		ID:          interfaces.BKN_CATALOG_ID,
+		Name:        interfaces.BKN_CATALOG_NAME,
+		Description: "BKN的逻辑命名空间",
+		Tags:        []string{"BKN", "概念索引"},
+		Enabled:     true,
+	}
 }
 
 // deepCompareSchemas compares two Property arrays deeply

@@ -1,7 +1,7 @@
 package chelper
 
 import (
-	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/infra/common/cenum"
+	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/infra/common/cenum"
 )
 
 func SetAccountInfoToHeaderMap(headerMap map[string]string, accountID string, accountType cenum.AccountType) {

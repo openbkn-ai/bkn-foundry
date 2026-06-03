@@ -1,0 +1,48 @@
+name: automation-ghcr-cleanup
+
+# 定期清理 GHCR 上过期的 container packages（镜像 + helm OCI chart）。
+# 保留规则：
+#   - 纯 semver tag（X.Y.Z）—— 主版本发布
+#   - base 稳定 tag（v1 / v2）—— 共享 base image (model-factory-base, sandbox-*-base)
+#   - latest
+# 清理候选：其它一切 tag（含分支版本 0.1.0-<branch>.sha<7>）+ untagged 孤儿。
+# 超过 cut-off（默认 30 天）才真删。手动触发默认 dry-run（只列不删），需要真删
+# 在 workflow_dispatch 时把 dry-run 取消勾选。
+
+on:
+  schedule:
+    # 每周日 03:00 UTC（北京 11:00）
+    - cron: '0 3 * * 0'
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: 'Dry run: 只列出会删的版本，不真删'
+        type: boolean
+        default: true
+      cut-off:
+        description: '删除该时长之前的版本（e.g. 30d, 2w, 6h）'
+        type: string
+        default: '30d'
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete old GHCR container packages
+        uses: snok/container-retention-policy@v3
+        with:
+          account: ${{ github.repository_owner }}
+          token: ${{ github.token }}
+          # 所有 container package（镜像和 OCI chart 都是 container 类型）
+          image-names: '*'
+          # 排除保护 tag：纯 semver / vN / latest；其他都是清理候选
+          image-tags: '!^[0-9]+\.[0-9]+\.[0-9]+$ !^v[0-9]+$ !latest'
+          cut-off: ${{ inputs.cut-off || '30d' }}
+          # 不再额外保留"最近 N 个"——超过 cut-off 的就该删
+          keep-n-most-recent: 0
+          # 默认 dry-run；cron 触发时使用 false（真删）
+          dry-run: ${{ github.event_name == 'workflow_dispatch' && inputs.dry-run || false }}

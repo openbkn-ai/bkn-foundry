@@ -4,7 +4,7 @@ fullnameOverride: ""
 replicaCount: 1
 
 image:
-  registry: swr.cn-east-3.myhuaweicloud.com/kweaver-ai
+  registry: ghcr.io/openbkn-ai
   repository: agent-observability
   pullPolicy: IfNotPresent
   tag: "__VERSION__"

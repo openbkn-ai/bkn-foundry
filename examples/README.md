@@ -1,8 +1,8 @@
-# KWeaver Examples
+# BKN Foundry Examples
 
 [中文版](./README.zh.md)
 
-End-to-end examples that demonstrate core KWeaver capabilities using the CLI.
+End-to-end examples that demonstrate core BKN Foundry capabilities using the CLI.
 
 | Example | Story | What it shows |
 |---------|-------|---------------|

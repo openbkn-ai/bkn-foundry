@@ -9,9 +9,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/drivenadapters"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/driveradapters/middleware"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/drivenadapters"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/driveradapters/middleware"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/errors"
 	"github.com/gin-gonic/gin"
 )
 

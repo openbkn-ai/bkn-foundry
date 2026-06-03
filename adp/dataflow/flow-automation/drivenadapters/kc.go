@@ -8,12 +8,12 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/common"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/common/kccode"
-	otelHttp "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/http"
-	traceLog "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/telemetry/log"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/rds"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/utils"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/common/kccode"
+	otelHttp "github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/libs/go/http"
+	traceLog "github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/libs/go/telemetry/log"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/pkg/rds"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/utils"
 )
 
 const (

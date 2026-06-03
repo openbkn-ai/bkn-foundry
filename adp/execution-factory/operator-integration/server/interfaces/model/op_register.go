@@ -8,7 +8,7 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
 )
 
 // OperatorRegisterDB 算子注册数据库

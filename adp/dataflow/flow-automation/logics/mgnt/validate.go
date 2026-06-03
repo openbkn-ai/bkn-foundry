@@ -7,13 +7,13 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/common"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/drivenadapters"
-	aerr "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/errors"
-	ierr "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/errors"
-	traceLog "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/telemetry/log"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/entity"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/rds"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/drivenadapters"
+	aerr "github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/errors"
+	ierr "github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/libs/go/errors"
+	traceLog "github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/libs/go/telemetry/log"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/pkg/entity"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/pkg/rds"
 )
 
 // ErrTypeV1 新错误码规范前的错误结构

@@ -4,8 +4,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/domain/enum/chat_enum/chatresenum"
-	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/domain/valueobject/agentrespvo"
+	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/domain/enum/chat_enum/chatresenum"
+	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/domain/valueobject/agentrespvo"
 	"github.com/stretchr/testify/assert"
 )
 

@@ -9,7 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	jsoniter "github.com/json-iterator/go"
 
-	errorv2 "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/ecron/utils/rest/error"
+	errorv2 "github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/pkg/ecron/utils/rest/error"
 )
 
 const strErrorCode = "string"

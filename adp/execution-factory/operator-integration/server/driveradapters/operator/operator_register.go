@@ -9,11 +9,11 @@ import (
 	"github.com/creasty/defaults"
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/common"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/errors"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/rest"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/utils"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/common"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/errors"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/rest"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/utils"
 )
 
 // OperatorUpdateByOpenAPI 【内部接口】算子更新

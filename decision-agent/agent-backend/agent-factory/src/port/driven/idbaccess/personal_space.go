@@ -3,11 +3,11 @@ package idbaccess
 import (
 	"context"
 
-	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/drivenadapter/dbaccess/personalspacedbacc/psdbarg"
-	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/infra/persistence/dapo"
+	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/drivenadapter/dbaccess/personalspacedbacc/psdbarg"
+	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/infra/persistence/dapo"
 )
 
-//go:generate mockgen -package idbaccessmock -destination ./idbaccessmock/personal_space.go github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/port/driven/idbaccess IPersonalSpaceRepo
+//go:generate mockgen -package idbaccessmock -destination ./idbaccessmock/personal_space.go github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/port/driven/idbaccess IPersonalSpaceRepo
 type IPersonalSpaceRepo interface {
 	IDBAccBaseRepo
 

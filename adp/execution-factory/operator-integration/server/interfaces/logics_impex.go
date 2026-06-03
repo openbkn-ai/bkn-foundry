@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces/model"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces/model"
 )
 
 //go:generate mockgen -source=logics_impex.go -destination=../mocks/logics_impex.go -package=mocks

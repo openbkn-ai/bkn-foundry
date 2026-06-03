@@ -123,11 +123,11 @@ init_isf_database() {
         return 0
     fi
 
-    # Check if ISF manifest has pre-stage data-migrator (0.6.0+)
-    # If so, skip SQL initialization - the data-migrator chart will handle it
+    # If the manifest declares a stage:pre data-migrator release, the chart
+    # hook owns DB init; the script must not also run the SQL files.
     _isf_require_version_manifest || return 1
     if should_skip_db_init_for_manifest "${ISF_VERSION_MANIFEST_FILE}"; then
-        log_info "ISF manifest ${ISF_VERSION_MANIFEST_FILE} has pre-stage data-migrator (0.6.0+), skipping SQL initialization"
+        log_info "ISF manifest ${ISF_VERSION_MANIFEST_FILE} has pre-stage data-migrator, skipping SQL initialization"
         return 0
     fi
 
@@ -197,11 +197,12 @@ _isf_release_names() {
 install_isf() {
     log_info "Installing ISF services via Helm..."
     _isf_require_version_manifest || return 1
+    parse_manifest_source "${ISF_VERSION_MANIFEST_FILE:-}"
     log_info "  Version: ${HELM_CHART_VERSION}"
     if [[ -n "${ISF_VERSION_MANIFEST_FILE:-}" ]]; then
         log_info "  Version Manifest: ${ISF_VERSION_MANIFEST_FILE}"
     fi
-    log_info "  Helm Repo: ${HELM_CHART_REPO_NAME:-kweaver} -> ${HELM_CHART_REPO_URL:-https://kweaver-ai.github.io/helm-repo/}"
+    log_chart_source "${HELM_CHART_REPO_NAME:-kweaver}" "${HELM_CHART_REPO_URL:-https://kweaver-ai.github.io/helm-repo/}"
 
     if ! ensure_platform_prerequisites; then
         log_error "Failed to ensure platform prerequisites for ISF"
@@ -223,9 +224,8 @@ install_isf() {
         use_local=true
         log_info "Using local ISF charts from: ${charts_dir}"
     else
-        log_info "No explicit local ISF charts directory provided, using Helm repo."
-        log_info "Adding Helm repo: ${HELM_CHART_REPO_NAME} -> ${HELM_CHART_REPO_URL}"
-        ensure_helm_repo "${HELM_CHART_REPO_NAME}" "${HELM_CHART_REPO_URL}"
+        log_info "No explicit local ISF charts directory provided, using remote chart source."
+        ensure_chart_source "${HELM_CHART_REPO_NAME}" "${HELM_CHART_REPO_URL}"
     fi
     
     # Initialize database first
@@ -341,7 +341,8 @@ install_isf_release() {
     log_info "Installing ${release_name}..."
     
     # Build Helm chart reference
-    local chart_ref="${helm_repo_name}/${chart_name}"
+    local chart_ref
+    chart_ref="$(build_chart_ref "${helm_repo_name}" "${chart_name}")"
 
     local target_version="${release_version}"
     if [[ -z "${target_version}" ]]; then
@@ -389,7 +390,8 @@ download_isf() {
     local charts_dir
     charts_dir="$(_isf_download_charts_dir)"
 
-    ensure_helm_repo "${HELM_CHART_REPO_NAME}" "${HELM_CHART_REPO_URL}"
+    parse_manifest_source "${ISF_VERSION_MANIFEST_FILE:-}"
+    ensure_chart_source "${HELM_CHART_REPO_NAME}" "${HELM_CHART_REPO_URL}"
 
     local -a release_names=()
     kweaver_mapfile_compat release_names _isf_release_names

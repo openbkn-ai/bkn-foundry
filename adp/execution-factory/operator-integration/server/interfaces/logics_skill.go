@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces/model"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces/model"
 )
 
 //go:generate mockgen -source=logics_skill.go -destination=../mocks/logics_skill.go -package=mocks

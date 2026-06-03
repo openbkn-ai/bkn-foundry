@@ -1,0 +1,52 @@
+name: release-infra-mf-model-api
+
+# Image FROM ghcr.io/<owner>/model-factory-base:v2 (built by
+# release-infra-model-factory-base.yml). On push, reusable-build logs into GHCR
+# so the base pulls; that base build must have published first.
+# test stack = chart-only: mf-model-api has no requirements.txt, and the unit
+# tests have pre-existing failures tracked in issue #2.
+
+on:
+  push:
+    branches: ['**']
+    paths:
+      - 'infra/mf-model-api/**'
+      - '.github/workflows/release-infra-mf-model-api.yml'
+      - '.github/workflows/reusable-*.yml'
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish to GHCR (true) or verify build only (false)'
+        type: boolean
+        default: false
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  test:
+    uses: ./.github/workflows/reusable-test.yml
+    with:
+      service-path: infra/mf-model-api
+      stack: chart-only
+
+  build:
+    needs: test
+    uses: ./.github/workflows/reusable-build.yml
+    with:
+      service-path: infra/mf-model-api
+      dockerfile: Dockerfile
+      context: '.'
+      image-name: mf-model-api
+      version: ${{ needs.test.outputs.version }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+
+  chart:
+    needs: [test, build]
+    uses: ./.github/workflows/reusable-chart.yml
+    with:
+      service-path: infra/mf-model-api
+      chart-path: charts
+      chart-name: mf-model-api
+      version: ${{ needs.test.outputs.version }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}

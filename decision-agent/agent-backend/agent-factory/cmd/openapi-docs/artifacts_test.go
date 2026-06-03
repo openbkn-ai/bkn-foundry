@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/internal/openapidoc"
+	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/internal/openapidoc"
 	"github.com/stretchr/testify/require"
 )
 

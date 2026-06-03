@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# KWeaver deploy preflight checks (sourced by deploy/preflight.sh)
+# BKN Foundry deploy preflight checks (sourced by deploy/preflight.sh)
 # =============================================================================
 
 # shellcheck disable=SC2034
@@ -534,7 +534,7 @@ preflight_check_arch() {
             if [[ "${PREFLIGHT_REQUIRE_AMD64:-false}" == "true" ]]; then
                 preflight_fail "Architecture: ${m}; PREFLIGHT_REQUIRE_AMD64=true (need x86_64/amd64 images)"
             else
-                preflight_warn "Architecture: ${m} (verify KWeaver image availability for your platform)"
+                preflight_warn "Architecture: ${m} (verify BKN Foundry image availability for your platform)"
             fi
             ;;
         *)
@@ -575,7 +575,7 @@ preflight_check_dns() {
         return
     fi
     local h okc=0
-    for h in swr.cn-east-3.myhuaweicloud.com kweaver-ai.github.io; do
+    for h in ghcr.io swr.cn-east-3.myhuaweicloud.com kweaver-ai.github.io; do
         if getent hosts "${h}" &>/dev/null; then
             preflight_ok "DNS: ${h} resolves"
             okc=$((okc + 1))
@@ -590,6 +590,51 @@ preflight_check_dns() {
             preflight_warn "systemd-resolved active but no upstream DNS visible (resolvectl status); CoreDNS may fail to reach upstreams"
         fi
     fi
+}
+
+# --- Half-broken IPv6 (AAAA returned but no IPv6 connectivity) ---------------
+# Symptom: docker/containerd resolves a public registry to an IPv6 address,
+# tries to connect, hangs ~30s, never falls back to IPv4. Surfaces as
+# helper-pod image-pull timeouts that cascade into PVC provisioning failures
+# and any other registry pull (metrics-server, busybox, mariadb, ...).
+preflight_check_ipv6_reachability() {
+    preflight_skip "ipv6-disable" && return 0
+
+    # Already disabled? Nothing to do.
+    if [[ "$(cat /proc/sys/net/ipv6/conf/all/disable_ipv6 2>/dev/null || echo 0)" == "1" ]]; then
+        preflight_ok "IPv6 disabled (net.ipv6.conf.all.disable_ipv6=1); registry pulls use IPv4 only"
+        return 0
+    fi
+
+    if ! command -v curl &>/dev/null; then
+        preflight_warn "curl missing; skipping IPv6 reachability probe"
+        return 0
+    fi
+
+    # No IPv6 default route → IPv6 path inactive, can't be the cause of pull stalls.
+    if ! ip -6 route show default 2>/dev/null | grep -q .; then
+        preflight_ok "No IPv6 default route; image-pull IPv6 timeout path inactive"
+        return 0
+    fi
+
+    # IPv6 default route present → must reach at least one public registry over v6.
+    # Probe in priority order: ghcr.io (kweaver-core/ghcr-hosted), then docker.io
+    # (k3s helper-pod busybox source). One success = reachable.
+    local v6_ok=false
+    local probe
+    for probe in "https://ghcr.io/" "https://registry-1.docker.io/"; do
+        if curl -6 -sS --max-time 5 --connect-timeout 3 -o /dev/null "${probe}" 2>/dev/null; then
+            v6_ok=true
+            break
+        fi
+    done
+
+    if [[ "${v6_ok}" == "true" ]]; then
+        preflight_ok "IPv6 reachable to public registries; no half-broken IPv6"
+        return 0
+    fi
+
+    preflight_strict_warn_or_fail "IPv6 enabled with default route but cannot reach public registries (half-broken IPv6 — docker/containerd will try IPv6 first then time out, blocking image pulls and downstream PVC provisioning). Fix: sudo bash ./preflight.sh --fix → ipv6-disable (writes /etc/sysctl.d/99-kweaver-disable-ipv6.conf + restarts docker), or manually: sudo sysctl -w net.ipv6.conf.all.disable_ipv6=1 net.ipv6.conf.default.disable_ipv6=1 && sudo systemctl restart docker"
 }
 
 # --- P0: kubeadm binary dependencies ------------------------------------------
@@ -778,7 +823,7 @@ preflight_check_k8s_version() {
     if [[ "$((maj*100+min))" -lt 124 ]]; then
         preflight_fail "Kubernetes server too old: ${ver} (minimum supported 1.24 for this preflight policy)"
     elif [[ "$((maj*100+min))" -ge 132 ]]; then
-        preflight_fail "Kubernetes server very new: ${ver} (verify KWeaver chart compatibility; not validated beyond 1.31 here)"
+        preflight_fail "Kubernetes server very new: ${ver} (verify BKN Foundry chart compatibility; not validated beyond 1.31 here)"
     elif [[ "$((maj*100+min))" -lt 126 || "$((maj*100+min))" -gt 130 ]]; then
         preflight_warn "Kubernetes server version ${ver} (recommended 1.26.x–1.30.x for this track)"
     else
@@ -1177,6 +1222,7 @@ preflight_check_network() {
     fi
 
     local hosts=(
+        "ghcr.io"
         "mirrors.aliyun.com"
         "mirrors.tuna.tsinghua.edu.cn"
         "registry.aliyuncs.com"
@@ -1541,7 +1587,7 @@ preflight_check_pkg_repos() {
     else
         # Linux without apt/dnf/yum is not supported — no way for --fix to install kubeadm/containerd/Node.
         if [[ "$(uname -s)" == "Linux" ]]; then
-            preflight_fail "No supported package manager (apt-get / dnf / yum) found. KWeaver deploy/preflight needs one of them to install kubeadm/containerd/helm/Node."
+            preflight_fail "No supported package manager (apt-get / dnf / yum) found. BKN Foundry deploy/preflight needs one of them to install kubeadm/containerd/helm/Node."
         else
             preflight_warn "No supported package manager (apt-get / dnf / yum) found (non-Linux host; preflight is intended for the Linux install host)."
         fi
@@ -2051,7 +2097,7 @@ preflight_fix_iptables_legacy() {
 preflight_fix_kernel_limits_sysctl() {
     preflight_backup_file /etc/sysctl.d/99-kweaver-preflight.conf
     cat > /etc/sysctl.d/99-kweaver-preflight.conf <<'EOF' || true
-# Added by KWeaver preflight
+# Added by BKN Foundry preflight
 vm.max_map_count = 262144
 fs.inotify.max_user_watches = 524288
 fs.inotify.max_user_instances = 8192
@@ -2072,7 +2118,7 @@ preflight_fix_nofile_limits() {
 
     preflight_backup_file /etc/security/limits.d/99-kweaver-nofile.conf
     cat > /etc/security/limits.d/99-kweaver-nofile.conf <<EOF || true
-# Added by KWeaver preflight (nofile-limits fix)
+# Added by BKN Foundry preflight (nofile-limits fix)
 * soft nofile ${soft}
 * hard nofile ${hard}
 root soft nofile ${soft}
@@ -2082,7 +2128,7 @@ EOF
     if [[ -d /etc/systemd/system.conf.d ]] || mkdir -p /etc/systemd/system.conf.d 2>/dev/null; then
         preflight_backup_file /etc/systemd/system.conf.d/99-kweaver-nofile.conf
         cat > /etc/systemd/system.conf.d/99-kweaver-nofile.conf <<EOF || true
-# Added by KWeaver preflight (nofile-limits fix)
+# Added by BKN Foundry preflight (nofile-limits fix)
 [Manager]
 DefaultLimitNOFILE=${soft}:${hard}
 EOF
@@ -2094,7 +2140,7 @@ EOF
         mkdir -p "${dropin}" 2>/dev/null || true
         preflight_backup_file "${dropin}/99-kweaver-nofile.conf"
         cat > "${dropin}/99-kweaver-nofile.conf" <<EOF || true
-# Added by KWeaver preflight (nofile-limits fix)
+# Added by BKN Foundry preflight (nofile-limits fix)
 [Service]
 LimitNOFILE=${soft}:${hard}
 EOF
@@ -2113,10 +2159,36 @@ EOF
     preflight_fixed "Wrote /etc/security/limits.d/99-kweaver-nofile.conf, /etc/systemd/system.conf.d/99-kweaver-nofile.conf, and kubelet/containerd LimitNOFILE drop-ins (soft=${soft}, hard=${hard}); reloaded systemd. New login sessions will see the new ulimit."
 }
 
+preflight_fix_ipv6_disable() {
+    sysctl -w net.ipv6.conf.all.disable_ipv6=1 2>/dev/null || true
+    sysctl -w net.ipv6.conf.default.disable_ipv6=1 2>/dev/null || true
+    sysctl -w net.ipv6.conf.lo.disable_ipv6=1 2>/dev/null || true
+
+    preflight_backup_file /etc/sysctl.d/99-kweaver-disable-ipv6.conf
+    cat > /etc/sysctl.d/99-kweaver-disable-ipv6.conf <<'EOF' || true
+# Added by BKN Foundry preflight (ipv6-disable fix).
+# Disables the IPv6 kernel stack so docker/containerd skip the IPv6 connect
+# path on hosts where AAAA resolves but routing is broken. Without this,
+# image pulls (helper-pod busybox, metrics-server, ...) stall ~30s on IPv6
+# before falling back, causing PVC provisioning timeouts. Reversible:
+# remove this file and run `sudo sysctl --system && sudo systemctl restart docker`.
+net.ipv6.conf.all.disable_ipv6=1
+net.ipv6.conf.default.disable_ipv6=1
+net.ipv6.conf.lo.disable_ipv6=1
+EOF
+
+    # Restart docker so the daemon resolver picks up the new stack state.
+    if systemctl is-active --quiet docker 2>/dev/null; then
+        systemctl restart docker 2>/dev/null || true
+    fi
+
+    preflight_fixed "Disabled IPv6 (sysctl all/default/lo.disable_ipv6=1) + persisted /etc/sysctl.d/99-kweaver-disable-ipv6.conf + restarted docker if running. Pulls now skip the IPv6 timeout path."
+}
+
 preflight_fix_bridge_sysctl() {
     preflight_backup_file /etc/sysctl.d/99-kweaver-bridge.conf
     cat > /etc/sysctl.d/99-kweaver-bridge.conf <<'EOF' || true
-# Added by KWeaver preflight
+# Added by BKN Foundry preflight
 net.bridge.bridge-nf-call-iptables = 1
 net.bridge.bridge-nf-call-ip6tables = 1
 EOF
@@ -2134,7 +2206,7 @@ preflight_print_fix_preview() {
     for line in "${PREFLIGHT_FAIL_SNAPSHOT[@]}"; do
         log_info "  * ${line}"
     done
-    log_info "  Suggested fix names: k3s-uninstall (k8s/kubeadm path only), kubeadm-reset, k8s-pkgs-repo (writes apt OR yum/dnf pkgs.k8s.io repo; legacy name k8s-apt-source still works in --fix-allow), k8s-bins, kubernetes-cni (/opt/cni/bin loopback for kubelet pod sandbox), containerd-install, helm-v3, docker-disable (stop/disable docker.service + docker.socket — CRI conflict with k3s or containerd), chrony, firewalld, ufw, selinux, system-tuning, bridge-sysctl, kernel-limits, nofile-limits (writes /etc/security/limits.d + systemd LimitNOFILE drop-ins), iptables-legacy, etc-hosts, onboard-tooling, nodejs-npm, node-22, kweaver-sdk, kweaver-admin (opt-in; bundle onboard-tooling asks if this host will run ./onboard.sh). Default distro is k8s (kubeadm); use --distro=k3s or KUBE_DISTRO=k3s for single-node k3s checks/fixes."
+    log_info "  Suggested fix names: k3s-uninstall (k8s/kubeadm path only), kubeadm-reset, k8s-pkgs-repo (writes apt OR yum/dnf pkgs.k8s.io repo; legacy name k8s-apt-source still works in --fix-allow), k8s-bins, kubernetes-cni (/opt/cni/bin loopback for kubelet pod sandbox), containerd-install, helm-v3, docker-disable (stop/disable docker.service + docker.socket — CRI conflict with k3s or containerd), chrony, firewalld, ufw, selinux, system-tuning, bridge-sysctl, kernel-limits, nofile-limits (writes /etc/security/limits.d + systemd LimitNOFILE drop-ins), ipv6-disable (writes /etc/sysctl.d/99-kweaver-disable-ipv6.conf + restarts docker for hosts where AAAA resolves but IPv6 routing is broken), iptables-legacy, etc-hosts, onboard-tooling, nodejs-npm, node-22, kweaver-sdk, kweaver-admin (opt-in; bundle onboard-tooling asks if this host will run ./onboard.sh). Default distro is k8s (kubeadm); use --distro=k3s or KUBE_DISTRO=k3s for single-node k3s checks/fixes."
     log_info "------------------------------------------------------------------"
 }
 
@@ -2211,7 +2283,7 @@ preflight_remember_no() {
     f="$(_preflight_decision_file "${name}")"
     mkdir -p "${PREFLIGHT_DECISION_DIR}" 2>/dev/null || return 0
     {
-        echo "# Saved by KWeaver preflight $(date -Iseconds 2>/dev/null || date)"
+        echo "# Saved by BKN Foundry preflight $(date -Iseconds 2>/dev/null || date)"
         echo "# Operator answered No to: ${name}"
         echo "# Re-prompt on next run by removing this file:"
         echo "#   sudo rm ${f}"
@@ -2503,6 +2575,29 @@ preflight_apply_safe_fixes() {
         fi
     fi
 
+    # ipv6-disable: only prompt when IPv6 is enabled, has a default route, AND
+    # public IPv6 probes fail. Idempotent — skip when 99-kweaver-disable-ipv6.conf
+    # already in place or kernel already has the stack disabled.
+    if [[ "$(cat /proc/sys/net/ipv6/conf/all/disable_ipv6 2>/dev/null || echo 0)" == "0" ]] \
+        && [[ ! -f /etc/sysctl.d/99-kweaver-disable-ipv6.conf ]] \
+        && command -v curl &>/dev/null \
+        && ip -6 route show default 2>/dev/null | grep -q .; then
+        local _v6_probe_ok=false _v6_probe
+        for _v6_probe in "https://ghcr.io/" "https://registry-1.docker.io/"; do
+            if curl -6 -sS --max-time 5 --connect-timeout 3 -o /dev/null "${_v6_probe}" 2>/dev/null; then
+                _v6_probe_ok=true
+                break
+            fi
+        done
+        if [[ "${_v6_probe_ok}" == "false" ]]; then
+            if preflight_confirm_fix "ipv6-disable" \
+                "Disable IPv6 stack via sysctl + /etc/sysctl.d/99-kweaver-disable-ipv6.conf, restart docker" \
+                "Forces docker/containerd to use IPv4 only on hosts where AAAA resolves but routing is broken. Reversible: rm the file, sysctl --system, restart docker."; then
+                preflight_fix_ipv6_disable
+            fi
+        fi
+    fi
+
     # Skip prompt if 99-kweaver-preflight.conf is in place AND every value it
     # tunes already meets the threshold.
     local _kl_needs=false
@@ -2665,6 +2760,7 @@ preflight_run_all_checks() {
     preflight_check_time_sync
     preflight_check_proxy
     preflight_check_dns
+    preflight_check_ipv6_reachability
     preflight_check_kubeadm_deps
     preflight_check_cni_bin_plugins
     preflight_check_k3s_prereqs

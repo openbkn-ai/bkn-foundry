@@ -3,7 +3,7 @@ package utils
 import (
 	"fmt"
 
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/ecron/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/pkg/ecron/common"
 
 	"github.com/gin-gonic/gin"
 	"github.com/unrolled/secure"

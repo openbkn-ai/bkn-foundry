@@ -4,10 +4,10 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/infra/persistence/dapo"
+	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/infra/persistence/dapo"
 )
 
-//go:generate mockgen -package idbaccessmock -destination ./idbaccessmock/biz_domain_agent_rel.go github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/port/driven/idbaccess IBizDomainAgentRelRepo
+//go:generate mockgen -package idbaccessmock -destination ./idbaccessmock/biz_domain_agent_rel.go github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/port/driven/idbaccess IBizDomainAgentRelRepo
 
 // IBizDomainAgentRelRepo 业务域与agent关联表操作接口
 type IBizDomainAgentRelRepo interface {

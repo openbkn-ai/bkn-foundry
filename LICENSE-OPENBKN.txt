@@ -1,0 +1,132 @@
+OpenBKN License
+
+OpenBKN is licensed under a modified version of the Apache License,
+Version 2.0, with the following additional conditions.
+
+Copyright (c) 2026 OpenBKN. All rights reserved.
+
+================================================================
+PREAMBLE
+================================================================
+
+This license applies only to the OpenBKN modules that expressly
+reference this file in their source headers (the "Licensed Modules"),
+including but not limited to BKN Safe and BKN Studio.
+
+The Licensed Modules are licensed under the terms of the Apache
+License, Version 2.0 (the "Apache License"), the full text of which is
+provided in the file LICENSE-APACHE.txt and is also available at
+http://www.apache.org/licenses/LICENSE-2.0, as modified and
+supplemented by the Additional Conditions set out below.
+
+In the event of any conflict between the Additional Conditions and the
+Apache License, the Additional Conditions shall control with respect to
+the Licensed Modules.
+
+This license does not apply to:
+  (a) components that originate from the upstream project
+      kweaver-ai/kweaver-core, which remain licensed solely under the
+      Apache License, Version 2.0, with their original copyright
+      notices preserved; nor
+  (b) OpenBKN components expressly licensed under the plain Apache
+      License, Version 2.0 (e.g., BKN SDK / CLI and BKN Skill).
+See the NOTICE file for the per-component breakdown.
+
+================================================================
+ADDITIONAL CONDITIONS
+================================================================
+
+1. Commercial Use.
+
+   The Licensed Modules may be used for commercial purposes, including
+   as a component within your own application or business. However, a
+   separate commercial license must be obtained from OpenBKN if any
+   of the following conditions applies:
+
+   a. Service Restriction. You may not, without prior written
+      authorization from OpenBKN, use the source code of the Licensed
+      Modules to provide to third parties a hosted service, a managed
+      or operated service, or any service that is the same as or
+      substantially similar to the official services offered by
+      OpenBKN. For the purposes of this license, "providing a
+      service to third parties" means making the substantial features
+      or functionality of the Licensed Modules available to parties
+      other than your own organization, whether for a fee or free of
+      charge, including by means of hosting, operation, deployment, or
+      integration carried out on their behalf as a commercial activity.
+
+   b. Multi-Tenant Restriction. Where applicable, you may not use the
+      Licensed Modules to operate a multi-tenant service environment in
+      which separate third-party tenants are provided with isolated
+      access to the Licensed Modules' features or functionality.
+
+2. Logo and Copyright Notices.
+
+   When using the front end or console of the Licensed Modules, you may
+   not remove or modify the OpenBKN logo, trademarks, or copyright and
+   licensing notices displayed therein. This condition does not apply
+   to uses of the Licensed Modules that do not involve their front end
+   or console.
+
+3. Contributions.
+
+   Code that you contribute to the Licensed Modules may be used by
+   OpenBKN for any purpose, including commercial purposes and
+   OpenBKN's cloud or hosted business, and may be licensed by
+   OpenBKN under any terms. By submitting a contribution, you
+   represent that you have the right to grant, and you grant to
+   OpenBKN, a perpetual, worldwide, non-exclusive, royalty-free,
+   irrevocable license to use, reproduce, modify, distribute, and
+   relicense your contribution for such purposes.
+
+4. Adjustment of Terms.
+
+   OpenBKN may adjust the terms of this license, making them either
+   more or less restrictive, for future versions of the Licensed
+   Modules. Any such adjustment applies only to versions released after
+   the adjustment; it does not retroactively alter the terms applicable
+   to versions already released.
+
+5. Trademarks.
+
+   This license does not grant you any right to use the trade names,
+   trademarks, service marks, or product names of OpenBKN, except as
+   required by Section 2 above or for the reasonable and customary use
+   in describing the origin of the Licensed Modules.
+
+6. Effect of Apache License.
+
+   Except as expressly modified or supplemented by the Additional
+   Conditions above, all other rights granted and conditions imposed by
+   the Apache License, Version 2.0 (including its disclaimers of
+   warranty and limitations of liability) continue to apply to the
+   Licensed Modules. Nothing in the Additional Conditions shall be
+   construed as restricting the rights of any party under the Apache
+   License, Version 2.0 with respect to code that is not part of the
+   Licensed Modules.
+
+7. Termination.
+
+   Any use of the Licensed Modules in violation of the Additional
+   Conditions above automatically terminates the additional rights
+   granted to you under this license for the Licensed Modules. To
+   continue, you must either bring your use into compliance, obtain a
+   commercial license from OpenBKN, or cease using the Licensed
+   Modules.
+
+================================================================
+COMMERCIAL LICENSING
+================================================================
+
+For commercial licensing inquiries (including authorization to provide
+services, operate multi-tenant environments, or other uses requiring a
+commercial license), contact: <CONTACT EMAIL / URL>
+
+================================================================
+DISCLAIMER
+================================================================
+
+THE LICENSED MODULES ARE PROVIDED ON AN "AS IS" BASIS, WITHOUT
+WARRANTIES OR CONDITIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED, TO THE
+FULLEST EXTENT PERMITTED BY APPLICABLE LAW, AS SET OUT IN THE APACHE
+LICENSE, VERSION 2.0.

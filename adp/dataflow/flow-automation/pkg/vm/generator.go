@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/common"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/entity"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/vm/errors"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/vm/opcode"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/utils"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/pkg/entity"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/pkg/vm/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/pkg/vm/opcode"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/utils"
 	"github.com/mitchellh/mapstructure"
 )
 

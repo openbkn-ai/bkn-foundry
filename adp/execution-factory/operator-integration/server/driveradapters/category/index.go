@@ -5,9 +5,9 @@ import (
 	"sync"
 
 	"github.com/gin-gonic/gin"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/infra/config"
-	"github.com/kowell-ai/adp/execution-factory/operator-integration/server/interfaces"
-	lcategory "github.com/kowell-ai/adp/execution-factory/operator-integration/server/logics/category"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/config"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
+	lcategory "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/category"
 )
 
 type CategoryHandler interface {

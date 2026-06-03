@@ -4,11 +4,11 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/driveradapter/api/rdto/conversation_message/conversationmsgreq"
-	"github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/infra/persistence/dapo"
+	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/driveradapter/api/rdto/conversation_message/conversationmsgreq"
+	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/infra/persistence/dapo"
 )
 
-//go:generate mockgen -package idbaccessmock -destination ./idbaccessmock/conversation_message.go github.com/kowell-ai/kowell-core/decision-agent/agent-backend/agent-factory/src/port/driven/idbaccess IConversationMsgRepo
+//go:generate mockgen -package idbaccessmock -destination ./idbaccessmock/conversation_message.go github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/port/driven/idbaccess IConversationMsgRepo
 type IConversationMsgRepo interface {
 	IDBAccBaseRepo
 

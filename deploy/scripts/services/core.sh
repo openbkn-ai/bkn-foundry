@@ -1,6 +1,6 @@
 
 # Default kweaver-core namespace
-CORE_NAMESPACE="${CORE_NAMESPACE:-kweaver}"
+CORE_NAMESPACE="${CORE_NAMESPACE:-openbkn}"
 
 # Set to true in parse_core_args when user passes --namespace/--namespace=… (overrides namespace: in YAML).
 CORE_NAMESPACE_FROM_CLI="${CORE_NAMESPACE_FROM_CLI:-false}"
@@ -178,9 +178,9 @@ _core_auto_resolve_version_manifest() {
 
     local embedded_manifest
     if [[ -n "${HELM_CHART_VERSION:-}" ]]; then
-        embedded_manifest="$(resolve_embedded_release_manifest "kweaver-core" "${HELM_CHART_VERSION}")"
+        embedded_manifest="$(resolve_embedded_release_manifest "bkn-foundry" "${HELM_CHART_VERSION}")"
     else
-        embedded_manifest="$(resolve_latest_embedded_release_manifest "kweaver-core")"
+        embedded_manifest="$(resolve_latest_embedded_release_manifest "bkn-foundry")"
     fi
     if [[ -n "${embedded_manifest}" ]]; then
         CORE_VERSION_MANIFEST_FILE="${embedded_manifest}"
@@ -199,18 +199,18 @@ _core_require_version_manifest() {
 _core_resolve_release_version() {
     local release_name="$1"
     _core_require_version_manifest || return 1
-    resolve_release_chart_version "${CORE_VERSION_MANIFEST_FILE:-}" "kweaver-core" "${HELM_CHART_VERSION:-}" "${release_name}" "${HELM_CHART_VERSION:-}"
+    resolve_release_chart_version "${CORE_VERSION_MANIFEST_FILE:-}" "bkn-foundry" "${HELM_CHART_VERSION:-}" "${release_name}" "${HELM_CHART_VERSION:-}"
 }
 
 _core_resolve_chart_name() {
     local release_name="$1"
     _core_require_version_manifest || return 1
-    resolve_release_chart_name "${CORE_VERSION_MANIFEST_FILE:-}" "kweaver-core" "${HELM_CHART_VERSION:-}" "${release_name}" "${release_name}"
+    resolve_release_chart_name "${CORE_VERSION_MANIFEST_FILE:-}" "bkn-foundry" "${HELM_CHART_VERSION:-}" "${release_name}" "${release_name}"
 }
 
 _core_release_names() {
     _core_require_version_manifest || return 1
-    get_release_manifest_release_names "${CORE_VERSION_MANIFEST_FILE}" "kweaver-core" "${HELM_CHART_VERSION:-}"
+    get_release_manifest_release_names "${CORE_VERSION_MANIFEST_FILE}" "bkn-foundry" "${HELM_CHART_VERSION:-}"
 }
 
 _core_resolve_isf_dependency_version() {
@@ -231,26 +231,26 @@ _core_resolve_isf_dependency_manifest() {
 
 init_core_databases() {
     local sql_base_dir
-    sql_base_dir="$(resolve_versioned_sql_dir "kweaver-core" "${HELM_CHART_VERSION:-}")"
+    sql_base_dir="$(resolve_versioned_sql_dir "bkn-foundry" "${HELM_CHART_VERSION:-}")"
 
     if ! is_rds_internal; then
-        warn_external_rds_sql_required "KWeaver Core" "${sql_base_dir}"
-        log_warn "Skipping automatic KWeaver Core database initialization (external RDS)"
+        warn_external_rds_sql_required "BKN Foundry" "${sql_base_dir}"
+        log_warn "Skipping automatic BKN Foundry database initialization (external RDS)"
         return 0
     fi
 
-    # Check if Core manifest has pre-stage data-migrator (0.6.0+)
-    # If so, skip SQL initialization - the data-migrator chart will handle it
+    # If the manifest declares a stage:pre data-migrator release, the chart
+    # hook owns DB init; the script must not also run the SQL files.
     _core_require_version_manifest || return 1
     if should_skip_db_init_for_manifest "${CORE_VERSION_MANIFEST_FILE}"; then
-        log_info "Core manifest ${CORE_VERSION_MANIFEST_FILE} has pre-stage data-migrator (0.6.0+), skipping SQL initialization"
+        log_info "Core manifest ${CORE_VERSION_MANIFEST_FILE} has pre-stage data-migrator, skipping SQL initialization"
         return 0
     fi
 
     local -a sql_modules=()
-    kweaver_mapfile_compat sql_modules list_versioned_sql_modules "kweaver-core" "${HELM_CHART_VERSION:-}"
+    kweaver_mapfile_compat sql_modules list_versioned_sql_modules "bkn-foundry" "${HELM_CHART_VERSION:-}"
     if [[ ${#sql_modules[@]} -eq 0 ]]; then
-        log_info "Skipping KWeaver Core database initialization: no SQL module directories found in ${sql_base_dir}"
+        log_info "Skipping BKN Foundry database initialization: no SQL module directories found in ${sql_base_dir}"
         return 0
     fi
 
@@ -267,17 +267,18 @@ init_core_databases() {
 }
 
 download_core() {
-    log_info "Downloading KWeaver Core charts..."
+    log_info "Downloading BKN Foundry charts..."
     ensure_helm_available
     _core_require_version_manifest || return 1
 
-    HELM_CHART_REPO_NAME="${HELM_CHART_REPO_NAME:-kweaver}"
+    HELM_CHART_REPO_NAME="${HELM_CHART_REPO_NAME:-openbkn}"
     HELM_CHART_REPO_URL="${HELM_CHART_REPO_URL:-https://kweaver-ai.github.io/helm-repo/}"
 
     local charts_dir
     charts_dir="$(_core_download_charts_dir)"
 
-    ensure_helm_repo "${HELM_CHART_REPO_NAME}" "${HELM_CHART_REPO_URL}"
+    parse_manifest_source "${CORE_VERSION_MANIFEST_FILE:-}"
+    ensure_chart_source "${HELM_CHART_REPO_NAME}" "${HELM_CHART_REPO_URL}"
 
     # Check if ISF dependency is declared in manifest
     local isf_dep_version=""
@@ -393,7 +394,8 @@ _install_core_release_repo() {
     local chart_name
     chart_name="$(_core_resolve_chart_name "${release_name}")"
 
-    local chart_ref="${helm_repo_name}/${chart_name}"
+    local chart_ref
+    chart_ref="$(build_chart_ref "${helm_repo_name}" "${chart_name}")"
 
     local target_version="${release_version}"
     if [[ -z "${target_version}" ]]; then
@@ -480,14 +482,14 @@ _core_apply_default_set_values() {
     fi
 }
 
-# Install KWeaver Core services via Helm
+# Install BKN Foundry services via Helm
 install_core() {
-    log_info "Installing KWeaver Core services via Helm..."
+    log_info "Installing BKN Foundry services via Helm..."
     _core_require_version_manifest || return 1
     _core_apply_default_set_values
 
     if ! ensure_platform_prerequisites; then
-        log_error "Failed to ensure platform prerequisites for KWeaver Core"
+        log_error "Failed to ensure platform prerequisites for BKN Foundry"
         return 1
     fi
 
@@ -496,7 +498,7 @@ install_core() {
     if [[ "${KWEAVER_SKIP_PLATFORM_BOOTSTRAP:-false}" == "true" ]] && [[ "${KWEAVER_SKIP_DATA_SERVICES_BUNDLE:-false}" != "true" ]]; then
         log_info "Bring-your-own cluster: ensuring bundled data services before Core (skip with KWEAVER_SKIP_DATA_SERVICES_BUNDLE=true)"
         if ! ensure_data_services; then
-            log_error "Failed to ensure data services before KWeaver Core"
+            log_error "Failed to ensure data services before BKN Foundry"
             return 1
         fi
     fi
@@ -514,15 +516,16 @@ install_core() {
         use_local=true
         log_info "Using local Core charts from: ${charts_dir}"
     else
-        log_info "No explicit local Core charts directory provided, using Helm repo."
+        log_info "No explicit local Core charts directory provided, using remote chart source."
         log_info "  Version:   ${HELM_CHART_VERSION}"
         if [[ -n "${CORE_VERSION_MANIFEST_FILE:-}" ]]; then
             log_info "  Version Manifest: ${CORE_VERSION_MANIFEST_FILE}"
         fi
-        log_info "  Helm Repo: ${HELM_CHART_REPO_NAME:-kweaver} -> ${HELM_CHART_REPO_URL:-https://kweaver-ai.github.io/helm-repo/}"
-        HELM_CHART_REPO_NAME="${HELM_CHART_REPO_NAME:-kweaver}"
+        HELM_CHART_REPO_NAME="${HELM_CHART_REPO_NAME:-openbkn}"
         HELM_CHART_REPO_URL="${HELM_CHART_REPO_URL:-https://kweaver-ai.github.io/helm-repo/}"
-        ensure_helm_repo "${HELM_CHART_REPO_NAME}" "${HELM_CHART_REPO_URL}"
+        parse_manifest_source "${CORE_VERSION_MANIFEST_FILE:-}"
+        log_chart_source "${HELM_CHART_REPO_NAME}" "${HELM_CHART_REPO_URL}"
+        ensure_chart_source "${HELM_CHART_REPO_NAME}" "${HELM_CHART_REPO_URL}"
     fi
 
     log_info "Target namespace: ${namespace}"
@@ -571,7 +574,7 @@ install_core() {
     fi
 
     if ! init_core_databases; then
-        log_error "Failed to initialize KWeaver Core databases"
+        log_error "Failed to initialize BKN Foundry databases"
         return 1
     fi
 
@@ -587,9 +590,9 @@ install_core() {
         fi
     done
 
-    log_info "KWeaver Core services installation completed."
+    log_info "BKN Foundry services installation completed."
 
-    log_info "Context Loader toolset import: run ./onboard.sh after kweaver auth (uses kweaver call impex), or set IMPORT_CONTEXT_LOADER_TOOLSET=false to skip that step in onboard."
+    log_info "Context Loader toolset is auto-imported by agent-retrieval at startup (no manual onboard step needed)."
 
     local _host _port _scheme
     _host="$(_read_access_address_field "host" 2>/dev/null || true)"
@@ -612,9 +615,9 @@ install_core() {
     echo "============================================"
 }
 
-# Uninstall KWeaver Core services
+# Uninstall BKN Foundry services
 uninstall_core() {
-    log_info "Uninstalling KWeaver Core services..."
+    log_info "Uninstalling BKN Foundry services..."
 
     local namespace
     namespace="$(_core_resolve_target_namespace)"
@@ -641,14 +644,14 @@ uninstall_core() {
     kubectl delete pod -n "${namespace}" -l sandbox-type=execution --ignore-not-found >/dev/null 2>&1 || true
 
     log_info "Deleting leftover Core Jobs in ${namespace} (e.g. data-migrator / chart hooks)"
-    kweaver_delete_jobs_name_match_ere_in_ns "${namespace}" 'migrator|data-migrator|mdl-data-model-job'
+    kweaver_delete_jobs_name_match_ere_in_ns "${namespace}" 'migrator|data-migrator'
 
-    log_info "KWeaver Core services uninstallation completed."
+    log_info "BKN Foundry services uninstallation completed."
 }
 
-# Show KWeaver Core services status
+# Show BKN Foundry services status
 show_core_status() {
-    log_info "KWeaver Core services status:"
+    log_info "BKN Foundry services status:"
 
     local namespace
     namespace="$(_core_resolve_target_namespace)"

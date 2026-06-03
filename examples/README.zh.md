@@ -1,8 +1,8 @@
-# KWeaver 示例
+# BKN Foundry 示例
 
 [English](./README.md)
 
-通过 CLI 演示 KWeaver 核心能力的端到端示例。
+通过 CLI 演示 BKN Foundry 核心能力的端到端示例。
 
 | 示例 | 故事 | 展示内容 |
 |------|------|---------|

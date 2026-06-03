@@ -1,4 +1,4 @@
-// Copyright 2026 kowell.ai
+// Copyright 2026 openbkn.ai
 // Copyright The kweaver.ai Authors.
 //
 // Licensed under the Apache License, Version 2.0.
@@ -11,9 +11,9 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/infra/common"
-	infraErr "github.com/kowell-ai/adp/context-loader/agent-retrieval/server/infra/errors"
-	"github.com/kowell-ai/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/common"
+	infraErr "github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/errors"
+	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
 // GetActionInfo 获取行动信息（行动召回）

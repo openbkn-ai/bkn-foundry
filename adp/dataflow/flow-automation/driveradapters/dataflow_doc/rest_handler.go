@@ -8,12 +8,12 @@ import (
 	"sync"
 
 	"github.com/gin-gonic/gin"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/common"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/drivenadapters"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/driveradapters/middleware"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/errors"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/logics/mgnt"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/utils"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/drivenadapters"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/driveradapters/middleware"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/logics/mgnt"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/utils"
 )
 
 // RESTHandler defines the interface for dataflow-doc REST APIs

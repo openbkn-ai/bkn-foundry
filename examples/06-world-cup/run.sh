@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# 06-world-cup · KWeaver Core end-to-end (single script):
+# 06-world-cup · BKN Foundry end-to-end (single script):
 #
 #   Step 1  Download CSVs      : jfjelstul/worldcup → data/ (skips cached files)
 #   Step 2  Import to MySQL    : kweaver ds connect + ds import-csv --recreate
@@ -219,18 +219,6 @@ step_2_import() {
         return 0
     fi
 
-    local ds_id="${DS_ID:-}"
-
-    if [ "$DRY_RUN" = 1 ]; then
-        if [ -n "$ds_id" ]; then
-            echo "  plan: reuse DS_ID=$ds_id" >&2
-        else
-            echo "  plan: kweaver ds connect mysql ${DB_HOST:-<DB_HOST>} ${DB_PORT:-3306} ${DB_NAME:-<DB_NAME>} --account <DB_USER> --name worldcup_ds_<ts>" >&2
-        fi
-        echo "  plan: kweaver ds import-csv <DS_ID> --files data/*.csv --table-prefix wc_ --recreate" >&2
-        return 0
-    fi
-
     # Ensure CSVs exist.
     local csv_count
     csv_count=$(find "$DATA_DIR" -maxdepth 1 -name "*.csv" 2>/dev/null | wc -l | tr -d ' ')
@@ -239,41 +227,12 @@ step_2_import() {
         exit 1
     }
 
-    if [ -z "$ds_id" ]; then
-        local ds_name="worldcup_ds_$(date +%s)"
-        echo "  Connecting datasource: $ds_name" >&2
-        local connect_out
-        connect_out="$("${KWEAV[@]}" ds connect mysql \
-            "${DB_HOST:?Set DB_HOST in .env}" \
-            "${DB_PORT:-3306}" \
-            "${DB_NAME:?Set DB_NAME in .env}" \
-            --account "${DB_USER:?Set DB_USER in .env}" \
-            --password "${DB_PASS:?Set DB_PASS in .env}" \
-            --name "$ds_name" 2>&1)" || true
-        # Try parsing a JSON envelope first. The pipe ends with `|| true` so
-        # a failed parse doesn't trip `set -euo pipefail` and silently abort
-        # the script (local-var assignment masks the exit code otherwise).
-        ds_id="$(printf '%s' "$connect_out" | _extract_cli_json 2>/dev/null | \
-            python3 -c 'import sys,json; d=json.load(sys.stdin); r=d[0] if isinstance(d,list) else d; print(r.get("datasource_id") or r.get("id",""))' 2>/dev/null || true)"
-        if [ -z "$ds_id" ]; then
-            # CLI reuse path bug: when an existing datasource matches by
-            # (type,host,port,db,account) the CLI prints
-            # `Reusing existing datasource <uuid> (...)` then errors with
-            # HTTP 404 on the follow-up fetch. The datasource is valid;
-            # we just need to grab the id from that text line. `|| true`
-            # keeps a no-match grep from tripping set -e and letting the
-            # final empty-check guard fire instead.
-            ds_id="$(printf '%s' "$connect_out" \
-                | grep -oE 'Reusing existing datasource [a-f0-9-]+' \
-                | awk '{print $4}' | head -1 || true)"
-        fi
-        [ -z "$ds_id" ] && { echo "Error: kweaver ds connect returned no id." >&2; echo "$connect_out" >&2; exit 1; }
-        echo "  DS_ID=$ds_id" >&2
-        DS_ID="$ds_id"; export DS_ID
-        _write_ds_id_to_env "$ds_id"
-    else
-        echo "  reusing DS_ID=$ds_id" >&2
+    if [ "$DRY_RUN" = 1 ]; then
+        echo "  plan: load data/*.csv → wc_* tables via mysql client (no data-connection)" >&2
+        return 0
     fi
+
+    command -v mysql >/dev/null 2>&1 || { echo "Error: mysql client required to load CSVs (Ubuntu: sudo apt install -y mysql-client)." >&2; exit 1; }
 
     # Auto-skip if all 27 wc_* tables already exist in MySQL.
     if [ "${FORCE_IMPORT:-0}" != 1 ]; then
@@ -286,16 +245,32 @@ step_2_import() {
     fi
 
     # Pre-create wide tables (wc_matches, wc_team_appearances) with VARCHAR(255)
-    # to dodge MySQL Error 1118 — import-csv hardcodes VARCHAR(512) which exceeds
-    # the 65,535-byte row size limit (strict mode) for these 36/37-column tables.
+    # to dodge MySQL Error 1118 (row-size limit) for these 36/37-column tables.
     _pre_create_wide_tables
 
-    echo "  Importing ${csv_count} CSVs → wc_* tables (--recreate) …" >&2
-    "${KWEAV[@]}" ds import-csv "$ds_id" \
-        --files "$DATA_DIR/*.csv" \
-        --table-prefix wc_ \
-        --recreate
-    echo "  Import done." >&2
+    # Load CSVs directly with the mysql client. The legacy data-connection
+    # `ds import-csv` path is gone; Step 3 builds a Vega catalog over the
+    # resulting wc_* tables. Wide tables are pre-created above → INSERT only.
+    echo "  Loading ${csv_count} CSVs → wc_* tables via mysql client …" >&2
+    python3 - "$DATA_DIR" <<'PY' | MYSQL_PWD="${DB_PASS}" mysql -h "${DB_HOST}" -P "${DB_PORT:-3306}" -u "${DB_USER}" --default-character-set=utf8mb4 "${DB_NAME}"
+import csv,glob,os,sys,re
+ddir=sys.argv[1]
+WIDE={'wc_matches','wc_team_appearances'}  # pre-created with VARCHAR(255)
+def sqlval(v): return 'NULL' if v=='' else "'"+v.replace("\\","\\\\").replace("'","''")+"'"
+for path in sorted(glob.glob(os.path.join(ddir,'*.csv'))):
+    stem=re.sub(r'[^0-9a-zA-Z_]','_',os.path.splitext(os.path.basename(path))[0])
+    tbl='wc_'+stem
+    rows=list(csv.reader(open(path,encoding='utf-8')))
+    if not rows: continue
+    hdr=rows[0]; data=rows[1:]
+    if tbl not in WIDE:
+        print(f"DROP TABLE IF EXISTS `{tbl}`;")
+        print(f"CREATE TABLE `{tbl}` ({', '.join(f'`{c}` VARCHAR(512)' for c in hdr)}) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARSET=utf8mb4;")
+    for r in data:
+        r=(r+['']*len(hdr))[:len(hdr)]
+        print(f"INSERT INTO `{tbl}` VALUES ({', '.join(sqlval(v) for v in r)});")
+PY
+    echo "  Import done (wc_* tables loaded)." >&2
 }
 
 _count_wc_tables() {
@@ -443,6 +418,9 @@ step_3_vega_scan() {
 
     echo "  catalog_id=$catalog_id" >&2
 
+    # Catalogs are created disabled — enable before discovery (idempotent).
+    "${KWEAV[@]}" call "/api/vega-backend/v1/catalogs/${catalog_id}/enable" -X POST >/dev/null 2>&1 || true
+
     # Auto-skip discover if catalog already has all 27 table resources.
     if [ "${FORCE_DISCOVER:-0}" != 1 ]; then
         local n_resources
@@ -457,10 +435,20 @@ step_3_vega_scan() {
     fi
 
     echo "  Running discover --wait …" >&2
-    if ! "${KWEAV[@]}" vega catalog discover "$catalog_id" --wait; then
-        echo "Discover failed — re-run later, or set VEGA_CATALOG_ID and --from 4." >&2
+    "${KWEAV[@]}" vega catalog discover "$catalog_id" --wait >/dev/null 2>&1 || true
+    # Discovery is asynchronous — poll until table resources appear (~90s max).
+    local _n=0
+    for _i in $(seq 1 30); do
+        _n="$("${KWEAV[@]}" vega resource list --catalog-id "$catalog_id" --category table --limit 50 2>/dev/null \
+            | _extract_cli_json | jq '.entries | length' 2>/dev/null || echo 0)"
+        [ "${_n:-0}" -ge 27 ] && break
+        sleep 3
+    done
+    if [ "${_n:-0}" -lt 27 ]; then
+        echo "Discover incomplete — only ${_n} resources after polling. Re-run, or set VEGA_CATALOG_ID and --from 4." >&2
         exit 1
     fi
+    echo "  discovered ${_n} table resources" >&2
 
     VEGA_CATALOG_ID="$catalog_id"
     export VEGA_CATALOG_ID
@@ -534,6 +522,10 @@ _extract_bkn_archive() {
     rm -rf "$BKN_EXTRACT_DIR"
     mkdir -p "$(dirname "$BKN_EXTRACT_DIR")"
     tar xf "$BKN_ARCHIVE" -C "$(dirname "$BKN_EXTRACT_DIR")"
+    # The archive was packed on macOS and carries AppleDouble (._*) sidecar
+    # files; they match the *.bkn glob and fail bkn validate ("must have YAML
+    # frontmatter"). Purge them.
+    find "$BKN_EXTRACT_DIR" -name '._*' -delete 2>/dev/null || true
     [ -f "$BKN_EXTRACT_DIR/network.bkn" ] || {
         echo "Error: extracted tree missing network.bkn (expected $BKN_EXTRACT_DIR/network.bkn)." >&2
         exit 1

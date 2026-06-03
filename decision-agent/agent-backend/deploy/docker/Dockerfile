@@ -9,7 +9,7 @@ ARG goBuildImage=golang:1.24-alpine
 FROM ${goBuildImage} AS builder-factory
 
 ARG ARCH_TYPE=amd64
-ARG GOPROXY=https://goproxy.cn,direct
+ARG GOPROXY=https://proxy.golang.org,direct
 
 WORKDIR /build
 

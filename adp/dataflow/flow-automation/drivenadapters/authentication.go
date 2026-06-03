@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/common"
-	commonLog "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/log"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/common"
+	commonLog "github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/libs/go/log"
 )
 
 //go:generate mockgen -package mock_drivenadapters -source ../drivenadapters/authentication.go -destination ../tests/mock_drivenadapters/authentication_mock.go

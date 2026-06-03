@@ -11,13 +11,13 @@ import (
 
 	"regexp"
 
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/common"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/drivenadapters"
-	libstore "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/store"
-	traceLog "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/telemetry/log"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/telemetry/trace"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/entity"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/utils/extractor"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/drivenadapters"
+	libstore "github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/libs/go/store"
+	traceLog "github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/libs/go/telemetry/log"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/libs/go/telemetry/trace"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/pkg/entity"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/pkg/utils/extractor"
 )
 
 type ContentAbstract struct {

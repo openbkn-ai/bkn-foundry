@@ -33,4 +33,4 @@ Incremental Key:
 
 | Type | ID | Name |
 |------|-----|------|
-| data_view | {{MATERIALS_DV_ID}} | {{MATERIALS_DV_NAME}} |
+| resource | {{MATERIALS_DV_ID}} | {{MATERIALS_DV_NAME}} |

@@ -8,13 +8,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/common"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/drivenadapters"
-	lock "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/lock"
-	commonLog "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/log"
-	rds "github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/libs/go/store"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/pkg/entity"
-	"github.com/kowell-ai/kowell-core/adp/dataflow/flow-automation/utils"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/drivenadapters"
+	lock "github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/libs/go/lock"
+	commonLog "github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/libs/go/log"
+	rds "github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/libs/go/store"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/pkg/entity"
+	"github.com/openbkn-ai/bkn-foundry/adp/dataflow/flow-automation/utils"
 )
 
 // tokenMgntMap key[ip:port:clientID:secret]
