@@ -1,0 +1,9 @@
+[
+  {
+    "operation": [
+      "mgnt_built_in_agent",
+      "use"
+    ],
+    "id": "probe"
+  }
+]
