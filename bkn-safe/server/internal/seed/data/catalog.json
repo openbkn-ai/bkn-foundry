@@ -1,0 +1,30 @@
+{
+  "resource_types": [
+    {
+      "id": "agent",
+      "name": "数据智能体",
+      "operations": [
+        {"id": "use", "name": "使用Agent"},
+        {"id": "publish", "name": "发布Agent"},
+        {"id": "unpublish", "name": "取消发布Agent"},
+        {"id": "unpublish_other_user_agent", "name": "取消发布其他用户的Agent"},
+        {"id": "publish_to_be_skill_agent", "name": "发布为技能Agent"},
+        {"id": "publish_to_be_web_sdk_agent", "name": "发布为Web SDK Agent"},
+        {"id": "publish_to_be_api_agent", "name": "发布为API Agent"},
+        {"id": "publish_to_be_data_flow_agent", "name": "发布为数据流Agent"},
+        {"id": "create_system_agent", "name": "创建系统Agent"},
+        {"id": "mgnt_built_in_agent", "name": "内置Agent管理"},
+        {"id": "see_trajectory_analysis", "name": "查看轨迹分析"}
+      ]
+    },
+    {
+      "id": "agent_tpl",
+      "name": "数据智能体模板",
+      "operations": [
+        {"id": "publish", "name": "发布Agent模板"},
+        {"id": "unpublish", "name": "取消发布Agent模板"},
+        {"id": "unpublish_other_user_agent_tpl", "name": "取消发布其他用户Agent模板"}
+      ]
+    }
+  ]
+}

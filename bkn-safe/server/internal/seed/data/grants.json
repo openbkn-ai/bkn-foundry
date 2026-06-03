@@ -1,0 +1,24 @@
+{
+  "_comment": "Role -> permission grants, migrated from ISF DA InitPermission (GrantAgentUsePmsForAppAdmin + GrantMgmtPmsForAppAdmin). Each grant binds a role to all listed ops on resource_type:id_pattern. id_pattern '*' = whole type (keyMatch). Data/AI-admin grants are TODO — their full op sets live in the data-lake/dataflow modules; add when those modules' registration is migrated.",
+  "grants": [
+    {
+      "role_id": "1572fb82-526f-11f0-bde6-e674ec8dde71",
+      "role_name": "应用管理员",
+      "resource_type": "agent",
+      "id_pattern": "*",
+      "operations": [
+        "use", "publish", "unpublish", "unpublish_other_user_agent",
+        "publish_to_be_skill_agent", "publish_to_be_web_sdk_agent",
+        "publish_to_be_api_agent", "publish_to_be_data_flow_agent",
+        "create_system_agent", "mgnt_built_in_agent", "see_trajectory_analysis"
+      ]
+    },
+    {
+      "role_id": "1572fb82-526f-11f0-bde6-e674ec8dde71",
+      "role_name": "应用管理员",
+      "resource_type": "agent_tpl",
+      "id_pattern": "*",
+      "operations": ["publish", "unpublish", "unpublish_other_user_agent_tpl"]
+    }
+  ]
+}
