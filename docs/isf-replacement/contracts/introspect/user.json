@@ -4,9 +4,9 @@
   "scope": "openid offline",
   "client_id": "kweaver-cli",
   "ext": {
-    "visitor_type": "user",
+    "visitor_type": "realname",
     "login_ip": "10.0.0.5",
-    "udid": "device-abc-123",
+    "udid": "",
     "account_type": "other",
     "client_type": "web"
   }

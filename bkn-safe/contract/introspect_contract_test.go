@@ -93,9 +93,9 @@ func TestIntrospectGoldenParses(t *testing.T) {
 				VisitorID:  "f6ae435c-0000-0000-0000-000000000000",
 				Scope:      "openid offline",
 				ClientID:   "kweaver-cli",
-				VisitorTyp: hydra.VisitorType_User,
+				VisitorTyp: hydra.VisitorType_User, // "realname" maps to User in the lib
 				LoginIP:    "10.0.0.5",
-				Udid:       "device-abc-123",
+				Udid:       "", // real ISF user tokens carry udid="" (captured 2026-06-03)
 				AccountTyp: hydra.AccountType_Other,
 				ClientTyp:  hydra.ClientType_Web,
 			},
