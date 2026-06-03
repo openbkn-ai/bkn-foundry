@@ -19,7 +19,7 @@
 | 件 | 选 | 不选 / 备注 |
 |---|---|---|
 | token 引擎 | **上游 ORY Hydra v26.2.0**(不 fork) | 已验;CalVer;device flow 在 v26.x |
-| hydra DB | **MySQL 8**(旁路标准库) | 非 MariaDB(JSON migration 报 1064);信创延后,仅 hydra 这块隔离 |
+| hydra DB | **PostgreSQL**(独立小库) | MariaDB 任何版本装不了上游 hydra(`CAST AS JSON`,MDEV-26448);PG 是 hydra 一等后端 + 金仓 PG 系利于未来信创;信创延后,仅 hydra 这块隔离 |
 | bkn-safe ORM/DB | **GORM + proton-rds driver** | 信创 driver 级免费;绝不 pop |
 | authz 引擎 | **casbin/v2 + gorm-adapter** | `keyMatch` 非 keyMatch2(`:` 越权 bug);effect 只 allow |
 | 密码 | **x/crypto/bcrypt** | |
@@ -64,11 +64,11 @@
 1. **user-mgmt:全新接口 vs 保 ISF 13 端点契约**(倾向全新求简;保契约则风险更低)。
 2. **introspect 现代化**:(a) 保 `kweaver-go-lib/hydra.Introspect` 零改 / (b) hydra 发 JWT + 应用本地验签(减依赖+去往返,改 8 服务)。默认 a。
 3. **anyshare(eacp 文档 ACL,仅 flow-automation)去留** → 决定 flow-automation 那块替不替。
-4. **信创强制 hydra DB?** → 默认否(旁路 MySQL),延后;真要再走路线 A(dialect=mysql)或评估 fork。
+4. **信创强制 hydra DB?** → 默认否(hydra 用独立 PostgreSQL),延后;真要再走路线 A(dialect=mysql)或评估 fork。
 5. **重度 IAM/多协议联邦** → 以后再说。
 
 ## 7. 已完成(Phase 0/1)
 
 - 契约冻结 + 可执行 contract test(introspect 真实 lib v1.0.5、authz Casbin 等价、抓到 keyMatch2 越权 bug)、user-mgmt 调用侧契约、角色 UUID seed。
-- 标准 hydra v26.2.0 + MySQL dev 栈(VM,持久,smoke PASS:client_credentials introspect + device flow)。
+- 标准 hydra v26.2.0 + PostgreSQL dev 栈 + bkn-safe on MariaDB(VM,持久,smoke + e2e PASS:client_credentials introspect + device flow)。
 - ISF 真实 golden 取证(VM):introspect user token 真值(`visitor_type=realname`、`udid=""`)、operation-check、resource-operation;发现 resource-filter/list、v2/names 仅内网(public 404)。详见 `contracts/golden/_capture-notes.md`。

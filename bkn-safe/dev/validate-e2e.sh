@@ -13,6 +13,8 @@ SAFE=http://127.0.0.1:3000
 JAR=$(mktemp)
 fail() { echo "FAIL: $*" >&2; exit 1; }
 loc() { grep -i '^location:' | sed -E 's/^[Ll]ocation: *//; s/\r//'; }
+# urldecode percent-encoding (challenges in redirect URLs are encoded; e.g. =%3D).
+urldec() { printf '%b' "${1//%/\\x}"; }
 
 echo "== 0. register an authcode client =="
 curl -fsS -X DELETE "$ADMIN/admin/clients/safe-e2e" >/dev/null 2>&1 || true
@@ -39,7 +41,7 @@ L=$(curl -fsS -c "$JAR" -D - -o /dev/null "$AUTH" | loc)
 [ -n "$L" ] || fail "no redirect to login"
 echo "  -> $L"
 case "$L" in *"/login?login_challenge="*) ;; *) fail "expected login redirect, got $L";; esac
-LC="${L#*login_challenge=}"
+LC=$(urldec "${L#*login_challenge=}")
 
 echo "== 3. POST credentials to bkn-safe /login =="
 L=$(curl -fsS -c "$JAR" -b "$JAR" -D - -o /dev/null -X POST "$SAFE/login" \

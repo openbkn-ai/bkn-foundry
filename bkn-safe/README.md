@@ -27,7 +27,7 @@ bkn-safe/
       directory/          用户目录查询服务
       httpapi/            gin 路由: health + authz API + provider 页 + directory API
   contract/               契约测试 (introspect 过真实 lib + Casbin 等价)
-  dev/                    本地/VM dev 栈 (上游 hydra + MySQL + bkn-safe)
+  dev/                    本地/VM dev 栈 (hydra/PostgreSQL + bkn-safe/MariaDB)
 ```
 
 ## 构建 / 测试
@@ -39,13 +39,13 @@ cd server && go build ./... && go test ./...
 
 ## 跑起来（dev 栈，在 VM 上）
 
-dev 栈把上游 hydra + MySQL + bkn-safe 一起拉起，bkn-safe 接成 hydra 的 login/consent provider。
+dev 栈把上游 hydra(PostgreSQL) + bkn-safe(MariaDB) 一起拉起，bkn-safe 接成 hydra 的 login/consent provider。
 
 ```bash
 # 交叉编译 (CGO 关) 给 VM 的 linux/arm64
 cd server && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o ../dev/bkn-safe .
 # 在 VM (parallels@10.211.55.4) 上:
-cd dev && docker compose up -d --build      # mysql + hydra v26.2.0 + safe
+cd dev && docker compose up -d --build      # postgres + mariadb + hydra v26.2.0 + safe
 ./seed-clients.sh                            # 注册 OAuth client
 ./validate-e2e.sh                            # 端到端: 登录->授权->token->introspect 验 ext
 ```

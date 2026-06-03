@@ -25,15 +25,15 @@ ISF（authentication / authorization / user-management / eacp / sharemgnt / oaut
 
 - **hydra 只签发 token**，bkn-safe 不是 token 引擎。
 - **bkn-safe 三职责**：认证、鉴权、用户管理。
-- **信创**：bkn-safe 走 `proton-rds` driver（达梦/金仓/MySQL 透明，零方言代码）；hydra 默认旁路标准 **MySQL 8**（不支持 MariaDB），信创延后且隔离。
+- **信创**：bkn-safe 走 `proton-rds` driver（达梦/金仓/MySQL 透明，零方言代码），跑现有 **MariaDB**；hydra 单独用 **PostgreSQL**（见下，MariaDB 装不了上游 hydra），信创延后且隔离。
 
 ## 关键决策（2026-06-03 定）
 
 | 主题 | 决策 |
 |---|---|
 | token 引擎 | 上游 hydra **v26.2.0**（CalVer；device flow 在 v26.x，**不是 v2.3.0**），**不 fork** |
-| hydra DB | 旁路 **MySQL 8**（hydra JSON migration 不兼容 MariaDB）；信创延后 |
-| bkn-safe DB | **GORM + proton-rds driver**；绝不用 gobuffalo/pop（pop 才是 hydra 信创 fork 的坑根） |
+| hydra DB | **PostgreSQL**（独立小库）。MariaDB **任何版本都装不了上游 hydra**：migration 用 MySQL 专有 `CAST(... AS JSON)`，MariaDB 永不支持（MDEV-26448）。PG 是 hydra 一等后端，且金仓 KingbaseES 基于 PG → 未来信创更顺。信创延后 |
+| bkn-safe DB | **GORM + proton-rds driver**，跑现有 **MariaDB**；绝不用 gobuffalo/pop（pop 才是 hydra 信创 fork 的坑根） |
 | 鉴权 | **Casbin 推倒重做**（不复刻 ISF authz 契约）；`keyMatch` 非 keyMatch2；只 allow |
 | 用户管理 | **bkn-safe 自建（GORM）**，不上 IAM 产品；外部对接 **LDAP（轻）**，重度 IAM 延后 |
 | 认证 | bkn-safe **自有用户库验密码（bcrypt）**，切断 eacp/anyshare 依赖 |

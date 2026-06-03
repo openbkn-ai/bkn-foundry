@@ -25,7 +25,7 @@
 产物:`docs/isf-replacement/contracts/`、`bkn-safe/contract/`。
 
 ### Phase 1 — 标准 hydra 就位 ✅ 完成
-上游 hydra v26.2.0 + MySQL 8(VM,持久 dev 栈),seed client(ci-runner/kweaver-cli),smoke PASS(client_credentials introspect + device/auth)。
+上游 hydra v26.2.0 + PostgreSQL(VM 持久 dev 栈)+ bkn-safe on MariaDB,seed client(ci-runner/kweaver-cli),smoke PASS(client_credentials introspect + device/auth)。
 产物:`bkn-safe/dev/`。
 
 ### Phase 2 — bkn-safe 服务骨架
@@ -79,7 +79,7 @@
 ## 横切关注
 
 - **角色 UUID 保号**:贯穿全程(role.json 9 个;DA `inner_role.go` 1572fb82、flow-automation `perm_policy.go` 00990824 硬编码),seed 沿用,免改硬编码 + 数据迁移。
-- **信创**:bkn-safe 走 proton driver(免费);hydra 默认 MySQL,信创延后且隔离(OPEN #4)。
+- **信创**:bkn-safe 走 proton driver(免费);hydra 用独立 PostgreSQL,信创延后且隔离(OPEN #4)。
 - **kweaver-go-lib**:bkn-safe 零依赖;应用保留(logger/audit/rest);introspect 现代化 = OPEN #2。
 - **审计**:应用经 `kweaver-go-lib/audit` 发 Kafka;替换 = 换消费者或保 audit-log,应用零改(§6 契约)。
 
@@ -88,7 +88,7 @@
 1. user-mgmt 全新接口 vs 保 13 端点契约(倾向全新)。
 2. introspect 保兼容(默认)vs JWT 本地验签现代化(改 8 服务)。
 3. anyshare(eacp 文档 ACL,仅 flow-automation)去留。
-4. 信创是否强制 hydra DB(默认否,旁路 MySQL)。
+4. 信创是否强制 hydra DB(默认否,hydra 用独立 PostgreSQL)。
 5. 重度 IAM/多协议联邦(以后再说)。
 6. bkn-safe 归属:Core 服务 vs 独立可选组件(建议后者,沿 ISF 定位)。
 

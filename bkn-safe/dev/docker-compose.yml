@@ -1,53 +1,68 @@
-# Phase 1 dev stack for the ISF replacement: upstream ORY Hydra (UNMODIFIED)
-# on a sidecar MySQL 8. Validates the token-introspect contract against a real
-# hydra and exercises the device-code flow (RFC 8628).
+# Dev stack for the ISF replacement — mirrors the production DB topology:
+#   - hydra (upstream v26.2.0, UNMODIFIED) on PostgreSQL
+#   - bkn-safe on MariaDB (via the proton-rds driver, like the rest of the stack)
 #
-# VERSION NOTE (verified 2026-06-03 on the VM): use hydra v26.2.0 (ORY switched
-# to CalVer after v2.3.0). v2.3.0 has NO device flow — no device table, no
-# /oauth2/device/auth endpoint. Device flow is in v26.x.
-# DB NOTE: hydra does NOT support MariaDB (its JSON migration fails with Error
-# 1064). Official support is MySQL/PostgreSQL/CockroachDB → we use MySQL 8.
+# WHY two engines (decision 2026-06-03, after verifying on the VM):
+#   - hydra does NOT run on MariaDB: its migration 20220513_string_slice_json
+#     uses MySQL-only `CAST(... AS JSON)`, which MariaDB rejects (Error 1064;
+#     MariaDB never implemented it — MDEV-26448). hydra officially supports
+#     PostgreSQL / MySQL / CockroachDB. We pick PostgreSQL (hydra's first-class
+#     backend; also eases a future xinchuang path since Kingbase is PG-based).
+#   - bkn-safe's schema is plain (no CAST AS JSON), so it runs on the existing
+#     MariaDB via proton-rds — no new engine for the app data.
+#   - hydra v2.3.0 has NO device flow; device flow is in v26.x → pin v26.2.0.
 #
-# This is local dev/integration scaffolding — NOT a production deployment.
-# Decision record: docs/isf-replacement/isf-replacement-landing-design §11.1
-# (default = upstream hydra + standard MariaDB, xinchuang deferred).
+# NOT a production deployment — local/VM dev scaffolding.
 #
-#   docker compose up -d            # boot mariadb + run migrations + serve hydra
-#   ./seed-clients.sh               # register the OAuth2 clients
-#   ./validate.sh                   # introspect + device-flow smoke test
+#   docker compose up -d --build     # postgres + mariadb + hydra + bkn-safe
+#   ./seed-clients.sh                # register OAuth2 clients
+#   ./validate.sh                    # client_credentials introspect + device smoke
+#   ./validate-e2e.sh                # full authcode login/consent + introspect ext
 #
-# Hydra ports: 4444 = public (token/device/auth), 4445 = admin (introspect/clients).
+# Hydra ports: 4444 public, 4445 admin. bkn-safe: 3000.
 
 services:
-  # NOTE: hydra officially supports MySQL / PostgreSQL / CockroachDB — NOT
-  # MariaDB. MariaDB's JSON type is a longtext alias and the migration
-  # 20220513..._string_slice_json.mysql.up.sql fails with Error 1064. So the
-  # standard sidecar DB is MySQL 8, not MariaDB. (Decision §11.1 wording
-  # corrected from "MariaDB" to "MySQL".)
-  mysql:
-    image: mysql:8.4
+  # hydra's OAuth2 metadata DB. PostgreSQL — hydra's first-class backend.
+  postgres:
+    image: postgres:16
     environment:
-      MYSQL_ROOT_PASSWORD: secret
-      MYSQL_DATABASE: hydra
-      MYSQL_USER: hydra
-      MYSQL_PASSWORD: secret
+      POSTGRES_USER: hydra
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: hydra
     ports:
-      - "13306:3306"
+      - "15432:5432"
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-psecret"]
+      test: ["CMD-SHELL", "pg_isready -U hydra"]
       interval: 5s
       timeout: 5s
       retries: 20
     volumes:
-      - hydra-mysql:/var/lib/mysql   # persistent: stable standard test hydra DB
+      - hydra-pg:/var/lib/postgresql/data
+
+  # bkn-safe's app DB. MariaDB — same engine as the rest of the Kowell stack;
+  # bkn-safe connects via the proton-rds driver (xinchuang-transparent).
+  mariadb:
+    image: mariadb:11.4
+    environment:
+      MARIADB_ROOT_PASSWORD: secret
+      MARIADB_DATABASE: safe
+    ports:
+      - "13306:3306"
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - safe-mariadb:/var/lib/mysql
 
   hydra-migrate:
     image: oryd/hydra:v26.2.0
     depends_on:
-      mysql:
+      postgres:
         condition: service_healthy
     environment:
-      DSN: "mysql://hydra:secret@tcp(mysql:3306)/hydra?parseTime=true&multiStatements=true"
+      DSN: "postgres://hydra:secret@postgres:5432/hydra?sslmode=disable"
     command: migrate sql -e --yes
     restart: on-failure
 
@@ -60,10 +75,10 @@ services:
       - "4444:4444"   # public
       - "4445:4445"   # admin
     environment:
-      DSN: "mysql://hydra:secret@tcp(mysql:3306)/hydra?parseTime=true&multiStatements=true"
+      DSN: "postgres://hydra:secret@postgres:5432/hydra?sslmode=disable"
       URLS_SELF_ISSUER: "http://127.0.0.1:4444"
-      # No real login/consent UI yet (that's bkn-safe, Phase 2). For Phase 1 we
-      # exercise client_credentials (no UI needed) and the device endpoint.
+      # login/consent/device provider = bkn-safe. The browser (host curl) is
+      # redirected here; both host and provider share 127.0.0.1:3000.
       URLS_LOGIN: "http://127.0.0.1:3000/login"
       URLS_CONSENT: "http://127.0.0.1:3000/consent"
       URLS_DEVICE_VERIFICATION: "http://127.0.0.1:3000/device"
@@ -76,12 +91,11 @@ services:
   # bkn-safe: the ISF replacement auth service, wired as hydra's login/consent/
   # device provider. Built from the cross-compiled binary (see Dockerfile).
   # Reaches hydra admin over the compose network (hydra:4445); the browser is
-  # redirected to 127.0.0.1:3000 (published), which both the host curl and the
-  # provider share.
+  # redirected to 127.0.0.1:3000 (published), shared by host curl and provider.
   safe:
     build: .
     depends_on:
-      mysql:
+      mariadb:
         condition: service_healthy
       hydra:
         condition: service_started
@@ -89,9 +103,10 @@ services:
       - "3000:3000"
     environment:
       SAFE_HTTP_ADDR: ":3000"
+      SAFE_DB_TYPE: "MySQL"
       SAFE_DB_USER: "root"
       SAFE_DB_PASSWORD: "secret"
-      SAFE_DB_HOST: "mysql"
+      SAFE_DB_HOST: "mariadb"
       SAFE_DB_PORT: "3306"
       SAFE_DB_NAME: "safe"
       SAFE_HYDRA_ADMIN_URL: "http://hydra:4445"
@@ -100,4 +115,5 @@ services:
     restart: on-failure
 
 volumes:
-  hydra-mysql:   # persistent MySQL data for the standing test hydra
+  hydra-pg:        # persistent PostgreSQL data for the standing test hydra
+  safe-mariadb:    # persistent MariaDB data for bkn-safe
