@@ -1,0 +1,74 @@
+# Phase 1 dev stack for the ISF replacement: upstream ORY Hydra (UNMODIFIED)
+# on a sidecar MySQL 8. Validates the token-introspect contract against a real
+# hydra and exercises the device-code flow (RFC 8628).
+#
+# VERSION NOTE (verified 2026-06-03 on the VM): use hydra v26.2.0 (ORY switched
+# to CalVer after v2.3.0). v2.3.0 has NO device flow — no device table, no
+# /oauth2/device/auth endpoint. Device flow is in v26.x.
+# DB NOTE: hydra does NOT support MariaDB (its JSON migration fails with Error
+# 1064). Official support is MySQL/PostgreSQL/CockroachDB → we use MySQL 8.
+#
+# This is local dev/integration scaffolding — NOT a production deployment.
+# Decision record: docs/isf-replacement/isf-replacement-landing-design §11.1
+# (default = upstream hydra + standard MariaDB, xinchuang deferred).
+#
+#   docker compose up -d            # boot mariadb + run migrations + serve hydra
+#   ./seed-clients.sh               # register the OAuth2 clients
+#   ./validate.sh                   # introspect + device-flow smoke test
+#
+# Hydra ports: 4444 = public (token/device/auth), 4445 = admin (introspect/clients).
+
+services:
+  # NOTE: hydra officially supports MySQL / PostgreSQL / CockroachDB — NOT
+  # MariaDB. MariaDB's JSON type is a longtext alias and the migration
+  # 20220513..._string_slice_json.mysql.up.sql fails with Error 1064. So the
+  # standard sidecar DB is MySQL 8, not MariaDB. (Decision §11.1 wording
+  # corrected from "MariaDB" to "MySQL".)
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: secret
+      MYSQL_DATABASE: hydra
+      MYSQL_USER: hydra
+      MYSQL_PASSWORD: secret
+    ports:
+      - "13306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-psecret"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    tmpfs:
+      - /var/lib/mysql   # ephemeral: this is a throwaway dev DB
+
+  hydra-migrate:
+    image: oryd/hydra:v26.2.0
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      DSN: "mysql://hydra:secret@tcp(mysql:3306)/hydra?parseTime=true&multiStatements=true"
+    command: migrate sql -e --yes
+    restart: on-failure
+
+  hydra:
+    image: oryd/hydra:v26.2.0
+    depends_on:
+      hydra-migrate:
+        condition: service_completed_successfully
+    ports:
+      - "4444:4444"   # public
+      - "4445:4445"   # admin
+    environment:
+      DSN: "mysql://hydra:secret@tcp(mysql:3306)/hydra?parseTime=true&multiStatements=true"
+      URLS_SELF_ISSUER: "http://127.0.0.1:4444"
+      # No real login/consent UI yet (that's bkn-safe, Phase 2). For Phase 1 we
+      # exercise client_credentials (no UI needed) and the device endpoint.
+      URLS_LOGIN: "http://127.0.0.1:3000/login"
+      URLS_CONSENT: "http://127.0.0.1:3000/consent"
+      URLS_DEVICE_VERIFICATION: "http://127.0.0.1:3000/device"
+      SECRETS_SYSTEM: "this-is-a-dev-only-secret-change-me-32b"
+      OAUTH2_EXPOSE_INTERNAL_ERRORS: "true"
+      LOG_LEVEL: "info"
+    command: serve all --dev
+    restart: on-failure
