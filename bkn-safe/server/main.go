@@ -11,6 +11,7 @@ import (
 	"bkn-safe/internal/auth"
 	"bkn-safe/internal/authz"
 	"bkn-safe/internal/database"
+	"bkn-safe/internal/directory"
 	"bkn-safe/internal/httpapi"
 	"bkn-safe/internal/seed"
 )
@@ -40,13 +41,23 @@ func main() {
 
 	userStore := auth.NewUserStore(db)
 	hydraAdmin := auth.NewHydraAdmin(cfg.Hydra.AdminURL)
-	provider := auth.NewProvider(userStore, hydraAdmin, userStore)
+
+	// Authenticator: local bcrypt store, plus LDAP federation when configured
+	// (local first, then LDAP).
+	var authenticator auth.Authenticator = userStore
+	if cfg.LDAP.Enabled() {
+		authenticator = auth.NewChain(userStore, auth.NewLDAPAuthenticator(cfg.LDAP, db))
+		slog.Info("LDAP federation enabled", "url", cfg.LDAP.URL)
+	}
+	provider := auth.NewProvider(authenticator, hydraAdmin, userStore)
+	dir := directory.New(db)
 
 	r := httpapi.New(httpapi.Deps{
-		Enforcer: enforcer,
-		DB:       db,
-		Provider: provider,
-		Hydra:    hydraAdmin,
+		Enforcer:  enforcer,
+		DB:        db,
+		Provider:  provider,
+		Hydra:     hydraAdmin,
+		Directory: dir,
 	})
 	slog.Info("bkn-safe listening", "addr", cfg.HTTPAddr)
 	if err := r.Run(cfg.HTTPAddr); err != nil {

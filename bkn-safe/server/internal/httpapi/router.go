@@ -10,14 +10,16 @@ import (
 
 	"bkn-safe/internal/auth"
 	"bkn-safe/internal/authz"
+	"bkn-safe/internal/directory"
 )
 
 // Deps are the collaborators the HTTP layer needs.
 type Deps struct {
-	Enforcer *authz.Enforcer
-	DB       *gorm.DB
-	Provider *auth.Provider
-	Hydra    *auth.HydraAdmin
+	Enforcer  *authz.Enforcer
+	DB        *gorm.DB
+	Provider  *auth.Provider
+	Hydra     *auth.HydraAdmin
+	Directory *directory.Service
 }
 
 // New builds the gin engine with all routes mounted.
@@ -34,6 +36,11 @@ func New(deps Deps) *gin.Engine {
 	// hydra login/consent/device provider pages.
 	if deps.Provider != nil && deps.Hydra != nil {
 		registerAuth(r, deps.Provider, deps.Hydra)
+	}
+
+	// user-directory API.
+	if deps.Directory != nil {
+		registerDirectory(r, deps.Directory)
 	}
 
 	return r
