@@ -238,10 +238,24 @@ install_isf() {
     
     # Create temporary config.yaml without rds.database field for ISF services
     local temp_config="${CONFIG_YAML_PATH}.isf.tmp"
-    log_info "Creating temporary config.yaml for ISF services (removing rds.database field)..."
-    
-    # Copy config.yaml and remove all database: lines (both top-level and nested under rds)
-    sed '/database:/d' "${CONFIG_YAML_PATH}" > "${temp_config}"
+    log_info "Creating temporary config.yaml for ISF services (removing rds.database + global image.registry)..."
+
+    # Copy config.yaml and strip two fields that must not reach the ISF charts:
+    #   - database: lines (both top-level and nested under rds)
+    #   - the top-level image.registry override
+    # The global image.registry (e.g. ghcr.io/openbkn-ai) targets the Core app
+    # images. ISF charts are AnyShare-derived and ship their own correct default
+    # registry (swr.cn-east-3.myhuaweicloud.com/kweaver-ai, repository as/<svc>);
+    # the ISF images are published there, not under ghcr.io/openbkn-ai/as/*.
+    # Letting the Core registry leak in via -f rewrites every ISF image to a
+    # private/non-existent ghcr path and the pre-install data-migrator job fails
+    # with 403/ImagePullBackOff. Drop the image: block so each ISF chart default wins.
+    awk '
+        /^image:/ { in_image = 1; next }      # drop the image: header
+        in_image && /^[[:space:]]/ { next }   # drop its indented children (registry, etc.)
+        in_image { in_image = 0 }              # first non-indented line ends the block
+        { print }
+    ' "${CONFIG_YAML_PATH}" | sed '/database:/d' > "${temp_config}"
     
     # Temporarily replace CONFIG_YAML_PATH with temp config
     local original_config="${CONFIG_YAML_PATH}"
