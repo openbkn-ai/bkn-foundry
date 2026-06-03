@@ -38,8 +38,8 @@ services:
       interval: 5s
       timeout: 5s
       retries: 20
-    tmpfs:
-      - /var/lib/mysql   # ephemeral: this is a throwaway dev DB
+    volumes:
+      - hydra-mysql:/var/lib/mysql   # persistent: stable standard test hydra DB
 
   hydra-migrate:
     image: oryd/hydra:v26.2.0
@@ -72,3 +72,6 @@ services:
       LOG_LEVEL: "info"
     command: serve all --dev
     restart: on-failure
+
+volumes:
+  hydra-mysql:   # persistent MySQL data for the standing test hydra
