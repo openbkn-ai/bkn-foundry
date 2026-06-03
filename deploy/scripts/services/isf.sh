@@ -2,6 +2,15 @@
 ISF_LOCAL_CHARTS_DIR="${ISF_LOCAL_CHARTS_DIR:-}"
 ISF_VERSION_MANIFEST_FILE="${ISF_VERSION_MANIFEST_FILE:-}"
 
+# ISF application images live on the AnyShare swr registry, with each chart's
+# repository already set to as/<svc>. They are NOT mirrored under the Core
+# registry ghcr.io/openbkn-ai/as/* (that path is private -> 403). The ISF
+# service charts default image.registry to "" and rely on the installer to
+# supply it, so we set it explicitly. The Core-oriented global image.registry
+# in config.yaml (e.g. ghcr.io/openbkn-ai) must not reach the ISF charts.
+# Override KWEAVER_ISF_IMAGE_REGISTRY for an air-gapped / private mirror.
+ISF_IMAGE_REGISTRY="${KWEAVER_ISF_IMAGE_REGISTRY:-swr.cn-east-3.myhuaweicloud.com/kweaver-ai}"
+
 # Build the resource override --set list for ISF helm releases.
 # Empty when none of KWEAVER_ISF_{REQ,LIM}_{CPU,MEM} is set → chart defaults stay in effect
 # (chart defaults span limits 1-8Gi; mac/k3s defaults are layered upstream in
@@ -13,6 +22,12 @@ _isf_resource_set_args() {
     [[ -n "${KWEAVER_ISF_LIM_CPU:-}" ]] && args+=("--set" "resources.limits.cpu=${KWEAVER_ISF_LIM_CPU}")
     [[ -n "${KWEAVER_ISF_LIM_MEM:-}" ]] && args+=("--set" "resources.limits.memory=${KWEAVER_ISF_LIM_MEM}")
     printf '%s\n' "${args[@]}"
+}
+
+# Emit the image.registry override for ISF helm releases. --set-string keeps the
+# registry host (dots, slashes) literal. Empty when ISF_IMAGE_REGISTRY is unset.
+_isf_image_set_args() {
+    [[ -n "${ISF_IMAGE_REGISTRY}" ]] && printf '%s\n' "--set-string" "image.registry=${ISF_IMAGE_REGISTRY}"
 }
 
 # ISF databases list
@@ -238,24 +253,13 @@ install_isf() {
     
     # Create temporary config.yaml without rds.database field for ISF services
     local temp_config="${CONFIG_YAML_PATH}.isf.tmp"
-    log_info "Creating temporary config.yaml for ISF services (removing rds.database + global image.registry)..."
+    log_info "Creating temporary config.yaml for ISF services (removing rds.database field)..."
 
-    # Copy config.yaml and strip two fields that must not reach the ISF charts:
-    #   - database: lines (both top-level and nested under rds)
-    #   - the top-level image.registry override
-    # The global image.registry (e.g. ghcr.io/openbkn-ai) targets the Core app
-    # images. ISF charts are AnyShare-derived and ship their own correct default
-    # registry (swr.cn-east-3.myhuaweicloud.com/kweaver-ai, repository as/<svc>);
-    # the ISF images are published there, not under ghcr.io/openbkn-ai/as/*.
-    # Letting the Core registry leak in via -f rewrites every ISF image to a
-    # private/non-existent ghcr path and the pre-install data-migrator job fails
-    # with 403/ImagePullBackOff. Drop the image: block so each ISF chart default wins.
-    awk '
-        /^image:/ { in_image = 1; next }      # drop the image: header
-        in_image && /^[[:space:]]/ { next }   # drop its indented children (registry, etc.)
-        in_image { in_image = 0 }              # first non-indented line ends the block
-        { print }
-    ' "${CONFIG_YAML_PATH}" | sed '/database:/d' > "${temp_config}"
+    # Copy config.yaml and remove all database: lines (both top-level and nested
+    # under rds). The Core image.registry in this config is overridden per-release
+    # via --set-string image.registry=${ISF_IMAGE_REGISTRY} (see _isf_image_set_args),
+    # so it is harmless to leave here.
+    sed '/database:/d' "${CONFIG_YAML_PATH}" > "${temp_config}"
     
     # Temporarily replace CONFIG_YAML_PATH with temp config
     local original_config="${CONFIG_YAML_PATH}"
@@ -336,6 +340,7 @@ _install_isf_release_local() {
     log_info "Installing ${release_name} from local chart: $(basename "${chart_tgz}")..."
     local -a _isf_res_args=()
     while IFS= read -r line; do [[ -n "${line}" ]] && _isf_res_args+=("${line}"); done < <(_isf_resource_set_args)
+    while IFS= read -r line; do [[ -n "${line}" ]] && _isf_res_args+=("${line}"); done < <(_isf_image_set_args)
     helm upgrade --install "${release_name}" "${chart_tgz}" \
         --namespace "${namespace}" \
         -f "${values_file}" \
@@ -381,6 +386,7 @@ install_isf_release() {
     fi
     
     while IFS= read -r line; do [[ -n "${line}" ]] && helm_args+=("${line}"); done < <(_isf_resource_set_args)
+    while IFS= read -r line; do [[ -n "${line}" ]] && helm_args+=("${line}"); done < <(_isf_image_set_args)
 
     helm_args+=("--devel" "--wait" "--timeout=600s")
 
