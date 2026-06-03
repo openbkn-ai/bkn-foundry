@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"bkn-safe/config"
+	"bkn-safe/internal/auth"
 	"bkn-safe/internal/authz"
 	"bkn-safe/internal/database"
 	"bkn-safe/internal/httpapi"
@@ -37,7 +38,16 @@ func main() {
 		slog.Info("seed applied (roles + catalog + grants)")
 	}
 
-	r := httpapi.New(httpapi.Deps{Enforcer: enforcer, DB: db})
+	userStore := auth.NewUserStore(db)
+	hydraAdmin := auth.NewHydraAdmin(cfg.Hydra.AdminURL)
+	provider := auth.NewProvider(userStore, hydraAdmin, userStore)
+
+	r := httpapi.New(httpapi.Deps{
+		Enforcer: enforcer,
+		DB:       db,
+		Provider: provider,
+		Hydra:    hydraAdmin,
+	})
 	slog.Info("bkn-safe listening", "addr", cfg.HTTPAddr)
 	if err := r.Run(cfg.HTTPAddr); err != nil {
 		fatal("http serve", err)

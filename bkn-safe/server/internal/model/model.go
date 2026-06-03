@@ -30,8 +30,10 @@ type User struct {
 	Name         string      `gorm:"size:255"`
 	Email        string      `gorm:"size:255;index"`
 	Telephone    string      `gorm:"size:64"`
-	Enabled      bool        `gorm:"default:true"`
-	Source       Source      `gorm:"size:16;default:local"`
+	// No GORM "default:true": a default would override an explicit Enabled=false
+	// on insert (GORM treats the bool zero value as unset). Callers set Enabled.
+	Enabled      bool
+	Source       Source `gorm:"size:16;default:local"`
 	AccountType  AccountType `gorm:"size:16;default:other"`
 	PasswordHash string      `gorm:"size:255"` // bcrypt; empty for ldap/app
 	CreatedAt    time.Time

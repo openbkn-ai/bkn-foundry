@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	"bkn-safe/internal/auth"
 	"bkn-safe/internal/authz"
 )
 
@@ -15,6 +16,8 @@ import (
 type Deps struct {
 	Enforcer *authz.Enforcer
 	DB       *gorm.DB
+	Provider *auth.Provider
+	Hydra    *auth.HydraAdmin
 }
 
 // New builds the gin engine with all routes mounted.
@@ -25,9 +28,13 @@ func New(deps Deps) *gin.Engine {
 	r.GET("/health/ready", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "ok"}) })
 	r.GET("/health/alive", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "ok"}) })
 
-	// authz API (clean redesign). Provider pages (login/consent/device) and the
-	// user-directory API are mounted in later phases.
+	// authz API (clean redesign).
 	registerAuthz(r, deps.Enforcer, deps.DB)
+
+	// hydra login/consent/device provider pages.
+	if deps.Provider != nil && deps.Hydra != nil {
+		registerAuth(r, deps.Provider, deps.Hydra)
+	}
 
 	return r
 }
