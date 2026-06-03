@@ -2,8 +2,8 @@ apiVersion: v1
 data:
   RDSHOST: {{ .Values.depServices.rds.host | quote }}
   RDSPORT: {{ quote .Values.depServices.rds.port }}
-  RDSUSER: {{ .Values.depServices.rds.user }}
-  RDSPASS: {{ .Values.depServices.rds.password }}
+  RDSUSER: {{ .Values.depServices.rds.user | quote }}
+  RDSPASS: {{ .Values.depServices.rds.password | quote }}
   DB_TYPE: {{ .Values.depServices.rds.type | quote}}
   RDSDBNAME: {{ .Values.depServices.rds.database | quote }}
   CRYPTO_AES_KEY: {{ .Values.depServices.crypto.aesKey | quote }}
