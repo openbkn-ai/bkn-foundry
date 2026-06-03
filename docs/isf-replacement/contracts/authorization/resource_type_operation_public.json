@@ -1,0 +1,25 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "description": "请求体结构定义 - resource_type_operation_public",
+    "required": [
+        "resource_types",
+        "method"
+    ],
+    "properties": {
+        "resource_types": {
+            "type": "array",
+            "description": "资源类型列表",
+            "items": {
+                "type": "string"
+            }
+        },
+        "method": {
+            "type": "string",
+            "description": "方法",
+            "enum": [
+                "GET"
+            ]
+        }
+    }
+}

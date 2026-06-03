@@ -1,0 +1,94 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "array",
+    "description": "请求体结构定义 - 配置策略",
+    "items": {
+        "type": "object",
+        "required": [
+            "operation"
+        ],
+        "properties": {
+            "operation": {
+                "type": "object",
+                "description": "操作",
+                "required": [
+                    "allow",
+                    "deny"
+                ],
+                "properties": {
+                    "allow": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "id": {
+                                    "type": "string"
+                                },
+                                "obligations": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "required": [
+                                            "type_id"
+                                        ],
+                                        "properties": {
+                                            "type_id": {
+                                                "type": "string"
+                                            },
+                                            "id": {
+                                                "type": "string"
+                                            },
+                                            "value": {
+                                                "type": "object",
+                                                "additionalProperties": true
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "deny": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "id": {
+                                    "type": "string"
+                                },
+                                "obligations": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "required": [
+                                            "type_id"
+                                        ],
+                                        "properties": {
+                                            "type_id": {
+                                                "type": "string"
+                                            },
+                                            "id": {
+                                                "type": "string"
+                                            },
+                                            "value": {
+                                                "type": "object",
+                                                "additionalProperties": true
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "condition": {
+                "type": "string",
+                "description": "条件"
+            },
+            "expires_at": {
+                "type": "string"
+            }
+        }
+    }
+}

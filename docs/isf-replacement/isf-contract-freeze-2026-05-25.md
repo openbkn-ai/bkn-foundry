@@ -1,8 +1,10 @@
 # ISF 替换 —— 契约冻结 Spec（Phase 0）
 
 > 日期：2026-05-25　分支：`feat/isf-replacement`
-> 目的：钉死「新 auth-service / hydra 必须满足的对外契约」，作为 contract test + 上线影子比对的基准。**不被信创决策（§11.1）阻塞，先行。**
+> 目的：钉死「新服务 bkn-safe（代码 `safe`）/ hydra 必须满足的对外契约」，作为 contract test + 上线影子比对的基准。**不被信创决策（§11.1）阻塞，先行。**
 > 上游：`reports/isf-replacement-landing-design-2026-05-25.md`
+>
+> ⚠️ **冻结 artifact 与 live DoD 状态见 [`contracts/`](contracts/README.md)**（权威 JSON Schema + role.json + introspect golden 已 in-repo 固化，ISF @ `00c4a5d`）。本 spec 与源的几处漂移已在 contracts/README.md「漂移更正」节订正（method enum=GET、resource-operation operation 非 required、public 端点无 accessor 等）。
 
 ---
 

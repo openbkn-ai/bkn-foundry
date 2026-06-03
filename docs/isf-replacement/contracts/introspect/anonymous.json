@@ -1,0 +1,9 @@
+{
+  "active": true,
+  "sub": "anon-0001",
+  "scope": "",
+  "client_id": "public-web",
+  "ext": {
+    "visitor_type": "anonymous"
+  }
+}

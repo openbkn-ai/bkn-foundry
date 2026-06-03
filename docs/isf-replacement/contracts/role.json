@@ -1,0 +1,83 @@
+[
+    {
+        "id": "7dcfcc9c-ad02-11e8-aa06-000c29358ad6",
+        "name": "超级管理员",
+        "description": "超级管理员(supper)",
+        "source": "system",
+        "resource_type_scope": {
+            "unlimited": true
+        }
+    },
+    {
+        "id": "d2bd2082-ad03-11e8-aa06-000c29358ad6",
+        "name": "系统管理员",
+        "description": "系统管理员(admin)",
+        "source": "system",
+        "resource_type_scope": {
+            "unlimited": true
+        }
+    },
+    {
+        "id": "d8998f72-ad03-11e8-aa06-000c29358ad6",
+        "name": "安全管理员",
+        "description": "安全管理员(security)",
+        "source": "system",
+        "resource_type_scope": {
+            "unlimited": true
+        }
+    },
+    {
+        "id": "def246f2-ad03-11e8-aa06-000c29358ad6",
+        "name": "审计管理员",
+        "description": "审计管理员(audit)",
+        "source": "system",
+        "resource_type_scope": {
+            "unlimited": true
+        }
+    },
+    {
+        "id": "e63e1c88-ad03-11e8-aa06-000c29358ad6",
+        "name": "组织管理员",
+        "description": "组织管理员(organization manager)",
+        "source": "system",
+        "resource_type_scope": {
+            "unlimited": true
+        }
+    },
+    {
+        "id": "f06ac18e-ad03-11e8-aa06-000c29358ad6",
+        "name": "组织审计员",
+        "description": "组织审计员(organization audit)",
+        "source": "system",
+        "resource_type_scope": {
+            "unlimited": true
+        }
+    },
+    {
+        "id": "00990824-4bf7-11f0-8fa7-865d5643e61f",
+        "name": "数据管理员",
+        "description": "主要管理多模态数据湖、本体引擎、以及Dataflow中数据处理流模块，拥有模块下所有资源的增删改查以及权限管理等操作",
+        "source": "business",
+        "resource_type_scope": {
+            "unlimited": true
+        }
+    },
+    {
+        "id": "3fb94948-5169-11f0-b662-3a7bdba2913f",
+        "name": "AI管理员",
+        "description": "主要管理Dataflow中逻辑和行动下所有资源，拥有模块下所有资源的增删改查以及权限管理等操作；同时可接入系统模型，以及模型的训练、优化",
+        "source": "business",
+        "resource_type_scope": {
+            "unlimited": true
+        }
+    },
+    {
+        "id": "1572fb82-526f-11f0-bde6-e674ec8dde71",
+        "name": "应用管理员",
+        "description": "可创建“系统智能体”和“自定义空间”，可发布智能体和智能体模版、管理内置智能体等",
+        "source": "business",
+        "resource_type_scope": {
+            "unlimited": true
+        }
+    }
+]

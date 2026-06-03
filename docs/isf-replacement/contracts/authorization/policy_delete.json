@@ -1,0 +1,38 @@
+{
+    "type": "object",
+    "description": "请求体结构定义 - 删除策略",
+    "required": [
+        "method",
+        "resources"
+    ],
+    "properties": {
+        "method": {
+            "type": "string",
+            "description": "方法",
+            "enum": [
+                "DELETE"
+            ]
+        },
+        "resources": {
+            "type": "array",
+            "description": "客体信息",
+            "items": {
+                "type": "object",
+                "required": [
+                    "id",
+                    "type"
+                ],
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "description": "资源ID"
+                    },
+                    "type": {
+                        "type": "string",
+                        "description": "资源类型"
+                    }
+                }
+            }
+        }
+    }
+}
