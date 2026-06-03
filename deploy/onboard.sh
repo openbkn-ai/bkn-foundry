@@ -677,6 +677,45 @@ onboard_kweaver_admin_hint_auth_change_password_cli() {
     onboard_log_warn "Non-interactive (-y): use $(onboard_argv_q kweaver-admin auth change-password "${_url}" -u "${_user}" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}") interactively elsewhere, then re-run onboard; or  auth login  with $(onboard_argv_q kweaver-admin auth login "${_url}" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}") -u … -p '<initial>' --new-password '<new>', then export ONBOARD_DEFAULT_KWEAVER_PASSWORD. Always pass the URL (see kweaver-admin auth list if omitted)."
 }
 
+# ISF auth-route gate: `kweaver-admin auth login` first does OAuth2 dynamic client
+# registration (POST /oauth2/clients), routed by the ISF ingress (ingress-informationsecurityfabric)
+# to the authentication service. That route only exists once ISF is installed AND nginx has
+# propagated it. `helm --wait` blocks on pod Ready but NOT on ingress propagation, so onboard
+# can race ahead and get 404 {"detail":"Not Found"} from the ingress default backend. Poll the
+# exact endpoint until it stops 404-ing (400 = route live, backend just rejects the empty body).
+# Bounded; warns and proceeds if it never comes up so the login loop still surfaces the real error.
+# Env: ONBOARD_ISF_OAUTH_READY_MAX_TRIES (default 24), ONBOARD_ISF_OAUTH_READY_SLEEP (default 5).
+# Only reached via onboard_kweaver_admin_auth_login_for_url, whose callers are guarded by
+# onboard_isf_full_install — so this never runs (and never waits) on a non-ISF install.
+onboard_wait_isf_oauth_clients_ready() {
+    local _url="$1"
+    local _max="${ONBOARD_ISF_OAUTH_READY_MAX_TRIES:-24}" _i _code
+    command -v curl >/dev/null 2>&1 || return 0
+    for ((_i = 1; _i <= _max; _i++)); do
+        _code="$(curl -sk -o /dev/null -w '%{http_code}' \
+            --connect-timeout 4 --max-time 8 \
+            -X POST "${_url%/}/oauth2/clients" \
+            -H 'Content-Type: application/json' -d '{}' 2>/dev/null || echo 000)"
+        if [[ "${_code}" != "404" && "${_code}" != "000" ]]; then
+            [[ "${_i}" -gt 1 ]] && onboard_log_info "ISF auth route /oauth2/clients ready (HTTP ${_code})."
+            return 0
+        fi
+        [[ "${_i}" -eq 1 ]] && onboard_log_info "Waiting for ISF auth route /oauth2/clients (HTTP ${_code}); ISF ingress may still be propagating…"
+        sleep "${ONBOARD_ISF_OAUTH_READY_SLEEP:-5}"
+    done
+    onboard_log_warn "ISF auth route /oauth2/clients still not ready after ${_max} tries; continuing — login may fail with a registration 404 if ISF is not fully installed."
+    return 0
+}
+
+# True when a kweaver-admin login failed specifically because the OAuth2 client-registration
+# route is missing (ISF ingress not up): "Client registration failed (404)" / ingress
+# default-backend {"detail":"Not Found"}. Distinct from a wrong password, so the hint must differ.
+onboard_kweaver_admin_output_is_oauth_route_missing() {
+    local _file="$1"
+    [[ -f "${_file}" ]] || return 1
+    grep -qiE 'Client registration failed \(404\)|"detail":[[:space:]]*"Not Found"' "${_file}"
+}
+
 # kweaver-admin: -u/-p use HTTP /oauth2/signin (no --http-signin flag; unlike kweaver-sdk). Same defaults as kweaver. See ONBOARD_DEFAULT_KWEAVER_*.
 onboard_kweaver_admin_auth_login_for_url() {
     local _kurl="$1"
@@ -684,6 +723,8 @@ onboard_kweaver_admin_auth_login_for_url() {
     _duser="${ONBOARD_DEFAULT_KWEAVER_USER:-admin}"
     _dpass="${ONBOARD_DEFAULT_KWEAVER_PASSWORD:-eisoo.com}"
     onboard_kweaver_tls_insecure_args_to_array "${_kurl}"
+    # Block until the ISF client-registration route is live, so login doesn't race a 404.
+    onboard_wait_isf_oauth_clients_ready "${_kurl}"
 
     if [[ "${ONBOARD_ASSUME_YES}" == "true" ]]; then
         onboard_log_info "kweaver-admin auth: ISF — HTTP sign-in (defaults, -y): ${_duser}"
@@ -692,6 +733,11 @@ onboard_kweaver_admin_auth_login_for_url() {
         if kweaver-admin auth login "${_kurl}" -u "${_duser}" -p "${_dpass}" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}" 2>&1 | tee "${_kad_out}"; then
             rm -f "${_kad_out}"
             return 0
+        fi
+        if onboard_kweaver_admin_output_is_oauth_route_missing "${_kad_out}"; then
+            onboard_log_err "kweaver-admin: OAuth2 client registration hit 404 (/oauth2/clients not routed) — ISF auth stack not ready, NOT a password problem. Ensure 'deploy.sh isf install' finished (ingress-informationsecurityfabric present), then re-run: $0"
+            rm -f "${_kad_out}"
+            return 1
         fi
         if onboard_kweaver_admin_output_is_blocked_initial_password "${_kad_out}"; then
             if onboard_is_bootstrap_tty && onboard_kweaver_admin_resolve_initial_password_blocked_interactive "${_kurl}" "${_duser}"; then
@@ -718,6 +764,12 @@ onboard_kweaver_admin_auth_login_for_url() {
         if kweaver-admin auth login "${_kurl}" -u "${_u}" -p "${_p}" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}" 2>&1 | tee "${_kad_out}"; then
             rm -f "${_kad_out}"
             return 0
+        fi
+        if onboard_kweaver_admin_output_is_oauth_route_missing "${_kad_out}"; then
+            onboard_log_warn "kweaver-admin: OAuth2 client registration 404 (/oauth2/clients not routed) — ISF auth stack not ready yet, NOT a password problem. Waiting before retry…"
+            rm -f "${_kad_out}"
+            sleep "${ONBOARD_ISF_OAUTH_READY_SLEEP:-5}"
+            continue
         fi
         if onboard_kweaver_admin_output_is_blocked_initial_password "${_kad_out}"; then
             if onboard_is_bootstrap_tty && onboard_kweaver_admin_resolve_initial_password_blocked_interactive "${_kurl}" "${_u}"; then
