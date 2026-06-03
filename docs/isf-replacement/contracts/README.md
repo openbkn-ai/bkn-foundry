@@ -54,11 +54,16 @@ lib `kweaver-go-lib/hydra@v1.0.5` `Introspect()` 用**无 nil 检查的类型断
 3. **operation-check accessor.type enum 仅 user/app**；只有 `policy.json`（写策略）才是 user/department/group/role/app 宽 enum。
 4. **public 端点无 accessor**（从 token 取主体），与内网端点请求结构不同 → bkn-safe 内外网两组路由请求体不同构。
 
+### `user-management.md` — 13 目录端点调用侧契约
+从 bkn/vega/flow/DA 的 client 代码 + flow mock-server 抽取（**调用侧**口径 = 应用实际 send/unmarshal 的字段，非 ISF handler 全集）。含 envelope、错误码（`400019001/2/3/4`、`404019001`）、POST-by-body、v1/v2 未知 ID 处理相反、`parent_deps` list-of-lists、`csf_level` 为 JSON number 等承重点。
+
 ## DoD 状态（对 spec §8）
+
 - [x] §1 introspect 约束对 lib 源码逐字核实 + golden fixture（user/app/anonymous/inactive）
+- [x] §1 可执行 contract test（[`bkn-safe/contract/`](../../../bkn-safe/contract/)，喂 golden 过真实 lib v1.0.5，断言不 panic + missing-ext 必 panic）
 - [x] §2 authz 端点权威 JSON Schema 全量冻结进 repo（含 public/private 分组、policy 双形态）
+- [x] §3 user-management 13 端点调用侧字段级 schema（`user-management.md`）
 - [x] §5 角色 UUID seed 冻结（role.json，9 角色对齐 spec §5）
-- [ ] §1 可执行 contract test（喂 golden 过真实 lib，断言不 panic）— 待 bkn-safe Go module 落地
 - [ ] §2 policy/policy-delete 写端点 golden 响应 — 待隔离环境抓或从 ISF 源补
-- [ ] §3 user-management 13 端点字段级 schema — 待抓真实流量/ISF UserManagement 源
+- [ ] §3 写端点（apps/internal-groups/group-members）成功响应 golden — bkn-safe MVP 时补
 - [ ] §4 Casbin model 用 golden 驱动验等价

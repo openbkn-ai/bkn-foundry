@@ -107,8 +107,9 @@ resp: 200 [{"id":"probe","operation":["mgnt_built_in_agent","use"]}]
 /v1/group-members  /v1/search-org
 ```
 **DoD**：
-- [ ] 抓每端点真实 req/resp（TODO：字段级 schema 待从实流量/ISF UserManagement 源码补全）。
-- [ ] 标注哪些是读、哪些是写（替换优先实现读）。
+- [x] 抓每端点真实 req/resp 字段级 schema —— **调用侧**冻结见 [`contracts/user-management.md`](contracts/user-management.md)（从 bkn/vega/flow/DA 的 client 代码 + flow mock-server 抽取，含 envelope/错误码/POST-by-body/v1-v2 not-found 分歧等承重点）。
+- [x] 标注读/写（见冻结文档；读为主，写仅 apps/internal-groups/group-members）。
+- [ ] 写端点成功响应 golden（bkn-safe MVP 时补）。
 
 ---
 
