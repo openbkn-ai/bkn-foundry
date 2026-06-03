@@ -1,4 +1,5 @@
 {
+  "_comment": "Resource-type + operation catalog, extracted from each service's enums/consts (2026-06-03). Exact op id strings — these are the seed source of truth. NOTE: 'view' (exec-factory, flow-automation) and 'view_detail' (vega/bkn/pipeline) are DIFFERENT op strings — not normalized. Role->permission GRANTS are in grants.json and are pending role-definition decisions (only 应用管理员 grants are confirmed/coded today).",
   "resource_types": [
     {
       "id": "agent",
@@ -24,6 +25,154 @@
         {"id": "publish", "name": "发布Agent模板"},
         {"id": "unpublish", "name": "取消发布Agent模板"},
         {"id": "unpublish_other_user_agent_tpl", "name": "取消发布其他用户Agent模板"}
+      ]
+    },
+    {
+      "id": "stream_data_pipeline",
+      "name": "流式数据管道",
+      "_source": "pipeline-mgmt",
+      "operations": [
+        {"id": "view_detail", "name": "查看详情"},
+        {"id": "create", "name": "创建"},
+        {"id": "modify", "name": "修改"},
+        {"id": "delete", "name": "删除"},
+        {"id": "authorize", "name": "授权"},
+        {"id": "data_query", "name": "数据查询"}
+      ]
+    },
+    {
+      "id": "catalog",
+      "name": "数据目录",
+      "_source": "vega",
+      "operations": [
+        {"id": "view_detail", "name": "查看详情"},
+        {"id": "create", "name": "创建"},
+        {"id": "modify", "name": "修改"},
+        {"id": "delete", "name": "删除"},
+        {"id": "authorize", "name": "授权"},
+        {"id": "task_manage", "name": "任务管理"}
+      ]
+    },
+    {
+      "id": "resource",
+      "name": "数据资源",
+      "_source": "vega",
+      "operations": [
+        {"id": "view_detail", "name": "查看详情"},
+        {"id": "create", "name": "创建"},
+        {"id": "modify", "name": "修改"},
+        {"id": "delete", "name": "删除"},
+        {"id": "authorize", "name": "授权"},
+        {"id": "task_manage", "name": "任务管理"}
+      ]
+    },
+    {
+      "id": "connector_type",
+      "name": "连接器类型",
+      "_source": "vega",
+      "operations": [
+        {"id": "view_detail", "name": "查看详情"},
+        {"id": "create", "name": "创建"},
+        {"id": "modify", "name": "修改"},
+        {"id": "delete", "name": "删除"},
+        {"id": "authorize", "name": "授权"},
+        {"id": "task_manage", "name": "任务管理"}
+      ]
+    },
+    {
+      "id": "knowledge_network",
+      "name": "知识网络",
+      "_source": "bkn",
+      "_note": "所有子实体(concept_group/action_type/relation_type/object_type/risk_type/metric/job)都对父 KN id 鉴权,无独立资源类型",
+      "operations": [
+        {"id": "view_detail", "name": "查看详情"},
+        {"id": "create", "name": "创建"},
+        {"id": "modify", "name": "修改"},
+        {"id": "delete", "name": "删除"},
+        {"id": "data_query", "name": "数据查询"},
+        {"id": "authorize", "name": "授权"},
+        {"id": "task_manage", "name": "任务管理"}
+      ]
+    },
+    {
+      "id": "tool_box",
+      "name": "工具箱",
+      "_source": "execution-factory",
+      "operations": [
+        {"id": "create", "name": "创建"},
+        {"id": "modify", "name": "修改"},
+        {"id": "delete", "name": "删除"},
+        {"id": "view", "name": "查看"},
+        {"id": "publish", "name": "发布"},
+        {"id": "unpublish", "name": "取消发布"},
+        {"id": "authorize", "name": "授权"},
+        {"id": "public_access", "name": "公共访问"},
+        {"id": "execute", "name": "执行"}
+      ]
+    },
+    {
+      "id": "mcp",
+      "name": "MCP",
+      "_source": "execution-factory",
+      "operations": [
+        {"id": "create", "name": "创建"},
+        {"id": "modify", "name": "修改"},
+        {"id": "delete", "name": "删除"},
+        {"id": "view", "name": "查看"},
+        {"id": "publish", "name": "发布"},
+        {"id": "unpublish", "name": "取消发布"},
+        {"id": "authorize", "name": "授权"},
+        {"id": "public_access", "name": "公共访问"},
+        {"id": "execute", "name": "执行"}
+      ]
+    },
+    {
+      "id": "operator",
+      "name": "算子",
+      "_source": "execution-factory + flow-automation (ops 取并集; flow-automation 仅用 execute)",
+      "operations": [
+        {"id": "create", "name": "创建"},
+        {"id": "modify", "name": "修改"},
+        {"id": "delete", "name": "删除"},
+        {"id": "view", "name": "查看"},
+        {"id": "publish", "name": "发布"},
+        {"id": "unpublish", "name": "取消发布"},
+        {"id": "authorize", "name": "授权"},
+        {"id": "public_access", "name": "公共访问"},
+        {"id": "execute", "name": "执行"}
+      ]
+    },
+    {
+      "id": "skill",
+      "name": "Skill",
+      "_source": "execution-factory",
+      "operations": [
+        {"id": "create", "name": "创建"},
+        {"id": "modify", "name": "修改"},
+        {"id": "delete", "name": "删除"},
+        {"id": "view", "name": "查看"},
+        {"id": "publish", "name": "发布"},
+        {"id": "unpublish", "name": "取消发布"},
+        {"id": "authorize", "name": "授权"},
+        {"id": "public_access", "name": "公共访问"},
+        {"id": "execute", "name": "执行"}
+      ]
+    },
+    {
+      "id": "data_flow",
+      "name": "数据流程",
+      "_source": "flow-automation",
+      "_note": "另有固定实例资源 dataflow_page:o11y(op: display)。legacy 兼容 op: only_admin/admin/share/publish/app_token/owner 未列入",
+      "operations": [
+        {"id": "list", "name": "列出"},
+        {"id": "create", "name": "创建"},
+        {"id": "modify", "name": "修改"},
+        {"id": "delete", "name": "删除"},
+        {"id": "view", "name": "查看"},
+        {"id": "manual_exec", "name": "手动执行"},
+        {"id": "run_statistics", "name": "运行统计"},
+        {"id": "run_with_app", "name": "应用运行"},
+        {"id": "display", "name": "展示(o11y 页)"}
       ]
     }
   ]
