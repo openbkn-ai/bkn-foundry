@@ -48,7 +48,7 @@ ISF（authentication / authorization / user-management / eacp / sharemgnt / oaut
 | 层 | 调用方 | 策略 |
 |---|---|---|
 | introspect/token | 8 服务 | 🔴 保兼容，不重设计 |
-| authz | 5 服务 | 🟡 Casbin 重做，改适配层 + 迁 policy |
+| authz | 5 服务 | 🟡 Casbin 重做，改适配层；角色/权限**重定义 seed，不迁 ISF 授权表**（见 ADR §4.1） |
 | user-mgmt | ~4 服务 | 🟡 全新接口，改适配层 |
 | eacp/anyshare | 仅 flow-automation | 切断密码登录耦合；文档 ACL 随 anyshare 决策 |
 

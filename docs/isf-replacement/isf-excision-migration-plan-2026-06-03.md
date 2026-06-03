@@ -34,7 +34,7 @@
 | 层 | 调用方 | 风险 | 策略 |
 |---|---|---|---|
 | **introspect / token** | **8 服务**(kweaver-go-lib/hydra,鉴权中间件,每请求) | 🔴 高 | **保兼容** —— hydra 签 token,bkn-safe 注 ext claims(`visitor_type="realname"` 等)。应用零改。不重设计。 |
-| **authz** | 5 服务(bkn/vega/dataflow/exec-factory/DA,各自 drivenadapter) | 🟡 中 | **全新做** —— Casbin 干净 API,改 5 服务适配层 + 迁 policy 数据。弃 ISF authz 怪癖。 |
+| **authz** | 5 服务(bkn/vega/dataflow/exec-factory/DA,各自 drivenadapter) | 🟡 中 | **全新做** —— Casbin 干净 API,改 5 服务适配层。**角色/权限重定义(bkn-safe seed),不迁 ISF policy/role-member 表**(见 §4 数据策略)。弃 ISF authz 怪癖。 |
 | **user-mgmt** | ~4 服务(bkn/vega/flow/DA,各自 client) | 🟡 中 | **倾向全新做**(求简),亦可保契约;改调用方适配层。最终定见 §6。 |
 | **eacp / anyshare auth** | 仅 flow-automation(+ 密码登录耦合) | 🟡 中 | **切断** —— bkn-safe 自有库验密码,不调 eacp;flow-automation 的 anyshare 文档 ACL 随 anyshare 决策(待定 #2)。 |
 
@@ -51,6 +51,22 @@
 5. **eacp/anyshare**:切断密码登录依赖;flow-automation anyshare 文档功能按 #2 决策处理。
 6. **对账无差** → 下线 ISF 11 服务。
 
+### 4.1 数据策略:重定义,不迁 ISF 授权表
+
+实测 ISF 现状(VM `sharemgnt_db`/`user_management`/`policy_mgnt`,2026-06-03):用户/部门/角色/角色关系在 sharemgnt(anyshare 组织),量很小(dev:t_user=5、t_department=1、t_role=3、t_user_role_relation=1);user_management 本地表全空;对象授权在 policy_mgnt.t_policies。
+
+**不搬 ISF 表。角色/权限重定义:**
+
+| 数据 | 做法 |
+|---|---|
+| 角色(9,UUID 保号)/ 资源类型 / 操作 / 角色级权限 | **bkn-safe 启动 seed**(已实现) |
+| 用户↔角色(谁是管理员) | **重新分配**(onboard 脚本/管理动作,就几条) |
+| 用户本身 | **本地建**(`POST /api/safe/v1/directory/users`,测试用)/ LDAP 联邦自动 provision / 可选一次性导入。dev/测试直接本地建几个用户 |
+| 对象授权(creator→具体资源) | **不迁**。角色级访问靠 seed 照常;具体资源 owner 权限切换后丢,直到重授。**对策**:全新环境无所谓;存量客户可写小脚本扫资源 → `POST /api/safe/v1/authz/policies` 一次性补单 |
+| ISF ABAC 残留(obligation/层级)、监控/avatar/outbox 等 | **丢弃**(Kowell 不用) |
+
+→ 迁移从"搬多张 ISF 表"塌缩为:**seed(已做)+ 建用户/分角色 + 可选对象授权补单脚本**。
+
 ## 5. 风险兜底
 
 - 调用点集中在适配层 → 每服务改 1 文件。
@@ -63,7 +79,7 @@
 
 1. **user-mgmt:全新接口**(不复刻 ISF 13 端点;改 ~4 调用方适配器)。
 2. **introspect:保兼容**(应用零改,仅改 endpoint 配置指向新 hydra)。JWT 本地验签现代化 = 后续可选优化(差「1 个 hydra 配置 + 重写 8 服务验签中间件 + 接受 exp 撤销」)。
-3. **anyshare:彻底去掉**(待产品确认无人用文档库能力后执行)。评估:flow-automation 的 eacp(`perm2/set|get`)+ authentication-jwt **是为 33 个 `@anyshare/*` dataflow 动作服务的**,非独立 auth。含义:① **bkn-safe 不实现 eacp/jwt**,auth 替换不被阻塞;② anyshare 动作删除是独立的 **flow-automation 清理任务**(删 `pkg/actions/anyshare_*.go`、`drivenadapters/{eacp,anyshare,doc,doc_share,authentication}.go`、actionMap 33 项),**删前需产品确认无 dataflow 在用**。
+3. **anyshare:产品不自带文档库,仅「可选对接外部 anyshare」;核心 auth 零 anyshare 依赖。** 厘清两种耦合:① **认证耦合**——ISF `oauth2-ui` 登录调 `eacp/auth1/getnew` 验密码;bkn-safe 替掉 oauth2-ui、本地验密码 → **这个深耦合直接消失**(auth 替换该做的就这点)。② **数据连接器**——flow-automation 的 eacp(`perm2/set|get` 文档 ACL)+ `authentication/jwt` 打的是**可配置地址**(`docshareURL`/`address`),即连**外部** anyshare 的连接器,33 个 `@anyshare/*` 动作靠它;这些端点由外部 anyshare 提供,**与 bkn-safe 无关**。结论:**bkn-safe 不实现 eacp/jwt**;anyshare 对 auth 替换 = 零工作量、零阻塞。**产品已确认 @anyshare dataflow 动作无人在用 → 可彻底删**(`pkg/actions/anyshare_*.go`、`drivenadapters/{eacp,anyshare,doc,doc_share,authentication}.go`、actionMap 33 项),作独立 flow-automation 清理任务,不在 auth 关键路径。
 4. **bkn-safe 定位:独立可选组件**(沿 ISF 定位,不占 Core 预算)。
 5. **hydra DB:PostgreSQL**(MariaDB 永不支持 CAST AS JSON);信创延后。
 6. **重度 IAM / 多协议联邦**:以后再说。
