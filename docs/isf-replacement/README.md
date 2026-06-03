@@ -74,11 +74,13 @@ ISF（authentication / authorization / user-management / eacp / sharemgnt / oaut
 | `contracts/` | 冻结的权威契约：role.json、authz JSON schema、introspect golden、user-management 调用侧契约、live golden |
 | `../../bkn-safe/` | bkn-safe 服务代码 + contract test + dev 栈（见 `bkn-safe/README.md`） |
 
-## 待决策（OPEN）
+## 决策（2026-06-03 已拍）
 
-1. user-mgmt 全新接口（已倾向）vs 保 ISF 13 端点契约
-2. introspect 保兼容（默认）vs JWT 本地验签现代化（改 8 服务）
-3. anyshare（eacp 文档 ACL，仅 flow-automation）去留
-4. 信创是否强制 hydra DB（默认否）
-5. 重度 IAM / 多协议联邦（以后再说）
-6. bkn-safe 归属：Core 服务 vs 独立可选组件（建议后者）
+1. **user-mgmt：全新接口**（改 ~4 调用方适配器）。
+2. **introspect：保兼容**（应用零改，仅改 endpoint 配置）。JWT 现代化 = 后续可选。
+3. **anyshare：彻底去掉**（待产品确认无人用文档库能力）。eacp/jwt 是为 flow-automation 33 个 `@anyshare/*` dataflow 动作服务的 → bkn-safe 不实现 eacp/jwt；anyshare 动作删除是独立的 flow-automation 清理任务。
+4. **bkn-safe 定位：独立可选组件**（沿 ISF 定位）。
+5. **hydra DB：PostgreSQL**；信创延后。
+6. **重度 IAM / 多协议联邦**：以后再说。
+
+详见 [`isf-excision-migration-plan`](isf-excision-migration-plan-2026-06-03.md) §6。

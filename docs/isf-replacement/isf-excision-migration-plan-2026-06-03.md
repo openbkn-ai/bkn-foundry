@@ -59,13 +59,14 @@
 - 都是自有服务 + 有测试,非第三方黑盒。
 - 失败回滚:endpoint 配置切回 ISF(并行期保留)。
 
-## 6. 待决 (OPEN)
+## 6. 决策（2026-06-03 已拍）
 
-1. **user-mgmt:全新接口 vs 保 ISF 13 端点契约**(倾向全新求简;保契约则风险更低)。
-2. **introspect 现代化**:(a) 保 `kweaver-go-lib/hydra.Introspect` 零改 / (b) hydra 发 JWT + 应用本地验签(减依赖+去往返,改 8 服务)。默认 a。
-3. **anyshare(eacp 文档 ACL,仅 flow-automation)去留** → 决定 flow-automation 那块替不替。
-4. **信创强制 hydra DB?** → 默认否(hydra 用独立 PostgreSQL),延后;真要再走路线 A(dialect=mysql)或评估 fork。
-5. **重度 IAM/多协议联邦** → 以后再说。
+1. **user-mgmt:全新接口**(不复刻 ISF 13 端点;改 ~4 调用方适配器)。
+2. **introspect:保兼容**(应用零改,仅改 endpoint 配置指向新 hydra)。JWT 本地验签现代化 = 后续可选优化(差「1 个 hydra 配置 + 重写 8 服务验签中间件 + 接受 exp 撤销」)。
+3. **anyshare:彻底去掉**(待产品确认无人用文档库能力后执行)。评估:flow-automation 的 eacp(`perm2/set|get`)+ authentication-jwt **是为 33 个 `@anyshare/*` dataflow 动作服务的**,非独立 auth。含义:① **bkn-safe 不实现 eacp/jwt**,auth 替换不被阻塞;② anyshare 动作删除是独立的 **flow-automation 清理任务**(删 `pkg/actions/anyshare_*.go`、`drivenadapters/{eacp,anyshare,doc,doc_share,authentication}.go`、actionMap 33 项),**删前需产品确认无 dataflow 在用**。
+4. **bkn-safe 定位:独立可选组件**(沿 ISF 定位,不占 Core 预算)。
+5. **hydra DB:PostgreSQL**(MariaDB 永不支持 CAST AS JSON);信创延后。
+6. **重度 IAM / 多协议联邦**:以后再说。
 
 ## 7. 已完成(Phase 0/1)
 
