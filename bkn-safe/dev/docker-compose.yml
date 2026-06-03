@@ -73,5 +73,31 @@ services:
     command: serve all --dev
     restart: on-failure
 
+  # bkn-safe: the ISF replacement auth service, wired as hydra's login/consent/
+  # device provider. Built from the cross-compiled binary (see Dockerfile).
+  # Reaches hydra admin over the compose network (hydra:4445); the browser is
+  # redirected to 127.0.0.1:3000 (published), which both the host curl and the
+  # provider share.
+  safe:
+    build: .
+    depends_on:
+      mysql:
+        condition: service_healthy
+      hydra:
+        condition: service_started
+    ports:
+      - "3000:3000"
+    environment:
+      SAFE_HTTP_ADDR: ":3000"
+      SAFE_DB_USER: "root"
+      SAFE_DB_PASSWORD: "secret"
+      SAFE_DB_HOST: "mysql"
+      SAFE_DB_PORT: "3306"
+      SAFE_DB_NAME: "safe"
+      SAFE_HYDRA_ADMIN_URL: "http://hydra:4445"
+      SAFE_HYDRA_PUBLIC_URL: "http://hydra:4444"
+      GIN_MODE: "release"
+    restart: on-failure
+
 volumes:
   hydra-mysql:   # persistent MySQL data for the standing test hydra

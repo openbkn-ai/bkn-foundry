@@ -3,6 +3,7 @@ package httpapi
 import (
 	"errors"
 	"html/template"
+	"log/slog"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -56,6 +57,7 @@ func doLogin(c *gin.Context, p *auth.Provider) {
 			c.String(http.StatusUnauthorized, "登录失败：账号或密码错误")
 			return
 		}
+		slog.Error("login: accept failed", "err", err)
 		c.String(http.StatusInternalServerError, "internal error")
 		return
 	}
@@ -73,6 +75,7 @@ func doConsent(c *gin.Context, p *auth.Provider) {
 	}
 	redirectTo, err := p.Consent(c.Request.Context(), challenge, c.ClientIP(), auth.ClientTypeWeb, false)
 	if err != nil {
+		slog.Error("consent: accept failed", "err", err)
 		c.String(http.StatusInternalServerError, "internal error")
 		return
 	}

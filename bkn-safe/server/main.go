@@ -58,6 +58,7 @@ func main() {
 		Provider:  provider,
 		Hydra:     hydraAdmin,
 		Directory: dir,
+		Users:     userStore,
 	})
 	slog.Info("bkn-safe listening", "addr", cfg.HTTPAddr)
 	if err := r.Run(cfg.HTTPAddr); err != nil {

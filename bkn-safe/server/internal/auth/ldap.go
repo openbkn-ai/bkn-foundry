@@ -104,7 +104,7 @@ func (a *LDAPAuthenticator) provision(ctx context.Context, account, name, email 
 		name = account
 	}
 	u = model.User{
-		ID:          newID(),
+		ID:          NewID(),
 		Account:     account,
 		Name:        name,
 		Email:       email,
@@ -145,8 +145,8 @@ func (c *Chain) Verify(ctx context.Context, account, password string) (*model.Us
 	return nil, lastErr
 }
 
-// newID returns a random 128-bit hex id for provisioned users.
-func newID() string {
+// NewID returns a random 128-bit hex id for provisioned/created users.
+func NewID() string {
 	b := make([]byte, 16)
 	_, _ = rand.Read(b)
 	return hex.EncodeToString(b)

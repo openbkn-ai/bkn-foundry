@@ -20,6 +20,7 @@ type Deps struct {
 	Provider  *auth.Provider
 	Hydra     *auth.HydraAdmin
 	Directory *directory.Service
+	Users     *auth.UserStore
 }
 
 // New builds the gin engine with all routes mounted.
@@ -41,6 +42,9 @@ func New(deps Deps) *gin.Engine {
 	// user-directory API.
 	if deps.Directory != nil {
 		registerDirectory(r, deps.Directory)
+	}
+	if deps.Users != nil {
+		registerUserAdmin(r, deps.Users)
 	}
 
 	return r
