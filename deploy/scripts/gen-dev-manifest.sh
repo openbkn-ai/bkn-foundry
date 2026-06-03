@@ -18,7 +18,7 @@
 #
 # With no --branch it is pure stable: every chart = highest clean semver.
 #
-# Requires: gh (authenticated, package:read on the org), python3.
+# Requires: python3 + git (queries GHCR OCI registry anonymously; no gh/PAT for public packages). For --branch, fetch the branch first so origin/<branch> resolves.
 #
 # Examples:
 #   ./gen-dev-manifest.sh                          # latest stable, all charts
@@ -51,8 +51,8 @@ while [ $# -gt 0 ]; do
     shift
 done
 
-command -v gh >/dev/null 2>&1 || { echo "Error: gh CLI required (authenticated, package:read)." >&2; exit 1; }
 command -v python3 >/dev/null 2>&1 || { echo "Error: python3 required." >&2; exit 1; }
+command -v git >/dev/null 2>&1 || { echo "Error: git required (for --branch HEAD sha)." >&2; exit 1; }
 [ -f "${TEMPLATE}" ] || { echo "Error: template not found: ${TEMPLATE}" >&2; exit 1; }
 
 ORG="$ORG" TEMPLATE="$TEMPLATE" BRANCH="$BRANCH" BASE="$BASE" OUT="$OUT" python3 - <<'PY'
@@ -72,46 +72,64 @@ SAN_BASE=sanitize(BASE) if BASE else ""
 
 SEMVER=re.compile(r'^(\d+)\.(\d+)\.(\d+)$')
 
-def gh_tags(chart):
-    """Return list of (tag, created_at) for charts/<chart>."""
-    try:
-        out=subprocess.run(
-            ["gh","api","--paginate",
-             f"orgs/{ORG}/packages/container/charts%2F{chart}/versions",
-             "--jq", r'.[] | .created_at as $c | (.metadata.container.tags // [])[] | "\(.)\t\($c)"'],
-            capture_output=True, text=True)
-    except Exception as e:
-        return []
-    if out.returncode!=0:
-        return []
-    pairs=[]
-    for line in out.stdout.splitlines():
-        if "\t" in line:
-            t,c=line.split("\t",1); pairs.append((t.strip(),c.strip()))
-    return pairs
+import urllib.request
+REPO_DIR=os.path.dirname(os.path.abspath(TEMPLATE))
 
-def newest_by_time(pairs):
-    return max(pairs, key=lambda p:p[1])[0] if pairs else None
+def reg_tags(chart):
+    """List tags for charts/<chart> via the GHCR OCI registry (no gh; anonymous
+    token works for public packages)."""
+    repo=f"{ORG}/charts/{chart}"
+    try:
+        tok=json.load(urllib.request.urlopen(
+            f"https://ghcr.io/token?scope=repository:{repo}:pull", timeout=20))["token"]
+        req=urllib.request.Request(f"https://ghcr.io/v2/{repo}/tags/list",
+                                   headers={"Authorization": f"Bearer {tok}"})
+        return json.load(urllib.request.urlopen(req, timeout=20)).get("tags") or []
+    except Exception:
+        return []
+
+def git_short_sha(ref):
+    """7-char sha of a branch ref (origin/<ref> preferred), matching CI's tag sha."""
+    if not ref: return None
+    for r in (f"origin/{ref}", ref):
+        try:
+            out=subprocess.run(["git","rev-parse","--short=7",r],
+                               capture_output=True, text=True, cwd=REPO_DIR)
+            if out.returncode==0 and out.stdout.strip():
+                return out.stdout.strip()
+        except Exception:
+            pass
+    return None
+
+BR_SHA=git_short_sha(BRANCH)
+BASE_SHA=git_short_sha(BASE)
 
 def highest_semver(tags):
     cand=[t for t in tags if SEMVER.match(t)]
     if not cand: return None
     return max(cand, key=lambda t:tuple(int(x) for x in SEMVER.match(t).groups()))
 
+def _branch_tag(tags, san, sha):
+    """Tag for a branch = the build at the branch HEAD sha exactly. No HEAD-sha
+    build (component not rebuilt on this branch, or branch not fetched) -> None,
+    so the caller falls back to stable rather than picking a stale older build."""
+    if not sha: return None
+    exact=[t for t in tags if t.endswith(f"-{san}.sha{sha}")]
+    return exact[0] if exact else None
+
 def resolve(chart):
-    pairs=gh_tags(chart)
-    tags=[t for t,_ in pairs]
-    # 1) branch build
+    tags=reg_tags(chart)
+    # 1) branch build (match branch HEAD sha; fetch the branch first if stale)
     if SAN_BRANCH:
-        bp=[(t,c) for t,c in pairs if f"-{SAN_BRANCH}.sha" in t]
-        if bp: return newest_by_time(bp), "branch"
-    # 2) latest stable (clean semver)
+        t=_branch_tag(tags, SAN_BRANCH, BR_SHA)
+        if t: return t, "branch"
+    # 2) latest stable (highest clean semver)
     s=highest_semver(tags)
     if s: return s, "stable"
     # 3) base branch build
     if SAN_BASE:
-        bp=[(t,c) for t,c in pairs if f"-{SAN_BASE}.sha" in t]
-        if bp: return newest_by_time(bp), "base"
+        t=_branch_tag(tags, SAN_BASE, BASE_SHA)
+        if t: return t, "base"
     return None, "missing"
 
 # parse template: collect release chart names, in order, with line index of each version line
@@ -131,6 +149,10 @@ for i,ln in enumerate(lines):
 charts=list(dict.fromkeys(ver_lines.values()))
 print(f"Resolving {len(charts)} charts from ghcr.io/{ORG}/charts "
       f"(branch={BRANCH or '-'}, base={BASE})...", file=sys.stderr)
+if SAN_BRANCH and not BR_SHA:
+    print(f"  WARNING: cannot resolve sha for branch '{BRANCH}' (fetch it: "
+          f"git fetch origin {BRANCH}); branch matching disabled -> all stable.",
+          file=sys.stderr)
 
 resolved={}; sources={}
 for c in charts:
