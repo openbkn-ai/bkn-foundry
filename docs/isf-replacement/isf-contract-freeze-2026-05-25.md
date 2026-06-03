@@ -125,13 +125,16 @@ g = _, _                       # user/app → role(UUID)
 [policy_effect]
 e = some(where (p.eft == allow))
 [matchers]
-m = g(r.sub, p.sub) && keyMatch2(r.obj, p.obj) && r.act == p.act
+m = g(r.sub, p.sub) && keyMatch(r.obj, p.obj) && r.act == p.act
 ```
-映射：建对象授权=`AddPolicy(creator,"pipeline:<id>",op...)`；角色授权（DA app_admin）=`AddPolicy("1572fb82-...","agent:*","use")`+`g(user,"1572fb82-...")`；`RESOURCE_ID_ALL "*"`→`keyMatch2`。
+映射：建对象授权=`AddPolicy(creator,"pipeline:<id>",op...)`；角色授权（DA app_admin）=`AddPolicy("1572fb82-...","agent:*","use")`+`g(user,"1572fb82-...")`；`RESOURCE_ID_ALL "*"`→`keyMatch`。
+
+> ⚠️ **更正（2026-06-03，contract test 抓到）**：matcher 原写 `keyMatch2` 是**错的**。`type:id` 格式里的 `:` 会被 keyMatch2 当成命名通配段（URL `/foo/:id` 语法）→ 逐对象策略 `pipeline:p1` 会越权命中 `pipeline:p2`（提权）。改用 **`keyMatch`**：只认 `*` 通配、`:` 当字面字符，既满足 `agent:*` 通配又让 `pipeline:p1` 精确匹配。test：`bkn-safe/contract/authz_contract_test.go::TestResourceWildcardMatch`。
 
 **DoD**：
-- [ ] 用 §2 golden 报文驱动 Casbin，断言 operation-check/filter/list 结果与 ISF 一致。
-- [ ] 确认无需 deny/condition/obligation（已证 Kowell 不用）。
+- [x] 用 §2 golden 报文驱动 Casbin，断言 operation-check / resource-operation 结果与 ISF 一致（`bkn-safe/contract/authz_contract_test.go`，含 keyMatch 修正、通配/逐对象/negative）。
+- [x] 确认无需 deny/condition/obligation（已证 Kowell 不用；model effect 仅 allow）。
+- [ ] resource-filter / resource-list 等价（待其 golden 报文补齐后扩测）。
 
 ---
 

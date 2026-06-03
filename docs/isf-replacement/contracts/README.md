@@ -63,7 +63,8 @@ lib `kweaver-go-lib/hydra@v1.0.5` `Introspect()` 用**无 nil 检查的类型断
 - [x] §1 可执行 contract test（[`bkn-safe/contract/`](../../../bkn-safe/contract/)，喂 golden 过真实 lib v1.0.5，断言不 panic + missing-ext 必 panic）
 - [x] §2 authz 端点权威 JSON Schema 全量冻结进 repo（含 public/private 分组、policy 双形态）
 - [x] §3 user-management 13 端点调用侧字段级 schema（`user-management.md`）
+- [x] §4 Casbin model 用 golden 驱动验等价（`bkn-safe/contract/authz_contract_test.go`；抓到并修正 spec §4 的 keyMatch2 越权 bug → 改 keyMatch）
 - [x] §5 角色 UUID seed 冻结（role.json，9 角色对齐 spec §5）
 - [ ] §2 policy/policy-delete 写端点 golden 响应 — 待隔离环境抓或从 ISF 源补
 - [ ] §3 写端点（apps/internal-groups/group-members）成功响应 golden — bkn-safe MVP 时补
-- [ ] §4 Casbin model 用 golden 驱动验等价
+- [ ] §4 resource-filter / resource-list 等价 — 待其 golden 补齐后扩测
