@@ -38,8 +38,12 @@ g = _, _
 e = some(where (p.eft == allow))
 
 [matchers]
-m = g(r.sub, p.sub) && keyMatch(r.obj, p.obj) && r.act == p.act
+m = g(r.sub, p.sub) && keyMatch(r.obj, p.obj) && (p.act == "*" || r.act == p.act)
 `
+
+// ActAll is the wildcard act: a policy with act "*" grants every operation on
+// the matched object (used for the super-admin "do everything" grant).
+const ActAll = "*"
 
 // Enforcer wraps a Casbin enforcer with the bkn-safe object convention.
 type Enforcer struct {
@@ -95,6 +99,14 @@ func (en *Enforcer) AllowedOps(accessorID, resourceType, resourceID string, cand
 // (id may be "*" for the whole type). Idempotent.
 func (en *Enforcer) GrantRolePermission(roleID, resourceType, idPattern, op string) error {
 	_, err := en.e.AddPolicy(roleID, obj(resourceType, idPattern), op)
+	return err
+}
+
+// Grant adds a raw (sub, obj, act) policy. obj is the full object pattern
+// (e.g. "agent:*" or "*" for everything); act may be ActAll ("*"). Used by the
+// seed for the super-admin wildcard. Idempotent.
+func (en *Enforcer) Grant(sub, obj, act string) error {
+	_, err := en.e.AddPolicy(sub, obj, act)
 	return err
 }
 

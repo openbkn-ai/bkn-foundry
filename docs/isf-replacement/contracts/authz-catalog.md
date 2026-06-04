@@ -22,7 +22,15 @@
 
 ⚠️ **`view`(exec-factory/flow-automation)与 `view_detail`(vega/bkn/pipeline)是不同字符串,未归一化。**
 
-## 2. 角色授权现状(代码里实际有的)
+## 已定 (2026-06-04) —— 已写进 `grants.json`
+
+- **3 个业务角色保留**,各管其域、给**全 ops**:应用管理员(agent/agent_tpl)、数据管理员(catalog/resource/connector_type/knowledge_network/stream_data_pipeline/data_flow)、AI管理员(operator/skill/mcp/tool_box;model 待补)。
+- **超级管理员** = 通配 `*` 对象 + act `*`(能干一切)。model matcher 加了 `p.act=="*"` 分支。
+- 其余 **4 个 system 角色**(系统/安全/审计/组织管理/组织审计)= **seed 保号但不授权**,将来调授权 API / 加 grants.json 即可激活,无需改代码。
+- 测试:`internal/seed/seed_test.go::TestSeededRoleGrants`(各角色域 + 超级通配)。
+- **仍 TODO**:AI管理员的 `model` 资源类型(扫 model-factory 补目录 + 授权);ops 是否细分(目前全 mgmt)。
+
+## 2. 角色授权现状(ISF 代码里原本有的)
 
 - **应用管理员 `1572fb82-526f-11f0-bde6-e674ec8dde71`** → `agent:*`(全 mgmt + use)+ `agent_tpl:*`(publish/unpublish/unpublish_other_user_agent_tpl)。**唯一在代码里 boot 授权的**(DA InitPermission)。已落 grants.json。
 - **其余服务无 boot 角色授权** —— pipeline/vega/bkn/exec-factory 都是"创建者拿自己资源的 owner 权限"(per-object),不给业务角色静态授权。

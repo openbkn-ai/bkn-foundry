@@ -119,9 +119,16 @@ func seedGrants(enforcer *authz.Enforcer) error {
 		return err
 	}
 	for _, gr := range g.Grants {
+		// Build the object pattern. Empty resource_type => a pure wildcard
+		// object (e.g. "*"), used for the super-admin "do everything" grant;
+		// otherwise "type:idPattern".
+		obj := gr.ResourceType + ":" + gr.IDPattern
+		if gr.ResourceType == "" {
+			obj = gr.IDPattern
+		}
 		for _, op := range gr.Operations {
 			// AddPolicy is idempotent (no-op if the rule already exists).
-			if err := enforcer.GrantRolePermission(gr.RoleID, gr.ResourceType, gr.IDPattern, op); err != nil {
+			if err := enforcer.Grant(gr.RoleID, obj, op); err != nil {
 				return err
 			}
 		}

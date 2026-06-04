@@ -73,6 +73,55 @@ func TestApplySeedsRolesCatalogGrants(t *testing.T) {
 	}
 }
 
+// TestSeededRoleGrants verifies the business-admin domains and the super-admin
+// wildcard land correctly after seeding (a user bound to each role).
+func TestSeededRoleGrants(t *testing.T) {
+	db := newDB(t)
+	e, err := authz.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(db, e); err != nil {
+		t.Fatal(err)
+	}
+
+	const (
+		appAdmin   = "1572fb82-526f-11f0-bde6-e674ec8dde71"
+		dataAdmin  = "00990824-4bf7-11f0-8fa7-865d5643e61f"
+		aiAdmin    = "3fb94948-5169-11f0-b662-3a7bdba2913f"
+		superAdmin = "7dcfcc9c-ad02-11e8-aa06-000c29358ad6"
+	)
+	cases := []struct {
+		name, role, typ, id, op string
+		want                    bool
+	}{
+		{"app-admin uses agent", appAdmin, "agent", "x", "use", true},
+		{"app-admin not catalog", appAdmin, "catalog", "x", "create", false},
+		{"data-admin manages catalog", dataAdmin, "catalog", "x", "create", true},
+		{"data-admin manages knowledge_network", dataAdmin, "knowledge_network", "kn1", "data_query", true},
+		{"data-admin manages data_flow", dataAdmin, "data_flow", "f1", "manual_exec", true},
+		{"data-admin not operator", dataAdmin, "operator", "o1", "execute", false},
+		{"ai-admin manages operator", aiAdmin, "operator", "o1", "execute", true},
+		{"ai-admin manages skill", aiAdmin, "skill", "s1", "publish", true},
+		{"ai-admin not catalog", aiAdmin, "catalog", "x", "create", false},
+		{"super-admin does anything (agent)", superAdmin, "agent", "x", "use", true},
+		{"super-admin does anything (any type/op)", superAdmin, "whatever", "z", "some_random_op", true},
+	}
+	for _, c := range cases {
+		u := "u-" + c.name
+		if err := e.AssignRole(u, c.role); err != nil {
+			t.Fatal(err)
+		}
+		got, err := e.Check(u, c.typ, c.id, c.op)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != c.want {
+			t.Errorf("%s: Check(%s, %s:%s, %s) = %v, want %v", c.name, c.role, c.typ, c.id, c.op, got, c.want)
+		}
+	}
+}
+
 // TestApplyIdempotent runs the seed twice; the second run must not error or
 // duplicate roles.
 func TestApplyIdempotent(t *testing.T) {
