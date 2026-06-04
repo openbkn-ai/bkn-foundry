@@ -159,6 +159,18 @@
       ]
     },
     {
+      "id": "small_model",
+      "name": "小模型",
+      "_source": "mf-model-manager (app/utils/permission_manager.py); 大模型/LLM 不过 authz",
+      "operations": [
+        {"id": "create", "name": "创建"},
+        {"id": "display", "name": "查看"},
+        {"id": "modify", "name": "修改"},
+        {"id": "delete", "name": "删除"},
+        {"id": "execute", "name": "调用/执行"}
+      ]
+    },
+    {
       "id": "data_flow",
       "name": "数据流程",
       "_source": "flow-automation",

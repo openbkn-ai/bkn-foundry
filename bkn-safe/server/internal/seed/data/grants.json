@@ -92,6 +92,13 @@
       "id_pattern": "*",
       "operations": ["create", "modify", "delete", "view", "publish", "unpublish", "authorize", "public_access", "execute"]
     },
+    {
+      "role_id": "3fb94948-5169-11f0-b662-3a7bdba2913f",
+      "role_name": "AI管理员",
+      "resource_type": "small_model",
+      "id_pattern": "*",
+      "operations": ["create", "display", "modify", "delete", "execute"]
+    },
 
     {
       "role_id": "7dcfcc9c-ad02-11e8-aa06-000c29358ad6",

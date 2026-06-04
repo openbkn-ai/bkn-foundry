@@ -19,6 +19,7 @@
 | `operator` | exec-factory(+flow-automation) | 同 tool_box(flow-automation 仅用 execute) |
 | `skill` | exec-factory | 同 tool_box |
 | `data_flow` | flow-automation | list, create, modify, delete, view, manual_exec, run_statistics, run_with_app, display(o11y 页) |
+| `small_model` | mf-model-manager | create, display, modify, delete, execute(大模型/LLM 不过 authz) |
 
 ⚠️ **`view`(exec-factory/flow-automation)与 `view_detail`(vega/bkn/pipeline)是不同字符串,未归一化。**
 
