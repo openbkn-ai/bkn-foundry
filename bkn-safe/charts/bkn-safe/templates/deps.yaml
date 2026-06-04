@@ -1,0 +1,108 @@
+{{- if .Values.bundledDeps.enabled }}
+# Bundled dependencies for non-production clusters: PostgreSQL (hydra's DB),
+# upstream ORY Hydra v26.2.0, and MariaDB (bkn-safe's app DB). Ephemeral
+# (emptyDir) — dev/staging/CI only. In production set bundledDeps.enabled=false
+# and point config.hydra/config.db at the real services.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-postgres
+  namespace: {{ .Values.namespace }}
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: {{ .Release.Name }}-postgres } }
+  template:
+    metadata: { labels: { app: {{ .Release.Name }}-postgres } }
+    spec:
+      containers:
+        - name: postgres
+          image: {{ .Values.bundledDeps.postgresImage }}
+          env:
+            - { name: POSTGRES_USER, value: "hydra" }
+            - { name: POSTGRES_PASSWORD, value: "secret" }
+            - { name: POSTGRES_DB, value: "hydra" }
+          ports: [{ containerPort: 5432 }]
+          volumeMounts: [{ name: data, mountPath: /var/lib/postgresql/data }]
+      volumes: [{ name: data, emptyDir: {} }]
+---
+apiVersion: v1
+kind: Service
+metadata: { name: {{ .Release.Name }}-postgres, namespace: {{ .Values.namespace }} }
+spec:
+  selector: { app: {{ .Release.Name }}-postgres }
+  ports: [{ port: 5432, targetPort: 5432 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-mariadb
+  namespace: {{ .Values.namespace }}
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: {{ .Release.Name }}-mariadb } }
+  template:
+    metadata: { labels: { app: {{ .Release.Name }}-mariadb } }
+    spec:
+      containers:
+        - name: mariadb
+          image: {{ .Values.bundledDeps.mariadbImage }}
+          env:
+            - { name: MARIADB_ROOT_PASSWORD, value: {{ .Values.config.db.password | quote }} }
+            - { name: MARIADB_DATABASE, value: {{ .Values.config.db.name | quote }} }
+          ports: [{ containerPort: 3306 }]
+          volumeMounts: [{ name: data, mountPath: /var/lib/mysql }]
+      volumes: [{ name: data, emptyDir: {} }]
+---
+apiVersion: v1
+kind: Service
+metadata: { name: {{ .Values.config.db.host }}, namespace: {{ .Values.namespace }} }
+spec:
+  selector: { app: {{ .Release.Name }}-mariadb }
+  ports: [{ port: 3306, targetPort: 3306 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-hydra
+  namespace: {{ .Values.namespace }}
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: {{ .Release.Name }}-hydra } }
+  template:
+    metadata: { labels: { app: {{ .Release.Name }}-hydra } }
+    spec:
+      initContainers:
+        - name: migrate
+          image: {{ .Values.bundledDeps.hydraImage }}
+          command: ["hydra", "migrate", "sql", "-e", "--yes"]
+          env:
+            - { name: DSN, value: "postgres://hydra:secret@{{ .Release.Name }}-postgres:5432/hydra?sslmode=disable" }
+      containers:
+        - name: hydra
+          image: {{ .Values.bundledDeps.hydraImage }}
+          args: ["serve", "all", "--dev"]
+          env:
+            - { name: DSN, value: "postgres://hydra:secret@{{ .Release.Name }}-postgres:5432/hydra?sslmode=disable" }
+            - { name: URLS_SELF_ISSUER, value: "http://{{ .Release.Name }}-hydra-public:4444" }
+            - { name: URLS_LOGIN, value: "http://{{ .Values.image.name }}:{{ .Values.service.ports.port }}/login" }
+            - { name: URLS_CONSENT, value: "http://{{ .Values.image.name }}:{{ .Values.service.ports.port }}/consent" }
+            - { name: URLS_DEVICE_VERIFICATION, value: "http://{{ .Values.image.name }}:{{ .Values.service.ports.port }}/device" }
+            - { name: SECRETS_SYSTEM, value: {{ .Values.bundledDeps.hydraSecretsSystem | quote }} }
+            - { name: OAUTH2_EXPOSE_INTERNAL_ERRORS, value: "true" }
+          ports: [{ containerPort: 4444 }, { containerPort: 4445 }]
+---
+apiVersion: v1
+kind: Service
+metadata: { name: {{ .Release.Name }}-hydra-public, namespace: {{ .Values.namespace }} }
+spec:
+  selector: { app: {{ .Release.Name }}-hydra }
+  ports: [{ port: 4444, targetPort: 4444 }]
+---
+apiVersion: v1
+kind: Service
+metadata: { name: {{ .Release.Name }}-hydra-admin, namespace: {{ .Values.namespace }} }
+spec:
+  selector: { app: {{ .Release.Name }}-hydra }
+  ports: [{ port: 4445, targetPort: 4445 }]
+{{- end }}

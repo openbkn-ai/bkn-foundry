@@ -1,0 +1,68 @@
+replicaCount: 1
+namespace: bkn-safe
+
+image:
+  registry: ghcr.io/openbkn-ai
+  repository: bkn-safe
+  tag: "__VERSION__"
+  pullPolicy: IfNotPresent
+  name: bkn-safe
+
+service:
+  type: ClusterIP
+  ports:
+    port: 3000
+    targetPort: 3000
+  annotations: {}
+
+# Only the hydra provider pages (login/consent/device) are browser-facing and
+# go through the ingress. The authz/directory APIs are internal (ClusterIP),
+# called service-to-service.
+ingress:
+  enabled: true
+  ingressClass: class-443
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+  paths:
+    - /login
+    - /consent
+    - /device
+
+config:
+  seedOnStart: true
+  db:
+    type: "MySQL"            # MySQL | DM8 | KDB9 (all via proton-rds driver)
+    host: "bkn-safe-mariadb"
+    port: "3306"
+    user: "root"
+    password: "secret"
+    name: "safe"
+  hydra:
+    adminURL: "http://bkn-safe-hydra-admin:4445"
+    publicURL: "http://bkn-safe-hydra-public:4444"
+  ldap:
+    url: ""                 # empty = LDAP federation disabled
+    bindDN: ""
+    bindPassword: ""
+    baseDN: ""
+    userFilter: "(uid=%s)"
+
+resources:
+  requests:
+    cpu: 200m
+    memory: 256Mi
+  limits:
+    cpu: "2"
+    memory: 2Gi
+
+nodeSelector: {}
+
+# Bundled dependencies for non-production clusters (dev/staging/CI): an upstream
+# hydra v26.2.0 on PostgreSQL + a MariaDB for bkn-safe. In production set
+# enabled=false and point config.hydra/config.db at the real services.
+bundledDeps:
+  enabled: true
+  hydraImage: oryd/hydra:v26.2.0
+  postgresImage: postgres:16
+  mariadbImage: mariadb:11.4
+  hydraSecretsSystem: "dev-only-change-me-32-bytes-secret"
