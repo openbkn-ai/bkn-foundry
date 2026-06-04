@@ -17,11 +17,17 @@ class PermissionManager:
         self.resource_filter_url = f"{self.base_url}/api/authorization/v1/resource-filter"
         self.delete_resource_url = f"{self.base_url}/api/authorization/v1/policy-delete"
         self.session: Optional[aiohttp.ClientSession] = None
-        # bkn-safe authz cutover (revertible): AUTHZ_PROVIDER=shadow makes
-        # check_single_permission also query bkn-safe and log diffs while ISF
-        # stays authoritative. Unset to revert (default = pure ISF).
+        # bkn-safe authz cutover (revertible, env-gated):
+        #   AUTHZ_PROVIDER=shadow   -> ISF authoritative, bkn-safe queried in
+        #                              parallel, diffs logged (decision path only)
+        #   AUTHZ_PROVIDER=bkn-safe -> bkn-safe AUTHORITATIVE for all methods
+        #                              (ISF not consulted)
+        # Unset to revert (default = pure ISF). BKN_SAFE_URL points at bkn-safe.
         self.authz_provider = os.getenv("AUTHZ_PROVIDER", "")
         self.bkn_safe_url = os.getenv("BKN_SAFE_URL", "")
+
+    def _bkn_safe_authoritative(self) -> bool:
+        return self.authz_provider == "bkn-safe" and bool(self.bkn_safe_url)
 
     async def get_session(self) -> aiohttp.ClientSession:
         if self.session is None or self.session.closed:
@@ -35,6 +41,10 @@ class PermissionManager:
         # admin用户无需授权
         if user_id == "266c6a42-6131-4d62-8f39-853e7093701c":
             return True
+        # bkn-safe authoritative: grant the four instance ops directly.
+        if self._bkn_safe_authoritative():
+            return await self._bkn_safe_add(user_id, resource_type, resource_id,
+                                            ["display", "modify", "delete", "execute"])
         """添加权限"""
         payload = [{
             "accessor": {
@@ -107,6 +117,13 @@ class PermissionManager:
                                       resource_type: str, role: str) -> bool:
         if not base_config.AUTH_ENABLED:
             return True
+        # bkn-safe authoritative: return its decision directly.
+        if self._bkn_safe_authoritative():
+            try:
+                return await self._bkn_safe_check(user_id, resource_type, resource_id, operations)
+            except Exception as e:
+                StandLogger.error(e.args)
+                return False
         """校验用户对资源的权限"""
         payload = {
             "method": "GET",
@@ -163,11 +180,59 @@ class PermissionManager:
             data = await resp.json()
             return bool(data.get('allowed', False))
 
+    async def _bkn_safe_add(self, user_id, resource_type, resource_id, operations) -> bool:
+        try:
+            session = await self.get_session()
+            async with session.post(
+                    f"{self.bkn_safe_url}/api/safe/v1/authz/policies",
+                    json={"accessor_id": user_id,
+                          "resource": {"type": resource_type, "id": resource_id},
+                          "operations": operations},
+                    headers={'Content-Type': 'application/json'}) as resp:
+                return resp.status == 204
+        except Exception as e:
+            StandLogger.error(e.args)
+            return False
+
+    async def _bkn_safe_filter_ids(self, user_id, operation, resource_type) -> list:
+        # Match ISF: a "*" operation yields no ids (the ISF filter drops them).
+        if operation == "*":
+            return []
+        model_ids = small_model_dao.get_all_ids()
+        allowed = []
+        for m in model_ids:
+            mid = m['f_model_id']
+            try:
+                if await self._bkn_safe_check(user_id, resource_type, mid, operation):
+                    allowed.append(mid)
+            except Exception as e:
+                StandLogger.error(e.args)
+        return allowed
+
+    async def _bkn_safe_delete(self, resource_type, resource_ids) -> bool:
+        session = await self.get_session()
+        ok = True
+        for resource_id in resource_ids:
+            try:
+                async with session.delete(
+                        f"{self.bkn_safe_url}/api/safe/v1/authz/policies",
+                        json={"resource": {"type": resource_type, "id": resource_id}},
+                        headers={'Content-Type': 'application/json'}) as resp:
+                    if resp.status != 204:
+                        ok = False
+            except Exception as e:
+                StandLogger.error(e.args)
+                ok = False
+        return ok
+
     async def get_permission_ids(self, user_id: str, operation: str,
                                  resource_type: str, resource_name: str, role: str) -> list:
         if not base_config.AUTH_ENABLED:
             all_ids = small_model_dao.get_all_ids()
             return [m['f_model_id'] for m in all_ids]
+        # bkn-safe authoritative: filter the model set by per-resource checks.
+        if self._bkn_safe_authoritative():
+            return await self._bkn_safe_filter_ids(user_id, operation, resource_type)
         """获取资源列表"""
         payload = {
             "method": "GET",
@@ -223,6 +288,9 @@ class PermissionManager:
     async def delete_permission(self, resource_type: str, resource_ids: list) -> bool:
         if not base_config.AUTH_ENABLED:
             return True
+        # bkn-safe authoritative: drop each resource's policies directly.
+        if self._bkn_safe_authoritative():
+            return await self._bkn_safe_delete(resource_type, resource_ids)
         """删除权限"""
         session = await self.get_session()
         resources = [{"id": resource_id, "type": resource_type} for resource_id in resource_ids]
