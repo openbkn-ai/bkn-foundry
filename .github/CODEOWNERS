@@ -16,7 +16,6 @@
 # ── ADP (Application Delivery Platform) ─────────────────────
 adp/bkn/**                                 @kenlee1988 @Flynn-Zh @Yana-tao
 adp/context-loader/**                      @criller
-adp/dataflow/**                            @zhangaishucn
 adp/execution-factory/**                   @criller
 adp/vega/**                                @kenlee1988 @Flynn-Zh @LuckyCaptain-go
 adp/docs/**                                @kenlee1988 @Flynn-Zh @LuckyCaptain-go @Yana-tao

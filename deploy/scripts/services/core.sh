@@ -20,7 +20,6 @@ declare -a CORE_SQL_MODULES=(
     "agentoperator"
     "dataagent"
     "decisionagent"
-    "flowautomation"
     "sandbox"
 )
 

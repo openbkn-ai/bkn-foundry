@@ -50,15 +50,6 @@ releases:
   agent-backend:
     chart: agent-backend
     version: 0.1.0
-  dataflow:
-    chart: dataflow
-    version: 0.1.0
-  coderunner:
-    chart: coderunner
-    version: 0.1.0
-  doc-convert:
-    chart: doc-convert
-    version: 0.1.0
   agent-observability:
     chart: agent-observability
     version: 0.1.0
