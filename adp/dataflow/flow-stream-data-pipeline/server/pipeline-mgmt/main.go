@@ -121,7 +121,7 @@ func main() {
 	}
 	logics.SetIndexBaseAccess(access.NewIndexBaseAccess(appSetting))
 	logics.SetMQAccess(access.NewMQAccess(appSetting))
-	logics.SetPermissionAccess(permission.NewPermissionAccess(appSetting))
+	logics.SetPermissionAccess(permission.MaybeShadow(permission.NewPermissionAccess(appSetting)))
 	logics.SetPipelineMgmtAccess(access.NewPipelineMgmtAccess(appSetting))
 
 	server := &mgrService{
