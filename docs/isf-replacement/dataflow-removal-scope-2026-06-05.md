@@ -37,7 +37,11 @@
   - `logics/impex/index.go:38,54,156-160`(`m.FlowAutomation.Import`)
   - `logics/operator/impex.go:566-567`(`m.FlowAutomation.Export`)
   - `logics/operator/index.go:38,66`(manager 字段 + 构造)
-  - **决策点**:operator 导入/导出里"dataflow 类型"整支删除(其余 operator 类型保留)。需读 impex 看 dataflow 是独立分支还是混在通用流程里。
+  - **精确措辞(已核实)**:只 **impex** 碰 dataflow —— composite 算子的 register/edit/execute **不碰**(grep 空)。
+    所以**不删 composite 算子类型本身**,只摘 impex 的 composite DAG 分支:
+    - 导出 `getCompositeOperatorDependencies`(impex.go:539-)的 `dagIDs` 收集 + `FlowAutomation.Export` 整段 → 删,`compositeConfigs` 留空。
+    - 导入 `impex/index.go:153-162` 的 `if data.Operator.CompositeConfigs>0 { FlowAutomation.Import }` 分支 → 删。
+    - 保留 composite 枚举;如需可在注册校验**禁新建 composite**(产品定)。
 
 ### 2.2 部署
 - `deploy/deploy.sh:1043,1058` —— `install_flowautomation` / `uninstall_flowautomation`(及函数定义)。
@@ -46,6 +50,7 @@
 - `deploy/release-manifests/0.1.0/bkn-foundry.yaml:53-60` —— `dataflow` / `coderunner` /
   `doc-convert` 三个组件条目。
 - `data-migrator/config.monorepo.yaml` —— coderunner/doc-convert 引用。
+- `deploy/conf/config.yaml:17` —— `flowAutomation:` 块(S3 配置 ~16-28 行),删。
 - `deploy/release-manifests/archive/*` —— **历史归档,保留不动**(过去版本快照)。
 
 ### 2.3 CI
@@ -61,11 +66,20 @@
 
 > vega/bkn 的 B1 部分、DA(B2)、mf-model(B4/D3)、exec-factory(authz)等**不在 dataflow 内,保留**。
 
-## 4. 保留 / 待定
+## 4. 保留 / 后续清理(非本轮"删 dataflow 产品线"必须;均无编译依赖)
 
-- bkn-safe seed 里的 `data_flow` 资源类型 + 相关 authz 授权:dataflow 没了后是死类型。
-  **可后续从 seed 清掉**(catalog.json / grants.json),非本次必须;低优先。
-- `@subflow/call/dataflow`、pipeline 的 `ManagerDeployName="dataflow"` 等随服务删除一起走。
+> 本轮只删 dataflow 产品线 + exec-factory/deploy/CI 引用。以下是 dataflow 没了之后变成
+> **死枚举/死配置/死类型**的软引用,跨服务,**不影响编译**,可opportunistic 跟随清理或单列后续项。
+
+- **decision-agent "发布为 Dataflow Agent" 残留**(已核实,纯枚举/标志/DB 列):
+  - `src/domain/enum/cdapmsenum/operator.go` —— `AgentPublishToBeDataFlowAgent Operator = "publish_to_be_data_flow_agent"`(在 EnumCheck/GetAll 列表里)。
+  - `src/infra/persistence/dapo/release.go` —— `IsDataFlowAgent` DB 列 `f_is_data_flow_agent` + `PublishToBeDataFlowAgent` 发布分支。
+  - `src/domain/enum/chat_enum/chat_scenario.go` —— `ChatScenarioADPDataFlow = "ADP_data_flow"`。
+  - `permissionsvc/{init_resource_type,get_user_status}.go` —— 注册/读 `AgentPublishToBeDataFlowAgent` 权限。
+  - `rdto/.../management.go`、`agent_config_models.go` —— `PublishToBeDataFlowAgent` / `IsDataFlowSetEnabled` 出参。
+  - 性质:删 dataflow 后 UI 留"发布为 Dataflow Agent"死选项;清理 = 摘枚举 + DB 列 + 聊天场景 + 发布分支(中等改动,独立后续项)。
+- **bkn-safe** seed 的 `data_flow` 资源类型 + authz 授权(catalog.json / grants.json):死类型,低优先。
+- `@subflow/call/dataflow`、pipeline `ManagerDeployName="dataflow"` 等随服务删除一起走。
 
 ## 5. 验证清单(执行后)
 
@@ -76,6 +90,12 @@
 - **examples 无影响**:`./examples`(01-db-to-qa…06-world-cup)与 `help/*/examples` 均不调
   `/api/automation`/flow-automation;只用 vega-backend / agent-operator-integration(exec-factory)。
   `03-action-lifecycle` 的"行动+调度"是 bkn 的 `action_schedule`,非 dataflow。移除无需改 examples。
+
+### 删前必查(仓外硬前置,代码 grep 看不到)
+1. **线上 `operator_type='composite'` 存量行**:migrations 不发 composite 种子,全是运行时建行。
+   非 0 → 这些组合算子的 `dag_id` 在 dataflow 删除后悬挂(导出会少 DAG 依赖)。删前确认存量/影响。
+2. **仓外前端/网关是否直连 `/api/automation`**:ingress 可能对外暴露该路径给 dataflow UI(前端在别 repo)。
+   需确认前端/网关侧同步下线,避免对外 404。
 
 ## 5.5 代码量(2026-06-05 实测)
 
