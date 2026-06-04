@@ -21,9 +21,9 @@ import (
 // OperationCheck, so it's covered too. All other AuthZHttpAcc methods delegate
 // to ISF via embedding. Revert = unset the env (default = pure ISF).
 //
-// DA's AuthZHttpAcc surface is large (~20 methods incl Grant*/SetResourceType/
-// ListPolicy); a bkn-safe-authoritative adapter for DA is a later step. This
-// slice only shadows the decision path to collect diffs safely.
+// The bkn-safe-AUTHORITATIVE adapter (all methods, AUTHZ_PROVIDER=bkn-safe)
+// lives in authz_safe.go; MaybeShadow below selects between isf/shadow/bkn-safe.
+// This shadow wrapper only mirrors the decision path to collect diffs safely.
 
 type shadowAuthZHttpAcc struct {
 	iauthzacc.AuthZHttpAcc // embedded ISF impl (authoritative)
