@@ -2,7 +2,12 @@
 
 ISF 替换的自研认证/鉴权/用户管理服务（代码内代号 `safe`）。配合**上游 ORY Hydra**
 工作：hydra 签发 token，bkn-safe 是 hydra 的 login/consent/device 提供方，并承担鉴权
-与用户目录。设计背景见 [`../docs/isf-replacement/README.md`](../docs/isf-replacement/README.md)。
+与用户目录。
+
+**文档**：
+- [`docs/DESIGN.md`](docs/DESIGN.md) — 设计文档（架构/组件/数据模型/鉴权模型/认证流程/seed/部署）
+- [`docs/API.md`](docs/API.md) — HTTP API 参照（authz / directory / user-write / provider 页）
+- 替换全局背景：[`../docs/isf-replacement/README.md`](../docs/isf-replacement/README.md)
 
 ## 三职责
 
