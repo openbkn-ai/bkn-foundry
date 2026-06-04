@@ -26,11 +26,12 @@
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | `/login?login_challenge=<c>` | 渲染登录表单(账号/密码) |
+| GET | `/login?login_challenge=<c>` | 渲染登录页(账号/密码,带样式) |
 | POST | `/login` | 表单 `login_challenge,account,password` → 验密码(自有库 bcrypt/LDAP)→ accept login → **302** 回 hydra;失败 401 |
-| GET | `/consent?consent_challenge=<c>` | 首方自动授权 + 注入 ext claims → **302** 回 hydra |
-| GET | `/device?device_challenge=<c>&user_code=<u>` | 渲染设备码表单(user_code 可预填) |
-| POST | `/device` | 表单 `device_challenge,user_code` → accept user code → **302** |
+| GET | `/consent?consent_challenge=<c>` | 渲染**显式同意页**:展示请求方 client + requested scope 清单 + 同意/拒绝(**200 HTML**,不再自动放行) |
+| POST | `/consent` | 表单 `consent_challenge,decision=allow\|deny`。allow → 授予 scope + **注入 ext claims** → 302;deny → reject → 302 |
+| GET | `/device?device_challenge=<c>&user_code=<u>` | 渲染设备授权页:**醒目展示 user_code** 供核对 + 警告语;`user_code` 可由 `verification_uri_complete` 预填 |
+| POST | `/device` | 表单 `device_challenge,user_code` → accept user code → **302**(进登录/同意流) |
 
 introspect 的 ext claims(consent 注入,user 类型 5 字段必齐):
 `{ visitor_type:"realname", login_ip, udid:"", account_type:"other|id_card", client_type:"web" }`

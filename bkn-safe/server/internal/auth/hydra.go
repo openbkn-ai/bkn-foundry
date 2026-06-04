@@ -104,6 +104,8 @@ type ConsentRequest struct {
 	Subject        string
 	RequestedScope []string
 	Audience       []string
+	ClientID       string // requesting OAuth2 client (shown on the consent page)
+	ClientName     string
 }
 
 // GetConsent fetches the consent request for a challenge.
@@ -113,6 +115,14 @@ func (h *HydraAdmin) GetConsent(ctx context.Context, challenge string) (*Consent
 		return nil, fmt.Errorf("get consent request: %w", err)
 	}
 	cr := &ConsentRequest{Challenge: challenge, RequestedScope: req.RequestedScope}
+	if req.Client != nil {
+		if req.Client.ClientId != nil {
+			cr.ClientID = *req.Client.ClientId
+		}
+		if req.Client.ClientName != nil {
+			cr.ClientName = *req.Client.ClientName
+		}
+	}
 	if req.Subject != nil {
 		cr.Subject = *req.Subject
 	}

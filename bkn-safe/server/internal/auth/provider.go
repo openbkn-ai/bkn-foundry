@@ -69,6 +69,12 @@ func (p *Provider) Login(ctx context.Context, challenge, account, password strin
 	return p.hydra.AcceptLogin(ctx, challenge, u.ID, remember)
 }
 
+// ConsentInfo returns the consent request (client + requested scope) for
+// rendering the consent page.
+func (p *Provider) ConsentInfo(ctx context.Context, challenge string) (*ConsentRequest, error) {
+	return p.hydra.GetConsent(ctx, challenge)
+}
+
 // Consent grants the requested scope and injects the ext claims for the
 // already-authenticated subject. Returns hydra's redirect target.
 func (p *Provider) Consent(ctx context.Context, challenge, loginIP, clientType string, remember bool) (redirectTo string, err error) {
@@ -82,4 +88,9 @@ func (p *Provider) Consent(ctx context.Context, challenge, loginIP, clientType s
 	}
 	ext := ExtClaims(u, loginIP, clientType)
 	return p.hydra.AcceptConsent(ctx, cr, ext, remember)
+}
+
+// RejectConsent denies the consent request, returning hydra's redirect target.
+func (p *Provider) RejectConsent(ctx context.Context, challenge string) (string, error) {
+	return p.hydra.RejectConsent(ctx, challenge)
 }

@@ -54,9 +54,14 @@ L=$(curl -fsS -c "$JAR" -b "$JAR" -D - -o /dev/null "$L" | loc)
 echo "  -> $L"
 case "$L" in *"/consent?consent_challenge="*) ;; *) fail "expected consent redirect, got $L";; esac
 
-echo "== 5. bkn-safe /consent (auto-grant + ext inject) =="
-L=$(curl -fsS -c "$JAR" -b "$JAR" -D - -o /dev/null "$L" | loc)
-echo "  -> (consent accepted) $L"
+echo "== 5. bkn-safe /consent — render then POST allow (+ ext inject) =="
+CC=$(urldec "${L#*consent_challenge=}")
+# GET renders the consent screen (200, no redirect); POST the decision.
+curl -fsS -c "$JAR" -b "$JAR" -o /dev/null "$L"
+L=$(curl -fsS -c "$JAR" -b "$JAR" -D - -o /dev/null -X POST "$SAFE/consent" \
+  --data-urlencode "consent_challenge=$CC" --data-urlencode "decision=allow" | loc)
+[ -n "$L" ] || fail "consent POST gave no redirect"
+echo "  -> (consent allowed) $L"
 
 echo "== 6. follow to redirect_uri, capture code =="
 L=$(curl -fsS -c "$JAR" -b "$JAR" -D - -o /dev/null "$L" | loc)

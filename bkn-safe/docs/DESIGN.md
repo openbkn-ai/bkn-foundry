@@ -95,7 +95,7 @@ hydra 委托 login/consent/device 给 bkn-safe:
 ```
 1. 应用/CLI 发起 OAuth → hydra → 302 到 bkn-safe GET /login?login_challenge=
 2. 用户提交账密 → POST /login → userstore.Verify(bcrypt;或 LDAP 联邦)→ hydra accept login → 回 hydra
-3. hydra → 302 到 GET /consent?consent_challenge= → bkn-safe 自动授权(首方)+ 注入 ext claims → hydra accept consent
+3. hydra → 302 到 GET /consent?consent_challenge= → bkn-safe 渲染显式同意页(展示请求方 client + scope 清单)→ 用户点同意 → POST /consent(decision=allow)→ 注入 ext claims → hydra accept consent(拒绝则 reject)
 4. hydra → 回 redirect_uri + code → 应用换 token
 5. 应用 introspect token → hydra 返回含 ext 的响应
 ```
