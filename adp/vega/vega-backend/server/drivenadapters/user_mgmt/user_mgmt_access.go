@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"sync"
 
 	"github.com/bytedance/sonic"
@@ -23,26 +24,36 @@ type userMgmtAccess struct {
 	appSetting  *common.AppSetting
 	httpClient  rest.HTTPClient
 	userMgmtUrl string
+	// bkn-safe directory cutover (revertible): DIRECTORY_PROVIDER=bkn-safe +
+	// BKN_SAFE_URL routes name resolution to bkn-safe's clean /directory/names
+	// instead of ISF /v2/names. Unset to revert (default = ISF).
+	directoryProvider string
+	bknSafeURL        string
 }
 
 func NewUserMgmtAccess(appSetting *common.AppSetting) interfaces.UserMgmtAccess {
 	umAccessOnce.Do(func() {
 		umAccess = &userMgmtAccess{
-			appSetting:  appSetting,
-			httpClient:  common.NewHTTPClient(),
-			userMgmtUrl: appSetting.UserMgmtUrl,
+			appSetting:        appSetting,
+			httpClient:        common.NewHTTPClient(),
+			userMgmtUrl:       appSetting.UserMgmtUrl,
+			directoryProvider: os.Getenv("DIRECTORY_PROVIDER"),
+			bknSafeURL:        os.Getenv("BKN_SAFE_URL"),
 		}
 	})
 
 	return umAccess
 }
 
+// useBknSafe reports whether name resolution should go to bkn-safe.
+func (u *userMgmtAccess) useBknSafe() bool {
+	return u.directoryProvider == "bkn-safe" && u.bknSafeURL != ""
+}
+
 func (u *userMgmtAccess) GetAccountNames(ctx context.Context, accountInfos []*interfaces.AccountInfo) error {
 	if len(accountInfos) == 0 {
 		return nil
 	}
-
-	httpUrl := fmt.Sprintf("%s/api/user-management/v2/names", u.userMgmtUrl)
 
 	userIDMap := map[string]string{}
 	appIDMap := map[string]string{}
@@ -63,11 +74,24 @@ func (u *userMgmtAccess) GetAccountNames(ctx context.Context, accountInfos []*in
 		}
 	}
 
-	requestBody := map[string]any{
-		"method":   http.MethodGet,
-		"user_ids": userIDs,
-		"app_ids":  appIDs,
-		"strict":   false,
+	// Route to bkn-safe (clean /directory/names) or ISF (/v2/names). Both return
+	// the same { user_names, app_names } shape, so only URL+body differ.
+	var httpUrl string
+	var requestBody map[string]any
+	if u.useBknSafe() {
+		httpUrl = fmt.Sprintf("%s/api/safe/v1/directory/names", u.bknSafeURL)
+		requestBody = map[string]any{
+			"user_ids": userIDs,
+			"app_ids":  appIDs,
+		}
+	} else {
+		httpUrl = fmt.Sprintf("%s/api/user-management/v2/names", u.userMgmtUrl)
+		requestBody = map[string]any{
+			"method":   http.MethodGet,
+			"user_ids": userIDs,
+			"app_ids":  appIDs,
+			"strict":   false,
+		}
 	}
 
 	headers := map[string]string{

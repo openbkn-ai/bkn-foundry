@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"sync"
 
 	"github.com/bytedance/sonic"
@@ -32,19 +33,31 @@ type userMgmtAccess struct {
 	appSetting  *common.AppSetting
 	httpClient  rest.HTTPClient
 	userMgmtUrl string
+	// bkn-safe directory cutover (revertible): DIRECTORY_PROVIDER=bkn-safe +
+	// BKN_SAFE_URL routes name resolution to bkn-safe's clean /directory/names
+	// instead of ISF /v2/names. Unset to revert (default = ISF).
+	directoryProvider string
+	bknSafeURL        string
 }
 
 // NewUserMgmtAccess 创建用户管理访问实例
 func NewUserMgmtAccess(appSetting *common.AppSetting) interfaces.UserMgmtAccess {
 	umAccessOnce.Do(func() {
 		umAccess = &userMgmtAccess{
-			appSetting:  appSetting,
-			httpClient:  common.NewHTTPClient(),
-			userMgmtUrl: appSetting.UserMgmtUrl,
+			appSetting:        appSetting,
+			httpClient:        common.NewHTTPClient(),
+			userMgmtUrl:       appSetting.UserMgmtUrl,
+			directoryProvider: os.Getenv("DIRECTORY_PROVIDER"),
+			bknSafeURL:        os.Getenv("BKN_SAFE_URL"),
 		}
 	})
 
 	return umAccess
+}
+
+// useBknSafe reports whether name resolution should go to bkn-safe.
+func (uma *userMgmtAccess) useBknSafe() bool {
+	return uma.directoryProvider == "bkn-safe" && uma.bknSafeURL != ""
 }
 
 func (uma *userMgmtAccess) GetAccountNames(ctx context.Context, accountInfos []*interfaces.AccountInfo) error {
@@ -55,14 +68,6 @@ func (uma *userMgmtAccess) GetAccountNames(ctx context.Context, accountInfos []*
 		span.SetStatus(codes.Ok, "")
 		return nil
 	}
-
-	// 构建请求URL
-	httpUrl := fmt.Sprintf("%s/api/user-management/v2/names", uma.userMgmtUrl)
-	oteltrace.AddAttrs4InternalHttp(span, oteltrace.TraceAttrs{
-		HttpUrl:         httpUrl,
-		HttpMethod:      http.MethodPost,
-		HttpContentType: rest.ContentTypeJson,
-	})
 
 	userIDMap := map[string]string{}
 	appIDMap := map[string]string{}
@@ -83,13 +88,30 @@ func (uma *userMgmtAccess) GetAccountNames(ctx context.Context, accountInfos []*
 		}
 	}
 
-	// 构建请求体
-	requestBody := map[string]any{
-		"method":   http.MethodGet,
-		"user_ids": userIDs,
-		"app_ids":  appIDs,
-		"strict":   false,
+	// 构建请求 URL + 请求体:bkn-safe(clean /directory/names)或 ISF(/v2/names)。
+	// 两者返回同样的 { user_names, app_names },仅 URL+body 不同。
+	var httpUrl string
+	var requestBody map[string]any
+	if uma.useBknSafe() {
+		httpUrl = fmt.Sprintf("%s/api/safe/v1/directory/names", uma.bknSafeURL)
+		requestBody = map[string]any{
+			"user_ids": userIDs,
+			"app_ids":  appIDs,
+		}
+	} else {
+		httpUrl = fmt.Sprintf("%s/api/user-management/v2/names", uma.userMgmtUrl)
+		requestBody = map[string]any{
+			"method":   http.MethodGet,
+			"user_ids": userIDs,
+			"app_ids":  appIDs,
+			"strict":   false,
+		}
 	}
+	oteltrace.AddAttrs4InternalHttp(span, oteltrace.TraceAttrs{
+		HttpUrl:         httpUrl,
+		HttpMethod:      http.MethodPost,
+		HttpContentType: rest.ContentTypeJson,
+	})
 
 	// 设置请求头
 	headers := map[string]string{
