@@ -66,6 +66,11 @@ curl -X POST $SAFE/api/safe/v1/authz/check -H 'Content-Type: application/json' \
 请求:`{ "resource":{"type":"pipeline","id":"p1"} }`
 响应:`204 No Content`
 
+### GET /policies — 列某资源实例上各访问者的授权(谁能做什么)
+查询:`?resource_type=agent&resource_id=a1`(`resource_id` 可空)
+响应:`{ "entries":[ { "accessor_id":"u1", "resource":{"type":"agent","id":"a1"}, "operations":["use","modify"] } ] }`
+> 按访问者分组;bkn-safe 无过期/condition,条目视为永不过期、allow-only。DA 的 ListPolicy(All) 用。
+
 ### POST /role-bindings — 绑定用户/应用到角色
 请求:`{ "accessor_id":"u1", "role_id":"1572fb82-526f-11f0-bde6-e674ec8dde71" }`
 响应:`204 No Content`

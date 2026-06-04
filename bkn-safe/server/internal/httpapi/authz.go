@@ -99,6 +99,33 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 		c.Status(http.StatusNoContent)
 	})
 
+	// GET /policies — list the per-accessor grants on a resource instance.
+	// Query: ?resource_type=agent&resource_id=a1
+	// -> { entries:[ { accessor_id, resource{type,id}, operations:[...] } ] }
+	// Used by DA's ListPolicy/ListPolicyAll (who-can-do-what on a resource).
+	g.GET("/policies", func(c *gin.Context) {
+		rtype := c.Query("resource_type")
+		rid := c.Query("resource_id")
+		if rtype == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "resource_type required"})
+			return
+		}
+		policies, err := e.ResourcePolicies(rtype, rid)
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		entries := make([]gin.H, 0, len(policies))
+		for _, p := range policies {
+			entries = append(entries, gin.H{
+				"accessor_id": p.AccessorID,
+				"resource":    gin.H{"type": rtype, "id": rid},
+				"operations":  p.Operations,
+			})
+		}
+		c.JSON(http.StatusOK, gin.H{"entries": entries})
+	})
+
 	// POST /role-bindings — bind an accessor to a role. { accessor_id, role_id }
 	g.POST("/role-bindings", func(c *gin.Context) {
 		var req struct {

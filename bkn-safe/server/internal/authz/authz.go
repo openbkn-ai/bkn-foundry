@@ -135,3 +135,38 @@ func (en *Enforcer) RemoveResourcePolicies(resourceType, resourceID string) erro
 	_, err := en.e.RemoveFilteredPolicy(1, obj(resourceType, resourceID))
 	return err
 }
+
+// ResourcePolicy is one accessor's grant set on a single resource instance.
+type ResourcePolicy struct {
+	AccessorID string
+	Operations []string
+}
+
+// ResourcePolicies lists the per-accessor grants on a concrete resource
+// instance, grouping the raw (sub, obj, act) rows by accessor. Order of
+// accessors follows first appearance; ops within an accessor follow row order.
+// Mirrors ISF list-policy for one resource (bkn-safe has no expiry/condition,
+// so callers treat entries as never-expiring allow-only).
+func (en *Enforcer) ResourcePolicies(resourceType, resourceID string) ([]ResourcePolicy, error) {
+	rows, err := en.e.GetFilteredPolicy(1, obj(resourceType, resourceID))
+	if err != nil {
+		return nil, err
+	}
+	bySub := map[string][]string{}
+	order := make([]string, 0, len(rows))
+	for _, row := range rows {
+		if len(row) < 3 {
+			continue
+		}
+		sub, act := row[0], row[2]
+		if _, ok := bySub[sub]; !ok {
+			order = append(order, sub)
+		}
+		bySub[sub] = append(bySub[sub], act)
+	}
+	out := make([]ResourcePolicy, 0, len(order))
+	for _, sub := range order {
+		out = append(out, ResourcePolicy{AccessorID: sub, Operations: bySub[sub]})
+	}
+	return out, nil
+}

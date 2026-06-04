@@ -116,3 +116,46 @@ func sameSet(a, b []string) bool {
 	}
 	return true
 }
+
+// TestResourcePolicies covers grouping of per-accessor grants on one resource
+// instance, used by DA's ListPolicy(All). Grants on sibling/other resources or
+// role-level patterns must NOT appear in a concrete-instance listing.
+func TestResourcePolicies(t *testing.T) {
+	e := newTestEnforcer(t)
+	mustNoErr(t, e.GrantObjectPermission("u-1", "agent", "a1", "use"))
+	mustNoErr(t, e.GrantObjectPermission("u-1", "agent", "a1", "modify"))
+	mustNoErr(t, e.GrantObjectPermission("u-2", "agent", "a1", "use"))
+	// noise that must be excluded from agent:a1
+	mustNoErr(t, e.GrantObjectPermission("u-1", "agent", "a2", "use"))
+	mustNoErr(t, e.GrantRolePermission("role-x", "agent", "*", "use"))
+
+	got, err := e.ResourcePolicies("agent", "a1")
+	if err != nil {
+		t.Fatalf("ResourcePolicies: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("got %d accessors, want 2: %+v", len(got), got)
+	}
+	byAcc := map[string][]string{}
+	for _, p := range got {
+		byAcc[p.AccessorID] = p.Operations
+	}
+	if ops := byAcc["u-1"]; !sameSet(ops, []string{"use", "modify"}) {
+		t.Errorf("u-1 ops = %v, want [use modify]", ops)
+	}
+	if ops := byAcc["u-2"]; !sameSet(ops, []string{"use"}) {
+		t.Errorf("u-2 ops = %v, want [use]", ops)
+	}
+	if _, ok := byAcc["role-x"]; ok {
+		t.Error("role-level agent:* grant must not appear in concrete agent:a1 listing")
+	}
+
+	// empty resource -> empty list, no error.
+	empty, err := e.ResourcePolicies("agent", "nonexistent")
+	if err != nil {
+		t.Fatalf("ResourcePolicies(empty): %v", err)
+	}
+	if len(empty) != 0 {
+		t.Errorf("empty resource = %+v, want none", empty)
+	}
+}
