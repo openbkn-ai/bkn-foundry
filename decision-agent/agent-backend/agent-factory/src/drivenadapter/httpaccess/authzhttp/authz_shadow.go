@@ -102,23 +102,33 @@ func (s *shadowAuthZHttpAcc) safeCheckOne(ctx context.Context, accessorID, rtype
 	return out.Allowed, nil
 }
 
-// MaybeShadow wraps the ISF AuthZHttpAcc in a shadow comparator when
-// AUTHZ_PROVIDER=shadow and BKN_SAFE_URL is set; otherwise returns impl
-// unchanged. The single, env-gated, fully-revertible cutover point for DA.
+// MaybeShadow applies the AUTHZ_PROVIDER switch — the single, env-gated, fully-
+// revertible cutover point for DA:
+//   - unset / other : ISF impl unchanged (default).
+//   - "shadow"       : ISF authoritative, bkn-safe queried in parallel, diffs logged.
+//   - "bkn-safe"     : bkn-safe AUTHORITATIVE (full adapter, ISF not consulted).
+//
+// Both non-default modes require BKN_SAFE_URL; missing => fall back to ISF.
 func MaybeShadow(impl iauthzacc.AuthZHttpAcc, logger icmp.Logger) iauthzacc.AuthZHttpAcc {
-	if os.Getenv("AUTHZ_PROVIDER") != "shadow" {
+	provider := os.Getenv("AUTHZ_PROVIDER")
+	if provider != "shadow" && provider != "bkn-safe" {
 		return impl
 	}
 	baseURL := os.Getenv("BKN_SAFE_URL")
 	if baseURL == "" {
-		logger.Warnf("[authz-shadow] AUTHZ_PROVIDER=shadow but BKN_SAFE_URL empty; shadow disabled")
+		logger.Warnf("[authz] AUTHZ_PROVIDER=%s but BKN_SAFE_URL empty; using ISF", provider)
 		return impl
+	}
+	client := &http.Client{Timeout: 5 * time.Second}
+	if provider == "bkn-safe" {
+		logger.Infof("[authz] DA provider=bkn-safe (authoritative) at %s", baseURL)
+		return &safeAuthZHttpAcc{safeURL: baseURL, http: client, logger: logger}
 	}
 	logger.Infof("[authz-shadow] DA enabled; ISF authoritative, comparing bkn-safe at %s", baseURL)
 	return &shadowAuthZHttpAcc{
 		AuthZHttpAcc: impl,
 		safeURL:      baseURL,
-		http:         &http.Client{Timeout: 5 * time.Second},
+		http:         client,
 		logger:       logger,
 	}
 }
