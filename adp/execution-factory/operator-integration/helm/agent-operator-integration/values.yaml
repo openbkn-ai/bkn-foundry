@@ -145,10 +145,6 @@ depServices:
     caName: ""
     certName: ""
     keyName: ""
-  flow-automation:
-    privateHost: flow-automation-private
-    privatePort: 8680
-    privateProtocol: http
   mf-model-api:
     privateHost: "mf-model-api"
     privatePort: 9898

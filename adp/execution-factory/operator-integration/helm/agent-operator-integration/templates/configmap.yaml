@@ -69,10 +69,6 @@ data:
       certName: {{ .Values.depServices.redis.certName | quote }}
       keyName: {{ .Values.depServices.redis.keyName | quote }}
       poolSize: {{ .Values.depServices.redis.connectInfo.poolSize }}
-    flow-automation:
-      private_protocol: {{ index .Values "depServices" "flow-automation" "privateProtocol" | quote }}
-      private_host: {{ index .Values "depServices" "flow-automation" "privateHost" | quote }}
-      private_port: {{ index .Values "depServices" "flow-automation" "privatePort" }}
     sandbox-control-plane:
       private_protocol: {{ index .Values "depServices" "sandbox-control-plane" "privateProtocol" | quote }}
       private_host: {{ index .Values "depServices" "sandbox-control-plane" "privateHost" | quote }}

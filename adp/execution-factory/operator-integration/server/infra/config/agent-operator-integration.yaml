@@ -61,10 +61,6 @@ db:
   write_timeout: 30
   max_open_conns: 30
   system_id: ""
-flow-automation:
-  private_host: "flow-automation-private.kweaver"
-  private_port: 8680
-  private_protocol: "http"
 business-system-service:
   private_host: "business-system-service.kweaver"
   private_port: 80
