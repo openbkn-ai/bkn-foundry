@@ -136,6 +136,44 @@ func (en *Enforcer) RemoveResourcePolicies(resourceType, resourceID string) erro
 	return err
 }
 
+// AccessibleResources lists the concrete resource-instance IDs of a given type
+// that the accessor may perform op on, INCLUDING grants inherited via roles.
+// The "*" id-pattern (type-wide grants, e.g. super-admin / data-admin) is
+// excluded — this enumerates concrete instances only; callers handle the
+// type-wide case separately (an "is-admin" short-circuit).
+//
+// IDs are returned verbatim (bkn-safe is opaque to any caller-side id encoding,
+// e.g. "dagID:subtype"), de-duplicated, in first-appearance order. Mirrors ISF
+// resource-list for one (accessor, type, op).
+func (en *Enforcer) AccessibleResources(accessorID, resourceType, op string) ([]string, error) {
+	perms, err := en.e.GetImplicitPermissionsForUser(accessorID)
+	if err != nil {
+		return nil, err
+	}
+	prefix := resourceType + ":"
+	seen := map[string]bool{}
+	out := make([]string, 0, len(perms))
+	for _, p := range perms {
+		if len(p) < 3 {
+			continue
+		}
+		o, act := p[1], p[2]
+		if act != op && act != ActAll {
+			continue
+		}
+		if len(o) <= len(prefix) || o[:len(prefix)] != prefix {
+			continue
+		}
+		id := o[len(prefix):] // split on first ":" only; id may itself contain ":"
+		if id == "*" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		out = append(out, id)
+	}
+	return out, nil
+}
+
 // ResourcePolicy is one accessor's grant set on a single resource instance.
 type ResourcePolicy struct {
 	AccessorID string

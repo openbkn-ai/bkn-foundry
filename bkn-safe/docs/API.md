@@ -66,6 +66,11 @@ curl -X POST $SAFE/api/safe/v1/authz/check -H 'Content-Type: application/json' \
 请求:`{ "resource":{"type":"pipeline","id":"p1"} }`
 响应:`204 No Content`
 
+### GET /resources — 列访问者对某类型有某操作权限的资源实例 ID(含角色继承)
+查询:`?accessor_id=u1&resource_type=data_flow&operation=list`
+响应:`{ "ids":["d1:default","d2:default"] }`
+> 仅枚举具体实例;类型级 `*` 授权(超管/数据管理员)不在内,调用方用 is-admin 短路另行处理。ID 原样返回(bkn-safe 对调用方的 id 编码透明)。flow-automation 的 ListResource 用。
+
 ### GET /policies — 列某资源实例上各访问者的授权(谁能做什么)
 查询:`?resource_type=agent&resource_id=a1`(`resource_id` 可空)
 响应:`{ "entries":[ { "accessor_id":"u1", "resource":{"type":"agent","id":"a1"}, "operations":["use","modify"] } ] }`

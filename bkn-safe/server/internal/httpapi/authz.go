@@ -99,6 +99,27 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 		c.Status(http.StatusNoContent)
 	})
 
+	// GET /resources — enumerate the concrete resource-instance IDs of a type
+	// that the accessor may perform op on (incl. role-inherited grants).
+	// Query: ?accessor_id=u1&resource_type=data_flow&operation=list
+	// -> { ids:[...] }. Type-wide ("*") grants are excluded; callers handle the
+	// is-admin case separately. Used by flow-automation's ListResource.
+	g.GET("/resources", func(c *gin.Context) {
+		accessorID := c.Query("accessor_id")
+		rtype := c.Query("resource_type")
+		op := c.Query("operation")
+		if accessorID == "" || rtype == "" || op == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "accessor_id, resource_type, operation required"})
+			return
+		}
+		ids, err := e.AccessibleResources(accessorID, rtype, op)
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"ids": ids})
+	})
+
 	// GET /policies — list the per-accessor grants on a resource instance.
 	// Query: ?resource_type=agent&resource_id=a1
 	// -> { entries:[ { accessor_id, resource{type,id}, operations:[...] } ] }

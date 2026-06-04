@@ -159,3 +159,40 @@ func TestResourcePolicies(t *testing.T) {
 		t.Errorf("empty resource = %+v, want none", empty)
 	}
 }
+
+// TestAccessibleResources covers enumeration of concrete instances an accessor
+// can act on, including via role, with "*" patterns and opaque id encodings.
+func TestAccessibleResources(t *testing.T) {
+	e := newTestEnforcer(t)
+	const role = "role-data"
+	// direct per-instance grants
+	mustNoErr(t, e.GrantObjectPermission("u-1", "data_flow", "d1:default", "list"))
+	mustNoErr(t, e.GrantObjectPermission("u-1", "data_flow", "d2:default", "list"))
+	mustNoErr(t, e.GrantObjectPermission("u-1", "data_flow", "d3:default", "view")) // wrong op
+	mustNoErr(t, e.GrantObjectPermission("u-1", "operator", "op1", "list"))         // wrong type
+	// role-inherited grant
+	mustNoErr(t, e.GrantObjectPermission(role, "data_flow", "d4:default", "list"))
+	mustNoErr(t, e.AssignRole("u-1", role))
+	// type-wide grant (must be excluded from concrete enumeration)
+	mustNoErr(t, e.GrantRolePermission("role-admin", "data_flow", "*", "list"))
+	mustNoErr(t, e.AssignRole("u-1", "role-admin"))
+
+	got, err := e.AccessibleResources("u-1", "data_flow", "list")
+	if err != nil {
+		t.Fatalf("AccessibleResources: %v", err)
+	}
+	want := []string{"d1:default", "d2:default", "d4:default"}
+	if !sameSet(got, want) {
+		t.Fatalf("got %v, want %v (no d3/op1/'*')", got, want)
+	}
+
+	// wildcard act grants everything: a "*" act on d5 surfaces for any op.
+	mustNoErr(t, e.Grant("u-2", "data_flow:d5", ActAll))
+	g2, err := e.AccessibleResources("u-2", "data_flow", "list")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !sameSet(g2, []string{"d5"}) {
+		t.Fatalf("wildcard-act enum = %v, want [d5]", g2)
+	}
+}
