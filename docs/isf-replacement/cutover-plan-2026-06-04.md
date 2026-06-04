@@ -37,7 +37,7 @@
 - [x] **D1. vega + bkn**(`/v2/names`,含 app 名)→ `directory/names`。commit `9115a7df`(前置 bkn-safe `/names` 扩 app/contactor `2122a381`)。
 - [x] **D2. DA umcmp 全 12 方法** → bkn-safe directory。前置 bkn-safe 新建层级读面(部门祖先链/传递部门 id/批量 user-detail 含 parent_deps+groups+roles/group 成员拆分/子树 search-org)commit `f354404b`;umcmp flip commit `03d83b25`。语义:**传递子树** + **groups 含部门继承**。app/contactor 建模为 User 行(account_type)。
   > 注:DA 另有 usermanagementacc / umhttpaccess 两个 client,本次按你指定只切 umcmp。
-- [ ] **D3. mf-model(Py)**(names/users 等)。
+- [x] **D3. mf-model(Py)**(`get_username_by_ids` → `directory/names`,manager+api 各一份 + unittest)。commit `f4fdf952`。
 - [ ] **D4. flow-automation**(8 端点)—— 随 anyshare 缩减一并处理(很多端点服务 anyshare 功能)。
 
 ## 阶段 E —— 部署 + 影子比对 + 翻权威(逐服务)
