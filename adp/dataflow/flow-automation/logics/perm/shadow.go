@@ -87,17 +87,28 @@ func (s *shadowPermPolicy) safeCheckOne(ctx context.Context, accessorID, rtype, 
 	return out.Allowed, nil
 }
 
-// MaybeShadow wraps an ISF PermPolicyHandler in a shadow comparator when
-// AUTHZ_PROVIDER=shadow and BKN_SAFE_URL is set; otherwise returns it unchanged.
+// MaybeShadow applies the AUTHZ_PROVIDER switch — the env-gated, fully-
+// revertible cutover point for flow-automation:
+//   - unset / other : ISF impl unchanged (default).
+//   - "shadow"       : ISF authoritative, bkn-safe queried in parallel, diffs logged.
+//   - "bkn-safe"     : bkn-safe AUTHORITATIVE (full adapter, ISF not consulted).
+//
+// Both non-default modes require BKN_SAFE_URL; missing => fall back to ISF.
 func MaybeShadow(inner PermPolicyHandler) PermPolicyHandler {
-	if os.Getenv("AUTHZ_PROVIDER") != "shadow" {
+	provider := os.Getenv("AUTHZ_PROVIDER")
+	if provider != "shadow" && provider != "bkn-safe" {
 		return inner
 	}
 	url := os.Getenv("BKN_SAFE_URL")
 	if url == "" {
-		log.Printf("[authz-shadow] AUTHZ_PROVIDER=shadow but BKN_SAFE_URL empty; shadow disabled")
+		log.Printf("[authz] AUTHZ_PROVIDER=%s but BKN_SAFE_URL empty; using ISF", provider)
 		return inner
 	}
+	client := &http.Client{Timeout: 5 * time.Second}
+	if provider == "bkn-safe" {
+		log.Printf("[authz] flow-automation provider=bkn-safe (authoritative) at %s", url)
+		return &safePermPolicy{safeURL: url, http: client}
+	}
 	log.Printf("[authz-shadow] flow-automation enabled; ISF authoritative, comparing bkn-safe at %s", url)
-	return &shadowPermPolicy{PermPolicyHandler: inner, safeURL: url, http: &http.Client{Timeout: 5 * time.Second}}
+	return &shadowPermPolicy{PermPolicyHandler: inner, safeURL: url, http: client}
 }
