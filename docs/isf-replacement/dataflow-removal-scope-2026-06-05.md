@@ -93,7 +93,10 @@
 SQL 建库目录、3 个 `.github/workflows/release-adp-{dataflow,coderunner,doc-convert}.yml`、CODEOWNERS、
 `data-migrator/config.monorepo.yaml`。
 
-**独立/可选 —— vega anyshare 连接器**(§见正文,不在 dataflow 内):4 文件、**1944 行 go**。
+**vega anyshare 连接器 —— 保留(用户已定:anyshare 作为 vega 数据源毋庸置疑)**。
+不在删除范围。它是 vega 当前唯一的 fileset 数据源连接器
+(`logics/connectors/local/fileset/anyshare/`,读/查文档库)。
+注意区分两种 anyshare 耦合:**数据源(vega,读,保留)** vs **dataflow 动作(文档增删改/ACL,删)**。
 
 > 净清理(本次范围):删 ~914 文件(一线源码 ~116k 行)+ 改 ~14 个文件(exec-factory 8 + deploy/CI ~6)。
 
