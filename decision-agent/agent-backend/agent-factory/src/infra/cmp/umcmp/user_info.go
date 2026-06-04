@@ -16,6 +16,9 @@ import (
 // 当err为nil时，uim为非nil
 // 【注意】此方法会自动去掉不存在的用户id，不会因为用户不存在而返回错误
 func (u *Um) GetUserInfo(ctx context.Context, args *umarg.GetUserInfoArgDto) (uim UserInfoMap, err error) {
+	if u.useBknSafe() {
+		return u.getUserInfoSafe(ctx, args)
+	}
 	var (
 		loopCount int
 		maxLoop   = 3
@@ -80,6 +83,9 @@ Loop:
 
 // GetUserName 获取单个用户名称
 func (u *Um) GetUserName(ctx context.Context, userID string) (name string, isNotFound bool, err error) {
+	if u.useBknSafe() {
+		return u.getUserNameSafe(ctx, userID)
+	}
 	_args := &umarg.GetUserInfoArgDto{
 		UserIds: []string{userID},
 		Fields:  umarg.Fields{umarg.FieldName},
@@ -122,6 +128,9 @@ func (u *Um) GetUserName(ctx context.Context, userID string) (name string, isNot
 func (u *Um) GetUserEnableStatus(ctx context.Context,
 	args *umarg.GetUserEnableStatusArgDto,
 ) (uem umret.UserEnabledMap, err error) {
+	if u.useBknSafe() {
+		return u.getUserEnableStatusSafe(ctx, args)
+	}
 	_args := &umarg.GetUserInfoArgDto{
 		UserIds: args.UserIds,
 		Fields:  umarg.Fields{umarg.FieldEnabled},
@@ -144,6 +153,9 @@ func (u *Um) GetUserEnableStatus(ctx context.Context,
 func (u *Um) GetUserInfoSingle(ctx context.Context,
 	args *umarg.GetUserInfoSingleArgDto,
 ) (info UserInfo, isNotFound bool, err error) {
+	if u.useBknSafe() {
+		return u.getUserInfoSingleSafe(ctx, args)
+	}
 	_args := &umarg.GetUserInfoArgDto{
 		UserIds: []string{args.UserID},
 		Fields:  args.Fields,

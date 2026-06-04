@@ -18,6 +18,9 @@ import (
 func (u *Um) GetGroupMembers(ctx context.Context, args *umarg.GetGroupMembersArgDto) (
 	ret *umret.GetGroupMembersRetDto, err error,
 ) {
+	if u.useBknSafe() {
+		return u.getGroupMembersSafe(ctx, args)
+	}
 	var (
 		loopCount int
 		maxLoop   = 3

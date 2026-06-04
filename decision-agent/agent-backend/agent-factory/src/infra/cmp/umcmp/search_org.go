@@ -17,6 +17,9 @@ import (
 func (u *Um) SearchOrg(ctx context.Context,
 	args *umarg.SearchOrgArgDto,
 ) (ret *umret.SearchOrgRetDto, err error) {
+	if u.useBknSafe() {
+		return u.searchOrgSafe(ctx, args)
+	}
 	c := httphelper.NewHTTPClient()
 
 	if args.DepartmentIDs == nil {
