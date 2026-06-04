@@ -27,6 +27,8 @@ func seedDir(t *testing.T, db *gorm.DB) {
 	t.Helper()
 	db.Create(&model.User{ID: "u1", Account: "alice", Name: "Alice", Enabled: true, AccountType: model.AccountTypeOther})
 	db.Create(&model.User{ID: "u2", Account: "bob", Name: "Bob", Enabled: true})
+	db.Create(&model.User{ID: "app1", Account: "svc-app", Name: "服务应用", Enabled: true, AccountType: model.AccountTypeApp})
+	db.Create(&model.User{ID: "c1", Account: "contact", Name: "联系人甲", Enabled: true, AccountType: model.AccountTypeContactor})
 	db.Create(&model.Department{ID: "d1", Name: "研发部"})
 	db.Create(&model.Department{ID: "d2", Name: "测试组", ParentID: "d1"})
 	db.Create(&model.Group{ID: "g1", Name: "管理员组"})
@@ -74,6 +76,16 @@ func TestResolveNames(t *testing.T) {
 	depNames, _ := s.ResolveDepartmentNames(context.Background(), []string{"d1"})
 	if len(depNames) != 1 || depNames[0].Name != "研发部" {
 		t.Errorf("dept names = %v", depNames)
+	}
+
+	// app accounts and contactors are User rows (account_type), resolved by id.
+	appNames, _ := s.ResolveAppNames(context.Background(), []string{"app1"})
+	if len(appNames) != 1 || appNames[0].Name != "服务应用" {
+		t.Errorf("app names = %v", appNames)
+	}
+	contactorNames, _ := s.ResolveContactorNames(context.Background(), []string{"c1"})
+	if len(contactorNames) != 1 || contactorNames[0].Name != "联系人甲" {
+		t.Errorf("contactor names = %v", contactorNames)
 	}
 }
 

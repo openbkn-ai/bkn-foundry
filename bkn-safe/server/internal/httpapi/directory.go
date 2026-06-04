@@ -34,6 +34,8 @@ func registerDirectory(r *gin.Engine, dir *directory.Service) {
 	g.POST("/names", func(c *gin.Context) {
 		var req struct {
 			UserIDs       []string `json:"user_ids"`
+			AppIDs        []string `json:"app_ids"`
+			ContactorIDs  []string `json:"contactor_ids"`
 			DepartmentIDs []string `json:"department_ids"`
 			GroupIDs      []string `json:"group_ids"`
 		}
@@ -42,6 +44,16 @@ func registerDirectory(r *gin.Engine, dir *directory.Service) {
 		}
 		ctx := c.Request.Context()
 		users, err := dir.ResolveUserNames(ctx, req.UserIDs)
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		apps, err := dir.ResolveAppNames(ctx, req.AppIDs)
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		contactors, err := dir.ResolveContactorNames(ctx, req.ContactorIDs)
 		if err != nil {
 			serverError(c, err)
 			return
@@ -58,6 +70,8 @@ func registerDirectory(r *gin.Engine, dir *directory.Service) {
 		}
 		c.JSON(http.StatusOK, gin.H{
 			"user_names":       users,
+			"app_names":        apps,
+			"contactor_names":  contactors,
 			"department_names": depts,
 			"group_names":      groups,
 		})

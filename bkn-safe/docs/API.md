@@ -95,13 +95,16 @@ curl -X POST $SAFE/api/safe/v1/authz/check -H 'Content-Type: application/json' \
 未找到 → 404 `{"error":"user not found"}`。
 
 ### POST /names — id→名称解析(按类型)
-请求(任意子集):`{ "user_ids":["u1"], "department_ids":["d1"], "group_ids":["g1"] }`
+请求(任意子集):`{ "user_ids":["u1"], "app_ids":["a1"], "contactor_ids":["c1"], "department_ids":["d1"], "group_ids":["g1"] }`
 响应(未知 id 省略,不报错):
 ```json
 { "user_names":[{"id":"u1","name":"Alice"}],
+  "app_names":[{"id":"a1","name":"服务应用"}],
+  "contactor_names":[],
   "department_names":[{"id":"d1","name":"研发部"}],
   "group_names":[] }
 ```
+> 应用账户(app)/联系人(contactor)是 `account_type` 不同的 User 行,按 id 在 users 表解析。对接 ISF `/v1`(5 数组)与 `/v2`(user+app)names。
 
 ### GET /departments?parent_id=`<id>` — 列部门(空=根)
 响应:`[ {"id":"d1","name":"研发部","parent_id":"","type":"department",...} ]`

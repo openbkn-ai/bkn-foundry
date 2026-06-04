@@ -74,6 +74,18 @@ func (s *Service) ResolveGroupNames(ctx context.Context, ids []string) ([]NamedR
 	return s.resolveNames(ctx, &model.Group{}, ids)
 }
 
+// ResolveAppNames maps application-account ids to {id,name}. App accounts are
+// User rows (account_type=app), so resolution is a plain users-table lookup.
+func (s *Service) ResolveAppNames(ctx context.Context, ids []string) ([]NamedRef, error) {
+	return s.resolveNames(ctx, &model.User{}, ids)
+}
+
+// ResolveContactorNames maps contactor ids to {id,name} (User rows,
+// account_type=contactor).
+func (s *Service) ResolveContactorNames(ctx context.Context, ids []string) ([]NamedRef, error) {
+	return s.resolveNames(ctx, &model.User{}, ids)
+}
+
 // resolveNames is the shared id->name lookup for any model with id+name columns.
 func (s *Service) resolveNames(ctx context.Context, m any, ids []string) ([]NamedRef, error) {
 	out := make([]NamedRef, 0, len(ids))

@@ -20,6 +20,11 @@ type AccountType string
 const (
 	AccountTypeOther  AccountType = "other"
 	AccountTypeIDCard AccountType = "id_card"
+	// AccountTypeApp / AccountTypeContactor: ISF "应用账户" and "联系人" are stored
+	// as User rows distinguished by account_type (no separate tables). Directory
+	// name resolution looks them up in the users table by id like any other user.
+	AccountTypeApp       AccountType = "app"
+	AccountTypeContactor AccountType = "contactor"
 )
 
 // User is an identity in the directory. Password lives here for local users;
