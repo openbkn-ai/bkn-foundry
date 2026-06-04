@@ -186,25 +186,6 @@ type ErrorResponse struct {
 	} `json:"detail"`
 }
 
-// FlowAutomationImportReq 	数据流导入请求
-// @Description 用于组合算子配置（流程）导入
-type FlowAutomationImportReq struct {
-	Mode    string `json:"mode" validate:"oneof=create upsert"` // 导入模式
-	Configs []any  `json:"configs" validate:"required"`         // 配置数据
-}
-
-// FlowAutomationExportResp 数据流导出响应
-// @Description 用于组合算子配置（流程）导出
-type FlowAutomationExportResp struct {
-	Configs     []any    `json:"configs"`      // 配置数据
-	OperatorIDs []string `json:"operator_ids"` // 依赖算子ID列表
-}
-
-type FlowAutomation interface {
-	Export(ctx context.Context, dagIDs []string) (resp *FlowAutomationExportResp, err error)
-	Import(ctx context.Context, req *FlowAutomationImportReq, userID string) (err error)
-}
-
 // UserManagement 用户管理接口
 type UserManagement interface {
 	GetAppInfo(ctx context.Context, appID string) (appInfo *AppInfo, err error)

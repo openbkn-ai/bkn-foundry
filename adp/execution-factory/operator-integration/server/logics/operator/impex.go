@@ -9,6 +9,7 @@ import (
 
 	"github.com/creasty/defaults"
 	"github.com/google/uuid"
+	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
 	icommon "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
@@ -16,7 +17,6 @@ import (
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/metadata"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/metric"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/utils"
-	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
 )
 
 // Export 导出算子
@@ -536,66 +536,13 @@ func (m *operatorManager) exportPreCheck(ctx context.Context, req *interfaces.Ex
 }
 
 // 拉取组合算子依赖并进行去重
-func (m *operatorManager) getCompositeOperatorDependencies(ctx context.Context, operatorDBs []*model.OperatorRegisterDB, userID string) (allOperatorDBs []*model.OperatorRegisterDB,
+// getCompositeOperatorDependencies returns the operators to export. The dataflow
+// product was removed, so composite operators no longer pull in DAG-derived
+// configs/dependency operators (that path went through flow-automation); the
+// export now contains just the requested operators and compositeConfigs is empty.
+func (m *operatorManager) getCompositeOperatorDependencies(_ context.Context, operatorDBs []*model.OperatorRegisterDB, _ string) (allOperatorDBs []*model.OperatorRegisterDB,
 	compositeConfigs []any, err error) {
-	dagIDs := []string{}
-	// 收集算子ID
 	allOperatorDBs = append(allOperatorDBs, operatorDBs...)
-	operatorMap := map[string]bool{}
-	for _, operatorDB := range operatorDBs {
-		operatorMap[operatorDB.OperatorID] = true
-		if operatorDB.OperatorType == string(interfaces.OperatorTypeComposite) && operatorDB.ExtendInfo != "" {
-			extendInfo := map[string]interface{}{}
-			err = utils.StringToObject(operatorDB.ExtendInfo, &extendInfo)
-			if err != nil {
-				m.Logger.WithContext(ctx).Errorf("string to object err: %s", err.Error())
-				err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
-				return
-			}
-			if extendInfo["dag_id"].(string) != "" {
-				dagIDs = append(dagIDs, extendInfo["dag_id"].(string))
-			}
-		}
-	}
-	if len(dagIDs) == 0 {
-		return
-	}
-	// 依赖算子ID
-	dependencyOperatorIDs := []string{}
-	// 请求组合算子依赖
-	var resp *interfaces.FlowAutomationExportResp
-	resp, err = m.FlowAutomation.Export(ctx, dagIDs)
-	if err != nil {
-		m.Logger.WithContext(ctx).Errorf("export dag err: %s", err.Error())
-		return
-	}
-	compositeConfigs = append(compositeConfigs, resp.Configs...)
-	dependencyOperatorIDs = append(dependencyOperatorIDs, resp.OperatorIDs...)
-	// 去重
-	dependencyOperatorIDs = utils.UniqueStrings(dependencyOperatorIDs)
-	for _, operatorID := range dependencyOperatorIDs {
-		if operatorMap[operatorID] {
-			dependencyOperatorIDs = utils.RemoveStringFromSlice(dependencyOperatorIDs, operatorID)
-			continue
-		}
-	}
-	if len(dependencyOperatorIDs) == 0 {
-		return
-	}
-	operatorList, err := m.exportPreCheck(ctx, &interfaces.ExportReq{
-		UserID: userID,
-		IDs:    dependencyOperatorIDs,
-	})
-	if err != nil {
-		return
-	}
-	// 去重
-	for _, operatorDB := range operatorList {
-		if !operatorMap[operatorDB.OperatorID] {
-			allOperatorDBs = append(allOperatorDBs, operatorDB)
-			continue
-		}
-	}
 	return
 }
 

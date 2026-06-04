@@ -7,8 +7,8 @@ import (
 	"sync"
 
 	jsoniter "github.com/json-iterator/go"
+	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/dbaccess"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/drivenadapters"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/errors"
@@ -19,7 +19,6 @@ import (
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/mcp"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/operator"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/toolbox"
-	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
 )
 
 var (
@@ -29,14 +28,13 @@ var (
 
 // 组件导入导出管理
 type componentImpexManager struct {
-	Logger         interfaces.Logger
-	AuthService    interfaces.IAuthorizationService
-	OperatorMgr    interfaces.OperatorManager // 新增算子管理
-	ToolboxMgr     interfaces.IToolService    // 新增工具箱管理
-	MCPMgr         interfaces.IMCPService     // 新增MCP管理
-	DBTx           model.DBTx                 // 新增事务支持
-	FlowAutomation interfaces.FlowAutomation
-	Validator      interfaces.Validator
+	Logger      interfaces.Logger
+	AuthService interfaces.IAuthorizationService
+	OperatorMgr interfaces.OperatorManager // 新增算子管理
+	ToolboxMgr  interfaces.IToolService    // 新增工具箱管理
+	MCPMgr      interfaces.IMCPService     // 新增MCP管理
+	DBTx        model.DBTx                 // 新增事务支持
+	Validator   interfaces.Validator
 }
 
 // NewComponentImpexManager 新建组件导入导出管理器
@@ -44,14 +42,13 @@ func NewComponentImpexManager() interfaces.IComponentImpexConfig {
 	mOnce.Do(func() {
 		conf := config.NewConfigLoader()
 		impexManager = &componentImpexManager{
-			Logger:         conf.GetLogger(),
-			AuthService:    auth.NewAuthServiceImpl(),
-			OperatorMgr:    operator.NewOperatorManager(),
-			ToolboxMgr:     toolbox.NewToolServiceImpl(),
-			MCPMgr:         mcp.NewMCPServiceImpl(),
-			DBTx:           dbaccess.NewBaseTx(),
-			Validator:      validator.NewValidator(),
-			FlowAutomation: drivenadapters.NewFlowAutomationClient(),
+			Logger:      conf.GetLogger(),
+			AuthService: auth.NewAuthServiceImpl(),
+			OperatorMgr: operator.NewOperatorManager(),
+			ToolboxMgr:  toolbox.NewToolServiceImpl(),
+			MCPMgr:      mcp.NewMCPServiceImpl(),
+			DBTx:        dbaccess.NewBaseTx(),
+			Validator:   validator.NewValidator(),
 		}
 	})
 	return impexManager
@@ -150,17 +147,6 @@ func (m *componentImpexManager) ImportConfig(ctx context.Context, importReq *int
 	err = m.importConfigWithTx(ctx, importReq.Type, data, importReq.Mode, importReq.UserID)
 	if err != nil {
 		return
-	}
-	if data.Operator != nil && len(data.Operator.CompositeConfigs) > 0 {
-		// 导入依赖
-		req := &interfaces.FlowAutomationImportReq{
-			Mode:    string(importReq.Mode),
-			Configs: data.Operator.CompositeConfigs,
-		}
-		err = m.FlowAutomation.Import(ctx, req, importReq.UserID)
-		if err != nil {
-			return
-		}
 	}
 	if data.MCP != nil && len(data.MCP.Configs) > 0 {
 		for _, mcpConfig := range data.MCP.Configs {
