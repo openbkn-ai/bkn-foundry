@@ -25,6 +25,10 @@ func NewAuthZHttpAcc() iauthzacc.AuthZHttpAcc {
 				logger.GetLogger(),
 			)
 		}
+		// Authz cutover (revertible): AUTHZ_PROVIDER=shadow wraps the ISF adapter
+		// so OperationCheck also queries bkn-safe and logs diffs — ISF stays
+		// authoritative. Unset the env to revert. See authzhttp/authz_shadow.go.
+		authZImpl = authzhttp.MaybeShadow(authZImpl, logger.GetLogger())
 	})
 
 	return authZImpl
