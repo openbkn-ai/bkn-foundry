@@ -87,30 +87,77 @@ func registerDirectory(r *gin.Engine, dir *directory.Service) {
 		c.JSON(http.StatusOK, deps)
 	})
 
-	// GET /groups/:id/members — member user ids of a group.
+	// GET /groups/:id/members — group members, split into users and departments.
 	g.GET("/groups/:id/members", func(c *gin.Context) {
-		ids, err := dir.GroupMembers(c.Request.Context(), c.Param("id"))
+		userIDs, deptIDs, err := dir.GroupMembersSplit(c.Request.Context(), c.Param("id"))
 		if err != nil {
 			serverError(c, err)
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"user_ids": ids})
+		c.JSON(http.StatusOK, gin.H{"user_ids": userIDs, "department_ids": deptIDs})
 	})
 
-	// POST /search-org — which of user_ids belong to any department in scope.
+	// POST /search-org — which of user_ids/department_ids fall under any scope
+	// department (transitive: the scope dept or any descendant).
 	g.POST("/search-org", func(c *gin.Context) {
 		var req struct {
-			UserIDs []string `json:"user_ids"`
-			Scope   []string `json:"scope"`
+			UserIDs       []string `json:"user_ids"`
+			DepartmentIDs []string `json:"department_ids"`
+			Scope         []string `json:"scope"`
 		}
 		if !bind(c, &req) {
 			return
 		}
-		ids, err := dir.SearchOrg(c.Request.Context(), req.UserIDs, req.Scope)
+		users, depts, err := dir.SearchOrgFull(c.Request.Context(), req.UserIDs, req.DepartmentIDs, req.Scope)
 		if err != nil {
 			serverError(c, err)
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"user_ids": ids})
+		c.JSON(http.StatusOK, gin.H{"user_ids": users, "department_ids": depts})
+	})
+
+	// POST /users-detail — batch full user records (name/account/enabled/roles/
+	// parent_deps/groups). Unknown ids omitted. Backs DA umcmp GetUserInfo*.
+	g.POST("/users-detail", func(c *gin.Context) {
+		var req struct {
+			UserIDs []string `json:"user_ids"`
+		}
+		if !bind(c, &req) {
+			return
+		}
+		users, err := dir.UsersDetail(c.Request.Context(), req.UserIDs)
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"users": users})
+	})
+
+	// GET /users/:id/department-ids — transitive department ids (direct + all
+	// ancestors). Backs DA umcmp GetUserDeptIDs.
+	g.GET("/users/:id/department-ids", func(c *gin.Context) {
+		ids, err := dir.UserDeptIDs(c.Request.Context(), c.Param("id"))
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"department_ids": ids})
+	})
+
+	// POST /departments-detail — batch department info with root-first ancestor
+	// chains. Unknown ids omitted. Backs DA umcmp GetDeptInfoMap.
+	g.POST("/departments-detail", func(c *gin.Context) {
+		var req struct {
+			DepartmentIDs []string `json:"department_ids"`
+		}
+		if !bind(c, &req) {
+			return
+		}
+		deps, err := dir.DepartmentInfos(c.Request.Context(), req.DepartmentIDs)
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"departments": deps})
 	})
 }
