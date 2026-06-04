@@ -47,10 +47,10 @@ func NewAuthorization() interfaces.Authorization {
 				config.Authorization.PrivatePort),
 		}
 	})
-	// Authz cutover (revertible): when AUTHZ_SHADOW_ENABLED=true, wrap the ISF
-	// adapter so OperationCheck also queries bkn-safe and logs diffs — ISF stays
-	// authoritative. Unset the env var to revert. See authorization_safe.go.
-	return maybeShadow(auth, auth.logger)
+	// Authz cutover (revertible): AUTHZ_PROVIDER selects isf (default) / shadow /
+	// bkn-safe. Flip the env to revert; ISF adapter is untouched. See
+	// authorization_safe.go.
+	return selectAuthz(auth, auth.logger)
 }
 
 // OperationCheck 操作鉴权

@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"time"
@@ -11,40 +13,45 @@ import (
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
 )
 
-// bkn-safe authz cutover, shadow stage.
+// bkn-safe authz adapter + cutover switch for exec-factory.
 //
-// This is the FIRST, fully-revertible step of moving exec-factory's authz from
-// ISF to bkn-safe. When AUTHZ_SHADOW_ENABLED=true, every OperationCheck is ALSO
-// sent to bkn-safe and the decision is diff-logged — but ISF stays
-// AUTHORITATIVE (its result is what's returned). Behaviour is unchanged; revert
-// = unset the env var (no redeploy of logic). The other Authorization methods
-// delegate straight to ISF.
+// AUTHZ_PROVIDER selects the authz backend (fully revertible — flip the env):
+//   - "isf" / unset  : ISF authorization (default, unchanged behaviour)
+//   - "shadow"       : ISF authoritative, bkn-safe queried in parallel + diffs logged
+//   - "bkn-safe"     : bkn-safe authoritative
+// BKN_SAFE_URL points at bkn-safe (e.g. http://bkn-safe:3000) for shadow/bkn-safe.
 //
-// Once the shadow diffs are clean, a later step flips the authoritative source
-// to bkn-safe (then ISF can be retired).
+// safeAuthorization implements interfaces.Authorization against bkn-safe's clean
+// API (/api/safe/v1/authz/*). ResourceList has no business caller in exec-factory
+// (only ResourceFilterIDs is used), so it returns empty.
 
-// safeAuthzClient is a minimal bkn-safe authz client: it only implements the
-// OperationCheck path needed for shadowing.
-type safeAuthzClient struct {
+type safeAuthorization struct {
 	baseURL string
 	http    *http.Client
 	logger  interfaces.Logger
 }
 
-func newSafeAuthzClient(baseURL string, logger interfaces.Logger) *safeAuthzClient {
-	return &safeAuthzClient{
-		baseURL: baseURL,
-		http:    &http.Client{Timeout: 5 * time.Second},
-		logger:  logger,
-	}
+func newSafeAuthorization(baseURL string, logger interfaces.Logger) *safeAuthorization {
+	return &safeAuthorization{baseURL: baseURL, http: &http.Client{Timeout: 5 * time.Second}, logger: logger}
 }
 
-// operationCheckAll returns true iff the accessor is allowed EVERY operation on
-// the resource (matching ISF operation-check AND semantics). bkn-safe's /check
-// is single-op, so we AND across the requested ops.
-func (c *safeAuthzClient) operationCheckAll(ctx context.Context, req *interfaces.AuthOperationCheckRequest) (bool, error) {
-	for _, op := range req.Operation {
-		ok, err := c.checkOne(ctx, req.Accessor.ID, req.Resource.Type, req.Resource.ID, string(op))
+// checkOne queries bkn-safe for a single (accessor, type:id, op) decision.
+func (s *safeAuthorization) checkOne(ctx context.Context, accessorID, rtype, rid, op string) (bool, error) {
+	var out struct {
+		Allowed bool `json:"allowed"`
+	}
+	err := s.post(ctx, "/api/safe/v1/authz/check", map[string]any{
+		"accessor_id": accessorID,
+		"resource":    map[string]string{"type": rtype, "id": rid},
+		"operation":   op,
+	}, &out)
+	return out.Allowed, err
+}
+
+// allowedAll returns true iff the accessor is allowed every op (ISF AND semantics).
+func (s *safeAuthorization) allowedAll(ctx context.Context, accessorID, rtype, rid string, ops []interfaces.AuthOperationType) (bool, error) {
+	for _, op := range ops {
+		ok, err := s.checkOne(ctx, accessorID, rtype, rid, string(op))
 		if err != nil {
 			return false, err
 		}
@@ -55,73 +62,141 @@ func (c *safeAuthzClient) operationCheckAll(ctx context.Context, req *interfaces
 	return true, nil
 }
 
-func (c *safeAuthzClient) checkOne(ctx context.Context, accessorID, rtype, rid, op string) (bool, error) {
-	body, _ := json.Marshal(map[string]any{
-		"accessor_id": accessorID,
-		"resource":    map[string]string{"type": rtype, "id": rid},
-		"operation":   op,
-	})
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/safe/v1/authz/check", bytes.NewReader(body))
+func (s *safeAuthorization) OperationCheck(ctx context.Context, req *interfaces.AuthOperationCheckRequest) (*interfaces.AuthOperationCheckResponse, error) {
+	ok, err := s.allowedAll(ctx, req.Accessor.ID, req.Resource.Type, req.Resource.ID, req.Operation)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	resp, err := c.http.Do(httpReq)
-	if err != nil {
-		return false, err
-	}
-	defer resp.Body.Close()
-	var out struct {
-		Allowed bool `json:"allowed"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return false, err
-	}
-	return out.Allowed, nil
+	return &interfaces.AuthOperationCheckResponse{Result: ok}, nil
 }
 
-// shadowAuthorization wraps the authoritative (ISF) Authorization and, on
-// OperationCheck, also queries bkn-safe and logs any decision divergence.
+// ResourceFilter keeps the resources the accessor is allowed all the operations on.
+func (s *safeAuthorization) ResourceFilter(ctx context.Context, req *interfaces.AuthResourceFilterRequest) ([]*interfaces.AuthResourceResult, error) {
+	out := make([]*interfaces.AuthResourceResult, 0, len(req.Resources))
+	for _, r := range req.Resources {
+		ok, err := s.allowedAll(ctx, req.Accessor.ID, r.Type, r.ID, req.Operations)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			out = append(out, &interfaces.AuthResourceResult{ID: r.ID})
+		}
+	}
+	return out, nil
+}
+
+// ResourceList has no business caller in exec-factory (services enumerate their
+// own resources and filter via ResourceFilter). Return empty.
+func (s *safeAuthorization) ResourceList(ctx context.Context, req *interfaces.ResourceListRequest) ([]*interfaces.AuthResourceResult, error) {
+	s.logger.WithContext(ctx).Debugf("[bkn-safe] ResourceList not implemented (unused); returning empty")
+	return []*interfaces.AuthResourceResult{}, nil
+}
+
+// CreatePolicy grants each accessor the allowed ops on its resource instance.
+func (s *safeAuthorization) CreatePolicy(ctx context.Context, reqs []*interfaces.AuthCreatePolicyRequest) error {
+	for _, req := range reqs {
+		ops := make([]string, 0)
+		if req.Operation != nil {
+			for _, a := range req.Operation.Allow {
+				ops = append(ops, a.ID)
+			}
+		}
+		if err := s.post(ctx, "/api/safe/v1/authz/policies", map[string]any{
+			"accessor_id": req.Accessor.ID,
+			"resource":    map[string]string{"type": req.Resource.Type, "id": req.Resource.ID},
+			"operations":  ops,
+		}, nil); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// DeletePolicy drops all policies on each resource instance.
+func (s *safeAuthorization) DeletePolicy(ctx context.Context, req *interfaces.AuthDeletePolicyRequest) error {
+	for _, r := range req.Resources {
+		if err := s.del(ctx, "/api/safe/v1/authz/policies", map[string]any{
+			"resource": map[string]string{"type": r.Type, "id": r.ID},
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *safeAuthorization) post(ctx context.Context, path string, body, out any) error {
+	return s.do(ctx, http.MethodPost, path, body, out)
+}
+func (s *safeAuthorization) del(ctx context.Context, path string, body any) error {
+	return s.do(ctx, http.MethodDelete, path, body, nil)
+}
+
+func (s *safeAuthorization) do(ctx context.Context, method, path string, body, out any) error {
+	b, _ := json.Marshal(body)
+	req, err := http.NewRequestWithContext(ctx, method, s.baseURL+path, bytes.NewReader(b))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := s.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	data, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("bkn-safe %s %s: %d: %s", method, path, resp.StatusCode, data)
+	}
+	if out != nil && len(data) > 0 {
+		return json.Unmarshal(data, out)
+	}
+	return nil
+}
+
+// shadowAuthorization wraps the authoritative (ISF) adapter and, on
+// OperationCheck, also queries bkn-safe and logs decision divergence.
 type shadowAuthorization struct {
-	interfaces.Authorization // embedded ISF adapter — provides all methods
-	safe                     *safeAuthzClient
+	interfaces.Authorization // embedded ISF adapter (authoritative)
+	safe                     *safeAuthorization
 	logger                   interfaces.Logger
 }
 
-// OperationCheck overrides the embedded ISF method: ISF result is authoritative;
-// bkn-safe is queried in parallel only to log diffs.
 func (s *shadowAuthorization) OperationCheck(ctx context.Context, req *interfaces.AuthOperationCheckRequest) (*interfaces.AuthOperationCheckResponse, error) {
 	isfResp, isfErr := s.Authorization.OperationCheck(ctx, req)
-
-	// Shadow call — never affects the returned decision or error.
-	safeAllowed, safeErr := s.safe.operationCheckAll(ctx, req)
+	safeOK, safeErr := s.safe.allowedAll(ctx, req.Accessor.ID, req.Resource.Type, req.Resource.ID, req.Operation)
 	switch {
 	case safeErr != nil:
-		s.logger.WithContext(ctx).Warnf("[authz-shadow] bkn-safe error (ISF authoritative): accessor=%s resource=%s:%s ops=%v err=%v",
-			req.Accessor.ID, req.Resource.Type, req.Resource.ID, req.Operation, safeErr)
-	case isfErr == nil && isfResp != nil && isfResp.Result != safeAllowed:
-		s.logger.WithContext(ctx).Warnf("[authz-shadow] DIFF: accessor=%s resource=%s:%s ops=%v isf=%v bkn-safe=%v",
-			req.Accessor.ID, req.Resource.Type, req.Resource.ID, req.Operation, isfResp.Result, safeAllowed)
+		s.logger.WithContext(ctx).Warnf("[authz-shadow] bkn-safe error (ISF authoritative): %s:%s ops=%v err=%v", req.Resource.Type, req.Resource.ID, req.Operation, safeErr)
+	case isfErr == nil && isfResp != nil && isfResp.Result != safeOK:
+		s.logger.WithContext(ctx).Warnf("[authz-shadow] DIFF: accessor=%s %s:%s ops=%v isf=%v bkn-safe=%v", req.Accessor.ID, req.Resource.Type, req.Resource.ID, req.Operation, isfResp.Result, safeOK)
 	default:
-		s.logger.WithContext(ctx).Debugf("[authz-shadow] match: accessor=%s resource=%s:%s ops=%v result=%v",
-			req.Accessor.ID, req.Resource.Type, req.Resource.ID, req.Operation, safeAllowed)
+		s.logger.WithContext(ctx).Debugf("[authz-shadow] match: %s:%s ops=%v result=%v", req.Resource.Type, req.Resource.ID, req.Operation, safeOK)
 	}
-
 	return isfResp, isfErr
 }
 
-// maybeShadow wraps the ISF Authorization in a shadow comparator when
-// AUTHZ_SHADOW_ENABLED=true and BKN_SAFE_URL is set; otherwise returns isf
-// unchanged. This is the single, env-gated, fully-revertible switch point.
-func maybeShadow(isf interfaces.Authorization, logger interfaces.Logger) interfaces.Authorization {
-	if os.Getenv("AUTHZ_SHADOW_ENABLED") != "true" {
+// selectAuthz applies the AUTHZ_PROVIDER switch. Default/unknown => ISF (the
+// single, env-gated, fully-revertible cutover point).
+func selectAuthz(isf interfaces.Authorization, logger interfaces.Logger) interfaces.Authorization {
+	provider := os.Getenv("AUTHZ_PROVIDER")
+	if provider == "" || provider == "isf" {
 		return isf
 	}
 	baseURL := os.Getenv("BKN_SAFE_URL")
 	if baseURL == "" {
-		logger.Warnf("[authz-shadow] AUTHZ_SHADOW_ENABLED but BKN_SAFE_URL empty; shadow disabled")
+		logger.Warnf("[authz] AUTHZ_PROVIDER=%s but BKN_SAFE_URL empty; falling back to ISF", provider)
 		return isf
 	}
-	logger.Infof("[authz-shadow] enabled; ISF authoritative, comparing against bkn-safe at %s", baseURL)
-	return &shadowAuthorization{Authorization: isf, safe: newSafeAuthzClient(baseURL, logger), logger: logger}
+	safe := newSafeAuthorization(baseURL, logger)
+	switch provider {
+	case "bkn-safe":
+		logger.Infof("[authz] provider=bkn-safe (authoritative) at %s", baseURL)
+		return safe
+	case "shadow":
+		logger.Infof("[authz] provider=shadow; ISF authoritative, comparing bkn-safe at %s", baseURL)
+		return &shadowAuthorization{Authorization: isf, safe: safe, logger: logger}
+	default:
+		logger.Warnf("[authz] unknown AUTHZ_PROVIDER=%s; using ISF", provider)
+		return isf
+	}
 }
