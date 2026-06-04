@@ -108,7 +108,10 @@ func NewPermPolicy() PermPolicyHandler {
 		}
 	})
 
-	return permPolicyHandler
+	// Authz cutover (revertible): AUTHZ_PROVIDER=shadow wraps the ISF handler so
+	// the decision checks also query bkn-safe and log diffs — ISF stays
+	// authoritative. Unset the env to revert. See shadow.go.
+	return MaybeShadow(permPolicyHandler)
 }
 
 // IsDataAdmin 判断用户是否为数据管理员
