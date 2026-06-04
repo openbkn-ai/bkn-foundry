@@ -16,19 +16,21 @@
 ---
 
 ## 阶段 A —— 补齐 authz shadow 覆盖(→ 8/8)
-- [ ] **A1. mf-model-manager + mf-model-api(Python)authz shadow**:`app/utils/permission_manager.py` 包一层,`AUTHZ_PROVIDER=shadow` + `BKN_SAFE_URL` 时并调 bkn-safe `/api/safe/v1/authz/check`,记 diff,ISF 权威。env 可回退。
+- [x] **A1. mf-model-manager + mf-model-api(Python)authz shadow**:`app/utils/permission_manager.py` 包一层,`AUTHZ_PROVIDER=shadow` + `BKN_SAFE_URL` 时并调 bkn-safe `/api/safe/v1/authz/check`,记 diff,ISF 权威。env 可回退。commit `99226276`。
 
-## 阶段 B —— 补齐 bkn-safe 全适配器(翻"权威"前置)
+## 阶段 B —— 补齐 bkn-safe 全适配器(翻"权威"前置)✅ 全部完成
 当前只 shadow(ISF 权威);翻 `bkn-safe` 权威需实现各服务驱动接口的全部方法对接 bkn-safe。
-- [ ] **B1. vega/bkn/pipeline-mgmt**:`PermissionAccess` 全 5 方法(CheckPermission/FilterResources/GetResourcesOperations/CreateResources/DeleteResources)→ bkn-safe。三家同构,**一份适配器复用**。
-- [ ] **B2. DA**:`AuthZHttpAcc`(~20 方法,含 Grant*/ListPolicy/ResourceOperation)→ bkn-safe。
-- [ ] **B3. flow-automation**:`PermPolicyHandler`(5 方法)→ bkn-safe。
-- [ ] **B4. mf-model(Py)**:permission_manager 全方法 → bkn-safe。
-- exec-factory:✅ 已具备(`AUTHZ_PROVIDER=bkn-safe`)。
+- [x] **B1. vega/bkn/pipeline-mgmt**:`PermissionAccess` 全方法 → bkn-safe。三家一份适配器复用(pipeline 多 GetResourcesOperations,vega/bkn 多出无害)。commit `9a9bdff0`。
+- [x] **B2. DA**:`AuthZHttpAcc`(22 方法)→ bkn-safe。决策/写/查映射齐;ISF-only 面(全局枚举/init/deny)显式降级(日志,无静默)。commit `7d035d5d`(+ bkn-safe `GET /policies` `d86b711c`)。
+- [x] **B3. flow-automation**:`PermPolicyHandler`(13 方法)→ bkn-safe。组合复刻 ISF;ListResource 经新 `GET /resources`,资源 id 原样回环。commit `fd00a313`。
+- [x] **B4. mf-model(Py)**:permission_manager 全 4 方法 → bkn-safe。commit `b5be3590`。
+- exec-factory:✅ 早已具备(`AUTHZ_PROVIDER=bkn-safe`)。
+
+> 翻权威前置(B + C-authz)已就绪:8/8 服务均可 `AUTHZ_PROVIDER=bkn-safe` 翻权威、随时翻回。
 
 ## 阶段 C —— bkn-safe 补缺端点(切重度调用方前)
-- [ ] **C1. directory**:`apps`(应用账户)、`emails`、`internal-groups`(写)—— flow-automation/mf-model 用。
-- [ ] **C2. authz**:`resource-operation`(列资源可做操作,DA 用)、按需 `resource-list`(注:全局枚举语义见 §数据策略,多数场景用 ResourceFilter 代替)。
+- [ ] **C1. directory**:`apps`(应用账户)、`emails`、`internal-groups`(写)—— flow-automation/mf-model 用。(用户管理切换 D 前置,待做)
+- [x] **C2. authz**:`GET /policies`(列某资源各访问者授权,DA ListPolicy(All))+ `GET /resources`(列访问者对某类型某操作的实例,flow-automation ListResource)。`resource-operation` 用现有 `POST /operations` 覆盖;全局枚举用 `GET /resources`。commit `d86b711c` / `f20bc7ec`。
 
 ## 阶段 D —— user-mgmt 目录调用方切换(→ bkn-safe directory)
 顺序按规模:
