@@ -33,9 +33,10 @@
 - [x] **C2. authz**:`GET /policies`(列某资源各访问者授权,DA ListPolicy(All))+ `GET /resources`(列访问者对某类型某操作的实例,flow-automation ListResource)。`resource-operation` 用现有 `POST /operations` 覆盖;全局枚举用 `GET /resources`。commit `d86b711c` / `f20bc7ec`。
 
 ## 阶段 D —— user-mgmt 目录调用方切换(→ bkn-safe directory)
-顺序按规模:
-- [ ] **D1. vega + bkn**(仅 `/v2/names`)→ `directory/names`。最小,做样板。
-- [ ] **D2. DA**(`/v1/users`、`/v1/search-org`)→ `directory/users/:id`、`directory/search-org`。
+顺序按规模。统一开关 `DIRECTORY_PROVIDER=bkn-safe` + `BKN_SAFE_URL`,默认/未设=ISF,随时翻 env 回退。
+- [x] **D1. vega + bkn**(`/v2/names`,含 app 名)→ `directory/names`。commit `9115a7df`(前置 bkn-safe `/names` 扩 app/contactor `2122a381`)。
+- [x] **D2. DA umcmp 全 12 方法** → bkn-safe directory。前置 bkn-safe 新建层级读面(部门祖先链/传递部门 id/批量 user-detail 含 parent_deps+groups+roles/group 成员拆分/子树 search-org)commit `f354404b`;umcmp flip commit `03d83b25`。语义:**传递子树** + **groups 含部门继承**。app/contactor 建模为 User 行(account_type)。
+  > 注:DA 另有 usermanagementacc / umhttpaccess 两个 client,本次按你指定只切 umcmp。
 - [ ] **D3. mf-model(Py)**(names/users 等)。
 - [ ] **D4. flow-automation**(8 端点)—— 随 anyshare 缩减一并处理(很多端点服务 anyshare 功能)。
 
