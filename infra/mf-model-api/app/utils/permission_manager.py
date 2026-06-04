@@ -1,3 +1,5 @@
+import os
+
 import aiohttp
 from typing import List, Dict, Optional
 
@@ -15,6 +17,11 @@ class PermissionManager:
         self.resource_filter_url = f"{self.base_url}/api/authorization/v1/resource-filter"
         self.delete_resource_url = f"{self.base_url}/api/authorization/v1/policy-delete"
         self.session: Optional[aiohttp.ClientSession] = None
+        # bkn-safe authz cutover (revertible): AUTHZ_PROVIDER=shadow makes
+        # check_single_permission also query bkn-safe and log diffs while ISF
+        # stays authoritative. Unset to revert (default = pure ISF).
+        self.authz_provider = os.getenv("AUTHZ_PROVIDER", "")
+        self.bkn_safe_url = os.getenv("BKN_SAFE_URL", "")
 
     async def get_session(self) -> aiohttp.ClientSession:
         if self.session is None or self.session.closed:
@@ -114,6 +121,7 @@ class PermissionManager:
             "operation": [operations]
         }
 
+        isf_allowed = False
         try:
             session = await self.get_session()
             async with session.post(
@@ -123,11 +131,37 @@ class PermissionManager:
             ) as response:
                 if response.status == 200:
                     result = await response.json()
-                    return result.get('result', False)
-                return False
+                    isf_allowed = result.get('result', False)
         except Exception as e:
             StandLogger.error(e.args)
-            return False
+            isf_allowed = False
+
+        # Shadow: also query bkn-safe and log any divergence; ISF authoritative.
+        await self._maybe_shadow(user_id, role, resource_id, resource_type, operations, isf_allowed)
+        return isf_allowed
+
+    async def _maybe_shadow(self, user_id, role, resource_id, resource_type, operations, isf_allowed):
+        if self.authz_provider != "shadow" or not self.bkn_safe_url:
+            return
+        try:
+            safe_allowed = await self._bkn_safe_check(user_id, resource_type, resource_id, operations)
+            if safe_allowed != isf_allowed:
+                StandLogger.warn(
+                    f"[authz-shadow] DIFF: accessor={user_id} {resource_type}:{resource_id} "
+                    f"op={operations} isf={isf_allowed} bkn-safe={safe_allowed}")
+        except Exception as e:
+            StandLogger.warn(f"[authz-shadow] bkn-safe error (ISF authoritative): {e}")
+
+    async def _bkn_safe_check(self, user_id, resource_type, resource_id, operation) -> bool:
+        session = await self.get_session()
+        async with session.post(
+                f"{self.bkn_safe_url}/api/safe/v1/authz/check",
+                json={"accessor_id": user_id,
+                      "resource": {"type": resource_type, "id": resource_id},
+                      "operation": operation},
+                headers={'Content-Type': 'application/json'}) as resp:
+            data = await resp.json()
+            return bool(data.get('allowed', False))
 
     async def get_permission_ids(self, user_id: str, operation: str,
                                  resource_type: str, resource_name: str, role: str) -> list:
