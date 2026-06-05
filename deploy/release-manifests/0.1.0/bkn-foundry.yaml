@@ -56,3 +56,15 @@ releases:
   otelcol-contrib:
     chart: otelcol-contrib
     version: 0.1.0
+  # ISF replacement: bkn-safe (authn/authz/directory) + upstream ORY Hydra
+  # (token engine, PostgreSQL backend). Deployed alongside ISF during the
+  # shadow→flip cutover (services set bknSafe.* env to switch); ISF is retired
+  # (the isf dependency above) only after flip is validated. NOTE: hydra needs a
+  # PostgreSQL instance (config.dsn) — provision one (external or a pg chart)
+  # before enabling.
+  hydra:
+    chart: hydra
+    version: 0.1.0
+  bkn-safe:
+    chart: bkn-safe
+    version: 0.1.0
