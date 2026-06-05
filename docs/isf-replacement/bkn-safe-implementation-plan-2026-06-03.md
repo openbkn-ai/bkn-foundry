@@ -25,7 +25,7 @@
 产物:`docs/isf-replacement/contracts/`、`bkn-safe/contract/`。
 
 ### Phase 1 — 标准 hydra 就位 ✅ 完成
-上游 hydra v26.2.0 + PostgreSQL(VM 持久 dev 栈)+ bkn-safe on MariaDB,seed client(ci-runner/kweaver-cli),smoke PASS(client_credentials introspect + device/auth)。
+上游 hydra v26.2.0 + PostgreSQL(VM 持久 dev 栈)+ bkn-safe on MariaDB,seed client(ci-runner/openbkn),smoke PASS(client_credentials introspect + device/auth)。
 产物:`bkn-safe/dev/`。
 
 ### Phase 2 — bkn-safe 服务骨架

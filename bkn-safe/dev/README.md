@@ -20,7 +20,7 @@ Ports: hydra public `4444`, admin `4445`, MySQL `13306`.
    introspect returns `active:true`, `sub==client_id==ci-runner` → the lib parses
    it as an **app** visitor (no `ext` needed). This is the only token path a bare
    hydra can produce without the bkn-safe UI.
-2. **device authorization (RFC 8628).** `kweaver-cli` `POST /oauth2/device/auth`
+2. **device authorization (RFC 8628).** `openbkn` `POST /oauth2/device/auth`
    returns `device_code` + `user_code` + `verification_uri[_complete]` + `interval`.
 
 ## Hard-won gotchas (corrected against the design docs)

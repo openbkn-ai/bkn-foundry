@@ -257,7 +257,7 @@ curl -sk "https://<access-address>/.well-known/openid-configuration"
 # Get an access token via OAuth2 password grant
 curl -sk -X POST "https://<access-address>/oauth2/token" \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "grant_type=password&username=admin&password=secretpass&client_id=kweaver-cli&scope=openid"
+  -d "grant_type=password&username=admin&password=secretpass&client_id=openbkn&scope=openid"
 
 # Get an access token via client credentials
 curl -sk -X POST "https://<access-address>/oauth2/token" \

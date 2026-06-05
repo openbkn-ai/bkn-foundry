@@ -33,7 +33,7 @@ echo "  OK: active=true, sub==client_id==ci-runner (lib will parse as app type)"
 
 echo "== 2. device authorization (RFC 8628) =="
 DEV=$(curl -fsS -X POST "$PUB/oauth2/device/auth" \
-  -d client_id=kweaver-cli -d scope="openid offline")
+  -d client_id=openbkn -d scope="openid offline")
 echo "  device/auth: $DEV"
 echo "$DEV" | grep -q '"device_code"' || fail "no device_code (device flow not live?)"
 echo "$DEV" | grep -q '"user_code"' || fail "no user_code"

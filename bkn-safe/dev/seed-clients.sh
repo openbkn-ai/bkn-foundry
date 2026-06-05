@@ -4,7 +4,7 @@
 #
 # Two clients (per landing-design §5 grant matrix):
 #   ci-runner        — client_credentials (CI / automation, app identity)
-#   kweaver-cli      — device_code (+ refresh) public client (headless human login)
+#   openbkn      — device_code (+ refresh) public client (headless human login)
 set -euo pipefail
 
 ADMIN="${HYDRA_ADMIN:-http://127.0.0.1:4445}"
@@ -28,15 +28,15 @@ create '{
 }' >/dev/null
 echo "  + ci-runner (client_credentials)"
 
-del kweaver-cli
+del openbkn
 create '{
-  "client_id": "kweaver-cli",
+  "client_id": "openbkn",
   "grant_types": ["urn:ietf:params:oauth:grant-type:device_code", "refresh_token"],
   "response_types": ["code"],
   "token_endpoint_auth_method": "none",
   "scope": "openid offline",
   "audience": ["bkn-safe"]
 }' >/dev/null
-echo "  + kweaver-cli (device_code, public)"
+echo "  + openbkn (device_code, public)"
 
 echo "== done =="
