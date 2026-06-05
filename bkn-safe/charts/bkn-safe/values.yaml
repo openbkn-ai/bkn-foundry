@@ -28,6 +28,8 @@ ingress:
     - /login
     - /consent
     - /device
+    # Device-approval success page (hydra URLS_DEVICE_SUCCESS target).
+    - /device/success
     # Forced first-login password change — the browser HTML page (GET renders,
     # POST submits) served by bkn-safe during the hydra login flow.
     - /change-password

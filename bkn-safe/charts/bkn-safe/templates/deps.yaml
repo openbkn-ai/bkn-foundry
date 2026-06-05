@@ -103,6 +103,8 @@ spec:
             - { name: URLS_LOGIN, value: "{{ if $pub }}{{ $pub }}{{ else }}{{ $svc }}{{ end }}/login" }
             - { name: URLS_CONSENT, value: "{{ if $pub }}{{ $pub }}{{ else }}{{ $svc }}{{ end }}/consent" }
             - { name: URLS_DEVICE_VERIFICATION, value: "{{ if $pub }}{{ $pub }}{{ else }}{{ $svc }}{{ end }}/device" }
+            {{- /* Post-approval page (replaces hydra's bare fallback). bkn-safe serves it. */}}
+            - { name: URLS_DEVICE_SUCCESS, value: "{{ if $pub }}{{ $pub }}{{ else }}{{ $svc }}{{ end }}/device/success" }
             - { name: SECRETS_SYSTEM, value: {{ .Values.bundledDeps.hydraSecretsSystem | quote }} }
             - { name: OAUTH2_EXPOSE_INTERNAL_ERRORS, value: "true" }
             {{- /* serve all --dev issues cookies without Secure; a SameSite=None */}}

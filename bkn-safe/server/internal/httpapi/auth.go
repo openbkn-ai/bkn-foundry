@@ -26,6 +26,7 @@ func registerAuth(r *gin.Engine, p *auth.Provider, h *auth.HydraAdmin) {
 	r.POST("/consent", func(c *gin.Context) { doConsent(c, p) })
 	r.GET("/device", showDevice)
 	r.POST("/device", func(c *gin.Context) { doDevice(c, h) })
+	r.GET("/device/success", showDeviceSuccess)
 }
 
 // page is the shared dark-theme shell (centered card), echoing a clean OAuth UX.
@@ -92,6 +93,16 @@ var devicePage = template.Must(template.New("device").Parse(pageCSS + `<!doctype
   <div class="note">仅当你正从该设备发起登录、且设备码一致时才继续;否则请关闭本页。</div>
   <button class="primary" type="submit">确认</button>
 </form></div></body>`))
+
+var deviceSuccessPage = template.Must(template.New("devicesuccess").Parse(pageCSS + `<!doctype html><meta charset="utf-8"><body>
+<div class="card"><h3>登录成功</h3>
+<div class="note">设备已授权,可关闭此页面,返回命令行继续。</div>
+</div></body>`))
+
+// showDeviceSuccess is hydra's URLS_DEVICE_SUCCESS target: shown after the device
+// authorization is approved (the token is already issued to the CLI). Replaces
+// hydra's bare fallback page. Static — no challenge needed.
+func showDeviceSuccess(c *gin.Context) { renderHTML(c, deviceSuccessPage, nil) }
 
 func renderHTML(c *gin.Context, t *template.Template, data any) {
 	c.Status(http.StatusOK)
