@@ -84,3 +84,52 @@ fallback identity covers them, so enabling them should need no further authz see
 **Note:** the VM deploy uses a locally-built dev image (`bkn-safe:newseed`); the
 seed change still needs to be baked into the published `ghcr.io/openbkn-ai/bkn-safe`
 image (rebuild from this branch) before it's permanent across redeploys.
+
+## SDK CLI implementation — add device-code login (`@openbkn/bkn-sdk`)
+
+The CLI (`/Users/cx/Work/kowell/bkn-sdk`) today implements only
+`authorization_code` (PKCE browser + headless password) in `src/auth/oauth.ts` —
+**no device-code flow**. Add it so the `openbkn-sdk` device client above is usable.
+
+### Exact params to wire in
+
+- Base: `https://10.211.55.4` (self-signed → login with `-k/--insecure`; the CLI
+  then sets `NODE_TLS_REJECT_UNAUTHORIZED=0`, so `fetch` accepts the cert).
+- Device `client_id`: **`openbkn-sdk`** (default; not `openbkn`, not `kweaver-cli`).
+- scope: `openid offline` (exact — do NOT add `all`, the client isn't granted it).
+- Device authorization: `POST /oauth2/device/auth`, body
+  `client_id=openbkn-sdk&scope=openid offline`.
+- Token poll: `POST /oauth2/token`, body
+  `grant_type=urn:ietf:params:oauth:grant-type:device_code&device_code=<dc>&client_id=openbkn-sdk`.
+- Verification page hydra returns → `https://10.211.55.4/device` (open
+  `verification_uri_complete` for the user; it carries the `user_code`).
+- Identity check after login: `GET /userinfo`. Discovery (optional, to read the
+  endpoints instead of hardcoding): `/.well-known/openid-configuration`.
+
+### Changes
+
+1. `src/auth/oauth.ts`: add `deviceLogin(baseUrl, {clientId, scope, onPrompt})`
+   implementing RFC 8628 — POST `/oauth2/device/auth` → call `onPrompt` with
+   `user_code`/`verification_uri[_complete]` → poll `/oauth2/token` honoring
+   `interval`, `authorization_pending` (keep polling), `slow_down` (+5s),
+   `access_denied`/`expired_token` (fail). Reuse existing `mapToken` +
+   `normalizeBaseUrl`; throw `InputError` on user-facing failures. Default
+   `clientId='openbkn-sdk'`, `scope='openid offline'`. Also `export openBrowser`.
+2. `src/commands/auth.ts`: in `login`, make device the default when no
+   `-u`/`--token` (add `--browser` to force PKCE). `onPrompt` prints
+   `user_code` + `verification_uri` to stderr and opens `verification_uri_complete`.
+   Watch the commander `--no-browser` vs new `--browser` naming collision.
+3. Public client → token poll sends only `client_id`, no secret (matches
+   `token_endpoint_auth_method=none`).
+
+### Self-test (against this VM)
+
+```bash
+node dist/cli.js auth login https://10.211.55.4 -k     # default device, client_id=openbkn-sdk
+# terminal prints user_code + verification_uri → authorize in browser
+node dist/cli.js auth whoami https://10.211.55.4 -k    # hits /userinfo
+```
+
+Stay within "Limits" above: authz is ON now, so service calls (`openbkn bkn list`,
+etc.) require the device (user) token's ext claims — they will fail with a
+`client_credentials` token. Use the device login token.
