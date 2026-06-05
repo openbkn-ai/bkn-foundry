@@ -70,14 +70,16 @@ case "$L" in *"code="*) ;; *) fail "no authorization code, got $L";; esac
 CODE="${L#*code=}"; CODE="${CODE%%&*}"
 echo "  code=${CODE:0:12}..."
 
-echo "== 7. exchange code for token =="
-TOK=$(curl -fsS -X POST "$PUB/oauth2/token" \
+echo "== 7. exchange code for token (offline -> expect refresh_token too) =="
+RESP=$(curl -fsS -X POST "$PUB/oauth2/token" \
   -d grant_type=authorization_code -d "code=$CODE" \
   -d redirect_uri=http://127.0.0.1:9010/callback \
-  -d client_id=safe-e2e -d client_secret=e2e-secret \
-  | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')
+  -d client_id=safe-e2e -d client_secret=e2e-secret)
+TOK=$(echo "$RESP" | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')
+RT=$(echo "$RESP" | sed -n 's/.*"refresh_token":"\([^"]*\)".*/\1/p')
 [ -n "$TOK" ] || fail "no access_token"
-echo "  access token (${#TOK} chars)"
+[ -n "$RT" ] || fail "no refresh_token (offline scope not granted?)"
+echo "  access token (${#TOK} chars), refresh token (${#RT} chars)"
 
 echo "== 8. introspect -> assert ext claims (the §1 contract) =="
 INTRO=$(curl -fsS -X POST "$ADMIN/admin/oauth2/introspect" -d "token=$TOK")
@@ -89,5 +91,27 @@ echo "$INTRO" | grep -q '"client_type":"web"' || fail "ext.client_type missing"
 echo "$INTRO" | grep -q '"udid"' || fail "ext.udid missing"
 echo "  OK: bkn-safe injected the full user-type ext claims via consent."
 
-echo "== E2E PASS: bkn-safe + upstream hydra produced a contract-valid user token =="
+echo "== 9. refresh_token grant -> new tokens (no UI; the agent/CI re-auth path) =="
+RESP2=$(curl -fsS -X POST "$PUB/oauth2/token" \
+  -d grant_type=refresh_token -d "refresh_token=$RT" \
+  -d client_id=safe-e2e -d client_secret=e2e-secret)
+TOK2=$(echo "$RESP2" | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')
+RT2=$(echo "$RESP2" | sed -n 's/.*"refresh_token":"\([^"]*\)".*/\1/p')
+[ -n "$TOK2" ] || fail "refresh: no new access_token"
+[ -n "$RT2" ] || fail "refresh: no new refresh_token"
+[ "$TOK2" != "$TOK" ] || fail "refresh: access_token not rotated"
+[ "$RT2" != "$RT" ] || fail "refresh: refresh_token not rotated (rotation off?)"
+echo "  refreshed: new access (${#TOK2} chars) + new refresh (${#RT2} chars), both rotated"
+
+echo "== 10. introspect refreshed access -> same user-type ext claims survive =="
+INTRO2=$(curl -fsS -X POST "$ADMIN/admin/oauth2/introspect" -d "token=$TOK2")
+echo "  $INTRO2"
+echo "$INTRO2" | grep -q '"active":true' || fail "refreshed token not active"
+echo "$INTRO2" | grep -q '"visitor_type":"realname"' || fail "refreshed: ext.visitor_type missing"
+echo "$INTRO2" | grep -q '"account_type":"other"' || fail "refreshed: ext.account_type missing"
+echo "$INTRO2" | grep -q '"client_type":"web"' || fail "refreshed: ext.client_type missing"
+echo "$INTRO2" | grep -q '"udid"' || fail "refreshed: ext.udid missing"
+echo "  OK: refreshed token carries identical user identity — agent re-auth works."
+
+echo "== E2E PASS: authcode + offline refresh both yield contract-valid user tokens =="
 rm -f "$JAR"
