@@ -42,10 +42,9 @@ func TestPublishedAgentInfo_LoadFromReleaseAgentPO(t *testing.T) {
 					PublishedBy: "user-1",
 					IsPmsCtrl:   1,
 					PublishedToBeStruct: dapo.PublishedToBeStruct{
-						IsAPIAgent:      1,
-						IsWebSDKAgent:   0,
-						IsSkillAgent:    1,
-						IsDataFlowAgent: 0,
+						IsAPIAgent:    1,
+						IsWebSDKAgent: 0,
+						IsSkillAgent:  1,
 					},
 				},
 				DataAgentPo: dapo.DataAgentPo{
@@ -120,10 +119,9 @@ func TestPublishedAgentInfo_Fields(t *testing.T) {
 		AvatarType:      cdaenum.AvatarTypeUserUploaded,
 		Avatar:          "custom.png",
 		PublishedToBeStruct: dapo.PublishedToBeStruct{
-			IsAPIAgent:      1,
-			IsWebSDKAgent:   1,
-			IsSkillAgent:    0,
-			IsDataFlowAgent: 1,
+			IsAPIAgent:    1,
+			IsWebSDKAgent: 1,
+			IsSkillAgent:  0,
 		},
 	}
 
@@ -137,7 +135,6 @@ func TestPublishedAgentInfo_Fields(t *testing.T) {
 	assert.Equal(t, 1, info.IsAPIAgent)
 	assert.Equal(t, 1, info.IsWebSDKAgent)
 	assert.Equal(t, 0, info.IsSkillAgent)
-	assert.Equal(t, 1, info.IsDataFlowAgent)
 }
 
 func TestPublishUserInfo(t *testing.T) {
@@ -170,10 +167,9 @@ func TestPublishedAgentInfo_LoadFromReleaseAgentPO_AllFields(t *testing.T) {
 			PublishedBy: "admin-user",
 			IsPmsCtrl:   1,
 			PublishedToBeStruct: dapo.PublishedToBeStruct{
-				IsAPIAgent:      1,
-				IsWebSDKAgent:   1,
-				IsSkillAgent:    1,
-				IsDataFlowAgent: 1,
+				IsAPIAgent:    1,
+				IsWebSDKAgent: 1,
+				IsSkillAgent:  1,
 			},
 		},
 		DataAgentPo: dapo.DataAgentPo{
@@ -197,7 +193,6 @@ func TestPublishedAgentInfo_LoadFromReleaseAgentPO_AllFields(t *testing.T) {
 	assert.Equal(t, 1, info.IsAPIAgent)
 	assert.Equal(t, 1, info.IsWebSDKAgent)
 	assert.Equal(t, 1, info.IsSkillAgent)
-	assert.Equal(t, 1, info.IsDataFlowAgent)
 }
 
 func TestPublishedAgentInfo_LoadFromReleaseAgentPO_WithNilPO(t *testing.T) {

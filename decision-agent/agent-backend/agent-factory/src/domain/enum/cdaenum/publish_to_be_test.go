@@ -30,11 +30,6 @@ func TestPublishToBe_EnumCheck(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:    "DataFlow Agent",
-			t:       PublishToBeDataFlowAgent,
-			wantErr: false,
-		},
-		{
 			name:    "无效值",
 			t:       PublishToBe("invalid"),
 			wantErr: true,

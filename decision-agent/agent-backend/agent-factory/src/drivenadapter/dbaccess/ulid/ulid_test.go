@@ -5,9 +5,9 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/kweaver-ai/kweaver-go-lib/logger"
 	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/infra/common/cconstant"
 	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/port/driven/idbaccess"
-	"github.com/kweaver-ai/kweaver-go-lib/logger"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/kweaver-ai/proton-rds-sdk-go/sqlx"

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/kweaver-ai/kweaver-go-lib/rest"
 	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/cconf"
 	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/conf"
 	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/domain/enum/cdaenum"
@@ -17,7 +18,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/port/driven/idbaccess/idbaccessmock"
 	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/port/driven/ihttpaccess/ibizdomainacc/bizdomainaccmock"
 	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/port/driver/iv3portdriver/v3portdrivermock"
-	"github.com/kweaver-ai/kweaver-go-lib/rest"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
 )

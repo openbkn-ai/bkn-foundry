@@ -14,10 +14,9 @@ const (
 	AgentUnpublish               Operator = "unpublish"                  // 取消发布Agent
 	AgentUnpublishOtherUserAgent Operator = "unpublish_other_user_agent" // 取消发布其他用户的Agent
 
-	AgentPublishToBeSkillAgent    Operator = "publish_to_be_skill_agent"     // 发布为技能Agent
-	AgentPublishToBeWebSdkAgent   Operator = "publish_to_be_web_sdk_agent"   // 发布为Web SDK Agent
-	AgentPublishToBeApiAgent      Operator = "publish_to_be_api_agent"       // 发布为API Agent
-	AgentPublishToBeDataFlowAgent Operator = "publish_to_be_data_flow_agent" // 发布为数据流Agent
+	AgentPublishToBeSkillAgent  Operator = "publish_to_be_skill_agent"   // 发布为技能Agent
+	AgentPublishToBeWebSdkAgent Operator = "publish_to_be_web_sdk_agent" // 发布为Web SDK Agent
+	AgentPublishToBeApiAgent    Operator = "publish_to_be_api_agent"     // 发布为API Agent
 
 	AgentCreateSystemAgent Operator = "create_system_agent" // 创建系统Agent
 	AgentBuiltInAgentMgmt  Operator = "mgnt_built_in_agent" // 内置Agent管理
@@ -43,7 +42,7 @@ func (e Operator) String() string {
 }
 
 func (e Operator) EnumCheck() (err error) {
-	if !cutil.ExistsGeneric([]Operator{AgentPublish, AgentUnpublish, AgentPublishToBeSkillAgent, AgentPublishToBeWebSdkAgent, AgentPublishToBeApiAgent, AgentPublishToBeDataFlowAgent, AgentCreateSystemAgent, AgentUnpublishOtherUserAgent, AgentUse, AgentTplPublish, AgentTplUnpublish, AgentTplUnpublishOtherUserAgentTpl, AgentBuiltInAgentMgmt, AgentSeeTrajectoryAnalysis}, e) {
+	if !cutil.ExistsGeneric([]Operator{AgentPublish, AgentUnpublish, AgentPublishToBeSkillAgent, AgentPublishToBeWebSdkAgent, AgentPublishToBeApiAgent, AgentCreateSystemAgent, AgentUnpublishOtherUserAgent, AgentUse, AgentTplPublish, AgentTplUnpublish, AgentTplUnpublishOtherUserAgentTpl, AgentBuiltInAgentMgmt, AgentSeeTrajectoryAnalysis}, e) {
 		err = errors.New("[Operator]: invalid operator")
 		return
 	}
@@ -58,7 +57,6 @@ func GetAllOperator() []Operator {
 		AgentPublishToBeSkillAgent,
 		AgentPublishToBeWebSdkAgent,
 		AgentPublishToBeApiAgent,
-		AgentPublishToBeDataFlowAgent,
 		AgentCreateSystemAgent,
 		AgentUnpublishOtherUserAgent,
 
@@ -79,7 +77,6 @@ func GetAllAgentMgmtOperator() []Operator {
 		AgentPublishToBeSkillAgent,
 		AgentPublishToBeWebSdkAgent,
 		AgentPublishToBeApiAgent,
-		AgentPublishToBeDataFlowAgent,
 		AgentCreateSystemAgent,
 		AgentUnpublishOtherUserAgent,
 		AgentBuiltInAgentMgmt,

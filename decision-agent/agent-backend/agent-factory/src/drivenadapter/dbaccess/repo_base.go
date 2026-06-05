@@ -5,9 +5,9 @@ import (
 	"database/sql"
 	"sync"
 
+	"github.com/kweaver-ai/proton-rds-sdk-go/sqlx"
 	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/infra/common/global"
 	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/port/driven/idbaccess"
-	"github.com/kweaver-ai/proton-rds-sdk-go/sqlx"
 )
 
 var (

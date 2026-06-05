@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"sync"
 
+	msqclient "github.com/kweaver-ai/proton-mq-sdk-go"
 	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/infra/cmp/icmp"
 	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/infra/common/global"
-	msqclient "github.com/kweaver-ai/proton-mq-sdk-go"
 )
 
 var (

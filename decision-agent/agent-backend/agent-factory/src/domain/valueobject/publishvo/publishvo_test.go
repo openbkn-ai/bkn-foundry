@@ -60,7 +60,6 @@ func TestListPublishInfo_New(t *testing.T) {
 	assert.Equal(t, 0, info.IsAPIAgent)
 	assert.Equal(t, 0, info.IsWebSDKAgent)
 	assert.Equal(t, 0, info.IsSkillAgent)
-	assert.Equal(t, 0, info.IsDataFlowAgent)
 }
 
 func TestListPublishInfo_Fields(t *testing.T) {
@@ -68,15 +67,13 @@ func TestListPublishInfo_Fields(t *testing.T) {
 
 	info := &ListPublishInfo{
 		PublishedToBeStruct: dapo.PublishedToBeStruct{
-			IsAPIAgent:      1,
-			IsWebSDKAgent:   1,
-			IsSkillAgent:    1,
-			IsDataFlowAgent: 0,
+			IsAPIAgent:    1,
+			IsWebSDKAgent: 1,
+			IsSkillAgent:  1,
 		},
 	}
 
 	assert.Equal(t, 1, info.IsAPIAgent)
 	assert.Equal(t, 1, info.IsWebSDKAgent)
 	assert.Equal(t, 1, info.IsSkillAgent)
-	assert.Equal(t, 0, info.IsDataFlowAgent)
 }

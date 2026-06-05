@@ -168,7 +168,6 @@ func createReqTestValidConfig(withLlms bool) *daconfvalobj.Config {
 		Variables:     &daconfvalobj.VariablesS{},
 	}
 	cfg.IsDolphinMode = cdaenum.DolphinModeDisabled
-	cfg.IsDataFlowSetEnabled = 1
 
 	if withLlms {
 		cfg.Llms = []*daconfvalobj.LlmItem{

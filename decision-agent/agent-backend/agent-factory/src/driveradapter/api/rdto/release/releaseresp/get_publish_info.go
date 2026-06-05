@@ -34,10 +34,6 @@ func (r *PublishInfoResp) SetPublishedToBes(po *dapo.ReleasePO) {
 	if po.IsSkillAgentBool() {
 		r.PublishToBes = append(r.PublishToBes, cdaenum.PublishToBeSkillAgent)
 	}
-
-	if po.IsDataFlowAgentBool() {
-		r.PublishToBes = append(r.PublishToBes, cdaenum.PublishToBeDataFlowAgent)
-	}
 }
 
 func (r *PublishInfoResp) SetPublishToWhere(po *dapo.ReleasePO) {

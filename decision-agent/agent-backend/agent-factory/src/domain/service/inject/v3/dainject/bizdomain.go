@@ -3,10 +3,10 @@ package dainject
 import (
 	"sync"
 
+	"github.com/kweaver-ai/kweaver-go-lib/logger"
 	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/domain/service"
 	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/domain/service/bizdomainsvc"
 	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/drivenadapter/httpaccess/chttpinject"
-	"github.com/kweaver-ai/kweaver-go-lib/logger"
 )
 
 var (

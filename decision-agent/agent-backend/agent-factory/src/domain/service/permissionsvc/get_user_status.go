@@ -45,16 +45,15 @@ func (svc *permissionSvc) GetUserStatus(ctx context.Context) (resp *cpmsresp.Use
 
 	// 3.1 设置Agent权限
 	resp.Agent = cpmsresp.AgentPermission{
-		Publish:                  agentOpMap[cdapmsenum.AgentPublish],
-		Unpublish:                agentOpMap[cdapmsenum.AgentUnpublish],
-		UnpublishOtherUserAgent:  agentOpMap[cdapmsenum.AgentUnpublishOtherUserAgent],
-		PublishToBeSkillAgent:    agentOpMap[cdapmsenum.AgentPublishToBeSkillAgent],
-		PublishToBeWebSdkAgent:   agentOpMap[cdapmsenum.AgentPublishToBeWebSdkAgent],
-		PublishToBeApiAgent:      agentOpMap[cdapmsenum.AgentPublishToBeApiAgent],
-		PublishToBeDataFlowAgent: agentOpMap[cdapmsenum.AgentPublishToBeDataFlowAgent],
-		CreateSystemAgent:        agentOpMap[cdapmsenum.AgentCreateSystemAgent],
-		MgntBuiltInAgent:         agentOpMap[cdapmsenum.AgentBuiltInAgentMgmt],
-		SeeTrajectoryAnalysis:    agentOpMap[cdapmsenum.AgentSeeTrajectoryAnalysis],
+		Publish:                 agentOpMap[cdapmsenum.AgentPublish],
+		Unpublish:               agentOpMap[cdapmsenum.AgentUnpublish],
+		UnpublishOtherUserAgent: agentOpMap[cdapmsenum.AgentUnpublishOtherUserAgent],
+		PublishToBeSkillAgent:   agentOpMap[cdapmsenum.AgentPublishToBeSkillAgent],
+		PublishToBeWebSdkAgent:  agentOpMap[cdapmsenum.AgentPublishToBeWebSdkAgent],
+		PublishToBeApiAgent:     agentOpMap[cdapmsenum.AgentPublishToBeApiAgent],
+		CreateSystemAgent:       agentOpMap[cdapmsenum.AgentCreateSystemAgent],
+		MgntBuiltInAgent:        agentOpMap[cdapmsenum.AgentBuiltInAgentMgmt],
+		SeeTrajectoryAnalysis:   agentOpMap[cdapmsenum.AgentSeeTrajectoryAnalysis],
 	}
 
 	// 3.2 设置Agent模板权限

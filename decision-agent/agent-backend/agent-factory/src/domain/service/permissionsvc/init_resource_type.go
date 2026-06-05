@@ -92,13 +92,6 @@ func buildAgentOperationItem(op cdapmsenum.Operator) *authzhttpreq.ResourceTypeO
 			{Language: "zh-tw", Value: "發布為API智能體"},
 		}
 		scope = []string{"type"}
-	case cdapmsenum.AgentPublishToBeDataFlowAgent:
-		names = []*authzhttpreq.ResourceTypeOperationName{
-			{Language: "zh-cn", Value: "发布为数据流智能体"},
-			{Language: "en-us", Value: "Publish as a Dataflow Agent"},
-			{Language: "zh-tw", Value: "發布為數據流智能體"},
-		}
-		scope = []string{"type"}
 	case cdapmsenum.AgentCreateSystemAgent:
 		names = []*authzhttpreq.ResourceTypeOperationName{
 			{Language: "zh-cn", Value: "创建系统智能体"},

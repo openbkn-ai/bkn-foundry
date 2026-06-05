@@ -184,7 +184,6 @@ func TestDataAgentTpl_WithComplexConfig(t *testing.T) {
 					},
 				},
 			},
-			IsDataFlowSetEnabled: 0,
 			Output: &daconfvalobj.Output{
 				DefaultFormat: cdaenum.OutputDefaultFormatMarkdown,
 			},

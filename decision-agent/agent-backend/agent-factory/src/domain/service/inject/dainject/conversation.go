@@ -3,6 +3,7 @@ package dainject
 import (
 	"sync"
 
+	"github.com/kweaver-ai/kweaver-go-lib/logger"
 	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/domain/service"
 	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/domain/service/conversationsvc"
 	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/drivenadapter/dbaccess/conversationdbacc"
@@ -10,7 +11,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/drivenadapter/httpaccess/httpinject"
 	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/infra/common/global"
 	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/port/driver/iportdriver"
-	"github.com/kweaver-ai/kweaver-go-lib/logger"
 )
 
 var (

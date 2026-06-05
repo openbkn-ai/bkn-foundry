@@ -11,9 +11,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/kweaver-ai/proton-rds-sdk-go/sqlx"
 	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/drivenadapter/dbaccess"
 	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/infra/common/global"
-	"github.com/kweaver-ai/proton-rds-sdk-go/sqlx"
 )
 
 type pubedTplTestLogger struct{}

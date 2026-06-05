@@ -3,8 +3,8 @@ package agentresp
 import (
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/domain/valueobject/conversationmsgvo"
 	"github.com/kweaver-ai/kweaver-go-lib/rest"
+	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/domain/valueobject/conversationmsgvo"
 	"github.com/stretchr/testify/assert"
 )
 

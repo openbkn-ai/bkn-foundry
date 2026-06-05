@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"github.com/bytedance/sonic"
-	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/infra/otel/oteltrace"
 	"github.com/kweaver-ai/kweaver-go-lib/logger"
+	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/infra/otel/oteltrace"
 )
 
 func formatSSEMessage(data string) []byte {

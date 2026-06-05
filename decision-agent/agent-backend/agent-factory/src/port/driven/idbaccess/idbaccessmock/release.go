@@ -14,10 +14,10 @@ import (
 	sql "database/sql"
 	reflect "reflect"
 
+	sqlx "github.com/kweaver-ai/proton-rds-sdk-go/sqlx"
 	comvalobj "github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/domain/valueobject/comvalobj"
 	squarereq "github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/driveradapter/api/rdto/square/squarereq"
 	dapo "github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/infra/persistence/dapo"
-	sqlx "github.com/kweaver-ai/proton-rds-sdk-go/sqlx"
 	gomock "go.uber.org/mock/gomock"
 )
 

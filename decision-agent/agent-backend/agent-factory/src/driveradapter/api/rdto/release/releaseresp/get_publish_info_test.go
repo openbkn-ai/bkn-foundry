@@ -60,12 +60,10 @@ func TestPublishInfoResp_SetPublishedToBes(t *testing.T) {
 		isAPIAgent := 1
 		isWebSDKAgent := 1
 		isSkillAgent := 1
-		isDataFlowAgent := 1
 		po := &dapo.ReleasePO{
-			IsAPIAgent:      &isAPIAgent,
-			IsWebSDKAgent:   &isWebSDKAgent,
-			IsSkillAgent:    &isSkillAgent,
-			IsDataFlowAgent: &isDataFlowAgent,
+			IsAPIAgent:    &isAPIAgent,
+			IsWebSDKAgent: &isWebSDKAgent,
+			IsSkillAgent:  &isSkillAgent,
 		}
 
 		resp.SetPublishedToBes(po)
@@ -201,14 +199,12 @@ func TestPublishInfoResp_WithAllPublishTargets(t *testing.T) {
 	isAPIAgent := 1
 	isWebSDKAgent := 1
 	isSkillAgent := 1
-	isDataFlowAgent := 1
 	isToCustomSpace := 1
 	isToSquare := 1
 	po := &dapo.ReleasePO{
 		IsAPIAgent:      &isAPIAgent,
 		IsWebSDKAgent:   &isWebSDKAgent,
 		IsSkillAgent:    &isSkillAgent,
-		IsDataFlowAgent: &isDataFlowAgent,
 		IsToCustomSpace: &isToCustomSpace,
 		IsToSquare:      &isToSquare,
 	}

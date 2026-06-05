@@ -14,15 +14,15 @@ import (
 )
 
 const (
-	scalarDocsPath    = "/scalar"
-	redocDocsPath     = "/redoc"
+	scalarDocsPath = "/scalar"
+	redocDocsPath  = "/redoc"
 
 	scalarDocJSONPath = "/scalar/doc.json"
 	scalarDocYAMLPath = "/scalar/doc.yaml"
 	scalarFaviconPath = "/scalar/favicon.png"
 
-	apidocsUIPath     = "/apidocs-ui"
-	
+	apidocsUIPath = "/apidocs-ui"
+
 	scalarJSAssetPath = apidocsUIPath + "/scalar-api-reference.js"
 	redocJSAssetPath  = apidocsUIPath + "/redoc.standalone.js"
 )

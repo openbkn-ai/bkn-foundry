@@ -62,19 +62,18 @@ func (h *ConversationHistoryConfig) ValObjCheck() (err error) {
 
 // Config 表示agent配置
 type Config struct {
-	Input                *Input                                `json:"input" binding:"required"`  // 输入参数
-	SystemPrompt         string                                `json:"system_prompt"`             // 系统提示词
-	Dolphin              string                                `json:"dolphin"`                   // Dolphin语句
-	Mode                 cdaenum.AgentMode                     `json:"mode"`                      // 配置模式
-	IsDolphinMode        cdaenum.DolphinMode                   `json:"is_dolphin_mode"`           // 是否是dolphin模式
+	Input         *Input              `json:"input" binding:"required"` // 输入参数
+	SystemPrompt  string              `json:"system_prompt"`            // 系统提示词
+	Dolphin       string              `json:"dolphin"`                  // Dolphin语句
+	Mode          cdaenum.AgentMode   `json:"mode"`                     // 配置模式
+	IsDolphinMode cdaenum.DolphinMode `json:"is_dolphin_mode"`          // 是否是dolphin模式
 	//IsUseToolIDInDolphin int                                   `json:"is_use_tool_id_in_dolphin"` // dolphin 中是否使用 tool id
-	PreDolphin           []*DolphinTpl                         `json:"pre_dolphin"`               // 在用户自定义dolphin之前执行的内置dolphin语句
-	PostDolphin          []*DolphinTpl                         `json:"post_dolphin"`              // 在用户自定义dolphin之后执行的内置dolphin语句
-	DataSource           *datasourcevalobj.RetrieverDataSource `json:"data_source"`               // 数据源
-	Skill                *skillvalobj.Skill                    `json:"skills"`                    // 技能
-	Llms                 []*LlmItem                            `json:"llms"`                      // LLM配置
+	PreDolphin  []*DolphinTpl                         `json:"pre_dolphin"`  // 在用户自定义dolphin之前执行的内置dolphin语句
+	PostDolphin []*DolphinTpl                         `json:"post_dolphin"` // 在用户自定义dolphin之后执行的内置dolphin语句
+	DataSource  *datasourcevalobj.RetrieverDataSource `json:"data_source"`  // 数据源
+	Skill       *skillvalobj.Skill                    `json:"skills"`       // 技能
+	Llms        []*LlmItem                            `json:"llms"`         // LLM配置
 
-	IsDataFlowSetEnabled int                   `json:"is_data_flow_set_enabled"`   // 是否启用数据流设置
 	OpeningRemarkConfig  *OpeningRemarkConfig  `json:"opening_remark_config"`      // 开场白配置
 	PresetQuestions      []*PresetQuestion     `json:"preset_questions"`           // 预设问题列表
 	Output               *Output               `json:"output"  binding:"required"` // 输出结果
@@ -117,7 +116,6 @@ func (p *Config) ValObjCheckWithCtx(ctx context.Context, isPrivateAPI bool) (err
 
 	// 0. 对齐新旧模式字段
 	p.normalizeMode()
-
 
 	// 2. 验证Input的有效性
 	if err = p.Input.ValObjCheck(); err != nil {
@@ -170,13 +168,7 @@ func (p *Config) ValObjCheckWithCtx(ctx context.Context, isPrivateAPI bool) (err
 		}
 	}
 
-	// 7. 验证IsDataFlowSetEnabled的值必须为0或1
-	if p.IsDataFlowSetEnabled != 0 && p.IsDataFlowSetEnabled != 1 {
-		err = errors.New("[Config]: is_data_flow_set_enabled must be 0 or 1")
-		return
-	}
-
-	// 8. 如果OpeningRemarkConfig不为空，验证其有效性
+	// 7. 如果OpeningRemarkConfig不为空，验证其有效性
 	if p.OpeningRemarkConfig != nil {
 		if err = p.OpeningRemarkConfig.ValObjCheck(); err != nil {
 			err = errors.Wrap(err, "[Config]: opening_remark_config is invalid")

@@ -10,16 +10,15 @@ func TestAgentPermission_StructFields(t *testing.T) {
 	t.Parallel()
 
 	perm := &AgentPermission{
-		Publish:                  true,
-		Unpublish:                true,
-		UnpublishOtherUserAgent:  true,
-		PublishToBeSkillAgent:    true,
-		PublishToBeWebSdkAgent:   true,
-		PublishToBeApiAgent:      true,
-		PublishToBeDataFlowAgent: true,
-		CreateSystemAgent:        true,
-		MgntBuiltInAgent:         true,
-		SeeTrajectoryAnalysis:    true,
+		Publish:                 true,
+		Unpublish:               true,
+		UnpublishOtherUserAgent: true,
+		PublishToBeSkillAgent:   true,
+		PublishToBeWebSdkAgent:  true,
+		PublishToBeApiAgent:     true,
+		CreateSystemAgent:       true,
+		MgntBuiltInAgent:        true,
+		SeeTrajectoryAnalysis:   true,
 	}
 
 	assert.True(t, perm.Publish)
@@ -28,7 +27,6 @@ func TestAgentPermission_StructFields(t *testing.T) {
 	assert.True(t, perm.PublishToBeSkillAgent)
 	assert.True(t, perm.PublishToBeWebSdkAgent)
 	assert.True(t, perm.PublishToBeApiAgent)
-	assert.True(t, perm.PublishToBeDataFlowAgent)
 	assert.True(t, perm.CreateSystemAgent)
 	assert.True(t, perm.MgntBuiltInAgent)
 	assert.True(t, perm.SeeTrajectoryAnalysis)
@@ -82,7 +80,6 @@ func TestNewUserStatusRespAllAllowed(t *testing.T) {
 	assert.True(t, resp.Agent.PublishToBeSkillAgent)
 	assert.True(t, resp.Agent.PublishToBeWebSdkAgent)
 	assert.True(t, resp.Agent.PublishToBeApiAgent)
-	assert.True(t, resp.Agent.PublishToBeDataFlowAgent)
 	assert.True(t, resp.Agent.CreateSystemAgent)
 	assert.True(t, resp.Agent.MgntBuiltInAgent)
 	assert.True(t, resp.Agent.SeeTrajectoryAnalysis)
