@@ -30,6 +30,13 @@ ingress:
 env:
   devicecode: ""
 
+# bkn-safe (ISF replacement) cutover knobs. Default empty = ISF behavior.
+# provider: "" | "shadow" | "bkn-safe". url: bkn-safe ClusterIP base. Revertible.
+bknSafe:
+  authzProvider: ""
+  directoryProvider: ""
+  url: ""
+
 nodeSelector: {}
 
 depServices:

@@ -5,6 +5,12 @@ nodeSelector: {}
 namespace: openbkn
 moduleName: agent-operator-integration
 
+# bkn-safe (ISF replacement) authz cutover knobs. Default empty = ISF behavior.
+# authzProvider: "" | "shadow" | "bkn-safe". url: bkn-safe ClusterIP base. Revertible.
+bknSafe:
+  authzProvider: ""
+  url: ""
+
 # 设置为dev则为开发模式.
 runMode: release
 

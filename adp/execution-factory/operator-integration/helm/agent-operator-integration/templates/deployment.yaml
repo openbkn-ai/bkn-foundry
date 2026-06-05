@@ -57,6 +57,11 @@ spec:
           {{- end}}
 
           env:
+            # bkn-safe (ISF replacement) authz cutover; empty = ISF, revertible.
+              - name: AUTHZ_PROVIDER
+                value: {{ .Values.bknSafe.authzProvider | quote }}
+              - name: BKN_SAFE_URL
+                value: {{ .Values.bknSafe.url | quote }}
             {{- if .Values.service.loggerOutput}}
               - name: LOGOUT
                 value: {{ .Values.service.loggerOutput }}

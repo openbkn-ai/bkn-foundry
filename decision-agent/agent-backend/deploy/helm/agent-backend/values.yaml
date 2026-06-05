@@ -5,6 +5,13 @@ nodeSelector: {}
 namespace: openbkn
 moduleName: agent-factory
 
+# bkn-safe (ISF replacement) cutover knobs. Default empty = ISF behavior.
+# provider: "" | "shadow" | "bkn-safe". url: bkn-safe ClusterIP base. Revertible.
+bknSafe:
+  authzProvider: ""
+  directoryProvider: ""
+  url: ""
+
 # 设置为dev则为开发模式.
 runMode: release
 

@@ -83,6 +83,13 @@ spec:
             value: {{ .Values.env.timezone }}
           - name: LANG
             value: {{ .Values.env.language }}
+          # bkn-safe (ISF replacement) cutover; empty = ISF (default), revertible.
+          - name: AUTHZ_PROVIDER
+            value: {{ .Values.bknSafe.authzProvider | quote }}
+          - name: DIRECTORY_PROVIDER
+            value: {{ .Values.bknSafe.directoryProvider | quote }}
+          - name: BKN_SAFE_URL
+            value: {{ .Values.bknSafe.url | quote }}
           - name: POD_IP
             valueFrom:
               fieldRef:

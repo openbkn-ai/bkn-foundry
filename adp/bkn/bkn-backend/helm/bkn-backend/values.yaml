@@ -6,6 +6,13 @@ env:
   timezone: Asia/Shanghai
   language: en_US.UTF-8
 
+# bkn-safe (ISF replacement) cutover knobs. Default empty = ISF behavior.
+# provider: "" | "shadow" | "bkn-safe". url: bkn-safe ClusterIP base. Revertible.
+bknSafe:
+  authzProvider: ""
+  directoryProvider: ""
+  url: ""
+
 replicaCount: 1
 
 # 节点选择器
