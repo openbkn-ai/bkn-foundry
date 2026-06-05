@@ -95,9 +95,10 @@ depServices:
   text_reranker:
     mapping: "{}"
   hydra:
-    publicHost: "hydra-public"
+    # ISF replacement: introspect against bkn-safe's paired hydra (cross-ns).
+    publicHost: "bkn-safe-hydra-public.bkn-safe"
     publicPort: "4444"
-    administrativeHost: "hydra-admin"
+    administrativeHost: "bkn-safe-hydra-admin.bkn-safe"
     administrativePort: "4445"
   user_management:
     publicHost: "user-management-public"

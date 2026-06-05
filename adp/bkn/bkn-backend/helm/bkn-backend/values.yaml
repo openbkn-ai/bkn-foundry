@@ -84,7 +84,8 @@ depServices:
     port: 30980
     protocol: http
   hydra-admin:
-    host: hydra-admin
+    # ISF replacement: introspect against bkn-safe's paired hydra (cross-ns).
+    host: bkn-safe-hydra-admin.bkn-safe
     port: 4445
     protocol: http
   mf-model-manager:
