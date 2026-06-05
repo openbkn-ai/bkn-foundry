@@ -1,0 +1,11 @@
+{
+  "_comment": "Accessor -> role bindings (g grouping policy). The admin account UUID 266c6a42... is the identity backend services fall back to for tokenless service-to-service calls (e.g. bkn->vega GetCatalogByID via the internal /in/v1 route, which skips token introspection but still runs resource authz). Binding it to 超级管理员 (wildcard *:* act *) replicates ISF's super-admin grant so internal calls pass FilterResources. UUIDs preserved from ISF (role: roles.json; accessor: bkn ADMIN_ACCOUNT_ID, adp/bkn/bkn-backend/server/interfaces/permission_access.go).",
+  "bindings": [
+    {
+      "accessor_id": "266c6a42-6131-4d62-8f39-853e7093701c",
+      "accessor_note": "admin / S2S fallback identity",
+      "role_id": "7dcfcc9c-ad02-11e8-aa06-000c29358ad6",
+      "role_name": "超级管理员"
+    }
+  ]
+}

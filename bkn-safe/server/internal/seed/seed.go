@@ -28,6 +28,9 @@ var catalogJSON []byte
 //go:embed data/grants.json
 var grantsJSON []byte
 
+//go:embed data/role-bindings.json
+var roleBindingsJSON []byte
+
 type roleSeed struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
@@ -55,6 +58,13 @@ type grantsFile struct {
 	} `json:"grants"`
 }
 
+type roleBindingsFile struct {
+	Bindings []struct {
+		AccessorID string `json:"accessor_id"`
+		RoleID     string `json:"role_id"`
+	} `json:"bindings"`
+}
+
 // Apply seeds roles + catalog (into GORM) and grants (into Casbin). Idempotent:
 // safe to run on every startup. Returns the first error encountered.
 func Apply(db *gorm.DB, enforcer *authz.Enforcer) error {
@@ -66,6 +76,9 @@ func Apply(db *gorm.DB, enforcer *authz.Enforcer) error {
 	}
 	if err := seedGrants(enforcer); err != nil {
 		return fmt.Errorf("seed grants: %w", err)
+	}
+	if err := seedRoleBindings(enforcer); err != nil {
+		return fmt.Errorf("seed role bindings: %w", err)
 	}
 	return nil
 }
@@ -131,6 +144,23 @@ func seedGrants(enforcer *authz.Enforcer) error {
 			if err := enforcer.Grant(gr.RoleID, obj, op); err != nil {
 				return err
 			}
+		}
+	}
+	return nil
+}
+
+// seedRoleBindings binds accessors (users/apps) to roles via Casbin's grouping
+// policy. Notably binds the admin UUID — backend services' tokenless S2S
+// fallback identity — to 超级管理员, so internal /in/v1 calls pass FilterResources
+// (replicates ISF's super-admin grant). AssignRole is idempotent.
+func seedRoleBindings(enforcer *authz.Enforcer) error {
+	var rb roleBindingsFile
+	if err := json.Unmarshal(roleBindingsJSON, &rb); err != nil {
+		return err
+	}
+	for _, b := range rb.Bindings {
+		if err := enforcer.AssignRole(b.AccessorID, b.RoleID); err != nil {
+			return err
 		}
 	}
 	return nil
