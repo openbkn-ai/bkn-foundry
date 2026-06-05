@@ -1,0 +1,114 @@
+# Execution Factory Tests (OpenBKN)
+
+Canonical test location for Execution Factory migrated from KWeaver DIP/Core.
+
+```
+adp/execution-factory/
+|-- tests/                          # Agent AT (pytest) ù this directory
+|   |-- testcases/
+|   |   |-- data-operator-hub/      # full API suite (needs KWeaver platform deps)
+|   |   `-- openbkn-smoke/          # lightweight smoke (token only)
+|   |-- config/env.openbkn.example.ini
+|   `-- scripts/run-openbkn-smoke.ps1
+`-- operator-integration/
+    `-- server/tests/               # HTTP files, Python CLI, Go smoke
+```
+
+## Tier 1 ù OpenBKN backend only (recommended)
+
+### Prerequisites
+
+1. Start `agent-operator-integration` (default `http://127.0.0.1:9000`)
+2. Obtain a Bearer token with access to `x-business-domain: bd_public`
+3. Python 3.10+ with `pytest`, `requests`, `pyyaml`
+
+### Start backend locally (AUTH_ENABLED=false)
+
+Requires local MySQL (`dip_data_operator_hub` schema) and Redis on `127.0.0.1:6379`.
+
+```powershell
+cd bkn-foundry/bkn-foundry/adp/execution-factory/operator-integration
+$env:OPENBKN_DB_PASSWORD = "<mysql-password>"
+.\scripts\run-local-dev.ps1
+```
+
+Apply migrations first: `operator-integration/migrations/mariadb/`.
+
+### openbkn-smoke (no eisoo / Hydra)
+
+With Bearer token (production-like):
+
+```powershell
+cd bkn-foundry/bkn-foundry/adp/execution-factory/tests
+copy config\env.openbkn.example.ini config\env.ini
+
+$env:OPENBKN_TOKEN = "<your-bearer-token>"
+$env:OPENBKN_BUSINESS_DOMAIN = "bd_public"
+
+.\scripts\run-openbkn-smoke.ps1
+```
+
+Local dev without token (`AUTH_ENABLED=false` on backend):
+
+```powershell
+.\scripts\run-openbkn-smoke.ps1 -AuthDisabled
+```
+
+Or manually:
+
+```powershell
+py -m pytest testcases/openbkn-smoke --confcutdir=testcases/openbkn-smoke -q
+```
+
+### HTTP files (REST Client)
+
+```
+operator-integration/server/tests/http/
+  operator.http | toolbox.http | mcp.http | skill.http | function-ai.http
+```
+
+Edit `env.http` with your token, run against your openbkn instance.
+
+### Python operator CLI
+
+```powershell
+cd operator-integration/server/tests/tool
+copy config.local.yaml.example config.local.yaml
+py operator_client.py --config=config.local.yaml list
+```
+
+### Go unit/smoke (in operator-integration repo)
+
+```bash
+cd operator-integration
+./project.sh -t
+```
+
+## Tier 2 ù Full Agent AT suite
+
+Same pytest tree as KWeaver `adp/execution-factory/tests`. Requires:
+
+- `config/env.ini` pointing to openbkn host
+- KWeaver platform packages (`eisoo`, Hydra token flow)
+- MySQL `adp` schema (operator tests clean tables in module conftest)
+
+```powershell
+pip install -r requirements/requirements.txt
+py -m pytest testcases/data-operator-hub/api/operator/test_get_operator_category.py -q
+```
+
+Use `--confcutdir=testcases/openbkn-smoke` only for smoke; full suite loads root `conftest.py`.
+
+## Tier 3 ù bkn-studio frontend
+
+UI is rebuilt in `bkn-studio/src/modules/execution-factory/`.
+
+```bash
+cd bkn-studio/bkn-studio
+pnpm test:execution-factory
+```
+
+## bkn-studio mirror
+
+A copy also exists at `bkn-studio/bkn-studio/tests/execution-factory/` for studio-side convenience.
+**Canonical backend + Agent AT path is this directory.**

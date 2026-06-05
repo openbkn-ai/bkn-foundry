@@ -6,7 +6,7 @@ token: "ory_at_zRx3_Kc0DjIMgerl56OIGH5Giuq7YSWD5mOd_fWenbI.kem-Bxkcn5-FN4I7ezVRD
 # 注册参数
 register:
   metadata_type: "openapi"
-  metadata_path: "/root/go/src/github.com/kweaver-ai/operator-hub/operator-integration/server/tests/file/yaml/test.yaml"
+  metadata_path: "../file/yaml/test.yaml"
   direct-publish: false
   operator_info:
     operator_type: "basic"
@@ -17,9 +17,9 @@ register:
   operator_execute_control:
     timeout: 30000
     retry_policy: # 重试策略
-      max_attempts: 3 # 最大重试次数
+      max_attempts: 3 # 最大重试次�?
       initial_delay: 1000 # 初始延迟时间(毫秒)
-      max_delay: 6000 # 最大延迟时间(毫秒)
+      max_delay: 6000 # 最大延迟时�?毫秒)
       backoff_factor: 2
       retry_conditions:
         status_code: []
@@ -30,7 +30,7 @@ update:
   operator_id: "f6fdc41e-fbbc-4446-810b-aee40d56149c"
   version: "1878a26a-03d6-448e-83f0-c5f22a307ce2"
   # metadata_type: "openapi"
-  # metadata_path: "/root/go/src/github.com/kweaver-ai/operator-hub/operator-integration/server/tests/file/yaml/test.yaml"
+  # metadata_path: "../file/yaml/test.yaml"
   # direct-publish: false
   # operator_info:
   #   operator_type: "basic"
@@ -41,9 +41,9 @@ update:
   # operator_execute_control:
   #   timeout: 30000
   #   retry_policy: # 重试策略
-  #     max_attempts: 3 # 最大重试次数
+  #     max_attempts: 3 # 最大重试次�?
   #     initial_delay: 1000 # 初始延迟时间(毫秒)
-  #     max_delay: 6000 # 最大延迟时间(毫秒)
+  #     max_delay: 6000 # 最大延迟时�?毫秒)
   #     backoff_factor: 2
   #     retry_conditions:
   #       status_code: []
@@ -60,7 +60,7 @@ delete:
 list:
   query:
     page: 1
-    page_size: -1 # -1表示查询所有
+    page_size: -1 # -1表示查询所�?
     # sort_by: "update_time"
     # category: "other_category"
     # name: ""
@@ -73,8 +73,8 @@ list:
 # 查询算子详情
 
 detail:
-  # operator_id:必填 （默认获取已发布）
-  # version:非必填
+  # operator_id:必填 （默认获取已发布�?
+  # version:非必�?
   operator_id: f6fdc41e-fbbc-4446-810b-aee40d56149c
   # version: "1878a26a-03d6-448e-83f0-c5f22a307ce2"
 

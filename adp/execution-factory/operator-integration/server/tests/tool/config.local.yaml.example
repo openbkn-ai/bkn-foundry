@@ -1,0 +1,37 @@
+# Copy to config.local.yaml and fill token before running operator_client.py locally.
+
+base_url: "http://127.0.0.1:9000"
+token: "Bearer <replace-with-your-token>"
+
+register:
+  metadata_type: "openapi"
+  metadata_path: "../fixtures/yaml/test.yaml"
+  direct-publish: false
+  operator_info:
+    operator_type: "basic"
+    execution_mode: "sync"
+    category: "other_category"
+    source: "unknown"
+  extend_info: {}
+  operator_execute_control:
+    timeout: 30000
+
+list:
+  query:
+    page: 1
+    page_size: 20
+
+detail:
+  operator_id: "<replace-after-register>"
+
+publish:
+  operator_id: "<replace-after-register>"
+  version: "<replace-after-register>"
+
+offline:
+  operator_id: "<replace-after-register>"
+  version: "<replace-after-register>"
+
+delete:
+  operator_id: "<replace-after-register>"
+  version: "<replace-after-register>"

@@ -2,7 +2,7 @@
 @box_id = f19f8304-30d7-40bc-bde5-7c73a1eb127e
 @tool_id = c2395a45-fdf0-49f8-a996-8d51762753eb
 
-### 创建工具箱
+### 创建工具�?
 POST http://127.0.0.1:9000/api/agent-operator-integration/v1/tool-box
 Content-Type: multipart/form-data; boundary=WebAppBoundary
 Authorization: {{token}}
@@ -16,12 +16,12 @@ openapi
 Content-Disposition: form-data; name="data"; filename="tool.yaml"
 Content-Type: application/json
 
-< /root/go/src/github.com/kweaver-ai/operator-hub/operator-integration/server/tests/file/yaml/markdown_tool.yaml
+< ../file/yaml/markdown_tool.yaml
 --WebAppBoundary--
 
 
 
-### 更新工具箱状态
+### 更新工具箱状�?
 POST http://127.0.0.1:9000/api/agent-operator-integration/v1/tool-box/f19f8304-30d7-40bc-bde5-7c73a1eb127e/status
 Content-Type: application/json
 Authorization: {{token}}
@@ -31,7 +31,7 @@ Authorization: {{token}}
 }
 
 
-### 更新工具箱
+### 更新工具�?
 POST http://127.0.0.1:9000/api/agent-operator-integration/v1/tool-box/f19f8304-30d7-40bc-bde5-7c73a1eb127e
 Content-Type: application/json
 Authorization: {{token}}
@@ -43,12 +43,12 @@ Authorization: {{token}}
 }
 
 
-### 获取工具箱列表
+### 获取工具箱列�?
 GET http://127.0.0.1:9000/api/agent-operator-integration/v1/tool-box/list?all=true
 Content-Type: application/json
 Authorization: {{token}}
 
-### 获取工具箱列表
+### 获取工具箱列�?
 GET http://127.0.0.1:9000/api/agent-operator-integration/v1/tool-box/list?name=&page=1&page_size=100
 Content-Type: application/json
 Authorization: {{token}}
@@ -117,7 +117,7 @@ openapi
 Content-Disposition: form-data; name="data"; filename="markdown_tool.yaml"
 Content-Type: application/json
 
-< /root/go/src/github.com/kweaver-ai/operator-hub/operator-integration/server/tests/file/yaml/markdown_tool.yaml
+< ../file/yaml/markdown_tool.yaml
 --WebAppBoundary--
 
 ### 添加工具
@@ -185,7 +185,7 @@ Authorization: {{token}}
                             }
                         },
                         "500": {
-                            "description": "服务器内部错误",
+                            "description": "服务器内部错�?,
                             "content": {
                                 "application/json": {
                                     "schema": {
@@ -224,7 +224,7 @@ Authorization: {{token}}
                             }
                         },
                         "404": {
-                            "description": "文档未找到",
+                            "description": "文档未找�?,
                             "content": {
                                 "application/json": {
                                     "schema": {
@@ -263,7 +263,7 @@ Authorization: {{token}}
                             }
                         },
                         "404": {
-                            "description": "文档未找到",
+                            "description": "文档未找�?,
                             "content": {
                                 "application/json": {
                                     "schema": {
@@ -291,7 +291,7 @@ Authorization: {{token}}
                         },
                         "expiration": {
                             "type": "integer",
-                            "description": "文档过期时间（秒），默认为86400（24小时）",
+                            "description": "文档过期时间（秒），默认�?6400�?4小时�?,
                             "example": 3600
                         }
                     }
@@ -333,7 +333,7 @@ Authorization: {{token}}
 
 {
     "tool_name": "无效测试工具",
-    "tool_desc": "用于工具注册测试，无效"
+    "tool_desc": "用于工具注册测试，无�?
 }
 
 ### 查询工具列表
@@ -383,7 +383,7 @@ Content-Type: application/json
 Authorization: {{token}}
 
 
-### 算子转换成工具
+### 算子转换成工�?
 POST http://127.0.0.1:9000/api/agent-operator-integration/v1/operator/convert/tool
 Content-Type: application/json
 Authorization: {{token}}
@@ -688,7 +688,7 @@ Content-Type: application/json
                         "internal-tools"
                     ],
                     "summary": "check",
-                    "description": "检查工具\n\n- **value**: 检查值\n- **field**: 检查字段\n\n返回检查结果",
+                    "description": "检查工具\n\n- **value**: 检查值\n- **field**: 检查字段\n\n返回检查结�?,
                     "operationId": "check_api_agent_executor_v1_tools_check_post",
                     "parameters": [
                         {
@@ -829,7 +829,7 @@ Content-Type: application/json
                         "internal-tools"
                     ],
                     "summary": "get_file_full_content",
-                    "description": "获取文件的完整内容，支持长文本处理策略\n\n- **file_infos**: 文件信息列表\n- **strategy**: 处理策略（\"truncate\"截断 或 \"chunk\"分块总结）\n- **llm**: 大模型配置（用于分块总结）\n\n返回文件的完整内容或总结内容",
+                    "description": "获取文件的完整内容，支持长文本处理策略\n\n- **file_infos**: 文件信息列表\n- **strategy**: 处理策略（\"truncate\"截断 �?\"chunk\"分块总结）\n- **llm**: 大模型配置（用于分块总结）\n\n返回文件的完整内容或总结内容",
                     "operationId": "get_file_full_content_api_agent_executor_v1_tools_get_file_full_content_post",
                     "parameters": [
                         {
@@ -905,7 +905,7 @@ Content-Type: application/json
                         "internal-tools"
                     ],
                     "summary": "process_file_intelligent",
-                    "description": "智能文件处理策略，自动选择召回或全文策略\n\n- **query**: 用户查询（如\"总结这份报告的主要内容\"）\n- **file_infos**: 文件信息列表\n- **llm**: 大模型配置（用于意图识别和分块总结）\n\n根据查询意图自动选择处理策略，返回处理结果",
+                    "description": "智能文件处理策略，自动选择召回或全文策略\n\n- **query**: 用户查询（如\"总结这份报告的主要内容\"）\n- **file_infos**: 文件信息列表\n- **llm**: 大模型配置（用于意图识别和分块总结）\n\n根据查询意图自动选择处理策略，返回处理结�?,
                     "operationId": "process_file_intelligent_api_agent_executor_v1_tools_process_file_intelligent_post",
                     "parameters": [
                         {
@@ -1059,13 +1059,13 @@ Content-Type: application/json
                         "value": {
                             "type": "string",
                             "title": "Value",
-                            "description": "检查值",
+                            "description": "检查�?,
                             "example": "test_value"
                         },
                         "field": {
                             "type": "string",
                             "title": "Field",
-                            "description": "检查字段",
+                            "description": "检查字�?,
                             "example": "test_field"
                         }
                     },
@@ -1075,7 +1075,7 @@ Content-Type: application/json
                         "field"
                     ],
                     "title": "CheckRequest",
-                    "description": "检查工具请求"
+                    "description": "检查工具请�?
                 },
                 "DocQARequest": {
                     "properties": {
@@ -1083,12 +1083,12 @@ Content-Type: application/json
                             "type": "string",
                             "title": "Query",
                             "description": "查询问题",
-                            "example": "什么是机器学习？"
+                            "example": "什么是机器学习�?
                         },
                         "props": {
                             "type": "object",
                             "title": "Props",
-                            "description": "额外属性",
+                            "description": "额外属�?,
                             "default": {}
                         }
                     },
@@ -1104,7 +1104,7 @@ Content-Type: application/json
                         "name": {
                             "type": "string",
                             "title": "Name",
-                            "description": "文件名",
+                            "description": "文件�?,
                             "example": "document.pdf"
                         },
                         "id": {
@@ -1128,7 +1128,7 @@ Content-Type: application/json
                         "name": {
                             "type": "string",
                             "title": "Name",
-                            "description": "文件名"
+                            "description": "文件�?
                         },
                         "id": {
                             "type": "string",
@@ -1185,12 +1185,12 @@ Content-Type: application/json
                         "total_count": {
                             "type": "integer",
                             "title": "Total Count",
-                            "description": "总文件数量"
+                            "description": "总文件数�?
                         },
                         "success_count": {
                             "type": "integer",
                             "title": "Success Count",
-                            "description": "成功获取URL的文件数量"
+                            "description": "成功获取URL的文件数�?
                         }
                     },
                     "type": "object",
@@ -1222,7 +1222,7 @@ Content-Type: application/json
                         "llm": {
                             "type": "object",
                             "title": "Llm",
-                            "description": "大模型配置",
+                            "description": "大模型配�?,
                             "default": {}
                         }
                     },
@@ -1239,12 +1239,12 @@ Content-Type: application/json
                             "type": "string",
                             "title": "Query",
                             "description": "查询问题",
-                            "example": "查询所有用户"
+                            "example": "查询所有用�?
                         },
                         "props": {
                             "type": "object",
                             "title": "Props",
-                            "description": "额外属性",
+                            "description": "额外属�?,
                             "default": {}
                         }
                     },
@@ -1276,7 +1276,7 @@ Content-Type: application/json
                             "type": "string",
                             "title": "Query",
                             "description": "用户查询",
-                            "example": "总结这份报告的主要内容"
+                            "example": "总结这份报告的主要内�?
                         },
                         "file_infos": {
                             "items": {
@@ -1289,7 +1289,7 @@ Content-Type: application/json
                         "llm": {
                             "type": "object",
                             "title": "Llm",
-                            "description": "大模型配置",
+                            "description": "大模型配�?,
                             "default": {}
                         }
                     },
@@ -1330,7 +1330,7 @@ Content-Type: application/json
                             "type": "string",
                             "title": "Query",
                             "description": "搜索查询",
-                            "example": "如何预定会议室"
+                            "example": "如何预定会议�?
                         },
                         "file_infos": {
                             "items": {
@@ -1343,7 +1343,7 @@ Content-Type: application/json
                         "llm": {
                             "type": "object",
                             "title": "Llm",
-                            "description": "大模型配置",
+                            "description": "大模型配�?,
                             "default": {}
                         }
                     },
@@ -1360,7 +1360,7 @@ Content-Type: application/json
                         "query": {
                             "type": "string",
                             "title": "Query",
-                            "description": "搜索查询词",
+                            "description": "搜索查询�?,
                             "example": "机器学习"
                         }
                     },
@@ -1394,7 +1394,7 @@ Content-Type: application/json
                             "type": "string"
                         },
                         "ErrorCode": {
-                            "description": "错误码",
+                            "description": "错误�?,
                             "title": "Errorcode",
                             "type": "string"
                         },
@@ -1429,7 +1429,7 @@ Content-Type: application/json
     }
 }
 
-### 查询内置工具箱信息
+### 查询内置工具箱信�?
 GET http://127.0.0.1:9000/api/agent-operator-integration/internal-v1/tool-box/build-in
 
 ### 查询内置工具信息

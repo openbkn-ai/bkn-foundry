@@ -1,0 +1,56 @@
+# Skill management APIs used by bkn-studio execution-factory module (Phase 5-6)
+
+@skillId = skill_doc_qa
+
+### List skills
+GET {{baseUrl}}/api/agent-operator-integration/v1/skills?page=1&page_size=20&sort_by=update_time&sort_order=desc
+Authorization: {{token}}
+x-business-domain: {{businessDomain}}
+
+### Get skill detail
+GET {{baseUrl}}/api/agent-operator-integration/v1/skills/{{skillId}}
+Authorization: {{token}}
+x-business-domain: {{businessDomain}}
+
+### Update skill metadata
+PUT {{baseUrl}}/api/agent-operator-integration/v1/skills/{{skillId}}/metadata
+Content-Type: application/json
+Authorization: {{token}}
+x-business-domain: {{businessDomain}}
+
+{
+  "name": "Document QA Skill",
+  "description": "Updated from local HTTP test.",
+  "category": "other_category",
+  "source": "custom"
+}
+
+### Get skill release history
+GET {{baseUrl}}/api/agent-operator-integration/v1/skills/{{skillId}}/history
+Authorization: {{token}}
+x-business-domain: {{businessDomain}}
+
+### Republish history version to draft
+POST {{baseUrl}}/api/agent-operator-integration/v1/skills/{{skillId}}/history/republish
+Content-Type: application/json
+Authorization: {{token}}
+x-business-domain: {{businessDomain}}
+
+{
+  "version": "0.9.0"
+}
+
+### Publish history version
+POST {{baseUrl}}/api/agent-operator-integration/v1/skills/{{skillId}}/history/publish
+Content-Type: application/json
+Authorization: {{token}}
+x-business-domain: {{businessDomain}}
+
+{
+  "version": "0.9.0"
+}
+
+### List skill market
+GET {{baseUrl}}/api/agent-operator-integration/v1/skills/market?page=1&page_size=20
+Authorization: {{token}}
+x-business-domain: {{businessDomain}}
