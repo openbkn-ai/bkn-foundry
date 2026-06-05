@@ -22,6 +22,11 @@ var ErrInvalidCredentials = errors.New("invalid account or password")
 // ErrUserDisabled is returned when the account exists but is disabled.
 var ErrUserDisabled = errors.New("user disabled")
 
+// ErrMustChangePassword is returned when credentials are valid but the user must
+// change their password before the login can be accepted (e.g. the seeded admin
+// on first login). The caller should drive the change-password flow.
+var ErrMustChangePassword = errors.New("must change password")
+
 // Authenticator verifies credentials. The local implementation checks bcrypt
 // hashes; an LDAP-backed implementation (Phase 5) federates to an external
 // directory. Both return the resolved local user.
@@ -81,12 +86,14 @@ func (s *UserStore) ByID(ctx context.Context, id string) (*model.User, error) {
 	return &u, nil
 }
 
-// SetPassword updates a local user's password.
+// SetPassword updates a local user's password and clears MustChangePassword
+// (a successful change always satisfies a forced-change requirement).
 func (s *UserStore) SetPassword(ctx context.Context, userID, password string) error {
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return err
 	}
 	return s.db.WithContext(ctx).Model(&model.User{}).
-		Where("id = ?", userID).Update("password_hash", string(hash)).Error
+		Where("id = ?", userID).
+		Updates(map[string]any{"password_hash": string(hash), "must_change_password": false}).Error
 }

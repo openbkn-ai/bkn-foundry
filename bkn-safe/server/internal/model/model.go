@@ -41,6 +41,9 @@ type User struct {
 	Source       Source `gorm:"size:16;default:local"`
 	AccountType  AccountType `gorm:"size:16;default:other"`
 	PasswordHash string      `gorm:"size:255"` // bcrypt; empty for ldap/app
+	// MustChangePassword forces a password change before the login is accepted.
+	// Set on the seeded built-in admin (initial password); cleared by SetPassword.
+	MustChangePassword bool
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 }

@@ -12,11 +12,23 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
 	"bkn-safe/internal/authz"
 	"bkn-safe/internal/model"
+)
+
+// Built-in admin: a local login bound to super-admin via role-bindings.json
+// (same UUID = the S2S fallback identity, so the human admin and internal
+// service-to-service calls share one super-admin subject). Seeded ONLY if the
+// row is absent, so a later password change / disable is never overwritten on
+// restart. MustChangePassword forces the operator off the initial password.
+const (
+	adminUserID     = "266c6a42-6131-4d62-8f39-853e7093701c"
+	adminAccount    = "admin"
+	adminInitialPwd = "openbkn"
 )
 
 //go:embed data/roles.json
@@ -80,7 +92,38 @@ func Apply(db *gorm.DB, enforcer *authz.Enforcer) error {
 	if err := seedRoleBindings(enforcer); err != nil {
 		return fmt.Errorf("seed role bindings: %w", err)
 	}
+	if err := seedAdminUser(db); err != nil {
+		return fmt.Errorf("seed admin user: %w", err)
+	}
 	return nil
+}
+
+// seedAdminUser creates the built-in admin login the FIRST time only. If a row
+// with adminUserID already exists it returns without touching it — preserving a
+// changed password, cleared MustChangePassword flag, or disabled state across
+// restarts. The super-admin role binding is seeded separately (role-bindings.json).
+func seedAdminUser(db *gorm.DB) error {
+	var count int64
+	if err := db.Model(&model.User{}).Where("id = ?", adminUserID).Count(&count).Error; err != nil {
+		return err
+	}
+	if count > 0 {
+		return nil
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(adminInitialPwd), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+	return db.Create(&model.User{
+		ID:                 adminUserID,
+		Account:            adminAccount,
+		Name:               "Administrator",
+		Enabled:            true,
+		Source:             model.SourceLocal,
+		AccountType:        model.AccountTypeOther,
+		PasswordHash:       string(hash),
+		MustChangePassword: true,
+	}).Error
 }
 
 func seedRoles(db *gorm.DB) error {

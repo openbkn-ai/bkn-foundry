@@ -47,6 +47,31 @@ func TestVerifyCredentials(t *testing.T) {
 	}
 }
 
+func TestSetPasswordClearsMustChange(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+	u := &model.User{ID: "u-3", Account: "dave", Enabled: true, MustChangePassword: true}
+	if err := s.CreateLocalUser(ctx, u, "initial0"); err != nil {
+		t.Fatal(err)
+	}
+	// Flag is visible on Verify (drives the forced-change branch in Provider.Login).
+	got, err := s.Verify(ctx, "dave", "initial0")
+	if err != nil || !got.MustChangePassword {
+		t.Fatalf("verify: want MustChangePassword=true, got=%+v err=%v", got, err)
+	}
+	// Changing the password clears the flag and accepts the new credential.
+	if err := s.SetPassword(ctx, "u-3", "brandnew1"); err != nil {
+		t.Fatal(err)
+	}
+	got, err = s.Verify(ctx, "dave", "brandnew1")
+	if err != nil {
+		t.Fatalf("verify new password: %v", err)
+	}
+	if got.MustChangePassword {
+		t.Error("SetPassword must clear MustChangePassword")
+	}
+}
+
 func TestVerifyDisabledUser(t *testing.T) {
 	s := newStore(t)
 	ctx := context.Background()

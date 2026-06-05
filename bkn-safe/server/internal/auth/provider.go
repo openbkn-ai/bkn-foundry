@@ -49,9 +49,11 @@ type Provider struct {
 }
 
 // UserLookup fetches a user by ID (subject) — needed at consent time to build
-// the ext claims for the already-authenticated subject.
+// the ext claims for the already-authenticated subject — and updates a user's
+// password (the change-password flow).
 type UserLookup interface {
 	ByID(ctx context.Context, id string) (*model.User, error)
+	SetPassword(ctx context.Context, userID, password string) error
 }
 
 // NewProvider wires the provider.
@@ -60,10 +62,31 @@ func NewProvider(auth Authenticator, hydra *HydraAdmin, users UserLookup) *Provi
 }
 
 // Login verifies credentials and accepts the hydra login, returning hydra's
-// redirect target. On bad credentials it returns ErrInvalidCredentials.
+// redirect target. On bad credentials it returns ErrInvalidCredentials. When the
+// user must change their password first it returns ErrMustChangePassword without
+// accepting the login — the caller drives the change-password flow.
 func (p *Provider) Login(ctx context.Context, challenge, account, password string, remember bool) (redirectTo string, err error) {
 	u, err := p.auth.Verify(ctx, account, password)
 	if err != nil {
+		return "", err
+	}
+	if u.MustChangePassword {
+		return "", ErrMustChangePassword
+	}
+	return p.hydra.AcceptLogin(ctx, challenge, u.ID, remember)
+}
+
+// ChangePassword re-verifies the current password, sets the new one (clearing
+// MustChangePassword), then accepts the hydra login — completing a forced
+// first-login change in one step. There is no server session, so the old
+// password is re-entered and re-verified rather than trusted from the prior
+// login POST. Returns hydra's redirect target.
+func (p *Provider) ChangePassword(ctx context.Context, challenge, account, oldPassword, newPassword string, remember bool) (redirectTo string, err error) {
+	u, err := p.auth.Verify(ctx, account, oldPassword)
+	if err != nil {
+		return "", err
+	}
+	if err := p.users.SetPassword(ctx, u.ID, newPassword); err != nil {
 		return "", err
 	}
 	return p.hydra.AcceptLogin(ctx, challenge, u.ID, remember)

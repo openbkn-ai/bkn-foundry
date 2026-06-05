@@ -7,16 +7,21 @@
 #   ci-runner    — client_credentials (CI / automation, app identity)
 #   openbkn-sdk      — device_code (+ refresh) public client (headless human / CLI login)
 #   openbkn-studio  — authorization_code + PKCE public client (browser / SPA login)
+#   openbkn-cli     — authorization_code + PKCE public client (CLI headless password login)
 #
 # Env:
 #   HYDRA_ADMIN       admin endpoint (default dev http://127.0.0.1:4445; in-cluster
 #                     use http://bkn-safe-hydra-admin:4445)
 #   WEB_REDIRECT_URI  SPA callback (default dev http://localhost:3000/callback;
 #                     set to the real https://<host>/callback in prod)
+#   CLI_REDIRECT_URI  CLI loopback callback; must match the SDK's
+#                     http://127.0.0.1:<DEFAULT_REDIRECT_PORT>/callback (port 9010).
+#                     Never dialed — the SDK reads the code off the 302 Location.
 set -euo pipefail
 
 ADMIN="${HYDRA_ADMIN:-http://127.0.0.1:4445}"
 WEB_REDIRECT_URI="${WEB_REDIRECT_URI:-http://localhost:3000/callback}"
+CLI_REDIRECT_URI="${CLI_REDIRECT_URI:-http://127.0.0.1:9010/callback}"
 
 create() { # $1=json
   curl -fsS -X POST "$ADMIN/admin/clients" \
@@ -59,5 +64,17 @@ create "{
   \"audience\": [\"bkn-safe\"]
 }" >/dev/null
 echo "  + openbkn-studio (authorization_code + PKCE, public; redirect=${WEB_REDIRECT_URI})"
+
+del openbkn-cli
+create "{
+  \"client_id\": \"openbkn-cli\",
+  \"grant_types\": [\"authorization_code\", \"refresh_token\"],
+  \"response_types\": [\"code\"],
+  \"token_endpoint_auth_method\": \"none\",
+  \"redirect_uris\": [\"${CLI_REDIRECT_URI}\"],
+  \"scope\": \"openid offline all\",
+  \"audience\": [\"bkn-safe\"]
+}" >/dev/null
+echo "  + openbkn-cli (authorization_code + PKCE, public; redirect=${CLI_REDIRECT_URI})"
 
 echo "== done =="

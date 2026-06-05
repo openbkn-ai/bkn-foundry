@@ -20,6 +20,8 @@ import (
 func registerAuth(r *gin.Engine, p *auth.Provider, h *auth.HydraAdmin) {
 	r.GET("/login", showLogin)
 	r.POST("/login", func(c *gin.Context) { doLogin(c, p) })
+	r.GET("/change-password", showChangePassword)
+	r.POST("/change-password", func(c *gin.Context) { doChangePassword(c, p) })
 	r.GET("/consent", func(c *gin.Context) { showConsent(c, p) })
 	r.POST("/consent", func(c *gin.Context) { doConsent(c, p) })
 	r.GET("/device", showDevice)
@@ -55,6 +57,19 @@ var loginPage = template.Must(template.New("login").Parse(pageCSS + `<!doctype h
   <input name="account" placeholder="账号" autofocus autocomplete="username">
   <input name="password" type="password" placeholder="密码" autocomplete="current-password">
   <button class="primary" type="submit">登录</button>
+</form></div></body>`))
+
+var changePasswordPage = template.Must(template.New("changepw").Parse(pageCSS + `<!doctype html><meta charset="utf-8"><body>
+<div class="card"><h3>修改密码</h3>
+<div class="label">首次登录请设置新密码</div>
+{{if .Error}}<div class="note">{{.Error}}</div>{{end}}
+<form method="post" action="/change-password">
+  <input type="hidden" name="login_challenge" value="{{.Challenge}}">
+  <input type="hidden" name="account" value="{{.Account}}">
+  <input name="old_password" type="password" placeholder="当前密码" autocomplete="current-password">
+  <input name="new_password" type="password" placeholder="新密码（至少 8 位）" autofocus autocomplete="new-password">
+  <input name="confirm_password" type="password" placeholder="确认新密码" autocomplete="new-password">
+  <button class="primary" type="submit">修改并登录</button>
 </form></div></body>`))
 
 var consentPage = template.Must(template.New("consent").Parse(pageCSS + `<!doctype html><meta charset="utf-8"><body>
@@ -103,11 +118,69 @@ func doLogin(c *gin.Context, p *auth.Provider) {
 	}
 	redirectTo, err := p.Login(c.Request.Context(), challenge, account, password, false)
 	if err != nil {
+		if errors.Is(err, auth.ErrMustChangePassword) {
+			// Credentials are valid but a password change is required first.
+			// Render the change-password page directly (no server session); the
+			// form re-carries the challenge + account and re-collects the old pw.
+			renderHTML(c, changePasswordPage, map[string]any{"Challenge": challenge, "Account": account})
+			return
+		}
 		if errors.Is(err, auth.ErrInvalidCredentials) || errors.Is(err, auth.ErrUserDisabled) {
 			c.String(http.StatusUnauthorized, "登录失败：账号或密码错误")
 			return
 		}
 		slog.Error("login: accept failed", "err", err)
+		c.String(http.StatusInternalServerError, "internal error")
+		return
+	}
+	c.Redirect(http.StatusFound, redirectTo)
+}
+
+// showChangePassword renders the change-password form. Reached via the forced
+// first-login branch in doLogin (which renders it directly) or a direct GET
+// carrying login_challenge + account.
+func showChangePassword(c *gin.Context) {
+	challenge := c.Query("login_challenge")
+	if challenge == "" {
+		c.String(http.StatusBadRequest, "missing login_challenge")
+		return
+	}
+	renderHTML(c, changePasswordPage, map[string]any{"Challenge": challenge, "Account": c.Query("account")})
+}
+
+// doChangePassword re-verifies the current password, sets the new one, and
+// completes the hydra login. Validation errors re-render the page with a note.
+func doChangePassword(c *gin.Context, p *auth.Provider) {
+	challenge := c.PostForm("login_challenge")
+	account := c.PostForm("account")
+	oldPw := c.PostForm("old_password")
+	newPw := c.PostForm("new_password")
+	confirm := c.PostForm("confirm_password")
+	if challenge == "" {
+		c.String(http.StatusBadRequest, "missing login_challenge")
+		return
+	}
+	reRender := func(msg string) {
+		renderHTML(c, changePasswordPage, map[string]any{"Challenge": challenge, "Account": account, "Error": msg})
+	}
+	switch {
+	case newPw == "" || newPw != confirm:
+		reRender("两次输入的新密码不一致或为空")
+		return
+	case len([]rune(newPw)) < 8:
+		reRender("新密码至少 8 位")
+		return
+	case newPw == oldPw:
+		reRender("新密码不能与当前密码相同")
+		return
+	}
+	redirectTo, err := p.ChangePassword(c.Request.Context(), challenge, account, oldPw, newPw, false)
+	if err != nil {
+		if errors.Is(err, auth.ErrInvalidCredentials) || errors.Is(err, auth.ErrUserDisabled) {
+			reRender("当前密码错误")
+			return
+		}
+		slog.Error("change-password: failed", "err", err)
 		c.String(http.StatusInternalServerError, "internal error")
 		return
 	}

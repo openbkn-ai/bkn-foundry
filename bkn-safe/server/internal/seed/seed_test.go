@@ -122,6 +122,59 @@ func TestSeededRoleGrants(t *testing.T) {
 	}
 }
 
+// TestSeedsAdminUser verifies the built-in admin is created bound to super-admin
+// with the forced-change flag, and that a re-seed never overwrites a changed
+// password or cleared flag.
+func TestSeedsAdminUser(t *testing.T) {
+	db := newDB(t)
+	e, err := authz.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(db, e); err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+
+	var admin model.User
+	if err := db.First(&admin, "id = ?", adminUserID).Error; err != nil {
+		t.Fatalf("admin user not seeded: %v", err)
+	}
+	if admin.Account != adminAccount {
+		t.Errorf("admin account = %q, want %q", admin.Account, adminAccount)
+	}
+	if !admin.Enabled || admin.Source != model.SourceLocal || admin.PasswordHash == "" {
+		t.Errorf("admin row malformed: %+v", admin)
+	}
+	if !admin.MustChangePassword {
+		t.Error("seeded admin must have MustChangePassword=true")
+	}
+	// Super-admin wildcard reaches the admin via the seeded role binding.
+	ok, err := e.Check(adminUserID, "catalog", "adp_bkn_catalog", "view_detail")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Error("seeded admin should have super-admin (view_detail on catalog)")
+	}
+
+	// Simulate the operator changing the password + clearing the flag, then
+	// re-seed: the row must be left untouched (no reset to the initial password).
+	if err := db.Model(&model.User{}).Where("id = ?", adminUserID).
+		Updates(map[string]any{"password_hash": "changed-hash", "must_change_password": false}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(db, e); err != nil {
+		t.Fatalf("re-apply: %v", err)
+	}
+	var after model.User
+	if err := db.First(&after, "id = ?", adminUserID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if after.PasswordHash != "changed-hash" || after.MustChangePassword {
+		t.Errorf("re-seed overwrote changed admin: hash=%q must_change=%v", after.PasswordHash, after.MustChangePassword)
+	}
+}
+
 // TestApplyIdempotent runs the seed twice; the second run must not error or
 // duplicate roles.
 func TestApplyIdempotent(t *testing.T) {
