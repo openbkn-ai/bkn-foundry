@@ -105,6 +105,12 @@ spec:
             - { name: URLS_DEVICE_VERIFICATION, value: "{{ if $pub }}{{ $pub }}{{ else }}{{ $svc }}{{ end }}/device" }
             - { name: SECRETS_SYSTEM, value: {{ .Values.bundledDeps.hydraSecretsSystem | quote }} }
             - { name: OAUTH2_EXPOSE_INTERNAL_ERRORS, value: "true" }
+            {{- /* serve all --dev issues cookies without Secure; a SameSite=None */}}
+            {{- /* cookie without Secure is dropped by modern browsers, breaking the */}}
+            {{- /* device-flow CSRF check ("No CSRF value available in the session */}}
+            {{- /* cookie"). The whole browser flow is same-site (one gateway host), */}}
+            {{- /* so Lax keeps the cookie on the top-level navigations + form POST. */}}
+            - { name: SERVE_COOKIES_SAME_SITE_MODE, value: "Lax" }
           ports: [{ containerPort: 4444 }, { containerPort: 4445 }]
 ---
 apiVersion: v1
