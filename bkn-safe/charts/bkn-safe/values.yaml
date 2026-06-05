@@ -88,3 +88,8 @@ bundledDeps:
   postgresImage: postgres:16
   mariadbImage: mariadb:11.4
   hydraSecretsSystem: "dev-only-change-me-32-bytes-secret"
+  # Browser-facing public base URL of the gateway (TLS-terminating ingress),
+  # e.g. https://10.211.55.4. When set, hydra advertises this as the issuer and
+  # builds login/consent/device page URLs from it so human browser flows work
+  # off-cluster. Empty => in-cluster service hostnames (pure in-cluster dev only).
+  publicBaseURL: ""

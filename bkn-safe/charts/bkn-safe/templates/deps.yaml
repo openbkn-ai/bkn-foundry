@@ -84,10 +84,14 @@ spec:
           args: ["serve", "all", "--dev"]
           env:
             - { name: DSN, value: "postgres://hydra:secret@{{ .Release.Name }}-postgres:5432/hydra?sslmode=disable" }
-            - { name: URLS_SELF_ISSUER, value: "http://{{ .Release.Name }}-hydra-public:4444" }
-            - { name: URLS_LOGIN, value: "http://{{ .Values.image.name }}:{{ .Values.service.ports.port }}/login" }
-            - { name: URLS_CONSENT, value: "http://{{ .Values.image.name }}:{{ .Values.service.ports.port }}/consent" }
-            - { name: URLS_DEVICE_VERIFICATION, value: "http://{{ .Values.image.name }}:{{ .Values.service.ports.port }}/device" }
+            {{- /* publicBaseURL set => browser-facing public gateway URLs (issuer + */}}
+            {{- /* login/consent/device pages); empty => in-cluster hostnames (pure dev). */}}
+            {{- $pub := .Values.bundledDeps.publicBaseURL }}
+            {{- $svc := printf "http://%s:%v" .Values.image.name .Values.service.ports.port }}
+            - { name: URLS_SELF_ISSUER, value: "{{ if $pub }}{{ $pub }}{{ else }}http://{{ .Release.Name }}-hydra-public:4444{{ end }}" }
+            - { name: URLS_LOGIN, value: "{{ if $pub }}{{ $pub }}{{ else }}{{ $svc }}{{ end }}/login" }
+            - { name: URLS_CONSENT, value: "{{ if $pub }}{{ $pub }}{{ else }}{{ $svc }}{{ end }}/consent" }
+            - { name: URLS_DEVICE_VERIFICATION, value: "{{ if $pub }}{{ $pub }}{{ else }}{{ $svc }}{{ end }}/device" }
             - { name: SECRETS_SYSTEM, value: {{ .Values.bundledDeps.hydraSecretsSystem | quote }} }
             - { name: OAUTH2_EXPOSE_INTERNAL_ERRORS, value: "true" }
           ports: [{ containerPort: 4444 }, { containerPort: 4445 }]
