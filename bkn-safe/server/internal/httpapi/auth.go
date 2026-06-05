@@ -5,6 +5,7 @@ import (
 	"html/template"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -165,9 +166,28 @@ func showDevice(c *gin.Context) {
 	})
 }
 
+// normalizeUserCode makes the device user_code case- and separator-insensitive,
+// per RFC 8628 §6.1: strip any non-alphanumeric chars (dashes, spaces) the user
+// or the prefilled verification_uri_complete may include, and uppercase the rest
+// so it matches hydra's generated (uppercase) code regardless of how it's typed.
+func normalizeUserCode(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		switch {
+		case r >= '0' && r <= '9':
+			b.WriteRune(r)
+		case r >= 'a' && r <= 'z':
+			b.WriteRune(r - ('a' - 'A'))
+		case r >= 'A' && r <= 'Z':
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
 func doDevice(c *gin.Context, h *auth.HydraAdmin) {
 	challenge := c.PostForm("device_challenge")
-	userCode := c.PostForm("user_code")
+	userCode := normalizeUserCode(c.PostForm("user_code"))
 	if challenge == "" || userCode == "" {
 		c.String(http.StatusBadRequest, "missing device_challenge or user_code")
 		return
