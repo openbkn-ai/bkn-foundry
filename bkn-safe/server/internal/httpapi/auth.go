@@ -236,19 +236,17 @@ func showDevice(c *gin.Context) {
 	})
 }
 
-// normalizeUserCode makes the device user_code case- and separator-insensitive,
-// per RFC 8628 §6.1: strip any non-alphanumeric chars (dashes, spaces) the user
-// or the prefilled verification_uri_complete may include, and uppercase the rest
-// so it matches hydra's generated (uppercase) code regardless of how it's typed.
+// normalizeUserCode strips separators/whitespace a user (or the prefilled
+// verification_uri_complete) may include, but PRESERVES case. hydra v26 issues a
+// case-SENSITIVE mixed-case user_code (e.g. "nRfpqcVx"), so uppercasing it — as
+// RFC 8628 §6.1 assumes for uppercase-letter codes — makes hydra's accept lookup
+// fail with "user_code session could not be found or malformed". Keep only
+// alphanumerics, unchanged case.
 func normalizeUserCode(s string) string {
 	var b strings.Builder
 	for _, r := range s {
 		switch {
-		case r >= '0' && r <= '9':
-			b.WriteRune(r)
-		case r >= 'a' && r <= 'z':
-			b.WriteRune(r - ('a' - 'A'))
-		case r >= 'A' && r <= 'Z':
+		case r >= '0' && r <= '9', r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z':
 			b.WriteRune(r)
 		}
 	}
