@@ -1,8 +1,9 @@
 # CLI device-login e2e handoff — bkn-safe + hydra (VM 10.211.55.4, 2026-06-05)
 
 For the CLI/SDK agent. The auth/login layer is live and externally reachable.
-Service-side authz enforcement is intentionally OFF for now (see Limits), so this
-round verifies the **login + token + introspect** path end to end.
+Service-side authz enforcement is now ON (all 5 services `AUTH_ENABLED=true`, see
+Limits + S2S), so beyond the **login + token + introspect** path, service API calls
+now enforce ext claims + resource authz.
 
 ## Connection params
 
@@ -37,10 +38,12 @@ Other registered clients (FYI): `ci-runner` (client_credentials), `openbkn-studi
 
 ## Limits (do NOT test this round)
 
-- **Service API authz is OFF.** All 6 backend services run `AUTH_ENABLED=false`, so
-  calling e.g. `/api/vega-backend/v1/catalogs` with a user token will NOT exercise
-  introspect/authz — it returns 200 regardless. Enabling enforcement is blocked on
-  the S2S issue below.
+- **Service API authz is now ON** (changed 2026-06-05). All 5 auth-gated services
+  (vega-backend, bkn-backend, ontology-query, agent-retrieval,
+  agent-operator-integration) run `AUTH_ENABLED=true` — calling e.g.
+  `/api/vega-backend/v1/catalogs` now exercises introspect + resource authz, so a
+  user token must carry the ext claims (below) and the account must be authorized
+  for the resource. See the S2S section for how internal calls pass authz.
 - A `client_credentials` token (e.g. `ci-runner`) has NO ext claims (skips consent),
   so it 502s the services' lib. Use a real user (device) token, not client_credentials,
   for anything that hits a service.
