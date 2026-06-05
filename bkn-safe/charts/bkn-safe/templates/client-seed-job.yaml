@@ -1,0 +1,55 @@
+{{- if .Values.clientSeed.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Values.image.name }}-client-seed
+  namespace: {{ .Values.namespace }}
+  annotations:
+    # Register the OAuth login clients after hydra + bkn-safe are up.
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 10
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.image.name }}-client-seed
+    spec:
+      restartPolicy: Never
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: client-seed
+          # bkn-safe image ships curl; reuse it (no extra image to pull).
+          image: "{{- if .Values.image.registry }}{{ .Values.image.registry }}/{{ end }}{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: ADMIN
+              value: {{ .Values.config.hydra.adminURL | quote }}
+            - name: WEB_REDIRECT
+              value: {{ .Values.clientSeed.webRedirectUri | quote }}
+            - name: CI_SECRET
+              value: {{ .Values.clientSeed.ciRunnerSecret | quote }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              echo "waiting for hydra admin $ADMIN/health/ready ..."
+              i=0
+              until curl -fsS "$ADMIN/health/ready" >/dev/null 2>&1; do
+                i=$((i+1)); [ "$i" -ge 60 ] && echo "hydra admin not ready" && exit 1
+                sleep 2
+              done
+              reg() { # $1=client_id $2=json
+                curl -fsS -X DELETE "$ADMIN/admin/clients/$1" >/dev/null 2>&1 || true
+                curl -fsS -X POST "$ADMIN/admin/clients" -H 'Content-Type: application/json' -d "$2" >/dev/null
+                echo "  + $1"
+              }
+              reg ci-runner '{"client_id":"ci-runner","client_secret":"'"$CI_SECRET"'","grant_types":["client_credentials"],"token_endpoint_auth_method":"client_secret_post","scope":"authz.read authz.write","audience":["bkn-safe"]}'
+              reg openbkn '{"client_id":"openbkn","grant_types":["urn:ietf:params:oauth:grant-type:device_code","refresh_token"],"response_types":["code"],"token_endpoint_auth_method":"none","scope":"openid offline","audience":["bkn-safe"]}'
+              reg openbkn-web '{"client_id":"openbkn-web","grant_types":["authorization_code","refresh_token"],"response_types":["code"],"token_endpoint_auth_method":"none","redirect_uris":["'"$WEB_REDIRECT"'"],"scope":"openid offline","audience":["bkn-safe"]}'
+              echo "client seed done"
+{{- end }}
