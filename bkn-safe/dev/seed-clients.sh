@@ -5,7 +5,7 @@
 #
 # Three clients (per landing-design §5 grant matrix):
 #   ci-runner    — client_credentials (CI / automation, app identity)
-#   openbkn      — device_code (+ refresh) public client (headless human / CLI login)
+#   openbkn-sdk      — device_code (+ refresh) public client (headless human / CLI login)
 #   openbkn-web  — authorization_code + PKCE public client (browser / SPA login)
 #
 # Env:
@@ -37,16 +37,16 @@ create '{
 }' >/dev/null
 echo "  + ci-runner (client_credentials)"
 
-del openbkn
+del openbkn-sdk
 create '{
-  "client_id": "openbkn",
+  "client_id": "openbkn-sdk",
   "grant_types": ["urn:ietf:params:oauth:grant-type:device_code", "refresh_token"],
   "response_types": ["code"],
   "token_endpoint_auth_method": "none",
   "scope": "openid offline",
   "audience": ["bkn-safe"]
 }' >/dev/null
-echo "  + openbkn (device_code, public)"
+echo "  + openbkn-sdk (device_code, public)"
 
 del openbkn-web
 create "{

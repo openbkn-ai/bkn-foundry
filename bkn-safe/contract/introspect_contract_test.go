@@ -92,7 +92,7 @@ func TestIntrospectGoldenParses(t *testing.T) {
 				Active:     true,
 				VisitorID:  "f6ae435c-0000-0000-0000-000000000000",
 				Scope:      "openid offline",
-				ClientID:   "openbkn",
+				ClientID:   "openbkn-sdk",
 				VisitorTyp: hydra.VisitorType_User, // "realname" maps to User in the lib
 				LoginIP:    "10.0.0.5",
 				Udid:       "", // real ISF user tokens carry udid="" (captured 2026-06-03)
