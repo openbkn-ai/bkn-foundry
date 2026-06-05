@@ -41,11 +41,10 @@
 - [ ] **D4. flow-automation**(8 端点)—— 随 anyshare 缩减一并处理(很多端点服务 anyshare 功能)。
 
 ## 阶段 E —— 部署 + 影子比对 + 翻权威(逐服务)
-- [ ] **E1.** bkn-safe + hydra(PG)进生产 ns(helm,`bundledDeps=false`,指真实 hydra/PG + 现有 MariaDB);seed 角色/资源/权限;建用户 + 分角色(重定义,不迁 ISF 表)。
-- [ ] **E2.** 各服务 deploy 设 `AUTHZ_PROVIDER=shadow` + `BKN_SAFE_URL`,跑真实流量,收 `[authz-shadow] DIFF` 日志。
-- [ ] **E3.** diff 清(符合重定义预期)→ 逐服务翻 `AUTHZ_PROVIDER=bkn-safe`(需 B 的全适配器)。失败回滚 = 翻回 env。
-- [ ] **E4.** introspect:各服务 hydra-admin endpoint 配置指向新 hydra(纯配置,保兼容)。
-- [ ] **E5.** user-mgmt 调用方切 bkn-safe directory(D 完成后)。
+- [~] **E1. 部署产物已备**(代码/配置就绪,待 CI 发布 + VM 部署):hydra 生产 chart(`bkn-safe/charts/hydra`,v26.2.0/PG/migrate/serve,commit `35d30ebc`)+ bkn-safe 生产 Dockerfile + `release-adp-bkn-safe.yml` CI(发镜像 + bkn-safe & hydra chart 到 OCI)+ bkn-foundry manifest 声明 hydra/bkn-safe(commit `349b9491`)。**待办(需 OCI/VM)**:PG 实例供给(hydra DSN)、CI 跑发布、VM 部署 + seed 角色/资源/权限 + 建用户分角色。
+- [~] **E2/E3 开关已备**:各服务 chart 加 `bknSafe.{authzProvider,directoryProvider,url}` → 渲染 `AUTHZ_PROVIDER/DIRECTORY_PROVIDER/BKN_SAFE_URL`,默认空=ISF、env 可回退(commit `9dd2f1de`,vega/bkn/DA/mf-model×2 + exec-factory)。**待 VM**:设 shadow 收 diff → 逐服务翻 bkn-safe。
+- [ ] **E4.** introspect:各服务 hydra-admin endpoint 指向新 hydra(per-cluster values,deploy 时改)。
+- [x] **E5.** user-mgmt 调用方切 bkn-safe directory —— 代码已备(D1/D2/D3 + `DIRECTORY_PROVIDER` 开关),随 E3 一起翻。
 
 ## 阶段 F —— anyshare 剔除(产品已确认文档库无人用)
 - [ ] flow-automation 删 33 个 `@anyshare/*` dataflow 动作 + `drivenadapters/{eacp,anyshare,doc,doc_share,authentication}.go` + actionMap;bkn-safe 不实现 eacp/jwt。

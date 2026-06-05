@@ -13,6 +13,9 @@
 # ── Global fallback ──────────────────────────────────────────
 *                                          @xforce-io @sh00tg0a1
 
+# ── ISF replacement ─────────────────────────────────────────
+bkn-safe/**                                @sh00tg0a1
+
 # ── ADP (Application Delivery Platform) ─────────────────────
 adp/bkn/**                                 @kenlee1988 @Flynn-Zh @Yana-tao
 adp/context-loader/**                      @criller

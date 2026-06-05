@@ -36,6 +36,7 @@ Workflow YAML files must stay in this directory (flat layout). GitHub does not l
 | [`release-adp-agent-retrieval.yml`](./release-adp-agent-retrieval.yml) | release-adp-agent-retrieval | `push` (`adp/context-loader/agent-retrieval/**`), `workflow_dispatch` | agent-retrieval image + Helm chart |
 | [`release-adp-operator-integration.yml`](./release-adp-operator-integration.yml) | release-adp-operator-integration | `push` (`adp/execution-factory/operator-integration/**`), `workflow_dispatch` | agent-operator-integration image + Helm chart |
 | [`release-adp-vega-backend.yml`](./release-adp-vega-backend.yml) | release-adp-vega-backend | `push` (`adp/vega/vega-backend/**`), `workflow_dispatch` | vega-backend + kafka-connect images + 2 Helm charts |
+| [`release-adp-bkn-safe.yml`](./release-adp-bkn-safe.yml) | release-adp-bkn-safe | `push` (`bkn-safe/**`), `workflow_dispatch` | bkn-safe image + bkn-safe & hydra Helm charts (ISF replacement) |
 | [`release-infra-sandbox.yml`](./release-infra-sandbox.yml) | release-infra-sandbox | `push` (`infra/sandbox/**`), `workflow_dispatch` | sandbox bases (v1) + control-plane + web + 2 templates + 2 Helm charts |
 | [`automation-ghcr-cleanup.yml`](./automation-ghcr-cleanup.yml) | automation-ghcr-cleanup | `schedule` (weekly Sun 03:00 UTC), `workflow_dispatch` | Delete old GHCR container packages (branch-suffixed tags > 30d, untagged orphans); keeps semver/v1/v2/latest |
 
