@@ -28,7 +28,10 @@ ingress:
     - /login
     - /consent
     - /device
-    # Self-service password change (CLI / initial-password users). Narrow on
+    # Forced first-login password change — the browser HTML page (GET renders,
+    # POST submits) served by bkn-safe during the hydra login flow.
+    - /change-password
+    # Self-service password change REST (CLI / initial-password users). Narrow on
     # purpose: exposes only change-password, not /api/safe/v1/authz or the
     # admin /directory user-create/reset routes.
     - /api/safe/v1/auth/change-password
