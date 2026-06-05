@@ -1,13 +1,22 @@
 #!/usr/bin/env bash
-# Register the OAuth2 clients the ISF replacement needs, against the dev hydra
-# admin API (http://127.0.0.1:4445). Idempotent-ish: deletes by id first.
+# Register the OAuth2 clients the ISF replacement needs, against the hydra admin
+# API. Idempotent: deletes by id first. Internal services need NO client (they
+# only introspect / propagate the user token) — only login entry-points do.
 #
-# Two clients (per landing-design §5 grant matrix):
-#   ci-runner        — client_credentials (CI / automation, app identity)
-#   openbkn      — device_code (+ refresh) public client (headless human login)
+# Three clients (per landing-design §5 grant matrix):
+#   ci-runner    — client_credentials (CI / automation, app identity)
+#   openbkn      — device_code (+ refresh) public client (headless human / CLI login)
+#   openbkn-web  — authorization_code + PKCE public client (browser / SPA login)
+#
+# Env:
+#   HYDRA_ADMIN       admin endpoint (default dev http://127.0.0.1:4445; in-cluster
+#                     use http://bkn-safe-hydra-admin:4445)
+#   WEB_REDIRECT_URI  SPA callback (default dev http://localhost:3000/callback;
+#                     set to the real https://<host>/callback in prod)
 set -euo pipefail
 
 ADMIN="${HYDRA_ADMIN:-http://127.0.0.1:4445}"
+WEB_REDIRECT_URI="${WEB_REDIRECT_URI:-http://localhost:3000/callback}"
 
 create() { # $1=json
   curl -fsS -X POST "$ADMIN/admin/clients" \
@@ -38,5 +47,17 @@ create '{
   "audience": ["bkn-safe"]
 }' >/dev/null
 echo "  + openbkn (device_code, public)"
+
+del openbkn-web
+create "{
+  \"client_id\": \"openbkn-web\",
+  \"grant_types\": [\"authorization_code\", \"refresh_token\"],
+  \"response_types\": [\"code\"],
+  \"token_endpoint_auth_method\": \"none\",
+  \"redirect_uris\": [\"${WEB_REDIRECT_URI}\"],
+  \"scope\": \"openid offline\",
+  \"audience\": [\"bkn-safe\"]
+}" >/dev/null
+echo "  + openbkn-web (authorization_code + PKCE, public; redirect=${WEB_REDIRECT_URI})"
 
 echo "== done =="
