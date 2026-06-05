@@ -11,6 +11,7 @@ import (
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 
+	"bkn-safe/internal/auth"
 	"bkn-safe/internal/authz"
 	"bkn-safe/internal/database"
 	"bkn-safe/internal/directory"
@@ -104,6 +105,52 @@ func TestDirectoryNamesEndpoint(t *testing.T) {
 	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	if len(resp.UserNames) != 1 || resp.UserNames[0].Name != "Alice" {
 		t.Errorf("user_names = %v", resp.UserNames)
+	}
+}
+
+func TestSelfServiceChangePassword(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("sqlite: %v", err)
+	}
+	if err := database.Migrate(db); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	e, err := authz.New(db)
+	if err != nil {
+		t.Fatalf("authz: %v", err)
+	}
+	users := auth.NewUserStore(db)
+	ctx := t.Context()
+	u := &model.User{ID: "u-cp", Account: "erin", Enabled: true, MustChangePassword: true}
+	if err := users.CreateLocalUser(ctx, u, "initial0"); err != nil {
+		t.Fatal(err)
+	}
+	r := New(Deps{Enforcer: e, DB: db, Users: users})
+	const path = "/api/safe/v1/auth/change-password"
+
+	// wrong old password -> 401
+	w := do(t, r, http.MethodPost, path, map[string]string{"account": "erin", "old_password": "nope", "new_password": "brandnew1"})
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("wrong old: want 401, got %d (%s)", w.Code, w.Body.String())
+	}
+	// too-short new password -> 400
+	w = do(t, r, http.MethodPost, path, map[string]string{"account": "erin", "old_password": "initial0", "new_password": "short"})
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("short new: want 400, got %d", w.Code)
+	}
+	// success -> 204, new password works, flag cleared
+	w = do(t, r, http.MethodPost, path, map[string]string{"account": "erin", "old_password": "initial0", "new_password": "brandnew1"})
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("change: want 204, got %d (%s)", w.Code, w.Body.String())
+	}
+	got, err := users.Verify(ctx, "erin", "brandnew1")
+	if err != nil {
+		t.Fatalf("verify new: %v", err)
+	}
+	if got.MustChangePassword {
+		t.Error("change-password must clear MustChangePassword")
 	}
 }
 

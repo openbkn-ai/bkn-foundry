@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -55,6 +56,45 @@ func registerUserAdmin(r *gin.Engine, users *auth.UserStore) {
 			return
 		}
 		if err := users.SetPassword(c.Request.Context(), c.Param("id"), req.Password); err != nil {
+			serverError(c, err)
+			return
+		}
+		c.Status(http.StatusNoContent)
+	})
+}
+
+// minPasswordLen is the floor for a self-service new password.
+const minPasswordLen = 8
+
+// registerSelfServiceAuth mounts the self-service (no-admin) credential
+// endpoints. change-password lets a user (e.g. the CLI, on detecting the
+// initial password) change their own password by proving the old one — no
+// hydra challenge, distinct from the admin reset above.
+func registerSelfServiceAuth(r *gin.Engine, users *auth.UserStore) {
+	// POST /api/safe/v1/auth/change-password — verify old password, set new.
+	r.POST("/api/safe/v1/auth/change-password", func(c *gin.Context) {
+		var req struct {
+			Account     string `json:"account" binding:"required"`
+			OldPassword string `json:"old_password" binding:"required"`
+			NewPassword string `json:"new_password" binding:"required"`
+		}
+		if !bind(c, &req) {
+			return
+		}
+		switch {
+		case len([]rune(req.NewPassword)) < minPasswordLen:
+			c.JSON(http.StatusBadRequest, gin.H{"error": "new password too short"})
+			return
+		case req.NewPassword == req.OldPassword:
+			c.JSON(http.StatusBadRequest, gin.H{"error": "new password must differ from current"})
+			return
+		}
+		err := users.ChangePassword(c.Request.Context(), req.Account, req.OldPassword, req.NewPassword)
+		if err != nil {
+			if errors.Is(err, auth.ErrInvalidCredentials) || errors.Is(err, auth.ErrUserDisabled) {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid account or password"})
+				return
+			}
 			serverError(c, err)
 			return
 		}

@@ -45,6 +45,7 @@ func New(deps Deps) *gin.Engine {
 	}
 	if deps.Users != nil {
 		registerUserAdmin(r, deps.Users)
+		registerSelfServiceAuth(r, deps.Users)
 	}
 
 	return r

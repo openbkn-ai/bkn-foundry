@@ -86,6 +86,19 @@ func (s *UserStore) ByID(ctx context.Context, id string) (*model.User, error) {
 	return &u, nil
 }
 
+// ChangePassword is the self-service password change: it re-verifies the
+// current (old) password, then sets the new one (which also clears
+// MustChangePassword). Returns the same opaque errors as Verify on a bad old
+// password / disabled user. Drives the CLI change-password path — no hydra
+// challenge, just a credential update.
+func (s *UserStore) ChangePassword(ctx context.Context, account, oldPassword, newPassword string) error {
+	u, err := s.Verify(ctx, account, oldPassword)
+	if err != nil {
+		return err
+	}
+	return s.SetPassword(ctx, u.ID, newPassword)
+}
+
 // SetPassword updates a local user's password and clears MustChangePassword
 // (a successful change always satisfies a forced-change requirement).
 func (s *UserStore) SetPassword(ctx context.Context, userID, password string) error {
