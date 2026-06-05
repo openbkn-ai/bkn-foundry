@@ -120,6 +120,19 @@ SQL 建库目录、3 个 `.github/workflows/release-adp-{dataflow,coderunner,doc
 
 > 净清理(本次范围):删 ~914 文件(一线源码 ~116k 行)+ 改 ~14 个文件(exec-factory 8 + deploy/CI ~6)。
 
+## 5.7 执行结果(2026-06-05)
+
+dataflow 产品线移除 + DA "发布为 Dataflow Agent" 残留**代码**全清,已完成并 build/vet 绿。commit:
+`b0453f3a`(exec-factory 摘 FlowAutomation)、`9f1b0e23`(删 adp/dataflow 914 文件)、
+`1ca51b4d`(deploy/CI)、`f7fc628b`(exec-factory 死配置/helm)、`522aa759`(DA 残留代码:枚举/
+release PO/发布管线/agent-config/chat 场景/~18 测试)。
+
+**DB 列 `f_is_data_flow_agent` + `idx_is_data_flow_agent`(t_data_agent_release)—— 决定保留,不 drop**:
+- 代码已完全不读写该列(休眠、`not null default 0`、无 insert/select 引用)→ 零运行时风险。
+- 现在物理 drop 反而危险:破坏性 + xinchuang 双方言(mariadb+dm8)+ DA 迁移版本不明(目录最高 0.6.0)
+  + `dm8/0.6.0/02-insert-select.sql` 显式拷贝该列(drop 会让该迁移步报错)。
+- 处置:留作 deploy 时/将来单独评估(确认线上无数据后再决定 init 改写 or ALTER)。
+
 ## 6. 建议执行顺序
 
 1. 先摘 **execution-factory** 的 FlowAutomation(代码,独立编译验证)。
