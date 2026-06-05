@@ -63,9 +63,6 @@ func registerUserAdmin(r *gin.Engine, users *auth.UserStore) {
 	})
 }
 
-// minPasswordLen is the floor for a self-service new password.
-const minPasswordLen = 8
-
 // registerSelfServiceAuth mounts the self-service (no-admin) credential
 // endpoints. change-password lets a user (e.g. the CLI, on detecting the
 // initial password) change their own password by proving the old one — no
@@ -81,11 +78,9 @@ func registerSelfServiceAuth(r *gin.Engine, users *auth.UserStore) {
 		if !bind(c, &req) {
 			return
 		}
-		switch {
-		case len([]rune(req.NewPassword)) < minPasswordLen:
-			c.JSON(http.StatusBadRequest, gin.H{"error": "new password too short"})
-			return
-		case req.NewPassword == req.OldPassword:
+		// Password-strength rules are intentionally not enforced yet; only
+		// reject a no-op change (new == old).
+		if req.NewPassword == req.OldPassword {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "new password must differ from current"})
 			return
 		}

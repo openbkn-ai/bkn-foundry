@@ -67,7 +67,7 @@ var changePasswordPage = template.Must(template.New("changepw").Parse(pageCSS + 
   <input type="hidden" name="login_challenge" value="{{.Challenge}}">
   <input type="hidden" name="account" value="{{.Account}}">
   <input name="old_password" type="password" placeholder="当前密码" autocomplete="current-password">
-  <input name="new_password" type="password" placeholder="新密码（至少 8 位）" autofocus autocomplete="new-password">
+  <input name="new_password" type="password" placeholder="新密码" autofocus autocomplete="new-password">
   <input name="confirm_password" type="password" placeholder="确认新密码" autocomplete="new-password">
   <button class="primary" type="submit">修改并登录</button>
 </form></div></body>`))
@@ -166,9 +166,6 @@ func doChangePassword(c *gin.Context, p *auth.Provider) {
 	switch {
 	case newPw == "" || newPw != confirm:
 		reRender("两次输入的新密码不一致或为空")
-		return
-	case len([]rune(newPw)) < 8:
-		reRender("新密码至少 8 位")
 		return
 	case newPw == oldPw:
 		reRender("新密码不能与当前密码相同")

@@ -135,10 +135,10 @@ func TestSelfServiceChangePassword(t *testing.T) {
 	if w.Code != http.StatusUnauthorized {
 		t.Errorf("wrong old: want 401, got %d (%s)", w.Code, w.Body.String())
 	}
-	// too-short new password -> 400
-	w = do(t, r, http.MethodPost, path, map[string]string{"account": "erin", "old_password": "initial0", "new_password": "short"})
+	// new == old -> 400
+	w = do(t, r, http.MethodPost, path, map[string]string{"account": "erin", "old_password": "initial0", "new_password": "initial0"})
 	if w.Code != http.StatusBadRequest {
-		t.Errorf("short new: want 400, got %d", w.Code)
+		t.Errorf("new==old: want 400, got %d", w.Code)
 	}
 	// success -> 204, new password works, flag cleared
 	w = do(t, r, http.MethodPost, path, map[string]string{"account": "erin", "old_password": "initial0", "new_password": "brandnew1"})
