@@ -1,0 +1,93 @@
+name: ci-execution-factory
+
+on:
+  pull_request:
+    paths:
+      - 'adp/execution-factory/**'
+      - '.github/workflows/ci-execution-factory.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'adp/execution-factory/**'
+      - '.github/workflows/ci-execution-factory.yml'
+  workflow_dispatch:
+    inputs:
+      run_live_smoke:
+        description: 'Run L2 live smoke (needs backend URL + token secrets)'
+        type: boolean
+        default: false
+
+jobs:
+  openbkn-smoke-collect:
+    name: L2 smoke harness (collect-only)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: adp/execution-factory/tests
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install minimal pytest deps
+        run: pip install -r requirements/ci-smoke.txt
+
+      - name: Collect openbkn-smoke tests
+        run: >
+          python -m pytest testcases/openbkn-smoke
+          --confcutdir=testcases/openbkn-smoke
+          --collect-only -q
+
+  operator-integration-go-test:
+    name: operator-integration unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: adp/execution-factory/operator-integration
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: adp/execution-factory/operator-integration/go.mod
+
+      - name: Run Go unit tests
+        run: |
+          pkgs=$(go list ./... | grep -v /server/tests | grep -v /server/mocks)
+          go test -count=1 $pkgs
+
+  openbkn-smoke-live:
+    name: L2 live smoke (manual)
+    if: github.event_name == 'workflow_dispatch' && inputs.run_live_smoke
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: adp/execution-factory/tests
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install minimal pytest deps
+        run: pip install -r requirements/ci-smoke.txt
+
+      - name: Run openbkn-smoke
+        env:
+          OPENBKN_TOKEN: ${{ secrets.OPENBKN_TOKEN }}
+          OPENBKN_AUTH_ENABLED: ${{ secrets.OPENBKN_AUTH_ENABLED }}
+          OPENBKN_BUSINESS_DOMAIN: ${{ secrets.OPENBKN_BUSINESS_DOMAIN }}
+        run: |
+          if [ -z "$OPENBKN_TOKEN" ] && [ "$OPENBKN_AUTH_ENABLED" != "false" ]; then
+            echo "Set repository secrets OPENBKN_TOKEN or OPENBKN_AUTH_ENABLED=false"
+            exit 1
+          fi
+          if [ -z "$OPENBKN_BUSINESS_DOMAIN" ]; then
+            export OPENBKN_BUSINESS_DOMAIN=bd_public
+          fi
+          cp config/env.openbkn.example.ini config/env.ini
+          python -m pytest testcases/openbkn-smoke --confcutdir=testcases/openbkn-smoke -q
