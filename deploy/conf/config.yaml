@@ -6,6 +6,13 @@ env:
   timezone: Asia/Shanghai
 image:
   registry: ghcr.io/openbkn-ai
+# ISF replacement: route service authz + directory lookups to bkn-safe (the ISF
+# stack is retired post-cutover). url is bkn-safe's ClusterIP API. To roll back
+# to ISF, blank these three and re-enable the isf dependency in the manifest.
+bknSafe:
+  authzProvider: bkn-safe
+  directoryProvider: bkn-safe
+  url: http://bkn-safe.bkn-safe:3000
 # accessAddress: sudo deploy.sh writes the real URL to $HOME/.openbkn-ai/config.yaml by default.
 # This file is an in-repo template. Leave host empty so onboard can auto-detect primary IPv4 when
 # CONFIG_YAML_PATH points here (e.g. ubuntu user without overriding CONFIG_YAML_PATH).

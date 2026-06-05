@@ -84,9 +84,20 @@ spec:
           args: ["serve", "all", "--dev"]
           env:
             - { name: DSN, value: "postgres://hydra:secret@{{ .Release.Name }}-postgres:5432/hydra?sslmode=disable" }
-            {{- /* publicBaseURL set => browser-facing public gateway URLs (issuer + */}}
-            {{- /* login/consent/device pages); empty => in-cluster hostnames (pure dev). */}}
+            {{- /* Public browser-facing base for issuer + login/consent/device URLs. */}}
+            {{- /* Precedence: explicit bundledDeps.publicBaseURL > derived from the */}}
+            {{- /* global accessAddress (gateway, shared with onboard) > in-cluster names. */}}
             {{- $pub := .Values.bundledDeps.publicBaseURL }}
+            {{- if and (not $pub) .Values.accessAddress .Values.accessAddress.host }}
+              {{- $aa := .Values.accessAddress }}
+              {{- $scheme := $aa.scheme | default "https" }}
+              {{- $port := $aa.port | toString }}
+              {{- if or (and (eq $scheme "https") (eq $port "443")) (and (eq $scheme "http") (eq $port "80")) }}
+                {{- $pub = printf "%s://%s" $scheme $aa.host }}
+              {{- else }}
+                {{- $pub = printf "%s://%s:%s" $scheme $aa.host $port }}
+              {{- end }}
+            {{- end }}
             {{- $svc := printf "http://%s:%v" .Values.image.name .Values.service.ports.port }}
             - { name: URLS_SELF_ISSUER, value: "{{ if $pub }}{{ $pub }}{{ else }}http://{{ .Release.Name }}-hydra-public:4444{{ end }}" }
             - { name: URLS_LOGIN, value: "{{ if $pub }}{{ $pub }}{{ else }}{{ $svc }}{{ end }}/login" }

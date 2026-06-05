@@ -5,13 +5,8 @@ version: 0.1.0
 source:
   type: oci
   registry: oci://ghcr.io/openbkn-ai/charts
-dependencies:
-- product: isf
-  version: 0.8.0
-  manifest: ./isf.yaml
-  optional: true
-  defaultEnabled: true
-  enabledIf: auth.enabled
+# Auth/identity is provided by bkn-safe (authn/authz/directory) + ORY Hydra,
+# deployed as releases below. The legacy ISF stack has been fully retired.
 releases:
   core-data-migrator:
     chart: core-data-migrator
@@ -56,12 +51,13 @@ releases:
   otelcol-contrib:
     chart: otelcol-contrib
     version: 0.1.0
-  # ISF replacement: bkn-safe (authn/authz/directory) + upstream ORY Hydra
-  # (token engine, PostgreSQL backend). Deployed alongside ISF during the
-  # shadow→flip cutover (services set bknSafe.* env to switch); ISF is retired
-  # (the isf dependency above) only after flip is validated. NOTE: hydra needs a
-  # PostgreSQL instance (config.dsn) — provision one (external or a pg chart)
-  # before enabling.
+  # ISF replacement (now the default auth path): bkn-safe (authn/authz/directory)
+  # + upstream ORY Hydra (token engine, PostgreSQL backend). Services route to it
+  # via config.yaml bknSafe.* ; the isf dependency above is disabled. hydra's
+  # browser-facing URLs (issuer/login/consent/device) derive from accessAddress,
+  # and its ingress exposes /oauth2/*, /.well-known/*, /userinfo at the gateway.
+  # NOTE: hydra needs a PostgreSQL instance (config.dsn) — provision one (external
+  # or a pg chart) before enabling.
   hydra:
     chart: hydra
     version: 0.1.0

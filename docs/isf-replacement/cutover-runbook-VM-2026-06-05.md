@@ -130,4 +130,54 @@ DIFF 清白后,**逐个**服务翻:
 
 - `bkn-safe/dev/validate-safe-api.sh`、`validate-e2e.sh`(改 endpoint 指 VM)。
 - shadow 离线对账:`bkn-safe/cmd/authz-shadow`(ISF↔bkn-safe 批量 diff)。
+
+## 10. 实际执行记录(VM 10.211.55.4，2026-06-05)
+
+已在 VM 完成全套 cutover。下列「live 动作」做在集群上，「deploy 产物」是为复现固化进仓库的对应改动。
+
+### 翻 + introspect 重指
+
+- live:6 服务(vega/bkn/agent-factory/agent-operator-integration/mf-model-api/mf-model-manager)
+  `set env` `AUTHZ_PROVIDER=DIRECTORY_PROVIDER=bkn-safe`、`BKN_SAFE_URL=http://bkn-safe.bkn-safe:3000`，滚新镜像。
+- live:openbkn 的 `hydra-admin`/`hydra-public` 改 ExternalName → `bkn-safe-hydra-{admin,public}.bkn-safe`
+  (introspect 重指，免改服务配置即生效；**保留**，live 6 服务仍依赖它)。
+- deploy 产物:
+  - `deploy/conf/config.yaml` 新增顶层 `bknSafe:`（flip 默认值，全 chart 生效）。
+  - 6 服务 chart `values.yaml` 的 hydra host 直接配 `bkn-safe-hydra-*.bkn-safe`（fix A，未来 fresh deploy 无需 ExternalName hack；commit `3ebc75b5`）。
+
+### hydra 公网 URL + device 网关
+
+- live:`bkn-safe-hydra` `set env` `URLS_SELF_ISSUER/LOGIN/CONSENT/DEVICE_VERIFICATION=https://10.211.55.4[/...]`。
+- live:`bkn-safe-ingress` 增 `/oauth2`、`/.well-known/*`、`/userinfo` → `bkn-safe-hydra-public:4444`
+  (补 ISF ingress 缺的 `/oauth2/device/auth`，且 ISF ingress 退役后不依赖它)。
+- deploy 产物:
+  - `bkn-safe` chart `bundledDeps.publicBaseURL`，空时**从 `accessAddress` 派生**（与 onboard 同源；commit `bcc16cfd` + 后续 accessAddress 派生）。
+  - `bkn-safe` chart ingress 支持第二组 backend，`ingress.hydraPublicPaths` → hydra public svc（commit `b41d7674`）。
+
+### OAuth client(pre-registration)
+
+- live + deploy:`bkn-safe` chart `client-seed-job`(post-install/upgrade hook)注册 3 个 client:
+  `ci-runner`(client_credentials)、`openbkn-sdk`(device_code，public)、`openbkn-studio`(authz_code+PKCE，public)。
+- CLI/SDK 默认 client_id 用 **`openbkn-sdk`**(非旧品牌 `kweaver-cli`)。`openbkn-studio` redirect_uri 待前端定后 PATCH。
+
+### 退役 ISF + dataflow(已删，不可逆)
+
+- live:`kubectl delete` openbkn 下 ISF 7 deploy(authentication/authorization/hydra/isfweb/isfwebthrift/
+  oauth2-ui/user-management，原 scale=0)+ dataflow 产品线全套(deploy dataflow/coderunner/doc-convert、
+  svc dataflowtools-{private,public}/coderunner-private/doc-convert-private、ingress dataflow)。
+  备份:`/tmp/isf-dataflow-retire-backup.yaml`(VM)。
+- **保留**:`hydra-admin`/`hydra-public` ExternalName svc、`ingress-informationsecurityfabric`
+  (待 live 6 服务重部署到 fix A 直连 host 后再删)。
+- deploy 产物:
+  - `deploy/release-manifests/0.1.0/bkn-foundry.yaml`:**彻底删** `isf` 依赖,并删 `isf.yaml`
+    (鉴权仍开但走 bkn-safe;ISF 不再随 deploy 安装)。
+  - dataflow/coderunner/doc-convert 的 chart/manifest/CI 已于代码侧删除(见 dataflow-removal-scope)。
+  - **未做(待后续代码层 ISF 移除一起)**:6 服务 chart 里 `depServices.authorization`/`user_management`
+    等 ISF 专属 dep host —— 它们仍被服务的 ISF client 代码(env-revert 分支)读取,半删只剩死配置,
+    应与"删 `\"\"`=ISF provider 分支 + ISF client"一起做。
+
+### 复现一句话
+
+fresh deploy:`deploy.sh bkn-foundry install --config=<config.yaml>`(含 `bknSafe:`，ISF 默认不装)
+→ 服务起来即走 bkn-safe + hydra；hydra 公网 URL 自动取 `accessAddress`;client-seed hook 注册 3 client。
 - 影子日志标记:`[authz-shadow] DIFF`(Go 服务)/ `[authz-shadow] DIFF`(mf-model Py)。
