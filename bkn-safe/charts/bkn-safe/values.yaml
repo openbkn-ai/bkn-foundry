@@ -31,9 +31,9 @@ ingress:
 # OAuth client seeding (post-install/upgrade Job): registers the login
 # entry-point clients in hydra. Internal services need NO client (they only
 # introspect / propagate the user token) — only login entry-points do.
-#   ci-runner    — client_credentials (CI / automation)
-#   openbkn      — device_code (CLI / headless human login)
-#   openbkn-web  — authorization_code + PKCE (browser / SPA)
+#   ci-runner       — client_credentials (CI / automation)
+#   openbkn-sdk     — device_code (CLI / headless human login)
+#   openbkn-studio  — authorization_code + PKCE (browser / SPA)
 # Idempotent (delete+create). Set webRedirectUri to the real SPA callback.
 clientSeed:
   enabled: true

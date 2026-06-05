@@ -6,7 +6,7 @@
 # Three clients (per landing-design §5 grant matrix):
 #   ci-runner    — client_credentials (CI / automation, app identity)
 #   openbkn-sdk      — device_code (+ refresh) public client (headless human / CLI login)
-#   openbkn-web  — authorization_code + PKCE public client (browser / SPA login)
+#   openbkn-studio  — authorization_code + PKCE public client (browser / SPA login)
 #
 # Env:
 #   HYDRA_ADMIN       admin endpoint (default dev http://127.0.0.1:4445; in-cluster
@@ -48,9 +48,9 @@ create '{
 }' >/dev/null
 echo "  + openbkn-sdk (device_code, public)"
 
-del openbkn-web
+del openbkn-studio
 create "{
-  \"client_id\": \"openbkn-web\",
+  \"client_id\": \"openbkn-studio\",
   \"grant_types\": [\"authorization_code\", \"refresh_token\"],
   \"response_types\": [\"code\"],
   \"token_endpoint_auth_method\": \"none\",
@@ -58,6 +58,6 @@ create "{
   \"scope\": \"openid offline\",
   \"audience\": [\"bkn-safe\"]
 }" >/dev/null
-echo "  + openbkn-web (authorization_code + PKCE, public; redirect=${WEB_REDIRECT_URI})"
+echo "  + openbkn-studio (authorization_code + PKCE, public; redirect=${WEB_REDIRECT_URI})"
 
 echo "== done =="

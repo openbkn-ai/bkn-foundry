@@ -50,6 +50,6 @@ spec:
               }
               reg ci-runner '{"client_id":"ci-runner","client_secret":"'"$CI_SECRET"'","grant_types":["client_credentials"],"token_endpoint_auth_method":"client_secret_post","scope":"authz.read authz.write","audience":["bkn-safe"]}'
               reg openbkn-sdk '{"client_id":"openbkn-sdk","grant_types":["urn:ietf:params:oauth:grant-type:device_code","refresh_token"],"response_types":["code"],"token_endpoint_auth_method":"none","scope":"openid offline","audience":["bkn-safe"]}'
-              reg openbkn-web '{"client_id":"openbkn-web","grant_types":["authorization_code","refresh_token"],"response_types":["code"],"token_endpoint_auth_method":"none","redirect_uris":["'"$WEB_REDIRECT"'"],"scope":"openid offline","audience":["bkn-safe"]}'
+              reg openbkn-studio '{"client_id":"openbkn-studio","grant_types":["authorization_code","refresh_token"],"response_types":["code"],"token_endpoint_auth_method":"none","redirect_uris":["'"$WEB_REDIRECT"'"],"scope":"openid offline","audience":["bkn-safe"]}'
               echo "client seed done"
 {{- end }}
