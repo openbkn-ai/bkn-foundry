@@ -15,9 +15,10 @@ service:
     targetPort: 3000
   annotations: {}
 
-# Only the hydra provider pages (login/consent/device) are browser-facing and
-# go through the ingress. The authz/directory APIs are internal (ClusterIP),
-# called service-to-service.
+# Only the hydra provider pages (login/consent/device) and the self-service
+# change-password endpoint are browser/CLI-facing and go through the ingress.
+# The rest of the authz/directory/user-admin APIs stay internal (ClusterIP),
+# called service-to-service — do NOT widen this to all of /api/safe.
 ingress:
   enabled: true
   ingressClass: class-443
@@ -27,6 +28,10 @@ ingress:
     - /login
     - /consent
     - /device
+    # Self-service password change (CLI / initial-password users). Narrow on
+    # purpose: exposes only change-password, not /api/safe/v1/authz or the
+    # admin /directory user-create/reset routes.
+    - /api/safe/v1/auth/change-password
   # hydra public OAuth2/OIDC endpoints exposed at the gateway, routed to the
   # paired hydra public service (port 4444): token, device authorization,
   # discovery, jwks, userinfo. Replaces the retired ISF ingress's /oauth2/* rules.
