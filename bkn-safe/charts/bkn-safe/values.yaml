@@ -27,6 +27,16 @@ ingress:
     - /login
     - /consent
     - /device
+  # hydra public OAuth2/OIDC endpoints exposed at the gateway, routed to the
+  # paired hydra public service (port 4444): token, device authorization,
+  # discovery, jwks, userinfo. Replaces the retired ISF ingress's /oauth2/* rules.
+  hydraPublicPaths:
+    - /oauth2
+    - /.well-known/openid-configuration
+    - /.well-known/jwks.json
+    - /userinfo
+  hydraPublicService: bkn-safe-hydra-public
+  hydraPublicPort: 4444
 
 # OAuth client seeding (post-install/upgrade Job): registers the login
 # entry-point clients in hydra. Internal services need NO client (they only

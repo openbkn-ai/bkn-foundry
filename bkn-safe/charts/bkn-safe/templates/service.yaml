@@ -32,6 +32,7 @@ spec:
   rules:
     - http:
         paths:
+          {{- /* bkn-safe-served provider UI pages (login/consent/device) */}}
           {{- range .Values.ingress.paths }}
           - path: {{ . }}
             pathType: ImplementationSpecific
@@ -40,5 +41,15 @@ spec:
                 name: {{ $.Values.image.name }}
                 port:
                   number: {{ $.Values.service.ports.port }}
+          {{- end }}
+          {{- /* hydra public OAuth2/OIDC endpoints (token, device/auth, discovery, ...) */}}
+          {{- range .Values.ingress.hydraPublicPaths }}
+          - path: {{ . }}
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: {{ $.Values.ingress.hydraPublicService }}
+                port:
+                  number: {{ $.Values.ingress.hydraPublicPort }}
           {{- end }}
 {{- end }}
