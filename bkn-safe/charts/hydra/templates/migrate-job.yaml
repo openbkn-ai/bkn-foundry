@@ -1,0 +1,35 @@
+{{- if .Values.migrate.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Values.image.name }}-migrate
+  namespace: {{ .Values.namespace }}
+  annotations:
+    # Run `hydra migrate sql` before the server starts / upgrades.
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 5
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.image.name }}-migrate
+    spec:
+      restartPolicy: Never
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: migrate
+          image: "{{- if .Values.image.registry }}{{ .Values.image.registry }}/{{ end }}{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["migrate", "sql", "-e", "--yes"]
+          env:
+            - name: DSN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.image.name }}-secret
+                  key: dsn
+{{- end }}
