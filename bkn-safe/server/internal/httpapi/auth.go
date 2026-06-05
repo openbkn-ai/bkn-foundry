@@ -66,8 +66,8 @@ var changePasswordPage = template.Must(template.New("changepw").Parse(pageCSS + 
 <form method="post" action="/change-password">
   <input type="hidden" name="login_challenge" value="{{.Challenge}}">
   <input type="hidden" name="account" value="{{.Account}}">
-  <input name="old_password" type="password" placeholder="当前密码" autocomplete="current-password">
-  <input name="new_password" type="password" placeholder="新密码" autofocus autocomplete="new-password">
+  <input name="old_password" type="password" placeholder="当前密码" autofocus autocomplete="current-password">
+  <input name="new_password" type="password" placeholder="新密码" autocomplete="new-password">
   <input name="confirm_password" type="password" placeholder="确认新密码" autocomplete="new-password">
   <button class="primary" type="submit">修改并登录</button>
 </form></div></body>`))
