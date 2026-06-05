@@ -133,3 +133,53 @@ node dist/cli.js auth whoami https://10.211.55.4 -k    # hits /userinfo
 Stay within "Limits" above: authz is ON now, so service calls (`openbkn bkn list`,
 etc.) require the device (user) token's ext claims — they will fail with a
 `client_credentials` token. Use the device login token.
+
+## Forced password change — what the CLI must (and need not) do
+
+bkn-safe now seeds a built-in admin (`admin` / initial `openbkn`) and forces a
+password change on first login for that admin, for any admin-created local user,
+and after an admin password reset (`MustChangePassword`). Two paths matter to the
+CLI:
+
+### Device login — the forced change is browser-side; CLI needs no new logic
+
+In the device flow the user authenticates in the browser. If a change is required,
+bkn-safe renders its `/change-password` page after `/login` (carrying the
+`login_challenge`) and only accepts the hydra login once the new password is set —
+so the token the CLI eventually polls is already post-change. The CLI therefore
+does NOT implement forced-change handling for device login; it just keeps polling
+`/oauth2/token`:
+
+- honor `authorization_pending` (keep polling), `slow_down` (+5s);
+- use a generous overall timeout (a forced change takes the user longer — follow
+  the device-auth `expires_in`, on the order of minutes, not seconds).
+
+There is NO `must_change_password` claim in the token (the change happens before
+the token is issued), so the CLI cannot — and need not — read it from
+token/introspect.
+
+### Self-service change — a `bkn auth change-password` command (no browser)
+
+For users who have an initial / admin-reset password and want to change it from
+the terminal (no browser), call the self-service endpoint:
+
+`POST /api/safe/v1/auth/change-password`
+
+```json
+{"account": "<account>", "old_password": "<old>", "new_password": "<new>"}
+```
+
+- Prompt for **account** (the login column — e.g. `admin`, NOT the display name),
+  old password, and new password (twice).
+- Responses: `204` success · `401` wrong account/old password (or disabled) ·
+  `400` new == old.
+- Do NOT add a client-side strength rule — the server defers strength checks too.
+- This path is plain credential change (no hydra challenge); after it succeeds the
+  user logs in normally via device flow.
+
+### Limitation
+
+In the device flow the CLI never sees the password, so it cannot auto-detect "user
+is on the initial password". Either document that users run
+`bkn auth change-password` first, or — only if the CLI later adds a password/headless
+login mode — surface the must-change state on that path.
