@@ -66,7 +66,9 @@ func (s *UserStore) Verify(ctx context.Context, account, password string) (*mode
 	return &u, nil
 }
 
-// CreateLocalUser creates a local user with a bcrypt-hashed password.
+// CreateLocalUser creates a local user with a bcrypt-hashed password. The
+// password is admin-assigned, so MustChangePassword is forced on: the user must
+// change it on first login (same rule as an admin reset).
 func (s *UserStore) CreateLocalUser(ctx context.Context, u *model.User, password string) error {
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
@@ -74,6 +76,7 @@ func (s *UserStore) CreateLocalUser(ctx context.Context, u *model.User, password
 	}
 	u.PasswordHash = string(hash)
 	u.Source = model.SourceLocal
+	u.MustChangePassword = true
 	return s.db.WithContext(ctx).Create(u).Error
 }
 
@@ -97,6 +100,20 @@ func (s *UserStore) ChangePassword(ctx context.Context, account, oldPassword, ne
 		return err
 	}
 	return s.SetPassword(ctx, u.ID, newPassword)
+}
+
+// ResetPassword is the ADMIN reset: it sets a new password AND forces
+// MustChangePassword on, so the user must change the admin-assigned password on
+// their next login. Contrast SetPassword (self-service / forced-change
+// completion), which clears the flag.
+func (s *UserStore) ResetPassword(ctx context.Context, userID, password string) error {
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+	return s.db.WithContext(ctx).Model(&model.User{}).
+		Where("id = ?", userID).
+		Updates(map[string]any{"password_hash": string(hash), "must_change_password": true}).Error
 }
 
 // SetPassword updates a local user's password and clears MustChangePassword

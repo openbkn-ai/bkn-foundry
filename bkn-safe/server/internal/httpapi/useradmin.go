@@ -47,7 +47,8 @@ func registerUserAdmin(r *gin.Engine, users *auth.UserStore) {
 		c.JSON(http.StatusCreated, gin.H{"id": u.ID})
 	})
 
-	// PUT /users/:id/password — reset a local user's password.
+	// PUT /users/:id/password — admin reset: sets the password and forces the
+	// user to change it on next login (MustChangePassword=true).
 	g.PUT("/users/:id/password", func(c *gin.Context) {
 		var req struct {
 			Password string `json:"password" binding:"required"`
@@ -55,7 +56,7 @@ func registerUserAdmin(r *gin.Engine, users *auth.UserStore) {
 		if !bind(c, &req) {
 			return
 		}
-		if err := users.SetPassword(c.Request.Context(), c.Param("id"), req.Password); err != nil {
+		if err := users.ResetPassword(c.Request.Context(), c.Param("id"), req.Password); err != nil {
 			serverError(c, err)
 			return
 		}

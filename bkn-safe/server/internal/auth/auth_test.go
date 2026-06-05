@@ -72,6 +72,38 @@ func TestSetPasswordClearsMustChange(t *testing.T) {
 	}
 }
 
+func TestCreateForcesChangeAndAdminResetReforces(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+	u := &model.User{ID: "u-r", Account: "frank", Enabled: true}
+	if err := s.CreateLocalUser(ctx, u, "init1234"); err != nil {
+		t.Fatal(err)
+	}
+	// A newly created local user (admin-assigned password) must change on first login.
+	got, err := s.Verify(ctx, "frank", "init1234")
+	if err != nil || !got.MustChangePassword {
+		t.Fatalf("new user: want MustChangePassword=true, got=%+v err=%v", got, err)
+	}
+	// Self-service change clears the flag.
+	if err := s.SetPassword(ctx, "u-r", "selfnew1"); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ = s.Verify(ctx, "frank", "selfnew1"); got.MustChangePassword {
+		t.Fatal("SetPassword should clear MustChangePassword")
+	}
+	// Admin reset sets a new password AND re-forces the change.
+	if err := s.ResetPassword(ctx, "u-r", "adminset1"); err != nil {
+		t.Fatal(err)
+	}
+	got, err = s.Verify(ctx, "frank", "adminset1")
+	if err != nil {
+		t.Fatalf("verify after reset: %v", err)
+	}
+	if !got.MustChangePassword {
+		t.Error("admin ResetPassword must force MustChangePassword=true")
+	}
+}
+
 func TestVerifyDisabledUser(t *testing.T) {
 	s := newStore(t)
 	ctx := context.Background()
