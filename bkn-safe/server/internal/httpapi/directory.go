@@ -7,7 +7,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	"bkn-safe/internal/auth"
 	"bkn-safe/internal/directory"
+	"bkn-safe/internal/model"
 )
 
 // registerDirectory mounts bkn-safe's clean user-directory API under
@@ -159,5 +161,84 @@ func registerDirectory(r *gin.Engine, dir *directory.Service) {
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"departments": deps})
+	})
+
+	// POST /departments — create a department node. Server-assigns the id when
+	// the body omits it. parent_id "" makes it a root. -> { id }
+	g.POST("/departments", func(c *gin.Context) {
+		var req struct {
+			ID       string `json:"id"`
+			Name     string `json:"name" binding:"required"`
+			ParentID string `json:"parent_id"`
+			Type     string `json:"type"`
+		}
+		if !bind(c, &req) {
+			return
+		}
+		if req.ID == "" {
+			req.ID = auth.NewID()
+		}
+		d := &model.Department{ID: req.ID, Name: req.Name, ParentID: req.ParentID, Type: req.Type}
+		if err := dir.CreateDepartment(c.Request.Context(), d); err != nil {
+			serverError(c, err)
+			return
+		}
+		c.JSON(http.StatusCreated, gin.H{"id": d.ID})
+	})
+
+	// PUT /departments/:id — update mutable fields (name/parent_id/type). Only
+	// fields present in the body are changed.
+	g.PUT("/departments/:id", func(c *gin.Context) {
+		var req struct {
+			Name     *string `json:"name"`
+			ParentID *string `json:"parent_id"`
+			Type     *string `json:"type"`
+		}
+		if !bind(c, &req) {
+			return
+		}
+		fields := map[string]any{}
+		if req.Name != nil {
+			fields["name"] = *req.Name
+		}
+		if req.ParentID != nil {
+			fields["parent_id"] = *req.ParentID
+		}
+		if req.Type != nil {
+			fields["type"] = *req.Type
+		}
+		if len(fields) == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "no updatable fields provided"})
+			return
+		}
+		err := dir.UpdateDepartment(c.Request.Context(), c.Param("id"), fields)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "department not found"})
+			return
+		}
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		c.Status(http.StatusNoContent)
+	})
+
+	// DELETE /departments/:id — remove an empty department. 409 if it still has
+	// child departments or member users.
+	g.DELETE("/departments/:id", func(c *gin.Context) {
+		err := dir.DeleteDepartment(c.Request.Context(), c.Param("id"))
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "department not found"})
+			return
+		}
+		if errors.Is(err, directory.ErrDepartmentNotEmpty) {
+			c.JSON(http.StatusConflict, gin.H{"error": "department has child departments or members"})
+			return
+		}
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		c.Status(http.StatusNoContent)
 	})
 }

@@ -102,6 +102,13 @@ func (en *Enforcer) GrantRolePermission(roleID, resourceType, idPattern, op stri
 	return err
 }
 
+// RevokeRolePermission removes a role's op over a resource-type instance
+// pattern (the inverse of GrantRolePermission). Idempotent.
+func (en *Enforcer) RevokeRolePermission(roleID, resourceType, idPattern, op string) error {
+	_, err := en.e.RemovePolicy(roleID, obj(resourceType, idPattern), op)
+	return err
+}
+
 // Grant adds a raw (sub, obj, act) policy. obj is the full object pattern
 // (e.g. "agent:*" or "*" for everything); act may be ActAll ("*"). Used by the
 // seed for the super-admin wildcard. Idempotent.
@@ -126,6 +133,81 @@ func (en *Enforcer) RevokeObjectPermission(accessorID, resourceType, resourceID,
 // AssignRole binds an accessor (user/app) to a role. Idempotent.
 func (en *Enforcer) AssignRole(accessorID, roleID string) error {
 	_, err := en.e.AddGroupingPolicy(accessorID, roleID)
+	return err
+}
+
+// RemoveRole unbinds an accessor from a role (the inverse of AssignRole).
+// Idempotent: removing a binding that isn't there is a no-op.
+func (en *Enforcer) RemoveRole(accessorID, roleID string) error {
+	_, err := en.e.RemoveGroupingPolicy(accessorID, roleID)
+	return err
+}
+
+// RolesForAccessor lists the role ids directly bound to an accessor (the
+// grouping g-lines with sub=accessor). Mirrors ISF accessor_roles.
+func (en *Enforcer) RolesForAccessor(accessorID string) ([]string, error) {
+	return en.e.GetRolesForUser(accessorID)
+}
+
+// RoleMembers lists the accessor ids bound to a role (the grouping g-lines with
+// role=roleID). Mirrors ISF role-members.
+func (en *Enforcer) RoleMembers(roleID string) ([]string, error) {
+	return en.e.GetUsersForRole(roleID)
+}
+
+// RoleGrant is one resource-object grant held by a role: the object pattern
+// ("type:id", id may be "*") and the operations allowed on it.
+type RoleGrant struct {
+	Object     string
+	Operations []string
+}
+
+// RolePermissions lists the policy grants whose subject is the role, grouped by
+// object pattern. Read-only view of a role's seeded permission matrix.
+func (en *Enforcer) RolePermissions(roleID string) ([]RoleGrant, error) {
+	rows, err := en.e.GetFilteredPolicy(0, roleID)
+	if err != nil {
+		return nil, err
+	}
+	byObj := map[string][]string{}
+	order := make([]string, 0, len(rows))
+	for _, row := range rows {
+		if len(row) < 3 {
+			continue
+		}
+		o, act := row[1], row[2]
+		if _, ok := byObj[o]; !ok {
+			order = append(order, o)
+		}
+		byObj[o] = append(byObj[o], act)
+	}
+	out := make([]RoleGrant, 0, len(order))
+	for _, o := range order {
+		out = append(out, RoleGrant{Object: o, Operations: byObj[o]})
+	}
+	return out, nil
+}
+
+// RemoveRoleCompletely purges every casbin trace of a role: its bindings
+// (grouping g-lines with role=roleID) and its own permission grants (p-lines
+// with sub=roleID). Called when a custom role is deleted. Idempotent.
+func (en *Enforcer) RemoveRoleCompletely(roleID string) error {
+	if _, err := en.e.RemoveFilteredGroupingPolicy(1, roleID); err != nil {
+		return err
+	}
+	_, err := en.e.RemoveFilteredPolicy(0, roleID)
+	return err
+}
+
+// RemoveAccessor purges every casbin trace of an accessor: its role bindings
+// (grouping g-lines with sub=accessor) and any concrete object policies granted
+// directly to it (p-lines with sub=accessor). Called when a user is deleted so
+// no orphaned grants linger. Idempotent.
+func (en *Enforcer) RemoveAccessor(accessorID string) error {
+	if _, err := en.e.RemoveFilteredGroupingPolicy(0, accessorID); err != nil {
+		return err
+	}
+	_, err := en.e.RemoveFilteredPolicy(0, accessorID)
 	return err
 }
 

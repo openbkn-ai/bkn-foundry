@@ -80,6 +80,40 @@ func (s *UserStore) CreateLocalUser(ctx context.Context, u *model.User, password
 	return s.db.WithContext(ctx).Create(u).Error
 }
 
+// UpdateUser patches mutable profile fields of a user (name/email/telephone/
+// enabled/account_type — NOT account or password, which have their own paths).
+// Returns gorm.ErrRecordNotFound when no row matches.
+func (s *UserStore) UpdateUser(ctx context.Context, id string, fields map[string]any) error {
+	res := s.db.WithContext(ctx).Model(&model.User{}).Where("id = ?", id).Updates(fields)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
+// DeleteUser removes a user and its directory memberships (department links and
+// group memberships) in one transaction. Casbin role/permission cleanup is the
+// caller's job (it holds the enforcer). Returns gorm.ErrRecordNotFound when the
+// user doesn't exist.
+func (s *UserStore) DeleteUser(ctx context.Context, id string) error {
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		res := tx.Where("id = ?", id).Delete(&model.User{})
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return gorm.ErrRecordNotFound
+		}
+		if err := tx.Where("user_id = ?", id).Delete(&model.UserDepartment{}).Error; err != nil {
+			return err
+		}
+		return tx.Where("member_id = ?", id).Delete(&model.GroupMember{}).Error
+	})
+}
+
 // ByID fetches a user by ID (implements UserLookup).
 func (s *UserStore) ByID(ctx context.Context, id string) (*model.User, error) {
 	var u model.User

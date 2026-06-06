@@ -1,11 +1,13 @@
 package httpapi
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	"bkn-safe/internal/auth"
 	"bkn-safe/internal/authz"
 	"bkn-safe/internal/model"
 )
@@ -162,6 +164,291 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 		}
 		c.Status(http.StatusNoContent)
 	})
+
+	// GET /role-bindings?accessor_id= — list the role ids bound to an accessor.
+	// -> { role_ids:[...] }. Mirrors ISF accessor_roles (roles-of-user read).
+	g.GET("/role-bindings", func(c *gin.Context) {
+		accessorID := c.Query("accessor_id")
+		if accessorID == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "accessor_id required"})
+			return
+		}
+		roleIDs, err := e.RolesForAccessor(accessorID)
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"role_ids": roleIDs})
+	})
+
+	// DELETE /role-bindings — unbind an accessor from a role (inverse of POST).
+	// { accessor_id, role_id }
+	g.DELETE("/role-bindings", func(c *gin.Context) {
+		var req struct {
+			AccessorID string `json:"accessor_id" binding:"required"`
+			RoleID     string `json:"role_id" binding:"required"`
+		}
+		if !bind(c, &req) {
+			return
+		}
+		if err := e.RemoveRole(req.AccessorID, req.RoleID); err != nil {
+			serverError(c, err)
+			return
+		}
+		c.Status(http.StatusNoContent)
+	})
+
+	registerRoles(g, e, db)
+}
+
+// registerRoles mounts the role catalog endpoints under /api/safe/v1/authz.
+// Built-in (system/business) roles are read-only — their UUIDs are hardcoded in
+// DA/flow-automation and their permission matrix is owned by the seed files.
+// Custom roles (source=custom) are fully manageable at runtime.
+func registerRoles(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
+	// GET /roles?source= — list roles, optionally filtered by source.
+	// -> { roles:[ {id,name,description,source} ] }
+	g.GET("/roles", func(c *gin.Context) {
+		q := db.WithContext(c.Request.Context()).Model(&model.Role{})
+		if src := c.Query("source"); src != "" {
+			q = q.Where("source = ?", src)
+		}
+		var roles []model.Role
+		if err := q.Order("created_at").Find(&roles).Error; err != nil {
+			serverError(c, err)
+			return
+		}
+		out := make([]gin.H, 0, len(roles))
+		for _, r := range roles {
+			out = append(out, roleJSON(r))
+		}
+		c.JSON(http.StatusOK, gin.H{"roles": out})
+	})
+
+	// GET /roles/:id — role detail with its members and permission grants.
+	g.GET("/roles/:id", func(c *gin.Context) {
+		role, err := loadRole(c, db, c.Param("id"))
+		if role == nil {
+			return // loadRole already wrote the response
+		}
+		_ = err
+		members, err := e.RoleMembers(role.ID)
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		grants, err := e.RolePermissions(role.ID)
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		body := roleJSON(*role)
+		body["members"] = members
+		body["permissions"] = grantsJSON(grants)
+		c.JSON(http.StatusOK, body)
+	})
+
+	// GET /roles/:id/members — accessor ids bound to the role. -> { accessor_ids:[...] }
+	g.GET("/roles/:id/members", func(c *gin.Context) {
+		role, _ := loadRole(c, db, c.Param("id"))
+		if role == nil {
+			return
+		}
+		members, err := e.RoleMembers(role.ID)
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"accessor_ids": members})
+	})
+
+	// POST /roles — create a custom role. source is forced to "custom" (the API
+	// cannot mint system/business roles). { id?, name, description? } -> { id }
+	g.POST("/roles", func(c *gin.Context) {
+		var req struct {
+			ID          string `json:"id"`
+			Name        string `json:"name" binding:"required"`
+			Description string `json:"description"`
+		}
+		if !bind(c, &req) {
+			return
+		}
+		if req.ID == "" {
+			req.ID = auth.NewID()
+		}
+		role := model.Role{
+			ID: req.ID, Name: req.Name, Description: req.Description,
+			Source: model.RoleSourceCustom,
+		}
+		if err := db.WithContext(c.Request.Context()).Create(&role).Error; err != nil {
+			serverError(c, err)
+			return
+		}
+		c.JSON(http.StatusCreated, gin.H{"id": role.ID})
+	})
+
+	// PUT /roles/:id — rename / re-describe a CUSTOM role. Built-in roles are
+	// rejected with 403. { name?, description? }
+	g.PUT("/roles/:id", func(c *gin.Context) {
+		role, _ := loadRole(c, db, c.Param("id"))
+		if role == nil {
+			return
+		}
+		if role.BuiltIn() {
+			c.JSON(http.StatusForbidden, gin.H{"error": "built-in role is immutable"})
+			return
+		}
+		var req struct {
+			Name        *string `json:"name"`
+			Description *string `json:"description"`
+		}
+		if !bind(c, &req) {
+			return
+		}
+		fields := map[string]any{}
+		if req.Name != nil {
+			fields["name"] = *req.Name
+		}
+		if req.Description != nil {
+			fields["description"] = *req.Description
+		}
+		if len(fields) == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "no updatable fields provided"})
+			return
+		}
+		if err := db.WithContext(c.Request.Context()).Model(&model.Role{}).
+			Where("id = ?", role.ID).Updates(fields).Error; err != nil {
+			serverError(c, err)
+			return
+		}
+		c.Status(http.StatusNoContent)
+	})
+
+	// DELETE /roles/:id — delete a CUSTOM role and purge its casbin bindings and
+	// permission grants. Built-in roles are rejected with 403.
+	g.DELETE("/roles/:id", func(c *gin.Context) {
+		role, _ := loadRole(c, db, c.Param("id"))
+		if role == nil {
+			return
+		}
+		if role.BuiltIn() {
+			c.JSON(http.StatusForbidden, gin.H{"error": "built-in role is immutable"})
+			return
+		}
+		if err := db.WithContext(c.Request.Context()).Delete(&model.Role{}, "id = ?", role.ID).Error; err != nil {
+			serverError(c, err)
+			return
+		}
+		if err := e.RemoveRoleCompletely(role.ID); err != nil {
+			serverError(c, err)
+			return
+		}
+		c.Status(http.StatusNoContent)
+	})
+
+	// POST /roles/:id/permissions — grant a CUSTOM role an op over a resource
+	// pattern (id "*" = whole type). { resource{type,id}, operations:[...] }
+	g.POST("/roles/:id/permissions", func(c *gin.Context) {
+		role, _ := loadRole(c, db, c.Param("id"))
+		if role == nil {
+			return
+		}
+		if role.BuiltIn() {
+			c.JSON(http.StatusForbidden, gin.H{"error": "built-in role permissions are seed-managed"})
+			return
+		}
+		var req struct {
+			Resource   resourceRef `json:"resource" binding:"required"`
+			Operations []string    `json:"operations" binding:"required"`
+		}
+		if !bind(c, &req) {
+			return
+		}
+		for _, op := range req.Operations {
+			if err := e.GrantRolePermission(role.ID, req.Resource.Type, req.Resource.ID, op); err != nil {
+				serverError(c, err)
+				return
+			}
+		}
+		c.Status(http.StatusNoContent)
+	})
+
+	// DELETE /roles/:id/permissions — revoke a CUSTOM role's ops over a resource
+	// pattern. { resource{type,id}, operations:[...] }
+	g.DELETE("/roles/:id/permissions", func(c *gin.Context) {
+		role, _ := loadRole(c, db, c.Param("id"))
+		if role == nil {
+			return
+		}
+		if role.BuiltIn() {
+			c.JSON(http.StatusForbidden, gin.H{"error": "built-in role permissions are seed-managed"})
+			return
+		}
+		var req struct {
+			Resource   resourceRef `json:"resource" binding:"required"`
+			Operations []string    `json:"operations" binding:"required"`
+		}
+		if !bind(c, &req) {
+			return
+		}
+		for _, op := range req.Operations {
+			if err := e.RevokeRolePermission(role.ID, req.Resource.Type, req.Resource.ID, op); err != nil {
+				serverError(c, err)
+				return
+			}
+		}
+		c.Status(http.StatusNoContent)
+	})
+}
+
+// loadRole fetches a role by id, writing a 404 and returning nil when missing
+// (the caller returns immediately on nil). The error return is the DB error for
+// non-not-found failures (already surfaced as 500).
+func loadRole(c *gin.Context, db *gorm.DB, id string) (*model.Role, error) {
+	var role model.Role
+	err := db.WithContext(c.Request.Context()).First(&role, "id = ?", id).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "role not found"})
+		return nil, err
+	}
+	if err != nil {
+		serverError(c, err)
+		return nil, err
+	}
+	return &role, nil
+}
+
+// roleJSON is the standard role body.
+func roleJSON(r model.Role) gin.H {
+	return gin.H{
+		"id": r.ID, "name": r.Name, "description": r.Description,
+		"source": r.Source, "built_in": r.BuiltIn(),
+	}
+}
+
+// grantsJSON splits each role grant's "type:id" object into a resource ref.
+func grantsJSON(grants []authz.RoleGrant) []gin.H {
+	out := make([]gin.H, 0, len(grants))
+	for _, gr := range grants {
+		rtype, rid := splitObject(gr.Object)
+		out = append(out, gin.H{
+			"resource":   gin.H{"type": rtype, "id": rid},
+			"operations": gr.Operations,
+		})
+	}
+	return out
+}
+
+// splitObject splits a casbin object key "type:id" on the FIRST colon (the id
+// may itself contain colons). A bare "*" (super-admin everything) yields type
+// "*", id "".
+func splitObject(o string) (rtype, rid string) {
+	for i := 0; i < len(o); i++ {
+		if o[i] == ':' {
+			return o[:i], o[i+1:]
+		}
+	}
+	return o, ""
 }
 
 // catalogOps returns the operation ids registered for a resource type.

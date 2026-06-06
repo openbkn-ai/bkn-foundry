@@ -80,6 +80,43 @@ curl -X POST $SAFE/api/safe/v1/authz/check -H 'Content-Type: application/json' \
 请求:`{ "accessor_id":"u1", "role_id":"1572fb82-526f-11f0-bde6-e674ec8dde71" }`
 响应:`204 No Content`
 
+### GET /role-bindings?accessor_id=`<id>` — 列访问者已绑定的角色(对接 ISF accessor_roles)
+响应:`{ "role_ids":["1572fb82-..."] }`。缺 accessor_id → 400。
+
+### DELETE /role-bindings — 解绑(POST 的逆操作)
+请求:`{ "accessor_id":"u1", "role_id":"..." }`
+响应:`204 No Content`(幂等)
+
+### GET /roles?source=`<system|business|custom>` — 列角色(source 可选)
+响应:`{ "roles":[ {"id","name","description","source","built_in"} ] }`
+
+### GET /roles/:id — 角色详情(含成员 + 权限授予)
+响应:`{ "id","name","description","source","built_in",
+  "members":["u1"], "permissions":[ {"resource":{"type":"audit","id":"*"},"operations":["list"]} ] }`
+未找到 → 404。
+
+### GET /roles/:id/members — 角色成员访问者 id
+响应:`{ "accessor_ids":["u1","u2"] }`
+
+### POST /roles — 建自定义角色(source 强制 custom,API 无法造 system/business)
+请求:`{ "id?":"","name":"Auditors","description":"" }`
+响应:`201 { "id":"<uuid>" }`
+
+### PUT /roles/:id — 改名/改描述(仅 custom)
+请求(子集):`{ "name":"","description":"" }`
+响应:`204`。内建(system/business)→ 403 `built-in role is immutable`。
+
+### DELETE /roles/:id — 删自定义角色 + 清 casbin 绑定与该角色的权限授予
+响应:`204`。内建 → 403。
+
+### POST /roles/:id/permissions — 给自定义角色授予资源权限(仅 custom)
+请求:`{ "resource":{"type":"agent","id":"*"}, "operations":["use"] }`(id `*` = 整类)
+响应:`204`。内建 → 403(内建权限由 seed grants.json 管)。
+
+### DELETE /roles/:id/permissions — 撤销自定义角色权限(仅 custom)
+请求同上;响应:`204`。内建 → 403。
+
+> 内建角色(system/business)只读:UUID 被 DA/flow-automation 硬引用,权限矩阵归 seed 文件;runtime 仅允许 custom 角色增删改。
 > 资源类型/操作全集见 `docs/isf-replacement/contracts/authz-catalog.md`。
 
 ---

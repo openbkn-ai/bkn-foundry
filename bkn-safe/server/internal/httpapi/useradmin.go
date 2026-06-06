@@ -5,15 +5,18 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 
 	"bkn-safe/internal/auth"
+	"bkn-safe/internal/authz"
 	"bkn-safe/internal/model"
 )
 
-// registerUserAdmin mounts the minimal user-write surface bkn-safe needs to own
-// identities: create a local user and set a password. Role assignment is the
-// authz role-binding endpoint. (Richer admin UI is out of scope here.)
-func registerUserAdmin(r *gin.Engine, users *auth.UserStore) {
+// registerUserAdmin mounts the user-write surface bkn-safe needs to own
+// identities: create/update/delete a local user and set a password. Role
+// assignment is the authz role-binding endpoint. The enforcer is used to purge
+// an accessor's casbin bindings/grants on delete.
+func registerUserAdmin(r *gin.Engine, users *auth.UserStore, e *authz.Enforcer) {
 	g := r.Group("/api/safe/v1/directory")
 
 	// POST /users — create a local (password) user. -> { id }
@@ -59,6 +62,75 @@ func registerUserAdmin(r *gin.Engine, users *auth.UserStore) {
 		if err := users.ResetPassword(c.Request.Context(), c.Param("id"), req.Password); err != nil {
 			serverError(c, err)
 			return
+		}
+		c.Status(http.StatusNoContent)
+	})
+
+	// PUT /users/:id — update mutable profile fields. Only the fields present in
+	// the body are changed (account and password are not editable here). A bool
+	// "enabled" is always applied (no way to omit a primitive in JSON), so this
+	// doubles as the enable/disable path.
+	g.PUT("/users/:id", func(c *gin.Context) {
+		var req struct {
+			Name        *string `json:"name"`
+			Email       *string `json:"email"`
+			Telephone   *string `json:"telephone"`
+			Enabled     *bool   `json:"enabled"`
+			AccountType *string `json:"account_type"`
+		}
+		if !bind(c, &req) {
+			return
+		}
+		fields := map[string]any{}
+		if req.Name != nil {
+			fields["name"] = *req.Name
+		}
+		if req.Email != nil {
+			fields["email"] = *req.Email
+		}
+		if req.Telephone != nil {
+			fields["telephone"] = *req.Telephone
+		}
+		if req.Enabled != nil {
+			fields["enabled"] = *req.Enabled
+		}
+		if req.AccountType != nil {
+			fields["account_type"] = *req.AccountType
+		}
+		if len(fields) == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "no updatable fields provided"})
+			return
+		}
+		err := users.UpdateUser(c.Request.Context(), c.Param("id"), fields)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+			return
+		}
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		c.Status(http.StatusNoContent)
+	})
+
+	// DELETE /users/:id — remove the user, its directory memberships, and all of
+	// its casbin role bindings / direct grants.
+	g.DELETE("/users/:id", func(c *gin.Context) {
+		id := c.Param("id")
+		err := users.DeleteUser(c.Request.Context(), id)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+			return
+		}
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		if e != nil {
+			if err := e.RemoveAccessor(id); err != nil {
+				serverError(c, err)
+				return
+			}
 		}
 		c.Status(http.StatusNoContent)
 	})

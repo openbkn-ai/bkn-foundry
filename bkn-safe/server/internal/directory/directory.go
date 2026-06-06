@@ -6,11 +6,18 @@ package directory
 
 import (
 	"context"
+	"errors"
 
 	"gorm.io/gorm"
 
 	"bkn-safe/internal/model"
 )
+
+// ErrDepartmentNotEmpty is returned by DeleteDepartment when the department
+// still has child departments or member users — the caller must move/remove
+// them first (no cascade: deleting a non-empty subtree is too blunt to do
+// implicitly).
+var ErrDepartmentNotEmpty = errors.New("department not empty")
 
 // Service provides directory queries over GORM.
 type Service struct {
@@ -106,6 +113,52 @@ func (s *Service) ListDepartments(ctx context.Context, parentID string) ([]model
 		return nil, err
 	}
 	return deps, nil
+}
+
+// CreateDepartment inserts a new department node. The caller supplies the id
+// (or sets it beforehand); ParentID "" makes it a root. Type defaults to
+// "department" at the DB layer when empty.
+func (s *Service) CreateDepartment(ctx context.Context, d *model.Department) error {
+	return s.db.WithContext(ctx).Create(d).Error
+}
+
+// UpdateDepartment patches the given mutable fields (name/parent_id/type) of a
+// department. Returns gorm.ErrRecordNotFound when no row matches.
+func (s *Service) UpdateDepartment(ctx context.Context, id string, fields map[string]any) error {
+	res := s.db.WithContext(ctx).Model(&model.Department{}).Where("id = ?", id).Updates(fields)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
+// DeleteDepartment removes a department, but only if it is empty: no child
+// departments and no member users. Returns ErrDepartmentNotEmpty otherwise, or
+// gorm.ErrRecordNotFound if the id doesn't exist.
+func (s *Service) DeleteDepartment(ctx context.Context, id string) error {
+	db := s.db.WithContext(ctx)
+	var children int64
+	if err := db.Model(&model.Department{}).Where("parent_id = ?", id).Count(&children).Error; err != nil {
+		return err
+	}
+	var members int64
+	if err := db.Model(&model.UserDepartment{}).Where("department_id = ?", id).Count(&members).Error; err != nil {
+		return err
+	}
+	if children > 0 || members > 0 {
+		return ErrDepartmentNotEmpty
+	}
+	res := db.Where("id = ?", id).Delete(&model.Department{})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }
 
 // GroupMembers returns the member user ids of a group.

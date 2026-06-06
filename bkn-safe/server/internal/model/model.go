@@ -48,14 +48,31 @@ type User struct {
 	UpdatedAt    time.Time
 }
 
+// Role source values. system|business roles are SEEDED built-ins (their UUIDs
+// are hardcoded in DA/flow-automation, e.g. 應用/數據/AI 管理員) and are
+// immutable via the API — they may only be changed by editing the seed files.
+// custom roles are created at runtime through the admin API and are freely
+// editable/deletable.
+const (
+	RoleSourceSystem   = "system"
+	RoleSourceBusiness = "business"
+	RoleSourceCustom   = "custom"
+)
+
 // Role — preserves the ISF role UUIDs (seeded from role.json). Source is
-// system|business.
+// system|business for built-ins, custom for API-created roles.
 type Role struct {
 	ID          string `gorm:"primaryKey;size:64"`
 	Name        string `gorm:"size:128"`
 	Description string `gorm:"size:1024"`
-	Source      string `gorm:"size:16"` // system | business
+	Source      string `gorm:"size:16"` // system | business | custom
 	CreatedAt   time.Time
+}
+
+// BuiltIn reports whether the role is a seeded system/business role and thus
+// immutable through the API (no rename, no permission edit, no delete).
+func (r Role) BuiltIn() bool {
+	return r.Source == RoleSourceSystem || r.Source == RoleSourceBusiness
 }
 
 // Department is a node in the org tree. ParentID empty = root.
