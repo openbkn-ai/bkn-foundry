@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -26,6 +27,21 @@ func NewHydraAdmin(adminURL string) *HydraAdmin {
 	cfg := hydra.NewConfiguration()
 	cfg.Servers = hydra.ServerConfigurations{{URL: adminURL}}
 	return &HydraAdmin{api: hydra.NewAPIClient(cfg), adminURL: adminURL, http: http.DefaultClient}
+}
+
+// VerifyToken introspects an access token via hydra's admin API and returns the
+// token subject (the bkn-safe user/accessor id). Returns an error when the
+// token is inactive or introspection fails. Used by the admin-API middleware to
+// resolve the caller identity before the casbin admin check.
+func (h *HydraAdmin) VerifyToken(ctx context.Context, token string) (string, error) {
+	info, _, err := h.api.OAuth2API.IntrospectOAuth2Token(ctx).Token(token).Execute()
+	if err != nil {
+		return "", fmt.Errorf("introspect token: %w", err)
+	}
+	if !info.GetActive() {
+		return "", errors.New("token inactive")
+	}
+	return info.GetSub(), nil
 }
 
 // AcceptUserCode accepts a device-flow user_code for a device challenge and

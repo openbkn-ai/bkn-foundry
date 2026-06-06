@@ -130,6 +130,13 @@ func (en *Enforcer) RevokeObjectPermission(accessorID, resourceType, resourceID,
 	return err
 }
 
+// CanAdmin reports whether the accessor may use the admin API. The seeded
+// super-admin (wildcard "*","*" grant) passes via keyMatch; any other role must
+// be granted the safe_admin/manage capability explicitly to administer.
+func (en *Enforcer) CanAdmin(accessorID string) (bool, error) {
+	return en.Check(accessorID, "safe_admin", "console", "manage")
+}
+
 // AssignRole binds an accessor (user/app) to a role. Idempotent.
 func (en *Enforcer) AssignRole(accessorID, roleID string) error {
 	_, err := en.e.AddGroupingPolicy(accessorID, roleID)

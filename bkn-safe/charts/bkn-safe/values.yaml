@@ -17,8 +17,11 @@ service:
 
 # Only the hydra provider pages (login/consent/device) and the self-service
 # change-password endpoint are browser/CLI-facing and go through the ingress.
-# The rest of the authz/directory/user-admin APIs stay internal (ClusterIP),
-# called service-to-service — do NOT widen this to all of /api/safe.
+# The internal authz/directory APIs (/api/safe/v1/authz, /api/safe/v1/directory)
+# stay ClusterIP, called service-to-service — do NOT expose those at the gateway.
+# The admin API (/api/safe/v1/admin) IS exposed below, but it is token-gated
+# (RequireAdmin: bearer-token introspection + casbin super-admin check), so it is
+# safe to widen — unlike the raw internal routes, which are unauthenticated.
 ingress:
   enabled: true
   ingressClass: class-443
@@ -34,9 +37,14 @@ ingress:
     # POST submits) served by bkn-safe during the hydra login flow.
     - /change-password
     # Self-service password change REST (CLI / initial-password users). Narrow on
-    # purpose: exposes only change-password, not /api/safe/v1/authz or the
-    # admin /directory user-create/reset routes.
+    # purpose: exposes only change-password, not /api/safe/v1/authz or the raw
+    # internal /directory routes.
     - /api/safe/v1/auth/change-password
+    # Admin API (user/dept/role CRUD, role-bindings) for the openbkn admin CLI /
+    # web console. Token-gated in-service by RequireAdmin (introspect + casbin
+    # super-admin), so safe to expose; the raw internal /authz + /directory stay
+    # ClusterIP.
+    - /api/safe/v1/admin
   # hydra public OAuth2/OIDC endpoints exposed at the gateway, routed to the
   # paired hydra public service (port 4444): token, device authorization,
   # discovery, jwks, userinfo. Replaces the retired ISF ingress's /oauth2/* rules.

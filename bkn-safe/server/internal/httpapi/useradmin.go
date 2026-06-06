@@ -15,10 +15,9 @@ import (
 // registerUserAdmin mounts the user-write surface bkn-safe needs to own
 // identities: create/update/delete a local user and set a password. Role
 // assignment is the authz role-binding endpoint. The enforcer is used to purge
-// an accessor's casbin bindings/grants on delete.
-func registerUserAdmin(r *gin.Engine, users *auth.UserStore, e *authz.Enforcer) {
-	g := r.Group("/api/safe/v1/directory")
-
+// an accessor's casbin bindings/grants on delete. Mounted under the admin group
+// (RequireAdmin) — these are privileged, token-gated operations.
+func registerUserAdmin(g *gin.RouterGroup, users *auth.UserStore, e *authz.Enforcer) {
 	// POST /users — create a local (password) user. -> { id }
 	g.POST("/users", func(c *gin.Context) {
 		var req struct {

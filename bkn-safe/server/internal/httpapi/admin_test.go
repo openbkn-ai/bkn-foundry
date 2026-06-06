@@ -1,8 +1,12 @@
 package httpapi
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -16,8 +20,22 @@ import (
 	"bkn-safe/internal/model"
 )
 
-// newAdminServer builds a full server including the user-admin surface (Users +
-// Enforcer), which newTestServer omits.
+// stubVerifier maps a bearer token straight to its subject: the token string IS
+// the accessor id. The literal token "bad" is treated as invalid/inactive.
+type stubVerifier struct{}
+
+func (stubVerifier) VerifyToken(_ context.Context, token string) (string, error) {
+	if token == "" || token == "bad" {
+		return "", errors.New("inactive")
+	}
+	return token, nil
+}
+
+const adminSub = "admin-1" // seeded as super-admin in newAdminServer
+
+// newAdminServer builds a full server with the admin API mounted: a stub token
+// verifier (token==subject) and adminSub seeded as super-admin (wildcard grant)
+// so RequireAdmin passes for Bearer adminSub.
 func newAdminServer(t *testing.T) (*gin.Engine, *authz.Enforcer, *gorm.DB, *auth.UserStore) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
@@ -32,9 +50,60 @@ func newAdminServer(t *testing.T) (*gin.Engine, *authz.Enforcer, *gorm.DB, *auth
 	if err != nil {
 		t.Fatalf("authz: %v", err)
 	}
+	if err := e.Grant(adminSub, "*", "*"); err != nil { // make adminSub a super-admin
+		t.Fatalf("grant super-admin: %v", err)
+	}
 	users := auth.NewUserStore(db)
-	r := New(Deps{Enforcer: e, DB: db, Directory: directory.New(db), Users: users})
+	r := New(Deps{
+		Enforcer: e, DB: db, Directory: directory.New(db), Users: users,
+		TokenVerifier: stubVerifier{},
+	})
 	return r, e, db, users
+}
+
+// adminReq issues a request authenticated as the seeded super-admin.
+func adminReq(t *testing.T, r *gin.Engine, method, path string, body any) *httptest.ResponseRecorder {
+	t.Helper()
+	return tokReq(t, r, method, path, body, adminSub)
+}
+
+// tokReq issues a request with an explicit bearer token ("" = no header).
+func tokReq(t *testing.T, r *gin.Engine, method, path string, body any, token string) *httptest.ResponseRecorder {
+	t.Helper()
+	var buf bytes.Buffer
+	if body != nil {
+		_ = json.NewEncoder(&buf).Encode(body)
+	}
+	req := httptest.NewRequest(method, path, &buf)
+	req.Header.Set("Content-Type", "application/json")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	return w
+}
+
+func TestAdminAuthGate(t *testing.T) {
+	r, _, _, _ := newAdminServer(t)
+	const path = "/api/safe/v1/admin/roles"
+
+	// no token -> 401
+	if w := tokReq(t, r, http.MethodGet, path, nil, ""); w.Code != http.StatusUnauthorized {
+		t.Errorf("no token: want 401, got %d", w.Code)
+	}
+	// invalid token -> 401
+	if w := tokReq(t, r, http.MethodGet, path, nil, "bad"); w.Code != http.StatusUnauthorized {
+		t.Errorf("bad token: want 401, got %d", w.Code)
+	}
+	// valid token, non-admin subject -> 403
+	if w := tokReq(t, r, http.MethodGet, path, nil, "random-user"); w.Code != http.StatusForbidden {
+		t.Errorf("non-admin: want 403, got %d", w.Code)
+	}
+	// valid super-admin -> 200
+	if w := adminReq(t, r, http.MethodGet, path, nil); w.Code != http.StatusOK {
+		t.Errorf("admin: want 200, got %d (%s)", w.Code, w.Body.String())
+	}
 }
 
 func TestUserUpdateAndDelete(t *testing.T) {
@@ -44,12 +113,10 @@ func TestUserUpdateAndDelete(t *testing.T) {
 	if err := users.CreateLocalUser(ctx, u, "pw-init0"); err != nil {
 		t.Fatal(err)
 	}
-	// bind a role + grant a direct policy so delete must purge casbin.
 	_ = e.AssignRole("u-1", "role-x")
 	_ = e.GrantObjectPermission("u-1", "agent", "a1", "use")
 
-	// update name + disable
-	w := do(t, r, http.MethodPut, "/api/safe/v1/directory/users/u-1",
+	w := adminReq(t, r, http.MethodPut, "/api/safe/v1/admin/users/u-1",
 		map[string]any{"name": "Bobby", "enabled": false})
 	if w.Code != http.StatusNoContent {
 		t.Fatalf("update: want 204, got %d (%s)", w.Code, w.Body.String())
@@ -60,14 +127,11 @@ func TestUserUpdateAndDelete(t *testing.T) {
 		t.Errorf("update not applied: %+v", got)
 	}
 
-	// update unknown -> 404
-	w = do(t, r, http.MethodPut, "/api/safe/v1/directory/users/ghost", map[string]any{"name": "x"})
-	if w.Code != http.StatusNotFound {
+	if w := adminReq(t, r, http.MethodPut, "/api/safe/v1/admin/users/ghost", map[string]any{"name": "x"}); w.Code != http.StatusNotFound {
 		t.Errorf("update ghost: want 404, got %d", w.Code)
 	}
 
-	// delete -> 204, row gone, casbin purged
-	w = do(t, r, http.MethodDelete, "/api/safe/v1/directory/users/u-1", nil)
+	w = adminReq(t, r, http.MethodDelete, "/api/safe/v1/admin/users/u-1", nil)
 	if w.Code != http.StatusNoContent {
 		t.Fatalf("delete: want 204, got %d (%s)", w.Code, w.Body.String())
 	}
@@ -80,14 +144,10 @@ func TestUserUpdateAndDelete(t *testing.T) {
 	if len(roles) != 0 {
 		t.Errorf("role binding not purged: %v", roles)
 	}
-	ok, _ := e.Check("u-1", "agent", "a1", "use")
-	if ok {
+	if ok, _ := e.Check("u-1", "agent", "a1", "use"); ok {
 		t.Error("direct grant not purged")
 	}
-
-	// delete again -> 404
-	w = do(t, r, http.MethodDelete, "/api/safe/v1/directory/users/u-1", nil)
-	if w.Code != http.StatusNotFound {
+	if w := adminReq(t, r, http.MethodDelete, "/api/safe/v1/admin/users/u-1", nil); w.Code != http.StatusNotFound {
 		t.Errorf("delete twice: want 404, got %d", w.Code)
 	}
 }
@@ -95,23 +155,17 @@ func TestUserUpdateAndDelete(t *testing.T) {
 func TestDepartmentCRUD(t *testing.T) {
 	r, _, db, _ := newAdminServer(t)
 
-	// create root
-	w := do(t, r, http.MethodPost, "/api/safe/v1/directory/departments",
-		map[string]any{"id": "d-root", "name": "Root"})
-	if w.Code != http.StatusCreated {
+	if w := adminReq(t, r, http.MethodPost, "/api/safe/v1/admin/departments",
+		map[string]any{"id": "d-root", "name": "Root"}); w.Code != http.StatusCreated {
 		t.Fatalf("create: want 201, got %d (%s)", w.Code, w.Body.String())
 	}
-	// create child
-	w = do(t, r, http.MethodPost, "/api/safe/v1/directory/departments",
-		map[string]any{"id": "d-child", "name": "Child", "parent_id": "d-root"})
-	if w.Code != http.StatusCreated {
+	if w := adminReq(t, r, http.MethodPost, "/api/safe/v1/admin/departments",
+		map[string]any{"id": "d-child", "name": "Child", "parent_id": "d-root"}); w.Code != http.StatusCreated {
 		t.Fatalf("create child: %d", w.Code)
 	}
 
-	// rename child
-	w = do(t, r, http.MethodPut, "/api/safe/v1/directory/departments/d-child",
-		map[string]any{"name": "Kid"})
-	if w.Code != http.StatusNoContent {
+	if w := adminReq(t, r, http.MethodPut, "/api/safe/v1/admin/departments/d-child",
+		map[string]any{"name": "Kid"}); w.Code != http.StatusNoContent {
 		t.Fatalf("update: %d", w.Code)
 	}
 	var d model.Department
@@ -121,55 +175,41 @@ func TestDepartmentCRUD(t *testing.T) {
 	}
 
 	// delete non-empty root -> 409
-	w = do(t, r, http.MethodDelete, "/api/safe/v1/directory/departments/d-root", nil)
-	if w.Code != http.StatusConflict {
+	if w := adminReq(t, r, http.MethodDelete, "/api/safe/v1/admin/departments/d-root", nil); w.Code != http.StatusConflict {
 		t.Errorf("delete non-empty: want 409, got %d", w.Code)
 	}
-
-	// delete empty child -> 204
-	w = do(t, r, http.MethodDelete, "/api/safe/v1/directory/departments/d-child", nil)
-	if w.Code != http.StatusNoContent {
+	// delete empty child -> 204, then empty root -> 204
+	if w := adminReq(t, r, http.MethodDelete, "/api/safe/v1/admin/departments/d-child", nil); w.Code != http.StatusNoContent {
 		t.Errorf("delete child: want 204, got %d", w.Code)
 	}
-	// now root is empty -> 204
-	w = do(t, r, http.MethodDelete, "/api/safe/v1/directory/departments/d-root", nil)
-	if w.Code != http.StatusNoContent {
+	if w := adminReq(t, r, http.MethodDelete, "/api/safe/v1/admin/departments/d-root", nil); w.Code != http.StatusNoContent {
 		t.Errorf("delete root: want 204, got %d", w.Code)
 	}
-	// delete unknown -> 404
-	w = do(t, r, http.MethodDelete, "/api/safe/v1/directory/departments/ghost", nil)
-	if w.Code != http.StatusNotFound {
+	if w := adminReq(t, r, http.MethodDelete, "/api/safe/v1/admin/departments/ghost", nil); w.Code != http.StatusNotFound {
 		t.Errorf("delete ghost: want 404, got %d", w.Code)
 	}
 
-	// member guard: dept with a member user can't be deleted
+	// member guard
 	db.Create(&model.Department{ID: "d-hr", Name: "HR"})
 	db.Create(&model.UserDepartment{UserID: "u-x", DepartmentID: "d-hr"})
-	w = do(t, r, http.MethodDelete, "/api/safe/v1/directory/departments/d-hr", nil)
-	if w.Code != http.StatusConflict {
+	if w := adminReq(t, r, http.MethodDelete, "/api/safe/v1/admin/departments/d-hr", nil); w.Code != http.StatusConflict {
 		t.Errorf("delete dept-with-member: want 409, got %d", w.Code)
 	}
 }
 
 func TestRoleCRUDAndBuiltInProtection(t *testing.T) {
 	r, e, db, _ := newAdminServer(t)
-	// seed a built-in role
 	db.Create(&model.Role{ID: "sys-1", Name: "超级管理员", Source: model.RoleSourceSystem})
 
-	// create custom role
-	w := do(t, r, http.MethodPost, "/api/safe/v1/authz/roles",
-		map[string]any{"id": "c-1", "name": "Auditors", "description": "read logs"})
-	if w.Code != http.StatusCreated {
+	if w := adminReq(t, r, http.MethodPost, "/api/safe/v1/admin/roles",
+		map[string]any{"id": "c-1", "name": "Auditors", "description": "read logs"}); w.Code != http.StatusCreated {
 		t.Fatalf("create role: %d (%s)", w.Code, w.Body.String())
 	}
 
-	// list -> both, custom flagged built_in=false
-	w = do(t, r, http.MethodGet, "/api/safe/v1/authz/roles", nil)
+	w := adminReq(t, r, http.MethodGet, "/api/safe/v1/admin/roles", nil)
 	var list struct {
 		Roles []struct {
-			ID      string `json:"id"`
-			Source  string `json:"source"`
-			BuiltIn bool   `json:"built_in"`
+			ID string `json:"id"`
 		} `json:"roles"`
 	}
 	_ = json.Unmarshal(w.Body.Bytes(), &list)
@@ -177,36 +217,26 @@ func TestRoleCRUDAndBuiltInProtection(t *testing.T) {
 		t.Fatalf("list: want 2 roles, got %d", len(list.Roles))
 	}
 
-	// update custom -> 204
-	w = do(t, r, http.MethodPut, "/api/safe/v1/authz/roles/c-1", map[string]any{"name": "Audit Team"})
-	if w.Code != http.StatusNoContent {
+	if w := adminReq(t, r, http.MethodPut, "/api/safe/v1/admin/roles/c-1", map[string]any{"name": "Audit Team"}); w.Code != http.StatusNoContent {
 		t.Errorf("update custom: want 204, got %d", w.Code)
 	}
-	// update built-in -> 403
-	w = do(t, r, http.MethodPut, "/api/safe/v1/authz/roles/sys-1", map[string]any{"name": "hax"})
-	if w.Code != http.StatusForbidden {
+	if w := adminReq(t, r, http.MethodPut, "/api/safe/v1/admin/roles/sys-1", map[string]any{"name": "hax"}); w.Code != http.StatusForbidden {
 		t.Errorf("update built-in: want 403, got %d", w.Code)
 	}
-	// delete built-in -> 403
-	w = do(t, r, http.MethodDelete, "/api/safe/v1/authz/roles/sys-1", nil)
-	if w.Code != http.StatusForbidden {
+	if w := adminReq(t, r, http.MethodDelete, "/api/safe/v1/admin/roles/sys-1", nil); w.Code != http.StatusForbidden {
 		t.Errorf("delete built-in: want 403, got %d", w.Code)
 	}
 
-	// grant the custom role a permission, then it shows in GET /roles/:id
-	w = do(t, r, http.MethodPost, "/api/safe/v1/authz/roles/c-1/permissions",
-		map[string]any{"resource": map[string]string{"type": "audit", "id": "*"}, "operations": []string{"list"}})
-	if w.Code != http.StatusNoContent {
+	if w := adminReq(t, r, http.MethodPost, "/api/safe/v1/admin/roles/c-1/permissions",
+		map[string]any{"resource": map[string]string{"type": "audit", "id": "*"}, "operations": []string{"list"}}); w.Code != http.StatusNoContent {
 		t.Fatalf("grant role perm: %d (%s)", w.Code, w.Body.String())
 	}
-	// bind a member and read it back
 	_ = e.AssignRole("u-9", "c-1")
-	w = do(t, r, http.MethodGet, "/api/safe/v1/authz/roles/c-1", nil)
+	w = adminReq(t, r, http.MethodGet, "/api/safe/v1/admin/roles/c-1", nil)
 	var detail struct {
 		Members     []string `json:"members"`
 		Permissions []struct {
-			Resource   map[string]string `json:"resource"`
-			Operations []string          `json:"operations"`
+			Resource map[string]string `json:"resource"`
 		} `json:"permissions"`
 	}
 	_ = json.Unmarshal(w.Body.Bytes(), &detail)
@@ -217,19 +247,13 @@ func TestRoleCRUDAndBuiltInProtection(t *testing.T) {
 		t.Errorf("permissions = %v", detail.Permissions)
 	}
 
-	// delete custom role -> 204 + casbin purged (member binding gone)
-	w = do(t, r, http.MethodDelete, "/api/safe/v1/authz/roles/c-1", nil)
-	if w.Code != http.StatusNoContent {
+	if w := adminReq(t, r, http.MethodDelete, "/api/safe/v1/admin/roles/c-1", nil); w.Code != http.StatusNoContent {
 		t.Fatalf("delete custom: %d", w.Code)
 	}
-	members, _ := e.RoleMembers("c-1")
-	if len(members) != 0 {
+	if members, _ := e.RoleMembers("c-1"); len(members) != 0 {
 		t.Errorf("role binding not purged on delete: %v", members)
 	}
-
-	// get unknown -> 404
-	w = do(t, r, http.MethodGet, "/api/safe/v1/authz/roles/ghost", nil)
-	if w.Code != http.StatusNotFound {
+	if w := adminReq(t, r, http.MethodGet, "/api/safe/v1/admin/roles/ghost", nil); w.Code != http.StatusNotFound {
 		t.Errorf("get ghost role: want 404, got %d", w.Code)
 	}
 }
@@ -237,16 +261,13 @@ func TestRoleCRUDAndBuiltInProtection(t *testing.T) {
 func TestRoleBindingsListAndUnbind(t *testing.T) {
 	r, e, _, _ := newAdminServer(t)
 
-	// bind via API
-	w := do(t, r, http.MethodPost, "/api/safe/v1/authz/role-bindings",
-		map[string]any{"accessor_id": "u-1", "role_id": "r-a"})
-	if w.Code != http.StatusNoContent {
+	if w := adminReq(t, r, http.MethodPost, "/api/safe/v1/admin/role-bindings",
+		map[string]any{"accessor_id": "u-1", "role_id": "r-a"}); w.Code != http.StatusNoContent {
 		t.Fatalf("bind: %d", w.Code)
 	}
 	_ = e.AssignRole("u-1", "r-b")
 
-	// list roles of accessor
-	w = do(t, r, http.MethodGet, "/api/safe/v1/authz/role-bindings?accessor_id=u-1", nil)
+	w := adminReq(t, r, http.MethodGet, "/api/safe/v1/admin/role-bindings?accessor_id=u-1", nil)
 	var resp struct {
 		RoleIDs []string `json:"role_ids"`
 	}
@@ -255,21 +276,17 @@ func TestRoleBindingsListAndUnbind(t *testing.T) {
 		t.Fatalf("role_ids = %v", resp.RoleIDs)
 	}
 
-	// unbind one
-	w = do(t, r, http.MethodDelete, "/api/safe/v1/authz/role-bindings",
-		map[string]any{"accessor_id": "u-1", "role_id": "r-a"})
-	if w.Code != http.StatusNoContent {
+	if w := adminReq(t, r, http.MethodDelete, "/api/safe/v1/admin/role-bindings",
+		map[string]any{"accessor_id": "u-1", "role_id": "r-a"}); w.Code != http.StatusNoContent {
 		t.Fatalf("unbind: %d", w.Code)
 	}
-	w = do(t, r, http.MethodGet, "/api/safe/v1/authz/role-bindings?accessor_id=u-1", nil)
+	w = adminReq(t, r, http.MethodGet, "/api/safe/v1/admin/role-bindings?accessor_id=u-1", nil)
 	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	if len(resp.RoleIDs) != 1 || resp.RoleIDs[0] != "r-b" {
 		t.Errorf("after unbind role_ids = %v", resp.RoleIDs)
 	}
 
-	// missing accessor_id -> 400
-	w = do(t, r, http.MethodGet, "/api/safe/v1/authz/role-bindings", nil)
-	if w.Code != http.StatusBadRequest {
+	if w := adminReq(t, r, http.MethodGet, "/api/safe/v1/admin/role-bindings", nil); w.Code != http.StatusBadRequest {
 		t.Errorf("missing accessor_id: want 400, got %d", w.Code)
 	}
 }

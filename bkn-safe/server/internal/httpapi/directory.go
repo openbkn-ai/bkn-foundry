@@ -163,6 +163,41 @@ func registerDirectory(r *gin.Engine, dir *directory.Service) {
 		c.JSON(http.StatusOK, gin.H{"departments": deps})
 	})
 
+}
+
+// registerAdminReads mounts the admin-only directory READ endpoints (single
+// user detail, department list) under the /admin group, so the CLI/web admin
+// surface reaches them through the gateway. The internal (ClusterIP) equivalents
+// stay on /api/safe/v1/directory for service-to-service callers.
+func registerAdminReads(g *gin.RouterGroup, dir *directory.Service) {
+	// GET /users/:id — full user detail.
+	g.GET("/users/:id", func(c *gin.Context) {
+		d, err := dir.GetUser(c.Request.Context(), c.Param("id"))
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+			return
+		}
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		c.JSON(http.StatusOK, d)
+	})
+
+	// GET /departments?parent_id= — list departments under a parent ("" = roots).
+	g.GET("/departments", func(c *gin.Context) {
+		deps, err := dir.ListDepartments(c.Request.Context(), c.Query("parent_id"))
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		c.JSON(http.StatusOK, deps)
+	})
+}
+
+// registerDeptAdmin mounts the department write surface (create/update/delete)
+// under the admin group. Delete refuses a non-empty department (409).
+func registerDeptAdmin(g *gin.RouterGroup, dir *directory.Service) {
 	// POST /departments — create a department node. Server-assigns the id when
 	// the body omits it. parent_id "" makes it a root. -> { id }
 	g.POST("/departments", func(c *gin.Context) {

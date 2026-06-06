@@ -149,6 +149,11 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 		c.JSON(http.StatusOK, gin.H{"entries": entries})
 	})
 
+}
+
+// registerRoleBindings mounts the accessor↔role binding endpoints (bind / list /
+// unbind). Admin-only — mounted under the /admin group behind RequireAdmin.
+func registerRoleBindings(g *gin.RouterGroup, e *authz.Enforcer) {
 	// POST /role-bindings — bind an accessor to a role. { accessor_id, role_id }
 	g.POST("/role-bindings", func(c *gin.Context) {
 		var req struct {
@@ -197,11 +202,9 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 		}
 		c.Status(http.StatusNoContent)
 	})
-
-	registerRoles(g, e, db)
 }
 
-// registerRoles mounts the role catalog endpoints under /api/safe/v1/authz.
+// registerRoles mounts the role catalog endpoints (admin-only, under /admin).
 // Built-in (system/business) roles are read-only — their UUIDs are hardcoded in
 // DA/flow-automation and their permission matrix is owned by the seed files.
 // Custom roles (source=custom) are fully manageable at runtime.
