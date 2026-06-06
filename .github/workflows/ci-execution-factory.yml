@@ -57,7 +57,7 @@ jobs:
       - name: Run Go unit tests
         run: |
           pkgs=$(go list ./... | grep -v /server/tests | grep -v /server/mocks)
-          go test -count=1 $pkgs
+          go test -count=1 -gcflags="all=-N -l" $pkgs
 
   openbkn-smoke-live:
     name: L2 live smoke (manual)
