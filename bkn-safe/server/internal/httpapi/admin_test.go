@@ -258,6 +258,110 @@ func TestRoleCRUDAndBuiltInProtection(t *testing.T) {
 	}
 }
 
+func TestUserListSearchAndFindByAccount(t *testing.T) {
+	r, _, _, users := newAdminServer(t)
+	ctx := t.Context()
+	for _, u := range []*model.User{
+		{ID: "u-a", Account: "alice", Name: "Alice", Enabled: true},
+		{ID: "u-b", Account: "bob", Name: "Bobby", Enabled: true},
+		{ID: "u-c", Account: "carol", Name: "Alicia", Enabled: true},
+	} {
+		if err := users.CreateLocalUser(ctx, u, "pw-init0"); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// list all
+	w := adminReq(t, r, http.MethodGet, "/api/safe/v1/admin/users", nil)
+	var list struct {
+		Users []directory.UserSummary `json:"users"`
+		Total int                     `json:"total"`
+	}
+	_ = json.Unmarshal(w.Body.Bytes(), &list)
+	if list.Total != 3 || len(list.Users) != 3 {
+		t.Fatalf("list all: total=%d len=%d", list.Total, len(list.Users))
+	}
+
+	// search "ali" matches alice(account) + Alicia(name)
+	w = adminReq(t, r, http.MethodGet, "/api/safe/v1/admin/users?search=ali", nil)
+	_ = json.Unmarshal(w.Body.Bytes(), &list)
+	if list.Total != 2 {
+		t.Errorf("search ali: want 2, got %d", list.Total)
+	}
+
+	// exact account lookup
+	w = adminReq(t, r, http.MethodGet, "/api/safe/v1/admin/users?account=bob", nil)
+	_ = json.Unmarshal(w.Body.Bytes(), &list)
+	if len(list.Users) != 1 || list.Users[0].ID != "u-b" {
+		t.Errorf("account=bob: %v", list.Users)
+	}
+
+	// account miss -> empty, not 404
+	w = adminReq(t, r, http.MethodGet, "/api/safe/v1/admin/users?account=ghost", nil)
+	if w.Code != http.StatusOK {
+		t.Errorf("account miss: want 200, got %d", w.Code)
+	}
+	_ = json.Unmarshal(w.Body.Bytes(), &list)
+	if len(list.Users) != 0 {
+		t.Errorf("account miss: want empty, got %v", list.Users)
+	}
+}
+
+func TestDepartmentDetailAndMembers(t *testing.T) {
+	r, _, db, _ := newAdminServer(t)
+	db.Create(&model.Department{ID: "d-eng", Name: "Engineering"})
+	db.Create(&model.Department{ID: "d-eng-be", Name: "Backend", ParentID: "d-eng"})
+	db.Create(&model.User{ID: "u-1", Account: "alice", Name: "Alice", Enabled: true})
+	db.Create(&model.User{ID: "u-2", Account: "bob", Name: "Bob", Enabled: true})
+	db.Create(&model.UserDepartment{UserID: "u-1", DepartmentID: "d-eng"})
+	db.Create(&model.UserDepartment{UserID: "u-2", DepartmentID: "d-eng"})
+
+	// single detail
+	w := adminReq(t, r, http.MethodGet, "/api/safe/v1/admin/departments/d-eng", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("dept detail: %d", w.Code)
+	}
+	var d model.Department
+	_ = json.Unmarshal(w.Body.Bytes(), &d)
+	if d.Name != "Engineering" {
+		t.Errorf("dept detail name = %q", d.Name)
+	}
+	if w := adminReq(t, r, http.MethodGet, "/api/safe/v1/admin/departments/ghost", nil); w.Code != http.StatusNotFound {
+		t.Errorf("dept detail ghost: want 404, got %d", w.Code)
+	}
+
+	// flat list (no parent_id) -> both depts
+	w = adminReq(t, r, http.MethodGet, "/api/safe/v1/admin/departments", nil)
+	var flat struct {
+		Total int `json:"total"`
+	}
+	_ = json.Unmarshal(w.Body.Bytes(), &flat)
+	if flat.Total != 2 {
+		t.Errorf("flat list total = %d, want 2", flat.Total)
+	}
+
+	// scoped (parent_id=d-eng) -> only the child
+	w = adminReq(t, r, http.MethodGet, "/api/safe/v1/admin/departments?parent_id=d-eng", nil)
+	var scoped struct {
+		Departments []model.Department `json:"departments"`
+	}
+	_ = json.Unmarshal(w.Body.Bytes(), &scoped)
+	if len(scoped.Departments) != 1 || scoped.Departments[0].ID != "d-eng-be" {
+		t.Errorf("scoped children = %v", scoped.Departments)
+	}
+
+	// members
+	w = adminReq(t, r, http.MethodGet, "/api/safe/v1/admin/departments/d-eng/members", nil)
+	var mem struct {
+		Users []directory.UserSummary `json:"users"`
+		Total int                     `json:"total"`
+	}
+	_ = json.Unmarshal(w.Body.Bytes(), &mem)
+	if mem.Total != 2 {
+		t.Errorf("dept members total = %d, want 2", mem.Total)
+	}
+}
+
 func TestRoleBindingsListAndUnbind(t *testing.T) {
 	r, e, _, _ := newAdminServer(t)
 

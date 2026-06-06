@@ -115,6 +115,120 @@ func (s *Service) ListDepartments(ctx context.Context, parentID string) ([]model
 	return deps, nil
 }
 
+// UserSummary is the list view of a user (no per-user role/department expansion,
+// unlike UserDetail) — used for enumeration/search and department-member lists.
+type UserSummary struct {
+	ID          string `json:"id"`
+	Account     string `json:"account"`
+	Name        string `json:"name"`
+	Email       string `json:"email"`
+	Enabled     bool   `json:"enabled"`
+	AccountType string `json:"account_type"`
+}
+
+// userSummaryCols is the column set selected into UserSummary.
+var userSummaryCols = []string{"id", "account", "name", "email", "enabled", "account_type"}
+
+// ListUsers returns a page of users, optionally filtered by a case-insensitive
+// substring match on account or name, plus the total matching count. limit<=0
+// defaults to 50 and is capped at 500.
+func (s *Service) ListUsers(ctx context.Context, search string, offset, limit int) ([]UserSummary, int64, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 500 {
+		limit = 500
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	q := s.db.WithContext(ctx).Model(&model.User{})
+	if search != "" {
+		like := "%" + search + "%"
+		q = q.Where("account LIKE ? OR name LIKE ?", like, like)
+	}
+	var total int64
+	if err := q.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	out := make([]UserSummary, 0, limit)
+	if err := q.Select(userSummaryCols).Order("account").Offset(offset).Limit(limit).Scan(&out).Error; err != nil {
+		return nil, 0, err
+	}
+	return out, total, nil
+}
+
+// FindUserByAccount returns the user with the exact login account, or
+// gorm.ErrRecordNotFound when none matches.
+func (s *Service) FindUserByAccount(ctx context.Context, account string) (*UserSummary, error) {
+	var u UserSummary
+	if err := s.db.WithContext(ctx).Model(&model.User{}).
+		Select(userSummaryCols).Where("account = ?", account).First(&u).Error; err != nil {
+		return nil, err
+	}
+	return &u, nil
+}
+
+// ListAllDepartments returns a page of departments across the whole tree
+// (flat), optionally filtered by a case-insensitive name substring, plus the
+// total count. Used by the admin org list/tree (client builds the tree).
+func (s *Service) ListAllDepartments(ctx context.Context, search string, offset, limit int) ([]model.Department, int64, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	if limit > 1000 {
+		limit = 1000
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	q := s.db.WithContext(ctx).Model(&model.Department{})
+	if search != "" {
+		q = q.Where("name LIKE ?", "%"+search+"%")
+	}
+	var total int64
+	if err := q.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	deps := make([]model.Department, 0, limit)
+	if err := q.Order("parent_id, name").Offset(offset).Limit(limit).Find(&deps).Error; err != nil {
+		return nil, 0, err
+	}
+	return deps, total, nil
+}
+
+// GetDepartment returns a single department by id, or gorm.ErrRecordNotFound.
+func (s *Service) GetDepartment(ctx context.Context, id string) (*model.Department, error) {
+	var d model.Department
+	if err := s.db.WithContext(ctx).First(&d, "id = ?", id).Error; err != nil {
+		return nil, err
+	}
+	return &d, nil
+}
+
+// DepartmentMembers returns the users directly mapped into a department (the
+// UserDepartment rows for this dept, resolved to user summaries). Direct
+// members only — not transitive descendants.
+func (s *Service) DepartmentMembers(ctx context.Context, deptID string) ([]UserSummary, error) {
+	var uds []model.UserDepartment
+	if err := s.db.WithContext(ctx).Where("department_id = ?", deptID).Find(&uds).Error; err != nil {
+		return nil, err
+	}
+	ids := make([]string, 0, len(uds))
+	for _, ud := range uds {
+		ids = append(ids, ud.UserID)
+	}
+	out := make([]UserSummary, 0, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+	if err := s.db.WithContext(ctx).Model(&model.User{}).
+		Select(userSummaryCols).Where("id IN ?", ids).Order("account").Scan(&out).Error; err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // CreateDepartment inserts a new department node. The caller supplies the id
 // (or sets it beforehand); ParentID "" makes it a root. Type defaults to
 // "department" at the DB layer when empty.

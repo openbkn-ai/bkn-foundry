@@ -3,6 +3,7 @@ package httpapi
 import (
 	"errors"
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -170,6 +171,32 @@ func registerDirectory(r *gin.Engine, dir *directory.Service) {
 // surface reaches them through the gateway. The internal (ClusterIP) equivalents
 // stay on /api/safe/v1/directory for service-to-service callers.
 func registerAdminReads(g *gin.RouterGroup, dir *directory.Service) {
+	// GET /users — list/search users (paginated), or ?account= for an exact
+	// login lookup. Query: ?search=&offset=&limit= | ?account=
+	// -> { users:[{id,account,name,email,enabled,account_type}], total }
+	g.GET("/users", func(c *gin.Context) {
+		ctx := c.Request.Context()
+		if acct := c.Query("account"); acct != "" {
+			u, err := dir.FindUserByAccount(ctx, acct)
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				c.JSON(http.StatusOK, gin.H{"users": []directory.UserSummary{}, "total": 0})
+				return
+			}
+			if err != nil {
+				serverError(c, err)
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{"users": []*directory.UserSummary{u}, "total": 1})
+			return
+		}
+		users, total, err := dir.ListUsers(ctx, c.Query("search"), atoiDefault(c.Query("offset"), 0), atoiDefault(c.Query("limit"), 0))
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"users": users, "total": total})
+	})
+
 	// GET /users/:id — full user detail.
 	g.GET("/users/:id", func(c *gin.Context) {
 		d, err := dir.GetUser(c.Request.Context(), c.Param("id"))
@@ -184,15 +211,63 @@ func registerAdminReads(g *gin.RouterGroup, dir *directory.Service) {
 		c.JSON(http.StatusOK, d)
 	})
 
-	// GET /departments?parent_id= — list departments under a parent ("" = roots).
+	// GET /departments — with ?parent_id= lists that parent's direct children
+	// ("" = roots); without it returns the whole tree flat (paginated/searchable
+	// via ?search=&offset=&limit=) so the client can build the tree.
 	g.GET("/departments", func(c *gin.Context) {
-		deps, err := dir.ListDepartments(c.Request.Context(), c.Query("parent_id"))
+		ctx := c.Request.Context()
+		if _, scoped := c.GetQuery("parent_id"); scoped {
+			deps, err := dir.ListDepartments(ctx, c.Query("parent_id"))
+			if err != nil {
+				serverError(c, err)
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{"departments": deps, "total": len(deps)})
+			return
+		}
+		deps, total, err := dir.ListAllDepartments(ctx, c.Query("search"), atoiDefault(c.Query("offset"), 0), atoiDefault(c.Query("limit"), 0))
 		if err != nil {
 			serverError(c, err)
 			return
 		}
-		c.JSON(http.StatusOK, deps)
+		c.JSON(http.StatusOK, gin.H{"departments": deps, "total": total})
 	})
+
+	// GET /departments/:id — single department detail.
+	g.GET("/departments/:id", func(c *gin.Context) {
+		d, err := dir.GetDepartment(c.Request.Context(), c.Param("id"))
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "department not found"})
+			return
+		}
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		c.JSON(http.StatusOK, d)
+	})
+
+	// GET /departments/:id/members — users directly mapped into the department.
+	g.GET("/departments/:id/members", func(c *gin.Context) {
+		members, err := dir.DepartmentMembers(c.Request.Context(), c.Param("id"))
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"users": members, "total": len(members)})
+	})
+}
+
+// atoiDefault parses s as an int, returning def on empty/invalid input.
+func atoiDefault(s string, def int) int {
+	if s == "" {
+		return def
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		return def
+	}
+	return n
 }
 
 // registerDeptAdmin mounts the department write surface (create/update/delete)

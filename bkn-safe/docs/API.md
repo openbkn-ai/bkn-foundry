@@ -123,7 +123,9 @@ curl -X POST $SAFE/api/safe/v1/authz/check -H 'Content-Type: application/json' \
 
 ### 用户
 
-- `GET /users/:id` — 用户详情(同内部 GET,经鉴权暴露)。未找到 → 404。
+- `GET /users?search=&offset=&limit=` — 列表/搜索(account/name 子串)→ `{ "users":[{id,account,name,email,enabled,account_type}], "total" }`。
+- `GET /users?account=<login>` — 按登录名精确查 → `{ "users":[u], "total":1 }`,无匹配 → `{ "users":[], "total":0 }`(200)。
+- `GET /users/:id` — 用户详情(含 roles+departments)。未找到 → 404。
 - `POST /users` — 建本地用户(bcrypt)。`{ "account","name","email","password","account_type" }` → `201 { "id" }`(account 唯一,重复 → 500)。
 - `PUT /users/:id` — 改 `name/email/telephone/enabled/account_type`(指针字段,只动传入的;`account`/密码另有专门接口)。未找到 → 404。
 - `DELETE /users/:id` — 删用户 + 清部门/组成员 + casbin 绑定与直授。未找到 → 404。
