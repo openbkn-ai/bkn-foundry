@@ -76,47 +76,7 @@ curl -X POST $SAFE/api/safe/v1/authz/check -H 'Content-Type: application/json' \
 响应:`{ "entries":[ { "accessor_id":"u1", "resource":{"type":"agent","id":"a1"}, "operations":["use","modify"] } ] }`
 > 按访问者分组;bkn-safe 无过期/condition,条目视为永不过期、allow-only。DA 的 ListPolicy(All) 用。
 
-### POST /role-bindings — 绑定用户/应用到角色
-请求:`{ "accessor_id":"u1", "role_id":"1572fb82-526f-11f0-bde6-e674ec8dde71" }`
-响应:`204 No Content`
-
-### GET /role-bindings?accessor_id=`<id>` — 列访问者已绑定的角色(对接 ISF accessor_roles)
-响应:`{ "role_ids":["1572fb82-..."] }`。缺 accessor_id → 400。
-
-### DELETE /role-bindings — 解绑(POST 的逆操作)
-请求:`{ "accessor_id":"u1", "role_id":"..." }`
-响应:`204 No Content`(幂等)
-
-### GET /roles?source=`<system|business|custom>` — 列角色(source 可选)
-响应:`{ "roles":[ {"id","name","description","source","built_in"} ] }`
-
-### GET /roles/:id — 角色详情(含成员 + 权限授予)
-响应:`{ "id","name","description","source","built_in",
-  "members":["u1"], "permissions":[ {"resource":{"type":"audit","id":"*"},"operations":["list"]} ] }`
-未找到 → 404。
-
-### GET /roles/:id/members — 角色成员访问者 id
-响应:`{ "accessor_ids":["u1","u2"] }`
-
-### POST /roles — 建自定义角色(source 强制 custom,API 无法造 system/business)
-请求:`{ "id?":"","name":"Auditors","description":"" }`
-响应:`201 { "id":"<uuid>" }`
-
-### PUT /roles/:id — 改名/改描述(仅 custom)
-请求(子集):`{ "name":"","description":"" }`
-响应:`204`。内建(system/business)→ 403 `built-in role is immutable`。
-
-### DELETE /roles/:id — 删自定义角色 + 清 casbin 绑定与该角色的权限授予
-响应:`204`。内建 → 403。
-
-### POST /roles/:id/permissions — 给自定义角色授予资源权限(仅 custom)
-请求:`{ "resource":{"type":"agent","id":"*"}, "operations":["use"] }`(id `*` = 整类)
-响应:`204`。内建 → 403(内建权限由 seed grants.json 管)。
-
-### DELETE /roles/:id/permissions — 撤销自定义角色权限(仅 custom)
-请求同上;响应:`204`。内建 → 403。
-
-> 内建角色(system/business)只读:UUID 被 DA/flow-automation 硬引用,权限矩阵归 seed 文件;runtime 仅允许 custom 角色增删改。
+> 角色枚举/绑定、用户与部门写操作已迁至 **管理 API `/api/safe/v1/admin`**(需鉴权,见下)。本节为内部服务间无鉴权接口(ClusterIP)。
 > 资源类型/操作全集见 `docs/isf-replacement/contracts/authz-catalog.md`。
 
 ---
@@ -153,13 +113,47 @@ curl -X POST $SAFE/api/safe/v1/authz/check -H 'Content-Type: application/json' \
 请求:`{ "user_ids":["u1","u2"], "scope":["d1"] }`
 响应:`{ "user_ids":["u1"] }`
 
-### POST /users — 建本地用户(bcrypt)
-请求:`{ "account":"alice","name":"Alice","email":"","password":"<pwd>","account_type":"other" }`
-响应:`201 { "id":"<uuid>" }`(account 唯一,重复 → 500)
+> 用户/部门写操作、角色管理已迁至 **管理 API**(见下)。本节为内部服务间无鉴权读接口(ClusterIP)。
 
-### PUT /users/:id/password — 重置密码
-请求:`{ "password":"<new>" }`
-响应:`204 No Content`
+---
+
+## 管理 API `/api/safe/v1/admin`(需鉴权,网关暴露)
+
+面向 openbkn admin CLI / web 控制台。**每个请求需 `Authorization: Bearer <hydra access token>`**;中间件 `RequireAdmin` 先 introspect token 取 subject,再用 casbin 判超管(`CanAdmin`)。`401` 缺/无效 token,`403` 非管理员。当前仅超级管理员通过;放开给系统管理员等 = 给该角色授予 `safe_admin/manage`。
+
+### 用户
+
+- `GET /users/:id` — 用户详情(同内部 GET,经鉴权暴露)。未找到 → 404。
+- `POST /users` — 建本地用户(bcrypt)。`{ "account","name","email","password","account_type" }` → `201 { "id" }`(account 唯一,重复 → 500)。
+- `PUT /users/:id` — 改 `name/email/telephone/enabled/account_type`(指针字段,只动传入的;`account`/密码另有专门接口)。未找到 → 404。
+- `DELETE /users/:id` — 删用户 + 清部门/组成员 + casbin 绑定与直授。未找到 → 404。
+- `PUT /users/:id/password` — 管理员重置密码 `{ "password" }` → 204(置 MustChangePassword)。
+
+### 部门
+
+- `GET /departments?parent_id=` — 列部门(同内部 GET,经鉴权暴露)。
+- `POST /departments` — 建部门 `{ "id?","name","parent_id","type" }` → `201 { "id" }`。
+- `PUT /departments/:id` — 改 `name/parent_id/type`(子集)。未找到 → 404。
+- `DELETE /departments/:id` — 删空部门;有子部门或成员 → 409;未找到 → 404。
+
+### 角色绑定
+
+- `POST /role-bindings` — 绑定 `{ "accessor_id","role_id" }` → 204。
+- `GET /role-bindings?accessor_id=` — 列访问者已绑角色 `{ "role_ids":[...] }`(对接 ISF accessor_roles)。缺 accessor_id → 400。
+- `DELETE /role-bindings` — 解绑 `{ "accessor_id","role_id" }` → 204(幂等)。
+
+### 角色目录
+
+- `GET /roles?source=<system|business|custom>` — `{ "roles":[ {id,name,description,source,built_in} ] }`。
+- `GET /roles/:id` — 详情含成员+权限:`{ ...,"members":["u1"],"permissions":[{"resource":{"type","id"},"operations":[...]}] }`。未找到 → 404。
+- `GET /roles/:id/members` — `{ "accessor_ids":[...] }`。
+- `POST /roles` — 建自定义角色(source 强制 custom)`{ "id?","name","description" }` → `201 { "id" }`。
+- `PUT /roles/:id` — 改名/描述(仅 custom)。内建 → 403。
+- `DELETE /roles/:id` — 删自定义角色 + 清绑定与权限。内建 → 403。
+- `POST /roles/:id/permissions` — 授权 `{ "resource":{"type","id"},"operations":[...] }`(id `*`=整类,仅 custom)。内建 → 403。
+- `DELETE /roles/:id/permissions` — 撤权(同上,仅 custom)。内建 → 403。
+
+> 内建角色(system/business)只读:UUID 被 DA/flow-automation 硬引用,权限矩阵归 seed `grants.json`;runtime 仅允许 custom 角色增删改。`audit list` 类登录日志按设计不提供(无独立审计服务)。
 
 ---
 
