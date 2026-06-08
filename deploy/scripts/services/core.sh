@@ -339,6 +339,12 @@ _install_core_release_local() {
     requested_version="$(_core_resolve_release_version "${release_name}")"
     chart_name="$(_core_resolve_chart_name "${release_name}")"
 
+    # bkn-safe installs into its own "bkn-safe" namespace (see _install_core_release_repo).
+    if [[ "${release_name}" == "bkn-safe" ]]; then
+        namespace="bkn-safe"
+        kubectl get namespace "${namespace}" >/dev/null 2>&1 || kubectl create namespace "${namespace}" >/dev/null 2>&1 || true
+    fi
+
     local chart_tgz=""
     if [[ -n "${requested_version}" ]]; then
         chart_tgz="$(find_cached_chart_tgz_by_version "${charts_dir}" "${chart_name}" "${requested_version}" || true)"
@@ -392,6 +398,16 @@ _install_core_release_repo() {
     local release_version="$4"
     local chart_name
     chart_name="$(_core_resolve_chart_name "${release_name}")"
+
+    # bkn-safe lives in its OWN namespace: its chart pins metadata.namespace to
+    # "bkn-safe" and config.yaml routes services to bkn-safe.bkn-safe:3000. Install
+    # the release there (not the shared core namespace) and ensure it exists, so
+    # the helm release record, hooks (client-seed Job), and rendered resources all
+    # agree on one namespace.
+    if [[ "${release_name}" == "bkn-safe" ]]; then
+        namespace="bkn-safe"
+        kubectl get namespace "${namespace}" >/dev/null 2>&1 || kubectl create namespace "${namespace}" >/dev/null 2>&1 || true
+    fi
 
     local chart_ref
     chart_ref="$(build_chart_ref "${helm_repo_name}" "${chart_name}")"
