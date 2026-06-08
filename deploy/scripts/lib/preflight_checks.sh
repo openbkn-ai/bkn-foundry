@@ -979,9 +979,9 @@ preflight_check_existing_release() {
     if ! command -v kubectl &>/dev/null || ! kubectl cluster-info &>/dev/null; then
         return 0
     fi
-    log_info "Checking for existing kweaver/isf/dip-related Helm releases..."
+    log_info "Checking for existing kweaver/isf/dip/bkn-safe-related Helm releases..."
     local r total bad bad_names bad_count
-    r="$(helm list -A 2>/dev/null | awk 'NR>1 && tolower($0) ~ /kweaver|isf|dip/' || true)"
+    r="$(helm list -A 2>/dev/null | awk 'NR>1 && tolower($0) ~ /kweaver|isf|dip|bkn-safe/' || true)"
     if [[ -z "${r}" ]]; then
         PREFLIGHT_KWEAVER_RELEASE_TOTAL=0
         PREFLIGHT_KWEAVER_RELEASE_BAD=0
@@ -1466,7 +1466,6 @@ preflight_check_admin_tools() {
         fi
     else
         if [[ "${PREFLIGHT_KWEAVER_RELEASE_NAMES:-}" == *authentication* \
-            || "${PREFLIGHT_KWEAVER_RELEASE_NAMES:-}" == *hydra* \
             || "${PREFLIGHT_KWEAVER_RELEASE_NAMES:-}" == *user-management* \
             || "${PREFLIGHT_KWEAVER_RELEASE_NAMES:-}" == *eacp* \
             || "${PREFLIGHT_KWEAVER_RELEASE_NAMES:-}" == *isfweb* ]]; then
@@ -2244,7 +2243,6 @@ preflight_onboard_tooling_needed() {
         return 0
     fi
     if [[ "${PREFLIGHT_KWEAVER_RELEASE_NAMES:-}" == *authentication* \
-        || "${PREFLIGHT_KWEAVER_RELEASE_NAMES:-}" == *hydra* \
         || "${PREFLIGHT_KWEAVER_RELEASE_NAMES:-}" == *user-management* \
         || "${PREFLIGHT_KWEAVER_RELEASE_NAMES:-}" == *eacp* \
         || "${PREFLIGHT_KWEAVER_RELEASE_NAMES:-}" == *isfweb* ]]; then
@@ -2720,7 +2718,6 @@ preflight_apply_safe_fixes() {
         fi
 
         if [[ "${PREFLIGHT_KWEAVER_RELEASE_NAMES:-}" == *authentication* \
-            || "${PREFLIGHT_KWEAVER_RELEASE_NAMES:-}" == *hydra* \
             || "${PREFLIGHT_KWEAVER_RELEASE_NAMES:-}" == *user-management* \
             || "${PREFLIGHT_KWEAVER_RELEASE_NAMES:-}" == *eacp* \
             || "${PREFLIGHT_KWEAVER_RELEASE_NAMES:-}" == *isfweb* ]]; then
