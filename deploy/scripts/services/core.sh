@@ -336,6 +336,14 @@ _install_core_release_local() {
         helm_args+=("--set" "${set_value}")
     done
 
+    # bkn-safe's chart renders resource namespaces from .Values.namespace; the
+    # config.yaml global `namespace` (e.g. openbkn) would otherwise drop bkn-safe
+    # into the core namespace. Force its own namespace so services resolve
+    # bkn-safe.bkn-safe (config.yaml bknSafe.url) and the ingress/ExternalName refs hold.
+    if [[ "${release_name}" == "bkn-safe" ]]; then
+        helm_args+=("--set" "namespace=bkn-safe")
+    fi
+
     if helm "${helm_args[@]}"; then
         log_info "✓ ${release_name} installed successfully"
     else
@@ -403,6 +411,14 @@ _install_core_release_repo() {
     for set_value in "${CORE_SET_VALUES[@]}"; do
         helm_args+=("--set" "${set_value}")
     done
+
+    # bkn-safe's chart renders resource namespaces from .Values.namespace; the
+    # config.yaml global `namespace` (e.g. openbkn) would otherwise drop bkn-safe
+    # into the core namespace. Force its own namespace so services resolve
+    # bkn-safe.bkn-safe (config.yaml bknSafe.url) and the ingress/ExternalName refs hold.
+    if [[ "${release_name}" == "bkn-safe" ]]; then
+        helm_args+=("--set" "namespace=bkn-safe")
+    fi
 
     if helm "${helm_args[@]}"; then
         log_info "✓ ${release_name} installed successfully"
