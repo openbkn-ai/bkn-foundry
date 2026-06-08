@@ -3,7 +3,7 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: {{ .Values.image.name }}-client-seed
-  namespace: {{ .Values.namespace }}
+  namespace: {{ .Release.Namespace }}
   annotations:
     # Register the OAuth login clients after hydra + bkn-safe are up.
     "helm.sh/hook": post-install,post-upgrade

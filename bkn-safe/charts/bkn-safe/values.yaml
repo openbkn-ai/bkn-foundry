@@ -1,5 +1,6 @@
 replicaCount: 1
-namespace: bkn-safe
+# Namespace follows the Helm release (-n) — templates use .Release.Namespace, so
+# bkn-safe installs into the same namespace as the rest of BKN Foundry (openbkn).
 
 image:
   registry: ghcr.io/openbkn-ai
