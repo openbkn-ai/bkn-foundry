@@ -124,35 +124,18 @@ _dip_ensure_kweaver_core() {
 
     log_info "Checking kweaver-core dependencies for KWeaver DIP..."
 
-    local missing_isf=false
     local missing_core=false
     local release_name
     local original_chart_version="${HELM_CHART_VERSION:-}"
     local original_core_manifest="${CORE_VERSION_MANIFEST_FILE:-}"
-    local original_isf_manifest="${ISF_VERSION_MANIFEST_FILE:-}"
     local core_dependency_manifest=""
     local core_dependency_version="${HELM_CHART_VERSION:-}"
-    local isf_dependency_manifest=""
-    local isf_dependency_version="${HELM_CHART_VERSION:-}"
 
     core_dependency_manifest="$(_dip_resolve_core_dependency_manifest)"
     core_dependency_version="$(_dip_resolve_core_dependency_version)"
-    isf_dependency_manifest="$(_dip_resolve_isf_dependency_manifest)"
-    isf_dependency_version="$(_dip_resolve_isf_dependency_version)"
 
-    local -a isf_release_names=()
-    kweaver_mapfile_compat isf_release_names _dip_list_manifest_release_names "isf" "${isf_dependency_manifest}" "${isf_dependency_version}"
     local -a core_release_names=()
     kweaver_mapfile_compat core_release_names _dip_list_manifest_release_names "bkn-foundry" "${core_dependency_manifest}" "${core_dependency_version}"
-
-    for release_name in "${isf_release_names[@]}"; do
-        if _dip_helm_release_exists "${release_name}" "${namespace}"; then
-            log_info "  ✓ ISF release already installed (${release_name})"
-        else
-            log_info "  ✗ ISF release not installed (${release_name})"
-            missing_isf=true
-        fi
-    done
 
     for release_name in "${core_release_names[@]}"; do
         if _dip_helm_release_exists "${release_name}" "${namespace}"; then
@@ -163,23 +146,6 @@ _dip_ensure_kweaver_core() {
         fi
     done
 
-    if [[ "${missing_isf}" == "true" ]]; then
-        if [[ -n "${isf_dependency_manifest}" ]]; then
-            ISF_VERSION_MANIFEST_FILE="${isf_dependency_manifest}"
-            HELM_CHART_VERSION="${isf_dependency_version}"
-        fi
-        if ! install_isf; then
-            HELM_CHART_VERSION="${original_chart_version}"
-            CORE_VERSION_MANIFEST_FILE="${original_core_manifest}"
-            ISF_VERSION_MANIFEST_FILE="${original_isf_manifest}"
-            log_error "Failed to install kweaver-core module: ISF"
-            return 1
-        fi
-        HELM_CHART_VERSION="${original_chart_version}"
-        CORE_VERSION_MANIFEST_FILE="${original_core_manifest}"
-        ISF_VERSION_MANIFEST_FILE="${original_isf_manifest}"
-    fi
-
     if [[ "${missing_core}" == "true" ]]; then
         log_info "Installing missing BKN Foundry releases..."
         if [[ -n "${core_dependency_manifest}" ]]; then
@@ -189,16 +155,14 @@ _dip_ensure_kweaver_core() {
         if ! install_core; then
             HELM_CHART_VERSION="${original_chart_version}"
             CORE_VERSION_MANIFEST_FILE="${original_core_manifest}"
-            ISF_VERSION_MANIFEST_FILE="${original_isf_manifest}"
             log_error "Failed to install missing BKN Foundry releases"
             return 1
         fi
         HELM_CHART_VERSION="${original_chart_version}"
         CORE_VERSION_MANIFEST_FILE="${original_core_manifest}"
-        ISF_VERSION_MANIFEST_FILE="${original_isf_manifest}"
     fi
 
-    if [[ "${missing_isf}" == "false" && "${missing_core}" == "false" ]]; then
+    if [[ "${missing_core}" == "false" ]]; then
         log_info "All kweaver-core dependencies are satisfied."
     else
         log_info "kweaver-core dependency installation completed."
@@ -312,39 +276,6 @@ _dip_has_direct_dependency() {
     _dip_require_version_manifest || return 1
 
     [[ -n "$(_manifest_strip_quotes "$(_manifest_read_dependency_field "${DIP_VERSION_MANIFEST_FILE}" "${dependency_product}" "version")")" ]]
-}
-
-_dip_resolve_isf_dependency_version() {
-    _dip_require_version_manifest || return 1
-
-    if _dip_has_direct_dependency "isf"; then
-        get_release_manifest_dependency_version "${DIP_VERSION_MANIFEST_FILE}" "isf"
-        return 0
-    fi
-
-    local core_manifest
-    core_manifest="$(_dip_resolve_core_dependency_manifest)"
-    if [[ -n "${core_manifest}" ]]; then
-        get_release_manifest_dependency_version "${core_manifest}" "isf"
-        return 0
-    fi
-
-    echo "${HELM_CHART_VERSION:-}"
-}
-
-_dip_resolve_isf_dependency_manifest() {
-    _dip_require_version_manifest || return 1
-
-    if _dip_has_direct_dependency "isf"; then
-        get_release_manifest_dependency_manifest "${DIP_VERSION_MANIFEST_FILE}" "isf"
-        return 0
-    fi
-
-    local core_manifest
-    core_manifest="$(_dip_resolve_core_dependency_manifest)"
-    if [[ -n "${core_manifest}" ]]; then
-        get_release_manifest_dependency_manifest "${core_manifest}" "isf"
-    fi
 }
 
 _dip_list_manifest_release_names() {
@@ -778,7 +709,6 @@ install_dip() {
     if [[ -n "${charts_dir}" && -d "${charts_dir}" ]]; then
         use_local=true
         CORE_LOCAL_CHARTS_DIR="${charts_dir}"
-        ISF_LOCAL_CHARTS_DIR="${charts_dir}"
         log_info "Using local DIP charts from: ${charts_dir}"
     fi
 
@@ -865,13 +795,9 @@ download_dip() {
     charts_dir="$(_dip_download_charts_dir)"
 
     local original_core_charts_dir="${CORE_LOCAL_CHARTS_DIR:-}"
-    local original_isf_charts_dir="${ISF_LOCAL_CHARTS_DIR:-}"
-    local original_enable_isf="${ENABLE_ISF:-}"
     local original_chart_version="${HELM_CHART_VERSION:-}"
     local original_core_manifest="${CORE_VERSION_MANIFEST_FILE:-}"
     CORE_LOCAL_CHARTS_DIR="${charts_dir}"
-    ISF_LOCAL_CHARTS_DIR="${charts_dir}"
-    ENABLE_ISF="true"
 
     parse_manifest_source "${DIP_VERSION_MANIFEST_FILE:-}"
     ensure_chart_source "${HELM_CHART_REPO_NAME}" "${HELM_CHART_REPO_URL}"
@@ -894,8 +820,6 @@ download_dip() {
     done < <(_dip_release_names)
 
     CORE_LOCAL_CHARTS_DIR="${original_core_charts_dir}"
-    ISF_LOCAL_CHARTS_DIR="${original_isf_charts_dir}"
-    ENABLE_ISF="${original_enable_isf}"
 }
 
 # Install a single DIP release from a local .tgz chart file

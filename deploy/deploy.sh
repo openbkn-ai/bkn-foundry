@@ -43,7 +43,6 @@ source "${SCRIPT_DIR}/scripts/services/zookeeper.sh"
 source "${SCRIPT_DIR}/scripts/services/ingress_nginx.sh"
 source "${SCRIPT_DIR}/scripts/services/opensearch.sh"
 source "${SCRIPT_DIR}/scripts/services/core.sh"
-source "${SCRIPT_DIR}/scripts/services/isf.sh"
 source "${SCRIPT_DIR}/scripts/services/dip.sh"
 
 usage() {
@@ -79,8 +78,6 @@ usage() {
     echo "  bkn-foundry uninstall        Uninstall BKN Foundry services"
     echo "  bkn-foundry status           Show BKN Foundry services status"
     echo "                                Use --set to pass custom values to all charts"
-    echo "  isf install                   Install ISF auth/identity stack (also auto-enabled by a full 'foundry install' when auth.enabled); switches access to HTTPS"
-    echo "  isf download|uninstall|status Manage the ISF stack (charts from the upstream helm repo)"
     echo "  dip install                   Install DIP data-intelligence stack (aliases: bkn-dip)"
     echo "  dip download|uninstall|status Manage the DIP stack"
     echo "  all install                   Run full initialization (k8s + mariadb + redis + ingress-nginx)"
@@ -150,7 +147,7 @@ usage() {
     echo "  DEPLOY_BUSINESS_DOMAIN        x-business-domain for kweaver/onboard (default: bd_public)."
     echo ""
     echo "  $0 bkn-foundry install --minimum                 # Minimum install (skip auth & business-domain)"
-    echo "  $0 bkn-foundry install --set auth.enabled=false  # Install BKN Foundry without ISF"
+    echo "  $0 bkn-foundry install --set auth.enabled=false  # Install BKN Foundry with auth enforcement off"
     echo "  $0 bkn-foundry install --set auth.enabled=false --set businessDomain.enabled=false  # Same as --minimum"
     echo "  $0 bkn-foundry install --set image.registry=my-registry.com --set image.tag=v1.0.0  # Custom image settings"
     echo "  $0 bkn-foundry download --charts_dir=/path/to/charts # Download Core charts into a specific local directory"
@@ -814,34 +811,6 @@ main() {
         return 0
     fi
 
-    # Handle isf module
-    if [[ "${module}" == "isf" ]]; then
-        case "${action}" in
-            install|init)
-                parse_isf_args "install" "$@"
-                install_isf
-                ;;
-            download)
-                parse_isf_args "download" "$@"
-                download_isf
-                ;;
-            uninstall)
-                parse_isf_args "uninstall" "$@"
-                uninstall_isf
-                ;;
-            status)
-                parse_isf_args "status" "$@"
-                show_isf_status
-                ;;
-            *)
-                log_error "Unknown isf action: ${action}"
-                usage
-                exit 1
-                ;;
-        esac
-        return 0
-    fi
-    
     # Handle all/infra module (infrastructure: k8s + data services)
     # 'all' is an alias for 'infra' for backward compatibility
     if [[ "${module}" == "all" ]] || [[ "${module}" == "infra" ]]; then
@@ -943,7 +912,6 @@ main() {
                 done
                 
                 # Install all BKN Foundry services in order
-                install_isf
                 install_core
 
                 log_info "BKN Foundry application services deployment completed!"
@@ -952,12 +920,10 @@ main() {
                 check_root
                 log_info "Uninstalling BKN Foundry application services..."
                 uninstall_core || true
-                uninstall_isf || true
                 log_info "BKN Foundry application services uninstalled!"
                 ;;
             status)
                 log_info "BKN Foundry application services status:"
-                show_isf_status
                 show_core_status
                 show_dip_status
                 ;;
@@ -1034,7 +1000,6 @@ main() {
                     esac
                 done
                 
-                install_isf
                 install_studio
                 install_bkn
                 install_vega
@@ -1059,8 +1024,7 @@ main() {
                 uninstall_bkn || true
                 uninstall_vega || true
                 uninstall_studio || true
-                uninstall_isf || true
-                
+
                 # Then uninstall infrastructure
                 uninstall_opensearch || true
                 uninstall_ingress_nginx || true
