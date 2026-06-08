@@ -963,38 +963,30 @@ onboard_probe() {
     fi
     onboard_prepend_npm_global_bin_to_path
     onboard_recommend_admin_cli
-    onboard_ensure_kweaver_admin_for_isf
-    onboard_prepend_npm_global_bin_to_path
-    onboard_ensure_kweaver_admin_auth_for_isf
-    onboard_offer_isf_test_user
+    # ISF admin/test-user provisioning is retired: bkn-safe seeds the admin and
+    # OAuth clients itself (chart seedOnStart + client-seed Job), so onboard does
+    # not provision auth users.
     onboard_provision_oss_default_storage "${NAMESPACE}"
 }
 
-# Detect ISF (full install) and recommend kweaver-admin when present.
+# Detect the bkn-safe auth stack and print admin guidance. bkn-safe self-seeds
+# the admin (account "admin", platform initial password — forced change on first
+# login) and the OAuth clients (client-seed Job), so no kweaver-admin / test-user
+# provisioning is needed. (Replaces the retired ISF detection.)
 onboard_recommend_admin_cli() {
-    local has_isf="false" isf_releases=""
+    local has_safe="false"
     if command -v helm &>/dev/null; then
-        isf_releases="$(helm list -A 2>/dev/null \
-            | awk 'NR>1 {print $1}' \
-            | grep -E '^(authentication|hydra|user-management|eacp|isfweb|isf-data-migrator|policy-management|audit-log|authorization|sharemgnt|oauth2-ui|ingress-informationsecurityfabric)$' \
-            | paste -sd ',' - || true)"
-        [[ -n "${isf_releases}" ]] && has_isf="true"
+        helm list -A 2>/dev/null | awk 'NR>1 {print $1}' | grep -qE '^bkn-safe$' && has_safe="true"
     fi
-    if [[ "${has_isf}" != "true" ]]; then
-        if kubectl get ns 2>/dev/null | awk '{print $1}' | grep -qiE '^(isf|information-security-fabric)$'; then
-            has_isf="true"
-        fi
+    if [[ "${has_safe}" != "true" ]]; then
+        kubectl get ns 2>/dev/null | awk '{print $1}' | grep -qE '^bkn-safe$' && has_safe="true"
     fi
 
-    if [[ "${has_isf}" == "true" ]]; then
-        onboard_log_info "Detected ISF (full install) on this cluster${isf_releases:+ — releases: ${isf_releases}}"
-        if command -v kweaver-admin &>/dev/null; then
-            onboard_log_info "kweaver-admin CLI: $(onboard_kweaver_admin_version_summary)"
-        else
-            onboard_log_info "kweaver-admin: not on initial PATH; prepended npm global bin. If still missing, the next step may install or show hints. For full install user ops:  kweaver-admin auth login <url> -u admin -p '<password>' (-k only for https:// self-signed)."
-        fi
+    if [[ "${has_safe}" == "true" ]]; then
+        onboard_log_info "Auth stack: bkn-safe (+ bundled hydra). The admin user is seeded automatically (account 'admin', platform initial password — you must change it on first login). OAuth clients are seeded by the in-cluster client-seed Job."
+        onboard_log_info "Admin ops use the openbkn CLI (or bkn-safe's token-gated /api/safe/v1/admin API); kweaver-admin is not used with bkn-safe."
     else
-        onboard_log_info "No ISF releases detected — minimum install. kweaver-sdk (this CLI) is enough; kweaver-admin not required."
+        onboard_log_info "bkn-safe not detected on this cluster — auth stack may not be installed yet."
     fi
 }
 
