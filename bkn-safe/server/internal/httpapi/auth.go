@@ -52,7 +52,7 @@ form{margin:0}
 </style>`
 
 var loginPage = template.Must(template.New("login").Parse(pageCSS + `<!doctype html><meta charset="utf-8"><body>
-<div class="card"><h3>bkn-safe 登录</h3>
+<div class="card"><h3>BKN Foundry 登录</h3>
 <form method="post" action="/login">
   <input type="hidden" name="login_challenge" value="{{.Challenge}}">
   <input name="account" placeholder="账号" autofocus autocomplete="username">
