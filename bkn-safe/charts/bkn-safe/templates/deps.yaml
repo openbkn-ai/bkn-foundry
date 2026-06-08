@@ -1,8 +1,23 @@
 {{- if .Values.bundledDeps.enabled }}
-# Bundled dependencies for non-production clusters: PostgreSQL (hydra's DB),
-# upstream ORY Hydra v26.2.0, and MariaDB (bkn-safe's app DB). Ephemeral
-# (emptyDir) — dev/staging/CI only. In production set bundledDeps.enabled=false
-# and point config.hydra/config.db at the real services.
+{{- /* Cluster MariaDB creds from config.yaml depServices.rds (platform standard).
+       When present, the bkn-safe app DB uses it and the bundled MariaDB below is
+       skipped — only the hydra Postgres (which MariaDB can't host) is bundled. */}}
+{{- $rds := (.Values.depServices | default dict).rds | default dict }}
+# Bundled dependencies: PostgreSQL (hydra's DB — MariaDB can't host hydra) is
+# always bundled here and PERSISTED on a PVC; the bundled MariaDB (bkn-safe's app
+# DB) deploys ONLY when no cluster depServices.rds is configured (pure dev). Hydra
+# is upstream ORY v26.2.0.
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Release.Name }}-postgres-data
+  namespace: {{ .Values.namespace }}
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: {{ .Values.bundledDeps.postgresStorage | default "5Gi" | quote }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -24,7 +39,7 @@ spec:
             - { name: POSTGRES_DB, value: "hydra" }
           ports: [{ containerPort: 5432 }]
           volumeMounts: [{ name: data, mountPath: /var/lib/postgresql/data }]
-      volumes: [{ name: data, emptyDir: {} }]
+      volumes: [{ name: data, persistentVolumeClaim: { claimName: {{ .Release.Name }}-postgres-data } }]
 ---
 apiVersion: v1
 kind: Service
@@ -32,6 +47,7 @@ metadata: { name: {{ .Release.Name }}-postgres, namespace: {{ .Values.namespace 
 spec:
   selector: { app: {{ .Release.Name }}-postgres }
   ports: [{ port: 5432, targetPort: 5432 }]
+{{- if not $rds.host }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -60,6 +76,7 @@ metadata: { name: {{ .Values.config.db.host }}, namespace: {{ .Values.namespace 
 spec:
   selector: { app: {{ .Release.Name }}-mariadb }
   ports: [{ port: 3306, targetPort: 3306 }]
+{{- end }}
 ---
 apiVersion: apps/v1
 kind: Deployment

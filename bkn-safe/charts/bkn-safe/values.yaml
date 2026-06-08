@@ -109,6 +109,10 @@ bundledDeps:
   hydraImage: oryd/hydra:v26.2.0
   postgresImage: postgres:16
   mariadbImage: mariadb:11.4
+  # Persistent volume for the bundled hydra Postgres (survives pod restarts so
+  # OAuth clients/tokens/admin state aren't lost). The bundled MariaDB (app DB)
+  # only deploys when no cluster depServices.rds is set, so it stays ephemeral.
+  postgresStorage: "5Gi"
   hydraSecretsSystem: "dev-only-change-me-32-bytes-secret"
   # Browser-facing public base URL of the gateway (TLS-terminating ingress),
   # e.g. https://10.211.55.4. When set, hydra advertises this as the issuer and
