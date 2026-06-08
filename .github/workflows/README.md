@@ -23,6 +23,7 @@ Workflow YAML files must stay in this directory (flat layout). GitHub does not l
 | [`lint-workflow-files.yml`](./lint-workflow-files.yml) | Workflow File Naming | `pull_request` (`.github/workflows/**`) | Enforces allowed filename prefixes (see table above) |
 | [`lint-branch-name.yml`](./lint-branch-name.yml) | Branch Name Lint | `pull_request` | Branch naming rules |
 | [`lint-commit.yml`](./lint-commit.yml) | Commit Message Lint | `pull_request` | Commit message checks |
+| [`ci-execution-factory.yml`](./ci-execution-factory.yml) | ci-execution-factory | `pull_request` / `push` (`adp/execution-factory/**`), `workflow_dispatch` | L2 smoke collect-only + operator-integration Go unit tests; optional live smoke |
 | [`release-agent-observability.yml`](./release-agent-observability.yml) | agent-observability-release | `push` (`trace-ai/agent-observability/**`, …), `workflow_dispatch` | Agent observability image + Helm chart |
 | [`release-otelcol-chart.yaml`](./release-otelcol-chart.yaml) | otelcol-chart-release | `push` (`trace-ai/otelcol-contribute-chart/**`, …), `workflow_dispatch` | OTel collector Helm chart to GHCR |
 | [`release-infra-model-factory-base.yml`](./release-infra-model-factory-base.yml) | release-infra-model-factory-base | `push` (`infra/model-factory-base/**`), `workflow_dispatch` | Shared base image for mf-model-* → GHCR (`model-factory-base:v2`) |
