@@ -45,6 +45,7 @@ type OperatorRegisterReq struct {
 	DirectPublish          bool                    `json:"direct_publish,omitempty" form:"direct_publish,omitempty"`                                          // 直接发布
 	FunctionInput          *FunctionInput          `json:"function_input,omitempty" form:"function_input,omitempty"`                                          // 函数输入参数
 	Data                   string                  `json:"data" form:"data"`                                                                                  // 算子元数据，当算子元数据类型为openapi时必填
+	Description            string                  `json:"description" form:"description"`                                                                    // 算子描述
 }
 
 // OperatorRegisterResp 单个算子注册结果
