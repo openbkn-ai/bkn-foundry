@@ -63,14 +63,19 @@ ingress:
 #   openbkn-sdk     — device_code (CLI / headless human login)
 #   openbkn-studio  — authorization_code + PKCE (browser / SPA)
 #   openbkn-cli     — authorization_code + PKCE (CLI headless password login)
-# Idempotent (delete+create). Set webRedirectUri to the real SPA callback.
+# Idempotent (delete+create). The openbkn-studio SPA callback derives from
+# accessAddress (https://host/callback) at install time; webRedirectUri is the
+# dev fallback when no accessAddress is set.
 clientSeed:
   enabled: true
   webRedirectUri: "http://localhost:3000/callback"
   # Loopback redirect for the CLI password flow; must match the SDK's
   # `http://127.0.0.1:<DEFAULT_REDIRECT_PORT>/callback` (default port 9010).
   cliRedirectUri: "http://127.0.0.1:9010/callback"
-  ciRunnerSecret: "change-me-ci-runner-secret"
+  # ci-runner (client_credentials, authz.read/write) is seeded ONLY when this is
+  # set — empty means no privileged CI client is created (no weak default ships).
+  # Set to a real secret (e.g. via config.yaml / --set) to enable CI automation.
+  ciRunnerSecret: ""
 
 config:
   seedOnStart: true
