@@ -15,6 +15,12 @@ import (
 	"bkn-safe/internal/model"
 )
 
+// DefaultInitialPassword is the platform initial password handed to newly
+// created local users (and the seeded admin) when no password is specified.
+// MustChangePassword is always set, so it must be changed on first login. Single
+// source of truth: seed + admin user-create + the CLI all use this value.
+const DefaultInitialPassword = "openbkn"
+
 // ErrInvalidCredentials is returned when account/password verification fails.
 // It is deliberately opaque (no "user not found" vs "wrong password" leak).
 var ErrInvalidCredentials = errors.New("invalid account or password")

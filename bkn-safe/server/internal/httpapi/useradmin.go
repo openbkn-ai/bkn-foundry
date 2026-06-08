@@ -25,7 +25,7 @@ func registerUserAdmin(g *gin.RouterGroup, users *auth.UserStore, e *authz.Enfor
 			Account     string `json:"account" binding:"required"`
 			Name        string `json:"name"`
 			Email       string `json:"email"`
-			Password    string `json:"password" binding:"required"`
+			Password    string `json:"password"` // optional: defaults to the platform initial password
 			AccountType string `json:"account_type"`
 		}
 		if !bind(c, &req) {
@@ -33,6 +33,11 @@ func registerUserAdmin(g *gin.RouterGroup, users *auth.UserStore, e *authz.Enfor
 		}
 		if req.ID == "" {
 			req.ID = auth.NewID()
+		}
+		// No password given → hand out the platform initial password. The user is
+		// forced to change it on first login (CreateLocalUser sets the flag).
+		if req.Password == "" {
+			req.Password = auth.DefaultInitialPassword
 		}
 		at := model.AccountType(req.AccountType)
 		if at == "" {
