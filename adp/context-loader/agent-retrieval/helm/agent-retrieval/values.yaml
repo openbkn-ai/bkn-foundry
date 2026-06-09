@@ -95,10 +95,10 @@ depServices:
     dbCharset: utf8mb4
     system_id: ""
   hydra:
-    publicHost: hydra-public
+    publicHost: bkn-safe-hydra-public
     publicPort: 4444
     publicProtocol: http
-    administrativeHost: hydra-admin
+    administrativeHost: bkn-safe-hydra-admin
     administrativePort: 4445
     administrativeProtocol: http
     administrativePrefix: /admin

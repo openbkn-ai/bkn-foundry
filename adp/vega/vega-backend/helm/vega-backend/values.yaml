@@ -97,7 +97,7 @@ depServices:
     protocol: http
   hydra-admin:
     # ISF replacement: introspect against bkn-safe's paired hydra (cross-ns).
-    host: bkn-safe-hydra-admin.bkn-safe
+    host: bkn-safe-hydra-admin
     port: 4445
     protocol: http
   kafka-connect:

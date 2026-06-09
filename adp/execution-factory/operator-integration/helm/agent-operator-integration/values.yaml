@@ -111,10 +111,10 @@ depServices:
     system_id: ""
   hydra:
     # ISF replacement: introspect/token against bkn-safe's paired hydra (cross-ns).
-    publicHost: bkn-safe-hydra-public.bkn-safe
+    publicHost: bkn-safe-hydra-public
     publicPort: 4444
     publicProtocol: http
-    administrativeHost: bkn-safe-hydra-admin.bkn-safe
+    administrativeHost: bkn-safe-hydra-admin
     administrativePort: 4445
     administrativeProtocol: http
     administrativePrefix: /admin
