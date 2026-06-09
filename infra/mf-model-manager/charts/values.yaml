@@ -96,9 +96,9 @@ depServices:
     mapping: "{}"
   hydra:
     # ISF replacement: introspect against bkn-safe's paired hydra (cross-ns).
-    publicHost: "bkn-safe-hydra-public.bkn-safe"
+    publicHost: "bkn-safe-hydra-public"
     publicPort: "4444"
-    administrativeHost: "bkn-safe-hydra-admin.bkn-safe"
+    administrativeHost: "bkn-safe-hydra-admin"
     administrativePort: "4445"
   user_management:
     publicHost: "user-management-public"

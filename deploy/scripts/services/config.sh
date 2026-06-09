@@ -560,8 +560,23 @@ RDS_EOF
 )
     fi
 
+    # ISF replacement: charts reading depServices.hydra.* (mf-model-manager,
+    # mf-model-api, operator-integration) introspect against bkn-safe's paired
+    # hydra. bkn-safe now installs co-located in the same namespace, so use the
+    # short service names (no cross-namespace .bkn-safe suffix). Overrides any
+    # stale chart default so token introspection resolves.
+    local hydra_section=""
+    hydra_section=$(cat <<'HYDRA_EOF'
+  hydra:
+    publicHost: bkn-safe-hydra-public
+    publicPort: "4444"
+    administrativeHost: bkn-safe-hydra-admin
+    administrativePort: "4445"
+HYDRA_EOF
+)
+
     local dep_services_section=""
-    if [[ -n "${mq_section}${opensearch_section}${mongodb_section}${zookeeper_section}${rds_section}${redis_section}" ]]; then
+    if [[ -n "${mq_section}${opensearch_section}${mongodb_section}${zookeeper_section}${rds_section}${redis_section}${hydra_section}" ]]; then
         dep_services_section=$(cat <<DEP_EOF
 depServices:
 ${mq_section}
@@ -570,6 +585,7 @@ ${mongodb_section}
 ${zookeeper_section}
 ${rds_section}
 ${redis_section}
+${hydra_section}
 ${ingress_class_section}
 DEP_EOF
 )
