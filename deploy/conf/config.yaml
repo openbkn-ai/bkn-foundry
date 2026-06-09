@@ -22,10 +22,6 @@ accessAddress:
   port: 443
   scheme: https
   path: /
-dipStudio:
-  openClaw:
-    configHostPath: ''
-    workspaceHostPath: ''
 depServices:
   mq:
     auth:

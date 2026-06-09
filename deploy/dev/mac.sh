@@ -344,10 +344,6 @@ main() {
             export NAMESPACE="${NAMESPACE:-openbkn}"
             exec bash "${DEPLOY_ROOT}/onboard.sh" "$@"
             ;;
-        bkn-dip | kweaver-dip | dip)
-            mac_log_error "Module '${cmd}' is not wired in mac.sh. Use deploy.sh on Linux."
-            exit 1
-            ;;
         *)
             mac_log_error "Unknown command: ${cmd}"
             usage >&2
