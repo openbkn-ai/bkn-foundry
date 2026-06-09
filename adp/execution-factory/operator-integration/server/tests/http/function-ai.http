@@ -1,0 +1,28 @@
+# Function execute and AI generate APIs used by execution-factory toolbox tools
+
+### Execute function
+POST {{baseUrl}}/api/agent-operator-integration/v1/function/execute
+Content-Type: application/json
+Authorization: {{token}}
+x-business-domain: {{businessDomain}}
+
+{
+  "code": "def handler(event):\n    return event",
+  "event": { "message": "hello" },
+  "timeout": 30000
+}
+
+### AI generate python function
+POST {{baseUrl}}/api/agent-operator-integration/v1/ai_generate/function/python_function_generator
+Content-Type: application/json
+Authorization: {{token}}
+x-business-domain: {{businessDomain}}
+
+{
+  "query": "Generate a Python handler that uppercases the input message field."
+}
+
+### Get AI prompt template
+GET {{baseUrl}}/api/agent-operator-integration/v1/ai_generate/prompt/python_function_generator
+Authorization: {{token}}
+x-business-domain: {{businessDomain}}

@@ -104,7 +104,7 @@ func (m *operatorManager) UpdateOperatorByOpenAPI(ctx context.Context, req *inte
 	updateReq := &interfaces.OperatorEditReq{
 		OperatorID:  req.OperatorID,
 		Name:        metadataDBs[0].GetSummary(),
-		Description: metadataDBs[0].GetDescription(),
+		Description: req.Description,
 		OperatorInfoEdit: &interfaces.OperatorInfoEdit{
 			Type:          req.OperatorInfo.Type,
 			ExecutionMode: req.OperatorInfo.ExecutionMode,
@@ -245,6 +245,9 @@ func (m *operatorManager) registerOperator(ctx context.Context, req *interfaces.
 	if err != nil {
 		return
 	}
+	if req.Description != "" {
+		metadataDB.SetDescription(req.Description)
+	}
 	// 设置创建人和更新人
 	metadataDB.SetCreateInfo(accessor.ID)
 	metadataDB.SetUpdateInfo(accessor.ID)
@@ -279,6 +282,9 @@ func (m *operatorManager) registerOperator(ctx context.Context, req *interfaces.
 		return
 	}
 	defer func() {
+		if tx == nil {
+			return
+		}
 		if err != nil {
 			_ = tx.Rollback()
 		} else {

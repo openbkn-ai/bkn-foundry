@@ -1,0 +1,15 @@
+config/env.ini
+report/
+.pytest_cache/
+__pycache__/
+.venv/
+
+# Full Agent AT suite and payloads are synced locally from KWeaver; not tracked here.
+testcases/data-operator-hub/
+/conftest.py
+data/
+resource/
+response/
+api-docs/
+helm/
+common/sshpass

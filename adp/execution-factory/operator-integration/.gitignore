@@ -10,3 +10,4 @@ specs*
 .specify*
 .claude*
 test-result/
+server/infra/config/agent-operator-integration-secret.local.yaml
