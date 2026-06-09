@@ -500,7 +500,17 @@ install_core() {
         local -a _kept_releases=()
         for release_name in "${release_names[@]}"; do
             if [[ "${release_name}" == "bkn-safe" ]]; then
-                log_info "auth.enabled=false: skipping bkn-safe auth stack (override: --set bknSafe.install=true)"
+                # Downgrade cleanup: if bkn-safe is already installed (auth → no-auth),
+                # uninstall it so it doesn't linger orphaned (services now run auth-off).
+                # The app DB lives in the shared cluster MariaDB and survives; only the
+                # bundled hydra + its Postgres session state are removed.
+                if helm status "bkn-safe" -n "${namespace}" >/dev/null 2>&1; then
+                    log_warn "auth.enabled=false but bkn-safe is installed — uninstalling it (downgrade to no-auth; keep it with --set bknSafe.install=true)."
+                    helm uninstall "bkn-safe" -n "${namespace}" >/dev/null 2>&1 \
+                        || log_warn "bkn-safe uninstall failed; remove manually: helm uninstall bkn-safe -n ${namespace}"
+                else
+                    log_info "auth.enabled=false: skipping bkn-safe auth stack (override: --set bknSafe.install=true)"
+                fi
                 continue
             fi
             _kept_releases+=("${release_name}")
