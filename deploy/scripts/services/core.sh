@@ -490,6 +490,24 @@ install_core() {
 
     local -a release_names=()
     kweaver_mapfile_compat release_names _core_release_names
+
+    # When auth enforcement is off (--minimum / --set auth.enabled=false), services
+    # run without tokens, so the bkn-safe auth stack (bkn-safe + bundled hydra + its
+    # postgres) is not needed — drop it from the install set. Override by also
+    # passing --set bknSafe.install=true. Uninstall is unaffected (still removes it).
+    if [[ "$(get_set_value "auth.enabled" "${CORE_SET_VALUES[@]}" 2>/dev/null)" == "false" \
+       && "$(get_set_value "bknSafe.install" "${CORE_SET_VALUES[@]}" 2>/dev/null)" != "true" ]]; then
+        local -a _kept_releases=()
+        for release_name in "${release_names[@]}"; do
+            if [[ "${release_name}" == "bkn-safe" ]]; then
+                log_info "auth.enabled=false: skipping bkn-safe auth stack (override: --set bknSafe.install=true)"
+                continue
+            fi
+            _kept_releases+=("${release_name}")
+        done
+        release_names=("${_kept_releases[@]}")
+    fi
+
     local release_version
     for release_name in "${release_names[@]}"; do
         release_version="$(_core_resolve_release_version "${release_name}")"

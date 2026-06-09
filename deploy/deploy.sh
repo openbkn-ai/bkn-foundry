@@ -140,6 +140,8 @@ usage() {
     echo "                                Defaults to auto-detect from hostname -I"
     echo "  --minimum, --min              Minimum install: skip auth & business-domain modules"
     echo "                                Equivalent to: --set auth.enabled=false --set businessDomain.enabled=false"
+    echo "                                auth.enabled=false also SKIPS installing the bkn-safe auth stack"
+    echo "                                (bkn-safe + bundled hydra + its postgres). Keep it: --set bknSafe.install=true"
     echo "  --set <key>=<value>           Pass custom values to helm charts (can be used multiple times)"
     echo "                                Example: --set auth.enabled=false --set image.tag=latest"
     echo ""
