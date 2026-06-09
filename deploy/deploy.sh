@@ -43,6 +43,7 @@ source "${SCRIPT_DIR}/scripts/services/zookeeper.sh"
 source "${SCRIPT_DIR}/scripts/services/ingress_nginx.sh"
 source "${SCRIPT_DIR}/scripts/services/opensearch.sh"
 source "${SCRIPT_DIR}/scripts/services/core.sh"
+source "${SCRIPT_DIR}/scripts/services/status.sh"
 source "${SCRIPT_DIR}/scripts/services/dip.sh"
 
 usage() {
@@ -736,7 +737,11 @@ main() {
                 ;;
             status)
                 parse_core_args "status" "$@"
-                show_core_status
+                show_install_status
+                ;;
+            publish-status)
+                parse_core_args "status" "$@"
+                gen_install_status_json
                 ;;
             *)
                 log_error "Unknown kweaver-core action: ${action}"

@@ -221,16 +221,51 @@ kubectl get nodes
 kubectl get pods -A
 ```
 
+### 安装状态与健康
+
+`foundry status` 输出一张实时详细表(供服务器上运维查看):对清单里每个 release 显示
+**期望版本 vs 实际部署版本**、app 版本、helm revision/状态、workload ready 数(标记
+`DRIFT`/`MISSING`)、内置依赖服务,以及逐服务的**应用健康**(经 apiserver service proxy
+探测:`/health/ready` → `/api/v1/health` → `/healthz` → `/health`,分类为
+`up` / `degraded` / `no-endpoint`)。
+
+```bash
+# 实时详细状态表(版本、ready、drift、服务健康)
+./deploy.sh foundry status
+
+# 不重装,(重新)发布非敏感 JSON 快照 + /install-status 端点。
+# `foundry install` 结束时会自动执行。
+./deploy.sh foundry publish-status
+```
+
+同时通过 ingress 以**非敏感**面板对外提供(由一个极小的 nginx 托管 ConfigMap,见
+`conf/install-status/`):
+
+- `GET /install-status` —— HTML 页面,展示各 release、逐服务健康、依赖拓扑(自动刷新;
+  纯静态,无构建步骤 / 无 CDN)。
+- `GET /install-status.json` —— 页面消费的原始 JSON 快照。
+
+```bash
+# 浏览器打开面板 https://<access-address>/install-status
+curl -k https://<access-address>/install-status.json
+```
+
+其中包含产品/各 release 版本、ready 数、依赖服务连接拓扑、逐服务分类健康 —— 且**刻意不含任何凭据**:
+采集器([scripts/lib/install_status.py](scripts/lib/install_status.py))按白名单取字段(只留
+host/port/type,丢弃 password/user/key/token),也不暴露健康端点的原始响应体(其中可能含内部
+版本/拓扑)。ConfigMap 每次安装刷新,nginx 每请求读取挂载文件,无需重启 Pod。
+
 ## 📁 Project Structure
 
 ```text
 deploy/
 ├── deploy.sh                 # 主入口脚本
 ├── conf/                     # 内置配置与静态清单
+│   └── install-status/       # /install-status 端点清单(nginx + ingress)
 ├── release-manifests/        # 按版本组织的发布物料
 ├── scripts/
-│   ├── lib/                  # 公共函数
-│   ├── services/             # 各产品与依赖服务安装脚本
+│   ├── lib/                  # 公共函数(install_status.py:状态采集器)
+│   ├── services/             # 各产品与依赖服务安装脚本(status.sh:安装状态)
 │   └── sql/                  # 按版本组织的 SQL 初始化脚本
 └── .tmp/charts/              # download 命令生成的本地 chart 缓存
 ```

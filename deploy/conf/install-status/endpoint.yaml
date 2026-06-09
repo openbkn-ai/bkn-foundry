@@ -1,0 +1,111 @@
+# Static install-status endpoint: a tiny nginx serving a human dashboard at
+# GET /install-status and the raw non-sensitive JSON at GET /install-status.json.
+#
+# Two ConfigMaps back it (NOT in this file — created by status.sh so the HTML /
+# nginx conf stay as real, un-escaped files, and the data refreshes per install):
+#   - install-status-nginx : nginx.conf + index.html  (from conf/install-status/)
+#   - install-status-data  : install-status.json      (regenerated each install)
+# nginx reads the mounted files per request, so a data refresh needs no restart.
+#
+# Placeholders __NAMESPACE__ / __INGRESS_CLASS__ are substituted by status.sh.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: install-status
+  namespace: __NAMESPACE__
+  labels:
+    app: install-status
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: install-status
+  template:
+    metadata:
+      labels:
+        app: install-status
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:1.27-alpine
+          ports:
+            - containerPort: 80
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 80
+            initialDelaySeconds: 2
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          volumeMounts:
+            - name: conf
+              mountPath: /etc/nginx/conf.d
+            - name: web
+              mountPath: /web
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: conf
+          configMap:
+            name: install-status-nginx
+            items:
+              - key: nginx.conf
+                path: default.conf
+        - name: web
+          configMap:
+            name: install-status-nginx
+            items:
+              - key: index.html
+                path: index.html
+        - name: data
+          configMap:
+            name: install-status-data
+            optional: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: install-status
+  namespace: __NAMESPACE__
+  labels:
+    app: install-status
+spec:
+  selector:
+    app: install-status
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: install-status
+  namespace: __NAMESPACE__
+  labels:
+    app: install-status
+spec:
+  ingressClassName: __INGRESS_CLASS__
+  rules:
+    - http:
+        paths:
+          - path: /install-status
+            pathType: Exact
+            backend:
+              service:
+                name: install-status
+                port:
+                  number: 80
+          - path: /install-status.json
+            pathType: Exact
+            backend:
+              service:
+                name: install-status
+                port:
+                  number: 80

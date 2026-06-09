@@ -502,6 +502,10 @@ install_core() {
 
     log_info "BKN Foundry services installation completed."
 
+    # Publish the non-sensitive install-status snapshot + /install-status endpoint.
+    # Best-effort: never fails the install.
+    gen_install_status_json || true
+
     log_info "Context Loader toolset is auto-imported by agent-retrieval at startup (no manual onboard step needed)."
 
     local _host _port _scheme
