@@ -48,8 +48,13 @@ DEP_WHITELIST = {
     "opensearch": ["distribution", "host", "port", "protocol"],
     "mongodb":    ["host", "port", "replicaSet"],          # options.authSource handled below
     "zookeeper":  ["host", "port"],
-    "class-443":  ["ingressClass"],
+    # External / non-deployed endpoint (VLM doc structure extraction) — all
+    # connection fields, no credentials.
+    "structure-extractor": ["privateHost", "privatePort", "serverUrl",
+                            "fileHost", "filePort", "outputDir", "backend"],
 }
+# class-443 is NOT a service — it's the ingress-class config. Pulled out to the
+# snapshot's top-level ingressClass, not listed as a depService.
 
 
 def run(cmd):
@@ -295,9 +300,16 @@ def collect_dep_services(config_path):
         return {}, []
     dep = cfg.get("depServices", {}) or {}
     out = []
+    ingress_class = ""
     for name, spec in dep.items():
         spec = spec or {}
-        safe = {"name": name, "installed": True}
+        # class-443 is ingress-class config, not a service — lift it out.
+        if name == "class-443":
+            ingress_class = spec.get("ingressClass", "")
+            continue
+        # "configured" (present in config.yaml), not "installed": a depServices
+        # entry doesn't prove a workload is running.
+        safe = {"name": name, "configured": True}
         for k in DEP_WHITELIST.get(name, []):
             if k in spec:
                 safe[k] = spec[k]
@@ -315,6 +327,17 @@ def collect_dep_services(config_path):
             asrc = (spec.get("options", {}) or {}).get("authSource")
             if asrc is not None:
                 safe["authSource"] = asrc
+        # kind: in-cluster (a *.svc.cluster.local dep) vs external (a private/host
+        # endpoint reached over the node network, e.g. structure-extractor).
+        host = (safe.get("host") or safe.get("mqHost") or safe.get("sentinelHost")
+                or safe.get("privateHost") or "")
+        if str(host).endswith("svc.cluster.local"):
+            safe["kind"] = "in-cluster"
+        elif "privateHost" in spec or "serverUrl" in spec or (
+                host and not str(host).endswith("svc.cluster.local")):
+            safe["kind"] = "external"
+        else:
+            safe["kind"] = "in-cluster"
         out.append(safe)
     access = cfg.get("accessAddress", {}) or {}
     meta = {
@@ -326,6 +349,7 @@ def collect_dep_services(config_path):
             "path": access.get("path", ""),
         },
         "image": {"registry": (cfg.get("image", {}) or {}).get("registry", "")},
+        "ingressClass": ingress_class,
     }
     return meta, out
 
@@ -339,6 +363,7 @@ def emit_json(namespace, product, product_version, rows, meta, deps, health, gen
         "namespace": meta.get("namespace") or namespace,
         "accessAddress": meta.get("accessAddress", {}),
         "image": meta.get("image", {}),
+        "ingressClass": meta.get("ingressClass", ""),
         "releases": [
             {
                 "name": r["name"],
@@ -395,10 +420,13 @@ def emit_table(namespace, product, product_version, rows, meta, deps, health):
     if deps:
         parts = []
         for d in deps:
-            parts.append("{}✓".format(d["name"]))
-        print("depServices: " + "  ".join(parts))
+            tag = "" if d.get("kind") == "in-cluster" else " (external)"
+            parts.append("{}{}".format(d["name"], tag))
+        print("depServices (configured): " + "  ".join(parts))
     else:
         print("depServices: none recorded (config.yaml missing or empty)")
+    if meta.get("ingressClass"):
+        print("ingressClass: " + meta["ingressClass"])
 
     if health:
         print("")

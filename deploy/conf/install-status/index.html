@@ -152,10 +152,13 @@
       d.innerHTML = "";
       (items || []).forEach(function (s) {
         var c = el("div", "chip");
-        var host = s.host || s.mqHost || s.sentinelHost || "";
-        c.innerHTML = "<b>" + esc(s.name) + "</b>" +
+        var host = s.host || s.mqHost || s.sentinelHost || s.privateHost || s.serverUrl || "";
+        var port = s.port || s.privatePort || "";
+        var ext = s.kind === "external" ? " <span class='src'>external</span>" : "";
+        c.innerHTML = "<b>" + esc(s.name) + "</b>" + ext +
           (s.type ? " <small>" + esc(s.type) + "</small>" : "") +
-          (host ? "<br><small>" + esc(host) + (s.port ? ":" + esc(s.port) : "") + "</small>" : "");
+          (s.backend ? " <small>" + esc(s.backend) + "</small>" : "") +
+          (host ? "<br><small>" + esc(host) + (port ? ":" + esc(port) : "") + "</small>" : "");
         d.appendChild(c);
       });
     }
@@ -185,7 +188,8 @@
           document.getElementById("meta").textContent =
             "product " + d.product + " " + d.version + "  ·  ns " + d.namespace +
             "  ·  " + ((d.accessAddress && d.accessAddress.scheme) || "") + "://" +
-            ((d.accessAddress && d.accessAddress.host) || "");
+            ((d.accessAddress && d.accessAddress.host) || "") +
+            (d.ingressClass ? "  ·  ingressClass " + d.ingressClass : "");
           document.getElementById("genAt").textContent = d.generatedAt || "—";
           var rel = renderReleases(d.releases || []);
           renderHealth(d.serviceHealth);
