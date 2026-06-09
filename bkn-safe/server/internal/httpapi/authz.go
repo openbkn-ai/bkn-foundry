@@ -103,7 +103,7 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 
 	// GET /resources — enumerate the concrete resource-instance IDs of a type
 	// that the accessor may perform op on (incl. role-inherited grants).
-	// Query: ?accessor_id=u1&resource_type=data_flow&operation=list
+	// Query: ?accessor_id=u1&resource_type=agent&operation=use
 	// -> { ids:[...] }. Type-wide ("*") grants are excluded; callers handle the
 	// is-admin case separately. (Generic accessor→instances enumeration.)
 	g.GET("/resources", func(c *gin.Context) {
