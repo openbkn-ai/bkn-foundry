@@ -26,10 +26,10 @@ onboard_print_completion_report() {
         _isf_styled="${YELLOW}${_isf}${NC}"
     fi
 
-    if command -v kweaver &>/dev/null; then
-        _kwh="$(kweaver --version 2>/dev/null | head -1 || true)"
+    if command -v openbkn &>/dev/null; then
+        _kwh="$(openbkn --version 2>/dev/null | head -1 || true)"
     else
-        _kwh="(kweaver not on PATH)"
+        _kwh="(openbkn not on PATH)"
     fi
 
     if command -v kubectl &>/dev/null; then
@@ -54,7 +54,7 @@ onboard_print_completion_report() {
         echo "${_line}"
         echo "  Environment host=$(hostname 2>/dev/null || echo '?')"
         echo "  Node          $(command -v node &>/dev/null && node -v || echo '—')"
-        echo "  kweaver       ${_kwh}"
+        echo "  openbkn       ${_kwh}"
         echo "  kubectl       ctx=${_kctx}  namespace=${NAMESPACE:-kweaver}"
         echo "  Business -bd  ${_bd}  (DEPLOY_BUSINESS_DOMAIN)"
         echo "  Default base  ${_acurl}"
@@ -77,10 +77,10 @@ onboard_print_completion_report() {
         echo "  Next steps"
         case "${_isfu}" in
             ready*|created*)
-                echo "   • User test:  default sign-in:  kweaver auth login ${_acurl} -u test -p '<password>' --http-signin -k"
+                echo "   • User test:  default sign-in:  openbkn auth login ${_acurl} -u test -p '<password>' -k"
                 ;;
         esac
-        echo "   • Verify:    kweaver bkn list -bd ${_bd} --pretty"
+        echo "   • Verify:    openbkn bkn list -bd ${_bd} --pretty"
         echo "   • Toolbox:   the Context Loader toolset is auto-imported by agent-retrieval at startup (no manual step)."
         echo "   • Docs:      https://github.com/openbkn-ai/bkn-foundry/blob/main/help/README.md"
         echo "                https://github.com/openbkn-ai/bkn-foundry/blob/main/help/en/README.md  (EN)"
