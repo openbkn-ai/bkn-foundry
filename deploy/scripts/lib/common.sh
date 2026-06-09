@@ -1170,7 +1170,10 @@ STORAGE_STORAGE_CLASS_NAME="${STORAGE_STORAGE_CLASS_NAME:-}"
 
 # MariaDB Configuration
 MARIADB_NAMESPACE="${MARIADB_NAMESPACE:-${RESOURCE_NAMESPACE}}"
-MARIADB_IMAGE="${MARIADB_IMAGE:-}"
+# Default to the SWR-hosted image (same registry as kafka/opensearch/zookeeper) so
+# it is NOT prefixed with the foundry IMAGE_REGISTRY (ghcr.io/openbkn-ai), which
+# does not host the data-layer images (anonymous pull → 403).
+MARIADB_IMAGE="${MARIADB_IMAGE:-swr.cn-east-3.myhuaweicloud.com/kweaver-ai/mariadb:11.4.7}"
 MARIADB_IMAGE_REPOSITORY="${MARIADB_IMAGE_REPOSITORY:-mariadb}"
 MARIADB_IMAGE_TAG="${MARIADB_IMAGE_TAG:-11.4.7}"
 MARIADB_IMAGE_FALLBACK="${MARIADB_IMAGE_FALLBACK:-mariadb:11.4.7}"
