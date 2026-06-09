@@ -584,6 +584,13 @@ env:
 image:
   registry: ${IMAGE_REGISTRY}
 ${storage_section}
+# ISF replacement: services route authz + directory lookups to bkn-safe (the ISF
+# stack is retired). bkn-safe installs into the same namespace, so url uses the
+# namespace-agnostic short service name. Blank these three to disable bkn-safe.
+bknSafe:
+  authzProvider: bkn-safe
+  directoryProvider: bkn-safe
+  url: http://bkn-safe:3000
 accessAddress:
   host: ${node_ip}
   port: ${access_port}
