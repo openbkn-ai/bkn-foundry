@@ -29,6 +29,7 @@
     .bar .n { font-size: 22px; font-weight: 700; }
     .bar .ok { color: var(--ok); } .bar .warn { color: var(--warn); }
     .bar .bad { color: var(--bad); }
+    .n.mut { color: var(--muted); }
     table { width: 100%; border-collapse: collapse; margin-top: 6px; }
     th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line);
              white-space: nowrap; }
@@ -107,19 +108,22 @@
         tr.appendChild(el("td", "v", r.chartVersion));
         tr.appendChild(el("td", "v", r.appVersion));
         var st = el("td");
-        var sb = el("span", "badge " + (r.status === "deployed" ? "b-ok" : "b-bad"), r.status);
+        var stCls = r.status === "deployed" ? "b-ok" : (r.status === "skipped" ? "b-mut" : "b-bad");
+        var sb = el("span", "badge " + stCls, r.status);
         st.appendChild(sb); tr.appendChild(st);
         tr.appendChild(el("td", null, r.ready));
         var flagTd = el("td");
-        if (r.status === "missing") { flagTd.appendChild(el("span", "badge b-bad", "MISSING")); missing++; }
+        if (r.status === "skipped") { flagTd.appendChild(el("span", "badge b-mut", "SKIPPED")); }
+        else if (r.status === "missing") { flagTd.appendChild(el("span", "badge b-bad", "MISSING")); missing++; }
         else if (r.chartVersion !== "-" && r.appVersion !== "-" &&
                  r.chartVersion !== r.appVersion) { /* informational only */ ok++; }
         tr.appendChild(flagTd);
         tb.appendChild(tr);
-        if (r.status === "deployed") ok++; else if (r.status === "missing") {}
+        if (r.status === "deployed") ok++;
       });
       return { total: rows.length, deployed: rows.filter(function (r) { return r.status === "deployed"; }).length,
-               missing: rows.filter(function (r) { return r.status === "missing"; }).length };
+               missing: rows.filter(function (r) { return r.status === "missing"; }).length,
+               skipped: rows.filter(function (r) { return r.status === "skipped"; }).length };
     }
 
     function renderHealth(items) {
@@ -176,6 +180,7 @@
       var deg = (health || []).filter(function (h) { return h.state === "degraded"; }).length;
       s.appendChild(box(rel.deployed, "deployed", "ok"));
       if (rel.missing) s.appendChild(box(rel.missing, "missing", "bad"));
+      if (rel.skipped) s.appendChild(box(rel.skipped, "skipped", "mut"));
       s.appendChild(box(up, "services up", "ok"));
       if (deg) s.appendChild(box(deg, "degraded", "warn"));
     }
