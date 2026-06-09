@@ -99,7 +99,6 @@ func TestSeededRoleGrants(t *testing.T) {
 		{"app-admin not catalog", appAdmin, "catalog", "x", "create", false},
 		{"data-admin manages catalog", dataAdmin, "catalog", "x", "create", true},
 		{"data-admin manages knowledge_network", dataAdmin, "knowledge_network", "kn1", "data_query", true},
-		{"data-admin manages data_flow", dataAdmin, "data_flow", "f1", "manual_exec", true},
 		{"data-admin not operator", dataAdmin, "operator", "o1", "execute", false},
 		{"ai-admin manages operator", aiAdmin, "operator", "o1", "execute", true},
 		{"ai-admin manages skill", aiAdmin, "skill", "s1", "publish", true},

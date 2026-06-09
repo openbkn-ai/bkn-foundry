@@ -56,13 +56,6 @@
       "id_pattern": "*",
       "operations": ["view_detail", "create", "modify", "delete", "authorize"]
     },
-    {
-      "role_id": "00990824-4bf7-11f0-8fa7-865d5643e61f",
-      "role_name": "数据管理员",
-      "resource_type": "data_flow",
-      "id_pattern": "*",
-      "operations": ["list", "create", "modify", "delete", "view", "manual_exec", "run_statistics", "run_with_app", "display"]
-    },
 
     {
       "role_id": "3fb94948-5169-11f0-b662-3a7bdba2913f",
