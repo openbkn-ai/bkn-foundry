@@ -266,7 +266,10 @@ def probe_service_health(namespace):
     return results
 
 
-def collect_releases(namespace, manifest_path):
+def collect_releases(namespace, manifest_path, optional_releases=None):
+    """optional_releases: names that are EXPECTED to be absent in this install
+    (e.g. bkn-safe when auth.enabled=false). Absent => 'skipped', not 'missing'."""
+    optional = set(optional_releases or ())
     product, product_version, manifest_rel = load_manifest_releases(manifest_path)
     deployed = helm_deployed(namespace)
     rows = []
@@ -274,10 +277,13 @@ def collect_releases(namespace, manifest_path):
         d = deployed.get(name)
         ready = workload_ready(namespace, name) if d else "-"
         if d is None:
+            is_optional = name in optional
             rows.append({
                 "name": name, "expected": expected, "chartVersion": "-",
-                "appVersion": "-", "revision": "-", "status": "missing",
-                "ready": "-", "drift": False, "missing": True,
+                "appVersion": "-", "revision": "-",
+                "status": "skipped" if is_optional else "missing",
+                "ready": "-", "drift": False,
+                "missing": not is_optional, "skipped": is_optional,
             })
         else:
             rows.append({
@@ -285,7 +291,7 @@ def collect_releases(namespace, manifest_path):
                 "chartVersion": d["chartVersion"], "appVersion": d["appVersion"],
                 "revision": d["revision"], "status": d["status"], "ready": ready,
                 "drift": (expected not in ("-", "") and d["chartVersion"] != expected),
-                "missing": False,
+                "missing": False, "skipped": False,
             })
     return product, product_version, rows
 
@@ -396,11 +402,14 @@ def emit_table(namespace, product, product_version, rows, meta, deps, health):
         "RELEASE", "EXPECTED", "DEPLOYED", "APP", "REV", "STATUS", "READY", "")
     print(hdr)
     print("-" * len(hdr))
-    n_ok = n_drift = n_missing = 0
+    n_ok = n_drift = n_missing = n_skipped = 0
     for r in rows:
         flag = ""
         color = GREEN
-        if r["missing"]:
+        if r.get("skipped"):
+            flag, color = "SKIPPED", NC
+            n_skipped += 1
+        elif r["missing"]:
             flag, color = "MISSING", RED
             n_missing += 1
         elif r["drift"]:
@@ -412,10 +421,13 @@ def emit_table(namespace, product, product_version, rows, meta, deps, health):
             _trunc(r["name"], 28), _trunc(r["expected"], 9),
             _trunc(r["chartVersion"], 24), _trunc(r["appVersion"], 24),
             r["revision"], r["status"], r["ready"], flag)
-        print("{}{}{}".format(color, line, NC) if flag else line)
+        print("{}{}{}".format(color, line, NC) if (flag and color != NC) else line)
     print("")
-    print("releases: {} ok, {} drift, {} missing  (of {})".format(
-        n_ok, n_drift, n_missing, len(rows)))
+    summary = "releases: {} ok, {} drift, {} missing".format(n_ok, n_drift, n_missing)
+    if n_skipped:
+        summary += ", {} skipped".format(n_skipped)
+    summary += "  (of {})".format(len(rows))
+    print(summary)
     if deps:
         parts = []
         for d in deps:
@@ -463,9 +475,15 @@ def main():
     ap.add_argument("--no-health", action="store_true",
                     help="skip per-service health probing (faster)")
     ap.add_argument("--generated-at", default="")
+    ap.add_argument("--optional-releases", default="",
+                    help="comma-separated releases expected to be absent "
+                         "(e.g. bkn-safe when auth.enabled=false); reported "
+                         "'skipped' instead of 'missing'.")
     args = ap.parse_args()
 
-    product, product_version, rows = collect_releases(args.namespace, args.manifest)
+    optional = [s.strip() for s in args.optional_releases.split(",") if s.strip()]
+    product, product_version, rows = collect_releases(
+        args.namespace, args.manifest, optional)
     if not product:
         product = args.product
     meta, deps = ({}, [])
