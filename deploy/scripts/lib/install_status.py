@@ -47,7 +47,6 @@ DEP_WHITELIST = {
     "mq":         ["mqType", "mqHost", "mqPort"],          # auth.mechanism handled below
     "opensearch": ["distribution", "host", "port", "protocol"],
     "mongodb":    ["host", "port", "replicaSet"],          # options.authSource handled below
-    "zookeeper":  ["host", "port"],
     # External / non-deployed endpoint (VLM doc structure extraction) — all
     # connection fields, no credentials.
     "structure-extractor": ["privateHost", "privatePort", "serverUrl",

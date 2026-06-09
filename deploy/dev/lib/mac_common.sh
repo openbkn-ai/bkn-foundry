@@ -40,13 +40,6 @@ mac_common_init() {
     # opensearch (k8s default: req=512Mi, lim=2048Mi)
     export OPENSEARCH_MEMORY_REQUEST="${OPENSEARCH_MEMORY_REQUEST:-512Mi}"
     export OPENSEARCH_MEMORY_LIMIT="${OPENSEARCH_MEMORY_LIMIT:-1024Mi}"
-    # zookeeper (k8s default: req cpu=500m mem=1Gi, lim cpu=1 mem=2Gi, jvm 500m)
-    # Note: chart hard-codes a zookeeper-exporter sidecar at req/lim 100m/100Mi (no knob).
-    export ZOOKEEPER_RESOURCES_REQUESTS_CPU="${ZOOKEEPER_RESOURCES_REQUESTS_CPU:-50m}"
-    export ZOOKEEPER_RESOURCES_REQUESTS_MEMORY="${ZOOKEEPER_RESOURCES_REQUESTS_MEMORY:-64Mi}"
-    export ZOOKEEPER_RESOURCES_LIMITS_CPU="${ZOOKEEPER_RESOURCES_LIMITS_CPU:-300m}"
-    export ZOOKEEPER_RESOURCES_LIMITS_MEMORY="${ZOOKEEPER_RESOURCES_LIMITS_MEMORY:-256Mi}"
-    export ZOOKEEPER_JVMFLAGS="${ZOOKEEPER_JVMFLAGS:--Xms64m -Xmx128m}"
     # bkn-foundry app services (chart defaults: limits=4-8Gi, mostly request=0).
     # Tiny request keeps QoS=Burstable (not BestEffort) without hogging scheduling budget;
     # generous 2Gi limit so heavier services (agent-retrieval, ontology-query) don't OOM
@@ -206,7 +199,7 @@ mac_doctor_apply_fixes() {
 }
 
 # Inspect Docker engine memory budget and warn when it is too low for BKN Foundry
-# + bundled data services (mariadb/redis/kafka/zookeeper/opensearch). Warning only —
+# + bundled data services (mariadb/redis/kafka/opensearch). Warning only —
 # does NOT set fail=1, since the user can still proceed (just slower / OOM-prone).
 # Threshold defaults are tuned for --minimum profile + data-services on kind:
 #   < MIN  -> WARNING (highly likely to OOM-loop, e.g. redis crash-restart)

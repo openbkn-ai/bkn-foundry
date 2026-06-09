@@ -241,7 +241,7 @@ export INGRESS_NGINX_HTTPS_PORT=8443
 ### What gets installed
 
 1. Single-node Kubernetes (if needed), storage, ingress
-2. Data services: MariaDB, Redis, Kafka, ZooKeeper, OpenSearch (as defined by release manifests)
+2. Data services: MariaDB, Redis, Kafka, OpenSearch (as defined by release manifests)
 3. BKN Foundry application Helm charts
 
 > For uninstall and cluster reset, follow the operations guide bundled with your release.

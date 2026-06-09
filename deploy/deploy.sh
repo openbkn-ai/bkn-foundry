@@ -38,7 +38,6 @@ source "${SCRIPT_DIR}/scripts/services/storage.sh"
 source "${SCRIPT_DIR}/scripts/services/mariadb.sh"
 source "${SCRIPT_DIR}/scripts/services/redis.sh"
 source "${SCRIPT_DIR}/scripts/services/kafka.sh"
-source "${SCRIPT_DIR}/scripts/services/zookeeper.sh"
 # source "${SCRIPT_DIR}/scripts/services/mongodb.sh"  # MongoDB disabled
 source "${SCRIPT_DIR}/scripts/services/ingress_nginx.sh"
 source "${SCRIPT_DIR}/scripts/services/opensearch.sh"
@@ -64,12 +63,10 @@ usage() {
     echo "  redis uninstall               Uninstall Redis (PVCs will be deleted by default)"
     echo "  kafka install                 Install single-node Kafka"
     echo "  kafka uninstall               Uninstall Kafka (PVCs will be deleted by default)"
-    echo "  data-services install         Install MariaDB, Redis, Kafka, Zookeeper, OpenSearch (cluster must exist)"
-    echo "  data-services uninstall       Uninstall those bundles (kafka→zk order; ingress only if AUTO_INSTALL_INGRESS_NGINX=true)"
+    echo "  data-services install         Install MariaDB, Redis, Kafka, OpenSearch (cluster must exist)"
+    echo "  data-services uninstall       Uninstall those bundles (ingress only if AUTO_INSTALL_INGRESS_NGINX=true)"
     echo "  opensearch install            Install single-node OpenSearch"
     echo "  opensearch uninstall          Uninstall OpenSearch (optionally purge PVC)"
-    echo "  zookeeper install             Install single-node Zookeeper"
-    echo "  zookeeper uninstall           Uninstall Zookeeper (PVCs will be deleted by default)"
     echo "  ingress-nginx install         Install ingress-nginx-controller"
     echo "  ingress-nginx uninstall       Uninstall ingress-nginx-controller"
     echo "  bkn-foundry install          Install BKN Foundry services; auto-installs K8s/data services if missing"
@@ -107,13 +104,6 @@ usage() {
     echo "  $0 opensearch install         # Install OpenSearch"
     echo "  $0 opensearch uninstall       # Uninstall OpenSearch"
     echo "  OPENSEARCH_PURGE_PVC=true $0 opensearch uninstall  # Uninstall OpenSearch and delete PVC (data loss!)"
-    echo "  $0 zookeeper install          # Install Zookeeper"
-    echo "  $0 zookeeper uninstall        # Uninstall Zookeeper (PVCs deleted by default)"
-    echo "  ZOOKEEPER_PURGE_PVC=false $0 zookeeper uninstall  # Uninstall Zookeeper but keep PVC's"
-    echo "  # Install from remote repo with version and devel:"
-    echo "  ZOOKEEPER_CHART_REF=dip/zookeeper ZOOKEEPER_CHART_VERSION=0.0.0-feature-800792 ZOOKEEPER_CHART_DEVEL=true $0 zookeeper install"
-    echo "  # Install with additional values file and --set:"
-    echo "  ZOOKEEPER_VALUES_FILE=~/.openbkn-ai/config.yaml ZOOKEEPER_EXTRA_SET_VALUES='image.registry=<your-mirror>/bitnami' $0 zookeeper install"
     echo "  $0 ingress-nginx install      # Install ingress-nginx-controller"
     echo "  $0 ingress-nginx uninstall    # Uninstall ingress-nginx-controller"
     echo "  $0 config generate            # Generate/update ~/.openbkn-ai/config.yaml"
@@ -661,26 +651,6 @@ main() {
     #     return 0
     # fi
 
-    # Handle zookeeper module
-    if [[ "${module}" == "zookeeper" ]]; then
-        case "${action}" in
-            install|init)
-                require_root_for_helm_cluster_addons_only
-                install_zookeeper
-                ;;
-            uninstall)
-                require_root_for_helm_cluster_addons_only
-                uninstall_zookeeper
-                ;;
-            *)
-                log_error "Unknown zookeeper action: ${action}"
-                usage
-                exit 1
-                ;;
-        esac
-        return 0
-    fi
-
     # Handle kafka module
     if [[ "${module}" == "kafka" ]]; then
         case "${action}" in
@@ -849,7 +819,6 @@ main() {
                 install_mariadb
                 install_redis
                 install_kafka
-                install_zookeeper
                 # install_mongodb  # MongoDB disabled
                 if [[ "${AUTO_INSTALL_INGRESS_NGINX}" == "true" ]]; then
                     install_ingress_nginx
@@ -867,7 +836,6 @@ main() {
                 uninstall_opensearch || true
                 uninstall_ingress_nginx || true
                 # uninstall_mongodb || true  # MongoDB disabled
-                uninstall_zookeeper || true
                 uninstall_kafka || true
                 uninstall_redis || true
                 uninstall_mariadb || true
@@ -980,7 +948,6 @@ main() {
                 install_mariadb
                 install_redis
                 install_kafka
-                install_zookeeper
                 # install_mongodb  # MongoDB disabled
                 if [[ "${AUTO_INSTALL_INGRESS_NGINX}" == "true" ]]; then
                     install_ingress_nginx
@@ -989,7 +956,7 @@ main() {
                 if [[ "${AUTO_GENERATE_CONFIG}" == "true" ]]; then
                     generate_config_yaml
                 fi
-                
+
                 # Step 2: Deploy BKN Foundry services
                 log_info ""
                 log_info "Step 2/2: Deploying BKN Foundry Application Services..."
@@ -1036,7 +1003,6 @@ main() {
                 uninstall_opensearch || true
                 uninstall_ingress_nginx || true
                 # uninstall_mongodb || true  # MongoDB disabled
-                uninstall_zookeeper || true
                 uninstall_kafka || true
                 uninstall_redis || true
                 uninstall_mariadb || true

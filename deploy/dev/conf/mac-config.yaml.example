@@ -35,9 +35,6 @@ depServices:
     protocol: http
     version: ""
 
-  zookeeper:
-    host: 'zookeeper-headless.resource.svc.cluster.local'
-    port: 2181
   rds:
     admin_key: 'REPLACE_ME'
     host: 'mariadb-proton-mariadb.resource.svc.cluster.local'

@@ -370,32 +370,6 @@ STORAGE_EOF
         kafka_host="${kafka_svc}.${kafka_ns}.svc.cluster.local"
     fi
 
-    # Zookeeper - only generate config if Zookeeper is installed
-    local zookeeper_ns="${ZOOKEEPER_NAMESPACE}"
-    # Zookeeper uses headless service: {release-name}-headless.{namespace}.svc.cluster.local
-    # Default release name is "zookeeper", so service name is "zookeeper-headless"
-    # Use full FQDN for reliability across namespaces and clusters
-    local zookeeper_host="${ZOOKEEPER_RELEASE_NAME}-headless.${zookeeper_ns}.svc.cluster.local"
-    local zookeeper_port="${ZOOKEEPER_SERVICE_PORT:-2181}"
-    local zookeeper_configured=false
-    
-    # Check if Zookeeper StatefulSet or Service exists (indicates Zookeeper is installed)
-    # Try multiple detection methods for robustness
-    local zookeeper_detected=false
-    if kubectl -n "${zookeeper_ns}" get statefulset "${ZOOKEEPER_RELEASE_NAME}" >/dev/null 2>&1; then
-        zookeeper_detected=true
-    elif kubectl -n "${zookeeper_ns}" get svc "${ZOOKEEPER_RELEASE_NAME}-headless" >/dev/null 2>&1; then
-        zookeeper_detected=true
-    elif kubectl -n "${zookeeper_ns}" get statefulset -l "app=${ZOOKEEPER_RELEASE_NAME}" >/dev/null 2>&1; then
-        zookeeper_detected=true
-    elif kubectl -n "${zookeeper_ns}" get statefulset -l "app=zookeeper" >/dev/null 2>&1; then
-        zookeeper_detected=true
-    fi
-    
-    if [[ "${zookeeper_detected}" == "true" ]]; then
-        zookeeper_configured=true
-    fi
-
     # Build MongoDB config section if MongoDB is installed
     local mongodb_section=""
     if [[ "${mongodb_configured}" == "true" ]]; then
@@ -410,18 +384,6 @@ STORAGE_EOF
     options:
       authSource: $(yaml_quote "${mongodb_auth_source}")
 MONGODB_EOF
-)
-    fi
-
-    # Build Zookeeper config section if Zookeeper is installed
-    local zookeeper_section=""
-    if [[ "${zookeeper_configured}" == "true" ]]; then
-        # Use full FQDN for reliability across namespaces and clusters
-        zookeeper_section=$(cat <<ZOOKEEPER_EOF
-  zookeeper:
-    host: $(yaml_quote "${zookeeper_host}")
-    port: ${zookeeper_port}
-ZOOKEEPER_EOF
 )
     fi
 
@@ -576,13 +538,12 @@ HYDRA_EOF
 )
 
     local dep_services_section=""
-    if [[ -n "${mq_section}${opensearch_section}${mongodb_section}${zookeeper_section}${rds_section}${redis_section}${hydra_section}" ]]; then
+    if [[ -n "${mq_section}${opensearch_section}${mongodb_section}${rds_section}${redis_section}${hydra_section}" ]]; then
         dep_services_section=$(cat <<DEP_EOF
 depServices:
 ${mq_section}
 ${opensearch_section}
 ${mongodb_section}
-${zookeeper_section}
 ${rds_section}
 ${redis_section}
 ${hydra_section}
@@ -618,7 +579,6 @@ EOF
     log_info "Wrote config file: ${out}"
     local included_services=()
     [[ "${mongodb_configured}" == "true" ]] && included_services+=("MongoDB")
-    [[ "${zookeeper_configured}" == "true" ]] && included_services+=("Zookeeper")
     [[ "${ingress_class_configured}" == "true" ]] && included_services+=("Ingress-Nginx")
     [[ "${redis_configured}" == "true" ]] && included_services+=("Redis")
     [[ "${kafka_configured}" == "true" ]] && included_services+=("Kafka")
