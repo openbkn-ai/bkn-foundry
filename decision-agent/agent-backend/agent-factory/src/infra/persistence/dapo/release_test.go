@@ -17,7 +17,7 @@ func TestPublishedToBeStruct_SelectFieldsZero(t *testing.T) {
 		structVal := &PublishedToBeStruct{}
 		result := structVal.SelectFieldsZero()
 
-		expected := "0 as f_is_api_agent, 0 as f_is_web_sdk_agent, 0 as f_is_skill_agent, 0 as f_is_data_flow_agent"
+		expected := "0 as f_is_api_agent, 0 as f_is_web_sdk_agent, 0 as f_is_skill_agent"
 		if result != expected {
 			t.Errorf("Expected '%s', got '%s'", expected, result)
 		}
@@ -45,13 +45,11 @@ func TestPublishedToBeStruct_LoadFromReleasePo(t *testing.T) {
 		isAPI := 1
 		isWebSDK := 0
 		isSkill := 1
-		isDataFlow := 0
 
 		po := &ReleasePO{
-			IsAPIAgent:      &isAPI,
-			IsWebSDKAgent:   &isWebSDK,
-			IsSkillAgent:    &isSkill,
-			IsDataFlowAgent: &isDataFlow,
+			IsAPIAgent:    &isAPI,
+			IsWebSDKAgent: &isWebSDK,
+			IsSkillAgent:  &isSkill,
 		}
 
 		structVal := &PublishedToBeStruct{}
@@ -67,10 +65,6 @@ func TestPublishedToBeStruct_LoadFromReleasePo(t *testing.T) {
 
 		if structVal.IsSkillAgent != 1 {
 			t.Errorf("Expected IsSkillAgent to be 1, got %d", structVal.IsSkillAgent)
-		}
-
-		if structVal.IsDataFlowAgent != 0 {
-			t.Errorf("Expected IsDataFlowAgent to be 0, got %d", structVal.IsDataFlowAgent)
 		}
 	})
 }
@@ -184,33 +178,6 @@ func TestReleasePO_IsSkillAgentBool(t *testing.T) {
 	})
 }
 
-func TestReleasePO_IsDataFlowAgentBool(t *testing.T) {
-	t.Parallel()
-
-	t.Run("nil field", func(t *testing.T) {
-		t.Parallel()
-
-		po := &ReleasePO{IsDataFlowAgent: nil}
-		result := po.IsDataFlowAgentBool()
-
-		if result {
-			t.Error("Expected IsDataFlowAgentBool to return false for nil field")
-		}
-	})
-
-	t.Run("true value", func(t *testing.T) {
-		t.Parallel()
-
-		val := 1
-		po := &ReleasePO{IsDataFlowAgent: &val}
-		result := po.IsDataFlowAgentBool()
-
-		if !result {
-			t.Error("Expected IsDataFlowAgentBool to return true")
-		}
-	})
-}
-
 func TestReleasePO_ResetPublishToBes(t *testing.T) {
 	t.Parallel()
 
@@ -219,10 +186,9 @@ func TestReleasePO_ResetPublishToBes(t *testing.T) {
 
 		val := 1
 		po := &ReleasePO{
-			IsAPIAgent:      &val,
-			IsWebSDKAgent:   &val,
-			IsSkillAgent:    &val,
-			IsDataFlowAgent: &val,
+			IsAPIAgent:    &val,
+			IsWebSDKAgent: &val,
+			IsSkillAgent:  &val,
 		}
 
 		po.ResetPublishToBes()
@@ -238,10 +204,6 @@ func TestReleasePO_ResetPublishToBes(t *testing.T) {
 		if po.IsSkillAgent == nil || *po.IsSkillAgent != 0 {
 			t.Error("Expected IsSkillAgent to be set to 0")
 		}
-
-		if po.IsDataFlowAgent == nil || *po.IsDataFlowAgent != 0 {
-			t.Error("Expected IsDataFlowAgent to be set to 0")
-		}
 	})
 }
 
@@ -256,7 +218,6 @@ func TestReleasePO_SetPublishToBes(t *testing.T) {
 			cdaenum.PublishToBeAPIAgent,
 			cdaenum.PublishToBeWebSDKAgent,
 			cdaenum.PublishToBeSkillAgent,
-			cdaenum.PublishToBeDataFlowAgent,
 		}
 
 		po.SetPublishToBes(toBes)
@@ -271,10 +232,6 @@ func TestReleasePO_SetPublishToBes(t *testing.T) {
 
 		if po.IsSkillAgent == nil || *po.IsSkillAgent != 1 {
 			t.Error("Expected IsSkillAgent to be set to 1")
-		}
-
-		if po.IsDataFlowAgent == nil || *po.IsDataFlowAgent != 1 {
-			t.Error("Expected IsDataFlowAgent to be set to 1")
 		}
 	})
 }

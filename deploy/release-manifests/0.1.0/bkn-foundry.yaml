@@ -5,13 +5,8 @@ version: 0.1.0
 source:
   type: oci
   registry: oci://ghcr.io/openbkn-ai/charts
-dependencies:
-- product: isf
-  version: 0.8.0
-  manifest: ./isf.yaml
-  optional: true
-  defaultEnabled: true
-  enabledIf: auth.enabled
+# Auth/identity is provided by bkn-safe (authn/authz/directory) + ORY Hydra,
+# deployed as releases below. The legacy ISF stack has been fully retired.
 releases:
   core-data-migrator:
     chart: core-data-migrator
@@ -50,18 +45,20 @@ releases:
   agent-backend:
     chart: agent-backend
     version: 0.1.0
-  dataflow:
-    chart: dataflow
-    version: 0.1.0
-  coderunner:
-    chart: coderunner
-    version: 0.1.0
-  doc-convert:
-    chart: doc-convert
-    version: 0.1.0
   agent-observability:
     chart: agent-observability
     version: 0.1.0
   otelcol-contrib:
     chart: otelcol-contrib
+    version: 0.1.0
+  # ISF replacement (now the default auth path): bkn-safe (authn/authz/directory)
+  # bundles upstream ORY Hydra (token engine) + its PostgreSQL (persisted on a
+  # PVC) and, for pure dev, a MariaDB app DB. With a cluster depServices.rds set,
+  # the app DB uses the shared cluster MariaDB instead. Services route to bkn-safe
+  # via config.yaml bknSafe.* ; hydra's browser URLs (issuer/login/consent/device)
+  # derive from accessAddress; its ingress exposes /oauth2/*, /.well-known/*,
+  # /userinfo at the gateway. (The standalone `hydra` chart is NOT a release here —
+  # bkn-safe's bundledDeps provides hydra to avoid a double deploy.)
+  bkn-safe:
+    chart: bkn-safe
     version: 0.1.0

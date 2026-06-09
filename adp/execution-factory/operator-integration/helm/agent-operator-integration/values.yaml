@@ -5,6 +5,12 @@ nodeSelector: {}
 namespace: openbkn
 moduleName: agent-operator-integration
 
+# bkn-safe (ISF replacement) authz cutover knobs. Default empty = ISF behavior.
+# authzProvider: "" | "shadow" | "bkn-safe". url: bkn-safe ClusterIP base. Revertible.
+bknSafe:
+  authzProvider: ""
+  url: ""
+
 # 设置为dev则为开发模式.
 runMode: release
 
@@ -104,10 +110,11 @@ depServices:
     dbCharset: utf8mb4
     system_id: ""
   hydra:
-    publicHost: hydra-public
+    # ISF replacement: introspect/token against bkn-safe's paired hydra (cross-ns).
+    publicHost: bkn-safe-hydra-public
     publicPort: 4444
     publicProtocol: http
-    administrativeHost: hydra-admin
+    administrativeHost: bkn-safe-hydra-admin
     administrativePort: 4445
     administrativeProtocol: http
     administrativePrefix: /admin
@@ -145,10 +152,6 @@ depServices:
     caName: ""
     certName: ""
     keyName: ""
-  flow-automation:
-    privateHost: flow-automation-private
-    privatePort: 8680
-    privateProtocol: http
   mf-model-api:
     privateHost: "mf-model-api"
     privatePort: 9898

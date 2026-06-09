@@ -67,7 +67,6 @@ type AgentConfigConfig struct {
 	DataSource                *datasourcevalobj.RetrieverDataSource   `json:"data_source"`                 // 数据源
 	Skills                    *AgentConfigSkills                      `json:"skills"`                      // 技能
 	Llms                      []*daconfvalobj.LlmItem                 `json:"llms"`                        // LLM 配置
-	IsDataFlowSetEnabled      int                                     `json:"is_data_flow_set_enabled"`    // 是否启用数据流设置
 	OpeningRemarkConfig       *daconfvalobj.OpeningRemarkConfig       `json:"opening_remark_config"`       // 开场白配置
 	PresetQuestions           []*daconfvalobj.PresetQuestion          `json:"preset_questions"`            // 预设问题列表
 	Output                    *daconfvalobj.Output                    `json:"output"`                      // 输出结果

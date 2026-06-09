@@ -43,7 +43,7 @@ depServices:
   class-443:
     ingressClass: class-443
   hydra-admin:
-    host: hydra-admin
+    host: bkn-safe-hydra-admin
     port: 4445
     protocol: http
   opensearch:

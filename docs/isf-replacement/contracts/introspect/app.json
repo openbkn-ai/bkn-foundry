@@ -1,0 +1,6 @@
+{
+  "active": true,
+  "sub": "ci-runner-app",
+  "scope": "authz.write",
+  "client_id": "ci-runner-app"
+}

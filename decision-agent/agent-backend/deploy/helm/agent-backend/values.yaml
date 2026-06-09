@@ -5,6 +5,13 @@ nodeSelector: {}
 namespace: openbkn
 moduleName: agent-factory
 
+# bkn-safe (ISF replacement) cutover knobs. Default empty = ISF behavior.
+# provider: "" | "shadow" | "bkn-safe". url: bkn-safe ClusterIP base. Revertible.
+bknSafe:
+  authzProvider: ""
+  directoryProvider: ""
+  url: ""
+
 # 设置为dev则为开发模式.
 runMode: release
 
@@ -98,11 +105,12 @@ depServices:
     userMgnt:
       host: user-management-private
       port: 30980
+    # ISF replacement: introspect/token against bkn-safe's paired hydra (cross-ns).
     hydraPublic:
-      host: hydra-public
+      host: bkn-safe-hydra-public.bkn-safe
       port: 4444
     hydraAdmin:
-      host: hydra-admin
+      host: bkn-safe-hydra-admin.bkn-safe
       port: 4445
   # 数据库连接配置
   rds:

@@ -144,22 +144,6 @@ func TestConfig_ValObjCheckWithCtx(t *testing.T) {
 		assert.Contains(t, err.Error(), "must have at least one default llm")
 	})
 
-	t.Run("invalid IsDataFlowSetEnabled", func(t *testing.T) {
-		t.Parallel()
-
-		config := NewConfig()
-		config.Input = validInput
-		config.Output = validOutput
-		config.IsDolphinMode = cdaenum.DolphinModeDisabled
-		config.Llms = []*LlmItem{
-			{IsDefault: true, LlmConfig: &LlmConfig{Name: "test", MaxTokens: 100}},
-		}
-		config.IsDataFlowSetEnabled = 3
-		err := config.ValObjCheckWithCtx(ctx, false)
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "is_data_flow_set_enabled must be 0 or 1")
-	})
-
 	t.Run("invalid opening remark", func(t *testing.T) {
 		t.Parallel()
 
@@ -167,7 +151,6 @@ func TestConfig_ValObjCheckWithCtx(t *testing.T) {
 		config.Input = validInput
 		config.Output = validOutput
 		config.IsDolphinMode = cdaenum.DolphinModeDisabled
-		config.IsDataFlowSetEnabled = 1
 		config.OpeningRemarkConfig = &OpeningRemarkConfig{Type: "invalid"}
 		err := config.ValObjCheckWithCtx(ctx, true) // private api -> ignore llm
 		assert.Error(t, err)
@@ -198,7 +181,6 @@ func TestConfig_ValObjCheckWithCtx(t *testing.T) {
 		config.Input = validInput
 		config.Output = validOutput
 		config.IsDolphinMode = cdaenum.DolphinModeDisabled
-		config.IsDataFlowSetEnabled = 1
 		err := config.ValObjCheckWithCtx(ctx, true)
 		assert.NoError(t, err)
 	})
@@ -297,7 +279,7 @@ func TestConfig_ValObjCheckWithCtx(t *testing.T) {
 		assert.Equal(t, cdaenum.AgentMode("invalid"), config.Mode)
 		assert.Equal(t, cdaenum.DolphinModeDisabled, config.IsDolphinMode)
 	})
-		}
+}
 
 func TestConfig_checkAboutDolphin(t *testing.T) {
 	t.Parallel()

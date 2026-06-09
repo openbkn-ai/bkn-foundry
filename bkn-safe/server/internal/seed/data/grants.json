@@ -1,0 +1,112 @@
+{
+  "_comment": "Role -> permission grants (2026-06-04). Business admins get FULL ops on the resource types in their domain (admin = full control); super admin gets a wildcard (*:* with act *). The other 5 system roles are seeded (role.json) but intentionally UNGRANTED — they can be activated later purely via the grant API / this file, no code change. Resource-type/operation source files: see docs/isf-replacement/contracts/authz-catalog.md. id_pattern '*' = whole type (keyMatch). 应用管理员 grants mirror DA's coded InitPermission; 数据/AI 管理员 are the agreed mapping (adjust as needed); model resource type TBD (model-factory not yet scanned).",
+  "grants": [
+    {
+      "role_id": "1572fb82-526f-11f0-bde6-e674ec8dde71",
+      "role_name": "应用管理员",
+      "resource_type": "agent",
+      "id_pattern": "*",
+      "operations": [
+        "use", "publish", "unpublish", "unpublish_other_user_agent",
+        "publish_to_be_skill_agent", "publish_to_be_web_sdk_agent",
+        "publish_to_be_api_agent", "publish_to_be_data_flow_agent",
+        "create_system_agent", "mgnt_built_in_agent", "see_trajectory_analysis"
+      ]
+    },
+    {
+      "role_id": "1572fb82-526f-11f0-bde6-e674ec8dde71",
+      "role_name": "应用管理员",
+      "resource_type": "agent_tpl",
+      "id_pattern": "*",
+      "operations": ["publish", "unpublish", "unpublish_other_user_agent_tpl"]
+    },
+
+    {
+      "role_id": "00990824-4bf7-11f0-8fa7-865d5643e61f",
+      "role_name": "数据管理员",
+      "resource_type": "catalog",
+      "id_pattern": "*",
+      "operations": ["view_detail", "create", "modify", "delete", "authorize", "task_manage"]
+    },
+    {
+      "role_id": "00990824-4bf7-11f0-8fa7-865d5643e61f",
+      "role_name": "数据管理员",
+      "resource_type": "resource",
+      "id_pattern": "*",
+      "operations": ["view_detail", "create", "modify", "delete", "authorize", "task_manage"]
+    },
+    {
+      "role_id": "00990824-4bf7-11f0-8fa7-865d5643e61f",
+      "role_name": "数据管理员",
+      "resource_type": "connector_type",
+      "id_pattern": "*",
+      "operations": ["view_detail", "create", "modify", "delete", "authorize", "task_manage"]
+    },
+    {
+      "role_id": "00990824-4bf7-11f0-8fa7-865d5643e61f",
+      "role_name": "数据管理员",
+      "resource_type": "knowledge_network",
+      "id_pattern": "*",
+      "operations": ["view_detail", "create", "modify", "delete", "data_query", "authorize", "task_manage"]
+    },
+    {
+      "role_id": "00990824-4bf7-11f0-8fa7-865d5643e61f",
+      "role_name": "数据管理员",
+      "resource_type": "stream_data_pipeline",
+      "id_pattern": "*",
+      "operations": ["view_detail", "create", "modify", "delete", "authorize"]
+    },
+    {
+      "role_id": "00990824-4bf7-11f0-8fa7-865d5643e61f",
+      "role_name": "数据管理员",
+      "resource_type": "data_flow",
+      "id_pattern": "*",
+      "operations": ["list", "create", "modify", "delete", "view", "manual_exec", "run_statistics", "run_with_app", "display"]
+    },
+
+    {
+      "role_id": "3fb94948-5169-11f0-b662-3a7bdba2913f",
+      "role_name": "AI管理员",
+      "resource_type": "operator",
+      "id_pattern": "*",
+      "operations": ["create", "modify", "delete", "view", "publish", "unpublish", "authorize", "public_access", "execute"]
+    },
+    {
+      "role_id": "3fb94948-5169-11f0-b662-3a7bdba2913f",
+      "role_name": "AI管理员",
+      "resource_type": "skill",
+      "id_pattern": "*",
+      "operations": ["create", "modify", "delete", "view", "publish", "unpublish", "authorize", "public_access", "execute"]
+    },
+    {
+      "role_id": "3fb94948-5169-11f0-b662-3a7bdba2913f",
+      "role_name": "AI管理员",
+      "resource_type": "mcp",
+      "id_pattern": "*",
+      "operations": ["create", "modify", "delete", "view", "publish", "unpublish", "authorize", "public_access", "execute"]
+    },
+    {
+      "role_id": "3fb94948-5169-11f0-b662-3a7bdba2913f",
+      "role_name": "AI管理员",
+      "resource_type": "tool_box",
+      "id_pattern": "*",
+      "operations": ["create", "modify", "delete", "view", "publish", "unpublish", "authorize", "public_access", "execute"]
+    },
+    {
+      "role_id": "3fb94948-5169-11f0-b662-3a7bdba2913f",
+      "role_name": "AI管理员",
+      "resource_type": "small_model",
+      "id_pattern": "*",
+      "operations": ["create", "display", "modify", "delete", "execute"]
+    },
+
+    {
+      "role_id": "7dcfcc9c-ad02-11e8-aa06-000c29358ad6",
+      "role_name": "超级管理员",
+      "resource_type": "",
+      "id_pattern": "*",
+      "operations": ["*"],
+      "_note": "wildcard: obj '*' matches any type:id (keyMatch), act '*' matches any op. resource_type empty => obj pattern is just '*'."
+    }
+  ]
+}

@@ -370,32 +370,6 @@ STORAGE_EOF
         kafka_host="${kafka_svc}.${kafka_ns}.svc.cluster.local"
     fi
 
-    # Zookeeper - only generate config if Zookeeper is installed
-    local zookeeper_ns="${ZOOKEEPER_NAMESPACE}"
-    # Zookeeper uses headless service: {release-name}-headless.{namespace}.svc.cluster.local
-    # Default release name is "zookeeper", so service name is "zookeeper-headless"
-    # Use full FQDN for reliability across namespaces and clusters
-    local zookeeper_host="${ZOOKEEPER_RELEASE_NAME}-headless.${zookeeper_ns}.svc.cluster.local"
-    local zookeeper_port="${ZOOKEEPER_SERVICE_PORT:-2181}"
-    local zookeeper_configured=false
-    
-    # Check if Zookeeper StatefulSet or Service exists (indicates Zookeeper is installed)
-    # Try multiple detection methods for robustness
-    local zookeeper_detected=false
-    if kubectl -n "${zookeeper_ns}" get statefulset "${ZOOKEEPER_RELEASE_NAME}" >/dev/null 2>&1; then
-        zookeeper_detected=true
-    elif kubectl -n "${zookeeper_ns}" get svc "${ZOOKEEPER_RELEASE_NAME}-headless" >/dev/null 2>&1; then
-        zookeeper_detected=true
-    elif kubectl -n "${zookeeper_ns}" get statefulset -l "app=${ZOOKEEPER_RELEASE_NAME}" >/dev/null 2>&1; then
-        zookeeper_detected=true
-    elif kubectl -n "${zookeeper_ns}" get statefulset -l "app=zookeeper" >/dev/null 2>&1; then
-        zookeeper_detected=true
-    fi
-    
-    if [[ "${zookeeper_detected}" == "true" ]]; then
-        zookeeper_configured=true
-    fi
-
     # Build MongoDB config section if MongoDB is installed
     local mongodb_section=""
     if [[ "${mongodb_configured}" == "true" ]]; then
@@ -410,18 +384,6 @@ STORAGE_EOF
     options:
       authSource: $(yaml_quote "${mongodb_auth_source}")
 MONGODB_EOF
-)
-    fi
-
-    # Build Zookeeper config section if Zookeeper is installed
-    local zookeeper_section=""
-    if [[ "${zookeeper_configured}" == "true" ]]; then
-        # Use full FQDN for reliability across namespaces and clusters
-        zookeeper_section=$(cat <<ZOOKEEPER_EOF
-  zookeeper:
-    host: $(yaml_quote "${zookeeper_host}")
-    port: ${zookeeper_port}
-ZOOKEEPER_EOF
 )
     fi
 
@@ -560,16 +522,31 @@ RDS_EOF
 )
     fi
 
+    # ISF replacement: charts reading depServices.hydra.* (mf-model-manager,
+    # mf-model-api, operator-integration) introspect against bkn-safe's paired
+    # hydra. bkn-safe now installs co-located in the same namespace, so use the
+    # short service names (no cross-namespace .bkn-safe suffix). Overrides any
+    # stale chart default so token introspection resolves.
+    local hydra_section=""
+    hydra_section=$(cat <<'HYDRA_EOF'
+  hydra:
+    publicHost: bkn-safe-hydra-public
+    publicPort: "4444"
+    administrativeHost: bkn-safe-hydra-admin
+    administrativePort: "4445"
+HYDRA_EOF
+)
+
     local dep_services_section=""
-    if [[ -n "${mq_section}${opensearch_section}${mongodb_section}${zookeeper_section}${rds_section}${redis_section}" ]]; then
+    if [[ -n "${mq_section}${opensearch_section}${mongodb_section}${rds_section}${redis_section}${hydra_section}" ]]; then
         dep_services_section=$(cat <<DEP_EOF
 depServices:
 ${mq_section}
 ${opensearch_section}
 ${mongodb_section}
-${zookeeper_section}
 ${rds_section}
 ${redis_section}
+${hydra_section}
 ${ingress_class_section}
 DEP_EOF
 )
@@ -584,6 +561,13 @@ env:
 image:
   registry: ${IMAGE_REGISTRY}
 ${storage_section}
+# ISF replacement: services route authz + directory lookups to bkn-safe (the ISF
+# stack is retired). bkn-safe installs into the same namespace, so url uses the
+# namespace-agnostic short service name. Blank these three to disable bkn-safe.
+bknSafe:
+  authzProvider: bkn-safe
+  directoryProvider: bkn-safe
+  url: http://bkn-safe:3000
 accessAddress:
   host: ${node_ip}
   port: ${access_port}
@@ -595,7 +579,6 @@ EOF
     log_info "Wrote config file: ${out}"
     local included_services=()
     [[ "${mongodb_configured}" == "true" ]] && included_services+=("MongoDB")
-    [[ "${zookeeper_configured}" == "true" ]] && included_services+=("Zookeeper")
     [[ "${ingress_class_configured}" == "true" ]] && included_services+=("Ingress-Nginx")
     [[ "${redis_configured}" == "true" ]] && included_services+=("Redis")
     [[ "${kafka_configured}" == "true" ]] && included_services+=("Kafka")

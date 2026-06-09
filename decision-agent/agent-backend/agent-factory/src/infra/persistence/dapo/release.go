@@ -8,14 +8,13 @@ import (
 )
 
 type PublishedToBeStruct struct {
-	IsAPIAgent      int `json:"is_api_agent" db:"f_is_api_agent"`
-	IsWebSDKAgent   int `json:"is_web_sdk_agent" db:"f_is_web_sdk_agent"`
-	IsSkillAgent    int `json:"is_skill_agent" db:"f_is_skill_agent"`
-	IsDataFlowAgent int `json:"is_data_flow_agent" db:"f_is_data_flow_agent"`
+	IsAPIAgent    int `json:"is_api_agent" db:"f_is_api_agent"`
+	IsWebSDKAgent int `json:"is_web_sdk_agent" db:"f_is_web_sdk_agent"`
+	IsSkillAgent  int `json:"is_skill_agent" db:"f_is_skill_agent"`
 }
 
 func (toBe *PublishedToBeStruct) SelectFieldsZero() (str string) {
-	str = "0 as f_is_api_agent, 0 as f_is_web_sdk_agent, 0 as f_is_skill_agent, 0 as f_is_data_flow_agent"
+	str = "0 as f_is_api_agent, 0 as f_is_web_sdk_agent, 0 as f_is_skill_agent"
 
 	return
 }
@@ -36,10 +35,6 @@ func (toBe *PublishedToBeStruct) LoadFromReleasePo(po *ReleasePO) {
 	if po.IsSkillAgent != nil {
 		toBe.IsSkillAgent = *po.IsSkillAgent
 	}
-
-	if po.IsDataFlowAgent != nil {
-		toBe.IsDataFlowAgent = *po.IsDataFlowAgent
-	}
 }
 
 type ReleasePO struct {
@@ -50,10 +45,9 @@ type ReleasePO struct {
 	AgentVersion string `json:"agent_version" db:"f_agent_version"`
 	AgentDesc    string `json:"agent_desc" db:"f_agent_desc"`
 
-	IsAPIAgent      *int `json:"is_api_agent" db:"f_is_api_agent"`
-	IsWebSDKAgent   *int `json:"is_web_sdk_agent" db:"f_is_web_sdk_agent"`
-	IsSkillAgent    *int `json:"is_skill_agent" db:"f_is_skill_agent"`
-	IsDataFlowAgent *int `json:"is_data_flow_agent" db:"f_is_data_flow_agent"`
+	IsAPIAgent    *int `json:"is_api_agent" db:"f_is_api_agent"`
+	IsWebSDKAgent *int `json:"is_web_sdk_agent" db:"f_is_web_sdk_agent"`
+	IsSkillAgent  *int `json:"is_skill_agent" db:"f_is_skill_agent"`
 
 	IsToCustomSpace *int `json:"is_to_custom_space" db:"f_is_to_custom_space"`
 	IsToSquare      *int `json:"is_to_square" db:"f_is_to_square"`
@@ -91,14 +85,6 @@ func (r *ReleasePO) IsSkillAgentBool() bool {
 	return *r.IsSkillAgent == 1
 }
 
-func (r *ReleasePO) IsDataFlowAgentBool() bool {
-	if r.IsDataFlowAgent == nil {
-		return false
-	}
-
-	return *r.IsDataFlowAgent == 1
-}
-
 func (r *ReleasePO) ResetPublishToBes() {
 	r.IsAPIAgent = new(int)
 	*r.IsAPIAgent = 0
@@ -106,8 +92,6 @@ func (r *ReleasePO) ResetPublishToBes() {
 	*r.IsWebSDKAgent = 0
 	r.IsSkillAgent = new(int)
 	*r.IsSkillAgent = 0
-	r.IsDataFlowAgent = new(int)
-	*r.IsDataFlowAgent = 0
 }
 
 func (r *ReleasePO) SetPublishToBes(toBes []cdaenum.PublishToBe) {
@@ -124,9 +108,6 @@ func (r *ReleasePO) SetPublishToBes(toBes []cdaenum.PublishToBe) {
 		case cdaenum.PublishToBeSkillAgent:
 			r.IsSkillAgent = new(int)
 			*r.IsSkillAgent = 1
-		case cdaenum.PublishToBeDataFlowAgent:
-			r.IsDataFlowAgent = new(int)
-			*r.IsDataFlowAgent = 1
 		}
 	}
 }

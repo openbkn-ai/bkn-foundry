@@ -15,7 +15,6 @@ func TestChatScenarioType_EnumCheck_Valid(t *testing.T) {
 	}{
 		{"adp chat page", ChatScenarioADPChatPage},
 		{"adp agent debug", ChatScenarioADPAgentDebug},
-		{"adp data flow", ChatScenarioADPDataFlow},
 		{"third system", ChatScenarioThirdSystem},
 		{"custom", ChatScenarioCustom},
 	}
@@ -62,7 +61,6 @@ func TestChatScenarioType_ToString(t *testing.T) {
 	}{
 		{"adp chat page", ChatScenarioADPChatPage, "ADP_chat_page"},
 		{"adp agent debug", ChatScenarioADPAgentDebug, "ADP_agent_debug"},
-		{"adp data flow", ChatScenarioADPDataFlow, "ADP_data_flow"},
 		{"third system", ChatScenarioThirdSystem, "third_system"},
 		{"custom", ChatScenarioCustom, "custom"},
 	}

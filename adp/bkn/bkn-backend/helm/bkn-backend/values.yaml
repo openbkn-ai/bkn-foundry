@@ -6,6 +6,13 @@ env:
   timezone: Asia/Shanghai
   language: en_US.UTF-8
 
+# bkn-safe (ISF replacement) cutover knobs. Default empty = ISF behavior.
+# provider: "" | "shadow" | "bkn-safe". url: bkn-safe ClusterIP base. Revertible.
+bknSafe:
+  authzProvider: ""
+  directoryProvider: ""
+  url: ""
+
 replicaCount: 1
 
 # 节点选择器
@@ -77,7 +84,8 @@ depServices:
     port: 30980
     protocol: http
   hydra-admin:
-    host: hydra-admin
+    # ISF replacement: introspect against bkn-safe's paired hydra (cross-ns).
+    host: bkn-safe-hydra-admin
     port: 4445
     protocol: http
   mf-model-manager:

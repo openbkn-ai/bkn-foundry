@@ -193,12 +193,6 @@ func TestBuildAgentOperationItem_AllPublishVariants(t *testing.T) {
 			hasNames: true,
 		},
 		{
-			name:     "AgentPublishToBeDataFlowAgent",
-			op:       cdapmsenum.AgentPublishToBeDataFlowAgent,
-			scope:    []string{"type"},
-			hasNames: true,
-		},
-		{
 			name:     "AgentUnpublishOtherUserAgent",
 			op:       cdapmsenum.AgentUnpublishOtherUserAgent,
 			scope:    []string{"type"},

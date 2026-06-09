@@ -15,11 +15,11 @@ import (
 
 	"github.com/creasty/defaults"
 	"github.com/go-playground/validator/v10"
+	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/logger"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/telemetry"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/utils"
-	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v3"
 )
@@ -44,7 +44,6 @@ type Config struct {
 	CategoryConfig           CategoryConfig            `yaml:"category"`
 	MQConfigFile             string                    `yaml:"-"`
 	Observability            ObservabilityConfig       `yaml:"-"`
-	FlowAutomation           PrivateBaseConfig         `yaml:"flow-automation"`
 	BusinessDomainManagement PrivateBaseConfig         `yaml:"business-system-service"`
 	SandboxControlPlane      SandboxControlPlaneConfig `yaml:"sandbox-control-plane"`
 	MFModelAPI               PrivateBaseConfig         `yaml:"mf-model-api"`

@@ -1,0 +1,80 @@
+{{- if .Values.clientSeed.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Values.image.name }}-client-seed
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    # Register the OAuth login clients after hydra + bkn-safe are up.
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 10
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.image.name }}-client-seed
+    spec:
+      restartPolicy: Never
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: client-seed
+          # bkn-safe image ships curl; reuse it (no extra image to pull).
+          image: "{{- if .Values.image.registry }}{{ .Values.image.registry }}/{{ end }}{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- /* The openbkn-studio SPA callback is browser-facing at the gateway,
+                 so derive it from accessAddress (https://host[:port]/callback) when
+                 set; otherwise fall back to clientSeed.webRedirectUri (dev). The CLI
+                 callback stays loopback (the CLI runs on the user's machine). */}}
+          {{- $web := .Values.clientSeed.webRedirectUri }}
+          {{- if and .Values.accessAddress .Values.accessAddress.host }}
+            {{- $aa := .Values.accessAddress }}
+            {{- $scheme := $aa.scheme | default "https" }}
+            {{- $port := $aa.port | toString }}
+            {{- if or (and (eq $scheme "https") (eq $port "443")) (and (eq $scheme "http") (eq $port "80")) }}
+              {{- $web = printf "%s://%s/callback" $scheme $aa.host }}
+            {{- else }}
+              {{- $web = printf "%s://%s:%s/callback" $scheme $aa.host $port }}
+            {{- end }}
+          {{- end }}
+          env:
+            - name: ADMIN
+              value: {{ .Values.config.hydra.adminURL | quote }}
+            - name: WEB_REDIRECT
+              value: {{ $web | quote }}
+            - name: CLI_REDIRECT
+              value: {{ .Values.clientSeed.cliRedirectUri | quote }}
+            - name: CI_SECRET
+              value: {{ .Values.clientSeed.ciRunnerSecret | quote }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              echo "waiting for hydra admin $ADMIN/health/ready ..."
+              i=0
+              until curl -fsS "$ADMIN/health/ready" >/dev/null 2>&1; do
+                i=$((i+1)); [ "$i" -ge 60 ] && echo "hydra admin not ready" && exit 1
+                sleep 2
+              done
+              reg() { # $1=client_id $2=json
+                curl -fsS -X DELETE "$ADMIN/admin/clients/$1" >/dev/null 2>&1 || true
+                curl -fsS -X POST "$ADMIN/admin/clients" -H 'Content-Type: application/json' -d "$2" >/dev/null
+                echo "  + $1"
+              }
+              # ci-runner (client_credentials) holds authz.read/write — only seed it
+              # when an explicit secret is provided, so no privileged client ships
+              # with a known/weak default. Set clientSeed.ciRunnerSecret to enable.
+              if [ -n "$CI_SECRET" ]; then
+                reg ci-runner '{"client_id":"ci-runner","client_secret":"'"$CI_SECRET"'","grant_types":["client_credentials"],"token_endpoint_auth_method":"client_secret_post","scope":"authz.read authz.write","audience":["bkn-safe"]}'
+              else
+                echo "  (skip ci-runner: clientSeed.ciRunnerSecret not set)"
+              fi
+              reg openbkn-sdk '{"client_id":"openbkn-sdk","grant_types":["urn:ietf:params:oauth:grant-type:device_code","refresh_token"],"response_types":["code"],"token_endpoint_auth_method":"none","scope":"openid offline","audience":["bkn-safe"]}'
+              reg openbkn-studio '{"client_id":"openbkn-studio","grant_types":["authorization_code","refresh_token"],"response_types":["code"],"token_endpoint_auth_method":"none","redirect_uris":["'"$WEB_REDIRECT"'"],"scope":"openid offline","audience":["bkn-safe"]}'
+              reg openbkn-cli '{"client_id":"openbkn-cli","grant_types":["authorization_code","refresh_token"],"response_types":["code"],"token_endpoint_auth_method":"none","redirect_uris":["'"$CLI_REDIRECT"'"],"scope":"openid offline all","audience":["bkn-safe"]}'
+              echo "client seed done"
+{{- end }}

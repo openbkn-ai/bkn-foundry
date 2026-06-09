@@ -16,6 +16,9 @@ import (
 // 当err为nil时，dim为非nil
 // 【注意】此方法会自动去掉不存在的部门id，不会因为部门不存在而返回错误
 func (u *Um) GetDeptInfoMap(ctx context.Context, args *umarg.GetDeptInfoArgDto) (dim map[string]*umtypes.DepartmentInfo, err error) {
+	if u.useBknSafe() {
+		return u.getDeptInfoMapSafe(ctx, args)
+	}
 	var (
 		loopCount int
 		maxLoop   = 3
@@ -80,6 +83,9 @@ Loop:
 
 // GetUserDeptIDs 获取用户所属部门id（包括直接部门和间接部门）
 func (u *Um) GetUserDeptIDs(ctx context.Context, userID string) (deptIDs []string, err error) {
+	if u.useBknSafe() {
+		return u.getUserDeptIDsSafe(ctx, userID)
+	}
 	deptIDs = make([]string, 0)
 
 	apiURL := fmt.Sprintf("%s/v1/users/%v/department_ids", u.getPrivateURLPrefix(), userID)
@@ -99,6 +105,9 @@ func (u *Um) GetUserDeptIDs(ctx context.Context, userID string) (deptIDs []strin
 
 // 和GetDeptInfoMap区别是：没有loop，不会去掉不存在的部门id
 func (u *Um) GetDeptInfoMap2(ctx context.Context, args *umarg.GetDeptInfoArgDto) (deptInfoMap map[string]*umtypes.DepartmentInfo, err error) {
+	if u.useBknSafe() {
+		return u.getDeptInfoMapSafe(ctx, args)
+	}
 	deptInfoMap = make(map[string]*umtypes.DepartmentInfo)
 
 	apiURL := u.getDeptInfoApiURL(args)

@@ -30,6 +30,13 @@ ingress:
 env:
   devicecode: ""
 
+# bkn-safe (ISF replacement) cutover knobs. Default empty = ISF behavior.
+# provider: "" | "shadow" | "bkn-safe". url: bkn-safe ClusterIP base. Revertible.
+bknSafe:
+  authzProvider: ""
+  directoryProvider: ""
+  url: ""
+
 nodeSelector: {}
 
 depServices:
@@ -88,9 +95,10 @@ depServices:
   text_reranker:
     mapping: "{}"
   hydra:
-    publicHost: "hydra-public"
+    # ISF replacement: introspect against bkn-safe's paired hydra (cross-ns).
+    publicHost: "bkn-safe-hydra-public"
     publicPort: "4444"
-    administrativeHost: "hydra-admin"
+    administrativeHost: "bkn-safe-hydra-admin"
     administrativePort: "4445"
   user_management:
     publicHost: "user-management-public"

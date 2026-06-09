@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<!--
+  Install-status dashboard. Static, dependency-free: fetches the non-sensitive
+  snapshot from ./install-status.json (served by the same nginx) and renders it.
+  No build step, no CDN — usable on an offline cluster.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>BKN Foundry — Install Status</title>
+  <style>
+    :root {
+      --bg: #0f1419; --panel: #1a212b; --line: #2a3441; --fg: #d8dee9;
+      --muted: #7d8896; --ok: #4ec9a4; --warn: #e2c08d; --bad: #e06c75;
+      --accent: #61afef;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: var(--bg); color: var(--fg);
+      font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      padding: 24px;
+    }
+    h1 { font-size: 18px; margin: 0 0 4px; }
+    h2 { font-size: 14px; margin: 28px 0 10px; color: var(--accent); font-weight: 600; }
+    .sub { color: var(--muted); font-size: 12px; margin-bottom: 4px; }
+    .bar { display: flex; gap: 18px; flex-wrap: wrap; align-items: baseline;
+           margin: 14px 0 6px; }
+    .bar .n { font-size: 22px; font-weight: 700; }
+    .bar .ok { color: var(--ok); } .bar .warn { color: var(--warn); }
+    .bar .bad { color: var(--bad); }
+    table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+    th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line);
+             white-space: nowrap; }
+    th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; }
+    td.v { font-size: 12px; color: var(--muted); }
+    tr:hover td { background: #161d26; }
+    .badge { display: inline-block; padding: 1px 8px; border-radius: 10px;
+             font-size: 12px; font-weight: 600; }
+    .b-ok { background: rgba(78,201,164,.15); color: var(--ok); }
+    .b-warn { background: rgba(226,192,141,.15); color: var(--warn); }
+    .b-bad { background: rgba(224,108,117,.15); color: var(--bad); }
+    .b-mut { background: rgba(125,136,150,.15); color: var(--muted); }
+    .chips { display: flex; gap: 8px; flex-wrap: wrap; }
+    .chip { background: var(--panel); border: 1px solid var(--line);
+            border-radius: 6px; padding: 4px 10px; font-size: 12px; }
+    .chip small { color: var(--muted); }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px,1fr));
+            gap: 8px; }
+    .hcard { background: var(--panel); border: 1px solid var(--line);
+             border-radius: 6px; padding: 8px 12px; display: flex;
+             justify-content: space-between; align-items: center; gap: 8px; }
+    .hcard .p { color: var(--muted); font-size: 12px; }
+    .src { display: inline-block; font-size: 10px; text-transform: uppercase;
+           letter-spacing: .04em; color: var(--accent); border: 1px solid var(--line);
+           border-radius: 4px; padding: 0 5px; margin-right: 6px; }
+    footer { margin-top: 28px; color: var(--muted); font-size: 12px; }
+    button { background: var(--panel); color: var(--fg); border: 1px solid var(--line);
+             border-radius: 6px; padding: 5px 12px; cursor: pointer; font: inherit; }
+    button:hover { border-color: var(--accent); }
+    #err { color: var(--bad); margin: 16px 0; }
+  </style>
+</head>
+<body>
+  <h1>BKN Foundry — Install Status</h1>
+  <div class="sub" id="meta">loading…</div>
+  <div id="err"></div>
+
+  <div class="bar" id="summary"></div>
+
+  <h2>Releases</h2>
+  <table id="releases"><thead><tr>
+    <th>Release</th><th>Deployed</th><th>App</th><th>Status</th><th>Ready</th><th></th>
+  </tr></thead><tbody></tbody></table>
+
+  <h2>Service health</h2>
+  <div class="grid" id="health"></div>
+
+  <h2>Dependency services</h2>
+  <div class="chips" id="deps"></div>
+
+  <footer>
+    <button onclick="load()">Refresh</button>
+    &nbsp; snapshot: <span id="genAt">—</span> &nbsp;·&nbsp; auto-refresh 30s
+  </footer>
+
+  <script>
+    function esc(s) {
+      return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
+        return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+      });
+    }
+    function el(tag, cls, txt) {
+      var e = document.createElement(tag);
+      if (cls) e.className = cls;
+      if (txt != null) e.textContent = txt;
+      return e;
+    }
+
+    function renderReleases(rows) {
+      var tb = document.querySelector("#releases tbody");
+      tb.innerHTML = "";
+      var ok = 0, drift = 0, missing = 0;
+      rows.forEach(function (r) {
+        var tr = el("tr");
+        tr.appendChild(el("td", null, r.name));
+        tr.appendChild(el("td", "v", r.chartVersion));
+        tr.appendChild(el("td", "v", r.appVersion));
+        var st = el("td");
+        var sb = el("span", "badge " + (r.status === "deployed" ? "b-ok" : "b-bad"), r.status);
+        st.appendChild(sb); tr.appendChild(st);
+        tr.appendChild(el("td", null, r.ready));
+        var flagTd = el("td");
+        if (r.status === "missing") { flagTd.appendChild(el("span", "badge b-bad", "MISSING")); missing++; }
+        else if (r.chartVersion !== "-" && r.appVersion !== "-" &&
+                 r.chartVersion !== r.appVersion) { /* informational only */ ok++; }
+        tr.appendChild(flagTd);
+        tb.appendChild(tr);
+        if (r.status === "deployed") ok++; else if (r.status === "missing") {}
+      });
+      return { total: rows.length, deployed: rows.filter(function (r) { return r.status === "deployed"; }).length,
+               missing: rows.filter(function (r) { return r.status === "missing"; }).length };
+    }
+
+    function renderHealth(items) {
+      var g = document.getElementById("health");
+      g.innerHTML = "";
+      (items || []).forEach(function (h) {
+        var card = el("div", "hcard");
+        var left = el("div");
+        left.appendChild(el("div", null, h.name));
+        // detail: http -> health path; pod -> k8s readiness; else dash
+        var detail = h.source === "http" ? (h.path || "")
+          : h.source === "pod" ? ("pod " + (h.ready || ""))
+          : "—";
+        if (h.restarts) detail += " · restarts " + h.restarts;
+        var d = el("div", "p", detail);
+        if (h.source) {
+          var tag = el("span", "src", h.source);
+          left.appendChild(tag);
+        }
+        left.appendChild(d);
+        var cls = h.state === "up" ? "b-ok" : (h.state === "degraded" ? "b-warn" : "b-mut");
+        card.appendChild(left);
+        card.appendChild(el("span", "badge " + cls, h.state));
+        g.appendChild(card);
+      });
+    }
+
+    function renderDeps(items) {
+      var d = document.getElementById("deps");
+      d.innerHTML = "";
+      (items || []).forEach(function (s) {
+        var c = el("div", "chip");
+        var host = s.host || s.mqHost || s.sentinelHost || s.privateHost || s.serverUrl || "";
+        var port = s.port || s.privatePort || "";
+        var ext = s.kind === "external" ? " <span class='src'>external</span>" : "";
+        c.innerHTML = "<b>" + esc(s.name) + "</b>" + ext +
+          (s.type ? " <small>" + esc(s.type) + "</small>" : "") +
+          (s.backend ? " <small>" + esc(s.backend) + "</small>" : "") +
+          (host ? "<br><small>" + esc(host) + (port ? ":" + esc(port) : "") + "</small>" : "");
+        d.appendChild(c);
+      });
+    }
+
+    function summary(rel, health) {
+      var s = document.getElementById("summary");
+      s.innerHTML = "";
+      function box(n, label, cls) {
+        var b = el("div");
+        b.appendChild(el("span", "n " + cls, String(n)));
+        b.appendChild(document.createTextNode(" " + label));
+        return b;
+      }
+      var up = (health || []).filter(function (h) { return h.state === "up"; }).length;
+      var deg = (health || []).filter(function (h) { return h.state === "degraded"; }).length;
+      s.appendChild(box(rel.deployed, "deployed", "ok"));
+      if (rel.missing) s.appendChild(box(rel.missing, "missing", "bad"));
+      s.appendChild(box(up, "services up", "ok"));
+      if (deg) s.appendChild(box(deg, "degraded", "warn"));
+    }
+
+    function load() {
+      document.getElementById("err").textContent = "";
+      fetch("install-status.json", { cache: "no-store" })
+        .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(function (d) {
+          document.getElementById("meta").textContent =
+            "product " + d.product + " " + d.version + "  ·  ns " + d.namespace +
+            "  ·  " + ((d.accessAddress && d.accessAddress.scheme) || "") + "://" +
+            ((d.accessAddress && d.accessAddress.host) || "") +
+            (d.ingressClass ? "  ·  ingressClass " + d.ingressClass : "");
+          document.getElementById("genAt").textContent = d.generatedAt || "—";
+          var rel = renderReleases(d.releases || []);
+          renderHealth(d.serviceHealth);
+          renderDeps(d.depServices);
+          summary(rel, d.serviceHealth);
+        })
+        .catch(function (e) {
+          document.getElementById("err").textContent = "Failed to load install-status.json: " + e.message;
+        });
+    }
+    load();
+    setInterval(load, 30000);
+  </script>
+</body>
+</html>

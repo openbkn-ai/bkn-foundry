@@ -120,8 +120,6 @@ func (repo *pubedAgentRepo) buildSql(req *pubedreq.PubedAgentListReq) (fromClaus
 			wb.WhereEqual("r.f_is_web_sdk_agent", 1)
 		case cdaenum.PublishToBeSkillAgent:
 			wb.WhereEqual("r.f_is_skill_agent", 1)
-		case cdaenum.PublishToBeDataFlowAgent:
-			wb.WhereEqual("r.f_is_data_flow_agent", 1)
 		}
 	}
 

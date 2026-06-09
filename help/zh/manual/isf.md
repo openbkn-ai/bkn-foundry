@@ -334,7 +334,7 @@ console.log('知识网络数:', networks.data.length);
 # OAuth2 Token 获取（密码模式，适用于启用完整认证的环境）
 curl -sk -X POST "https://<访问地址>/oauth2/token" \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "grant_type=password&username=admin&password=MySecurePassword&client_id=kweaver-cli&scope=openid"
+  -d "grant_type=password&username=admin&password=MySecurePassword&client_id=openbkn-sdk&scope=openid"
 
 # 使用 Token 访问受保护资源
 curl -sk "https://<访问地址>/api/agent-factory/v1/agents" \
@@ -350,12 +350,12 @@ curl -sk "https://<访问地址>/.well-known/openid-configuration"
 # Token 内省（检查 Token 有效性）
 curl -sk -X POST "https://<访问地址>/oauth2/introspect" \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "token=<access-token>&client_id=kweaver-cli"
+  -d "token=<access-token>&client_id=openbkn-sdk"
 
 # 刷新 Token
 curl -sk -X POST "https://<访问地址>/oauth2/token" \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "grant_type=refresh_token&refresh_token=<refresh-token>&client_id=kweaver-cli"
+  -d "grant_type=refresh_token&refresh_token=<refresh-token>&client_id=openbkn-sdk"
 
 # 最小化安装 — 无需 Token 直接访问
 curl -sk "https://localhost:30000/api/agent-factory/v1/agents"

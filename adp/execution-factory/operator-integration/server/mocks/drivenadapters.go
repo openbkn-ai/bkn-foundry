@@ -14,8 +14,8 @@ import (
 	reflect "reflect"
 
 	gin "github.com/gin-gonic/gin"
-	interfaces "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
 	mcp "github.com/mark3labs/mcp-go/mcp"
+	interfaces "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -71,59 +71,6 @@ func (m *MockHydra) Introspect(c *gin.Context) (*interfaces.TokenInfo, error) {
 func (mr *MockHydraMockRecorder) Introspect(c any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Introspect", reflect.TypeOf((*MockHydra)(nil).Introspect), c)
-}
-
-// MockFlowAutomation is a mock of FlowAutomation interface.
-type MockFlowAutomation struct {
-	ctrl     *gomock.Controller
-	recorder *MockFlowAutomationMockRecorder
-	isgomock struct{}
-}
-
-// MockFlowAutomationMockRecorder is the mock recorder for MockFlowAutomation.
-type MockFlowAutomationMockRecorder struct {
-	mock *MockFlowAutomation
-}
-
-// NewMockFlowAutomation creates a new mock instance.
-func NewMockFlowAutomation(ctrl *gomock.Controller) *MockFlowAutomation {
-	mock := &MockFlowAutomation{ctrl: ctrl}
-	mock.recorder = &MockFlowAutomationMockRecorder{mock}
-	return mock
-}
-
-// EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockFlowAutomation) EXPECT() *MockFlowAutomationMockRecorder {
-	return m.recorder
-}
-
-// Export mocks base method.
-func (m *MockFlowAutomation) Export(ctx context.Context, dagIDs []string) (*interfaces.FlowAutomationExportResp, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Export", ctx, dagIDs)
-	ret0, _ := ret[0].(*interfaces.FlowAutomationExportResp)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// Export indicates an expected call of Export.
-func (mr *MockFlowAutomationMockRecorder) Export(ctx, dagIDs any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Export", reflect.TypeOf((*MockFlowAutomation)(nil).Export), ctx, dagIDs)
-}
-
-// Import mocks base method.
-func (m *MockFlowAutomation) Import(ctx context.Context, req *interfaces.FlowAutomationImportReq, userID string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Import", ctx, req, userID)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// Import indicates an expected call of Import.
-func (mr *MockFlowAutomationMockRecorder) Import(ctx, req, userID any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Import", reflect.TypeOf((*MockFlowAutomation)(nil).Import), ctx, req, userID)
 }
 
 // MockUserManagement is a mock of UserManagement interface.

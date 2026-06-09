@@ -60,7 +60,6 @@ func TestReleaseSvc_GetPublishInfo(t *testing.T) {
 					IsAPIAgent:      &[]int{1}[0],
 					IsWebSDKAgent:   &[]int{0}[0],
 					IsSkillAgent:    &[]int{0}[0],
-					IsDataFlowAgent: &[]int{0}[0],
 					IsPmsCtrl:       &[]int{0}[0], // 无权限控制
 				}
 				releaseRepo.EXPECT().
@@ -123,7 +122,6 @@ func TestReleaseSvc_GetPublishInfo(t *testing.T) {
 					IsAPIAgent:      &[]int{0}[0],
 					IsWebSDKAgent:   &[]int{1}[0],
 					IsSkillAgent:    &[]int{1}[0],
-					IsDataFlowAgent: &[]int{0}[0],
 					IsPmsCtrl:       &[]int{1}[0], // 有权限控制
 				}
 				releaseRepo.EXPECT().

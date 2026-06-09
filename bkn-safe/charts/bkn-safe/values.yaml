@@ -1,0 +1,130 @@
+replicaCount: 1
+# Namespace follows the Helm release (-n) — templates use .Release.Namespace, so
+# bkn-safe installs into the same namespace as the rest of BKN Foundry (openbkn).
+
+image:
+  registry: ghcr.io/openbkn-ai
+  repository: bkn-safe
+  tag: "__VERSION__"
+  pullPolicy: IfNotPresent
+  name: bkn-safe
+
+service:
+  type: ClusterIP
+  ports:
+    port: 3000
+    targetPort: 3000
+  annotations: {}
+
+# Only the hydra provider pages (login/consent/device) and the self-service
+# change-password endpoint are browser/CLI-facing and go through the ingress.
+# The internal authz/directory APIs (/api/safe/v1/authz, /api/safe/v1/directory)
+# stay ClusterIP, called service-to-service — do NOT expose those at the gateway.
+# The admin API (/api/safe/v1/admin) IS exposed below, but it is token-gated
+# (RequireAdmin: bearer-token introspection + casbin super-admin check), so it is
+# safe to widen — unlike the raw internal routes, which are unauthenticated.
+ingress:
+  enabled: true
+  ingressClass: class-443
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+  paths:
+    - /login
+    - /consent
+    - /device
+    # Device-approval success page (hydra URLS_DEVICE_SUCCESS target).
+    - /device/success
+    # Forced first-login password change — the browser HTML page (GET renders,
+    # POST submits) served by bkn-safe during the hydra login flow.
+    - /change-password
+    # Self-service password change REST (CLI / initial-password users). Narrow on
+    # purpose: exposes only change-password, not /api/safe/v1/authz or the raw
+    # internal /directory routes.
+    - /api/safe/v1/auth/change-password
+    # Admin API (user/dept/role CRUD, role-bindings) for the openbkn admin CLI /
+    # web console. Token-gated in-service by RequireAdmin (introspect + casbin
+    # super-admin), so safe to expose; the raw internal /authz + /directory stay
+    # ClusterIP.
+    - /api/safe/v1/admin
+  # hydra public OAuth2/OIDC endpoints exposed at the gateway, routed to the
+  # paired hydra public service (port 4444): token, device authorization,
+  # discovery, jwks, userinfo. Replaces the retired ISF ingress's /oauth2/* rules.
+  hydraPublicPaths:
+    - /oauth2
+    - /.well-known/openid-configuration
+    - /.well-known/jwks.json
+    - /userinfo
+  hydraPublicService: bkn-safe-hydra-public
+  hydraPublicPort: 4444
+
+# OAuth client seeding (post-install/upgrade Job): registers the login
+# entry-point clients in hydra. Internal services need NO client (they only
+# introspect / propagate the user token) — only login entry-points do.
+#   ci-runner       — client_credentials (CI / automation)
+#   openbkn-sdk     — device_code (CLI / headless human login)
+#   openbkn-studio  — authorization_code + PKCE (browser / SPA)
+#   openbkn-cli     — authorization_code + PKCE (CLI headless password login)
+# Idempotent (delete+create). The openbkn-studio SPA callback derives from
+# accessAddress (https://host/callback) at install time; webRedirectUri is the
+# dev fallback when no accessAddress is set.
+clientSeed:
+  enabled: true
+  webRedirectUri: "http://localhost:3000/callback"
+  # Loopback redirect for the CLI password flow; must match the SDK's
+  # `http://127.0.0.1:<DEFAULT_REDIRECT_PORT>/callback` (default port 9010).
+  cliRedirectUri: "http://127.0.0.1:9010/callback"
+  # ci-runner (client_credentials, authz.read/write) is seeded ONLY when this is
+  # set — empty means no privileged CI client is created (no weak default ships).
+  # Set to a real secret (e.g. via config.yaml / --set) to enable CI automation.
+  ciRunnerSecret: ""
+
+config:
+  seedOnStart: true
+  # Platform initial password override (BKN_SAFE_INITIAL_PASSWORD). Empty = secure
+  # default "openbkn". Set for test environments only, e.g. "111111".
+  initialPassword: ""
+  db:
+    type: "MySQL"            # MySQL | DM8 | KDB9 (all via proton-rds driver)
+    host: "bkn-safe-mariadb"
+    port: "3306"
+    user: "root"
+    password: "secret"
+    name: "safe"
+  hydra:
+    adminURL: "http://bkn-safe-hydra-admin:4445"
+    publicURL: "http://bkn-safe-hydra-public:4444"
+  ldap:
+    url: ""                 # empty = LDAP federation disabled
+    bindDN: ""
+    bindPassword: ""
+    baseDN: ""
+    userFilter: "(uid=%s)"
+
+resources:
+  requests:
+    cpu: 200m
+    memory: 256Mi
+  limits:
+    cpu: "2"
+    memory: 2Gi
+
+nodeSelector: {}
+
+# Bundled dependencies for non-production clusters (dev/staging/CI): an upstream
+# hydra v26.2.0 on PostgreSQL + a MariaDB for bkn-safe. In production set
+# enabled=false and point config.hydra/config.db at the real services.
+bundledDeps:
+  enabled: true
+  hydraImage: oryd/hydra:v26.2.0
+  postgresImage: postgres:16
+  mariadbImage: mariadb:11.4
+  # Persistent volume for the bundled hydra Postgres (survives pod restarts so
+  # OAuth clients/tokens/admin state aren't lost). The bundled MariaDB (app DB)
+  # only deploys when no cluster depServices.rds is set, so it stays ephemeral.
+  postgresStorage: "5Gi"
+  hydraSecretsSystem: "dev-only-change-me-32-bytes-secret"
+  # Browser-facing public base URL of the gateway (TLS-terminating ingress),
+  # e.g. https://10.211.55.4. When set, hydra advertises this as the issuer and
+  # builds login/consent/device page URLs from it so human browser flows work
+  # off-cluster. Empty => in-cluster service hostnames (pure in-cluster dev only).
+  publicBaseURL: ""

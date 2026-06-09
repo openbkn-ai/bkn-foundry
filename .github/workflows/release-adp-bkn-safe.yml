@@ -1,0 +1,59 @@
+name: release-adp-bkn-safe
+
+# One image (bkn-safe) and two charts (bkn-safe + the paired upstream hydra).
+# The ISF replacement: bkn-safe (authn/authz/directory) + ORY Hydra (token engine).
+
+on:
+  push:
+    branches: ['**']
+    paths:
+      - 'bkn-safe/**'
+      - '.github/workflows/release-adp-bkn-safe.yml'
+      - '.github/workflows/reusable-*.yml'
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish to GHCR (true) or verify build only (false)'
+        type: boolean
+        default: false
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  test:
+    uses: ./.github/workflows/reusable-test.yml
+    with:
+      service-path: bkn-safe
+      stack: chart-only
+
+  build:
+    needs: test
+    uses: ./.github/workflows/reusable-build.yml
+    with:
+      service-path: bkn-safe
+      dockerfile: Dockerfile
+      context: '.'
+      image-name: bkn-safe
+      version: ${{ needs.test.outputs.version }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+
+  chart-bkn-safe:
+    needs: [test, build]
+    uses: ./.github/workflows/reusable-chart.yml
+    with:
+      service-path: bkn-safe
+      chart-path: charts/bkn-safe
+      chart-name: bkn-safe
+      version: ${{ needs.test.outputs.version }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+
+  chart-hydra:
+    needs: [test]
+    uses: ./.github/workflows/reusable-chart.yml
+    with:
+      service-path: bkn-safe
+      chart-path: charts/hydra
+      chart-name: hydra
+      version: ${{ needs.test.outputs.version }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # BKN Foundry — onboard: register models, BKN, rollout (run after `deploy.sh` install)
-# Requires: kweaver, kubectl, python3, PyYAML (pip3 install pyyaml) for --config; interactive is lighter.
+# Requires: openbkn, kubectl, python3, PyYAML (pip3 install pyyaml) for --config; interactive is lighter.
 # Run from the deploy/ directory (symmetric with preflight.sh).
 
 set -euo pipefail
@@ -100,16 +100,16 @@ ONBOARD_SKIP_ISF_TEST_USER="${ONBOARD_SKIP_ISF_TEST_USER:-false}"
 # Populated by onboard_kweaver_tls_insecure_args_to_array (usually empty or -k).
 declare -a ONBOARD_TLS_INSECURE_ARGS=()
 
-# kweaver auth: HTTP sign-in defaults (ISF / full install). Console account is usually  admin  /  eisoo.com  if not changed.
+# openbkn auth: HTTP sign-in defaults (ISF / full install). Console account is usually  admin  /  eisoo.com  if not changed.
 # Override in CI. Used when you press Enter at username/password prompts.
 : "${ONBOARD_DEFAULT_KWEAVER_USER:=admin}"
 : "${ONBOARD_DEFAULT_KWEAVER_PASSWORD:=eisoo.com}"
 
-# ISF: first business user  test  (after  kweaver-admin user create ) — platform default is 123456 until  reset-password;
+# ISF: first business user  test  (after  openbkn admin user create ) — platform default is 123456 until  reset-password;
 # we set this for onboard default /  -y  / empty Enter. Override: ONBOARD_TEST_USER_PASSWORD; rename default: ONBOARD_DEFAULT_TEST_USER_PASSWORD
 : "${ONBOARD_DEFAULT_TEST_USER_PASSWORD:=111111}"
 
-# Same requirement as @kweaver-ai/kweaver-sdk on npm (node >= 22). https://www.npmjs.com/package/@kweaver-ai/kweaver-sdk
+# Same requirement as @openbkn/bkn-sdk on npm (node >= 22). https://www.npmjs.com/package/@openbkn/bkn-sdk
 ONBOARD_MIN_NODE_MAJOR="${ONBOARD_MIN_NODE_MAJOR:-22}"
 
 # Node/kweaver bootstrap prompts use the terminal (even with --config); -y skips those prompts; no TTY + no -y = error.
@@ -171,7 +171,7 @@ if __name__ == '__main__':
 " 2>/dev/null || echo "127.0.0.1"
 }
 
-# Default access base for  kweaver auth login  (this machine, HTTPS + primary IPv4 unless overridden).
+# Default access base for  openbkn auth login  (this machine, HTTPS + primary IPv4 unless overridden).
 # Set ONBOARD_DEFAULT_ACCESS_BASE to a full URL to skip auto IP.
 # Otherwise, when ONBOARD_SKIP_CONFIG_ACCESS_URL!=true, prefers accessAddress.host|port|scheme|path
 # from CONFIG_YAML_PATH (same file as deploy.sh / Helm values; mac.sh sets CONFIG_YAML_PATH to
@@ -206,7 +206,7 @@ onboard_default_access_base_url() {
     fi
 }
 
-# kweaver / kweaver-admin: optional --insecure/-k only for HTTPS URLs (self-signed dev certs).
+# openbkn / openbkn admin: optional --insecure/-k only for HTTPS URLs (self-signed dev certs).
 # For plain http:// bases, unconditional -k has been observed to break some login flows (--no-auth)
 # against HTTP-only ingress backends (404 Not Found). Also: never emit trailing whitespace from
 # command substitution — Word-splitting turns it into an extra empty argv and confuses the CLI.
@@ -231,18 +231,18 @@ onboard_kweaver_tls_insecure_args_to_array() {
 usage() {
     echo "Usage: sudo bash ./onboard.sh [options]   # Linux (matches sudo deploy.sh)"
     echo "       bash ./dev/mac.sh onboard           # macOS dev (kind path; no sudo)"
-    echo "  Requires: Node 22+ (see @kweaver-ai/kweaver-sdk on npm), kweaver, kubectl, python3; run from deploy/"
+    echo "  Requires: Node 22+ (see @openbkn/bkn-sdk on npm), openbkn, kubectl, python3; run from deploy/"
     echo "  Config YAML: unset CONFIG_YAML_PATH and onboard uses \$HOME/.openbkn-ai/config.yaml when that file exists (same as deploy.sh); otherwise scripts/lib/common.sh default (deploy/conf/config.yaml)."
     echo "  Why sudo on Linux: deploy.sh runs as root and writes \$HOME/.openbkn-ai/config.yaml under /root/.openbkn-ai/ (mode 700); onboard.sh also writes \$HOME/.kweaver auth state. sudo keeps both pointing at the same root home (silence the startup hint with ONBOARD_SUDO_HINT_DISABLED=1; not needed on macOS dev)."
     echo "  (no flags)                Interactive: nvm+Node 22 and npm -g (Y/n) in your terminal, then models/BKN"
     echo "  -y, --yes                 Auto nvm+Node 22, npm -g, ISF [test] user+roles (no Y/n)"
     echo "  --config=PATH            YAML: deploy/conf/models.yaml.example; model prompts off, but nvm/kweaver still Y/n in a TTY (use -y to skip those asks)"
-    echo "  --skip-isf-test-user     Do not offer: kweaver-admin user test + all roles (full install only)"
+    echo "  --skip-isf-test-user     Do not offer: openbkn admin user test + all roles (full install only)"
     echo ""
-    echo "  ADP impex / auth:  kweaver call  uses ~/.kweaver from  kweaver auth login ."
-    echo "    - ISF (full):  kweaver-admin  / console  admin  for user ops. ADP impex uses user  test  with all  role list"
-    echo "      roles (typically three business admins), then  kweaver auth  as  test .  -y  uses password  ${ONBOARD_DEFAULT_TEST_USER_PASSWORD:-111111}  (override: ONBOARD_TEST_USER_PASSWORD) ."
-    echo "    - Minimum (no ISF):  kweaver auth login  only; kweaver-admin is not required."
+    echo "  ADP impex / auth:  openbkn call  uses ~/.kweaver from  openbkn auth login ."
+    echo "    - ISF (full):  openbkn admin  / console  admin  for user ops. ADP impex uses user  test  with all  role list"
+    echo "      roles (typically three business admins), then  openbkn auth  as  test .  -y  uses password  ${ONBOARD_DEFAULT_TEST_USER_PASSWORD:-111111}  (override: ONBOARD_TEST_USER_PASSWORD) ."
+    echo "    - Minimum (no ISF):  openbkn auth login  only; openbkn admin is not required."
     echo "  --namespace=NS           Override K8s namespace (default: NAMESPACE env, else namespace: in CONFIG_YAML_PATH, else openbkn)"
     echo "  --enable-bkn-search      Only patch bkn/ontology ConfigMaps and rollout"
     echo "  --bkn-embedding-name=X   Required with --enable-bkn-search (registered model_name)"
@@ -250,22 +250,22 @@ usage() {
     echo "  -h, --help"
     echo ""
     echo "  Environment: ONBOARD_SKIP_NODE_INSTALL=true  skip nvm in onboard (fail if Node < ${ONBOARD_MIN_NODE_MAJOR})"
-    echo "                ONBOARD_SKIP_KWEAVER_INSTALL=true  never run npm -g for kweaver in onboard"
-    echo "                ONBOARD_SKIP_KWEAVER_ADMIN_INSTALL=true  on ISF: do not auto/offer  npm -g  kweaver-admin  (also skipped with  -y )"
+    echo "                ONBOARD_SKIP_KWEAVER_INSTALL=true  never run npm -g for openbkn in onboard"
+    echo "                ONBOARD_SKIP_KWEAVER_ADMIN_INSTALL=true  on ISF: do not auto/offer  npm -g  openbkn admin  (also skipped with  -y )"
     echo "                ONBOARD_SKIP_ISF_TEST_USER=true  same as --skip-isf-test-user"
     echo "                ONBOARD_TEST_USER_PASSWORD=...  override default password for  test  (ISF; default: ONBOARD_DEFAULT_TEST_USER_PASSWORD, built-in 111111)"
     echo "                ONBOARD_DEFAULT_TEST_USER_PASSWORD=...  first-user  test  password (default 111111;  -y  non-interactive)"
-    echo "                ONBOARD_KWEAVER_IMPEX_NO_RELLOGIN=1  skip  kweaver auth  as  test  before impex (use current kweaver session)"
+    echo "                ONBOARD_KWEAVER_IMPEX_NO_RELLOGIN=1  skip  openbkn auth  as  test  before impex (use current openbkn session)"
     echo "                ONBOARD_NO_COMPLETION_REPORT=1  do not print the English completion report at the end"
-    echo "                ONBOARD_FORCE_INSECURE_LOGIN=true  always pass -k (--insecure) to kweaver/kweaver-admin auth login (even for http:// bases; default false)"
+    echo "                ONBOARD_FORCE_INSECURE_LOGIN=true  always pass -k (--insecure) to openbkn/kweaver-admin auth login (even for http:// bases; default false)"
     echo "                ONBOARD_SKIP_CONFIG_ACCESS_URL=true  do not derive default URL from CONFIG_YAML_PATH accessAddress"
-    echo "  Default BKN Foundry access URL (kweaver auth): accessAddress in CONFIG_YAML_PATH when present;"
+    echo "  Default BKN Foundry access URL (openbkn auth): accessAddress in CONFIG_YAML_PATH when present;"
     echo "                on macOS, if CONFIG_YAML_PATH is still deploy/conf/config.yaml (~/.openbkn-ai not used yet),"
     echo "                onboard uses deploy/dev/conf/mac-config.yaml when that file exists (same as mac.sh)."
     echo "                Else host primary IPv4 + ONBOARD_DEFAULT_ACCESS_SCHEME (https by default)."
     echo "                Set ONBOARD_DEFAULT_ACCESS_BASE to force a URL; ONBOARD_DEFAULT_ACCESS_PORT / SCHEME override fallback IP path."
-    echo "  kweaver auth: you confirm URL. ISF+full: HTTP defaults user=admin pass=eisoo.com (if still default); override with ONBOARD_DEFAULT_KWEAVER_USER / _PASSWORD. Enter keeps defaults. Minimum: default --no-auth; Enter to accept."
-    echo "  kweaver-admin auth (ISF): use  auth login <url> -u admin -p <pass>  (append -k for https:// + self-signed); optional  auth login <url> -k  without -u/-p for browser OAuth. If HTTP sign-in returns 401001017, a TTY prompts: [Enter]=run  auth change-password  then HTTP login; o=OAuth browser. Non-TTY / -y prints hints (change-password or  login … --new-password). Then kweaver re-logs in as user test for impex and model steps."
+    echo "  openbkn auth: you confirm URL. ISF+full: HTTP defaults user=admin pass=eisoo.com (if still default); override with ONBOARD_DEFAULT_KWEAVER_USER / _PASSWORD. Enter keeps defaults. Minimum: default --no-auth; Enter to accept."
+    echo "  openbkn admin auth (ISF): use  auth login <url> -u admin -p <pass>  (append -k for https:// + self-signed); optional  auth login <url> -k  without -u/-p for browser OAuth. If HTTP sign-in returns 401001017, a TTY prompts: [Enter]=run  auth change-password  then HTTP login; o=OAuth browser. Non-TTY / -y prints hints (change-password or  login … --new-password). Then openbkn re-logs in as user test for impex and model steps."
     echo "  Node: onboard is not a login shell — it auto-loads nvm/fnm/asdf/Volta and Homebrew paths so an already-configured Node 22+ is found without re-asking. ONBOARD_SKIP_NVM_INIT=true skips that; ONBOARD_NVM_VERSION=22 (default) is used after  nvm.sh  load."
     echo "  (preflight on the server: sudo bash ./preflight.sh --fix still optional; this script can install Node in your *user* account via nvm.)"
 }
@@ -386,7 +386,7 @@ onboard_ensure_node_22() {
         log_info "Node ${ONBOARD_MIN_NODE_MAJOR}+ not active; installing via nvm (-y)…"
     elif onboard_is_bootstrap_tty; then
         echo ""
-        read -r -p "Node.js ${ONBOARD_MIN_NODE_MAJOR}+ is required for kweaver/onboard. Install nvm and Node 22 in this user account now? [Y/n]: " _obn
+        read -r -p "Node.js ${ONBOARD_MIN_NODE_MAJOR}+ is required for openbkn/onboard. Install nvm and Node 22 in this user account now? [Y/n]: " _obn
         if [[ "${_obn}" =~ ^[Nn] ]]; then
             log_error "Install Node ${ONBOARD_MIN_NODE_MAJOR}+ (e.g. nvm install 22), or use another machine with Node 22+ on PATH, or run: sudo bash ./preflight.sh --fix on the host where you need system-wide Node."
             exit 1
@@ -411,43 +411,43 @@ onboard_ensure_node_22() {
 }
 
 onboard_ensure_kweaver_cli() {
-    if command -v kweaver &>/dev/null; then
+    if command -v openbkn &>/dev/null; then
         return 0
     fi
     if ! command -v npm &>/dev/null; then
-        log_error "kweaver not in PATH and npm not found. With nvm+Node, npm should exist; re-open a shell and re-run."
+        log_error "openbkn not in PATH and npm not found. With nvm+Node, npm should exist; re-open a shell and re-run."
         exit 1
     fi
     if [[ "${ONBOARD_SKIP_KWEAVER_INSTALL:-false}" == "true" ]]; then
-        log_error "kweaver not in PATH. Install: npm i -g @kweaver-ai/kweaver-sdk  (or unset ONBOARD_SKIP_KWEAVER_INSTALL to allow this script to run npm -g.)"
+        log_error "openbkn not in PATH. Install: npm i -g @openbkn/bkn-sdk  (or unset ONBOARD_SKIP_KWEAVER_INSTALL to allow this script to run npm -g.)"
         exit 1
     fi
     if [[ "${ONBOARD_ASSUME_YES}" == "true" ]]; then
-        log_info "Installing @kweaver-ai/kweaver-sdk globally (-y)…"
+        log_info "Installing @openbkn/bkn-sdk globally (-y)…"
     elif onboard_is_bootstrap_tty; then
         echo ""
-        read -r -p "kweaver CLI not in PATH. Install @kweaver-ai/kweaver-sdk globally now? (npm i -g) [Y/n]: " _obk
+        read -r -p "openbkn CLI not in PATH. Install @openbkn/bkn-sdk globally now? (npm i -g) [Y/n]: " _obk
         if [[ "${_obk}" =~ ^[Nn] ]]; then
-            log_error "kweaver is required. Run:  npm i -g @kweaver-ai/kweaver-sdk"
+            log_error "openbkn is required. Run:  npm i -g @openbkn/bkn-sdk"
             exit 1
         fi
     else
-        log_error "kweaver not in PATH. In a TTY you get a Y/n prompt; without a TTY use  $0 -y  or install: npm i -g @kweaver-ai/kweaver-sdk"
+        log_error "openbkn not in PATH. In a TTY you get a Y/n prompt; without a TTY use  $0 -y  or install: npm i -g @openbkn/bkn-sdk"
         exit 1
     fi
-    if ! npm i -g @kweaver-ai/kweaver-sdk; then
-        log_error "npm i -g @kweaver-ai/kweaver-sdk failed. Check registry/proxy, or EACCES (avoid sudo; use nvm user prefix.)"
+    if ! npm i -g @openbkn/bkn-sdk; then
+        log_error "npm i -g @openbkn/bkn-sdk failed. Check registry/proxy, or EACCES (avoid sudo; use nvm user prefix.)"
         exit 1
     fi
     hash -r 2>/dev/null || true
-    if ! command -v kweaver &>/dev/null; then
-        log_error "kweaver still not on PATH. Add npm global bin to PATH, e.g.:  export PATH=\"\$(npm config get prefix 2>/dev/null)/bin:\$PATH\""
+    if ! command -v openbkn &>/dev/null; then
+        log_error "openbkn still not on PATH. Add npm global bin to PATH, e.g.:  export PATH=\"\$(npm config get prefix 2>/dev/null)/bin:\$PATH\""
         exit 1
     fi
-    log_info "kweaver: $(kweaver --version 2>/dev/null | head -1)"
+    log_info "openbkn: $(openbkn --version 2>/dev/null | head -1)"
 }
 
-# Same shell as nvm/node: global CLIs (kweaver, kweaver-admin) live under $(npm config get prefix)/bin — prepend so a just-installed -g is visible.
+# Same shell as nvm/node: global CLIs (openbkn, openbkn admin) live under $(npm config get prefix)/bin — prepend so a just-installed -g is visible.
 onboard_prepend_npm_global_bin_to_path() {
     local pfx
     pfx="$(npm config get prefix 2>/dev/null)" || true
@@ -538,8 +538,8 @@ onboard_argv_q() {
 # For [onboard] logs: absolute path + first line of --version (often semver only, e.g. 0.6.4).
 onboard_kweaver_admin_version_summary() {
     local _bin _ver
-    _bin="$(command -v kweaver-admin 2>/dev/null)" || return 1
-    _ver="$(kweaver-admin --version 2>/dev/null | head -n1 | tr -d '\r')"
+    _bin="$(command -v openbkn 2>/dev/null)" || return 1
+    _ver="$(openbkn admin --version 2>/dev/null | head -n1 | tr -d '\r')"
     _ver="${_ver//$'\n'/ }"
     [[ -z "${_ver}" ]] && _ver="?"
     printf '%s' "${_bin} (version ${_ver})"
@@ -548,7 +548,7 @@ onboard_kweaver_admin_version_summary() {
 onboard_kweaver_auth_login_echo_cmd() {
     local _url="$1"
     shift
-    onboard_log_info "Running: $(onboard_argv_q kweaver auth login "${_url}" "$@")"
+    onboard_log_info "Running: $(onboard_argv_q openbkn auth login "${_url}" "$@")"
 }
 
 # After access URL is chosen: ISF → HTTP sign-in (defaults admin / eisoo.com if unchanged) or browser; no ISF → --no-auth (Enter) or HTTP.
@@ -560,15 +560,45 @@ onboard_kweaver_auth_login_for_url() {
     _dpass="${ONBOARD_DEFAULT_KWEAVER_PASSWORD:-eisoo.com}"
     onboard_kweaver_tls_insecure_args_to_array "${_kurl}"
     local _kv
-    _kv="$(kweaver --version 2>/dev/null | grep -Eo '[vV]?[0-9]+\.[0-9]+\.[0-9]+' | tail -1 || true)"
+    _kv="$(openbkn --version 2>/dev/null | grep -Eo '[vV]?[0-9]+\.[0-9]+\.[0-9]+' | tail -1 || true)"
     [[ -z "${_kv}" ]] && _kv="?"
-    onboard_log_info "kweaver CLI: $(command -v kweaver 2>/dev/null || echo missing) (${_kv}) CONFIG_YAML_PATH=${CONFIG_YAML_PATH:-unset}"
+    onboard_log_info "openbkn CLI: $(command -v openbkn 2>/dev/null || echo missing) (${_kv}) CONFIG_YAML_PATH=${CONFIG_YAML_PATH:-unset}"
+
+    # bkn-safe (current auth stack, replaces ISF): credential login via the
+    # openbkn device-code flow (openbkn auth login -u/-p — no --http-signin). The
+    # admin is seeded with a platform initial password (default "openbkn"); set
+    # ONBOARD_DEFAULT_KWEAVER_PASSWORD if it has been changed. A first-login forced
+    # password change must be completed once (browser or `openbkn auth change-password`)
+    # before non-interactive -u/-p login can succeed.
+    if type onboard_bkn_safe_detected &>/dev/null && onboard_bkn_safe_detected; then
+        local _su _sp
+        _su="${ONBOARD_DEFAULT_KWEAVER_USER:-admin}"
+        _sp="${ONBOARD_DEFAULT_KWEAVER_PASSWORD:-openbkn}"
+        if [[ "${ONBOARD_ASSUME_YES}" == "true" ]]; then
+            onboard_log_info "openbkn auth: bkn-safe detected — credential device-flow login (-y): ${_su}"
+            onboard_kweaver_auth_login_echo_cmd "${_kurl}" -u "${_su}" -p "***" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}"
+            if ! openbkn auth login "${_kurl}" -u "${_su}" -p "${_sp}" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}" ; then
+                return 1
+            fi
+            return 0
+        fi
+        read -r -p "  Username [Enter = ${_su}]: " _u
+        _u="${_u:-${_su}}"
+        read -r -s -p "  Password [Enter = ${_sp}] " _p
+        echo
+        _p="${_p:-${_sp}}"
+        onboard_kweaver_auth_login_echo_cmd "${_kurl}" -u "${_u}" -p "***" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}"
+        if ! openbkn auth login "${_kurl}" -u "${_u}" -p "${_p}" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}" ; then
+            return 1
+        fi
+        return 0
+    fi
 
     if type onboard_isf_full_install &>/dev/null && onboard_isf_full_install 2>/dev/null; then
         if [[ "${ONBOARD_ASSUME_YES}" == "true" ]]; then
-            onboard_log_info "kweaver auth: ISF detected — HTTP sign-in (defaults, -y): ${_duser}"
-            onboard_kweaver_auth_login_echo_cmd "${_kurl}" -u "${_duser}" -p "***" --http-signin "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}"
-            if ! kweaver auth login "${_kurl}" -u "${_duser}" -p "${_dpass}" --http-signin "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}" ; then
+            onboard_log_info "openbkn auth: ISF detected — HTTP sign-in (defaults, -y): ${_duser}"
+            onboard_kweaver_auth_login_echo_cmd "${_kurl}" -u "${_duser}" -p "***" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}"
+            if ! openbkn auth login "${_kurl}" -u "${_duser}" -p "${_dpass}" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}" ; then
                 return 1
             fi
             return 0
@@ -581,24 +611,24 @@ onboard_kweaver_auth_login_for_url() {
             read -r -s -p "  Password [Enter = ${_dpass} if default unchanged on console] " _p
             echo
             _p="${_p:-${_dpass}}"
-            onboard_kweaver_auth_login_echo_cmd "${_kurl}" -u "${_u}" -p "***" --http-signin "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}"
-            if ! kweaver auth login "${_kurl}" -u "${_u}" -p "${_p}" --http-signin "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}" ; then
+            onboard_kweaver_auth_login_echo_cmd "${_kurl}" -u "${_u}" -p "***" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}"
+            if ! openbkn auth login "${_kurl}" -u "${_u}" -p "${_p}" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}" ; then
                 return 1
             fi
             return 0
         fi
-        onboard_log_info "Using browser / device flow: kweaver auth login \"${_kurl}\" ${ONBOARD_TLS_INSECURE_ARGS[*]:-}"
+        onboard_log_info "Using browser / device flow: openbkn auth login \"${_kurl}\" ${ONBOARD_TLS_INSECURE_ARGS[*]:-}"
         onboard_kweaver_auth_login_echo_cmd "${_kurl}" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}"
-        if ! kweaver auth login "${_kurl}" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}" ; then
+        if ! openbkn auth login "${_kurl}" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}" ; then
             return 1
         fi
         return 0
     fi
 
     if [[ "${ONBOARD_ASSUME_YES}" == "true" ]]; then
-        onboard_log_info "kweaver auth: no ISF — --no-auth (default, -y)"
+        onboard_log_info "openbkn auth: no ISF — --no-auth (default, -y)"
         onboard_kweaver_auth_login_echo_cmd "${_kurl}" --no-auth "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}"
-        if ! kweaver auth login "${_kurl}" --no-auth "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}" ; then
+        if ! openbkn auth login "${_kurl}" --no-auth "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}" ; then
             return 1
         fi
         return 0
@@ -607,7 +637,7 @@ onboard_kweaver_auth_login_for_url() {
     read -r -p "No ISF (minimum install): use --no-auth (typical) [Y/n] (Enter = Y): " _mna
     if [[ -z "${_mna}" || ! "${_mna}" =~ ^[Nn] ]]; then
         onboard_kweaver_auth_login_echo_cmd "${_kurl}" --no-auth "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}"
-        if ! kweaver auth login "${_kurl}" --no-auth "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}" ; then
+        if ! openbkn auth login "${_kurl}" --no-auth "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}" ; then
             return 1
         fi
         return 0
@@ -617,8 +647,8 @@ onboard_kweaver_auth_login_for_url() {
     read -r -s -p "  Password [Enter = ${_dpass} if default unchanged on console] " _p
     echo
     _p="${_p:-${_dpass}}"
-    onboard_kweaver_auth_login_echo_cmd "${_kurl}" -u "${_u}" -p "***" --http-signin "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}"
-    if ! kweaver auth login "${_kurl}" -u "${_u}" -p "${_p}" --http-signin "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}" ; then
+    onboard_kweaver_auth_login_echo_cmd "${_kurl}" -u "${_u}" -p "***" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}"
+    if ! openbkn auth login "${_kurl}" -u "${_u}" -p "${_p}" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}" ; then
         return 1
     fi
     return 0
@@ -643,17 +673,17 @@ onboard_kweaver_admin_resolve_initial_password_blocked_interactive() {
     read -r -p "[onboard] Method? [Enter]=CLI auth change-password; o / oauth = OAuth (browser): " _ch
     case "$(printf '%s' "${_ch:-}" | LC_ALL=C tr '[:upper:]' '[:lower:]' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')" in
         o|oauth)
-            onboard_log_info "Running (OAuth — complete flow in browser; waiting on callback may take time): $(onboard_argv_q kweaver-admin auth login "${_url}" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}")"
+            onboard_log_info "Running (OAuth — complete flow in browser; waiting on callback may take time): $(onboard_argv_q openbkn admin auth login "${_url}" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}")"
             # Trust auth login exit status; onboarding re-checks with user list once below (avoid doubling slow/hanging API probes).
-            if kweaver-admin auth login "${_url}" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}"; then
+            if openbkn admin auth login "${_url}" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}"; then
                 return 0
             fi
             onboard_log_warn "OAuth login did not complete — try CLI change-password ([Enter]) next time."
             return 1
             ;;
         *)
-            onboard_log_info "Running (CLI): $(onboard_argv_q kweaver-admin auth change-password "${_url}" -u "${_user}" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}") — follow prompts (old/new); first request may take several seconds."
-            if ! kweaver-admin auth change-password "${_url}" -u "${_user}" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}"; then
+            onboard_log_info "Running (CLI): $(onboard_argv_q openbkn admin auth change-password "${_url}" -u "${_user}" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}") — follow prompts (old/new); first request may take several seconds."
+            if ! openbkn admin auth change-password "${_url}" -u "${_user}" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}"; then
                 return 1
             fi
             echo ""
@@ -661,8 +691,8 @@ onboard_kweaver_admin_resolve_initial_password_blocked_interactive() {
             read -r -s -p "  New password for ${_user}: " _pw
             echo ""
             onboard_log_info "Signing in via HTTP…"
-            onboard_log_info "Running: $(onboard_argv_q kweaver-admin auth login "${_url}" -u "${_user}" -p "***" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}")"
-            if kweaver-admin auth login "${_url}" -u "${_user}" -p "${_pw}" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}"; then
+            onboard_log_info "Running: $(onboard_argv_q openbkn admin auth login "${_url}" -u "${_user}" -p "***" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}")"
+            if openbkn admin auth login "${_url}" -u "${_user}" -p "${_pw}" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}"; then
                 return 0
             fi
             return 1
@@ -674,24 +704,70 @@ onboard_kweaver_admin_resolve_initial_password_blocked_interactive() {
 onboard_kweaver_admin_hint_auth_change_password_cli() {
     local _url="$1" _user="${2:-admin}"
     onboard_kweaver_tls_insecure_args_to_array "${_url}"
-    onboard_log_warn "Non-interactive (-y): use $(onboard_argv_q kweaver-admin auth change-password "${_url}" -u "${_user}" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}") interactively elsewhere, then re-run onboard; or  auth login  with $(onboard_argv_q kweaver-admin auth login "${_url}" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}") -u … -p '<initial>' --new-password '<new>', then export ONBOARD_DEFAULT_KWEAVER_PASSWORD. Always pass the URL (see kweaver-admin auth list if omitted)."
+    onboard_log_warn "Non-interactive (-y): use $(onboard_argv_q openbkn admin auth change-password "${_url}" -u "${_user}" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}") interactively elsewhere, then re-run onboard; or  auth login  with $(onboard_argv_q openbkn admin auth login "${_url}" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}") -u … -p '<initial>' --new-password '<new>', then export ONBOARD_DEFAULT_KWEAVER_PASSWORD. Always pass the URL (see openbkn admin auth list if omitted)."
 }
 
-# kweaver-admin: -u/-p use HTTP /oauth2/signin (no --http-signin flag; unlike kweaver-sdk). Same defaults as kweaver. See ONBOARD_DEFAULT_KWEAVER_*.
+# ISF auth-route gate: `openbkn admin auth login` first does OAuth2 dynamic client
+# registration (POST /oauth2/clients), routed by the ISF ingress (ingress-informationsecurityfabric)
+# to the authentication service. That route only exists once ISF is installed AND nginx has
+# propagated it. `helm --wait` blocks on pod Ready but NOT on ingress propagation, so onboard
+# can race ahead and get 404 {"detail":"Not Found"} from the ingress default backend. Poll the
+# exact endpoint until it stops 404-ing (400 = route live, backend just rejects the empty body).
+# Bounded; warns and proceeds if it never comes up so the login loop still surfaces the real error.
+# Env: ONBOARD_ISF_OAUTH_READY_MAX_TRIES (default 24), ONBOARD_ISF_OAUTH_READY_SLEEP (default 5).
+# Only reached via onboard_kweaver_admin_auth_login_for_url, whose callers are guarded by
+# onboard_isf_full_install — so this never runs (and never waits) on a non-ISF install.
+onboard_wait_isf_oauth_clients_ready() {
+    local _url="$1"
+    local _max="${ONBOARD_ISF_OAUTH_READY_MAX_TRIES:-24}" _i _code
+    command -v curl >/dev/null 2>&1 || return 0
+    for ((_i = 1; _i <= _max; _i++)); do
+        _code="$(curl -sk -o /dev/null -w '%{http_code}' \
+            --connect-timeout 4 --max-time 8 \
+            -X POST "${_url%/}/oauth2/clients" \
+            -H 'Content-Type: application/json' -d '{}' 2>/dev/null || echo 000)"
+        if [[ "${_code}" != "404" && "${_code}" != "000" ]]; then
+            [[ "${_i}" -gt 1 ]] && onboard_log_info "ISF auth route /oauth2/clients ready (HTTP ${_code})."
+            return 0
+        fi
+        [[ "${_i}" -eq 1 ]] && onboard_log_info "Waiting for ISF auth route /oauth2/clients (HTTP ${_code}); ISF ingress may still be propagating…"
+        sleep "${ONBOARD_ISF_OAUTH_READY_SLEEP:-5}"
+    done
+    onboard_log_warn "ISF auth route /oauth2/clients still not ready after ${_max} tries; continuing — login may fail with a registration 404 if ISF is not fully installed."
+    return 0
+}
+
+# True when a openbkn admin login failed specifically because the OAuth2 client-registration
+# route is missing (ISF ingress not up): "Client registration failed (404)" / ingress
+# default-backend {"detail":"Not Found"}. Distinct from a wrong password, so the hint must differ.
+onboard_kweaver_admin_output_is_oauth_route_missing() {
+    local _file="$1"
+    [[ -f "${_file}" ]] || return 1
+    grep -qiE 'Client registration failed \(404\)|"detail":[[:space:]]*"Not Found"' "${_file}"
+}
+
+# openbkn admin: -u/-p use HTTP /oauth2/signin (no flag; unlike kweaver-sdk). Same defaults as openbkn. See ONBOARD_DEFAULT_KWEAVER_*.
 onboard_kweaver_admin_auth_login_for_url() {
     local _kurl="$1"
     local _u _p _duser _dpass _kad_out
     _duser="${ONBOARD_DEFAULT_KWEAVER_USER:-admin}"
     _dpass="${ONBOARD_DEFAULT_KWEAVER_PASSWORD:-eisoo.com}"
     onboard_kweaver_tls_insecure_args_to_array "${_kurl}"
+    # Block until the ISF client-registration route is live, so login doesn't race a 404.
+    onboard_wait_isf_oauth_clients_ready "${_kurl}"
 
     if [[ "${ONBOARD_ASSUME_YES}" == "true" ]]; then
-        onboard_log_info "kweaver-admin auth: ISF — HTTP sign-in (defaults, -y): ${_duser}"
-        onboard_log_info "Running: $(onboard_argv_q kweaver-admin auth login "${_kurl}" -u "${_duser}" -p "***" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}")"
+        onboard_log_info "openbkn admin auth: ISF — HTTP sign-in (defaults, -y): ${_duser}"
+        onboard_log_info "Running: $(onboard_argv_q openbkn admin auth login "${_kurl}" -u "${_duser}" -p "***" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}")"
         _kad_out="$(mktemp "${TMPDIR:-/tmp}/onboard-kad-login.XXXXXX")"
-        if kweaver-admin auth login "${_kurl}" -u "${_duser}" -p "${_dpass}" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}" 2>&1 | tee "${_kad_out}"; then
+        if openbkn admin auth login "${_kurl}" -u "${_duser}" -p "${_dpass}" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}" 2>&1 | tee "${_kad_out}"; then
             rm -f "${_kad_out}"
             return 0
+        fi
+        if onboard_kweaver_admin_output_is_oauth_route_missing "${_kad_out}"; then
+            onboard_log_err "openbkn admin: OAuth2 client registration hit 404 (/oauth2/clients not routed) — ISF auth stack not ready, NOT a password problem. Ensure 'deploy.sh isf install' finished (ingress-informationsecurityfabric present), then re-run: $0"
+            rm -f "${_kad_out}"
+            return 1
         fi
         if onboard_kweaver_admin_output_is_blocked_initial_password "${_kad_out}"; then
             if onboard_is_bootstrap_tty && onboard_kweaver_admin_resolve_initial_password_blocked_interactive "${_kurl}" "${_duser}"; then
@@ -712,12 +788,18 @@ onboard_kweaver_admin_auth_login_for_url() {
         read -r -s -p "  Password [Enter = ${_dpass} if default unchanged on console] " _p
         echo
         _p="${_p:-${_dpass}}"
-        onboard_log_info "kweaver-admin: HTTP sign-in (attempt ${_attempt}/3)…"
-        onboard_log_info "Running: $(onboard_argv_q kweaver-admin auth login "${_kurl}" -u "${_u}" -p "***" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}")"
+        onboard_log_info "openbkn admin: HTTP sign-in (attempt ${_attempt}/3)…"
+        onboard_log_info "Running: $(onboard_argv_q openbkn admin auth login "${_kurl}" -u "${_u}" -p "***" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}")"
         _kad_out="$(mktemp "${TMPDIR:-/tmp}/onboard-kad-login.XXXXXX")"
-        if kweaver-admin auth login "${_kurl}" -u "${_u}" -p "${_p}" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}" 2>&1 | tee "${_kad_out}"; then
+        if openbkn admin auth login "${_kurl}" -u "${_u}" -p "${_p}" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}" 2>&1 | tee "${_kad_out}"; then
             rm -f "${_kad_out}"
             return 0
+        fi
+        if onboard_kweaver_admin_output_is_oauth_route_missing "${_kad_out}"; then
+            onboard_log_warn "openbkn admin: OAuth2 client registration 404 (/oauth2/clients not routed) — ISF auth stack not ready yet, NOT a password problem. Waiting before retry…"
+            rm -f "${_kad_out}"
+            sleep "${ONBOARD_ISF_OAUTH_READY_SLEEP:-5}"
+            continue
         fi
         if onboard_kweaver_admin_output_is_blocked_initial_password "${_kad_out}"; then
             if onboard_is_bootstrap_tty && onboard_kweaver_admin_resolve_initial_password_blocked_interactive "${_kurl}" "${_u}"; then
@@ -726,39 +808,41 @@ onboard_kweaver_admin_auth_login_for_url() {
             fi
             onboard_kweaver_admin_hint_auth_change_password_cli "${_kurl}" "${_u}"
         else
-            onboard_log_warn "kweaver-admin sign-in failed (attempt ${_attempt}/3). If the console password was changed from '${_dpass}', enter the new one. To reset: log into the web console as admin → User management → change password; or run 'kweaver-admin user reset-password -u admin --prompt-password -y' after one successful login."
+            onboard_log_warn "openbkn admin sign-in failed (attempt ${_attempt}/3). If the console password was changed from '${_dpass}', enter the new one. To reset: log into the web console as admin → User management → change password; or run 'openbkn admin user reset-password -u admin --prompt-password -y' after one successful login."
         fi
         rm -f "${_kad_out}"
     done
     return 1
 }
 
-# When kweaver bkn list fails, interactively let the user log in or retry; non-interactive (or -y) exits.
+# When openbkn bkn list fails, interactively let the user log in or retry; non-interactive (or -y) exits.
 onboard_ensure_kweaver_auth() {
     while true; do
-        if kweaver bkn list &>/dev/null; then
+        if openbkn bkn list &>/dev/null; then
+            return 0
+        fi
+        # -y (with or without --config): auto-login with defaults. Checked BEFORE the
+        # non-interactive hard-exit below so `--config … -y` can authenticate unattended.
+        if [[ "${ONBOARD_ASSUME_YES}" == "true" ]]; then
+            _durl="$(onboard_default_access_base_url)"
+            onboard_log_warn "openbkn bkn list failed (-y). Trying  openbkn auth login ${_durl}  with defaults…"
+            if ! onboard_kweaver_auth_login_for_url "${_durl}"; then
+                onboard_log_err "openbkn auth login failed. Set ONBOARD_DEFAULT_ACCESS_BASE / ONBOARD_DEFAULT_KWEAVER_USER / _PASSWORD, or run openbkn auth login manually, then re-run: $0 -y"
+                exit 1
+            fi
+            if ! openbkn bkn list &>/dev/null; then
+                onboard_log_err "openbkn bkn list still fails after auth login. Check the platform, then re-run: $0 -y"
+                exit 1
+            fi
             return 0
         fi
         if [[ "${INTERACTIVE}" != "true" ]]; then
             _durl="$(onboard_default_access_base_url)"
             onboard_kweaver_tls_insecure_args_to_array "${_durl}"
-            onboard_log_err "kweaver bkn list failed. Run: $(onboard_argv_q kweaver auth login "${_durl}" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}") (or set ONBOARD_DEFAULT_ACCESS_BASE=...)"
+            onboard_log_err "openbkn bkn list failed. Run: $(onboard_argv_q openbkn auth login "${_durl}" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}") (or set ONBOARD_DEFAULT_ACCESS_BASE=...)"
             exit 1
         fi
-        if [[ "${ONBOARD_ASSUME_YES}" == "true" ]]; then
-            _durl="$(onboard_default_access_base_url)"
-            onboard_log_warn "kweaver bkn list failed (-y, non-interactive). Trying  kweaver auth login ${_durl}  with defaults…"
-            if ! onboard_kweaver_auth_login_for_url "${_durl}"; then
-                onboard_log_err "kweaver auth login failed. Set ONBOARD_DEFAULT_ACCESS_BASE / ONBOARD_DEFAULT_KWEAVER_USER / _PASSWORD, or run kweaver auth login manually, then re-run: $0 -y"
-                exit 1
-            fi
-            if ! kweaver bkn list &>/dev/null; then
-                onboard_log_err "kweaver bkn list still fails after auth login. Check the platform, then re-run: $0 -y"
-                exit 1
-            fi
-            return 0
-        fi
-        onboard_log_warn "kweaver bkn list failed (not logged in or platform unreachable)."
+        onboard_log_warn "openbkn bkn list failed (not logged in or platform unreachable)."
         echo ""
         echo "Choose:"
         echo "  1) Run login: URL (Enter = this host IP), then ISF/HTTP or minimum/--no-auth — see -h for defaults"
@@ -772,7 +856,7 @@ onboard_ensure_kweaver_auth() {
                 read -r -p "Access base URL [Enter = ${_def_url}]: " _kurl
                 _kurl="${_kurl:-${_def_url}}"
                 if ! onboard_kweaver_auth_login_for_url "${_kurl}"; then
-                    onboard_log_warn "kweaver auth login failed. If you saw engine, SyntaxError, or RegExp issues under node_modules, upgrade Node (see npm @kweaver-ai/kweaver-sdk engines), then reinstall the CLI."
+                    onboard_log_warn "openbkn auth login failed. If you saw engine, SyntaxError, or RegExp issues under node_modules, upgrade Node (see npm @openbkn/bkn-sdk engines), then reinstall the CLI."
                     onboard_log_warn "Otherwise: set ONBOARD_DEFAULT_ACCESS_* or run login manually, then choose 2 to retry."
                 fi
                 ;;
@@ -783,30 +867,30 @@ onboard_ensure_kweaver_auth() {
     done
 }
 
-# Full ISF: kweaver-admin required for user create / assign-role; optional install (interactive Y/n, -y auto, or skip).
+# Full ISF: openbkn admin required for user create / assign-role; optional install (interactive Y/n, -y auto, or skip).
 onboard_ensure_kweaver_admin_for_isf() {
     if ! (type onboard_isf_full_install &>/dev/null && onboard_isf_full_install 2>/dev/null); then
         return 0
     fi
     onboard_prepend_npm_global_bin_to_path
-    command -v kweaver-admin &>/dev/null && return 0
+    command -v openbkn &>/dev/null && return 0
     if [[ "${ONBOARD_SKIP_KWEAVER_ADMIN_INSTALL:-false}" == "true" ]]; then
-        onboard_log_info "kweaver-admin: skip npm install (ONBOARD_SKIP_KWEAVER_ADMIN_INSTALL=true)."
+        onboard_log_info "openbkn admin: skip npm install (ONBOARD_SKIP_KWEAVER_ADMIN_INSTALL=true)."
         return 0
     fi
     if ! command -v npm &>/dev/null; then
-        onboard_log_warn "kweaver-admin not in PATH and npm is missing; cannot offer install. Install Node/npm first."
+        onboard_log_warn "openbkn admin not in PATH and npm is missing; cannot offer install. Install Node/npm first."
         return 0
     fi
     if [[ "${ONBOARD_ASSUME_YES}" == "true" ]]; then
-        onboard_log_info "ISF: installing @kweaver-ai/kweaver-admin (-y)…"
-        if ! npm i -g @kweaver-ai/kweaver-admin; then
-            onboard_log_warn "npm i -g @kweaver-ai/kweaver-admin failed; install manually, then: kweaver-admin auth login <url> -u admin -p '<password>'  (-k only for https:// + self-signed; kweaver-admin: HTTP sign-in, no --http-signin flag)"
+        onboard_log_info "ISF: installing @openbkn/bkn-sdk (-y)…"
+        if ! npm i -g @openbkn/bkn-sdk; then
+            onboard_log_warn "npm i -g @openbkn/bkn-sdk failed; install manually, then: openbkn admin auth login <url> -u admin -p '<password>'  (-k only for https:// + self-signed; openbkn admin: HTTP sign-in, no flag)"
         fi
         hash -r 2>/dev/null || true
         onboard_prepend_npm_global_bin_to_path
-        if command -v kweaver-admin &>/dev/null; then
-            onboard_log_info "kweaver-admin CLI: $(onboard_kweaver_admin_version_summary)"
+        if command -v openbkn &>/dev/null; then
+            onboard_log_info "openbkn admin CLI: $(onboard_kweaver_admin_version_summary)"
         fi
         return 0
     fi
@@ -814,80 +898,80 @@ onboard_ensure_kweaver_admin_for_isf() {
         return 0
     fi
     echo ""
-    read -r -p "ISF: run  npm i -g @kweaver-ai/kweaver-admin  to create user [test] (re-run is OK if already installed) [Y/n]: " _kadm
+    read -r -p "ISF: run  npm i -g @openbkn/bkn-sdk  to create user [test] (re-run is OK if already installed) [Y/n]: " _kadm
     if [[ -n "${_kadm}" && "${_kadm}" =~ ^[Nn] ]]; then
-        onboard_log_warn "kweaver-admin not installed: user test will not be created this run. Install later: npm i -g @kweaver-ai/kweaver-admin"
+        onboard_log_warn "openbkn admin not installed: user test will not be created this run. Install later: npm i -g @openbkn/bkn-sdk"
         return 0
     fi
-    if ! npm i -g @kweaver-ai/kweaver-admin; then
-        onboard_log_warn "npm i -g @kweaver-ai/kweaver-admin failed (registry, proxy, or EACCES)."
+    if ! npm i -g @openbkn/bkn-sdk; then
+        onboard_log_warn "npm i -g @openbkn/bkn-sdk failed (registry, proxy, or EACCES)."
         return 0
     fi
     onboard_prepend_npm_global_bin_to_path
-    if command -v kweaver-admin &>/dev/null; then
-            onboard_log_info "kweaver-admin CLI: $(onboard_kweaver_admin_version_summary)"
+    if command -v openbkn &>/dev/null; then
+            onboard_log_info "openbkn admin CLI: $(onboard_kweaver_admin_version_summary)"
     else
-        onboard_log_warn "kweaver-admin still not on PATH. In this shell:  export PATH=\"\$(npm config get prefix 2>/dev/null)/bin:\$PATH\""
+        onboard_log_warn "openbkn admin still not on PATH. In this shell:  export PATH=\"\$(npm config get prefix 2>/dev/null)/bin:\$PATH\""
     fi
 }
 
-# Full ISF: kweaver (SDK) and kweaver-admin are separate logins. After kweaver auth, ensure admin CLI can list users before [test] + Context Loader.
-# On ISF, kweaver-admin must be on PATH and authenticated; otherwise the rest of onboard cannot succeed — exit 1 (no skip).
+# Full ISF: openbkn (SDK) and openbkn admin are separate logins. After openbkn auth, ensure admin CLI can list users before [test] + Context Loader.
+# On ISF, openbkn admin must be on PATH and authenticated; otherwise the rest of onboard cannot succeed — exit 1 (no skip).
 onboard_ensure_kweaver_admin_auth_for_isf() {
     if ! (type onboard_isf_full_install &>/dev/null && onboard_isf_full_install 2>/dev/null); then
         return 0
     fi
     onboard_prepend_npm_global_bin_to_path
-    if ! command -v kweaver-admin &>/dev/null; then
-        onboard_log_err "ISF (full) install: kweaver-admin is not on PATH. Install: npm i -g @kweaver-ai/kweaver-admin, add npm global bin to PATH, then re-run. (Unset ONBOARD_SKIP_KWEAVER_ADMIN_INSTALL if that blocked the install step.)"
+    if ! command -v openbkn &>/dev/null; then
+        onboard_log_err "ISF (full) install: openbkn admin is not on PATH. Install: npm i -g @openbkn/bkn-sdk, add npm global bin to PATH, then re-run. (Unset ONBOARD_SKIP_KWEAVER_ADMIN_INSTALL if that blocked the install step.)"
         exit 1
     fi
-    if kweaver-admin --json user list --limit 1 &>/dev/null; then
-        onboard_log_info "kweaver-admin: authenticated (user list ok)."
+    if openbkn admin --json user list --limit 1 &>/dev/null; then
+        onboard_log_info "openbkn admin: authenticated (user list ok)."
         return 0
     fi
-    onboard_log_warn "ISF (full install):  kweaver  and  kweaver-admin  are two different logins — two different saved sessions. The sign-in you just did only applies to  kweaver  (the SDK), not to  kweaver-admin  (user/role management)."
-    onboard_log_warn "Next, sign in to  kweaver-admin  the same way as  kweaver  (HTTP). User:  ${ONBOARD_DEFAULT_KWEAVER_USER:-admin} ; password: the same as the web console (factory default is often  ${ONBOARD_DEFAULT_KWEAVER_PASSWORD:-eisoo.com}  if you did not change it). After that, this script can create  test  and re-login  kweaver  as  test  for Context Loader / ADP import."
+    onboard_log_warn "ISF (full install):  openbkn  and  openbkn admin  are two different logins — two different saved sessions. The sign-in you just did only applies to  openbkn  (the SDK), not to  openbkn admin  (user/role management)."
+    onboard_log_warn "Next, sign in to  openbkn admin  the same way as  openbkn  (HTTP). User:  ${ONBOARD_DEFAULT_KWEAVER_USER:-admin} ; password: the same as the web console (factory default is often  ${ONBOARD_DEFAULT_KWEAVER_PASSWORD:-eisoo.com}  if you did not change it). After that, this script can create  test  and re-login  openbkn  as  test  for Context Loader / ADP import."
     local _url _defu _go
     if [[ "${ONBOARD_ASSUME_YES}" == "true" ]]; then
         _defu="$(onboard_default_access_base_url 2>/dev/null || true)"
         if [[ -z "${_defu}" ]]; then
-            onboard_log_err "ISF: set ONBOARD_DEFAULT_ACCESS_BASE=... to your platform URL, or re-run in a TTY. kweaver-admin sign-in is required; cannot continue (-y, non-interactive)."
+            onboard_log_err "ISF: set ONBOARD_DEFAULT_ACCESS_BASE=... to your platform URL, or re-run in a TTY. openbkn admin sign-in is required; cannot continue (-y, non-interactive)."
             exit 1
         fi
-        onboard_log_info "kweaver-admin: ISF — HTTP sign-in (same defaults as kweaver: ${ONBOARD_DEFAULT_KWEAVER_USER:-admin})…"
+        onboard_log_info "openbkn admin: ISF — HTTP sign-in (same defaults as openbkn: ${ONBOARD_DEFAULT_KWEAVER_USER:-admin})…"
         if ! onboard_kweaver_admin_auth_login_for_url "${_defu}"; then
-            onboard_log_err "kweaver-admin: HTTP sign-in failed. Check URL, user ${ONBOARD_DEFAULT_KWEAVER_USER:-admin}, and password, then re-run: $0"
+            onboard_log_err "openbkn admin: HTTP sign-in failed. Check URL, user ${ONBOARD_DEFAULT_KWEAVER_USER:-admin}, and password, then re-run: $0"
             exit 1
         fi
-        if ! kweaver-admin --json user list --limit 1 &>/dev/null; then
-            onboard_log_err "kweaver-admin: sign-in did not work (user list still fails). Fix credentials or platform, then re-run: $0"
+        if ! openbkn admin --json user list --limit 1 &>/dev/null; then
+            onboard_log_err "openbkn admin: sign-in did not work (user list still fails). Fix credentials or platform, then re-run: $0"
             exit 1
         fi
-        onboard_log_info "kweaver-admin: authenticated (user list ok, -y)."
+        onboard_log_info "openbkn admin: authenticated (user list ok, -y)."
         return 0
     fi
     if ! onboard_is_bootstrap_tty; then
-        onboard_log_err "ISF: kweaver-admin is not signed in, and this is not a TTY — cannot prompt. Run kweaver-admin auth in this shell, or: $0 -y  (set ONBOARD_DEFAULT_ACCESS_BASE=... for HTTP). Cannot continue."
+        onboard_log_err "ISF: openbkn admin is not signed in, and this is not a TTY — cannot prompt. Run openbkn admin auth in this shell, or: $0 -y  (set ONBOARD_DEFAULT_ACCESS_BASE=... for HTTP). Cannot continue."
         exit 1
     fi
     _defu="$(onboard_default_access_base_url 2>/dev/null || true)"
     echo ""
-    read -r -p "kweaver-admin access base URL [Enter = ${_defu}]: " _url
+    read -r -p "openbkn admin access base URL [Enter = ${_defu}]: " _url
     _url="${_url:-${_defu}}"
     if [[ -z "${_url}" ]]; then
-        onboard_log_err "ISF: kweaver-admin sign-in needs a non-empty access base URL. Re-run: $0"
+        onboard_log_err "ISF: openbkn admin sign-in needs a non-empty access base URL. Re-run: $0"
         exit 1
     fi
     if ! onboard_kweaver_admin_auth_login_for_url "${_url}"; then
-        onboard_log_err "kweaver-admin: sign-in failed. Fix the error above, then re-run: $0"
+        onboard_log_err "openbkn admin: sign-in failed. Fix the error above, then re-run: $0"
         exit 1
     fi
-    if ! kweaver-admin --json user list --limit 1 &>/dev/null; then
-        onboard_log_err "kweaver-admin: sign-in did not work (user list still fails). Re-check, then re-run: $0"
+    if ! openbkn admin --json user list --limit 1 &>/dev/null; then
+        onboard_log_err "openbkn admin: sign-in did not work (user list still fails). Re-check, then re-run: $0"
         exit 1
     fi
-    onboard_log_info "kweaver-admin: login OK — next: user [test], then kweaver CLI as test, then Context Loader."
+    onboard_log_info "openbkn admin: login OK — next: user [test], then openbkn CLI as test, then Context Loader."
     return 0
 }
 
@@ -905,44 +989,44 @@ onboard_probe() {
         fi
     fi
     if [[ "${INTERACTIVE}" == "true" ]]; then
-        onboard_log_info "OK: kweaver + kubectl (enter namespace in the next prompt if not ${NAMESPACE})"
+        onboard_log_info "OK: openbkn + kubectl (enter namespace in the next prompt if not ${NAMESPACE})"
     else
-        onboard_log_info "OK: kweaver + kubectl (ns=${NAMESPACE})"
+        onboard_log_info "OK: openbkn + kubectl (ns=${NAMESPACE})"
     fi
     onboard_prepend_npm_global_bin_to_path
     onboard_recommend_admin_cli
-    onboard_ensure_kweaver_admin_for_isf
-    onboard_prepend_npm_global_bin_to_path
-    onboard_ensure_kweaver_admin_auth_for_isf
-    onboard_offer_isf_test_user
+    # bkn-safe seeds the admin + OAuth clients itself; onboard additionally
+    # provisions the business "test" account (login: test, business-admin roles)
+    # for ADP/business use. Skip with ONBOARD_SKIP_ISF_TEST_USER / --skip-isf-test-user.
+    onboard_provision_bkn_safe_test_user
     onboard_provision_oss_default_storage "${NAMESPACE}"
 }
 
-# Detect ISF (full install) and recommend kweaver-admin when present.
-onboard_recommend_admin_cli() {
-    local has_isf="false" isf_releases=""
+# onboard_bkn_safe_detected — true when the bkn-safe auth stack is present
+# (helm release "bkn-safe" or a bkn-safe Deployment in any namespace). bkn-safe
+# now installs into the shared openbkn namespace, so match the release/deploy
+# name rather than a dedicated namespace.
+onboard_bkn_safe_detected() {
     if command -v helm &>/dev/null; then
-        isf_releases="$(helm list -A 2>/dev/null \
-            | awk 'NR>1 {print $1}' \
-            | grep -E '^(authentication|hydra|user-management|eacp|isfweb|isf-data-migrator|policy-management|audit-log|authorization|sharemgnt|oauth2-ui|ingress-informationsecurityfabric)$' \
-            | paste -sd ',' - || true)"
-        [[ -n "${isf_releases}" ]] && has_isf="true"
+        helm list -A 2>/dev/null | awk 'NR>1 {print $1}' | grep -qE '^bkn-safe$' && return 0
     fi
-    if [[ "${has_isf}" != "true" ]]; then
-        if kubectl get ns 2>/dev/null | awk '{print $1}' | grep -qiE '^(isf|information-security-fabric)$'; then
-            has_isf="true"
-        fi
-    fi
+    kubectl get deploy -A 2>/dev/null | awk '{print $2}' | grep -qE '^bkn-safe$' && return 0
+    return 1
+}
 
-    if [[ "${has_isf}" == "true" ]]; then
-        onboard_log_info "Detected ISF (full install) on this cluster${isf_releases:+ — releases: ${isf_releases}}"
-        if command -v kweaver-admin &>/dev/null; then
-            onboard_log_info "kweaver-admin CLI: $(onboard_kweaver_admin_version_summary)"
-        else
-            onboard_log_info "kweaver-admin: not on initial PATH; prepended npm global bin. If still missing, the next step may install or show hints. For full install user ops:  kweaver-admin auth login <url> -u admin -p '<password>' (-k only for https:// self-signed)."
-        fi
+# Detect the bkn-safe auth stack and print admin guidance. bkn-safe self-seeds
+# the admin (account "admin", platform initial password — forced change on first
+# login) and the OAuth clients (client-seed Job), so no openbkn admin / test-user
+# provisioning is needed. (Replaces the retired ISF detection.)
+onboard_recommend_admin_cli() {
+    local has_safe="false"
+    onboard_bkn_safe_detected && has_safe="true"
+
+    if [[ "${has_safe}" == "true" ]]; then
+        onboard_log_info "Auth stack: bkn-safe (+ bundled hydra). The admin user is seeded automatically (account 'admin', platform initial password — you must change it on first login). OAuth clients are seeded by the in-cluster client-seed Job."
+        onboard_log_info "Admin ops use the openbkn CLI: 'openbkn auth login <url> -u admin -p <pw> -k' (device flow), then 'openbkn admin user|role|...' or bkn-safe's token-gated /api/safe/v1/admin API."
     else
-        onboard_log_info "No ISF releases detected — minimum install. kweaver-sdk (this CLI) is enough; kweaver-admin not required."
+        onboard_log_info "bkn-safe not detected on this cluster — auth stack may not be installed yet."
     fi
 }
 

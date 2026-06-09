@@ -45,12 +45,6 @@ services:
     path: adp/vega/vega-backend/migrations
   agent-operator-integration:
     path: adp/execution-factory/operator-integration/migrations
-  flow-stream-data-pipeline:
-    path: adp/dataflow/flow-stream-data-pipeline/migrations
-  flow-automation:
-    path: adp/dataflow/flow-automation/migrations
-  coderunner:
-    path: adp/dataflow/coderunner/migrations
 
   # ---- decision-agent (agent-backend chart deploys both components) ----
   agent-factory:

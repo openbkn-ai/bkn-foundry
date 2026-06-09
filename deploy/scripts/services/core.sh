@@ -20,7 +20,6 @@ declare -a CORE_SQL_MODULES=(
     "agentoperator"
     "dataagent"
     "decisionagent"
-    "flowautomation"
     "sandbox"
 )
 
@@ -213,22 +212,6 @@ _core_release_names() {
     get_release_manifest_release_names "${CORE_VERSION_MANIFEST_FILE}" "bkn-foundry" "${HELM_CHART_VERSION:-}"
 }
 
-_core_resolve_isf_dependency_version() {
-    if [[ -z "${CORE_VERSION_MANIFEST_FILE:-}" ]]; then
-        return 0
-    fi
-
-    get_release_manifest_dependency_version_optional "${CORE_VERSION_MANIFEST_FILE}" "isf"
-}
-
-_core_resolve_isf_dependency_manifest() {
-    if [[ -z "${CORE_VERSION_MANIFEST_FILE:-}" ]]; then
-        return 0
-    fi
-
-    get_release_manifest_dependency_manifest_optional "${CORE_VERSION_MANIFEST_FILE}" "isf"
-}
-
 init_core_databases() {
     local sql_base_dir
     sql_base_dir="$(resolve_versioned_sql_dir "bkn-foundry" "${HELM_CHART_VERSION:-}")"
@@ -279,36 +262,6 @@ download_core() {
 
     parse_manifest_source "${CORE_VERSION_MANIFEST_FILE:-}"
     ensure_chart_source "${HELM_CHART_REPO_NAME}" "${HELM_CHART_REPO_URL}"
-
-    # Check if ISF dependency is declared in manifest
-    local isf_dep_version=""
-    local isf_dep_manifest=""
-    if [[ -n "${CORE_VERSION_MANIFEST_FILE:-}" ]]; then
-        isf_dep_version="$(_core_resolve_isf_dependency_version)"
-        isf_dep_manifest="$(_core_resolve_isf_dependency_manifest)"
-    fi
-
-    if [[ -n "${isf_dep_version}" ]]; then
-        if is_dependency_enabled "${CORE_VERSION_MANIFEST_FILE}" "isf" "${CORE_SET_VALUES[@]}"; then
-            log_info "ISF dependency found in manifest (version: ${isf_dep_version}), downloading ISF charts"
-            local original_isf_charts_dir="${ISF_LOCAL_CHARTS_DIR:-}"
-            local original_isf_manifest_file="${ISF_VERSION_MANIFEST_FILE:-}"
-            local original_chart_version="${HELM_CHART_VERSION:-}"
-            ISF_LOCAL_CHARTS_DIR="${charts_dir}"
-            HELM_CHART_VERSION="${isf_dep_version}"
-            ISF_VERSION_MANIFEST_FILE="${isf_dep_manifest}"
-
-            download_isf
-
-            ISF_LOCAL_CHARTS_DIR="${original_isf_charts_dir}"
-            ISF_VERSION_MANIFEST_FILE="${original_isf_manifest_file}"
-            HELM_CHART_VERSION="${original_chart_version}"
-        else
-            log_info "ISF in manifest but disabled for this profile (e.g. --minimum); skipping ISF chart download"
-        fi
-    else
-        log_info "No ISF dependency declared in manifest, skipping ISF download"
-    fi
 
     local -a release_names=()
     kweaver_mapfile_compat release_names _core_release_names
@@ -530,49 +483,6 @@ install_core() {
 
     log_info "Target namespace: ${namespace}"
 
-    # Check if ISF dependency is declared in manifest and should be enabled
-    local isf_dep_version=""
-    local isf_dep_manifest=""
-    local should_install_isf=false
-    
-    if [[ -n "${CORE_VERSION_MANIFEST_FILE:-}" ]]; then
-        isf_dep_version="$(_core_resolve_isf_dependency_version)"
-        isf_dep_manifest="$(_core_resolve_isf_dependency_manifest)"
-        
-        if [[ -n "${isf_dep_version}" ]]; then
-            # Check if dependency should be enabled based on --set values
-            if is_dependency_enabled "${CORE_VERSION_MANIFEST_FILE}" "isf" "${CORE_SET_VALUES[@]}"; then
-                should_install_isf=true
-                log_info "ISF dependency enabled (version: ${isf_dep_version})"
-            else
-                log_info "ISF dependency disabled by --set values"
-            fi
-        fi
-    fi
-
-    if [[ "${should_install_isf}" == "true" ]]; then
-        log_info "Installing ISF services..."
-        local original_isf_charts_dir="${ISF_LOCAL_CHARTS_DIR:-}"
-        local original_isf_manifest_file="${ISF_VERSION_MANIFEST_FILE:-}"
-        local original_chart_version="${HELM_CHART_VERSION:-}"
-        if [[ "${use_local}" == "true" ]]; then
-            ISF_LOCAL_CHARTS_DIR="${charts_dir}"
-        fi
-        HELM_CHART_VERSION="${isf_dep_version}"
-        ISF_VERSION_MANIFEST_FILE="${isf_dep_manifest}"
-        
-        if ! install_isf; then
-            ISF_LOCAL_CHARTS_DIR="${original_isf_charts_dir}"
-            ISF_VERSION_MANIFEST_FILE="${original_isf_manifest_file}"
-            HELM_CHART_VERSION="${original_chart_version}"
-            log_error "Failed to install ISF services"
-            return 1
-        fi
-        ISF_LOCAL_CHARTS_DIR="${original_isf_charts_dir}"
-        ISF_VERSION_MANIFEST_FILE="${original_isf_manifest_file}"
-        HELM_CHART_VERSION="${original_chart_version}"
-    fi
-
     if ! init_core_databases; then
         log_error "Failed to initialize BKN Foundry databases"
         return 1
@@ -580,6 +490,24 @@ install_core() {
 
     local -a release_names=()
     kweaver_mapfile_compat release_names _core_release_names
+
+    # When auth enforcement is off (--minimum / --set auth.enabled=false), services
+    # run without tokens, so the bkn-safe auth stack (bkn-safe + bundled hydra + its
+    # postgres) is not needed — drop it from the install set. Override by also
+    # passing --set bknSafe.install=true. Uninstall is unaffected (still removes it).
+    if [[ "$(get_set_value "auth.enabled" "${CORE_SET_VALUES[@]}" 2>/dev/null)" == "false" \
+       && "$(get_set_value "bknSafe.install" "${CORE_SET_VALUES[@]}" 2>/dev/null)" != "true" ]]; then
+        local -a _kept_releases=()
+        for release_name in "${release_names[@]}"; do
+            if [[ "${release_name}" == "bkn-safe" ]]; then
+                log_info "auth.enabled=false: skipping bkn-safe auth stack (override: --set bknSafe.install=true)"
+                continue
+            fi
+            _kept_releases+=("${release_name}")
+        done
+        release_names=("${_kept_releases[@]}")
+    fi
+
     local release_version
     for release_name in "${release_names[@]}"; do
         release_version="$(_core_resolve_release_version "${release_name}")"
@@ -591,6 +519,10 @@ install_core() {
     done
 
     log_info "BKN Foundry services installation completed."
+
+    # Publish the non-sensitive install-status snapshot + /install-status endpoint.
+    # Best-effort: never fails the install.
+    gen_install_status_json || true
 
     log_info "Context Loader toolset is auto-imported by agent-retrieval at startup (no manual onboard step needed)."
 

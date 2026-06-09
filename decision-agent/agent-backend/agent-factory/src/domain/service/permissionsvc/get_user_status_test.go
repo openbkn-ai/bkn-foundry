@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/kweaver-ai/kweaver-go-lib/rest"
 	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/conf"
 	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/domain/enum/cdapmsenum"
 	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/domain/service"
@@ -12,7 +13,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/infra/common/global"
 	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/port/driven/ihttpaccess/iauthzacc/authzaccmock"
 	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/port/driven/ihttpaccess/iumacc/httpaccmock"
-	"github.com/kweaver-ai/kweaver-go-lib/rest"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
 )
@@ -138,16 +138,15 @@ func TestPermissionSvc_GetUserStatus_Success(t *testing.T) {
 
 	ctx := createContextWithUserID("user-123")
 	agentOps := map[cdapmsenum.Operator]bool{
-		cdapmsenum.AgentPublish:                  true,
-		cdapmsenum.AgentUnpublish:                false,
-		cdapmsenum.AgentUnpublishOtherUserAgent:  false,
-		cdapmsenum.AgentPublishToBeSkillAgent:    true,
-		cdapmsenum.AgentPublishToBeWebSdkAgent:   false,
-		cdapmsenum.AgentPublishToBeApiAgent:      false,
-		cdapmsenum.AgentPublishToBeDataFlowAgent: false,
-		cdapmsenum.AgentCreateSystemAgent:        false,
-		cdapmsenum.AgentBuiltInAgentMgmt:         false,
-		cdapmsenum.AgentSeeTrajectoryAnalysis:    true,
+		cdapmsenum.AgentPublish:                 true,
+		cdapmsenum.AgentUnpublish:               false,
+		cdapmsenum.AgentUnpublishOtherUserAgent: false,
+		cdapmsenum.AgentPublishToBeSkillAgent:   true,
+		cdapmsenum.AgentPublishToBeWebSdkAgent:  false,
+		cdapmsenum.AgentPublishToBeApiAgent:     false,
+		cdapmsenum.AgentCreateSystemAgent:       false,
+		cdapmsenum.AgentBuiltInAgentMgmt:        false,
+		cdapmsenum.AgentSeeTrajectoryAnalysis:   true,
 	}
 	agentTplOps := map[cdapmsenum.Operator]bool{
 		cdapmsenum.AgentTplPublish:                    true,

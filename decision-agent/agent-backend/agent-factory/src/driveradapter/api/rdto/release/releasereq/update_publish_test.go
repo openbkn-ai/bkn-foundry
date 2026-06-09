@@ -159,7 +159,6 @@ func TestUpdatePublishInfoReq_CustomCheck_AllValidPublishToBes(t *testing.T) {
 		cdaenum.PublishToBeAPIAgent,
 		cdaenum.PublishToBeWebSDKAgent,
 		cdaenum.PublishToBeSkillAgent,
-		cdaenum.PublishToBeDataFlowAgent,
 	}
 
 	for _, target := range validTargets {

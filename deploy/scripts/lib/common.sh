@@ -51,8 +51,25 @@ kweaver_normalize_kube_distro() {
     esac
 }
 
-KUBE_DISTRO="$(kweaver_normalize_kube_distro "${KUBE_DISTRO:-k8s}")"
+# Auto-detect the cluster distro when the user didn't pass --distro / KUBE_DISTRO.
+# A kubeadm cluster leaves /etc/kubernetes/admin.conf; a k3s install leaves
+# /etc/rancher/k3s/k3s.yaml (and the k3s binary). Prefer explicit kubeadm markers,
+# then k3s, else fall back to kubeadm (the historical default).
+kweaver_detect_kube_distro() {
+    if [[ -f /etc/kubernetes/admin.conf ]]; then printf '%s' "k8s"; return; fi
+    if [[ -f /etc/rancher/k3s/k3s.yaml ]] || command -v k3s >/dev/null 2>&1; then printf '%s' "k3s"; return; fi
+    printf '%s' "k8s"
+}
+
+KUBE_DISTRO="$(kweaver_normalize_kube_distro "${KUBE_DISTRO:-$(kweaver_detect_kube_distro)}")"
 export KUBE_DISTRO
+
+# On k3s, point KUBECONFIG at the k3s kubeconfig when the caller hasn't set one,
+# so helm/kubectl in any module (incl. data-services, which doesn't bootstrap the
+# cluster) reach the API server instead of defaulting to localhost:8080.
+if [[ "${KUBE_DISTRO}" == "k3s" && -z "${KUBECONFIG:-}" && -f /etc/rancher/k3s/k3s.yaml ]]; then
+    export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+fi
 
 # Generate a random password (alphanumeric). Uses openssl when available; avoids macOS/BSD
 # tr + urandom locale issues ("Illegal byte sequence") via LC_ALL=C.
@@ -1170,7 +1187,10 @@ STORAGE_STORAGE_CLASS_NAME="${STORAGE_STORAGE_CLASS_NAME:-}"
 
 # MariaDB Configuration
 MARIADB_NAMESPACE="${MARIADB_NAMESPACE:-${RESOURCE_NAMESPACE}}"
-MARIADB_IMAGE="${MARIADB_IMAGE:-}"
+# Default to the SWR-hosted image (same registry as kafka/opensearch) so
+# it is NOT prefixed with the foundry IMAGE_REGISTRY (ghcr.io/openbkn-ai), which
+# does not host the data-layer images (anonymous pull → 403).
+MARIADB_IMAGE="${MARIADB_IMAGE:-swr.cn-east-3.myhuaweicloud.com/kweaver-ai/mariadb:11.4.7}"
 MARIADB_IMAGE_REPOSITORY="${MARIADB_IMAGE_REPOSITORY:-mariadb}"
 MARIADB_IMAGE_TAG="${MARIADB_IMAGE_TAG:-11.4.7}"
 MARIADB_IMAGE_FALLBACK="${MARIADB_IMAGE_FALLBACK:-mariadb:11.4.7}"
@@ -1234,13 +1254,6 @@ kweaver_apply_k3s_lightweight_defaults() {
     # opensearch (k8s default below: req=512Mi, lim=2048Mi)
     : "${OPENSEARCH_MEMORY_REQUEST:=512Mi}"
     : "${OPENSEARCH_MEMORY_LIMIT:=1024Mi}"
-    # zookeeper (k8s default below: req cpu=500m mem=1Gi, lim cpu=1 mem=2Gi, jvm 500m)
-    # Note: chart hard-codes a zookeeper-exporter sidecar at req/lim 100m/100Mi (no knob).
-    : "${ZOOKEEPER_RESOURCES_REQUESTS_CPU:=50m}"
-    : "${ZOOKEEPER_RESOURCES_REQUESTS_MEMORY:=128Mi}"
-    : "${ZOOKEEPER_RESOURCES_LIMITS_CPU:=500m}"
-    : "${ZOOKEEPER_RESOURCES_LIMITS_MEMORY:=384Mi}"
-    : "${ZOOKEEPER_JVMFLAGS:=-Xms128m -Xmx192m}"
     # kweaver-core app services (chart defaults: limits=4-8Gi, mostly request=0)
     # Loose ceiling so heavier services (agent-retrieval, ontology-query) still have headroom.
     : "${KWEAVER_CORE_REQ_CPU:=100m}"
@@ -1255,9 +1268,6 @@ kweaver_apply_k3s_lightweight_defaults() {
     : "${KWEAVER_ISF_LIM_MEM:=2Gi}"
     export REDIS_MAXMEMORY REDIS_MEMORY_REQUEST REDIS_MEMORY_LIMIT REDIS_CPU_REQUEST \
            OPENSEARCH_MEMORY_REQUEST OPENSEARCH_MEMORY_LIMIT \
-           ZOOKEEPER_RESOURCES_REQUESTS_CPU ZOOKEEPER_RESOURCES_REQUESTS_MEMORY \
-           ZOOKEEPER_RESOURCES_LIMITS_CPU ZOOKEEPER_RESOURCES_LIMITS_MEMORY \
-           ZOOKEEPER_JVMFLAGS \
            KWEAVER_CORE_REQ_CPU KWEAVER_CORE_REQ_MEM KWEAVER_CORE_LIM_CPU KWEAVER_CORE_LIM_MEM \
            KWEAVER_ISF_REQ_CPU KWEAVER_ISF_REQ_MEM KWEAVER_ISF_LIM_CPU KWEAVER_ISF_LIM_MEM
 }
@@ -1357,37 +1367,6 @@ MONGODB_RESOURCES_REQUESTS_CPU="${MONGODB_RESOURCES_REQUESTS_CPU:-100m}"
 MONGODB_RESOURCES_REQUESTS_MEMORY="${MONGODB_RESOURCES_REQUESTS_MEMORY:-128Mi}"
 MONGODB_RESOURCES_LIMITS_CPU="${MONGODB_RESOURCES_LIMITS_CPU:-1}"
 MONGODB_RESOURCES_LIMITS_MEMORY="${MONGODB_RESOURCES_LIMITS_MEMORY:-1Gi}"
-
-# Zookeeper Configuration
-LOCAL_ZOOKEEPER_CHARTS_DIR="${LOCAL_ZOOKEEPER_CHARTS_DIR:-${SCRIPT_DIR}/charts/zookeeper}"
-ZOOKEEPER_CHART_TGZ="${ZOOKEEPER_CHART_TGZ:-${SCRIPT_DIR}/charts/proton-zookeeper-5.6.0.tgz}"
-ZOOKEEPER_NAMESPACE="${ZOOKEEPER_NAMESPACE:-${RESOURCE_NAMESPACE}}"
-ZOOKEEPER_RELEASE_NAME="${ZOOKEEPER_RELEASE_NAME:-zookeeper}"
-ZOOKEEPER_CHART_REF="${ZOOKEEPER_CHART_REF:-}"  # e.g., "dip/zookeeper" for remote repo, or local path
-ZOOKEEPER_CHART_VERSION="${ZOOKEEPER_CHART_VERSION:-}"  # Chart version (--version)
-ZOOKEEPER_CHART_DEVEL="${ZOOKEEPER_CHART_DEVEL:-false}"  # Use --devel flag
-ZOOKEEPER_VALUES_FILE="${ZOOKEEPER_VALUES_FILE:-}"  # Additional values file (e.g., conf/config.yaml)
-ZOOKEEPER_REPLICAS="${ZOOKEEPER_REPLICAS:-1}"
-ZOOKEEPER_IMAGE_REGISTRY="${ZOOKEEPER_IMAGE_REGISTRY:-swr.cn-east-3.myhuaweicloud.com/kweaver-ai}"
-ZOOKEEPER_IMAGE_REPOSITORY="${ZOOKEEPER_IMAGE_REPOSITORY:-proton/proton-zookeeper}"
-ZOOKEEPER_IMAGE_TAG="${ZOOKEEPER_IMAGE_TAG:-5.6.0-20250625.2.138fb9}"
-ZOOKEEPER_EXPORTER_IMAGE_REPOSITORY="${ZOOKEEPER_EXPORTER_IMAGE_REPOSITORY:-proton/proton-zookeeper-exporter}"
-ZOOKEEPER_EXPORTER_IMAGE_TAG="${ZOOKEEPER_EXPORTER_IMAGE_TAG:-5.6.0-20250625.2.138fb9}"
-ZOOKEEPER_SERVICE_PORT="${ZOOKEEPER_SERVICE_PORT:-2181}"
-ZOOKEEPER_EXPORTER_PORT="${ZOOKEEPER_EXPORTER_PORT:-9101}"
-ZOOKEEPER_JMX_EXPORTER_PORT="${ZOOKEEPER_JMX_EXPORTER_PORT:-9995}"
-ZOOKEEPER_STORAGE_CLASS="${ZOOKEEPER_STORAGE_CLASS:-}"
-ZOOKEEPER_STORAGE_SIZE="${ZOOKEEPER_STORAGE_SIZE:-1Gi}"
-ZOOKEEPER_PURGE_PVC="${ZOOKEEPER_PURGE_PVC:-true}"
-ZOOKEEPER_RESOURCES_REQUESTS_CPU="${ZOOKEEPER_RESOURCES_REQUESTS_CPU:-500m}"
-ZOOKEEPER_RESOURCES_REQUESTS_MEMORY="${ZOOKEEPER_RESOURCES_REQUESTS_MEMORY:-1Gi}"
-ZOOKEEPER_RESOURCES_LIMITS_CPU="${ZOOKEEPER_RESOURCES_LIMITS_CPU:-1000m}"
-ZOOKEEPER_RESOURCES_LIMITS_MEMORY="${ZOOKEEPER_RESOURCES_LIMITS_MEMORY:-2Gi}"
-ZOOKEEPER_JVMFLAGS="${ZOOKEEPER_JVMFLAGS:--Xms500m -Xmx500m}"
-ZOOKEEPER_SASL_ENABLED="${ZOOKEEPER_SASL_ENABLED:-true}"
-ZOOKEEPER_SASL_USER="${ZOOKEEPER_SASL_USER:-kafka}"
-ZOOKEEPER_SASL_PASSWORD="${ZOOKEEPER_SASL_PASSWORD:-}"
-ZOOKEEPER_EXTRA_SET_VALUES="${ZOOKEEPER_EXTRA_SET_VALUES:-}"  # Additional --set values (space-separated, e.g., "image.registry=xxx key2=value2")
 
 # Ingress-Nginx Configuration
 INGRESS_NGINX_HTTP_PORT="${INGRESS_NGINX_HTTP_PORT:-80}"
@@ -1527,12 +1506,11 @@ ensure_data_services() {
         return 0
     fi
 
-    log_info "Ensuring platform data services (MariaDB/Redis/Kafka/Zookeeper/OpenSearch)..."
+    log_info "Ensuring platform data services (MariaDB/Redis/Kafka/OpenSearch)..."
 
     install_mariadb || return 1
     install_redis || return 1
     install_kafka || return 1
-    install_zookeeper || return 1
     if [[ "${AUTO_INSTALL_INGRESS_NGINX}" == "true" ]]; then
         install_ingress_nginx || return 1
     fi
@@ -1562,7 +1540,7 @@ kweaver_delete_jobs_name_match_ere_in_ns() {
     done < <(kubectl get jobs -n "${ns}" -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null | grep -E "${ere}" || true)
 }
 
-# Uninstall bundled MariaDB / Redis / Kafka / ZooKeeper / OpenSearch (and ingress-nginx when
+# Uninstall bundled MariaDB / Redis / Kafka / OpenSearch (and ingress-nginx when
 # AUTO_INSTALL_INGRESS_NGINX is true), reverse of ensure_data_services. Continues past individual
 # failures so partially-missing installs still get cleaned up. Remaining argv is passed only to
 # mariadb uninstall (e.g. --delete-data / MARIADB_PURGE_PVC); other stacks use existing env knobs.
@@ -1573,11 +1551,10 @@ uninstall_platform_data_services() {
         uninstall_ingress_nginx || true
     fi
     uninstall_kafka || true
-    uninstall_zookeeper || true
     uninstall_redis || true
     uninstall_mariadb "$@" || true
     local rns="${RESOURCE_NAMESPACE:-resource}"
-    kweaver_delete_jobs_name_match_ere_in_ns "${rns}" '(^|[-/])(kafka|zookeeper|opensearch|mariadb|redis)(-|$)|migrator|data-migrator'
+    kweaver_delete_jobs_name_match_ere_in_ns "${rns}" '(^|[-/])(kafka|opensearch|mariadb|redis)(-|$)|migrator|data-migrator'
     log_info "Bundled platform data services uninstall finished (PVC defaults unchanged; MariaDB accepts --delete-data)."
 }
 

@@ -244,7 +244,7 @@ export INGRESS_NGINX_HTTPS_PORT=8443
 ### 📋 安装内容概览
 
 1. 单节点 Kubernetes（如需要）、存储、Ingress
-2. 数据服务：MariaDB、Redis、Kafka、ZooKeeper、OpenSearch（以发布清单为准）
+2. 数据服务：MariaDB、Redis、Kafka、OpenSearch（以发布清单为准）
 3. BKN Foundry 应用 Helm Chart
 
 > ℹ️ 卸载与集群重置以随产品提供的部署说明为准。

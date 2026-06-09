@@ -14,8 +14,8 @@ import (
 	sql "database/sql"
 	reflect "reflect"
 
-	dapo "github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/infra/persistence/dapo"
 	sqlx "github.com/kweaver-ai/proton-rds-sdk-go/sqlx"
+	dapo "github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/infra/persistence/dapo"
 	gomock "go.uber.org/mock/gomock"
 )
 

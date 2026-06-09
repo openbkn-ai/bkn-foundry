@@ -1,8 +1,8 @@
 package apierr
 
 import (
-	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/infra/common/capierr"
 	"github.com/kweaver-ai/kweaver-go-lib/rest"
+	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/infra/common/capierr"
 
 	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/locale"
 )

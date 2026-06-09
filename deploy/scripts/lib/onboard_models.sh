@@ -32,11 +32,11 @@ for n in sorted(out):
 }
 
 onboard_get_existing_llm_names() {
-    kweaver call "/api/mf-model-manager/v1/llm/list?page=1&size=500" 2>/dev/null | onboard_list_model_names
+    openbkn --json call "/api/mf-model-manager/v1/llm/list?page=1&size=500" 2>/dev/null | onboard_list_model_names
 }
 
 onboard_get_existing_small_model_names() {
-    kweaver call "/api/mf-model-manager/v1/small-model/list?page=1&size=500" 2>/dev/null | onboard_list_model_names
+    openbkn --json call "/api/mf-model-manager/v1/small-model/list?page=1&size=500" 2>/dev/null | onboard_list_model_names
 }
 
 # Read .server.defaultSmallModelName from a *-config.yaml inside the ConfigMap. Empty when not set.
@@ -129,7 +129,7 @@ print(json.dumps(j))
         return 1
     }
 
-    if kweaver call /api/mf-model-manager/v1/llm/add -d "${body}"; then
+    if openbkn call /api/mf-model-manager/v1/llm/add -d "${body}"; then
         onboard_log_info "Registered LLM: ${name}"
     else
         onboard_log_err "Failed to register LLM: ${name}"
@@ -171,7 +171,7 @@ print(json.dumps(j))
         return 1
     }
 
-    if kweaver call /api/mf-model-manager/v1/small-model/add -d "${body}"; then
+    if openbkn call /api/mf-model-manager/v1/small-model/add -d "${body}"; then
         onboard_log_info "Registered small model: ${name} (${stype})"
     else
         onboard_log_err "Failed to register small model: ${name}"
@@ -183,7 +183,7 @@ ${name}"
 
 onboard_get_id_for_llm() {
     local mname="$1"
-    kweaver call "/api/mf-model-manager/v1/llm/list?page=1&size=500" 2>/dev/null | python3 -c "
+    openbkn --json call "/api/mf-model-manager/v1/llm/list?page=1&size=500" 2>/dev/null | python3 -c "
 import json, sys
 n = sys.argv[1]
 j = json.load(sys.stdin)
@@ -208,7 +208,7 @@ find(j)
 
 onboard_get_id_for_small() {
     local mname="$1"
-    kweaver call "/api/mf-model-manager/v1/small-model/list?page=1&size=500" 2>/dev/null | python3 -c "
+    openbkn --json call "/api/mf-model-manager/v1/small-model/list?page=1&size=500" 2>/dev/null | python3 -c "
 import json, sys
 n = sys.argv[1]
 j = json.load(sys.stdin)
@@ -234,7 +234,7 @@ find(j)
 onboard_test_llm() {
     local mid="$1"
     [[ -z "${mid}" ]] && return 0
-    if kweaver call /api/mf-model-manager/v1/llm/test -d "{\"model_id\": \"${mid}\"}" 2>/dev/null; then
+    if openbkn call /api/mf-model-manager/v1/llm/test -d "{\"model_id\": \"${mid}\"}" 2>/dev/null; then
         onboard_log_info "LLM test ok for id ${mid}"
     else
         onboard_log_warn "LLM test failed for id ${mid} (check upstream / network)"
@@ -244,7 +244,7 @@ onboard_test_llm() {
 onboard_test_small() {
     local mid="$1"
     [[ -z "${mid}" ]] && return 0
-    if kweaver call /api/mf-model-manager/v1/small-model/test -d "{\"model_id\": \"${mid}\"}" 2>/dev/null; then
+    if openbkn call /api/mf-model-manager/v1/small-model/test -d "{\"model_id\": \"${mid}\"}" 2>/dev/null; then
         onboard_log_info "Small model test ok for id ${mid}"
     else
         onboard_log_warn "Small model test failed for id ${mid}"

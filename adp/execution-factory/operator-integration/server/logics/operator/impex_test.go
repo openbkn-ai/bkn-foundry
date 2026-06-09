@@ -443,7 +443,6 @@ func TestExport(t *testing.T) {
 		mockIntCompConfigSvc := mocks.NewMockIIntCompConfigService(ctrl)
 		mockAuthService := mocks.NewMockIAuthorizationService(ctrl)
 		mockAuditLog := mocks.NewMockLogModelOperator[*metric.AuditLogBuilderParams](ctrl)
-		mockFlowAutomation := mocks.NewMockFlowAutomation(ctrl)
 		operator := &operatorManager{
 			Logger:             logger.DefaultLogger(),
 			DBOperatorManager:  mockDBOperatorManager,
@@ -457,20 +456,11 @@ func TestExport(t *testing.T) {
 			IntCompConfigSvc:   mockIntCompConfigSvc,
 			AuthService:        mockAuthService,
 			AuditLog:           mockAuditLog,
-			FlowAutomation:     mockFlowAutomation,
 		}
 		ids := []string{"1"}
 		req := &interfaces.ExportReq{
 			UserID: "1",
 			IDs:    ids,
-		}
-		operatorList1 := []*model.OperatorRegisterDB{
-			{
-				OperatorID:   "1",
-				Name:         "1",
-				OperatorType: string(interfaces.OperatorTypeComposite),
-				ExtendInfo:   "",
-			},
 		}
 		// operatorList2 := []*model.OperatorRegisterDB{
 		// 	{
@@ -525,40 +515,6 @@ func TestExport(t *testing.T) {
 			httpErr, ok := err.(*myErr.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusNotFound)
-		})
-		Convey("组合算子获取拓展信息失败", func() {
-			mockAuthService.EXPECT().GetAccessor(gomock.Any(), gomock.Any()).Return(accessor, nil)
-			mockAuthService.EXPECT().ResourceFilterIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), interfaces.AuthOperationTypeView).Return(
-				ids, nil)
-			mockDBOperatorManager.EXPECT().SelectByOperatorIDs(gomock.Any(), gomock.Any()).Return(operatorList1, nil)
-			_, err := operator.Export(context.TODO(), req)
-			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*myErr.HTTPError)
-			So(ok, ShouldBeTrue)
-			So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
-		})
-		Convey("导出依赖组合算子配置: 请求FlowAutomation失败", func() {
-			operatorList1[0].ExtendInfo = `{"dag_id":"1"}`
-			mockAuthService.EXPECT().GetAccessor(gomock.Any(), gomock.Any()).Return(accessor, nil)
-			mockAuthService.EXPECT().ResourceFilterIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), interfaces.AuthOperationTypeView).Return(
-				ids, nil)
-			mockDBOperatorManager.EXPECT().SelectByOperatorIDs(gomock.Any(), gomock.Any()).Return(operatorList1, nil)
-			mockFlowAutomation.EXPECT().Export(gomock.Any(), gomock.Any()).Return(nil, mocks.MockFuncErr("Export"))
-			_, err := operator.Export(context.TODO(), req)
-			So(err, ShouldNotBeNil)
-		})
-		Convey("导出依赖组合算子配置: 导出以来配置成功，预检查通过", func() {
-			operatorList1[0].ExtendInfo = `{"dag_id":"1"}`
-			mockAuthService.EXPECT().GetAccessor(gomock.Any(), gomock.Any()).Return(accessor, nil).Times(2)
-			mockAuthService.EXPECT().ResourceFilterIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), interfaces.AuthOperationTypeView).Return(
-				ids, nil).Times(2)
-			mockDBOperatorManager.EXPECT().SelectByOperatorIDs(gomock.Any(), gomock.Any()).Return(operatorList1, nil).Times(2)
-			mockFlowAutomation.EXPECT().Export(gomock.Any(), gomock.Any()).Return(&interfaces.FlowAutomationExportResp{
-				Configs:     []any{},
-				OperatorIDs: []string{"2", "2", "1"},
-			}, nil)
-			_, err := operator.Export(context.TODO(), req)
-			So(err, ShouldNotBeNil)
 		})
 		// Convey("获取元数据失败（db）", func() {
 		// 	mockAuthService.EXPECT().GetAccessor(gomock.Any(), gomock.Any()).Return(accessor, nil).Times(1)

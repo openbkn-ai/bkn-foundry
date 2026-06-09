@@ -1,0 +1,62 @@
+replicaCount: 1
+namespace: bkn-safe
+
+image:
+  registry: docker.io
+  repository: oryd/hydra
+  tag: "v26.2.0" # device flow lives in v26.x; do NOT downgrade to v2.3.0
+  pullPolicy: IfNotPresent
+  name: hydra
+
+service:
+  type: ClusterIP
+  ports:
+    public: 4444 # /oauth2/token, /.well-known, /oauth2/auth — browser/clients
+    admin: 4445 # /admin/* (introspect, clients, login/consent accept) — internal only
+
+# Only hydra's PUBLIC endpoint is browser/client-facing (token, well-known,
+# authorize). The admin endpoint (introspect, client mgmt) stays internal
+# ClusterIP — services and bkn-safe reach it over the cluster network.
+ingress:
+  enabled: true
+  ingressClass: class-443
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+  paths:
+    - /oauth2
+    - /.well-known
+    - /userinfo
+
+config:
+  # PostgreSQL DSN (hydra's first-class backend). Point at the real PG in prod.
+  # MariaDB is NOT supported (CAST AS JSON migration; MDEV-26448).
+  dsn: "postgres://hydra:secret@bkn-safe-postgres:5432/hydra?sslmode=disable"
+  # Public issuer URL (what clients see). Behind a TLS-terminating ingress this
+  # is the external https URL.
+  publicIssuer: "https://bkn-foundry.local"
+  # login/consent/device provider = bkn-safe's browser-facing pages (ingress).
+  urls:
+    login: "https://bkn-foundry.local/login"
+    consent: "https://bkn-foundry.local/consent"
+    deviceVerification: "https://bkn-foundry.local/device"
+  # 32+ byte system secret (rotates cookie/token signing). MUST be overridden in
+  # prod (use a sealed/extern secret). Stored in a k8s Secret by this chart.
+  secretsSystem: "change-me-prod-32-bytes-minimum-secret"
+  # Behind a TLS-terminating ingress hydra serves plain HTTP; trust the proxy.
+  # Set to the ingress/pod CIDR(s) in prod; "0.0.0.0/0" trusts any forwarder.
+  tlsAllowTerminationFrom: "0.0.0.0/0"
+  logLevel: "info"
+
+# `hydra migrate sql` runs as a pre-install/pre-upgrade Job before serving.
+migrate:
+  enabled: true
+
+resources:
+  requests:
+    cpu: 200m
+    memory: 256Mi
+  limits:
+    cpu: "2"
+    memory: 2Gi
+
+nodeSelector: {}

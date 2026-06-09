@@ -4,9 +4,9 @@ package common
 import (
 	"sync"
 
-	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/infra/common/global"
 	"github.com/kweaver-ai/kweaver-go-lib/logger"
 	"github.com/kweaver-ai/proton-rds-sdk-go/sqlx"
+	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/infra/common/global"
 
 	// _ 注册proton-rds驱动
 	_ "github.com/kweaver-ai/proton-rds-sdk-go/driver"

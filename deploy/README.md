@@ -16,7 +16,7 @@ This `deploy` directory provides scripts to install BKN Foundry along with its d
 
 ### kubeadm / `KUBE_DISTRO=k8s` (default)
 
-Single-node kubeadm flow is **`bash ./deploy.sh k8s install`** (`deploy/scripts/services/k8s.sh`). Product modules reuse an existing cluster when `kubectl` already works (`ensure_k8s` skips reinstall), then **`ensure_platform_prerequisites`** installs the bundled **data-services** layer (MariaDB, Redis, Kafka, ZooKeeper, OpenSearch, …) before Core. **macOS kind** skips host kubeadm but **`foundry install` still runs `ensure_data_services` first** (see macOS section). Legacy **`kubeadm`** is still accepted as an alias for **`k8s`**.
+Single-node kubeadm flow is **`bash ./deploy.sh k8s install`** (`deploy/scripts/services/k8s.sh`). Product modules reuse an existing cluster when `kubectl` already works (`ensure_k8s` skips reinstall), then **`ensure_platform_prerequisites`** installs the bundled **data-services** layer (MariaDB, Redis, Kafka, OpenSearch, …) before Core. **macOS kind** skips host kubeadm but **`foundry install` still runs `ensure_data_services` first** (see macOS section). Legacy **`kubeadm`** is still accepted as an alias for **`k8s`**.
 
 **`deploy.sh` global flags** (`--distro`, `-y`, `--force-upgrade`, `--config`, …) must appear **before** the module name. Correct: `bash ./deploy.sh --distro=k3s foundry install --minimum`. Wrong: `bash ./deploy.sh foundry install --minimum --distro=k3s` (that `--distro` is not read as a global option). Equivalent without moving flags: `export KUBE_DISTRO=k3s` then `bash ./deploy.sh foundry install --minimum`.
 
@@ -49,7 +49,7 @@ On the **same Linux host as k3s**, use the file **`/etc/rancher/k3s/k3s.yaml`** 
 
 ### macOS (optional — local dev with kind)
 
-**Use this only for Mac validation; for real installs use Linux above.** Local Kubernetes via **kind** — no `preflight.sh` / `k3s` on the Mac host. **`mac.sh` sets `KWEAVER_SKIP_PLATFORM_BOOTSTRAP`** (no host k3s/kubeadm bootstrap). **`foundry install` now runs `ensure_data_services` first** — same Helm layer as **`data-services install`** (MariaDB, Redis, Kafka, ZooKeeper, OpenSearch); **`mac.sh` defaults `AUTO_INSTALL_INGRESS_NGINX=false`** so kind’s existing ingress is not duplicated. Set **`KWEAVER_SKIP_DATA_SERVICES_BUNDLE=true`** to skip bundled data installs (advanced / external infra). **`data-services install`** alone remains useful to pre-stage or refresh the data layer. **Apple Silicon:** kind nodes are **arm64**; use arm64/multi-arch images (see `dev/conf/mac-config.yaml`). **Step order:** [dev/README.md](dev/README.md).
+**Use this only for Mac validation; for real installs use Linux above.** Local Kubernetes via **kind** — no `preflight.sh` / `k3s` on the Mac host. **`mac.sh` sets `KWEAVER_SKIP_PLATFORM_BOOTSTRAP`** (no host k3s/kubeadm bootstrap). **`foundry install` now runs `ensure_data_services` first** — same Helm layer as **`data-services install`** (MariaDB, Redis, Kafka, OpenSearch); **`mac.sh` defaults `AUTO_INSTALL_INGRESS_NGINX=false`** so kind’s existing ingress is not duplicated. Set **`KWEAVER_SKIP_DATA_SERVICES_BUNDLE=true`** to skip bundled data installs (advanced / external infra). **`data-services install`** alone remains useful to pre-stage or refresh the data layer. **Apple Silicon:** kind nodes are **arm64**; use arm64/multi-arch images (see `dev/conf/mac-config.yaml`). **Step order:** [dev/README.md](dev/README.md).
 
 ```bash
 cd deploy   # repository deploy/ directory
@@ -198,7 +198,7 @@ The deployment scripts need access to these domains:
 `foundry` is the product-level entrypoint in this repository. The install flow is:
 
 1. Install or repair single-node Kubernetes, local-path storage, and ingress-nginx.
-2. Install or repair data services: MariaDB, Redis, Kafka, ZooKeeper, and OpenSearch.
+2. Install or repair data services: MariaDB, Redis, Kafka, and OpenSearch.
 3. Deploy the BKN Foundry application charts.
 
 The Core application layer includes charts for data services management, application deployment, and task orchestration.
@@ -222,16 +222,55 @@ kubectl get nodes
 kubectl get pods -A
 ```
 
+### Install status & health
+
+`foundry status` prints a live, detailed table for operators on the server — for
+every release in the manifest it shows the **expected vs deployed** chart version,
+app version, helm revision/status, workload ready count (`DRIFT`/`MISSING`
+flagged), the bundled dependency services, and a per-service **application health**
+section (probed via the apiserver service proxy: `/health/ready` → `/api/v1/health`
+→ `/healthz` → `/health`, classified `up` / `degraded` / `no-endpoint`).
+
+```bash
+# Detailed live status table (versions, ready, drift, service health)
+./deploy.sh foundry status
+
+# (Re)publish the non-sensitive JSON snapshot + the /install-status endpoint
+# without reinstalling. Runs automatically at the end of `foundry install`.
+./deploy.sh foundry publish-status
+```
+
+A **non-sensitive** dashboard is also served, unauthenticated, through the ingress
+(a tiny nginx serving ConfigMaps — see `conf/install-status/`):
+
+- `GET /install-status` — an HTML page rendering releases, per-service health, and
+  dependency topology (auto-refreshes; static, no build step / CDN).
+- `GET /install-status.json` — the raw JSON snapshot the page consumes.
+
+```bash
+# Browse the dashboard at https://<access-address>/install-status
+curl -k https://<access-address>/install-status.json
+```
+
+It carries product/release versions, ready counts, dependency-service connection
+topology, and classified per-service health — and **deliberately no credentials**:
+the collector ([scripts/lib/install_status.py](scripts/lib/install_status.py))
+whitelists fields (host/port/type only; passwords, users, keys, tokens are
+dropped) and never exposes raw health-endpoint bodies (those can carry internal
+versions/topology). The ConfigMap is refreshed per install; nginx reads the
+mounted file per request, so no pod restart is needed.
+
 ## 📁 Project Structure
 
 ```text
 deploy/
 ├── deploy.sh                 # Main entry script
 ├── conf/                     # Bundled config and static manifests
+│   └── install-status/       # /install-status endpoint manifests (nginx + ingress)
 ├── release-manifests/        # Versioned release bill of materials
 ├── scripts/
-│   ├── lib/                  # Common helper functions
-│   ├── services/             # Product and dependency install scripts
+│   ├── lib/                  # Common helper functions (install_status.py: status collector)
+│   ├── services/             # Product and dependency install scripts (status.sh: install status)
 │   └── sql/                  # Versioned SQL initialization scripts
 └── .tmp/charts/              # Local chart cache generated by download
 ```

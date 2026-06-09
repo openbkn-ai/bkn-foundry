@@ -14,9 +14,9 @@ import (
 	sql "database/sql"
 	reflect "reflect"
 
+	sqlx "github.com/kweaver-ai/proton-rds-sdk-go/sqlx"
 	psdbarg "github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/drivenadapter/dbaccess/personalspacedbacc/psdbarg"
 	dapo "github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/src/infra/persistence/dapo"
-	sqlx "github.com/kweaver-ai/proton-rds-sdk-go/sqlx"
 	gomock "go.uber.org/mock/gomock"
 )
 

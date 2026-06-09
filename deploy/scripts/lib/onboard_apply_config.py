@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Load deploy/conf models YAML (env ${VAR} expansion), register models via kweaver, optionally BKN.
+Load deploy/conf models YAML (env ${VAR} expansion), register models via openbkn, optionally BKN.
 Invoked from onboard.sh: python3 onboard_apply_config.py <yaml_path> <namespace> <skip_bkn: true/false>
 
 Supports Python 3.6+ (CentOS 7 / old distros); avoids 3.7-only subprocess APIs.
@@ -33,7 +33,7 @@ def expand_env(s: str) -> str:
 
 
 def kweaver_call(*args: str) -> int:
-    return subprocess.call(["kweaver", *args], stdin=subprocess.DEVNULL)
+    return subprocess.call(["openbkn", *args], stdin=subprocess.DEVNULL)
 
 
 def jcall(path: str, body: dict) -> int:
@@ -42,7 +42,7 @@ def jcall(path: str, body: dict) -> int:
 
 def get_json(path: str) -> Any:
     p = subprocess.run(
-        ["kweaver", "call", path],
+        ["openbkn", "--json", "call", path],
         check=False,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,

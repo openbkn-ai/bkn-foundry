@@ -1,0 +1,41 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-config
+  namespace: {{ .Release.Namespace }}
+data:
+  SAFE_HTTP_ADDR: ":{{ .Values.service.ports.port }}"
+  SAFE_SEED_ON_START: {{ .Values.config.seedOnStart | quote }}
+  {{- /* DB credentials: prefer the shared cluster MariaDB from config.yaml's
+         depServices.rds (the platform-standard mechanism mariadb.sh populates +
+         grants, same as every other service); fall back to config.db (bundled
+         MariaDB for pure dev). The app DB name stays config.db.name ("safe") —
+         mariadb.sh seeds that database on the cluster MariaDB. */}}
+  {{- $rds := (.Values.depServices | default dict).rds | default dict }}
+  {{- if $rds.host }}
+  SAFE_DB_TYPE: {{ $rds.type | default "MySQL" | quote }}
+  SAFE_DB_HOST: {{ $rds.host | quote }}
+  SAFE_DB_PORT: {{ $rds.port | default "3306" | quote }}
+  SAFE_DB_USER: {{ $rds.user | quote }}
+  SAFE_DB_PASSWORD: {{ $rds.password | quote }}
+  {{- else }}
+  SAFE_DB_TYPE: {{ .Values.config.db.type | quote }}
+  SAFE_DB_HOST: {{ .Values.config.db.host | quote }}
+  SAFE_DB_PORT: {{ .Values.config.db.port | quote }}
+  SAFE_DB_USER: {{ .Values.config.db.user | quote }}
+  SAFE_DB_PASSWORD: {{ .Values.config.db.password | quote }}
+  {{- end }}
+  SAFE_DB_NAME: {{ .Values.config.db.name | quote }}
+  SAFE_HYDRA_ADMIN_URL: {{ .Values.config.hydra.adminURL | quote }}
+  SAFE_HYDRA_PUBLIC_URL: {{ .Values.config.hydra.publicURL | quote }}
+  SAFE_LDAP_URL: {{ .Values.config.ldap.url | quote }}
+  SAFE_LDAP_BIND_DN: {{ .Values.config.ldap.bindDN | quote }}
+  SAFE_LDAP_BIND_PASSWORD: {{ .Values.config.ldap.bindPassword | quote }}
+  SAFE_LDAP_BASE_DN: {{ .Values.config.ldap.baseDN | quote }}
+  SAFE_LDAP_USER_FILTER: {{ .Values.config.ldap.userFilter | quote }}
+  GIN_MODE: "release"
+{{- if .Values.config.initialPassword }}
+  # Non-production override of the platform initial password (default "openbkn").
+  # Set for test environments (e.g. "111111"); leave unset for the secure default.
+  BKN_SAFE_INITIAL_PASSWORD: {{ .Values.config.initialPassword | quote }}
+{{- end }}

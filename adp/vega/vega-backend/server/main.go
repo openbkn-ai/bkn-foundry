@@ -128,7 +128,7 @@ func main() {
 	// Set顺序按字母升序排序
 	if common.GetAuthEnabled() {
 		logics.SetAuthAccess(auth.NewHydraAuthAccess(appSetting))
-		logics.SetPermissionAccess(permission.NewPermissionAccess(appSetting))
+		logics.SetPermissionAccess(permission.MaybeShadow(permission.NewPermissionAccess(appSetting)))
 		logics.SetUserMgmtAccess(user_mgmt.NewUserMgmtAccess(appSetting))
 	}
 

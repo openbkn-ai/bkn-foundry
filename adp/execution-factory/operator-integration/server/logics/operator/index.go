@@ -35,7 +35,6 @@ type operatorManager struct {
 	IntCompConfigSvc      interfaces.IIntCompConfigService
 	AuthService           interfaces.IAuthorizationService
 	AuditLog              interfaces.LogModelOperator[*metric.AuditLogBuilderParams]
-	FlowAutomation        interfaces.FlowAutomation
 	MQClient              mq.MQClient
 	BusinessDomainService interfaces.IBusinessDomainService
 	MetadataService       interfaces.IMetadataService
@@ -63,7 +62,6 @@ func NewOperatorManager() interfaces.OperatorManager {
 			IntCompConfigSvc:      intcomp.NewIntCompConfigService(),
 			AuthService:           auth.NewAuthServiceImpl(),
 			AuditLog:              metric.NewAuditLogBuilder(),
-			FlowAutomation:        drivenadapters.NewFlowAutomationClient(),
 			MQClient:              mq.NewMQClient(),
 			BusinessDomainService: business_domain.NewBusinessDomainService(),
 			MetadataService:       metadata.NewMetadataService(),

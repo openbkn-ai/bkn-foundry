@@ -1,0 +1,71 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "description": "请求体结构定义 - list",
+    "required": [
+        "accessor",
+        "resource",
+        "operation",
+        "method"
+    ],
+    "properties": {
+        "accessor": {
+            "type": "object",
+            "description": "访问者信息",
+            "required": [
+                "id",
+                "type"
+            ],
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string",
+                    "enum": [
+                        "user",
+                        "app"
+                    ]
+                }
+            }
+        },
+        "resource": {
+            "type": "object",
+            "description": "资源信息",
+            "required": [
+                "type"
+            ],
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "description": "资源类型"
+                }
+            }
+        },
+        "operation": {
+            "description": "操作",
+            "type":"array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string"
+            }
+        },
+        "method": {
+            "type": "string",
+            "description": "方法",
+            "enum": [
+                "GET"
+            ]
+        },
+        "include": {
+            "type": "array",
+            "description": "返回的额外信息",
+            "items": {
+                "type": "string",
+                "enum": [
+                    "operation_obligations"
+                ]
+            }
+        }
+    }
+}

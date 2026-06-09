@@ -221,10 +221,6 @@ func TestAgentSquareAgentReq_DifferentPublishToBe(t *testing.T) {
 			name:        "skill agent",
 			publishToBe: cdaenum.PublishToBeSkillAgent,
 		},
-		{
-			name:        "data flow agent",
-			publishToBe: cdaenum.PublishToBeDataFlowAgent,
-		},
 	}
 
 	for _, tt := range tests {

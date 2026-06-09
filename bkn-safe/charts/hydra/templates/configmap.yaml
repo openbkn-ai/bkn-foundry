@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.image.name }}-config
+  namespace: {{ .Values.namespace }}
+data:
+  # Non-secret hydra config (env-var form: nested keys joined by "_", upper-cased).
+  URLS_SELF_ISSUER: {{ .Values.config.publicIssuer | quote }}
+  URLS_LOGIN: {{ .Values.config.urls.login | quote }}
+  URLS_CONSENT: {{ .Values.config.urls.consent | quote }}
+  URLS_DEVICE_VERIFICATION: {{ .Values.config.urls.deviceVerification | quote }}
+  SERVE_PUBLIC_PORT: {{ .Values.service.ports.public | quote }}
+  SERVE_ADMIN_PORT: {{ .Values.service.ports.admin | quote }}
+  # Behind a TLS-terminating ingress hydra accepts forwarded HTTP from these CIDRs.
+  SERVE_TLS_ALLOW_TERMINATION_FROM: {{ .Values.config.tlsAllowTerminationFrom | quote }}
+  LOG_LEVEL: {{ .Values.config.logLevel | quote }}

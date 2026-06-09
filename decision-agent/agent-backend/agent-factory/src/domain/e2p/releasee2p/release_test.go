@@ -94,23 +94,6 @@ func TestReleaseE2P(t *testing.T) {
 				assert.Equal(t, 1, *po.IsSkillAgent)
 			},
 		},
-		{
-			name: "release with data flow agent",
-			entity: &releaseeo.ReleaseEO{
-				ID:           "release-5",
-				AgentID:      "agent-5",
-				AgentConfig:  "{}",
-				AgentVersion: "v5.0.0",
-				PublishToBes: []cdaenum.PublishToBe{
-					cdaenum.PublishToBeDataFlowAgent,
-				},
-			},
-			checkPO: func(t *testing.T, po *dapo.ReleasePO) {
-				assert.Equal(t, "release-5", po.ID)
-				assert.NotNil(t, po.IsDataFlowAgent)
-				assert.Equal(t, 1, *po.IsDataFlowAgent)
-			},
-		},
 	}
 
 	for _, tt := range tests {

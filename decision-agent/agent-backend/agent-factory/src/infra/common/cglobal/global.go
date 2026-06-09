@@ -1,8 +1,8 @@
 package cglobal
 
 import (
-	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/cconf"
 	"github.com/kweaver-ai/proton-rds-sdk-go/sqlx"
+	"github.com/openbkn-ai/bkn-foundry/decision-agent/agent-backend/agent-factory/cconf"
 )
 
 var (

@@ -18,6 +18,9 @@ import (
 //
 //nolint:funlen
 func (u *Um) GetOsnNames(ctx context.Context, args *umarg.GetOsnArgDto) (ret *umtypes.OsnInfoMapS, err error) {
+	if u.useBknSafe() {
+		return u.getOsnNamesSafe(ctx, args)
+	}
 	var (
 		loopCount int
 		maxLoop   = 10

@@ -1,4 +1,5 @@
 import json
+import os
 
 import aiohttp
 from app.core.config import base_config
@@ -6,11 +7,37 @@ from app.commons.errors import UserManagementError
 from app.core.config import base_config
 
 
+async def _resolve_names_bkn_safe(bkn_safe_url, user_ids):
+    """bkn-safe directory name resolution: app accounts are User rows, so a
+    single /names call with the ids as both user_ids and app_ids resolves
+    everything; merge the two name arrays into {id: name}."""
+    out = {}
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+                f"{bkn_safe_url}/api/safe/v1/directory/names",
+                json={"user_ids": user_ids, "app_ids": user_ids},
+                headers={"Content-Type": "application/json"}) as resp:
+            if resp.status != 200:
+                raise Exception("bkn-safe directory service error,please check")
+            data = json.loads(await resp.text())
+            for item in data.get("user_names", []):
+                out[item["id"]] = item["name"]
+            for item in data.get("app_names", []):
+                out[item["id"]] = item["name"]
+    return out
+
+
 async def get_username_by_ids(user_ids):
     if base_config.DEBUG:
         return {}
     if not user_ids:
         return {}
+    # bkn-safe directory cutover (revertible): DIRECTORY_PROVIDER=bkn-safe +
+    # BKN_SAFE_URL resolves names via bkn-safe instead of ISF. Unset to revert.
+    provider = os.getenv("DIRECTORY_PROVIDER", "")
+    bkn_safe_url = os.getenv("BKN_SAFE_URL", "")
+    if provider == "bkn-safe" and bkn_safe_url:
+        return await _resolve_names_bkn_safe(bkn_safe_url, user_ids)
     user_management_url = f"http://{base_config.USERMANAGEMENTPRIVATEHOST}:{base_config.USERMANAGEMENTPRIVATEPORT}/api/user-management/v1/batch-get-user-info"
     user_management_app_url = f"http://{base_config.USERMANAGEMENTPRIVATEHOST}:{base_config.USERMANAGEMENTPRIVATEPORT}/api/user-management/v2/names"
     payload = {

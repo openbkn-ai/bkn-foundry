@@ -1,0 +1,13 @@
+{
+  "active": true,
+  "sub": "f6ae435c-0000-0000-0000-000000000000",
+  "scope": "openid offline",
+  "client_id": "openbkn-sdk",
+  "ext": {
+    "visitor_type": "realname",
+    "login_ip": "10.0.0.5",
+    "udid": "",
+    "account_type": "other",
+    "client_type": "web"
+  }
+}

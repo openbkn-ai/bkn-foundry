@@ -155,7 +155,8 @@ setup_mariadb_databases() {
     local databases=(
         "user_management" "anyshare" "policy_mgnt" "privacy" "authentication"
         "eofs" "deploy" "sharemgnt_db" "ets" "ossmanager" "license"
-        "nodemgnt" "sites" "anydata" "third_app_mgnt" "hydra_v2" "thirdparty_message"
+        "nodemgnt" "sites" "anydata" "third_app_mgnt" "thirdparty_message"
+        "safe"
     )
 
     # Execute SQL commands to create databases

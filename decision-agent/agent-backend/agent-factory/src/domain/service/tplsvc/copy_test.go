@@ -150,35 +150,35 @@ func TestDataAgentTplSvc_Copy_Success_ClearsPublishedFields(t *testing.T) {
 	publishedAt := int64(1640995200000) // 2022-01-01 00:00:00
 	publishedBy := "original-publisher"
 	sourcePo := &dapo.DataAgentTplPo{
-		ID:           123,
-		Name:         "Source Template",
-		Key:          "source-tpl-key",
-		ProductKey:   "test-product",
-		Status:       cdaenum.StatusPublished,
-		PublishedAt:  &publishedAt,
-		PublishedBy:  &publishedBy,
-		Config:       "{}",
+		ID:          123,
+		Name:        "Source Template",
+		Key:         "source-tpl-key",
+		ProductKey:  "test-product",
+		Status:      cdaenum.StatusPublished,
+		PublishedAt: &publishedAt,
+		PublishedBy: &publishedBy,
+		Config:      "{}",
 	}
 
 	// Mock 期望
 	mockAgentTplRepo.EXPECT().GetByID(gomock.Any(), templateID).Return(sourcePo, nil)
-	
+
 	// Mock 事务
 	db, mockSql, err := sqlmock.New()
 	require.NoError(t, err)
 	defer db.Close()
-	
+
 	mockSql.ExpectBegin()
 	mockTx, err := db.Begin()
 	require.NoError(t, err)
-	
+
 	mockSql.ExpectCommit()
-	
+
 	mockAgentTplRepo.EXPECT().BeginTx(gomock.Any()).Return(mockTx, nil)
-	
+
 	// 用于捕获传入 Create 方法的参数
 	var capturedPo *dapo.DataAgentTplPo
-	
+
 	// Mock 创建新模板
 	mockAgentTplRepo.EXPECT().Create(gomock.Any(), mockTx, gomock.Any()).DoAndReturn(
 		func(ctx context.Context, tx *sql.Tx, po *dapo.DataAgentTplPo) error {
@@ -187,17 +187,17 @@ func TestDataAgentTplSvc_Copy_Success_ClearsPublishedFields(t *testing.T) {
 			return nil
 		},
 	)
-	
+
 	// Mock 创建新模板后的返回
 	createdPo := &dapo.DataAgentTplPo{
-		ID:      456,
-		Name:    templateName,
-		Key:     "new-tpl-key", // ULID 生成的 key
-		Status:  cdaenum.StatusUnpublished,
-		Config:  "{}",
+		ID:     456,
+		Name:   templateName,
+		Key:    "new-tpl-key", // ULID 生成的 key
+		Status: cdaenum.StatusUnpublished,
+		Config: "{}",
 	}
 	mockAgentTplRepo.EXPECT().GetByKeyWithTx(gomock.Any(), mockTx, gomock.Any()).Return(createdPo, nil)
-	
+
 	// Mock 业务域关联
 	mockBdAgentTplRelRepo.EXPECT().BatchCreate(gomock.Any(), mockTx, gomock.Any()).Return(nil)
 	mockBizDomainHttp.EXPECT().AssociateResource(gomock.Any(), gomock.Any()).Return(nil)
@@ -215,16 +215,16 @@ func TestDataAgentTplSvc_Copy_Success_ClearsPublishedFields(t *testing.T) {
 
 	// 验证 Create 被调用时，PublishedAt 和 PublishedBy 被清空
 	assert.NotNil(t, capturedPo, "Create 方法应该被调用并捕获参数")
-	
+
 	// 验证 PublishedAt 被清空为 0
 	assert.Equal(t, int64(0), capturedPo.GetPublishedAtInt64(), "PublishedAt 应该被清空为 0")
-	
+
 	// 验证 PublishedBy 被清空为空字符串
 	assert.Equal(t, "", capturedPo.GetPublishedByString(), "PublishedBy 应该被清空为空字符串")
-	
+
 	// 验证状态为未发布
 	assert.Equal(t, cdaenum.StatusUnpublished, capturedPo.Status, "状态应该是未发布")
-	
+
 	// 验证其他字段正确设置
 	assert.Equal(t, templateName, capturedPo.Name, "模板名称应该正确")
 	assert.Equal(t, "test-user-id", capturedPo.CreatedBy, "创建者应该是当前用户")

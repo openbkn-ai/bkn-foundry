@@ -19,7 +19,6 @@ func TestOperator_EnumCheck_Valid(t *testing.T) {
 		{"agent publish to be skill agent", AgentPublishToBeSkillAgent},
 		{"agent publish to be web sdk agent", AgentPublishToBeWebSdkAgent},
 		{"agent publish to be api agent", AgentPublishToBeApiAgent},
-		{"agent publish to be data flow agent", AgentPublishToBeDataFlowAgent},
 		{"agent create system agent", AgentCreateSystemAgent},
 		{"agent built in agent mgmt", AgentBuiltInAgentMgmt},
 		{"agent see trajectory analysis", AgentSeeTrajectoryAnalysis},

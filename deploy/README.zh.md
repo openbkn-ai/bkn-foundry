@@ -16,7 +16,7 @@
 
 ### kubeadm / `KUBE_DISTRO=k8s`（默认）
 
-单节点 kubeadm 流程为 **`bash ./deploy.sh k8s install`**（`deploy/scripts/services/k8s.sh`）。若 `kubectl` 已可用，`ensure_k8s` 会跳过重复安装；随后 **`ensure_platform_prerequisites`** 会安装随平台一起交付的 **data-services**（MariaDB、Redis、Kafka、ZooKeeper、OpenSearch 等），再装 Core。**macOS kind** 不写宿主机 kubeadm：**`KWEAVER_SKIP_PLATFORM_BOOTSTRAP` 下，`foundry install` 会先跑与 `data-services install` 相同的 Helm 数据层**，见下文 macOS。历史写法 **`kubeadm`** 仍可作为 **`k8s`** 的别名。
+单节点 kubeadm 流程为 **`bash ./deploy.sh k8s install`**（`deploy/scripts/services/k8s.sh`）。若 `kubectl` 已可用，`ensure_k8s` 会跳过重复安装；随后 **`ensure_platform_prerequisites`** 会安装随平台一起交付的 **data-services**（MariaDB、Redis、Kafka、OpenSearch 等），再装 Core。**macOS kind** 不写宿主机 kubeadm：**`KWEAVER_SKIP_PLATFORM_BOOTSTRAP` 下，`foundry install` 会先跑与 `data-services install` 相同的 Helm 数据层**，见下文 macOS。历史写法 **`kubeadm`** 仍可作为 **`k8s`** 的别名。
 
 **`deploy.sh` 全局参数**（`--distro`、`-y`、`--force-upgrade`、`--config` 等）必须写在**子模块名之前**。正确：`bash ./deploy.sh --distro=k3s foundry install --minimum`。错误：`bash ./deploy.sh foundry install --minimum --distro=k3s`（末尾的 `--distro` 不会按全局参数解析）。不想改命令顺序时可用：`export KUBE_DISTRO=k3s` 再执行 `bash ./deploy.sh foundry install --minimum`。
 
@@ -49,7 +49,7 @@ bash ./deploy.sh --distro=k3s foundry install --minimum
 
 ### macOS（可选 — 本机 kind 开发）
 
-**仅供 Mac 上做验证；正式安装请以本文 Linux 章节为准。** 本机用 **kind** 起 Kubernetes，不在 Mac 上跑 `preflight.sh` / `k3s install`。**`mac.sh` 设置 `KWEAVER_SKIP_PLATFORM_BOOTSTRAP`**。**`foundry install` 会先执行 `ensure_data_services`**（与单独跑 `data-services install` 一致：MariaDB、Redis、Kafka、Zookeeper、OpenSearch）；**`mac.sh` 默认 `AUTO_INSTALL_INGRESS_NGINX=false`**，避免重复装 ingress。需要跳过自带数据层时使用 **`KWEAVER_SKIP_DATA_SERVICES_BUNDLE=true`**（高级用法 / 外接中间件）。仍可单独执行 **`data-services install`** 只做数据层或刷新。**Apple Silicon：** kind 节点为 **arm64**；**步骤见 [dev/README.zh.md](dev/README.zh.md)。**
+**仅供 Mac 上做验证；正式安装请以本文 Linux 章节为准。** 本机用 **kind** 起 Kubernetes，不在 Mac 上跑 `preflight.sh` / `k3s install`。**`mac.sh` 设置 `KWEAVER_SKIP_PLATFORM_BOOTSTRAP`**。**`foundry install` 会先执行 `ensure_data_services`**（与单独跑 `data-services install` 一致：MariaDB、Redis、Kafka、OpenSearch）；**`mac.sh` 默认 `AUTO_INSTALL_INGRESS_NGINX=false`**，避免重复装 ingress。需要跳过自带数据层时使用 **`KWEAVER_SKIP_DATA_SERVICES_BUNDLE=true`**（高级用法 / 外接中间件）。仍可单独执行 **`data-services install`** 只做数据层或刷新。**Apple Silicon：** kind 节点为 **arm64**；**步骤见 [dev/README.zh.md](dev/README.zh.md)。**
 
 ```bash
 cd deploy   # 仓库的 deploy/ 目录
@@ -195,7 +195,7 @@ sudo bash ./deploy.sh --distro=k3s foundry install --minimum --version_file=/tmp
 `foundry` 是这个 `deploy` 目录里的产品入口，安装链路如下：
 
 1. 安装或补齐单节点 Kubernetes、local-path storage、ingress-nginx。
-2. 安装或补齐数据服务：MariaDB、Redis、Kafka、ZooKeeper、OpenSearch。
+2. 安装或补齐数据服务：MariaDB、Redis、Kafka、OpenSearch。
 3. 部署 BKN Foundry 应用层 chart。
 
 Core 应用层包括数据服务管理、应用部署和任务编排相关的 chart。
@@ -221,16 +221,51 @@ kubectl get nodes
 kubectl get pods -A
 ```
 
+### 安装状态与健康
+
+`foundry status` 输出一张实时详细表(供服务器上运维查看):对清单里每个 release 显示
+**期望版本 vs 实际部署版本**、app 版本、helm revision/状态、workload ready 数(标记
+`DRIFT`/`MISSING`)、内置依赖服务,以及逐服务的**应用健康**(经 apiserver service proxy
+探测:`/health/ready` → `/api/v1/health` → `/healthz` → `/health`,分类为
+`up` / `degraded` / `no-endpoint`)。
+
+```bash
+# 实时详细状态表(版本、ready、drift、服务健康)
+./deploy.sh foundry status
+
+# 不重装,(重新)发布非敏感 JSON 快照 + /install-status 端点。
+# `foundry install` 结束时会自动执行。
+./deploy.sh foundry publish-status
+```
+
+同时通过 ingress 以**非敏感**面板对外提供(由一个极小的 nginx 托管 ConfigMap,见
+`conf/install-status/`):
+
+- `GET /install-status` —— HTML 页面,展示各 release、逐服务健康、依赖拓扑(自动刷新;
+  纯静态,无构建步骤 / 无 CDN)。
+- `GET /install-status.json` —— 页面消费的原始 JSON 快照。
+
+```bash
+# 浏览器打开面板 https://<access-address>/install-status
+curl -k https://<access-address>/install-status.json
+```
+
+其中包含产品/各 release 版本、ready 数、依赖服务连接拓扑、逐服务分类健康 —— 且**刻意不含任何凭据**:
+采集器([scripts/lib/install_status.py](scripts/lib/install_status.py))按白名单取字段(只留
+host/port/type,丢弃 password/user/key/token),也不暴露健康端点的原始响应体(其中可能含内部
+版本/拓扑)。ConfigMap 每次安装刷新,nginx 每请求读取挂载文件,无需重启 Pod。
+
 ## 📁 Project Structure
 
 ```text
 deploy/
 ├── deploy.sh                 # 主入口脚本
 ├── conf/                     # 内置配置与静态清单
+│   └── install-status/       # /install-status 端点清单(nginx + ingress)
 ├── release-manifests/        # 按版本组织的发布物料
 ├── scripts/
-│   ├── lib/                  # 公共函数
-│   ├── services/             # 各产品与依赖服务安装脚本
+│   ├── lib/                  # 公共函数(install_status.py:状态采集器)
+│   ├── services/             # 各产品与依赖服务安装脚本(status.sh:安装状态)
 │   └── sql/                  # 按版本组织的 SQL 初始化脚本
 └── .tmp/charts/              # download 命令生成的本地 chart 缓存
 ```

@@ -38,12 +38,11 @@ source "${SCRIPT_DIR}/scripts/services/storage.sh"
 source "${SCRIPT_DIR}/scripts/services/mariadb.sh"
 source "${SCRIPT_DIR}/scripts/services/redis.sh"
 source "${SCRIPT_DIR}/scripts/services/kafka.sh"
-source "${SCRIPT_DIR}/scripts/services/zookeeper.sh"
 # source "${SCRIPT_DIR}/scripts/services/mongodb.sh"  # MongoDB disabled
 source "${SCRIPT_DIR}/scripts/services/ingress_nginx.sh"
 source "${SCRIPT_DIR}/scripts/services/opensearch.sh"
 source "${SCRIPT_DIR}/scripts/services/core.sh"
-source "${SCRIPT_DIR}/scripts/services/isf.sh"
+source "${SCRIPT_DIR}/scripts/services/status.sh"
 source "${SCRIPT_DIR}/scripts/services/dip.sh"
 
 usage() {
@@ -64,12 +63,10 @@ usage() {
     echo "  redis uninstall               Uninstall Redis (PVCs will be deleted by default)"
     echo "  kafka install                 Install single-node Kafka"
     echo "  kafka uninstall               Uninstall Kafka (PVCs will be deleted by default)"
-    echo "  data-services install         Install MariaDB, Redis, Kafka, Zookeeper, OpenSearch (cluster must exist)"
-    echo "  data-services uninstall       Uninstall those bundles (kafka→zk order; ingress only if AUTO_INSTALL_INGRESS_NGINX=true)"
+    echo "  data-services install         Install MariaDB, Redis, Kafka, OpenSearch (cluster must exist)"
+    echo "  data-services uninstall       Uninstall those bundles (ingress only if AUTO_INSTALL_INGRESS_NGINX=true)"
     echo "  opensearch install            Install single-node OpenSearch"
     echo "  opensearch uninstall          Uninstall OpenSearch (optionally purge PVC)"
-    echo "  zookeeper install             Install single-node Zookeeper"
-    echo "  zookeeper uninstall           Uninstall Zookeeper (PVCs will be deleted by default)"
     echo "  ingress-nginx install         Install ingress-nginx-controller"
     echo "  ingress-nginx uninstall       Uninstall ingress-nginx-controller"
     echo "  bkn-foundry install          Install BKN Foundry services; auto-installs K8s/data services if missing"
@@ -79,8 +76,6 @@ usage() {
     echo "  bkn-foundry uninstall        Uninstall BKN Foundry services"
     echo "  bkn-foundry status           Show BKN Foundry services status"
     echo "                                Use --set to pass custom values to all charts"
-    echo "  isf install                   Install ISF auth/identity stack (also auto-enabled by a full 'foundry install' when auth.enabled); switches access to HTTPS"
-    echo "  isf download|uninstall|status Manage the ISF stack (charts from the upstream helm repo)"
     echo "  dip install                   Install DIP data-intelligence stack (aliases: bkn-dip)"
     echo "  dip download|uninstall|status Manage the DIP stack"
     echo "  all install                   Run full initialization (k8s + mariadb + redis + ingress-nginx)"
@@ -109,13 +104,6 @@ usage() {
     echo "  $0 opensearch install         # Install OpenSearch"
     echo "  $0 opensearch uninstall       # Uninstall OpenSearch"
     echo "  OPENSEARCH_PURGE_PVC=true $0 opensearch uninstall  # Uninstall OpenSearch and delete PVC (data loss!)"
-    echo "  $0 zookeeper install          # Install Zookeeper"
-    echo "  $0 zookeeper uninstall        # Uninstall Zookeeper (PVCs deleted by default)"
-    echo "  ZOOKEEPER_PURGE_PVC=false $0 zookeeper uninstall  # Uninstall Zookeeper but keep PVC's"
-    echo "  # Install from remote repo with version and devel:"
-    echo "  ZOOKEEPER_CHART_REF=dip/zookeeper ZOOKEEPER_CHART_VERSION=0.0.0-feature-800792 ZOOKEEPER_CHART_DEVEL=true $0 zookeeper install"
-    echo "  # Install with additional values file and --set:"
-    echo "  ZOOKEEPER_VALUES_FILE=~/.openbkn-ai/config.yaml ZOOKEEPER_EXTRA_SET_VALUES='image.registry=<your-mirror>/bitnami' $0 zookeeper install"
     echo "  $0 ingress-nginx install      # Install ingress-nginx-controller"
     echo "  $0 ingress-nginx uninstall    # Uninstall ingress-nginx-controller"
     echo "  $0 config generate            # Generate/update ~/.openbkn-ai/config.yaml"
@@ -142,6 +130,8 @@ usage() {
     echo "                                Defaults to auto-detect from hostname -I"
     echo "  --minimum, --min              Minimum install: skip auth & business-domain modules"
     echo "                                Equivalent to: --set auth.enabled=false --set businessDomain.enabled=false"
+    echo "                                auth.enabled=false also SKIPS installing the bkn-safe auth stack"
+    echo "                                (bkn-safe + bundled hydra + its postgres). Keep it: --set bknSafe.install=true"
     echo "  --set <key>=<value>           Pass custom values to helm charts (can be used multiple times)"
     echo "                                Example: --set auth.enabled=false --set image.tag=latest"
     echo ""
@@ -150,7 +140,7 @@ usage() {
     echo "  DEPLOY_BUSINESS_DOMAIN        x-business-domain for kweaver/onboard (default: bd_public)."
     echo ""
     echo "  $0 bkn-foundry install --minimum                 # Minimum install (skip auth & business-domain)"
-    echo "  $0 bkn-foundry install --set auth.enabled=false  # Install BKN Foundry without ISF"
+    echo "  $0 bkn-foundry install --set auth.enabled=false  # Install BKN Foundry with auth enforcement off"
     echo "  $0 bkn-foundry install --set auth.enabled=false --set businessDomain.enabled=false  # Same as --minimum"
     echo "  $0 bkn-foundry install --set image.registry=my-registry.com --set image.tag=v1.0.0  # Custom image settings"
     echo "  $0 bkn-foundry download --charts_dir=/path/to/charts # Download Core charts into a specific local directory"
@@ -661,26 +651,6 @@ main() {
     #     return 0
     # fi
 
-    # Handle zookeeper module
-    if [[ "${module}" == "zookeeper" ]]; then
-        case "${action}" in
-            install|init)
-                require_root_for_helm_cluster_addons_only
-                install_zookeeper
-                ;;
-            uninstall)
-                require_root_for_helm_cluster_addons_only
-                uninstall_zookeeper
-                ;;
-            *)
-                log_error "Unknown zookeeper action: ${action}"
-                usage
-                exit 1
-                ;;
-        esac
-        return 0
-    fi
-
     # Handle kafka module
     if [[ "${module}" == "kafka" ]]; then
         case "${action}" in
@@ -739,7 +709,11 @@ main() {
                 ;;
             status)
                 parse_core_args "status" "$@"
-                show_core_status
+                show_install_status
+                ;;
+            publish-status)
+                parse_core_args "status" "$@"
+                gen_install_status_json
                 ;;
             *)
                 log_error "Unknown kweaver-core action: ${action}"
@@ -814,34 +788,6 @@ main() {
         return 0
     fi
 
-    # Handle isf module
-    if [[ "${module}" == "isf" ]]; then
-        case "${action}" in
-            install|init)
-                parse_isf_args "install" "$@"
-                install_isf
-                ;;
-            download)
-                parse_isf_args "download" "$@"
-                download_isf
-                ;;
-            uninstall)
-                parse_isf_args "uninstall" "$@"
-                uninstall_isf
-                ;;
-            status)
-                parse_isf_args "status" "$@"
-                show_isf_status
-                ;;
-            *)
-                log_error "Unknown isf action: ${action}"
-                usage
-                exit 1
-                ;;
-        esac
-        return 0
-    fi
-    
     # Handle all/infra module (infrastructure: k8s + data services)
     # 'all' is an alias for 'infra' for backward compatibility
     if [[ "${module}" == "all" ]] || [[ "${module}" == "infra" ]]; then
@@ -873,7 +819,6 @@ main() {
                 install_mariadb
                 install_redis
                 install_kafka
-                install_zookeeper
                 # install_mongodb  # MongoDB disabled
                 if [[ "${AUTO_INSTALL_INGRESS_NGINX}" == "true" ]]; then
                     install_ingress_nginx
@@ -891,7 +836,6 @@ main() {
                 uninstall_opensearch || true
                 uninstall_ingress_nginx || true
                 # uninstall_mongodb || true  # MongoDB disabled
-                uninstall_zookeeper || true
                 uninstall_kafka || true
                 uninstall_redis || true
                 uninstall_mariadb || true
@@ -943,7 +887,6 @@ main() {
                 done
                 
                 # Install all BKN Foundry services in order
-                install_isf
                 install_core
 
                 log_info "BKN Foundry application services deployment completed!"
@@ -952,12 +895,10 @@ main() {
                 check_root
                 log_info "Uninstalling BKN Foundry application services..."
                 uninstall_core || true
-                uninstall_isf || true
                 log_info "BKN Foundry application services uninstalled!"
                 ;;
             status)
                 log_info "BKN Foundry application services status:"
-                show_isf_status
                 show_core_status
                 show_dip_status
                 ;;
@@ -1007,7 +948,6 @@ main() {
                 install_mariadb
                 install_redis
                 install_kafka
-                install_zookeeper
                 # install_mongodb  # MongoDB disabled
                 if [[ "${AUTO_INSTALL_INGRESS_NGINX}" == "true" ]]; then
                     install_ingress_nginx
@@ -1016,7 +956,7 @@ main() {
                 if [[ "${AUTO_GENERATE_CONFIG}" == "true" ]]; then
                     generate_config_yaml
                 fi
-                
+
                 # Step 2: Deploy BKN Foundry services
                 log_info ""
                 log_info "Step 2/2: Deploying BKN Foundry Application Services..."
@@ -1034,13 +974,11 @@ main() {
                     esac
                 done
                 
-                install_isf
                 install_studio
                 install_bkn
                 install_vega
                 install_agentoperator
                 install_decisionagent
-                install_flowautomation
                 install_sandboxruntime
 
                 show_status
@@ -1055,19 +993,16 @@ main() {
                 
                 # Uninstall BKN Foundry services first
                 uninstall_sandboxruntime || true
-                uninstall_flowautomation || true
                 uninstall_decisionagent || true
                 uninstall_agentoperator || true
                 uninstall_bkn || true
                 uninstall_vega || true
                 uninstall_studio || true
-                uninstall_isf || true
-                
+
                 # Then uninstall infrastructure
                 uninstall_opensearch || true
                 uninstall_ingress_nginx || true
                 # uninstall_mongodb || true  # MongoDB disabled
-                uninstall_zookeeper || true
                 uninstall_kafka || true
                 uninstall_redis || true
                 uninstall_mariadb || true
