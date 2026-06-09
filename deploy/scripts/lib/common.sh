@@ -51,8 +51,25 @@ kweaver_normalize_kube_distro() {
     esac
 }
 
-KUBE_DISTRO="$(kweaver_normalize_kube_distro "${KUBE_DISTRO:-k8s}")"
+# Auto-detect the cluster distro when the user didn't pass --distro / KUBE_DISTRO.
+# A kubeadm cluster leaves /etc/kubernetes/admin.conf; a k3s install leaves
+# /etc/rancher/k3s/k3s.yaml (and the k3s binary). Prefer explicit kubeadm markers,
+# then k3s, else fall back to kubeadm (the historical default).
+kweaver_detect_kube_distro() {
+    if [[ -f /etc/kubernetes/admin.conf ]]; then printf '%s' "k8s"; return; fi
+    if [[ -f /etc/rancher/k3s/k3s.yaml ]] || command -v k3s >/dev/null 2>&1; then printf '%s' "k3s"; return; fi
+    printf '%s' "k8s"
+}
+
+KUBE_DISTRO="$(kweaver_normalize_kube_distro "${KUBE_DISTRO:-$(kweaver_detect_kube_distro)}")"
 export KUBE_DISTRO
+
+# On k3s, point KUBECONFIG at the k3s kubeconfig when the caller hasn't set one,
+# so helm/kubectl in any module (incl. data-services, which doesn't bootstrap the
+# cluster) reach the API server instead of defaulting to localhost:8080.
+if [[ "${KUBE_DISTRO}" == "k3s" && -z "${KUBECONFIG:-}" && -f /etc/rancher/k3s/k3s.yaml ]]; then
+    export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+fi
 
 # Generate a random password (alphanumeric). Uses openssl when available; avoids macOS/BSD
 # tr + urandom locale issues ("Illegal byte sequence") via LC_ALL=C.
