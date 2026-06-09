@@ -552,15 +552,27 @@ DEP_EOF
 )
     fi
 
-
-    cat > "${out}" <<EOF
-namespace: ${cfg_namespace}
-env:
-  language: ${cfg_lang}
-  timezone: ${cfg_tz}
-image:
-  registry: ${IMAGE_REGISTRY}
-${storage_section}
+    # Auth state, persisted so install-status (and other readers) can tell a
+    # no-auth install from a broken one. auth.enabled=false (--minimum / --set
+    # auth.enabled=false) is a supported install with NO bkn-safe stack; the
+    # bknSafe providers are blanked so nothing routes to an absent service.
+    local auth_enabled="true"
+    if [[ "$(get_set_value "auth.enabled" "${CORE_SET_VALUES[@]:-}" 2>/dev/null)" == "false" ]]; then
+        auth_enabled="false"
+    fi
+    local bkn_safe_block
+    if [[ "${auth_enabled}" == "false" ]]; then
+        bkn_safe_block=$(cat <<'BKNSAFE_OFF'
+# auth.enabled=false: no-auth install — the bkn-safe auth stack is NOT installed
+# and services run without token enforcement. Providers blanked intentionally.
+bknSafe:
+  authzProvider: ""
+  directoryProvider: ""
+  url: ""
+BKNSAFE_OFF
+)
+    else
+        bkn_safe_block=$(cat <<'BKNSAFE_ON'
 # ISF replacement: services route authz + directory lookups to bkn-safe (the ISF
 # stack is retired). bkn-safe installs into the same namespace, so url uses the
 # namespace-agnostic short service name. Blank these three to disable bkn-safe.
@@ -568,6 +580,22 @@ bknSafe:
   authzProvider: bkn-safe
   directoryProvider: bkn-safe
   url: http://bkn-safe:3000
+BKNSAFE_ON
+)
+    fi
+
+    cat > "${out}" <<EOF
+namespace: ${cfg_namespace}
+# auth.enabled=false ⇒ no-auth install (no bkn-safe stack); see bknSafe below.
+auth:
+  enabled: ${auth_enabled}
+env:
+  language: ${cfg_lang}
+  timezone: ${cfg_tz}
+image:
+  registry: ${IMAGE_REGISTRY}
+${storage_section}
+${bkn_safe_block}
 accessAddress:
   host: ${node_ip}
   port: ${access_port}

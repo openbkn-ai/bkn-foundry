@@ -93,6 +93,23 @@ _status_apply_endpoint() {
 
 # Layer 2 — regenerate the non-sensitive JSON snapshot and publish the endpoint.
 # Never fails the install: best-effort, warns on error.
+# Auth is disabled (no bkn-safe stack) when installed with --minimum /
+# --set auth.enabled=false. That is a SUPPORTED, normal state: bkn-safe is
+# optional. Detect it so install-status reports an absent bkn-safe as
+# "skipped", not "missing". Signals: the install-time --set (CORE_SET_VALUES,
+# present right after install) or, for a standalone status run, a deployed core
+# service running AUTH_ENABLED=false.
+_status_auth_disabled() {
+    local ns="$1" v
+    if [[ "$(get_set_value "auth.enabled" "${CORE_SET_VALUES[@]:-}" 2>/dev/null)" == "false" ]]; then
+        return 0
+    fi
+    v="$(kubectl get deploy bkn-backend -n "${ns}" \
+        -o jsonpath='{range .spec.template.spec.containers[0].env[*]}{.name}={.value}{"\n"}{end}' \
+        2>/dev/null | awk -F= '$1=="AUTH_ENABLED"{print tolower($2)}' | head -1)"
+    [[ "${v}" == "false" ]]
+}
+
 gen_install_status_json() {
     local namespace
     namespace="$(_core_resolve_target_namespace)"
@@ -106,6 +123,12 @@ gen_install_status_json() {
         return 0
     fi
 
+    local -a optional_args=()
+    if _status_auth_disabled "${namespace}"; then
+        optional_args=(--optional-releases bkn-safe)
+        log_info "install-status: auth disabled (no-auth install) — bkn-safe reported as skipped, not missing."
+    fi
+
     local tmp
     tmp="$(mktemp)"
     if ! python3 "${INSTALL_STATUS_PY}" \
@@ -113,6 +136,7 @@ gen_install_status_json() {
             --manifest "${CORE_VERSION_MANIFEST_FILE}" \
             --config "${CONFIG_YAML_PATH:-}" \
             --product "bkn-foundry" \
+            "${optional_args[@]}" \
             --format json > "${tmp}" 2>/dev/null; then
         log_warn "Failed to generate install-status JSON; skipping."
         rm -f "${tmp}"
