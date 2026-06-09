@@ -190,11 +190,12 @@
       fetch("install-status.json", { cache: "no-store" })
         .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
         .then(function (d) {
+          var authTxt = d.auth ? ("  ·  auth " + (d.auth.enabled ? "on (bkn-safe)" : "off (no-auth)")) : "";
           document.getElementById("meta").textContent =
             "product " + d.product + " " + d.version + "  ·  ns " + d.namespace +
             "  ·  " + ((d.accessAddress && d.accessAddress.scheme) || "") + "://" +
             ((d.accessAddress && d.accessAddress.host) || "") +
-            (d.ingressClass ? "  ·  ingressClass " + d.ingressClass : "");
+            (d.ingressClass ? "  ·  ingressClass " + d.ingressClass : "") + authTxt;
           document.getElementById("genAt").textContent = d.generatedAt || "—";
           var rel = renderReleases(d.releases || []);
           renderHealth(d.serviceHealth);
