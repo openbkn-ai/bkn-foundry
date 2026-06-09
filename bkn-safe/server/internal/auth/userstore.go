@@ -6,8 +6,10 @@
 package auth
 
 import (
+	"cmp"
 	"context"
 	"errors"
+	"os"
 
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
@@ -19,7 +21,11 @@ import (
 // created local users (and the seeded admin) when no password is specified.
 // MustChangePassword is always set, so it must be changed on first login. Single
 // source of truth: seed + admin user-create + the CLI all use this value.
-const DefaultInitialPassword = "openbkn"
+//
+// Override with BKN_SAFE_INITIAL_PASSWORD for non-production/test environments
+// (e.g. "111111"); unset it for the secure default. A var (not const) so the env
+// is read once at package init.
+var DefaultInitialPassword = cmp.Or(os.Getenv("BKN_SAFE_INITIAL_PASSWORD"), "openbkn")
 
 // ErrInvalidCredentials is returned when account/password verification fails.
 // It is deliberately opaque (no "user not found" vs "wrong password" leak).

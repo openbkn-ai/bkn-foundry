@@ -80,6 +80,9 @@ clientSeed:
 
 config:
   seedOnStart: true
+  # Platform initial password override (BKN_SAFE_INITIAL_PASSWORD). Empty = secure
+  # default "openbkn". Set for test environments only, e.g. "111111".
+  initialPassword: ""
   db:
     type: "MySQL"            # MySQL | DM8 | KDB9 (all via proton-rds driver)
     host: "bkn-safe-mariadb"

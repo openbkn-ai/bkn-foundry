@@ -34,3 +34,8 @@ data:
   SAFE_LDAP_BASE_DN: {{ .Values.config.ldap.baseDN | quote }}
   SAFE_LDAP_USER_FILTER: {{ .Values.config.ldap.userFilter | quote }}
   GIN_MODE: "release"
+{{- if .Values.config.initialPassword }}
+  # Non-production override of the platform initial password (default "openbkn").
+  # Set for test environments (e.g. "111111"); leave unset for the secure default.
+  BKN_SAFE_INITIAL_PASSWORD: {{ .Values.config.initialPassword | quote }}
+{{- end }}
