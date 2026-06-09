@@ -995,9 +995,10 @@ onboard_probe() {
     fi
     onboard_prepend_npm_global_bin_to_path
     onboard_recommend_admin_cli
-    # ISF admin/test-user provisioning is retired: bkn-safe seeds the admin and
-    # OAuth clients itself (chart seedOnStart + client-seed Job), so onboard does
-    # not provision auth users.
+    # bkn-safe seeds the admin + OAuth clients itself; onboard additionally
+    # provisions the business "test" account (login: test, business-admin roles)
+    # for ADP/business use. Skip with ONBOARD_SKIP_ISF_TEST_USER / --skip-isf-test-user.
+    onboard_provision_bkn_safe_test_user
     onboard_provision_oss_default_storage "${NAMESPACE}"
 }
 
