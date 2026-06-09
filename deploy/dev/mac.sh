@@ -5,7 +5,7 @@
 #   1. doctor                 — optional; check docker / kind / kubectl / helm / node
 #   2. doctor --fix           — optional; install missing CLIs via Homebrew (prompts; -y skips)
 #   3. cluster up             — kind + ingress-nginx; context becomes kind-<KIND_CLUSTER_NAME>
-#   4. data-services install  — MariaDB / Redis / Kafka / Zookeeper / OpenSearch (required before Core on mac)
+#   4. data-services install  — MariaDB / Redis / Kafka / OpenSearch (required before Core on mac)
 #   5. bkn-foundry download  — optional; cache charts locally (mac.sh defaults --minimum unless --full)
 #   6. bkn-foundry install   — Helm install Core (mac.sh adds --minimum unless you pass --full)
 #   7. onboard                — optional; needs kweaver CLI + Core up (add -y for non-interactive)

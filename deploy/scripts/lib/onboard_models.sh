@@ -32,11 +32,11 @@ for n in sorted(out):
 }
 
 onboard_get_existing_llm_names() {
-    openbkn call "/api/mf-model-manager/v1/llm/list?page=1&size=500" 2>/dev/null | onboard_list_model_names
+    openbkn --json call "/api/mf-model-manager/v1/llm/list?page=1&size=500" 2>/dev/null | onboard_list_model_names
 }
 
 onboard_get_existing_small_model_names() {
-    openbkn call "/api/mf-model-manager/v1/small-model/list?page=1&size=500" 2>/dev/null | onboard_list_model_names
+    openbkn --json call "/api/mf-model-manager/v1/small-model/list?page=1&size=500" 2>/dev/null | onboard_list_model_names
 }
 
 # Read .server.defaultSmallModelName from a *-config.yaml inside the ConfigMap. Empty when not set.
@@ -183,7 +183,7 @@ ${name}"
 
 onboard_get_id_for_llm() {
     local mname="$1"
-    openbkn call "/api/mf-model-manager/v1/llm/list?page=1&size=500" 2>/dev/null | python3 -c "
+    openbkn --json call "/api/mf-model-manager/v1/llm/list?page=1&size=500" 2>/dev/null | python3 -c "
 import json, sys
 n = sys.argv[1]
 j = json.load(sys.stdin)
@@ -208,7 +208,7 @@ find(j)
 
 onboard_get_id_for_small() {
     local mname="$1"
-    openbkn call "/api/mf-model-manager/v1/small-model/list?page=1&size=500" 2>/dev/null | python3 -c "
+    openbkn --json call "/api/mf-model-manager/v1/small-model/list?page=1&size=500" 2>/dev/null | python3 -c "
 import json, sys
 n = sys.argv[1]
 j = json.load(sys.stdin)
