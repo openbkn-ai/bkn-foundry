@@ -42,7 +42,7 @@ def jcall(path: str, body: dict) -> int:
 
 def get_json(path: str) -> Any:
     p = subprocess.run(
-        ["openbkn", "call", path],
+        ["openbkn", "--json", "call", path],
         check=False,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
