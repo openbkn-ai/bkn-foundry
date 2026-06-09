@@ -29,9 +29,11 @@ import (
 const (
 	adminUserID  = "266c6a42-6131-4d62-8f39-853e7093701c"
 	adminAccount = "admin"
-	// adminInitialPwd is the platform initial password (shared single source).
-	adminInitialPwd = auth.DefaultInitialPassword
 )
+
+// adminInitialPwd is the platform initial password (shared single source).
+// Not a const: auth.DefaultInitialPassword is a runtime var (env-overridable).
+var adminInitialPwd = auth.DefaultInitialPassword
 
 //go:embed data/roles.json
 var rolesJSON []byte
