@@ -682,10 +682,11 @@ func TestUpdateOperatorByOpenAPI(t *testing.T) {
 		Convey("描述不合法", func() {
 			req.MetadataType = interfaces.MetadataTypeFunc
 			req.FunctionInput = &interfaces.FunctionInput{}
+			// Since #23 the edit request takes the description from req.Description
+			// (not the parsed metadata), so set it on the request.
+			req.Description = "Mock Description"
 			metadataDBs := []interfaces.IMetadataDB{
-				&model.FunctionMetadataDB{
-					Description: "Mock Description",
-				},
+				&model.FunctionMetadataDB{},
 			}
 			mockCategoryManager.EXPECT().CheckCategory(gomock.Any()).Return(true).Times(1)
 			mockMetadataService.EXPECT().ParseMetadata(gomock.Any(), gomock.Any(), gomock.Any()).Return(metadataDBs, nil).Times(1)
