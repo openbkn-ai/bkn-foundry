@@ -351,6 +351,34 @@ for e in d.get('roles', []):
     return 0
 }
 
+# Clear a pending must-change-password flag on [test] without changing the
+# effective password: bounce final -> final.heal -> final through the
+# self-service change-password endpoint (a successful self-service change
+# clears the flag; admin reset would re-arm it). First hop 401 = the password
+# is not the expected one (operator changed it) — leave the account alone.
+# Heals users created by older onboard runs that left the flag set.
+onboard_bkn_safe_heal_test_password_flag() {
+    local _final="$1" _kurl="$2" _tmp _c1 _c2
+    [[ -z "${_kurl}" ]] && return 0
+    _tmp="${_final}.heal"
+    _c1="$(curl -sk -o /dev/null -w '%{http_code}' -X POST "${_kurl%/}/api/safe/v1/auth/change-password" \
+        -H 'Content-Type: application/json' \
+        -d "{\"account\":\"test\",\"old_password\":\"${_final}\",\"new_password\":\"${_tmp}\"}" 2>/dev/null)"
+    if [[ "${_c1}" != 20* ]]; then
+        [[ "${_c1}" == "401" ]] || log_warn "test password-flag heal probe got http ${_c1}; if first login still demands a password change, reset manually: openbkn admin user reset-password <id> --password '<tmp>' then change-password to the final one."
+        return 0
+    fi
+    _c2="$(curl -sk -o /dev/null -w '%{http_code}' -X POST "${_kurl%/}/api/safe/v1/auth/change-password" \
+        -H 'Content-Type: application/json' \
+        -d "{\"account\":\"test\",\"old_password\":\"${_tmp}\",\"new_password\":\"${_final}\"}" 2>/dev/null)"
+    if [[ "${_c2}" != 20* ]]; then
+        log_warn "test password left at ${_tmp} (restore hop got http ${_c2}); restore: curl -k -X POST ${_kurl%/}/api/safe/v1/auth/change-password -H 'Content-Type: application/json' -d '{\"account\":\"test\",\"old_password\":\"${_tmp}\",\"new_password\":\"${_final}\"}'"
+        return 1
+    fi
+    log_info "User [test]: cleared pending must-change-password (password unchanged)"
+    return 0
+}
+
 # Create + activate the business test user for bkn-safe. Gated on bkn-safe + an
 # authenticated openbkn admin session. Honors ONBOARD_SKIP_ISF_TEST_USER and
 # ONBOARD_TEST_USER_PASSWORD / ONBOARD_DEFAULT_TEST_USER_PASSWORD (default 111111).
@@ -379,6 +407,9 @@ onboard_provision_bkn_safe_test_user() {
     if [[ -n "${_id}" ]]; then
         log_info "User [test] already exists (id ${_id}); re-syncing business roles…"
         onboard_bkn_safe_assign_business_roles test || true
+        # Older onboard runs could leave must-change-password set (the heal is a
+        # no-op when the password was changed away from the default).
+        onboard_bkn_safe_heal_test_password_flag "${_final}" "${_kurl}" || true
         ONBOARD_REPORT_ISF_TEST_USER="ready (existed; business roles re-synced; password unchanged)"
         return 0
     fi
