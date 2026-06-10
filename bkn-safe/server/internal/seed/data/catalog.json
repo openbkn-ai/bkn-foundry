@@ -169,23 +169,6 @@
         {"id": "delete", "name": "删除"},
         {"id": "execute", "name": "调用/执行"}
       ]
-    },
-    {
-      "id": "data_flow",
-      "name": "数据流程",
-      "_source": "flow-automation",
-      "_note": "另有固定实例资源 dataflow_page:o11y(op: display)。legacy 兼容 op: only_admin/admin/share/publish/app_token/owner 未列入",
-      "operations": [
-        {"id": "list", "name": "列出"},
-        {"id": "create", "name": "创建"},
-        {"id": "modify", "name": "修改"},
-        {"id": "delete", "name": "删除"},
-        {"id": "view", "name": "查看"},
-        {"id": "manual_exec", "name": "手动执行"},
-        {"id": "run_statistics", "name": "运行统计"},
-        {"id": "run_with_app", "name": "应用运行"},
-        {"id": "display", "name": "展示(o11y 页)"}
-      ]
     }
   ]
 }

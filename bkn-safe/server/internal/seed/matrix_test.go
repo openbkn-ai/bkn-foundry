@@ -31,7 +31,7 @@ func TestRoleResourceMatrix(t *testing.T) {
 	// agreed role -> resource-type domain.
 	domain := map[string]map[string]bool{
 		appAdmin:  set("agent", "agent_tpl"),
-		dataAdmin: set("catalog", "resource", "connector_type", "knowledge_network", "stream_data_pipeline", "data_flow"),
+		dataAdmin: set("catalog", "resource", "connector_type", "knowledge_network", "stream_data_pipeline"),
 		aiAdmin:   set("operator", "skill", "mcp", "tool_box", "small_model"),
 	}
 	// a representative, granted op per resource type (positive case uses these).
@@ -40,7 +40,7 @@ func TestRoleResourceMatrix(t *testing.T) {
 		"stream_data_pipeline": "create", "catalog": "create", "resource": "create",
 		"connector_type": "create", "knowledge_network": "create",
 		"tool_box": "execute", "mcp": "execute", "operator": "execute", "skill": "execute",
-		"small_model": "execute", "data_flow": "create",
+		"small_model": "execute",
 	}
 	allTypes := make([]string, 0, len(repOp))
 	for tpe := range repOp {
