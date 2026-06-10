@@ -4,9 +4,9 @@
 
 Execution Factory is part of the KWeaver ecosystem. If you like this project, please give the KWeaver project a ⭐!
 
-KWeaver is an open-source ecosystem for building, publishing, and running decision-intelligence AI applications. It uses ontology as the core method for business knowledge networks, with DIP as the core platform, aiming to provide flexible, agile, and reliable enterprise-level decision intelligence to further unleash the productivity of every member.
+KWeaver is an open-source ecosystem for building, publishing, and running decision-intelligence AI applications. It uses ontology as the core method for business knowledge networks, with BKN Foundry as the core platform, aiming to provide flexible, agile, and reliable enterprise-level decision intelligence to further unleash the productivity of every member.
 
-The DIP platform includes key subsystems such as ADP, Decision Agent, DIP Studio, and AI Store.
+The BKN Foundry platform includes key subsystems such as ADP, Decision Agent, and AI Store.
 
 ## 📚 Quick Links
 

@@ -63,7 +63,7 @@ bash ./dev/mac.sh foundry install --minimum   # implies --minimum; bundled data-
 # add leading -y for non-interactive (deploy.sh / onboard)
 ```
 
-Config defaults: `dev/conf/mac-config.yaml`. `kweaver-dip` is not wired in `mac.sh` (use Linux `deploy.sh`); `isf` / `etrino` (`vega`) are delegated to `deploy.sh` — see [dev/README.md](dev/README.md).
+Config defaults: `dev/conf/mac-config.yaml`. `isf` / `etrino` (`vega`) are delegated to `deploy.sh` — see [dev/README.md](dev/README.md).
 
 ## 🚀 Quick Start
 

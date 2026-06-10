@@ -43,7 +43,6 @@ source "${SCRIPT_DIR}/scripts/services/ingress_nginx.sh"
 source "${SCRIPT_DIR}/scripts/services/opensearch.sh"
 source "${SCRIPT_DIR}/scripts/services/core.sh"
 source "${SCRIPT_DIR}/scripts/services/status.sh"
-source "${SCRIPT_DIR}/scripts/services/dip.sh"
 
 usage() {
     echo "Kubernetes Infrastructure Initialization Script"
@@ -76,8 +75,6 @@ usage() {
     echo "  bkn-foundry uninstall        Uninstall BKN Foundry services"
     echo "  bkn-foundry status           Show BKN Foundry services status"
     echo "                                Use --set to pass custom values to all charts"
-    echo "  dip install                   Install DIP data-intelligence stack (aliases: bkn-dip)"
-    echo "  dip download|uninstall|status Manage the DIP stack"
     echo "  all install                   Run full initialization (k8s + mariadb + redis + ingress-nginx)"
     echo ""
     echo "Examples:"
@@ -724,36 +721,6 @@ main() {
         return 0
     fi
     
-    # Handle kweaver-dip module
-    if [[ "${module}" == "bkn-dip" ]] || [[ "${module}" == "kweaver-dip" ]] || [[ "${module}" == "dip" ]]; then
-        case "${action}" in
-            install|init)
-                check_root
-                parse_dip_args "install" "$@"
-                confirm_access_address_before_install
-                install_dip
-                ;;
-            download)
-                parse_dip_args "download" "$@"
-                download_dip
-                ;;
-            uninstall)
-                check_root
-                parse_dip_args "uninstall" "$@"
-                uninstall_dip
-                ;;
-            status)
-                parse_dip_args "status" "$@"
-                show_dip_status
-                ;;
-            *)
-                log_error "Unknown kweaver-dip action: ${action}"
-                usage
-                exit 1
-                ;;
-        esac
-        return 0
-    fi
 
     # Handle etrino module
     if [[ "${module}" == "etrino" ]]; then
@@ -900,7 +867,6 @@ main() {
             status)
                 log_info "BKN Foundry application services status:"
                 show_core_status
-                show_dip_status
                 ;;
             *)
                 log_error "Unknown kweaver action: ${action}"
