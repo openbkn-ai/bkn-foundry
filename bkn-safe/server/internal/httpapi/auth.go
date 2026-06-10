@@ -78,11 +78,15 @@ button,.btn{width:100%;box-sizing:border-box;border:0;border-radius:8px;padding:
 form{margin:0}
 </style>`
 
-// brandHTML is the BKN Studio brand row (mark + wordmark) shown atop each card.
-const brandHTML = `<div class="brand"><span class="brand-mark"><i class="core"></i><i class="orbit orbit-l"></i><i class="orbit orbit-r"></i></span><strong>BKN Studio</strong></div>`
+// brand renders the brand row (mark + wordmark) shown atop each card. Web
+// login pages carry the BKN Studio wordmark; the device-flow pages (CLI /
+// platform-level login) carry BKN Foundry.
+func brand(name string) string {
+	return `<div class="brand"><span class="brand-mark"><i class="core"></i><i class="orbit orbit-l"></i><i class="orbit orbit-r"></i></span><strong>` + name + `</strong></div>`
+}
 
 var loginPage = template.Must(template.New("login").Parse(pageCSS + `<!doctype html><meta charset="utf-8"><body>
-<div class="card">` + brandHTML + `<h3>登录</h3>
+<div class="card">` + brand("BKN Studio") + `<h3>登录</h3>
 <form method="post" action="/login">
   <input type="hidden" name="login_challenge" value="{{.Challenge}}">
   <input name="account" placeholder="账号" value="{{.Account}}" autofocus autocomplete="username">
@@ -92,7 +96,7 @@ var loginPage = template.Must(template.New("login").Parse(pageCSS + `<!doctype h
 </form></div></body>`))
 
 var changePasswordPage = template.Must(template.New("changepw").Parse(pageCSS + `<!doctype html><meta charset="utf-8"><body>
-<div class="card">` + brandHTML + `<h3>修改密码</h3>
+<div class="card">` + brand("BKN Studio") + `<h3>修改密码</h3>
 <div class="label">首次登录请设置新密码</div>
 {{if .Error}}<div class="note">{{.Error}}</div>{{end}}
 <form method="post" action="/change-password">
@@ -105,7 +109,7 @@ var changePasswordPage = template.Must(template.New("changepw").Parse(pageCSS + 
 </form></div></body>`))
 
 var consentPage = template.Must(template.New("consent").Parse(pageCSS + `<!doctype html><meta charset="utf-8"><body>
-<div class="card">` + brandHTML + `<h3>授权 {{.ClientName}}</h3>
+<div class="card">` + brand("BKN Studio") + `<h3>授权 {{.ClientName}}</h3>
 <div class="label">该应用将获得以下权限</div>
 <ul>{{range .Scopes}}<li>{{.}}</li>{{else}}<li>基础登录</li>{{end}}</ul>
 <form method="post" action="/consent">
@@ -115,7 +119,7 @@ var consentPage = template.Must(template.New("consent").Parse(pageCSS + `<!docty
 </form></div></body>`))
 
 var devicePage = template.Must(template.New("device").Parse(pageCSS + `<!doctype html><meta charset="utf-8"><body>
-<div class="card">` + brandHTML + `<h3>设备授权</h3>
+<div class="card">` + brand("BKN Foundry") + `<h3>设备授权</h3>
 <div class="label">设备码</div>
 <div class="code">{{if .UserCode}}{{.UserCode}}{{else}}— — — —{{end}}</div>
 <form method="post" action="/device">
@@ -126,7 +130,7 @@ var devicePage = template.Must(template.New("device").Parse(pageCSS + `<!doctype
 </form></div></body>`))
 
 var deviceSuccessPage = template.Must(template.New("devicesuccess").Parse(pageCSS + `<!doctype html><meta charset="utf-8"><body>
-<div class="card">` + brandHTML + `<h3>登录成功</h3>
+<div class="card">` + brand("BKN Foundry") + `<h3>登录成功</h3>
 <div class="note">设备已授权,可关闭此页面,返回命令行继续。</div>
 </div></body>`))
 
