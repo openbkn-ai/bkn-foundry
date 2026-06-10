@@ -46,6 +46,10 @@ ingress:
     # super-admin), so safe to expose; the raw internal /authz + /directory stay
     # ClusterIP.
     - /api/safe/v1/admin
+    # Self-service reads (own permission list) for frontends. Token-gated
+    # in-service by RequireUser (introspect); the accessor id comes from the
+    # token, so a caller can only read its own grants.
+    - /api/safe/v1/me
   # hydra public OAuth2/OIDC endpoints exposed at the gateway, routed to the
   # paired hydra public service (port 4444): token, device authorization,
   # discovery, jwks, userinfo. Replaces the retired ISF ingress's /oauth2/* rules.
