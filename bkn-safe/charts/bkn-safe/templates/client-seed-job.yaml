@@ -28,8 +28,10 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           {{- /* The openbkn-studio SPA callback is browser-facing at the gateway,
                  so derive it from accessAddress (https://host[:port]/callback) when
-                 set; otherwise fall back to clientSeed.webRedirectUri (dev). The CLI
-                 callback stays loopback (the CLI runs on the user's machine). */}}
+                 set; otherwise fall back to clientSeed.webRedirectUri (dev). Any
+                 clientSeed.extraWebRedirectUris are appended (local web dev against
+                 a remote install). The CLI callback stays loopback (the CLI runs on
+                 the user's machine). */}}
           {{- $web := .Values.clientSeed.webRedirectUri }}
           {{- if and .Values.accessAddress .Values.accessAddress.host }}
             {{- $aa := .Values.accessAddress }}
@@ -41,11 +43,19 @@ spec:
               {{- $web = printf "%s://%s:%s/callback" $scheme $aa.host $port }}
             {{- end }}
           {{- end }}
+          {{- $webUris := list $web }}
+          {{- range .Values.clientSeed.extraWebRedirectUris }}
+            {{- if not (has . $webUris) }}{{- $webUris = append $webUris . }}{{- end }}
+          {{- end }}
+          {{- $logoutUris := list }}
+          {{- range $webUris }}{{- $logoutUris = append $logoutUris (trimSuffix "callback" .) }}{{- end }}
           env:
             - name: ADMIN
               value: {{ .Values.config.hydra.adminURL | quote }}
-            - name: WEB_REDIRECT
-              value: {{ $web | quote }}
+            - name: WEB_REDIRECTS_JSON
+              value: {{ $webUris | toJson | quote }}
+            - name: WEB_LOGOUTS_JSON
+              value: {{ $logoutUris | toJson | quote }}
             - name: CLI_REDIRECT
               value: {{ .Values.clientSeed.cliRedirectUri | quote }}
             - name: CI_SECRET
@@ -74,7 +84,9 @@ spec:
                 echo "  (skip ci-runner: clientSeed.ciRunnerSecret not set)"
               fi
               reg openbkn-sdk '{"client_id":"openbkn-sdk","grant_types":["urn:ietf:params:oauth:grant-type:device_code","refresh_token"],"response_types":["code"],"token_endpoint_auth_method":"none","scope":"openid offline","audience":["bkn-safe"]}'
-              reg openbkn-studio '{"client_id":"openbkn-studio","grant_types":["authorization_code","refresh_token"],"response_types":["code"],"token_endpoint_auth_method":"none","redirect_uris":["'"$WEB_REDIRECT"'"],"scope":"openid offline","audience":["bkn-safe"]}'
+              # redirect/post-logout URI arrays are rendered by the chart
+              # (gateway callback + clientSeed.extraWebRedirectUris).
+              reg openbkn-studio '{"client_id":"openbkn-studio","grant_types":["authorization_code","refresh_token"],"response_types":["code"],"token_endpoint_auth_method":"none","redirect_uris":'"$WEB_REDIRECTS_JSON"',"post_logout_redirect_uris":'"$WEB_LOGOUTS_JSON"',"scope":"openid offline","audience":["bkn-safe"]}'
               reg openbkn-cli '{"client_id":"openbkn-cli","grant_types":["authorization_code","refresh_token"],"response_types":["code"],"token_endpoint_auth_method":"none","redirect_uris":["'"$CLI_REDIRECT"'"],"scope":"openid offline all","audience":["bkn-safe"]}'
               echo "client seed done"
 {{- end }}
