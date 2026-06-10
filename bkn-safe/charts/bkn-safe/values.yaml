@@ -69,7 +69,14 @@ ingress:
 # dev fallback when no accessAddress is set.
 clientSeed:
   enabled: true
-  webRedirectUri: "http://localhost:3000/callback"
+  # Matches the bkn-studio vite dev server port (fixed via strictPort).
+  webRedirectUri: "http://localhost:8000/callback"
+  # Appended to openbkn-studio's redirect_uris IN ADDITION to the
+  # accessAddress-derived gateway callback, so a local web dev server can
+  # complete the OAuth flow against a remote install. Clear this list for
+  # hardened/production installs.
+  extraWebRedirectUris:
+    - "http://localhost:8000/callback"
   # Loopback redirect for the CLI password flow; must match the SDK's
   # `http://127.0.0.1:<DEFAULT_REDIRECT_PORT>/callback` (default port 9010).
   cliRedirectUri: "http://127.0.0.1:9010/callback"
