@@ -14,7 +14,7 @@ import (
 
 // registerAuth mounts the hydra login/consent/device provider pages. hydra is
 // configured with URLS_LOGIN/CONSENT/DEVICE_VERIFICATION pointing here. The
-// pages are server-rendered (no SPA), styled after a standard OAuth consent UX:
+// pages are server-rendered (no SPA), styled to match the BKN Studio console:
 // device shows the user_code to confirm, consent shows the requesting client +
 // requested scopes with explicit Authorize/Decline.
 func registerAuth(r *gin.Engine, p *auth.Provider, h *auth.HydraAdmin) {
@@ -29,31 +29,60 @@ func registerAuth(r *gin.Engine, p *auth.Provider, h *auth.HydraAdmin) {
 	r.GET("/device/success", showDeviceSuccess)
 }
 
-// page is the shared dark-theme shell (centered card), echoing a clean OAuth UX.
+// pageCSS is the shared light shell (centered card), following the BKN Studio
+// console design language: #2e68ff primary, soft radial-gradient backdrop,
+// white 20px-radius card, AntD-like 8px fields/buttons, and the brand mark
+// (blue core + amber orbit dots).
 const pageCSS = `<style>
-:root{color-scheme:dark}
+:root{color-scheme:light}
 body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
-  background:#1f1f1d;color:#e8e6e1;font:15px/1.5 -apple-system,Segoe UI,Roboto,sans-serif}
-.card{width:360px;background:#262624;border:1px solid #3a3a37;border-radius:16px;padding:32px}
-.card h3{text-align:center;font-weight:600;margin:8px 0 20px}
+  background:radial-gradient(circle at top left,rgba(55,114,255,.12),transparent 24%),
+    radial-gradient(circle at right center,rgba(243,192,91,.12),transparent 22%),
+    linear-gradient(180deg,#f7f9fc 0%,#edf1f7 100%);
+  color:#152239;font:15px/1.5 "Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  -webkit-font-smoothing:antialiased}
+.card{width:380px;box-sizing:border-box;background:#fff;border:1px solid rgba(22,40,73,.08);
+  border-radius:20px;padding:36px 32px;box-shadow:0 18px 48px rgba(22,40,73,.10)}
+.brand{display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:10px}
+.brand-mark{position:relative;width:40px;height:40px;border-radius:14px;
+  background:linear-gradient(145deg,rgba(46,104,255,.16),rgba(46,104,255,.04)),#fff;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.9),0 10px 24px rgba(46,104,255,.14)}
+.brand-mark i{position:absolute;border-radius:999px}
+.brand-mark .core{inset:11px;background:linear-gradient(180deg,#2762ff 0%,#1546c7 100%)}
+.brand-mark .orbit{width:10px;height:10px;background:#f0b755;box-shadow:0 0 0 4px rgba(240,183,85,.16)}
+.brand-mark .orbit-l{left:6px;top:10px}
+.brand-mark .orbit-r{right:5px;bottom:7px}
+.brand strong{color:#1c2438;font-size:22px;font-weight:700;letter-spacing:-.03em}
+.card h3{text-align:center;font-weight:600;font-size:16px;color:#1c2438;margin:4px 0 20px}
 .code{font:600 30px ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:6px;
-  text-align:center;background:#1f1f1d;border:1px solid #3a3a37;border-radius:12px;padding:18px;margin:8px 0}
-.label{font-size:12px;color:#a3a098;text-align:center;margin-bottom:4px}
-.note{font-size:13px;color:#a3a098;background:#1f1f1d;border:1px solid #3a3a37;border-radius:10px;padding:12px;margin:16px 0}
-input{width:100%;box-sizing:border-box;background:#1f1f1d;border:1px solid #3a3a37;border-radius:10px;
-  padding:11px 13px;color:#e8e6e1;font-size:14px;margin:6px 0}
+  text-align:center;background:#f9fbff;border:1px solid rgba(15,30,54,.08);border-radius:12px;
+  padding:18px;margin:8px 0;color:#1c2438}
+.label{font-size:12px;color:#72819b;text-align:center;margin-bottom:4px}
+.note{font-size:13px;color:#64748d;background:#f9fbff;border:1px solid rgba(15,30,54,.08);
+  border-radius:10px;padding:12px;margin:16px 0}
+input{width:100%;box-sizing:border-box;background:#fff;border:1px solid #d9d9d9;border-radius:8px;
+  padding:10px 12px;color:rgba(0,0,0,.88);font-size:14px;margin:6px 0;outline:none;
+  transition:border-color .2s,box-shadow .2s}
+input::placeholder{color:rgba(0,0,0,.35)}
+input:focus{border-color:#2e68ff;box-shadow:0 0 0 2px rgba(46,104,255,.1)}
 ul{list-style:none;padding:0;margin:14px 0}
-li{padding:6px 0;font-size:14px}li:before{content:"✓ ";color:#c9a8;color:#cf9a6b}
-button,.btn{width:100%;box-sizing:border-box;border:0;border-radius:10px;padding:12px;
-  font-size:15px;font-weight:600;cursor:pointer;margin-top:8px}
-.primary{background:#e8e6e1;color:#1f1f1d}
-.ghost{background:transparent;color:#a3a098;font-weight:500}
-.err{color:#e5736d;font-size:13px;text-align:center;margin:8px 0 0}
+li{padding:6px 0;font-size:14px;color:#152239}li:before{content:"✓ ";color:#2e68ff}
+button,.btn{width:100%;box-sizing:border-box;border:0;border-radius:8px;padding:11px;
+  font:inherit;font-size:15px;font-weight:600;cursor:pointer;margin-top:8px;
+  transition:background .2s,color .2s}
+.primary{background:#2e68ff;color:#fff;box-shadow:0 2px 0 rgba(46,104,255,.1)}
+.primary:hover{background:#4d80ff}
+.ghost{background:transparent;color:#64748d;font-weight:500}
+.ghost:hover{color:#dc2626}
+.err{color:#dc2626;font-size:13px;text-align:center;margin:8px 0 0}
 form{margin:0}
 </style>`
 
+// brandHTML is the BKN Studio brand row (mark + wordmark) shown atop each card.
+const brandHTML = `<div class="brand"><span class="brand-mark"><i class="core"></i><i class="orbit orbit-l"></i><i class="orbit orbit-r"></i></span><strong>BKN Studio</strong></div>`
+
 var loginPage = template.Must(template.New("login").Parse(pageCSS + `<!doctype html><meta charset="utf-8"><body>
-<div class="card"><h3>BKN Foundry 登录</h3>
+<div class="card">` + brandHTML + `<h3>登录</h3>
 <form method="post" action="/login">
   <input type="hidden" name="login_challenge" value="{{.Challenge}}">
   <input name="account" placeholder="账号" value="{{.Account}}" autofocus autocomplete="username">
@@ -63,7 +92,7 @@ var loginPage = template.Must(template.New("login").Parse(pageCSS + `<!doctype h
 </form></div></body>`))
 
 var changePasswordPage = template.Must(template.New("changepw").Parse(pageCSS + `<!doctype html><meta charset="utf-8"><body>
-<div class="card"><h3>修改密码</h3>
+<div class="card">` + brandHTML + `<h3>修改密码</h3>
 <div class="label">首次登录请设置新密码</div>
 {{if .Error}}<div class="note">{{.Error}}</div>{{end}}
 <form method="post" action="/change-password">
@@ -76,7 +105,7 @@ var changePasswordPage = template.Must(template.New("changepw").Parse(pageCSS + 
 </form></div></body>`))
 
 var consentPage = template.Must(template.New("consent").Parse(pageCSS + `<!doctype html><meta charset="utf-8"><body>
-<div class="card"><h3>授权 {{.ClientName}}</h3>
+<div class="card">` + brandHTML + `<h3>授权 {{.ClientName}}</h3>
 <div class="label">该应用将获得以下权限</div>
 <ul>{{range .Scopes}}<li>{{.}}</li>{{else}}<li>基础登录</li>{{end}}</ul>
 <form method="post" action="/consent">
@@ -86,7 +115,7 @@ var consentPage = template.Must(template.New("consent").Parse(pageCSS + `<!docty
 </form></div></body>`))
 
 var devicePage = template.Must(template.New("device").Parse(pageCSS + `<!doctype html><meta charset="utf-8"><body>
-<div class="card"><h3>设备授权</h3>
+<div class="card">` + brandHTML + `<h3>设备授权</h3>
 <div class="label">设备码</div>
 <div class="code">{{if .UserCode}}{{.UserCode}}{{else}}— — — —{{end}}</div>
 <form method="post" action="/device">
@@ -97,7 +126,7 @@ var devicePage = template.Must(template.New("device").Parse(pageCSS + `<!doctype
 </form></div></body>`))
 
 var deviceSuccessPage = template.Must(template.New("devicesuccess").Parse(pageCSS + `<!doctype html><meta charset="utf-8"><body>
-<div class="card"><h3>登录成功</h3>
+<div class="card">` + brandHTML + `<h3>登录成功</h3>
 <div class="note">设备已授权,可关闭此页面,返回命令行继续。</div>
 </div></body>`))
 
