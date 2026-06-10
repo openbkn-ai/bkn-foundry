@@ -48,6 +48,7 @@ button,.btn{width:100%;box-sizing:border-box;border:0;border-radius:10px;padding
   font-size:15px;font-weight:600;cursor:pointer;margin-top:8px}
 .primary{background:#e8e6e1;color:#1f1f1d}
 .ghost{background:transparent;color:#a3a098;font-weight:500}
+.err{color:#e5736d;font-size:13px;text-align:center;margin:8px 0 0}
 form{margin:0}
 </style>`
 
@@ -55,8 +56,9 @@ var loginPage = template.Must(template.New("login").Parse(pageCSS + `<!doctype h
 <div class="card"><h3>BKN Foundry 登录</h3>
 <form method="post" action="/login">
   <input type="hidden" name="login_challenge" value="{{.Challenge}}">
-  <input name="account" placeholder="账号" autofocus autocomplete="username">
+  <input name="account" placeholder="账号" value="{{.Account}}" autofocus autocomplete="username">
   <input name="password" type="password" placeholder="密码" autocomplete="current-password">
+  {{if .Error}}<div class="err">{{.Error}}</div>{{end}}
   <button class="primary" type="submit">登录</button>
 </form></div></body>`))
 
@@ -116,7 +118,7 @@ func showLogin(c *gin.Context) {
 		c.String(http.StatusBadRequest, "missing login_challenge")
 		return
 	}
-	renderHTML(c, loginPage, map[string]string{"Challenge": challenge})
+	renderHTML(c, loginPage, map[string]any{"Challenge": challenge})
 }
 
 func doLogin(c *gin.Context, p *auth.Provider) {
@@ -137,7 +139,11 @@ func doLogin(c *gin.Context, p *auth.Provider) {
 			return
 		}
 		if errors.Is(err, auth.ErrInvalidCredentials) || errors.Is(err, auth.ErrUserDisabled) {
-			c.String(http.StatusUnauthorized, "登录失败：账号或密码错误")
+			// Re-render the login form with an inline error instead of a bare
+			// error page, keeping the entered account and the same challenge.
+			c.Status(http.StatusUnauthorized)
+			c.Header("Content-Type", "text/html; charset=utf-8")
+			_ = loginPage.Execute(c.Writer, map[string]any{"Challenge": challenge, "Account": account, "Error": "账号或密码错误"})
 			return
 		}
 		slog.Error("login: accept failed", "err", err)
@@ -195,8 +201,19 @@ func doChangePassword(c *gin.Context, p *auth.Provider) {
 	c.Redirect(http.StatusFound, redirectTo)
 }
 
+// firstPartyClients are the platform's own seeded login entry-point clients
+// (see charts/bkn-safe client-seed-job). Consent is implied for them — the
+// consent screen only makes sense for third-party clients asking the user to
+// share access.
+var firstPartyClients = map[string]bool{
+	"openbkn-studio": true,
+	"openbkn-cli":    true,
+	"openbkn-sdk":    true,
+}
+
 // showConsent renders the consent screen (requesting client + requested scopes
-// + Authorize/Decline). Explicit consent, mirroring a standard OAuth UX.
+// + Authorize/Decline) for third-party clients. First-party clients are
+// auto-accepted without a page, mirroring a standard first-party OAuth UX.
 func showConsent(c *gin.Context, p *auth.Provider) {
 	challenge := c.Query("consent_challenge")
 	if challenge == "" {
@@ -207,6 +224,16 @@ func showConsent(c *gin.Context, p *auth.Provider) {
 	if err != nil {
 		slog.Error("consent: get failed", "err", err)
 		c.String(http.StatusInternalServerError, "internal error")
+		return
+	}
+	if firstPartyClients[cr.ClientID] {
+		redirectTo, err := p.Consent(c.Request.Context(), challenge, c.ClientIP(), auth.ClientTypeWeb, false)
+		if err != nil {
+			slog.Error("consent: first-party auto-accept failed", "err", err)
+			c.String(http.StatusInternalServerError, "internal error")
+			return
+		}
+		c.Redirect(http.StatusFound, redirectTo)
 		return
 	}
 	name := cr.ClientName
