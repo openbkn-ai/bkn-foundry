@@ -241,6 +241,11 @@ func (eh *embeddingHandler) executeEmbedding(ctx context.Context, resource *inte
 			// LAG=89，向量一个没写）。先把队列排空——连续 N 次空轮询才认为干净，
 			// 途中文档照常处理、多余哨兵只提交不重复收尾
 			if docID == interfaces.EmptyDocumentID {
+				// 触发哨兵立刻提交：Kafka 提交是绝对位点、后写覆盖，若留到收尾才提交，
+				// 会把 drain 期间已推进的位点倒拨回哨兵处，下次启动整段重放、计数虚高
+				if err := eh.kafkaAccess.CommitMessages(ctx, reader, msg); err != nil {
+					logger.Errorf("Failed to commit end sentinel for task %s: %v", buildTaskInfo.ID, err)
+				}
 				emptyPolls := 0
 				for emptyPolls < embeddingDrainEmptyPolls {
 					drainCtx, cancelDrain := context.WithTimeout(context.Background(), embeddingDrainPollTimeout)
@@ -311,10 +316,7 @@ func (eh *embeddingHandler) executeEmbedding(ctx context.Context, resource *inte
 					logger.Errorf("update build task status to completed failed: task %s, %v", buildTaskInfo.ID, err)
 				}
 
-				// 哨兵提交失败会在消费组留下 LAG 并触发日后重投，必须留痕
-				if err := eh.kafkaAccess.CommitMessages(ctx, reader, msg); err != nil {
-					logger.Errorf("Failed to commit end sentinel for task %s: %v", buildTaskInfo.ID, err)
-				}
+				// 触发哨兵已在 drain 入口提交；这里不可再提交——会把位点倒拨回哨兵处
 				logger.Infof("Embedding finished for task %s: %d processed, %d failed", buildTaskInfo.ID, finalCount, len(stillFailed))
 				return nil
 			}
