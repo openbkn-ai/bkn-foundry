@@ -73,3 +73,77 @@ func assertCatalogDisabledError(t *testing.T, err error) {
 		t.Fatalf("expected %s, got %s", verrors.VegaBackend_Catalog_IsDisabled, httpErr.BaseError.ErrorCode)
 	}
 }
+
+// failed 状态必须允许 start（否则失败任务只能删除重建）。
+// 借 catalog-disabled 错误证明状态检查已放行：若 failed 被状态机拒绝，
+// 错误将是 InvalidStateTransition 而非 Catalog_IsDisabled。
+func TestStartBuildTaskAllowsFailedStatus(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+	service := &buildTaskService{cs: mockCS, bta: mockBTA}
+
+	mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").
+		Return(&interfaces.BuildTask{
+			ID:        "task-1",
+			CatalogID: "catalog-1",
+			Status:    interfaces.BuildTaskStatusFailed,
+		}, nil)
+	mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
+		Return(&interfaces.Catalog{ID: "catalog-1", Enabled: false}, nil)
+
+	err := service.StartBuildTask(context.Background(), "task-1", interfaces.BuildTaskExecuteTypeIncremental)
+	assertCatalogDisabledError(t, err)
+}
+
+// running → stopping：正常停止路径。
+func TestStopBuildTaskRunningToStopping(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+	service := &buildTaskService{bta: mockBTA}
+
+	mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").
+		Return(&interfaces.BuildTask{ID: "task-1", Status: interfaces.BuildTaskStatusRunning}, nil)
+	mockBTA.EXPECT().UpdateStatus(gomock.Any(), "task-1",
+		map[string]any{"status": interfaces.BuildTaskStatusStopping}).Return(nil)
+
+	if err := service.StopBuildTask(context.Background(), "task-1"); err != nil {
+		t.Fatalf("expected nil, got %v", err)
+	}
+}
+
+// stopping → stopped：worker 已不在时 stopping 永远不会被推进，
+// 二次 stop 必须能强制落停，否则任务卡死无法删除。
+func TestStopBuildTaskForceFinalizesStuckStopping(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+	service := &buildTaskService{bta: mockBTA}
+
+	mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").
+		Return(&interfaces.BuildTask{ID: "task-1", Status: interfaces.BuildTaskStatusStopping}, nil)
+	mockBTA.EXPECT().UpdateStatus(gomock.Any(), "task-1",
+		map[string]any{"status": interfaces.BuildTaskStatusStopped}).Return(nil)
+
+	if err := service.StopBuildTask(context.Background(), "task-1"); err != nil {
+		t.Fatalf("expected nil, got %v", err)
+	}
+}
+
+// stopped 任务不可再 stop。
+func TestStopBuildTaskRejectsStoppedStatus(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+	service := &buildTaskService{bta: mockBTA}
+
+	mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").
+		Return(&interfaces.BuildTask{ID: "task-1", Status: interfaces.BuildTaskStatusStopped}, nil)
+
+	err := service.StopBuildTask(context.Background(), "task-1")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	httpErr, ok := err.(*rest.HTTPError)
+	if !ok || httpErr.BaseError.ErrorCode != verrors.VegaBackend_BuildTask_InvalidStateTransition {
+		t.Fatalf("expected InvalidStateTransition, got %v", err)
+	}
+}
