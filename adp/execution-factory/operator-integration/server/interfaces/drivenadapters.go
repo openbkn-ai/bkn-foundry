@@ -847,6 +847,8 @@ type VegaCatalogRequest struct {
 	Name        string   `json:"name"`
 	Tags        []string `json:"tags"`
 	Description string   `json:"description"`
+	// Internal 系统内部目录：在权限服务按 internal_catalog 类型注册，仅超级管理员可见
+	Internal bool `json:"internal"`
 }
 
 type VegaCatalog struct {

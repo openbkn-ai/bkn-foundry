@@ -86,6 +86,7 @@ func (ca *catalogAccess) Create(ctx context.Context, catalog *interfaces.Catalog
 			"f_description",
 			"f_type",
 			"f_enabled",
+			"f_internal",
 			"f_connector_type",
 			"f_connector_config",
 			"f_metadata",
@@ -107,6 +108,7 @@ func (ca *catalogAccess) Create(ctx context.Context, catalog *interfaces.Catalog
 			catalog.Description,
 			catalog.Type,
 			catalog.Enabled,
+			catalog.Internal,
 			catalog.ConnectorType,
 			connectorConfigStr,
 			metadataStr,
@@ -152,6 +154,7 @@ func (ca *catalogAccess) GetByID(ctx context.Context, id string) (*interfaces.Ca
 		"f_description",
 		"f_type",
 		"f_enabled",
+		"f_internal",
 		"f_connector_type",
 		"f_connector_config",
 		"f_metadata",
@@ -187,6 +190,7 @@ func (ca *catalogAccess) GetByID(ctx context.Context, id string) (*interfaces.Ca
 		&catalog.Description,
 		&catalog.Type,
 		&catalog.Enabled,
+		&catalog.Internal,
 		&catalog.ConnectorType,
 		&connectorConfigStr,
 		&metadataStr,
@@ -256,6 +260,7 @@ func (ca *catalogAccess) GetByIDs(ctx context.Context, ids []string) ([]*interfa
 		"f_description",
 		"f_type",
 		"f_enabled",
+		"f_internal",
 		"f_connector_type",
 		"f_connector_config",
 		"f_metadata",
@@ -300,6 +305,7 @@ func (ca *catalogAccess) GetByIDs(ctx context.Context, ids []string) ([]*interfa
 			&catalog.Description,
 			&catalog.Type,
 			&catalog.Enabled,
+			&catalog.Internal,
 			&catalog.ConnectorType,
 			&connectorConfigStr,
 			&metadataStr,
@@ -372,6 +378,7 @@ func (ca *catalogAccess) GetByName(ctx context.Context, name string) (*interface
 		"f_description",
 		"f_type",
 		"f_enabled",
+		"f_internal",
 		"f_connector_type",
 		"f_connector_config",
 		"f_metadata",
@@ -407,6 +414,7 @@ func (ca *catalogAccess) GetByName(ctx context.Context, name string) (*interface
 		&catalog.Description,
 		&catalog.Type,
 		&catalog.Enabled,
+		&catalog.Internal,
 		&catalog.ConnectorType,
 		&connectorConfigStr,
 		&metadataStr,
@@ -528,6 +536,40 @@ func (ca *catalogAccess) ListIDs(ctx context.Context, params interfaces.Catalogs
 	return ids, nil
 }
 
+// ListInternalIDs 列出所有系统内部目录的 ID（用于权限校验时按 internal_catalog 类型分组）。
+func (ca *catalogAccess) ListInternalIDs(ctx context.Context) ([]string, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "List internal catalog IDs")
+	defer span.End()
+
+	sqlStr, vals, err := sq.Select("f_id").From(CATALOG_TABLE_NAME).
+		Where(sq.Eq{"f_internal": true}).
+		ToSql()
+	if err != nil {
+		span.SetStatus(codes.Error, "Build sql failed")
+		return nil, err
+	}
+
+	rows, err := ca.db.QueryContext(ctx, sqlStr, vals...)
+	if err != nil {
+		span.SetStatus(codes.Error, "Query failed")
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	ids := make([]string, 0)
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			span.SetStatus(codes.Error, "Scan row failed")
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+
+	span.SetStatus(codes.Ok, "")
+	return ids, nil
+}
+
 // List lists Catalogs with filters.
 func (ca *catalogAccess) List(ctx context.Context, params interfaces.CatalogsQueryParams) ([]*interfaces.Catalog, int64, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "List catalogs")
@@ -540,6 +582,7 @@ func (ca *catalogAccess) List(ctx context.Context, params interfaces.CatalogsQue
 		catalogExtCol(params, "f_description"),
 		catalogExtCol(params, "f_type"),
 		catalogExtCol(params, "f_enabled"),
+		catalogExtCol(params, "f_internal"),
 		catalogExtCol(params, "f_connector_type"),
 		catalogExtCol(params, "f_connector_config"),
 		catalogExtCol(params, "f_metadata"),
@@ -632,6 +675,7 @@ func (ca *catalogAccess) List(ctx context.Context, params interfaces.CatalogsQue
 			&catalog.Description,
 			&catalog.Type,
 			&catalog.Enabled,
+			&catalog.Internal,
 			&catalog.ConnectorType,
 			&connectorConfigStr,
 			&metadataStr,
@@ -690,7 +734,9 @@ func (ca *catalogAccess) ListAuthResources(ctx context.Context, params interface
 	builder := sq.Select(
 		"f_id",
 		"f_name",
-	).From(CATALOG_TABLE_NAME)
+	).From(CATALOG_TABLE_NAME).
+		// 系统内部目录按 internal_catalog 类型授权，不进入 catalog 类型的授权资源清单
+		Where(sq.Eq{"f_internal": false})
 
 	if params.ID != "" {
 		builder = builder.Where(sq.Eq{"f_id": params.ID})

@@ -39,6 +39,8 @@ type CatalogRequest struct {
 	Tags        []string `json:"tags"`
 	Description string   `json:"description"`
 	Enabled     bool     `json:"enabled"`
+	// Internal 系统内部目录：在权限服务按 internal_catalog 类型注册，仅超级管理员可见
+	Internal bool `json:"internal"`
 	// ConnectorType string         `json:"connector_type"`
 	// ConnectorCfg  map[string]any `json:"connector_config"`
 }

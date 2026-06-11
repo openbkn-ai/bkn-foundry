@@ -108,6 +108,8 @@ CREATE TABLE IF NOT EXISTS t_catalog (
 
     f_type                    VARCHAR(20 CHAR) NOT NULL DEFAULT '',
     f_enabled                 TINYINT NOT NULL DEFAULT 1,
+    -- 是否系统内部目录：内部目录在权限服务按 internal_catalog 类型注册，仅超级管理员可见
+    f_internal                TINYINT NOT NULL DEFAULT 0,
 
     -- Physical Catalog 专属字段
     f_connector_type          VARCHAR(50 CHAR) NOT NULL DEFAULT '',

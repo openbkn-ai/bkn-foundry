@@ -34,6 +34,8 @@ type Catalog struct {
 
 	Type    string `json:"type"`
 	Enabled bool   `json:"enabled"`
+	// Internal 系统内部目录：在权限服务按 internal_catalog 类型注册，仅超级管理员可见
+	Internal bool `json:"internal"`
 
 	ConnectorType string          `json:"connector_type"`
 	ConnectorCfg  ConnectorConfig `json:"connector_config"`
@@ -85,6 +87,10 @@ type CatalogRequest struct {
 	Enabled       bool            `json:"enabled"`
 	ConnectorType string          `json:"connector_type"`
 	ConnectorCfg  ConnectorConfig `json:"connector_config"`
+
+	// Internal 仅创建时生效，创建后不可变更（Update 忽略该字段）；
+	// 需要 internal_catalog 类型的 create 权限（默认仅超级管理员/系统 S2S 身份）
+	Internal bool `json:"internal,omitempty"`
 
 	// Extensions 根对象出现该键（含 null 需客户端避免）时整包替换；指针为 nil 表示请求体未携带该字段
 	Extensions *map[string]string `json:"extensions,omitempty"`

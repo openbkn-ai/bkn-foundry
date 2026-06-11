@@ -42,6 +42,10 @@ func newTestService(t *testing.T) (*resourceService,
 		cs:  mockCS,
 		bta: mockBTA,
 	}
+
+	// 默认无系统内部目录；覆盖 internal 行为的用例可叠加更具体的 EXPECT
+	mockCS.EXPECT().ListInternalIDs(gomock.Any()).Return([]string{}, nil).AnyTimes()
+
 	return rs, mockRA, mockPS, mockDS, mockUMS, mockCS, mockBTA
 }
 
@@ -463,5 +467,81 @@ func TestUpdate_Success(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// ===== Internal catalog 下的资源（internal_resource 类型） =====
+
+func TestCreate_InternalCatalogResourceUsesInternalAuthType(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockRA := vmock.NewMockResourceAccess(ctrl)
+	mockPS := vmock.NewMockPermissionService(ctrl)
+	mockCS := vmock.NewMockCatalogService(ctrl)
+	rs := &resourceService{ra: mockRA, ps: mockPS, cs: mockCS}
+
+	mockCS.EXPECT().ListInternalIDs(gomock.Any()).Return([]string{"cat-internal"}, nil)
+	mockPS.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+		Type: interfaces.AUTH_RESOURCE_TYPE_INTERNAL_RESOURCE,
+		ID:   interfaces.RESOURCE_ID_ALL,
+	}, []string{interfaces.OPERATION_TYPE_CREATE}).Return(nil)
+	mockCS.EXPECT().CheckExistByID(gomock.Any(), "cat-internal").Return(true, nil)
+	mockRA.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
+	mockPS.EXPECT().CreateResources(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, resources []interfaces.PermissionResource, _ []string) error {
+			if resources[0].Type != interfaces.AUTH_RESOURCE_TYPE_INTERNAL_RESOURCE {
+				t.Fatalf("expected internal_resource auth type, got %s", resources[0].Type)
+			}
+			return nil
+		},
+	)
+
+	_, err := rs.Create(context.Background(), &interfaces.ResourceRequest{
+		CatalogID: "cat-internal",
+		Name:      "internal-res",
+		Category:  "table",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestList_InternalResourceCheckedSeparately(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockRA := vmock.NewMockResourceAccess(ctrl)
+	mockPS := vmock.NewMockPermissionService(ctrl)
+	mockCS := vmock.NewMockCatalogService(ctrl)
+	mockUMS := vmock.NewMockUserMgmtService(ctrl)
+	rs := &resourceService{ra: mockRA, ps: mockPS, cs: mockCS, ums: mockUMS}
+
+	mockRA.EXPECT().ListIDs(gomock.Any(), interfaces.ResourcesQueryParams{
+		PaginationQueryParams: interfaces.PaginationQueryParams{Limit: -1},
+	}).Return([]string{"r1", "r2"}, nil)
+	mockCS.EXPECT().ListInternalIDs(gomock.Any()).Return([]string{"cat-internal"}, nil)
+	mockRA.EXPECT().ListIDs(gomock.Any(), interfaces.ResourcesQueryParams{CatalogID: "cat-internal"}).
+		Return([]string{"r2"}, nil)
+	// 普通资源按 resource 类型校验
+	mockPS.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
+		[]string{"r1"}, gomock.Any(), true, gomock.Any()).
+		Return(map[string]interfaces.PermissionResourceOps{"r1": {ResourceID: "r1"}}, nil)
+	// 内部目录下的资源按 internal_resource 类型校验；业务角色无授权 → 被过滤
+	mockPS.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_INTERNAL_RESOURCE,
+		[]string{"r2"}, gomock.Any(), true, gomock.Any()).
+		Return(map[string]interfaces.PermissionResourceOps{}, nil)
+	mockRA.EXPECT().GetByIDsBasic(gomock.Any(), []string{"r1"}).
+		Return([]*interfaces.Resource{{ID: "r1"}}, nil)
+	mockRA.EXPECT().AttachListExtensions(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+	mockUMS.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
+
+	result, total, err := rs.List(context.Background(), interfaces.ResourcesQueryParams{
+		PaginationQueryParams: interfaces.PaginationQueryParams{Limit: -1},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if total != 1 {
+		t.Errorf("expected total 1, got %d", total)
+	}
+	if len(result) != 1 || result[0].ID != "r1" {
+		t.Errorf("expected only 'r1' visible, got %v", result)
 	}
 }
