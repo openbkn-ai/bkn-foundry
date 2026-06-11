@@ -46,6 +46,11 @@ func (aqa *asynqAccess) CreateClient() *asynq.Client {
 	return asynq.NewClient(redisOpt)
 }
 
+// CreateInspector creates and returns the Asynq inspector for queue introspection.
+func (aqa *asynqAccess) CreateInspector() *asynq.Inspector {
+	return asynq.NewInspector(aqa.getRedisClientOpt())
+}
+
 // CreateServer creates and returns the Asynq server for processing tasks.
 func (aqa *asynqAccess) CreateServer() *asynq.Server {
 	redisOpt := aqa.getRedisClientOpt()
