@@ -159,6 +159,37 @@ curl -X POST $SAFE/api/safe/v1/authz/check -H 'Content-Type: application/json' \
 
 ---
 
+## 自助 API `/api/safe/v1/me`(需鉴权,网关暴露)
+
+面向前端/CLI 的"我能做什么"读取。**每个请求需 `Authorization: Bearer <hydra access token>`**;中间件 `RequireUser` 仅认证(introspect token 取 subject),不做管理员判定——任何登录访问者都可读**自己的**数据(accessor id 取自 token,不可由调用方指定)。
+
+### GET "" — 当前访问者的身份与角色
+
+登录后前端取一次,驱动头像/角色展示与菜单粗判。角色名经 roles 表解析;悬挂绑定(角色行已删)回退为原始 id。token subject 无对应用户行时返回 404。
+
+```json
+{ "id": "b38b...", "account": "test", "name": "测试用户", "email": "t@x.io",
+  "account_type": "user", "departments": ["d-9"],
+  "roles": ["数据管理员"], "role_ids": ["00990824-..."] }
+```
+
+> 菜单逻辑请依赖 `role_ids`(保号 UUID)而非 `roles`(显示名,可改名)。
+
+### GET /permissions — 当前访问者的全量权限列表
+
+含角色继承的全部授权,按资源对象分组、操作去重;类型级授权 id 为 `*`(超管通配为 `type:"*", id:""`)。
+
+```json
+{ "is_admin": false,
+  "permissions": [
+    { "resource": { "type": "agent", "id": "*" }, "operations": ["use"] },
+    { "resource": { "type": "kn", "id": "kn-1" }, "operations": ["view"] } ] }
+```
+
+> 前端用它做菜单/按钮显隐,仅是 UX;后端每个请求仍必须走 `/authz/check` 强制鉴权。
+
+---
+
 ## 角色 UUID(保号)
 
 | 角色 | UUID | source |

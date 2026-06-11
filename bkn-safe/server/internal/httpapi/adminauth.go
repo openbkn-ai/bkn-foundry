@@ -51,6 +51,26 @@ func RequireAdmin(v TokenVerifier, e *authz.Enforcer) gin.HandlerFunc {
 	}
 }
 
+// RequireUser is the gin middleware guarding self-service APIs (/me). It only
+// authenticates: verify the bearer token and stash the subject as the caller's
+// accessor id. No authz check — any logged-in accessor may read its own data.
+func RequireUser(v TokenVerifier) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		tok := bearerToken(c)
+		if tok == "" {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing bearer token"})
+			return
+		}
+		sub, err := v.VerifyToken(c.Request.Context(), tok)
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid or inactive token"})
+			return
+		}
+		c.Set(ctxAccessorID, sub)
+		c.Next()
+	}
+}
+
 // bearerToken extracts the token from an "Authorization: Bearer <token>" header,
 // or "" when absent/malformed.
 func bearerToken(c *gin.Context) string {

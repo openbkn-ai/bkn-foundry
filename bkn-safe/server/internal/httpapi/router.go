@@ -69,5 +69,12 @@ func New(deps Deps) *gin.Engine {
 		registerRoles(admin, deps.Enforcer, deps.DB)
 	}
 
+	// Self-service reads under /api/safe/v1/me — token-gated (RequireUser:
+	// authn only), gateway-exposed. The caller reads its own permission list.
+	if deps.Enforcer != nil && verifier != nil && deps.Directory != nil {
+		me := r.Group("/api/safe/v1/me", RequireUser(verifier))
+		registerMe(me, deps.Enforcer, deps.DB, deps.Directory)
+	}
+
 	return r
 }

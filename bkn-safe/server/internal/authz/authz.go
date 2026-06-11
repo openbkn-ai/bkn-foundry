@@ -176,7 +176,27 @@ func (en *Enforcer) RolePermissions(roleID string) ([]RoleGrant, error) {
 	if err != nil {
 		return nil, err
 	}
-	byObj := map[string][]string{}
+	return groupGrantsByObject(rows), nil
+}
+
+// AccessorPermissions lists every policy grant effective for an accessor —
+// its direct per-object grants plus everything inherited via roles — grouped
+// by object pattern. The accessor's own permission list (the "what can I do"
+// self-service read); type-wide "*" patterns are kept verbatim.
+func (en *Enforcer) AccessorPermissions(accessorID string) ([]RoleGrant, error) {
+	rows, err := en.e.GetImplicitPermissionsForUser(accessorID)
+	if err != nil {
+		return nil, err
+	}
+	return groupGrantsByObject(rows), nil
+}
+
+// groupGrantsByObject collapses raw (sub, obj, act) policy rows into per-object
+// grants, de-duplicating acts (the same grant can arrive via several roles).
+// Objects follow first appearance; ops within an object follow row order.
+func groupGrantsByObject(rows [][]string) []RoleGrant {
+	byObj := map[string]map[string]bool{}
+	ops := map[string][]string{}
 	order := make([]string, 0, len(rows))
 	for _, row := range rows {
 		if len(row) < 3 {
@@ -185,14 +205,19 @@ func (en *Enforcer) RolePermissions(roleID string) ([]RoleGrant, error) {
 		o, act := row[1], row[2]
 		if _, ok := byObj[o]; !ok {
 			order = append(order, o)
+			byObj[o] = map[string]bool{}
 		}
-		byObj[o] = append(byObj[o], act)
+		if byObj[o][act] {
+			continue
+		}
+		byObj[o][act] = true
+		ops[o] = append(ops[o], act)
 	}
 	out := make([]RoleGrant, 0, len(order))
 	for _, o := range order {
-		out = append(out, RoleGrant{Object: o, Operations: byObj[o]})
+		out = append(out, RoleGrant{Object: o, Operations: ops[o]})
 	}
-	return out, nil
+	return out
 }
 
 // RemoveRoleCompletely purges every casbin trace of a role: its bindings
