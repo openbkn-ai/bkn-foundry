@@ -1053,13 +1053,20 @@ paths:
   /skills/{skill_id}/management/files/read:
     post:
       summary: "读取管理态指定文件"
-      description: "读取当前编辑态的指定文件内容，返回 OSS 预签名下载 URL"
+      description: "读取当前编辑态的指定文件。默认返回 OSS 预签名 URL；response_mode=content 时返回内联正文（Studio 文本预览）。"
       tags:
         - "Skill - Management Read"
       parameters:
         - $ref: "#/components/parameters/BusinessDomain"
         - $ref: "#/components/parameters/Authorization"
         - $ref: "#/components/parameters/SkillID"
+        - name: response_mode
+          in: query
+          description: "响应模式。url(默认)返回 OSS 预签名 URL；content 返回内联正文"
+          schema:
+            type: string
+            enum: [url, content]
+            default: url
       requestBody:
         required: true
         content:

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/drivenadapters"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
@@ -51,7 +52,20 @@ func (s *ossGatewaySkillAssetStore) Upload(ctx context.Context, skillID, version
 }
 
 func (s *ossGatewaySkillAssetStore) Download(ctx context.Context, object *interfaces.OssObject) ([]byte, error) {
-	return s.client.DownloadFile(ctx, object)
+	data, err := s.client.DownloadFile(ctx, object)
+	if err == nil || object == nil || !isOSSStorageNotFound(err) {
+		return data, err
+	}
+
+	currentID, idErr := s.client.CurrentStorageID(ctx)
+	if idErr != nil || currentID == "" || currentID == object.StorageID {
+		return data, err
+	}
+
+	return s.client.DownloadFile(ctx, &interfaces.OssObject{
+		StorageID:  currentID,
+		StorageKey: object.StorageKey,
+	})
 }
 
 func (s *ossGatewaySkillAssetStore) Delete(ctx context.Context, object *interfaces.OssObject) error {
@@ -59,7 +73,27 @@ func (s *ossGatewaySkillAssetStore) Delete(ctx context.Context, object *interfac
 }
 
 func (s *ossGatewaySkillAssetStore) GetDownloadURL(ctx context.Context, object *interfaces.OssObject) (string, error) {
-	return s.client.GetDownloadURL(ctx, object)
+	url, err := s.client.GetDownloadURL(ctx, object)
+	if err == nil || object == nil || !isOSSStorageNotFound(err) {
+		return url, err
+	}
+
+	currentID, idErr := s.client.CurrentStorageID(ctx)
+	if idErr != nil || currentID == "" || currentID == object.StorageID {
+		return url, err
+	}
+
+	return s.client.GetDownloadURL(ctx, &interfaces.OssObject{
+		StorageID:  currentID,
+		StorageKey: object.StorageKey,
+	})
+}
+
+func isOSSStorageNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(strings.ToLower(err.Error()), "storage not found")
 }
 
 func (s *ossGatewaySkillAssetStore) buildObjectKey(skillID, version, relPath string) string {

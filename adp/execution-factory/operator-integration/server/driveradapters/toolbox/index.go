@@ -36,6 +36,8 @@ type ToolBoxHandler interface {
 	ExecuteTool(c *gin.Context)
 	// 算子转换成工具
 	OperatorToTool(c *gin.Context)
+	// OpenAPI 能力包
+	RegisterOpenApiBundle(c *gin.Context)
 	// 添加或更新工具
 	CreateInternalToolBox(c *gin.Context)
 	// 查询工具箱信息

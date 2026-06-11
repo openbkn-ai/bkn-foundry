@@ -139,7 +139,7 @@ func (c *ossGatewayBackendClient) UploadFile(ctx context.Context, object *interf
 
 // DownloadFile 下载文件
 func (c *ossGatewayBackendClient) DownloadFile(ctx context.Context, object *interfaces.OssObject) (data []byte, err error) {
-	authReq, err := c.getDownloadInfo(ctx, object)
+	authReq, err := c.getDownloadInfo(ctx, object, true)
 	if err != nil {
 		return nil, err
 	}
@@ -189,12 +189,12 @@ func (c *ossGatewayBackendClient) DeleteFile(ctx context.Context, object *interf
 	return c.doSignedRequest(ctx, authResp.Data.Method, authResp.Data.URL, authResp.Data.Headers, nil)
 }
 
-func (c *ossGatewayBackendClient) getDownloadInfo(ctx context.Context, object *interfaces.OssObject) (resp *gatewayAuthRequest, err error) {
+func (c *ossGatewayBackendClient) getDownloadInfo(ctx context.Context, object *interfaces.OssObject, internalRequest bool) (resp *gatewayAuthRequest, err error) {
 	src := fmt.Sprintf("%s/download/%s/%s", c.baseURL, object.StorageID, url.PathEscape(object.StorageKey))
 	headers := common.GetHeaderFromCtx(ctx)
 	query := url.Values{
 		"expires":          []string{fmt.Sprintf("%d", c.expires)},
-		"internal_request": []string{fmt.Sprintf("%t", c.internalRequest)},
+		"internal_request": []string{fmt.Sprintf("%t", internalRequest)},
 	}
 	respCode, respBody, err := c.httpClient.GetNoUnmarshal(ctx, src, query, headers)
 	if err != nil {
@@ -229,7 +229,7 @@ func (c *ossGatewayBackendClient) getDownloadInfo(ctx context.Context, object *i
 
 // GetDownloadURL 获取文件下载URL
 func (c *ossGatewayBackendClient) GetDownloadURL(ctx context.Context, object *interfaces.OssObject) (url string, err error) {
-	resp, err := c.getDownloadInfo(ctx, object)
+	resp, err := c.getDownloadInfo(ctx, object, c.internalRequest)
 	if err != nil {
 		return
 	}

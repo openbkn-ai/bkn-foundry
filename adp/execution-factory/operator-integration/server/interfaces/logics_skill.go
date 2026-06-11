@@ -458,6 +458,7 @@ type ReadManagementFileReq struct {
 	UserID           string `header:"user_id"`
 	SkillID          string `uri:"skill_id" validate:"required"`
 	RelPath          string `json:"rel_path" validate:"required"`
+	ResponseMode     string `form:"response_mode" default:"url"` // url(默认) | content
 }
 
 // ReadManagementFileResp 管理态文件读取响应
@@ -465,6 +466,7 @@ type ReadManagementFileResp struct {
 	SkillID  string `json:"skill_id"`
 	RelPath  string `json:"rel_path"`
 	URL      string `json:"url"`
+	Content  string `json:"content,omitempty"`
 	MimeType string `json:"mime_type"`
 	FileType string `json:"file_type"`
 	Size     int64  `json:"size"`

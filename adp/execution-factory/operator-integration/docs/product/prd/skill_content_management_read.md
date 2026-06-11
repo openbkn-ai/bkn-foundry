@@ -308,18 +308,36 @@ GET /api/agent-operator-integration/v1/skills/{skill_id}/management/files
 
 **请求：**
 ```
-POST /api/agent-operator-integration/v1/skills/{skill_id}/management/files/read
+POST /api/agent-operator-integration/v1/skills/{skill_id}/management/files/read?response_mode=url
 {
   "rel_path": "scripts/main.py"
 }
 ```
 
-**响应：**
+**Query 参数：**
+
+| 参数 | 缺省 | 说明 |
+|------|------|------|
+| `response_mode` | `url` | `url` — 返回 OSS 预签名 URL；`content` — 后端从 OSS 下载并返回内联正文（Studio 文本预览用，`url` 为空） |
+
+**响应（url 模式）：**
 ```json
 {
   "skill_id": "uuid",
   "rel_path": "scripts/main.py",
   "url": "https://oss-presigned-url/skills/file",
+  "mime_type": "text/x-python",
+  "file_type": "script",
+  "size": 4096
+}
+```
+
+**响应（content 模式）：**
+```json
+{
+  "skill_id": "uuid",
+  "rel_path": "scripts/main.py",
+  "content": "print('hello')\n",
   "mime_type": "text/x-python",
   "file_type": "script",
   "size": 4096

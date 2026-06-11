@@ -613,6 +613,40 @@ func (h *toolBoxHandler) ExecuteTool(c *gin.Context) {
 	rest.ReplyWithExecutionMode(c, resp, err)
 }
 
+// RegisterOpenApiBundle OpenAPI 能力包注册
+func (h *toolBoxHandler) RegisterOpenApiBundle(c *gin.Context) {
+	req := &interfaces.RegisterOpenApiBundleReq{}
+	err := c.ShouldBindHeader(req)
+	if err != nil {
+		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error())
+		rest.ReplyError(c, err)
+		return
+	}
+	err = c.ShouldBindJSON(req)
+	if err != nil {
+		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error())
+		rest.ReplyError(c, err)
+		return
+	}
+	err = defaults.Set(req)
+	if err != nil {
+		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error())
+		rest.ReplyError(c, err)
+		return
+	}
+	err = validator.New().Struct(req)
+	if err != nil {
+		rest.ReplyError(c, err)
+		return
+	}
+	resp, err := h.ToolService.RegisterOpenApiBundle(c.Request.Context(), req)
+	if err != nil {
+		rest.ReplyError(c, err)
+		return
+	}
+	rest.ReplyOK(c, http.StatusOK, resp)
+}
+
 // OperatorToTool 算子转换成工具
 func (h *toolBoxHandler) OperatorToTool(c *gin.Context) {
 	req := &interfaces.ConvertOperatorToToolReq{}
