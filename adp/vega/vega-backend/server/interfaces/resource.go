@@ -62,6 +62,10 @@ type Resource struct {
 	SchemaDefinition []*Property    `json:"schema_definition,omitempty"` // Schema定义
 	LocalIndexName   string         `json:"index_name,omitempty"`        // 索引名称，由构建任务填充
 
+	// 规模信息：列表接口从原始 JSON 轻量计数得到，不反序列化完整结构；nil 表示源端无该信息（序列化时省略）
+	ColumnCount *int   `json:"column_count,omitempty"` // schema_definition 字段数
+	RowCount    *int64 `json:"row_count,omitempty"`    // 源端行数（最近一次 discover 的估算快照，仅部分资源类别有）
+
 	// Extensions 根级可检索业务 KV（t_entity_extension）；列表默认省略
 	Extensions map[string]string `json:"extensions,omitempty"`
 
