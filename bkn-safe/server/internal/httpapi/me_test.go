@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"testing"
+
+	"bkn-safe/internal/model"
 )
 
 func TestMeAuthGate(t *testing.T) {
@@ -21,6 +23,60 @@ func TestMeAuthGate(t *testing.T) {
 	// any authenticated subject -> 200, even with zero grants
 	if w := tokReq(t, r, http.MethodGet, path, nil, "nobody"); w.Code != http.StatusOK {
 		t.Errorf("plain user: want 200, got %d (%s)", w.Code, w.Body.String())
+	}
+}
+
+// GET /me returns the caller's own identity and role names; token-gated but
+// not admin-gated.
+func TestMeIdentity(t *testing.T) {
+	r, e, db, _ := newAdminServer(t)
+	const path = "/api/safe/v1/me"
+
+	db.Create(&model.User{ID: "u-me", Account: "me", Name: "Me", Email: "me@x.io", Enabled: true})
+	db.Create(&model.Role{ID: "r-data", Name: "数据管理员", Source: model.RoleSourceSystem})
+	db.Create(&model.Department{ID: "d-9", Name: "Dept9"})
+	db.Create(&model.UserDepartment{UserID: "u-me", DepartmentID: "d-9"})
+	if err := e.AssignRole("u-me", "r-data"); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.AssignRole("u-me", "r-dangling"); err != nil { // no role row
+		t.Fatal(err)
+	}
+
+	// no token -> 401; subject without a user row -> 404
+	if w := tokReq(t, r, http.MethodGet, path, nil, ""); w.Code != http.StatusUnauthorized {
+		t.Errorf("no token: want 401, got %d", w.Code)
+	}
+	if w := tokReq(t, r, http.MethodGet, path, nil, "ghost"); w.Code != http.StatusNotFound {
+		t.Errorf("ghost subject: want 404, got %d", w.Code)
+	}
+
+	w := tokReq(t, r, http.MethodGet, path, nil, "u-me")
+	if w.Code != http.StatusOK {
+		t.Fatalf("me: want 200, got %d (%s)", w.Code, w.Body.String())
+	}
+	var resp struct {
+		ID          string   `json:"id"`
+		Account     string   `json:"account"`
+		AccountType string   `json:"account_type"`
+		Departments []string `json:"departments"`
+		Roles       []string `json:"roles"`
+		RoleIDs     []string `json:"role_ids"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.ID != "u-me" || resp.Account != "me" {
+		t.Errorf("identity = %+v", resp)
+	}
+	if len(resp.Departments) != 1 || resp.Departments[0] != "d-9" {
+		t.Errorf("departments = %v", resp.Departments)
+	}
+	if len(resp.Roles) != 2 || resp.Roles[0] != "数据管理员" || resp.Roles[1] != "r-dangling" {
+		t.Errorf("roles = %v, want [数据管理员 r-dangling] (dangling id kept verbatim)", resp.Roles)
+	}
+	if len(resp.RoleIDs) != 2 {
+		t.Errorf("role_ids = %v", resp.RoleIDs)
 	}
 }
 
