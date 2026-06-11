@@ -72,8 +72,13 @@ func TestMeIdentity(t *testing.T) {
 	if len(resp.Departments) != 1 || resp.Departments[0] != "d-9" {
 		t.Errorf("departments = %v", resp.Departments)
 	}
-	if len(resp.Roles) != 2 || resp.Roles[0] != "数据管理员" || resp.Roles[1] != "r-dangling" {
-		t.Errorf("roles = %v, want [数据管理员 r-dangling] (dangling id kept verbatim)", resp.Roles)
+	// casbin does not guarantee role order — compare as a set
+	roleSet := map[string]bool{}
+	for _, n := range resp.Roles {
+		roleSet[n] = true
+	}
+	if len(resp.Roles) != 2 || !roleSet["数据管理员"] || !roleSet["r-dangling"] {
+		t.Errorf("roles = %v, want {数据管理员, r-dangling} (dangling id kept verbatim)", resp.Roles)
 	}
 	if len(resp.RoleIDs) != 2 {
 		t.Errorf("role_ids = %v", resp.RoleIDs)
