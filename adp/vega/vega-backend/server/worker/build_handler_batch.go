@@ -69,6 +69,18 @@ func (bh *batchBuildHandler) HandleTask(ctx context.Context, task *asynq.Task) e
 		// Task not found, return nil
 		return nil
 	}
+	// 排队期间被停止的任务直接跳过，避免出队后复活覆写状态。
+	// stopping 出队说明原 worker 已不在，兜底落停。
+	if buildTaskInfo.Status == interfaces.BuildTaskStatusStopped ||
+		buildTaskInfo.Status == interfaces.BuildTaskStatusStopping {
+		logger.Infof("Task %s is %s, skip execution", taskID, buildTaskInfo.Status)
+		if buildTaskInfo.Status == interfaces.BuildTaskStatusStopping {
+			if err := bh.taskAccess.UpdateStatus(ctx, taskID, map[string]interface{}{"status": interfaces.BuildTaskStatusStopped}); err != nil {
+				return fmt.Errorf("update build task status failed: %w", err)
+			}
+		}
+		return nil
+	}
 	// 异步任务无原始请求上下文，以任务创建者身份执行下游权限检查
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, buildTaskInfo.Creator)
 	resourceID := buildTaskInfo.ResourceID

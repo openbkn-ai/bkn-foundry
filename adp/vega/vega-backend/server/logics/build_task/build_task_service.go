@@ -300,7 +300,17 @@ func (bts *buildTaskService) StartBuildTask(ctx context.Context, taskID string, 
 			WithErrorDetails("catalog is disabled")
 	}
 
-	// status transition to running is performed by worker on actual execution，only need to enqueue the task
+	// 入队前先置回 init：worker 出队时会跳过 stopped/stopping 的任务
+	// （防止排队中被停止的任务复活），stopped 状态直接入队会被误跳过。
+	// running 仍由 worker 实际执行时落账。
+	if buildTask.Status != interfaces.BuildTaskStatusInit {
+		if err := bts.bta.UpdateStatus(ctx, taskID, map[string]any{"status": interfaces.BuildTaskStatusInit}); err != nil {
+			otellog.LogError(ctx, "Update build task status failed", err)
+			return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_UpdateFailed).
+				WithErrorDetails(err.Error())
+		}
+	}
+
 	payload, err := sonic.Marshal(&interfaces.BatchBuildTaskMessage{
 		TaskID:      taskID,
 		ExecuteType: executeType,
@@ -347,7 +357,8 @@ func (bts *buildTaskService) StopBuildTask(ctx context.Context, taskID string) e
 		return rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_BuildTask_NotFound)
 	}
 	if buildTask.Status != interfaces.BuildTaskStatusRunning &&
-		buildTask.Status != interfaces.BuildTaskStatusStopping {
+		buildTask.Status != interfaces.BuildTaskStatusStopping &&
+		buildTask.Status != interfaces.BuildTaskStatusInit {
 		span.SetStatus(codes.Error, "Invalid state transition for stop")
 		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_InvalidStateTransition).
 			WithErrorDetails(fmt.Sprintf("cannot stop task in status: %s", buildTask.Status))
@@ -356,8 +367,11 @@ func (bts *buildTaskService) StopBuildTask(ctx context.Context, taskID string) e
 	// running → stopping：通知 worker 在批间检查点退出。
 	// stopping → stopped：兜底强制落停。worker 已不在（asynq 任务耗尽重试/服务重启）
 	// 时 stopping 永远不会被推进，任务卡死无法删除，二次 stop 即强制完结。
+	// init → stopped：排队中尚无 worker 观察 stopping，直接落停；
+	// 出队时 worker 检查到 stopped 即跳过，不会复活执行。
 	targetStatus := interfaces.BuildTaskStatusStopping
-	if buildTask.Status == interfaces.BuildTaskStatusStopping {
+	if buildTask.Status == interfaces.BuildTaskStatusStopping ||
+		buildTask.Status == interfaces.BuildTaskStatusInit {
 		targetStatus = interfaces.BuildTaskStatusStopped
 	}
 	updates := map[string]any{
