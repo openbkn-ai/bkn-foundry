@@ -65,7 +65,7 @@ func New(deps Deps) *gin.Engine {
 		registerUserAdmin(admin, deps.Users, deps.Enforcer)
 		registerAdminReads(admin, deps.Directory)
 		registerDeptAdmin(admin, deps.Directory)
-		registerRoleBindings(admin, deps.Enforcer)
+		registerRoleBindings(admin, deps.Enforcer, deps.DB)
 		registerRoles(admin, deps.Enforcer, deps.DB)
 	}
 

@@ -363,7 +363,9 @@ func TestDepartmentDetailAndMembers(t *testing.T) {
 }
 
 func TestRoleBindingsListAndUnbind(t *testing.T) {
-	r, e, _, _ := newAdminServer(t)
+	r, e, db, _ := newAdminServer(t)
+	db.Create(&model.User{ID: "u-1", Account: "u1", Name: "U1", Enabled: true})
+	db.Create(&model.Role{ID: "r-a", Name: "RoleA", Source: model.RoleSourceCustom})
 
 	if w := adminReq(t, r, http.MethodPost, "/api/safe/v1/admin/role-bindings",
 		map[string]any{"accessor_id": "u-1", "role_id": "r-a"}); w.Code != http.StatusNoContent {
@@ -392,5 +394,40 @@ func TestRoleBindingsListAndUnbind(t *testing.T) {
 
 	if w := adminReq(t, r, http.MethodGet, "/api/safe/v1/admin/role-bindings", nil); w.Code != http.StatusBadRequest {
 		t.Errorf("missing accessor_id: want 400, got %d", w.Code)
+	}
+}
+
+// Binding must reference an existing accessor (user/department/group) and an
+// existing role — a typo'd accessor (e.g. an account NAME instead of its ID)
+// must fail loudly, not 204 into a grant that never matches at enforce time.
+func TestRoleBindingValidatesAccessorAndRole(t *testing.T) {
+	r, _, db, _ := newAdminServer(t)
+	db.Create(&model.User{ID: "u-real", Account: "real", Name: "Real", Enabled: true})
+	db.Create(&model.Role{ID: "r-real", Name: "RoleReal", Source: model.RoleSourceCustom})
+
+	// account name passed where the user ID belongs -> 400
+	if w := adminReq(t, r, http.MethodPost, "/api/safe/v1/admin/role-bindings",
+		map[string]any{"accessor_id": "real", "role_id": "r-real"}); w.Code != http.StatusBadRequest {
+		t.Errorf("unknown accessor: want 400, got %d (%s)", w.Code, w.Body.String())
+	}
+	// unknown role -> 400
+	if w := adminReq(t, r, http.MethodPost, "/api/safe/v1/admin/role-bindings",
+		map[string]any{"accessor_id": "u-real", "role_id": "r-ghost"}); w.Code != http.StatusBadRequest {
+		t.Errorf("unknown role: want 400, got %d (%s)", w.Code, w.Body.String())
+	}
+	// both valid -> 204
+	if w := adminReq(t, r, http.MethodPost, "/api/safe/v1/admin/role-bindings",
+		map[string]any{"accessor_id": "u-real", "role_id": "r-real"}); w.Code != http.StatusNoContent {
+		t.Errorf("valid bind: want 204, got %d (%s)", w.Code, w.Body.String())
+	}
+
+	// department and group accessors are also valid binding subjects
+	db.Create(&model.Department{ID: "d-1", Name: "Dept"})
+	db.Create(&model.Group{ID: "g-1", Name: "Group"})
+	for _, id := range []string{"d-1", "g-1"} {
+		if w := adminReq(t, r, http.MethodPost, "/api/safe/v1/admin/role-bindings",
+			map[string]any{"accessor_id": id, "role_id": "r-real"}); w.Code != http.StatusNoContent {
+			t.Errorf("bind %s: want 204, got %d (%s)", id, w.Code, w.Body.String())
+		}
 	}
 }

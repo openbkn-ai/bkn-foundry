@@ -24,6 +24,12 @@ import (
 //
 //	r = sub, obj, act   sub=accessorID, obj="type:id", act=operation
 //	g = _, _            user/app -> role (UUID-preserved)
+//
+// The matcher also accepts policies whose subject is PublicAccessorID: ISF's
+// "grant to the root department = everyone" convention. bkn-safe keeps no
+// user→department g rules (membership lives in relational tables only), so a
+// root-department grant would otherwise never match any requester; instead the
+// matcher treats it as a public grant, scoped as usual by object and act.
 const modelConf = `
 [request_definition]
 r = sub, obj, act
@@ -38,8 +44,14 @@ g = _, _
 e = some(where (p.eft == allow))
 
 [matchers]
-m = g(r.sub, p.sub) && keyMatch(r.obj, p.obj) && (p.act == "*" || r.act == p.act)
+m = (g(r.sub, p.sub) || p.sub == "` + PublicAccessorID + `") && keyMatch(r.obj, p.obj) && (p.act == "*" || r.act == p.act)
 `
+
+// PublicAccessorID is the root-department accessor: a policy granted to this
+// subject applies to every requester (see modelConf). The UUID is the ISF root
+// department id, written by e.g. execution-factory's CreateIntCompPolicyForAllUsers
+// (interfaces.AccessorRootDepartmentID) for built-in toolbox public access.
+const PublicAccessorID = "00000000-0000-0000-0000-000000000000"
 
 // ActAll is the wildcard act: a policy with act "*" grants every operation on
 // the matched object (used for the super-admin "do everything" grant).
