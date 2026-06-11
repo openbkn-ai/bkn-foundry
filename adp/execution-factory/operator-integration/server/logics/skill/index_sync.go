@@ -87,6 +87,8 @@ func (s *skillIndexSync) Init(ctx context.Context) (err error) {
 			Name:        executionFactoryCatalogID,
 			Tags:        []string{"execution-factory", "索引"},
 			Description: executionFactoryCatalogDesc,
+			// 系统内部目录：仅超级管理员可见，业务角色（数据管理员等）的 catalog:* 授权匹配不到
+			Internal: true,
 		})
 		if err != nil {
 			s.logger.WithContext(ctx).Errorf("create catalog failed, catalog_id=%s, err=%v", executionFactoryCatalogID, err)

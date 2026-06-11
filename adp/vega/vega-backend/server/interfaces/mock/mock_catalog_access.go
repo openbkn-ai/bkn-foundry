@@ -174,6 +174,21 @@ func (mr *MockCatalogAccessMockRecorder) ListIDs(ctx, params any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListIDs", reflect.TypeOf((*MockCatalogAccess)(nil).ListIDs), ctx, params)
 }
 
+// ListInternalIDs mocks base method.
+func (m *MockCatalogAccess) ListInternalIDs(ctx context.Context) ([]string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListInternalIDs", ctx)
+	ret0, _ := ret[0].([]string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListInternalIDs indicates an expected call of ListInternalIDs.
+func (mr *MockCatalogAccessMockRecorder) ListInternalIDs(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListInternalIDs", reflect.TypeOf((*MockCatalogAccess)(nil).ListInternalIDs), ctx)
+}
+
 // Update mocks base method.
 func (m *MockCatalogAccess) Update(ctx context.Context, catalog *interfaces.Catalog) error {
 	m.ctrl.T.Helper()

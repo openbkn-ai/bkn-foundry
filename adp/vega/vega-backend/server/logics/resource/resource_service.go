@@ -66,14 +66,109 @@ func NewResourceService(appSetting *common.AppSetting) interfaces.ResourceServic
 	return rService
 }
 
+// resourceAuthResourceType 返回数据资源在权限服务中的资源类型：
+// 系统内部目录下的资源按 internal_resource 注册，业务角色的 resource:* 通配授权匹配不到，仅超级管理员可见
+func resourceAuthResourceType(internal bool) string {
+	if internal {
+		return interfaces.AUTH_RESOURCE_TYPE_INTERNAL_RESOURCE
+	}
+	return interfaces.AUTH_RESOURCE_TYPE_RESOURCE
+}
+
+// internalCatalogIDSet 查询所有系统内部目录 ID 集合
+func (rs *resourceService) internalCatalogIDSet(ctx context.Context) (map[string]struct{}, error) {
+	ids, err := rs.cs.ListInternalIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	set := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		set[id] = struct{}{}
+	}
+	return set, nil
+}
+
+// internalResourceIDSet 查询所有系统内部目录下的资源 ID 集合
+func (rs *resourceService) internalResourceIDSet(ctx context.Context) (map[string]struct{}, error) {
+	catalogIDs, err := rs.cs.ListInternalIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	set := make(map[string]struct{})
+	for _, catalogID := range catalogIDs {
+		ids, err := rs.ra.ListIDs(ctx, interfaces.ResourcesQueryParams{CatalogID: catalogID})
+		if err != nil {
+			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				verrors.VegaBackend_Resource_InternalError_GetFailed).WithErrorDetails(err.Error())
+		}
+		for _, id := range ids {
+			set[id] = struct{}{}
+		}
+	}
+	return set, nil
+}
+
+// partitionResourceIDs 将资源 ID 按是否属于系统内部目录分组
+func partitionResourceIDs(ids []string, internalSet map[string]struct{}) (normalIDs, internalIDs []string) {
+	normalIDs = make([]string, 0, len(ids))
+	internalIDs = make([]string, 0)
+	for _, id := range ids {
+		if _, ok := internalSet[id]; ok {
+			internalIDs = append(internalIDs, id)
+		} else {
+			normalIDs = append(normalIDs, id)
+		}
+	}
+	return normalIDs, internalIDs
+}
+
+// filterResourcePermissions 按内部/普通资源分组做权限过滤：内部目录下的资源按
+// internal_resource 类型校验，其余按 resource 类型校验，结果合并返回
+func (rs *resourceService) filterResourcePermissions(ctx context.Context, ids []string,
+	internalSet map[string]struct{}, ops []string, allowOperation bool) (map[string]interfaces.PermissionResourceOps, error) {
+
+	normalIDs, internalIDs := partitionResourceIDs(ids, internalSet)
+
+	result := make(map[string]interfaces.PermissionResourceOps, len(ids))
+	for _, group := range []struct {
+		authType string
+		ids      []string
+	}{
+		{interfaces.AUTH_RESOURCE_TYPE_RESOURCE, normalIDs},
+		{interfaces.AUTH_RESOURCE_TYPE_INTERNAL_RESOURCE, internalIDs},
+	} {
+		if len(group.ids) == 0 {
+			continue
+		}
+		matched, err := rs.ps.FilterResources(ctx, group.authType, group.ids, ops,
+			allowOperation, interfaces.COMMON_OPERATIONS)
+		if err != nil {
+			return nil, err
+		}
+		for _, resourceOps := range matched {
+			result[resourceOps.ResourceID] = resourceOps
+		}
+	}
+	return result, nil
+}
+
 // Create creates a new Resource.
 func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceRequest) (*interfaces.Resource, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Create resource")
 	defer span.End()
 
+	// 内部目录下的资源按 internal_resource 类型校验/注册，默认仅超级管理员/系统 S2S 身份可建
+	internalCatalogs, err := rs.internalCatalogIDSet(ctx)
+	if err != nil {
+		span.SetStatus(codes.Error, "List internal catalog IDs failed")
+		return nil, err
+	}
+	_, parentInternal := internalCatalogs[req.CatalogID]
+	authType := resourceAuthResourceType(parentInternal)
+
 	// 判断userid是否有创建数据资源的权限（策略决策）
-	err := rs.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
+	err = rs.ps.CheckPermission(ctx, interfaces.PermissionResource{
+		Type: authType,
 		ID:   interfaces.RESOURCE_ID_ALL,
 	}, []string{interfaces.OPERATION_TYPE_CREATE})
 	if err != nil {
@@ -177,7 +272,7 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 	// 注册资源
 	err = rs.ps.CreateResources(ctx, []interfaces.PermissionResource{{
 		ID:   resource.ID,
-		Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
+		Type: authType,
 		Name: resource.Name,
 	}}, interfaces.COMMON_OPERATIONS)
 	if err != nil {
@@ -208,8 +303,15 @@ func (rs *resourceService) GetByID(ctx context.Context, id string) (*interfaces.
 		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
 	}
 
-	// 根据权限过滤有查看权限的对象，过滤后的数组的总长度就是总数，无需再请求总数
-	matchResoucesMap, err := rs.ps.FilterResources(ctx, interfaces.AUTH_RESOURCE_TYPE_RESOURCE, []string{resource.ID},
+	// 根据权限过滤有查看权限的对象，过滤后的数组的总长度就是总数，无需再请求总数；
+	// 内部目录下的资源按 internal_resource 类型校验
+	internalCatalogs, err := rs.internalCatalogIDSet(ctx)
+	if err != nil {
+		span.SetStatus(codes.Error, "List internal catalog IDs failed")
+		return nil, err
+	}
+	_, parentInternal := internalCatalogs[resource.CatalogID]
+	matchResoucesMap, err := rs.ps.FilterResources(ctx, resourceAuthResourceType(parentInternal), []string{resource.ID},
 		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, interfaces.COMMON_OPERATIONS)
 	if err != nil {
 		span.SetStatus(codes.Error, "Filter resources error")
@@ -259,9 +361,21 @@ func (rs *resourceService) GetByIDs(ctx context.Context, ids []string) ([]*inter
 			WithErrorDetails(err.Error())
 	}
 
-	// 根据权限过滤有查看权限的对象，过滤后的数组的总长度就是总数，无需再请求总数
-	matchResoucesMap, err := rs.ps.FilterResources(ctx, interfaces.AUTH_RESOURCE_TYPE_RESOURCE, ids,
-		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, interfaces.COMMON_OPERATIONS)
+	// 根据权限过滤有查看权限的对象，过滤后的数组的总长度就是总数，无需再请求总数；
+	// 内部目录下的资源按 internal_resource 类型校验
+	internalCatalogs, err := rs.internalCatalogIDSet(ctx)
+	if err != nil {
+		span.SetStatus(codes.Error, "List internal catalog IDs failed")
+		return nil, err
+	}
+	internalResources := make(map[string]struct{})
+	for _, resource := range resources {
+		if _, ok := internalCatalogs[resource.CatalogID]; ok {
+			internalResources[resource.ID] = struct{}{}
+		}
+	}
+	matchResoucesMap, err := rs.filterResourcePermissions(ctx, ids, internalResources,
+		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true)
 	if err != nil {
 		span.SetStatus(codes.Error, "Filter resources error")
 		return nil, err
@@ -344,6 +458,13 @@ func (rs *resourceService) List(ctx context.Context, params interfaces.Resources
 		return []*interfaces.Resource{}, 0, nil
 	}
 
+	// 内部目录下的资源 ID 集合，权限校验时按 internal_resource 类型分组
+	internalResources, err := rs.internalResourceIDSet(ctx)
+	if err != nil {
+		span.SetStatus(codes.Error, "List internal resource IDs failed")
+		return []*interfaces.Resource{}, 0, err
+	}
+
 	// 根据权限过滤有查看权限的ID数组
 	// 分批处理，每批1万个ids, fix权限接口报错prepared statement contains too many placeholders
 	batchSize := 10000
@@ -359,8 +480,8 @@ func (rs *resourceService) List(ctx context.Context, params interfaces.Resources
 
 		var batchMatchResources map[string]interfaces.PermissionResourceOps
 		// 校验权限管理的操作权限
-		batchMatchResources, err = rs.ps.FilterResources(ctx, interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
-			batchIDs, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, interfaces.COMMON_OPERATIONS)
+		batchMatchResources, err = rs.filterResourcePermissions(ctx, batchIDs, internalResources,
+			[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true)
 		if err != nil {
 			span.SetStatus(codes.Error, "Filter resources error")
 			return []*interfaces.Resource{}, 0, err
@@ -467,9 +588,16 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 	}
 	nameModified := req.Name != resource.Name
 
-	// 判断userid是否有修改权限
-	err := rs.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
+	// 判断userid是否有修改权限；内部目录下的资源按 internal_resource 类型校验
+	internalCatalogs, err := rs.internalCatalogIDSet(ctx)
+	if err != nil {
+		span.SetStatus(codes.Error, "List internal catalog IDs failed")
+		return err
+	}
+	_, parentInternal := internalCatalogs[resource.CatalogID]
+	authType := resourceAuthResourceType(parentInternal)
+	err = rs.ps.CheckPermission(ctx, interfaces.PermissionResource{
+		Type: authType,
 		ID:   resource.ID,
 	}, []string{interfaces.OPERATION_TYPE_MODIFY})
 	if err != nil {
@@ -542,7 +670,7 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 	if nameModified {
 		err = rs.ps.UpdateResource(ctx, interfaces.PermissionResource{
 			ID:   resource.ID,
-			Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
+			Type: authType,
 			Name: resource.Name,
 		})
 		if err != nil {
@@ -594,9 +722,14 @@ func (rs *resourceService) DeleteByIDs(ctx context.Context, ids []string) error 
 		return nil
 	}
 
-	// 判断userid是否有删除权限
-	matchResoucesMap, err := rs.ps.FilterResources(ctx, interfaces.AUTH_RESOURCE_TYPE_RESOURCE, ids,
-		[]string{interfaces.OPERATION_TYPE_DELETE}, true, interfaces.COMMON_OPERATIONS)
+	// 判断userid是否有删除权限；内部目录下的资源按 internal_resource 类型校验
+	internalResources, err := rs.internalResourceIDSet(ctx)
+	if err != nil {
+		span.SetStatus(codes.Error, "List internal resource IDs failed")
+		return err
+	}
+	matchResoucesMap, err := rs.filterResourcePermissions(ctx, ids, internalResources,
+		[]string{interfaces.OPERATION_TYPE_DELETE}, true)
 	if err != nil {
 		span.SetStatus(codes.Error, "Filter resources error")
 		return err
@@ -657,10 +790,17 @@ func (rs *resourceService) DeleteByIDs(ctx context.Context, ids []string) error 
 			WithErrorDetails(err.Error())
 	}
 
-	//  清除资源策略
-	err = rs.ps.DeleteResources(ctx, interfaces.AUTH_RESOURCE_TYPE_RESOURCE, ids)
-	if err != nil {
-		return err
+	//  清除资源策略，按内部/普通资源分组删除对应类型的策略
+	normalIDs, internalIDs := partitionResourceIDs(ids, internalResources)
+	if len(normalIDs) > 0 {
+		if err = rs.ps.DeleteResources(ctx, interfaces.AUTH_RESOURCE_TYPE_RESOURCE, normalIDs); err != nil {
+			return err
+		}
+	}
+	if len(internalIDs) > 0 {
+		if err = rs.ps.DeleteResources(ctx, interfaces.AUTH_RESOURCE_TYPE_INTERNAL_RESOURCE, internalIDs); err != nil {
+			return err
+		}
 	}
 
 	span.SetStatus(codes.Ok, "")
@@ -744,9 +884,18 @@ func (rs *resourceService) ListAuthResources(ctx context.Context, params interfa
 }
 
 func (rs *resourceService) filterAuthorizedResourceAuthResources(ctx context.Context, entries []*interfaces.AuthResourceEntry) ([]*interfaces.AuthResourceEntry, error) {
+	// 系统内部目录下的资源按 internal_resource 类型授权，不进入 resource 类型的授权资源清单
+	internalResources, err := rs.internalResourceIDSet(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	ids := make([]string, 0, len(entries))
 	for _, entry := range entries {
 		if entry == nil {
+			continue
+		}
+		if _, ok := internalResources[entry.ID]; ok {
 			continue
 		}
 		ids = append(ids, entry.ID)

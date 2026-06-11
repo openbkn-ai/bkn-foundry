@@ -26,6 +26,8 @@ type CatalogAccess interface {
 	List(ctx context.Context, params CatalogsQueryParams) ([]*Catalog, int64, error)
 	// ListIDs lists Catalog IDs with filters.
 	ListIDs(ctx context.Context, params CatalogsQueryParams) ([]string, error)
+	// ListInternalIDs 列出所有系统内部目录的 ID（用于权限校验时按 internal_catalog 类型分组）。
+	ListInternalIDs(ctx context.Context) ([]string, error)
 	// Update updates a Catalog.
 	Update(ctx context.Context, catalog *Catalog) error
 	// DeleteByIDs deletes Catalogs by IDs.

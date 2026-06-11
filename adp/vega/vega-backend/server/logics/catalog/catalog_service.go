@@ -79,14 +79,83 @@ func NewCatalogService(appSetting *common.AppSetting) interfaces.CatalogService 
 	return cService
 }
 
+// catalogAuthResourceType 返回 catalog 在权限服务中的资源类型：
+// 系统内部目录按 internal_catalog 注册，业务角色的 catalog:* 通配授权匹配不到，仅超级管理员可见
+func catalogAuthResourceType(internal bool) string {
+	if internal {
+		return interfaces.AUTH_RESOURCE_TYPE_INTERNAL_CATALOG
+	}
+	return interfaces.AUTH_RESOURCE_TYPE_CATALOG
+}
+
+// partitionCatalogIDs 将目录 ID 按是否系统内部目录分组
+func partitionCatalogIDs(ids []string, internalSet map[string]struct{}) (normalIDs, internalIDs []string) {
+	normalIDs = make([]string, 0, len(ids))
+	internalIDs = make([]string, 0)
+	for _, id := range ids {
+		if _, ok := internalSet[id]; ok {
+			internalIDs = append(internalIDs, id)
+		} else {
+			normalIDs = append(normalIDs, id)
+		}
+	}
+	return normalIDs, internalIDs
+}
+
+// internalCatalogIDSet 查询所有系统内部目录 ID 集合
+func (cs *catalogService) internalCatalogIDSet(ctx context.Context) (map[string]struct{}, error) {
+	ids, err := cs.ca.ListInternalIDs(ctx)
+	if err != nil {
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_Catalog_InternalError_GetFailed).WithErrorDetails(err.Error())
+	}
+	set := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		set[id] = struct{}{}
+	}
+	return set, nil
+}
+
+// filterCatalogResources 按内部/普通目录分组做权限过滤：内部目录按 internal_catalog
+// 类型校验，普通目录按 catalog 类型校验，结果合并返回
+func (cs *catalogService) filterCatalogResources(ctx context.Context, ids []string,
+	internalSet map[string]struct{}, ops []string, allowOperation bool) (map[string]interfaces.PermissionResourceOps, error) {
+
+	normalIDs, internalIDs := partitionCatalogIDs(ids, internalSet)
+
+	result := make(map[string]interfaces.PermissionResourceOps, len(ids))
+	for _, group := range []struct {
+		authType string
+		ids      []string
+	}{
+		{interfaces.AUTH_RESOURCE_TYPE_CATALOG, normalIDs},
+		{interfaces.AUTH_RESOURCE_TYPE_INTERNAL_CATALOG, internalIDs},
+	} {
+		if len(group.ids) == 0 {
+			continue
+		}
+		matched, err := cs.ps.FilterResources(ctx, group.authType, group.ids, ops,
+			allowOperation, interfaces.COMMON_OPERATIONS)
+		if err != nil {
+			return nil, err
+		}
+		for _, resourceOps := range matched {
+			result[resourceOps.ResourceID] = resourceOps
+		}
+	}
+	return result, nil
+}
+
 // Create creates a new Catalog.
 func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogRequest) (string, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Create catalog")
 	defer span.End()
 
-	// 判断userid是否有创建业务知识网络的权限（策略决策）
+	// 判断userid是否有创建业务知识网络的权限（策略决策）；
+	// 内部目录按 internal_catalog 类型校验，默认仅超级管理员/系统 S2S 身份可建
+	authType := catalogAuthResourceType(req.Internal)
 	err := cs.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG,
+		Type: authType,
 		ID:   interfaces.RESOURCE_ID_ALL,
 	}, []string{interfaces.OPERATION_TYPE_CREATE})
 	if err != nil {
@@ -142,6 +211,7 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 		Description:        req.Description,
 		Type:               catalogType,
 		Enabled:            req.Enabled,
+		Internal:           req.Internal,
 		ConnectorType:      req.ConnectorType,
 		ConnectorCfg:       req.ConnectorCfg,
 		HealthCheckEnabled: true,
@@ -179,7 +249,7 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 	// 注册资源
 	err = cs.ps.CreateResources(ctx, []interfaces.PermissionResource{{
 		ID:   catalog.ID,
-		Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG,
+		Type: authType,
 		Name: catalog.Name,
 	}}, interfaces.COMMON_OPERATIONS)
 	if err != nil {
@@ -210,8 +280,9 @@ func (cs *catalogService) GetByID(ctx context.Context, id string, withSensitiveF
 		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound)
 	}
 
-	// 根据权限过滤有查看权限的对象，过滤后的数组的总长度就是总数，无需再请求总数
-	matchResoucesMap, err := cs.ps.FilterResources(ctx, interfaces.AUTH_RESOURCE_TYPE_CATALOG, []string{catalog.ID},
+	// 根据权限过滤有查看权限的对象，过滤后的数组的总长度就是总数，无需再请求总数；
+	// 内部目录按 internal_catalog 类型校验
+	matchResoucesMap, err := cs.ps.FilterResources(ctx, catalogAuthResourceType(catalog.Internal), []string{catalog.ID},
 		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, interfaces.COMMON_OPERATIONS)
 	if err != nil {
 		span.SetStatus(codes.Error, "Filter resources error")
@@ -281,9 +352,16 @@ func (cs *catalogService) GetByIDs(ctx context.Context, ids []string) ([]*interf
 		cs.removeSensitiveFields(c)
 	}
 
-	// 根据权限过滤有查看权限的对象，过滤后的数组的总长度就是总数，无需再请求总数
-	matchResoucesMap, err := cs.ps.FilterResources(ctx, interfaces.AUTH_RESOURCE_TYPE_CATALOG, ids,
-		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, interfaces.COMMON_OPERATIONS)
+	// 根据权限过滤有查看权限的对象，过滤后的数组的总长度就是总数，无需再请求总数；
+	// 内部目录按 internal_catalog 类型校验
+	internalSet := make(map[string]struct{})
+	for _, c := range catalogs {
+		if c.Internal {
+			internalSet[c.ID] = struct{}{}
+		}
+	}
+	matchResoucesMap, err := cs.filterCatalogResources(ctx, ids, internalSet,
+		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true)
 	if err != nil {
 		span.SetStatus(codes.Error, "Filter resources error")
 		return nil, err
@@ -330,6 +408,13 @@ func (cs *catalogService) List(ctx context.Context, params interfaces.CatalogsQu
 		return []*interfaces.Catalog{}, 0, nil
 	}
 
+	// 内部目录 ID 集合，权限校验时按 internal_catalog 类型分组
+	internalSet, err := cs.internalCatalogIDSet(ctx)
+	if err != nil {
+		span.SetStatus(codes.Error, "List internal catalog IDs failed")
+		return []*interfaces.Catalog{}, 0, err
+	}
+
 	// 使用分批处理的方式过滤权限，每批处理1万个ID
 	batchSize := 10000
 	// 所有有权限的catalog及其操作权限
@@ -344,8 +429,8 @@ func (cs *catalogService) List(ctx context.Context, params interfaces.CatalogsQu
 
 		var batchMatchResources map[string]interfaces.PermissionResourceOps
 		// 校验权限管理的操作权限
-		batchMatchResources, err = cs.ps.FilterResources(ctx, interfaces.AUTH_RESOURCE_TYPE_CATALOG,
-			batchIDs, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, interfaces.COMMON_OPERATIONS)
+		batchMatchResources, err = cs.filterCatalogResources(ctx, batchIDs, internalSet,
+			[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true)
 		if err != nil {
 			span.SetStatus(codes.Error, "Filter resources error")
 			return []*interfaces.Catalog{}, 0, err
@@ -455,9 +540,9 @@ func (cs *catalogService) Update(ctx context.Context, catalog *interfaces.Catalo
 		return rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound)
 	}
 
-	// 判断userid是否有修改权限
+	// 判断userid是否有修改权限；内部目录按 internal_catalog 类型校验
 	err := cs.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG,
+		Type: catalogAuthResourceType(catalog.Internal),
 		ID:   catalog.ID,
 	}, []string{interfaces.OPERATION_TYPE_MODIFY})
 	if err != nil {
@@ -536,7 +621,7 @@ func (cs *catalogService) Update(ctx context.Context, catalog *interfaces.Catalo
 	if nameModified {
 		err = cs.ps.UpdateResource(ctx, interfaces.PermissionResource{
 			ID:   catalog.ID,
-			Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG,
+			Type: catalogAuthResourceType(catalog.Internal),
 			Name: catalog.Name,
 		})
 		if err != nil {
@@ -558,7 +643,7 @@ func (cs *catalogService) SetEnabled(ctx context.Context, catalog *interfaces.Ca
 	}
 
 	err := cs.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG,
+		Type: catalogAuthResourceType(catalog.Internal),
 		ID:   catalog.ID,
 	}, []string{interfaces.OPERATION_TYPE_MODIFY})
 	if err != nil {
@@ -602,9 +687,14 @@ func (cs *catalogService) DeleteByIDs(ctx context.Context, ids []string) error {
 		return nil
 	}
 
-	// 判断userid是否有删除权限
-	matchResoucesMap, err := cs.ps.FilterResources(ctx, interfaces.AUTH_RESOURCE_TYPE_CATALOG, ids,
-		[]string{interfaces.OPERATION_TYPE_DELETE}, true, interfaces.COMMON_OPERATIONS)
+	// 判断userid是否有删除权限；内部目录按 internal_catalog 类型校验
+	internalSet, err := cs.internalCatalogIDSet(ctx)
+	if err != nil {
+		span.SetStatus(codes.Error, "List internal catalog IDs failed")
+		return err
+	}
+	matchResoucesMap, err := cs.filterCatalogResources(ctx, ids, internalSet,
+		[]string{interfaces.OPERATION_TYPE_DELETE}, true)
 	if err != nil {
 		span.SetStatus(codes.Error, "Filter resources error")
 		return err
@@ -634,14 +724,31 @@ func (cs *catalogService) DeleteByIDs(ctx context.Context, ids []string) error {
 			verrors.VegaBackend_Resource_InternalError_DeleteFailed).WithErrorDetails(err.Error())
 	}
 
-	//  清除资源策略
-	err = cs.ps.DeleteResources(ctx, interfaces.AUTH_RESOURCE_TYPE_CATALOG, ids)
-	if err != nil {
-		return err
+	//  清除资源策略，按内部/普通目录分组删除对应类型的策略
+	normalIDs, internalIDs := partitionCatalogIDs(ids, internalSet)
+	if len(normalIDs) > 0 {
+		if err = cs.ps.DeleteResources(ctx, interfaces.AUTH_RESOURCE_TYPE_CATALOG, normalIDs); err != nil {
+			return err
+		}
+	}
+	if len(internalIDs) > 0 {
+		if err = cs.ps.DeleteResources(ctx, interfaces.AUTH_RESOURCE_TYPE_INTERNAL_CATALOG, internalIDs); err != nil {
+			return err
+		}
 	}
 
 	span.SetStatus(codes.Ok, "")
 	return nil
+}
+
+// ListInternalIDs 列出所有系统内部目录的 ID。
+func (cs *catalogService) ListInternalIDs(ctx context.Context) ([]string, error) {
+	ids, err := cs.ca.ListInternalIDs(ctx)
+	if err != nil {
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_Catalog_InternalError_GetFailed).WithErrorDetails(err.Error())
+	}
+	return ids, nil
 }
 
 // CheckExistByID checks if a Catalog exists by ID.

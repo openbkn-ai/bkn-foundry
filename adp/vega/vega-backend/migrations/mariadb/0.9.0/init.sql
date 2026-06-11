@@ -108,6 +108,7 @@ CREATE TABLE IF NOT EXISTS t_catalog (
 
     f_type                    VARCHAR(20) NOT NULL DEFAULT '' COMMENT '目录类型: physical, logical',
     f_enabled                 BOOLEAN NOT NULL DEFAULT TRUE COMMENT '是否启用',
+    f_internal                BOOLEAN NOT NULL DEFAULT FALSE COMMENT '是否系统内部目录：内部目录在权限服务按 internal_catalog 类型注册，业务角色的 catalog:* 通配授权匹配不到，仅超级管理员可见',
 
     -- Physical Catalog 专属字段
     f_connector_type          VARCHAR(50) NOT NULL DEFAULT '' COMMENT '数据源类型: mysql, postgresql, s3, kafka, elasticsearch, api, prometheus, etc.',

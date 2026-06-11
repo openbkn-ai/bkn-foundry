@@ -23,6 +23,11 @@ const (
 	AUTH_RESOURCE_TYPE_RESOURCE       = "resource"
 	AUTH_RESOURCE_TYPE_CONNECTOR_TYPE = "connector_type"
 
+	// 内部资源类型：系统内部 catalog 及其下资源按独立类型注册，
+	// 业务角色的 catalog:*/resource:* 通配授权匹配不到，仅超级管理员（* 通配）可见
+	AUTH_RESOURCE_TYPE_INTERNAL_CATALOG  = "internal_catalog"
+	AUTH_RESOURCE_TYPE_INTERNAL_RESOURCE = "internal_resource"
+
 	// 资源操作类型
 	OPERATION_TYPE_VIEW_DETAIL = "view_detail"
 	OPERATION_TYPE_CREATE      = "create"

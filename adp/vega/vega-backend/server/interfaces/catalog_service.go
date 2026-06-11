@@ -28,6 +28,8 @@ type CatalogService interface {
 	DeleteByIDs(ctx context.Context, ids []string) error
 	// CheckExistByID checks if a Catalog exists by ID.
 	CheckExistByID(ctx context.Context, id string) (bool, error)
+	// ListInternalIDs 列出所有系统内部目录的 ID（用于资源权限校验时按 internal_resource 类型分组）。
+	ListInternalIDs(ctx context.Context) ([]string, error)
 	// CheckExistByName checks if a Catalog exists by name.
 	CheckExistByName(ctx context.Context, name string) (bool, error)
 	// TestConnection tests catalog connection.
