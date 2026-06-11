@@ -167,8 +167,41 @@ func (bts *buildTaskService) CreateBuildTask(ctx context.Context, req *interface
 			WithErrorDetails(err.Error())
 	}
 
+	// 创建即入队执行：客户端创建后不会再调 /start，不入队任务会永远停在 init（界面"排队中"）。
+	// 入队失败仅记日志，任务保持 init，可由 /start 重新触发
+	bts.enqueueBuildTask(ctx, buildTask, interfaces.BuildTaskExecuteTypeFull)
+
 	span.SetStatus(codes.Ok, "")
 	return buildTask.ID, nil
+}
+
+// enqueueBuildTask 按任务模式投递到 asynq 队列；入队失败仅记录日志，任务保持当前状态
+func (bts *buildTaskService) enqueueBuildTask(ctx context.Context, buildTask *interfaces.BuildTask, executeType string) {
+	payload, err := sonic.Marshal(&interfaces.BatchBuildTaskMessage{
+		TaskID:      buildTask.ID,
+		ExecuteType: executeType,
+	})
+	if err != nil {
+		otellog.LogError(ctx, "Marshal build task message failed", err)
+		return
+	}
+
+	typename := interfaces.BuildTaskTypeBatch
+	if buildTask.Mode == interfaces.BuildTaskModeStreaming {
+		typename = interfaces.BuildTaskTypeStreaming
+	}
+	asynqTask := asynq.NewTask(typename, payload)
+	client := logics.AQA.CreateClient()
+	if _, err := client.Enqueue(asynqTask,
+		asynq.Queue(interfaces.DefaultQueue),
+		asynq.MaxRetry(interfaces.BUILD_TASK_MAX_RETRY_COUNT),
+		asynq.Timeout(math.MaxInt64),
+		asynq.Deadline(time.Unix(math.MaxInt64/1000000000, math.MaxInt64%1000000000)),
+	); err != nil {
+		otellog.LogError(ctx, "Enqueue build task failed", err)
+	} else {
+		logger.Infof("Build task %s enqueued for execution", buildTask.ID)
+	}
 }
 
 // GetBuildTaskByID retrieves a build task by ID.
@@ -311,30 +344,7 @@ func (bts *buildTaskService) StartBuildTask(ctx context.Context, taskID string, 
 		}
 	}
 
-	payload, err := sonic.Marshal(&interfaces.BatchBuildTaskMessage{
-		TaskID:      taskID,
-		ExecuteType: executeType,
-	})
-	if err != nil {
-		otellog.LogError(ctx, "Marshal build task message failed", err)
-	} else {
-		typename := interfaces.BuildTaskTypeBatch
-		if buildTask.Mode == interfaces.BuildTaskModeStreaming {
-			typename = interfaces.BuildTaskTypeStreaming
-		}
-		asynqTask := asynq.NewTask(typename, payload)
-		client := logics.AQA.CreateClient()
-		if _, err := client.Enqueue(asynqTask,
-			asynq.Queue(interfaces.DefaultQueue),
-			asynq.MaxRetry(interfaces.BUILD_TASK_MAX_RETRY_COUNT),
-			asynq.Timeout(math.MaxInt64),
-			asynq.Deadline(time.Unix(math.MaxInt64/1000000000, math.MaxInt64%1000000000)),
-		); err != nil {
-			otellog.LogError(ctx, "Enqueue build task failed", err)
-		} else {
-			logger.Infof("Build task %s enqueued for execution", taskID)
-		}
-	}
+	bts.enqueueBuildTask(ctx, buildTask, executeType)
 
 	span.SetStatus(codes.Ok, "")
 	return nil
