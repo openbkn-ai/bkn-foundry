@@ -166,43 +166,18 @@ Beyond "seeing more", Agents must "do it right". BKN Foundry provides constraint
 
 ### Core Architecture
 
-```text
-┌──────────────────────── BKN Foundry ────────────────────────┐
-│         │                                          │         │
-│         │  Decision Agent                          │         │
-│  Info   │  (Dolphin Runtime / Agent Executor)       │  Trace │
-│  Secu-  │──────────────────────────────────────────│         │
-│  rity   │                                          │   AI    │
-│         │  AI Data Platform                        │         │
-│ Fabric  │  ┌────────────────────────────────────┐  │  Obse-  │
-│         │  │ Context Loader                     │  │  rvab-  │
-│ (ISF)   │  │  ┌───────────┐   ┌─────────────┐  │  │  ility  │
-│         │  │  │ Retrieval │ → │   Ranker    │  │  │    /    │
-│ Access  │  │  └───────────┘   └─────────────┘  │  │  Evid-  │
-│ Control │  ├────────────────────────────────────┤  │  ence   │
-│    /    │  │ Business Knowledge Network         │  │         │
-│ Secu-   │  │  ┌────────────────────────────┐    │  │         │
-│  rity   │  │  │ BKN Engine                 │    │  │         │
-│         │  │  │ (Data/Logic/Risk/Action)    │    │  │         │
-│         │  │  └──────┬─────────────┬───────┘    │  │         │
-│         │  │         ↓ mapping     ↓ mapping    │  │         │
-│         │  │  ┌────────┐ ┌───────────┐ ┌──────┐ │  │         │
-│         │  │  │  VEGA  │ │ Execution │ │ Data │ │  │         │
-│         │  │  │ Engine │ │  Factory  │ │ flow │ │  │         │
-│         │  │  └────────┘ └───────────┘ └──────┘ │  │         │
-│         │  └────────────────────────────────────┘  │         │
-│         │                                          │         │
-└─────────┴──────────────────────────────────────────┴─────────┘
-               ↕                ↕                ↕
-       Multi-source & Multi-modal Data (30+ data sources)
-```
+![BKN reference architecture](docs/images/bkn-architecture.svg)
 
 | Component | Description |
 | --- | --- |
-| **AI Data Platform** | Non-intrusive access architecture — unified data access, unified execution, and unified security governance through the Business Knowledge Network |
-| **Decision Agent** | Goal-oriented autonomous task planning — acquires high-quality context from AI Data Platform, manages runtime effectively, suppresses hallucination and context decay, invokes tools and skills under permission control, forming a safe "reason → risk-assess → execute → feedback" business loop |
-| **Info Security Fabric** | Unified identity, permissions, and policies as a single entry point — end-to-end control and audit over data access, model output, and tool invocation, reducing privilege escalation, leakage, and prompt injection risks |
-| **Trace AI** | Full-chain observability and evidence chain tracing — supports issue localization and automatic optimization recommendations, enabling explainable and auditable AI applications |
+| **Access layer** | **BKN Studio** (user-facing console), **BKN SDK / CLI** (unified access interface), and **BKN Skill** (platform-level skill layer wrapping SDK capabilities) — for users, apps, and agents |
+| **BKN Engine** | The Business Knowledge Network engine: **Context Loader** (Retrieval recall + Ranker ordering) over the **BKN**, which describes the business through four elements — Data / Logic / Risk / Action — and maps concepts down to the execution layer |
+| **VEGA** | Data virtualization — hides differences between underlying multi-source & multi-modal data |
+| **Exec Factory** | Execution factory — orchestrates tools, MCP, and Skills |
+| **BKN Safe** | Access control — unified identity, permissions, and policy entry point; security controls and auditing per business object / action |
+| **BKN Trace** | Evidence chain — traces BKN call chains (intent → knowledge node → data source → mapping / operator); traceable and explainable |
+
+See the full write-up in [BKN Reference Architecture](docs/bkn-architecture.md).
 
 <a id="toc-bkn-lang"></a>
 
