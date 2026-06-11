@@ -151,6 +151,9 @@ func (eh *embeddingHandler) executeEmbedding(ctx context.Context, resource *inte
 	// Message processing loop
 	retryInterval := interfaces.BUILD_TASK_RETRY_INTERVAL * time.Second
 	totalProcessed := buildTaskInfo.VectorizedCount
+	// 重试耗尽仍失败的文档：完成前补扫一轮，仍失败则写入 error_msg
+	// （仅会话内记录；worker 中途崩溃时这些文档的位点已提交，靠全量重跑恢复）
+	failedDocIDs := []string{}
 	lastUpdateTime := time.Now()
 	updateInterval := 30 * time.Second // embedding速度慢，至少每30秒更新一次
 	for {
@@ -206,8 +209,9 @@ func (eh *embeddingHandler) executeEmbedding(ctx context.Context, resource *inte
 			// Parse Kafka message to extract document ID
 			var messageData map[string]any
 			if err := sonic.Unmarshal(msg.Value, &messageData); err != nil {
+				// 消息畸形，重试无意义：提交跳过，避免后续位点提交把它悄悄盖掉
 				logger.Errorf("Failed to unmarshal message value: %v", err)
-				time.Sleep(retryInterval)
+				_ = eh.kafkaAccess.CommitMessages(ctx, reader, msg)
 				continue
 			}
 
@@ -215,84 +219,67 @@ func (eh *embeddingHandler) executeEmbedding(ctx context.Context, resource *inte
 			docID, ok := messageData["document_id"].(string)
 			if !ok || docID == "" {
 				logger.Errorf("Invalid document ID in message")
-				time.Sleep(retryInterval)
+				_ = eh.kafkaAccess.CommitMessages(ctx, reader, msg)
 				continue
 			}
 
-			// Get document from dataset
-			document, err := eh.ds.GetDocument(ctx, indexName, docID)
-			if err != nil {
-				// Check if document ID is EmptyDocumentID
-				if docID == interfaces.EmptyDocumentID {
-					logger.Infof("Empty document ID detected, skipping: %s", docID)
-
-					// Update resource index name
-					indexName := getIndexName(resource.ID, buildTaskInfo.ID)
-					err = updateResourceIndexName(ctx, resource, eh.resAccess, eh.ds, indexName)
-					if err != nil {
-						logger.Errorf("Failed to update resource index name: %v", err)
-						time.Sleep(retryInterval)
-						continue
-					}
-
-					// Update task status to completed；必须同时回写最终计数：
-					// 常规回写有 30 秒批量窗口，不在这里 flush 会丢最后一个窗口的进度
-					// （短任务整个跑完都在首个窗口内，界面会停在 0%）
-					err = eh.taskAccess.UpdateStatus(ctx, buildTaskInfo.ID, map[string]interface{}{"status": interfaces.BuildTaskStatusCompleted, "vectorizedCount": totalProcessed})
-					if err != nil {
-						logger.Errorf("update build task status to completed failed: %w", buildTaskInfo.ID, err)
-					}
-
-					// Commit the message to avoid reprocessing
-					_ = eh.kafkaAccess.CommitMessages(ctx, reader, msg)
-					logger.Infof("CommitMessages")
-					return nil
-				}
-				logger.Errorf("Failed to get document %s: %v", docID, err)
-				time.Sleep(retryInterval)
-				continue
-			}
-
-			// 处理结果并进行嵌入
-			updateDoc := make(map[string]any)
-			fields := []string{}
-			words := []string{}
-			for _, field := range embeddingFields {
-				if value, exists := document[field]; exists {
-					if text, ok := value.(string); ok && text != "" {
-						fields = append(fields, field)
-						words = append(words, text)
+			// 结束哨兵：同步侧已发完全部文档，先补扫失败文档，再收尾
+			if docID == interfaces.EmptyDocumentID {
+				stillFailed := []string{}
+				for _, failedID := range failedDocIDs {
+					if err := eh.vectorizeDoc(ctx, indexName, failedID, buildTaskInfo.EmbeddingModel, embeddingFields); err != nil {
+						logger.Errorf("Vectorize document %s failed in final sweep: %v", failedID, err)
+						stillFailed = append(stillFailed, failedID)
+					} else {
+						totalProcessed++
 					}
 				}
-			}
-			vectorResp, err := eh.mfa.GetVector(ctx, buildTaskInfo.EmbeddingModel, words)
-			if err != nil || len(vectorResp) != len(words) {
-				logger.Errorf("GetVector failed: %v", err)
-				time.Sleep(retryInterval)
-				continue
-			}
-			for i, field := range fields {
-				if resp := vectorResp[i]; resp.Vector != nil {
-					updateDoc[field+"_vector"] = resp.Vector
+
+				// 索引名落账持久失败则不提交哨兵，整个任务交给 asynq 重试：
+				// 重启后从最后提交位点续读，哨兵会重新投递
+				if err := updateResourceIndexName(ctx, resource, eh.resAccess, eh.ds, indexName); err != nil {
+					logger.Errorf("Failed to update resource index name: %v", err)
+					return fmt.Errorf("update resource index name: %w", err)
 				}
+
+				updates := map[string]interface{}{
+					"status":          interfaces.BuildTaskStatusCompleted,
+					"vectorizedCount": totalProcessed,
+				}
+				// 重试耗尽的文档如实记录：完成态但向量不全时，error_msg 说明缺了哪些
+				if len(stillFailed) > 0 {
+					updates["errorMsg"] = formatVectorizeFailures(stillFailed)
+				}
+				// 必须同时回写最终计数：常规回写有 30 秒批量窗口，
+				// 不在这里 flush 会丢最后一个窗口的进度（短任务界面会停在 0%）
+				if err := eh.taskAccess.UpdateStatus(ctx, buildTaskInfo.ID, updates); err != nil {
+					logger.Errorf("update build task status to completed failed: task %s, %v", buildTaskInfo.ID, err)
+				}
+
+				// Commit the message to avoid reprocessing
+				_ = eh.kafkaAccess.CommitMessages(ctx, reader, msg)
+				logger.Infof("Embedding finished for task %s: %d processed, %d failed", buildTaskInfo.ID, totalProcessed, len(stillFailed))
+				return nil
 			}
 
-			// 保存嵌入结果
-			if len(updateDoc) > 0 {
-				updateReq := map[string]any{
-					"id":       docID,
-					"document": updateDoc,
+			// 单文档带重试：嵌入服务限流等瞬时错误最常见。
+			// 重试耗尽则记入失败清单并照常提交位点——原先的 sleep+continue 看似会重试，
+			// 实际 reader 已前移，后续消息提交位点时把失败文档悄悄盖掉，向量永久缺失且无痕迹
+			var vErr error
+			for attempt := 1; attempt <= embeddingDocMaxAttempts; attempt++ {
+				if vErr = eh.vectorizeDoc(ctx, indexName, docID, buildTaskInfo.EmbeddingModel, embeddingFields); vErr == nil {
+					break
 				}
-				_, err := eh.ds.UpsertDocuments(ctx, indexName, []map[string]any{updateReq})
-				if err != nil {
-					logger.Errorf("Update document failed: %v", err)
+				logger.Errorf("Vectorize document %s attempt %d/%d failed: %v", docID, attempt, embeddingDocMaxAttempts, vErr)
+				if attempt < embeddingDocMaxAttempts {
 					time.Sleep(retryInterval)
-					continue
 				}
 			}
-			// 源字段全为空的文档没有可嵌入文本，同样计入已处理：
-			// 分母（synced_count）包含它们，不计数则进度永远到不了 100%
-			totalProcessed++
+			if vErr != nil {
+				failedDocIDs = append(failedDocIDs, docID)
+			} else {
+				totalProcessed++
+			}
 
 			// 批量更新任务状态
 			if time.Since(lastUpdateTime) > updateInterval {
@@ -306,4 +293,72 @@ func (eh *embeddingHandler) executeEmbedding(ctx context.Context, resource *inte
 			}
 		}
 	}
+}
+
+// 单文档向量化的最大尝试次数（含首次）；超过后记入失败清单，完成前补扫一轮
+const embeddingDocMaxAttempts = 3
+
+// vectorizeDoc 对单个文档执行取数→嵌入→写回，返回错误表示本次尝试整体失败、可重试
+func (eh *embeddingHandler) vectorizeDoc(ctx context.Context, indexName, docID, model string, embeddingFields []string) error {
+	document, err := eh.ds.GetDocument(ctx, indexName, docID)
+	if err != nil {
+		return fmt.Errorf("get document: %w", err)
+	}
+
+	fields := []string{}
+	words := []string{}
+	for _, field := range embeddingFields {
+		if value, exists := document[field]; exists {
+			if text, ok := value.(string); ok && text != "" {
+				fields = append(fields, field)
+				words = append(words, text)
+			}
+		}
+	}
+	// 源字段全为空的文档没有可嵌入文本，视为成功：
+	// 分母（synced_count）包含它们，不计数则进度永远到不了 100%
+	if len(words) == 0 {
+		return nil
+	}
+
+	vectorResp, err := eh.mfa.GetVector(ctx, model, words)
+	if err != nil {
+		return fmt.Errorf("get vector: %w", err)
+	}
+	if len(vectorResp) != len(words) {
+		return fmt.Errorf("get vector: got %d vectors for %d texts", len(vectorResp), len(words))
+	}
+
+	updateDoc := make(map[string]any)
+	for i, field := range fields {
+		if resp := vectorResp[i]; resp.Vector != nil {
+			updateDoc[field+"_vector"] = resp.Vector
+		}
+	}
+	if len(updateDoc) == 0 {
+		return nil
+	}
+
+	updateReq := map[string]any{
+		"id":       docID,
+		"document": updateDoc,
+	}
+	if _, err := eh.ds.UpsertDocuments(ctx, indexName, []map[string]any{updateReq}); err != nil {
+		return fmt.Errorf("upsert document: %w", err)
+	}
+	return nil
+}
+
+// formatVectorizeFailures 生成完成态下向量缺失的说明，ID 列表截断避免撑爆 error_msg
+func formatVectorizeFailures(failed []string) string {
+	const maxListed = 20
+	listed := failed
+	if len(listed) > maxListed {
+		listed = listed[:maxListed]
+	}
+	msg := fmt.Sprintf("vectorization failed for %d documents: %s", len(failed), strings.Join(listed, ","))
+	if len(failed) > maxListed {
+		msg += fmt.Sprintf(" ... and %d more", len(failed)-maxListed)
+	}
+	return msg
 }
