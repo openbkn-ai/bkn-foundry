@@ -60,6 +60,39 @@ func TestRoleGrantAndWildcard(t *testing.T) {
 	}
 }
 
+// TestPublicAccessorGrant covers the root-department-as-everyone convention:
+// a policy whose subject is PublicAccessorID matches ANY requesting subject,
+// scoped strictly to the granted object and op (ISF "grant to root department
+// = public" semantics; bkn-safe has no user→department g rules, so this is
+// resolved in the matcher instead).
+func TestPublicAccessorGrant(t *testing.T) {
+	e := newTestEnforcer(t)
+	mustNoErr(t, e.GrantObjectPermission(PublicAccessorID, "tool_box", "tb1", "public_access"))
+	mustNoErr(t, e.GrantObjectPermission(PublicAccessorID, "tool_box", "tb1", "execute"))
+
+	cases := []struct {
+		sub, typ, id, op string
+		want             bool
+		why              string
+	}{
+		{"u-anyone", "tool_box", "tb1", "public_access", true, "public grant matches any subject"},
+		{"u-anyone", "tool_box", "tb1", "execute", true, "public grant matches any subject"},
+		{"u-anyone", "tool_box", "tb1", "delete", false, "ungranted op must stay denied"},
+		{"u-anyone", "tool_box", "tb2", "execute", false, "public grant must not leak to sibling object"},
+		{"u-anyone", "agent", "tb1", "execute", false, "public grant must not leak to other type"},
+		{PublicAccessorID, "tool_box", "tb1", "execute", true, "the public subject itself still matches"},
+	}
+	for _, c := range cases {
+		got, err := e.Check(c.sub, c.typ, c.id, c.op)
+		if err != nil {
+			t.Fatalf("check(%s,%s:%s,%s): %v", c.sub, c.typ, c.id, c.op, err)
+		}
+		if got != c.want {
+			t.Errorf("Check(%s, %s:%s, %s) = %v, want %v — %s", c.sub, c.typ, c.id, c.op, got, c.want, c.why)
+		}
+	}
+}
+
 // TestAllowedOps mirrors ISF resource-operation: returns the allowed subset.
 func TestAllowedOps(t *testing.T) {
 	e := newTestEnforcer(t)

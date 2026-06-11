@@ -153,14 +153,36 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 
 // registerRoleBindings mounts the accessor↔role binding endpoints (bind / list /
 // unbind). Admin-only — mounted under the /admin group behind RequireAdmin.
-func registerRoleBindings(g *gin.RouterGroup, e *authz.Enforcer) {
+func registerRoleBindings(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 	// POST /role-bindings — bind an accessor to a role. { accessor_id, role_id }
+	// Both ids must reference existing rows: casbin stores the strings verbatim,
+	// so a typo'd accessor (e.g. an account name instead of its ID) would 204
+	// into a grant that never matches at enforce time.
 	g.POST("/role-bindings", func(c *gin.Context) {
 		var req struct {
 			AccessorID string `json:"accessor_id" binding:"required"`
 			RoleID     string `json:"role_id" binding:"required"`
 		}
 		if !bind(c, &req) {
+			return
+		}
+		ok, err := accessorExists(c, db, req.AccessorID)
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		if !ok {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "accessor_id does not match any user, department or group id: " + req.AccessorID})
+			return
+		}
+		var n int64
+		if err := db.WithContext(c.Request.Context()).Model(&model.Role{}).
+			Where("id = ?", req.RoleID).Count(&n).Error; err != nil {
+			serverError(c, err)
+			return
+		}
+		if n == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "role_id does not match any role id: " + req.RoleID})
 			return
 		}
 		if err := e.AssignRole(req.AccessorID, req.RoleID); err != nil {
@@ -452,6 +474,22 @@ func splitObject(o string) (rtype, rid string) {
 		}
 	}
 	return o, ""
+}
+
+// accessorExists reports whether the id is a known binding subject: a user,
+// department or group id.
+func accessorExists(c *gin.Context, db *gorm.DB, id string) (bool, error) {
+	ctx := c.Request.Context()
+	for _, m := range []any{&model.User{}, &model.Department{}, &model.Group{}} {
+		var n int64
+		if err := db.WithContext(ctx).Model(m).Where("id = ?", id).Count(&n).Error; err != nil {
+			return false, err
+		}
+		if n > 0 {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // catalogOps returns the operation ids registered for a resource type.
