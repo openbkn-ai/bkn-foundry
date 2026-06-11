@@ -51,11 +51,11 @@ CSV Files (local)
 ## Prerequisites
 
 ```bash
-# 1. Install the KWeaver CLI
-npm install -g @kweaver-ai/kweaver-sdk
+# 1. Install the openbkn CLI
+npm install -g @openbkn/bkn-sdk
 
 # 2. Authenticate to a BKN Foundry
-kweaver auth login https://<platform-url>
+openbkn auth login https://<platform-url>
 
 # 3. Prepare a MySQL database reachable from the platform
 #    (the script creates tables automatically — no manual SQL needed)
@@ -83,14 +83,14 @@ Replace the files in `data/` with your own CSVs. Requirements:
 
 | Command | What it does |
 |---------|-------------|
-| `kweaver ds connect mysql ...` | Register MySQL as backing datasource |
-| `kweaver bkn create-from-csv <ds-id> --files data/*.csv --build` | Import CSVs and build KN in one step |
-| `kweaver bkn object-type list <kn-id>` | List auto-discovered object types |
-| `kweaver bkn object-type query <kn-id> <ot-id> --limit 5` | Query instances |
-| `kweaver bkn subgraph <kn-id> <instance-id> --depth 2` | Network traversal |
-| `kweaver context-loader kn-search "..." --only-schema` | Semantic schema search |
-| `kweaver bkn export <kn-id>` | Export KN definition |
-| `kweaver agent chat <agent-id> -m "..."` | Chat with schema context |
+| `openbkn ds connect mysql ...` | Register MySQL as backing datasource |
+| `openbkn bkn create-from-csv <ds-id> --files data/*.csv --build` | Import CSVs and build KN in one step |
+| `openbkn bkn object-type list <kn-id>` | List auto-discovered object types |
+| `openbkn bkn object-type query <kn-id> <ot-id> --limit 5` | Query instances |
+| `openbkn bkn subgraph <kn-id> <instance-id> --depth 2` | Network traversal |
+| `openbkn context-loader kn-search "..." --only-schema` | Semantic schema search |
+| `openbkn bkn export <kn-id>` | Export KN definition |
+| `openbkn agent chat <agent-id> -m "..."` | Chat with schema context |
 
 ## Differences from Example 01
 

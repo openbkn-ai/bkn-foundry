@@ -13,7 +13,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# Self-signed ingress: kweaver (node) talks https to the platform.
+# Self-signed ingress: openbkn (node) talks https to the platform.
 export NODE_TLS_REJECT_UNAUTHORIZED="${NODE_TLS_REJECT_UNAUTHORIZED:-0}"
 
 # ── CLI flags ────────────────────────────────────────────────────────────────
@@ -54,7 +54,7 @@ DB_NAME="${DB_NAME:?Set DB_NAME in .env}"
 DB_USER="${DB_USER:?Set DB_USER in .env}"
 DB_PASS="${DB_PASS:?Set DB_PASS in .env}"
 
-# MySQL client binary (Step 0 seeds locally; only `kweaver` talks to the platform)
+# MySQL client binary (Step 0 seeds locally; only `openbkn` talks to the platform)
 MYSQL_BIN="${MYSQL_BIN:-mysql}"
 if ! command -v "$MYSQL_BIN" >/dev/null 2>&1; then
     if [ "$MYSQL_BIN" = "mysql" ]; then
@@ -84,8 +84,8 @@ cleanup() {
     [ -z "$KN_ID" ] && [ -z "$CAT_ID" ] && return 0
     echo ""
     echo "=== Cleanup ==="
-    [ -n "$KN_ID" ]  && kweaver bkn delete "$KN_ID" -y 2>/dev/null && echo "  Deleted KN $KN_ID"
-    [ -n "$CAT_ID" ] && kweaver vega catalog delete "$CAT_ID" -y 2>/dev/null && echo "  Deleted catalog $CAT_ID"
+    [ -n "$KN_ID" ]  && openbkn bkn delete "$KN_ID" -y 2>/dev/null && echo "  Deleted KN $KN_ID"
+    [ -n "$CAT_ID" ] && openbkn call "/api/vega-backend/v1/catalogs/$CAT_ID" -X DELETE 2>/dev/null && echo "  Deleted catalog $CAT_ID"
     echo "Done."
 }
 trap cleanup EXIT
@@ -108,8 +108,9 @@ echo "  Host: $DB_HOST:$DB_PORT  Database: $DB_NAME"
 
 CONN_CFG=$(python3 -c "import json,sys;print(json.dumps({'host':sys.argv[1],'port':int(sys.argv[2]),'username':sys.argv[3],'password':sys.argv[4],'databases':[sys.argv[5]]}))" \
     "$DB_HOST" "$DB_PORT" "$DB_USER" "$DB_PASS" "$DB_NAME")
-debug "Step 1: vega catalog create --connector-type mysql"
-CAT_ID=$(kweaver vega catalog create --name "$CAT_NAME" --connector-type mysql --connector-config "$CONN_CFG" 2>/dev/null | jget id)
+debug "Step 1: create vega catalog via /api/vega-backend/v1/catalogs"
+CAT_BODY=$(python3 -c "import json,sys;print(json.dumps({'name':sys.argv[1],'connector_type':'mysql','connector_config':json.loads(sys.argv[2])}))" "$CAT_NAME" "$CONN_CFG")
+CAT_ID=$(openbkn --json call /api/vega-backend/v1/catalogs -X POST -H "Content-Type: application/json" -d "$CAT_BODY" 2>/dev/null | jget id)
 if [ -z "$CAT_ID" ]; then
     echo "Error: catalog create failed (check DB_HOST is reachable from vega-backend pods, and connector config)." >&2
     exit 1
@@ -117,16 +118,16 @@ fi
 echo "  Catalog created: $CAT_ID"
 
 # Catalogs are created disabled — enable before discovery.
-kweaver call "/api/vega-backend/v1/catalogs/${CAT_ID}/enable" -X POST >/dev/null 2>&1 || true
+openbkn call "/api/vega-backend/v1/catalogs/${CAT_ID}/enable" -X POST >/dev/null 2>&1 || true
 echo "  Catalog enabled"
 
 echo "  Discovering tables ..."
-kweaver vega catalog discover "$CAT_ID" --wait >/dev/null 2>&1 || true
+openbkn call "/api/vega-backend/v1/catalogs/${CAT_ID}/discover?wait=true" -X POST >/dev/null 2>&1 || true
 
 # Discovery is asynchronous — poll the resource list until tables appear (~60s max).
 RES_JSON='{}'; RES_COUNT=0
 for _i in $(seq 1 20); do
-    RES_JSON=$(kweaver vega resource list --catalog-id "$CAT_ID" --category table --json 2>/dev/null || echo '{}')
+    RES_JSON=$(openbkn --json vega resource list --datasource-id "$CAT_ID" --type table 2>/dev/null || echo '{}')
     RES_COUNT=$(echo "$RES_JSON" | python3 -c "import json,sys;d=json.load(sys.stdin);print(len(d.get('entries',[])))" 2>/dev/null || echo 0)
     [ "${RES_COUNT:-0}" -gt 0 ] && break
     sleep 3
@@ -149,30 +150,66 @@ PO_RES=$(res_id "erp_purchase_order")
 # ── Step 2: Create Knowledge Network + object types (resource binding) ───────
 echo ""
 echo "=== Step 2: Create Knowledge Network ==="
-KN_ID=$(kweaver bkn create --name "$KN_NAME" 2>/dev/null | jget kn_id)
-[ -z "$KN_ID" ] && KN_ID=$(kweaver bkn create --name "${KN_NAME}_b" 2>/dev/null | jget id)
+KN_ID=$(openbkn --json bkn create "$KN_NAME" 2>/dev/null | jget kn_id)
+[ -z "$KN_ID" ] && KN_ID=$(openbkn --json bkn create "${KN_NAME}_b" 2>/dev/null | jget id)
 if [ -z "$KN_ID" ]; then
     echo "Error: could not create knowledge network." >&2; exit 1
 fi
 echo "  Knowledge Network created: $KN_ID"
 
+# Build the object-type create body ({"entries":[entry]}) for a resource-bound
+# OT: data_properties come from the Vega resource schema_definition, falling
+# back to pk/dk-only properties when the schema is empty.
+ot_create() { # <kn_id> <ot_name> <resource_id> <primary_key> <display_key>
+    local kn="$1" name="$2" res="$3" pk="$4" dk="$5" body
+    body=$(openbkn --json vega resource get "$res" 2>/dev/null | python3 -c "
+import json, sys
+TYPE_MAP = {'varchar':'string','char':'string','nvarchar':'string','longtext':'text',
+            'mediumtext':'text','tinytext':'text','bigint':'integer','int':'integer',
+            'smallint':'integer','tinyint':'integer','double':'float','real':'float',
+            'numeric':'decimal','number':'decimal','blob':'binary','longblob':'binary',
+            'bit':'boolean','bool':'boolean'}
+def norm(t): return TYPE_MAP.get(str(t or 'string').lower().strip(), str(t or 'string').lower().strip())
+name, res, pk, dk = sys.argv[1:5]
+try:
+    dv = json.load(sys.stdin)
+except Exception:
+    dv = {}
+if isinstance(dv, dict) and isinstance(dv.get('entries'), list):
+    dv = dv['entries'][0] if dv['entries'] else {}
+fields = dv.get('schema_definition') or []
+if fields:
+    props = [{'name': f['name'], 'display_name': (f.get('display_name') or f['name']),
+              'type': norm(f.get('type')),
+              'mapped_field': {'name': f['name'], 'type': norm(f.get('type')),
+                               'display_name': (f.get('display_name') or f['name'])}}
+             for f in fields]
+else:
+    props = [{'name': n, 'display_name': n, 'type': 'string',
+              'mapped_field': {'name': n, 'type': 'string', 'display_name': n}}
+             for n in dict.fromkeys([pk, dk])]
+print(json.dumps({'entries': [{'branch': 'main', 'name': name,
+    'data_source': {'type': 'resource', 'id': res},
+    'primary_keys': [pk], 'display_key': dk, 'data_properties': props}]}))
+" "$name" "$res" "$pk" "$dk")
+    openbkn --json bkn object-type create "$kn" --body "$body" >/dev/null 2>&1
+}
+
 # Object types bound to Vega resources (real-time, no bkn build).
 # PK/DK per the seed schema (see README).
 if [ -n "$BOM_RES" ]; then
-    kweaver bkn object-type create "$KN_ID" --name 物料BOM --resource-id "$BOM_RES" \
-        --primary-key material_code --display-key material_name >/dev/null 2>&1 \
+    ot_create "$KN_ID" 物料BOM "$BOM_RES" material_code material_name \
         && echo "  + Object type 物料BOM  → $BOM_RES"
 fi
 if [ -n "$PO_RES" ]; then
-    kweaver bkn object-type create "$KN_ID" --name 采购订单 --resource-id "$PO_RES" \
-        --primary-key id --display-key material_name >/dev/null 2>&1 \
+    ot_create "$KN_ID" 采购订单 "$PO_RES" id material_name \
         && echo "  + Object type 采购订单 → $PO_RES"
 fi
 
 # ── Step 3: Explore schema ──────────────────────────────────────────────────
 echo ""
 echo "=== Step 3: Explore Knowledge Network schema ==="
-OT_LIST=$(kweaver bkn object-type list "$KN_ID" 2>/dev/null || echo '{}')
+OT_LIST=$(openbkn --json bkn object-type list "$KN_ID" 2>/dev/null || echo '{}')
 echo "$OT_LIST" | python3 -c "import json,sys
 d=json.load(sys.stdin); es=d.get('entries',d if isinstance(d,list) else [])
 print(f'  Object types ({len(es)}):')
@@ -186,7 +223,10 @@ echo ""
 echo "=== Step 4: Query data (real-time via Vega) ==="
 if [ -n "$FIRST_OT" ]; then
     echo "  Sample rows from first object type:"
-    kweaver bkn object-type query "$KN_ID" "$FIRST_OT" '{"limit":3}' 2>/dev/null | python3 -c "import json,sys
+    # openbkn 0.1.0 `object-type query` misses the X-HTTP-Method-Override
+    # header ontology-query requires — drive the API via `call` instead.
+    openbkn --json call "/api/ontology-query/v1/knowledge-networks/$KN_ID/object-types/$FIRST_OT" \
+        -X POST -H "X-HTTP-Method-Override: GET" -d '{"limit":3}' 2>/dev/null | python3 -c "import json,sys
 d=json.load(sys.stdin); rows=d.get('datas',d.get('entries',[]))
 print(f'    {len(rows)} row(s)')
 for r in rows[:3]:
@@ -195,7 +235,7 @@ for r in rows[:3]:
 fi
 
 echo "  Semantic search: \"物料\""
-kweaver bkn search "$KN_ID" "物料" 2>/dev/null | python3 -c "import json,sys
+openbkn --json bkn search "$KN_ID" "物料" 2>/dev/null | python3 -c "import json,sys
 try:
   d=json.load(sys.stdin); cs=d.get('concepts',d.get('entries',[]))
   print(f'    {len(cs)} concept(s) matched')
@@ -205,7 +245,7 @@ except Exception: print('    (no search index for real-time resources)')" 2>/dev
 echo ""
 echo "=== Step 5: Chat with Agent ==="
 if [ -z "${AGENT_ID:-}" ]; then
-    AGENT_ID=$(kweaver agent list --limit 1 2>/dev/null | python3 -c "import json,sys
+    AGENT_ID=$(openbkn --json agent list --limit 1 2>/dev/null | python3 -c "import json,sys
 d=json.load(sys.stdin); a=d if isinstance(d,list) else d.get('entries',[])
 print(a[0].get('id','') if a else '')" 2>/dev/null || true)
 fi
@@ -216,7 +256,7 @@ else
     QUESTION="这个供应链数据库里有哪些核心业务表？物料和采购订单之间是什么关系？"
     echo "  Question: $QUESTION"
     echo "  Agent response:"
-    kweaver agent chat "$AGENT_ID" -m "$QUESTION" --stream 2>/dev/null | sed 's/^/    /' || true
+    openbkn agent chat "$AGENT_ID" -m "$QUESTION" --stream 2>/dev/null | sed 's/^/    /' || true
 fi
 
 echo ""

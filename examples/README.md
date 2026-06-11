@@ -29,8 +29,8 @@ vim .env        # Fill in DB_HOST, DB_USER, DB_PASS, etc.
 > Each `env.sample` contains placeholder values and comments explaining what each variable does.
 
 All examples require:
-- KWeaver CLI: `npm install -g @kweaver-ai/kweaver-sdk`
-- Platform login: `kweaver auth login https://<your-platform-url>`
+- openbkn CLI: `npm install -g @openbkn/bkn-sdk` (Node ≥ 22)
+- Platform login: `openbkn auth login https://<your-platform-url>`
 
 See the README inside each example for specific prerequisites.
 

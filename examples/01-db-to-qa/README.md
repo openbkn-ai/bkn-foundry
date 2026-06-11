@@ -43,15 +43,15 @@ MySQL Database
 ## Prerequisites
 
 ```bash
-# 1. Install the KWeaver CLI
-npm install -g @kweaver-ai/kweaver-sdk
+# 1. Install the openbkn CLI
+npm install -g @openbkn/bkn-sdk
 
 # 2. Install the MySQL client (for Step 0: seed.sql runs on your machine)
 #    macOS:  brew install mysql-client
 #    Ubuntu: sudo apt install -y mysql-client
 
 # 3. Authenticate to a BKN Foundry
-kweaver auth login https://<platform-url>
+openbkn auth login https://<platform-url>
 
 # 4. Prepare a MySQL database reachable from the platform
 #    The DB user must have CREATE TABLE / INSERT / SELECT rights.
@@ -75,27 +75,27 @@ Step 0 runs `mysql` on your local machine; Step 1 uses the platform's network to
 If your laptop uses a public IP but the platform needs a VPC internal IP, set `DB_HOST`
 to the internal address and `DB_HOST_SEED` to the public one.
 
-**`DEBUG=1`** in `.env` prints verbose output (API bodies, kweaver config). Passwords are never logged.
+**`DEBUG=1`** in `.env` prints verbose output (API bodies, openbkn config). Passwords are never logged.
 
 ## Key Commands
 
 ```bash
 # 1. Register a Vega catalog (MySQL connector) and discover tables
-kweaver vega catalog create --name "my-cat" --connector-type mysql \
+openbkn vega catalog create --name "my-cat" --connector-type mysql \
   --connector-config '{"host":"'$DB_HOST'","port":'$DB_PORT',"username":"'$DB_USER'","password":"'$DB_PASS'","databases":["'$DB_NAME'"]}'
-kweaver call "/api/vega-backend/v1/catalogs/<catalog-id>/enable" -X POST   # catalogs start disabled
-kweaver vega catalog discover <catalog-id> --wait
-kweaver vega resource list --catalog-id <catalog-id> --category table       # → resource IDs
+openbkn call "/api/vega-backend/v1/catalogs/<catalog-id>/enable" -X POST   # catalogs start disabled
+openbkn vega catalog discover <catalog-id> --wait
+openbkn vega resource list --catalog-id <catalog-id> --category table       # → resource IDs
 
 # 2. Build a KN with object types bound to Vega resources (real-time, no build)
-kweaver bkn create --name "my-kn"
-kweaver bkn object-type create <kn-id> --name 物料 --resource-id <resource-id> \
+openbkn bkn create --name "my-kn"
+openbkn bkn object-type create <kn-id> --name 物料 --resource-id <resource-id> \
   --primary-key material_code --display-key material_name
 
 # 3. Explore + query + chat
-kweaver bkn object-type list <kn-id>
-kweaver bkn object-type query <kn-id> <ot-id> '{"limit":5}'
-kweaver agent chat <agent-id> -m "What are the main suppliers?"
+openbkn bkn object-type list <kn-id>
+openbkn bkn object-type query <kn-id> <ot-id> '{"limit":5}'
+openbkn agent chat <agent-id> -m "What are the main suppliers?"
 ```
 
 ## Troubleshooting
@@ -107,6 +107,6 @@ kweaver agent chat <agent-id> -m "What are the main suppliers?"
 
 Resources (KN, datasource) are deleted automatically on exit. Manual cleanup:
 ```bash
-kweaver bkn delete <kn-id> -y
-kweaver ds delete <datasource-id> -y
+openbkn bkn delete <kn-id> -y
+openbkn ds delete <datasource-id> -y
 ```

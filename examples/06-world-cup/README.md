@@ -9,7 +9,7 @@
 ```
                        ┌─ 1) Download CSVs   fetch 27 CSVs from jfjelstul/worldcup (cached)
                        │
-                       ├─ 2) Import MySQL    kweaver ds connect + ds import-csv → wc_* tables
+                       ├─ 2) Import MySQL    openbkn ds connect + ds import-csv → wc_* tables
                        │                     (pre-creates wc_matches / wc_team_appearances
                        │                      with VARCHAR(255) to dodge MySQL Error 1118)
                        │
@@ -21,7 +21,7 @@
                        │   build indexes     then build vega resource OpenSearch datasets
                        │                     (7 entity tables get vector embedding)
                        │
-                       ├─ 6) Upload toolbox  kweaver toolbox create + tool upload <OpenAPI>
+                       ├─ 6) Upload toolbox  openbkn toolbox create + tool upload <OpenAPI>
                        │                     (registers `vega_sql_execute` so the agent
                        │                      can run raw SQL against MySQL)
                        │
@@ -32,7 +32,7 @@
 Checked-in assets in this directory:
 - **`worldcup-bkn.tar`** — offline BKN tree (27 object types, 29 `rel_*` edges) packaged as a tar archive; each OT ends with **`resource | {{*_RES_ID}}`** placeholders. `network.bkn` pins id `worldcup_vega_catalog_bkn`. `run.sh` extracts to `.tmp/worldcup-bkn/` before rendering.
 - **`agent-worldcup.config.json`** — Agent template (Context Loader toolbox + system prompt). `run.sh` injects `data_source.knowledge_network[0].knowledge_network_id` and the `vega_sql_execute` tool/box ids at runtime.
-- **`vega_sql_execute.openapi.json`** — OpenAPI 3.0 spec for the SQL-execute tool. Step 6 uploads it via `kweaver tool upload` (the OpenAPI parser path; sidesteps the 0.7.0 `kweaver toolbox import` bug that stored `api_spec` as null).
+- **`vega_sql_execute.openapi.json`** — OpenAPI 3.0 spec for the SQL-execute tool. Step 6 uploads it via `openbkn tool upload` (the OpenAPI parser path; sidesteps the 0.7.0 `openbkn toolbox import` bug that stored `api_spec` as null).
 - **`bkn-network-structure.html`** — single-file visual overview of the BKN: the 4 concept groups, all 27 OTs (dashed = no FK in minimal mode), the matches/tournaments hubs, and the full 29-row relation table. Open in any browser; no build step.
 
 ## Data source and license
@@ -48,15 +48,15 @@ Keep attribution and the share-alike notice on derived data. **Pin a revision** 
 `run.sh` only automates the 7 steps above. On a fresh machine + fresh cluster you still need these one-shot platform tasks:
 
 1. **Install the BKN Foundry platform** (k8s + bkn-backend + ontology-query + vega-backend + agent-* + mf-model-* + opensearch + minio + mariadb). Use `deploy/onboard.sh` from the repo root — see [deploy/README.md](../../deploy/README.md). Recommended `0.8.0+` (fixes the `_score` resource-path bug and the toolbox-import write bug).
-2. **Authenticate the CLI**: `kweaver auth login https://<your-platform-url>` (writes `~/.kweaver/`).
+2. **Authenticate the CLI**: `openbkn auth login https://<your-platform-url>` (writes `~/.bkn/`).
 3. **Register an LLM model** (agent chat needs it):
    ```bash
-   kweaver model llm add --body-file <llm.json>   # see `kweaver model llm --template`
+   openbkn model llm add --body-file <llm.json>   # see `openbkn model llm --template`
    ```
    Note the returned `model_id` and put it in `.env` as `AGENT_LLM_ID`.
 4. **Register an embedding model** (vector index needs it; keyword-only build works without it):
    ```bash
-   kweaver model small add --name text-embedding-v4-cn \
+   openbkn model small add --name text-embedding-v4-cn \
      --type embedding --batch-size 10 --max-tokens 512 --embedding-dim 1024 \
      --model-config-file <emb.json>
    ```
@@ -66,16 +66,16 @@ Keep attribution and the share-alike notice on derived data. **Pin a revision** 
    sudo bash deploy/onboard.sh --enable-bkn-search \
      --bkn-embedding-name=text-embedding-v4-cn
    ```
-6. **Stage MySQL** — create the `worldcup` database and a user that is reachable from the kweaver platform (k8s pod network). Fill `DB_HOST / DB_PORT / DB_NAME / DB_USER / DB_PASS` in `.env`.
+6. **Stage MySQL** — create the `worldcup` database and a user that is reachable from the openbkn platform (k8s pod network). Fill `DB_HOST / DB_PORT / DB_NAME / DB_USER / DB_PASS` in `.env`.
 
 Once those are done, `./run.sh` is fully turnkey and idempotent.
 
 ## Prerequisites (per-shell)
 
 ```bash
-npm install -g @kweaver-ai/kweaver-sdk
-kweaver auth login https://<your-platform-url>
-# Use the Node SDK `kweaver` (avoid a broken /usr/local/bin/kweaver stub).
+npm install -g @openbkn/bkn-sdk
+openbkn auth login https://<your-platform-url>
+# Use the Node SDK `openbkn` (avoid a broken /usr/local/bin/openbkn stub).
 # MySQL must be reachable from the platform AND from Vega connectors.
 # curl + jq + python3 + (optional) `mysql` CLI for the wide-table pre-create
 ```
@@ -120,7 +120,7 @@ Typical LLM workflow: `search_schema` → pick OT + grab `data_source.id` → `q
 Once `./run.sh` finishes, chat with the agent:
 
 ```bash
-kweaver agent chat <AGENT_ID> -m '<your question>' --stream
+openbkn agent chat <AGENT_ID> -m '<your question>' --stream
 ```
 
 `<AGENT_ID>` is written back to `.env` after step 7.
@@ -168,13 +168,13 @@ Every number comes from the 27 `wc_*` tables you imported in step 2 — zero LLM
 | Symptom | What to try |
 |---------|--------------|
 | Step 1 download fails | Check network; verify `WORLDCUP_REF` points at a revision with `data-csv/`. |
-| `kweaver auth` 401 | `kweaver auth login`; confirm business domain via `kweaver config show`. |
+| `openbkn auth` 401 | `openbkn auth login`; confirm business domain via `openbkn config show`. |
 | `import-csv` → MySQL **Error 1118** | Step 2 pre-creates `wc_matches` / `wc_team_appearances` with VARCHAR(255) via the local `mysql` CLI. Without that client installed you must pre-create them manually or relax column types. |
 | Vega `discover` fails | Set `VEGA_CATALOG_ID` then `./run.sh --from 4`. |
 | Fewer than 27 Resources | `databases` in connector config incomplete, or discover didn't finish — adjust `VEGA_MYSQL_DATABASES` and rerun step 3. |
 | Step 5 index build skipped for a large table | Expected on platform 0.7.0 — `vega-backend` has a batch-sync cursor bug on tables `>2× batch_size` (8 event tables). Agent falls back to `vega_sql_execute` for those. Fixed in 0.8.0+. |
 | Step 5 `embedding model … not registered` | Either register one (see setup checklist) or set `DO_INDEX=0` / `EMBEDDING_MODEL_NAME=` (empty) — script then builds keyword-only indexes. |
-| `agent create` fails on missing LLM | Set `AGENT_LLM_ID` in `.env` to a `model_id` from `kweaver model llm list`. |
+| `agent create` fails on missing LLM | Set `AGENT_LLM_ID` in `.env` to a `model_id` from `openbkn model llm list`. |
 
 ## Differences from Example 02
 

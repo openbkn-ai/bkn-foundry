@@ -51,6 +51,9 @@ htmlcov/
 .env.local
 .env.*.local
 
+# examples/04 cached skill id (per-deployment state)
+.exp_skill_id
+
 # Logs
 *.log
 logs/

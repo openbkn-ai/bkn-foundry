@@ -82,20 +82,20 @@ SCHED_ID=""
 cleanup() {
     if [ "${KEEP_RESOURCES:-0}" = "1" ]; then
         echo ""; echo "=== Cleanup skipped (KEEP_RESOURCES=1) ==="
-        echo "  Inspect: kweaver toolbox list | grep eval_action_toolbox ; kweaver bkn action-log list $KN_ID"
+        echo "  Inspect: openbkn toolbox list | grep eval_action_toolbox ; openbkn bkn action-log list $KN_ID"
         return 0
     fi
     echo ""
     echo "=== Cleanup ==="
-    [ -n "$SCHED_ID" ] && kweaver bkn action-schedule delete "$KN_ID" "$SCHED_ID" -y 2>/dev/null \
+    [ -n "$SCHED_ID" ] && openbkn bkn action-schedule delete "$KN_ID" "$SCHED_ID" 2>/dev/null \
         && echo "  Deleted action-schedule $SCHED_ID" || true
-    [ -n "$AT_ID" ] && kweaver bkn action-type delete "$KN_ID" "$AT_ID" -y 2>/dev/null \
+    [ -n "$AT_ID" ] && openbkn call "/api/ontology-manager/v1/knowledge-networks/$KN_ID/action-types/$AT_ID?branch=main" -X DELETE 2>/dev/null \
         && echo "  Deleted action-type $AT_ID" || true
-    [ -n "$BOX_ID" ] && kweaver toolbox delete "$BOX_ID" -y 2>/dev/null \
+    [ -n "$BOX_ID" ] && openbkn toolbox delete "$BOX_ID" -y 2>/dev/null \
         && echo "  Deleted toolbox $BOX_ID" || true
-    [ -n "$KN_ID" ] && kweaver bkn delete "$KN_ID" -y 2>/dev/null \
+    [ -n "$KN_ID" ] && openbkn bkn delete "$KN_ID" -y 2>/dev/null \
         && echo "  Deleted KN $KN_ID" || true
-    [ -n "$CAT_ID" ] && kweaver vega catalog delete "$CAT_ID" -y 2>/dev/null \
+    [ -n "$CAT_ID" ] && openbkn call "/api/vega-backend/v1/catalogs/$CAT_ID" -X DELETE 2>/dev/null \
         && echo "  Deleted catalog $CAT_ID" || true
     echo "Done."
 }
@@ -124,13 +124,14 @@ for path in sorted(glob.glob(os.path.join(ddir,'*.csv'))):
         print(f"INSERT INTO `{tbl}` VALUES ({', '.join(sqlval(v) for v in r)});")
 PY
 CONN_CFG=$(python3 -c "import json,sys;print(json.dumps({'host':sys.argv[1],'port':int(sys.argv[2]),'username':sys.argv[3],'password':sys.argv[4],'databases':[sys.argv[5]]}))" "$DB_HOST" "$DB_PORT" "$DB_USER" "$DB_PASS" "$DB_NAME")
-CAT_ID=$(kweaver vega catalog create --name "$CAT_NAME" --connector-type mysql --connector-config "$CONN_CFG" 2>/dev/null | jget id)
+CAT_BODY=$(python3 -c "import json,sys;print(json.dumps({'name':sys.argv[1],'connector_type':'mysql','connector_config':json.loads(sys.argv[2])}))" "$CAT_NAME" "$CONN_CFG")
+CAT_ID=$(openbkn --json call /api/vega-backend/v1/catalogs -X POST -H "Content-Type: application/json" -d "$CAT_BODY" 2>/dev/null | jget id)
 [ -z "$CAT_ID" ] && { echo "Error: catalog create failed (is DB_HOST reachable from vega-backend pods?)." >&2; exit 1; }
-kweaver call "/api/vega-backend/v1/catalogs/${CAT_ID}/enable" -X POST >/dev/null 2>&1 || true
-kweaver vega catalog discover "$CAT_ID" --wait >/dev/null 2>&1 || true
+openbkn call "/api/vega-backend/v1/catalogs/${CAT_ID}/enable" -X POST >/dev/null 2>&1 || true
+openbkn call "/api/vega-backend/v1/catalogs/${CAT_ID}/discover?wait=true" -X POST >/dev/null 2>&1 || true
 RES_JSON='{}'; RES_N=0
 for _i in $(seq 1 20); do
-    RES_JSON=$(kweaver vega resource list --catalog-id "$CAT_ID" --category table --json 2>/dev/null || echo '{}')
+    RES_JSON=$(openbkn --json vega resource list --datasource-id "$CAT_ID" --type table 2>/dev/null || echo '{}')
     RES_N=$(echo "$RES_JSON" | python3 -c "import json,sys;print(len(json.load(sys.stdin).get('entries',[])))" 2>/dev/null || echo 0)
     [ "${RES_N:-0}" -gt 0 ] && break; sleep 3
 done
@@ -143,18 +144,56 @@ echo "  Catalog: $CAT_ID ($RES_N table resources)"
 # ── Step 2: Build Knowledge Network (object types bound to Vega resources) ───
 echo ""
 echo "=== Step 2: Build Knowledge Network ==="
-KN_ID=$(kweaver bkn create --name "$KN_NAME" 2>/dev/null | jget kn_id)
-[ -z "$KN_ID" ] && KN_ID=$(kweaver bkn create --name "${KN_NAME}_b" 2>/dev/null | jget id)
+KN_ID=$(openbkn --json bkn create "$KN_NAME" 2>/dev/null | jget kn_id)
+[ -z "$KN_ID" ] && KN_ID=$(openbkn --json bkn create "${KN_NAME}_b" 2>/dev/null | jget id)
 [ -z "$KN_ID" ] && { echo "Error: no kn_id in response" >&2; exit 1; }
 echo "  Knowledge Network: $KN_ID"
 INV_RES=$(res_id "eval_inventory"); PO_RES=$(res_id "eval_production_orders")
-[ -n "$INV_RES" ] && kweaver bkn object-type create "$KN_ID" --name 物料库存 --resource-id "$INV_RES" \
-    --primary-key material_code --display-key material_name >/dev/null 2>&1 && echo "  + 物料库存 (eval_inventory)"
-[ -n "$PO_RES" ] && kweaver bkn object-type create "$KN_ID" --name 生产订单 --resource-id "$PO_RES" \
-    --primary-key order_id --display-key product_name >/dev/null 2>&1 && echo "  + 生产订单 (eval_production_orders)"
+# Build the object-type create body ({"entries":[entry]}) for a resource-bound
+# OT: data_properties come from the Vega resource schema_definition, falling
+# back to pk/dk-only properties when the schema is empty.
+ot_create() { # <kn_id> <ot_name> <resource_id> <primary_key> <display_key>
+    local kn="$1" name="$2" res="$3" pk="$4" dk="$5" body
+    body=$(openbkn --json vega resource get "$res" 2>/dev/null | python3 -c "
+import json, sys
+TYPE_MAP = {'varchar':'string','char':'string','nvarchar':'string','longtext':'text',
+            'mediumtext':'text','tinytext':'text','bigint':'integer','int':'integer',
+            'smallint':'integer','tinyint':'integer','double':'float','real':'float',
+            'numeric':'decimal','number':'decimal','blob':'binary','longblob':'binary',
+            'bit':'boolean','bool':'boolean'}
+def norm(t): return TYPE_MAP.get(str(t or 'string').lower().strip(), str(t or 'string').lower().strip())
+name, res, pk, dk = sys.argv[1:5]
+try:
+    dv = json.load(sys.stdin)
+except Exception:
+    dv = {}
+if isinstance(dv, dict) and isinstance(dv.get('entries'), list):
+    dv = dv['entries'][0] if dv['entries'] else {}
+fields = dv.get('schema_definition') or []
+if fields:
+    props = [{'name': f['name'], 'display_name': (f.get('display_name') or f['name']),
+              'type': norm(f.get('type')),
+              'mapped_field': {'name': f['name'], 'type': norm(f.get('type')),
+                               'display_name': (f.get('display_name') or f['name'])}}
+             for f in fields]
+else:
+    props = [{'name': n, 'display_name': n, 'type': 'string',
+              'mapped_field': {'name': n, 'type': 'string', 'display_name': n}}
+             for n in dict.fromkeys([pk, dk])]
+print(json.dumps({'entries': [{'branch': 'main', 'name': name,
+    'data_source': {'type': 'resource', 'id': res},
+    'primary_keys': [pk], 'display_key': dk, 'data_properties': props}]}))
+" "$name" "$res" "$pk" "$dk")
+    openbkn --json bkn object-type create "$kn" --body "$body" >/dev/null 2>&1
+}
+
+[ -n "$INV_RES" ] && ot_create "$KN_ID" 物料库存 "$INV_RES" material_code material_name \
+    && echo "  + 物料库存 (eval_inventory)"
+[ -n "$PO_RES" ] && ot_create "$KN_ID" 生产订单 "$PO_RES" order_id product_name \
+    && echo "  + 生产订单 (eval_production_orders)"
 
 # Material/inventory object type ID (needed for the action condition)
-OT_LIST=$(kweaver bkn object-type list "$KN_ID")
+OT_LIST=$(openbkn --json bkn object-type list "$KN_ID")
 MAT_OT_ID=$(echo "$OT_LIST" | python3 -c "
 import sys, json
 entries = json.load(sys.stdin)
@@ -168,7 +207,7 @@ echo "  Material object type: $MAT_OT_ID"
 # ── Step 3: Register demo action toolbox ──────────────────────────────────────
 echo ""
 echo "=== Step 3: Register action tool backend ==="
-BOX_JSON=$(kweaver toolbox create \
+BOX_JSON=$(openbkn --json toolbox create \
     --name "eval_action_toolbox_${TIMESTAMP}" \
     --service-url "http://bkn-backend-svc:13014" \
     --description "Demo toolbox for action-lifecycle example")
@@ -201,7 +240,7 @@ cat > "$_OPENAPI_TMP" <<'OPENAPI'
 }
 OPENAPI
 
-_TOOL_RESP=$(kweaver tool upload --toolbox "$BOX_ID" "$_OPENAPI_TMP")
+_TOOL_RESP=$(openbkn --json tool upload --toolbox "$BOX_ID" "$_OPENAPI_TMP")
 rm -f "$_OPENAPI_TMP"
 debug_dump_json "create tool" "$_TOOL_RESP"
 
@@ -213,8 +252,8 @@ echo "  Tool: $TOOL_ID"
 # ── Step 5: Publish toolbox and enable tool ───────────────────────────────────
 echo ""
 echo "=== Step 5: Publish toolbox ==="
-kweaver toolbox publish "$BOX_ID" > /dev/null
-kweaver tool enable --toolbox "$BOX_ID" "$TOOL_ID" > /dev/null
+openbkn toolbox publish "$BOX_ID" > /dev/null
+openbkn tool enable --toolbox "$BOX_ID" "$TOOL_ID" > /dev/null
 echo "  Toolbox published, tool enabled"
 
 # ── Step 6: Define action type ────────────────────────────────────────────────
@@ -245,7 +284,7 @@ body = {
 print(json.dumps(body))
 ")
 
-AT_JSON=$(kweaver bkn action-type create "$KN_ID" "$AT_BODY")
+AT_JSON=$(openbkn --json call "/api/ontology-manager/v1/knowledge-networks/$KN_ID/action-types?branch=main" -X POST -H "Content-Type: application/json" -d "{\"entries\":[$AT_BODY]}")
 debug_dump_json "action-type create" "$AT_JSON"
 AT_ID=$(echo "$AT_JSON" | python3 -c "
 import sys,json
@@ -259,7 +298,7 @@ echo "  Action type: $AT_ID"
 # ── Step 7: Query — verify affected instances ─────────────────────────────────
 echo ""
 echo "=== Step 7: Query — which materials need replenishment? ==="
-QUERY_JSON=$(kweaver bkn action-type query "$KN_ID" "$AT_ID" '{}' 2>/dev/null || true)
+QUERY_JSON=$(openbkn --json bkn action-type query "$KN_ID" "$AT_ID" --body '{}' 2>/dev/null || true)
 debug_dump_json "action-type query" "$QUERY_JSON"
 AFFECTED=$(echo "$QUERY_JSON" | python3 -c \
     "import sys,json; d=json.load(sys.stdin); print(d.get('total_count') or len(d.get('actions') or d.get('entries') or []))" 2>/dev/null || echo "0")
@@ -280,7 +319,7 @@ print(json.dumps({
     '_instance_identities': [{}]
 }))
 ")
-SCHED_JSON=$(kweaver bkn action-schedule create "$KN_ID" "$SCHED_BODY")
+SCHED_JSON=$(openbkn --json bkn action-schedule create "$KN_ID" --body "$SCHED_BODY")
 debug_dump_json "action-schedule create" "$SCHED_JSON"
 SCHED_ID=$(echo "$SCHED_JSON" | python3 -c \
     "import sys,json; d=json.load(sys.stdin); print(d.get('id',''))")
@@ -290,11 +329,11 @@ echo "  Schedule: $SCHED_ID (cron: 0 8 * * *)"
 # ── Step 9: Confirm schedule is active ────────────────────────────────────────
 echo ""
 echo "=== Step 9: Confirm schedule active ==="
-SCHED_DETAIL=$(kweaver bkn action-schedule get "$KN_ID" "$SCHED_ID")
+SCHED_DETAIL=$(openbkn --json bkn action-schedule get "$KN_ID" "$SCHED_ID")
 SCHED_STATUS=$(echo "$SCHED_DETAIL" | python3 -c \
     "import sys,json; print(json.load(sys.stdin).get('status','unknown'))")
 if [ "$SCHED_STATUS" = "inactive" ]; then
-    kweaver bkn action-schedule set-status "$KN_ID" "$SCHED_ID" active > /dev/null
+    openbkn bkn action-schedule set-status "$KN_ID" "$SCHED_ID" --body '{"status":"active"}' > /dev/null
     SCHED_STATUS="active"
 fi
 echo "  Schedule status: $SCHED_STATUS"
@@ -312,8 +351,7 @@ echo "  Executing now so you can see results immediately..."
 # condition ("sub condition size is 0", see issue #10); the all-instances form
 # is unaffected and exercises the same tool dispatch + audit path.
 EXEC_BODY='{"_instance_identities": []}'
-EXEC_JSON=$(kweaver bkn action-type execute "$KN_ID" "$AT_ID" "$EXEC_BODY" \
-    --timeout 60 2>/dev/null || true)
+EXEC_JSON=$(openbkn --json bkn action-type execute "$KN_ID" "$AT_ID" --body "$EXEC_BODY" 2>/dev/null || true)
 debug_dump_json "action-type execute" "$EXEC_JSON"
 
 EXEC_ID=$(echo "$EXEC_JSON" | python3 -c \
@@ -328,7 +366,7 @@ echo "  The action's tool was dispatched; see the audit log below for the record
 # ── Step 11: Audit log ────────────────────────────────────────────────────────
 echo ""
 echo "=== Step 11: Audit log — what the knowledge network has done ==="
-LOG_JSON=$(kweaver bkn action-log list "$KN_ID" 2>&1 || true)
+LOG_JSON=$(openbkn --json bkn action-log list "$KN_ID" 2>&1 || true)
 debug_dump_json "action-log list" "$LOG_JSON"
 LOG_COUNT=$(echo "$LOG_JSON" | python3 -c "
 import sys,json
@@ -360,5 +398,5 @@ echo "    2. Trigger the replenishment alert"
 echo "    3. Record the result in the audit log"
 echo ""
 echo "  Check the log anytime:"
-echo "    kweaver bkn action-log list $KN_ID"
+echo "    openbkn bkn action-log list $KN_ID"
 echo "======================================================"
