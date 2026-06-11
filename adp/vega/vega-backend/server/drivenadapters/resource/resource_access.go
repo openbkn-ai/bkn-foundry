@@ -385,8 +385,10 @@ func (ra *resourceAccess) AttachListExtensions(ctx context.Context, params inter
 	return attachResourceExtensions(ctx, ra.appSetting, params, resources)
 }
 
-// GetByIDsBasic retrieves Resources by IDs without parsing sourceMetadata, schemaDefinition and logicDefinition.
+// GetByIDsBasic retrieves Resources by IDs without fully parsing sourceMetadata, schemaDefinition and logicDefinition.
 // This method is optimized for memory usage when these large fields are not needed.
+// 仅从原始 JSON 中惰性提取规模信息（column_count/row_count），不反序列化完整结构；
+// 计数在 Go 侧完成以兼容多方言数据库（MariaDB/DM8/KDB9 等），不依赖 MySQL JSON 函数。
 func (ra *resourceAccess) GetByIDsBasic(ctx context.Context, ids []string) ([]*interfaces.Resource, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Query resources by IDs (basic)")
 	defer span.End()
@@ -405,6 +407,8 @@ func (ra *resourceAccess) GetByIDsBasic(ctx context.Context, ids []string) ([]*i
 		"f_last_discover_status",
 		"f_database",
 		"f_source_identifier",
+		"f_source_metadata",
+		"f_schema_definition",
 		"f_logic_type",
 		"f_creator",
 		"f_creator_type",
@@ -433,7 +437,7 @@ func (ra *resourceAccess) GetByIDsBasic(ctx context.Context, ids []string) ([]*i
 	for rows.Next() {
 		resource := &interfaces.Resource{}
 		var tagsStr string
-		var database, sourceIdentifier sql.NullString
+		var database, sourceIdentifier, sourceMetadata, schemaDefinition sql.NullString
 
 		err := rows.Scan(
 			&resource.ID,
@@ -447,6 +451,8 @@ func (ra *resourceAccess) GetByIDsBasic(ctx context.Context, ids []string) ([]*i
 			&resource.LastDiscoverStatus,
 			&database,
 			&sourceIdentifier,
+			&sourceMetadata,
+			&schemaDefinition,
 			&resource.LogicType,
 			&resource.Creator.ID,
 			&resource.Creator.Type,
@@ -466,8 +472,22 @@ func (ra *resourceAccess) GetByIDsBasic(ctx context.Context, ids []string) ([]*i
 		resource.Tags = libCommon.TagString2TagSlice(tagsStr)
 		resource.Database = database.String
 		resource.SourceIdentifier = sourceIdentifier.String
-		// 不解析sourceMetadata、schemaDefinition和logicDefinition，以减少内存占用
-		// 这些字段在需要时可以单独获取
+		// 不反序列化sourceMetadata、schemaDefinition和logicDefinition的完整结构，以减少内存占用
+		// 仅惰性提取规模信息：列数（schema 顶层元素数）与源端行数估算（properties.row_count）
+		if schemaDefinition.Valid && schemaDefinition.String != "" {
+			if node, err := sonic.GetFromString(schemaDefinition.String); err == nil && node.Load() == nil {
+				if n, err := node.Len(); err == nil {
+					resource.ColumnCount = &n
+				}
+			}
+		}
+		if sourceMetadata.Valid && sourceMetadata.String != "" {
+			if node, err := sonic.GetFromString(sourceMetadata.String, "properties", "row_count"); err == nil {
+				if v, err := node.Int64(); err == nil {
+					resource.RowCount = &v
+				}
+			}
+		}
 
 		resources = append(resources, resource)
 	}

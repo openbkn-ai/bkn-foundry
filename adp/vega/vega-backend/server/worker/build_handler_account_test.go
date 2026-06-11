@@ -45,7 +45,10 @@ func TestBatchBuildHandlerInjectsCreatorIntoCtx(t *testing.T) {
 	taskAccess := vmock.NewMockBuildTaskAccess(ctrl)
 	resAccess := vmock.NewMockResourceAccess(ctrl)
 	cs := vmock.NewMockCatalogService(ctrl)
-	bh := &batchBuildHandler{taskAccess: taskAccess, resAccess: resAccess, cs: cs}
+	ds := vmock.NewMockDatasetService(ctrl)
+	// executeBuild 现在无条件调 createLocalIndex（幂等），索引已存在直接跳过
+	ds.EXPECT().CheckExist(gomock.Any(), gomock.Any()).Return(true, nil).AnyTimes()
+	bh := &batchBuildHandler{taskAccess: taskAccess, resAccess: resAccess, cs: cs, ds: ds}
 
 	taskAccess.EXPECT().GetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{
 		ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusRunning, Creator: testCreator,

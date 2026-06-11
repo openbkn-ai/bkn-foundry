@@ -274,9 +274,11 @@ func (bts *buildTaskService) StartBuildTask(ctx context.Context, taskID string, 
 		span.SetStatus(codes.Error, "Build task not found")
 		return rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_BuildTask_NotFound)
 	}
+	// failed 也允许重启：否则失败任务成死胡同，只能删除重建
 	if buildTask.Status != interfaces.BuildTaskStatusInit &&
 		buildTask.Status != interfaces.BuildTaskStatusStopped &&
-		buildTask.Status != interfaces.BuildTaskStatusCompleted {
+		buildTask.Status != interfaces.BuildTaskStatusCompleted &&
+		buildTask.Status != interfaces.BuildTaskStatusFailed {
 		span.SetStatus(codes.Error, "Invalid state transition for start")
 		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_InvalidStateTransition).
 			WithErrorDetails(fmt.Sprintf("cannot start task in status: %s", buildTask.Status))
@@ -344,14 +346,22 @@ func (bts *buildTaskService) StopBuildTask(ctx context.Context, taskID string) e
 		span.SetStatus(codes.Error, "Build task not found")
 		return rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_BuildTask_NotFound)
 	}
-	if buildTask.Status != interfaces.BuildTaskStatusRunning {
+	if buildTask.Status != interfaces.BuildTaskStatusRunning &&
+		buildTask.Status != interfaces.BuildTaskStatusStopping {
 		span.SetStatus(codes.Error, "Invalid state transition for stop")
 		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_InvalidStateTransition).
 			WithErrorDetails(fmt.Sprintf("cannot stop task in status: %s", buildTask.Status))
 	}
 
+	// running → stopping：通知 worker 在批间检查点退出。
+	// stopping → stopped：兜底强制落停。worker 已不在（asynq 任务耗尽重试/服务重启）
+	// 时 stopping 永远不会被推进，任务卡死无法删除，二次 stop 即强制完结。
+	targetStatus := interfaces.BuildTaskStatusStopping
+	if buildTask.Status == interfaces.BuildTaskStatusStopping {
+		targetStatus = interfaces.BuildTaskStatusStopped
+	}
 	updates := map[string]any{
-		"status": interfaces.BuildTaskStatusStopping,
+		"status": targetStatus,
 	}
 	if err := bts.bta.UpdateStatus(ctx, taskID, updates); err != nil {
 		otellog.LogError(ctx, "Update build task status failed", err)

@@ -106,26 +106,42 @@ func (bh *batchBuildHandler) HandleTask(ctx context.Context, task *asynq.Task) e
 	return nil
 }
 
+// advanceCursor 把批读游标推进到本批最后一行的键值。
+// 注意必须按下标写回切片：此前用 `for _, kv := range` 改副本，游标永远停在
+// 第一批末尾，超过一个批次的表会无限重读同一区间（synced_count 膨胀、压垮索引）。
+func advanceCursor(cursor []interfaces.KeyValue, keys []string, lastItem map[string]any) []interfaces.KeyValue {
+	if len(cursor) == 0 {
+		for _, key := range keys {
+			cursor = append(cursor, interfaces.KeyValue{Key: key, Value: lastItem[key]})
+		}
+		return cursor
+	}
+	for i := range cursor {
+		cursor[i].Value = lastItem[cursor[i].Key]
+	}
+	return cursor
+}
+
 // executeBuild executes the build logic
 func (bh *batchBuildHandler) executeBuild(ctx context.Context, resource *interfaces.Resource, buildTaskInfo *interfaces.BuildTask, executeType string) error {
-	if buildTaskInfo.Status == interfaces.BuildTaskStatusInit {
-		if buildTaskInfo.EmbeddingFields != "" {
-			// send embedding task to queue
-			err := sendEmbeddingTask(bh.client, buildTaskInfo.ID)
-			if err != nil {
-				return fmt.Errorf("send embedding task failed: %w", err)
-			}
-			logger.Infof("Embedding task sent for task %s", buildTaskInfo.ID)
-		}
-		err := createLocalIndex(ctx, bh.ds, buildTaskInfo, resource)
+	// 两个操作均幂等（embedding 任务靠 asynq TaskID 去重，索引已存在则跳过），
+	// 不能只在 init 时执行：stop→start 重启后老 embedding worker 已退出，
+	// 若不补发，文档 ID 堆积在 Kafka 无消费者，向量化永远停滞
+	if buildTaskInfo.EmbeddingFields != "" {
+		err := sendEmbeddingTask(bh.client, buildTaskInfo.ID)
 		if err != nil {
-			return fmt.Errorf("create local index failed: %w", err)
+			return fmt.Errorf("send embedding task failed: %w", err)
 		}
+		logger.Infof("Embedding task sent for task %s", buildTaskInfo.ID)
+	}
+	err := createLocalIndex(ctx, bh.ds, buildTaskInfo, resource)
+	if err != nil {
+		return fmt.Errorf("create local index failed: %w", err)
 	}
 	indexName := getIndexName(resource.ID, buildTaskInfo.ID)
 
-	// Update task status to running
-	err := bh.taskAccess.UpdateStatus(ctx, buildTaskInfo.ID, map[string]interface{}{"status": interfaces.BuildTaskStatusRunning})
+	// Update task status to running; 实际开始执行时清掉上一轮残留的错误信息
+	err = bh.taskAccess.UpdateStatus(ctx, buildTaskInfo.ID, map[string]interface{}{"status": interfaces.BuildTaskStatusRunning, "errorMsg": ""})
 	if err != nil {
 		return fmt.Errorf("update build task status failed: %w", err)
 	}
@@ -286,18 +302,7 @@ func (bh *batchBuildHandler) executeBuild(ctx context.Context, resource *interfa
 			// Update lastBatchKeyValues with the last values in this batch
 			newSyncedMark := map[string]any{}
 			lastItem := result.Rows[readRows-1]
-			if len(lastBatchKeyValues) == 0 {
-				for _, key := range keys {
-					lastBatchKeyValues = append(lastBatchKeyValues, interfaces.KeyValue{
-						Key:   key,
-						Value: lastItem[key],
-					})
-				}
-			} else {
-				for _, kv := range lastBatchKeyValues {
-					kv.Value = lastItem[kv.Key]
-				}
-			}
+			lastBatchKeyValues = advanceCursor(lastBatchKeyValues, keys, lastItem)
 			for _, field := range batchFields {
 				newSyncedMark[field] = lastItem[field]
 			}

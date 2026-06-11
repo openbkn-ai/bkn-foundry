@@ -231,13 +231,15 @@ paths:
     post:
       summary: 启动构建任务
       description: |
-        合法状态转移：`status ∈ {init, stopped}` → `running`。
+        合法状态转移：`status ∈ {init, stopped, completed, failed}` → `running`。
+        `failed` 允许重启：从 `synced_mark` 水位继续（batch incremental），
+        无需删除重建；worker 实际开始执行时会清空 `error_msg`。
 
         **响应 status 滞后**：HTTP 202 表示"启动指令已被接受并入队"，**不**表示
         status 已切换为 `running`。worker 实际执行时才会写为 `running`，
         客户端如需确认应轮询 GET。响应 body 为空。
 
-        **非幂等**：对已 running 的 task 再次 start 返回 409
+        **非幂等**：对已 running / stopping 的 task 再次 start 返回 409
         `VegaBackend.BuildTask.InvalidStateTransition`。
       requestBody:
         required: false
@@ -269,12 +271,15 @@ paths:
     post:
       summary: 停止构建任务
       description: |
-        合法状态转移：`status == running` → `stopping`。
+        合法状态转移：
+        - `running` → `stopping`：正常停止，worker 在批间检查点退出后写 `stopped`。
+        - `stopping` → `stopped`：强制完结。worker 已不在（重试耗尽 / 服务重启）时
+          `stopping` 不会被自动推进，再次调 stop 直接落停，使任务可删除。
 
         **响应 status 滞后**：HTTP 202 表示"停止指令已被记录"。`stopping → stopped`
         由 worker 异步推进，客户端可轮询 GET 拿最新 status。响应 body 为空。
 
-        **非幂等**：对非 running 状态的 task 调 stop 返回 409
+        **非幂等**：对非 running / stopping 状态的 task 调 stop 返回 409
         `VegaBackend.BuildTask.InvalidStateTransition`。
       responses:
         "202":

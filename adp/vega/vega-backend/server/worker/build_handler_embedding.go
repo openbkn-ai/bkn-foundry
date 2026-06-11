@@ -235,8 +235,10 @@ func (eh *embeddingHandler) executeEmbedding(ctx context.Context, resource *inte
 						continue
 					}
 
-					// Update task status to completed
-					err = eh.taskAccess.UpdateStatus(ctx, buildTaskInfo.ID, map[string]interface{}{"status": interfaces.BuildTaskStatusCompleted})
+					// Update task status to completed；必须同时回写最终计数：
+					// 常规回写有 30 秒批量窗口，不在这里 flush 会丢最后一个窗口的进度
+					// （短任务整个跑完都在首个窗口内，界面会停在 0%）
+					err = eh.taskAccess.UpdateStatus(ctx, buildTaskInfo.ID, map[string]interface{}{"status": interfaces.BuildTaskStatusCompleted, "vectorizedCount": totalProcessed})
 					if err != nil {
 						logger.Errorf("update build task status to completed failed: %w", buildTaskInfo.ID, err)
 					}
@@ -287,13 +289,15 @@ func (eh *embeddingHandler) executeEmbedding(ctx context.Context, resource *inte
 					time.Sleep(retryInterval)
 					continue
 				}
-				totalProcessed++
+			}
+			// 源字段全为空的文档没有可嵌入文本，同样计入已处理：
+			// 分母（synced_count）包含它们，不计数则进度永远到不了 100%
+			totalProcessed++
 
-				// 批量更新任务状态
-				if time.Since(lastUpdateTime) > updateInterval {
-					_ = eh.taskAccess.UpdateStatus(ctx, buildTaskInfo.ID, map[string]interface{}{"vectorizedCount": totalProcessed})
-					lastUpdateTime = time.Now()
-				}
+			// 批量更新任务状态
+			if time.Since(lastUpdateTime) > updateInterval {
+				_ = eh.taskAccess.UpdateStatus(ctx, buildTaskInfo.ID, map[string]interface{}{"vectorizedCount": totalProcessed})
+				lastUpdateTime = time.Now()
 			}
 
 			// Commit the message to avoid reprocessing

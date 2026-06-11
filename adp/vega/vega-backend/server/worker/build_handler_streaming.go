@@ -167,7 +167,7 @@ func (sh *streamingBuildHandler) HandleTask(ctx context.Context, task *asynq.Tas
 	}
 
 	// Update task status to running
-	_ = sh.taskAccess.UpdateStatus(ctx, taskID, map[string]interface{}{"status": interfaces.BuildTaskStatusRunning})
+	_ = sh.taskAccess.UpdateStatus(ctx, taskID, map[string]interface{}{"status": interfaces.BuildTaskStatusRunning, "errorMsg": ""})
 
 	// Execute build
 	err = sh.executeBuild(ctx, catalog, resource, buildTaskInfo, database, sourceId)
