@@ -28,22 +28,22 @@ Five components co-operate in a verifiable end-to-end loop:
 
 ## Prerequisites
 
-- `kweaver` CLI ≥ 0.7.1 (`brew install kweaver-ai/tap/kweaver` or npm)
+- `openbkn` CLI (`npm install -g @openbkn/bkn-sdk`, Node ≥ 22)
 - BKN Foundry with **Decision Agent + execution-factory + Vega** enabled
-  (use `kweaver auth login <platform-url> [--insecure]` first)
+  (use `openbkn auth login <platform-url> [--insecure]` first)
 - A MySQL instance reachable from the BKN Foundry (NOT from your laptop)
   with CREATE/INSERT/SELECT/UPDATE on a chosen database
 - `python3` (Flask + mysql-connector-python — install via
   `pip install -r tool_backend/requirements.txt`)
 - An LLM model registered in the platform's model factory (find its ID via
-  `kweaver call /api/mf-model-manager/v1/llm/list`)
+  `openbkn call /api/mf-model-manager/v1/llm/list`)
 
 Quick self-check that platform components are reachable:
 
 ```bash
-kweaver auth whoami                                      # logged in?
-kweaver call /api/mf-model-manager/v1/llm/list | head    # LLM factory reachable?
-kweaver call /api/agent-operator-integration/v1/mcp/     # execution-factory reachable?
+openbkn auth whoami                                      # logged in?
+openbkn call /api/mf-model-manager/v1/llm/list | head    # LLM factory reachable?
+openbkn call /api/agent-operator-integration/v1/mcp/     # execution-factory reachable?
 ```
 
 ## Quick Start
@@ -96,7 +96,7 @@ Run `./run.sh --bonus`. The script POSTs to the mock business backend's admin
 endpoint to re-bind MAT-002 from `supplier_expedite` to the newly registered
 `standard_replenish` Skill ID. This updates `materials.bound_skill_id` in
 MySQL, which drives the `applicable_skill` direct-mapping FK. It then triggers
-`kweaver bkn build` to
+`openbkn bkn build` to
 refresh the underlying Vega resource snapshot, then re-asks the Agent about
 MAT-002. The Decision Agent's next `find_skills` call returns the new
 candidate set and it switches to `standard_replenish` — without any prompt

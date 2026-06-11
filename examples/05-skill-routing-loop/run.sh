@@ -38,7 +38,7 @@ debug() { [ "$DEBUG" = "1" ] && echo "[debug] $*" >&2 || true; }
 [ -f "$SCRIPT_DIR/.env" ] && source "$SCRIPT_DIR/.env"
 
 PLATFORM_HOST="${PLATFORM_HOST:?Set PLATFORM_HOST in .env}"
-LLM_ID="${LLM_ID:?Set LLM_ID in .env (use: kweaver call /api/mf-model-manager/v1/llm/list)}"
+LLM_ID="${LLM_ID:?Set LLM_ID in .env (use: openbkn call /api/mf-model-manager/v1/llm/list)}"
 LLM_NAME="${LLM_NAME:-deepseek-v3.2}"
 DB_HOST="${DB_HOST:?Set DB_HOST in .env}"
 DB_PORT="${DB_PORT:-3306}"
@@ -75,26 +75,49 @@ cleanup() {
     echo ""
     echo "=== Cleanup ==="
     [ -n "$AGENT_ID" ] && {
-        kweaver agent unpublish "$AGENT_ID" 2>/dev/null || true
-        kweaver agent delete "$AGENT_ID" -y 2>/dev/null && echo "  ✓ agent $AGENT_ID" || true
+        openbkn agent unpublish "$AGENT_ID" 2>/dev/null || true
+        openbkn agent delete "$AGENT_ID" -y 2>/dev/null && echo "  ✓ agent $AGENT_ID" || true
     }
     [ -n "$MCP_ID" ] && {
-        kweaver call "/api/agent-operator-integration/v1/mcp/$MCP_ID/status" -X POST \
+        openbkn call "/api/agent-operator-integration/v1/mcp/$MCP_ID/status" -X POST \
             -H "x-business-domain: bd_public" -d '{"status":"offline"}' >/dev/null 2>&1 || true
-        kweaver call "/api/agent-operator-integration/v1/mcp/$MCP_ID" -X DELETE \
+        openbkn call "/api/agent-operator-integration/v1/mcp/$MCP_ID" -X DELETE \
             -H "x-business-domain: bd_public" >/dev/null 2>&1 && echo "  ✓ mcp $MCP_ID" || true
     }
     for sid in "${SKILL_IDS[@]:-}"; do
         [ -z "$sid" ] && continue
-        kweaver skill status "$sid" offline >/dev/null 2>&1 || true
-        echo y | kweaver skill delete "$sid" >/dev/null 2>&1 && echo "  ✓ skill $sid" || true
+        openbkn skill set-status "$sid" offline >/dev/null 2>&1 || true
+        echo y | openbkn skill delete "$sid" >/dev/null 2>&1 && echo "  ✓ skill $sid" || true
     done
-    kweaver bkn delete "$KN_ID" -y >/dev/null 2>&1 && echo "  ✓ kn $KN_ID" || true
-    [ -n "$TMP_KN_ID" ] && kweaver bkn delete "$TMP_KN_ID" -y >/dev/null 2>&1 && echo "  ✓ tmp kn $TMP_KN_ID" || true
-    [ -n "$CAT_ID" ] && kweaver vega catalog delete "$CAT_ID" -y >/dev/null 2>&1 && echo "  ✓ catalog $CAT_ID" || true
+    openbkn bkn delete "$KN_ID" -y >/dev/null 2>&1 && echo "  ✓ kn $KN_ID" || true
+    [ -n "$TMP_KN_ID" ] && openbkn bkn delete "$TMP_KN_ID" -y >/dev/null 2>&1 && echo "  ✓ tmp kn $TMP_KN_ID" || true
+    [ -n "$CAT_ID" ] && openbkn call "/api/vega-backend/v1/catalogs/$CAT_ID" -X DELETE >/dev/null 2>&1 && echo "  ✓ catalog $CAT_ID" || true
     [ -n "$TOOL_BACKEND_PID" ] && kill "$TOOL_BACKEND_PID" 2>/dev/null && echo "  ✓ mock backend pid $TOOL_BACKEND_PID" || true
 }
 trap cleanup EXIT
+
+# openbkn 0.1.0 has no `bkn build`; create a full-build job via the API and
+# poll the latest job until it reaches a terminal state.
+bkn_build_wait() { # <kn_id> <timeout_s>
+    local kn="$1" timeout="${2:-60}" state
+    openbkn call "/api/ontology-manager/v1/knowledge-networks/$kn/jobs" -X POST \
+        -H "Content-Type: application/json" \
+        -d "{\"name\":\"ex05_build_$(date +%s)\",\"job_type\":\"full\"}" >/dev/null 2>&1 || return 1
+    for _ in $(seq 1 $((timeout / 3))); do
+        state=$(openbkn --json call "/api/ontology-manager/v1/knowledge-networks/$kn/jobs?limit=1&direction=desc" 2>/dev/null \
+            | python3 -c "import json,sys
+d=json.load(sys.stdin)
+jobs=d if isinstance(d,list) else d.get('entries',[])
+print((jobs[0].get('state','running') if jobs else 'running').lower())" 2>/dev/null)
+        case "$state" in
+            *success*|*finish*|*complete*) echo "  build state=$state"; return 0 ;;
+            *fail*|*error*|*cancel*) echo "  build state=$state" >&2; return 1 ;;
+        esac
+        sleep 3
+    done
+    echo "  build wait timeout (${timeout}s)" >&2
+    return 1
+}
 
 # ── Step 1: Check MySQL connectivity ─────────────────────────────────────────
 # Vega catalogs connect to an existing DB; CSVs are loaded with the mysql
@@ -117,10 +140,8 @@ for skill_dir in "$SCRIPT_DIR"/skills/*/; do
     find "$rendered_skill_dir" -type f -name 'SKILL.md' -exec sed -i.bak \
         -e "s|{{TOOL_BACKEND_PUBLIC_URL}}|$TOOL_BACKEND_PUBLIC_URL|g" {} \;
     find "$rendered_skill_dir" -name '*.bak' -delete
-    zip_path="$SCRIPT_DIR/.${skill_name}.zip"
-    rm -f "$zip_path"
-    (cd "$rendered_skill_dir" && zip -qr "$zip_path" .)
-    REG_RAW=$(kweaver skill register --zip-file "$zip_path" 2>&1)
+    # openbkn skill register zips the directory itself.
+    REG_RAW=$(openbkn --json skill register "$rendered_skill_dir" 2>&1)
     sid=$(echo "$REG_RAW" | python3 -c "
 import sys, json
 raw = sys.stdin.read()
@@ -137,11 +158,11 @@ def find_objs(s):
 for chunk in find_objs(raw):
     try: obj = json.loads(chunk)
     except Exception: continue
-    if isinstance(obj, dict) and 'id' in obj:
-        print(obj['id']); break
+    if isinstance(obj, dict) and ('skill_id' in obj or 'id' in obj):
+        print(obj.get('skill_id') or obj.get('id')); break
 ")
     [ -z "$sid" ] && { echo "ERROR: skill register failed for $skill_name" >&2; echo "$REG_RAW" >&2; exit 1; }
-    kweaver skill status "$sid" published >/dev/null
+    openbkn skill set-status "$sid" published >/dev/null
     SKILL_IDS+=("$sid")
     case "$skill_name" in
         standard_replenish) STANDARD_REPLENISH_ID="$sid" ;;
@@ -149,7 +170,6 @@ for chunk in find_objs(raw):
         supplier_expedite) SUPPLIER_EXPEDITE_ID="$sid" ;;
     esac
     echo "  ✓ $skill_name → $sid (published)"
-    rm -f "$zip_path"
 done
 [ -n "$STANDARD_REPLENISH_ID" ] && [ -n "$SUBSTITUTE_SWAP_ID" ] && [ -n "$SUPPLIER_EXPEDITE_ID" ] \
     || { echo "ERROR: not all skill IDs were registered" >&2; exit 1; }
@@ -221,14 +241,15 @@ for path in sorted(glob.glob(os.path.join(ddir,'*.csv'))):
         print(f"INSERT INTO `{tbl}` VALUES ({', '.join(sqlval(v) for v in r)});")
 PY
 CONN_CFG=$(python3 -c "import json,sys;print(json.dumps({'host':sys.argv[1],'port':int(sys.argv[2]),'username':sys.argv[3],'password':sys.argv[4],'databases':[sys.argv[5]]}))" "$DB_HOST" "$DB_PORT" "$DB_USER" "$DB_PASS" "$DB_NAME")
-CAT_ID=$(kweaver vega catalog create --name "$CAT_NAME" --connector-type mysql --connector-config "$CONN_CFG" 2>/dev/null | jget id)
+CAT_BODY=$(python3 -c "import json,sys;print(json.dumps({'name':sys.argv[1],'connector_type':'mysql','connector_config':json.loads(sys.argv[2])}))" "$CAT_NAME" "$CONN_CFG")
+CAT_ID=$(openbkn --json call /api/vega-backend/v1/catalogs -X POST -H "Content-Type: application/json" -d "$CAT_BODY" 2>/dev/null | jget id)
 [ -z "$CAT_ID" ] && { echo "ERROR: vega catalog create failed (is DB_HOST reachable from vega-backend pods?)" >&2; exit 1; }
-kweaver call "/api/vega-backend/v1/catalogs/${CAT_ID}/enable" -X POST >/dev/null 2>&1 || true
-kweaver vega catalog discover "$CAT_ID" --wait >/dev/null 2>&1 || true
+openbkn call "/api/vega-backend/v1/catalogs/${CAT_ID}/enable" -X POST >/dev/null 2>&1 || true
+openbkn call "/api/vega-backend/v1/catalogs/${CAT_ID}/discover?wait=true" -X POST >/dev/null 2>&1 || true
 # Discovery is asynchronous — poll for the three prefixed tables.
 RES_JSON='{}'
 for _i in $(seq 1 25); do
-    RES_JSON=$(kweaver vega resource list --catalog-id "$CAT_ID" --category table --limit 200 --json 2>/dev/null || echo '{}')
+    RES_JSON=$(openbkn --json vega resource list --datasource-id "$CAT_ID" --type table --limit 200 2>/dev/null || echo '{}')
     _hit=$(echo "$RES_JSON" | python3 -c "import json,sys
 es=json.load(sys.stdin).get('entries',[])
 print(sum(1 for r in es if r.get('name','').endswith('${TABLE_PREFIX}materials') or r.get('name','').endswith('${TABLE_PREFIX}suppliers') or r.get('name','').endswith('${TABLE_PREFIX}skills')))" 2>/dev/null || echo 0)
@@ -272,8 +293,8 @@ echo "  ✓ rendered .bkn files"
 # ── Step 6: Push BKN ─────────────────────────────────────────────────────────
 echo ""
 echo "=== Step 6: bkn push (deploy schema + relations) ==="
-kweaver bkn validate "$RENDERED_BKN" 2>&1 | tail -1
-PUSH_RAW=$(kweaver bkn push "$RENDERED_BKN" 2>&1)
+openbkn bkn validate "$RENDERED_BKN" 2>&1 | tail -1
+PUSH_RAW=$(openbkn --json bkn push "$RENDERED_BKN" 2>&1)
 echo "$PUSH_RAW" | tail -3
 # kn_id is fixed (network.bkn frontmatter id) — just confirm push succeeded
 echo "$PUSH_RAW" | grep -q "\"kn_id\"" || { echo "ERROR: bkn push failed" >&2; exit 1; }
@@ -285,7 +306,7 @@ echo "=== Step 7: Build KN (resource-bound OTs query in real time) ==="
 # Object types bind to Vega resources, so data is queried live and no index
 # build is required. Run build best-effort for any non-resource OTs; ignore
 # failures (a resource-only KN may report nothing to build).
-kweaver bkn build "$KN_ID" --wait --timeout 60 2>&1 | tail -2 || true
+bkn_build_wait "$KN_ID" 60 || true
 echo "  (resource-bound object types are queried in real time — no build needed)"
 
 # ── Step 8: Start mock business backend ──────────────────────────────────────
@@ -323,7 +344,7 @@ print(json.dumps({
     'headers': {'X-Kn-ID': '$KN_ID'},
 }))
 ")
-MCP_RAW=$(kweaver call /api/agent-operator-integration/v1/mcp/ -X POST \
+MCP_RAW=$(openbkn --json call /api/agent-operator-integration/v1/mcp/ -X POST \
     -H "Content-Type: application/json" \
     -H "x-business-domain: bd_public" \
     -d "$MCP_REG_BODY" 2>&1)
@@ -347,7 +368,7 @@ for chunk in find_objs(raw):
         print(obj['mcp_id']); break
 ")
 [ -z "$MCP_ID" ] && { echo "ERROR: MCP register failed" >&2; echo "$MCP_RAW" >&2; exit 1; }
-kweaver call "/api/agent-operator-integration/v1/mcp/$MCP_ID/status" -X POST \
+openbkn call "/api/agent-operator-integration/v1/mcp/$MCP_ID/status" -X POST \
     -H "x-business-domain: bd_public" \
     -d '{"status":"published"}' >/dev/null
 echo "  ✓ MCP $MCP_ID (published, X-Kn-ID=$KN_ID)"
@@ -371,10 +392,20 @@ echo "  ✓ agent.json rendered"
 echo ""
 echo "=== Step 11: Create + publish Decision Agent ==="
 AGENT_NAME="ex05_skill_routing_${TIMESTAMP}"
-CREATE_RAW=$(kweaver agent create \
-    --name "$AGENT_NAME" \
-    --profile "Example 05 — KN-driven skill routing" \
-    --config "$RENDERED_AGENT" 2>&1)
+AGENT_PAYLOAD="$SCRIPT_DIR/.agent-payload.json"
+python3 - "$RENDERED_AGENT" "$AGENT_NAME" > "$AGENT_PAYLOAD" <<'PYW'
+import json, sys
+config = json.load(open(sys.argv[1]))
+print(json.dumps({
+    "name": sys.argv[2],
+    "profile": "Example 05 — KN-driven skill routing",
+    "avatar_type": 1,
+    "avatar": "icon-dip-agent-default",
+    "product_key": "dip",
+    "config": config,
+}))
+PYW
+CREATE_RAW=$(openbkn --json agent create --body-file "$AGENT_PAYLOAD" 2>&1)
 AGENT_ID=$(echo "$CREATE_RAW" | python3 -c "
 import sys, json
 raw = sys.stdin.read()
@@ -395,7 +426,7 @@ for chunk in find_objs(raw):
         print(obj['id']); break
 ")
 [ -z "$AGENT_ID" ] && { echo "ERROR: agent create failed" >&2; echo "$CREATE_RAW" >&2; exit 1; }
-kweaver agent publish "$AGENT_ID" >/dev/null
+openbkn agent publish "$AGENT_ID" >/dev/null
 echo "  ✓ agent $AGENT_ID (published)"
 
 # ── Step 12: Trigger 3 critical-stock alerts; verify route + mock action ─────
@@ -407,7 +438,7 @@ if [ "${DEBUG_KEEP:-0}" = "1" ]; then
     echo "[DEBUG_KEEP=1] cleanup disabled; agent/kn/skill/ds will persist for debugging"
     echo "  AGENT_ID=$AGENT_ID"
     echo "  KN_ID=$KN_ID"
-    echo "  DS_ID=$DS_ID"
+    echo "  CAT_ID=$CAT_ID"
     echo "  MCP_ID=$MCP_ID"
 fi
 execute_mock_action() {
@@ -448,7 +479,7 @@ for item in "MAT-001:substitute_swap" "MAT-002:supplier_expedite" "MAT-003:stand
     echo ""
     echo "--- $sku ---"
     out_file="$SCRIPT_DIR/.chat-$sku.log"
-    kweaver agent chat "$AGENT_ID" \
+    openbkn agent chat "$AGENT_ID" \
         -m "Material $sku hit critical stock level. Use find_skills to identify applicable skills, query the BKN for evidence (supplier capability, etc.), pick the best skill, execute it when possible, and end with SELECTED_SKILL_NAME=<name>." \
         --stream 2>&1 \
         | sed '/^(node:.*Warning:/d; /trace-warnings/d; /To continue this conversation/,$d' \
@@ -481,11 +512,11 @@ if [ "$BONUS" = "1" ]; then
 
     echo ""
     echo "[KN] rebuild to refresh Vega's batch-mode resource snapshot"
-    kweaver bkn build "$KN_ID" --wait --timeout 60 2>&1 | tail -2
+    bkn_build_wait "$KN_ID" 60
 
     echo ""
     echo "--- MAT-002 (re-trigger after binding change) ---"
-    kweaver agent chat "$AGENT_ID" \
+    openbkn agent chat "$AGENT_ID" \
         -m "Material MAT-002 hit critical stock level again. Use find_skills, decide, execute it when possible, and end with SELECTED_SKILL_NAME=<name>." \
         --stream 2>&1 \
         | sed '/^(node:.*Warning:/d; /trace-warnings/d; /To continue this conversation/,$d' \

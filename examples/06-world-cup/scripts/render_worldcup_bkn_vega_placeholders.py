@@ -8,7 +8,7 @@ Input: JSON object mapping placeholder name → uuid, e.g.:
 Paths default to sibling dirs under examples/06-world-cup/.
 
 Example:
-  kweaver vega resource list --catalog-id <cid> --category table --limit 500 \\
+  openbkn --json vega resource list --datasource-id <cid> --type table --limit 500 \\
     | python3 scripts/map_vega_table_resources.py > mappings.json
   python3 scripts/render_worldcup_bkn_vega_placeholders.py --mapping mappings.json \\
     --src worldcup-bkn --dst .rendered-bkn-vega
@@ -77,7 +77,7 @@ def main() -> None:
         except UnicodeDecodeError:
             old = path.read_text(encoding="latin-1")
         new = sub_text(old)
-        # Always normalize to UTF-8 so downstream `kweaver bkn push` parses it.
+        # Always normalize to UTF-8 so downstream `openbkn bkn push` parses it.
         path.write_text(new, encoding="utf-8")
 
     if missing:

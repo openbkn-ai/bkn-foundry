@@ -28,8 +28,8 @@ vim .env        # 填写 DB_HOST、DB_USER、DB_PASS 等
 > 每个 `env.sample` 包含占位值和注释说明，帮助你了解每个变量的用途。
 
 所有示例需要：
-- KWeaver CLI：`npm install -g @kweaver-ai/kweaver-sdk`
-- 平台登录：`kweaver auth login https://<your-platform-url>`
+- openbkn CLI：`npm install -g @openbkn/bkn-sdk`（Node ≥ 22）
+- 平台登录：`openbkn auth login https://<your-platform-url>`
 
 各示例的详细前置条件见对应 README。
 

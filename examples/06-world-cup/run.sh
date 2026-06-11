@@ -3,19 +3,19 @@
 # 06-world-cup · BKN Foundry end-to-end (single script):
 #
 #   Step 1  Download CSVs      : jfjelstul/worldcup → data/ (skips cached files)
-#   Step 2  Import to MySQL    : kweaver ds connect + ds import-csv --recreate
-#   Step 3  Vega scan          : vega catalog create + discover --wait
+#   Step 2  Import to MySQL    : load CSVs via local mysql client (wc_* tables)
+#   Step 3  Vega scan          : create catalog via API + discover (wait)
 #   Step 4  Render BKN         : map table Resources → render worldcup-bkn
-#   Step 5  Push BKN           : kweaver bkn validate + push, then build vega resource
+#   Step 5  Push BKN           : openbkn bkn validate + push, then build vega resource
 #                                 OpenSearch indexes for 7 entity tables (DO_INDEX=1 default)
-#   Step 6  Upload toolbox     : kweaver toolbox create + tool upload <OpenAPI> + publish
+#   Step 6  Upload toolbox     : openbkn toolbox create + tool upload <OpenAPI> + publish
 #                                 (registers vega_sql_execute; idempotent by box_name)
 #   Step 7  Create Agent       : agent create --config <rendered tpl> + bind KN + publish
 #
 # Prerequisites:
-#   - kweaver CLI logged in (`kweaver auth login`) and node `kweaver` resolvable
-#     (avoid the broken `/usr/local/bin/kweaver` python stub).
-#   - MySQL reachable from this host AND from the kweaver platform / Vega connectors.
+#   - openbkn CLI logged in (`openbkn auth login`) and node `openbkn` resolvable
+#     (avoid the broken `/usr/local/bin/openbkn` python stub).
+#   - MySQL reachable from this host AND from the openbkn platform / Vega connectors.
 #   - curl + python3 + jq
 #
 # Common usage:
@@ -54,8 +54,8 @@ Options:
 
 Steps:
   1  Download CSVs   — fetch 27 CSV files from jfjelstul/worldcup (skips cached)
-  2  Import MySQL    — kweaver ds connect + ds import-csv → wc_* tables
-  3  Vega scan       — vega catalog create + discover --wait
+  2  Import MySQL    — load CSVs via local mysql client → wc_* tables
+  3  Vega scan       — create catalog via API + discover (wait)
   4  Render BKN      — map Resources → render worldcup-bkn
   5  Push BKN        — validate + push (resource-backed KN); build vega indexes for 7 entity tables (DO_INDEX=0 to skip)
   6  Upload toolbox  — toolbox create + tool upload <OpenAPI> + publish (idempotent; DO_TOOLBOX=0 disables)
@@ -65,7 +65,7 @@ Env (see env.sample):
   WORLDCUP_REF                    Git ref for jfjelstul/worldcup; default master.
   SKIP_DOWNLOAD=0                 Set 1 to skip step 1 even if CSVs are missing.
   DB_HOST / DB_PORT / DB_NAME     MySQL coordinates (required for steps 2-3).
-  DB_USER / DB_PASS               MySQL account for kweaver ds connect.
+  DB_USER / DB_PASS               MySQL account used by the mysql client + Vega connector.
   DS_ID                           Existing datasource id; skip ds connect in step 2.
   SKIP_IMPORT=0                   Set 1 to skip step 2 (MySQL already populated).
   VEGA_CATALOG_NAME               Catalog display name (required for step 3).
@@ -73,7 +73,7 @@ Env (see env.sample):
   VEGA_SKIP_CREATE=1              Skip catalog create (must set VEGA_CATALOG_ID).
   VEGA_MYSQL_*                    Override DB_* for connector when Vega's network
                                   view differs (HOST/PORT/USER/PASS/DATABASES).
-  BKN_PUSH_BRANCH=main            Branch for `kweaver bkn push`.
+  BKN_PUSH_BRANCH=main            Branch for `openbkn bkn push`.
   DO_INDEX=1                      Build vector indexes on 7 entity tables after push (default). Set =0 to skip.
   EMBEDDING_MODEL_NAME=text-embedding-v4-cn   Model_name registered via mf-model-manager
                                   (resolved to model_id at runtime). Unset / not found → keyword only.
@@ -84,7 +84,7 @@ Env (see env.sample):
   AGENT_PROFILE                   Short description (<=500 chars).
   REUSE_AGENT_BY_NAME=true        Default: reuse same-name agent (re-bind KN, no recreate). Set =false to always create.
   AGENT_LLM_ID                    Optional: override llm id in agent template.
-  KWEAVER_BASE_URL                Optional: pin a specific platform; default uses ~/.kweaver.
+  BKN_BASE_URL                Optional: pin a specific platform; default uses ~/.openbkn.
 EOF
 }
 
@@ -112,10 +112,10 @@ set -a
 [ -f "$SCRIPT_DIR/.env" ] && source "$SCRIPT_DIR/.env"
 set +a
 
-if [ -n "${KWEAVER_BASE_URL:-}" ]; then
-    KWEAV=(kweaver --base-url "${KWEAVER_BASE_URL}")
+if [ -n "${BKN_BASE_URL:-}" ]; then
+    KWEAV=(openbkn --json --base-url "${BKN_BASE_URL}")
 else
-    KWEAV=(kweaver)
+    KWEAV=(openbkn --json)
 fi
 
 require_jq() {
@@ -393,9 +393,9 @@ step_3_vega_scan() {
         if [ "${VEGA_SKIP_CREATE:-0}" = "1" ]; then
             echo "  plan: skip create, reuse VEGA_CATALOG_ID=$catalog_id" >&2
         else
-            echo "  plan: vega catalog create --name \"${VEGA_CATALOG_NAME:?Set VEGA_CATALOG_NAME in .env}\"" >&2
+            echo "  plan: create catalog via /api/vega-backend/v1/catalogs --name \"${VEGA_CATALOG_NAME:?Set VEGA_CATALOG_NAME in .env}\"" >&2
         fi
-        echo "  plan: vega catalog discover <id> --wait" >&2
+        echo "  plan: POST /catalogs/<id>/discover?wait=true" >&2
         return 0
     fi
 
@@ -404,7 +404,9 @@ step_3_vega_scan() {
         local conn create_out
         conn="$(build_connector_config)"
         echo "  Creating catalog: $name" >&2
-        if ! create_out="$("${KWEAV[@]}" vega catalog create --name "$name" --connector-type mysql --connector-config "$conn" 2>&1)"; then
+        local cat_body
+        cat_body="$(jq -n --arg n "$name" --argjson cc "$conn" '{name:$n,connector_type:"mysql",connector_config:$cc}')"
+        if ! create_out="$("${KWEAV[@]}" call /api/vega-backend/v1/catalogs -X POST -H "Content-Type: application/json" -d "$cat_body" 2>&1)"; then
             echo "$create_out" >&2
             catalog_id="$(resolve_catalog_id_by_name "$name")"
             [ -z "$catalog_id" ] && { echo "Error: vega catalog create failed and name not found" >&2; exit 1; }
@@ -424,7 +426,7 @@ step_3_vega_scan() {
     # Auto-skip discover if catalog already has all 27 table resources.
     if [ "${FORCE_DISCOVER:-0}" != 1 ]; then
         local n_resources
-        n_resources="$("${KWEAV[@]}" vega resource list --catalog-id "$catalog_id" --category table --limit 50 2>/dev/null \
+        n_resources="$("${KWEAV[@]}" vega resource list --datasource-id "$catalog_id" --type table --limit 50 2>/dev/null \
             | _extract_cli_json | jq '.entries | length' 2>/dev/null || echo 0)"
         if [ "${n_resources:-0}" -ge 27 ]; then
             echo "  skip discover — $n_resources table resources already present (FORCE_DISCOVER=1 to redo)" >&2
@@ -435,11 +437,11 @@ step_3_vega_scan() {
     fi
 
     echo "  Running discover --wait …" >&2
-    "${KWEAV[@]}" vega catalog discover "$catalog_id" --wait >/dev/null 2>&1 || true
+    "${KWEAV[@]}" call "/api/vega-backend/v1/catalogs/${catalog_id}/discover?wait=true" -X POST >/dev/null 2>&1 || true
     # Discovery is asynchronous — poll until table resources appear (~90s max).
     local _n=0
     for _i in $(seq 1 30); do
-        _n="$("${KWEAV[@]}" vega resource list --catalog-id "$catalog_id" --category table --limit 50 2>/dev/null \
+        _n="$("${KWEAV[@]}" vega resource list --datasource-id "$catalog_id" --type table --limit 50 2>/dev/null \
             | _extract_cli_json | jq '.entries | length' 2>/dev/null || echo 0)"
         [ "${_n:-0}" -ge 27 ] && break
         sleep 3
@@ -487,7 +489,7 @@ step_4_render_bkn() {
     # Note: 0.8.0 dropped /catalogs/:id/resources nested endpoint in favor of the
     # top-level /resources?catalog_id=... filter. `vega resource list --catalog-id`
     # SDK call hits the new path on both 0.7.0 and 0.8.0.
-    raw="$("${KWEAV[@]}" vega resource list --catalog-id "$catalog_id" --category table --limit 500 2>&1)"
+    raw="$("${KWEAV[@]}" vega resource list --datasource-id "$catalog_id" --type table --limit 500 2>&1)"
     body="$(printf '%s' "$raw" | _extract_cli_json)" || { echo "Error parsing vega catalog resources output." >&2; exit 1; }
     nres="$(printf '%s' "$body" | jq '.entries | length')"
     echo "  table resources returned: $nres" >&2
@@ -538,8 +540,8 @@ step_5_push_bkn() {
     echo "=== [5/7] Push BKN ===" >&2
 
     if [ "$DRY_RUN" = 1 ]; then
-        echo "  plan: kweaver bkn validate $RENDERED_DIR" >&2
-        echo "  plan: kweaver bkn push $RENDERED_DIR --branch ${BKN_PUSH_BRANCH:-main}" >&2
+        echo "  plan: openbkn bkn validate $RENDERED_DIR" >&2
+        echo "  plan: openbkn bkn push $RENDERED_DIR --branch ${BKN_PUSH_BRANCH:-main}" >&2
         echo "  plan: create vega vector build-tasks for 7 entity resources (embedding_fields)" >&2
         return 0
     fi
@@ -767,19 +769,23 @@ step_6_toolbox() {
     [ -f "$VEGA_OPENAPI_SPEC" ] || { echo "Error: $VEGA_OPENAPI_SPEC missing" >&2; exit 1; }
 
     if [ "$DRY_RUN" = 1 ]; then
-        echo "  plan: kweaver toolbox create --name $VEGA_TOOLBOX_NAME (reuse if found)" >&2
-        echo "  plan: kweaver tool upload --toolbox <box-id> $VEGA_OPENAPI_SPEC" >&2
-        echo "  plan: kweaver tool enable + toolbox publish" >&2
+        echo "  plan: openbkn toolbox create --name $VEGA_TOOLBOX_NAME (reuse if found)" >&2
+        echo "  plan: openbkn tool upload --toolbox <box-id> $VEGA_OPENAPI_SPEC" >&2
+        echo "  plan: openbkn tool enable + toolbox publish" >&2
         return 0
     fi
 
-    # NOTE: this example uses `kweaver tool upload` (OpenAPI parser) instead of
-    # `kweaver toolbox import` (.adp via impex). On platform 0.7.0 the impex path
+    # NOTE: this example uses `openbkn tool upload` (OpenAPI parser) instead of
+    # `openbkn toolbox import` (.adp via impex). On platform 0.7.0 the impex path
     # has a write-path bug (api_spec stored as null); fix is in 0.8.0 commit
     # e4aac398. The OpenAPI parser path is unaffected.
 
     local box_id
-    box_id="$(find_toolbox_id_by_name "$VEGA_TOOLBOX_NAME")"
+    # Prefer the id written back to .env on a previous run: `toolbox list` only
+    # returns boxes the caller has authz policies on, so name lookup can be
+    # blind even when the box exists (create then 400s with ToolBoxNameExists).
+    box_id="${TOOLBOX_BOX_ID:-}"
+    [ -z "$box_id" ] && box_id="$(find_toolbox_id_by_name "$VEGA_TOOLBOX_NAME")"
 
     if [ "${FORCE_TOOLBOX_REIMPORT:-0}" = 1 ] && [ -n "$box_id" ]; then
         echo "  FORCE_TOOLBOX_REIMPORT=1 → deleting existing $box_id" >&2
@@ -797,7 +803,12 @@ step_6_toolbox() {
             --service-url "$VEGA_TOOLBOX_SVC_URL" \
             --description "Vega backend SQL execute (worldcup example)" 2>&1)" || {
             echo "$create_out" >&2
-            echo "Error: toolbox create failed." >&2
+            if printf '%s' "$create_out" | grep -q "ToolBoxNameExists"; then
+                echo "Error: toolbox '$VEGA_TOOLBOX_NAME' already exists but is not visible to this user." >&2
+                echo "       Set TOOLBOX_BOX_ID=<box_id> in .env (or VEGA_TOOLBOX_NAME to a new name)." >&2
+            else
+                echo "Error: toolbox create failed." >&2
+            fi
             exit 1
         }
         box_id="$(printf '%s' "$create_out" | _extract_cli_json | jq -r '.box_id // .id // .data.box_id // empty' 2>/dev/null | head -1)"
@@ -860,7 +871,7 @@ extract_agent_id() {
 
 find_agent_id_by_name() {
     local name="$1" raw
-    raw="$("${KWEAV[@]}" agent personal-list --name "$name" --size 48 2>/dev/null)" || true
+    raw="$("${KWEAV[@]}" agent personal-list --name "$name" --limit 48 2>/dev/null)" || true
     printf '%s' "$raw" | _extract_cli_json | jq -r --arg n "$name" '
         (if type == "array" then . elif .entries then .entries else .data // .items // [] end)
         | if type == "array" then . else [] end
@@ -938,7 +949,7 @@ resolve_contextloader_ids() {
             echo "Error: no contextloader toolbox found on this platform." >&2
             echo "       Set CONTEXTLOADER_BOX_ID in .env (box_id of the contextloader toolbox)," >&2
             echo "       or set CONTEXTLOADER_BOX_NAME to the toolbox name keyword." >&2
-            echo "       Check: kweaver toolbox list --keyword contextloader" >&2
+            echo "       Check: openbkn toolbox list --keyword contextloader" >&2
             exit 1
         fi
     fi
@@ -968,7 +979,7 @@ render_agent_config() {
     # on this platform without it, so fail fast instead of creating a broken agent.
     if [ -z "${AGENT_LLM_ID:-}" ]; then
         echo "Error: AGENT_LLM_ID is not set." >&2
-        echo "       Run 'kweaver model llm list' to find a model_id and set AGENT_LLM_ID in .env." >&2
+        echo "       Run 'openbkn model llm list' to find a model_id and set AGENT_LLM_ID in .env." >&2
         exit 1
     fi
 
@@ -1016,10 +1027,21 @@ render_agent_config() {
     fi
     rm -f "$tmp_in"
 
-    # Step 3: substitute kn id + llm id.
-    jq --arg kn "$kn_id" --arg llm "$AGENT_LLM_ID" '
+    # Step 3: substitute kn id + llm id/name. Dolphin resolves the LLM by NAME
+    # as well as id — a template name that doesn't match the registered
+    # model_name fails at chat time with ModelFactory.…NameNotExist, so resolve
+    # the real model_name for AGENT_LLM_ID (AGENT_LLM_NAME overrides).
+    local llm_name="${AGENT_LLM_NAME:-}"
+    if [ -z "$llm_name" ]; then
+        llm_name="$("${KWEAV[@]}" model llm list 2>/dev/null | _extract_cli_json | jq -r --arg id "$AGENT_LLM_ID" '
+            (.data // .entries // [])[]? | select((.model_id // .id) == $id) | (.model_name // .name) // empty
+        ' 2>/dev/null | head -1)"
+    fi
+    [ -z "$llm_name" ] && echo "  warn: could not resolve model_name for AGENT_LLM_ID=$AGENT_LLM_ID; keeping template llm name" >&2
+    jq --arg kn "$kn_id" --arg llm "$AGENT_LLM_ID" --arg llmname "$llm_name" '
         .data_source.knowledge_network = [{"knowledge_network_id": $kn, "object_types": null}]
         | (.llms[0].llm_config.id) = $llm
+        | (if $llmname != "" then (.llms[0].llm_config.name) = $llmname else . end)
     ' "$tmp_b" >"$out"
     rm -f "$tmp_b"
 }
@@ -1039,9 +1061,9 @@ step_7_agent() {
     if [ "$DRY_RUN" = 1 ]; then
         echo "  plan: KN_ID=$kn_id  AGENT_NAME=$agent_name  REUSE=$reuse  PUBLISH=$DO_PUBLISH" >&2
         echo "  plan: render $AGENT_TEMPLATE → temp config (substitute knowledge_network_id)" >&2
-        echo "  plan: kweaver agent create --name … --profile … --config <tmp>" >&2
-        echo "  plan: kweaver agent update <id> --knowledge-network-id $kn_id" >&2
-        [ "$DO_PUBLISH" = 1 ] && echo "  plan: kweaver agent publish <id>" >&2
+        echo "  plan: openbkn agent create --body-file <payload>" >&2
+        echo "  plan: openbkn agent update <id> --knowledge-network-id $kn_id" >&2
+        [ "$DO_PUBLISH" = 1 ] && echo "  plan: openbkn agent publish <id>" >&2
         return 0
     fi
 
@@ -1058,19 +1080,25 @@ step_7_agent() {
     if [ -z "$agent_id" ]; then
         echo "  agent create (config rendered for KN=$kn_id)" >&2
         local create_out
-        create_out="$("${KWEAV[@]}" agent create \
-            --name "$agent_name" \
-            --profile "$agent_profile" \
-            --config "$tmp_cfg")"
+        local tmp_payload
+        tmp_payload="$(mktemp -t wc_agent_payload.XXXXXX.json)"
+        jq -n --arg name "$agent_name" --arg profile "$agent_profile" --slurpfile cfg "$tmp_cfg" \
+            '{name:$name,profile:$profile,avatar_type:1,avatar:"icon-dip-agent-default",product_key:"dip",config:$cfg[0]}' \
+            > "$tmp_payload"
+        create_out="$("${KWEAV[@]}" agent create --body-file "$tmp_payload")"
+        rm -f "$tmp_payload"
         rm -f "$tmp_cfg"
         agent_id="$(printf '%s' "$create_out" | extract_agent_id)"
         [ -z "$agent_id" ] && { echo "Error: agent create returned no id:" >&2; echo "$create_out" >&2; exit 1; }
         echo "  created AGENT_ID=$agent_id" >&2
     else
         echo "  update config (tools + system prompt) for KN=$kn_id" >&2
-        "${KWEAV[@]}" agent update "$agent_id" \
-            --profile "$agent_profile" \
-            --config-path "$tmp_cfg"
+        local tmp_payload
+        tmp_payload="$(mktemp -t wc_agent_payload.XXXXXX.json)"
+        jq -n --arg name "$agent_name" --arg profile "$agent_profile" --slurpfile cfg "$tmp_cfg" \
+            '{name:$name,profile:$profile,avatar_type:1,avatar:"icon-dip-agent-default",product_key:"dip",config:$cfg[0]}' > "$tmp_payload"
+        "${KWEAV[@]}" agent update "$agent_id" --body-file "$tmp_payload"
+        rm -f "$tmp_payload"
         rm -f "$tmp_cfg"
     fi
 

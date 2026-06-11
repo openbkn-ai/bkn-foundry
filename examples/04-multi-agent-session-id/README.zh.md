@@ -54,7 +54,7 @@ exp_father  (is_dolphin_mode=1)
 
 ### 前提
 
-- `kweaver` CLI 已通过 `kweaver auth login` 认证到 `admin` 平台（`https://115.190.186.186`）
+- `openbkn` CLI 已通过 `openbkn auth login` 认证到 `admin` 平台（`https://115.190.186.186`）
 - 环境中有 `jq`、`bash`、`curl`
 
 ### 三条命令
@@ -175,11 +175,11 @@ jq '.message.content.final_answer.answer_type_other.res_1.answer.input_message' 
 **查看平台上 agent 的当前配置**
 
 ```bash
-kweaver agent get 01KQA4NZXQFQP6EJMXSGH2S8DM --verbose   # exp_father
-kweaver agent get 01KQA4JH5QNBJBD42KN43458FW  --verbose   # exp_son1
+openbkn agent get 01KQA4NZXQFQP6EJMXSGH2S8DM --verbose   # exp_father
+openbkn agent get 01KQA4JH5QNBJBD42KN43458FW  --verbose   # exp_son1
 ```
 
-> 注意：`kweaver agent trace <agent_id> <conv_id>` 当前返回 HTTP 500（平台 Trace API 故障），
+> 注意：`openbkn agent trace <agent_id> <conv_id>` 当前返回 HTTP 500（平台 Trace API 故障），
 > 不推荐使用。所有需要的证据都在 chat completion 的响应 JSON 中。
 
 ---
@@ -188,15 +188,15 @@ kweaver agent get 01KQA4JH5QNBJBD42KN43458FW  --verbose   # exp_son1
 
 以下是构建过程中发现的平台非直觉行为，记录供后续排查参考：
 
-- **`custom_querys.session_id` 是唯一有效路径**：自定义输入字段必须放在请求体的 `custom_querys` 对象内；直接放在顶层的 body 字段不会被路由进 agent 的 `input.*`。`kweaver agent chat` 命令不支持传 `custom_querys`，必须用 `kweaver call -d <body>`。
+- **`custom_querys.session_id` 是唯一有效路径**：自定义输入字段必须放在请求体的 `custom_querys` 对象内；直接放在顶层的 body 字段不会被路由进 agent 的 `input.*`。`openbkn agent chat` 命令不支持传 `custom_querys`，必须用 `openbkn call -d <body>`。
 
 - **`is_dolphin_mode=0` 会忽略 `pre_dolphin`**：在纯 prompt 模式下，平台会用 system_prompt 自动合成 dolphin 程序，忽略用户设置的 `pre_dolphin` 数组。要让 `session_id`（或任何自定义输入字段）出现在 LLM 的上下文里，必须用 `is_dolphin_mode=1` 加显式 dolphin DSL。
 
 - **`list_skills_v2` 必须配置 X-Authorization 映射**：工具箱 `tmp_skill_discovery_R1` 的 `list_skills_v2` 工具（id `51382ef3-b35b-44a6-8a53-c670cbf53f10`）在 agent 调用时会返回 401，除非 agent 配置中为该工具的 `tool_input` 添加了 `X-Authorization` → `header.authorization` 的 `map_type=var` 映射。
 
-- **`kweaver agent get` 默认返回精简字段**：不带 `--verbose` 时只返回 `{id, name, description, status, kn_ids}`。要看完整的 `.config`（包括 dolphin DSL、skills 等），必须加 `--verbose`。
+- **`openbkn agent get` 默认返回精简字段**：不带 `--verbose` 时只返回 `{id, name, description, status, kn_ids}`。要看完整的 `.config`（包括 dolphin DSL、skills 等），必须加 `--verbose`。
 
-- **Trace API 当前不可用**：`kweaver agent trace <agent_id> <conv_id>` 返回 HTTP 500（Uniquery DataView 错误）。用 chat completion 响应 JSON 替代——所有验证所需数据都在里面。
+- **Trace API 当前不可用**：`openbkn agent trace <agent_id> <conv_id>` 返回 HTTP 500（Uniquery DataView 错误）。用 chat completion 响应 JSON 替代——所有验证所需数据都在里面。
 
 - **LLM id 路径是 `.llms[0].llm_config.id`**：平台的 base agent 模板中，LLM 配置的 id 存在 `.llms[0].llm_config.id`，而非 `.llms[0].id`（后者为空）。jq 模板和 `common.sh` 均按前者取值。
 
@@ -204,10 +204,10 @@ kweaver agent get 01KQA4JH5QNBJBD42KN43458FW  --verbose   # exp_son1
 
 ## 前提
 
-- `kweaver` CLI 已通过 `kweaver auth login` 认证到 `admin` 平台
+- `openbkn` CLI 已通过 `openbkn auth login` 认证到 `admin` 平台
 - `jq` >= 1.6
 - `bash` >= 4
-- `curl`（由 `kweaver call` 内部使用）
+- `curl`（由 `openbkn call` 内部使用）
 
 ---
 

@@ -19,8 +19,8 @@
 
 ## 前置条件
 
-- `kweaver` CLI ≥ 0.6.4，且已登录（`kweaver auth whoami`）
-- MySQL 可从 kweaver 平台访问
+- `openbkn` CLI ≥ 0.6.4，且已登录（`openbkn auth whoami`）
+- MySQL 可从 openbkn 平台访问
 - 本机安装 Python 3
 
 ## 快速开始

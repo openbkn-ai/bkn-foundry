@@ -3,7 +3,7 @@
 #
 # Both assertions read from the chat completion response JSON. The response
 # stores each son's output under .message.content.final_answer.answer_type_other.
-# (We don't use `kweaver agent trace` because the platform's trace endpoint
+# (We don't use `openbkn agent trace` because the platform's trace endpoint
 # is currently broken — returns 500.)
 
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"

@@ -16,16 +16,16 @@ fail() { printf '\033[1;31m[exp FAIL]\033[0m %s\n' "$*" >&2; exit 1; }
 # Resolve agent id by exact name (personal-list). Empty if not found.
 resolve_agent_id() {
   local name="$1"
-  kweaver agent personal-list --name "$name" 2>/dev/null \
-    | jq -r --arg n "$name" '.[]? | select(.name == $n) | .id' \
+  openbkn --json agent personal-list --name "$name" 2>/dev/null \
+    | jq -r --arg n "$name" '(.entries // .data // .) | .[]? | objects | select(.name == $n) | .id' \
     | head -1
 }
 
 # Resolve skill id by exact name (skill list). Empty if not found.
 resolve_skill_id() {
   local name="$1"
-  kweaver skill list --name "$name" 2>/dev/null \
-    | jq -r --arg n "$name" '.[]? | select(.name == $n) | .id' \
+  openbkn --json skill list --name "$name" 2>/dev/null \
+    | jq -r --arg n "$name" '(.entries // .data // .skills // .) | .[]? | objects | select(.name == $n) | (.skill_id // .id)' \
     | head -1
 }
 
@@ -35,7 +35,7 @@ resolve_skill_id() {
 fetch_agent_keyver() {
   local id="$1"
   local raw
-  raw=$(kweaver agent get "$id" --verbose 2>/dev/null)
+  raw=$(openbkn --json agent get "$id" 2>/dev/null)
   AGENT_KEY=$(echo "$raw" | jq -r '.key // .agent_key // empty')
   AGENT_VER=$(echo "$raw" | jq -r '.version // "v1"')
   [ -n "$AGENT_KEY" ] || fail "agent $id has no key in get response"

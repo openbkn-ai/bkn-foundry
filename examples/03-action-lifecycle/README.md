@@ -21,8 +21,8 @@ The engineer arrives at 08:00. The replenishment list is already there.
 
 ## Prerequisites
 
-- `kweaver` CLI ≥ 0.6.4 and a logged-in session (`kweaver auth whoami`)
-- MySQL accessible from the kweaver platform
+- `openbkn` CLI ≥ 0.6.4 and a logged-in session (`openbkn auth whoami`)
+- MySQL accessible from the openbkn platform
 - Python 3 on your local machine
 
 ## Quick Start

@@ -30,7 +30,7 @@ agent-executor injects that prefix via the son's Dolphin DSL.
 
 ## Prerequisites
 
-- `kweaver` CLI ≥ 0.6.4 with an authenticated session (`kweaver auth whoami`)
+- `openbkn` CLI ≥ 0.6.4 with an authenticated session (`openbkn auth whoami`)
 - `jq`, `bash`, `curl` on your local machine
 - Business domain `bd_public` (default)
 
@@ -122,10 +122,10 @@ successful run, so the next invocation just reuses them. Use `--cleanup` to remo
 After a run:
 
 - `/tmp/exp_run_resp.json` — full chat completion response (the source of both assertions)
-- `kweaver agent get <agent_id> --verbose` — current platform-side config of any agent
+- `openbkn agent get <agent_id> --verbose` — current platform-side config of any agent
   (note the `--verbose` flag — without it, `agent get` returns a thin response)
 
-Note: `kweaver agent trace` currently returns HTTP 500 on the demo platform
+Note: `openbkn agent trace` currently returns HTTP 500 on the demo platform
 (Uniquery DataView issue). The chat completion response carries enough information for
 the two assertions, so this example does not depend on it.
 

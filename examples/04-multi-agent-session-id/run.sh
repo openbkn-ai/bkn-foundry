@@ -32,18 +32,27 @@ if [ "$DO_CLEANUP" = "1" ]; then
   exit 0
 fi
 
-[ -z "$SID" ] && SID="DEMO-2026-$(LC_ALL=C tr -dc 'A-Z0-9' </dev/urandom | head -c 6)"
+# `tr | head -c` SIGPIPEs under pipefail on Linux — neutralize the pipeline status.
+[ -z "$SID" ] && SID="DEMO-2026-$({ LC_ALL=C tr -dc 'A-Z0-9' </dev/urandom || true; } | head -c 6)"
 log "session_id=$SID"
 
 # === ensure SKILL ===
 SKILL_ID=$(resolve_skill_id "$EXP_SKILL_NAME")
+# skill list can be authz-filtered to empty on some deployments; fall back to
+# the id cached by a previous run so reruns stay idempotent.
+[ -z "$SKILL_ID" ] && [ -f "$HERE/.exp_skill_id" ] && SKILL_ID=$(cat "$HERE/.exp_skill_id")
 if [ -z "$SKILL_ID" ]; then
   log "registering skill $EXP_SKILL_NAME"
-  resp=$(kweaver skill register --content-file "$HERE/skills/exp_session_echo/SKILL.md" 2>/dev/null)
-  SKILL_ID=$(echo "$resp" | jq -r '.id // empty')
+  resp=$(openbkn --json skill register "$HERE/skills/exp_session_echo" 2>/dev/null)
+  SKILL_ID=$(echo "$resp" | jq -r '.skill_id // .id // empty')
   [ -n "$SKILL_ID" ] || fail "skill register failed: $resp"
-  kweaver skill status "$SKILL_ID" published >/dev/null 2>&1 || fail "skill publish failed"
+  # tolerate "already published" (skill list can be authz-filtered to empty,
+  # so a previously-registered skill re-registers and may already be live)
+  if ! _pub_out=$(openbkn skill set-status "$SKILL_ID" published 2>&1); then
+    echo "$_pub_out" | grep -q "published to published" || fail "skill publish failed: $_pub_out"
+  fi
 fi
+printf '%s' "$SKILL_ID" > "$HERE/.exp_skill_id"
 log "skill_id=$SKILL_ID (reused if existed)"
 
 LLM_ID=$(get_default_llm_id)
@@ -59,13 +68,14 @@ ensure_son() {
     local render_path="/tmp/exp_${name}_render.json"
     render_son_config "$name" "$SKILL_ID" "$render_path"
     local resp
-    resp=$(kweaver agent create --name "$name" \
-            --profile "exp demo $name" \
-            --llm-id "$LLM_ID" \
-            --config "$render_path" 2>/dev/null)
+    local payload_path="/tmp/exp_${name}_payload.json"
+    jq -n --arg name "$name" --arg profile "exp demo $name" --slurpfile cfg "$render_path" \
+        '{name:$name,profile:$profile,avatar_type:1,avatar:"icon-dip-agent-default",product_key:"dip",config:$cfg[0]}' \
+        > "$payload_path"
+    resp=$(openbkn --json agent create --body-file "$payload_path" 2>/dev/null)
     id=$(echo "$resp" | jq -r '.id // empty')
     [ -n "$id" ] || fail "create $name failed: $resp"
-    kweaver agent publish "$id" >/dev/null 2>&1 || fail "publish $name failed"
+    openbkn agent publish "$id" >/dev/null 2>&1 || fail "publish $name failed"
   else
     log "agent $name already exists ($id), reusing as-is"
   fi
@@ -87,13 +97,13 @@ FATHER_ID=$(resolve_agent_id "$EXP_FATHER_NAME")
 if [ -z "$FATHER_ID" ]; then
   log "creating agent $EXP_FATHER_NAME"
   render_father_config "$SON1_KEY" "$SON1_VER" "$SON2_KEY" "$SON2_VER" /tmp/exp_father_render.json
-  resp=$(kweaver agent create --name "$EXP_FATHER_NAME" \
-          --profile "exp demo father" \
-          --llm-id "$LLM_ID" \
-          --config /tmp/exp_father_render.json 2>/dev/null)
+  jq -n --arg name "$EXP_FATHER_NAME" --arg profile "exp demo father" --slurpfile cfg /tmp/exp_father_render.json \
+      '{name:$name,profile:$profile,avatar_type:1,avatar:"icon-dip-agent-default",product_key:"dip",config:$cfg[0]}' \
+      > /tmp/exp_father_payload.json
+  resp=$(openbkn --json agent create --body-file /tmp/exp_father_payload.json 2>/dev/null)
   FATHER_ID=$(echo "$resp" | jq -r '.id // empty')
   [ -n "$FATHER_ID" ] || fail "create father failed: $resp"
-  kweaver agent publish "$FATHER_ID" >/dev/null 2>&1 || fail "publish father failed"
+  openbkn agent publish "$FATHER_ID" >/dev/null 2>&1 || fail "publish father failed"
 else
   log "agent $EXP_FATHER_NAME already exists ($FATHER_ID), reusing as-is"
 fi
@@ -117,7 +127,7 @@ BODY=$(jq -nc \
 
 RESP_FILE=/tmp/exp_run_resp.json
 START=$(date +%s)
-kweaver call -X POST "/api/agent-factory/v1/app/$FATHER_KEY/chat/completion" \
+openbkn call -X POST "/api/agent-factory/v1/app/$FATHER_KEY/chat/completion" \
   -H "content-type: application/json" -d "$BODY" 2>/dev/null > "$RESP_FILE"
 END=$(date +%s)
 
