@@ -164,6 +164,15 @@ func (eh *embeddingHandler) executeEmbedding(ctx context.Context, resource *inte
 	// 重试耗尽仍失败的文档：完成前补扫一轮，仍失败则写入 error_msg
 	// （仅会话内记录；worker 中途崩溃时这些文档的位点已提交，靠全量重跑恢复）
 	failedDocIDs := []string{}
+	// 会话内已计数文档：位点倒拨/重复投递会让同一文档消息被处理多次，
+	// 向量写入幂等无害，但计数会虚高出 vectorized > synced，按 docID 去重
+	seenDocIDs := map[string]struct{}{}
+	countProcessed := func(docID string) {
+		if _, ok := seenDocIDs[docID]; !ok {
+			seenDocIDs[docID] = struct{}{}
+			totalProcessed++
+		}
+	}
 	lastUpdateTime := time.Now()
 	updateInterval := 30 * time.Second // embedding速度慢，至少每30秒更新一次
 	consecutiveReadErrs := 0           // 连续非超时读错误计数，达到上限放弃本轮交给 asynq 重试
@@ -266,7 +275,7 @@ func (eh *embeddingHandler) executeEmbedding(ctx context.Context, resource *inte
 						if err := eh.vectorizeDocWithRetry(ctx, indexName, dDocID, buildTaskInfo.EmbeddingModel, embeddingFields, retryInterval); err != nil {
 							failedDocIDs = append(failedDocIDs, dDocID)
 						} else {
-							totalProcessed++
+							countProcessed(dDocID)
 						}
 					}
 					_ = eh.kafkaAccess.CommitMessages(ctx, reader, dmsg)
@@ -279,7 +288,7 @@ func (eh *embeddingHandler) executeEmbedding(ctx context.Context, resource *inte
 						logger.Errorf("Vectorize document %s failed in final sweep: %v", failedID, err)
 						stillFailed = append(stillFailed, failedID)
 					} else {
-						totalProcessed++
+						countProcessed(failedID)
 					}
 				}
 
@@ -293,12 +302,17 @@ func (eh *embeddingHandler) executeEmbedding(ctx context.Context, resource *inte
 				// 哨兵到达说明同步侧已发完、且组内已消费全部文档消息。
 				// 同任务可能短暂存在两个消费者（asynq 重投的旧实例 + 新一轮入队的实例），
 				// 单分区下旧实例抢走文档、新实例只读到哨兵，内存计数只覆盖自己的切片；
-				// 以最新 synced - 已知失败 为下限对齐，避免完成态写出 0 这类假计数
+				// 以最新 synced - 已知失败 为下限、synced 为上限对齐：
+				// 向量数不可能超过同步数，历史重放/恢复续跑造成的虚高一并封顶
 				finalCount := totalProcessed
 				if fresh, err := eh.taskAccess.GetByID(ctx, buildTaskInfo.ID); err == nil && fresh != nil {
 					if c := fresh.SyncedCount - int64(len(stillFailed)); c > finalCount {
 						logger.Infof("Embedding count for task %s aligned to synced: local=%d, final=%d (split consumers suspected)", buildTaskInfo.ID, totalProcessed, c)
 						finalCount = c
+					}
+					if finalCount > fresh.SyncedCount {
+						logger.Infof("Embedding count for task %s capped at synced: local=%d, synced=%d (replayed messages suspected)", buildTaskInfo.ID, finalCount, fresh.SyncedCount)
+						finalCount = fresh.SyncedCount
 					}
 				}
 
@@ -327,7 +341,7 @@ func (eh *embeddingHandler) executeEmbedding(ctx context.Context, resource *inte
 			if err := eh.vectorizeDocWithRetry(ctx, indexName, docID, buildTaskInfo.EmbeddingModel, embeddingFields, retryInterval); err != nil {
 				failedDocIDs = append(failedDocIDs, docID)
 			} else {
-				totalProcessed++
+				countProcessed(docID)
 			}
 
 			// 批量更新任务状态
