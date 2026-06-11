@@ -35,6 +35,16 @@ type embeddingHandler struct {
 	connector   connectors.IndexConnector
 	kafkaAccess interfaces.KafkaAccess
 	mfa         interfaces.ModelFactoryAccess
+	sleep       func(time.Duration) // 重试等待，测试中注入空实现避免真实 sleep
+}
+
+// pause 等待指定时长；未注入时使用 time.Sleep
+func (eh *embeddingHandler) pause(d time.Duration) {
+	if eh.sleep != nil {
+		eh.sleep(d)
+		return
+	}
+	time.Sleep(d)
 }
 
 // NewEmbeddingBuildHandler creates a new embedding handler.
@@ -156,12 +166,13 @@ func (eh *embeddingHandler) executeEmbedding(ctx context.Context, resource *inte
 	failedDocIDs := []string{}
 	lastUpdateTime := time.Now()
 	updateInterval := 30 * time.Second // embedding速度慢，至少每30秒更新一次
+	consecutiveReadErrs := 0           // 连续非超时读错误计数，达到上限放弃本轮交给 asynq 重试
 	for {
 		// Check task status before each iteration
 		taskStatus, err := eh.taskAccess.GetStatus(ctx, buildTaskInfo.ID)
 		if err != nil {
 			logger.Errorf("Failed to get task status: %v", err)
-			time.Sleep(retryInterval)
+			eh.pause(retryInterval)
 			continue
 		}
 
@@ -183,16 +194,19 @@ func (eh *embeddingHandler) executeEmbedding(ctx context.Context, resource *inte
 			logger.Infof("Kafka subscription context canceled, exiting")
 			// 最后一次更新任务状态
 			_ = eh.taskAccess.UpdateStatus(context.Background(), buildTaskInfo.ID, map[string]interface{}{"vectorizedCount": totalProcessed})
-			return nil
+			// 必须返回错误：返回 nil 会让 asynq 把任务标记成功，重启后不再投递，
+			// 任务状态永久停在 running（界面"构建中"冻结），只能人工 stop→start 救活
+			return ctx.Err()
 		default:
 			// 创建带超时的上下文，避免ReadMessage一直阻塞
 			timeoutCtx, cancel := context.WithTimeout(context.Background(), updateInterval)
-			defer cancel()
 
 			// Read message from Kafka
 			msg, err := eh.kafkaAccess.ReadMessage(timeoutCtx, reader)
+			cancel()
 			if err != nil {
 				if errors.Is(err, context.DeadlineExceeded) {
+					consecutiveReadErrs = 0
 					// 超时，检查是否需要更新任务状态
 					if totalProcessed > buildTaskInfo.VectorizedCount && time.Since(lastUpdateTime) > updateInterval {
 						_ = eh.taskAccess.UpdateStatus(ctx, buildTaskInfo.ID, map[string]interface{}{"vectorizedCount": totalProcessed})
@@ -201,10 +215,19 @@ func (eh *embeddingHandler) executeEmbedding(ctx context.Context, resource *inte
 					}
 				} else {
 					logger.Errorf("Embedding task Failed to read message from Kafka: %v", err)
-					time.Sleep(retryInterval)
+					// 消费组协调连接死亡（broker 重启/rebalance）后读取永远失败，
+					// 原地重试只会让任务永久冻结：放弃本轮，交给 asynq 重试重建
+					// reader 与消费组会话，从已提交位点续读
+					consecutiveReadErrs++
+					if consecutiveReadErrs >= embeddingReadMaxConsecutiveErrors {
+						_ = eh.taskAccess.UpdateStatus(ctx, buildTaskInfo.ID, map[string]interface{}{"vectorizedCount": totalProcessed})
+						return fmt.Errorf("read message from kafka: %w", err)
+					}
+					eh.pause(retryInterval)
 				}
 				continue
 			}
+			consecutiveReadErrs = 0
 
 			// Parse Kafka message to extract document ID
 			var messageData map[string]any
@@ -242,9 +265,21 @@ func (eh *embeddingHandler) executeEmbedding(ctx context.Context, resource *inte
 					return fmt.Errorf("update resource index name: %w", err)
 				}
 
+				// 哨兵到达说明同步侧已发完、且组内已消费全部文档消息。
+				// 同任务可能短暂存在两个消费者（asynq 重投的旧实例 + 新一轮入队的实例），
+				// 单分区下旧实例抢走文档、新实例只读到哨兵，内存计数只覆盖自己的切片；
+				// 以最新 synced - 已知失败 为下限对齐，避免完成态写出 0 这类假计数
+				finalCount := totalProcessed
+				if fresh, err := eh.taskAccess.GetByID(ctx, buildTaskInfo.ID); err == nil && fresh != nil {
+					if c := fresh.SyncedCount - int64(len(stillFailed)); c > finalCount {
+						logger.Infof("Embedding count for task %s aligned to synced: local=%d, final=%d (split consumers suspected)", buildTaskInfo.ID, totalProcessed, c)
+						finalCount = c
+					}
+				}
+
 				updates := map[string]interface{}{
 					"status":          interfaces.BuildTaskStatusCompleted,
-					"vectorizedCount": totalProcessed,
+					"vectorizedCount": finalCount,
 				}
 				// 重试耗尽的文档如实记录：完成态但向量不全时，error_msg 说明缺了哪些
 				if len(stillFailed) > 0 {
@@ -256,9 +291,11 @@ func (eh *embeddingHandler) executeEmbedding(ctx context.Context, resource *inte
 					logger.Errorf("update build task status to completed failed: task %s, %v", buildTaskInfo.ID, err)
 				}
 
-				// Commit the message to avoid reprocessing
-				_ = eh.kafkaAccess.CommitMessages(ctx, reader, msg)
-				logger.Infof("Embedding finished for task %s: %d processed, %d failed", buildTaskInfo.ID, totalProcessed, len(stillFailed))
+				// 哨兵提交失败会在消费组留下 LAG 并触发日后重投，必须留痕
+				if err := eh.kafkaAccess.CommitMessages(ctx, reader, msg); err != nil {
+					logger.Errorf("Failed to commit end sentinel for task %s: %v", buildTaskInfo.ID, err)
+				}
+				logger.Infof("Embedding finished for task %s: %d processed, %d failed", buildTaskInfo.ID, finalCount, len(stillFailed))
 				return nil
 			}
 
@@ -272,7 +309,7 @@ func (eh *embeddingHandler) executeEmbedding(ctx context.Context, resource *inte
 				}
 				logger.Errorf("Vectorize document %s attempt %d/%d failed: %v", docID, attempt, embeddingDocMaxAttempts, vErr)
 				if attempt < embeddingDocMaxAttempts {
-					time.Sleep(retryInterval)
+					eh.pause(retryInterval)
 				}
 			}
 			if vErr != nil {
@@ -297,6 +334,10 @@ func (eh *embeddingHandler) executeEmbedding(ctx context.Context, resource *inte
 
 // 单文档向量化的最大尝试次数（含首次）；超过后记入失败清单，完成前补扫一轮
 const embeddingDocMaxAttempts = 3
+
+// 连续非超时读错误达到该次数即放弃本轮执行：消费组协调连接一旦死亡，
+// 旧 reader 上的读写永远失败，必须由 asynq 重试重建会话
+const embeddingReadMaxConsecutiveErrors = 3
 
 // vectorizeDoc 对单个文档执行取数→嵌入→写回，返回错误表示本次尝试整体失败、可重试
 func (eh *embeddingHandler) vectorizeDoc(ctx context.Context, indexName, docID, model string, embeddingFields []string) error {
