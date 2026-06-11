@@ -69,6 +69,8 @@ func (bh *batchBuildHandler) HandleTask(ctx context.Context, task *asynq.Task) e
 		// Task not found, return nil
 		return nil
 	}
+	// 异步任务无原始请求上下文，以任务创建者身份执行下游权限检查
+	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, buildTaskInfo.Creator)
 	resourceID := buildTaskInfo.ResourceID
 	logger.Infof("Starting build for task: %s, resource: %s", taskID, resourceID)
 
