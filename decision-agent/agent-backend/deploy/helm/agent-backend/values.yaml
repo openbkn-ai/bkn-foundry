@@ -105,12 +105,13 @@ depServices:
     userMgnt:
       host: user-management-private
       port: 30980
-    # ISF replacement: introspect/token against bkn-safe's paired hydra (cross-ns).
+    # ISF replacement: introspect/token against bkn-safe's paired hydra
+    # (same-namespace short names; the product installs everything into one ns).
     hydraPublic:
-      host: bkn-safe-hydra-public.bkn-safe
+      host: bkn-safe-hydra-public
       port: 4444
     hydraAdmin:
-      host: bkn-safe-hydra-admin.bkn-safe
+      host: bkn-safe-hydra-admin
       port: 4445
   # 数据库连接配置
   rds:
