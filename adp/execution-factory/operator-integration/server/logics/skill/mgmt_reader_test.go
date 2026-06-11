@@ -437,6 +437,44 @@ func TestSkillManagementReader(t *testing.T) {
 			So(resp.Size, ShouldEqual, 1024)
 		})
 
+		Convey("ReadManagementFile returns inline content in content mode", func() {
+			mockFileRepo := mocks.NewMockISkillFileIndex(ctrl)
+			mockAssetStore := mocks.NewMockskillAssetStore(ctrl)
+			reader := &skillManagementReader{
+				skillRepo: &stubSkillRepo{
+					selectByID: func(ctx context.Context, tx *sql.Tx, skillID string) (*model.SkillRepositoryDB, error) {
+						return validRepo, nil
+					},
+				},
+				fileRepo:              mockFileRepo,
+				assetStore:            mockAssetStore,
+				AuthService:           mocks.NewMockIAuthorizationService(ctrl),
+				BusinessDomainService: mocks.NewMockIBusinessDomainService(ctrl),
+				Logger:                logger.DefaultLogger(),
+			}
+
+			mockFileRepo.EXPECT().SelectSkillFileByPath(gomock.Any(), gomock.Nil(), "skill-1", "v1", "scripts/main.py").
+				Return(&model.SkillFileIndexDB{
+					SkillID: "skill-1", SkillVersion: "v1",
+					RelPath: "scripts/main.py", FileType: "script", MimeType: "text/x-python", Size: 1024,
+					StorageKey: testBuildObjectKey("skill-1", "v1", "scripts/main.py"),
+				}, nil)
+			mockAssetStore.EXPECT().Download(gomock.Any(), gomock.Any()).
+				Return([]byte("print('hello')\n"), nil)
+
+			resp, err := reader.ReadManagementFile(context.Background(), &interfaces.ReadManagementFileReq{
+				BusinessDomainID: "bd-1",
+				SkillID:          "skill-1",
+				RelPath:          "scripts/main.py",
+				ResponseMode:     "content",
+			})
+
+			So(err, ShouldBeNil)
+			So(resp.URL, ShouldEqual, "")
+			So(resp.Content, ShouldEqual, "print('hello')\n")
+			So(resp.MimeType, ShouldEqual, "text/x-python")
+		})
+
 		Convey("ReadManagementFile rejects path traversal", func() {
 			reader := &skillManagementReader{
 				skillRepo: &stubSkillRepo{

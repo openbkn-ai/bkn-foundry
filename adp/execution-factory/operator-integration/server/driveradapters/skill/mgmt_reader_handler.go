@@ -48,6 +48,10 @@ func (h *skillHandler) ReadManagementFile(c *gin.Context) {
 		rest.ReplyError(c, errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error()))
 		return
 	}
+	if err := c.ShouldBindQuery(req); err != nil {
+		rest.ReplyError(c, errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error()))
+		return
+	}
 	if err := utils.GetBindJSONRaw(c, req); err != nil {
 		rest.ReplyError(c, err)
 		return

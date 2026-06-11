@@ -155,14 +155,14 @@ func getValidationErrorCodeAndParams(errStr string) (errors.ErrorCode, []interfa
 
 	// 处理 "invalid info" 错误
 	if strings.Contains(errStr, "invalid info") {
-		return errors.ErrExtOpenAPIInvalidSpecificationRequired, []interface{}{"info"}
+		return errors.ErrExtOpenAPIInvalidSpecificationInvalid, []interface{}{"info"}
 	}
 
 	// 处理 "must be an object" 错误
 	if strings.Contains(errStr, "must be an object") {
 		// 提取具体的元素名称
 		if strings.Contains(errStr, "info") {
-			return errors.ErrExtOpenAPIInvalidSpecificationRequired, []interface{}{"info"}
+			return errors.ErrExtOpenAPIInvalidSpecificationInvalid, []interface{}{"info"}
 		}
 		if strings.Contains(errStr, "components") {
 			return errors.ErrExtOpenAPIInvalidComponent, nil

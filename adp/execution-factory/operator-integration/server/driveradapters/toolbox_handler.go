@@ -75,6 +75,8 @@ func (r *toolboxRestHandler) RegisterPublic(engine *gin.RouterGroup) {
 
 	// 算子转换成工具
 	engine.POST("/operator/convert/tool", r.ToolBoxHandler.OperatorToTool)
+	// OpenAPI 能力包：算子注册 + convert 工具（统一血缘）
+	engine.POST("/capabilities/openapi-bundle", middlewareBusinessDomain(true, false, r.businessDomainService), r.ToolBoxHandler.RegisterOpenApiBundle)
 	// 内置工具注册
 	engine.POST("/tool-box/intcomp", middlewareBusinessDomain(true, false, r.businessDomainService), r.ToolBoxHandler.CreateInternalToolBox)
 	// 批量获取已发布工具箱信息

@@ -32,14 +32,16 @@
 
 ## 2. ReadManagementFile
 
-**Endpoint:** `POST /v1/skills/{skill_id}/management/files/read`
+**Endpoint:** `POST /v1/skills/{skill_id}/management/files/read[?response_mode=url|content]`
 **Interface:** `ReadManagementFile(ctx, req) → (resp, err)`
+**Req header:** `X-Business-Domain`, `User-ID`(public) | **Req uri:** `skill_id` | **Req query:** `response_mode`(缺省`url`) | **Req body:** `rel_path`
 **Req header:** `X-Business-Domain`, `User-ID`(public) | **Req uri:** `skill_id` | **Req body:** `{"rel_path": "..."}`
 **Logic source:** `skillRepository.SelectSkillByID` + `normalizeZipPath` + `skillFileIndex.SelectSkillFileByPath` + `assetStore.GetDownloadURL`
 
 | ID | 场景 | 前置条件 | 请求参数 | 期望响应 | 验证点 |
 |----|------|---------|---------|---------|--------|
-| E10 | 有效文件路径 — 返回 presigned URL 和元信息 | zip 注册；`file_index` 存在 `scripts/main.py` 记录 `{size:1024, mime_type:"text/x-python", file_type:"script"}` | `SkillID: "skill-1"` `RelPath: "scripts/main.py"` | `url: "https://..."` `mime_type: "text/x-python"` `file_type: "script"` `size: 1024` | 元信息与 file_index 一致 |
+| E10 | 有效文件路径 — 返回 presigned URL 和元信息 | zip 注册；`file_index` 存在 `scripts/main.py` 记录 `{size:1024, mime_type:"text/x-python", file_type:"script"}` | `SkillID: "skill-1"` `RelPath: "scripts/main.py"` `response_mode:url` | `url: "https://..."` `mime_type: "text/x-python"` `file_type: "script"` `size: 1024` | 元信息与 file_index 一致 |
+| E10b | 有效文件路径 + content 模式 — 返回内联正文 | 同 E10 | 同上 + `response_mode:content` | `content: "..."` `url:""` | content 为 OSS 文件全文；url 为空 |
 | E11 | 路径穿越 — 返回 400 | 任意 Skill | `RelPath: "../../etc/passwd"` | HTTP 400 `"invalid skill file path"` | normalizeZipPath 先拦截 |
 | E12 | 文件不存在 — 返回 404 | zip 注册；`file_index` 无 `missing.py` 记录 | `RelPath: "missing.py"` | HTTP 404 | 查询 file_index 后返回 `nil` |
 | E13 | 公有 API + 无权限 — 返回 403 | `IsPublicAPIFromCtx: true`；无 view/modify 权限 | `BusinessDomainID: "bd-1"` `UserID:"no-perm"` `SkillID:"skill-1"` `RelPath:"scripts/main.py"` | HTTP 403 | 同 E6 权限校验模式 |

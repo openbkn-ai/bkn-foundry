@@ -325,6 +325,21 @@ func (mr *MockIToolServiceMockRecorder) QueryToolList(ctx, req any) *gomock.Call
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "QueryToolList", reflect.TypeOf((*MockIToolService)(nil).QueryToolList), ctx, req)
 }
 
+// RegisterOpenApiBundle mocks base method.
+func (m *MockIToolService) RegisterOpenApiBundle(ctx context.Context, req *interfaces.RegisterOpenApiBundleReq) (*interfaces.RegisterOpenApiBundleResp, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RegisterOpenApiBundle", ctx, req)
+	ret0, _ := ret[0].(*interfaces.RegisterOpenApiBundleResp)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RegisterOpenApiBundle indicates an expected call of RegisterOpenApiBundle.
+func (mr *MockIToolServiceMockRecorder) RegisterOpenApiBundle(ctx, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RegisterOpenApiBundle", reflect.TypeOf((*MockIToolService)(nil).RegisterOpenApiBundle), ctx, req)
+}
+
 // UpdateTool mocks base method.
 func (m *MockIToolService) UpdateTool(ctx context.Context, req *interfaces.UpdateToolReq) (*interfaces.UpdateToolResp, error) {
 	m.ctrl.T.Helper()
