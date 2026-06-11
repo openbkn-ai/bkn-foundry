@@ -229,25 +229,45 @@ func (eh *embeddingHandler) executeEmbedding(ctx context.Context, resource *inte
 			}
 			consecutiveReadErrs = 0
 
-			// Parse Kafka message to extract document ID
-			var messageData map[string]any
-			if err := sonic.Unmarshal(msg.Value, &messageData); err != nil {
-				// 消息畸形，重试无意义：提交跳过，避免后续位点提交把它悄悄盖掉
-				logger.Errorf("Failed to unmarshal message value: %v", err)
+			// 解析文档 ID；畸形消息重试无意义：提交跳过，避免后续位点提交把它悄悄盖掉
+			docID := extractDocID(msg.Value)
+			if docID == "" {
 				_ = eh.kafkaAccess.CommitMessages(ctx, reader, msg)
 				continue
 			}
 
-			// Get document ID from message
-			docID, ok := messageData["document_id"].(string)
-			if !ok || docID == "" {
-				logger.Errorf("Invalid document ID in message")
-				_ = eh.kafkaAccess.CommitMessages(ctx, reader, msg)
-				continue
-			}
-
-			// 结束哨兵：同步侧已发完全部文档，先补扫失败文档，再收尾
+			// 结束哨兵。哨兵不可直接信任：上一轮哨兵 commit 失败会留在原位，新消费者
+			// 一上来先读到旧哨兵，若立即收尾则本轮文档原封未动（线上复现：teams 重建后
+			// LAG=89，向量一个没写）。先把队列排空——连续 N 次空轮询才认为干净，
+			// 途中文档照常处理、多余哨兵只提交不重复收尾
 			if docID == interfaces.EmptyDocumentID {
+				emptyPolls := 0
+				for emptyPolls < embeddingDrainEmptyPolls {
+					drainCtx, cancelDrain := context.WithTimeout(context.Background(), embeddingDrainPollTimeout)
+					dmsg, derr := eh.kafkaAccess.ReadMessage(drainCtx, reader)
+					cancelDrain()
+					if derr != nil {
+						if errors.Is(derr, context.DeadlineExceeded) {
+							emptyPolls++
+							continue
+						}
+						logger.Errorf("Drain read failed for task %s: %v", buildTaskInfo.ID, derr)
+						_ = eh.taskAccess.UpdateStatus(ctx, buildTaskInfo.ID, map[string]interface{}{"vectorizedCount": totalProcessed})
+						return fmt.Errorf("drain read message from kafka: %w", derr)
+					}
+					emptyPolls = 0
+					dDocID := extractDocID(dmsg.Value)
+					if dDocID != "" && dDocID != interfaces.EmptyDocumentID {
+						if err := eh.vectorizeDocWithRetry(ctx, indexName, dDocID, buildTaskInfo.EmbeddingModel, embeddingFields, retryInterval); err != nil {
+							failedDocIDs = append(failedDocIDs, dDocID)
+						} else {
+							totalProcessed++
+						}
+					}
+					_ = eh.kafkaAccess.CommitMessages(ctx, reader, dmsg)
+				}
+
+				// 排空后补扫重试耗尽的失败文档
 				stillFailed := []string{}
 				for _, failedID := range failedDocIDs {
 					if err := eh.vectorizeDoc(ctx, indexName, failedID, buildTaskInfo.EmbeddingModel, embeddingFields); err != nil {
@@ -302,17 +322,7 @@ func (eh *embeddingHandler) executeEmbedding(ctx context.Context, resource *inte
 			// 单文档带重试：嵌入服务限流等瞬时错误最常见。
 			// 重试耗尽则记入失败清单并照常提交位点——原先的 sleep+continue 看似会重试，
 			// 实际 reader 已前移，后续消息提交位点时把失败文档悄悄盖掉，向量永久缺失且无痕迹
-			var vErr error
-			for attempt := 1; attempt <= embeddingDocMaxAttempts; attempt++ {
-				if vErr = eh.vectorizeDoc(ctx, indexName, docID, buildTaskInfo.EmbeddingModel, embeddingFields); vErr == nil {
-					break
-				}
-				logger.Errorf("Vectorize document %s attempt %d/%d failed: %v", docID, attempt, embeddingDocMaxAttempts, vErr)
-				if attempt < embeddingDocMaxAttempts {
-					eh.pause(retryInterval)
-				}
-			}
-			if vErr != nil {
+			if err := eh.vectorizeDocWithRetry(ctx, indexName, docID, buildTaskInfo.EmbeddingModel, embeddingFields, retryInterval); err != nil {
 				failedDocIDs = append(failedDocIDs, docID)
 			} else {
 				totalProcessed++
@@ -334,6 +344,38 @@ func (eh *embeddingHandler) executeEmbedding(ctx context.Context, resource *inte
 
 // 单文档向量化的最大尝试次数（含首次）；超过后记入失败清单，完成前补扫一轮
 const embeddingDocMaxAttempts = 3
+
+// 哨兵后的排空参数：连续 N 次空轮询（每次最长等待 PollTimeout）认为队列已干净
+const (
+	embeddingDrainEmptyPolls  = 2
+	embeddingDrainPollTimeout = 10 * time.Second
+)
+
+// extractDocID 解析嵌入消息中的 document_id；畸形消息返回空串（调用方提交跳过）
+func extractDocID(value []byte) string {
+	var messageData map[string]any
+	if err := sonic.Unmarshal(value, &messageData); err != nil {
+		logger.Errorf("Failed to unmarshal message value: %v", err)
+		return ""
+	}
+	docID, _ := messageData["document_id"].(string)
+	return docID
+}
+
+// vectorizeDocWithRetry 带有界重试的单文档向量化；返回错误表示重试已耗尽
+func (eh *embeddingHandler) vectorizeDocWithRetry(ctx context.Context, indexName, docID, model string, embeddingFields []string, retryInterval time.Duration) error {
+	var vErr error
+	for attempt := 1; attempt <= embeddingDocMaxAttempts; attempt++ {
+		if vErr = eh.vectorizeDoc(ctx, indexName, docID, model, embeddingFields); vErr == nil {
+			return nil
+		}
+		logger.Errorf("Vectorize document %s attempt %d/%d failed: %v", docID, attempt, embeddingDocMaxAttempts, vErr)
+		if attempt < embeddingDocMaxAttempts {
+			eh.pause(retryInterval)
+		}
+	}
+	return vErr
+}
 
 // 连续非超时读错误达到该次数即放弃本轮执行：消费组协调连接一旦死亡，
 // 旧 reader 上的读写永远失败，必须由 asynq 重试重建会话
