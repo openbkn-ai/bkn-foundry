@@ -161,6 +161,13 @@ func (bh *batchBuildHandler) executeBuild(ctx context.Context, resource *interfa
 	lastSyncedMark := buildTaskInfo.SyncedMark
 	if executeType == interfaces.BuildTaskExecuteTypeFull {
 		lastSyncedMark = ""
+		// 全量重跑从头读、向量也整体重做，进度计数器一并清零，
+		// 否则跨运行累计出 synced > total 的显示
+		buildTaskInfo.SyncedCount = 0
+		buildTaskInfo.VectorizedCount = 0
+		if err := bh.taskAccess.UpdateStatus(ctx, buildTaskInfo.ID, map[string]interface{}{"syncedCount": int64(0), "vectorizedCount": int64(0), "syncedMark": ""}); err != nil {
+			return fmt.Errorf("update build task status failed: %w", err)
+		}
 	}
 
 	batchFields := strings.Split(buildTaskInfo.BuildKeyFields, ",")
