@@ -17,6 +17,7 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/hibiken/asynq"
 	"github.com/kweaver-ai/kweaver-go-lib/logger"
+	"github.com/segmentio/kafka-go"
 
 	"vega-backend/common"
 	"vega-backend/interfaces"
@@ -176,6 +177,8 @@ func (eh *embeddingHandler) executeEmbedding(ctx context.Context, resource *inte
 	lastUpdateTime := time.Now()
 	updateInterval := 30 * time.Second // embedding速度慢，至少每30秒更新一次
 	consecutiveReadErrs := 0           // 连续非超时读错误计数，达到上限放弃本轮交给 asynq 重试
+	consecutiveCommitErrs := 0         // 连续位点提交失败计数，达到上限放弃本轮交给 asynq 重试
+	lastMessageTime := time.Now()
 	for {
 		// Check task status before each iteration
 		taskStatus, err := eh.taskAccess.GetStatus(ctx, buildTaskInfo.ID)
@@ -216,6 +219,13 @@ func (eh *embeddingHandler) executeEmbedding(ctx context.Context, resource *inte
 			if err != nil {
 				if errors.Is(err, context.DeadlineExceeded) {
 					consecutiveReadErrs = 0
+					// 批量模式空闲看门狗：同步侧早已发完（含哨兵），长时间一条消息都
+					// 读不到说明消费组会话假死（分区被死实例占着/会话丢失但不报错）。
+					// 重建会话从已提交位点续读；流式模式空闲是常态，不适用
+					if buildTaskInfo.Mode == interfaces.BuildTaskModeBatch && time.Since(lastMessageTime) > embeddingIdleRebuildAfter {
+						_ = eh.taskAccess.UpdateStatus(ctx, buildTaskInfo.ID, map[string]interface{}{"vectorizedCount": totalProcessed})
+						return fmt.Errorf("no message for %s on batch task, rebuilding consumer session", embeddingIdleRebuildAfter)
+					}
 					// 超时，检查是否需要更新任务状态
 					if totalProcessed > buildTaskInfo.VectorizedCount && time.Since(lastUpdateTime) > updateInterval {
 						_ = eh.taskAccess.UpdateStatus(ctx, buildTaskInfo.ID, map[string]interface{}{"vectorizedCount": totalProcessed})
@@ -228,7 +238,7 @@ func (eh *embeddingHandler) executeEmbedding(ctx context.Context, resource *inte
 					// 原地重试只会让任务永久冻结：放弃本轮，交给 asynq 重试重建
 					// reader 与消费组会话，从已提交位点续读
 					consecutiveReadErrs++
-					if consecutiveReadErrs >= embeddingReadMaxConsecutiveErrors {
+					if consecutiveReadErrs >= embeddingKafkaMaxConsecutiveErrors {
 						_ = eh.taskAccess.UpdateStatus(ctx, buildTaskInfo.ID, map[string]interface{}{"vectorizedCount": totalProcessed})
 						return fmt.Errorf("read message from kafka: %w", err)
 					}
@@ -237,11 +247,12 @@ func (eh *embeddingHandler) executeEmbedding(ctx context.Context, resource *inte
 				continue
 			}
 			consecutiveReadErrs = 0
+			lastMessageTime = time.Now()
 
 			// 解析文档 ID；畸形消息重试无意义：提交跳过，避免后续位点提交把它悄悄盖掉
 			docID := extractDocID(msg.Value)
 			if docID == "" {
-				_ = eh.kafkaAccess.CommitMessages(ctx, reader, msg)
+				_ = eh.commitMessages(reader, msg)
 				continue
 			}
 
@@ -252,7 +263,7 @@ func (eh *embeddingHandler) executeEmbedding(ctx context.Context, resource *inte
 			if docID == interfaces.EmptyDocumentID {
 				// 触发哨兵立刻提交：Kafka 提交是绝对位点、后写覆盖，若留到收尾才提交，
 				// 会把 drain 期间已推进的位点倒拨回哨兵处，下次启动整段重放、计数虚高
-				if err := eh.kafkaAccess.CommitMessages(ctx, reader, msg); err != nil {
+				if err := eh.commitMessages(reader, msg); err != nil {
 					logger.Errorf("Failed to commit end sentinel for task %s: %v", buildTaskInfo.ID, err)
 				}
 				emptyPolls := 0
@@ -278,7 +289,7 @@ func (eh *embeddingHandler) executeEmbedding(ctx context.Context, resource *inte
 							countProcessed(dDocID)
 						}
 					}
-					_ = eh.kafkaAccess.CommitMessages(ctx, reader, dmsg)
+					_ = eh.commitMessages(reader, dmsg)
 				}
 
 				// 排空后补扫重试耗尽的失败文档
@@ -351,8 +362,17 @@ func (eh *embeddingHandler) executeEmbedding(ctx context.Context, resource *inte
 			}
 
 			// Commit the message to avoid reprocessing
-			if err := eh.kafkaAccess.CommitMessages(ctx, reader, msg); err != nil {
+			if err := eh.commitMessages(reader, msg); err != nil {
 				logger.Errorf("Failed to commit message: %v", err)
+				// 会话死亡后提交永远失败，位点不再推进：放弃本轮交给 asynq 重建会话，
+				// 已处理未提交的文档重放时由 per-doc 去重计数兜底
+				consecutiveCommitErrs++
+				if consecutiveCommitErrs >= embeddingKafkaMaxConsecutiveErrors {
+					_ = eh.taskAccess.UpdateStatus(ctx, buildTaskInfo.ID, map[string]interface{}{"vectorizedCount": totalProcessed})
+					return fmt.Errorf("commit message to kafka: %w", err)
+				}
+			} else {
+				consecutiveCommitErrs = 0
 			}
 		}
 	}
@@ -393,9 +413,23 @@ func (eh *embeddingHandler) vectorizeDocWithRetry(ctx context.Context, indexName
 	return vErr
 }
 
-// 连续非超时读错误达到该次数即放弃本轮执行：消费组协调连接一旦死亡，
+// 连续非超时读错误/提交失败达到该次数即放弃本轮执行：消费组协调连接一旦死亡，
 // 旧 reader 上的读写永远失败，必须由 asynq 重试重建会话
-const embeddingReadMaxConsecutiveErrors = 3
+const embeddingKafkaMaxConsecutiveErrors = 3
+
+// 位点提交的有界超时：asynq 任务 ctx 无截止时间，消费组会话死亡后 kafka-go 的
+// CommitMessages 会在无界 ctx 上永久阻塞，消费循环静默冻结且不响应 stop
+const embeddingCommitTimeout = 30 * time.Second
+
+// 批量任务连续读不到任何消息的重建阈值（见循环内看门狗注释）
+const embeddingIdleRebuildAfter = 10 * time.Minute
+
+// commitMessages 带有界超时提交位点
+func (eh *embeddingHandler) commitMessages(reader *kafka.Reader, msgs ...kafka.Message) error {
+	cctx, cancel := context.WithTimeout(context.Background(), embeddingCommitTimeout)
+	defer cancel()
+	return eh.kafkaAccess.CommitMessages(cctx, reader, msgs...)
+}
 
 // vectorizeDoc 对单个文档执行取数→嵌入→写回，返回错误表示本次尝试整体失败、可重试
 func (eh *embeddingHandler) vectorizeDoc(ctx context.Context, indexName, docID, model string, embeddingFields []string) error {

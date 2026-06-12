@@ -94,6 +94,45 @@ func TestExecuteEmbedding_CtxCanceledReturnsErrorForRequeue(t *testing.T) {
 	_ = flush
 }
 
+// 复现 bug：消费组会话死亡后 kafka-go CommitMessages 在无界 ctx 上永久阻塞或持续
+// 失败，消费循环既不推进也不响应 stop（线上复现：任务冻在 10381/10401 六小时，
+// stop 后 60 秒状态仍是 stopping）。提交必须有界，连续提交失败必须放弃本轮交给
+// asynq 重建消费组会话。
+func TestExecuteEmbedding_PersistentCommitErrorGivesUpForRetry(t *testing.T) {
+	eh, ta, ka := newLoopHandler(t)
+	ctrl := gomock.NewController(t)
+	ds := vmock.NewMockDatasetService(ctrl)
+	eh.ds = ds
+	resource, task := loopFixtures()
+
+	deadCommit := errors.New("commit on dead generation")
+	docMsg := func(id string) kafka.Message {
+		return kafka.Message{Value: []byte(`{"document_id":"` + id + `"}`)}
+	}
+
+	expectKafkaSession(ka)
+	ta.EXPECT().GetStatus(gomock.Any(), "t1").Return(interfaces.BuildTaskStatusRunning, nil).AnyTimes()
+	gomock.InOrder(
+		ka.EXPECT().ReadMessage(gomock.Any(), gomock.Any()).Return(docMsg("d1"), nil),
+		ka.EXPECT().ReadMessage(gomock.Any(), gomock.Any()).Return(docMsg("d2"), nil),
+		ka.EXPECT().ReadMessage(gomock.Any(), gomock.Any()).Return(docMsg("d3"), nil),
+	)
+	// 空文本文档：vectorizeDoc 直接成功，不触发嵌入调用
+	ds.EXPECT().GetDocument(gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(map[string]any{"team_name": ""}, nil).Times(3)
+	ka.EXPECT().CommitMessages(gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(deadCommit).Times(embeddingKafkaMaxConsecutiveErrors)
+	ta.EXPECT().UpdateStatus(gomock.Any(), "t1", gomock.Any()).Return(nil).AnyTimes()
+
+	err := eh.executeEmbedding(context.Background(), resource, task)
+	if err == nil {
+		t.Fatal("连续提交失败必须返回错误交给 asynq 重建会话；否则循环静默冻结且不响应 stop")
+	}
+	if !strings.Contains(err.Error(), "commit") {
+		t.Fatalf("expected wrapped commit error, got %v", err)
+	}
+}
+
 func TestExecuteEmbedding_PersistentReadErrorGivesUpForRetry(t *testing.T) {
 	eh, ta, ka := newLoopHandler(t)
 	resource, task := loopFixtures()
@@ -101,8 +140,8 @@ func TestExecuteEmbedding_PersistentReadErrorGivesUpForRetry(t *testing.T) {
 	deadConn := errors.New("committing message: use of closed network connection")
 
 	expectKafkaSession(ka)
-	ta.EXPECT().GetStatus(gomock.Any(), "t1").Return(interfaces.BuildTaskStatusRunning, nil).Times(embeddingReadMaxConsecutiveErrors)
-	ka.EXPECT().ReadMessage(gomock.Any(), gomock.Any()).Return(kafka.Message{}, deadConn).Times(embeddingReadMaxConsecutiveErrors)
+	ta.EXPECT().GetStatus(gomock.Any(), "t1").Return(interfaces.BuildTaskStatusRunning, nil).Times(embeddingKafkaMaxConsecutiveErrors)
+	ka.EXPECT().ReadMessage(gomock.Any(), gomock.Any()).Return(kafka.Message{}, deadConn).Times(embeddingKafkaMaxConsecutiveErrors)
 	expectCountFlush(ta, 7)
 
 	err := eh.executeEmbedding(context.Background(), resource, task)
