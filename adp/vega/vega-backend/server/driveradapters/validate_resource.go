@@ -472,7 +472,8 @@ func validateFeatures(ctx context.Context, fieldsMap map[string]*interfaces.View
 func IsFeatureSupported(fieldType string, featureType string) bool {
 	switch featureType {
 	case interfaces.PropertyFeatureType_Fulltext:
-		return fieldType == interfaces.DataType_Text
+		// 全文检索支持 text 与 string：ES 风格 multi-field 下 string 字段同样可分词检索
+		return fieldType == interfaces.DataType_Text || fieldType == interfaces.DataType_String
 	case interfaces.PropertyFeatureType_Keyword:
 		return fieldType == interfaces.DataType_String
 	case interfaces.PropertyFeatureType_Vector:
