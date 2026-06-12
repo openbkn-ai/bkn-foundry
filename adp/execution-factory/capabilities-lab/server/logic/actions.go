@@ -112,8 +112,8 @@ func (s *Service) ImportOpenApiCapabilities(
 	}
 
 	if len(response.Capabilities) == 0 {
-		if toolResp.FailureCount > 0 && len(toolResp.Failures) > 0 && toolResp.Failures[0].Error != "" {
-			return nil, errors.New(toolResp.Failures[0].Error)
+		if toolResp.FailureCount > 0 && len(toolResp.Failures) > 0 && toolResp.Failures[0].Message() != "" {
+			return nil, errors.New(toolResp.Failures[0].Message())
 		}
 		return nil, errors.New("import failed")
 	}

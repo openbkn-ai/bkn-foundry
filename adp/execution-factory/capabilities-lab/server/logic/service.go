@@ -183,8 +183,8 @@ func (s *Service) CreateHttpCapability(
 		return nil, toolErr
 	}
 	if toolResp.FailureCount > 0 || len(toolResp.SuccessIDs) == 0 {
-		if len(toolResp.Failures) > 0 && toolResp.Failures[0].Error != "" {
-			return nil, errors.New(toolResp.Failures[0].Error)
+		if len(toolResp.Failures) > 0 && toolResp.Failures[0].Message() != "" {
+			return nil, errors.New(toolResp.Failures[0].Message())
 		}
 		return nil, errors.New("tool creation failed")
 	}

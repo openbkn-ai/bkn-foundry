@@ -149,11 +149,53 @@ type createToolRequest struct {
 }
 
 type createToolResponse struct {
-	SuccessIDs   []string `json:"success_ids"`
-	FailureCount int64    `json:"failure_count"`
-	Failures     []struct {
-		Error string `json:"error"`
-	} `json:"failures"`
+	SuccessIDs   []string            `json:"success_ids"`
+	FailureCount int64               `json:"failure_count"`
+	Failures     []createToolFailure `json:"failures"`
+}
+
+type createToolFailure struct {
+	ToolName string          `json:"tool_name"`
+	Error    string          `json:"error"`
+	ErrorMsg json.RawMessage `json:"error_msg"`
+}
+
+func (f createToolFailure) Message() string {
+	if strings.TrimSpace(f.Error) != "" {
+		return f.Error
+	}
+
+	if len(f.ErrorMsg) == 0 {
+		return ""
+	}
+
+	var text string
+	if err := json.Unmarshal(f.ErrorMsg, &text); err == nil {
+		return strings.TrimSpace(text)
+	}
+
+	var detail struct {
+		Description string `json:"description"`
+		Details     string `json:"details"`
+		Message     string `json:"message"`
+		Error       string `json:"error"`
+	}
+	if err := json.Unmarshal(f.ErrorMsg, &detail); err != nil {
+		return ""
+	}
+
+	for _, candidate := range []string{
+		detail.Description,
+		detail.Details,
+		detail.Message,
+		detail.Error,
+	} {
+		if strings.TrimSpace(candidate) != "" {
+			return candidate
+		}
+	}
+
+	return ""
 }
 
 type bundleRequest struct {
