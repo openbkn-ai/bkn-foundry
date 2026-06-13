@@ -545,6 +545,43 @@ onboard_kweaver_admin_version_summary() {
     printf '%s' "${_bin} (version ${_ver})"
 }
 
+# bkn-safe seeds the built-in admin (and reset users) with must_change_password
+# set, so the first headless `openbkn auth login -u/-p` never completes: the login
+# provider returns the change-password page instead of accepting the hydra login,
+# and the device-code flow then hangs until it times out. Onboard always runs
+# against a fresh first login, so clear the flag up front by bouncing the password
+# through the tokenless self-service change-password endpoint (pw -> pw.heal ->
+# pw). A successful self-service change clears must_change_password and leaves the
+# effective password unchanged. A non-2xx first hop (typically 401) means the
+# password is not the one we hold (operator already changed it) — leave the
+# account alone and let the login proceed with whatever it is. Idempotent: on an
+# already-cleared account it just changes the password to itself twice.
+onboard_bkn_safe_clear_must_change() {
+    local _account="$1" _pw="$2" _kurl="$3" _ep _tmp _c1 _c2
+    local _ins=()
+    [[ -z "${_account}" || -z "${_pw}" || -z "${_kurl}" ]] && return 0
+    command -v curl &>/dev/null || return 0
+    case "${_kurl}" in https://*) _ins=(-k);; esac
+    _ep="${_kurl%/}/api/safe/v1/auth/change-password"
+    _tmp="${_pw}.heal"
+    _c1="$(curl -s "${_ins[@]}" -o /dev/null -w '%{http_code}' -X POST "${_ep}" \
+        -H 'Content-Type: application/json' \
+        -d "{\"account\":\"${_account}\",\"old_password\":\"${_pw}\",\"new_password\":\"${_tmp}\"}" 2>/dev/null)"
+    if [[ "${_c1}" != 2* ]]; then
+        [[ "${_c1}" == "401" ]] || onboard_log_info "openbkn auth: must-change heal probe for [${_account}] got http ${_c1} (skipping)"
+        return 0
+    fi
+    _c2="$(curl -s "${_ins[@]}" -o /dev/null -w '%{http_code}' -X POST "${_ep}" \
+        -H 'Content-Type: application/json' \
+        -d "{\"account\":\"${_account}\",\"old_password\":\"${_tmp}\",\"new_password\":\"${_pw}\"}" 2>/dev/null)"
+    if [[ "${_c2}" != 2* ]]; then
+        log_warn "openbkn auth: [${_account}] password left at <pw>.heal (restore hop http ${_c2}); restore via ${_ep} old='<pw>.heal' new='<pw>'"
+        return 1
+    fi
+    onboard_log_info "openbkn auth: cleared pending must-change-password for [${_account}] (password unchanged)"
+    return 0
+}
+
 onboard_kweaver_auth_login_echo_cmd() {
     local _url="$1"
     shift
@@ -576,6 +613,7 @@ onboard_kweaver_auth_login_for_url() {
         _sp="${ONBOARD_DEFAULT_KWEAVER_PASSWORD:-openbkn}"
         if [[ "${ONBOARD_ASSUME_YES}" == "true" ]]; then
             onboard_log_info "openbkn auth: bkn-safe detected — credential device-flow login (-y): ${_su}"
+            onboard_bkn_safe_clear_must_change "${_su}" "${_sp}" "${_kurl}" || true
             onboard_kweaver_auth_login_echo_cmd "${_kurl}" -u "${_su}" -p "***" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}"
             if ! openbkn auth login "${_kurl}" -u "${_su}" -p "${_sp}" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}" ; then
                 return 1
@@ -587,6 +625,7 @@ onboard_kweaver_auth_login_for_url() {
         read -r -s -p "  Password [Enter = ${_sp}] " _p
         echo
         _p="${_p:-${_sp}}"
+        onboard_bkn_safe_clear_must_change "${_u}" "${_p}" "${_kurl}" || true
         onboard_kweaver_auth_login_echo_cmd "${_kurl}" -u "${_u}" -p "***" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}"
         if ! openbkn auth login "${_kurl}" -u "${_u}" -p "${_p}" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}" ; then
             return 1
