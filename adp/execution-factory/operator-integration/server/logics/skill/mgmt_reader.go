@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"sync"
 
+	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/dbaccess"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/config"
@@ -19,7 +20,6 @@ import (
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/auth"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/business_domain"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/utils"
-	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
 )
 
 type skillManagementReader struct {
@@ -190,23 +190,42 @@ func (r *skillManagementReader) ReadManagementFile(ctx context.Context, req *int
 		return nil, errors.DefaultHTTPError(ctx, http.StatusNotFound, fmt.Sprintf("file not found: %s", relPath))
 	}
 
-	downloadURL, err := r.assetStore.GetDownloadURL(ctx, &interfaces.OssObject{
-		StorageID:  file.StorageID,
-		StorageKey: file.StorageKey,
-	})
-	if err != nil {
-		r.Logger.WithContext(ctx).Errorf("read management file failed: %v", err)
-		return nil, err
-	}
-
-	return &interfaces.ReadManagementFileResp{
+	resp = &interfaces.ReadManagementFileResp{
 		SkillID:  req.SkillID,
 		RelPath:  relPath,
-		URL:      downloadURL,
 		MimeType: file.MimeType,
 		FileType: file.FileType,
 		Size:     file.Size,
-	}, nil
+	}
+
+	switch req.ResponseMode {
+	case "content":
+		if relPath == SkillMD && skill.SkillContent != "" {
+			resp.Content = skill.SkillContent
+			break
+		}
+		ossContent, downloadErr := r.assetStore.Download(ctx, &interfaces.OssObject{
+			StorageID:  file.StorageID,
+			StorageKey: file.StorageKey,
+		})
+		if downloadErr != nil {
+			r.Logger.WithContext(ctx).Errorf("download management file failed: %v", downloadErr)
+			return nil, downloadErr
+		}
+		resp.Content = string(ossContent)
+	default:
+		downloadURL, urlErr := r.assetStore.GetDownloadURL(ctx, &interfaces.OssObject{
+			StorageID:  file.StorageID,
+			StorageKey: file.StorageKey,
+		})
+		if urlErr != nil {
+			r.Logger.WithContext(ctx).Errorf("read management file failed: %v", urlErr)
+			return nil, urlErr
+		}
+		resp.URL = downloadURL
+	}
+
+	return resp, nil
 }
 
 // DownloadManagementSkill 下载管理态完整技能包

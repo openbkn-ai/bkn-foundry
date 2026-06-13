@@ -346,6 +346,40 @@ type ConvertOperatorToToolResp struct {
 	ToolID string `json:"tool_id"` // 工具ID
 }
 
+// RegisterOpenApiBundleReq OpenAPI 能力包注册：先注册算子，再 convert 为工具（建立血缘）
+type RegisterOpenApiBundleReq struct {
+	BusinessDomainID       string                  `header:"x-business-domain" validate:"required"`
+	UserID                 string                  `header:"user_id" validate:"required"`
+	BoxID                  string                  `json:"box_id"`                                // 已有工具箱 ID（与 box_name 二选一）
+	BoxName                string                  `json:"box_name"`                              // 新建工具箱名称
+	BoxDesc                string                  `json:"box_desc"`                              // 工具箱描述
+	BoxSvcURL              string                  `json:"box_svc_url" validate:"required"`       // 工具箱服务地址
+	Category               BizCategory             `json:"box_category" default:"other_category"` // 分类
+	UseRule                string                  `json:"use_rule"`                              // 工具使用规则
+	Data                   string                  `json:"data" validate:"required"`              // OpenAPI 3.0 文档
+	Description            string                  `json:"description"`                           // 算子描述
+	DirectPublish          bool                    `json:"direct_publish,omitempty"`              // 注册后直接发布算子
+	OperatorInfo           *OperatorInfo           `json:"operator_info"`                         // 算子信息
+	OperatorExecuteControl *OperatorExecuteControl `json:"operator_execute_control"`              // 算子执行控制
+	ExtendInfo             map[string]interface{}  `json:"extend_info,omitempty"`                 // 扩展信息
+}
+
+// OpenApiBundleLink 算子与工具的关联
+type OpenApiBundleLink struct {
+	OperatorID string `json:"operator_id"`
+	ToolID     string `json:"tool_id"`
+}
+
+// RegisterOpenApiBundleResp OpenAPI 能力包注册结果
+type RegisterOpenApiBundleResp struct {
+	BoxID        string              `json:"box_id"`
+	ToolIDs      []string            `json:"tool_ids"`
+	OperatorIDs  []string            `json:"operator_ids"`
+	Links        []OpenApiBundleLink `json:"links"`
+	FailureCount int                 `json:"failure_count,omitempty"`
+	Failures     []string            `json:"failures,omitempty"`
+}
+
 // UpdateToolBoxStatusReq 更新工具箱状态请求
 type UpdateToolBoxStatusReq struct {
 	UserID string    `header:"user_id" validate:"required"` // 用户ID,内部使用
@@ -409,6 +443,8 @@ type IToolService interface {
 	ExecuteToolCore(ctx context.Context, req *ExecuteToolReq) (resp *HTTPResponse, err error)
 	// 算子转换成工具
 	ConvertOperatorToTool(ctx context.Context, req *ConvertOperatorToToolReq) (resp *ConvertOperatorToToolResp, err error)
+	// OpenAPI 能力包：算子注册 + convert 工具（统一血缘）
+	RegisterOpenApiBundle(ctx context.Context, req *RegisterOpenApiBundleReq) (resp *RegisterOpenApiBundleResp, err error)
 	GetReleaseToolBoxInfo(ctx context.Context, req *GetReleaseToolBoxInfoReq) (resp []*GetReleaseToolBoxInfoResp, err error)
 	// 内部接口
 	CreateInternalToolBox(ctx context.Context, req *CreateInternalToolBoxReq) (resp *CreateInternalToolBoxResp, err error)
