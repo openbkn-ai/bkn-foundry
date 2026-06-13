@@ -167,8 +167,41 @@ func (bts *buildTaskService) CreateBuildTask(ctx context.Context, req *interface
 			WithErrorDetails(err.Error())
 	}
 
+	// 创建即入队执行：客户端创建后不会再调 /start，不入队任务会永远停在 init（界面"排队中"）。
+	// 入队失败仅记日志，任务保持 init，可由 /start 重新触发
+	bts.enqueueBuildTask(ctx, buildTask, interfaces.BuildTaskExecuteTypeFull)
+
 	span.SetStatus(codes.Ok, "")
 	return buildTask.ID, nil
+}
+
+// enqueueBuildTask 按任务模式投递到 asynq 队列；入队失败仅记录日志，任务保持当前状态
+func (bts *buildTaskService) enqueueBuildTask(ctx context.Context, buildTask *interfaces.BuildTask, executeType string) {
+	payload, err := sonic.Marshal(&interfaces.BatchBuildTaskMessage{
+		TaskID:      buildTask.ID,
+		ExecuteType: executeType,
+	})
+	if err != nil {
+		otellog.LogError(ctx, "Marshal build task message failed", err)
+		return
+	}
+
+	typename := interfaces.BuildTaskTypeBatch
+	if buildTask.Mode == interfaces.BuildTaskModeStreaming {
+		typename = interfaces.BuildTaskTypeStreaming
+	}
+	asynqTask := asynq.NewTask(typename, payload)
+	client := logics.AQA.CreateClient()
+	if _, err := client.Enqueue(asynqTask,
+		asynq.Queue(interfaces.DefaultQueue),
+		asynq.MaxRetry(interfaces.BUILD_TASK_MAX_RETRY_COUNT),
+		asynq.Timeout(math.MaxInt64),
+		asynq.Deadline(time.Unix(math.MaxInt64/1000000000, math.MaxInt64%1000000000)),
+	); err != nil {
+		otellog.LogError(ctx, "Enqueue build task failed", err)
+	} else {
+		logger.Infof("Build task %s enqueued for execution", buildTask.ID)
+	}
 }
 
 // GetBuildTaskByID retrieves a build task by ID.
@@ -300,31 +333,18 @@ func (bts *buildTaskService) StartBuildTask(ctx context.Context, taskID string, 
 			WithErrorDetails("catalog is disabled")
 	}
 
-	// status transition to running is performed by worker on actual execution，only need to enqueue the task
-	payload, err := sonic.Marshal(&interfaces.BatchBuildTaskMessage{
-		TaskID:      taskID,
-		ExecuteType: executeType,
-	})
-	if err != nil {
-		otellog.LogError(ctx, "Marshal build task message failed", err)
-	} else {
-		typename := interfaces.BuildTaskTypeBatch
-		if buildTask.Mode == interfaces.BuildTaskModeStreaming {
-			typename = interfaces.BuildTaskTypeStreaming
-		}
-		asynqTask := asynq.NewTask(typename, payload)
-		client := logics.AQA.CreateClient()
-		if _, err := client.Enqueue(asynqTask,
-			asynq.Queue(interfaces.DefaultQueue),
-			asynq.MaxRetry(interfaces.BUILD_TASK_MAX_RETRY_COUNT),
-			asynq.Timeout(math.MaxInt64),
-			asynq.Deadline(time.Unix(math.MaxInt64/1000000000, math.MaxInt64%1000000000)),
-		); err != nil {
-			otellog.LogError(ctx, "Enqueue build task failed", err)
-		} else {
-			logger.Infof("Build task %s enqueued for execution", taskID)
+	// 入队前先置回 init：worker 出队时会跳过 stopped/stopping 的任务
+	// （防止排队中被停止的任务复活），stopped 状态直接入队会被误跳过。
+	// running 仍由 worker 实际执行时落账。
+	if buildTask.Status != interfaces.BuildTaskStatusInit {
+		if err := bts.bta.UpdateStatus(ctx, taskID, map[string]any{"status": interfaces.BuildTaskStatusInit}); err != nil {
+			otellog.LogError(ctx, "Update build task status failed", err)
+			return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_UpdateFailed).
+				WithErrorDetails(err.Error())
 		}
 	}
+
+	bts.enqueueBuildTask(ctx, buildTask, executeType)
 
 	span.SetStatus(codes.Ok, "")
 	return nil
@@ -347,7 +367,8 @@ func (bts *buildTaskService) StopBuildTask(ctx context.Context, taskID string) e
 		return rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_BuildTask_NotFound)
 	}
 	if buildTask.Status != interfaces.BuildTaskStatusRunning &&
-		buildTask.Status != interfaces.BuildTaskStatusStopping {
+		buildTask.Status != interfaces.BuildTaskStatusStopping &&
+		buildTask.Status != interfaces.BuildTaskStatusInit {
 		span.SetStatus(codes.Error, "Invalid state transition for stop")
 		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_InvalidStateTransition).
 			WithErrorDetails(fmt.Sprintf("cannot stop task in status: %s", buildTask.Status))
@@ -356,8 +377,11 @@ func (bts *buildTaskService) StopBuildTask(ctx context.Context, taskID string) e
 	// running → stopping：通知 worker 在批间检查点退出。
 	// stopping → stopped：兜底强制落停。worker 已不在（asynq 任务耗尽重试/服务重启）
 	// 时 stopping 永远不会被推进，任务卡死无法删除，二次 stop 即强制完结。
+	// init → stopped：排队中尚无 worker 观察 stopping，直接落停；
+	// 出队时 worker 检查到 stopped 即跳过，不会复活执行。
 	targetStatus := interfaces.BuildTaskStatusStopping
-	if buildTask.Status == interfaces.BuildTaskStatusStopping {
+	if buildTask.Status == interfaces.BuildTaskStatusStopping ||
+		buildTask.Status == interfaces.BuildTaskStatusInit {
 		targetStatus = interfaces.BuildTaskStatusStopped
 	}
 	updates := map[string]any{

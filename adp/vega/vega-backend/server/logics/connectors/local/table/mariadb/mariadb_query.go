@@ -265,9 +265,25 @@ func (c *MariaDBConnector) ExecuteQuery(ctx context.Context, resource *interface
 		result.Rows = append(result.Rows, row)
 	}
 
-	// 处理总数：设置为实际返回的记录数
-	if params.NeedTotal {
-		result.Total = int64(len(result.Rows))
+	// 处理总数（仅明细查询）：独立 COUNT 查询，与 postgresql 连接器对齐。
+	// 此前直接取 len(result.Rows)——即本页行数，超过一页的表 total 永远等于
+	// LIMIT（构建任务进度条显示 "20802 / 1000" 即此 bug）
+	if params.NeedTotal && !isAggregate {
+		countBuilder := sq.Select("COUNT(1)").From(resource.SourceIdentifier)
+		if condition != nil {
+			countBuilder = countBuilder.Where(condition)
+		}
+		countQuery, countArgs, countErr := countBuilder.ToSql()
+		if countErr != nil {
+			return nil, fmt.Errorf("failed to build count query: %w", countErr)
+		}
+		logger.Debugf("count query: %s, args: %v", countQuery, countArgs)
+		var total int64
+		row := c.db.QueryRowContext(ctx, countQuery, countArgs...)
+		if err := row.Scan(&total); err != nil {
+			return nil, fmt.Errorf("failed to scan total: %w", err)
+		}
+		result.Total = total
 	}
 
 	return result, nil

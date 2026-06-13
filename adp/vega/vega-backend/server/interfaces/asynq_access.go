@@ -25,4 +25,6 @@ type AsynqAccess interface {
 	CreateClient() *asynq.Client
 	// CreateServer creates and returns the Asynq server for processing tasks.
 	CreateServer() *asynq.Server
+	// CreateInspector creates and returns the Asynq inspector for queue introspection.
+	CreateInspector() *asynq.Inspector
 }

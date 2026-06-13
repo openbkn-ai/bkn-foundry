@@ -69,6 +69,18 @@ func (bh *batchBuildHandler) HandleTask(ctx context.Context, task *asynq.Task) e
 		// Task not found, return nil
 		return nil
 	}
+	// 排队期间被停止的任务直接跳过，避免出队后复活覆写状态。
+	// stopping 出队说明原 worker 已不在，兜底落停。
+	if buildTaskInfo.Status == interfaces.BuildTaskStatusStopped ||
+		buildTaskInfo.Status == interfaces.BuildTaskStatusStopping {
+		logger.Infof("Task %s is %s, skip execution", taskID, buildTaskInfo.Status)
+		if buildTaskInfo.Status == interfaces.BuildTaskStatusStopping {
+			if err := bh.taskAccess.UpdateStatus(ctx, taskID, map[string]interface{}{"status": interfaces.BuildTaskStatusStopped}); err != nil {
+				return fmt.Errorf("update build task status failed: %w", err)
+			}
+		}
+		return nil
+	}
 	// 异步任务无原始请求上下文，以任务创建者身份执行下游权限检查
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, buildTaskInfo.Creator)
 	resourceID := buildTaskInfo.ResourceID
@@ -149,6 +161,13 @@ func (bh *batchBuildHandler) executeBuild(ctx context.Context, resource *interfa
 	lastSyncedMark := buildTaskInfo.SyncedMark
 	if executeType == interfaces.BuildTaskExecuteTypeFull {
 		lastSyncedMark = ""
+		// 全量重跑从头读、向量也整体重做，进度计数器一并清零，
+		// 否则跨运行累计出 synced > total 的显示
+		buildTaskInfo.SyncedCount = 0
+		buildTaskInfo.VectorizedCount = 0
+		if err := bh.taskAccess.UpdateStatus(ctx, buildTaskInfo.ID, map[string]interface{}{"syncedCount": int64(0), "vectorizedCount": int64(0), "syncedMark": ""}); err != nil {
+			return fmt.Errorf("update build task status failed: %w", err)
+		}
 	}
 
 	batchFields := strings.Split(buildTaskInfo.BuildKeyFields, ",")

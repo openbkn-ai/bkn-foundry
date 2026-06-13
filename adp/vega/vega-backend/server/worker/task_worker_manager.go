@@ -63,6 +63,10 @@ func (tw *TaskWorkerManger) Start() {
 		}
 	}()
 
+	// 自愈对账：入队消息丢失（pod 更替/入队失败）的任务会永远停在 init（界面"排队中"），
+	// 周期对账把它们重新入队
+	go newBuildTaskReconciler().run()
+
 	if common.GetDebugMode() {
 		go func() {
 			logger.Info("debug task channel subscriber started")

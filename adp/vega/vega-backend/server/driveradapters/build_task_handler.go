@@ -79,14 +79,14 @@ func (r *restHandler) createBuildTask(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 
-	schemaFields := make(map[string]bool, len(resource.SchemaDefinition))
+	schemaFields := make(map[string]string, len(resource.SchemaDefinition))
 	for _, prop := range resource.SchemaDefinition {
-		schemaFields[prop.Name] = true
+		schemaFields[prop.Name] = prop.Type
 	}
 	if req.BuildKeyFields != "" {
 		for _, key := range strings.Split(req.BuildKeyFields, ",") {
 			key = strings.TrimSpace(key)
-			if key != "" && !schemaFields[key] {
+			if _, ok := schemaFields[key]; key != "" && !ok {
 				httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
 					WithErrorDetails(fmt.Sprintf("build_key_field '%s' not found in resource schema", key))
 				oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -98,9 +98,22 @@ func (r *restHandler) createBuildTask(c *gin.Context, visitor hydra.Visitor) {
 	if req.EmbeddingFields != "" {
 		for _, field := range strings.Split(req.EmbeddingFields, ",") {
 			field = strings.TrimSpace(field)
-			if field != "" && !schemaFields[field] {
+			if field == "" {
+				continue
+			}
+			fieldType, ok := schemaFields[field]
+			if !ok {
 				httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
 					WithErrorDetails(fmt.Sprintf("embedding_field '%s' not found in resource schema", field))
+				oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+				rest.ReplyError(c, httpErr)
+				return
+			}
+			// 向量化只对文本字段有意义：非 string/text 字段在运行时会被当作空文本静默跳过，
+			// 产出永远为空的 _vector 列且进度照常 100%，这里直接拦下
+			if fieldType != interfaces.DataType_String && fieldType != interfaces.DataType_Text {
+				httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+					WithErrorDetails(fmt.Sprintf("embedding_field '%s' has type '%s', only string/text fields can be embedded", field, fieldType))
 				oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 				rest.ReplyError(c, httpErr)
 				return

@@ -54,6 +54,20 @@ func (mr *MockAsynqAccessMockRecorder) CreateClient() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateClient", reflect.TypeOf((*MockAsynqAccess)(nil).CreateClient))
 }
 
+// CreateInspector mocks base method.
+func (m *MockAsynqAccess) CreateInspector() *asynq.Inspector {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateInspector")
+	ret0, _ := ret[0].(*asynq.Inspector)
+	return ret0
+}
+
+// CreateInspector indicates an expected call of CreateInspector.
+func (mr *MockAsynqAccessMockRecorder) CreateInspector() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateInspector", reflect.TypeOf((*MockAsynqAccess)(nil).CreateInspector))
+}
+
 // CreateServer mocks base method.
 func (m *MockAsynqAccess) CreateServer() *asynq.Server {
 	m.ctrl.T.Helper()
