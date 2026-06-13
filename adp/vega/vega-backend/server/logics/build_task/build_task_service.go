@@ -155,10 +155,12 @@ func (bts *buildTaskService) CreateBuildTask(ctx context.Context, req *interface
 		CreateTime:      now,
 		Updater:         accountInfo,
 		UpdateTime:      now,
-		EmbeddingFields: req.EmbeddingFields,
-		BuildKeyFields:  req.BuildKeyFields,
-		EmbeddingModel:  req.EmbeddingModel,
-		ModelDimensions: req.ModelDimensions,
+		EmbeddingFields:  req.EmbeddingFields,
+		BuildKeyFields:   req.BuildKeyFields,
+		EmbeddingModel:   req.EmbeddingModel,
+		ModelDimensions:  req.ModelDimensions,
+		FulltextFields:   req.FulltextFields,
+		FulltextAnalyzer: req.FulltextAnalyzer,
 	}
 
 	if err := bts.bta.Create(ctx, buildTask); err != nil {

@@ -136,6 +136,16 @@ func advanceCursor(cursor []interfaces.KeyValue, keys []string, lastItem map[str
 
 // executeBuild executes the build logic
 func (bh *batchBuildHandler) executeBuild(ctx context.Context, resource *interfaces.Resource, buildTaskInfo *interfaces.BuildTask, executeType string) error {
+	// 全文字段：把 fulltext 特性写回资源 schema 并持久化。必须在建索引前做，
+	// 才能让 createLocalIndex 据此生成 text 子字段 mapping；同时让查询侧
+	// fulltextFieldName 从资源 schema 解析出 `字段.fulltext` 命中分词子字段。
+	if buildTaskInfo.FulltextFields != "" {
+		if injectFulltextFeatures(resource, buildTaskInfo.FulltextFields, buildTaskInfo.FulltextAnalyzer) {
+			if err := bh.resAccess.Update(ctx, resource); err != nil {
+				return fmt.Errorf("persist fulltext schema failed: %w", err)
+			}
+		}
+	}
 	// 两个操作均幂等（embedding 任务靠 asynq TaskID 去重，索引已存在则跳过），
 	// 不能只在 init 时执行：stop→start 重启后老 embedding worker 已退出，
 	// 若不补发，文档 ID 堆积在 Kafka 无消费者，向量化永远停滞

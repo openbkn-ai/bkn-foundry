@@ -53,3 +53,50 @@ func TestAdvanceCursorMultipleKeys(t *testing.T) {
 }
 
 var _ = interfaces.KeyValue{} // 保持 import 稳定
+
+// injectFulltextFeatures 把 fulltext 特性写入指定字段，analyzer 进 config，幂等。
+func TestInjectFulltextFeatures(t *testing.T) {
+	res := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{
+		{Name: "team_name", Type: interfaces.DataType_String},
+		{Name: "team_code", Type: interfaces.DataType_String},
+	}}
+	changed := injectFulltextFeatures(res, "team_name", "ik_max_word")
+	if !changed {
+		t.Fatal("expected changed=true")
+	}
+	tn := res.SchemaDefinition[0]
+	if len(tn.Features) != 1 || tn.Features[0].FeatureType != interfaces.PropertyFeatureType_Fulltext {
+		t.Fatalf("team_name must get fulltext feature, got %+v", tn.Features)
+	}
+	if tn.Features[0].Config["analyzer"] != "ik_max_word" {
+		t.Fatalf("analyzer must be in config, got %v", tn.Features[0].Config)
+	}
+	if len(res.SchemaDefinition[1].Features) != 0 {
+		t.Fatalf("unselected field must be untouched, got %+v", res.SchemaDefinition[1].Features)
+	}
+	// 幂等：再次注入不重复添加、不报改动
+	if injectFulltextFeatures(res, "team_name", "ik_max_word") {
+		t.Fatal("re-inject must be idempotent (changed=false)")
+	}
+	if len(tn.Features) != 1 {
+		t.Fatalf("idempotent re-inject must not duplicate, got %d", len(tn.Features))
+	}
+}
+
+// analyzer 为空时不写 config（走 OpenSearch 默认分词器）。
+func TestInjectFulltextFeatures_NoAnalyzerNoConfig(t *testing.T) {
+	res := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{
+		{Name: "x", Type: interfaces.DataType_String},
+	}}
+	injectFulltextFeatures(res, "x", "")
+	if res.SchemaDefinition[0].Features[0].Config != nil {
+		t.Fatalf("empty analyzer must leave config nil, got %v", res.SchemaDefinition[0].Features[0].Config)
+	}
+}
+
+func TestFieldNameSet(t *testing.T) {
+	got := fieldNameSet(" a, b ,, c ")
+	if len(got) != 3 || !got["a"] || !got["b"] || !got["c"] {
+		t.Fatalf("expected {a,b,c}, got %+v", got)
+	}
+}

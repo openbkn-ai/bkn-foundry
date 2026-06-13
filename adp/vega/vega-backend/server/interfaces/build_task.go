@@ -56,11 +56,13 @@ type BuildTask struct {
 	CreateTime      int64       `json:"create_time"`
 	Updater         AccountInfo `json:"updater"`
 	UpdateTime      int64       `json:"update_time"`
-	EmbeddingFields string      `json:"embedding_fields,omitempty"` // 需向量化嵌入字段
-	BuildKeyFields  string      `json:"build_key_fields"`           // 构建中依赖的特殊键字段，如批量构建依赖的有时序性的字段，流式构建依赖的唯一标识某行的字段
-	EmbeddingModel  string      `json:"embedding_model,omitempty"`  // 嵌入模型
-	ModelDimensions int         `json:"model_dimensions,omitempty"` // 模型维度
-	CatalogID       string      `json:"catalog_id"`
+	EmbeddingFields  string      `json:"embedding_fields,omitempty"`  // 需向量化嵌入字段
+	BuildKeyFields   string      `json:"build_key_fields"`            // 构建中依赖的特殊键字段，如批量构建依赖的有时序性的字段，流式构建依赖的唯一标识某行的字段
+	EmbeddingModel   string      `json:"embedding_model,omitempty"`   // 嵌入模型
+	ModelDimensions  int         `json:"model_dimensions,omitempty"`  // 模型维度
+	FulltextFields   string      `json:"fulltext_fields,omitempty"`   // 需建全文索引的字段(逗号分隔)；string→加 text 子字段，text→主字段分词
+	FulltextAnalyzer string      `json:"fulltext_analyzer,omitempty"` // 全文分词器(standard/ik_max_word/hanlp_index 等)，空为 OpenSearch 默认
+	CatalogID        string      `json:"catalog_id"`
 }
 
 // CreateBuildTaskRequest represents the request to create a build task.
@@ -68,10 +70,12 @@ type BuildTask struct {
 type CreateBuildTaskRequest struct {
 	ResourceID      string `json:"resource_id" binding:"required"`                // 关联 Resource ID
 	Mode            string `json:"mode" binding:"required,oneof=streaming batch"` // 任务模式：streaming/batch
-	EmbeddingFields string `json:"embedding_fields,omitempty"`                    // 需向量化嵌入字段
-	BuildKeyFields  string `json:"build_key_fields"`                              // 构建中依赖的特殊键字段，如批量构建依赖的有时序性的字段，流式构建依赖的唯一标识某行的字段
-	EmbeddingModel  string `json:"embedding_model,omitempty"`                     // 嵌入模型
-	ModelDimensions int    `json:"model_dimensions,omitempty"`                    // 模型维度
+	EmbeddingFields  string `json:"embedding_fields,omitempty"`                    // 需向量化嵌入字段
+	BuildKeyFields   string `json:"build_key_fields"`                              // 构建中依赖的特殊键字段，如批量构建依赖的有时序性的字段，流式构建依赖的唯一标识某行的字段
+	EmbeddingModel   string `json:"embedding_model,omitempty"`                     // 嵌入模型
+	ModelDimensions  int    `json:"model_dimensions,omitempty"`                    // 模型维度
+	FulltextFields   string `json:"fulltext_fields,omitempty"`                     // 需建全文索引的字段(逗号分隔)
+	FulltextAnalyzer string `json:"fulltext_analyzer,omitempty"`                   // 全文分词器，空为 OpenSearch 默认 standard
 }
 
 // UpdateBuildTaskStatusRequest represents update build task status request.

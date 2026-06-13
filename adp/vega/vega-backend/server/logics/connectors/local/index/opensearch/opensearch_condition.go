@@ -152,6 +152,28 @@ func (c *OpenSearchConnector) ConvertFilterConditionWithOpr(condition interfaces
 	}
 }
 
+// fulltextFieldName 返回全文检索（match/match_phrase/multi_match）应命中的字段名。
+// string 字段的全文能力挂在 text 子字段上（见 applyFulltextFeature），必须用
+// `字段名.<子字段名>` 命中分词子字段，否则会落到 keyword 主字段做精确匹配；
+// text 字段主字段本身即全文，用裸字段名。
+func fulltextFieldName(prop *interfaces.Property) string {
+	if prop == nil {
+		return ""
+	}
+	if prop.Type == interfaces.DataType_String {
+		for _, f := range prop.Features {
+			if f.FeatureType == interfaces.PropertyFeatureType_Fulltext {
+				sub := f.FeatureName
+				if sub == "" {
+					sub = "fulltext"
+				}
+				return prop.Name + "." + sub
+			}
+		}
+	}
+	return prop.Name
+}
+
 // ConvertFilterConditionMultiMatch converts a MultiMatchCond to OpenSearch DSL.
 func (c *OpenSearchConnector) ConvertFilterConditionMultiMatch(condition interfaces.FilterCondition) (map[string]any, error) {
 
@@ -163,7 +185,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionMultiMatch(condition interfa
 	value := cond.Cfg.Value
 	fields := make([]string, 0, len(cond.Fields))
 	for _, field := range cond.Fields {
-		fields = append(fields, field.Name)
+		fields = append(fields, fulltextFieldName(field))
 	}
 
 	multiMatchQuery := map[string]any{
@@ -641,7 +663,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionMatch(condition interfaces.F
 		for _, field := range cond.Fields {
 			should = append(should, map[string]any{
 				"match": map[string]any{
-					field.Name: value,
+					fulltextFieldName(field): value,
 				},
 			})
 		}
@@ -656,7 +678,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionMatch(condition interfaces.F
 		field := cond.Fields[0]
 		return map[string]any{
 			"match": map[string]any{
-				field.Name: value,
+				fulltextFieldName(field): value,
 			},
 		}, nil
 	}
@@ -680,7 +702,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionMatchPhrase(condition interf
 		for _, field := range cond.Fields {
 			should = append(should, map[string]any{
 				"match_phrase": map[string]any{
-					field.Name: value,
+					fulltextFieldName(field): value,
 				},
 			})
 		}
@@ -695,7 +717,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionMatchPhrase(condition interf
 		field := cond.Fields[0]
 		return map[string]any{
 			"match_phrase": map[string]any{
-				field.Name: value,
+				fulltextFieldName(field): value,
 			},
 		}, nil
 	}

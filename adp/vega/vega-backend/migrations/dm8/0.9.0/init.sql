@@ -414,6 +414,8 @@ CREATE TABLE IF NOT EXISTS t_build_task (
     f_build_key_fields        VARCHAR(255 CHAR) NOT NULL DEFAULT '',
     f_embedding_model         VARCHAR(40 CHAR) NOT NULL DEFAULT '',
     f_model_dimensions        INT NOT NULL DEFAULT 0,
+    f_fulltext_fields         VARCHAR(255 CHAR) NOT NULL DEFAULT '',
+    f_fulltext_analyzer       VARCHAR(40 CHAR) NOT NULL DEFAULT '',
     f_catalog_id              VARCHAR(40 CHAR) NOT NULL DEFAULT '',
 
     -- 索引
