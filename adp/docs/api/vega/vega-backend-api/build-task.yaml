@@ -469,6 +469,12 @@ components:
         model_dimensions:
           description: 模型向量维度
           type: integer
+        fulltext_fields:
+          description: 已建全文索引的字段，逗号分隔
+          type: string
+        fulltext_analyzer:
+          description: 全文分词器；为空用默认 standard
+          type: string
     CreateBuildTaskRequest:
       description: 创建构建任务请求体
       type: object
@@ -498,6 +504,16 @@ components:
         model_dimensions:
           description: 模型向量维度；为 0 且 embedding_model 非空时按模型查询填入
           type: integer
+        fulltext_fields:
+          description: >
+            需建全文索引的字段，逗号分隔；仅 string/text 字段可选。
+            string 字段建索引时主字段保持 keyword（精确匹配/排序不变），额外加一个
+            `<字段>.fulltext` 分词子字段；text 字段主字段本身分词。全文检索随结构化
+            数据同步落地（不像 embedding 需异步补）。
+          type: string
+        fulltext_analyzer:
+          description: 全文分词器（standard/ik_max_word/hanlp_index 等）；为空用 OpenSearch 默认 standard
+          type: string
     StartBuildTaskRequest:
       description: 启动构建任务请求体（可选）
       type: object

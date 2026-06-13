@@ -55,6 +55,8 @@ func buildTaskColumns() []string {
 		"f_build_key_fields",
 		"f_embedding_model",
 		"f_model_dimensions",
+		"f_fulltext_fields",
+		"f_fulltext_analyzer",
 	}
 }
 
@@ -91,6 +93,8 @@ func scanBuildTask(scanner buildTaskScanner) (*interfaces.BuildTask, error) {
 		&buildTask.BuildKeyFields,
 		&buildTask.EmbeddingModel,
 		&buildTask.ModelDimensions,
+		&buildTask.FulltextFields,
+		&buildTask.FulltextAnalyzer,
 	)
 	if err != nil {
 		return nil, err
@@ -139,6 +143,8 @@ func (bta *buildTaskAccess) Create(ctx context.Context, buildTask *interfaces.Bu
 			buildTask.BuildKeyFields,
 			buildTask.EmbeddingModel,
 			buildTask.ModelDimensions,
+			buildTask.FulltextFields,
+			buildTask.FulltextAnalyzer,
 		).ToSql()
 	if err != nil {
 		span.SetStatus(codes.Error, "Build sql failed")

@@ -120,6 +120,31 @@ func (r *restHandler) createBuildTask(c *gin.Context, visitor hydra.Visitor) {
 			}
 		}
 	}
+	if req.FulltextFields != "" {
+		for _, field := range strings.Split(req.FulltextFields, ",") {
+			field = strings.TrimSpace(field)
+			if field == "" {
+				continue
+			}
+			fieldType, ok := schemaFields[field]
+			if !ok {
+				httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+					WithErrorDetails(fmt.Sprintf("fulltext_field '%s' not found in resource schema", field))
+				oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+				rest.ReplyError(c, httpErr)
+				return
+			}
+			// 全文检索只对文本字段有意义：string 加 text 子字段、text 主字段分词；
+			// 其它类型无分词语义，直接拦下
+			if fieldType != interfaces.DataType_String && fieldType != interfaces.DataType_Text {
+				httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+					WithErrorDetails(fmt.Sprintf("fulltext_field '%s' has type '%s', only string/text fields support fulltext", field, fieldType))
+				oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+				rest.ReplyError(c, httpErr)
+				return
+			}
+		}
+	}
 
 	taskID, err := r.bts.CreateBuildTask(ctx, &req)
 	if err != nil {

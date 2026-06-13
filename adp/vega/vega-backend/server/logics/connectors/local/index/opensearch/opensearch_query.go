@@ -866,6 +866,37 @@ func formatInValuesForScript(values []any) string {
 	return fmt.Sprintf("[%s]", strings.Join(strValues, ", "))
 }
 
+// applyFulltextFeature 给字段挂全文检索能力。
+//   - string 字段：主字段保持 keyword（精确匹配/排序/聚合语义不变），
+//     额外加一个 text 子字段做分词全文检索；查询侧用 `字段名.<子字段名>` 命中。
+//   - text 字段：主字段本身即 text（已全文），仅把 analyzer 设到主字段。
+//
+// analyzer 等参数从 feature.Config 注入；无 config 时走 OpenSearch 默认分词器。
+func applyFulltextFeature(fieldProps map[string]any, columnType string, feature interfaces.PropertyFeature) {
+	switch columnType {
+	case interfaces.DataType_String:
+		subName := feature.FeatureName
+		if subName == "" {
+			subName = "fulltext"
+		}
+		sub := map[string]any{"type": "text"}
+		for k, v := range feature.Config {
+			sub[k] = v
+		}
+		fields, ok := fieldProps["fields"].(map[string]any)
+		if !ok {
+			fields = map[string]any{}
+			fieldProps["fields"] = fields
+		}
+		fields[subName] = sub
+	case interfaces.DataType_Text:
+		// 主字段已是 text（分词），把 analyzer 等直接设在主字段上
+		for k, v := range feature.Config {
+			fieldProps[k] = v
+		}
+	}
+}
+
 // buildFieldMappings 构建字段映射
 func (c *OpenSearchConnector) buildFieldMappings(schemaDefinition []*interfaces.Property) (map[string]any, bool, error) {
 	properties := map[string]any{}
@@ -914,6 +945,11 @@ func (c *OpenSearchConnector) buildFieldMappings(schemaDefinition []*interfaces.
 		// 处理字段特性
 		if column.Features != nil {
 			for _, feature := range column.Features {
+				// fulltext 不依赖 config（可无 analyzer 走默认分词器），单独处理
+				if feature.FeatureType == "fulltext" {
+					applyFulltextFeature(fieldProps, column.Type, feature)
+					continue
+				}
 				if feature.Config != nil {
 					switch feature.FeatureType {
 					case "keyword":
@@ -944,8 +980,6 @@ func (c *OpenSearchConnector) buildFieldMappings(schemaDefinition []*interfaces.
 						for k, v := range feature.Config {
 							fieldProps[k] = v
 						}
-					case "fulltext":
-						continue
 					default:
 						return nil, false, fmt.Errorf("unsupported feature type: %s", feature.FeatureType)
 					}

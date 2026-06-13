@@ -81,16 +81,16 @@ func createLocalIndex(ctx context.Context, ds interfaces.DatasetService, buildTa
 	if exist {
 		return nil
 	}
+	// resource.SchemaDefinition 已由 executeBuild 写入 fulltext 特性（injectFulltextFeatures），
+	// 这里直接复用——buildFieldMappings 会据此给 string 字段建 text 子字段。
+	// embedding 字段额外追加独立的 _vector 字段。
 	if buildTask.EmbeddingFields != "" {
-		embeddingFields := strings.Split(buildTask.EmbeddingFields, ",")
 		var newSchema []*interfaces.Property
-		if resource.SchemaDefinition != nil {
-			newSchema = append(newSchema, resource.SchemaDefinition...)
-		}
-		for _, field := range embeddingFields {
+		newSchema = append(newSchema, resource.SchemaDefinition...)
+		for _, field := range strings.Split(buildTask.EmbeddingFields, ",") {
 			field = strings.TrimSpace(field)
 			if field != "" {
-				vectorProperty := &interfaces.Property{
+				newSchema = append(newSchema, &interfaces.Property{
 					Name: field + "_vector",
 					Type: interfaces.DataType_Vector,
 					Features: []interfaces.PropertyFeature{
@@ -108,13 +108,58 @@ func createLocalIndex(ctx context.Context, ds interfaces.DatasetService, buildTa
 							},
 						},
 					},
-				}
-				newSchema = append(newSchema, vectorProperty)
+				})
 			}
 		}
 		newResource.SchemaDefinition = newSchema
 	}
 	return ds.Create(ctx, &newResource)
+}
+
+// fieldNameSet 把逗号分隔的字段名解析为集合。
+func fieldNameSet(csv string) map[string]bool {
+	set := map[string]bool{}
+	for _, f := range strings.Split(csv, ",") {
+		if f = strings.TrimSpace(f); f != "" {
+			set[f] = true
+		}
+	}
+	return set
+}
+
+// hasFulltextFeature 判断字段是否已带 fulltext 特性。
+func hasFulltextFeature(prop *interfaces.Property) bool {
+	for _, f := range prop.Features {
+		if f.FeatureType == interfaces.PropertyFeatureType_Fulltext {
+			return true
+		}
+	}
+	return false
+}
+
+// injectFulltextFeatures 把 fulltext 特性写入 resource schema 中指定字段（原地、幂等），
+// 返回是否有改动。必须写回资源 schema 并持久化：既让建索引 mapping 生成 text 子字段，
+// 也让查询侧 fulltextFieldName 能从资源 schema 解析出 `字段.fulltext` 子字段。
+// analyzer 为空时不写 config，走 OpenSearch 默认分词器。
+func injectFulltextFeatures(resource *interfaces.Resource, fulltextFields, analyzer string) bool {
+	set := fieldNameSet(fulltextFields)
+	var config map[string]any
+	if analyzer != "" {
+		config = map[string]any{"analyzer": analyzer}
+	}
+	changed := false
+	for _, prop := range resource.SchemaDefinition {
+		if prop == nil || !set[prop.Name] || hasFulltextFeature(prop) {
+			continue
+		}
+		prop.Features = append(prop.Features, interfaces.PropertyFeature{
+			FeatureName: "fulltext",
+			FeatureType: interfaces.PropertyFeatureType_Fulltext,
+			Config:      config,
+		})
+		changed = true
+	}
+	return changed
 }
 
 // sendEmbeddingTask sends a embedding task to the queue
