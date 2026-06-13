@@ -28,6 +28,7 @@ databases:
   - adp
   - model_management
   - dip_data_agent
+  - safe # bkn-safe（ISF 替代鉴权服务）库；schema 由 bkn-safe 启动时 GORM AutoMigrate 建表，但库本身需 migrator 预建，否则首装报 Unknown database 'safe'
 
 check_rules:
   check_type: 3 # CheckLatest = 1, CheckRecently = 2, CheckAll = 3
