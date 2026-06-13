@@ -26,6 +26,13 @@ metadata:
   namespace: {{ .Release.Namespace }}
 spec:
   replicas: 1
+  # Single-writer DB on an RWO PVC. The default RollingUpdate would surge a new
+  # pod before terminating the old one; local-path enforces RWO per-NODE, not
+  # per-pod, so both pods can mount the same data dir at once → two postmasters →
+  # "data directory lock file is invalid" → corruption / silent data loss (which
+  # wipes hydra's schema + OAuth clients and breaks login). Recreate tears down
+  # the old pod before starting the new one, so there is never more than one.
+  strategy: { type: Recreate }
   selector: { matchLabels: { app: {{ .Release.Name }}-postgres } }
   template:
     metadata: { labels: { app: {{ .Release.Name }}-postgres } }
