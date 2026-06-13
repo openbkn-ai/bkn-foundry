@@ -775,7 +775,36 @@ configure_containerd_runtime() {
     else
         log_info "✓ Systemd cgroup driver is enabled"
     fi
-    
+
+    # Opt-in 国内镜像源(CONTAINERD_CN_MIRROR=true):docker.io 上的第三方镜像
+    # (oryd/hydra、postgres、otel/opentelemetry-collector-contrib 等)在国内直连
+    # registry-1.docker.io 常超时。用 certs.d/hosts.toml 配多端点兜底(端点顺序尝试,
+    # 末位回落官方)。daocloud 白名单不含 oryd/hydra,故并列 1ms.run 兜底。
+    # 默认关闭,不影响可直连 docker.io 的环境。长远更优解是发布时把这些第三方镜像
+    # vendoring 进 ghcr.io/openbkn-ai,部署只从单一 registry 拉取。
+    if [[ "${CONTAINERD_CN_MIRROR:-false}" == "true" ]]; then
+        log_info "Configuring docker.io registry mirrors (CONTAINERD_CN_MIRROR=true)..."
+        local certs_dir="/etc/containerd/certs.d/docker.io"
+        mkdir -p "${certs_dir}"
+        cat > "${certs_dir}/hosts.toml" <<'EOF'
+server = "https://registry-1.docker.io"
+
+[host."https://docker.m.daocloud.io"]
+  capabilities = ["pull", "resolve"]
+
+[host."https://docker.1ms.run"]
+  capabilities = ["pull", "resolve"]
+
+[host."https://registry-1.docker.io"]
+  capabilities = ["pull", "resolve"]
+EOF
+        # 让 CRI 启用 certs.d(若 config.toml 未设 config_path 则注入)
+        if ! grep -q 'config_path = "/etc/containerd/certs.d"' /etc/containerd/config.toml; then
+            sed -i 's|\(\[plugins."io.containerd.grpc.v1.cri".registry\]\)|\1\n        config_path = "/etc/containerd/certs.d"|' /etc/containerd/config.toml
+        fi
+        log_info "✓ docker.io mirrors written to ${certs_dir}/hosts.toml"
+    fi
+
     # Restart containerd to apply configuration
     log_info "Restarting containerd to apply configuration..."
     systemctl daemon-reload
