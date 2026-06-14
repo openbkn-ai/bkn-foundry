@@ -76,8 +76,16 @@ kubectl -n openbkn set env deploy/mf-model-api \
 kubectl -n openbkn rollout status deploy/mf-model-api --timeout=180s
 ```
 
-(`ontology-query` similarly lacks the env; add the same pair if its authz path
-is exercised.)
+> **Confirmed on 118: the env alone is NOT enough for `mf-model-api`.** Its
+> `0.1.0` image predates the `permission_manager.py` bkn-safe switch, so the old
+> binary ignores `AUTHZ_PROVIDER` and still calls `authorization-private`
+> (`Name or service not known` → public routes 403). `mf-model-api` must be
+> **rebuilt** (step 1) for the env to take effect. This only affects its *public*
+> authz routes; the private S2S embedding route bkn-backend uses has no authz and
+> works regardless (BKN vectorization succeeds without this fix).
+
+(`ontology-query` similarly lacks the env; add the same pair after rebuilding if
+its authz path is exercised.)
 
 ## 4. Drop the temporary 118 overlay tags
 
