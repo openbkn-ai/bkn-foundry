@@ -110,16 +110,16 @@ docker stop $(docker ps -q --filter "label=io.x-k8s.kind.cluster=${CLUSTER}")
 - **`cluster up` 报 Docker API / `docker.sock`：**多为 **CLI 已装但引擎未起**。请先启动 **Docker Desktop**，`docker info` 通过后重试。**`doctor --fix`** 不会拉起守护进程。
 - **`kweaver-core-data-migrator` / Job `BackoffLimitExceeded`：**确认数据层就绪（一般由 **`kweaver-core install` 自动安装**；否则 **`data-services install`**）。确认 **`depServices.rds`** 指向集群内 MariaDB；必要时 `helm uninstall kweaver-core-data-migrator -n <namespace>` 后再装 Core。
 
-### Onboard 与 `openbkn`（全量 ISF）
+### Onboard 与 `openbkn`（全量安装）
 
-**`bash ./dev/mac.sh onboard`** 调用 **`onboard.sh`**（`CONFIG_YAML_PATH` 多为 **`dev/conf/mac-config.yaml`**）。**全量 + ISF** 时会用 HTTP **`-u`/`-p`** 执行 **`openbkn auth login`**。若返回 **401001017**，在 **标准输入与标准输出均为终端** 时，**脚本会先询问方式**：（**默认回车**）执行 **`auth change-password`（CLI）**；输入 **`o` / `oauth`** 则用浏览器 OAuth（无 `-u`/`-p` 的 **`auth login`**）。CLI 改密成功后会再问一次新密码并重试 HTTP 登录。无 TTY（如纯 **`onboard -y` 流水线**）时只打印英文备选说明。**终端里脚本提示仍为英文。**
+**`bash ./dev/mac.sh onboard`** 调用 **`onboard.sh`**（`CONFIG_YAML_PATH` 多为 **`dev/conf/mac-config.yaml`**）。**全量（bkn-safe）** 安装会用 **`-u`/`-p`** 执行 **`openbkn auth login`**。种子 admin 首次登录强制改密；**`onboard.sh` 会自动清除** —— 在凭据登录前把密码经自助 `/api/safe/v1/auth/change-password` 端点 bounce 一遍,所以无人值守 onboard 不会卡住。**终端里脚本提示仍为英文。**
 
 | 方式 | 命令要点 |
 |------|----------|
-| OAuth / 浏览器 | `openbkn auth login https://<访问地址> -k`，**不要**加 `-u`/`-p` |
-| HTTP 改密 | `openbkn auth change-password https://<访问地址> -u admin -k`，**必须写 URL** |
-| 非交互 | `openbkn auth login … -p '<初始>' --new-password '<新>' -k`；`onboard -y` 前 **`export ONBOARD_DEFAULT_KWEAVER_PASSWORD`** |
+| 凭据（默认） | `openbkn auth login https://<访问地址> -u admin -p '<密码>' -k` |
+| 浏览器 / device | `openbkn auth login https://<访问地址> -k`，**不要**加 `-u`/`-p` |
+| 首登改密 | `openbkn auth change-password https://<访问地址> -u admin -k`，**必须写 URL** |
 
 **务必在命令中写出平台访问基址**；省略时 CLI 使用 **`openbkn auth list`** 里当前激活会话的地址，易连到其它环境，**并非** Helm 误读 `accessAddress`。
 
-详见 [`help/zh/install.md`](../../help/zh/install.md)、[`help/en/install.md`](../../help/en/install.md)（完整安装后的 `openbkn` / 401001017）。
+详见 [`help/zh/install.md`](../../help/zh/install.md)、[`help/en/install.md`](../../help/en/install.md)。
