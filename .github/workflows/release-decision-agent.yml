@@ -2,6 +2,8 @@ name: release-decision-agent
 
 on:
   push:
+    tags:
+      - 'v*'
     branches: ['**']
     paths:
       - 'decision-agent/**'

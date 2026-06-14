@@ -6,6 +6,8 @@ name: release-infra-model-factory-base
 
 on:
   push:
+    tags:
+      - 'v*'
     branches: ['**']
     paths:
       - 'infra/model-factory-base/**'

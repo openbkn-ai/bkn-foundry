@@ -5,6 +5,8 @@ name: release-adp-bkn-safe
 
 on:
   push:
+    tags:
+      - 'v*'
     branches: ['**']
     paths:
       - 'bkn-safe/**'

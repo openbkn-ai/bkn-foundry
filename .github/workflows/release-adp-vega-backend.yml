@@ -4,6 +4,8 @@ name: release-adp-vega-backend
 
 on:
   push:
+    tags:
+      - 'v*'
     branches: ['**']
     paths:
       - 'adp/vega/vega-backend/**'

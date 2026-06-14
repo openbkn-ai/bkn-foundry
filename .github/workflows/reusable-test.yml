@@ -50,9 +50,15 @@ jobs:
           # Single source of truth: repo-root VERSION (shared by all services)
           BASE_VERSION="$(tr -d '[:space:]' < VERSION)"
           REF_NAME="${{ github.ref_name }}"
+          REF_TYPE="${{ github.ref_type }}"
           SHORT_SHA="$(git rev-parse --short=7 HEAD)"
 
-          if [[ "$REF_NAME" == release/* ]]; then
+          if [[ "$REF_TYPE" == "tag" ]]; then
+            # Tag push (e.g. v0.1.1-alpha) cuts a release: the tag IS the version
+            # (leading "v" stripped). This is what makes `git push` a tag publish a
+            # clean, immutable image/chart set across all services.
+            VERSION="${REF_NAME#v}"
+          elif [[ "$REF_NAME" == release/* ]]; then
             VERSION="$BASE_VERSION"
           else
             SANITIZED_BRANCH="$(echo "$REF_NAME" | tr '[:upper:]' '[:lower:]' | sed -E 's#[^0-9a-zA-Z.-]+#-#g; s#-+#-#g; s#^[.-]+##; s#[.-]+$##')"

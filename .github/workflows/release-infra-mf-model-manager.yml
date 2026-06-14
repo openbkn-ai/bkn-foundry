@@ -6,6 +6,8 @@ name: release-infra-mf-model-manager
 
 on:
   push:
+    tags:
+      - 'v*'
     branches: ['**']
     paths:
       - 'infra/mf-model-manager/**'

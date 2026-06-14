@@ -8,6 +8,8 @@ name: release-infra-mf-model-api
 
 on:
   push:
+    tags:
+      - 'v*'
     branches: ['**']
     paths:
       - 'infra/mf-model-api/**'

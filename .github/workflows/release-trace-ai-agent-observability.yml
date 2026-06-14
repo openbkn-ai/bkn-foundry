@@ -2,6 +2,8 @@ name: release-trace-ai-agent-observability
 
 on:
   push:
+    tags:
+      - 'v*'
     branches: ['**']
     paths:
       - 'trace-ai/agent-observability/**'
