@@ -128,7 +128,7 @@ export INGRESS_NGINX_HTTPS_PORT=8443
 
 # 4. (Recommended) Post-install bootstrap
 #    Registers an LLM + embedding (skips when already there), patches the BKN ConfigMap
-#    only when the default actually changes, and on a full ISF install creates the business
+#    only when the default actually changes, and on a full (bkn-safe) install creates the business
 #    user `test`, assigns every role from `openbkn admin role list`, switches `openbkn` to
 #    that user, and imports the Context Loader toolset.
 sudo bash ./onboard.sh        # interactive
@@ -138,9 +138,9 @@ sudo bash ./onboard.sh --help # all flags (--config=models.yaml, --enable-bkn-se
 
 > **Why `sudo`?** `onboard.sh` reads `$HOME/.openbkn-ai/config.yaml` (written by `sudo deploy.sh` into `/root/.openbkn-ai/`) and writes the `kweaver` auth token to `$HOME/.kweaver`. Running it without `sudo` falls back to the in-repo template `deploy/conf/config.yaml` and may resolve a different access URL. **macOS dev path** (`bash ./dev/mac.sh onboard`) does **not** need `sudo`. The script also prints this hint at startup; silence with `ONBOARD_SUDO_HINT_DISABLED=1`.
 
-> Full preflight / onboard flow, ISF dual-CLI auth and Mermaid diagrams: see [help/en/install.md — Post-install: `onboard.sh`](../help/en/install.md#post-install-onboardsh).
+> Full preflight / onboard flow and Mermaid diagrams: see [help/en/install.md — Post-install: `onboard.sh`](../help/en/install.md#post-install-onboardsh).
 
-> **`onboard.sh` runtime messages** are **English**; on ISF HTTP **401001017**, a **TTY** prompts (**Enter**=`auth change-password` default; **`o`**=OAuth browser). Chinese + English context: [`dev/README.md`](../dev/README.md#onboard-and-openbkn-full-isf) · [`dev/README.zh.md`](../dev/README.zh.md); product docs [`help/zh/install.md`](../help/zh/install.md) / [`help/en/install.md`](../help/en/install.md).
+> **`onboard.sh` runtime messages** are **English**. The seeded admin must change its password on first login; onboard clears that automatically (self-service `/api/safe/v1/auth/change-password`) before the credential login. Chinese + English context: [`dev/README.md`](../dev/README.md#onboard-and-openbkn-full-install) · [`dev/README.zh.md`](../dev/README.zh.md); product docs [`help/zh/install.md`](../help/zh/install.md) / [`help/en/install.md`](../help/en/install.md).
 
 ### Dev/test: pick chart versions (`--version_file`)
 

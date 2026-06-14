@@ -127,7 +127,7 @@ export INGRESS_NGINX_HTTPS_PORT=8443
 
 # 4.（推荐）安装后引导
 #    注册 LLM + embedding（已有则跳过）；只有当默认 embedding 实际变更时才会 patch BKN ConfigMap；
-#    在 ISF 全量下还会创建业务用户 `test`、把 `openbkn admin role list` 中所有角色都挂上、
+#    在全量（bkn-safe）安装下还会创建业务用户 `test`、把 `openbkn admin role list` 中所有角色都挂上、
 #    切换 `openbkn` 到该用户身份，并导入 Context Loader 工具集。
 sudo bash ./onboard.sh        # 交互模式
 sudo bash ./onboard.sh -y     # 非交互模式（按默认）
@@ -136,9 +136,9 @@ sudo bash ./onboard.sh --help # 全部参数（--config=models.yaml、--enable-b
 
 > **为什么要 `sudo`？** `onboard.sh` 会读 `$HOME/.openbkn-ai/config.yaml`（由 `sudo deploy.sh` 写到 `/root/.openbkn-ai/` 下）并把 `kweaver` 认证 token 写到 `$HOME/.kweaver`。不加 `sudo` 会回退到仓库内模板 `deploy/conf/config.yaml`，可能解析出和安装时不一致的 access URL。**macOS 开发路径**（`bash ./dev/mac.sh onboard`）**不需要** `sudo`。脚本启动时也会打印这条提示；可用 `ONBOARD_SUDO_HINT_DISABLED=1` 关闭。
 
-> 完整的 preflight / onboard 流程、ISF 双 CLI 鉴权与 Mermaid 流程图见 [help/zh/install.md — Post-install：`onboard.sh`](../help/zh/install.md#post-installonboardsh安装后引导)。
+> 完整的 preflight / onboard 流程与 Mermaid 流程图见 [help/zh/install.md — Post-install：`onboard.sh`](../help/zh/install.md#post-installonboardsh安装后引导)。
 
-> **`onboard.sh` 终端输出为英文**；ISF HTTP **401001017** 且 **stdin/stdout 为 TTY** 时脚本会**先询问**：（**默认回车**）**`auth change-password`**；（**o / oauth**）浏览器 **`auth login` -k**。说明见 [`dev/README.zh.md`](../dev/README.zh.md)。产品文档 [`help/zh/install.md`](../help/zh/install.md)、[`help/en/install.md`](../help/en/install.md)。
+> **`onboard.sh` 终端输出为英文**。种子 admin 首次登录强制改密；onboard 会在凭据登录前自动清除（自助 `/api/safe/v1/auth/change-password`）。说明见 [`dev/README.zh.md`](../dev/README.zh.md)。产品文档 [`help/zh/install.md`](../help/zh/install.md)、[`help/en/install.md`](../help/en/install.md)。
 
 ### 开发/测试：选择 chart 版本（`--version_file`）
 
