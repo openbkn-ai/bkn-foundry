@@ -5,7 +5,7 @@
 
 # Optional state (set by probe steps):
 #   ONBOARD_REPORT_MAIN_MODE   interactive | bkn-only | config-yaml
-#   ONBOARD_REPORT_ISF_TEST_USER  human-readable status
+#   ONBOARD_REPORT_TEST_USER  human-readable status
 #   ONBOARD_REPORT_MODELS         human-readable status (e.g. "skipped — N LLM, M small/embedding already registered")
 #   ONBOARD_REPORT_BKN_CM         human-readable status (e.g. "skipped — already patched (defaultSmallModelName=…)")
 
@@ -15,14 +15,14 @@ onboard_print_completion_report() {
     fi
 
     local _isfu _line _kwh _kctx _bd _acurl _isf _isf_styled
-    _isfu="${ONBOARD_REPORT_ISF_TEST_USER:-}"
+    _isfu="${ONBOARD_REPORT_TEST_USER:-}"
     _line="--------------------------------------------"
 
-    if type onboard_isf_full_install &>/dev/null && onboard_isf_full_install 2>/dev/null; then
-        _isf="ISF (full install detected)"
+    if type onboard_bkn_safe_detected &>/dev/null && onboard_bkn_safe_detected 2>/dev/null; then
+        _isf="bkn-safe (full install)"
         _isf_styled="${GREEN}${_isf}${NC}"
     else
-        _isf="Minimum install / no ISF components detected"
+        _isf="Minimum install (no bkn-safe detected)"
         _isf_styled="${YELLOW}${_isf}${NC}"
     fi
 
