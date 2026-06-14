@@ -19,7 +19,9 @@ embedding:
     api_key: ${SILICONFLOW_API_KEY}
     api_url: https://api.siliconflow.cn/v1/embeddings
     api_model: BAAI/bge-m3
-    batch_size: 32
+    # texts per embedding request. Keep <= 10 for DashScope text-embedding-v* (hard cap);
+    # other providers (SiliconFlow/OpenAI) allow more. 10 is a safe default for all.
+    batch_size: 10
     max_tokens: 512
     embedding_dim: 1024
     # Mark one embedding as the default for BKN semantic search (bkn-backend + ontology-query)

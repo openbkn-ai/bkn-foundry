@@ -103,5 +103,9 @@ def healthz():
 
 
 if __name__ == "__main__":
-    print(f"[tool_backend] listening on 127.0.0.1:{PORT}", file=sys.stderr)
-    app.run(host="127.0.0.1", port=PORT, debug=False)
+    # Bind 0.0.0.0 by default so the platform/agent (running in-cluster) can reach
+    # this mock backend via the host's routable IP set in TOOL_BACKEND_PUBLIC_URL.
+    # Override with TOOL_BACKEND_BIND=127.0.0.1 for a purely local run.
+    host = os.environ.get("TOOL_BACKEND_BIND", "0.0.0.0")
+    print(f"[tool_backend] listening on {host}:{PORT}", file=sys.stderr)
+    app.run(host=host, port=PORT, debug=False)

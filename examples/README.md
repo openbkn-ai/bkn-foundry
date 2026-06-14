@@ -30,7 +30,17 @@ vim .env        # Fill in DB_HOST, DB_USER, DB_PASS, etc.
 
 All examples require:
 - openbkn CLI: `npm install -g @openbkn/bkn-sdk` (Node ≥ 22)
-- Platform login: `openbkn auth login https://<your-platform-url>`
+- Platform login as an admin/super-admin: `openbkn auth login https://<your-platform-url>`
+  (a non-admin user cannot create catalogs / KNs — `Public.Forbidden`)
+- `jq` and `python3` **≥ 3.7** on the runner (the scripts use `from __future__ import annotations`;
+  CentOS/RHEL 8 ships 3.6 — install `python38` and put it first on `PATH`)
+- MySQL reachable **from the runner AND from the platform/Vega pods** — set `DB_HOST` to a
+  cluster-routable address (Service ClusterIP / DNS), not `127.0.0.1`
+- For BKN semantic search, a registered embedding model (DashScope `text-embedding-v*` needs
+  `api_url` ending in `/compatible-mode/v1/embeddings` and `batch_size <= 10`)
+
+> Behind a restrictive network, fetch upstream CSVs via a mirror (e.g. jsDelivr
+> `https://cdn.jsdelivr.net/gh/<owner>/<repo>@<ref>/<path>`) and pull images via `docker.m.daocloud.io`.
 
 See the README inside each example for specific prerequisites.
 
