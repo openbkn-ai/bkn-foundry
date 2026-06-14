@@ -136,14 +136,13 @@ func advanceCursor(cursor []interfaces.KeyValue, keys []string, lastItem map[str
 
 // executeBuild executes the build logic
 func (bh *batchBuildHandler) executeBuild(ctx context.Context, resource *interfaces.Resource, buildTaskInfo *interfaces.BuildTask, executeType string) error {
-	// 全文字段：把 fulltext 特性写回资源 schema 并持久化。必须在建索引前做，
+	// 全文字段：把 fulltext 特性对账写回资源 schema 并持久化。必须在建索引前做，
 	// 才能让 createLocalIndex 据此生成 text 子字段 mapping；同时让查询侧
 	// fulltextFieldName 从资源 schema 解析出 `字段.fulltext` 命中分词子字段。
-	if buildTaskInfo.FulltextFields != "" {
-		if injectFulltextFeatures(resource, buildTaskInfo.FulltextFields, buildTaskInfo.FulltextAnalyzer) {
-			if err := bh.resAccess.Update(ctx, resource); err != nil {
-				return fmt.Errorf("persist fulltext schema failed: %w", err)
-			}
+	// 始终对账(不限 FulltextFields 非空)：编辑任务去掉全文字段后须清残留特性。
+	if reconcileFulltextFeatures(resource, buildTaskInfo.FulltextFields, buildTaskInfo.FulltextAnalyzer) {
+		if err := bh.resAccess.Update(ctx, resource); err != nil {
+			return fmt.Errorf("persist fulltext schema failed: %w", err)
 		}
 	}
 	// 两个操作均幂等（embedding 任务靠 asynq TaskID 去重，索引已存在则跳过），
@@ -155,6 +154,21 @@ func (bh *batchBuildHandler) executeBuild(ctx context.Context, resource *interfa
 			return fmt.Errorf("send embedding task failed: %w", err)
 		}
 		logger.Infof("Embedding task sent for task %s", buildTaskInfo.ID)
+	}
+	// full 重建：索引名与 task 绑定，若不先删，createLocalIndex 的 CheckExist 命中后
+	// 直接跳过，改动后的 embedding/fulltext 字段永远不会写进 mapping。先 drop 再重建。
+	if executeType == interfaces.BuildTaskExecuteTypeFull {
+		dropName := getIndexName(resource.ID, buildTaskInfo.ID)
+		exist, err := bh.ds.CheckExist(ctx, dropName)
+		if err != nil {
+			return fmt.Errorf("check index exist for full rebuild failed: %w", err)
+		}
+		if exist {
+			if err := bh.ds.Delete(ctx, dropName); err != nil {
+				return fmt.Errorf("drop index for full rebuild failed: %w", err)
+			}
+			logger.Infof("Dropped index %s for full rebuild of task %s", dropName, buildTaskInfo.ID)
+		}
 	}
 	err := createLocalIndex(ctx, bh.ds, buildTaskInfo, resource)
 	if err != nil {

@@ -130,6 +130,20 @@ func (mr *MockBuildTaskServiceMockRecorder) StartBuildTask(ctx, taskID, executeT
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StartBuildTask", reflect.TypeOf((*MockBuildTaskService)(nil).StartBuildTask), ctx, taskID, executeType)
 }
 
+// UpdateBuildTaskConfig mocks base method.
+func (m *MockBuildTaskService) UpdateBuildTaskConfig(ctx context.Context, taskID string, req *interfaces.UpdateBuildTaskConfigRequest) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateBuildTaskConfig", ctx, taskID, req)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateBuildTaskConfig indicates an expected call of UpdateBuildTaskConfig.
+func (mr *MockBuildTaskServiceMockRecorder) UpdateBuildTaskConfig(ctx, taskID, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateBuildTaskConfig", reflect.TypeOf((*MockBuildTaskService)(nil).UpdateBuildTaskConfig), ctx, taskID, req)
+}
+
 // StopBuildTask mocks base method.
 func (m *MockBuildTaskService) StopBuildTask(ctx context.Context, taskID string) error {
 	m.ctrl.T.Helper()

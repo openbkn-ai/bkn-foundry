@@ -147,3 +147,54 @@ func TestStopBuildTaskRejectsStoppedStatus(t *testing.T) {
 		t.Fatalf("expected InvalidStateTransition, got %v", err)
 	}
 }
+
+// 编辑配置：running 任务不可改(旧 worker 仍在写索引),须先停。
+func TestUpdateBuildTaskConfigRejectsRunning(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+	service := &buildTaskService{bta: mockBTA}
+
+	mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").
+		Return(&interfaces.BuildTask{ID: "task-1", Mode: interfaces.BuildTaskModeBatch, Status: interfaces.BuildTaskStatusRunning}, nil)
+
+	err := service.UpdateBuildTaskConfig(context.Background(), "task-1", &interfaces.UpdateBuildTaskConfigRequest{FulltextFields: "name"})
+	httpErr, ok := err.(*rest.HTTPError)
+	if !ok || httpErr.BaseError.ErrorCode != verrors.VegaBackend_BuildTask_InvalidStateTransition {
+		t.Fatalf("expected InvalidStateTransition, got %v", err)
+	}
+}
+
+// 编辑配置：catalog 禁用时拒绝。
+func TestUpdateBuildTaskConfigRejectsDisabledCatalog(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+	mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+	service := &buildTaskService{bta: mockBTA, cs: mockCS}
+
+	mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").
+		Return(&interfaces.BuildTask{ID: "task-1", Mode: interfaces.BuildTaskModeBatch, CatalogID: "catalog-1", Status: interfaces.BuildTaskStatusStopped}, nil)
+	mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
+		Return(&interfaces.Catalog{ID: "catalog-1", Enabled: false}, nil)
+
+	err := service.UpdateBuildTaskConfig(context.Background(), "task-1", &interfaces.UpdateBuildTaskConfigRequest{FulltextFields: "name"})
+	assertCatalogDisabledError(t, err)
+}
+
+// 编辑配置：embedding 与 fulltext 都为空 → 400,任务没有要建的索引。
+func TestUpdateBuildTaskConfigRejectsNoFields(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+	mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+	service := &buildTaskService{bta: mockBTA, cs: mockCS}
+
+	mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").
+		Return(&interfaces.BuildTask{ID: "task-1", Mode: interfaces.BuildTaskModeBatch, CatalogID: "catalog-1", Status: interfaces.BuildTaskStatusCompleted}, nil)
+	mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
+		Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
+
+	err := service.UpdateBuildTaskConfig(context.Background(), "task-1", &interfaces.UpdateBuildTaskConfigRequest{})
+	httpErr, ok := err.(*rest.HTTPError)
+	if !ok || httpErr.HTTPCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %v", err)
+	}
+}

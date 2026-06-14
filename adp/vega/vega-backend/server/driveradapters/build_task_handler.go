@@ -383,6 +383,56 @@ func (r *restHandler) startBuildTask(c *gin.Context, visitor hydra.Visitor) {
 	rest.ReplyOK(c, http.StatusAccepted, nil)
 }
 
+// =========================== PUT /build-tasks/:id ===========================
+
+func (r *restHandler) UpdateBuildTaskConfigByEx(c *gin.Context) {
+	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	if err != nil {
+		return
+	}
+	r.updateBuildTaskConfig(c, visitor)
+}
+
+func (r *restHandler) UpdateBuildTaskConfigByIn(c *gin.Context) {
+	visitor := visitor.GenerateVisitor(c)
+	r.updateBuildTaskConfig(c, visitor)
+}
+
+func (r *restHandler) updateBuildTaskConfig(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+
+	accountInfo := interfaces.AccountInfo{
+		ID:   visitor.ID,
+		Type: string(visitor.Type),
+	}
+	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	taskID := c.Param("id")
+	var req interfaces.UpdateBuildTaskConfigRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+			WithErrorDetails(err.Error())
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	if err := r.bts.UpdateBuildTaskConfig(ctx, taskID, &req); err != nil {
+		httpErr := err.(*rest.HTTPError)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	audit.NewInfoLog(audit.OPERATION, "update", audit.TransforOperator(visitor),
+		interfaces.GenerateResourceAuditObject(taskID, ""), "")
+
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusAccepted)
+	rest.ReplyOK(c, http.StatusAccepted, nil)
+}
+
 // =========================== POST /build-tasks/:id/stop ===========================
 
 func (r *restHandler) StopBuildTaskByEx(c *gin.Context) {

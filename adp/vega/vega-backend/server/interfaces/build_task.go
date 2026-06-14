@@ -78,6 +78,18 @@ type CreateBuildTaskRequest struct {
 	FulltextAnalyzer string `json:"fulltext_analyzer,omitempty"`                   // 全文分词器，空为 OpenSearch 默认 standard
 }
 
+// UpdateBuildTaskConfigRequest represents the HTTP body for PUT /build-tasks/{id}.
+// Edits the index field config and triggers a full rebuild (drop + recreate
+// mapping). resource_id and mode are immutable and not accepted here.
+type UpdateBuildTaskConfigRequest struct {
+	EmbeddingFields  string `json:"embedding_fields,omitempty"`  // 需向量化嵌入字段
+	BuildKeyFields   string `json:"build_key_fields"`            // 构建依赖的键字段
+	EmbeddingModel   string `json:"embedding_model,omitempty"`   // 嵌入模型
+	ModelDimensions  int    `json:"model_dimensions,omitempty"`  // 模型维度
+	FulltextFields   string `json:"fulltext_fields,omitempty"`   // 需建全文索引的字段(逗号分隔)
+	FulltextAnalyzer string `json:"fulltext_analyzer,omitempty"` // 全文分词器，空为 OpenSearch 默认 standard
+}
+
 // UpdateBuildTaskStatusRequest represents update build task status request.
 type UpdateBuildTaskStatusRequest struct {
 	Status      string `json:"status" binding:"required,oneof=running stopped"` // 修改任务状态，只允许 running 和 stopped
