@@ -112,16 +112,16 @@ See also: top-of-file comments in [`mac.sh`](mac.sh), `bash ./dev/mac.sh -h`.
 
 - **`kweaver-core-data-migrator` / pre-install job `BackoffLimitExceeded`:** ensure the **data layer** is up (normally automatic with **`kweaver-core install`**; otherwise run **`bash ./dev/mac.sh data-services install`**). Ensure **`depServices.rds`** points at in-cluster MariaDB after install (`mac-config` loopback placeholders may be updated when MariaDB is installed). Remove a failed release if Helm left it pending: `helm uninstall kweaver-core-data-migrator -n <namespace>` then re-run `kweaver-core install`.
 
-### Onboard and `openbkn` (full ISF)
+### Onboard and `openbkn` (full install)
 
-`bash ./dev/mac.sh onboard` runs **`onboard.sh`** with **`CONFIG_YAML_PATH`** (usually `dev/conf/mac-config.yaml`). On a **full** install with ISF, the script calls **`openbkn auth login`** with HTTP `-u`/`-p`. When the backend returns **401001017** (factory-default password blocked for HTTP `/oauth2/signin`), **if stdin and stdout are both a terminal**, **`onboard.sh` prompts** for the recovery method: **[Enter]** runs **`openbkn auth change-password`** (CLI, default); **`o`** or **`oauth`** runs browser OAuth (**`auth login`** without `-u`/`-p`). After successful change-password, it asks once for the new password and retries HTTP **`auth login`**. **`onboard.sh` runtime hints stay English.**
+`bash ./dev/mac.sh onboard` runs **`onboard.sh`** with **`CONFIG_YAML_PATH`** (usually `dev/conf/mac-config.yaml`). On a **full** (bkn-safe) install it signs in with **`openbkn auth login`** `-u`/`-p`. The seeded admin must change its password on first login; **`onboard.sh` clears that automatically** — it bounces the password through the self-service `/api/safe/v1/auth/change-password` endpoint before the credential login, so headless onboard does not stall. **`onboard.sh` runtime hints stay English.**
 
 | Approach | Typical command |
 |----------|-----------------|
-| OAuth / browser | `openbkn auth login https://<access-address> -k` *(omit `-u` and `-p`)* |
-| HTTP change-password | `openbkn auth change-password https://<access-address> -u admin -k` *(URL required)* |
-| Non-interactive | `openbkn auth login … -p '<initial>' --new-password '<new>' -k`; then `export ONBOARD_DEFAULT_KWEAVER_PASSWORD` before `onboard -y` |
+| Credential (default) | `openbkn auth login https://<access-address> -u admin -p '<password>' -k` |
+| Browser / device | `openbkn auth login https://<access-address> -k` *(omit `-u` and `-p`)* |
+| First-login change | `openbkn auth change-password https://<access-address> -u admin -k` *(URL required)* |
 
 **Always pass the platform base URL** on the CLI. If you omit it, `openbkn` uses the saved **active profile** from `openbkn auth list`, which may be a different cluster — **not** a Helm `accessAddress` misread.
 
-Details: [`help/en/install.md`](../../help/en/install.md) · [`help/zh/install.md`](../../help/zh/install.md) (administrator tool / 401001017).
+Details: [`help/en/install.md`](../../help/en/install.md) · [`help/zh/install.md`](../../help/zh/install.md).
