@@ -5,6 +5,8 @@ name: release-trace-ai-otelcol
 
 on:
   push:
+    tags:
+      - 'v*'
     branches: ['**']
     paths:
       - 'trace-ai/otelcol-contribute-chart/**'

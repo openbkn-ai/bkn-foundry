@@ -5,6 +5,8 @@ name: release-proton-mariadb
 
 on:
   push:
+    tags:
+      - 'v*'
     branches: ['**']
     paths:
       - 'deploy/charts/proton-mariadb/**'

@@ -2,6 +2,8 @@ name: release-infra-oss-gateway
 
 on:
   push:
+    tags:
+      - 'v*'
     branches: ['**']
     paths:
       - 'infra/oss-gateway-backend/**'

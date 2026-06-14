@@ -2,6 +2,8 @@ name: release-adp-bkn-backend
 
 on:
   push:
+    tags:
+      - 'v*'
     branches: ['**']
     paths:
       - 'adp/bkn/bkn-backend/**'

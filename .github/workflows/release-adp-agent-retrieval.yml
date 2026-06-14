@@ -2,6 +2,8 @@ name: release-adp-agent-retrieval
 
 on:
   push:
+    tags:
+      - 'v*'
     branches: ['**']
     paths:
       - 'adp/context-loader/agent-retrieval/**'
