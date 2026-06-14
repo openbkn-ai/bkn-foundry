@@ -127,8 +127,8 @@ export INGRESS_NGINX_HTTPS_PORT=8443
 
 # 4.（推荐）安装后引导
 #    注册 LLM + embedding（已有则跳过）；只有当默认 embedding 实际变更时才会 patch BKN ConfigMap；
-#    在 ISF 全量下还会创建业务用户 `test`、把 `kweaver-admin role list` 中所有角色都挂上、
-#    切换 `kweaver` 到该用户身份，并导入 Context Loader 工具集。
+#    在 ISF 全量下还会创建业务用户 `test`、把 `openbkn admin role list` 中所有角色都挂上、
+#    切换 `openbkn` 到该用户身份，并导入 Context Loader 工具集。
 sudo bash ./onboard.sh        # 交互模式
 sudo bash ./onboard.sh -y     # 非交互模式（按默认）
 sudo bash ./onboard.sh --help # 全部参数（--config=models.yaml、--enable-bkn-search、--skip-context-loader 等）
