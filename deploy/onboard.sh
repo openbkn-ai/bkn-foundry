@@ -100,10 +100,10 @@ ONBOARD_SKIP_ISF_TEST_USER="${ONBOARD_SKIP_ISF_TEST_USER:-false}"
 # Populated by onboard_kweaver_tls_insecure_args_to_array (usually empty or -k).
 declare -a ONBOARD_TLS_INSECURE_ARGS=()
 
-# openbkn auth: HTTP sign-in defaults (ISF / full install). Console account is usually  admin  /  eisoo.com  if not changed.
+# openbkn auth: HTTP sign-in defaults (ISF / full install). Console account is usually  admin  /  openbkn  if not changed.
 # Override in CI. Used when you press Enter at username/password prompts.
 : "${ONBOARD_DEFAULT_KWEAVER_USER:=admin}"
-: "${ONBOARD_DEFAULT_KWEAVER_PASSWORD:=eisoo.com}"
+: "${ONBOARD_DEFAULT_KWEAVER_PASSWORD:=openbkn}"
 
 # ISF: first business user  test  (after  openbkn admin user create ) — platform default is 123456 until  reset-password;
 # we set this for onboard default /  -y  / empty Enter. Override: ONBOARD_TEST_USER_PASSWORD; rename default: ONBOARD_DEFAULT_TEST_USER_PASSWORD
@@ -264,7 +264,7 @@ usage() {
     echo "                onboard uses deploy/dev/conf/mac-config.yaml when that file exists (same as mac.sh)."
     echo "                Else host primary IPv4 + ONBOARD_DEFAULT_ACCESS_SCHEME (https by default)."
     echo "                Set ONBOARD_DEFAULT_ACCESS_BASE to force a URL; ONBOARD_DEFAULT_ACCESS_PORT / SCHEME override fallback IP path."
-    echo "  openbkn auth: you confirm URL. ISF+full: HTTP defaults user=admin pass=eisoo.com (if still default); override with ONBOARD_DEFAULT_KWEAVER_USER / _PASSWORD. Enter keeps defaults. Minimum: default --no-auth; Enter to accept."
+    echo "  openbkn auth: you confirm URL. ISF+full: HTTP defaults user=admin pass=openbkn (if still default); override with ONBOARD_DEFAULT_KWEAVER_USER / _PASSWORD. Enter keeps defaults. Minimum: default --no-auth; Enter to accept."
     echo "  openbkn admin auth (ISF): use  auth login <url> -u admin -p <pass>  (append -k for https:// + self-signed); optional  auth login <url> -k  without -u/-p for browser OAuth. If HTTP sign-in returns 401001017, a TTY prompts: [Enter]=run  auth change-password  then HTTP login; o=OAuth browser. Non-TTY / -y prints hints (change-password or  login … --new-password). Then openbkn re-logs in as user test for impex and model steps."
     echo "  Node: onboard is not a login shell — it auto-loads nvm/fnm/asdf/Volta and Homebrew paths so an already-configured Node 22+ is found without re-asking. ONBOARD_SKIP_NVM_INIT=true skips that; ONBOARD_NVM_VERSION=22 (default) is used after  nvm.sh  load."
     echo "  (preflight on the server: sudo bash ./preflight.sh --fix still optional; this script can install Node in your *user* account via nvm.)"
@@ -419,7 +419,7 @@ onboard_ensure_kweaver_cli() {
         exit 1
     fi
     if [[ "${ONBOARD_SKIP_KWEAVER_INSTALL:-false}" == "true" ]]; then
-        log_error "openbkn not in PATH. Install: npm i -g @openbkn/bkn-sdk  (or unset ONBOARD_SKIP_KWEAVER_INSTALL to allow this script to run npm -g.)"
+        log_error "openbkn not in PATH. Install: npm i -g @openbkn/bkn-sdk@alpha  (or unset ONBOARD_SKIP_KWEAVER_INSTALL to allow this script to run npm -g.)"
         exit 1
     fi
     if [[ "${ONBOARD_ASSUME_YES}" == "true" ]]; then
@@ -428,15 +428,15 @@ onboard_ensure_kweaver_cli() {
         echo ""
         read -r -p "openbkn CLI not in PATH. Install @openbkn/bkn-sdk globally now? (npm i -g) [Y/n]: " _obk
         if [[ "${_obk}" =~ ^[Nn] ]]; then
-            log_error "openbkn is required. Run:  npm i -g @openbkn/bkn-sdk"
+            log_error "openbkn is required. Run:  npm i -g @openbkn/bkn-sdk@alpha"
             exit 1
         fi
     else
-        log_error "openbkn not in PATH. In a TTY you get a Y/n prompt; without a TTY use  $0 -y  or install: npm i -g @openbkn/bkn-sdk"
+        log_error "openbkn not in PATH. In a TTY you get a Y/n prompt; without a TTY use  $0 -y  or install: npm i -g @openbkn/bkn-sdk@alpha"
         exit 1
     fi
-    if ! npm i -g @openbkn/bkn-sdk; then
-        log_error "npm i -g @openbkn/bkn-sdk failed. Check registry/proxy, or EACCES (avoid sudo; use nvm user prefix.)"
+    if ! npm i -g @openbkn/bkn-sdk@alpha; then
+        log_error "npm i -g @openbkn/bkn-sdk@alpha failed. Check registry/proxy, or EACCES (avoid sudo; use nvm user prefix.)"
         exit 1
     fi
     hash -r 2>/dev/null || true
@@ -588,13 +588,13 @@ onboard_kweaver_auth_login_echo_cmd() {
     onboard_log_info "Running: $(onboard_argv_q openbkn auth login "${_url}" "$@")"
 }
 
-# After access URL is chosen: ISF → HTTP sign-in (defaults admin / eisoo.com if unchanged) or browser; no ISF → --no-auth (Enter) or HTTP.
+# After access URL is chosen: ISF → HTTP sign-in (defaults admin / openbkn if unchanged) or browser; no ISF → --no-auth (Enter) or HTTP.
 # Env: ONBOARD_DEFAULT_KWEAVER_USER, ONBOARD_DEFAULT_KWEAVER_PASSWORD, ONBOARD_ASSUME_YES (non-interactive: ISF=HTTP+defaults, min=--no-auth).
 onboard_kweaver_auth_login_for_url() {
     local _kurl="$1"
     local _u _p _duser _dpass
     _duser="${ONBOARD_DEFAULT_KWEAVER_USER:-admin}"
-    _dpass="${ONBOARD_DEFAULT_KWEAVER_PASSWORD:-eisoo.com}"
+    _dpass="${ONBOARD_DEFAULT_KWEAVER_PASSWORD:-openbkn}"
     onboard_kweaver_tls_insecure_args_to_array "${_kurl}"
     local _kv
     _kv="$(openbkn --version 2>/dev/null | grep -Eo '[vV]?[0-9]+\.[0-9]+\.[0-9]+' | tail -1 || true)"
@@ -790,7 +790,7 @@ onboard_kweaver_admin_auth_login_for_url() {
     local _kurl="$1"
     local _u _p _duser _dpass _kad_out
     _duser="${ONBOARD_DEFAULT_KWEAVER_USER:-admin}"
-    _dpass="${ONBOARD_DEFAULT_KWEAVER_PASSWORD:-eisoo.com}"
+    _dpass="${ONBOARD_DEFAULT_KWEAVER_PASSWORD:-openbkn}"
     onboard_kweaver_tls_insecure_args_to_array "${_kurl}"
     # Block until the ISF client-registration route is live, so login doesn't race a 404.
     onboard_wait_isf_oauth_clients_ready "${_kurl}"
@@ -923,8 +923,8 @@ onboard_ensure_kweaver_admin_for_isf() {
     fi
     if [[ "${ONBOARD_ASSUME_YES}" == "true" ]]; then
         onboard_log_info "ISF: installing @openbkn/bkn-sdk (-y)…"
-        if ! npm i -g @openbkn/bkn-sdk; then
-            onboard_log_warn "npm i -g @openbkn/bkn-sdk failed; install manually, then: openbkn admin auth login <url> -u admin -p '<password>'  (-k only for https:// + self-signed; openbkn admin: HTTP sign-in, no flag)"
+        if ! npm i -g @openbkn/bkn-sdk@alpha; then
+            onboard_log_warn "npm i -g @openbkn/bkn-sdk@alpha failed; install manually, then: openbkn admin auth login <url> -u admin -p '<password>'  (-k only for https:// + self-signed; openbkn admin: HTTP sign-in, no flag)"
         fi
         hash -r 2>/dev/null || true
         onboard_prepend_npm_global_bin_to_path
@@ -937,13 +937,13 @@ onboard_ensure_kweaver_admin_for_isf() {
         return 0
     fi
     echo ""
-    read -r -p "ISF: run  npm i -g @openbkn/bkn-sdk  to create user [test] (re-run is OK if already installed) [Y/n]: " _kadm
+    read -r -p "ISF: run  npm i -g @openbkn/bkn-sdk@alpha  to create user [test] (re-run is OK if already installed) [Y/n]: " _kadm
     if [[ -n "${_kadm}" && "${_kadm}" =~ ^[Nn] ]]; then
-        onboard_log_warn "openbkn admin not installed: user test will not be created this run. Install later: npm i -g @openbkn/bkn-sdk"
+        onboard_log_warn "openbkn admin not installed: user test will not be created this run. Install later: npm i -g @openbkn/bkn-sdk@alpha"
         return 0
     fi
-    if ! npm i -g @openbkn/bkn-sdk; then
-        onboard_log_warn "npm i -g @openbkn/bkn-sdk failed (registry, proxy, or EACCES)."
+    if ! npm i -g @openbkn/bkn-sdk@alpha; then
+        onboard_log_warn "npm i -g @openbkn/bkn-sdk@alpha failed (registry, proxy, or EACCES)."
         return 0
     fi
     onboard_prepend_npm_global_bin_to_path
@@ -962,7 +962,7 @@ onboard_ensure_kweaver_admin_auth_for_isf() {
     fi
     onboard_prepend_npm_global_bin_to_path
     if ! command -v openbkn &>/dev/null; then
-        onboard_log_err "ISF (full) install: openbkn admin is not on PATH. Install: npm i -g @openbkn/bkn-sdk, add npm global bin to PATH, then re-run. (Unset ONBOARD_SKIP_KWEAVER_ADMIN_INSTALL if that blocked the install step.)"
+        onboard_log_err "ISF (full) install: openbkn admin is not on PATH. Install: npm i -g @openbkn/bkn-sdk@alpha, add npm global bin to PATH, then re-run. (Unset ONBOARD_SKIP_KWEAVER_ADMIN_INSTALL if that blocked the install step.)"
         exit 1
     fi
     if openbkn admin --json user list --limit 1 &>/dev/null; then
@@ -970,7 +970,7 @@ onboard_ensure_kweaver_admin_auth_for_isf() {
         return 0
     fi
     onboard_log_warn "ISF (full install):  openbkn  and  openbkn admin  are two different logins — two different saved sessions. The sign-in you just did only applies to  openbkn  (the SDK), not to  openbkn admin  (user/role management)."
-    onboard_log_warn "Next, sign in to  openbkn admin  the same way as  openbkn  (HTTP). User:  ${ONBOARD_DEFAULT_KWEAVER_USER:-admin} ; password: the same as the web console (factory default is often  ${ONBOARD_DEFAULT_KWEAVER_PASSWORD:-eisoo.com}  if you did not change it). After that, this script can create  test  and re-login  openbkn  as  test  for Context Loader / ADP import."
+    onboard_log_warn "Next, sign in to  openbkn admin  the same way as  openbkn  (HTTP). User:  ${ONBOARD_DEFAULT_KWEAVER_USER:-admin} ; password: the same as the web console (factory default is often  ${ONBOARD_DEFAULT_KWEAVER_PASSWORD:-openbkn}  if you did not change it). After that, this script can create  test  and re-login  openbkn  as  test  for Context Loader / ADP import."
     local _url _defu _go
     if [[ "${ONBOARD_ASSUME_YES}" == "true" ]]; then
         _defu="$(onboard_default_access_base_url 2>/dev/null || true)"

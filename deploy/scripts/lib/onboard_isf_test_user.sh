@@ -210,7 +210,7 @@ onboard_offer_isf_test_user() {
     }
     command -v openbkn &>/dev/null || {
         ONBOARD_REPORT_ISF_TEST_USER="error: openbkn admin not on PATH"
-        onboard_log_err "ISF: openbkn admin not found. Install: npm i -g @openbkn/bkn-sdk, then: export PATH=\"\$(npm config get prefix 2>/dev/null)/bin:\$PATH\"  and re-run: $0"
+        onboard_log_err "ISF: openbkn admin not found. Install: npm i -g @openbkn/bkn-sdk@alpha, then: export PATH=\"\$(npm config get prefix 2>/dev/null)/bin:\$PATH\"  and re-run: $0"
         exit 1
     }
 
@@ -274,7 +274,7 @@ onboard_ensure_isf_test_for_kweaver_impex() {
         return 0
     fi
     if ! command -v openbkn &>/dev/null; then
-        log_warn "Context Loader (ISF): openbkn admin not on PATH; cannot prepare user [test]. Install: npm i -g @openbkn/bkn-sdk, then re-run."
+        log_warn "Context Loader (ISF): openbkn admin not on PATH; cannot prepare user [test]. Install: npm i -g @openbkn/bkn-sdk@alpha, then re-run."
         return 1
     fi
     if ! openbkn admin --json user list --limit 1 &>/dev/null; then
