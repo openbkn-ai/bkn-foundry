@@ -269,12 +269,18 @@ func (bta *buildTaskAccess) UpdateStatus(ctx context.Context, id string, updates
 	defer span.End()
 
 	fieldMap := map[string]string{
-		"status":          "f_status",
-		"totalCount":      "f_total_count",
-		"syncedCount":     "f_synced_count",
-		"vectorizedCount": "f_vectorized_count",
-		"syncedMark":      "f_synced_mark",
-		"errorMsg":        "f_error_msg",
+		"status":           "f_status",
+		"totalCount":       "f_total_count",
+		"syncedCount":      "f_synced_count",
+		"vectorizedCount":  "f_vectorized_count",
+		"syncedMark":       "f_synced_mark",
+		"errorMsg":         "f_error_msg",
+		"embeddingFields":  "f_embedding_fields",
+		"buildKeyFields":   "f_build_key_fields",
+		"embeddingModel":   "f_embedding_model",
+		"modelDimensions":  "f_model_dimensions",
+		"fulltextFields":   "f_fulltext_fields",
+		"fulltextAnalyzer": "f_fulltext_analyzer",
 	}
 
 	builder := sq.Update(BUILD_TASK_TABLE_NAME)

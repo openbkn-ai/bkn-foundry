@@ -352,6 +352,109 @@ func (bts *buildTaskService) StartBuildTask(ctx context.Context, taskID string, 
 	return nil
 }
 
+// UpdateBuildTaskConfig edits a task's field config (embedding / build key /
+// full-text / model) and triggers a full rebuild. The index name is bound to
+// the task id, so the worker drops the old index on full rebuild and recreates
+// the mapping from the new fields. Mode and resource are immutable.
+func (bts *buildTaskService) UpdateBuildTaskConfig(ctx context.Context, taskID string, req *interfaces.UpdateBuildTaskConfigRequest) error {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Update build task config")
+	defer span.End()
+
+	buildTask, err := bts.bta.GetByID(ctx, taskID)
+	if err != nil {
+		span.SetStatus(codes.Error, "Get build task failed")
+		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_GetFailed).
+			WithErrorDetails(err.Error())
+	}
+	if buildTask == nil {
+		span.SetStatus(codes.Error, "Build task not found")
+		return rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_BuildTask_NotFound)
+	}
+	// MVP 仅支持 batch：streaming worker 不做 fulltext mapping、不走 full drop 重建，
+	// 编辑会造成字段已改、索引未重建的半生效状态。streaming 编辑待架构补齐后再开。
+	if buildTask.Mode != interfaces.BuildTaskModeBatch {
+		span.SetStatus(codes.Error, "Edit only supported for batch")
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+			WithErrorDetails("editing config is only supported for batch tasks")
+	}
+	// 运行中 / 停止中不可编辑：旧 worker 仍在写索引，需先停再改
+	if buildTask.Status == interfaces.BuildTaskStatusRunning ||
+		buildTask.Status == interfaces.BuildTaskStatusStopping {
+		span.SetStatus(codes.Error, "Invalid state transition for edit")
+		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_InvalidStateTransition).
+			WithErrorDetails(fmt.Sprintf("cannot edit task in status: %s, stop it first", buildTask.Status))
+	}
+
+	cat, err := bts.cs.GetByID(ctx, buildTask.CatalogID, false)
+	if err != nil {
+		span.SetStatus(codes.Error, "Get catalog failed")
+		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Catalog_InternalError_GetFailed).
+			WithErrorDetails(err.Error())
+	}
+	if cat == nil {
+		span.SetStatus(codes.Error, "Catalog not found")
+		return rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound)
+	}
+	if !cat.Enabled {
+		span.SetStatus(codes.Error, "Catalog is disabled")
+		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Catalog_IsDisabled).
+			WithErrorDetails("catalog is disabled")
+	}
+
+	// embedding 与 fulltext 至少一种，否则任务没有要建的索引
+	if req.EmbeddingFields == "" && req.FulltextFields == "" {
+		span.SetStatus(codes.Error, "No index fields")
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InternalError_CreateFailed).
+			WithErrorDetails("at least one of embedding_fields or fulltext_fields is required")
+	}
+
+	// 维度补全：逻辑与 CreateBuildTask 对齐
+	embeddingModel := req.EmbeddingModel
+	modelDimensions := req.ModelDimensions
+	if embeddingModel == "" && req.EmbeddingFields != "" {
+		embeddingModel = interfaces.DEFAULT_EMBEDDING_MODEL
+	}
+	if embeddingModel != "" && modelDimensions == 0 {
+		model, err := bts.mfa.GetModelByName(ctx, embeddingModel)
+		if err != nil {
+			span.SetStatus(codes.Error, "Get model by name failed")
+			return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_CreateFailed).
+				WithErrorDetails(err.Error())
+		}
+		modelDimensions = model.EmbeddingDim
+	}
+
+	// 更新配置并置回 init：worker 出队执行时落 running，并对 full 重建 drop 旧索引
+	updates := map[string]any{
+		"embeddingFields":  req.EmbeddingFields,
+		"buildKeyFields":   req.BuildKeyFields,
+		"embeddingModel":   embeddingModel,
+		"modelDimensions":  modelDimensions,
+		"fulltextFields":   req.FulltextFields,
+		"fulltextAnalyzer": req.FulltextAnalyzer,
+		"status":           interfaces.BuildTaskStatusInit,
+		"errorMsg":         "",
+	}
+	if err := bts.bta.UpdateStatus(ctx, taskID, updates); err != nil {
+		otellog.LogError(ctx, "Update build task config failed", err)
+		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_UpdateFailed).
+			WithErrorDetails(err.Error())
+	}
+
+	// 同步内存对象再入队（enqueue 仅用 ID/mode，仍保持一致）
+	buildTask.EmbeddingFields = req.EmbeddingFields
+	buildTask.BuildKeyFields = req.BuildKeyFields
+	buildTask.EmbeddingModel = embeddingModel
+	buildTask.ModelDimensions = modelDimensions
+	buildTask.FulltextFields = req.FulltextFields
+	buildTask.FulltextAnalyzer = req.FulltextAnalyzer
+
+	bts.enqueueBuildTask(ctx, buildTask, interfaces.BuildTaskExecuteTypeFull)
+
+	span.SetStatus(codes.Ok, "")
+	return nil
+}
+
 // StopBuildTask transitions a task from running to stopping.
 // Note: persisted status remains running until the worker advances it — clients should poll.
 func (bts *buildTaskService) StopBuildTask(ctx context.Context, taskID string) error {
