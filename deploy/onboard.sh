@@ -257,7 +257,7 @@ usage() {
     echo "                ONBOARD_DEFAULT_TEST_USER_PASSWORD=...  first-user  test  password (default 111111;  -y  non-interactive)"
     echo "                ONBOARD_KWEAVER_IMPEX_NO_RELLOGIN=1  skip  openbkn auth  as  test  before impex (use current openbkn session)"
     echo "                ONBOARD_NO_COMPLETION_REPORT=1  do not print the English completion report at the end"
-    echo "                ONBOARD_FORCE_INSECURE_LOGIN=true  always pass -k (--insecure) to openbkn/kweaver-admin auth login (even for http:// bases; default false)"
+    echo "                ONBOARD_FORCE_INSECURE_LOGIN=true  always pass -k (--insecure) to openbkn auth login (even for http:// bases; default false)"
     echo "                ONBOARD_SKIP_CONFIG_ACCESS_URL=true  do not derive default URL from CONFIG_YAML_PATH accessAddress"
     echo "  Default BKN Foundry access URL (openbkn auth): accessAddress in CONFIG_YAML_PATH when present;"
     echo "                on macOS, if CONFIG_YAML_PATH is still deploy/conf/config.yaml (~/.openbkn-ai not used yet),"

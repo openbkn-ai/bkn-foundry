@@ -129,7 +129,7 @@ export INGRESS_NGINX_HTTPS_PORT=8443
 # 4. (Recommended) Post-install bootstrap
 #    Registers an LLM + embedding (skips when already there), patches the BKN ConfigMap
 #    only when the default actually changes, and on a full ISF install creates the business
-#    user `test`, assigns every role from `kweaver-admin role list`, switches `kweaver` to
+#    user `test`, assigns every role from `openbkn admin role list`, switches `openbkn` to
 #    that user, and imports the Context Loader toolset.
 sudo bash ./onboard.sh        # interactive
 sudo bash ./onboard.sh -y     # non-interactive (uses defaults)
@@ -140,7 +140,7 @@ sudo bash ./onboard.sh --help # all flags (--config=models.yaml, --enable-bkn-se
 
 > Full preflight / onboard flow, ISF dual-CLI auth and Mermaid diagrams: see [help/en/install.md — Post-install: `onboard.sh`](../help/en/install.md#post-install-onboardsh).
 
-> **`onboard.sh` runtime messages** are **English**; on ISF HTTP **401001017**, a **TTY** prompts (**Enter**=`auth change-password` default; **`o`**=OAuth browser). Chinese + English context: [`dev/README.md`](../dev/README.md#onboard-and-kweaver-admin-full-isf) · [`dev/README.zh.md`](../dev/README.zh.md); product docs [`help/zh/install.md`](../help/zh/install.md) / [`help/en/install.md`](../help/en/install.md).
+> **`onboard.sh` runtime messages** are **English**; on ISF HTTP **401001017**, a **TTY** prompts (**Enter**=`auth change-password` default; **`o`**=OAuth browser). Chinese + English context: [`dev/README.md`](../dev/README.md#onboard-and-openbkn-full-isf) · [`dev/README.zh.md`](../dev/README.zh.md); product docs [`help/zh/install.md`](../help/zh/install.md) / [`help/en/install.md`](../help/en/install.md).
 
 ### Dev/test: pick chart versions (`--version_file`)
 
