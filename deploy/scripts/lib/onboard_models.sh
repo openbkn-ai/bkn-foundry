@@ -141,7 +141,7 @@ ${name}"
 
 # Args: name, type, api_key, api_url, api_model, batch, max_tok, emb_dim
 onboard_ensure_small_model() {
-    local name="$1" stype="$2" akey="$3" aurl="$4" amodel="$5" batch="${6:-32}" maxtok="${7:-512}" embdim="${8:-1024}"
+    local name="$1" stype="$2" akey="$3" aurl="$4" amodel="$5" batch="${6:-10}" maxtok="${7:-512}" embdim="${8:-1024}"
     if printf '%s\n' "${_POSTI_EXISTING_SM}" | grep -qFx "${name}"; then
         onboard_log_info "Small model already registered, skip: ${name}"
         return 0

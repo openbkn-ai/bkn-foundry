@@ -904,6 +904,7 @@ if [[ "${INTERACTIVE}" == "true" ]]; then
             read -r -p "api_model: " em_am
             read -r -p "api_url: " em_url
             read -r -p "embedding_dim [1024]: " em_dim
+            read -r -p "batch_size [10] (texts per embedding request; DashScope text-embedding-v* caps at 10): " em_batch
             if [[ -n "${_bkn_current_default}" ]]; then
                 read -r -p "BKN default is currently [${_bkn_current_default}]. Set [${em_n}] as the new BKN default (will patch ConfigMaps and restart bkn-backend / ontology-query)? [y/N]: " em_bkn
                 if [[ "${em_bkn}" =~ ^[Yy] ]]; then
@@ -915,7 +916,7 @@ if [[ "${INTERACTIVE}" == "true" ]]; then
                     _new_em_set_default="true"
                 fi
             fi
-            onboard_ensure_small_model "${em_n}" "embedding" "${em_key}" "${em_url}" "${em_am}" 32 512 "${em_dim:-1024}"
+            onboard_ensure_small_model "${em_n}" "embedding" "${em_key}" "${em_url}" "${em_am}" "${em_batch:-10}" 512 "${em_dim:-1024}"
             if [[ "${_new_em_set_default}" == "true" ]]; then
                 bkn_default_name="${em_n}"
             fi

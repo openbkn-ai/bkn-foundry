@@ -29,7 +29,17 @@ vim .env        # 填写 DB_HOST、DB_USER、DB_PASS 等
 
 所有示例需要：
 - openbkn CLI：`npm install -g @openbkn/bkn-sdk`（Node ≥ 22）
-- 平台登录：`openbkn auth login https://<your-platform-url>`
+- 以**管理员/超级管理员**登录平台：`openbkn auth login https://<your-platform-url>`
+  （非管理员用户无法创建 catalog / 知识网络，会报 `Public.Forbidden`）
+- runner 上需 `jq` 与 `python3` **≥ 3.7**（脚本用了 `from __future__ import annotations`；
+  CentOS/RHEL 8 自带 3.6 → 装 `python38` 并置于 `PATH` 最前)
+- MySQL 需 **runner 与平台/Vega Pod 都能访问** —— `DB_HOST` 填集群可路由地址
+  (Service ClusterIP / DNS),不要用 `127.0.0.1`
+- BKN 语义搜索需注册 embedding 模型(DashScope `text-embedding-v*` 的 `api_url` 要以
+  `/compatible-mode/v1/embeddings` 结尾,且 `batch_size <= 10`)
+
+> 网络受限时,上游 CSV 走镜像拉取(如 jsDelivr `https://cdn.jsdelivr.net/gh/<owner>/<repo>@<ref>/<path>`),
+> 容器镜像走 `docker.m.daocloud.io`。
 
 各示例的详细前置条件见对应 README。
 
