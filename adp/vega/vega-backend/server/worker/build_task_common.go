@@ -137,11 +137,24 @@ func hasFulltextFeature(prop *interfaces.Property) bool {
 	return false
 }
 
-// injectFulltextFeatures 把 fulltext 特性写入 resource schema 中指定字段（原地、幂等），
-// 返回是否有改动。必须写回资源 schema 并持久化：既让建索引 mapping 生成 text 子字段，
-// 也让查询侧 fulltextFieldName 能从资源 schema 解析出 `字段.fulltext` 子字段。
-// analyzer 为空时不写 config，走 OpenSearch 默认分词器。
-func injectFulltextFeatures(resource *interfaces.Resource, fulltextFields, analyzer string) bool {
+// analyzerOf 取 fulltext 特性 config 里的分词器名，无则空串。
+func analyzerOf(config map[string]any) string {
+	if config == nil {
+		return ""
+	}
+	if v, ok := config["analyzer"].(string); ok {
+		return v
+	}
+	return ""
+}
+
+// reconcileFulltextFeatures 让 resource schema 中的 fulltext 特性与 fulltextFields 完全一致：
+// 集合内字段补齐(并校正 analyzer)、集合外字段移除残留。返回是否有改动。
+//
+// 批量构建任务是该资源 fulltext 配置的唯一来源，故可权威重写。必须移除残留：
+// 编辑任务去掉某个 fulltext 字段后(PUT /build-tasks/:id)，若只增不减，旧特性留在
+// schema 里，drop+recreate 仍会按残留特性重建出多余子字段。analyzer 为空走默认分词器。
+func reconcileFulltextFeatures(resource *interfaces.Resource, fulltextFields, analyzer string) bool {
 	set := fieldNameSet(fulltextFields)
 	var config map[string]any
 	if analyzer != "" {
@@ -149,15 +162,38 @@ func injectFulltextFeatures(resource *interfaces.Resource, fulltextFields, analy
 	}
 	changed := false
 	for _, prop := range resource.SchemaDefinition {
-		if prop == nil || !set[prop.Name] || hasFulltextFeature(prop) {
+		if prop == nil {
 			continue
 		}
-		prop.Features = append(prop.Features, interfaces.PropertyFeature{
-			FeatureName: "fulltext",
-			FeatureType: interfaces.PropertyFeatureType_Fulltext,
-			Config:      config,
-		})
-		changed = true
+		switch {
+		case set[prop.Name] && !hasFulltextFeature(prop):
+			prop.Features = append(prop.Features, interfaces.PropertyFeature{
+				FeatureName: "fulltext",
+				FeatureType: interfaces.PropertyFeatureType_Fulltext,
+				Config:      config,
+			})
+			changed = true
+		case set[prop.Name]:
+			// 已有 fulltext 特性：校正 analyzer(用户改了分词器需重建生效)
+			for i := range prop.Features {
+				if prop.Features[i].FeatureType == interfaces.PropertyFeatureType_Fulltext &&
+					analyzerOf(prop.Features[i].Config) != analyzer {
+					prop.Features[i].Config = config
+					changed = true
+				}
+			}
+		case !set[prop.Name] && hasFulltextFeature(prop):
+			// 不在集合内但有残留 fulltext 特性：移除(原地过滤)
+			kept := prop.Features[:0]
+			for _, f := range prop.Features {
+				if f.FeatureType == interfaces.PropertyFeatureType_Fulltext {
+					changed = true
+					continue
+				}
+				kept = append(kept, f)
+			}
+			prop.Features = kept
+		}
 	}
 	return changed
 }
