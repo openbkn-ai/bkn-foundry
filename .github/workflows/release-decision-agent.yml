@@ -37,6 +37,7 @@ jobs:
   build:
     needs: test
     uses: ./.github/workflows/reusable-build.yml
+    secrets: inherit
     with:
       # Dockerfile COPYs agent-backend/... so build context root must be decision-agent
       service-path: decision-agent

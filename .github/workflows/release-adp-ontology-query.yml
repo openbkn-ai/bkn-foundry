@@ -29,6 +29,7 @@ jobs:
   build:
     needs: test
     uses: ./.github/workflows/reusable-build.yml
+    secrets: inherit
     with:
       service-path: adp/bkn/ontology-query
       dockerfile: docker/Dockerfile

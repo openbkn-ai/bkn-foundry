@@ -30,6 +30,7 @@ jobs:
   build:
     needs: test
     uses: ./.github/workflows/reusable-build.yml
+    secrets: inherit
     with:
       service-path: trace-ai/agent-observability
       dockerfile: Dockerfile
