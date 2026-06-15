@@ -31,6 +31,7 @@ jobs:
   build-vega-backend:
     needs: test
     uses: ./.github/workflows/reusable-build.yml
+    secrets: inherit
     with:
       service-path: adp/vega/vega-backend
       dockerfile: docker/Dockerfile
@@ -42,6 +43,7 @@ jobs:
   build-kafka-connect:
     needs: test
     uses: ./.github/workflows/reusable-build.yml
+    secrets: inherit
     with:
       service-path: adp/vega/vega-backend
       dockerfile: docker/Dockerfile-kafka-connect

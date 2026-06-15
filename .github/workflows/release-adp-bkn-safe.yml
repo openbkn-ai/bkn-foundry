@@ -32,6 +32,7 @@ jobs:
   build:
     needs: test
     uses: ./.github/workflows/reusable-build.yml
+    secrets: inherit
     with:
       service-path: bkn-safe
       dockerfile: Dockerfile

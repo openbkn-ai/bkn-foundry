@@ -35,6 +35,7 @@ jobs:
   build-python-base:
     needs: test
     uses: ./.github/workflows/reusable-build.yml
+    secrets: inherit
     with:
       service-path: infra/sandbox/images/bases/python
       dockerfile: Dockerfile
@@ -46,6 +47,7 @@ jobs:
   build-multi-language-base:
     needs: [test, build-python-base]
     uses: ./.github/workflows/reusable-build.yml
+    secrets: inherit
     with:
       service-path: infra/sandbox/images/bases/multi-language
       dockerfile: Dockerfile
@@ -60,6 +62,7 @@ jobs:
   build-control-plane:
     needs: test
     uses: ./.github/workflows/reusable-build.yml
+    secrets: inherit
     with:
       service-path: infra/sandbox
       dockerfile: sandbox_control_plane/Dockerfile
@@ -71,6 +74,7 @@ jobs:
   build-web:
     needs: test
     uses: ./.github/workflows/reusable-build.yml
+    secrets: inherit
     with:
       service-path: infra/sandbox/sandbox_web
       dockerfile: Dockerfile
@@ -82,6 +86,7 @@ jobs:
   build-template-python-basic:
     needs: [test, build-python-base]
     uses: ./.github/workflows/reusable-build.yml
+    secrets: inherit
     with:
       service-path: infra/sandbox
       dockerfile: images/templates/executor/Dockerfile
@@ -95,6 +100,7 @@ jobs:
   build-template-multi-language:
     needs: [test, build-multi-language-base]
     uses: ./.github/workflows/reusable-build.yml
+    secrets: inherit
     with:
       service-path: infra/sandbox
       dockerfile: images/templates/executor/Dockerfile

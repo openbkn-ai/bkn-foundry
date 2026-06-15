@@ -35,6 +35,7 @@ jobs:
   build:
     needs: test
     uses: ./.github/workflows/reusable-build.yml
+    secrets: inherit
     with:
       service-path: infra/mf-model-api
       dockerfile: Dockerfile

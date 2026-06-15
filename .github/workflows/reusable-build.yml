@@ -36,6 +36,22 @@ on:
         type: string
         default: ''
         description: 'Dockerfile target stage (empty = final stage)'
+      swr-registry:
+        type: string
+        default: 'swr.cn-east-3.myhuaweicloud.com'
+        description: 'Huawei SWR registry host for the mirror push'
+      swr-namespace:
+        type: string
+        default: 'openbkn-ai'
+        description: 'Huawei SWR organization/namespace for app images'
+    secrets:
+      # Optional: when set, every published image is mirrored to Huawei SWR in
+      # the same build. Absent (forks, credential-less runs) → mirror skipped,
+      # GHCR push unaffected. Callers opt in with `secrets: inherit`.
+      HUAWEI_SWR_USERNAME:
+        required: false
+      HUAWEI_SWR_PASSWORD:
+        required: false
 
 jobs:
   build:
@@ -43,6 +59,10 @@ jobs:
     permissions:
       contents: read
       packages: write
+    env:
+      # Surfaced so step `if:` can test credential presence — secrets aren't
+      # allowed in `if:` directly. Empty when the SWR secrets aren't set.
+      SWR_USERNAME: ${{ secrets.HUAWEI_SWR_USERNAME }}
     steps:
       - uses: actions/checkout@v4
 
@@ -58,6 +78,27 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ github.token }}
 
+      - name: Login to Huawei SWR
+        if: ${{ inputs.publish && env.SWR_USERNAME != '' }}
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ inputs.swr-registry }}
+          username: ${{ secrets.HUAWEI_SWR_USERNAME }}
+          password: ${{ secrets.HUAWEI_SWR_PASSWORD }}
+
+      - name: Compute image tags
+        id: tags
+        # GHCR always; SWR mirror only when publishing AND credentials present.
+        run: |
+          {
+            echo "tags<<EOF"
+            echo "ghcr.io/${{ github.repository_owner }}/${{ inputs.image-name }}:${{ inputs.version }}"
+            if [ "${{ inputs.publish }}" = "true" ] && [ -n "${SWR_USERNAME}" ]; then
+              echo "${{ inputs.swr-registry }}/${{ inputs.swr-namespace }}/${{ inputs.image-name }}:${{ inputs.version }}"
+            fi
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Build and push image
         uses: docker/build-push-action@v6
         with:
@@ -69,4 +110,4 @@ jobs:
           push: ${{ inputs.publish }}
           provenance: false
           sbom: false
-          tags: ghcr.io/${{ github.repository_owner }}/${{ inputs.image-name }}:${{ inputs.version }}
+          tags: ${{ steps.tags.outputs.tags }}

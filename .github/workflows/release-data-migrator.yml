@@ -31,6 +31,7 @@ jobs:
   build:
     needs: test
     uses: ./.github/workflows/reusable-build.yml
+    secrets: inherit
     with:
       service-path: data-migrator
       dockerfile: Dockerfile
