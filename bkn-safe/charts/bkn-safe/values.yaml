@@ -69,18 +69,18 @@ ingress:
 #   openbkn-studio  — authorization_code + PKCE (browser / SPA)
 #   openbkn-cli     — authorization_code + PKCE (CLI headless password login)
 # Idempotent (delete+create). The openbkn-studio SPA callback derives from
-# accessAddress (https://host/callback) at install time; webRedirectUri is the
+# accessAddress (https://host/studio/callback) at install time; webRedirectUri is the
 # dev fallback when no accessAddress is set.
 clientSeed:
   enabled: true
   # Matches the bkn-studio vite dev server port (fixed via strictPort).
-  webRedirectUri: "http://localhost:8000/callback"
+  webRedirectUri: "http://localhost:8000/studio/callback"
   # Appended to openbkn-studio's redirect_uris IN ADDITION to the
   # accessAddress-derived gateway callback, so a local web dev server can
   # complete the OAuth flow against a remote install. Clear this list for
   # hardened/production installs.
   extraWebRedirectUris:
-    - "http://localhost:8000/callback"
+    - "http://localhost:8000/studio/callback"
   # Loopback redirect for the CLI password flow; must match the SDK's
   # `http://127.0.0.1:<DEFAULT_REDIRECT_PORT>/callback` (default port 9010).
   cliRedirectUri: "http://127.0.0.1:9010/callback"

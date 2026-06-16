@@ -12,15 +12,18 @@
 # Env:
 #   HYDRA_ADMIN       admin endpoint (default dev http://127.0.0.1:4445; in-cluster
 #                     use http://bkn-safe-hydra-admin:4445)
-#   WEB_REDIRECT_URI  SPA callback (default dev http://localhost:3000/callback;
-#                     set to the real https://<host>/callback in prod)
+#   WEB_REDIRECT_URI  SPA callback (default dev http://localhost:8000/studio/callback;
+#                     set to the real https://<host>/studio/callback in prod)
+#   WEB_LOGOUT_URI    SPA post-logout landing page (default derives from
+#                     WEB_REDIRECT_URI by dropping the trailing /callback)
 #   CLI_REDIRECT_URI  CLI loopback callback; must match the SDK's
 #                     http://127.0.0.1:<DEFAULT_REDIRECT_PORT>/callback (port 9010).
 #                     Never dialed — the SDK reads the code off the 302 Location.
 set -euo pipefail
 
 ADMIN="${HYDRA_ADMIN:-http://127.0.0.1:4445}"
-WEB_REDIRECT_URI="${WEB_REDIRECT_URI:-http://localhost:3000/callback}"
+WEB_REDIRECT_URI="${WEB_REDIRECT_URI:-http://localhost:8000/studio/callback}"
+WEB_LOGOUT_URI="${WEB_LOGOUT_URI:-${WEB_REDIRECT_URI%/callback}}"
 CLI_REDIRECT_URI="${CLI_REDIRECT_URI:-http://127.0.0.1:9010/callback}"
 
 create() { # $1=json
@@ -60,10 +63,11 @@ create "{
   \"response_types\": [\"code\"],
   \"token_endpoint_auth_method\": \"none\",
   \"redirect_uris\": [\"${WEB_REDIRECT_URI}\"],
+  \"post_logout_redirect_uris\": [\"${WEB_LOGOUT_URI}\"],
   \"scope\": \"openid offline\",
   \"audience\": [\"bkn-safe\"]
 }" >/dev/null
-echo "  + openbkn-studio (authorization_code + PKCE, public; redirect=${WEB_REDIRECT_URI})"
+echo "  + openbkn-studio (authorization_code + PKCE, public; redirect=${WEB_REDIRECT_URI}, logout=${WEB_LOGOUT_URI})"
 
 del openbkn-cli
 create "{

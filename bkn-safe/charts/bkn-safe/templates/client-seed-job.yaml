@@ -27,7 +27,7 @@ spec:
           image: "{{- if .Values.image.registry }}{{ .Values.image.registry }}/{{ end }}{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           {{- /* The openbkn-studio SPA callback is browser-facing at the gateway,
-                 so derive it from accessAddress (https://host[:port]/callback) when
+                 so derive it from accessAddress (https://host[:port]/studio/callback) when
                  set; otherwise fall back to clientSeed.webRedirectUri (dev). Any
                  clientSeed.extraWebRedirectUris are appended (local web dev against
                  a remote install). The CLI callback stays loopback (the CLI runs on
@@ -38,9 +38,9 @@ spec:
             {{- $scheme := $aa.scheme | default "https" }}
             {{- $port := $aa.port | toString }}
             {{- if or (and (eq $scheme "https") (eq $port "443")) (and (eq $scheme "http") (eq $port "80")) }}
-              {{- $web = printf "%s://%s/callback" $scheme $aa.host }}
+              {{- $web = printf "%s://%s/studio/callback" $scheme $aa.host }}
             {{- else }}
-              {{- $web = printf "%s://%s:%s/callback" $scheme $aa.host $port }}
+              {{- $web = printf "%s://%s:%s/studio/callback" $scheme $aa.host $port }}
             {{- end }}
           {{- end }}
           {{- $webUris := list $web }}
@@ -48,7 +48,7 @@ spec:
             {{- if not (has . $webUris) }}{{- $webUris = append $webUris . }}{{- end }}
           {{- end }}
           {{- $logoutUris := list }}
-          {{- range $webUris }}{{- $logoutUris = append $logoutUris (trimSuffix "callback" .) }}{{- end }}
+          {{- range $webUris }}{{- $logoutUris = append $logoutUris (trimSuffix "/callback" .) }}{{- end }}
           env:
             - name: ADMIN
               value: {{ .Values.config.hydra.adminURL | quote }}
