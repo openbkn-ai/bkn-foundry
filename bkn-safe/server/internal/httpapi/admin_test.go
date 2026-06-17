@@ -13,6 +13,7 @@ import (
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 
+	"bkn-safe/internal/audit"
 	"bkn-safe/internal/auth"
 	"bkn-safe/internal/authz"
 	"bkn-safe/internal/database"
@@ -56,6 +57,7 @@ func newAdminServer(t *testing.T) (*gin.Engine, *authz.Enforcer, *gorm.DB, *auth
 	users := auth.NewUserStore(db)
 	r := New(Deps{
 		Enforcer: e, DB: db, Directory: directory.New(db), Users: users,
+		Audit:         audit.New(db),
 		TokenVerifier: stubVerifier{},
 	})
 	return r, e, db, users
@@ -429,5 +431,212 @@ func TestRoleBindingValidatesAccessorAndRole(t *testing.T) {
 			map[string]any{"accessor_id": id, "role_id": "r-real"}); w.Code != http.StatusNoContent {
 			t.Errorf("bind %s: want 204, got %d (%s)", id, w.Code, w.Body.String())
 		}
+	}
+}
+
+func TestDepartmentMembershipWrite(t *testing.T) {
+	r, _, db, users := newAdminServer(t)
+	ctx := t.Context()
+	db.Create(&model.Department{ID: "d-eng", Name: "Engineering"})
+	for _, u := range []*model.User{
+		{ID: "u-1", Account: "alice", Name: "Alice", Enabled: true},
+		{ID: "u-2", Account: "bob", Name: "Bob", Enabled: true},
+	} {
+		if err := users.CreateLocalUser(ctx, u, "pw-init0"); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// assign two members
+	if w := adminReq(t, r, http.MethodPost, "/api/safe/v1/admin/departments/d-eng/members",
+		map[string]any{"user_ids": []string{"u-1", "u-2"}}); w.Code != http.StatusNoContent {
+		t.Fatalf("add members: want 204, got %d (%s)", w.Code, w.Body.String())
+	}
+	// idempotent re-add -> still 204, no duplicate row
+	if w := adminReq(t, r, http.MethodPost, "/api/safe/v1/admin/departments/d-eng/members",
+		map[string]any{"user_ids": []string{"u-1"}}); w.Code != http.StatusNoContent {
+		t.Fatalf("re-add: want 204, got %d", w.Code)
+	}
+	var n int64
+	db.Model(&model.UserDepartment{}).Where("department_id = ?", "d-eng").Count(&n)
+	if n != 2 {
+		t.Fatalf("membership rows = %d, want 2 (idempotent)", n)
+	}
+
+	// GET members reflects the writes
+	w := adminReq(t, r, http.MethodGet, "/api/safe/v1/admin/departments/d-eng/members", nil)
+	var mem struct {
+		Total int `json:"total"`
+	}
+	_ = json.Unmarshal(w.Body.Bytes(), &mem)
+	if mem.Total != 2 {
+		t.Errorf("members total = %d, want 2", mem.Total)
+	}
+
+	// user detail shows the department
+	w = adminReq(t, r, http.MethodGet, "/api/safe/v1/admin/users/u-1", nil)
+	var detail struct {
+		Departments []string `json:"departments"`
+	}
+	_ = json.Unmarshal(w.Body.Bytes(), &detail)
+	if len(detail.Departments) != 1 || detail.Departments[0] != "d-eng" {
+		t.Errorf("user departments = %v", detail.Departments)
+	}
+
+	// unknown user -> 400 (nothing written)
+	if w := adminReq(t, r, http.MethodPost, "/api/safe/v1/admin/departments/d-eng/members",
+		map[string]any{"user_ids": []string{"ghost"}}); w.Code != http.StatusBadRequest {
+		t.Errorf("unknown user: want 400, got %d (%s)", w.Code, w.Body.String())
+	}
+	// unknown department -> 404
+	if w := adminReq(t, r, http.MethodPost, "/api/safe/v1/admin/departments/ghost/members",
+		map[string]any{"user_ids": []string{"u-1"}}); w.Code != http.StatusNotFound {
+		t.Errorf("unknown dept: want 404, got %d", w.Code)
+	}
+
+	// remove one member (idempotent: a non-member id is ignored)
+	if w := adminReq(t, r, http.MethodDelete, "/api/safe/v1/admin/departments/d-eng/members",
+		map[string]any{"user_ids": []string{"u-1", "never-was"}}); w.Code != http.StatusNoContent {
+		t.Fatalf("remove member: want 204, got %d", w.Code)
+	}
+	db.Model(&model.UserDepartment{}).Where("department_id = ?", "d-eng").Count(&n)
+	if n != 1 {
+		t.Errorf("after remove rows = %d, want 1", n)
+	}
+
+	// still one member -> department delete remains blocked (409)
+	if w := adminReq(t, r, http.MethodDelete, "/api/safe/v1/admin/departments/d-eng", nil); w.Code != http.StatusConflict {
+		t.Errorf("delete dept with member: want 409, got %d", w.Code)
+	}
+}
+
+func TestAuditTrail(t *testing.T) {
+	r, _, db, _ := newAdminServer(t)
+
+	// three mutations: create dept (POST, no :id), rename it (PUT, :id), and
+	// delete a ghost user (DELETE, :id -> 404 but still audited).
+	adminReq(t, r, http.MethodPost, "/api/safe/v1/admin/departments",
+		map[string]any{"id": "d-1", "name": "Root"})
+	adminReq(t, r, http.MethodPut, "/api/safe/v1/admin/departments/d-1",
+		map[string]any{"name": "Renamed"})
+	adminReq(t, r, http.MethodDelete, "/api/safe/v1/admin/users/ghost", nil)
+	// a GET must NOT be audited (no feedback loop on the read path)
+	adminReq(t, r, http.MethodGet, "/api/safe/v1/admin/departments", nil)
+
+	var total int64
+	db.Model(&model.AuditLog{}).Count(&total)
+	if total != 3 {
+		t.Fatalf("audit rows = %d, want 3 (GET excluded)", total)
+	}
+
+	type logRow struct {
+		ActorID  string `json:"actor_id"`
+		Method   string `json:"method"`
+		Resource string `json:"resource"`
+		Action   string `json:"action"`
+		TargetID string `json:"target_id"`
+		Status   int    `json:"status"`
+	}
+	type listResp struct {
+		Logs  []logRow `json:"logs"`
+		Total int      `json:"total"`
+	}
+
+	// filter by resource=users -> the single ghost-delete, recorded with its 404
+	w := adminReq(t, r, http.MethodGet, "/api/safe/v1/admin/audit-logs?resource=users", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("list audit: %d (%s)", w.Code, w.Body.String())
+	}
+	var users listResp
+	_ = json.Unmarshal(w.Body.Bytes(), &users)
+	if users.Total != 1 || len(users.Logs) != 1 {
+		t.Fatalf("resource=users: total=%d len=%d", users.Total, len(users.Logs))
+	}
+	got := users.Logs[0]
+	if got.ActorID != adminSub || got.Method != http.MethodDelete || got.Action != "users" ||
+		got.TargetID != "ghost" || got.Status != http.StatusNotFound {
+		t.Errorf("ghost-delete entry = %+v", got)
+	}
+
+	// filter by resource=departments -> the create + rename
+	w = adminReq(t, r, http.MethodGet, "/api/safe/v1/admin/audit-logs?resource=departments", nil)
+	var depts listResp
+	_ = json.Unmarshal(w.Body.Bytes(), &depts)
+	if depts.Total != 2 {
+		t.Errorf("resource=departments: total=%d, want 2", depts.Total)
+	}
+}
+
+func TestUserDepartmentInlineSet(t *testing.T) {
+	r, _, db, _ := newAdminServer(t)
+	db.Create(&model.Department{ID: "d-1", Name: "D1"})
+	db.Create(&model.Department{ID: "d-2", Name: "D2"})
+
+	// create with department_ids
+	w := adminReq(t, r, http.MethodPost, "/api/safe/v1/admin/users",
+		map[string]any{"id": "u-1", "account": "alice", "name": "Alice",
+			"department_ids": []string{"d-1", "d-2"}})
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create: want 201, got %d (%s)", w.Code, w.Body.String())
+	}
+	var n int64
+	db.Model(&model.UserDepartment{}).Where("user_id = ?", "u-1").Count(&n)
+	if n != 2 {
+		t.Fatalf("memberships after create = %d, want 2", n)
+	}
+
+	// create with an unknown dept -> 400 and NO orphan user
+	w = adminReq(t, r, http.MethodPost, "/api/safe/v1/admin/users",
+		map[string]any{"id": "u-bad", "account": "bad", "department_ids": []string{"ghost"}})
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("create bad dept: want 400, got %d (%s)", w.Code, w.Body.String())
+	}
+	db.Model(&model.User{}).Where("id = ?", "u-bad").Count(&n)
+	if n != 0 {
+		t.Errorf("orphan user created on bad dept: %d", n)
+	}
+
+	// update REPLACES the set: u-1 -> only d-2
+	if w := adminReq(t, r, http.MethodPut, "/api/safe/v1/admin/users/u-1",
+		map[string]any{"department_ids": []string{"d-2"}}); w.Code != http.StatusNoContent {
+		t.Fatalf("replace depts: want 204, got %d (%s)", w.Code, w.Body.String())
+	}
+	var got []model.UserDepartment
+	db.Where("user_id = ?", "u-1").Find(&got)
+	if len(got) != 1 || got[0].DepartmentID != "d-2" {
+		t.Errorf("after replace = %v", got)
+	}
+
+	// empty array CLEARS memberships
+	if w := adminReq(t, r, http.MethodPut, "/api/safe/v1/admin/users/u-1",
+		map[string]any{"department_ids": []string{}}); w.Code != http.StatusNoContent {
+		t.Fatalf("clear depts: want 204, got %d", w.Code)
+	}
+	db.Model(&model.UserDepartment{}).Where("user_id = ?", "u-1").Count(&n)
+	if n != 0 {
+		t.Errorf("memberships after clear = %d, want 0", n)
+	}
+
+	// profile-only update (no department_ids key) is still accepted
+	if w := adminReq(t, r, http.MethodPut, "/api/safe/v1/admin/users/u-1",
+		map[string]any{"name": "Alicia"}); w.Code != http.StatusNoContent {
+		t.Errorf("profile-only update: want 204, got %d", w.Code)
+	}
+
+	// update with an unknown dept -> 400, prior set left untouched
+	db.Create(&model.UserDepartment{UserID: "u-1", DepartmentID: "d-1"})
+	if w := adminReq(t, r, http.MethodPut, "/api/safe/v1/admin/users/u-1",
+		map[string]any{"department_ids": []string{"d-1", "ghost"}}); w.Code != http.StatusBadRequest {
+		t.Errorf("update bad dept: want 400, got %d", w.Code)
+	}
+	db.Model(&model.UserDepartment{}).Where("user_id = ?", "u-1").Count(&n)
+	if n != 1 {
+		t.Errorf("memberships after failed update = %d, want 1 (unchanged)", n)
+	}
+
+	// department_ids-only update on an unknown user -> 404
+	if w := adminReq(t, r, http.MethodPut, "/api/safe/v1/admin/users/ghost",
+		map[string]any{"department_ids": []string{"d-1"}}); w.Code != http.StatusNotFound {
+		t.Errorf("depts update ghost user: want 404, got %d", w.Code)
 	}
 }

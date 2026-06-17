@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	"bkn-safe/internal/audit"
 	"bkn-safe/internal/auth"
 	"bkn-safe/internal/authz"
 	"bkn-safe/internal/directory"
@@ -21,6 +22,9 @@ type Deps struct {
 	Hydra     *auth.HydraAdmin
 	Directory *directory.Service
 	Users     *auth.UserStore
+	// Audit records admin-API mutations. When nil, the audit middleware and the
+	// audit-log read endpoint are not mounted (auditing off).
+	Audit *audit.Store
 	// TokenVerifier validates admin-API bearer tokens. Defaults to Hydra when
 	// nil (production); tests inject a stub.
 	TokenVerifier TokenVerifier
@@ -62,7 +66,15 @@ func New(deps Deps) *gin.Engine {
 	}
 	if deps.Enforcer != nil && verifier != nil && deps.Users != nil && deps.Directory != nil {
 		admin := r.Group("/api/safe/v1/admin", RequireAdmin(verifier, deps.Enforcer))
-		registerUserAdmin(admin, deps.Users, deps.Enforcer)
+		// Audit every mutating admin request. Use() must precede the route
+		// registrations below: gin snapshots the group's handler chain at
+		// register time. The middleware sits after RequireAdmin, so it only runs
+		// for authenticated callers (failed-auth 401/403 are not audited).
+		if deps.Audit != nil {
+			admin.Use(auditMiddleware(deps.Audit))
+			registerAuditReads(admin, deps.Audit)
+		}
+		registerUserAdmin(admin, deps.Users, deps.Enforcer, deps.Directory)
 		registerAdminReads(admin, deps.Directory)
 		registerDeptAdmin(admin, deps.Directory)
 		registerRoleBindings(admin, deps.Enforcer, deps.DB)

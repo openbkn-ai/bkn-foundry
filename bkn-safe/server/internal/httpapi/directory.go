@@ -351,4 +351,52 @@ func registerDeptAdmin(g *gin.RouterGroup, dir *directory.Service) {
 		}
 		c.Status(http.StatusNoContent)
 	})
+
+	// POST /departments/:id/members — assign users to the department (the write
+	// counterpart of GET .../members). Idempotent. { user_ids:[...] }
+	// 404 if the department is unknown; 400 if any user id is unknown (in which
+	// case nothing is written).
+	g.POST("/departments/:id/members", func(c *gin.Context) {
+		var req struct {
+			UserIDs []string `json:"user_ids" binding:"required"`
+		}
+		if !bind(c, &req) {
+			return
+		}
+		err := dir.AddDepartmentMembers(c.Request.Context(), c.Param("id"), req.UserIDs)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "department not found"})
+			return
+		}
+		if errors.Is(err, directory.ErrUnknownUser) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		c.Status(http.StatusNoContent)
+	})
+
+	// DELETE /departments/:id/members — remove users from the department.
+	// Idempotent. { user_ids:[...] }. 404 if the department is unknown.
+	g.DELETE("/departments/:id/members", func(c *gin.Context) {
+		var req struct {
+			UserIDs []string `json:"user_ids" binding:"required"`
+		}
+		if !bind(c, &req) {
+			return
+		}
+		err := dir.RemoveDepartmentMembers(c.Request.Context(), c.Param("id"), req.UserIDs)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "department not found"})
+			return
+		}
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		c.Status(http.StatusNoContent)
+	})
 }

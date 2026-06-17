@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"bkn-safe/config"
+	"bkn-safe/internal/audit"
 	"bkn-safe/internal/auth"
 	"bkn-safe/internal/authz"
 	"bkn-safe/internal/database"
@@ -59,6 +60,7 @@ func main() {
 		Hydra:     hydraAdmin,
 		Directory: dir,
 		Users:     userStore,
+		Audit:     audit.New(db),
 	})
 	slog.Info("bkn-safe listening", "addr", cfg.HTTPAddr)
 	if err := r.Run(cfg.HTTPAddr); err != nil {
