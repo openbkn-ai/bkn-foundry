@@ -18,6 +18,7 @@ import (
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/driveradapters/knlogicpropertyresolver"
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/driveradapters/knqueryobjectinstance"
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/driveradapters/knquerysubgraph"
+	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/driveradapters/knquerytools"
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/driveradapters/knretrieval"
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/driveradapters/knsearch"
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/driveradapters/mcp"
@@ -34,6 +35,7 @@ type restPublicHandler struct {
 	KnQuerySubgraphHandler         knquerysubgraph.KnQuerySubgraphHandler
 	KnSearchHandler                knsearch.KnSearchHandler
 	KnFindSkillsHandler            knfindskills.KnFindSkillsHandler
+	KnQueryToolsHandler            knquerytools.KnQueryToolsHandler
 	Logger                         interfaces.Logger
 }
 
@@ -49,6 +51,7 @@ func NewRestPublicHandler(logger interfaces.Logger) interfaces.HTTPRouterInterfa
 		KnQuerySubgraphHandler:         knquerysubgraph.NewKnQuerySubgraphHandler(),
 		KnSearchHandler:                knsearch.NewKnSearchHandler(),
 		KnFindSkillsHandler:            knfindskills.NewKnFindSkillsHandler(),
+		KnQueryToolsHandler:            knquerytools.NewKnQueryToolsHandler(),
 		Logger:                         logger,
 	}
 }
@@ -67,6 +70,11 @@ func (r *restPublicHandler) RegisterRouter(engine *gin.RouterGroup) {
 	engine.POST("/kn/search_schema", r.KnSearchHandler.SearchSchema)
 	engine.POST("/kn/kn_search", r.KnSearchHandler.KnSearch)
 	engine.POST("/kn/find_skills", r.KnFindSkillsHandler.FindSkills)
+
+	// 同时作为 MCP 工具 + operator-integration toolbox(OpenAPI HTTP)入口
+	engine.POST("/kn/run_sql", r.KnQueryToolsHandler.RunSQL)
+	engine.POST("/kn/list_knowledge_networks", r.KnQueryToolsHandler.ListKnowledgeNetworks)
+	engine.POST("/kn/get_kn_detail", r.KnQueryToolsHandler.GetKnDetail)
 
 	// MCP Server (Bearer token auth, supports Cursor/Claude Desktop)
 	// GET /mcp/info 返回自描述文档（工具目录 + 连接方式），其余走标准 MCP Streamable HTTP。

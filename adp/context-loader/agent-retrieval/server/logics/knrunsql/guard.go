@@ -4,7 +4,9 @@
 // Licensed under the Apache License, Version 2.0.
 // See the LICENSE file in the project root for details.
 
-package mcp
+// Package knrunsql provides the shared read-only SQL execution service used by
+// both the MCP run_sql tool and the internal REST endpoint.
+package knrunsql
 
 import (
 	"fmt"
@@ -12,17 +14,17 @@ import (
 	"strings"
 )
 
-// run_sql 工具的只读 SQL 守卫。
+// run_sql 只读 SQL 守卫。
 //
 // vega 的原始查询接口不校验语句类型（INSERT/UPDATE/DELETE/DDL 均会真正执行），
-// 对外只读 MCP 必须在工具层强制 SELECT-only。这里用「剥离注释与字符串字面量后再做词法判定」的
-// 方式做纵深防御：先消除可藏关键字的注释/字符串/占位符，再要求单语句、以 SELECT/WITH 开头、
-// 且不含任何写/DDL 关键字。它不是完整 SQL 解析器，但配合 vega 端的 LIMIT 兜底足以防住越权写。
+// 调用方必须强制 SELECT-only。这里用「剥离注释与字符串字面量后再做词法判定」做纵深防御：
+// 先消除可藏关键字的注释/字符串/占位符，再要求单语句、以 SELECT/WITH 开头、不含写/DDL 关键字。
+// 它不是完整 SQL 解析器，但配合 vega 端的 LIMIT 兜底足以防住越权写。
 
 var (
 	// resourcePlaceholderRe 与 vega extractResourceIDs 保持一致：{{.resource_id}} 或 {{resource_id}}。
 	resourcePlaceholderRe = regexp.MustCompile(`\{\{\.?(\w+)\}\}`)
-	// anyPlaceholderRe 用于在做关键字判定前把占位符整体替换掉，避免 {{.delete}} 之类内部词触发误判。
+	// anyPlaceholderRe 在关键字判定前把占位符整体替换掉，避免 {{.delete}} 之类内部词触发误判。
 	anyPlaceholderRe = regexp.MustCompile(`\{\{[^}]*\}\}`)
 	// startsWithSelectRe 允许前导空白与左括号（如 (SELECT ...) UNION ...）。
 	startsWithSelectRe = regexp.MustCompile(`(?is)^[\s(]*(SELECT|WITH)\b`)
@@ -30,8 +32,8 @@ var (
 	forbiddenKeywordRe = regexp.MustCompile(`(?i)\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|REPLACE|MERGE|UPSERT|CALL|EXEC|EXECUTE|RENAME|LOAD|COPY|INTO|ATTACH|DETACH|USE|VACUUM|ANALYZE|REFRESH|COMMENT|PREPARE|DEALLOCATE)\b`)
 )
 
-// extractResourceIDs 从 SQL 中提取所有 {{.resource_id}} 占位符内的 resource_id（去重，保序）。
-func extractResourceIDs(sql string) []string {
+// ExtractResourceIDs 从 SQL 中提取所有 {{.resource_id}} 占位符内的 resource_id（去重，保序）。
+func ExtractResourceIDs(sql string) []string {
 	matches := resourcePlaceholderRe.FindAllStringSubmatch(sql, -1)
 	ids := make([]string, 0, len(matches))
 	seen := make(map[string]bool)
@@ -96,8 +98,8 @@ func stripSQLNoise(sql string) string {
 	return b.String()
 }
 
-// ensureReadOnlySQL 校验 SQL 为单条只读 SELECT/WITH 查询；违规返回错误。
-func ensureReadOnlySQL(sql string) error {
+// EnsureReadOnlySQL 校验 SQL 为单条只读 SELECT/WITH 查询；违规返回错误。
+func EnsureReadOnlySQL(sql string) error {
 	if strings.TrimSpace(sql) == "" {
 		return fmt.Errorf("sql is empty")
 	}
