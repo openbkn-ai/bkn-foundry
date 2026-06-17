@@ -74,6 +74,10 @@ func (m *mockBknBackend) GetKnowledgeNetworkDetail(ctx context.Context, knID str
 	return m.networkDetail, m.networkError
 }
 
+func (m *mockBknBackend) ListKnowledgeNetworks(ctx context.Context, req *interfaces.ListKnReq) (*interfaces.ListKnResp, error) {
+	return &interfaces.ListKnResp{}, nil
+}
+
 func (m *mockBknBackend) SearchObjectTypes(ctx context.Context, req *interfaces.QueryConceptsReq) (*interfaces.ObjectTypeConcepts, error) {
 	m.objectTypesReq = req
 	return m.objectTypesResp, m.objectTypesError

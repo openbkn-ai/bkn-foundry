@@ -26,11 +26,19 @@ type QueryObjectInstancesReq struct {
 	Cond               *KnCondition `json:"condition"`                                     // Retrieval conditions
 	Limit              int          `json:"limit" validate:"min=1,max=10000" default:"10"` // Quantity limit, default 10, range 1-10000
 	Properties         []string     `json:"properties"`                                    // 指定返回的对象属性字段列表，默认返回所有属性
+	// SearchAfter 游标分页：传入上一页响应返回的 search_after，用于顺序拉取下一页；首次查询留空。
+	// 适用于对象索引 / 数据视图路径（顺翻，不跳页）。
+	SearchAfter []any `json:"search_after,omitempty"`
+	// Offset 偏移翻页：适用于资源（vega 表源）路径，支持跳到任意页；与 search_after 互斥。
+	Offset int `json:"offset,omitempty"`
 }
 
 type QueryObjectInstancesResp struct {
 	Data          []any          `json:"datas"`                 // List of object instances
 	ObjectConcept map[string]any `json:"object_type,omitempty"` // Object type definition，由 req.include_type_info 控制是否返回
+	TotalCount    int64          `json:"total_count,omitempty"` // 命中总数（need_total 时有效）
+	// SearchAfter 下一页游标：非空时把它作为下次请求的 search_after 传入以取下一页；为空表示无更多数据。
+	SearchAfter []any `json:"search_after,omitempty"`
 }
 
 // QueryLogicPropertiesReq Request for querying logic properties values

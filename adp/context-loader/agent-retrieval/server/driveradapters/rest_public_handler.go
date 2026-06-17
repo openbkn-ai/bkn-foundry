@@ -8,6 +8,7 @@ package driveradapters
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -68,5 +69,33 @@ func (r *restPublicHandler) RegisterRouter(engine *gin.RouterGroup) {
 	engine.POST("/kn/find_skills", r.KnFindSkillsHandler.FindSkills)
 
 	// MCP Server (Bearer token auth, supports Cursor/Claude Desktop)
-	engine.Any("/mcp/*path", gin.WrapH(r.MCPHandler))
+	// GET /mcp/info 返回自描述文档（工具目录 + 连接方式），其余走标准 MCP Streamable HTTP。
+	engine.Any("/mcp/*path", r.handleMCP)
+}
+
+// handleMCP 在 MCP catch-all 路由内分流：GET …/mcp/info 返回自描述文档，其余交给 MCP Server。
+func (r *restPublicHandler) handleMCP(c *gin.Context) {
+	if c.Request.Method == http.MethodGet && c.Param("path") == "/info" {
+		info, err := mcp.BuildMCPInfo(mcpEndpointURL(c.Request))
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, info)
+		return
+	}
+	r.MCPHandler.ServeHTTP(c.Writer, c.Request)
+}
+
+// mcpEndpointURL 依据请求推导本服务对外的 MCP 端点（去掉末尾的 /info）。
+func mcpEndpointURL(req *http.Request) string {
+	scheme := "http"
+	if req.TLS != nil {
+		scheme = "https"
+	}
+	if p := req.Header.Get("X-Forwarded-Proto"); p != "" {
+		scheme = p
+	}
+	base := strings.TrimSuffix(req.URL.Path, "/info")
+	return scheme + "://" + req.Host + base
 }

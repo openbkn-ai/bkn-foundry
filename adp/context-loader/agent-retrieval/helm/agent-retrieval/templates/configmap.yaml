@@ -43,6 +43,10 @@ data:
       private_protocol: {{ index .Values "depServices" "ontology-query" "privateProtocol" | quote }}
       private_host: {{ index .Values "depServices" "ontology-query" "privateHost" | quote }}
       private_port: {{ index .Values "depServices" "ontology-query" "privatePort" }}
+    vega:
+      private_protocol: {{ index .Values "depServices" "vega-backend" "privateProtocol" | quote }}
+      private_host: {{ index .Values "depServices" "vega-backend" "privateHost" | quote }}
+      private_port: {{ index .Values "depServices" "vega-backend" "privatePort" }}
     operator_integration:
       private_protocol: {{ index .Values "depServices" "agent-operator-integration" "privateProtocol" | quote }}
       private_host: {{ index .Values "depServices" "agent-operator-integration" "privateHost" | quote }}

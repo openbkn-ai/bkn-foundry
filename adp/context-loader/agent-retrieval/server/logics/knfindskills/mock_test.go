@@ -59,6 +59,10 @@ func (m *testBknBackend) GetKnowledgeNetworkDetail(ctx context.Context, knID str
 	return nil, nil
 }
 
+func (m *testBknBackend) ListKnowledgeNetworks(ctx context.Context, req *interfaces.ListKnReq) (*interfaces.ListKnResp, error) {
+	return &interfaces.ListKnResp{}, nil
+}
+
 func (m *testBknBackend) SearchObjectTypes(ctx context.Context, req *interfaces.QueryConceptsReq) (*interfaces.ObjectTypeConcepts, error) {
 	return nil, nil
 }

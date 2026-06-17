@@ -1,0 +1,58 @@
+{
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "response_format": {
+        "type": "string",
+        "enum": ["json", "toon"],
+        "default": "toon",
+        "description": "文本格式：json 或 toon，默认 toon"
+      },
+      "name_pattern": {
+        "type": "string",
+        "description": "按知识网络名称模糊过滤，可选"
+      },
+      "limit": {
+        "type": "integer",
+        "description": "单页数量，默认 20"
+      },
+      "offset": {
+        "type": "integer",
+        "description": "偏移量，用于翻页，默认 0"
+      },
+      "sort": {
+        "type": "string",
+        "description": "排序字段，默认 update_time"
+      },
+      "direction": {
+        "type": "string",
+        "enum": ["asc", "desc"],
+        "description": "排序方向，默认 desc"
+      }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "entries": {
+        "type": "array",
+        "description": "知识网络列表",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": { "type": "string", "description": "知识网络 ID（即 kn_id，供其余查询工具使用）" },
+            "name": { "type": "string", "description": "知识网络名称" },
+            "description": { "type": "string", "description": "描述" },
+            "module_type": { "type": "string", "description": "模块类型" },
+            "business_domain": { "type": "string", "description": "业务域" }
+          },
+          "additionalProperties": true
+        }
+      },
+      "total_count": {
+        "type": "integer",
+        "description": "命中总数"
+      }
+    }
+  }
+}

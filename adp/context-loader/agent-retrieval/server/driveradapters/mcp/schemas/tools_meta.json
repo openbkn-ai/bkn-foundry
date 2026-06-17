@@ -5,7 +5,7 @@
   },
   "query_object_instance": {
     "name": "query_object_instance",
-    "description": "单对象类实例过滤查询。已知对象类与过滤条件时，查询实例列表。"
+    "description": "单对象类实例过滤查询。已知对象类与过滤条件时，查询实例列表。支持 search_after 游标顺序翻页（用上一页返回的 search_after 取下一页，不支持跳页）。"
   },
   "query_instance_subgraph": {
     "name": "query_instance_subgraph",
@@ -22,5 +22,17 @@
   "find_skills": {
     "name": "find_skills",
     "description": "技能召回。根据知识网络、对象类型、实例上下文等召回匹配的可用技能列表。"
+  },
+  "list_knowledge_networks": {
+    "name": "list_knowledge_networks",
+    "description": "列出可用的知识网络（返回 kn_id、名称、描述）。其余查询工具均需 kn_id，作为探索的第一步入口。"
+  },
+  "get_kn_detail": {
+    "name": "get_kn_detail",
+    "description": "获取知识网络完整详情（直接包装 bkn-backend）：概念组、对象类型（含 data_source.id）、关系类型、行动类型。已知 kn_id 时一次性拿全量 schema。"
+  },
+  "run_sql": {
+    "name": "run_sql",
+    "description": "对知识网络挂载的数据资源执行只读 SQL（Trino 方言）。表名用占位符 {{.resource_id}} 引用（resource_id 取自对象类的 data_source.id，可由 search_schema 获得）；vega 会解析成真实表并限量。仅允许 SELECT/WITH，禁止写入/DDL；单次查询的资源需同属一个数据目录（不支持跨目录 join）。"
   }
 }

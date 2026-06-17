@@ -29,6 +29,10 @@ func (s *stubSearchSchemaBknBackend) GetKnowledgeNetworkDetail(_ context.Context
 	return nil, nil
 }
 
+func (s *stubSearchSchemaBknBackend) ListKnowledgeNetworks(_ context.Context, _ *interfaces.ListKnReq) (*interfaces.ListKnResp, error) {
+	return &interfaces.ListKnResp{}, nil
+}
+
 func (s *stubSearchSchemaBknBackend) SearchObjectTypes(_ context.Context, _ *interfaces.QueryConceptsReq) (*interfaces.ObjectTypeConcepts, error) {
 	return nil, nil
 }

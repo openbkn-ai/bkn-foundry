@@ -114,6 +114,10 @@ depServices:
     privateHost: ontology-query-svc
     privatePort: 13018
     privateProtocol: http
+  vega-backend:
+    privateHost: vega-backend-svc
+    privatePort: 13014
+    privateProtocol: http
   agent-operator-integration:
     privateHost: agent-operator-integration
     privatePort: 9000
