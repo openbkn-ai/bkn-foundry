@@ -111,11 +111,12 @@ GET /api/safe/v1/admin/audit-logs
     {
       "id": "…",
       "actor_id": "<操作人 user id>",
-      "method": "DELETE",
-      "resource": "users",
-      "action": "users",
-      "target_id": "u-9",
-      "status": 404,            // 真实 HTTP 码，失败操作也记
+      "method": "POST",
+      "resource": "departments",
+      "action": "departments.members",
+      "target_id": "d-1",                    // 路由 :id（这里是部门 id）
+      "detail": "{\"user_ids\":[\"u-3\"]}",  // 脱敏后的请求体快照
+      "status": 204,
       "client_ip": "10.0.0.1",
       "created_at": "2026-06-17T08:30:00Z"
     }
@@ -126,7 +127,18 @@ GET /api/safe/v1/admin/audit-logs
 前端实现要点：
 
 - **谁做的**：`actor_id` 是 user id，不是名字。用 `POST /api/safe/v1/directory/names {user_ids:[...]}` 批量解析显示名。
-- **做了什么**：`action` 单独不区分增改删，靠 `method` 区分。建议前端做映射表渲染人话：
+- **对哪个对象**：`target_id` 是裸 id（部门/用户/角色 uuid），**必须解析成名字**再显示，否则就是一串 hex。按 `resource` 分流解析：
+  - `departments` → `POST /directory/names {department_ids:[target_id]}`
+  - `users` → `POST /directory/names {user_ids:[target_id]}`
+  - `roles` → 用 `GET /admin/roles` 的 id→name 映射
+  - `target_id` 为空（如新建类，无 `:id`）→ 对象列从 `detail` 取（见下）
+- **改了什么内容**：`detail` 是**脱敏 + 截断**的请求体 JSON 快照（字符串，需 `JSON.parse`）。`password`/`new_password`/`old_password` 已掩码成 `***`。用它补全 `target_id` 看不到的信息：
+  - 部门加人/移人 → `detail.user_ids`（再走 `/directory/names` 解析成人名，显示「把 张三、李四 加入 研发部」）
+  - 新建部门/用户 → `detail.name`（target_id 为空时对象列显示它，如「新建部门：研发部」）
+  - 改用户/部门 → `detail` 里有哪些 key 就是改了哪些字段
+  - 角色授权/撤权 → `detail.resource` + `detail.operations`
+  - `detail` 为 `""`（空体或非 JSON）→ 不显示内容行
+- **做了什么动作**：`action` 单独不区分增改删，靠 `method` 区分。建议前端做映射表渲染人话：
 
 | method | action | 显示 |
 |---|---|---|
