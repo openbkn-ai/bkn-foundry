@@ -52,6 +52,7 @@ type BuildTask struct {
 	VectorizedCount int64       `json:"vectorized_count"` // 已做向量数
 	SyncedMark      string      `json:"synced_mark"`      // 同步标记
 	ErrorMsg        string      `json:"error_msg,omitempty"`
+	FailureDetail   string      `json:"failure_detail,omitempty"` // 构建完成但部分文档向量化失败的明细，区别于 error_msg 的整任务硬失败
 	Creator         AccountInfo `json:"creator"`
 	CreateTime      int64       `json:"create_time"`
 	Updater         AccountInfo `json:"updater"`

@@ -331,9 +331,11 @@ func (eh *embeddingHandler) executeEmbedding(ctx context.Context, resource *inte
 					"status":          interfaces.BuildTaskStatusCompleted,
 					"vectorizedCount": finalCount,
 				}
-				// 重试耗尽的文档如实记录：完成态但向量不全时，error_msg 说明缺了哪些
+				// 重试耗尽的文档如实记录到 failure_detail（与 error_msg 区分：completed 但向量不全时，
+				// failure_detail 说明缺了哪些；error_msg 仅留给整任务硬失败）。显式置空以清除上一轮重建的陈旧明细。
+				updates["failureDetail"] = ""
 				if len(stillFailed) > 0 {
-					updates["errorMsg"] = formatVectorizeFailures(stillFailed)
+					updates["failureDetail"] = formatVectorizeFailures(stillFailed)
 				}
 				// 必须同时回写最终计数：常规回写有 30 秒批量窗口，
 				// 不在这里 flush 会丢最后一个窗口的进度（短任务界面会停在 0%）
