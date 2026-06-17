@@ -2624,6 +2624,492 @@
             "code": "",
             "dependencies": [],
             "dependencies_url": ""
+          },
+          {
+            "tool_id": "a82ef26d-7775-48be-bdc6-cd1d7f90867b",
+            "name": "run_sql",
+            "description": "对知识网络挂载的数据资源执行只读 SQL（Trino 方言）。表名用占位符 {{.resource_id}} 引用（resource_id 取自对象类的 data_source.id，可由 search_schema 获得）；vega 会解析成真实表并限量。仅允许 SELECT/WITH，禁止写入/DDL；单次查询的资源需同属一个数据目录（不支持跨目录 join）。",
+            "status": "enabled",
+            "metadata_type": "openapi",
+            "metadata": {
+              "version": "1839dd82-9cf3-4667-8748-27c2dcdabacd",
+              "summary": "run_sql",
+              "description": "对知识网络挂载的数据资源执行只读 SQL（Trino 方言）。表名用占位符 {{.resource_id}} 引用（resource_id 取自对象类的 data_source.id，可由 search_schema 获得）；vega 会解析成真实表并限量。仅允许 SELECT/WITH，禁止写入/DDL；单次查询的资源需同属一个数据目录（不支持跨目录 join）。",
+              "server_url": "http://agent-retrieval:30779",
+              "path": "/api/agent-retrieval/in/v1/kn/run_sql",
+              "method": "POST",
+              "create_time": 1776920840668983300,
+              "update_time": 1776920840668983300,
+              "create_user": "ede150ba-06f4-11f1-85aa-3a34099a4c4b",
+              "update_user": "ede150ba-06f4-11f1-85aa-3a34099a4c4b",
+              "api_spec": {
+                "parameters": [
+                  {
+                    "name": "x-account-id",
+                    "in": "header",
+                    "description": "账户ID，用于内部服务调用时传递账户信息",
+                    "required": false,
+                    "schema": {
+                      "type": "string"
+                    }
+                  },
+                  {
+                    "name": "x-account-type",
+                    "in": "header",
+                    "description": "账户类型：user(用户), app(应用), anonymous(匿名)",
+                    "required": false,
+                    "schema": {
+                      "enum": [
+                        "user",
+                        "app",
+                        "anonymous"
+                      ],
+                      "type": "string"
+                    }
+                  }
+                ],
+                "request_body": {
+                  "description": "",
+                  "content": {
+                    "application/json": {
+                      "schema": {
+                        "type": "object",
+                        "properties": {
+                          "response_format": {
+                            "type": "string",
+                            "enum": [
+                              "json",
+                              "toon"
+                            ],
+                            "default": "toon",
+                            "description": "文本格式：json 或 toon，默认 toon"
+                          },
+                          "sql": {
+                            "type": "string",
+                            "description": "只读 SQL（Trino 方言）。表名必须用占位符 {{.resource_id}} 引用，resource_id 取自对象类的 data_source.id（可经 search_schema 获得）。仅允许 SELECT / WITH，禁止任何写入与 DDL；不支持多语句；不支持跨数据目录 join（单次查询涉及的资源需同属一个 catalog）。vega 会自动限量（最多 10000 行）。"
+                          },
+                          "resource_type": {
+                            "type": "string",
+                            "description": "连接器类型（mysql / mariadb / postgresql）。留空则按 SQL 中第一个 {{.resource_id}} 自动解析，一般无需填写。"
+                          },
+                          "query_timeout": {
+                            "type": "integer",
+                            "description": "查询超时（秒），范围 1-3600，默认 60。可选。"
+                          }
+                        },
+                        "required": [
+                          "sql"
+                        ]
+                      }
+                    }
+                  },
+                  "required": true
+                },
+                "responses": [
+                  {
+                    "status_code": "200",
+                    "description": "ok",
+                    "content": {
+                      "application/json": {
+                        "schema": {
+                          "type": "object",
+                          "properties": {
+                            "columns": {
+                              "type": "array",
+                              "description": "结果列信息",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "type": {
+                                    "type": "string"
+                                  }
+                                },
+                                "additionalProperties": true
+                              }
+                            },
+                            "entries": {
+                              "type": "array",
+                              "description": "结果行",
+                              "items": {
+                                "type": "object",
+                                "additionalProperties": true
+                              }
+                            },
+                            "total_count": {
+                              "type": "integer",
+                              "description": "返回行数"
+                            },
+                            "warnings": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              },
+                              "description": "非致命告警（如资源已弃用）"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                ],
+                "components": null,
+                "callbacks": null,
+                "security": null,
+                "tags": null,
+                "external_docs": null
+              }
+            },
+            "use_rule": "",
+            "global_parameters": {
+              "name": "",
+              "description": "",
+              "required": false,
+              "in": "",
+              "type": "",
+              "value": null
+            },
+            "create_time": 1776920840668983300,
+            "update_time": 1776920840668983300,
+            "create_user": "ede150ba-06f4-11f1-85aa-3a34099a4c4b",
+            "update_user": "ede150ba-06f4-11f1-85aa-3a34099a4c4b",
+            "extend_info": null,
+            "resource_object": "tool",
+            "source_id": "1839dd82-9cf3-4667-8748-27c2dcdabacd",
+            "source_type": "openapi",
+            "script_type": "",
+            "code": "",
+            "dependencies": [],
+            "dependencies_url": ""
+          },
+          {
+            "tool_id": "863acc66-eb74-438a-bfe3-4db2e7def372",
+            "name": "list_knowledge_networks",
+            "description": "列出可用的知识网络（返回 kn_id、名称、描述）。其余查询工具均需 kn_id，作为探索的第一步入口。",
+            "status": "enabled",
+            "metadata_type": "openapi",
+            "metadata": {
+              "version": "262e6732-0759-4e62-8703-a52e84832006",
+              "summary": "list_knowledge_networks",
+              "description": "列出可用的知识网络（返回 kn_id、名称、描述）。其余查询工具均需 kn_id，作为探索的第一步入口。",
+              "server_url": "http://agent-retrieval:30779",
+              "path": "/api/agent-retrieval/in/v1/kn/list_knowledge_networks",
+              "method": "POST",
+              "create_time": 1776920840668983300,
+              "update_time": 1776920840668983300,
+              "create_user": "ede150ba-06f4-11f1-85aa-3a34099a4c4b",
+              "update_user": "ede150ba-06f4-11f1-85aa-3a34099a4c4b",
+              "api_spec": {
+                "parameters": [
+                  {
+                    "name": "x-account-id",
+                    "in": "header",
+                    "description": "账户ID，用于内部服务调用时传递账户信息",
+                    "required": false,
+                    "schema": {
+                      "type": "string"
+                    }
+                  },
+                  {
+                    "name": "x-account-type",
+                    "in": "header",
+                    "description": "账户类型：user(用户), app(应用), anonymous(匿名)",
+                    "required": false,
+                    "schema": {
+                      "enum": [
+                        "user",
+                        "app",
+                        "anonymous"
+                      ],
+                      "type": "string"
+                    }
+                  }
+                ],
+                "request_body": {
+                  "description": "",
+                  "content": {
+                    "application/json": {
+                      "schema": {
+                        "type": "object",
+                        "properties": {
+                          "response_format": {
+                            "type": "string",
+                            "enum": [
+                              "json",
+                              "toon"
+                            ],
+                            "default": "toon",
+                            "description": "文本格式：json 或 toon，默认 toon"
+                          },
+                          "name_pattern": {
+                            "type": "string",
+                            "description": "按知识网络名称模糊过滤，可选"
+                          },
+                          "limit": {
+                            "type": "integer",
+                            "description": "单页数量，默认 20"
+                          },
+                          "offset": {
+                            "type": "integer",
+                            "description": "偏移量，用于翻页，默认 0"
+                          },
+                          "sort": {
+                            "type": "string",
+                            "description": "排序字段，默认 update_time"
+                          },
+                          "direction": {
+                            "type": "string",
+                            "enum": [
+                              "asc",
+                              "desc"
+                            ],
+                            "description": "排序方向，默认 desc"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "required": true
+                },
+                "responses": [
+                  {
+                    "status_code": "200",
+                    "description": "ok",
+                    "content": {
+                      "application/json": {
+                        "schema": {
+                          "type": "object",
+                          "properties": {
+                            "entries": {
+                              "type": "array",
+                              "description": "知识网络列表",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string",
+                                    "description": "知识网络 ID（即 kn_id，供其余查询工具使用）"
+                                  },
+                                  "name": {
+                                    "type": "string",
+                                    "description": "知识网络名称"
+                                  },
+                                  "description": {
+                                    "type": "string",
+                                    "description": "描述"
+                                  },
+                                  "module_type": {
+                                    "type": "string",
+                                    "description": "模块类型"
+                                  },
+                                  "business_domain": {
+                                    "type": "string",
+                                    "description": "业务域"
+                                  }
+                                },
+                                "additionalProperties": true
+                              }
+                            },
+                            "total_count": {
+                              "type": "integer",
+                              "description": "命中总数"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                ],
+                "components": null,
+                "callbacks": null,
+                "security": null,
+                "tags": null,
+                "external_docs": null
+              }
+            },
+            "use_rule": "",
+            "global_parameters": {
+              "name": "",
+              "description": "",
+              "required": false,
+              "in": "",
+              "type": "",
+              "value": null
+            },
+            "create_time": 1776920840668983300,
+            "update_time": 1776920840668983300,
+            "create_user": "ede150ba-06f4-11f1-85aa-3a34099a4c4b",
+            "update_user": "ede150ba-06f4-11f1-85aa-3a34099a4c4b",
+            "extend_info": null,
+            "resource_object": "tool",
+            "source_id": "262e6732-0759-4e62-8703-a52e84832006",
+            "source_type": "openapi",
+            "script_type": "",
+            "code": "",
+            "dependencies": [],
+            "dependencies_url": ""
+          },
+          {
+            "tool_id": "9ab97b0d-8a65-4c23-bef6-f899a6a1f5f9",
+            "name": "get_kn_detail",
+            "description": "获取知识网络完整详情（直接包装 bkn-backend）：概念组、对象类型（含 data_source.id）、关系类型、行动类型。已知 kn_id 时一次性拿全量 schema。",
+            "status": "enabled",
+            "metadata_type": "openapi",
+            "metadata": {
+              "version": "b7c34d4e-b7e7-4e19-b667-1fde349bfcd9",
+              "summary": "get_kn_detail",
+              "description": "获取知识网络完整详情（直接包装 bkn-backend）：概念组、对象类型（含 data_source.id）、关系类型、行动类型。已知 kn_id 时一次性拿全量 schema。",
+              "server_url": "http://agent-retrieval:30779",
+              "path": "/api/agent-retrieval/in/v1/kn/get_kn_detail",
+              "method": "POST",
+              "create_time": 1776920840668983300,
+              "update_time": 1776920840668983300,
+              "create_user": "ede150ba-06f4-11f1-85aa-3a34099a4c4b",
+              "update_user": "ede150ba-06f4-11f1-85aa-3a34099a4c4b",
+              "api_spec": {
+                "parameters": [
+                  {
+                    "name": "x-account-id",
+                    "in": "header",
+                    "description": "账户ID，用于内部服务调用时传递账户信息",
+                    "required": false,
+                    "schema": {
+                      "type": "string"
+                    }
+                  },
+                  {
+                    "name": "x-account-type",
+                    "in": "header",
+                    "description": "账户类型：user(用户), app(应用), anonymous(匿名)",
+                    "required": false,
+                    "schema": {
+                      "enum": [
+                        "user",
+                        "app",
+                        "anonymous"
+                      ],
+                      "type": "string"
+                    }
+                  }
+                ],
+                "request_body": {
+                  "description": "",
+                  "content": {
+                    "application/json": {
+                      "schema": {
+                        "type": "object",
+                        "properties": {
+                          "response_format": {
+                            "type": "string",
+                            "enum": [
+                              "json",
+                              "toon"
+                            ],
+                            "default": "toon",
+                            "description": "文本格式：json 或 toon，默认 toon"
+                          },
+                          "kn_id": {
+                            "type": "string",
+                            "description": "知识网络 ID。也可改用 X-Kn-ID 请求头传入。"
+                          }
+                        },
+                        "required": [
+                          "kn_id"
+                        ]
+                      }
+                    }
+                  },
+                  "required": true
+                },
+                "responses": [
+                  {
+                    "status_code": "200",
+                    "description": "ok",
+                    "content": {
+                      "application/json": {
+                        "schema": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string",
+                              "description": "知识网络 ID"
+                            },
+                            "name": {
+                              "type": "string",
+                              "description": "知识网络名称"
+                            },
+                            "comment": {
+                              "type": "string",
+                              "description": "描述"
+                            },
+                            "concept_groups": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "additionalProperties": true
+                              },
+                              "description": "概念组"
+                            },
+                            "object_types": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "additionalProperties": true
+                              },
+                              "description": "对象类型（含 data_source 等）"
+                            },
+                            "relation_types": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "additionalProperties": true
+                              },
+                              "description": "关系类型"
+                            },
+                            "action_types": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "additionalProperties": true
+                              },
+                              "description": "行动类型"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                ],
+                "components": null,
+                "callbacks": null,
+                "security": null,
+                "tags": null,
+                "external_docs": null
+              }
+            },
+            "use_rule": "",
+            "global_parameters": {
+              "name": "",
+              "description": "",
+              "required": false,
+              "in": "",
+              "type": "",
+              "value": null
+            },
+            "create_time": 1776920840668983300,
+            "update_time": 1776920840668983300,
+            "create_user": "ede150ba-06f4-11f1-85aa-3a34099a4c4b",
+            "update_user": "ede150ba-06f4-11f1-85aa-3a34099a4c4b",
+            "extend_info": null,
+            "resource_object": "tool",
+            "source_id": "b7c34d4e-b7e7-4e19-b667-1fde349bfcd9",
+            "source_type": "openapi",
+            "script_type": "",
+            "code": "",
+            "dependencies": [],
+            "dependencies_url": ""
           }
         ],
         "create_time": 1776920840665934300,
