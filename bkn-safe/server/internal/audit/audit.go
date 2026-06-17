@@ -31,6 +31,7 @@ type Entry struct {
 	Resource string
 	Action   string
 	TargetID string
+	Detail   string
 	Status   int
 	ClientIP string
 }
@@ -45,6 +46,7 @@ func (s *Store) Record(ctx context.Context, e Entry) error {
 		Resource: e.Resource,
 		Action:   e.Action,
 		TargetID: e.TargetID,
+		Detail:   e.Detail,
 		Status:   e.Status,
 		ClientIP: e.ClientIP,
 	}
