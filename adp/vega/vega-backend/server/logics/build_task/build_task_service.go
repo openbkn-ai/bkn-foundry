@@ -134,14 +134,20 @@ func (bts *buildTaskService) CreateBuildTask(ctx context.Context, req *interface
 	if req.EmbeddingModel == "" && req.EmbeddingFields != "" {
 		req.EmbeddingModel = interfaces.DEFAULT_EMBEDDING_MODEL
 	}
-	if req.EmbeddingModel != "" && req.ModelDimensions == 0 {
-		embeddingModel, err := bts.mfa.GetModelByName(ctx, req.EmbeddingModel)
-		if err != nil {
+	if req.EmbeddingModel != "" {
+		// embedding_model 统一归一化为模型 ID 存储：传入是模型名则解析为 ID 并补全维度；
+		// 传入已是模型 ID 时 GetModelByName 按名查不到（err != nil），此时若已带维度则原样保留为 ID。
+		// 既解析不到又没维度则无法建向量索引，按错误处理。
+		if embeddingModel, err := bts.mfa.GetModelByName(ctx, req.EmbeddingModel); err == nil {
+			req.EmbeddingModel = embeddingModel.ModelID
+			if req.ModelDimensions == 0 {
+				req.ModelDimensions = embeddingModel.EmbeddingDim
+			}
+		} else if req.ModelDimensions == 0 {
 			span.SetStatus(codes.Error, "Get model by name failed")
 			return "", rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_CreateFailed).
 				WithErrorDetails(err.Error())
 		}
-		req.ModelDimensions = embeddingModel.EmbeddingDim
 	}
 
 	now := time.Now().UnixMilli()
@@ -414,14 +420,19 @@ func (bts *buildTaskService) UpdateBuildTaskConfig(ctx context.Context, taskID s
 	if embeddingModel == "" && req.EmbeddingFields != "" {
 		embeddingModel = interfaces.DEFAULT_EMBEDDING_MODEL
 	}
-	if embeddingModel != "" && modelDimensions == 0 {
-		model, err := bts.mfa.GetModelByName(ctx, embeddingModel)
-		if err != nil {
+	if embeddingModel != "" {
+		// 归一化逻辑与 CreateBuildTask 对齐：embedding_model 统一存模型 ID。
+		// 传入是模型名则解析为 ID 并补全维度；传入已是 ID 时按名查不到，已带维度则原样保留。
+		if model, err := bts.mfa.GetModelByName(ctx, embeddingModel); err == nil {
+			embeddingModel = model.ModelID
+			if modelDimensions == 0 {
+				modelDimensions = model.EmbeddingDim
+			}
+		} else if modelDimensions == 0 {
 			span.SetStatus(codes.Error, "Get model by name failed")
 			return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_CreateFailed).
 				WithErrorDetails(err.Error())
 		}
-		modelDimensions = model.EmbeddingDim
 	}
 
 	// 更新配置并置回 init：worker 出队执行时落 running，并对 full 重建 drop 旧索引
