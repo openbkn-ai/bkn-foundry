@@ -7,8 +7,10 @@ package directory
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"bkn-safe/internal/model"
 )
@@ -18,6 +20,15 @@ import (
 // them first (no cascade: deleting a non-empty subtree is too blunt to do
 // implicitly).
 var ErrDepartmentNotEmpty = errors.New("department not empty")
+
+// ErrUnknownUser is returned by AddDepartmentMembers when one or more user ids
+// don't reference an existing user. The membership would dangle (no FK), so the
+// whole call is rejected and nothing is written.
+var ErrUnknownUser = errors.New("unknown user id")
+
+// ErrUnknownDepartment is returned by SetUserDepartments/DepartmentsExist when
+// one or more department ids don't reference an existing department.
+var ErrUnknownDepartment = errors.New("unknown department id")
 
 // Service provides directory queries over GORM.
 type Service struct {
@@ -227,6 +238,166 @@ func (s *Service) DepartmentMembers(ctx context.Context, deptID string) ([]UserS
 		return nil, err
 	}
 	return out, nil
+}
+
+// AddDepartmentMembers maps the given users into the department. Idempotent: a
+// user already in the department is left as-is (no duplicate, no error). The
+// department must exist (else gorm.ErrRecordNotFound) and every user id must
+// reference an existing user (else ErrUnknownUser) — nothing is written when
+// either check fails.
+func (s *Service) AddDepartmentMembers(ctx context.Context, deptID string, userIDs []string) error {
+	if err := s.requireDepartment(ctx, deptID); err != nil {
+		return err
+	}
+	ids := dedupeNonEmpty(userIDs)
+	if len(ids) == 0 {
+		return nil
+	}
+	if err := s.requireUsersExist(ctx, ids); err != nil {
+		return err
+	}
+	rows := make([]model.UserDepartment, 0, len(ids))
+	for _, uid := range ids {
+		rows = append(rows, model.UserDepartment{UserID: uid, DepartmentID: deptID})
+	}
+	// Composite PK (user_id, department_id): skip rows already present so the
+	// call is idempotent rather than erroring on a duplicate key.
+	return s.db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(&rows).Error
+}
+
+// RemoveDepartmentMembers removes the given users from the department.
+// Idempotent: a user not currently in the department is silently ignored. The
+// department must exist (else gorm.ErrRecordNotFound).
+func (s *Service) RemoveDepartmentMembers(ctx context.Context, deptID string, userIDs []string) error {
+	if err := s.requireDepartment(ctx, deptID); err != nil {
+		return err
+	}
+	ids := dedupeNonEmpty(userIDs)
+	if len(ids) == 0 {
+		return nil
+	}
+	return s.db.WithContext(ctx).
+		Where("department_id = ? AND user_id IN ?", deptID, ids).
+		Delete(&model.UserDepartment{}).Error
+}
+
+// requireDepartment returns gorm.ErrRecordNotFound when no department has the id.
+func (s *Service) requireDepartment(ctx context.Context, id string) error {
+	var n int64
+	if err := s.db.WithContext(ctx).Model(&model.Department{}).Where("id = ?", id).Count(&n).Error; err != nil {
+		return err
+	}
+	if n == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
+// requireUsersExist returns ErrUnknownUser (wrapping the missing ids) unless
+// every id references an existing user row.
+func (s *Service) requireUsersExist(ctx context.Context, ids []string) error {
+	var found []string
+	if err := s.db.WithContext(ctx).Model(&model.User{}).
+		Where("id IN ?", ids).Pluck("id", &found).Error; err != nil {
+		return err
+	}
+	if len(found) == len(ids) {
+		return nil
+	}
+	have := make(map[string]bool, len(found))
+	for _, id := range found {
+		have[id] = true
+	}
+	missing := make([]string, 0)
+	for _, id := range ids {
+		if !have[id] {
+			missing = append(missing, id)
+		}
+	}
+	return fmt.Errorf("%w: %v", ErrUnknownUser, missing)
+}
+
+// dedupeNonEmpty returns the input with empty strings and duplicates removed,
+// preserving first-seen order.
+func dedupeNonEmpty(ids []string) []string {
+	seen := make(map[string]bool, len(ids))
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		out = append(out, id)
+	}
+	return out
+}
+
+// SetUserDepartments REPLACES the user's department memberships with exactly the
+// given set (the user-centric counterpart of the department member endpoints):
+// an empty/absent list clears all of the user's memberships. Idempotent. The
+// user must exist (else gorm.ErrRecordNotFound) and every department id must
+// reference an existing department (else ErrUnknownDepartment) — the whole
+// replace is transactional, so a bad id leaves the prior memberships untouched.
+func (s *Service) SetUserDepartments(ctx context.Context, userID string, deptIDs []string) error {
+	if err := s.requireUser(ctx, userID); err != nil {
+		return err
+	}
+	ids := dedupeNonEmpty(deptIDs)
+	if err := s.DepartmentsExist(ctx, ids); err != nil {
+		return err
+	}
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("user_id = ?", userID).Delete(&model.UserDepartment{}).Error; err != nil {
+			return err
+		}
+		if len(ids) == 0 {
+			return nil
+		}
+		rows := make([]model.UserDepartment, 0, len(ids))
+		for _, did := range ids {
+			rows = append(rows, model.UserDepartment{UserID: userID, DepartmentID: did})
+		}
+		return tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&rows).Error
+	})
+}
+
+// requireUser returns gorm.ErrRecordNotFound when no user has the id.
+func (s *Service) requireUser(ctx context.Context, id string) error {
+	var n int64
+	if err := s.db.WithContext(ctx).Model(&model.User{}).Where("id = ?", id).Count(&n).Error; err != nil {
+		return err
+	}
+	if n == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
+// DepartmentsExist returns ErrUnknownDepartment (wrapping the missing ids) unless
+// every id references an existing department. An empty list is a no-op (nil).
+func (s *Service) DepartmentsExist(ctx context.Context, ids []string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	var found []string
+	if err := s.db.WithContext(ctx).Model(&model.Department{}).
+		Where("id IN ?", ids).Pluck("id", &found).Error; err != nil {
+		return err
+	}
+	if len(found) == len(ids) {
+		return nil
+	}
+	have := make(map[string]bool, len(found))
+	for _, id := range found {
+		have[id] = true
+	}
+	missing := make([]string, 0)
+	for _, id := range ids {
+		if !have[id] {
+			missing = append(missing, id)
+		}
+	}
+	return fmt.Errorf("%w: %v", ErrUnknownDepartment, missing)
 }
 
 // CreateDepartment inserts a new department node. The caller supplies the id

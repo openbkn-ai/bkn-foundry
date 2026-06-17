@@ -9,26 +9,42 @@ import (
 
 	"bkn-safe/internal/auth"
 	"bkn-safe/internal/authz"
+	"bkn-safe/internal/directory"
 	"bkn-safe/internal/model"
 )
 
 // registerUserAdmin mounts the user-write surface bkn-safe needs to own
 // identities: create/update/delete a local user and set a password. Role
-// assignment is the authz role-binding endpoint. The enforcer is used to purge
-// an accessor's casbin bindings/grants on delete. Mounted under the admin group
+// assignment is the authz role-binding endpoint; department membership can be
+// set inline (department_ids) or via the department member endpoints. The
+// enforcer is used to purge an accessor's casbin bindings/grants on delete; the
+// directory service applies department_ids. Mounted under the admin group
 // (RequireAdmin) — these are privileged, token-gated operations.
-func registerUserAdmin(g *gin.RouterGroup, users *auth.UserStore, e *authz.Enforcer) {
-	// POST /users — create a local (password) user. -> { id }
+func registerUserAdmin(g *gin.RouterGroup, users *auth.UserStore, e *authz.Enforcer, dir *directory.Service) {
+	// POST /users — create a local (password) user, optionally placing it in
+	// departments (department_ids). -> { id }
 	g.POST("/users", func(c *gin.Context) {
 		var req struct {
-			ID          string `json:"id"`
-			Account     string `json:"account" binding:"required"`
-			Name        string `json:"name"`
-			Email       string `json:"email"`
-			Password    string `json:"password"` // optional: defaults to the platform initial password
-			AccountType string `json:"account_type"`
+			ID            string   `json:"id"`
+			Account       string   `json:"account" binding:"required"`
+			Name          string   `json:"name"`
+			Email         string   `json:"email"`
+			Telephone     string   `json:"telephone"`
+			Password      string   `json:"password"` // optional: defaults to the platform initial password
+			AccountType   string   `json:"account_type"`
+			DepartmentIDs []string `json:"department_ids"` // optional: initial department membership
 		}
 		if !bind(c, &req) {
+			return
+		}
+		ctx := c.Request.Context()
+		// Validate departments BEFORE creating the user, so an unknown id fails
+		// the request without leaving an orphaned user behind.
+		if err := dir.DepartmentsExist(ctx, req.DepartmentIDs); errors.Is(err, directory.ErrUnknownDepartment) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		} else if err != nil {
+			serverError(c, err)
 			return
 		}
 		if req.ID == "" {
@@ -45,11 +61,17 @@ func registerUserAdmin(g *gin.RouterGroup, users *auth.UserStore, e *authz.Enfor
 		}
 		u := &model.User{
 			ID: req.ID, Account: req.Account, Name: req.Name, Email: req.Email,
-			Enabled: true, AccountType: at,
+			Telephone: req.Telephone, Enabled: true, AccountType: at,
 		}
-		if err := users.CreateLocalUser(c.Request.Context(), u, req.Password); err != nil {
+		if err := users.CreateLocalUser(ctx, u, req.Password); err != nil {
 			serverError(c, err)
 			return
+		}
+		if len(req.DepartmentIDs) > 0 {
+			if err := dir.SetUserDepartments(ctx, u.ID, req.DepartmentIDs); err != nil {
+				serverError(c, err)
+				return
+			}
 		}
 		c.JSON(http.StatusCreated, gin.H{"id": u.ID})
 	})
@@ -70,21 +92,26 @@ func registerUserAdmin(g *gin.RouterGroup, users *auth.UserStore, e *authz.Enfor
 		c.Status(http.StatusNoContent)
 	})
 
-	// PUT /users/:id — update mutable profile fields. Only the fields present in
-	// the body are changed (account and password are not editable here). A bool
-	// "enabled" is always applied (no way to omit a primitive in JSON), so this
-	// doubles as the enable/disable path.
+	// PUT /users/:id — update mutable profile fields and/or department membership.
+	// Only the keys present in the body are changed (account and password are not
+	// editable here). A bool "enabled" is always applied when present, so this
+	// doubles as the enable/disable path. "department_ids", when present, REPLACES
+	// the user's full department set (an empty array clears it); omit the key to
+	// leave memberships untouched.
 	g.PUT("/users/:id", func(c *gin.Context) {
 		var req struct {
-			Name        *string `json:"name"`
-			Email       *string `json:"email"`
-			Telephone   *string `json:"telephone"`
-			Enabled     *bool   `json:"enabled"`
-			AccountType *string `json:"account_type"`
+			Name          *string   `json:"name"`
+			Email         *string   `json:"email"`
+			Telephone     *string   `json:"telephone"`
+			Enabled       *bool     `json:"enabled"`
+			AccountType   *string   `json:"account_type"`
+			DepartmentIDs *[]string `json:"department_ids"`
 		}
 		if !bind(c, &req) {
 			return
 		}
+		ctx := c.Request.Context()
+		id := c.Param("id")
 		fields := map[string]any{}
 		if req.Name != nil {
 			fields["name"] = *req.Name
@@ -101,18 +128,41 @@ func registerUserAdmin(g *gin.RouterGroup, users *auth.UserStore, e *authz.Enfor
 		if req.AccountType != nil {
 			fields["account_type"] = *req.AccountType
 		}
-		if len(fields) == 0 {
+		if len(fields) == 0 && req.DepartmentIDs == nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "no updatable fields provided"})
 			return
 		}
-		err := users.UpdateUser(c.Request.Context(), c.Param("id"), fields)
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
-			return
+		// Validate departments up-front so a bad id fails before any write lands.
+		if req.DepartmentIDs != nil {
+			if err := dir.DepartmentsExist(ctx, *req.DepartmentIDs); errors.Is(err, directory.ErrUnknownDepartment) {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			} else if err != nil {
+				serverError(c, err)
+				return
+			}
 		}
-		if err != nil {
-			serverError(c, err)
-			return
+		if len(fields) > 0 {
+			err := users.UpdateUser(ctx, id, fields)
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+				return
+			}
+			if err != nil {
+				serverError(c, err)
+				return
+			}
+		}
+		if req.DepartmentIDs != nil {
+			err := dir.SetUserDepartments(ctx, id, *req.DepartmentIDs)
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+				return
+			}
+			if err != nil {
+				serverError(c, err)
+				return
+			}
 		}
 		c.Status(http.StatusNoContent)
 	})

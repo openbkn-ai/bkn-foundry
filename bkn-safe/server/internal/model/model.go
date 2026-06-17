@@ -30,22 +30,22 @@ const (
 // User is an identity in the directory. Password lives here for local users;
 // LDAP users authenticate against the external directory (PasswordHash empty).
 type User struct {
-	ID           string      `gorm:"primaryKey;size:64"`
-	Account      string      `gorm:"uniqueIndex;size:128"` // login name
-	Name         string      `gorm:"size:255"`
-	Email        string      `gorm:"size:255;index"`
-	Telephone    string      `gorm:"size:64"`
+	ID        string `gorm:"primaryKey;size:64"`
+	Account   string `gorm:"uniqueIndex;size:128"` // login name
+	Name      string `gorm:"size:255"`
+	Email     string `gorm:"size:255;index"`
+	Telephone string `gorm:"size:64"`
 	// No GORM "default:true": a default would override an explicit Enabled=false
 	// on insert (GORM treats the bool zero value as unset). Callers set Enabled.
 	Enabled      bool
-	Source       Source `gorm:"size:16;default:local"`
+	Source       Source      `gorm:"size:16;default:local"`
 	AccountType  AccountType `gorm:"size:16;default:other"`
 	PasswordHash string      `gorm:"size:255"` // bcrypt; empty for ldap/app
 	// MustChangePassword forces a password change before the login is accepted.
 	// Set on the seeded built-in admin (initial password); cleared by SetPassword.
 	MustChangePassword bool
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
 }
 
 // Role source values. system|business roles are SEEDED built-ins (their UUIDs
@@ -122,10 +122,28 @@ type Operation struct {
 	Description    string `gorm:"size:1024"`
 }
 
+// AuditLog records a privileged admin-API mutation: who (ActorID, the verified
+// token subject), what (Method + Resource + Action + TargetID), and the outcome
+// (Status). One row per non-GET request that passes RequireAdmin; reads are not
+// audited. Method distinguishes create/update/delete on the same Action (e.g.
+// POST vs PUT vs DELETE on "users").
+type AuditLog struct {
+	ID        string    `json:"id" gorm:"primaryKey;size:64"`
+	ActorID   string    `json:"actor_id" gorm:"size:64;index"`   // token subject that performed the action
+	Method    string    `json:"method" gorm:"size:8"`            // POST | PUT | DELETE
+	Resource  string    `json:"resource" gorm:"size:64;index"`   // top-level admin noun, e.g. "users"
+	Action    string    `json:"action" gorm:"size:128;index"`    // dotted route, e.g. "departments.members"
+	TargetID  string    `json:"target_id" gorm:"size:128;index"` // :id path param, "" when the route has none
+	Status    int       `json:"status"`                          // HTTP status code of the response
+	ClientIP  string    `json:"client_ip" gorm:"size:64"`
+	CreatedAt time.Time `json:"created_at" gorm:"index"`
+}
+
 // AllModels is the migration set (Casbin's table is managed by its adapter).
 func AllModels() []any {
 	return []any{
 		&User{}, &Role{}, &Department{}, &UserDepartment{},
 		&Group{}, &GroupMember{}, &ResourceType{}, &Operation{},
+		&AuditLog{},
 	}
 }
