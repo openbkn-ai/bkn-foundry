@@ -107,6 +107,8 @@ type PageQuery struct {
 	// 分页信息
 	NeedTotal bool `json:"need_total"`
 	Limit     int  `json:"limit"`
+	// Offset 偏移翻页：仅资源（vega 表源）路径生效；与 search_after 互斥（传了 search_after 时被忽略）。
+	Offset int `json:"offset"`
 	// UseSearchAfter bool          `json:"use_search_after"` // 业务知识网络只提供search after的方式，不需要提供这个参数
 	Sort []*SortParams `json:"sort"`
 	SearchAfterParams

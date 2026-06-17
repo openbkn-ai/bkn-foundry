@@ -48,6 +48,68 @@ func NewBknBackendAccess() interfaces.BknBackendAccess {
 	return bknAccess
 }
 
+// ListKnowledgeNetworks 列出知识网络（GET /in/v1/knowledge-networks），用于让外部发现 kn_id。
+func (b *bknBackendAccess) ListKnowledgeNetworks(ctx context.Context, req *interfaces.ListKnReq) (resp *interfaces.ListKnResp, err error) {
+	src := fmt.Sprintf("%s/in/v1/knowledge-networks", b.baseURL)
+	header := common.GetHeaderFromCtx(ctx)
+	header[rest.ContentTypeKey] = rest.ContentTypeJSON
+
+	queryValues := url.Values{}
+	if req != nil {
+		if req.NamePattern != "" {
+			queryValues.Set("name_pattern", req.NamePattern)
+		}
+		if req.Limit > 0 {
+			queryValues.Set("limit", strconv.Itoa(req.Limit))
+		}
+		if req.Offset > 0 {
+			queryValues.Set("offset", strconv.Itoa(req.Offset))
+		}
+		if req.Sort != "" {
+			queryValues.Set("sort", req.Sort)
+		}
+		if req.Direction != "" {
+			queryValues.Set("direction", req.Direction)
+		}
+	}
+
+	respCode, respBody, err := b.httpClient.GetNoUnmarshal(ctx, src, queryValues, header)
+	if err != nil {
+		b.logger.WithContext(ctx).Errorf("[BknBackendAccess] ListKnowledgeNetworks request failed, err: %v", err)
+		return nil, infraErr.DefaultHTTPError(ctx, respCode,
+			fmt.Sprintf("[BknBackendAccess] ListKnowledgeNetworks request failed, err: %v", err))
+	}
+
+	if (respCode < http.StatusOK) || (respCode >= http.StatusMultipleChoices) {
+		b.logger.Errorf("[BknBackendAccess] ListKnowledgeNetworks get resp failed, [%s], %v\n", src, respBody)
+
+		var baseError interfaces.KnBaseError
+		if err := sonic.Unmarshal(respBody, &baseError); err != nil {
+			b.logger.Errorf("unmarshal KnBaseError failed: %v\n", err)
+			return nil, err
+		}
+
+		return nil, &infraErr.HTTPError{
+			HTTPCode:     respCode,
+			Code:         baseError.ErrorCode,
+			Description:  baseError.Description,
+			Solution:     baseError.Solution,
+			ErrorLink:    baseError.ErrorLink,
+			ErrorDetails: baseError.ErrorDetails,
+		}
+	}
+
+	resp = &interfaces.ListKnResp{}
+	if len(respBody) == 0 {
+		return resp, nil
+	}
+	if err := sonic.Unmarshal(respBody, resp); err != nil {
+		b.logger.Errorf("[BknBackendAccess] ListKnowledgeNetworks unmarshal response failed: %v\n", err)
+		return nil, err
+	}
+	return resp, nil
+}
+
 // GetKnowledgeNetworkDetail 获取知识网络详情（include_detail=true, mode=export）
 // 对应 Python 的 _get_knowledge_network_detail
 func (b *bknBackendAccess) GetKnowledgeNetworkDetail(ctx context.Context, knID string) (*interfaces.KnowledgeNetworkDetail, error) {

@@ -33,6 +33,9 @@ const (
 	toolKeyGetLogicPropertiesValues = "get_logic_properties_values"
 	toolKeyGetActionInfo            = "get_action_info"
 	toolKeyFindSkills               = "find_skills"
+	toolKeyListKnowledgeNetworks    = "list_knowledge_networks"
+	toolKeyGetKnDetail              = "get_kn_detail"
+	toolKeyRunSQL                   = "run_sql"
 )
 
 // NewMCPHandler creates an http.Handler for the MCP Streamable HTTP Server.
@@ -88,6 +91,29 @@ func NewMCPHandler() http.Handler {
 	mcpServer.AddTool(
 		newToolWithSchemas(findSkillsName, findSkillsDesc, fsInput, fsOutput),
 		handleFindSkills(findSkillsService),
+	)
+
+	bknBackend := drivenadapters.NewBknBackendAccess()
+	listKnName, listKnDesc := loadToolMeta(toolKeyListKnowledgeNetworks)
+	listKnInput, listKnOutput := loadToolSchemas(toolKeyListKnowledgeNetworks)
+	mcpServer.AddTool(
+		newToolWithSchemas(listKnName, listKnDesc, listKnInput, listKnOutput),
+		handleListKnowledgeNetworks(bknBackend),
+	)
+
+	getKnDetailName, getKnDetailDesc := loadToolMeta(toolKeyGetKnDetail)
+	knDetailInput, knDetailOutput := loadToolSchemas(toolKeyGetKnDetail)
+	mcpServer.AddTool(
+		newToolWithSchemas(getKnDetailName, getKnDetailDesc, knDetailInput, knDetailOutput),
+		handleGetKnDetail(bknBackend),
+	)
+
+	vegaAccess := drivenadapters.NewVegaAccess()
+	runSQLName, runSQLDesc := loadToolMeta(toolKeyRunSQL)
+	runSQLInput, runSQLOutput := loadToolSchemas(toolKeyRunSQL)
+	mcpServer.AddTool(
+		newToolWithSchemas(runSQLName, runSQLDesc, runSQLInput, runSQLOutput),
+		handleRunSQL(vegaAccess),
 	)
 
 	streamableServer := server.NewStreamableHTTPServer(mcpServer,

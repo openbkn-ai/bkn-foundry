@@ -1,0 +1,54 @@
+{
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "response_format": {
+        "type": "string",
+        "enum": ["json", "toon"],
+        "default": "toon",
+        "description": "文本格式：json 或 toon，默认 toon"
+      },
+      "sql": {
+        "type": "string",
+        "description": "只读 SQL（Trino 方言）。表名必须用占位符 {{.resource_id}} 引用，resource_id 取自对象类的 data_source.id（可经 search_schema 获得）。仅允许 SELECT / WITH，禁止任何写入与 DDL；不支持多语句；不支持跨数据目录 join（单次查询涉及的资源需同属一个 catalog）。vega 会自动限量（最多 10000 行）。"
+      },
+      "resource_type": {
+        "type": "string",
+        "description": "连接器类型（mysql / mariadb / postgresql）。留空则按 SQL 中第一个 {{.resource_id}} 自动解析，一般无需填写。"
+      },
+      "query_timeout": {
+        "type": "integer",
+        "description": "查询超时（秒），范围 1-3600，默认 60。可选。"
+      }
+    },
+    "required": ["sql"]
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "columns": {
+        "type": "array",
+        "description": "结果列信息",
+        "items": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string" },
+            "type": { "type": "string" }
+          },
+          "additionalProperties": true
+        }
+      },
+      "entries": {
+        "type": "array",
+        "description": "结果行",
+        "items": { "type": "object", "additionalProperties": true }
+      },
+      "total_count": { "type": "integer", "description": "返回行数" },
+      "warnings": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "非致命告警（如资源已弃用）"
+      }
+    }
+  }
+}

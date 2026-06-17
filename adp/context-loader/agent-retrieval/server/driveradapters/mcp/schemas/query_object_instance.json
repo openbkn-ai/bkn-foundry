@@ -23,7 +23,16 @@
       },
       "limit": {
         "type": "integer",
-        "description": "返回数量限制，默认 10，范围 1-10000"
+        "description": "单页返回数量，默认 10，范围 1-10000"
+      },
+      "search_after": {
+        "type": "array",
+        "items": {},
+        "description": "游标分页（对象索引/数据视图路径）：传上一次响应返回的 search_after 取下一页；首次不传。仅顺翻，不跳页。"
+      },
+      "offset": {
+        "type": "integer",
+        "description": "偏移翻页（资源/vega 表源路径）：跳过前 N 条，支持跳到任意页。与 search_after 互斥（同传时 search_after 优先）。"
       },
       "properties": {
         "type": "array",
@@ -45,6 +54,15 @@
           "type": "object",
           "additionalProperties": true
         }
+      },
+      "total_count": {
+        "type": "integer",
+        "description": "命中总数（仅在底层启用 need_total 时有效）"
+      },
+      "search_after": {
+        "type": "array",
+        "items": {},
+        "description": "下一页游标：非空时作为下次请求的 search_after 传入以取下一页；为空表示已无更多数据。"
       }
     }
   }

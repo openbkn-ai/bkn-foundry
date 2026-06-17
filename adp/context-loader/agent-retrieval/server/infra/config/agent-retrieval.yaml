@@ -35,6 +35,10 @@ ontology_query:
   private_protocol: "http"
   private_host: "ontology-query-svc.kweaver"
   private_port: 13018
+vega:
+  private_protocol: "http"
+  private_host: "vega-backend-svc.kweaver"
+  private_port: 13014
 data_retrieval:
   private_protocol: "http"
   private_host: "data-retrieval.kweaver"

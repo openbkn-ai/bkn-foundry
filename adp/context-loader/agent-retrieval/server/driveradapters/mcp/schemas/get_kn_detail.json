@@ -1,0 +1,30 @@
+{
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "response_format": {
+        "type": "string",
+        "enum": ["json", "toon"],
+        "default": "toon",
+        "description": "文本格式：json 或 toon，默认 toon"
+      },
+      "kn_id": {
+        "type": "string",
+        "description": "知识网络 ID。也可改用 X-Kn-ID 请求头传入。"
+      }
+    },
+    "required": ["kn_id"]
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "id": { "type": "string", "description": "知识网络 ID" },
+      "name": { "type": "string", "description": "知识网络名称" },
+      "comment": { "type": "string", "description": "描述" },
+      "concept_groups": { "type": "array", "items": { "type": "object", "additionalProperties": true }, "description": "概念组" },
+      "object_types": { "type": "array", "items": { "type": "object", "additionalProperties": true }, "description": "对象类型（含 data_source 等）" },
+      "relation_types": { "type": "array", "items": { "type": "object", "additionalProperties": true }, "description": "关系类型" },
+      "action_types": { "type": "array", "items": { "type": "object", "additionalProperties": true }, "description": "行动类型" }
+    }
+  }
+}

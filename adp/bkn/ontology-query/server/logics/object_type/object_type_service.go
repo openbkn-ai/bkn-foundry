@@ -466,6 +466,7 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 	params := &interfaces.ResourceDataQueryParams{
 		NeedTotal:       query.NeedTotal,
 		Limit:           query.Limit,
+		Offset:          query.Offset,
 		Sort:            resourceSort,
 		SearchAfter:     query.SearchAfter,
 		FilterCondition: logics.CondCfgToFilterMap(viewQuery.Filters),

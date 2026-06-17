@@ -9,6 +9,7 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"strings"
 
 	"github.com/creasty/defaults"
 	validator "github.com/go-playground/validator/v10"
@@ -212,6 +213,132 @@ func handleGetActionInfo(service interfaces.IKnActionRecallService) func(ctx con
 		}
 
 		resp, err := service.GetActionInfo(ctx, actionReq)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		result, err := BuildMCPToolResult(resp, format)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return result, nil
+	}
+}
+
+// handleListKnowledgeNetworks handles list_knowledge_networks tool calls.
+// 用于让外部 Agent 发现可用的 kn_id（其余查询工具的前置）。
+func handleListKnowledgeNetworks(bkn interfaces.BknBackendAccess) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		format, err := GetResponseFormatFromRequest(req)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		listReq := &interfaces.ListKnReq{}
+		if err := bindArguments(req, listReq); err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		if listReq.Limit == 0 {
+			listReq.Limit = 20
+		}
+
+		resp, err := bkn.ListKnowledgeNetworks(ctx, listReq)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		result, err := BuildMCPToolResult(resp, format)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return result, nil
+	}
+}
+
+// runSQLArgs run_sql 工具入参。
+type runSQLArgs struct {
+	SQL          string `json:"sql"`           // Trino 方言 SQL，表名用 {{.resource_id}} 占位
+	ResourceType string `json:"resource_type"` // 连接器类型，留空则按 resource_id 自动解析
+	QueryTimeout int    `json:"query_timeout"` // 查询超时（秒），可选
+}
+
+// handleRunSQL handles run_sql tool calls.
+// 对知识网络挂载的数据资源执行只读 SQL（强制 SELECT-only），底层走 vega 原始查询接口。
+func handleRunSQL(vega interfaces.DrivenVega) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		format, err := GetResponseFormatFromRequest(req)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		args := &runSQLArgs{}
+		if err := bindArguments(req, args); err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		if strings.TrimSpace(args.SQL) == "" {
+			return mcp.NewToolResultError("sql is required"), nil
+		}
+
+		// 只读守卫：拒绝写入 / DDL / 多语句。
+		if err := ensureReadOnlySQL(args.SQL); err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		// 必须通过 {{.resource_id}} 占位符引用资源，否则 vega 无法定位数据源。
+		resourceIDs := extractResourceIDs(args.SQL)
+		if len(resourceIDs) == 0 {
+			return mcp.NewToolResultError(
+				"sql must reference at least one data resource via the {{.resource_id}} placeholder",
+			), nil
+		}
+
+		// resource_type 未显式给出时，按第一个 resource_id 自动解析其连接器类型。
+		resourceType := strings.TrimSpace(args.ResourceType)
+		if resourceType == "" {
+			rt, err := vega.GetResourceConnectorType(ctx, resourceIDs[0])
+			if err != nil {
+				return mcp.NewToolResultError(
+					"failed to resolve resource_type from resource_id, pass resource_type explicitly: " + err.Error(),
+				), nil
+			}
+			resourceType = rt
+		}
+
+		queryReq := &interfaces.VegaRawQueryReq{
+			Query:        args.SQL,
+			ResourceType: resourceType,
+			QueryType:    "standard",
+			QueryTimeout: args.QueryTimeout,
+		}
+		resp, err := vega.RawQuery(ctx, queryReq)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		result, err := BuildMCPToolResult(resp, format)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return result, nil
+	}
+}
+
+// handleGetKnDetail handles get_kn_detail tool calls.
+// 直接包装 bkn-backend，返回知识网络完整详情（概念组 / 对象类 / 关系类 / 行动类）。
+func handleGetKnDetail(bkn interfaces.BknBackendAccess) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		format, err := GetResponseFormatFromRequest(req)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		knID := getStringArg(req, "kn_id", "")
+		if knID == "" {
+			knID = getKnIDFromHeader(req)
+		}
+		if knID == "" {
+			return mcp.NewToolResultError("kn_id is required"), nil
+		}
+
+		resp, err := bkn.GetKnowledgeNetworkDetail(ctx, knID)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
