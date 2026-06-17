@@ -57,6 +57,7 @@ func buildTaskColumns() []string {
 		"f_model_dimensions",
 		"f_fulltext_fields",
 		"f_fulltext_analyzer",
+		"f_failure_detail",
 	}
 }
 
@@ -95,6 +96,7 @@ func scanBuildTask(scanner buildTaskScanner) (*interfaces.BuildTask, error) {
 		&buildTask.ModelDimensions,
 		&buildTask.FulltextFields,
 		&buildTask.FulltextAnalyzer,
+		&buildTask.FailureDetail,
 	)
 	if err != nil {
 		return nil, err
@@ -145,6 +147,7 @@ func (bta *buildTaskAccess) Create(ctx context.Context, buildTask *interfaces.Bu
 			buildTask.ModelDimensions,
 			buildTask.FulltextFields,
 			buildTask.FulltextAnalyzer,
+			buildTask.FailureDetail,
 		).ToSql()
 	if err != nil {
 		span.SetStatus(codes.Error, "Build sql failed")
@@ -281,6 +284,7 @@ func (bta *buildTaskAccess) UpdateStatus(ctx context.Context, id string, updates
 		"modelDimensions":  "f_model_dimensions",
 		"fulltextFields":   "f_fulltext_fields",
 		"fulltextAnalyzer": "f_fulltext_analyzer",
+		"failureDetail":    "f_failure_detail",
 	}
 
 	builder := sq.Update(BUILD_TASK_TABLE_NAME)
