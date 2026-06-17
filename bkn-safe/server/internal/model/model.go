@@ -123,18 +123,23 @@ type Operation struct {
 }
 
 // AuditLog records a privileged admin-API mutation: who (ActorID, the verified
-// token subject), what (Method + Resource + Action + TargetID), and the outcome
-// (Status). One row per non-GET request that passes RequireAdmin; reads are not
-// audited. Method distinguishes create/update/delete on the same Action (e.g.
-// POST vs PUT vs DELETE on "users").
+// token subject), what (Method + Resource + Action + TargetID + Detail), and the
+// outcome (Status). One row per non-GET request that passes RequireAdmin; reads
+// are not audited. Method distinguishes create/update/delete on the same Action
+// (e.g. POST vs PUT vs DELETE on "users").
 type AuditLog struct {
-	ID        string    `json:"id" gorm:"primaryKey;size:64"`
-	ActorID   string    `json:"actor_id" gorm:"size:64;index"`   // token subject that performed the action
-	Method    string    `json:"method" gorm:"size:8"`            // POST | PUT | DELETE
-	Resource  string    `json:"resource" gorm:"size:64;index"`   // top-level admin noun, e.g. "users"
-	Action    string    `json:"action" gorm:"size:128;index"`    // dotted route, e.g. "departments.members"
-	TargetID  string    `json:"target_id" gorm:"size:128;index"` // :id path param, "" when the route has none
-	Status    int       `json:"status"`                          // HTTP status code of the response
+	ID       string `json:"id" gorm:"primaryKey;size:64"`
+	ActorID  string `json:"actor_id" gorm:"size:64;index"`   // token subject that performed the action
+	Method   string `json:"method" gorm:"size:8"`            // POST | PUT | DELETE
+	Resource string `json:"resource" gorm:"size:64;index"`   // top-level admin noun, e.g. "users"
+	Action   string `json:"action" gorm:"size:128;index"`    // dotted route, e.g. "departments.members"
+	TargetID string `json:"target_id" gorm:"size:128;index"` // :id path param, "" when the route has none
+	// Detail is a redacted, truncated JSON snapshot of the request body (password
+	// fields masked), so a reader can tell WHAT changed — which users a
+	// department gained, a created node's name, etc. "" when the body is
+	// empty/non-JSON.
+	Detail    string    `json:"detail" gorm:"size:2048"`
+	Status    int       `json:"status"` // HTTP status code of the response
 	ClientIP  string    `json:"client_ip" gorm:"size:64"`
 	CreatedAt time.Time `json:"created_at" gorm:"index"`
 }

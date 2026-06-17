@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -638,5 +639,51 @@ func TestUserDepartmentInlineSet(t *testing.T) {
 	if w := adminReq(t, r, http.MethodPut, "/api/safe/v1/admin/users/ghost",
 		map[string]any{"department_ids": []string{"d-1"}}); w.Code != http.StatusNotFound {
 		t.Errorf("depts update ghost user: want 404, got %d", w.Code)
+	}
+}
+
+func TestAuditDetailCapture(t *testing.T) {
+	r, _, db, users := newAdminServer(t)
+	if err := users.CreateLocalUser(t.Context(), &model.User{ID: "u-1", Account: "alice", Name: "Alice", Enabled: true}, "pw-init0"); err != nil {
+		t.Fatal(err)
+	}
+
+	// a create carries its body into Detail (so "新建部门" shows the name)
+	adminReq(t, r, http.MethodPost, "/api/safe/v1/admin/departments",
+		map[string]any{"id": "d-1", "name": "研发部"})
+	// a password reset must be recorded with the password MASKED
+	adminReq(t, r, http.MethodPut, "/api/safe/v1/admin/users/u-1/password",
+		map[string]any{"password": "s3cr3t-should-not-appear"})
+
+	detailFor := func(action string) string {
+		w := adminReq(t, r, http.MethodGet, "/api/safe/v1/admin/audit-logs?action="+action, nil)
+		var resp struct {
+			Logs []struct {
+				Detail string `json:"detail"`
+			} `json:"logs"`
+		}
+		_ = json.Unmarshal(w.Body.Bytes(), &resp)
+		if len(resp.Logs) != 1 {
+			t.Fatalf("action=%s: want 1 log, got %d", action, len(resp.Logs))
+		}
+		return resp.Logs[0].Detail
+	}
+
+	if d := detailFor("departments"); !strings.Contains(d, "研发部") {
+		t.Errorf("create-dept detail missing name: %q", d)
+	}
+	pw := detailFor("users.password")
+	if strings.Contains(pw, "s3cr3t-should-not-appear") {
+		t.Fatalf("password leaked into audit detail: %q", pw)
+	}
+	if !strings.Contains(pw, "***") {
+		t.Errorf("password not masked in audit detail: %q", pw)
+	}
+
+	// sanity: the password is also not anywhere in the raw stored column
+	var n int64
+	db.Model(&model.AuditLog{}).Where("detail LIKE ?", "%s3cr3t%").Count(&n)
+	if n != 0 {
+		t.Errorf("password substring found in %d audit rows", n)
 	}
 }
