@@ -20,6 +20,7 @@ import (
 	logicsFs "github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/logics/knfindskills"
 	logicsKlp "github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/logics/knlogicpropertyresolver"
 	logicsKqs "github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/logics/knquerysubgraph"
+	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/logics/knrunsql"
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/logics/knsearch"
 )
 
@@ -108,12 +109,12 @@ func NewMCPHandler() http.Handler {
 		handleGetKnDetail(bknBackend),
 	)
 
-	vegaAccess := drivenadapters.NewVegaAccess()
+	runSQLService := knrunsql.NewKnRunSQLService()
 	runSQLName, runSQLDesc := loadToolMeta(toolKeyRunSQL)
 	runSQLInput, runSQLOutput := loadToolSchemas(toolKeyRunSQL)
 	mcpServer.AddTool(
 		newToolWithSchemas(runSQLName, runSQLDesc, runSQLInput, runSQLOutput),
-		handleRunSQL(vegaAccess),
+		handleRunSQL(runSQLService),
 	)
 
 	streamableServer := server.NewStreamableHTTPServer(mcpServer,

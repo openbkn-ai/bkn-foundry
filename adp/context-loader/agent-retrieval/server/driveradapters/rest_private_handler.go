@@ -18,6 +18,7 @@ import (
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/driveradapters/knontologyjob"
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/driveradapters/knqueryobjectinstance"
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/driveradapters/knquerysubgraph"
+	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/driveradapters/knquerytools"
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/driveradapters/knretrieval"
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/driveradapters/knsearch"
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/driveradapters/mcpproxy"
@@ -34,6 +35,7 @@ type restPrivateHandler struct {
 	MCPProxyHandler                mcpproxy.MCPProxyHandler
 	KnOntologyJobHandler           knontologyjob.KnOntologyJobHandler
 	KnFindSkillsHandler            knfindskills.KnFindSkillsHandler
+	KnQueryToolsHandler            knquerytools.KnQueryToolsHandler
 	Logger                         interfaces.Logger
 }
 
@@ -49,6 +51,7 @@ func NewRestPrivateHandler(logger interfaces.Logger) interfaces.HTTPRouterInterf
 		MCPProxyHandler:                mcpproxy.NewMCPProxyHandler(),
 		KnOntologyJobHandler:           knontologyjob.NewKnOntologyJobHandler(),
 		KnFindSkillsHandler:            knfindskills.NewKnFindSkillsHandler(),
+		KnQueryToolsHandler:            knquerytools.NewKnQueryToolsHandler(),
 		Logger:                         logger,
 	}
 }
@@ -69,6 +72,11 @@ func (r *restPrivateHandler) RegisterRouter(engine *gin.RouterGroup) {
 	engine.POST("/kn/find_skills", r.KnFindSkillsHandler.FindSkills)
 	engine.POST("/kn/full_build_ontology", r.KnOntologyJobHandler.FullBuildOntology)
 	engine.GET("/kn/full_ontology_building_status", r.KnOntologyJobHandler.GetFullOntologyBuildingStatus)
+
+	// 同时作为 MCP 工具 + operator-integration toolbox(OpenAPI HTTP)入口
+	engine.POST("/kn/run_sql", r.KnQueryToolsHandler.RunSQL)
+	engine.POST("/kn/list_knowledge_networks", r.KnQueryToolsHandler.ListKnowledgeNetworks)
+	engine.POST("/kn/get_kn_detail", r.KnQueryToolsHandler.GetKnDetail)
 
 	// MCP Proxy
 	engine.POST("/mcp/proxy/:mcp_id/tools/:tool_name/call", r.MCPProxyHandler.CallMCPTool)
