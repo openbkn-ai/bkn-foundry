@@ -408,6 +408,31 @@ sudo bash deploy/preflight.sh --check-only --lenient
 kubectl logs -n <namespace> <pod-name>
 ```
 
+### OAuth 登录回调地址（redirect_uri）不匹配
+
+登录报 `invalid_request ... 'redirect_uri' ... does not match ... pre-registered redirect urls`：
+浏览器发的回调地址不在该登录客户端（`openbkn-studio` 等）的注册列表里。这些客户端存在
+Hydra 里，由 bkn-safe chart 的 client-seed Job 按 `accessAddress` 与 `clientSeed.*` 注册。
+回调地址 = 浏览器所在地址 + `/studio/callback`（如 `https://<access-address>/studio/callback`）。
+
+```bash
+# 1. 统一本地端口（最省事）：前端本地 dev 跑 localhost:8000，
+#    回调 http://localhost:8000/studio/callback —— chart 默认已注册，开箱即用。
+
+# 2. 永久 / 生产地址 → 写进 chart 值后重装（seed Job 会重新注册，升级也带着）：
+#    bkn-safe/charts/bkn-safe/values.yaml 的 clientSeed.extraWebRedirectUris 增条目。
+#    服务器端 studio 的网关回调由 accessAddress 自动推出，无需手填。
+
+# 3. 临时 / dev 地址 → 不重装，调 bkn-safe admin 接口加（需超管，升级会被冲）：
+export BKN_HOST=https://<access-address>
+openbkn auth login "$BKN_HOST"        # 须为超管会话
+bash deploy/scripts/bkn-redirect.sh add  http://localhost:5173/studio/callback
+bash deploy/scripts/bkn-redirect.sh list
+bash deploy/scripts/bkn-redirect.sh del  http://localhost:5173/studio/callback
+```
+
+详见 [bkn-safe/docs/oauth-redirect-uris.md](../bkn-safe/docs/oauth-redirect-uris.md)。
+
 ## 📄 License
 
 [Apache License 2.0](../LICENSE)
