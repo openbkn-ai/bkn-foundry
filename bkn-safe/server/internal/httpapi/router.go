@@ -28,6 +28,9 @@ type Deps struct {
 	// TokenVerifier validates admin-API bearer tokens. Defaults to Hydra when
 	// nil (production); tests inject a stub.
 	TokenVerifier TokenVerifier
+	// ClientAdmin manages login clients' redirect_uris (admin API). Defaults to
+	// Hydra when nil (production); tests inject a stub.
+	ClientAdmin ClientManager
 }
 
 // New builds the gin engine with all routes mounted.
@@ -79,6 +82,15 @@ func New(deps Deps) *gin.Engine {
 		registerDeptAdmin(admin, deps.Directory)
 		registerRoleBindings(admin, deps.Enforcer, deps.DB)
 		registerRoles(admin, deps.Enforcer, deps.DB)
+		// Login-client redirect-uri management. Falls back to Hydra in production;
+		// only mounted when a manager is available.
+		clientMgr := deps.ClientAdmin
+		if clientMgr == nil && deps.Hydra != nil {
+			clientMgr = deps.Hydra
+		}
+		if clientMgr != nil {
+			registerClientAdmin(admin, clientMgr)
+		}
 	}
 
 	// Self-service reads under /api/safe/v1/me — token-gated (RequireUser:

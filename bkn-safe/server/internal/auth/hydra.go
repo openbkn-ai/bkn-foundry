@@ -75,6 +75,61 @@ func (h *HydraAdmin) AcceptUserCode(ctx context.Context, deviceChallenge, userCo
 	return out.RedirectTo, nil
 }
 
+// GetClientRedirectURIs returns the OAuth2 client's registered redirect_uris.
+func (h *HydraAdmin) GetClientRedirectURIs(ctx context.Context, clientID string) ([]string, error) {
+	cl, _, err := h.api.OAuth2API.GetOAuth2Client(ctx, clientID).Execute()
+	if err != nil {
+		return nil, fmt.Errorf("get oauth2 client %q: %w", clientID, err)
+	}
+	return cl.GetRedirectUris(), nil
+}
+
+// AddClientRedirectURI registers uri on the client (idempotent: a duplicate is a
+// no-op) and returns the resulting redirect_uris.
+func (h *HydraAdmin) AddClientRedirectURI(ctx context.Context, clientID, uri string) ([]string, error) {
+	return h.patchRedirectURIs(ctx, clientID, func(uris []string) []string {
+		for _, u := range uris {
+			if u == uri {
+				return uris // already present
+			}
+		}
+		return append(uris, uri)
+	})
+}
+
+// RemoveClientRedirectURI drops uri from the client (a no-op when absent) and
+// returns the resulting redirect_uris.
+func (h *HydraAdmin) RemoveClientRedirectURI(ctx context.Context, clientID, uri string) ([]string, error) {
+	return h.patchRedirectURIs(ctx, clientID, func(uris []string) []string {
+		out := make([]string, 0, len(uris))
+		for _, u := range uris {
+			if u != uri {
+				out = append(out, u)
+			}
+		}
+		return out
+	})
+}
+
+// patchRedirectURIs reads the client's current redirect_uris, applies mutate, and
+// writes the result back with a JSON Patch. Read-modify-write keeps merge and
+// idempotency logic here — hydra's patch has no add-unique-element operation. The
+// "add" op replaces the member when present (RFC 6902) so it works whether or not
+// the client already has any redirect_uris.
+func (h *HydraAdmin) patchRedirectURIs(ctx context.Context, clientID string, mutate func([]string) []string) ([]string, error) {
+	cl, _, err := h.api.OAuth2API.GetOAuth2Client(ctx, clientID).Execute()
+	if err != nil {
+		return nil, fmt.Errorf("get oauth2 client %q: %w", clientID, err)
+	}
+	next := mutate(cl.GetRedirectUris())
+	patch := []hydra.JsonPatch{{Op: "add", Path: "/redirect_uris", Value: next}}
+	out, _, err := h.api.OAuth2API.PatchOAuth2Client(ctx, clientID).JsonPatch(patch).Execute()
+	if err != nil {
+		return nil, fmt.Errorf("patch oauth2 client %q redirect_uris: %w", clientID, err)
+	}
+	return out.GetRedirectUris(), nil
+}
+
 // LoginRequest is the subset of hydra's login challenge bkn-safe needs.
 type LoginRequest struct {
 	Challenge string
