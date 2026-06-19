@@ -161,7 +161,19 @@
     {
       "id": "small_model",
       "name": "小模型",
-      "_source": "mf-model-manager (app/utils/permission_manager.py); 大模型/LLM 不过 authz",
+      "_source": "mf-model-manager (app/utils/permission_manager.py)",
+      "operations": [
+        {"id": "create", "name": "创建"},
+        {"id": "display", "name": "查看"},
+        {"id": "modify", "name": "修改"},
+        {"id": "delete", "name": "删除"},
+        {"id": "execute", "name": "调用/执行"}
+      ]
+    },
+    {
+      "id": "large_model",
+      "name": "大模型",
+      "_source": "mf-model-manager (LLM); object-grant 词表项 — enforce 仍需 mf-model-manager 接 /authz/check 才生效",
       "operations": [
         {"id": "create", "name": "创建"},
         {"id": "display", "name": "查看"},

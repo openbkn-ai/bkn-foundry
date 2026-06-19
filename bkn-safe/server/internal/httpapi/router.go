@@ -82,6 +82,7 @@ func New(deps Deps) *gin.Engine {
 		registerDeptAdmin(admin, deps.Directory)
 		registerRoleBindings(admin, deps.Enforcer, deps.DB)
 		registerRoles(admin, deps.Enforcer, deps.DB)
+		registerObjectGrants(admin, deps.Enforcer, deps.DB)
 		// Login-client redirect-uri management. Falls back to Hydra in production;
 		// only mounted when a manager is available.
 		clientMgr := deps.ClientAdmin
