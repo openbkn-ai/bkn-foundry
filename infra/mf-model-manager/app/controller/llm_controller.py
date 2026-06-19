@@ -15,6 +15,7 @@ from app.mydb.ConnectUtil import redis_util, get_redis_util
 from app.utils import llm_utils
 from app.utils.common import validate_required_params
 from app.utils.config_cache import quota_config_cache_tree
+from app.utils.permission_manager import permission_manager
 from app.utils.llm_utils import openai_series_stream, OpenAIClientRequest
 from app.utils.param_verify_utils import *
 from app.utils.reshape_utils import *
@@ -30,7 +31,7 @@ eng_dict = {
 
 
 # 保存大模型数据
-async def add_model(schema_para, userId, language):
+async def add_model(schema_para, userId, language, role=""):
     required_params = ["max_model_len"]
     missing_params = await validate_required_params(schema_para, required_params)
     if missing_params:
@@ -38,6 +39,13 @@ async def add_model(schema_para, userId, language):
         content = await get_error_message(code, language)
         content["detail"] = f"missing parameters: {', '.join(missing_params)}"
         return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content=content)
+    # 创建权限校验（大模型走 bkn-safe authz，与小模型一致；资源 id 用通配 "*"）
+    permission = await permission_manager.check_single_permission(user_id=userId, resource_id="*",
+                                                                  operations="create",
+                                                                  resource_type="large_model",
+                                                                  role=role)
+    if not permission:
+        return JSONResponse(status_code=403, content=NotPermissionError)
     quota = schema_para.get("quota", False)
     content = await llm_add_verify(schema_para, userId)
     if content:
@@ -63,6 +71,17 @@ async def add_model(schema_para, userId, language):
                                                    userId, json.dumps(config),
                                                    schema_para["max_model_len"],
                                                    schema_para.get("model_parameters", None), quota)
+            # 把新建大模型的实例权限授予创建者（admin 用户在 add_permission 内部短路跳过）
+            if base_config.AUTH_ENABLED:
+                user_infos = await get_username_by_ids([userId])
+                user_name = user_infos.get(userId, "")
+            else:
+                user_name = ""
+            grant_ok = await permission_manager.add_permission(
+                user_id=userId, resource_id=str(model_id), resource_name="大模型",
+                resource_type="large_model", user_name=user_name, role=role)
+            if not grant_ok:
+                raise Exception("add permission failed")
             content = {"status": "ok", "id": model_id}
             if quota is False:
                 # 需要预插入一条模型配额
@@ -77,7 +96,7 @@ async def add_model(schema_para, userId, language):
 
 
 # 删除大模型
-async def remove_model(model_ids, userId, language):
+async def remove_model(model_ids, userId, language, role=""):
     try:
         if "model_ids" not in model_ids.keys():
             raise RequestValidationError([{"loc": ('body', "model_ids"), "type": "value_error.missing"}])
@@ -93,8 +112,20 @@ async def remove_model(model_ids, userId, language):
             if model_id not in model_dict:
                 StandLogger.error(LLMRemoveError["detail"])
                 return JSONResponse(status_code=400, content=LLMRemoveError)
+        # 删除权限校验：逐个待删模型校验 delete 权限（大模型走 bkn-safe authz，与小模型一致）
+        for model_id in model_ids["model_ids"]:
+            permission = await permission_manager.check_single_permission(
+                user_id=userId, resource_id=str(model_id), operations="delete",
+                resource_type="large_model", role=role)
+            if not permission:
+                error_dict = NotPermissionError.copy()
+                error_dict["detail"] = "部分模型无删除权限"
+                return JSONResponse(status_code=403, content=error_dict)
         llm_model_dao.delete_model_by_id(model_ids["model_ids"])
         model_quota_dao.delete_model_quota_by_model_id(model_ids["model_ids"])
+        # 清理 bkn-safe 中这些模型实例的全部授权策略
+        await permission_manager.delete_permission(resource_type="large_model",
+                                                   resource_ids=[str(mid) for mid in model_ids["model_ids"]])
         # 确保 redis_util 已初始化
         global redis_util
         if redis_util is None:
@@ -190,7 +221,7 @@ async def test_model(model_config, userId, language):
 
 
 # 重命名大模型
-async def edit_model(model_para, userId, language):
+async def edit_model(model_para, userId, language, role=""):
     content = llm_edit_verify(model_para)
     if content:
         StandLogger.error(content)
@@ -203,6 +234,12 @@ async def edit_model(model_para, userId, language):
                 StandLogger.error(LLMEdit2Error["detail"])
                 return JSONResponse(status_code=400, content=LLMEdit2Error)
             else:
+                # 修改权限校验（大模型走 bkn-safe authz，与小模型一致）
+                permission = await permission_manager.check_single_permission(
+                    user_id=userId, resource_id=str(model_para["model_id"]), operations="modify",
+                    resource_type="large_model", role=role)
+                if not permission:
+                    return JSONResponse(status_code=403, content=NotPermissionError)
                 info = llm_model_dao.get_data_from_model_list_by_id(model_para["model_id"])
                 old_quota = info[0]["f_quota"]
                 model_name = info[0]["f_model_name"]
@@ -300,11 +337,17 @@ async def source_model(userId, language, page, size, name, order, series, rule, 
 
 
 # 大模型信息查看接口
-async def check_model(model_id, userId, language):
+async def check_model(model_id, userId, language, role=""):
     idx_list = [idx["f_model_id"] for idx in llm_model_dao.get_all_model_list()]
     if model_id not in idx_list:
         StandLogger.error(LLMCheckError["detail"])
         return JSONResponse(status_code=400, content=LLMCheckError)
+    # 查看权限校验（大模型走 bkn-safe authz，与小模型一致）
+    permission = await permission_manager.check_single_permission(
+        user_id=userId, resource_id=str(model_id), operations="display",
+        resource_type="large_model", role=role)
+    if not permission:
+        return JSONResponse(status_code=403, content=NotPermissionError)
     try:
         result = reshape_check(llm_model_dao.get_data_from_model_list_by_id(model_id))
         return JSONResponse(status_code=200, content=result)

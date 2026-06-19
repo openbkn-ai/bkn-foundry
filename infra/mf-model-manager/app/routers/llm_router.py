@@ -28,14 +28,14 @@ async def health_alive():
 @llm_route.post("/llm/add")
 async def add_llm(request: Request, model_para: dict = Body(...)):
     userId, language, role = await get_user_info(request)
-    return await add_model(model_para, userId, language)
+    return await add_model(model_para, userId, language, role)
 
 
 # 大模型删除接口
 @llm_route.post("/llm/delete")
 async def remove_llm(request: Request, model_ids: dict = Body(...)):
     userId, language, role = await get_user_info(request)
-    return await remove_model(model_ids, userId, language)
+    return await remove_model(model_ids, userId, language, role)
 
 
 # 大模型测试接口
@@ -49,7 +49,7 @@ async def test_llm_(request: Request, model_config: dict = Body(...)):
 @llm_route.post("/llm/edit")
 async def edit_llm(request: Request, model_para: dict = Body(...)):
     userId, language, role = await get_user_info(request)
-    return await edit_model(model_para, userId, language)
+    return await edit_model(model_para, userId, language, role)
 
 
 # 获取大模型列表接口
@@ -64,7 +64,7 @@ async def source_llm(request: Request, page, size, order='desc', rule='update_ti
 @llm_route.get("/llm/get")
 async def check_llm_(model_id, request: Request, ):
     userId, language, role = await get_user_info(request)
-    return await check_model(model_id, userId, language)
+    return await check_model(model_id, userId, language, role)
 
 
 # 获取api文档接口
