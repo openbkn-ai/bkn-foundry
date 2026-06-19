@@ -413,6 +413,35 @@ sudo bash deploy/preflight.sh --check-only --lenient
 kubectl logs -n <namespace> <pod-name>
 ```
 
+### OAuth login redirect_uri mismatch
+
+Login fails with `invalid_request ... 'redirect_uri' ... does not match ... pre-registered redirect urls`:
+the callback the browser sent is not in the login client's (`openbkn-studio`, etc.)
+registered list. These clients live in Hydra and are registered by the bkn-safe
+chart's client-seed Job from `accessAddress` and `clientSeed.*`. The callback is the
+browser's address + `/studio/callback` (e.g. `https://<access-address>/studio/callback`).
+
+```bash
+# 1. Standard dev port (least effort): run the local studio dev server on
+#    localhost:8000; http://localhost:8000/studio/callback is registered by default.
+
+# 2. Permanent / production address -> add to chart values, then reinstall (the
+#    seed Job re-registers it and it survives upgrades):
+#    add an entry to clientSeed.extraWebRedirectUris in
+#    bkn-safe/charts/bkn-safe/values.yaml. The server-side studio's gateway callback
+#    is derived from accessAddress automatically — no need to list it.
+
+# 3. Temporary / dev address -> no reinstall, add via the bkn-safe admin API
+#    (super-admin required; wiped on the next upgrade):
+export BKN_HOST=https://<access-address>
+openbkn auth login "$BKN_HOST"        # must be a super-admin session
+bash deploy/scripts/bkn-redirect.sh add  http://localhost:5173/studio/callback
+bash deploy/scripts/bkn-redirect.sh list
+bash deploy/scripts/bkn-redirect.sh del  http://localhost:5173/studio/callback
+```
+
+See [bkn-safe/docs/oauth-redirect-uris.md](../bkn-safe/docs/oauth-redirect-uris.md) for detail.
+
 ## 📄 License
 
 [Apache License 2.0](../LICENSE)
