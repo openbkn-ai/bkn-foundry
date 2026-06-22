@@ -82,7 +82,9 @@ async def add_model(schema_para, userId, language, role=""):
                 resource_type="large_model", user_name=user_name, role=role)
             if not grant_ok:
                 raise Exception("add permission failed")
-            content = {"status": "ok", "id": model_id}
+            # id 返回 string：雪花 id 是 19 位整数(>2^53)，JSON number 会被 JS 客户端
+            # 精度截断(末位抹零)，导致前端拿到的 id 删不掉/查不到。与小模型一致返回字符串。
+            content = {"status": "ok", "id": str(model_id)}
             if quota is False:
                 # 需要预插入一条模型配额
                 conf_id = worker.get_id()
