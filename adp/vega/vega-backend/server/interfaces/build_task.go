@@ -64,6 +64,21 @@ type BuildTask struct {
 	FulltextFields   string      `json:"fulltext_fields,omitempty"`   // 需建全文索引的字段(逗号分隔)；string→加 text 子字段，text→主字段分词
 	FulltextAnalyzer string      `json:"fulltext_analyzer,omitempty"` // 全文分词器(standard/ik_max_word/hanlp_index 等)，空为 OpenSearch 默认
 	CatalogID        string      `json:"catalog_id"`
+
+	// IndexHealth 为响应时计算的派生状态，**不落库**：让消费方无需自己推断
+	// "completed 其实是失败"。service 层在返回前填充。
+	IndexHealth *IndexHealth `json:"index_health,omitempty"`
+}
+
+// IndexHealth 拆分各索引的健康度。status=completed 只代表 sync 完成 + fulltext 生效，
+// 不代表 embedding 索引可用——本结构把两者分开，整体可用性看 Usable。
+type IndexHealth struct {
+	// none(未建) | building(进行中) | ok | partial(部分文档缺向量) | failed(全部缺向量)
+	Embedding string `json:"embedding"`
+	// none(未建) | ok（全文随同步即时生效，建了即 ok）
+	Fulltext string `json:"fulltext"`
+	// embedding 索引是否完全可用（none 或 ok 为 true；partial/failed/building 为 false）
+	Usable bool `json:"usable"`
 }
 
 // CreateBuildTaskRequest represents the request to create a build task.

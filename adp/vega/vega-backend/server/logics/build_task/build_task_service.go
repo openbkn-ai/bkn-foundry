@@ -235,8 +235,36 @@ func (bts *buildTaskService) GetBuildTaskByID(ctx context.Context, id string) (*
 			verrors.VegaBackend_BuildTask_InternalError_GetAccountNamesFailed).WithErrorDetails(err.Error())
 	}
 
+	buildTask.IndexHealth = computeIndexHealth(buildTask)
 	span.SetStatus(codes.Ok, "")
 	return buildTask, nil
+}
+
+// computeIndexHealth 按当前计数派生各索引健康度（不落库）。embedding 与 fulltext
+// 相互独立：fulltext 随同步即时生效，建了即 ok；embedding 要等向量写满才算 ok。
+// 仅在终态给出 ok/partial/failed，进行中统一 building，避免把中途进度误报成失败。
+func computeIndexHealth(bt *interfaces.BuildTask) *interfaces.IndexHealth {
+	h := &interfaces.IndexHealth{Embedding: "none", Fulltext: "none"}
+	if bt.FulltextFields != "" {
+		h.Fulltext = "ok"
+	}
+	switch {
+	case bt.EmbeddingFields == "":
+		h.Embedding = "none"
+	case bt.Status == interfaces.BuildTaskStatusRunning || bt.Status == interfaces.BuildTaskStatusInit:
+		h.Embedding = "building"
+	case bt.SyncedCount == 0:
+		// 无数据可向量化，空索引视为可用
+		h.Embedding = "ok"
+	case bt.VectorizedCount >= bt.SyncedCount:
+		h.Embedding = "ok"
+	case bt.VectorizedCount == 0:
+		h.Embedding = "failed"
+	default:
+		h.Embedding = "partial"
+	}
+	h.Usable = h.Embedding == "none" || h.Embedding == "ok"
+	return h
 }
 
 // GetBuildTaskByResourceID retrieves a build task by resource ID.
@@ -258,6 +286,7 @@ func (bts *buildTaskService) GetBuildTaskByResourceID(ctx context.Context, resou
 			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 				verrors.VegaBackend_BuildTask_InternalError_GetAccountNamesFailed).WithErrorDetails(err.Error())
 		}
+		buildTask.IndexHealth = computeIndexHealth(buildTask)
 	}
 
 	span.SetStatus(codes.Ok, "")
@@ -279,6 +308,7 @@ func (bts *buildTaskService) ListBuildTasks(ctx context.Context, params interfac
 	accountInfos := make([]*interfaces.AccountInfo, 0, len(buildTasks)*2)
 	for _, bt := range buildTasks {
 		accountInfos = append(accountInfos, &bt.Creator, &bt.Updater)
+		bt.IndexHealth = computeIndexHealth(bt)
 	}
 	if err := bts.ums.GetAccountNames(ctx, accountInfos); err != nil {
 		span.SetStatus(codes.Error, "GetAccountNames error")

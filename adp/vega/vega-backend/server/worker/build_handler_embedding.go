@@ -292,12 +292,16 @@ func (eh *embeddingHandler) executeEmbedding(ctx context.Context, resource *inte
 					_ = eh.commitMessages(reader, dmsg)
 				}
 
-				// 排空后补扫重试耗尽的失败文档
+				// 排空后补扫重试耗尽的失败文档；保留一个代表性错误作为根因。
+				// 整批同一原因（如模型不存在/不可达）时，最后一条即可解释全部失败——
+				// 仅记 docID 列表看不出"为什么"，failure_detail 必须带上这个 cause。
 				stillFailed := []string{}
+				var failureCause error
 				for _, failedID := range failedDocIDs {
 					if err := eh.vectorizeDoc(ctx, indexName, failedID, buildTaskInfo.EmbeddingModel, embeddingFields); err != nil {
 						logger.Errorf("Vectorize document %s failed in final sweep: %v", failedID, err)
 						stillFailed = append(stillFailed, failedID)
+						failureCause = err
 					} else {
 						countProcessed(failedID)
 					}
@@ -335,7 +339,7 @@ func (eh *embeddingHandler) executeEmbedding(ctx context.Context, resource *inte
 				// failure_detail 说明缺了哪些；error_msg 仅留给整任务硬失败）。显式置空以清除上一轮重建的陈旧明细。
 				updates["failureDetail"] = ""
 				if len(stillFailed) > 0 {
-					updates["failureDetail"] = formatVectorizeFailures(stillFailed)
+					updates["failureDetail"] = formatVectorizeFailures(stillFailed, failureCause)
 				}
 				// 必须同时回写最终计数：常规回写有 30 秒批量窗口，
 				// 不在这里 flush 会丢最后一个窗口的进度（短任务界面会停在 0%）
@@ -484,14 +488,25 @@ func (eh *embeddingHandler) vectorizeDoc(ctx context.Context, indexName, docID, 
 	return nil
 }
 
-// formatVectorizeFailures 生成完成态下向量缺失的说明，ID 列表截断避免撑爆 error_msg
-func formatVectorizeFailures(failed []string) string {
+// formatVectorizeFailures 生成完成态下向量缺失的说明：先给根因（cause），再列文档 ID。
+// cause 让消费方（UI/SDK）一眼看出"为什么"——整批同因失败时（模型不存在/不可达）
+// 只有 ID 列表无从判断索引为何不可用。ID 列表与 cause 均截断，避免撑爆 failure_detail。
+func formatVectorizeFailures(failed []string, cause error) string {
 	const maxListed = 20
+	const maxCauseLen = 300
 	listed := failed
 	if len(listed) > maxListed {
 		listed = listed[:maxListed]
 	}
-	msg := fmt.Sprintf("vectorization failed for %d documents: %s", len(failed), strings.Join(listed, ","))
+	msg := fmt.Sprintf("vectorization failed for %d documents", len(failed))
+	if cause != nil {
+		causeStr := cause.Error()
+		if len(causeStr) > maxCauseLen {
+			causeStr = causeStr[:maxCauseLen] + "..."
+		}
+		msg += fmt.Sprintf(" (cause: %s)", causeStr)
+	}
+	msg += ": " + strings.Join(listed, ",")
 	if len(failed) > maxListed {
 		msg += fmt.Sprintf(" ... and %d more", len(failed)-maxListed)
 	}

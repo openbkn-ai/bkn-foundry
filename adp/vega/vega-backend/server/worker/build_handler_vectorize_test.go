@@ -113,7 +113,7 @@ func TestFormatVectorizeFailures_Truncates(t *testing.T) {
 		failed[i] = fmt.Sprintf("doc%02d", i)
 	}
 
-	msg := formatVectorizeFailures(failed)
+	msg := formatVectorizeFailures(failed, nil)
 	if !strings.Contains(msg, "failed for 25 documents") {
 		t.Fatalf("missing total count: %s", msg)
 	}
@@ -124,8 +124,28 @@ func TestFormatVectorizeFailures_Truncates(t *testing.T) {
 		t.Fatalf("should list only first 20 ids: %s", msg)
 	}
 
-	short := formatVectorizeFailures([]string{"a", "b"})
+	short := formatVectorizeFailures([]string{"a", "b"}, nil)
 	if strings.Contains(short, "more") || !strings.Contains(short, "a,b") {
 		t.Fatalf("short list should be complete: %s", short)
+	}
+}
+
+// 根因必须落进 failure_detail：整批同因失败（如模型不存在）时，
+// 仅有 docID 列表无从判断索引为何不可用，cause 是 UI/SDK 的唯一可见信号。
+func TestFormatVectorizeFailures_IncludesCause(t *testing.T) {
+	cause := errors.New("get vector request failed with status code: 400, ModelFactory.ExternalSmallModel.Used.NameNotExist")
+	msg := formatVectorizeFailures([]string{"1-", "2-"}, cause)
+	if !strings.Contains(msg, "cause: ") || !strings.Contains(msg, "NameNotExist") {
+		t.Fatalf("failure detail must surface the root cause: %s", msg)
+	}
+	if !strings.Contains(msg, "1-,2-") {
+		t.Fatalf("doc ids still listed after cause: %s", msg)
+	}
+
+	// 超长 cause 截断，避免撑爆 failure_detail
+	long := errors.New(strings.Repeat("x", 600))
+	capped := formatVectorizeFailures([]string{"1-"}, long)
+	if !strings.Contains(capped, "...") || len(capped) > 500 {
+		t.Fatalf("long cause should be truncated: len=%d", len(capped))
 	}
 }
