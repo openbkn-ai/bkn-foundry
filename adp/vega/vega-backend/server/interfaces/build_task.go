@@ -130,3 +130,10 @@ type KeyValue struct {
 	Key   string
 	Value any
 }
+
+// BuildIndexName 返回构建任务对应的 OpenSearch 索引名。索引名 = 前缀-资源ID-任务ID，
+// 与任务一一对应。删除任务/资源/目录时据此 drop 索引，避免孤儿索引。
+// 单一来源：worker 建索引与各处级联清理都用它，别在多处手拼。
+func BuildIndexName(resourceID, buildTaskID string) string {
+	return BUILD_PREFIX + "-" + resourceID + "-" + buildTaskID
+}

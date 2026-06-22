@@ -326,10 +326,48 @@ func TestDeleteByIDs_Success(t *testing.T) {
 		Return([]*interfaces.Resource{{ID: "r1", Category: "table"}}, nil)
 	mockRA.EXPECT().DeleteByIDs(gomock.Any(), []string{"r1"}).Return(nil)
 	mockPS.EXPECT().DeleteResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE, []string{"r1"}).Return(nil)
-	mockBTA.EXPECT().GetByResourceID(gomock.Any(), "r1").Return(nil, nil)
+	// 级联：无构建任务时 List 返回空，不再走 GetByResourceID 拦截
+	mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).Return([]*interfaces.BuildTask{}, int64(0), nil)
 	err := rs.DeleteByIDs(context.Background(), []string{"r1"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// 删资源时有构建任务：级联 drop 索引 + 删任务行，再删资源。
+func TestDeleteByIDs_CascadesBuildTaskAndIndex(t *testing.T) {
+	rs, mockRA, mockPS, mockDS, _, _, mockBTA := newTestService(t)
+	mockPS.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
+		[]string{"r1"}, gomock.Any(), true, gomock.Any()).
+		Return(map[string]interfaces.PermissionResourceOps{"r1": {ResourceID: "r1"}}, nil)
+	mockRA.EXPECT().GetByIDs(gomock.Any(), []string{"r1"}).
+		Return([]*interfaces.Resource{{ID: "r1", Category: "table"}}, nil)
+	// 一个已完成任务 t1 → 期望 drop 其索引并删任务行
+	mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).
+		Return([]*interfaces.BuildTask{{ID: "t1", ResourceID: "r1", Status: "completed"}}, int64(1), nil)
+	mockDS.EXPECT().Delete(gomock.Any(), interfaces.BuildIndexName("r1", "t1")).Return(nil)
+	mockBTA.EXPECT().Delete(gomock.Any(), "t1").Return(nil)
+	mockRA.EXPECT().DeleteByIDs(gomock.Any(), []string{"r1"}).Return(nil)
+	mockPS.EXPECT().DeleteResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE, []string{"r1"}).Return(nil)
+	if err := rs.DeleteByIDs(context.Background(), []string{"r1"}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// 删资源时任务在运行中：级联拒绝，资源不删。
+func TestDeleteByIDs_RefusesWhenTaskRunning(t *testing.T) {
+	rs, mockRA, mockPS, _, _, _, mockBTA := newTestService(t)
+	mockPS.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
+		[]string{"r1"}, gomock.Any(), true, gomock.Any()).
+		Return(map[string]interfaces.PermissionResourceOps{"r1": {ResourceID: "r1"}}, nil)
+	mockRA.EXPECT().GetByIDs(gomock.Any(), []string{"r1"}).
+		Return([]*interfaces.Resource{{ID: "r1", Category: "table"}}, nil)
+	mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).
+		Return([]*interfaces.BuildTask{{ID: "t1", ResourceID: "r1", Status: "running"}}, int64(1), nil)
+	// 不应调用 DeleteByIDs / bta.Delete / ds.Delete
+	err := rs.DeleteByIDs(context.Background(), []string{"r1"})
+	if err == nil {
+		t.Fatalf("expected error when a build task is running")
 	}
 }
 

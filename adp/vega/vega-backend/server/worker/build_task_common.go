@@ -23,7 +23,7 @@ import (
 )
 
 func getIndexName(resourceID, buildTaskID string) string {
-	return interfaces.BUILD_PREFIX + "-" + resourceID + "-" + buildTaskID
+	return interfaces.BuildIndexName(resourceID, buildTaskID)
 }
 
 func getEmbeddingTopic(resourceID, buildTaskID string) string {
