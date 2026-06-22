@@ -248,3 +248,36 @@ func TestComputeIndexHealth(t *testing.T) {
 		})
 	}
 }
+
+// 删任务应连带 drop 其 OpenSearch 索引（与删资源/删 catalog 级联语义一致）。
+func TestDeleteBuildTasks_DropsIndexAndRow(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+	mockDS := mock_interfaces.NewMockDatasetService(ctrl)
+	service := &buildTaskService{bta: mockBTA, ds: mockDS}
+
+	mockBTA.EXPECT().GetByID(gomock.Any(), "t1").
+		Return(&interfaces.BuildTask{ID: "t1", ResourceID: "r1", Status: "completed"}, nil)
+	mockDS.EXPECT().Delete(gomock.Any(), interfaces.BuildIndexName("r1", "t1")).Return(nil)
+	mockBTA.EXPECT().Delete(gomock.Any(), "t1").Return(nil)
+
+	if err := service.DeleteBuildTasks(context.Background(), []string{"t1"}, false); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// 任一任务运行中 → 整批 409，索引/行都不删。
+func TestDeleteBuildTasks_RefusesRunning(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+	mockDS := mock_interfaces.NewMockDatasetService(ctrl)
+	service := &buildTaskService{bta: mockBTA, ds: mockDS}
+
+	mockBTA.EXPECT().GetByID(gomock.Any(), "t1").
+		Return(&interfaces.BuildTask{ID: "t1", ResourceID: "r1", Status: "running"}, nil)
+	// 不应调用 ds.Delete / bta.Delete
+
+	if err := service.DeleteBuildTasks(context.Background(), []string{"t1"}, false); err == nil {
+		t.Fatalf("expected 409 when a task is running")
+	}
+}
