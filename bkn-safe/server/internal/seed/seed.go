@@ -31,6 +31,11 @@ const (
 	adminAccount = "admin"
 )
 
+// AdminUserID is the built-in admin user's id, exported so callers can protect
+// it — the user-admin API refuses to delete or disable it (deleting the only
+// super-admin would lock everyone out). Same UUID as the S2S fallback identity.
+const AdminUserID = adminUserID
+
 // adminInitialPwd is the platform initial password (shared single source).
 // Not a const: auth.DefaultInitialPassword is a runtime var (env-overridable).
 var adminInitialPwd = auth.DefaultInitialPassword
