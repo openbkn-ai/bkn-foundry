@@ -71,3 +71,18 @@ func (op *operatorHandle) OperatorQueryPage(c *gin.Context) {
 	}
 	rest.ReplyOK(c, http.StatusOK, result)
 }
+
+// OperatorQueryNamesByIDs 按算子ID批量取名(给前端对象级授权页回显名称用)
+func (op *operatorHandle) OperatorQueryNamesByIDs(c *gin.Context) {
+	req := &interfaces.BatchNamesReq{}
+	if err := c.ShouldBindJSON(req); err != nil {
+		rest.ReplyError(c, errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error()))
+		return
+	}
+	result, err := op.OperatorManager.GetOperatorNamesByIDs(c.Request.Context(), req.IDs)
+	if err != nil {
+		rest.ReplyError(c, err)
+		return
+	}
+	rest.ReplyOK(c, http.StatusOK, result)
+}

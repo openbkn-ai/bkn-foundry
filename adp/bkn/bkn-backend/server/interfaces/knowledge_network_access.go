@@ -27,5 +27,9 @@ type KNAccess interface {
 	GetAllKNs(ctx context.Context) (map[string]*KN, error)
 	GetNeighborPathsBatch(ctx context.Context, otIDs []string, query RelationTypePathsBaseOnSource) (map[string][]RelationTypePath, error)
 
+	// GetKNNamesByIDs 按 ID 批量查询知识网络名称(轻查询，绕过授权过滤，仅用于对象级授权页回显)。
+	// 缺失的 id 略过、空 ids 返回空 entries。
+	GetKNNamesByIDs(ctx context.Context, ids []string, branch string) ([]*KNNameEntry, error)
+
 	ListKnSrcs(ctx context.Context, query KNsQueryParams) ([]PermissionResource, error)
 }

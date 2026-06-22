@@ -137,6 +137,23 @@ type KN struct {
 	Score  *float64  `json:"_score,omitempty"` // opensearch检索的得分，在概念搜索时使用
 }
 
+// KNBatchNamesReq 按 ID 批量取知识网络名称请求(对象级授权页回显，统一契约)
+type KNBatchNamesReq struct {
+	IDs []string `json:"ids"` // 待取名的知识网络 ID 列表，空列表返回空 entries
+}
+
+// KNNameEntry 单个 知识网络 ID->名称 条目
+type KNNameEntry struct {
+	ID   string `json:"id"`   // 知识网络 ID(string slug)
+	Name string `json:"name"` // 知识网络名称
+}
+
+// KNBatchNamesResp 按 ID 批量取知识网络名称响应
+// 容错：不存在的 ID 略过，不报错
+type KNBatchNamesResp struct {
+	Entries []*KNNameEntry `json:"entries"`
+}
+
 type Statistics struct {
 	CgTotal       int `json:"concept_groups_total"`
 	OtTotal       int `json:"object_types_total"`

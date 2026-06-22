@@ -401,6 +401,8 @@ type SkillRegistry interface {
 	ExecuteSkill(ctx context.Context, req *ExecuteSkillReq) (*ExecuteSkillResp, error)
 	QuerySkillList(ctx context.Context, req *QuerySkillListReq) (*QuerySkillListResp, error)
 	GetSkillDetail(ctx context.Context, req *GetSkillDetailReq) (*SkillInfo, error)
+	// GetSkillNamesByIDs 按技能ID批量取名(容错：不存在的ID略过)
+	GetSkillNamesByIDs(ctx context.Context, ids []string) (*BatchNamesResp, error)
 	// 更新 Skill 状态
 	UpdateSkillStatus(ctx context.Context, req *UpdateSkillStatusReq) (*UpdateSkillStatusResp, error)
 }

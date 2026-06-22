@@ -21,6 +21,7 @@ type OperatorHandler interface {
 	OperatorRegister(c *gin.Context)
 	OperatorQueryByOperatorID(c *gin.Context)
 	OperatorQueryPage(c *gin.Context)
+	OperatorQueryNamesByIDs(c *gin.Context)
 	OperatorUpdateByOpenAPI(c *gin.Context)
 	OperatorEdit(c *gin.Context)
 	OperatorDelete(c *gin.Context)

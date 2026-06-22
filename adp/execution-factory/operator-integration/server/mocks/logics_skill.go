@@ -101,6 +101,21 @@ func (mr *MockSkillRegistryMockRecorder) GetSkillDetail(ctx, req any) *gomock.Ca
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSkillDetail", reflect.TypeOf((*MockSkillRegistry)(nil).GetSkillDetail), ctx, req)
 }
 
+// GetSkillNamesByIDs mocks base method.
+func (m *MockSkillRegistry) GetSkillNamesByIDs(ctx context.Context, ids []string) (*interfaces.BatchNamesResp, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetSkillNamesByIDs", ctx, ids)
+	ret0, _ := ret[0].(*interfaces.BatchNamesResp)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetSkillNamesByIDs indicates an expected call of GetSkillNamesByIDs.
+func (mr *MockSkillRegistryMockRecorder) GetSkillNamesByIDs(ctx, ids any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSkillNamesByIDs", reflect.TypeOf((*MockSkillRegistry)(nil).GetSkillNamesByIDs), ctx, ids)
+}
+
 // PublishSkillHistory mocks base method.
 func (m *MockSkillRegistry) PublishSkillHistory(ctx context.Context, req *interfaces.PublishSkillHistoryReq) (*interfaces.PublishSkillHistoryResp, error) {
 	m.ctrl.T.Helper()
@@ -327,6 +342,75 @@ func (m *MockSkillReader) ReadSkillFile(ctx context.Context, req *interfaces.Rea
 func (mr *MockSkillReaderMockRecorder) ReadSkillFile(ctx, req any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadSkillFile", reflect.TypeOf((*MockSkillReader)(nil).ReadSkillFile), ctx, req)
+}
+
+// MockSkillManagementReader is a mock of SkillManagementReader interface.
+type MockSkillManagementReader struct {
+	ctrl     *gomock.Controller
+	recorder *MockSkillManagementReaderMockRecorder
+	isgomock struct{}
+}
+
+// MockSkillManagementReaderMockRecorder is the mock recorder for MockSkillManagementReader.
+type MockSkillManagementReaderMockRecorder struct {
+	mock *MockSkillManagementReader
+}
+
+// NewMockSkillManagementReader creates a new mock instance.
+func NewMockSkillManagementReader(ctrl *gomock.Controller) *MockSkillManagementReader {
+	mock := &MockSkillManagementReader{ctrl: ctrl}
+	mock.recorder = &MockSkillManagementReaderMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockSkillManagementReader) EXPECT() *MockSkillManagementReaderMockRecorder {
+	return m.recorder
+}
+
+// DownloadManagementSkill mocks base method.
+func (m *MockSkillManagementReader) DownloadManagementSkill(ctx context.Context, req *interfaces.DownloadManagementSkillReq) (*interfaces.DownloadSkillResp, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DownloadManagementSkill", ctx, req)
+	ret0, _ := ret[0].(*interfaces.DownloadSkillResp)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DownloadManagementSkill indicates an expected call of DownloadManagementSkill.
+func (mr *MockSkillManagementReaderMockRecorder) DownloadManagementSkill(ctx, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DownloadManagementSkill", reflect.TypeOf((*MockSkillManagementReader)(nil).DownloadManagementSkill), ctx, req)
+}
+
+// GetManagementContent mocks base method.
+func (m *MockSkillManagementReader) GetManagementContent(ctx context.Context, req *interfaces.GetManagementContentReq) (*interfaces.GetManagementContentResp, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetManagementContent", ctx, req)
+	ret0, _ := ret[0].(*interfaces.GetManagementContentResp)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetManagementContent indicates an expected call of GetManagementContent.
+func (mr *MockSkillManagementReaderMockRecorder) GetManagementContent(ctx, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetManagementContent", reflect.TypeOf((*MockSkillManagementReader)(nil).GetManagementContent), ctx, req)
+}
+
+// ReadManagementFile mocks base method.
+func (m *MockSkillManagementReader) ReadManagementFile(ctx context.Context, req *interfaces.ReadManagementFileReq) (*interfaces.ReadManagementFileResp, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReadManagementFile", ctx, req)
+	ret0, _ := ret[0].(*interfaces.ReadManagementFileResp)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ReadManagementFile indicates an expected call of ReadManagementFile.
+func (mr *MockSkillManagementReaderMockRecorder) ReadManagementFile(ctx, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadManagementFile", reflect.TypeOf((*MockSkillManagementReader)(nil).ReadManagementFile), ctx, req)
 }
 
 // MockSkillIndexBuildService is a mock of SkillIndexBuildService interface.

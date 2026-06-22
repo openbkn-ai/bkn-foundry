@@ -79,6 +79,27 @@ func (m *operatorManager) getOperatorRegisterInfo(ctx context.Context, operatorI
 	return
 }
 
+// GetOperatorNamesByIDs 按算子ID批量取名(轻量只读，复用 SelectByOperatorIDs；不存在的ID略过)
+func (m *operatorManager) GetOperatorNamesByIDs(ctx context.Context, ids []string) (resp *interfaces.BatchNamesResp, err error) {
+	ctx, _ = o11y.StartInternalSpan(ctx)
+	defer o11y.EndSpan(ctx, err)
+	resp = &interfaces.BatchNamesResp{Entries: []*interfaces.NameEntry{}}
+	ids = utils.UniqueStrings(ids)
+	if len(ids) == 0 {
+		return
+	}
+	operatorList, err := m.DBOperatorManager.SelectByOperatorIDs(ctx, ids)
+	if err != nil {
+		m.Logger.WithContext(ctx).Errorf("select operators by ids failed, err: %v", err)
+		err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+		return
+	}
+	for _, op := range operatorList {
+		resp.Entries = append(resp.Entries, &interfaces.NameEntry{ID: op.OperatorID, Name: op.Name})
+	}
+	return
+}
+
 // GetOperatorQueryPage 获取算子列表
 func (m *operatorManager) GetOperatorQueryPage(ctx context.Context, req *interfaces.PageQueryRequest) (result *interfaces.PageQueryResponse, err error) {
 	// 记录可观测

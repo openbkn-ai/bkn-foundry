@@ -49,6 +49,12 @@ async def set_default(request: Request, model_para: dict = Body(...)):
     return await small_model_controller.set_default_model(model_para, userId, language, role)
 
 
+@small_model_router.post("/small-model/names")
+async def get_names(request: Request, model_para: dict = Body(...)):
+    userId, language, role = await get_user_info(request)
+    return await small_model_controller.get_names_by_ids(model_para.get("ids", []), userId, language, role)
+
+
 @small_model_router.post("/small-model/delete")
 async def delete_model(request: Request, model_para: dict = Body(...)):
     userId, language, role = await get_user_info(request)

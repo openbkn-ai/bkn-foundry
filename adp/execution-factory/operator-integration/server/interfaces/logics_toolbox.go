@@ -426,6 +426,8 @@ type IToolService interface {
 	GetToolBox(ctx context.Context, req *GetToolBoxReq, isMarket bool) (resp *ToolBoxToolInfo, err error)
 	DeleteBoxByID(ctx context.Context, req *DeleteBoxReq) (resp *DeleteBoxResp, err error)
 	QueryToolBoxList(ctx context.Context, req *QueryToolBoxListReq) (resp *QueryToolBoxListResp, err error)
+	// GetToolBoxNamesByIDs 按工具箱ID批量取名(容错：不存在的ID略过)
+	GetToolBoxNamesByIDs(ctx context.Context, ids []string) (resp *BatchNamesResp, err error)
 	QueryMarketToolBoxList(ctx context.Context, req *QueryMarketToolBoxListReq) (resp *QueryToolBoxListResp, err error)
 	UpdateToolBoxStatus(ctx context.Context, req *UpdateToolBoxStatusReq) (resp *UpdateToolBoxStatusResp, err error)
 	// 工具管理

@@ -239,6 +239,21 @@ func (h *skillHandler) QuerySkillList(c *gin.Context) {
 	rest.ReplyOK(c, http.StatusOK, resp)
 }
 
+// QuerySkillNamesByIDs 按技能ID批量取名(给前端对象级授权页回显名称用)
+func (h *skillHandler) QuerySkillNamesByIDs(c *gin.Context) {
+	req := &interfaces.BatchNamesReq{}
+	if err := utils.GetBindJSONRaw(c, req); err != nil {
+		rest.ReplyError(c, err)
+		return
+	}
+	resp, err := h.Registry.GetSkillNamesByIDs(c.Request.Context(), req.IDs)
+	if err != nil {
+		rest.ReplyError(c, err)
+		return
+	}
+	rest.ReplyOK(c, http.StatusOK, resp)
+}
+
 func (h *skillHandler) QuerySkillMarketList(c *gin.Context) {
 	req := &interfaces.QuerySkillMarketListReq{}
 	if err := c.ShouldBindHeader(req); err != nil {

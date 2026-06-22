@@ -29,4 +29,7 @@ type KNService interface {
 
 	// ValidateKN 仅校验知识网络整体依赖存在性，不写库。mode 与 CreateKN 的导入模式一致，用于名称/ID 与落库冲突的语义对齐。
 	ValidateKN(ctx context.Context, kn *KN, strictMode bool, mode string) error
+
+	// GetKNNamesByIDs 按 ID 批量取知识网络名称(对象级授权页回显)。绕过授权过滤，缺失 id 略过、空 ids 返回空 entries。
+	GetKNNamesByIDs(ctx context.Context, ids []string) (*KNBatchNamesResp, error)
 }

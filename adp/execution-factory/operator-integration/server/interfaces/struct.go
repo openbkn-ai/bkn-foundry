@@ -43,6 +43,23 @@ type CommonPageResult struct {
 	HasPrev    bool `json:"has_prev"`    // 是否有上一页
 }
 
+// BatchNamesReq 按 ID 批量取名请求(operator/tool_box/skill 统一契约)
+type BatchNamesReq struct {
+	IDs []string `json:"ids"` // 待取名的 ID 列表，空列表返回空 entries
+}
+
+// NameEntry 单个 ID->名称 条目
+type NameEntry struct {
+	ID   string `json:"id"`   // 实体 ID
+	Name string `json:"name"` // 实体名称
+}
+
+// BatchNamesResp 按 ID 批量取名响应
+// 容错：不存在的 ID 略过，不报错
+type BatchNamesResp struct {
+	Entries []*NameEntry `json:"entries"`
+}
+
 // PtrBizIdentifiable 业务ID可识别接口指针
 type PtrBizIdentifiable[T any] interface {
 	*T

@@ -930,6 +930,57 @@ func (kna *knowledgeNetworkAccess) GetAllKNs(ctx context.Context) (map[string]*i
 	return KNs, nil
 }
 
+// GetKNNamesByIDs 按 ID 批量查询知识网络名称(轻查询，仅取 f_id/f_name)。缺失 id 略过、空 ids 返回空切片。
+func (kna *knowledgeNetworkAccess) GetKNNamesByIDs(ctx context.Context,
+	ids []string, branch string) ([]*interfaces.KNNameEntry, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Select knowledge network names by ids")
+	defer span.End()
+
+	span.SetAttributes(
+		attr.Key("db_url").String(libdb.GetDBUrl()),
+		attr.Key("db_type").String(libdb.GetDBType()))
+
+	entries := make([]*interfaces.KNNameEntry, 0, len(ids))
+	if len(ids) == 0 {
+		span.SetStatus(codes.Ok, "")
+		return entries, nil
+	}
+
+	sqlStr, vals, err := sq.Select(
+		"f_id",
+		"f_name").
+		From(KN_TABLE_NAME).
+		Where(sq.Eq{"f_id": ids}).
+		Where(sq.Eq{"f_branch": branch}).
+		ToSql()
+	if err != nil {
+		otellog.LogError(ctx, "Failed to build the sql of select knowledge network names by ids, error", err)
+		return nil, err
+	}
+
+	// 记录处理的 sql 字符串
+	otellog.LogInfo(ctx, fmt.Sprintf("按ID批量查询业务知识网络名称的 sql 语句: %s; ids: %v", sqlStr, ids))
+
+	rows, err := kna.db.Query(sqlStr, vals...)
+	if err != nil {
+		otellog.LogError(ctx, "List data error", err)
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		entry := &interfaces.KNNameEntry{}
+		if err := rows.Scan(&entry.ID, &entry.Name); err != nil {
+			otellog.LogError(ctx, "Row scan error", err)
+			return nil, err
+		}
+		entries = append(entries, entry)
+	}
+
+	span.SetStatus(codes.Ok, "")
+	return entries, nil
+}
+
 func (kna *knowledgeNetworkAccess) ListKnSrcs(ctx context.Context,
 	query interfaces.KNsQueryParams) ([]interfaces.PermissionResource, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Select knowledge networks")

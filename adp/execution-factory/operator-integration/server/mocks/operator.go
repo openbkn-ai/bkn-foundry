@@ -146,6 +146,21 @@ func (mr *MockOperatorManagerMockRecorder) GetOperatorInfoByOperatorID(ctx, req 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetOperatorInfoByOperatorID", reflect.TypeOf((*MockOperatorManager)(nil).GetOperatorInfoByOperatorID), ctx, req)
 }
 
+// GetOperatorNamesByIDs mocks base method.
+func (m *MockOperatorManager) GetOperatorNamesByIDs(ctx context.Context, ids []string) (*interfaces.BatchNamesResp, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetOperatorNamesByIDs", ctx, ids)
+	ret0, _ := ret[0].(*interfaces.BatchNamesResp)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetOperatorNamesByIDs indicates an expected call of GetOperatorNamesByIDs.
+func (mr *MockOperatorManagerMockRecorder) GetOperatorNamesByIDs(ctx, ids any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetOperatorNamesByIDs", reflect.TypeOf((*MockOperatorManager)(nil).GetOperatorNamesByIDs), ctx, ids)
+}
+
 // GetOperatorQueryPage mocks base method.
 func (m *MockOperatorManager) GetOperatorQueryPage(ctx context.Context, req *interfaces.PageQueryRequest) (*interfaces.PageQueryResponse, error) {
 	m.ctrl.T.Helper()

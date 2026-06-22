@@ -118,6 +118,21 @@ func (mr *MockKNServiceMockRecorder) GetKNByID(ctx, knID, branch, mode any) *gom
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetKNByID", reflect.TypeOf((*MockKNService)(nil).GetKNByID), ctx, knID, branch, mode)
 }
 
+// GetKNNamesByIDs mocks base method.
+func (m *MockKNService) GetKNNamesByIDs(ctx context.Context, ids []string) (*interfaces.KNBatchNamesResp, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetKNNamesByIDs", ctx, ids)
+	ret0, _ := ret[0].(*interfaces.KNBatchNamesResp)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetKNNamesByIDs indicates an expected call of GetKNNamesByIDs.
+func (mr *MockKNServiceMockRecorder) GetKNNamesByIDs(ctx, ids any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetKNNamesByIDs", reflect.TypeOf((*MockKNService)(nil).GetKNNamesByIDs), ctx, ids)
+}
+
 // GetRelationTypePaths mocks base method.
 func (m *MockKNService) GetRelationTypePaths(ctx context.Context, query interfaces.RelationTypePathsBaseOnSource) ([]interfaces.RelationTypePath, error) {
 	m.ctrl.T.Helper()

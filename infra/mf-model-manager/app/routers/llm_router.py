@@ -60,6 +60,13 @@ async def source_llm(request: Request, page, size, order='desc', rule='update_ti
     return await source_model(userId, language, page, size, name, order, series, rule, api_model, model_type, quota)
 
 
+# 大模型按 id 批量取名接口
+@llm_route.post("/llm/names")
+async def names_llm(request: Request, model_para: dict = Body(...)):
+    userId, language, role = await get_user_info(request)
+    return await check_names_by_ids(model_para.get("ids", []), userId, language, role)
+
+
 # 查看大模型接口
 @llm_route.get("/llm/get")
 async def check_llm_(model_id, request: Request, ):

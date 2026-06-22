@@ -358,6 +358,20 @@ async def check_model(model_id, userId, language, role=""):
         return JSONResponse(status_code=500, content=DataBaseError)
 
 
+async def check_names_by_ids(model_ids, userId, language, role=""):
+    # 按 id 批量取名（对象级授权页回显用）：低敏只读，不做授权拦截；不存在的 id 直接略过
+    try:
+        if not isinstance(model_ids, list) or not model_ids:
+            return JSONResponse(status_code=200, content={"entries": []})
+        ids = [str(model_id) for model_id in model_ids]
+        original_res = llm_model_dao.get_model_info_by_ids(ids)
+        entries = [{"id": str(item["f_model_id"]), "name": item["f_model_name"]} for item in original_res]
+        return JSONResponse(status_code=200, content={"entries": entries})
+    except Exception as e:
+        StandLogger.error(e.args)
+        return JSONResponse(status_code=500, content=DataBaseError)
+
+
 # 新增大模型参数获取接口
 async def param_model(user):
     try:

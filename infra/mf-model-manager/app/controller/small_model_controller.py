@@ -292,6 +292,25 @@ async def get_info(model_id, user_id, role):
         return JSONResponse(status_code=400, content=error_dict)
 
 
+async def get_names_by_ids(model_ids, userId, language, role):
+    # 按 id 批量取名（对象级授权页回显用）：低敏只读，不做授权拦截；不存在的 id 直接略过
+    try:
+        if not isinstance(model_ids, list) or not model_ids:
+            return JSONResponse(status_code=200, content={"entries": []})
+        ids = [str(model_id) for model_id in model_ids]
+        try:
+            original_res = small_model_dao.get_model_info_by_ids(ids)
+        except Exception as e:
+            StandLogger.error(ModelFactory_MyPymysqlPool_Connection_ConnectError_Error["description"])
+            return JSONResponse(status_code=500, content=ModelFactory_MyPymysqlPool_Connection_ConnectError_Error)
+        entries = [{"id": str(item["f_model_id"]), "name": item["f_model_name"]} for item in original_res]
+        return JSONResponse(status_code=200, content={"entries": entries})
+    except Exception as e:
+        StandLogger.error(e.args)
+        error_dict = ModelFactory_ExternalSmallModel_UnknownError.copy()
+        return JSONResponse(status_code=400, content=error_dict)
+
+
 async def get_info_by_name(model_name):
     if not model_name:
         return JSONResponse(status_code=400, content=ModelFactory_ExternalSmallModel_GetInfo_IdNotExist_Error)
