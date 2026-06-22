@@ -757,23 +757,13 @@ func (rs *resourceService) DeleteByIDs(ctx context.Context, ids []string) error 
 	for _, resource := range resources {
 		switch resource.Category {
 		case interfaces.ResourceCategoryTable:
-			// Check if dataset has build tasks
-			buildTask, err := rs.bta.GetByResourceID(ctx, resource.ID)
-			if err != nil {
-				span.SetStatus(codes.Error, "Get build task failed")
-				return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_GetFailed).
-					WithErrorDetails(err.Error())
-			} else if buildTask != nil {
-				return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_Exist).
-					WithErrorDetails("Cannot delete dataset, please delete build task first")
-			}
-			if resource.LocalIndexName != "" {
-				// 删除本地索引
-				err := rs.ds.Delete(ctx, resource.LocalIndexName)
-				if err != nil {
-					logger.Errorf("Delete local index failed: %v", err)
-					// 索引删除失败不影响资源删除，只记录错误
-				}
+			// 级联清掉该资源的全部构建任务 + 对应 OpenSearch 索引（含历史孤儿）。
+			// 改自原先"有任务就拒删"：现在删资源连带删任务/索引（危险操作由前端二次确认把关）。
+			// 运行中/停止中任务会被 cascade 拒绝（HasRunningExecution），用户需先停止再删。
+			if err := logics.CascadeDeleteBuildTasks(ctx, rs.bta, rs.ds,
+				interfaces.BuildTasksQueryParams{ResourceID: resource.ID}); err != nil {
+				span.SetStatus(codes.Error, "Cascade delete build tasks failed")
+				return err
 			}
 		case interfaces.ResourceCategoryDataset:
 			// Delete dataset
