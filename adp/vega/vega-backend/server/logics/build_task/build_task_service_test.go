@@ -198,3 +198,53 @@ func TestUpdateBuildTaskConfigRejectsNoFields(t *testing.T) {
 		t.Fatalf("expected 400, got %v", err)
 	}
 }
+
+func TestComputeIndexHealth(t *testing.T) {
+	cases := []struct {
+		name          string
+		bt            interfaces.BuildTask
+		wantEmbedding string
+		wantFulltext  string
+		wantUsable    bool
+	}{
+		{
+			name:          "embedding all failed (completed but vectorized=0) -> failed, fulltext ok, unusable",
+			bt:            interfaces.BuildTask{Status: "completed", EmbeddingFields: "name", FulltextFields: "name", SyncedCount: 6, VectorizedCount: 0},
+			wantEmbedding: "failed", wantFulltext: "ok", wantUsable: false,
+		},
+		{
+			name:          "embedding partial -> partial, unusable",
+			bt:            interfaces.BuildTask{Status: "completed", EmbeddingFields: "name", SyncedCount: 6, VectorizedCount: 4},
+			wantEmbedding: "partial", wantFulltext: "none", wantUsable: false,
+		},
+		{
+			name:          "embedding full -> ok, usable",
+			bt:            interfaces.BuildTask{Status: "completed", EmbeddingFields: "name", SyncedCount: 6, VectorizedCount: 6},
+			wantEmbedding: "ok", wantFulltext: "none", wantUsable: true,
+		},
+		{
+			name:          "no embedding requested -> none, usable",
+			bt:            interfaces.BuildTask{Status: "completed", FulltextFields: "name", SyncedCount: 6},
+			wantEmbedding: "none", wantFulltext: "ok", wantUsable: true,
+		},
+		{
+			name:          "running -> building, not usable yet",
+			bt:            interfaces.BuildTask{Status: "running", EmbeddingFields: "name", SyncedCount: 6, VectorizedCount: 2},
+			wantEmbedding: "building", wantFulltext: "none", wantUsable: false,
+		},
+		{
+			name:          "empty table -> ok, usable",
+			bt:            interfaces.BuildTask{Status: "completed", EmbeddingFields: "name", SyncedCount: 0, VectorizedCount: 0},
+			wantEmbedding: "ok", wantFulltext: "none", wantUsable: true,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			h := computeIndexHealth(&c.bt)
+			if h.Embedding != c.wantEmbedding || h.Fulltext != c.wantFulltext || h.Usable != c.wantUsable {
+				t.Fatalf("got embedding=%s fulltext=%s usable=%v, want %s/%s/%v",
+					h.Embedding, h.Fulltext, h.Usable, c.wantEmbedding, c.wantFulltext, c.wantUsable)
+			}
+		})
+	}
+}
