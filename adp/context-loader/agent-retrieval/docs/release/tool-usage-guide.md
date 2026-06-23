@@ -6,13 +6,14 @@
 
 | 字段 | 值 |
 | :--- | :--- |
-| 文档版本 | v1.6 |
+| 文档版本 | v1.7 |
 | 适用版本 | context-loader v0.8.0 |
 | 发布日期 | 2026-04-28 |
 | 状态 | 正式发布 |
 
 | 修订日期 | 修订说明 |
 | :--- | :--- |
+| 2026-06-23 | 新增 `run_sql` / `list_knowledge_networks` / `get_kn_detail` 三个工具说明；补充 MCP 自描述端点 `/mcp/info` 与「同一能力多入口（MCP / REST / 执行工厂 toolbox）」说明 |
 | 2026-05-12 | 补充 ContextLoader 标准工具集已内置到服务中，并随服务启动自动同步到执行工厂；新增工具集契约版本描述规则 |
 | 2026-04-28 | 更新为 context-loader `0.8.0`；`search_schema` 增加 `search_scope.concept_groups`，用于按 BKN 概念分组限定 object / relation / action schema 召回范围，并向 metric schema 检索透传分组条件 |
 | 2026-04-23 | 更新为 context-loader `0.7.0`；本版 release 仅纳入 `issue-189` / `issue-234`；`search_schema` 的 HTTP `kn_id` 改为通过 body 传递，并补充 `metric_types` 发布口径 |
@@ -26,6 +27,14 @@
 ContextLoader 标准工具集已内置在服务中，随服务启动自动同步到执行工厂。工具集名称保持为 `contextloader工具集`，描述规则固定为 `ContextLoader 标准内置工具集；契约版本: x.y.z`。
 
 契约版本仅在工具列表、工具参数 Schema 或工具语义发生变化时更新；服务 bugfix、内部实现优化、文档调整不单独更新契约版本。
+
+## 工具目录与自描述
+
+工具清单与逐工具 schema 的**权威事实源**是服务内嵌的 `server/driveradapters/mcp/schemas/tools_meta.json` 与 `schemas/<tool>.json`，本文是面向接入的人读快照，以事实源为准。
+
+- 运行时自描述：`GET /api/agent-retrieval/v1/mcp/info` 返回 service / endpoint / protocol / auth / tool_count / tools[]（含 input/output schema）/ client_config_example，无需先走 MCP 握手即可了解全部工具。
+- 同一能力多入口：同一份业务逻辑同时对外暴露为 **MCP 工具**、**REST 接口** 与（部分工具）**执行工厂 toolbox（OpenAPI HTTP）**。其中 `run_sql` / `list_knowledge_networks` / `get_kn_detail` 即按 MCP + toolbox 双入口注册。
+- 返回格式：所有 MCP 工具支持可选 `response_format`（`toon` 默认 / `json`）；MCP 文本默认 TOON，REST 默认 JSON。
 
 ## 1. 什么是 context-loader
 
@@ -132,6 +141,9 @@ curl -X POST "http://agent-retrieval:30779/api/agent-retrieval/in/v1/kn/query_ob
 | `find_skills` | 在业务边界内发现 Skill 候选 | 已知 `kn_id`，想知道当前场景下可考虑装配哪些 Skill 时 |
 | `get_logic_properties_values` | 逻辑属性解析（指标/算子） | 值需要按上下文动态计算时 |
 | `get_action_info` | 动态工具发现（Function Call 定义） | 针对具体对象实例，想知道“能做什么动作”时 |
+| `list_knowledge_networks` | 列出可用知识网络（返回 kn_id） | 不知道有哪些 kn_id、需先发现知识网络时 |
+| `get_kn_detail` | 一次性获取某知识网络完整 Schema（包装 bkn-backend） | 已知 kn_id，想一次拿全量概念组/对象类/关系类/行动类时 |
+| `run_sql` | 对知识网络挂载的数据资源执行只读 SQL（Trino） | 需要在单个数据目录内做结构化只读查询/聚合时 |
 
 ### 4.3 工具依赖（四类工具如何衔接）
 
@@ -512,6 +524,77 @@ Data Agent 配置（建议）：
 | `at_id` | 模型生成 | 请求体参数 | `模型生成` |
 | `_instance_identities` | 模型生成 | 请求体参数（可选） | `模型生成` |
 
+### 6.8 list_knowledge_networks（知识网络发现）
+
+> Schema 以 MCP 内嵌 [schemas/list_knowledge_networks.json](../../server/driveradapters/mcp/schemas/list_knowledge_networks.json) / `GET /mcp/info` 为准。
+
+- API：`POST /api/agent-retrieval/in/v1/kn/list_knowledge_networks`
+- 作用：列出可用知识网络，返回 `kn_id` 及基本信息；是其余需要 `kn_id` 的工具的前置发现入口
+- 无需 `kn_id`（本工具用于发现 kn_id）
+
+请求体（关键字段，均可选）：
+
+| 字段 | 必填 | 说明 |
+| :--- | :--- | :--- |
+| `name_pattern` | 否 | 按知识网络名称模糊过滤 |
+| `limit` | 否 | 单页数量，默认 20 |
+| `offset` | 否 | 偏移量，用于翻页，默认 0 |
+| `sort` | 否 | 排序字段，默认 `update_time` |
+| `direction` | 否 | 排序方向 `asc` / `desc`，默认 `desc` |
+
+返回要点：
+
+- `entries`：知识网络列表，每项含 `id`（即 kn_id）、`name`、`description`、`module_type`、`business_domain`
+- `total_count`：命中总数
+
+### 6.9 get_kn_detail（知识网络完整详情）
+
+> Schema 以 MCP 内嵌 [schemas/get_kn_detail.json](../../server/driveradapters/mcp/schemas/get_kn_detail.json) / `GET /mcp/info` 为准。
+
+- API：`POST /api/agent-retrieval/in/v1/kn/get_kn_detail`
+- 作用：直接包装 bkn-backend，已知 `kn_id` 时一次性返回知识网络完整 Schema
+- 与 `search_schema` 区别：`search_schema` 按 query 召回相关概念子集；`get_kn_detail` 返回全量 Schema，不做相关性筛选
+
+请求体：
+
+| 字段 | 必填 | 说明 |
+| :--- | :--- | :--- |
+| `kn_id` | 是 | 知识网络 ID（也可改用 `X-Kn-ID` 请求头传入） |
+
+返回要点：
+
+- `id` / `name` / `comment`：知识网络基本信息
+- `concept_groups` / `object_types`（含 `data_source`）/ `relation_types` / `action_types`：全量 Schema
+
+### 6.10 run_sql（资源只读 SQL）
+
+> Schema 以 MCP 内嵌 [schemas/run_sql.json](../../server/driveradapters/mcp/schemas/run_sql.json) / `GET /mcp/info` 为准。
+
+- API：`POST /api/agent-retrieval/in/v1/kn/run_sql`
+- 作用：对知识网络挂载的数据资源执行只读 SQL（Trino 方言），底层由 vega 解析占位符并强制限量
+- 无需 `kn_id`：表名以占位符 `{{.resource_id}}` 引用资源，`resource_id` 取自对象类的 `data_source.id`（可由 `search_schema` / `get_kn_detail` 获得）
+
+请求体：
+
+| 字段 | 必填 | 说明 |
+| :--- | :--- | :--- |
+| `sql` | 是 | 只读 SQL（Trino 方言）。表名用 `{{.resource_id}}` 占位符引用；仅允许 `SELECT` / `WITH`，禁止写入与 DDL；不支持多语句；不支持跨数据目录 join（单次查询资源需同属一个 catalog） |
+| `resource_type` | 否 | 连接器类型（mysql / mariadb / postgresql）。留空则按 SQL 中第一个 `{{.resource_id}}` 自动解析 |
+| `query_timeout` | 否 | 查询超时（秒），范围 1-3600，默认 60 |
+
+安全与约束：
+
+- 仅 `SELECT` / `WITH`，任何写入 / DDL / 多语句被拒
+- 单次查询涉及的资源需同属一个数据目录（不支持跨 catalog join）
+- vega 自动限量（最多 10000 行）
+
+返回要点：
+
+- `columns`：结果列信息（name / type）
+- `entries`：结果行
+- `total_count`：返回行数
+- `warnings`：非致命告警（如资源已弃用）
+
 ## 7. 集成场景与最佳实践
 
 ### 7.1 场景：从问题到可审计事实链
@@ -534,3 +617,5 @@ Data Agent 配置（建议）：
 - `find_skills.yaml`
 - `get_logic_properties_values.yaml`
 - `get_action_info.yaml`
+
+> `run_sql` / `list_knowledge_networks` / `get_kn_detail` 无独立 OpenAPI YAML；其 schema 以 MCP 内嵌的 `server/driveradapters/mcp/schemas/<tool>.json` 与 `GET /api/agent-retrieval/v1/mcp/info` 为准。
