@@ -562,8 +562,8 @@ func (s *localSearchImpl) rankRelationTypes(
 		documents[i] = buildRelationText(sourceName, relationName, targetName, rel.Comment)
 	}
 
-	// 调用 Rerank 服务
-	rerankResp, err := s.rerankClient.Rerank(ctx, query, documents)
+	// 调用 Rerank 服务（粗召回阶段固定用默认 reranker，不受 per-request 覆盖影响）
+	rerankResp, err := s.rerankClient.Rerank(ctx, query, documents, "")
 	if err != nil {
 		s.logger.WithContext(ctx).Warnf("[RankRelationTypes] Rerank failed, fallback to simple match: %v", err)
 		return s.rankRelationTypesBySimpleMatch(query, relations, topK)

@@ -40,7 +40,7 @@ func (m *mockMFModelClient) Chat(ctx context.Context, req *interfaces.LLMChatReq
 	return m.chatResponse, m.chatError
 }
 
-func (m *mockMFModelClient) Rerank(ctx context.Context, query string, documents []string) (*interfaces.RerankResp, error) {
+func (m *mockMFModelClient) Rerank(ctx context.Context, query string, documents []string, model string) (*interfaces.RerankResp, error) {
 	return m.rerankResp, m.rerankError
 }
 

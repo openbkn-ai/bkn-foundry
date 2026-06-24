@@ -44,7 +44,7 @@ func (m *stubMFModelClient) Chat(ctx context.Context, req *interfaces.LLMChatReq
 	return m.chatResp, m.chatError
 }
 
-func (m *stubMFModelClient) Rerank(ctx context.Context, query string, documents []string) (*interfaces.RerankResp, error) {
+func (m *stubMFModelClient) Rerank(ctx context.Context, query string, documents []string, model string) (*interfaces.RerankResp, error) {
 	return m.rerankResp, m.rerankError
 }
 
@@ -172,7 +172,7 @@ func TestRerankConcepts_DefaultAction(t *testing.T) {
 		}
 
 		// default action 不调用 KnowledgeRerank
-		result, err := service.rerankConcepts(ctx, queryUnderstanding, concepts, interfaces.KnowledgeRerankActionDefault, 10)
+		result, err := service.rerankConcepts(ctx, queryUnderstanding, concepts, interfaces.KnowledgeRerankActionDefault, 10, "", "")
 		convey.So(err, convey.ShouldBeNil)
 		convey.So(len(result), convey.ShouldEqual, 2)
 	})
@@ -200,7 +200,7 @@ func TestRerankConcepts_VectorAction(t *testing.T) {
 			{ConceptID: "1", ConceptName: "Concept1", ConceptType: interfaces.KnConceptTypeObject, RerankScore: 0.8},
 		}
 
-		result, err := service.rerankConcepts(ctx, queryUnderstanding, concepts, interfaces.KnowledgeRerankActionVector, 10)
+		result, err := service.rerankConcepts(ctx, queryUnderstanding, concepts, interfaces.KnowledgeRerankActionVector, 10, "", "")
 		convey.So(err, convey.ShouldBeNil)
 		convey.So(len(result), convey.ShouldEqual, 1)
 		convey.So(result[0].RerankScore, convey.ShouldEqual, 0.9)
@@ -225,7 +225,7 @@ func TestRerankConcepts_Error(t *testing.T) {
 			{ConceptID: "1", ConceptName: "Concept1", ConceptType: interfaces.KnConceptTypeObject, RerankScore: 0.5},
 		}
 
-		result, err := service.rerankConcepts(ctx, queryUnderstanding, concepts, interfaces.KnowledgeRerankActionVector, 10)
+		result, err := service.rerankConcepts(ctx, queryUnderstanding, concepts, interfaces.KnowledgeRerankActionVector, 10, "", "")
 		convey.So(err, convey.ShouldBeNil)
 		convey.So(result, convey.ShouldNotBeNil)
 		convey.So(len(result), convey.ShouldEqual, 1)
@@ -256,7 +256,7 @@ func TestRerankConcepts_WithLimit(t *testing.T) {
 		}
 
 		// limit=2 只返回前 2 个
-		result, err := service.rerankConcepts(ctx, queryUnderstanding, concepts, interfaces.KnowledgeRerankActionDefault, 2)
+		result, err := service.rerankConcepts(ctx, queryUnderstanding, concepts, interfaces.KnowledgeRerankActionDefault, 2, "", "")
 		convey.So(err, convey.ShouldBeNil)
 		convey.So(len(result), convey.ShouldEqual, 2)
 	})

@@ -134,8 +134,8 @@ func (r *KnowledgeReranker) rerankByLLM(ctx context.Context, req *interfaces.Kno
 		// 构建Prompt
 		prompt := r.buildPrompt(question, batchConcepts, intents)
 
-		// 调用LLM
-		indices, err := r.processLLMBatch(ctx, prompt, accountID, accountType)
+		// 调用LLM（req.LLMModel 为空时回退 config.Model）
+		indices, err := r.processLLMBatch(ctx, prompt, accountID, accountType, req.LLMModel)
 		if err != nil {
 			r.logger.WithContext(ctx).Warnf("[KnowledgeReranker#rerankByLLM] Batch %d failed: %v", i/batchSize+1, err)
 			// 批次失败时，不添加任何索引（降级处理）
@@ -205,8 +205,8 @@ func (r *KnowledgeReranker) rerankByVector(ctx context.Context, req *interfaces.
 		}
 	}
 
-	// 调用向量重排服务
-	resp, err := r.mfModelClient.Rerank(ctx, question, documents)
+	// 调用向量重排服务（req.VectorModel 为空时下游回退默认 reranker）
+	resp, err := r.mfModelClient.Rerank(ctx, question, documents, req.VectorModel)
 	if err != nil {
 		r.logger.WithContext(ctx).Errorf("[KnowledgeReranker#rerankByVector] Rerank service failed: %v", err)
 		// 降级：返回原顺序，分数都为0
@@ -411,8 +411,8 @@ func (r *KnowledgeReranker) formatIntentsText(intents []interface{}) string {
 	return strings.Join(intentTexts, "；") + "。"
 }
 
-// processLLMBatch 处理单个LLM批次
-func (r *KnowledgeReranker) processLLMBatch(ctx context.Context, prompt, accountID, accountType string) ([]int, error) {
+// processLLMBatch 处理单个LLM批次；model 为空时回退 config.Model（不写单例，仅局部覆盖）
+func (r *KnowledgeReranker) processLLMBatch(ctx context.Context, prompt, accountID, accountType, model string) ([]int, error) {
 	// 构建消息
 	messages := []interfaces.LLMMessage{
 		{
@@ -425,9 +425,15 @@ func (r *KnowledgeReranker) processLLMBatch(ctx context.Context, prompt, account
 		},
 	}
 
+	// per-request 模型覆盖：为空回退 yaml/config 默认。绝不写 r.config（单例，跨请求竞争）
+	llmModel := model
+	if llmModel == "" {
+		llmModel = r.config.Model
+	}
+
 	// 构建请求
 	req := &interfaces.LLMChatReq{
-		Model:            r.config.Model,
+		Model:            llmModel,
 		Messages:         messages,
 		Temperature:      r.config.Temperature,
 		TopK:             r.config.TopK,

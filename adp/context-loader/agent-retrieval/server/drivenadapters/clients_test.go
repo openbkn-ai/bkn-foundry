@@ -161,7 +161,7 @@ func TestMFModelAPIClient_Rerank(t *testing.T) {
 	}
 
 	documents := []string{"doc1", "doc2", "doc3"}
-	resp, err := client.Rerank(context.Background(), "test query", documents)
+	resp, err := client.Rerank(context.Background(), "test query", documents, "")
 	if err != nil {
 		t.Fatalf("Rerank failed: %v", err)
 	}

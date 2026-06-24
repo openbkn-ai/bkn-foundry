@@ -97,6 +97,10 @@ type SemanticSearchRequest struct {
 	Mode SemanticQueryMode `form:"mode" validate:"required,oneof=keyword_vector_retrieval agent_intent_planning agent_intent_retrieval" default:"keyword_vector_retrieval"`
 	// RerankAction is the rerank action: llm based rerank, vector based rerank
 	RerankAction KnowledgeRerankActionType `json:"rerank_action" validate:"required,oneof=default llm vector" default:"vector"`
+	// RerankLLMModel optionally overrides the LLM rerank model (only when RerankAction=llm). Empty => system default/yaml.
+	RerankLLMModel string `json:"rerank_llm_model,omitempty"`
+	// RerankVectorModel optionally overrides the vector rerank model (only when RerankAction=vector). Empty => system default.
+	RerankVectorModel string `json:"rerank_vector_model,omitempty"`
 	// ReturnQueryUnderstanding indicates whether to return query understanding information
 	ReturnQueryUnderstanding *bool    `json:"return_query_understanding" default:"false"`
 	Query                    string   `json:"query" validate:"required"` // User Query
