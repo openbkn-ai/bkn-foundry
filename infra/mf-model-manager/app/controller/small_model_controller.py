@@ -355,12 +355,19 @@ async def get_default_model(model_type):
 
 
 async def set_default_model(model_para, userId, language, role):
-    """设置某 model_type 下的系统默认小模型。同 model_type 互斥(先清旧默认再置新)。
+    """设置/取消某小模型的系统默认。
+    - body 含 model_id；可选 default(bool，默认 true)。
+    - default=true：设为该模型 model_type 下的系统默认，同 model_type 互斥(先清旧再置新)。
+    - default=false：取消该模型的默认标记(该 model_type 回到"无默认"，运行期回退本地配置兜底)。
     需对该模型有 modify 权限(管理员操作)。"""
     try:
         if "model_id" not in model_para or not model_para["model_id"]:
             return JSONResponse(status_code=400, content=IdValueIsEmpty)
         model_id = model_para["model_id"]
+        # default 缺省 true(设默认)；显式传 false 表示取消默认
+        set_default = model_para.get("default", True)
+        if not isinstance(set_default, bool):
+            return JSONResponse(status_code=400, content=IdValueIsEmpty)
         model_info = small_model_dao.get_model_info_by_id(model_id)
         if len(model_info) == 0:
             return JSONResponse(status_code=400, content=ModelFactory_ExternalSmallModel_GetInfo_IdNotExist_Error)
@@ -370,6 +377,10 @@ async def set_default_model(model_para, userId, language, role):
                                                                       role=role)
         if not permission:
             return JSONResponse(status_code=403, content=NotPermissionError)
+        if not set_default:
+            # 取消默认：仅清该模型的默认标记
+            small_model_dao.update_model_default_status(model_id, False)
+            return JSONResponse(status_code=200, content={"status": "ok", "id": model_id, "default": False})
         model_type = model_info[0]["f_model_type"]
         # 同 model_type 互斥：先把该类型旧默认清掉，再置新默认
         old_default = small_model_dao.get_default_by_type(model_type)
@@ -377,7 +388,7 @@ async def set_default_model(model_para, userId, language, role):
             if line["f_model_id"] != model_id:
                 small_model_dao.update_model_default_status(line["f_model_id"], False)
         small_model_dao.update_model_default_status(model_id, True)
-        content = {"status": "ok", "id": model_id}
+        content = {"status": "ok", "id": model_id, "default": True}
         return JSONResponse(status_code=200, content=content)
     except Exception as e:
         StandLogger.error(e.args)

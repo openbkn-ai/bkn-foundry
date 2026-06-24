@@ -15,11 +15,13 @@
 
 ### 1.1 设置系统默认小模型（管理员）
 - `POST /api/.../mf-model-manager/v1/small-model/set-default`
-- Body：`{ "model_id": "<小模型id>" }`
-- 行为：把该模型设为它所属 `model_type`(embedding 或 reranker) 的系统默认；**同类型互斥**（自动取消旧默认）。
-- 鉴权：需要对该模型的 `modify` 权限（管理员操作）；无权限返回 403。
-- 失败：model_id 不存在 → 400。
-- 注意：默认变更后各后端服务有 **最长 ~60s 缓存延迟** 才完全生效（无需重启服务/改配置）。
+- **设默认** Body：`{ "model_id": "<小模型id>" }`（或显式 `{ "model_id":"...", "default": true }`）
+  - 把该模型设为它所属 `model_type`(embedding/reranker) 的系统默认；**同类型互斥**（自动取消旧默认）。
+- **取消默认** Body：`{ "model_id": "<小模型id>", "default": false }`
+  - 清掉该模型的默认标记 → 该 model_type 回到"无默认"（运行期回退后端本地配置兜底）。
+  - 同一接口，前端在默认行的「…」加「取消默认」(danger 确认) 即可。
+- 鉴权：需对该模型 `modify` 权限（管理员）；无权限 403。失败：model_id 不存在/空 → 400。
+- 注意：默认变更后各后端服务有 **最长 ~60s 缓存延迟** 才完全生效（无需重启/改配置）。
 
 ### 1.2 查询系统默认小模型
 - `GET /api/.../mf-model-manager/v1/small-model/get_default?model_type=embedding`（或 `reranker`）
