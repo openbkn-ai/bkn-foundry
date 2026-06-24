@@ -1,3 +1,5 @@
+import json
+
 from fastapi.responses import JSONResponse
 
 from app.commons.errors.codes import ParamValidationErrors
@@ -14,6 +16,23 @@ from app.utils.reshape_utils import *
 from fastapi import Response, status
 from app.mydb.ConnectUtil import redis_util, get_redis_util
 from app.utils.permission_manager import PermissionManager, permission_manager
+
+
+async def invalidate_small_model_cache(names, model_ids):
+    """清除小模型解析缓存的所有相关键（name 与 id 两个命名空间）。
+    names 含改名前后的名字；漏清任一键都会导致编辑/删除后读到陈旧配置。"""
+    global redis_util
+    if redis_util is None:
+        redis_util = await get_redis_util()
+    keys = []
+    for n in names:
+        if n:
+            keys.append(f"dip:model-api:small-model:name:{n}:list")
+    for i in model_ids:
+        if i:
+            keys.append(f"dip:model-api:small-model:id:{i}:list")
+    if keys:
+        await redis_util.delete_str(keys)
 
 
 async def add_model(request: logics.AddExternalSmallModel, userId, language, role):
@@ -128,6 +147,7 @@ async def edit_model(request: logics.EditExternalSmallModel, userId, language, r
             if len(model_info) == 0:
                 StandLogger.error(ModelFactory_ExternalSmallModel_EditModel_IdNotExist_Error["description"])
                 return JSONResponse(status_code=400, content=ModelFactory_ExternalSmallModel_EditModel_IdNotExist_Error)
+            old_name = model_info[0]["f_model_name"]
             name_list = small_model_dao.name_check(request.model_name)
             if len(name_list) > 0 and name_list[0]["f_model_id"] != request.model_id:
                 StandLogger.error(ModelFactory_ExternalSmallModel_EditModel_RepeatedNames_Error["description"])
@@ -140,11 +160,7 @@ async def edit_model(request: logics.EditExternalSmallModel, userId, language, r
             if not permission:
                 return JSONResponse(status_code=403, content=NotPermissionError)
             small_model_dao.edit_model_info(config_info, userId)
-            cache_key = f"dip:model-api:small-model:{request.model_name}:list"
-            global redis_util
-            if redis_util is None:
-                redis_util = await get_redis_util()
-            await redis_util.delete_str(cache_key)
+            await invalidate_small_model_cache([old_name, request.model_name], [request.model_id])
             content = {"status": "ok", "id": request.model_id}
             return JSONResponse(status_code=200, content=content)
         except Exception as e:
@@ -280,14 +296,9 @@ async def delete_model(model_para, userId, language, role):
             if not status:
                 return JSONResponse(status_code=500, content=DeletePermissionResuorceError)
             small_model_dao.delete_model_info_by_ids(model_ids)
-            cache_key_list = []
-            for model_info in original_res:
-                model_name = model_info["f_model_name"]
-                cache_key_list.append(f"dip:model-api:small-model:{model_name}:list")
-            global redis_util
-            if redis_util is None:
-                redis_util = await get_redis_util()
-            await redis_util.delete_str(cache_key_list)
+            await invalidate_small_model_cache(
+                [row["f_model_name"] for row in original_res],
+                [row["f_model_id"] for row in original_res])
         except Exception as e:
             StandLogger.error(str(e))
             return JSONResponse(status_code=500, content=ModelFactory_MyPymysqlPool_Connection_ConnectError_Error)
@@ -325,14 +336,9 @@ async def delete_model_by_name(model_para, userId, language):
         try:
             model_ids = [line["f_model_id"] for line in original_res]
             small_model_dao.delete_model_info_by_ids(model_ids)
-            cache_key_list = []
-            for model_info in original_res:
-                model_name = model_info["f_model_name"]
-                cache_key_list.append(f"dip:model-api:small-model:{model_name}:list")
-            global redis_util
-            if redis_util is None:
-                redis_util = await get_redis_util()
-            await redis_util.delete_str(cache_key_list)
+            await invalidate_small_model_cache(
+                [row["f_model_name"] for row in original_res],
+                [row["f_model_id"] for row in original_res])
         except Exception as e:
             StandLogger.error(str(e))
             return JSONResponse(status_code=500, content=ModelFactory_MyPymysqlPool_Connection_ConnectError_Error)
@@ -354,9 +360,9 @@ async def embedding_model_used(request, userId, language, role, func_module, pri
             return JSONResponse(status_code=400, content=error_dict)
         texts = request.input
         if model_name:
-            cache_key = f"dip:model-api:small-model:{model_name}:list"
+            cache_key = f"dip:model-api:small-model:name:{model_name}:list"
         else:
-            cache_key = f"dip:model-api:small-model:{model_id}:list"
+            cache_key = f"dip:model-api:small-model:id:{model_id}:list"
         # 确保 redis_util 已初始化
         global redis_util
         if redis_util is None:
@@ -364,7 +370,9 @@ async def embedding_model_used(request, userId, language, role, func_module, pri
         res = await redis_util.get_str(cache_key)
         if res is not None and isinstance(res, (str, bytes)):
             try:
-                model_info = eval(res)
+                if isinstance(res, bytes):
+                    res = res.decode('utf-8')
+                model_info = json.loads(res)
             except Exception as e:
                 StandLogger.warn(f"解析缓存数据失败: {str(e)}, key={cache_key}, value={res}")
                 # 缓存解析失败，回退到数据库查询
@@ -372,14 +380,14 @@ async def embedding_model_used(request, userId, language, role, func_module, pri
                 if len(model_info) == 0:
                     return JSONResponse(status_code=400, content=ModelFactory_ExternalSmallModel_Used_NameNotExist)
                 # 重新设置缓存
-                await redis_util.set_str(key=cache_key, value=str(model_info), expire=3600 * 24)
+                await redis_util.set_str(key=cache_key, value=json.dumps(model_info), expire=3600 * 24)
         else:
             # 缓存不存在或非预期类型，从数据库获取
             model_info = small_model_dao.get_model_info_by_name_id(model_name, model_id)
             if len(model_info) == 0:
                 return JSONResponse(status_code=400, content=ModelFactory_ExternalSmallModel_Used_NameNotExist)
             # 设置缓存
-            await redis_util.set_str(key=cache_key, value=str(model_info), expire=3600 * 24)
+            await redis_util.set_str(key=cache_key, value=json.dumps(model_info), expire=3600 * 24)
         model_info = model_info[0]
         config_info = json.loads(model_info["f_model_config"])
         adapter = model_info["f_adapter"]
@@ -426,9 +434,9 @@ async def reranker_model_used(request, userId, language, role, func_module, priv
         query = request.query
         documents = request.documents
         if model_name:
-            cache_key = f"dip:model-api:small-model:{model_name}:list"
+            cache_key = f"dip:model-api:small-model:name:{model_name}:list"
         else:
-            cache_key = f"dip:model-api:small-model:{model_id}:list"
+            cache_key = f"dip:model-api:small-model:id:{model_id}:list"
         # 确保 redis_util 已初始化
         global redis_util
         if redis_util is None:
@@ -436,7 +444,9 @@ async def reranker_model_used(request, userId, language, role, func_module, priv
         res = await redis_util.get_str(cache_key)
         if res is not None and isinstance(res, (str, bytes)):
             try:
-                model_info = eval(res)
+                if isinstance(res, bytes):
+                    res = res.decode('utf-8')
+                model_info = json.loads(res)
             except Exception as e:
                 StandLogger.warn(f"解析缓存数据失败: {str(e)}, key={cache_key}, value={res}")
                 # 缓存解析失败，回退到数据库查询
@@ -444,14 +454,14 @@ async def reranker_model_used(request, userId, language, role, func_module, priv
                 if len(model_info) == 0:
                     return JSONResponse(status_code=400, content=ModelFactory_ExternalSmallModel_Used_NameNotExist)
                 # 重新设置缓存
-                await redis_util.set_str(key=cache_key, value=str(model_info), expire=3600 * 24)
+                await redis_util.set_str(key=cache_key, value=json.dumps(model_info), expire=3600 * 24)
         else:
             # 缓存不存在或非预期类型，从数据库获取
             model_info = small_model_dao.get_model_info_by_name_id(model_name, model_id)
             if len(model_info) == 0:
                 return JSONResponse(status_code=400, content=ModelFactory_ExternalSmallModel_Used_NameNotExist)
             # 设置缓存
-            await redis_util.set_str(key=cache_key, value=str(model_info), expire=3600 * 24)
+            await redis_util.set_str(key=cache_key, value=json.dumps(model_info), expire=3600 * 24)
 
         model_info = model_info[0]
         config_info = json.loads(model_info["f_model_config"])

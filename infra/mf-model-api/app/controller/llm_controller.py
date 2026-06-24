@@ -32,9 +32,9 @@ async def used_model_openai(request, user_id, language, func_module):
         model_name = "default_model_3ed523"
         is_default = True
     if model_name:
-        cache_key = f"dip:model-api:llm:{model_name}:list"
+        cache_key = f"dip:model-api:llm:name:{model_name}:list"
     else:
-        cache_key = f"dip:model-api:llm:{model_id}:list"
+        cache_key = f"dip:model-api:llm:id:{model_id}:list"
     try:
         # 确保 redis_util 已初始化
         global redis_util

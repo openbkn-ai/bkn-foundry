@@ -41,13 +41,13 @@ class SmallModelDao:
 
     @connect_execute_close_db
     def get_model_info_by_name_id(self, model_name, model_id, connection, cursor):
+        # 容错解析：把传入值同时比对 id 和 name 两列——调用方无论把模型 id 还是 name
+        # 塞进哪个字段都能命中（根治 id-as-name 的 NameNotExist）。
+        # 参数化避免 SQL 注入（model_name/model_id 来自请求）。
         sql = """select f_model_id, f_model_name, f_model_type, f_model_config,f_adapter,f_adapter_code
-                            from t_small_model"""
-        if model_name:
-            sql += f" where f_model_name = '{model_name}'"
-        else:
-            sql += f" where f_model_id = '{model_id}'"
-        cursor.execute(sql)
+                            from t_small_model where f_model_id = %s or f_model_name = %s"""
+        v = model_name or model_id
+        cursor.execute(sql, (v, v))
         res = cursor.fetchall()
         return res
 
