@@ -676,6 +676,21 @@ func (mr *MockMFModelManagerMockRecorder) GetEmbeddingModel(ctx, modelName, mode
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEmbeddingModel", reflect.TypeOf((*MockMFModelManager)(nil).GetEmbeddingModel), ctx, modelName, modelType)
 }
 
+// GetDefaultEmbeddingModel mocks base method.
+func (m *MockMFModelManager) GetDefaultEmbeddingModel(ctx context.Context, modelType string) (*interfaces.EmbeddingModel, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetDefaultEmbeddingModel", ctx, modelType)
+	ret0, _ := ret[0].(*interfaces.EmbeddingModel)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetDefaultEmbeddingModel indicates an expected call of GetDefaultEmbeddingModel.
+func (mr *MockMFModelManagerMockRecorder) GetDefaultEmbeddingModel(ctx, modelType any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDefaultEmbeddingModel", reflect.TypeOf((*MockMFModelManager)(nil).GetDefaultEmbeddingModel), ctx, modelType)
+}
+
 // GetPromptByPromptID mocks base method.
 func (m *MockMFModelManager) GetPromptByPromptID(ctx context.Context, promptID string) (*interfaces.GetPromptResp, error) {
 	m.ctrl.T.Helper()

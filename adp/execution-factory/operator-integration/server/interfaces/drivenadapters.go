@@ -820,6 +820,8 @@ type MFModelManager interface {
 	GetPromptByPromptID(ctx context.Context, promptID string) (resp *GetPromptResp, err error)
 	// 获取 embedding 模型信息
 	GetEmbeddingModel(ctx context.Context, modelName string, modelType string) (resp *EmbeddingModel, err error)
+	// GetDefaultEmbeddingModel 取某 model_type 下的系统默认小模型；未配置默认时返回 (nil, nil)
+	GetDefaultEmbeddingModel(ctx context.Context, modelType string) (resp *EmbeddingModel, err error)
 }
 
 type VegaPropertyFeature struct {
