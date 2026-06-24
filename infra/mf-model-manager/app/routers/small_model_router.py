@@ -36,6 +36,19 @@ async def get_info(request: Request, model_id):
     return await small_model_controller.get_info(model_id, userId, role)
 
 
+@small_model_router.get("/small-model/get_default")
+async def get_default(request: Request, model_type: str = Query(default="embedding")):
+    # 取某 model_type 下的系统默认小模型(供前端展示当前默认)，未配置时返回空对象
+    return await small_model_controller.get_default_model(model_type)
+
+
+@small_model_router.post("/small-model/set-default")
+async def set_default(request: Request, model_para: dict = Body(...)):
+    # 设置某 model_type 下的系统默认小模型(管理员操作，需对该模型有 modify 权限)
+    userId, language, role = await get_user_info(request)
+    return await small_model_controller.set_default_model(model_para, userId, language, role)
+
+
 @small_model_router.post("/small-model/delete")
 async def delete_model(request: Request, model_para: dict = Body(...)):
     userId, language, role = await get_user_info(request)

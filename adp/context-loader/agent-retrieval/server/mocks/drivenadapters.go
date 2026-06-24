@@ -96,16 +96,16 @@ func (mr *MockDrivenMFModelAPIClientMockRecorder) Chat(ctx, req any) *gomock.Cal
 }
 
 // Rerank mocks base method.
-func (m *MockDrivenMFModelAPIClient) Rerank(ctx context.Context, query string, documents []string) (*interfaces.RerankResp, error) {
+func (m *MockDrivenMFModelAPIClient) Rerank(ctx context.Context, query string, documents []string, model string) (*interfaces.RerankResp, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Rerank", ctx, query, documents)
+	ret := m.ctrl.Call(m, "Rerank", ctx, query, documents, model)
 	ret0, _ := ret[0].(*interfaces.RerankResp)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Rerank indicates an expected call of Rerank.
-func (mr *MockDrivenMFModelAPIClientMockRecorder) Rerank(ctx, query, documents any) *gomock.Call {
+func (mr *MockDrivenMFModelAPIClientMockRecorder) Rerank(ctx, query, documents, model any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Rerank", reflect.TypeOf((*MockDrivenMFModelAPIClient)(nil).Rerank), ctx, query, documents)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Rerank", reflect.TypeOf((*MockDrivenMFModelAPIClient)(nil).Rerank), ctx, query, documents, model)
 }

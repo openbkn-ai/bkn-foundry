@@ -20,6 +20,9 @@ const (
 	executionFactorySkillDataset  = "kweaver_execution_factory_skill_dataset"
 	executionFactoryDatasetDesc   = "执行工厂的Skill索引数据集"
 	executionFactoryDatasetStatus = "active"
+	// embeddingModelTagPrefix 把"建 dataset 时锁定的 embedding 模型名"快照进 resource tag，
+	// 重启/实时同步时读回，保证写入向量用的模型与建索引时一致(建模型==查模型)。
+	embeddingModelTagPrefix = "embedding_model:"
 )
 
 type skillIndexSync struct {
@@ -29,7 +32,10 @@ type skillIndexSync struct {
 	logger       interfaces.Logger
 	mu           sync.RWMutex
 	initialized  bool
-	retryOnce    sync.Once
+	// embeddingModelName 该系统 skill dataset 建时锁定的 embedding 模型名(系统默认快照)，
+	// 受 mu 保护；upsert 读回它生成向量，而非每次重取当前默认。
+	embeddingModelName string
+	retryOnce          sync.Once
 }
 
 var (
@@ -102,22 +108,31 @@ func (s *skillIndexSync) Init(ctx context.Context) (err error) {
 		return err
 	}
 	if resource != nil {
+		// dataset 已存在：从 tag 读回建时锁定的模型名(建模型==查模型)。
+		// 旧 dataset(改造前创建)无该 tag，回退到按名 "embedding"，与改造前行为一致。
+		modelName := extractEmbeddingModelFromTags(resource.Tags)
+		if modelName == "" {
+			modelName = interfaces.SmallModelTypeEmbedding
+		}
+		s.setEmbeddingModelName(modelName)
 		initialized = true
-		s.logger.WithContext(ctx).Infof("resource already exists, resource_id=%s", executionFactorySkillDataset)
+		s.logger.WithContext(ctx).Infof("resource already exists, resource_id=%s, embedding_model=%s", executionFactorySkillDataset, modelName)
 		return nil
 	}
-	// 获取嵌入模型
-	embeddingModel, err := s.modelManager.GetEmbeddingModel(ctx, interfaces.SmallModelTypeEmbedding, interfaces.SmallModelTypeEmbedding)
+	// 首次创建 dataset：用系统默认 embedding 模型(接口式可配)；未配置默认时回退按名 "embedding"。
+	embeddingModel, err := s.resolveBuildEmbeddingModel(ctx)
 	if err != nil {
-		s.logger.WithContext(ctx).Errorf("get embedding model failed, resource_id=%s, err=%v", executionFactorySkillDataset, err)
+		s.logger.WithContext(ctx).Errorf("resolve embedding model failed, resource_id=%s, err=%v", executionFactorySkillDataset, err)
 		return err
 	}
-	s.logger.WithContext(ctx).Infof("creating skill dataset resource, resource_id=%s, dimension=%d", executionFactorySkillDataset, embeddingModel.EmbeddingDim)
+	s.logger.WithContext(ctx).Infof("creating skill dataset resource, resource_id=%s, embedding_model=%s, dimension=%d",
+		executionFactorySkillDataset, embeddingModel.ModelName, embeddingModel.EmbeddingDim)
 	_, err = s.vegaClient.CreateResource(ctx, &interfaces.VegaResourceRequest{
 		ID:               executionFactorySkillDataset,
 		CatalogID:        executionFactoryCatalogID,
 		Name:             executionFactorySkillDataset,
-		Tags:             []string{"execution-factory", "skill", "索引"},
+		// 把建时锁定的模型名快照进 tag，供重启/实时同步读回
+		Tags:             []string{"execution-factory", "skill", "索引", embeddingModelTagPrefix + embeddingModel.ModelName},
 		Description:      executionFactoryDatasetDesc,
 		Category:         "dataset",
 		Status:           executionFactoryDatasetStatus,
@@ -128,8 +143,45 @@ func (s *skillIndexSync) Init(ctx context.Context) (err error) {
 		s.logger.WithContext(ctx).Errorf("create skill dataset resource failed, resource_id=%s, err=%v", executionFactorySkillDataset, err)
 		return err
 	}
+	s.setEmbeddingModelName(embeddingModel.ModelName)
 	initialized = true
 	return nil
+}
+
+// resolveBuildEmbeddingModel 建 dataset 时确定 embedding 模型：优先系统默认(接口式)，未配置则回退按名 "embedding"(改造前行为)。
+func (s *skillIndexSync) resolveBuildEmbeddingModel(ctx context.Context) (*interfaces.EmbeddingModel, error) {
+	model, err := s.modelManager.GetDefaultEmbeddingModel(ctx, interfaces.SmallModelTypeEmbedding)
+	if err != nil {
+		s.logger.WithContext(ctx).Warnf("get default embedding model failed, fallback to named '%s': %v", interfaces.SmallModelTypeEmbedding, err)
+	} else if model != nil && model.EmbeddingDim > 0 {
+		return model, nil
+	}
+	return s.modelManager.GetEmbeddingModel(ctx, interfaces.SmallModelTypeEmbedding, interfaces.SmallModelTypeEmbedding)
+}
+
+// extractEmbeddingModelFromTags 从 resource tags 解析建时锁定的 embedding 模型名
+func extractEmbeddingModelFromTags(tags []string) string {
+	for _, t := range tags {
+		if strings.HasPrefix(t, embeddingModelTagPrefix) {
+			return strings.TrimPrefix(t, embeddingModelTagPrefix)
+		}
+	}
+	return ""
+}
+
+func (s *skillIndexSync) getEmbeddingModelName() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.embeddingModelName == "" {
+		return interfaces.SmallModelTypeEmbedding
+	}
+	return s.embeddingModelName
+}
+
+func (s *skillIndexSync) setEmbeddingModelName(name string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.embeddingModelName = name
 }
 
 func (s *skillIndexSync) UpsertSkill(ctx context.Context, skill *model.SkillRepositoryDB) error {
@@ -213,8 +265,9 @@ func (s *skillIndexSync) retryInit() {
 func (s *skillIndexSync) buildSkillDocument(ctx context.Context, skill *model.SkillRepositoryDB) (map[string]any, error) {
 	log := s.logger
 	log.Infof("build skill index document, skill_id=%s", skill.SkillID)
+	// 读回建 dataset 时锁定的模型(建模型==查模型)，而非每次重取当前系统默认
 	embeddingResp, err := s.modelAPI.Embeddings(ctx, &interfaces.EmbeddingReq{
-		Model: interfaces.SmallModelTypeEmbedding,
+		Model: s.getEmbeddingModelName(),
 		Input: []string{buildEmbeddingInput(skill.Name, skill.Description)},
 	})
 	if err != nil {

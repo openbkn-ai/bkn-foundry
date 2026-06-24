@@ -50,8 +50,10 @@ func (k *knRetrievalServiceImpl) rerankByConceptType(conceptResults []*interface
 	return result
 }
 
+// rerankConcepts 重排概念。三层模型优先级：请求传入(llmModel/vectorModel) > [agent/检索配置, 预留] > yaml/默认(下游回退)。
+// per-request 模型经 KnowledgeRerankReq 透传，下游构造请求时局部覆盖，不写 reranker 单例。
 func (k *knRetrievalServiceImpl) rerankConcepts(ctx context.Context, queryUnderstandResult *interfaces.QueryUnderstanding, conceptResults []*interfaces.ConceptResult,
-	action interfaces.KnowledgeRerankActionType, limit int,
+	action interfaces.KnowledgeRerankActionType, limit int, llmModel, vectorModel string,
 ) (rerankResults []*interfaces.ConceptResult, err error) {
 	// 去重
 	conceptResults = k.deduplicateConcepts(conceptResults)
@@ -71,6 +73,8 @@ func (k *knRetrievalServiceImpl) rerankConcepts(ctx context.Context, queryUnders
 			QueryUnderstanding: queryUnderstandResult,
 			KnowledgeConcepts:  conceptResults,
 			Action:             action,
+			LLMModel:           llmModel,
+			VectorModel:        vectorModel,
 		})
 		if err != nil {
 			// 本地 rerank 失败时，直接返回原始概念列表（降级）

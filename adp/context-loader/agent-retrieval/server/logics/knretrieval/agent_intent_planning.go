@@ -52,7 +52,7 @@ func (k *knRetrievalServiceImpl) AgentIntentPlanning(ctx context.Context, req *i
 	queryUnderstandResult.QueryStrategys = queryStrategys
 	// TODO：实例数据采样（本版本跳过）
 	// 排序：精排, 去重
-	rerankConceptResults, err := k.rerankConcepts(ctx, queryUnderstandResult, conceptResults, req.RerankAction, req.MaxConcepts)
+	rerankConceptResults, err := k.rerankConcepts(ctx, queryUnderstandResult, conceptResults, req.RerankAction, req.MaxConcepts, req.RerankLLMModel, req.RerankVectorModel)
 	if err != nil {
 		return
 	}

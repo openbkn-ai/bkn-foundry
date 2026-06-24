@@ -124,15 +124,18 @@ func (c *mfModelAPIClient) Chat(ctx context.Context, req *interfaces.LLMChatReq)
 // DrivenRerankClient 接口实现
 // ============================================================
 
-// Rerank 对文档进行重排序
-func (c *mfModelAPIClient) Rerank(ctx context.Context, query string, documents []string) (*interfaces.RerankResp, error) {
+// Rerank 对文档进行重排序；model 为空时回退默认 "reranker"
+func (c *mfModelAPIClient) Rerank(ctx context.Context, query string, documents []string, model string) (*interfaces.RerankResp, error) {
 	url := fmt.Sprintf("%s%s", c.baseURL, rerankURI)
 
+	if model == "" {
+		model = "reranker"
+	}
 	// 构建请求体
 	reqBody := map[string]interface{}{
 		"query":     query,
 		"documents": documents,
-		"model":     "reranker",
+		"model":     model,
 	}
 
 	// 获取Header（统一方式）

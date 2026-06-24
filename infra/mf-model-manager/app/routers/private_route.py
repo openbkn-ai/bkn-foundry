@@ -328,3 +328,9 @@ async def get_info_list(request: Request, order: str = Query(regex=r'^(desc|asc)
 async def get_info(request: Request, model_name):
     userId, language, role = await get_user_info(request)
     return await small_model_controller.get_info_by_name(model_name)
+
+
+@private_route.get("/small-model/get_default")
+async def get_default(request: Request, model_type: str = Query(default="embedding")):
+    # 内部接口：各服务据此解析系统默认小模型(embedding/reranker)，未配置时返回空对象
+    return await small_model_controller.get_default_model(model_type)

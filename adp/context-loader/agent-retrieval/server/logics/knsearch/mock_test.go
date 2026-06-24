@@ -151,7 +151,7 @@ type mockRerankClient struct {
 	rerankError error
 }
 
-func (m *mockRerankClient) Rerank(ctx context.Context, query string, documents []string) (*interfaces.RerankResp, error) {
+func (m *mockRerankClient) Rerank(ctx context.Context, query string, documents []string, model string) (*interfaces.RerankResp, error) {
 	return m.rerankResp, m.rerankError
 }
 

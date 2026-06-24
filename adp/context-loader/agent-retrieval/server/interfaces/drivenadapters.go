@@ -204,6 +204,8 @@ type KnowledgeRerankReq struct {
 	QueryUnderstanding *QueryUnderstanding       `json:"query_understanding" validate:"required"`                      // Query understanding
 	KnowledgeConcepts  []*ConceptResult          `json:"concepts" validate:"required"`                                 // Business knowledge network concepts
 	Action             KnowledgeRerankActionType `json:"action" validate:"required,oneof=llm vector" default:"vector"` // Action: llm based rerank, vector based rerank
+	LLMModel           string                    `json:"llm_model,omitempty"`                                          // per-request override for LLM rerank model; empty => config.Model
+	VectorModel        string                    `json:"vector_model,omitempty"`                                       // per-request override for vector rerank model; empty => "reranker"
 }
 
 // KnDataSourceConfig Knowledge network data source configuration
@@ -321,8 +323,8 @@ type LLMChatReq struct {
 type DrivenMFModelAPIClient interface {
 	// Chat 对话，返回完整响应内容
 	Chat(ctx context.Context, req *LLMChatReq) (content string, err error)
-	// Rerank 对文档进行重排序
-	Rerank(ctx context.Context, query string, documents []string) (*RerankResp, error)
+	// Rerank 对文档进行重排序；model 为空时使用默认 reranker 模型
+	Rerank(ctx context.Context, query string, documents []string, model string) (*RerankResp, error)
 }
 
 // RerankResult 单个重排结果

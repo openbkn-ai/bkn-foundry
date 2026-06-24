@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/bytedance/sonic"
 	"github.com/kweaver-ai/kweaver-go-lib/logger"
@@ -29,11 +30,23 @@ var (
 	mfAccess     interfaces.ModelFactoryAccess
 )
 
+// defaultModelCacheTTL 系统默认模型缓存有效期：避免向量化热路径每次都打 mf-model-manager
+const defaultModelCacheTTL = 60 * time.Second
+
+// cachedDefault 缓存某 model_type 下的系统默认模型(含 nil，表示未配置)
+type cachedDefault struct {
+	model  *interfaces.SmallModel
+	expiry time.Time
+}
+
 type modelFactoryAccess struct {
 	appSetting   *common.AppSetting
 	httpClient   rest.HTTPClient
 	mfManagerUrl string
 	mfAPIUrl     string
+
+	defaultCacheMu sync.RWMutex
+	defaultCache   map[string]*cachedDefault
 }
 
 // NewModelFactoryAccess 创建模型工厂访问实例
@@ -44,6 +57,7 @@ func NewModelFactoryAccess(appSetting *common.AppSetting) interfaces.ModelFactor
 			httpClient:   common.NewHTTPClient(),
 			mfManagerUrl: appSetting.ModelFactoryManagerUrl,
 			mfAPIUrl:     appSetting.ModelFactoryAPIUrl,
+			defaultCache: make(map[string]*cachedDefault),
 		}
 	})
 
@@ -51,18 +65,100 @@ func NewModelFactoryAccess(appSetting *common.AppSetting) interfaces.ModelFactor
 }
 
 func (mfa *modelFactoryAccess) GetDefaultModel(ctx context.Context) (*interfaces.SmallModel, error) {
-	// 不缓存，直接get
-	if mfa.appSetting.ServerSetting.DefaultSmallModelEnabled {
-		defaultModelName := mfa.appSetting.ServerSetting.DefaultSmallModelName
-		smallModel, err := mfa.GetModelByName(ctx, defaultModelName)
-		if err != nil {
-			logger.Errorf("Get default model by name[%s] failed: %v", defaultModelName, err)
-			return nil, fmt.Errorf("get default model by name[%s] failed: %w", defaultModelName, err)
-		}
-		return smallModel, nil
-	} else {
+	// DefaultSmallModelEnabled 仍作为部署级开关：是否启用 embedding(KNN/向量化)
+	if !mfa.appSetting.ServerSetting.DefaultSmallModelEnabled {
 		return nil, nil
 	}
+	// 优先取接口式系统默认(运行时可配，mf-model-manager 单一真相源，带 TTL 缓存)
+	model, err := mfa.getDefaultModelFromAPI(ctx, interfaces.SMALL_MODEL_TYPE_EMBEDDING)
+	if err != nil {
+		logger.Errorf("Get default embedding model from mf-model-manager failed: %v", err)
+		return nil, fmt.Errorf("get default embedding model failed: %w", err)
+	}
+	if model != nil {
+		return model, nil
+	}
+	// 兜底：接口未配置默认时，回退到本地配置的默认模型名(兼容旧部署/迁移期)
+	if defaultModelName := mfa.appSetting.ServerSetting.DefaultSmallModelName; defaultModelName != "" {
+		return mfa.GetModelByName(ctx, defaultModelName)
+	}
+	return nil, nil
+}
+
+// getDefaultModelFromAPI 调 mf-model-manager 取某 model_type 下的系统默认小模型，带进程内 TTL 缓存。
+// 返回 nil 表示未配置默认(接口返回空对象)。
+func (mfa *modelFactoryAccess) getDefaultModelFromAPI(ctx context.Context, modelType string) (*interfaces.SmallModel, error) {
+	// 命中缓存(含已缓存的 nil)
+	mfa.defaultCacheMu.RLock()
+	if c, ok := mfa.defaultCache[modelType]; ok && time.Now().Before(c.expiry) {
+		mfa.defaultCacheMu.RUnlock()
+		return c.model, nil
+	}
+	mfa.defaultCacheMu.RUnlock()
+
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "GetDefaultModel")
+	defer span.End()
+
+	httpUrl := fmt.Sprintf("%s/small-model/get_default?model_type=%s", mfa.mfManagerUrl, modelType)
+
+	accountInfo := interfaces.AccountInfo{}
+	if ctx.Value(interfaces.ACCOUNT_INFO_KEY) != nil {
+		accountInfo = ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
+	}
+	headers := map[string]string{
+		"Content-Type":                      "application/json",
+		interfaces.HTTP_HEADER_ACCOUNT_ID:   accountInfo.ID,
+		interfaces.HTTP_HEADER_ACCOUNT_TYPE: accountInfo.Type,
+	}
+
+	respCode, result, err := mfa.httpClient.GetNoUnmarshal(ctx, httpUrl, nil, headers)
+	logger.Debugf("get [%s] finished, response code is [%d], result is [%s], error is [%v]", httpUrl, respCode, result, err)
+	if err != nil {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http get default model failed")
+		otellog.LogError(ctx, "Get default model request failed", err)
+		return nil, fmt.Errorf("get default model request failed: %w", err)
+	}
+	if respCode == http.StatusNotFound {
+		// 兼容 mf-model-manager 尚未升级(无 get_default 端点)：当作未配置默认，由 GetDefaultModel 回退 DefaultSmallModelName。
+		// 缓存 nil 避免版本错配窗口期反复打 404。
+		logger.Warnf("get_default endpoint returned 404 (mf-model-manager not upgraded?), fallback to configured default")
+		mfa.defaultCacheMu.Lock()
+		if mfa.defaultCache == nil {
+			mfa.defaultCache = make(map[string]*cachedDefault)
+		}
+		mfa.defaultCache[modelType] = &cachedDefault{model: nil, expiry: time.Now().Add(defaultModelCacheTTL)}
+		mfa.defaultCacheMu.Unlock()
+		oteltrace.AddHttpAttrs4Ok(span, respCode)
+		return nil, nil
+	}
+	if respCode != http.StatusOK {
+		err := fmt.Errorf("get default model request failed with status code: %d, %s", respCode, result)
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 200")
+		otellog.LogError(ctx, "Get default model request failed", err)
+		return nil, err
+	}
+
+	smallModel := interfaces.SmallModel{}
+	if err := sonic.Unmarshal(result, &smallModel); err != nil {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmarshal default model response failed")
+		otellog.LogError(ctx, "Unmarshal default model response failed", err)
+		return nil, fmt.Errorf("unmarshal default model response failed: %w", err)
+	}
+
+	var model *interfaces.SmallModel
+	if smallModel.ModelID != "" { // 空对象 {} 表示未配置默认
+		model = &smallModel
+	}
+
+	mfa.defaultCacheMu.Lock()
+	if mfa.defaultCache == nil {
+		mfa.defaultCache = make(map[string]*cachedDefault)
+	}
+	mfa.defaultCache[modelType] = &cachedDefault{model: model, expiry: time.Now().Add(defaultModelCacheTTL)}
+	mfa.defaultCacheMu.Unlock()
+
+	oteltrace.AddHttpAttrs4Ok(span, respCode)
+	return model, nil
 }
 
 func (mfa *modelFactoryAccess) GetModelByID(ctx context.Context, modelID string) (*interfaces.SmallModel, error) {

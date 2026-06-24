@@ -23,6 +23,7 @@ var (
 var (
 	getPromptByPromptIDPath = "/v1/prompt/%s"
 	listSmallModelPath      = "/v1/small-model/list"
+	getDefaultSmallModelPath = "/v1/small-model/get_default"
 )
 
 type mfModelManager struct {
@@ -131,4 +132,49 @@ func (m *mfModelManager) GetEmbeddingModel(ctx context.Context, modelName string
 	err = errors.DefaultHTTPError(ctx, http.StatusNotFound, "embedding model not found")
 	m.logger.WithContext(ctx).Warnf("embedding model not found, model_name=%s, model_type=%s", modelName, modelType)
 	return nil, err
+}
+
+// GetDefaultEmbeddingModel 取某 model_type 下的系统默认小模型；未配置默认时接口返回空对象，本方法返回 (nil, nil)。
+func (m *mfModelManager) GetDefaultEmbeddingModel(ctx context.Context, modelType string) (resp *interfaces.EmbeddingModel, err error) {
+	src := fmt.Sprintf("%s%s", m.baseURL, getDefaultSmallModelPath)
+	query := url.Values{}
+	query.Set("model_type", modelType)
+	header := m.buildHeaders(ctx)
+	_, respData, err := m.httpClient.Get(ctx, src, query, header)
+	if err != nil {
+		m.logger.WithContext(ctx).Errorf("failed to get default embedding model: %v", err)
+		return nil, err
+	}
+
+	// 响应可能是扁平模型对象、空对象 {}（未配置默认），或被 res/data 包裹
+	var payload map[string]any
+	if err = utils.AnyToObject(respData, &payload); err != nil {
+		err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+		m.logger.WithContext(ctx).Errorf("failed to convert default embedding model response: %v", err)
+		return nil, err
+	}
+	candidate := payload
+	if _, ok := payload["model_id"]; !ok {
+		for _, key := range []string{"res", "data"} {
+			if raw, ok := payload[key]; ok {
+				var nested map[string]any
+				if e := utils.AnyToObject(raw, &nested); e == nil {
+					if _, ok := nested["model_id"]; ok {
+						candidate = nested
+						break
+					}
+				}
+			}
+		}
+	}
+	model := &interfaces.EmbeddingModel{}
+	if err = utils.AnyToObject(candidate, model); err != nil {
+		err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+		m.logger.WithContext(ctx).Errorf("failed to parse default embedding model: %v", err)
+		return nil, err
+	}
+	if model.ModelID == "" { // 未配置默认
+		return nil, nil
+	}
+	return model, nil
 }

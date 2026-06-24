@@ -35,8 +35,11 @@ func TestSkillIndexSync(t *testing.T) {
 				return &interfaces.VegaCatalog{ID: req.ID}, nil
 			})
 			mockVegaClient.EXPECT().GetResourceByID(gomock.Any(), executionFactorySkillDataset).Return(nil, nil)
+			// 系统默认未配置 -> 回退按名 "embedding"
+			mockModelManager.EXPECT().GetDefaultEmbeddingModel(gomock.Any(), interfaces.SmallModelTypeEmbedding).
+				Return(nil, nil)
 			mockModelManager.EXPECT().GetEmbeddingModel(gomock.Any(), interfaces.SmallModelTypeEmbedding, interfaces.SmallModelTypeEmbedding).
-				Return(&interfaces.EmbeddingModel{EmbeddingDim: 768}, nil)
+				Return(&interfaces.EmbeddingModel{ModelName: interfaces.SmallModelTypeEmbedding, EmbeddingDim: 768}, nil)
 			mockVegaClient.EXPECT().CreateResource(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, req *interfaces.VegaResourceRequest) (*interfaces.VegaResource, error) {
 				createdResource = req
 				return &interfaces.VegaResource{ID: req.ID}, nil
@@ -49,6 +52,8 @@ func TestSkillIndexSync(t *testing.T) {
 			So(createdResource, ShouldNotBeNil)
 			So(createdResource.ID, ShouldEqual, executionFactorySkillDataset)
 			So(createdResource.Status, ShouldEqual, executionFactoryDatasetStatus)
+			// 建时锁定的模型名快照进 tag，供重启/实时同步读回
+			So(createdResource.Tags, ShouldContain, embeddingModelTagPrefix+interfaces.SmallModelTypeEmbedding)
 			So(len(createdResource.SchemaDefinition), ShouldEqual, 10)
 			var nameProperty interfaces.VegaProperty
 			var descriptionProperty interfaces.VegaProperty
