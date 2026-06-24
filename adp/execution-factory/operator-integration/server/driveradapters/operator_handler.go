@@ -91,6 +91,8 @@ func (o *operatorRestHandler) RegisterPublic(engine *gin.RouterGroup) {
 	engine.GET("/operator/info/:operator_id", o.OperatorHandler.OperatorQueryByOperatorID)
 	// GET /api/agent-operator-integration/v1/operator/info/list
 	engine.GET("/operator/info/list", middlewareBusinessDomain(true, false, o.businessDomainService), o.OperatorHandler.OperatorQueryPage)
+	// POST /api/agent-operator-integration/v1/operator/names 按算子ID批量取名(前端对象级授权页回显)
+	engine.POST("/operator/names", o.OperatorHandler.OperatorQueryNamesByIDs)
 	// DELETE /api/agent-operator-integration/v1/operator/delete
 	engine.DELETE("/operator/delete", middlewareBusinessDomain(true, false, o.businessDomainService), o.OperatorHandler.OperatorDelete)
 	// POST /api/agent-operator-integration/v1/operator/status

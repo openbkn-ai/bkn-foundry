@@ -52,4 +52,6 @@ type ISkillRepository interface {
 	CountByWhereClause(ctx context.Context, tx *sql.Tx, filter map[string]interface{}) (count int64, err error)
 	DeleteSkillByID(ctx context.Context, tx *sql.Tx, skillID string) error
 	SelectSkillByName(ctx context.Context, tx *sql.Tx, name string, status []string) (bool, *SkillRepositoryDB, error)
+	// SelectSkillListByIDs 按 skillID 批量查询(未删除)，空入参返回空列表
+	SelectSkillListByIDs(ctx context.Context, skillIDs []string) (skills []*SkillRepositoryDB, err error)
 }

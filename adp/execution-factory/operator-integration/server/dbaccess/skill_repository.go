@@ -278,6 +278,25 @@ func (s *skillRepositoryDB) applyFilterConditions(query *ormhelper.SelectBuilder
 	return query
 }
 
+// SelectSkillListByIDs 按 skillID 批量查询(仅未删除)，仅用于轻量取名场景。空入参短路返回空列表，防止 IN ()。
+func (s *skillRepositoryDB) SelectSkillListByIDs(ctx context.Context, skillIDs []string) (skills []*model.SkillRepositoryDB, err error) {
+	skills = []*model.SkillRepositoryDB{}
+	args := []interface{}{}
+	for _, id := range skillIDs {
+		if id != "" {
+			args = append(args, id)
+		}
+	}
+	if len(args) == 0 {
+		return
+	}
+	err = s.orm.Select().From(tbSkillRepository).
+		WhereIn("f_skill_id", args...).
+		WhereEq("f_is_deleted", false).
+		Get(ctx, &skills)
+	return
+}
+
 func (s *skillRepositoryDB) SelectSkillByName(ctx context.Context, tx *sql.Tx, name string, status []string) (exists bool, skillDB *model.SkillRepositoryDB, err error) {
 	orm := s.orm
 	if tx != nil {

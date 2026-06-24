@@ -241,6 +241,8 @@ type OperatorManager interface {
 	// GetOperatorInfoByOperatorID 获取算子信息
 	GetOperatorInfoByOperatorID(ctx context.Context, req *GetOperatorInfoByOperatorIDReq) (*OperatorDataInfo, error)
 	GetOperatorQueryPage(ctx context.Context, req *PageQueryRequest) (*PageQueryResponse, error)
+	// GetOperatorNamesByIDs 按算子ID批量取名(容错：不存在的ID略过)
+	GetOperatorNamesByIDs(ctx context.Context, ids []string) (*BatchNamesResp, error)
 	// EditOperator 编辑算子
 	EditOperator(ctx context.Context, req *OperatorEditReq) (*OperatorEditResp, error)
 	// DeleteOperator 删除算子

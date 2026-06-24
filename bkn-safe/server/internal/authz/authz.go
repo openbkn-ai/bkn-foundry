@@ -334,3 +334,105 @@ func (en *Enforcer) ResourcePolicies(resourceType, resourceID string) ([]Resourc
 	}
 	return out, nil
 }
+
+// ObjectGrant is one accessor's grant set on one concrete resource instance:
+// the cross-product cell of the object-level authorization matrix (who can do
+// what on which specific object). Powers the admin "授权管理" overview.
+type ObjectGrant struct {
+	AccessorID   string
+	ResourceType string
+	ResourceID   string
+	Operations   []string
+}
+
+// ListObjectGrants enumerates concrete per-object accessor grants across all
+// resources, grouped by (accessor, resource). Type-wide ("*" id) and bare-"*"
+// (super-admin) patterns are excluded — those belong to roles/seed, not the
+// object-grant surface. accessorID/resourceType/resourceID are optional filters
+// (empty = match any). Subjects are returned verbatim; the caller separates
+// user accessors from role subjects (casbin stores both as opaque ids).
+func (en *Enforcer) ListObjectGrants(accessorID, resourceType, resourceID string) ([]ObjectGrant, error) {
+	var rows [][]string
+	var err error
+	if accessorID != "" {
+		rows, err = en.e.GetFilteredPolicy(0, accessorID)
+	} else {
+		rows, err = en.e.GetPolicy()
+	}
+	if err != nil {
+		return nil, err
+	}
+	type key struct{ sub, rtype, rid string }
+	ops := map[key][]string{}
+	seen := map[key]map[string]bool{}
+	order := make([]key, 0, len(rows))
+	for _, row := range rows {
+		if len(row) < 3 {
+			continue
+		}
+		sub, o, act := row[0], row[1], row[2]
+		rtype, rid := splitObjectKey(o)
+		if rid == "" || rid == "*" { // skip type-wide / bare "*" (role/seed grants)
+			continue
+		}
+		if resourceType != "" && rtype != resourceType {
+			continue
+		}
+		if resourceID != "" && rid != resourceID {
+			continue
+		}
+		k := key{sub, rtype, rid}
+		if seen[k] == nil {
+			order = append(order, k)
+			seen[k] = map[string]bool{}
+		}
+		if seen[k][act] {
+			continue
+		}
+		seen[k][act] = true
+		ops[k] = append(ops[k], act)
+	}
+	out := make([]ObjectGrant, 0, len(order))
+	for _, k := range order {
+		out = append(out, ObjectGrant{
+			AccessorID: k.sub, ResourceType: k.rtype, ResourceID: k.rid, Operations: ops[k],
+		})
+	}
+	return out, nil
+}
+
+// SetObjectPermissions replaces an accessor's entire op set on one concrete
+// resource instance: it drops every existing (accessor, object) p-line and adds
+// one per op. The "edit a grant" write behind the admin object-grant page
+// (POST /policies only adds, never prunes). Passing no ops clears the grant.
+func (en *Enforcer) SetObjectPermissions(accessorID, resourceType, resourceID string, ops []string) error {
+	if err := en.RemoveAccessorResourcePolicies(accessorID, resourceType, resourceID); err != nil {
+		return err
+	}
+	for _, op := range ops {
+		if _, err := en.e.AddPolicy(accessorID, obj(resourceType, resourceID), op); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// RemoveAccessorResourcePolicies drops every op one accessor holds on one
+// concrete resource instance (revoke a single grantee's grant), leaving other
+// accessors' grants on the same resource intact — unlike RemoveResourcePolicies,
+// which wipes the resource for everyone on delete. Idempotent.
+func (en *Enforcer) RemoveAccessorResourcePolicies(accessorID, resourceType, resourceID string) error {
+	_, err := en.e.RemoveFilteredPolicy(0, accessorID, obj(resourceType, resourceID))
+	return err
+}
+
+// splitObjectKey splits a casbin object key "type:id" on the FIRST colon (the
+// id may itself contain colons). A bare "*" yields type "*", id "".
+func splitObjectKey(o string) (rtype, rid string) {
+	for i := 0; i < len(o); i++ {
+		if o[i] == ':' {
+			return o[:i], o[i+1:]
+		}
+	}
+	return o, ""
+}

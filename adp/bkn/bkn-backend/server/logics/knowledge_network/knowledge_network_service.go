@@ -560,6 +560,46 @@ func (kns *knowledgeNetworkService) ListKNs(ctx context.Context, parameter inter
 	return KNs, total, nil
 }
 
+// GetKNNamesByIDs 按 ID 批量取知识网络名称(对象级授权页回显)。
+// 刻意不走 FilterResources 授权过滤：授权页需要为"用户无权但被授权对象引用"的 KN 回显名称，
+// 故此处只做轻量名称查询。缺失 id 略过、空 ids 返回空 entries、id 去重。
+func (kns *knowledgeNetworkService) GetKNNamesByIDs(ctx context.Context, ids []string) (*interfaces.KNBatchNamesResp, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "按ID批量查询业务知识网络名称")
+	defer span.End()
+
+	resp := &interfaces.KNBatchNamesResp{Entries: []*interfaces.KNNameEntry{}}
+
+	// 去重，过滤空字符串
+	seen := make(map[string]struct{}, len(ids))
+	uniqueIDs := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		uniqueIDs = append(uniqueIDs, id)
+	}
+	if len(uniqueIDs) == 0 {
+		span.SetStatus(codes.Ok, "")
+		return resp, nil
+	}
+
+	entries, err := kns.kna.GetKNNamesByIDs(ctx, uniqueIDs, interfaces.MAIN_BRANCH)
+	if err != nil {
+		logger.Errorf("GetKNNamesByIDs error: %s", err.Error())
+		span.SetStatus(codes.Error, "按ID批量查询业务知识网络名称失败")
+		return resp, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(err.Error())
+	}
+	resp.Entries = entries
+
+	span.SetStatus(codes.Ok, "")
+	return resp, nil
+}
+
 func (kns *knowledgeNetworkService) GetKNByID(ctx context.Context, knID string, branch string, mode string) (*interfaces.KN, error) {
 
 	// 获取业务知识网络

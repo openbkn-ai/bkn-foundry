@@ -9,7 +9,29 @@ import (
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/utils"
+	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
 )
+
+// GetToolBoxNamesByIDs 按工具箱ID批量取名(轻量只读，复用 SelectListByBoxIDs；不存在的ID略过)
+func (s *ToolServiceImpl) GetToolBoxNamesByIDs(ctx context.Context, ids []string) (resp *interfaces.BatchNamesResp, err error) {
+	ctx, _ = o11y.StartInternalSpan(ctx)
+	defer o11y.EndSpan(ctx, err)
+	resp = &interfaces.BatchNamesResp{Entries: []*interfaces.NameEntry{}}
+	ids = utils.UniqueStrings(ids)
+	if len(ids) == 0 {
+		return
+	}
+	boxList, err := s.ToolBoxDB.SelectListByBoxIDs(ctx, ids)
+	if err != nil {
+		s.Logger.WithContext(ctx).Errorf("select toolboxes by ids failed, err: %v", err)
+		err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+		return
+	}
+	for _, box := range boxList {
+		resp.Entries = append(resp.Entries, &interfaces.NameEntry{ID: box.BoxID, Name: box.Name})
+	}
+	return
+}
 
 func (s *ToolServiceImpl) toolBoxDBToToolBoxInfo(ctx context.Context, toolBox *model.ToolboxDB) (boxInfo *interfaces.ToolBoxInfo) {
 	boxInfo = &interfaces.ToolBoxInfo{

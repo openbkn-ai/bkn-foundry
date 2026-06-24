@@ -1323,6 +1323,27 @@ func (r *skillRegistry) GetSkillDetail(ctx context.Context, req *interfaces.GetS
 	return skillInfo, nil
 }
 
+// GetSkillNamesByIDs 按技能ID批量取名(轻量只读，不存在的ID略过；不做对象级授权校验)
+func (r *skillRegistry) GetSkillNamesByIDs(ctx context.Context, ids []string) (resp *interfaces.BatchNamesResp, err error) {
+	ctx, _ = o11y.StartInternalSpan(ctx)
+	defer o11y.EndSpan(ctx, err)
+	resp = &interfaces.BatchNamesResp{Entries: []*interfaces.NameEntry{}}
+	ids = utils.UniqueStrings(ids)
+	if len(ids) == 0 {
+		return
+	}
+	skills, err := r.skillRepo.SelectSkillListByIDs(ctx, ids)
+	if err != nil {
+		r.Logger.WithContext(ctx).Errorf("select skills by ids failed, err: %v", err)
+		err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+		return
+	}
+	for _, skill := range skills {
+		resp.Entries = append(resp.Entries, &interfaces.NameEntry{ID: skill.SkillID, Name: skill.Name})
+	}
+	return
+}
+
 func convertSkillDetail(skill *model.SkillRepositoryDB, categoryName string) *interfaces.SkillInfo {
 	return &interfaces.SkillInfo{
 		SkillID:      skill.SkillID,

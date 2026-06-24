@@ -11,6 +11,7 @@ import (
 	"bkn-safe/internal/authz"
 	"bkn-safe/internal/directory"
 	"bkn-safe/internal/model"
+	"bkn-safe/internal/seed"
 )
 
 // registerUserAdmin mounts the user-write surface bkn-safe needs to own
@@ -112,6 +113,13 @@ func registerUserAdmin(g *gin.RouterGroup, users *auth.UserStore, e *authz.Enfor
 		}
 		ctx := c.Request.Context()
 		id := c.Param("id")
+		// Defense in depth: the built-in admin is the only guaranteed super-admin;
+		// refuse to disable it (other edits like rename are fine). The frontend
+		// hides the control, but the API must not rely on that.
+		if id == seed.AdminUserID && req.Enabled != nil && !*req.Enabled {
+			c.JSON(http.StatusForbidden, gin.H{"error": "built-in admin user cannot be disabled"})
+			return
+		}
 		fields := map[string]any{}
 		if req.Name != nil {
 			fields["name"] = *req.Name
@@ -171,6 +179,12 @@ func registerUserAdmin(g *gin.RouterGroup, users *auth.UserStore, e *authz.Enfor
 	// its casbin role bindings / direct grants.
 	g.DELETE("/users/:id", func(c *gin.Context) {
 		id := c.Param("id")
+		// Defense in depth: never delete the built-in admin (deleting the only
+		// super-admin locks everyone out). The frontend hides the control too.
+		if id == seed.AdminUserID {
+			c.JSON(http.StatusForbidden, gin.H{"error": "built-in admin user cannot be deleted"})
+			return
+		}
 		err := users.DeleteUser(c.Request.Context(), id)
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})

@@ -62,6 +62,8 @@ func (r *skillRestHandler) RegisterPublic(engine *gin.RouterGroup) {
 	engine.POST("/skills", r.SkillHandler.RegisterSkill)
 	// 查询技能列表
 	engine.GET("/skills", r.SkillHandler.QuerySkillList)
+	// POST /api/agent-operator-integration/v1/skills/names 按技能ID批量取名(前端对象级授权页回显)
+	engine.POST("/skills/names", r.SkillHandler.QuerySkillNamesByIDs)
 	// 查询技能详情
 	engine.GET("/skills/:skill_id", r.SkillHandler.GetSkillDetail)
 	// 下载技能

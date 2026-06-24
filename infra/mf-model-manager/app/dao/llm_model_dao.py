@@ -52,6 +52,14 @@ class ModelDao():
         return res
 
     @connect_execute_close_db
+    def get_model_info_by_ids(self, model_ids, connection, cursor):
+        placeholders = ','.join(['%s'] * len(model_ids))
+        sql = f"""select f_model_id,f_model_name from t_llm_model where f_model_id IN ({placeholders})"""
+        cursor.execute(sql, model_ids)
+        res = cursor.fetchall()
+        return res
+
+    @connect_execute_close_db
     def get_data_from_model_list_by_id(self, model_id, connection, cursor):
         sql = """select f_create_by,f_create_time,f_model,f_model_config,f_model_id,
                             f_model_name,f_model_series,f_model_type,f_update_by,f_update_time,

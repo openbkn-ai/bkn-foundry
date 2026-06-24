@@ -252,6 +252,21 @@ func (mr *MockIToolServiceMockRecorder) GetToolBox(ctx, req, isMarket any) *gomo
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetToolBox", reflect.TypeOf((*MockIToolService)(nil).GetToolBox), ctx, req, isMarket)
 }
 
+// GetToolBoxNamesByIDs mocks base method.
+func (m *MockIToolService) GetToolBoxNamesByIDs(ctx context.Context, ids []string) (*interfaces.BatchNamesResp, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetToolBoxNamesByIDs", ctx, ids)
+	ret0, _ := ret[0].(*interfaces.BatchNamesResp)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetToolBoxNamesByIDs indicates an expected call of GetToolBoxNamesByIDs.
+func (mr *MockIToolServiceMockRecorder) GetToolBoxNamesByIDs(ctx, ids any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetToolBoxNamesByIDs", reflect.TypeOf((*MockIToolService)(nil).GetToolBoxNamesByIDs), ctx, ids)
+}
+
 // HandleOperatorDeleteEvent mocks base method.
 func (m *MockIToolService) HandleOperatorDeleteEvent(ctx context.Context, message []byte) error {
 	m.ctrl.T.Helper()

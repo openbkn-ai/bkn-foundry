@@ -133,6 +133,21 @@ func (mr *MockKNAccessMockRecorder) GetKNByID(ctx, knID, branch any) *gomock.Cal
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetKNByID", reflect.TypeOf((*MockKNAccess)(nil).GetKNByID), ctx, knID, branch)
 }
 
+// GetKNNamesByIDs mocks base method.
+func (m *MockKNAccess) GetKNNamesByIDs(ctx context.Context, ids []string, branch string) ([]*interfaces.KNNameEntry, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetKNNamesByIDs", ctx, ids, branch)
+	ret0, _ := ret[0].([]*interfaces.KNNameEntry)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetKNNamesByIDs indicates an expected call of GetKNNamesByIDs.
+func (mr *MockKNAccessMockRecorder) GetKNNamesByIDs(ctx, ids, branch any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetKNNamesByIDs", reflect.TypeOf((*MockKNAccess)(nil).GetKNNamesByIDs), ctx, ids, branch)
+}
+
 // GetKNsTotal mocks base method.
 func (m *MockKNAccess) GetKNsTotal(ctx context.Context, query interfaces.KNsQueryParams) (int, error) {
 	m.ctrl.T.Helper()

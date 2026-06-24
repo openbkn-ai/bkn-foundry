@@ -86,6 +86,8 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	for _, apiV1 := range []*gin.RouterGroup{bknApiV1, otlApiV1} {
 		// 业务知识网络
 		apiV1.POST("/knowledge-networks", r.verifyJsonContentType(), r.CreateKNByEx)
+		// 按 ID 批量取名(对象级授权页回显，绕过授权过滤；静态段 names 与 :kn_id 不冲突)
+		apiV1.POST("/knowledge-networks/names", r.verifyJsonContentType(), r.QueryKNNamesByIDs)
 		apiV1.DELETE("/knowledge-networks/:kn_id", r.DeleteKN)
 		apiV1.PUT("/knowledge-networks/:kn_id", r.verifyJsonContentType(), r.UpdateKNByEx)
 		apiV1.GET("/knowledge-networks", r.ListKNsByEx)
@@ -171,6 +173,8 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	for _, apiInV1 := range []*gin.RouterGroup{bknApiInV1, otlApiInV1} {
 		// 业务知识网络
 		apiInV1.POST("/knowledge-networks", r.verifyJsonContentType(), r.CreateKNByIn)
+		// 按 ID 批量取名(对象级授权页回显，绕过授权过滤；静态段 names 与 :kn_id 不冲突)
+		apiInV1.POST("/knowledge-networks/names", r.verifyJsonContentType(), r.QueryKNNamesByIDs)
 		apiInV1.PUT("/knowledge-networks/:kn_id", r.verifyJsonContentType(), r.UpdateKNByIn)
 		apiInV1.GET("/knowledge-networks", r.ListKNsByIn)
 		apiInV1.GET("/knowledge-networks/:kn_id", r.GetKNByIn)

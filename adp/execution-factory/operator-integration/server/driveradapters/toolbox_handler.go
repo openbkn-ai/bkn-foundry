@@ -62,6 +62,8 @@ func (r *toolboxRestHandler) RegisterPublic(engine *gin.RouterGroup) {
 	engine.GET("/tool-box/:box_id", r.ToolBoxHandler.QueryToolBox)
 	engine.DELETE("/tool-box/:box_id", middlewareBusinessDomain(true, false, r.businessDomainService), r.ToolBoxHandler.DeleteToolBox)
 	engine.GET("/tool-box/list", middlewareBusinessDomain(true, false, r.businessDomainService), r.ToolBoxHandler.QueryToolBoxPage)
+	// POST /api/agent-operator-integration/v1/tool-box/names 按工具箱ID批量取名(前端对象级授权页回显)
+	engine.POST("/tool-box/names", r.ToolBoxHandler.QueryToolBoxNamesByIDs)
 	// 工具
 	engine.POST("/tool-box/:box_id/tool", r.ToolBoxHandler.CreateTool)
 	engine.POST("/tool-box/:box_id/tool/:tool_id", r.ToolBoxHandler.UpdateTool)
