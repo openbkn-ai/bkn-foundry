@@ -138,6 +138,19 @@ func (mfa *modelFactoryAccess) getDefaultModelFromAPI(ctx context.Context, model
 		otellog.LogError(ctx, "Get default model request failed", err)
 		return nil, fmt.Errorf("get default model request failed: %w", err)
 	}
+	if respCode == http.StatusNotFound {
+		// 兼容 mf-model-manager 尚未升级(无 get_default 端点)：当作未配置默认，由 GetDefaultModel 回退 DefaultSmallModelName。
+		// 缓存 nil 避免版本错配窗口期反复打 404。
+		logger.Warnf("get_default endpoint returned 404 (mf-model-manager not upgraded?), fallback to configured default")
+		mfa.defaultCacheMu.Lock()
+		if mfa.defaultCache == nil {
+			mfa.defaultCache = make(map[string]*cachedDefault)
+		}
+		mfa.defaultCache[modelType] = &cachedDefault{model: nil, expiry: time.Now().Add(defaultModelCacheTTL)}
+		mfa.defaultCacheMu.Unlock()
+		oteltrace.AddHttpAttrs4Ok(span, respCode)
+		return nil, nil
+	}
 	if respCode != http.StatusOK {
 		err := fmt.Errorf("get default model request failed with status code: %d, %s", respCode, result)
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 200")
