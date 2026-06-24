@@ -241,7 +241,8 @@ async def get_info_list(order, rule, page, size, model_name, model_type, model_s
                 "adapter_code": item["f_adapter_code"],
                 "batch_size": item["f_batch_size"],
                 "max_tokens": item["f_max_tokens"],
-                "embedding_dim": item["f_embedding_dim"]
+                "embedding_dim": item["f_embedding_dim"],
+                "default": True if item.get("f_default") else False
             })
         content = {"count": total, "data": res_list}
         return JSONResponse(status_code=200, content=content)
@@ -281,7 +282,8 @@ async def get_info(model_id, user_id, role):
             "adapter_code": item["f_adapter_code"],
             "batch_size": item["f_batch_size"],
             "max_tokens": item["f_max_tokens"],
-            "embedding_dim": item["f_embedding_dim"]
+            "embedding_dim": item["f_embedding_dim"],
+            "default": True if item.get("f_default") else False
         }
         return JSONResponse(status_code=200, content=res)
     except Exception as e:
@@ -312,12 +314,75 @@ async def get_info_by_name(model_name):
             "adapter_code": item["f_adapter_code"],
             "batch_size": item["f_batch_size"],
             "max_tokens": item["f_max_tokens"],
-            "embedding_dim": item["f_embedding_dim"]
+            "embedding_dim": item["f_embedding_dim"],
+            "default": True if item.get("f_default") else False
         }
         return JSONResponse(status_code=200, content=res)
     except Exception as e:
         StandLogger.error(e.args)
         error_dict = ModelFactory_ExternalSmallModel_UnknownError.copy()
+        return JSONResponse(status_code=400, content=error_dict)
+
+
+async def get_default_model(model_type):
+    """取某 model_type(embedding/reranker) 下的系统默认小模型。内部接口，供各服务解析系统默认模型。
+    未配置默认时返回 200 + 空对象，调用方据此判定"无默认/禁用"。"""
+    if not model_type:
+        return JSONResponse(status_code=400, content=ModelFactory_ExternalSmallModel_GetInfo_IdNotExist_Error)
+    try:
+        original_res = small_model_dao.get_default_by_type(model_type)
+        if len(original_res) == 0:
+            return JSONResponse(status_code=200, content={})
+        item = original_res[0]
+        res = {
+            "model_id": item["f_model_id"],
+            "model_name": item["f_model_name"],
+            "model_type": item["f_model_type"],
+            "model_config": json.loads(
+                re.sub(r'"api_key":\s*"[^"]*"', '"api_key": "******************************"',
+                       item["f_model_config"])),
+            "batch_size": item["f_batch_size"],
+            "max_tokens": item["f_max_tokens"],
+            "embedding_dim": item["f_embedding_dim"],
+            "default": True
+        }
+        return JSONResponse(status_code=200, content=res)
+    except Exception as e:
+        StandLogger.error(e.args)
+        error_dict = ModelFactory_ExternalSmallModel_UnknownError.copy()
+        error_dict["detail"] = str(e)
+        return JSONResponse(status_code=400, content=error_dict)
+
+
+async def set_default_model(model_para, userId, language, role):
+    """设置某 model_type 下的系统默认小模型。同 model_type 互斥(先清旧默认再置新)。
+    需对该模型有 modify 权限(管理员操作)。"""
+    try:
+        if "model_id" not in model_para or not model_para["model_id"]:
+            return JSONResponse(status_code=400, content=IdValueIsEmpty)
+        model_id = model_para["model_id"]
+        model_info = small_model_dao.get_model_info_by_id(model_id)
+        if len(model_info) == 0:
+            return JSONResponse(status_code=400, content=ModelFactory_ExternalSmallModel_GetInfo_IdNotExist_Error)
+        permission = await permission_manager.check_single_permission(user_id=userId, resource_id=model_id,
+                                                                      operations="modify",
+                                                                      resource_type="small_model",
+                                                                      role=role)
+        if not permission:
+            return JSONResponse(status_code=403, content=NotPermissionError)
+        model_type = model_info[0]["f_model_type"]
+        # 同 model_type 互斥：先把该类型旧默认清掉，再置新默认
+        old_default = small_model_dao.get_default_by_type(model_type)
+        for line in old_default:
+            if line["f_model_id"] != model_id:
+                small_model_dao.update_model_default_status(line["f_model_id"], False)
+        small_model_dao.update_model_default_status(model_id, True)
+        content = {"status": "ok", "id": model_id}
+        return JSONResponse(status_code=200, content=content)
+    except Exception as e:
+        StandLogger.error(e.args)
+        error_dict = ModelFactory_ExternalSmallModel_UnknownError.copy()
+        error_dict["detail"] = str(e)
         return JSONResponse(status_code=400, content=error_dict)
 
 
