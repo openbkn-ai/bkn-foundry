@@ -440,9 +440,9 @@ func (rts *riskTypeService) InsertDatasetData(ctx context.Context, riskTypes []*
 			words = append(words, word)
 		}
 
-		dftModel, err := rts.mfa.GetDefaultModel(ctx)
+		dftModel, err := rts.mfa.GetModelByKNID(ctx, riskTypes[0].KNID, riskTypes[0].Branch)
 		if err != nil {
-			logger.Errorf("GetDefaultModel error: %s", err.Error())
+			logger.Errorf("GetModelByKNID error: %s", err.Error())
 			span.SetStatus(codes.Error, "获取默认模型失败")
 			return err
 		}
@@ -525,9 +525,9 @@ func (rts *riskTypeService) SearchRiskTypes(ctx context.Context, query *interfac
 						berrors.BknBackend_RiskType_InternalError).
 						WithErrorDetails(err.Error())
 				}
-				dftModel, err := rts.mfa.GetDefaultModel(ctx)
+				dftModel, err := rts.mfa.GetModelByKNID(ctx, query.KNID, query.Branch)
 				if err != nil {
-					logger.Errorf("GetDefaultModel error: %s", err.Error())
+					logger.Errorf("GetModelByKNID error: %s", err.Error())
 					span.SetStatus(codes.Error, "获取默认模型失败")
 					return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 						berrors.BknBackend_RiskType_InternalError).

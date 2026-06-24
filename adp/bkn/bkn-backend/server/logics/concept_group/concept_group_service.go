@@ -1046,9 +1046,9 @@ func (cgs *conceptGroupService) InsertDatasetData(ctx context.Context, origConce
 		words = append(words, conceptGroup.Comment, conceptGroup.BKNRawContent)
 		word := strings.Join(words, "\n")
 
-		defaultModel, err := cgs.mfa.GetDefaultModel(ctx)
+		defaultModel, err := cgs.mfa.GetModelByKNID(ctx, conceptGroup.KNID, conceptGroup.Branch)
 		if err != nil {
-			logger.Errorf("GetDefaultModel error: %s", err.Error())
+			logger.Errorf("GetModelByKNID error: %s", err.Error())
 			span.SetStatus(codes.Error, "获取默认模型失败")
 			return err
 		}

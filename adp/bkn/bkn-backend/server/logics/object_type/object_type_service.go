@@ -1367,9 +1367,9 @@ func (ots *objectTypeService) InsertDatasetData(ctx context.Context, objectTypes
 			words = append(words, word)
 		}
 
-		dftModel, err := ots.mfa.GetDefaultModel(ctx)
+		dftModel, err := ots.mfa.GetModelByKNID(ctx, objectTypes[0].KNID, objectTypes[0].Branch)
 		if err != nil {
-			logger.Errorf("GetDefaultModel error: %s", err.Error())
+			logger.Errorf("GetModelByKNID error: %s", err.Error())
 			span.SetStatus(codes.Error, "获取默认模型失败")
 			return err
 		}
@@ -1477,9 +1477,9 @@ func (ots *objectTypeService) SearchObjectTypes(ctx context.Context,
 						berrors.BknBackend_ObjectType_InternalError).
 						WithErrorDetails(err.Error())
 				}
-				dftModel, err := ots.mfa.GetDefaultModel(ctx)
+				dftModel, err := ots.mfa.GetModelByKNID(ctx, query.KNID, query.Branch)
 				if err != nil {
-					logger.Errorf("GetDefaultModel error: %s", err.Error())
+					logger.Errorf("GetModelByKNID error: %s", err.Error())
 					span.SetStatus(codes.Error, "获取默认模型失败")
 					return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 						berrors.BknBackend_ObjectType_InternalError).

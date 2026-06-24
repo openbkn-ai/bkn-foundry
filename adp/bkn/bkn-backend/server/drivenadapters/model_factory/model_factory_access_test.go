@@ -39,8 +39,8 @@ func TestNewModelFactoryAccess(t *testing.T) {
 			ModelFactoryAPIUrl:     "http://test-mf-api",
 		}
 
-		access1 := NewModelFactoryAccess(appSetting)
-		access2 := NewModelFactoryAccess(appSetting)
+		access1 := NewModelFactoryAccess(appSetting, nil)
+		access2 := NewModelFactoryAccess(appSetting, nil)
 
 		Convey("Should return singleton instance", func() {
 			So(access1, ShouldNotBeNil)

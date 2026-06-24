@@ -111,6 +111,13 @@ type KN struct {
 	Branch         string `json:"branch,omitempty" mapstructure:"branch"`
 	BusinessDomain string `json:"business_domain,omitempty" mapstructure:"business_domain"`
 
+	// EmbeddingModelID 建 KN 时锁定的 embedding 模型 id(持久化)，EmbeddingDim 为其维度。
+	// 写入与 KNN 查询全程读回该模型，避免改全局默认后老 KN 概念向量与查询向量模型不一致。
+	EmbeddingModelID string `json:"embedding_model_id,omitempty" mapstructure:"embedding_model_id"`
+	EmbeddingDim     int    `json:"embedding_dim,omitempty" mapstructure:"embedding_dim"`
+	// EmbeddingModel 仅作入参：建 KN 时可传模型名或 id，归一后落到 EmbeddingModelID(本字段不持久化)。
+	EmbeddingModel string `json:"embedding_model,omitempty" mapstructure:"embedding_model"`
+
 	ConceptGroups []*ConceptGroup     `json:"concept_groups,omitempty" mapstructure:"concept_groups"`
 	ObjectTypes   []*ObjectType       `json:"object_types,omitempty" mapstructure:"object_types"`
 	RelationTypes []*RelationType     `json:"relation_types,omitempty" mapstructure:"relation_types"`

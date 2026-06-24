@@ -164,6 +164,8 @@ func (kna *knowledgeNetworkAccess) CreateKN(ctx context.Context, tx *sql.Tx, KN 
 			"f_updater",
 			"f_updater_type",
 			"f_update_time",
+			"f_embedding_model_id",
+			"f_embedding_dim",
 		).
 		Values(
 			KN.KNID,
@@ -181,7 +183,9 @@ func (kna *knowledgeNetworkAccess) CreateKN(ctx context.Context, tx *sql.Tx, KN 
 			KN.CreateTime,
 			KN.Updater.ID,
 			KN.Updater.Type,
-			KN.UpdateTime).
+			KN.UpdateTime,
+			KN.EmbeddingModelID,
+			KN.EmbeddingDim).
 		ToSql()
 	if err != nil {
 		otellog.LogError(ctx, "Failed to build the sql of insert knowledge network, error", err)
@@ -226,7 +230,9 @@ func (kna *knowledgeNetworkAccess) ListKNs(ctx context.Context, query interfaces
 		"f_create_time",
 		"f_updater",
 		"f_updater_type",
-		"f_update_time").
+		"f_update_time",
+		"f_embedding_model_id",
+		"f_embedding_dim").
 		From(KN_TABLE_NAME)
 
 	builder := processQueryCondition(query, subBuilder)
@@ -275,6 +281,8 @@ func (kna *knowledgeNetworkAccess) ListKNs(ctx context.Context, query interfaces
 			&KN.Updater.ID,
 			&KN.Updater.Type,
 			&KN.UpdateTime,
+			&KN.EmbeddingModelID,
+			&KN.EmbeddingDim,
 		)
 		if err != nil {
 			otellog.LogError(ctx, "Row scan error", err)
@@ -348,6 +356,8 @@ func (kna *knowledgeNetworkAccess) GetKNByID(ctx context.Context,
 		"f_updater",
 		"f_updater_type",
 		"f_update_time",
+		"f_embedding_model_id",
+		"f_embedding_dim",
 	).From(KN_TABLE_NAME).
 		Where(sq.Eq{"f_id": knID}).
 		Where(sq.Eq{"f_branch": branch}).
@@ -381,6 +391,8 @@ func (kna *knowledgeNetworkAccess) GetKNByID(ctx context.Context,
 		&KN.Updater.ID,
 		&KN.Updater.Type,
 		&KN.UpdateTime,
+		&KN.EmbeddingModelID,
+		&KN.EmbeddingDim,
 	)
 	if err == sql.ErrNoRows {
 		span.SetAttributes(attr.Key("no_rows").Bool(true))
