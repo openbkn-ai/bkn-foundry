@@ -84,7 +84,7 @@ func (mfa *modelFactoryAccess) GetModelByName(ctx context.Context, modelName str
 	return &smallModel, nil
 }
 
-func (mfa *modelFactoryAccess) GetVector(ctx context.Context, modelName string, words []string) ([]*interfaces.VectorResp, error) {
+func (mfa *modelFactoryAccess) GetVector(ctx context.Context, modelID string, words []string) ([]*interfaces.VectorResp, error) {
 
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "GetVector")
 	defer span.End()
@@ -93,8 +93,8 @@ func (mfa *modelFactoryAccess) GetVector(ctx context.Context, modelName string, 
 		return []*interfaces.VectorResp{}, nil
 	}
 
-	if modelName == "" {
-		return nil, fmt.Errorf("model name cannot be empty")
+	if modelID == "" {
+		return nil, fmt.Errorf("model id cannot be empty")
 	}
 
 	httpUrl := fmt.Sprintf("%s/api/private/mf-model-api/v1/small-model/embeddings", mfa.mfAPIUrl)
@@ -102,9 +102,13 @@ func (mfa *modelFactoryAccess) GetVector(ctx context.Context, modelName string, 
 		"Content-Type": "application/json",
 	}
 
+	// buildTask.EmbeddingModel 存的是模型 **id**（已归一到 id），必须发 model_id 字段。
+	// mf-model-api 的 embeddings 解析：model 字段只按 model_name 查、model_id 字段才按 id 查。
+	// 之前把 id 塞进 model（名字）字段 → 按 name 查不到 → ModelFactory.ExternalSmallModel.Used.NameNotExist
+	// （偶尔“成功”只是撞上 model_id 查询写下的同名缓存 key，并非真解析成功）。
 	requestBody := map[string]any{
-		"model":    modelName,
-		"model_id": "",
+		"model":    "",
+		"model_id": modelID,
 		"input":    words,
 	}
 
