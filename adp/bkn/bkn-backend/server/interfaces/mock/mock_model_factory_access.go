@@ -57,21 +57,6 @@ func (mr *MockModelFactoryAccessMockRecorder) GetDefaultModel(ctx any) *gomock.C
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDefaultModel", reflect.TypeOf((*MockModelFactoryAccess)(nil).GetDefaultModel), ctx)
 }
 
-// GetModelByKNID mocks base method.
-func (m *MockModelFactoryAccess) GetModelByKNID(ctx context.Context, knID, branch string) (*interfaces.SmallModel, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetModelByKNID", ctx, knID, branch)
-	ret0, _ := ret[0].(*interfaces.SmallModel)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetModelByKNID indicates an expected call of GetModelByKNID.
-func (mr *MockModelFactoryAccessMockRecorder) GetModelByKNID(ctx, knID, branch any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetModelByKNID", reflect.TypeOf((*MockModelFactoryAccess)(nil).GetModelByKNID), ctx, knID, branch)
-}
-
 // GetModelByID mocks base method.
 func (m *MockModelFactoryAccess) GetModelByID(ctx context.Context, modelID string) (*interfaces.SmallModel, error) {
 	m.ctrl.T.Helper()

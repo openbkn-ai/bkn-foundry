@@ -127,63 +127,6 @@ func (kns *knowledgeNetworkService) CheckKNExistByName(ctx context.Context, knNa
 	return KNID, exist, nil
 }
 
-// resolveAndLockEmbeddingModel 方案A：建 KN 时确定并锁定 embedding 模型(持久化到 KN)。
-// 入参 kn.EmbeddingModel 可为模型名或 id，不传则用系统默认。校验 type==embedding、维度>0，
-// 且维度必须等于全局概念 dataset 固化维度(BKN 单一全局 dataset 不可混维)。
-// 写入与 KNN 查询全程经 GetModelByKNID 读回该模型，避免改全局默认后老 KN 概念向量/查询向量不一致。
-func (kns *knowledgeNetworkService) resolveAndLockEmbeddingModel(ctx context.Context, kn *interfaces.KN) error {
-	if !kns.appSetting.ServerSetting.DefaultSmallModelEnabled {
-		return nil // 未启用 embedding，不锁定模型
-	}
-	modelRef := strings.TrimSpace(kn.EmbeddingModel)
-	var model *interfaces.SmallModel
-	var err error
-	if modelRef != "" {
-		// 先按名查，查不到再按 id 查(复用现有函数)
-		model, err = kns.mfa.GetModelByName(ctx, modelRef)
-		if err != nil || model == nil {
-			model, err = kns.mfa.GetModelByID(ctx, modelRef)
-		}
-		if err != nil || model == nil {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest,
-				berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
-				WithErrorDetails(fmt.Sprintf("embedding model not found: %s", modelRef))
-		}
-	} else {
-		// 不传 → 系统默认；默认未配置则不锁定(留空，运行期回退默认)
-		model, err = kns.mfa.GetDefaultModel(ctx)
-		if err != nil {
-			return rest.NewHTTPError(ctx, http.StatusInternalServerError,
-				berrors.BknBackend_KnowledgeNetwork_InternalError).
-				WithErrorDetails(err.Error())
-		}
-		if model == nil {
-			return nil
-		}
-	}
-	if model.ModelType != interfaces.SMALL_MODEL_TYPE_EMBEDDING {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest,
-			berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
-			WithErrorDetails(fmt.Sprintf("model %s is not an embedding model (type=%s)", model.ModelName, model.ModelType))
-	}
-	if model.EmbeddingDim <= 0 {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest,
-			berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
-			WithErrorDetails("embedding model dimension invalid")
-	}
-	// 方案A：维度必须等于全局概念 dataset 固化维度(单一全局 dataset 不可混维)
-	if common.GlobalConceptVectorDim > 0 && model.EmbeddingDim != common.GlobalConceptVectorDim {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest,
-			berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
-			WithErrorDetails(fmt.Sprintf(
-				"embedding model dimension(%d) must equal global concept dataset dimension(%d); BKN uses a single shared dataset",
-				model.EmbeddingDim, common.GlobalConceptVectorDim))
-	}
-	kn.EmbeddingModelID = model.ModelID
-	kn.EmbeddingDim = model.EmbeddingDim
-	return nil
-}
-
 func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces.KN, mode string, strictMode bool) (string, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Create knowledge network")
 	defer span.End()
@@ -239,11 +182,6 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 
 	kn.CreateTime = currentTime
 	kn.UpdateTime = currentTime
-
-	// 解析并锁定本 KN 的 embedding 模型(方案A: 持久化到 KN + 维度对齐全局概念 dataset)
-	if err := kns.resolveAndLockEmbeddingModel(ctx, kn); err != nil {
-		return "", err
-	}
 
 	bknNetwork := logics.ToBKNNetWork(kn)
 	kn.BKNRawContent = bknsdk.SerializeBknNetwork(bknNetwork)
@@ -1260,9 +1198,9 @@ func (kns *knowledgeNetworkService) InsertDatasetData(ctx context.Context, origK
 		words = append(words, kn.Comment, kn.BKNRawContent)
 		word := strings.Join(words, "\n")
 
-		defaultModel, err := kns.mfa.GetModelByKNID(ctx, kn.KNID, kn.Branch)
+		defaultModel, err := kns.mfa.GetDefaultModel(ctx)
 		if err != nil {
-			logger.Errorf("GetModelByKNID error: %s", err.Error())
+			logger.Errorf("GetDefaultModel error: %s", err.Error())
 			span.SetStatus(codes.Error, "获取默认模型失败")
 			return err
 		}

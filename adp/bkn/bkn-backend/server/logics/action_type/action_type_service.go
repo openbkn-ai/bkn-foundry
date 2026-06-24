@@ -805,9 +805,9 @@ func (ats *actionTypeService) InsertDatasetData(ctx context.Context, actionTypes
 			words = append(words, word)
 		}
 
-		dftModel, err := ats.mfa.GetModelByKNID(ctx, actionTypes[0].KNID, actionTypes[0].Branch)
+		dftModel, err := ats.mfa.GetDefaultModel(ctx)
 		if err != nil {
-			logger.Errorf("GetModelByKNID error: %s", err.Error())
+			logger.Errorf("GetDefaultModel error: %s", err.Error())
 			span.SetStatus(codes.Error, "获取默认模型失败")
 			return err
 		}
@@ -916,9 +916,9 @@ func (ats *actionTypeService) SearchActionTypes(ctx context.Context, query *inte
 						berrors.BknBackend_ActionType_InternalError).
 						WithErrorDetails(err.Error())
 				}
-				dftModel, err := ats.mfa.GetModelByKNID(ctx, query.KNID, query.Branch)
+				dftModel, err := ats.mfa.GetDefaultModel(ctx)
 				if err != nil {
-					logger.Errorf("GetModelByKNID error: %s", err.Error())
+					logger.Errorf("GetDefaultModel error: %s", err.Error())
 					span.SetStatus(codes.Error, "获取默认模型失败")
 					return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 						berrors.BknBackend_ActionType_InternalError).

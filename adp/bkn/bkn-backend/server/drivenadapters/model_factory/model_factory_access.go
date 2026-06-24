@@ -44,44 +44,24 @@ type modelFactoryAccess struct {
 	httpClient   rest.HTTPClient
 	mfManagerUrl string
 	mfAPIUrl     string
-	knAccess     interfaces.KNAccess // 用于按 KN 读回建时锁定的 embedding 模型
 
 	defaultCacheMu sync.RWMutex
 	defaultCache   map[string]*cachedDefault
 }
 
-// NewModelFactoryAccess 创建模型工厂访问实例。knAccess 用于 GetModelByKNID 读回 KN 锁定模型。
-func NewModelFactoryAccess(appSetting *common.AppSetting, knAccess interfaces.KNAccess) interfaces.ModelFactoryAccess {
+// NewModelFactoryAccess 创建模型工厂访问实例
+func NewModelFactoryAccess(appSetting *common.AppSetting) interfaces.ModelFactoryAccess {
 	mfAccessOnce.Do(func() {
 		mfAccess = &modelFactoryAccess{
 			appSetting:   appSetting,
 			httpClient:   common.NewHTTPClient(),
 			mfManagerUrl: appSetting.ModelFactoryManagerUrl,
 			mfAPIUrl:     appSetting.ModelFactoryAPIUrl,
-			knAccess:     knAccess,
 			defaultCache: make(map[string]*cachedDefault),
 		}
 	})
 
 	return mfAccess
-}
-
-// GetModelByKNID 取 KN 建时锁定的 embedding 模型；KN 无锁定模型(老 KN)或 knID 为空时回退系统默认。
-func (mfa *modelFactoryAccess) GetModelByKNID(ctx context.Context, knID string, branch string) (*interfaces.SmallModel, error) {
-	if knID != "" && mfa.knAccess != nil {
-		kn, err := mfa.knAccess.GetKNByID(ctx, knID, branch)
-		if err != nil {
-			logger.Warnf("GetKNByID for model resolution failed, knID=%s branch=%s: %v, fallback to default", knID, branch, err)
-		} else if kn != nil && kn.EmbeddingModelID != "" {
-			model, err := mfa.GetModelByID(ctx, kn.EmbeddingModelID)
-			if err == nil && model != nil {
-				return model, nil
-			}
-			logger.Warnf("GetModelByID(%s) for KN %s failed/empty, fallback to default", kn.EmbeddingModelID, knID)
-		}
-	}
-	// 老 KN(未锁定模型) / knID 为空 / 解析失败 → 系统默认(兼容改造前行为)
-	return mfa.GetDefaultModel(ctx)
 }
 
 func (mfa *modelFactoryAccess) GetDefaultModel(ctx context.Context) (*interfaces.SmallModel, error) {

@@ -37,9 +37,6 @@ func Init(ctx context.Context, appSetting *common.AppSetting) error {
 		logger.Infof("Small model enabled, vector dimension: %d", vectorDim)
 	}
 
-	// 固化全局概念 dataset 维度，供 CreateKN 校验 per-KN 模型维度对齐(单一全局 dataset 不可混维)
-	common.GlobalConceptVectorDim = vectorDim
-
 	// Get or create catalog
 	catalog, err := VBA.GetCatalogByID(ctx, interfaces.BKN_CATALOG_ID)
 	if err != nil {

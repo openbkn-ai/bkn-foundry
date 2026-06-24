@@ -31,10 +31,6 @@ type SmallModel struct {
 type ModelFactoryAccess interface {
 	GetDefaultModel(ctx context.Context) (*SmallModel, error)
 
-	// GetModelByKNID 取某 KN 建时锁定的 embedding 模型；KN 无锁定模型(老 KN)或 knID 为空时回退系统默认。
-	// 写入与 KNN 查询统一经此读回，保证建模型==查模型。
-	GetModelByKNID(ctx context.Context, knID string, branch string) (*SmallModel, error)
-
 	GetModelByID(ctx context.Context, modelID string) (*SmallModel, error)
 	GetModelByName(ctx context.Context, modelName string) (*SmallModel, error)
 
