@@ -11,6 +11,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -362,9 +363,10 @@ func (bta *buildTaskAccess) List(ctx context.Context, params interfaces.BuildTas
 		builder = builder.Where(sq.Eq{"f_catalog_id": params.CatalogID})
 		countBuilder = countBuilder.Where(sq.Eq{"f_catalog_id": params.CatalogID})
 	}
-	if params.Status != "" {
-		builder = builder.Where(sq.Eq{"f_status": params.Status})
-		countBuilder = countBuilder.Where(sq.Eq{"f_status": params.Status})
+	if len(params.Statuses) > 0 {
+		// squirrel: Eq 的值为切片 → 生成 f_status IN (?,?,...)
+		builder = builder.Where(sq.Eq{"f_status": params.Statuses})
+		countBuilder = countBuilder.Where(sq.Eq{"f_status": params.Statuses})
 	}
 	if params.Mode != "" {
 		builder = builder.Where(sq.Eq{"f_mode": params.Mode})
@@ -382,11 +384,7 @@ func (bta *buildTaskAccess) List(ctx context.Context, params interfaces.BuildTas
 		return nil, 0, err
 	}
 
-	if params.Sort != "" && params.Direction != "" {
-		builder = builder.OrderBy(fmt.Sprintf("%s %s", params.Sort, params.Direction))
-	} else {
-		builder = builder.OrderBy("f_update_time DESC")
-	}
+	builder = builder.OrderBy(buildOrderByClause(params.OrderBy, params.Order))
 
 	if params.Limit > 0 {
 		builder = builder.Limit(uint64(params.Limit)).Offset(uint64(params.Offset))
@@ -420,6 +418,40 @@ func (bta *buildTaskAccess) List(ctx context.Context, params interfaces.BuildTas
 
 	span.SetStatus(codes.Ok, "")
 	return buildTasks, totalCount, nil
+}
+
+// buildOrderByClause 把 order_by/order 翻译成 ORDER BY 子句。排序在 List 中先于
+// LIMIT/OFFSET 全局应用,故活跃任务总落在第一页。order_by=default 忽略 order
+// (固定复合序);其余维度方向跟 order,并以 f_create_time DESC 兜底平手。
+func buildOrderByClause(orderBy, order string) string {
+	dir := "DESC"
+	if strings.EqualFold(order, interfaces.ASC_DIRECTION) {
+		dir = "ASC"
+	}
+	switch orderBy {
+	case interfaces.BuildTaskOrderByCreatedAt:
+		return "f_create_time " + dir
+	case interfaces.BuildTaskOrderByUpdatedAt:
+		return "f_update_time " + dir
+	case interfaces.BuildTaskOrderByMode:
+		return "f_mode " + dir + ", f_create_time DESC"
+	case interfaces.BuildTaskOrderByStatus:
+		return statusBucketCase() + " " + dir + ", f_create_time DESC"
+	default: // BuildTaskOrderByDefault 及未知值:活跃置顶(桶 ASC)+ 桶内最新在前
+		return statusBucketCase() + " ASC, f_create_time DESC"
+	}
+}
+
+// statusBucketCase 由 interfaces.BuildTaskStatusOrder 生成状态优先级 CASE 表达式。
+// 值全是后端常量,非用户输入,无 SQL 注入风险。
+func statusBucketCase() string {
+	var b strings.Builder
+	b.WriteString("CASE f_status")
+	for i, s := range interfaces.BuildTaskStatusOrder {
+		fmt.Fprintf(&b, " WHEN '%s' THEN %d", s, i+1)
+	}
+	b.WriteString(" ELSE 99 END")
+	return b.String()
 }
 
 // Delete deletes a build task by ID.

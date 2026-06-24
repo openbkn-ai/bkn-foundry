@@ -61,7 +61,7 @@ func (r *buildTaskReconciler) run() {
 
 // reconcileOnce 执行一轮对账
 func (r *buildTaskReconciler) reconcileOnce(ctx context.Context) error {
-	tasks, _, err := r.taskAccess.List(ctx, interfaces.BuildTasksQueryParams{Status: interfaces.BuildTaskStatusInit})
+	tasks, _, err := r.taskAccess.List(ctx, interfaces.BuildTasksQueryParams{Statuses: []string{interfaces.BuildTaskStatusInit}})
 	if err != nil {
 		return err
 	}

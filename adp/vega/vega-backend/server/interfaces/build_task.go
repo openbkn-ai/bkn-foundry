@@ -21,6 +21,16 @@ const (
 	BuildTaskModeStreaming string = "streaming" // 流式
 	BuildTaskModeBatch     string = "batch"     // 批量
 
+	// build-task 列表排序维度(query: order_by)
+	BuildTaskOrderByDefault   string = "default"    // 活跃置顶分桶序(缺省)
+	BuildTaskOrderByCreatedAt string = "created_at" // 按创建时间
+	BuildTaskOrderByUpdatedAt string = "updated_at" // 按更新时间
+	BuildTaskOrderByStatus    string = "status"     // 按状态优先级桶序
+	BuildTaskOrderByMode      string = "mode"       // 按模式
+
+	DEFAULT_BUILD_TASK_ORDER_BY string = BuildTaskOrderByDefault
+	DEFAULT_BUILD_TASK_ORDER    string = DESC_DIRECTION
+
 	BuildTaskExecuteTypeIncremental string = "incremental" // 增量
 	BuildTaskExecuteTypeFull        string = "full"        // 全量
 
@@ -32,14 +42,17 @@ const (
 	BUILD_PREFIX = "vega-build"
 )
 
-var (
-	BUILD_TASK_SORT = map[string]string{
-		"create_time": "f_create_time",
-		"update_time": "f_update_time",
-		"status":      "f_status",
-		"mode":        "f_mode",
-	}
-)
+// BuildTaskStatusOrder 定义 default/status 排序的状态桶优先级(下标+1 即优先级)。
+// 活跃任务(running/init)置顶是核心诉求;顺序写死,既是 SQL CASE 的唯一来源,
+// 也保证「构建中」永远排在第一页。
+var BuildTaskStatusOrder = []string{
+	BuildTaskStatusRunning,   // 1 构建中/流式监听中
+	BuildTaskStatusInit,      // 2 排队中
+	BuildTaskStatusStopping,  // 3 停止中
+	BuildTaskStatusStopped,   // 4 已停止
+	BuildTaskStatusFailed,    // 5 失败
+	BuildTaskStatusCompleted, // 6 已完成
+}
 
 // BuildTask represents a build task entity.
 type BuildTask struct {
@@ -122,8 +135,10 @@ type BuildTasksQueryParams struct {
 	PaginationQueryParams
 	ResourceID string
 	CatalogID  string
-	Status     string
+	Statuses   []string // 多值状态过滤(IN);空为不过滤。active=true 等价 [running,init]
 	Mode       string
+	OrderBy    string // default|created_at|status|mode；缺省 default
+	Order      string // asc|desc；缺省 desc。order_by=default 时忽略(固定复合序)
 }
 
 type KeyValue struct {
