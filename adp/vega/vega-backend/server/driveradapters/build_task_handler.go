@@ -20,7 +20,6 @@ import (
 	"github.com/kweaver-ai/kweaver-go-lib/otel/oteltrace"
 	"github.com/kweaver-ai/kweaver-go-lib/rest"
 
-	"vega-backend/common"
 	"vega-backend/common/visitor"
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
@@ -231,32 +230,11 @@ func (r *restHandler) listBuildTasks(c *gin.Context, visitor hydra.Visitor) {
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
-	offset := common.GetQueryOrDefault(c, "offset", interfaces.DEFAULT_OFFSET)
-	limit := common.GetQueryOrDefault(c, "limit", interfaces.DEFAULT_LIMIT)
-	sort := common.GetQueryOrDefault(c, "sort", "update_time")
-	direction := common.GetQueryOrDefault(c, "direction", interfaces.DESC_DIRECTION)
-
-	pageParam, err := validatePaginationQueryParams(ctx,
-		offset, limit, sort, direction, interfaces.BUILD_TASK_SORT)
+	params, err := parseBuildTaskListParams(ctx, c)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
 		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
 			httpErr.BaseError.ErrorDetails), nil)
-		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		rest.ReplyError(c, httpErr)
-		return
-	}
-
-	params := interfaces.BuildTasksQueryParams{
-		PaginationQueryParams: pageParam,
-		ResourceID:            c.Query("resource_id"),
-		CatalogID:             c.Query("catalog_id"),
-		Status:                c.Query("status"),
-		Mode:                  c.Query("mode"),
-	}
-
-	if err := ValidateBuildTaskQueryParams(ctx, params); err != nil {
-		httpErr := err.(*rest.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
