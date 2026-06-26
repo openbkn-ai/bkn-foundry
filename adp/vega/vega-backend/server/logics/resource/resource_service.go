@@ -311,18 +311,25 @@ func (rs *resourceService) GetByID(ctx context.Context, id string) (*interfaces.
 		return nil, err
 	}
 	_, parentInternal := internalCatalogs[resource.CatalogID]
-	matchResoucesMap, err := rs.ps.FilterResources(ctx, resourceAuthResourceType(parentInternal), []string{resource.ID},
-		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, interfaces.COMMON_OPERATIONS)
-	if err != nil {
-		span.SetStatus(codes.Error, "Filter resources error")
-		return nil, err
-	}
-
-	if resrc, exist := matchResoucesMap[resource.ID]; exist {
-		resource.Operations = resrc.Operations // 用户当前有权限的操作
+	if parentInternal && interfaces.IsS2SInternalAccess(ctx) {
+		// 内部目录资源经集群内 S2S 访问（/in/ 内网端点）：系统内部基础设施默认放行，
+		// 不做 per-account view_detail 校验——这类资源从不授权给业务用户，
+		// 内部服务代用户访问时按 per-account 校验只会误拒。外网端点不会带该标记。
+		resource.Operations = interfaces.COMMON_OPERATIONS
 	} else {
-		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
-			WithErrorDetails(fmt.Sprintf("Access denied: insufficient permissions for[%v]", interfaces.OPERATION_TYPE_VIEW_DETAIL))
+		matchResoucesMap, err := rs.ps.FilterResources(ctx, resourceAuthResourceType(parentInternal), []string{resource.ID},
+			[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, interfaces.COMMON_OPERATIONS)
+		if err != nil {
+			span.SetStatus(codes.Error, "Filter resources error")
+			return nil, err
+		}
+
+		if resrc, exist := matchResoucesMap[resource.ID]; exist {
+			resource.Operations = resrc.Operations // 用户当前有权限的操作
+		} else {
+			return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+				WithErrorDetails(fmt.Sprintf("Access denied: insufficient permissions for[%v]", interfaces.OPERATION_TYPE_VIEW_DETAIL))
+		}
 	}
 
 	accountInfos := []*interfaces.AccountInfo{&resource.Creator, &resource.Updater}

@@ -40,23 +40,28 @@ func (r *restHandler) PostResourceDataByEx(c *gin.Context) {
 	if err != nil {
 		return
 	}
-	r.postResourceData(c, visitor)
+	r.postResourceData(c, visitor, false)
 }
 
 // PostResourceDataByIn handles POST /api/vega-backend/in/v1/resources/:id/data (Internal).
 func (r *restHandler) PostResourceDataByIn(c *gin.Context) {
 	visitor := visitor.GenerateVisitor(c)
-	r.postResourceData(c, visitor)
+	// 内网 /in/ 为集群内 S2S 边界：标记 S2S，使内部基础设施资源默认放行 per-account 鉴权。
+	r.postResourceData(c, visitor, true)
 }
 
 // postResourceData dispatches POST /resources/:id/data to the right branch based on
-// X-HTTP-Method-Override header.
-func (r *restHandler) postResourceData(c *gin.Context, visitor hydra.Visitor) {
+// X-HTTP-Method-Override header. s2sInternal 为 true 时（仅 /in/ 内网端点），
+// 内部目录资源跳过 per-account view_detail 校验。
+func (r *restHandler) postResourceData(c *gin.Context, visitor hydra.Visitor, s2sInternal bool) {
 	ctx, span := oteltrace.StartServerSpan(c)
 	defer span.End()
 
 	accountInfo := interfaces.AccountInfo{ID: visitor.ID, Type: string(visitor.Type)}
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
+	if s2sInternal {
+		ctx = interfaces.WithS2SInternalAccess(ctx)
+	}
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
 	override := strings.ToUpper(c.GetHeader(interfaces.HTTP_HEADER_METHOD_OVERRIDE))
