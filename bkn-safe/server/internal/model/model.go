@@ -157,6 +157,7 @@ type APIKey struct {
 	KeyID       string `gorm:"uniqueIndex;size:64"` // public lookup half, embedded in the key
 	OwnerUserID string `gorm:"size:64;index"`       // User.ID this key acts as
 	Name        string `gorm:"size:128"`            // user-facing label
+	Masked      string `gorm:"size:64"`             // one-time display hint, e.g. "bak_2882****SWua"; safe to list
 	SecretHash  string `gorm:"size:128"`            // sha256 hex of the secret half
 	// ExpiresAt nil = never expires (explicit opt-in by the issuer). LastUsedAt is
 	// updated on each successful verify so stale/leaked keys can be spotted/reaped.

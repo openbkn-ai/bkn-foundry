@@ -52,6 +52,7 @@ AppKey 引入**用户自助签发的长期凭据**，以签发者本人身份鉴
 | `KeyID` | string(64) uniqueIndex | 公开查找半段，嵌在明文里 |
 | `OwnerUserID` | string(64) index | 该 key 充当的 `User.ID` |
 | `Name` | string(128) | 用户可见标签 |
+| `Masked` | string(64) | 脱敏展示提示 `bak_<keyID前4>****<secret尾4>`，签发时算好落库；非密钥、可安全列出，用于区分 key。旧行为空 → 列表回退用 keyID 推导 |
 | `SecretHash` | string(128) | secret 半段的 sha256 hex |
 | `ExpiresAt` | *time.Time index | nil = 永不过期 |
 | `LastUsedAt` | *time.Time | 每次成功校验更新 |

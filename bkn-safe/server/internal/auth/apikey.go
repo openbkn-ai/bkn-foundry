@@ -85,6 +85,7 @@ func (s *APIKeyStore) Issue(ctx context.Context, ownerID, name string, expiresAt
 		KeyID:       keyID,
 		OwnerUserID: ownerID,
 		Name:        name,
+		Masked:      maskKey(keyID, secret),
 		SecretHash:  hashSecret(secret),
 		ExpiresAt:   expiresAt,
 		Enabled:     true,
@@ -210,10 +211,11 @@ func (s *APIKeyStore) Regenerate(ctx context.Context, ownerID, id string) (strin
 	}
 	secret := randBase62(secretLen)
 	rec.SecretHash = hashSecret(secret)
+	rec.Masked = maskKey(rec.KeyID, secret) // tail comes from the secret, which changed
 	rec.LastUsedAt = nil
 	rec.Enabled = true
 	if err := s.db.WithContext(ctx).Model(&model.APIKey{}).Where("id = ?", id).
-		Updates(map[string]any{"secret_hash": rec.SecretHash, "last_used_at": nil, "enabled": true}).Error; err != nil {
+		Updates(map[string]any{"secret_hash": rec.SecretHash, "masked": rec.Masked, "last_used_at": nil, "enabled": true}).Error; err != nil {
 		return "", nil, err
 	}
 	return KeyPrefix + rec.KeyID + "_" + secret, &rec, nil
@@ -231,6 +233,35 @@ func splitKey(plaintext string) (keyID, secret string, ok bool) {
 		return "", "", false
 	}
 	return keyID, secret, true
+}
+
+// maskKey builds the one-time display hint stored at issue time: the prefix, the
+// first 4 chars of the public key id, "****", and the last 4 chars of the secret,
+// e.g. "bak_2882****SWua". Enough to recognize a key in a list without revealing
+// it. The secret tail is not sensitive on its own and never allows reconstruction.
+func maskKey(keyID, secret string) string {
+	return KeyPrefix + head(keyID, 4) + "****" + tail(secret, 4)
+}
+
+// MaskFromKeyID derives a display hint from the public key id alone, for rows
+// issued before the Masked column existed (no secret material is recoverable, so
+// the tail comes from the key id): "bak_2882****c2f8".
+func MaskFromKeyID(keyID string) string {
+	return KeyPrefix + head(keyID, 4) + "****" + tail(keyID, 4)
+}
+
+func head(s string, n int) string {
+	if len(s) < n {
+		return s
+	}
+	return s[:n]
+}
+
+func tail(s string, n int) string {
+	if len(s) < n {
+		return s
+	}
+	return s[len(s)-n:]
 }
 
 // randBase62 returns n cryptographically-random base62 chars. Rejection sampling
