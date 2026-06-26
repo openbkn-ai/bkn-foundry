@@ -2,7 +2,7 @@
 # =============================================================================
 # 02-csv-to-kn: From CSV Files to Knowledge Network
 #
-# Load local CSVs into MySQL → Vega catalog → Knowledge Network → Agent Q&A
+# Load local CSVs into MySQL → Vega catalog → Knowledge Network → Query instances
 #
 # Uses the Vega catalog/connector model (vega-backend). Catalogs connect to an
 # existing database, so the CSVs are first loaded into MySQL with the standard
@@ -153,8 +153,8 @@ OT_LIST=$(openbkn --json bkn object-type list "$KN_ID" 2>/dev/null || echo '{}')
 ot_by_name() { echo "$OT_LIST" | python3 -c "import json,sys
 d=json.load(sys.stdin);es=d.get('entries',d if isinstance(d,list) else [])
 [print(e.get('id','')) for e in es if e.get('name')=='$1']" 2>/dev/null | head -1; }
-DEPT_OT=$(ot_by_name 部门); EMP_OT=$(ot_by_name 员工)
-FIRST_OT="$DEPT_OT"; SECOND_OT="$EMP_OT"
+DEPT_OT=$(ot_by_name 部门)
+FIRST_OT="$DEPT_OT"
 
 # ── Step 4: Explore schema ───────────────────────────────────────────────────
 echo ""
@@ -171,29 +171,6 @@ qrows() { openbkn --json call "/api/ontology-query/v1/knowledge-networks/$KN_ID/
 d=json.load(sys.stdin);rows=d.get('datas',d.get('entries',[]))
 for r in rows: print(', '.join(f'{k}={v}' for k,v in r.items() if not str(k).startswith('_')))" 2>/dev/null; }
 if [ -n "$FIRST_OT" ]; then echo "  departments (first 5):"; qrows "$FIRST_OT" 5 | sed 's/^/    /'; fi
-
-# ── Step 6: Agent Q&A ────────────────────────────────────────────────────────
-echo ""
-echo "=== Step 6: Agent Q&A ==="
-AGENT_ID="${AGENT_ID:-}"
-[ -z "$AGENT_ID" ] && AGENT_ID=$(openbkn --json agent list --limit 1 2>/dev/null | python3 -c "import json,sys
-d=json.load(sys.stdin);a=d if isinstance(d,list) else d.get('entries',[]);print(a[0].get('id','') if a else '')" 2>/dev/null || true)
-if [ -z "$AGENT_ID" ]; then
-    echo "  No agent available — set AGENT_ID in .env. Skipping Q&A."
-else
-    DEPT_DATA=$([ -n "$FIRST_OT" ] && qrows "$FIRST_OT" 20 || true)
-    EMP_DATA=$([ -n "$SECOND_OT" ] && qrows "$SECOND_OT" 20 || true)
-    Q="这份数据里，哪个部门的预算最高？Engineering 部门有多少员工？"
-    PROMPT="departments 数据：
-${DEPT_DATA}
-
-employees 数据：
-${EMP_DATA}
-
-请基于以上数据回答：${Q}"
-    echo "  Agent: $AGENT_ID"; echo "  Question: $Q"; echo "  Response:"
-    openbkn agent chat "$AGENT_ID" -m "$PROMPT" --stream 2>/dev/null | sed 's/^/    /' || echo "    (agent unavailable)"
-fi
 
 echo ""
 echo "=== Example complete ==="

@@ -37,11 +37,9 @@ type Config struct {
 	BknBackend          PrivateBaseConfig     `yaml:"bkn_backend"`
 	OntologyQuery       PrivateBaseConfig     `yaml:"ontology_query"`
 	Vega                PrivateBaseConfig     `yaml:"vega"` // Vega data-catalog backend (run_sql / resource query)
-	AgentApp            PrivateBaseConfig     `yaml:"agent_app"`
 	OperatorIntegration PrivateBaseConfig     `yaml:"operator_integration"` // Operator integration service configuration
 	RedisConfig         RedisConfig           `yaml:"redis"`
 	Logger              interfaces.Logger     `yaml:"-"`
-	DeployAgent         DeployAgentConfig     `yaml:"deploy_agent"`          // Dependent agent configuration
 	ConceptSearchConfig KnConceptSearchConfig `yaml:"concept_search_config"` // Knowledge network concept search configuration
 	Observability       ObservabilityConfig   `yaml:"-"`
 	// 新增配置 - 知识重排和检索相关
@@ -154,15 +152,14 @@ type KnConceptSearchConfig struct {
 
 // MFModelAPI 配置使用统一的 PrivateBaseConfig 结构
 
-// RerankLLMConfig Rerank用的LLM参数配置
+// RerankLLMConfig Rerank用的LLM参数配置（模型不在此配置：默认走系统默认大模型，per-request 经 rerank_llm_model 覆盖）
 type RerankLLMConfig struct {
-	Model            string  `yaml:"model" env:"RERANK_LLM_MODEL" default:"Tome-pro"` // 模型名称
-	Temperature      float64 `yaml:"temperature" default:"0"`                         // 生成随机性
-	TopK             int     `yaml:"top_k" default:"2"`                               // 采样范围
-	TopP             float64 `yaml:"top_p" default:"0.5"`                             // 核采样阈值
-	FrequencyPenalty float64 `yaml:"frequency_penalty" default:"0.5"`                 // 频率惩罚
-	PresencePenalty  float64 `yaml:"presence_penalty" default:"0.5"`                  // 存在惩罚
-	MaxTokens        int     `yaml:"max_tokens" default:"5000"`                       // 最大token数
+	Temperature      float64 `yaml:"temperature" default:"0"`         // 生成随机性
+	TopK             int     `yaml:"top_k" default:"2"`               // 采样范围
+	TopP             float64 `yaml:"top_p" default:"0.5"`             // 核采样阈值
+	FrequencyPenalty float64 `yaml:"frequency_penalty" default:"0.5"` // 频率惩罚
+	PresencePenalty  float64 `yaml:"presence_penalty" default:"0.5"`  // 存在惩罚
+	MaxTokens        int     `yaml:"max_tokens" default:"5000"`       // 最大token数
 }
 
 // FindSkillsConfig find_skills Skill 召回配置
@@ -199,14 +196,6 @@ func (conf *Project) SetMachineID() {
 // GetMachineID gets machine ID
 func (conf *Project) GetMachineID() string {
 	return conf.MachineID
-}
-
-// DeployAgentConfig dependent agent configuration
-type DeployAgentConfig struct {
-	ConceptIntentionAnalysisAgentKey   string `yaml:"concept_intention_analysis_agent_key"`   // Concept intention analysis agent Key
-	ConceptRetrievalStrategistAgentKey string `yaml:"concept_retrieval_strategist_agent_key"` // Concept retrieval strategist agent Key
-	MetricDynamicParamsGeneratorKey    string `yaml:"metric_dynamic_params_generator_key"`    // Metric dynamic params generator Key
-	OperatorDynamicParamsGeneratorKey  string `yaml:"operator_dynamic_params_generator_key"`  // Operator dynamic params generator Key
 }
 
 var (

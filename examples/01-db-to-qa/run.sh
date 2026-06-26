@@ -3,7 +3,7 @@
 # 01-db-to-qa: From Database to Intelligent Q&A
 #
 # End-to-end flow (Vega catalog model):
-#   MySQL → Vega Catalog → Discover → Knowledge Network → Real-time Query → Agent Chat
+#   MySQL → Vega Catalog → Discover → Knowledge Network → Real-time Query → Semantic Search
 #
 # Note: this example uses the Vega catalog/connector model (vega-backend), NOT the
 # legacy data-connection datasource flow. Object types bind to Vega *resource* IDs
@@ -234,30 +234,15 @@ for r in rows[:3]:
     print('    -', ' | '.join(vals[:4]))" 2>/dev/null || echo "    (query returned no rows)"
 fi
 
+# ── Step 5: Semantic search over the knowledge network ───────────────────────
+echo ""
+echo "=== Step 5: Semantic search ==="
 echo "  Semantic search: \"物料\""
 openbkn --json bkn search "$KN_ID" "物料" 2>/dev/null | python3 -c "import json,sys
 try:
   d=json.load(sys.stdin); cs=d.get('concepts',d.get('entries',[]))
   print(f'    {len(cs)} concept(s) matched')
 except Exception: print('    (no search index for real-time resources)')" 2>/dev/null || true
-
-# ── Step 5: Chat with Agent ─────────────────────────────────────────────────
-echo ""
-echo "=== Step 5: Chat with Agent ==="
-if [ -z "${AGENT_ID:-}" ]; then
-    AGENT_ID=$(openbkn --json agent list --limit 1 2>/dev/null | python3 -c "import json,sys
-d=json.load(sys.stdin); a=d if isinstance(d,list) else d.get('entries',[])
-print(a[0].get('id','') if a else '')" 2>/dev/null || true)
-fi
-if [ -z "${AGENT_ID:-}" ]; then
-    echo "  No agent available. Set AGENT_ID in .env or create one. Skipping chat."
-else
-    echo "  Agent: $AGENT_ID"
-    QUESTION="这个供应链数据库里有哪些核心业务表？物料和采购订单之间是什么关系？"
-    echo "  Question: $QUESTION"
-    echo "  Agent response:"
-    openbkn agent chat "$AGENT_ID" -m "$QUESTION" --stream 2>/dev/null | sed 's/^/    /' || true
-fi
 
 echo ""
 echo "=== Example complete ==="

@@ -10,11 +10,6 @@ project:
 concept_search_config:
   concept_recall_size: 100
   knn_k: 300
-deploy_agent:
-  concept_intention_analysis_agent_key: "01K5FS890WD4V7M27GAXER8JKB" # 概念意图分析智能体Key
-  concept_retrieval_strategist_agent_key: "01K5G6JFAVJF94C40K90YMPJN9" # 概念召回策略智能体Key
-  metric_dynamic_params_generator_key: "01KCG0MEPBNHHZHCSM5NTXRFSG" # Metric 动态参数生成智能体Key
-  operator_dynamic_params_generator_key: "01KCJJ7PAK3ATSC02F48QJXFH8" # Operator 动态参数生成智能体Key
 oauth: # 对应hydra服务
   public_host: "hydra-public.kweaver"
   public_port: 4444
@@ -23,10 +18,6 @@ oauth: # 对应hydra服务
   admin_port: 4445
   admin_protocol: "http"
   admin_prefix: "/admin"
-agent_app:
-  private_protocol: "http"
-  private_host: "agent-factory.kweaver"
-  private_port: 13020
 bkn_backend:
   private_protocol: "http"
   private_host: "bkn-backend-svc.kweaver"
@@ -59,8 +50,7 @@ mf_model_api:
   private_protocol: "http"
   private_host: "mf-model-api.kweaver"
   private_port: 9898
-rerank_llm:
-  model: ""
+rerank_llm: # 模型默认走系统默认大模型；per-request 经 rerank_llm_model 覆盖（测试/验证用）
   temperature: 0
   top_k: 2
   top_p: 0.5

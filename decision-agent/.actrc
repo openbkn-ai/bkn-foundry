@@ -1,2 +1,0 @@
--P ubuntu-latest=-self-hosted
---artifact-server-path /tmp/act-artifacts

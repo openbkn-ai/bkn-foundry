@@ -18,11 +18,6 @@ data:
     concept_search_config:
       concept_recall_size: {{ .Values.service.concept_search_config.concept_recall_size }}
       knn_k: {{ .Values.service.concept_search_config.knn_k }}
-    deploy_agent:
-      concept_intention_analysis_agent_key: {{ .Values.service.deploy_agent.concept_intention_analysis_agent_key }}
-      concept_retrieval_strategist_agent_key: {{ .Values.service.deploy_agent.concept_retrieval_strategist_agent_key }}
-      metric_dynamic_params_generator_key: {{ .Values.service.deploy_agent.metric_dynamic_params_generator_key }}
-      operator_dynamic_params_generator_key: {{ .Values.service.deploy_agent.operator_dynamic_params_generator_key }}
     oauth:
       public_host: {{ .Values.depServices.hydra.publicHost | quote }}
       public_port: {{ .Values.depServices.hydra.publicPort }}
@@ -31,10 +26,6 @@ data:
       admin_port: {{ .Values.depServices.hydra.administrativePort }}
       admin_protocol: {{ .Values.depServices.hydra.administrativeProtocol | quote }}
       admin_prefix: {{ .Values.depServices.hydra.administrativePrefix | quote }}
-    agent_app:
-      private_protocol: {{ index .Values "depServices" "agent-app" "privateProtocol" | quote }}
-      private_host: {{ index .Values "depServices" "agent-app" "privateHost" | quote }}
-      private_port: {{ index .Values "depServices" "agent-app" "privatePort" }}
     bkn_backend:
       private_protocol: {{ index .Values "depServices" "bkn-backend" "privateProtocol" | quote }}
       private_host: {{ index .Values "depServices" "bkn-backend" "privateHost" | quote }}
@@ -64,7 +55,6 @@ data:
       private_host: {{ index .Values "depServices" "mf-model-api" "privateHost" | quote }}
       private_port: {{ index .Values "depServices" "mf-model-api" "privatePort" }}
     rerank_llm:
-      model: {{ .Values.service.rerank_llm.model | quote }}
       temperature: {{ default 0 .Values.service.rerank_llm.temperature }}
       top_k: {{ default 2 .Values.service.rerank_llm.top_k }}
       top_p: {{ default 0.5 .Values.service.rerank_llm.top_p }}

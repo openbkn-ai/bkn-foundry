@@ -15,7 +15,6 @@ BKN Foundry is a **monorepo** ([`kweaver-ai/kweaver-core`](https://github.com/kw
 | Module | Path | Description |
 | --- | --- | --- |
 | **AI Data Platform (ADP)** | [`adp/`](../adp) | BKN Engine (`adp/bkn`), Context Loader (`adp/context-loader`), Dataflow (`adp/dataflow`), Execution Factory (`adp/execution-factory`), VEGA virtualization (`adp/vega`) |
-| **Decision Agent** | [`decision-agent/`](../decision-agent) | Agent Executor / Factory / Memory under `agent-backend/` |
 | **Trace AI** | [`trace-ai/`](../trace-ai) | Agent observability and OpenTelemetry collector chart |
 | **Infra** | [`infra/`](../infra) | `mf-model-manager` (model registry), `oss-gateway-backend`, `sandbox` runtime |
 | **BKN samples** | [`bkn/`](../bkn) | Reference Business Knowledge Networks (e.g. `smart_home_supply_chain`) |
@@ -39,7 +38,7 @@ External CLI/SDKs that interact with this backend live in their own repositories
 Use the location that matches **audience and scope**:
 
 1. **[`docs/`](../docs) (repository root)** — System architecture, repo-wide design, and technical decisions that span multiple subsystems or the whole Core platform.
-2. **`<module>/docs/` (inside each subtree)** — Design notes and technical decisions **scoped to that module only** (for example [`adp/bkn/docs/`](../adp/bkn/docs), [`decision-agent/`](../decision-agent) design folders under each service).
+2. **`<module>/docs/` (inside each subtree)** — Design notes and technical decisions **scoped to that module only** (for example [`adp/bkn/docs/`](../adp/bkn/docs), [`adp/vega/docs/`](../adp/vega/docs) design folders under each service).
 3. **[`help/{en,zh}/manual/`](../help/en/manual)** — Product **manuals / reference**: how subsystems work from a user or operator perspective (install stays next to the manual tree as `help/{lang}/install.md`).
 4. **[`help/{en,zh}/cookbook/`](../help/en/cookbook)** — **Cookbooks**: short, runnable task recipes. Start a new one by copying [`_TEMPLATE.md`](../help/en/cookbook/_TEMPLATE.md), use the worked-out [`cookbook_example.md`](../help/en/cookbook/cookbook_example.md) as reference, and add a row to [`cookbook/README.md`](../help/en/cookbook/README.md) (Chinese lives under `help/zh/cookbook/`).
 
@@ -69,7 +68,7 @@ When reporting a bug, please provide the following information:
 
 - **Version/Environment**:
   - BKN Foundry version (`git describe --tags` or `VERSION` file, e.g. `v0.6.0`)
-  - Module affected (e.g. `adp/bkn`, `decision-agent/agent-backend/agent-executor`, `infra/sandbox`)
+  - Module affected (e.g. `adp/bkn`, `adp/vega/vega-backend`, `infra/sandbox`)
   - Runtime (Java / Go / Python / Node — and version, e.g. JDK 17, Go 1.23, Python 3.11)
   - OS (Linux distro + kernel, macOS, Windows)
   - Cluster (single-node K3s / kubeadm / managed K8s) and how it was installed (`deploy.sh kweaver-core install [--minimum]`)
@@ -551,7 +550,7 @@ the Apache License, Version 2.0.
 BKN Foundry is polyglot. You only need the toolchain(s) for the module(s) you touch:
 
 - **Git** (always)
-- **Java** (JDK 17+) and Maven for most ADP / decision-agent backend modules
+- **Java** (JDK 17+) and Maven for most ADP backend modules
 - **Go** (1.23+) for `infra/oss-gateway-backend`, several CLIs and small services
 - **Python** (3.11+) for `infra/mf-model-manager`, model / data utilities
 - **Node.js** — kweaver CLIs require **22+** (per [`@kweaver-ai/kweaver-sdk` on npm](https://www.npmjs.com/package/@kweaver-ai/kweaver-sdk)).

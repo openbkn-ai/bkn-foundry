@@ -205,8 +205,6 @@ Once the release branch is created, it enters **code freeze** state:
   - `deploy/charts/proton-mariadb/Chart.yaml`
 - Every Python package's `pyproject.toml`, e.g.:
   - `infra/sandbox/sandbox_control_plane/pyproject.toml`
-  - `decision-agent/agent-backend/agent-memory/pyproject.toml`
-  - `decision-agent/agent-backend/agent-executor/pyproject.toml`
 - Repository-level version entry / `CHANGELOG.md` version section
 - Hardcoded versions in image / deployment manifests
 

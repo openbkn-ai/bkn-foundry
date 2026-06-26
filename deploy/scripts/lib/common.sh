@@ -1729,7 +1729,7 @@ read_or_fetch() {
 
 # Initialize database by connecting to MariaDB pod and executing SQL files
 # Usage: init_module_database "module_name" "sql_directory"
-# Example: init_module_database "decisionagent" "${SCRIPT_DIR}/scripts/sql/0.5.0/kweaver-core/decisionagent"
+# Example: init_module_database "vega" "${SCRIPT_DIR}/scripts/sql/0.5.0/kweaver-core/vega"
 init_module_database() {
     local module_name="$1"
     local sql_dir="$2"

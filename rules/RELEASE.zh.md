@@ -205,8 +205,6 @@ Release 分支创建后进入**代码冻结**状态：
   - `deploy/charts/proton-mariadb/Chart.yaml`
 - 各 Python 包的 `pyproject.toml`，例如：
   - `infra/sandbox/sandbox_control_plane/pyproject.toml`
-  - `decision-agent/agent-backend/agent-memory/pyproject.toml`
-  - `decision-agent/agent-backend/agent-executor/pyproject.toml`
 - 仓库根的版本入口 / `CHANGELOG.md` 版本节
 - 镜像 / 部署清单中显式写死的版本号
 

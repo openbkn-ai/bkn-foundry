@@ -90,8 +90,6 @@ kweaver call '/api/agent-operator-integration/v1/tool-box/list?name=contextloade
 
 （与 `kweaver context-loader tools` 不同：前者为 Operator 工具箱列表，后者为 MCP 工具列表。）
 
-轻量「分析助手」Agent 导入 JSON 模板见 [`sample-agent.import.json`](./examples/sample-agent.import.json)。
-
 ### 🧠 配置模型（按需）
 
 | 能力 | 需要的模型 | 不配会怎样 |
@@ -522,7 +520,6 @@ const messages = await client.conversations.listMessages(conversationId, { limit
 | 🧠 模型注册、测试与管理 | [model.md](manual/model.md) |
 | 🔧 集群中启用语义搜索（ConfigMap） | [启用 BKN 语义搜索](manual/model.md#启用-bkn-语义搜索) |
 | 🗄️ 数据虚拟化与 Catalog 管理 | [vega.md](manual/vega.md) |
-| 🤖 Agent 全生命周期 | [decision-agent.md](manual/decision-agent.md) |
 | 🔁 流程编排详细 | [dataflow.md](manual/dataflow.md) |
 | 📚 MCP 分层检索 | [context-loader.md](manual/context-loader.md) |
 | 🛠️ 工具与技能管理 | [execution-factory.md](manual/execution-factory.md) |

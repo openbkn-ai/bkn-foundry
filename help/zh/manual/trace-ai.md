@@ -10,7 +10,7 @@
 | --- | --- |
 | `/api/agent-observability/v1` | 链路查询与可观测 API |
 
-**相关模块：** [Decision Agent](decision-agent.md)，以及平台日志、指标管道（如 feed-ingester）。
+**相关模块：** 平台日志、指标管道（如 feed-ingester）。
 
 ## 🧱 Trace 数据结构
 

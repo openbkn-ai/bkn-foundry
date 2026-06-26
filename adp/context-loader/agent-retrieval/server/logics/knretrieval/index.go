@@ -19,7 +19,6 @@ import (
 
 type knRetrievalServiceImpl struct {
 	logger              interfaces.Logger
-	agentClient         interfaces.AgentApp
 	ontologyQueryAccess interfaces.DrivenOntologyQuery
 	bknBackendAccess    interfaces.BknBackendAccess
 	knReranker          *knrerank.KnowledgeReranker
@@ -40,7 +39,6 @@ func NewKnRetrievalService() interfaces.IKnRetrievalService {
 
 		knRetrievalService = &knRetrievalServiceImpl{
 			logger:              logger,
-			agentClient:         drivenadapters.NewAgentAppClient(),
 			ontologyQueryAccess: drivenadapters.NewOntologyQueryAccess(),
 			bknBackendAccess:    drivenadapters.NewBknBackendAccess(),
 			knReranker:          knrerank.NewKnowledgeReranker(mfModelClient, logger), // 单例

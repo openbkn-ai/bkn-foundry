@@ -12,7 +12,7 @@ Typical ingress prefix:
 | --- | --- |
 | `/api/agent-observability/v1` | Trace query and observability APIs |
 
-**Related modules:** [Decision Agent](decision-agent.md), platform-wide logging and metrics pipelines (feed-ingester integration).
+**Related modules:** platform-wide logging and metrics pipelines (feed-ingester integration).
 
 ## 💻 CLI
 

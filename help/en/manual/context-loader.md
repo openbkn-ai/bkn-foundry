@@ -12,7 +12,7 @@ Typical ingress prefix:
 | --- | --- |
 | `/api/agent-retrieval/v1` | Retrieval and context assembly APIs |
 
-**Related modules:** [BKN Engine](bkn.md), [VEGA Engine](vega.md), [Decision Agent](decision-agent.md).
+**Related modules:** [BKN Engine](bkn.md), [VEGA Engine](vega.md).
 
 ---
 

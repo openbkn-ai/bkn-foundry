@@ -4,7 +4,7 @@
 
 **业务知识网络（BKN）** 是 BKN Foundry 的语义层，用**对象类**、**关系类**、**行动类**描述领域，并存储**实例**与**关系**，为智能体与分析提供统一本体。
 
-**相关模块：** [VEGA 引擎](vega.md)（视图背后的数据）、[Context Loader](context-loader.md)（基于本体的上下文）、[Decision Agent](decision-agent.md)（运行时消费 BKN）。
+**相关模块：** [VEGA 引擎](vega.md)（视图背后的数据）、[Context Loader](context-loader.md)（基于本体的上下文）。
 
 **运维提示：** 语义搜索由 **bkn-backend** 与 **ontology-query** 协同完成；需在 **模型工厂** 注册 Embedding，并在两侧配置与注册名一致的默认小模型（`model_name`）。步骤与排障见 [模型管理 — 启用 BKN 语义搜索](model.md#启用-bkn-语义搜索)。
 

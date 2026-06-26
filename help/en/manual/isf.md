@@ -6,7 +6,7 @@ The **Info Security Fabric** is the **cross-cutting security layer**: unified **
 
 With **`--minimum` install**, many auth components are disabled for a simpler lab setup — APIs may not require tokens. For production, enable the full auth profile per the deployment and security guide bundled with your release.
 
-**Related modules:** All subsystems that accept `Authorization` headers; [Decision Agent](decision-agent.md) and [VEGA Engine](vega.md) are primary consumers.
+**Related modules:** All subsystems that accept `Authorization` headers; [VEGA Engine](vega.md) is a primary consumer.
 
 ## 🛡️ Administrator tool: kweaver-admin
 
@@ -118,7 +118,7 @@ kweaver auth status
 # → token expires: 2026-04-14T22:30:00Z
 
 # 4. Call a protected API (after auth use prod — same session as CLI)
-curl -sk "https://prod.kweaver.example.com/api/agent-factory/v1/agents" \
+curl -sk "https://prod.kweaver.example.com/api/vega-backend/v1/catalogs" \
   -H "Authorization: Bearer $(kweaver token)"
 
 # 5. Cleanup
@@ -274,7 +274,7 @@ curl -sk "https://<access-address>/userinfo" \
   -H "Authorization: Bearer $(kweaver token)"
 
 # Use the token to call a protected API
-curl -sk "https://<access-address>/api/agent-factory/v1/agents" \
+curl -sk "https://<access-address>/api/vega-backend/v1/catalogs" \
   -H "Authorization: Bearer $(kweaver token)"
 
 # List business domains
@@ -282,7 +282,7 @@ curl -sk "https://<access-address>/api/bkn-backend/v1/business-domains" \
   -H "Authorization: Bearer $(kweaver token)"
 
 # Set business domain header for scoped requests
-curl -sk "https://<access-address>/api/agent-factory/v1/agents" \
+curl -sk "https://<access-address>/api/vega-backend/v1/catalogs" \
   -H "Authorization: Bearer $(kweaver token)" \
   -H "X-Business-Domain: bd-sales"
 ```

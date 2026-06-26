@@ -4,7 +4,7 @@
 
 The **Business Knowledge Network (BKN)** is the semantic layer of BKN Foundry. It models your domain with **object types**, **relation types**, and **action types**, stores **instances** and **relations**, and powers agents and analytics.
 
-**Related modules:** [VEGA Engine](vega.md) (data behind views), [Context Loader](context-loader.md) (context from ontology), [Decision Agent](decision-agent.md) (uses BKN at runtime).
+**Related modules:** [VEGA Engine](vega.md) (data behind views), [Context Loader](context-loader.md) (context from ontology).
 
 **Operations note:** Semantic search is handled by **bkn-backend** and **ontology-query** together. Register an embedding in the **model factory** and set the default small-model name on both sides to match the registered `model_name`. See [Model configuration — Enable BKN semantic search](model.md#enable-bkn-semantic-search).
 

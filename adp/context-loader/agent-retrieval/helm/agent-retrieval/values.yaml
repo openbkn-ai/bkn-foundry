@@ -58,13 +58,7 @@ service:
   concept_search_config:
     concept_recall_size: 100
     knn_k: 300
-  deploy_agent:
-    concept_intention_analysis_agent_key: "01K5FS890WD4V7M27GAXER8JKB" # 概念意图分析智能体Key
-    concept_retrieval_strategist_agent_key: "01K5G6JFAVJF94C40K90YMPJN9" # 概念召回策略智能体Key
-    metric_dynamic_params_generator_key: "01KCG0MEPBNHHZHCSM5NTXRFSG" # Metric 动态参数生成智能体Key
-    operator_dynamic_params_generator_key: "01KCJJ7PAK3ATSC02F48QJXFH8" # Operator 动态参数生成智能体Key
-  rerank_llm:
-    model: ""
+  rerank_llm: # 模型默认走系统默认大模型；per-request 经 rerank_llm_model 覆盖
     temperature: 0
     top_k: 2
     top_p: 0.5
@@ -91,7 +85,6 @@ depServices:
     connTimeout: 30
     readTimeout: 30
     writeTimeout: 30
-    database: dip_data_agent
     dbCharset: utf8mb4
     system_id: ""
   hydra:
@@ -102,10 +95,6 @@ depServices:
     administrativePort: 4445
     administrativeProtocol: http
     administrativePrefix: /admin
-  agent-app:
-    privateHost: agent-factory
-    privatePort: 13020
-    privateProtocol: http
   bkn-backend:
     privateHost: bkn-backend-svc
     privatePort: 13014

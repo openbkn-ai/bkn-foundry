@@ -117,7 +117,7 @@ def release_workloads(namespace, release):
     Asks helm for the rendered manifest rather than matching labels: chart labels
     are inconsistent across this product (some set app.kubernetes.io/instance,
     some only managed-by, some use module=, and release name != workload name —
-    e.g. agent-backend -> agent-factory, sandbox -> sandbox-control-plane)."""
+    e.g. sandbox -> sandbox-control-plane)."""
     rc, out = run(["helm", "get", "manifest", release, "-n", namespace])
     if rc != 0 or not out.strip():
         return []

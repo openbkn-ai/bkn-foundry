@@ -20,26 +20,9 @@ func (k *knRetrievalServiceImpl) AgentIntentPlanning(ctx context.Context, req *i
 	// 记录可观测
 	ctx, _ = o11y.StartInternalSpan(ctx)
 	defer o11y.EndSpan(ctx, err)
-	// 调用意图分析智能体 -- 简略意图
-	queryUnderstandResult, err := k.agentClient.ConceptIntentionAnalysisAgent(ctx, &interfaces.ConceptIntentionAnalysisAgentReq{
-		PreviousQueries: req.PreviousQueries,
-		Query:           req.Query,
-		KnID:            req.KnID,
-	})
-	if err != nil {
-		k.logger.WithContext(ctx).Warnf("call concept intention analysis agent err, err: %v", err)
-	}
-	if queryUnderstandResult == nil {
-		queryUnderstandResult = &interfaces.QueryUnderstanding{}
-	}
-	var queryStrategys []*interfaces.SemanticQueryStrategy
-	if len(queryUnderstandResult.Intent) > 0 {
-		// 基于意图生成查询策略 -- 手动拼接意图查询策略，不需要辅助信息
-		queryStrategys = k.generateQueryStrategysForPlanB(queryUnderstandResult)
-	} else {
-		// 当意图识别策略返回为空时，直接根据用户Query拼接策略
-		queryStrategys = k.longtailRecallByKnowledgeNetwork(req.Query)
-	}
+	// 概念意图分析智能体已随 decision-agent 退役，语义检索降级为基于 Query 的关键词召回策略。
+	queryUnderstandResult := &interfaces.QueryUnderstanding{}
+	queryStrategys := k.longtailRecallByKnowledgeNetwork(req.Query)
 	// 筛选查询策略
 	queryStrategys = k.filterQueryStrategysBySearchScope(queryStrategys, req.SearchScope)
 	// TODO: 根据搜索与配置对查询策略进行过滤
