@@ -220,6 +220,52 @@ func TestAPIKeyIntrospect(t *testing.T) {
 	}
 }
 
+// TestAPIKeyRegenerate: rotate returns a new one-time plaintext; the old key is
+// rejected by introspect, the new one is accepted; same id.
+func TestAPIKeyRegenerate(t *testing.T) {
+	r, _, db, _ := newAdminServer(t)
+	db.Create(&model.User{ID: "u-rg", Account: "rg", Enabled: true, AccountType: model.AccountTypeOther})
+
+	w := tokReq(t, r, http.MethodPost, meKeys, map[string]any{"name": "rg"}, "u-rg")
+	var first issued
+	_ = json.Unmarshal(w.Body.Bytes(), &first)
+
+	w = tokReq(t, r, http.MethodPost, meKeys+"/"+first.ID+"/regenerate", nil, "u-rg")
+	if w.Code != http.StatusOK {
+		t.Fatalf("regenerate: want 200, got %d (%s)", w.Code, w.Body.String())
+	}
+	var second issued
+	if err := json.Unmarshal(w.Body.Bytes(), &second); err != nil {
+		t.Fatal(err)
+	}
+	if second.ID != first.ID {
+		t.Errorf("regenerate changed id: %s -> %s", first.ID, second.ID)
+	}
+	if second.Key == "" || second.Key == first.Key {
+		t.Errorf("regenerate must return a new plaintext key")
+	}
+
+	introspect := func(token string) bool {
+		w := tokReq(t, r, http.MethodPost, introsURL, map[string]any{"token": token}, "")
+		var ir struct {
+			Active bool `json:"active"`
+		}
+		_ = json.Unmarshal(w.Body.Bytes(), &ir)
+		return ir.Active
+	}
+	if introspect(first.Key) {
+		t.Error("old key must be inactive after regenerate")
+	}
+	if !introspect(second.Key) {
+		t.Error("new key must be active after regenerate")
+	}
+
+	// regenerate of a non-owned / missing key -> 404
+	if w := tokReq(t, r, http.MethodPost, meKeys+"/nope/regenerate", nil, "u-rg"); w.Code != http.StatusNotFound {
+		t.Errorf("regenerate missing: want 404, got %d", w.Code)
+	}
+}
+
 // TestAPIKeyAdmin covers admin oversight: list all (with owner), filter, revoke
 // any; and that a non-admin is rejected.
 func TestAPIKeyAdmin(t *testing.T) {

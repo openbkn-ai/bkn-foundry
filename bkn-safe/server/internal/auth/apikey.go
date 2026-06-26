@@ -17,8 +17,21 @@ import (
 
 // KeyPrefix marks an AppKey credential. The MCP/REST gateway branches on this
 // prefix to route verification here (vs hydra introspection). Plaintext shape:
-// "bak_<keyid>_<secret>".
+// "bak_<keyid>_<secret>" — both halves are base62 (no '_'), so the separator is
+// unambiguous and the key is copy/URL-safe.
 const KeyPrefix = "bak_"
+
+// Key half lengths in base62 chars. keyIDLen → ~71 bits (collision-safe lookup
+// id); secretLen → ~160 bits (well past brute-force). Total plaintext ≈ 44 chars
+// (vs the old 101-char hex), comparable to GitHub/Stripe tokens.
+const (
+	keyIDLen  = 12
+	secretLen = 27
+)
+
+// base62Alphabet is the credential charset: digits + letters, no '_'/'-', so it
+// never collides with the key separator and is safe in URLs/headers.
+const base62Alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 
 // ErrAPIKeyInvalid is the opaque verification failure: unknown/disabled/expired
 // key, bad secret, or a key whose owner is gone/disabled. Deliberately does not
@@ -47,8 +60,8 @@ type VerifiedKey struct {
 // nil = never expires. The caller has already authenticated the owner, so the key
 // can never grant more than the owner holds.
 func (s *APIKeyStore) Issue(ctx context.Context, ownerID, name string, expiresAt *time.Time) (string, *model.APIKey, error) {
-	keyID := NewID()         // 128-bit hex, public lookup half
-	secret := randomSecret() // 256-bit hex, the secret half
+	keyID := randBase62(keyIDLen)   // public lookup half
+	secret := randBase62(secretLen) // the secret half
 
 	rec := &model.APIKey{
 		ID:          NewID(),
@@ -163,6 +176,32 @@ func (s *APIKeyStore) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
+// Regenerate rotates the secret of an existing key the caller owns: same row /
+// KeyID / name / expiry, brand-new secret. The OLD plaintext stops verifying
+// immediately (its secret no longer matches the stored hash); the new one-time
+// plaintext is returned. Re-enables a soft-disabled key and clears LastUsedAt.
+// This is the "I lost it / rotate on suspected leak" path — no need to recreate
+// and rename. Returns gorm.ErrRecordNotFound when the caller owns no such key.
+func (s *APIKeyStore) Regenerate(ctx context.Context, ownerID, id string) (string, *model.APIKey, error) {
+	var rec model.APIKey
+	err := s.db.WithContext(ctx).First(&rec, "id = ? AND owner_user_id = ?", id, ownerID).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return "", nil, gorm.ErrRecordNotFound
+	}
+	if err != nil {
+		return "", nil, err
+	}
+	secret := randBase62(secretLen)
+	rec.SecretHash = hashSecret(secret)
+	rec.LastUsedAt = nil
+	rec.Enabled = true
+	if err := s.db.WithContext(ctx).Model(&model.APIKey{}).Where("id = ?", id).
+		Updates(map[string]any{"secret_hash": rec.SecretHash, "last_used_at": nil, "enabled": true}).Error; err != nil {
+		return "", nil, err
+	}
+	return KeyPrefix + rec.KeyID + "_" + secret, &rec, nil
+}
+
 // splitKey parses "bak_<keyid>_<secret>" into its two halves. ok=false on any
 // shape mismatch (missing prefix, missing separator, empty half).
 func splitKey(plaintext string) (keyID, secret string, ok bool) {
@@ -177,11 +216,23 @@ func splitKey(plaintext string) (keyID, secret string, ok bool) {
 	return keyID, secret, true
 }
 
-// randomSecret returns a 256-bit hex secret.
-func randomSecret() string {
-	b := make([]byte, 32)
-	_, _ = rand.Read(b)
-	return hex.EncodeToString(b)
+// randBase62 returns n cryptographically-random base62 chars. Rejection sampling
+// (drop bytes >= 248 = 4*62) keeps the distribution uniform — no modulo bias.
+func randBase62(n int) string {
+	out := make([]byte, 0, n)
+	for len(out) < n {
+		buf := make([]byte, n)
+		_, _ = rand.Read(buf)
+		for _, b := range buf {
+			if b < 248 {
+				out = append(out, base62Alphabet[int(b)%62])
+				if len(out) == n {
+					break
+				}
+			}
+		}
+	}
+	return string(out)
 }
 
 // hashSecret returns the sha256 hex digest of a secret (high-entropy input, so a

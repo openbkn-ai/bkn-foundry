@@ -75,6 +75,25 @@ func registerMeAPIKeys(g *gin.RouterGroup, keys *auth.APIKeyStore) {
 		}
 		c.Status(http.StatusNoContent)
 	})
+
+	// POST /me/api-keys/:id/regenerate — rotate the secret of the caller's own
+	// key (lost it / suspected leak). Old plaintext stops working immediately;
+	// the new plaintext is returned ONCE. Same id/name/expiry.
+	g.POST("/api-keys/:id/regenerate", func(c *gin.Context) {
+		owner := c.GetString(ctxAccessorID)
+		plaintext, rec, err := keys.Regenerate(c.Request.Context(), owner, c.Param("id"))
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "api key not found"})
+			return
+		}
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		body := apiKeyJSON(*rec, false)
+		body["key"] = plaintext // shown exactly once
+		c.JSON(http.StatusOK, body)
+	})
 }
 
 // registerAdminAPIKeys mounts global AppKey oversight under /api/safe/v1/admin/

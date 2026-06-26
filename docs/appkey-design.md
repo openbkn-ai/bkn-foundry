@@ -64,13 +64,20 @@ AppKey 引入**用户自助签发的长期凭据**，以签发者本人身份鉴
 
 ## 4. Key 格式与哈希
 
-明文形状：`bak_<keyid>_<secret>`
+明文形状：`bak_<keyid>_<secret>`（约 44 字符，对标 GitHub/Stripe token）
 
 - `bak_` —— AppKey 前缀（`bkn app key`），网关分流判据 + 密钥扫描器/日志脱敏可识别。常量 `auth.KeyPrefix`（bkn-safe）与 `interfaces.AppKeyPrefix`（agent-retrieval）**两处必须一致**。
-- `keyid` —— 128-bit 随机 hex，公开，按它查行。
-- `secret` —— 256-bit 随机 hex，**只存 sha256**，明文仅签发时返回一次（show-once）。
+- `keyid` —— 12 位 base62（~71 bit），公开，按它查行。
+- `secret` —— 27 位 base62（~160 bit），**只存 sha256**，明文仅签发时返回一次（show-once）。
+- 用 **base62**（数字+字母，无 `_`/`-`）：分隔符 `_` 不歧义、URL/header 安全；随机用 crypto/rand + 拒绝采样（丢 ≥248 的字节）避免取模偏置。
 
 校验比对：按 `keyid` 查行 → `subtle.ConstantTimeCompare(sha256(secret), SecretHash)`。高熵随机串用 sha256 足够（非 bcrypt），保证每次请求校验廉价。
+
+### 轮换（regenerate）vs 可重看
+
+`POST /me/api-keys/:id/regenerate`：同 `id`/`KeyID`/`name`/有效期，换新 secret，旧明文立即失效，返回新一次性明文。这是**有意保留 show-once 的前提下**解决"丢了/疑似泄漏"的标准做法（GitHub "Regenerate token"）——不必删旧建新重配名字。
+
+明确**不做**"存下来可重看"：那要求存可解密凭据，DB/备份/日志任一泄漏即全量泄漏，破坏"只存哈希、泄库不致命"的核心性质。OpenAI/GitHub/Stripe/AWS 同样只 show-once。
 
 ---
 

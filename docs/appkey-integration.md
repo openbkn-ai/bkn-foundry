@@ -63,6 +63,11 @@ base：`/api/safe/v1/me/api-keys`　鉴权：用户当前 OAuth token（`Authori
 - 用路径里的 `id`（不是 `key_id`）。成功 `204`，不存在/非本人 `404`。
 - 建议二次确认弹窗（撤销不可逆，且立即失效）。
 
+#### 轮换　`POST /api/safe/v1/me/api-keys/:id/regenerate`
+- 用途：**丢了 / 疑似泄漏** —— 不必删了重建重命名。同 `id`/`name`/有效期，换新 secret。
+- 旧明文**立即失效**，响应返回**新的一次性明文**（结构同签发：含 `key` 字段，只此一次）。成功 `200`，不存在/非本人 `404`。
+- 前端建议：key 条目上放个"重新生成"按钮 + 二次确认 + 新明文一次性展示。
+
 ### 1.2 管理员接口（治理 / 应急）
 
 base：`/api/safe/v1/admin/api-keys`　鉴权：管理员 OAuth token（`RequireAdmin`）

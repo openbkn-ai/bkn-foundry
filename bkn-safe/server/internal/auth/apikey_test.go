@@ -174,7 +174,57 @@ func TestListByOwnerExcludesOthers(t *testing.T) {
 	}
 }
 
-// flip returns a hex char different from b (to corrupt a secret deterministically).
+// TestRegenerate: rotating the secret invalidates the old plaintext, the new one
+// verifies, and the row identity (id/KeyID) is preserved.
+func TestRegenerate(t *testing.T) {
+	s, db := newAPIKeyStore(t)
+	ctx := context.Background()
+	seedUser(t, db, "u-1", true, model.AccountTypeOther)
+	old, rec, _ := s.Issue(ctx, "u-1", "k", nil)
+
+	// cross-owner cannot regenerate
+	if _, _, err := s.Regenerate(ctx, "u-2", rec.ID); !errors.Is(err, gorm.ErrRecordNotFound) {
+		t.Errorf("cross-owner regenerate: want ErrRecordNotFound, got %v", err)
+	}
+
+	fresh, rec2, err := s.Regenerate(ctx, "u-1", rec.ID)
+	if err != nil {
+		t.Fatalf("regenerate: %v", err)
+	}
+	if rec2.KeyID != rec.KeyID || rec2.ID != rec.ID {
+		t.Errorf("regenerate changed identity: %s/%s -> %s/%s", rec.ID, rec.KeyID, rec2.ID, rec2.KeyID)
+	}
+	if fresh == old {
+		t.Error("regenerate returned the same plaintext")
+	}
+	// old no longer verifies; new does
+	if _, err := s.Verify(ctx, old); !errors.Is(err, ErrAPIKeyInvalid) {
+		t.Errorf("old key after regenerate: want ErrAPIKeyInvalid, got %v", err)
+	}
+	if v, err := s.Verify(ctx, fresh); err != nil || v.OwnerID != "u-1" {
+		t.Errorf("new key verify = %+v err=%v", v, err)
+	}
+}
+
+// TestKeyFormat: the plaintext is the compact base62 shape and not absurdly long.
+func TestKeyFormat(t *testing.T) {
+	s, db := newAPIKeyStore(t)
+	seedUser(t, db, "u-1", true, model.AccountTypeOther)
+	plaintext, _, _ := s.Issue(context.Background(), "u-1", "k", nil)
+	if !strings.HasPrefix(plaintext, KeyPrefix) {
+		t.Fatalf("missing prefix: %q", plaintext)
+	}
+	if len(plaintext) > 60 { // ~44 expected; guard against hex-length regressions
+		t.Errorf("key too long (%d): %q", len(plaintext), plaintext)
+	}
+	body := strings.TrimPrefix(plaintext, KeyPrefix)
+	kid, secret, ok := strings.Cut(body, "_")
+	if !ok || len(kid) != keyIDLen || len(secret) != secretLen {
+		t.Errorf("unexpected shape: kid=%q secret=%q", kid, secret)
+	}
+}
+
+// flip returns a char different from b (to corrupt a secret deterministically).
 func flip(b byte) string {
 	if b == 'a' {
 		return "b"
