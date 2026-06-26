@@ -6,7 +6,7 @@
 
 使用 **`--minimum` 安装**时，多数认证组件关闭，便于实验环境快速上手，部分 API 可能无需 Token。生产环境请按随产品提供的部署与安全文档启用完整认证配置。
 
-**相关模块：** 所有接受 `Authorization` 的子系统；主要消费者包括 [Decision Agent](decision-agent.md)、[VEGA 引擎](vega.md)。
+**相关模块：** 所有接受 `Authorization` 的子系统；主要消费者包括 [VEGA 引擎](vega.md)。
 
 ### 🛡️ 管理员工具：kweaver-admin
 
@@ -97,7 +97,7 @@ kweaver auth export
 在已登录会话下，REST 调用可直接使用 **`kweaver token`**（与 `kweaver auth export` 均可得到 Bearer 串；示例优先用前者）：
 
 ```bash
-curl -sk "https://<访问地址>/api/agent-factory/v1/agents" \
+curl -sk "https://<访问地址>/api/vega-backend/v1/catalogs" \
   -H "Authorization: Bearer $(kweaver token)"
 ```
 
@@ -337,7 +337,7 @@ curl -sk -X POST "https://<访问地址>/oauth2/token" \
   -d "grant_type=password&username=admin&password=MySecurePassword&client_id=openbkn-sdk&scope=openid"
 
 # 使用 Token 访问受保护资源
-curl -sk "https://<访问地址>/api/agent-factory/v1/agents" \
+curl -sk "https://<访问地址>/api/vega-backend/v1/catalogs" \
   -H "Authorization: Bearer $(kweaver token)"
 
 # 查看当前用户信息
@@ -358,5 +358,5 @@ curl -sk -X POST "https://<访问地址>/oauth2/token" \
   -d "grant_type=refresh_token&refresh_token=<refresh-token>&client_id=openbkn-sdk"
 
 # 最小化安装 — 无需 Token 直接访问
-curl -sk "https://localhost:30000/api/agent-factory/v1/agents"
+curl -sk "https://localhost:30000/api/vega-backend/v1/catalogs"
 ```

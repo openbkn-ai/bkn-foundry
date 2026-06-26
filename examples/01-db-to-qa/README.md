@@ -1,6 +1,6 @@
-# 01 · From Database to Intelligent Q&A
+# 01 · From Database to Semantic Search
 
-> Your database can finally answer questions — in plain language, not SQL.
+> Turn a raw MySQL database into a searchable knowledge network — no SQL required.
 
 ## The Problem
 
@@ -8,8 +8,8 @@ A supply chain analyst has years of purchasing and inventory records locked in M
 Every business question — "Which suppliers are most reliable?" "What's at risk of stockout?" —
 means filing a request with the DBA and waiting hours for a custom query.
 
-This example connects that database to a knowledge network and an Agent. Ask questions
-in natural language, get answers grounded in your actual data.
+This example connects that database to a knowledge network. Discover the tables,
+query them in real time, and search across them semantically — all grounded in your actual data.
 
 ## What This Example Does
 
@@ -24,8 +24,8 @@ MySQL Database
                            │
                            ▼
                     ┌──────────────┐     ┌─────────────────┐
-                    │   Schema     │     │   Agent Chat    │
-                    │   Explore    │     │   (Q&A)         │
+                    │   Schema     │     │   Semantic      │
+                    │   Explore    │     │   Search        │
                     └──────────────┘     └─────────────────┘
 ```
 
@@ -34,7 +34,7 @@ MySQL Database
 2. **Create** a Knowledge Network with object types bound to Vega resources
 3. **Explore** the object types
 4. **Query** the data in real time through the knowledge network
-5. **Chat** with an Agent to answer questions about the data
+5. **Search** the knowledge network semantically
 
 > This example uses the **Vega catalog/connector** model (vega-backend). Object types
 > bind to Vega *resource* IDs and are queried in real time — no `bkn build` step. The
@@ -92,10 +92,10 @@ openbkn bkn create --name "my-kn"
 openbkn bkn object-type create <kn-id> --name 物料 --resource-id <resource-id> \
   --primary-key material_code --display-key material_name
 
-# 3. Explore + query + chat
+# 3. Explore + query + search
 openbkn bkn object-type list <kn-id>
 openbkn bkn object-type query <kn-id> <ot-id> '{"limit":5}'
-openbkn agent chat <agent-id> -m "What are the main suppliers?"
+openbkn bkn search <kn-id> "物料"
 ```
 
 ## Troubleshooting

@@ -16,7 +16,7 @@ Typical ingress prefix:
 | --- | --- |
 | `/api/mf-model-manager/v1` | Model management API |
 
-**Related modules:** [BKN Engine](bkn.md) (semantic search uses Embedding), [Decision Agent](decision-agent.md) (uses LLM), [Context Loader](context-loader.md) (retrieval uses Embedding + Reranker).
+**Related modules:** [BKN Engine](bkn.md) (semantic search uses Embedding), [Context Loader](context-loader.md) (retrieval uses Embedding + Reranker).
 
 ---
 

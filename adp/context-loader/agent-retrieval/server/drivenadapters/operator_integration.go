@@ -37,6 +37,8 @@ var (
 const (
 	// https://{host}:{port}/api/agent-operator-integration/internal-v1/tool-box/:box_id/tool/:tool_id
 	getToolDetailURI = "/internal-v1/tool-box/%s/tool/%s"
+	// https://{host}:{port}/api/agent-operator-integration/internal-v1/operator/market/:operator_id
+	getOperatorMarketURI = "/internal-v1/operator/market/%s"
 	// https://{host}:{port}/api/agent-operator-integration/internal-v1/mcp/proxy/:mcp_id/tools
 	getMCPToolListURI = "/internal-v1/mcp/proxy/%s/tools"
 	// https://{host}:{port}/api/agent-operator-integration/internal-v1/mcp/proxy/:mcp_id/tool/call
@@ -87,6 +89,24 @@ func (o *operatorIntegrationClient) GetToolDetail(ctx context.Context, req *inte
 	o.logger.WithContext(ctx).Debugf("[OperatorIntegration#GetToolDetail] Tool: %s, Name: %s", resp.ToolID, resp.Name)
 
 	return resp, nil
+}
+
+// GetOperatorMarketDetail 按 operator_id 获取算子市场详情（含算子 Schema），返回原始响应 JSON 字符串。
+func (o *operatorIntegrationClient) GetOperatorMarketDetail(ctx context.Context, operatorID string) (string, error) {
+	uri := fmt.Sprintf(getOperatorMarketURI, operatorID)
+	url := fmt.Sprintf("%s%s", o.baseURL, uri)
+
+	o.logger.WithContext(ctx).Debugf("[OperatorIntegration#GetOperatorMarketDetail] URL: %s", url)
+
+	header := common.GetHeaderFromCtx(ctx)
+	_, respBody, err := o.httpClient.Get(ctx, url, nil, header)
+	if err != nil {
+		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#GetOperatorMarketDetail] Request failed, err: %v", err)
+		return "", infraErr.DefaultHTTPError(ctx, http.StatusBadGateway, fmt.Sprintf("算子市场详情接口调用失败: %v", err))
+	}
+
+	// 原样返回响应 JSON，供 operator 参数生成 prompt 作为算子 Schema 注入。
+	return string(utils.ObjectToByte(respBody)), nil
 }
 
 // GetMCPToolDetail 获取 MCP 工具详情

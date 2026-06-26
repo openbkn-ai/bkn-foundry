@@ -9,8 +9,8 @@ Understanding "who reports to whom" or "which projects are at risk of being unde
 means manual VLOOKUP chaining across files — tedious and error-prone.
 
 This example imports those files into a knowledge network. Relationships are discovered
-automatically. You can traverse the org chart, run semantic queries, and ask an Agent
-business questions about your people and projects.
+automatically. You can explore the schema, query instances, and traverse the org chart
+to understand your people and projects.
 
 ## What This Example Does
 
@@ -23,12 +23,12 @@ CSV Files (local)
 │  (import + build)    │     │  Network     │
 └─────────────────────┘     └──────┬───────┘
                                    │
-              ┌────────────────────┼───────────────────┐
-              ▼                    ▼                   ▼
-       ┌────────────┐     ┌──────────────┐    ┌───────────────┐
-       │   Schema   │     │   Subgraph   │    │  Agent Q&A    │
-       │  Explore   │     │  Traversal   │    │               │
-       └────────────┘     └──────────────┘    └───────────────┘
+              ┌────────────────────┴───────────────────┐
+              ▼                                        ▼
+       ┌────────────┐                         ┌──────────────┐
+       │   Schema   │                         │   Subgraph   │
+       │  Explore   │                         │  Traversal   │
+       └────────────┘                         └──────────────┘
 ```
 
 0. **Connect** a MySQL datasource (backing store for the imported tables)
@@ -36,9 +36,6 @@ CSV Files (local)
 2. **Explore** auto-discovered object types and properties
 3. **Query** object instances
 4. **Traverse** the network with subgraph queries (depth 2)
-5. **Search** the knowledge network semantically via context-loader
-6. **Export** the KN definition to a portable file
-7. **Chat** with an Agent to answer business questions
 
 ### Sample Data
 
@@ -90,7 +87,6 @@ Replace the files in `data/` with your own CSVs. Requirements:
 | `openbkn bkn subgraph <kn-id> <instance-id> --depth 2` | Network traversal |
 | `openbkn context-loader kn-search "..." --only-schema` | Semantic schema search |
 | `openbkn bkn export <kn-id>` | Export KN definition |
-| `openbkn agent chat <agent-id> -m "..."` | Chat with schema context |
 
 ## Differences from Example 01
 

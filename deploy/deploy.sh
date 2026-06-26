@@ -944,7 +944,6 @@ main() {
                 install_bkn
                 install_vega
                 install_agentoperator
-                install_decisionagent
                 install_sandboxruntime
 
                 show_status
@@ -959,7 +958,6 @@ main() {
                 
                 # Uninstall BKN Foundry services first
                 uninstall_sandboxruntime || true
-                uninstall_decisionagent || true
                 uninstall_agentoperator || true
                 uninstall_bkn || true
                 uninstall_vega || true

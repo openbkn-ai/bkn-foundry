@@ -18,8 +18,6 @@ declare -a CORE_SQL_MODULES=(
     "bkn"
     "vega"
     "agentoperator"
-    "dataagent"
-    "decisionagent"
     "sandbox"
 )
 

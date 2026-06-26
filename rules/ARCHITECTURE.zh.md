@@ -130,10 +130,10 @@ flowchart LR
 ```yaml
 openapi: 3.1.0
 info:
-  title: Decision Agent Public API
+  title: Knowledge Query Public API
   version: 1.2.0
 paths:
-  /api/v1/decision-agent/queries:
+  /api/v1/knowledge/queries:
     get:
       summary: List queries
       parameters:
@@ -153,10 +153,10 @@ paths:
 
 ```yaml
 ---
-name: decision-agent.query
+name: knowledge.query
 version: 1.0.0
 stability: public
-description: "Query Decision Agent and return structured results."
+description: "Query the knowledge network and return structured results."
 ---
 
 # X SKILL

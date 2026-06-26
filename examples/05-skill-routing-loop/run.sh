@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 # =============================================================================
-# 05-skill-routing-loop: KN-driven Skill governance end-to-end
+# 05-skill-routing-loop: KN-driven Skill routing end-to-end
 #
-# Flow: business DB → Vega → BKN → context-loader find_skills →
-#       Decision Agent → Skill execute → mock business backend → audit log
+# Flow: business DB → Vega → BKN → context-loader find_skills (skill routing) →
+#       Skill execute → mock business backend → audit log
+#
+# No agent: for each material, find_skills routes the alert to the one Skill
+# bound in the knowledge network, and run.sh executes that Skill directly.
 # =============================================================================
 set -euo pipefail
 
@@ -38,8 +41,6 @@ debug() { [ "$DEBUG" = "1" ] && echo "[debug] $*" >&2 || true; }
 [ -f "$SCRIPT_DIR/.env" ] && source "$SCRIPT_DIR/.env"
 
 PLATFORM_HOST="${PLATFORM_HOST:?Set PLATFORM_HOST in .env}"
-LLM_ID="${LLM_ID:?Set LLM_ID in .env (use: openbkn call /api/mf-model-manager/v1/llm/list)}"
-LLM_NAME="${LLM_NAME:-deepseek-v3.2}"
 DB_HOST="${DB_HOST:?Set DB_HOST in .env}"
 DB_PORT="${DB_PORT:-3306}"
 DB_NAME="${DB_NAME:?Set DB_NAME in .env}"
@@ -63,7 +64,7 @@ command -v "$MYSQL_BIN" >/dev/null 2>&1 || { echo "Error: mysql client not found
 jget() { python3 -c "import json,sys;d=json.load(sys.stdin);print(d.get('$1','') if isinstance(d,dict) else '')" 2>/dev/null || true; }
 
 # Track resources for cleanup
-CAT_ID="" TMP_KN_ID="" MCP_ID="" AGENT_ID=""
+CAT_ID="" TMP_KN_ID="" MCP_ID=""
 SKILL_IDS=()
 TOOL_BACKEND_PID=""
 STANDARD_REPLENISH_ID=""
@@ -74,10 +75,6 @@ RENDERED_SKILLS=""
 cleanup() {
     echo ""
     echo "=== Cleanup ==="
-    [ -n "$AGENT_ID" ] && {
-        openbkn agent unpublish "$AGENT_ID" 2>/dev/null || true
-        openbkn agent delete "$AGENT_ID" -y 2>/dev/null && echo "  ✓ agent $AGENT_ID" || true
-    }
     [ -n "$MCP_ID" ] && {
         openbkn call "/api/agent-operator-integration/v1/mcp/$MCP_ID/status" -X POST \
             -H "x-business-domain: bd_public" -d '{"status":"offline"}' >/dev/null 2>&1 || true
@@ -373,74 +370,46 @@ openbkn call "/api/agent-operator-integration/v1/mcp/$MCP_ID/status" -X POST \
     -d '{"status":"published"}' >/dev/null
 echo "  ✓ MCP $MCP_ID (published, X-Kn-ID=$KN_ID)"
 
-# ── Step 10: Render agent.json with MCP_ID + LLM_ID + Skill IDs ──────────────
+# ── Step 10: Route each material via find_skills; verify route + execute ─────
 echo ""
-echo "=== Step 10: Render agent.json ==="
-RENDERED_AGENT="$SCRIPT_DIR/.rendered-agent.json"
-sed \
-    -e "s|{{MCP_ID}}|$MCP_ID|" \
-    -e "s|{{STANDARD_REPLENISH_SKILL_ID}}|$STANDARD_REPLENISH_ID|" \
-    -e "s|{{SUBSTITUTE_SWAP_SKILL_ID}}|$SUBSTITUTE_SWAP_ID|" \
-    -e "s|{{SUPPLIER_EXPEDITE_SKILL_ID}}|$SUPPLIER_EXPEDITE_ID|" \
-    -e "s|{{LLM_ID}}|$LLM_ID|" \
-    -e "s|{{LLM_NAME}}|$LLM_NAME|" \
-    "$SCRIPT_DIR/agent.json" > "$RENDERED_AGENT"
-python3 -c "import json; json.load(open('$RENDERED_AGENT'))" >/dev/null
-echo "  ✓ agent.json rendered"
-
-# ── Step 11: Create + publish agent ──────────────────────────────────────────
-echo ""
-echo "=== Step 11: Create + publish Decision Agent ==="
-AGENT_NAME="ex05_skill_routing_${TIMESTAMP}"
-AGENT_PAYLOAD="$SCRIPT_DIR/.agent-payload.json"
-python3 - "$RENDERED_AGENT" "$AGENT_NAME" > "$AGENT_PAYLOAD" <<'PYW'
-import json, sys
-config = json.load(open(sys.argv[1]))
-print(json.dumps({
-    "name": sys.argv[2],
-    "profile": "Example 05 — KN-driven skill routing",
-    "avatar_type": 1,
-    "avatar": "icon-dip-agent-default",
-    "product_key": "dip",
-    "config": config,
-}))
-PYW
-CREATE_RAW=$(openbkn --json agent create --body-file "$AGENT_PAYLOAD" 2>&1)
-AGENT_ID=$(echo "$CREATE_RAW" | python3 -c "
-import sys, json
-raw = sys.stdin.read()
-def find_objs(s):
-    depth = 0; start = -1
-    for i, ch in enumerate(s):
-        if ch == '{':
-            if depth == 0: start = i
-            depth += 1
-        elif ch == '}':
-            depth -= 1
-            if depth == 0 and start >= 0:
-                yield s[start:i+1]; start = -1
-for chunk in find_objs(raw):
-    try: obj = json.loads(chunk)
-    except Exception: continue
-    if isinstance(obj, dict) and 'id' in obj:
-        print(obj['id']); break
-")
-[ -z "$AGENT_ID" ] && { echo "ERROR: agent create failed" >&2; echo "$CREATE_RAW" >&2; exit 1; }
-openbkn agent publish "$AGENT_ID" >/dev/null
-echo "  ✓ agent $AGENT_ID (published)"
-
-# ── Step 12: Trigger 3 critical-stock alerts; verify route + mock action ─────
-echo ""
-echo "=== Step 12: Trigger 3 alerts (one per material) ==="
+echo "=== Step 10: Route 3 alerts via find_skills (one per material) ==="
 if [ "${DEBUG_KEEP:-0}" = "1" ]; then
     trap - EXIT
     set +e
-    echo "[DEBUG_KEEP=1] cleanup disabled; agent/kn/skill/ds will persist for debugging"
-    echo "  AGENT_ID=$AGENT_ID"
+    echo "[DEBUG_KEEP=1] cleanup disabled; kn/skill/catalog/mcp will persist for debugging"
     echo "  KN_ID=$KN_ID"
     echo "  CAT_ID=$CAT_ID"
     echo "  MCP_ID=$MCP_ID"
 fi
+
+# Map a real execution-factory skill_id back to its logical name so we can
+# assert the route and pick the matching business action.
+skill_name_for_id() {
+    case "$1" in
+        "$STANDARD_REPLENISH_ID") echo "standard_replenish" ;;
+        "$SUBSTITUTE_SWAP_ID")    echo "substitute_swap" ;;
+        "$SUPPLIER_EXPEDITE_ID")  echo "supplier_expedite" ;;
+        *) echo "" ;;
+    esac
+}
+
+# Call context-loader find_skills for one material instance and print the
+# routed skill_id(s), one per line. This is the skill-routing decision: the
+# KN's applicable_skill edge is the single source of truth — find_skills
+# returns exactly the Skill(s) bound to that material, nothing else.
+route_skill() { # <sku>
+    local sku="$1"
+    local body
+    body=$(python3 -c "import json,sys;print(json.dumps({'kn_id':sys.argv[1],'object_type_id':'material','instance_identities':[{'sku':sys.argv[2]}],'top_k':10}))" "$KN_ID" "$sku")
+    openbkn --json call /api/agent-retrieval/v1/kn/find_skills -X POST \
+        -H "Content-Type: application/json" \
+        -d "$body" 2>/dev/null \
+        | python3 -c "import json,sys
+d=json.load(sys.stdin)
+for e in (d.get('entries') or []):
+    print(e.get('skill_id',''))"
+}
+
 execute_mock_action() {
     local sku="$1"
     local skill="$2"
@@ -463,31 +432,25 @@ execute_mock_action() {
     esac
 }
 
-assert_selected() {
-    local output_file="$1"
-    local expected="$2"
-    grep -q "$expected" "$output_file" || {
-        echo "ERROR: expected agent output to mention $expected" >&2
-        echo "See $output_file" >&2
-        exit 1
-    }
-}
-
+# For each material: find_skills routes it to the bound Skill, we assert the
+# route, then execute that Skill directly against the mock business backend.
 for item in "MAT-001:substitute_swap" "MAT-002:supplier_expedite" "MAT-003:standard_replenish"; do
     sku="${item%%:*}"
     expected_skill="${item##*:}"
     echo ""
     echo "--- $sku ---"
-    out_file="$SCRIPT_DIR/.chat-$sku.log"
-    openbkn agent chat "$AGENT_ID" \
-        -m "Material $sku hit critical stock level. Use find_skills to identify applicable skills, query the BKN for evidence (supplier capability, etc.), pick the best skill, execute it when possible, and end with SELECTED_SKILL_NAME=<name>." \
-        --stream 2>&1 \
-        | sed '/^(node:.*Warning:/d; /trace-warnings/d; /To continue this conversation/,$d' \
-        | tee "$out_file" \
-        | tail -40
-    assert_selected "$out_file" "$expected_skill"
-    execute_mock_action "$sku" "$expected_skill"
-    echo "  ✓ verified route=$expected_skill and mock action"
+    routed_ids=$(route_skill "$sku" || true)
+    [ -z "$routed_ids" ] && { echo "ERROR: find_skills returned no skill for $sku" >&2; exit 1; }
+    # The KN binds exactly one Skill per material — take the first (highest-ranked).
+    routed_id=$(echo "$routed_ids" | head -1)
+    routed_skill=$(skill_name_for_id "$routed_id")
+    echo "  find_skills → $routed_id ($routed_skill)"
+    [ "$routed_skill" = "$expected_skill" ] || {
+        echo "ERROR: $sku routed to '$routed_skill' (id=$routed_id), expected '$expected_skill'" >&2
+        exit 1
+    }
+    execute_mock_action "$sku" "$routed_skill"
+    echo "  ✓ verified route=$routed_skill and executed Skill"
 done
 
 # Verify that the demonstrable business actions reached the mock backend.
@@ -499,10 +462,10 @@ grep -q "\[procurement\]" "$SCRIPT_DIR/.tool_backend.log" \
     || { echo "ERROR: /procurement/order was not called" >&2; exit 1; }
 echo "  ✓ mock backend observed MES, supplier, and ERP calls"
 
-# ── Step 13: Bonus (optional via --bonus) ────────────────────────────────────
+# ── Step 11: Bonus (optional via --bonus) ────────────────────────────────────
 if [ "$BONUS" = "1" ]; then
     echo ""
-    echo "=== Bonus: re-bind MAT-002 in the business system → AI follows ==="
+    echo "=== Bonus: re-bind MAT-002 in the business system → routing follows ==="
 
     echo ""
     echo "[business system] update MAT-002.bound_skill_id: supplier_expedite → standard_replenish"
@@ -515,20 +478,22 @@ if [ "$BONUS" = "1" ]; then
     bkn_build_wait "$KN_ID" 60
 
     echo ""
-    echo "--- MAT-002 (re-trigger after binding change) ---"
-    openbkn agent chat "$AGENT_ID" \
-        -m "Material MAT-002 hit critical stock level again. Use find_skills, decide, execute it when possible, and end with SELECTED_SKILL_NAME=<name>." \
-        --stream 2>&1 \
-        | sed '/^(node:.*Warning:/d; /trace-warnings/d; /To continue this conversation/,$d' \
-        | tee "$SCRIPT_DIR/.chat-MAT-002-bonus.log" \
-        | tail -40
-    assert_selected "$SCRIPT_DIR/.chat-MAT-002-bonus.log" "standard_replenish"
+    echo "--- MAT-002 (re-route after binding change) ---"
+    routed_ids=$(route_skill "MAT-002" || true)
+    [ -z "$routed_ids" ] && { echo "ERROR: find_skills returned no skill for MAT-002" >&2; exit 1; }
+    routed_id=$(echo "$routed_ids" | head -1)
+    routed_skill=$(skill_name_for_id "$routed_id")
+    echo "  find_skills → $routed_id ($routed_skill)"
+    [ "$routed_skill" = "standard_replenish" ] || {
+        echo "ERROR: MAT-002 routed to '$routed_skill' (id=$routed_id), expected 'standard_replenish'" >&2
+        exit 1
+    }
     execute_mock_action "MAT-002" "standard_replenish"
 
     echo ""
-    echo ">>> Compare with the MAT-002 result above (Step 11)."
-    echo ">>> Expected: this run picks standard_replenish (matches the new binding)."
-    echo "  ✓ verified Bonus route=standard_replenish and mock action"
+    echo ">>> Compare with the MAT-002 result above (Step 10)."
+    echo ">>> Expected: this run routes to standard_replenish (matches the new binding)."
+    echo "  ✓ verified Bonus route=standard_replenish and executed Skill"
 fi
 
 echo ""

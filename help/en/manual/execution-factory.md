@@ -10,7 +10,7 @@ Typical ingress prefix:
 | --- | --- |
 | `/api/agent-operator-integration/v1` | Operator integration and tool execution surface |
 
-**Related modules:** [Decision Agent](decision-agent.md), [Dataflow](dataflow.md) (automation and code-runner paths).
+**Related modules:** [Dataflow](dataflow.md) (automation and code-runner paths).
 
 ## CLI
 

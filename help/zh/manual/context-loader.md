@@ -16,7 +16,7 @@
 | --- | --- |
 | `/api/agent-retrieval/v1` | 检索与上下文组装 API |
 
-**相关模块：** [BKN 引擎](bkn.md)、[VEGA 引擎](vega.md)、[Decision Agent](decision-agent.md)。
+**相关模块：** [BKN 引擎](bkn.md)、[VEGA 引擎](vega.md)。
 
 ---
 

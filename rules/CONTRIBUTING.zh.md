@@ -15,7 +15,6 @@ BKN Foundry 是一个 **monorepo**（[`kweaver-ai/kweaver-core`](https://github.
 | 模块 | 路径 | 描述 |
 | --- | --- | --- |
 | **AI Data Platform（ADP）** | [`adp/`](../adp) | 本体引擎（`adp/bkn`）、Context Loader（`adp/context-loader`）、Dataflow（`adp/dataflow`）、Execution Factory（`adp/execution-factory`）、VEGA 数据虚拟化（`adp/vega`） |
-| **Decision Agent** | [`decision-agent/`](../decision-agent) | `agent-backend/` 下的 Agent Executor / Factory / Memory |
 | **Trace AI** | [`trace-ai/`](../trace-ai) | Agent 可观测与 OpenTelemetry Collector Chart |
 | **Infra** | [`infra/`](../infra) | `mf-model-manager`（模型注册）、`oss-gateway-backend`、`sandbox` 运行时 |
 | **BKN 示例** | [`bkn/`](../bkn) | 业务知识网络示例（如 `smart_home_supply_chain`） |
@@ -39,7 +38,7 @@ BKN Foundry 是一个 **monorepo**（[`kweaver-ai/kweaver-core`](https://github.
 按**读者**与**范围**选择目录：
 
 1. **[`docs/`](../docs)（仓库根）** — 系统级架构、跨子系统的整体设计、影响整个 Core 平台的技术决策。
-2. **各子模块下的 `docs/`** — 仅属于该模块的设计与技术决策（例如 [`adp/bkn/docs/`](../adp/bkn/docs)、各 `decision-agent` 服务下的设计文档目录等）。
+2. **各子模块下的 `docs/`** — 仅属于该模块的设计与技术决策（例如 [`adp/bkn/docs/`](../adp/bkn/docs)、[`adp/vega/docs/`](../adp/vega/docs) 各服务下的设计文档目录等）。
 3. **[`help/{en,zh}/manual/`](../help/zh/manual)** — 面向用户/运维的**使用手册与参考**（按产品子域分文件；`install.md` / `quick-start.md` 与 `manual/` 同级放在 `help/{语言}/` 下）。
 4. **[`help/{en,zh}/cookbook/`](../help/zh/cookbook)** — **Cookbook**：可复制的场景化操作步骤。新写一篇请直接复制 [`_TEMPLATE.md`](../help/zh/cookbook/_TEMPLATE.md)，参考已写好的示例 [`cookbook_example.md`](../help/zh/cookbook/cookbook_example.md)，并在 [`cookbook/README.md`](../help/zh/cookbook/README.md) 索引表加一行（英文在 `help/en/cookbook/`）。
 
@@ -69,7 +68,7 @@ BKN Foundry 是一个 **monorepo**（[`kweaver-ai/kweaver-core`](https://github.
 
 - **版本号 / 环境**：
   - BKN Foundry 版本（`git describe --tags` 或 `VERSION` 文件，如 `v0.6.0`）
-  - 受影响的模块（如 `adp/bkn`、`decision-agent/agent-backend/agent-executor`、`infra/sandbox`）
+  - 受影响的模块（如 `adp/bkn`、`adp/vega/vega-backend`、`infra/sandbox`）
   - 运行时（Java / Go / Python / Node 及版本，如 JDK 17、Go 1.23、Python 3.11）
   - 操作系统（Linux 发行版与内核 / macOS / Windows）
   - 集群形态（单机 K3s / kubeadm / 托管 K8s）以及安装方式（`deploy.sh kweaver-core install [--minimum]`）
@@ -547,7 +546,7 @@ git push origin feature/my-feature
 BKN Foundry 是多语言项目，**只需安装你要修改的模块所需的工具链**：
 
 - **Git**（必备）
-- **Java**（JDK 17+）+ Maven —— ADP 与 decision-agent 大多数后端模块
+- **Java**（JDK 17+）+ Maven —— ADP 大多数后端模块
 - **Go**（1.23+）—— `infra/oss-gateway-backend`、若干 CLI 与小型服务
 - **Python**（3.11+）—— `infra/mf-model-manager` 等模型/数据组件
 - **Node.js** —— kweaver 相关 CLI 需 **22+**（以 [npm 上 `kweaver-sdk`](https://www.npmjs.com/package/@kweaver-ai/kweaver-sdk) 的 `engines` 为准）

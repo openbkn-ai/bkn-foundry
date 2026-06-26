@@ -11,7 +11,6 @@
 | 域 | 构建单元（示例） |
 |----|------------------|
 | `adp` | bkn-backend、ontology-query、agent-retrieval、dataflow（coderunner/dataflow/doc-convert）、operator-integration、vega-backend、kafka-connect |
-| `decision-agent` | agent-factory(go)、agent-executor(py)、agent-memory(py) |
 | `infra` | mf-model-api、mf-model-manager、oss-gateway-backend、sandbox（control-plane/web） |
 | `trace-ai` | agent-observability、otelcol-contrib（chart-only） |
 
@@ -117,7 +116,7 @@ charts:
 
 清单必须建模仓库的真实复杂度，而非"一服务一镜像"的简化假设：
 
-- **多镜像服务** `decision-agent/agent-backend`：`build:` 列三项——`agent-factory`(go)、`agent-executor`(python)、`agent-memory`(python)。
+- **多镜像服务** `infra/sandbox`：`build:` 列两项——`sandbox_control_plane`(python)、`sandbox_web`(node)。
 - **多 chart 服务** `vega`（vega-backend + kafka-connect）、`dataflow`（coderunner + dataflow + doc-convert）：`charts:` 列多项。
 - **Chart-only** `trace-ai/otelcol-contribute-chart`：`build:` 空，仅 `charts:`。
 - **共享 VERSION** 多个 trace-ai 服务共用 `trace-ai/VERSION`：用 `versionFile` + `triggerPaths` 指向它。

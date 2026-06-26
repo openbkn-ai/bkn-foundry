@@ -29,7 +29,6 @@ Reference manuals by subsystem (living under `./manual/`).
 | [Context Loader](manual/context-loader.md) | Agent context assembly from ontology and data |
 | [Execution Factory](manual/execution-factory.md) | Tools, operators, and skills for agents |
 | [Dataflow](manual/dataflow.md) | Pipeline orchestration and automation |
-| [Decision Agent](manual/decision-agent.md) | Goal-oriented agents, runtime, and observability |
 | [Trace AI](manual/trace-ai.md) | Traces, metrics, and evidence-chain style observability |
 | [Info Security Fabric](manual/isf.md) | Identity, permissions, policies, and audit (when enabled) |
 | [Platform admin tool](install.md#-administrator-tool-after-a-full-install-kweaver-admin) | `kweaver-admin` — users / orgs / roles / models / audit (after a full install) |

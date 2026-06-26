@@ -26,6 +26,10 @@
       "additional_context": {
         "type": "string",
         "description": "可选。补充 timezone、instant、step 等上下文"
+      },
+      "llm_model": {
+        "type": "string",
+        "description": "可选。覆盖动态参数生成所用大模型；为空走系统默认大模型。仅供测试/验证指定模型。"
       }
     },
     "required": ["ot_id", "query", "_instance_identities", "properties"]

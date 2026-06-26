@@ -23,6 +23,8 @@ type ResolveLogicPropertiesRequest struct {
 	// Optional fields
 	AdditionalContext string          `json:"additional_context,omitempty"`
 	Options           *ResolveOptions `json:"options,omitempty"`
+	// LLMModel per-request 覆盖 metric/operator 动态参数生成所用大模型；为空走系统默认大模型。仅供测试/验证指定模型。
+	LLMModel string `json:"llm_model,omitempty"`
 
 	// Header fields
 	AccountID   string `json:"-" header:"x-account-id"`

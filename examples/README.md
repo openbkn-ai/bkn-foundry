@@ -9,8 +9,7 @@ End-to-end examples that demonstrate core BKN Foundry capabilities using the CLI
 | [01-db-to-qa](./01-db-to-qa/) | *A supply chain analyst stops waiting for DBA queries — her database answers questions directly in natural language* | MySQL → Knowledge Network → Semantic Search → Agent Chat |
 | [02-csv-to-kn](./02-csv-to-kn/) | *An HR director's scattered spreadsheets become a connected knowledge network she can traverse and query* | CSV → Knowledge Network → Subgraph Traversal → Agent Q&A |
 | [03-action-lifecycle](./03-action-lifecycle/) | *A procurement engineer arrives at 8am to find today's inventory alerts already generated — the knowledge network did it overnight* | CSV → Knowledge Network → Action → Schedule → Audit Log |
-| [04-multi-agent-session-id](./04-multi-agent-session-id/) | *A platform feature audit shows a custom input field travels intact through father → sons → SKILL, every step verifiable* | Dolphin orchestration → Multi-Agent → Custom Input → SKILL invocation |
-| [05-skill-routing-loop](./05-skill-routing-loop/) | *3 materials, 3 critical alerts, 3 different handling paths — each justified by the knowledge network* | MySQL → BKN (via Vega) → find_skills → Decision Agent → Skill → Action |
+| [05-skill-routing-loop](./05-skill-routing-loop/) | *3 materials, 3 critical alerts, 3 different handling paths — each justified by the knowledge network* | MySQL → BKN (via Vega) → find_skills → Skill routing → Skill → Action |
 | [06-world-cup](./06-world-cup/) | *An analyst loads 27 public World Cup CSVs into MySQL, binds Vega Resources, pushes a checked-in BKN, then asks an Agent cross-table questions* | Public CSVs (CC-BY-SA) → MySQL + Vega Catalog BKN (`worldcup_vega_catalog_bkn`) → Agent |
 
 ## Getting Started
@@ -50,9 +49,5 @@ See the README inside each example for specific prerequisites.
 
 Most scripts delete all created resources (datasources, knowledge networks, actions) automatically
 on exit — whether the run succeeds or fails.
-
-The exception is `04-multi-agent-session-id`, which keeps the SKILL and three demo agents on the
-platform after a successful run so they can be inspected in the Web UI; pass `--cleanup` to remove
-them.
 
 **06-world-cup** leaves datasources, MySQL rows, Vega catalogs, and the pushed KN in place unless you delete them manually.

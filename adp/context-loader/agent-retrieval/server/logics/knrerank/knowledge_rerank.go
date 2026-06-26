@@ -134,7 +134,7 @@ func (r *KnowledgeReranker) rerankByLLM(ctx context.Context, req *interfaces.Kno
 		// 构建Prompt
 		prompt := r.buildPrompt(question, batchConcepts, intents)
 
-		// 调用LLM（req.LLMModel 为空时回退 config.Model）
+		// 调用LLM（req.LLMModel 为 per-request 覆盖；为空走系统默认大模型）
 		indices, err := r.processLLMBatch(ctx, prompt, accountID, accountType, req.LLMModel)
 		if err != nil {
 			r.logger.WithContext(ctx).Warnf("[KnowledgeReranker#rerankByLLM] Batch %d failed: %v", i/batchSize+1, err)
@@ -411,7 +411,7 @@ func (r *KnowledgeReranker) formatIntentsText(intents []interface{}) string {
 	return strings.Join(intentTexts, "；") + "。"
 }
 
-// processLLMBatch 处理单个LLM批次；model 为空时回退 config.Model（不写单例，仅局部覆盖）
+// processLLMBatch 处理单个LLM批次；model 来自 per-request 覆盖，为空时交由 mf-model-api 解析系统默认大模型
 func (r *KnowledgeReranker) processLLMBatch(ctx context.Context, prompt, accountID, accountType, model string) ([]int, error) {
 	// 构建消息
 	messages := []interfaces.LLMMessage{
@@ -425,15 +425,9 @@ func (r *KnowledgeReranker) processLLMBatch(ctx context.Context, prompt, account
 		},
 	}
 
-	// per-request 模型覆盖：为空回退 yaml/config 默认。绝不写 r.config（单例，跨请求竞争）
-	llmModel := model
-	if llmModel == "" {
-		llmModel = r.config.Model
-	}
-
-	// 构建请求
+	// 构建请求。model 为 per-request 覆盖（req.LLMModel）；为空 => mf-model-api 使用系统默认大模型，不在 configmap 钉模型名
 	req := &interfaces.LLMChatReq{
-		Model:            llmModel,
+		Model:            model,
 		Messages:         messages,
 		Temperature:      r.config.Temperature,
 		TopK:             r.config.TopK,

@@ -18,7 +18,7 @@
 | --- | --- |
 | `/api/agent-operator-integration/v1` | 算子集成与工具执行面 |
 
-**相关模块：** [Decision Agent](decision-agent.md)、[Dataflow](dataflow.md)（自动化与 code-runner 路径）。
+**相关模块：** [Dataflow](dataflow.md)（自动化与 code-runner 路径）。
 
 ### CLI
 

@@ -29,7 +29,7 @@ type knLogicPropertyResolverService struct {
 	logger              interfaces.Logger
 	bknBackendAccess    interfaces.BknBackendAccess
 	ontologyQueryClient interfaces.DrivenOntologyQuery
-	agentApp            interfaces.AgentApp
+	dynamicLLM          *dynamicParamsLLM // metric/operator 动态参数直连 LLM 生成器
 }
 
 var (
@@ -45,7 +45,7 @@ func NewKnLogicPropertyResolverService() interfaces.IKnLogicPropertyResolverServ
 			logger:              conf.GetLogger(),
 			bknBackendAccess:    drivenadapters.NewBknBackendAccess(),
 			ontologyQueryClient: drivenadapters.NewOntologyQueryAccess(),
-			agentApp:            drivenadapters.NewAgentAppClient(),
+			dynamicLLM:          newDynamicParamsLLM(conf.GetLogger(), drivenadapters.NewMFModelAPIClient(), drivenadapters.NewOperatorIntegrationClient()),
 		}
 	})
 	return service
@@ -455,8 +455,8 @@ func (s *knLogicPropertyResolverService) generateMetricParams(
 		debugCollector.RecordMetricAgentRequest(propertyName, agentReq)
 	}
 
-	// 调用 Metric Agent
-	agentResult, missingParams, err := s.agentApp.MetricDynamicParamsGeneratorAgent(ctx, agentReq)
+	// 直连 LLM 生成 metric 动态参数（替代 agent-factory agent）；req.LLMModel 为空走系统默认大模型
+	agentResult, missingParams, err := s.dynamicLLM.GenerateMetricParams(ctx, agentReq, req.LLMModel)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -515,10 +515,10 @@ func (s *knLogicPropertyResolverService) generateOperatorParams(
 		debugCollector.RecordOperatorAgentRequest(propertyName, agentReq)
 	}
 
-	// 调用 Operator Agent
-	agentResult, missingParams, err := s.agentApp.OperatorDynamicParamsGeneratorAgent(ctx, agentReq)
+	// 直连 LLM 生成 operator 动态参数（替代 agent-factory agent）；req.LLMModel 为空走系统默认大模型
+	agentResult, missingParams, err := s.dynamicLLM.GenerateOperatorParams(ctx, agentReq, req.LLMModel)
 	if err != nil {
-		s.logger.WithContext(ctx).Errorf("[KnLogicPropertyResolver] OperatorDynamicParamsGeneratorAgent failed: %v", err)
+		s.logger.WithContext(ctx).Errorf("[KnLogicPropertyResolver] GenerateOperatorParams failed: %v", err)
 		return nil, nil, err
 	}
 

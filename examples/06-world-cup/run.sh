@@ -10,7 +10,9 @@
 #                                 OpenSearch indexes for 7 entity tables (DO_INDEX=1 default)
 #   Step 6  Upload toolbox     : openbkn toolbox create + tool upload <OpenAPI> + publish
 #                                 (registers vega_sql_execute; idempotent by box_name)
-#   Step 7  Create Agent       : agent create --config <rendered tpl> + bind KN + publish
+#
+# The pipeline ends at a Vega catalog BKN (`worldcup_vega_catalog_bkn`) backed by
+# a published, queryable `vega_sql_execute` tool over the 27 wc_* MySQL tables.
 #
 # Prerequisites:
 #   - openbkn CLI logged in (`openbkn auth login`) and node `openbkn` resolvable
@@ -23,7 +25,6 @@
 #   ./run.sh --from 3          # rerun from Vega scan onward (CSVs already in MySQL)
 #   ./run.sh --only 1          # only download CSVs
 #   ./run.sh --dry-run         # print plan only
-#   ./run.sh --no-publish      # create agent in private space (skip publish)
 # =============================================================================
 set -euo pipefail
 [ "${WC_TRACE:-0}" = 1 ] && set -x || true
@@ -31,10 +32,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BKN_ARCHIVE="$SCRIPT_DIR/worldcup-bkn.tar"
 BKN_EXTRACT_DIR="$SCRIPT_DIR/.tmp/worldcup-bkn"
-NETWORK_BKN="$BKN_EXTRACT_DIR/network.bkn"
 RENDERED_DIR="$SCRIPT_DIR/.rendered-bkn-vega"
 MAPPING_TMP="$SCRIPT_DIR/.vega-bkn-mapping.json"
-AGENT_TEMPLATE="$SCRIPT_DIR/agent-worldcup.config.json"
 VEGA_OPENAPI_SPEC="$SCRIPT_DIR/vega_sql_execute.openapi.json"
 VEGA_TOOLBOX_NAME="${VEGA_TOOLBOX_NAME:-wc_vega_query}"
 VEGA_TOOLBOX_SVC_URL="${VEGA_TOOLBOX_SVC_URL:-http://vega-backend-svc:13014}"
@@ -47,10 +46,8 @@ Usage: ./run.sh [options]
 Options:
   -h, --help          Show this help.
   --dry-run           Print the plan for the selected steps, no API calls.
-  --from N            Start from step N (1..7). Default 1.
-  --only N            Run only step N (1..7).
-  --no-publish        Step 7: skip `agent publish` (agent stays private).
-  --no-reuse          Step 7: ignore REUSE_AGENT_BY_NAME and always create.
+  --from N            Start from step N (1..6). Default 1.
+  --only N            Run only step N (1..6).
 
 Steps:
   1  Download CSVs   — fetch 27 CSV files from jfjelstul/worldcup (skips cached)
@@ -59,7 +56,6 @@ Steps:
   4  Render BKN      — map Resources → render worldcup-bkn
   5  Push BKN        — validate + push (resource-backed KN); build vega indexes for 7 entity tables (DO_INDEX=0 to skip)
   6  Upload toolbox  — toolbox create + tool upload <OpenAPI> + publish (idempotent; DO_TOOLBOX=0 disables)
-  7  Create Agent    — agent create --config + bind KN + (optional) publish
 
 Env (see env.sample):
   WORLDCUP_REF                    Git ref for jfjelstul/worldcup; default master.
@@ -80,10 +76,6 @@ Env (see env.sample):
   DO_TOOLBOX=1                    Step 6: set 0 to skip toolbox import + publish.
   FORCE_TOOLBOX_REIMPORT=0        Step 6: set 1 to delete the existing same-name toolbox
                                   and re-import (use after editing the .adp template).
-  AGENT_NAME                      Default: 世界杯数据分析助手.
-  AGENT_PROFILE                   Short description (<=500 chars).
-  REUSE_AGENT_BY_NAME=true        Default: reuse same-name agent (re-bind KN, no recreate). Set =false to always create.
-  AGENT_LLM_ID                    Optional: override llm id in agent template.
   BKN_BASE_URL                Optional: pin a specific platform; default uses ~/.openbkn.
 EOF
 }
@@ -91,22 +83,18 @@ EOF
 FROM=1
 ONLY=""
 DRY_RUN=0
-DO_PUBLISH=1
-FORCE_NO_REUSE=0
 while [ $# -gt 0 ]; do
     case "$1" in
         -h|--help) usage; exit 0 ;;
         --dry-run) DRY_RUN=1; shift ;;
-        --from) FROM="${2:?--from needs a number 1..7}"; shift 2 ;;
-        --only) ONLY="${2:?--only needs a number 1..7}"; shift 2 ;;
-        --no-publish) DO_PUBLISH=0; shift ;;
-        --no-reuse) FORCE_NO_REUSE=1; shift ;;
+        --from) FROM="${2:?--from needs a number 1..6}"; shift 2 ;;
+        --only) ONLY="${2:?--only needs a number 1..6}"; shift 2 ;;
         *) echo "Unknown arg: $1" >&2; usage >&2; exit 2 ;;
     esac
 done
 
-case "$FROM" in 1|2|3|4|5|6|7) ;; *) echo "--from must be 1..7" >&2; exit 2 ;; esac
-if [ -n "$ONLY" ]; then case "$ONLY" in 1|2|3|4|5|6|7) ;; *) echo "--only must be 1..7" >&2; exit 2 ;; esac; fi
+case "$FROM" in 1|2|3|4|5|6) ;; *) echo "--from must be 1..6" >&2; exit 2 ;; esac
+if [ -n "$ONLY" ]; then case "$ONLY" in 1|2|3|4|5|6) ;; *) echo "--only must be 1..6" >&2; exit 2 ;; esac; fi
 
 set -a
 [ -f "$SCRIPT_DIR/.env" ] && source "$SCRIPT_DIR/.env"
@@ -131,13 +119,9 @@ kn_id_from_rendered() {
     awk '/^id:/ {print $2; exit}' "$RENDERED_DIR/network.bkn" 2>/dev/null || true
 }
 
-kn_id_from_template() {
-    awk '/^id:/ {print $2; exit}' "$NETWORK_BKN" 2>/dev/null || true
-}
-
 # ─── Step 1: Download CSVs ──────────────────────────────────────────────────
 step_1_download() {
-    echo "=== [1/7] Download CSVs ===" >&2
+    echo "=== [1/6] Download CSVs ===" >&2
 
     if [ "${SKIP_DOWNLOAD:-0}" = 1 ]; then
         echo "  skipped (SKIP_DOWNLOAD=1)" >&2
@@ -212,7 +196,7 @@ PY
 }
 
 step_2_import() {
-    echo "=== [2/7] Import to MySQL ===" >&2
+    echo "=== [2/6] Import to MySQL ===" >&2
 
     if [ "${SKIP_IMPORT:-0}" = 1 ]; then
         echo "  skipped (SKIP_IMPORT=1)" >&2
@@ -382,7 +366,7 @@ resolve_catalog_id_by_name() {
 }
 
 step_3_vega_scan() {
-    echo "=== [3/7] Vega scan ===" >&2
+    echo "=== [3/6] Vega scan ===" >&2
     local catalog_id="${VEGA_CATALOG_ID:-}"
 
     if [ "${VEGA_SKIP_CREATE:-0}" = "1" ]; then
@@ -470,7 +454,7 @@ resolve_catalog_id_or_die() {
 }
 
 step_4_render_bkn() {
-    echo "=== [4/7] Render BKN ===" >&2
+    echo "=== [4/6] Render BKN ===" >&2
 
     if [ "$DRY_RUN" = 1 ]; then
         local hint="${VEGA_CATALOG_ID:-${VEGA_CATALOG_NAME:-<unresolved>}}"
@@ -537,7 +521,7 @@ _extract_bkn_archive() {
 
 # ─── Step 5: Push BKN ───────────────────────────────────────────────────────
 step_5_push_bkn() {
-    echo "=== [5/7] Push BKN ===" >&2
+    echo "=== [5/6] Push BKN ===" >&2
 
     if [ "$DRY_RUN" = 1 ]; then
         echo "  plan: openbkn bkn validate $RENDERED_DIR" >&2
@@ -652,7 +636,7 @@ PY
 
     # For each resource, check if a build task already exists; if not, create + start one.
     # Tolerate failures (warn-not-fail), since the 0.7.0 batch-sync cursor bug can stall
-    # large tables. Agent can still answer via vega_sql_execute (step 7's tool).
+    # large tables. Those tables are still queryable via vega_sql_execute (step 6's tool).
     local created=0 reused=0 skipped=0
     while IFS=$'\t' read -r tbl rid ef risk; do
         [ -z "$rid" ] && continue
@@ -707,7 +691,7 @@ PY
                 -X PUT -d '{"status":"running","execute_type":"full"}' >/dev/null 2>&1 || true
         fi
         local kind="keyword"; [ -n "$ef" ] && [ -n "$emodel" ] && kind="vector"
-        local warn=""; [ "$risk" = "RISK" ] && warn="  (⚠ may loop on 0.7.0 — agent fallback to SQL)"
+        local warn=""; [ "$risk" = "RISK" ] && warn="  (⚠ may loop on 0.7.0 — query via vega_sql_execute)"
         printf "  %-25s create+start (%s)%s\n" "$tbl" "$kind" "$warn" >&2
         created=$((created+1))
     done <"$plan"
@@ -761,7 +745,7 @@ find_toolbox_id_by_name() {
 }
 
 step_6_toolbox() {
-    echo "=== [6/7] Upload toolbox ===" >&2
+    echo "=== [6/6] Upload toolbox ===" >&2
     if [ "${DO_TOOLBOX:-1}" != 1 ]; then
         echo "  skipped (DO_TOOLBOX=0)" >&2
         return 0
@@ -861,259 +845,16 @@ step_6_toolbox() {
     TOOLBOX_BOX_ID="$box_id"; VEGA_TOOL_ID="$tool_id"
     export TOOLBOX_BOX_ID VEGA_TOOL_ID
     echo "  TOOLBOX_BOX_ID=$box_id  VEGA_TOOL_ID=$tool_id" >&2
-}
 
-# ─── Step 7: Create Agent ───────────────────────────────────────────────────
-extract_agent_id() {
-    _extract_cli_json | \
-        python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("id") or d.get("agent_id") or "")' 2>/dev/null
-}
-
-find_agent_id_by_name() {
-    local name="$1" raw
-    raw="$("${KWEAV[@]}" agent personal-list --name "$name" --limit 48 2>/dev/null)" || true
-    printf '%s' "$raw" | _extract_cli_json | jq -r --arg n "$name" '
-        (if type == "array" then . elif .entries then .entries else .data // .items // [] end)
-        | if type == "array" then . else [] end
-        | map(select(.name == $n))
-        | sort_by(.updated_at // .created_at // 0)
-        | reverse
-        | .[0].id // empty
-    ' 2>/dev/null | head -1
-}
-
-write_agent_id_to_env() {
-    local agent_id="$1"
-    [ "${SKIP_WRITE_ENV:-0}" = 1 ] && { echo "  skip .env update (SKIP_WRITE_ENV=1)" >&2; return 0; }
-    _WC_PATCH_AGENT_ID="$agent_id" ENV_FILE="$SCRIPT_DIR/.env" python3 - <<'PY'
-import os, pathlib, re
-agent_id = os.environ["_WC_PATCH_AGENT_ID"]
-env_file = pathlib.Path(os.environ["ENV_FILE"])
-nl = "\n"
-if env_file.is_file():
-    text = env_file.read_text(encoding="utf-8", errors="replace")
-    if not text.endswith("\n"): text += nl
-    pat = re.compile(r"^\s*AGENT_ID=")
-    out, found = [], False
-    for line in text.splitlines(keepends=True):
-        if pat.match(line):
-            if not found:
-                out.append(f"AGENT_ID={agent_id}{nl}")
-                found = True
-        else:
-            out.append(line)
-    if not found: out.append(f"AGENT_ID={agent_id}{nl}")
-    env_file.write_text("".join(out), encoding="utf-8")
-else:
-    env_file.write_text(f"AGENT_ID={agent_id}{nl}", encoding="utf-8")
-print(f"  .env AGENT_ID={agent_id}")
-PY
-}
-
-# Resolve the platform-builtin contextloader toolbox + its three tools.
-# Echos a TSV line:
-#   "<box_id>\t<search_schema>\t<query_object_instance>\t<query_instance_subgraph>"
-# Exits the script on failure since step 7 cannot render the agent without these.
-resolve_contextloader_ids() {
-    local kw="${CONTEXTLOADER_BOX_NAME:-contextloader}" box_id tools_raw search_id qoi_id subgraph_id
-
-    # Fast path: all four IDs provided via env (useful when the toolbox is a
-    # platform-internal box not visible in `toolbox list`).
-    if [ -n "${CONTEXTLOADER_BOX_ID:-}" ] && \
-       [ -n "${SEARCH_SCHEMA_TOOL_ID:-}" ] && \
-       [ -n "${QUERY_OBJECT_INSTANCE_TOOL_ID:-}" ] && \
-       [ -n "${SUBGRAPH_TOOL_ID:-}" ]; then
-        printf '%s\t%s\t%s\t%s\n' \
-            "$CONTEXTLOADER_BOX_ID" \
-            "$SEARCH_SCHEMA_TOOL_ID" \
-            "$QUERY_OBJECT_INSTANCE_TOOL_ID" \
-            "$SUBGRAPH_TOOL_ID"
-        return 0
-    fi
-
-    # If CONTEXTLOADER_BOX_ID is set but tools are not, skip the toolbox list search.
-    if [ -n "${CONTEXTLOADER_BOX_ID:-}" ]; then
-        box_id="$CONTEXTLOADER_BOX_ID"
-    else
-        local list_raw
-        list_raw="$("${KWEAV[@]}" toolbox list --keyword "$kw" --limit 20 2>/dev/null || true)"
-        # Pick the most recently updated toolbox whose name contains the keyword.
-        box_id="$(printf '%s' "$list_raw" | _extract_cli_json | jq -r --arg kw "$kw" '
-            (.entries // .data // .items // [])
-            | if type == "array" then . else [] end
-            | map(select((.box_name // .name // "") | test($kw; "i")))
-            | sort_by(.updated_at // .created_at // 0) | reverse
-            | (.[0].box_id // .[0].id // empty)
-        ' 2>/dev/null | head -1)"
-        if [ -z "$box_id" ]; then
-            echo "Error: no contextloader toolbox found on this platform." >&2
-            echo "       Set CONTEXTLOADER_BOX_ID in .env (box_id of the contextloader toolbox)," >&2
-            echo "       or set CONTEXTLOADER_BOX_NAME to the toolbox name keyword." >&2
-            echo "       Check: openbkn toolbox list --keyword contextloader" >&2
-            exit 1
-        fi
-    fi
-
-    tools_raw="$("${KWEAV[@]}" tool list --toolbox "$box_id" 2>/dev/null | _extract_cli_json)" || true
-    # search_schema may be named "kn_search" on some platform versions.
-    search_id="$(printf '%s' "$tools_raw" | jq -r '
-        (.tools // .entries // .data // .items // [])[]?
-        | select(.name == "search_schema" or .name == "kn_search") | (.tool_id // .id // empty)' 2>/dev/null | head -1)"
-    qoi_id="$(printf '%s' "$tools_raw" | jq -r '
-        (.tools // .entries // .data // .items // [])[]?
-        | select(.name == "query_object_instance") | (.tool_id // .id // empty)' 2>/dev/null | head -1)"
-    subgraph_id="$(printf '%s' "$tools_raw" | jq -r '
-        (.tools // .entries // .data // .items // [])[]?
-        | select(.name == "query_instance_subgraph") | (.tool_id // .id // empty)' 2>/dev/null | head -1)"
-    [ -z "$search_id" ]   && { echo "Error: search_schema/kn_search tool not found in contextloader toolbox $box_id" >&2; exit 1; }
-    [ -z "$qoi_id" ]      && { echo "Error: query_object_instance tool not found in contextloader toolbox $box_id" >&2; exit 1; }
-    [ -z "$subgraph_id" ] && { echo "Error: query_instance_subgraph tool not found in contextloader toolbox $box_id" >&2; exit 1; }
-    printf '%s\t%s\t%s\t%s\n' "$box_id" "$search_id" "$qoi_id" "$subgraph_id"
-}
-
-render_agent_config() {
-    local kn_id="$1" out="$2"
-    [ -f "$AGENT_TEMPLATE" ] || { echo "Error: $AGENT_TEMPLATE missing" >&2; exit 1; }
-
-    # AGENT_LLM_ID is required: the template's LLM placeholder won't resolve
-    # on this platform without it, so fail fast instead of creating a broken agent.
-    if [ -z "${AGENT_LLM_ID:-}" ]; then
-        echo "Error: AGENT_LLM_ID is not set." >&2
-        echo "       Run 'openbkn model llm list' to find a model_id and set AGENT_LLM_ID in .env." >&2
-        exit 1
-    fi
-
-    # Resolve the contextloader builtin toolbox + its three tools on this platform
-    # (UUIDs differ per cluster). bash quirk: `local var=$(cmd)` masks the subshell
-    # exit code, so an `exit 1` inside resolve_contextloader_ids would NOT
-    # terminate the script — split the declaration and capture so set -e
-    # catches a non-zero exit.
-    local ctx_raw ctx_box ctx_search ctx_qoi ctx_subgraph
-    ctx_raw="$(resolve_contextloader_ids)" || exit $?
-    ctx_box="$(printf '%s' "$ctx_raw" | cut -f1)"
-    ctx_search="$(printf '%s' "$ctx_raw" | cut -f2)"
-    ctx_qoi="$(printf '%s' "$ctx_raw" | cut -f3)"
-    ctx_subgraph="$(printf '%s' "$ctx_raw" | cut -f4)"
-    if [ -z "$ctx_box" ] || [ -z "$ctx_search" ] || [ -z "$ctx_qoi" ] || [ -z "$ctx_subgraph" ]; then
-        echo "Error: contextloader id resolution returned empty values." >&2
-        exit 1
-    fi
-    echo "  contextloader box=$ctx_box  search_schema=$ctx_search  qoi=$ctx_qoi  subgraph=$ctx_subgraph" >&2
-
-    # Step 1: substitute the contextloader placeholders for every tool entry.
-    local tmp_in
-    tmp_in="$(mktemp -t wc_agent_tpl.XXXXXX.json)"
-    jq --arg cb "$ctx_box" --arg cs "$ctx_search" --arg cq "$ctx_qoi" --arg cg "$ctx_subgraph" '
-        .skills.tools |= map(
-            (if .tool_box_id == "__CONTEXTLOADER_BOX_ID__"       then .tool_box_id = $cb else . end)
-            | (if .tool_id  == "__SEARCH_SCHEMA_TOOL_ID__"         then .tool_id     = $cs else . end)
-            | (if .tool_id  == "__QUERY_OBJECT_INSTANCE_TOOL_ID__" then .tool_id     = $cq else . end)
-            | (if .tool_id  == "__SUBGRAPH_TOOL_ID__"              then .tool_id     = $cg else . end)
-        )
-    ' "$AGENT_TEMPLATE" >"$tmp_in"
-
-    # Step 2: substitute the vega_sql_execute tool, or drop it if step 6 was skipped.
-    local tmp_b
-    tmp_b="$(mktemp -t wc_agent_tpl.XXXXXX.json)"
-    if [ -n "${VEGA_TOOL_ID:-}" ] && [ -n "${TOOLBOX_BOX_ID:-}" ]; then
-        jq --arg vt "$VEGA_TOOL_ID" --arg vb "$TOOLBOX_BOX_ID" '
-            (.skills.tools[] | select(.tool_id == "__VEGA_TOOL_ID__")) |= (
-                .tool_id = $vt | .tool_box_id = $vb
-            )
-        ' "$tmp_in" >"$tmp_b"
-    else
-        echo "  warn: VEGA_TOOL_ID/TOOLBOX_BOX_ID not set — dropping vega_sql_execute from agent" >&2
-        jq '.skills.tools |= map(select(.tool_id != "__VEGA_TOOL_ID__"))' "$tmp_in" >"$tmp_b"
-    fi
-    rm -f "$tmp_in"
-
-    # Step 3: substitute kn id + llm id/name. Dolphin resolves the LLM by NAME
-    # as well as id — a template name that doesn't match the registered
-    # model_name fails at chat time with ModelFactory.…NameNotExist, so resolve
-    # the real model_name for AGENT_LLM_ID (AGENT_LLM_NAME overrides).
-    local llm_name="${AGENT_LLM_NAME:-}"
-    if [ -z "$llm_name" ]; then
-        llm_name="$("${KWEAV[@]}" model llm list 2>/dev/null | _extract_cli_json | jq -r --arg id "$AGENT_LLM_ID" '
-            (.data // .entries // [])[]? | select((.model_id // .id) == $id) | (.model_name // .name) // empty
-        ' 2>/dev/null | head -1)"
-    fi
-    [ -z "$llm_name" ] && echo "  warn: could not resolve model_name for AGENT_LLM_ID=$AGENT_LLM_ID; keeping template llm name" >&2
-    jq --arg kn "$kn_id" --arg llm "$AGENT_LLM_ID" --arg llmname "$llm_name" '
-        .data_source.knowledge_network = [{"knowledge_network_id": $kn, "object_types": null}]
-        | (.llms[0].llm_config.id) = $llm
-        | (if $llmname != "" then (.llms[0].llm_config.name) = $llmname else . end)
-    ' "$tmp_b" >"$out"
-    rm -f "$tmp_b"
-}
-
-step_7_agent() {
-    echo "=== [7/7] Create Agent ===" >&2
-    local kn_id
-    kn_id="$(kn_id_from_rendered)"
-    [ -z "$kn_id" ] && kn_id="$(kn_id_from_template)"
-    [ -z "$kn_id" ] && { echo "Error: no KN id (check $NETWORK_BKN)" >&2; exit 1; }
-
-    local agent_name="${AGENT_NAME:-世界杯数据分析助手}"
-    local agent_profile="${AGENT_PROFILE:-基于 Fjelstul 世界杯知识网络回答问题；多表推理时用关系与 *_name 字段，不确定时请说明假设}"
-    local reuse="${REUSE_AGENT_BY_NAME:-true}"
-    [ "$FORCE_NO_REUSE" = 1 ] && reuse=false
-
-    if [ "$DRY_RUN" = 1 ]; then
-        echo "  plan: KN_ID=$kn_id  AGENT_NAME=$agent_name  REUSE=$reuse  PUBLISH=$DO_PUBLISH" >&2
-        echo "  plan: render $AGENT_TEMPLATE → temp config (substitute knowledge_network_id)" >&2
-        echo "  plan: openbkn agent create --body-file <payload>" >&2
-        echo "  plan: openbkn agent update <id> --knowledge-network-id $kn_id" >&2
-        [ "$DO_PUBLISH" = 1 ] && echo "  plan: openbkn agent publish <id>" >&2
-        return 0
-    fi
-
-    local agent_id=""
-    if [ "$reuse" = true ] || [ "$reuse" = 1 ]; then
-        agent_id="$(find_agent_id_by_name "$agent_name")"
-        [ -n "$agent_id" ] && echo "  reusing AGENT_ID=$agent_id (matched name='$agent_name')" >&2
-    fi
-
-    local tmp_cfg
-    tmp_cfg="$(mktemp -t wc_agent_cfg.XXXXXX.json)"
-    render_agent_config "$kn_id" "$tmp_cfg"
-
-    if [ -z "$agent_id" ]; then
-        echo "  agent create (config rendered for KN=$kn_id)" >&2
-        local create_out
-        local tmp_payload
-        tmp_payload="$(mktemp -t wc_agent_payload.XXXXXX.json)"
-        jq -n --arg name "$agent_name" --arg profile "$agent_profile" --slurpfile cfg "$tmp_cfg" \
-            '{name:$name,profile:$profile,avatar_type:1,avatar:"icon-dip-agent-default",product_key:"dip",config:$cfg[0]}' \
-            > "$tmp_payload"
-        create_out="$("${KWEAV[@]}" agent create --body-file "$tmp_payload")"
-        rm -f "$tmp_payload"
-        rm -f "$tmp_cfg"
-        agent_id="$(printf '%s' "$create_out" | extract_agent_id)"
-        [ -z "$agent_id" ] && { echo "Error: agent create returned no id:" >&2; echo "$create_out" >&2; exit 1; }
-        echo "  created AGENT_ID=$agent_id" >&2
-    else
-        echo "  update config (tools + system prompt) for KN=$kn_id" >&2
-        local tmp_payload
-        tmp_payload="$(mktemp -t wc_agent_payload.XXXXXX.json)"
-        jq -n --arg name "$agent_name" --arg profile "$agent_profile" --slurpfile cfg "$tmp_cfg" \
-            '{name:$name,profile:$profile,avatar_type:1,avatar:"icon-dip-agent-default",product_key:"dip",config:$cfg[0]}' > "$tmp_payload"
-        "${KWEAV[@]}" agent update "$agent_id" --body-file "$tmp_payload"
-        rm -f "$tmp_payload"
-        rm -f "$tmp_cfg"
-    fi
-
-    if [ "$DO_PUBLISH" = 1 ]; then
-        echo "  publish" >&2
-        "${KWEAV[@]}" agent publish "$agent_id"
-    else
-        echo "  skip publish (--no-publish)" >&2
-    fi
-
-    write_agent_id_to_env "$agent_id"
-
+    local kn_id; kn_id="$(kn_id_from_rendered)"
     echo "" >&2
-    echo "  Done. AGENT_ID=$agent_id  KN=$kn_id" >&2
-    echo "  Chat: ${KWEAV[*]} agent chat $agent_id -m '列出近五届世界杯冠军'" >&2
+    echo "  Done. Vega catalog BKN '${kn_id:-worldcup_vega_catalog_bkn}' is live with a published" >&2
+    echo "  vega_sql_execute tool (TOOLBOX_BOX_ID=$box_id  VEGA_TOOL_ID=$tool_id) over the 27 wc_* tables." >&2
+    echo "  Query the resources directly, e.g.:" >&2
+    echo "    ${KWEAV[*]} tool invoke $tool_id --toolbox $box_id \\" >&2
+    echo "      --input query='SELECT tournament_name, winner FROM {{<tournaments_resource_id>}} ORDER BY year DESC LIMIT 5' \\" >&2
+    echo "      --input resource_type=mysql" >&2
+    echo "  (resource_id comes from: ${KWEAV[*]} vega resource list --datasource-id <catalog> --type table)" >&2
 }
 
 # ─── Driver ─────────────────────────────────────────────────────────────────
@@ -1133,10 +874,9 @@ run_step() {
         4) step_4_render_bkn ;;
         5) step_5_push_bkn ;;
         6) step_6_toolbox ;;
-        7) step_7_agent ;;
     esac
 }
 
-for n in 1 2 3 4 5 6 7; do
+for n in 1 2 3 4 5 6; do
     run_step "$n"
 done
