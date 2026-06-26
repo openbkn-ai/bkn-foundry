@@ -55,14 +55,23 @@ func getToken(c *gin.Context) (token string) {
 	return token
 }
 
-// middlewareIntrospect 令牌内省中间件
-func middlewareIntrospectVerify(hydra interfaces.Hydra) gin.HandlerFunc {
+// middlewareIntrospect 令牌内省中间件。
+// 凭据二选一:以 AppKey 前缀(bak_)开头的交给 bkn-safe 校验(用户自助签发的 API Key),
+// 其余 bearer token 走 hydra 内省。两条路产出同一个 TokenInfo,下游认证上下文一致。
+func middlewareIntrospectVerify(hydra interfaces.Hydra, appKeys interfaces.AppKeyVerifier) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		// 设置language信息到context
 		ctx = common.SetLanguageToCtx(ctx, common.GetLanguageInfo(c))
 
-		tokenInfo, err := hydra.Introspect(ctx, getToken(c))
+		token := getToken(c)
+		var tokenInfo *interfaces.TokenInfo
+		var err error
+		if appKeys != nil && strings.HasPrefix(token, interfaces.AppKeyPrefix) {
+			tokenInfo, err = appKeys.Verify(ctx, token)
+		} else {
+			tokenInfo, err = hydra.Introspect(ctx, token)
+		}
 		if err != nil {
 			rest.ReplyError(c, err)
 			c.Abort()

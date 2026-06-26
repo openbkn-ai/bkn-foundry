@@ -42,6 +42,10 @@ data:
       private_protocol: {{ index .Values "depServices" "agent-operator-integration" "privateProtocol" | quote }}
       private_host: {{ index .Values "depServices" "agent-operator-integration" "privateHost" | quote }}
       private_port: {{ index .Values "depServices" "agent-operator-integration" "privatePort" }}
+    bkn_safe:
+      private_protocol: {{ index .Values "depServices" "bkn-safe" "privateProtocol" | quote }}
+      private_host: {{ index .Values "depServices" "bkn-safe" "privateHost" | quote }}
+      private_port: {{ index .Values "depServices" "bkn-safe" "privatePort" }}
     redis:
       connectType: {{ .Values.depServices.redis.connectType | quote }}
       enableSSL: {{ .Values.depServices.redis.enableSSL }}

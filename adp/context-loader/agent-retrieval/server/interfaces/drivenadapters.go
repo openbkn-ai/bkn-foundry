@@ -190,6 +190,18 @@ type Hydra interface {
 	Introspect(ctx context.Context, token string) (tokenInfo *TokenInfo, err error)
 }
 
+// AppKeyPrefix marks a user-issued AppKey (API Key) credential. The public-API
+// auth middleware branches on this prefix: keys are verified by bkn-safe, all
+// other bearer tokens by hydra introspection.
+const AppKeyPrefix = "bak_"
+
+// AppKeyVerifier resolves a user-issued AppKey to the owner's TokenInfo by asking
+// bkn-safe. It mirrors Hydra.Introspect's contract (same TokenInfo result) so the
+// gateway middleware can treat an AppKey and an OAuth token interchangeably.
+type AppKeyVerifier interface {
+	Verify(ctx context.Context, key string) (tokenInfo *TokenInfo, err error)
+}
+
 // KnowledgeRerankActionType Result set rerank type based on business knowledge network
 type KnowledgeRerankActionType string
 

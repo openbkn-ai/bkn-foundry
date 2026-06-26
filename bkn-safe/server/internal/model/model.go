@@ -144,11 +144,33 @@ type AuditLog struct {
 	CreatedAt time.Time `json:"created_at" gorm:"index"`
 }
 
+// APIKey is a user-issued long-lived credential (AppKey). It authenticates AS its
+// owner: verification resolves the owner's id + account_type, so downstream authz
+// is identical to the owner using an OAuth token (no second permission system).
+//
+// The plaintext key has the shape "bak_<KeyID>_<secret>" and is shown ONCE at
+// issue time; only SecretHash (sha256 hex of the secret half) is stored. KeyID is
+// the public, indexed lookup half. Revoke deletes the row; Enabled is a defensive
+// soft-disable flag also checked on every verify. ExpiresAt nil = never expires.
+type APIKey struct {
+	ID          string `gorm:"primaryKey;size:64"`  // internal row id
+	KeyID       string `gorm:"uniqueIndex;size:64"` // public lookup half, embedded in the key
+	OwnerUserID string `gorm:"size:64;index"`       // User.ID this key acts as
+	Name        string `gorm:"size:128"`            // user-facing label
+	SecretHash  string `gorm:"size:128"`            // sha256 hex of the secret half
+	// ExpiresAt nil = never expires (explicit opt-in by the issuer). LastUsedAt is
+	// updated on each successful verify so stale/leaked keys can be spotted/reaped.
+	ExpiresAt  *time.Time `gorm:"index"`
+	LastUsedAt *time.Time
+	Enabled    bool
+	CreatedAt  time.Time
+}
+
 // AllModels is the migration set (Casbin's table is managed by its adapter).
 func AllModels() []any {
 	return []any{
 		&User{}, &Role{}, &Department{}, &UserDepartment{},
 		&Group{}, &GroupMember{}, &ResourceType{}, &Operation{},
-		&AuditLog{},
+		&AuditLog{}, &APIKey{},
 	}
 }

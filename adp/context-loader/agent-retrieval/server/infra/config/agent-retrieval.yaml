@@ -38,6 +38,10 @@ operator_integration:
   private_protocol: "http"
   private_host: "agent-operator-integration.kweaver"
   private_port: 9000
+bkn_safe: # bkn-safe 鉴权服务，用于校验用户自助签发的 AppKey（API Key）
+  private_protocol: "http"
+  private_host: "bkn-safe"
+  private_port: 3000
 redis:
   connectType: "sentinel"
   enableSSL: false
