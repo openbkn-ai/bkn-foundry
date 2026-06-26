@@ -46,6 +46,17 @@ func New(deps Deps) *gin.Engine {
 	// their own boundary and pass accessor_id.
 	registerAuthz(r, deps.Enforcer, deps.DB)
 
+	// AppKey (user-issued API key) store. Verification is internal, tokenless and
+	// ClusterIP-only (same trust face as /authz) — the Context Loader MCP/REST
+	// gateway calls /api/safe/v1/api-keys/introspect to resolve a key to its
+	// owner. Self-service issue/list/revoke is mounted on /me, admin oversight on
+	// /admin (both token-gated, below).
+	var apiKeys *auth.APIKeyStore
+	if deps.DB != nil {
+		apiKeys = auth.NewAPIKeyStore(deps.DB)
+		registerAPIKeyVerify(r, apiKeys)
+	}
+
 	// hydra login/consent/device provider pages.
 	if deps.Provider != nil && deps.Hydra != nil {
 		registerAuth(r, deps.Provider, deps.Hydra)
@@ -83,6 +94,10 @@ func New(deps Deps) *gin.Engine {
 		registerRoleBindings(admin, deps.Enforcer, deps.DB)
 		registerRoles(admin, deps.Enforcer, deps.DB)
 		registerObjectGrants(admin, deps.Enforcer, deps.DB)
+		// Global AppKey oversight: list/revoke any user's keys.
+		if apiKeys != nil {
+			registerAdminAPIKeys(admin, apiKeys)
+		}
 		// Login-client redirect-uri management. Falls back to Hydra in production;
 		// only mounted when a manager is available.
 		clientMgr := deps.ClientAdmin
@@ -99,6 +114,10 @@ func New(deps Deps) *gin.Engine {
 	if deps.Enforcer != nil && verifier != nil && deps.Directory != nil {
 		me := r.Group("/api/safe/v1/me", RequireUser(verifier))
 		registerMe(me, deps.Enforcer, deps.DB, deps.Directory)
+		// Self-service AppKey management (issue/list/revoke own keys).
+		if apiKeys != nil {
+			registerMeAPIKeys(me, apiKeys)
+		}
 	}
 
 	return r

@@ -111,6 +111,10 @@ depServices:
     privateHost: agent-operator-integration
     privatePort: 9000
     privateProtocol: http
+  bkn-safe:
+    privateHost: bkn-safe
+    privatePort: 3000
+    privateProtocol: http
   redis:
     connectType: sentinel
     enableSSL: false

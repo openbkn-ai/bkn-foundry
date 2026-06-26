@@ -27,6 +27,7 @@ import (
 
 type restPublicHandler struct {
 	Hydra                          interfaces.Hydra
+	AppKeys                        interfaces.AppKeyVerifier
 	KnRetrievalHandler             knretrieval.KnRetrievalHandler
 	MCPHandler                     http.Handler
 	KnLogicPropertyResolverHandler knlogicpropertyresolver.KnLogicPropertyResolverHandler
@@ -43,6 +44,7 @@ type restPublicHandler struct {
 func NewRestPublicHandler(logger interfaces.Logger) interfaces.HTTPRouterInterface {
 	return &restPublicHandler{
 		Hydra:                          drivenadapters.NewHydra(),
+		AppKeys:                        drivenadapters.NewAppKeyVerifier(),
 		KnRetrievalHandler:             knretrieval.NewKnRetrievalHandler(),
 		MCPHandler:                     mcp.NewMCPHandler(),
 		KnLogicPropertyResolverHandler: knlogicpropertyresolver.NewKnLogicPropertyResolverHandler(),
@@ -59,7 +61,7 @@ func NewRestPublicHandler(logger interfaces.Logger) interfaces.HTTPRouterInterfa
 // RegisterPublic 注册公共路由
 func (r *restPublicHandler) RegisterRouter(engine *gin.RouterGroup) {
 	mws := []gin.HandlerFunc{}
-	mws = append(mws, middlewareRequestLog(r.Logger), middlewareTrace, middlewareIntrospectVerify(r.Hydra), middlewareResponseFormat())
+	mws = append(mws, middlewareRequestLog(r.Logger), middlewareTrace, middlewareIntrospectVerify(r.Hydra, r.AppKeys), middlewareResponseFormat())
 	engine.Use(mws...)
 
 	engine.POST("/kn/semantic-search", r.KnRetrievalHandler.SemanticSearch)

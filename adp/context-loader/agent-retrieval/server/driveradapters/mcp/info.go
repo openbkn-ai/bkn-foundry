@@ -93,7 +93,7 @@ func BuildMCPInfo(endpoint string) (*MCPInfo, error) {
 		Endpoint:            endpoint,
 		Protocol:            "MCP / JSON-RPC 2.0 (initialize → tools/list → tools/call)",
 		Transport:           "Streamable HTTP",
-		Auth:                "Bearer token via Authorization header",
+		Auth:                "Bearer credential via Authorization header — an OAuth access token, or a long-lived user-issued AppKey (prefix bak_). No other headers required.",
 		ToolCount:           len(tools),
 		Tools:               tools,
 		ClientConfigExample: cfg,

@@ -36,8 +36,9 @@ type Config struct {
 	OAuth               OAuthConfig           `yaml:"oauth"`
 	BknBackend          PrivateBaseConfig     `yaml:"bkn_backend"`
 	OntologyQuery       PrivateBaseConfig     `yaml:"ontology_query"`
-	Vega                PrivateBaseConfig     `yaml:"vega"` // Vega data-catalog backend (run_sql / resource query)
+	Vega                PrivateBaseConfig     `yaml:"vega"`                 // Vega data-catalog backend (run_sql / resource query)
 	OperatorIntegration PrivateBaseConfig     `yaml:"operator_integration"` // Operator integration service configuration
+	BknSafe             PrivateBaseConfig     `yaml:"bkn_safe"`             // bkn-safe auth service (AppKey verification)
 	RedisConfig         RedisConfig           `yaml:"redis"`
 	Logger              interfaces.Logger     `yaml:"-"`
 	ConceptSearchConfig KnConceptSearchConfig `yaml:"concept_search_config"` // Knowledge network concept search configuration
