@@ -284,18 +284,25 @@ func (cs *catalogService) GetByID(ctx context.Context, id string, withSensitiveF
 
 	// 根据权限过滤有查看权限的对象，过滤后的数组的总长度就是总数，无需再请求总数；
 	// 内部目录按 internal_catalog 类型校验
-	matchResoucesMap, err := cs.ps.FilterResources(ctx, catalogAuthResourceType(catalog.Internal), []string{catalog.ID},
-		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, interfaces.COMMON_OPERATIONS)
-	if err != nil {
-		span.SetStatus(codes.Error, "Filter resources error")
-		return nil, err
-	}
-
-	if resrc, exist := matchResoucesMap[catalog.ID]; exist {
-		catalog.Operations = resrc.Operations // 用户当前有权限的操作
+	if catalog.Internal && interfaces.IsS2SInternalAccess(ctx) {
+		// 内部目录经集群内 S2S 访问（/in/ 内网端点）：系统内部基础设施默认放行，
+		// 不做 per-account view_detail 校验。与 resource 服务的同款豁免配套，
+		// 覆盖内部 dataset 数据查询时对其所属内部 catalog 的二次鉴权。外网端点不会带该标记。
+		catalog.Operations = interfaces.COMMON_OPERATIONS
 	} else {
-		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
-			WithErrorDetails(fmt.Sprintf("Access denied: insufficient permissions for[%v]", interfaces.OPERATION_TYPE_VIEW_DETAIL))
+		matchResoucesMap, err := cs.ps.FilterResources(ctx, catalogAuthResourceType(catalog.Internal), []string{catalog.ID},
+			[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, interfaces.COMMON_OPERATIONS)
+		if err != nil {
+			span.SetStatus(codes.Error, "Filter resources error")
+			return nil, err
+		}
+
+		if resrc, exist := matchResoucesMap[catalog.ID]; exist {
+			catalog.Operations = resrc.Operations // 用户当前有权限的操作
+		} else {
+			return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+				WithErrorDetails(fmt.Sprintf("Access denied: insufficient permissions for[%v]", interfaces.OPERATION_TYPE_VIEW_DETAIL))
+		}
 	}
 
 	accountInfos := []*interfaces.AccountInfo{&catalog.Creator, &catalog.Updater}
