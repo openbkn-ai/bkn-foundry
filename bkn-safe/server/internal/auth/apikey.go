@@ -38,6 +38,11 @@ const base62Alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrst
 // distinguish causes to callers.
 var ErrAPIKeyInvalid = errors.New("invalid api key")
 
+// ErrAPIKeyNameTaken is returned by Issue when the owner already has a key with
+// the same name. Names are unique PER OWNER (different owners may reuse a name),
+// so a user's key list stays unambiguous.
+var ErrAPIKeyNameTaken = errors.New("api key name already in use")
+
 // APIKeyStore issues, lists, revokes and verifies AppKeys, backed by GORM.
 type APIKeyStore struct {
 	db *gorm.DB
@@ -60,6 +65,18 @@ type VerifiedKey struct {
 // nil = never expires. The caller has already authenticated the owner, so the key
 // can never grant more than the owner holds.
 func (s *APIKeyStore) Issue(ctx context.Context, ownerID, name string, expiresAt *time.Time) (string, *model.APIKey, error) {
+	// Names are unique per owner so a user's key list is unambiguous. Checked at
+	// the app layer (not a DB unique index) because pre-existing rows may already
+	// hold duplicate names — a unique index would break AutoMigrate on them.
+	var dup int64
+	if err := s.db.WithContext(ctx).Model(&model.APIKey{}).
+		Where("owner_user_id = ? AND name = ?", ownerID, name).Count(&dup).Error; err != nil {
+		return "", nil, err
+	}
+	if dup > 0 {
+		return "", nil, ErrAPIKeyNameTaken
+	}
+
 	keyID := randBase62(keyIDLen)   // public lookup half
 	secret := randBase62(secretLen) // the secret half
 

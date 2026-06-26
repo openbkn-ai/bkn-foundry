@@ -96,6 +96,24 @@ func TestAPIKeyIssueListRevoke(t *testing.T) {
 	}
 }
 
+// TestAPIKeyDuplicateName: issuing a second key with the same name -> 409.
+func TestAPIKeyDuplicateName(t *testing.T) {
+	r, _, db, _ := newAdminServer(t)
+	db.Create(&model.User{ID: "u-dup", Account: "dup", Enabled: true})
+
+	if w := tokReq(t, r, http.MethodPost, meKeys, map[string]any{"name": "same"}, "u-dup"); w.Code != http.StatusCreated {
+		t.Fatalf("first: want 201, got %d", w.Code)
+	}
+	if w := tokReq(t, r, http.MethodPost, meKeys, map[string]any{"name": "same"}, "u-dup"); w.Code != http.StatusConflict {
+		t.Errorf("dup name: want 409, got %d (%s)", w.Code, w.Body.String())
+	}
+	// different owner, same name -> ok
+	db.Create(&model.User{ID: "u-dup2", Account: "dup2", Enabled: true})
+	if w := tokReq(t, r, http.MethodPost, meKeys, map[string]any{"name": "same"}, "u-dup2"); w.Code != http.StatusCreated {
+		t.Errorf("other owner same name: want 201, got %d", w.Code)
+	}
+}
+
 // TestAPIKeyExpiryRules covers resolveExpiry via the handler: default 1y,
 // never_expire -> null, explicit future, and the 400s.
 func TestAPIKeyExpiryRules(t *testing.T) {

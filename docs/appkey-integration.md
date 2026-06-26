@@ -49,6 +49,8 @@ base：`/api/safe/v1/me/api-keys`　鉴权：用户当前 OAuth token（`Authori
 ```
 > ⚠️ **`key` 字段是完整明文，只此一次**。前端必须：弹窗展示 + 一键复制 + 明确提示"关闭后无法再次查看"。**不要**把它存进任何可再次读取的地方。列表接口永远不会再返回它。
 
+> **名字按用户唯一**：同一用户已有同名 key 时签发返回 `409`（`{"error":"an api key with this name already exists"}`）。不同用户可同名。前端建议在签发前/提交时校验重名并给出友好提示。
+
 #### 列出　`GET /api/safe/v1/me/api-keys`
 ```json
 { "keys": [

@@ -41,6 +41,10 @@ func registerMeAPIKeys(g *gin.RouterGroup, keys *auth.APIKeyStore) {
 			return
 		}
 		plaintext, rec, err := keys.Issue(c.Request.Context(), owner, req.Name, exp)
+		if errors.Is(err, auth.ErrAPIKeyNameTaken) {
+			c.JSON(http.StatusConflict, gin.H{"error": "an api key with this name already exists"})
+			return
+		}
 		if err != nil {
 			serverError(c, err)
 			return

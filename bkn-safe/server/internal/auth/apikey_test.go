@@ -206,6 +206,33 @@ func TestRegenerate(t *testing.T) {
 	}
 }
 
+// TestIssueDuplicateNamePerOwner: a user can't reuse a name; different users can.
+func TestIssueDuplicateNamePerOwner(t *testing.T) {
+	s, db := newAPIKeyStore(t)
+	ctx := context.Background()
+	seedUser(t, db, "u-1", true, model.AccountTypeOther)
+	seedUser(t, db, "u-2", true, model.AccountTypeOther)
+
+	if _, _, err := s.Issue(ctx, "u-1", "ci", nil); err != nil {
+		t.Fatalf("first issue: %v", err)
+	}
+	if _, _, err := s.Issue(ctx, "u-1", "ci", nil); !errors.Is(err, ErrAPIKeyNameTaken) {
+		t.Errorf("dup name same owner: want ErrAPIKeyNameTaken, got %v", err)
+	}
+	// different owner, same name -> allowed
+	if _, _, err := s.Issue(ctx, "u-2", "ci", nil); err != nil {
+		t.Errorf("same name different owner should be allowed, got %v", err)
+	}
+	// after deleting, the name frees up
+	mine, _ := s.ListByOwner(ctx, "u-1")
+	if err := s.DeleteOwned(ctx, "u-1", mine[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.Issue(ctx, "u-1", "ci", nil); err != nil {
+		t.Errorf("reissue after delete should succeed, got %v", err)
+	}
+}
+
 // TestKeyFormat: the plaintext is the compact base62 shape and not absurdly long.
 func TestKeyFormat(t *testing.T) {
 	s, db := newAPIKeyStore(t)
