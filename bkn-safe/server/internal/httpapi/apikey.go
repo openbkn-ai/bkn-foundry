@@ -181,10 +181,18 @@ func resolveExpiry(expiresAt *string, neverExpire bool) (*time.Time, error) {
 // apiKeyJSON renders a key for API responses WITHOUT any secret. includeOwner
 // adds owner_user_id (admin views).
 func apiKeyJSON(k model.APIKey, includeOwner bool) gin.H {
+	// masked is a non-secret display hint so users can tell keys apart in a list.
+	// Rows issued before the Masked column existed fall back to a key-id-derived
+	// hint (the public key id is always available).
+	masked := k.Masked
+	if masked == "" {
+		masked = auth.MaskFromKeyID(k.KeyID)
+	}
 	h := gin.H{
 		"id":           k.ID,
 		"key_id":       k.KeyID,
 		"name":         k.Name,
+		"masked":       masked,
 		"enabled":      k.Enabled,
 		"expires_at":   k.ExpiresAt,  // null = never expires
 		"last_used_at": k.LastUsedAt, // null = never used

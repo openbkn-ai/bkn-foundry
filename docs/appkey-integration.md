@@ -41,6 +41,7 @@ base：`/api/safe/v1/me/api-keys`　鉴权：用户当前 OAuth token（`Authori
   "key_id": "b3ffa7f4...",
   "name": "我的 Cursor",
   "key": "bak_b3ffa7f4..._fb74b234...",
+  "masked": "bak_b3ff****b234",
   "enabled": true,
   "expires_at": "2027-06-26T11:49:59+02:00",
   "last_used_at": null,
@@ -48,17 +49,20 @@ base：`/api/safe/v1/me/api-keys`　鉴权：用户当前 OAuth token（`Authori
 }
 ```
 > ⚠️ **`key` 字段是完整明文，只此一次**。前端必须：弹窗展示 + 一键复制 + 明确提示"关闭后无法再次查看"。**不要**把它存进任何可再次读取的地方。列表接口永远不会再返回它。
+>
+> `masked` 是脱敏展示提示（`bak_` + key_id 前 4 + `****` + secret 尾 4），**非密钥**、可安全长期展示在列表里，用来让用户区分各个 key（明文看不到时也认得出哪个）。
 
 > **名字按用户唯一**：同一用户已有同名 key 时签发返回 `409`（`{"error":"an api key with this name already exists"}`）。不同用户可同名。前端建议在签发前/提交时校验重名并给出友好提示。
 
 #### 列出　`GET /api/safe/v1/me/api-keys`
 ```json
 { "keys": [
-  { "id": "...", "key_id": "b3ffa7f4...", "name": "我的 Cursor",
+  { "id": "...", "key_id": "b3ffa7f4...", "name": "我的 Cursor", "masked": "bak_b3ff****b234",
     "enabled": true, "expires_at": "2027-...", "last_used_at": "2026-...", "created_at": "2026-..." }
 ] }
 ```
-- 无 secret。`last_used_at` 为 `null` 表示从未使用 —— 可用于"僵尸 key"提示。
+- 无 secret。`masked` 是脱敏展示串（前缀+key_id 前4+`****`+secret 尾4），列表里用它显示密钥、供用户区分；旧版（无此列时签发的）key 回退用 key_id 推导尾4。
+- `last_used_at` 为 `null` 表示从未使用 —— 可用于"僵尸 key"提示。
 - `expires_at` 为 `null` 表示永不过期。
 
 #### 撤销　`DELETE /api/safe/v1/me/api-keys/:id`
@@ -83,7 +87,7 @@ base：`/api/safe/v1/admin/api-keys`　鉴权：管理员 OAuth token（`Require
 
 - [ ] 签发后明文一次性展示 + 复制 + "无法再次查看"提示
 - [ ] 有效期：默认 1 年；可选自定义日期；"永不过期"独立勾选 + 风险文案
-- [ ] 列表展示 `name / 创建时间 / 过期时间 / 最近使用 / 状态`
+- [ ] 列表展示 `name / 密钥脱敏（masked）/ 创建时间 / 过期时间 / 最近使用 / 状态`（密钥列直接渲染 `masked`，别再自行拼接）
 - [ ] 撤销二次确认
 - [ ] 引导文案：告诉用户"把这个 key 填到 MCP 客户端 / SDK 的 Authorization 里，替代易过期的登录 token"
 - [ ] （管理员页）全量列表 + 按 owner 过滤 + 撤销
