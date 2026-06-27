@@ -22,8 +22,43 @@
       },
       "condition": {
         "type": "object",
-        "description": "过滤条件结构，用于构建对象实例的查询筛选。支持多层嵌套：含 field（属性名）、operation（操作符，如 and/or/==/!=/in/like 等）、value 与 value_from（常量值，须同时使用）、以及 sub_conditions（子条件数组）。当 operation 为 and 或 or 时，通过 sub_conditions 递归嵌套同结构的条件，实现组合查询。",
-        "additionalProperties": true
+        "description": "过滤条件。operation 必填。比较算子（==/!=/>/>=/</<=/in/not_in/like/not_like/exist/not_exist/match）配 field + value + value_from；逻辑算子（and/or）配 sub_conditions 递归嵌套同结构条件。value 与 value_from 必须同时出现，value_from 仅支持 const。算子白名单以对象类的 condition_operations 为准。无过滤条件时可整体省略 condition。",
+        "required": ["operation"],
+        "properties": {
+          "field": {
+            "type": "string",
+            "description": "字段名（对象类属性）"
+          },
+          "operation": {
+            "type": "string",
+            "description": "条件操作符，具体支持以对象类的 condition_operations 为准",
+            "enum": ["and", "or", "==", "!=", ">", ">=", "<", "<=", "in", "not_in", "like", "not_like", "exist", "not_exist", "match"]
+          },
+          "sub_conditions": {
+            "type": "array",
+            "description": "子条件数组，用于 and/or 组合（元素为同结构 condition）",
+            "items": { "type": "object" }
+          },
+          "value_from": {
+            "type": "string",
+            "enum": ["const"],
+            "description": "值来源，仅支持 const；必须与 value 同时使用"
+          },
+          "value": {
+            "description": "字段值；与 value_from=const 同时使用。比较算子用单值，范围用 [min, max]，集合算子（in/not_in）用数组",
+            "oneOf": [
+              { "type": "string" },
+              { "type": "number" },
+              { "type": "boolean" },
+              { "type": "array", "items": { "oneOf": [
+                { "type": "string" },
+                { "type": "number" },
+                { "type": "boolean" }
+              ]}}
+            ]
+          }
+        },
+        "additionalProperties": false
       },
       "limit": {
         "type": "integer",
