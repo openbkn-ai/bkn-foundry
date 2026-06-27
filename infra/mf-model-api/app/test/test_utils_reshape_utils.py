@@ -4,6 +4,7 @@ import json
 from datetime import datetime
 from unittest.mock import AsyncMock, Mock, patch
 from app.utils.reshape_utils import reshape_source, reshape_check, reshape_param
+from app.core.config import base_config
 
 
 class TestReshapeUtils:
@@ -34,15 +35,18 @@ class TestReshapeUtils:
     @pytest.mark.asyncio
     async def test_reshape_source(self, mock_model_data):
         """测试reshape_source函数"""
-        with patch('app.utils.reshape_utils.get_userid_by_search') as mock_get_userid, \
-             patch('app.utils.reshape_utils.get_username_by_ids') as mock_get_username:
-            
+        # reshape_source 仅在 AUTH_ENABLED=true 时 await get_username_by_ids 解析用户名；
+        # 默认 false 会跳过该分支、create_by/update_by 为空。开启鉴权 + AsyncMock 才能命中。
+        with patch.object(base_config, "AUTH_ENABLED", True), \
+             patch('app.utils.reshape_utils.get_userid_by_search', new_callable=AsyncMock) as mock_get_userid, \
+             patch('app.utils.reshape_utils.get_username_by_ids', new_callable=AsyncMock) as mock_get_username:
+
             mock_get_userid.return_value = ["user123", "user456"]
             mock_get_username.return_value = {
                 "user123": "testuser1",
                 "user456": "testuser2"
             }
-            
+
             result = await reshape_source(mock_model_data, 1)
             
             assert result["count"] == 1

@@ -129,6 +129,38 @@ components:
           enum:
           - const
           type: string
+    FlatFilter:
+      description: |
+        扁平过滤项：单个 field-op-value 比较。多个 FlatFilter 按 and 组合。
+        value_from 自动取 const，无需提供。仅含比较算子，不支持 and/or（需要逻辑组合请用 Condition）。
+      required:
+      - field
+      - op
+      - value
+      type: object
+      properties:
+        field:
+          description: 字段名（对象类属性）
+          type: string
+        op:
+          description: 比较算子；白名单以对象类的 condition_operations 为准
+          enum:
+          - ==
+          - '!='
+          - '>'
+          - '>='
+          - <
+          - '<='
+          - in
+          - not_in
+          - like
+          - not_like
+          - exist
+          - not_exist
+          - match
+          type: string
+        value:
+          description: 字段值；集合算子（in/not_in）用数组
     ObjectTypeNode:
       description: 节点（对象类）信息
       required:
@@ -184,6 +216,13 @@ components:
         condition:
           $ref: '#/components/schemas/Condition'
           description: 过滤条件
+        filters:
+          description: >-
+            扁平过滤简写：多个条件按 and 组合，覆盖「字段 op 值 [AND ...]」常见场景。
+            与 condition 互斥（同传时 condition 优先）；需要 or/嵌套时改用 condition。
+          type: array
+          items:
+            $ref: '#/components/schemas/FlatFilter'
         sort:
           type: array
           items:

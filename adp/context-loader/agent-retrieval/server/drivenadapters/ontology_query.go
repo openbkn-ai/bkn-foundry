@@ -58,6 +58,28 @@ func NewOntologyQueryAccess() interfaces.DrivenOntologyQuery {
 
 // QueryObjectInstances 检索指定对象类的对象的详细数据
 func (o *ontologyQueryClient) QueryObjectInstances(ctx context.Context, req *interfaces.QueryObjectInstancesReq) (resp *interfaces.QueryObjectInstancesResp, err error) {
+	// Expand the flat `filters` sugar into a nested condition before forwarding.
+	// Filters are AND-combined; value_from defaults to const. condition wins if
+	// both are set. Clear Filters so the sugar field is never sent downstream.
+	if len(req.Filters) > 0 {
+		if req.Cond == nil {
+			subs := make([]*interfaces.KnCondition, 0, len(req.Filters))
+			for _, f := range req.Filters {
+				subs = append(subs, &interfaces.KnCondition{
+					Field:     f.Field,
+					Operation: f.Op,
+					Value:     f.Value,
+					ValueFrom: interfaces.CondValueFromConst,
+				})
+			}
+			req.Cond = &interfaces.KnCondition{
+				Operation:     interfaces.KnOperationTypeAnd,
+				SubConditions: subs,
+			}
+		}
+		req.Filters = nil
+	}
+
 	uri := fmt.Sprintf(queryObjectInstancesURI, req.KnID, req.OtID, req.IncludeTypeInfo, req.IncludeLogicParams)
 	url := fmt.Sprintf("%s%s", o.baseURL, uri)
 	header := common.GetHeaderFromCtx(ctx)

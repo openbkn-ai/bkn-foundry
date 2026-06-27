@@ -1,0 +1,11 @@
+# Test-only dependencies for mf-model-manager unit tests (issue #2).
+#
+# App runtime deps come from the model-factory-base image. Install these on top
+# of that image to run the unit tests:
+#
+#   pip install -r requirements-test.txt && pytest app/test
+#
+# No httpx pin needed here: these tests don't use fastapi TestClient (unlike
+# mf-model-api). They drive controllers directly via asyncio event loops.
+pytest>=7.4
+pytest-asyncio>=0.21

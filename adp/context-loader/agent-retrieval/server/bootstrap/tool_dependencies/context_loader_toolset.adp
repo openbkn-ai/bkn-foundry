@@ -1532,6 +1532,13 @@
                         "condition": {
                           "$ref": "#/components/schemas/Condition"
                         },
+                        "filters": {
+                          "description": "扁平过滤简写：多个条件按 and 组合，覆盖「字段 op 值 [AND ...]」常见场景。与 condition 互斥（同传时 condition 优先）；需要 or/嵌套时改用 condition。",
+                          "items": {
+                            "$ref": "#/components/schemas/FlatFilter"
+                          },
+                          "type": "array"
+                        },
                         "limit": {
                           "type": "integer",
                           "description": "返回的数量，默认值 10。范围 1-100",
@@ -1551,6 +1558,29 @@
                       },
                       "type": "object",
                       "description": "分页查询的第一次查询请求"
+                    },
+                    "FlatFilter": {
+                      "description": "扁平过滤项：单个 field-op-value 比较。多个 FlatFilter 按 and 组合。value_from 自动取 const，无需提供。仅含比较算子，不支持 and/or（逻辑组合请用 Condition）。",
+                      "required": [
+                        "field",
+                        "op",
+                        "value"
+                      ],
+                      "properties": {
+                        "field": {
+                          "description": "字段名（对象类属性）",
+                          "type": "string"
+                        },
+                        "op": {
+                          "description": "比较算子；白名单以对象类的 condition_operations 为准",
+                          "enum": ["==", "!=", ">", ">=", "<", "<=", "in", "not_in", "like", "not_like", "exist", "not_exist", "match"],
+                          "type": "string"
+                        },
+                        "value": {
+                          "description": "字段值；集合算子（in/not_in）用数组"
+                        }
+                      },
+                      "type": "object"
                     },
                     "Parameter4Metric": {
                       "description": "逻辑参数",
