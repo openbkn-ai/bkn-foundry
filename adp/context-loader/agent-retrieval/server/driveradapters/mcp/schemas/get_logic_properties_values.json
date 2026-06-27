@@ -2,6 +2,10 @@
   "input_schema": {
     "type": "object",
     "properties": {
+      "kn_id": {
+        "type": "string",
+        "description": "知识网络 ID。也可改用 X-Kn-ID 请求头传入。"
+      },
       "ot_id": {
         "type": "string",
         "description": "对象类型ID"
@@ -32,7 +36,7 @@
         "description": "可选。覆盖动态参数生成所用大模型；为空走系统默认大模型。仅供测试/验证指定模型。"
       }
     },
-    "required": ["ot_id", "query", "_instance_identities", "properties"]
+    "required": ["kn_id", "ot_id", "query", "_instance_identities", "properties"]
   },
   "output_schema": {
     "type": "object",

@@ -343,10 +343,13 @@ func handleFindSkills(service interfaces.IFindSkillsService) func(ctx context.Co
 			return mcp.NewToolResultError("authentication required"), nil
 		}
 
-		knID := getKnIDFromHeader(req)
+		knID := getStringArg(req, "kn_id", "")
+		if knID == "" {
+			knID = getKnIDFromHeader(req)
+		}
 		if knID == "" {
 			return mcp.NewToolResultError(
-				"kn_id is required (configure X-Kn-ID header)",
+				"kn_id is required (pass kn_id in body or configure X-Kn-ID header)",
 			), nil
 		}
 

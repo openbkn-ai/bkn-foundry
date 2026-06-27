@@ -8,6 +8,10 @@
         "default": "toon",
         "description": "文本格式：json 或 toon，默认 toon"
       },
+      "kn_id": {
+        "type": "string",
+        "description": "知识网络 ID。也可改用 X-Kn-ID 请求头传入。"
+      },
       "query": {
         "type": "string",
         "description": "用户查询问题或关键词，多个关键词之间用空格隔开"
@@ -62,7 +66,7 @@
         "description": "是否对关系类型启用 Rerank"
       }
     },
-    "required": ["query"]
+    "required": ["kn_id", "query"]
   },
   "output_schema": {
     "type": "object",
