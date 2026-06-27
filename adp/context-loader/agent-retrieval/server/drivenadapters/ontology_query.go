@@ -57,28 +57,37 @@ func NewOntologyQueryAccess() interfaces.DrivenOntologyQuery {
 }
 
 // QueryObjectInstances 检索指定对象类的对象的详细数据
+// expandFilters converts the flat Filters shortcut into a nested AND
+// condition so downstream only ever sees `condition`. It is a no-op when
+// there are no filters. When condition is already set it leaves condition
+// untouched (condition wins), but it always clears Filters so the sugar
+// field is never forwarded to ontology-query. Each filter becomes a leaf
+// with value_from=const.
+func expandFilters(req *interfaces.QueryObjectInstancesReq) {
+	if len(req.Filters) == 0 {
+		return
+	}
+	if req.Cond == nil {
+		subs := make([]*interfaces.KnCondition, 0, len(req.Filters))
+		for _, f := range req.Filters {
+			subs = append(subs, &interfaces.KnCondition{
+				Field:     f.Field,
+				Operation: f.Op,
+				Value:     f.Value,
+				ValueFrom: interfaces.CondValueFromConst,
+			})
+		}
+		req.Cond = &interfaces.KnCondition{
+			Operation:     interfaces.KnOperationTypeAnd,
+			SubConditions: subs,
+		}
+	}
+	req.Filters = nil
+}
+
 func (o *ontologyQueryClient) QueryObjectInstances(ctx context.Context, req *interfaces.QueryObjectInstancesReq) (resp *interfaces.QueryObjectInstancesResp, err error) {
 	// Expand the flat `filters` sugar into a nested condition before forwarding.
-	// Filters are AND-combined; value_from defaults to const. condition wins if
-	// both are set. Clear Filters so the sugar field is never sent downstream.
-	if len(req.Filters) > 0 {
-		if req.Cond == nil {
-			subs := make([]*interfaces.KnCondition, 0, len(req.Filters))
-			for _, f := range req.Filters {
-				subs = append(subs, &interfaces.KnCondition{
-					Field:     f.Field,
-					Operation: f.Op,
-					Value:     f.Value,
-					ValueFrom: interfaces.CondValueFromConst,
-				})
-			}
-			req.Cond = &interfaces.KnCondition{
-				Operation:     interfaces.KnOperationTypeAnd,
-				SubConditions: subs,
-			}
-		}
-		req.Filters = nil
-	}
+	expandFilters(req)
 
 	uri := fmt.Sprintf(queryObjectInstancesURI, req.KnID, req.OtID, req.IncludeTypeInfo, req.IncludeLogicParams)
 	url := fmt.Sprintf("%s%s", o.baseURL, uri)
