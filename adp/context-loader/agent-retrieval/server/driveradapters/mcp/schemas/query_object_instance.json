@@ -8,6 +8,10 @@
         "default": "toon",
         "description": "文本格式：json 或 toon，默认 toon"
       },
+      "kn_id": {
+        "type": "string",
+        "description": "知识网络 ID。也可改用 X-Kn-ID 请求头传入。"
+      },
       "ot_id": {
         "type": "string",
         "description": "对象类型ID"
@@ -42,7 +46,7 @@
         "description": "指定返回的对象属性字段列表，默认返回所有属性"
       }
     },
-    "required": ["ot_id"]
+    "required": ["kn_id", "ot_id"]
   },
   "output_schema": {
     "type": "object",

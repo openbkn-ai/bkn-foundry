@@ -8,6 +8,10 @@
         "default": "toon",
         "description": "文本格式：json 或 toon，默认 toon"
       },
+      "kn_id": {
+        "type": "string",
+        "description": "知识网络 ID。也可改用 X-Kn-ID 请求头传入。"
+      },
       "include_logic_params": {
         "type": "boolean",
         "description": "是否返回逻辑属性计算参数，默认 false"
@@ -114,7 +118,7 @@
         }
       }
     },
-    "required": ["relation_type_paths"]
+    "required": ["kn_id", "relation_type_paths"]
   },
   "output_schema": {
     "type": "object",

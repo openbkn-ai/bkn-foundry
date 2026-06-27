@@ -2,6 +2,10 @@
   "input_schema": {
     "type": "object",
     "properties": {
+      "kn_id": {
+        "type": "string",
+        "description": "知识网络 ID。也可改用 X-Kn-ID 请求头传入。"
+      },
       "at_id": {
         "type": "string",
         "description": "行动类型ID"
@@ -15,7 +19,7 @@
         }
       }
     },
-    "required": ["at_id"]
+    "required": ["kn_id", "at_id"]
   },
   "output_schema": {
     "type": "object",
