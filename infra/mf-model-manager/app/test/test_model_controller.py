@@ -1,60 +1,50 @@
 from datetime import datetime
 from unittest import TestCase, mock
 
-import requests
 from llmadapter.llms.llm_factory import llm_factory
 from sse_starlette import EventSourceResponse
 
 from app.dao.llm_model_dao import llm_model_dao
 from app.logs.stand_log import StandLogger
 from app.utils import llm_utils
-from app.utils.llm_utils import model_config
 from app.controller import llm_controller
 import asyncio
 import json
 
 
-class ResponseTest:
-    status_code = 200
-    def json(self):
-        return {
-            "choices": []
-        }
+def _msg(content, role):
+    # used_model_openai 直接访问 tool_calls/tool_call_id 键，缺失会 KeyError，需显式补 None
+    return {"content": content, "role": role, "tool_calls": None, "tool_call_id": None}
 
 
 class TestUsedModelOpenai(TestCase):
     def setUp(self) -> None:
         self.get_data_from_model_list_by_name = llm_model_dao.get_data_from_model_list_by_name
         self.OtherClient = llm_utils.OtherClient
-        self.get_context_size = llm_utils.get_context_size
-        self.openai_series_stream = llm_utils.openai_series_stream
-        self.get_model_config = model_config.get_model_config
-        self.encode = llm_utils.encode
-        model_config.get_model_config = mock.Mock(return_value={"context_size": 32 * 1024})
-        pass
+        self.redis_util = llm_controller.redis_util
 
     def tearDown(self) -> None:
         llm_model_dao.get_data_from_model_list_by_name = self.get_data_from_model_list_by_name
         llm_utils.OtherClient = self.OtherClient
-        llm_utils.get_context_size = self.get_context_size
-        llm_utils.openai_series_stream = self.openai_series_stream
-        model_config.get_model_config = self.get_model_config
-        llm_utils.encode = self.encode
+        llm_controller.redis_util = self.redis_util
         StandLogger.stand_log_shutdown()
+
+    def _redis_mock(self):
+        # get_str 返回 None -> 走 DB 分支；delete_str/set_str 为 async
+        redis_mock = mock.MagicMock()
+        redis_mock.get_str = mock.AsyncMock(return_value=None)
+        redis_mock.set_str = mock.AsyncMock(return_value=None)
+        redis_mock.delete_str = mock.AsyncMock(return_value=None)
+        return redis_mock
 
     def test_used_model_openai_success1(self):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
+        llm_controller.redis_util = self._redis_mock()
         request = {
             "messages": [
-                {
-                    "content": "You are a helpful assistant",
-                    "role": "system"
-                },
-                {
-                    "content": "Hi",
-                    "role": "user"
-                }
+                _msg("You are a helpful assistant", "system"),
+                _msg("Hi", "user"),
             ],
             "model": "test_model",
             "frequency_penalty": 0,
@@ -76,29 +66,24 @@ class TestUsedModelOpenai(TestCase):
             "f_model_config": '{"api_key": "xxx", "api_model": "qianxun-l-128k", "api_type": "openai", "api_url": "https://qianxun.rcrai.com/open/qianxun/v1/chat/completions"}',
             "f_model": "qianxun-l-128k",
             "f_max_model_len": 32,
-            "f_model_parameters": 72
+            "f_model_parameters": 72,
+            "f_quota": 0
         }])
-        model_config.get_model_config = mock.Mock(return_value={"context_size": 4096})
         m1 = mock.MagicMock()
         m1.chat_completion = mock.AsyncMock(return_value={})
         llm_utils.OtherClient = mock.Mock(return_value=m1)
         res = loop.run_until_complete(
-            llm_controller.used_model_openai(request, "111"))
+            llm_controller.used_model_openai(request, "111", "zh", "test"))
         self.assertEqual({}, json.loads(res.body))
 
     def test_used_model_openai_success2(self):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
+        llm_controller.redis_util = self._redis_mock()
         request = {
             "messages": [
-                {
-                    "content": "You are a helpful assistant",
-                    "role": "system"
-                },
-                {
-                    "content": "Hi",
-                    "role": "user"
-                }
+                _msg("You are a helpful assistant", "system"),
+                _msg("Hi", "user"),
             ],
             "model": "test_model",
             "frequency_penalty": 0,
@@ -120,13 +105,11 @@ class TestUsedModelOpenai(TestCase):
             "f_model_config": '{"api_key": "xxx", "api_model": "qianxun-l-128k", "api_type": "openai", "api_url": "https://qianxun.rcrai.com/open/qianxun/v1/chat/completions"}',
             "f_model": "gpt-35-turbo-16k",
             "f_max_model_len": 32,
-            "f_model_parameters": 72
+            "f_model_parameters": 72,
+            "f_quota": 0
         }])
-        m1 = mock.MagicMock()
-        m1.chat_completion.return_value = {}
-        llm_utils.openai_series_stream = mock.Mock(return_value={})
         res = loop.run_until_complete(
-            llm_controller.used_model_openai(request, "111"))
+            llm_controller.used_model_openai(request, "111", "zh", "test"))
         self.assertEqual(isinstance(res, EventSourceResponse), True)
 
 
@@ -147,7 +130,6 @@ class TestAddModel(TestCase):
         asyncio.set_event_loop(loop)
         request = {
             "model_config": {
-
                 "api_model": "qianxun-l-128k",
                 "api_url": "https://qianxun.rcrai.com/open/qianxun/v1",
                 "api_key": "ckm-652a0795c43b8abca48ce7627d65e910",
@@ -155,105 +137,61 @@ class TestAddModel(TestCase):
             },
             "model_series": "openai",
             "model_name": "qianxun-l-128k",
-            "max_model_len": 128
+            "model_type": "llm",
+            "max_model_len": 128,
+            "quota": True
         }
         llm_model_dao.add_data_into_model_list = mock.Mock(return_value=None)
         llm_model_dao.get_model_by_name = mock.Mock(return_value=())
         llm_model_dao.check_model_unique = mock.Mock(return_value=False)
+        # add_model 返回 {"status": "ok", "id": str(model_id)}
         res = loop.run_until_complete(
-            llm_controller.add_model(request, "111"))
-        self.assertEqual(json.loads(res.body)["res"], True)
-
-
+            llm_controller.add_model(request, "111", "zh"))
+        self.assertEqual(json.loads(res.body)["status"], "ok")
+        self.assertEqual(isinstance(json.loads(res.body)["id"], str), True)
 
 
 # test_model
 class TestTestModel(TestCase):
     def setUp(self) -> None:
         self.get_data_from_model_list_by_id = llm_model_dao.get_data_from_model_list_by_id
-        self.get_all_model_list = llm_model_dao.get_all_model_list
-        self.create_llm = llm_factory.create_llm
-        self.add_model_op_log = model_used_audit_controller.add_model_op_log
-        self.encode = llm_utils.encode
-        self.post = requests.post
 
     def tearDown(self) -> None:
         llm_model_dao.get_data_from_model_list_by_id = self.get_data_from_model_list_by_id
-        llm_model_dao.get_all_model_list = self.get_all_model_list
-        requests.post = self.post
-        llm_factory.create_llm = self.create_llm
-        model_used_audit_controller.add_model_op_log = self.add_model_op_log
-        llm_utils.encode = self.encode
         StandLogger.stand_log_shutdown()
 
-    def test_test_model_success1(self):
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        request = {
-            "model_config": {
-                "model_name": "qianxun-l-128k-1",
-                "api_model": "qianxun-l-128k",
-                "api_url": "https://qianxun.rcrai.com/open/qianxun/v1/chat/completions",
-                "api_key": "ckm-652a0795c43b8abca48ce7627d65e910",
-                "api_type": "openai"
-            },
-            "model_series": "others"
-        }
-        response = ResponseTest()
-        requests.post = mock.Mock(return_value=response)
-        res = loop.run_until_complete(
-            llm_controller.test_model(request, "111"))
-        self.assertEqual(json.loads(res.body)["res"]["status"], True)
-
-    def test_test_model_success2(self):
+    def test_test_model_success_openai(self):
+        # series=openai 时 llm_test 不发真实请求，直接返回 status=True
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         request = {"model_id": "111"}
-        llm_model_dao.get_all_model_list = mock.Mock(return_value=[{"f_model_id": "111"}])
-        llm_model_dao.get_data_from_model_list_by_id = mock.Mock(return_value=[{"f_model_id": "111", "f_create_by": "111",
-                                                                            "f_is_delete": 0, "f_model_config": '{"api_key": "111", "api_model": "gpt-4-32k", "api_url": "https://artificial-intelligence-01.openai.azure.com/"}',
-                                                                            "f_model_series": "openai"}])
-        m1 = mock.MagicMock()
-        m1.predict.return_value = "你好"
-        llm_factory.create_llm = mock.Mock(return_value=m1)
-        model_used_audit_controller.add_model_op_log = mock.Mock(return_value=None)
+        llm_model_dao.get_data_from_model_list_by_id = mock.Mock(return_value=[{
+            "f_model_id": "111",
+            "f_create_by": "111",
+            "f_is_delete": 0,
+            "f_model_config": '{"api_key": "111", "api_model": "gpt-4-32k", "api_url": "https://artificial-intelligence-01.openai.azure.com/"}',
+            "f_model_series": "openai",
+            "f_model_type": "chat",
+        }])
         res = loop.run_until_complete(
-            llm_controller.test_model(request, "111"))
+            llm_controller.test_model(request, "111", "zh"))
         self.assertEqual(json.loads(res.body)["res"]["status"], True)
 
-    def test_test_model_success3(self):
+    def test_test_model_fail_unreachable(self):
+        # 非 openai series 走真实 HTTP，连接失败 -> 返回 TestModel.Error
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         request = {"model_id": "111"}
-        llm_model_dao.get_all_model_list = mock.Mock(return_value=[{"f_model_id": "111"}])
-        llm_model_dao.get_data_from_model_list_by_id = mock.Mock(return_value=[{"f_model_id": "111", "f_create_by": "111",
-                                                                            "f_is_delete": 0, "f_model_config": '{"api_key": "123", "api_model": "AIshuReader", "api_url": "http://192.168.102.250:8303/v1", "api_type": "openai"}',
-                                                                            "f_model_series": "openai"}])
-        m1 = mock.MagicMock()
-        m1.predict.return_value = "你好"
-        m1.get_num_tokens.return_value = 2
-        llm_factory.create_llm = mock.Mock(return_value=m1)
-        model_used_audit_controller.add_model_op_log = mock.Mock(return_value=None)
-        llm_utils.encode = mock.Mock(return_value={"count": 5})
+        llm_model_dao.get_data_from_model_list_by_id = mock.Mock(return_value=[{
+            "f_model_id": "111",
+            "f_create_by": "111",
+            "f_is_delete": 0,
+            "f_model_config": '{"api_key": "111", "api_model": "AIshuReader", "api_url": "http://127.0.0.1:1/v1"}',
+            "f_model_series": "others",
+            "f_model_type": "llm",
+        }])
         res = loop.run_until_complete(
-            llm_controller.test_model(request, "111"))
-        self.assertEqual(json.loads(res.body)["res"]["status"], True)
-
-    def test_test_model_fail1(self):
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        request = {"model_id": "111"}
-        llm_model_dao.get_all_model_list = mock.Mock(return_value=[{"f_model_id": "111"}])
-        llm_model_dao.get_data_from_model_list_by_id = mock.Mock(return_value=[{"f_model_id": "111", "f_create_by": "111",
-                                                                            "f_is_delete": 0, "f_model_config": '{"api_key": "111", "api_model": "gpt-4-32k", "api_base": "https://artificial-intelligence-01.openai.azure.com/"}',
-                                                                            "f_model_series": "aishu"}])
-        m1 = mock.MagicMock()
-        m1.predict.return_value = "你好"
-        m1.get_num_tokens.return_value = 2
-        llm_factory.create_llm = mock.Mock(return_value=m1)
-        model_used_audit_controller.add_model_op_log = mock.Mock(return_value=None)
-        res = loop.run_until_complete(
-            llm_controller.test_model(request, "111"))
+            llm_controller.test_model(request, "111", "zh"))
         self.assertEqual(json.loads(res.body)["code"], "ModelFactory.ModelController.TestModel.Error")
 
 
@@ -261,17 +199,24 @@ class TestEditModel(TestCase):
     def setUp(self) -> None:
         self.get_all_model_list = llm_model_dao.get_all_model_list
         self.get_data_from_model_list_by_id = llm_model_dao.get_data_from_model_list_by_id
-        self.rename_model = llm_model_dao.rename_model
+        self.get_model_by_name = llm_model_dao.get_model_by_name
+        self.edit_model = llm_model_dao.edit_model
+        self.redis_util = llm_controller.redis_util
 
     def tearDown(self) -> None:
         llm_model_dao.get_all_model_list = self.get_all_model_list
         llm_model_dao.get_data_from_model_list_by_id = self.get_data_from_model_list_by_id
-        llm_model_dao.rename_model = self.rename_model
+        llm_model_dao.get_model_by_name = self.get_model_by_name
+        llm_model_dao.edit_model = self.edit_model
+        llm_controller.redis_util = self.redis_util
         StandLogger.stand_log_shutdown()
 
     def test_edit_model_success(self):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
+        redis_mock = mock.MagicMock()
+        redis_mock.delete_str = mock.AsyncMock(return_value=None)
+        llm_controller.redis_util = redis_mock
         request = {
             "model_name": "gpt-35s",
             "model_config": {
@@ -281,22 +226,24 @@ class TestEditModel(TestCase):
                 "api_key": "111"
             },
             "model_series": "aishu",
+            "model_type": "llm",
             "icon": "azure",
             "model_id": "111",
-            "max_model_len": 32
+            "max_model_len": 32,
+            "quota": False
         }
         llm_model_dao.get_all_model_list = mock.Mock(return_value=[{"f_model_id": "111", "f_model_name": "111"}])
-        llm_model_dao.get_data_from_model_list_by_id = mock.Mock(return_value=[{"f_model_id": "111", "f_create_by": "111",
-                                                                            "f_is_delete": 0,
-                                                                            "f_model_config": '{"api_key": "111", "api_model": "gpt-4-32k", "api_base": "https://artificial-intelligence-01.openai.azure.com/"}',
-                                                                            "f_model_series": "aishu",
-                                                                            "f_model_name": "111"}])
-        llm_model_dao.rename_model = mock.Mock(return_value=None)
+        llm_model_dao.get_data_from_model_list_by_id = mock.Mock(return_value=[{
+            "f_model_id": "111", "f_create_by": "111", "f_is_delete": 0,
+            "f_model_config": '{"api_key": "111", "api_model": "gpt-4-32k", "api_base": "https://artificial-intelligence-01.openai.azure.com/"}',
+            "f_model_series": "aishu", "f_model_name": "111", "f_quota": False}])
+        llm_model_dao.edit_model = mock.Mock(return_value=None)
         res = loop.run_until_complete(
-            llm_controller.edit_model(request, "111"))
-        self.assertEqual(json.loads(res.body)["res"], True)
+            llm_controller.edit_model(request, "111", "zh"))
+        self.assertEqual(json.loads(res.body)["status"], "ok")
 
     def test_edit_model_fail1(self):
+        # model_type 非法 -> llm_edit_verify 返回 LLMEdit.ParameterError
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         request = {
@@ -308,22 +255,18 @@ class TestEditModel(TestCase):
                 "api_key": "111"
             },
             "model_series": "openai",
+            "model_type": "invalid_type",
             "icon": "azure",
             "model_id": "111",
-            "max_model_len": 32
+            "max_model_len": 32,
+            "quota": False
         }
-        llm_model_dao.get_all_model_list = mock.Mock(return_value=[{"f_model_id": "111", "f_model_name": "111"}])
-        llm_model_dao.get_data_from_model_list_by_id = mock.Mock(return_value=[{"f_model_id": "111", "f_create_by": "111",
-                                                                            "f_is_delete": 0,
-                                                                            "f_model_config": '{"api_key": "111", "api_model": "gpt-4-32k", "api_base": "https://artificial-intelligence-01.openai.azure.com/"}',
-                                                                            "f_model_series": "aishu",
-                                                                            "f_model_name": "111"}])
-        llm_model_dao.rename_model = mock.Mock(return_value=None)
         res = loop.run_until_complete(
-            llm_controller.edit_model(request, "111"))
+            llm_controller.edit_model(request, "111", "zh"))
         self.assertEqual(json.loads(res.body)["code"], "ModelFactory.ConnectController.LLMEdit.ParameterError")
 
     def test_edit_model_fail2(self):
+        # max_model_len 非法 -> llm_edit_verify 返回 LLMEdit.ParameterError
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         request = {
@@ -334,79 +277,60 @@ class TestEditModel(TestCase):
                 "api_key": "111"
             },
             "model_series": "aishu-m",
+            "model_type": "llm",
             "icon": "azure",
             "model_id": "111",
-            "max_model_len": 32
+            "max_model_len": 0,
+            "quota": False
         }
-        llm_model_dao.get_all_model_list = mock.Mock(return_value=[{"f_model_id": "111", "f_model_name": "111"}])
-        llm_model_dao.get_data_from_model_list_by_id = mock.Mock(return_value=[{"f_model_id": "111", "f_create_by": "111",
-                                                                            "f_is_delete": 0,
-                                                                            "f_model_config": '{"api_key": "111", "api_model": "gpt-4-32k", "api_base": "https://artificial-intelligence-01.openai.azure.com/"}',
-                                                                            "f_model_series": "aishu",
-                                                                            "f_model_name": "111"}])
-        llm_model_dao.rename_model = mock.Mock(return_value=None)
         res = loop.run_until_complete(
-            llm_controller.edit_model(request, "111"))
+            llm_controller.edit_model(request, "111", "zh"))
         self.assertEqual(json.loads(res.body)["code"], "ModelFactory.ConnectController.LLMEdit.ParameterError")
 
 
 class TestSourceModel(TestCase):
     def setUp(self) -> None:
         self.get_data_from_model_list_by_name_fuzzy = llm_model_dao.get_data_from_model_list_by_name_fuzzy
-        self.get_data_from_model_list_by_name_fuzzy_and_series = llm_model_dao.get_data_from_model_list_by_name_fuzzy_and_series
 
     def tearDown(self) -> None:
         llm_model_dao.get_data_from_model_list_by_name_fuzzy = self.get_data_from_model_list_by_name_fuzzy
-        llm_model_dao.get_data_from_model_list_by_name_fuzzy_and_series = self.get_data_from_model_list_by_name_fuzzy_and_series
         StandLogger.stand_log_shutdown()
+
+    def _row(self):
+        return {
+            "f_model_id": "111",
+            "f_model_name": "111",
+            "f_model_series": "aishu",
+            "f_model": "AIshuReader",
+            "f_model_api": "111",
+            "f_create_by": "111",
+            "f_update_by": "111",
+            "f_create_time": datetime.today(),
+            "f_update_time": datetime.today(),
+            "f_icon": "aishu",
+            "f_quota": 0,
+            "f_max_model_len": 32,
+            "f_model_parameters": 72,
+            "f_model_type": "llm",
+            "f_default": 0,
+            "f_model_config": '{"api_key": "111", "api_model": "AIshuReader", "api_url": "http://x/v1"}'
+        }
 
     def test_source_model_success1(self):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        llm_model_dao.get_data_from_model_list_by_name_fuzzy = mock.Mock(return_value=[
-            {
-                "f_model_id": "111",
-                "f_model_name": "111",
-                "f_model_series": "aishu",
-                "f_model": "AIshuReader",
-                "f_model_api": "111",
-                "f_create_by": "111",
-                "f_update_by": "111",
-                "f_create_time": datetime.today(),
-                "f_update_time": datetime.today(),
-                "f_icon": "aishu",
-                "f_quota": 0,
-                "f_max_model_len": 32,
-                "f_model_parameters": 72
-            }
-        ])
+        llm_model_dao.get_data_from_model_list_by_name_fuzzy = mock.Mock(return_value=[self._row()])
         res = loop.run_until_complete(
-            llm_controller.source_model("111", "1", "10", "", "desc", "all", "update_time", "AIshuReader", None, 0))
-        self.assertEqual(json.loads(res.body)["res"]["data"][0]["model_id"], "111")
+            llm_controller.source_model("111", "zh", "1", "10", "", "desc", "all", "update_time", "AIshuReader", None, 0))
+        self.assertEqual(json.loads(res.body)["data"][0]["model_id"], "111")
 
     def test_source_model_success2(self):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        llm_model_dao.get_data_from_model_list_by_name_fuzzy_and_series = mock.Mock(return_value=[
-            {
-                "f_model_id": "111",
-                "f_model_name": "111",
-                "f_model_series": "aishu",
-                "f_model": "AIshuReader",
-                "f_model_api": "111",
-                "f_create_by": "111",
-                "f_update_by": "111",
-                "f_create_time": datetime.today(),
-                "f_update_time": datetime.today(),
-                "f_icon": "aishu",
-                "f_quota": 0,
-                "f_max_model_len": 32,
-                "f_model_parameters": 72
-            }
-        ])
+        llm_model_dao.get_data_from_model_list_by_name_fuzzy = mock.Mock(return_value=[self._row()])
         res = loop.run_until_complete(
-            llm_controller.source_model("111", "1", "10", "", "desc", "aishu", "update_time", "AIshuReader", None, 0))
-        self.assertEqual(json.loads(res.body)["res"]["data"][0]["model_id"], "111")
+            llm_controller.source_model("111", "zh", "1", "10", "", "desc", "aishu", "update_time", "AIshuReader", None, 0))
+        self.assertEqual(json.loads(res.body)["data"][0]["model_id"], "111")
 
 
 class TestCheckModel(TestCase):
@@ -422,25 +346,17 @@ class TestCheckModel(TestCase):
     def test_check_model_success(self):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        llm_model_dao.get_data_from_model_list_by_id = mock.Mock(return_value=[{"f_model_id": "111", "f_create_by": "111",
-                                                                            "f_is_delete": 0,
-                                                                            "f_model_config": '{"api_key": "111", "api_model": "gpt-4-32k", "api_base": "https://artificial-intelligence-01.openai.azure.com/"}',
-                                                                            "f_model_series": "aishu",
-                                                                            "f_model_name": "111", "f_model_url": "1",
-                                                                            "f_icon": "aishu",
-                                                                            "f_quota": 0,
-                "f_max_model_len": 32,
-                "f_model_parameters": 72}])
-        llm_model_dao.get_all_model_list = mock.Mock(return_value=[{"f_model_id": "111", "f_model_name": "111",
-                                                                "f_model": "AIshuReader", "f_create_by": "111",
-                "f_max_model_len": 32,
-                "f_model_parameters": 72}])
+        llm_model_dao.get_data_from_model_list_by_id = mock.Mock(return_value=[{
+            "f_model_id": "111", "f_create_by": "111", "f_is_delete": 0,
+            "f_model_config": '{"api_key": "111", "api_model": "gpt-4-32k", "api_base": "https://artificial-intelligence-01.openai.azure.com/"}',
+            "f_model_series": "aishu", "f_model_name": "111", "f_model_url": "1", "f_icon": "aishu",
+            "f_quota": 0, "f_max_model_len": 32, "f_model_parameters": 72, "f_model_type": "llm"}])
+        llm_model_dao.get_all_model_list = mock.Mock(return_value=[{
+            "f_model_id": "111", "f_model_name": "111", "f_model": "AIshuReader", "f_create_by": "111",
+            "f_max_model_len": 32, "f_model_parameters": 72}])
         res = loop.run_until_complete(
-            llm_controller.check_model("111", "111"))
-        self.assertEqual(json.loads(res.body)["res"]["model_id"], "111")
-
-
-
+            llm_controller.check_model("111", "111", "zh"))
+        self.assertEqual(json.loads(res.body)["model_id"], "111")
 
 
 if __name__ == '__main__':

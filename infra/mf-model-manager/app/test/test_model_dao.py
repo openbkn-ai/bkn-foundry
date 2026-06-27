@@ -178,33 +178,10 @@ class TestAddDataIntoModelList(TestCase):
         m2.cursor.return_value = m3
         # 为PymysqlPool.get_pool函数创建mock对象
         PymysqlPool.get_pool = mock.Mock(return_value=m1)
-        res = llm_model_dao.add_data_into_model_list("222", "222", "222", "222", "222", "222", "222", "222", "222", "222",
-                                                 0, 32, 72)
-        self.assertEqual(None, res)
-
-
-# rename_model函数的测试类
-class TestRenameModel(TestCase):
-    def setUp(self) -> None:
-        self.mysqlPool = PymysqlPool
-        self.model_config_rename = llm_utils.model_config.model_config_rename
-
-    def tearDown(self) -> None:
-        PymysqlPool = self.mysqlPool
-        self.model_config_rename = llm_utils.model_config.model_config_rename
-        StandLogger.stand_log_shutdown()
-
-    def test_rename_model_success(self):
-        m1 = mock.MagicMock()
-        m2 =mock.MagicMock()
-        m1.connection.return_value = m2
-        m3 = mock.MagicMock()
-        m3.fetchall.return_value = [{"f_model_id": "222"}]
-        m2.cursor.return_value = m3
-        # 为PymysqlPool.get_pool函数创建mock对象
-        PymysqlPool.get_pool = mock.Mock(return_value=m1)
-        llm_utils.model_config.model_config_rename = mock.Mock(return_value=None)
-        res = llm_model_dao.rename_model("222", "222", "222", 1, 32, 72)
+        # 签名: model_id, model_series, model_type, model_name, model, userId,
+        #       model_config, max_model_len, model_parameters, quota (connection/cursor 由装饰器注入)
+        res = llm_model_dao.add_data_into_model_list("222", "222", "222", "222", "222", "222", "222",
+                                                     32, 72, 0)
         self.assertEqual(None, res)
 
 
@@ -229,7 +206,8 @@ class TestGetDataFromModelListByNameFuzzy(TestCase):
         # 为PymysqlPool.get_pool函数创建mock对象
         PymysqlPool.get_pool = mock.Mock(return_value=m1)
         user_info.get_admin_user_id = mock.Mock(return_value="12321")
-        res = llm_model_dao.get_data_from_model_list_by_name_fuzzy("222", 1, 1, "222", "222", "222", "222", 0, None)
+        # 签名: name, page, size, order, rule, api_model, model_type
+        res = llm_model_dao.get_data_from_model_list_by_name_fuzzy("222", 1, 1, "222", "222", "222", "222")
         self.assertEqual([{"f_model_id": "222"}], res)
 
 
@@ -254,7 +232,8 @@ class TestGetDataFromModelListByNameFuzzyAndSeries(TestCase):
         # 为PymysqlPool.get_pool函数创建mock对象
         PymysqlPool.get_pool = mock.Mock(return_value=m1)
         user_info.get_admin_user_id = mock.Mock(return_value="12321")
-        res = llm_model_dao.get_data_from_model_list_by_name_fuzzy_and_series("222", "222", 1, 1, "222", "222", "222", "222", 1, 0)
+        # 签名: name, series, page, size, order, rule, api_model, model_type
+        res = llm_model_dao.get_data_from_model_list_by_name_fuzzy_and_series("222", "222", 1, 1, "222", "222", "222", "222")
         self.assertEqual([{"f_model_id": "222"}], res)
 
 
@@ -403,54 +382,8 @@ class TestGetModelDefaultParas(TestCase):
         self.assertEqual({'222': {'model': '222', 'model_name': '222', 'model_series': '222'}}, res)
 
 
-class TestGetApiModelByModelType(TestCase):
-    def setUp(self) -> None:
-        self.mysqlPool = PymysqlPool
-        self.get_admin_user_id = user_info.get_admin_user_id
-
-    def tearDown(self) -> None:
-        PymysqlPool = self.mysqlPool
-        user_info.get_admin_user_id = self.get_admin_user_id
-        StandLogger.stand_log_shutdown()
-
-    def test_get_api_model_by_model_type_success1(self):
-        m1 = mock.MagicMock()
-        m2 = mock.MagicMock()
-        m1.connection.return_value = m2
-        m3 = mock.MagicMock()
-        m3.fetchall.return_value = [
-            {"f_model_id": "222", "f_model_name": "222", "f_model_series": "222", "f_model": "222"}]
-        m2.cursor.return_value = m3
-        # 为PymysqlPool.get_pool函数创建mock对象
-        PymysqlPool.get_pool = mock.Mock(return_value=m1)
-        user_info.get_admin_user_id = mock.Mock(return_value="12321")
-        self.assertEqual([{"f_model_id": "222", "f_model_name": "222", "f_model_series": "222", "f_model": "222"}], res)
-
-    def test_get_api_model_by_model_type_success2(self):
-        m1 = mock.MagicMock()
-        m2 = mock.MagicMock()
-        m1.connection.return_value = m2
-        m3 = mock.MagicMock()
-        m3.fetchall.return_value = [
-            {"f_model_id": "222", "f_model_name": "222", "f_model_series": "222", "f_model": "222"}]
-        m2.cursor.return_value = m3
-        # 为PymysqlPool.get_pool函数创建mock对象
-        PymysqlPool.get_pool = mock.Mock(return_value=m1)
-        user_info.get_admin_user_id = mock.Mock(return_value="12321")
-        self.assertEqual([{"f_model_id": "222", "f_model_name": "222", "f_model_series": "222", "f_model": "222"}], res)
-
-    def test_get_api_model_by_model_type_success3(self):
-        m1 = mock.MagicMock()
-        m2 = mock.MagicMock()
-        m1.connection.return_value = m2
-        m3 = mock.MagicMock()
-        m3.fetchall.return_value = [
-            {"f_model_id": "222", "f_model_name": "222", "f_model_series": "222", "f_model": "222"}]
-        m2.cursor.return_value = m3
-        # 为PymysqlPool.get_pool函数创建mock对象
-        PymysqlPool.get_pool = mock.Mock(return_value=m1)
-        user_info.get_admin_user_id = mock.Mock(return_value="12321")
-        self.assertEqual([{"f_model_id": "222", "f_model_name": "222", "f_model_series": "222", "f_model": "222"}], res)
+# 注: rename_model / get_api_model_by_model_type 已在小模型可配置化重构中从 llm_model_dao 移除，
+# 对应测试类（TestRenameModel / TestGetApiModelByModelType）随之删除。
 
 
 if __name__ == '__main__':

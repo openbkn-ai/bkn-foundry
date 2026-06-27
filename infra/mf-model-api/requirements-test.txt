@@ -1,0 +1,17 @@
+# Test-only dependencies for mf-model-api unit tests (issue #2).
+#
+# App runtime deps (fastapi 0.104.1 / starlette 0.27.0 / aiohttp / ...) come from
+# the model-factory-base image. Install these on top of that image to run
+# `pytest app/test`:
+#
+#   pip install -r requirements-test.txt && pytest app/test
+#
+# httpx is pinned <0.28 on purpose: starlette 0.27's TestClient forwards the
+# `app=` argument into httpx.Client, which httpx>=0.28 removed. An unpinned
+# `pip install httpx` pulls 0.28+ and breaks every TestClient-based test with
+# `TypeError: Client.__init__() got an unexpected keyword argument 'app'`
+# (the 7 errors in issue #2). Drop the cap only when fastapi/starlette are
+# upgraded to a TestClient that no longer passes app= through httpx.
+pytest>=7.4
+pytest-asyncio>=0.21
+httpx>=0.24,<0.28

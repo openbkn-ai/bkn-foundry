@@ -11,6 +11,7 @@ from app.utils.app_utils import (
     RequestSizeMiddleware,
     create_app
 )
+from app.core.config import base_config
 
 
 class TestConfInit:
@@ -84,6 +85,14 @@ class TestShutdownEvent:
 
 class TestAuthMiddleware:
     """测试auth_middleware函数"""
+
+    @pytest.fixture(autouse=True)
+    def enable_auth(self):
+        """开启鉴权：中间件的 token 校验分支仅在 AUTH_ENABLED=true 时触发。
+        默认 false 时走匿名放行分支直接返回 200，401 断言无从命中。
+        health/private 端点按 path 前置 bypass，不受影响。"""
+        with patch.object(base_config, "AUTH_ENABLED", True):
+            yield
 
     @pytest.fixture
     def mock_request(self):
