@@ -60,6 +60,36 @@
         },
         "additionalProperties": false
       },
+      "filters": {
+        "type": "array",
+        "description": "扁平过滤简写：多个条件按 and 组合，等价于手写 condition 的 and 嵌套。覆盖最常见的「字段 op 值 [AND ...]」场景。与 condition 互斥（同传时 condition 优先）；需要 or 或多层嵌套时改用 condition。算子白名单以对象类的 condition_operations 为准。",
+        "items": {
+          "type": "object",
+          "required": ["field", "op", "value"],
+          "properties": {
+            "field": { "type": "string", "description": "对象类属性名" },
+            "op": {
+              "type": "string",
+              "description": "比较算子；白名单以对象类 condition_operations 为准",
+              "enum": ["==", "!=", ">", ">=", "<", "<=", "in", "not_in", "like", "not_like", "exist", "not_exist", "match"]
+            },
+            "value": {
+              "description": "字段值；集合算子（in/not_in）用数组",
+              "oneOf": [
+                { "type": "string" },
+                { "type": "number" },
+                { "type": "boolean" },
+                { "type": "array", "items": { "oneOf": [
+                  { "type": "string" },
+                  { "type": "number" },
+                  { "type": "boolean" }
+                ]}}
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      },
       "limit": {
         "type": "integer",
         "description": "单页返回数量，默认 10，范围 1-10000"

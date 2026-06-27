@@ -24,6 +24,11 @@ type QueryObjectInstancesReq struct {
 	IncludeTypeInfo    bool         `form:"include_type_info"`                             // Whether to include object type info
 	IncludeLogicParams bool         `form:"include_logic_params"`                          // Include calculation parameters for logic properties, default false
 	Cond               *KnCondition `json:"condition"`                                     // Retrieval conditions
+	// Filters is a flat shortcut for the common "field op value [AND ...]" case.
+	// When set and Cond is empty, the driven adapter AND-combines them into Cond
+	// (value_from defaults to const). Mutually exclusive with condition; condition
+	// wins if both are provided.
+	Filters            []FlatFilter `json:"filters,omitempty"`
 	Limit              int          `json:"limit" validate:"min=1,max=10000" default:"10"` // Quantity limit, default 10, range 1-10000
 	Properties         []string     `json:"properties"`                                    // 指定返回的对象属性字段列表，默认返回所有属性
 	// SearchAfter 游标分页：传入上一页响应返回的 search_after，用于顺序拉取下一页；首次查询留空。
@@ -31,6 +36,15 @@ type QueryObjectInstancesReq struct {
 	SearchAfter []any `json:"search_after,omitempty"`
 	// Offset 偏移翻页：适用于资源（vega 表源）路径，支持跳到任意页；与 search_after 互斥。
 	Offset int `json:"offset,omitempty"`
+}
+
+// FlatFilter is a single field-op-value comparison used by
+// QueryObjectInstancesReq.Filters. Multiple filters are AND-combined into a
+// condition by the driven adapter.
+type FlatFilter struct {
+	Field string          `json:"field"` // Object type property name
+	Op    KnOperationType `json:"op"`    // Comparison operator
+	Value any             `json:"value"` // Field value (array for in/not_in)
 }
 
 type QueryObjectInstancesResp struct {
