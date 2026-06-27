@@ -2133,6 +2133,20 @@
                       ],
                       "type": "string"
                     }
+                  },
+                  {
+                    "name": "response_format",
+                    "in": "query",
+                    "description": "响应格式：json 或 toon，默认 json",
+                    "required": false,
+                    "schema": {
+                      "default": "json",
+                      "enum": [
+                        "json",
+                        "toon"
+                      ],
+                      "type": "string"
+                    }
                   }
                 ],
                 "request_body": {
