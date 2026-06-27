@@ -15,7 +15,6 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/common"
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/rest"
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/interfaces"
 	logicsKqs "github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/logics/knquerysubgraph"
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/logics/knrunsql"
@@ -196,7 +195,10 @@ func handleGetActionInfo(service interfaces.IKnActionRecallService) func(ctx con
 		if !ok {
 			return mcp.NewToolResultError("authentication required"), nil
 		}
-		format := rest.FormatJSON
+		format, err := GetResponseFormatFromRequest(req)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
 
 		actionReq := &interfaces.KnActionRecallRequest{}
 		if err := bindArguments(req, actionReq); err != nil {
