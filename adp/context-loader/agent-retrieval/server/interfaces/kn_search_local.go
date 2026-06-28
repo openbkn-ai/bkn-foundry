@@ -23,6 +23,9 @@ type KnSearchLocalRequest struct {
 	RetrievalConfig *KnSearchRetrievalConfig `json:"retrieval_config,omitempty"`
 	OnlySchema      bool                     `json:"only_schema" default:"false"`
 	EnableRerank    bool                     `json:"enable_rerank" default:"true"`
+	// IncludeColumns adds each data property's physical column name (mapped_field)
+	// to the response for run_sql. Off by default to keep responses compact.
+	IncludeColumns bool `json:"include_columns" default:"false"`
 }
 
 // KnSearchRetrievalConfig 召回配置参数
@@ -96,7 +99,12 @@ type KnSearchObjectType struct {
 
 // KnSearchDataProperty data property (local response shape)
 type KnSearchDataProperty struct {
-	Name                string            `json:"name,omitempty"`
+	Name string `json:"name,omitempty"`
+	// Column is the physical column name (from mapped_field) to use when writing
+	// run_sql against the object type's data resource. It can differ from Name
+	// (logical), and one resource may back several object types with different
+	// logical names. Only populated when the request sets include_columns=true.
+	Column              string            `json:"column,omitempty"`
 	Comment             string            `json:"comment,omitempty"`
 	Type                string            `json:"type,omitempty"`
 	ConditionOperations []KnOperationType `json:"condition_operations,omitempty"`

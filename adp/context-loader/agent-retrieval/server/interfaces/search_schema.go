@@ -18,6 +18,10 @@ type SearchSchemaReq struct {
 	MaxConcepts  *int               `json:"max_concepts,omitempty" default:"10"`
 	SchemaBrief  *bool              `json:"schema_brief,omitempty" default:"false"`
 	EnableRerank *bool              `json:"enable_rerank,omitempty" default:"true"`
+	// IncludeColumns, when true, adds each data property's physical column name
+	// (mapped_field) to the response, for writing run_sql against the resource.
+	// Off by default to keep the response compact.
+	IncludeColumns *bool `json:"include_columns,omitempty" default:"false"`
 }
 
 // SearchSchemaScope search_schema scope controls

@@ -286,6 +286,7 @@ type KnSearchReq struct {
 	RetrievalConfig any                   `json:"retrieval_config,omitempty"`
 	OnlySchema      *bool                 `json:"only_schema,omitempty"`
 	EnableRerank    *bool                 `json:"enable_rerank,omitempty"`
+	IncludeColumns  *bool                 `json:"include_columns,omitempty"`
 }
 
 // SetKnIDs Sets knIDs (internal use, converted from KnID)

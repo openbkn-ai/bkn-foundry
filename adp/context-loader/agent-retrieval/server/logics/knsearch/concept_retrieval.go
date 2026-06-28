@@ -76,7 +76,7 @@ func (s *localSearchImpl) conceptRetrieval(
 
 	// 5. 转换为本地响应结构（与 Python schema_brief 语义一致）
 	brief := boolValue(config.SchemaBrief)
-	objectTypesLocal := s.convertObjectTypesToLocal(selectedObjects, brief)
+	objectTypesLocal := s.convertObjectTypesToLocal(selectedObjects, brief, req.IncludeColumns)
 	relationTypesLocal := s.convertRelationTypesToLocal(rankedRelations, brief)
 	actionTypesLocal := s.convertActionTypesToLocal(networkDetail.ActionTypes, networkDetail.ID, networkDetail.ObjectTypes)
 
@@ -170,7 +170,7 @@ func (s *localSearchImpl) conceptRetrievalByGroups(
 	selectedObjects := s.selectObjectTypesForConceptRetrieval(objects, rankedRelations, config.TopK)
 
 	brief := boolValue(config.SchemaBrief)
-	objectTypesLocal := s.convertObjectTypesToLocal(selectedObjects, brief)
+	objectTypesLocal := s.convertObjectTypesToLocal(selectedObjects, brief, req.IncludeColumns)
 	relationTypesLocal := s.convertRelationTypesToLocal(rankedRelations, brief)
 	actionTypesLocal := s.convertActionTypesToLocal(actions, req.KnID, objects)
 
@@ -859,8 +859,20 @@ func (s *localSearchImpl) fetchSampleData(ctx context.Context, knID string, obje
 
 // ==================== 类型转换函数 ====================
 
-// convertObjectTypesToLocal 将对象类型映射为本地响应结构；brief 控制包含的字段范围。
-func (s *localSearchImpl) convertObjectTypesToLocal(objects []*interfaces.ObjectType, brief bool) []*interfaces.KnSearchObjectType {
+// mappedFieldColumn 从 data property 的 mapped_field（无类型 map，形如 {"name": "..."}）
+// 提取物理列名；mapped_field 缺失或格式异常时回退到逻辑名 fallback。
+func mappedFieldColumn(mappedField any, fallback string) string {
+	if m, ok := mappedField.(map[string]any); ok {
+		if name, ok := m["name"].(string); ok && name != "" {
+			return name
+		}
+	}
+	return fallback
+}
+
+// convertObjectTypesToLocal 将对象类型映射为本地响应结构；brief 控制包含的字段范围；
+// includeColumns 为 true 时额外填充每个属性的物理列名（mapped_field），供 run_sql 使用。
+func (s *localSearchImpl) convertObjectTypesToLocal(objects []*interfaces.ObjectType, brief bool, includeColumns bool) []*interfaces.KnSearchObjectType {
 	result := make([]*interfaces.KnSearchObjectType, len(objects))
 	for i, obj := range objects {
 		var conceptType string
@@ -893,6 +905,9 @@ func (s *localSearchImpl) convertObjectTypesToLocal(objects []*interfaces.Object
 				}
 				if !brief {
 					p.Comment = prop.Comment
+				}
+				if includeColumns {
+					p.Column = mappedFieldColumn(prop.MappedField, prop.Name)
 				}
 				localObj.DataProperties[j] = p
 			}
