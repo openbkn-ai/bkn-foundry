@@ -32,7 +32,7 @@
 | 工具 | 说明 |
 | --- | --- |
 | **Git** | `deploy.sh` / `preflight.sh` **不会**调用 `git`。只有从 **Git 仓库 clone** 开发/更新时才需要本机装 Git；使用**已解压的产品包**或构建产物时，**安装目标机可以不装 Git**。 |
-| **Node.js** | **22+** 与 **`@kweaver-ai/kweaver-sdk`** 的 npm `engines`、`deploy/onboard.sh`、可选的 **`kweaver-admin`** 及 preflight 检查一致（环境变量 **`PREFLIGHT_KWEAVER_MIN_NODE_MAJOR`**，默认 **22**）。**仅起 K8s / Helm** 时，目标机**可以不装 Node**；缺 Node 或版本低于 22 时 preflight 多为 **[WARN]**（非阻塞），也可在**另一台已装 Node 22+ 的机器**上跑 `onboard.sh`，或通过 **`preflight.sh --fix`** 里与 Node 相关的可选项安装。详见下文 **客户端工具**。 |
+| **Node.js** | **22+** 与 **`@openbkn/bkn-sdk`** 的 npm `engines`、`deploy/onboard.sh` 及 preflight 检查一致（环境变量 **`PREFLIGHT_KWEAVER_MIN_NODE_MAJOR`**，默认 **22**）。**仅起 K8s / Helm** 时，目标机**可以不装 Node**；缺 Node 或版本低于 22 时 preflight 多为 **[WARN]**（非阻塞），也可在**另一台已装 Node 22+ 的机器**上跑 `onboard.sh`，或通过 **`preflight.sh --fix`** 里与 Node 相关的可选项安装。详见下文 **客户端工具**。 |
 | **Python** **3** | 日常跑 **`preflight` / `deploy.sh` 不强制**要求。若使用 **`deploy/preflight.sh --output=json`**（JSON 输出依赖 **`python3`**），则**必须**安装 Python 3。若目标机 **PATH 上已有 `python3`**，preflight 会检查其版本为 **CPython 3.6+**（与 `deploy/scripts/lib/onboard_*.py` 一致；可用 **`PREFLIGHT_MIN_PYTHON_MAJOR`** / **`PREFLIGHT_MIN_PYTHON_MINOR`** 覆盖，默认 **3** / **6**）。部分与 `kubectl` 相关的辅助解析在存在 `python3` 时也会使用。 |
 
 **`deploy/scripts/lib/onboard_*.py`（供 `onboard.sh` 调用）**：实现上约定 **CPython 3.6 起至当前主线 3.x** 可调（兼容 CentOS 7 自带的 **3.6.x**；**3.5 及以下**不适用，因其缺少 f-string 等语法）。不向 **PyYAML 5.1 以后**才有的 `yaml.dump(..., sort_keys=...)` 等参数。维护者或 CI 可执行 **`bash deploy/scripts/lib/preflight_checks_test.sh`**，在存在 **`python3`** 时会对这两个文件做一次 **`py_compile`**；本机若有多个解释器，可 **`EXTRA_PYTHONS="python3.9 python3.12"`** 再跑一遍以覆盖多版本。
@@ -73,15 +73,15 @@ setenforce 0
 在能访问集群的工作机上需要：
 
 - 🔧 **kubectl** — 可选，用于集群健康检查
-- 🚀 **kweaver CLI** — KWeaver 命令行（通过 npm 安装 `@kweaver-ai/kweaver-sdk`）
+- 🚀 **openbkn CLI** — OpenBKN 命令行（通过 npm 安装 `@openbkn/bkn-sdk`）
 
 ```bash
-npm install -g @kweaver-ai/kweaver-sdk
+npm install -g @openbkn/bkn-sdk
 # 或免安装直接运行：
-npx kweaver --help
+npx openbkn --help
 ```
 
-> 需要 **Node.js 22+**，与 npm 上 [`@kweaver-ai/kweaver-sdk`](https://www.npmjs.com/package/@kweaver-ai/kweaver-sdk) 的 `engines`（`node >= 22`）一致；使用 Node 18 会 `EBADENGINE` 或运行期报错。
+> 需要 **Node.js 22+**，与 npm 上 [`@openbkn/bkn-sdk`](https://www.npmjs.com/package/@openbkn/bkn-sdk) 的 `engines`（`node >= 22`）一致；使用 Node 18 会 `EBADENGINE` 或运行期报错。
 
 - 🌐 **curl** — 直接调用 HTTP API
 
@@ -102,7 +102,7 @@ chmod +x deploy.sh
 
 ## 🩺 装机前体检 / 修复：`preflight.sh`
 
-在 `deploy.sh` 之前，建议先在**安装目标主机**上以 `root` / `sudo` 跑一次 **`deploy/preflight.sh`**：内核 / sysctl / containerd / `kubectl` / `helm` / `python3`（若在 PATH 上则要求 **≥3.6**）/ Node / `kweaver` CLI 等一次过；缺什么按需修（每项默认 y/N 询问，`-y` 全自动）。
+在 `deploy.sh` 之前，建议先在**安装目标主机**上以 `root` / `sudo` 跑一次 **`deploy/preflight.sh`**：内核 / sysctl / containerd / `kubectl` / `helm` / `python3`（若在 PATH 上则要求 **≥3.6**）/ Node / `openbkn` CLI 等一次过；缺什么按需修（每项默认 y/N 询问，`-y` 全自动）。
 
 ```bash
 sudo bash deploy/preflight.sh                # 仅检查（默认；仍需 root）
@@ -117,11 +117,11 @@ sudo bash deploy/preflight.sh --help         # 全部参数
 | 参数 | 含义 |
 | --- | --- |
 | `--check-only` | 仅检查，不改系统（默认） |
-| `--fix` | 检查 + 应用修复（K8s / sysctl / containerd / Helm / 防火墙 / SELinux / 系统调优 / sysctl 等）；同时按需提示安装 Node 22+ + `kweaver` / `kweaver-admin` |
+| `--fix` | 检查 + 应用修复（K8s / sysctl / containerd / Helm / 防火墙 / SELinux / 系统调优 / sysctl 等）；同时按需提示安装 Node 22+ + `openbkn` |
 | `-y` / `--yes` | **全部**修复项自动确认 |
 | `-n` / `--no` | 全部修复项自动拒绝（仅查看风险描述，不改东西） |
 | `--fix-allow=LIST` | 仅自动确认指定修复项（其余跳过），如 `k8s-pkgs-repo,k8s-bins,containerd-install,helm-v3,nofile-limits,nodejs-npm,kweaver-sdk`（旧名 `k8s-apt-source` 仍可作别名）。可用 `sudo bash deploy/preflight.sh --list-fixes` 查看本机当前可用的全部修复名 |
-| `--role=target\|admin\|both` | `target` = 仅 `kubectl`/`helm`；`admin` = `kweaver` / Node / npm；`both`（默认）= 全部 |
+| `--role=target\|admin\|both` | `target` = 仅 `kubectl`/`helm`；`admin` = `openbkn` / Node / npm；`both`（默认）= 全部 |
 | `--no-recheck` | 修复完不再重新跑一遍完整检查 |
 | `--lenient` | 把「会阻塞 install + `--fix` 能搞定」的 `[FAIL]` 项（sysctl / 内核模块 / containerd / kubectl / helm / swap / apt 源损坏 / 缺 kubeadm 或 containerd 安装候选 / ulimit / inotify / vm.max_map_count / overlay）降回 `[WARN]`。等同 `PREFLIGHT_STRICT=false PREFLIGHT_STRICT_SOURCES=false`。 |
 | `--skip=LIST` | 跳过指定检查项 |
@@ -173,7 +173,7 @@ sudo bash deploy/preflight.sh --help         # 全部参数
   Only then install:
     sudo bash ./deploy.sh kweaver-core install --minimum    # 体验 / 最小化
     sudo bash ./deploy.sh kweaver-core install              # 完整安装
-  Finally: sudo bash ./onboard.sh from deploy/ (Linux；macOS dev 用普通 bash。Node 22+ + kweaver on PATH；sudo bash ./preflight.sh --fix helps …)
+  Finally: sudo bash ./onboard.sh from deploy/ (Linux；macOS dev 用普通 bash。Node 22+ + openbkn on PATH；sudo bash ./preflight.sh --fix helps …)
 ```
 
 **说明：**
@@ -253,36 +253,36 @@ export INGRESS_NGINX_HTTPS_PORT=8443
 
 ## Post-install：`onboard.sh`（安装后引导）
 
-在 `deploy.sh kweaver-core install` 之后，可在能访问集群的机器上运行 **`deploy/onboard.sh`**，需 **Node 22+**、**kubectl**、**kweaver**（`npm i -g @kweaver-ai/kweaver-sdk`）。在 **`deploy/`** 目录执行，**Linux 上需要 `sudo`**（与 `sudo deploy.sh` 对齐）：
+在 `deploy.sh kweaver-core install` 之后，可在能访问集群的机器上运行 **`deploy/onboard.sh`**，需 **Node 22+**、**kubectl**、**openbkn**（`npm i -g @openbkn/bkn-sdk`）。在 **`deploy/`** 目录执行，**Linux 上需要 `sudo`**（与 `sudo deploy.sh` 对齐）：
 
 ```bash
 cd deploy
 sudo bash ./onboard.sh --help
 ```
 
-> **为什么要 `sudo`？** `onboard.sh` 读安装期写下的 `$HOME/.openbkn-ai/config.yaml`（`sudo deploy.sh` 会写到 `/root/.openbkn-ai/`，权限 700），并把 `kweaver` 认证状态写到 `$HOME/.kweaver`。不加 `sudo` 时读到的是当前用户的 home——若该用户没有这个文件就会回退到仓库内模板 `deploy/conf/config.yaml`，**可能解析出和安装时不一致的 access URL**。命中此路径时脚本启动会打印黄色的 `[onboard][hint]`；可用 `ONBOARD_SUDO_HINT_DISABLED=1` 关闭。**macOS 开发路径**（`bash deploy/dev/mac.sh onboard`）**不要**加 `sudo`：Docker Desktop / `kind` / `$HOME` 都属于当前用户，`sudo` 会把它们重定向到 `/var/root` 并割裂安装与 onboard；`deploy.sh` 在 `Darwin` 上已跳过 root 检查。详见 [`deploy/dev/README.zh.md`](../../deploy/dev/README.zh.md) · [`deploy/dev/README.md`](../../deploy/dev/README.md)。
+> **为什么要 `sudo`？** `onboard.sh` 读安装期写下的 `$HOME/.openbkn-ai/config.yaml`（`sudo deploy.sh` 会写到 `/root/.openbkn-ai/`，权限 700），并把 `openbkn` 认证状态写到 `$HOME/.bkn`。不加 `sudo` 时读到的是当前用户的 home——若该用户没有这个文件就会回退到仓库内模板 `deploy/conf/config.yaml`，**可能解析出和安装时不一致的 access URL**。命中此路径时脚本启动会打印黄色的 `[onboard][hint]`；可用 `ONBOARD_SUDO_HINT_DISABLED=1` 关闭。**macOS 开发路径**（`bash deploy/dev/mac.sh onboard`）**不要**加 `sudo`：Docker Desktop / `kind` / `$HOME` 都属于当前用户，`sudo` 会把它们重定向到 `/var/root` 并割裂安装与 onboard；`deploy.sh` 在 `Darwin` 上已跳过 root 检查。详见 [`deploy/dev/README.zh.md`](../../deploy/dev/README.zh.md) · [`deploy/dev/README.md`](../../deploy/dev/README.md)。
 
 常用参数：
 
 | 参数 | 含义 |
 | --- | --- |
-| 无参数 | 交互模式：按需引导安装 Node / `kweaver` / `kweaver-admin`，完成两个 CLI 的认证，再依次走模型 / BKN / Context Loader 提示 |
-| `-y` / `--yes` | 全部自动：bootstrap、ISF 下 `kweaver` + `kweaver-admin` 的 HTTP 默认登录（`admin` / `eisoo.com`）、`test` 用户创建 + 角色同步、`kweaver` 以 `test` 重登、Context Loader 导入。会**跳过交互式模型注册**；如需非交互注册模型，请用 `--config=models.yaml`。 |
+| 无参数 | 交互模式：按需引导安装 Node / `openbkn`，完成认证（单一 CLI——管理能力内置于 `openbkn admin`），再依次走模型 / BKN / Context Loader 提示 |
+| `-y` / `--yes` | 全部自动：bootstrap、ISF 下 HTTP 默认登录（`admin` / `eisoo.com`）、`test` 用户创建 + 角色同步、`openbkn` 以 `test` 重登、Context Loader 导入。会**跳过交互式模型注册**；如需非交互注册模型，请用 `--config=models.yaml`。 |
 | `--config=xxx.yaml` | 非交互：按 YAML 注册模型与可选 BKN；参考 `deploy/conf/models.yaml.example` |
 | `--enable-bkn-search` | 仅做 BKN ConfigMap 类操作（仍先走 probe） |
 | `--skip-context-loader` | 跳过 ADP Context Loader 工具集导入 |
 
 **全量 ISF（启用 auth + business domain）**：脚本根据 Helm/命名空间判断为 ISF 后，**会自动按以下 5 步执行**（你不需要手工逐条做——这里列出来只是让你知道脚本在干什么，以及某一步失败时该回到哪一步）：
 
-1. **`kweaver auth login`**（`onboard_ensure_kweaver_auth`）— 会话写入 `~/.kweaver`。HTTP 默认 `admin` / `eisoo.com`（TTY 下也可改走浏览器 OAuth）；`-y` 模式直接走 HTTP 默认。
-2. **`kweaver-admin` 在 PATH**（`onboard_ensure_kweaver_admin_for_isf`）— 缺则自动 `npm i -g @kweaver-ai/kweaver-admin`（交互提示，或 `-y` 时自动安装）。
-3. **`kweaver-admin auth login`**（`onboard_ensure_kweaver_admin_auth_for_isf`）— 与 `kweaver` **token 文件独立**，但**用同一组控制台账密**（默认仍是 `admin` / `eisoo.com`）。命令是 `-u` / `-p` / `-k`（带上即走 HTTP `/oauth2/signin`，**没有** `--http-signin` 参数，该参数仅 **kweaver-sdk** 有）。TTY 下也支持浏览器 OAuth。
-4. **业务用户 `test`**（`onboard_offer_isf_test_user`）— 创建 `test`，密码 `111111`（可用 `ONBOARD_TEST_USER_PASSWORD` 覆盖），把 `kweaver-admin role list` 中**所有**角色都挂上，然后 **`kweaver auth login` 为 `test`**，让 SDK 会话切到业务用户，供后续步骤使用。若 `test` 已存在，则只做角色同步。
-5. **Context Loader + 模型注册**（`onboard_offer_context_loader_toolset` → `kweaver call impex`；随后是交互式或 YAML 模型注册）— 都使用**以 `test` 登录的 `kweaver`（`~/.kweaver`）**；仅 **admin** 的 `kweaver` 会话对 impex 常见 **403**。
+1. **`openbkn auth login`**（`onboard_ensure_kweaver_auth`）— 会话写入 `~/.bkn`。HTTP 默认 `admin` / `eisoo.com`（TTY 下也可改走浏览器 OAuth）；`-y` 模式直接走 HTTP 默认。
+2. **`openbkn` 在 PATH**（`onboard_ensure_kweaver_admin_for_isf`）— 缺则自动 `npm i -g @openbkn/bkn-sdk`（交互提示，或 `-y` 时自动安装）。管理能力内置于 `openbkn admin` 子命令，无需单独的包。
+3. **管理认证**（`onboard_ensure_kweaver_admin_auth_for_isf`）— 管理操作**复用第 1 步同一份 `openbkn` 登录与 token 存储**（默认仍是 `admin` / `eisoo.com`）。命令是 `-u` / `-p` / `-k`（带上即走 HTTP `/oauth2/signin`）。TTY 下也支持浏览器 OAuth。
+4. **业务用户 `test`**（`onboard_offer_isf_test_user`）— 创建 `test`，密码 `111111`（可用 `ONBOARD_TEST_USER_PASSWORD` 覆盖），把 `openbkn admin role list` 中**所有**角色都挂上，然后 **`openbkn auth login` 为 `test`**，让 SDK 会话切到业务用户，供后续步骤使用。若 `test` 已存在，则只做角色同步。
+5. **Context Loader + 模型注册**（`onboard_offer_context_loader_toolset` → `openbkn call impex`；随后是交互式或 YAML 模型注册）— 都使用**以 `test` 登录的 `openbkn`（`~/.bkn`）**；仅 **admin** 的 `openbkn` 会话对 impex 常见 **403**。
 
 任何一步失败脚本都会非零退出并打印清楚原因；修好之后重跑 `sudo bash deploy/onboard.sh`（Linux）/ `bash deploy/onboard.sh`（macOS dev）即可——已成功的步骤会被检测并跳过（重复运行幂等）。
 
-**最小化安装**（`--minimum`）：通常只需 `kweaver`（常为 `--no-auth`）；上述 ISF 专属步骤 2–4 会被自动跳过，第 5 步的 Context Loader 仅在集群中确实有 operator deployment 时才执行。
+**最小化安装**（`--minimum`）：通常只需 `openbkn`（常为 `--no-auth`）；上述 ISF 专属步骤 2–4 会被自动跳过（管理操作需启用鉴权的后端），第 5 步的 Context Loader 仅在集群中确实有 operator deployment 时才执行。
 
 结束前会打印 **英文** 完成报告（可用 `ONBOARD_NO_COMPLETION_REPORT=1` 关闭）。
 
@@ -292,15 +292,15 @@ sudo bash ./onboard.sh --help
 
 ```mermaid
 flowchart TB
-  s([onboard.sh]) --> boot["引导：Node 22+、kweaver、kubectl、python3"]
+  s([onboard.sh]) --> boot["引导：Node 22+、openbkn、kubectl、python3"]
   boot --> mode{模式}
   mode -->|"--enable-bkn-search"| p1[onboard_probe] --> bkn["BKN / ontology ConfigMap 补丁 + rollout"] --> r1[完成报告] --> e1([exit 0])
   mode -->|"--config=…"| p2[onboard_probe] --> py["exec onboard_apply_config.py"] --> e2([exit])
   mode -->|默认交互；可选 -y| p3[onboard_probe] --> ui["命名空间 + LLM/向量（已存在则只问是否新增）+ BKN 补丁（仅在更换默认时执行）"] --> r2[完成报告] --> e3([exit 0])
 ```
 
-- **三种模式都会先跑 `onboard_probe`**，再进入「仅 BKN」、YAML 或交互式注册。**全量 ISF** 时 probe 内含：**与 kweaver 同默认的 `kweaver-admin` HTTP 登录**、**用户 `test`**、**`kweaver` 以 `test` 重登**、再 **Context Loader**（条件满足时）。
-- **`-y`** 不会自动等价于 `--config`；主要自动确认 **Node / npm -g**，以及在 **ISF 全量** 下 `kweaver` / `kweaver-admin` 的 **HTTP** 登录默认行为。`-y` 模式下不会跑交互式模型注册（如需非交互注册请使用 `--config=models.yaml`），完成报告里会列出平台上现有模型计数，方便确认。
+- **三种模式都会先跑 `onboard_probe`**，再进入「仅 BKN」、YAML 或交互式注册。**全量 ISF** 时 probe 内含：**与 openbkn 同默认的管理 HTTP 登录**、**用户 `test`**、**`openbkn` 以 `test` 重登**、再 **Context Loader**（条件满足时）。
+- **`-y`** 不会自动等价于 `--config`；主要自动确认 **Node / npm -g**，以及在 **ISF 全量** 下 `openbkn` 的 **HTTP** 登录默认行为。`-y` 模式下不会跑交互式模型注册（如需非交互注册请使用 `--config=models.yaml`），完成报告里会列出平台上现有模型计数，方便确认。
 - **可重复执行（已注册 / 已配置自动跳过）。** 交互式模型注册会先探测平台现状，再决定是否提问：
   - **大模型 LLM**：若平台已有任何 LLM，先问 `Register another LLM now? [y/N]`，默认 **否**；选否则跳过 LLM 提示。
   - **向量 / 小模型**：同样先问是否新增；如果你确实新增了 embedding，再追问是否设为 **BKN 默认**：
@@ -314,165 +314,166 @@ flowchart TB
 ```mermaid
 flowchart TB
   subgraph probe["onboard_probe"]
-    A["onboard_ensure_kweaver_auth\n（kweaver：HTTP 默认 admin / eisoo 或浏览器）"] --> B["kubectl：命名空间或目标 namespace"]
+    A["onboard_ensure_kweaver_auth\n（openbkn：HTTP 默认 admin / eisoo 或浏览器）"] --> B["kubectl：命名空间或目标 namespace"]
     B --> C["onboard_prepend_npm_global_bin_to_path"]
     C --> D["onboard_recommend_admin_cli（Helm/命名空间 → 是否 ISF）"]
-    D --> E["onboard_ensure_kweaver_admin_for_isf\n（ISF 时按需 npm -g 安装 kweaver-admin）"]
-    E --> F["onboard_ensure_kweaver_admin_auth_for_isf\n（HTTP 与 kweaver 同默认；或 -k 浏览器；-y 自动 HTTP）"]
+    D --> E["onboard_ensure_kweaver_admin_for_isf\n（ISF 时按需 npm -g 安装 openbkn）"]
+    E --> F["onboard_ensure_kweaver_admin_auth_for_isf\n（管理认证 与 openbkn 同默认；或 -k 浏览器；-y 自动 HTTP）"]
     F --> G1["onboard_offer_isf_test_user\n创建或同步 test 与角色"]
-    G1 --> G2["onboard_isf_relogin…\nkweaver 以 test 登录（HTTP）"]
-    G2 --> H["onboard_offer_context_loader_toolset\n（kweaver impex）"]
+    G1 --> G2["onboard_isf_relogin…\nopenbkn 以 test 登录（HTTP）"]
+    G2 --> H["onboard_offer_context_loader_toolset\n（openbkn impex）"]
   end
 ```
 
-**非全量 / 最小化**：通常不需要 `kweaver-admin` 的建用户与 **test 重登** 门禁；若集群仍有 operator，Context Loader 仍可能按条件执行。
+**非全量 / 最小化**：通常不需要管理后端的建用户与 **test 重登** 门禁；若集群仍有 operator，Context Loader 仍可能按条件执行。
 
-**3）ISF 全量：双 CLI 与 impex 会话（序列图）**
+**3）ISF 全量：CLI 与 impex 会话（序列图）**
 
 ```mermaid
 sequenceDiagram
   autonumber
   actor U as 操作者
   participant O as onboard.sh
-  participant K as kweaver
-  participant A as kweaver-admin
+  participant K as openbkn
+  participant A as openbkn admin
   U->>O: 在 deploy/ 下执行
-  O->>K: kweaver auth — HTTP（admin / eisoo）或浏览器
-  O->>A: kweaver-admin auth — HTTP（同默认）或 -k 浏览器
+  O->>K: openbkn auth — HTTP（admin / eisoo）或浏览器
+  O->>A: openbkn admin（同一登录 / token）— HTTP 默认或 -k 浏览器
   A->>A: 创建 user、设密、挂载角色
   A-->>O: user list 成功
-  O->>K: kweaver 以 test 登录 — HTTP（test 的密码）
-  O->>K: kweaver call impex / 后续 kweaver 操作
+  O->>K: openbkn 以 test 登录 — HTTP（test 的密码）
+  O->>K: openbkn call impex / 后续 openbkn 操作
 ```
 
-**probe 之后**，默认模式会继续 **命名空间 + 模型 + BKN** 交互；在 ISF 上此时 **`~/.kweaver` 宜已为 `test`**，后续注册走业务用户。
+**probe 之后**，默认模式会继续 **命名空间 + 模型 + BKN** 交互；在 ISF 上此时 **`~/.bkn` 宜已为 `test`**，后续注册走业务用户。
 
-`kweaver` 与 `kweaver-admin` **会话文件独立**；**ISF 下 HTTP 控制台默认与 kweaver 相同**。**impex 需 `kweaver` 的 `test` 会话**；仅 **admin** 的 kweaver 对 impex 常见 **403**。
+`openbkn` 与其 `admin` 子命令**共用**同一份登录与 token 存储。**impex 需 `openbkn` 的 `test` 会话**；仅 **admin** 的 openbkn 对 impex 常见 **403**。
 
 ---
 
-## 🛡️ 完整安装后的管理员工具（kweaver-admin）
+## 🛡️ 完整安装后的管理员命令（`openbkn admin`）
 
-完整安装（启用 `auth.enabled=true` 与 `businessDomain.enabled=true`）后，平台的**用户、组织、角色、模型、审计**等管理操作通过独立的 npm CLI [`@kweaver-ai/kweaver-admin`](https://github.com/kweaver-ai/kweaver-admin) 完成。它与面向终端用户/Agent 的 `kweaver`（kweaver-sdk）互补：
+完整安装（启用 `auth.enabled=true` 与 `businessDomain.enabled=true`）后，平台的**用户、组织、角色、模型、审计**等管理操作通过同一个 `openbkn` CLI 的 **`openbkn admin`** 子命令完成。**没有单独的 admin 包**：管理能力过去以 `kweaver-admin` 单独发布，现已并入 [`@openbkn/bkn-sdk`](https://github.com/openbkn-ai/bkn-sdk)，通过 `openbkn admin ...` 调用：
 
-| CLI | 受众 | 覆盖范围 |
+| 命令面 | 受众 | 覆盖范围 |
 | --- | --- | --- |
-| `kweaver`（`@kweaver-ai/kweaver-sdk`） | 业务用户 / Agent | BKN、Decision Agent、Action、Skill、查询 |
-| `kweaver-admin`（`@kweaver-ai/kweaver-admin`） | 平台管理员 | 用户、组织、角色、模型、审计、原始 HTTP |
+| `openbkn`（`@openbkn/bkn-sdk`） | 业务用户 / Agent | BKN、Action、Skill、查询、Agent 对话 |
+| `openbkn admin`（同一个包） | 平台管理员 | 用户、组织、角色、模型、审计、原始 HTTP |
 
-**何时安装：** 完整安装之后（`./deploy.sh kweaver-core install` 不带 `--minimum`）。**最小化安装下大多数 `kweaver-admin` 命令会返回 401 / 404 — 属于部署裁剪，并非 CLI 故障。**
+**何时可用：** 完整安装之后（`./deploy.sh kweaver-core install` 不带 `--minimum`）。**最小化安装下大多数 `openbkn admin` 命令会返回 401 / 404 — 属于部署裁剪，并非 CLI 故障。**
 
-**后端依赖（来自 `kweaver-admin` 架构文档）：** `user-management` / `deploy-manager` / `deploy-auth` / `eacp` / `mf-model-manager` / OAuth2(Hydra) — 正好是完整安装才会启用的服务集合。
+**后端依赖：** `user-management` / `deploy-manager` / `deploy-auth` / `eacp` / `mf-model-manager` / OAuth2(Hydra) — 正好是完整安装才会启用的服务集合。
 
 ### 📥 安装
 
-要求 **Node.js 22+**（与 npm 上 `@kweaver-ai/kweaver-sdk` 的 `engines` 一致）。凭据保存在 `~/.kweaver-admin/platforms/`，与 `~/.kweaver/` 隔离。
+管理能力是 `openbkn` CLI 的一部分——装好 `@openbkn/bkn-sdk` 即可（见 [客户端工具](#-客户端工具)）。要求 **Node.js 22+**。凭据保存在 `~/.bkn/`，与常规 `openbkn` 命令共用。
 
 ```bash
-npm install -g @kweaver-ai/kweaver-admin
-kweaver-admin --version
-kweaver-admin --help
+npm install -g @openbkn/bkn-sdk
+openbkn admin --help
 ```
 
 ### 🔑 登录
 
+管理操作复用**同一个 `openbkn auth login`** 与同一份 token 存储——没有单独的管理员登录：
+
 ```bash
 # 浏览器 OAuth2（自签名证书加 -k）
-kweaver-admin auth login https://<访问地址> -k
+openbkn auth login https://<访问地址> -k
 
 # 用户名/密码（CI 或无浏览器场景）
-kweaver-admin auth login https://<访问地址> -u <用户名> -p <密码> -k
+openbkn auth login https://<访问地址> -u <用户名> -p <密码> -k
 
 # 通过环境变量（CI / Headless）
-export KWEAVER_BASE_URL=https://<访问地址>
-export KWEAVER_ADMIN_TOKEN=<bearer-token>   # 优先；也可回退到 KWEAVER_TOKEN
+export BKN_BASE_URL=https://<访问地址>
+export BKN_TOKEN=<bearer-token>
 
 # 查看会话状态与当前身份
-kweaver-admin auth status
-kweaver-admin auth whoami
-kweaver-admin auth list
+openbkn auth status
+openbkn auth whoami
+openbkn auth list
 ```
 
-> `kweaver-admin` 与 `kweaver` 的 token 存储互不影响，可在同一台机器上同时持有管理员与业务身份。
+> 登录一次后，所有 `openbkn admin ...` 命令都复用该会话，无需二次登录。
 
 ### 🧰 常用管理任务
 
 #### 组织（部门）
 
 ```bash
-kweaver-admin org tree                # 树形列出部门
-kweaver-admin org list                # 分页列出
-kweaver-admin org create              # 新建部门
-kweaver-admin org members <orgId>     # 查看成员
+openbkn admin org tree                # 树形列出部门
+openbkn admin org list                # 分页列出
+openbkn admin org create              # 新建部门
+openbkn admin org members <orgId>     # 查看成员
 ```
 
 #### 用户
 
 ```bash
-kweaver-admin user list
-kweaver-admin user create --login alice            # 默认密码 123456，首次登录强制改密
-kweaver-admin user reset-password -u alice         # 管理员重置密码
-kweaver-admin user roles <userId>
-kweaver-admin user assign-role <userId> <roleId>
-kweaver-admin user revoke-role <userId> <roleId>
+openbkn admin user list
+openbkn admin user create --login alice            # 默认密码 123456，首次登录强制改密
+openbkn admin user reset-password -u alice         # 管理员重置密码
+openbkn admin user roles <userId>
+openbkn admin user assign-role <userId> <roleId>
+openbkn admin user revoke-role <userId> <roleId>
 ```
 
 #### 角色
 
 ```bash
-kweaver-admin role list
-kweaver-admin role get <roleId>
-kweaver-admin role add-member <roleId> -u alice
-kweaver-admin role remove-member <roleId> -u alice
+openbkn admin role list
+openbkn admin role get <roleId>
+openbkn admin role add-member <roleId> -u alice
+openbkn admin role remove-member <roleId> -u alice
 ```
 
-**赋权前务必先看 `role list`**，记下每条角色的 **roleId**（与名称如 `super_admin`、`normal_user` 等对应关系以你环境输出为准；参考 [kweaver-admin 角色说明](https://github.com/kweaver-ai/kweaver-admin/blob/main/docs/product-specs/role-permission.md)）。**快速开始/POC** 为减少「缺角色导致接口 403」，常对新用户**依次**执行 `kweaver-admin user assign-role <userId> <roleId>`，把 `role list` 中的角色**全部**挂到该用户上；**生产**请按最小权限只赋业务所需角色，并用 `kweaver-admin user roles <userId>` 复查。
+**赋权前务必先看 `role list`**，记下每条角色的 **roleId**（与名称如 `super_admin`、`normal_user` 等对应关系以你环境输出为准）。**快速开始/POC** 为减少「缺角色导致接口 403」，常对新用户**依次**执行 `openbkn admin user assign-role <userId> <roleId>`，把 `role list` 中的角色**全部**挂到该用户上；**生产**请按最小权限只赋业务所需角色，并用 `openbkn admin user roles <userId>` 复查。
 
 #### 模型（LLM / Embedding）
 
 ```bash
-kweaver-admin llm list
-kweaver-admin llm add
-kweaver-admin llm test <modelId>
+openbkn admin llm list
+openbkn admin llm add
+openbkn admin llm test <modelId>
 
-kweaver-admin small-model list
-kweaver-admin small-model add
-kweaver-admin small-model test <modelId>
+openbkn admin small-model list
+openbkn admin small-model add
+openbkn admin small-model test <modelId>
 ```
 
-> 与 [`模型管理`](manual/model.md) 中通过 `kweaver call /api/mf-model-manager/...` 的方式等价；推荐管理员日常用 `kweaver-admin llm` / `small-model` 子命令，参数校验与回显更友好。
+> 与 [`模型管理`](manual/model.md) 中通过 `openbkn call /api/mf-model-manager/...` 的方式等价；推荐管理员日常用 `openbkn admin llm` / `small-model` 子命令，参数校验与回显更友好。
 
 #### 审计
 
 ```bash
-kweaver-admin audit list \
+openbkn admin audit list \
   --user alice --start 2026-04-01 --end 2026-04-30
 ```
 
 #### 原始 HTTP（带认证头）
 
 ```bash
-kweaver-admin call /api/user-management/v1/management/users -X GET
-kweaver-admin --json call /api/eacp/v1/... -X POST -d '{"...":"..."}'
+openbkn admin call /api/user-management/v1/management/users -X GET
+openbkn admin --json call /api/eacp/v1/... -X POST -d '{"...":"..."}'
 ```
 
 ### ⚠️ 必须知道
 
-- **新建用户的默认密码固定为 `123456`**，首次登录强制改密 — 这是 ISF 用户存储的上游既定行为（`Usrm_AddUser` thrift 不接收密码参数）。请通过安全渠道把账号交给本人，由其首登时改密；后续忘/失密用 `kweaver-admin user reset-password`。
+- **新建用户的默认密码固定为 `123456`**，首次登录强制改密 — 这是 ISF 用户存储的上游既定行为（`Usrm_AddUser` thrift 不接收密码参数）。请通过安全渠道把账号交给本人，由其首登时改密；后续忘/失密用 `openbkn admin user reset-password`。
 - **三权分立内置账号**：`system / admin / security / audit` 不可随意删改；操作员请使用**个人账号**而非共享 `admin`，便于审计追溯。
-- **首次登录改密（错误码 401001017）**：`kweaver-admin auth login` 触发该错误时，TTY 下会引导改密并自动重试登录；非 TTY 下显式补充 `--new-password '<新密码>'` 一次性完成（与 `kweaver` CLI 行为一致，参见 [Info Security Fabric — 修改密码](manual/isf.md#-修改密码)）。
-- **TLS：** `-k` / `--insecure`（或环境变量 `KWEAVER_TLS_INSECURE=1`）仅用于开发/自签名证书场景，生产请使用受信任证书。
-- **Web 控制台未暴露的能力，CLI 是首选路径**：例如部门写入（`Usrm_AddDepartment` / `Usrm_EditDepartment`）、用户更新（`Usrm_EditUser` 回退）、用户角色查询（`role list + role members` 回退）等，详见 [`kweaver-admin/docs/SECURITY.md`](https://github.com/kweaver-ai/kweaver-admin/blob/main/docs/SECURITY.md)。
+- **首次登录改密（错误码 401001017）**：`openbkn auth login` 触发该错误时，TTY 下会引导改密并自动重试登录；非 TTY 下显式补充 `--new-password '<新密码>'` 一次性完成。
+- **TLS：** `-k` / `--insecure`（或环境变量 `BKN_TLS_INSECURE=1`）仅用于开发/自签名证书场景，生产请使用受信任证书。
+- **Web 控制台未暴露的能力，CLI 是首选路径**：例如部门写入（`Usrm_AddDepartment` / `Usrm_EditDepartment`）、用户更新（`Usrm_EditUser` 回退）、用户角色查询（`role list + role members` 回退）等。
 
 ### 🤖 AI Agent Skill
 
-`kweaver-admin` 仓库自带渐进式（progressive disclosure）Skill，让 AI 编程助手（Cursor、Claude Code 等）代你执行管理员操作：
+`openbkn` skill 自带渐进式（progressive disclosure）Skill，让 AI 编程助手（Cursor、Claude Code 等）代你执行常规与管理员操作：
 
 ```bash
-npx skills add https://github.com/kweaver-ai/kweaver-admin --skill kweaver-admin
+npx skills add https://github.com/openbkn-ai/bkn-sdk --skill openbkn
 ```
 
-安装后先用 `kweaver-admin auth login https://<访问地址> -k` 登录一次，然后用自然语言（也支持 `/kweaver-admin` 斜杠命令）指挥助手：
+安装后先用 `openbkn auth login https://<访问地址> -k` 登录一次，然后用自然语言（也支持 `/openbkn` 斜杠命令）指挥助手：
 
 ```text
 列出所有角色
@@ -482,14 +483,14 @@ npx skills add https://github.com/kweaver-ai/kweaver-admin --skill kweaver-admin
 注册一个名为 bge-m3 的 Embedding 模型，base 是 https://api.siliconflow.cn
 ```
 
-Skill 源文件：[`skills/kweaver-admin/SKILL.md`](https://github.com/kweaver-ai/kweaver-admin/blob/main/skills/kweaver-admin/SKILL.md)。它与 `kweaver` CLI 的 `kweaver-core` / `create-bkn` Skill 互补、相互独立。
+Skill 源文件：[`skills/openbkn/SKILL.md`](https://github.com/openbkn-ai/bkn-sdk/blob/main/skills/openbkn/SKILL.md)。同一个 skill 也覆盖 `openbkn admin` 子命令。
 
 ### 📖 进一步阅读
 
-- [`kweaver-admin` 仓库 README](https://github.com/kweaver-ai/kweaver-admin)
-- [`ARCHITECTURE.md`](https://github.com/kweaver-ai/kweaver-admin/blob/main/ARCHITECTURE.md) — 命令树与后端 API 映射
-- [`docs/SECURITY.md`](https://github.com/kweaver-ai/kweaver-admin/blob/main/docs/SECURITY.md) — Token、TLS、审计与 fallback 路径
-- [`skills/kweaver-admin/SKILL.md`](https://github.com/kweaver-ai/kweaver-admin/blob/main/skills/kweaver-admin/SKILL.md) — Agent Skill 入口
+- [`@openbkn/bkn-sdk` 仓库 README](https://github.com/openbkn-ai/bkn-sdk)
+- [`ARCHITECTURE.md`](https://github.com/openbkn-ai/bkn-sdk/blob/main/ARCHITECTURE.md) — 命令树与后端 API 映射
+- [`docs/SECURITY.md`](https://github.com/openbkn-ai/bkn-sdk/blob/main/docs/SECURITY.md) — Token、TLS、审计与 fallback 路径
+- [`skills/openbkn/SKILL.md`](https://github.com/openbkn-ai/bkn-sdk/blob/main/skills/openbkn/SKILL.md) — Agent Skill 入口
 
 ---
 
@@ -515,8 +516,8 @@ kubectl get pods -A
 ### 🔑 CLI 登录与验证
 
 ```bash
-kweaver auth login https://<访问地址> -k
-kweaver bkn list
+openbkn auth login https://<访问地址> -k
+openbkn bkn list
 ```
 
 > `<访问地址>` 与 `--access_address` 或安装提示的节点地址一致；`-k` 用于自签名证书，正式证书可省略。
@@ -533,9 +534,9 @@ curl -sk "https://<访问地址>/health" || true
 
 ## 🧮 可选：Etrino（数据视图自定义 SQL）
 
-仅安装 **BKN Foundry** 时，`kweaver dataview query <id>` 不带 `--sql` 通常已可用（按视图定义分页查询等）。
+仅安装 **BKN Foundry** 时，`openbkn dataview query <id>` 不带 `--sql` 通常已可用（按视图定义分页查询等）。
 
-> ⚠️ `kweaver dataview query --sql "..."` 自定义 SQL 依赖集群内的 `vega-calculate-coordinator`，由 **Etrino** 相关 Chart 提供（与 `vega-hdfs`、`vega-calculate`（内含 coordinator）、`vega-metadata` 一并部署）。
+> ⚠️ `openbkn dataview query --sql "..."` 自定义 SQL 依赖集群内的 `vega-calculate-coordinator`，由 **Etrino** 相关 Chart 提供（与 `vega-hdfs`、`vega-calculate`（内含 coordinator）、`vega-metadata` 一并部署）。
 
 在已存在 Core 的集群上，使用 `deploy.sh` 的 `etrino` 子命令即可：
 
@@ -551,13 +552,13 @@ curl -sk "https://<访问地址>/health" || true
 
 ## 🧠 配置模型
 
-BKN Foundry 默认不包含预置模型。如需使用 **语义搜索**（`kweaver bkn search`）或 **Decision Agent**，需先注册 LLM 与 Embedding 小模型。
+BKN Foundry 默认不包含预置模型。如需使用 **语义搜索**（`openbkn bkn search`）或 **Agent 对话**，需先注册 LLM 与 Embedding 小模型。
 
 > 🔧 详细操作见 [模型管理](manual/model.md)。以下为最小注册示例：
 
 ```bash
 # 注册 LLM（以 DeepSeek 为例）
-kweaver call /api/mf-model-manager/v1/llm/add -d '{
+openbkn call /api/mf-model-manager/v1/llm/add -d '{
   "model_name": "deepseek-chat",
   "model_series": "deepseek",
   "max_model_len": 8192,
@@ -569,7 +570,7 @@ kweaver call /api/mf-model-manager/v1/llm/add -d '{
 }'
 
 # 注册 Embedding 模型
-kweaver call /api/mf-model-manager/v1/small-model/add -d '{
+openbkn call /api/mf-model-manager/v1/small-model/add -d '{
   "model_name": "bge-m3",
   "model_type": "embedding",
   "model_config": {
@@ -583,8 +584,8 @@ kweaver call /api/mf-model-manager/v1/small-model/add -d '{
 }'
 
 # 验证
-kweaver call '/api/mf-model-manager/v1/llm/list?page=1&size=50'
-kweaver call '/api/mf-model-manager/v1/small-model/list?page=1&size=50'
+openbkn call '/api/mf-model-manager/v1/llm/list?page=1&size=50'
+openbkn call '/api/mf-model-manager/v1/small-model/list?page=1&size=50'
 ```
 
 > 🔧 启用 BKN 语义搜索还需修改 ConfigMap，见 [模型管理 — 启用 BKN 语义搜索](manual/model.md#启用-bkn-语义搜索)。

@@ -56,13 +56,13 @@ Trace 数据支持以下分析场景：
 
 ### CLI
 
-`kweaver agent trace` 需要两个参数：**智能体 ID**、**会话 ID**（与 `kweaver agent sessions <agent_id>` 或对话返回一致）。
+`openbkn agent trace` 需要两个参数：**智能体 ID**、**会话 ID**（与 `openbkn agent sessions <agent_id>` 或对话返回一致）。
 
 #### 查看对话链路
 
 ```bash
 # 格式化输出 — 以树形结构展示 Span 层级、耗时与状态
-kweaver agent trace agt_001 conv_20250115_001 --pretty
+openbkn agent trace agt_001 conv_20250115_001 --pretty
 ```
 
 `--pretty` 输出示例：
@@ -98,7 +98,7 @@ conversation (3,245ms) ✓
 
 ```bash
 # 紧凑输出 — 适合管道处理与日志聚合
-kweaver agent trace agt_001 conv_20250115_001 --compact
+openbkn agent trace agt_001 conv_20250115_001 --compact
 ```
 
 `--compact` 输出为单行 JSON 数组，每个元素一个 Span：
@@ -121,97 +121,52 @@ kweaver agent trace agt_001 conv_20250115_001 --compact
 
 ---
 
-### Python SDK
-
-```python
-from kweaver_sdk import KWeaverClient
-
-client = KWeaverClient()  # 需先 kweaver auth login；构造方式以 kweaver-sdk 为准
-
-trace = client.agent.trace("agt_001", "conv_20250115_001")
-print(f"Trace ID: {trace['trace_id']}")
-print(f"总耗时: {trace['duration_ms']}ms")
-print(f"Span 数: {len(trace['spans'])}")
-print(f"状态: {trace['status']}")
-
-def print_tree(spans, parent_id="", depth=0):
-    children = [s for s in spans if s.get("parent_span_id", "") == parent_id]
-    for span in children:
-        status_icon = "✓" if span["status"] == "ok" else "✗"
-        indent = "  " * depth
-        print(f"{indent}{span['operation']} ({span['duration_ms']}ms) {status_icon}")
-        for key, val in span.get("attributes", {}).items():
-            print(f"{indent}  {key}: {val}")
-        print_tree(spans, span["span_id"], depth + 1)
-
-print_tree(trace["spans"])
-
-error_spans = [s for s in trace["spans"] if s["status"] == "error"]
-for span in error_spans:
-    print(f"错误 Span: {span['operation']}")
-    for event in span.get("events", []):
-        if event["name"] == "error":
-            print(f"  消息: {event['attributes']['message']}")
-            print(f"  堆栈: {event['attributes'].get('stack_trace', 'N/A')}")
-
-llm_spans = [s for s in trace["spans"] if s["operation"] == "llm_call"]
-total_prompt = sum(s["attributes"].get("prompt_tokens", 0) for s in llm_spans)
-total_completion = sum(s["attributes"].get("completion_tokens", 0) for s in llm_spans)
-print(f"Token 用量 — Prompt: {total_prompt}, Completion: {total_completion}, 总计: {total_prompt + total_completion}")
-
-sorted_spans = sorted(trace["spans"], key=lambda s: s["duration_ms"], reverse=True)
-print("耗时 Top 5:")
-for span in sorted_spans[:5]:
-    print(f"  {span['operation']}: {span['duration_ms']}ms")
-```
-
----
-
 ### TypeScript SDK
 
 ```typescript
-import { KWeaverClient } from '@kweaver-ai/kweaver-sdk';
+import { createClient } from '@openbkn/bkn-sdk';
 
-const client = await KWeaverClient.connect();
+const bkn = createClient({ baseUrl: 'https://<访问地址>', token: process.env.BKN_TOKEN });
 
-const trace = await client.agent.trace('agt_001', 'conv_20250115_001');
-console.log(`Trace ID: ${trace.traceId}`);
-console.log(`总耗时: ${trace.durationMs}ms`);
-console.log(`Span 数: ${trace.spans.length}`);
-console.log(`状态: ${trace.status}`);
+// 拉取某次对话的全部 Span
+const spans = await bkn.trace.spans('conv-xyz789');
 
-function printTree(spans: typeof trace.spans, parentId = '', depth = 0) {
-  const children = spans.filter((s) => (s.parentSpanId ?? '') === parentId);
-  for (const span of children) {
-    const icon = span.status === 'ok' ? '✓' : '✗';
-    const indent = '  '.repeat(depth);
-    console.log(`${indent}${span.operation} (${span.durationMs}ms) ${icon}`);
-    for (const [key, val] of Object.entries(span.attributes ?? {})) {
-      console.log(`${indent}  ${key}: ${val}`);
-    }
-    printTree(spans, span.spanId, depth + 1);
-  }
-}
-printTree(trace.spans);
+// 遍历 Span
+for (const span of spans) {
+  const indent = span.parentSpanId ? '  ' : '';
+  console.log(
+    `${indent}${span.name} (${span.type}) — ${span.durationMs}ms — ${span.status}`,
+  );
 
-const errorSpans = trace.spans.filter((s) => s.status === 'error');
-for (const span of errorSpans) {
-  console.log(`错误 Span: ${span.operation}`);
-  for (const event of span.events ?? []) {
-    if (event.name === 'error') {
-      console.log(`  消息: ${event.attributes.message}`);
-    }
+  if (span.type === 'retrieval') {
+    console.log(`    query: ${span.attributes.query}`);
+    console.log(`    results: ${span.attributes.resultsCount}`);
+    console.log(`    sources: ${span.attributes.sources}`);
+  } else if (span.type === 'tool') {
+    console.log(`    tool: ${span.attributes.toolId}`);
+    console.log(`    input:`, span.attributes.input);
+    console.log(`    output:`, span.attributes.output);
+  } else if (span.type === 'llm') {
+    console.log(`    model: ${span.attributes.model}`);
+    console.log(
+      `    tokens: ${span.attributes.promptTokens}+${span.attributes.completionTokens}`,
+    );
   }
 }
 
-const llmSpans = trace.spans.filter((s) => s.operation === 'llm_call');
-const totalPrompt = llmSpans.reduce((sum, s) => sum + (s.attributes?.promptTokens ?? 0), 0);
-const totalCompletion = llmSpans.reduce((sum, s) => sum + (s.attributes?.completionTokens ?? 0), 0);
-console.log(`Token 用量 — Prompt: ${totalPrompt}, Completion: ${totalCompletion}`);
+// 证据链分析
+const retrievalSpans = spans.filter((s) => s.type === 'retrieval');
+const toolSpans = spans.filter((s) => s.type === 'tool');
 
-const sorted = [...trace.spans].sort((a, b) => b.durationMs - a.durationMs);
-console.log('耗时 Top 5:');
-sorted.slice(0, 5).forEach((s) => console.log(`  ${s.operation}: ${s.durationMs}ms`));
+console.log('\n--- 证据来源 ---');
+retrievalSpans.forEach((rs) => {
+  console.log(`知识网络: ${rs.attributes.knId}`);
+  console.log(`  对象类: ${rs.attributes.sources}`);
+});
+toolSpans.forEach((ts) => {
+  console.log(`工具: ${ts.attributes.toolId}`);
+  console.log(`  输出:`, ts.attributes.output);
+});
 ```
 
 ---
@@ -221,11 +176,11 @@ sorted.slice(0, 5).forEach((s) => console.log(`  ${s.operation}: ${s.durationMs}
 ```bash
 # 获取对话 Trace
 curl -sk "https://<访问地址>/api/agent-observability/v1/traces/conv_20250115_001" \
-  -H "Authorization: Bearer $(kweaver token)"
+  -H "Authorization: Bearer $(openbkn token)"
 
 # 按条件搜索 Trace
 curl -sk -X POST "https://<访问地址>/api/agent-observability/v1/traces/search" \
-  -H "Authorization: Bearer $(kweaver token)" \
+  -H "Authorization: Bearer $(openbkn token)" \
   -H "Content-Type: application/json" \
   -d '{
     "agent_id": "agt_001",
@@ -237,9 +192,9 @@ curl -sk -X POST "https://<访问地址>/api/agent-observability/v1/traces/searc
 
 # 获取特定 Span 详情
 curl -sk "https://<访问地址>/api/agent-observability/v1/spans/sp_003" \
-  -H "Authorization: Bearer $(kweaver token)"
+  -H "Authorization: Bearer $(openbkn token)"
 
 # 获取 Trace 统计摘要（耗时分布、错误率等）
 curl -sk "https://<访问地址>/api/agent-observability/v1/traces/conv_20250115_001/summary" \
-  -H "Authorization: Bearer $(kweaver token)"
+  -H "Authorization: Bearer $(openbkn token)"
 ```

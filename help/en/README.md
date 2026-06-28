@@ -28,10 +28,9 @@ Reference manuals by subsystem (living under `./manual/`).
 | [VEGA Engine](manual/vega.md) | Data virtualization — connections, models, views, unified query |
 | [Context Loader](manual/context-loader.md) | Agent context assembly from ontology and data |
 | [Execution Factory](manual/execution-factory.md) | Tools, operators, and skills for agents |
-| [Dataflow](manual/dataflow.md) | Pipeline orchestration and automation |
 | [Trace AI](manual/trace-ai.md) | Traces, metrics, and evidence-chain style observability |
 | [Info Security Fabric](manual/isf.md) | Identity, permissions, policies, and audit (when enabled) |
-| [Platform admin tool](install.md#-administrator-tool-after-a-full-install-kweaver-admin) | `kweaver-admin` — users / orgs / roles / models / audit (after a full install) |
+| [Platform admin](install.md#-administrator-commands-after-a-full-install-openbkn-admin) | `openbkn admin` — users / orgs / roles / models / audit (after a full install) |
 
 ---
 
@@ -39,4 +38,4 @@ Reference manuals by subsystem (living under `./manual/`).
 
 <img src="../qrcode.png" width="200" alt="KWeaver community QR code" />
 
-> End users install the CLI with `npm install -g @kweaver-ai/kweaver-sdk`; platform administrators additionally install `npm install -g @kweaver-ai/kweaver-admin`. For cluster operations beyond this help set, follow the deployment guide bundled with your release.
+> Install the CLI with `npm install -g @openbkn/bkn-sdk`; platform administration is built into the same CLI via the `openbkn admin` subcommands. For cluster operations beyond this help set, follow the deployment guide bundled with your release.

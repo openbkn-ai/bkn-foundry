@@ -174,4 +174,4 @@ Every number comes straight from the 27 `wc_*` tables you imported in step 2 —
 
 ## Cleanup
 
-`./run.sh` does **not** auto-delete the datasource, MySQL tables, Vega catalog, KN, or toolbox. Remove them explicitly in Studio / CLI when no longer needed.
+`./run.sh` does **not** auto-delete the datasource, MySQL tables, Vega catalog, KN, or toolbox. Remove them explicitly via the `openbkn` CLI when no longer needed.

@@ -103,19 +103,18 @@ BKN 采用**无 patch 的更新模型**：
 
 | 语言 | 包 | 安装 |
 |------|-----|------|
-| Python | [PyPI](https://pypi.org/project/kweaver-bkn/) | `pip install kweaver-bkn` |
-| TypeScript | [npm](https://www.npmjs.com/package/@kweaver-ai/bkn) | `npm install @kweaver-ai/bkn` |
+| TypeScript | [npm](https://www.npmjs.com/package/@openbkn/bkn-sdk) | `npm install @openbkn/bkn-sdk` |
 | Golang | 见企业发布说明 | 按随产品分发的 BKN SDK 文档安装 |
 
 ---
 
 ## 🤖 用 Agent 创建 BKN
 
-AI 编码 Agent（如 Cursor、Claude Code、Codex）可在已安装 **create-bkn** 与 **kweaver-core** 技能的前提下，自动生成符合规范的 BKN 目录。
+AI 编码 Agent（如 Cursor、Claude Code、Codex）可在已安装 **openbkn** 技能的前提下，自动生成符合规范的 BKN 目录。
 
 ### 📥 安装 Skill
 
-> 💡 **create-bkn** 与 **kweaver-core** 技能由企业内部分发。Cursor 用户可将 Skill 目录放到 `~/.cursor/skills/` 或项目 `.cursor/skills/` 下；其他 Agent 环境参照各自的 Skill 加载方式。
+> 💡 **openbkn** 技能由企业内部分发。Cursor 用户可将 Skill 目录放到 `~/.cursor/skills/` 或项目 `.cursor/skills/` 下；其他 Agent 环境参照各自的 Skill 加载方式。
 
 ### 用自然语言描述业务域
 
@@ -136,13 +135,13 @@ BKN 文件生成后，使用 CLI 校验并推送到平台：
 
 ```bash
 # 校验：检查格式、引用完整性
-kweaver bkn validate ./my-network/
+openbkn bkn validate ./my-network/
 
 # 推送到平台（创建或更新知识网络）
-kweaver bkn push ./my-network/
+openbkn bkn push ./my-network/
 
 # 从平台拉取已有网络到本地
-kweaver bkn pull <kn_id> ./export-dir/
+openbkn bkn pull <kn_id> ./export-dir/
 ```
 
 ### 完整流程示例
@@ -152,19 +151,19 @@ kweaver bkn pull <kn_id> ./export-dir/
 #    → Agent 生成 ./supply-chain/ 目录
 
 # 2. 校验
-kweaver bkn validate ./supply-chain/
+openbkn bkn validate ./supply-chain/
 
 # 3. 推送到平台
-kweaver bkn push ./supply-chain/
+openbkn bkn push ./supply-chain/
 
 # 4. 查看已创建的知识网络
-kweaver bkn list
+openbkn bkn list
 
 # 5. 构建索引
-kweaver bkn build <kn_id> --wait
+openbkn bkn build <kn_id> --wait
 
 # 6. 语义搜索验证
-kweaver bkn search <kn_id> "库存不足的物料"
+openbkn bkn search <kn_id> "库存不足的物料"
 ```
 
 ---
@@ -175,13 +174,13 @@ kweaver bkn search <kn_id> "库存不足的物料"
 
 ```bash
 # 从数据库数据源创建，自动发现表结构并构建索引
-kweaver bkn create-from-ds <ds_id> \
+openbkn bkn create-from-ds <ds_id> \
   --name "销售网络" \
   --tables orders,customers,products \
   --build --timeout 300
 
 # 从 CSV 文件批量创建
-kweaver bkn create-from-csv <ds_id> \
+openbkn bkn create-from-csv <ds_id> \
   --files "./data/*.csv" \
   --name "财务分析网络" \
   --build
@@ -194,195 +193,162 @@ kweaver bkn create-from-csv <ds_id> \
 ### 知识网络管理
 
 ```bash
-kweaver bkn list --name "客户" --tag crm --sort update_time --direction desc --limit 50 -v
-kweaver bkn get kn_abc123 --stats
-kweaver bkn get kn_abc123 --export
-kweaver bkn pull kn_abc123 ./my-network
+openbkn bkn list --name "客户" --tag crm --sort update_time --direction desc --limit 50 -v
+openbkn bkn get kn_abc123 --stats
+openbkn bkn get kn_abc123 --export
+openbkn bkn pull kn_abc123 ./my-network
 ```
 
 ### 构建与推送
 
 ```bash
-kweaver bkn build kn_abc123 --wait --timeout 300
-kweaver bkn validate ./my-network
-kweaver bkn push ./my-network --branch main
+openbkn bkn build kn_abc123 --wait --timeout 300
+openbkn bkn validate ./my-network
+openbkn bkn push ./my-network --branch main
 ```
 
 ### 对象类 CRUD
 
 ```bash
-kweaver bkn object-type list kn_abc123
-kweaver bkn object-type get kn_abc123 ot_customer
+openbkn bkn object-type list kn_abc123
+openbkn bkn object-type get kn_abc123 ot_customer
 
-kweaver bkn object-type create kn_abc123 \
+openbkn bkn object-type create kn_abc123 \
   --name "客户" \
   --dataview-id dv_001 \
   --primary-key customer_id \
   --display-key customer_name
 
-kweaver bkn object-type update kn_abc123 ot_customer \
+openbkn bkn object-type update kn_abc123 ot_customer \
   --add-property '{"name":"phone","type":"string","display_name":"联系电话"}' \
   --update-property '{"name":"email","display_name":"电子邮箱"}' \
   --remove-property legacy_field \
   --tags "核心,CRM"
 
-kweaver bkn object-type delete kn_abc123 ot_customer
+openbkn bkn object-type delete kn_abc123 ot_customer
 ```
 
 ### 对象类实例查询
 
 ```bash
 # 等值查询
-kweaver bkn object-type query kn_abc123 ot_customer \
+openbkn bkn object-type query kn_abc123 ot_customer \
   '{"conditions":[{"field":"status","op":"==","value":"active"}],"limit":20}'
 
 # 模糊查询
-kweaver bkn object-type query kn_abc123 ot_customer \
+openbkn bkn object-type query kn_abc123 ot_customer \
   '{"conditions":[{"field":"name","op":"like","value":"%张%"}],"limit":10}'
 
 # 枚举查询（IN）
-kweaver bkn object-type query kn_abc123 ot_customer \
+openbkn bkn object-type query kn_abc123 ot_customer \
   '{"conditions":[{"field":"region","op":"in","value":["华东","华北"]}]}'
 
 # 组合条件查询（AND/OR）
-kweaver bkn object-type query kn_abc123 ot_customer \
+openbkn bkn object-type query kn_abc123 ot_customer \
   '{"logic":"and","conditions":[{"field":"status","op":"==","value":"active"},{"field":"region","op":"in","value":["华东"]}]}'
 
 # search_after 分页
-kweaver bkn object-type query kn_abc123 ot_customer \
+openbkn bkn object-type query kn_abc123 ot_customer \
   '{"conditions":[],"limit":20,"search_after":["2024-01-15T10:30:00Z","cust_500"]}'
 ```
 
 ### 关系类
 
 ```bash
-kweaver bkn relation-type list kn_abc123
-kweaver bkn relation-type get kn_abc123 rt_purchase
-kweaver bkn relation-type create kn_abc123 \
+openbkn bkn relation-type list kn_abc123
+openbkn bkn relation-type get kn_abc123 rt_purchase
+openbkn bkn relation-type create kn_abc123 \
   --name "购买" \
   --source-type ot_customer \
   --target-type ot_product
-kweaver bkn relation-type delete kn_abc123 rt_purchase
+openbkn bkn relation-type delete kn_abc123 rt_purchase
 ```
 
 ### 语义搜索
 
 ```bash
-kweaver bkn search kn_abc123 "近三个月高价值客户"
+openbkn bkn search kn_abc123 "近三个月高价值客户"
 ```
 
 ### 行动类与执行
 
 ```bash
-kweaver bkn action-type list kn_abc123
-kweaver bkn action-type query kn_abc123 at_send_email
-kweaver bkn action-type execute kn_abc123 at_send_email \
+openbkn bkn action-type list kn_abc123
+openbkn bkn action-type query kn_abc123 at_send_email
+openbkn bkn action-type execute kn_abc123 at_send_email \
   --params '{"to":"user@example.com","subject":"提醒","body":"您好"}'
 
-kweaver bkn action-log list kn_abc123 --limit 20
-kweaver bkn action-log get kn_abc123 log_789
-kweaver bkn action-log cancel kn_abc123 log_789
-kweaver bkn action-execution get kn_abc123 exec_456
+openbkn bkn action-log list kn_abc123 --limit 20
+openbkn bkn action-log get kn_abc123 log_789
+openbkn bkn action-log cancel kn_abc123 log_789
+openbkn bkn action-execution get kn_abc123 exec_456
 ```
 
 ### 端到端流程
 
 ```bash
 # 1. 连接数据源
-kweaver ds connect --type postgresql \
+openbkn ds connect --type postgresql \
   --host db.example.com --port 5432 \
   --database sales --user admin --password secret \
   --name "销售数据库"
 
 # 2. 从数据源创建知识网络
-kweaver bkn create-from-ds ds_001 --name "销售网络" --build --timeout 300
+openbkn bkn create-from-ds ds_001 --name "销售网络" --build --timeout 300
 
 # 3. 查看生成的对象类
-kweaver bkn object-type list kn_abc123
+openbkn bkn object-type list kn_abc123
 
 # 4. 查询客户实例
-kweaver bkn object-type query kn_abc123 ot_customer \
+openbkn bkn object-type query kn_abc123 ot_customer \
   '{"conditions":[{"field":"status","op":"==","value":"active"}],"limit":5}'
 
 # 5. 语义搜索
-kweaver bkn search kn_abc123 "近一年采购额超过100万的客户"
-```
-
----
-
-## 🐍 Python SDK
-
-```python
-from kweaver_sdk import KWeaverClient
-
-client = KWeaverClient(base_url="https://<访问地址>")
-
-networks = client.bkn.list_networks(name="客户", tag="crm", sort="update_time", direction="desc", limit=50)
-for kn in networks["data"]:
-    print(kn["id"], kn["name"])
-
-kn = client.bkn.get("kn_abc123", stats=True)
-print(f"对象类数: {kn['stats']['object_type_count']}")
-
-ot_list = client.bkn.object_type.list("kn_abc123")
-for ot in ot_list["data"]:
-    print(ot["id"], ot["name"])
-
-results = client.bkn.object_type.query("kn_abc123", "ot_customer", {
-    "conditions": [{"field": "status", "op": "==", "value": "active"}],
-    "limit": 20
-})
-for row in results["data"]:
-    print(row["customer_name"], row["region"])
-
-search_results = client.bkn.search("kn_abc123", query="高价值客户")
-for item in search_results["data"]:
-    print(item["score"], item["object_type"], item["display_name"])
+openbkn bkn search kn_abc123 "近一年采购额超过100万的客户"
 ```
 
 ---
 
 ## 📘 TypeScript SDK
 
-> 💡 更多可运行示例见随 `@kweaver-ai/kweaver-sdk` 包发布的示例目录。
+> 💡 更多可运行示例见随 `@openbkn/bkn-sdk` 包发布的示例目录。
 
 ```typescript
-import { KWeaverClient } from '@kweaver-ai/kweaver-sdk';
+import { createClient } from '@openbkn/bkn-sdk';
 
-const client = await KWeaverClient.connect();
+const bkn = createClient({ baseUrl: 'https://<访问地址>', token: process.env.BKN_TOKEN });
 
-const knList = await client.knowledgeNetworks.list({ limit: 50 });
+const knList = await bkn.kn.list({ limit: 50 });
 for (const kn of knList) {
   console.log(`${kn.name} (${kn.id})`);
 }
 
 const knId = knList[0].id;
-const detail = await client.knowledgeNetworks.get(knId, { include_statistics: true });
+const detail = await bkn.kn.get(knId, { stats: true });
 
-const objectTypes = await client.knowledgeNetworks.listObjectTypes(knId);
+const objectTypes = await bkn.kn.objectTypes(knId);
 for (const ot of objectTypes) {
-  console.log(`${ot.name} (${ot.id}) — ${ot.properties?.length ?? 0} 个属性`);
+  console.log(`${ot.name} (${ot.id})`);
 }
 
-const relationTypes = await client.knowledgeNetworks.listRelationTypes(knId);
+const relationTypes = await bkn.kn.relationTypes(knId);
 for (const rt of relationTypes) {
   console.log(`${rt.source_object_type?.name} —[${rt.name}]→ ${rt.target_object_type?.name}`);
 }
 
-const actionTypes = await client.knowledgeNetworks.listActionTypes(knId);
+const actionTypes = await bkn.kn.actionTypes(knId);
 
+// 查询对象实例
 const otId = objectTypes[0].id;
-const instances = await client.bkn.queryInstances(knId, otId, {
-  page: 1,
+const instances = await bkn.kn.objectTypeQuery(knId, otId, {
+  conditions: [{ field: 'status', op: '==', value: 'active' }],
   limit: 20,
 });
-console.log(instances.datas);
+console.log(instances);
 
-const identity = instances.datas[0]._instance_identity;
-const properties = await client.bkn.queryProperties(knId, otId, { identity });
-
+// 子图遍历
 const rt = relationTypes[0];
-const subgraph = await client.bkn.querySubgraph(knId, {
+const subgraph = await bkn.kn.subgraph(knId, {
   relation_type_paths: [{
     relation_types: [{
       relation_type_id: rt.id,
@@ -393,19 +359,21 @@ const subgraph = await client.bkn.querySubgraph(knId, {
   limit: 5,
 });
 
-const result = await client.bkn.semanticSearch(knId, '高价值客户');
-for (const concept of result.concepts ?? []) {
-  console.log(`${concept.concept_name} (score: ${concept.intent_score})`);
-}
+// 语义搜索
+const result = await bkn.kn.search(knId, '高价值客户');
+console.log(result);
 
+// 行为类 + 执行日志
 const atId = actionTypes[0].id;
-const actionDetail = await client.bkn.queryAction(knId, atId, {});
-const logs = await client.bkn.listActionLogs(knId, { atId, limit: 5 });
+const actionDetail = await bkn.kn.actionTypeQuery(knId, atId, {});
+const logs = await bkn.kn.actionLogs(knId, { limit: 5 });
 
-const buildStatus = await client.knowledgeNetworks.buildAndWait(knId, {
-  timeout: 300_000,
-  interval: 5_000,
-});
+// 提交 Vega BuildTask 构建知识网络索引，并等待完成
+const buildTask = await bkn.vega.build(
+  { resource_id: '<resource_id>', mode: 'batch' },
+  { wait: true },
+);
+console.log('build:', buildTask);
 ```
 
 ---
@@ -415,19 +383,19 @@ const buildStatus = await client.knowledgeNetworks.buildAndWait(knId, {
 ```bash
 # 列出知识网络
 curl -sk "https://<访问地址>/api/ontology-manager/v1/knowledge-networks?name=客户&sort=update_time&direction=desc&limit=50" \
-  -H "Authorization: Bearer $(kweaver token)"
+  -H "Authorization: Bearer $(openbkn token)"
 
 # 获取知识网络详情
 curl -sk "https://<访问地址>/api/ontology-manager/v1/knowledge-networks/kn_abc123" \
-  -H "Authorization: Bearer $(kweaver token)"
+  -H "Authorization: Bearer $(openbkn token)"
 
 # 列出对象类
 curl -sk "https://<访问地址>/api/ontology-manager/v1/knowledge-networks/kn_abc123/object-types" \
-  -H "Authorization: Bearer $(kweaver token)"
+  -H "Authorization: Bearer $(openbkn token)"
 
 # 查询对象类实例
 curl -sk -X POST "https://<访问地址>/api/ontology-query/v1/query" \
-  -H "Authorization: Bearer $(kweaver token)" \
+  -H "Authorization: Bearer $(openbkn token)" \
   -H "Content-Type: application/json" \
   -d '{
     "kn_id": "kn_abc123",
@@ -442,7 +410,7 @@ curl -sk -X POST "https://<访问地址>/api/ontology-query/v1/query" \
 
 # 语义搜索
 curl -sk -X POST "https://<访问地址>/api/ontology-query/v1/search" \
-  -H "Authorization: Bearer $(kweaver token)" \
+  -H "Authorization: Bearer $(openbkn token)" \
   -H "Content-Type: application/json" \
   -d '{
     "kn_id": "kn_abc123",
@@ -452,7 +420,7 @@ curl -sk -X POST "https://<访问地址>/api/ontology-query/v1/search" \
 
 # 创建对象类
 curl -sk -X POST "https://<访问地址>/api/ontology-manager/v1/knowledge-networks/kn_abc123/object-types" \
-  -H "Authorization: Bearer $(kweaver token)" \
+  -H "Authorization: Bearer $(openbkn token)" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "客户",
@@ -469,7 +437,7 @@ curl -sk -X POST "https://<访问地址>/api/ontology-manager/v1/knowledge-netwo
 
 # 执行动作
 curl -sk -X POST "https://<访问地址>/api/bkn-backend/v1/knowledge-networks/kn_abc123/actions/at_send_email/execute" \
-  -H "Authorization: Bearer $(kweaver token)" \
+  -H "Authorization: Bearer $(openbkn token)" \
   -H "Content-Type: application/json" \
   -d '{
     "params": {"to": "user@example.com", "subject": "提醒", "body": "您好"}

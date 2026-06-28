@@ -32,7 +32,7 @@ Prepare the host, network, and client tooling before you deploy.
 | Tool | Expectation |
 | --- | --- |
 | **Git** | `deploy.sh` / `preflight.sh` **do not** call `git`. Install Git only if you are working from **a cloned repository**. Deployments from an **extracted product tarball** or artifact **do not** require Git on the install host. |
-| **Node.js** | **22+** aligns with **`@kweaver-ai/kweaver-sdk`** npm [`engines`](https://www.npmjs.com/package/@kweaver-ai/kweaver-sdk), **`deploy/onboard.sh`**, optional **`kweaver-admin`**, and preflight checks (`PREFLIGHT_KWEAVER_MIN_NODE_MAJOR`, default **22**). Bringing up Kubernetes/Helm on the server **does not** require Node; preflight warns if Node is missing or older than **22** (**[WARN]** only—you can run onboard from another machine or install Node via **`preflight.sh --fix`** opt-ins). See **Client tooling** below. |
+| **Node.js** | **22+** aligns with **`@openbkn/bkn-sdk`** npm [`engines`](https://www.npmjs.com/package/@openbkn/bkn-sdk), **`deploy/onboard.sh`**, and preflight checks (`PREFLIGHT_KWEAVER_MIN_NODE_MAJOR`, default **22**). Bringing up Kubernetes/Helm on the server **does not** require Node; preflight warns if Node is missing or older than **22** (**[WARN]** only—you can run onboard from another machine or install Node via **`preflight.sh --fix`** opt-ins). See **Client tooling** below. |
 | **Python** **3** | **Optional** for normal `preflight` / `deploy.sh`. **`python3`** is **required** if you pass **`deploy/preflight.sh --output=json`** (stdout JSON is emitted via Python). When **`python3`** is on PATH, preflight **requires CPython 3.6+** (same bar as `deploy/scripts/lib/onboard_*.py`; override **`PREFLIGHT_MIN_PYTHON_MAJOR`** / **`PREFLIGHT_MIN_PYTHON_MINOR`**, default **3** / **6**). A few kubectl-related helpers also use Python when available. |
 
 **`deploy/scripts/lib/onboard_*.py` (invoked by `onboard.sh`)** are written for **CPython 3.6 through current 3.x** — including **CentOS 7’s 3.6.x** — and avoid 3.7-only `subprocess` flags, **PEP 563** annotations, **`yaml.dump(..., sort_keys=...)`** (needs newer PyYAML), etc. **Python 3.5 and older are not supported** (f-strings, among other things). Maintainer/CI: **`bash deploy/scripts/lib/preflight_checks_test.sh`** includes a `py_compile` pass on these files when `python3` is available; set **`EXTRA_PYTHONS="python3.9 python3.12"`** to repeat with more interpreters.
@@ -73,14 +73,14 @@ The deploy scripts may need outbound access to mirrors and registries, for examp
 On your workstation (with network access to the cluster):
 
 - **kubectl** — optional but useful for health checks
-- **kweaver CLI** — install via npm package `@kweaver-ai/kweaver-sdk`
+- **openbkn CLI** — install via npm package `@openbkn/bkn-sdk`
 
 ```bash
-npm install -g @kweaver-ai/kweaver-sdk
-# or: npx kweaver --help
+npm install -g @openbkn/bkn-sdk
+# or: npx openbkn --help
 ```
 
-> **Node.js 22+** is required. This matches the [`engines`](https://www.npmjs.com/package/@kweaver-ai/kweaver-sdk) field of `@kweaver-ai/kweaver-sdk` on npm (`node >= 22`); Node 18 will get `EBADENGINE` or runtime issues.
+> **Node.js 22+** is required. This matches the [`engines`](https://www.npmjs.com/package/@openbkn/bkn-sdk) field of `@openbkn/bkn-sdk` on npm (`node >= 22`); Node 18 will get `EBADENGINE` or runtime issues.
 
 - **curl** — for raw HTTP API calls
 
@@ -101,7 +101,7 @@ chmod +x deploy.sh
 
 ## 🩺 Pre-install host check / fix: `preflight.sh`
 
-Before `deploy.sh`, run **`deploy/preflight.sh`** on the **target install host** (`root` / `sudo`). It checks kernel / sysctl / containerd / `kubectl` / `helm` / `python3` (requires **3.6+** when interpreter is on PATH) / Node / `kweaver` CLIs and can apply the missing pieces (each fix is opt-in unless `-y`):
+Before `deploy.sh`, run **`deploy/preflight.sh`** on the **target install host** (`root` / `sudo`). It checks kernel / sysctl / containerd / `kubectl` / `helm` / `python3` (requires **3.6+** when interpreter is on PATH) / Node / `openbkn` CLIs and can apply the missing pieces (each fix is opt-in unless `-y`):
 
 ```bash
 sudo bash deploy/preflight.sh                # check-only (default; still requires root)
@@ -116,11 +116,11 @@ Common flags:
 | Flag | Meaning |
 | --- | --- |
 | `--check-only` | Only run checks, do not modify the system (default) |
-| `--fix` | Check + apply fixes (K8s / sysctl / containerd / Helm / firewall / SELinux / system tuning / sysctl …); also offers Node 22+ + `kweaver` / `kweaver-admin` |
+| `--fix` | Check + apply fixes (K8s / sysctl / containerd / Helm / firewall / SELinux / system tuning / sysctl …); also offers Node 22+ + `openbkn` |
 | `-y` / `--yes` | Auto-approve **every** fix prompt |
 | `-n` / `--no` | Auto-decline every fix (preview risk text only) |
 | `--fix-allow=LIST` | Comma-separated fix names to auto-approve, others are skipped (e.g. `k8s-pkgs-repo,k8s-bins,containerd-install,helm-v3,nofile-limits,nodejs-npm,kweaver-sdk`; legacy alias `k8s-apt-source`). Run `sudo bash deploy/preflight.sh --list-fixes` to see all fix names available on this host. |
-| `--role=target\|admin\|both` | `target` = `kubectl`/`helm` only, `admin` = `kweaver` / Node / npm, `both` (default) covers all |
+| `--role=target\|admin\|both` | `target` = `kubectl`/`helm` only, `admin` = `openbkn` / Node / npm, `both` (default) covers all |
 | `--no-recheck` | Do not re-run full checks after fixes |
 | `--lenient` | Downgrade install-blocking `[FAIL]` items (sysctl / kernel modules / containerd / kubectl / helm / swap / broken apt sources / missing kubeadm or containerd install candidate / ulimit / inotify / vm.max_map_count / overlay) back to `[WARN]`. Same as `PREFLIGHT_STRICT=false PREFLIGHT_STRICT_SOURCES=false`. |
 | `--skip=LIST` | Comma-separated check names to skip |
@@ -172,7 +172,7 @@ After `--check-only` or `--fix`, preflight prints a **Summary** (counts per stat
   Only then install:
     sudo bash ./deploy.sh kweaver-core install --minimum
     sudo bash ./deploy.sh kweaver-core install
-  Finally: sudo bash ./onboard.sh from deploy/ (Linux; macOS dev uses plain bash. Node 22+ + kweaver on PATH; sudo bash ./preflight.sh --fix helps …)
+  Finally: sudo bash ./onboard.sh from deploy/ (Linux; macOS dev uses plain bash. Node 22+ + openbkn on PATH; sudo bash ./preflight.sh --fix helps …)
 ```
 
 **Notes:**
@@ -250,36 +250,36 @@ export INGRESS_NGINX_HTTPS_PORT=8443
 
 ## Post-install: `onboard.sh`
 
-After `deploy.sh kweaver-core install`, use **`deploy/onboard.sh`** on a machine with **Node 22+**, **`kubectl`** (cluster access), and **`kweaver`** (`npm i -g @kweaver-ai/kweaver-sdk`). Run from the `deploy/` directory **with `sudo` on Linux** (matches `sudo deploy.sh`):
+After `deploy.sh kweaver-core install`, use **`deploy/onboard.sh`** on a machine with **Node 22+**, **`kubectl`** (cluster access), and **`openbkn`** (`npm i -g @openbkn/bkn-sdk`). Run from the `deploy/` directory **with `sudo` on Linux** (matches `sudo deploy.sh`):
 
 ```bash
 cd deploy
 sudo bash ./onboard.sh --help
 ```
 
-> **Why `sudo`?** `onboard.sh` reads the install config at `$HOME/.openbkn-ai/config.yaml` (written by `sudo deploy.sh` into `/root/.openbkn-ai/`, mode 700) and writes `kweaver` auth state to `$HOME/.kweaver`. Without `sudo`, the current user's home is consulted instead — and falls back to the vendored template `deploy/conf/config.yaml` if that file does not exist, which may resolve a **different** access URL than the one used at install time. The script prints a yellow `[onboard][hint]` at startup whenever this mismatch is likely; silence with `ONBOARD_SUDO_HINT_DISABLED=1`. **macOS dev path** (`bash deploy/dev/mac.sh onboard`) must **not** use `sudo`: Docker Desktop / `kind` / `$HOME` (install config + `kweaver` token) all belong to the current user, and `sudo` redirects them to `/var/root` — splitting install from onboard. `deploy.sh` already short-circuits `check_root` on `Darwin`, so `sudo` adds nothing on macOS. See [`deploy/dev/README.md`](../../deploy/dev/README.md) · [`deploy/dev/README.zh.md`](../../deploy/dev/README.zh.md) for details.
+> **Why `sudo`?** `onboard.sh` reads the install config at `$HOME/.openbkn-ai/config.yaml` (written by `sudo deploy.sh` into `/root/.openbkn-ai/`, mode 700) and writes `openbkn` auth state to `$HOME/.bkn`. Without `sudo`, the current user's home is consulted instead — and falls back to the vendored template `deploy/conf/config.yaml` if that file does not exist, which may resolve a **different** access URL than the one used at install time. The script prints a yellow `[onboard][hint]` at startup whenever this mismatch is likely; silence with `ONBOARD_SUDO_HINT_DISABLED=1`. **macOS dev path** (`bash deploy/dev/mac.sh onboard`) must **not** use `sudo`: Docker Desktop / `kind` / `$HOME` (install config + `openbkn` token) all belong to the current user, and `sudo` redirects them to `/var/root` — splitting install from onboard. `deploy.sh` already short-circuits `check_root` on `Darwin`, so `sudo` adds nothing on macOS. See [`deploy/dev/README.md`](../../deploy/dev/README.md) · [`deploy/dev/README.zh.md`](../../deploy/dev/README.zh.md) for details.
 
 Typical flags:
 
 | Flag | Meaning |
 | --- | --- |
-| *(none)* | Interactive: walks through Node / `kweaver` / `kweaver-admin` install (if missing), auth (both CLIs), then model / BKN / Context Loader prompts |
-| `-y` / `--yes` | Auto-accept all prompts: bootstrap, ISF `kweaver` + `kweaver-admin` HTTP defaults (`admin` / `eisoo.com`), `test` user creation + role sync, `kweaver` relogin as `test`, Context Loader import. Skips interactive **model registration**; use `--config=models.yaml` for non-interactive model registration. |
+| *(none)* | Interactive: walks through Node / `openbkn` install (if missing), auth (single CLI — admin is built in via `openbkn admin`), then model / BKN / Context Loader prompts |
+| `-y` / `--yes` | Auto-accept all prompts: bootstrap, ISF HTTP auth defaults (`admin` / `eisoo.com`), `test` user creation + role sync, `openbkn` relogin as `test`, Context Loader import. Skips interactive **model registration**; use `--config=models.yaml` for non-interactive model registration. |
 | `--config=models.yaml` | Non-interactive: register models (and optional BKN) via YAML; see `deploy/conf/models.yaml.example` |
 | `--enable-bkn-search` | BKN ConfigMap patch only (after probe) |
 | `--skip-context-loader` | Skip ADP Context Loader toolbox import |
 
 **Full ISF install (auth + business domain):** onboarding treats the cluster as "ISF" when related Helm releases or namespaces exist. **`onboard.sh` then performs the following 5 steps automatically** (you do **not** need to run them by hand — they are listed here so you know what is happening, and what to fall back to if a step fails):
 
-1. **`kweaver auth login`** (`onboard_ensure_kweaver_auth`) — session saved under `~/.kweaver`. HTTP defaults to `admin` / `eisoo.com` (or browser OAuth on a TTY); under `-y` HTTP defaults are used automatically.
-2. **`kweaver-admin` on `PATH`** (`onboard_ensure_kweaver_admin_for_isf`) — runs `npm i -g @kweaver-ai/kweaver-admin` if missing (interactive prompt, or auto under `-y`).
-3. **`kweaver-admin auth login`** (`onboard_ensure_kweaver_admin_auth_for_isf`) — **separate token store** from `kweaver`, but the **same account** as step 1 (`admin` / `eisoo.com` defaults). Uses `-u` / `-p` / `-k` (HTTP `/oauth2/signin` is selected automatically; **no** `--http-signin` — that flag is **kweaver-sdk only**). On a TTY a browser flow is also offered.
-4. **User `test`** (`onboard_offer_isf_test_user`) — created with password `111111` (override with `ONBOARD_TEST_USER_PASSWORD`), every role from `kweaver-admin role list` assigned, then **`kweaver auth login` as `test`** so the SDK session matches the business user for the next steps. If `test` already exists, only role-sync runs.
-5. **Context Loader + model registration** (`onboard_offer_context_loader_toolset` → `kweaver call impex`; then interactive / YAML model registration) — both use **`~/.kweaver` as `test`** (the console `admin` session usually returns `403` on impex).
+1. **`openbkn auth login`** (`onboard_ensure_kweaver_auth`) — session saved under `~/.bkn`. HTTP defaults to `admin` / `eisoo.com` (or browser OAuth on a TTY); under `-y` HTTP defaults are used automatically.
+2. **`openbkn` on `PATH`** (`onboard_ensure_kweaver_admin_for_isf`) — runs `npm i -g @openbkn/bkn-sdk` if missing (interactive prompt, or auto under `-y`). Admin is built in via the `openbkn admin` subcommand — no separate package.
+3. **Admin auth** (`onboard_ensure_kweaver_admin_auth_for_isf`) — admin operations reuse the **same `openbkn` login / token store** as step 1 (`admin` / `eisoo.com` defaults). Uses `-u` / `-p` / `-k` (HTTP `/oauth2/signin` is selected automatically). On a TTY a browser flow is also offered.
+4. **User `test`** (`onboard_offer_isf_test_user`) — created with password `111111` (override with `ONBOARD_TEST_USER_PASSWORD`), every role from `openbkn admin role list` assigned, then **`openbkn auth login` as `test`** so the SDK session matches the business user for the next steps. If `test` already exists, only role-sync runs.
+5. **Context Loader + model registration** (`onboard_offer_context_loader_toolset` → `openbkn call impex`; then interactive / YAML model registration) — both use **`~/.bkn` as `test`** (the console `admin` session usually returns `403` on impex).
 
 If any step fails, the script exits non-zero with a clear message; re-run `sudo bash deploy/onboard.sh` (Linux) / `bash deploy/onboard.sh` (macOS dev) after fixing the cause — earlier successful steps are detected and skipped (idempotent re-runs).
 
-**Minimum install** (`--minimum`): only `kweaver auth` (often `--no-auth`); the ISF-only steps 2–4 above are no-ops, and Context Loader (step 5) only runs if the operator deployment is present.
+**Minimum install** (`--minimum`): only `openbkn auth` (often `--no-auth`); the ISF-only steps 2–4 above are no-ops (admin tasks need the auth-enabled backend), and Context Loader (step 5) only runs if the operator deployment is present.
 
 At the end, an **English completion report** is printed unless `ONBOARD_NO_COMPLETION_REPORT=1`.
 
@@ -289,15 +289,15 @@ At the end, an **English completion report** is printed unless `ONBOARD_NO_COMPL
 
 ```mermaid
 flowchart TB
-  s([onboard.sh]) --> boot["Bootstrap: Node 22+, kweaver, kubectl, python3"]
+  s([onboard.sh]) --> boot["Bootstrap: Node 22+, openbkn, kubectl, python3"]
   boot --> mode{Mode}
   mode -->|"--enable-bkn-search"| p1[onboard_probe] --> bkn["BKN / ontology ConfigMap patch + rollout"] --> r1[Completion report] --> e1([exit 0])
   mode -->|"--config=…"| p2[onboard_probe] --> py["exec onboard_apply_config.py"] --> e2([exit])
   mode -->|default: interactive; optional -y| p3[onboard_probe] --> ui["Namespace + LLM/embedding (skip-if-already-exists) + BKN patch (only when default actually changes)"] --> r2[Completion report] --> e3([exit 0])
 ```
 
-- **`onboard_probe` runs in all three modes** before BKN-only, YAML, or interactive model registration. On **ISF**, it includes **`kweaver-admin` HTTP auth (defaults like kweaver)**, **user `test`**, **`kweaver` relogin as `test`**, then **Context Loader** when applicable.
-- **`-y`** does not set `--config`; it mainly auto-accepts **Node / npm -g** bootstrap and **ISF** `kweaver` / `kweaver-admin` **HTTP** auth defaults where applicable. Under `-y` the interactive model section is skipped (use `--config=models.yaml` to register non-interactively); the completion report still shows what is already on the platform.
+- **`onboard_probe` runs in all three modes** before BKN-only, YAML, or interactive model registration. On **ISF**, it includes **admin HTTP auth (same `openbkn` defaults)**, **user `test`**, **`openbkn` relogin as `test`**, then **Context Loader** when applicable.
+- **`-y`** does not set `--config`; it mainly auto-accepts **Node / npm -g** bootstrap and **ISF** `openbkn` **HTTP** auth defaults where applicable. Under `-y` the interactive model section is skipped (use `--config=models.yaml` to register non-interactively); the completion report still shows what is already on the platform.
 - **Re-runs are safe.** Interactive model registration **detects what is already there** and only asks to add more:
   - **LLM** — if any LLM is already registered, the script asks `Register another LLM now? [y/N]` (default **No**).
   - **Embedding / small model** — same pattern. If you do register a new embedding, the script then asks whether to make it the **BKN default**:
@@ -311,18 +311,18 @@ flowchart TB
 ```mermaid
 flowchart TB
   subgraph probe["onboard_probe"]
-    A["onboard_ensure_kweaver_auth\n(kweaver: HTTP default admin / eisoo or browser)"] --> B["kubectl: ns or target namespace"]
+    A["onboard_ensure_kweaver_auth\n(openbkn: HTTP default admin / eisoo or browser)"] --> B["kubectl: ns or target namespace"]
     B --> C["onboard_prepend_npm_global_bin_to_path"]
     C --> D["onboard_recommend_admin_cli (Helm / ns → ISF?)"]
-    D --> E["onboard_ensure_kweaver_admin_for_isf\n(npm -g kweaver-admin on ISF if needed)"]
-    E --> F["onboard_ensure_kweaver_admin_auth_for_isf\n(HTTP: same defaults as kweaver, or -k browser; -y: auto HTTP)"]
+    D --> E["onboard_ensure_kweaver_admin_for_isf\n(npm -g openbkn on ISF if needed)"]
+    E --> F["onboard_ensure_kweaver_admin_auth_for_isf\n(admin auth: same openbkn defaults, or -k browser; -y: auto HTTP)"]
     F --> G1["onboard_offer_isf_test_user\ncreate or sync test + roles"]
-    G1 --> G2["onboard_isf_relogin…\nkweaver auth as test (HTTP)"]
-    G2 --> H["onboard_offer_context_loader_toolset\n(kweaver impex)"]
+    G1 --> G2["onboard_isf_relogin…\nopenbkn auth as test (HTTP)"]
+    G2 --> H["onboard_offer_context_loader_toolset\n(openbkn impex)"]
   end
 ```
 
-On **minimum (non-ISF)** installs, the ISF-only steps do not require `kweaver-admin` and typically skip the **test** / **relogin** / impex gating; Context Loader may still run if the operator deployment exists.
+On **minimum (non-ISF)** installs, the ISF-only steps do not require the admin backend and typically skip the **test** / **relogin** / impex gating; Context Loader may still run if the operator deployment exists.
 
 **3) ISF full install: who talks to whom (user `test` + Context Loader impex)**
 
@@ -331,145 +331,146 @@ sequenceDiagram
   autonumber
   actor U as Operator
   participant O as onboard.sh
-  participant K as kweaver
-  participant A as kweaver-admin
+  participant K as openbkn
+  participant A as openbkn admin
   U->>O: run from deploy/
-  O->>K: kweaver auth — HTTP (admin / eisoo) or browser
-  O->>A: kweaver-admin auth — HTTP (same defaults) or -k browser
+  O->>K: openbkn auth — HTTP (admin / eisoo) or browser
+  O->>A: openbkn admin (same login / token) — HTTP defaults or -k browser
   A->>A: user create, password, assign roles
   A-->>O: user list OK
-  O->>K: kweaver auth as test — HTTP (test password)
-  O->>K: kweaver call impex / later kweaver steps
+  O->>K: openbkn auth as test — HTTP (test password)
+  O->>K: openbkn call impex / later openbkn steps
 ```
 
-After **probe**, the default path continues with **Namespace + models + BKN** in this shell: **~/.kweaver** should already be **test** on ISF so those calls use the business user.
+After **probe**, the default path continues with **Namespace + models + BKN** in this shell: **~/.bkn** should already be **test** on ISF so those calls use the business user.
 
-The admin CLI and the SDK use **separate** token files; both **default to the same HTTP account** for ISF. For impex, **`kweaver` must be signed in as `test`**, not the initial console `admin` session when the API returns 403.
+The `openbkn` CLI and its `admin` subcommand share **one** login and token store. For impex, **`openbkn` must be signed in as `test`**, not the initial console `admin` session when the API returns 403.
 
 ---
 
-## 🛡️ Administrator tool after a full install (kweaver-admin)
+## 🛡️ Administrator commands after a full install (`openbkn admin`)
 
-After a full install (with `auth.enabled=true` and `businessDomain.enabled=true`), platform-level operations — **users, organizations, roles, models, audit** — are managed via the standalone npm CLI [`@kweaver-ai/kweaver-admin`](https://github.com/kweaver-ai/kweaver-admin). It is complementary to the `kweaver` CLI from `kweaver-sdk`:
+After a full install (with `auth.enabled=true` and `businessDomain.enabled=true`), platform-level operations — **users, organizations, roles, models, audit** — are managed through the **`openbkn admin`** subcommand of the same `openbkn` CLI. There is **no separate admin package**: admin used to ship as `kweaver-admin`, but it is now merged into [`@openbkn/bkn-sdk`](https://github.com/openbkn-ai/bkn-sdk) and reached via `openbkn admin ...`:
 
-| CLI | Audience | Scope |
+| Command surface | Audience | Scope |
 | --- | --- | --- |
-| `kweaver` (`@kweaver-ai/kweaver-sdk`) | End users / Agents | BKN, Decision Agent, Action, Skill, query |
-| `kweaver-admin` (`@kweaver-ai/kweaver-admin`) | Platform administrators | Users, organizations, roles, models, audit, raw HTTP |
+| `openbkn` (`@openbkn/bkn-sdk`) | End users / Agents | BKN, Action, Skill, query, agent chat |
+| `openbkn admin` (same package) | Platform administrators | Users, organizations, roles, models, audit, raw HTTP |
 
-**When to install:** after a full install (`./deploy.sh kweaver-core install` without `--minimum`). **On a `--minimum` install most `kweaver-admin` commands return 401 / 404 — that is expected, the relevant services are not deployed.**
+**When usable:** after a full install (`./deploy.sh kweaver-core install` without `--minimum`). **On a `--minimum` install most `openbkn admin` commands return 401 / 404 — that is expected, the relevant services are not deployed.**
 
-**Backend services it talks to (from the kweaver-admin architecture doc):** `user-management` / `deploy-manager` / `deploy-auth` / `eacp` / `mf-model-manager` / OAuth2 (Hydra) — exactly the set enabled by a full install.
+**Backend services it talks to:** `user-management` / `deploy-manager` / `deploy-auth` / `eacp` / `mf-model-manager` / OAuth2 (Hydra) — exactly the set enabled by a full install.
 
 ### 📥 Install
 
-Requires **Node.js 22+** (same as [`@kweaver-ai/kweaver-sdk` on npm](https://www.npmjs.com/package/@kweaver-ai/kweaver-sdk)). Credentials are stored under `~/.kweaver-admin/platforms/`, isolated from `~/.kweaver/`.
+Admin is part of the `openbkn` CLI — installing `@openbkn/bkn-sdk` is enough (see [Client tooling](#client-tooling-after-deploy)). Requires **Node.js 22+**. Credentials are stored under `~/.bkn/`, shared with the regular `openbkn` commands.
 
 ```bash
-npm install -g @kweaver-ai/kweaver-admin
-kweaver-admin --version
-kweaver-admin --help
+npm install -g @openbkn/bkn-sdk
+openbkn admin --help
 ```
 
 ### 🔑 Login
 
+Admin reuses the **same `openbkn auth login`** and the same token store — there is no separate admin login:
+
 ```bash
 # Browser OAuth2 (skip TLS for self-signed certs)
-kweaver-admin auth login https://<access-address> -k
+openbkn auth login https://<access-address> -k
 
 # Username/password (CI / headless)
-kweaver-admin auth login https://<access-address> -u <user> -p <password> -k
+openbkn auth login https://<access-address> -u <user> -p <password> -k
 
 # Or via environment variables (CI / headless)
-export KWEAVER_BASE_URL=https://<access-address>
-export KWEAVER_ADMIN_TOKEN=<bearer-token>   # preferred; falls back to KWEAVER_TOKEN
+export BKN_BASE_URL=https://<access-address>
+export BKN_TOKEN=<bearer-token>
 
 # Inspect session and identity
-kweaver-admin auth status
-kweaver-admin auth whoami
-kweaver-admin auth list
+openbkn auth status
+openbkn auth whoami
+openbkn auth list
 ```
 
-> The token stores of `kweaver-admin` and `kweaver` are independent — both can coexist on the same machine for separate admin / user identities.
+> Once signed in, every `openbkn admin ...` command uses that same session — no second login required.
 
 ### 🧰 Common admin tasks
 
 #### Organizations (departments)
 
 ```bash
-kweaver-admin org tree                # tree view of departments
-kweaver-admin org list                # paginated list
-kweaver-admin org create              # create a department
-kweaver-admin org members <orgId>     # list members
+openbkn admin org tree                # tree view of departments
+openbkn admin org list                # paginated list
+openbkn admin org create              # create a department
+openbkn admin org members <orgId>     # list members
 ```
 
 #### Users
 
 ```bash
-kweaver-admin user list
-kweaver-admin user create --login alice            # default password 123456, forced change at first sign-in
-kweaver-admin user reset-password -u alice         # admin reset
-kweaver-admin user roles <userId>
-kweaver-admin user assign-role <userId> <roleId>
-kweaver-admin user revoke-role <userId> <roleId>
+openbkn admin user list
+openbkn admin user create --login alice            # default password 123456, forced change at first sign-in
+openbkn admin user reset-password -u alice         # admin reset
+openbkn admin user roles <userId>
+openbkn admin user assign-role <userId> <roleId>
+openbkn admin user revoke-role <userId> <roleId>
 ```
 
 #### Roles
 
 ```bash
-kweaver-admin role list
-kweaver-admin role get <roleId>
-kweaver-admin role add-member <roleId> -u alice
-kweaver-admin role remove-member <roleId> -u alice
+openbkn admin role list
+openbkn admin role get <roleId>
+openbkn admin role add-member <roleId> -u alice
+openbkn admin role remove-member <roleId> -u alice
 ```
 
-Always run **`role list` first** and use the **roleId** values from the output (role name strings such as `super_admin` / `normal_user` are described in [kweaver-admin role reference](https://github.com/kweaver-ai/kweaver-admin/blob/main/docs/product-specs/role-permission.md)). For **quick start or POC**, to avoid 403s from missing roles, often assign **every** role in `role list` to a new user with one `kweaver-admin user assign-role <userId> <roleId>` per entry. In **production**, grant least privilege; verify with `kweaver-admin user roles <userId>`.
+Always run **`role list` first** and use the **roleId** values from the output (role name strings such as `super_admin` / `normal_user`). For **quick start or POC**, to avoid 403s from missing roles, often assign **every** role in `role list` to a new user with one `openbkn admin user assign-role <userId> <roleId>` per entry. In **production**, grant least privilege; verify with `openbkn admin user roles <userId>`.
 
 #### Models (LLM / Embedding)
 
 ```bash
-kweaver-admin llm list
-kweaver-admin llm add
-kweaver-admin llm test <modelId>
+openbkn admin llm list
+openbkn admin llm add
+openbkn admin llm test <modelId>
 
-kweaver-admin small-model list
-kweaver-admin small-model add
-kweaver-admin small-model test <modelId>
+openbkn admin small-model list
+openbkn admin small-model add
+openbkn admin small-model test <modelId>
 ```
 
-> Equivalent to invoking `kweaver call /api/mf-model-manager/...` (see [Model management](manual/model.md)); for day-to-day admin work the `kweaver-admin llm` / `small-model` subcommands offer better validation and output.
+> Equivalent to invoking `openbkn call /api/mf-model-manager/...` (see [Model management](manual/model.md)); for day-to-day admin work the `openbkn admin llm` / `small-model` subcommands offer better validation and output.
 
 #### Audit
 
 ```bash
-kweaver-admin audit list \
+openbkn admin audit list \
   --user alice --start 2026-04-01 --end 2026-04-30
 ```
 
 #### Raw HTTP (with auth header)
 
 ```bash
-kweaver-admin call /api/user-management/v1/management/users -X GET
-kweaver-admin --json call /api/eacp/v1/... -X POST -d '{"...":"..."}'
+openbkn admin call /api/user-management/v1/management/users -X GET
+openbkn admin --json call /api/eacp/v1/... -X POST -d '{"...":"..."}'
 ```
 
 ### ⚠️ Things you must know
 
-- **New users created via `user create` always start with the platform default password `123456`** and are forced to change it at first sign-in. This is documented upstream behavior of the ISF user store (`Usrm_AddUser` thrift does not accept a password parameter). Hand the account to the user over a secure channel; for lost-password rotation use `kweaver-admin user reset-password`.
+- **New users created via `user create` always start with the platform default password `123456`** and are forced to change it at first sign-in. This is documented upstream behavior of the ISF user store (`Usrm_AddUser` thrift does not accept a password parameter). Hand the account to the user over a secure channel; for lost-password rotation use `openbkn admin user reset-password`.
 - **Separation-of-duties built-in accounts** — `system / admin / security / audit` must not be casually modified; operators should use **individual accounts** rather than the shared `admin` for traceable audit logs.
-- **First-login forced password change (error `401001017`)**: when `kweaver-admin auth login` hits this code, on a TTY the CLI guides you to set a new password and retries the login; in non-TTY contexts pass `--new-password '<new>'` to do it in one shot (same flow as the `kweaver` CLI; see also [`kweaver-admin/docs/SECURITY.md`](https://github.com/kweaver-ai/kweaver-admin/blob/main/docs/SECURITY.md)).
-- **TLS:** `-k` / `--insecure` (or env var `KWEAVER_TLS_INSECURE=1`) is for development / self-signed certs only — never use in production.
-- **Capabilities not exposed by the Web console — CLI is the primary path:** department writes (`Usrm_AddDepartment` / `Usrm_EditDepartment`), user updates (`Usrm_EditUser` fallback), user-role lookup (`role list` + `role members` fallback), etc. See [`kweaver-admin/docs/SECURITY.md`](https://github.com/kweaver-ai/kweaver-admin/blob/main/docs/SECURITY.md).
+- **First-login forced password change (error `401001017`)**: when `openbkn auth login` hits this code, on a TTY the CLI guides you to set a new password and retries the login; in non-TTY contexts pass `--new-password '<new>'` to do it in one shot.
+- **TLS:** `-k` / `--insecure` (or env var `BKN_TLS_INSECURE=1`) is for development / self-signed certs only — never use in production.
+- **Capabilities not exposed by the Web console — CLI is the primary path:** department writes (`Usrm_AddDepartment` / `Usrm_EditDepartment`), user updates (`Usrm_EditUser` fallback), user-role lookup (`role list` + `role members` fallback), etc.
 
 ### 🤖 AI Agent Skill
 
-`kweaver-admin` ships a progressive-disclosure skill so AI coding assistants (Cursor, Claude Code, …) can drive admin operations on your behalf:
+The `openbkn` skill is a progressive-disclosure skill so AI coding assistants (Cursor, Claude Code, …) can drive both regular and admin operations on your behalf:
 
 ```bash
-npx skills add https://github.com/kweaver-ai/kweaver-admin --skill kweaver-admin
+npx skills add https://github.com/openbkn-ai/bkn-sdk --skill openbkn
 ```
 
-After installation, log in once with `kweaver-admin auth login https://<address> -k`, then ask in natural language (or `/kweaver-admin` slash):
+After installation, log in once with `openbkn auth login https://<address> -k`, then ask in natural language (or `/openbkn` slash):
 
 ```text
 List all roles
@@ -479,14 +480,14 @@ Show alice's login audit for the last 7 days
 Register an embedding model bge-m3 against https://api.siliconflow.cn
 ```
 
-Skill source: [`skills/kweaver-admin/SKILL.md`](https://github.com/kweaver-ai/kweaver-admin/blob/main/skills/kweaver-admin/SKILL.md). It is independent from the `kweaver-core` / `create-bkn` skills (which target the `kweaver` CLI).
+Skill source: [`skills/openbkn/SKILL.md`](https://github.com/openbkn-ai/bkn-sdk/blob/main/skills/openbkn/SKILL.md). The same skill covers the `openbkn admin` subcommands.
 
 ### 📖 Further reading
 
-- [`kweaver-admin` repository README](https://github.com/kweaver-ai/kweaver-admin)
-- [`ARCHITECTURE.md`](https://github.com/kweaver-ai/kweaver-admin/blob/main/ARCHITECTURE.md) — command tree and backend API mapping
-- [`docs/SECURITY.md`](https://github.com/kweaver-ai/kweaver-admin/blob/main/docs/SECURITY.md) — tokens, TLS, audit and fallback routes
-- [`skills/kweaver-admin/SKILL.md`](https://github.com/kweaver-ai/kweaver-admin/blob/main/skills/kweaver-admin/SKILL.md) — agent skill entry
+- [`@openbkn/bkn-sdk` repository README](https://github.com/openbkn-ai/bkn-sdk)
+- [`ARCHITECTURE.md`](https://github.com/openbkn-ai/bkn-sdk/blob/main/ARCHITECTURE.md) — command tree and backend API mapping
+- [`docs/SECURITY.md`](https://github.com/openbkn-ai/bkn-sdk/blob/main/docs/SECURITY.md) — tokens, TLS, audit and fallback routes
+- [`skills/openbkn/SKILL.md`](https://github.com/openbkn-ai/bkn-sdk/blob/main/skills/openbkn/SKILL.md) — agent skill entry
 
 ---
 
@@ -512,8 +513,8 @@ kubectl get pods -A
 ### CLI
 
 ```bash
-kweaver auth login https://<access-address> -k
-kweaver bkn list
+openbkn auth login https://<access-address> -k
+openbkn bkn list
 ```
 
 > Use the same host as `--access_address` or the node IP from the installer. Omit `-k` when using a trusted TLS certificate.
@@ -530,9 +531,9 @@ curl -sk "https://<access-address>/health" || true
 
 ## 🧮 Optional: Etrino (dataview `--sql`)
 
-On a **BKN Foundry–only** install, `kweaver dataview query <id>` without `--sql` usually works (paging against the view definition).
+On a **BKN Foundry–only** install, `openbkn dataview query <id>` without `--sql` usually works (paging against the view definition).
 
-> **Ad-hoc SQL** via `kweaver dataview query --sql "..."` requires **`vega-calculate-coordinator`** in the cluster. That comes from the **Etrino** Helm stack: **`vega-hdfs`**, **`vega-calculate`** (includes the coordinator), and **`vega-metadata`**.
+> **Ad-hoc SQL** via `openbkn dataview query --sql "..."` requires **`vega-calculate-coordinator`** in the cluster. That comes from the **Etrino** Helm stack: **`vega-hdfs`**, **`vega-calculate`** (includes the coordinator), and **`vega-metadata`**.
 
 On a cluster where Core is already running:
 
@@ -548,13 +549,13 @@ On a cluster where Core is already running:
 
 ## 🧠 Configure models
 
-BKN Foundry does not include pre-configured models by default. To use **semantic search** (`kweaver bkn search`) or **Decision Agent**, register an LLM and an Embedding model first.
+BKN Foundry does not include pre-configured models by default. To use **semantic search** (`openbkn bkn search`) or **agent chat**, register an LLM and an Embedding model first.
 
 > Full details: [Model management](manual/model.md). Minimal registration example:
 
 ```bash
 # Register an LLM (DeepSeek example)
-kweaver call /api/mf-model-manager/v1/llm/add -d '{
+openbkn call /api/mf-model-manager/v1/llm/add -d '{
   "model_name": "deepseek-chat",
   "model_series": "deepseek",
   "max_model_len": 8192,
@@ -566,7 +567,7 @@ kweaver call /api/mf-model-manager/v1/llm/add -d '{
 }'
 
 # Register an Embedding model
-kweaver call /api/mf-model-manager/v1/small-model/add -d '{
+openbkn call /api/mf-model-manager/v1/small-model/add -d '{
   "model_name": "bge-m3",
   "model_type": "embedding",
   "model_config": {
@@ -580,8 +581,8 @@ kweaver call /api/mf-model-manager/v1/small-model/add -d '{
 }'
 
 # Verify
-kweaver call '/api/mf-model-manager/v1/llm/list?page=1&size=50'
-kweaver call '/api/mf-model-manager/v1/small-model/list?page=1&size=50'
+openbkn call '/api/mf-model-manager/v1/llm/list?page=1&size=50'
+openbkn call '/api/mf-model-manager/v1/small-model/list?page=1&size=50'
 ```
 
 > Enabling BKN semantic search also requires a ConfigMap change — see [Model management — Enable BKN semantic search](manual/model.md#enable-bkn-semantic-search).
