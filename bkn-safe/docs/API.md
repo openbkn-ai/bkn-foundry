@@ -169,11 +169,26 @@ curl -X POST $SAFE/api/safe/v1/authz/check -H 'Content-Type: application/json' \
 
 ```json
 { "id": "b38b...", "account": "test", "name": "测试用户", "email": "t@x.io",
-  "account_type": "user", "departments": ["d-9"],
-  "roles": ["数据管理员"], "role_ids": ["00990824-..."] }
+  "telephone": "13800000000", "account_type": "user", "enabled": true,
+  "departments": ["d-9"], "roles": ["数据管理员"], "role_ids": ["00990824-..."],
+  "updated_at": "2026-06-29T12:00:00Z" }
 ```
 
 > 菜单逻辑请依赖 `role_ids`(保号 UUID)而非 `roles`(显示名,可改名)。
+
+### PUT "" — 自助修改个人资料
+
+登录用户改**自己的**资料。目标恒为 token subject(无 `:id`),改不到别人,无需 admin 权限。仅 `name`/`email`/`telephone` 可写;`account_type`/`enabled`/部门/account/password 不在此(各有专属端点或 admin-only)。仅 body 中出现的键被修改,缺省键不动。
+
+```json
+PUT /api/safe/v1/me
+{ "name": "新名字", "email": "new@x.io", "telephone": "13800000000" }
+→ 204
+```
+
+- 校验:`name` 去空格后非空、≤255;`email` 非空时须为裸地址(无显示名),空串清空;`telephone` ≤64。
+- 无可更新字段 → 400;校验不过 → 400;subject 无用户行 → 404。
+- 改密码走 `POST /api/safe/v1/auth/change-password`(凭旧密码),不在此。
 
 ### GET /permissions — 当前访问者的全量权限列表
 
