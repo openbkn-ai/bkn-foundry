@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -46,15 +47,16 @@ type NamedRef struct {
 
 // UserDetail is the full user view (with roles + department chain ids).
 type UserDetail struct {
-	ID          string   `json:"id"`
-	Account     string   `json:"account"`
-	Name        string   `json:"name"`
-	Email       string   `json:"email"`
-	Telephone   string   `json:"telephone"`
-	Enabled     bool     `json:"enabled"`
-	AccountType string   `json:"account_type"`
-	Roles       []string `json:"roles"`
-	Departments []string `json:"departments"`
+	ID          string    `json:"id"`
+	Account     string    `json:"account"`
+	Name        string    `json:"name"`
+	Email       string    `json:"email"`
+	Telephone   string    `json:"telephone"`
+	Enabled     bool      `json:"enabled"`
+	AccountType string    `json:"account_type"`
+	Roles       []string  `json:"roles"`
+	Departments []string  `json:"departments"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 // GetUser returns a user's detail, or gorm.ErrRecordNotFound.
@@ -66,6 +68,7 @@ func (s *Service) GetUser(ctx context.Context, id string) (*UserDetail, error) {
 	d := &UserDetail{
 		ID: u.ID, Account: u.Account, Name: u.Name, Email: u.Email,
 		Telephone: u.Telephone, Enabled: u.Enabled, AccountType: string(u.AccountType),
+		UpdatedAt: u.UpdatedAt,
 	}
 	// department ids
 	var uds []model.UserDepartment

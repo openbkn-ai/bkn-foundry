@@ -85,6 +85,85 @@ func TestMeIdentity(t *testing.T) {
 	}
 }
 
+// PUT /me lets a user edit its own name/email/telephone; the target is the
+// token subject, so it can never touch another user. Validation rejects bad
+// email / empty name / empty body; non-writable fields are ignored.
+func TestMeUpdateProfile(t *testing.T) {
+	r, _, db, _ := newAdminServer(t)
+	const path = "/api/safe/v1/me"
+
+	db.Create(&model.User{ID: "u-me", Account: "me", Name: "Me", Email: "me@x.io", Enabled: true, AccountType: model.AccountTypeOther})
+	db.Create(&model.User{ID: "u-other", Account: "other", Name: "Other", Enabled: true})
+
+	// no token -> 401
+	if w := tokReq(t, r, http.MethodPut, path, map[string]any{"name": "X"}, ""); w.Code != http.StatusUnauthorized {
+		t.Errorf("no token: want 401, got %d", w.Code)
+	}
+	// subject without a user row -> 404
+	if w := tokReq(t, r, http.MethodPut, path, map[string]any{"name": "X"}, "ghost"); w.Code != http.StatusNotFound {
+		t.Errorf("ghost: want 404, got %d", w.Code)
+	}
+	// empty body -> 400
+	if w := tokReq(t, r, http.MethodPut, path, map[string]any{}, "u-me"); w.Code != http.StatusBadRequest {
+		t.Errorf("empty body: want 400, got %d", w.Code)
+	}
+	// empty name -> 400
+	if w := tokReq(t, r, http.MethodPut, path, map[string]any{"name": "  "}, "u-me"); w.Code != http.StatusBadRequest {
+		t.Errorf("empty name: want 400, got %d", w.Code)
+	}
+	// bad email -> 400
+	if w := tokReq(t, r, http.MethodPut, path, map[string]any{"email": "not-an-email"}, "u-me"); w.Code != http.StatusBadRequest {
+		t.Errorf("bad email: want 400, got %d", w.Code)
+	}
+	// display-name email form rejected -> 400
+	if w := tokReq(t, r, http.MethodPut, path, map[string]any{"email": "Me <me@x.io>"}, "u-me"); w.Code != http.StatusBadRequest {
+		t.Errorf("display-name email: want 400, got %d", w.Code)
+	}
+
+	// happy path: edit own profile. account_type is not writable here and is
+	// silently ignored.
+	body := map[string]any{"name": "  New Me  ", "email": "new@x.io", "telephone": "13800000000", "account_type": "id_card"}
+	if w := tokReq(t, r, http.MethodPut, path, body, "u-me"); w.Code != http.StatusNoContent {
+		t.Fatalf("update: want 204, got %d (%s)", w.Code, w.Body.String())
+	}
+	var got model.User
+	db.First(&got, "id = ?", "u-me")
+	if got.Name != "New Me" { // trimmed
+		t.Errorf("name = %q, want %q (trimmed)", got.Name, "New Me")
+	}
+	if got.Email != "new@x.io" || got.Telephone != "13800000000" {
+		t.Errorf("profile not applied: %+v", got)
+	}
+	if got.AccountType != model.AccountTypeOther {
+		t.Errorf("account_type changed to %q — must be ignored by self-update", got.AccountType)
+	}
+
+	// GET /me reflects the update, including the new fields.
+	w := tokReq(t, r, http.MethodGet, path, nil, "u-me")
+	if w.Code != http.StatusOK {
+		t.Fatalf("get: want 200, got %d", w.Code)
+	}
+	var resp struct {
+		Name      string `json:"name"`
+		Email     string `json:"email"`
+		Telephone string `json:"telephone"`
+		Enabled   bool   `json:"enabled"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Name != "New Me" || resp.Email != "new@x.io" || resp.Telephone != "13800000000" || !resp.Enabled {
+		t.Errorf("GET /me = %+v", resp)
+	}
+
+	// the edit never touched the other user.
+	var other model.User
+	db.First(&other, "id = ?", "u-other")
+	if other.Name != "Other" {
+		t.Errorf("u-other mutated: %+v", other)
+	}
+}
+
 func TestMePermissions(t *testing.T) {
 	r, e, _, _ := newAdminServer(t)
 	const path = "/api/safe/v1/me/permissions"
