@@ -6,7 +6,7 @@
 
 BKN Foundry is a harness-first foundation for enterprise decision agents. It turns fragmented data, knowledge, tools, and policies into governed context, safe execution, and verifiable feedback loops. With semantic modeling, real-time access, runtime control, and TraceAI, it helps AI systems reason, adapt, and act reliably in complex enterprises.
 
-**On this page:** [📚 Quick links](#toc-quick-links) · [🚀 Quick start](#toc-quick-start) · [🛠️ KWeaver SDK](#toc-bkn-sdk) · [🛡️ KWeaver Admin CLI](#toc-kweaver-admin) · [🏗️ BKN Foundry](#toc-kweaver-core) · [📐 BKN Lang](#toc-bkn-lang) · [📊 Benchmarks](#toc-benchmarks)
+**On this page:** [📚 Quick links](#toc-quick-links) · [🚀 Quick start](#toc-quick-start) · [🛠️ OpenBKN SDK](#toc-bkn-sdk) · [🛡️ Administration](#toc-kweaver-admin) · [🏗️ BKN Foundry](#toc-kweaver-core) · [📐 BKN Lang](#toc-bkn-lang) · [📊 Benchmarks](#toc-benchmarks)
 
 > **Note:** BKN Foundry is a **backend-only framework** — it does not include a web UI. All interactions are through the CLI, SDK, or API.
 
@@ -14,8 +14,7 @@ BKN Foundry is a harness-first foundation for enterprise decision agents. It tur
 
 ## 📚 Quick Links
 
-- 🛠️ [KWeaver SDK](https://github.com/openbkn-ai/bkn-sdk) - End-user / agent BKN CLI, TypeScript / Python SDK, and AI agent skills
-- 🛡️ [kweaver-admin](https://github.com/kweaver-ai/kweaver-admin) - Platform administrator CLI (users / orgs / roles / models / audit) for full installs
+- 🛠️ [OpenBKN SDK](https://github.com/openbkn-ai/bkn-sdk) - End-user / agent BKN CLI, TypeScript SDK, and the AI agent skill
 - 🤝 [Contributing](rules/CONTRIBUTING.md) - Guidelines for contributing to the project
 - 🚢 [Deployment](deploy/README.md) - One-click deploy to Kubernetes
 - 📘 [Documentation](help/README.md) - Product documentation and usage guides ([EN](help/en/README.md) / [中文](help/zh/README.md))
@@ -82,7 +81,7 @@ kubectl get pods -A
 
 5. **Post-install bootstrap with `onboard.sh`** (recommended)
 
-   On the **same host** as the install (where `kubectl` reaches the cluster), run the post-install bootstrap. It (re-runnable) registers an LLM + an embedding, patches the BKN ConfigMaps when the default embedding actually changes, and on a **full install** also creates the business user **`test`**, assigns every role from `kweaver-admin role list`, switches `kweaver` to that user, and imports the Context Loader toolset:
+   On the **same host** as the install (where `kubectl` reaches the cluster), run the post-install bootstrap. It (re-runnable) registers an LLM + an embedding, patches the BKN ConfigMaps when the default embedding actually changes, and on a **full install** also creates the business user **`test`**, assigns every role from `openbkn admin role list`, switches `openbkn` to that user, and imports the Context Loader toolset:
 
 ```bash
 cd deploy
@@ -90,13 +89,13 @@ sudo bash ./onboard.sh        # interactive; or:  sudo bash ./onboard.sh -y
 sudo bash ./onboard.sh --help # all flags (--config=models.yaml, --enable-bkn-search, --skip-context-loader, …)
 ```
 
-   > **Why `sudo`?** `onboard.sh` reads `$HOME/.openbkn-ai/config.yaml` (written by `sudo deploy.sh` into `/root/.openbkn-ai/`) and writes the `kweaver` auth token to `$HOME/.kweaver`. Running it without `sudo` falls back to the in-repo template `deploy/conf/config.yaml` and may resolve a different access URL. **macOS dev path** (`bash deploy/dev/mac.sh onboard`) does **not** need `sudo`.
+   > **Why `sudo`?** `onboard.sh` reads `$HOME/.openbkn-ai/config.yaml` (written by `sudo deploy.sh` into `/root/.openbkn-ai/`) and writes the `openbkn` auth token to `$HOME/.bkn`. Running it without `sudo` falls back to the in-repo template `deploy/conf/config.yaml` and may resolve a different access URL. **macOS dev path** (`bash deploy/dev/mac.sh onboard`) does **not** need `sudo`.
 
-   Re-runs are safe: existing models / BKN defaults are detected and skipped. For the full sequence, the Mermaid flow, and the `kweaver` / `kweaver-admin` two-CLI authentication notes (full ISF), see [help/en/install.md — Post-install: `onboard.sh`](help/en/install.md#post-install-onboardsh).
+   Re-runs are safe: existing models / BKN defaults are detected and skipped. For the full sequence, the Mermaid flow, and the `openbkn` authentication notes (full ISF), see [help/en/install.md — Post-install: `onboard.sh`](help/en/install.md#post-install-onboardsh).
 
 6. **Verify API access**
 
-   BKN Foundry is backend-only and does not provide a web console. On the machine you use to reach the cluster (laptop, bastion, etc.), use the BKN CLI from [**bkn-sdk**](https://github.com/openbkn-ai/bkn-sdk): either `npm install -g @openbkn/bkn-sdk` or `npx openbkn` (no global install; see [KWeaver SDK](#toc-bkn-sdk) below). Then run:
+   BKN Foundry is backend-only and does not provide a web console. On the machine you use to reach the cluster (laptop, bastion, etc.), use the BKN CLI from [**bkn-sdk**](https://github.com/openbkn-ai/bkn-sdk): either `npm install -g @openbkn/bkn-sdk` or `npx openbkn` (no global install; see [OpenBKN SDK](#toc-bkn-sdk) below). Then run:
 
 ```bash
 # Minimum install (no auth):
@@ -119,7 +118,7 @@ openbkn <command> --help         # help for a specific command, e.g. openbkn bkn
 
 For full product documentation, see the [Documentation](help/README.md) ([EN](help/en/README.md) / [中文](help/zh/README.md)).
 
-> **Did a full install (without `--minimum`)?** Also install [`kweaver-admin`](#toc-kweaver-admin) to manage users, organizations, roles, models, and audit logs — see [help/en/install.md — Administrator tool after a full install](help/en/install.md#-administrator-tool-after-a-full-install-kweaver-admin).
+> **Did a full install (without `--minimum`)?** Use the `openbkn admin` subcommands to manage users, organizations, roles, models, and audit logs — see [Administration](#toc-kweaver-admin) below.
 
 <a id="toc-kweaver-core"></a>
 
@@ -224,27 +223,15 @@ npx openbkn --help
 
 ### AI Agent Skills
 
-Install skills from [**bkn-sdk**](https://github.com/openbkn-ai/bkn-sdk) with [`npx skills`](https://www.npmjs.com/package/skills).
-
-**Install both skills** (recommended):
+Install the `openbkn` skill from [**bkn-sdk**](https://github.com/openbkn-ai/bkn-sdk) with [`npx skills`](https://www.npmjs.com/package/skills):
 
 ```bash
-npx skills add https://github.com/openbkn-ai/bkn-sdk \
-  --skill kweaver-core --skill create-bkn
+npx skills add https://github.com/openbkn-ai/bkn-sdk --skill openbkn
 ```
 
-- **`kweaver-core`** — full KWeaver APIs and CLI conventions so assistants can operate KWeaver on your behalf. See [skills/kweaver-core/SKILL.md](https://github.com/openbkn-ai/bkn-sdk/blob/main/skills/kweaver-core/SKILL.md).
-- **`create-bkn`** — guided workflow and tooling to create and manage **Business Knowledge Networks (BKN)** from your AI coding assistant. See [skills/create-bkn/SKILL.md](https://github.com/openbkn-ai/bkn-sdk/blob/main/skills/create-bkn/SKILL.md).
+- **`openbkn`** — full OpenBKN APIs and CLI conventions (knowledge networks, agents, models, skills, toolbox, trace) so assistants can operate the platform on your behalf. See [skills/openbkn/SKILL.md](https://github.com/openbkn-ai/bkn-sdk/blob/main/skills/openbkn/SKILL.md).
 
-**Install one skill** (optional):
-
-```bash
-npx skills add https://github.com/openbkn-ai/bkn-sdk --skill kweaver-core
-# or
-npx skills add https://github.com/openbkn-ai/bkn-sdk --skill create-bkn
-```
-
-**Before using any skill**, authenticate with your OpenBKN instance:
+**Before using the skill**, authenticate with your OpenBKN instance:
 
 ```bash
 openbkn auth login https://your-openbkn-instance.com
@@ -317,9 +304,9 @@ Copy the FULL URL from the address bar and paste it here, or paste only the auth
 Paste URL or code>
 ```
 
-> With saved `~/.bkn/` sessions, the CLI automatically exchanges `refresh_token` for a new access token when it expires — no extra flags needed. You can also set environment variables (`KWEAVER_BASE_URL`, `KWEAVER_TOKEN`) instead of persisting credentials to disk.
+> With saved `~/.bkn/` sessions, the CLI automatically exchanges `refresh_token` for a new access token when it expires — no extra flags needed. You can also set environment variables (`BKN_BASE_URL`, `BKN_TOKEN`) instead of persisting credentials to disk.
 
-Full details: [bkn-sdk — Authentication](https://github.com/openbkn-ai/bkn-sdk#authentication) and [Headless / Server Authentication](https://github.com/openbkn-ai/bkn-sdk/blob/main/packages/typescript/README.md#headless--server-authentication). The Python BKN CLI still uses interactive browser login; reuse the `~/.bkn/` directory from a machine where the Node CLI finished login, or set the environment variables above.
+Full details: [bkn-sdk — Authentication](https://github.com/openbkn-ai/bkn-sdk#authentication). You can also reuse the `~/.bkn/` directory from a machine where the CLI finished login, or set the environment variables above.
 
 ### CLI
 
@@ -330,104 +317,42 @@ openbkn bkn search <kn-id> "query"               # semantic search
 openbkn --help                                   # all subcommands
 ```
 
-### TypeScript & Python SDK
+### TypeScript SDK
 
 Minimal example (after CLI login or equivalent credentials):
 
 ```typescript
-import kweaver from "@openbkn/bkn-sdk/kweaver";
-kweaver.configure({ config: true, bknId: "your-bkn-id", agentId: "your-agent-id" });
+import { createClient } from "@openbkn/bkn-sdk";
 
-const results = await kweaver.search("What risks exist in the supply chain?");
-const reply   = await kweaver.chat("Summarise the top 3 risks");
-await kweaver.weaver({ wait: true });   // rebuild BKN index
+const bkn = createClient({ baseUrl: "https://your-openbkn.com", token: process.env.BKN_TOKEN });
+
+const networks = await bkn.kn.list({ limit: 10 });
+const results  = await bkn.kn.search("<kn-id>", "What risks exist in the supply chain?");
 ```
 
-```python
-import kweaver
-kweaver.configure(config=True, bkn_id="your-bkn-id", agent_id="your-agent-id")
-
-results = kweaver.search("What risks exist in the supply chain?")
-reply   = kweaver.chat("Summarise the top 3 risks")
-```
-
-For streaming, `KWeaverClient`, and the full API surface, see the [bkn-sdk](https://github.com/openbkn-ai/bkn-sdk) repository docs and examples.
+For streaming and the full resource API (`bkn.kn`, `bkn.context`, `bkn.models`, `bkn.vega`, `bkn.admin`, …), see the [bkn-sdk](https://github.com/openbkn-ai/bkn-sdk) repository docs and examples.
 
 <a id="toc-kweaver-admin"></a>
 
-## 🛡️ KWeaver Admin CLI
+## 🛡️ Administration
 
-[`kweaver-admin`](https://github.com/kweaver-ai/kweaver-admin) is a separate npm CLI for **platform administrators**, complementary to the BKN CLI from `bkn-sdk`:
-
-| CLI | Audience | Scope |
-| --- | --- | --- |
-| `openbkn` (`@openbkn/bkn-sdk`) | End users / Agents | BKN, Action, Skill, query |
-| `kweaver-admin` (`@kweaver-ai/kweaver-admin`) | Platform administrators | Users, organizations, roles, models, audit, raw HTTP |
-
-> Most `kweaver-admin` commands target services that come with a **full install** (`auth.enabled=true`, `businessDomain.enabled=true`): `user-management`, `deploy-manager`, `deploy-auth`, `eacp`, `mf-model-manager`, OAuth2 (Hydra). On a `--minimum` install most commands return 401 / 404 — expected.
-
-### Install
-
-Requires Node.js 22+ (same as [`@openbkn/bkn-sdk` on npm](https://www.npmjs.com/package/@openbkn/bkn-sdk)). Credentials are stored under `~/.kweaver-admin/platforms/`, isolated from `~/.bkn/`.
+Platform administration (users, organizations, roles, models, audit) is **built into the same `openbkn` CLI** under the `openbkn admin` subcommands — there is no separate admin tool. Most `admin` commands target services that come with a **full install** (`auth.enabled=true`, `businessDomain.enabled=true`); on a `--minimum` install they return 401 / 404 (expected).
 
 ```bash
-npm install -g @kweaver-ai/kweaver-admin
-kweaver-admin --version
+openbkn admin org tree                          # list departments
+openbkn admin user create --login alice         # default password 123456 (forced change at first login)
+openbkn admin user reset-password -u alice      # admin reset
+openbkn admin role list
+openbkn admin role add-member <roleId> -u alice
+openbkn admin llm add                           # register an LLM
+openbkn admin small-model add                   # register an embedding model
+openbkn admin audit list --user alice --start 2026-04-01 --end 2026-04-30
+openbkn admin call /api/user-management/v1/management/users -X GET   # raw HTTP with auth header
 ```
 
-### Login
+> New users start with the platform default password **`123456`** and must change it on first sign-in (ISF user-store behavior). Respect the **separation-of-duties** built-in accounts (`system`, `admin`, `security`, `audit`) — operators should use individual accounts, not the shared `admin`.
 
-```bash
-# Browser OAuth2 (skip TLS for self-signed certs)
-kweaver-admin auth login https://<access-address> -k
-
-# Username/password (CI / headless)
-kweaver-admin auth login https://<access-address> -u <user> -p <password> -k
-
-# Or via environment variables
-export KWEAVER_BASE_URL=https://<access-address>
-export KWEAVER_ADMIN_TOKEN=<bearer-token>   # falls back to KWEAVER_TOKEN
-```
-
-### Common admin tasks
-
-```bash
-kweaver-admin org tree                           # list departments
-kweaver-admin user create --login alice          # default password: 123456 (forced change at first login)
-kweaver-admin user reset-password -u alice       # admin reset
-kweaver-admin role list
-kweaver-admin role add-member <roleId> -u alice
-kweaver-admin llm add                            # register an LLM
-kweaver-admin small-model add                    # register an embedding model
-kweaver-admin audit list --user alice --start 2026-04-01 --end 2026-04-30
-kweaver-admin call /api/user-management/v1/management/users -X GET   # raw HTTP with auth header
-```
-
-> New users created by `user create` always start with the platform default password **`123456`** and are forced to change it on first sign-in (this is documented upstream behavior of the ISF user store, not a CLI choice). For lost-password flows, prefer `kweaver-admin user reset-password`.
-
-> Respect the **separation-of-duties** built-in accounts (`system`, `admin`, `security`, `audit`) — operators should use individual accounts, not the shared `admin`.
-
-Full command tree, security notes, and `auth change-password` (EACP `modifypassword`, same `401001017` first-login flow as the BKN CLI): see [kweaver-admin README](https://github.com/kweaver-ai/kweaver-admin) and [help/en/install.md — Administrator tool after a full install](help/en/install.md#-administrator-tool-after-a-full-install-kweaver-admin).
-
-### AI Agent Skill — `kweaver-admin`
-
-`kweaver-admin` ships its own progressive-disclosure skill so AI coding assistants can drive admin tasks (auth, org, user, role, model, audit, raw HTTP) on your behalf. Install with `npx skills`:
-
-```bash
-npx skills add https://github.com/kweaver-ai/kweaver-admin --skill kweaver-admin
-```
-
-After installing, authenticate once with `kweaver-admin auth login https://your-instance -k`, then ask your assistant in natural language (`/kweaver-admin` slash also works):
-
-```text
-List all roles
-Create user alice and assign every role from role list
-Reset alice's password
-Show login audit for alice in the last 7 days
-Register an embedding model named bge-m3 against https://api.siliconflow.cn
-```
-
-Skill source: [skills/kweaver-admin/SKILL.md](https://github.com/kweaver-ai/kweaver-admin/blob/main/skills/kweaver-admin/SKILL.md). It complements the `kweaver-core` / `create-bkn` skills above (which target the BKN CLI).
+The `openbkn` skill (installed above) also covers these admin tasks. Full command tree and security notes: see the [bkn-sdk](https://github.com/openbkn-ai/bkn-sdk) repository docs.
 
 <a id="toc-benchmarks"></a>
 
