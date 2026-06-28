@@ -2,11 +2,11 @@
 
 本页说明 BKN Foundry 的**环境要求**、**部署步骤**与**安装后检查**。
 
-> **平台：** **Linux** 是完整安装（`preflight.sh`、k3s/kubeadm、数据服务等）的**推荐**目标环境。**macOS** 仅适合用 Docker + **kind** 做**本机开发/验证** —— 见 **[`deploy/dev/README.zh.md`](../../deploy/dev/README.zh.md)**（[English](../../deploy/dev/README.md)）与 `deploy/dev/mac.sh`（Mac 上不跑 `preflight.sh`，也与生产环境不对齐）。常见顺序：先起 **Docker Desktop**（或任意提供 Docker API 的引擎），再 **`bash ./dev/mac.sh cluster up`**，然后 **`bash ./dev/mac.sh kweaver-core install`**；当前 **`kweaver-core install` 会先执行 `ensure_data_services`**（与单独 **`data-services install`** 一致），除非设置 **`KWEAVER_SKIP_DATA_SERVICES_BUNDLE=true`**。
+> **平台：** **Linux** 是完整安装（`preflight.sh`、k3s/kubeadm、数据服务等）的**推荐**目标环境。**macOS** 仅适合用 Docker + **kind** 做**本机开发/验证** —— 见 **[`deploy/dev/README.zh.md`](../../deploy/dev/README.zh.md)**（[English](../../deploy/dev/README.md)）与 `deploy/dev/mac.sh`（Mac 上不跑 `preflight.sh`，也与生产环境不对齐）。常见顺序：先起 **Docker Desktop**（或任意提供 Docker API 的引擎），再 **`bash ./dev/mac.sh cluster up`**，然后 **`bash ./dev/mac.sh bkn-foundry install`**；当前 **`bkn-foundry install` 会先执行 `ensure_data_services`**（与单独 **`data-services install`** 一致），除非设置 **`KWEAVER_SKIP_DATA_SERVICES_BUNDLE=true`**。
 
 > 📌 安装通过产品包或源码中的 `deploy/` 目录下的 `deploy.sh` 脚本完成。
 
-> **`deploy.sh` 全局参数**（`--distro=k3s|k8s`、`-y`、`--force-upgrade`、`--config=…` 等）只有写在**模块名之前**才会生效，例如 `bash ./deploy.sh --distro=k8s kweaver-core install --minimum`。写成 `... install --minimum --distro=k8s` **不会**按全局参数解析。可改用 `export KUBE_DISTRO=k8s` 再执行安装命令，或把 `--distro` 挪到前面（与 `-y`、`--force-upgrade` 一致）。
+> **`deploy.sh` 全局参数**（`--distro=k3s|k8s`、`-y`、`--force-upgrade`、`--config=…` 等）只有写在**模块名之前**才会生效，例如 `bash ./deploy.sh --distro=k8s bkn-foundry install --minimum`。写成 `... install --minimum --distro=k8s` **不会**按全局参数解析。可改用 `export KUBE_DISTRO=k8s` 再执行安装命令，或把 `--distro` 挪到前面（与 `-y`、`--force-upgrade` 一致）。
 
 ---
 
@@ -140,7 +140,7 @@ sudo bash deploy/preflight.sh --help         # 全部参数
 
 退出码：**0** 全 OK；**1** 有 FAIL；**2** 仅有 WARN（无 FAIL）。
 
-> 每台新主机在跑 `deploy.sh kweaver-core install` 前都建议跑一次 preflight；可重复执行——已经满足的项会按 `OK` 报告并跳过。如果你**有意**在低配 lab 机器上跑（内存/磁盘低于推荐、没装 Docker CE 源等），用 `--lenient` 让报告依然能看，但不会因为这些项而阻塞 install。
+> 每台新主机在跑 `deploy.sh bkn-foundry install` 前都建议跑一次 preflight；可重复执行——已经满足的项会按 `OK` 报告并跳过。如果你**有意**在低配 lab 机器上跑（内存/磁盘低于推荐、没装 Docker CE 源等），用 `--lenient` 让报告依然能看，但不会因为这些项而阻塞 install。
 
 ### Preflight 报告：`Summary` 与 `Conclusion`
 
@@ -171,8 +171,8 @@ sudo bash deploy/preflight.sh --help         # 全部参数
     sudo bash ./preflight.sh --fix          # …（默认每项 y/N；加 -y 全自动）
     sudo bash ./preflight.sh --check-only   # 再检查直到关键 [FAIL] 消失（或配合 --lenient）
   Only then install:
-    sudo bash ./deploy.sh kweaver-core install --minimum    # 体验 / 最小化
-    sudo bash ./deploy.sh kweaver-core install              # 完整安装
+    sudo bash ./deploy.sh bkn-foundry install --minimum    # 体验 / 最小化
+    sudo bash ./deploy.sh bkn-foundry install              # 完整安装
   Finally: sudo bash ./onboard.sh from deploy/ (Linux；macOS dev 用普通 bash。Node 22+ + openbkn on PATH；sudo bash ./preflight.sh --fix helps …)
 ```
 
@@ -193,13 +193,13 @@ sudo bash deploy/preflight.sh --help         # 全部参数
 跳过部分可选模块（如认证、业务域），资源占用更小：
 
 ```bash
-./deploy.sh kweaver-core install --minimum
+./deploy.sh bkn-foundry install --minimum
 ```
 
 等价写法：
 
 ```bash
-./deploy.sh kweaver-core install \
+./deploy.sh bkn-foundry install \
   --set auth.enabled=false \
   --set businessDomain.enabled=false
 ```
@@ -209,7 +209,7 @@ sudo bash deploy/preflight.sh --help         # 全部参数
 包含认证与业务域等组件：
 
 ```bash
-./deploy.sh kweaver-core install
+./deploy.sh bkn-foundry install
 ```
 
 > 💡 脚本可能交互式询问 **访问地址**，并自动探测 **API Server 地址**。
@@ -217,7 +217,7 @@ sudo bash deploy/preflight.sh --help         # 全部参数
 ### 🤖 非交互安装
 
 ```bash
-./deploy.sh kweaver-core install \
+./deploy.sh bkn-foundry install \
   --access_address=<你的IP或域名> \
   --api_server_address=<K8s API 绑定的网卡 IP>
 ```
@@ -230,14 +230,14 @@ sudo bash deploy/preflight.sh --help         # 全部参数
 ```bash
 export INGRESS_NGINX_HTTP_PORT=8080
 export INGRESS_NGINX_HTTPS_PORT=8443
-./deploy.sh kweaver-core install
+./deploy.sh bkn-foundry install
 ```
 
 ### 🧾 常用命令
 
 ```bash
-./deploy.sh kweaver-core status
-./deploy.sh kweaver-core uninstall
+./deploy.sh bkn-foundry status
+./deploy.sh bkn-foundry uninstall
 ./deploy.sh --help
 ```
 
@@ -253,7 +253,7 @@ export INGRESS_NGINX_HTTPS_PORT=8443
 
 ## Post-install：`onboard.sh`（安装后引导）
 
-在 `deploy.sh kweaver-core install` 之后，可在能访问集群的机器上运行 **`deploy/onboard.sh`**，需 **Node 22+**、**kubectl**、**openbkn**（`npm i -g @openbkn/bkn-sdk`）。在 **`deploy/`** 目录执行，**Linux 上需要 `sudo`**（与 `sudo deploy.sh` 对齐）：
+在 `deploy.sh bkn-foundry install` 之后，可在能访问集群的机器上运行 **`deploy/onboard.sh`**，需 **Node 22+**、**kubectl**、**openbkn**（`npm i -g @openbkn/bkn-sdk`）。在 **`deploy/`** 目录执行，**Linux 上需要 `sudo`**（与 `sudo deploy.sh` 对齐）：
 
 ```bash
 cd deploy
@@ -360,7 +360,7 @@ sequenceDiagram
 | `openbkn`（`@openbkn/bkn-sdk`） | 业务用户 / Agent | BKN、Action、Skill、查询、Agent 对话 |
 | `openbkn admin`（同一个包） | 平台管理员 | 用户、组织、角色、模型、审计、原始 HTTP |
 
-**何时可用：** 完整安装之后（`./deploy.sh kweaver-core install` 不带 `--minimum`）。**最小化安装下大多数 `openbkn admin` 命令会返回 401 / 404 — 属于部署裁剪，并非 CLI 故障。**
+**何时可用：** 完整安装之后（`./deploy.sh bkn-foundry install` 不带 `--minimum`）。**最小化安装下大多数 `openbkn admin` 命令会返回 401 / 404 — 属于部署裁剪，并非 CLI 故障。**
 
 **后端依赖：** `user-management` / `deploy-manager` / `deploy-auth` / `eacp` / `mf-model-manager` / OAuth2(Hydra) — 正好是完整安装才会启用的服务集合。
 
@@ -496,7 +496,7 @@ Skill 源文件：[`skills/openbkn/SKILL.md`](https://github.com/openbkn-ai/bkn-
 
 ## ✅ 安装完成后（检查集群与 API）
 
-`deploy.sh kweaver-core install` 结束后，请确认集群正常且能访问平台。
+`deploy.sh bkn-foundry install` 结束后，请确认集群正常且能访问平台。
 
 ### ☸️ Kubernetes 状态
 
@@ -510,7 +510,7 @@ kubectl get pods -A
 ### 🩺 部署脚本状态
 
 ```bash
-./deploy.sh kweaver-core status
+./deploy.sh bkn-foundry status
 ```
 
 ### 🔑 CLI 登录与验证
@@ -594,7 +594,7 @@ openbkn call '/api/mf-model-manager/v1/small-model/list?page=1&size=50'
 
 ## 🔧 故障排查
 
-按症状索引（CoreDNS 不就绪、镜像拉不下来、Kubernetes apt / yum 源缺失或 404、`containerd` 装不上、严格模式 `[FAIL]` 项等）请看 [`deploy/README.zh.md` → Troubleshooting](https://github.com/kweaver-ai/kweaver-core/blob/main/deploy/README.zh.md#-troubleshooting)。
+按症状索引（CoreDNS 不就绪、镜像拉不下来、Kubernetes apt / yum 源缺失或 404、`containerd` 装不上、严格模式 `[FAIL]` 项等）请看 [`deploy/README.zh.md` → Troubleshooting](../../deploy/README.zh.md#-troubleshooting)。
 
 `preflight.sh` 报的 `[FAIL]` 大多数都能自动修：
 

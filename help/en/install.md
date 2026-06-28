@@ -2,11 +2,11 @@
 
 This page covers **prerequisites**, **install steps**, and **post-install checks** for BKN Foundry.
 
-> **Platform:** **Linux** is the recommended install target for full stacks (`preflight.sh`, k3s/kubeadm, data services). **macOS** is supported only for **local dev validation** with Docker + **kind** — see [`deploy/dev/README.md`](../../deploy/dev/README.md) ([`README.zh.md`](../../deploy/dev/README.zh.md) in Chinese) and `deploy/dev/mac.sh` (no `preflight.sh` / production parity on the Mac host). Typical flow: start **Docker Desktop** (or any engine that exposes the Docker API), **`bash ./dev/mac.sh cluster up`**, then **`bash ./dev/mac.sh kweaver-core install`** — `install_core` runs **`ensure_data_services`** first (same Helm bundle as `data-services install`) unless **`KWEAVER_SKIP_DATA_SERVICES_BUNDLE=true`**.
+> **Platform:** **Linux** is the recommended install target for full stacks (`preflight.sh`, k3s/kubeadm, data services). **macOS** is supported only for **local dev validation** with Docker + **kind** — see [`deploy/dev/README.md`](../../deploy/dev/README.md) ([`README.zh.md`](../../deploy/dev/README.zh.md) in Chinese) and `deploy/dev/mac.sh` (no `preflight.sh` / production parity on the Mac host). Typical flow: start **Docker Desktop** (or any engine that exposes the Docker API), **`bash ./dev/mac.sh cluster up`**, then **`bash ./dev/mac.sh bkn-foundry install`** — `install_core` runs **`ensure_data_services`** first (same Helm bundle as `data-services install`) unless **`KWEAVER_SKIP_DATA_SERVICES_BUNDLE=true`**.
 
 > Use the `deploy.sh` script under the `deploy/` directory from your product bundle or build tree.
 
-> **`deploy.sh` global flags** (`--distro=k3s|k8s`, `-y`, `--force-upgrade`, `--config=…`, …) are parsed only when they appear **before** the module, e.g. `bash ./deploy.sh --distro=k8s kweaver-core install --minimum`. A trailing `... install --minimum --distro=k8s` is **not** applied as distro. Use `export KUBE_DISTRO=k8s` for the same effect, or move `--distro` forward (same rule as `-y` / `--force-upgrade`).
+> **`deploy.sh` global flags** (`--distro=k3s|k8s`, `-y`, `--force-upgrade`, `--config=…`, …) are parsed only when they appear **before** the module, e.g. `bash ./deploy.sh --distro=k8s bkn-foundry install --minimum`. A trailing `... install --minimum --distro=k8s` is **not** applied as distro. Use `export KUBE_DISTRO=k8s` for the same effect, or move `--distro` forward (same rule as `-y` / `--force-upgrade`).
 
 ---
 
@@ -139,7 +139,7 @@ Common environment variables:
 
 Exit codes: **0** all OK · **1** any FAIL present · **2** only WARN (no FAIL).
 
-> Run preflight **before** every `deploy.sh kweaver-core install` on a new host. Re-running it is safe — already-satisfied checks are reported as `OK` and skipped. If you intentionally run on a low-spec lab box (memory / disk below recommendation, no Docker CE repo, etc.), use `--lenient` to keep the report informative without blocking install.
+> Run preflight **before** every `deploy.sh bkn-foundry install` on a new host. Re-running it is safe — already-satisfied checks are reported as `OK` and skipped. If you intentionally run on a low-spec lab box (memory / disk below recommendation, no Docker CE repo, etc.), use `--lenient` to keep the report informative without blocking install.
 
 ### Reading the report: `Summary` and `Conclusion`
 
@@ -170,8 +170,8 @@ After `--check-only` or `--fix`, preflight prints a **Summary** (counts per stat
     sudo bash ./preflight.sh --fix          # … (per-item y/N unless -y)
     sudo bash ./preflight.sh --check-only   # re-check until blocking [FAIL] are gone (or use --lenient)
   Only then install:
-    sudo bash ./deploy.sh kweaver-core install --minimum
-    sudo bash ./deploy.sh kweaver-core install
+    sudo bash ./deploy.sh bkn-foundry install --minimum
+    sudo bash ./deploy.sh bkn-foundry install
   Finally: sudo bash ./onboard.sh from deploy/ (Linux; macOS dev uses plain bash. Node 22+ + openbkn on PATH; sudo bash ./preflight.sh --fix helps …)
 ```
 
@@ -192,13 +192,13 @@ For more troubleshooting and manual fallbacks, see **`deploy/README.md` → Trou
 Skips some optional modules (e.g. auth / business domain) for a lighter footprint:
 
 ```bash
-./deploy.sh kweaver-core install --minimum
+./deploy.sh bkn-foundry install --minimum
 ```
 
 Equivalent flags:
 
 ```bash
-./deploy.sh kweaver-core install --set auth.enabled=false --set businessDomain.enabled=false
+./deploy.sh bkn-foundry install --set auth.enabled=false --set businessDomain.enabled=false
 ```
 
 ### Full install
@@ -206,7 +206,7 @@ Equivalent flags:
 Includes auth and business-domain related components:
 
 ```bash
-./deploy.sh kweaver-core install
+./deploy.sh bkn-foundry install
 ```
 
 > The script may prompt for **access address** and detect **API server address** automatically.
@@ -214,7 +214,7 @@ Includes auth and business-domain related components:
 ### Non-interactive install
 
 ```bash
-./deploy.sh kweaver-core install \
+./deploy.sh bkn-foundry install \
   --access_address=<your-ip-or-domain> \
   --api_server_address=<nic-ip-for-k8s-api>
 ```
@@ -227,14 +227,14 @@ Includes auth and business-domain related components:
 ```bash
 export INGRESS_NGINX_HTTP_PORT=8080
 export INGRESS_NGINX_HTTPS_PORT=8443
-./deploy.sh kweaver-core install
+./deploy.sh bkn-foundry install
 ```
 
 ### Useful commands
 
 ```bash
-./deploy.sh kweaver-core status
-./deploy.sh kweaver-core uninstall
+./deploy.sh bkn-foundry status
+./deploy.sh bkn-foundry uninstall
 ./deploy.sh --help
 ```
 
@@ -250,7 +250,7 @@ export INGRESS_NGINX_HTTPS_PORT=8443
 
 ## Post-install: `onboard.sh`
 
-After `deploy.sh kweaver-core install`, use **`deploy/onboard.sh`** on a machine with **Node 22+**, **`kubectl`** (cluster access), and **`openbkn`** (`npm i -g @openbkn/bkn-sdk`). Run from the `deploy/` directory **with `sudo` on Linux** (matches `sudo deploy.sh`):
+After `deploy.sh bkn-foundry install`, use **`deploy/onboard.sh`** on a machine with **Node 22+**, **`kubectl`** (cluster access), and **`openbkn`** (`npm i -g @openbkn/bkn-sdk`). Run from the `deploy/` directory **with `sudo` on Linux** (matches `sudo deploy.sh`):
 
 ```bash
 cd deploy
@@ -357,7 +357,7 @@ After a full install (with `auth.enabled=true` and `businessDomain.enabled=true`
 | `openbkn` (`@openbkn/bkn-sdk`) | End users / Agents | BKN, Action, Skill, query, agent chat |
 | `openbkn admin` (same package) | Platform administrators | Users, organizations, roles, models, audit, raw HTTP |
 
-**When usable:** after a full install (`./deploy.sh kweaver-core install` without `--minimum`). **On a `--minimum` install most `openbkn admin` commands return 401 / 404 — that is expected, the relevant services are not deployed.**
+**When usable:** after a full install (`./deploy.sh bkn-foundry install` without `--minimum`). **On a `--minimum` install most `openbkn admin` commands return 401 / 404 — that is expected, the relevant services are not deployed.**
 
 **Backend services it talks to:** `user-management` / `deploy-manager` / `deploy-auth` / `eacp` / `mf-model-manager` / OAuth2 (Hydra) — exactly the set enabled by a full install.
 
@@ -493,7 +493,7 @@ Skill source: [`skills/openbkn/SKILL.md`](https://github.com/openbkn-ai/bkn-sdk/
 
 ## ✅ After install (check cluster and API)
 
-When `deploy.sh kweaver-core install` finishes, confirm the cluster and that you can reach the platform.
+When `deploy.sh bkn-foundry install` finishes, confirm the cluster and that you can reach the platform.
 
 ### Kubernetes
 
@@ -507,7 +507,7 @@ kubectl get pods -A
 ### Deploy script status
 
 ```bash
-./deploy.sh kweaver-core status
+./deploy.sh bkn-foundry status
 ```
 
 ### CLI
@@ -591,7 +591,7 @@ openbkn call '/api/mf-model-manager/v1/small-model/list?page=1&size=50'
 
 ## 🔧 Troubleshooting
 
-For symptom-based recipes (CoreDNS not ready, image pull failures, missing/legacy Kubernetes apt or yum source, `containerd` cannot be installed, strict mode `[FAIL]` items, etc.) see [`deploy/README.md` → Troubleshooting](https://github.com/kweaver-ai/kweaver-core/blob/main/deploy/README.md#-troubleshooting).
+For symptom-based recipes (CoreDNS not ready, image pull failures, missing/legacy Kubernetes apt or yum source, `containerd` cannot be installed, strict mode `[FAIL]` items, etc.) see [`deploy/README.md` → Troubleshooting](../../deploy/README.md#-troubleshooting).
 
 Most install-blocking issues that `preflight.sh` flags as `[FAIL]` can be auto-fixed:
 
