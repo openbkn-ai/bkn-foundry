@@ -34,28 +34,28 @@ openbkn admin audit list --user alice --start 2026-04-01 --end 2026-04-30
 
 ```bash
 # 标准登录（跳过 TLS 证书验证）
-openbkn auth login https://kweaver.example.com -k
+openbkn auth login https://openbkn.example.com -k
 
 # 登录并设置别名，方便多环境切换
-openbkn auth login https://kweaver.example.com --alias prod -k
+openbkn auth login https://openbkn.example.com --alias prod -k
 
 # 使用用户名密码直接登录（非交互式）
-openbkn auth login https://kweaver.example.com \
+openbkn auth login https://openbkn.example.com \
   -u <用户名> -p '<密码>' -k
 
 # 最小化安装时跳过认证
 openbkn auth login https://localhost:30000 --no-auth -k
 
 # 显式使用 HTTP 用户名密码登录（无需浏览器与 Node/Chromium）
-openbkn auth login https://kweaver.example.com \
+openbkn auth login https://openbkn.example.com \
   -u <用户名> -p '<密码>' --http-signin -k
 
 # 无浏览器交互登录：CLI 打印 OAuth URL，复制到任意带浏览器的设备登录后，
 # 将地址栏完整回调 URL（或授权码）粘贴回终端
-openbkn auth login https://kweaver.example.com --no-browser -k
+openbkn auth login https://openbkn.example.com --no-browser -k
 
 # 首次登录强制改密（非交互一次性完成）：服务端要求重置初始密码时使用
-openbkn auth login https://kweaver.example.com \
+openbkn auth login https://openbkn.example.com \
   -u <用户名> -p '<初始密码>' --new-password '<新密码>' -k
 ```
 
@@ -117,7 +117,7 @@ openbkn auth delete prod
 
 ```bash
 # 完整参数（非交互式，适合脚本/CI）
-openbkn auth change-password https://kweaver.example.com \
+openbkn auth change-password https://openbkn.example.com \
   -u <用户名> -o '<旧密码>' -n '<新密码>' -k
 
 # 省略 <url>：使用当前激活平台（openbkn auth use 设置的）
@@ -148,10 +148,10 @@ openbkn auth change-password prod
 
 ```bash
 # 1. 登录生产环境
-openbkn auth login https://prod.kweaver.example.com --alias prod -k
+openbkn auth login https://prod.openbkn.example.com --alias prod -k
 
 # 2. 登录开发环境
-openbkn auth login https://dev.kweaver.example.com --alias dev -k
+openbkn auth login https://dev.openbkn.example.com --alias dev -k
 
 # 3. 查看所有会话
 openbkn auth list
@@ -201,7 +201,7 @@ openbkn config show | grep business_domain
 
 ```bash
 # 1. 首次登录
-openbkn auth login https://kweaver.example.com --alias prod -k -u <用户名> -p <密码>
+openbkn auth login https://openbkn.example.com --alias prod -k -u <用户名> -p <密码>
 
 # 2. 确认身份
 openbkn auth whoami

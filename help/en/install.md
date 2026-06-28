@@ -350,7 +350,7 @@ The `openbkn` CLI and its `admin` subcommand share **one** login and token store
 
 ## 🛡️ Administrator commands after a full install (`openbkn admin`)
 
-After a full install (with `auth.enabled=true` and `businessDomain.enabled=true`), platform-level operations — **users, organizations, roles, models, audit** — are managed through the **`openbkn admin`** subcommand of the same `openbkn` CLI. There is **no separate admin package**: admin used to ship as `kweaver-admin`, but it is now merged into [`@openbkn/bkn-sdk`](https://github.com/openbkn-ai/bkn-sdk) and reached via `openbkn admin ...`:
+After a full install (with `auth.enabled=true` and `businessDomain.enabled=true`), platform-level operations — **users, organizations, roles, models, audit** — are managed through the **`openbkn admin`** subcommand of the same `openbkn` CLI. There is **no separate admin package** — admin ships with [`@openbkn/bkn-sdk`](https://github.com/openbkn-ai/bkn-sdk) and is reached via `openbkn admin ...`:
 
 | Command surface | Audience | Scope |
 | --- | --- | --- |

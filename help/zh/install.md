@@ -353,7 +353,7 @@ sequenceDiagram
 
 ## 🛡️ 完整安装后的管理员命令（`openbkn admin`）
 
-完整安装（启用 `auth.enabled=true` 与 `businessDomain.enabled=true`）后，平台的**用户、组织、角色、模型、审计**等管理操作通过同一个 `openbkn` CLI 的 **`openbkn admin`** 子命令完成。**没有单独的 admin 包**：管理能力过去以 `kweaver-admin` 单独发布，现已并入 [`@openbkn/bkn-sdk`](https://github.com/openbkn-ai/bkn-sdk)，通过 `openbkn admin ...` 调用：
+完整安装（启用 `auth.enabled=true` 与 `businessDomain.enabled=true`）后，平台的**用户、组织、角色、模型、审计**等管理操作通过同一个 `openbkn` CLI 的 **`openbkn admin`** 子命令完成。**没有单独的 admin 包**——管理能力随 [`@openbkn/bkn-sdk`](https://github.com/openbkn-ai/bkn-sdk) 一起提供，通过 `openbkn admin ...` 调用：
 
 | 命令面 | 受众 | 覆盖范围 |
 | --- | --- | --- |

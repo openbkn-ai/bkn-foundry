@@ -8,7 +8,7 @@ Task-oriented recipes for BKN Foundry: each entry is a self-contained "**one goa
 
 | Recipe | One-line goal |
 | --- | --- |
-| [Build a knowledge network from CSV in one shot](./cookbook_example.md) | Use `kweaver bkn create-from-csv` to turn local CSV files into a queryable KN |
+| [Build a knowledge network from CSV in one shot](./cookbook_example.md) | Use `openbkn bkn create-from-csv` to turn local CSV files into a queryable KN |
 
 ## Template for a new recipe
 
@@ -24,4 +24,4 @@ Name new files `NN-short-slug.md` and keep the structure consistent:
 5. **Troubleshooting** — the "Symptom" column should be the **literal output or error a reader will see**
 6. **See also** — links to the [module docs](../README.md), [`examples/`](../examples/README.md), and related recipes
 
-> Prefer the **`kweaver`** CLI; show an equivalent `curl` only when needed. Never paste private tokens or real customer data into examples.
+> Prefer the **`openbkn`** CLI; show an equivalent `curl` only when needed. Never paste private tokens or real customer data into examples.

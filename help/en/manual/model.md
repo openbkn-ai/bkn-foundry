@@ -259,7 +259,7 @@ openbkn call /api/mf-model-manager/v1/small-model/delete -d '{
 
 After registering an embedding in the **model factory**, point **bkn-backend** and **ontology-query** at the same default name — the **`model_name`** from the list API.
 
-**1.** Run the list call to read **`model_name`**, then `kubectl edit configmap bkn-backend-cm` and `ontology-query-cm` (namespace is often `kweaver`). In the YAML blob under `data`, under **`server:`**, set:
+**1.** Run the list call to read **`model_name`**, then `kubectl edit configmap bkn-backend-cm` and `ontology-query-cm` (namespace defaults to `openbkn` (per your cluster)). In the YAML blob under `data`, under **`server:`**, set:
 
 ```bash
 openbkn call '/api/mf-model-manager/v1/small-model/list?page=1&size=50'
@@ -276,8 +276,8 @@ Edit **both** ConfigMaps; **`defaultSmallModelName` must match**. Add the line u
 **2.** Save, restart, and test; run **`bkn build`** again if indexes were built with the wrong model.
 
 ```bash
-kubectl rollout restart deployment/bkn-backend -n kweaver
-kubectl rollout restart deployment/ontology-query -n kweaver
+kubectl rollout restart deployment/bkn-backend -n openbkn
+kubectl rollout restart deployment/ontology-query -n openbkn
 openbkn bkn search <kn_id> "test query"
 # optional: openbkn bkn build <kn_id> --wait --timeout 600
 ```
@@ -368,10 +368,10 @@ openbkn call /api/mf-model-manager/v1/llm/test -d '{"model_id": "<llm_id>"}'
 openbkn call /api/mf-model-manager/v1/small-model/test -d '{"model_id": "<embedding_id>"}'
 
 # 5. Enable BKN semantic search (kubectl): see "Enable BKN Semantic Search" steps 1–2 above
-kubectl edit configmap bkn-backend-cm -n kweaver
-kubectl edit configmap ontology-query-cm -n kweaver
-kubectl rollout restart deployment/bkn-backend -n kweaver
-kubectl rollout restart deployment/ontology-query -n kweaver
+kubectl edit configmap bkn-backend-cm -n openbkn
+kubectl edit configmap ontology-query-cm -n openbkn
+kubectl rollout restart deployment/bkn-backend -n openbkn
+kubectl rollout restart deployment/ontology-query -n openbkn
 openbkn bkn build <kn_id> --wait --timeout 600
 
 # 6. Verify semantic search
