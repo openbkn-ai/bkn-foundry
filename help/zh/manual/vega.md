@@ -178,7 +178,7 @@ SQL 中可使用占位符 `{{.<资源ID>}}` 或 `{{<资源ID>}}`（资源 ID 为
 | 单资源数据 API | `openbkn vega resource query <id> -d {...}` | vega-backend | 单表过滤、sort、`search_after` 分页 |
 | Dataview + `--sql` | `openbkn dataview query ... --sql` | mdl-uniquery + **Trino**（Etrino） | 跨源/复杂 SQL 经计算集群（需单独安装 Etrino） |
 
-TypeScript：`client.vega.executeQuery(jsonString)`、`client.vega.sqlQuery(jsonString)`。
+TypeScript：直连 SQL 用 typed 方法 `bkn.vega.sql({ resource_type, query })`；结构化 `query/execute` 无 typed 方法，用 `bkn.call('/api/vega-backend/v1/query/execute', { method: 'POST', body })`。
 
 ### 连接器类型
 
@@ -223,7 +223,7 @@ openbkn dataview query dv_001 \
 
 平台在创建数据视图时会解析元数据并写入 **`meta_table_name`**（以及内建 **`sql_str`**）。**不要凭视图逻辑名或表名单独拼 catalog**；应执行 **`openbkn dataview get <view_id>`**，将返回的 **`meta_table_name`** 原样用于 `FROM` / `JOIN`，或与 `sql_str` 中的表引用保持一致。多表 JOIN 须在同一数据源（同一 catalog）下。
 
-TypeScript：`client.dataviews.list()`、`client.dataviews.find(...)`、`client.dataviews.query(id, { sql: '...' })`。
+TypeScript：数据视图无 typed 方法，用 `bkn.call('/api/mdl-uniquery/v1/dataviews?limit=50', { method: 'GET' })`，或使用 `openbkn dataview` CLI。
 
 ### 端到端流程
 
@@ -242,63 +242,58 @@ openbkn dataview query dv_001 \
 
 ## 📘 TypeScript SDK
 
-`client.vega` 为**扁平**方法名（`listCatalogs`、`createCatalog` 等）。`executeQuery`、`sqlQuery`、`createResource`、`updateCatalog` 等需要 **JSON 字符串**（`JSON.stringify(...)`）。
+`bkn.vega` 提供了 Catalog、连接器类型、直连 SQL、构建任务的 typed 方法；资源浏览/查询在 `bkn.resource` 下。没有 typed 方法的端点（结构化 `query/execute`、Catalog 更新/删除、资源 CRUD、数据集文档、数据视图）通过通用的 `bkn.call(...)` passthrough 访问。
 
 ```typescript
 import { createClient } from '@openbkn/bkn-sdk';
 
-const client = createClient({ baseUrl: 'https://<访问地址>' });
+const bkn = createClient({ baseUrl: 'https://<访问地址>', token: process.env.BKN_TOKEN });
 
-const health = await client.vega.health();
-console.log(health);
+// Catalog（typed）
+const catalogs = await bkn.vega.catalogs({ status: 'healthy', limit: 20 });
+catalogs.forEach((c) => console.log(c.id, c.name));
 
-const catalogs = await client.vega.listCatalogs({ status: 'healthy', limit: 20 });
-catalogs.forEach((c: any) => console.log(c.id, c.name));
+const detail = await bkn.vega.getCatalog('cat-001');
+const healthStatus = await bkn.vega.catalogHealth(['cat-001', 'cat-002']);
+await bkn.vega.discoverCatalog('cat-001', true); // 等待发现完成
+const catRes = await bkn.vega.catalogResources('cat-001', 'table');
 
-const detail = await client.vega.getCatalog('cat_pg001');
-const healthStatus = await client.vega.catalogHealthStatus('cat_pg001');
-const test = await client.vega.testCatalogConnection('cat_pg001');
-await client.vega.discoverCatalog('cat_pg001', { wait: true });
-const catRes = await client.vega.listCatalogResources('cat_pg001', { category: 'table', limit: 50 });
-
-await client.vega.createCatalog({
+await bkn.vega.createCatalog({
   name: 'my-mysql',
   connector_type: 'mysql',
   connector_config: { host: 'db.example.com', port: 3306, database: 'mydb', username: 'u', password: 'p' },
 });
-await client.vega.updateCatalog('cat_pg001', JSON.stringify({ name: 'renamed' }));
-await client.vega.deleteCatalogs('cat_pg001');
 
-const resources = await client.vega.listResources({ catalogId: 'cat_pg001', limit: 50 });
-const allRes = await client.vega.listAllResources({ limit: 100 });
-const res = await client.vega.getResource('res-001');
-const data = await client.vega.queryResourceData('res-001', JSON.stringify({ limit: 5, need_total: true }));
+// Catalog 的更新 / 删除无 typed 方法 —— 用 passthrough
+await bkn.call('/api/vega-backend/v1/catalogs/cat-001', { method: 'PUT', body: { name: 'renamed' } });
+await bkn.call('/api/vega-backend/v1/catalogs/cat-001', { method: 'DELETE' });
 
-await client.vega.createResource(JSON.stringify({
-  catalog_id: 'cat-001', name: 't', category: 'table',
-}));
-await client.vega.updateResource('res-001', JSON.stringify({ status: 'active' }));
-await client.vega.deleteResources('res-001');
+// 资源（typed：浏览 + 查询）
+const resources = await bkn.resource.list({ catalogId: 'cat-001', category: 'table', limit: 50 });
+const res = await bkn.resource.get('res-001');
+const rows = await bkn.resource.query('res-001', { limit: 5 });
 
-await client.vega.createDatasetDocs('res-ds', JSON.stringify([{ id: 'd1' }]));
-await client.vega.buildDataset('res-ds', 'full');
-const build = await client.vega.getDatasetBuildStatus('res-ds', '<task-id>');
+// 连接器类型（typed）
+const connectors = await bkn.vega.connectorTypes();
 
-const structured = await client.vega.executeQuery(JSON.stringify({
-  tables: [{ resource_id: 'res-001' }],
-  limit: 5,
-  need_total: true,
-}));
-const sqlResp = await client.vega.sqlQuery(JSON.stringify({
+// 直连 SQL（typed）
+const sqlOut = await bkn.vega.sql({
   resource_type: 'mysql',
   query: 'SELECT 1 AS one',
-}));
-
-const dvList = await client.dataviews.list({ limit: 50 });
-const dvResult = await client.dataviews.query('dv_001', {
-  // FROM 使用 get 返回的 meta_table_name；下为格式示意
-  sql: "SELECT * FROM mysql_demo.\"sales\".\"customer_orders\" WHERE region = '华东' LIMIT 5",
 });
+
+// 结构化 query/execute —— 无 typed 方法，用 passthrough
+const structured = await bkn.call('/api/vega-backend/v1/query/execute', {
+  method: 'POST',
+  body: { tables: [{ resource_id: 'res-001' }], limit: 5, need_total: true },
+});
+
+// 数据集构建任务（typed）
+const build = await bkn.vega.build({ resource_id: 'res-ds', mode: 'batch' }, { wait: true });
+const status = await bkn.vega.buildStatus(String(build.id));
+
+// 数据视图（mdl-uniquery）—— 无 typed 方法，用 passthrough 或 `openbkn dataview` CLI
+const dvList = await bkn.call('/api/mdl-uniquery/v1/dataviews?limit=50', { method: 'GET' });
 ```
 
 ---
@@ -394,6 +389,6 @@ curl -sk -X POST "https://<访问地址>/api/vega-backend/v1/connector-types/mys
   -d '{"enabled":true}'
 ```
 
-Dataview 的 HTTP 路径由 **mdl-uniquery** / **mdl-data-model** 提供，不在 vega-backend 的 `router.go` 中；请使用 `openbkn dataview` 或 `client.dataviews`。
+Dataview 的 HTTP 路径由 **mdl-uniquery** / **mdl-data-model** 提供，不在 vega-backend 的 `router.go` 中；请使用 `openbkn dataview`，或通过 SDK 的 `bkn.call(...)` passthrough 访问 REST 路径。
 
 更多说明见 npm 包 `@openbkn/bkn-sdk` 以及 `openbkn vega --help`。

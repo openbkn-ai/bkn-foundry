@@ -24,7 +24,7 @@ openbkn admin role list
 openbkn admin audit list --user alice --start 2026-04-01 --end 2026-04-30
 ```
 
-> 完整子命令组（`org` / `user` / `role` / `llm` / `small-model` / `audit` / `call`）见 `openbkn admin --help`；管理员 token 与普通用户 token 一并保存在 `~/.bkn/`（保持隔离）。与最小化安装的兼容说明详见 [安装与部署 — 完整安装后的管理员工具](../install.md#-完整安装后的管理员工具kweaver-admin)。
+> 完整子命令组（`org` / `user` / `role` / `llm` / `small-model` / `audit` / `call`）见 `openbkn admin --help`；管理员 token 与普通用户 token 一并保存在 `~/.bkn/`（保持隔离）。与最小化安装的兼容说明详见 [安装与部署 — 完整安装后的管理员工具](../install.md#-完整安装后的管理员命令openbkn-admin)。
 >
 > 内置「三权分立」账号 `system / admin / security / audit` 不可随意删改；操作员请使用**个人账号**而非共享 `admin`，便于审计追溯。
 
@@ -140,18 +140,8 @@ openbkn auth change-password prod
 > - **TTY**：CLI 会确认后引导你输入新密码并自动重试登录。
 > - **非 TTY**：请用 `openbkn auth login <url> -u <用户名> -p '<旧密码>' --new-password '<新密码>'` 在登录的同时一次性完成首次密码设置。
 
-```typescript
-// TypeScript SDK
-import { createClient } from '@openbkn/bkn-sdk';
-
-const client = createClient({ baseUrl: 'https://kweaver.example.com', verifySsl: false });
-await client.auth.changePassword({
-  account: '<用户名>',
-  oldPassword: '<旧密码>',
-  newPassword: '<新密码>',
-});
-```
-
+> 💡 交互式登录与改密属于 CLI 范畴（浏览器 PKCE / 无头 OAuth），请使用上面的 `openbkn auth` 子命令；TypeScript SDK 不处理登录与改密，而是显式接收 token（见下方「TypeScript SDK」一节）。
+>
 > 💡 失败时报错信息会附带 `(account="<用户名>")`，方便快速定位是哪个账号失败。
 
 #### 多账户工作流
@@ -231,42 +221,32 @@ openbkn auth logout
 
 ### TypeScript SDK
 
+交互式登录（浏览器 PKCE / 无头 OAuth）属于 CLI 范畴 —— 请先运行 `openbkn auth login`。SDK 显式解析凭据：要么向 `createClient` 传入 token，要么让它读取 `~/.bkn/` 里的 CLI 会话。会话状态通过独立的 `auth` 命名空间访问。
+
 ```typescript
-import { createClient } from '@openbkn/bkn-sdk';
+import { createClient, auth } from '@openbkn/bkn-sdk';
 
-const client = createClient({ baseUrl: 'https://<访问地址>' });
+const bkn = createClient({ baseUrl: 'https://<访问地址>', token: process.env.BKN_TOKEN });
 
-await client.auth.login({ username: 'admin', password: 'MySecurePassword' });
+// 查看当前会话（来自 ~/.bkn/ 或传入的 token）
+const status = auth.status();
+console.log('平台:', status.baseUrl, '是否有 token:', status.hasToken, '是否过期:', status.expired);
 
-const user = await client.auth.whoami();
-console.log('用户:', user.username);
-console.log('角色:', user.roles);
-console.log('业务域:', user.businessDomain ?? '默认');
+const me = auth.whoami();
+console.log(me.userId, me.username);
 
-const status = await client.auth.status();
-console.log('Token 有效:', status.tokenValid);
-console.log('过期时间:', status.expiresAt);
+// 列出可用业务域（无 typed 方法 —— 用通用 passthrough）
+const domains = await bkn.call('/api/bkn-backend/v1/business-domains', { method: 'GET' });
+console.log('业务域:', domains);
 
-const token = await client.auth.exportToken();
-console.log('Bearer Token:', token.slice(0, 20) + '...');
-
-const agents = await client.agent.list({ limit: 5 });
-agents.data.forEach((agt) => console.log(agt.id, agt.name));
-
-client.config.setBusinessDomain('bd_sales');
-
-const agentsSales = await client.agent.list({ limit: 5 });
-agentsSales.data.forEach((agt) => console.log(agt.id, agt.name));
-
-await client.auth.logout();
-
-const clientNoAuth = createClient({
-  baseUrl: 'https://localhost:30000',
-  skipAuth: true,
-  verifySsl: false,
+// 将后续请求限定到某个业务域
+const scoped = createClient({
+  baseUrl: 'https://<访问地址>',
+  token: process.env.BKN_TOKEN,
+  businessDomain: 'bd_sales',
 });
-const networks = await clientNoAuth.bkn.listNetworks();
-console.log('知识网络数:', networks.data.length);
+const catalogs = await scoped.call('/api/vega-backend/v1/catalogs', { method: 'GET' });
+console.log('catalogs:', catalogs);
 ```
 
 ---

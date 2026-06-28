@@ -316,40 +316,39 @@ openbkn bkn search kn_abc123 "近一年采购额超过100万的客户"
 ```typescript
 import { createClient } from '@openbkn/bkn-sdk';
 
-const client = createClient();
+const bkn = createClient({ baseUrl: 'https://<访问地址>', token: process.env.BKN_TOKEN });
 
-const knList = await client.knowledgeNetworks.list({ limit: 50 });
+const knList = await bkn.kn.list({ limit: 50 });
 for (const kn of knList) {
   console.log(`${kn.name} (${kn.id})`);
 }
 
 const knId = knList[0].id;
-const detail = await client.knowledgeNetworks.get(knId, { include_statistics: true });
+const detail = await bkn.kn.get(knId, { stats: true });
 
-const objectTypes = await client.knowledgeNetworks.listObjectTypes(knId);
+const objectTypes = await bkn.kn.objectTypes(knId);
 for (const ot of objectTypes) {
-  console.log(`${ot.name} (${ot.id}) — ${ot.properties?.length ?? 0} 个属性`);
+  console.log(`${ot.name} (${ot.id})`);
 }
 
-const relationTypes = await client.knowledgeNetworks.listRelationTypes(knId);
+const relationTypes = await bkn.kn.relationTypes(knId);
 for (const rt of relationTypes) {
   console.log(`${rt.source_object_type?.name} —[${rt.name}]→ ${rt.target_object_type?.name}`);
 }
 
-const actionTypes = await client.knowledgeNetworks.listActionTypes(knId);
+const actionTypes = await bkn.kn.actionTypes(knId);
 
+// 查询对象实例
 const otId = objectTypes[0].id;
-const instances = await client.bkn.queryInstances(knId, otId, {
-  page: 1,
+const instances = await bkn.kn.objectTypeQuery(knId, otId, {
+  conditions: [{ field: 'status', op: '==', value: 'active' }],
   limit: 20,
 });
-console.log(instances.datas);
+console.log(instances);
 
-const identity = instances.datas[0]._instance_identity;
-const properties = await client.bkn.queryProperties(knId, otId, { identity });
-
+// 子图遍历
 const rt = relationTypes[0];
-const subgraph = await client.bkn.querySubgraph(knId, {
+const subgraph = await bkn.kn.subgraph(knId, {
   relation_type_paths: [{
     relation_types: [{
       relation_type_id: rt.id,
@@ -360,19 +359,21 @@ const subgraph = await client.bkn.querySubgraph(knId, {
   limit: 5,
 });
 
-const result = await client.bkn.semanticSearch(knId, '高价值客户');
-for (const concept of result.concepts ?? []) {
-  console.log(`${concept.concept_name} (score: ${concept.intent_score})`);
-}
+// 语义搜索
+const result = await bkn.kn.search(knId, '高价值客户');
+console.log(result);
 
+// 行为类 + 执行日志
 const atId = actionTypes[0].id;
-const actionDetail = await client.bkn.queryAction(knId, atId, {});
-const logs = await client.bkn.listActionLogs(knId, { atId, limit: 5 });
+const actionDetail = await bkn.kn.actionTypeQuery(knId, atId, {});
+const logs = await bkn.kn.actionLogs(knId, { limit: 5 });
 
-const buildStatus = await client.knowledgeNetworks.buildAndWait(knId, {
-  timeout: 300_000,
-  interval: 5_000,
-});
+// 提交 Vega BuildTask 构建知识网络索引，并等待完成
+const buildTask = await bkn.vega.build(
+  { resource_id: '<resource_id>', mode: 'batch' },
+  { wait: true },
+);
+console.log('build:', buildTask);
 ```
 
 ---

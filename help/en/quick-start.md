@@ -47,7 +47,7 @@ openbkn admin user roles <userId>                                 # verify
 ```
 
 - **Path A default password is `111111`** (set by onboard for `test`); **Path B default password is `123456`** (ISF `Usrm_AddUser` hardcoded default). Use whichever matches the path you took.
-- Role / permission notes: [Install — Administrator commands after a full install (`openbkn admin`)](install.md#-administrator-commands-after-a-full-install-openbkn-admin) and [ISF](manual/isf.md#-administrator-tool-kweaver-admin). In production, grant least privilege; the "every role" pattern is for local / PoC / quick start.
+- Role / permission notes: [Install — Administrator commands after a full install (`openbkn admin`)](install.md#-administrator-commands-after-a-full-install-openbkn-admin) and [ISF](manual/isf.md#-administrator-commands-openbkn-admin). In production, grant least privilege; the "every role" pattern is for local / PoC / quick start.
 - **Minimum install** (`--minimum`): both paths are unnecessary — use `openbkn auth login <platform-url> --no-auth`.
 
 If you already have a sign-in account from ops, skip both paths and go straight to "Sign in" below.
@@ -188,35 +188,20 @@ If you prefer code over CLI, here's the same flow in TypeScript.
 
 > More runnable examples ship with the `@openbkn/bkn-sdk` npm package.
 
-### Simplest Way (Simple API — 3 Lines of Code)
+### Create a Client
 
 ```typescript
-import openbkn from '@openbkn/bkn-sdk/kweaver';
+import { createClient } from '@openbkn/bkn-sdk';
 
-openbkn.configure({ config: true }); // auto-reads ~/.bkn/ credentials
-
-const knList = await openbkn.bkns({ limit: 10 });
-console.log(`Found ${knList.length} knowledge network(s)`);
-
-const result = await openbkn.search('overdue orders', { bknId: knList[0].id, maxConcepts: 5 });
-for (const c of result.concepts ?? []) {
-  console.log(`${c.concept_name} (score: ${c.intent_score})`);
-}
-```
-
-### Full Control (Client API)
-
-```typescript
-import { KWeaverClient } from '@openbkn/bkn-sdk';
-
-// Auto-reads credentials from ~/.bkn/ (written by `openbkn auth login`)
-const client = await KWeaverClient.connect();
+// Pass a token explicitly, or omit it to read the CLI session from ~/.bkn/
+// (written by `openbkn auth login`).
+const bkn = createClient({ baseUrl: 'https://<access-address>', token: process.env.BKN_TOKEN });
 ```
 
 ### Discover Knowledge Networks
 
 ```typescript
-const knList = await client.knowledgeNetworks.list({ limit: 10 });
+const knList = await bkn.kn.list({ limit: 10 });
 for (const kn of knList) {
   console.log(`${kn.name} (${kn.id})`);
 }
@@ -227,17 +212,17 @@ for (const kn of knList) {
 ```typescript
 const knId = knList[0].id;
 
-const objectTypes = await client.knowledgeNetworks.listObjectTypes(knId);
+const objectTypes = await bkn.kn.objectTypes(knId);
 for (const ot of objectTypes) {
-  console.log(`${ot.name} — ${ot.properties?.length ?? 0} properties`);
+  console.log(`${ot.name} (${ot.id})`);
 }
 
-const relationTypes = await client.knowledgeNetworks.listRelationTypes(knId);
+const relationTypes = await bkn.kn.relationTypes(knId);
 for (const rt of relationTypes) {
   console.log(`${rt.source_object_type?.name} —[${rt.name}]→ ${rt.target_object_type?.name}`);
 }
 
-const actionTypes = await client.knowledgeNetworks.listActionTypes(knId);
+const actionTypes = await bkn.kn.actionTypes(knId);
 ```
 
 ### Query Instances & Subgraph Traversal
@@ -246,15 +231,15 @@ const actionTypes = await client.knowledgeNetworks.listActionTypes(knId);
 const otId = objectTypes[0].id;
 
 // Conditional query
-const instances = await client.bkn.queryInstances(knId, otId, {
+const instances = await bkn.kn.objectTypeQuery(knId, otId, {
+  conditions: [{ field: 'status', op: '==', value: 'overdue' }],
   limit: 5,
-  condition: { field: 'status', operation: '==', value: 'overdue' },
 });
-console.log(instances.datas);
+console.log(instances);
 
 // Subgraph traversal (expand along a relation type)
 const rt = relationTypes[0];
-const subgraph = await client.bkn.querySubgraph(knId, {
+const subgraph = await bkn.kn.subgraph(knId, {
   relation_type_paths: [{
     relation_types: [{
       relation_type_id: rt.id,
@@ -271,24 +256,18 @@ const subgraph = await client.bkn.querySubgraph(knId, {
 > Requires a registered embedding and [Enable BKN semantic search](manual/model.md#enable-bkn-semantic-search).
 
 ```typescript
-const result = await client.bkn.semanticSearch(knId, 'overdue orders');
-for (const concept of result.concepts ?? []) {
-  console.log(`${concept.concept_name} (score: ${concept.intent_score})`);
-}
+const result = await bkn.kn.search(knId, 'overdue orders');
+console.log(result);
 ```
 
 ### Context Loader (MCP Layered Retrieval)
 
 ```typescript
-const { baseUrl } = client.base();
-const mcpUrl = `${baseUrl}/api/agent-retrieval/v1/mcp`;
-const cl = client.contextLoader(mcpUrl, knId);
+// Layer 1: Schema search — discover object types by natural language
+const schema = await bkn.context.searchSchema(knId, 'orders');
 
-// Layer 1: Schema search
-const schema = await cl.schemaSearch({ query: 'orders', max_concepts: 5 });
-
-// Layer 2: Instance query
-const mcpInstances = await cl.queryInstances({ ot_id: otId, limit: 5 });
+// Layer 2: Instance query — fetch concrete data for an object type
+const mcpInstances = await bkn.context.queryObjectInstance(knId, { ot_id: otId, limit: 5 });
 ```
 
 ---
@@ -339,35 +318,35 @@ openbkn agent chat <agent_id>
 ### TypeScript SDK
 
 ```typescript
-// List agents
-const agents = await client.agents.list({ limit: 10 });
+import { createClient } from '@openbkn/bkn-sdk';
 
-// Single-turn chat
-const reply = await client.agents.chat(agentId, 'How many orders are overdue this month?');
+const bkn = createClient({ baseUrl: 'https://<access-address>', token: process.env.BKN_TOKEN });
+
+// List agents
+const agents = await bkn.agents.list({ limit: 10 });
+const agentId = agents[0].id;
+
+// Create an agent (bind the knowledge network in its config), then publish it
+const created = await bkn.agents.create({
+  name: 'Supply Chain Assistant',
+  desc: 'Answer supply chain questions',
+});
+await bkn.agents.publish(created.id);
+
+// Single-turn chat — resolves with the full answer text
+const reply = await bkn.agents.chat(agentId, 'How many orders are overdue this month?');
 console.log(reply.text);
 
-// Inspect the reasoning chain
-for (const step of reply.progress ?? []) {
-  console.log(`[${step.skill_info?.type}] ${step.skill_info?.name} → ${step.status}`);
-}
-
-// Streaming chat (real-time output)
-let prevLen = 0;
-await client.agents.stream(agentId, 'Which suppliers have the slowest delivery?', {
-  onTextDelta: (fullText) => {
-    process.stdout.write(fullText.slice(prevLen));
-    prevLen = fullText.length;
-  },
-  onProgress: (progress) => {
-    for (const p of progress) {
-      console.log(`[progress] ${p.skill_info?.name} → ${p.status}`);
-    }
-  },
+// Streaming chat (real-time output) — onDelta receives each new text suffix
+await bkn.agents.chat(agentId, 'Which suppliers have the slowest delivery?', {
+  stream: true,
+  onDelta: (delta) => process.stdout.write(delta),
 });
 
-// Conversation history
-const sessions = await client.conversations.list(agentId, { limit: 5 });
-const messages = await client.conversations.listMessages(conversationId, { limit: 20 });
+// Conversation history (sessions are keyed by the agent's published key)
+const agent = await bkn.agents.get(agentId);
+const sessions = await bkn.agents.sessions(agent.key, { size: 5 });
+const messages = await bkn.agents.history(agent.key, sessions[0].conversation_id);
 ```
 
 ---

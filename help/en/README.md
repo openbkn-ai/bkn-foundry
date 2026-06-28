@@ -30,7 +30,7 @@ Reference manuals by subsystem (living under `./manual/`).
 | [Execution Factory](manual/execution-factory.md) | Tools, operators, and skills for agents |
 | [Trace AI](manual/trace-ai.md) | Traces, metrics, and evidence-chain style observability |
 | [Info Security Fabric](manual/isf.md) | Identity, permissions, policies, and audit (when enabled) |
-| [Platform admin tool](install.md#-administrator-tool-after-a-full-install-kweaver-admin) | `kweaver-admin` — users / orgs / roles / models / audit (after a full install) |
+| [Platform admin](install.md#-administrator-commands-after-a-full-install-openbkn-admin) | `openbkn admin` — users / orgs / roles / models / audit (after a full install) |
 
 ---
 

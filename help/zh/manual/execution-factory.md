@@ -94,41 +94,41 @@ openbkn call POST /api/agent-operator-integration/v1/operators/data_quality_chec
 ```typescript
 import { createClient } from '@openbkn/bkn-sdk';
 
-const client = createClient({ baseUrl: 'https://<访问地址>' });
+const bkn = createClient({ baseUrl: 'https://<访问地址>', token: process.env.BKN_TOKEN });
 
-const operators = await client.executionFactory.listOperators();
-operators.data.forEach((op) => console.log(op.id, op.name, op.type));
+// 列出算子（算子端点无 typed 方法 —— 用通用 passthrough）
+const operators = await bkn.call('/api/agent-operator-integration/v1/operators', { method: 'GET' });
+console.log('算子:', operators);
 
-const opDetail = await client.executionFactory.getOperator('op_text_extract');
-console.log('名称:', opDetail.name);
-console.log('输入参数:', opDetail.inputSchema);
+// 调用算子
+const result = await bkn.call(
+  '/api/agent-operator-integration/v1/operators/op-weather/invoke',
+  { method: 'POST', body: { city: 'Shanghai', units: 'metric' } },
+);
+console.log('结果:', result);
 
-const result = await client.executionFactory.invoke({
-  operatorId: 'op_text_extract',
-  input: { url: 'https://example.com/report.pdf' },
-  params: { format: 'markdown' },
-});
-console.log(result.output);
+// 列出 Skill
+const skills = await bkn.skills.list();
+console.log('skills:', skills);
 
-const tools = await client.executionFactory.listTools();
-tools.data.forEach((tool) => console.log(tool.id, tool.name));
+// 市场搜索
+const marketResults = await bkn.skills.market({ query: '数据分析' });
+console.log('market:', marketResults);
 
-const toolResult = await client.executionFactory.invokeTool({
-  toolId: 'tool_web_search',
-  input: { query: 'BKN Foundry 最新版本', limit: 5 },
-});
-toolResult.results.forEach((item) => console.log(item.title, item.url));
+// 从本地目录注册 Skill
+const registered = await bkn.skills.register('./my-skill');
+console.log('registered:', registered);
 
-const skills = await client.skill.list();
-skills.data.forEach((s) => console.log(s.name, s.version, s.status));
+// 获取 Skill 内容
+const content = await bkn.skills.content('skill-kg-analyzer');
+console.log('content:', content);
 
-const market = await client.skill.market();
-market.data.forEach((s) => console.log(s.name, s.description));
+// 读取 Skill 内某个文件
+const fileContent = await bkn.skills.readFile('skill-kg-analyzer', 'SKILL.md');
+console.log('file:', fileContent);
 
-await client.skill.install('data-quality-checker', { version: '1.2.0' });
-
-const content = await client.skill.readFile('data-quality-checker', 'SKILL.md');
-console.log(content);
+// 从市场下载并安装到目标目录
+await bkn.skills.install('skill-kg-analyzer', './installed/skill-kg-analyzer');
 ```
 
 ---

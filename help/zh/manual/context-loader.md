@@ -228,49 +228,32 @@ openbkn context-loader get-action-info '{
 ```typescript
 import { createClient } from '@openbkn/bkn-sdk';
 
-// 自动读取 ~/.bkn/ 凭据
-const client = createClient();
+const bkn = createClient({ baseUrl: 'https://<访问地址>', token: process.env.BKN_TOKEN });
 
-// 初始化 Context Loader — 需要 MCP 端点 URL 和知识网络 ID
-const { baseUrl } = client.base();
-const mcpUrl = `${baseUrl}/api/agent-retrieval/v1/mcp`;
-const knId = 'kn_abc123';
-const cl = client.contextLoader(mcpUrl, knId);
+const knId = 'kn-001';
 
 // Layer 1：Schema 搜索 — 用自然语言发现对象类
-const schemaResults = await cl.schemaSearch({ query: '客户订单关系', max_concepts: 5 });
-console.log('Schema 搜索结果:', schemaResults);
+const schema = await bkn.context.searchSchema(knId, '客户订单关系');
+console.log('Schema 搜索结果:', schema);
 
 // Layer 2：实例查询 — 根据 Layer 1 找到的对象类查询具体数据
-const otId = 'ot_customer';
-const instances = await cl.queryInstances({
-  ot_id: otId,
+const instances = await bkn.context.queryObjectInstance(knId, {
+  ot_id: 'ot_customer',
   limit: 20,
 });
 console.log('实例:', instances);
 
-// 也可以直接用 Client API 做更复杂的查询
-const directInstances = await client.bkn.queryInstances(knId, otId, {
-  page: 1,
-  limit: 20,
-});
+// 跨知识网络的语义搜索
+const results = await bkn.kn.search(knId, '高价值客户');
+console.log('搜索命中:', results);
 
-// 子图遍历 — 沿关系类展开
-const relationTypes = await client.knowledgeNetworks.listRelationTypes(knId);
-const rt = relationTypes.find(r => r.source_object_type?.id && r.target_object_type?.id);
-if (rt) {
-  const subgraph = await client.bkn.querySubgraph(knId, {
-    relation_type_paths: [{
-      relation_types: [{
-        relation_type_id: rt.id,
-        source_object_type_id: rt.source_object_type?.id,
-        target_object_type_id: rt.target_object_type?.id,
-      }],
-    }],
-    limit: 5,
-  });
-  console.log('子图:', subgraph);
-}
+// 子图遍历 — 沿关系类展开（按实例）
+const subgraph = await bkn.context.queryInstanceSubgraph(knId, {
+  ot_id: 'ot_customer',
+  instance_id: 'cust-5521',
+  depth: 2,
+});
+console.log('子图:', subgraph);
 ```
 
 ---

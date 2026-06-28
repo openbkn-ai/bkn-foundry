@@ -125,38 +125,36 @@ openbkn bkn search <kn_id> "超期订单"
 ```typescript
 import { createClient } from '@openbkn/bkn-sdk';
 
-const client = createClient({ baseUrl: 'https://<访问地址>' });
+const bkn = createClient({ baseUrl: 'https://<访问地址>', token: process.env.BKN_TOKEN });
 
-const dsList = await client.ds.list();
-dsList.data.forEach((ds) => console.log(ds.id, ds.name, ds.type, ds.status));
+// 列出数据源
+const dsList = await bkn.call('/api/builder/v1/datasources?page=1&size=20', { method: 'GET' });
+console.log('数据源:', dsList);
 
-const dsFiltered = await client.ds.list({ keyword: 'erp', type: 'mysql' });
+// 查看详情
+const detail = await bkn.call('/api/builder/v1/datasources/ds-abc123', { method: 'GET' });
+console.log('详情:', detail);
 
-const detail = await client.ds.get('ds-abc123');
-console.log('主机:', detail.host, '数据库:', detail.database, '状态:', detail.status);
-
-const newDs = await client.ds.connect({
-  type: 'mysql',
-  host: 'db.example.com',
-  port: 3306,
-  database: 'erp',
-  account: 'root',
-  password: 'pass123',
+// 连接新数据源
+const newDs = await bkn.call('/api/builder/v1/datasources', {
+  method: 'POST',
+  body: {
+    type: 'mysql',
+    host: 'db.example.com',
+    port: 3306,
+    database: 'erp',
+    account: 'root',
+    password: 'pass123',
+  },
 });
-console.log('数据源 ID:', newDs.id);
+console.log('数据源 ID:', newDs);
 
-const tables = await client.ds.tables('ds-abc123');
-tables.data.forEach((t) => console.log(t.name, t.columns));
+// 发现表
+const tables = await bkn.call('/api/builder/v1/datasources/ds-abc123/tables', { method: 'GET' });
+console.log('表:', tables);
 
-const importResult = await client.ds.importCsv({
-  datasourceId: 'ds-abc123',
-  files: ['物料.csv', '库存.csv'],
-  tablePrefix: 'sc_',
-  batchSize: 500,
-});
-console.log('导入表:', importResult.tables);
-
-await client.ds.delete('ds-abc123');
+// 删除
+await bkn.call('/api/builder/v1/datasources/ds-abc123', { method: 'DELETE' });
 ```
 
 ---
