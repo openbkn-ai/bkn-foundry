@@ -2,7 +2,7 @@
 
 > - **难度**：⭐ 入门 / ⭐⭐ 进阶 / ⭐⭐⭐ 专家
 > - **耗时**：约 N 分钟
-> - **涉及模块**：`<bkn|datasource|dataflow|...>`
+> - **涉及模块**：`<bkn|datasource|vega|...>`
 > - **CLI 版本**：`openbkn >= x.y`
 
 ## 1. Goal（目标）

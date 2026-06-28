@@ -2,7 +2,7 @@
 
 > - **Difficulty**: ⭐ Beginner / ⭐⭐ Intermediate / ⭐⭐⭐ Advanced
 > - **Time**: ~ N minutes
-> - **Modules touched**: `<bkn|datasource|dataflow|...>`
+> - **Modules touched**: `<bkn|datasource|vega|...>`
 > - **CLI version**: `openbkn >= x.y`
 
 ## 1. Goal
