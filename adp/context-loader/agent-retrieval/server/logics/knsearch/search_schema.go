@@ -102,8 +102,9 @@ func NormalizeSearchSchemaReq(req *interfaces.SearchSchemaReq) (*interfaces.KnSe
 		XAccountType: req.XAccountType,
 		Query:        req.Query,
 		KnID:         knID,
-		OnlySchema:   &onlySchema,
-		EnableRerank: req.EnableRerank,
+		OnlySchema:     &onlySchema,
+		EnableRerank:   req.EnableRerank,
+		IncludeColumns: req.IncludeColumns,
 		RetrievalConfig: &interfaces.RetrievalConfig{
 			ConceptRetrieval: &interfaces.ConceptRetrievalConfig{
 				ConceptGroups: scope.ConceptGroups,

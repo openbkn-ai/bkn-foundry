@@ -461,6 +461,11 @@
                           "default": true,
                           "type": "boolean"
                         },
+                        "include_columns": {
+                          "description": "是否在每个对象类的 data_property 上额外返回物理列名 column（取自 mapped_field）。写 run_sql 时列名要用 column（物理列），而非 name（逻辑名）；二者可不同，同一资源可被多个对象类用不同逻辑名映射。默认 false 保持响应精简。",
+                          "default": false,
+                          "type": "boolean"
+                        },
                         "kn_id": {
                           "type": "string",
                           "description": "知识网络ID。HTTP 接口通过 request body 传入。"
