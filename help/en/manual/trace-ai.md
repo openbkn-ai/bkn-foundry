@@ -16,24 +16,24 @@ Typical ingress prefix:
 
 ## 💻 CLI
 
-`kweaver agent trace` takes **agent id** first, then **conversation id** (from chat output or `kweaver agent sessions <agent_id>`).
+`openbkn agent trace` takes a **conversation id** (from chat output or `openbkn agent sessions <agent_key>`).
 
 ### Retrieving Traces
 
 ```bash
 # Full trace for a conversation
-kweaver agent trace <agent_id> <conversation_id>
+openbkn agent trace <conversation_id>
 
 # Pretty-printed with indentation and color
-kweaver agent trace <agent_id> <conversation_id> --pretty
+openbkn agent trace <conversation_id> --pretty
 
 # Compact single-line JSON output (for piping to jq)
-kweaver agent trace <agent_id> <conversation_id> --compact
+openbkn agent trace <conversation_id> --compact
 ```
 
 ### Trace Data Structure
 
-A trace returned by `kweaver agent trace` contains the following top-level structure:
+A trace returned by `openbkn agent trace` contains the following top-level structure:
 
 ```json
 {
@@ -108,14 +108,10 @@ A trace returned by `kweaver agent trace` contains the following top-level struc
 Traces enable **evidence chain analysis** — tracing every claim in an agent's response back to its data source:
 
 ```bash
-# 1. Chat with the agent
-kweaver agent chat agt-001 -m "What were Q1 revenues?"
-# → conversation_id: conv-xyz789
+# 1. Pull the trace for a conversation (conversation_id from chat output or `agent sessions`)
+openbkn agent trace conv-xyz789 --pretty
 
-# 2. Pull the trace (same agent id as step 1)
-kweaver agent trace agt-001 conv-xyz789 --pretty
-
-# 3. Walk the evidence chain:
+# 2. Walk the evidence chain:
 #    agent.turn → context.retrieval (kn-ecommerce, 12 results from ot-orders)
 #              → tool.execute (SQL query returned total=1,250,000)
 #              → llm.generate (synthesized response from retrieved context + tool output)
@@ -144,66 +140,18 @@ Key attributes to look for in each span type:
 
 ---
 
-## 🐍 Python SDK
-
-```python
-from kweaver_sdk import KWeaverClient
-
-client = KWeaverClient()  # after kweaver auth login; see kweaver-sdk for client setup
-
-# Full trace (agent id + conversation id)
-trace = client.agent.trace("agt-001", "conv-xyz789")
-print("trace_id:", trace["trace_id"])
-print("duration:", trace["duration_ms"], "ms")
-print("status:", trace["status"])
-
-# Walk spans
-for span in trace["spans"]:
-    indent = "  " if span["parent_span_id"] else ""
-    print(f"{indent}{span['name']} ({span['type']}) — {span['duration_ms']}ms — {span['status']}")
-    if span["type"] == "retrieval":
-        print(f"    query: {span['attributes']['query']}")
-        print(f"    results: {span['attributes']['results_count']}")
-        print(f"    sources: {span['attributes']['sources']}")
-    elif span["type"] == "tool":
-        print(f"    tool: {span['attributes']['tool_id']}")
-        print(f"    input: {span['attributes']['input']}")
-        print(f"    output: {span['attributes']['output']}")
-    elif span["type"] == "llm":
-        print(f"    model: {span['attributes']['model']}")
-        print(f"    tokens: {span['attributes']['prompt_tokens']}+{span['attributes']['completion_tokens']}")
-
-# Evidence chain: find all data sources that contributed to the response
-retrieval_spans = [s for s in trace["spans"] if s["type"] == "retrieval"]
-tool_spans = [s for s in trace["spans"] if s["type"] == "tool"]
-
-print("\n--- Evidence Sources ---")
-for rs in retrieval_spans:
-    print(f"Knowledge Network: {rs['attributes']['kn_id']}")
-    print(f"  Object Types: {rs['attributes']['sources']}")
-    print(f"  Results: {rs['attributes']['results_count']}")
-
-for ts in tool_spans:
-    print(f"Tool: {ts['attributes']['tool_id']}")
-    print(f"  Output: {ts['attributes']['output']}")
-```
-
----
-
 ## 📘 TypeScript SDK
 
 ```typescript
-import { KWeaverClient } from '@kweaver-ai/kweaver-sdk';
+import { createClient } from '@openbkn/bkn-sdk';
 
-const client = await KWeaverClient.connect();
+const bkn = createClient({ baseUrl: 'https://<access-address>', token: process.env.BKN_TOKEN });
 
-// Get trace (agent id + conversation id)
-const trace = await client.agent.trace('agt-001', 'conv-xyz789');
-console.log('trace_id:', trace.traceId);
-console.log('duration:', trace.durationMs, 'ms');
+// Fetch all spans for a conversation
+const spans = await bkn.trace.spans('conv-xyz789');
 
 // Walk spans
-for (const span of trace.spans) {
+for (const span of spans) {
   const indent = span.parentSpanId ? '  ' : '';
   console.log(
     `${indent}${span.name} (${span.type}) — ${span.durationMs}ms — ${span.status}`,
@@ -226,8 +174,8 @@ for (const span of trace.spans) {
 }
 
 // Evidence chain analysis
-const retrievalSpans = trace.spans.filter((s) => s.type === 'retrieval');
-const toolSpans = trace.spans.filter((s) => s.type === 'tool');
+const retrievalSpans = spans.filter((s) => s.type === 'retrieval');
+const toolSpans = spans.filter((s) => s.type === 'tool');
 
 console.log('\n--- Evidence Sources ---');
 retrievalSpans.forEach((rs) => {
@@ -247,11 +195,11 @@ toolSpans.forEach((ts) => {
 ```bash
 # Get trace for a conversation
 curl -sk "https://<access-address>/api/agent-observability/v1/traces/conv-xyz789" \
-  -H "Authorization: Bearer $(kweaver token)"
+  -H "Authorization: Bearer $(openbkn token)"
 
 # Search traces by agent ID and time range
 curl -sk -X POST "https://<access-address>/api/agent-observability/v1/traces/search" \
-  -H "Authorization: Bearer $(kweaver token)" \
+  -H "Authorization: Bearer $(openbkn token)" \
   -H "Content-Type: application/json" \
   -d '{
     "agent_id": "agt-001",
@@ -262,15 +210,15 @@ curl -sk -X POST "https://<access-address>/api/agent-observability/v1/traces/sea
 
 # Get spans for a specific trace
 curl -sk "https://<access-address>/api/agent-observability/v1/traces/tr-abc123/spans" \
-  -H "Authorization: Bearer $(kweaver token)"
+  -H "Authorization: Bearer $(openbkn token)"
 
 # Get a single span's details
 curl -sk "https://<access-address>/api/agent-observability/v1/traces/tr-abc123/spans/sp-003" \
-  -H "Authorization: Bearer $(kweaver token)"
+  -H "Authorization: Bearer $(openbkn token)"
 
 # Search traces by status (find failed agent turns)
 curl -sk -X POST "https://<access-address>/api/agent-observability/v1/traces/search" \
-  -H "Authorization: Bearer $(kweaver token)" \
+  -H "Authorization: Bearer $(openbkn token)" \
   -H "Content-Type: application/json" \
   -d '{
     "status": "error",
@@ -280,5 +228,5 @@ curl -sk -X POST "https://<access-address>/api/agent-observability/v1/traces/sea
 
 # Health check
 curl -sk "https://<access-address>/api/agent-observability/v1/health" \
-  -H "Authorization: Bearer $(kweaver token)"
+  -H "Authorization: Bearer $(openbkn token)"
 ```

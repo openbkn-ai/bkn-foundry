@@ -10,11 +10,11 @@
 | --- | --- |
 | `/api/builder/v1` | 数据源连接、发现与管理 |
 
-**相关模块：** [BKN 引擎](bkn.md)（从数据源创建知识网络）、[VEGA 引擎](vega.md)（数据虚拟化与查询）、[Dataflow](dataflow.md)（数据流转与加工）。
+**相关模块：** [BKN 引擎](bkn.md)（从数据源创建知识网络）、[VEGA 引擎](vega.md)（数据虚拟化与查询）。
 
 ## 🗃️ 支持的数据库类型
 
-mysql、postgresql、sqlserver、oracle、clickhouse、hive、opensearch、elasticsearch 等。使用 `kweaver vega connector-type list` 可查看当前平台已安装的连接器类型。
+mysql、postgresql、sqlserver、oracle、clickhouse、hive、opensearch、elasticsearch 等。使用 `openbkn vega connector-type list` 可查看当前平台已安装的连接器类型。
 
 ### CLI
 
@@ -22,12 +22,12 @@ mysql、postgresql、sqlserver、oracle、clickhouse、hive、opensearch、elast
 
 ```bash
 # 连接 MySQL
-kweaver ds connect mysql db.example.com 3306 erp \
+openbkn ds connect mysql db.example.com 3306 erp \
   --account root --password pass123
 # → 返回 ds_id，例如 ds-abc123
 
 # 连接 PostgreSQL（指定 schema 和自定义名称）
-kweaver ds connect postgresql pg.example.com 5432 analytics \
+openbkn ds connect postgresql pg.example.com 5432 analytics \
   --account reader --password pass456 \
   --schema public --name "分析库"
 ```
@@ -38,26 +38,26 @@ kweaver ds connect postgresql pg.example.com 5432 analytics \
 
 ```bash
 # 列出所有数据源
-kweaver ds list
+openbkn ds list
 
 # 按关键词搜索
-kweaver ds list --keyword "erp"
+openbkn ds list --keyword "erp"
 
 # 按类型过滤
-kweaver ds list --type mysql
+openbkn ds list --type mysql
 
 # 获取单个数据源详情
-kweaver ds get ds-abc123
+openbkn ds get ds-abc123
 ```
 
 #### 查看表结构
 
 ```bash
 # 列出数据源下的所有表
-kweaver ds tables ds-abc123
+openbkn ds tables ds-abc123
 
 # 按关键词搜索表
-kweaver ds tables ds-abc123 --keyword "order"
+openbkn ds tables ds-abc123 --keyword "order"
 ```
 
 #### 导入 CSV
@@ -66,16 +66,16 @@ kweaver ds tables ds-abc123 --keyword "order"
 
 ```bash
 # 导入多个 CSV 文件
-kweaver ds import-csv ds-abc123 --files "物料.csv,库存.csv"
+openbkn ds import-csv ds-abc123 --files "物料.csv,库存.csv"
 
 # 使用 glob 匹配并添加表前缀
-kweaver ds import-csv ds-abc123 --files "*.csv" --table-prefix sc_
+openbkn ds import-csv ds-abc123 --files "*.csv" --table-prefix sc_
 
 # 覆盖重建已有同名表（列结构变更后）
-kweaver ds import-csv ds-abc123 --files "物料.csv" --recreate
+openbkn ds import-csv ds-abc123 --files "物料.csv" --recreate
 
 # 大文件调整批量写入行数
-kweaver ds import-csv ds-abc123 --files "大表.csv" --batch-size 1000
+openbkn ds import-csv ds-abc123 --files "大表.csv" --batch-size 1000
 ```
 
 | 参数 | 必填 | 默认值 | 说明 |
@@ -90,77 +90,32 @@ kweaver ds import-csv ds-abc123 --files "大表.csv" --batch-size 1000
 
 ```bash
 # 删除（需确认）
-kweaver ds delete ds-abc123
+openbkn ds delete ds-abc123
 
 # 跳过确认
-kweaver ds delete ds-abc123 --yes
+openbkn ds delete ds-abc123 --yes
 ```
 
 #### 端到端流程
 
 ```bash
 # 1. 连接数据源
-kweaver ds connect mysql db.example.com 3306 erp \
+openbkn ds connect mysql db.example.com 3306 erp \
   --account root --password pass123
 # → ds-abc123
 
 # 2. 查看表结构
-kweaver ds tables ds-abc123
+openbkn ds tables ds-abc123
 
 # 3. 从数据源创建知识网络
-kweaver bkn create-from-ds ds-abc123 \
+openbkn bkn create-from-ds ds-abc123 \
   --name "erp-供应链" \
   --tables "orders,products,customers" \
   --build --timeout 600
 
 # 4. 验证知识网络
-kweaver bkn object-type list <kn_id>
-kweaver bkn search <kn_id> "超期订单"
-```
-
----
-
-### Python SDK
-
-```python
-from kweaver_sdk import KWeaverClient
-
-client = KWeaverClient(base_url="https://<访问地址>")
-
-ds_list = client.ds.list()
-for ds in ds_list["data"]:
-    print(ds["id"], ds["name"], ds["type"], ds["status"])
-
-ds_list_filtered = client.ds.list(keyword="erp", type="mysql")
-
-detail = client.ds.get("ds-abc123")
-print(f"主机: {detail['host']}, 数据库: {detail['database']}, 状态: {detail['status']}")
-
-new_ds = client.ds.connect(
-    type="mysql",
-    host="db.example.com",
-    port=3306,
-    database="erp",
-    account="root",
-    password="pass123",
-)
-print(f"数据源 ID: {new_ds['id']}")
-
-tables = client.ds.tables("ds-abc123")
-for t in tables["data"]:
-    print(t["name"], t["columns"])
-
-tables_filtered = client.ds.tables("ds-abc123", keyword="order")
-
-import_result = client.ds.import_csv(
-    datasource_id="ds-abc123",
-    files=["物料.csv", "库存.csv"],
-    table_prefix="sc_",
-    batch_size=500,
-)
-print(f"导入表: {import_result['tables']}")
-
-client.ds.delete("ds-abc123")
+openbkn bkn object-type list <kn_id>
+openbkn bkn search <kn_id> "超期订单"
 ```
 
 ---
@@ -168,9 +123,9 @@ client.ds.delete("ds-abc123")
 ### TypeScript SDK
 
 ```typescript
-import { KWeaverClient } from '@kweaver-ai/kweaver-sdk';
+import { createClient } from '@openbkn/bkn-sdk';
 
-const client = new KWeaverClient({ baseUrl: 'https://<访问地址>' });
+const client = createClient({ baseUrl: 'https://<访问地址>' });
 
 const dsList = await client.ds.list();
 dsList.data.forEach((ds) => console.log(ds.id, ds.name, ds.type, ds.status));
@@ -211,19 +166,19 @@ await client.ds.delete('ds-abc123');
 ```bash
 # 列出数据源
 curl -sk "https://<访问地址>/api/builder/v1/datasources?page=1&size=20" \
-  -H "Authorization: Bearer $(kweaver token)"
+  -H "Authorization: Bearer $(openbkn token)"
 
 # 按类型过滤
 curl -sk "https://<访问地址>/api/builder/v1/datasources?type=mysql&page=1&size=20" \
-  -H "Authorization: Bearer $(kweaver token)"
+  -H "Authorization: Bearer $(openbkn token)"
 
 # 获取数据源详情
 curl -sk "https://<访问地址>/api/builder/v1/datasources/ds-abc123" \
-  -H "Authorization: Bearer $(kweaver token)"
+  -H "Authorization: Bearer $(openbkn token)"
 
 # 连接新数据源
 curl -sk -X POST "https://<访问地址>/api/builder/v1/datasources" \
-  -H "Authorization: Bearer $(kweaver token)" \
+  -H "Authorization: Bearer $(openbkn token)" \
   -H "Content-Type: application/json" \
   -d '{
     "type": "mysql",
@@ -236,9 +191,9 @@ curl -sk -X POST "https://<访问地址>/api/builder/v1/datasources" \
 
 # 列出表结构
 curl -sk "https://<访问地址>/api/builder/v1/datasources/ds-abc123/tables" \
-  -H "Authorization: Bearer $(kweaver token)"
+  -H "Authorization: Bearer $(openbkn token)"
 
 # 删除数据源
 curl -sk -X DELETE "https://<访问地址>/api/builder/v1/datasources/ds-abc123" \
-  -H "Authorization: Bearer $(kweaver token)"
+  -H "Authorization: Bearer $(openbkn token)"
 ```

@@ -180,4 +180,4 @@ openbkn tool invoke <VEGA_TOOL_ID> --toolbox <TOOLBOX_BOX_ID> \
 
 ## 清理
 
-`./run.sh` 不会自动删除数据源、MySQL 表、Vega catalog、KN 或 Toolbox；不用时在 Studio / CLI 自行清理。
+`./run.sh` 不会自动删除数据源、MySQL 表、Vega catalog、KN 或 Toolbox；不用时用 `openbkn` CLI 自行清理。

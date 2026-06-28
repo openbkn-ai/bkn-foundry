@@ -10,11 +10,11 @@ Ingress prefix (typical):
 | --- | --- |
 | `/api/builder/v1` | Data source connections, discovery, and management |
 
-**Related modules:** [BKN Engine](bkn.md) (create knowledge networks from data sources), [VEGA Engine](vega.md) (data virtualization and query), [Dataflow](dataflow.md) (data pipelines and transformation).
+**Related modules:** [BKN Engine](bkn.md) (create knowledge networks from data sources), [VEGA Engine](vega.md) (data virtualization and query).
 
 ## 🗃️ Supported database types
 
-mysql, postgresql, sqlserver, oracle, clickhouse, hive, opensearch, elasticsearch, and more. Run `kweaver vega connector-type list` to see which connector types are installed on your platform.
+mysql, postgresql, sqlserver, oracle, clickhouse, hive, opensearch, elasticsearch, and more. Run `openbkn vega connector-type list` to see which connector types are installed on your platform.
 
 ## CLI
 
@@ -22,12 +22,12 @@ mysql, postgresql, sqlserver, oracle, clickhouse, hive, opensearch, elasticsearc
 
 ```bash
 # Connect to MySQL
-kweaver ds connect mysql db.example.com 3306 erp \
+openbkn ds connect mysql db.example.com 3306 erp \
   --account root --password pass123
 # → returns ds_id, e.g. ds-abc123
 
 # Connect to PostgreSQL with schema and custom name
-kweaver ds connect postgresql pg.example.com 5432 analytics \
+openbkn ds connect postgresql pg.example.com 5432 analytics \
   --account reader --password pass456 \
   --schema public --name "analytics-db"
 ```
@@ -38,26 +38,26 @@ Argument order: `<db_type> <host> <port> <database>`. Use `--account` and `--pas
 
 ```bash
 # List all data sources
-kweaver ds list
+openbkn ds list
 
 # Search by keyword
-kweaver ds list --keyword "erp"
+openbkn ds list --keyword "erp"
 
 # Filter by type
-kweaver ds list --type mysql
+openbkn ds list --type mysql
 
 # Get details for a single data source
-kweaver ds get ds-abc123
+openbkn ds get ds-abc123
 ```
 
 ### Discover Tables
 
 ```bash
 # List all tables in a data source
-kweaver ds tables ds-abc123
+openbkn ds tables ds-abc123
 
 # Search tables by keyword
-kweaver ds tables ds-abc123 --keyword "order"
+openbkn ds tables ds-abc123 --keyword "order"
 ```
 
 ### Import CSV
@@ -66,16 +66,16 @@ Upload local CSV files into an existing data source (database), then use them to
 
 ```bash
 # Import multiple CSV files
-kweaver ds import-csv ds-abc123 --files "materials.csv,inventory.csv"
+openbkn ds import-csv ds-abc123 --files "materials.csv,inventory.csv"
 
 # Use glob patterns with a table prefix
-kweaver ds import-csv ds-abc123 --files "*.csv" --table-prefix sc_
+openbkn ds import-csv ds-abc123 --files "*.csv" --table-prefix sc_
 
 # Recreate existing tables (when column structure changed)
-kweaver ds import-csv ds-abc123 --files "materials.csv" --recreate
+openbkn ds import-csv ds-abc123 --files "materials.csv" --recreate
 
 # Adjust batch size for large files
-kweaver ds import-csv ds-abc123 --files "big-table.csv" --batch-size 1000
+openbkn ds import-csv ds-abc123 --files "big-table.csv" --batch-size 1000
 ```
 
 | Parameter | Required | Default | Description |
@@ -90,133 +90,74 @@ kweaver ds import-csv ds-abc123 --files "big-table.csv" --batch-size 1000
 
 ```bash
 # Delete (with confirmation prompt)
-kweaver ds delete ds-abc123
+openbkn ds delete ds-abc123
 
 # Skip confirmation
-kweaver ds delete ds-abc123 --yes
+openbkn ds delete ds-abc123 --yes
 ```
 
 ### End-to-End Example
 
 ```bash
 # 1. Connect to a database
-kweaver ds connect mysql db.example.com 3306 erp \
+openbkn ds connect mysql db.example.com 3306 erp \
   --account root --password pass123
 # → ds-abc123
 
 # 2. Discover tables
-kweaver ds tables ds-abc123
+openbkn ds tables ds-abc123
 
 # 3. Create a knowledge network from the data source
-kweaver bkn create-from-ds ds-abc123 \
+openbkn bkn create-from-ds ds-abc123 \
   --name "erp-supply-chain" \
   --tables "orders,products,customers" \
   --build --timeout 600
 
 # 4. Verify the knowledge network
-kweaver bkn object-type list <kn_id>
-kweaver bkn search <kn_id> "overdue orders"
-```
-
----
-
-## Python SDK
-
-```python
-from kweaver_sdk import KWeaverClient
-
-client = KWeaverClient(base_url="https://<access-address>")
-
-# List data sources
-ds_list = client.ds.list()
-for ds in ds_list["data"]:
-    print(ds["id"], ds["name"], ds["type"], ds["status"])
-
-# Filter by keyword and type
-ds_list_filtered = client.ds.list(keyword="erp", type="mysql")
-
-# Get details
-detail = client.ds.get("ds-abc123")
-print(f"host: {detail['host']}, database: {detail['database']}, status: {detail['status']}")
-
-# Connect a new data source
-new_ds = client.ds.connect(
-    type="mysql",
-    host="db.example.com",
-    port=3306,
-    database="erp",
-    account="root",
-    password="pass123",
-)
-print(f"data source ID: {new_ds['id']}")
-
-# Discover tables
-tables = client.ds.tables("ds-abc123")
-for t in tables["data"]:
-    print(t["name"], t["columns"])
-
-# Search tables by keyword
-tables_filtered = client.ds.tables("ds-abc123", keyword="order")
-
-# Import CSV
-import_result = client.ds.import_csv(
-    datasource_id="ds-abc123",
-    files=["materials.csv", "inventory.csv"],
-    table_prefix="sc_",
-    batch_size=500,
-)
-print(f"imported tables: {import_result['tables']}")
-
-# Delete
-client.ds.delete("ds-abc123")
+openbkn bkn object-type list <kn_id>
+openbkn bkn search <kn_id> "overdue orders"
 ```
 
 ---
 
 ## TypeScript SDK
 
-```typescript
-import { KWeaverClient } from '@kweaver-ai/kweaver-sdk';
+Data source operations live under the `builder/v1` API. Reach them through the
+SDK's generic `call` passthrough.
 
-const client = new KWeaverClient({ baseUrl: 'https://<access-address>' });
+```typescript
+import { createClient } from '@openbkn/bkn-sdk';
+
+const bkn = createClient({ baseUrl: 'https://<access-address>', token: process.env.BKN_TOKEN });
 
 // List data sources
-const dsList = await client.ds.list();
-dsList.data.forEach((ds) => console.log(ds.id, ds.name, ds.type, ds.status));
-
-// Filter
-const dsFiltered = await client.ds.list({ keyword: 'erp', type: 'mysql' });
+const dsList = await bkn.call('/api/builder/v1/datasources?page=1&size=20', { method: 'GET' });
+console.log('data sources:', dsList);
 
 // Get details
-const detail = await client.ds.get('ds-abc123');
-console.log('host:', detail.host, 'database:', detail.database, 'status:', detail.status);
+const detail = await bkn.call('/api/builder/v1/datasources/ds-abc123', { method: 'GET' });
+console.log('details:', detail);
 
 // Connect a new data source
-const newDs = await client.ds.connect({
-  type: 'mysql',
-  host: 'db.example.com',
-  port: 3306,
-  database: 'erp',
-  account: 'root',
-  password: 'pass123',
+const newDs = await bkn.call('/api/builder/v1/datasources', {
+  method: 'POST',
+  body: {
+    type: 'mysql',
+    host: 'db.example.com',
+    port: 3306,
+    database: 'erp',
+    account: 'root',
+    password: 'pass123',
+  },
 });
-console.log('data source ID:', newDs.id);
+console.log('data source ID:', newDs);
 
 // Discover tables
-const tables = await client.ds.tables('ds-abc123');
-tables.data.forEach((t) => console.log(t.name, t.columns));
-
-// Import CSV
-const importResult = await client.ds.importCsv({
-  datasourceId: 'ds-abc123',
-  files: ['materials.csv', 'inventory.csv'],
-  tablePrefix: 'sc_',
-  batchSize: 500,
-});
-console.log('imported tables:', importResult.tables);
+const tables = await bkn.call('/api/builder/v1/datasources/ds-abc123/tables', { method: 'GET' });
+console.log('tables:', tables);
 
 // Delete
-await client.ds.delete('ds-abc123');
+await bkn.call('/api/builder/v1/datasources/ds-abc123', { method: 'DELETE' });
 ```
 
 ---
@@ -226,19 +167,19 @@ await client.ds.delete('ds-abc123');
 ```bash
 # List data sources
 curl -sk "https://<access-address>/api/builder/v1/datasources?page=1&size=20" \
-  -H "Authorization: Bearer $(kweaver token)"
+  -H "Authorization: Bearer $(openbkn token)"
 
 # Filter by type
 curl -sk "https://<access-address>/api/builder/v1/datasources?type=mysql&page=1&size=20" \
-  -H "Authorization: Bearer $(kweaver token)"
+  -H "Authorization: Bearer $(openbkn token)"
 
 # Get data source details
 curl -sk "https://<access-address>/api/builder/v1/datasources/ds-abc123" \
-  -H "Authorization: Bearer $(kweaver token)"
+  -H "Authorization: Bearer $(openbkn token)"
 
 # Connect a new data source
 curl -sk -X POST "https://<access-address>/api/builder/v1/datasources" \
-  -H "Authorization: Bearer $(kweaver token)" \
+  -H "Authorization: Bearer $(openbkn token)" \
   -H "Content-Type: application/json" \
   -d '{
     "type": "mysql",
@@ -251,9 +192,9 @@ curl -sk -X POST "https://<access-address>/api/builder/v1/datasources" \
 
 # Discover tables
 curl -sk "https://<access-address>/api/builder/v1/datasources/ds-abc123/tables" \
-  -H "Authorization: Bearer $(kweaver token)"
+  -H "Authorization: Bearer $(openbkn token)"
 
 # Delete a data source
 curl -sk -X DELETE "https://<access-address>/api/builder/v1/datasources/ds-abc123" \
-  -H "Authorization: Bearer $(kweaver token)"
+  -H "Authorization: Bearer $(openbkn token)"
 ```

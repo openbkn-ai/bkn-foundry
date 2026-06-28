@@ -38,4 +38,4 @@ BKN Foundry 为**纯后台**平台，请通过 CLI、各语言 SDK 或 HTTP API 
 
 <img src="../qrcode.png" width="200" alt="BKN Foundry 交流群二维码" />
 
-> 💡 CLI 安装：业务用户用 `npm install -g @kweaver-ai/kweaver-sdk`；平台管理员另装 `npm install -g @kweaver-ai/kweaver-admin`。更详细的集群运维说明以随产品提供的部署文档为准。
+> 💡 CLI 安装：`npm install -g @openbkn/bkn-sdk`；平台管理已内置在同一 CLI 的 `openbkn admin` 子命令中。更详细的集群运维说明以随产品提供的部署文档为准。

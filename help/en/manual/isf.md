@@ -8,23 +8,20 @@ With **`--minimum` install**, many auth components are disabled for a simpler la
 
 **Related modules:** All subsystems that accept `Authorization` headers; [VEGA Engine](vega.md) is a primary consumer.
 
-## 🛡️ Administrator tool: kweaver-admin
+## 🛡️ Administrator commands: `openbkn admin`
 
-In a **full install** (with `auth.enabled=true` and `businessDomain.enabled=true`), ISF's day-to-day **management surface** — users, organizations, roles, models, audit — is handled via the standalone CLI [`@kweaver-ai/kweaver-admin`](https://github.com/kweaver-ai/kweaver-admin), complementary to the end-user `kweaver` CLI shown below on this page.
+In a **full install** (with `auth.enabled=true` and `businessDomain.enabled=true`), ISF's day-to-day **management surface** — users, organizations, roles, models (`llm` / `small-model`), audit — is handled through the **`openbkn admin`** subcommand of the same `openbkn` CLI. There is **no separate admin package**: admin used to ship as a standalone `kweaver-admin`, but it is now merged into `@openbkn/bkn-sdk` and reached via `openbkn admin ...`, sharing the same login/session as the end-user `openbkn` CLI shown below on this page.
 
 ```bash
-npm install -g @kweaver-ai/kweaver-admin           # Node.js 22+ (align with kweaver-sdk on npm)
-kweaver-admin auth login https://<access-address> -k
-
-kweaver-admin org tree                              # list departments
-kweaver-admin user create --login alice             # default password 123456, forced change at first sign-in
-kweaver-admin user assign-role <userId> <roleId>
-kweaver-admin user reset-password -u alice          # admin reset
-kweaver-admin role list
-kweaver-admin audit list --user alice --start 2026-04-01 --end 2026-04-30
+openbkn admin org tree                              # list departments
+openbkn admin user create --login alice             # default password 123456, forced change at first sign-in
+openbkn admin user assign-role <userId> <roleId>
+openbkn admin user reset-password -u alice          # admin reset
+openbkn admin role list
+openbkn admin audit list --user alice --start 2026-04-01 --end 2026-04-30
 ```
 
-> Full command list, token isolation (`~/.kweaver-admin/`), and `--minimum` install caveats: see [Install — Administrator tool after a full install (kweaver-admin)](../install.md#-administrator-tool-after-a-full-install-kweaver-admin).
+> Full command list and `--minimum` install caveats: see [Install — Administrator commands after a full install (`openbkn admin`)](../install.md#-administrator-commands-after-a-full-install-openbkn-admin).
 >
 > Respect the **separation-of-duties** built-in accounts (`system`, `admin`, `security`, `audit`) — operators should use individual accounts, not the shared `admin`, for traceable audit logs.
 
@@ -34,109 +31,109 @@ kweaver-admin audit list --user alice --start 2026-04-01 --end 2026-04-30
 
 ```bash
 # Basic login (opens browser for OAuth flow)
-kweaver auth login https://<access-address>
+openbkn auth login https://<access-address>
 
 # Skip TLS certificate verification (self-signed certs)
-kweaver auth login https://<access-address> -k
+openbkn auth login https://<access-address> -k
 
 # Save the connection with an alias for easy switching
-kweaver auth login https://<access-address> --alias prod -k
+openbkn auth login https://<access-address> --alias prod -k
 
 # Login with no auth (for --minimum installs where auth is disabled)
-kweaver auth login https://<access-address> --no-auth
+openbkn auth login https://<access-address> --no-auth
 
 # Login with username/password directly (non-interactive)
-kweaver auth login https://<access-address> -u <username> -p <password> -k
+openbkn auth login https://<access-address> -u <username> -p <password> -k
 
 # Login via HTTP sign-in explicitly (no browser, no Node/Chromium needed)
-kweaver auth login https://<access-address> -u <username> -p <password> --http-signin -k
+openbkn auth login https://<access-address> -u <username> -p <password> --http-signin -k
 
 # Headless interactive login: CLI prints an OAuth URL — open it on any
 # device with a browser, then paste the full callback URL (or auth code) back
-kweaver auth login https://<access-address> --no-browser -k
+openbkn auth login https://<access-address> --no-browser -k
 ```
 
 ### Session Management
 
 ```bash
 # List all saved server connections
-kweaver auth list
+openbkn auth list
 
 # Switch to a different saved connection
-kweaver auth use prod
+openbkn auth use prod
 
 # List users in the current server
-kweaver auth users
+openbkn auth users
 
 # Switch to a different user on the current server
-kweaver auth switch <user_id>
+openbkn auth switch <user_id>
 
 # Show the current authenticated identity
-kweaver auth whoami
+openbkn auth whoami
 
 # Show connection status and token expiry
-kweaver auth status
+openbkn auth status
 ```
 
 **`auth whoami` and no-auth**: `whoami` requires an `id_token` from OAuth login. If you used **`auth login … --no-auth`** or the platform has authentication disabled, the CLI is in **no-auth** mode and `whoami` will error with no `id_token` — **expected**. Use `auth status` to confirm; do not treat it as a failed login.
 
 ```bash
 # Export the current token (for use in scripts or curl)
-kweaver auth export
+openbkn auth export
 
 # Logout from the current server
-kweaver auth logout
+openbkn auth logout
 
 # Delete a saved connection entirely
-kweaver auth delete <alias>
+openbkn auth delete <alias>
 ```
 
 ### Multi-Account Workflow
 
 ```bash
 # 1. Login to multiple environments
-kweaver auth login https://dev.kweaver.example.com --alias dev -k
-kweaver auth login https://staging.kweaver.example.com --alias staging -k
-kweaver auth login https://prod.kweaver.example.com --alias prod -k -u <username> -p <password>
+openbkn auth login https://dev.kweaver.example.com --alias dev -k
+openbkn auth login https://staging.kweaver.example.com --alias staging -k
+openbkn auth login https://prod.kweaver.example.com --alias prod -k -u <username> -p <password>
 
 # 2. List all connections
-kweaver auth list
+openbkn auth list
 # Output:
 #   * dev     https://dev.kweaver.example.com     (active)
 #     staging https://staging.kweaver.example.com
 #     prod    https://prod.kweaver.example.com
 
 # 3. Switch between environments
-kweaver auth use staging
-kweaver auth whoami
+openbkn auth use staging
+openbkn auth whoami
 # → user: admin@staging.kweaver.example.com
 
-kweaver auth use prod
-kweaver auth status
+openbkn auth use prod
+openbkn auth status
 # → server: https://prod.kweaver.example.com
 # → user: admin
 # → token expires: 2026-04-14T22:30:00Z
 
 # 4. Call a protected API (after auth use prod — same session as CLI)
 curl -sk "https://prod.kweaver.example.com/api/vega-backend/v1/catalogs" \
-  -H "Authorization: Bearer $(kweaver token)"
+  -H "Authorization: Bearer $(openbkn token)"
 
 # 5. Cleanup
-kweaver auth logout           # logout from active connection
-kweaver auth delete staging   # remove a saved connection
+openbkn auth logout           # logout from active connection
+openbkn auth delete staging   # remove a saved connection
 ```
 
 ### Configuration and Business Domain
 
 ```bash
 # Show current configuration (server, user, business domain)
-kweaver config show
+openbkn config show
 
 # List available business domains
-kweaver config list-bd
+openbkn config list-bd
 
 # Set the active business domain
-kweaver config set-bd <bd_uuid>
+openbkn config set-bd <bd_uuid>
 ```
 
 **`config list-bd` / `config set-bd` and minimal installs**: **`--minimum` / minimal installs do not ship** the **business-domain management service** these two subcommands call, so **`list-bd` / `set-bd` are unavailable** (e.g. `list-bd` returns **404**) — deployment choice, not a CLI bug. A default domain still exists; use `config show`. On a **full install**, use `list-bd` / `set-bd` to list or switch domains; if that still fails, check routing or whether the service is deployed.
@@ -147,103 +144,56 @@ Some resources are scoped to a business domain. If queries return empty results,
 
 ```bash
 # 1. Check current domain
-kweaver config show
+openbkn config show
 # → bd: bd_public (default)
 
 # 2. List available domains
-kweaver config list-bd
+openbkn config list-bd
 # →  bd_public    (default)
 #    bd-sales     Sales Division
 #    bd-finance   Finance Division
 
 # 3. Switch to the correct domain
-kweaver config set-bd bd-sales
+openbkn config set-bd bd-sales
 
 # 4. Retry your query
-kweaver bkn list
-kweaver agent list
-```
-
----
-
-## Python SDK
-
-```python
-from kweaver_sdk import KWeaverClient
-
-client = KWeaverClient(base_url="https://<access-address>")
-
-# Login with username/password
-client.auth.login(username="admin", password="secretpass")
-
-# Check identity
-whoami = client.auth.whoami()
-print(whoami["user_id"], whoami["username"], whoami["roles"])
-
-# Check status
-status = client.auth.status()
-print("token expires:", status["token_expires_at"])
-
-# Export token for external use
-token = client.auth.export_token()
-print(token)
-
-# List available business domains
-domains = client.config.list_business_domains()
-for bd in domains:
-    print(bd["id"], bd["name"], bd["is_default"])
-
-# Set business domain
-client.config.set_business_domain("bd-sales")
-
-# Show current config
-config = client.config.show()
-print("server:", config["server"])
-print("user:", config["user"])
-print("bd:", config["business_domain"])
-
-# Logout
-client.auth.logout()
+openbkn bkn list
+openbkn agent list
 ```
 
 ---
 
 ## TypeScript SDK
 
+Interactive login (browser PKCE / headless OAuth) is a CLI concern — run
+`openbkn auth login` first. The library resolves credentials explicitly: pass a
+token to `createClient`, or let it read the CLI session from `~/.bkn/`. Session
+state is available through the standalone `auth` namespace.
+
 ```typescript
-import { KWeaverClient } from '@kweaver-ai/kweaver-sdk';
+import { createClient, auth } from '@openbkn/bkn-sdk';
 
-const client = new KWeaverClient({ baseUrl: 'https://<access-address>' });
+const bkn = createClient({ baseUrl: 'https://<access-address>', token: process.env.BKN_TOKEN });
 
-// Login
-await client.auth.login({ username: 'admin', password: 'secretpass' });
+// Inspect the current session (from ~/.bkn/ or the attached token)
+const status = auth.status();
+console.log('platform:', status.baseUrl, 'hasToken:', status.hasToken, 'expired:', status.expired);
 
-// Check identity
-const whoami = await client.auth.whoami();
-console.log(whoami.userId, whoami.username, whoami.roles);
+const me = auth.whoami();
+console.log(me.userId, me.username);
 
-// Check status
-const status = await client.auth.status();
-console.log('token expires:', status.tokenExpiresAt);
+// List available business domains (no typed helper — use the generic passthrough)
+const domains = await bkn.call('/api/bkn-backend/v1/business-domains', { method: 'GET' });
+console.log('business domains:', domains);
 
-// Export token
-const token = await client.auth.exportToken();
-
-// List business domains
-const domains = await client.config.listBusinessDomains();
-domains.forEach((bd) => console.log(bd.id, bd.name, bd.isDefault));
-
-// Set business domain
-await client.config.setBusinessDomain('bd-sales');
-
-// Show config
-const config = await client.config.show();
-console.log('server:', config.server);
-console.log('user:', config.user);
-console.log('bd:', config.businessDomain);
-
-// Logout
-await client.auth.logout();
+// Scope subsequent requests to a business domain
+const scoped = createClient({
+  baseUrl: 'https://<access-address>',
+  token: process.env.BKN_TOKEN,
+  businessDomain: 'bd-sales',
+});
+const catalogs = await scoped.call('/api/vega-backend/v1/catalogs', { method: 'GET' });
+console.log('catalogs:', catalogs);
 ```
 
 ---
@@ -271,18 +221,18 @@ curl -sk -X POST "https://<access-address>/oauth2/introspect" \
 
 # Get current user info
 curl -sk "https://<access-address>/userinfo" \
-  -H "Authorization: Bearer $(kweaver token)"
+  -H "Authorization: Bearer $(openbkn token)"
 
 # Use the token to call a protected API
 curl -sk "https://<access-address>/api/vega-backend/v1/catalogs" \
-  -H "Authorization: Bearer $(kweaver token)"
+  -H "Authorization: Bearer $(openbkn token)"
 
 # List business domains
 curl -sk "https://<access-address>/api/bkn-backend/v1/business-domains" \
-  -H "Authorization: Bearer $(kweaver token)"
+  -H "Authorization: Bearer $(openbkn token)"
 
 # Set business domain header for scoped requests
 curl -sk "https://<access-address>/api/vega-backend/v1/catalogs" \
-  -H "Authorization: Bearer $(kweaver token)" \
+  -H "Authorization: Bearer $(openbkn token)" \
   -H "X-Business-Domain: bd-sales"
 ```

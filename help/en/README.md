@@ -38,4 +38,4 @@ Reference manuals by subsystem (living under `./manual/`).
 
 <img src="../qrcode.png" width="200" alt="KWeaver community QR code" />
 
-> End users install the CLI with `npm install -g @kweaver-ai/kweaver-sdk`; platform administrators additionally install `npm install -g @kweaver-ai/kweaver-admin`. For cluster operations beyond this help set, follow the deployment guide bundled with your release.
+> Install the CLI with `npm install -g @openbkn/bkn-sdk`; platform administration is built into the same CLI via the `openbkn admin` subcommands. For cluster operations beyond this help set, follow the deployment guide bundled with your release.
