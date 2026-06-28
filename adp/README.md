@@ -8,7 +8,7 @@
 
 **[KWeaver](https://github.com/kweaver-ai/kweaver-core)** is an open-source ecosystem for building, deploying, and running decision intelligence AI applications. This ecosystem adopts ontology as the core methodology for business knowledge networks, with BKN Foundry as the core platform, aiming to provide elastic, agile, and reliable enterprise-grade decision intelligence to further unleash everyone's productivity.
 
-The BKN Foundry platform includes key subsystems such as ADP, Decision Agent, and AI Store.
+The BKN Foundry platform includes key subsystems such as ADP and AI Store.
 
 ## 📚 Quick Links
 
@@ -19,7 +19,7 @@ The BKN Foundry platform includes key subsystems such as ADP, Decision Agent, an
 
 ## Platform Definition
 
-ADP is an intelligent data platform that bridges the gap between heterogeneous data sources and AI agents. It abstracts data complexity through business knowledge networks (Ontology), provides unified data access (VEGA), and orchestrates data processing through DataFlow pipelines.
+ADP is an intelligent data platform that bridges the gap between heterogeneous data sources and AI agents. It abstracts data complexity through business knowledge networks (Ontology) and provides unified data access (VEGA).
 
 ## Key Components
 
@@ -40,12 +40,6 @@ VEGA provides a unified SQL interface for heterogeneous data sources, decoupling
 - **Single Access Point**: Connect to MariaDB, DM8, REST APIs, and more through a single interface.
 - **Cross-Source Query**: Join data across different databases seamlessly.
 - **Standardized Semantics**: Ensures consistent data definitions across all applications.
-
-### 4. DataFlow
-DataFlow is a visual pipeline orchestration engine designed for data processing.
-- **Data Pipeline Design**: Build and orchestrate data processing flows through a visual interface.
-- **Code Execution**: Supports sandboxed Python code execution for complex data transformation tasks.
-- **Real-time Processing**: Supports scheduled and event-driven data processing pipelines.
 
 ## Technical Goals
 

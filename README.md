@@ -6,7 +6,7 @@
 
 BKN Foundry is a harness-first foundation for enterprise decision agents. It turns fragmented data, knowledge, tools, and policies into governed context, safe execution, and verifiable feedback loops. With semantic modeling, real-time access, runtime control, and TraceAI, it helps AI systems reason, adapt, and act reliably in complex enterprises.
 
-**On this page:** [📚 Quick links](#toc-quick-links) · [🚀 Quick start](#toc-quick-start) · [🛠️ KWeaver SDK](#toc-kweaver-sdk) · [🛡️ KWeaver Admin CLI](#toc-kweaver-admin) · [🏗️ BKN Foundry](#toc-kweaver-core) · [📐 BKN Lang](#toc-bkn-lang) · [📊 Benchmarks](#toc-benchmarks)
+**On this page:** [📚 Quick links](#toc-quick-links) · [🚀 Quick start](#toc-quick-start) · [🛠️ KWeaver SDK](#toc-bkn-sdk) · [🛡️ KWeaver Admin CLI](#toc-kweaver-admin) · [🏗️ BKN Foundry](#toc-kweaver-core) · [📐 BKN Lang](#toc-bkn-lang) · [📊 Benchmarks](#toc-benchmarks)
 
 > **Note:** BKN Foundry is a **backend-only framework** — it does not include a web UI. All interactions are through the CLI, SDK, or API.
 
@@ -14,7 +14,7 @@ BKN Foundry is a harness-first foundation for enterprise decision agents. It tur
 
 ## 📚 Quick Links
 
-- 🛠️ [KWeaver SDK](https://github.com/kweaver-ai/kweaver-sdk) - End-user / agent BKN CLI, TypeScript / Python SDK, and AI agent skills
+- 🛠️ [KWeaver SDK](https://github.com/openbkn-ai/bkn-sdk) - End-user / agent BKN CLI, TypeScript / Python SDK, and AI agent skills
 - 🛡️ [kweaver-admin](https://github.com/kweaver-ai/kweaver-admin) - Platform administrator CLI (users / orgs / roles / models / audit) for full installs
 - 🤝 [Contributing](rules/CONTRIBUTING.md) - Guidelines for contributing to the project
 - 🚢 [Deployment](deploy/README.md) - One-click deploy to Kubernetes
@@ -96,25 +96,25 @@ sudo bash ./onboard.sh --help # all flags (--config=models.yaml, --enable-bkn-se
 
 6. **Verify API access**
 
-   BKN Foundry is backend-only and does not provide a web console. On the machine you use to reach the cluster (laptop, bastion, etc.), use the BKN CLI from [**kweaver-sdk**](https://github.com/kweaver-ai/kweaver-sdk): either `npm install -g @kweaver-ai/kweaver-sdk` or `npx kweaver` (no global install; see [KWeaver SDK](#toc-kweaver-sdk) below). Then run:
+   BKN Foundry is backend-only and does not provide a web console. On the machine you use to reach the cluster (laptop, bastion, etc.), use the BKN CLI from [**bkn-sdk**](https://github.com/openbkn-ai/bkn-sdk): either `npm install -g @openbkn/bkn-sdk` or `npx openbkn` (no global install; see [KWeaver SDK](#toc-bkn-sdk) below). Then run:
 
 ```bash
 # Minimum install (no auth):
-kweaver auth login https://<node-ip> -k
+openbkn auth login https://<node-ip> -k
 # Full install: sign in as the user onboard.sh created (default password 111111 unless you overrode it):
-kweaver auth login https://<node-ip> -u test -p '<password>' -k
+openbkn auth login https://<node-ip> -u test -p '<password>' -k
 
-kweaver bkn list
+openbkn bkn list
 # or with npx instead of a global install:
-# npx kweaver auth login https://<node-ip> -k
-# npx kweaver bkn list
+# npx openbkn auth login https://<node-ip> -k
+# npx openbkn bkn list
 ```
 
 7. **View help**:
 
 ```bash
-kweaver --help                   # list all commands
-kweaver <command> --help         # help for a specific command, e.g. kweaver bkn --help
+openbkn --help                   # list all commands
+openbkn <command> --help         # help for a specific command, e.g. openbkn bkn --help
 ```
 
 For full product documentation, see the [Documentation](help/README.md) ([EN](help/en/README.md) / [中文](help/zh/README.md)).
@@ -129,8 +129,8 @@ For full product documentation, see the [Documentation](help/README.md) ([EN](he
 
 ```text
             ┌─────────────────────────────────┐
-            │     AI Agents (Decision Agent,   │
-            │     Data Agent, HiAgent, ...)    │
+            │     AI Agents (Claude Code, GPT,  │
+            │     custom agents, ...)          │
             └───────────────┬─────────────────┘
                             │
             ┌───────────────▼─────────────────┐
@@ -170,7 +170,7 @@ Beyond "seeing more", Agents must "do it right". BKN Foundry provides constraint
 
 | Component | Description |
 | --- | --- |
-| **Access layer** | **BKN Studio** (user-facing console), **BKN SDK / CLI** (unified access interface), and **BKN Skill** (platform-level skill layer wrapping SDK capabilities) — for users, apps, and agents |
+| **Access layer** | **BKN SDK / CLI** (unified access interface) and **BKN Skill** (platform-level skill layer wrapping SDK capabilities) — for users, apps, and agents. **BKN Studio** (the user-facing web console) lives in a separate frontend repo ([openbkn-ai/bkn-studio](https://github.com/openbkn-ai/bkn-studio)) and is **not** part of this backend release. |
 | **BKN Engine** | The Business Knowledge Network engine: **Context Loader** (Retrieval recall + Ranker ordering) over the **BKN**, which describes the business through four elements — Data / Logic / Risk / Action — and maps concepts down to the execution layer |
 | **VEGA** | Data virtualization — hides differences between underlying multi-source & multi-modal data |
 | **Exec Factory** | Execution factory — orchestrates tools, MCP, and Skills |
@@ -198,62 +198,62 @@ BKN Lang is a Markdown-based business knowledge modeling language, designed for 
 | **BKN Build Efficiency** | 300% improvement in knowledge network construction |
 | **Token Cost Savings** | 50% reduction through context optimization and compression |
 
-<a id="toc-kweaver-sdk"></a>
+<a id="toc-bkn-sdk"></a>
 
-## 🛠️ KWeaver SDK
+## 🛠️ OpenBKN SDK
 
 <a id="toc-kweaver-core-and-sdk"></a>
 
 ### Install the SDK on the client
 
-After deploying BKN Foundry, we recommend installing [kweaver-sdk](https://github.com/kweaver-ai/kweaver-sdk) as your next step. The SDK provides the BKN CLI (the `kweaver` command) and AI Agent Skills — the primary way to interact with the platform.
+After deploying BKN Foundry, we recommend installing [bkn-sdk](https://github.com/openbkn-ai/bkn-sdk) as your next step. The SDK provides the BKN CLI (the `openbkn` command) and AI Agent Skills — the primary way to interact with the platform.
 
-[**kweaver-sdk**](https://github.com/kweaver-ai/kweaver-sdk) gives AI agents (Claude Code, GPT, custom agents, etc.) access to OpenBKN knowledge networks and Decision Agents via the BKN CLI. It also provides Python and TypeScript SDKs for programmatic integration.
+[**bkn-sdk**](https://github.com/openbkn-ai/bkn-sdk) gives AI agents (Claude Code, GPT, custom agents, etc.) access to OpenBKN knowledge networks via the BKN CLI. It also provides Python and TypeScript SDKs for programmatic integration.
 
 Install the CLI with:
 
 ```bash
-npm install -g @kweaver-ai/kweaver-sdk
+npm install -g @openbkn/bkn-sdk
 ```
 
 Or run it without a global install:
 
 ```bash
-npx kweaver --help
+npx openbkn --help
 ```
 
 ### AI Agent Skills
 
-Install skills from [**kweaver-sdk**](https://github.com/kweaver-ai/kweaver-sdk) with [`npx skills`](https://www.npmjs.com/package/skills).
+Install skills from [**bkn-sdk**](https://github.com/openbkn-ai/bkn-sdk) with [`npx skills`](https://www.npmjs.com/package/skills).
 
 **Install both skills** (recommended):
 
 ```bash
-npx skills add https://github.com/kweaver-ai/kweaver-sdk \
+npx skills add https://github.com/openbkn-ai/bkn-sdk \
   --skill kweaver-core --skill create-bkn
 ```
 
-- **`kweaver-core`** — full KWeaver APIs and CLI conventions so assistants can operate KWeaver on your behalf. See [skills/kweaver-core/SKILL.md](https://github.com/kweaver-ai/kweaver-sdk/blob/main/skills/kweaver-core/SKILL.md).
-- **`create-bkn`** — guided workflow and tooling to create and manage **Business Knowledge Networks (BKN)** from your AI coding assistant. See [skills/create-bkn/SKILL.md](https://github.com/kweaver-ai/kweaver-sdk/blob/main/skills/create-bkn/SKILL.md).
+- **`kweaver-core`** — full KWeaver APIs and CLI conventions so assistants can operate KWeaver on your behalf. See [skills/kweaver-core/SKILL.md](https://github.com/openbkn-ai/bkn-sdk/blob/main/skills/kweaver-core/SKILL.md).
+- **`create-bkn`** — guided workflow and tooling to create and manage **Business Knowledge Networks (BKN)** from your AI coding assistant. See [skills/create-bkn/SKILL.md](https://github.com/openbkn-ai/bkn-sdk/blob/main/skills/create-bkn/SKILL.md).
 
 **Install one skill** (optional):
 
 ```bash
-npx skills add https://github.com/kweaver-ai/kweaver-sdk --skill kweaver-core
+npx skills add https://github.com/openbkn-ai/bkn-sdk --skill kweaver-core
 # or
-npx skills add https://github.com/kweaver-ai/kweaver-sdk --skill create-bkn
+npx skills add https://github.com/openbkn-ai/bkn-sdk --skill create-bkn
 ```
 
 **Before using any skill**, authenticate with your OpenBKN instance:
 
 ```bash
-kweaver auth login https://your-openbkn-instance.com
+openbkn auth login https://your-openbkn-instance.com
 ```
 
 > **Self-signed certificate?** If your instance uses a self-signed or untrusted TLS certificate (common for fresh deployments without a CA-issued cert), add `-k` to skip certificate verification:
 >
 > ```bash
-> kweaver auth login https://your-openbkn-instance.com -k
+> openbkn auth login https://your-openbkn-instance.com -k
 > ```
 
 ### Headless / no-browser authentication (SSH, CI, containers)
@@ -265,43 +265,43 @@ The BKN CLI supports authenticating without a local browser or without pasting c
 | Your situation | Use | Notes |
 | --- | --- | --- |
 | **Username and password** sign-in is available | **Method 1** (HTTP, `-u` / `-p`) | One command on the host; no need to copy an OAuth callback from elsewhere. |
-| **[kweaver-sdk](https://github.com/kweaver-ai/kweaver-sdk) is installed** (the `kweaver` command works) | **Method 2** (`auth export` / replay) | After browser login, run `kweaver auth export` and **replay** the one-line command on the headless target. |
-| kweaver-sdk is **not** installed; you usually run **`npx kweaver`** | **Method 3** (`--no-browser`) | After signing in on another device, an **extra step**: **copy the full callback URL** or **only the authorization code** (*copy code*), then paste at `Paste URL or code` in the headless terminal. |
+| **[bkn-sdk](https://github.com/openbkn-ai/bkn-sdk) is installed** (the `kweaver` command works) | **Method 2** (`auth export` / replay) | After browser login, run `openbkn auth export` and **replay** the one-line command on the headless target. |
+| bkn-sdk is **not** installed; you usually run **`npx openbkn`** | **Method 3** (`--no-browser`) | After signing in on another device, an **extra step**: **copy the full callback URL** or **only the authorization code** (*copy code*), then paste at `Paste URL or code` in the headless terminal. |
 
 **Method 1 — Username/password HTTP sign-in (fully non-interactive on the host, no browser required)**
 
 No Node/Chromium needed — the CLI calls the platform's `/oauth2/signin` endpoint over HTTPS and stores the returned tokens. Suitable for CI runners, minimal Linux containers, and any host without a browser:
 
 ```bash
-kweaver auth login https://your-instance -u <username> -p <password> -k
+openbkn auth login https://your-instance -u <username> -p <password> -k
 ```
 
-`-u` / `-p` together select this path automatically (you can also add `--http-signin` explicitly). If you omit `-u` / `-p`, the CLI prompts for them on stdin (password input is hidden on a TTY). The CLI saves tokens under `~/.kweaver/` including a `refresh_token` when the IdP returns one — same auto-refresh behavior as a normal browser login.
+`-u` / `-p` together select this path automatically (you can also add `--http-signin` explicitly). If you omit `-u` / `-p`, the CLI prompts for them on stdin (password input is hidden on a TTY). The CLI saves tokens under `~/.bkn/` including a `refresh_token` when the IdP returns one — same auto-refresh behavior as a normal browser login.
 
-**Method 2 — Export & replay (kweaver-sdk installed; export and replay)**
+**Method 2 — Export & replay (bkn-sdk installed; export and replay)**
 
 On a machine that **has** the BKN CLI, sign in with the browser once, then `export` a one-line command for the headless host — you do not need to transcribe the OAuth callback URL or code in the terminal by hand.
 
-1. On a machine **with** a browser, run `kweaver auth login https://your-instance`. After success, export credentials:
+1. On a machine **with** a browser, run `openbkn auth login https://your-instance`. After success, export credentials:
 
 ```bash
-kweaver auth export              # prints a one-line command you can paste on the headless host
+openbkn auth export              # prints a one-line command you can paste on the headless host
 ```
 
-2. On the **headless** host, paste the exported command. It uses `--client-id`, `--client-secret`, and `--refresh-token` to exchange tokens and save credentials under `~/.kweaver/`:
+2. On the **headless** host, paste the exported command. It uses `--client-id`, `--client-secret`, and `--refresh-token` to exchange tokens and save credentials under `~/.bkn/`:
 
 ```bash
-kweaver auth login https://your-instance \
+openbkn auth login https://your-instance \
   --client-id <ID> --client-secret <SECRET> --refresh-token <TOKEN>
 ```
 
-**Method 3 — `--no-browser` (when kweaver-sdk is not installed; extra copy/paste of URL or code)**
+**Method 3 — `--no-browser` (when bkn-sdk is not installed; extra copy/paste of URL or code)**
 
-Use this when the CLI is not installed globally and you run via `npx kweaver` (or similar). Compared with **Method 2**, you must **manually copy** the URL or code from the browser after login.
+Use this when the CLI is not installed globally and you run via `npx openbkn` (or similar). Compared with **Method 2**, you must **manually copy** the URL or code from the browser after login.
 
 ```bash
-kweaver auth login https://your-instance --no-browser
-# or: npx kweaver auth login https://your-instance --no-browser
+openbkn auth login https://your-instance --no-browser
+# or: npx openbkn auth login https://your-instance --no-browser
 ```
 
 The CLI prints an OAuth URL instead of opening a local browser window. Open that URL on **any device** with a browser (phone, laptop, etc.). After login, the browser redirects to a `localhost` callback — an error page is normal. Copy the **full URL** from the address bar, **or only the authorization code**, and paste it at the prompt below (the extra **Paste URL or code** step):
@@ -317,18 +317,17 @@ Copy the FULL URL from the address bar and paste it here, or paste only the auth
 Paste URL or code>
 ```
 
-> With saved `~/.kweaver/` sessions, the CLI automatically exchanges `refresh_token` for a new access token when it expires — no extra flags needed. You can also set environment variables (`KWEAVER_BASE_URL`, `KWEAVER_TOKEN`) instead of persisting credentials to disk.
+> With saved `~/.bkn/` sessions, the CLI automatically exchanges `refresh_token` for a new access token when it expires — no extra flags needed. You can also set environment variables (`KWEAVER_BASE_URL`, `KWEAVER_TOKEN`) instead of persisting credentials to disk.
 
-Full details: [kweaver-sdk — Authentication](https://github.com/kweaver-ai/kweaver-sdk#authentication) and [Headless / Server Authentication](https://github.com/kweaver-ai/kweaver-sdk/blob/main/packages/typescript/README.md#headless--server-authentication). The Python BKN CLI still uses interactive browser login; reuse the `~/.kweaver/` directory from a machine where the Node CLI finished login, or set the environment variables above.
+Full details: [bkn-sdk — Authentication](https://github.com/openbkn-ai/bkn-sdk#authentication) and [Headless / Server Authentication](https://github.com/openbkn-ai/bkn-sdk/blob/main/packages/typescript/README.md#headless--server-authentication). The Python BKN CLI still uses interactive browser login; reuse the `~/.bkn/` directory from a machine where the Node CLI finished login, or set the environment variables above.
 
 ### CLI
 
 ```bash
-kweaver auth login https://your-openbkn.com -k    # authenticate (-k for self-signed TLS)
-kweaver bkn list                                 # list knowledge networks
-kweaver bkn search <kn-id> "query"               # semantic search
-kweaver agent chat <agent-id> -m "Hello"         # chat with a Decision Agent
-kweaver --help                                   # all subcommands
+openbkn auth login https://your-openbkn.com -k    # authenticate (-k for self-signed TLS)
+openbkn bkn list                                 # list knowledge networks
+openbkn bkn search <kn-id> "query"               # semantic search
+openbkn --help                                   # all subcommands
 ```
 
 ### TypeScript & Python SDK
@@ -336,7 +335,7 @@ kweaver --help                                   # all subcommands
 Minimal example (after CLI login or equivalent credentials):
 
 ```typescript
-import kweaver from "@kweaver-ai/kweaver-sdk/kweaver";
+import kweaver from "@openbkn/bkn-sdk/kweaver";
 kweaver.configure({ config: true, bknId: "your-bkn-id", agentId: "your-agent-id" });
 
 const results = await kweaver.search("What risks exist in the supply chain?");
@@ -352,24 +351,24 @@ results = kweaver.search("What risks exist in the supply chain?")
 reply   = kweaver.chat("Summarise the top 3 risks")
 ```
 
-For streaming, `KWeaverClient`, and the full API surface, see the [kweaver-sdk](https://github.com/kweaver-ai/kweaver-sdk) repository docs and examples.
+For streaming, `KWeaverClient`, and the full API surface, see the [bkn-sdk](https://github.com/openbkn-ai/bkn-sdk) repository docs and examples.
 
 <a id="toc-kweaver-admin"></a>
 
 ## 🛡️ KWeaver Admin CLI
 
-[`kweaver-admin`](https://github.com/kweaver-ai/kweaver-admin) is a separate npm CLI for **platform administrators**, complementary to the BKN CLI from `kweaver-sdk`:
+[`kweaver-admin`](https://github.com/kweaver-ai/kweaver-admin) is a separate npm CLI for **platform administrators**, complementary to the BKN CLI from `bkn-sdk`:
 
 | CLI | Audience | Scope |
 | --- | --- | --- |
-| `kweaver` (`@kweaver-ai/kweaver-sdk`) | End users / Agents | BKN, Decision Agent, Action, Skill, query |
+| `openbkn` (`@openbkn/bkn-sdk`) | End users / Agents | BKN, Action, Skill, query |
 | `kweaver-admin` (`@kweaver-ai/kweaver-admin`) | Platform administrators | Users, organizations, roles, models, audit, raw HTTP |
 
 > Most `kweaver-admin` commands target services that come with a **full install** (`auth.enabled=true`, `businessDomain.enabled=true`): `user-management`, `deploy-manager`, `deploy-auth`, `eacp`, `mf-model-manager`, OAuth2 (Hydra). On a `--minimum` install most commands return 401 / 404 — expected.
 
 ### Install
 
-Requires Node.js 22+ (same as [`@kweaver-ai/kweaver-sdk` on npm](https://www.npmjs.com/package/@kweaver-ai/kweaver-sdk)). Credentials are stored under `~/.kweaver-admin/platforms/`, isolated from `~/.kweaver/`.
+Requires Node.js 22+ (same as [`@openbkn/bkn-sdk` on npm](https://www.npmjs.com/package/@openbkn/bkn-sdk)). Credentials are stored under `~/.kweaver-admin/platforms/`, isolated from `~/.bkn/`.
 
 ```bash
 npm install -g @kweaver-ai/kweaver-admin
@@ -501,9 +500,11 @@ BKN Foundry is multi-licensed:
   remain under the Apache License 2.0 (see LICENSE-APACHE.txt).
 - OpenBKN access-layer components (BKN SDK / CLI, BKN Skill) are under
   the Apache License 2.0 (see LICENSE-APACHE.txt).
-- OpenBKN modules (BKN Safe, BKN Studio) are under the OpenBKN
-  License — a modified version of the Apache License 2.0 with
-  additional conditions (see LICENSE-OPENBKN.txt).
+- The OpenBKN module BKN Safe is under the OpenBKN License — a modified
+  version of the Apache License 2.0 with additional conditions (see
+  LICENSE-OPENBKN.txt). (BKN Studio is a separate frontend repo,
+  [openbkn-ai/bkn-studio](https://github.com/openbkn-ai/bkn-studio), and is
+  licensed there — not part of this backend release.)
 
 The license for each file is stated in its header. See NOTICE for a
 per-component breakdown.
