@@ -264,12 +264,12 @@ Typical flags:
 | Flag | Meaning |
 | --- | --- |
 | *(none)* | Interactive: walks through Node / `openbkn` install (if missing), auth (single CLI — admin is built in via `openbkn admin`), then model / BKN / Context Loader prompts |
-| `-y` / `--yes` | Auto-accept all prompts: bootstrap, ISF HTTP auth defaults (`admin` / `eisoo.com`), `test` user creation + role sync, `openbkn` relogin as `test`, Context Loader import. Skips interactive **model registration**; use `--config=models.yaml` for non-interactive model registration. |
+| `-y` / `--yes` | Auto-accept all prompts: bootstrap, full-auth HTTP defaults (`admin` / `eisoo.com`), `test` user creation + role sync, `openbkn` relogin as `test`, Context Loader import. Skips interactive **model registration**; use `--config=models.yaml` for non-interactive model registration. |
 | `--config=models.yaml` | Non-interactive: register models (and optional BKN) via YAML; see `deploy/conf/models.yaml.example` |
 | `--enable-bkn-search` | BKN ConfigMap patch only (after probe) |
 | `--skip-context-loader` | Skip ADP Context Loader toolbox import |
 
-**Full ISF install (auth + business domain):** onboarding treats the cluster as "ISF" when related Helm releases or namespaces exist. **`onboard.sh` then performs the following 5 steps automatically** (you do **not** need to run them by hand — they are listed here so you know what is happening, and what to fall back to if a step fails):
+**Full install (auth + business domain):** onboarding treats the cluster as a full-auth install when related Helm releases or namespaces exist. **`onboard.sh` then performs the following 5 steps automatically** (you do **not** need to run them by hand — they are listed here so you know what is happening, and what to fall back to if a step fails):
 
 1. **`openbkn auth login`** (`onboard_ensure_kweaver_auth`) — session saved under `~/.bkn`. HTTP defaults to `admin` / `eisoo.com` (or browser OAuth on a TTY); under `-y` HTTP defaults are used automatically.
 2. **`openbkn` on `PATH`** (`onboard_ensure_kweaver_admin_for_isf`) — runs `npm i -g @openbkn/bkn-sdk` if missing (interactive prompt, or auto under `-y`). Admin is built in via the `openbkn admin` subcommand — no separate package.
@@ -279,7 +279,7 @@ Typical flags:
 
 If any step fails, the script exits non-zero with a clear message; re-run `sudo bash deploy/onboard.sh` (Linux) / `bash deploy/onboard.sh` (macOS dev) after fixing the cause — earlier successful steps are detected and skipped (idempotent re-runs).
 
-**Minimum install** (`--minimum`): only `openbkn auth` (often `--no-auth`); the ISF-only steps 2–4 above are no-ops (admin tasks need the auth-enabled backend), and Context Loader (step 5) only runs if the operator deployment is present.
+**Minimum install** (`--minimum`): only `openbkn auth` (often `--no-auth`); the full-auth-only steps 2–4 above are no-ops (admin tasks need the auth-enabled backend), and Context Loader (step 5) only runs if the operator deployment is present.
 
 At the end, an **English completion report** is printed unless `ONBOARD_NO_COMPLETION_REPORT=1`.
 
@@ -296,8 +296,8 @@ flowchart TB
   mode -->|default: interactive; optional -y| p3[onboard_probe] --> ui["Namespace + LLM/embedding (skip-if-already-exists) + BKN patch (only when default actually changes)"] --> r2[Completion report] --> e3([exit 0])
 ```
 
-- **`onboard_probe` runs in all three modes** before BKN-only, YAML, or interactive model registration. On **ISF**, it includes **admin HTTP auth (same `openbkn` defaults)**, **user `test`**, **`openbkn` relogin as `test`**, then **Context Loader** when applicable.
-- **`-y`** does not set `--config`; it mainly auto-accepts **Node / npm -g** bootstrap and **ISF** `openbkn` **HTTP** auth defaults where applicable. Under `-y` the interactive model section is skipped (use `--config=models.yaml` to register non-interactively); the completion report still shows what is already on the platform.
+- **`onboard_probe` runs in all three modes** before BKN-only, YAML, or interactive model registration. On a **full-auth install**, it includes **admin HTTP auth (same `openbkn` defaults)**, **user `test`**, **`openbkn` relogin as `test`**, then **Context Loader** when applicable.
+- **`-y`** does not set `--config`; it mainly auto-accepts **Node / npm -g** bootstrap and **full-auth** `openbkn` **HTTP** auth defaults where applicable. Under `-y` the interactive model section is skipped (use `--config=models.yaml` to register non-interactively); the completion report still shows what is already on the platform.
 - **Re-runs are safe.** Interactive model registration **detects what is already there** and only asks to add more:
   - **LLM** — if any LLM is already registered, the script asks `Register another LLM now? [y/N]` (default **No**).
   - **Embedding / small model** — same pattern. If you do register a new embedding, the script then asks whether to make it the **BKN default**:
@@ -306,15 +306,15 @@ flowchart TB
   - The **BKN ConfigMap patch + `bkn-backend` / `ontology-query` rollout restart** runs **only when you actually change the default**. If you keep the existing default, the ConfigMap is left alone and nothing is restarted.
   - YAML mode (`--config=models.yaml`) follows the same idea: per-model registration is skipped when the model already exists, and the BKN patch+restart is skipped when both ConfigMaps already declare the same `defaultSmallModelEnabled=true` / `defaultSmallModelName`.
 
-**2) What `onboard_probe` does (linear order; non-ISF steps are no-ops or skip quickly)**
+**2) What `onboard_probe` does (linear order; no-auth steps are no-ops or skip quickly)**
 
 ```mermaid
 flowchart TB
   subgraph probe["onboard_probe"]
     A["onboard_ensure_kweaver_auth\n(openbkn: HTTP default admin / eisoo or browser)"] --> B["kubectl: ns or target namespace"]
     B --> C["onboard_prepend_npm_global_bin_to_path"]
-    C --> D["onboard_recommend_admin_cli (Helm / ns → ISF?)"]
-    D --> E["onboard_ensure_kweaver_admin_for_isf\n(npm -g openbkn on ISF if needed)"]
+    C --> D["onboard_recommend_admin_cli (Helm / ns → full-auth?)"]
+    D --> E["onboard_ensure_kweaver_admin_for_isf\n(npm -g openbkn on full-auth installs if needed)"]
     E --> F["onboard_ensure_kweaver_admin_auth_for_isf\n(admin auth: same openbkn defaults, or -k browser; -y: auto HTTP)"]
     F --> G1["onboard_offer_isf_test_user\ncreate or sync test + roles"]
     G1 --> G2["onboard_isf_relogin…\nopenbkn auth as test (HTTP)"]
@@ -322,9 +322,9 @@ flowchart TB
   end
 ```
 
-On **minimum (non-ISF)** installs, the ISF-only steps do not require the admin backend and typically skip the **test** / **relogin** / impex gating; Context Loader may still run if the operator deployment exists.
+On **minimum (no-auth)** installs, the full-auth-only steps do not require the admin backend and typically skip the **test** / **relogin** / impex gating; Context Loader may still run if the operator deployment exists.
 
-**3) ISF full install: who talks to whom (user `test` + Context Loader impex)**
+**3) Full-auth install: who talks to whom (user `test` + Context Loader impex)**
 
 ```mermaid
 sequenceDiagram
@@ -342,7 +342,7 @@ sequenceDiagram
   O->>K: openbkn call impex / later openbkn steps
 ```
 
-After **probe**, the default path continues with **Namespace + models + BKN** in this shell: **~/.bkn** should already be **test** on ISF so those calls use the business user.
+After **probe**, the default path continues with **Namespace + models + BKN** in this shell: **~/.bkn** should already be **test** on a full-auth install so those calls use the business user.
 
 The `openbkn` CLI and its `admin` subcommand share **one** login and token store. For impex, **`openbkn` must be signed in as `test`**, not the initial console `admin` session when the API returns 403.
 
@@ -456,7 +456,7 @@ openbkn admin --json call /api/eacp/v1/... -X POST -d '{"...":"..."}'
 
 ### ⚠️ Things you must know
 
-- **New users created via `user create` always start with the platform default password `123456`** and are forced to change it at first sign-in. This is documented upstream behavior of the ISF user store (`Usrm_AddUser` thrift does not accept a password parameter). Hand the account to the user over a secure channel; for lost-password rotation use `openbkn admin user reset-password`.
+- **New users created via `user create` always start with the platform default password `123456`** and are forced to change it at first sign-in. This is the platform user store default behavior. Hand the account to the user over a secure channel; for lost-password rotation use `openbkn admin user reset-password`.
 - **Separation-of-duties built-in accounts** — `system / admin / security / audit` must not be casually modified; operators should use **individual accounts** rather than the shared `admin` for traceable audit logs.
 - **First-login forced password change (error `401001017`)**: when `openbkn auth login` hits this code, on a TTY the CLI guides you to set a new password and retries the login; in non-TTY contexts pass `--new-password '<new>'` to do it in one shot.
 - **TLS:** `-k` / `--insecure` (or env var `BKN_TLS_INSECURE=1`) is for development / self-signed certs only — never use in production.

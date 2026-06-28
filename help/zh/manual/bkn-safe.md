@@ -1,8 +1,8 @@
-# 🔐 Info Security Fabric（ISF）
+# 🔐 BKN Safe
 
 ## 📖 概述
 
-**Info Security Fabric** 是**横切的安全层**：在数据访问、模型输出与工具调用上提供统一的**身份**、**权限**、**策略**与**审计**。完整安装可能对接 OAuth2/OIDC（如 Hydra）与业务域服务。
+**BKN Safe** 是**横切的安全层**：在数据访问、模型输出与工具调用上提供统一的**身份**、**权限**、**策略**与**审计**。完整安装可能对接 OAuth2/OIDC（如 Hydra）与业务域服务。
 
 使用 **`--minimum` 安装**时，多数认证组件关闭，便于实验环境快速上手，部分 API 可能无需 Token。生产环境请按随产品提供的部署与安全文档启用完整认证配置。
 
@@ -10,7 +10,7 @@
 
 ### 🛡️ 管理员工具：openbkn admin
 
-ISF 在**完整安装**下（启用 `auth.enabled=true` 与 `businessDomain.enabled=true`）的日常**管理面**（用户、组织、角色、模型、审计）通过 `openbkn admin` 子命令组操作 — 与本页下文面向终端用户的 `openbkn` 命令同属 [`@openbkn/bkn-sdk`](https://github.com/openbkn-ai/bkn-sdk)，无需安装独立 CLI。
+BKN Safe 在**完整安装**下（启用 `auth.enabled=true` 与 `businessDomain.enabled=true`）的日常**管理面**（用户、组织、角色、模型、审计）通过 `openbkn admin` 子命令组操作 — 与本页下文面向终端用户的 `openbkn` 命令同属 [`@openbkn/bkn-sdk`](https://github.com/openbkn-ai/bkn-sdk)，无需安装独立 CLI。
 
 ```bash
 npm install -g @openbkn/bkn-sdk                     # Node.js 22+
@@ -264,7 +264,7 @@ curl -sk "https://<访问地址>/api/vega-backend/v1/catalogs" \
   -H "Authorization: Bearer $(openbkn token)"
 
 # 查看当前用户信息
-curl -sk "https://<访问地址>/api/isf/v1/userinfo" \
+curl -sk "https://<访问地址>/api/safe/v1/me" \
   -H "Authorization: Bearer $(openbkn token)"
 
 # 发现 OpenID 配置

@@ -1,8 +1,8 @@
-# 🔐 Info Security Fabric (ISF)
+# 🔐 BKN Safe
 
 ## 📖 Overview
 
-The **Info Security Fabric** is the **cross-cutting security layer**: unified **identity**, **permissions**, **policies**, and **audit** across data access, model output, and tool invocation. In full installs it may integrate with OAuth2/OIDC stacks (e.g. Hydra) and business-domain services.
+**BKN Safe** is the **cross-cutting security layer**: unified **identity**, **permissions**, **policies**, and **audit** across data access, model output, and tool invocation. In full installs it may integrate with OAuth2/OIDC stacks (e.g. Hydra) and business-domain services.
 
 With **`--minimum` install**, many auth components are disabled for a simpler lab setup — APIs may not require tokens. For production, enable the full auth profile per the deployment and security guide bundled with your release.
 
@@ -10,7 +10,7 @@ With **`--minimum` install**, many auth components are disabled for a simpler la
 
 ## 🛡️ Administrator commands: `openbkn admin`
 
-In a **full install** (with `auth.enabled=true` and `businessDomain.enabled=true`), ISF's day-to-day **management surface** — users, organizations, roles, models (`llm` / `small-model`), audit — is handled through the **`openbkn admin`** subcommand of the same `openbkn` CLI. There is **no separate admin package** — admin ships with `@openbkn/bkn-sdk` and is reached via `openbkn admin ...`, sharing the same login/session as the end-user `openbkn` CLI shown below on this page.
+In a **full install** (with `auth.enabled=true` and `businessDomain.enabled=true`), BKN Safe's day-to-day **management surface** — users, organizations, roles, models (`llm` / `small-model`), audit — is handled through the **`openbkn admin`** subcommand of the same `openbkn` CLI. There is **no separate admin package** — admin ships with `@openbkn/bkn-sdk` and is reached via `openbkn admin ...`, sharing the same login/session as the end-user `openbkn` CLI shown below on this page.
 
 ```bash
 openbkn admin org tree                              # list departments

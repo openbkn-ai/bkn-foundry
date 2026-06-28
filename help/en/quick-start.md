@@ -18,7 +18,7 @@ A **full install** (`./deploy.sh bkn-foundry install`, no `--minimum`, with auth
 
 #### Path A (recommended): let `bash deploy/onboard.sh` prepare it
 
-On a full ISF install, `onboard.sh` automatically installs / signs in `openbkn` (admin is built into the same CLI), creates the business user **`test`** (password `111111` unless `ONBOARD_TEST_USER_PASSWORD` is set), assigns **every** role from `openbkn admin role list`, and switches local `~/.bkn` to `test`.
+On a full install (auth enabled), `onboard.sh` automatically installs / signs in `openbkn` (admin is built into the same CLI), creates the business user **`test`** (password `111111` unless `ONBOARD_TEST_USER_PASSWORD` is set), assigns **every** role from `openbkn admin role list`, and switches local `~/.bkn` to `test`.
 
 ```bash
 cd deploy
@@ -46,8 +46,8 @@ openbkn admin user assign-role <userId> <roleId>
 openbkn admin user roles <userId>                                 # verify
 ```
 
-- **Path A default password is `111111`** (set by onboard for `test`); **Path B default password is `123456`** (ISF `Usrm_AddUser` hardcoded default). Use whichever matches the path you took.
-- Role / permission notes: [Install — Administrator commands after a full install (`openbkn admin`)](install.md#-administrator-commands-after-a-full-install-openbkn-admin) and [ISF](manual/isf.md#-administrator-commands-openbkn-admin). In production, grant least privilege; the "every role" pattern is for local / PoC / quick start.
+- **Path A default password is `111111`** (set by onboard for `test`); **Path B default password is `123456`** (platform hardcoded default). Use whichever matches the path you took.
+- Role / permission notes: [Install — Administrator commands after a full install (`openbkn admin`)](install.md#-administrator-commands-after-a-full-install-openbkn-admin) and [BKN Safe](manual/bkn-safe.md#-administrator-commands-openbkn-admin). In production, grant least privilege; the "every role" pattern is for local / PoC / quick start.
 - **Minimum install** (`--minimum`): both paths are unnecessary — use `openbkn auth login <platform-url> --no-auth`.
 
 If you already have a sign-in account from ops, skip both paths and go straight to "Sign in" below.
@@ -446,6 +446,6 @@ On a **Core-only** install, `dataview query` without `--sql` supports structured
 | MCP layered retrieval | [context-loader.md](manual/context-loader.md) |
 | Tools & skill management | [execution-factory.md](manual/execution-factory.md) |
 | Trace & evidence chain | [trace-ai.md](manual/trace-ai.md) |
-| Auth & security governance | [isf.md](manual/isf.md) |
+| Auth & security governance | [bkn-safe.md](manual/bkn-safe.md) |
 
 Full SDK example code ships with the `@openbkn/bkn-sdk` npm package.

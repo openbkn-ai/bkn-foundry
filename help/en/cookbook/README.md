@@ -22,6 +22,6 @@ Name new files `NN-short-slug.md` and keep the structure consistent:
 3. **Steps** — numbered steps with runnable commands; split into `### 3.x` once you have more than one step; put alternative or advanced paths inside `<details>`
 4. **Expected output** — start with one "**Success criterion**" line, then a trimmed real snippet
 5. **Troubleshooting** — the "Symptom" column should be the **literal output or error a reader will see**
-6. **See also** — links to the [module docs](../README.md), [`examples/`](../examples/README.md), and related recipes
+6. **See also** — links to the [module docs](../README.md), [`examples/`](../../../examples/README.md), and related recipes
 
 > Prefer the **`openbkn`** CLI; show an equivalent `curl` only when needed. Never paste private tokens or real customer data into examples.
