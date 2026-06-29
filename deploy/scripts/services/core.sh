@@ -444,23 +444,39 @@ _core_resolve_registry() {
     esac
 }
 
+# True if the active CONFIG_YAML_PATH sets image.registry (so we must not
+# clobber it with the swr default — e.g. mac-config.yaml pins its own registry).
+_core_config_sets_image_registry() {
+    [[ -n "${CONFIG_YAML_PATH:-}" && -f "${CONFIG_YAML_PATH}" ]] || return 1
+    awk '
+        /^image:[[:space:]]*$/ {inimg=1; next}
+        /^[^[:space:]#]/        {inimg=0}
+        inimg && /^[[:space:]]+registry:[[:space:]]*[^[:space:]#]/ {found=1; exit}
+        END {exit found?0:1}
+    ' "${CONFIG_YAML_PATH}"
+}
+
 # Inject default --set values for kweaver-core if user did not override them.
 # Currently: businessDomain.enabled defaults to false at install time.
 _core_apply_default_set_values() {
-    # image.registry: apply --registry (alias) or, if neither --registry nor an
-    # explicit --set image.registry=... was provided, default to swr. An explicit
-    # user --set image.registry=... always wins (we leave it untouched).
+    # image.registry precedence: explicit --set image.registry=… wins; else an
+    # explicit --registry flag is applied; else if CONFIG_YAML_PATH already sets
+    # image.registry we respect it (don't clobber a config's registry, e.g. the
+    # Mac dev mac-config.yaml); else default to swr.
     if get_set_value "image.registry" "${CORE_SET_VALUES[@]}" >/dev/null 2>&1; then
         : # user passed --set image.registry=… explicitly; do not override
-    else
-        local _reg_raw="${CORE_IMAGE_REGISTRY}"
-        if [[ -z "${_reg_raw}" ]]; then
-            _reg_raw="swr"
-        fi
+    elif [[ -n "${CORE_IMAGE_REGISTRY}" ]]; then
         local _reg_resolved
-        _reg_resolved="$(_core_resolve_registry "${_reg_raw}")"
+        _reg_resolved="$(_core_resolve_registry "${CORE_IMAGE_REGISTRY}")"
         CORE_SET_VALUES+=("image.registry=${_reg_resolved}")
-        log_info "Image registry applied: --set image.registry=${_reg_resolved} (from --registry=${_reg_raw}; override with --set image.registry=...)"
+        log_info "Image registry applied: --set image.registry=${_reg_resolved} (from --registry=${CORE_IMAGE_REGISTRY})"
+    elif _core_config_sets_image_registry; then
+        log_info "Image registry: using image.registry from ${CONFIG_YAML_PATH} (pass --registry=swr|ghcr to override)."
+    else
+        local _reg_resolved
+        _reg_resolved="$(_core_resolve_registry "swr")"
+        CORE_SET_VALUES+=("image.registry=${_reg_resolved}")
+        log_info "Image registry default applied: --set image.registry=${_reg_resolved} (override with --registry=ghcr or --set image.registry=...)."
     fi
 
     if ! get_set_value "businessDomain.enabled" "${CORE_SET_VALUES[@]}" >/dev/null 2>&1; then
@@ -510,6 +526,26 @@ setup_dockerhub_mirror() {
         return 0
     fi
 
+    # Bail out early (before any network probe) when we cannot act: not root, or
+    # containerd has no certs.d config_path. Keeps Mac/kind & non-root runs fast.
+    if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
+        log_warn "dockerhub-mirror: not root (EUID != 0); skipping containerd mirror setup."
+        return 0
+    fi
+
+    # containerd must be configured with a certs.d config_path for per-host hosts.toml
+    # to take effect. If not present, skip (don't fail) and tell the user.
+    local containerd_config="/etc/containerd/config.toml"
+    local certs_d=""
+    if [[ -f "${containerd_config}" ]]; then
+        certs_d="$(grep -E '^\s*config_path\s*=' "${containerd_config}" 2>/dev/null \
+            | head -1 | sed -E 's/.*=\s*"?([^"]*)"?\s*$/\1/' | tr -d '[:space:]')"
+    fi
+    if [[ -z "${certs_d}" ]]; then
+        log_warn "dockerhub-mirror: containerd config_path (certs.d dir) not found in ${containerd_config}; a certs.d config_path is required for the mirror — skipping (set it and re-run, or pass --dockerhub-mirror=off)."
+        return 0
+    fi
+
     # --dockerhub-mirror=auto: probe candidate mirrors and pick the first that
     # serves this stack's docker.io images over the registry-mirror (?ns=docker.io)
     # protocol. Sentinel = oryd/hydra (some mirrors, e.g. docker.m.daocloud.io,
@@ -531,24 +567,6 @@ setup_dockerhub_mirror() {
         fi
         mirror_host="${_picked}"
         log_info "dockerhub-mirror=auto: selected ${mirror_host}"
-    fi
-
-    if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
-        log_warn "dockerhub-mirror: not root (EUID != 0); skipping containerd mirror setup for ${mirror_host}."
-        return 0
-    fi
-
-    # containerd must be configured with a certs.d config_path for per-host hosts.toml
-    # to take effect. If not present, skip (don't fail) and tell the user.
-    local containerd_config="/etc/containerd/config.toml"
-    local certs_d=""
-    if [[ -f "${containerd_config}" ]]; then
-        certs_d="$(grep -E '^\s*config_path\s*=' "${containerd_config}" 2>/dev/null \
-            | head -1 | sed -E 's/.*=\s*"?([^"]*)"?\s*$/\1/' | tr -d '[:space:]')"
-    fi
-    if [[ -z "${certs_d}" ]]; then
-        log_warn "dockerhub-mirror: containerd config_path (certs.d dir) not found in ${containerd_config}; a certs.d config_path is required for the mirror — skipping (set it and re-run, or pass --dockerhub-mirror=off)."
-        return 0
     fi
 
     local hosts_dir="${certs_d}/docker.io"
