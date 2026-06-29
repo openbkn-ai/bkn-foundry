@@ -154,7 +154,7 @@ openbkn get-action-info <kn_id> <action_id>
 
 ```bash
 # 1. Configure and authenticate
-openbkn config set prod --url https://kweaver.example.com --token eyJ...
+openbkn config set prod --url https://openbkn.example.com --token eyJ...
 openbkn config use prod
 
 # 2. Search the knowledge network for context

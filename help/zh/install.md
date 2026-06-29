@@ -2,11 +2,11 @@
 
 本页说明 BKN Foundry 的**环境要求**、**部署步骤**与**安装后检查**。
 
-> **平台：** **Linux** 是完整安装（`preflight.sh`、k3s/kubeadm、数据服务等）的**推荐**目标环境。**macOS** 仅适合用 Docker + **kind** 做**本机开发/验证** —— 见 **[`deploy/dev/README.zh.md`](../../deploy/dev/README.zh.md)**（[English](../../deploy/dev/README.md)）与 `deploy/dev/mac.sh`（Mac 上不跑 `preflight.sh`，也与生产环境不对齐）。常见顺序：先起 **Docker Desktop**（或任意提供 Docker API 的引擎），再 **`bash ./dev/mac.sh cluster up`**，然后 **`bash ./dev/mac.sh kweaver-core install`**；当前 **`kweaver-core install` 会先执行 `ensure_data_services`**（与单独 **`data-services install`** 一致），除非设置 **`KWEAVER_SKIP_DATA_SERVICES_BUNDLE=true`**。
+> **平台：** **Linux** 是完整安装（`preflight.sh`、k3s/kubeadm、数据服务等）的**推荐**目标环境。**macOS** 仅适合用 Docker + **kind** 做**本机开发/验证** —— 见 **[`deploy/dev/README.zh.md`](../../deploy/dev/README.zh.md)**（[English](../../deploy/dev/README.md)）与 `deploy/dev/mac.sh`（Mac 上不跑 `preflight.sh`，也与生产环境不对齐）。常见顺序：先起 **Docker Desktop**（或任意提供 Docker API 的引擎），再 **`bash ./dev/mac.sh cluster up`**，然后 **`bash ./dev/mac.sh bkn-foundry install`**；当前 **`bkn-foundry install` 会先执行 `ensure_data_services`**（与单独 **`data-services install`** 一致），除非设置 **`KWEAVER_SKIP_DATA_SERVICES_BUNDLE=true`**。
 
 > 📌 安装通过产品包或源码中的 `deploy/` 目录下的 `deploy.sh` 脚本完成。
 
-> **`deploy.sh` 全局参数**（`--distro=k3s|k8s`、`-y`、`--force-upgrade`、`--config=…` 等）只有写在**模块名之前**才会生效，例如 `bash ./deploy.sh --distro=k8s kweaver-core install --minimum`。写成 `... install --minimum --distro=k8s` **不会**按全局参数解析。可改用 `export KUBE_DISTRO=k8s` 再执行安装命令，或把 `--distro` 挪到前面（与 `-y`、`--force-upgrade` 一致）。
+> **`deploy.sh` 全局参数**（`--distro=k3s|k8s`、`-y`、`--force-upgrade`、`--config=…` 等）只有写在**模块名之前**才会生效，例如 `bash ./deploy.sh --distro=k8s bkn-foundry install --minimum`。写成 `... install --minimum --distro=k8s` **不会**按全局参数解析。可改用 `export KUBE_DISTRO=k8s` 再执行安装命令，或把 `--distro` 挪到前面（与 `-y`、`--force-upgrade` 一致）。
 
 ---
 
@@ -140,7 +140,7 @@ sudo bash deploy/preflight.sh --help         # 全部参数
 
 退出码：**0** 全 OK；**1** 有 FAIL；**2** 仅有 WARN（无 FAIL）。
 
-> 每台新主机在跑 `deploy.sh kweaver-core install` 前都建议跑一次 preflight；可重复执行——已经满足的项会按 `OK` 报告并跳过。如果你**有意**在低配 lab 机器上跑（内存/磁盘低于推荐、没装 Docker CE 源等），用 `--lenient` 让报告依然能看，但不会因为这些项而阻塞 install。
+> 每台新主机在跑 `deploy.sh bkn-foundry install` 前都建议跑一次 preflight；可重复执行——已经满足的项会按 `OK` 报告并跳过。如果你**有意**在低配 lab 机器上跑（内存/磁盘低于推荐、没装 Docker CE 源等），用 `--lenient` 让报告依然能看，但不会因为这些项而阻塞 install。
 
 ### Preflight 报告：`Summary` 与 `Conclusion`
 
@@ -171,8 +171,8 @@ sudo bash deploy/preflight.sh --help         # 全部参数
     sudo bash ./preflight.sh --fix          # …（默认每项 y/N；加 -y 全自动）
     sudo bash ./preflight.sh --check-only   # 再检查直到关键 [FAIL] 消失（或配合 --lenient）
   Only then install:
-    sudo bash ./deploy.sh kweaver-core install --minimum    # 体验 / 最小化
-    sudo bash ./deploy.sh kweaver-core install              # 完整安装
+    sudo bash ./deploy.sh bkn-foundry install --minimum    # 体验 / 最小化
+    sudo bash ./deploy.sh bkn-foundry install              # 完整安装
   Finally: sudo bash ./onboard.sh from deploy/ (Linux；macOS dev 用普通 bash。Node 22+ + openbkn on PATH；sudo bash ./preflight.sh --fix helps …)
 ```
 
@@ -193,13 +193,13 @@ sudo bash deploy/preflight.sh --help         # 全部参数
 跳过部分可选模块（如认证、业务域），资源占用更小：
 
 ```bash
-./deploy.sh kweaver-core install --minimum
+./deploy.sh bkn-foundry install --minimum
 ```
 
 等价写法：
 
 ```bash
-./deploy.sh kweaver-core install \
+./deploy.sh bkn-foundry install \
   --set auth.enabled=false \
   --set businessDomain.enabled=false
 ```
@@ -209,7 +209,7 @@ sudo bash deploy/preflight.sh --help         # 全部参数
 包含认证与业务域等组件：
 
 ```bash
-./deploy.sh kweaver-core install
+./deploy.sh bkn-foundry install
 ```
 
 > 💡 脚本可能交互式询问 **访问地址**，并自动探测 **API Server 地址**。
@@ -217,7 +217,7 @@ sudo bash deploy/preflight.sh --help         # 全部参数
 ### 🤖 非交互安装
 
 ```bash
-./deploy.sh kweaver-core install \
+./deploy.sh bkn-foundry install \
   --access_address=<你的IP或域名> \
   --api_server_address=<K8s API 绑定的网卡 IP>
 ```
@@ -230,14 +230,14 @@ sudo bash deploy/preflight.sh --help         # 全部参数
 ```bash
 export INGRESS_NGINX_HTTP_PORT=8080
 export INGRESS_NGINX_HTTPS_PORT=8443
-./deploy.sh kweaver-core install
+./deploy.sh bkn-foundry install
 ```
 
 ### 🧾 常用命令
 
 ```bash
-./deploy.sh kweaver-core status
-./deploy.sh kweaver-core uninstall
+./deploy.sh bkn-foundry status
+./deploy.sh bkn-foundry uninstall
 ./deploy.sh --help
 ```
 
@@ -253,7 +253,7 @@ export INGRESS_NGINX_HTTPS_PORT=8443
 
 ## Post-install：`onboard.sh`（安装后引导）
 
-在 `deploy.sh kweaver-core install` 之后，可在能访问集群的机器上运行 **`deploy/onboard.sh`**，需 **Node 22+**、**kubectl**、**openbkn**（`npm i -g @openbkn/bkn-sdk`）。在 **`deploy/`** 目录执行，**Linux 上需要 `sudo`**（与 `sudo deploy.sh` 对齐）：
+在 `deploy.sh bkn-foundry install` 之后，可在能访问集群的机器上运行 **`deploy/onboard.sh`**，需 **Node 22+**、**kubectl**、**openbkn**（`npm i -g @openbkn/bkn-sdk`）。在 **`deploy/`** 目录执行，**Linux 上需要 `sudo`**（与 `sudo deploy.sh` 对齐）：
 
 ```bash
 cd deploy
@@ -267,12 +267,12 @@ sudo bash ./onboard.sh --help
 | 参数 | 含义 |
 | --- | --- |
 | 无参数 | 交互模式：按需引导安装 Node / `openbkn`，完成认证（单一 CLI——管理能力内置于 `openbkn admin`），再依次走模型 / BKN / Context Loader 提示 |
-| `-y` / `--yes` | 全部自动：bootstrap、ISF 下 HTTP 默认登录（`admin` / `eisoo.com`）、`test` 用户创建 + 角色同步、`openbkn` 以 `test` 重登、Context Loader 导入。会**跳过交互式模型注册**；如需非交互注册模型，请用 `--config=models.yaml`。 |
+| `-y` / `--yes` | 全部自动：bootstrap、完整鉴权下 HTTP 默认登录（`admin` / `eisoo.com`）、`test` 用户创建 + 角色同步、`openbkn` 以 `test` 重登、Context Loader 导入。会**跳过交互式模型注册**；如需非交互注册模型，请用 `--config=models.yaml`。 |
 | `--config=xxx.yaml` | 非交互：按 YAML 注册模型与可选 BKN；参考 `deploy/conf/models.yaml.example` |
 | `--enable-bkn-search` | 仅做 BKN ConfigMap 类操作（仍先走 probe） |
 | `--skip-context-loader` | 跳过 ADP Context Loader 工具集导入 |
 
-**全量 ISF（启用 auth + business domain）**：脚本根据 Helm/命名空间判断为 ISF 后，**会自动按以下 5 步执行**（你不需要手工逐条做——这里列出来只是让你知道脚本在干什么，以及某一步失败时该回到哪一步）：
+**完整鉴权安装（启用 auth + business domain）**：脚本根据 Helm/命名空间判断为完整鉴权安装 后，**会自动按以下 5 步执行**（你不需要手工逐条做——这里列出来只是让你知道脚本在干什么，以及某一步失败时该回到哪一步）：
 
 1. **`openbkn auth login`**（`onboard_ensure_kweaver_auth`）— 会话写入 `~/.bkn`。HTTP 默认 `admin` / `eisoo.com`（TTY 下也可改走浏览器 OAuth）；`-y` 模式直接走 HTTP 默认。
 2. **`openbkn` 在 PATH**（`onboard_ensure_kweaver_admin_for_isf`）— 缺则自动 `npm i -g @openbkn/bkn-sdk`（交互提示，或 `-y` 时自动安装）。管理能力内置于 `openbkn admin` 子命令，无需单独的包。
@@ -282,7 +282,7 @@ sudo bash ./onboard.sh --help
 
 任何一步失败脚本都会非零退出并打印清楚原因；修好之后重跑 `sudo bash deploy/onboard.sh`（Linux）/ `bash deploy/onboard.sh`（macOS dev）即可——已成功的步骤会被检测并跳过（重复运行幂等）。
 
-**最小化安装**（`--minimum`）：通常只需 `openbkn`（常为 `--no-auth`）；上述 ISF 专属步骤 2–4 会被自动跳过（管理操作需启用鉴权的后端），第 5 步的 Context Loader 仅在集群中确实有 operator deployment 时才执行。
+**最小化安装**（`--minimum`）：通常只需 `openbkn`（常为 `--no-auth`）；上述 完整鉴权专属步骤 2–4 会被自动跳过（管理操作需启用鉴权的后端），第 5 步的 Context Loader 仅在集群中确实有 operator deployment 时才执行。
 
 结束前会打印 **英文** 完成报告（可用 `ONBOARD_NO_COMPLETION_REPORT=1` 关闭）。
 
@@ -299,8 +299,8 @@ flowchart TB
   mode -->|默认交互；可选 -y| p3[onboard_probe] --> ui["命名空间 + LLM/向量（已存在则只问是否新增）+ BKN 补丁（仅在更换默认时执行）"] --> r2[完成报告] --> e3([exit 0])
 ```
 
-- **三种模式都会先跑 `onboard_probe`**，再进入「仅 BKN」、YAML 或交互式注册。**全量 ISF** 时 probe 内含：**与 openbkn 同默认的管理 HTTP 登录**、**用户 `test`**、**`openbkn` 以 `test` 重登**、再 **Context Loader**（条件满足时）。
-- **`-y`** 不会自动等价于 `--config`；主要自动确认 **Node / npm -g**，以及在 **ISF 全量** 下 `openbkn` 的 **HTTP** 登录默认行为。`-y` 模式下不会跑交互式模型注册（如需非交互注册请使用 `--config=models.yaml`），完成报告里会列出平台上现有模型计数，方便确认。
+- **三种模式都会先跑 `onboard_probe`**，再进入「仅 BKN」、YAML 或交互式注册。**完整鉴权安装** 时 probe 内含：**与 openbkn 同默认的管理 HTTP 登录**、**用户 `test`**、**`openbkn` 以 `test` 重登**、再 **Context Loader**（条件满足时）。
+- **`-y`** 不会自动等价于 `--config`；主要自动确认 **Node / npm -g**，以及在 **完整鉴权安装** 下 `openbkn` 的 **HTTP** 登录默认行为。`-y` 模式下不会跑交互式模型注册（如需非交互注册请使用 `--config=models.yaml`），完成报告里会列出平台上现有模型计数，方便确认。
 - **可重复执行（已注册 / 已配置自动跳过）。** 交互式模型注册会先探测平台现状，再决定是否提问：
   - **大模型 LLM**：若平台已有任何 LLM，先问 `Register another LLM now? [y/N]`，默认 **否**；选否则跳过 LLM 提示。
   - **向量 / 小模型**：同样先问是否新增；如果你确实新增了 embedding，再追问是否设为 **BKN 默认**：
@@ -309,15 +309,15 @@ flowchart TB
   - **BKN ConfigMap 补丁 + `bkn-backend` / `ontology-query` 滚动重启** 仅在 **默认 embedding 真的发生变化** 时执行；保持原默认时 ConfigMap 完全不动，也不会重启任何 deployment。
   - YAML 模式（`--config=models.yaml`）遵循同样的思路：每个模型若已存在则按名称跳过；当两个 ConfigMap 已经声明了相同的 `defaultSmallModelEnabled=true` / `defaultSmallModelName` 时，BKN 补丁与重启也会一并跳过。
 
-**2）`onboard_probe` 执行顺序（非 ISF 时相关步骤会快速跳过或空操作）**
+**2）`onboard_probe` 执行顺序（非完整鉴权 时相关步骤会快速跳过或空操作）**
 
 ```mermaid
 flowchart TB
   subgraph probe["onboard_probe"]
     A["onboard_ensure_kweaver_auth\n（openbkn：HTTP 默认 admin / eisoo 或浏览器）"] --> B["kubectl：命名空间或目标 namespace"]
     B --> C["onboard_prepend_npm_global_bin_to_path"]
-    C --> D["onboard_recommend_admin_cli（Helm/命名空间 → 是否 ISF）"]
-    D --> E["onboard_ensure_kweaver_admin_for_isf\n（ISF 时按需 npm -g 安装 openbkn）"]
+    C --> D["onboard_recommend_admin_cli（Helm/命名空间 → 是否完整鉴权）"]
+    D --> E["onboard_ensure_kweaver_admin_for_isf\n（完整鉴权时按需 npm -g 安装 openbkn）"]
     E --> F["onboard_ensure_kweaver_admin_auth_for_isf\n（管理认证 与 openbkn 同默认；或 -k 浏览器；-y 自动 HTTP）"]
     F --> G1["onboard_offer_isf_test_user\n创建或同步 test 与角色"]
     G1 --> G2["onboard_isf_relogin…\nopenbkn 以 test 登录（HTTP）"]
@@ -327,7 +327,7 @@ flowchart TB
 
 **非全量 / 最小化**：通常不需要管理后端的建用户与 **test 重登** 门禁；若集群仍有 operator，Context Loader 仍可能按条件执行。
 
-**3）ISF 全量：CLI 与 impex 会话（序列图）**
+**3）完整鉴权安装：CLI 与 impex 会话（序列图）**
 
 ```mermaid
 sequenceDiagram
@@ -345,7 +345,7 @@ sequenceDiagram
   O->>K: openbkn call impex / 后续 openbkn 操作
 ```
 
-**probe 之后**，默认模式会继续 **命名空间 + 模型 + BKN** 交互；在 ISF 上此时 **`~/.bkn` 宜已为 `test`**，后续注册走业务用户。
+**probe 之后**，默认模式会继续 **命名空间 + 模型 + BKN** 交互；在完整鉴权安装上此时 **`~/.bkn` 宜已为 `test`**，后续注册走业务用户。
 
 `openbkn` 与其 `admin` 子命令**共用**同一份登录与 token 存储。**impex 需 `openbkn` 的 `test` 会话**；仅 **admin** 的 openbkn 对 impex 常见 **403**。
 
@@ -353,14 +353,14 @@ sequenceDiagram
 
 ## 🛡️ 完整安装后的管理员命令（`openbkn admin`）
 
-完整安装（启用 `auth.enabled=true` 与 `businessDomain.enabled=true`）后，平台的**用户、组织、角色、模型、审计**等管理操作通过同一个 `openbkn` CLI 的 **`openbkn admin`** 子命令完成。**没有单独的 admin 包**：管理能力过去以 `kweaver-admin` 单独发布，现已并入 [`@openbkn/bkn-sdk`](https://github.com/openbkn-ai/bkn-sdk)，通过 `openbkn admin ...` 调用：
+完整安装（启用 `auth.enabled=true` 与 `businessDomain.enabled=true`）后，平台的**用户、组织、角色、模型、审计**等管理操作通过同一个 `openbkn` CLI 的 **`openbkn admin`** 子命令完成。**没有单独的 admin 包**——管理能力随 [`@openbkn/bkn-sdk`](https://github.com/openbkn-ai/bkn-sdk) 一起提供，通过 `openbkn admin ...` 调用：
 
 | 命令面 | 受众 | 覆盖范围 |
 | --- | --- | --- |
 | `openbkn`（`@openbkn/bkn-sdk`） | 业务用户 / Agent | BKN、Action、Skill、查询、Agent 对话 |
 | `openbkn admin`（同一个包） | 平台管理员 | 用户、组织、角色、模型、审计、原始 HTTP |
 
-**何时可用：** 完整安装之后（`./deploy.sh kweaver-core install` 不带 `--minimum`）。**最小化安装下大多数 `openbkn admin` 命令会返回 401 / 404 — 属于部署裁剪，并非 CLI 故障。**
+**何时可用：** 完整安装之后（`./deploy.sh bkn-foundry install` 不带 `--minimum`）。**最小化安装下大多数 `openbkn admin` 命令会返回 401 / 404 — 属于部署裁剪，并非 CLI 故障。**
 
 **后端依赖：** `user-management` / `deploy-manager` / `deploy-auth` / `eacp` / `mf-model-manager` / OAuth2(Hydra) — 正好是完整安装才会启用的服务集合。
 
@@ -459,7 +459,7 @@ openbkn admin --json call /api/eacp/v1/... -X POST -d '{"...":"..."}'
 
 ### ⚠️ 必须知道
 
-- **新建用户的默认密码固定为 `123456`**，首次登录强制改密 — 这是 ISF 用户存储的上游既定行为（`Usrm_AddUser` thrift 不接收密码参数）。请通过安全渠道把账号交给本人，由其首登时改密；后续忘/失密用 `openbkn admin user reset-password`。
+- **新建用户的默认密码固定为 `123456`**，首次登录强制改密 — 这是平台用户存储的既定行为。请通过安全渠道把账号交给本人，由其首登时改密；后续忘/失密用 `openbkn admin user reset-password`。
 - **三权分立内置账号**：`system / admin / security / audit` 不可随意删改；操作员请使用**个人账号**而非共享 `admin`，便于审计追溯。
 - **首次登录改密（错误码 401001017）**：`openbkn auth login` 触发该错误时，TTY 下会引导改密并自动重试登录；非 TTY 下显式补充 `--new-password '<新密码>'` 一次性完成。
 - **TLS：** `-k` / `--insecure`（或环境变量 `BKN_TLS_INSECURE=1`）仅用于开发/自签名证书场景，生产请使用受信任证书。
@@ -496,7 +496,7 @@ Skill 源文件：[`skills/openbkn/SKILL.md`](https://github.com/openbkn-ai/bkn-
 
 ## ✅ 安装完成后（检查集群与 API）
 
-`deploy.sh kweaver-core install` 结束后，请确认集群正常且能访问平台。
+`deploy.sh bkn-foundry install` 结束后，请确认集群正常且能访问平台。
 
 ### ☸️ Kubernetes 状态
 
@@ -510,7 +510,7 @@ kubectl get pods -A
 ### 🩺 部署脚本状态
 
 ```bash
-./deploy.sh kweaver-core status
+./deploy.sh bkn-foundry status
 ```
 
 ### 🔑 CLI 登录与验证
@@ -594,7 +594,7 @@ openbkn call '/api/mf-model-manager/v1/small-model/list?page=1&size=50'
 
 ## 🔧 故障排查
 
-按症状索引（CoreDNS 不就绪、镜像拉不下来、Kubernetes apt / yum 源缺失或 404、`containerd` 装不上、严格模式 `[FAIL]` 项等）请看 [`deploy/README.zh.md` → Troubleshooting](https://github.com/kweaver-ai/kweaver-core/blob/main/deploy/README.zh.md#-troubleshooting)。
+按症状索引（CoreDNS 不就绪、镜像拉不下来、Kubernetes apt / yum 源缺失或 404、`containerd` 装不上、严格模式 `[FAIL]` 项等）请看 [`deploy/README.zh.md` → Troubleshooting](../../deploy/README.zh.md#-troubleshooting)。
 
 `preflight.sh` 报的 `[FAIL]` 大多数都能自动修：
 

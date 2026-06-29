@@ -252,7 +252,7 @@ The BKN CLI supports authenticating without a local browser or without pasting c
 | Your situation | Use | Notes |
 | --- | --- | --- |
 | **Username and password** sign-in is available | **Method 1** (HTTP, `-u` / `-p`) | One command on the host; no need to copy an OAuth callback from elsewhere. |
-| **[bkn-sdk](https://github.com/openbkn-ai/bkn-sdk) is installed** (the `kweaver` command works) | **Method 2** (`auth export` / replay) | After browser login, run `openbkn auth export` and **replay** the one-line command on the headless target. |
+| **[bkn-sdk](https://github.com/openbkn-ai/bkn-sdk) is installed** (the `openbkn` command works) | **Method 2** (`auth export` / replay) | After browser login, run `openbkn auth export` and **replay** the one-line command on the headless target. |
 | bkn-sdk is **not** installed; you usually run **`npx openbkn`** | **Method 3** (`--no-browser`) | After signing in on another device, an **extra step**: **copy the full callback URL** or **only the authorization code** (*copy code*), then paste at `Paste URL or code` in the headless terminal. |
 
 **Method 1 — Username/password HTTP sign-in (fully non-interactive on the host, no browser required)**

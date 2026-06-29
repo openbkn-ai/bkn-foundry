@@ -2,8 +2,8 @@
 
 > - **难度**：⭐ 入门 / ⭐⭐ 进阶 / ⭐⭐⭐ 专家
 > - **耗时**：约 N 分钟
-> - **涉及模块**：`<bkn|datasource|dataflow|...>`
-> - **CLI 版本**：`kweaver >= x.y`
+> - **涉及模块**：`<bkn|datasource|vega|...>`
+> - **CLI 版本**：`openbkn >= x.y`
 
 ## 1. Goal（目标）
 
@@ -11,8 +11,8 @@
 
 ## 2. Prerequisites（前置条件）
 
-- 已通过 `kweaver auth login <平台地址>` 登录。
-- 业务域：`kweaver config show` 确认；不对就 `kweaver config set-bd <uuid>`。
+- 已通过 `openbkn auth login <平台地址>` 登录。
+- 业务域：`openbkn config show` 确认；不对就 `openbkn config set-bd <uuid>`。
 - <列出本 Recipe 特有的依赖：数据源 / 文件 / 已有 KN 等>
 
 ## 3. Steps（操作步骤）
@@ -23,7 +23,7 @@
 ### 3.1 <步骤名>
 
 ```bash
-# 必要的 kweaver CLI 命令
+# 必要的 openbkn CLI 命令
 ```
 
 ### 3.2 <步骤名>

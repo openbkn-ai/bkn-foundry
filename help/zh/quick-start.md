@@ -2,7 +2,7 @@
 
 以下步骤假设 BKN Foundry 已按 [安装与部署](install.md) 文档完成安装及文中的安装后检查。**完整安装以 Linux 为主**；可选 **macOS** + kind 流程见 [`deploy/dev/README.zh.md`](../../deploy/dev/README.zh.md)（[English](../../deploy/dev/README.md)）。
 
-> 新主机安装前，先在目标机上跑 **`sudo bash deploy/preflight.sh`**（仅检查 / 加 `--fix`）确认内核、sysctl、containerd、kubectl、helm、Node 与 `openbkn` CLI 都齐了；`deploy.sh kweaver-core install` 之后，再跑 **`sudo bash deploy/onboard.sh`**（Linux，与 `sudo deploy.sh` 对齐；macOS 开发路径用普通 `bash`）完成 LLM + embedding 注册、按需 patch BKN ConfigMap（仅在默认变化时执行），完整安装下还会建好业务用户 **`test`** 并导入 Context Loader 工具集。两者详见 [安装与部署 — 装机前体检：`preflight.sh`](install.md#-装机前体检--修复preflightsh) 与 [安装与部署 — Post-install：`onboard.sh`](install.md#post-installonboardsh安装后引导)。
+> 新主机安装前，先在目标机上跑 **`sudo bash deploy/preflight.sh`**（仅检查 / 加 `--fix`）确认内核、sysctl、containerd、kubectl、helm、Node 与 `openbkn` CLI 都齐了；`deploy.sh bkn-foundry install` 之后，再跑 **`sudo bash deploy/onboard.sh`**（Linux，与 `sudo deploy.sh` 对齐；macOS 开发路径用普通 `bash`）完成 LLM + embedding 注册、按需 patch BKN ConfigMap（仅在默认变化时执行），完整安装下还会建好业务用户 **`test`** 并导入 Context Loader 工具集。两者详见 [安装与部署 — 装机前体检：`preflight.sh`](install.md#-装机前体检--修复preflightsh) 与 [安装与部署 — Post-install：`onboard.sh`](install.md#post-installonboardsh安装后引导)。
 
 ---
 
@@ -20,11 +20,11 @@ npm install -g @openbkn/bkn-sdk
 
 ### 🛡️ 完整安装：准备一个可登录的业务用户
 
-完整安装（`./deploy.sh kweaver-core install`，未加 `--minimum`，已启用 `auth` 与 `businessDomain`）下平台**必须鉴权**才能使用业务能力。下面有**两条路径**得到一个可登录账号，按你的喜好二选一即可：
+完整安装（`./deploy.sh bkn-foundry install`，未加 `--minimum`，已启用 `auth` 与 `businessDomain`）下平台**必须鉴权**才能使用业务能力。下面有**两条路径**得到一个可登录账号，按你的喜好二选一即可：
 
 #### 路径 A（推荐）：让 `bash deploy/onboard.sh` 自动准备
 
-`onboard.sh` 在 ISF 全量下会**自动**完成：装/登录 `openbkn`（管理能力内置于同一 CLI）→ 创建业务用户 **`test`**（默认密码 `111111`，可用 `ONBOARD_TEST_USER_PASSWORD` 覆盖）→ 把 `openbkn admin role list` 中**所有**角色挂上 → 把本机 `~/.bkn` 切到 `test`。
+`onboard.sh` 在 完整鉴权安装下会**自动**完成：装/登录 `openbkn`（管理能力内置于同一 CLI）→ 创建业务用户 **`test`**（默认密码 `111111`，可用 `ONBOARD_TEST_USER_PASSWORD` 覆盖）→ 把 `openbkn admin role list` 中**所有**角色挂上 → 把本机 `~/.bkn` 切到 `test`。
 
 ```bash
 cd deploy
@@ -52,8 +52,8 @@ openbkn admin user assign-role <userId> <roleId>
 openbkn admin user roles <userId>                             # 确认已挂角色
 ```
 
-- **路径 A 默认密码 `111111`**（onboard 给 `test` 设置的）；**路径 B 默认密码 `123456`**（ISF `Usrm_AddUser` 硬编码默认）。两者不同，请按实际路径取。
-- 角色与权限说明见 [安装与部署 — 完整安装后的管理员命令（`openbkn admin`）](install.md#-完整安装后的管理员命令openbkn-admin) 与 [ISF](manual/isf.md#-管理员工具openbkn-admin)。生产环境请只赋必要角色；上面「挂齐所有角色」适合本地 / POC / 快速开始。
+- **路径 A 默认密码 `111111`**（onboard 给 `test` 设置的）；**路径 B 默认密码 `123456`**（平台硬编码默认）。两者不同，请按实际路径取。
+- 角色与权限说明见 [安装与部署 — 完整安装后的管理员命令（`openbkn admin`）](install.md#-完整安装后的管理员命令openbkn-admin) 与 [BKN Safe](manual/bkn-safe.md#-管理员工具openbkn-admin)。生产环境请只赋必要角色；上面「挂齐所有角色」适合本地 / POC / 快速开始。
 - **最小化安装**（`--minimum`）下鉴权与业务域服务被裁剪，**两条路径都不需要**：直接用 `openbkn auth login <平台地址> --no-auth` 即可。
 
 若你已从运维处拿到**可登录的现有账号**（或安装文档给出的初始用户），两条路径都可以跳过，直接进入下节「登录平台」。
@@ -481,4 +481,4 @@ const messages = await bkn.agents.history(agent.key, sessions[0].conversation_id
 | 📚 MCP 分层检索 | [context-loader.md](manual/context-loader.md) |
 | 🛠️ 工具与技能管理 | [execution-factory.md](manual/execution-factory.md) |
 | 🔭 链路追踪与证据链 | [trace-ai.md](manual/trace-ai.md) |
-| 🔐 认证与安全治理 | [isf.md](manual/isf.md) |
+| 🔐 认证与安全治理 | [bkn-safe.md](manual/bkn-safe.md) |

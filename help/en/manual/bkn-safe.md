@@ -1,8 +1,8 @@
-# 🔐 Info Security Fabric (ISF)
+# 🔐 BKN Safe
 
 ## 📖 Overview
 
-The **Info Security Fabric** is the **cross-cutting security layer**: unified **identity**, **permissions**, **policies**, and **audit** across data access, model output, and tool invocation. In full installs it may integrate with OAuth2/OIDC stacks (e.g. Hydra) and business-domain services.
+**BKN Safe** is the **cross-cutting security layer**: unified **identity**, **permissions**, **policies**, and **audit** across data access, model output, and tool invocation. In full installs it may integrate with OAuth2/OIDC stacks (e.g. Hydra) and business-domain services.
 
 With **`--minimum` install**, many auth components are disabled for a simpler lab setup — APIs may not require tokens. For production, enable the full auth profile per the deployment and security guide bundled with your release.
 
@@ -10,7 +10,7 @@ With **`--minimum` install**, many auth components are disabled for a simpler la
 
 ## 🛡️ Administrator commands: `openbkn admin`
 
-In a **full install** (with `auth.enabled=true` and `businessDomain.enabled=true`), ISF's day-to-day **management surface** — users, organizations, roles, models (`llm` / `small-model`), audit — is handled through the **`openbkn admin`** subcommand of the same `openbkn` CLI. There is **no separate admin package**: admin used to ship as a standalone `kweaver-admin`, but it is now merged into `@openbkn/bkn-sdk` and reached via `openbkn admin ...`, sharing the same login/session as the end-user `openbkn` CLI shown below on this page.
+In a **full install** (with `auth.enabled=true` and `businessDomain.enabled=true`), BKN Safe's day-to-day **management surface** — users, organizations, roles, models (`llm` / `small-model`), audit — is handled through the **`openbkn admin`** subcommand of the same `openbkn` CLI. There is **no separate admin package** — admin ships with `@openbkn/bkn-sdk` and is reached via `openbkn admin ...`, sharing the same login/session as the end-user `openbkn` CLI shown below on this page.
 
 ```bash
 openbkn admin org tree                              # list departments
@@ -92,30 +92,30 @@ openbkn auth delete <alias>
 
 ```bash
 # 1. Login to multiple environments
-openbkn auth login https://dev.kweaver.example.com --alias dev -k
-openbkn auth login https://staging.kweaver.example.com --alias staging -k
-openbkn auth login https://prod.kweaver.example.com --alias prod -k -u <username> -p <password>
+openbkn auth login https://dev.openbkn.example.com --alias dev -k
+openbkn auth login https://staging.openbkn.example.com --alias staging -k
+openbkn auth login https://prod.openbkn.example.com --alias prod -k -u <username> -p <password>
 
 # 2. List all connections
 openbkn auth list
 # Output:
-#   * dev     https://dev.kweaver.example.com     (active)
-#     staging https://staging.kweaver.example.com
-#     prod    https://prod.kweaver.example.com
+#   * dev     https://dev.openbkn.example.com     (active)
+#     staging https://staging.openbkn.example.com
+#     prod    https://prod.openbkn.example.com
 
 # 3. Switch between environments
 openbkn auth use staging
 openbkn auth whoami
-# → user: admin@staging.kweaver.example.com
+# → user: admin@staging.openbkn.example.com
 
 openbkn auth use prod
 openbkn auth status
-# → server: https://prod.kweaver.example.com
+# → server: https://prod.openbkn.example.com
 # → user: admin
 # → token expires: 2026-04-14T22:30:00Z
 
 # 4. Call a protected API (after auth use prod — same session as CLI)
-curl -sk "https://prod.kweaver.example.com/api/vega-backend/v1/catalogs" \
+curl -sk "https://prod.openbkn.example.com/api/vega-backend/v1/catalogs" \
   -H "Authorization: Bearer $(openbkn token)"
 
 # 5. Cleanup

@@ -2,8 +2,8 @@
 
 > - **Difficulty**: ⭐ Beginner / ⭐⭐ Intermediate / ⭐⭐⭐ Advanced
 > - **Time**: ~ N minutes
-> - **Modules touched**: `<bkn|datasource|dataflow|...>`
-> - **CLI version**: `kweaver >= x.y`
+> - **Modules touched**: `<bkn|datasource|vega|...>`
+> - **CLI version**: `openbkn >= x.y`
 
 ## 1. Goal
 
@@ -11,8 +11,8 @@
 
 ## 2. Prerequisites
 
-- Logged in via `kweaver auth login <platform-url>`.
-- Business domain: `kweaver config show` to confirm; switch with `kweaver config set-bd <uuid>` if needed.
+- Logged in via `openbkn auth login <platform-url>`.
+- Business domain: `openbkn config show` to confirm; switch with `openbkn config set-bd <uuid>` if needed.
 - <List recipe-specific dependencies: datasource / files / an existing KN, etc.>
 
 ## 3. Steps
@@ -23,7 +23,7 @@
 ### 3.1 <Step name>
 
 ```bash
-# the kweaver CLI commands a reader must run
+# the openbkn CLI commands a reader must run
 ```
 
 ### 3.2 <Step name>
