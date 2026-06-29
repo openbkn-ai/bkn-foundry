@@ -1402,6 +1402,26 @@ log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+# Diagnose a likely-stale / unreachable kubeconfig context. Call on failure paths
+# where kubectl could not reach a cluster — most often the active kubeconfig points
+# at a leftover context from a previously-installed platform (e.g. an old AnyShare
+# cluster), not the cluster this install set up.
+diagnose_cluster_context() {
+    local ctx server
+    ctx="$(kubectl config current-context 2>/dev/null || echo '(none)')"
+    server="$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}' 2>/dev/null || true)"
+    log_warn "Active kubectl context: ${ctx}  (apiserver: ${server:-unknown})"
+    log_warn "KUBECONFIG=${KUBECONFIG:-<default ~/.kube/config>}"
+    if ! kubectl cluster-info >/dev/null 2>&1; then
+        log_error "That Kubernetes API is unreachable — the install did not reach a working cluster."
+        log_error "If you expected a fresh local cluster, a stale kubeconfig may be overriding it:"
+        log_error "  k3s    : unset KUBECONFIG; export KUBECONFIG=/etc/rancher/k3s/k3s.yaml; kubectl get nodes"
+        log_error "  kubeadm: export KUBECONFIG=/etc/kubernetes/admin.conf; kubectl get nodes"
+        log_error "  or move a leftover config aside: mv ~/.kube/config ~/.kube/config.bak"
+        log_error "If '${server:-that server}' IS your intended cluster, fix its apiserver/load-balancer reachability and re-run."
+    fi
+}
+
 k8s_is_running() {
     if ! command -v kubectl >/dev/null 2>&1; then
         return 1

@@ -441,6 +441,7 @@ install_core() {
 
     if ! ensure_platform_prerequisites; then
         log_error "Failed to ensure platform prerequisites for BKN Foundry"
+        diagnose_cluster_context
         return 1
     fi
 
