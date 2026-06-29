@@ -163,6 +163,14 @@ func (stubKnFindSkillsHandler) FindSkills(c *gin.Context) {
 	c.Status(http.StatusOK)
 }
 
+type stubKnQueryToolsHandler struct{}
+
+func (stubKnQueryToolsHandler) RunSQL(c *gin.Context)                { c.Status(http.StatusOK) }
+func (stubKnQueryToolsHandler) ListKnowledgeNetworks(c *gin.Context) { c.Status(http.StatusOK) }
+func (stubKnQueryToolsHandler) GetKnDetail(c *gin.Context)           { c.Status(http.StatusOK) }
+func (stubKnQueryToolsHandler) ListResources(c *gin.Context)         { c.Status(http.StatusOK) }
+func (stubKnQueryToolsHandler) DescribeResource(c *gin.Context)      { c.Status(http.StatusOK) }
+
 func TestRestPublicHandler_AppliesResponseFormatMiddleware(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -179,6 +187,7 @@ func TestRestPublicHandler_AppliesResponseFormatMiddleware(t *testing.T) {
 			KnQuerySubgraphHandler:         stubQuerySubgraphHandler{},
 			KnSearchHandler:                stubKnSearchHandler{},
 			KnFindSkillsHandler:            stubKnFindSkillsHandler{},
+			KnQueryToolsHandler:            stubKnQueryToolsHandler{},
 			Logger:                         logger.DefaultLogger(),
 		}
 		handler.RegisterRouter(routerGroup)

@@ -137,7 +137,7 @@ func TestEmbeddedContextLoaderToolsetContract(t *testing.T) {
 		toolboxConfig, ok := configs[0].(map[string]interface{})
 		So(ok, ShouldBeTrue)
 		So(toolboxConfig["box_name"], ShouldEqual, "contextloader工具集")
-		So(toolboxConfig["box_desc"], ShouldEqual, "ContextLoader 标准内置工具集；契约版本: 0.8.0")
+		So(toolboxConfig["box_desc"], ShouldEqual, "ContextLoader 标准内置工具集；契约版本: 0.9.0")
 
 		tools, ok := toolboxConfig["tools"].([]interface{})
 		So(ok, ShouldBeTrue)

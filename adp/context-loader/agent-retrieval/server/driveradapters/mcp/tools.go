@@ -15,8 +15,10 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/common"
+	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/rest"
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/interfaces"
 	logicsKqs "github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/logics/knquerysubgraph"
+	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/logics/knresources"
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/logics/knrunsql"
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/logics/knsearch"
 )
@@ -195,10 +197,6 @@ func handleGetActionInfo(service interfaces.IKnActionRecallService) func(ctx con
 		if !ok {
 			return mcp.NewToolResultError("authentication required"), nil
 		}
-		format, err := GetResponseFormatFromRequest(req)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
 
 		actionReq := &interfaces.KnActionRecallRequest{}
 		if err := bindArguments(req, actionReq); err != nil {
@@ -218,7 +216,8 @@ func handleGetActionInfo(service interfaces.IKnActionRecallService) func(ctx con
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-		result, err := BuildMCPToolResult(resp, format)
+		// get_action_info 始终返回 JSON：行动工具定义需机器可消费，忽略 response_format（TOON 会破坏结构）。
+		result, err := BuildMCPToolResult(resp, rest.FormatJSON)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
@@ -270,6 +269,60 @@ func handleRunSQL(svc knrunsql.KnRunSQLService) func(ctx context.Context, req mc
 		}
 
 		resp, err := svc.RunSQL(ctx, sqlReq)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		result, err := BuildMCPToolResult(resp, format)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return result, nil
+	}
+}
+
+// handleListResources handles list_resources tool calls.
+// 数据层「资源直查」入口（脱离本体）：列出账户有权查看的数据资源，配合 describe_resource + run_sql。
+func handleListResources(svc knresources.KnResourcesService) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		format, err := GetResponseFormatFromRequest(req)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		listReq := &knresources.ListResourcesReq{}
+		if err := bindArguments(req, listReq); err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		resp, err := svc.ListResources(ctx, listReq)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		result, err := BuildMCPToolResult(resp, format)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return result, nil
+	}
+}
+
+// handleDescribeResource handles describe_resource tool calls.
+// 取单个资源的物理 schema（列名 + 连接器类型），供写 run_sql 用。
+func handleDescribeResource(svc knresources.KnResourcesService) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		format, err := GetResponseFormatFromRequest(req)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		resourceID := getStringArg(req, "resource_id", "")
+		if resourceID == "" {
+			return mcp.NewToolResultError("resource_id is required"), nil
+		}
+
+		resp, err := svc.DescribeResource(ctx, resourceID)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
