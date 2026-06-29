@@ -29,7 +29,7 @@ BKN Foundry 为**纯后台**平台，请通过 CLI、各语言 SDK 或 HTTP API 
 | 📚 [Context Loader](manual/context-loader.md) | 面向智能体的上下文组装 |
 | 🛠️ [Execution Factory](manual/execution-factory.md) | 工具、算子与技能 |
 | 🔭 [Trace AI](manual/trace-ai.md) | 链路追踪、指标与证据链式可观测 |
-| 🔐 [Info Security Fabric](manual/isf.md) | 身份、权限、策略与审计（启用时） |
+| 🔐 [BKN Safe](manual/bkn-safe.md) | 身份、权限、策略与审计（启用时） |
 | 🛡️ [平台管理](install.md#-完整安装后的管理员命令openbkn-admin) | `openbkn admin` — 用户/组织/角色/模型/审计（完整安装后） |
 
 ---

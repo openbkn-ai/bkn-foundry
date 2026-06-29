@@ -2,11 +2,11 @@
 
 This page covers **prerequisites**, **install steps**, and **post-install checks** for BKN Foundry.
 
-> **Platform:** **Linux** is the recommended install target for full stacks (`preflight.sh`, k3s/kubeadm, data services). **macOS** is supported only for **local dev validation** with Docker + **kind** — see [`deploy/dev/README.md`](../../deploy/dev/README.md) ([`README.zh.md`](../../deploy/dev/README.zh.md) in Chinese) and `deploy/dev/mac.sh` (no `preflight.sh` / production parity on the Mac host). Typical flow: start **Docker Desktop** (or any engine that exposes the Docker API), **`bash ./dev/mac.sh cluster up`**, then **`bash ./dev/mac.sh kweaver-core install`** — `install_core` runs **`ensure_data_services`** first (same Helm bundle as `data-services install`) unless **`KWEAVER_SKIP_DATA_SERVICES_BUNDLE=true`**.
+> **Platform:** **Linux** is the recommended install target for full stacks (`preflight.sh`, k3s/kubeadm, data services). **macOS** is supported only for **local dev validation** with Docker + **kind** — see [`deploy/dev/README.md`](../../deploy/dev/README.md) ([`README.zh.md`](../../deploy/dev/README.zh.md) in Chinese) and `deploy/dev/mac.sh` (no `preflight.sh` / production parity on the Mac host). Typical flow: start **Docker Desktop** (or any engine that exposes the Docker API), **`bash ./dev/mac.sh cluster up`**, then **`bash ./dev/mac.sh bkn-foundry install`** — `install_core` runs **`ensure_data_services`** first (same Helm bundle as `data-services install`) unless **`KWEAVER_SKIP_DATA_SERVICES_BUNDLE=true`**.
 
 > Use the `deploy.sh` script under the `deploy/` directory from your product bundle or build tree.
 
-> **`deploy.sh` global flags** (`--distro=k3s|k8s`, `-y`, `--force-upgrade`, `--config=…`, …) are parsed only when they appear **before** the module, e.g. `bash ./deploy.sh --distro=k8s kweaver-core install --minimum`. A trailing `... install --minimum --distro=k8s` is **not** applied as distro. Use `export KUBE_DISTRO=k8s` for the same effect, or move `--distro` forward (same rule as `-y` / `--force-upgrade`).
+> **`deploy.sh` global flags** (`--distro=k3s|k8s`, `-y`, `--force-upgrade`, `--config=…`, …) are parsed only when they appear **before** the module, e.g. `bash ./deploy.sh --distro=k8s bkn-foundry install --minimum`. A trailing `... install --minimum --distro=k8s` is **not** applied as distro. Use `export KUBE_DISTRO=k8s` for the same effect, or move `--distro` forward (same rule as `-y` / `--force-upgrade`).
 
 ---
 
@@ -139,7 +139,7 @@ Common environment variables:
 
 Exit codes: **0** all OK · **1** any FAIL present · **2** only WARN (no FAIL).
 
-> Run preflight **before** every `deploy.sh kweaver-core install` on a new host. Re-running it is safe — already-satisfied checks are reported as `OK` and skipped. If you intentionally run on a low-spec lab box (memory / disk below recommendation, no Docker CE repo, etc.), use `--lenient` to keep the report informative without blocking install.
+> Run preflight **before** every `deploy.sh bkn-foundry install` on a new host. Re-running it is safe — already-satisfied checks are reported as `OK` and skipped. If you intentionally run on a low-spec lab box (memory / disk below recommendation, no Docker CE repo, etc.), use `--lenient` to keep the report informative without blocking install.
 
 ### Reading the report: `Summary` and `Conclusion`
 
@@ -170,8 +170,8 @@ After `--check-only` or `--fix`, preflight prints a **Summary** (counts per stat
     sudo bash ./preflight.sh --fix          # … (per-item y/N unless -y)
     sudo bash ./preflight.sh --check-only   # re-check until blocking [FAIL] are gone (or use --lenient)
   Only then install:
-    sudo bash ./deploy.sh kweaver-core install --minimum
-    sudo bash ./deploy.sh kweaver-core install
+    sudo bash ./deploy.sh bkn-foundry install --minimum
+    sudo bash ./deploy.sh bkn-foundry install
   Finally: sudo bash ./onboard.sh from deploy/ (Linux; macOS dev uses plain bash. Node 22+ + openbkn on PATH; sudo bash ./preflight.sh --fix helps …)
 ```
 
@@ -192,13 +192,13 @@ For more troubleshooting and manual fallbacks, see **`deploy/README.md` → Trou
 Skips some optional modules (e.g. auth / business domain) for a lighter footprint:
 
 ```bash
-./deploy.sh kweaver-core install --minimum
+./deploy.sh bkn-foundry install --minimum
 ```
 
 Equivalent flags:
 
 ```bash
-./deploy.sh kweaver-core install --set auth.enabled=false --set businessDomain.enabled=false
+./deploy.sh bkn-foundry install --set auth.enabled=false --set businessDomain.enabled=false
 ```
 
 ### Full install
@@ -206,7 +206,7 @@ Equivalent flags:
 Includes auth and business-domain related components:
 
 ```bash
-./deploy.sh kweaver-core install
+./deploy.sh bkn-foundry install
 ```
 
 > The script may prompt for **access address** and detect **API server address** automatically.
@@ -214,7 +214,7 @@ Includes auth and business-domain related components:
 ### Non-interactive install
 
 ```bash
-./deploy.sh kweaver-core install \
+./deploy.sh bkn-foundry install \
   --access_address=<your-ip-or-domain> \
   --api_server_address=<nic-ip-for-k8s-api>
 ```
@@ -227,14 +227,14 @@ Includes auth and business-domain related components:
 ```bash
 export INGRESS_NGINX_HTTP_PORT=8080
 export INGRESS_NGINX_HTTPS_PORT=8443
-./deploy.sh kweaver-core install
+./deploy.sh bkn-foundry install
 ```
 
 ### Useful commands
 
 ```bash
-./deploy.sh kweaver-core status
-./deploy.sh kweaver-core uninstall
+./deploy.sh bkn-foundry status
+./deploy.sh bkn-foundry uninstall
 ./deploy.sh --help
 ```
 
@@ -250,7 +250,7 @@ export INGRESS_NGINX_HTTPS_PORT=8443
 
 ## Post-install: `onboard.sh`
 
-After `deploy.sh kweaver-core install`, use **`deploy/onboard.sh`** on a machine with **Node 22+**, **`kubectl`** (cluster access), and **`openbkn`** (`npm i -g @openbkn/bkn-sdk`). Run from the `deploy/` directory **with `sudo` on Linux** (matches `sudo deploy.sh`):
+After `deploy.sh bkn-foundry install`, use **`deploy/onboard.sh`** on a machine with **Node 22+**, **`kubectl`** (cluster access), and **`openbkn`** (`npm i -g @openbkn/bkn-sdk`). Run from the `deploy/` directory **with `sudo` on Linux** (matches `sudo deploy.sh`):
 
 ```bash
 cd deploy
@@ -264,12 +264,12 @@ Typical flags:
 | Flag | Meaning |
 | --- | --- |
 | *(none)* | Interactive: walks through Node / `openbkn` install (if missing), auth (single CLI — admin is built in via `openbkn admin`), then model / BKN / Context Loader prompts |
-| `-y` / `--yes` | Auto-accept all prompts: bootstrap, ISF HTTP auth defaults (`admin` / `eisoo.com`), `test` user creation + role sync, `openbkn` relogin as `test`, Context Loader import. Skips interactive **model registration**; use `--config=models.yaml` for non-interactive model registration. |
+| `-y` / `--yes` | Auto-accept all prompts: bootstrap, full-auth HTTP defaults (`admin` / `eisoo.com`), `test` user creation + role sync, `openbkn` relogin as `test`, Context Loader import. Skips interactive **model registration**; use `--config=models.yaml` for non-interactive model registration. |
 | `--config=models.yaml` | Non-interactive: register models (and optional BKN) via YAML; see `deploy/conf/models.yaml.example` |
 | `--enable-bkn-search` | BKN ConfigMap patch only (after probe) |
 | `--skip-context-loader` | Skip ADP Context Loader toolbox import |
 
-**Full ISF install (auth + business domain):** onboarding treats the cluster as "ISF" when related Helm releases or namespaces exist. **`onboard.sh` then performs the following 5 steps automatically** (you do **not** need to run them by hand — they are listed here so you know what is happening, and what to fall back to if a step fails):
+**Full install (auth + business domain):** onboarding treats the cluster as a full-auth install when related Helm releases or namespaces exist. **`onboard.sh` then performs the following 5 steps automatically** (you do **not** need to run them by hand — they are listed here so you know what is happening, and what to fall back to if a step fails):
 
 1. **`openbkn auth login`** (`onboard_ensure_kweaver_auth`) — session saved under `~/.bkn`. HTTP defaults to `admin` / `eisoo.com` (or browser OAuth on a TTY); under `-y` HTTP defaults are used automatically.
 2. **`openbkn` on `PATH`** (`onboard_ensure_kweaver_admin_for_isf`) — runs `npm i -g @openbkn/bkn-sdk` if missing (interactive prompt, or auto under `-y`). Admin is built in via the `openbkn admin` subcommand — no separate package.
@@ -279,7 +279,7 @@ Typical flags:
 
 If any step fails, the script exits non-zero with a clear message; re-run `sudo bash deploy/onboard.sh` (Linux) / `bash deploy/onboard.sh` (macOS dev) after fixing the cause — earlier successful steps are detected and skipped (idempotent re-runs).
 
-**Minimum install** (`--minimum`): only `openbkn auth` (often `--no-auth`); the ISF-only steps 2–4 above are no-ops (admin tasks need the auth-enabled backend), and Context Loader (step 5) only runs if the operator deployment is present.
+**Minimum install** (`--minimum`): only `openbkn auth` (often `--no-auth`); the full-auth-only steps 2–4 above are no-ops (admin tasks need the auth-enabled backend), and Context Loader (step 5) only runs if the operator deployment is present.
 
 At the end, an **English completion report** is printed unless `ONBOARD_NO_COMPLETION_REPORT=1`.
 
@@ -296,8 +296,8 @@ flowchart TB
   mode -->|default: interactive; optional -y| p3[onboard_probe] --> ui["Namespace + LLM/embedding (skip-if-already-exists) + BKN patch (only when default actually changes)"] --> r2[Completion report] --> e3([exit 0])
 ```
 
-- **`onboard_probe` runs in all three modes** before BKN-only, YAML, or interactive model registration. On **ISF**, it includes **admin HTTP auth (same `openbkn` defaults)**, **user `test`**, **`openbkn` relogin as `test`**, then **Context Loader** when applicable.
-- **`-y`** does not set `--config`; it mainly auto-accepts **Node / npm -g** bootstrap and **ISF** `openbkn` **HTTP** auth defaults where applicable. Under `-y` the interactive model section is skipped (use `--config=models.yaml` to register non-interactively); the completion report still shows what is already on the platform.
+- **`onboard_probe` runs in all three modes** before BKN-only, YAML, or interactive model registration. On a **full-auth install**, it includes **admin HTTP auth (same `openbkn` defaults)**, **user `test`**, **`openbkn` relogin as `test`**, then **Context Loader** when applicable.
+- **`-y`** does not set `--config`; it mainly auto-accepts **Node / npm -g** bootstrap and **full-auth** `openbkn` **HTTP** auth defaults where applicable. Under `-y` the interactive model section is skipped (use `--config=models.yaml` to register non-interactively); the completion report still shows what is already on the platform.
 - **Re-runs are safe.** Interactive model registration **detects what is already there** and only asks to add more:
   - **LLM** — if any LLM is already registered, the script asks `Register another LLM now? [y/N]` (default **No**).
   - **Embedding / small model** — same pattern. If you do register a new embedding, the script then asks whether to make it the **BKN default**:
@@ -306,15 +306,15 @@ flowchart TB
   - The **BKN ConfigMap patch + `bkn-backend` / `ontology-query` rollout restart** runs **only when you actually change the default**. If you keep the existing default, the ConfigMap is left alone and nothing is restarted.
   - YAML mode (`--config=models.yaml`) follows the same idea: per-model registration is skipped when the model already exists, and the BKN patch+restart is skipped when both ConfigMaps already declare the same `defaultSmallModelEnabled=true` / `defaultSmallModelName`.
 
-**2) What `onboard_probe` does (linear order; non-ISF steps are no-ops or skip quickly)**
+**2) What `onboard_probe` does (linear order; no-auth steps are no-ops or skip quickly)**
 
 ```mermaid
 flowchart TB
   subgraph probe["onboard_probe"]
     A["onboard_ensure_kweaver_auth\n(openbkn: HTTP default admin / eisoo or browser)"] --> B["kubectl: ns or target namespace"]
     B --> C["onboard_prepend_npm_global_bin_to_path"]
-    C --> D["onboard_recommend_admin_cli (Helm / ns → ISF?)"]
-    D --> E["onboard_ensure_kweaver_admin_for_isf\n(npm -g openbkn on ISF if needed)"]
+    C --> D["onboard_recommend_admin_cli (Helm / ns → full-auth?)"]
+    D --> E["onboard_ensure_kweaver_admin_for_isf\n(npm -g openbkn on full-auth installs if needed)"]
     E --> F["onboard_ensure_kweaver_admin_auth_for_isf\n(admin auth: same openbkn defaults, or -k browser; -y: auto HTTP)"]
     F --> G1["onboard_offer_isf_test_user\ncreate or sync test + roles"]
     G1 --> G2["onboard_isf_relogin…\nopenbkn auth as test (HTTP)"]
@@ -322,9 +322,9 @@ flowchart TB
   end
 ```
 
-On **minimum (non-ISF)** installs, the ISF-only steps do not require the admin backend and typically skip the **test** / **relogin** / impex gating; Context Loader may still run if the operator deployment exists.
+On **minimum (no-auth)** installs, the full-auth-only steps do not require the admin backend and typically skip the **test** / **relogin** / impex gating; Context Loader may still run if the operator deployment exists.
 
-**3) ISF full install: who talks to whom (user `test` + Context Loader impex)**
+**3) Full-auth install: who talks to whom (user `test` + Context Loader impex)**
 
 ```mermaid
 sequenceDiagram
@@ -342,7 +342,7 @@ sequenceDiagram
   O->>K: openbkn call impex / later openbkn steps
 ```
 
-After **probe**, the default path continues with **Namespace + models + BKN** in this shell: **~/.bkn** should already be **test** on ISF so those calls use the business user.
+After **probe**, the default path continues with **Namespace + models + BKN** in this shell: **~/.bkn** should already be **test** on a full-auth install so those calls use the business user.
 
 The `openbkn` CLI and its `admin` subcommand share **one** login and token store. For impex, **`openbkn` must be signed in as `test`**, not the initial console `admin` session when the API returns 403.
 
@@ -350,14 +350,14 @@ The `openbkn` CLI and its `admin` subcommand share **one** login and token store
 
 ## 🛡️ Administrator commands after a full install (`openbkn admin`)
 
-After a full install (with `auth.enabled=true` and `businessDomain.enabled=true`), platform-level operations — **users, organizations, roles, models, audit** — are managed through the **`openbkn admin`** subcommand of the same `openbkn` CLI. There is **no separate admin package**: admin used to ship as `kweaver-admin`, but it is now merged into [`@openbkn/bkn-sdk`](https://github.com/openbkn-ai/bkn-sdk) and reached via `openbkn admin ...`:
+After a full install (with `auth.enabled=true` and `businessDomain.enabled=true`), platform-level operations — **users, organizations, roles, models, audit** — are managed through the **`openbkn admin`** subcommand of the same `openbkn` CLI. There is **no separate admin package** — admin ships with [`@openbkn/bkn-sdk`](https://github.com/openbkn-ai/bkn-sdk) and is reached via `openbkn admin ...`:
 
 | Command surface | Audience | Scope |
 | --- | --- | --- |
 | `openbkn` (`@openbkn/bkn-sdk`) | End users / Agents | BKN, Action, Skill, query, agent chat |
 | `openbkn admin` (same package) | Platform administrators | Users, organizations, roles, models, audit, raw HTTP |
 
-**When usable:** after a full install (`./deploy.sh kweaver-core install` without `--minimum`). **On a `--minimum` install most `openbkn admin` commands return 401 / 404 — that is expected, the relevant services are not deployed.**
+**When usable:** after a full install (`./deploy.sh bkn-foundry install` without `--minimum`). **On a `--minimum` install most `openbkn admin` commands return 401 / 404 — that is expected, the relevant services are not deployed.**
 
 **Backend services it talks to:** `user-management` / `deploy-manager` / `deploy-auth` / `eacp` / `mf-model-manager` / OAuth2 (Hydra) — exactly the set enabled by a full install.
 
@@ -456,7 +456,7 @@ openbkn admin --json call /api/eacp/v1/... -X POST -d '{"...":"..."}'
 
 ### ⚠️ Things you must know
 
-- **New users created via `user create` always start with the platform default password `123456`** and are forced to change it at first sign-in. This is documented upstream behavior of the ISF user store (`Usrm_AddUser` thrift does not accept a password parameter). Hand the account to the user over a secure channel; for lost-password rotation use `openbkn admin user reset-password`.
+- **New users created via `user create` always start with the platform default password `123456`** and are forced to change it at first sign-in. This is the platform user store default behavior. Hand the account to the user over a secure channel; for lost-password rotation use `openbkn admin user reset-password`.
 - **Separation-of-duties built-in accounts** — `system / admin / security / audit` must not be casually modified; operators should use **individual accounts** rather than the shared `admin` for traceable audit logs.
 - **First-login forced password change (error `401001017`)**: when `openbkn auth login` hits this code, on a TTY the CLI guides you to set a new password and retries the login; in non-TTY contexts pass `--new-password '<new>'` to do it in one shot.
 - **TLS:** `-k` / `--insecure` (or env var `BKN_TLS_INSECURE=1`) is for development / self-signed certs only — never use in production.
@@ -493,7 +493,7 @@ Skill source: [`skills/openbkn/SKILL.md`](https://github.com/openbkn-ai/bkn-sdk/
 
 ## ✅ After install (check cluster and API)
 
-When `deploy.sh kweaver-core install` finishes, confirm the cluster and that you can reach the platform.
+When `deploy.sh bkn-foundry install` finishes, confirm the cluster and that you can reach the platform.
 
 ### Kubernetes
 
@@ -507,7 +507,7 @@ kubectl get pods -A
 ### Deploy script status
 
 ```bash
-./deploy.sh kweaver-core status
+./deploy.sh bkn-foundry status
 ```
 
 ### CLI
@@ -591,7 +591,7 @@ openbkn call '/api/mf-model-manager/v1/small-model/list?page=1&size=50'
 
 ## 🔧 Troubleshooting
 
-For symptom-based recipes (CoreDNS not ready, image pull failures, missing/legacy Kubernetes apt or yum source, `containerd` cannot be installed, strict mode `[FAIL]` items, etc.) see [`deploy/README.md` → Troubleshooting](https://github.com/kweaver-ai/kweaver-core/blob/main/deploy/README.md#-troubleshooting).
+For symptom-based recipes (CoreDNS not ready, image pull failures, missing/legacy Kubernetes apt or yum source, `containerd` cannot be installed, strict mode `[FAIL]` items, etc.) see [`deploy/README.md` → Troubleshooting](../../deploy/README.md#-troubleshooting).
 
 Most install-blocking issues that `preflight.sh` flags as `[FAIL]` can be auto-fixed:
 

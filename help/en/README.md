@@ -29,7 +29,7 @@ Reference manuals by subsystem (living under `./manual/`).
 | [Context Loader](manual/context-loader.md) | Agent context assembly from ontology and data |
 | [Execution Factory](manual/execution-factory.md) | Tools, operators, and skills for agents |
 | [Trace AI](manual/trace-ai.md) | Traces, metrics, and evidence-chain style observability |
-| [Info Security Fabric](manual/isf.md) | Identity, permissions, policies, and audit (when enabled) |
+| [BKN Safe](manual/bkn-safe.md) | Identity, permissions, policies, and audit (when enabled) |
 | [Platform admin](install.md#-administrator-commands-after-a-full-install-openbkn-admin) | `openbkn admin` — users / orgs / roles / models / audit (after a full install) |
 
 ---

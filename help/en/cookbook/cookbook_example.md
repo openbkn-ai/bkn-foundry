@@ -5,7 +5,7 @@
 > - **Difficulty**: ⭐ Beginner
 > - **Time**: ~ 10 minutes
 > - **Modules touched**: `bkn`, `datasource`
-> - **CLI version**: `kweaver >= 0.6`
+> - **CLI version**: `openbkn >= 0.6`
 
 ## 1. Goal
 
@@ -13,8 +13,8 @@
 
 ## 2. Prerequisites
 
-- Logged in via `kweaver auth login <platform-url>`.
-- Correct business domain: `kweaver config show`; if it's wrong, run `kweaver config set-bd <uuid>`.
+- Logged in via `openbkn auth login <platform-url>`.
+- Correct business domain: `openbkn config show`; if it's wrong, run `openbkn config set-bd <uuid>`.
 - A **datasource** that BKN Foundry can reach (the CSV files are imported into it first as the staging store).
 - Your local CSV files (header on row 1, UTF-8). This recipe uses two files — `materials.csv` and `inventory.csv`, both with `material_code` and `material_name` columns.
 
@@ -25,13 +25,13 @@
 List existing datasources first:
 
 ```bash
-kweaver ds list
+openbkn ds list
 ```
 
 Connect a new one if none fits (MySQL example):
 
 ```bash
-kweaver ds connect mysql db.example.com 3306 erp \
+openbkn ds connect mysql db.example.com 3306 erp \
   --account root --password pass123
 # → returns ds_id
 ```
@@ -41,7 +41,7 @@ kweaver ds connect mysql db.example.com 3306 erp \
 ### 3.2 One-shot: build a KN from CSV
 
 ```bash
-kweaver bkn create-from-csv <ds_id> \
+openbkn bkn create-from-csv <ds_id> \
   --files "materials.csv,inventory.csv" \
   --name "supply-kn" \
   --table-prefix sc_
@@ -64,8 +64,8 @@ Quick parameter reference:
 <summary>Equivalent two-step path (use this when you want to override primary/display keys)</summary>
 
 ```bash
-kweaver ds import-csv <ds_id> --files "*.csv" --table-prefix sc_
-kweaver bkn create-from-ds <ds_id> --name "supply-kn" --build
+openbkn ds import-csv <ds_id> --files "*.csv" --table-prefix sc_
+openbkn bkn create-from-ds <ds_id> --name "supply-kn" --build
 ```
 
 In the step-by-step path you can pass `--primary-key` / `--display-key` to `bkn object-type create` to pin the keys explicitly.
@@ -76,13 +76,13 @@ In the step-by-step path you can pass `--primary-key` / `--display-key` to `bkn 
 
 ```bash
 # List OTs — each CSV should yield one
-kweaver bkn object-type list <kn_id>
+openbkn bkn object-type list <kn_id>
 
 # Sample query (always cap with limit to avoid wide-row JSON truncation)
-kweaver bkn object-type query <kn_id> <ot_id> '{"limit":5}'
+openbkn bkn object-type query <kn_id> <ot_id> '{"limit":5}'
 
 # Semantic search
-kweaver bkn search <kn_id> "material"
+openbkn bkn search <kn_id> "material"
 ```
 
 ## 4. Expected output
@@ -113,11 +113,11 @@ A non-empty `concepts` list from `bkn search` indicates the retrieval pipeline i
 
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
-| `401 Unauthorized`, or response body contains `oauth info is not active` | Token expired | `kweaver auth login <platform-url>` |
-| `kweaver bkn object-type list <kn_id>` prints `[]` | Wrong path or glob matched nothing | Check `--files`; use absolute paths if needed |
-| `object-type query` response shows `total = 0` | Build incomplete or mapping mismatch | `kweaver bkn stats <kn_id>` to check `doc_count`; rebuild with `kweaver bkn build <kn_id> --wait --timeout 600` |
-| `ds import-csv` reports `table already exists` | Staging table already there | First batch with `--recreate`: `kweaver ds import-csv <ds_id> --files "*.csv" --recreate` |
-| Auto-detected primary key is not your business key | Heuristic could not infer it | Use the step-by-step path and pass `kweaver bkn object-type create ... --primary-key ... --display-key ...` |
+| `401 Unauthorized`, or response body contains `oauth info is not active` | Token expired | `openbkn auth login <platform-url>` |
+| `openbkn bkn object-type list <kn_id>` prints `[]` | Wrong path or glob matched nothing | Check `--files`; use absolute paths if needed |
+| `object-type query` response shows `total = 0` | Build incomplete or mapping mismatch | `openbkn bkn stats <kn_id>` to check `doc_count`; rebuild with `openbkn bkn build <kn_id> --wait --timeout 600` |
+| `ds import-csv` reports `table already exists` | Staging table already there | First batch with `--recreate`: `openbkn ds import-csv <ds_id> --files "*.csv" --recreate` |
+| Auto-detected primary key is not your business key | Heuristic could not infer it | Use the step-by-step path and pass `openbkn bkn object-type create ... --primary-key ... --display-key ...` |
 | `bkn search` returns `HTTP 500` | The view does not support full-text search | Switch the query `condition` from `match` to `like` |
 
 ## 6. See also

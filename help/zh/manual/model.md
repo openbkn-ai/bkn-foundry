@@ -259,7 +259,7 @@ openbkn call /api/mf-model-manager/v1/small-model/delete -d '{
 
 除在 **模型工厂** 注册 Embedding 外，还要让 **bkn-backend** 与 **ontology-query** 使用同一个默认 Embedding 名（即列表里的 **`model_name`**）。
 
-**1.** 用下面命令查出 **`model_name`**，然后 `kubectl edit configmap bkn-backend-cm`、`ontology-query-cm`（命名空间以集群为准，常见 `kweaver`）。在 ConfigMap 里 `data` 下那段 YAML 的 **`server:`** 中设置：
+**1.** 用下面命令查出 **`model_name`**，然后 `kubectl edit configmap bkn-backend-cm`、`ontology-query-cm`（命名空间默认 `openbkn`（以集群为准））。在 ConfigMap 里 `data` 下那段 YAML 的 **`server:`** 中设置：
 
 ```bash
 openbkn call '/api/mf-model-manager/v1/small-model/list?page=1&size=50'
@@ -276,8 +276,8 @@ server:
 **2.** 保存后重启并验证；若曾用错误模型建过索引，可再执行一次 `build`。
 
 ```bash
-kubectl rollout restart deployment/bkn-backend -n kweaver
-kubectl rollout restart deployment/ontology-query -n kweaver
+kubectl rollout restart deployment/bkn-backend -n openbkn
+kubectl rollout restart deployment/ontology-query -n openbkn
 openbkn bkn search <kn_id> "测试搜索"
 # 可选：openbkn bkn build <kn_id> --wait --timeout 600
 ```
@@ -368,10 +368,10 @@ openbkn call /api/mf-model-manager/v1/llm/test -d '{"model_id": "<llm_id>"}'
 openbkn call /api/mf-model-manager/v1/small-model/test -d '{"model_id": "<embedding_id>"}'
 
 # 5. 启用 BKN 语义搜索（kubectl）：见上文「启用 BKN 语义搜索」步骤 1、2
-kubectl edit configmap bkn-backend-cm -n kweaver
-kubectl edit configmap ontology-query-cm -n kweaver
-kubectl rollout restart deployment/bkn-backend -n kweaver
-kubectl rollout restart deployment/ontology-query -n kweaver
+kubectl edit configmap bkn-backend-cm -n openbkn
+kubectl edit configmap ontology-query-cm -n openbkn
+kubectl rollout restart deployment/bkn-backend -n openbkn
+kubectl rollout restart deployment/ontology-query -n openbkn
 openbkn bkn build <kn_id> --wait --timeout 600
 
 # 6. 验证语义搜索
