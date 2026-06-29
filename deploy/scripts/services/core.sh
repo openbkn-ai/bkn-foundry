@@ -9,6 +9,23 @@ CORE_NAMESPACE_FROM_CLI="${CORE_NAMESPACE_FROM_CLI:-false}"
 CORE_LOCAL_CHARTS_DIR="${CORE_LOCAL_CHARTS_DIR:-}"
 CORE_VERSION_MANIFEST_FILE="${CORE_VERSION_MANIFEST_FILE:-}"
 
+# --registry=<swr|ghcr|FULL>: alias for image.registry. Empty means "not set on
+# CLI"; the swr default is applied in _core_apply_default_set_values only when the
+# user did not pass --registry nor an explicit --set image.registry=...
+CORE_IMAGE_REGISTRY="${CORE_IMAGE_REGISTRY:-}"
+
+# --dockerhub-mirror=<auto|host|off>: containerd registry mirror for docker.io
+# (otel/hydra/postgres/minio) on CN/restricted nets. "off"/empty disables.
+# Default "auto" probes a candidate list and picks the first mirror that serves
+# this stack's docker.io images over the registry-mirror (?ns=docker.io) protocol
+# (sentinel: oryd/hydra; docker.m.daocloud.io 403s namespaced repos there, so a
+# fixed default isn't safe). Pass a host to pin one; "off" to disable.
+CORE_DOCKERHUB_MIRROR="${CORE_DOCKERHUB_MIRROR:-auto}"
+
+# --latest: when set and no --version_file is given, auto-generate a latest manifest
+# via scripts/gen-dev-manifest.sh --latest and use it as the version_file.
+CORE_USE_LATEST_MANIFEST="${CORE_USE_LATEST_MANIFEST:-false}"
+
 # Global --set values array
 declare -a CORE_SET_VALUES=()
 
@@ -67,6 +84,26 @@ parse_core_args() {
             --version_file)
                 CORE_VERSION_MANIFEST_FILE="$2"
                 shift 2
+                ;;
+            --registry=*)
+                CORE_IMAGE_REGISTRY="${1#*=}"
+                shift
+                ;;
+            --registry)
+                CORE_IMAGE_REGISTRY="$2"
+                shift 2
+                ;;
+            --dockerhub-mirror=*)
+                CORE_DOCKERHUB_MIRROR="${1#*=}"
+                shift
+                ;;
+            --dockerhub-mirror)
+                CORE_DOCKERHUB_MIRROR="$2"
+                shift 2
+                ;;
+            --latest)
+                CORE_USE_LATEST_MANIFEST="true"
+                shift
                 ;;
             --force-refresh)
                 FORCE_REFRESH_CHARTS="true"
@@ -394,9 +431,54 @@ _install_core_release_repo() {
     fi
 }
 
+# Resolve a --registry shorthand to a full registry/namespace string.
+#   swr  -> swr.cn-east-3.myhuaweicloud.com/openbkn-ai
+#   ghcr -> ghcr.io/openbkn-ai
+#   *    -> used verbatim (treated as a full registry/namespace)
+_core_resolve_registry() {
+    local raw="$1"
+    case "${raw}" in
+        swr)  echo "swr.cn-east-3.myhuaweicloud.com/openbkn-ai" ;;
+        ghcr) echo "ghcr.io/openbkn-ai" ;;
+        *)    echo "${raw}" ;;
+    esac
+}
+
+# True if the active CONFIG_YAML_PATH sets image.registry (so we must not
+# clobber it with the swr default — e.g. mac-config.yaml pins its own registry).
+_core_config_sets_image_registry() {
+    [[ -n "${CONFIG_YAML_PATH:-}" && -f "${CONFIG_YAML_PATH}" ]] || return 1
+    awk '
+        /^image:[[:space:]]*$/ {inimg=1; next}
+        /^[^[:space:]#]/        {inimg=0}
+        inimg && /^[[:space:]]+registry:[[:space:]]*[^[:space:]#]/ {found=1; exit}
+        END {exit found?0:1}
+    ' "${CONFIG_YAML_PATH}"
+}
+
 # Inject default --set values for kweaver-core if user did not override them.
 # Currently: businessDomain.enabled defaults to false at install time.
 _core_apply_default_set_values() {
+    # image.registry precedence: explicit --set image.registry=… wins; else an
+    # explicit --registry flag is applied; else if CONFIG_YAML_PATH already sets
+    # image.registry we respect it (don't clobber a config's registry, e.g. the
+    # Mac dev mac-config.yaml); else default to swr.
+    if get_set_value "image.registry" "${CORE_SET_VALUES[@]}" >/dev/null 2>&1; then
+        : # user passed --set image.registry=… explicitly; do not override
+    elif [[ -n "${CORE_IMAGE_REGISTRY}" ]]; then
+        local _reg_resolved
+        _reg_resolved="$(_core_resolve_registry "${CORE_IMAGE_REGISTRY}")"
+        CORE_SET_VALUES+=("image.registry=${_reg_resolved}")
+        log_info "Image registry applied: --set image.registry=${_reg_resolved} (from --registry=${CORE_IMAGE_REGISTRY})"
+    elif _core_config_sets_image_registry; then
+        log_info "Image registry: using image.registry from ${CONFIG_YAML_PATH} (pass --registry=swr|ghcr to override)."
+    else
+        local _reg_resolved
+        _reg_resolved="$(_core_resolve_registry "swr")"
+        CORE_SET_VALUES+=("image.registry=${_reg_resolved}")
+        log_info "Image registry default applied: --set image.registry=${_reg_resolved} (override with --registry=ghcr or --set image.registry=...)."
+    fi
+
     if ! get_set_value "businessDomain.enabled" "${CORE_SET_VALUES[@]}" >/dev/null 2>&1; then
         CORE_SET_VALUES+=("businessDomain.enabled=false")
         log_info "Default applied: --set businessDomain.enabled=false (override with --set businessDomain.enabled=true)"
@@ -433,9 +515,100 @@ _core_apply_default_set_values() {
     fi
 }
 
+# Configure a containerd registry mirror so kubelet pulls docker.io third-party
+# images (otel/hydra/postgres/minio) via the given mirror host. Needed in CN/
+# restricted networks where docker.io is unreachable. Best-effort: never fails the
+# install — logs a warning and returns 0 when it cannot act.
+#   $1 = mirror host (e.g. docker.m.daocloud.io). "off"/empty disables (caller-gated).
+setup_dockerhub_mirror() {
+    local mirror_host="$1"
+    if [[ -z "${mirror_host}" || "${mirror_host}" == "off" ]]; then
+        return 0
+    fi
+
+    # Bail out early (before any network probe) when we cannot act: not root, or
+    # containerd has no certs.d config_path. Keeps Mac/kind & non-root runs fast.
+    if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
+        log_warn "dockerhub-mirror: not root (EUID != 0); skipping containerd mirror setup."
+        return 0
+    fi
+
+    # containerd must be configured with a certs.d config_path for per-host hosts.toml
+    # to take effect. If not present, skip (don't fail) and tell the user.
+    local containerd_config="/etc/containerd/config.toml"
+    local certs_d=""
+    if [[ -f "${containerd_config}" ]]; then
+        certs_d="$(grep -E '^\s*config_path\s*=' "${containerd_config}" 2>/dev/null \
+            | head -1 | sed -E 's/.*=\s*"?([^"]*)"?\s*$/\1/' | tr -d '[:space:]')"
+    fi
+    if [[ -z "${certs_d}" ]]; then
+        log_warn "dockerhub-mirror: containerd config_path (certs.d dir) not found in ${containerd_config}; a certs.d config_path is required for the mirror — skipping (set it and re-run, or pass --dockerhub-mirror=off)."
+        return 0
+    fi
+
+    # --dockerhub-mirror=auto: probe candidate mirrors and pick the first that
+    # serves this stack's docker.io images over the registry-mirror (?ns=docker.io)
+    # protocol. Sentinel = oryd/hydra (some mirrors, e.g. docker.m.daocloud.io,
+    # 403 namespaced repos over that protocol). Override the list via
+    # KWEAVER_DOCKERHUB_MIRROR_CANDIDATES (space-separated).
+    if [[ "${mirror_host}" == "auto" ]]; then
+        local _candidates="${KWEAVER_DOCKERHUB_MIRROR_CANDIDATES:-docker.1panel.live docker.m.daocloud.io docker.1ms.run dockerproxy.net}"
+        local _accept="application/vnd.docker.distribution.manifest.v2+json,application/vnd.oci.image.manifest.v1+json,application/vnd.docker.distribution.manifest.list.v2+json,application/vnd.oci.image.index.v1+json"
+        local _cand _picked="" _code
+        for _cand in ${_candidates}; do
+            _code="$(curl -s -m 8 -o /dev/null -w '%{http_code}' -H "Accept: ${_accept}" \
+                "https://${_cand}/v2/oryd/hydra/manifests/v26.2.0?ns=docker.io" 2>/dev/null)"
+            log_info "dockerhub-mirror=auto: probe ${_cand} -> ${_code}"
+            if [[ "${_code}" == "200" ]]; then _picked="${_cand}"; break; fi
+        done
+        if [[ -z "${_picked}" ]]; then
+            log_warn "dockerhub-mirror=auto: no candidate mirror reachable for docker.io; skipping (pass --dockerhub-mirror=<host>, or =off)."
+            return 0
+        fi
+        mirror_host="${_picked}"
+        log_info "dockerhub-mirror=auto: selected ${mirror_host}"
+    fi
+
+    local hosts_dir="${certs_d}/docker.io"
+    local hosts_file="${hosts_dir}/hosts.toml"
+    mkdir -p "${hosts_dir}"
+    cat > "${hosts_file}" <<EOF
+server = "https://docker.io"
+
+[host."https://${mirror_host}"]
+  capabilities = ["pull", "resolve"]
+EOF
+    log_info "dockerhub-mirror: wrote ${hosts_file} (docker.io -> https://${mirror_host}); hosts.toml is read per-pull, no containerd restart needed."
+}
+
+# When --latest is set and no --version_file was provided, generate a latest
+# manifest via scripts/gen-dev-manifest.sh --latest and use it as the version_file.
+_core_resolve_latest_manifest() {
+    if [[ "${CORE_USE_LATEST_MANIFEST:-false}" != "true" ]]; then
+        return 0
+    fi
+    if [[ -n "${CORE_VERSION_MANIFEST_FILE:-}" ]]; then
+        log_info "--latest ignored: --version_file is set (${CORE_VERSION_MANIFEST_FILE})."
+        return 0
+    fi
+
+    local gen_script="${SCRIPT_DIR}/scripts/gen-dev-manifest.sh"
+    local tmp_manifest
+    tmp_manifest="$(mktemp -t bkn-latest-manifest.XXXXXX.yaml 2>/dev/null || mktemp)"
+    log_info "--latest: generating latest manifest via ${gen_script} -> ${tmp_manifest}"
+    if ! "${gen_script}" --latest --out="${tmp_manifest}"; then
+        log_error "--latest: failed to generate latest manifest via ${gen_script}"
+        return 1
+    fi
+    CORE_VERSION_MANIFEST_FILE="${tmp_manifest}"
+    log_info "--latest: using generated manifest ${CORE_VERSION_MANIFEST_FILE}"
+}
+
 # Install BKN Foundry services via Helm
 install_core() {
     log_info "Installing BKN Foundry services via Helm..."
+    _core_resolve_latest_manifest || return 1
+    setup_dockerhub_mirror "${CORE_DOCKERHUB_MIRROR}"
     _core_require_version_manifest || return 1
     _core_apply_default_set_values
 
