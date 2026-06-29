@@ -4,7 +4,7 @@
       {
         "box_id": "e521d454-4a0b-4dc9-8a28-d0986de1cef9",
         "box_name": "contextloader工具集",
-        "box_desc": "ContextLoader 标准内置工具集；契约版本: 0.8.0",
+        "box_desc": "ContextLoader 标准内置工具集；契约版本: 0.9.0",
         "box_svc_url": "http://agent-retrieval:30779",
         "status": "published",
         "category_type": "data_query",
@@ -3154,6 +3154,302 @@
             "extend_info": null,
             "resource_object": "tool",
             "source_id": "b7c34d4e-b7e7-4e19-b667-1fde349bfcd9",
+            "source_type": "openapi",
+            "script_type": "",
+            "code": "",
+            "dependencies": [],
+            "dependencies_url": ""
+          },
+          {
+            "tool_id": "6717eb6b-d933-4fbb-b680-e53969671cab",
+            "name": "list_resources",
+            "description": "数据层资源直查（脱离本体）：列出当前账户有权查看的数据资源（resource_id、name、type、catalog_id），可按 catalog_id / type 过滤。配合 describe_resource + run_sql。",
+            "status": "enabled",
+            "metadata_type": "openapi",
+            "metadata": {
+              "version": "22e619f1-280c-49f3-b583-30bd7afb7922",
+              "summary": "list_resources",
+              "description": "数据层资源直查（脱离本体）：列出当前账户有权查看的数据资源，可按 catalog_id / type 过滤。资源未建成对象类、或想绕本体直查数据时用。配合 describe_resource + run_sql。",
+              "server_url": "http://agent-retrieval:30779",
+              "path": "/api/agent-retrieval/in/v1/kn/list_resources",
+              "method": "POST",
+              "create_time": 1776920840668983300,
+              "update_time": 1776920840668983300,
+              "create_user": "ede150ba-06f4-11f1-85aa-3a34099a4c4b",
+              "update_user": "ede150ba-06f4-11f1-85aa-3a34099a4c4b",
+              "api_spec": {
+                "parameters": [
+                  {
+                    "name": "x-account-id",
+                    "in": "header",
+                    "description": "账户ID，用于内部服务调用时传递账户信息",
+                    "required": false,
+                    "schema": {
+                      "type": "string"
+                    }
+                  },
+                  {
+                    "name": "x-account-type",
+                    "in": "header",
+                    "description": "账户类型：user(用户), app(应用), anonymous(匿名)",
+                    "required": false,
+                    "schema": {
+                      "enum": [
+                        "user",
+                        "app",
+                        "anonymous"
+                      ],
+                      "type": "string"
+                    }
+                  }
+                ],
+                "request_body": {
+                  "description": "",
+                  "content": {
+                    "application/json": {
+                      "schema": {
+                        "type": "object",
+                        "properties": {
+                          "response_format": {
+                            "type": "string",
+                            "enum": [
+                              "json",
+                              "toon"
+                            ],
+                            "default": "toon",
+                            "description": "文本格式：json 或 toon，默认 toon"
+                          },
+                          "catalog_id": {
+                            "type": "string",
+                            "description": "可选。限定某数据目录（catalog）下的资源。"
+                          },
+                          "type": {
+                            "type": "string",
+                            "description": "可选。按资源类别过滤（table / file / fileset / api / metric / topic / index / logicview / dataset）。"
+                          },
+                          "offset": {
+                            "type": "integer",
+                            "description": "可选。分页偏移，默认 0。"
+                          },
+                          "limit": {
+                            "type": "integer",
+                            "description": "可选。分页大小，默认 20。"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "required": false
+                },
+                "responses": [
+                  {
+                    "status_code": "200",
+                    "description": "ok",
+                    "content": {
+                      "application/json": {
+                        "schema": {
+                          "type": "object",
+                          "properties": {
+                            "entries": {
+                              "type": "array",
+                              "description": "资源列表（仅含当前账户有权查看的资源）",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "resource_id": {
+                                    "type": "string"
+                                  },
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "type": {
+                                    "type": "string"
+                                  },
+                                  "status": {
+                                    "type": "string"
+                                  },
+                                  "catalog_id": {
+                                    "type": "string"
+                                  }
+                                },
+                                "additionalProperties": true
+                              }
+                            },
+                            "total_count": {
+                              "type": "integer",
+                              "description": "符合过滤条件的资源总数"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                ],
+                "components": null,
+                "callbacks": null,
+                "security": null,
+                "tags": null,
+                "external_docs": null
+              }
+            },
+            "use_rule": "",
+            "global_parameters": {
+              "name": "",
+              "description": "",
+              "required": false,
+              "in": "",
+              "type": "",
+              "value": null
+            },
+            "create_time": 1776920840668983300,
+            "update_time": 1776920840668983300,
+            "create_user": "ede150ba-06f4-11f1-85aa-3a34099a4c4b",
+            "update_user": "ede150ba-06f4-11f1-85aa-3a34099a4c4b",
+            "extend_info": null,
+            "resource_object": "tool",
+            "source_id": "22e619f1-280c-49f3-b583-30bd7afb7922",
+            "source_type": "openapi",
+            "script_type": "",
+            "code": "",
+            "dependencies": [],
+            "dependencies_url": ""
+          },
+          {
+            "tool_id": "0c76b2f0-6902-4179-8670-1bd94ef55b58",
+            "name": "describe_resource",
+            "description": "取单个数据资源的物理 schema：connector_type 与列（columns:[{name,type}]）。写 run_sql 前用它拿物理列名。入参 resource_id 取自 list_resources。",
+            "status": "enabled",
+            "metadata_type": "openapi",
+            "metadata": {
+              "version": "f02d1fb4-aa97-4c93-98f0-2b062e437632",
+              "summary": "describe_resource",
+              "description": "取单个数据资源的物理 schema：connector_type 与列（columns:[{name,type}]）。写 run_sql 前用它拿物理列名。入参 resource_id 取自 list_resources。",
+              "server_url": "http://agent-retrieval:30779",
+              "path": "/api/agent-retrieval/in/v1/kn/describe_resource",
+              "method": "POST",
+              "create_time": 1776920840668983300,
+              "update_time": 1776920840668983300,
+              "create_user": "ede150ba-06f4-11f1-85aa-3a34099a4c4b",
+              "update_user": "ede150ba-06f4-11f1-85aa-3a34099a4c4b",
+              "api_spec": {
+                "parameters": [
+                  {
+                    "name": "x-account-id",
+                    "in": "header",
+                    "description": "账户ID，用于内部服务调用时传递账户信息",
+                    "required": false,
+                    "schema": {
+                      "type": "string"
+                    }
+                  },
+                  {
+                    "name": "x-account-type",
+                    "in": "header",
+                    "description": "账户类型：user(用户), app(应用), anonymous(匿名)",
+                    "required": false,
+                    "schema": {
+                      "enum": [
+                        "user",
+                        "app",
+                        "anonymous"
+                      ],
+                      "type": "string"
+                    }
+                  }
+                ],
+                "request_body": {
+                  "description": "",
+                  "content": {
+                    "application/json": {
+                      "schema": {
+                        "type": "object",
+                        "properties": {
+                          "response_format": {
+                            "type": "string",
+                            "enum": [
+                              "json",
+                              "toon"
+                            ],
+                            "default": "toon",
+                            "description": "文本格式：json 或 toon，默认 toon"
+                          },
+                          "resource_id": {
+                            "type": "string",
+                            "description": "资源 ID（取自 list_resources 的 resource_id）。"
+                          }
+                        },
+                        "required": [
+                          "resource_id"
+                        ]
+                      }
+                    }
+                  },
+                  "required": true
+                },
+                "responses": [
+                  {
+                    "status_code": "200",
+                    "description": "ok",
+                    "content": {
+                      "application/json": {
+                        "schema": {
+                          "type": "object",
+                          "properties": {
+                            "resource_id": {
+                              "type": "string"
+                            },
+                            "connector_type": {
+                              "type": "string",
+                              "description": "连接器类型（mysql / mariadb / postgresql）"
+                            },
+                            "columns": {
+                              "type": "array",
+                              "description": "物理列。写 run_sql 时列名用此处的 name。",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "type": {
+                                    "type": "string"
+                                  },
+                                  "description": {
+                                    "type": "string"
+                                  }
+                                },
+                                "additionalProperties": true
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                ],
+                "components": null,
+                "callbacks": null,
+                "security": null,
+                "tags": null,
+                "external_docs": null
+              }
+            },
+            "use_rule": "",
+            "global_parameters": {
+              "name": "",
+              "description": "",
+              "required": false,
+              "in": "",
+              "type": "",
+              "value": null
+            },
+            "create_time": 1776920840668983300,
+            "update_time": 1776920840668983300,
+            "create_user": "ede150ba-06f4-11f1-85aa-3a34099a4c4b",
+            "update_user": "ede150ba-06f4-11f1-85aa-3a34099a4c4b",
+            "extend_info": null,
+            "resource_object": "tool",
+            "source_id": "f02d1fb4-aa97-4c93-98f0-2b062e437632",
             "source_type": "openapi",
             "script_type": "",
             "code": "",

@@ -77,6 +77,8 @@ func (r *restPublicHandler) RegisterRouter(engine *gin.RouterGroup) {
 	engine.POST("/kn/run_sql", r.KnQueryToolsHandler.RunSQL)
 	engine.POST("/kn/list_knowledge_networks", r.KnQueryToolsHandler.ListKnowledgeNetworks)
 	engine.POST("/kn/get_kn_detail", r.KnQueryToolsHandler.GetKnDetail)
+	engine.POST("/kn/list_resources", r.KnQueryToolsHandler.ListResources)
+	engine.POST("/kn/describe_resource", r.KnQueryToolsHandler.DescribeResource)
 
 	// MCP Server (Bearer token auth, supports Cursor/Claude Desktop)
 	// GET /mcp/info 返回自描述文档（工具目录 + 连接方式），其余走标准 MCP Streamable HTTP。

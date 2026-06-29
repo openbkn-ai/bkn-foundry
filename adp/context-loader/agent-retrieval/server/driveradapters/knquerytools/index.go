@@ -5,7 +5,8 @@
 // See the LICENSE file in the project root for details.
 
 // Package knquerytools provides HTTP handlers for the query tools that are also
-// exposed as MCP tools: run_sql, list_knowledge_networks, get_kn_detail.
+// exposed as MCP tools: run_sql, list_knowledge_networks, get_kn_detail,
+// list_resources, describe_resource.
 // These internal REST endpoints back the operator-integration toolbox entries.
 package knquerytools
 
@@ -20,19 +21,24 @@ import (
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/rest"
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/logics/knresources"
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/logics/knrunsql"
 )
 
-// KnQueryToolsHandler 处理 run_sql / list_knowledge_networks / get_kn_detail 的内部 REST 入口。
+// KnQueryToolsHandler 处理 run_sql / list_knowledge_networks / get_kn_detail /
+// list_resources / describe_resource 的内部 REST 入口。
 type KnQueryToolsHandler interface {
 	RunSQL(c *gin.Context)
 	ListKnowledgeNetworks(c *gin.Context)
 	GetKnDetail(c *gin.Context)
+	ListResources(c *gin.Context)
+	DescribeResource(c *gin.Context)
 }
 
 type knQueryToolsHandler struct {
 	logger     interfaces.Logger
 	runSQL     knrunsql.KnRunSQLService
+	resources  knresources.KnResourcesService
 	bknBackend interfaces.BknBackendAccess
 }
 
@@ -48,6 +54,7 @@ func NewKnQueryToolsHandler() KnQueryToolsHandler {
 		handler = &knQueryToolsHandler{
 			logger:     conf.GetLogger(),
 			runSQL:     knrunsql.NewKnRunSQLService(),
+			resources:  knresources.NewKnResourcesService(),
 			bknBackend: drivenadapters.NewBknBackendAccess(),
 		}
 	})
@@ -113,6 +120,47 @@ func (h *knQueryToolsHandler) GetKnDetail(c *gin.Context) {
 	resp, err := h.bknBackend.GetKnowledgeNetworkDetail(ctx, req.KnID)
 	if err != nil {
 		h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#GetKnDetail] failed: %v", err)
+		rest.ReplyError(c, err)
+		return
+	}
+	rest.ReplyOK(c, http.StatusOK, resp)
+}
+
+// ListResources 数据层资源直查：列出账户有权查看的数据资源（配合 describe_resource + run_sql）。
+func (h *knQueryToolsHandler) ListResources(c *gin.Context) {
+	ctx := c.Request.Context()
+	req := &knresources.ListResourcesReq{}
+	// body 可选；忽略空 body 的绑定错误。
+	_ = c.ShouldBindJSON(req)
+
+	resp, err := h.resources.ListResources(ctx, req)
+	if err != nil {
+		h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#ListResources] failed: %v", err)
+		rest.ReplyError(c, err)
+		return
+	}
+	rest.ReplyOK(c, http.StatusOK, resp)
+}
+
+// describeResourceReq describe_resource 入参。
+type describeResourceReq struct {
+	ResourceID string `json:"resource_id" form:"resource_id"`
+}
+
+// DescribeResource 取单个资源的物理 schema（列 + 连接器类型），写 run_sql 用。
+func (h *knQueryToolsHandler) DescribeResource(c *gin.Context) {
+	ctx := c.Request.Context()
+	req := &describeResourceReq{}
+	_ = c.ShouldBindQuery(req)
+	_ = c.ShouldBindJSON(req)
+	if req.ResourceID == "" {
+		rest.ReplyError(c, errors.DefaultHTTPError(ctx, http.StatusBadRequest, "resource_id is required"))
+		return
+	}
+
+	resp, err := h.resources.DescribeResource(ctx, req.ResourceID)
+	if err != nil {
+		h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#DescribeResource] failed: %v", err)
 		rest.ReplyError(c, err)
 		return
 	}

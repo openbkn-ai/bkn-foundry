@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"sync"
 
 	"github.com/bytedance/sonic"
@@ -135,4 +136,81 @@ func (v *vegaAccess) GetResourceConnectorType(ctx context.Context, resourceID st
 			fmt.Sprintf("catalog %s not found or has no connector_type", catalogID))
 	}
 	return catEnv.Entries[0].ConnectorType, nil
+}
+
+// vegaResourceFullEnvelope vega resources list/get 的 {"entries":[...],"total_count":N} 信封（带物理列）。
+type vegaResourceFullEnvelope struct {
+	Entries    []interfaces.VegaResource `json:"entries"`
+	TotalCount int64                     `json:"total_count"`
+}
+
+// ListResources 列出可查询的数据资源。授权由 vega 在该 /in 端点按账户 view_detail 强制，
+// 本方法仅透传账户头并组装过滤/分页查询参数。
+func (v *vegaAccess) ListResources(ctx context.Context, req *interfaces.VegaListResourcesReq) (*interfaces.VegaListResourcesResp, error) {
+	header := common.GetHeaderFromCtx(ctx)
+	header[rest.ContentTypeKey] = rest.ContentTypeJSON
+
+	params := url.Values{}
+	if req != nil {
+		if req.CatalogID != "" {
+			params.Set("catalog_id", req.CatalogID)
+		}
+		if req.Category != "" {
+			params.Set("category", req.Category)
+		}
+		if req.Offset > 0 {
+			params.Set("offset", strconv.Itoa(req.Offset))
+		}
+		if req.Limit > 0 {
+			params.Set("limit", strconv.Itoa(req.Limit))
+		}
+	}
+
+	src := fmt.Sprintf("%s/in/v1/resources", v.baseURL)
+	code, body, err := v.httpClient.GetNoUnmarshal(ctx, src, params, header)
+	if err != nil || code < http.StatusOK || code >= http.StatusMultipleChoices {
+		v.logger.WithContext(ctx).Errorf("[VegaAccess] ListResources failed: code=%d, err=%v, body=%s", code, err, string(body))
+		return nil, infraErr.DefaultHTTPError(ctx, code,
+			fmt.Sprintf("vega list resources failed: %s", string(body)))
+	}
+
+	resp := &interfaces.VegaListResourcesResp{}
+	if len(body) == 0 {
+		return resp, nil
+	}
+	var env vegaResourceFullEnvelope
+	if err := sonic.Unmarshal(body, &env); err != nil {
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError,
+			fmt.Sprintf("parse vega resources list response failed: %v", err))
+	}
+	resp.Entries = env.Entries
+	resp.TotalCount = env.TotalCount
+	return resp, nil
+}
+
+// GetResource 取单个资源（含物理列）。vega get-by-id 返回 entries 信封，取首条。
+// 资源不存在或调用账户无权时 vega 返回非 2xx，本方法透传为错误。
+func (v *vegaAccess) GetResource(ctx context.Context, resourceID string) (*interfaces.VegaResource, error) {
+	header := common.GetHeaderFromCtx(ctx)
+	header[rest.ContentTypeKey] = rest.ContentTypeJSON
+
+	src := fmt.Sprintf("%s/in/v1/resources/%s", v.baseURL, url.PathEscape(resourceID))
+	code, body, err := v.httpClient.GetNoUnmarshal(ctx, src, url.Values{}, header)
+	if err != nil || code < http.StatusOK || code >= http.StatusMultipleChoices {
+		v.logger.WithContext(ctx).Errorf("[VegaAccess] GetResource %s failed: code=%d, err=%v, body=%s", resourceID, code, err, string(body))
+		return nil, infraErr.DefaultHTTPError(ctx, code,
+			fmt.Sprintf("vega get resource %s failed: %s", resourceID, string(body)))
+	}
+
+	var env vegaResourceFullEnvelope
+	if err := sonic.Unmarshal(body, &env); err != nil {
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError,
+			fmt.Sprintf("parse vega resource response failed: %v", err))
+	}
+	if len(env.Entries) == 0 {
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusNotFound,
+			fmt.Sprintf("resource %s not found", resourceID))
+	}
+	res := env.Entries[0]
+	return &res, nil
 }

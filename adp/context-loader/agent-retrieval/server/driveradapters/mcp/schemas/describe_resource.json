@@ -1,0 +1,41 @@
+{
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "response_format": {
+        "type": "string",
+        "enum": ["json", "toon"],
+        "default": "toon",
+        "description": "文本格式：json 或 toon，默认 toon"
+      },
+      "resource_id": {
+        "type": "string",
+        "description": "资源 ID（取自 list_resources 的 resource_id）。"
+      }
+    },
+    "required": ["resource_id"]
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "resource_id": { "type": "string" },
+      "connector_type": {
+        "type": "string",
+        "description": "连接器类型（mysql / mariadb / postgresql），写 run_sql 时可作 resource_type，一般无需手填（run_sql 会自动解析）。"
+      },
+      "columns": {
+        "type": "array",
+        "description": "物理列。写 run_sql 时列名用此处的 name。",
+        "items": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string", "description": "物理列名" },
+            "type": { "type": "string", "description": "列数据类型" },
+            "description": { "type": "string", "description": "列说明（可空）" }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  }
+}

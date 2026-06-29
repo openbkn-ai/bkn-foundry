@@ -77,6 +77,8 @@ func (r *restPrivateHandler) RegisterRouter(engine *gin.RouterGroup) {
 	engine.POST("/kn/run_sql", r.KnQueryToolsHandler.RunSQL)
 	engine.POST("/kn/list_knowledge_networks", r.KnQueryToolsHandler.ListKnowledgeNetworks)
 	engine.POST("/kn/get_kn_detail", r.KnQueryToolsHandler.GetKnDetail)
+	engine.POST("/kn/list_resources", r.KnQueryToolsHandler.ListResources)
+	engine.POST("/kn/describe_resource", r.KnQueryToolsHandler.DescribeResource)
 
 	// MCP Proxy
 	engine.POST("/mcp/proxy/:mcp_id/tools/:tool_name/call", r.MCPProxyHandler.CallMCPTool)

@@ -33,6 +33,14 @@
   },
   "run_sql": {
     "name": "run_sql",
-    "description": "对知识网络挂载的数据资源执行只读 SQL（Trino 方言）。表名用占位符 {{.resource_id}} 引用（resource_id 取自对象类的 data_source.id，可由 search_schema 获得）；vega 会解析成真实表并限量。仅允许 SELECT/WITH，禁止写入/DDL；单次查询的资源需同属一个数据目录（不支持跨目录 join）。"
+    "description": "对知识网络挂载的数据资源执行只读 SQL（Trino 方言）。表名用占位符 {{.resource_id}} 引用；vega 会解析成真实表并限量。仅允许 SELECT/WITH，禁止写入/DDL；单次查询的资源需同属一个数据目录（不支持跨目录 join）。两种拿 resource_id + 物理列的方式：本体路 search_schema（对象类 data_source.id + data_property.column），数据层路 list_resources → describe_resource（直查裸资源，脱离本体）。"
+  },
+  "list_resources": {
+    "name": "list_resources",
+    "description": "数据层资源直查（脱离本体）：列出当前账户有权查看的数据资源（resource_id、name、type、catalog_id），可按 catalog_id / type 过滤。资源未建成对象类、或想绕本体直查数据时用。配合 describe_resource + run_sql。"
+  },
+  "describe_resource": {
+    "name": "describe_resource",
+    "description": "取单个数据资源的物理 schema：connector_type 与列（columns:[{name,type}]）。写 run_sql 前用它拿物理列名。入参 resource_id 取自 list_resources。"
   }
 }

@@ -32,6 +32,7 @@ func TestRestPublicHandler_RegistersSearchSchemaRoute(t *testing.T) {
 			KnQuerySubgraphHandler:         stubQuerySubgraphHandler{},
 			KnSearchHandler:                stubKnSearchHandler{},
 			KnFindSkillsHandler:            stubKnFindSkillsHandler{},
+			KnQueryToolsHandler:            stubKnQueryToolsHandler{},
 			Logger:                         logger.DefaultLogger(),
 		}
 		handler.RegisterRouter(routerGroup)

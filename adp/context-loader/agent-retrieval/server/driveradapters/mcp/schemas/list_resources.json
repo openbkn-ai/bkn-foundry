@@ -1,0 +1,50 @@
+{
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "response_format": {
+        "type": "string",
+        "enum": ["json", "toon"],
+        "default": "toon",
+        "description": "文本格式：json 或 toon，默认 toon"
+      },
+      "catalog_id": {
+        "type": "string",
+        "description": "可选。限定某数据目录（catalog）下的资源。"
+      },
+      "type": {
+        "type": "string",
+        "description": "可选。按资源类别过滤（table / file / fileset / api / metric / topic / index / logicview / dataset）。"
+      },
+      "offset": {
+        "type": "integer",
+        "description": "可选。分页偏移，默认 0。"
+      },
+      "limit": {
+        "type": "integer",
+        "description": "可选。分页大小，默认 20。"
+      }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "entries": {
+        "type": "array",
+        "description": "资源列表（仅含当前账户有权查看的资源）",
+        "items": {
+          "type": "object",
+          "properties": {
+            "resource_id": { "type": "string", "description": "资源 ID，写 run_sql 时用作 {{.<resource_id>}} 占位符" },
+            "name": { "type": "string", "description": "资源名" },
+            "type": { "type": "string", "description": "资源类别（table / file / ...）" },
+            "status": { "type": "string", "description": "状态（active / stale / disabled / deprecated）" },
+            "catalog_id": { "type": "string", "description": "所属数据目录 ID" }
+          },
+          "additionalProperties": true
+        }
+      },
+      "total_count": { "type": "integer", "description": "符合过滤条件的资源总数" }
+    }
+  }
+}
