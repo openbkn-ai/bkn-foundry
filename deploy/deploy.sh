@@ -125,7 +125,7 @@ usage() {
     echo "                                openbkn-ai registries; anything else is used verbatim. Default: swr"
     echo "                                (an explicit --set image.registry=... always wins)."
     echo "  --dockerhub-mirror=<host|off> Containerd docker.io mirror for third-party images (otel/hydra/postgres/minio)"
-    echo "                                on CN/restricted nets. Default: docker.m.daocloud.io. Use 'off' to disable."
+    echo "                                on CN/restricted nets. Default: docker.1panel.live. Use 'off' to disable."
     echo "                                Requires root + containerd certs.d config_path; otherwise warns and skips."
     echo "  --latest                      bkn-foundry install: auto-generate a latest release manifest"
     echo "                                (scripts/gen-dev-manifest.sh --latest) when no --version_file is given."

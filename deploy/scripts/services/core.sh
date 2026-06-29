@@ -15,9 +15,11 @@ CORE_VERSION_MANIFEST_FILE="${CORE_VERSION_MANIFEST_FILE:-}"
 CORE_IMAGE_REGISTRY="${CORE_IMAGE_REGISTRY:-}"
 
 # --dockerhub-mirror=<host|off>: containerd registry mirror for docker.io (otel/
-# hydra/postgres/minio) on CN/restricted nets. "off"/empty disables. Default mirror
-# is docker.m.daocloud.io.
-CORE_DOCKERHUB_MIRROR="${CORE_DOCKERHUB_MIRROR:-docker.m.daocloud.io}"
+# hydra/postgres/minio) on CN/restricted nets. "off"/empty disables. Default is
+# docker.1panel.live — it serves all of this stack's docker.io images via the
+# registry-mirror (?ns=docker.io) protocol, incl. oryd/hydra (docker.m.daocloud.io
+# 403s oryd/* over that protocol). Override with --dockerhub-mirror=<host>.
+CORE_DOCKERHUB_MIRROR="${CORE_DOCKERHUB_MIRROR:-docker.1panel.live}"
 
 # --latest: when set and no --version_file is given, auto-generate a latest manifest
 # via scripts/gen-dev-manifest.sh --latest and use it as the version_file.
