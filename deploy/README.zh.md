@@ -165,6 +165,37 @@ sudo bash ./deploy.sh --distro=k3s foundry install --minimum --version_file=/tmp
 生成的 manifest 会逐 chart 标注来源（`branch` / `stable` / `base`）。
 需要 `gh`（已登录，`package:read`）+ `python3`；详见 `./scripts/gen-dev-manifest.sh -h`。
 
+发版之前没有干净 stable，要装**每个组件的最新构建**用 `--latest` —— 逐 chart 取
+其最新 `…-main.sha…` 构建（按 git 提交时间排序），否则回退最新 stable：
+
+```bash
+./scripts/gen-dev-manifest.sh --latest --out=/tmp/m.yaml
+```
+
+> macOS 注意：系统自带 `python3` 可能缺 CA 证书，导致逐 chart 静默解析成 `NOT FOUND`。
+> 设 `SSL_CERT_FILE=/etc/ssl/cert.pem`（或 `pip install certifi`）。`--latest` 用本地 `git`
+> 排序构建，需在仓库 checkout 内运行。
+
+### 受限网络安装（国内 / 连不上 docker.io / GHCR 拉取慢）
+
+集群连不上 `docker.io` 或拉不动 GHCR 镜像层（read timeout）时，`foundry install` 支持
+三个参数，让**脚本自己处理**——无需手动 `crictl pull`/重打 tag：
+
+- **`--registry=<swr / ghcr / host/ns>`** —— **BKN 镜像**的 registry（`--set image.registry` 的糖）。`swr` → `swr.cn-east-3.myhuaweicloud.com/openbkn-ai`，`ghcr` → `ghcr.io/openbkn-ai`。**默认 `swr`**；显式 `--set image.registry=…` 优先。SWR 与 GHCR 同步同样的 `…-main.sha…` 构建 tag。
+- **`--dockerhub-mirror=<host / off>`** —— **第三方镜像**（otel/hydra/postgres/minio）的 containerd `docker.io` mirror。写 `/etc/containerd/certs.d/docker.io/hosts.toml`（需 root + containerd 配了 `config_path` certs.d；否则告警跳过、不报错）。**默认 `docker.1panel.live`** —— 它经 mirror（`?ns=docker.io`）协议服务本栈所有 docker.io 镜像含 `oryd/hydra`（这个 `docker.m.daocloud.io` 会 403）。`off` 关闭。
+- **`--latest`** —— 没给 `--version_file` 时自动跑 `gen-dev-manifest.sh --latest` 并安装结果（需在仓库 checkout 内运行，依赖 `git`）。
+
+```bash
+# 最新构建 + BKN 镜像走 SWR + docker.io 第三方走默认 mirror：
+sudo bash ./deploy.sh foundry install --latest --registry=swr
+
+# 或用预生成的 manifest（如在开发机生成，目标机无 git）：
+sudo bash ./deploy.sh foundry install --version_file=/tmp/m.yaml --registry=swr
+```
+
+> 提交的迁移会修复 DB schema 漂移（如 `vega-backend` 0.9.x），但只在 **data-migrator
+> pre-install job 运行时**生效——即走 `foundry install`，不是裸 `kubectl set image`。
+
 ## 📋 Prerequisites
 
 ### 系统要求
