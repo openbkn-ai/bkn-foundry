@@ -14,12 +14,13 @@ CORE_VERSION_MANIFEST_FILE="${CORE_VERSION_MANIFEST_FILE:-}"
 # user did not pass --registry nor an explicit --set image.registry=...
 CORE_IMAGE_REGISTRY="${CORE_IMAGE_REGISTRY:-}"
 
-# --dockerhub-mirror=<host|off>: containerd registry mirror for docker.io (otel/
-# hydra/postgres/minio) on CN/restricted nets. "off"/empty disables. Default is
-# docker.1panel.live — it serves all of this stack's docker.io images via the
-# registry-mirror (?ns=docker.io) protocol, incl. oryd/hydra (docker.m.daocloud.io
-# 403s oryd/* over that protocol). Override with --dockerhub-mirror=<host>.
-CORE_DOCKERHUB_MIRROR="${CORE_DOCKERHUB_MIRROR:-docker.1panel.live}"
+# --dockerhub-mirror=<auto|host|off>: containerd registry mirror for docker.io
+# (otel/hydra/postgres/minio) on CN/restricted nets. "off"/empty disables.
+# Default "auto" probes a candidate list and picks the first mirror that serves
+# this stack's docker.io images over the registry-mirror (?ns=docker.io) protocol
+# (sentinel: oryd/hydra; docker.m.daocloud.io 403s namespaced repos there, so a
+# fixed default isn't safe). Pass a host to pin one; "off" to disable.
+CORE_DOCKERHUB_MIRROR="${CORE_DOCKERHUB_MIRROR:-auto}"
 
 # --latest: when set and no --version_file is given, auto-generate a latest manifest
 # via scripts/gen-dev-manifest.sh --latest and use it as the version_file.
@@ -507,6 +508,29 @@ setup_dockerhub_mirror() {
     local mirror_host="$1"
     if [[ -z "${mirror_host}" || "${mirror_host}" == "off" ]]; then
         return 0
+    fi
+
+    # --dockerhub-mirror=auto: probe candidate mirrors and pick the first that
+    # serves this stack's docker.io images over the registry-mirror (?ns=docker.io)
+    # protocol. Sentinel = oryd/hydra (some mirrors, e.g. docker.m.daocloud.io,
+    # 403 namespaced repos over that protocol). Override the list via
+    # KWEAVER_DOCKERHUB_MIRROR_CANDIDATES (space-separated).
+    if [[ "${mirror_host}" == "auto" ]]; then
+        local _candidates="${KWEAVER_DOCKERHUB_MIRROR_CANDIDATES:-docker.1panel.live docker.m.daocloud.io docker.1ms.run dockerproxy.net}"
+        local _accept="application/vnd.docker.distribution.manifest.v2+json,application/vnd.oci.image.manifest.v1+json,application/vnd.docker.distribution.manifest.list.v2+json,application/vnd.oci.image.index.v1+json"
+        local _cand _picked="" _code
+        for _cand in ${_candidates}; do
+            _code="$(curl -s -m 8 -o /dev/null -w '%{http_code}' -H "Accept: ${_accept}" \
+                "https://${_cand}/v2/oryd/hydra/manifests/v26.2.0?ns=docker.io" 2>/dev/null)"
+            log_info "dockerhub-mirror=auto: probe ${_cand} -> ${_code}"
+            if [[ "${_code}" == "200" ]]; then _picked="${_cand}"; break; fi
+        done
+        if [[ -z "${_picked}" ]]; then
+            log_warn "dockerhub-mirror=auto: no candidate mirror reachable for docker.io; skipping (pass --dockerhub-mirror=<host>, or =off)."
+            return 0
+        fi
+        mirror_host="${_picked}"
+        log_info "dockerhub-mirror=auto: selected ${mirror_host}"
     fi
 
     if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then

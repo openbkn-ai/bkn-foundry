@@ -187,7 +187,7 @@ On clusters that can't reach `docker.io` or pull GHCR image blobs (read timeouts
 `crictl pull`/retag:
 
 - **`--registry=<swr / ghcr / host/ns>`** — image registry for **BKN images** (sugar for `--set image.registry`). `swr` → `swr.cn-east-3.myhuaweicloud.com/openbkn-ai`, `ghcr` → `ghcr.io/openbkn-ai`. **Defaults to `swr`**; an explicit `--set image.registry=…` wins. SWR mirrors the same `…-main.sha…` build tags as GHCR.
-- **`--dockerhub-mirror=<host / off>`** — containerd `docker.io` mirror for **third-party images** (otel/hydra/postgres/minio). Writes `/etc/containerd/certs.d/docker.io/hosts.toml` (needs root + a containerd `config_path` certs.d; else it warns and skips, never fails). **Defaults to `docker.1panel.live`** — it serves this stack's docker.io images incl. `oryd/hydra` over the mirror (`?ns=docker.io`) protocol, which `docker.m.daocloud.io` 403s. `off` disables.
+- **`--dockerhub-mirror=<auto / host / off>`** — containerd `docker.io` mirror for **third-party images** (otel/hydra/postgres/minio). Writes `/etc/containerd/certs.d/docker.io/hosts.toml` (needs root + a containerd `config_path` certs.d; else it warns and skips, never fails). **Defaults to `auto`** — probes a candidate list and picks the first mirror that serves this stack's docker.io images over the mirror (`?ns=docker.io`) protocol (sentinel `oryd/hydra`; `docker.m.daocloud.io` 403s namespaced repos there, so a fixed default isn't safe). Pass a host to pin one (e.g. `docker.1panel.live`); `off` disables. Candidate list overridable via `KWEAVER_DOCKERHUB_MIRROR_CANDIDATES`.
 - **`--latest`** — when no `--version_file` is given, auto-runs `gen-dev-manifest.sh --latest` and installs the result (run from a repo checkout — it needs `git`).
 
 ```bash

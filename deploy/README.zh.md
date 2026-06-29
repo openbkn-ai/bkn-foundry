@@ -182,7 +182,7 @@ sudo bash ./deploy.sh --distro=k3s foundry install --minimum --version_file=/tmp
 三个参数，让**脚本自己处理**——无需手动 `crictl pull`/重打 tag：
 
 - **`--registry=<swr / ghcr / host/ns>`** —— **BKN 镜像**的 registry（`--set image.registry` 的糖）。`swr` → `swr.cn-east-3.myhuaweicloud.com/openbkn-ai`，`ghcr` → `ghcr.io/openbkn-ai`。**默认 `swr`**；显式 `--set image.registry=…` 优先。SWR 与 GHCR 同步同样的 `…-main.sha…` 构建 tag。
-- **`--dockerhub-mirror=<host / off>`** —— **第三方镜像**（otel/hydra/postgres/minio）的 containerd `docker.io` mirror。写 `/etc/containerd/certs.d/docker.io/hosts.toml`（需 root + containerd 配了 `config_path` certs.d；否则告警跳过、不报错）。**默认 `docker.1panel.live`** —— 它经 mirror（`?ns=docker.io`）协议服务本栈所有 docker.io 镜像含 `oryd/hydra`（这个 `docker.m.daocloud.io` 会 403）。`off` 关闭。
+- **`--dockerhub-mirror=<auto / host / off>`** —— **第三方镜像**（otel/hydra/postgres/minio）的 containerd `docker.io` mirror。写 `/etc/containerd/certs.d/docker.io/hosts.toml`（需 root + containerd 配了 `config_path` certs.d；否则告警跳过、不报错）。**默认 `auto`** —— 探测候选列表，选第一个能经 mirror（`?ns=docker.io`）协议服务本栈 docker.io 镜像的（标志镜像 `oryd/hydra`；`docker.m.daocloud.io` 对带 namespace 的仓库会 403，所以固定默认不安全）。传 host 钉死某个（如 `docker.1panel.live`）；`off` 关闭。候选列表可用 `KWEAVER_DOCKERHUB_MIRROR_CANDIDATES` 覆盖。
 - **`--latest`** —— 没给 `--version_file` 时自动跑 `gen-dev-manifest.sh --latest` 并安装结果（需在仓库 checkout 内运行，依赖 `git`）。
 
 ```bash
