@@ -170,7 +170,7 @@ source (`branch` / `stable` / `base`). Requires `gh` (authenticated,
 
 Before a release is cut there is **no clean stable**, so to install the **newest
 build of every component** use `--latest` — it resolves each chart to its newest
-`…-main.sha…` build (ordered by git commit time), else latest stable:
+`…-main.<date>.sha…` build (ordered by the commit time embedded in the tag), else latest stable:
 
 ```bash
 ./scripts/gen-dev-manifest.sh --latest --out=/tmp/m.yaml
@@ -186,7 +186,7 @@ On clusters that can't reach `docker.io` or pull GHCR image blobs (read timeouts
 `foundry install` accepts three flags so the **script** handles it — no manual
 `crictl pull`/retag:
 
-- **`--registry=<swr / ghcr / host/ns>`** — image registry for **BKN images** (sugar for `--set image.registry`). `swr` → `swr.cn-east-3.myhuaweicloud.com/openbkn-ai`, `ghcr` → `ghcr.io/openbkn-ai`. Precedence: explicit `--set image.registry=…` > `--registry` > an `image.registry` already in your `--config` YAML (respected, e.g. `dev/conf/mac-config.yaml`) > default `swr`. SWR mirrors the same `…-main.sha…` build tags as GHCR.
+- **`--registry=<swr / ghcr / host/ns>`** — image registry for **BKN images** (sugar for `--set image.registry`). `swr` → `swr.cn-east-3.myhuaweicloud.com/openbkn-ai`, `ghcr` → `ghcr.io/openbkn-ai`. Precedence: explicit `--set image.registry=…` > `--registry` > an `image.registry` already in your `--config` YAML (respected, e.g. `dev/conf/mac-config.yaml`) > default `swr`. SWR mirrors the same `…-main.<date>.sha…` build tags as GHCR.
 - **`--dockerhub-mirror=<auto / host / off>`** — containerd `docker.io` mirror for **third-party images** (otel/hydra/postgres/minio). Writes `/etc/containerd/certs.d/docker.io/hosts.toml` (needs root + a containerd `config_path` certs.d; else it warns and skips, never fails). **Defaults to `auto`** — probes a candidate list and picks the first mirror that serves this stack's docker.io images over the mirror (`?ns=docker.io`) protocol (sentinel `oryd/hydra`; `docker.m.daocloud.io` 403s namespaced repos there, so a fixed default isn't safe). Pass a host to pin one (e.g. `docker.1panel.live`); `off` disables. Candidate list overridable via `KWEAVER_DOCKERHUB_MIRROR_CANDIDATES`.
 - **`--latest`** — when no `--version_file` is given, auto-runs `gen-dev-manifest.sh --latest` and installs the result (run from a repo checkout — it needs `git`).
 
