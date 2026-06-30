@@ -274,7 +274,7 @@ git branch -D release/1.2.0
 
 ### 验证发布
 
-- 检查 [GitHub Releases](https://github.com/kweaver-ai/kweaver-core/releases) 页面
+- 检查 [GitHub Releases](https://github.com/openbkn-ai/bkn-foundry/releases) 页面
 - 验证制品下载和完整性
 - 确认 Docker 镜像可拉取，Helm Chart 可 `helm pull`
 - 确认 Python 包可在目标 index 安装

@@ -3,16 +3,6 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Auto-migrate legacy ~/.kweaver-ai to ~/.openbkn-ai (one-time, when target absent).
-if [[ -z "${CONF_DIR:-}" && -d "${HOME}/.kweaver-ai" && ! -e "${HOME}/.openbkn-ai" ]]; then
-    if mv "${HOME}/.kweaver-ai" "${HOME}/.openbkn-ai" 2>/dev/null; then
-        echo "[migrate] moved ${HOME}/.kweaver-ai -> ${HOME}/.openbkn-ai" >&2
-    else
-        echo "[migrate][warn] failed to move ${HOME}/.kweaver-ai -> ${HOME}/.openbkn-ai; using legacy path" >&2
-        CONF_DIR="${HOME}/.kweaver-ai"
-    fi
-fi
-
 CONF_DIR="${CONF_DIR:-${HOME}/.openbkn-ai}"
 CONFIG_YAML_PATH="${CONFIG_YAML_PATH:-${CONF_DIR}/config.yaml}"
 
@@ -141,8 +131,8 @@ usage() {
     echo "                                Example: --set auth.enabled=false --set image.tag=latest"
     echo ""
     echo "Environment (optional, bkn-foundry install):"
-    echo "  (Context Loader ADP import moved to deploy/onboard.sh after kweaver auth — kweaver call impex; see onboard -h.)"
-    echo "  DEPLOY_BUSINESS_DOMAIN        x-business-domain for kweaver/onboard (default: bd_public)."
+    echo "  (Context Loader ADP import moved to deploy/onboard.sh after openbkn auth — openbkn call impex; see onboard -h.)"
+    echo "  DEPLOY_BUSINESS_DOMAIN        x-business-domain for openbkn/onboard (default: bd_public)."
     echo ""
     echo "  $0 bkn-foundry install --minimum                 # Minimum install (skip auth & business-domain)"
     echo "  $0 bkn-foundry install --set auth.enabled=false  # Install BKN Foundry with auth enforcement off"

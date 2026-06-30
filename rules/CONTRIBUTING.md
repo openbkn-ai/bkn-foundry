@@ -10,7 +10,7 @@ Please read this guide before submitting contributions to ensure consistent proc
 
 ## 🏗 Repository Layout
 
-BKN Foundry is a **monorepo** ([`kweaver-ai/kweaver-core`](https://github.com/kweaver-ai/kweaver-core)) that ships the platform's backend modules together. Pick the directory matching the component you want to change:
+BKN Foundry is a **monorepo** ([`openbkn-ai/bkn-foundry`](https://github.com/openbkn-ai/bkn-foundry)) that ships the platform's backend modules together. Pick the directory matching the component you want to change:
 
 | Module | Path | Description |
 | --- | --- | --- |
@@ -26,8 +26,8 @@ External CLI/SDKs that interact with this backend live in their own repositories
 
 | Repository | Purpose |
 | --- | --- |
-| [`kweaver-ai/kweaver-sdk`](https://github.com/kweaver-ai/kweaver-sdk) | `kweaver` CLI + TypeScript / Python SDK + AI agent skills (`kweaver-core`, `create-bkn`) |
-| [`kweaver-ai/kweaver-admin`](https://github.com/kweaver-ai/kweaver-admin) | `kweaver-admin` platform-administrator CLI + agent skill |
+| [`openbkn-ai/bkn-sdk`](https://github.com/openbkn-ai/bkn-sdk) | `openbkn` CLI + TypeScript / Python SDK + AI agent skills (`bkn-core`, `create-bkn`) |
+| [`openbkn-ai/bkn-admin`](https://github.com/openbkn-ai/bkn-admin) | `bkn-admin` platform-administrator CLI + agent skill |
 
 > **Note**: Each module has its own README (and often `AGENTS.md` / `CLAUDE.md`) with build, test, and dev-loop instructions in the language it is written in. Read them before making module-local changes.
 
@@ -71,7 +71,7 @@ When reporting a bug, please provide the following information:
   - Module affected (e.g. `adp/bkn`, `adp/vega/vega-backend`, `infra/sandbox`)
   - Runtime (Java / Go / Python / Node — and version, e.g. JDK 17, Go 1.23, Python 3.11)
   - OS (Linux distro + kernel, macOS, Windows)
-  - Cluster (single-node K3s / kubeadm / managed K8s) and how it was installed (`deploy.sh kweaver-core install [--minimum]`)
+  - Cluster (single-node K3s / kubeadm / managed K8s) and how it was installed (`deploy.sh core install [--minimum]`)
   - Storage backends as relevant (MariaDB / DM8, OpenSearch, Redis, Kafka)
 
 - **Reproduction Steps**: Clear, step-by-step instructions to reproduce the issue
@@ -90,7 +90,7 @@ When reporting a bug, please provide the following information:
 - Module: adp/bkn
 - Runtime: JDK 17
 - OS: Linux Ubuntu 22.04
-- Cluster: single-node K3s (deploy.sh kweaver-core install)
+- Cluster: single-node K3s (deploy.sh core install)
 - Database: MariaDB 11.4
 
 **Steps to Reproduce:**
@@ -422,7 +422,7 @@ When workflow count grows or shared logic emerges:
 
 ## 📝 Source Code Header Guidelines
 
-This section defines the standard source code file header used across **kweaver.ai** open-source projects.
+This section defines the standard source code file header used across **openbkn.ai** open-source projects.
 
 The goal is to ensure:
 
@@ -430,7 +430,7 @@ The goal is to ensure:
 - clear licensing (Apache License 2.0)
 - consistent and readable file documentation
 
-> **Note**: We use "The kweaver.ai Authors" instead of individual author names.
+> **Note**: We use "The openbkn.ai Authors" instead of individual author names.
 > Git history already tracks all contributors, and this approach is easier to maintain.
 
 ### Standard Header (Go / C / Java)
@@ -439,7 +439,7 @@ Use the following header for all core source files:
 
 ```go
 // Copyright 2026 openbkn.ai
-// Copyright The kweaver.ai Authors.
+// Copyright The openbkn.ai Authors.
 //
 // Licensed under the Apache License, Version 2.0.
 // See the LICENSE file in the project root for details.
@@ -451,7 +451,7 @@ Use the following header for all core source files:
 
 ```python
 # Copyright 2026 openbkn.ai
-# Copyright The kweaver.ai Authors.
+# Copyright The openbkn.ai Authors.
 #
 # Licensed under the Apache License, Version 2.0.
 # See the LICENSE file in the project root for details.
@@ -461,7 +461,7 @@ Use the following header for all core source files:
 
 ```ts
 /**
- * Copyright The kweaver.ai Authors.
+ * Copyright The openbkn.ai Authors.
  *
  * Licensed under the Apache License, Version 2.0.
  * See the LICENSE file in the project root for details.
@@ -473,7 +473,7 @@ Use the following header for all core source files:
 ```bash
 #!/usr/bin/env bash
 # Copyright 2026 openbkn.ai
-# Copyright The kweaver.ai Authors.
+# Copyright The openbkn.ai Authors.
 # Licensed under the Apache License, Version 2.0.
 # See the LICENSE file in the project root for details.
 ```
@@ -482,7 +482,7 @@ Use the following header for all core source files:
 
 ```html
 <!--
-  Copyright The kweaver.ai Authors.
+  Copyright The openbkn.ai Authors.
   Licensed under the Apache License, Version 2.0.
   See the LICENSE file in the project root for details.
 -->
@@ -495,7 +495,7 @@ after the license header (for key files only):
 
 ```go
 // Copyright 2026 openbkn.ai
-// Copyright The kweaver.ai Authors.
+// Copyright The openbkn.ai Authors.
 //
 // Licensed under the Apache License, Version 2.0.
 // See the LICENSE file in the project root for details.
@@ -528,7 +528,7 @@ Following the practice of major open-source projects (Kubernetes, TensorFlow, et
 
 - **Git history** already provides a complete and accurate record of all contributors
 - Individual author lists are **hard to maintain** and often become outdated
-- Using "The kweaver.ai Authors" ensures **consistent attribution** across all files
+- Using "The openbkn.ai Authors" ensures **consistent attribution** across all files
 - Contributors are recognized through the project's **CONTRIBUTORS** file and git log
 
 ### License Requirement
@@ -553,7 +553,7 @@ BKN Foundry is polyglot. You only need the toolchain(s) for the module(s) you to
 - **Java** (JDK 17+) and Maven for most ADP backend modules
 - **Go** (1.23+) for `infra/oss-gateway-backend`, several CLIs and small services
 - **Python** (3.11+) for `infra/mf-model-manager`, model / data utilities
-- **Node.js** — kweaver CLIs require **22+** (per [`@kweaver-ai/kweaver-sdk` on npm](https://www.npmjs.com/package/@kweaver-ai/kweaver-sdk)).
+- **Node.js** — OpenBKN CLIs require **22+** (per [`@openbkn/bkn-sdk` on npm](https://www.npmjs.com/package/@openbkn/bkn-sdk)).
 - **Docker** + a Kubernetes (single-node K3s / kubeadm / Docker Desktop) for end-to-end testing
 - **MariaDB 11.4+** (or DM8), **OpenSearch 2.x**, **Redis**, **Kafka** when running services that need them — usually provided by `deploy.sh`
 
@@ -561,11 +561,11 @@ Each module's `README.md` / `AGENTS.md` lists the exact prerequisites, build com
 
 ### Local Development
 
-1. **Clone your fork of `kweaver-core`:**
+1. **Clone your fork of `bkn-foundry`:**
 
    ```bash
-   git clone https://github.com/YOUR_USERNAME/kweaver-core.git
-   cd kweaver-core
+   git clone https://github.com/YOUR_USERNAME/bkn-foundry.git
+   cd bkn-foundry
    ```
 
 2. **Add upstream remote:**
@@ -591,8 +591,8 @@ Each module's `README.md` / `AGENTS.md` lists the exact prerequisites, build com
 
    ```bash
    cd deploy
-   ./deploy.sh kweaver-core install --minimum    # quick try
-   # or full install: ./deploy.sh kweaver-core install
+   ./deploy.sh core install --minimum    # quick try
+   # or full install: ./deploy.sh core install
    ```
 
 ---
@@ -603,7 +603,7 @@ Each module's `README.md` / `AGENTS.md` lists the exact prerequisites, build com
 
 Instead, please open a private report via GitHub's built-in security advisory flow:
 
-- [Report a vulnerability — kweaver-ai/kweaver-core](https://github.com/kweaver-ai/kweaver-core/security/advisories/new)
+- [Report a vulnerability — openbkn-ai/bkn-foundry](https://github.com/openbkn-ai/bkn-foundry/security/advisories/new)
 
 We will acknowledge receipt and work with you to address the issue. Please include reproduction steps, affected version (`git describe --tags`), and the impact you observed.
 
