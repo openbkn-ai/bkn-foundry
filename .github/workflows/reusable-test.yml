@@ -62,7 +62,13 @@ jobs:
             VERSION="$BASE_VERSION"
           else
             SANITIZED_BRANCH="$(echo "$REF_NAME" | tr '[:upper:]' '[:lower:]' | sed -E 's#[^0-9a-zA-Z.-]+#-#g; s#-+#-#g; s#^[.-]+##; s#[.-]+$##')"
-            VERSION="$BASE_VERSION-$SANITIZED_BRANCH.sha$SHORT_SHA"
+            # Embed the commit time (UTC, fixed-width YYYYMMDDHHMMSS) so the
+            # prerelease is monotonically sortable as a plain string — picking
+            # "newest" needs no resolving the sha against a local git history
+            # (the old scheme silently mis-ordered on shallow/foreign checkouts).
+            # Commit time, not build time, so CI re-runs stay reproducible.
+            COMMIT_DATE="$(TZ=UTC git show -s --format=%cd --date=format-local:%Y%m%d%H%M%S HEAD)"
+            VERSION="$BASE_VERSION-$SANITIZED_BRANCH.$COMMIT_DATE.sha$SHORT_SHA"
           fi
 
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
