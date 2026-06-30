@@ -73,7 +73,7 @@
 | `owner-confirmed` | Owner 已确认风险操作，可执行（仅 Owner 可加）|
 | `by-agent` | Agent 提交的 PR / Issue，用于度量 |
 
-> 服务 / 模块 label（如 `vega`、`bkn-safe`、`context-loader`）用于按 CODEOWNERS 自动路由给 Owner（见 [`route-issue.yml`](../.github/workflows/route-issue.yml)）。
+> 服务 / 模块 label（如 `vega`、`bkn-safe`、`context-loader`）用于按 CODEOWNERS 自动路由给 Owner（见 [`route-issue.yml`](../.github/workflows/automation-route-issue.yml)）。
 
 ### Issue 生命周期
 
@@ -94,7 +94,7 @@ Open → Triaged → In Progress → In Review → Done
 
 ### Issue 分配规范
 
-- **自动路由**：新 Issue 打上服务 label 后，由 Action（`.github/workflows/route-issue.yml`）按 CODEOWNERS 自动分派给模块 Owner，确保不漏接。
+- **自动路由**：新 Issue 打上服务 label 后，由 Action（`.github/workflows/automation-route-issue.yml`）按 CODEOWNERS 自动分派给模块 Owner，确保不漏接。
 - **分散 Triage（无值日）**：模块 Owner 负责自己模块的 Issue，创建后 **2 个工作日** 内完成 Triage（定 Priority、Milestone，决定自己做 / 标 `agent-ready` / 放出认领）。
 - **自助领取**：成员从 Triaged 且无 Assignee 的 Issue 中自行 self-assign（自己模块优先），拖到 In Progress = 上锁。
 - 跨模块 Issue 需 `@` 对应模块 Owner 并说明期望。

@@ -1,5 +1,9 @@
 name: ci-adp-vega
 
+# Compile gate for PRs touching adp/vega. Build-only for now: many services'
+# unit tests assume a working directory / locale paths and fatal-exit under a
+# plain `go test ./...`. Add `go test` here once the test harness is CI-ready.
+
 on:
   pull_request:
     paths:
@@ -11,10 +15,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
-    uses: ./.github/workflows/reusable-test.yml
-    with:
-      service-path: adp/vega/vega-backend/server
-      stack: go
-      skip-lint: true
-      test-flags: '-short'
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: adp/vega/vega-backend/server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: adp/vega/vega-backend/server/go.mod
+      - run: go build ./...

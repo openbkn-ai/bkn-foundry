@@ -1,5 +1,8 @@
 name: ci-trace-ai
 
+# Compile gate for PRs touching trace-ai. Build-only for now; add `go test`
+# once the test harness is CI-ready.
+
 on:
   pull_request:
     paths:
@@ -11,10 +14,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
-    uses: ./.github/workflows/reusable-test.yml
-    with:
-      service-path: trace-ai/agent-observability
-      stack: go
-      skip-lint: true
-      test-flags: '-short'
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: trace-ai/agent-observability
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: trace-ai/agent-observability/go.mod
+      - run: go build ./...

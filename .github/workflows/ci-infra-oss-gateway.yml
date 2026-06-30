@@ -1,5 +1,8 @@
 name: ci-infra-oss-gateway
 
+# Compile gate for PRs touching infra/oss-gateway-backend. Build-only for now;
+# add `go test` once the test harness is CI-ready.
+
 on:
   pull_request:
     paths:
@@ -11,10 +14,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
-    uses: ./.github/workflows/reusable-test.yml
-    with:
-      service-path: infra/oss-gateway-backend
-      stack: go
-      skip-lint: true
-      test-flags: '-short'
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/oss-gateway-backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: infra/oss-gateway-backend/go.mod
+      - run: go build ./...

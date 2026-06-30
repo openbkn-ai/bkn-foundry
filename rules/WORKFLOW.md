@@ -73,7 +73,7 @@ Every service / module has an Owner in [`.github/CODEOWNERS`](../.github/CODEOWN
 | `owner-confirmed` | Owner confirmed the risky operation; OK to execute (Owner-only) |
 | `by-agent` | PR / Issue produced by an Agent; used for metrics |
 
-> Service / module labels (e.g. `vega`, `bkn-safe`, `context-loader`) drive CODEOWNERS auto-routing to the Owner (see [`route-issue.yml`](../.github/workflows/route-issue.yml)).
+> Service / module labels (e.g. `vega`, `bkn-safe`, `context-loader`) drive CODEOWNERS auto-routing to the Owner (see [`route-issue.yml`](../.github/workflows/automation-route-issue.yml)).
 
 ### Issue Lifecycle
 
@@ -94,7 +94,7 @@ Open → Triaged → In Progress → In Review → Done
 
 ### Issue Triage Rules
 
-- **Auto-routing**: once a new Issue gets a service label, an Action (`.github/workflows/route-issue.yml`) assigns it to the module Owner per CODEOWNERS, so nothing falls through the cracks.
+- **Auto-routing**: once a new Issue gets a service label, an Action (`.github/workflows/automation-route-issue.yml`) assigns it to the module Owner per CODEOWNERS, so nothing falls through the cracks.
 - **Distributed triage (no rotation)**: each module Owner triages their own module's Issues within **2 business days** of creation (set Priority, Milestone; decide to do it themselves / label `agent-ready` / leave it up for grabs).
 - **Self-serve pickup**: members self-assign from Triaged, unassigned Issues (own module first); moving to In Progress = lock.
 - Cross-module Issues must `@mention` the relevant module Owner with the expected outcome.
