@@ -7,7 +7,54 @@
 #   - install-status-data  : install-status.json      (regenerated each install)
 # nginx reads the mounted files per request, so a data refresh needs no restart.
 #
-# Placeholders __NAMESPACE__ / __INGRESS_CLASS__ are substituted by status.sh.
+# A "refresher" sidecar (kubectl) regenerates a LIVE pod-health snapshot every
+# ${INTERVAL}s into a shared volume, served at GET /install-status.pods.json, so
+# the dashboard shows real-time pod readiness without re-running publish-status.
+# It needs a ServiceAccount with a minimal Role (pods read only — NO secrets, NO
+# helm). The rich version/drift/dep snapshot (install-status.json) stays as the
+# externally-collected, publish-time data.
+#
+# Placeholders __NAMESPACE__ / __INGRESS_CLASS__ / __KUBECTL_IMAGE__ are
+# substituted by status.sh.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: install-status
+  namespace: __NAMESPACE__
+  labels:
+    app: install-status
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: install-status
+  namespace: __NAMESPACE__
+  labels:
+    app: install-status
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: install-status
+  namespace: __NAMESPACE__
+  labels:
+    app: install-status
+subjects:
+  - kind: ServiceAccount
+    name: install-status
+    namespace: __NAMESPACE__
+roleRef:
+  kind: Role
+  name: install-status
+  apiGroup: rbac.authorization.k8s.io
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -25,7 +72,33 @@ spec:
       labels:
         app: install-status
     spec:
+      serviceAccountName: install-status
       containers:
+        - name: refresher
+          # kubectl image WITH a shell — distroless kubectl images (e.g.
+          # rancher/kubectl) have no /bin/sh and won't start the loop.
+          image: __KUBECTL_IMAGE__
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              while true; do
+                kubectl get pods -n "__NAMESPACE__" -o json > /live/pods.json.tmp 2>/live/err.log \
+                  && mv /live/pods.json.tmp /live/pods.json
+                sleep "${INTERVAL:-60}"
+              done
+          env:
+            - name: INTERVAL
+              value: "60"
+          resources:
+            requests:
+              cpu: 5m
+              memory: 24Mi
+            limits:
+              cpu: 100m
+              memory: 96Mi
+          volumeMounts:
+            - name: live
+              mountPath: /live
         - name: nginx
           image: nginx:1.27-alpine
           ports:
@@ -50,6 +123,8 @@ spec:
               mountPath: /web
             - name: data
               mountPath: /data
+            - name: live
+              mountPath: /live
       volumes:
         - name: conf
           configMap:
@@ -67,6 +142,8 @@ spec:
           configMap:
             name: install-status-data
             optional: true
+        - name: live
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
@@ -103,6 +180,13 @@ spec:
                 port:
                   number: 80
           - path: /install-status.json
+            pathType: Exact
+            backend:
+              service:
+                name: install-status
+                port:
+                  number: 80
+          - path: /install-status.pods.json
             pathType: Exact
             backend:
               service:

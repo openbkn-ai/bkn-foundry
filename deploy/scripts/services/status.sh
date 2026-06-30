@@ -18,6 +18,12 @@ INSTALL_STATUS_ENDPOINT_TPL="${INSTALL_STATUS_DIR}/endpoint.yaml"
 INSTALL_STATUS_NGINX_CONF="${INSTALL_STATUS_DIR}/nginx.conf"
 INSTALL_STATUS_INDEX_HTML="${INSTALL_STATUS_DIR}/index.html"
 
+# Image for the install-status refresher sidecar (live pod-health snapshot).
+# MUST contain a /bin/sh and kubectl — distroless kubectl images (rancher/kubectl)
+# have no shell. alpine/k8s ships sh + kubectl. On CN/restricted nets the
+# install-time --dockerhub-mirror handles the docker.io pull. Override via env.
+INSTALL_STATUS_KUBECTL_IMAGE="${KWEAVER_INSTALL_STATUS_KUBECTL_IMAGE:-alpine/k8s:1.30.6}"
+
 # Detect the ingress-nginx IngressClass to bind the endpoint to.
 _status_detect_ingress_class() {
     local cls=""
@@ -84,6 +90,7 @@ _status_apply_endpoint() {
     ingress_class="$(_status_detect_ingress_class)"
     sed -e "s|__NAMESPACE__|${namespace}|g" \
         -e "s|__INGRESS_CLASS__|${ingress_class}|g" \
+        -e "s|__KUBECTL_IMAGE__|${INSTALL_STATUS_KUBECTL_IMAGE}|g" \
         "${INSTALL_STATUS_ENDPOINT_TPL}" \
         | kubectl apply -f - >/dev/null 2>&1 || {
             log_warn "Failed to apply install-status endpoint manifests."
