@@ -20,9 +20,11 @@ INSTALL_STATUS_INDEX_HTML="${INSTALL_STATUS_DIR}/index.html"
 
 # Image for the install-status refresher sidecar (live pod-health snapshot).
 # MUST contain a /bin/sh and kubectl — distroless kubectl images (rancher/kubectl)
-# have no shell. alpine/k8s ships sh + kubectl. On CN/restricted nets the
-# install-time --dockerhub-mirror handles the docker.io pull. Override via env.
-INSTALL_STATUS_KUBECTL_IMAGE="${KWEAVER_INSTALL_STATUS_KUBECTL_IMAGE:-alpine/k8s:1.30.6}"
+# have no shell. portainer/kubectl-shell (alpine + kubectl) ships both and, unlike
+# alpine/k8s (which the docker.1panel.live mirror 403s) and bitnami/kubectl (whose
+# docker.io tags are being pruned post-deprecation), is reliably served by the
+# install-time --dockerhub-mirror on CN/restricted nets. Override via env.
+INSTALL_STATUS_KUBECTL_IMAGE="${INSTALL_STATUS_KUBECTL_IMAGE:-portainer/kubectl-shell:latest}"
 
 # Detect the ingress-nginx IngressClass to bind the endpoint to.
 _status_detect_ingress_class() {
