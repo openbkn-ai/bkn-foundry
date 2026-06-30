@@ -36,7 +36,7 @@ Every service / module has an Owner in [`.github/CODEOWNERS`](../.github/CODEOWN
 
 - **Issue auto-assignment**: an `issues.labeled` Action maps "service label → Owner" and sets the Assignee automatically (see [Issue Triage Rules](#issue-triage-rules)).
 - **PR auto-review**: native CODEOWNERS — a PR touching a module path automatically requests that Owner's review; with Branch Protection "Require review from Code Owners", the Owner must approve.
-- **Backup reviewer (avoid a single point)**: each module should list **≥2 Owners** (primary + backup) in CODEOWNERS, with required approvals = 1 (any Owner), so a flood of Agent PRs doesn't serialize on one person.
+- **A single Owner is fine**: one Owner per module is enough; a second is not required. When the Owner is the PR author, they merge via bypass (see "Merge Gates" below) or another maintainer reviews — no deadlock.
 
 **No central triage rotation**: each Owner triages the Issues in their own module.
 

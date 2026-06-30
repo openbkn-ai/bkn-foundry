@@ -36,7 +36,7 @@
 
 - **Issue 自动分派**：`issues.labeled` 事件触发 Action，按「服务 label → Owner」自动设 Assignee（见 [Issue 分配规范](#issue-分配规范)）。
 - **PR 自动评审**：CODEOWNERS 原生 —— PR 改到某模块路径，自动请求该 Owner Review；配 Branch Protection「Require review from Code Owners」即 Owner 必须 approve。
-- **备份评审（防单点）**：每个模块在 CODEOWNERS 里建议配 **≥2 个 Owner**（主 + 备），required approvals = 1（任一 Owner 即可），避免 Agent 多产 PR 时卡死在单人。
+- **单 Owner 即可**：每模块一个 Owner 就够，不强制配双人。当 Owner 本人是 PR 作者时，走 Owner 的 bypass 合并（见下「合并双闸」）或由其他 maintainer 评审，不会卡死。
 
 **无集中 Triage 值日**：每个 Owner 负责 Triage 自己模块的 Issue。
 
