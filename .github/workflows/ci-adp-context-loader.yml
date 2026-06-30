@@ -1,0 +1,20 @@
+name: ci-adp-context-loader
+
+on:
+  pull_request:
+    paths:
+      - 'adp/context-loader/**'
+      - '.github/workflows/ci-adp-context-loader.yml'
+
+concurrency:
+  group: ci-adp-context-loader-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    uses: ./.github/workflows/reusable-test.yml
+    with:
+      service-path: adp/context-loader/agent-retrieval
+      stack: go
+      skip-lint: true
+      test-flags: '-short'

@@ -1,0 +1,20 @@
+name: ci-infra-oss-gateway
+
+on:
+  pull_request:
+    paths:
+      - 'infra/oss-gateway-backend/**'
+      - '.github/workflows/ci-infra-oss-gateway.yml'
+
+concurrency:
+  group: ci-infra-oss-gateway-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    uses: ./.github/workflows/reusable-test.yml
+    with:
+      service-path: infra/oss-gateway-backend
+      stack: go
+      skip-lint: true
+      test-flags: '-short'

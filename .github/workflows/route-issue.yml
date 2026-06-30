@@ -1,0 +1,67 @@
+name: Route issue to module owner
+
+# Reads the "Module" field of the Task issue form, applies a module label,
+# and auto-assigns the module Owner (kept in sync with .github/CODEOWNERS).
+# Owners must be updated here when CODEOWNERS changes.
+
+on:
+  issues:
+    types: [opened, edited]
+
+permissions:
+  issues: write
+
+jobs:
+  route:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            // module -> { owner (assignee), label }
+            const MAP = {
+              'vega':              { owner: 'kenlee1988',  label: 'vega' },
+              'bkn':               { owner: 'kenlee1988',  label: 'bkn' },
+              'ontology-query':    { owner: 'kenlee1988',  label: 'bkn' },
+              'bkn-safe':          { owner: 'sh00tg0a1',   label: 'bkn-safe' },
+              'context-loader':    { owner: 'criller',     label: 'context-loader' },
+              'execution-factory': { owner: 'criller',     label: 'execution-factory' },
+              'decision-agent':    { owner: 'guodawn',     label: 'decision-agent' },
+              'mf-model-api':      { owner: 'jiankang-kw', label: 'mf-model-api' },
+              'mf-model-manager':  { owner: 'jiankang-kw', label: 'mf-model-manager' },
+              'oss-gateway':       { owner: 'jiankang-kw', label: 'oss-gateway' },
+              'sandbox':           { owner: 'guodawn',     label: 'sandbox' },
+              'trace-ai':          { owner: 'guodawn',     label: 'trace-ai' },
+              'deploy':            { owner: 'sh00tg0a1',   label: 'deploy' },
+            };
+
+            const body = context.payload.issue.body || '';
+            // Issue Forms render a field as "### Module\n\n<value>"
+            const m = body.match(/###\s*Module\s*\n+\s*([^\n]+)/);
+            if (!m) {
+              core.info('No Module field found; skipping.');
+              return;
+            }
+            const module = m[1].trim().toLowerCase();
+            const entry = MAP[module];
+            if (!entry) {
+              core.info(`Module "${module}" not in map (e.g. "other"); skipping.`);
+              return;
+            }
+
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+
+            await github.rest.issues.addLabels({
+              owner, repo, issue_number, labels: [entry.label],
+            });
+
+            const current = (context.payload.issue.assignees || []).map(a => a.login);
+            if (current.length === 0) {
+              await github.rest.issues.addAssignees({
+                owner, repo, issue_number, assignees: [entry.owner],
+              });
+              core.info(`Assigned ${entry.owner}, labeled ${entry.label}.`);
+            } else {
+              core.info(`Already assigned (${current.join(', ')}); only labeled ${entry.label}.`);
+            }

@@ -1,0 +1,20 @@
+name: ci-bkn-safe
+
+on:
+  pull_request:
+    paths:
+      - 'bkn-safe/**'
+      - '.github/workflows/ci-bkn-safe.yml'
+
+concurrency:
+  group: ci-bkn-safe-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    uses: ./.github/workflows/reusable-test.yml
+    with:
+      service-path: bkn-safe/server
+      stack: go
+      skip-lint: true
+      test-flags: '-short'

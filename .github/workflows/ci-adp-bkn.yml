@@ -1,0 +1,28 @@
+name: ci-adp-bkn
+
+on:
+  pull_request:
+    paths:
+      - 'adp/bkn/**'
+      - '.github/workflows/ci-adp-bkn.yml'
+
+concurrency:
+  group: ci-adp-bkn-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bkn-backend:
+    uses: ./.github/workflows/reusable-test.yml
+    with:
+      service-path: adp/bkn/bkn-backend/server
+      stack: go
+      skip-lint: true
+      test-flags: '-short'
+
+  ontology-query:
+    uses: ./.github/workflows/reusable-test.yml
+    with:
+      service-path: adp/bkn/ontology-query/server
+      stack: go
+      skip-lint: true
+      test-flags: '-short'

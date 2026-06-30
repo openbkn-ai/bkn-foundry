@@ -1,0 +1,71 @@
+name: Task
+description: Standard unit of work — an independently deliverable, verifiable change for a human or an Agent
+title: ""
+labels: []
+body:
+  - type: input
+    id: goal
+    attributes:
+      label: Goal
+      description: One sentence — what needs to be done.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: module
+    attributes:
+      label: Module
+      description: Owning service. Drives CODEOWNERS routing + auto-assignment to the Owner.
+      options:
+        - vega
+        - bkn
+        - ontology-query
+        - bkn-safe
+        - context-loader
+        - execution-factory
+        - decision-agent
+        - mf-model-api
+        - mf-model-manager
+        - oss-gateway
+        - sandbox
+        - trace-ai
+        - deploy
+        - other
+    validations:
+      required: true
+
+  - type: textarea
+    id: background
+    attributes:
+      label: Background / Context
+      description: Why; related file paths, related commits / issues (#number); known gotchas.
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance Criteria (Definition of Done)
+      description: >-
+        Rule — an Issue cannot become `agent-ready` until a human approves these (label `ac-approved`).
+        An Agent may draft them for human approval.
+      value: |
+        - [ ] Specific, verifiable condition
+        - [ ] Tests: new feature ships with tests / bug fix ships with a regression test
+        - [ ] CI green (where the module has PR tests wired)
+        - [ ] For UI / interaction work: design mockup link attached
+    validations:
+      required: true
+
+  - type: textarea
+    id: boundaries
+    attributes:
+      label: Boundaries / Risk
+      description: >-
+        What NOT to touch; which steps are risky operations (deploy / delete or modify data /
+        schema migration / secrets & permissions / major dependency bumps) that require human
+        confirmation before an Agent executes them.
+
+  - type: input
+    id: mockup
+    attributes:
+      label: Design mockup link (required for UI / interaction work)
+      placeholder: https://figma.com/...

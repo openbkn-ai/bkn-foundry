@@ -1,0 +1,20 @@
+name: ci-trace-ai
+
+on:
+  pull_request:
+    paths:
+      - 'trace-ai/**'
+      - '.github/workflows/ci-trace-ai.yml'
+
+concurrency:
+  group: ci-trace-ai-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    uses: ./.github/workflows/reusable-test.yml
+    with:
+      service-path: trace-ai/agent-observability
+      stack: go
+      skip-lint: true
+      test-flags: '-short'

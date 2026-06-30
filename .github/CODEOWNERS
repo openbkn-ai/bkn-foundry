@@ -8,6 +8,8 @@
 #   - Owners can be @username, @org/team-name, or email
 #   - To enforce, enable "Require review from Code Owners"
 #     in Settings → Branches → Branch protection rules
+#   - Aim for >=2 owners per module (primary + backup) to avoid single-point
+#     review bottlenecks; set required approvals = 1 (any listed owner)
 # ──────────────────────────────────────────────────────────────
 
 # ── Global fallback ──────────────────────────────────────────

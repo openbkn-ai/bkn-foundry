@@ -1,0 +1,20 @@
+name: ci-adp-vega
+
+on:
+  pull_request:
+    paths:
+      - 'adp/vega/**'
+      - '.github/workflows/ci-adp-vega.yml'
+
+concurrency:
+  group: ci-adp-vega-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    uses: ./.github/workflows/reusable-test.yml
+    with:
+      service-path: adp/vega/vega-backend/server
+      stack: go
+      skip-lint: true
+      test-flags: '-short'

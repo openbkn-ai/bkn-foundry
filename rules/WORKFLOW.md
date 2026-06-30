@@ -36,6 +36,7 @@ Every service / module has an Owner in [`.github/CODEOWNERS`](../.github/CODEOWN
 
 - **Issue auto-assignment**: an `issues.labeled` Action maps "service label → Owner" and sets the Assignee automatically (see [Issue Triage Rules](#issue-triage-rules)).
 - **PR auto-review**: native CODEOWNERS — a PR touching a module path automatically requests that Owner's review; with Branch Protection "Require review from Code Owners", the Owner must approve.
+- **Backup reviewer (avoid a single point)**: each module should list **≥2 Owners** (primary + backup) in CODEOWNERS, with required approvals = 1 (any Owner), so a flood of Agent PRs doesn't serialize on one person.
 
 **No central triage rotation**: each Owner triages the Issues in their own module.
 
@@ -65,10 +66,14 @@ Every service / module has an Owner in [`.github/CODEOWNERS`](../.github/CODEOWN
 
 | Label | Purpose |
 | --- | --- |
-| `agent-ready` | Acceptance criteria complete and independently doable — can be handed to an Agent |
+| `agent-ready` | Acceptance criteria complete + `ac-approved` + independently doable — can be handed to an Agent |
+| `ac-approved` | Acceptance criteria approved by a human (prerequisite for `agent-ready`) |
 | `needs-human` | Returned after an Agent got stuck / went off-track; needs a human |
+| `awaiting-confirmation` | Agent posted a risky-operation plan; waiting for Owner confirmation |
+| `owner-confirmed` | Owner confirmed the risky operation; OK to execute (Owner-only) |
+| `by-agent` | PR / Issue produced by an Agent; used for metrics |
 
-> Service / module labels (e.g. `vega`, `bkn-safe`, `context-loader`) drive CODEOWNERS auto-routing to the Owner.
+> Service / module labels (e.g. `vega`, `bkn-safe`, `context-loader`) drive CODEOWNERS auto-routing to the Owner (see [`route-issue.yml`](../.github/workflows/route-issue.yml)).
 
 ### Issue Lifecycle
 
@@ -101,7 +106,9 @@ Open → Triaged → In Progress → In Review → Done
 
 ### When to Hand to an Agent
 
-Label `agent-ready` only when both hold: ① acceptance criteria are complete (including test requirements); ② the task is independently doable. Issues without acceptance criteria cannot be handed to an Agent.
+**Acceptance-criteria flip**: an Agent is encouraged to read the Issue first and *draft* the acceptance criteria + test plan as a comment; the Owner reviews and applies `ac-approved`. This moves the human from author to approver — higher throughput.
+
+Label `agent-ready` only when all hold: ① acceptance criteria are complete (including test requirements); ② they are `ac-approved` (human-approved); ③ the task is independently doable. Issues without acceptance criteria, or not yet approved, cannot be handed to an Agent.
 
 ### Agent Loop
 
@@ -124,7 +131,9 @@ For any operation with side effects / hard to revert / affecting production (dep
 2. **Blast radius** — which data / environments / services are affected
 3. **Rollback** — how to undo if it goes wrong
 
-Execute only after a human replies with an explicit "confirmed"; no reply = do not do it.
+**Structured approval (not a casual "ok")**: after posting the three parts, the Agent applies `awaiting-confirmation`; **only a module Owner** may replace it with `owner-confirmed`, which is the go-ahead. The Agent executes only once `owner-confirmed` is present; otherwise it does nothing.
+
+**Deploys use a stronger native gate**: put deploy workflows behind a GitHub **Environment with required reviewers = Owners**. When an Agent triggers a deploy, GitHub pauses for human approval — auditable, and not dependent on parsing text.
 
 ### Agents Never
 
