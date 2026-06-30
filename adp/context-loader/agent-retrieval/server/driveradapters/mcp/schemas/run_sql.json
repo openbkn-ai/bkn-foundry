@@ -10,7 +10,7 @@
       },
       "sql": {
         "type": "string",
-        "description": "只读 SQL（Trino 方言）。表名必须用占位符 {{.resource_id}} 引用，resource_id 取自对象类的 data_source.id（可经 search_schema 获得）。仅允许 SELECT / WITH，禁止任何写入与 DDL；不支持多语句；不支持跨数据目录 join（单次查询涉及的资源需同属一个 catalog）。vega 会自动限量（最多 10000 行）。"
+        "description": "只读 SQL（Trino 方言）。表名必须用占位符 {{.<RESOURCE_ID>}} 引用，其中 <RESOURCE_ID> 替换成具体资源 id 的真实值——即 search_schema 返回的 data_source.id，或 list_resources 返回的 resource_id；点可选（{{id}} 与 {{.id}} 等价）。规则：① 禁止原样写 'resource_id'/'.resource_id' 等字面量，必须替换成真实 id；② 一张表对应一个 id，JOIN 多表时每个表用各自不同的 id；③ 列名用物理列名（search_schema 的 data_property.column，需 include_columns=true；或 describe_resource 返回），不是逻辑名。示例 ✗错（两表共用占位、且写成字面量）：FROM {{.resource_id}} g JOIN {{.resource_id}} t ON g.tournament_id=t.tournament_id ；✓对（先 search_schema 取 goals 与 tournaments 各自的 data_source.id，再逐表替换）：SELECT t.tournament_name, g.family_name, COUNT(*) AS c FROM {{.<goals的data_source.id>}} g JOIN {{.<tournaments的data_source.id>}} t ON g.tournament_id=t.tournament_id GROUP BY t.tournament_name, g.family_name ORDER BY c DESC。仅允许 SELECT / WITH，禁止任何写入与 DDL；不支持多语句；不支持跨数据目录 join（单次查询涉及的资源需同属一个 catalog）。vega 会自动限量（最多 10000 行）。"
       },
       "resource_type": {
         "type": "string",
