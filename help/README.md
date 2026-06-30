@@ -7,4 +7,4 @@ Product documentation for **BKN Foundry** (backend APIs, CLI, and SDKs).
 
 ## 交流群 / Community
 
-<img src="qrcode.png" width="200" alt="KWeaver community QR code" />
+<img src="qrcode.png" width="200" alt="BKN Foundry community QR code" />

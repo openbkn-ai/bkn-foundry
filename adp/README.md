@@ -4,9 +4,9 @@
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE.txt)
 
-**[ADP (AI Data Platform)](https://github.com/kweaver-ai/adp)** is part of the KWeaver ecosystem. If you like it, please also star⭐ the **[KWeaver](https://github.com/kweaver-ai/kweaver-core)** project as well.
+**[ADP (AI Data Platform)](https://github.com/kweaver-ai/adp)** is part of the BKN Foundry ecosystem. If you like it, please also star⭐ the **[BKN Foundry](https://github.com/openbkn-ai/bkn-foundry)** project as well.
 
-**[KWeaver](https://github.com/kweaver-ai/kweaver-core)** is an open-source ecosystem for building, deploying, and running decision intelligence AI applications. This ecosystem adopts ontology as the core methodology for business knowledge networks, with BKN Foundry as the core platform, aiming to provide elastic, agile, and reliable enterprise-grade decision intelligence to further unleash everyone's productivity.
+**[BKN Foundry](https://github.com/openbkn-ai/bkn-foundry)** is an open-source ecosystem for building, deploying, and running decision intelligence AI applications. This ecosystem adopts ontology as the core methodology for business knowledge networks, with BKN Foundry as the core platform, aiming to provide elastic, agile, and reliable enterprise-grade decision intelligence to further unleash everyone's productivity.
 
 The BKN Foundry platform includes key subsystems such as ADP and AI Store.
 

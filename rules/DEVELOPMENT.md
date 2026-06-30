@@ -2,7 +2,7 @@
 name: development
 title: BKN Foundry Development Specification (DEVELOPMENT)
 version: 0.1.0
-scope: All services in BKN Foundry and related products (Decision Agent, ISF, TraceAI, etc.)
+scope: All services in BKN Foundry
 authors: [freeman.xu]
 created: 2026-03-20
 status: draft

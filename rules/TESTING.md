@@ -1,13 +1,13 @@
 # BKN Foundry Testing Specification
 
 > Version: 0.2.0
-> Scope: All modules of BKN Foundry and related products (Decision Agent, ISF, TraceAI, etc.)
+> Scope: All modules of BKN Foundry
 
 ---
 
 ## 1. Background
 
-BKN Foundry consists of multiple modules across business domains (ontology, vega, execution-factory, dataflow, etc.), developed in parallel by multiple teams. This specification applies to Decision Agent, ISF, TraceAI, and other related product modules.
+BKN Foundry consists of multiple modules across business domains (ontology, vega, execution-factory, etc.), developed in parallel by multiple teams. This specification applies to all BKN Foundry modules.
 
 Tests are primarily authored, executed, and maintained by AI Agents; humans review and approve.
 
@@ -238,12 +238,10 @@ GO_MODULES=(
     vega/vega-backend
     vega/vega-gateway-pro
     execution-factory/operator-integration
-    dataflow/flow-automation
 )
 
 PYTHON_MODULES=(
     execution-factory/tests
-    dataflow/tests
 )
 
 PASSED=()
@@ -327,12 +325,10 @@ GO_MODULES=(
     vega/vega-backend
     vega/vega-gateway-pro
     execution-factory/operator-integration
-    dataflow/flow-automation
 )
 
 PYTHON_MODULES=(
     execution-factory/tests
-    dataflow/tests
 )
 
 ALL_MODULES=("${GO_MODULES[@]}" "${PYTHON_MODULES[@]}")
@@ -399,7 +395,6 @@ No gate for now; coverage numbers shown on PR only.
 paths:
   "ontology/**"           → ./scripts/ci-run.sh ci ontology/
   "vega/**"               → ./scripts/ci-run.sh ci vega/
-  "dataflow/**"           → ./scripts/ci-run.sh ci dataflow/
   "context-loader/**"     → ./scripts/ci-run.sh ci context-loader/
   "execution-factory/**"  → ./scripts/ci-run.sh ci execution-factory/
 ```
