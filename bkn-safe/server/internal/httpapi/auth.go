@@ -155,6 +155,15 @@ func renderHTML(c *gin.Context, t *template.Template, data any) {
 	_ = t.Execute(c.Writer, data)
 }
 
+func isExpiredLoginRequest(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "request_unauthorized") ||
+		strings.Contains(msg, "login request has expired")
+}
+
 func showLogin(c *gin.Context) {
 	challenge := c.Query("login_challenge")
 	if challenge == "" {
@@ -190,6 +199,16 @@ func doLogin(c *gin.Context, p *auth.Provider) {
 			return
 		}
 		slog.Error("login: accept failed", "err", err)
+		if isExpiredLoginRequest(err) {
+			c.Status(http.StatusUnauthorized)
+			c.Header("Content-Type", "text/html; charset=utf-8")
+			_ = loginPage.Execute(c.Writer, map[string]any{
+				"Challenge": challenge,
+				"Account":   account,
+				"Error":     "登录请求已过期，请返回应用重新登录",
+			})
+			return
+		}
 		c.String(http.StatusInternalServerError, "internal error")
 		return
 	}
@@ -238,6 +257,10 @@ func doChangePassword(c *gin.Context, p *auth.Provider) {
 			return
 		}
 		slog.Error("change-password: failed", "err", err)
+		if isExpiredLoginRequest(err) {
+			reRender("登录请求已过期，请返回应用重新登录")
+			return
+		}
 		c.String(http.StatusInternalServerError, "internal error")
 		return
 	}
