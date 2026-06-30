@@ -1,0 +1,50 @@
+name: release-adp-capabilities-lab
+
+on:
+  push:
+    tags:
+      - 'v*'
+    branches: ['**']
+    paths:
+      - 'adp/execution-factory/capabilities-lab/**'
+      - '.github/workflows/release-adp-capabilities-lab.yml'
+      - '.github/workflows/reusable-*.yml'
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish to GHCR (true) or verify build only (false)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  test:
+    uses: ./.github/workflows/reusable-test.yml
+    with:
+      service-path: adp/execution-factory/capabilities-lab
+      stack: chart-only
+
+  build:
+    needs: test
+    uses: ./.github/workflows/reusable-build.yml
+    secrets: inherit
+    with:
+      service-path: adp/execution-factory/capabilities-lab
+      dockerfile: docker/Dockerfile
+      context: '.'
+      image-name: capabilities-lab
+      version: ${{ needs.test.outputs.version }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+
+  chart:
+    needs: [test, build]
+    uses: ./.github/workflows/reusable-chart.yml
+    with:
+      service-path: adp/execution-factory/capabilities-lab
+      chart-path: helm/capabilities-lab
+      chart-name: capabilities-lab
+      version: ${{ needs.test.outputs.version }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}

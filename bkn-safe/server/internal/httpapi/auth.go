@@ -1,6 +1,8 @@
 package httpapi
 
 import (
+	_ "embed"
+	"encoding/base64"
 	"errors"
 	"html/template"
 	"log/slog"
@@ -31,8 +33,7 @@ func registerAuth(r *gin.Engine, p *auth.Provider, h *auth.HydraAdmin) {
 
 // pageCSS is the shared light shell (centered card), following the BKN Studio
 // console design language: #2e68ff primary, soft radial-gradient backdrop,
-// white 20px-radius card, AntD-like 8px fields/buttons, and the brand mark
-// (blue core + amber orbit dots).
+// white 20px-radius card, AntD-like 8px fields/buttons, and the OpenBKN logo.
 const pageCSS = `<style>
 :root{color-scheme:light}
 body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
@@ -43,7 +44,8 @@ body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:c
   -webkit-font-smoothing:antialiased}
 .card{width:380px;box-sizing:border-box;background:#fff;border:1px solid rgba(22,40,73,.08);
   border-radius:20px;padding:36px 32px;box-shadow:0 18px 48px rgba(22,40,73,.10)}
-.brand{display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:10px}
+.brand{display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:18px}
+.brand-logo{display:block;width:244px;height:84px;object-fit:contain}
 .brand-mark{position:relative;width:40px;height:40px;border-radius:14px;
   background:linear-gradient(145deg,rgba(46,104,255,.16),rgba(46,104,255,.04)),#fff;
   box-shadow:inset 0 1px 0 rgba(255,255,255,.9),0 10px 24px rgba(46,104,255,.14)}
@@ -78,15 +80,23 @@ button,.btn{width:100%;box-sizing:border-box;border:0;border-radius:8px;padding:
 form{margin:0}
 </style>`
 
+//go:embed assets/openbkn-logo.png
+var openBKNLogoPNG []byte
+
+var openBKNLogoDataURI = "data:image/png;base64," + base64.StdEncoding.EncodeToString(openBKNLogoPNG)
+
 // brand renders the brand row (mark + wordmark) shown atop each card. Web
 // login pages carry the BKN Studio wordmark; the device-flow pages (CLI /
 // platform-level login) carry BKN Foundry.
 func brand(name string) string {
+	if name == "BKN Studio" {
+		return `<div class="brand"><img class="brand-logo" src="` + openBKNLogoDataURI + `" alt="OpenBKN"></div>`
+	}
 	return `<div class="brand"><span class="brand-mark"><i class="core"></i><i class="orbit orbit-l"></i><i class="orbit orbit-r"></i></span><strong>` + name + `</strong></div>`
 }
 
 var loginPage = template.Must(template.New("login").Parse(pageCSS + `<!doctype html><meta charset="utf-8"><body>
-<div class="card">` + brand("BKN Studio") + `<h3>登录</h3>
+<div class="card">` + brand("BKN Studio") + `
 <form method="post" action="/login">
   <input type="hidden" name="login_challenge" value="{{.Challenge}}">
   <input name="account" placeholder="账号" value="{{.Account}}" autofocus autocomplete="username">

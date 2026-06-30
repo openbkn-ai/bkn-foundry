@@ -1,0 +1,70 @@
+replicaCount: 1
+
+namespace: openbkn
+moduleName: capabilities-lab
+nodeSelector: {}
+
+runMode: release
+
+enableSecurityContext: true
+securityContext:
+  runAsUser: 5000
+  runAsGroup: 5000
+  runAsNonRoot: true
+
+image:
+  registry: ghcr.io/openbkn-ai
+  service:
+    repository: capabilities-lab
+    tag: "__VERSION__"
+    pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  enableDualStack: false
+  port: 9002
+  ingress:
+    enabled: true
+    interface:
+      path:
+        - /api/capabilities-lab/v1
+  readinessProbe:
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 10
+  livenessProbe:
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 6
+  startupProbe:
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 5
+    failureThreshold: 30
+
+capabilitiesLab:
+  defaultBusinessDomain: bd_public
+  defaultUserID: capabilities-lab
+  metricsEnabled: true
+
+depServices:
+  class-443:
+    ingressClass: class-443
+  agent-operator-integration:
+    privateHost: agent-operator-integration
+    privatePort: 9000
+    privateProtocol: http
+
+env:
+  language: en_US.UTF-8
+  timezone: Asia/Shanghai
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 1
+    memory: 512Mi

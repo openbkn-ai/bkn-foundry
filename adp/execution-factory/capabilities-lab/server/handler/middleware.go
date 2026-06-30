@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/adp/execution-factory/capabilities-lab/server/client"
 )
 
 const (
@@ -43,6 +44,12 @@ func AuthMiddleware(defaultUserID string) gin.HandlerFunc {
 		}
 
 		c.Set(contextKeyUserID, userID)
+		forwardedCtx := client.WithForwardedAuth(
+			c.Request.Context(),
+			c.GetHeader("Authorization"),
+			c.GetHeader("Cookie"),
+		)
+		c.Request = c.Request.WithContext(forwardedCtx)
 		c.Next()
 	}
 }

@@ -12,9 +12,26 @@ import (
 	"time"
 )
 
+type contextKey string
+
+const (
+	contextKeyAuthorization contextKey = "authorization"
+	contextKeyCookie        contextKey = "cookie"
+)
+
 type OperatorIntegrationClient struct {
 	BaseURL string
 	HTTP    *http.Client
+}
+
+func WithForwardedAuth(ctx context.Context, authorization string, cookie string) context.Context {
+	if authorization != "" {
+		ctx = context.WithValue(ctx, contextKeyAuthorization, authorization)
+	}
+	if cookie != "" {
+		ctx = context.WithValue(ctx, contextKeyCookie, cookie)
+	}
+	return ctx
 }
 
 func NewOperatorIntegrationClient(baseURL string) *OperatorIntegrationClient {
@@ -463,6 +480,12 @@ func (c *OperatorIntegrationClient) doJSONWithUser(
 	req.Header.Set("x-business-domain", businessDomain)
 	if userID != "" {
 		req.Header.Set("user_id", userID)
+	}
+	if authorization, ok := ctx.Value(contextKeyAuthorization).(string); ok && authorization != "" {
+		req.Header.Set("Authorization", authorization)
+	}
+	if cookie, ok := ctx.Value(contextKeyCookie).(string); ok && cookie != "" {
+		req.Header.Set("Cookie", cookie)
 	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
