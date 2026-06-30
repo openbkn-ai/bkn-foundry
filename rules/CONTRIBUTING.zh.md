@@ -10,7 +10,7 @@
 
 ## 🏗 仓库结构
 
-BKN Foundry 是一个 **monorepo**（[`kweaver-ai/kweaver-core`](https://github.com/kweaver-ai/kweaver-core)），平台后端各模块统一存放于此。请根据要修改的组件，进入对应目录：
+BKN Foundry 是一个 **monorepo**（[`openbkn-ai/bkn-foundry`](https://github.com/openbkn-ai/bkn-foundry)），平台后端各模块统一存放于此。请根据要修改的组件，进入对应目录：
 
 | 模块 | 路径 | 描述 |
 | --- | --- | --- |
@@ -26,8 +26,8 @@ BKN Foundry 是一个 **monorepo**（[`kweaver-ai/kweaver-core`](https://github.
 
 | 仓库 | 用途 |
 | --- | --- |
-| [`kweaver-ai/kweaver-sdk`](https://github.com/kweaver-ai/kweaver-sdk) | `kweaver` CLI + TypeScript / Python SDK + Agent Skills（`kweaver-core`、`create-bkn`） |
-| [`kweaver-ai/kweaver-admin`](https://github.com/kweaver-ai/kweaver-admin) | `kweaver-admin` 平台管理员 CLI + Agent Skill |
+| [`openbkn-ai/bkn-sdk`](https://github.com/openbkn-ai/bkn-sdk) | `openbkn` CLI + TypeScript / Python SDK + Agent Skills（`bkn-core`、`create-bkn`） |
+| [`openbkn-ai/bkn-admin`](https://github.com/openbkn-ai/bkn-admin) | `bkn-admin` 平台管理员 CLI + Agent Skill |
 
 > **说明**：每个模块都有自己的 README（通常还包括 `AGENTS.md` / `CLAUDE.md`），里面给出本模块语言对应的构建、测试与开发循环命令，请在动手前先看。
 
@@ -71,7 +71,7 @@ BKN Foundry 是一个 **monorepo**（[`kweaver-ai/kweaver-core`](https://github.
   - 受影响的模块（如 `adp/bkn`、`adp/vega/vega-backend`、`infra/sandbox`）
   - 运行时（Java / Go / Python / Node 及版本，如 JDK 17、Go 1.23、Python 3.11）
   - 操作系统（Linux 发行版与内核 / macOS / Windows）
-  - 集群形态（单机 K3s / kubeadm / 托管 K8s）以及安装方式（`deploy.sh kweaver-core install [--minimum]`）
+  - 集群形态（单机 K3s / kubeadm / 托管 K8s）以及安装方式（`deploy.sh core install [--minimum]`）
   - 涉及的存储/中间件（MariaDB / DM8、OpenSearch、Redis、Kafka）
 
 - **复现步骤**: 清晰、逐步的复现说明
@@ -90,7 +90,7 @@ BKN Foundry 是一个 **monorepo**（[`kweaver-ai/kweaver-core`](https://github.
 - 模块: adp/bkn
 - 运行时: JDK 17
 - 操作系统: Linux Ubuntu 22.04
-- 集群: 单机 K3s（deploy.sh kweaver-core install）
+- 集群: 单机 K3s（deploy.sh core install）
 - 数据库: MariaDB 11.4
 
 **复现步骤:**
@@ -421,7 +421,7 @@ git push origin feature/my-feature
 
 ## 📝 源代码文件头规范
 
-本节定义了 **kweaver.ai** 开源项目中使用的标准源代码文件头。
+本节定义了 **openbkn.ai** 开源项目中使用的标准源代码文件头。
 
 目标是确保：
 
@@ -429,7 +429,7 @@ git push origin feature/my-feature
 - 明确的许可证（Apache License 2.0）
 - 一致且可读的文件文档
 
-> **说明**：我们使用 "The kweaver.ai Authors" 而不是个人作者名。
+> **说明**：我们使用 "The openbkn.ai Authors" 而不是个人作者名。
 > Git 历史记录已经追踪了所有贡献者，这种方式更易于维护。
 
 ### 标准文件头（Go / C / Java）
@@ -438,7 +438,7 @@ git push origin feature/my-feature
 
 ```go
 // Copyright 2026 openbkn.ai
-// Copyright The kweaver.ai Authors.
+// Copyright The openbkn.ai Authors.
 //
 // Licensed under the Apache License, Version 2.0.
 // See the LICENSE file in the project root for details.
@@ -450,7 +450,7 @@ git push origin feature/my-feature
 
 ```python
 # Copyright 2026 openbkn.ai
-# Copyright The kweaver.ai Authors.
+# Copyright The openbkn.ai Authors.
 #
 # Licensed under the Apache License, Version 2.0.
 # See the LICENSE file in the project root for details.
@@ -460,7 +460,7 @@ git push origin feature/my-feature
 
 ```ts
 /**
- * Copyright The kweaver.ai Authors.
+ * Copyright The openbkn.ai Authors.
  *
  * Licensed under the Apache License, Version 2.0.
  * See the LICENSE file in the project root for details.
@@ -472,7 +472,7 @@ git push origin feature/my-feature
 ```bash
 #!/usr/bin/env bash
 # Copyright 2026 openbkn.ai
-# Copyright The kweaver.ai Authors.
+# Copyright The openbkn.ai Authors.
 # Licensed under the Apache License, Version 2.0.
 # See the LICENSE file in the project root for details.
 ```
@@ -481,7 +481,7 @@ git push origin feature/my-feature
 
 ```html
 <!--
-  Copyright The kweaver.ai Authors.
+  Copyright The openbkn.ai Authors.
   Licensed under the Apache License, Version 2.0.
   See the LICENSE file in the project root for details.
 -->
@@ -493,7 +493,7 @@ git push origin feature/my-feature
 
 ```go
 // Copyright 2026 openbkn.ai
-// Copyright The kweaver.ai Authors.
+// Copyright The openbkn.ai Authors.
 //
 // Licensed under the Apache License, Version 2.0.
 // See the LICENSE file in the project root for details.
@@ -526,7 +526,7 @@ git push origin feature/my-feature
 
 - **Git 历史**已经提供了所有贡献者的完整准确记录
 - 个人作者列表**难以维护**，容易过时
-- 使用 "The kweaver.ai Authors" 确保所有文件的**一致归属**
+- 使用 "The openbkn.ai Authors" 确保所有文件的**一致归属**
 - 贡献者通过项目的 **CONTRIBUTORS** 文件和 git log 获得认可
 
 ### 许可证要求
@@ -549,7 +549,7 @@ BKN Foundry 是多语言项目，**只需安装你要修改的模块所需的工
 - **Java**（JDK 17+）+ Maven —— ADP 大多数后端模块
 - **Go**（1.23+）—— `infra/oss-gateway-backend`、若干 CLI 与小型服务
 - **Python**（3.11+）—— `infra/mf-model-manager` 等模型/数据组件
-- **Node.js** —— kweaver 相关 CLI 需 **22+**（以 [npm 上 `kweaver-sdk`](https://www.npmjs.com/package/@kweaver-ai/kweaver-sdk) 的 `engines` 为准）
+- **Node.js** —— openbkn 相关 CLI 需 **22+**（以 [npm 上 `bkn-sdk`](https://www.npmjs.com/package/@openbkn/bkn-sdk) 的 `engines` 为准）
 - **Docker** + 一套 Kubernetes（单机 K3s / kubeadm / Docker Desktop）—— 端到端验证
 - **MariaDB 11.4+**（或 DM8）、**OpenSearch 2.x**、**Redis**、**Kafka** —— 仅在调试相关服务时需要，通常由 `deploy.sh` 提供
 
@@ -557,11 +557,11 @@ BKN Foundry 是多语言项目，**只需安装你要修改的模块所需的工
 
 ### 本地开发
 
-1. **克隆你 Fork 的 `kweaver-core`：**
+1. **克隆你 Fork 的 `bkn-foundry`：**
 
    ```bash
-   git clone https://github.com/YOUR_USERNAME/kweaver-core.git
-   cd kweaver-core
+   git clone https://github.com/YOUR_USERNAME/bkn-foundry.git
+   cd bkn-foundry
    ```
 
 2. **添加上游远程仓库：**
@@ -587,8 +587,8 @@ BKN Foundry 是多语言项目，**只需安装你要修改的模块所需的工
 
    ```bash
    cd deploy
-   ./deploy.sh kweaver-core install --minimum    # 快速体验
-   # 完整安装：./deploy.sh kweaver-core install
+   ./deploy.sh core install --minimum    # 快速体验
+   # 完整安装：./deploy.sh core install
    ```
 
 ---
@@ -599,7 +599,7 @@ BKN Foundry 是多语言项目，**只需安装你要修改的模块所需的工
 
 请通过 GitHub 内置的安全公告私密通道报告：
 
-- [报告漏洞 — kweaver-ai/kweaver-core](https://github.com/kweaver-ai/kweaver-core/security/advisories/new)
+- [报告漏洞 — openbkn-ai/bkn-foundry](https://github.com/openbkn-ai/bkn-foundry/security/advisories/new)
 
 我们会确认收到并与你协同修复。请在报告中包含：复现步骤、受影响版本（`git describe --tags`）以及你观察到的影响。
 

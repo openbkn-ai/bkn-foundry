@@ -545,7 +545,7 @@ BKN Foundry vX.Y.Z has been officially released!
 
 ## Download
 - GitHub Releases: <link>
-- Docker: docker pull kweaver/kweaver:vX.Y.Z
+- Images: `ghcr.io/openbkn-ai/<service>:vX.Y.Z` (per service)
 
 ## Full Changelog
 <CHANGELOG link>

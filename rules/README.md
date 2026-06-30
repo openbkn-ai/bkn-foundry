@@ -2,7 +2,7 @@
 
 [中文](README.zh.md) | English
 
-This directory contains the development standards for the KWeaver project. If you're new, read them in the order below.
+This directory contains the development standards for the BKN Foundry project. If you're new, read them in the order below.
 
 ## Reading Order
 

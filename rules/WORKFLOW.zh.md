@@ -545,7 +545,7 @@ BKN Foundry vX.Y.Z 已正式发布！
 
 ## 下载
 - GitHub Releases: <链接>
-- Docker: docker pull kweaver/kweaver:vX.Y.Z
+- Images: `ghcr.io/openbkn-ai/<service>:vX.Y.Z` (per service)
 
 ## 完整变更日志
 <CHANGELOG 链接>

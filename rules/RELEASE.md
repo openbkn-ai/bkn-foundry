@@ -2,7 +2,7 @@
 
 [中文](RELEASE.zh.md) | English
 
-This document defines the version management, branching strategy, and release process for the KWeaver project.
+This document defines the version management, branching strategy, and release process for the BKN Foundry project.
 
 ---
 
@@ -273,7 +273,7 @@ git branch -D release/1.2.0
 
 ### Verify Release
 
-- Check the [GitHub Releases](https://github.com/kweaver-ai/kweaver-core/releases) page
+- Check the [GitHub Releases](https://github.com/openbkn-ai/bkn-foundry/releases) page
 - Verify artifact downloads and integrity
 - Confirm Docker images are pullable and Helm charts can be `helm pull`-ed
 - Confirm Python packages are installable from the target index
