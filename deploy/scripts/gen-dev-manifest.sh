@@ -19,9 +19,10 @@
 # With no --branch it is pure stable: every chart = highest clean semver.
 #
 # --latest overrides the above: resolve EACH chart to its NEWEST main build,
-# i.e. among tags of the form <semver>-main.sha<7hex>, pick the sha with the
-# most recent git commit timestamp. If a chart has no -main.sha build, fall
-# back to stable (highest clean semver), then to the normal missing/error
+# i.e. among tags of the form <semver>-main.<YYYYMMDDHHMMSS>.sha<7hex>, pick the
+# one with the most recent embedded commit time (a plain string compare on the
+# fixed-width date — no local git history needed). If a chart has no such build,
+# fall back to stable (highest clean semver), then to the normal missing/error
 # handling. --latest is independent of --branch; if both are given, --latest
 # wins. Use this for "newest of everything from main", restricted-network safe.
 #
@@ -146,34 +147,33 @@ def highest_semver(tags):
     if not cand: return None
     return max(cand, key=lambda t:tuple(int(x) for x in SEMVER.match(t).groups()))
 
-MAIN_BUILD=re.compile(r'.*-main\.sha([0-9a-f]{7})')
-
-def _commit_time(sha):
-    """git commit timestamp (epoch secs) for a 7-char sha; 0 if not resolvable
-    locally (sorts last)."""
-    try:
-        out=subprocess.run(["git","show","-s","--format=%ct",sha],
-                           capture_output=True, text=True, cwd=REPO_DIR)
-        if out.returncode==0 and out.stdout.strip():
-            return int(out.stdout.strip())
-    except Exception:
-        pass
-    return 0
+# <semver>-main.<YYYYMMDDHHMMSS>.sha<7hex> — CI embeds the commit time, so the
+# fixed-width date sorts lexicographically == chronologically (no local git).
+MAIN_BUILD=re.compile(r'.*-main\.(\d{14})\.sha[0-9a-f]{7}$')
 
 def newest_main_build(tags):
-    """Among tags of the form <semver>-main.sha<7hex>, the one whose git commit
-    timestamp is most recent (shas unknown locally -> ts 0, sorted last)."""
-    cand=[(t, MAIN_BUILD.fullmatch(t).group(1)) for t in tags if MAIN_BUILD.fullmatch(t)]
+    """Among tags of the form <semver>-main.<date>.sha<7hex>, the one with the
+    most recent embedded commit time. Pure string compare on the fixed-width
+    date — no sha-to-history lookup, so it can't silently mis-order on a
+    shallow/foreign checkout the way the old commit-time-via-git scheme did."""
+    cand=[]
+    for t in tags:
+        m=MAIN_BUILD.fullmatch(t)
+        if m: cand.append((t, m.group(1)))
     if not cand: return None
-    return max(cand, key=lambda ts:(_commit_time(ts[1]), ts[0]))[0]
+    return max(cand, key=lambda ts: ts[1])[0]
 
+# Branch build at an exact HEAD sha. Accepts both the dated form
+# (-<san>.<date>.sha<7>) and the legacy un-dated form (-<san>.sha<7>).
 def _branch_tag(tags, san, sha):
     """Tag for a branch = the build at the branch HEAD sha exactly. No HEAD-sha
     build (component not rebuilt on this branch, or branch not fetched) -> None,
     so the caller falls back to stable rather than picking a stale older build."""
     if not sha: return None
-    exact=[t for t in tags if t.endswith(f"-{san}.sha{sha}")]
-    return exact[0] if exact else None
+    pat=re.compile(rf'-{re.escape(san)}\.(?:\d{{14}}\.)?sha{re.escape(sha)}$')
+    for t in tags:
+        if pat.search(t): return t
+    return None
 
 def resolve(chart):
     tags=reg_tags(chart)
