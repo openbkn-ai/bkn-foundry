@@ -8,28 +8,28 @@ This document defines the BKN Foundry architecture rules. **For day-to-day work,
 
 ### 1.1 Layers and dependencies
 
-- **Core (no UI)**: Core must not include UI/Web Console/Portal/BFF. It only exposes **APIs/SDKs** and admin APIs.
-- **DIP (single presentation entry)**: All UI is in DIP. DIP **requires Core at runtime**.
-- **Product dependency**: Products may call DIP or Core. DIP may only call Core. No reverse dependency.
+- **Foundry (no UI)**: Foundry must not include UI/Web Console/Portal/BFF. It only exposes **APIs/SDKs** and admin APIs.
+- **DIP (single presentation entry)**: All UI is in DIP. DIP **requires Foundry at runtime**.
+- **Product dependency**: Products may call DIP or Foundry. DIP may only call Foundry. No reverse dependency.
 - **Component optionality**: Capability modules beyond the DIP base are optional by default and must support enable/disable with explicit UI degradation messaging (see Section 2).
 
 ```mermaid
 flowchart LR
   Product[Product] --> DIP[DIP]
-  Product --> Core[Core]
-  DIP --> Core
+  Product --> Foundry[Foundry]
+  DIP --> Foundry
 ```
 
 ### 1.2 Presentation and backend (no page-scoped BFF)
 
-- **DIP frontend uses a monorepo (MUST)**: DIP host app, shared UI libraries, and micro-frontend modules (including Info Security Fabric frontend components) collaborate in one monorepo.
+- **DIP frontend uses a monorepo (MUST)**: DIP host app, shared UI libraries, and micro-frontend modules collaborate in one monorepo.
 - **Allowed**: Split **micro-apps** by business and delivery boundaries (micro-frontend / micro-app modules).
 - **Forbidden**:
   - Adding a dedicated backend for each page/micro-frontend module (page-scoped BFF)
   - Adding a backend microservice for each micro-app (micro-apps can be split, but backend services must not be split per micro-app)
   - Maintaining a separate frontend repository for each micro-frontend module (unless required for compliance/delivery boundaries and approved in architecture review)
 - **Call paths**:
-  - Browser may call Core Public APIs directly (when feasible)
+  - Browser may call Foundry Public APIs directly (when feasible)
   - Or use a unified API Gateway for auth pass-through and necessary protocol adaptation
   - Or use **DIP Gateway (platform-shared, optional)** for common capabilities (auth pass-through, protocol adaptation, cache, rate limiting, aggregation). It must **not** evolve into “one BFF per module/page”.
 
@@ -41,7 +41,7 @@ Only three kinds of “presentation-related backends” are allowed:
 - **DIP module backends** (must have independent domain data and business logic)
   - Allowed modules: ChatData / AI Store / Data Semantic Governance (new modules require review approval)
   - Must not be only field mapping/stitching/aggregation; must not become a page-scoped BFF
-  - Calls to Core must go through **Core Public APIs**, and must satisfy unified auth/tenant/audit requirements
+  - Calls to Foundry must go through **Foundry Public APIs**, and must satisfy unified auth/tenant/audit requirements
 - **Product-domain services** (real domain model/transactions/rules/data ownership)
   - If it is only display aggregation/query stitching/field mapping → do it in the frontend
 
@@ -50,17 +50,17 @@ Before adding a backend service, answer:
 - Does it have persistent domain data and consistency/transaction needs?
 - Does it require server-side permission/compliance logic that cannot reuse platform capabilities?
 - Does it have a long-lived evolving domain model (not temporary stitching)?
-- Is it reused by multiple products and not part of Core?
+- Is it reused by multiple products and not part of Foundry?
 
 If all answers are “no” → do not add a new service.
 
-### 1.3 API rules (Core Public APIs must be backward compatible)
+### 1.3 API rules (Foundry Public APIs must be backward compatible)
 
 - **API tiers**: Public / Internal / Experimental
   - Cross-component dependencies are only allowed on Public; Internal/Experimental must not be depended on across components.
-- **Core backward compatibility**:
-  - Core Public APIs **must be backward compatible** (no breaking changes within the same major version)
-  - Any Core endpoint called by DIP/products must be treated as Public API
+- **Foundry backward compatibility**:
+  - Foundry Public APIs **must be backward compatible** (no breaking changes within the same major version)
+  - Any Foundry endpoint called by DIP/products must be treated as Public API
 - **HTTP versioning**: URL major only (`/api/v1` → `/api/v2`)
   - Within the same major: only add optional fields (with default semantics), add new endpoints, extend enums (clients tolerate unknown values)
   - Breaking changes: only by introducing `/api/v2` and providing a deprecation window (e.g., 2 releases or 90 days)
@@ -84,17 +84,17 @@ If all answers are “no” → do not add a new service.
 
 ### 1.4 Service budget (MUST)
 
-- **Core**: backend microservices **< 5**
+- **Foundry**: backend microservices **< 5**
 - **DIP**: backend microservices **≤ 5**
 
 Counting rules:
 
-- Count: independently deployable/scalable backend services with their own runtime and release cadence (including DIP Gateway when enabled, DIP module backends, Core services)
+- Count: independently deployable/scalable backend services with their own runtime and release cadence (including DIP Gateway when enabled, DIP module backends, Foundry services)
 - Do not count: DB/cache/message infrastructure; micro-frontend modules in the frontend monorepo; local-only mocks
 
 Minimum enforcement:
 
-- When adding/splitting a backend service, update the “service inventory” and provide Core/DIP counts in the PR description
+- When adding/splitting a backend service, update the “service inventory” and provide Foundry/DIP counts in the PR description
 - CI must include an automated count check (exceeding budget requires explicit exemption)
 
 Exemption (must be recorded):
@@ -103,14 +103,14 @@ Exemption (must be recorded):
 
 ## 2. Mandatory checklist (MUST)
 
-- **Dependency direction**: products/industry can call DIP or Core; DIP can only call Core; no reverse dependency
-- **Core has no UI**: no React/Vue/static assets/routes/Web Console in Core repos
+- **Dependency direction**: products/industry can call DIP or Foundry; DIP can only call Foundry; no reverse dependency
+- **Foundry has no UI**: no React/Vue/static assets/routes/Web Console in Foundry repos
 - **Optional components**: disabling optional components must not prevent the system from starting; DIP UI provides explicit degradation messaging
 - **APIs**: OpenAPI updated + breaking detection passed + deprecation/migration notes + contract tests
 - **Backend additions**: no page-scoped BFF; any new service must pass the questions in 1.2
 - **Micro-apps**: micro-apps are allowed; do not add backend microservices per micro-app (backends must be one of DIP Gateway / DIP module backends / product-domain services)
 - **Monorepo**: DIP frontend uses a monorepo (including micro-apps/micro-frontends). Splitting micro-apps must not introduce new backend microservices.
-- **Budget**: Core < 5, DIP ≤ 5; service inventory and counts updated
+- **Budget**: Foundry < 5, DIP ≤ 5; service inventory and counts updated
 
 ---
 

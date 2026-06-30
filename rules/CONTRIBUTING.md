@@ -37,7 +37,7 @@ External CLI/SDKs that interact with this backend live in their own repositories
 
 Use the location that matches **audience and scope**:
 
-1. **[`docs/`](../docs) (repository root)** — System architecture, repo-wide design, and technical decisions that span multiple subsystems or the whole Core platform.
+1. **[`docs/`](../docs) (repository root)** — System architecture, repo-wide design, and technical decisions that span multiple subsystems or the whole BKN Foundry platform.
 2. **`<module>/docs/` (inside each subtree)** — Design notes and technical decisions **scoped to that module only** (for example [`adp/bkn/docs/`](../adp/bkn/docs), [`adp/vega/docs/`](../adp/vega/docs) design folders under each service).
 3. **[`help/{en,zh}/manual/`](../help/en/manual)** — Product **manuals / reference**: how subsystems work from a user or operator perspective (install stays next to the manual tree as `help/{lang}/install.md`).
 4. **[`help/{en,zh}/cookbook/`](../help/en/cookbook)** — **Cookbooks**: short, runnable task recipes. Start a new one by copying [`_TEMPLATE.md`](../help/en/cookbook/_TEMPLATE.md), use the worked-out [`cookbook_example.md`](../help/en/cookbook/cookbook_example.md) as reference, and add a row to [`cookbook/README.md`](../help/en/cookbook/README.md) (Chinese lives under `help/zh/cookbook/`).

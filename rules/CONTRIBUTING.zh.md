@@ -37,7 +37,7 @@ BKN Foundry 是一个 **monorepo**（[`openbkn-ai/bkn-foundry`](https://github.c
 
 按**读者**与**范围**选择目录：
 
-1. **[`docs/`](../docs)（仓库根）** — 系统级架构、跨子系统的整体设计、影响整个 Core 平台的技术决策。
+1. **[`docs/`](../docs)（仓库根）** — 系统级架构、跨子系统的整体设计、影响整个 BKN Foundry 平台的技术决策。
 2. **各子模块下的 `docs/`** — 仅属于该模块的设计与技术决策（例如 [`adp/bkn/docs/`](../adp/bkn/docs)、[`adp/vega/docs/`](../adp/vega/docs) 各服务下的设计文档目录等）。
 3. **[`help/{en,zh}/manual/`](../help/zh/manual)** — 面向用户/运维的**使用手册与参考**（按产品子域分文件；`install.md` / `quick-start.md` 与 `manual/` 同级放在 `help/{语言}/` 下）。
 4. **[`help/{en,zh}/cookbook/`](../help/zh/cookbook)** — **Cookbook**：可复制的场景化操作步骤。新写一篇请直接复制 [`_TEMPLATE.md`](../help/zh/cookbook/_TEMPLATE.md)，参考已写好的示例 [`cookbook_example.md`](../help/zh/cookbook/cookbook_example.md)，并在 [`cookbook/README.md`](../help/zh/cookbook/README.md) 索引表加一行（英文在 `help/en/cookbook/`）。
