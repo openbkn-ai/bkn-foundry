@@ -29,6 +29,7 @@
     .bar .n { font-size: 22px; font-weight: 700; }
     .bar .ok { color: var(--ok); } .bar .warn { color: var(--warn); }
     .bar .bad { color: var(--bad); }
+    #livepods td.ok { color: var(--ok); } #livepods td.bad { color: var(--bad); }
     .n.mut { color: var(--muted); }
     table { width: 100%; border-collapse: collapse; margin-top: 6px; }
     th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line);
@@ -68,6 +69,12 @@
   <div id="err"></div>
 
   <div class="bar" id="summary"></div>
+
+  <h2>Live pod health <span class="sub" style="font-weight:normal">— in-cluster, auto-refresh 60s <span id="liveAt">—</span></span></h2>
+  <div id="liveErr" style="color:var(--bad)"></div>
+  <table id="livepods"><thead><tr>
+    <th>Pod</th><th>Ready</th><th>Status</th><th>Restarts</th>
+  </tr></thead><tbody></tbody></table>
 
   <h2>Releases</h2>
   <table id="releases"><thead><tr>
@@ -206,8 +213,40 @@
           document.getElementById("err").textContent = "Failed to load install-status.json: " + e.message;
         });
     }
+    // Live pod health — polls the in-cluster refresher's pods.json (raw
+    // `kubectl get pods -o json`). Independent of the publish-time snapshot above.
+    function loadLive() {
+      fetch("install-status.pods.json", { cache: "no-store" })
+        .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(function (d) {
+          var tb = document.querySelector("#livepods tbody");
+          tb.innerHTML = "";
+          (d.items || []).forEach(function (p) {
+            var cs = (p.status && p.status.containerStatuses) || [];
+            var ready = cs.filter(function (c) { return c.ready; }).length;
+            var total = cs.length;
+            var restarts = cs.reduce(function (a, c) { return a + (c.restartCount || 0); }, 0);
+            var ok = total > 0 && ready === total;
+            var tr = document.createElement("tr");
+            tr.innerHTML =
+              "<td>" + esc(p.metadata && p.metadata.name) + "</td>" +
+              '<td class="' + (ok ? "ok" : "bad") + '">' + ready + "/" + total + "</td>" +
+              "<td>" + esc(p.status && p.status.phase) + "</td>" +
+              "<td>" + restarts + "</td>";
+            tb.appendChild(tr);
+          });
+          document.getElementById("liveErr").textContent = "";
+          document.getElementById("liveAt").textContent = "@ " + new Date().toLocaleTimeString();
+        })
+        .catch(function (e) {
+          document.getElementById("liveErr").textContent = "live pods unavailable: " + e.message;
+        });
+    }
+
     load();
     setInterval(load, 30000);
+    loadLive();
+    setInterval(loadLive, 60000);
   </script>
 </body>
 </html>
