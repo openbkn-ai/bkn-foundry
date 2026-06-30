@@ -36,6 +36,6 @@ Reference manuals by subsystem (living under `./manual/`).
 
 ## Community
 
-<img src="../qrcode.png" width="200" alt="KWeaver community QR code" />
+<img src="../qrcode.png" width="200" alt="BKN Foundry community QR code" />
 
 > Install the CLI with `npm install -g @openbkn/bkn-sdk`; platform administration is built into the same CLI via the `openbkn admin` subcommands. For cluster operations beyond this help set, follow the deployment guide bundled with your release.

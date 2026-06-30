@@ -9,10 +9,9 @@ This document defines the BKN Foundry architecture rules. **For day-to-day work,
 ### 1.1 Layers and dependencies
 
 - **Core (no UI)**: Core must not include UI/Web Console/Portal/BFF. It only exposes **APIs/SDKs** and admin APIs.
-  - **Exception (ISF only)**: ISF may provide **independent frontend components** (micro-frontend modules), but they must be mounted by DIP. No standalone UI entry and no built-in BFF.
 - **DIP (single presentation entry)**: All UI is in DIP. DIP **requires Core at runtime**.
 - **Product dependency**: Products may call DIP or Core. DIP may only call Core. No reverse dependency.
-- **Component optionality**: Info Security Fabric (ISF) is optional. Except DIP base, other capability modules are optional by default and must support enable/disable with explicit UI degradation messaging (see Section 2).
+- **Component optionality**: Capability modules beyond the DIP base are optional by default and must support enable/disable with explicit UI degradation messaging (see Section 2).
 
 ```mermaid
 flowchart LR
@@ -106,7 +105,6 @@ Exemption (must be recorded):
 
 - **Dependency direction**: products/industry can call DIP or Core; DIP can only call Core; no reverse dependency
 - **Core has no UI**: no React/Vue/static assets/routes/Web Console in Core repos
-  - Exception (ISF only): ISF frontend components are allowed but must be mounted by DIP
 - **Optional components**: disabling optional components must not prevent the system from starting; DIP UI provides explicit degradation messaging
 - **APIs**: OpenAPI updated + breaking detection passed + deprecation/migration notes + contract tests
 - **Backend additions**: no page-scoped BFF; any new service must pass the questions in 1.2

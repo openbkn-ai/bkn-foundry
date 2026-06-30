@@ -9,10 +9,9 @@
 ### 1.1 分层与依赖
 
 - **Core（无 UI）**：Core 不包含 UI/Web Console/Portal/BFF；对外仅提供 **API/SDK** 与管理 API。
-  - **例外（仅 ISF）**：ISF 可提供**独立的前端组件**（微前端模块），但必须由 DIP 统一挂载；不得形成独立 UI 入口或自带 BFF。
 - **DIP（唯一展示入口）**：所有展示在 DIP；DIP **运行时必须依赖 Core**。
 - **产品依赖**：产品均可调用 DIP 或 Core；DIP 只能调用 Core；禁止反向依赖。
-- **组件可选性**：Info Security Fabric（ISF）为可选组件；除 DIP 基座外，其他能力组件默认可选，必须支持启用/禁用与 UI 降级提示（见第 2 章检查清单）。
+- **组件可选性**：除 DIP 基座外，其他能力组件默认可选，必须支持启用/禁用与 UI 降级提示（见第 2 章检查清单）。
 
 ```mermaid
 flowchart LR

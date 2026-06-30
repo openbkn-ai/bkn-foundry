@@ -2,7 +2,7 @@
 name: development
 title: BKN Foundry 研发规范（DEVELOPMENT）
 version: 0.1.0
-scope: BKN Foundry 及关联产品（Decision Agent、ISF、TraceAI 等）的所有服务
+scope: BKN Foundry 的所有服务
 authors: [freeman.xu]
 created: 2026-03-20
 status: draft

@@ -306,7 +306,7 @@ go tool cover -html=coverage.out
 
 ### Contributing
 
-Refer to the KWeaver project content
+Refer to the BKN Foundry project content
 
 ## Version History
 

@@ -14,7 +14,7 @@ BKN Foundry is a **monorepo** ([`openbkn-ai/bkn-foundry`](https://github.com/ope
 
 | Module | Path | Description |
 | --- | --- | --- |
-| **AI Data Platform (ADP)** | [`adp/`](../adp) | BKN Engine (`adp/bkn`), Context Loader (`adp/context-loader`), Dataflow (`adp/dataflow`), Execution Factory (`adp/execution-factory`), VEGA virtualization (`adp/vega`) |
+| **AI Data Platform (ADP)** | [`adp/`](../adp) | BKN Engine (`adp/bkn`), Context Loader (`adp/context-loader`), Execution Factory (`adp/execution-factory`), VEGA virtualization (`adp/vega`) |
 | **Trace AI** | [`trace-ai/`](../trace-ai) | Agent observability and OpenTelemetry collector chart |
 | **Infra** | [`infra/`](../infra) | `mf-model-manager` (model registry), `oss-gateway-backend`, `sandbox` runtime |
 | **BKN samples** | [`bkn/`](../bkn) | Reference Business Knowledge Networks (e.g. `smart_home_supply_chain`) |
