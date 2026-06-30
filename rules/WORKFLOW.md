@@ -2,17 +2,43 @@
 
 [中文](WORKFLOW.zh.md) | English
 
-This document defines BKN Foundry's team R&D collaboration standards, covering Issue management, Feature tracking, design documentation, and team notification processes. Every rule includes concrete steps and file paths to ensure practical execution.
+This document defines BKN Foundry's team R&D collaboration standards, covering the **boundary between humans and Agents**, Issue management, Feature tracking, design documentation, and team notification processes. Every rule includes concrete steps and file paths so both humans and Agents can execute them.
 
 ---
 
 ## 📋 Table of Contents
 
+- [Human + Agent Collaboration Model](#-human--agent-collaboration-model)
 - [Issue Management](#-issue-management)
+- [Agent Workflow](#-agent-workflow)
 - [Feature Tracking: Issue → Branch → Design Doc](#-feature-tracking-issue--branch--design-doc)
 - [Design Document Specification](#-design-document-specification)
 - [PR and Merge Process](#-pr-and-merge-process)
 - [Email Notification Process](#-email-notification-process)
+
+---
+
+## 🤝 Human + Agent Collaboration Model
+
+This workflow applies to both **humans** and **Agents** (Claude Code / Codex, connected via the GitHub MCP or the `gh` CLI). Both share the same Issue / branch / PR rules; they differ only in their boundaries.
+
+### Five Principles
+
+1. **All collaboration happens on GitHub.** Requirements, design discussion, code, PRs, reviews, CI, board, docs — all on GitHub. Conclusions reached offline / in chat must be posted back to the relevant Issue / PR to count.
+2. **Whatever can be delegated to an Agent, delegate it.** Let Agents do the work by default; humans spend their attention on judgment and gatekeeping.
+3. **Risky / hard-to-revert operations may be done by an Agent, but only after human confirmation** (the confirmation gate; see [Agent Workflow](#-agent-workflow)).
+4. **Two hard gates before merge: CI green + human review approval**, enforced by GitHub Branch Protection (see [PR and Merge Process](#-pr-and-merge-process)).
+5. **Humans are accountable; the Agent is an amplifier.** When something breaks, it traces back to a person (the module Owner).
+
+### Module Owners and Auto-Routing
+
+Every service / module has an Owner in [`.github/CODEOWNERS`](../.github/CODEOWNERS). Two layers of automation are built on it:
+
+- **Issue auto-assignment**: an `issues.labeled` Action maps "service label → Owner" and sets the Assignee automatically (see [Issue Triage Rules](#issue-triage-rules)).
+- **PR auto-review**: native CODEOWNERS — a PR touching a module path automatically requests that Owner's review; with Branch Protection "Require review from Code Owners", the Owner must approve.
+- **A single Owner is fine**: one Owner per module is enough; a second is not required. When the Owner is the PR author, they merge via bypass (see "Merge Gates" below) or another maintainer reviews — no deadlock.
+
+**No central triage rotation**: each Owner triages the Issues in their own module.
 
 ---
 
@@ -36,6 +62,19 @@ This document defines BKN Foundry's team R&D collaboration standards, covering I
 | Medium | `priority: medium` | Planned for next 1–2 Sprints |
 | Low | `priority: low` | Future backlog; no fixed deadline |
 
+### Collaboration Labels (Human / Agent)
+
+| Label | Purpose |
+| --- | --- |
+| `agent-ready` | Acceptance criteria complete + `ac-approved` + independently doable — can be handed to an Agent |
+| `ac-approved` | Acceptance criteria approved by a human (prerequisite for `agent-ready`) |
+| `needs-human` | Returned after an Agent got stuck / went off-track; needs a human |
+| `awaiting-confirmation` | Agent posted a risky-operation plan; waiting for Owner confirmation |
+| `owner-confirmed` | Owner confirmed the risky operation; OK to execute (Owner-only) |
+| `by-agent` | PR / Issue produced by an Agent; used for metrics |
+
+> Service / module labels (e.g. `vega`, `bkn-safe`, `context-loader`) drive CODEOWNERS auto-routing to the Owner (see [`route-issue.yml`](../.github/workflows/automation-route-issue.yml)).
+
 ### Issue Lifecycle
 
 ```text
@@ -55,9 +94,60 @@ Open → Triaged → In Progress → In Review → Done
 
 ### Issue Triage Rules
 
-- All Issues must be triaged (Assignee + Priority + Milestone) within **2 business days** of creation
-- Cross-module Issues must `@mention` the responsible module owner with expected outcome
-- Issues with no progress for 30+ days must be re-triaged or closed
+- **Auto-routing**: once a new Issue gets a service label, an Action (`.github/workflows/automation-route-issue.yml`) assigns it to the module Owner per CODEOWNERS, so nothing falls through the cracks.
+- **Distributed triage (no rotation)**: each module Owner triages their own module's Issues within **2 business days** of creation (set Priority, Milestone; decide to do it themselves / label `agent-ready` / leave it up for grabs).
+- **Self-serve pickup**: members self-assign from Triaged, unassigned Issues (own module first); moving to In Progress = lock.
+- Cross-module Issues must `@mention` the relevant module Owner with the expected outcome.
+- Issues with no progress for 30+ days must be re-triaged or closed.
+
+---
+
+## 🤖 Agent Workflow
+
+### When to Hand to an Agent
+
+**Acceptance-criteria flip**: an Agent is encouraged to read the Issue first and *draft* the acceptance criteria + test plan as a comment; the Owner reviews and applies `ac-approved`. This moves the human from author to approver — higher throughput.
+
+Label `agent-ready` only when all hold: ① acceptance criteria are complete (including test requirements); ② they are `ac-approved` (human-approved); ③ the task is independently doable. Issues without acceptance criteria, or not yet approved, cannot be handed to an Agent.
+
+### Agent Loop
+
+```text
+1. Find Issues with label=agent-ready, state=Triaged & available, no Assignee
+2. Claim: set Assignee (lock) → move to In Progress → comment "starting"
+3. Read acceptance criteria → create branch via the Issue's "Create a branch" → write code + run/add tests
+4. Open PR (body includes Closes #issue) → auto-moves to In Review
+5. On a risky operation: post the "three-part confirmation" and wait for human confirmation before executing
+6. Stop. Wait for CI green + module Owner approval to merge; if CI fails, fix it first
+```
+
+The Agent must post a comment in the Issue at these points so humans can audit asynchronously: claiming work, opening the PR, requesting confirmation, returning when stuck.
+
+### Confirmation Gate: the Three-Part Confirmation
+
+For any operation with side effects / hard to revert / affecting production (deploy, delete or modify data, schema migration, prod config, secrets & permissions, major dependency bumps, cross-service breaking changes), the Agent does **not** execute directly. It first posts three things in the Issue:
+
+1. **What it will do** — the exact command / diff
+2. **Blast radius** — which data / environments / services are affected
+3. **Rollback** — how to undo if it goes wrong
+
+**Structured approval (not a casual "ok")**: after posting the three parts, the Agent applies `awaiting-confirmation`; **only a module Owner** may replace it with `owner-confirmed`, which is the go-ahead. The Agent executes only once `owner-confirmed` is present; otherwise it does nothing.
+
+**Deploys use a stronger native gate**: put deploy workflows behind a GitHub **Environment with required reviewers = Owners**. When an Agent triggers a deploy, GitHub pauses for human approval — auditable, and not dependent on parsing text.
+
+### Agents Never
+
+- approve / merge a PR (code review must be human)
+- bypass / skip CI
+- execute the risky operations above without confirmation
+
+### Returning When Stuck
+
+Agent stuck / off-track / can't get tests passing → comment the blocker → move back to Triaged → clear its own Assignee → label `needs-human`; the module Owner reschedules.
+
+### Connecting
+
+GitHub MCP or the `gh` CLI both work; no mandated tool. Only one Agent may take a given Issue at a time (locked via Assignee).
 
 ---
 
@@ -233,6 +323,12 @@ Describe the feature background, user pain points, and the goals of this develop
 
 Brief overview of the overall approach.
 
+### Interaction Design (if applicable)
+
+For features involving UI / frontend interaction, a **link to the design mockup (Figma / etc.) is required**, with a brief description of the key interactions.
+
+- Mockup: <link>
+
 ### API Changes (if any)
 
 ```http
@@ -342,6 +438,23 @@ Describe alternatives that were considered but not chosen, and why.
 
 ## 🔀 PR and Merge Process
 
+### Merge Gates (Enforced by Branch Protection)
+
+Merging to `main` requires both hard gates, physically enforced by GitHub Branch Protection / Rulesets — not left to good intentions:
+
+1. **CI green** — required status checks pass (GitHub Actions runs the tests).
+2. **Human approval** — at least one approval from someone other than the author, with **Require review from Code Owners** enabled, so the module Owner must approve.
+
+Agents cannot approve, merge, or bypass CI. Recommended `main` configuration:
+
+- Require a pull request before merging
+- Require status checks to pass (check the CI job)
+- Require approvals ≥ 1 + Require review from someone other than the author + Require review from Code Owners
+- Require branches to be up to date before merging
+- **Bypass list**: module Owners / maintainers are allowed to bypass (Branch Protection bypass actors / Ruleset bypass list)
+
+> **Owners have bypass permission**: in emergencies or trusted cases, an Owner may push directly / merge past the gates — a trust channel, to be used sparingly and explained afterward in the relevant Issue / PR. **Agents are never on the bypass list**; the two gates always apply to Agents and regular contributors.
+
 ### PR Description Template
 
 The PR description must include the following to complete the three-way link: Issue → Branch → Design Doc.
@@ -383,6 +496,7 @@ Describe how to verify this change (test commands, manual steps, etc.).
 
 Reviewers must confirm:
 
+- [ ] For UI / interaction changes: the design mockup link is attached and the implementation matches it
 - [ ] Design doc is consistent with the actual implementation
 - [ ] API documentation is up to date
 - [ ] CHANGELOG.md records user-facing changes
@@ -498,4 +612,4 @@ YYYY-MM-DD
 
 ---
 
-*Last updated: 2026-03-16*
+*Last updated: 2026-06-30*

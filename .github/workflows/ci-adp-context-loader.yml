@@ -1,0 +1,27 @@
+name: ci-adp-context-loader
+
+# Compile gate for PRs touching adp/context-loader. Build-only for now; add
+# `go test` once the test harness is CI-ready.
+
+on:
+  pull_request:
+    paths:
+      - 'adp/context-loader/**'
+      - '.github/workflows/ci-adp-context-loader.yml'
+
+concurrency:
+  group: ci-adp-context-loader-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: adp/context-loader/agent-retrieval
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: adp/context-loader/agent-retrieval/go.mod
+      - run: go build ./...

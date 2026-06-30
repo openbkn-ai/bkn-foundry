@@ -1,0 +1,27 @@
+name: ci-bkn-safe
+
+# Compile gate for PRs touching bkn-safe. Build-only for now; add `go test`
+# once the test harness is CI-ready.
+
+on:
+  pull_request:
+    paths:
+      - 'bkn-safe/**'
+      - '.github/workflows/ci-bkn-safe.yml'
+
+concurrency:
+  group: ci-bkn-safe-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: bkn-safe/server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: bkn-safe/server/go.mod
+      - run: go build ./...

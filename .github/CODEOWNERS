@@ -8,6 +8,8 @@
 #   - Owners can be @username, @org/team-name, or email
 #   - To enforce, enable "Require review from Code Owners"
 #     in Settings → Branches → Branch protection rules
+#   - A single owner per module is fine. The global fallback owners above act
+#     as backup; when the sole owner authors a PR, they merge via bypass.
 # ──────────────────────────────────────────────────────────────
 
 # ── Global fallback ──────────────────────────────────────────

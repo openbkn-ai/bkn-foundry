@@ -1,0 +1,40 @@
+name: ci-adp-bkn
+
+# Compile gate for PRs touching adp/bkn. Build-only for now (unit tests assume
+# a working dir / locale paths and fatal-exit under a plain `go test ./...`).
+# Add `go test` once the test harness is CI-ready.
+
+on:
+  pull_request:
+    paths:
+      - 'adp/bkn/**'
+      - '.github/workflows/ci-adp-bkn.yml'
+
+concurrency:
+  group: ci-adp-bkn-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bkn-backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: adp/bkn/bkn-backend/server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: adp/bkn/bkn-backend/server/go.mod
+      - run: go build ./...
+
+  ontology-query:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: adp/bkn/ontology-query/server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: adp/bkn/ontology-query/server/go.mod
+      - run: go build ./...

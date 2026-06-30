@@ -27,5 +27,14 @@ assignees: ''
 - Browser: [e.g. Chrome 120 / Edge 119 / Firefox 118] (if applicable)
 - Version: [e.g. v1.0.0]
 
+## Acceptance Criteria (Definition of Done)
+
+- [ ] Reproduction steps no longer trigger the bug
+- [ ] Regression test added covering this bug
+- [ ] CI green
+
+## Boundaries / Risk
+<!-- Risky operations involved in the fix (delete/modify data / schema migration / config / permissions) require human confirmation before an Agent executes them -->
+
 ## Additional context
 <!-- Screenshots, logs, links to reproduce, etc. -->

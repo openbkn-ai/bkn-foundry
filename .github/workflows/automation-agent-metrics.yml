@@ -1,0 +1,46 @@
+name: Agent PR metrics
+
+# Weekly health check on Agent-produced work. Tune the `agent-ready` scope
+# based on these numbers (acceptance rate, rework, reverts, time-to-merge).
+# Agent PRs are identified by the `by-agent` label.
+
+on:
+  schedule:
+    - cron: '0 1 * * 1'   # Mondays 01:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+
+jobs:
+  metrics:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Compute by-agent PR metrics
+        run: |
+          set -euo pipefail
+          REPO='${{ github.repository }}'
+
+          merged=$(gh pr list -R "$REPO" --label by-agent --state merged  --limit 500 --json number | jq length)
+          closed=$(gh pr list -R "$REPO" --label by-agent --state closed  --limit 500 --json number,state | jq '[.[] | select(.state=="CLOSED")] | length')
+          open=$(gh pr list   -R "$REPO" --label by-agent --state open    --limit 500 --json number | jq length)
+          total=$(( merged + closed ))
+          rate='n/a'
+          if [ "$total" -gt 0 ]; then rate=$(( merged * 100 / total ))%; fi
+
+          {
+            echo "## Agent PR metrics (label: by-agent)"
+            echo ""
+            echo "| Metric | Value |"
+            echo "| --- | --- |"
+            echo "| Merged | $merged |"
+            echo "| Closed without merge | $closed |"
+            echo "| Currently open | $open |"
+            echo "| Acceptance rate (merged / decided) | $rate |"
+            echo ""
+            echo "> Closed-without-merge and reverts are signals to tighten the \`agent-ready\` bar."
+          } >> "$GITHUB_STEP_SUMMARY"
