@@ -39,6 +39,9 @@ releases:
   agent-operator-integration:
     chart: agent-operator-integration
     version: 0.1.0
+  capabilities-lab:
+    chart: capabilities-lab
+    version: 0.1.0
   agent-retrieval:
     chart: agent-retrieval
     version: 0.1.0
