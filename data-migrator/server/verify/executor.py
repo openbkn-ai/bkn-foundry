@@ -2,8 +2,7 @@
 # -*- coding: utf-8 -*-
 # Copyright openbkn.ai
 #
-# Licensed under the Apache License, Version 2.0.
-# See the LICENSE file in the project root for details.
+# Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 """verify 子命令入口 — 连接测试 DB，执行 SQL 校验 + schema 对比"""
 import json
 import os

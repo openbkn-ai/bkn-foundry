@@ -1,3 +1,7 @@
+// Copyright openbkn.ai
+//
+// Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
 // Package directory is bkn-safe's user/organization directory: users,
 // departments, groups, and name resolution. This is a CLEAN redesign of the
 // ISF user-management surface (no GET-in-body, no array-vs-map quirks) — the

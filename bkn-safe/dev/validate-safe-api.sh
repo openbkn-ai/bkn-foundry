@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# Copyright openbkn.ai
+#
+# Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
 # Functional test of bkn-safe's API surface, split by trust boundary:
 #
 #   - internal (tokenless, ClusterIP): authz check/operations/policies, directory

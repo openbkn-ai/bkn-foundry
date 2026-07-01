@@ -2,8 +2,7 @@
 # -*- coding: utf-8 -*-
 # Copyright openbkn.ai
 #
-# Licensed under the Apache License, Version 2.0.
-# See the LICENSE file in the project root for details.
+# Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 """MigrationExecutor 高层流程单元测试
 
 覆盖：_migrate_service 路由、_install_service、_upgrade_service、_list_services

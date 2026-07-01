@@ -2,8 +2,7 @@
 # -*- coding: utf-8 -*-
 # Copyright openbkn.ai
 #
-# Licensed under the Apache License, Version 2.0.
-# See the LICENSE file in the project root for details.
+# Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 """
 MariaDB parser 层单元测试 — 覆盖 RDSParser 基类 + MariaDBParser。
 所有测试纯字符串操作，无 DB 依赖。

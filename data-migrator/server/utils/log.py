@@ -2,8 +2,7 @@
 # -*- coding: utf-8 -*-
 # Copyright openbkn.ai
 #
-# Licensed under the Apache License, Version 2.0.
-# See the LICENSE file in the project root for details.
+# Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 """日志工具 - 复用 server-old LogDiy，改名 data-migrator"""
 import re
 import sys

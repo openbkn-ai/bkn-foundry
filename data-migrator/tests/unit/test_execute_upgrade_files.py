@@ -2,8 +2,7 @@
 # -*- coding: utf-8 -*-
 # Copyright openbkn.ai
 #
-# Licensed under the Apache License, Version 2.0.
-# See the LICENSE file in the project root for details.
+# Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 """MigrationExecutor._execute_upgrade_files 单元测试
 
 mock _run_script / task_mgr / history_mgr，专注断点续跑逻辑。

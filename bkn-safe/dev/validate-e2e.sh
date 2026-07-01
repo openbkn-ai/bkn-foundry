@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# Copyright openbkn.ai
+#
+# Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
 # End-to-end validation: bkn-safe (login/consent provider) + standard hydra.
 # Drives a full authorization-code flow as a human user, then introspects the
 # resulting token and asserts the §1 ext claims bkn-safe injected at consent.

@@ -1,7 +1,6 @@
 // Copyright openbkn.ai
 //
-// Licensed under the Apache License, Version 2.0.
-// See the LICENSE file in the project root for details.
+// Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 
 // Package knquerytools provides HTTP handlers for the query tools that are also
 // exposed as MCP tools: run_sql, list_knowledge_networks, get_kn_detail,

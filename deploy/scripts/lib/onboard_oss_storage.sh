@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# Copyright openbkn.ai
+#
+# Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
 # onboard_oss_storage.sh — register a default OSS storage in oss-gateway-backend.
 #
 # Skill registration and other file-asset features call oss-gateway's

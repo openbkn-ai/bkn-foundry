@@ -2,8 +2,7 @@
 # -*- coding: utf-8 -*-
 # Copyright openbkn.ai
 #
-# Licensed under the Apache License, Version 2.0.
-# See the LICENSE file in the project root for details.
+# Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 """DM8 (达梦) 纯字符串解析器 — 无 DB 依赖"""
 from server.db.dialect._parser.base import RDSParser
 from server.utils.table_define import Database, Column

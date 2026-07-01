@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# Copyright openbkn.ai
+#
+# Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
 # Phase 1 smoke test against the real upstream hydra dev stack.
 #
 #   1. client_credentials → access token → introspect → assert the app-type

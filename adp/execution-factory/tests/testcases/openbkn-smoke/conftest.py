@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+# Copyright openbkn.ai
+#
+# Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
 """OpenBKN smoke fixtures — no KWeaver platform (eisoo/Hydra) required."""
 
 import os

@@ -1,3 +1,7 @@
+// Copyright openbkn.ai
+//
+// Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
 // Package authz is bkn-safe's authorization engine: a Casbin RBAC model with
 // resource instances, backed by a GORM adapter (policies live in the shared DB).
 //

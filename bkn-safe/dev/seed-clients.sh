@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# Copyright openbkn.ai
+#
+# Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
 # Register the OAuth2 clients the ISF replacement needs, against the hydra admin
 # API. Idempotent: deletes by id first. Internal services need NO client (they
 # only introspect / propagate the user token) — only login entry-points do.

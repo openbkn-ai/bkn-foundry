@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# Copyright openbkn.ai
+#
+# Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
 # bkn-redirect.sh — list/add/remove an OAuth2 login client's redirect_uris via the
 # bkn-safe admin API (gateway-exposed), so a redirect can be registered without
 # kubectl or a helm redeploy.

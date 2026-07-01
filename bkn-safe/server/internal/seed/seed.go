@@ -1,3 +1,7 @@
+// Copyright openbkn.ai
+//
+// Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
 // Package seed centrally initialises authorization data at bkn-safe startup:
 // roles, the resource-type/operation catalog, and role->permission grants.
 //

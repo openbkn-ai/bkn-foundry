@@ -2,8 +2,7 @@
 # -*- coding: utf-8 -*-
 # Copyright openbkn.ai
 #
-# Licensed under the Apache License, Version 2.0.
-# See the LICENSE file in the project root for details.
+# Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 """数据库方言抽象基类 - 统一 check 和 migrate 的 SQL 执行逻辑"""
 import os
 from abc import ABC, abstractmethod
