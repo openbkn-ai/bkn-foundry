@@ -1,0 +1,222 @@
+openapi: "3.0.3"
+info:
+  title: "Sandbox Runtime Private Management APIs"
+  version: "1.0.0"
+  description: "Read-only Sandbox Runtime observability APIs for Execution Factory Lab."
+servers:
+  - url: "http://127.0.0.1:9000/api/agent-operator-integration/internal-v1"
+tags:
+  - name: "Sandbox Runtime"
+    description: "Read-only runtime health, pool, and session diagnostics."
+paths:
+  /sandbox/health:
+    get:
+      tags: ["Sandbox Runtime"]
+      summary: "Get sandbox runtime health"
+      responses:
+        "200":
+          description: "Sandbox runtime health status."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SandboxHealthResp"
+  /sandbox/pool:
+    get:
+      tags: ["Sandbox Runtime"]
+      summary: "Get sandbox session pool status"
+      responses:
+        "200":
+          description: "Sandbox session pool status."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SandboxPoolResp"
+  /sandbox/sessions:
+    get:
+      tags: ["Sandbox Runtime"]
+      summary: "List sandbox sessions"
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: ["creating", "running", "failed", "terminated"]
+        - name: source
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: runtime
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: abnormal_only
+          in: query
+          required: false
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: "Sandbox session list."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SandboxSessionListResp"
+  /sandbox/sessions/{id}:
+    get:
+      tags: ["Sandbox Runtime"]
+      summary: "Get sandbox session detail"
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: "Sandbox session detail."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SandboxSessionDetailResp"
+        "404":
+          description: "Session not found."
+components:
+  schemas:
+    SandboxHealthResp:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: ["healthy", "degraded", "unhealthy"]
+        control_plane_reachable:
+          type: boolean
+        checked_at:
+          type: string
+        max_sessions:
+          type: integer
+        current_active_sessions:
+          type: integer
+        current_running_tasks:
+          type: integer
+        failed_sessions:
+          type: integer
+        message:
+          type: string
+    SandboxPoolResp:
+      type: object
+      properties:
+        max_sessions:
+          type: integer
+        active_sessions:
+          type: integer
+        max_concurrent_tasks:
+          type: integer
+        current_active_sessions:
+          type: integer
+        current_running_tasks:
+          type: integer
+        template_id:
+          type: string
+        session_resources:
+          type: object
+        sessions:
+          type: array
+          items:
+            $ref: "#/components/schemas/PoolSessionSnapshotResp"
+    PoolSessionSnapshotResp:
+      type: object
+      properties:
+        id:
+          type: string
+        running_tasks:
+          type: integer
+        last_used_at:
+          type: string
+    SandboxSessionListResp:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/SandboxSessionSummary"
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+        has_more:
+          type: boolean
+    SandboxSessionSummary:
+      type: object
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+        source:
+          type: string
+        template_id:
+          type: string
+        runtime_type:
+          type: string
+        language_runtime:
+          type: string
+        resource_limit:
+          type: object
+        dependency_install_status:
+          type: string
+        recent_error_summary:
+          type: string
+        created_at:
+          type: string
+        updated_at:
+          type: string
+        last_activity_at:
+          type: string
+    SandboxSessionDetailResp:
+      allOf:
+        - $ref: "#/components/schemas/SandboxSessionSummary"
+        - type: object
+          properties:
+            workspace_path:
+              type: string
+            runtime_node:
+              type: string
+            pod_name:
+              type: string
+            timeout:
+              type: integer
+            python_package_index_url:
+              type: string
+            requested_dependencies:
+              type: array
+              items:
+                type: object
+            installed_dependencies:
+              type: array
+              items:
+                type: object
+            dependency_install_started_at:
+              type: string
+            dependency_install_completed_at:
+              type: string
+            full_stdout_stderr_available:
+              type: boolean
+            governance_actions_available:
+              type: boolean
+            sensitive_diagnostics_redacted:
+              type: boolean
