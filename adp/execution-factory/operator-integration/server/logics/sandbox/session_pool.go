@@ -8,13 +8,13 @@ import (
 	"sync"
 	"time"
 
+	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/drivenadapters"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/telemetry"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/utils"
-	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
 )
 
 const (
@@ -44,6 +44,8 @@ type SessionPool interface {
 	ExecuteCode(ctx context.Context, req *interfaces.ExecuteCodeReq) (*interfaces.ExecuteCodeResp, error)
 	// 获取依赖库列表
 	GetDependencies(ctx context.Context) (resp *DependenciesInfo, err error)
+	// Snapshot returns read-only pool status for management and diagnostics.
+	Snapshot() PoolSnapshot
 	// 获取可用会话
 	AcquireSession(ctx context.Context) (sessionID string, err error)
 	// 归还会话

@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/drivenadapters"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/driveradapters/common"
+	sandboxdriver "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/driveradapters/sandbox"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/business_domain"
@@ -19,6 +20,7 @@ type restPrivateHandler struct {
 	UpgradeHandler        common.UpgradeHandler
 	UnifiedProxyHandler   common.UnifiedProxyHandler
 	ImpexHandler          common.ImpexHandler
+	SandboxHandler        sandboxdriver.ManagementHandler
 	Logger                interfaces.Logger
 	SkillRestHandler      SkillRestHandler
 	businessDomainService interfaces.IBusinessDomainService
@@ -34,6 +36,7 @@ func NewRestPrivateHandler() interfaces.HTTPRouterInterface {
 		UpgradeHandler:        common.NewUpgradeHandler(),
 		UnifiedProxyHandler:   common.NewUnifiedProxyHandler(),
 		ImpexHandler:          common.NewImpexHandler(),
+		SandboxHandler:        sandboxdriver.NewManagementHandler(),
 		Logger:                config.NewConfigLoader().GetLogger(),
 		SkillRestHandler:      NewSkillRestHandler(),
 		businessDomainService: business_domain.NewBusinessDomainService(),
@@ -54,6 +57,8 @@ func (r *restPrivateHandler) RegisterRouter(engine *gin.RouterGroup) {
 	r.MCPRestHandler.RegisterPrivate(engine)
 	// 技能接口
 	r.SkillRestHandler.RegisterPrivate(engine)
+	// Sandbox Runtime read-only management APIs.
+	r.SandboxHandler.RegisterPrivate(engine)
 
 	// 临时升级接口 - 仅在从旧版本升级到5.0.0.3时使用
 	engine.GET("/upgrade/v5003/migrate-history", r.UpgradeHandler.MigrateHistoryData)

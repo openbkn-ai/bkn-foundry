@@ -120,6 +120,10 @@ func (f *fakeSessionPool) GetDependencies(ctx context.Context) (*sandbox.Depende
 	return nil, nil
 }
 
+func (f *fakeSessionPool) Snapshot() sandbox.PoolSnapshot {
+	return sandbox.PoolSnapshot{}
+}
+
 func (f *fakeSessionPool) AcquireSession(ctx context.Context) (string, error) {
 	return f.acquireFunc(ctx)
 }
