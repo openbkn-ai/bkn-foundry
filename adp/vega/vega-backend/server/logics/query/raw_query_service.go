@@ -1,4 +1,4 @@
-// Copyright 2026 openbkn.ai
+// Copyright openbkn.ai
 // Copyright The kweaver.ai Authors.
 //
 // Licensed under the Apache License, Version 2.0.
