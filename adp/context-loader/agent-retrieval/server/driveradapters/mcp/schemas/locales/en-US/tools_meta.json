@@ -1,0 +1,46 @@
+{
+  "search_schema": {
+    "name": "search_schema",
+    "description": "Explore schema by natural language. Returns relevant object types, relation types, action types, metric types, condition operations, and data source metadata for downstream query tools."
+  },
+  "query_object_instance": {
+    "name": "query_object_instance",
+    "description": "Query instances of one known object type with filters, sorting, selected properties, and cursor-style pagination. Use this for row-level object retrieval, not joins or aggregation."
+  },
+  "query_instance_subgraph": {
+    "name": "query_instance_subgraph",
+    "description": "Fetch instance subgraphs by following relation paths across object types. Use this when the question needs related objects around one or more seed instances."
+  },
+  "get_logic_properties_values": {
+    "name": "get_logic_properties_values",
+    "description": "Resolve calculated logic properties, such as metrics or operator-backed properties, for a batch of object instances."
+  },
+  "get_action_info": {
+    "name": "get_action_info",
+    "description": "Return executable action definitions for object instances, including dynamic tool schemas that an agent can call."
+  },
+  "find_skills": {
+    "name": "find_skills",
+    "description": "Find available skills that match a knowledge network, object type, instance context, or user intent."
+  },
+  "list_knowledge_networks": {
+    "name": "list_knowledge_networks",
+    "description": "List knowledge networks visible to the current account. Call this first to obtain kn_id for other tools."
+  },
+  "get_kn_detail": {
+    "name": "get_kn_detail",
+    "description": "Get full knowledge network details, including concept groups, object types, relation types, and action types. Use this when a known kn_id needs a complete schema snapshot."
+  },
+  "run_sql": {
+    "name": "run_sql",
+    "description": "Run read-only Trino SQL against data resources mounted by a knowledge network. Use table placeholders such as {{.resource_id}} and physical column names."
+  },
+  "list_resources": {
+    "name": "list_resources",
+    "description": "List visible data-layer resources independent of ontology object types. Use this when resources are not modeled as object types or when querying raw data directly."
+  },
+  "describe_resource": {
+    "name": "describe_resource",
+    "description": "Describe one data resource's physical schema, including connector type and columns. Use this before writing run_sql against raw resources."
+  }
+}

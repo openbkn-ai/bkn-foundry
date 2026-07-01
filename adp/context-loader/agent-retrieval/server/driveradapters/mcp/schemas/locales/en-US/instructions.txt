@@ -1,0 +1,22 @@
+Context Loader knowledge network tools.
+
+Suggested exploration order:
+1. Call list_knowledge_networks first to obtain a kn_id. Most other tools require kn_id.
+2. Call search_schema with natural language to discover object types, relation types, action types, metric types, data_source.id, supported condition operations, and physical columns.
+3. Pick the query tool based on the task.
+
+Query routing:
+- Use query_object_instance for single object-type filtering, sorting, and cursor-style pagination.
+- Use run_sql for joins, aggregation, ranking, GROUP BY, COUNT, SUM, AVG, and cross-table analysis. Use read-only Trino SQL. Reference tables with placeholders such as {{.resource_id}} where resource_id comes from search_schema or list_resources. Use physical column names from search_schema with include_columns=true or from describe_resource.
+- Use query_instance_subgraph to expand related instances along relation paths.
+- Use get_logic_properties_values to resolve calculated logic properties, such as metrics or operators, for batches of instances.
+- Use get_action_info to discover actions that can be executed for object instances.
+
+Direct data-layer path:
+- Use list_resources to list visible data resources with resource_id, name, type, and catalog_id.
+- Use describe_resource to inspect a resource's physical columns and connector type.
+- Then use run_sql with table placeholders and physical column names.
+
+Tips:
+- For aggregation questions such as "total Y by each X" or ranking tasks, go directly to run_sql instead of approximating with query_object_instance sorting.
+- Never copy the literal placeholder name "resource_id"; replace it with the actual id returned by search_schema or list_resources.
