@@ -336,7 +336,8 @@ func handleDescribeResource(svc knresources.KnResourcesService) func(ctx context
 }
 
 // handleGetKnDetail handles get_kn_detail tool calls.
-// 直接包装 bkn-backend，返回知识网络完整详情（概念组 / 对象类 / 关系类 / 行动类）。
+// 包装 bkn-backend 的知识网络详情（概念组 / 对象类 / 关系类 / 行动类），并按
+// detail_level 做渐进式裁剪：summary（默认）返回骨架 + 属性名，full 返回全量。
 func handleGetKnDetail(bkn interfaces.BknBackendAccess) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		format, err := GetResponseFormatFromRequest(req)
@@ -356,6 +357,90 @@ func handleGetKnDetail(bkn interfaces.BknBackendAccess) func(ctx context.Context
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
+		resp.Slim(getStringArg(req, "detail_level", interfaces.DetailLevelSummary))
+		result, err := BuildMCPToolResult(resp, format)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return result, nil
+	}
+}
+
+// knDrillArgs are the arguments for the get_object_types / get_relation_types
+// drill-down tools: a knowledge-network id plus the type ids to expand.
+type knDrillArgs struct {
+	KnID string   `json:"kn_id"`
+	IDs  []string `json:"ids"`
+}
+
+func (a *knDrillArgs) resolveKnID(req mcp.CallToolRequest) string {
+	if a.KnID != "" {
+		return a.KnID
+	}
+	return getKnIDFromHeader(req)
+}
+
+// handleGetObjectTypes handles get_object_types tool calls: return the full
+// definition (data/logic properties incl. mappings) of the requested object type
+// ids. Pairs with get_kn_detail summary, which omits that heavy detail.
+func handleGetObjectTypes(bkn interfaces.BknBackendAccess) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		format, err := GetResponseFormatFromRequest(req)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		args := &knDrillArgs{}
+		if err := bindArguments(req, args); err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		knID := args.resolveKnID(req)
+		if knID == "" {
+			return mcp.NewToolResultError("kn_id is required"), nil
+		}
+		if len(args.IDs) == 0 {
+			return mcp.NewToolResultError("ids is required (object type ids from get_kn_detail)"), nil
+		}
+
+		detail, err := bkn.GetKnowledgeNetworkDetail(ctx, knID)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		matched, missing := detail.FilterObjectTypes(args.IDs)
+		resp := &interfaces.ObjectTypesResp{KnID: knID, ObjectTypes: matched, Missing: missing}
+		result, err := BuildMCPToolResult(resp, format)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return result, nil
+	}
+}
+
+// handleGetRelationTypes handles get_relation_types tool calls: return the full
+// definition (incl. mapping_rules) of the requested relation type ids.
+func handleGetRelationTypes(bkn interfaces.BknBackendAccess) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		format, err := GetResponseFormatFromRequest(req)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		args := &knDrillArgs{}
+		if err := bindArguments(req, args); err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		knID := args.resolveKnID(req)
+		if knID == "" {
+			return mcp.NewToolResultError("kn_id is required"), nil
+		}
+		if len(args.IDs) == 0 {
+			return mcp.NewToolResultError("ids is required (relation type ids from get_kn_detail)"), nil
+		}
+
+		detail, err := bkn.GetKnowledgeNetworkDetail(ctx, knID)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		matched, missing := detail.FilterRelationTypes(args.IDs)
+		resp := &interfaces.RelationTypesResp{KnID: knID, RelationTypes: matched, Missing: missing}
 		result, err := BuildMCPToolResult(resp, format)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
