@@ -137,6 +137,62 @@ type KN struct {
 	Score  *float64  `json:"_score,omitempty"` // opensearch检索的得分，在概念搜索时使用
 }
 
+// SlimForSummary trims the exported KN detail for detail_level=summary.
+//
+// It keeps object / relation / action skeletons plus each property's
+// name / display_name / type / comment, and drops the heavy per-item detail:
+// data-property field mappings, index configs and query operators; logic-property
+// data sources, parameters and analysis dimensions; and relation mapping rules.
+// It also dedups concept_groups, whose nested object/relation/action instances
+// merely duplicate the top-level arrays every consumer reads — only
+// object_type_ids is kept as the group boundary.
+//
+// Callers fetch the dropped per-item detail on demand via the
+// object-types/:ot_ids and relation-types/:rt_ids endpoints.
+func (kn *KN) SlimForSummary() {
+	if kn == nil {
+		return
+	}
+	for _, ot := range kn.ObjectTypes {
+		slimObjectTypeForSummary(ot)
+	}
+	for _, rt := range kn.RelationTypes {
+		if rt != nil {
+			rt.MappingRules = nil
+		}
+	}
+	for _, cg := range kn.ConceptGroups {
+		if cg == nil {
+			continue
+		}
+		cg.ObjectTypes = nil
+		cg.RelationTypes = nil
+		cg.ActionTypes = nil
+	}
+}
+
+func slimObjectTypeForSummary(ot *ObjectType) {
+	if ot == nil {
+		return
+	}
+	for _, dp := range ot.DataProperties {
+		if dp == nil {
+			continue
+		}
+		dp.MappedField = nil
+		dp.IndexConfig = nil
+		dp.ConditionOperations = nil
+	}
+	for _, lp := range ot.LogicProperties {
+		if lp == nil {
+			continue
+		}
+		lp.DataSource = nil
+		lp.Parameters = nil
+		lp.AnalysisDims = nil
+	}
+}
+
 // KNBatchNamesReq 按 ID 批量取知识网络名称请求(对象级授权页回显，统一契约)
 type KNBatchNamesReq struct {
 	IDs []string `json:"ids"` // 待取名的知识网络 ID 列表，空列表返回空 entries

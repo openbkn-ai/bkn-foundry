@@ -51,9 +51,16 @@ const (
 	DEFAULT_INCLUDE_DETAIL = "false"
 	DEFAULT_FORCE_DELETE   = "false"
 
-	QueryParam_ImportMode = "import_mode"
-	QueryParam_Mode       = "mode"
-	QueryParam_StrictMode = "strict_mode"
+	QueryParam_ImportMode  = "import_mode"
+	QueryParam_Mode        = "mode"
+	QueryParam_StrictMode  = "strict_mode"
+	QueryParam_DetailLevel = "detail_level"
+
+	// detail_level 取值：summary 只返骨架 + 属性名（砍字段映射/查询算子/逻辑属性
+	// 数据源与参数/关系映射规则，去重 concept_groups 嵌套）；full（默认）返全量。
+	// 完整字段映射按需走 object-types/:ids、relation-types/:ids 端点获取。
+	DetailLevel_Summary = "summary"
+	DetailLevel_Full    = "full"
 
 	// 对象的导入模式
 	ImportMode_Normal    = "normal"
