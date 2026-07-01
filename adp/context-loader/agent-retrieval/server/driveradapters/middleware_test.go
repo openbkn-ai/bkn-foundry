@@ -168,6 +168,8 @@ type stubKnQueryToolsHandler struct{}
 func (stubKnQueryToolsHandler) RunSQL(c *gin.Context)                { c.Status(http.StatusOK) }
 func (stubKnQueryToolsHandler) ListKnowledgeNetworks(c *gin.Context) { c.Status(http.StatusOK) }
 func (stubKnQueryToolsHandler) GetKnDetail(c *gin.Context)           { c.Status(http.StatusOK) }
+func (stubKnQueryToolsHandler) GetObjectTypes(c *gin.Context)        { c.Status(http.StatusOK) }
+func (stubKnQueryToolsHandler) GetRelationTypes(c *gin.Context)      { c.Status(http.StatusOK) }
 func (stubKnQueryToolsHandler) ListResources(c *gin.Context)         { c.Status(http.StatusOK) }
 func (stubKnQueryToolsHandler) DescribeResource(c *gin.Context)      { c.Status(http.StatusOK) }
 

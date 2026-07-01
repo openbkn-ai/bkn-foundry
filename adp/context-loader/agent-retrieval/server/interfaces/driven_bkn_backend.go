@@ -71,11 +71,11 @@ type DataProperty struct {
 	// Name is the property name. Can only contain lowercase letters, numbers, underscores (_),
 	// hyphens (-), and cannot start with underscore or hyphen
 	Name                string            `json:"name"`
-	DisplayName         string            `json:"display_name"`         // Property display name
-	Type                string            `json:"type"`                 // Property data type. In addition to view field types, there are metric, objective, event, trace, log, operator
-	Comment             string            `json:"comment"`              // Comment
-	MappedField         any               `json:"mapped_field"`         // View field info
-	ConditionOperations []KnOperationType `json:"condition_operations"` // List of query condition operators supported by this data property
+	DisplayName         string            `json:"display_name"`                   // Property display name
+	Type                string            `json:"type"`                           // Property data type. In addition to view field types, there are metric, objective, event, trace, log, operator
+	Comment             string            `json:"comment"`                        // Comment
+	MappedField         any               `json:"mapped_field,omitempty"`         // View field info
+	ConditionOperations []KnOperationType `json:"condition_operations,omitempty"` // List of query condition operators supported by this data property
 }
 
 // LogicPropertyDef Logic property definition (extracted from object type definition)
@@ -125,7 +125,7 @@ type RelationType struct {
 	TargetObjectTypeID string `json:"target_object_type_id"`        // Target object type ID
 	SourceObjectType   any    `json:"source_object_type,omitempty"` // Provide name when viewing details
 	TargetObjectType   any    `json:"target_object_type,omitempty"` // Provide name when viewing details
-	MappingRules       any    `json:"mapping_rules"`                // Mapping rules based on type, direct corresponds to []Mapping structure
+	MappingRules       any    `json:"mapping_rules,omitempty"`      // Mapping rules based on type, direct corresponds to []Mapping structure
 	Type               string `json:"type"`                         // Relation type
 }
 
@@ -312,6 +312,156 @@ type KnowledgeNetworkDetail struct {
 	ObjectTypes   []*ObjectType   `json:"object_types"`   // Object types
 	RelationTypes []*RelationType `json:"relation_types"` // Relation types
 	ActionTypes   []*ActionType   `json:"action_types"`   // Action types
+}
+
+// Detail levels for get_kn_detail progressive disclosure.
+const (
+	DetailLevelSummary = "summary" // skeleton + property name/type/comment (default)
+	DetailLevelFull    = "full"    // everything, incl. field mappings / operators / mapping rules
+)
+
+// Slim trims a get_kn_detail response for progressive disclosure.
+//
+// It always dedups concept_groups: the exported detail repeats every ObjectType /
+// RelationType / ActionType both at the top level (the authoritative arrays every
+// consumer reads) and nested inside each ConceptGroup. The nested copies are unused,
+// so we drop them and keep only object_type_ids as the group boundary.
+//
+// Unless level is DetailLevelFull, it also strips the heavy per-property detail —
+// data-property field mappings and query operators, logic-property data sources and
+// parameters, relation mapping rules — while keeping property name/type/comment so an
+// agent still sees the schema shape. Callers fetch the stripped detail on demand via
+// get_object_types / get_relation_types.
+func (d *KnowledgeNetworkDetail) Slim(level string) {
+	if d == nil {
+		return
+	}
+	// Always dedup: nested concept-group instances duplicate the top-level arrays.
+	for _, g := range d.ConceptGroups {
+		if g == nil {
+			continue
+		}
+		g.ObjectTypes = nil
+		g.RelationTypes = nil
+		g.ActionTypes = nil
+	}
+	if level == DetailLevelFull {
+		return
+	}
+	for _, o := range d.ObjectTypes {
+		if o == nil {
+			continue
+		}
+		for _, p := range o.DataProperties {
+			if p == nil {
+				continue
+			}
+			p.MappedField = nil
+			p.ConditionOperations = nil
+		}
+		for _, lp := range o.LogicProperties {
+			if lp == nil {
+				continue
+			}
+			lp.DataSource = nil
+			lp.Parameters = nil
+		}
+	}
+	for _, r := range d.RelationTypes {
+		if r == nil {
+			continue
+		}
+		r.MappingRules = nil
+		r.SourceObjectType = nil
+		r.TargetObjectType = nil
+	}
+}
+
+// ObjectTypesResp is the get_object_types response: the requested object types in
+// full detail, plus any requested ids that matched nothing.
+type ObjectTypesResp struct {
+	KnID        string        `json:"kn_id"`
+	ObjectTypes []*ObjectType `json:"object_types"`
+	Missing     []string      `json:"missing,omitempty"`
+}
+
+// RelationTypesResp is the get_relation_types response: the requested relation
+// types in full detail, plus any requested ids that matched nothing.
+type RelationTypesResp struct {
+	KnID          string          `json:"kn_id"`
+	RelationTypes []*RelationType `json:"relation_types"`
+	Missing       []string        `json:"missing,omitempty"`
+}
+
+// FilterObjectTypes returns the full object types whose ID (or, as a fallback,
+// Name) appears in ids, in request order and de-duplicated, plus the ids that
+// matched nothing. Object types retain all fields — this is the drill-down that
+// get_kn_detail's summary level omits.
+func (d *KnowledgeNetworkDetail) FilterObjectTypes(ids []string) (matched []*ObjectType, missing []string) {
+	if d == nil {
+		return nil, ids
+	}
+	byKey := make(map[string]*ObjectType, len(d.ObjectTypes)*2)
+	for _, o := range d.ObjectTypes {
+		if o != nil {
+			byKey[o.ID] = o
+		}
+	}
+	for _, o := range d.ObjectTypes {
+		if o != nil && o.Name != "" {
+			if _, exists := byKey[o.Name]; !exists {
+				byKey[o.Name] = o
+			}
+		}
+	}
+	seen := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		o, ok := byKey[id]
+		if !ok {
+			missing = append(missing, id)
+			continue
+		}
+		if seen[o.ID] {
+			continue
+		}
+		seen[o.ID] = true
+		matched = append(matched, o)
+	}
+	return matched, missing
+}
+
+// FilterRelationTypes mirrors FilterObjectTypes for relation types.
+func (d *KnowledgeNetworkDetail) FilterRelationTypes(ids []string) (matched []*RelationType, missing []string) {
+	if d == nil {
+		return nil, ids
+	}
+	byKey := make(map[string]*RelationType, len(d.RelationTypes)*2)
+	for _, r := range d.RelationTypes {
+		if r != nil {
+			byKey[r.ID] = r
+		}
+	}
+	for _, r := range d.RelationTypes {
+		if r != nil && r.Name != "" {
+			if _, exists := byKey[r.Name]; !exists {
+				byKey[r.Name] = r
+			}
+		}
+	}
+	seen := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		r, ok := byKey[id]
+		if !ok {
+			missing = append(missing, id)
+			continue
+		}
+		if seen[r.ID] {
+			continue
+		}
+		seen[r.ID] = true
+		matched = append(matched, r)
+	}
+	return matched, missing
 }
 
 // BknBackendAccess BKN backend ontology management interface

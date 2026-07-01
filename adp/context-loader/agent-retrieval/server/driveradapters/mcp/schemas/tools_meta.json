@@ -29,7 +29,15 @@
   },
   "get_kn_detail": {
     "name": "get_kn_detail",
-    "description": "获取知识网络完整详情（直接包装 bkn-backend）：概念组、对象类型（含 data_source.id）、关系类型、行动类型。已知 kn_id 时一次性拿全量 schema。"
+    "description": "获取知识网络 schema（概念组、对象类型含 data_source.id、关系类型、行动类型）。默认 detail_level=summary：返回骨架 + 每个属性的 name/type/comment，不含字段映射、查询算子、映射规则——足够理解结构与规划查询，体积小。需要某对象的完整字段映射时调 get_object_types，需要关系的 mapping_rules 时调 get_relation_types。detail_level=full 一次拿全量（体积大，慎用）。"
+  },
+  "get_object_types": {
+    "name": "get_object_types",
+    "description": "按 id 批量取对象类的完整定义（data_properties 含 mapped_field/condition_operations，logic_properties 含 data_source/parameters）。渐进式下钻用：先 get_kn_detail（summary）拿对象 id，再用本工具展开需要的对象。ids 支持多个，一次取回；未匹配的 id 会在 missing 返回。"
+  },
+  "get_relation_types": {
+    "name": "get_relation_types",
+    "description": "按 id 批量取关系类的完整定义（含 mapping_rules、source/target 对象名）。渐进式下钻用：先 get_kn_detail（summary）拿关系 id，再用本工具展开。ids 支持多个，一次取回；未匹配的 id 会在 missing 返回。"
   },
   "run_sql": {
     "name": "run_sql",

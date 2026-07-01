@@ -24,11 +24,13 @@ import (
 )
 
 // KnQueryToolsHandler 处理 run_sql / list_knowledge_networks / get_kn_detail /
-// list_resources / describe_resource 的内部 REST 入口。
+// get_object_types / get_relation_types / list_resources / describe_resource 的内部 REST 入口。
 type KnQueryToolsHandler interface {
 	RunSQL(c *gin.Context)
 	ListKnowledgeNetworks(c *gin.Context)
 	GetKnDetail(c *gin.Context)
+	GetObjectTypes(c *gin.Context)
+	GetRelationTypes(c *gin.Context)
 	ListResources(c *gin.Context)
 	DescribeResource(c *gin.Context)
 }
@@ -98,10 +100,12 @@ func (h *knQueryToolsHandler) ListKnowledgeNetworks(c *gin.Context) {
 
 // getKnDetailReq get_kn_detail 入参。
 type getKnDetailReq struct {
-	KnID string `json:"kn_id" form:"kn_id"`
+	KnID        string `json:"kn_id" form:"kn_id"`
+	DetailLevel string `json:"detail_level" form:"detail_level"` // summary（默认）| full
 }
 
-// GetKnDetail 获取知识网络完整详情（概念组 / 对象类 / 关系类 / 行动类）。
+// GetKnDetail 获取知识网络详情（概念组 / 对象类 / 关系类 / 行动类）。
+// detail_level=summary（默认）返回骨架 + 属性名，full 返回全量。
 func (h *knQueryToolsHandler) GetKnDetail(c *gin.Context) {
 	ctx := c.Request.Context()
 	req := &getKnDetailReq{}
@@ -121,6 +125,11 @@ func (h *knQueryToolsHandler) GetKnDetail(c *gin.Context) {
 		rest.ReplyError(c, err)
 		return
 	}
+	detailLevel := req.DetailLevel
+	if detailLevel == "" {
+		detailLevel = interfaces.DetailLevelSummary
+	}
+	resp.Slim(detailLevel)
 	rest.ReplyOK(c, http.StatusOK, resp)
 }
 
@@ -163,4 +172,69 @@ func (h *knQueryToolsHandler) DescribeResource(c *gin.Context) {
 		return
 	}
 	rest.ReplyOK(c, http.StatusOK, resp)
+}
+
+// knDrillReq get_object_types / get_relation_types 共用入参。
+type knDrillReq struct {
+	KnID string   `json:"kn_id" form:"kn_id"`
+	IDs  []string `json:"ids"`
+}
+
+func (r *knDrillReq) resolveKnID(c *gin.Context) string {
+	if r.KnID != "" {
+		return r.KnID
+	}
+	return c.GetHeader("X-Kn-ID")
+}
+
+// GetObjectTypes 按 id 批量取对象类完整定义（配合 get_kn_detail summary 下钻）。
+func (h *knQueryToolsHandler) GetObjectTypes(c *gin.Context) {
+	ctx := c.Request.Context()
+	req := &knDrillReq{}
+	_ = c.ShouldBindQuery(req)
+	_ = c.ShouldBindJSON(req)
+	knID := req.resolveKnID(c)
+	if knID == "" {
+		rest.ReplyError(c, errors.DefaultHTTPError(ctx, http.StatusBadRequest, "kn_id is required"))
+		return
+	}
+	if len(req.IDs) == 0 {
+		rest.ReplyError(c, errors.DefaultHTTPError(ctx, http.StatusBadRequest, "ids is required (object type ids from get_kn_detail)"))
+		return
+	}
+
+	detail, err := h.bknBackend.GetKnowledgeNetworkDetail(ctx, knID)
+	if err != nil {
+		h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#GetObjectTypes] failed: %v", err)
+		rest.ReplyError(c, err)
+		return
+	}
+	matched, missing := detail.FilterObjectTypes(req.IDs)
+	rest.ReplyOK(c, http.StatusOK, &interfaces.ObjectTypesResp{KnID: knID, ObjectTypes: matched, Missing: missing})
+}
+
+// GetRelationTypes 按 id 批量取关系类完整定义（含 mapping_rules）。
+func (h *knQueryToolsHandler) GetRelationTypes(c *gin.Context) {
+	ctx := c.Request.Context()
+	req := &knDrillReq{}
+	_ = c.ShouldBindQuery(req)
+	_ = c.ShouldBindJSON(req)
+	knID := req.resolveKnID(c)
+	if knID == "" {
+		rest.ReplyError(c, errors.DefaultHTTPError(ctx, http.StatusBadRequest, "kn_id is required"))
+		return
+	}
+	if len(req.IDs) == 0 {
+		rest.ReplyError(c, errors.DefaultHTTPError(ctx, http.StatusBadRequest, "ids is required (relation type ids from get_kn_detail)"))
+		return
+	}
+
+	detail, err := h.bknBackend.GetKnowledgeNetworkDetail(ctx, knID)
+	if err != nil {
+		h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#GetRelationTypes] failed: %v", err)
+		rest.ReplyError(c, err)
+		return
+	}
+	matched, missing := detail.FilterRelationTypes(req.IDs)
+	rest.ReplyOK(c, http.StatusOK, &interfaces.RelationTypesResp{KnID: knID, RelationTypes: matched, Missing: missing})
 }
