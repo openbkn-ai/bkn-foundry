@@ -878,12 +878,12 @@ func (s *localSearchImpl) convertObjectTypesToLocal(objects []*interfaces.Object
 		var conceptType string
 		var primaryKeys []string
 		var tags []string
-		var dataSource *interfaces.ResourceInfo
+		// data_source 始终保留：brief 也需要 data_source.id 写 run_sql。
+		dataSource := obj.DataSource
 		if !brief {
 			conceptType = "object_type"
 			primaryKeys = obj.PrimaryKeys
 			tags = obj.Tags
-			dataSource = obj.DataSource
 		}
 		localObj := &interfaces.KnSearchObjectType{
 			ConceptType: conceptType,

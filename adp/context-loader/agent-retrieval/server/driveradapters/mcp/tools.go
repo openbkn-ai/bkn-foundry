@@ -58,6 +58,14 @@ func buildSearchSchemaReqFromMCP(req mcp.CallToolRequest, authCtx *interfaces.Ac
 	schemaReq := &interfaces.SearchSchemaReq{}
 	_ = bindArguments(req, schemaReq)
 
+	// MCP（LLM）场景默认精简 Schema：未显式传 schema_brief 时用 brief，
+	// 体积更小且已保留 data_source.id / 属性 name/type/condition_operations；
+	// 需要属性备注/主键/标签的完整 Schema 时显式传 schema_brief=false。
+	if schemaReq.SchemaBrief == nil {
+		brief := true
+		schemaReq.SchemaBrief = &brief
+	}
+
 	schemaReq.XKnID = getKnIDFromHeader(req)
 	if authCtx != nil {
 		schemaReq.XAccountID = authCtx.AccountID
