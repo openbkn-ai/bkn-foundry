@@ -738,6 +738,12 @@ func (r *restHandler) GetKN(c *gin.Context, visitor hydra.Visitor) {
 		kn.Statistics = statistics
 	}
 
+	// detail_level=summary 时在源头裁剪重字段（默认 full 保持向后兼容）；
+	// 完整字段映射按需走 object-types/:ot_ids、relation-types/:rt_ids 端点。
+	if c.DefaultQuery(interfaces.QueryParam_DetailLevel, interfaces.DetailLevel_Full) == interfaces.DetailLevel_Summary {
+		kn.SlimForSummary()
+	}
+
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	logger.Debug("Handler GetKN Success")
 	rest.ReplyOK(c, http.StatusOK, kn)
