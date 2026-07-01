@@ -57,8 +57,8 @@
       },
       "schema_brief": {
         "type": "boolean",
-        "default": false,
-        "description": "是否返回精简 Schema。默认 false，返回相对完整的 Schema。"
+        "default": true,
+        "description": "是否返回精简 Schema（MCP 默认 true）。精简版保留写查询所需的 data_source.id 与属性 name/type/condition_operations，省去属性 comment、tags、primary_keys，体积约省 70%。需要属性备注 / 主键 / 标签等完整信息时显式传 false。"
       },
       "enable_rerank": {
         "type": "boolean",

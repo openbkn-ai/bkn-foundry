@@ -247,6 +247,48 @@ func TestHandleSearchSchema_ReturnsMetricTypes(t *testing.T) {
 	})
 }
 
+func TestHandleSearchSchema_DefaultsSchemaBriefTrue(t *testing.T) {
+	convey.Convey("MCP search_schema defaults schema_brief=true when not provided", t, func() {
+		stub := &stubMCPKnSearchService{
+			searchSchemaResp: &interfaces.SearchSchemaResp{
+				ObjectTypes: []any{}, RelationTypes: []any{}, ActionTypes: []any{},
+			},
+		}
+		handler := handleSearchSchema(stub)
+		req := mcpReq(map[string]any{
+			"query":           "test",
+			"kn_id":           "kn-001",
+			"response_format": "json",
+		})
+
+		_, err := handler(withAuthCtx(context.Background()), req)
+		convey.So(err, convey.ShouldBeNil)
+		convey.So(stub.searchSchemaReq, convey.ShouldNotBeNil)
+		convey.So(stub.searchSchemaReq.SchemaBrief, convey.ShouldNotBeNil)
+		convey.So(*stub.searchSchemaReq.SchemaBrief, convey.ShouldBeTrue)
+	})
+
+	convey.Convey("explicit schema_brief=false is respected", t, func() {
+		stub := &stubMCPKnSearchService{
+			searchSchemaResp: &interfaces.SearchSchemaResp{
+				ObjectTypes: []any{}, RelationTypes: []any{}, ActionTypes: []any{},
+			},
+		}
+		handler := handleSearchSchema(stub)
+		req := mcpReq(map[string]any{
+			"query":           "test",
+			"kn_id":           "kn-001",
+			"schema_brief":    false,
+			"response_format": "json",
+		})
+
+		_, err := handler(withAuthCtx(context.Background()), req)
+		convey.So(err, convey.ShouldBeNil)
+		convey.So(stub.searchSchemaReq.SchemaBrief, convey.ShouldNotBeNil)
+		convey.So(*stub.searchSchemaReq.SchemaBrief, convey.ShouldBeFalse)
+	})
+}
+
 // ==================== FR-3: get_logic_properties_values ====================
 
 func TestHandleGetLogicPropertiesValues_FixesDefaultParams(t *testing.T) {
