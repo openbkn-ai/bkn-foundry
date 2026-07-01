@@ -426,82 +426,54 @@ git push origin feature/my-feature
 目标是确保：
 
 - 明确的版权归属
-- 明确的许可证（Apache License 2.0）
+- 明确的许可证（上游文件用 Apache 2.0，OpenBKN 净新文件用 OpenBKN License）
 - 一致且可读的文件文档
 
-> **说明**：我们使用 "The openbkn.ai Authors" 而不是个人作者名。
+> **说明**：我们用单行 `Copyright openbkn.ai` 而不是个人作者名。
 > Git 历史记录已经追踪了所有贡献者，这种方式更易于维护。
 
-### 标准文件头（Go / C / Java）
+### 用哪个文件头
 
-所有核心源文件使用以下文件头：
+按文件来源选择：
+
+- **OpenBKN 净新文件**——由 OpenBKN 新写、不在上游
+  `kweaver-ai/kweaver-core` 中的文件——用 **OpenBKN License** 头。
+- **上游衍生文件**——来自 `kweaver-ai/kweaver-core`——用 **Apache 2.0**
+  头，并保留上游版权行。
+
+**禁止**删除上游衍生文件的 `Copyright The kweaver.ai Authors.` 行——
+它是 Apache License 2.0 第 4 节的强制要求。版权行**不加年份**。
+
+### OpenBKN 净新文件头
+
+Go / C / Java / TypeScript / JavaScript：
 
 ```go
-// Copyright 2026 openbkn.ai
-// Copyright The openbkn.ai Authors.
+// Copyright openbkn.ai
 //
-// Licensed under the Apache License, Version 2.0.
-// See the LICENSE file in the project root for details.
+// Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 ```
 
-### 各语言变体
-
-#### Python
+Python / Shell（用 `#`，置于 shebang 与编码声明之后）：
 
 ```python
-# Copyright 2026 openbkn.ai
-# Copyright The openbkn.ai Authors.
+# Copyright openbkn.ai
 #
-# Licensed under the Apache License, Version 2.0.
-# See the LICENSE file in the project root for details.
+# Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 ```
 
-#### JavaScript / TypeScript
-
-```ts
-/**
- * Copyright The openbkn.ai Authors.
- *
- * Licensed under the Apache License, Version 2.0.
- * See the LICENSE file in the project root for details.
- */
-```
-
-#### Shell
-
-```bash
-#!/usr/bin/env bash
-# Copyright 2026 openbkn.ai
-# Copyright The openbkn.ai Authors.
-# Licensed under the Apache License, Version 2.0.
-# See the LICENSE file in the project root for details.
-```
-
-#### HTML / XML
-
-```html
-<!--
-  Copyright The openbkn.ai Authors.
-  Licensed under the Apache License, Version 2.0.
-  See the LICENSE file in the project root for details.
--->
-```
-
-### 派生或 Fork 的文件（可选）
-
-如果文件最初来自其他项目，可以在许可证头后添加来源说明（仅用于关键文件）：
+### 上游衍生（Apache 2.0）文件头
 
 ```go
-// Copyright 2026 openbkn.ai
-// Copyright The openbkn.ai Authors.
+// Copyright openbkn.ai
+// Copyright The kweaver.ai Authors.
 //
 // Licensed under the Apache License, Version 2.0.
 // See the LICENSE file in the project root for details.
-//
-// This file is derived from [original-project](https://github.com/org/repo)
 ```
 
-这是可选的，但建议添加以保持透明度和社区信任。
+Python / Shell 用 `#` 注释；文件头置于 shebang（`#!`）之后，Python 还须置于
+编码声明之后。
 
 ### 适用范围
 
@@ -526,12 +498,13 @@ git push origin feature/my-feature
 
 - **Git 历史**已经提供了所有贡献者的完整准确记录
 - 个人作者列表**难以维护**，容易过时
-- 使用 "The openbkn.ai Authors" 确保所有文件的**一致归属**
+- 单行 `Copyright openbkn.ai` 确保所有文件的**一致归属**
 - 贡献者通过项目的 **CONTRIBUTORS** 文件和 git log 获得认可
 
 ### 许可证要求
 
-所有仓库**必须**包含一个 `LICENSE` 文件，其中包含 Apache License 2.0 的完整文本。
+所有仓库**必须**包含 `LICENSE` 总览，以及其引用的完整许可证文本：Apache 2.0
+文件用 `LICENSE-APACHE.txt`，OpenBKN License 文件用 `LICENSE-OPENBKN.txt`。
 
 ### 指导原则
 
@@ -615,7 +588,9 @@ BKN Foundry 是多语言项目，**只需安装你要修改的模块所需的工
 
 ## 📜 许可证
 
-通过向 BKN Foundry 贡献，你同意你的贡献将在 Apache License 2.0 下许可。
+通过向 BKN Foundry 贡献，你同意你的贡献采用与所改文件相同的许可证（inbound =
+outbound）：上游衍生文件用 Apache License 2.0，OpenBKN 净新文件用 OpenBKN
+License。新文件遵循其所属模块的许可证策略。
 
 ---
 

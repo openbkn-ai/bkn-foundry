@@ -427,83 +427,56 @@ This section defines the standard source code file header used across **openbkn.
 The goal is to ensure:
 
 - clear copyright ownership
-- clear licensing (Apache License 2.0)
+- clear licensing (Apache 2.0 for upstream files, OpenBKN License for OpenBKN net-new files)
 - consistent and readable file documentation
 
-> **Note**: We use "The openbkn.ai Authors" instead of individual author names.
+> **Note**: We use a single `Copyright openbkn.ai` line instead of individual author names.
 > Git history already tracks all contributors, and this approach is easier to maintain.
 
-### Standard Header (Go / C / Java)
+### Which header to use
 
-Use the following header for all core source files:
+Pick the header by the file's origin:
+
+- **OpenBKN net-new files** — newly authored by OpenBKN, not present in
+  the upstream `kweaver-ai/kweaver-core` project — use the **OpenBKN
+  License** header.
+- **Upstream-derived files** — originating from `kweaver-ai/kweaver-core`
+  — use the **Apache 2.0** header and keep the upstream copyright line.
+
+Do **not** remove the `Copyright The kweaver.ai Authors.` line from
+upstream-derived files; it is required by Section 4 of the Apache
+License, Version 2.0. Do **not** add a year to the copyright line.
+
+### OpenBKN net-new header
+
+Go / C / Java / TypeScript / JavaScript:
 
 ```go
-// Copyright 2026 openbkn.ai
-// Copyright The openbkn.ai Authors.
+// Copyright openbkn.ai
 //
-// Licensed under the Apache License, Version 2.0.
-// See the LICENSE file in the project root for details.
+// Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 ```
 
-### Language-Specific Variants
-
-#### Python
+Python / Shell (use `#`, after any shebang and encoding line):
 
 ```python
-# Copyright 2026 openbkn.ai
-# Copyright The openbkn.ai Authors.
+# Copyright openbkn.ai
 #
-# Licensed under the Apache License, Version 2.0.
-# See the LICENSE file in the project root for details.
+# Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 ```
 
-#### JavaScript / TypeScript
-
-```ts
-/**
- * Copyright The openbkn.ai Authors.
- *
- * Licensed under the Apache License, Version 2.0.
- * See the LICENSE file in the project root for details.
- */
-```
-
-#### Shell
-
-```bash
-#!/usr/bin/env bash
-# Copyright 2026 openbkn.ai
-# Copyright The openbkn.ai Authors.
-# Licensed under the Apache License, Version 2.0.
-# See the LICENSE file in the project root for details.
-```
-
-#### HTML / XML
-
-```html
-<!--
-  Copyright The openbkn.ai Authors.
-  Licensed under the Apache License, Version 2.0.
-  See the LICENSE file in the project root for details.
--->
-```
-
-### Derived or Forked Files (Optional)
-
-If a file was originally derived from another project, you may add an origin note
-after the license header (for key files only):
+### Upstream-derived (Apache 2.0) header
 
 ```go
-// Copyright 2026 openbkn.ai
-// Copyright The openbkn.ai Authors.
+// Copyright openbkn.ai
+// Copyright The kweaver.ai Authors.
 //
 // Licensed under the Apache License, Version 2.0.
 // See the LICENSE file in the project root for details.
-//
-// This file is derived from [original-project](https://github.com/org/repo)
 ```
 
-This is optional but recommended for transparency and community trust.
+Use `#` comment syntax for Python and Shell. Place the header after any
+shebang (`#!`) and, for Python, after the encoding declaration.
 
 ### Scope
 
@@ -528,13 +501,14 @@ Following the practice of major open-source projects (Kubernetes, TensorFlow, et
 
 - **Git history** already provides a complete and accurate record of all contributors
 - Individual author lists are **hard to maintain** and often become outdated
-- Using "The openbkn.ai Authors" ensures **consistent attribution** across all files
+- A single `Copyright openbkn.ai` line ensures **consistent attribution** across all files
 - Contributors are recognized through the project's **CONTRIBUTORS** file and git log
 
 ### License Requirement
 
-All repositories **must** include a `LICENSE` file containing the full text of
-the Apache License, Version 2.0.
+All repositories **must** include a `LICENSE` overview plus the full
+license texts they reference: `LICENSE-APACHE.txt` for Apache 2.0 files
+and `LICENSE-OPENBKN.txt` for OpenBKN License files.
 
 ### Guiding Principle
 
@@ -619,7 +593,7 @@ We will acknowledge receipt and work with you to address the issue. Please inclu
 
 ## 📜 License
 
-By contributing to BKN Foundry, you agree that your contributions will be licensed under the Apache License 2.0.
+By contributing to BKN Foundry, you agree that your contribution is licensed under the same license as the file you change (inbound = outbound): the Apache License 2.0 for upstream-derived files, or the OpenBKN License for OpenBKN net-new files. New files follow the license policy of the module they belong to.
 
 ---
 
