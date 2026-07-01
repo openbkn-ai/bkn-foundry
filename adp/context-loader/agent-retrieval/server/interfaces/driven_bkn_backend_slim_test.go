@@ -18,16 +18,19 @@ func newDetailFixture() *KnowledgeNetworkDetail {
 		Name: "order",
 		DataProperties: []*DataProperty{{
 			Name:                "amount",
+			DisplayName:         "金额",
 			Type:                "double",
 			Comment:             "订单金额",
 			MappedField:         map[string]any{"column": "amt"},
 			ConditionOperations: []KnOperationType{"gt", "lt"},
 		}},
 		LogicProperties: []*LogicPropertyDef{{
-			Name:       "gmv",
-			Type:       "metric",
-			DataSource: map[string]any{"formula": "sum(amount)"},
-			Parameters: []PropertyParameter{{Name: "window", Type: "string"}},
+			Name:        "gmv",
+			DisplayName: "GMV",
+			Type:        "metric",
+			Comment:     "总额",
+			DataSource:  map[string]any{"formula": "sum(amount)"},
+			Parameters:  []PropertyParameter{{Name: "window", Type: "string"}},
 		}},
 		PrimaryKeys: []string{"id"},
 	}
@@ -60,15 +63,20 @@ func TestSlim_Summary(t *testing.T) {
 		d := newDetailFixture()
 		d.Slim(DetailLevelSummary)
 
+		// summary keeps only name+type per property (flat/uniform → TOON tabular)
 		dp := d.ObjectTypes[0].DataProperties[0]
 		convey.So(dp.Name, convey.ShouldEqual, "amount")
 		convey.So(dp.Type, convey.ShouldEqual, "double")
-		convey.So(dp.Comment, convey.ShouldEqual, "订单金额")
+		convey.So(dp.DisplayName, convey.ShouldEqual, "")
+		convey.So(dp.Comment, convey.ShouldEqual, "")
 		convey.So(dp.MappedField, convey.ShouldBeNil)
 		convey.So(dp.ConditionOperations, convey.ShouldBeNil)
 
 		lp := d.ObjectTypes[0].LogicProperties[0]
 		convey.So(lp.Name, convey.ShouldEqual, "gmv")
+		convey.So(string(lp.Type), convey.ShouldEqual, "metric")
+		convey.So(lp.DisplayName, convey.ShouldEqual, "")
+		convey.So(lp.Comment, convey.ShouldEqual, "")
 		convey.So(lp.DataSource, convey.ShouldBeNil)
 		convey.So(lp.Parameters, convey.ShouldBeNil)
 
@@ -126,7 +134,9 @@ func TestFilterObjectTypes(t *testing.T) {
 		matched, missing := d.FilterObjectTypes([]string{"ot_order"})
 		convey.So(len(matched), convey.ShouldEqual, 1)
 		convey.So(matched[0].ID, convey.ShouldEqual, "ot_order")
-		convey.So(matched[0].DataProperties[0].MappedField, convey.ShouldNotBeNil) // full detail retained
+		convey.So(matched[0].DataProperties[0].MappedField, convey.ShouldNotBeNil)  // full detail retained
+		convey.So(matched[0].DataProperties[0].Comment, convey.ShouldEqual, "订单金额") // comment kept in drill
+		convey.So(matched[0].DataProperties[0].DisplayName, convey.ShouldEqual, "") // display_name dropped in drill
 		convey.So(missing, convey.ShouldBeEmpty)
 
 		matched, _ = d.FilterObjectTypes([]string{"order"}) // by name

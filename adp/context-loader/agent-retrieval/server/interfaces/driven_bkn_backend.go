@@ -71,9 +71,9 @@ type DataProperty struct {
 	// Name is the property name. Can only contain lowercase letters, numbers, underscores (_),
 	// hyphens (-), and cannot start with underscore or hyphen
 	Name                string            `json:"name"`
-	DisplayName         string            `json:"display_name"`                   // Property display name
+	DisplayName         string            `json:"display_name,omitempty"`         // Property display name
 	Type                string            `json:"type"`                           // Property data type. In addition to view field types, there are metric, objective, event, trace, log, operator
-	Comment             string            `json:"comment"`                        // Comment
+	Comment             string            `json:"comment,omitempty"`              // Comment
 	MappedField         any               `json:"mapped_field,omitempty"`         // View field info
 	ConditionOperations []KnOperationType `json:"condition_operations,omitempty"` // List of query condition operators supported by this data property
 }
@@ -352,10 +352,15 @@ func (d *KnowledgeNetworkDetail) Slim(level string) {
 		if o == nil {
 			continue
 		}
+		// summary keeps only name+type per property so the array is flat and uniform
+		// (TOON then renders it as a compact table); drop display_name/comment and the
+		// heavy mapped_field/operators/logic sources. Full detail via get_object_types.
 		for _, p := range o.DataProperties {
 			if p == nil {
 				continue
 			}
+			p.DisplayName = ""
+			p.Comment = ""
 			p.MappedField = nil
 			p.ConditionOperations = nil
 		}
@@ -363,6 +368,8 @@ func (d *KnowledgeNetworkDetail) Slim(level string) {
 			if lp == nil {
 				continue
 			}
+			lp.DisplayName = ""
+			lp.Comment = ""
 			lp.DataSource = nil
 			lp.Parameters = nil
 		}
@@ -393,10 +400,12 @@ type RelationTypesResp struct {
 	Missing       []string        `json:"missing,omitempty"`
 }
 
-// FilterObjectTypes returns the full object types whose ID (or, as a fallback,
-// Name) appears in ids, in request order and de-duplicated, plus the ids that
-// matched nothing. Object types retain all fields — this is the drill-down that
-// get_kn_detail's summary level omits.
+// FilterObjectTypes returns the object types whose ID (or, as a fallback, Name)
+// appears in ids, in request order and de-duplicated, plus the ids that matched
+// nothing. This is the drill-down that get_kn_detail's summary level omits; it
+// keeps the heavy per-property detail (mapped_field, condition_operations, logic
+// sources) so results stay run_sql-capable, but drops the property display_name
+// (a UI label of little value to an agent).
 func (d *KnowledgeNetworkDetail) FilterObjectTypes(ids []string) (matched []*ObjectType, missing []string) {
 	if d == nil {
 		return nil, ids
@@ -425,6 +434,16 @@ func (d *KnowledgeNetworkDetail) FilterObjectTypes(ids []string) (matched []*Obj
 			continue
 		}
 		seen[o.ID] = true
+		for _, p := range o.DataProperties {
+			if p != nil {
+				p.DisplayName = ""
+			}
+		}
+		for _, lp := range o.LogicProperties {
+			if lp != nil {
+				lp.DisplayName = ""
+			}
+		}
 		matched = append(matched, o)
 	}
 	return matched, missing

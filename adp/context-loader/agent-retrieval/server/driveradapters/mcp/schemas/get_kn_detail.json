@@ -16,7 +16,7 @@
         "type": "string",
         "enum": ["summary", "full"],
         "default": "summary",
-        "description": "详情级别。summary（默认）：对象类/关系类/行动类骨架 + 属性名（name/type/comment），不含字段映射、查询算子、映射规则，足够理解 schema 与规划查询；需要某对象完整字段映射改调 get_object_types，要关系 mapping_rules 改调 get_relation_types。full：一次返回全量（体积大，慎用）。"
+        "description": "详情级别。summary（默认）：对象类/关系类/行动类骨架 + 每个属性仅 name+type（扁平同构，TOON 渲染成紧凑表格），不含 display_name/comment/字段映射/查询算子/映射规则，足够理解 schema 与规划查询；需要某对象完整字段映射（含 comment）改调 get_object_types，要关系 mapping_rules 改调 get_relation_types。full：一次返回全量（体积大，慎用）。"
       }
     },
     "required": ["kn_id"]
