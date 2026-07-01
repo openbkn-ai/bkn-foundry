@@ -12,7 +12,7 @@ import (
 	"fmt"
 )
 
-//go:embed schemas/*.json
+//go:embed schemas/*.json schemas/locales/*/*.json schemas/locales/*/*.txt
 var schemasFS embed.FS
 
 // ToolMeta defines tool metadata (name, description).
