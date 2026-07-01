@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# Copyright openbkn.ai
+#
+# Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
 # Optional: first business test user (login: test) with all roles from openbkn admin "role list"
 # (on typical full stacks this is three business admin roles, e.g. 数据/AI/应用 管理员) + openbkn re-login
 # for ADP toolset impex (built-in  admin  often lacks  CommonAdd  on agent-operator;  test  with roles does).

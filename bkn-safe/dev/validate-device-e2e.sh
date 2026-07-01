@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# Copyright openbkn.ai
+#
+# Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
 # End-to-end validation of the OAuth2 Device Authorization Grant (RFC 8628) —
 # the "gh auth login" style flow: a headless CLI gets a user_code, a human
 # approves it in a browser, the CLI polls and receives access + refresh tokens.

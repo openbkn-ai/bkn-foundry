@@ -1,3 +1,6 @@
+# Copyright openbkn.ai
+#
+# Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 
 # BKN Foundry install-status — two views over one collector
 # (scripts/lib/install_status.py):

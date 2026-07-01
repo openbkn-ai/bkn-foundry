@@ -1,3 +1,7 @@
+// Copyright openbkn.ai
+//
+// Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
 // Package audit records and queries the bkn-safe admin audit trail: one row per
 // privileged mutation (who did what, to which target, with what outcome). It is
 // dependency-light on purpose (model + gorm only) so the HTTP layer can write to

@@ -1,3 +1,7 @@
+// Copyright openbkn.ai
+//
+// Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
 // Package model holds bkn-safe's GORM domain model. This is a CLEAN redesign
 // (not the ISF schema): users/credentials/departments/groups/roles/memberships
 // plus the resource-type + operation catalog. Casbin policies live in the

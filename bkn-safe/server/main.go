@@ -1,3 +1,7 @@
+// Copyright openbkn.ai
+//
+// Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
 // Command bkn-safe is the ISF replacement auth service: authentication
 // (hydra login/consent/device provider), authorization (Casbin), and user
 // management (directory + LDAP). hydra issues the tokens.

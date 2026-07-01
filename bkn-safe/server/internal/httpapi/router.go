@@ -1,3 +1,7 @@
+// Copyright openbkn.ai
+//
+// Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
 // Package httpapi wires bkn-safe's HTTP surface: health, the authz API, the
 // user-directory API, and the hydra login/consent/device provider pages.
 package httpapi

@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# Copyright openbkn.ai
+#
+# Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
 # =============================================================================
 # gen-dev-manifest.sh — generate a dev/test release manifest with per-chart
 # versions resolved from GHCR, for:

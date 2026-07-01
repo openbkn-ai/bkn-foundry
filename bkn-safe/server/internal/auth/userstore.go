@@ -1,3 +1,7 @@
+// Copyright openbkn.ai
+//
+// Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
 // Package auth implements bkn-safe's authentication: a local user store
 // (password verified with bcrypt) plus the hydra login/consent/device provider
 // that drives the OAuth2 flow and injects the introspect ext claims.

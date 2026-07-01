@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# Copyright openbkn.ai
+#
+# Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
 # verify-charts-vs-helm-repo.sh
 #
 # 验证仓库内的 helm chart 与 kweaver-ai/helm-repo 已发布的**最新版本** .tgz

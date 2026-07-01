@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# Copyright openbkn.ai
+#
+# Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
 """
 Collect BKN Foundry install status and emit it as a human table (server-side
 `deploy.sh ... status`) or as a non-sensitive JSON snapshot (served at the

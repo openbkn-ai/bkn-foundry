@@ -1,3 +1,7 @@
+// Copyright openbkn.ai
+//
+// Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
 // authz_contract_test.go proves the Casbin RBAC-subset model (frozen in
 // docs/isf-replacement/contracts/README.md §4) reproduces ISF authorization
 // decisions on the frozen golden traffic. This validates the core replacement

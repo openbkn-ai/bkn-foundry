@@ -1,3 +1,7 @@
+// Copyright openbkn.ai
+//
+// Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
 // Command authz-shadow compares ISF authorization decisions with bkn-safe's for
 // the same requests — the safety net for the per-service authz cutover.
 //

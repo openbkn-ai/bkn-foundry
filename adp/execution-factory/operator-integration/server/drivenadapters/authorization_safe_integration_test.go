@@ -1,5 +1,9 @@
 //go:build integration
 
+// Copyright openbkn.ai
+//
+// Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
 // Integration test for the bkn-safe authz adapter against a REAL bkn-safe.
 // Run: BKN_SAFE_URL=http://127.0.0.1:13000 go test -tags integration ./drivenadapters/ -run SafeAuthz -v
 // Skipped unless BKN_SAFE_URL is set. Exercises the full Authorization interface

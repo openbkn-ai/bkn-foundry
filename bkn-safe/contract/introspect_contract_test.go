@@ -1,3 +1,7 @@
+// Copyright openbkn.ai
+//
+// Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
 // Package contract holds executable freeze tests for the ISF replacement.
 //
 // introspect_contract_test.go proves that the frozen hydra introspect golden

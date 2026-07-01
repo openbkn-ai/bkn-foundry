@@ -1,4 +1,8 @@
 # -*- coding:UTF-8 -*-
+# Copyright openbkn.ai
+#
+# Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
 from common.request import Request
 
 class InternalOperator():

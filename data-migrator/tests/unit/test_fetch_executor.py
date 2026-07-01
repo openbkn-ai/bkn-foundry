@@ -2,8 +2,7 @@
 # -*- coding: utf-8 -*-
 # Copyright openbkn.ai
 #
-# Licensed under the Apache License, Version 2.0.
-# See the LICENSE file in the project root for details.
+# Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 """FetchExecutor._collect_repos 和 _copy_version_dirs 单元测试（无网络/无 git 依赖）"""
 import logging
 import pytest

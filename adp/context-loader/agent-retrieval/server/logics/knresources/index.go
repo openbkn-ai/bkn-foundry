@@ -1,7 +1,6 @@
 // Copyright openbkn.ai
 //
-// Licensed under the Apache License, Version 2.0.
-// See the LICENSE file in the project root for details.
+// Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 
 // Package knresources 提供数据层「资源直查」能力（脱离本体）：list_resources / describe_resource。
 // 与 search_schema（本体/语义入口）互补，二者都喂给 run_sql。

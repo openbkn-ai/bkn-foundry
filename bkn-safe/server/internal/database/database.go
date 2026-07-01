@@ -1,3 +1,7 @@
+// Copyright openbkn.ai
+//
+// Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
 // Package database opens the GORM connection via the proton-rds driver.
 // proton-rds fakes Dameng(DM8)/Kingbase(KDB9) as MySQL wire at the
 // database/sql level, so xinchuang is transparent here — GORM always uses the
