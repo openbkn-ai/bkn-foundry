@@ -2,61 +2,53 @@ BKN Foundry
 Copyright 2026 OpenBKN
 
 This product is multi-licensed. See the LICENSE file and the per-file
-headers for the license applicable to each component.
+headers for the license applicable to each file.
 
 ================================================================
-1. Components originating from kweaver-ai/kweaver-core
-   (Apache License 2.0)
+1. Files from kweaver-ai/kweaver-core (Apache License 2.0)
 ================================================================
 This product includes software originally developed by The kweaver.ai
 Authors (https://github.com/kweaver-ai/kweaver-core), licensed under
 the Apache License, Version 2.0. This repository is a fork of
 kweaver-ai/kweaver-core.
 
-The following components originate from the upstream project and remain
-under the Apache License, Version 2.0. Original copyright, patent,
-trademark, and attribution notices are retained in the corresponding
-source files as required by Section 4 of the Apache License,
-Version 2.0:
+Files that originate from the upstream project remain under the Apache
+License, Version 2.0. Original copyright, patent, trademark, and
+attribution notices are retained in the corresponding source files as
+required by Section 4 of the Apache License, Version 2.0. OpenBKN's
+modifications to these pre-existing files are also licensed under the
+Apache License, Version 2.0; OpenBKN's added copyright notice, together
+with the Git history, marks the files it has changed.
 
-  - BKN Engine
-  - Context Loader
-  - VEGA
-  - Dataflow
-  - Exec Factory
-
-Modifications made by OpenBKN to these components are also licensed
-under the Apache License, Version 2.0, and modified files are marked as
-having been changed.
+Upstream components: BKN Engine, Context Loader, VEGA, Dataflow,
+Exec Factory.
 
 Full license text: LICENSE-APACHE.txt
 
 ================================================================
-2. OpenBKN access-layer components (Apache License 2.0)
+2. OpenBKN net-new files (OpenBKN License)
 ================================================================
-The following components are independently developed by OpenBKN and
-are licensed by OpenBKN under the Apache License, Version 2.0:
-
-  - BKN SDK / CLI
-  - BKN Skill
-
-Full license text: LICENSE-APACHE.txt
-
-================================================================
-3. OpenBKN modules (OpenBKN License)
-================================================================
-The following components are independently developed by OpenBKN, do
-not contain upstream kweaver-core code, are copyright OpenBKN, and
-are licensed under the OpenBKN License (a modified version of the
-Apache License, Version 2.0, with Additional Conditions):
+Source files newly authored by OpenBKN — not present in the upstream
+kweaver-core project and copyright OpenBKN — are licensed under the
+OpenBKN License (a modified version of the Apache License, Version 2.0,
+with Additional Conditions):
 
   - BKN Safe
   - BKN Studio
+  - BKN SDK / CLI
+  - BKN Skill
+  - Capabilities Lab
+  - Data Migrator
+
+Several upstream-derived components also contain OpenBKN net-new files
+and are licensed per file accordingly (Apache 2.0 for upstream files,
+OpenBKN License for OpenBKN net-new files): adp/execution-factory,
+adp/vega, adp/context-loader, adp/bkn, infra/mf-model-manager, deploy.
 
 Full license text: LICENSE-OPENBKN.txt
 
 ================================================================
-4. Historical versions
+3. Historical versions
 ================================================================
 Versions of this repository previously distributed under the Apache
 License, Version 2.0 remain available under that license; their grant
