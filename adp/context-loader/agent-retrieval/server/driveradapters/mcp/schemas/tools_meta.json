@@ -29,7 +29,7 @@
   },
   "get_kn_detail": {
     "name": "get_kn_detail",
-    "description": "获取知识网络 schema（概念组、对象类型含 data_source.id、关系类型、行动类型）。默认 detail_level=summary：返回骨架 + 每个属性的 name/type/comment，不含字段映射、查询算子、映射规则——足够理解结构与规划查询，体积小。需要某对象的完整字段映射时调 get_object_types，需要关系的 mapping_rules 时调 get_relation_types。detail_level=full 一次拿全量（体积大，慎用）。"
+    "description": "获取知识网络 schema（概念组、对象类型含 data_source.id、关系类型、行动类型）。默认 detail_level=summary：返回骨架 + 每个属性仅 name+type（不含 display_name/comment/字段映射/查询算子/映射规则）——足够理解结构与规划查询，体积小。需要某对象的完整字段映射（含 comment）时调 get_object_types，需要关系的 mapping_rules 时调 get_relation_types。detail_level=full 一次拿全量（体积大，慎用）。"
   },
   "get_object_types": {
     "name": "get_object_types",
