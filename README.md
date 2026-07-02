@@ -418,18 +418,18 @@ F1 Bench is based on the BIRD test set with the Formula-1 database mixed with 30
 
 ## License
 
-BKN Foundry is multi-licensed:
+BKN Foundry is multi-licensed. See the repository [license
+overview](LICENSE) and [NOTICE](NOTICE) for the authoritative
+per-component and per-file breakdown:
 
 - Components originating from the upstream
   [kweaver-ai/kweaver-core](https://github.com/kweaver-ai/kweaver-core)
-  remain under the Apache License 2.0 (see LICENSE-APACHE.txt).
-- OpenBKN access-layer components (BKN SDK / CLI, BKN Skill) are under
-  the Apache License 2.0 (see LICENSE-APACHE.txt).
-- The OpenBKN module BKN Safe is under the OpenBKN License — a modified
-  version of the Apache License 2.0 with additional conditions (see
-  LICENSE-OPENBKN.txt). (BKN Studio is a separate frontend repo,
-  [openbkn-ai/bkn-studio](https://github.com/openbkn-ai/bkn-studio), and is
-  licensed there — not part of this backend release.)
+  remain under the [Apache License 2.0](LICENSE-APACHE.txt).
+- OpenBKN net-new files that expressly reference the OpenBKN License
+  use the [OpenBKN License](LICENSE-OPENBKN.txt), a modified version of
+  Apache License 2.0 with additional conditions.
+- BKN Studio and BKN SDK are maintained in separate repositories and
+  are licensed under the License files distributed with those
+  repositories.
 
-The license for each file is stated in its header. See NOTICE for a
-per-component breakdown.
+The license applicable to each file is stated in that file's header.
