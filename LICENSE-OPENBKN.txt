@@ -40,34 +40,107 @@ ADDITIONAL CONDITIONS
 1. Commercial Use.
 
    The Licensed Modules may be used for commercial purposes, including
-   as a component within your own application or business. However, a
-   separate commercial license must be obtained from OpenBKN if any
-   of the following conditions applies:
+   as a component within your own application or business, subject to
+   the conditions below.
 
-   a. Service Restriction. You may not, without prior written
-      authorization from OpenBKN, use the source code of the Licensed
-      Modules to provide to third parties a hosted service, a managed
-      or operated service, or any service that is the same as or
-      substantially similar to the official services offered by
-      OpenBKN. For the purposes of this license, "providing a
-      service to third parties" means making the substantial features
-      or functionality of the Licensed Modules available to parties
-      other than your own organization, whether for a fee or free of
-      charge, including by means of hosting, operation, deployment, or
-      integration carried out on their behalf as a commercial activity.
+   a. Implementation Services.
 
-   b. Multi-Tenant Restriction. Where applicable, you may not use the
-      Licensed Modules to operate a multi-tenant service environment in
-      which separate third-party tenants are provided with isolated
-      access to the Licensed Modules' features or functionality.
+      Any person or legal entity may provide paid or unpaid consulting,
+      development, SDK or API integration, deployment, configuration,
+      training, support, upgrade, or maintenance services for a single
+      End Customer, provided that:
+
+      i. the Licensed Modules are deployed in an environment dedicated
+         to that End Customer and owned or ultimately controlled by
+         that End Customer;
+
+     ii. the End Customer's use remains within the rights granted under
+         this license or is covered by a valid commercial subscription;
+
+    iii. no license key, activation receipt, Commercial Entitlement, or
+         environment is shared across End Customers beyond its
+         authorized scope; and
+
+     iv. the service provider does not operate a Restricted Hosted
+         Service as defined below.
+
+      Providing these Implementation Services does not by itself
+      require the End Customer or the service provider to obtain a
+      commercial subscription.
+
+   b. Commercial Entitlements and No Circumvention.
+
+      A separate commercial subscription is required to enable or use
+      features, modules, distributions, services, or product-
+      customization rights expressly designated by OpenBKN as
+      Professional, Enterprise Standard, Industry Solution, or other
+      commercial entitlements for the applicable released version
+      (collectively, "Commercial Entitlements").
+
+      You may not, directly or indirectly:
+
+      i. enable or use a Commercial Entitlement without a valid
+         commercial subscription covering the applicable End Customer,
+         project, and environment;
+
+     ii. bypass, disable, alter, or interfere with license checks,
+         activation mechanisms, entitlement controls, or usage
+         restrictions;
+
+    iii. share, reuse, transfer, or misapply a license key, activation
+         receipt, or Commercial Entitlement beyond its authorized
+         scope;
+
+     iv. conceal or misrepresent an End Customer, project, tenant,
+         installation, or deployment model for the purpose of avoiding
+         commercial licensing; or
+
+      v. assist or enable another person or legal entity to do any of
+         the foregoing.
+
+      This Section does not prohibit independent development of
+      extensions, connectors, Skills, ontologies, or applications
+      through documented interfaces, provided that such development
+      does not copy commercial-only code or circumvent the controls
+      described above.
+
+   c. Restricted Hosted Services.
+
+      Without prior written authorization from OpenBKN, you may not use
+      the Licensed Modules to:
+
+      i. operate a shared or multi-tenant service for separate End
+         Customers;
+
+     ii. provide the substantial features or functionality of the
+         Licensed Modules as a hosted platform controlled by the
+         service provider;
+
+    iii. offer a white-label, OEM, or other service substantially
+         similar to the official hosted or managed services offered by
+         OpenBKN; or
+
+     iv. use one End Customer's subscription, Commercial Entitlement,
+         or environment to provide services to another End Customer.
+
+      Implementation Services performed in accordance with Section
+      1(a) are not Restricted Hosted Services.
+
+      For purposes of these Additional Conditions, "End Customer"
+      means the final organization that obtains and uses the Licensed
+      Modules for its own business. An environment remains controlled
+      by the End Customer when a service provider performs delegated
+      maintenance, provided that the End Customer retains ultimate
+      administrative and data control.
 
 2. Logo and Copyright Notices.
 
    When using the front end or console of the Licensed Modules, you may
    not remove or modify the OpenBKN logo, trademarks, or copyright and
-   licensing notices displayed therein. This condition does not apply
-   to uses of the Licensed Modules that do not involve their front end
-   or console.
+   licensing notices displayed therein, except to the extent expressly
+   permitted by a valid commercial subscription that includes product-
+   customization rights. This condition does not apply to uses of the
+   Licensed Modules that do not involve their front end or console.
 
 3. Contributions.
 
@@ -108,20 +181,29 @@ ADDITIONAL CONDITIONS
 
 7. Termination.
 
-   Any use of the Licensed Modules in violation of the Additional
-   Conditions above automatically terminates the additional rights
-   granted to you under this license for the Licensed Modules. To
-   continue, you must either bring your use into compliance, obtain a
-   commercial license from OpenBKN, or cease using the Licensed
-   Modules.
+   OpenBKN may terminate the copyright, patent, and other permissions
+   granted by OpenBKN under this license for the Licensed Modules if
+   you violate the Additional Conditions above. If a violation is
+   capable of cure, OpenBKN will provide written notice and at least
+   30 days to cure the violation before termination takes effect.
+   Intentional circumvention, license sharing, or continued operation
+   of an unauthorized hosted or multi-tenant service may result in
+   immediate termination without a cure period. To continue after
+   termination, you must bring your use into compliance, obtain written
+   authorization from OpenBKN, or cease using the Licensed Modules.
+
+   Nothing in this Section terminates or restricts rights independently
+   granted by upstream or other contributors under the Apache License,
+   Version 2.0, or another applicable license.
 
 ================================================================
 COMMERCIAL LICENSING
 ================================================================
 
-For commercial licensing inquiries (including authorization to provide
-services, operate multi-tenant environments, or other uses requiring a
-commercial license), contact: <CONTACT EMAIL / URL>
+For commercial licensing inquiries (including access to Commercial
+Entitlements, authorization to operate Restricted Hosted Services or
+multi-tenant environments, or other uses requiring a commercial
+license), contact: <CONTACT EMAIL / URL>
 
 ================================================================
 DISCLAIMER
