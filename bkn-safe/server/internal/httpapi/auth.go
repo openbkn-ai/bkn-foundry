@@ -5,8 +5,6 @@
 package httpapi
 
 import (
-	_ "embed"
-	"encoding/base64"
 	"errors"
 	"html/template"
 	"log/slog"
@@ -36,7 +34,7 @@ func registerAuth(r *gin.Engine, p *auth.Provider, h *auth.HydraAdmin) {
 }
 
 // pageCSS is the shared light shell (centered card), following the BKN Studio
-// console design language: #2e68ff primary, soft radial-gradient backdrop,
+// console design language: #2563eb primary, soft radial-gradient backdrop,
 // white 20px-radius card, AntD-like 8px fields/buttons, and the OpenBKN logo.
 const pageCSS = `<style>
 :root{color-scheme:light}
@@ -49,12 +47,11 @@ body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:c
 .card{width:380px;box-sizing:border-box;background:#fff;border:1px solid rgba(22,40,73,.08);
   border-radius:20px;padding:36px 32px;box-shadow:0 18px 48px rgba(22,40,73,.10)}
 .brand{display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:18px}
-.brand-logo{display:block;width:244px;height:84px;object-fit:contain}
 .brand-mark{position:relative;width:40px;height:40px;border-radius:14px;
-  background:linear-gradient(145deg,rgba(46,104,255,.16),rgba(46,104,255,.04)),#fff;
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.9),0 10px 24px rgba(46,104,255,.14)}
+  background:linear-gradient(145deg,rgba(37,99,235,.16),rgba(37,99,235,.04)),#fff;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.9),0 10px 24px rgba(37,99,235,.14)}
 .brand-mark i{position:absolute;border-radius:999px}
-.brand-mark .core{inset:11px;background:linear-gradient(180deg,#2762ff 0%,#1546c7 100%)}
+.brand-mark .core{inset:11px;background:linear-gradient(180deg,#2563eb 0%,#1e3a8a 100%)}
 .brand-mark .orbit{width:10px;height:10px;background:#f0b755;box-shadow:0 0 0 4px rgba(240,183,85,.16)}
 .brand-mark .orbit-l{left:6px;top:10px}
 .brand-mark .orbit-r{right:5px;bottom:7px}
@@ -70,32 +67,25 @@ input{width:100%;box-sizing:border-box;background:#fff;border:1px solid #d9d9d9;
   padding:10px 12px;color:rgba(0,0,0,.88);font-size:14px;margin:6px 0;outline:none;
   transition:border-color .2s,box-shadow .2s}
 input::placeholder{color:rgba(0,0,0,.35)}
-input:focus{border-color:#2e68ff;box-shadow:0 0 0 2px rgba(46,104,255,.1)}
+input:focus{border-color:#2563eb;box-shadow:0 0 0 2px rgba(37,99,235,.1)}
 ul{list-style:none;padding:0;margin:14px 0}
-li{padding:6px 0;font-size:14px;color:#152239}li:before{content:"✓ ";color:#2e68ff}
+li{padding:6px 0;font-size:14px;color:#152239}li:before{content:"✓ ";color:#2563eb}
 button,.btn{width:100%;box-sizing:border-box;border:0;border-radius:8px;padding:11px;
   font:inherit;font-size:15px;font-weight:600;cursor:pointer;margin-top:8px;
   transition:background .2s,color .2s}
-.primary{background:#2e68ff;color:#fff;box-shadow:0 2px 0 rgba(46,104,255,.1)}
-.primary:hover{background:#4d80ff}
+.primary{background:#2563eb;color:#fff;box-shadow:0 2px 0 rgba(37,99,235,.1)}
+.primary:hover{background:#1d4ed8}
 .ghost{background:transparent;color:#64748d;font-weight:500}
 .ghost:hover{color:#dc2626}
 .err{color:#dc2626;font-size:13px;text-align:center;margin:8px 0 0}
 form{margin:0}
 </style>`
 
-//go:embed assets/openbkn-logo.png
-var openBKNLogoPNG []byte
-
-var openBKNLogoDataURI = "data:image/png;base64," + base64.StdEncoding.EncodeToString(openBKNLogoPNG)
-
-// brand renders the brand row (mark + wordmark) shown atop each card. Web
-// login pages carry the BKN Studio wordmark; the device-flow pages (CLI /
-// platform-level login) carry BKN Foundry.
+// brand renders the brand row (mark + wordmark) shown atop each card, matching
+// the BKN Studio console sign-in: the orbit mark (blue core + amber dots) next to
+// the product wordmark. Web login pages carry BKN Studio; the device-flow pages
+// (CLI / platform-level login) carry BKN Foundry.
 func brand(name string) string {
-	if name == "BKN Studio" {
-		return `<div class="brand"><img class="brand-logo" src="` + openBKNLogoDataURI + `" alt="OpenBKN"></div>`
-	}
 	return `<div class="brand"><span class="brand-mark"><i class="core"></i><i class="orbit orbit-l"></i><i class="orbit orbit-r"></i></span><strong>` + name + `</strong></div>`
 }
 
