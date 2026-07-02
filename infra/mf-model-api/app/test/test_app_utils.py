@@ -195,6 +195,93 @@ class TestAuthMiddleware:
             response = await auth_middleware(mock_request, mock_call_next)
             assert response.status_code == 401
 
+    @staticmethod
+    def _mock_session(status, body):
+        """构造 aiohttp.ClientSession mock,返回 (session_cm, session)"""
+        mock_response = AsyncMock()
+        mock_response.status = status
+        mock_response.text = AsyncMock(return_value=body)
+
+        mock_post_cm = AsyncMock()
+        mock_post_cm.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_post_cm.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = AsyncMock()
+        mock_session.post = Mock(return_value=mock_post_cm)
+
+        mock_session_cm = AsyncMock()
+        mock_session_cm.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session_cm.__aexit__ = AsyncMock(return_value=None)
+        return mock_session_cm, mock_session
+
+    @pytest.mark.asyncio
+    async def test_appkey_valid_user(self, mock_request, mock_call_next):
+        """测试有效 bak_ AppKey:走 bkn-safe introspect,注入 user 身份头"""
+        mock_request.url.path = "/api/v1/test"
+        mock_request.headers = {"Authorization": "Bearer bak_kid_secret"}
+
+        session_cm, session = self._mock_session(
+            200, '{"active": true, "sub": "user123", "account_type": "email", "key_id": "kid"}')
+        with patch('app.utils.app_utils.aiohttp.ClientSession', return_value=session_cm), \
+                patch.dict('os.environ', {"BKN_SAFE_URL": "http://safe:8080"}):
+            response = await auth_middleware(mock_request, mock_call_next)
+            assert response.status_code == 200
+            session.post.assert_called_once_with(
+                "http://safe:8080/api/safe/v1/api-keys/introspect",
+                json={"token": "bak_kid_secret"})
+            assert (b"x-account-id", b"user123") in mock_request.scope['headers']
+            assert (b"x-account-type", b"user") in mock_request.scope['headers']
+
+    @pytest.mark.asyncio
+    async def test_appkey_valid_app_account(self, mock_request, mock_call_next):
+        """测试应用账户的 AppKey:account_type=app 映射为 app 角色"""
+        mock_request.url.path = "/api/v1/test"
+        mock_request.headers = {"Authorization": "Bearer bak_kid_secret"}
+
+        session_cm, _ = self._mock_session(
+            200, '{"active": true, "sub": "app456", "account_type": "app", "key_id": "kid"}')
+        with patch('app.utils.app_utils.aiohttp.ClientSession', return_value=session_cm), \
+                patch.dict('os.environ', {"BKN_SAFE_URL": "http://safe:8080"}):
+            response = await auth_middleware(mock_request, mock_call_next)
+            assert response.status_code == 200
+            assert (b"x-account-type", b"app") in mock_request.scope['headers']
+
+    @pytest.mark.asyncio
+    async def test_appkey_inactive(self, mock_request, mock_call_next):
+        """测试无效/过期 AppKey:bkn-safe 返回 active=false → 401"""
+        mock_request.url.path = "/api/v1/test"
+        mock_request.headers = {"Authorization": "Bearer bak_kid_secret"}
+
+        session_cm, _ = self._mock_session(200, '{"active": false}')
+        with patch('app.utils.app_utils.aiohttp.ClientSession', return_value=session_cm), \
+                patch.dict('os.environ', {"BKN_SAFE_URL": "http://safe:8080"}):
+            response = await auth_middleware(mock_request, mock_call_next)
+            assert response.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_appkey_without_bkn_safe_url(self, mock_request, mock_call_next):
+        """测试 BKN_SAFE_URL 未配置:bak_ key 一律 401(fail-closed),不打 hydra"""
+        mock_request.url.path = "/api/v1/test"
+        mock_request.headers = {"Authorization": "Bearer bak_kid_secret"}
+
+        with patch.dict('os.environ', {}, clear=True):
+            with patch('app.utils.app_utils.aiohttp.ClientSession') as mock_session_cls:
+                response = await auth_middleware(mock_request, mock_call_next)
+                assert response.status_code == 401
+                mock_session_cls.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_appkey_service_error(self, mock_request, mock_call_next):
+        """测试 bkn-safe 服务异常:非 200 → 400 BknSafeServiceError"""
+        mock_request.url.path = "/api/v1/test"
+        mock_request.headers = {"Authorization": "Bearer bak_kid_secret"}
+
+        session_cm, _ = self._mock_session(500, 'internal error')
+        with patch('app.utils.app_utils.aiohttp.ClientSession', return_value=session_cm), \
+                patch.dict('os.environ', {"BKN_SAFE_URL": "http://safe:8080"}):
+            response = await auth_middleware(mock_request, mock_call_next)
+            assert response.status_code == 400
+
 
 class TestRequestSizeMiddleware:
     """测试RequestSizeMiddleware类"""
