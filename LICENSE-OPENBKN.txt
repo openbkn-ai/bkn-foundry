@@ -28,8 +28,9 @@ This license does not apply to:
       kweaver-ai/kweaver-core, which remain licensed solely under the
       Apache License, Version 2.0, with their original copyright
       notices preserved; nor
-  (b) OpenBKN components expressly licensed under the plain Apache
-      License, Version 2.0 (e.g., BKN SDK / CLI and BKN Skill).
+  (b) OpenBKN components or individual files expressly designated as
+      licensed under the plain Apache License, Version 2.0, in their
+      own license notice or source header.
 See the NOTICE file for the per-component breakdown.
 
 ================================================================
