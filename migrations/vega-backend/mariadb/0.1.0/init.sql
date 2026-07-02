@@ -387,9 +387,9 @@ CREATE TABLE IF NOT EXISTS t_build_task (
     f_total_count             BIGINT NOT NULL DEFAULT 0 COMMENT '总数',
     f_synced_count            BIGINT NOT NULL DEFAULT 0 COMMENT '已同步数',
     f_vectorized_count        BIGINT NOT NULL DEFAULT 0 COMMENT '已做向量数',
-    f_synced_mark             VARCHAR(100) DEFAULT NULL COMMENT '同步标记',
-    f_error_msg               TEXT DEFAULT NULL COMMENT '错误信息',
-    f_failure_detail          TEXT NOT NULL DEFAULT '' COMMENT '构建完成但部分文档向量化失败的明细（区别于 f_error_msg 的整任务硬失败）',
+    f_synced_mark             VARCHAR(100) NOT NULL COMMENT '同步标记',
+    f_error_msg               TEXT NOT NULL COMMENT '错误信息',
+    f_failure_detail          TEXT NOT NULL COMMENT '构建完成但部分文档向量化失败的明细（区别于 f_error_msg 的整任务硬失败）',
 
     -- 审计字段
     f_creator                 VARCHAR(40) NOT NULL DEFAULT '' COMMENT '创建者id',
