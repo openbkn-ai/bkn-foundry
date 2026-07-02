@@ -246,13 +246,19 @@ func TestUpdateBuilder_Build(t *testing.T) {
 		WhereEq("f_id", "test-id").
 		Build()
 
-	expectedQuery := "UPDATE `test_db`.`t_mcp_server_config` SET f_status = ?, f_update_time = ? WHERE f_id = ?"
-	if query != expectedQuery {
-		t.Errorf("Expected query: %s, got: %s", expectedQuery, query)
-	}
-
-	if len(args) != 3 {
-		t.Errorf("Expected 3 args, got %d", len(args))
+	expectedStatusFirst := "UPDATE `test_db`.`t_mcp_server_config` SET f_status = ?, f_update_time = ? WHERE f_id = ?"
+	expectedTimeFirst := "UPDATE `test_db`.`t_mcp_server_config` SET f_update_time = ?, f_status = ? WHERE f_id = ?"
+	switch query {
+	case expectedStatusFirst:
+		if len(args) != 3 || args[0] != "inactive" || args[1] != 123456789 || args[2] != "test-id" {
+			t.Errorf("Unexpected args for status-first query: %v", args)
+		}
+	case expectedTimeFirst:
+		if len(args) != 3 || args[0] != 123456789 || args[1] != "inactive" || args[2] != "test-id" {
+			t.Errorf("Unexpected args for time-first query: %v", args)
+		}
+	default:
+		t.Errorf("Unexpected update query: %s", query)
 	}
 }
 

@@ -38,6 +38,7 @@ service:
       interface:
         path:
           - /api/agent-operator-integration/v1
+          - /api/agent-operator-integration/internal-v1
   type: ClusterIP
   enableDualStack: false
   port: 9000

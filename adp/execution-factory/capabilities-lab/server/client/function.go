@@ -15,10 +15,16 @@ import (
 )
 
 type ExecuteFunctionRequest struct {
-	Code     string                 `json:"code"`
-	Event    map[string]interface{} `json:"event,omitempty"`
-	Language string                 `json:"language,omitempty"`
-	Timeout  int                    `json:"timeout,omitempty"`
+	Code           string                 `json:"code"`
+	Event          map[string]interface{} `json:"event,omitempty"`
+	Language       string                 `json:"language,omitempty"`
+	Timeout        int                    `json:"timeout,omitempty"`
+	Source         string                 `json:"source,omitempty"`
+	TaskID         string                 `json:"task_id,omitempty"`
+	CapabilityID   string                 `json:"capability_id,omitempty"`
+	CapabilityName string                 `json:"capability_name,omitempty"`
+	UserID         string                 `json:"user_id,omitempty"`
+	UserName       string                 `json:"user_name,omitempty"`
 }
 
 type ExecuteFunctionResponse struct {

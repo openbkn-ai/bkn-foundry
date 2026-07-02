@@ -35,6 +35,12 @@ type FunctionProxyExecuteCodeReq struct {
 	Event           map[string]any    `json:"event" validate:"required"`                                     // 事件
 	Language        string            `json:"language" default:"python"`                                     // 执行语言
 	Timeout         int               `json:"timeout,omitempty"`                                             // 超时时间，单位秒
+	Source          string            `json:"source,omitempty"`                                              // 执行来源
+	TaskID          string            `json:"task_id,omitempty"`                                             // 任务ID
+	CapabilityID    string            `json:"capability_id,omitempty"`                                       // 能力ID
+	CapabilityName  string            `json:"capability_name,omitempty"`                                     // 能力名称
+	UserID          string            `json:"user_id,omitempty"`                                             // 用户ID
+	UserName        string            `json:"user_name,omitempty"`                                           // 用户名
 	Dependencies    []*DependencyInfo `json:"dependencies,omitempty"`                                        // 依赖资源
 	DependenciesURL string            `json:"dependencies_url,omitempty" default:"https://pypi.org/simple/"` // 安装源URL
 }
