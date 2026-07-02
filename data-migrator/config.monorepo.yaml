@@ -32,23 +32,32 @@ check_rules:
   allow_python_exception: true
 
 renamed_services:
+# - old_name: old_name
+#    new_name: new_name
 
 services:
   # ---- adp ----
   bkn-backend:
     path: migrations/bkn-backend
+    # check_from: "1.0.0"  # 可选，从指定版本开始检测，不配置则检测所有版本
   vega-backend:
     path: migrations/vega-backend
+    # check_from: "1.0.0"  # 可选，从指定版本开始检测，不配置则检测所有版本
   agent-operator-integration:
-    path: migrations/agent-operator-integration
+    path: migrations/agent-operator-integratio
+    # check_from: "1.0.0"  # 可选，从指定版本开始检测，不配置则检测所有版本
 
   # ---- infra ----
   mf-model-manager:
     path: migrations/mf-model-manager
+    # check_from: "1.0.0"  # 可选，从指定版本开始检测，不配置则检测所有版本
   oss-gateway-backend:
     path: migrations/oss-gateway-backend
+    # check_from: "1.0.0"  # 可选，从指定版本开始检测，不配置则检测所有版本
   sandbox:
     path: migrations/sandbox
+    # check_from: "1.0.0"  # 可选，从指定版本开始检测，不配置则检测所有版本
+
   # sandbox_control_plane/scripts/migrations uses its own python migration
   # runner (single .py file, not <db_type>/<version>/init.sql layout) and is
   # intentionally excluded from data-migrator.

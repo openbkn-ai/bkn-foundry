@@ -19,31 +19,3 @@ mariadb:
     port: 3331
     charset: "utf8mb4"
     autocommit: true
-
-dm8:
-  primary:
-    host: "127.0.0.1"
-    user: "SYSDBA"
-    password: "your_password"
-    port: 5237
-    autocommit: true
-  secondary:
-    host: "127.0.0.1"
-    user: "SYSDBA"
-    password: "your_password"
-    port: 5238
-    autocommit: true
-
-kdb9:
-  primary:
-    host: "127.0.0.1"
-    user: "system"
-    password: "your_password"
-    port: 54322
-    autocommit: true
-  secondary:
-    host: "127.0.0.1"
-    user: "system"
-    password: "your_password"
-    port: 54323
-    autocommit: true
