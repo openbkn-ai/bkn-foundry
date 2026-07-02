@@ -169,6 +169,21 @@ components:
           type: string
         source:
           type: string
+        task_id:
+          type: string
+          description: "Optional source task id extracted from session metadata."
+        capability_id:
+          type: string
+          description: "Optional source capability id extracted from session metadata."
+        capability_name:
+          type: string
+          description: "Optional source capability name extracted from session metadata."
+        user_id:
+          type: string
+          description: "Optional user id extracted from session metadata."
+        user_name:
+          type: string
+          description: "Optional user display name extracted from session metadata."
         template_id:
           type: string
         runtime_type:

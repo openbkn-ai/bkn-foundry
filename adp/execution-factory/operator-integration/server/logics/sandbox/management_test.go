@@ -68,6 +68,14 @@ func TestSandboxManagementService(t *testing.T) {
 						Status:                     interfaces.SessionStatusRunning,
 						TemplateID:                 "python-basic",
 						RuntimeType:                "python",
+						EnvVars: map[string]any{
+							"source":          "function_debug",
+							"task_id":         "task_debug_001",
+							"capability_id":   "cap_weather",
+							"capability_name": "天气查询函数",
+							"user_id":         "user_001",
+							"user_name":       "alice",
+						},
 						DependencyInstallStatus:    "ready",
 						DependencyInstallError:     "",
 						LastActivityAt:             "2026-07-01T09:59:00Z",
@@ -94,6 +102,14 @@ func TestSandboxManagementService(t *testing.T) {
 				Status:                  interfaces.SessionStatusFailed,
 				TemplateID:              "python-basic",
 				RuntimeType:             "python",
+				EnvVars: map[string]any{
+					"execution_source": "skill_execution",
+					"task_id":          "task_skill_404",
+					"capability_id":    "cap_skill_summary",
+					"capability_name":  "总结 Skill",
+					"user_id":          "user_002",
+					"user_name":        "bob",
+				},
 				ResourceLimit:           map[string]any{"cpu": "1", "memory": "512Mi"},
 				WorkspacePath:           "/workspace/sess_aoi_1",
 				DependencyInstallStatus: "failed",
@@ -135,6 +151,12 @@ func TestSandboxManagementService(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(client.listReq.Status, ShouldEqual, interfaces.SessionStatusFailed)
 		So(sessions.Total, ShouldEqual, 2)
+		So(sessions.Items[0].Source, ShouldEqual, "function_debug")
+		So(sessions.Items[0].TaskID, ShouldEqual, "task_debug_001")
+		So(sessions.Items[0].CapabilityID, ShouldEqual, "cap_weather")
+		So(sessions.Items[0].CapabilityName, ShouldEqual, "天气查询函数")
+		So(sessions.Items[0].UserID, ShouldEqual, "user_001")
+		So(sessions.Items[0].UserName, ShouldEqual, "alice")
 		So(sessions.Items[1].Source, ShouldEqual, "unknown")
 		So(sessions.Items[1].RecentErrorSummary, ShouldEqual, "numpy version conflict")
 		So(sessions.Items[1].DependencyInstallStatus, ShouldEqual, "failed")
@@ -143,6 +165,12 @@ func TestSandboxManagementService(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(client.querySession, ShouldEqual, "sess_aoi_1")
 		So(detail.ID, ShouldEqual, "sess_aoi_1")
+		So(detail.Source, ShouldEqual, "skill_execution")
+		So(detail.TaskID, ShouldEqual, "task_skill_404")
+		So(detail.CapabilityID, ShouldEqual, "cap_skill_summary")
+		So(detail.CapabilityName, ShouldEqual, "总结 Skill")
+		So(detail.UserID, ShouldEqual, "user_002")
+		So(detail.UserName, ShouldEqual, "bob")
 		So(detail.RecentErrorSummary, ShouldEqual, "numpy version conflict")
 		So(detail.ResourceLimit["memory"], ShouldEqual, "512Mi")
 	})
