@@ -92,6 +92,11 @@ type SandboxSessionSummary struct {
 	ID                      string                   `json:"id"`
 	Status                  interfaces.SessionStatus `json:"status"`
 	Source                  string                   `json:"source"`
+	TaskID                  string                   `json:"task_id,omitempty"`
+	CapabilityID            string                   `json:"capability_id,omitempty"`
+	CapabilityName          string                   `json:"capability_name,omitempty"`
+	UserID                  string                   `json:"user_id,omitempty"`
+	UserName                string                   `json:"user_name,omitempty"`
 	TemplateID              string                   `json:"template_id"`
 	RuntimeType             string                   `json:"runtime_type"`
 	LanguageRuntime         string                   `json:"language_runtime,omitempty"`
@@ -294,6 +299,11 @@ func newSandboxSessionSummary(detail *interfaces.SessionDetail) *SandboxSessionS
 		ID:                      detail.ID,
 		Status:                  detail.Status,
 		Source:                  detectSessionSource(detail),
+		TaskID:                  readSessionEnvString(detail, "task_id", "taskId", "execution_task_id"),
+		CapabilityID:            readSessionEnvString(detail, "capability_id", "capabilityId", "source_capability_id"),
+		CapabilityName:          readSessionEnvString(detail, "capability_name", "capabilityName", "source_capability_name"),
+		UserID:                  readSessionEnvString(detail, "user_id", "userId", "created_by", "operator_user_id"),
+		UserName:                readSessionEnvString(detail, "user_name", "userName", "created_by_name", "operator_user_name"),
 		TemplateID:              detail.TemplateID,
 		RuntimeType:             detail.RuntimeType,
 		LanguageRuntime:         detail.LanguageRuntime,
@@ -307,14 +317,24 @@ func newSandboxSessionSummary(detail *interfaces.SessionDetail) *SandboxSessionS
 }
 
 func detectSessionSource(detail *interfaces.SessionDetail) string {
-	for _, key := range []string{"source", "execution_source", "capability_type"} {
+	if text := readSessionEnvString(detail, "source", "execution_source", "capability_type"); text != "" {
+		return text
+	}
+	return defaultSessionSource
+}
+
+func readSessionEnvString(detail *interfaces.SessionDetail, keys ...string) string {
+	if detail == nil || len(detail.EnvVars) == 0 {
+		return ""
+	}
+	for _, key := range keys {
 		if value, ok := detail.EnvVars[key]; ok {
 			if text := strings.TrimSpace(fmt.Sprint(value)); text != "" {
 				return text
 			}
 		}
 	}
-	return defaultSessionSource
+	return ""
 }
 
 func summarizeSessionError(detail *interfaces.SessionDetail) string {
