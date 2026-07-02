@@ -5,8 +5,8 @@
 集中后便于统一管理与镜像构建。
 
 > 本目录由 [data-migrator](../data-migrator/) 在构建镜像时直接消费：目录布局
-> `migrations/<模块名>/<数据库类型>/<版本号>/` 即镜像内的最终结构，无需再经
-> `copy_repos.py` 之类的收集脚本转换。相关的 data-migrator 代码后续再做适配。
+> `migrations/<模块名>/<数据库类型>/<版本号>/` 即镜像内 `/app/repos` 的最终结构，
+> 由 Dockerfile 原样 `COPY`，无需 `copy_repos.py` 之类的收集脚本转换。
 
 ## 目录结构
 

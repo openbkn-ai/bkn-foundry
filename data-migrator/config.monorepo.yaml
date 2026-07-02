@@ -1,32 +1,28 @@
-# config.monorepo.yaml — data-migrator config for the kweaver-core monorepo.
+# config.monorepo.yaml — data-migrator config for the bkn-foundry monorepo.
 #
 # Build-time flow:
-#   python3 copy_repos.py <monorepo-root> repos --config config.monorepo.yaml
-# copies each service's migrations/ tree into ./repos/<service>/<db_type>/<version>/
-# so the image can ship pre-baked SQL — no git fetch / no PAT at runtime.
+#   The consolidated SQL at the repo root (migrations/<service>/<db_type>/<version>/)
+#   is copied straight into the image as /app/repos by the Dockerfile — no collect
+#   step, no copy_repos.py, no git fetch / PAT at runtime.
 #
 # Runtime flow (chart pre-install Job):
 #   python3 server/data-migrator.py migrate \
 #     --config /app/config.yaml \
 #     --secret-config /etc/data-migrator/secret-config.yaml
 #
-# `path` is the only field copy_repos.py reads; project/repo/ref are unused
-# in monorepo mode and intentionally omitted (ServiceConfig defaults them to "").
-# Path is relative to the monorepo root passed to copy_repos.py.
+# The runtime keys off the service name to locate repos/<service>/<db_type>/<version>/.
+# `path` is only consumed by the git-based `fetch` mode (unused in monorepo builds);
+# it is kept here to document each service's source location under the repo root.
 
-module: kweaver-core
-description: kweaver-core data-migrator config (monorepo edition)
+module: openbkn
+description: bkn-foundry data-migrator config (monorepo edition)
 
 db_types:
   - mariadb
-  - dm8
 
-# Logical databases owned by kweaver-core services. Kept aligned with the
-# legacy core config so the runtime initialises the same set of schemas.
+# Logical databases the migrator must pre-create.
 databases:
-  - kweaver
-  - adp
-  - model_management
+  - openbkn
   - safe # bkn-safe（ISF 替代鉴权服务）库；schema 由 bkn-safe 启动时 GORM AutoMigrate 建表，但库本身需 migrator 预建，否则首装报 Unknown database 'safe'
 
 check_rules:
@@ -40,23 +36,19 @@ renamed_services:
 services:
   # ---- adp ----
   bkn-backend:
-    path: adp/bkn/bkn-backend/migrations
+    path: migrations/bkn-backend
   vega-backend:
-    path: adp/vega/vega-backend/migrations
+    path: migrations/vega-backend
   agent-operator-integration:
-    path: adp/execution-factory/operator-integration/migrations
+    path: migrations/agent-operator-integration
 
   # ---- infra ----
   mf-model-manager:
-    path: infra/mf-model-manager/migrations
+    path: migrations/mf-model-manager
   oss-gateway-backend:
-    path: infra/oss-gateway-backend/migrations
+    path: migrations/oss-gateway-backend
   sandbox:
-    path: infra/sandbox/migrations
+    path: migrations/sandbox
   # sandbox_control_plane/scripts/migrations uses its own python migration
   # runner (single .py file, not <db_type>/<version>/init.sql layout) and is
   # intentionally excluded from data-migrator.
-
-  # ---- trace-ai ----
-  agent-observability:
-    path: trace-ai/agent-observability/migrations
