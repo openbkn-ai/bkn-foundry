@@ -524,23 +524,25 @@ func TestAuditTrail(t *testing.T) {
 		map[string]any{"id": "d-1", "name": "Root"})
 	adminReq(t, r, http.MethodPut, "/api/safe/v1/admin/departments/d-1",
 		map[string]any{"name": "Renamed"})
+	adminReq(t, r, http.MethodDelete, "/api/safe/v1/admin/departments/d-1", nil)
 	adminReq(t, r, http.MethodDelete, "/api/safe/v1/admin/users/ghost", nil)
 	// a GET must NOT be audited (no feedback loop on the read path)
 	adminReq(t, r, http.MethodGet, "/api/safe/v1/admin/departments", nil)
 
 	var total int64
 	db.Model(&model.AuditLog{}).Count(&total)
-	if total != 3 {
-		t.Fatalf("audit rows = %d, want 3 (GET excluded)", total)
+	if total != 4 {
+		t.Fatalf("audit rows = %d, want 4 (GET excluded)", total)
 	}
 
 	type logRow struct {
-		ActorID  string `json:"actor_id"`
-		Method   string `json:"method"`
-		Resource string `json:"resource"`
-		Action   string `json:"action"`
-		TargetID string `json:"target_id"`
-		Status   int    `json:"status"`
+		ActorID    string `json:"actor_id"`
+		Method     string `json:"method"`
+		Resource   string `json:"resource"`
+		Action     string `json:"action"`
+		TargetID   string `json:"target_id"`
+		TargetName string `json:"target_name"`
+		Status     int    `json:"status"`
 	}
 	type listResp struct {
 		Logs  []logRow `json:"logs"`
@@ -563,12 +565,22 @@ func TestAuditTrail(t *testing.T) {
 		t.Errorf("ghost-delete entry = %+v", got)
 	}
 
-	// filter by resource=departments -> the create + rename
+	// filter by resource=departments -> the create + rename + delete
 	w = adminReq(t, r, http.MethodGet, "/api/safe/v1/admin/audit-logs?resource=departments", nil)
 	var depts listResp
 	_ = json.Unmarshal(w.Body.Bytes(), &depts)
-	if depts.Total != 2 {
-		t.Errorf("resource=departments: total=%d, want 2", depts.Total)
+	if depts.Total != 3 {
+		t.Errorf("resource=departments: total=%d, want 3", depts.Total)
+	}
+	var deleteDept *logRow
+	for i := range depts.Logs {
+		if depts.Logs[i].Method == http.MethodDelete {
+			deleteDept = &depts.Logs[i]
+			break
+		}
+	}
+	if deleteDept == nil || deleteDept.TargetName != "Renamed" {
+		t.Errorf("delete department target snapshot = %+v, want target_name Renamed", deleteDept)
 	}
 }
 

@@ -89,7 +89,7 @@ func New(deps Deps) *gin.Engine {
 		// register time. The middleware sits after RequireAdmin, so it only runs
 		// for authenticated callers (failed-auth 401/403 are not audited).
 		if deps.Audit != nil {
-			admin.Use(auditMiddleware(deps.Audit))
+			admin.Use(auditMiddleware(deps.Audit, deps.Directory, deps.DB))
 			registerAuditReads(admin, deps.Audit)
 		}
 		registerUserAdmin(admin, deps.Users, deps.Enforcer, deps.Directory)

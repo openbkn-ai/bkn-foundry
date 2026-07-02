@@ -30,29 +30,31 @@ func New(db *gorm.DB) *Store { return &Store{db: db} }
 // Entry is a single audit record to persist. ID and the timestamp are assigned
 // by Record (the caller supplies only the request facts).
 type Entry struct {
-	ActorID  string
-	Method   string
-	Resource string
-	Action   string
-	TargetID string
-	Detail   string
-	Status   int
-	ClientIP string
+	ActorID    string
+	Method     string
+	Resource   string
+	Action     string
+	TargetID   string
+	TargetName string
+	Detail     string
+	Status     int
+	ClientIP   string
 }
 
 // Record persists one audit entry. The returned error is for logging only —
 // auditing must never break the request it is recording, so callers swallow it.
 func (s *Store) Record(ctx context.Context, e Entry) error {
 	row := model.AuditLog{
-		ID:       newID(),
-		ActorID:  e.ActorID,
-		Method:   e.Method,
-		Resource: e.Resource,
-		Action:   e.Action,
-		TargetID: e.TargetID,
-		Detail:   e.Detail,
-		Status:   e.Status,
-		ClientIP: e.ClientIP,
+		ID:         newID(),
+		ActorID:    e.ActorID,
+		Method:     e.Method,
+		Resource:   e.Resource,
+		Action:     e.Action,
+		TargetID:   e.TargetID,
+		TargetName: e.TargetName,
+		Detail:     e.Detail,
+		Status:     e.Status,
+		ClientIP:   e.ClientIP,
 	}
 	return s.db.WithContext(ctx).Create(&row).Error
 }
