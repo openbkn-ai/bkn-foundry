@@ -53,10 +53,11 @@ type SessionPool interface {
 }
 
 type sessionItem struct {
-	ID           string
-	Dependencies []*interfaces.DependencyInfo
-	RunningTasks int
-	LastUsedAt   time.Time
+	ID               string
+	Dependencies     []*interfaces.DependencyInfo
+	RunningTasks     int
+	LastUsedAt       time.Time
+	ExecutionContext map[string]any
 }
 
 type sessionPoolImpl struct {
@@ -164,6 +165,7 @@ func (p *sessionPoolImpl) ExecuteCode(ctx context.Context, req *interfaces.Execu
 	if err != nil {
 		return nil, err
 	}
+	p.recordExecutionContext(sessionID, req.EnvVars)
 	defer p.ReleaseSession(sessionID)
 	// 安装依赖库
 	if len(req.Dependencies) > 0 && req.PythonPackageIndexURL != "" {
@@ -338,6 +340,18 @@ func cloneSessionEnvVars(envVars map[string]any) map[string]any {
 		cloned[key] = value
 	}
 	return cloned
+}
+
+func (p *sessionPoolImpl) recordExecutionContext(sessionID string, envVars map[string]any) {
+	if len(envVars) == 0 {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if item, ok := p.sessions[sessionID]; ok && item != nil {
+		item.ExecutionContext = cloneSessionEnvVars(envVars)
+		item.LastUsedAt = time.Now()
+	}
 }
 
 func (p *sessionPoolImpl) waitForSessionRunning(ctx context.Context, sessionID string) error {

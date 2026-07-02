@@ -124,3 +124,58 @@ func TestGetDependenciesCachesFromSessionQuery(t *testing.T) {
 		So(item.Dependencies, ShouldResemble, firstDetail.InstalledDependencies)
 	})
 }
+
+func TestExecuteCodeRecordsExecutionContextWhenReusingSession(t *testing.T) {
+	Convey("ExecuteCode should record request context even when reusing a prewarmed session", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockClient := mocks.NewMockSandBoxControlPlane(ctrl)
+		pool := &sessionPoolImpl{
+			client: mockClient,
+			sessions: map[string]*sessionItem{
+				"sess_aoi_0": {
+					ID:           "sess_aoi_0",
+					RunningTasks: 0,
+					LastUsedAt:   time.Now(),
+				},
+			},
+			maxSessions:        1,
+			maxConcurrentTasks: 10,
+			logger:             logger.DefaultLogger(),
+			stopCh:             make(chan struct{}),
+		}
+
+		execEnv := map[string]any{
+			"source":          "function_debug",
+			"task_id":         "task_reuse_001",
+			"capability_id":   "cap_reuse_weather",
+			"capability_name": "weather_reuse",
+			"user_id":         "user_reuse",
+			"user_name":       "reuse-user",
+		}
+
+		gomock.InOrder(
+			mockClient.EXPECT().
+				QuerySession(gomock.Any(), "sess_aoi_0").
+				Return(true, &interfaces.SessionDetail{ID: "sess_aoi_0", Status: interfaces.SessionStatusRunning}, nil),
+			mockClient.EXPECT().
+				ExecuteCodeSync(gomock.Any(), "sess_aoi_0", gomock.AssignableToTypeOf(&interfaces.ExecuteCodeReq{})).
+				Return(&interfaces.ExecuteCodeResp{SessionID: "sess_aoi_0", ReturnValue: map[string]any{"ok": true}}, nil),
+		)
+
+		resp, err := pool.ExecuteCode(context.Background(), &interfaces.ExecuteCodeReq{
+			Code:     "def handler(event):\n    return event",
+			Event:    map[string]any{"city": "beijing"},
+			Language: "python",
+			EnvVars:  execEnv,
+		})
+
+		So(err, ShouldBeNil)
+		So(resp.SessionID, ShouldEqual, "sess_aoi_0")
+
+		snapshot := pool.Snapshot()
+		So(snapshot.Sessions, ShouldHaveLength, 1)
+		So(snapshot.Sessions[0].ExecutionContext, ShouldResemble, execEnv)
+	})
+}
