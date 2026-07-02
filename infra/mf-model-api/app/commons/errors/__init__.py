@@ -1216,6 +1216,13 @@ HydraServiceError = {
     "solution": "请检查hrdra服务状态",
     "link": ""
 }
+BknSafeServiceError = {
+    "code": "BknSafeServiceError",
+    "description": "调用bkn-safe服务异常",
+    "detail": "调用bkn-safe服务异常",
+    "solution": "请检查bkn-safe服务状态",
+    "link": ""
+}
 UserManagementError = {
     "code": "UserManagementServiceError",
     "description": "调用user-management服务异常",
