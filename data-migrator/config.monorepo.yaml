@@ -11,8 +11,8 @@
 #     --secret-config /etc/data-migrator/secret-config.yaml
 #
 # The runtime keys off the service name to locate repos/<service>/<db_type>/<version>/.
-# `path` is only consumed by the git-based `fetch` mode (unused in monorepo builds);
-# it is kept here to document each service's source location under the repo root.
+# `path` is not read at runtime; it documents each service's source location
+# under the repo root.
 
 module: openbkn
 description: bkn-foundry data-migrator config (monorepo edition)

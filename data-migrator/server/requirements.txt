@@ -1,6 +1,5 @@
 PyYAML>=6.0
 sqlparse>=0.5.0
-GitPython>=3.1.0
 pymongo>=4.16.0
 opensearch-py>=3.1.0
 

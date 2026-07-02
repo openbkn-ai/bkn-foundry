@@ -34,9 +34,6 @@ def _load_services(cfg: dict, service_filter: Optional[List[str]]) -> Dict[str, 
         if service_filter and name not in service_filter:
             continue
         services[name] = ServiceConfig(
-            project=info.get("project", ""),
-            repo=info.get("repo", ""),
-            ref=info.get("ref", ""),
             path=info.get("path", ""),
             check_from=info.get("check_from"),
         )

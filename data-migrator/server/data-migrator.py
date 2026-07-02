@@ -5,7 +5,7 @@
 # Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 """
 Data Migrator - 统一入口
-支持四个子命令: fetch / lint / verify / migrate
+支持三个子命令: lint / verify / migrate
 """
 import argparse
 import sys
@@ -18,15 +18,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="data-migrator",
-        description="数据库迁移引擎：fetch / lint / verify / migrate",
+        description="数据库迁移引擎：lint / verify / migrate",
     )
     subparsers = parser.add_subparsers(dest="command", help="子命令")
-
-    # ── fetch ──
-    fetch_parser = subparsers.add_parser("fetch", help="从 Git 仓库拉取并收集迁移脚本")
-    fetch_parser.add_argument("--config", required=True, help="YAML 配置文件路径")
-    fetch_parser.add_argument("--service", nargs="*", default=None, help="指定本次拉取的服务（默认全部）")
-    fetch_parser.add_argument("--log-level", default="INFO", help="日志级别")
 
     # ── lint ──
     lint_parser = subparsers.add_parser("lint", help="静态校验：目录结构 + SQL 语法（无需 DB 连接）")
@@ -62,15 +56,7 @@ def main():
     from server.utils.log import LogDiy
     logger = LogDiy.instance().get_logger(args.log_level)
 
-    if args.command == "fetch":
-        from server.config.loader import load_config
-        app_config = load_config(args.config, args.service, logger)
-
-        from server.fetch.executor import FetchExecutor
-        executor = FetchExecutor(app_config, logger)
-        executor.run()
-
-    elif args.command == "lint":
+    if args.command == "lint":
         from server.config.loader import load_config
         app_config = load_config(args.config, args.service, logger)
 
