@@ -78,6 +78,7 @@ func (h *unifiedProxyHandler) FunctionExecute(c *gin.Context) {
 		Event:                 req.Event,
 		Language:              req.Language,
 		Timeout:               req.Timeout,
+		EnvVars:               buildFunctionExecutionEnv(req),
 		Dependencies:          req.Dependencies,
 		PythonPackageIndexURL: req.DependenciesURL,
 	}
@@ -102,6 +103,32 @@ type FunctionExecuteResp struct {
 	Stderr  string `json:"stderr"`  // 标准错误输出
 	Result  any    `json:"result"`  // 执行结果值
 	Metrics any    `json:"metrics"` // 执行指标
+}
+
+func buildFunctionExecutionEnv(req *interfaces.FunctionProxyExecuteCodeReq) map[string]any {
+	env := map[string]any{"source": "function_debug"}
+	if req == nil {
+		return env
+	}
+	if req.Source != "" {
+		env["source"] = req.Source
+	}
+	if req.TaskID != "" {
+		env["task_id"] = req.TaskID
+	}
+	if req.CapabilityID != "" {
+		env["capability_id"] = req.CapabilityID
+	}
+	if req.CapabilityName != "" {
+		env["capability_name"] = req.CapabilityName
+	}
+	if req.UserID != "" {
+		env["user_id"] = req.UserID
+	}
+	if req.UserName != "" {
+		env["user_name"] = req.UserName
+	}
+	return env
 }
 
 // FunctionExecuteProxyReq 函数执行代理请求参数
@@ -162,10 +189,15 @@ func (h *unifiedProxyHandler) FunctionExecuteProxy(c *gin.Context) {
 		dependencies = utils.JSONToObject[[]*interfaces.DependencyInfo](metadata.GetDependencies())
 	}
 	execReq := &interfaces.ExecuteCodeReq{
-		Code:                  code,
-		Event:                 event,
-		Timeout:               int(req.Timeout / 1000),
-		Language:              scriptType,
+		Code:     code,
+		Event:    event,
+		Timeout:  int(req.Timeout / 1000),
+		Language: scriptType,
+		EnvVars: map[string]any{
+			"source":        "function_proxy",
+			"task_id":       req.Version,
+			"capability_id": req.Version,
+		},
 		Dependencies:          dependencies,
 		PythonPackageIndexURL: metadata.GetDependenciesURL(),
 	}

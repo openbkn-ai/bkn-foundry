@@ -522,6 +522,7 @@ type ExecuteCodeReq struct {
 	Language              string            `json:"language" default:"python"`                                   // 执行语言
 	Timeout               int               `json:"timeout,omitempty"`                                           // 超时时间，单位秒
 	WorkingDirectory      string            `json:"working_directory,omitempty"`                                 // 工作目录，相对于 workspace 根目录
+	EnvVars               map[string]any    `json:"env_vars,omitempty"`                                          // 会话业务上下文环境变量
 	Dependencies          []*DependencyInfo `json:"dependencies,omitempty"`                                      // 依赖资源
 	PythonPackageIndexURL string            `json:"python_package_index_url" default:"https://pypi.org/simple/"` // 安装源URL
 }

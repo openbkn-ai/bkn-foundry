@@ -26,9 +26,15 @@ type CreateFunctionCapabilityResponse struct {
 }
 
 type ExecutePythonRequest struct {
-	Code    string                 `json:"code" binding:"required"`
-	Event   map[string]interface{} `json:"event,omitempty"`
-	Timeout int                    `json:"timeout,omitempty"`
+	Code           string                 `json:"code" binding:"required"`
+	Event          map[string]interface{} `json:"event,omitempty"`
+	Timeout        int                    `json:"timeout,omitempty"`
+	Source         string                 `json:"source,omitempty"`
+	TaskID         string                 `json:"task_id,omitempty"`
+	CapabilityID   string                 `json:"capability_id,omitempty"`
+	CapabilityName string                 `json:"capability_name,omitempty"`
+	UserID         string                 `json:"user_id,omitempty"`
+	UserName       string                 `json:"user_name,omitempty"`
 }
 
 type ExecutePythonResponse struct {

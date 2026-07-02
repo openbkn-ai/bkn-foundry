@@ -160,7 +160,7 @@ func (p *sessionPoolImpl) ExecuteCode(ctx context.Context, req *interfaces.Execu
 		"code":     req.Code,
 		"event":    req.Event,
 	})
-	sessionID, err := p.AcquireSession(ctx)
+	sessionID, err := p.acquireSessionWithEnv(ctx, req.EnvVars)
 	if err != nil {
 		return nil, err
 	}
@@ -197,6 +197,10 @@ func (p *sessionPoolImpl) AcquireSession(ctx context.Context) (sessionID string,
 	return p.acquireSession(ctx, maxRetryCount)
 }
 
+func (p *sessionPoolImpl) acquireSessionWithEnv(ctx context.Context, envVars map[string]any) (sessionID string, err error) {
+	return p.acquireSessionWithOptions(ctx, maxRetryCount, envVars)
+}
+
 func (p *sessionPoolImpl) initSessions() {
 	ctx := context.Background()
 	recoveredCount := 0
@@ -218,6 +222,10 @@ func (p *sessionPoolImpl) initSessions() {
 
 // acquireSession 从会话池中获取一个会话
 func (p *sessionPoolImpl) acquireSession(ctx context.Context, retryCount int) (sessionID string, err error) {
+	return p.acquireSessionWithOptions(ctx, retryCount, nil)
+}
+
+func (p *sessionPoolImpl) acquireSessionWithOptions(ctx context.Context, retryCount int, envVars map[string]any) (sessionID string, err error) {
 	// 记录可观测
 	ctx, _ = o11y.StartInternalSpan(ctx)
 	defer o11y.EndSpan(ctx, err)
@@ -237,7 +245,7 @@ func (p *sessionPoolImpl) acquireSession(ctx context.Context, retryCount int) (s
 		}
 		// 暂停时间: 每次重试间隔增加 1 秒
 		time.Sleep(time.Duration(count) * time.Second)
-		sessionID, err = p.acquireSession(ctx, count-1)
+		sessionID, err = p.acquireSessionWithOptions(ctx, count-1, envVars)
 	}(retryCount)
 	// 1. 堆叠分配策略：寻找负载最高但未满的会话
 	bestSession := p.findBestSession()
@@ -269,7 +277,7 @@ func (p *sessionPoolImpl) acquireSession(ctx context.Context, retryCount int) (s
 
 	// 5. 执行远程创建
 	p.logger.Infof("Creating new session slot: %s", targetID)
-	if err = p.ensureRemoteSession(ctx, targetID); err != nil {
+	if err = p.ensureRemoteSessionWithEnv(ctx, targetID, envVars); err != nil {
 		p.logger.Errorf("Failed to create session %s: %v", targetID, err)
 		// 创建失败，移除占位符
 		// 容错重试：如果当前 ID 创建失败，递归尝试下一个可用 ID
@@ -283,6 +291,10 @@ func (p *sessionPoolImpl) acquireSession(ctx context.Context, retryCount int) (s
 }
 
 func (p *sessionPoolImpl) ensureRemoteSession(ctx context.Context, sessionID string) error {
+	return p.ensureRemoteSessionWithEnv(ctx, sessionID, nil)
+}
+
+func (p *sessionPoolImpl) ensureRemoteSessionWithEnv(ctx context.Context, sessionID string, envVars map[string]any) error {
 	// 创建前检查是否存在
 	exists, _, err := p.querySessionAndCache(ctx, sessionID)
 	if err != nil {
@@ -298,6 +310,7 @@ func (p *sessionPoolImpl) ensureRemoteSession(ctx context.Context, sessionID str
 			CPU:        p.reqConfig.CPU,
 			Memory:     p.reqConfig.Memory,
 			Disk:       p.reqConfig.Disk,
+			EnvVars:    cloneSessionEnvVars(envVars),
 		}
 
 		_, err := p.client.CreateSession(ctx, req)
@@ -314,6 +327,17 @@ func (p *sessionPoolImpl) ensureRemoteSession(ctx context.Context, sessionID str
 	}
 	p.addSession(sessionID)
 	return nil
+}
+
+func cloneSessionEnvVars(envVars map[string]any) map[string]any {
+	if len(envVars) == 0 {
+		return nil
+	}
+	cloned := make(map[string]any, len(envVars))
+	for key, value := range envVars {
+		cloned[key] = value
+	}
+	return cloned
 }
 
 func (p *sessionPoolImpl) waitForSessionRunning(ctx context.Context, sessionID string) error {

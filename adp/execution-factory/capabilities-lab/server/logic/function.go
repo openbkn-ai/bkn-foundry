@@ -144,10 +144,16 @@ func (s *Service) ExecutePython(
 	}
 
 	resp, err := s.Client.ExecuteFunction(ctx, businessDomain, s.DefaultUserID, client.ExecuteFunctionRequest{
-		Code:     req.Code,
-		Event:    req.Event,
-		Language: "python",
-		Timeout:  req.Timeout,
+		Code:           req.Code,
+		Event:          req.Event,
+		Language:       "python",
+		Timeout:        req.Timeout,
+		Source:         req.Source,
+		TaskID:         req.TaskID,
+		CapabilityID:   req.CapabilityID,
+		CapabilityName: req.CapabilityName,
+		UserID:         req.UserID,
+		UserName:       req.UserName,
 	})
 	if err != nil {
 		return nil, err
