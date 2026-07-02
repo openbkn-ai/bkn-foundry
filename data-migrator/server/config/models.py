@@ -35,10 +35,7 @@ class RDSConfig:
 @dataclass
 class ServiceConfig:
     """单个服务的配置"""
-    project: str = ""
-    repo: str = ""
-    ref: str = ""
-    path: str = ""
+    path: str = ""  # 迁移脚本在仓库中的来源路径，仅作说明用途
     check_from: Optional[str] = None
 
 

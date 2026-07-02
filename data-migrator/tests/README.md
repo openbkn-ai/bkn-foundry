@@ -122,17 +122,6 @@ pip install pytest
 
 ---
 
-### `test_fetch_executor.py` — Fetch 执行器
-
-覆盖 `server/fetch/executor.py`，使用 `pytest` 的 `tmp_path` / `monkeypatch` fixture 构造临时目录，无网络/git 依赖：
-
-| 类 / 方法 | 覆盖要点 |
-|-----------|---------|
-| `FetchExecutor._collect_repos` | 正常复制、db_type 缺失回退 DEFAULT_DB_TYPE、两者均缺失报错、多服务 × 多 db_type |
-| `FetchExecutor._copy_version_dirs` | 只复制版本号目录、非版本目录跳过、空源目录不报错 |
-
----
-
 ### `test_script_selector.py` — 迁移脚本选择器
 
 覆盖 `server/migrate/script_selector.py`，使用 `pytest` 的 `tmp_path` fixture 构造临时目录，无真实 DB 依赖：

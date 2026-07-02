@@ -169,7 +169,7 @@ mariadb:
 
   auth:
     rootPassword: "password"
-    database: "kweaver"
+    database: "openbkn"
     username: ""
     password: ""
 
@@ -277,7 +277,7 @@ depServices:
     portRead: 3306
     user: root
     password: password
-    database: kweaver
+    database: openbkn
     maxConnections: 30
     maxReadConnections: 30
     dbCharset: utf8mb4

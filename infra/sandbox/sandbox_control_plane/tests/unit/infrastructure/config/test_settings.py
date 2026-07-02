@@ -36,7 +36,7 @@ class TestSettings:
         """测试默认数据库配置"""
         settings = create_settings_with_defaults()
 
-        assert settings.database_url == "mysql+aiomysql://sandbox:password@localhost:3308/kweaver"
+        assert settings.database_url == "mysql+aiomysql://sandbox:password@localhost:3308/openbkn"
         assert settings.db_pool_size == 20
         assert settings.db_max_overflow == 40
         assert settings.db_pool_recycle == 3600

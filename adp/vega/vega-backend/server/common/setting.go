@@ -125,7 +125,7 @@ const (
 	mfModelManagerServiceName string = "mf-model-manager"
 	mfModelApiServiceName     string = "mf-model-api"
 
-	DATA_BASE_NAME string = "kweaver"
+	DATA_BASE_NAME string = "openbkn"
 )
 
 var (
