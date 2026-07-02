@@ -13,12 +13,11 @@
 ## CI 工作流
 
 ```
-fetch  →  lint  →  verify  →  (merge)  →  migrate
- 拉脚本    静态校验    DB校验              生产部署
-（无DB）  （无DB）   （测试DB）          （生产DB）
+lint  →  verify  →  (merge)  →  migrate
+静态校验    DB校验              生产部署
+（无DB）   （测试DB）          （生产DB）
 ```
 
-- **`fetch`** — 从 Git 仓库拉取各微服务 `migrations/` 到本地 `repos/`
 - **`lint`** — 校验目录结构合规性 + SQL 语法正确性，无 DB 依赖，适合早期快速失败
 - **`verify`** — 在测试 DB 上执行 SQL，对比多 DB 类型 schema 一致性
 - **`migrate`** — 生产部署，由 Helm `pre-install/pre-upgrade` Hook 自动触发
@@ -77,16 +76,6 @@ fetch  →  lint  →  verify  →  (merge)  →  migrate
 | `--service` | 否 | 指定本次操作的服务名称，空格分隔；默认处理配置中全部服务 |
 | `--log-level` | 否 | `DEBUG` / `INFO` / `WARNING` / `ERROR`，默认 `INFO` |
 
-### fetch — 拉取迁移脚本
-
-```bash
-MY_PAT=<github_pat> python data-migrator.py fetch \
-  --config config.yaml \
-  --service bkn-backend vega-backend
-```
-
-`MY_PAT` 仅在 `repos/<service>` 目录不存在时才需要（用于克隆私有仓库）。目录已存在则跳过克隆。
-
 ### lint — 静态校验（无需 DB）
 
 ```bash
@@ -132,12 +121,6 @@ python data-migrator.py migrate \
 | `verify_rds_config.yaml` | ❌ | verify 用，多 DB 类型对比连接配置（参见 `verify_rds_config.yaml.example`）|
 | `secret-config.yaml` | ❌ | migrate 用，依赖服务连接配置（参见 `secret-config.yaml.example`）|
 
-### 本地开发环境变量
-
-| 环境变量 | 用于子命令 | 说明 |
-|----------|-----------|------|
-| `MY_PAT` | `fetch` | GitHub PAT，拉取私有仓库时使用 |
-
 ---
 
 ## 本地开发 & 测试
@@ -171,43 +154,15 @@ python3 server/data-migrator.py verify --config config.yaml --verify-rds-config 
 
 ## 镜像构建
 
-### 基础镜像（平台团队维护）
+镜像由 [Dockerfile](Dockerfile) 单文件构建，CI（`.github/workflows/release-data-migrator.yml`）
+以 **monorepo 根目录** 为构建上下文，把根 `migrations/<service>/<db_type>/<version>/`
+直接 `COPY` 进镜像的 `/app/repos`——无收集脚本、无 git 拉取、无 PAT。
 
-基础镜像包含引擎代码和所有运行时依赖，由平台团队构建并推送到镜像仓库：
-
-```bash
-docker build -f docker/Dockerfile -t acr.aishu.cn/dip/data-migrator-base:<version> .
-docker push acr.aishu.cn/dip/data-migrator-base:<version>
-```
-
-### 部门镜像（各部门 CI 构建）
-
-各部门基于基础镜像做二次构建，将自己的 `config.yaml` 和 `repos/` 打入镜像。
-
-参考 `docker/Dockerfile.example`，复制到部门仓库后按需修改 `BASE_IMAGE`：
+本地手动构建（在仓库根目录执行）：
 
 ```bash
-# 1. 拉取迁移脚本
-MY_PAT=<github_pat> python3 server/data-migrator.py fetch --config config.yaml
-
-# 2. 静态校验
-python3 server/data-migrator.py lint --config config.yaml
-
-# 3. 构建部门镜像（仅 COPY config.yaml + repos/，秒级完成）
-docker build \
-  --build-arg BASE_IMAGE=acr.aishu.cn/dip/data-migrator-base:<version> \
-  -t <registry>/<dept>/data-migrator:<tag> .
-
-# 4. 推送
-docker push <registry>/<dept>/data-migrator:<tag>
+docker build -f data-migrator/Dockerfile -t <registry>/core-data-migrator:<tag> .
 ```
-
-### 文件说明
-
-| 文件 | 用途 |
-|------|------|
-| `docker/Dockerfile` | 基础镜像构建文件，平台团队维护 |
-| `docker/Dockerfile.example` | 部门镜像构建模板，复制到部门仓库使用 |
 
 ---
 

@@ -5,9 +5,6 @@
 # migrations/<service>/<db_type>/<version>/ — which is already the exact
 # layout the runtime expects under /app/repos, so it is copied in directly
 # (no collect step / copy_repos.py / git fetch / PAT / network).
-#
-# docker/Dockerfile.base + docker/Dockerfile.example are kept untouched
-# for the internal/China build flow that uses aliyun mirrors.
 
 ARG BASE_IMAGE=ubuntu:24.04
 
