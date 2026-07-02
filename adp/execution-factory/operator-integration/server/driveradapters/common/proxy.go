@@ -8,6 +8,7 @@ import (
 	"github.com/creasty/defaults"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
+	"github.com/google/uuid"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/rest"
@@ -95,6 +96,15 @@ func (h *unifiedProxyHandler) FunctionExecute(c *gin.Context) {
 		Metrics: resp.Metrics,
 	}
 	rest.ReplyOK(c, http.StatusOK, result)
+}
+
+func buildFunctionProxyExecutionEnv(version string) map[string]any {
+	return map[string]any{
+		"source":              "function_proxy",
+		"task_id":             "function_proxy_" + uuid.NewString(),
+		"capability_id":       "function_version:" + version,
+		"function_version_id": version,
+	}
 }
 
 // FunctionExecuteResp 函数执行响应
@@ -189,15 +199,11 @@ func (h *unifiedProxyHandler) FunctionExecuteProxy(c *gin.Context) {
 		dependencies = utils.JSONToObject[[]*interfaces.DependencyInfo](metadata.GetDependencies())
 	}
 	execReq := &interfaces.ExecuteCodeReq{
-		Code:     code,
-		Event:    event,
-		Timeout:  int(req.Timeout / 1000),
-		Language: scriptType,
-		EnvVars: map[string]any{
-			"source":        "function_proxy",
-			"task_id":       req.Version,
-			"capability_id": req.Version,
-		},
+		Code:                  code,
+		Event:                 event,
+		Timeout:               int(req.Timeout / 1000),
+		Language:              scriptType,
+		EnvVars:               buildFunctionProxyExecutionEnv(req.Version),
 		Dependencies:          dependencies,
 		PythonPackageIndexURL: metadata.GetDependenciesURL(),
 	}

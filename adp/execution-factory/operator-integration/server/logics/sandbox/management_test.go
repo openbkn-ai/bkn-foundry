@@ -64,10 +64,10 @@ func TestSandboxManagementService(t *testing.T) {
 			listResp: &interfaces.ListSessionsResp{
 				Sessions: []*interfaces.SessionDetail{
 					{
-						ID:                         "sess_aoi_0",
-						Status:                     interfaces.SessionStatusRunning,
-						TemplateID:                 "python-basic",
-						RuntimeType:                "python",
+						ID:          "sess_aoi_0",
+						Status:      interfaces.SessionStatusRunning,
+						TemplateID:  "python-basic",
+						RuntimeType: "python",
 						EnvVars: map[string]any{
 							"source":          "function_debug",
 							"task_id":         "task_debug_001",
@@ -98,10 +98,10 @@ func TestSandboxManagementService(t *testing.T) {
 				HasMore: false,
 			},
 			detail: &interfaces.SessionDetail{
-				ID:                      "sess_aoi_1",
-				Status:                  interfaces.SessionStatusFailed,
-				TemplateID:              "python-basic",
-				RuntimeType:             "python",
+				ID:          "sess_aoi_1",
+				Status:      interfaces.SessionStatusFailed,
+				TemplateID:  "python-basic",
+				RuntimeType: "python",
 				EnvVars: map[string]any{
 					"execution_source": "skill_execution",
 					"task_id":          "task_skill_404",
@@ -173,5 +173,84 @@ func TestSandboxManagementService(t *testing.T) {
 		So(detail.UserName, ShouldEqual, "bob")
 		So(detail.RecentErrorSummary, ShouldEqual, "numpy version conflict")
 		So(detail.ResourceLimit["memory"], ShouldEqual, "512Mi")
+	})
+}
+
+func TestSandboxManagementServiceUsesPoolExecutionContextOverSessionEnv(t *testing.T) {
+	Convey("Sandbox management service should prefer latest execution context over reusable session env", t, func() {
+		client := &fakeSandboxControlPlane{
+			listResp: &interfaces.ListSessionsResp{
+				Sessions: []*interfaces.SessionDetail{
+					{
+						ID:          "sess_aoi_0",
+						Status:      interfaces.SessionStatusRunning,
+						TemplateID:  "python-basic",
+						RuntimeType: "python",
+						EnvVars: map[string]any{
+							"source":          "function_debug",
+							"task_id":         "task_old",
+							"capability_id":   "cap_old",
+							"capability_name": "old capability",
+							"user_id":         "user_old",
+							"user_name":       "old-user",
+						},
+					},
+				},
+				Total: 1,
+				Limit: 20,
+			},
+			detail: &interfaces.SessionDetail{
+				ID:          "sess_aoi_0",
+				Status:      interfaces.SessionStatusRunning,
+				TemplateID:  "python-basic",
+				RuntimeType: "python",
+				EnvVars: map[string]any{
+					"source":        "function_debug",
+					"task_id":       "task_old",
+					"capability_id": "cap_old",
+					"user_id":       "user_old",
+					"user_name":     "old-user",
+				},
+			},
+			queryExists: true,
+		}
+		pool := &sessionPoolImpl{
+			client: client,
+			sessions: map[string]*sessionItem{
+				"sess_aoi_0": {
+					ID:           "sess_aoi_0",
+					RunningTasks: 0,
+					LastUsedAt:   time.Now(),
+					ExecutionContext: map[string]any{
+						"source":          "function_debug",
+						"task_id":         "task_new",
+						"capability_id":   "cap_new",
+						"capability_name": "new capability",
+						"user_id":         "user_new",
+						"user_name":       "new-user",
+					},
+				},
+			},
+			maxSessions:        1,
+			activeSessions:     1,
+			maxConcurrentTasks: 10,
+		}
+		service := NewSandboxManagementService(client, pool)
+
+		sessions, err := service.ListSessions(context.Background(), &SandboxSessionListReq{Limit: 20})
+		So(err, ShouldBeNil)
+		So(sessions.Items, ShouldHaveLength, 1)
+		So(sessions.Items[0].TaskID, ShouldEqual, "task_new")
+		So(sessions.Items[0].CapabilityID, ShouldEqual, "cap_new")
+		So(sessions.Items[0].CapabilityName, ShouldEqual, "new capability")
+		So(sessions.Items[0].UserID, ShouldEqual, "user_new")
+		So(sessions.Items[0].UserName, ShouldEqual, "new-user")
+
+		detail, err := service.GetSessionDetail(context.Background(), "sess_aoi_0")
+		So(err, ShouldBeNil)
+		So(detail.TaskID, ShouldEqual, "task_new")
+		So(detail.CapabilityID, ShouldEqual, "cap_new")
+		So(detail.UserID, ShouldEqual, "user_new")
+		So(detail.UserName, ShouldEqual, "new-user")
 	})
 }

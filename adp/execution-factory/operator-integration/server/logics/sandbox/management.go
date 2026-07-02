@@ -31,9 +31,10 @@ type PoolSnapshot struct {
 }
 
 type PoolSessionSnapshot struct {
-	ID           string
-	RunningTasks int
-	LastUsedAt   time.Time
+	ID               string
+	RunningTasks     int
+	LastUsedAt       time.Time
+	ExecutionContext map[string]any
 }
 
 type SandboxManagementService interface {
@@ -201,6 +202,7 @@ func (s *sandboxManagementService) ListSessions(ctx context.Context, req *Sandbo
 	if req == nil {
 		req = &SandboxSessionListReq{}
 	}
+	executionContexts := executionContextBySession(s.pool.Snapshot())
 	resp, err := s.client.ListSessions(ctx, &interfaces.ListSessionsReq{
 		Limit:  req.Limit,
 		Offset: req.Offset,
@@ -223,6 +225,7 @@ func (s *sandboxManagementService) ListSessions(ctx context.Context, req *Sandbo
 	result.HasMore = resp.HasMore
 	for _, item := range resp.Sessions {
 		summary := newSandboxSessionSummary(item)
+		applyExecutionContext(summary, executionContexts[summary.ID])
 		if !matchSessionFilters(summary, req) {
 			continue
 		}
@@ -245,6 +248,7 @@ func (s *sandboxManagementService) GetSessionDetail(ctx context.Context, session
 		return nil, errors.DefaultHTTPError(ctx, http.StatusNotFound, fmt.Sprintf("session %s not found", sessionID))
 	}
 	summary := newSandboxSessionSummary(detail)
+	applyExecutionContext(summary, executionContextBySession(s.pool.Snapshot())[sessionID])
 	return &SandboxSessionDetailResp{
 		SandboxSessionSummary:        summary,
 		WorkspacePath:                detail.WorkspacePath,
@@ -274,9 +278,10 @@ func (p *sessionPoolImpl) Snapshot() PoolSnapshot {
 		}
 		runningTasks += item.RunningTasks
 		sessions = append(sessions, PoolSessionSnapshot{
-			ID:           item.ID,
-			RunningTasks: item.RunningTasks,
-			LastUsedAt:   item.LastUsedAt,
+			ID:               item.ID,
+			RunningTasks:     item.RunningTasks,
+			LastUsedAt:       item.LastUsedAt,
+			ExecutionContext: cloneSessionEnvVars(item.ExecutionContext),
 		})
 	}
 	return PoolSnapshot{
@@ -335,6 +340,42 @@ func readSessionEnvString(detail *interfaces.SessionDetail, keys ...string) stri
 		}
 	}
 	return ""
+}
+
+func executionContextBySession(snapshot PoolSnapshot) map[string]map[string]any {
+	contexts := make(map[string]map[string]any, len(snapshot.Sessions))
+	for _, item := range snapshot.Sessions {
+		if item.ID == "" || len(item.ExecutionContext) == 0 {
+			continue
+		}
+		contexts[item.ID] = item.ExecutionContext
+	}
+	return contexts
+}
+
+func applyExecutionContext(summary *SandboxSessionSummary, envVars map[string]any) {
+	if summary == nil || len(envVars) == 0 {
+		return
+	}
+	detail := &interfaces.SessionDetail{EnvVars: envVars}
+	if text := detectSessionSource(detail); text != "" {
+		summary.Source = text
+	}
+	if text := readSessionEnvString(detail, "task_id", "taskId", "execution_task_id"); text != "" {
+		summary.TaskID = text
+	}
+	if text := readSessionEnvString(detail, "capability_id", "capabilityId", "source_capability_id"); text != "" {
+		summary.CapabilityID = text
+	}
+	if text := readSessionEnvString(detail, "capability_name", "capabilityName", "source_capability_name"); text != "" {
+		summary.CapabilityName = text
+	}
+	if text := readSessionEnvString(detail, "user_id", "userId", "created_by", "operator_user_id"); text != "" {
+		summary.UserID = text
+	}
+	if text := readSessionEnvString(detail, "user_name", "userName", "created_by_name", "operator_user_name"); text != "" {
+		summary.UserName = text
+	}
 }
 
 func summarizeSessionError(detail *interfaces.SessionDetail) string {
