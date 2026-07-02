@@ -104,7 +104,7 @@ const (
 	vegaBackendServiceName         string = "vega-backend"
 	agentOperatorServiceName       string = "agent-operator-integration"
 
-	DATA_BASE_NAME string = "kweaver"
+	DATA_BASE_NAME string = "openbkn"
 )
 
 var (

@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     workers: int = Field(default=4)
 
     # ============== 数据库配置 ==============
-    database_url: str = Field(default="mysql+aiomysql://sandbox:password@localhost:3308/kweaver")
+    database_url: str = Field(default="mysql+aiomysql://sandbox:password@localhost:3308/openbkn")
     db_pool_size: int = Field(default=20)
     db_max_overflow: int = Field(default=40)
     db_pool_recycle: int = Field(default=3600)

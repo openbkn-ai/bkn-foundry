@@ -33,7 +33,7 @@ class Base(DeclarativeBase):
 logger = get_logger(__name__)
 
 LEGACY_DATABASE_NAME = "adp"
-TARGET_DATABASE_NAME = "kweaver"
+TARGET_DATABASE_NAME = "openbkn"
 
 
 # Import all models so they're registered with Base.metadata
@@ -111,7 +111,7 @@ class DatabaseManager:
         """
         启动时迁移旧数据库名到新数据库名。
 
-        当前支持将旧库 `adp` 升级为 `kweaver`。
+        当前支持将旧库 `adp` 升级为 `openbkn`。
         """
         connection_info = self._get_database_connection_info()
         target_database = connection_info.database

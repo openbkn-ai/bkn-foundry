@@ -21,7 +21,7 @@ class TestDatabaseManager:
     def mock_settings(self):
         """模拟设置"""
         settings = Mock()
-        settings.effective_database_url = "mysql+aiomysql://root:password@localhost:3306/kweaver"
+        settings.effective_database_url = "mysql+aiomysql://root:password@localhost:3306/openbkn"
         settings.log_level = "INFO"
         settings.db_pool_size = 5
         settings.db_max_overflow = 10
@@ -45,7 +45,7 @@ class TestDatabaseManager:
         with patch("src.infrastructure.persistence.database.get_settings", return_value=mock_settings):
             runtime_url = db_manager._get_runtime_database_url()
 
-        assert runtime_url == "mysql+aiomysql://root:password@localhost:3306/kweaver"
+        assert runtime_url == "mysql+aiomysql://root:password@localhost:3306/openbkn"
 
     def test_get_managed_sandbox_table_names(self, db_manager):
         """测试只返回受管的沙箱表。"""

@@ -48,7 +48,7 @@ depServices:
     user: 'username'
     password: 'password'
     type: ""
-    database: "kweaver"
+    database: "openbkn"
     maxConnections: 5
   opensearch:
     read: "opensearch-read"

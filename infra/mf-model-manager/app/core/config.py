@@ -22,7 +22,7 @@ class BaseConfig(object):
     # 结构化数据库相关
     RDSHOSTDEFAULT = DIPHOSTDEFAULT
     RDSPORTDEFAULT = 3330
-    RDSDBNAMEDEFAULT = 'kweaver'
+    RDSDBNAMEDEFAULT = 'openbkn'
     RDSUSERDEFAULT = 'root'
     RDSPASSDEFAULT = 'password'
 

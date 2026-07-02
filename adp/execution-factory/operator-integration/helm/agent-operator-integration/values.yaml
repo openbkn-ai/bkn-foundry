@@ -106,7 +106,7 @@ depServices:
     connTimeout: 30
     readTimeout: 30
     writeTimeout: 30
-    database: kweaver
+    database: openbkn
     dbCharset: utf8mb4
     system_id: ""
   hydra:

@@ -46,7 +46,7 @@ depServices:
     user: 'kweaver'
     password: 'REPLACE_ME'
     root_password: 'REPLACE_ME'
-    database: 'kweaver'
+    database: 'openbkn'
   redis:
     connectInfo:
       masterGroupName: 'mymaster'
