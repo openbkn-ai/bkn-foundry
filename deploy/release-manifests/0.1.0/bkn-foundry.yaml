@@ -10,7 +10,7 @@ source:
 releases:
   core-data-migrator:
     chart: core-data-migrator
-    version: 0.1.0
+    version: 0.1.0-main.20260702121318.sha2211e6b
     stage: pre
   mf-model-manager:
     chart: mf-model-manager
