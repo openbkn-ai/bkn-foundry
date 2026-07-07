@@ -126,8 +126,8 @@ nodeSelector: {}
 # enabled=false and point config.hydra/config.db at the real services.
 bundledDeps:
   enabled: true
-  hydraImage: oryd/hydra:v26.2.0
-  postgresImage: postgres:16
+  hydraImage: swr.cn-east-3.myhuaweicloud.com/openbkn-ai/oryd/hydra:v26.2.0
+  postgresImage: swr.cn-east-3.myhuaweicloud.com/openbkn-ai/postgres:16
   mariadbImage: mariadb:11.4
   # Persistent volume for the bundled hydra Postgres (survives pod restarts so
   # OAuth clients/tokens/admin state aren't lost). The bundled MariaDB (app DB)
