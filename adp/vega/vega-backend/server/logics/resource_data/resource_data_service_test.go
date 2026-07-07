@@ -88,3 +88,37 @@ func TestQueryRejectsDisabledCatalog(t *testing.T) {
 		t.Fatalf("expected %s, got %s", verrors.VegaBackend_Catalog_IsDisabled, httpErr.BaseError.ErrorCode)
 	}
 }
+
+func TestQueryTableWithLocalIndexUsesLocalIndexManager(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+	mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
+	rds := &resourceDataService{cs: mockCS, lim: mockLIM}
+	resource := &interfaces.Resource{
+		ID:             "resource-1",
+		CatalogID:      "catalog-1",
+		Category:       interfaces.ResourceCategoryTable,
+		LocalIndexName: "vega-build-resource-1-task-1",
+		SchemaDefinition: []*interfaces.Property{
+			{Name: "name"},
+		},
+	}
+	params := &interfaces.ResourceDataQueryParams{}
+	wantRows := []map[string]any{{"name": "openbkn"}}
+
+	mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).
+		Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
+	mockLIM.EXPECT().ListDocuments(gomock.Any(), resource.LocalIndexName, resource, params).
+		Return(wantRows, int64(1), nil)
+
+	rows, total, err := rds.Query(context.Background(), resource, params)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if total != 1 {
+		t.Fatalf("expected total 1, got %d", total)
+	}
+	if !reflect.DeepEqual(rows, wantRows) {
+		t.Fatalf("expected rows %v, got %v", wantRows, rows)
+	}
+}
