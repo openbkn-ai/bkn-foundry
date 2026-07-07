@@ -8,6 +8,7 @@ package build_task
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"testing"
 
@@ -253,16 +254,141 @@ func TestComputeIndexHealth(t *testing.T) {
 func TestDeleteBuildTasks_DropsIndexAndRow(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+	mockRA := mock_interfaces.NewMockResourceAccess(ctrl)
 	mockDS := mock_interfaces.NewMockDatasetService(ctrl)
-	service := &buildTaskService{bta: mockBTA, ds: mockDS}
+	service := &buildTaskService{bta: mockBTA, ra: mockRA, ds: mockDS}
 
 	mockBTA.EXPECT().GetByID(gomock.Any(), "t1").
 		Return(&interfaces.BuildTask{ID: "t1", ResourceID: "r1", Status: "completed"}, nil)
+	mockRA.EXPECT().GetByID(gomock.Any(), "r1").
+		Return(&interfaces.Resource{ID: "r1", LocalIndexName: interfaces.BuildIndexName("r1", "old-task")}, nil)
 	mockDS.EXPECT().Delete(gomock.Any(), interfaces.BuildIndexName("r1", "t1")).Return(nil)
 	mockBTA.EXPECT().Delete(gomock.Any(), "t1").Return(nil)
 
-	if err := service.DeleteBuildTasks(context.Background(), []string{"t1"}, false); err != nil {
+	if err := service.DeleteBuildTasks(context.Background(), []string{"t1"}, false, false); err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestDeleteBuildTasks_RefusesActiveLocalIndex(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+	mockRA := mock_interfaces.NewMockResourceAccess(ctrl)
+	mockDS := mock_interfaces.NewMockDatasetService(ctrl)
+	service := &buildTaskService{bta: mockBTA, ra: mockRA, ds: mockDS}
+
+	idx := interfaces.BuildIndexName("r1", "t1")
+	mockBTA.EXPECT().GetByID(gomock.Any(), "t1").
+		Return(&interfaces.BuildTask{ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusCompleted}, nil)
+	mockRA.EXPECT().GetByID(gomock.Any(), "r1").
+		Return(&interfaces.Resource{ID: "r1", LocalIndexName: idx}, nil)
+	// Active index conflicts must not delete either the index or the task row.
+
+	err := service.DeleteBuildTasks(context.Background(), []string{"t1"}, false, false)
+	httpErr, ok := err.(*rest.HTTPError)
+	if !ok {
+		t.Fatalf("expected HTTPError, got %T: %v", err, err)
+	}
+	if httpErr.HTTPCode != http.StatusConflict {
+		t.Fatalf("expected 409, got %d", httpErr.HTTPCode)
+	}
+	if httpErr.BaseError.ErrorCode != verrors.VegaBackend_BuildTask_ActiveIndexInUse {
+		t.Fatalf("expected %s, got %s", verrors.VegaBackend_BuildTask_ActiveIndexInUse, httpErr.BaseError.ErrorCode)
+	}
+}
+
+func TestDeleteBuildTasks_DeleteActiveLocalIndexWhenExplicitlyAllowed(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+	mockRA := mock_interfaces.NewMockResourceAccess(ctrl)
+	mockDS := mock_interfaces.NewMockDatasetService(ctrl)
+	service := &buildTaskService{bta: mockBTA, ra: mockRA, ds: mockDS}
+
+	idx := interfaces.BuildIndexName("r1", "t1")
+	resource := &interfaces.Resource{ID: "r1", LocalIndexName: idx}
+	mockBTA.EXPECT().GetByID(gomock.Any(), "t1").
+		Return(&interfaces.BuildTask{ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusCompleted}, nil)
+	mockRA.EXPECT().GetByID(gomock.Any(), "r1").Return(resource, nil)
+	mockRA.EXPECT().Update(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, got *interfaces.Resource) error {
+			if got.ID != "r1" {
+				t.Fatalf("expected resource r1, got %s", got.ID)
+			}
+			if got.LocalIndexName != "" {
+				t.Fatalf("expected LocalIndexName to be cleared, got %q", got.LocalIndexName)
+			}
+			return nil
+		})
+	mockDS.EXPECT().Delete(gomock.Any(), idx).Return(nil)
+	mockBTA.EXPECT().Delete(gomock.Any(), "t1").Return(nil)
+
+	if err := service.DeleteBuildTasks(context.Background(), []string{"t1"}, false, true); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestDeleteBuildTasks_ClearActiveLocalIndexFailureBlocksDeletion(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+	mockRA := mock_interfaces.NewMockResourceAccess(ctrl)
+	mockDS := mock_interfaces.NewMockDatasetService(ctrl)
+	service := &buildTaskService{bta: mockBTA, ra: mockRA, ds: mockDS}
+
+	idx := interfaces.BuildIndexName("r1", "t1")
+	mockBTA.EXPECT().GetByID(gomock.Any(), "t1").
+		Return(&interfaces.BuildTask{ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusCompleted}, nil)
+	mockRA.EXPECT().GetByID(gomock.Any(), "r1").
+		Return(&interfaces.Resource{ID: "r1", LocalIndexName: idx}, nil)
+	mockRA.EXPECT().Update(gomock.Any(), gomock.Any()).Return(errors.New("update failed"))
+	// Clearing LocalIndexName failed, so the index and task row must remain untouched.
+
+	err := service.DeleteBuildTasks(context.Background(), []string{"t1"}, false, true)
+	httpErr, ok := err.(*rest.HTTPError)
+	if !ok {
+		t.Fatalf("expected HTTPError, got %T: %v", err, err)
+	}
+	if httpErr.HTTPCode != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", httpErr.HTTPCode)
+	}
+}
+
+func TestDeleteBuildTasks_AllowsOrphanTaskWhenResourceMissing(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+	mockRA := mock_interfaces.NewMockResourceAccess(ctrl)
+	mockDS := mock_interfaces.NewMockDatasetService(ctrl)
+	service := &buildTaskService{bta: mockBTA, ra: mockRA, ds: mockDS}
+
+	mockBTA.EXPECT().GetByID(gomock.Any(), "t1").
+		Return(&interfaces.BuildTask{ID: "t1", ResourceID: "missing-resource", Status: interfaces.BuildTaskStatusFailed}, nil)
+	mockRA.EXPECT().GetByID(gomock.Any(), "missing-resource").Return(nil, nil)
+	mockDS.EXPECT().Delete(gomock.Any(), interfaces.BuildIndexName("missing-resource", "t1")).Return(nil)
+	mockBTA.EXPECT().Delete(gomock.Any(), "t1").Return(nil)
+
+	if err := service.DeleteBuildTasks(context.Background(), []string{"t1"}, false, false); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestDeleteBuildTasks_ResourceLookupFailureBlocksDeletion(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+	mockRA := mock_interfaces.NewMockResourceAccess(ctrl)
+	mockDS := mock_interfaces.NewMockDatasetService(ctrl)
+	service := &buildTaskService{bta: mockBTA, ra: mockRA, ds: mockDS}
+
+	mockBTA.EXPECT().GetByID(gomock.Any(), "t1").
+		Return(&interfaces.BuildTask{ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusStopped}, nil)
+	mockRA.EXPECT().GetByID(gomock.Any(), "r1").Return(nil, errors.New("db unavailable"))
+	// If the guard cannot prove the index is safe to delete, deletion must not proceed.
+
+	err := service.DeleteBuildTasks(context.Background(), []string{"t1"}, false, false)
+	httpErr, ok := err.(*rest.HTTPError)
+	if !ok {
+		t.Fatalf("expected HTTPError, got %T: %v", err, err)
+	}
+	if httpErr.HTTPCode != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", httpErr.HTTPCode)
 	}
 }
 
@@ -277,7 +403,7 @@ func TestDeleteBuildTasks_RefusesRunning(t *testing.T) {
 		Return(&interfaces.BuildTask{ID: "t1", ResourceID: "r1", Status: "running"}, nil)
 	// 不应调用 ds.Delete / bta.Delete
 
-	if err := service.DeleteBuildTasks(context.Background(), []string{"t1"}, false); err == nil {
+	if err := service.DeleteBuildTasks(context.Background(), []string{"t1"}, false, true); err == nil {
 		t.Fatalf("expected 409 when a task is running")
 	}
 }

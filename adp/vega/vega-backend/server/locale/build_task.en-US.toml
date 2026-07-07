@@ -23,6 +23,11 @@ Description = "Build task has running execution and cannot be deleted"
 Solution = "Stop the task before deleting it"
 ErrorLink = "No solution"
 
+[VegaBackend.BuildTask.ActiveIndexInUse]
+Description = "Build task index is currently the resource's active local index"
+Solution = "Pass delete_active_index=true to confirm deleting the active local index, or keep the default protection"
+ErrorLink = "No solution"
+
 [VegaBackend.BuildTask.InternalError.CreateFailed]
 Description = "Failed to create build task"
 Solution = "Please contact the administrator"

@@ -56,21 +56,6 @@ func (mr *MockCatalogServiceMockRecorder) CheckExistByID(ctx, id any) *gomock.Ca
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckExistByID", reflect.TypeOf((*MockCatalogService)(nil).CheckExistByID), ctx, id)
 }
 
-// ListInternalIDs mocks base method.
-func (m *MockCatalogService) ListInternalIDs(ctx context.Context) ([]string, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListInternalIDs", ctx)
-	ret0, _ := ret[0].([]string)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ListInternalIDs indicates an expected call of ListInternalIDs.
-func (mr *MockCatalogServiceMockRecorder) ListInternalIDs(ctx any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListInternalIDs", reflect.TypeOf((*MockCatalogService)(nil).ListInternalIDs), ctx)
-}
-
 // CheckExistByName mocks base method.
 func (m *MockCatalogService) CheckExistByName(ctx context.Context, name string) (bool, error) {
 	m.ctrl.T.Helper()
@@ -175,6 +160,21 @@ func (m *MockCatalogService) ListAuthResources(ctx context.Context, params inter
 func (mr *MockCatalogServiceMockRecorder) ListAuthResources(ctx, params any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListAuthResources", reflect.TypeOf((*MockCatalogService)(nil).ListAuthResources), ctx, params)
+}
+
+// ListInternalIDs mocks base method.
+func (m *MockCatalogService) ListInternalIDs(ctx context.Context) ([]string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListInternalIDs", ctx)
+	ret0, _ := ret[0].([]string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListInternalIDs indicates an expected call of ListInternalIDs.
+func (mr *MockCatalogServiceMockRecorder) ListInternalIDs(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListInternalIDs", reflect.TypeOf((*MockCatalogService)(nil).ListInternalIDs), ctx)
 }
 
 // SetEnabled mocks base method.

@@ -131,3 +131,30 @@ func Test_BuildTaskRestHandler_ListBuildTasks(t *testing.T) {
 		})
 	})
 }
+
+func Test_BuildTaskRestHandler_DeleteBuildTasks(t *testing.T) {
+	Convey("Test BuildTaskHandler DeleteBuildTasks\n", t, func() {
+		test := setGinMode()
+		defer test()
+
+		engine := gin.New()
+		engine.Use(gin.Recovery())
+
+		mockCtrl := gomock.NewController(t)
+		defer mockCtrl.Finish()
+
+		bts := vmock.NewMockBuildTaskService(mockCtrl)
+		handler := MockNewRestHandler(&common.AppSetting{}, nil, nil, nil, bts, nil, nil, nil, nil, nil, nil)
+		handler.RegisterPublic(engine)
+
+		url := "/api/vega-backend/in/v1/build-tasks/t1,t2?ignore_missing=true&delete_active_index=true"
+
+		bts.EXPECT().DeleteBuildTasks(gomock.Any(), []string{"t1", "t2"}, true, true).Return(nil)
+
+		req := httptest.NewRequest(http.MethodDelete, url, nil)
+		w := httptest.NewRecorder()
+		engine.ServeHTTP(w, req)
+
+		So(w.Result().StatusCode, ShouldEqual, http.StatusNoContent)
+	})
+}
