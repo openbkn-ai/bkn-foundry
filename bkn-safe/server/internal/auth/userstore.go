@@ -163,7 +163,7 @@ func (s *UserStore) ResetPassword(ctx context.Context, userID, password string) 
 	}
 	return s.db.WithContext(ctx).Model(&model.User{}).
 		Where("id = ?", userID).
-		Updates(map[string]any{"password_hash": string(hash), "must_change_password": true}).Error
+		Updates(map[string]any{"password_hash": string(hash), "must_change_password": false}).Error
 }
 
 // SetPassword updates a local user's password and clears MustChangePassword
