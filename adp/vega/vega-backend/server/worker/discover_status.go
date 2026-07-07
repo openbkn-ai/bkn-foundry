@@ -79,10 +79,12 @@ func updateDiscoverResultForEnrichStatus(result *interfaces.DiscoverResult, stat
 		result.UpdatedCount++
 	case interfaces.DiscoverStatusUnchanged:
 		result.UnchangedCount++
+	case interfaces.DiscoverStatusError:
+		result.FailedCount++
 	}
 }
 
 func formatDiscoverResultMessage(result *interfaces.DiscoverResult) string {
-	return fmt.Sprintf("Discover completed: %d new, %d stale, %d unchanged, %d updated, %d restored",
-		result.NewCount, result.StaleCount, result.UnchangedCount, result.UpdatedCount, result.RestoredCount)
+	return fmt.Sprintf("Discover completed: %d new, %d stale, %d unchanged, %d updated, %d restored, %d failed",
+		result.NewCount, result.StaleCount, result.UnchangedCount, result.UpdatedCount, result.RestoredCount, result.FailedCount)
 }

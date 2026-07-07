@@ -242,6 +242,9 @@ func (c *MariaDBConnector) validateDatabases(ctx context.Context) error {
 		}
 		existingDBs[dbName] = true
 	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("failed to iterate databases: %w", err)
+	}
 
 	// 检查配置的数据库是否都存在
 	var notFoundDBs []string
@@ -313,6 +316,9 @@ func (c *MariaDBConnector) ExecuteRawSQL(ctx context.Context, sql string) (*inte
 			row[col] = convertValue(values[i])
 		}
 		response.Entries = append(response.Entries, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate rows failed: %w", err)
 	}
 
 	response.TotalCount = int64(len(response.Entries))

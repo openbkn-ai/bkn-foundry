@@ -31,6 +31,19 @@ type postgresqlConfig struct {
 	Options  map[string]any `mapstructure:"options"`
 }
 
+var (
+	SYSTEM_SCHEMAS = []string{
+		"information_schema",
+		"pg_catalog",
+		"pg_toast",
+	}
+	SYSTEM_SCHEMAS_MAP = map[string]bool{
+		"information_schema": true,
+		"pg_catalog":         true,
+		"pg_toast":           true,
+	}
+)
+
 const (
 	databaseNameMaxLength = 63 // PostgreSQL 标识符默认上限
 	portMin               = 1
@@ -279,6 +292,9 @@ func (c *PostgresqlConnector) ExecuteRawSQL(ctx context.Context, sql string) (*i
 			row[col] = convertValue(values[i], col, nil)
 		}
 		response.Entries = append(response.Entries, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate rows failed: %w", err)
 	}
 
 	response.TotalCount = int64(len(response.Entries))
