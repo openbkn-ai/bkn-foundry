@@ -336,7 +336,10 @@ func TestDeleteByIDs_Success(t *testing.T) {
 
 // 删资源时有构建任务：级联 drop 索引 + 删任务行，再删资源。
 func TestDeleteByIDs_CascadesBuildTaskAndIndex(t *testing.T) {
-	rs, mockRA, mockPS, mockDS, _, _, mockBTA := newTestService(t)
+	rs, mockRA, mockPS, _, _, _, mockBTA := newTestService(t)
+	ctrl := gomock.NewController(t)
+	mockLIM := vmock.NewMockLocalIndexManager(ctrl)
+	rs.lim = mockLIM
 	mockPS.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
 		[]string{"r1"}, gomock.Any(), true, gomock.Any()).
 		Return(map[string]interfaces.PermissionResourceOps{"r1": {ResourceID: "r1"}}, nil)
@@ -345,7 +348,7 @@ func TestDeleteByIDs_CascadesBuildTaskAndIndex(t *testing.T) {
 	// 一个已完成任务 t1 → 期望 drop 其索引并删任务行
 	mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).
 		Return([]*interfaces.BuildTask{{ID: "t1", ResourceID: "r1", Status: "completed"}}, int64(1), nil)
-	mockDS.EXPECT().Delete(gomock.Any(), interfaces.BuildIndexName("r1", "t1")).Return(nil)
+	mockLIM.EXPECT().DeleteIndex(gomock.Any(), interfaces.BuildIndexName("r1", "t1")).Return(nil)
 	mockBTA.EXPECT().Delete(gomock.Any(), "t1").Return(nil)
 	mockRA.EXPECT().DeleteByIDs(gomock.Any(), []string{"r1"}).Return(nil)
 	mockPS.EXPECT().DeleteResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE, []string{"r1"}).Return(nil)

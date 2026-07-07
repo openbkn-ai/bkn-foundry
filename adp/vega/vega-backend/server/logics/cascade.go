@@ -23,7 +23,7 @@ var DS interfaces.DatasetService
 // SetDatasetService 在启动处注入 DatasetService（该处可安全 import dataset 包，无环）。
 func SetDatasetService(ds interfaces.DatasetService) { DS = ds }
 
-// CascadeDeleteBuildTasks 删除 filter 命中的所有构建任务及其 OpenSearch 索引，
+// CascadeDeleteBuildTasks 删除 filter 命中的所有构建任务及其本地索引，
 // 让"删资源"/"删数据连接(catalog)"不再留下孤儿任务行或孤儿索引。
 //
 // filter 须设 ResourceID（删单个资源）或 CatalogID（删整个 catalog 下全部资源）之一。
@@ -33,7 +33,7 @@ func SetDatasetService(ds interfaces.DatasetService) { DS = ds }
 // 索引 drop 失败仅记日志、不阻断（与既有"索引删除失败不影响资源删除"语义一致）；
 // 任务行删除失败才返回错误。放在 logics 包是因为它同时被 resource 与 catalog 两个
 // service 复用，而 logics/build_task 反向依赖 logics/catalog（放那会成环）。
-func CascadeDeleteBuildTasks(ctx context.Context, bta interfaces.BuildTaskAccess, ds interfaces.DatasetService, filter interfaces.BuildTasksQueryParams) error {
+func CascadeDeleteBuildTasks(ctx context.Context, bta interfaces.BuildTaskAccess, lim interfaces.LocalIndexManager, filter interfaces.BuildTasksQueryParams) error {
 	// Limit=0 → 不分页，取全部命中任务（含历史任务，连同其孤儿索引一并清）
 	filter.Limit = 0
 	filter.Offset = 0
@@ -58,7 +58,7 @@ func CascadeDeleteBuildTasks(ctx context.Context, bta interfaces.BuildTaskAccess
 	// 逐任务：drop 索引（尽力）+ 删任务行
 	for _, t := range tasks {
 		idx := interfaces.BuildIndexName(t.ResourceID, t.ID)
-		if err := ds.Delete(ctx, idx); err != nil {
+		if err := lim.DeleteIndex(ctx, idx); err != nil {
 			logger.Errorf("cascade delete: drop index %s failed: %v", idx, err)
 		}
 		if err := bta.Delete(ctx, t.ID); err != nil {

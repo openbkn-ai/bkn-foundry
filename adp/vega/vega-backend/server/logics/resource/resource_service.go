@@ -29,6 +29,7 @@ import (
 	"vega-backend/logics/catalog"
 	dataset "vega-backend/logics/dataset"
 	"vega-backend/logics/extensions"
+	"vega-backend/logics/local_index"
 	"vega-backend/logics/permission"
 	"vega-backend/logics/user_mgmt"
 )
@@ -48,6 +49,7 @@ type resourceService struct {
 	ra         interfaces.ResourceAccess
 	ums        interfaces.UserMgmtService
 	bta        interfaces.BuildTaskAccess
+	lim        interfaces.LocalIndexManager
 }
 
 // NewResourceService creates a new ResourceService.
@@ -61,6 +63,7 @@ func NewResourceService(appSetting *common.AppSetting) interfaces.ResourceServic
 			ra:         logics.RA,
 			ums:        user_mgmt.NewUserMgmtService(appSetting),
 			bta:        logics.BTA,
+			lim:        local_index.NewLocalIndexManager(appSetting),
 		}
 	})
 	return rService
@@ -767,7 +770,7 @@ func (rs *resourceService) DeleteByIDs(ctx context.Context, ids []string) error 
 			// 级联清掉该资源的全部构建任务 + 对应 OpenSearch 索引（含历史孤儿）。
 			// 改自原先"有任务就拒删"：现在删资源连带删任务/索引（危险操作由前端二次确认把关）。
 			// 运行中/停止中任务会被 cascade 拒绝（HasRunningExecution），用户需先停止再删。
-			if err := logics.CascadeDeleteBuildTasks(ctx, rs.bta, rs.ds,
+			if err := logics.CascadeDeleteBuildTasks(ctx, rs.bta, rs.lim,
 				interfaces.BuildTasksQueryParams{ResourceID: resource.ID}); err != nil {
 				span.SetStatus(codes.Error, "Cascade delete build tasks failed")
 				return err
