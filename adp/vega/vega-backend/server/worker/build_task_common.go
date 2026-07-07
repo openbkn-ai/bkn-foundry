@@ -53,20 +53,23 @@ func getNewDocID(primaryKeyValues []interfaces.KeyValue, document map[string]any
 }
 
 // updateResourceIndexName updates the index name of a resource
-func updateResourceIndexName(ctx context.Context, resource *interfaces.Resource, ra interfaces.ResourceAccess, ds interfaces.DatasetService, indexName string) error {
+func updateResourceIndexName(ctx context.Context, resource *interfaces.Resource, ra interfaces.ResourceAccess, indexName string) error {
 	if resource.LocalIndexName == "" {
 		resource.LocalIndexName = indexName
 		return ra.Update(ctx, resource)
 	}
 
-	if resource.LocalIndexName != indexName {
-		err := ds.Delete(ctx, resource.LocalIndexName)
-		if err != nil {
-			return fmt.Errorf("delete local index failed: %w", err)
-		}
-		resource.LocalIndexName = indexName
-		return ra.Update(ctx, resource)
+	if resource.LocalIndexName == indexName {
+		return nil
 	}
+
+	oldIndexName := resource.LocalIndexName
+	resource.LocalIndexName = indexName
+	if err := ra.Update(ctx, resource); err != nil {
+		resource.LocalIndexName = oldIndexName
+		return err
+	}
+
 	return nil
 }
 

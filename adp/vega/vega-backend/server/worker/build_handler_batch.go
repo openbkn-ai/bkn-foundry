@@ -406,7 +406,7 @@ func (bh *batchBuildHandler) executeBuild(ctx context.Context, resource *interfa
 
 	if buildTaskInfo.EmbeddingFields == "" {
 		// Update resource index name
-		err = updateResourceIndexName(ctx, resource, bh.resAccess, bh.ds, indexName)
+		err = updateResourceIndexName(ctx, resource, bh.resAccess, indexName)
 		if err != nil {
 			return fmt.Errorf("failed to update resource index name: %v", err)
 		}

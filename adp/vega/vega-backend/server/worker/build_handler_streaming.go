@@ -381,7 +381,7 @@ func (sh *streamingBuildHandler) executeBuild(ctx context.Context, catalog *inte
 
 				if !updatedIndexName && op != "r" {
 					// Full snapshot is completed, update index name in resource
-					if err := updateResourceIndexName(ctx, resource, sh.resAccess, sh.ds, indexName); err != nil {
+					if err := updateResourceIndexName(ctx, resource, sh.resAccess, indexName); err != nil {
 						logger.Errorf("Failed to update resource index name: %v", err)
 					} else {
 						updatedIndexName = true
