@@ -27,7 +27,7 @@ import (
 	"vega-backend/interfaces"
 	"vega-backend/logics"
 	"vega-backend/logics/catalog"
-	"vega-backend/logics/dataset"
+	"vega-backend/logics/local_index"
 )
 
 // getServerID generates a unique server ID based on the connector name
@@ -50,7 +50,7 @@ type streamingBuildHandler struct {
 	taskAccess  interfaces.BuildTaskAccess
 	resAccess   interfaces.ResourceAccess
 	cs          interfaces.CatalogService
-	ds          interfaces.DatasetService
+	lim         interfaces.LocalIndexManager
 	client      *asynq.Client
 	httpClient  rest.HTTPClient
 	kafkaAccess interfaces.KafkaAccess
@@ -63,7 +63,7 @@ func NewStreamingBuildHandler(appSetting *common.AppSetting) *streamingBuildHand
 		taskAccess:  logics.BTA,
 		resAccess:   logics.RA,
 		cs:          catalog.NewCatalogService(appSetting),
-		ds:          dataset.NewDatasetService(appSetting),
+		lim:         local_index.NewLocalIndexManager(appSetting),
 		client:      logics.AQA.CreateClient(),
 		httpClient:  common.NewHTTPClient(),
 		kafkaAccess: logics.KA,
@@ -166,7 +166,7 @@ func (sh *streamingBuildHandler) HandleTask(ctx context.Context, task *asynq.Tas
 		return nil
 	}
 
-	err = createLocalIndex(ctx, sh.ds, buildTaskInfo, resource)
+	err = createManagedLocalIndex(ctx, sh.lim, buildTaskInfo, resource)
 	if err != nil {
 		return fmt.Errorf("create local index failed: %w", err)
 	}
@@ -346,8 +346,8 @@ func (sh *streamingBuildHandler) executeBuild(ctx context.Context, catalog *inte
 						document[k] = v
 					}
 
-					if docIDs, err := sh.ds.UpsertDocuments(ctx, indexName, []map[string]any{{"id": getOldDocID(getPrimaryKeyValue(keyMap)), "document": document}}); err != nil {
-						logger.Errorf("Failed to write document to dataset: %v", err)
+					if docIDs, err := sh.lim.UpsertDocuments(ctx, indexName, []map[string]any{{"id": getOldDocID(getPrimaryKeyValue(keyMap)), "document": document}}); err != nil {
+						logger.Errorf("Failed to write document to local index: %v", err)
 						time.Sleep(retryInterval)
 						continue
 					} else if buildTaskInfo.EmbeddingFields != "" && len(docIDs) > 0 {
@@ -539,15 +539,15 @@ func (sh *streamingBuildHandler) handleUpdateOperation(ctx context.Context, keyM
 
 	newDocID := getNewDocID(primaryKeyValues, document)
 	if newDocID != oldDocID {
-		err := sh.ds.DeleteDocument(ctx, indexName, oldDocID)
+		err := sh.lim.DeleteDocument(ctx, indexName, oldDocID)
 		if err != nil {
-			return fmt.Errorf("failed to delete document in dataset: %w", err)
+			return fmt.Errorf("failed to delete document in local index: %w", err)
 		}
 	}
 
-	_, err := sh.ds.UpsertDocuments(ctx, indexName, []map[string]any{{"id": newDocID, "document": document}})
+	_, err := sh.lim.UpsertDocuments(ctx, indexName, []map[string]any{{"id": newDocID, "document": document}})
 	if err != nil {
-		return fmt.Errorf("failed to update document in dataset: %w", err)
+		return fmt.Errorf("failed to update document in local index: %w", err)
 	} else if buildTaskInfo.EmbeddingFields != "" {
 		// Send document ID to Kafka for embedding
 		err = sendEmbeddingMessage(ctx, writer, sh.kafkaAccess, []string{newDocID})
@@ -568,8 +568,8 @@ func (sh *streamingBuildHandler) handleDeleteOperation(ctx context.Context, keyM
 	oldDocID := getOldDocID(primaryKeyValues)
 
 	// Delete documents by query
-	if err := sh.ds.DeleteDocument(ctx, indexName, oldDocID); err != nil {
-		return fmt.Errorf("failed to delete document in dataset: %w", err)
+	if err := sh.lim.DeleteDocument(ctx, indexName, oldDocID); err != nil {
+		return fmt.Errorf("failed to delete document in local index: %w", err)
 	}
 
 	return nil

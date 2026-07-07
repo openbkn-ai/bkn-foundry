@@ -73,17 +73,22 @@ func updateResourceIndexName(ctx context.Context, resource *interfaces.Resource,
 	return nil
 }
 
-// createLocalIndex creates a local index with vector fields for embedding
-func createLocalIndex(ctx context.Context, ds interfaces.DatasetService, buildTask *interfaces.BuildTask, resource *interfaces.Resource) error {
-	newResource := *resource
-	newResource.ID = getIndexName(resource.ID, buildTask.ID)
-	exist, err := ds.CheckExist(ctx, newResource.ID)
+// createManagedLocalIndex creates a build-task local index through LocalIndexManager.
+func createManagedLocalIndex(ctx context.Context, lim interfaces.LocalIndexManager, buildTask *interfaces.BuildTask, resource *interfaces.Resource) error {
+	newResource := buildLocalIndexResource(buildTask, resource)
+	exist, err := lim.IndexExists(ctx, newResource.ID)
 	if err != nil {
-		return fmt.Errorf("check dataset exist failed: %w", err)
+		return fmt.Errorf("check local index exist failed: %w", err)
 	}
 	if exist {
 		return nil
 	}
+	return lim.CreateIndex(ctx, newResource.ID, newResource.SchemaDefinition)
+}
+
+func buildLocalIndexResource(buildTask *interfaces.BuildTask, resource *interfaces.Resource) *interfaces.Resource {
+	newResource := *resource
+	newResource.ID = getIndexName(resource.ID, buildTask.ID)
 	// resource.SchemaDefinition 已由 executeBuild 写入 fulltext 特性（injectFulltextFeatures），
 	// 这里直接复用——buildFieldMappings 会据此给 string 字段建 text 子字段。
 	// embedding 字段额外追加独立的 _vector 字段。
@@ -116,7 +121,7 @@ func createLocalIndex(ctx context.Context, ds interfaces.DatasetService, buildTa
 		}
 		newResource.SchemaDefinition = newSchema
 	}
-	return ds.Create(ctx, &newResource)
+	return &newResource
 }
 
 // fieldNameSet 把逗号分隔的字段名解析为集合。

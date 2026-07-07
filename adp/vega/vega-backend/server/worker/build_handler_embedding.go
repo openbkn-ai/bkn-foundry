@@ -22,9 +22,7 @@ import (
 	"vega-backend/common"
 	"vega-backend/interfaces"
 	"vega-backend/logics"
-	"vega-backend/logics/connectors"
-	opensearchConnector "vega-backend/logics/connectors/local/index/opensearch"
-	"vega-backend/logics/dataset"
+	"vega-backend/logics/local_index"
 )
 
 // embeddingHandler handles embedding tasks.
@@ -32,8 +30,7 @@ type embeddingHandler struct {
 	appSetting  *common.AppSetting
 	taskAccess  interfaces.BuildTaskAccess
 	resAccess   interfaces.ResourceAccess
-	ds          interfaces.DatasetService
-	connector   connectors.IndexConnector
+	lim         interfaces.LocalIndexManager
 	kafkaAccess interfaces.KafkaAccess
 	mfa         interfaces.ModelFactoryAccess
 	sleep       func(time.Duration) // 重试等待，测试中注入空实现避免真实 sleep
@@ -50,27 +47,11 @@ func (eh *embeddingHandler) pause(d time.Duration) {
 
 // NewEmbeddingBuildHandler creates a new embedding handler.
 func NewEmbeddingBuildHandler(appSetting *common.AppSetting) *embeddingHandler {
-	opensearchSetting, ok := appSetting.DepServices["opensearch"]
-	if !ok {
-		panic("opensearch service not found in depServices")
-	}
-	cfg := interfaces.ConnectorConfig{
-		"host":          opensearchSetting["host"],
-		"port":          opensearchSetting["port"],
-		"username":      opensearchSetting["user"],
-		"password":      opensearchSetting["password"],
-		"index_pattern": opensearchSetting["index_pattern"],
-	}
-	connector, err := opensearchConnector.NewOpenSearchConnector().New(cfg)
-	if err != nil {
-		panic(fmt.Sprintf("failed to create OpenSearch connector: %v", err))
-	}
 	return &embeddingHandler{
 		appSetting:  appSetting,
 		taskAccess:  logics.BTA,
 		resAccess:   logics.RA,
-		ds:          dataset.NewDatasetService(appSetting),
-		connector:   connector.(connectors.IndexConnector),
+		lim:         local_index.NewLocalIndexManager(appSetting),
 		kafkaAccess: logics.KA,
 		mfa:         logics.MFA,
 	}
@@ -439,7 +420,7 @@ func (eh *embeddingHandler) commitMessages(reader *kafka.Reader, msgs ...kafka.M
 
 // vectorizeDoc 对单个文档执行取数→嵌入→写回，返回错误表示本次尝试整体失败、可重试
 func (eh *embeddingHandler) vectorizeDoc(ctx context.Context, indexName, docID, model string, embeddingFields []string) error {
-	document, err := eh.ds.GetDocument(ctx, indexName, docID)
+	document, err := eh.lim.GetDocument(ctx, indexName, docID)
 	if err != nil {
 		return fmt.Errorf("get document: %w", err)
 	}
@@ -482,7 +463,7 @@ func (eh *embeddingHandler) vectorizeDoc(ctx context.Context, indexName, docID, 
 		"id":       docID,
 		"document": updateDoc,
 	}
-	if _, err := eh.ds.UpsertDocuments(ctx, indexName, []map[string]any{updateReq}); err != nil {
+	if _, err := eh.lim.UpsertDocuments(ctx, indexName, []map[string]any{updateReq}); err != nil {
 		return fmt.Errorf("upsert document: %w", err)
 	}
 	return nil
