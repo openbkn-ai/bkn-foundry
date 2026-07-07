@@ -28,5 +28,5 @@ type BuildTaskService interface {
 	StopBuildTask(ctx context.Context, taskID string) error
 	// DeleteBuildTasks atomically deletes build tasks by IDs.
 	// Pre-validates: any missing id returns 404 unless ignoreMissing=true; any running/stopping id returns 409 (cannot be skipped).
-	DeleteBuildTasks(ctx context.Context, ids []string, ignoreMissing bool) error
+	DeleteBuildTasks(ctx context.Context, ids []string, ignoreMissing bool, deleteActiveIndex bool) error
 }

@@ -72,20 +72,6 @@ func (mr *MockDiscoverTaskServiceMockRecorder) Create(ctx, req any) *gomock.Call
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockDiscoverTaskService)(nil).Create), ctx, req)
 }
 
-// Delete mocks base method.
-func (m *MockDiscoverTaskService) Delete(ctx context.Context, ids []string, ignoreMissing bool) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Delete", ctx, ids, ignoreMissing)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// Delete indicates an expected call of Delete.
-func (mr *MockDiscoverTaskServiceMockRecorder) Delete(ctx, ids, ignoreMissing any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*MockDiscoverTaskService)(nil).Delete), ctx, ids, ignoreMissing)
-}
-
 // DebugTaskQueue mocks base method.
 func (m *MockDiscoverTaskService) DebugTaskQueue() <-chan *asynq.Task {
 	m.ctrl.T.Helper()
@@ -98,6 +84,20 @@ func (m *MockDiscoverTaskService) DebugTaskQueue() <-chan *asynq.Task {
 func (mr *MockDiscoverTaskServiceMockRecorder) DebugTaskQueue() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DebugTaskQueue", reflect.TypeOf((*MockDiscoverTaskService)(nil).DebugTaskQueue))
+}
+
+// Delete mocks base method.
+func (m *MockDiscoverTaskService) Delete(ctx context.Context, ids []string, ignoreMissing bool) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Delete", ctx, ids, ignoreMissing)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Delete indicates an expected call of Delete.
+func (mr *MockDiscoverTaskServiceMockRecorder) Delete(ctx, ids, ignoreMissing any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*MockDiscoverTaskService)(nil).Delete), ctx, ids, ignoreMissing)
 }
 
 // GetByID mocks base method.

@@ -153,15 +153,15 @@ func (bts *buildTaskService) CreateBuildTask(ctx context.Context, req *interface
 
 	now := time.Now().UnixMilli()
 	buildTask := &interfaces.BuildTask{
-		ID:              xid.New().String(),
-		ResourceID:      resourceID,
-		CatalogID:       resource.CatalogID,
-		Status:          interfaces.BuildTaskStatusInit,
-		Mode:            req.Mode,
-		Creator:         accountInfo,
-		CreateTime:      now,
-		Updater:         accountInfo,
-		UpdateTime:      now,
+		ID:               xid.New().String(),
+		ResourceID:       resourceID,
+		CatalogID:        resource.CatalogID,
+		Status:           interfaces.BuildTaskStatusInit,
+		Mode:             req.Mode,
+		Creator:          accountInfo,
+		CreateTime:       now,
+		Updater:          accountInfo,
+		UpdateTime:       now,
 		EmbeddingFields:  req.EmbeddingFields,
 		BuildKeyFields:   req.BuildKeyFields,
 		EmbeddingModel:   req.EmbeddingModel,
@@ -551,14 +551,18 @@ func (bts *buildTaskService) StopBuildTask(ctx context.Context, taskID string) e
 //     unless ignoreMissing=true (then missing ids are dropped from the delete set).
 //   - If any task is in running/stopping status, returns 409 HasRunningExecution with {running_ids: [...]}.
 //     This check cannot be bypassed.
+//   - If any task owns the resource's current LocalIndexName, returns 409 ActiveIndexInUse
+//     unless deleteActiveIndex=true. When deleteActiveIndex=true, clears LocalIndexName before deleting.
 //   - Deletes pass-through tasks one-by-one. Mid-loop errors return 500 (rare, bounded by pre-validation).
-func (bts *buildTaskService) DeleteBuildTasks(ctx context.Context, ids []string, ignoreMissing bool) error {
+func (bts *buildTaskService) DeleteBuildTasks(ctx context.Context, ids []string, ignoreMissing bool, deleteActiveIndex bool) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Delete build tasks")
 	defer span.End()
 
 	toDelete := make([]*interfaces.BuildTask, 0, len(ids))
 	missingIDs := make([]string, 0)
 	runningIDs := make([]string, 0)
+	activeIndexes := make([]map[string]string, 0)
+	activeResources := make(map[string]*interfaces.Resource)
 
 	for _, id := range ids {
 		buildTask, err := bts.bta.GetByID(ctx, id)
@@ -575,6 +579,23 @@ func (bts *buildTaskService) DeleteBuildTasks(ctx context.Context, ids []string,
 			runningIDs = append(runningIDs, id)
 			continue
 		}
+		resource, err := bts.ra.GetByID(ctx, buildTask.ResourceID)
+		if err != nil {
+			span.SetStatus(codes.Error, "Get resource failed")
+			return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_GetFailed).
+				WithErrorDetails(err.Error())
+		}
+		if resource != nil {
+			idx := interfaces.BuildIndexName(buildTask.ResourceID, buildTask.ID)
+			if resource.LocalIndexName == idx {
+				activeIndexes = append(activeIndexes, map[string]string{
+					"resource_id":   buildTask.ResourceID,
+					"build_task_id": buildTask.ID,
+					"index_name":    idx,
+				})
+				activeResources[buildTask.ID] = resource
+			}
+		}
 		toDelete = append(toDelete, buildTask)
 	}
 
@@ -587,6 +608,25 @@ func (bts *buildTaskService) DeleteBuildTasks(ctx context.Context, ids []string,
 		span.SetStatus(codes.Error, "Some build tasks not found")
 		return rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_BuildTask_NotFound).
 			WithErrorDetails(map[string]any{"missing_ids": missingIDs})
+	}
+	if len(activeIndexes) > 0 && !deleteActiveIndex {
+		span.SetStatus(codes.Error, "Some build task indexes are currently used by resources")
+		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_ActiveIndexInUse).
+			WithErrorDetails(map[string]any{"active_indexes": activeIndexes})
+	}
+	if deleteActiveIndex {
+		for taskID, resource := range activeResources {
+			resource.LocalIndexName = ""
+			if err := bts.ra.Update(ctx, resource); err != nil {
+				span.SetStatus(codes.Error, "Clear active local index failed")
+				return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_UpdateFailed).
+					WithErrorDetails(map[string]any{
+						"build_task_id": taskID,
+						"resource_id":   resource.ID,
+						"error":         err.Error(),
+					})
+			}
+		}
 	}
 
 	// ds 优先 struct 字段（测试注入），否则走 logics 全局（生产）

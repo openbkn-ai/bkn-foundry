@@ -23,6 +23,11 @@ Description = "构建任务正在运行，无法删除"
 Solution = "请先停止任务再删除"
 ErrorLink = "暂无"
 
+[VegaBackend.BuildTask.ActiveIndexInUse]
+Description = "构建任务索引是资源当前生效的本地索引"
+Solution = "如确认要删除当前生效的本地索引，请传入 delete_active_index=true；否则保持默认保护"
+ErrorLink = "暂无"
+
 [VegaBackend.BuildTask.InternalError.CreateFailed]
 Description = "创建构建任务失败"
 Solution = "请联系管理员"
