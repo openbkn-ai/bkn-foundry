@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kweaver-ai/kweaver-go-lib/logger"
+	"github.com/openbkn-ai/bkn-comm-go/logger"
 	"github.com/segmentio/kafka-go"
 	"github.com/segmentio/kafka-go/sasl"
 	"github.com/segmentio/kafka-go/sasl/plain"

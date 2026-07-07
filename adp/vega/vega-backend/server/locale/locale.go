@@ -11,7 +11,7 @@ import (
 	"path"
 	"runtime"
 
-	"github.com/kweaver-ai/kweaver-go-lib/i18n"
+	"github.com/openbkn-ai/bkn-comm-go/i18n"
 )
 
 var (

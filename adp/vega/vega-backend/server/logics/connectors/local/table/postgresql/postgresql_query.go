@@ -13,7 +13,7 @@ import (
 	"time"
 
 	sq "github.com/Masterminds/squirrel"
-	"github.com/kweaver-ai/kweaver-go-lib/logger"
+	"github.com/openbkn-ai/bkn-comm-go/logger"
 
 	"vega-backend/interfaces"
 )

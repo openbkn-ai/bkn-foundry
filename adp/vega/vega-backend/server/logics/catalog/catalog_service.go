@@ -16,11 +16,11 @@ import (
 	"sync"
 	"time"
 
-	kwcrypto "github.com/kweaver-ai/kweaver-go-lib/crypto"
-	"github.com/kweaver-ai/kweaver-go-lib/logger"
-	"github.com/kweaver-ai/kweaver-go-lib/otel/otellog"
-	"github.com/kweaver-ai/kweaver-go-lib/otel/oteltrace"
-	"github.com/kweaver-ai/kweaver-go-lib/rest"
+	kwcrypto "github.com/openbkn-ai/bkn-comm-go/crypto"
+	"github.com/openbkn-ai/bkn-comm-go/logger"
+	"github.com/openbkn-ai/bkn-comm-go/otel/otellog"
+	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
+	"github.com/openbkn-ai/bkn-comm-go/rest"
 	"github.com/rs/xid"
 	"go.opentelemetry.io/otel/codes"
 

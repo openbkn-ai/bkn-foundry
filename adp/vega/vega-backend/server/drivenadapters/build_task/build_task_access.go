@@ -16,9 +16,9 @@ import (
 	"time"
 
 	sq "github.com/Masterminds/squirrel"
-	"github.com/kweaver-ai/kweaver-go-lib/db"
-	"github.com/kweaver-ai/kweaver-go-lib/otel/otellog"
-	"github.com/kweaver-ai/kweaver-go-lib/otel/oteltrace"
+	"github.com/openbkn-ai/bkn-comm-go/db"
+	"github.com/openbkn-ai/bkn-comm-go/otel/otellog"
+	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 	"go.opentelemetry.io/otel/codes"
 
 	"vega-backend/common"

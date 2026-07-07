@@ -14,7 +14,7 @@ import (
 	reflect "reflect"
 
 	gin "github.com/gin-gonic/gin"
-	hydra "github.com/kweaver-ai/kweaver-go-lib/hydra"
+	hydra "github.com/openbkn-ai/bkn-comm-go/hydra"
 	gomock "go.uber.org/mock/gomock"
 )
 

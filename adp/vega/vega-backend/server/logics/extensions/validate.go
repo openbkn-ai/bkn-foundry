@@ -13,7 +13,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/kweaver-ai/kweaver-go-lib/rest"
+	"github.com/openbkn-ai/bkn-comm-go/rest"
 
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"

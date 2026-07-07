@@ -7,9 +7,9 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/kweaver-ai/kweaver-go-lib/otel/otellog"
-	"github.com/kweaver-ai/kweaver-go-lib/otel/oteltrace"
-	"github.com/kweaver-ai/kweaver-go-lib/rest"
+	"github.com/openbkn-ai/bkn-comm-go/otel/otellog"
+	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
+	"github.com/openbkn-ai/bkn-comm-go/rest"
 	"go.opentelemetry.io/otel/codes"
 
 	"vega-backend/common"
