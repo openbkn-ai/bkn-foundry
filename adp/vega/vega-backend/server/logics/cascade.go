@@ -15,14 +15,6 @@ import (
 	"vega-backend/interfaces"
 )
 
-// DS 是 logics 层共享的 DatasetService，启动 wiring 处注入（见 SetDatasetService）。
-// 单独放全局而非由各 service 自行构造，是因为 dataset 包反向 import catalog——
-// catalog/cascade 不能直接 import dataset，只能在无环的启动处注入。
-var DS interfaces.DatasetService
-
-// SetDatasetService 在启动处注入 DatasetService（该处可安全 import dataset 包，无环）。
-func SetDatasetService(ds interfaces.DatasetService) { DS = ds }
-
 // CascadeDeleteBuildTasks 删除 filter 命中的所有构建任务及其本地索引，
 // 让"删资源"/"删数据连接(catalog)"不再留下孤儿任务行或孤儿索引。
 //

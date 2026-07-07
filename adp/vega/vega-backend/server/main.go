@@ -38,7 +38,6 @@ import (
 	"vega-backend/driveradapters"
 	"vega-backend/logics"
 	"vega-backend/logics/connectors/factory"
-	"vega-backend/logics/dataset"
 	logicsDiscoverSchedule "vega-backend/logics/discover_schedule"
 	logicsDiscoverTask "vega-backend/logics/discover_task"
 	"vega-backend/worker"
@@ -142,9 +141,6 @@ func main() {
 	logics.SetKafkaAccess(kafka.NewKafkaAccess(appSetting))
 	logics.SetModelFactoryAccess(model_factory.NewModelFactoryAccess(appSetting))
 	logics.SetResourceAccess(resource.NewResourceAccess(appSetting))
-	// 注入共享 DatasetService（cascade 删索引用）。须在上面各 Access 注入之后：
-	// dataset.NewDatasetService 内部会构造 logics/catalog（读 CA/RA 全局）。
-	logics.SetDatasetService(dataset.NewDatasetService(appSetting))
 
 	// 初始化 Connector Factory 并注册内置的 Local Connector Builder
 	factory.Init(appSetting)

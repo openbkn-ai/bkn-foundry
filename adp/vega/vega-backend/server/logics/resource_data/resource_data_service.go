@@ -1,4 +1,4 @@
-// Package dataset provides Dataset management business logic.
+// Package resource_data provides resource data query business logic.
 package resource_data
 
 import (
