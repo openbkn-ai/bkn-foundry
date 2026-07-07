@@ -43,10 +43,10 @@ func TestBatchBuildHandlerInjectsCreatorIntoCtx(t *testing.T) {
 	taskAccess := vmock.NewMockBuildTaskAccess(ctrl)
 	resAccess := vmock.NewMockResourceAccess(ctrl)
 	cs := vmock.NewMockCatalogService(ctrl)
-	ds := vmock.NewMockDatasetService(ctrl)
+	lim := vmock.NewMockLocalIndexManager(ctrl)
 	// executeBuild 现在无条件调 createLocalIndex（幂等），索引已存在直接跳过
-	ds.EXPECT().CheckExist(gomock.Any(), gomock.Any()).Return(true, nil).AnyTimes()
-	bh := &batchBuildHandler{taskAccess: taskAccess, resAccess: resAccess, cs: cs, ds: ds}
+	lim.EXPECT().CheckExist(gomock.Any(), gomock.Any()).Return(true, nil).AnyTimes()
+	bh := &batchBuildHandler{taskAccess: taskAccess, resAccess: resAccess, cs: cs, lim: lim}
 
 	taskAccess.EXPECT().GetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{
 		ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusRunning, Creator: testCreator,
@@ -77,7 +77,8 @@ func TestStreamingBuildHandlerInjectsCreatorIntoCtx(t *testing.T) {
 	taskAccess := vmock.NewMockBuildTaskAccess(ctrl)
 	resAccess := vmock.NewMockResourceAccess(ctrl)
 	cs := vmock.NewMockCatalogService(ctrl)
-	sh := &streamingBuildHandler{taskAccess: taskAccess, resAccess: resAccess, cs: cs}
+	lim := vmock.NewMockLocalIndexManager(ctrl)
+	sh := &streamingBuildHandler{taskAccess: taskAccess, resAccess: resAccess, cs: cs, lim: lim}
 
 	taskAccess.EXPECT().GetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{
 		ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusRunning, Creator: testCreator,

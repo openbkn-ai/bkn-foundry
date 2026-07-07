@@ -31,6 +31,7 @@ import (
 	"vega-backend/logics"
 	"vega-backend/logics/connectors/factory"
 	"vega-backend/logics/extensions"
+	"vega-backend/logics/local_index"
 	"vega-backend/logics/permission"
 	"vega-backend/logics/user_mgmt"
 )
@@ -55,7 +56,7 @@ type catalogService struct {
 	ps         interfaces.PermissionService
 	ums        interfaces.UserMgmtService
 	bta        interfaces.BuildTaskAccess // 删 catalog 时级联清其下资源的构建任务/索引
-	ds         interfaces.DatasetService  // 同上，drop OpenSearch 索引
+	lim        interfaces.LocalIndexManager
 }
 
 // NewCatalogService creates a new CatalogService.
@@ -76,6 +77,8 @@ func NewCatalogService(appSetting *common.AppSetting) interfaces.CatalogService 
 			ra:         logics.RA,
 			ps:         permission.NewPermissionService(appSetting),
 			ums:        user_mgmt.NewUserMgmtService(appSetting),
+			bta:        logics.BTA,
+			lim:        local_index.NewLocalIndexManager(appSetting),
 		}
 	})
 	return cService
@@ -723,17 +726,8 @@ func (cs *catalogService) DeleteByIDs(ctx context.Context, ids []string) error {
 	// 删 catalog 前先级联清掉其下所有资源的构建任务 + OpenSearch 索引，
 	// 否则资源行被删后任务行与索引全成孤儿。运行中任务会拒绝整个删除（HasRunningExecution），
 	// 用户需先停止再删。放在删 catalog/resource 行之前，cascade 失败则什么都不删。
-	// bta/ds 默认走 logics 全局（生产）；测试经 struct 字段注入 mock。不在构造器读全局，
-	// 避开 dataset→catalog 的 sync.Once 初始化顺序坑（构造时 DS 可能尚未注入）。
-	bta, ds := cs.bta, cs.ds
-	if bta == nil {
-		bta = logics.BTA
-	}
-	if ds == nil {
-		ds = logics.DS
-	}
 	for _, id := range ids {
-		if err := logics.CascadeDeleteBuildTasks(ctx, bta, ds,
+		if err := logics.CascadeDeleteBuildTasks(ctx, cs.bta, cs.lim,
 			interfaces.BuildTasksQueryParams{CatalogID: id}); err != nil {
 			span.SetStatus(codes.Error, "Cascade delete build tasks failed")
 			return err

@@ -255,14 +255,14 @@ func TestDeleteBuildTasks_DropsIndexAndRow(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 	mockRA := mock_interfaces.NewMockResourceAccess(ctrl)
-	mockDS := mock_interfaces.NewMockDatasetService(ctrl)
-	service := &buildTaskService{bta: mockBTA, ra: mockRA, ds: mockDS}
+	mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
+	service := &buildTaskService{bta: mockBTA, ra: mockRA, lim: mockLIM}
 
 	mockBTA.EXPECT().GetByID(gomock.Any(), "t1").
 		Return(&interfaces.BuildTask{ID: "t1", ResourceID: "r1", Status: "completed"}, nil)
 	mockRA.EXPECT().GetByID(gomock.Any(), "r1").
 		Return(&interfaces.Resource{ID: "r1", LocalIndexName: interfaces.BuildIndexName("r1", "old-task")}, nil)
-	mockDS.EXPECT().Delete(gomock.Any(), interfaces.BuildIndexName("r1", "t1")).Return(nil)
+	mockLIM.EXPECT().DeleteIndex(gomock.Any(), interfaces.BuildIndexName("r1", "t1")).Return(nil)
 	mockBTA.EXPECT().Delete(gomock.Any(), "t1").Return(nil)
 
 	if err := service.DeleteBuildTasks(context.Background(), []string{"t1"}, false, false); err != nil {
@@ -274,8 +274,8 @@ func TestDeleteBuildTasks_RefusesActiveLocalIndex(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 	mockRA := mock_interfaces.NewMockResourceAccess(ctrl)
-	mockDS := mock_interfaces.NewMockDatasetService(ctrl)
-	service := &buildTaskService{bta: mockBTA, ra: mockRA, ds: mockDS}
+	mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
+	service := &buildTaskService{bta: mockBTA, ra: mockRA, lim: mockLIM}
 
 	idx := interfaces.BuildIndexName("r1", "t1")
 	mockBTA.EXPECT().GetByID(gomock.Any(), "t1").
@@ -301,8 +301,8 @@ func TestDeleteBuildTasks_DeleteActiveLocalIndexWhenExplicitlyAllowed(t *testing
 	ctrl := gomock.NewController(t)
 	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 	mockRA := mock_interfaces.NewMockResourceAccess(ctrl)
-	mockDS := mock_interfaces.NewMockDatasetService(ctrl)
-	service := &buildTaskService{bta: mockBTA, ra: mockRA, ds: mockDS}
+	mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
+	service := &buildTaskService{bta: mockBTA, ra: mockRA, lim: mockLIM}
 
 	idx := interfaces.BuildIndexName("r1", "t1")
 	resource := &interfaces.Resource{ID: "r1", LocalIndexName: idx}
@@ -319,7 +319,7 @@ func TestDeleteBuildTasks_DeleteActiveLocalIndexWhenExplicitlyAllowed(t *testing
 			}
 			return nil
 		})
-	mockDS.EXPECT().Delete(gomock.Any(), idx).Return(nil)
+	mockLIM.EXPECT().DeleteIndex(gomock.Any(), idx).Return(nil)
 	mockBTA.EXPECT().Delete(gomock.Any(), "t1").Return(nil)
 
 	if err := service.DeleteBuildTasks(context.Background(), []string{"t1"}, false, true); err != nil {
@@ -331,8 +331,8 @@ func TestDeleteBuildTasks_ClearActiveLocalIndexFailureBlocksDeletion(t *testing.
 	ctrl := gomock.NewController(t)
 	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 	mockRA := mock_interfaces.NewMockResourceAccess(ctrl)
-	mockDS := mock_interfaces.NewMockDatasetService(ctrl)
-	service := &buildTaskService{bta: mockBTA, ra: mockRA, ds: mockDS}
+	mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
+	service := &buildTaskService{bta: mockBTA, ra: mockRA, lim: mockLIM}
 
 	idx := interfaces.BuildIndexName("r1", "t1")
 	mockBTA.EXPECT().GetByID(gomock.Any(), "t1").
@@ -356,13 +356,13 @@ func TestDeleteBuildTasks_AllowsOrphanTaskWhenResourceMissing(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 	mockRA := mock_interfaces.NewMockResourceAccess(ctrl)
-	mockDS := mock_interfaces.NewMockDatasetService(ctrl)
-	service := &buildTaskService{bta: mockBTA, ra: mockRA, ds: mockDS}
+	mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
+	service := &buildTaskService{bta: mockBTA, ra: mockRA, lim: mockLIM}
 
 	mockBTA.EXPECT().GetByID(gomock.Any(), "t1").
 		Return(&interfaces.BuildTask{ID: "t1", ResourceID: "missing-resource", Status: interfaces.BuildTaskStatusFailed}, nil)
 	mockRA.EXPECT().GetByID(gomock.Any(), "missing-resource").Return(nil, nil)
-	mockDS.EXPECT().Delete(gomock.Any(), interfaces.BuildIndexName("missing-resource", "t1")).Return(nil)
+	mockLIM.EXPECT().DeleteIndex(gomock.Any(), interfaces.BuildIndexName("missing-resource", "t1")).Return(nil)
 	mockBTA.EXPECT().Delete(gomock.Any(), "t1").Return(nil)
 
 	if err := service.DeleteBuildTasks(context.Background(), []string{"t1"}, false, false); err != nil {
@@ -374,8 +374,8 @@ func TestDeleteBuildTasks_ResourceLookupFailureBlocksDeletion(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 	mockRA := mock_interfaces.NewMockResourceAccess(ctrl)
-	mockDS := mock_interfaces.NewMockDatasetService(ctrl)
-	service := &buildTaskService{bta: mockBTA, ra: mockRA, ds: mockDS}
+	mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
+	service := &buildTaskService{bta: mockBTA, ra: mockRA, lim: mockLIM}
 
 	mockBTA.EXPECT().GetByID(gomock.Any(), "t1").
 		Return(&interfaces.BuildTask{ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusStopped}, nil)
@@ -396,12 +396,12 @@ func TestDeleteBuildTasks_ResourceLookupFailureBlocksDeletion(t *testing.T) {
 func TestDeleteBuildTasks_RefusesRunning(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
-	mockDS := mock_interfaces.NewMockDatasetService(ctrl)
-	service := &buildTaskService{bta: mockBTA, ds: mockDS}
+	mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
+	service := &buildTaskService{bta: mockBTA, lim: mockLIM}
 
 	mockBTA.EXPECT().GetByID(gomock.Any(), "t1").
 		Return(&interfaces.BuildTask{ID: "t1", ResourceID: "r1", Status: "running"}, nil)
-	// 不应调用 ds.Delete / bta.Delete
+	// 不应调用 local index delete / bta.Delete
 
 	if err := service.DeleteBuildTasks(context.Background(), []string{"t1"}, false, true); err == nil {
 		t.Fatalf("expected 409 when a task is running")

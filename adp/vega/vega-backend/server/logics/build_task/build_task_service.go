@@ -29,6 +29,7 @@ import (
 	"vega-backend/interfaces"
 	"vega-backend/logics"
 	"vega-backend/logics/catalog"
+	"vega-backend/logics/local_index"
 	"vega-backend/logics/user_mgmt"
 )
 
@@ -44,7 +45,7 @@ type buildTaskService struct {
 	bta        interfaces.BuildTaskAccess
 	mfa        interfaces.ModelFactoryAccess
 	ums        interfaces.UserMgmtService
-	ds         interfaces.DatasetService // 删任务时 drop 其 OpenSearch 索引；测试注入 mock，生产走 logics.DS
+	lim        interfaces.LocalIndexManager // 删任务时 drop 其本地索引；测试注入 mock
 }
 
 // NewBuildTaskService creates a new BuildTaskService.
@@ -57,6 +58,7 @@ func NewBuildTaskService(appSetting *common.AppSetting) interfaces.BuildTaskServ
 			bta:        logics.BTA,
 			mfa:        logics.MFA,
 			ums:        user_mgmt.NewUserMgmtService(appSetting),
+			lim:        local_index.NewLocalIndexManager(appSetting),
 		}
 	})
 	return btsInst
@@ -629,16 +631,11 @@ func (bts *buildTaskService) DeleteBuildTasks(ctx context.Context, ids []string,
 		}
 	}
 
-	// ds 优先 struct 字段（测试注入），否则走 logics 全局（生产）
-	ds := bts.ds
-	if ds == nil {
-		ds = logics.DS
-	}
 	for _, bt := range toDelete {
 		// 先 drop 索引（尽力，失败仅记日志），再删任务行——与删资源/删 catalog 的级联
 		// 语义一致，避免 UI 单任务删除留下孤儿索引（#66 只覆盖了资源/目录两条路径）。
 		idx := interfaces.BuildIndexName(bt.ResourceID, bt.ID)
-		if err := ds.Delete(ctx, idx); err != nil {
+		if err := bts.lim.DeleteIndex(ctx, idx); err != nil {
 			otellog.LogError(ctx, fmt.Sprintf("Drop index %s for build task %s failed", idx, bt.ID), err)
 		}
 		if err := bts.bta.Delete(ctx, bt.ID); err != nil {

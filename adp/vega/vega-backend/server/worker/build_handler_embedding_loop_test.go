@@ -99,8 +99,8 @@ func TestExecuteEmbedding_CtxCanceledReturnsErrorForRequeue(t *testing.T) {
 func TestExecuteEmbedding_PersistentCommitErrorGivesUpForRetry(t *testing.T) {
 	eh, ta, ka := newLoopHandler(t)
 	ctrl := gomock.NewController(t)
-	ds := vmock.NewMockDatasetService(ctrl)
-	eh.ds = ds
+	lim := vmock.NewMockLocalIndexManager(ctrl)
+	eh.lim = lim
 	resource, task := loopFixtures()
 
 	deadCommit := errors.New("commit on dead generation")
@@ -116,7 +116,7 @@ func TestExecuteEmbedding_PersistentCommitErrorGivesUpForRetry(t *testing.T) {
 		ka.EXPECT().ReadMessage(gomock.Any(), gomock.Any()).Return(docMsg("d3"), nil),
 	)
 	// 空文本文档：vectorizeDoc 直接成功，不触发嵌入调用
-	ds.EXPECT().GetDocument(gomock.Any(), gomock.Any(), gomock.Any()).
+	lim.EXPECT().GetDocument(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(map[string]any{"team_name": ""}, nil).Times(3)
 	ka.EXPECT().CommitMessages(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(deadCommit).Times(embeddingKafkaMaxConsecutiveErrors)

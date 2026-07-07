@@ -1,4 +1,4 @@
-// Package dataset provides Dataset management business logic.
+// Package resource_data provides resource data query business logic.
 package resource_data
 
 import (
@@ -21,6 +21,7 @@ import (
 	"vega-backend/logics/connectors/factory"
 	"vega-backend/logics/dataset"
 	"vega-backend/logics/filter_condition"
+	"vega-backend/logics/local_index"
 	"vega-backend/logics/rate"
 	"vega-backend/logics/resource"
 	"vega-backend/logics/resource_data/logic_view"
@@ -34,6 +35,7 @@ var (
 type resourceDataService struct {
 	appSetting *common.AppSetting
 	ds         interfaces.DatasetService
+	lim        interfaces.LocalIndexManager
 	cs         interfaces.CatalogService
 	rs         interfaces.ResourceService
 	lvs        interfaces.LogicViewService
@@ -46,6 +48,7 @@ func NewResourceDataService(appSetting *common.AppSetting) interfaces.ResourceDa
 		rdService = &resourceDataService{
 			appSetting: appSetting,
 			ds:         dataset.NewDatasetService(appSetting),
+			lim:        local_index.NewLocalIndexManager(appSetting),
 			cs:         catalog.NewCatalogService(appSetting),
 			rs:         resource.NewResourceService(appSetting),
 			lvs:        logic_view.NewLogicViewService(appSetting),
@@ -155,8 +158,8 @@ func (rds *resourceDataService) Query(ctx context.Context, resource *interfaces.
 	case interfaces.ResourceCategoryTable:
 		// 检查是否有索引名称，如果有则直接查询索引
 		if resource.LocalIndexName != "" {
-			// 调用 dataset access 列出文档
-			documents, total, err := rds.ds.ListDocuments(ctx, resource.LocalIndexName, resource, params)
+			// 调用本地索引管理器列出构建产物文档
+			documents, total, err := rds.lim.ListDocuments(ctx, resource.LocalIndexName, resource, params)
 			if err != nil {
 				otellog.LogError(ctx, "Query table data from local index failed", err)
 				return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).

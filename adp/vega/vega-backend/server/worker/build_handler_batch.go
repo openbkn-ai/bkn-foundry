@@ -24,8 +24,8 @@ import (
 	"vega-backend/logics/catalog"
 	"vega-backend/logics/connectors"
 	"vega-backend/logics/connectors/factory"
-	"vega-backend/logics/dataset"
 	"vega-backend/logics/filter_condition"
+	"vega-backend/logics/local_index"
 )
 
 // batchBuildHandler handles build tasks.
@@ -34,7 +34,7 @@ type batchBuildHandler struct {
 	taskAccess  interfaces.BuildTaskAccess
 	resAccess   interfaces.ResourceAccess
 	cs          interfaces.CatalogService
-	ds          interfaces.DatasetService
+	lim         interfaces.LocalIndexManager
 	client      *asynq.Client
 	kafkaAccess interfaces.KafkaAccess
 }
@@ -46,7 +46,7 @@ func NewBatchBuildHandler(appSetting *common.AppSetting) *batchBuildHandler {
 		taskAccess:  logics.BTA,
 		resAccess:   logics.RA,
 		cs:          catalog.NewCatalogService(appSetting),
-		ds:          dataset.NewDatasetService(appSetting),
+		lim:         local_index.NewLocalIndexManager(appSetting),
 		client:      logics.AQA.CreateClient(),
 		kafkaAccess: logics.KA,
 	}
@@ -159,18 +159,18 @@ func (bh *batchBuildHandler) executeBuild(ctx context.Context, resource *interfa
 	// 直接跳过，改动后的 embedding/fulltext 字段永远不会写进 mapping。先 drop 再重建。
 	if executeType == interfaces.BuildTaskExecuteTypeFull {
 		dropName := getIndexName(resource.ID, buildTaskInfo.ID)
-		exist, err := bh.ds.CheckExist(ctx, dropName)
+		exist, err := bh.lim.CheckExist(ctx, dropName)
 		if err != nil {
 			return fmt.Errorf("check index exist for full rebuild failed: %w", err)
 		}
 		if exist {
-			if err := bh.ds.Delete(ctx, dropName); err != nil {
+			if err := bh.lim.DeleteIndex(ctx, dropName); err != nil {
 				return fmt.Errorf("drop index for full rebuild failed: %w", err)
 			}
 			logger.Infof("Dropped index %s for full rebuild of task %s", dropName, buildTaskInfo.ID)
 		}
 	}
-	err := createLocalIndex(ctx, bh.ds, buildTaskInfo, resource)
+	err := createManagedLocalIndex(ctx, bh.lim, buildTaskInfo, resource)
 	if err != nil {
 		return fmt.Errorf("create local index failed: %w", err)
 	}
@@ -358,7 +358,7 @@ func (bh *batchBuildHandler) executeBuild(ctx context.Context, resource *interfa
 				upsertRequests = append(upsertRequests, map[string]any{"id": docID, "document": doc})
 			}
 
-			docIDs, err := bh.ds.UpsertDocuments(ctx, indexName, upsertRequests)
+			docIDs, err := bh.lim.UpsertDocuments(ctx, indexName, upsertRequests)
 			if err != nil {
 				return fmt.Errorf("create documents failed: %w", err)
 			}
