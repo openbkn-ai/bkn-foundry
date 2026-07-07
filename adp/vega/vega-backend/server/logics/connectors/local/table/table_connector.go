@@ -50,6 +50,9 @@ func ScanRows(rows *sql.Rows) (*interfaces.QueryResult, error) {
 		}
 		result.Rows = append(result.Rows, row)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 
 	result.Total = int64(len(result.Rows))
 	return result, nil

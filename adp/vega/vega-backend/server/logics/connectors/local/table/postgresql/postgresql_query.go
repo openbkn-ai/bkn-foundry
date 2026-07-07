@@ -251,6 +251,9 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 		}
 		result.Rows = append(result.Rows, row)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 
 	// 处理总数（仅明细查询）
 	if params.NeedTotal && !isAggregate {

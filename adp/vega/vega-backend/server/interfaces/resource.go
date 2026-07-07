@@ -31,6 +31,7 @@ const (
 	DiscoverStatusUpdated   string = "updated"
 	DiscoverStatusRestored  string = "restored"
 	DiscoverStatusMissing   string = "missing"
+	DiscoverStatusError     string = "error"
 )
 
 var (

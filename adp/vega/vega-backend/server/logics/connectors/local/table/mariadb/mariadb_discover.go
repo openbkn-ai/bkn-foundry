@@ -42,6 +42,9 @@ func (c *MariaDBConnector) ListDatabases(ctx context.Context) ([]string, error) 
 			databases = append(databases, db)
 		}
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate databases: %w", err)
+	}
 	return databases, nil
 }
 
@@ -146,6 +149,9 @@ func (c *MariaDBConnector) ListTables(ctx context.Context) ([]*interfaces.TableM
 		}
 
 		tables = append(tables, meta)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate table info: %w", err)
 	}
 
 	return tables, nil
@@ -346,6 +352,9 @@ func (c *MariaDBConnector) fetchColumns(ctx context.Context, table *interfaces.T
 			pkColumns = append(pkColumns, col.Name)
 		}
 	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
 
 	table.Columns = columns
 	table.PKs = pkColumns
@@ -400,6 +409,9 @@ func (c *MariaDBConnector) fetchIndexes(ctx context.Context, table *interfaces.T
 				Primary: name == "PRIMARY",
 			}
 		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
 	}
 
 	var indices []interfaces.TableIndexMeta
@@ -464,6 +476,9 @@ func (c *MariaDBConnector) fetchForeignKeys(ctx context.Context, table *interfac
 			}
 		}
 	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
 
 	// Note: Handling OnDelete/OnUpdate requires joining with REFERENTIAL_CONSTRAINTS, skipping for simplicity unless requested.
 
@@ -526,6 +541,9 @@ func (c *MariaDBConnector) GetMetadata(ctx context.Context) (map[string]any, err
 		if err := rows.Scan(&varName, &varValue); err == nil {
 			metadata[varName] = varValue
 		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
 	// 3. Infer Cluster Mode

@@ -264,6 +264,9 @@ func (c *MariaDBConnector) ExecuteQuery(ctx context.Context, resource *interface
 		}
 		result.Rows = append(result.Rows, row)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 
 	// 处理总数（仅明细查询）：独立 COUNT 查询，与 postgresql 连接器对齐。
 	// 此前直接取 len(result.Rows)——即本页行数，超过一页的表 total 永远等于

@@ -84,7 +84,14 @@ func (dh *DiscoverHandler) enrichTableMetadata(ctx context.Context, tableConnect
 		err := tableConnector.GetTableMeta(ctx, table)
 		if err != nil {
 			logger.Warnf("Failed to get metadata for table %s: %v", table.Name, err)
-			return err
+			resource.LastDiscoverStatus = interfaces.DiscoverStatusError
+			resource.StatusMessage = fmt.Sprintf("discover metadata failed: %v", err)
+			updateDiscoverResultForEnrichStatus(result, interfaces.DiscoverStatusError)
+			if updateErr := dh.rs.UpdateResource(ctx, resource); updateErr != nil {
+				logger.Errorf("Failed to update discover error for table %s: %v", table.Name, updateErr)
+				return updateErr
+			}
+			continue
 		}
 
 		// 填充 Resource 元数据 ：schema_definition 字段

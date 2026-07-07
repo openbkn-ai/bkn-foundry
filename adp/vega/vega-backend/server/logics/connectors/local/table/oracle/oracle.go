@@ -262,6 +262,9 @@ func (c *OracleConnector) validateSchemas(ctx context.Context) error {
 		}
 		existingSchemas[strings.ToUpper(schemaName)] = true
 	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("failed to iterate schemas: %w", err)
+	}
 
 	// Check if all configured schemas exist
 	var notFoundSchemas []string
@@ -300,6 +303,9 @@ func (c *OracleConnector) ListSchemas(ctx context.Context) ([]string, error) {
 		if !SYSTEM_SCHEMAS_MAP[strings.ToUpper(schema)] {
 			schemas = append(schemas, schema)
 		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate schemas: %w", err)
 	}
 	return schemas, nil
 }
@@ -379,6 +385,9 @@ func (c *OracleConnector) ListTables(ctx context.Context) ([]*interfaces.TableMe
 		}
 
 		tables = append(tables, meta)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate table info: %w", err)
 	}
 	return tables, nil
 }
@@ -522,6 +531,9 @@ func (c *OracleConnector) fetchColumns(ctx context.Context, table *interfaces.Ta
 		}
 		columns = append(columns, col)
 	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
 
 	table.Columns = columns
 	return nil
@@ -573,6 +585,9 @@ func (c *OracleConnector) fetchIndexes(ctx context.Context, table *interfaces.Ta
 				Primary: name == strings.ToUpper(table.Name)+"_PK", // Oracle primary key naming convention
 			}
 		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
 	}
 
 	var indexes []interfaces.TableIndexMeta
@@ -633,6 +648,9 @@ func (c *OracleConnector) fetchForeignKeys(ctx context.Context, table *interface
 			}
 		}
 	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
 
 	var fks []interfaces.TableForeignKeyMeta
 	for _, fk := range fkMap {
@@ -688,6 +706,9 @@ func (c *OracleConnector) GetMetadata(ctx context.Context) (map[string]any, erro
 		if err := rows.Scan(&paramName, &paramValue); err == nil {
 			metadata[paramName] = paramValue
 		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
 	// Get version info

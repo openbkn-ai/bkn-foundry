@@ -20,6 +20,7 @@ type DiscoverResult struct {
 	UnchangedCount int    `json:"unchanged_count"`
 	UpdatedCount   int    `json:"updated_count"`
 	RestoredCount  int    `json:"restored_count"`
+	FailedCount    int    `json:"failed_count"`
 	Message        string `json:"message"`
 }
 

@@ -8,12 +8,14 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"go.uber.org/mock/gomock"
 
 	"vega-backend/interfaces"
 	vmock "vega-backend/interfaces/mock"
+	"vega-backend/logics/connectors"
 )
 
 func TestReconcileTableResourcesMarksNew(t *testing.T) {
@@ -119,9 +121,69 @@ func TestUpdateDiscoverResultForEnrichStatus(t *testing.T) {
 
 	updateDiscoverResultForEnrichStatus(result, interfaces.DiscoverStatusUnchanged)
 	updateDiscoverResultForEnrichStatus(result, interfaces.DiscoverStatusUpdated)
+	updateDiscoverResultForEnrichStatus(result, interfaces.DiscoverStatusError)
 
-	if result.UnchangedCount != 1 || result.UpdatedCount != 1 {
-		t.Fatalf("expected unchanged=1 updated=1, got unchanged=%d updated=%d", result.UnchangedCount, result.UpdatedCount)
+	if result.UnchangedCount != 1 || result.UpdatedCount != 1 || result.FailedCount != 1 {
+		t.Fatalf("expected unchanged=1 updated=1 failed=1, got unchanged=%d updated=%d failed=%d",
+			result.UnchangedCount, result.UpdatedCount, result.FailedCount)
+	}
+}
+
+func TestEnrichTableMetadataContinuesWhenOneTableFails(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	rs := vmock.NewMockResourceService(ctrl)
+	dh := &DiscoverHandler{rs: rs}
+
+	inaccessible := &interfaces.Resource{ID: "r1", SourceIdentifier: "public.no_access", LastDiscoverStatus: interfaces.DiscoverStatusNew}
+	accessible := &interfaces.Resource{
+		ID:                 "r2",
+		SourceIdentifier:   "public.erp_material",
+		LastDiscoverStatus: interfaces.DiscoverStatusNew,
+		SourceMetadata:     map[string]any{"original_name": "public.erp_material"},
+	}
+	connector := &fakeTableConnector{
+		metaErrByName: map[string]error{
+			"no_access": errors.New("permission denied"),
+		},
+		columnsByName: map[string][]interfaces.TableColumnMeta{
+			"erp_material": {{Name: "id", Type: "int4"}},
+		},
+	}
+
+	rs.EXPECT().UpdateResource(gomock.Any(), gomock.AssignableToTypeOf(&interfaces.Resource{})).
+		DoAndReturn(func(_ context.Context, resource *interfaces.Resource) error {
+			if resource.ID != "r1" {
+				t.Fatalf("expected failed resource r1 to be updated first, got %s", resource.ID)
+			}
+			if resource.LastDiscoverStatus != interfaces.DiscoverStatusError {
+				t.Fatalf("expected failed resource discover status error, got %s", resource.LastDiscoverStatus)
+			}
+			if resource.StatusMessage == "" {
+				t.Fatalf("expected failed resource status message")
+			}
+			return nil
+		})
+	rs.EXPECT().UpdateResource(gomock.Any(), gomock.AssignableToTypeOf(&interfaces.Resource{})).
+		DoAndReturn(func(_ context.Context, resource *interfaces.Resource) error {
+			if resource.ID != "r2" {
+				t.Fatalf("expected successful resource r2 to be updated, got %s", resource.ID)
+			}
+			if len(resource.SchemaDefinition) != 1 || resource.SchemaDefinition[0].Name != "id" {
+				t.Fatalf("expected successful resource schema to be enriched")
+			}
+			return nil
+		})
+
+	result := &interfaces.DiscoverResult{}
+	err := dh.enrichTableMetadata(context.Background(), connector, []tableDiscoverItem{
+		{resource: inaccessible, tableMeta: &interfaces.TableMeta{Name: "no_access", Schema: "public"}},
+		{resource: accessible, tableMeta: &interfaces.TableMeta{Name: "erp_material", Schema: "public"}},
+	}, result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.FailedCount != 1 {
+		t.Fatalf("expected failed count 1, got %d", result.FailedCount)
 	}
 }
 
@@ -157,4 +219,68 @@ func TestSourceSnapshotHashChangesForSourceMetadata(t *testing.T) {
 	if got := sourceSnapshotHash(resource); got == before {
 		t.Fatalf("expected source snapshot hash to change when source metadata changes")
 	}
+}
+
+type fakeTableConnector struct {
+	metaErrByName map[string]error
+	columnsByName map[string][]interfaces.TableColumnMeta
+}
+
+func (c *fakeTableConnector) GetType() string { return "fake" }
+
+func (c *fakeTableConnector) GetName() string { return "fake" }
+
+func (c *fakeTableConnector) GetMode() string { return "local" }
+
+func (c *fakeTableConnector) GetCategory() string { return interfaces.ConnectorCategoryTable }
+
+func (c *fakeTableConnector) GetEnabled() bool { return true }
+
+func (c *fakeTableConnector) SetEnabled(bool) {}
+
+func (c *fakeTableConnector) GetSensitiveFields() []string { return nil }
+
+func (c *fakeTableConnector) GetFieldConfig() map[string]interfaces.ConnectorFieldConfig {
+	return nil
+}
+
+func (c *fakeTableConnector) New(interfaces.ConnectorConfig) (connectors.Connector, error) {
+	return c, nil
+}
+
+func (c *fakeTableConnector) Connect(context.Context) error { return nil }
+
+func (c *fakeTableConnector) Ping(context.Context) error { return nil }
+
+func (c *fakeTableConnector) Close(context.Context) error { return nil }
+
+func (c *fakeTableConnector) TestConnection(context.Context) error { return nil }
+
+func (c *fakeTableConnector) GetMetadata(context.Context) (map[string]any, error) {
+	return nil, nil
+}
+
+func (c *fakeTableConnector) MapType(nativeType string) string {
+	return nativeType
+}
+
+func (c *fakeTableConnector) ListDatabases(context.Context) ([]string, error) {
+	return nil, nil
+}
+
+func (c *fakeTableConnector) ListTables(context.Context) ([]*interfaces.TableMeta, error) {
+	return nil, nil
+}
+
+func (c *fakeTableConnector) GetTableMeta(_ context.Context, table *interfaces.TableMeta) error {
+	if err := c.metaErrByName[table.Name]; err != nil {
+		return err
+	}
+	table.Columns = c.columnsByName[table.Name]
+	return nil
+}
+
+func (c *fakeTableConnector) ExecuteQuery(context.Context, *interfaces.Resource,
+	*interfaces.ResourceDataQueryParams) (*interfaces.QueryResult, error) {
+	return nil, nil
 }

@@ -38,7 +38,7 @@ func (c *PostgresqlConnector) ListDatabases(ctx context.Context) ([]string, erro
 	}
 	var out []string
 	for _, s := range all {
-		if _, ok := allow[s]; ok {
+		if _, ok := allow[s]; ok && !SYSTEM_SCHEMAS_MAP[s] {
 			out = append(out, s)
 		}
 	}
@@ -46,13 +46,18 @@ func (c *PostgresqlConnector) ListDatabases(ctx context.Context) ([]string, erro
 }
 
 func (c *PostgresqlConnector) listUserSchemas(ctx context.Context) ([]string, error) {
-	rows, err := c.db.QueryContext(ctx, `
-SELECT nspname
-FROM pg_catalog.pg_namespace
-WHERE nspname NOT IN ('information_schema', 'pg_catalog', 'pg_toast')
-  AND nspname NOT LIKE 'pg\_temp\_%' ESCAPE '\'
-  AND nspname NOT LIKE 'pg\_toast\_temp\_%' ESCAPE '\'
-ORDER BY nspname`)
+	query, args, err := pgSq.Select("nspname").
+		From("pg_catalog.pg_namespace").
+		Where(sq.NotEq{"nspname": SYSTEM_SCHEMAS}).
+		Where(sq.Expr("NOT pg_is_other_temp_schema(oid)")).
+		Where(sq.Expr("oid <> pg_my_temp_schema()")).
+		OrderBy("nspname").
+		ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("failed to build list schemas query: %w", err)
+	}
+
+	rows, err := c.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list schemas: %w", err)
 	}
@@ -66,33 +71,38 @@ ORDER BY nspname`)
 		}
 		schemas = append(schemas, name)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return schemas, nil
 }
 
-// ListTables 列出表与视图；TableMeta.Database 填 schema 名。
+// ListTables 列出表、视图和物化视图；TableMeta.Database 填 database 名，Schema 填 schema 名。
 func (c *PostgresqlConnector) ListTables(ctx context.Context) ([]*interfaces.TableMeta, error) {
 	if err := c.Connect(ctx); err != nil {
 		return nil, err
 	}
 
 	builder := pgSq.Select(
-		"t.table_schema",
-		"t.table_name",
-		"t.table_type",
+		"n.nspname AS table_schema",
+		"c.relname AS table_name",
+		"c.relkind::text AS relkind",
 		"COALESCE(obj_description(c.oid, 'pg_class'), '') AS description",
-	).From("information_schema.tables t").
-		Join("pg_catalog.pg_class c ON c.relname = t.table_name AND c.relnamespace = (SELECT oid FROM pg_catalog.pg_namespace WHERE nspname = t.table_schema)").
-		Where(sq.Eq{"t.table_catalog": c.currentCatalogName()}).
-		Where(sq.NotEq{"t.table_schema": []string{"information_schema", "pg_catalog"}}).
-		Where(sq.Expr("table_schema NOT LIKE ?", "pg\\_temp\\_%")).
-		Where(sq.Expr("table_schema NOT LIKE ?", "pg\\_toast\\_temp\\_%")).
-		Where(sq.Eq{"table_type": []string{"BASE TABLE", "VIEW", "FOREIGN TABLE", "MATERIALIZED VIEW"}})
+	).From("pg_catalog.pg_class c").
+		Join("pg_catalog.pg_namespace n ON n.oid = c.relnamespace").
+		// relkind: r=ordinary table, p=partitioned table, v=view, m=materialized view, f=foreign table.
+		Where(sq.Eq{"c.relkind": []string{"r", "p", "v", "m", "f"}}).
+		// relpersistence: p=permanent, u=unlogged, t=temporary.
+		Where(sq.NotEq{"c.relpersistence": "t"}).
+		Where(sq.Expr("has_table_privilege(c.oid, ?)", "SELECT")).
+		Where(sq.NotEq{"n.nspname": SYSTEM_SCHEMAS}).
+		Where(sq.Expr("NOT pg_is_other_temp_schema(n.oid)"))
 
 	if len(c.config.Schemas) > 0 {
-		builder = builder.Where(sq.Eq{"t.table_schema": c.config.Schemas})
+		builder = builder.Where(sq.Eq{"n.nspname": c.config.Schemas})
 	}
 
-	query, args, err := builder.OrderBy("t.table_schema", "table_name").ToSql()
+	query, args, err := builder.OrderBy("n.nspname", "c.relname").ToSql()
 	if err != nil {
 		return nil, fmt.Errorf("failed to build list tables query: %w", err)
 	}
@@ -105,34 +115,34 @@ func (c *PostgresqlConnector) ListTables(ctx context.Context) ([]*interfaces.Tab
 
 	var tables []*interfaces.TableMeta
 	for rows.Next() {
-		var schema, name, tableType, description string
-		if err := rows.Scan(&schema, &name, &tableType, &description); err != nil {
+		var schema, name, relKind, description string
+		if err := rows.Scan(&schema, &name, &relKind, &description); err != nil {
 			return nil, fmt.Errorf("failed to scan table info: %w", err)
-		}
-		tt := "table"
-		switch tableType {
-		case "VIEW":
-			tt = "view"
-		case "MATERIALIZED VIEW":
-			tt = "materialized_view"
-		case "FOREIGN TABLE":
-			tt = "table"
 		}
 		tables = append(tables, &interfaces.TableMeta{
 			Name:        name,
-			TableType:   tt,
+			TableType:   postgresqlTableTypeFromRelkind(relKind),
 			Database:    c.config.Database,
 			Schema:      schema,
 			Description: description,
 			Properties:  map[string]any{},
 		})
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate table info: %w", err)
+	}
 	return tables, nil
 }
 
-func (c *PostgresqlConnector) currentCatalogName() string {
-	// 连接已限定 database；current_database() 与 information_schema.tables.table_catalog 一致
-	return c.config.Database
+func postgresqlTableTypeFromRelkind(relKind string) string {
+	switch relKind {
+	case "v":
+		return "view"
+	case "m":
+		return "materialized_view"
+	default:
+		return "table"
+	}
 }
 
 // GetTableMeta 填充表元数据。
@@ -203,14 +213,45 @@ WHERE n.nspname = $1 AND c.relname = $2 AND c.relkind IN ('r', 'v', 'm', 'p', 'f
 
 func (c *PostgresqlConnector) fetchColumns(ctx context.Context, table *interfaces.TableMeta) error {
 	query := `
-SELECT column_name, data_type, udt_name, is_nullable, column_default,
-       character_maximum_length, numeric_precision, numeric_scale, datetime_precision,
-       collation_name, ordinal_position
-FROM information_schema.columns
-WHERE table_catalog = $1 AND table_schema = $2 AND table_name = $3
-ORDER BY ordinal_position`
+SELECT a.attname AS column_name,
+       format_type(a.atttypid, a.atttypmod) AS data_type,
+       t.typname AS udt_name,
+       CASE WHEN a.attnotnull THEN 'NO' ELSE 'YES' END AS is_nullable,
+       COALESCE(pg_get_expr(ad.adbin, ad.adrelid), '') AS column_default,
+       CASE
+           WHEN a.atttypmod > 0 AND t.typname IN ('bpchar', 'varchar') THEN a.atttypmod - 4
+           ELSE NULL
+       END AS character_maximum_length,
+       CASE
+           WHEN t.typname = 'numeric' AND a.atttypmod >= 0 THEN ((a.atttypmod - 4) >> 16) & 65535
+           WHEN t.typname IN ('int2', 'int4', 'int8') THEN NULL
+           WHEN t.typname IN ('float4', 'float8') THEN NULL
+           ELSE NULL
+       END AS numeric_precision,
+       CASE
+           WHEN t.typname = 'numeric' AND a.atttypmod >= 0 THEN (a.atttypmod - 4) & 65535
+           ELSE NULL
+       END AS numeric_scale,
+       CASE
+           WHEN t.typname IN ('time', 'timetz', 'timestamp', 'timestamptz') AND a.atttypmod >= 0 THEN a.atttypmod
+           ELSE NULL
+       END AS datetime_precision,
+       COALESCE(coll.collname, '') AS collation_name,
+       a.attnum AS ordinal_position,
+       COALESCE(col_description(a.attrelid, a.attnum), '') AS description
+FROM pg_catalog.pg_class c
+JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid
+JOIN pg_catalog.pg_type t ON t.oid = a.atttypid
+LEFT JOIN pg_catalog.pg_attrdef ad ON ad.adrelid = a.attrelid AND ad.adnum = a.attnum
+LEFT JOIN pg_catalog.pg_collation coll ON coll.oid = a.attcollation
+WHERE n.nspname = $1 AND c.relname = $2
+  AND c.relkind IN ('r', 'p', 'v', 'm', 'f')
+  AND a.attnum > 0
+  AND NOT a.attisdropped
+ORDER BY a.attnum`
 
-	rows, err := c.db.QueryContext(ctx, query, c.config.Database, table.Schema, table.Name)
+	rows, err := c.db.QueryContext(ctx, query, table.Schema, table.Name)
 	if err != nil {
 		return err
 	}
@@ -224,12 +265,13 @@ ORDER BY ordinal_position`
 	var columns []interfaces.TableColumnMeta
 	for rows.Next() {
 		var name, dataType, udtName, isNullable sql.NullString
-		var colDefault, collation sql.NullString
+		var colDefault, collation, description sql.NullString
 		var charMax, numPrec, numScale, dtPrec, ord sql.NullInt64
 
 		if err := rows.Scan(
 			&name, &dataType, &udtName, &isNullable, &colDefault,
 			&charMax, &numPrec, &numScale, &dtPrec, &collation, &ord,
+			&description,
 		); err != nil {
 			return err
 		}
@@ -247,7 +289,7 @@ ORDER BY ordinal_position`
 		columns = append(columns, interfaces.TableColumnMeta{
 			Name:        name.String,
 			Type:        orig,
-			Description: "",
+			Description: description.String,
 
 			Nullable:          strings.EqualFold(isNullable.String, "YES"),
 			DefaultValue:      colDefault.String,
@@ -259,6 +301,9 @@ ORDER BY ordinal_position`
 			OrdinalPosition:   int(ord.Int64),
 			ColumnKey:         colKey,
 		})
+	}
+	if err := rows.Err(); err != nil {
+		return err
 	}
 
 	table.Columns = columns
@@ -297,6 +342,9 @@ ORDER BY kcu.ordinal_position`
 			return nil, err
 		}
 		out[col] = true
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	return out, nil
 }
@@ -342,6 +390,9 @@ ORDER BY i.relname, k.n`
 				Primary: primary,
 			}
 		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
 	}
 
 	var indices []interfaces.TableIndexMeta
@@ -396,6 +447,9 @@ ORDER BY c.conname, u1.ord1`
 			}
 		}
 	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
 
 	var fks []interfaces.TableForeignKeyMeta
 	for _, fk := range fkMap {
@@ -432,6 +486,9 @@ WHERE name IN ('server_version','server_version_num','TimeZone','max_connections
 			return nil, err
 		}
 		meta[k] = v
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
 	meta["cluster_mode"] = "standalone"
