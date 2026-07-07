@@ -9,7 +9,7 @@ package common
 import (
 	"sync"
 
-	"github.com/kweaver-ai/kweaver-go-lib/rest"
+	"github.com/openbkn-ai/bkn-comm-go/rest"
 )
 
 var (

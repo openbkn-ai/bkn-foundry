@@ -15,7 +15,7 @@ import (
 	"strings"
 
 	"github.com/bytedance/sonic"
-	"github.com/kweaver-ai/kweaver-go-lib/logger"
+	"github.com/openbkn-ai/bkn-comm-go/logger"
 	"github.com/opensearch-project/opensearch-go/v2/opensearchapi"
 
 	"vega-backend/interfaces"

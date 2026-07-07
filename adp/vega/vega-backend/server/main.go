@@ -16,10 +16,10 @@ import (
 	_ "unicode/utf8"
 
 	"github.com/gin-gonic/gin"
-	libdb "github.com/kweaver-ai/kweaver-go-lib/db"
-	"github.com/kweaver-ai/kweaver-go-lib/logger"
-	"github.com/kweaver-ai/kweaver-go-lib/otel"
-	"github.com/kweaver-ai/kweaver-go-lib/rest"
+	libdb "github.com/openbkn-ai/bkn-comm-go/db"
+	"github.com/openbkn-ai/bkn-comm-go/logger"
+	"github.com/openbkn-ai/bkn-comm-go/otel"
+	"github.com/openbkn-ai/bkn-comm-go/rest"
 	_ "go.uber.org/automaxprocs"
 
 	"vega-backend/common"

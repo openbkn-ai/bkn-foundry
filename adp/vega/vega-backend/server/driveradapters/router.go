@@ -14,11 +14,11 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	libCommon "github.com/kweaver-ai/kweaver-go-lib/common"
-	"github.com/kweaver-ai/kweaver-go-lib/hydra"
-	"github.com/kweaver-ai/kweaver-go-lib/logger"
-	"github.com/kweaver-ai/kweaver-go-lib/middleware"
-	"github.com/kweaver-ai/kweaver-go-lib/rest"
+	libCommon "github.com/openbkn-ai/bkn-comm-go/common"
+	"github.com/openbkn-ai/bkn-comm-go/hydra"
+	"github.com/openbkn-ai/bkn-comm-go/logger"
+	"github.com/openbkn-ai/bkn-comm-go/middleware"
+	"github.com/openbkn-ai/bkn-comm-go/rest"
 
 	"vega-backend/common"
 	verrors "vega-backend/errors"

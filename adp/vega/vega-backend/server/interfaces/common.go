@@ -6,7 +6,7 @@
 
 package interfaces
 
-import "github.com/kweaver-ai/kweaver-go-lib/audit"
+import "github.com/openbkn-ai/bkn-comm-go/audit"
 
 type contextKey string // 自定义专属的key类型
 

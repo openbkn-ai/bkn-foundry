@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/hibiken/asynq"
-	"github.com/kweaver-ai/kweaver-go-lib/rest"
+	"github.com/openbkn-ai/bkn-comm-go/rest"
 	"go.uber.org/mock/gomock"
 
 	"vega-backend/interfaces"
