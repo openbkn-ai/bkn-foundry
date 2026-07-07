@@ -309,7 +309,7 @@ func (eh *embeddingHandler) executeEmbedding(ctx context.Context, resource *inte
 
 				// 索引名落账持久失败则不提交哨兵，整个任务交给 asynq 重试：
 				// 重启后从最后提交位点续读，哨兵会重新投递
-				if err := updateResourceIndexName(ctx, resource, eh.resAccess, eh.ds, indexName); err != nil {
+				if err := updateResourceIndexName(ctx, resource, eh.resAccess, indexName); err != nil {
 					logger.Errorf("Failed to update resource index name: %v", err)
 					return fmt.Errorf("update resource index name: %w", err)
 				}
