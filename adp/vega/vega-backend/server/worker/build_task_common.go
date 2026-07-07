@@ -76,7 +76,7 @@ func updateResourceIndexName(ctx context.Context, resource *interfaces.Resource,
 // createManagedLocalIndex creates a build-task local index through LocalIndexManager.
 func createManagedLocalIndex(ctx context.Context, lim interfaces.LocalIndexManager, buildTask *interfaces.BuildTask, resource *interfaces.Resource) error {
 	newResource := buildLocalIndexResource(buildTask, resource)
-	exist, err := lim.IndexExists(ctx, newResource.ID)
+	exist, err := lim.CheckExist(ctx, newResource.ID)
 	if err != nil {
 		return fmt.Errorf("check local index exist failed: %w", err)
 	}

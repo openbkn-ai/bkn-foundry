@@ -141,19 +141,19 @@ func (mr *MockLocalIndexManagerMockRecorder) GetDocument(ctx, indexName, docID a
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDocument", reflect.TypeOf((*MockLocalIndexManager)(nil).GetDocument), ctx, indexName, docID)
 }
 
-// IndexExists mocks base method.
-func (m *MockLocalIndexManager) IndexExists(ctx context.Context, indexName string) (bool, error) {
+// CheckExist mocks base method.
+func (m *MockLocalIndexManager) CheckExist(ctx context.Context, indexName string) (bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "IndexExists", ctx, indexName)
+	ret := m.ctrl.Call(m, "CheckExist", ctx, indexName)
 	ret0, _ := ret[0].(bool)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// IndexExists indicates an expected call of IndexExists.
-func (mr *MockLocalIndexManagerMockRecorder) IndexExists(ctx, indexName any) *gomock.Call {
+// CheckExist indicates an expected call of CheckExist.
+func (mr *MockLocalIndexManagerMockRecorder) CheckExist(ctx, indexName any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IndexExists", reflect.TypeOf((*MockLocalIndexManager)(nil).IndexExists), ctx, indexName)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckExist", reflect.TypeOf((*MockLocalIndexManager)(nil).CheckExist), ctx, indexName)
 }
 
 // ListDocuments mocks base method.

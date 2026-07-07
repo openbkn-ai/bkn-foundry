@@ -159,7 +159,7 @@ func (bh *batchBuildHandler) executeBuild(ctx context.Context, resource *interfa
 	// 直接跳过，改动后的 embedding/fulltext 字段永远不会写进 mapping。先 drop 再重建。
 	if executeType == interfaces.BuildTaskExecuteTypeFull {
 		dropName := getIndexName(resource.ID, buildTaskInfo.ID)
-		exist, err := bh.lim.IndexExists(ctx, dropName)
+		exist, err := bh.lim.CheckExist(ctx, dropName)
 		if err != nil {
 			return fmt.Errorf("check index exist for full rebuild failed: %w", err)
 		}
