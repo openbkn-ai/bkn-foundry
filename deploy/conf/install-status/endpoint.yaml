@@ -100,7 +100,7 @@ spec:
             - name: live
               mountPath: /live
         - name: nginx
-          image: nginx:1.27-alpine
+          image: swr.cn-east-3.myhuaweicloud.com/openbkn-ai/library/nginx:1.27-alpine
           ports:
             - containerPort: 80
           readinessProbe:

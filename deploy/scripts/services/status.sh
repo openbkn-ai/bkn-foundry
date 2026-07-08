@@ -27,7 +27,7 @@ INSTALL_STATUS_INDEX_HTML="${INSTALL_STATUS_DIR}/index.html"
 # alpine/k8s (which the docker.1panel.live mirror 403s) and bitnami/kubectl (whose
 # docker.io tags are being pruned post-deprecation), is reliably served by the
 # install-time --dockerhub-mirror on CN/restricted nets. Override via env.
-INSTALL_STATUS_KUBECTL_IMAGE="${INSTALL_STATUS_KUBECTL_IMAGE:-portainer/kubectl-shell:latest}"
+INSTALL_STATUS_KUBECTL_IMAGE="${INSTALL_STATUS_KUBECTL_IMAGE:-swr.cn-east-3.myhuaweicloud.com/openbkn-ai/portainer/kubectl-shell:latest}"
 
 # Detect the ingress-nginx IngressClass to bind the endpoint to.
 _status_detect_ingress_class() {
