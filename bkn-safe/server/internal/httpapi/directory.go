@@ -8,6 +8,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -193,7 +194,15 @@ func registerAdminReads(g *gin.RouterGroup, dir *directory.Service) {
 			c.JSON(http.StatusOK, gin.H{"users": []*directory.UserSummary{u}, "total": 1})
 			return
 		}
-		users, total, err := dir.ListUsers(ctx, c.Query("search"), atoiDefault(c.Query("offset"), 0), atoiDefault(c.Query("limit"), 0))
+		users, total, err := dir.ListUsers(ctx, directory.UserListFilter{
+			Search:         c.Query("search"),
+			Enabled:        parseOptionalBool(c.Query("enabled")),
+			DepartmentID:   c.Query("department_id"),
+			IncludeSubtree: c.Query("include_subtree") == "true",
+			RoleID:         c.Query("role_id"),
+			Offset:         atoiDefault(c.Query("offset"), 0),
+			Limit:          atoiDefault(c.Query("limit"), 0),
+		})
 		if err != nil {
 			serverError(c, err)
 			return
@@ -221,7 +230,7 @@ func registerAdminReads(g *gin.RouterGroup, dir *directory.Service) {
 	g.GET("/departments", func(c *gin.Context) {
 		ctx := c.Request.Context()
 		if _, scoped := c.GetQuery("parent_id"); scoped {
-			deps, err := dir.ListDepartments(ctx, c.Query("parent_id"))
+			deps, err := dir.ListDepartmentsWithCounts(ctx, c.Query("parent_id"))
 			if err != nil {
 				serverError(c, err)
 				return
@@ -239,7 +248,7 @@ func registerAdminReads(g *gin.RouterGroup, dir *directory.Service) {
 
 	// GET /departments/:id — single department detail.
 	g.GET("/departments/:id", func(c *gin.Context) {
-		d, err := dir.GetDepartment(c.Request.Context(), c.Param("id"))
+		d, err := dir.GetDepartmentDetail(c.Request.Context(), c.Param("id"))
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "department not found"})
 			return
@@ -274,6 +283,20 @@ func atoiDefault(s string, def int) int {
 	return n
 }
 
+// parseOptionalBool parses "true"/"false"; any other value returns nil.
+func parseOptionalBool(s string) *bool {
+	switch s {
+	case "true":
+		v := true
+		return &v
+	case "false":
+		v := false
+		return &v
+	default:
+		return nil
+	}
+}
+
 // registerDeptAdmin mounts the department write surface (create/update/delete)
 // under the admin group. Delete refuses a non-empty department (409).
 func registerDeptAdmin(g *gin.RouterGroup, dir *directory.Service) {
@@ -281,10 +304,14 @@ func registerDeptAdmin(g *gin.RouterGroup, dir *directory.Service) {
 	// the body omits it. parent_id "" makes it a root. -> { id }
 	g.POST("/departments", func(c *gin.Context) {
 		var req struct {
-			ID       string `json:"id"`
-			Name     string `json:"name" binding:"required"`
-			ParentID string `json:"parent_id"`
-			Type     string `json:"type"`
+			ID        string `json:"id"`
+			Name      string `json:"name" binding:"required"`
+			ParentID  string `json:"parent_id"`
+			Type      string `json:"type"`
+			ManagerID string `json:"manager_id"`
+			Code      string `json:"code"`
+			Email     string `json:"email"`
+			Remark    string `json:"remark"`
 		}
 		if !bind(c, &req) {
 			return
@@ -292,7 +319,21 @@ func registerDeptAdmin(g *gin.RouterGroup, dir *directory.Service) {
 		if req.ID == "" {
 			req.ID = auth.NewID()
 		}
-		d := &model.Department{ID: req.ID, Name: req.Name, ParentID: req.ParentID, Type: req.Type}
+		writeIn := directory.DepartmentWriteInput{
+			Name:      req.Name,
+			ParentID:  req.ParentID,
+			Type:      req.Type,
+			ManagerID: req.ManagerID,
+			Code:      req.Code,
+			Email:     req.Email,
+			Remark:    req.Remark,
+		}
+		if err := dir.ValidateDepartmentWrite(c.Request.Context(), writeIn, ""); err != nil {
+			writeDepartmentValidationError(c, err)
+			return
+		}
+		d := &model.Department{ID: req.ID}
+		directory.ApplyDepartmentWrite(d, writeIn)
 		if err := dir.CreateDepartment(c.Request.Context(), d); err != nil {
 			serverError(c, err)
 			return
@@ -300,32 +341,33 @@ func registerDeptAdmin(g *gin.RouterGroup, dir *directory.Service) {
 		c.JSON(http.StatusCreated, gin.H{"id": d.ID})
 	})
 
-	// PUT /departments/:id — update mutable fields (name/parent_id/type). Only
-	// fields present in the body are changed.
+	// PUT /departments/:id — update mutable fields. Only fields present in the
+	// body are changed.
 	g.PUT("/departments/:id", func(c *gin.Context) {
-		var req struct {
-			Name     *string `json:"name"`
-			ParentID *string `json:"parent_id"`
-			Type     *string `json:"type"`
-		}
+		var req directory.DepartmentPatchRequest
 		if !bind(c, &req) {
 			return
 		}
-		fields := map[string]any{}
-		if req.Name != nil {
-			fields["name"] = *req.Name
-		}
-		if req.ParentID != nil {
-			fields["parent_id"] = *req.ParentID
-		}
-		if req.Type != nil {
-			fields["type"] = *req.Type
-		}
+		fields := directory.PatchDepartmentFields(req)
 		if len(fields) == 0 {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "no updatable fields provided"})
 			return
 		}
-		err := dir.UpdateDepartment(c.Request.Context(), c.Param("id"), fields)
+		id := c.Param("id")
+		current, err := dir.GetDepartment(c.Request.Context(), id)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "department not found"})
+			return
+		}
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		if err := dir.ValidateDepartmentPatch(c.Request.Context(), id, *current, fields); err != nil {
+			writeDepartmentValidationError(c, err)
+			return
+		}
+		err = dir.UpdateDepartment(c.Request.Context(), id, fields)
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "department not found"})
 			return
@@ -403,4 +445,19 @@ func registerDeptAdmin(g *gin.RouterGroup, dir *directory.Service) {
 		}
 		c.Status(http.StatusNoContent)
 	})
+}
+
+func writeDepartmentValidationError(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, directory.ErrUnknownUser):
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	case errors.Is(err, directory.ErrDuplicateDepartmentCode):
+		c.JSON(http.StatusConflict, gin.H{"error": "department code already exists"})
+	default:
+		if strings.Contains(err.Error(), "invalid department email") {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		serverError(c, err)
+	}
 }

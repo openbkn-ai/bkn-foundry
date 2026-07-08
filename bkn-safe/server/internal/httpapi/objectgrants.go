@@ -6,6 +6,7 @@ package httpapi
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -31,13 +32,18 @@ import (
 // dead policy that never matches at enforce time (see RolePermissions path for
 // the role-based alternative).
 func registerObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
-	// GET /object-grants?accessor_id=&resource_type=&resource_id=
-	// -> { entries:[ { accessor_id, resource{type,id}, operations:[...] } ] }
-	// All three query params are optional filters. Role-subject and public
-	// grants are excluded — this surface lists user object grants only.
+	// GET /object-grants?accessor_id=&resource_type=&resource_id=&search=&offset=&limit=
+	// Aliases: obj_type=resource_type, obj_id=resource_id.
+	// -> { entries:[...], total, summary?:{ grants, objects, grantees } }
+	// limit omitted = return all matches (backward compatible). limit present:
+	// defaults to 50, capped at 500. search matches user account/name or resource id.
 	g.GET("/object-grants", func(c *gin.Context) {
-		grants, err := e.ListObjectGrants(
-			c.Query("accessor_id"), c.Query("resource_type"), c.Query("resource_id"))
+		accessorID := c.Query("accessor_id")
+		resourceType := objectGrantQueryParam(c, "resource_type", "obj_type")
+		resourceID := objectGrantQueryParam(c, "resource_id", "obj_id")
+		search := strings.TrimSpace(c.Query("search"))
+
+		grants, err := e.ListObjectGrants(accessorID, resourceType, resourceID)
 		if err != nil {
 			serverError(c, err)
 			return
@@ -47,18 +53,77 @@ func registerObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 			serverError(c, err)
 			return
 		}
+
+		var userSearch map[string]bool
+		if search != "" {
+			userSearch, err = userIDsMatchingSearch(c, db, search)
+			if err != nil {
+				serverError(c, err)
+				return
+			}
+		}
+		searchLower := strings.ToLower(search)
+
 		entries := make([]gin.H, 0, len(grants))
+		objectIDs := make(map[string]bool)
+		granteeIDs := make(map[string]bool)
 		for _, gr := range grants {
 			if roleIDs[gr.AccessorID] || gr.AccessorID == authz.PublicAccessorID {
 				continue // not a user object grant
+			}
+			if search != "" {
+				if !userSearch[gr.AccessorID] && !strings.Contains(strings.ToLower(gr.ResourceID), searchLower) {
+					continue
+				}
 			}
 			entries = append(entries, gin.H{
 				"accessor_id": gr.AccessorID,
 				"resource":    gin.H{"type": gr.ResourceType, "id": gr.ResourceID},
 				"operations":  gr.Operations,
 			})
+			objectIDs[gr.ResourceType+":"+gr.ResourceID] = true
+			granteeIDs[gr.AccessorID] = true
 		}
-		c.JSON(http.StatusOK, gin.H{"entries": entries})
+
+		total := len(entries)
+		resp := gin.H{
+			"entries": entries,
+			"total":   total,
+		}
+		if c.Query("include_summary") == "true" {
+			resp["summary"] = gin.H{
+				"grants":   total,
+				"objects":  len(objectIDs),
+				"grantees": len(granteeIDs),
+			}
+		}
+
+		_, limitSet := c.GetQuery("limit")
+		if limitSet {
+			offset := atoiDefault(c.Query("offset"), 0)
+			limit := atoiDefault(c.Query("limit"), 0)
+			if limit <= 0 {
+				limit = 50
+			}
+			if limit > 500 {
+				limit = 500
+			}
+			if offset < 0 {
+				offset = 0
+			}
+			if offset >= len(entries) {
+				entries = []gin.H{}
+			} else {
+				end := offset + limit
+				if end > len(entries) {
+					end = len(entries)
+				}
+				entries = entries[offset:end]
+			}
+			resp["entries"] = entries
+		}
+
+		c.JSON(http.StatusOK, resp)
 	})
 
 	// POST /object-grants — set (replace) a user's exact op set on one concrete
@@ -157,6 +222,29 @@ func isUserAccessor(c *gin.Context, db *gorm.DB, id string) (bool, error) {
 func roleIDSet(c *gin.Context, db *gorm.DB) (map[string]bool, error) {
 	var ids []string
 	if err := db.WithContext(c.Request.Context()).Model(&model.Role{}).
+		Pluck("id", &ids).Error; err != nil {
+		return nil, err
+	}
+	set := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		set[id] = true
+	}
+	return set, nil
+}
+
+func objectGrantQueryParam(c *gin.Context, primary, alias string) string {
+	if v := c.Query(primary); v != "" {
+		return v
+	}
+	return c.Query(alias)
+}
+
+// userIDsMatchingSearch returns user ids whose account or name matches search.
+func userIDsMatchingSearch(c *gin.Context, db *gorm.DB, search string) (map[string]bool, error) {
+	var ids []string
+	like := "%" + search + "%"
+	if err := db.WithContext(c.Request.Context()).Model(&model.User{}).
+		Where("account LIKE ? OR name LIKE ?", like, like).
 		Pluck("id", &ids).Error; err != nil {
 		return nil, err
 	}

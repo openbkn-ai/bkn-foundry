@@ -11,6 +11,7 @@ import (
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 
+	"bkn-safe/internal/authz"
 	"bkn-safe/internal/database"
 	"bkn-safe/internal/model"
 )
@@ -23,6 +24,9 @@ func newSvc(t *testing.T) (*Service, *gorm.DB) {
 	}
 	if err := database.Migrate(db); err != nil {
 		t.Fatalf("migrate: %v", err)
+	}
+	if _, err := authz.New(db); err != nil {
+		t.Fatalf("authz: %v", err)
 	}
 	return New(db), db
 }

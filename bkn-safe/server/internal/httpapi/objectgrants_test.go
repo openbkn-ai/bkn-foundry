@@ -38,17 +38,37 @@ type ogEntry struct {
 
 func listObjectGrants(t *testing.T, r *gin.Engine, query string) []ogEntry {
 	t.Helper()
+	body := listObjectGrantsBody(t, r, query)
+	return body.Entries
+}
+
+func listObjectGrantsBody(t *testing.T, r *gin.Engine, query string) struct {
+	Entries []ogEntry `json:"entries"`
+	Total   int       `json:"total"`
+	Summary *struct {
+		Grants   int `json:"grants"`
+		Objects  int `json:"objects"`
+		Grantees int `json:"grantees"`
+	} `json:"summary"`
+} {
+	t.Helper()
 	w := adminReq(t, r, http.MethodGet, "/api/safe/v1/admin/object-grants"+query, nil)
 	if w.Code != http.StatusOK {
 		t.Fatalf("list grants: want 200, got %d (%s)", w.Code, w.Body.String())
 	}
 	var body struct {
 		Entries []ogEntry `json:"entries"`
+		Total   int       `json:"total"`
+		Summary *struct {
+			Grants   int `json:"grants"`
+			Objects  int `json:"objects"`
+			Grantees int `json:"grantees"`
+		} `json:"summary"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode grants: %v", err)
 	}
-	return body.Entries
+	return body
 }
 
 func TestObjectGrantsSetListRevoke(t *testing.T) {
@@ -172,5 +192,56 @@ func TestObjectGrantsExcludesRolesAndWildcards(t *testing.T) {
 	entries := listObjectGrants(t, r, "")
 	if len(entries) != 1 || entries[0].AccessorID != "u-1" || entries[0].Resource.ID != "c1" {
 		t.Fatalf("listing must contain only the user concrete grant, got %+v", entries)
+	}
+}
+
+func TestObjectGrantsPaginationAndSearch(t *testing.T) {
+	r, _, db, users := newAdminServer(t)
+	ctx := t.Context()
+	for _, u := range []model.User{
+		{ID: "u-1", Account: "alice", Name: "Alice", Enabled: true},
+		{ID: "u-2", Account: "bob", Name: "Bob", Enabled: true},
+	} {
+		if err := users.CreateLocalUser(ctx, &u, "pw-init0"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	seedCatalogOps(t, db, "catalog", "view_detail", "modify")
+
+	grant := func(accessorID, id string) {
+		t.Helper()
+		w := adminReq(t, r, http.MethodPost, "/api/safe/v1/admin/object-grants", map[string]any{
+			"accessor_id": accessorID,
+			"resource":    map[string]any{"type": "catalog", "id": id},
+			"operations":  []string{"view_detail"},
+		})
+		if w.Code != http.StatusNoContent {
+			t.Fatalf("grant %s/%s: want 204, got %d (%s)", accessorID, id, w.Code, w.Body.String())
+		}
+	}
+	grant("u-1", "c1")
+	grant("u-1", "c2")
+	grant("u-2", "c3")
+
+	body := listObjectGrantsBody(t, r, "?limit=1&offset=0&include_summary=true")
+	if body.Total != 3 || len(body.Entries) != 1 {
+		t.Fatalf("pagination page 1: total=%d entries=%d", body.Total, len(body.Entries))
+	}
+	if body.Summary == nil || body.Summary.Grants != 3 || body.Summary.Objects != 3 || body.Summary.Grantees != 2 {
+		t.Fatalf("unexpected summary: %+v", body.Summary)
+	}
+	body = listObjectGrantsBody(t, r, "?limit=1&offset=2")
+	if body.Total != 3 || len(body.Entries) != 1 {
+		t.Fatalf("pagination page 3: total=%d entries=%d", body.Total, len(body.Entries))
+	}
+
+	if got := listObjectGrants(t, r, "?search=alice"); len(got) != 2 {
+		t.Fatalf("search by user: %+v", got)
+	}
+	if got := listObjectGrants(t, r, "?search=c3"); len(got) != 1 || got[0].Resource.ID != "c3" {
+		t.Fatalf("search by resource id: %+v", got)
+	}
+	if got := listObjectGrants(t, r, "?obj_type=catalog&obj_id=c1"); len(got) != 1 {
+		t.Fatalf("obj_* aliases: %+v", got)
 	}
 }

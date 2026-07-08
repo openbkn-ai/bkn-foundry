@@ -18,20 +18,34 @@
 
 ### 1. 列出授权（总览页 / 按对象 / 按成员）
 ```
-GET /api/safe/v1/admin/object-grants?accessor_id=&resource_type=&resource_id=
+GET /api/safe/v1/admin/object-grants?accessor_id=&resource_type=&resource_id=&search=&offset=&limit=&include_summary=
 ```
-三个 query 都是可选过滤器（都不传=全量）。
-- 总览页：不带参
-- 「按对象」聚合：前端拿全量自己按 resource 分组，或带 `resource_type`+`resource_id`
-- 「按成员」聚合：带 `accessor_id`
+别名：`obj_type` = `resource_type`，`obj_id` = `resource_id`。
+
+| 参数 | 说明 |
+|---|---|
+| `accessor_id` | 按被授权用户精确过滤 |
+| `resource_type` / `obj_type` | 按对象类型过滤 |
+| `resource_id` / `obj_id` | 按对象实例 id 过滤（抽屉管理单对象时用这个） |
+| `search` | 匹配用户 account/name，或 resource id 子串 |
+| `offset` / `limit` | 分页；**仅当传了 `limit` 时生效**（默认 50，上限 500） |
+| `include_summary=true` | 额外返回 `{ grants, objects, grantees }` 聚合统计 |
+
+- 总览页（表格）：`limit`+`offset`+`search`+`resource_type`
+- 「按对象 / 按成员」分组视图：带筛选但不传 `limit`（拿全量匹配结果后前端分组）
+- 单对象抽屉：`resource_type`+`resource_id`
 
 响应：
 ```json
-{ "entries": [
-  { "accessor_id": "u-123", "resource": { "type": "catalog", "id": "d7ni..." }, "operations": ["view_detail","modify"] }
-] }
+{
+  "entries": [
+    { "accessor_id": "u-123", "resource": { "type": "catalog", "id": "d7ni..." }, "operations": ["view_detail","modify"] }
+  ],
+  "total": 42,
+  "summary": { "grants": 42, "objects": 15, "grantees": 8 }
+}
 ```
-> 只返回「用户」对「具体实例」的授权；角色授权、类型级 `*` 通配不在此列。
+> `summary` 仅当 `include_summary=true` 时返回。只返回「用户」对「具体实例」的授权；角色授权、类型级 `*` 通配不在此列。
 
 ### 2. 新建 / 修改授权（set 语义，替换该用户在该对象上的整套权限点）
 ```

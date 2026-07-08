@@ -16,6 +16,7 @@ require (
 	github.com/kweaver-ai/proton-rds-sdk-go v1.5.0
 	github.com/ory/hydra-client-go/v2 v2.2.0
 	golang.org/x/crypto v0.48.0
+	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/driver/mysql v1.5.7
 	gorm.io/gorm v1.25.12
 )

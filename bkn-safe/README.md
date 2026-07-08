@@ -59,10 +59,32 @@ cd dev && docker compose up -d --build      # postgres + mariadb + hydra v26.2.0
 `{visitor_type:realname, login_ip, udid:"", account_type:other, client_type:web}`，
 逐字匹配 §1 契约与真实 ISF golden。
 
-## 配置（环境变量）
+## 配置
+
+支持 **YAML 配置文件**、**环境变量**（覆盖文件），以及 `-config` 启动参数。
+
+### 配置文件（本地调试推荐）
+
+```bash
+cd server
+cp config/config.local.yaml.example config/config.local.yaml
+# 编辑 config/config.local.yaml（数据库、Hydra 等；该文件已 gitignore）
+
+go run . -config config/config.local.yaml
+# 或
+set SAFE_CONFIG=config/config.local.yaml   # PowerShell: $env:SAFE_CONFIG=...
+go run .
+```
+
+VS Code / Cursor：打开 `bkn-safe` 根目录，选 **Run and Debug → bkn-safe (config.local.yaml)**（见 `.vscode/launch.json`）。
+
+解析顺序：**默认值 → YAML 文件 → `SAFE_*` 环境变量**（环境变量优先级最高）。
+
+### 环境变量
 
 | 变量 | 默认 | 说明 |
 |---|---|---|
+| `SAFE_CONFIG` | （空） | YAML 配置文件路径（与 `-config` 等效；命令行 `-config` 优先） |
 | `SAFE_HTTP_ADDR` | `:3000` | 监听地址 |
 | `SAFE_DB_TYPE` | `MySQL` | MySQL/DM8/KDB9（都走 proton-rds driver） |
 | `SAFE_DB_HOST/PORT/USER/PASSWORD/NAME` | 127.0.0.1/3306/safe/secret/safe | 数据库 |
