@@ -8,7 +8,7 @@ env:
   language: en_US.UTF-8
   timezone: Asia/Shanghai
 image:
-  registry: swr.cn-east-3.myhuaweicloud.com/kweaver-ai
+  registry: swr.cn-east-3.myhuaweicloud.com/openbkn-ai
 
 accessAddress:
   # Omit host for LAN IP auto-detection on install; set localhost for same-machine only.
