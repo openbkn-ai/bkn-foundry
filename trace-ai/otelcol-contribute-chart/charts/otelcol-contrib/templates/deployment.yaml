@@ -28,7 +28,7 @@ spec:
       serviceAccountName: {{ include "otelcol-contrib.serviceAccountName" . }}
       containers:
         - name: otelcol-contrib
-          image: {{ printf "%s:%s" .Values.image.repository .Values.image.tag | quote }}
+          image: "{{- if .Values.image.registry }}{{ .Values.image.registry }}/{{ end }}{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
             - --config=/conf/collector-config.yaml

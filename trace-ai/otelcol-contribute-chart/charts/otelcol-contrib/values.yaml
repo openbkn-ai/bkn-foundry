@@ -2,14 +2,12 @@ nameOverride: ""
 fullnameOverride: ""
 
 mode: deployment
-
 image:
-  # Self-contained upstream ref. Avoid splitting registry/repository so a
-  # global -f config.yaml override of image.registry does not clobber the
-  # upstream pointer. The chart template renders {{ repository }}:{{ tag }}.
-  repository: docker.io/otel/opentelemetry-collector-contrib
-  pullPolicy: IfNotPresent
+  registry: docker.io
+  repository: otel/opentelemetry-collector-contrib
   tag: "0.148.0"
+  pullPolicy: IfNotPresent
+  name: opentelemetry-collector-contrib
 
 replicaCount: 1
 

@@ -10,7 +10,7 @@ source:
 releases:
   core-data-migrator:
     chart: core-data-migrator
-    version: 0.1.0-main.20260702121318.sha2211e6b
+    version: 0.1.0
     stage: pre
   mf-model-manager:
     chart: mf-model-manager
@@ -61,4 +61,7 @@ releases:
   # bkn-safe's bundledDeps provides hydra to avoid a double deploy.)
   bkn-safe:
     chart: bkn-safe
-    version: 0.1.0-main.shac3c28a2
+    version: 0.1.0
+  bkn-studio:
+    chart: bkn-studio
+    version: 0.1.0
