@@ -17,14 +17,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gin-gonic/gin"
+	jsoniter "github.com/json-iterator/go"
+	"github.com/kweaver-ai/TelemetrySDK-Go/span/v2/field"
 	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-
-	"github.com/gin-gonic/gin"
-	jsoniter "github.com/json-iterator/go"
-	"github.com/kweaver-ai/TelemetrySDK-Go/span/v2/field"
 
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/errors"

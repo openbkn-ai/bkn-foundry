@@ -10,18 +10,18 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/gin-gonic/gin"
+	jsoniter "github.com/json-iterator/go"
 	"github.com/kweaver-ai/TelemetrySDK-Go/span/v2/field"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/common"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/errors"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/rest"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
 	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/gin-gonic/gin"
-	jsoniter "github.com/json-iterator/go"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/common"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/errors"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/rest"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
 )
 
 type apiLogModel struct {
