@@ -8,8 +8,9 @@ package telemetry
 
 import (
 	"context"
+	"fmt"
 
-	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
+	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 	"go.opentelemetry.io/otel/attribute"
 )
 
@@ -26,9 +27,9 @@ func SetSpanAttributes(ctx context.Context, attrs map[string]interface{}) {
 	if attrs == nil || ctx == nil {
 		return
 	}
-	attrsList := make([]attribute.KeyValue, 0)
+	attrsList := make([]attribute.KeyValue, 0, len(attrs))
 	for k, v := range attrs {
-		attrsList = append(attrsList, attribute.String(k, v.(string)))
+		attrsList = append(attrsList, attribute.String(k, fmt.Sprint(v)))
 	}
-	o11y.SetAttributes(ctx, attrsList...)
+	oteltrace.SetAttributes(ctx, attrsList...)
 }

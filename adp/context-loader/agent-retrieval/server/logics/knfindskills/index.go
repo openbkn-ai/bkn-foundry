@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
+	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/drivenadapters"
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/common"
@@ -86,8 +86,8 @@ func NewFindSkillsServiceWith(
 // FindSkills is the main entry point for skill recall.
 func (s *findSkillsServiceImpl) FindSkills(ctx context.Context, req *interfaces.FindSkillsReq) (*interfaces.FindSkillsResp, error) {
 	var err error
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 
 	fsCfg := &s.config.FindSkills
 

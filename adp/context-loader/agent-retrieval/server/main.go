@@ -14,7 +14,6 @@ import (
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/driveradapters"
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/config"
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/telemetry"
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/interfaces"
 
 	"github.com/gin-gonic/gin"
@@ -71,9 +70,8 @@ func main() {
 		restPrivateHandler: driveradapters.NewRestPrivateHandler(config.Logger),
 	}
 	s.config.Logger.Info("start agent-retrieval server")
-	// Check if observability is enabled
-	if config.Observability.TraceEnabled {
-		defer telemetry.StopTrace()
+	if config.OTelProviders != nil {
+		defer config.OTelProviders.Shutdown(context.Background())
 	}
 	defer s.config.Logger.Info("stop agent-retrieval server")
 	s.Start()

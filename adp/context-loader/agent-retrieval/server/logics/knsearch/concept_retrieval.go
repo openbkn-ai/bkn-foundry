@@ -13,7 +13,7 @@ import (
 	"sort"
 	"strings"
 
-	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
+	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/interfaces"
 )
@@ -39,8 +39,8 @@ func (s *localSearchImpl) conceptRetrieval(
 	config *interfaces.KnSearchConceptRetrievalConfig,
 ) (*interfaces.KnSearchConceptResult, error) {
 	var err error
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 
 	if len(config.ConceptGroups) > 0 {
 		return s.conceptRetrievalByGroups(ctx, req, config)
@@ -368,8 +368,8 @@ func (s *localSearchImpl) coarseRecall(
 	detail *interfaces.KnowledgeNetworkDetail,
 	config *interfaces.KnSearchConceptRetrievalConfig,
 ) (*interfaces.KnowledgeNetworkDetail, error) {
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, nil)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, nil)
 
 	// 构建粗召回后的对象类型 ID 集合
 	coarseObjectIDs := make(map[string]bool)

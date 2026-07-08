@@ -11,7 +11,7 @@ import (
 	"context"
 	"fmt"
 
-	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
+	"github.com/openbkn-ai/bkn-comm-go/otel/otellog"
 
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/interfaces"
 )
@@ -111,20 +111,20 @@ func (s *spanLogger) Debug(v ...interface{}) {
 
 	msg := fmt.Sprint(v...)
 	if s.ctx != nil {
-		o11y.Debug(s.ctx, msg)
+		otellog.LogDebug(s.ctx, msg)
 		return
 	}
-	o11y.SystemLogger.Debug(msg)
+	otellog.LogDebug(context.Background(), msg)
 }
 
 func (s *spanLogger) Info(v ...interface{}) {
 	s.maker.DefaultLogger.Info(v...)
 	msg := fmt.Sprint(v...)
 	if s.ctx != nil {
-		o11y.Info(s.ctx, msg)
+		otellog.LogInfo(s.ctx, msg)
 		return
 	}
-	o11y.SystemLogger.Info(msg)
+	otellog.LogInfo(context.Background(), msg)
 }
 
 func (s *spanLogger) Warn(v ...interface{}) {
@@ -132,10 +132,10 @@ func (s *spanLogger) Warn(v ...interface{}) {
 
 	msg := fmt.Sprint(v...)
 	if s.ctx != nil {
-		o11y.Warn(s.ctx, msg)
+		otellog.LogWarn(s.ctx, msg)
 		return
 	}
-	o11y.SystemLogger.Warn(msg)
+	otellog.LogWarn(context.Background(), msg)
 }
 
 func (s *spanLogger) Error(v ...interface{}) {
@@ -143,10 +143,10 @@ func (s *spanLogger) Error(v ...interface{}) {
 
 	msg := fmt.Sprint(v...)
 	if s.ctx != nil {
-		o11y.Error(s.ctx, msg)
+		otellog.LogError(s.ctx, msg, nil)
 		return
 	}
-	o11y.SystemLogger.Error(msg)
+	otellog.LogError(context.Background(), msg, nil)
 }
 
 func (s *spanLogger) Debugf(format string, v ...interface{}) {
@@ -154,10 +154,10 @@ func (s *spanLogger) Debugf(format string, v ...interface{}) {
 
 	msg := fmt.Sprintf(format, v...)
 	if s.ctx != nil {
-		o11y.Debug(s.ctx, msg)
+		otellog.LogDebug(s.ctx, msg)
 		return
 	}
-	o11y.SystemLogger.Debug(msg)
+	otellog.LogDebug(context.Background(), msg)
 }
 
 func (s *spanLogger) Infof(format string, v ...interface{}) {
@@ -165,10 +165,10 @@ func (s *spanLogger) Infof(format string, v ...interface{}) {
 
 	msg := fmt.Sprintf(format, v...)
 	if s.ctx != nil {
-		o11y.Info(s.ctx, msg)
+		otellog.LogInfo(s.ctx, msg)
 		return
 	}
-	o11y.SystemLogger.Info(msg)
+	otellog.LogInfo(context.Background(), msg)
 }
 
 func (s *spanLogger) Warnf(format string, v ...interface{}) {
@@ -176,10 +176,10 @@ func (s *spanLogger) Warnf(format string, v ...interface{}) {
 
 	msg := fmt.Sprintf(format, v...)
 	if s.ctx != nil {
-		o11y.Warn(s.ctx, msg)
+		otellog.LogWarn(s.ctx, msg)
 		return
 	}
-	o11y.SystemLogger.Warn(msg)
+	otellog.LogWarn(context.Background(), msg)
 }
 
 func (s *spanLogger) Errorf(format string, v ...interface{}) {
@@ -187,10 +187,10 @@ func (s *spanLogger) Errorf(format string, v ...interface{}) {
 
 	msg := fmt.Sprintf(format, v...)
 	if s.ctx != nil {
-		o11y.Error(s.ctx, msg)
+		otellog.LogError(s.ctx, msg, nil)
 		return
 	}
-	o11y.SystemLogger.Error(msg)
+	otellog.LogError(context.Background(), msg, nil)
 }
 
 func (s *spanLogger) WithContext(ctx context.Context) interfaces.Logger {

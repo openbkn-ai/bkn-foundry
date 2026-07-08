@@ -9,7 +9,7 @@ package knretrieval
 import (
 	"context"
 
-	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
+	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/interfaces"
 )
@@ -20,8 +20,8 @@ import (
 // 再经业务知识网络执行查询策略并重排。需要完整 Schema 召回的接入方应改用 search_schema。
 func (k *knRetrievalServiceImpl) AgentIntentRetrieval(ctx context.Context, req *interfaces.SemanticSearchRequest) (resp *interfaces.SemanticSearchResponse, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 
 	queryUnderstanding := &interfaces.QueryUnderstanding{}
 	// 基于用户 Query 构建关键词查询策略
