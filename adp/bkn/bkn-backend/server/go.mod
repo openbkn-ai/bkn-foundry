@@ -13,7 +13,7 @@ require (
 	github.com/kweaver-ai/bkn-specification/sdk/golang v0.1.4-0.20260514092235-b25f47fcf650
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/mohae/deepcopy v0.0.0-20170929034955-c48cc78d4826
-	github.com/openbkn-ai/bkn-comm-go v0.0.1
+	github.com/openbkn-ai/bkn-comm-go v0.0.2
 	github.com/opensearch-project/opensearch-go/v2 v2.3.0
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/rs/xid v1.6.0

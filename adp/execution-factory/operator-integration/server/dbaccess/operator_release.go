@@ -11,7 +11,7 @@ import (
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/db"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces/model"
-	"github.com/kweaver-ai/proton-rds-sdk-go/sqlx"
+	"github.com/openbkn-ai/bkn-comm-go/db/sqlx"
 	"github.com/pkg/errors"
 )
 

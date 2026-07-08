@@ -3,4 +3,4 @@
 // bkn-safe's check, diffs the decisions, and reports divergence. stdlib only.
 module bkn-safe/cmd/authz-shadow
 
-go 1.24.0
+go 1.25.0

@@ -152,8 +152,8 @@ github.com/mohae/deepcopy v0.0.0-20170929034955-c48cc78d4826 h1:RWengNIwukTxcDr9
 github.com/mohae/deepcopy v0.0.0-20170929034955-c48cc78d4826/go.mod h1:TaXosZuwdSHYgviHp1DAtfrULt5eUgsSMsZf+YrPgl8=
 github.com/nsqio/go-nsq v1.1.0 h1:PQg+xxiUjA7V+TLdXw7nVrJ5Jbl3sN86EhGCQj4+FYE=
 github.com/nsqio/go-nsq v1.1.0/go.mod h1:vKq36oyeVXgsS5Q8YEO7WghqidAVXQlcFxzQbQTuDEY=
-github.com/openbkn-ai/bkn-comm-go v0.0.1 h1:mIc7Va+wqfhjKds9qOliMoPRezJ/Y/tE4T3Pa2V9EDE=
-github.com/openbkn-ai/bkn-comm-go v0.0.1/go.mod h1:l6IRh6mfBCfTSm/dHneDbmCPAW1qkYEnVzqAg1Jjo98=
+github.com/openbkn-ai/bkn-comm-go v0.0.2 h1:d60z3VKCgHAhEWL/DMlhtB3SSelPW4Ga/8z1j+TPDb8=
+github.com/openbkn-ai/bkn-comm-go v0.0.2/go.mod h1:pyx5ux3IT4zZrUoqni6DVzLaFe1fY8dwAl6wL8PAf7I=
 github.com/opensearch-project/opensearch-go/v2 v2.3.0 h1:nQIEMr+A92CkhHrZgUhcfsrZjibvB3APXf2a1VwCmMQ=
 github.com/opensearch-project/opensearch-go/v2 v2.3.0/go.mod h1:8LDr9FCgUTVoT+5ESjc2+iaZuldqE+23Iq0r1XeNue8=
 github.com/pelletier/go-toml/v2 v2.2.4 h1:mye9XuhQ6gvn5h28+VilKrrPoQVanw5PMw/TB0t5Ec4=

@@ -9,7 +9,7 @@ import (
 	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
-	msqclient "github.com/kweaver-ai/proton-mq-sdk-go"
+	msqclient "github.com/openbkn-ai/bkn-comm-go/mq"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -30,7 +30,7 @@ var (
 
 type msgQueue struct {
 	logger                   interfaces.Logger
-	protonMQClient           msqclient.ProtonMQClient
+	openBKNMQClient          msqclient.OpenBKNMQClient
 	pollIntervalMilliseconds int64
 	maxInFlight              int
 }
@@ -39,13 +39,13 @@ type msgQueue struct {
 func NewMQClient() MQClient {
 	mqOnce.Do(func() {
 		configLoader := config.NewConfigLoader()
-		protonClient, err := msqclient.NewProtonMQClientFromFile(configLoader.MQConfigFile)
+		openBKNClient, err := msqclient.NewOpenBKNMQClientFromFile(configLoader.MQConfigFile)
 		if err != nil {
 			panic(err)
 		}
 		mqClient = &msgQueue{
 			logger:                   configLoader.GetLogger(),
-			protonMQClient:           protonClient,
+			openBKNMQClient:          openBKNClient,
 			pollIntervalMilliseconds: 100, //nolint:mnd
 			maxInFlight:              200, //nolint:mnd
 		}
@@ -67,7 +67,7 @@ func (m *msgQueue) Subscribe(topic, channel string, cmd func(context.Context, []
 			span.SetAttributes(attribute.String("messaging.channel", channel))
 			defer o11y.EndSpan(ctx, err)
 		}
-		err = m.protonMQClient.Sub(topic, channel, func(msg []byte) error {
+		err = m.openBKNMQClient.Sub(topic, channel, func(msg []byte) error {
 			return cmd(ctx, msg)
 		}, m.pollIntervalMilliseconds, m.maxInFlight)
 		m.logger.WithContext(ctx).Errorf("subscribe mq topic: %s, channel: %s,  error: %v", topic, channel, err)
@@ -85,7 +85,7 @@ func (m *msgQueue) Publish(ctx context.Context, topic string, message []byte) (e
 		span.SetAttributes(attribute.String("messaging.payload_size_bytes", fmt.Sprintf("%d", int64(len(message)))))
 		defer o11y.EndSpan(ctx, err)
 	}
-	if err := m.protonMQClient.Pub(topic, message); err != nil {
+	if err := m.openBKNMQClient.Pub(topic, message); err != nil {
 		m.logger.WithContext(ctx).Errorf("publish mq topic %s, message: %s, error: %v", topic, string(message), err)
 		return err
 	}

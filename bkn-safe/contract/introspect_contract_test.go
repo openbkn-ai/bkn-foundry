@@ -25,7 +25,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/kweaver-ai/kweaver-go-lib/hydra"
+	"github.com/openbkn-ai/bkn-comm-go/hydra"
 )
 
 // goldenDir resolves docs/isf-replacement/contracts/introspect relative to

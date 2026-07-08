@@ -5,7 +5,7 @@ import (
 	"oss-gateway/internal/config"
 	"time"
 
-	_ "github.com/kweaver-ai/proton-rds-sdk-go/driver"
+	_ "github.com/openbkn-ai/bkn-comm-go/db/driver"
 	"github.com/sirupsen/logrus"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
