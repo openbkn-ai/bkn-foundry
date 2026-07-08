@@ -13,14 +13,14 @@ import (
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/metric"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/utils"
-	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
+	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 )
 
 // Import 导入MCP
 func (s *mcpServiceImpl) Import(ctx context.Context, tx *sql.Tx, mode interfaces.ImportType, data *interfaces.ComponentImpexConfigModel, userID string) (err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	if data == nil || data.MCP == nil || len(data.MCP.Configs) == 0 {
 		err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtCommonImportDataEmpty, "mcp configs is empty")
 		return
@@ -308,8 +308,8 @@ func (s *mcpServiceImpl) importByCreate(ctx context.Context, tx *sql.Tx, mcpConf
 func (s *mcpServiceImpl) importByUpsert(ctx context.Context, tx *sql.Tx, mcpConfigDB *model.MCPServerConfigDB, mcpConfigItem *interfaces.MCPServersImpexItem, userID string) (
 	mcpTools []*model.MCPToolDB, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	// 校验参数
 	err = s.importCheck(ctx, mcpConfigItem)
 	if err != nil {
@@ -416,8 +416,8 @@ func (s *mcpServiceImpl) exportPreCheck(ctx context.Context, req *interfaces.Exp
 // Export 导出MCP
 func (s *mcpServiceImpl) Export(ctx context.Context, req *interfaces.ExportReq) (data *interfaces.ComponentImpexConfigModel, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	// 导出预检查
 	mcpConfigDBs, err := s.exportPreCheck(ctx, req)
 	if err != nil {

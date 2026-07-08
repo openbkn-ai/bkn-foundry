@@ -14,7 +14,7 @@ import (
 	infracommon "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/errors"
-	infraerrors "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/errors"
+	oerrors "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/telemetry"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces/model"
@@ -22,7 +22,7 @@ import (
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/common"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/metric"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/utils"
-	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
+	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 )
 
 // 排序字段与数据库字段映射
@@ -39,8 +39,8 @@ const (
 // ParseSSE 解析SSE MCPServer
 func (s *mcpServiceImpl) ParseSSE(ctx context.Context, req *interfaces.MCPParseSSERequest) (resp *interfaces.MCPParseSSEResponse, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	mcpCoreInfo := interfaces.MCPCoreConfigInfo{
 		Mode:    req.Mode,
 		URL:     req.URL,
@@ -66,8 +66,8 @@ func (s *mcpServiceImpl) ParseSSE(ctx context.Context, req *interfaces.MCPParseS
 // AddMCPServer 添加MCP Server
 func (s *mcpServiceImpl) AddMCPServer(ctx context.Context, req *interfaces.MCPServerAddRequest) (resp *interfaces.MCPServerAddResponse, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"user_id": req.UserID,
 	})
@@ -84,7 +84,7 @@ func (s *mcpServiceImpl) AddMCPServer(ctx context.Context, req *interfaces.MCPSe
 	tx, err := s.DBTx.GetTx(ctx)
 	if err != nil {
 		s.logger.WithContext(ctx).Errorf("get tx failed, err: %v", err)
-		err = infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, fmt.Sprintf("get tx failed, err: %v", err))
+		err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, fmt.Sprintf("get tx failed, err: %v", err))
 		return
 	}
 	defer func() {
@@ -167,7 +167,7 @@ func (s *mcpServiceImpl) addMCPConfig(ctx context.Context, tx *sql.Tx, mcpConfig
 
 	// 校验分类
 	if !s.CategoryManager.CheckCategory(interfaces.BizCategory(mcpConfig.Category)) {
-		return "", infraerrors.DefaultHTTPError(ctx, http.StatusBadRequest, "invalid category")
+		return "", oerrors.DefaultHTTPError(ctx, http.StatusBadRequest, "invalid category")
 	}
 
 	// 根据名称进行校验，名称不能重复
@@ -179,7 +179,7 @@ func (s *mcpServiceImpl) addMCPConfig(ctx context.Context, tx *sql.Tx, mcpConfig
 	MCPID, err := s.DBMCPServerConfig.Insert(ctx, tx, mcpConfig)
 	if err != nil {
 		s.logger.WithContext(ctx).Errorf("addMCPConfig Insert failed, err: %v", err)
-		err = infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+		err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 		return "", err
 	}
 
@@ -197,7 +197,7 @@ func (s *mcpServiceImpl) addMCPConfig(ctx context.Context, tx *sql.Tx, mcpConfig
 func (s *mcpServiceImpl) syncMCPTools(ctx context.Context, tx *sql.Tx, userID, mcpID string, mcpVersion int, toolConfigs []*interfaces.MCPToolConfigInfo) (mcpTools []*model.MCPToolDB, err error) {
 	// todo: 校验工具数量不能超过30个
 	if len(toolConfigs) > mcpToolMaxCount {
-		return nil, infraerrors.NewHTTPError(ctx, http.StatusBadRequest, infraerrors.ErrExtMCPToolMaxCount, fmt.Sprintf("mcp tool count must be less than %d", mcpToolMaxCount), mcpToolMaxCount)
+		return nil, oerrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.ErrExtMCPToolMaxCount, fmt.Sprintf("mcp tool count must be less than %d", mcpToolMaxCount), mcpToolMaxCount)
 	}
 
 	toolNames := make(map[string]bool)
@@ -206,7 +206,7 @@ func (s *mcpServiceImpl) syncMCPTools(ctx context.Context, tx *sql.Tx, userID, m
 		if toolConfig.ToolName != "" {
 			// 校验工具名称是否重复
 			if toolNames[toolConfig.ToolName] {
-				return nil, infraerrors.NewHTTPError(ctx, http.StatusBadRequest, infraerrors.ErrExtMCPToolNameDuplicate, fmt.Sprintf("mcp tool name %s is duplicate", toolConfig.ToolName), toolConfig.ToolName)
+				return nil, oerrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.ErrExtMCPToolNameDuplicate, fmt.Sprintf("mcp tool name %s is duplicate", toolConfig.ToolName), toolConfig.ToolName)
 			}
 			toolNames[toolConfig.ToolName] = true
 			// 校验工具名称是否合法
@@ -240,7 +240,7 @@ func (s *mcpServiceImpl) syncMCPTools(ctx context.Context, tx *sql.Tx, userID, m
 	err = s.DBMCPTool.DeleteByMCPIDAndVersion(ctx, tx, mcpID, mcpVersion)
 	if err != nil {
 		s.logger.WithContext(ctx).Errorf("syncMCPTools DeleteByMCPIDAndVersion failed, err: %v", err)
-		err = infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+		err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 		return nil, err
 	}
 
@@ -249,7 +249,7 @@ func (s *mcpServiceImpl) syncMCPTools(ctx context.Context, tx *sql.Tx, userID, m
 		err = s.DBMCPTool.BatchInsert(ctx, tx, mcpTools)
 		if err != nil {
 			s.logger.WithContext(ctx).Errorf("syncMCPTools BatchInsert failed, err: %v", err)
-			err = infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+			err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 			return nil, err
 		}
 	}
@@ -259,8 +259,8 @@ func (s *mcpServiceImpl) syncMCPTools(ctx context.Context, tx *sql.Tx, userID, m
 // DeleteMCPServer 删除MCP Server
 func (s *mcpServiceImpl) DeleteMCPServer(ctx context.Context, req *interfaces.MCPServerDeleteRequest) (err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"mcp_id":  req.MCPID,
 		"user_id": req.UserID,
@@ -278,7 +278,7 @@ func (s *mcpServiceImpl) DeleteMCPServer(ctx context.Context, req *interfaces.MC
 	tx, err := s.DBTx.GetTx(ctx)
 	if err != nil {
 		s.logger.WithContext(ctx).Errorf("get tx failed, err: %v", err)
-		err = infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, fmt.Sprintf("get tx failed, err: %v", err))
+		err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, fmt.Sprintf("get tx failed, err: %v", err))
 		return
 	}
 	defer func() {
@@ -347,15 +347,15 @@ func (s *mcpServiceImpl) removeMCPConfig(ctx context.Context, tx *sql.Tx, mcpID 
 	config, err = s.DBMCPServerConfig.SelectByID(ctx, tx, mcpID)
 	if err != nil {
 		s.logger.WithContext(ctx).Errorf("removeMCPConfig SelectByID failed, err: %v", err)
-		err = infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+		err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 		return
 	}
 	if config == nil {
-		err = infraerrors.NewHTTPError(ctx, http.StatusNotFound, infraerrors.ErrExtMCPNotFound, "mcp not found")
+		err = oerrors.NewHTTPError(ctx, http.StatusNotFound, oerrors.ErrExtMCPNotFound, "mcp not found")
 		return
 	}
 	if config.Status != string(interfaces.BizStatusUnpublish) && config.Status != string(interfaces.BizStatusOffline) {
-		err = infraerrors.NewHTTPError(ctx, http.StatusBadRequest, infraerrors.ErrExtMCPUnSupportDelete,
+		err = oerrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.ErrExtMCPUnSupportDelete,
 			fmt.Sprintf("current mcp status %s, can not be deleted", config.Status))
 		return
 	}
@@ -363,14 +363,14 @@ func (s *mcpServiceImpl) removeMCPConfig(ctx context.Context, tx *sql.Tx, mcpID 
 	err = s.DBMCPServerConfig.DeleteByID(ctx, tx, mcpID)
 	if err != nil {
 		s.logger.WithContext(ctx).Errorf("delete mcp config failed, err: %v", err)
-		err = infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+		err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 		return
 	}
 	// 删除MCP Server发布历史
 	err = s.DBMCPServerReleaseHistory.DeleteByMCPID(ctx, tx, mcpID)
 	if err != nil {
 		s.logger.WithContext(ctx).Errorf("delete mcp release history failed, err: %v", err)
-		err = infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+		err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 	}
 	return
 }
@@ -379,7 +379,7 @@ func (s *mcpServiceImpl) removeMCPTools(ctx context.Context, tx *sql.Tx, mcpID s
 	err = s.DBMCPTool.DeleteByMCPIDAndVersion(ctx, tx, mcpID, mcpVersion)
 	if err != nil {
 		s.logger.WithContext(ctx).Errorf("removeMCPTools DeleteByMCPIDAndVersion failed, err: %v", err)
-		err = infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+		err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 	}
 	return
 }
@@ -387,8 +387,8 @@ func (s *mcpServiceImpl) removeMCPTools(ctx context.Context, tx *sql.Tx, mcpID s
 // QueryPage 分页查询MCP Server列表
 func (s *mcpServiceImpl) QueryPage(ctx context.Context, req *interfaces.MCPServerListRequest) (result *interfaces.MCPServerListResponse, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	filter := make(map[string]interface{})
 	filter["all"] = req.All
 	if req.Name != "" {
@@ -541,8 +541,8 @@ func (s *mcpServiceImpl) QueryPage(ctx context.Context, req *interfaces.MCPServe
 // GetDetail 获取MCP Server详情
 func (s *mcpServiceImpl) GetDetail(ctx context.Context, req *interfaces.MCPServerDetailRequest) (resp *interfaces.MCPServerDetailResponse, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	// 检查查看权限
 	accessor, err := s.AuthService.GetAccessor(ctx, req.UserID)
 	if err != nil {
@@ -556,12 +556,12 @@ func (s *mcpServiceImpl) GetDetail(ctx context.Context, req *interfaces.MCPServe
 	mcpConfigDB, err := s.DBMCPServerConfig.SelectByID(ctx, nil, req.ID)
 	if err != nil {
 		s.logger.WithContext(ctx).Errorf("select mcp config by id failed, err: %v", err)
-		err = infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+		err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 		return
 	}
 
 	if mcpConfigDB == nil {
-		err = infraerrors.NewHTTPError(ctx, http.StatusNotFound, infraerrors.ErrExtMCPNotFound, "mcp not found")
+		err = oerrors.NewHTTPError(ctx, http.StatusNotFound, oerrors.ErrExtMCPNotFound, "mcp not found")
 		return
 	}
 
@@ -600,8 +600,8 @@ func (s *mcpServiceImpl) GetDetail(ctx context.Context, req *interfaces.MCPServe
 // UpdateMCPServer 更新MCP Server
 func (s *mcpServiceImpl) UpdateMCPServer(ctx context.Context, req *interfaces.MCPServerUpdateRequest) (resp *interfaces.MCPServerUpdateResponse, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"mcp_id":  req.MCPID,
 		"user_id": req.UserID,
@@ -619,7 +619,7 @@ func (s *mcpServiceImpl) UpdateMCPServer(ctx context.Context, req *interfaces.MC
 	tx, err := s.DBTx.GetTx(ctx)
 	if err != nil {
 		s.logger.WithContext(ctx).Errorf("get db tx failed, err: %v", err)
-		err = infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+		err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 		return
 	}
 	defer func() {
@@ -689,7 +689,7 @@ func (s *mcpServiceImpl) updateMCPConfig(ctx context.Context, tx *sql.Tx, newMCP
 	}
 	// 校验分类
 	if !s.CategoryManager.CheckCategory(interfaces.BizCategory(newMCPConfig.Category)) {
-		return nil, 0, 0, infraerrors.DefaultHTTPError(ctx, http.StatusBadRequest, "invalid category")
+		return nil, 0, 0, oerrors.DefaultHTTPError(ctx, http.StatusBadRequest, "invalid category")
 	}
 
 	// 根据ID获取MCP Server配置
@@ -700,7 +700,7 @@ func (s *mcpServiceImpl) updateMCPConfig(ctx context.Context, tx *sql.Tx, newMCP
 
 	if config == nil {
 		// 配置不存在
-		return nil, 0, 0, infraerrors.NewHTTPError(ctx, http.StatusNotFound, infraerrors.ErrExtMCPNotFound, "mcp not found")
+		return nil, 0, 0, oerrors.NewHTTPError(ctx, http.StatusNotFound, oerrors.ErrExtMCPNotFound, "mcp not found")
 	}
 
 	// 新增字段，兼容旧版本
@@ -774,8 +774,8 @@ func (s *mcpServiceImpl) updateMCPConfig(ctx context.Context, tx *sql.Tx, newMCP
 
 func (s *mcpServiceImpl) UpdateMCPStatus(ctx context.Context, req *interfaces.UpdateMCPStatusRequest) (resp *interfaces.UpdateMCPStatusResponse, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"mcp_id":  req.MCPID,
 		"user_id": req.UserID,
@@ -801,7 +801,7 @@ func (s *mcpServiceImpl) UpdateMCPStatus(ctx context.Context, req *interfaces.Up
 	tx, err = s.DBTx.GetTx(ctx)
 	if err != nil {
 		s.logger.WithContext(ctx).Errorf("get db tx failed, err: %v", err)
-		err = infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+		err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 		return
 	}
 	defer func() {
@@ -845,17 +845,17 @@ func (s *mcpServiceImpl) modifyMCPStatus(ctx context.Context, tx *sql.Tx, req *i
 	mcpConfigDB, err = s.DBMCPServerConfig.SelectByID(ctx, tx, req.MCPID)
 	if err != nil {
 		s.logger.WithContext(ctx).Errorf("select mcp server config failed, err: %v", err)
-		err = infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+		err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 		return
 	}
 	if mcpConfigDB == nil {
-		err = infraerrors.NewHTTPError(ctx, http.StatusNotFound, infraerrors.ErrExtMCPNotFound, "mcp not found")
+		err = oerrors.NewHTTPError(ctx, http.StatusNotFound, oerrors.ErrExtMCPNotFound, "mcp not found")
 		return
 	}
 
 	// 校验状态转换是否合法
 	if !common.CheckStatusTransition(interfaces.BizStatus(mcpConfigDB.Status), req.Status) {
-		err = infraerrors.NewHTTPError(ctx, http.StatusBadRequest, infraerrors.ErrExtMCPStatusInvalid,
+		err = oerrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.ErrExtMCPStatusInvalid,
 			fmt.Sprintf("current mcp status %s, can not be transition to %s", mcpConfigDB.Status, req.Status))
 		return
 	}
@@ -900,7 +900,7 @@ func (s *mcpServiceImpl) modifyMCPStatus(ctx context.Context, tx *sql.Tx, req *i
 	err = s.DBMCPServerConfig.UpdateStatus(ctx, tx, req.MCPID, string(req.Status), req.UserID, mcpConfigDB.Version)
 	if err != nil {
 		s.logger.WithContext(ctx).Errorf("update mcp server config status failed, err: %v", err)
-		err = infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, fmt.Sprintf("update mcp server config status failed, err: %v", err))
+		err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, fmt.Sprintf("update mcp server config status failed, err: %v", err))
 		return
 	}
 
@@ -914,8 +914,8 @@ func (s *mcpServiceImpl) modifyMCPStatus(ctx context.Context, tx *sql.Tx, req *i
 // DebugTool 调试工具
 func (s *mcpServiceImpl) DebugTool(ctx context.Context, req *interfaces.MCPToolDebugRequest) (resp *interfaces.MCPToolDebugResponse, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"mcp_id":  req.MCPID,
 		"user_id": req.UserID,
@@ -934,12 +934,12 @@ func (s *mcpServiceImpl) DebugTool(ctx context.Context, req *interfaces.MCPToolD
 	mcpConfigDB, err := s.DBMCPServerConfig.SelectByID(ctx, nil, req.MCPID)
 	if err != nil {
 		s.logger.WithContext(ctx).Errorf("select mcp server config failed, err: %v", err)
-		err = infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+		err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 		return
 	}
 
 	if mcpConfigDB == nil {
-		err = infraerrors.NewHTTPError(ctx, http.StatusNotFound, infraerrors.ErrExtMCPNotFound, "mcp not found")
+		err = oerrors.NewHTTPError(ctx, http.StatusNotFound, oerrors.ErrExtMCPNotFound, "mcp not found")
 		return
 	}
 
@@ -1074,13 +1074,13 @@ func (s *mcpServiceImpl) checkDuplicateName(ctx context.Context, name, mcpID str
 	configDB, err := s.DBMCPServerConfig.SelectByName(ctx, nil, name, []string{interfaces.BizStatusPublished.String()})
 	if err != nil {
 		s.logger.WithContext(ctx).Errorf("checkDuplicateName count by name failed, name: %s, err: %v", name, err)
-		err = infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, fmt.Sprintf("check duplicate name, err: %s", err.Error()))
+		err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, fmt.Sprintf("check duplicate name, err: %s", err.Error()))
 		return
 	}
 	if configDB == nil || (mcpID != "" && configDB.MCPID == mcpID) {
 		return
 	}
-	err = infraerrors.NewHTTPError(ctx, http.StatusBadRequest, infraerrors.ErrExtMCPExists,
+	err = oerrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.ErrExtMCPExists,
 		fmt.Sprintf("mcp server name %s already exists, please use another name", name),
 		name)
 	return
@@ -1132,7 +1132,7 @@ func (s *mcpServiceImpl) UpgradeMCPInstance(ctx context.Context, mcpID string) (
 		return err
 	}
 	if mcpConfigDB == nil {
-		return infraerrors.DefaultHTTPError(ctx, http.StatusNotFound, fmt.Sprintf("mcp server %s not found", mcpID))
+		return oerrors.DefaultHTTPError(ctx, http.StatusNotFound, fmt.Sprintf("mcp server %s not found", mcpID))
 	}
 	// 获取工具信息
 	tools, err := s.DBMCPTool.SelectListByMCPIDAndVersion(ctx, nil, mcpID, mcpConfigDB.Version)

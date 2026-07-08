@@ -18,7 +18,7 @@ import (
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/parsers"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/utils"
-	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
+	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 )
 
 // metadataService 统一元数据管理服务
@@ -52,8 +52,8 @@ func NewMetadataService() interfaces.IMetadataService {
 // GetMetadataBySource 根据SourceID、SourceType查询元数据
 func (m *metadataService) GetMetadataBySource(ctx context.Context, sourceID string, sourceType model.SourceType) (has bool, metadata interfaces.IMetadataDB, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"source_id":   sourceID,
 		"source_type": string(sourceType),
@@ -82,8 +82,8 @@ func (m *metadataService) GetMetadataBySource(ctx context.Context, sourceID stri
 
 func (m *metadataService) BatchGetMetadataBySourceIDs(ctx context.Context, sourceMap map[model.SourceType][]string) (sourceIDToMetadata map[string]interfaces.IMetadataDB, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	sourceIDToMetadata = map[string]interfaces.IMetadataDB{}
 	if len(sourceMap) == 0 {
 		return

@@ -15,14 +15,14 @@ import (
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/metric"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/utils"
-	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
+	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 )
 
 // RegisterOperatorByOpenAPI 算子注册
 func (m *operatorManager) RegisterOperatorByOpenAPI(ctx context.Context, req *interfaces.OperatorRegisterReq, userID string) (resultList []*interfaces.OperatorRegisterResp, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	// 检查是否有新建权限
 	var accessor *interfaces.AuthAccessor
 	accessor, err = m.AuthService.GetAccessor(ctx, userID)
@@ -63,8 +63,8 @@ func (m *operatorManager) RegisterOperatorByOpenAPI(ctx context.Context, req *in
 // UpdateOperatorByOpenAPI 算子更新
 func (m *operatorManager) UpdateOperatorByOpenAPI(ctx context.Context, req *interfaces.OperatorUpdateReq, userID string) (resultList []*interfaces.OperatorRegisterResp, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	var isDataSource bool
 	isDataSource, err = checkIsDataSource(ctx, req.OperatorInfo.ExecutionMode, req.OperatorInfo.IsDataSource)
 	if err != nil {
@@ -225,8 +225,8 @@ func (m *operatorManager) checkAndParserOpenAPIOperator(ctx context.Context, req
 func (m *operatorManager) registerOperator(ctx context.Context, req *interfaces.OperatorRegisterReq, metadataDB interfaces.IMetadataDB,
 	accessor *interfaces.AuthAccessor, status interfaces.BizStatus, isDataSource bool) (result *interfaces.OperatorRegisterResp) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, nil)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, nil)
 	result = &interfaces.OperatorRegisterResp{
 		Status: interfaces.ResultStatusFailed,
 	}

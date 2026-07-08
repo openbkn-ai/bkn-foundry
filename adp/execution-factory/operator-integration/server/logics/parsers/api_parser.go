@@ -14,7 +14,7 @@ import (
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces/model"
-	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
+	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 )
 
 // openAPIParser OpenAPI解析器
@@ -43,8 +43,8 @@ func (op *openAPIParser) validate(ctx context.Context, inputValue any) (input *i
 // Parse 解析OpenAPI元数据
 func (op *openAPIParser) Parse(ctx context.Context, inputValue any) (metadata []interfaces.IMetadataDB, err error) {
 	// 记录可观测性
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	input, err := op.validate(ctx, inputValue)
 	if err != nil {
 		return nil, err

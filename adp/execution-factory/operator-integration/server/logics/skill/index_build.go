@@ -11,7 +11,7 @@ import (
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/dbaccess"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/config"
-	infraerrors "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/errors"
+	oerrors "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/errors"
 	infralock "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/lock"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces/model"
@@ -88,10 +88,10 @@ func (s *skillIndexBuildService) CreateTask(ctx context.Context, req *interfaces
 func (s *skillIndexBuildService) createTask(ctx context.Context, userID string, executeType interfaces.SkillIndexBuildExecuteType) (*interfaces.RetrySkillIndexBuildTaskResp, error) {
 	runningTask, err := s.taskRepo.SelectRunningTask(ctx, nil)
 	if err != nil {
-		return nil, infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+		return nil, oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 	}
 	if runningTask != nil {
-		return nil, infraerrors.DefaultHTTPError(ctx, http.StatusConflict, "skill index build task is already running")
+		return nil, oerrors.DefaultHTTPError(ctx, http.StatusConflict, "skill index build task is already running")
 	}
 
 	task := &model.SkillIndexBuildTaskDB{
@@ -104,7 +104,7 @@ func (s *skillIndexBuildService) createTask(ctx context.Context, userID string, 
 	if executeType == interfaces.SkillIndexBuildExecuteTypeIncremental {
 		lastTask, lastErr := s.taskRepo.SelectLatestCompletedIncrementalTask(ctx, nil)
 		if lastErr != nil {
-			return nil, infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, lastErr.Error())
+			return nil, oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, lastErr.Error())
 		}
 		if lastTask != nil {
 			task.CursorUpdateTime = lastTask.CursorUpdateTime
@@ -112,7 +112,7 @@ func (s *skillIndexBuildService) createTask(ctx context.Context, userID string, 
 		}
 	}
 	if err = s.taskRepo.Insert(ctx, nil, task); err != nil {
-		return nil, infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+		return nil, oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 	}
 
 	return &interfaces.RetrySkillIndexBuildTaskResp{
@@ -125,10 +125,10 @@ func (s *skillIndexBuildService) createTask(ctx context.Context, userID string, 
 func (s *skillIndexBuildService) GetTask(ctx context.Context, req *interfaces.GetSkillIndexBuildTaskReq) (*interfaces.SkillIndexBuildTaskResp, error) {
 	task, err := s.taskRepo.SelectByTaskID(ctx, nil, req.TaskID)
 	if err != nil {
-		return nil, infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+		return nil, oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 	}
 	if task == nil {
-		return nil, infraerrors.DefaultHTTPError(ctx, http.StatusNotFound, "skill index build task not found")
+		return nil, oerrors.DefaultHTTPError(ctx, http.StatusNotFound, "skill index build task not found")
 	}
 	resp := toSkillIndexBuildTaskResp(task)
 	return resp, nil
@@ -162,11 +162,11 @@ func (s *skillIndexBuildService) QueryTaskList(ctx context.Context, req *interfa
 	}
 	total, err := s.taskRepo.CountByWhereClause(ctx, nil, filter)
 	if err != nil {
-		return nil, infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+		return nil, oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 	}
 	taskList, err := s.taskRepo.SelectListPage(ctx, nil, filter, sort, nil)
 	if err != nil {
-		return nil, infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+		return nil, oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 	}
 	resp := &interfaces.QuerySkillIndexBuildTaskListResp{
 		CommonPageResult: buildCommonPageResult(req.Page, req.PageSize, total),
@@ -182,22 +182,22 @@ func (s *skillIndexBuildService) QueryTaskList(ctx context.Context, req *interfa
 func (s *skillIndexBuildService) CancelTask(ctx context.Context, req *interfaces.CancelSkillIndexBuildTaskReq) (*interfaces.CancelSkillIndexBuildTaskResp, error) {
 	task, err := s.taskRepo.SelectByTaskID(ctx, nil, req.TaskID)
 	if err != nil {
-		return nil, infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+		return nil, oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 	}
 	if task == nil {
-		return nil, infraerrors.DefaultHTTPError(ctx, http.StatusNotFound, "skill index build task not found")
+		return nil, oerrors.DefaultHTTPError(ctx, http.StatusNotFound, "skill index build task not found")
 	}
 	switch interfaces.SkillIndexBuildStatus(task.Status) {
 	case interfaces.SkillIndexBuildStatusPending, interfaces.SkillIndexBuildStatusRunning:
 	default:
-		return nil, infraerrors.DefaultHTTPError(ctx, http.StatusConflict, "skill index build task is not cancellable")
+		return nil, oerrors.DefaultHTTPError(ctx, http.StatusConflict, "skill index build task is not cancellable")
 	}
 
 	task.Status = interfaces.SkillIndexBuildStatusCanceled.String()
 	task.ErrorMsg = "task canceled by user"
 	task.LastFinishedTime = time.Now().UnixNano()
 	if err = s.taskRepo.UpdateByTaskID(ctx, nil, task); err != nil {
-		return nil, infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+		return nil, oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 	}
 
 	resp := &interfaces.CancelSkillIndexBuildTaskResp{
@@ -210,22 +210,22 @@ func (s *skillIndexBuildService) CancelTask(ctx context.Context, req *interfaces
 func (s *skillIndexBuildService) RetryTask(ctx context.Context, req *interfaces.RetrySkillIndexBuildTaskReq) (*interfaces.RetrySkillIndexBuildTaskResp, error) {
 	task, err := s.taskRepo.SelectByTaskID(ctx, nil, req.TaskID)
 	if err != nil {
-		return nil, infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+		return nil, oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 	}
 	if task == nil {
-		return nil, infraerrors.DefaultHTTPError(ctx, http.StatusNotFound, "skill index build task not found")
+		return nil, oerrors.DefaultHTTPError(ctx, http.StatusNotFound, "skill index build task not found")
 	}
 	switch interfaces.SkillIndexBuildStatus(task.Status) {
 	case interfaces.SkillIndexBuildStatusFailed, interfaces.SkillIndexBuildStatusCanceled, interfaces.SkillIndexBuildStatusCompleted:
 	default:
-		return nil, infraerrors.DefaultHTTPError(ctx, http.StatusConflict, "only failed or canceled skill index build task can be retried")
+		return nil, oerrors.DefaultHTTPError(ctx, http.StatusConflict, "only failed or canceled skill index build task can be retried")
 	}
 	runningTask, err := s.taskRepo.SelectRunningTask(ctx, nil)
 	if err != nil {
-		return nil, infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+		return nil, oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 	}
 	if runningTask != nil && runningTask.TaskID != task.TaskID {
-		return nil, infraerrors.DefaultHTTPError(ctx, http.StatusConflict, "skill index build task is already running")
+		return nil, oerrors.DefaultHTTPError(ctx, http.StatusConflict, "skill index build task is already running")
 	}
 
 	task.Status = interfaces.SkillIndexBuildStatusPending.String()
@@ -241,7 +241,7 @@ func (s *skillIndexBuildService) RetryTask(ctx context.Context, req *interfaces.
 	if interfaces.SkillIndexBuildExecuteType(task.ExecuteType) == interfaces.SkillIndexBuildExecuteTypeIncremental {
 		lastTask, lastErr := s.taskRepo.SelectLatestCompletedIncrementalTask(ctx, nil)
 		if lastErr != nil {
-			return nil, infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, lastErr.Error())
+			return nil, oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, lastErr.Error())
 		}
 		if lastTask != nil {
 			task.CursorUpdateTime = lastTask.CursorUpdateTime
@@ -249,7 +249,7 @@ func (s *skillIndexBuildService) RetryTask(ctx context.Context, req *interfaces.
 		}
 	}
 	if err = s.taskRepo.UpdateByTaskID(ctx, nil, task); err != nil {
-		return nil, infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+		return nil, oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 	}
 	return &interfaces.RetrySkillIndexBuildTaskResp{
 		TaskID:       task.TaskID,

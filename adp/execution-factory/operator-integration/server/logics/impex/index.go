@@ -7,7 +7,6 @@ import (
 	"sync"
 
 	jsoniter "github.com/json-iterator/go"
-	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/dbaccess"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/config"
@@ -19,6 +18,7 @@ import (
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/mcp"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/operator"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/toolbox"
+	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 )
 
 var (
@@ -57,8 +57,8 @@ func NewComponentImpexManager() interfaces.IComponentImpexConfig {
 // ExportConfig 导出组件配置
 func (m *componentImpexManager) ExportConfig(ctx context.Context, req *interfaces.ExportConfigReq) (data *interfaces.ComponentImpexConfigModel, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	exportReq := &interfaces.ExportReq{
 		UserID: req.UserID,
 		IDs:    []string{req.ID},

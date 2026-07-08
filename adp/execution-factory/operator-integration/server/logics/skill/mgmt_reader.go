@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"sync"
 
-	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/dbaccess"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/config"
@@ -20,6 +19,7 @@ import (
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/auth"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/business_domain"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/utils"
+	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 )
 
 type skillManagementReader struct {
@@ -54,8 +54,8 @@ func NewSkillManagementReader() interfaces.SkillManagementReader {
 
 // GetManagementContent 获取管理态 SKILL.md 内容
 func (r *skillManagementReader) GetManagementContent(ctx context.Context, req *interfaces.GetManagementContentReq) (resp *interfaces.GetManagementContentResp, err error) {
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"skill_id": req.SkillID,
 	})
@@ -143,8 +143,8 @@ func (r *skillManagementReader) GetManagementContent(ctx context.Context, req *i
 
 // ReadManagementFile 读取管理态指定文件
 func (r *skillManagementReader) ReadManagementFile(ctx context.Context, req *interfaces.ReadManagementFileReq) (resp *interfaces.ReadManagementFileResp, err error) {
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"skill_id": req.SkillID,
 		"rel_path": req.RelPath,
@@ -230,8 +230,8 @@ func (r *skillManagementReader) ReadManagementFile(ctx context.Context, req *int
 
 // DownloadManagementSkill 下载管理态完整技能包
 func (r *skillManagementReader) DownloadManagementSkill(ctx context.Context, req *interfaces.DownloadManagementSkillReq) (resp *interfaces.DownloadSkillResp, err error) {
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"skill_id": req.SkillID,
 	})

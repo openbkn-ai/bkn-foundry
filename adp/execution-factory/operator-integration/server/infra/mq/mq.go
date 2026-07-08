@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"sync"
 
-	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
 	msqclient "github.com/openbkn-ai/bkn-comm-go/mq"
+	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -61,11 +61,11 @@ func (m *msgQueue) Subscribe(topic, channel string, cmd func(context.Context, []
 		tracer := otel.GetTracerProvider()
 		if tracer != nil {
 			var span trace.Span
-			ctx, span = o11y.StartConsumerSpan(ctx)
+			ctx, span = otel.Tracer(oteltrace.InstrumentationName).Start(ctx, "mq.subscribe", trace.WithSpanKind(trace.SpanKindConsumer))
 			span.SetAttributes(attribute.String("messaging.operation", "subscribe"))
 			span.SetAttributes(attribute.String("messaging.topic", topic))
 			span.SetAttributes(attribute.String("messaging.channel", channel))
-			defer o11y.EndSpan(ctx, err)
+			defer oteltrace.EndSpan(ctx, err)
 		}
 		err = m.openBKNMQClient.Sub(topic, channel, func(msg []byte) error {
 			return cmd(ctx, msg)
@@ -79,11 +79,11 @@ func (m *msgQueue) Publish(ctx context.Context, topic string, message []byte) (e
 	tracer := otel.GetTracerProvider()
 	if tracer != nil {
 		var span trace.Span
-		ctx, span = o11y.StartProducerSpan(ctx)
+		ctx, span = otel.Tracer(oteltrace.InstrumentationName).Start(ctx, "mq.publish", trace.WithSpanKind(trace.SpanKindProducer))
 		span.SetAttributes(attribute.String("messaging.operation", "publish"))
 		span.SetAttributes(attribute.String("messaging.topic", topic))
 		span.SetAttributes(attribute.String("messaging.payload_size_bytes", fmt.Sprintf("%d", int64(len(message)))))
-		defer o11y.EndSpan(ctx, err)
+		defer oteltrace.EndSpan(ctx, err)
 	}
 	if err := m.openBKNMQClient.Pub(topic, message); err != nil {
 		m.logger.WithContext(ctx).Errorf("publish mq topic %s, message: %s, error: %v", topic, string(message), err)

@@ -12,14 +12,14 @@ import (
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/metadata"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/utils"
-	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
+	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 )
 
 // QueryOperatorHistoryDetail 查询操作历史详情
 func (m *operatorManager) QueryOperatorHistoryDetail(ctx context.Context, req *interfaces.OperatorHistoryDetailReq) (result *interfaces.OperatorDataInfo, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	// 检查算子是否存在
 	has, historyDB, err := m.OpReleaseHistoryDB.SelectByOpIDAndMetdata(ctx, req.OperatorID, req.Version)
 	if err != nil {
@@ -86,8 +86,8 @@ func (m *operatorManager) QueryOperatorHistoryDetail(ctx context.Context, req *i
 // QueryOperatorHistoryList 获取历史版本列表
 func (m *operatorManager) QueryOperatorHistoryList(ctx context.Context, req *interfaces.OperatorHistoryListReq) (result []*interfaces.OperatorDataInfo, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	// 检查算子是否存在
 	var has bool
 	has, _, err = m.DBOperatorManager.SelectByOperatorID(ctx, nil, req.OperatorID)

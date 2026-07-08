@@ -5,9 +5,9 @@ import (
 	"context"
 	"net/http"
 
-	infraerrors "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/errors"
+	oerrors "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
-	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
+	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 )
 
 const (
@@ -23,7 +23,7 @@ func (s *authServiceImpl) CheckCreatePermission(ctx context.Context, accessor *i
 		return err
 	}
 	if !authorized {
-		return infraerrors.NewHTTPError(ctx, http.StatusForbidden, infraerrors.ErrExtCommonAddForbidden, nil)
+		return oerrors.NewHTTPError(ctx, http.StatusForbidden, oerrors.ErrExtCommonAddForbidden, nil)
 	}
 	return nil
 }
@@ -35,7 +35,7 @@ func (s *authServiceImpl) CheckModifyPermission(ctx context.Context, accessor *i
 		return err
 	}
 	if !authorized {
-		return infraerrors.NewHTTPError(ctx, http.StatusForbidden, infraerrors.ErrExtCommonEditForbidden, nil)
+		return oerrors.NewHTTPError(ctx, http.StatusForbidden, oerrors.ErrExtCommonEditForbidden, nil)
 	}
 	return nil
 }
@@ -47,7 +47,7 @@ func (s *authServiceImpl) CheckViewPermission(ctx context.Context, accessor *int
 		return err
 	}
 	if !authorized {
-		return infraerrors.NewHTTPError(ctx, http.StatusForbidden, infraerrors.ErrExtCommonViewForbidden, nil)
+		return oerrors.NewHTTPError(ctx, http.StatusForbidden, oerrors.ErrExtCommonViewForbidden, nil)
 	}
 	return nil
 }
@@ -59,7 +59,7 @@ func (s *authServiceImpl) CheckDeletePermission(ctx context.Context, accessor *i
 		return err
 	}
 	if !authorized {
-		return infraerrors.NewHTTPError(ctx, http.StatusForbidden, infraerrors.ErrExtCommonDeleteForbidden, nil)
+		return oerrors.NewHTTPError(ctx, http.StatusForbidden, oerrors.ErrExtCommonDeleteForbidden, nil)
 	}
 	return nil
 }
@@ -71,7 +71,7 @@ func (s *authServiceImpl) CheckPublishPermission(ctx context.Context, accessor *
 		return err
 	}
 	if !authorized {
-		return infraerrors.NewHTTPError(ctx, http.StatusForbidden, infraerrors.ErrExtCommonPublishForbidden, nil)
+		return oerrors.NewHTTPError(ctx, http.StatusForbidden, oerrors.ErrExtCommonPublishForbidden, nil)
 	}
 	return nil
 }
@@ -83,7 +83,7 @@ func (s *authServiceImpl) CheckUnpublishPermission(ctx context.Context, accessor
 		return err
 	}
 	if !authorized {
-		return infraerrors.NewHTTPError(ctx, http.StatusForbidden, infraerrors.ErrExtCommonUnpublishForbidden, nil)
+		return oerrors.NewHTTPError(ctx, http.StatusForbidden, oerrors.ErrExtCommonUnpublishForbidden, nil)
 	}
 	return nil
 }
@@ -95,7 +95,7 @@ func (s *authServiceImpl) CheckAuthorizePermission(ctx context.Context, accessor
 		return err
 	}
 	if !authorized {
-		return infraerrors.NewHTTPError(ctx, http.StatusForbidden, infraerrors.ErrExtCommonPermissionForbidden, nil)
+		return oerrors.NewHTTPError(ctx, http.StatusForbidden, oerrors.ErrExtCommonPermissionForbidden, nil)
 	}
 	return nil
 }
@@ -107,7 +107,7 @@ func (s *authServiceImpl) CheckPublicAccessPermission(ctx context.Context, acces
 		return err
 	}
 	if !authorized {
-		return infraerrors.NewHTTPError(ctx, http.StatusForbidden, infraerrors.ErrExtCommonPublicAccessForbidden, nil)
+		return oerrors.NewHTTPError(ctx, http.StatusForbidden, oerrors.ErrExtCommonPublicAccessForbidden, nil)
 	}
 	return nil
 }
@@ -119,7 +119,7 @@ func (s *authServiceImpl) CheckExecutePermission(ctx context.Context, accessor *
 		return err
 	}
 	if !authorized {
-		return infraerrors.NewHTTPError(ctx, http.StatusForbidden, infraerrors.ErrExtCommonUseForbidden, nil)
+		return oerrors.NewHTTPError(ctx, http.StatusForbidden, oerrors.ErrExtCommonUseForbidden, nil)
 	}
 	return nil
 }
@@ -132,7 +132,7 @@ func (s *authServiceImpl) MultiCheckOperationPermission(ctx context.Context, acc
 		return err
 	}
 	if !authorized {
-		return infraerrors.NewHTTPError(ctx, http.StatusForbidden, infraerrors.ErrExtCommonOperationForbidden, nil)
+		return oerrors.NewHTTPError(ctx, http.StatusForbidden, oerrors.ErrExtCommonOperationForbidden, nil)
 	}
 	return nil
 }
@@ -156,7 +156,7 @@ func (s *authServiceImpl) OperationCheckAll(
 	}
 	resp, err := s.authorization.OperationCheck(ctx, req)
 	if err != nil {
-		err := infraerrors.NewHTTPError(ctx, http.StatusForbidden, infraerrors.ErrExtCommonOperationForbidden, err.Error())
+		err := oerrors.NewHTTPError(ctx, http.StatusForbidden, oerrors.ErrExtCommonOperationForbidden, err.Error())
 		return false, err
 	}
 	return resp.Result, nil
@@ -251,8 +251,8 @@ func SelectListWithAuth[T any, PT interfaces.PtrBizIdentifiable[T]](ctx context.
 	resourceListFunc interfaces.ResourceListFunc,
 ) (resp *interfaces.QueryResponse[T], err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	// 1. 执行查询获取所有数据
 	allData, err := queryOption()
 	if err != nil {

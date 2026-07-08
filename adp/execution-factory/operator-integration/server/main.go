@@ -11,7 +11,6 @@ import (
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/driveradapters"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/config"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/telemetry"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
 	logicscommon "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/common"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/mcpinstance"
@@ -107,9 +106,8 @@ func main() {
 		skillIndexBuildWorker: skill.NewSkillIndexBuildWorker(),
 	}
 	s.config.Logger.Info("start agent-operator-integration server")
-	// 检查是否开启了可观测性
-	if config.Observability.TraceEnabled {
-		defer telemetry.StopTrace()
+	if config.OTelProviders != nil {
+		defer config.OTelProviders.Shutdown(context.Background())
 	}
 	s.Start()
 	defer s.Stop(context.Background())

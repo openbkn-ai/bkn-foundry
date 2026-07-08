@@ -12,7 +12,7 @@ import (
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/auth"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/utils"
-	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
+	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 )
 
 // 排序字段与数据库字段映射
@@ -26,8 +26,8 @@ var sortFieldMap = map[string]string{
 func (m *operatorManager) QueryOperatorMarketDetail(ctx context.Context, req *interfaces.OperatorMarketDetailReq) (
 	info *interfaces.OperatorDataInfo, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	// 检查算子是否存在
 	exist, releaseDB, err := m.OpReleaseDB.SelectByOpID(ctx, req.OperatorID)
 	if err != nil {
@@ -83,8 +83,8 @@ func (m *operatorManager) QueryOperatorMarketDetail(ctx context.Context, req *in
 func (m *operatorManager) QueryOperatorMarketList(ctx context.Context, req *interfaces.PageQueryOperatorMarketReq) (
 	result *interfaces.PageQueryResponse, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	result = &interfaces.PageQueryResponse{
 		CommonPageResult: interfaces.CommonPageResult{
 			Page:     req.Page,

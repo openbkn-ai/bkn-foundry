@@ -7,25 +7,25 @@ import (
 	"net/http"
 
 	icommon "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/common"
-	infraerrors "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/errors"
+	oerrors "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/utils"
-	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
+	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 )
 
 // RegisterBuiltinMCPServer 注册内置MCP服务
 func (s *mcpServiceImpl) RegisterBuiltinMCPServer(ctx context.Context, req *interfaces.MCPBuiltinRegisterRequest) (resp *interfaces.MCPBuiltinRegisterResponse, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	if req.UserID == "" {
 		req.UserID = interfaces.SystemUser
 	}
 	tx, err := s.DBTx.GetTx(ctx)
 	if err != nil {
 		s.logger.WithContext(ctx).Errorf("get tx failed, err: %v", err)
-		err = infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, "get tx failed")
+		err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, "get tx failed")
 		return
 	}
 	defer func() {
@@ -62,7 +62,7 @@ func (s *mcpServiceImpl) RegisterBuiltinMCPServer(ctx context.Context, req *inte
 	config, err = s.DBMCPServerConfig.SelectByID(ctx, tx, req.MCPID)
 	if err != nil {
 		s.logger.WithContext(ctx).Errorf("select mcp config failed, err: %v", err)
-		err = infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError,
+		err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError,
 			fmt.Sprintf("select mcp config failed, err: %v", err))
 		return
 	}
@@ -109,7 +109,7 @@ func (s *mcpServiceImpl) RegisterBuiltinMCPServer(ctx context.Context, req *inte
 	err = s.IntCompConfigService.UpdateConfig(ctx, tx, check)
 	if err != nil {
 		s.logger.WithContext(ctx).Errorf("update config failed, err: %v", err)
-		err = infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError,
+		err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError,
 			fmt.Sprintf("update config failed, err: %v", err))
 		return
 	}
@@ -123,8 +123,8 @@ func (s *mcpServiceImpl) RegisterBuiltinMCPServer(ctx context.Context, req *inte
 // UnregisterBuiltinMCPServer 注销内置MCP服务
 func (s *mcpServiceImpl) UnregisterBuiltinMCPServer(ctx context.Context, req *interfaces.MCPBuiltinUnregisterRequest) (err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	// 校验用户ID
 	if req.UserID == "" {
 		req.UserID = interfaces.SystemUser
@@ -132,7 +132,7 @@ func (s *mcpServiceImpl) UnregisterBuiltinMCPServer(ctx context.Context, req *in
 	tx, err := s.DBTx.GetTx(ctx)
 	if err != nil {
 		s.logger.WithContext(ctx).Errorf("get tx failed, err: %v", err)
-		err = infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, "get tx failed")
+		err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, "get tx failed")
 		return
 	}
 	defer func() {
@@ -147,12 +147,12 @@ func (s *mcpServiceImpl) UnregisterBuiltinMCPServer(ctx context.Context, req *in
 	config, err := s.DBMCPServerConfig.SelectByID(ctx, tx, req.MCPID)
 	if err != nil {
 		s.logger.WithContext(ctx).Errorf("select mcp config failed, err: %v", err)
-		err = infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError,
+		err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError,
 			fmt.Sprintf("select mcp config failed, err: %v", err))
 		return
 	}
 	if config == nil || !config.IsInternal {
-		err = infraerrors.DefaultHTTPError(ctx, http.StatusBadRequest, fmt.Sprintf("mcp_id: %s is not a builtin MCP, unregistration through this method is not allowed", req.MCPID))
+		err = oerrors.DefaultHTTPError(ctx, http.StatusBadRequest, fmt.Sprintf("mcp_id: %s is not a builtin MCP, unregistration through this method is not allowed", req.MCPID))
 		return
 	}
 
@@ -170,7 +170,7 @@ func (s *mcpServiceImpl) UnregisterBuiltinMCPServer(ctx context.Context, req *in
 	err = s.IntCompConfigService.DeleteConfig(ctx, tx, interfaces.ComponentTypeMCP.String(), req.MCPID)
 	if err != nil {
 		s.logger.WithContext(ctx).Errorf("delete config failed, err: %v", err)
-		err = infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError,
+		err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError,
 			fmt.Sprintf("delete config failed, err: %v", err))
 		return
 	}
@@ -186,7 +186,7 @@ func (s *mcpServiceImpl) UnregisterBuiltinMCPServer(ctx context.Context, req *in
 	err = s.AuthService.DeletePolicy(ctx, []string{req.MCPID}, interfaces.AuthResourceTypeMCP)
 	if err != nil {
 		s.logger.WithContext(ctx).Errorf("delete policy failed, err: %v", err)
-		err = infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError,
+		err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError,
 			fmt.Sprintf("delete policy failed, err: %v", err))
 	}
 	return

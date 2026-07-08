@@ -85,17 +85,37 @@
                 "type": "object",
                 "title": "可观测配置",
                 "properties": {
-                    "logEnabled": {
-                        "type": "boolean",
-                        "title": "是否开启日志"
+                    "otlp_endpoint": {
+                        "type": "string",
+                        "title": "OTLP 上报端点"
                     },
-                    "traceEnabled": {
-                        "type": "boolean",
-                        "title": "是否开启链路追踪"
+                    "trace": {
+                        "type": "object",
+                        "title": "链路追踪配置",
+                        "properties": {
+                            "enabled": {
+                                "type": "boolean",
+                                "title": "是否开启链路追踪"
+                            },
+                            "sampling_rate": {
+                                "type": "number",
+                                "title": "采样率"
+                            }
+                        }
                     },
-                    "metricsEnabled": {
-                        "type": "boolean",
-                        "title": "是否开启指标"
+                    "log": {
+                        "type": "object",
+                        "title": "日志配置",
+                        "properties": {
+                            "enabled": {
+                                "type": "boolean",
+                                "title": "是否开启日志"
+                            },
+                            "level": {
+                                "type": "string",
+                                "title": "日志级别"
+                            }
+                        }
                     }
                 }
             }

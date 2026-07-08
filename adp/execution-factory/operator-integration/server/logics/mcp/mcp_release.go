@@ -9,12 +9,12 @@ import (
 	"strings"
 
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
-	infraerrors "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/errors"
+	oerrors "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/auth"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/utils"
-	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
+	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 )
 
 const (
@@ -25,8 +25,8 @@ const (
 // QueryRelease 查询MCP Server Release列表
 func (s *mcpServiceImpl) QueryRelease(ctx context.Context, req *interfaces.MCPServerReleaseListRequest) (result *interfaces.MCPServerReleaseListResponse, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	filter := make(map[string]interface{})
 	filter["all"] = req.All
 	if req.Name != "" {
@@ -173,8 +173,8 @@ func (s *mcpServiceImpl) QueryRelease(ctx context.Context, req *interfaces.MCPSe
 // GetReleaseDetail 获取MCP Server Release详情
 func (s *mcpServiceImpl) GetReleaseDetail(ctx context.Context, req *interfaces.MCPServerReleaseDetailRequest) (resp *interfaces.MCPServerReleaseDetailResponse, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	// 检查查看权限
 	accessor, err := s.AuthService.GetAccessor(ctx, req.UserID)
 	if err != nil {
@@ -189,12 +189,12 @@ func (s *mcpServiceImpl) GetReleaseDetail(ctx context.Context, req *interfaces.M
 	if err != nil {
 		err = fmt.Errorf("select mcp server release failed: %w", err)
 		s.logger.WithContext(ctx).Error(err)
-		err = infraerrors.NewHTTPError(ctx, http.StatusInternalServerError, infraerrors.ErrExtMCPParseFailed, err.Error())
+		err = oerrors.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.ErrExtMCPParseFailed, err.Error())
 		return
 	}
 
 	if release == nil {
-		err = infraerrors.NewHTTPError(ctx, http.StatusNotFound, infraerrors.ErrExtMCPNotFound, "mcp not found")
+		err = oerrors.NewHTTPError(ctx, http.StatusNotFound, oerrors.ErrExtMCPNotFound, "mcp not found")
 		return
 	}
 
@@ -225,8 +225,8 @@ func (s *mcpServiceImpl) GetReleaseDetail(ctx context.Context, req *interfaces.M
 // QueryReleaseBatch 查询MCP Server Release列表
 func (s *mcpServiceImpl) QueryReleaseBatch(ctx context.Context, req *interfaces.MCPServerReleaseBatchRequest) (mapData []map[string]any, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	mcpIDs := strings.Split(req.MCPIDs, ",")
 	fields := strings.Split(req.Fields, ",")
 
@@ -235,7 +235,7 @@ func (s *mcpServiceImpl) QueryReleaseBatch(ctx context.Context, req *interfaces.
 		if slices.Contains(interfaces.MCPFields, field) {
 			columns = append(columns, "f_"+field)
 		} else {
-			err = infraerrors.DefaultHTTPError(ctx, http.StatusBadRequest, fmt.Sprintf("invalid field: %s", field))
+			err = oerrors.DefaultHTTPError(ctx, http.StatusBadRequest, fmt.Sprintf("invalid field: %s", field))
 			return
 		}
 	}
@@ -324,7 +324,7 @@ func (s *mcpServiceImpl) publishMCP(ctx context.Context, tx *sql.Tx, mcpConfigDB
 	release, err = s.DBMCPServerRelease.SelectByMCPID(ctx, tx, mcpConfigDB.MCPID)
 	if err != nil {
 		s.logger.WithContext(ctx).Errorf("failed to check existing release: %v", err)
-		err = infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+		err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 		return
 	}
 
@@ -340,7 +340,7 @@ func (s *mcpServiceImpl) publishMCP(ctx context.Context, tx *sql.Tx, mcpConfigDB
 		if err != nil {
 			err = fmt.Errorf("failed to update existing release: %w", err)
 			s.logger.WithContext(ctx).Errorf("failed to update existing release: %v", err)
-			err = infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+			err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 			return
 		}
 		return release, nil
@@ -361,7 +361,7 @@ func (s *mcpServiceImpl) publishMCP(ctx context.Context, tx *sql.Tx, mcpConfigDB
 	if err != nil {
 		err = fmt.Errorf("failed to create new release: %w", err)
 		s.logger.WithContext(ctx).Errorf("failed to create new release: %v", err)
-		err = infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+		err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 		return
 	}
 	return release, nil
@@ -372,7 +372,7 @@ func (s *mcpServiceImpl) unpublishMCP(ctx context.Context, tx *sql.Tx, mcpConfig
 	if err != nil {
 		err = fmt.Errorf("failed to delete release: %w", err)
 		s.logger.WithContext(ctx).Errorf("failed to delete release: %v", err)
-		err = infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+		err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 	}
 	return
 }

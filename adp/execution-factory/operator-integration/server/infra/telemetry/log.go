@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
-	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
+	"github.com/openbkn-ai/bkn-comm-go/otel/otellog"
 )
 
 // LogExporterType 日志导出类型
@@ -97,79 +97,79 @@ func (s *spanLogger) Debug(v ...interface{}) {
 
 	msg := fmt.Sprint(v...)
 	if s.ctx != nil {
-		o11y.Debug(s.ctx, msg)
+		otellog.LogDebug(s.ctx, msg)
 		return
 	}
-	o11y.SystemLogger.Debug(msg)
+	otellog.LogDebug(context.Background(), msg)
 }
 func (s *spanLogger) Info(v ...interface{}) {
 	s.maker.DefaultLogger.Info(v...)
 	msg := fmt.Sprint(v...)
 	if s.ctx != nil {
-		o11y.Info(s.ctx, msg)
+		otellog.LogInfo(s.ctx, msg)
 		return
 	}
-	o11y.SystemLogger.Info(msg)
+	otellog.LogInfo(context.Background(), msg)
 }
 func (s *spanLogger) Warn(v ...interface{}) {
 	s.maker.DefaultLogger.Warn(v...)
 
 	msg := fmt.Sprint(v...)
 	if s.ctx != nil {
-		o11y.Warn(s.ctx, msg)
+		otellog.LogWarn(s.ctx, msg)
 		return
 	}
-	o11y.SystemLogger.Warn(msg)
+	otellog.LogWarn(context.Background(), msg)
 }
 func (s *spanLogger) Error(v ...interface{}) {
 	s.maker.DefaultLogger.Error(v...)
 
 	msg := fmt.Sprint(v...)
 	if s.ctx != nil {
-		o11y.Error(s.ctx, msg)
+		otellog.LogError(s.ctx, msg, nil)
 		return
 	}
-	o11y.SystemLogger.Error(msg)
+	otellog.LogError(context.Background(), msg, nil)
 }
 func (s *spanLogger) Debugf(format string, v ...interface{}) {
 	s.maker.DefaultLogger.Debugf(format, v...)
 
 	msg := fmt.Sprintf(format, v...)
 	if s.ctx != nil {
-		o11y.Debug(s.ctx, msg)
+		otellog.LogDebug(s.ctx, msg)
 		return
 	}
-	o11y.SystemLogger.Debug(msg)
+	otellog.LogDebug(context.Background(), msg)
 }
 func (s *spanLogger) Infof(format string, v ...interface{}) {
 	s.maker.DefaultLogger.Infof(format, v...)
 
 	msg := fmt.Sprintf(format, v...)
 	if s.ctx != nil {
-		o11y.Info(s.ctx, msg)
+		otellog.LogInfo(s.ctx, msg)
 		return
 	}
-	o11y.SystemLogger.Info(msg)
+	otellog.LogInfo(context.Background(), msg)
 }
 func (s *spanLogger) Warnf(format string, v ...interface{}) {
 	s.maker.DefaultLogger.Warnf(format, v...)
 
 	msg := fmt.Sprintf(format, v...)
 	if s.ctx != nil {
-		o11y.Warn(s.ctx, msg)
+		otellog.LogWarn(s.ctx, msg)
 		return
 	}
-	o11y.SystemLogger.Warn(msg)
+	otellog.LogWarn(context.Background(), msg)
 }
 func (s *spanLogger) Errorf(format string, v ...interface{}) {
 	s.maker.DefaultLogger.Errorf(format, v...)
 
 	msg := fmt.Sprintf(format, v...)
 	if s.ctx != nil {
-		o11y.Error(s.ctx, msg)
+		otellog.LogError(s.ctx, msg, nil)
 		return
 	}
-	o11y.SystemLogger.Error(msg)
+	otellog.LogError(context.Background(), msg, nil)
 }
 
 func (s *spanLogger) WithContext(ctx context.Context) interfaces.Logger {

@@ -117,20 +117,13 @@ data:
     {{- toYaml .Values.depServices.mq | nindent 4 }}
 
   observability.yaml: |
-    # 可观测相关配置
-    traceType: {{ .Values.observability.traceType | quote }}
-    logEnabled: {{ .Values.observability.logEnabled }}
-    traceEnabled: {{ .Values.observability.traceEnabled }}
-    metricEnabled: {{ .Values.observability.metricEnabled }}
-    logExporter: {{ .Values.observability.logExporter | quote }}
-    traceProvider: {{ .Values.observability.traceProvider | quote }}
-    metricProvider: {{ .Values.observability.metricProvider | quote }}
-    logLoadInternal: {{ .Values.observability.logLoadInternal }}
-    logLoadMaxLog: {{ .Values.observability.logLoadMaxLog }}
-    traceMaxQueueSize: {{ .Values.observability.traceMaxQueueSize }}
-    metricIntervalSecond: {{ .Values.observability.metricIntervalSecond }}
-    httpLogFeedIngesterUrl: {{ .Values.observability.httpLogFeedIngesterUrl | quote }}
-    httpTraceFeedIngesterUrl: {{ .Values.observability.httpTraceFeedIngesterUrl | quote }}
-    httpMetricFeedIngesterUrl: {{ .Values.observability.httpMetricFeedIngesterUrl | quote }}
-    grpcTraceFeedIngesterUrl: {{ .Values.observability.grpcTraceFeedIngesterUrl | quote }}
-    grpcTraceJobId: {{ .Values.observability.grpcTraceJobId | quote }}
+    service_name: {{ .Values.observability.service_name | quote }}
+    service_version: {{ .Values.observability.service_version | quote }}
+    environment: {{ .Values.observability.environment | quote }}
+    otlp_endpoint: {{ .Values.observability.otlp_endpoint | quote }}
+    trace:
+      enabled: {{ .Values.observability.trace.enabled }}
+      sampling_rate: {{ .Values.observability.trace.sampling_rate }}
+    log:
+      enabled: {{ .Values.observability.log.enabled }}
+      level: {{ .Values.observability.log.level | quote }}

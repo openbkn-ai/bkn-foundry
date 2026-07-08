@@ -29,7 +29,7 @@ import (
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/common"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/sandbox"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/utils"
-	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
+	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 	"gopkg.in/yaml.v3"
 )
 
@@ -85,8 +85,8 @@ func NewSkillRegistry() interfaces.SkillRegistry {
 // RegisterSkill 注册技能
 func (r *skillRegistry) RegisterSkill(ctx context.Context, req *interfaces.RegisterSkillReq) (resp *interfaces.RegisterSkillResp, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"user_id": req.UserID,
 		"bd_id":   req.BusinessDomainID,
@@ -173,8 +173,8 @@ func (r *skillRegistry) RegisterSkill(ctx context.Context, req *interfaces.Regis
 
 // UpdateSkillMetadata 更新技能元数据
 func (r *skillRegistry) UpdateSkillMetadata(ctx context.Context, req *interfaces.UpdateSkillMetadataReq) (resp *interfaces.UpdateSkillMetadataResp, err error) {
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"skill_id": req.SkillID,
 		"user_id":  req.UserID,
@@ -253,8 +253,8 @@ func (r *skillRegistry) UpdateSkillMetadata(ctx context.Context, req *interfaces
 
 // UpdateSkillPackage 更新技能包
 func (r *skillRegistry) UpdateSkillPackage(ctx context.Context, req *interfaces.UpdateSkillPackageReq) (resp *interfaces.UpdateSkillPackageResp, err error) {
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"skill_id":  req.SkillID,
 		"user_id":   req.UserID,
@@ -367,8 +367,8 @@ func (r *skillRegistry) UpdateSkillPackage(ctx context.Context, req *interfaces.
 
 // RepublishSkillHistory 将历史版本回灌到草稿态
 func (r *skillRegistry) RepublishSkillHistory(ctx context.Context, req *interfaces.RepublishSkillHistoryReq) (resp *interfaces.RepublishSkillHistoryResp, err error) {
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"skill_id": req.SkillID,
 		"user_id":  req.UserID,
@@ -443,8 +443,8 @@ func (r *skillRegistry) RepublishSkillHistory(ctx context.Context, req *interfac
 
 // PublishSkillHistory 直接发布历史版本
 func (r *skillRegistry) PublishSkillHistory(ctx context.Context, req *interfaces.PublishSkillHistoryReq) (resp *interfaces.PublishSkillHistoryResp, err error) {
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"skill_id": req.SkillID,
 		"user_id":  req.UserID,
@@ -534,8 +534,8 @@ func (r *skillRegistry) PublishSkillHistory(ctx context.Context, req *interfaces
 // DeleteSkill 删除技能
 func (r *skillRegistry) DeleteSkill(ctx context.Context, req *interfaces.DeleteSkillReq) (err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"skill_id": req.SkillID,
 		"user_id":  req.UserID,
@@ -637,8 +637,8 @@ func (r *skillRegistry) DeleteSkill(ctx context.Context, req *interfaces.DeleteS
 // UpdateSkillStatus 更新技能状态
 func (r *skillRegistry) UpdateSkillStatus(ctx context.Context, req *interfaces.UpdateSkillStatusReq) (resp *interfaces.UpdateSkillStatusResp, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"skill_id": req.SkillID,
 		"user_id":  req.UserID,
@@ -757,8 +757,8 @@ func (r *skillRegistry) checkSkillDuplicateName(ctx context.Context, name string
 // DownloadSkill 下载技能
 func (r *skillRegistry) DownloadSkill(ctx context.Context, req *interfaces.DownloadSkillReq) (resp *interfaces.DownloadSkillResp, err error) {
 	// 记录可观测性
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"skill_id": req.SkillID,
 		"user_id":  req.UserID,
@@ -793,8 +793,8 @@ func (r *skillRegistry) DownloadSkill(ctx context.Context, req *interfaces.Downl
 
 // ExecuteSkill 执行技能
 func (r *skillRegistry) ExecuteSkill(ctx context.Context, req *interfaces.ExecuteSkillReq) (resp *interfaces.ExecuteSkillResp, err error) {
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"user_id":  req.UserID,
 		"bd_id":    req.BusinessDomainID,
@@ -912,8 +912,8 @@ func (r *skillRegistry) buildSkillArchiveFromSnapshot(ctx context.Context, skill
 // QuerySkillList 查询技能列表（管理接口）
 func (r *skillRegistry) QuerySkillList(ctx context.Context, req *interfaces.QuerySkillListReq) (resp *interfaces.QuerySkillListResp, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"user_id": req.UserID,
 		"bd_id":   req.BusinessDomainID,
@@ -1204,8 +1204,8 @@ func (r *skillRegistry) querySkillListPage(ctx context.Context, filter map[strin
 // QuerySkillMarketList 查询技能市场列表
 func (r *skillRegistry) QuerySkillMarketList(ctx context.Context, req *interfaces.QuerySkillMarketListReq) (resp *interfaces.QuerySkillMarketListResp, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"user_id": req.UserID,
 		"bd_id":   req.BusinessDomainID,
@@ -1255,8 +1255,8 @@ func (r *skillRegistry) QuerySkillMarketList(ctx context.Context, req *interface
 // GetSkillMarketDetail 获取技能市场详情
 func (r *skillRegistry) GetSkillMarketDetail(ctx context.Context, req *interfaces.GetSkillMarketDetailReq) (resp *interfaces.SkillInfo, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"user_id":  req.UserID,
 		"bd_id":    req.BusinessDomainID,
@@ -1291,8 +1291,8 @@ func (r *skillRegistry) GetSkillMarketDetail(ctx context.Context, req *interface
 // GetSkillDetail 获取技能详情
 func (r *skillRegistry) GetSkillDetail(ctx context.Context, req *interfaces.GetSkillDetailReq) (resp *interfaces.SkillInfo, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"user_id":  req.UserID,
 		"bd_id":    req.BusinessDomainID,
@@ -1325,8 +1325,8 @@ func (r *skillRegistry) GetSkillDetail(ctx context.Context, req *interfaces.GetS
 
 // GetSkillNamesByIDs 按技能ID批量取名(轻量只读，不存在的ID略过；不做对象级授权校验)
 func (r *skillRegistry) GetSkillNamesByIDs(ctx context.Context, ids []string) (resp *interfaces.BatchNamesResp, err error) {
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	resp = &interfaces.BatchNamesResp{Entries: []*interfaces.NameEntry{}}
 	ids = utils.UniqueStrings(ids)
 	if len(ids) == 0 {

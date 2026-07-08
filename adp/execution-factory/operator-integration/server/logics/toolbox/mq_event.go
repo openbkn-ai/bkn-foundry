@@ -4,20 +4,20 @@ import (
 	"context"
 	"net/http"
 
-	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/telemetry"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/utils"
+	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 )
 
 // HandleOperatorDeleteEvent 算子删除事件
 func (s *ToolServiceImpl) HandleOperatorDeleteEvent(ctx context.Context, message []byte) error {
 	// 记录可观测
 	var err error
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"topic":   interfaces.OperatorDeleteEventTopic,
 		"message": string(message),

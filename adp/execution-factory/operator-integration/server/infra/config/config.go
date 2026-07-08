@@ -4,22 +4,23 @@
 package config
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
 	"reflect"
-	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/creasty/defaults"
 	"github.com/go-playground/validator/v10"
-	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/logger"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/telemetry"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/utils"
+	bknotel "github.com/openbkn-ai/bkn-comm-go/otel"
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v3"
 )
@@ -44,6 +45,7 @@ type Config struct {
 	CategoryConfig           CategoryConfig            `yaml:"category"`
 	MQConfigFile             string                    `yaml:"-"`
 	Observability            ObservabilityConfig       `yaml:"-"`
+	OTelProviders            *bknotel.Providers        `yaml:"-"`
 	BusinessDomainManagement PrivateBaseConfig         `yaml:"business-system-service"`
 	SandboxControlPlane      SandboxControlPlaneConfig `yaml:"sandbox-control-plane"`
 	MFModelAPI               PrivateBaseConfig         `yaml:"mf-model-api"`
@@ -113,8 +115,14 @@ type LLMConfig struct {
 
 // ObservabilityConfig 跟踪配置
 type ObservabilityConfig struct {
-	TraceType                 telemetry.ExporterType `mapstructure:"traceType"`
-	o11y.ObservabilitySetting `mapstructure:",squash"`
+	bknotel.OtelConfig `mapstructure:",squash"`
+
+	TraceType                telemetry.ExporterType `mapstructure:"traceType"`
+	TraceEnabled             bool                   `mapstructure:"traceEnabled"`
+	TraceProvider            string                 `mapstructure:"traceProvider"`
+	LogEnabled               bool                   `mapstructure:"logEnabled"`
+	HttpTraceFeedIngesterURL string                 `mapstructure:"httpTraceFeedIngesterUrl"`
+	GrpcTraceFeedIngesterURL string                 `mapstructure:"grpcTraceFeedIngesterUrl"`
 }
 
 // Project 项目配置
@@ -387,29 +395,55 @@ func (conf *Config) initO11yAndLog() {
 	if err := viper.Unmarshal(&conf.Observability); err != nil {
 		panic(err)
 	}
-	serverInfo := o11y.ServerInfo{
-		ServerName:    conf.Project.Name,
-		ServerVersion: "1.0.0",
-		Language:      "Go",
-		GoVersion:     runtime.Version(),
-		GoArch:        runtime.GOARCH,
-	}
 
-	// 初始化可观测性
-	if conf.Observability.TraceEnabled && conf.Observability.TraceType == telemetry.ExporterTypeJaeger {
-		_, err := telemetry.InitJaegerExporter(conf.Project.Name, conf.Observability.TraceProvider, conf.Observability.GrpcTraceFeedIngesterUrl)
-		if err != nil {
-			panic(err)
-		}
-		conf.Observability.TraceEnabled = false
+	otelConfig := conf.Observability.toOTelConfig(conf.Project.Name)
+	providers, err := bknotel.InitOTel(context.Background(), &otelConfig)
+	if err != nil {
+		panic(err)
 	}
-	o11y.Init(serverInfo, conf.Observability.ObservabilitySetting)
+	conf.Observability.OtelConfig = otelConfig
+	conf.OTelProviders = providers
+
 	// 初始化日志
-	if conf.Observability.LogEnabled {
+	if otelConfig.Log.Enabled {
 		configLoader.Logger = telemetry.NewSamplerLogger(logger.NewLogger(level, logger.MaxCalldepth))
 		return
 	}
 	configLoader.Logger = logger.NewLogger(level, logger.DefaultCalldepth)
+}
+
+func (conf ObservabilityConfig) toOTelConfig(serviceName string) bknotel.OtelConfig {
+	otelConfig := conf.OtelConfig
+	if otelConfig.ServiceName == "" {
+		otelConfig.ServiceName = serviceName
+	}
+	if otelConfig.ServiceVersion == "" {
+		otelConfig.ServiceVersion = "1.0.0"
+	}
+	if otelConfig.Environment == "" {
+		otelConfig.Environment = "production"
+	}
+	if otelConfig.OTLPEndpoint == "" {
+		otelConfig.OTLPEndpoint = conf.otelEndpoint()
+	}
+	if conf.TraceEnabled {
+		otelConfig.Trace.Enabled = true
+	}
+	if conf.LogEnabled {
+		otelConfig.Log.Enabled = true
+	}
+	otelConfig.SetDefaults(otelConfig.ServiceName, otelConfig.ServiceVersion)
+	return otelConfig
+}
+
+func (conf ObservabilityConfig) otelEndpoint() string {
+	if conf.TraceProvider == "http" && conf.HttpTraceFeedIngesterURL != "" {
+		return strings.TrimPrefix(strings.TrimPrefix(conf.HttpTraceFeedIngesterURL, "http://"), "https://")
+	}
+	if conf.GrpcTraceFeedIngesterURL != "" {
+		return conf.GrpcTraceFeedIngesterURL
+	}
+	return ""
 }
 
 // GetAuthEnabled returns whether ISF auth dependencies are enabled.

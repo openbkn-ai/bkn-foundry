@@ -8,7 +8,7 @@ import (
 
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/dbaccess"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/config"
-	infraerrors "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/errors"
+	oerrors "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/utils"
@@ -51,7 +51,7 @@ func (s *instanceService) CreateMCPInstance(ctx context.Context, req *interfaces
 		return nil, err
 	}
 	if exists {
-		return nil, infraerrors.NewHTTPError(ctx, http.StatusBadRequest, infraerrors.ErrExtMCPInstanceAlreadyExists, nil)
+		return nil, oerrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.ErrExtMCPInstanceAlreadyExists, nil)
 	}
 	tx, err := s.dbTx.GetTx(ctx)
 	if err != nil {
@@ -214,7 +214,7 @@ func (s *instanceService) GetMCPInstance(ctx context.Context, mcpID string, vers
 		return ins, nil
 	}
 	if errors.Is(err, ErrMCPInstanceConfigNotFound) {
-		return nil, infraerrors.NewHTTPError(ctx, http.StatusNotFound, infraerrors.ErrExtMCPInstanceNotFound, nil)
+		return nil, oerrors.NewHTTPError(ctx, http.StatusNotFound, oerrors.ErrExtMCPInstanceNotFound, nil)
 	}
 	return nil, err
 }

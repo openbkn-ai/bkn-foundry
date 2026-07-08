@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/common"
-	infraerrors "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/errors"
+	oerrors "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
 )
 
@@ -22,7 +22,7 @@ func (s *authServiceImpl) GetAccessor(ctx context.Context, userID string) (*inte
 
 	// 内部接口仅允许实名用户访问
 	if authContext.AccountID == "" {
-		return nil, infraerrors.NewHTTPError(ctx, http.StatusNotFound, infraerrors.ErrExtCommonUserNotFound, "userID is empty")
+		return nil, oerrors.NewHTTPError(ctx, http.StatusNotFound, oerrors.ErrExtCommonUserNotFound, "userID is empty")
 	}
 	accessor := &interfaces.AuthAccessor{
 		ID: authContext.AccountID,
@@ -35,7 +35,7 @@ func (s *authServiceImpl) GetAccessor(ctx context.Context, userID string) (*inte
 			return nil, err
 		}
 		if len(userInfos) == 0 {
-			return nil, infraerrors.NewHTTPError(ctx, http.StatusNotFound, infraerrors.ErrExtCommonUserNotFound, nil)
+			return nil, oerrors.NewHTTPError(ctx, http.StatusNotFound, oerrors.ErrExtCommonUserNotFound, nil)
 		}
 		accessor.Type = interfaces.AccessorTypeUser
 		accessor.Name = userInfos[0].DisplayName
@@ -48,10 +48,10 @@ func (s *authServiceImpl) GetAccessor(ctx context.Context, userID string) (*inte
 		accessor.Type = interfaces.AccessorTypeApp
 		accessor.Name = appInfo.Name
 	case interfaces.AccessorTypeDepartment, interfaces.AccessorTypeGroup, interfaces.AccessorTypeRole:
-		return nil, infraerrors.NewHTTPError(ctx, http.StatusForbidden, infraerrors.ErrExtCommonDepartmentOrGroupOrRoleNotAllowed,
+		return nil, oerrors.NewHTTPError(ctx, http.StatusForbidden, oerrors.ErrExtCommonDepartmentOrGroupOrRoleNotAllowed,
 			"department, group or role account not allowed")
 	default:
-		return nil, infraerrors.NewHTTPError(ctx, http.StatusForbidden, infraerrors.ErrExtCommonInvalidAccessorType, "invalid accessor type")
+		return nil, oerrors.NewHTTPError(ctx, http.StatusForbidden, oerrors.ErrExtCommonInvalidAccessorType, "invalid accessor type")
 	}
 	return accessor, nil
 }

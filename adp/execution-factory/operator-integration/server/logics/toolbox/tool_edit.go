@@ -7,20 +7,20 @@ import (
 	"net/http"
 
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/common"
-	infraerrors "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/errors"
+	oerrors "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/telemetry"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/metric"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/utils"
-	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
+	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 )
 
 // UpdateTool 更新工具
 func (s *ToolServiceImpl) UpdateTool(ctx context.Context, req *interfaces.UpdateToolReq) (resp *interfaces.UpdateToolResp, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"box_id":  req.BoxID,
 		"user_id": req.UserID,
@@ -40,27 +40,27 @@ func (s *ToolServiceImpl) UpdateTool(ctx context.Context, req *interfaces.Update
 	exist, toolBox, err := s.ToolBoxDB.SelectToolBox(ctx, req.BoxID)
 	if err != nil {
 		s.Logger.WithContext(ctx).Errorf("select toolbox failed, err: %v", err)
-		err = infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+		err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 		return
 	}
 	if !exist {
-		err = infraerrors.NewHTTPError(ctx, http.StatusBadRequest, infraerrors.ErrExtToolBoxNotFound, "toolbox not found")
+		err = oerrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.ErrExtToolBoxNotFound, "toolbox not found")
 		return
 	}
 	// 检查工具元数据类型和请求更新是否一致
 	if toolBox.MetadataType != string(req.MetadataType) {
-		err = infraerrors.DefaultHTTPError(ctx, http.StatusBadRequest, fmt.Sprintf("metadata type %s not match", toolBox.MetadataType))
+		err = oerrors.DefaultHTTPError(ctx, http.StatusBadRequest, fmt.Sprintf("metadata type %s not match", toolBox.MetadataType))
 		return
 	}
 	// 检查工具是否存在
 	exist, tool, err := s.ToolDB.SelectTool(ctx, req.ToolID)
 	if err != nil {
 		s.Logger.WithContext(ctx).Errorf("select tool failed, err: %v", err)
-		err = infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+		err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 		return
 	}
 	if !exist {
-		err = infraerrors.NewHTTPError(ctx, http.StatusBadRequest, infraerrors.ErrExtToolNotFound,
+		err = oerrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.ErrExtToolNotFound,
 			fmt.Sprintf("tool %s not found", req.ToolID))
 		return
 	}
@@ -69,9 +69,9 @@ func (s *ToolServiceImpl) UpdateTool(ctx context.Context, req *interfaces.Update
 		err = s.checkToolNameExist(ctx, req.BoxID, req.ToolName)
 		if err != nil {
 			// 交互设计要求返回指定错误信息：https://confluence.aishu.cn/pages/viewpage.action?pageId=280780968
-			httErr := &infraerrors.HTTPError{}
+			httErr := &oerrors.HTTPError{}
 			if errors.As(err, &httErr) && httErr.HTTPCode == http.StatusConflict {
-				err = httErr.WithDescription(infraerrors.ErrExtCommonNameExists)
+				err = httErr.WithDescription(oerrors.ErrExtCommonNameExists)
 			}
 			return
 		}
@@ -120,11 +120,11 @@ func (s *ToolServiceImpl) checkToolNameExist(ctx context.Context, boxID, toolNam
 	exist, _, err := s.ToolDB.SelectBoxToolByName(ctx, boxID, toolName)
 	if err != nil {
 		s.Logger.WithContext(ctx).Errorf("select tool by name failed, err: %v", err)
-		err = infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+		err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 		return
 	}
 	if exist {
-		err = infraerrors.NewHTTPError(ctx, http.StatusConflict, infraerrors.ErrExtToolExists,
+		err = oerrors.NewHTTPError(ctx, http.StatusConflict, oerrors.ErrExtToolExists,
 			"tool name already exists", toolName)
 	}
 	return
@@ -158,7 +158,7 @@ func (s *ToolServiceImpl) updateToolMetadata(ctx context.Context, req *interface
 			metadatas, err = s.MetadataService.ParseMetadata(ctx, req.MetadataType, functionInput)
 		case model.SourceTypeOperator:
 			// 算子转换成的工具不允许直接编辑元数据
-			err = infraerrors.NewHTTPError(ctx, http.StatusMethodNotAllowed, infraerrors.ErrExtToolOperatorNotAllowEdit,
+			err = oerrors.NewHTTPError(ctx, http.StatusMethodNotAllowed, oerrors.ErrExtToolOperatorNotAllowEdit,
 				"operator tool not allow edit metadata")
 		}
 		if err != nil {
@@ -170,13 +170,13 @@ func (s *ToolServiceImpl) updateToolMetadata(ctx context.Context, req *interface
 		err = s.ToolDB.UpdateTool(ctx, nil, toolDB)
 		if err != nil {
 			s.Logger.WithContext(ctx).Errorf("update tool failed, err: %v", err)
-			err = infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+			err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 		}
 		return
 	}
 	tx, err := s.DBTx.GetTx(ctx)
 	if err != nil {
-		err = infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+		err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 		return
 	}
 	defer func() {
@@ -190,11 +190,11 @@ func (s *ToolServiceImpl) updateToolMetadata(ctx context.Context, req *interface
 	has, currentMetadataDB, err := s.MetadataService.GetMetadataBySource(ctx, toolDB.SourceID, toolDB.SourceType)
 	if err != nil {
 		s.Logger.WithContext(ctx).Errorf("select metadata failed, err: %v", err)
-		err = infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+		err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 		return err
 	}
 	if !has {
-		err = infraerrors.NewHTTPError(ctx, http.StatusBadRequest, infraerrors.ErrExtMetadataNotFound,
+		err = oerrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.ErrExtMetadataNotFound,
 			fmt.Sprintf("metadata %s not found", toolDB.SourceID))
 		return err
 	}
@@ -211,7 +211,7 @@ func (s *ToolServiceImpl) updateToolMetadata(ctx context.Context, req *interface
 			}
 		}
 		if metadata == nil {
-			err = infraerrors.NewHTTPError(ctx, http.StatusNotFound, infraerrors.ErrExtToolNotExistInFile,
+			err = oerrors.NewHTTPError(ctx, http.StatusNotFound, oerrors.ErrExtToolNotExistInFile,
 				fmt.Sprintf("no matched method path found, path: %s, method: %s",
 					currentMetadataDB.GetPath(), currentMetadataDB.GetMethod()))
 			return
@@ -238,7 +238,7 @@ func (s *ToolServiceImpl) updateToolMetadata(ctx context.Context, req *interface
 		currentMetadataDB.SetDependenciesURL(metadata.GetDependenciesURL())
 	case model.SourceTypeOperator:
 		// 算子转换成的工具不允许直接编辑元数据
-		err = infraerrors.NewHTTPError(ctx, http.StatusMethodNotAllowed, infraerrors.ErrExtToolOperatorNotAllowEdit,
+		err = oerrors.NewHTTPError(ctx, http.StatusMethodNotAllowed, oerrors.ErrExtToolOperatorNotAllowEdit,
 			"operator tool not allow edit metadata")
 		return
 	}
@@ -247,14 +247,14 @@ func (s *ToolServiceImpl) updateToolMetadata(ctx context.Context, req *interface
 	err = s.MetadataService.UpdateMetadata(ctx, tx, currentMetadataDB)
 	if err != nil {
 		s.Logger.WithContext(ctx).Errorf("update metadata failed, err: %v", err)
-		err = infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+		err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 		return
 	}
 	// 更新工具
 	err = s.ToolDB.UpdateTool(ctx, tx, toolDB)
 	if err != nil {
 		s.Logger.WithContext(ctx).Errorf("update tool failed, err: %v", err)
-		err = infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+		err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 	}
 	return
 }

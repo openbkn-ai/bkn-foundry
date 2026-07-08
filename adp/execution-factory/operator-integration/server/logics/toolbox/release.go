@@ -14,7 +14,7 @@ import (
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/auth"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/metadata"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/utils"
-	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
+	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 )
 
 // 排序字段与数据库字段映射
@@ -34,8 +34,8 @@ var sortFieldMap = map[string]string{
 */
 func (s *ToolServiceImpl) GetMarketToolList(ctx context.Context, req *interfaces.QueryMarketToolListReq) (resp *interfaces.QueryMarketToolListResp, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	// 权限校验
 	accessor, err := s.AuthService.GetAccessor(ctx, req.UserID)
 	if err != nil {
@@ -215,8 +215,8 @@ func filterToolboxResourceIDs(resourceToBdMap map[string]string, authResourceIDs
 func (s *ToolServiceImpl) GetReleaseToolBoxInfo(ctx context.Context, req *interfaces.GetReleaseToolBoxInfoReq) (
 	resp []*interfaces.GetReleaseToolBoxInfoResp, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	// 参数校验
 	boxIDs := strings.Split(req.BoxIDs, ",")
 	if len(boxIDs) == 0 {
@@ -345,8 +345,8 @@ func (s *ToolServiceImpl) getToolBoxAllToolInfo(ctx context.Context, boxDB *mode
 func (s *ToolServiceImpl) QueryMarketToolBoxList(ctx context.Context, req *interfaces.QueryMarketToolBoxListReq) (
 	resp *interfaces.QueryToolBoxListResp, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	// 构造查询条件
 	filter := make(map[string]interface{})
 	filter["all"] = req.All

@@ -9,9 +9,9 @@ import (
 	"fmt"
 	"net/http"
 
-	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 )
 
 // RegisterOpenApiBundle registers OpenAPI operators first, then converts each into toolbox tools.
@@ -19,8 +19,8 @@ func (s *ToolServiceImpl) RegisterOpenApiBundle(
 	ctx context.Context,
 	req *interfaces.RegisterOpenApiBundleReq,
 ) (resp *interfaces.RegisterOpenApiBundleResp, err error) {
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 
 	resp = &interfaces.RegisterOpenApiBundleResp{
 		ToolIDs:     []string{},

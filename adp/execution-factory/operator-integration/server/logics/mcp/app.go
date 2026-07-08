@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
-	infraerrors "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/errors"
+	oerrors "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/utils"
 )
@@ -18,14 +18,14 @@ func (s *mcpServiceImpl) GetMCPInstanceConfig(ctx context.Context, mcpID string,
 	}
 
 	if release == nil {
-		return nil, infraerrors.NewHTTPError(ctx, http.StatusNotFound, infraerrors.ErrExtMCPNotFound, "mcp server not exist")
+		return nil, oerrors.NewHTTPError(ctx, http.StatusNotFound, oerrors.ErrExtMCPNotFound, "mcp server not exist")
 	}
 
 	// 校验MCP Server是否允许该模式访问
 	if release.CreationType == interfaces.MCPCreationTypeCustom.String() {
 		if release.Mode != mode.String() {
 			// 报错，不支持该连接模式
-			return nil, infraerrors.NewHTTPError(ctx, http.StatusBadRequest, infraerrors.ErrExtMCPNotFound, "mcp server not support this mode")
+			return nil, oerrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.ErrExtMCPNotFound, "mcp server not support this mode")
 		}
 	}
 
@@ -57,7 +57,7 @@ func (s *mcpServiceImpl) GetMCPInstanceConfig(ctx context.Context, mcpID string,
 			Headers: utils.JSONToObject[map[string]string](release.Headers),
 		}
 	default:
-		return nil, infraerrors.NewHTTPError(ctx, http.StatusBadRequest, infraerrors.ErrExtMCPNotFound, "mcp server not support this mode")
+		return nil, oerrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.ErrExtMCPNotFound, "mcp server not support this mode")
 	}
 	// 返回配置信息
 	return config, nil

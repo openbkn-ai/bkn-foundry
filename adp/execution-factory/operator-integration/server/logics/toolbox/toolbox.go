@@ -16,7 +16,7 @@ import (
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/common"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/metadata"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/metric"
-	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
+	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/utils"
 )
@@ -24,8 +24,8 @@ import (
 // GetToolBox 获取工具箱信息
 func (s *ToolServiceImpl) GetToolBox(ctx context.Context, req *interfaces.GetToolBoxReq, isMarket bool) (resp *interfaces.ToolBoxToolInfo, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	// 如果是公开接口，检查查看权限
 	if infracommon.IsPublicAPIFromCtx(ctx) {
 		var accessor *interfaces.AuthAccessor
@@ -87,8 +87,8 @@ func (s *ToolServiceImpl) GetToolBox(ctx context.Context, req *interfaces.GetToo
 // DeleteBoxByID 删除工具箱
 func (s *ToolServiceImpl) DeleteBoxByID(ctx context.Context, req *interfaces.DeleteBoxReq) (resp *interfaces.DeleteBoxResp, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"box_id":  req.BoxID,
 		"user_id": req.UserID,
@@ -167,8 +167,8 @@ func (s *ToolServiceImpl) DeleteBoxByID(ctx context.Context, req *interfaces.Del
 // QueryToolBoxList 工具箱管理
 func (s *ToolServiceImpl) QueryToolBoxList(ctx context.Context, req *interfaces.QueryToolBoxListReq) (resp *interfaces.QueryToolBoxListResp, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	// 构造查询条件
 	filter := make(map[string]interface{})
 	filter["all"] = req.All
@@ -218,8 +218,8 @@ func (s *ToolServiceImpl) QueryToolBoxList(ctx context.Context, req *interfaces.
 // UpdateToolBoxStatus 修改工具箱状态
 func (s *ToolServiceImpl) UpdateToolBoxStatus(ctx context.Context, req *interfaces.UpdateToolBoxStatusReq) (resp *interfaces.UpdateToolBoxStatusResp, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"box_id":  req.BoxID,
 		"user_id": req.UserID,
@@ -306,8 +306,8 @@ func (s *ToolServiceImpl) UpdateToolBoxStatus(ctx context.Context, req *interfac
 // GetBoxTool 获取工具信息
 func (s *ToolServiceImpl) GetBoxTool(ctx context.Context, req *interfaces.GetToolReq) (resp *interfaces.ToolInfo, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"box_id":  req.BoxID,
 		"tool_id": req.ToolID,
@@ -358,8 +358,8 @@ func (s *ToolServiceImpl) GetBoxTool(ctx context.Context, req *interfaces.GetToo
 // DeleteBoxTool 批量删除工具箱内工具
 func (s *ToolServiceImpl) DeleteBoxTool(ctx context.Context, req *interfaces.BatchDeleteToolReq) (resp *interfaces.BatchDeleteToolResp, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	// 权限校验
 	var accessor *interfaces.AuthAccessor
 	accessor, err = s.AuthService.GetAccessor(ctx, req.UserID)
@@ -455,8 +455,8 @@ func (s *ToolServiceImpl) DeleteBoxTool(ctx context.Context, req *interfaces.Bat
 // QueryToolList 查询工具列表(获取工具箱内工具列表)
 func (s *ToolServiceImpl) QueryToolList(ctx context.Context, req *interfaces.QueryToolListReq) (resp *interfaces.QueryToolListResp, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	// 如果外部接口，校验是否拥有所属工具箱的查看、公开访问权限
 	if infracommon.IsPublicAPIFromCtx(ctx) {
 		var accessor *interfaces.AuthAccessor
@@ -555,8 +555,8 @@ func (s *ToolServiceImpl) QueryToolList(ctx context.Context, req *interfaces.Que
 // UpdateToolStatus 更新工具状态
 func (s *ToolServiceImpl) UpdateToolStatus(ctx context.Context, req *interfaces.UpdateToolStatusReq) (resp []*interfaces.ToolStatus, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"box_id":  req.BoxID,
 		"user_id": req.UserID,

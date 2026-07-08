@@ -8,13 +8,13 @@ import (
 	"sync"
 	"time"
 
-	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/drivenadapters"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/telemetry"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/utils"
+	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 )
 
 const (
@@ -153,8 +153,8 @@ func (p *sessionPoolImpl) GetDependencies(ctx context.Context) (resp *Dependenci
 // ExecuteCode 执行代码
 func (p *sessionPoolImpl) ExecuteCode(ctx context.Context, req *interfaces.ExecuteCodeReq) (resp *interfaces.ExecuteCodeResp, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"language": req.Language,
 		"timeout":  req.Timeout,
@@ -229,8 +229,8 @@ func (p *sessionPoolImpl) acquireSession(ctx context.Context, retryCount int) (s
 
 func (p *sessionPoolImpl) acquireSessionWithOptions(ctx context.Context, retryCount int, envVars map[string]any) (sessionID string, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"retryCount": retryCount,
 	})

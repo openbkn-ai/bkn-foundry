@@ -7,14 +7,14 @@ import (
 
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
-	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
+	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 )
 
 // CheckAddAsTool 检查算子是否允许添加为工具
 func (m *operatorManager) CheckAddAsTool(ctx context.Context, operatorID, userID string) (resp *interfaces.CheckAddAsToolResp, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	var accessor *interfaces.AuthAccessor
 	accessor, err = m.AuthService.GetAccessor(ctx, userID)
 	if err != nil {
