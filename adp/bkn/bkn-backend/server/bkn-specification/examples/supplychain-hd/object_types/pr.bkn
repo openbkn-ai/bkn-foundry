@@ -1,0 +1,41 @@
+---
+type: object_type
+id: pr
+name: 采购申请单
+tags: [供应链, 采购, 已审核]
+---
+
+## ObjectType: 采购申请单
+
+根据MRP生成的内部采购申请PR。
+
+### Data Source
+
+| Type | ID | Name |
+|------|----|------|
+| data_view | 2017573348833259522 | erp_purchase_request |
+
+### Data Properties
+
+| Name | Display Name | Type | Description | Mapped Field |
+|------|--------------|------|-------------|--------------|
+| id | 采购申请主键 | string | 采购申请主键 | id |
+| billno | 采购申请单号 | string | 采购申请单号 | billno |
+| biztime | 业务时间 | date | 业务时间 | biztime |
+| billtype_name | 单据类型 | string | 单据类型（包含研发/生产等，目前仅考虑生产） | billtype_name |
+| org_name | 组织名称 | string | 组织名称 | org_name |
+| auditdate | 审核日期 | date | 审核日期 | auditdate |
+| entry_id | 采购申请明细主键 | string | 采购申请明细主键 | entry_id |
+| material_number | 物料编码 | string | 物料编码 | material_number |
+| material_name | 物料名称 | string | 物料名称 | material_name |
+| qty | 数量 | decimal | 数量 | qty |
+
+### Logic Properties
+
+
+### Keys
+
+Primary Keys: entry_id
+Display Key: billno
+Incremental Key: 
+

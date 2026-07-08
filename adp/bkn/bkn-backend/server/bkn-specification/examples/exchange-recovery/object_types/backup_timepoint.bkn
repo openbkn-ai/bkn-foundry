@@ -1,0 +1,63 @@
+---
+type: object_type
+id: backup_timepoint
+name: 备份时间点副本
+tags: [备份, 时间点, 灾备]
+---
+
+## ObjectType: 备份时间点副本
+
+备份集中的单个备份时间点副本，包含该时间点的所有邮件数据。
+
+### Data Source
+
+| Type | ID | Name |
+|------|----|------|
+
+### Data Properties
+
+| Name | Display Name | Type | Description | Mapped Field |
+|------|--------------|------|-------------|--------------|
+| id | ID | integer | 主键ID | id |
+| exchange_server_id | Exchange服务器ID | integer | Exchange服务器ID（外键，关联exchange_server.id） | exchange_server_id |
+| snapshot_name | 时间点名称 | string | 备份时间点副本名称 | snapshot_name |
+| backup_set_id | 备份集ID | integer | 所属备份集ID | backup_set_id |
+| snapshot_time | 备份时间 | datetime | 备份时间点 | snapshot_time |
+| snapshot_size | 时间点大小 | integer | 时间点大小（MB） | snapshot_size |
+| metadata | 元数据 | json | 备份时间点元数据（包含邮件列表等） | metadata |
+| is_verified | 是否验证 | boolean | 是否经过可恢复验证 | is_verified |
+
+### Logic Properties
+
+#### contains_target_email
+
+**Meta**
+
+| Display Name | Type | Description |
+|--------------|------|-------------|
+| 包含目标邮件 | operator | 检查备份时间点副本是否包含目标邮件 |
+
+**Source**
+
+| Source Type | Source ID | Source Name |
+|-------------|-----------|-------------|
+
+**Parameters**
+
+| Name | Type | Source | Operation | ValueFrom | Value | Description |
+|------|------|--------|-----------|-----------|-------|-------------|
+| target_email_subject | string | input |  |  |  | 目标邮件主题 |
+| snapshot_metadata | json | property |  | metadata |  | 时间点元数据 |
+
+**Analysis Dimensions**
+
+| Name | Display Name | Type | Description |
+|------|--------------|------|-------------|
+
+
+### Keys
+
+Primary Keys: id
+Display Key: snapshot_name
+Incremental Key: 
+

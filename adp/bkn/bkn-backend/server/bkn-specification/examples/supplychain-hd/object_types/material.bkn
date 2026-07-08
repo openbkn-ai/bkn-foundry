@@ -1,0 +1,43 @@
+---
+type: object_type
+id: material
+name: 物料
+tags: [供应链, 物料, 已审核]
+---
+
+## ObjectType: 物料
+
+记录物料的基础信息。
+
+包括编码、名称、规格型号、属性（自制/外购）及单位等及相关参数。
+
+### Data Source
+
+| Type | ID | Name |
+|------|----|------|
+| data_view | d607dm08ubbiutnq84mg | HD_物料 |
+
+### Data Properties
+
+| Name | Display Name | Type | Description | Mapped Field |
+|------|--------------|------|-------------|--------------|
+| material_code | 物料编码 | string | 物料的唯一标识编码 | material_code |
+| material_name | 物料名称 | string | 物料的正式名称 | material_name |
+| modelnum | 规格型号 | string | 物料的规格与其型号 | modelnum |
+| huid_productline_name | 产品线名称 | string | 所属产品线 | huid_productline_name |
+| baseunit_number | 物料规格编码 | string | 计量单位的编码，pcs | baseunit_number |
+| baseunit_name | 物料规格 | string | 计量单位名称 (如:  个，套) | baseunit_name |
+| group_name | 存货类别 | string | 原材料-半成品 | group_name |
+| group_type | 物料分类 | string | 物料的类别描述 | group_type |
+| materialattr | 物料属性 | string | 物料属性 (如: 外购) | materialattr |
+| purchase_fixedleadtime | 采购固定提前期 | decimal | 采购交货提前期 (天) | purchase_fixedleadtime |
+
+### Logic Properties
+
+
+### Keys
+
+Primary Keys: material_code
+Display Key: material_name
+Incremental Key: 
+

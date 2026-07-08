@@ -1,0 +1,38 @@
+---
+type: object_type
+id: data_domain
+name: 数据域
+tags: [备份服务器, 数据域, 灾备]
+---
+
+## ObjectType: 数据域
+
+数据域（备份服务器），Agent可以接入多个数据域，每个数据域包含多个Exchange服务器。
+
+### Data Source
+
+| Type | ID | Name |
+|------|----|------|
+
+### Data Properties
+
+| Name | Display Name | Type | Description | Mapped Field |
+|------|--------------|------|-------------|--------------|
+| id | 数据域ID | integer | 主键ID | id |
+| domain_name | 数据域名称 | string | 数据域名称 | domain_name |
+| domain_ip | 数据域IP | string | 数据域IP地址 | domain_ip |
+| domain_type | 数据域类型 | string | 数据域类型（备份服务器/存储服务器） | domain_type |
+| status | 状态 | string | 数据域状态（Online/Offline） | status |
+| details | 详情 | json | 数据域详情（容量、版本、配置等） | details |
+| created_time | 创建时间 | datetime | 创建时间 | created_time |
+| updated_time | 更新时间 | datetime | 更新时间 | updated_time |
+
+### Logic Properties
+
+
+### Keys
+
+Primary Keys: id
+Display Key: domain_name
+Incremental Key: 
+

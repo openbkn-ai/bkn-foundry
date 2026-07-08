@@ -1,0 +1,23 @@
+---
+type: relation_type
+id: verify_exchange_availability
+name: 验证Exchange可用性后生成恢复报告
+tags: [to, 流程关系, 灾备]
+---
+
+## RelationType: 验证Exchange可用性后生成恢复报告
+
+验证Exchange可用性完成后，生成恢复报告。
+
+### Endpoint
+
+| Source | Target | Type |
+|--------|--------|------|
+| recovery_job_verification | recovery_job_verification | direct |
+
+### Mapping Rules
+
+| Source Property | Target Property |
+|-----------------|-----------------|
+| timepoint | timepoint |
+

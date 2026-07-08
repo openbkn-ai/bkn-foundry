@@ -1,0 +1,49 @@
+---
+type: metric
+id: backup_timepoint_verified_count
+name: 已验证备份时间点数量
+tags: [备份, 验证, 灾备]
+---
+
+## Metric: 已验证备份时间点数量
+
+仅统计 `is_verified` 为真的备份时间点副本数量，用于可恢复性治理与合规报告。
+
+### Metric attributes
+
+| Metric Type | Unit Type | Unit |
+|-------------|-----------|------|
+| atomic | count | 个 |
+
+### Scope
+
+| Scope Type | Scope Ref |
+|------------|-----------|
+| object_type | backup_timepoint |
+
+### Calculation Formula
+
+```yaml
+kind: atomic
+
+atomic:
+  condition:
+    field: is_verified
+    operation: ==
+    value: true
+  aggregation:
+    property: id
+    aggr: count
+```
+
+### Time Dimension
+
+| Property | Default Range Policy |
+|----------|----------------------|
+| snapshot_time | last_24h |
+
+### Analysis Dimensions
+
+| Name | Display Name |
+|------|--------------|
+| exchange_server_id | Exchange服务器 |

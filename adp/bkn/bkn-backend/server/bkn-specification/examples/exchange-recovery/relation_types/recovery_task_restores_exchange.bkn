@@ -1,0 +1,23 @@
+---
+type: relation_type
+id: recovery_task_restores_exchange
+name: 恢复任务恢复Exchange
+tags: [restores, 恢复关系, 灾备]
+---
+
+## RelationType: 恢复任务恢复Exchange
+
+恢复任务恢复Exchange，表示该恢复任务用于恢复邮件或恢复邮件服务器。
+
+### Endpoint
+
+| Source | Target | Type |
+|--------|--------|------|
+| recovery_task | email | direct |
+
+### Mapping Rules
+
+| Source Property | Target Property |
+|-----------------|-----------------|
+| timepoint | timepoint |
+

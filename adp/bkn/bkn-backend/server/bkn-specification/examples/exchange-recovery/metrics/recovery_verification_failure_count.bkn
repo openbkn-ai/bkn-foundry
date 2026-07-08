@@ -1,0 +1,50 @@
+---
+type: metric
+id: recovery_verification_failure_count
+name: 可用性验证失败次数
+tags: [验证, 可用性, 灾备]
+---
+
+## Metric: 可用性验证失败次数
+
+统计验证结果为失败的 Exchange 可用性验证记录数，用于恢复质量与演练问题追踪。
+
+### Metric attributes
+
+| Metric Type | Unit Type | Unit |
+|-------------|-----------|------|
+| atomic | count | 次 |
+
+### Scope
+
+| Scope Type | Scope Ref |
+|------------|-----------|
+| object_type | recovery_job_verification |
+
+### Calculation Formula
+
+```yaml
+kind: atomic
+
+atomic:
+  condition:
+    field: verification_result
+    operation: ==
+    value: "失败"
+  aggregation:
+    property: id
+    aggr: count
+```
+
+### Time Dimension
+
+| Property | Default Range Policy |
+|----------|----------------------|
+| verification_time | last_24h |
+
+### Analysis Dimensions
+
+| Name | Display Name |
+|------|--------------|
+| verification_method | 验证方法 |
+| exchange_server_id | Exchange服务器 |

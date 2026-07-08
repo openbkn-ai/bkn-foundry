@@ -1,0 +1,38 @@
+---
+type: object_type
+id: po
+name: 采购订单
+tags: [供应链, 采购, 已审核]
+---
+
+## ObjectType: 采购订单
+
+发给供应商的正式采购订单。
+
+### Data Source
+
+| Type | ID | Name |
+|------|----|------|
+| data_view | 2017573348875202562 | erp_purchase_order |
+
+### Data Properties
+
+| Name | Display Name | Type | Description | Mapped Field |
+|------|--------------|------|-------------|--------------|
+| billno | 采购订单单号 | string | 采购订单单号 | billno |
+| biztime | 采购日期 | date | 业务日期 | biztime |
+| org_name | 购买组织 | string | 购买签订的主体 | org_name |
+| billtype_name | 订单类型 | string | 生产项目采购订单、研发项目采购订单等等。 | billtype_name |
+| supplier_number | 供应商编码 | string | 供应商编码 | supplier_number |
+| supplier_name | 供应商名称 | string | 供应商名称 | supplier_name |
+| operatorname | 执行采购人 | string | 执行采购的采购人员 | operatorname |
+
+### Logic Properties
+
+
+### Keys
+
+Primary Keys: billno
+Display Key: billno
+Incremental Key: 
+

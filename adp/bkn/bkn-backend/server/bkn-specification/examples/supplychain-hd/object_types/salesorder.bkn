@@ -1,0 +1,40 @@
+---
+type: object_type
+id: salesorder
+name: 销售订单
+tags: [供应链, 销售, 已审核, 老数据]
+---
+
+## ObjectType: 销售订单
+
+客户销售订单信息。
+
+### Data Source
+
+| Type | ID | Name |
+|------|----|------|
+| data_view | ec2f0a5e-aa15-480a-9f00-e637760e90f0 | 订单信息_fixed |
+
+### Data Properties
+
+| Name | Display Name | Type | Description | Mapped Field |
+|------|--------------|------|-------------|--------------|
+| contract_number | 合同编号 | string |  | contract_number |
+| signing_quantity | 签约数量 | integer |  | signing_quantity |
+| promised_delivery_date | 承诺交期时间 | date |  | promised_delivery_date |
+| product_category | 产品类别 | string |  | product_category |
+| shipping_date | 交付时间 | date |  | shipping_date |
+| shipping_quantity | 交付数量 | float |  | shipping_quantity |
+| product_code | 产品编码 | string |  | product_code |
+| product_name | 产品名称 | string |  | product_name |
+| signing_date | 签约时间 | date |  | signing_date |
+
+### Logic Properties
+
+
+### Keys
+
+Primary Keys: contract_number
+Display Key: contract_number
+Incremental Key: 
+

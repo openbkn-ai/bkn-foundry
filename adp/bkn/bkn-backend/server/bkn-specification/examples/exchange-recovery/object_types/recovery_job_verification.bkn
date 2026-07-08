@@ -1,0 +1,39 @@
+---
+type: object_type
+id: recovery_job_verification
+name: Exchange可用性验证
+tags: [可用性验证, 灾备, 验证]
+---
+
+## ObjectType: Exchange可用性验证
+
+恢复成功后，对邮件是否可读、邮件服务器是否可正常对外提供业务的验证结果，记录验证的详细信息。
+
+### Data Source
+
+| Type | ID | Name |
+|------|----|------|
+
+### Data Properties
+
+| Name | Display Name | Type | Description | Mapped Field |
+|------|--------------|------|-------------|--------------|
+| id | 验证ID | integer | 主键ID | id |
+| verification_name | 验证名称 | string | 验证名称 | verification_name |
+| recovery_job_id | 恢复作业ID | integer | 关联的恢复作业ID | recovery_job_id |
+| exchange_server_id | Exchange服务器ID | integer | Exchange服务器ID | exchange_server_id |
+| recovery_task_id | 恢复任务ID | integer | 恢复任务ID | recovery_task_id |
+| verification_method | 验证方法 | string | 验证方法（Exchange服务可用性检查/邮件完整性检查/附件检查/可读性检查） | verification_method |
+| verification_result | 验证结果 | string | 验证结果（通过/失败） | verification_result |
+| verification_time | 验证时间 | datetime | 验证时间 | verification_time |
+| verification_details | 验证详情 | json | 验证详情（Exchange服务状态、邮件功能、邮件主题、发件人、收件人、正文、附件等） | verification_details |
+
+### Logic Properties
+
+
+### Keys
+
+Primary Keys: id
+Display Key: verification_name
+Incremental Key: 
+

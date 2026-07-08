@@ -1,0 +1,41 @@
+---
+type: object_type
+id: inventory
+name: 库存
+tags: [供应链, 库存, 已审核]
+---
+
+## ObjectType: 库存
+
+实时记录物料在各仓库及仓位的现有库存量、库存状态及批次信息。
+
+### Data Source
+
+| Type | ID | Name |
+|------|----|------|
+| data_view | 2017573348090867713 | erp_real_time_inventory |
+
+### Data Properties
+
+| Name | Display Name | Type | Description | Mapped Field |
+|------|--------------|------|-------------|--------------|
+| seq_no | 库存编号 | integer |  | seq_no |
+| available_inventory_qty | 可用库存数量 | decimal | 可用库存数量 = 库存数量-预留库存数量 | available_inventory_qty |
+| batch_master | 批号主档 | string | 一批物料的主档批号 | batch_master |
+| batch_no | 批号 | string | 一批物料的编号 | batch_no |
+| bin_location | 仓位 | string | 物料所在仓位 | bin_location |
+| expiry_date | 有效日期 | date | 是否呆滞物料的关键字段，超过有效日期的可以视为呆滞物料。 | expiry_date |
+| inbound_date | 入库时间 | date |  | inbound_date |
+| inventory_org | 库存所属组织 | string | 库存所属组织 | inventory_org |
+| inventory_qty | 库存数量 | decimal |  | inventory_qty |
+| inventory_uom | 库存单位 | string | 个，套等单位。 | inventory_uom |
+
+### Logic Properties
+
+
+### Keys
+
+Primary Keys: seq_no
+Display Key: seq_no
+Incremental Key: 
+

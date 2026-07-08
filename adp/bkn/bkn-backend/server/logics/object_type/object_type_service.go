@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
-	bknsdk "github.com/kweaver-ai/bkn-specification/sdk/golang/bkn"
 	"github.com/openbkn-ai/bkn-comm-go/logger"
 	"github.com/openbkn-ai/bkn-comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
@@ -26,6 +25,7 @@ import (
 	"github.com/rs/xid"
 	"go.opentelemetry.io/otel/codes"
 
+	bknsdk "bkn-backend/bkn-specification/bkn"
 	"bkn-backend/common"
 	cond "bkn-backend/common/condition"
 	berrors "bkn-backend/errors"

@@ -1,0 +1,25 @@
+---
+type: relation_type
+id: po2material
+name: 采购订单关联物料
+tags: [供应链, 关系, 已审核]
+---
+
+## RelationType: 采购订单关联物料
+
+采购订单与物料之间的关联关系。
+
+物料采购订单PO是关于某个物料的采购，基于物料编码来进行连接
+
+### Endpoint
+
+| Source | Target | Type |
+|--------|--------|------|
+| po | material | direct |
+
+### Mapping Rules
+
+| Source Property | Target Property |
+|-----------------|-----------------|
+| material_number | material_code |
+

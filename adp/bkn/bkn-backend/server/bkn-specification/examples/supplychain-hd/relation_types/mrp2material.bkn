@@ -1,0 +1,23 @@
+---
+type: relation_type
+id: mrp2material
+name: 物料需求计划关联物料
+tags: [供应链, 关系, 已审核]
+---
+
+## RelationType: 物料需求计划关联物料
+
+物料需求计划与物料之间的关联关系。
+
+### Endpoint
+
+| Source | Target | Type |
+|--------|--------|------|
+| mrp | material | direct |
+
+### Mapping Rules
+
+| Source Property | Target Property |
+|-----------------|-----------------|
+| main_material | material_code |
+

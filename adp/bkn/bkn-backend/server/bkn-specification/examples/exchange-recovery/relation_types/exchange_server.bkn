@@ -1,0 +1,23 @@
+---
+type: relation_type
+id: exchange_server
+name: Exchange生产服务器包含备份时间点副本
+tags: [contains, 包含关系, 灾备]
+---
+
+## RelationType: Exchange生产服务器包含备份时间点副本
+
+Exchange生产服务器包含备份时间点副本，表示该生产服务器的备份时间点副本。
+
+### Endpoint
+
+| Source | Target | Type |
+|--------|--------|------|
+| exchange_server | backup_timepoint | direct |
+
+### Mapping Rules
+
+| Source Property | Target Property |
+|-----------------|-----------------|
+| server_name | server_name |
+

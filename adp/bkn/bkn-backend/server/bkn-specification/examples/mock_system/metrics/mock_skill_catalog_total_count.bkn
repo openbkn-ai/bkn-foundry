@@ -1,0 +1,45 @@
+---
+type: metric
+id: mock_skill_catalog_total_count
+name: 技能库条目总数
+tags: [mock_system, 技能]
+---
+
+## Metric: 技能库条目总数
+
+统计技能类对象总量，与按类目拆解的指标配合，观察技能资产整体规模。
+
+### Metric attributes
+
+| Metric Type | Unit Type | Unit |
+|-------------|-----------|------|
+| atomic | count | 个 |
+
+### Scope
+
+| Scope Type | Scope Ref |
+|------------|-----------|
+| object_type | skill |
+
+### Calculation Formula
+
+```yaml
+kind: atomic
+
+atomic:
+  aggregation:
+    property: id
+    aggr: count
+```
+
+### Time Dimension
+
+| Property | Default Range Policy |
+|----------|----------------------|
+| create_time | last_24h |
+
+### Analysis Dimensions
+
+| Name | Display Name |
+|------|--------------|
+| category | 技能分类 |

@@ -1,0 +1,41 @@
+---
+type: object_type
+id: recovery_task
+name: 恢复任务
+tags: [任务管理, 恢复任务, 灾备]
+---
+
+## ObjectType: 恢复任务
+
+Exchange邮件恢复任务，包含恢复策略的所有信息。
+
+### Data Source
+
+| Type | ID | Name |
+|------|----|------|
+
+### Data Properties
+
+| Name | Display Name | Type | Description | Mapped Field |
+|------|--------------|------|-------------|--------------|
+| id | 任务ID | integer | 主键ID | id |
+| backup_timepoint_id | 备份时间点ID | integer | 备份时间点ID（外键，关联backup_timepoint.id） | backup_timepoint_id |
+| task_name | 任务名称 | string | 恢复任务名称 | task_name |
+| timepoint | 备份时间点 | datetime | 选择的备份时间点 | timepoint |
+| recovery_type | 恢复类型 | string | 恢复类型（挂载恢复/数据恢复） | recovery_type |
+| recovery_granularity | 恢复粒度 | string | 恢复粒度（邮件服务器/邮件级别） | recovery_granularity |
+| recovery_destination | 恢复目的地 | string | 恢复的目的地（production-生产服务器/recovery_server-恢复服务器） | recovery_destination |
+| task_status | 任务状态 | string | 任务状态（Pending/Running/Completed/Failed） | task_status |
+| created_at | 创建时间 | datetime | 任务创建时间 | created_at |
+| completed_at | 完成时间 | datetime | 任务完成时间 | completed_at |
+| recovery_result | 恢复结果 | string | 恢复结果（成功/失败/部分成功） | recovery_result |
+
+### Logic Properties
+
+
+### Keys
+
+Primary Keys: id
+Display Key: task_name
+Incremental Key: 
+

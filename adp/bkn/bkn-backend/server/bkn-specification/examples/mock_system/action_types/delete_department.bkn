@@ -1,0 +1,37 @@
+---
+type: action_type
+id: delete_department
+name: 删除部门
+tags: []
+action_type: delete
+action_intent: delete
+---
+
+## ActionType: 删除部门
+
+### Bound Object
+
+| Bound Object |
+|--------------|
+| department |
+
+### Trigger Condition
+
+
+### Action Source
+
+| Type | BoxID | ToolID | McpID | ToolName |
+|------|-------|--------|-------|----------|
+| tool | 26299643-33b3-4148-a7fc-b14ec705d834 | ab6cb7d0-9d12-4b08-86df-ab5b35779b49 |  |  |
+
+### Parameter Binding
+
+| Name | Type | Source | Operation | ValueFrom | Value | Description |
+|------|------|--------|-----------|-----------|-------|-------------|
+| employee_id | string | Query |  | input |  |  |
+
+### Schedule
+
+| Type | Expression |
+|------|------------|
+

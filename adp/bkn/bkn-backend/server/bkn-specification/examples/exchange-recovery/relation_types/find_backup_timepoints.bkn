@@ -1,0 +1,23 @@
+---
+type: relation_type
+id: find_backup_timepoints
+name: 查找备份时间点后浏览备份邮件
+tags: [to, 流程关系, 灾备]
+---
+
+## RelationType: 查找备份时间点后浏览备份邮件
+
+查找备份时间点副本完成后，如果是邮件级别的恢复，再浏览备份邮件。
+
+### Endpoint
+
+| Source | Target | Type |
+|--------|--------|------|
+| backup_timepoint | email | direct |
+
+### Mapping Rules
+
+| Source Property | Target Property |
+|-----------------|-----------------|
+| timepoint | timepoint |
+

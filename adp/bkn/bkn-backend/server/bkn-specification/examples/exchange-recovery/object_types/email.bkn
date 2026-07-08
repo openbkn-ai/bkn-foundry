@@ -1,0 +1,64 @@
+---
+type: object_type
+id: email
+name: 邮件
+tags: [Exchange, 灾备, 邮件]
+---
+
+## ObjectType: 邮件
+
+Exchange服务器中的单封邮件对象。
+
+### Data Source
+
+| Type | ID | Name |
+|------|----|------|
+
+### Data Properties
+
+| Name | Display Name | Type | Description | Mapped Field |
+|------|--------------|------|-------------|--------------|
+| id | ID | integer | 主键ID | id |
+| backup_timepoint_id | 备份时间点ID | integer | 备份时间点ID（外键，关联backup_timepoint.id） | backup_timepoint_id |
+| email_subject | 邮件主题 | string | 邮件主题 | email_subject |
+| email_sender | 发件人 | string | 邮件发件人 | email_sender |
+| email_recipient | 收件人 | string | 邮件收件人 | email_recipient |
+| email_date | 邮件日期 | datetime | 邮件发送日期 | email_date |
+| email_size | 邮件大小 | integer | 邮件大小（KB） | email_size |
+| email_status | 邮件状态 | string | 邮件状态 (Exists/Deleted) | email_status |
+| mailbox_name | 邮箱名称 | string | 所在邮箱名称 | mailbox_name |
+| is_important | 是否重要 | boolean | 是否为重要邮件 | is_important |
+
+### Logic Properties
+
+#### is_readable
+
+**Meta**
+
+| Display Name | Type | Description |
+|--------------|------|-------------|
+| 邮件可读 | operator | 检查邮件是否可读（内容完整性验证） |
+
+**Source**
+
+| Source Type | Source ID | Source Name |
+|-------------|-----------|-------------|
+
+**Parameters**
+
+| Name | Type | Source | Operation | ValueFrom | Value | Description |
+|------|------|--------|-----------|-----------|-------|-------------|
+| email_content | text | property |  | email_content |  | 邮件内容 |
+
+**Analysis Dimensions**
+
+| Name | Display Name | Type | Description |
+|------|--------------|------|-------------|
+
+
+### Keys
+
+Primary Keys: id
+Display Key: email_subject
+Incremental Key: 
+

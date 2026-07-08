@@ -1,0 +1,37 @@
+---
+type: object_type
+id: pp
+name: 产品需求计划
+tags: [供应链, 计划, 已审核, 手工表]
+---
+
+## ObjectType: 产品需求计划
+
+产品需求计划是指产品在特定时间需要交付的数量计划。
+
+比如2026年3月要交付1000台A产品。
+
+### Data Source
+
+| Type | ID | Name |
+|------|----|------|
+| data_view | 526f07f0-6c77-4e7d-b7cd-b891215c3d44 | product_demand_plan |
+
+### Data Properties
+
+| Name | Display Name | Type | Description | Mapped Field |
+|------|--------------|------|-------------|--------------|
+| product_name | 产品名称 | string | 产品名称 | product_name |
+| product_code | 产品编码 | string | 产品编码 | product_code |
+| planned_date | 需求计划时间 | date | 产品需求计划时间是交付的截止时间。也就是产品在指定计划时间需要完成交付数量目标。 | planned_date |
+| planned_demand_quantity | 需求数量 | integer | 需求数量 | planned_demand_quantity |
+
+### Logic Properties
+
+
+### Keys
+
+Primary Keys: product_code
+Display Key: product_name
+Incremental Key: 
+

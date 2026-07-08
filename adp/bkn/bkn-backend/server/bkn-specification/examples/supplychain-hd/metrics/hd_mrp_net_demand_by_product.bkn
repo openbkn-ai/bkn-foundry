@@ -1,0 +1,49 @@
+---
+type: metric
+id: hd_mrp_net_demand_by_product
+name: 各成品物料净需求合计
+tags: [供应链, MRP, HD]
+---
+
+## Metric: 各成品物料净需求合计
+
+对 MRP 结果中的 `material_demand_quantity` 按成品料号（`finished_product_code`）求和；字段可为负表示缺口、为正表示富余，本指标用于在**产品维度**汇总净需求信号，辅助计划员筛选重点成品。
+
+### Metric attributes
+
+| Metric Type | Unit Type | Unit |
+|-------------|-----------|------|
+| atomic | amount | 件 |
+
+### Scope
+
+| Scope Type | Scope Ref |
+|------------|-----------|
+| object_type | mrp |
+
+### Calculation Formula
+
+```yaml
+kind: atomic
+
+atomic:
+  aggregation:
+    property: material_demand_quantity
+    aggr: sum
+  group_by:
+    - property: finished_product_code
+      description: 按成品/产品编码聚合物料净需求
+```
+
+### Time Dimension
+
+| Property | Default Range Policy |
+|----------|----------------------|
+| planned_date | calendar_day |
+
+### Analysis Dimensions
+
+| Name | Display Name |
+|------|--------------|
+| finished_product_code | 成品料号 |
+| main_material | 物料编码 |

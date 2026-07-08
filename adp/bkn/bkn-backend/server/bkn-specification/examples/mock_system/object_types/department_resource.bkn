@@ -1,0 +1,34 @@
+---
+type: object_type
+id: department_resource
+name: 部门表（Resource版）
+tags: []
+---
+
+## ObjectType: 部门表（Resource版）
+
+### Data Source
+
+| Type | ID | Name |
+|------|----|------|
+| resource | d7blk86fmoj81ili0q2g | 部门表 |
+
+### Data Properties
+
+| Name | Display Name | Type | Description | Mapped Field |
+|------|--------------|------|-------------|--------------|
+| description | 部门描述 | text | 部门描述 | description |
+| department_id | 部门ID | string | 部门ID | department_id |
+| create_time | 创建时间 | timestamp | 创建时间 | create_time |
+| update_time | 更新时间 | timestamp | 更新时间 | update_time |
+| name | 部门名称 | string | 部门名称 | name |
+
+### Logic Properties
+
+
+### Keys
+
+Primary Keys: department_id
+Display Key: department_id
+Incremental Key: 
+

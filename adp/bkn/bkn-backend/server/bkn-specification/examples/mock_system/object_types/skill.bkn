@@ -1,0 +1,38 @@
+---
+type: object_type
+id: skill
+name: 技能类
+tags: []
+---
+
+## ObjectType: 技能类
+
+### Data Source
+
+| Type | ID | Name |
+|------|----|------|
+| resource | kweaver_execution_factory_skill_dataset | kweaver_execution_factory_skill_dataset |
+
+### Data Properties
+
+| Name | Display Name | Type | Description | Mapped Field |
+|------|--------------|------|-------------|--------------|
+| id | 技能id | string | Skill 业务主键 | skill_id |
+| name | 技能名称 | text | Skill 名称 | name |
+| description | 技能描述 | text | Skill 描述 | description |
+| version | 技能版本 | string | Skill 版本 | version |
+| category | 技能分类 | string | Skill 分类 | category |
+| create_user | 创建人 | string | 创建人 | create_user |
+| create_time | 创建时间 | datetime | 创建时间 | create_time |
+| update_user | 更新人 | string | 更新人 | update_user |
+| update_time | 更新时间 | datetime | 更新时间 | update_time |
+
+### Logic Properties
+
+
+### Keys
+
+Primary Keys: id
+Display Key: name
+Incremental Key: 
+

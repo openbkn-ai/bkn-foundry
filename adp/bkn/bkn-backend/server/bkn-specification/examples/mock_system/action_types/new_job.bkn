@@ -1,0 +1,55 @@
+---
+type: action_type
+id: new_job
+name: 新员工入职
+tags: []
+action_type: add
+action_intent: add
+---
+
+## ActionType: 新员工入职
+
+### Bound Object
+
+| Bound Object |
+|--------------|
+| employee |
+
+### Impact Contracts
+
+```yaml
+impact_contracts:
+  - object_type_id: employee
+    expected_operation: add
+    description: 调用工具后，更新员工入职状态
+```
+
+
+### Trigger Condition
+
+```yaml
+object_type_id: employee
+field: status
+operation: ==
+value: 0
+```
+
+
+### Action Source
+
+| Type | BoxID | ToolID | McpID | ToolName |
+|------|-------|--------|-------|----------|
+| tool | 26299643-33b3-4148-a7fc-b14ec705d834 | ab6cb7d0-9d12-4b08-86df-ab5b35779b49 |  |  |
+
+### Parameter Binding
+
+| Name | Type | Source | Operation | ValueFrom | Value | Description |
+|------|------|--------|-----------|-----------|-------|-------------|
+| employee_id | string | Query |  | property | id |  |
+
+### Schedule
+
+| Type | Expression |
+|------|------------|
+| CRON | 0 0 0 * * ? |
+

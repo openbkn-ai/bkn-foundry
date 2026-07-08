@@ -1,0 +1,52 @@
+---
+type: metric
+id: hd_purchase_order_count_by_supplier
+name: 各供应商采购订单笔数
+tags: [供应链, 采购, HD]
+---
+
+## Metric: 各供应商采购订单笔数
+
+按供应商维度对采购订单单号计数，观察采购活动集中度与核心供应商依赖（配合 `supplier_name` 展示更清晰）。
+
+### Metric attributes
+
+| Metric Type | Unit Type | Unit |
+|-------------|-----------|------|
+| atomic | count | 笔 |
+
+### Scope
+
+| Scope Type | Scope Ref |
+|------------|-----------|
+| object_type | po |
+
+### Calculation Formula
+
+```yaml
+kind: atomic
+
+atomic:
+  aggregation:
+    property: billno
+    aggr: count
+  group_by:
+    - property: supplier_number
+      description: 按供应商编码聚合订单笔数
+  order_by:
+    - property: __value
+      direction: desc
+```
+
+### Time Dimension
+
+| Property | Default Range Policy |
+|----------|----------------------|
+| biztime | calendar_day |
+
+### Analysis Dimensions
+
+| Name | Display Name |
+|------|--------------|
+| supplier_number | 供应商编码 |
+| supplier_name | 供应商名称 |

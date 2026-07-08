@@ -1,0 +1,40 @@
+---
+type: action_type
+id: assess_department
+name: 评估部门
+tags: []
+action_type: modify
+action_intent: modify
+---
+
+## ActionType: 评估部门
+
+### Bound Object
+
+| Bound Object |
+|--------------|
+| department |
+
+### Trigger Condition
+
+
+### Action Source
+
+| Type | BoxID | ToolID | McpID | ToolName |
+|------|-------|--------|-------|----------|
+| tool | bkn-internal_risk-assessment | bkn_common_risk_assessment_tool |  |  |
+
+### Parameter Binding
+
+| Name | Type | Source | Operation | ValueFrom | Value | Description |
+|------|------|--------|-----------|-----------|-------|-------------|
+| timeout | number | Query |  | input |  |  |
+| arguments | object | Body |  | input |  |  |
+| param_defs | array | Body |  | input |  |  |
+| rules | array | Body |  | input |  |  |
+
+### Schedule
+
+| Type | Expression |
+|------|------------|
+

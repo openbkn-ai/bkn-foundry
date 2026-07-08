@@ -13,7 +13,6 @@ import (
 	"path/filepath"
 
 	"github.com/gin-gonic/gin"
-	bknsdk "github.com/kweaver-ai/bkn-specification/sdk/golang/bkn"
 	"github.com/openbkn-ai/bkn-comm-go/audit"
 	"github.com/openbkn-ai/bkn-comm-go/logger"
 	"github.com/openbkn-ai/bkn-comm-go/otel/otellog"
@@ -21,6 +20,7 @@ import (
 	"github.com/openbkn-ai/bkn-comm-go/rest"
 	attr "go.opentelemetry.io/otel/attribute"
 
+	bknsdk "bkn-backend/bkn-specification/bkn"
 	berrors "bkn-backend/errors"
 	"bkn-backend/interfaces"
 	"bkn-backend/logics"

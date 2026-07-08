@@ -1,0 +1,45 @@
+---
+type: metric
+id: backup_timepoint_total_size_mb
+name: 备份时间点总容量（MB）
+tags: [备份, 存储, 灾备]
+---
+
+## Metric: 备份时间点总容量（MB）
+
+对备份时间点副本的 `snapshot_size` 求和，反映该范围内备份数据占用规模。
+
+### Metric attributes
+
+| Metric Type | Unit Type | Unit |
+|-------------|-----------|------|
+| atomic | storage | MB |
+
+### Scope
+
+| Scope Type | Scope Ref |
+|------------|-----------|
+| object_type | backup_timepoint |
+
+### Calculation Formula
+
+```yaml
+kind: atomic
+
+atomic:
+  aggregation:
+    property: snapshot_size
+    aggr: sum
+```
+
+### Time Dimension
+
+| Property | Default Range Policy |
+|----------|----------------------|
+| snapshot_time | last_24h |
+
+### Analysis Dimensions
+
+| Name | Display Name |
+|------|--------------|
+| exchange_server_id | Exchange服务器 |

@@ -1,0 +1,25 @@
+---
+type: relation_type
+id: pp2product
+name: 产品需求计划关联产品
+tags: [供应链, 关系, 已审核]
+---
+
+## RelationType: 产品需求计划关联产品
+
+产品需求计划与产品之间的关联关系。
+
+产品需求计划是某个产品在计划在某个时间的交付需求量，比如2月份要交付的产品A需求为100台。
+
+### Endpoint
+
+| Source | Target | Type |
+|--------|--------|------|
+| pp | product | direct |
+
+### Mapping Rules
+
+| Source Property | Target Property |
+|-----------------|-----------------|
+| product_code | material_number |
+

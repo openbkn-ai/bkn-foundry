@@ -1,0 +1,46 @@
+---
+type: object_type
+id: bom
+name: 产品BOM
+tags: [供应链, BOM, 已审核]
+---
+
+## ObjectType: 产品BOM
+
+定义产品的物料清单结构，包含层级关系和替代料信息。
+
+BOM结构：4层(成品→半成品→PCBA→元器件)；含自制、委外、外购。
+替代识别规则：
+1. 分组判断：alt_group_no 有值则属于替代组，为空则无替代。 
+2. 主替区分：在同一组内，alt_part 为空则为主料；若内容含"替代"则为替代料。
+
+### Data Source
+
+| Type | ID | Name |
+|------|----|------|
+| data_view | 2017573348757762050 | erp_material_bom |
+
+### Data Properties
+
+| Name | Display Name | Type | Description | Mapped Field |
+|------|--------------|------|-------------|--------------|
+| alt_group_no | 替代组号 | string | 可相互替代的物料组号，在同一父级物料下，同一组号的物料可相互替代。 | alt_group_no |
+| alt_method | 替代方式 | string | 直接替代或者需要改造改制后替代 | alt_method |
+| alt_part | 替代件 | string | 主料为空，其他为√； | alt_part |
+| alt_priority | 优先级 | integer | 优先级为0的是主料； | alt_priority |
+| bom_level | 物料层级 | integer | 以一个产品为单位来组织的，1、2、3，最多8级；可以通过产品物料编码直接过滤获得产品的物料分层数量； | bom_level |
+| bom_material_code | BOM所属产品物料编码 | string | 产品的BOM物料号，可以以产品编码=BOM物料号来找到该产品的所有物料； | bom_material_code |
+| bom_version | BOM版本 | text | 时间字符串方式表示该BOM的创建或者更新时间 | bom_version |
+| material_code | 物料编码 | string |  | material_code |
+| material_name | 物料名称 | string |  | material_name |
+| parent_material_code | 父级物料编码 | string | 注意：最终产品/产成品是没有父级物料编码的； | parent_material_code |
+
+### Logic Properties
+
+
+### Keys
+
+Primary Keys: bom_material_code, bom_version, material_name
+Display Key: bom_material_code
+Incremental Key: 
+

@@ -15,10 +15,10 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
-	bknsdk "github.com/kweaver-ai/bkn-specification/sdk/golang/bkn"
 	"github.com/mitchellh/mapstructure"
 	"github.com/openbkn-ai/bkn-comm-go/logger"
 
+	bknsdk "bkn-backend/bkn-specification/bkn"
 	"bkn-backend/common"
 	"bkn-backend/interfaces"
 	"bkn-backend/logics"

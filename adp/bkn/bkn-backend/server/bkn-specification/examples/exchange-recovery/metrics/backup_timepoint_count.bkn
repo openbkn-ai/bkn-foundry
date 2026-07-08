@@ -1,0 +1,59 @@
+---
+type: metric
+id: backup_timepoint_count
+name: 已验证备份点数量（按 Exchange 服务器）
+tags: [备份, 时间点, 验证, 灾备]
+---
+
+## Metric: 已验证备份点数量（按 Exchange 服务器）
+
+在选定时间范围内，仅统计**已通过可恢复验证**（`is_verified` 为真）的备份时间点；按**来源 Exchange 服务器**分组，对分组结果按数量**降序**排序，并保留**至少 2 个已验证时间点**的服务器，用于优先排查备份薄弱的生产实例（多副本仍集中在少数机器时更可暴露风险）。
+
+### Metric attributes
+
+| Metric Type | Unit Type | Unit |
+|-------------|-----------|------|
+| atomic | count | 个 |
+
+### Scope
+
+| Scope Type | Scope Ref |
+|------------|-----------|
+| object_type | backup_timepoint |
+
+### Calculation Formula
+
+```yaml
+kind: atomic
+
+atomic:
+  condition:
+    field: is_verified
+    operation: ==
+    value: true
+  aggregation:
+    property: id
+    aggr: count
+  group_by:
+    - property: exchange_server_id
+      description: 按备份来源 Exchange 服务器聚合已验证时间点条数
+  order_by:
+    - property: __value
+      direction: desc
+  having:
+    field: __value
+    operation: ">="
+    value: 2
+```
+
+### Time Dimension
+
+| Property | Default Range Policy |
+|----------|----------------------|
+| snapshot_time | last_24h |
+
+### Analysis Dimensions
+
+| Name | Display Name |
+|------|--------------|
+| exchange_server_id | Exchange服务器 |

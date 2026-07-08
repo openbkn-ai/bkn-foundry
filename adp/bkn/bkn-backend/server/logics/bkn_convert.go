@@ -7,9 +7,9 @@
 package logics
 
 import (
-	bknsdk "github.com/kweaver-ai/bkn-specification/sdk/golang/bkn"
 	"github.com/openbkn-ai/bkn-comm-go/logger"
 
+	bknsdk "bkn-backend/bkn-specification/bkn"
 	cond "bkn-backend/common/condition"
 	"bkn-backend/interfaces"
 )

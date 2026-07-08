@@ -1,0 +1,49 @@
+---
+type: metric
+id: mock_employee_avg_salary_onboarded
+name: 已入职员工平均薪资
+tags: [mock_system, 人力, 薪酬]
+---
+
+## Metric: 已入职员工平均薪资
+
+在已入职（`status == 1`）子集上对 `salary` 求平均，用于示例网络中的薪酬分布监控（实际币种与单位由数据源约定）。
+
+### Metric attributes
+
+| Metric Type | Unit Type | Unit |
+|-------------|-----------|------|
+| atomic | amount | 元 |
+
+### Scope
+
+| Scope Type | Scope Ref |
+|------------|-----------|
+| object_type | employee |
+
+### Calculation Formula
+
+```yaml
+kind: atomic
+
+atomic:
+  condition:
+    field: status
+    operation: ==
+    value: 1
+  aggregation:
+    property: salary
+    aggr: avg
+```
+
+### Time Dimension
+
+| Property | Default Range Policy |
+|----------|----------------------|
+| create_time | last_24h |
+
+### Analysis Dimensions
+
+| Name | Display Name |
+|------|--------------|
+| id | 员工ID |

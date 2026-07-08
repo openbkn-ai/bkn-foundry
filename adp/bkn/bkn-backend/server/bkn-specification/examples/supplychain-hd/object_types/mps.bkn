@@ -1,0 +1,40 @@
+---
+type: object_type
+id: mps
+name: 工厂生产计划
+tags: [供应链, 生产, 已审核, 手工表]
+---
+
+## ObjectType: 工厂生产计划
+
+产品需求计划最终通过工厂生产计划进行执行，
+
+比如某产品A 2月需要1000台，根据物料和产能情况，生产计划经理排2个生产计划，2月15日完成800台，2月28日完成200台。
+
+### Data Source
+
+| Type | ID | Name |
+|------|----|------|
+| data_view | 77dc1487-498b-4be6-b96c-912e43dd8363 | production_plan |
+
+### Data Properties
+
+| Name | Display Name | Type | Description | Mapped Field |
+|------|--------------|------|-------------|--------------|
+| bom_code | 产品编码 | string |  | bom_code |
+| product_category | 产品类别 | string |  | product_category |
+| quantity | 生产数量 | integer |  | quantity |
+| product_name | 产品名称 | string |  | product_name |
+| planned_start_date | 计划开工时间 | string |  | planned_start_date |
+| order_type | 工单类型 | string |  | order_type |
+| seq_no | 生产序号 | integer |  | seq_no |
+
+### Logic Properties
+
+
+### Keys
+
+Primary Keys: seq_no
+Display Key: bom_code
+Incremental Key: 
+

@@ -1,0 +1,136 @@
+---
+type: knowledge_network
+id: exchange-recovery
+name: Exchange邮件恢复网络
+tags: [Exchange, Exchange邮件服务器或邮件恢复, 灾备]
+branch: main
+business_domain: disaster_recovery
+---
+
+# Exchange邮件恢复网络
+
+针对Exchange服务器宕机、数据丢失、邮件误删场景的自动化恢复知识网络。
+
+支持Accident Request → Think → Risk Evaluate → Plan → Act → Report的完整恢复工作流。
+
+
+## Network Overview
+
+### Object Types
+
+| ID | Name | File Path | Description |
+|----|------|-----------|-------------|
+| backup_timepoint | 备份时间点副本 | `object_types/backup_timepoint.bkn` | 备份集中的单个备份时间点副本，包含该时间点的所有邮件数据。 |
+| data_domain | 数据域 | `object_types/data_domain.bkn` | 数据域（备份服务器），Agent可以接入多个数据域，每个数据域包含多个Exchange服务器。 |
+| email | 邮件 | `object_types/email.bkn` | Exchange服务器中的单封邮件对象。 |
+| exchange_server | Exchange生产服务器 | `object_types/exchange_server.bkn` | Microsoft Exchange邮件服务器，托管用户邮箱和邮件数据，是生产环境中的服务器。 |
+| recovery_job | 恢复作业 | `object_types/recovery_job.bkn` | 执行恢复任务产生的恢复作业，记录恢复操作的详细信息。 |
+| recovery_job_verification | Exchange可用性验证 | `object_types/recovery_job_verification.bkn` | 恢复成功后，对邮件是否可读、邮件服务器是否可正常对外提供业务的验证结果，记录验证的详细信息。 |
+| recovery_server | Exchange恢复服务器 | `object_types/recovery_server.bkn` | 用于恢复的Exchange服务器，作为恢复操作的目的地。 |
+| recovery_task | 恢复任务 | `object_types/recovery_task.bkn` | Exchange邮件恢复任务，包含恢复策略的所有信息。 |
+
+### Relation Types
+
+| ID | Name | File Path | Description |
+|----|------|-----------|-------------|
+| backup_timepoint_contains_email | 备份时间点副本包含邮件 | `relation_types/backup_timepoint_contains_email.bkn` | 备份时间点副本包含邮件，表示该时间点副本包含了这封邮件。 |
+| browse_backup_emails | 浏览备份邮件后生成恢复任务 | `relation_types/browse_backup_emails.bkn` | 浏览备份邮件完成后，生成恢复任务。 |
+| create_recovery_task | 生成恢复任务后执行恢复任务 | `relation_types/create_recovery_task.bkn` | 生成恢复任务完成后，执行恢复任务。 |
+| exchange_server | Exchange生产服务器包含备份时间点副本 | `relation_types/exchange_server.bkn` | Exchange生产服务器包含备份时间点副本，表示该生产服务器的备份时间点副本。 |
+| find_backup_timepoints | 查找备份时间点后浏览备份邮件 | `relation_types/find_backup_timepoints.bkn` | 查找备份时间点副本完成后，如果是邮件级别的恢复，再浏览备份邮件。 |
+| recovery_job | 恢复作业后验证Exchange可用性 | `relation_types/recovery_job.bkn` | 恢复作业产生后，验证Exchange可用性。 |
+| recovery_job_from_recovery_task | 恢复作业依赖于恢复任务 | `relation_types/recovery_job_from_recovery_task.bkn` | 恢复作业由恢复任务执行产生。 |
+| recovery_job_to_generate_recovery_report | 恢复作业后生成恢复报告 | `relation_types/recovery_job_to_generate_recovery_report.bkn` | 恢复作业产生后，如果没有验证Exchange可用性的流程，直接生成恢复报告。 |
+| recovery_task_from_backup_timepoint | 恢复任务依赖备份时间点副本 | `relation_types/recovery_task_from_backup_timepoint.bkn` | 恢复任务依赖于备份时间点副本，要使用恢复任务必须先有备份时间点副本。 |
+| recovery_task_restores_exchange | 恢复任务恢复Exchange | `relation_types/recovery_task_restores_exchange.bkn` | 恢复任务恢复Exchange，表示该恢复任务用于恢复邮件或恢复邮件服务器。 |
+| verify_exchange_availability | 验证Exchange可用性后生成恢复报告 | `relation_types/verify_exchange_availability.bkn` | 验证Exchange可用性完成后，生成恢复报告。 |
+
+### Action Types
+
+| ID | Name | File Path | Description |
+|----|------|-----------|-------------|
+| browse_backup_emails | 浏览备份邮件 | `action_types/browse_backup_emails.bkn` | 根据时间点副本查找里面备份了哪些邮件。 |
+| execute_recovery_task | 执行恢复任务 | `action_types/execute_recovery_task.bkn` | 执行已生成的恢复任务，产生恢复作业。 |
+| find_backup_timepoints | 查找备份时间点副本 | `action_types/find_backup_timepoints.bkn` | 根据备份的exchange服务器查找该服务器的备份时间点副本。 |
+| generate_recovery_report | 生成恢复报告 | `action_types/generate_recovery_report.bkn` | 生成恢复操作的完整报告，包括恢复状态、数据统计、时效评估。 |
+| list_data_domains | 列出数据域列表 | `action_types/list_data_domains.bkn` | 列出Agent管理的所有数据域，供用户选择。 |
+| list_exchange_servers | 列出Exchange服务器列表 | `action_types/list_exchange_servers.bkn` | 从指定的数据域中列出所有Exchange服务器，供用户选择。 |
+| verify_exchange_availability | 验证Exchange可用性 | `action_types/verify_exchange_availability.bkn` | 验证恢复后的Exchange邮件服务器可用性，检查邮件是否可读、邮件服务器是否可正常对外提供业务。 |
+
+### Risk Types
+
+| ID | Name | File Path | Description |
+|----|------|-----------|-------------|
+| backup_timepoint_verification_failed | 备份时间点验证失败风险 | `risk_types/backup_timepoint_verification_failed.bkn` | 评估使用的备份时间点是否经过验证且验证结果为可恢复，这是确保恢复成功的关键风险点。 |
+| production_data_overwrite | 生产数据覆盖风险 | `risk_types/production_data_overwrite.bkn` | 评估恢复操作是否会覆盖生产服务器或恢复资源中的服务器数据，这是灾备恢复中的关键风险点。 |
+
+### Concept Groups
+
+| ID | Name | File Path | Description |
+|----|------|-----------|-------------|
+| exchange | Exchange邮件恢复概念分组 | `concept_groups/exchange.bkn` | 将Exchange邮件恢复相关的对象类型组织在一起，便于理解和管理。 |
+
+### Metrics
+
+| ID | Name | File Path | Description |
+|----|------|-----------|-------------|
+| backup_timepoint_count | 已验证备份点数量（按 Exchange 服务器） | `metrics/backup_timepoint_count.bkn` | 在选定时间范围内，仅统计**已通过可恢复验证**（`is_verified` 为真）的备份时间点；按**来源 Exchange 服务器**分组，对分组结果按数量**降序**排序，并保留**至少 2 个已验证时间点**的服务器，用于优先排查备份薄弱的生产实例（多副本仍集中在少数机器时更可暴露风险）。 |
+| backup_timepoint_total_size_mb | 备份时间点总容量（MB） | `metrics/backup_timepoint_total_size_mb.bkn` | 对备份时间点副本的 `snapshot_size` 求和，反映该范围内备份数据占用规模。 |
+| backup_timepoint_verified_count | 已验证备份时间点数量 | `metrics/backup_timepoint_verified_count.bkn` | 仅统计 `is_verified` 为真的备份时间点副本数量，用于可恢复性治理与合规报告。 |
+| exchange_server_mailbox_sum | Exchange邮箱数量合计 | `metrics/exchange_server_mailbox_sum.bkn` | 对生产 Exchange 服务器上的 `mailbox_count` 求和，用于评估保护范围内的邮箱规模（可按数据域拆分分析）。 |
+| recovery_job_avg_duration_seconds | 恢复作业平均耗时（秒） | `metrics/recovery_job_avg_duration_seconds.bkn` | 对 `duration` 求平均，衡量恢复作业的典型耗时水平（仅当作业具备有效耗时字段时有意义）。 |
+| recovery_job_count | 成功恢复作业次数（按执行用户） | `metrics/recovery_job_count.bkn` | 在指定时间窗口内，仅统计**恢复结果为成功**的作业；按**执行用户**分组计数，按次数**降序**排列，并通过 **having** 剔除低频噪声（例如单次操作），便于运营侧识别主要操作者与活跃恢复行为。 |
+| recovery_task_count | 恢复任务数量 | `metrics/recovery_task_count.bkn` | 统计恢复任务条数，可按任务状态与恢复类型拆分，用于跟踪演练与生产恢复请求量。 |
+| recovery_verification_failure_count | 可用性验证失败次数 | `metrics/recovery_verification_failure_count.bkn` | 统计验证结果为失败的 Exchange 可用性验证记录数，用于恢复质量与演练问题追踪。 |
+
+## Directory Structure
+
+```
+.
+├── network.bkn
+├── SKILL.md
+├── CHECKSUM
+├── object_types/
+│   ├── backup_timepoint.bkn
+│   ├── data_domain.bkn
+│   ├── email.bkn
+│   ├── exchange_server.bkn
+│   ├── recovery_job.bkn
+│   ├── recovery_job_verification.bkn
+│   ├── recovery_server.bkn
+│   └── recovery_task.bkn
+├── relation_types/
+│   ├── backup_timepoint_contains_email.bkn
+│   ├── browse_backup_emails.bkn
+│   ├── create_recovery_task.bkn
+│   ├── exchange_server.bkn
+│   ├── find_backup_timepoints.bkn
+│   ├── recovery_job.bkn
+│   ├── recovery_job_from_recovery_task.bkn
+│   ├── recovery_job_to_generate_recovery_report.bkn
+│   ├── recovery_task_from_backup_timepoint.bkn
+│   ├── recovery_task_restores_exchange.bkn
+│   └── verify_exchange_availability.bkn
+├── action_types/
+│   ├── browse_backup_emails.bkn
+│   ├── execute_recovery_task.bkn
+│   ├── find_backup_timepoints.bkn
+│   ├── generate_recovery_report.bkn
+│   ├── list_data_domains.bkn
+│   ├── list_exchange_servers.bkn
+│   └── verify_exchange_availability.bkn
+├── risk_types/
+│   ├── backup_timepoint_verification_failed.bkn
+│   └── production_data_overwrite.bkn
+├── concept_groups/
+│   └── exchange.bkn
+└── metrics/
+    ├── backup_timepoint_count.bkn
+    ├── backup_timepoint_total_size_mb.bkn
+    ├── backup_timepoint_verified_count.bkn
+    ├── exchange_server_mailbox_sum.bkn
+    ├── recovery_job_avg_duration_seconds.bkn
+    ├── recovery_job_count.bkn
+    ├── recovery_task_count.bkn
+    └── recovery_verification_failure_count.bkn
+```
