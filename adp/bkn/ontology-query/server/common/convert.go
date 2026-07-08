@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	lib_common "github.com/kweaver-ai/kweaver-go-lib/common"
+	lib_common "github.com/openbkn-ai/bkn-comm-go/common"
 )
 
 // string 转 []string

@@ -15,8 +15,8 @@ import (
 	"testing"
 
 	"github.com/bytedance/sonic"
-	"github.com/kweaver-ai/kweaver-go-lib/rest"
-	rmock "github.com/kweaver-ai/kweaver-go-lib/rest/mock"
+	"github.com/openbkn-ai/bkn-comm-go/rest"
+	rmock "github.com/openbkn-ai/bkn-comm-go/rest/mock"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
