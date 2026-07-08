@@ -17,7 +17,7 @@ require (
 	github.com/json-iterator/go v1.1.12
 	github.com/mark3labs/mcp-go v0.37.0
 	github.com/nicksnyder/go-i18n/v2 v2.6.0
-	github.com/openbkn-ai/bkn-comm-go v0.0.2
+	github.com/openbkn-ai/bkn-comm-go v0.0.3
 	github.com/pkg/errors v0.9.1
 	github.com/qustavo/sqlhooks/v2 v2.1.0
 	github.com/redis/go-redis/v9 v9.14.1

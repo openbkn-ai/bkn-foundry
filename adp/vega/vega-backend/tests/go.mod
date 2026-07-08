@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	github.com/go-sql-driver/mysql v1.10.0
-	github.com/openbkn-ai/bkn-comm-go v0.0.2
+	github.com/openbkn-ai/bkn-comm-go v0.0.3
 	github.com/smartystreets/goconvey v1.8.1
 	github.com/spf13/viper v1.21.0
 )

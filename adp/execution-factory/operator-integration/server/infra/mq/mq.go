@@ -6,13 +6,12 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/config"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
 	msqclient "github.com/openbkn-ai/bkn-comm-go/mq"
 	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
+
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/config"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
 )
 
 //go:generate mockgen -package mock -source ./mq.go -destination ./mock/mock_mq.go
@@ -58,15 +57,12 @@ func (m *msgQueue) Subscribe(topic, channel string, cmd func(context.Context, []
 	go func() {
 		var err error
 		ctx := context.Background()
-		tracer := otel.GetTracerProvider()
-		if tracer != nil {
-			var span trace.Span
-			ctx, span = otel.Tracer(oteltrace.InstrumentationName).Start(ctx, "mq.subscribe", trace.WithSpanKind(trace.SpanKindConsumer))
-			span.SetAttributes(attribute.String("messaging.operation", "subscribe"))
-			span.SetAttributes(attribute.String("messaging.topic", topic))
-			span.SetAttributes(attribute.String("messaging.channel", channel))
-			defer oteltrace.EndSpan(ctx, err)
-		}
+		ctx, span := oteltrace.StartNamedConsumerSpan(ctx, "mq.subscribe")
+		span.SetAttributes(attribute.String("messaging.operation", "subscribe"))
+		span.SetAttributes(attribute.String("messaging.topic", topic))
+		span.SetAttributes(attribute.String("messaging.channel", channel))
+		defer oteltrace.EndSpan(ctx, err)
+
 		err = m.openBKNMQClient.Sub(topic, channel, func(msg []byte) error {
 			return cmd(ctx, msg)
 		}, m.pollIntervalMilliseconds, m.maxInFlight)
@@ -76,15 +72,12 @@ func (m *msgQueue) Subscribe(topic, channel string, cmd func(context.Context, []
 
 // Publish 发布
 func (m *msgQueue) Publish(ctx context.Context, topic string, message []byte) (err error) {
-	tracer := otel.GetTracerProvider()
-	if tracer != nil {
-		var span trace.Span
-		ctx, span = otel.Tracer(oteltrace.InstrumentationName).Start(ctx, "mq.publish", trace.WithSpanKind(trace.SpanKindProducer))
-		span.SetAttributes(attribute.String("messaging.operation", "publish"))
-		span.SetAttributes(attribute.String("messaging.topic", topic))
-		span.SetAttributes(attribute.String("messaging.payload_size_bytes", fmt.Sprintf("%d", int64(len(message)))))
-		defer oteltrace.EndSpan(ctx, err)
-	}
+	ctx, span := oteltrace.StartNamedProducerSpan(ctx, "mq.publish")
+	span.SetAttributes(attribute.String("messaging.operation", "publish"))
+	span.SetAttributes(attribute.String("messaging.topic", topic))
+	span.SetAttributes(attribute.String("messaging.payload_size_bytes", fmt.Sprintf("%d", int64(len(message)))))
+	defer oteltrace.EndSpan(ctx, err)
+
 	if err := m.openBKNMQClient.Pub(topic, message); err != nil {
 		m.logger.WithContext(ctx).Errorf("publish mq topic %s, message: %s, error: %v", topic, string(message), err)
 		return err
