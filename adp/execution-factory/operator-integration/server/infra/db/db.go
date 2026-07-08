@@ -12,8 +12,8 @@ import (
 	"github.com/qustavo/sqlhooks/v2"
 
 	// _ 注册proton-rds驱动
-	protonRDS "github.com/kweaver-ai/proton-rds-sdk-go/driver"
-	"github.com/kweaver-ai/proton-rds-sdk-go/sqlx"
+	protonRDS "github.com/openbkn-ai/bkn-comm-go/db/driver"
+	"github.com/openbkn-ai/bkn-comm-go/db/sqlx"
 )
 
 const (

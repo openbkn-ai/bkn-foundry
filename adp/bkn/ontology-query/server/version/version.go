@@ -9,7 +9,7 @@ package version
 import (
 	"runtime"
 
-	"github.com/kweaver-ai/kweaver-go-lib/audit"
+	"github.com/openbkn-ai/bkn-comm-go/audit"
 )
 
 var (

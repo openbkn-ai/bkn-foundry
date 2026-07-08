@@ -18,11 +18,11 @@ import (
 	_ "unicode/utf8"
 
 	"github.com/gin-gonic/gin"
-	"github.com/kweaver-ai/kweaver-go-lib/audit"
-	libdb "github.com/kweaver-ai/kweaver-go-lib/db"
-	"github.com/kweaver-ai/kweaver-go-lib/logger"
-	"github.com/kweaver-ai/kweaver-go-lib/otel"
-	"github.com/kweaver-ai/kweaver-go-lib/rest"
+	"github.com/openbkn-ai/bkn-comm-go/audit"
+	libdb "github.com/openbkn-ai/bkn-comm-go/db"
+	"github.com/openbkn-ai/bkn-comm-go/logger"
+	"github.com/openbkn-ai/bkn-comm-go/otel"
+	"github.com/openbkn-ai/bkn-comm-go/rest"
 	_ "go.uber.org/automaxprocs"
 
 	"bkn-backend/common"

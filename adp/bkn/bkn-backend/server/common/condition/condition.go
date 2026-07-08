@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/kweaver-ai/kweaver-go-lib/logger"
+	"github.com/openbkn-ai/bkn-comm-go/logger"
 
 	dtype "bkn-backend/interfaces/data_type"
 )

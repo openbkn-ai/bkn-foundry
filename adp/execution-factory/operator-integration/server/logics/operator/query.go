@@ -15,14 +15,14 @@ import (
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/auth"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/metadata"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/utils"
-	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
+	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 )
 
 // GetOperatorInfoByOperatorID 根据算子ID或版本获取算子(外部接口) -- 查询算子详情
 func (m *operatorManager) GetOperatorInfoByOperatorID(ctx context.Context, req *interfaces.GetOperatorInfoByOperatorIDReq) (result *interfaces.OperatorDataInfo, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	// 获取算子信息
 	operator, metadataDB, err := m.getOperatorRegisterInfo(ctx, req.OperatorID)
 	if err != nil {
@@ -81,8 +81,8 @@ func (m *operatorManager) getOperatorRegisterInfo(ctx context.Context, operatorI
 
 // GetOperatorNamesByIDs 按算子ID批量取名(轻量只读，复用 SelectByOperatorIDs；不存在的ID略过)
 func (m *operatorManager) GetOperatorNamesByIDs(ctx context.Context, ids []string) (resp *interfaces.BatchNamesResp, err error) {
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	resp = &interfaces.BatchNamesResp{Entries: []*interfaces.NameEntry{}}
 	ids = utils.UniqueStrings(ids)
 	if len(ids) == 0 {
@@ -103,8 +103,8 @@ func (m *operatorManager) GetOperatorNamesByIDs(ctx context.Context, ids []strin
 // GetOperatorQueryPage 获取算子列表
 func (m *operatorManager) GetOperatorQueryPage(ctx context.Context, req *interfaces.PageQueryRequest) (result *interfaces.PageQueryResponse, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	result = &interfaces.PageQueryResponse{
 		CommonPageResult: interfaces.CommonPageResult{
 			Page:     req.Page,

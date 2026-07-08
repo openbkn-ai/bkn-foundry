@@ -8,7 +8,7 @@ package visitor
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/kweaver-ai/kweaver-go-lib/hydra"
+	"github.com/openbkn-ai/bkn-comm-go/hydra"
 
 	"ontology-query/interfaces"
 )

@@ -1,0 +1,10 @@
+id,backup_timepoint_id,task_name,timepoint,recovery_type,recovery_granularity,recovery_destination,task_status,created_at,completed_at,recovery_result
+1,4,恢复xx客户商务订单合同邮件,2026-03-23 00:00:00,数据恢复,邮件级别,recovery_server,Completed,2026-03-27 11:00:00,2026-03-27 11:05:00,Success
+2,5,恢复xx客户商务订单合同邮件,2026-03-24 00:00:00,数据恢复,邮件级别,recovery_server,Completed,2026-03-27 12:00:00,2026-03-27 12:05:00,Success
+3,5,恢复xx客户商务订单合同邮件,2026-03-24 00:00:00,数据恢复,邮件级别,recovery_server,Completed,2026-03-29 14:30:00,2026-03-29 14:35:00,Success
+4,6,恢复EXCH-NY-01服务器,2026-03-25 00:00:00,数据恢复,邮件服务器级别,recovery_server,Completed,2026-03-29 15:00:00,2026-03-29 15:30:00,Success
+5,8,恢复EXCH-NY-02服务器,2026-03-21 00:00:00,数据恢复,邮件服务器级别,recovery_server,Completed,2026-03-29 16:00:00,2026-03-29 16:30:00,Success
+6,6,恢复EXCH-NY-01服务器,2026-03-25 00:00:00,数据恢复,邮件服务器级别,production,Completed,2026-03-30 10:00:00,2026-03-30 10:30:00,Success
+7,1,恢复xx客户商务订单合同邮件,2026-03-20 00:00:00,数据恢复,邮件级别,recovery_server,Completed,2026-03-30 16:00:00,2026-03-30 16:05:00,Success
+8,5,恢复xx客户商务订单合同邮件,2026-03-24 00:00:00,数据恢复,邮件级别,production,Completed,2026-03-31 10:00:00,2026-03-31 10:05:00,Success
+9,6,恢复任务-EXCH-NY-01-2026-03-25-0000-邮件级别,2026-03-25 00:00:00,数据恢复,邮件级别,RECOVERY-NY-01,Completed,2026-03-31 11:56:03,2026-03-31 11:58:24,成功

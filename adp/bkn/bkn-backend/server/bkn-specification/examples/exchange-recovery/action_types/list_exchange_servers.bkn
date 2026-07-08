@@ -1,0 +1,77 @@
+---
+type: action_type
+id: list_exchange_servers
+name: 列出Exchange服务器列表
+tags: [数据查询, 服务器管理, 灾备]
+action_type: add
+action_intent: add
+---
+
+## ActionType: 列出Exchange服务器列表
+
+从指定的数据域中列出所有Exchange服务器，供用户选择。
+
+### Output Format
+
+```json
+{
+  "data_domain_id": "数据域ID",
+  "data_domain_name": "数据域名称",
+  "exchange_servers": [
+    {
+      "id": "服务器ID",
+      "name": "服务器名称",
+      "ip": "服务器IP地址",
+      "status": "服务器状态",
+      "capacity": "服务器容量",
+      "version": "服务器版本"
+    }
+  ]
+}
+```
+
+### Bound Object
+
+| Bound Object |
+|--------------|
+| data_domain |
+
+### Impact Contracts
+
+```yaml
+impact_contracts:
+  - object_type_id: exchange_server
+    expected_operation: add
+    description: ""
+```
+
+
+### Trigger Condition
+
+```yaml
+object_type_id: data_domain
+field: status
+operation: ==
+value: Online
+```
+
+
+### Action Source
+
+| Type | BoxID | ToolID | McpID | ToolName |
+|------|-------|--------|-------|----------|
+| tool | recovery_toolbox | list_exchange_servers |  |  |
+
+### Parameter Binding
+
+| Name | Type | Source | Operation | ValueFrom | Value | Description |
+|------|------|--------|-----------|-----------|-------|-------------|
+| data_domain_id | string | property |  | id |  | 数据域ID |
+| data_domain_ip | string | property |  | domain_ip |  | 数据域IP地址 |
+
+### Schedule
+
+| Type | Expression |
+|------|------------|
+| ON_DEMAND | 按需执行 |
+

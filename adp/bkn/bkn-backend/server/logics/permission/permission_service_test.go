@@ -11,7 +11,7 @@ import (
 	"errors"
 	"testing"
 
-	mqclient "github.com/kweaver-ai/proton-mq-sdk-go"
+	mqclient "github.com/openbkn-ai/bkn-comm-go/mq"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 

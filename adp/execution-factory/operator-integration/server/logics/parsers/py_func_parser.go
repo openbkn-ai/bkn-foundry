@@ -14,7 +14,7 @@ import (
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/utils"
-	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
+	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 )
 
 // pythonFunctionParser Python 函数解析器
@@ -99,8 +99,8 @@ func checkRegexpHandler(ctx context.Context, code string) (err error) {
 // Parse 解析 Python 函数
 func (p *pythonFunctionParser) Parse(ctx context.Context, inputValue any) (metadatas []interfaces.IMetadataDB, err error) {
 	// 记录可观测性
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	input, err := p.validate(ctx, inputValue)
 	if err != nil {
 		return nil, err

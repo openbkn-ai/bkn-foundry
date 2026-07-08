@@ -20,8 +20,8 @@ import (
 	"time"
 
 	"github.com/dlclark/regexp2"
-	"github.com/kweaver-ai/kweaver-go-lib/logger"
-	"github.com/kweaver-ai/kweaver-go-lib/rest"
+	"github.com/openbkn-ai/bkn-comm-go/logger"
+	"github.com/openbkn-ai/bkn-comm-go/rest"
 
 	"ontology-query/common"
 	cond "ontology-query/common/condition"

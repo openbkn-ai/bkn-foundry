@@ -1,0 +1,23 @@
+---
+type: relation_type
+id: recovery_task_from_backup_timepoint
+name: 恢复任务依赖备份时间点副本
+tags: [from, 依赖关系, 灾备]
+---
+
+## RelationType: 恢复任务依赖备份时间点副本
+
+恢复任务依赖于备份时间点副本，要使用恢复任务必须先有备份时间点副本。
+
+### Endpoint
+
+| Source | Target | Type |
+|--------|--------|------|
+| backup_timepoint | recovery_task | direct |
+
+### Mapping Rules
+
+| Source Property | Target Property |
+|-----------------|-----------------|
+| timepoint | timepoint |
+

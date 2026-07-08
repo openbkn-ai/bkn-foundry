@@ -1,0 +1,23 @@
+---
+type: relation_type
+id: pp2mps
+name: 产品需求计划分解为工厂生产计划
+tags: [供应链, 关系, 已审核]
+---
+
+## RelationType: 产品需求计划分解为工厂生产计划
+
+产品需求计划分解为工厂生产计划执行。
+
+### Endpoint
+
+| Source | Target | Type |
+|--------|--------|------|
+| pp | mps | direct |
+
+### Mapping Rules
+
+| Source Property | Target Property |
+|-----------------|-----------------|
+| product_code | bom_code |
+

@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kweaver-ai/kweaver-go-lib/rest"
+	"github.com/openbkn-ai/bkn-comm-go/rest"
 	"github.com/robfig/cron/v3"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"

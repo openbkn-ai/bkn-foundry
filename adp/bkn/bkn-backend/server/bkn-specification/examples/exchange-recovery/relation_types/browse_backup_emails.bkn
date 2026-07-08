@@ -1,0 +1,23 @@
+---
+type: relation_type
+id: browse_backup_emails
+name: 浏览备份邮件后生成恢复任务
+tags: [to, 流程关系, 灾备]
+---
+
+## RelationType: 浏览备份邮件后生成恢复任务
+
+浏览备份邮件完成后，生成恢复任务。
+
+### Endpoint
+
+| Source | Target | Type |
+|--------|--------|------|
+| email | recovery_task | direct |
+
+### Mapping Rules
+
+| Source Property | Target Property |
+|-----------------|-----------------|
+| timepoint | timepoint |
+

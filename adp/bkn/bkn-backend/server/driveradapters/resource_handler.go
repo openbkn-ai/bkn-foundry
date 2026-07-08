@@ -8,7 +8,7 @@ package driveradapters
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/kweaver-ai/kweaver-go-lib/logger"
+	"github.com/openbkn-ai/bkn-comm-go/logger"
 
 	"bkn-backend/interfaces"
 )

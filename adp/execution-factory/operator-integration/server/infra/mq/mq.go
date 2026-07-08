@@ -6,13 +6,12 @@ import (
 	"fmt"
 	"sync"
 
-	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
+	msqclient "github.com/openbkn-ai/bkn-comm-go/mq"
+	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
+	"go.opentelemetry.io/otel/attribute"
+
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
-	msqclient "github.com/kweaver-ai/proton-mq-sdk-go"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 )
 
 //go:generate mockgen -package mock -source ./mq.go -destination ./mock/mock_mq.go
@@ -30,7 +29,7 @@ var (
 
 type msgQueue struct {
 	logger                   interfaces.Logger
-	protonMQClient           msqclient.ProtonMQClient
+	openBKNMQClient          msqclient.OpenBKNMQClient
 	pollIntervalMilliseconds int64
 	maxInFlight              int
 }
@@ -39,13 +38,13 @@ type msgQueue struct {
 func NewMQClient() MQClient {
 	mqOnce.Do(func() {
 		configLoader := config.NewConfigLoader()
-		protonClient, err := msqclient.NewProtonMQClientFromFile(configLoader.MQConfigFile)
+		openBKNClient, err := msqclient.NewOpenBKNMQClientFromFile(configLoader.MQConfigFile)
 		if err != nil {
 			panic(err)
 		}
 		mqClient = &msgQueue{
 			logger:                   configLoader.GetLogger(),
-			protonMQClient:           protonClient,
+			openBKNMQClient:          openBKNClient,
 			pollIntervalMilliseconds: 100, //nolint:mnd
 			maxInFlight:              200, //nolint:mnd
 		}
@@ -58,16 +57,13 @@ func (m *msgQueue) Subscribe(topic, channel string, cmd func(context.Context, []
 	go func() {
 		var err error
 		ctx := context.Background()
-		tracer := otel.GetTracerProvider()
-		if tracer != nil {
-			var span trace.Span
-			ctx, span = o11y.StartConsumerSpan(ctx)
-			span.SetAttributes(attribute.String("messaging.operation", "subscribe"))
-			span.SetAttributes(attribute.String("messaging.topic", topic))
-			span.SetAttributes(attribute.String("messaging.channel", channel))
-			defer o11y.EndSpan(ctx, err)
-		}
-		err = m.protonMQClient.Sub(topic, channel, func(msg []byte) error {
+		ctx, span := oteltrace.StartNamedConsumerSpan(ctx, "mq.subscribe")
+		span.SetAttributes(attribute.String("messaging.operation", "subscribe"))
+		span.SetAttributes(attribute.String("messaging.topic", topic))
+		span.SetAttributes(attribute.String("messaging.channel", channel))
+		defer oteltrace.EndSpan(ctx, err)
+
+		err = m.openBKNMQClient.Sub(topic, channel, func(msg []byte) error {
 			return cmd(ctx, msg)
 		}, m.pollIntervalMilliseconds, m.maxInFlight)
 		m.logger.WithContext(ctx).Errorf("subscribe mq topic: %s, channel: %s,  error: %v", topic, channel, err)
@@ -76,16 +72,13 @@ func (m *msgQueue) Subscribe(topic, channel string, cmd func(context.Context, []
 
 // Publish 发布
 func (m *msgQueue) Publish(ctx context.Context, topic string, message []byte) (err error) {
-	tracer := otel.GetTracerProvider()
-	if tracer != nil {
-		var span trace.Span
-		ctx, span = o11y.StartProducerSpan(ctx)
-		span.SetAttributes(attribute.String("messaging.operation", "publish"))
-		span.SetAttributes(attribute.String("messaging.topic", topic))
-		span.SetAttributes(attribute.String("messaging.payload_size_bytes", fmt.Sprintf("%d", int64(len(message)))))
-		defer o11y.EndSpan(ctx, err)
-	}
-	if err := m.protonMQClient.Pub(topic, message); err != nil {
+	ctx, span := oteltrace.StartNamedProducerSpan(ctx, "mq.publish")
+	span.SetAttributes(attribute.String("messaging.operation", "publish"))
+	span.SetAttributes(attribute.String("messaging.topic", topic))
+	span.SetAttributes(attribute.String("messaging.payload_size_bytes", fmt.Sprintf("%d", int64(len(message)))))
+	defer oteltrace.EndSpan(ctx, err)
+
+	if err := m.openBKNMQClient.Pub(topic, message); err != nil {
 		m.logger.WithContext(ctx).Errorf("publish mq topic %s, message: %s, error: %v", topic, string(message), err)
 		return err
 	}

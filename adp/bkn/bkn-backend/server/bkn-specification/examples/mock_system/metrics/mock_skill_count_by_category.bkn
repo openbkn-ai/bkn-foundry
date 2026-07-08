@@ -1,0 +1,51 @@
+---
+type: metric
+id: mock_skill_count_by_category
+name: 各技能分类下技能数量
+tags: [mock_system, 技能, 人才]
+---
+
+## Metric: 各技能分类下技能数量
+
+按 `category` 分组统计技能类条目数，并按数量降序排列，便于识别技能库是否向少数类目过度集中。
+
+### Metric attributes
+
+| Metric Type | Unit Type | Unit |
+|-------------|-----------|------|
+| atomic | count | 个 |
+
+### Scope
+
+| Scope Type | Scope Ref |
+|------------|-----------|
+| object_type | skill |
+
+### Calculation Formula
+
+```yaml
+kind: atomic
+
+atomic:
+  aggregation:
+    property: id
+    aggr: count
+  group_by:
+    - property: category
+      description: 按技能分类聚合技能条目数
+  order_by:
+    - property: __value
+      direction: desc
+```
+
+### Time Dimension
+
+| Property | Default Range Policy |
+|----------|----------------------|
+| create_time | last_24h |
+
+### Analysis Dimensions
+
+| Name | Display Name |
+|------|--------------|
+| category | 技能分类 |

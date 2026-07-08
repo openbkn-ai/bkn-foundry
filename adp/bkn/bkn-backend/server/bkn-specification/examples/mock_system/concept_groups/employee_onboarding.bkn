@@ -1,0 +1,19 @@
+---
+type: concept_group
+id: employee_onboarding
+name: 员工入职流程
+tags: []
+---
+
+## ConceptGroup: 员工入职流程
+
+员工入职相关的核心对象类型
+
+### Object Types
+
+| ID | Name | Description |
+|----|------|-------------|
+| department | 部门表 |  |
+| employee | 员工表 | d7blk86fmoj81ili0q3g |
+| relation | 员工部门关系 |  |
+

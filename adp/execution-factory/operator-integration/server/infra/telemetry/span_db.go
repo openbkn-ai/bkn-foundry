@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
+	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -51,7 +51,7 @@ func (h *RDSHook) Before(ctx context.Context, sqltmp string, args ...interface{}
 	if tracer != nil {
 		opname := BuildUpOperateName("MySQL")
 		sqlstr := generateSQL(sqltmp, args...)
-		nctx, span := o11y.GlobalTracer().Start(ctx, opname, trace.WithSpanKind(trace.SpanKindInternal))
+		nctx, span := oteltrace.StartNamedInternalSpan(ctx, opname)
 		span.SetAttributes(attribute.Key("db.system").String(h.System))
 		span.SetAttributes(attribute.Key("db.statement").String(sqlstr))
 		nctx = context.WithValue(nctx, (*ctxSpanKey)(nil), span)
@@ -63,7 +63,7 @@ func (h *RDSHook) Before(ctx context.Context, sqltmp string, args ...interface{}
 // After 结束
 func (h *RDSHook) After(ctx context.Context, _ string, _ ...interface{}) (context.Context, error) {
 	if span, ok := ctx.Value((*ctxSpanKey)(nil)).(trace.Span); ok {
-		o11y.TelemetrySpanEnd(span, nil)
+		span.End()
 	}
 	return ctx, nil
 }
@@ -73,7 +73,8 @@ func (h *RDSHook) OnError(ctx context.Context, err error, _ string, _ ...interfa
 	if err != nil && !errors.Is(err, driver.ErrSkip) {
 		if span, ok := ctx.Value((*ctxSpanKey)(nil)).(trace.Span); ok {
 			span.SetAttributes(attribute.Key("db.error").String(err.Error()))
-			o11y.TelemetrySpanEnd(span, err)
+			span.RecordError(err)
+			span.End()
 		}
 	}
 	return nil

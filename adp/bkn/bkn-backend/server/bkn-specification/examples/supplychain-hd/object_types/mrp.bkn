@@ -1,0 +1,37 @@
+---
+type: object_type
+id: mrp
+name: 物料需求计划
+tags: [供应链, MRP, 已审核, 手工表]
+---
+
+## ObjectType: 物料需求计划
+
+MRP运算产生的物料净需求建议。
+
+### Data Source
+
+| Type | ID | Name |
+|------|----|------|
+| data_view | e2da0b80-a012-421e-870b-cc78bc863c1b | material_demand_plan |
+
+### Data Properties
+
+| Name | Display Name | Type | Description | Mapped Field |
+|------|--------------|------|-------------|--------------|
+| finished_product_code | 成品料号 | string | 最终产成品的物料编码。也就是产品编码。在物料需求计划里面，明确的是物料用于什么产品。 | finished_product_code |
+| specification | 规格 | string |  | specification |
+| component_name | 物料名称 | string |  | component_name |
+| planned_date | 计划日期 | date | 物料需要交付的日期 | planned_date |
+| material_demand_quantity | 物料净需求 | float | 负数为缺口，正数不缺。 | material_demand_quantity |
+| main_material | 物料编码 | string |  | main_material |
+
+### Logic Properties
+
+
+### Keys
+
+Primary Keys: finished_product_code, specification, main_material
+Display Key: component_name
+Incremental Key: 
+

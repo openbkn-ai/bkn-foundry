@@ -5,15 +5,15 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/drivenadapters"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/common"
-	infraerrors "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/errors"
+	oerrors "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/telemetry"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/metric"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/utils"
-	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
-	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 )
 
 type CallToolRequest struct {
@@ -41,8 +41,8 @@ type ListToolsResponse struct {
 // GetMCPTools 获取MCP工具列表
 func (s *mcpServiceImpl) GetMCPTools(ctx context.Context, req *interfaces.MCPProxyToolListRequest) (resp *interfaces.MCPProxyToolListResponse, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"mcp_id":  req.MCPID,
 		"user_id": req.UserID,
@@ -60,7 +60,7 @@ func (s *mcpServiceImpl) GetMCPTools(ctx context.Context, req *interfaces.MCPPro
 			return
 		}
 		if !authorized {
-			err = infraerrors.NewHTTPError(ctx, http.StatusForbidden, infraerrors.ErrExtCommonOperationForbidden, nil)
+			err = oerrors.NewHTTPError(ctx, http.StatusForbidden, oerrors.ErrExtCommonOperationForbidden, nil)
 			return
 		}
 	}
@@ -68,13 +68,13 @@ func (s *mcpServiceImpl) GetMCPTools(ctx context.Context, req *interfaces.MCPPro
 	serverConfig, err := s.DBMCPServerConfig.SelectByID(ctx, nil, req.MCPID)
 	if err != nil {
 		s.logger.WithContext(ctx).Errorf("select mcp server config by id error: %v", err)
-		err = infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError,
+		err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError,
 			fmt.Sprintf("select mcp server config by id error: %v", err))
 		return
 	}
 
 	if serverConfig == nil {
-		err = infraerrors.DefaultHTTPError(ctx, http.StatusNotFound, "mcp server config not found")
+		err = oerrors.DefaultHTTPError(ctx, http.StatusNotFound, "mcp server config not found")
 		return
 	}
 
@@ -103,8 +103,8 @@ func (s *mcpServiceImpl) GetMCPTools(ctx context.Context, req *interfaces.MCPPro
 // CallMCPTool 调用MCP工具
 func (s *mcpServiceImpl) CallMCPTool(ctx context.Context, req *interfaces.MCPProxyCallToolRequest) (resp *interfaces.MCPProxyCallToolResponse, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"mcp_id":  req.MCPID,
 		"user_id": req.UserID,
@@ -120,13 +120,13 @@ func (s *mcpServiceImpl) CallMCPTool(ctx context.Context, req *interfaces.MCPPro
 	serverConfig, err := s.DBMCPServerConfig.SelectByID(ctx, nil, req.MCPID)
 	if err != nil {
 		s.logger.WithContext(ctx).Errorf("select mcp server config by id error: %v", err)
-		err = infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError,
+		err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError,
 			fmt.Sprintf("select mcp server config by id error: %v", err))
 		return
 	}
 
 	if serverConfig == nil {
-		err = infraerrors.DefaultHTTPError(ctx, http.StatusNotFound, "mcp server config not found")
+		err = oerrors.DefaultHTTPError(ctx, http.StatusNotFound, "mcp server config not found")
 		return
 	}
 
@@ -194,7 +194,7 @@ func (s *mcpServiceImpl) callTool(ctx context.Context, req *CallToolRequest) (*C
 	result, err := mcpClient.CallTool(ctx, callToolRequest)
 	if err != nil {
 		s.logger.WithContext(ctx).Errorf("call mcp tool error: %v", err)
-		return nil, infraerrors.NewHTTPError(ctx, http.StatusGatewayTimeout, infraerrors.ErrExtMCPCallToolFailed, err.Error())
+		return nil, oerrors.NewHTTPError(ctx, http.StatusGatewayTimeout, oerrors.ErrExtMCPCallToolFailed, err.Error())
 	}
 
 	return &CallToolResponse{
@@ -236,7 +236,7 @@ func (s *mcpServiceImpl) listTools(ctx context.Context, req *ListToolsRequest) (
 
 	tools, err := mcpClient.ListTools(ctx, mcp.ListToolsRequest{})
 	if err != nil {
-		return nil, infraerrors.NewHTTPError(ctx, http.StatusGatewayTimeout, infraerrors.ErrExtMCPListToolsFailed, err.Error())
+		return nil, oerrors.NewHTTPError(ctx, http.StatusGatewayTimeout, oerrors.ErrExtMCPListToolsFailed, err.Error())
 	}
 
 	return &ListToolsResponse{
@@ -253,11 +253,11 @@ func (s *mcpServiceImpl) ExecuteTool(ctx context.Context, mcpToolID string, para
 	tool, err := s.DBMCPTool.SelectByMCPToolID(ctx, nil, mcpToolID)
 	if err != nil {
 		s.logger.Warnf("select mcp tool failed, err: %v", err)
-		return nil, infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, "select mcp tool failed")
+		return nil, oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, "select mcp tool failed")
 	}
 
 	if tool == nil {
-		return nil, infraerrors.DefaultHTTPError(ctx, http.StatusNotFound, "mcp tool not found")
+		return nil, oerrors.DefaultHTTPError(ctx, http.StatusNotFound, "mcp tool not found")
 	}
 
 	// 调用工具服务执行工具

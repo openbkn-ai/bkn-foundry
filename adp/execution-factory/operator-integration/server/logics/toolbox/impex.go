@@ -17,14 +17,14 @@ import (
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/metadata"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/metric"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/utils"
-	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
+	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 )
 
 // Import 导入
 func (s *ToolServiceImpl) Import(ctx context.Context, tx *sql.Tx, mode interfaces.ImportType, data *interfaces.ComponentImpexConfigModel, userID string) (err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	if data == nil || data.Toolbox == nil || len(data.Toolbox.Configs) == 0 {
 		err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtCommonImportDataEmpty, "toolbox configs is empty")
 		return
@@ -566,8 +566,8 @@ func (s *ToolServiceImpl) exportPreCheck(ctx context.Context, req *interfaces.Ex
 // Export 导出
 func (s *ToolServiceImpl) Export(ctx context.Context, req *interfaces.ExportReq) (data *interfaces.ComponentImpexConfigModel, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 
 	boxDBs, err := s.exportPreCheck(ctx, req)
 	if err != nil {

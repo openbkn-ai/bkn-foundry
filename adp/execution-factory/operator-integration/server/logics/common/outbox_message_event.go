@@ -15,7 +15,7 @@ import (
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/mq"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces/model"
-	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
+	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 	redis "github.com/redis/go-redis/v9"
 )
 
@@ -83,8 +83,8 @@ func (m *outboxMessageEvent) Start() error {
 func (m *outboxMessageEvent) scan(ctx context.Context) {
 	var err error
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	// 获取分布式锁
 	v := m.confLoader.Project.GetMachineID()
 	locker := lock.NewRedisLocker(m.redisCli, lockKeyTemp, v, defultLockExpiryTime)

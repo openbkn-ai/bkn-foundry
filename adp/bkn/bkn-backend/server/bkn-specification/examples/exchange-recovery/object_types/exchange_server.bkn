@@ -1,0 +1,38 @@
+---
+type: object_type
+id: exchange_server
+name: Exchange生产服务器
+tags: [Exchange, 灾备, 生产环境, 邮件服务器]
+---
+
+## ObjectType: Exchange生产服务器
+
+Microsoft Exchange邮件服务器，托管用户邮箱和邮件数据，是生产环境中的服务器。
+
+### Data Source
+
+| Type | ID | Name |
+|------|----|------|
+
+### Data Properties
+
+| Name | Display Name | Type | Description | Mapped Field |
+|------|--------------|------|-------------|--------------|
+| id | ID | integer | 主键ID | id |
+| data_domain_id | 数据域ID | integer | 数据域ID（外键，关联data_domain.id） | data_domain_id |
+| server_name | 服务器名称 | string | Exchange服务器名称 | server_name |
+| server_address | 服务器地址 | string | 服务器IP或域名 | server_address |
+| exchange_version | Exchange版本 | string | Exchange版本号 | exchange_version |
+| mailbox_count | 邮箱数量 | integer | 托管的邮箱总数 | mailbox_count |
+| status | 状态 | string | 服务器状态 (Online/Offline/Maintenance) | status |
+| created_at | 创建时间 | datetime | 服务器创建时间 | created_at |
+
+### Logic Properties
+
+
+### Keys
+
+Primary Keys: id
+Display Key: server_name
+Incremental Key: 
+

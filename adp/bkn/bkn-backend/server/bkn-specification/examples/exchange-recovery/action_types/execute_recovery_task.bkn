@@ -1,0 +1,63 @@
+---
+type: action_type
+id: execute_recovery_task
+name: 执行恢复任务
+tags: [任务执行, 恢复任务, 灾备]
+action_type: add
+action_intent: add
+---
+
+## ActionType: 执行恢复任务
+
+执行已生成的恢复任务，产生恢复作业。
+
+### Bound Object
+
+| Bound Object |
+|--------------|
+| recovery_task |
+
+### Impact Contracts
+
+```yaml
+impact_contracts:
+  - object_type_id: recovery_server
+    expected_operation: add
+    description: ""
+```
+
+
+### Trigger Condition
+
+```yaml
+object_type_id: recovery_task
+field: task_status
+operation: ==
+value: Pending
+```
+
+
+### Action Source
+
+| Type | BoxID | ToolID | McpID | ToolName |
+|------|-------|--------|-------|----------|
+| tool | recovery_toolbox | execute_recovery_task |  |  |
+
+### Parameter Binding
+
+| Name | Type | Source | Operation | ValueFrom | Value | Description |
+|------|------|--------|-----------|-----------|-------|-------------|
+| task_id | string | property |  | id |  | 任务ID |
+| timepoint | datetime | property |  | timepoint |  | 备份时间点 |
+| recovery_type | string | property |  | recovery_type |  | 恢复类型（挂载恢复/数据恢复） |
+| recovery_granularity | string | property |  | recovery_granularity |  | 恢复粒度（邮件服务器/邮件级别） |
+| recovery_destination | string | property |  | recovery_destination |  | 恢复目的地（production/recovery_server） |
+| target_emails | array | property |  | target_emails |  | 目标邮件列表（邮件级别恢复时使用） |
+| user_id | string | input |  | - |  | 执行恢复操作的用户ID |
+
+### Schedule
+
+| Type | Expression |
+|------|------------|
+| FIX_RATE | 1m |
+

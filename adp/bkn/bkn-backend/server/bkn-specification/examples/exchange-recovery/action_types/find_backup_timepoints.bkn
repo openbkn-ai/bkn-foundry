@@ -1,0 +1,51 @@
+---
+type: action_type
+id: find_backup_timepoints
+name: 查找备份时间点副本
+tags: [备份查找, 时间点, 灾备]
+action_type: add
+action_intent: add
+---
+
+## ActionType: 查找备份时间点副本
+
+根据备份的exchange服务器查找该服务器的备份时间点副本。
+
+### Bound Object
+
+| Bound Object |
+|--------------|
+| exchange_server |
+
+### Impact Contracts
+
+```yaml
+impact_contracts:
+  - object_type_id: backup_timepoint
+    expected_operation: add
+    description: ""
+```
+
+
+### Trigger Condition
+
+
+### Action Source
+
+| Type | BoxID | ToolID | McpID | ToolName |
+|------|-------|--------|-------|----------|
+| tool | recovery_toolbox | find_backup_timepoints |  |  |
+
+### Parameter Binding
+
+| Name | Type | Source | Operation | ValueFrom | Value | Description |
+|------|------|--------|-----------|-----------|-------|-------------|
+| server_name | string | property |  | server_name |  | Exchange服务器名称 |
+| server_address | string | property |  | server_address |  | Exchange服务器地址 |
+
+### Schedule
+
+| Type | Expression |
+|------|------------|
+| EVENT | on_request |
+

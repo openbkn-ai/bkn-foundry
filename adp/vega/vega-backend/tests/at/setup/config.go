@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"os"
 
-	kwcrypto "github.com/kweaver-ai/kweaver-go-lib/crypto"
+	kwcrypto "github.com/openbkn-ai/bkn-comm-go/crypto"
 	"github.com/spf13/viper"
 )
 

@@ -16,7 +16,7 @@ import (
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/auth"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/business_domain"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/utils"
-	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
+	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 )
 
 type skillReader struct {
@@ -56,8 +56,8 @@ func NewSkillReader() interfaces.SkillReader {
 // GetSkillContent 获取技能内容
 func (r *skillReader) GetSkillContent(ctx context.Context, req *interfaces.GetSkillContentReq) (resp *interfaces.GetSkillContentResp, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"skill_id": req.SkillID,
 	})
@@ -115,8 +115,8 @@ func (r *skillReader) GetSkillContent(ctx context.Context, req *interfaces.GetSk
 // ReadSkillFile 读取技能文件内容
 func (r *skillReader) ReadSkillFile(ctx context.Context, req *interfaces.ReadSkillFileReq) (resp *interfaces.ReadSkillFileResp, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"user_id":  req.UserID,
 		"bd_id":    req.BusinessDomainID,
@@ -179,8 +179,8 @@ func (r *skillReader) ReadSkillFile(ctx context.Context, req *interfaces.ReadSki
 
 // GetSkillReleaseHistory 查询 Skill 发布历史
 func (r *skillReader) GetSkillReleaseHistory(ctx context.Context, req *interfaces.GetSkillReleaseHistoryReq) (resp []*interfaces.SkillReleaseHistoryInfo, err error) {
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"skill_id": req.SkillID,
 	})

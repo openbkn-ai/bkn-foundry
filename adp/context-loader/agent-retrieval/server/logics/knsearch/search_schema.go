@@ -9,14 +9,14 @@ package knsearch
 import (
 	"context"
 	"encoding/json"
-	stderrors "errors"
+	"errors"
 	"net/http"
 	"strings"
 
 	"github.com/creasty/defaults"
 
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/drivenadapters"
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/errors"
+	aerrors "github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
@@ -26,7 +26,7 @@ var newBknBackendAccess = drivenadapters.NewBknBackendAccess
 func (s *knSearchService) SearchSchema(ctx context.Context, req *interfaces.SearchSchemaReq) (*interfaces.SearchSchemaResp, error) {
 	knReq, scope, err := NormalizeSearchSchemaReq(req)
 	if err != nil {
-		return nil, errors.DefaultHTTPError(ctx, http.StatusBadRequest, err.Error())
+		return nil, aerrors.DefaultHTTPError(ctx, http.StatusBadRequest, err.Error())
 	}
 
 	resp, err := s.KnSearch(ctx, knReq)
@@ -58,7 +58,7 @@ type SearchSchemaScope struct {
 // It applies struct default tags, validates inputs, and forces schema-only semantics.
 func NormalizeSearchSchemaReq(req *interfaces.SearchSchemaReq) (*interfaces.KnSearchReq, SearchSchemaScope, error) {
 	if err := defaults.Set(req); err != nil {
-		return nil, SearchSchemaScope{}, stderrors.New("failed to apply defaults: " + err.Error())
+		return nil, SearchSchemaScope{}, errors.New("failed to apply defaults: " + err.Error())
 	}
 
 	// SearchScope 为 nil 时（用户未传），默认四类全开；
@@ -77,7 +77,7 @@ func NormalizeSearchSchemaReq(req *interfaces.SearchSchemaReq) (*interfaces.KnSe
 		scope.IncludeMetricTypes = *req.SearchScope.IncludeMetricTypes
 	}
 	if !scope.IncludeObjectTypes && !scope.IncludeRelationTypes && !scope.IncludeActionTypes && !scope.IncludeMetricTypes {
-		return nil, scope, stderrors.New("search_scope must enable at least one concept type")
+		return nil, scope, errors.New("search_scope must enable at least one concept type")
 	}
 
 	knID := strings.TrimSpace(req.XKnID)
@@ -85,23 +85,23 @@ func NormalizeSearchSchemaReq(req *interfaces.SearchSchemaReq) (*interfaces.KnSe
 		knID = strings.TrimSpace(req.KnID)
 	}
 	if knID == "" {
-		return nil, scope, stderrors.New("kn_id is required (configure X-Kn-ID header or pass kn_id in body)")
+		return nil, scope, errors.New("kn_id is required (configure X-Kn-ID header or pass kn_id in body)")
 	}
 
 	if strings.TrimSpace(req.Query) == "" {
-		return nil, scope, stderrors.New("query is required")
+		return nil, scope, errors.New("query is required")
 	}
 
 	if *req.MaxConcepts <= 0 {
-		return nil, scope, stderrors.New("max_concepts must be greater than 0")
+		return nil, scope, errors.New("max_concepts must be greater than 0")
 	}
 
 	onlySchema := true
 	return &interfaces.KnSearchReq{
-		XAccountID:   req.XAccountID,
-		XAccountType: req.XAccountType,
-		Query:        req.Query,
-		KnID:         knID,
+		XAccountID:     req.XAccountID,
+		XAccountType:   req.XAccountType,
+		Query:          req.Query,
+		KnID:           knID,
 		OnlySchema:     &onlySchema,
 		EnableRerank:   req.EnableRerank,
 		IncludeColumns: req.IncludeColumns,

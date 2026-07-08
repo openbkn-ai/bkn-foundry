@@ -1,0 +1,86 @@
+---
+type: knowledge_network
+id: k8s-network
+name: Kubernetes网络
+tags: [Kubernetes, 拓扑架构, 运维]
+business_domain: kubernetes
+---
+
+# Kubernetes网络
+
+采用每定义一文件的模块化组织方式，适合大规模知识网络
+
+Kubernetes 集群拓扑与运维操作的知识网络。
+
+
+## Network Overview
+
+### Object Types
+
+| ID | Name | File Path | Description |
+|----|------|-----------|-------------|
+| node | Node节点 | `object_types/node.bkn` | Kubernetes 集群中的工作节点，承载 Pod 运行。 |
+| pod | Pod实例 | `object_types/pod.bkn` | Kubernetes 中的最小部署单元，一个或多个容器的集合。 |
+| service | Service服务 | `object_types/service.bkn` | Kubernetes 服务抽象层，提供稳定的访问入口。 |
+
+### Relation Types
+
+| ID | Name | File Path | Description |
+|----|------|-----------|-------------|
+| pod_belongs_node | Pod属于节点 | `relation_types/pod_belongs_node.bkn` | Pod 与其所在节点之间的归属关系。 |
+| service_routes_pod | Service路由Pod | `relation_types/service_routes_pod.bkn` | Service 到 Pod 的流量路由关系。 |
+
+### Action Types
+
+| ID | Name | File Path | Description |
+|----|------|-----------|-------------|
+| cordon_node | 隔离节点 | `action_types/cordon_node.bkn` | 将故障节点标记为不可调度，防止新 Pod 被调度到该节点。 |
+| restart_pod | 重启Pod | `action_types/restart_pod.bkn` | 当 Pod 状态异常时，自动执行重启操作。 |
+
+### Risk Types
+
+| ID | Name | File Path | Description |
+|----|------|-----------|-------------|
+
+### Concept Groups
+
+| ID | Name | File Path | Description |
+|----|------|-----------|-------------|
+| k8s | Kubernetes集群 | `concept_groups/k8s.bkn` | Kubernetes集群相关概念分组 |
+
+### Metrics
+
+| ID | Name | File Path | Description |
+|----|------|-----------|-------------|
+| node_ready_count | Ready 节点数量 | `metrics/node_ready_count.bkn` | 统计当前知识网络快照中状态为 Ready 的工作节点数量；节点对象无单独业务时间字段时，以**全量/当前视图**解释结果，时间维度默认 **none**（与排班、节点心跳类数据源对齐时再挂时间列）。 |
+| pod_count_by_namespace | 各命名空间 Pod 数量 | `metrics/pod_count_by_namespace.bkn` | 按命名空间分组统计 Pod 条数，用于观察多租户/多团队的资源分布与热点命名空间。 |
+| pod_pending_count | Pending 状态 Pod 数量 | `metrics/pod_pending_count.bkn` | 统计 Pending 状态的 Pod 数量，用于与 Running 指标对照观察调度/资源瓶颈（镜像拉取、资源不足等）。 |
+| pod_running_count | Running 状态 Pod 数量 | `metrics/pod_running_count.bkn` | 在选定时间窗口内统计状态为 Running 的 Pod 数量，用于衡量工作负载在线规模与排障时的基线对比。 |
+| service_count_by_type | 各类型 Service 数量 | `metrics/service_count_by_type.bkn` | 按 Service 类型（ClusterIP / NodePort / LoadBalancer 等）分组计数，用于核对对外暴露面与集群内服务发现规模。 |
+
+## Directory Structure
+
+```
+.
+├── network.bkn
+├── SKILL.md
+├── CHECKSUM
+├── object_types/
+│   ├── node.bkn
+│   ├── pod.bkn
+│   └── service.bkn
+├── relation_types/
+│   ├── pod_belongs_node.bkn
+│   └── service_routes_pod.bkn
+├── action_types/
+│   ├── cordon_node.bkn
+│   └── restart_pod.bkn
+├── concept_groups/
+│   └── k8s.bkn
+└── metrics/
+    ├── node_ready_count.bkn
+    ├── pod_count_by_namespace.bkn
+    ├── pod_pending_count.bkn
+    ├── pod_running_count.bkn
+    └── service_count_by_type.bkn
+```

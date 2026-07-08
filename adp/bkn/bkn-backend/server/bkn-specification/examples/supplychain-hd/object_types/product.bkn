@@ -1,0 +1,65 @@
+---
+type: object_type
+id: product
+name: 产品
+tags: [供应链, 产品, 已审核]
+---
+
+## ObjectType: 产品
+
+存储企业生产的成品基本信息，包括产品编码、名称。
+
+### Data Source
+
+| Type | ID | Name |
+|------|----|------|
+| data_view | d606tgg8ubbiutnq84lg | HD_产品 |
+
+### Data Properties
+
+| Name | Display Name | Type | Description | Mapped Field |
+|------|--------------|------|-------------|--------------|
+| material_name | 产品名称 | string |  | material_name |
+| material_number | 产品编码 | string | 产品编码，产品物料也是成品物料，所以产品编码也是物料编码，但是物料不一定是产品。 | material_number |
+
+### Logic Properties
+
+#### product_bom
+
+**Meta**
+
+| Display Name | Type | Description |
+|--------------|------|-------------|
+| product_bom | operator |  |
+
+**Source**
+
+| Source Type | Source ID | Source Name |
+|-------------|-----------|-------------|
+| operator | bom_tree_builder | bom_tree_builder |
+
+**Parameters**
+
+| Name | Type | Source | Operation | ValueFrom | Value | Description |
+|------|------|--------|-----------|-----------|-------|-------------|
+| timeout | number | input |  |  |  |  |
+| authorization | string | const |  |  |  |  |
+| cache | boolean | input |  |  |  |  |
+| include_inventory | boolean | input |  |  |  |  |
+| include_substitutes | boolean | input |  |  |  |  |
+| knowledge_network_id | string | const |  |  |  |  |
+| max_products | number | input |  |  |  |  |
+| product_codes | array | input |  |  |  |  |
+
+**Analysis Dimensions**
+
+| Name | Display Name | Type | Description |
+|------|--------------|------|-------------|
+
+
+### Keys
+
+Primary Keys: material_number
+Display Key: material_number
+Incremental Key: 
+

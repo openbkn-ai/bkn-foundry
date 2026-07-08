@@ -1,0 +1,23 @@
+---
+type: relation_type
+id: bom2material
+name: 产品BOM关联物料
+tags: [供应链, 关系, 已审核]
+---
+
+## RelationType: 产品BOM关联物料
+
+产品BOM与物料之间的关联关系。
+
+### Endpoint
+
+| Source | Target | Type |
+|--------|--------|------|
+| bom | material | direct |
+
+### Mapping Rules
+
+| Source Property | Target Property |
+|-----------------|-----------------|
+| material_code | material_code |
+

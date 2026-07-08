@@ -1,0 +1,23 @@
+---
+type: relation_type
+id: backup_timepoint_contains_email
+name: 备份时间点副本包含邮件
+tags: [contains, 包含关系, 灾备]
+---
+
+## RelationType: 备份时间点副本包含邮件
+
+备份时间点副本包含邮件，表示该时间点副本包含了这封邮件。
+
+### Endpoint
+
+| Source | Target | Type |
+|--------|--------|------|
+| backup_timepoint | email | direct |
+
+### Mapping Rules
+
+| Source Property | Target Property |
+|-----------------|-----------------|
+| metadata.email_list | email_subject |
+

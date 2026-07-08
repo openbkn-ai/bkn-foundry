@@ -8,19 +8,19 @@
 package config
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
 	"reflect"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 
 	"github.com/creasty/defaults"
-	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
+	bknotel "github.com/openbkn-ai/bkn-comm-go/otel"
 	"github.com/spf13/viper"
 	yaml "gopkg.in/yaml.v3"
 
@@ -43,6 +43,7 @@ type Config struct {
 	Logger              interfaces.Logger     `yaml:"-"`
 	ConceptSearchConfig KnConceptSearchConfig `yaml:"concept_search_config"` // Knowledge network concept search configuration
 	Observability       ObservabilityConfig   `yaml:"-"`
+	OTelProviders       *bknotel.Providers    `yaml:"-"`
 	// 新增配置 - 知识重排和检索相关
 	MFModelAPI         PrivateBaseConfig        `yaml:"mf_model_api"`         // MF-Model API统一服务配置
 	RerankLLM          RerankLLMConfig          `yaml:"rerank_llm"`           // Rerank用的LLM参数配置
@@ -52,12 +53,14 @@ type Config struct {
 
 // ObservabilityConfig trace configuration
 type ObservabilityConfig struct {
-	TraceType                 telemetry.ExporterType `mapstructure:"traceType"`
-	TraceEnabled              bool                   `mapstructure:"traceEnabled"`
-	TraceProvider             string                 `mapstructure:"traceProvider"`
-	LogEnabled                bool                   `mapstructure:"logEnabled"`
-	GrpcTraceFeedIngesterURL  string                 `mapstructure:"grpcTraceFeedIngesterUrl"`
-	o11y.ObservabilitySetting `mapstructure:",squash"`
+	bknotel.OtelConfig `mapstructure:",squash"`
+
+	TraceType                telemetry.ExporterType `mapstructure:"traceType"`
+	TraceEnabled             bool                   `mapstructure:"traceEnabled"`
+	TraceProvider            string                 `mapstructure:"traceProvider"`
+	LogEnabled               bool                   `mapstructure:"logEnabled"`
+	HttpTraceFeedIngesterURL string                 `mapstructure:"httpTraceFeedIngesterUrl"`
+	GrpcTraceFeedIngesterURL string                 `mapstructure:"grpcTraceFeedIngesterUrl"`
 }
 
 // Project configuration
@@ -250,7 +253,7 @@ func NewConfigLoader() *Config {
 			return
 		}
 		// Initialize observability related configuration
-		configLoader.initO11yAndLog()
+		configLoader.initOTelAndLog()
 		// Set machine ID
 		configLoader.Project.SetMachineID()
 		overrideWithEnv(configLoader)
@@ -327,7 +330,7 @@ func overrideWithEnv(cfg any) {
 }
 
 // Load & Initialize observability related configuration
-func (conf *Config) initO11yAndLog() {
+func (conf *Config) initOTelAndLog() {
 	// Initialize logger
 	level := logger.Level(configLoader.Project.LoggerLevel)
 	if configLoader.Project.Debug {
@@ -348,27 +351,53 @@ func (conf *Config) initO11yAndLog() {
 	if err := viper.Unmarshal(&conf.Observability); err != nil {
 		panic(err)
 	}
-	serverInfo := o11y.ServerInfo{
-		ServerName:    conf.Project.Name,
-		ServerVersion: "1.0.0",
-		Language:      "Go",
-		GoVersion:     runtime.Version(),
-		GoArch:        runtime.GOARCH,
-	}
 
-	// Initialize observability
-	if conf.Observability.TraceEnabled && conf.Observability.TraceType == telemetry.ExporterTypeJaeger {
-		_, err := telemetry.InitJaegerExporter(conf.Project.Name, conf.Observability.TraceProvider, conf.Observability.GrpcTraceFeedIngesterURL)
-		if err != nil {
-			panic(err)
-		}
-		conf.Observability.TraceEnabled = false
+	otelConfig := conf.Observability.toOTelConfig(conf.Project.Name)
+	providers, err := bknotel.InitOTel(context.Background(), &otelConfig)
+	if err != nil {
+		panic(err)
 	}
-	o11y.Init(serverInfo, conf.Observability.ObservabilitySetting)
+	conf.Observability.OtelConfig = otelConfig
+	conf.OTelProviders = providers
+
 	// Initialize logger
-	if conf.Observability.LogEnabled {
+	if otelConfig.Log.Enabled {
 		configLoader.Logger = telemetry.NewSamplerLogger(logger.NewLogger(level, logger.MaxCalldepth))
 		return
 	}
 	configLoader.Logger = logger.NewLogger(level, logger.DefaultCalldepth)
+}
+
+func (conf ObservabilityConfig) toOTelConfig(serviceName string) bknotel.OtelConfig {
+	otelConfig := conf.OtelConfig
+	if otelConfig.ServiceName == "" {
+		otelConfig.ServiceName = serviceName
+	}
+	if otelConfig.ServiceVersion == "" {
+		otelConfig.ServiceVersion = "1.0.0"
+	}
+	if otelConfig.Environment == "" {
+		otelConfig.Environment = "production"
+	}
+	if otelConfig.OTLPEndpoint == "" {
+		otelConfig.OTLPEndpoint = conf.otelEndpoint()
+	}
+	if conf.TraceEnabled {
+		otelConfig.Trace.Enabled = true
+	}
+	if conf.LogEnabled {
+		otelConfig.Log.Enabled = true
+	}
+	otelConfig.SetDefaults(otelConfig.ServiceName, otelConfig.ServiceVersion)
+	return otelConfig
+}
+
+func (conf ObservabilityConfig) otelEndpoint() string {
+	if conf.TraceProvider == "http" && conf.HttpTraceFeedIngesterURL != "" {
+		return strings.TrimPrefix(strings.TrimPrefix(conf.HttpTraceFeedIngesterURL, "http://"), "https://")
+	}
+	if conf.GrpcTraceFeedIngesterURL != "" {
+		return conf.GrpcTraceFeedIngesterURL
+	}
+	return ""
 }

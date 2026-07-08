@@ -1,0 +1,54 @@
+---
+type: action_type
+id: new_employee_resource
+name: 新员工入职（Resource版）
+tags: []
+action_type: add
+action_intent: add
+---
+
+## ActionType: 新员工入职（Resource版）
+
+### Bound Object
+
+| Bound Object |
+|--------------|
+| employee_resource |
+
+### Impact Contracts
+
+```yaml
+impact_contracts:
+  - object_type_id: employee_resource
+    expected_operation: add
+    description: ""
+```
+
+
+### Trigger Condition
+
+```yaml
+object_type_id: employee_resource
+field: status
+operation: ==
+value: 0
+```
+
+
+### Action Source
+
+| Type | BoxID | ToolID | McpID | ToolName |
+|------|-------|--------|-------|----------|
+| tool | 26299643-33b3-4148-a7fc-b14ec705d834 | ab6cb7d0-9d12-4b08-86df-ab5b35779b49 |  |  |
+
+### Parameter Binding
+
+| Name | Type | Source | Operation | ValueFrom | Value | Description |
+|------|------|--------|-----------|-----------|-------|-------------|
+| employee_id | string | Query |  | input |  |  |
+
+### Schedule
+
+| Type | Expression |
+|------|------------|
+

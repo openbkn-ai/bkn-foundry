@@ -1,0 +1,70 @@
+---
+type: action_type
+id: browse_backup_emails
+name: 浏览备份邮件
+tags: [备份浏览, 灾备, 邮件]
+action_type: add
+action_intent: add
+---
+
+## ActionType: 浏览备份邮件
+
+根据时间点副本查找里面备份了哪些邮件。
+
+### Execution Description
+
+1. 接收备份时间点副本ID和过滤条件作为输入参数
+2. 读取备份时间点副本的元数据
+3. 从元数据中提取邮件列表
+4. 根据过滤条件筛选邮件（如果提供了过滤条件）：
+   - 邮件主题过滤
+   - 邮件发件人过滤
+   - 邮件日期过滤
+5. 按邮件日期倒序排序
+6. 输出邮件列表，包括：
+   - 邮件ID、邮件主题、发件人、收件人、邮件日期、邮件大小
+   - 是否有附件、附件数量
+   - 邮件状态
+
+### Bound Object
+
+| Bound Object |
+|--------------|
+| backup_timepoint |
+
+### Impact Contracts
+
+```yaml
+impact_contracts:
+  - object_type_id: email
+    expected_operation: add
+    description: 基于备份时间点副本元数据筛选并输出邮件列表（主题、发件人、日期及附件等信息）。
+```
+
+
+### Trigger Condition
+
+
+### Action Source
+
+| Type | BoxID | ToolID | McpID | ToolName |
+|------|-------|--------|-------|----------|
+| tool | recovery_toolbox | browse_backup_emails |  |  |
+
+### Parameter Binding
+
+| Name | Type | Source | Operation | ValueFrom | Value | Description |
+|------|------|--------|-----------|-----------|-------|-------------|
+| backup_timepoint_id | integer | property |  | id |  | 备份时间点副本ID |
+| backup_timepoint_time | datetime | property |  | snapshot_time |  | 备份时间 |
+| metadata | json | property |  | metadata |  | 备份时间点副本元数据 |
+| email_subject_filter | string | input |  | - |  | 邮件主题过滤（可选） |
+| email_sender_filter | string | input |  | - |  | 邮件发件人过滤（可选） |
+| email_date_filter | datetime | input |  | - |  | 邮件日期过滤（可选） |
+
+### Schedule
+
+| Type | Expression |
+|------|------------|
+| EVENT | on_request |
+

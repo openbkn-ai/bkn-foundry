@@ -9,9 +9,9 @@ package logics
 import (
 	"testing"
 
-	bknsdk "github.com/kweaver-ai/bkn-specification/sdk/golang/bkn"
 	. "github.com/smartystreets/goconvey/convey"
 
+	bknsdk "bkn-backend/bkn-specification/bkn"
 	cond "bkn-backend/common/condition"
 	"bkn-backend/interfaces"
 )

@@ -1,0 +1,36 @@
+---
+type: object_type
+id: supplier
+name: 供应商
+tags: [供应链, 供应商, 已审核]
+---
+
+## ObjectType: 供应商
+
+记录供应商的基础信息，包括编码、名称、信用代码、付款条件及对应采购员。
+
+### Data Source
+
+| Type | ID | Name |
+|------|----|------|
+| data_view | 2017573348875202561 | erp_supplier |
+
+### Data Properties
+
+| Name | Display Name | Type | Description | Mapped Field |
+|------|--------------|------|-------------|--------------|
+| supplier_code | 供应商编码 | string | 供应商的唯一标识编码 | supplier_code |
+| supplier_name | 供应商名称 | string | 供应商的公司全称 | supplier_name |
+| societycreditcode | 统一社会信用代码 | string | 企业统一社会信用代码 | societycreditcode |
+| purchaserid_name | 采购员 | string | 负责该供应商的采购员姓名 | purchaserid_name |
+| paycond_name | 付款条件 | string | 供应商的付款结算条款 | paycond_name |
+
+### Logic Properties
+
+
+### Keys
+
+Primary Keys: supplier_code
+Display Key: supplier_name
+Incremental Key: 
+

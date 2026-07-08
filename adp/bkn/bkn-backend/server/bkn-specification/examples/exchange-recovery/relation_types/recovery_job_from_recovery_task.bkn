@@ -1,0 +1,23 @@
+---
+type: relation_type
+id: recovery_job_from_recovery_task
+name: 恢复作业依赖于恢复任务
+tags: [from, 依赖关系, 灾备]
+---
+
+## RelationType: 恢复作业依赖于恢复任务
+
+恢复作业由恢复任务执行产生。
+
+### Endpoint
+
+| Source | Target | Type |
+|--------|--------|------|
+| recovery_task | recovery_job | direct |
+
+### Mapping Rules
+
+| Source Property | Target Property |
+|-----------------|-----------------|
+| id | recovery_task_id |
+

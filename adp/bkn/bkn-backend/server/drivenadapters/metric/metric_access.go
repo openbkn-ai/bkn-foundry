@@ -15,10 +15,10 @@ import (
 	"sync"
 
 	sq "github.com/Masterminds/squirrel"
-	libCommon "github.com/kweaver-ai/kweaver-go-lib/common"
-	libdb "github.com/kweaver-ai/kweaver-go-lib/db"
-	"github.com/kweaver-ai/kweaver-go-lib/logger"
-	"github.com/kweaver-ai/kweaver-go-lib/otel/oteltrace"
+	libCommon "github.com/openbkn-ai/bkn-comm-go/common"
+	libdb "github.com/openbkn-ai/bkn-comm-go/db"
+	"github.com/openbkn-ai/bkn-comm-go/logger"
+	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 	"go.opentelemetry.io/otel/codes"
 
 	"bkn-backend/common"

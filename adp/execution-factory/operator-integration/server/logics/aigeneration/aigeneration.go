@@ -6,10 +6,10 @@ package aigeneration
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"sync"
 
-	"github.com/kweaver-ai/kweaver-go-lib/logger"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/drivenadapters"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/errors"
@@ -35,7 +35,7 @@ func NewAIGenerationService() interfaces.AIGenerationService {
 	agOnce.Do(func() {
 		promptLoader, err := NewPromptLoader()
 		if err != nil {
-			logger.Errorf("failed to create prompt loader: %v", err)
+			log.Printf("failed to create prompt loader: %v", err)
 			panic(err)
 		}
 		conf := config.NewConfigLoader()

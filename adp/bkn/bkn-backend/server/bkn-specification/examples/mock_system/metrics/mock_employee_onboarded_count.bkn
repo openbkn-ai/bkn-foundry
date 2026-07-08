@@ -1,0 +1,49 @@
+---
+type: metric
+id: mock_employee_onboarded_count
+name: 已入职员工人数
+tags: [mock_system, 人力, 入职]
+---
+
+## Metric: 已入职员工人数
+
+仅统计 `status` 为 1（已入职）的员工记录数，用于与待入职口径区分，支撑人员编制与流程报表。
+
+### Metric attributes
+
+| Metric Type | Unit Type | Unit |
+|-------------|-----------|------|
+| atomic | count | 人 |
+
+### Scope
+
+| Scope Type | Scope Ref |
+|------------|-----------|
+| object_type | employee |
+
+### Calculation Formula
+
+```yaml
+kind: atomic
+
+atomic:
+  condition:
+    field: status
+    operation: ==
+    value: 1
+  aggregation:
+    property: id
+    aggr: count
+```
+
+### Time Dimension
+
+| Property | Default Range Policy |
+|----------|----------------------|
+| hire_date | calendar_day |
+
+### Analysis Dimensions
+
+| Name | Display Name |
+|------|--------------|
+| name | 姓名 |

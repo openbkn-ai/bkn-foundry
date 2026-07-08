@@ -1,0 +1,49 @@
+---
+type: metric
+id: hd_inventory_available_qty_by_org
+name: 各组织可用库存量合计
+tags: [供应链, 库存, HD]
+---
+
+## Metric: 各组织可用库存量合计
+
+按库存所属组织对 `available_inventory_qty` 求和，对应「可用量 = 现存量 − 预留」口径在组织维度的汇聚，用于供需对齐与调拨优先级讨论。
+
+### Metric attributes
+
+| Metric Type | Unit Type | Unit |
+|-------------|-----------|------|
+| atomic | amount | 数量 |
+
+### Scope
+
+| Scope Type | Scope Ref |
+|------------|-----------|
+| object_type | inventory |
+
+### Calculation Formula
+
+```yaml
+kind: atomic
+
+atomic:
+  aggregation:
+    property: available_inventory_qty
+    aggr: sum
+  group_by:
+    - property: inventory_org
+      description: 按库存组织聚合可用库存
+```
+
+### Time Dimension
+
+| Property | Default Range Policy |
+|----------|----------------------|
+| inbound_date | calendar_day |
+
+### Analysis Dimensions
+
+| Name | Display Name |
+|------|--------------|
+| inventory_org | 库存组织 |
+| inventory_uom | 库存单位 |

@@ -1,0 +1,87 @@
+---
+type: action_type
+id: verify_exchange_availability
+name: 验证Exchange可用性
+tags: [Exchange验证, 可用性验证, 灾备]
+action_type: add
+action_intent: add
+---
+
+## ActionType: 验证Exchange可用性
+
+验证恢复后的Exchange邮件服务器可用性，检查邮件是否可读、邮件服务器是否可正常对外提供业务。
+
+### Verification Methods
+
+| Verification Method | Description |
+|-------------------|-------------|
+| Exchange服务可用性检查 | 检查Exchange服务是否正常运行、可对外提供业务、端口监听、响应时间 |
+| 邮件完整性检查 | 验证邮件主题、发件人、收件人、正文是否完整 |
+| 附件检查 | 验证邮件附件是否可正常访问 |
+| 可读性检查 | 验证邮件是否可正常读取 |
+
+### Verification Details Fields
+
+验证详情为JSON格式，包含以下字段：
+
+```json
+{
+  "exchange_service_status": "Online",
+  "exchange_service_accessible": true,
+  "exchange_service_port": "443",
+  "exchange_response_time": "50ms",
+  "email_sample_count": 10,
+  "email_readable_count": 10,
+  "email_integrity_check": "Pass",
+  "attachment_check": "Pass",
+  "verification_summary": "Exchange服务正常运行，邮件可读性良好"
+}
+```
+
+### Bound Object
+
+| Bound Object |
+|--------------|
+| recovery_job |
+
+### Impact Contracts
+
+```yaml
+impact_contracts:
+  - object_type_id: exchange_server
+    expected_operation: add
+    description: ""
+```
+
+
+### Trigger Condition
+
+```yaml
+object_type_id: recovery_job
+field: recovery_result
+operation: ==
+value: 成功
+```
+
+
+### Action Source
+
+| Type | BoxID | ToolID | McpID | ToolName |
+|------|-------|--------|-------|----------|
+| tool | recovery_toolbox | verify_exchange_availability |  |  |
+
+### Parameter Binding
+
+| Name | Type | Source | Operation | ValueFrom | Value | Description |
+|------|------|--------|-----------|-----------|-------|-------------|
+| recovery_job_id | integer | property |  | id |  | 恢复作业ID |
+| recovery_task_id | integer | property |  | recovery_task_id |  | 恢复任务ID |
+| exchange_server_id | integer | property |  | exchange_server_id |  | Exchange服务器ID |
+| recovery_destination | string | property |  | recovery_destination |  | 恢复目的地 |
+
+### Schedule
+
+| Type | Expression |
+|------|------------|
+| FIX_RATE | 1m |
+

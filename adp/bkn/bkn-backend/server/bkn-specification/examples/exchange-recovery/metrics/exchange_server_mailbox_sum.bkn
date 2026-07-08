@@ -1,0 +1,46 @@
+---
+type: metric
+id: exchange_server_mailbox_sum
+name: Exchange邮箱数量合计
+tags: [Exchange, 邮箱, 灾备]
+---
+
+## Metric: Exchange邮箱数量合计
+
+对生产 Exchange 服务器上的 `mailbox_count` 求和，用于评估保护范围内的邮箱规模（可按数据域拆分分析）。
+
+### Metric attributes
+
+| Metric Type | Unit Type | Unit |
+|-------------|-----------|------|
+| atomic | count | 个 |
+
+### Scope
+
+| Scope Type | Scope Ref |
+|------------|-----------|
+| object_type | exchange_server |
+
+### Calculation Formula
+
+```yaml
+kind: atomic
+
+atomic:
+  aggregation:
+    property: mailbox_count
+    aggr: sum
+```
+
+### Time Dimension
+
+| Property | Default Range Policy |
+|----------|----------------------|
+| created_at | calendar_day |
+
+### Analysis Dimensions
+
+| Name | Display Name |
+|------|--------------|
+| data_domain_id | 数据域 |
+| status | 服务器状态 |

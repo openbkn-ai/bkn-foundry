@@ -11,9 +11,9 @@ import (
 	"sync"
 
 	"github.com/gin-gonic/gin"
-	"github.com/kweaver-ai/kweaver-go-lib/hydra"
-	"github.com/kweaver-ai/kweaver-go-lib/otel/otellog"
-	"github.com/kweaver-ai/kweaver-go-lib/otel/oteltrace"
+	"github.com/openbkn-ai/bkn-comm-go/hydra"
+	"github.com/openbkn-ai/bkn-comm-go/otel/otellog"
+	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 	"go.opentelemetry.io/otel/codes"
 
 	"bkn-backend/common"

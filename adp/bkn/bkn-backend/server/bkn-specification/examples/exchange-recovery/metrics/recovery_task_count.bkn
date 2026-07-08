@@ -1,0 +1,47 @@
+---
+type: metric
+id: recovery_task_count
+name: 恢复任务数量
+tags: [恢复任务, 灾备]
+---
+
+## Metric: 恢复任务数量
+
+统计恢复任务条数，可按任务状态与恢复类型拆分，用于跟踪演练与生产恢复请求量。
+
+### Metric attributes
+
+| Metric Type | Unit Type | Unit |
+|-------------|-----------|------|
+| atomic | count | 个 |
+
+### Scope
+
+| Scope Type | Scope Ref |
+|------------|-----------|
+| object_type | recovery_task |
+
+### Calculation Formula
+
+```yaml
+kind: atomic
+
+atomic:
+  aggregation:
+    property: id
+    aggr: count
+```
+
+### Time Dimension
+
+| Property | Default Range Policy |
+|----------|----------------------|
+| created_at | last_24h |
+
+### Analysis Dimensions
+
+| Name | Display Name |
+|------|--------------|
+| task_status | 任务状态 |
+| recovery_type | 恢复类型 |
+| recovery_destination | 恢复目的地 |

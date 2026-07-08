@@ -12,7 +12,7 @@ import (
 	cond "ontology-query/common/condition"
 
 	"github.com/bytedance/sonic"
-	"github.com/kweaver-ai/kweaver-go-lib/logger"
+	"github.com/openbkn-ai/bkn-comm-go/logger"
 )
 
 type ViewQuery struct {

@@ -1,0 +1,39 @@
+---
+type: object_type
+id: recovery_job
+name: 恢复作业
+tags: [作业管理, 恢复作业, 灾备]
+---
+
+## ObjectType: 恢复作业
+
+执行恢复任务产生的恢复作业，记录恢复操作的详细信息。
+
+### Data Source
+
+| Type | ID | Name |
+|------|----|------|
+
+### Data Properties
+
+| Name | Display Name | Type | Description | Mapped Field |
+|------|--------------|------|-------------|--------------|
+| id | 作业ID | integer | 主键ID | id |
+| job_name | 作业名称 | string | 恢复作业名称 | job_name |
+| recovery_task_id | 恢复任务ID | integer | 关联的恢复任务ID | recovery_task_id |
+| user_id | 执行用户ID | string | 执行恢复操作的用户ID | user_id |
+| execution_time | 执行时间 | datetime | 恢复操作开始执行时间 | execution_time |
+| end_time | 结束时间 | datetime | 恢复操作结束时间 | end_time |
+| duration | 恢复耗时 | integer | 恢复耗时（秒） | duration |
+| recovery_result | 恢复结果 | string | 恢复结果（成功/失败/部分成功） | recovery_result |
+| error_message | 错误信息 | string | 错误信息（如果恢复失败） | error_message |
+
+### Logic Properties
+
+
+### Keys
+
+Primary Keys: id
+Display Key: job_name
+Incremental Key: 
+

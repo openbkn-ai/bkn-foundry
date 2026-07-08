@@ -1,0 +1,67 @@
+---
+type: action_type
+id: restart_pod
+name: 重启Pod
+tags: [运维操作, 故障恢复]
+action_type: modify
+action_intent: modify
+---
+
+## ActionType: 重启Pod
+
+当 Pod 状态异常时，自动执行重启操作。
+
+执行说明:
+1. 确认 Pod 状态异常
+2. 执行删除操作
+3. 等待控制器重建
+4. 验证新 Pod 状态
+
+### Bound Object
+
+| Bound Object |
+|--------------|
+| pod |
+
+### Impact Contracts
+
+```yaml
+impact_contracts:
+  - object_type_id: pod
+    expected_operation: modify
+    description: Delete and recreate Pod
+```
+
+
+### Trigger Condition
+
+```yaml
+object_type_id: pod
+field: pod_status
+operation: in
+value:
+  - Unknown
+  - Failed
+```
+
+
+### Action Source
+
+| Type | BoxID | ToolID | McpID | ToolName |
+|------|-------|--------|-------|----------|
+| tool | k8s_toolbox | kubectl_delete_pod |  |  |
+
+### Parameter Binding
+
+| Name | Type | Source | Operation | ValueFrom | Value | Description |
+|------|------|--------|-----------|-----------|-------|-------------|
+| pod_name | string | property |  |  | pod_name | Pod 名称 |
+| pod_namespace | string | property |  |  | pod_namespace | 命名空间 |
+| grace_period | integer | const |  |  | 30 | 优雅停止等待秒数 |
+
+### Schedule
+
+| Type | Expression |
+|------|------------|
+| FIX_RATE | 5m |
+

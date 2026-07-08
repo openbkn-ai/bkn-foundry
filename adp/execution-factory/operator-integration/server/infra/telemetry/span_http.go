@@ -9,7 +9,7 @@ import (
 	"regexp"
 	"strings"
 
-	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
+	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/propagation"
@@ -23,7 +23,7 @@ func HTTPRequest(ctx context.Context, req *http.Request, fn func(req *http.Reque
 	tracer := otel.GetTracerProvider()
 	if tracer != nil {
 		var span trace.Span
-		ctx, span = o11y.GlobalTracer().Start(ctx, "http.request", trace.WithSpanKind(trace.SpanKindClient))
+		ctx, span = oteltrace.StartNamedClientSpan(ctx, "http.request")
 		arr := strings.Split(req.Proto, "/")
 		span.SetAttributes(attribute.Key("net.protocol.name").String(arr[0]))
 		if len(arr) > 1 {
@@ -34,6 +34,9 @@ func HTTPRequest(ctx context.Context, req *http.Request, fn func(req *http.Reque
 		span.SetAttributes(attribute.Key("http.url").String(clearUserPassRe.ReplaceAllString(req.URL.String(), "$1")))
 		span.SetAttributes(attribute.Key("net.peer.name").String(req.URL.Hostname()))
 		span.SetAttributes(attribute.Key("net.peer.port").String(req.URL.Port()))
+		if req.Header == nil {
+			req.Header = http.Header{}
+		}
 		otel.GetTextMapPropagator().Inject(trace.ContextWithSpan(ctx, span), propagation.HeaderCarrier(req.Header))
 		req = req.WithContext(ctx)
 		defer func() {
@@ -46,7 +49,7 @@ func HTTPRequest(ctx context.Context, req *http.Request, fn func(req *http.Reque
 			if e == nil {
 				e = recordHTTPErrorBody(rsp)
 			}
-			o11y.TelemetrySpanEnd(span, e)
+			oteltrace.EndSpan(ctx, e)
 		}()
 	}
 	rsp, err = fn(req)
@@ -55,6 +58,9 @@ func HTTPRequest(ctx context.Context, req *http.Request, fn func(req *http.Reque
 
 func recordHTTPErrorBody(rsp *http.Response) (err error) {
 	// 只记录 400以上错误
+	if rsp == nil || rsp.Body == nil {
+		return nil
+	}
 	if rsp.StatusCode < http.StatusBadRequest {
 		return
 	}

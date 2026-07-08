@@ -1,0 +1,2 @@
+id,exchange_server_id,recovery_task_id,recovery_job_id,verification_method,verification_result,verification_time,verification_details
+1,1,1,9,Exchange可用性验证-恢复任务-EXCH-NY-01-2026-03-25-0000-邮件级别,邮件可读性检查,通过,2026-03-31 11:58:24,"{""verification_type"": ""邮件可读性验证"", ""email_sample_count"": 10, ""email_readable_count"": 10, ""email_integrity_check"": ""Pass"", ""attachment_check"": ""Pass"", ""verification_summary"": ""恢复的邮件可正常读取""}"

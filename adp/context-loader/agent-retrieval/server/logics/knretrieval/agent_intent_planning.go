@@ -10,7 +10,7 @@ import (
 	"context"
 	"fmt"
 
-	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
+	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/interfaces"
 )
@@ -18,8 +18,8 @@ import (
 // AgentIntentPlanning 语义搜索: 基于意图分析智能体+规划策略
 func (k *knRetrievalServiceImpl) AgentIntentPlanning(ctx context.Context, req *interfaces.SemanticSearchRequest) (resp *interfaces.SemanticSearchResponse, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	// 概念意图分析智能体已随 decision-agent 退役，语义检索降级为基于 Query 的关键词召回策略。
 	queryUnderstandResult := &interfaces.QueryUnderstanding{}
 	queryStrategys := k.longtailRecallByKnowledgeNetwork(req.Query)

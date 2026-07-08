@@ -10,7 +10,7 @@ import (
 	"context"
 	"fmt"
 
-	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
+	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/config"
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/interfaces"
@@ -38,8 +38,8 @@ func (rc *recallCoordinator) recallNetwork(
 	skillQueryCond *interfaces.KnCondition,
 ) ([]interfaces.SkillMatch, interfaces.EmptyResultHint, error) {
 	var err error
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 
 	hasRelation, err := rc.skillsHaveAnyRelation(ctx, req.KnID)
 	if err != nil {
@@ -73,8 +73,8 @@ func (rc *recallCoordinator) recallObjectType(
 	skillQueryCond *interfaces.KnCondition,
 ) ([]interfaces.SkillMatch, interfaces.EmptyResultHint, error) {
 	var err error
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 
 	if req.ObjectTypeID == rc.config.SkillsObjectTypeID {
 		matches, err := rc.recallSkillsDirect(ctx, req, skillQueryCond, "object_type", objectTypeRecallPriority)
@@ -115,8 +115,8 @@ func (rc *recallCoordinator) recallInstance(
 	skillQueryCond *interfaces.KnCondition,
 ) ([]interfaces.SkillMatch, interfaces.EmptyResultHint, error) {
 	var err error
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 
 	if req.ObjectTypeID == rc.config.SkillsObjectTypeID {
 		matches, err := rc.recallSkillsDirect(

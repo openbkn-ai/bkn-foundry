@@ -14,14 +14,14 @@ import (
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/metric"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/utils"
-	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
+	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 )
 
 // ConvertOperatorToTool 算子转换成工具
 func (s *ToolServiceImpl) ConvertOperatorToTool(ctx context.Context, req *interfaces.ConvertOperatorToToolReq) (resp *interfaces.ConvertOperatorToToolResp, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	// 校验是否拥有所属工具箱的编辑权限
 	var accessor *interfaces.AuthAccessor
 	accessor, err = s.AuthService.GetAccessor(ctx, req.UserID)

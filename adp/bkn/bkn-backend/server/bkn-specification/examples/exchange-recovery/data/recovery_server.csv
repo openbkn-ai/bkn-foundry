@@ -1,0 +1,4 @@
+id,data_domain_id,server_name,server_address,exchange_version,status,is_recovery_target,created_at
+1,1,RECOVERY-NY-01,192.168.1.10,Exchange 2019,Online,TRUE,2026-03-27 10:40:00
+2,1,RECOVERY-NY-02,192.168.1.11,Exchange 2019,Online,TRUE,2026-03-27 10:40:00
+3,1,RECOVERY-NY-03,192.168.1.12,Exchange 2019,Online,TRUE,2026-03-27 10:40:00

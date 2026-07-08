@@ -13,14 +13,14 @@ import (
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/metric"
-	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
+	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 )
 
 // UpdateToolBox 更新工具箱
 func (s *ToolServiceImpl) UpdateToolBox(ctx context.Context, req *interfaces.UpdateToolBoxReq) (resp *interfaces.UpdateToolBoxResp, err error) {
 	// 记录可观测性
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"user_id":  req.UserID,
 		"box_id":   req.BoxID,

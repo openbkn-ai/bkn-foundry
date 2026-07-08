@@ -1,0 +1,23 @@
+---
+type: relation_type
+id: pr2po
+name: 采购申请单关联采购订单
+tags: [供应链, 关系, 已审核]
+---
+
+## RelationType: 采购申请单关联采购订单
+
+采购申请单与采购订单之间的关联关系。
+
+### Endpoint
+
+| Source | Target | Type |
+|--------|--------|------|
+| pr | po | direct |
+
+### Mapping Rules
+
+| Source Property | Target Property |
+|-----------------|-----------------|
+| material_number | material_number |
+

@@ -42,7 +42,7 @@ jobs:
       publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
       # 内网 swr base 覆盖为公网镜像
       build-args: |
-        GO_BUILD_IMAGE=golang:1.24.11
+        GO_BUILD_IMAGE=golang:1.25.10
         BASE_IMAGE=ubuntu:24.04
 
   chart:

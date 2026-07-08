@@ -18,13 +18,13 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
-	bknsdk "github.com/kweaver-ai/bkn-specification/sdk/golang/bkn"
-	"github.com/kweaver-ai/kweaver-go-lib/logger"
-	"github.com/kweaver-ai/kweaver-go-lib/otel/oteltrace"
-	"github.com/kweaver-ai/kweaver-go-lib/rest"
+	"github.com/openbkn-ai/bkn-comm-go/logger"
+	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
+	"github.com/openbkn-ai/bkn-comm-go/rest"
 	"github.com/rs/xid"
 	"go.opentelemetry.io/otel/codes"
 
+	bknsdk "bkn-backend/bkn-specification/bkn"
 	"bkn-backend/common"
 	cond "bkn-backend/common/condition"
 	berrors "bkn-backend/errors"

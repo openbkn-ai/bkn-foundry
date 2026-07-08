@@ -11,7 +11,7 @@ import (
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces/model"
-	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
+	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 )
 
 const (
@@ -73,8 +73,8 @@ func (s *skillIndexSync) EnsureInitialized(ctx context.Context) error {
 // 如果是最新版本，则返回成功
 func (s *skillIndexSync) Init(ctx context.Context) (err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 
 	initialized := false
 	defer func() {
@@ -128,9 +128,9 @@ func (s *skillIndexSync) Init(ctx context.Context) (err error) {
 	s.logger.WithContext(ctx).Infof("creating skill dataset resource, resource_id=%s, embedding_model=%s, dimension=%d",
 		executionFactorySkillDataset, embeddingModel.ModelName, embeddingModel.EmbeddingDim)
 	_, err = s.vegaClient.CreateResource(ctx, &interfaces.VegaResourceRequest{
-		ID:               executionFactorySkillDataset,
-		CatalogID:        executionFactoryCatalogID,
-		Name:             executionFactorySkillDataset,
+		ID:        executionFactorySkillDataset,
+		CatalogID: executionFactoryCatalogID,
+		Name:      executionFactorySkillDataset,
 		// 把建时锁定的模型名快照进 tag，供重启/实时同步读回
 		Tags:             []string{"execution-factory", "skill", "索引", embeddingModelTagPrefix + embeddingModel.ModelName},
 		Description:      executionFactoryDatasetDesc,

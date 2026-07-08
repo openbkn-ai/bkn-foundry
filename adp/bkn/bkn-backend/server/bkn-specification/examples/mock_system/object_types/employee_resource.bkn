@@ -1,0 +1,67 @@
+---
+type: object_type
+id: employee_resource
+name: 员工表（Resource版）
+tags: []
+---
+
+## ObjectType: 员工表（Resource版）
+
+d7blk86fmoj81ili0q3g
+
+### Data Source
+
+| Type | ID | Name |
+|------|----|------|
+| resource | d7blk86fmoj81ili0q3g | 员工表 |
+
+### Data Properties
+
+| Name | Display Name | Type | Description | Mapped Field |
+|------|--------------|------|-------------|--------------|
+| hire_date | 入职日期 | date | 入职日期 | hire_date |
+| status | 入职状态0待入职1已入职 | integer | 入职状态(0:待入职, 1:已入职) | status |
+| employee_id | 员工ID | string | 员工ID | employee_id |
+| salary | salary | integer |  | salary |
+| create_time | 创建时间 | timestamp | 创建时间 | create_time |
+| name | 姓名 | string | 姓名 | name |
+| update_time | 更新时间 | timestamp | 更新时间 | update_time |
+
+### Logic Properties
+
+#### 111
+
+**Meta**
+
+| Display Name | Type | Description |
+|--------------|------|-------------|
+| 111 | metric |  |
+
+**Source**
+
+| Source Type | Source ID | Source Name |
+|-------------|-----------|-------------|
+| metric | 2 | 1 |
+
+**Parameters**
+
+| Name | Type | Source | Operation | ValueFrom | Value | Description |
+|------|------|--------|-----------|-----------|-------|-------------|
+| node_id | timestamp |  | != | property | create_time |  |
+| instant | boolean |  | == | input |  |  |
+| start | integer |  | == | input |  |  |
+| end | integer |  | == | input |  |  |
+| step | string |  | == | input |  |  |
+
+**Analysis Dimensions**
+
+| Name | Display Name | Type | Description |
+|------|--------------|------|-------------|
+
+
+### Keys
+
+Primary Keys: employee_id
+Display Key: employee_id
+Incremental Key: 
+

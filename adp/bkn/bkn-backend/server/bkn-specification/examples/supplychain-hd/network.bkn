@@ -1,0 +1,124 @@
+---
+type: knowledge_network
+id: supplychain-hd
+name: HD供应链业务知识网络
+tags: [供应链, 采购, 库存, MRP]
+business_domain: supplychain
+---
+
+# HD供应链业务知识网络
+
+产品供应分析路径：需求预测→产品→BOM→库存→生产计划/采购申请→采购订单→供应商。
+逻辑：
+1. 基于需求预测，结合BOM结构展开物料需求；
+2. 核查成品及物料库存，进行MRP运算生成建议订单；
+3. 根据物料属性（自制/外购），生成生产计划或采购申请；
+4. 采购申请转化为采购订单并由供应商执行，生产计划指导工厂生产；
+5. 最终输出缺口数量及补货建议，支撑供应链决策。
+
+
+## Network Overview
+
+### Object Types
+
+| ID | Name | File Path | Description |
+|----|------|-----------|-------------|
+| bom | 产品BOM | `object_types/bom.bkn` | 定义产品的物料清单结构，包含层级关系和替代料信息。 |
+| forecast | 需求预测 | `object_types/forecast.bkn` | 记录销售侧的月度需求预测数据，作为供应链计划（MRP）的输入源头。 |
+| inventory | 库存 | `object_types/inventory.bkn` | 实时记录物料在各仓库及仓位的现有库存量、库存状态及批次信息。 |
+| material | 物料 | `object_types/material.bkn` | 记录物料的基础信息。 |
+| mps | 工厂生产计划 | `object_types/mps.bkn` | 产品需求计划最终通过工厂生产计划进行执行， |
+| mrp | 物料需求计划 | `object_types/mrp.bkn` | MRP运算产生的物料净需求建议。 |
+| po | 采购订单 | `object_types/po.bkn` | 发给供应商的正式采购订单。 |
+| pp | 产品需求计划 | `object_types/pp.bkn` | 产品需求计划是指产品在特定时间需要交付的数量计划。 |
+| pr | 采购申请单 | `object_types/pr.bkn` | 根据MRP生成的内部采购申请PR。 |
+| product | 产品 | `object_types/product.bkn` | 存储企业生产的成品基本信息，包括产品编码、名称。 |
+| salesorder | 销售订单 | `object_types/salesorder.bkn` | 客户销售订单信息。 |
+| supplier | 供应商 | `object_types/supplier.bkn` | 记录供应商的基础信息，包括编码、名称、信用代码、付款条件及对应采购员。 |
+
+### Relation Types
+
+| ID | Name | File Path | Description |
+|----|------|-----------|-------------|
+| bom2material | 产品BOM关联物料 | `relation_types/bom2material.bkn` | 产品BOM与物料之间的关联关系。 |
+| demand2pp | 需求预测关联产品需求计划 | `relation_types/demand2pp.bkn` | 需求预测与产品需求计划之间的关联关系。 |
+| material2inventory | 物料关联库存 | `relation_types/material2inventory.bkn` | 物料与库存记录之间的关联关系。 |
+| material2pr | 物料关联采购申请单 | `relation_types/material2pr.bkn` | 物料与采购申请单之间的关联关系。 |
+| mrp2material | 物料需求计划关联物料 | `relation_types/mrp2material.bkn` | 物料需求计划与物料之间的关联关系。 |
+| po2material | 采购订单关联物料 | `relation_types/po2material.bkn` | 采购订单与物料之间的关联关系。 |
+| po2supplier | 采购订单关联供应商 | `relation_types/po2supplier.bkn` | 采购订单与供应商之间的关联关系。 |
+| pp2mps | 产品需求计划分解为工厂生产计划 | `relation_types/pp2mps.bkn` | 产品需求计划分解为工厂生产计划执行。 |
+| pp2mrp | 产品需求计划展开为物料需求计划 | `relation_types/pp2mrp.bkn` | 产品需求计划通过MRP运算展开为物料需求计划。 |
+| pp2product | 产品需求计划关联产品 | `relation_types/pp2product.bkn` | 产品需求计划与产品之间的关联关系。 |
+| pr2po | 采购申请单关联采购订单 | `relation_types/pr2po.bkn` | 采购申请单与采购订单之间的关联关系。 |
+| product2bom | 产品关联产品BOM | `relation_types/product2bom.bkn` | 产品与其BOM物料清单之间的关联关系。 |
+| product2inventory | 产品关联库存 | `relation_types/product2inventory.bkn` | 产品与库存之间的关联关系。 |
+| salesorder2product | 销售订单关联产品 | `relation_types/salesorder2product.bkn` | 销售订单与产品之间的关联关系。 |
+
+### Action Types
+
+| ID | Name | File Path | Description |
+|----|------|-----------|-------------|
+
+### Risk Types
+
+| ID | Name | File Path | Description |
+|----|------|-----------|-------------|
+
+### Concept Groups
+
+| ID | Name | File Path | Description |
+|----|------|-----------|-------------|
+
+### Metrics
+
+| ID | Name | File Path | Description |
+|----|------|-----------|-------------|
+| hd_forecast_consensus_by_product | 各产品共识需求合计 | `metrics/hd_forecast_consensus_by_product.bkn` | 对需求预测中的 `consensus_demand` 按产品编码求和，支撑 S&OP 与 MRP 输入侧的共识口径在多产品上的分布。 |
+| hd_inventory_available_qty_by_org | 各组织可用库存量合计 | `metrics/hd_inventory_available_qty_by_org.bkn` | 按库存所属组织对 `available_inventory_qty` 求和，对应「可用量 = 现存量 − 预留」口径在组织维度的汇聚，用于供需对齐与调拨优先级讨论。 |
+| hd_mrp_net_demand_by_product | 各成品物料净需求合计 | `metrics/hd_mrp_net_demand_by_product.bkn` | 对 MRP 结果中的 `material_demand_quantity` 按成品料号（`finished_product_code`）求和；字段可为负表示缺口、为正表示富余，本指标用于在**产品维度**汇总净需求信号，辅助计划员筛选重点成品。 |
+| hd_purchase_order_count_by_supplier | 各供应商采购订单笔数 | `metrics/hd_purchase_order_count_by_supplier.bkn` | 按供应商维度对采购订单单号计数，观察采购活动集中度与核心供应商依赖（配合 `supplier_name` 展示更清晰）。 |
+| hd_salesorder_signing_qty_by_product | 各产品签约数量合计 | `metrics/hd_salesorder_signing_qty_by_product.bkn` | 对销售订单的 `signing_quantity` 按产品编码求和，用于把需求侧签约节奏与库存、MRP 缺口对照。 |
+
+## Directory Structure
+
+```
+.
+├── network.bkn
+├── SKILL.md
+├── CHECKSUM
+├── object_types/
+│   ├── bom.bkn
+│   ├── forecast.bkn
+│   ├── inventory.bkn
+│   ├── material.bkn
+│   ├── mps.bkn
+│   ├── mrp.bkn
+│   ├── po.bkn
+│   ├── pp.bkn
+│   ├── pr.bkn
+│   ├── product.bkn
+│   ├── salesorder.bkn
+│   └── supplier.bkn
+├── relation_types/
+│   ├── bom2material.bkn
+│   ├── demand2pp.bkn
+│   ├── material2inventory.bkn
+│   ├── material2pr.bkn
+│   ├── mrp2material.bkn
+│   ├── po2material.bkn
+│   ├── po2supplier.bkn
+│   ├── pp2mps.bkn
+│   ├── pp2mrp.bkn
+│   ├── pp2product.bkn
+│   ├── pr2po.bkn
+│   ├── product2bom.bkn
+│   ├── product2inventory.bkn
+│   └── salesorder2product.bkn
+└── metrics/
+    ├── hd_forecast_consensus_by_product.bkn
+    ├── hd_inventory_available_qty_by_org.bkn
+    ├── hd_mrp_net_demand_by_product.bkn
+    ├── hd_purchase_order_count_by_supplier.bkn
+    └── hd_salesorder_signing_qty_by_product.bkn
+```

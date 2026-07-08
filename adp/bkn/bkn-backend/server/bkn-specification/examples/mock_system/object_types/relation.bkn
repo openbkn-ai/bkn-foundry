@@ -1,0 +1,36 @@
+---
+type: object_type
+id: relation
+name: 员工部门关系
+tags: []
+---
+
+## ObjectType: 员工部门关系
+
+### Data Source
+
+| Type | ID | Name |
+|------|----|------|
+| data_view | fec29f03-97fa-4f06-bffa-3605ae1b3ae0 | 员工部门关系表 |
+
+### Data Properties
+
+| Name | Display Name | Type | Description | Mapped Field |
+|------|--------------|------|-------------|--------------|
+| join_date | 加入日期 | date | 加入日期 | join_date |
+| department_id | 部门ID | string | 部门ID | department_id |
+| update_time | 更新时间 | timestamp | 更新时间 | update_time |
+| employee_id | 员工ID | string | 员工ID | employee_id |
+| create_time | 创建时间 | timestamp | 创建时间 | create_time |
+| position | 职位 | string | 职位 | position |
+| id | 关系ID | integer | 关系ID | id |
+
+### Logic Properties
+
+
+### Keys
+
+Primary Keys: id
+Display Key: id
+Incremental Key: 
+

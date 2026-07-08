@@ -17,7 +17,7 @@ import (
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/metric"
-	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
+	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 )
 
 // 内置工具管理原则：工具箱只能属于一个服务，而一个服务可以有多个工具箱
@@ -25,8 +25,8 @@ import (
 // CreateInternalToolBox 创建内置工具箱
 func (s *ToolServiceImpl) CreateInternalToolBox(ctx context.Context, req *interfaces.CreateInternalToolBoxReq) (resp *interfaces.CreateInternalToolBoxResp, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"box_id":  req.BoxID,
 		"user_id": req.UserID,
@@ -150,8 +150,8 @@ func (s *ToolServiceImpl) CreateInternalToolBox(ctx context.Context, req *interf
 func (s *ToolServiceImpl) createInternalToolBox(ctx context.Context, toolbox *model.ToolboxDB,
 	metadataList []interfaces.IMetadataDB, toolList []*model.ToolDB, config *interfaces.IntCompConfig, userID string) (err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	// 添加内置工具
 	tx, err := s.DBTx.GetTx(ctx)
 	if err != nil {
@@ -248,8 +248,8 @@ func (s *ToolServiceImpl) updateInternalToolBox(ctx context.Context, toolbox *mo
 	metadataList []interfaces.IMetadataDB, toolList []*model.ToolDB, config *interfaces.IntCompConfig,
 	userID, name string) (err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	var action interfaces.IntCompConfigAction
 	// 如果是外部接口，校验编辑权限
 	if infracommon.IsPublicAPIFromCtx(ctx) {

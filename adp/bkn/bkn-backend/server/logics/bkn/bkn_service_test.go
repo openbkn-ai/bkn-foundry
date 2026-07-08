@@ -13,11 +13,11 @@ import (
 	"net/http"
 	"testing"
 
-	bknsdk "github.com/kweaver-ai/bkn-specification/sdk/golang/bkn"
-	"github.com/kweaver-ai/kweaver-go-lib/rest"
+	"github.com/openbkn-ai/bkn-comm-go/rest"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
+	bknsdk "bkn-backend/bkn-specification/bkn"
 	"bkn-backend/common"
 	berrors "bkn-backend/errors"
 	"bkn-backend/interfaces"

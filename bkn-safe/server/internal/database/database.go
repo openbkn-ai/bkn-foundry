@@ -13,7 +13,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	_ "github.com/kweaver-ai/proton-rds-sdk-go/driver" // registers the "proton-rds" database/sql driver
+	_ "github.com/openbkn-ai/bkn-comm-go/db/driver" // registers the "proton-rds" database/sql driver
 
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"

@@ -6,7 +6,7 @@ import (
 
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/utils"
-	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
+	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 )
 
 // QueryBuilder 查询构建器 - 提供更简洁的API来使用SelectListWithAuthBatch
@@ -136,8 +136,8 @@ func (b *QueryBuilder[T, PT]) Execute(ctx context.Context) (*interfaces.QueryRes
 // 业务域过滤作为第一层，权限过滤作为第二层
 // 核心原则：业务域是第一层过滤限制，即使有权限访问所有资源，如果业务域没有结果，也必须返回空列表
 func (b *QueryBuilder[T, PT]) getFilteredResourceIDs(ctx context.Context) ([]string, bool, error) {
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, nil)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, nil)
 
 	var (
 		businessDomainIDs      []string
@@ -212,8 +212,8 @@ func (b *QueryBuilder[T, PT]) getFilteredResourceIDs(ctx context.Context) ([]str
 // SelectListWithAuthBatchWithThresholds 带阈值参数的权限查询函数
 func (b *QueryBuilder[T, PT]) SelectListWithAuthBatchWithThresholds(ctx context.Context) (resp *interfaces.QueryResponse[T], err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	// 设置默认参数
 	if b.page <= 0 {
 		b.page = 1
@@ -338,8 +338,8 @@ func (b *QueryBuilder[T, PT]) SelectListWithAuthBatchWithThresholds(ctx context.
 // selectListWithBatchInQueryWithThresholds 带阈值参数的分批IN查询
 func (b *QueryBuilder[T, PT]) selectListWithBatchInQueryWithThresholds(ctx context.Context, filteredIDs []string) (resp *interfaces.QueryResponse[T], err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	// 如果提供了数据库过滤函数，直接使用
 	if b.queryBatchWithIDsFunc != nil && b.queryTotalWithIDsFunc != nil {
 		// 查询有权限的数据总数
@@ -431,8 +431,8 @@ func (b *QueryBuilder[T, PT]) selectListWithBatchInQueryWithThresholds(ctx conte
 // 适用于权限ID数量较多的情况（>MaxInQuerySize）
 func (b *QueryBuilder[T, PT]) selectListWithIncrementalFetch(ctx context.Context, filteredIDs []string) (resp *interfaces.QueryResponse[T], err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	// 构建权限映射用于内存过滤
 	authMap := make(map[string]bool, len(filteredIDs))
 	for _, id := range filteredIDs {

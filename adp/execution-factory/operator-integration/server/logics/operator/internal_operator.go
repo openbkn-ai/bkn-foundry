@@ -15,14 +15,14 @@ import (
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/metric"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/utils"
-	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
+	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 )
 
 // RegisterInternalOperator 注册内置算子
 func (m *operatorManager) RegisterInternalOperator(ctx context.Context, req *interfaces.RegisterInternalOperatorReq) (resp *interfaces.OperatorRegisterResp, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	if !req.IsPublic && req.UserID == "" {
 		req.UserID = interfaces.SystemUser
 	}
@@ -154,8 +154,8 @@ func (m *operatorManager) RegisterInternalOperator(ctx context.Context, req *int
 func (m *operatorManager) createInternalOperator(ctx context.Context, tx *sql.Tx, operatorDB *model.OperatorRegisterDB,
 	metadataDB interfaces.IMetadataDB, config *interfaces.IntCompConfig, userID, businessDomainId string) (resp *interfaces.OperatorRegisterResp, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	var operatorID string
 	if common.IsPublicAPIFromCtx(ctx) { // 检查是否有新建权限
 		var accessor *interfaces.AuthAccessor
@@ -254,8 +254,8 @@ func (m *operatorManager) createInternalOperator(ctx context.Context, tx *sql.Tx
 func (m *operatorManager) upgradeInternalOperator(ctx context.Context, tx *sql.Tx, operatorDB *model.OperatorRegisterDB,
 	metadataDB interfaces.IMetadataDB, config *interfaces.IntCompConfig, name, userID string) (resp *interfaces.OperatorRegisterResp, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	var action interfaces.IntCompConfigAction
 	// 检查是否有编辑权限
 	if common.IsPublicAPIFromCtx(ctx) {

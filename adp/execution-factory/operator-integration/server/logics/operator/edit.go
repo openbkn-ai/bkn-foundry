@@ -9,21 +9,21 @@ import (
 
 	"github.com/google/uuid"
 	icommon "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/common"
-	infraerrors "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/errors"
+	oerrors "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/telemetry"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/common"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/metric"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/utils"
-	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
+	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 )
 
 // EditOperator 编辑算子（仅支持编辑当前版本）
 func (m *operatorManager) EditOperator(ctx context.Context, req *interfaces.OperatorEditReq) (resp *interfaces.OperatorEditResp, err error) {
 	// 记录可观测性
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"operator_id": req.OperatorID,
 		"user_id":     req.UserID,
@@ -80,7 +80,7 @@ func (m *operatorManager) editOperator(ctx context.Context, req *interfaces.Oper
 	tx, err := m.DBTx.GetTx(ctx)
 	if err != nil {
 		m.Logger.WithContext(ctx).Warnf("get tx failed, OperatorID: %s, Version: %s, err: %v", operator.OperatorID, operator.MetadataVersion, err)
-		err = infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+		err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 		return nil, err
 	}
 	defer func() {
@@ -109,7 +109,7 @@ func (m *operatorManager) editOperator(ctx context.Context, req *interfaces.Oper
 		}
 		err = m.upgradeOperatorInfo(ctx, tx, req, operator, metadataDB, needUpdateMetadata, isDataSource)
 	default: // 无效状态
-		err = infraerrors.NewHTTPError(ctx, http.StatusBadRequest, infraerrors.ErrExtOperatorUnSupportEdit, "invalid operator status")
+		err = oerrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.ErrExtOperatorUnSupportEdit, "invalid operator status")
 	}
 	if err != nil {
 		return
@@ -142,13 +142,13 @@ func (m *operatorManager) editOperator(ctx context.Context, req *interfaces.Oper
 
 // UpdateOperatorStatus 更新算子状态
 func (m *operatorManager) UpdateOperatorStatus(ctx context.Context, req *interfaces.OperatorStatusUpdateReq, userID string) (err error) {
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	// 获取事务
 	tx, err := m.DBTx.GetTx(ctx)
 	if err != nil {
 		m.Logger.WithContext(ctx).Warnf("get tx failed, err: %v", err)
-		err = infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, "get tx failed")
+		err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, "get tx failed")
 		return
 	}
 	defer func() {
@@ -182,17 +182,17 @@ func (m *operatorManager) updateSinglOperatorStatus(ctx context.Context, tx *sql
 	has, operator, err = m.DBOperatorManager.SelectByOperatorID(ctx, tx, itemReq.OperatorID)
 	if err != nil {
 		m.Logger.WithContext(ctx).Warnf("select operator failed, OperatorID: %s, err: %v", itemReq.OperatorID, err)
-		err = infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, "select operator failed")
+		err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, "select operator failed")
 		return err
 	}
 	if !has {
 		// 算子不存在
-		err = infraerrors.DefaultHTTPError(ctx, http.StatusNotFound, "operator not found")
+		err = oerrors.DefaultHTTPError(ctx, http.StatusNotFound, "operator not found")
 		return err
 	}
 	// 验证并执行状态转换
 	if !common.CheckStatusTransition(interfaces.BizStatus(operator.Status), itemReq.Status) {
-		err = infraerrors.NewHTTPError(ctx, http.StatusBadRequest, infraerrors.ErrExtOperatorStatusInvalid,
+		err = oerrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.ErrExtOperatorStatusInvalid,
 			fmt.Sprintf("invalid status transition from %s to %s", operator.Status, itemReq.Status.String()))
 		return
 	}
@@ -220,7 +220,7 @@ func (m *operatorManager) updateSinglOperatorStatus(ctx context.Context, tx *sql
 		err = m.DBOperatorManager.UpdateOperatorStatus(ctx, tx, operator, userID)
 		if err != nil {
 			m.Logger.WithContext(ctx).Errorf("update operator status failed, err: %v")
-			return infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+			return oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 		}
 		err = m.publishRelease(ctx, tx, operator, userID)
 	case interfaces.BizStatusUnpublish, interfaces.BizStatusEditing:
@@ -233,7 +233,7 @@ func (m *operatorManager) updateSinglOperatorStatus(ctx context.Context, tx *sql
 		err = m.DBOperatorManager.UpdateOperatorStatus(ctx, tx, operator, userID)
 		if err != nil {
 			m.Logger.WithContext(ctx).Errorf("update operator status failed, err: %v")
-			err = infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+			err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 		}
 	case interfaces.BizStatusOffline:
 		operation = metric.AuditLogOperationUnpublish
@@ -246,12 +246,12 @@ func (m *operatorManager) updateSinglOperatorStatus(ctx context.Context, tx *sql
 		err = m.DBOperatorManager.UpdateOperatorStatus(ctx, tx, operator, userID)
 		if err != nil {
 			m.Logger.WithContext(ctx).Errorf("update operator status failed, err: %v")
-			return infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+			return oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 		}
 		// 下架
 		err = m.unpublishRelease(ctx, tx, operator, userID)
 	default:
-		err = infraerrors.NewHTTPError(ctx, http.StatusBadRequest, infraerrors.ErrExtOperatorStatusInvalid, "invalid operator status")
+		err = oerrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.ErrExtOperatorStatusInvalid, "invalid operator status")
 	}
 	if err != nil {
 		return
@@ -285,13 +285,13 @@ func (m *operatorManager) checkDuplicateName(ctx context.Context, name, operator
 	has, operatorDB, err := m.DBOperatorManager.SelectByNameAndStatus(ctx, nil, name, interfaces.BizStatusPublished.String())
 	if err != nil {
 		m.Logger.WithContext(ctx).Warnf("select operator by name failed, err: %v", err)
-		err = infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, "select operator by name failed")
+		err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, "select operator by name failed")
 		return
 	}
 	if !has || (operatorID != "" && operatorDB.OperatorID == operatorID) {
 		return
 	}
-	err = infraerrors.NewHTTPError(ctx, http.StatusConflict, infraerrors.ErrExtOperatorExistsSameName,
+	err = oerrors.NewHTTPError(ctx, http.StatusConflict, oerrors.ErrExtOperatorExistsSameName,
 		"operator name already exists, please use a different name", name)
 	return
 }
@@ -304,12 +304,12 @@ func (m *operatorManager) preCheckEdit(ctx context.Context, req *interfaces.Oper
 	has, operatorDB, err = m.DBOperatorManager.SelectByOperatorID(ctx, nil, req.OperatorID)
 	if err != nil {
 		m.Logger.WithContext(ctx).Errorf("select operator failed, OperatorID: %s, err: %v", req.OperatorID, err)
-		err = infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, "select operator failed")
+		err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, "select operator failed")
 		return
 	}
 	if !has {
 		// 算子不存在
-		err = infraerrors.DefaultHTTPError(ctx, http.StatusNotFound, "operator not found")
+		err = oerrors.DefaultHTTPError(ctx, http.StatusNotFound, "operator not found")
 		return
 	}
 	// 检查参数合法性
@@ -348,7 +348,7 @@ func (m *operatorManager) preCheckEdit(ctx context.Context, req *interfaces.Oper
 	}
 	if !exists {
 		// 如元数据不存在
-		err = infraerrors.NewHTTPError(ctx, http.StatusNotFound, infraerrors.ErrExtMetadataNotFound, map[string]any{
+		err = oerrors.NewHTTPError(ctx, http.StatusNotFound, oerrors.ErrExtMetadataNotFound, map[string]any{
 			"operator_id":      req.OperatorID,
 			"metadata_type":    req.MetadataType,
 			"metadata_version": operatorDB.MetadataVersion,
@@ -440,8 +440,8 @@ func (m *operatorManager) getUpdateMetadataDB(ctx context.Context, req *interfac
 			// 检查是否有更新
 			if updateMetadataDB == nil {
 				// 交互设计要求返回指定错误信息：https://confluence.aishu.cn/pages/viewpage.action?pageId=280780968
-				err = infraerrors.NewHTTPError(ctx, http.StatusNotFound, infraerrors.ErrExtCommonNoMatchedMethodPath,
-					"no matched method path found or metadata data not exist").WithDescription(infraerrors.ErrExtToolNotExistInFile)
+				err = oerrors.NewHTTPError(ctx, http.StatusNotFound, oerrors.ErrExtCommonNoMatchedMethodPath,
+					"no matched method path found or metadata data not exist").WithDescription(oerrors.ErrExtToolNotExistInFile)
 				return
 			}
 		case interfaces.OperatorTypeComposite:
@@ -469,7 +469,7 @@ func (m *operatorManager) getUpdateMetadataDB(ctx context.Context, req *interfac
 		}
 		updateMetadataDB = updateMetadataDBs[0]
 	default:
-		err = infraerrors.DefaultHTTPError(ctx, http.StatusBadRequest, "unsupported metadata type")
+		err = oerrors.DefaultHTTPError(ctx, http.StatusBadRequest, "unsupported metadata type")
 		return
 	}
 	return
@@ -498,8 +498,8 @@ func (m *operatorManager) modifyOperatorInfo(ctx context.Context, tx *sql.Tx, re
 func (m *operatorManager) modifyOperator(ctx context.Context, tx *sql.Tx, req *interfaces.OperatorEditReq,
 	operator *model.OperatorRegisterDB, isDataSource bool) (err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	// 更新参数
 	operator.UpdateUser = req.UserID
 	if req.OperatorInfoEdit != nil {
@@ -520,9 +520,9 @@ func (m *operatorManager) modifyOperator(ctx context.Context, tx *sql.Tx, req *i
 		err = m.checkDuplicateName(ctx, req.Name, operator.OperatorID)
 		if err != nil {
 			// 交互设计要求返回指定错误信息：https://confluence.aishu.cn/pages/viewpage.action?pageId=280780968
-			httErr := &infraerrors.HTTPError{}
+			httErr := &oerrors.HTTPError{}
 			if errors.As(err, &httErr) && httErr.HTTPCode == http.StatusConflict {
-				err = httErr.WithDescription(infraerrors.ErrExtCommonNameExists)
+				err = httErr.WithDescription(oerrors.ErrExtCommonNameExists)
 			}
 			return
 		}
@@ -532,7 +532,7 @@ func (m *operatorManager) modifyOperator(ctx context.Context, tx *sql.Tx, req *i
 	err = m.DBOperatorManager.UpdateByOperatorID(ctx, tx, operator)
 	if err != nil {
 		m.Logger.WithContext(ctx).Warnf("update operator failed, OperatorID: %s, Version: %s, err: %v", operator.OperatorID, operator.MetadataVersion, err)
-		err = infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, "update operator failed, err")
+		err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, "update operator failed, err")
 	}
 	return
 }
@@ -548,8 +548,8 @@ func (m *operatorManager) modifyOperator(ctx context.Context, tx *sql.Tx, req *i
 func (m *operatorManager) upgradeOperatorInfo(ctx context.Context, tx *sql.Tx, req *interfaces.OperatorEditReq, operator *model.OperatorRegisterDB,
 	metadataDB interfaces.IMetadataDB, needUpdateMetadata, isDataSource bool) (err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	// 升级元数据
 	if needUpdateMetadata {
 		metadataDB.SetVersion(uuid.New().String())
@@ -557,7 +557,7 @@ func (m *operatorManager) upgradeOperatorInfo(ctx context.Context, tx *sql.Tx, r
 		_, err = m.MetadataService.RegisterMetadata(ctx, tx, metadataDB)
 		if err != nil {
 			m.Logger.WithContext(ctx).Errorf("register metadata failed, err: %v", err)
-			err = infraerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, "register metadata failed")
+			err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, "register metadata failed")
 			return
 		}
 	}

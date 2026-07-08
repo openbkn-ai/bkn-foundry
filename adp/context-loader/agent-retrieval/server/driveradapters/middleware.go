@@ -11,23 +11,19 @@ package driveradapters
 
 import (
 	"bytes"
-	"context"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
 	"time"
 
-	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
-
 	"github.com/gin-gonic/gin"
 	jsoniter "github.com/json-iterator/go"
-	"github.com/kweaver-ai/TelemetrySDK-Go/span/v2/field"
+	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
+	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/common"
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/errors"
+	aerrors "github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/rest"
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/interfaces"
 )
@@ -132,39 +128,47 @@ func middlewareRequestLog(logger interfaces.Logger) gin.HandlerFunc {
 		now := time.Now()
 		req, err := io.ReadAll(c.Request.Body)
 		if err != nil {
-			err = errors.DefaultHTTPError(c.Request.Context(), http.StatusInternalServerError, err.Error())
+			err = aerrors.DefaultHTTPError(c.Request.Context(), http.StatusInternalServerError, err.Error())
 			rest.ReplyError(c, err)
 			c.Abort()
 			return
 		}
 		c.Request.Body = io.NopCloser(bytes.NewBuffer(req))
 		c.Next()
-		logger.WithContext(c.Request.Context()).Infof("HTTP API Log : %v", field.MallocJsonField(apiLogModel{
+		logPayload, _ := jsoniter.MarshalToString(apiLogModel{
 			URI:          c.Request.RequestURI,
 			Method:       c.Request.Method,
 			RemoteAddr:   c.Request.RemoteAddr,
 			RequestBody:  byteToInterface(req),
 			ResponseCode: c.Writer.Status(),
 			Latency:      float64(time.Since(now).Nanoseconds()) / 1e6, //nolint:mnd
-		}).Data)
+		})
+		logger.WithContext(c.Request.Context()).Infof("HTTP API Log : %s", logPayload)
 	}
 }
 
 func middlewareTrace(c *gin.Context) {
-	tracer := otel.GetTracerProvider()
-	if tracer != nil {
-		var ctx context.Context
-		var span trace.Span
-		ctx, span = o11y.StartServerSpan(c)
-		scheme := interfaces.HTTPS
-		if c.Request.TLS == nil {
-			scheme = interfaces.HTTP
-		}
-		span.SetAttributes(attribute.Key("http.scheme").String(scheme))
-		req := c.Request.WithContext(ctx)
-		c.Request = req
-		defer o11y.EndSpan(ctx, c.Request.Context().Err())
+	ctx := oteltrace.ExtractTraceHeader(c.Request.Context(), c.Request.Header)
+	c.Request = c.Request.WithContext(ctx)
+
+	ctx, span := oteltrace.StartServerSpan(c)
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+	scheme := interfaces.HTTPS
+	if c.Request.TLS == nil {
+		scheme = interfaces.HTTP
 	}
+	span.SetAttributes(attribute.Key("http.scheme").String(scheme))
+	c.Request = c.Request.WithContext(ctx)
+	defer func() {
+		if c.Writer.Status() >= http.StatusBadRequest {
+			statusText := http.StatusText(c.Writer.Status())
+			oteltrace.AddHttpAttrs4Error(span, c.Writer.Status(), "HTTP_ERROR", statusText)
+			oteltrace.EndSpan(ctx, errors.New(statusText))
+			return
+		}
+		oteltrace.AddHttpAttrs4Ok(span, c.Writer.Status())
+		oteltrace.EndSpan(ctx, c.Request.Context().Err())
+	}()
 	c.Next()
 }
 
@@ -193,7 +197,7 @@ func middlewareResponseFormat() gin.HandlerFunc {
 		}
 		format, err := rest.ParseResponseFormat(formatStr)
 		if err != nil {
-			rest.ReplyError(c, errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error()))
+			rest.ReplyError(c, aerrors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error()))
 			c.Abort()
 			return
 		}

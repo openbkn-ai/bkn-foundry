@@ -9,7 +9,6 @@ import (
 
 	"github.com/creasty/defaults"
 	"github.com/google/uuid"
-	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
 	icommon "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
@@ -17,13 +16,14 @@ import (
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/metadata"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/metric"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/utils"
+	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 )
 
 // Export 导出算子
 func (m *operatorManager) Export(ctx context.Context, req *interfaces.ExportReq) (data *interfaces.ComponentImpexConfigModel, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	// 导出预检查
 	operatorList, err := m.exportPreCheck(ctx, req)
 	if err != nil {
@@ -51,8 +51,8 @@ func (m *operatorManager) Export(ctx context.Context, req *interfaces.ExportReq)
 // Import 导入算子
 func (m *operatorManager) Import(ctx context.Context, tx *sql.Tx, mode interfaces.ImportType, data *interfaces.OperatorImpexConfig, userID string) (err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	if data == nil || len(data.Configs) == 0 {
 		err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtCommonImportDataEmpty, "operator configs is empty")
 		return

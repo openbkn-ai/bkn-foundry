@@ -14,7 +14,7 @@ import (
 	"sort"
 	"strings"
 
-	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
+	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/interfaces"
 )
@@ -28,8 +28,8 @@ func (s *localSearchImpl) semanticInstanceRetrieval(
 	config *interfaces.KnSearchRetrievalConfig,
 ) (*interfaces.KnSearchSemanticInstanceResult, error) {
 	var err error
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 
 	if len(objectTypes) == 0 {
 		return &interfaces.KnSearchSemanticInstanceResult{

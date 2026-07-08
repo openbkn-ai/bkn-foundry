@@ -13,14 +13,14 @@ import (
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/metric"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/utils"
-	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
+	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 )
 
 // DebugOperator 调试接口
 func (m *operatorManager) DebugOperator(ctx context.Context, req *interfaces.DebugOperatorReq) (resp *interfaces.HTTPResponse, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	// 检查算子是否存在
 	exist, operator, err := m.DBOperatorManager.SelectByOperatorID(ctx, nil, req.OperatorID)
 	if err != nil {
@@ -107,8 +107,8 @@ func (m *operatorManager) DebugOperator(ctx context.Context, req *interfaces.Deb
 // ExecuteOperator 执行算子
 func (m *operatorManager) ExecuteOperator(ctx context.Context, req *interfaces.ExecuteOperatorReq) (resp *interfaces.HTTPResponse, err error) {
 	// 记录可观测
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	// 检查算子是否存在
 	exist, operator, err := m.OpReleaseDB.SelectByOpID(ctx, req.OperatorID)
 	if err != nil {

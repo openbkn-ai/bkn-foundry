@@ -1,0 +1,48 @@
+---
+type: metric
+id: hd_forecast_consensus_by_product
+name: 各产品共识需求合计
+tags: [供应链, 预测, HD]
+---
+
+## Metric: 各产品共识需求合计
+
+对需求预测中的 `consensus_demand` 按产品编码求和，支撑 S&OP 与 MRP 输入侧的共识口径在多产品上的分布。
+
+### Metric attributes
+
+| Metric Type | Unit Type | Unit |
+|-------------|-----------|------|
+| atomic | amount | 件 |
+
+### Scope
+
+| Scope Type | Scope Ref |
+|------------|-----------|
+| object_type | forecast |
+
+### Calculation Formula
+
+```yaml
+kind: atomic
+
+atomic:
+  aggregation:
+    property: consensus_demand
+    aggr: sum
+  group_by:
+    - property: product_code
+      description: 按产品编码聚合月度共识需求
+```
+
+### Time Dimension
+
+| Property | Default Range Policy |
+|----------|----------------------|
+| month | calendar_day |
+
+### Analysis Dimensions
+
+| Name | Display Name |
+|------|--------------|
+| product_code | 产品编码 |

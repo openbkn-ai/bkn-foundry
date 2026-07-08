@@ -1,0 +1,49 @@
+---
+type: metric
+id: hd_salesorder_signing_qty_by_product
+name: 各产品签约数量合计
+tags: [供应链, 销售, HD]
+---
+
+## Metric: 各产品签约数量合计
+
+对销售订单的 `signing_quantity` 按产品编码求和，用于把需求侧签约节奏与库存、MRP 缺口对照。
+
+### Metric attributes
+
+| Metric Type | Unit Type | Unit |
+|-------------|-----------|------|
+| atomic | amount | 件 |
+
+### Scope
+
+| Scope Type | Scope Ref |
+|------------|-----------|
+| object_type | salesorder |
+
+### Calculation Formula
+
+```yaml
+kind: atomic
+
+atomic:
+  aggregation:
+    property: signing_quantity
+    aggr: sum
+  group_by:
+    - property: product_code
+      description: 按产品聚合签约数量
+```
+
+### Time Dimension
+
+| Property | Default Range Policy |
+|----------|----------------------|
+| signing_date | calendar_day |
+
+### Analysis Dimensions
+
+| Name | Display Name |
+|------|--------------|
+| product_code | 产品编码 |
+| product_name | 产品名称 |

@@ -2,7 +2,7 @@ package knsearch
 
 import (
 	"context"
-	stderrors "errors"
+	"errors"
 	"testing"
 
 	infraLogger "github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/logger"
@@ -612,7 +612,7 @@ func TestSearchSchema_DirectMetricRecallErrorReturnsError(t *testing.T) {
 			if isMetricExpansionQuery(req) {
 				t.Fatal("did not expect expansion query after direct recall failure")
 			}
-			return nil, stderrors.New("direct recall failed")
+			return nil, errors.New("direct recall failed")
 		},
 	}
 
@@ -644,7 +644,7 @@ func TestSearchSchema_ExpansionMetricRecallErrorFallsBackToDirectOnly(t *testing
 	backend := &stubSearchSchemaBknBackend{
 		searchMetricTypesFunc: func(_ context.Context, req *interfaces.QueryConceptsReq) (*interfaces.MetricTypeConcepts, error) {
 			if isMetricExpansionQuery(req) {
-				return nil, stderrors.New("expansion recall failed")
+				return nil, errors.New("expansion recall failed")
 			}
 			return &interfaces.MetricTypeConcepts{
 				Entries: []*interfaces.MetricType{

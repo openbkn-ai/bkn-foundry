@@ -12,8 +12,8 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/kweaver-ai/kweaver-go-lib/rest"
 	"github.com/mitchellh/mapstructure"
+	"github.com/openbkn-ai/bkn-comm-go/rest"
 
 	cond "ontology-query/common/condition"
 	oerrors "ontology-query/errors"

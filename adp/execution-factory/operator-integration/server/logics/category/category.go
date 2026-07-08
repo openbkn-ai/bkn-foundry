@@ -12,13 +12,13 @@ import (
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/localize"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces/model"
-	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
+	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 )
 
 // GetCategoryName 获取分类名称
 func (c *categoryManager) GetCategoryName(ctx context.Context, category interfaces.BizCategory) (categoryName string) {
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, nil)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, nil)
 	if category == "" {
 		return
 	}
@@ -68,8 +68,8 @@ func (c *categoryManager) CheckCategory(category interfaces.BizCategory) (isExis
 
 // GetCategoryList
 func (c *categoryManager) GetCategoryList(ctx context.Context) (categoryList []*interfaces.CategoryInfo, err error) {
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	categoryDBList, err := c.DBCategory.SelectList(ctx, nil)
 	if err != nil {
 		return
@@ -109,8 +109,8 @@ func (c *categoryManager) getCategorySystem(ctx context.Context) *interfaces.Cat
 
 // UpdateCategory 更新分类
 func (c *categoryManager) UpdateCategory(ctx context.Context, req *interfaces.UpdateCategoryReq) (resp *interfaces.UpdateCategoryResp, err error) {
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	// 校验分类名称
 	err = c.Validator.ValidatorCategoryName(ctx, req.CategoryName)
 	if err != nil {
@@ -159,8 +159,8 @@ func (c *categoryManager) UpdateCategory(ctx context.Context, req *interfaces.Up
 
 // CreateCategory 创建分类
 func (c *categoryManager) CreateCategory(ctx context.Context, req *interfaces.CreateCategoryReq) (resp *interfaces.CreateCategoryResp, err error) {
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	// 校验分类名称
 	err = c.Validator.ValidatorCategoryName(ctx, req.CategoryName)
 	if err != nil {
@@ -187,8 +187,8 @@ func (c *categoryManager) CreateCategory(ctx context.Context, req *interfaces.Cr
 
 // BatchCreateCategory 批量创建分类
 func (c *categoryManager) BatchCreateCategory(ctx context.Context, req []*interfaces.CreateCategoryReq) (resp []*interfaces.CreateCategoryResp, err error) {
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	tx, err := c.DBTx.GetTx(ctx)
 	if err != nil {
 		return nil, err
@@ -223,8 +223,8 @@ func (c *categoryManager) BatchCreateCategory(ctx context.Context, req []*interf
 
 // DeleteCategory 删除分类
 func (c *categoryManager) DeleteCategory(ctx context.Context, req *interfaces.DeleteCategoryReq) (err error) {
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 	if string(req.CategoryType) == interfaces.CategoryTypeOther.String() {
 		return errors.DefaultHTTPError(ctx, http.StatusForbidden, "category_type: "+interfaces.CategoryTypeOther.String()+" is a built-in system category and cannot be deleted")
 	}

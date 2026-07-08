@@ -11,7 +11,7 @@ package knsearch
 import (
 	"context"
 
-	o11y "github.com/kweaver-ai/kweaver-go-lib/observability"
+	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/interfaces"
 )
@@ -19,8 +19,8 @@ import (
 // Search 知识网络检索本地主入口
 func (s *localSearchImpl) Search(ctx context.Context, req *interfaces.KnSearchLocalRequest) (*interfaces.KnSearchLocalResponse, error) {
 	var err error
-	ctx, _ = o11y.StartInternalSpan(ctx)
-	defer o11y.EndSpan(ctx, err)
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer oteltrace.EndSpan(ctx, err)
 
 	s.logger.WithContext(ctx).Infof("[KnSearchLocal] Start Search, kn_id=%s, query=%s, only_schema=%v",
 		req.KnID, req.Query, req.OnlySchema)

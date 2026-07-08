@@ -1,0 +1,62 @@
+---
+type: action_type
+id: cordon_node
+name: 隔离节点
+tags: [运维操作, 节点管理]
+action_type: modify
+action_intent: modify
+---
+
+## ActionType: 隔离节点
+
+将故障节点标记为不可调度，防止新 Pod 被调度到该节点。
+
+执行说明:
+1. 执行 `kubectl cordon` 标记节点
+2. 现有 Pod 继续运行
+3. 新 Pod 不调度到该节点
+4. 恢复后需手动 `kubectl uncordon`
+
+### Bound Object
+
+| Bound Object |
+|--------------|
+| node |
+
+### Impact Contracts
+
+```yaml
+impact_contracts:
+  - object_type_id: node
+    expected_operation: modify
+    description: Mark node unschedulable
+```
+
+
+### Trigger Condition
+
+```yaml
+object_type_id: node
+field: node_status
+operation: ==
+value: NotReady
+```
+
+
+### Action Source
+
+| Type | BoxID | ToolID | McpID | ToolName |
+|------|-------|--------|-------|----------|
+| mcp |  |  | kubernetes-mcp | cordon_node |
+
+### Parameter Binding
+
+| Name | Type | Source | Operation | ValueFrom | Value | Description |
+|------|------|--------|-----------|-----------|-------|-------------|
+| node_name | string | property |  |  | node_name | Node 名称 |
+
+### Schedule
+
+| Type | Expression |
+|------|------------|
+

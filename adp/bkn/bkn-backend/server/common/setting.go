@@ -14,12 +14,12 @@ import (
 
 	"github.com/bytedance/sonic"
 	"github.com/fsnotify/fsnotify"
-	libdb "github.com/kweaver-ai/kweaver-go-lib/db"
-	"github.com/kweaver-ai/kweaver-go-lib/hydra"
-	"github.com/kweaver-ai/kweaver-go-lib/logger"
-	libmq "github.com/kweaver-ai/kweaver-go-lib/mq"
-	"github.com/kweaver-ai/kweaver-go-lib/otel"
-	"github.com/kweaver-ai/kweaver-go-lib/rest"
+	libdb "github.com/openbkn-ai/bkn-comm-go/db"
+	"github.com/openbkn-ai/bkn-comm-go/hydra"
+	"github.com/openbkn-ai/bkn-comm-go/logger"
+	libmq "github.com/openbkn-ai/bkn-comm-go/mq"
+	"github.com/openbkn-ai/bkn-comm-go/otel"
+	"github.com/openbkn-ai/bkn-comm-go/rest"
 	"github.com/spf13/viper"
 
 	"bkn-backend/version"

@@ -1,0 +1,79 @@
+---
+type: action_type
+id: list_data_domains
+name: 列出数据域列表
+tags: [数据域管理, 数据查询, 灾备]
+action_type: add
+action_intent: add
+---
+
+## ActionType: 列出数据域列表
+
+列出Agent管理的所有数据域，供用户选择。
+
+### Output Format
+
+```json
+{
+  "data_domains": [
+    {
+      "id": "数据域ID",
+      "domain_name": "数据域名称",
+      "domain_ip": "数据域IP地址",
+      "domain_type": "数据域类型",
+      "status": "数据域状态",
+      "details": {
+        "capacity": "容量",
+        "version": "版本",
+        "config": "配置信息"
+      },
+      "created_time": "创建时间",
+      "updated_time": "更新时间"
+    }
+  ]
+}
+```
+
+### Bound Object
+
+| Bound Object |
+|--------------|
+| data_domain |
+
+### Impact Contracts
+
+```yaml
+impact_contracts:
+  - object_type_id: data_domain
+    expected_operation: add
+    description: ""
+```
+
+
+### Trigger Condition
+
+```yaml
+object_type_id: agent
+field: initialized
+operation: ==
+value: true
+```
+
+
+### Action Source
+
+| Type | BoxID | ToolID | McpID | ToolName |
+|------|-------|--------|-------|----------|
+| tool | recovery_toolbox | list_data_domains |  |  |
+
+### Parameter Binding
+
+| Name | Type | Source | Operation | ValueFrom | Value | Description |
+|------|------|--------|-----------|-----------|-------|-------------|
+
+### Schedule
+
+| Type | Expression |
+|------|------------|
+| ON_DEMAND | 按需执行 |
+

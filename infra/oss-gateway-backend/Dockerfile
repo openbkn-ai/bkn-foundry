@@ -1,6 +1,6 @@
 # 全局 ARG：在 FROM 之前声明，才能在 FROM 中使用
-ARG GO_BUILD_IMAGE=swr.cn-east-3.myhuaweicloud.com/kweaver-ai/golang:1.24.11
-ARG BASE_IMAGE=swr.cn-east-3.myhuaweicloud.com/kweaver-ai/ubuntu:24.04
+ARG GO_BUILD_IMAGE=golang:1.25.10
+ARG BASE_IMAGE=ubuntu:24.04
 
 # 构建阶段
 FROM ${GO_BUILD_IMAGE} AS builder
