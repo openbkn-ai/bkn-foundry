@@ -13,7 +13,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/kweaver-ai/kweaver-go-lib/logger"
+	"github.com/openbkn-ai/bkn-comm-go/logger"
 )
 
 func GenerateUniqueKey(id string, label map[string]string) string {

@@ -15,8 +15,8 @@ import (
 	berrors "bkn-backend/errors"
 	"bkn-backend/interfaces"
 
-	libCommon "github.com/kweaver-ai/kweaver-go-lib/common"
-	"github.com/kweaver-ai/kweaver-go-lib/rest"
+	libCommon "github.com/openbkn-ai/bkn-comm-go/common"
+	"github.com/openbkn-ai/bkn-comm-go/rest"
 )
 
 // 业务知识网络必要创建参数的非空校验。bool 为 dsl 语句中是否使用了 top_hits 的标识。

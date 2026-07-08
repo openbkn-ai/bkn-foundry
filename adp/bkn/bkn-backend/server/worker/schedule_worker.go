@@ -16,7 +16,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kweaver-ai/kweaver-go-lib/logger"
+	"github.com/openbkn-ai/bkn-comm-go/logger"
 	"github.com/robfig/cron/v3"
 
 	"bkn-backend/common"

@@ -16,8 +16,8 @@ import (
 
 	"github.com/bytedance/sonic"
 	bknsdk "github.com/kweaver-ai/bkn-specification/sdk/golang/bkn"
-	"github.com/kweaver-ai/kweaver-go-lib/logger"
 	"github.com/mitchellh/mapstructure"
+	"github.com/openbkn-ai/bkn-comm-go/logger"
 
 	"bkn-backend/common"
 	"bkn-backend/interfaces"

@@ -12,11 +12,11 @@ import (
 	"net/http"
 
 	"github.com/bytedance/sonic"
-	"github.com/kweaver-ai/kweaver-go-lib/logger"
-	"github.com/kweaver-ai/kweaver-go-lib/otel/otellog"
-	"github.com/kweaver-ai/kweaver-go-lib/otel/oteltrace"
-	"github.com/kweaver-ai/kweaver-go-lib/rest"
-	mqclient "github.com/kweaver-ai/proton-mq-sdk-go"
+	"github.com/openbkn-ai/bkn-comm-go/logger"
+	mqclient "github.com/openbkn-ai/bkn-comm-go/mq"
+	"github.com/openbkn-ai/bkn-comm-go/otel/otellog"
+	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
+	"github.com/openbkn-ai/bkn-comm-go/rest"
 	"go.opentelemetry.io/otel/codes"
 
 	"bkn-backend/common"
@@ -27,19 +27,19 @@ import (
 
 type PermissionServiceImpl struct {
 	appSetting *common.AppSetting
-	mqClient   mqclient.ProtonMQClient
+	mqClient   mqclient.OpenBKNMQClient
 	pa         interfaces.PermissionAccess
 }
 
 func NewPermissionServiceImpl(appSetting *common.AppSetting) interfaces.PermissionService {
 	mqSetting := appSetting.MQSetting
-	client, err := mqclient.NewProtonMQClient(mqSetting.MQHost, mqSetting.MQPort,
+	client, err := mqclient.NewOpenBKNMQClient(mqSetting.MQHost, mqSetting.MQPort,
 		mqSetting.MQHost, mqSetting.MQPort, mqSetting.MQType,
 		mqclient.UserInfo(mqSetting.Auth.Username, mqSetting.Auth.Password),
 		mqclient.AuthMechanism(mqSetting.Auth.Mechanism),
 	)
 	if err != nil {
-		logger.Fatal("failed to create a proton mq client:", err)
+		logger.Fatal("failed to create a openbkn mq client:", err)
 	}
 	return &PermissionServiceImpl{
 		appSetting: appSetting,

@@ -12,7 +12,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/kweaver-ai/kweaver-go-lib/rest"
+	"github.com/openbkn-ai/bkn-comm-go/rest"
 )
 
 type KnnCond struct {

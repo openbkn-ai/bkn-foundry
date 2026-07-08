@@ -12,7 +12,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/kweaver-ai/kweaver-go-lib/rest"
+	"github.com/openbkn-ai/bkn-comm-go/rest"
 
 	berrors "bkn-backend/errors"
 	"bkn-backend/interfaces"

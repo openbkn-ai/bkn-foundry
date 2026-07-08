@@ -14,7 +14,7 @@ import (
 	"testing"
 
 	bknsdk "github.com/kweaver-ai/bkn-specification/sdk/golang/bkn"
-	"github.com/kweaver-ai/kweaver-go-lib/rest"
+	"github.com/openbkn-ai/bkn-comm-go/rest"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 

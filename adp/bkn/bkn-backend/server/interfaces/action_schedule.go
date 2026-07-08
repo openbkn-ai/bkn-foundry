@@ -6,7 +6,7 @@
 
 package interfaces
 
-import "github.com/kweaver-ai/kweaver-go-lib/audit"
+import "github.com/openbkn-ai/bkn-comm-go/audit"
 
 // Schedule status constants
 const (

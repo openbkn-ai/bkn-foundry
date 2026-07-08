@@ -12,9 +12,9 @@ import (
 	"net/http"
 	"strings"
 
-	libCommon "github.com/kweaver-ai/kweaver-go-lib/common"
-	"github.com/kweaver-ai/kweaver-go-lib/rest"
 	"github.com/mitchellh/mapstructure"
+	libCommon "github.com/openbkn-ai/bkn-comm-go/common"
+	"github.com/openbkn-ai/bkn-comm-go/rest"
 
 	berrors "bkn-backend/errors"
 	"bkn-backend/interfaces"

@@ -16,8 +16,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kweaver-ai/kweaver-go-lib/logger"
 	"github.com/mohae/deepcopy"
+	"github.com/openbkn-ai/bkn-comm-go/logger"
 
 	"bkn-backend/common"
 	cond "bkn-backend/common/condition"

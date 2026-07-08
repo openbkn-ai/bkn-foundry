@@ -15,7 +15,7 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock"
 	sq "github.com/Masterminds/squirrel"
-	"github.com/kweaver-ai/kweaver-go-lib/rest"
+	"github.com/openbkn-ai/bkn-comm-go/rest"
 	. "github.com/smartystreets/goconvey/convey"
 
 	"bkn-backend/common"

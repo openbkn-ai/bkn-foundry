@@ -10,7 +10,7 @@ import (
 	"context"
 	"strings"
 
-	libCommon "github.com/kweaver-ai/kweaver-go-lib/common"
+	libCommon "github.com/openbkn-ai/bkn-comm-go/common"
 
 	"bkn-backend/interfaces"
 )
