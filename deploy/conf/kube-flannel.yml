@@ -124,7 +124,7 @@ spec:
       serviceAccountName: flannel
       initContainers:
       - name: install-cni-plugin
-        image: swr.cn-east-3.myhuaweicloud.com/kweaver-ai/flannel/flannel-cni-plugin:v1.5.1-flannel1
+        image: swr.cn-east-3.myhuaweicloud.com/openbkn-ai/flannel/flannel-cni-plugin:v1.5.1-flannel1
         command:
         - cp
         args:
@@ -135,7 +135,7 @@ spec:
         - name: cni-plugin
           mountPath: /opt/cni/bin
       - name: install-cni
-        image: swr.cn-east-3.myhuaweicloud.com/kweaver-ai/flannel/flannel:v0.25.5
+        image: swr.cn-east-3.myhuaweicloud.com/openbkn-ai/flannel/flannel:v0.25.5
         command:
         - cp
         args:
@@ -149,7 +149,7 @@ spec:
           mountPath: /etc/kube-flannel/
       containers:
       - name: kube-flannel
-        image: swr.cn-east-3.myhuaweicloud.com/kweaver-ai/flannel/flannel:v0.25.5
+        image: swr.cn-east-3.myhuaweicloud.com/openbkn-ai/flannel/flannel:v0.25.5
         command:
         - /opt/bin/flanneld
         args:
