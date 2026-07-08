@@ -1,7 +1,7 @@
 // bkn-safe — the ISF replacement auth service (code name: safe).
 // Three responsibilities: authentication (hydra login/consent/device provider),
 // authorization (Casbin), user management (directory + LDAP). hydra issues the
-// tokens; bkn-safe is NOT a token engine. DB via proton-rds driver (xinchuang
+// tokens; bkn-safe is NOT a token engine. DB via openbkn-rds driver (xinchuang
 // transparent at the database/sql level) + GORM. Zero kweaver-go-lib.
 module bkn-safe
 
@@ -13,7 +13,7 @@ require (
 	github.com/gin-gonic/gin v1.12.0
 	github.com/glebarez/sqlite v1.7.0
 	github.com/go-ldap/ldap/v3 v3.4.13
-	github.com/openbkn-ai/bkn-comm-go v0.0.3
+	github.com/openbkn-ai/bkn-comm-go v0.0.4
 	github.com/ory/hydra-client-go/v2 v2.2.0
 	golang.org/x/crypto v0.53.0
 	gopkg.in/yaml.v3 v3.0.1

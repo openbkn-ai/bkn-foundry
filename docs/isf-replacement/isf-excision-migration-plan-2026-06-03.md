@@ -20,7 +20,7 @@
 |---|---|---|
 | token 引擎 | **上游 ORY Hydra v26.2.0**(不 fork) | 已验;CalVer;device flow 在 v26.x |
 | hydra DB | **PostgreSQL**(独立小库) | MariaDB 任何版本装不了上游 hydra(`CAST AS JSON`,MDEV-26448);PG 是 hydra 一等后端 + 金仓 PG 系利于未来信创;信创延后,仅 hydra 这块隔离 |
-| bkn-safe ORM/DB | **GORM + proton-rds driver** | 信创 driver 级免费;绝不 pop |
+| bkn-safe ORM/DB | **GORM + openbkn-rds driver** | 信创 driver 级免费;绝不 pop |
 | authz 引擎 | **casbin/v2 + gorm-adapter** | `keyMatch` 非 keyMatch2(`:` 越权 bug);effect 只 allow |
 | 密码 | **x/crypto/bcrypt** | |
 | hydra 对接 | **ory/hydra-client-go/v2** | |

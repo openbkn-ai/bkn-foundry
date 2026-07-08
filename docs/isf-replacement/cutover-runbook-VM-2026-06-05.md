@@ -36,7 +36,7 @@ hydra 不能跑 MariaDB(CAST AS JSON / MDEV-26448)。需要一个 PG:
 
 ## 3. 部署 hydra + bkn-safe(E1)
 
-> bkn-safe 用现有 MariaDB(`config.db.*`,`SAFE_DB_TYPE=MySQL` 走 proton-rds);hydra 用 §2 的 PG。
+> bkn-safe 用现有 MariaDB(`config.db.*`,`SAFE_DB_TYPE=MySQL` 走 openbkn-rds);hydra 用 §2 的 PG。
 > 生产关掉 bundledDeps(`bundledDeps.enabled=false`)。
 
 - [ ] **hydra**:

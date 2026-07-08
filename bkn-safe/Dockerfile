@@ -14,7 +14,7 @@ COPY ./server /go/src
 
 ARG GOPROXY_URL="https://proxy.golang.org,direct"
 ENV GOPROXY=${GOPROXY_URL}
-# CGO disabled: proton-rds driver + glebarez (pure-Go) sqlite need no cgo, so the
+# CGO disabled: openbkn-rds driver + glebarez (pure-Go) sqlite need no cgo, so the
 # binary is static and runs on a minimal base.
 RUN set -ex; \
     cd /go/src; \

@@ -29,7 +29,7 @@
 产物:`bkn-safe/dev/`。
 
 ### Phase 2 — bkn-safe 服务骨架
-- Go module `bkn-safe`(顶层),go1.25,**GORM + proton-rds driver**(信创免费),**零 kweaver-go-lib**。
+- Go module `bkn-safe`(顶层),go1.25,**GORM + openbkn-rds driver**(信创免费),**零 kweaver-go-lib**。
 - 布局:仿 bkn-backend(config/driveradapters/drivenadapters/domain/...),health 端点,configmap/chart。
 - 接 hydra:`ory/hydra-client-go/v2`(admin client,login/consent/device accept)。
 - DB migration(GORM)建表:users/credentials/departments/groups/memberships/roles + casbin policy 表。
