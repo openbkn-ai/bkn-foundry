@@ -25,7 +25,7 @@ bkn-safe/
     config/               环境变量配置
     internal/
       model/              GORM 领域模型
-      database/           proton-rds + GORM 连接 + migrate
+      database/           openbkn-rds + GORM 连接 + migrate
       authz/              Casbin 引擎 (Check/AllowedOps/grant/role-binding)
       seed/               集中 seed (角色/资源类型/操作/权限, 内置 JSON)
       auth/               用户库(bcrypt) + hydra 客户端 + login/consent 编排 + LDAP
@@ -86,7 +86,7 @@ VS Code / Cursor：打开 `bkn-safe` 根目录，选 **Run and Debug → bkn-saf
 |---|---|---|
 | `SAFE_CONFIG` | （空） | YAML 配置文件路径（与 `-config` 等效；命令行 `-config` 优先） |
 | `SAFE_HTTP_ADDR` | `:3000` | 监听地址 |
-| `SAFE_DB_TYPE` | `MySQL` | MySQL/DM8/KDB9（都走 proton-rds driver） |
+| `SAFE_DB_TYPE` | `MySQL` | MySQL/DM8/KDB9（都走 openbkn-rds driver） |
 | `SAFE_DB_HOST/PORT/USER/PASSWORD/NAME` | 127.0.0.1/3306/safe/secret/safe | 数据库 |
 | `SAFE_HYDRA_ADMIN_URL` | `http://127.0.0.1:4445` | hydra admin（内网） |
 | `SAFE_HYDRA_PUBLIC_URL` | `http://127.0.0.1:4444` | hydra public |
@@ -103,7 +103,7 @@ VS Code / Cursor：打开 `bkn-safe` 根目录，选 **Run and Debug → bkn-saf
 
 ## 注意
 
-- **绝不用 gobuffalo/pop** —— pop 按方言名分发，是 hydra 信创 fork 的坑根；GORM 吃 driver 层，proton 透明。
+- **绝不用 gobuffalo/pop** —— pop 按方言名分发，是 hydra 信创 fork 的坑根；GORM 吃 driver 层，openbkn 透明。
 - **角色 UUID 保号**（`internal/seed/data/roles.json`，9 个；DA/flow-automation 硬编码业务 3 个）。
 - introspect 的 user-type `ext` 5 字段必须齐全，否则旧 lib 解析 panic（无 nil 检查）——
   `ExtClaims` 保证这一点，`contract/` 用真实 lib 守护。

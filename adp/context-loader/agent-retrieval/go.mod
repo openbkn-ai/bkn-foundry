@@ -10,7 +10,7 @@ require (
 	github.com/json-iterator/go v1.1.12
 	github.com/mark3labs/mcp-go v0.43.2
 	github.com/nicksnyder/go-i18n/v2 v2.6.0
-	github.com/openbkn-ai/bkn-comm-go v0.0.3
+	github.com/openbkn-ai/bkn-comm-go v0.0.4
 	github.com/pkg/errors v0.9.1
 	github.com/smartystreets/goconvey v1.8.1
 	github.com/spf13/viper v1.21.0

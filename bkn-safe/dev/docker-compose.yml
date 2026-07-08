@@ -1,6 +1,6 @@
 # Dev stack for the ISF replacement — mirrors the production DB topology:
 #   - hydra (upstream v26.2.0, UNMODIFIED) on PostgreSQL
-#   - bkn-safe on MariaDB (via the proton-rds driver, like the rest of the stack)
+#   - bkn-safe on MariaDB (via the openbkn-rds driver, like the rest of the stack)
 #
 # WHY two engines (decision 2026-06-03, after verifying on the VM):
 #   - hydra does NOT run on MariaDB: its migration 20220513_string_slice_json
@@ -9,7 +9,7 @@
 #     PostgreSQL / MySQL / CockroachDB. We pick PostgreSQL (hydra's first-class
 #     backend; also eases a future xinchuang path since Kingbase is PG-based).
 #   - bkn-safe's schema is plain (no CAST AS JSON), so it runs on the existing
-#     MariaDB via proton-rds — no new engine for the app data.
+#     MariaDB via openbkn-rds — no new engine for the app data.
 #   - hydra v2.3.0 has NO device flow; device flow is in v26.x → pin v26.2.0.
 #
 # NOT a production deployment — local/VM dev scaffolding.
@@ -40,7 +40,7 @@ services:
       - hydra-pg:/var/lib/postgresql/data
 
   # bkn-safe's app DB. MariaDB — same engine as the rest of the Kowell stack;
-  # bkn-safe connects via the proton-rds driver (xinchuang-transparent).
+  # bkn-safe connects via the openbkn-rds driver (xinchuang-transparent).
   mariadb:
     image: mariadb:11.4
     environment:

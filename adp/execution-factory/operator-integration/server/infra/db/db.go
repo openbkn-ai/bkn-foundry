@@ -11,8 +11,8 @@ import (
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/telemetry"
 	"github.com/qustavo/sqlhooks/v2"
 
-	// _ 注册proton-rds驱动
-	protonRDS "github.com/openbkn-ai/bkn-comm-go/db/driver"
+	// _ 注册openbkn-rds驱动
+	openbknRDS "github.com/openbkn-ai/bkn-comm-go/db/driver"
 	"github.com/openbkn-ai/bkn-comm-go/db/sqlx"
 )
 
@@ -27,7 +27,7 @@ var (
 
 func initTraceHook() {
 	hook := &telemetry.RDSHook{System: "rds"}
-	sql.Register(traceDriverName, sqlhooks.Wrap(new(protonRDS.RDSDriver), hook))
+	sql.Register(traceDriverName, sqlhooks.Wrap(new(openbknRDS.RDSDriver), hook))
 }
 
 // NewDBPool 获取数据库连接池
@@ -57,7 +57,7 @@ func NewDBPool() *sqlx.DB {
 		if err != nil {
 			// 判断err里
 			if err.Error() == "driver must implement driver.ConnBeginTx" {
-				connInfo.CustomDriver = "proton-rds"
+				connInfo.CustomDriver = "openbkn-rds"
 				dbPool, err = sqlx.NewDB(&connInfo)
 			}
 			if err != nil {

@@ -12,7 +12,7 @@ import (
 )
 
 func NewGorm(app *config.AppConfig, log *logrus.Entry) *gorm.DB {
-	operation, err := sql.Open("proton-rds", app.DatabaseConfig.DSN())
+	operation, err := sql.Open("openbkn-rds", app.DatabaseConfig.DSN())
 	if err != nil {
 		log.WithError(err).Fatal("init gorm failed: open dns failed")
 	}

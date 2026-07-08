@@ -19,9 +19,9 @@ type Config struct {
 	SeedOnStart bool `yaml:"seed_on_start"`
 }
 
-// DBConfig points bkn-safe at its database. The proton-rds driver fakes
+// DBConfig points bkn-safe at its database. The openbkn-rds driver fakes
 // Dameng(DM8)/Kingbase(KDB9) as MySQL wire, so Type only selects the GORM
-// dialect tuning; the connection is always opened via the "proton-rds" driver.
+// dialect tuning; the connection is always opened via the "openbkn-rds" driver.
 type DBConfig struct {
 	Type     string `yaml:"type"` // MySQL | DM8 | KDB9
 	Host     string `yaml:"host"`
@@ -32,7 +32,7 @@ type DBConfig struct {
 	Params   string `yaml:"params"` // extra DSN params
 }
 
-// DSN returns a go-sql-driver/mysql style DSN (proton-rds speaks MySQL wire).
+// DSN returns a go-sql-driver/mysql style DSN (openbkn-rds speaks MySQL wire).
 func (d DBConfig) DSN() string {
 	params := d.Params
 	if params == "" {

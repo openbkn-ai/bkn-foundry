@@ -20,7 +20,7 @@ import (
 	bmock "bkn-backend/interfaces/mock"
 )
 
-// mockMQClient is a minimal in-test stub for mqclient.ProtonMQClient.
+// mockMQClient is a minimal in-test stub for mqclient.OpenBKNMQClient.
 type mockMQClient struct {
 	pubErr error
 }
