@@ -85,6 +85,10 @@ type Department struct {
 	Name      string `gorm:"size:255"`
 	ParentID  string `gorm:"size:64;index"`
 	Type      string `gorm:"size:32;default:department"`
+	ManagerID string `gorm:"size:64;index"` // optional responsible user
+	Code      string `gorm:"size:64;index"` // optional unique business code (enforced in service)
+	Email     string `gorm:"size:255"`
+	Remark    string `gorm:"size:1024"`
 	CreatedAt time.Time
 }
 

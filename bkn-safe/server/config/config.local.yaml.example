@@ -1,0 +1,35 @@
+# Local bkn-safe config for development / IDE debugging.
+# Copy to config.local.yaml (gitignored) and edit credentials.
+#
+#   cp config/config.local.yaml.example config/config.local.yaml
+#   go run . -config config/config.local.yaml
+#
+# Or set SAFE_CONFIG=config/config.local.yaml
+#
+# Resolution order: defaults → this file → SAFE_* environment variables.
+
+http_addr: ":3000"
+seed_on_start: false
+
+db:
+  type: MySQL
+  # Remote cluster: kubectl -n resource port-forward svc/mariadb 3307:3306
+  host: 127.0.0.1
+  port: 3307
+  user: kweaver
+  password: "<mariadb-password>"
+  name: safe
+  # params: "charset=utf8mb4&parseTime=true&loc=Local"
+
+hydra:
+  # kubectl -n openbkn port-forward svc/bkn-safe-hydra-admin 4445:4445
+  admin_url: http://127.0.0.1:4445
+  # Gateway base URL (https://<your-host> if accessAddress uses 443)
+  public_url: https://<your-host>
+
+ldap:
+  url: ""
+  bind_dn: ""
+  bind_password: ""
+  base_dn: ""
+  user_filter: "(uid=%s)"

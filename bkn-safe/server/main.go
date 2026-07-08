@@ -8,6 +8,7 @@
 package main
 
 import (
+	"flag"
 	"log/slog"
 	"os"
 
@@ -22,7 +23,20 @@ import (
 )
 
 func main() {
-	cfg := config.Load()
+	configPath := flag.String("config", "", "YAML config file (overrides defaults; env SAFE_CONFIG if unset)")
+	flag.Parse()
+
+	cfg, err := config.LoadWithOptions(config.LoadOptions{ConfigPath: *configPath})
+	if err != nil {
+		fatal("load config", err)
+	}
+	if *configPath != "" || os.Getenv("SAFE_CONFIG") != "" {
+		path := *configPath
+		if path == "" {
+			path = os.Getenv("SAFE_CONFIG")
+		}
+		slog.Info("config loaded", "file", path)
+	}
 
 	db, err := database.Open(cfg.DB)
 	if err != nil {
