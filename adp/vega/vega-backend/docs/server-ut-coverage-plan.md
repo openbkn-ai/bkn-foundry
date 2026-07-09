@@ -591,3 +591,32 @@ env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cov
 - overall statement coverage：**9.1%**。
 - 包覆盖率：`logics/connector_type` 52.6%，`logics/discover_task` 62.2%，`logics/discover_schedule` 75.2%。
 - 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。
+
+### 2026-07-09：Batch 3 Logic View / Query 转换首批
+
+范围：
+
+- 新增 `logics/resource_data/logic_view/dsl/dsl_test.go`，覆盖 DSL 生成的分页、track total、排序补全/去重、text keyword sort、binary sort 拒绝、单 resource filter、多 resource should、unsupported union type、nil logic definition、filter condition 到 DSL 的 equal/range/and 和 text keyword 缺失错误。
+- 新增 `logics/resource_data/logic_view/sql/sql_test.go`，覆盖 SQL resource/output 节点投影、缺少 output/output input 错误、join/union/sql template 节点构造、参数插值、limit helper、SQLBuilder where/order/limit 插入、sort 构造、SQL filter condition equal/like 转换。
+- 发现现有 resource node filter + dollar placeholder 与 `interpolate(?)` 的兼容限制，本批不改生产逻辑，测试中避免把该路径作为期望成功路径；filter 转换逻辑已单独覆盖。
+- 不触碰 antlr/parser 生成代码。
+
+验证：
+
+```bash
+cd adp/vega/vega-backend/server
+env GOCACHE=/tmp/go-build-cache go test ./logics/resource_data/logic_view/dsl ./logics/resource_data/logic_view/sql
+env GOCACHE=/tmp/go-build-cache go test ./logics/resource_data/logic_view/... -cover
+env GOCACHE=/tmp/go-build-cache go test ./...
+env GOCACHE=/tmp/go-build-cache go test ./... -coverprofile=/tmp/vega-backend-server-cover.out
+env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cover.out
+```
+
+结果：
+
+- `go test ./logics/resource_data/logic_view/dsl ./logics/resource_data/logic_view/sql` 通过。
+- `go test ./logics/resource_data/logic_view/... -cover` 通过。
+- `go test ./...` 通过。
+- overall statement coverage：**10.4%**。
+- 包覆盖率：`logic_view/dsl` 27.2%，`logic_view/sql` 43.6%。
+- 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。
