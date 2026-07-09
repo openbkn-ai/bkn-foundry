@@ -59,21 +59,6 @@ func TestOracleConnectorValidateSchemas(t *testing.T) {
 	})
 }
 
-func TestOracleConnectorListSchemas(t *testing.T) {
-	connector, mock, cleanup := newOracleConnectorMock(t, nil)
-	defer cleanup()
-	connector.connected = true
-
-	mock.ExpectQuery("SELECT USERNAME FROM ALL_USERS WHERE ORACLE_MAINTAINED = 'N' ORDER BY USERNAME").
-		WillReturnRows(sqlmock.NewRows([]string{"USERNAME"}).AddRow("APP").AddRow("SYS").AddRow("AUDIT"))
-
-	got, err := connector.ListSchemas(context.Background())
-
-	require.NoError(t, err)
-	assert.Equal(t, []string{"APP", "AUDIT"}, got)
-	require.NoError(t, mock.ExpectationsWereMet())
-}
-
 func TestOracleConnectorListTables(t *testing.T) {
 	t.Run("filters configured schemas", func(t *testing.T) {
 		connector, mock, cleanup := newOracleConnectorMock(t, []string{"app"})

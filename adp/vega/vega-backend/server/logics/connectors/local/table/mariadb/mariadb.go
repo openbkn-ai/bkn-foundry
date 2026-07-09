@@ -227,8 +227,9 @@ func (c *MariaDBConnector) TestConnection(ctx context.Context) error {
 
 // validateDatabases 验证配置的数据库是否存在
 func (c *MariaDBConnector) validateDatabases(ctx context.Context) error {
-	// 获取所有数据库列表
-	rows, err := c.db.QueryContext(ctx, "SHOW DATABASES")
+	// 获取所有数据库/schema 列表；MariaDB 中 database 与 schema 等价。
+	rows, err := c.db.QueryContext(ctx,
+		"SELECT SCHEMA_NAME FROM information_schema.SCHEMATA ORDER BY SCHEMA_NAME")
 	if err != nil {
 		return fmt.Errorf("failed to list databases: %w", err)
 	}

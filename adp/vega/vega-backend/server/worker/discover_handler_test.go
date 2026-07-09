@@ -129,6 +129,40 @@ func TestUpdateDiscoverResultForEnrichStatus(t *testing.T) {
 	}
 }
 
+func TestBuildSourceIdentifierUsesSchemaAsQueryableNamespace(t *testing.T) {
+	dh := &DiscoverHandler{}
+
+	cases := []struct {
+		name  string
+		table *interfaces.TableMeta
+		want  string
+	}{
+		{
+			name:  "postgresql schema table",
+			table: &interfaces.TableMeta{Database: "ecommerce_db", Schema: "public", Name: "supplier_catalog"},
+			want:  "public.supplier_catalog",
+		},
+		{
+			name:  "mariadb schema equals database",
+			table: &interfaces.TableMeta{Database: "ecommerce_db", Schema: "ecommerce_db", Name: "supplier_catalog"},
+			want:  "ecommerce_db.supplier_catalog",
+		},
+		{
+			name:  "database fallback",
+			table: &interfaces.TableMeta{Database: "ecommerce_db", Name: "supplier_catalog"},
+			want:  "ecommerce_db.supplier_catalog",
+		},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := dh.buildSourceIdentifier(tt.table); got != tt.want {
+				t.Fatalf("expected %q, got %q", tt.want, got)
+			}
+		})
+	}
+}
+
 func TestEnrichTableMetadataContinuesWhenOneTableFails(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	rs := vmock.NewMockResourceService(ctrl)
@@ -262,10 +296,6 @@ func (c *fakeTableConnector) GetMetadata(context.Context) (map[string]any, error
 
 func (c *fakeTableConnector) MapType(nativeType string) string {
 	return nativeType
-}
-
-func (c *fakeTableConnector) ListDatabases(context.Context) ([]string, error) {
-	return nil, nil
 }
 
 func (c *fakeTableConnector) ListTables(context.Context) ([]*interfaces.TableMeta, error) {

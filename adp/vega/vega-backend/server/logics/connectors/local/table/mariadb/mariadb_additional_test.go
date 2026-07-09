@@ -104,7 +104,7 @@ func TestMariaDBConnectorValidateDatabases(t *testing.T) {
 		connector, mock, cleanup := newMariaDBConnectorMock(t, []string{"app", "audit"})
 		defer cleanup()
 
-		mock.ExpectQuery("SHOW DATABASES").
+		mock.ExpectQuery("SELECT SCHEMA_NAME FROM information_schema\\.SCHEMATA ORDER BY SCHEMA_NAME").
 			WillReturnRows(sqlmock.NewRows([]string{"Database"}).AddRow("app").AddRow("audit").AddRow("mysql"))
 
 		require.NoError(t, connector.validateDatabases(context.Background()))
@@ -115,7 +115,7 @@ func TestMariaDBConnectorValidateDatabases(t *testing.T) {
 		connector, mock, cleanup := newMariaDBConnectorMock(t, []string{"app"})
 		defer cleanup()
 
-		mock.ExpectQuery("SHOW DATABASES").
+		mock.ExpectQuery("SELECT SCHEMA_NAME FROM information_schema\\.SCHEMATA ORDER BY SCHEMA_NAME").
 			WillReturnError(errors.New("db down"))
 
 		err := connector.validateDatabases(context.Background())
@@ -129,7 +129,7 @@ func TestMariaDBConnectorValidateDatabases(t *testing.T) {
 		connector, mock, cleanup := newMariaDBConnectorMock(t, []string{"missing"})
 		defer cleanup()
 
-		mock.ExpectQuery("SHOW DATABASES").
+		mock.ExpectQuery("SELECT SCHEMA_NAME FROM information_schema\\.SCHEMATA ORDER BY SCHEMA_NAME").
 			WillReturnRows(sqlmock.NewRows([]string{"Database"}).AddRow("app"))
 
 		err := connector.validateDatabases(context.Background())

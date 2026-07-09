@@ -20,34 +20,6 @@ import (
 	"vega-backend/interfaces"
 )
 
-// ListDatabases 列出实例下所有可访问的用户数据库（排除系统库）。
-func (c *MariaDBConnector) ListDatabases(ctx context.Context) ([]string, error) {
-	if err := c.Connect(ctx); err != nil {
-		return nil, err
-	}
-
-	rows, err := c.db.QueryContext(ctx, "SHOW DATABASES")
-	if err != nil {
-		return nil, fmt.Errorf("failed to list databases: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-
-	var databases []string
-	for rows.Next() {
-		var db string
-		if err := rows.Scan(&db); err != nil {
-			return nil, fmt.Errorf("failed to scan database name: %w", err)
-		}
-		if !SYSTEM_DBS_MAP[db] {
-			databases = append(databases, db)
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("failed to iterate databases: %w", err)
-	}
-	return databases, nil
-}
-
 // ListTables 返回数据库中的所有表。
 // 如果 Config.Database 非空，只列出该数据库的表；
 // 如果 Config.Database 为空（实例级连接），遍历所有用户数据库，返回的 TableMeta.Database 字段标记所属库。
@@ -121,6 +93,7 @@ func (c *MariaDBConnector) ListTables(ctx context.Context) ([]*interfaces.TableM
 			TableType:   tableType,
 			Description: description.String,
 			Database:    schema,
+			Schema:      schema,
 		}
 
 		// Populate Properties
