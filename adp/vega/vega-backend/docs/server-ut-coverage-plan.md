@@ -799,3 +799,31 @@ env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cov
 - overall statement coverage：**14.3%**。
 - 包覆盖率：`common` 59.8%，`drivenadapters/auth` 25.0%，`locale` 70.0%，`logics` 41.9%，`logics/permission` 85.9%，`version` 100.0%。
 - 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。
+
+### 2026-07-09：Batch 8 Query / Filter / OpenSearch 条件链路覆盖
+
+范围：
+
+- 新增 `logics/filter_condition/condition_advanced_test.go`，批量覆盖所有 filter condition 的元信息方法，并补充 range/out_range/before/current/between/match/multi_match/knn_vector/and 的成功与错误构造路径。
+- 新增 `logics/query/raw_query_service_internal_test.go`，覆盖 raw query request validation、resource id 提取去重、resource 占位符替换、同 catalog 校验、missing resource/multi catalog/disabled catalog 错误分支。
+- 新增 `logics/connectors/local/index/opensearch/opensearch_condition_test.go`，覆盖 filter condition 到 OpenSearch DSL 的 scalar、bool and/or、fulltext、multi_match、knn_vector 与 keyword suffix 错误分支。
+- 新增 `logics/resource_data/resource_data_service_additional_test.go`，覆盖 sort/output 字段过滤的 aggregation/group by 边界，以及 dataset/logic view 查询委托路径。
+- 本批不连接真实 OpenSearch/DB，不执行外部查询。
+
+验证：
+
+```bash
+cd adp/vega/vega-backend/server
+env GOCACHE=/tmp/go-build-cache go test ./logics/filter_condition ./logics/query ./logics/connectors/local/index/opensearch ./logics/resource_data -cover
+env GOCACHE=/tmp/go-build-cache go test ./...
+env GOCACHE=/tmp/go-build-cache go test ./... -coverprofile=/tmp/vega-backend-server-cover.out
+env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cover.out
+```
+
+结果：
+
+- 目标包 `go test` 通过。
+- `go test ./...` 通过。
+- overall statement coverage：**16.1%**。
+- 包覆盖率：`logics/filter_condition` 62.1%，`logics/query` 31.8%，`logics/connectors/local/index/opensearch` 20.7%，`logics/resource_data` 38.3%。
+- 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。
