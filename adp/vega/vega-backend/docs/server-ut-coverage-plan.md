@@ -620,3 +620,33 @@ env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cov
 - overall statement coverage：**10.4%**。
 - 包覆盖率：`logic_view/dsl` 27.2%，`logic_view/sql` 43.6%。
 - 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。
+
+### 2026-07-09：Batch 4 Driven Adapters 小 Access 包
+
+范围：
+
+- 新增 `drivenadapters/connector_type/connector_type_access_test.go`，使用 `sqlmock` 覆盖 GetByType、not found、List 过滤/count/query、ListAuthResources、SetEnabled、Delete 错误路径。
+- 新增 `drivenadapters/discover_task/discover_task_access_test.go`，覆盖 GetByID/result 解析、List 过滤/排序/分页、UpdateStatus running start time、CheckExistByStatuses、Delete rows affected 为 0 时返回 `sql.ErrNoRows`。
+- 新增 `drivenadapters/discover_schedule/discover_schedule_access_test.go`，覆盖 cron next run 计算、GetByID、List 过滤/分页、Disable、UpdateLastRun 先读 schedule 后更新 last/next run。
+- 新增 `drivenadapters/entityextension/store_test.go`，覆盖 Replace 事务整包替换/空 map 删除、DeleteByEntityIDs 空输入与批量删除、GetByEntityID/GetByEntityIDs 结果组装、Catalog/Resource extension join SQL、FilterKeys。
+- SQL 使用 `sqlmock` 固定 squirrel 生成的关键 SQL 与参数；不连接真实数据库。
+- 本批为 access 层小包首批，`catalog/resource` 留到后续大包。
+
+验证：
+
+```bash
+cd adp/vega/vega-backend/server
+env GOCACHE=/tmp/go-build-cache go test ./drivenadapters/connector_type ./drivenadapters/discover_task ./drivenadapters/discover_schedule ./drivenadapters/entityextension
+env GOCACHE=/tmp/go-build-cache go test ./drivenadapters/connector_type ./drivenadapters/discover_task ./drivenadapters/discover_schedule ./drivenadapters/entityextension -cover
+env GOCACHE=/tmp/go-build-cache go test ./...
+env GOCACHE=/tmp/go-build-cache go test ./... -coverprofile=/tmp/vega-backend-server-cover.out
+env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cover.out
+```
+
+结果：
+
+- `go test ./drivenadapters/connector_type ./drivenadapters/discover_task ./drivenadapters/discover_schedule ./drivenadapters/entityextension` 通过。
+- `go test ./...` 通过。
+- overall statement coverage：**11.5%**。
+- 包覆盖率：`drivenadapters/connector_type` 53.5%，`drivenadapters/discover_task` 48.7%，`drivenadapters/discover_schedule` 35.6%，`drivenadapters/entityextension` 82.4%。
+- 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。
