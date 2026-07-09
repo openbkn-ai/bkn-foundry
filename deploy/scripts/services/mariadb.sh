@@ -773,8 +773,59 @@ install_mariadb() {
     install_mariadb_helm
 }
 
+# Check if bkn-foundry (Core) services are installed before uninstalling MariaDB.
+# Returns 0 (success) if NOT installed, 1 (error) if installed.
+check_bkn_foundry_not_installed() {
+    local namespace="${CORE_NAMESPACE:-openbkn}"
+    
+    # Check for core releases by looking for known release names
+    # These are the main bkn-foundry services that depend on MariaDB
+    local -a core_releases=(
+        "bkn-backend"
+        "ontology-query"
+        "agent-retrieval"
+        "bkn-safe"
+        "vega-backend"
+    )
+    
+    local found_releases=()
+    for release in "${core_releases[@]}"; do
+        if helm status "${release}" -n "${namespace}" >/dev/null 2>&1; then
+            found_releases+=("${release}")
+        fi
+    done
+    
+    if [[ ${#found_releases[@]} -gt 0 ]]; then
+        log_error "Cannot uninstall MariaDB: bkn-foundry services are still installed."
+        log_error "Found installed releases in namespace '${namespace}':"
+        for release in "${found_releases[@]}"; do
+            log_error "  - ${release}"
+        done
+        log_error ""
+        log_error "Please uninstall bkn-foundry first:"
+        log_error "  bash deploy.sh foundry uninstall"
+        log_error ""
+        log_error "Or use --force to bypass this check (WARNING: will break bkn-foundry services):"
+        log_error "  bash deploy.sh mariadb uninstall --force"
+        return 1
+    fi
+    
+    return 0
+}
+
 uninstall_mariadb() {
     local ns="${MARIADB_NAMESPACE}"
+    local force="${MARIADB_UNINSTALL_FORCE:-false}"
+    
+    # Check if bkn-foundry is installed unless --force is specified
+    if [[ "${force}" != "true" ]]; then
+        if ! check_bkn_foundry_not_installed; then
+            return 1
+        fi
+    else
+        log_warn "Force mode enabled: skipping bkn-foundry check. This may break existing services!"
+    fi
+    
     log_info "Uninstalling MariaDB from namespace ${ns}..."
 
     # Use Helm to uninstall the release (automatically removes all managed resources)

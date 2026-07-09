@@ -5,7 +5,7 @@ env:
   language: en_US.UTF-8
   timezone: Asia/Shanghai
 image:
-  registry: ghcr.io/openbkn-ai
+  registry: swr.cn-east-3.myhuaweicloud.com/openbkn-ai
 # ISF replacement: route service authz + directory lookups to bkn-safe (the ISF
 # stack is retired post-cutover). bkn-safe now installs into the same namespace as
 # the core services, so url uses the namespace-agnostic short service name. To roll

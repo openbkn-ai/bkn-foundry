@@ -1242,6 +1242,15 @@ REDIS_MEMORY_LIMIT="${REDIS_MEMORY_LIMIT:-}"
 REDIS_CPU_REQUEST="${REDIS_CPU_REQUEST:-}"
 REDIS_CPU_LIMIT="${REDIS_CPU_LIMIT:-}"
 
+# BKN Foundry Core Resource Configuration
+# These environment variables allow setting resources.requests/limits for all Core releases uniformly.
+# Empty by default means chart defaults are used (most app charts ship limits=4-8Gi which is over-provisioned for dev).
+# Apply via environment: OPENBKN_CORE_REQ_CPU=200m OPENBKN_CORE_REQ_MEM=512Mi deploy.sh bkn-foundry install
+OPENBKN_CORE_REQ_CPU="${OPENBKN_CORE_REQ_CPU:-}"
+OPENBKN_CORE_REQ_MEM="${OPENBKN_CORE_REQ_MEM:-}"
+OPENBKN_CORE_LIM_CPU="${OPENBKN_CORE_LIM_CPU:-}"
+OPENBKN_CORE_LIM_MEM="${OPENBKN_CORE_LIM_MEM:-}"
+
 # Apply lightweight defaults for single-node k3s (only fills values the user has not set).
 # Called once below so k8s/kubeadm path is untouched.
 bkn_apply_k3s_lightweight_defaults() {
@@ -1256,10 +1265,10 @@ bkn_apply_k3s_lightweight_defaults() {
     : "${OPENSEARCH_MEMORY_LIMIT:=1024Mi}"
     # bkn-core app services (chart defaults: limits=4-8Gi, mostly request=0)
     # Loose ceiling so heavier services (agent-retrieval, ontology-query) still have headroom.
-    : "${KWEAVER_CORE_REQ_CPU:=100m}"
-    : "${KWEAVER_CORE_REQ_MEM:=128Mi}"
-    : "${KWEAVER_CORE_LIM_CPU:=2}"
-    : "${KWEAVER_CORE_LIM_MEM:=2Gi}"
+    : "${OPENBKN_CORE_REQ_CPU:=100m}"
+    : "${OPENBKN_CORE_REQ_MEM:=128Mi}"
+    : "${OPENBKN_CORE_LIM_CPU:=2}"
+    : "${OPENBKN_CORE_LIM_MEM:=2Gi}"
     # ISF (Information Security Fabric) charts (chart defaults: limits 1-8Gi, some unset).
     # Same uniform ceiling as core; auth-heavy services rarely need more in dev.
     : "${KWEAVER_ISF_REQ_CPU:=100m}"
@@ -1268,6 +1277,7 @@ bkn_apply_k3s_lightweight_defaults() {
     : "${KWEAVER_ISF_LIM_MEM:=2Gi}"
     export REDIS_MAXMEMORY REDIS_MEMORY_REQUEST REDIS_MEMORY_LIMIT REDIS_CPU_REQUEST \
            OPENSEARCH_MEMORY_REQUEST OPENSEARCH_MEMORY_LIMIT \
+           OPENBKN_CORE_REQ_CPU OPENBKN_CORE_REQ_MEM OPENBKN_CORE_LIM_CPU OPENBKN_CORE_LIM_MEM \
            KWEAVER_CORE_REQ_CPU KWEAVER_CORE_REQ_MEM KWEAVER_CORE_LIM_CPU KWEAVER_CORE_LIM_MEM \
            KWEAVER_ISF_REQ_CPU KWEAVER_ISF_REQ_MEM KWEAVER_ISF_LIM_CPU KWEAVER_ISF_LIM_MEM
 }

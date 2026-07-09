@@ -538,11 +538,14 @@ setup_dockerhub_mirror() {
     local containerd_config="/etc/containerd/config.toml"
     local certs_d=""
     if [[ -f "${containerd_config}" ]]; then
+        # Parse config_path value, supporting both single and double quotes.
+        # Handles: config_path = '/path', config_path = "/path", config_path = '/path'
         certs_d="$(grep -E '^\s*config_path\s*=' "${containerd_config}" 2>/dev/null \
-            | head -1 | sed -E 's/.*=\s*"?([^"]*)"?\s*$/\1/' | tr -d '[:space:]')"
+            | head -1 | sed -E "s/.*=\s*['\"]?([^'\"]*)['\"]?\s*$/\1/" | tr -d '[:space:]')"
     fi
-    if [[ -z "${certs_d}" ]]; then
-        log_warn "dockerhub-mirror: containerd config_path (certs.d dir) not found in ${containerd_config}; a certs.d config_path is required for the mirror — skipping (set it and re-run, or pass --dockerhub-mirror=off)."
+    # Reject empty string or relative path (must be absolute for certs.d)
+    if [[ -z "${certs_d}" ]] || [[ "${certs_d}" != /* ]]; then
+        log_warn "dockerhub-mirror: containerd config_path (certs.d dir) not found or invalid in ${containerd_config}; a certs.d config_path is required for the mirror — skipping (set it and re-run, or pass --dockerhub-mirror=off)."
         return 0
     fi
 
