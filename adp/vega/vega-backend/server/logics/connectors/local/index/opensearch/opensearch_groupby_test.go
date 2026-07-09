@@ -3,6 +3,9 @@ package opensearch
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"vega-backend/interfaces"
 )
 
@@ -46,15 +49,12 @@ func TestFlattenNestedGroupByRows_TwoDimensions(t *testing.T) {
 	}
 
 	rows := conn.flattenNestedGroupByRows(rootAgg, params, "__value")
-	if len(rows) != 2 {
-		t.Fatalf("expected 2 rows, got %d", len(rows))
-	}
+	require.Len(t, rows, 2)
 
-	if rows[0]["kn_id"] != "yzm_mock_system" || rows[0]["module_type"] != "a" || rows[0]["__value"] != float64(3) {
-		t.Fatalf("unexpected first row: %#v", rows[0])
-	}
-
-	if rows[1]["kn_id"] != "yzm_mock_system" || rows[1]["module_type"] != "b" || rows[1]["__value"] != float64(2) {
-		t.Fatalf("unexpected second row: %#v", rows[1])
-	}
+	assert.Equal(t, "yzm_mock_system", rows[0]["kn_id"])
+	assert.Equal(t, "a", rows[0]["module_type"])
+	assert.Equal(t, float64(3), rows[0]["__value"])
+	assert.Equal(t, "yzm_mock_system", rows[1]["kn_id"])
+	assert.Equal(t, "b", rows[1]["module_type"])
+	assert.Equal(t, float64(2), rows[1]["__value"])
 }

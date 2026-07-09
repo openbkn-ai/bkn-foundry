@@ -91,48 +91,70 @@ func TestFoo(t *testing.T) {
 - DB access 层优先用 `sqlmock`，只验证 SQL 关键结构、参数、扫描和错误分支，不连真实 DB。
 - HTTP 外部 adapter 用 `httptest.Server`，覆盖状态码、超时/请求错误、JSON 解析失败。
 - 不新增真实 Redis/Kafka/OpenSearch/MariaDB 等外部依赖；需要真实中间件的放到 IT，不放 UT。
-- 保留已有 goconvey 测试不强制迁移；新增和大改文件用 testify，逐步收敛。
+- `server` 范围内已有 goconvey 测试已迁移完成；后续新增和大改文件统一使用 `testing + testify`。
 
 注意：仓库根 `rules/TESTING.md` 旧规范仍写 Go assertions 使用 goconvey；本计划按本次需求改为新增 UT 使用 testify。后续如要统一全仓库规范，应单独更新测试规范文档。
 
-## 5. 分阶段补齐计划
+## 5. 大批次补齐计划
 
-### Phase 1：低成本高收益基础覆盖
+后续不再按单个小文件拆 Step，改为按模块域组织 review/commit。每个批次可以包含多个相关包，批内仍保持不改生产逻辑优先；如发现真实 bug，再单独拆修复 commit。
 
-目标：快速拉起基础覆盖，优先纯函数和稳定规则。
+### Batch 1：Connectors 剩余覆盖
 
-- `common/utils.go`：`GiBToBytes`、`GetQueryOrDefault`、`EscapeLikePattern`。
-- `common/visitor`：visitor 生成格式、空值和稳定字段。
-- `errors/*`：错误码、错误对象构造、扩展错误码映射。
-- `driveradapters/validate_*.go`：把缺口补到主要 create/update/list 参数，特别是 resource data、catalog、connector type。
-- `logics/connectors/local/table/{postgresql,mariadb,oracle}`：字段类型映射、条件 SQL、discover schema 解析边界。
+目标：把 connector 注册、基础 proxy、纯转换和本地 connector 边界放在一个批次完成。
+
+范围：
+
+- 已纳入本批次：`logics/connectors/factory`、`logics/connectors/remote`。
+- `logics/connectors/local/fileset/anyshare`：配置校验、元数据、条件/查询构造、错误输入。
+- `logics/connectors/local/index/opensearch`：type mapping、query/dsl/raw query 边界、已有 fulltext/groupby 测试风格统一。
+- `logics/connectors/local/table/{postgresql,mariadb,oracle}`：type mapping 已补；后续补 condition/discover/query 中不依赖真实 DB 的分支。
 
 建议验收：
 
-- 新增测试全部为 testify。
-- `go test ./...` 通过。
-- 纯逻辑包覆盖率显著提升，整体 coverage 目标先到 12%+。
+- `go test ./logics/connectors/...` 通过。
+- `factory`、`remote`、`anyshare` 从 0% 拉起；table/index connector 覆盖继续提升。
+- 可作为一个 commit：`test(vega-backend): add connector unit coverage`。
 
-### Phase 2：service 层业务规则
+### Batch 2：Logics Service 业务规则
 
 目标：覆盖核心 use case 编排，不碰真实外部服务。
+
+范围：
 
 - `logics/connector_type`：create/update/list/delete、enabled 状态、重复/不存在错误。
 - `logics/discover_task`：创建任务、状态更新、进度/结果更新、已存在任务校验。
 - `logics/discover_schedule`：enable/disable、cron next run、调度参数校验。
 - `logics/dataset`：dataset schema、写入/查询委托、错误透传。
 - `logics/auth`、`user_mgmt`：noop 与外部 adapter 选择、错误降级。
-- `logics/resource_data/logic_view`：DSL/SQL 条件组合、非法表达式、空条件、字段映射。
 
 建议验收：
 
 - 每个 service 的成功路径、依赖错误、业务拒绝路径至少各 1 组 case。
-- service 层通过 gomock 验证关键调用参数。
-- `logics/*` 重点包覆盖率目标 45%+。
+- service 层通过 gomock/fake 验证关键调用参数。
+- 可按复杂度拆 1-2 个 commit；优先一个 commit，过大再拆。
 
-### Phase 3：driven adapters 数据访问边界
+### Batch 3：Logic View / Query 转换链路
 
-目标：覆盖 SQL access 层最容易回归的 query 构造和扫描。
+目标：覆盖查询 DSL/SQL 转换和表达式边界。
+
+范围：
+
+- `logics/resource_data/logic_view/{dsl,sql}`：条件组合、非法表达式、空条件、字段映射。
+- `logics/resource_data/logic_view/sql/parsing`：解析器输入边界、错误 SQL、别名/函数/字段提取。
+- `logics/query`、`filter_condition` 现有覆盖补充与 testify 风格收敛。
+
+建议验收：
+
+- 重点覆盖稳定输入输出，避免绑定 parser 生成代码内部细节。
+- `go test ./logics/resource_data/... ./logics/query ./logics/filter_condition` 通过。
+- 可作为一个 commit：`test(vega-backend): cover logic view query conversion`。
+
+### Batch 4：Driven Adapters 数据访问边界
+
+目标：覆盖 SQL access 层最容易回归的 query 构造、扫描和错误分支。
+
+范围：
 
 - `drivenadapters/catalog`：Create/Get/List/Update/Delete、extension join、enabled/health 状态更新。
 - `drivenadapters/resource`：Create/Get/List/Update/Delete、category/status 过滤、auth resource list、discover status。
@@ -142,13 +164,15 @@ func TestFoo(t *testing.T) {
 
 建议验收：
 
-- access 层使用 `sqlmock`，覆盖 `rows.Close`、`sql.ErrNoRows`、扫描错误、exec 失败。
+- access 层使用 `sqlmock`，覆盖 `sql.ErrNoRows`、扫描错误、exec/query 失败。
 - 对动态 SQL 只断言关键片段和参数顺序，避免测试过脆。
-- `drivenadapters` 重点包覆盖率目标 35%+。
+- 预计拆 2 个 commit：小包先行，`catalog/resource` 单独一组。
 
-### Phase 4：外部 adapter 与 worker
+### Batch 5：外部 Adapter 与 Worker
 
 目标：覆盖异步和外部系统边界，不引入真实服务。
+
+范围：
 
 - `drivenadapters/permission`：BKN Safe HTTP 成功/拒绝/错误、shadow mode、filter resources。
 - `drivenadapters/auth`、`user_mgmt`：token 校验、账号查询、外部错误处理。
@@ -159,22 +183,23 @@ func TestFoo(t *testing.T) {
 
 建议验收：
 
-- worker 使用 fake access/service + gomock，不依赖真实 queue。
+- HTTP 外部 adapter 用 `httptest.Server`；worker 使用 fake access/service + gomock，不依赖真实 queue。
 - 状态流转覆盖成功、部分失败、全失败、重复执行。
-- 整体 coverage 目标 25%+，高风险包覆盖 50%+。
+- 预计 1 个 commit；如 worker 体量过大，可单独拆出。
 
 ## 6. 推荐执行顺序
 
-1. 先补 `common`、`errors`、`driveradapters/validate_*`、connector condition/type mapping，建立 testify 写法样板。
-2. 再补 service 层：`connector_type`、`discover_task`、`discover_schedule`、`dataset`。
-3. 然后补 access 层：从 `connector_type`、`discover_task`、`discover_schedule` 开始，小包验证 sqlmock 模式，再扩展到 `catalog/resource` 大包。
-4. 最后补 worker 和 permission/auth/user_mgmt/kafka/asynq 外部边界。
+1. 完成 Batch 1，把当前未提交的 `factory/remote` 与 connectors 剩余 UT 合并为一个 connector commit。
+2. 做 Batch 2 service 层；如果 mock/generate 变更过多，按 service 复杂度拆成两个 commit。
+3. 做 Batch 3 logic view/query 转换链路。
+4. 做 Batch 4 driven adapters；先小 access 包，再 `catalog/resource` 大包。
+5. 做 Batch 5 外部 adapter 与 worker，最后统一跑覆盖率和剩余 0% 包清单。
 
 ## 7. 每轮补测检查清单
 
 - `go test ./...` 必须通过。
 - 新增测试不依赖外部服务、环境变量或固定机器配置。
-- 新增测试文件使用 `testing` + `testify`，除非只是在局部维护旧 goconvey 文件。
+- 新增和大改测试文件统一使用 `testing` + `testify`。
 - 对错误分支使用 `require.Error` + `assert.ErrorContains` 或具体错误码断言。
 - 对 mock 调用只校验业务关键参数，避免把实现细节锁死。
 - 每轮结束更新本文档的覆盖率快照和已完成范围。
@@ -476,4 +501,64 @@ env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cov
 - `go test ./...` 通过。
 - overall statement coverage：**7.6%**。
 - 包覆盖率：`mariadb` 17.9%，`oracle` 8.6%，`postgresql` 9.3%。
+- 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。
+
+### 2026-07-09：Step 12 Connector Factory / Remote 基础覆盖
+
+范围：
+
+- 新增 `logics/connectors/factory/factory_test.go`，使用 fake connector 覆盖本地 connector 初始化、已有本地 connector 注册启停、remote connector 注册、未实现本地 connector 拒绝、remote 删除、本地删除拒绝、missing 删除/启停/创建错误、disabled 创建拒绝、enabled 创建成功、敏感字段读取。
+- 新增 `logics/connectors/remote/remote_connector_test.go`，覆盖 remote connector 元数据、字段配置、enabled setter/getter、`New` 配置传递、生命周期空实现与 metadata stub。
+- 避开 `Init` 单例和全局 `logics.CTA`，不依赖数据库或外部服务。
+- 不改生产逻辑。
+
+验证：
+
+```bash
+cd adp/vega/vega-backend/server
+env GOCACHE=/tmp/go-build-cache go test ./logics/connectors/factory ./logics/connectors/remote
+env GOCACHE=/tmp/go-build-cache go test ./logics/connectors/... -cover
+env GOCACHE=/tmp/go-build-cache go test ./...
+env GOCACHE=/tmp/go-build-cache go test ./... -coverprofile=/tmp/vega-backend-server-cover.out
+env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cover.out
+```
+
+结果：
+
+- `go test ./logics/connectors/factory ./logics/connectors/remote` 通过。
+- `go test ./logics/connectors/... -cover` 通过。
+- `go test ./...` 通过。
+- overall statement coverage：**7.8%**。
+- 包覆盖率：`logics/connectors/factory` 74.3%，`logics/connectors/remote` 34.1%。
+- 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。
+
+### 2026-07-09：Batch 1 Connectors 覆盖补齐
+
+范围：
+
+- 延续 Step 12：`logics/connectors/factory`、`logics/connectors/remote` 已纳入本批次。
+- 新增 `logics/connectors/local/fileset/anyshare/anyshare_test.go`，覆盖 AnyShare connector 元数据、字段配置、`New` 成功与多类配置错误、token/app secret 鉴权、metadata、entry doc lib discovery、file-search 请求组装、sort/output helper、时间/数值 helper、doc lib type 校验。
+- 新增 `logics/connectors/local/index/opensearch/type_mapping_test.go`，覆盖 OpenSearch connector 元数据、字段配置、`New` 配置传递、`MapType`、基础字段 mapping、unsupported feature 错误。
+- 将 `opensearch_fulltext_test.go`、`opensearch_groupby_test.go` 断言风格收敛到 `testing + testify`。
+- AnyShare HTTP 覆盖使用自定义 `RoundTripper`，不启动本地监听、不访问真实服务。
+- 不改生产逻辑。
+
+验证：
+
+```bash
+cd adp/vega/vega-backend/server
+env GOCACHE=/tmp/go-build-cache go test ./logics/connectors/local/fileset/anyshare ./logics/connectors/local/index/opensearch
+env GOCACHE=/tmp/go-build-cache go test ./logics/connectors/... -cover
+env GOCACHE=/tmp/go-build-cache go test ./...
+env GOCACHE=/tmp/go-build-cache go test ./... -coverprofile=/tmp/vega-backend-server-cover.out
+env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cover.out
+```
+
+结果：
+
+- `go test ./logics/connectors/local/fileset/anyshare ./logics/connectors/local/index/opensearch` 通过。
+- `go test ./logics/connectors/... -cover` 通过。
+- `go test ./...` 通过。
+- overall statement coverage：**8.4%**。
+- 包覆盖率：`factory` 74.3%，`remote` 34.1%，`anyshare` 24.2%，`opensearch` 8.7%。
 - 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。
