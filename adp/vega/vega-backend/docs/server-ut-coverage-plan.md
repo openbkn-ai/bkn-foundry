@@ -1,942 +1,171 @@
-# vega-backend/server UT 现状 Review 与补齐计划
+# vega-backend drivenadapters UT 补齐计划
 
 > 日期：2026-07-09  
-> 范围：`adp/vega/vega-backend/server`  
-> 目标：用 Go 原生 `testing` + `testify` 风格补齐单元测试，优先覆盖纯逻辑、参数校验、状态流转、SQL/HTTP adapter 边界，不引入外部服务依赖。
+> 范围：`adp/vega/vega-backend/server/drivenadapters`  
+> 目标：聚焦 driven adapter 层，用 Go 原生 `testing` + `testify` 补齐 UT，并统一既有 UT 风格。
 
-## 1. 当前结论
+## 1. 本轮范围
 
-`server` 目录已有一定 UT 基础，但覆盖集中在 `driveradapters`、`worker`、少量 `logics` 包；大量核心数据访问、配置、错误码、逻辑视图 DSL/SQL、discover schedule/task 仍为 0% 覆盖。
+本轮只处理 `server/drivenadapters`，不继续扩大到 `logics`、`driveradapters`、`worker`、`common`、`errors` 等目录。
 
-本次扫描命令：
+当前 drivenadapters 文件清单：
 
-```bash
-cd adp/vega/vega-backend/server
-env GOCACHE=/tmp/go-build-cache go test ./... -coverprofile=/tmp/vega-backend-server-cover.out
-go tool cover -func=/tmp/vega-backend-server-cover.out
-```
-
-结果：`go test ./...` 通过，整体 statement coverage 为 **7.3%**。执行时出现 `/etc/profile.d/ulimit.sh` 的 ulimit warning，但不影响测试通过。
-
-## 2. 现有 UT 分布
-
-静态统计排除 `interfaces/mock` 生成代码后：
-
-| 指标 | 数量 |
-| --- | ---: |
-| Go 源码文件 | 213 |
-| Go 测试文件 | 42 |
-| 使用 goconvey 的测试文件 | 14 |
-| 使用 testify 的测试文件 | 0 |
-| 使用 gomock 的测试文件 | 22 |
-| 使用 sqlmock 的测试文件 | 1 |
-
-按顶层目录粗略分布：
-
-| 目录 | 源码文件 | 测试文件 | 观察 |
-| --- | ---: | ---: | --- |
-| `driveradapters` | 18 | 13 | 参数校验和部分 handler 已有较多测试 |
-| `worker` | 12 | 7 | build handler/reconciler 有基础，discover/schedule worker 薄 |
-| `logics` | 103 | 19 | catalog/resource/build_task/rate 有基础，很多子包为 0% |
-| `drivenadapters` | 16 | 2 | 只有 build_task order 与 model_factory 覆盖较好 |
-| `common` | 5 | 0 | 配置、工具函数、visitor 未覆盖 |
-| `errors` | 11 | 0 | 错误码和扩展错误未覆盖 |
-| `interfaces` | 45 | 1 | 多数是接口/模型和 mock，低优先级 |
-
-## 3. 包级覆盖现状
-
-已覆盖相对较好的包：
-
-| 包 | 覆盖率 | 备注 |
-| --- | ---: | --- |
-| `drivenadapters/model_factory` | 86.4% | `httptest` 覆盖外部 HTTP 成功/失败路径 |
-| `logics/rate` | 65.5% | 并发限流核心逻辑已覆盖 |
-| `logics/build_task` | 56.0% | 服务与 normalize 有基础 |
-| `logics/catalog` | 47.2% | service 层已有主要路径 |
-| `driveradapters` | 31.5% | list/filter 参数校验较多，动作 handler 仍不足 |
-| `logics/resource` | 32.3% | service、status、logic view SQL 有基础 |
-| `worker` | 23.4% | build 相关较多，discover/schedule 仍缺 |
-
-0% 或接近 0% 的重点包：
-
-| 包/区域 | 当前风险 |
+| 文件 | 说明 |
 | --- | --- |
-| `drivenadapters/catalog`、`resource`、`connector_type`、`discover_task`、`discover_schedule` | SQL 构造、扫描、事务、分页/排序/过滤逻辑几乎无 UT，回归风险高 |
-| `drivenadapters/permission`、`auth`、`user_mgmt`、`kafka`、`asynq` | 外部系统 adapter 缺少 HTTP/client 配置、错误处理、降级路径测试 |
-| `logics/discover_task`、`discover_schedule`、`connector_type`、`dataset`、`auth`、`user_mgmt` | 服务编排和业务规则缺少 mock 驱动测试 |
-| `logics/resource_data/logic_view/{dsl,sql,parsing}` | 查询转换链路缺少表达式组合、错误输入和边界条件测试 |
-| `logics/connectors/local/fileset/anyshare`、`remote`、`factory`、`oracle` | connector 注册、发现、查询/条件转换缺少覆盖 |
-| `common`、`errors`、`locale` | 小函数多，适合低成本补齐基础行为 |
-| `worker/discover_*`、`schedule_worker`、`task_worker_manager` | 异步任务状态流转和调度边界缺少覆盖 |
+| `asynq/asynq_access.go` | Asynq/Redis client option 构造 |
+| `auth/hydra_auth_access.go` | Hydra token 校验 |
+| `kafka/kafka_access.go` | Kafka reader/writer/admin 配置与操作 |
+| `permission/permission_access.go` | 权限访问入口 |
+| `permission/shadow.go` | BKN Safe safe/shadow 权限客户端 |
+| `user_mgmt/user_mgmt_access.go` | 用户账号查询 |
+| `model_factory/model_factory_access.go` | 模型工厂 HTTP adapter |
+| `connector_type/connector_type_access.go` | connector type SQL access |
+| `build_task/build_task_access.go` | build task SQL access |
+| `discover_task/discover_task_access.go` | discover task SQL access |
+| `discover_schedule/discover_schedule_access.go` | discover schedule SQL access |
+| `catalog/catalog_access.go` | catalog SQL access |
+| `catalog/catalog_extension.go` | catalog extension join/attach helper |
+| `resource/resource_access.go` | resource SQL access |
+| `resource/resource_extension.go` | resource extension join/attach helper |
+| `entityextension/store.go` | extension store SQL access/helper |
 
-## 4. 测试风格约定
+## 2. 测试组织规则
 
-后续新增 UT 统一采用 `testing` + `testify`：
+- 一个生产函数对应一个顶层测试函数。
+- 顶层测试函数内部所有场景都用 `t.Run` 包裹。
+- 方法测试命名优先使用 `Test<Type><Method>`，例如 `TestAsynqAccessCreateClient`、`TestPermissionAccessCheckPermission`。
+- 包级函数/helper 测试命名使用 `Test<Function>`，例如 `TestGetRedisClientOpt`、`TestCatalogExtCol`。
+- 如果旧 UT 已经为同一个生产函数拆出多个顶层测试函数，本轮触达时一起合并或调整。
+- 断言使用 `require` 做前置条件和错误 gating，使用 `assert` 做结果校验。
+- SQL access 使用 `sqlmock`；HTTP adapter 使用 fake client 或 `httptest`。
+- 不连接真实 Redis、Kafka、DB、BKN Safe、Hydra。
+- 缺少注入点、必须依赖真实中间件或容易阻塞的函数进入 defer/IT 清单，不为覆盖率写脆弱 UT。
+
+示例：
 
 ```go
-func TestFoo(t *testing.T) {
-	t.Run("returns value when input is valid", func(t *testing.T) {
-		got, err := Foo("bar")
+func TestAsynqAccessCreateClient(t *testing.T) {
+	t.Run("creates client with standalone redis", func(t *testing.T) {
+		// arrange / act / assert
+	})
 
-		require.NoError(t, err)
-		assert.Equal(t, "bar", got)
+	t.Run("creates client with redis cluster", func(t *testing.T) {
+		// arrange / act / assert
 	})
 }
 ```
 
-约定：
+## 3. 当前覆盖快照
 
-- 断言使用 `github.com/stretchr/testify/assert` 和 `github.com/stretchr/testify/require`。
-- 对依赖接口使用现有 `interfaces/mock` 里的 gomock mock；新增接口后同步 `go generate ./...`。
-- DB access 层优先用 `sqlmock`，只验证 SQL 关键结构、参数、扫描和错误分支，不连真实 DB。
-- HTTP 外部 adapter 用 `httptest.Server`，覆盖状态码、超时/请求错误、JSON 解析失败。
-- 不新增真实 Redis/Kafka/OpenSearch/MariaDB 等外部依赖；需要真实中间件的放到 IT，不放 UT。
-- `server` 范围内已有 goconvey 测试已迁移完成；后续新增和大改文件统一使用 `testing + testify`。
-
-注意：仓库根 `rules/TESTING.md` 旧规范仍写 Go assertions 使用 goconvey；本计划按本次需求改为新增 UT 使用 testify。后续如要统一全仓库规范，应单独更新测试规范文档。
-
-## 5. 大批次补齐计划
-
-后续不再按单个小文件拆 Step，改为按模块域组织 review/commit。每个批次可以包含多个相关包，批内仍保持不改生产逻辑优先；如发现真实 bug，再单独拆修复 commit。
-
-### Batch 1：Connectors 剩余覆盖
-
-目标：把 connector 注册、基础 proxy、纯转换和本地 connector 边界放在一个批次完成。
-
-范围：
-
-- 已纳入本批次：`logics/connectors/factory`、`logics/connectors/remote`。
-- `logics/connectors/local/fileset/anyshare`：配置校验、元数据、条件/查询构造、错误输入。
-- `logics/connectors/local/index/opensearch`：type mapping、query/dsl/raw query 边界、已有 fulltext/groupby 测试风格统一。
-- `logics/connectors/local/table/{postgresql,mariadb,oracle}`：type mapping 已补；后续补 condition/discover/query 中不依赖真实 DB 的分支。
-
-建议验收：
-
-- `go test ./logics/connectors/...` 通过。
-- `factory`、`remote`、`anyshare` 从 0% 拉起；table/index connector 覆盖继续提升。
-- 可作为一个 commit：`test(vega-backend): add connector unit coverage`。
-
-### Batch 2：Logics Service 业务规则
-
-目标：覆盖核心 use case 编排，不碰真实外部服务。
-
-范围：
-
-- `logics/connector_type`：create/update/list/delete、enabled 状态、重复/不存在错误。
-- `logics/discover_task`：创建任务、状态更新、进度/结果更新、已存在任务校验。
-- `logics/discover_schedule`：enable/disable、cron next run、调度参数校验。
-- `logics/dataset`：dataset schema、写入/查询委托、错误透传。
-- `logics/auth`、`user_mgmt`：noop 与外部 adapter 选择、错误降级。
-
-建议验收：
-
-- 每个 service 的成功路径、依赖错误、业务拒绝路径至少各 1 组 case。
-- service 层通过 gomock/fake 验证关键调用参数。
-- 可按复杂度拆 1-2 个 commit；优先一个 commit，过大再拆。
-
-### Batch 3：Logic View / Query 转换链路
-
-目标：覆盖查询 DSL/SQL 转换和表达式边界。
-
-范围：
-
-- `logics/resource_data/logic_view/{dsl,sql}`：条件组合、非法表达式、空条件、字段映射。
-- `logics/resource_data/logic_view/sql/parsing`：解析器输入边界、错误 SQL、别名/函数/字段提取。
-- `logics/query`、`filter_condition` 现有覆盖补充与 testify 风格收敛。
-
-建议验收：
-
-- 重点覆盖稳定输入输出，避免绑定 parser 生成代码内部细节。
-- `go test ./logics/resource_data/... ./logics/query ./logics/filter_condition` 通过。
-- 可作为一个 commit：`test(vega-backend): cover logic view query conversion`。
-
-### Batch 4：Driven Adapters 数据访问边界
-
-目标：覆盖 SQL access 层最容易回归的 query 构造、扫描和错误分支。
-
-范围：
-
-- `drivenadapters/catalog`：Create/Get/List/Update/Delete、extension join、enabled/health 状态更新。
-- `drivenadapters/resource`：Create/Get/List/Update/Delete、category/status 过滤、auth resource list、discover status。
-- `drivenadapters/connector_type`：扫描、list filter、enabled 更新。
-- `drivenadapters/discover_task`、`discover_schedule`：分页、排序、状态更新、cron next run。
-- `drivenadapters/entityextension`：Replace/Get/Delete/ApplyJoins/FilterKeys。
-
-建议验收：
-
-- access 层使用 `sqlmock`，覆盖 `sql.ErrNoRows`、扫描错误、exec/query 失败。
-- 对动态 SQL 只断言关键片段和参数顺序，避免测试过脆。
-- 预计拆 2 个 commit：小包先行，`catalog/resource` 单独一组。
-
-### Batch 5：外部 Adapter 与 Worker
-
-目标：覆盖异步和外部系统边界，不引入真实服务。
-
-范围：
-
-- `drivenadapters/permission`：BKN Safe HTTP 成功/拒绝/错误、shadow mode、filter resources。
-- `drivenadapters/auth`、`user_mgmt`：token 校验、账号查询、外部错误处理。
-- `drivenadapters/kafka`、`asynq`：配置转换、client option 生成、空配置和非法配置。
-- `worker/discover_*`：table/fileset/index 发现、reconcile、enrich 状态。
-- `worker/schedule_worker`：start/stop/reload、schedule/unschedule/update、执行失败回写。
-- `worker/task_worker_manager`：任务路由、handler 错误、panic 防护。
-
-建议验收：
-
-- HTTP 外部 adapter 用 `httptest.Server`；worker 使用 fake access/service + gomock，不依赖真实 queue。
-- 状态流转覆盖成功、部分失败、全失败、重复执行。
-- 预计 1 个 commit；如 worker 体量过大，可单独拆出。
-
-## 6. 推荐执行顺序
-
-1. 完成 Batch 1，把当前未提交的 `factory/remote` 与 connectors 剩余 UT 合并为一个 connector commit。
-2. 做 Batch 2 service 层；如果 mock/generate 变更过多，按 service 复杂度拆成两个 commit。
-3. 做 Batch 3 logic view/query 转换链路。
-4. 做 Batch 4 driven adapters；先小 access 包，再 `catalog/resource` 大包。
-5. 做 Batch 5 外部 adapter 与 worker，最后统一跑覆盖率和剩余 0% 包清单。
-
-## 7. 每轮补测检查清单
-
-- `go test ./...` 必须通过。
-- 新增测试不依赖外部服务、环境变量或固定机器配置。
-- 新增和大改测试文件统一使用 `testing` + `testify`。
-- 对错误分支使用 `require.Error` + `assert.ErrorContains` 或具体错误码断言。
-- 对 mock 调用只校验业务关键参数，避免把实现细节锁死。
-- 每轮结束更新本文档的覆盖率快照和已完成范围。
-
-## 8. 执行记录
-
-### 2026-07-09：Step 1 基础纯逻辑样板
-
-范围：
-
-- 新增 `common/utils_test.go`，覆盖 `GiBToBytes`、`GetQueryOrDefault`、`EscapeLikePattern`。
-- 新增 `common/visitor/visitor_test.go`，覆盖 visitor 从 Gin request/header 生成的基础行为。
-- 新增 `errors/error_code_test.go`，覆盖错误码列表非空、无重复，以及 extensions 错误码注册列表完整性。
-- 将 `github.com/stretchr/testify` 提为 `go.mod` 显式依赖，后续新增 UT 统一使用 `testing + testify`。
-
-验证：
-
-```bash
-cd adp/vega/vega-backend/server
-env GOCACHE=/tmp/go-build-cache go test ./common ./common/visitor ./errors
-env GOCACHE=/tmp/go-build-cache go test ./...
-env GOCACHE=/tmp/go-build-cache go test ./... -coverprofile=/tmp/vega-backend-server-cover.out
-env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cover.out
-```
-
-结果：
-
-- `go test ./...` 通过。
-- overall statement coverage：**7.4%**。
-- 包覆盖率变化：`common/visitor` 到 100.0%，`errors` 到 100.0%，`common` 到 6.5%。
-- 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。
-
-### 2026-07-09：Step 2 Catalog / Connector Type Validator
-
-范围：
-
-- 新增 `driveradapters/validate_catalog_test.go`，覆盖 catalog request 的 ID、name、tags、description、connector config duplicate、extensions，以及 list query 的 type、health status、extension filter pair 校验。
-- 新增 `driveradapters/validate_connector_type_test.go`，覆盖 connector type request/list query 的 mode、category、remote endpoint，以及 optional mode/category helper。
-- 本步骤新增测试全部使用 `testing + testify`。
-
-验证：
-
-```bash
-cd adp/vega/vega-backend/server
-env GOCACHE=/tmp/go-build-cache go test ./driveradapters
-env GOCACHE=/tmp/go-build-cache go test ./...
-env GOCACHE=/tmp/go-build-cache go test ./... -coverprofile=/tmp/vega-backend-server-cover.out
-env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cover.out
-```
-
-结果：
-
-- `go test ./driveradapters` 通过。
-- `go test ./...` 通过。
-- overall statement coverage：**7.5%**。
-- 包覆盖率变化：`driveradapters` 从 31.5% 到 32.5%。
-- 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。
-
-### 2026-07-09：Step 3 Discover Validator 风格迁移
-
-范围：
-
-- 将 `driveradapters/validate_discover_task_test.go` 从 goconvey 迁移到 `testing + testify`。
-- 将 `driveradapters/validate_discover_schedule_test.go` 从 goconvey 迁移到 `testing + testify`。
-- 仅调整测试组织和断言风格，不改生产逻辑。
-
-验证：
-
-```bash
-cd adp/vega/vega-backend/server
-env GOCACHE=/tmp/go-build-cache go test ./driveradapters
-env GOCACHE=/tmp/go-build-cache go test ./...
-env GOCACHE=/tmp/go-build-cache go test ./... -coverprofile=/tmp/vega-backend-server-cover.out
-env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cover.out
-```
-
-结果：
-
-- `go test ./driveradapters` 通过。
-- `go test ./...` 通过。
-- overall statement coverage：**7.5%**。
-- 包覆盖率保持：`driveradapters` 32.5%。
-- 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。
-
-### 2026-07-09：Step 4 Build Task Validator 风格迁移
-
-范围：
-
-- 将 `driveradapters/validate_build_task_test.go` 从 goconvey 迁移到 `testing + testify`。
-- 保留原有覆盖语义：`parseBuildTaskStatuses`、`isValidBuildTaskOrderBy`、`parseBuildTaskListParams`。
-- 仅调整测试组织和断言风格，不改生产逻辑。
-
-验证：
-
-```bash
-cd adp/vega/vega-backend/server
-env GOCACHE=/tmp/go-build-cache go test ./driveradapters
-env GOCACHE=/tmp/go-build-cache go test ./...
-env GOCACHE=/tmp/go-build-cache go test ./... -coverprofile=/tmp/vega-backend-server-cover.out
-env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cover.out
-```
-
-结果：
-
-- `go test ./driveradapters` 通过。
-- `go test ./...` 通过。
-- overall statement coverage：**7.5%**。
-- 包覆盖率保持：`driveradapters` 32.5%。
-- 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。
-
-### 2026-07-09：Step 5 基础 Validator 风格迁移
-
-范围：
-
-- 将 `driveradapters/validate_test.go` 从 goconvey 迁移到 `testing + testify`。
-- 保留原有覆盖语义：name/id/tag/description/pagination 校验、catalog/resource request ID 校验、dataset request 与字段级校验、create resource category 校验。
-- 仅调整测试组织和断言风格，不改生产逻辑。
-
-验证：
-
-```bash
-cd adp/vega/vega-backend/server
-env GOCACHE=/tmp/go-build-cache go test ./driveradapters
-env GOCACHE=/tmp/go-build-cache go test ./...
-env GOCACHE=/tmp/go-build-cache go test ./... -coverprofile=/tmp/vega-backend-server-cover.out
-env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cover.out
-```
-
-结果：
-
-- `go test ./driveradapters` 通过。
-- `go test ./...` 通过。
-- overall statement coverage：**7.5%**。
-- 包覆盖率保持：`driveradapters` 32.5%。
-- 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。
-
-### 2026-07-09：Step 6 Resource Handler 风格迁移
-
-范围：
-
-- 将 `driveradapters/resource_handler_test.go` 从 goconvey 迁移到 `testing + testify`。
-- 保留原有覆盖语义：`ListResources` 的 invalid category、invalid status、成功解析 name/category/status 并调用 service。
-- 仅调整测试组织和断言风格，不改生产逻辑。
-
-验证：
-
-```bash
-cd adp/vega/vega-backend/server
-env GOCACHE=/tmp/go-build-cache go test ./driveradapters
-env GOCACHE=/tmp/go-build-cache go test ./...
-env GOCACHE=/tmp/go-build-cache go test ./... -coverprofile=/tmp/vega-backend-server-cover.out
-env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cover.out
-```
-
-结果：
-
-- `go test ./driveradapters` 通过。
-- `go test ./...` 通过。
-- overall statement coverage：**7.5%**。
-- 包覆盖率保持：`driveradapters` 32.5%。
-- 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。
-
-### 2026-07-09：Step 7 小型 Handler 风格迁移
-
-范围：
-
-- 将 `driveradapters/auth_resource_handler_test.go` 从 goconvey 迁移到 `testing + testify`。
-- 将 `driveradapters/discover_task_handler_test.go` 从 goconvey 迁移到 `testing + testify`。
-- 将 `driveradapters/discover_schedule_handler_test.go` 从 goconvey 迁移到 `testing + testify`。
-- 保留原有覆盖语义：列表参数校验、状态码断言、service mock 参数透传断言。
-- 仅调整测试组织和断言风格，不改生产逻辑。
-
-验证：
-
-```bash
-cd adp/vega/vega-backend/server
-env GOCACHE=/tmp/go-build-cache go test ./driveradapters
-env GOCACHE=/tmp/go-build-cache go test ./...
-env GOCACHE=/tmp/go-build-cache go test ./... -coverprofile=/tmp/vega-backend-server-cover.out
-env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cover.out
-```
-
-结果：
-
-- `go test ./driveradapters` 通过。
-- `go test ./...` 通过。
-- overall statement coverage：**7.5%**。
-- 包覆盖率保持：`driveradapters` 32.5%。
-- 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。
-
-### 2026-07-09：Step 8 Build Task / Connector Type Handler 风格迁移
-
-范围：
-
-- 将 `driveradapters/build_task_create_validate_test.go` 从 goconvey 迁移到 `testing + testify`。
-- 将 `driveradapters/build_task_handler_test.go` 从 goconvey 迁移到 `testing + testify`。
-- 将 `driveradapters/connector_type_handler_test.go` 从 goconvey 迁移到 `testing + testify`。
-- 保留原有覆盖语义：build task 列表/删除、embedding field type 校验、connector type 更新/列表参数校验。
-- 仅调整测试组织和断言风格，不改生产逻辑。
-
-验证：
-
-```bash
-cd adp/vega/vega-backend/server
-env GOCACHE=/tmp/go-build-cache go test ./driveradapters
-env GOCACHE=/tmp/go-build-cache go test ./...
-env GOCACHE=/tmp/go-build-cache go test ./... -coverprofile=/tmp/vega-backend-server-cover.out
-env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cover.out
-```
-
-结果：
-
-- `go test ./driveradapters` 通过。
-- `go test ./...` 通过。
-- overall statement coverage：**7.5%**。
-- 包覆盖率保持：`driveradapters` 32.5%。
-- 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。
-
-### 2026-07-09：Step 9 Catalog Handler 风格迁移
-
-范围：
-
-- 将 `driveradapters/catalog_handler_test.go` 从 goconvey 迁移到 `testing + testify`。
-- 保留原有覆盖语义：catalog 列表参数校验、enabled/disabled 动作、update enabled 拒绝、database 配置更新、discover 禁用/逻辑 catalog 拦截。
-- 仅调整测试组织和断言风格，不改生产逻辑。
-- 至此 `driveradapters` 包内 `_test.go` 已无 goconvey / Convey / So 残留。
-
-验证：
-
-```bash
-cd adp/vega/vega-backend/server
-env GOCACHE=/tmp/go-build-cache go test ./driveradapters
-env GOCACHE=/tmp/go-build-cache go test ./...
-env GOCACHE=/tmp/go-build-cache go test ./... -coverprofile=/tmp/vega-backend-server-cover.out
-env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cover.out
-rg -l 'smartystreets/goconvey|Convey\(|So\(' driveradapters --glob '*_test.go'
-```
-
-结果：
-
-- `go test ./driveradapters` 通过。
-- `go test ./...` 通过。
-- overall statement coverage：**7.5%**。
-- 包覆盖率保持：`driveradapters` 32.5%。
-- `driveradapters` goconvey 扫描无残留。
-- 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。
-
-### 2026-07-09：Step 10 Driven Adapters goconvey 清理
-
-范围：
-
-- 将 `drivenadapters/build_task/build_task_order_test.go` 从 goconvey 迁移到 `testing + testify`。
-- 将 `drivenadapters/model_factory/model_factory_access_test.go` 从 goconvey 迁移到 `testing + testify`。
-- 保留原有覆盖语义：build task order clause/status bucket、model factory model lookup/vector API 成功和失败路径。
-- 至此 `adp/vega/vega-backend/server` 范围内 `_test.go` 已无 goconvey / Convey / So 残留。
-
-验证：
-
-```bash
-cd adp/vega/vega-backend/server
-env GOCACHE=/tmp/go-build-cache go test ./drivenadapters/build_task ./drivenadapters/model_factory
-env GOCACHE=/tmp/go-build-cache go test ./...
-env GOCACHE=/tmp/go-build-cache go test ./... -coverprofile=/tmp/vega-backend-server-cover.out
-env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cover.out
-rg -l 'smartystreets/goconvey|Convey\(|So\(' adp/vega/vega-backend/server --glob '*_test.go'
-```
-
-结果：
-
-- `go test ./drivenadapters/build_task ./drivenadapters/model_factory` 通过。
-- `go test ./...` 通过。
-- overall statement coverage：**7.5%**。
-- server goconvey 扫描无残留。
-- 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。
-
-### 2026-07-09：Step 11 Table Connector Type Mapping / Oracle 基础覆盖
-
-范围：
-
-- 新增 `logics/connectors/local/table/oracle/oracle_test.go`，覆盖 Oracle connector 元数据、enabled setter/getter、敏感字段、字段配置、`New` 成功/配置不完整/非法端口/schema 过长、`MapType` 基础映射。
-- 新增 `logics/connectors/local/table/mariadb/type_mapping_test.go`，覆盖 MariaDB type mapping、unsigned、长度后缀裁剪、大小写/空白归一、unknown/empty 类型。
-- 将 `logics/connectors/local/table/postgresql/type_mapping_test.go` 迁移到 `testing + testify` 断言风格，保留原有语义。
-- 不涉及真实数据库连接，不改生产逻辑。
-
-验证：
-
-```bash
-cd adp/vega/vega-backend/server
-env GOCACHE=/tmp/go-build-cache go test ./logics/connectors/local/table/...
-env GOCACHE=/tmp/go-build-cache go test ./logics/connectors/local/table/... -cover
-env GOCACHE=/tmp/go-build-cache go test ./...
-env GOCACHE=/tmp/go-build-cache go test ./... -coverprofile=/tmp/vega-backend-server-cover.out
-env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cover.out
-```
-
-结果：
-
-- `go test ./logics/connectors/local/table/...` 通过。
-- `go test ./...` 通过。
-- overall statement coverage：**7.6%**。
-- 包覆盖率：`mariadb` 17.9%，`oracle` 8.6%，`postgresql` 9.3%。
-- 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。
-
-### 2026-07-09：Step 12 Connector Factory / Remote 基础覆盖
-
-范围：
-
-- 新增 `logics/connectors/factory/factory_test.go`，使用 fake connector 覆盖本地 connector 初始化、已有本地 connector 注册启停、remote connector 注册、未实现本地 connector 拒绝、remote 删除、本地删除拒绝、missing 删除/启停/创建错误、disabled 创建拒绝、enabled 创建成功、敏感字段读取。
-- 新增 `logics/connectors/remote/remote_connector_test.go`，覆盖 remote connector 元数据、字段配置、enabled setter/getter、`New` 配置传递、生命周期空实现与 metadata stub。
-- 避开 `Init` 单例和全局 `logics.CTA`，不依赖数据库或外部服务。
-- 不改生产逻辑。
-
-验证：
-
-```bash
-cd adp/vega/vega-backend/server
-env GOCACHE=/tmp/go-build-cache go test ./logics/connectors/factory ./logics/connectors/remote
-env GOCACHE=/tmp/go-build-cache go test ./logics/connectors/... -cover
-env GOCACHE=/tmp/go-build-cache go test ./...
-env GOCACHE=/tmp/go-build-cache go test ./... -coverprofile=/tmp/vega-backend-server-cover.out
-env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cover.out
-```
-
-结果：
-
-- `go test ./logics/connectors/factory ./logics/connectors/remote` 通过。
-- `go test ./logics/connectors/... -cover` 通过。
-- `go test ./...` 通过。
-- overall statement coverage：**7.8%**。
-- 包覆盖率：`logics/connectors/factory` 74.3%，`logics/connectors/remote` 34.1%。
-- 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。
-
-### 2026-07-09：Batch 1 Connectors 覆盖补齐
-
-范围：
-
-- 延续 Step 12：`logics/connectors/factory`、`logics/connectors/remote` 已纳入本批次。
-- 新增 `logics/connectors/local/fileset/anyshare/anyshare_test.go`，覆盖 AnyShare connector 元数据、字段配置、`New` 成功与多类配置错误、token/app secret 鉴权、metadata、entry doc lib discovery、file-search 请求组装、sort/output helper、时间/数值 helper、doc lib type 校验。
-- 新增 `logics/connectors/local/index/opensearch/type_mapping_test.go`，覆盖 OpenSearch connector 元数据、字段配置、`New` 配置传递、`MapType`、基础字段 mapping、unsupported feature 错误。
-- 将 `opensearch_fulltext_test.go`、`opensearch_groupby_test.go` 断言风格收敛到 `testing + testify`。
-- AnyShare HTTP 覆盖使用自定义 `RoundTripper`，不启动本地监听、不访问真实服务。
-- 不改生产逻辑。
-
-验证：
-
-```bash
-cd adp/vega/vega-backend/server
-env GOCACHE=/tmp/go-build-cache go test ./logics/connectors/local/fileset/anyshare ./logics/connectors/local/index/opensearch
-env GOCACHE=/tmp/go-build-cache go test ./logics/connectors/... -cover
-env GOCACHE=/tmp/go-build-cache go test ./...
-env GOCACHE=/tmp/go-build-cache go test ./... -coverprofile=/tmp/vega-backend-server-cover.out
-env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cover.out
-```
-
-结果：
-
-- `go test ./logics/connectors/local/fileset/anyshare ./logics/connectors/local/index/opensearch` 通过。
-- `go test ./logics/connectors/... -cover` 通过。
-- `go test ./...` 通过。
-- overall statement coverage：**8.4%**。
-- 包覆盖率：`factory` 74.3%，`remote` 34.1%，`anyshare` 24.2%，`opensearch` 8.7%。
-- 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。
-
-### 2026-07-09：Batch 2 Service 业务规则首批
-
-范围：
-
-- 新增 `logics/connector_type/connector_type_service_test.go`，覆盖 connector type 详情权限过滤、列表权限过滤与分页、auth resource 授权过滤与分页、存在性检查、enabled 更新成功与错误包装。
-- 新增 `logics/discover_task/discover_task_service_test.go`，覆盖 task get/list 账号名填充、账号服务错误包装、status/result/existence 委托、delete 去重、running/pending 拒绝、missing 处理、ignore missing、access 错误包装。
-- 新增 `logics/discover_schedule/discover_schedule_service_test.go`，覆盖 schedule create cron 校验与持久化字段、update 字段变更、get/list 账号名填充、enable/disable/delete/update last run 委托、ExecuteSchedule 的缺少 task service、已有 running 跳过、创建 scheduled task 并更新 last run、list 错误透传。
-- 本批先覆盖不依赖真实 asynq/worker/factory 的 service 分支；涉及 factory 注册和真实队列的 create/register/update/delete 深路径后续单独处理。
-- 不改生产逻辑。
-
-验证：
-
-```bash
-cd adp/vega/vega-backend/server
-env GOCACHE=/tmp/go-build-cache go test ./logics/connector_type ./logics/discover_task ./logics/discover_schedule
-env GOCACHE=/tmp/go-build-cache go test ./logics/connector_type ./logics/discover_task ./logics/discover_schedule -cover
-env GOCACHE=/tmp/go-build-cache go test ./...
-env GOCACHE=/tmp/go-build-cache go test ./... -coverprofile=/tmp/vega-backend-server-cover.out
-env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cover.out
-```
-
-结果：
-
-- `go test ./logics/connector_type ./logics/discover_task ./logics/discover_schedule` 通过。
-- `go test ./...` 通过。
-- overall statement coverage：**9.1%**。
-- 包覆盖率：`logics/connector_type` 52.6%，`logics/discover_task` 62.2%，`logics/discover_schedule` 75.2%。
-- 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。
-
-### 2026-07-09：Batch 3 Logic View / Query 转换首批
-
-范围：
-
-- 新增 `logics/resource_data/logic_view/dsl/dsl_test.go`，覆盖 DSL 生成的分页、track total、排序补全/去重、text keyword sort、binary sort 拒绝、单 resource filter、多 resource should、unsupported union type、nil logic definition、filter condition 到 DSL 的 equal/range/and 和 text keyword 缺失错误。
-- 新增 `logics/resource_data/logic_view/sql/sql_test.go`，覆盖 SQL resource/output 节点投影、缺少 output/output input 错误、join/union/sql template 节点构造、参数插值、limit helper、SQLBuilder where/order/limit 插入、sort 构造、SQL filter condition equal/like 转换。
-- 发现现有 resource node filter + dollar placeholder 与 `interpolate(?)` 的兼容限制，本批不改生产逻辑，测试中避免把该路径作为期望成功路径；filter 转换逻辑已单独覆盖。
-- 不触碰 antlr/parser 生成代码。
-
-验证：
-
-```bash
-cd adp/vega/vega-backend/server
-env GOCACHE=/tmp/go-build-cache go test ./logics/resource_data/logic_view/dsl ./logics/resource_data/logic_view/sql
-env GOCACHE=/tmp/go-build-cache go test ./logics/resource_data/logic_view/... -cover
-env GOCACHE=/tmp/go-build-cache go test ./...
-env GOCACHE=/tmp/go-build-cache go test ./... -coverprofile=/tmp/vega-backend-server-cover.out
-env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cover.out
-```
-
-结果：
-
-- `go test ./logics/resource_data/logic_view/dsl ./logics/resource_data/logic_view/sql` 通过。
-- `go test ./logics/resource_data/logic_view/... -cover` 通过。
-- `go test ./...` 通过。
-- overall statement coverage：**10.4%**。
-- 包覆盖率：`logic_view/dsl` 27.2%，`logic_view/sql` 43.6%。
-- 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。
-
-### 2026-07-09：Batch 4 Driven Adapters 小 Access 包
-
-范围：
-
-- 新增 `drivenadapters/connector_type/connector_type_access_test.go`，使用 `sqlmock` 覆盖 GetByType、not found、List 过滤/count/query、ListAuthResources、SetEnabled、Delete 错误路径。
-- 新增 `drivenadapters/discover_task/discover_task_access_test.go`，覆盖 GetByID/result 解析、List 过滤/排序/分页、UpdateStatus running start time、CheckExistByStatuses、Delete rows affected 为 0 时返回 `sql.ErrNoRows`。
-- 新增 `drivenadapters/discover_schedule/discover_schedule_access_test.go`，覆盖 cron next run 计算、GetByID、List 过滤/分页、Disable、UpdateLastRun 先读 schedule 后更新 last/next run。
-- 新增 `drivenadapters/entityextension/store_test.go`，覆盖 Replace 事务整包替换/空 map 删除、DeleteByEntityIDs 空输入与批量删除、GetByEntityID/GetByEntityIDs 结果组装、Catalog/Resource extension join SQL、FilterKeys。
-- SQL 使用 `sqlmock` 固定 squirrel 生成的关键 SQL 与参数；不连接真实数据库。
-- 本批为 access 层小包首批，`catalog/resource` 留到后续大包。
-
-验证：
-
-```bash
-cd adp/vega/vega-backend/server
-env GOCACHE=/tmp/go-build-cache go test ./drivenadapters/connector_type ./drivenadapters/discover_task ./drivenadapters/discover_schedule ./drivenadapters/entityextension
-env GOCACHE=/tmp/go-build-cache go test ./drivenadapters/connector_type ./drivenadapters/discover_task ./drivenadapters/discover_schedule ./drivenadapters/entityextension -cover
-env GOCACHE=/tmp/go-build-cache go test ./...
-env GOCACHE=/tmp/go-build-cache go test ./... -coverprofile=/tmp/vega-backend-server-cover.out
-env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cover.out
-```
-
-结果：
-
-- `go test ./drivenadapters/connector_type ./drivenadapters/discover_task ./drivenadapters/discover_schedule ./drivenadapters/entityextension` 通过。
-- `go test ./...` 通过。
-- overall statement coverage：**11.5%**。
-- 包覆盖率：`drivenadapters/connector_type` 53.5%，`drivenadapters/discover_task` 48.7%，`drivenadapters/discover_schedule` 35.6%，`drivenadapters/entityextension` 82.4%。
-- 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。
-
-### 2026-07-09：Batch 4 Driven Adapters Catalog / Resource Access
-
-范围：
-
-- 新增 `drivenadapters/catalog/catalog_access_test.go`，覆盖 Create JSON/tag 序列化、ListIDs 多过滤与排序、ListAuthResources 排除 internal catalog、UpdateEnabled、UpdateMetadata、UpdateHealthCheckStatus 错误路径，以及 extension helper 列名前缀/排序表达式。
-- 新增 `drivenadapters/resource/resource_access_test.go`，覆盖 Create JSON/tag 序列化、GetByIDsBasic 轻量解析 column_count/row_count、带 extension join 的 ListIDs、ListAuthResources keyword 转义、UpdateStatus、UpdateDiscoverStatus、CheckExistByCategories，以及 extension helper 列名前缀/排序表达式。
-- 本批避开 `GetByID/List` 的 extension 自动加载深路径，避免测试被 `entityextension.NewStore` 单例和第二 DB 连接初始化绑定；extension store 与 join 已在小 access 批次单独覆盖。
-- SQL 使用 `sqlmock` 校验关键 SQL 与参数，不连接真实数据库。
-
-验证：
-
-```bash
-cd adp/vega/vega-backend/server
-env GOCACHE=/tmp/go-build-cache go test ./drivenadapters/catalog ./drivenadapters/resource
-env GOCACHE=/tmp/go-build-cache go test ./drivenadapters/catalog ./drivenadapters/resource -cover
-env GOCACHE=/tmp/go-build-cache go test ./...
-env GOCACHE=/tmp/go-build-cache go test ./... -coverprofile=/tmp/vega-backend-server-cover.out
-env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cover.out
-```
-
-结果：
-
-- `go test ./drivenadapters/catalog ./drivenadapters/resource` 通过。
-- `go test ./...` 通过。
-- overall statement coverage：**12.2%**。
-- 包覆盖率：`drivenadapters/catalog` 24.9%，`drivenadapters/resource` 28.5%。
-- 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果；本地 logger 写 `/opt/vega-backend/logs` 的 read-only warning 不影响测试结果。
-
-### 2026-07-09：Batch 5 External Adapter 首批
-
-范围：
-
-- 新增 `drivenadapters/asynq/asynq_access_test.go`，覆盖 sentinel、master-slave、standalone/cluster/unknown connect type 的 Redis option 生成，不连接真实 Redis。
-- 新增 `drivenadapters/kafka/kafka_access_test.go`，覆盖 broker address、SASL dialer、PLAIN/SCRAM/unknown mechanism、reader/writer option 构造、空消息写入与 nil close 分支，不连接真实 Kafka。
-- 新增 `drivenadapters/user_mgmt/user_mgmt_access_test.go`，用 fake HTTPClient 覆盖 ISF 与 bkn-safe directory 路由、重复账号去重、用户/应用名回填、缺失名称默认值、请求错误、非 200、非法 JSON。
-- 新增 `drivenadapters/permission/permission_access_test.go`，用 fake HTTPClient 覆盖 CheckPermission 成功/空响应/HTTPError、FilterResources、CreateResources、DeleteResources，以及 MaybeShadow 的 ISF/缺少 safe URL 回退。
-- 本批不启动外部服务、不发真实 Redis/Kafka/HTTP 请求。
-
-验证：
-
-```bash
-cd adp/vega/vega-backend/server
-env GOCACHE=/tmp/go-build-cache go test ./drivenadapters/asynq ./drivenadapters/kafka ./drivenadapters/user_mgmt ./drivenadapters/permission
-env GOCACHE=/tmp/go-build-cache go test ./drivenadapters/asynq ./drivenadapters/kafka ./drivenadapters/user_mgmt ./drivenadapters/permission -cover
-env GOCACHE=/tmp/go-build-cache go test ./...
-env GOCACHE=/tmp/go-build-cache go test ./... -coverprofile=/tmp/vega-backend-server-cover.out
-env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cover.out
-```
-
-结果：
-
-- `go test ./drivenadapters/asynq ./drivenadapters/kafka ./drivenadapters/user_mgmt ./drivenadapters/permission` 通过。
-- `go test ./...` 通过。
-- overall statement coverage：**12.7%**。
-- 包覆盖率：`drivenadapters/asynq` 43.8%，`drivenadapters/kafka` 33.3%，`drivenadapters/user_mgmt` 90.2%，`drivenadapters/permission` 35.6%。
-- 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。
-
-### 2026-07-09：Batch 5 Worker 发现与调度首批
-
-范围：
-
-- 新增 `worker/discover_index_test.go`，覆盖 OpenSearch sub-field 到 VEGA feature 的 keyword/fulltext/vector 映射、unsupported sub-field 跳过、index resource 新建、stale 恢复、missing active 标记 stale。
-- 新增 `worker/discover_fileset_test.go`，覆盖 fileset source identifier 选择、新建 fileset resource、missing active 标记 stale、metadata/schema enrich。
-- 新增 `worker/schedule_worker_test.go`，覆盖 schedule/unschedule/重复调度/非法 cron、Start/Reload/Schedule/UpdateSchedule、executeSchedule 的 disabled/future start/expired/enabled 执行分支。
-- `go.mod` 清理已不再使用的 `goconvey` 直接依赖及其间接依赖；`server` 源码内已无 `goconvey` import/`Convey` 用法。
-- 本批不启动真实 asynq/cron worker 长驻循环，不访问外部服务。
-
-验证：
-
-```bash
-cd adp/vega/vega-backend/server
-env GOCACHE=/tmp/go-build-cache go test ./worker
-env GOCACHE=/tmp/go-build-cache go test ./worker -cover
-env GOCACHE=/tmp/go-build-cache go test ./...
-env GOCACHE=/tmp/go-build-cache go test ./... -coverprofile=/tmp/vega-backend-server-cover.out
-env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cover.out
-```
-
-结果：
-
-- `go test ./worker` 通过。
-- `go test ./...` 通过。
-- overall statement coverage：**13.3%**。
-- 包覆盖率：`worker` 37.2%。
-- 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。
-
-### 2026-07-09：Batch 6 Logics 0% 包与纯转换覆盖
-
-范围：
-
-- 新增 `logics/extensions/validate_test.go`，覆盖 entity/property/schema extensions 配额、空 key、key/value 长度、保留前缀、query pair 数量/配对/空值校验。
-- 新增 `logics/dataset/dataset_service_test.go`，使用 `MockLocalIndexManager` 覆盖 dataset index create/update/delete/check exist、document list/create/get/delete/upsert/delete by query 的成功与错误包装。
-- 新增 `logics/auth/auth_service_test.go`，覆盖 noop auth 从 Gin header 生成 visitor，以及 hydra auth service 对 access 的委托和错误透传。
-- 新增 `logics/user_mgmt/user_mgmt_service_test.go`，覆盖 noop 用户名回填、真实 service 对 access 的委托和错误透传。
-- 新增 `logics/local_index/local_index_manager_test.go`，用 fake index connector 覆盖 local index manager 的 index/document 方法转发，以及 DeleteDocumentsByQuery 的 filter condition 编译。
-- 新增 `logics/query/sqlglot/sqlglot_test.go`，覆盖 datasource type 到 sqlglot dialect 的纯映射与 unsupported 错误；不执行外部 Python/sqlglot 进程。
-- 新增 `logics/connectors/local/table/table_connector_test.go`，覆盖 `ScanRows`、`[]byte` 转 string、rows error 分支。
-- 新增 `logics/connectors/local/table/postgresql/postgresql_ident_test.go`，覆盖 PostgreSQL identifier/table/column quote helper。
-- 本批不访问真实外部服务，不连接真实数据库。
-
-验证：
-
-```bash
-cd adp/vega/vega-backend/server
-env GOCACHE=/tmp/go-build-cache go test ./logics/extensions ./logics/dataset ./logics/auth ./logics/user_mgmt ./logics/local_index ./logics/query/sqlglot ./logics/connectors/local/table ./logics/connectors/local/table/postgresql
-env GOCACHE=/tmp/go-build-cache go test ./logics/extensions ./logics/dataset ./logics/auth ./logics/user_mgmt ./logics/local_index ./logics/query/sqlglot ./logics/connectors/local/table ./logics/connectors/local/table/postgresql -cover
-env GOCACHE=/tmp/go-build-cache go test ./...
-env GOCACHE=/tmp/go-build-cache go test ./... -coverprofile=/tmp/vega-backend-server-cover.out
-env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cover.out
-```
-
-结果：
-
-- 目标包 `go test` 通过。
-- `go test ./...` 通过。
-- overall statement coverage：**13.8%**。
-- 包覆盖率：`logics/extensions` 100.0%，`logics/dataset` 72.5%，`logics/auth` 33.3%，`logics/user_mgmt` 50.0%，`logics/local_index` 61.3%，`logics/query/sqlglot` 15.0%，`logics/connectors/local/table` 90.9%，`postgresql` 10.5%。
-- 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。
-
-### 2026-07-09：Batch 7 Permission / Common / 元信息覆盖
-
-范围：
-
-- 改造 `logics/permission/noop_permission_service_test.go` 为 `testing + testify` 风格。
-- 新增 `logics/permission/permission_service_impl_test.go`，用 fake permission access / fake MQ client 覆盖 CheckPermission、CreateResources、DeleteResources、UpdateResource、FilterResources 的账号校验、参数组装、拒绝/错误分支和空输入分支。
-- 新增 `logics/driven_access_test.go`，覆盖 `logics` 包全局 access setter 的依赖注入行为。
-- 新增 `common/setting_test.go` 与 `common/http_client_test.go`，覆盖认证/调试 env 开关、DB/MQ/OpenSearch/Hydra/Permission/UserMgmt/Redis/KafkaConnect/MF 配置转换、DB env override、crypto key 加载、HTTP client singleton。
-- 新增 `drivenadapters/auth/hydra_auth_access_test.go`，用 fake Hydra 覆盖 VerifyToken 委托成功与错误分支。
-- 新增 `locale/locale_test.go` 与 `version/version_test.go`，覆盖 locale 注册不 panic、版本元信息和 audit 默认来源。
-- 本批不读取真实配置文件，不连接真实 Hydra/MQ/DB/Redis/Kafka。
-
-验证：
-
-```bash
-cd adp/vega/vega-backend/server
-env GOCACHE=/tmp/go-build-cache go test ./common ./drivenadapters/auth ./logics ./logics/permission ./version ./locale -cover
-env GOCACHE=/tmp/go-build-cache go test ./...
-env GOCACHE=/tmp/go-build-cache go test ./... -coverprofile=/tmp/vega-backend-server-cover.out
-env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cover.out
-```
-
-结果：
-
-- 目标包 `go test` 通过。
-- `go test ./...` 通过。
-- overall statement coverage：**14.3%**。
-- 包覆盖率：`common` 59.8%，`drivenadapters/auth` 25.0%，`locale` 70.0%，`logics` 41.9%，`logics/permission` 85.9%，`version` 100.0%。
-- 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。
-
-### 2026-07-09：Batch 8 Query / Filter / OpenSearch 条件链路覆盖
-
-范围：
-
-- 新增 `logics/filter_condition/condition_advanced_test.go`，批量覆盖所有 filter condition 的元信息方法，并补充 range/out_range/before/current/between/match/multi_match/knn_vector/and 的成功与错误构造路径。
-- 新增 `logics/query/raw_query_service_internal_test.go`，覆盖 raw query request validation、resource id 提取去重、resource 占位符替换、同 catalog 校验、missing resource/multi catalog/disabled catalog 错误分支。
-- 新增 `logics/connectors/local/index/opensearch/opensearch_condition_test.go`，覆盖 filter condition 到 OpenSearch DSL 的 scalar、bool and/or、fulltext、multi_match、knn_vector 与 keyword suffix 错误分支。
-- 新增 `logics/resource_data/resource_data_service_additional_test.go`，覆盖 sort/output 字段过滤的 aggregation/group by 边界，以及 dataset/logic view 查询委托路径。
-- 本批不连接真实 OpenSearch/DB，不执行外部查询。
-
-验证：
-
-```bash
-cd adp/vega/vega-backend/server
-env GOCACHE=/tmp/go-build-cache go test ./logics/filter_condition ./logics/query ./logics/connectors/local/index/opensearch ./logics/resource_data -cover
-env GOCACHE=/tmp/go-build-cache go test ./...
-env GOCACHE=/tmp/go-build-cache go test ./... -coverprofile=/tmp/vega-backend-server-cover.out
-env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cover.out
-```
-
-结果：
-
-- 目标包 `go test` 通过。
-- `go test ./...` 通过。
-- overall statement coverage：**16.1%**。
-- 包覆盖率：`logics/filter_condition` 62.1%，`logics/query` 31.8%，`logics/connectors/local/index/opensearch` 20.7%，`logics/resource_data` 38.3%。
-- 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。
-
-### 2026-07-09：Batch 9 Build Task Access / Table Query Helper 覆盖
-
-范围：
-
-- 新增 `drivenadapters/build_task/build_task_access_test.go`，用 `sqlmock` 覆盖 build task access 的 scan、Create、GetByID、GetByResourceID、GetByCatalogID、UpdateStatus、GetStatus、List、Delete 成功与错误分支。
-- 新增 `logics/connectors/local/table/mariadb/mariadb_query_helper_test.go`，覆盖 MariaDB HAVING 条件构造、IN 值格式化、calendar interval 到 date_format 的映射、driver 值转换。
-- 新增 `logics/connectors/local/table/postgresql/postgresql_query_helper_test.go`，覆盖 PostgreSQL HAVING 条件构造、IN 值格式化、timestamptz 本地化转换、连接串构造与默认 sslmode。
-- 本批不连接真实数据库。
-
-验证：
-
-```bash
-cd adp/vega/vega-backend/server
-env GOCACHE=/tmp/go-build-cache go test ./drivenadapters/build_task ./logics/connectors/local/table/mariadb ./logics/connectors/local/table/postgresql -cover
-env GOCACHE=/tmp/go-build-cache go test ./...
-env GOCACHE=/tmp/go-build-cache go test ./... -coverprofile=/tmp/vega-backend-server-cover.out
-env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cover.out
-```
-
-结果：
-
-- 目标包 `go test` 通过。
-- `go test ./...` 通过。
-- overall statement coverage：**16.8%**。
-- 包覆盖率：`drivenadapters/build_task` 78.1%，`logics/connectors/local/table/mariadb` 23.4%，`logics/connectors/local/table/postgresql` 16.2%。
-- 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。
-
-### 2026-07-09：Batch 10 Driven Adapters 大批量补充
-
-范围：
-
-- 扩展 `drivenadapters/resource`，覆盖 GetByName、not found、GetByCatalogID、List 过滤/排序、Update 的 SQL 参数与扫描。
-- 扩展 `drivenadapters/discover_task`，覆盖 Create、GetScheduledTaskStrategy、UpdateProgress、UpdateResult，并补齐原有状态/存在性/Delete 分支。
-- 扩展 `drivenadapters/discover_schedule`，覆盖 Create next run、非法 cron、Enable、Update、Delete、GetEnabledSchedules，并补齐原有 Disable/UpdateLastRun 分支。
-- 扩展 `drivenadapters/catalog`，覆盖 List、ListInternalIDs、Update，并保留已有 Create/ListIDs/ListAuthResources/状态更新用例。
-- 扩展 `drivenadapters/connector_type`，覆盖 Create、GetByName、Update、Delete success，并保留已有 Get/List/ListAuthResources/SetEnabled/错误分支。
-- 扩展 `drivenadapters/permission`，覆盖 CheckPermission HTTP client error/非法 body、FilterResources 空响应/HTTPError/非法 body、CreateResources/DeleteResources 非 2xx 错误。
-- 本批仍使用 `sqlmock` / fake HTTP client，不连接真实 DB 或外部服务。
-
-验证：
+最近一次专项命令：
 
 ```bash
 cd adp/vega/vega-backend/server
 env GOCACHE=/tmp/go-build-cache go test ./drivenadapters/... -cover
-env GOCACHE=/tmp/go-build-cache go test ./...
-env GOCACHE=/tmp/go-build-cache go test ./... -coverprofile=/tmp/vega-backend-server-cover.out
-env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cover.out
 ```
 
 结果：
 
-- `go test ./drivenadapters/... -cover` 通过。
-- `go test ./...` 通过。
-- overall statement coverage：**18.0%**。
-- 包覆盖率：`drivenadapters/catalog` 45.3%，`drivenadapters/connector_type` 73.8%，`drivenadapters/discover_schedule` 67.2%，`drivenadapters/discover_task` 68.8%，`drivenadapters/permission` 53.2%，`drivenadapters/resource` 53.7%。
-- 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果；本地 logger 写 `/opt/vega-backend/logs` 的 read-only warning 不影响测试结果。
+| 包 | 覆盖率 |
+| --- | ---: |
+| `drivenadapters/auth` | 100.0% |
+| `drivenadapters/kafka` | 45.7% |
+| `drivenadapters/asynq` | 93.8% |
+| `drivenadapters/catalog` | 45.3% |
+| `drivenadapters/permission` | 90.3% |
+| `drivenadapters/resource` | 53.7% |
+| `drivenadapters/discover_schedule` | 67.2% |
+| `drivenadapters/discover_task` | 68.8% |
+| `drivenadapters/connector_type` | 73.8% |
+| `drivenadapters/build_task` | 78.1% |
+| `drivenadapters/entityextension` | 82.4% |
+| `drivenadapters/model_factory` | 100.0% |
+| `drivenadapters/user_mgmt` | 96.1% |
 
-### 2026-07-09：Batch 11 Logic View Query / Kafka 分支覆盖
+## 4. 文件批次计划
 
-范围：
+### D1：外部系统 Adapter 文件
 
-- 新增 `logics/resource_data/logic_view/sql/sql_condition_additional_test.go`，覆盖 SQL filter condition 的 not equal、field compare、in/not in、not like、contain/not contain、range/out range、null/not null、empty/not empty、prefix/not prefix、regex、true/false、before/current/between、and/or 组合及错误分支。
-- 新增 `logics/resource_data/logic_view/sql/sql_builder_additional_test.go`，覆盖 SQLBuilder 的 AddWheres、已有 WHERE/GROUP/HAVING 插入、子查询 alias 包装、OrderBy/Limit、ApplyParams 的 filter/sort/limit 与 stream skip limit/error 分支。
-- 新增 `logics/resource_data/logic_view/dsl/dsl_additional_test.go`，覆盖 DSL condition 的 not equal、field script、not in、like/not like、contain/not contain、out range、not null、prefix/not prefix、regex、false、between、match_phrase、multi_match、knn_vector、before/current、search_after/PIT helper 与错误分支。
-- 扩展 `drivenadapters/kafka/kafka_access_test.go`，覆盖无认证 reader/writer 构造、reader close、CreateTopic dial error 分支。
-- 本批不连接真实 OpenSearch/DB/Kafka，不执行外部查询。
+文件：
 
-验证：
+- `drivenadapters/asynq/asynq_access.go`
+- `drivenadapters/kafka/kafka_access.go`
+- `drivenadapters/auth/hydra_auth_access.go`
+- `drivenadapters/permission/permission_access.go`
+- `drivenadapters/permission/shadow.go`
+- `drivenadapters/user_mgmt/user_mgmt_access.go`
+- `drivenadapters/model_factory/model_factory_access.go`
 
-```bash
-cd adp/vega/vega-backend/server
-env GOCACHE=/tmp/go-build-cache go test ./logics/resource_data/logic_view/sql ./logics/resource_data/logic_view/dsl ./drivenadapters/kafka -cover
-env GOCACHE=/tmp/go-build-cache go test ./...
-env GOCACHE=/tmp/go-build-cache go test ./... -coverprofile=/tmp/vega-backend-server-cover.out
-env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cover.out
-```
+目标：
 
-结果：
+- 按“一函数一测试函数”整理已有测试。
+- 覆盖配置转换、client option 构造、外部请求错误、非法响应。
+- `asynq` 覆盖 standalone、cluster、sentinel、master-slave、未知 Redis 模式。
+- `kafka` 覆盖 broker 地址、SASL mechanism/dialer、reader/writer 构造、close/write/create topic 错误路径。
+- `auth` 覆盖 token 校验成功、非 2xx、请求失败、响应解析失败。
+- `permission_access.go` 覆盖权限检查、资源创建/删除、资源过滤的成功和错误透传。
+- `shadow.go` 覆盖 safe client、shadow permission、fallback 行为、shadow 不影响主结果。
+- `user_mgmt_access.go` 和 `model_factory_access.go` 已有覆盖较高，重点做风格统一和遗漏分支补齐。
+- `kafka.ReadMessage`、`kafka.CommitMessages` 如缺少 fake 注入点，先进入 defer/IT 清单。
 
-- 目标包 `go test` 通过。
-- `go test ./...` 通过。
-- overall statement coverage：**19.2%**。
-- 包覆盖率：`logics/resource_data/logic_view/sql` 73.3%，`logics/resource_data/logic_view/dsl` 63.5%，`drivenadapters/kafka` 42.0%。
-- 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。
+建议 commit：`test(vega-backend): cover driven external adapters`。
 
-### 2026-07-09：Batch 12 Connector Helper / Config 分支覆盖
+状态：
 
-范围：
+- 已完成：`asynq/asynq_access.go`、`auth/hydra_auth_access.go`、`kafka/kafka_access.go`、`permission/permission_access.go`、`permission/shadow.go`、`user_mgmt/user_mgmt_access.go`、`model_factory/model_factory_access.go` 的测试风格整理和主要分支补齐。
+- 暂缓/IT：`kafka.ReadMessage`、`kafka.CommitMessages` 仍依赖真实 `kafka.Reader` 行为，当前不为覆盖率增加脆弱 UT。
 
-- 新增 `logics/connectors/local/index/opensearch/opensearch_query_helper_test.go`，覆盖 nested terms size、group terms order 递归注入、HAVING bucket selector、IN script 格式化、nested group by flatten、field mapping 的 decimal/vector/geo/text keyword/unsupported feature 分支。
-- 新增 `logics/connectors/local/table/mariadb/mariadb_additional_test.go`，覆盖 MariaDB connector metadata、field config、New 成功/缺失配置/非法端口/超长库名/重复库名、validateDatabases 成功/查询错误/缺失库、Close 分支。
-- 新增 `logics/connectors/local/table/postgresql/postgresql_additional_test.go`，覆盖 PostgreSQL connector metadata、field config、New 成功/缺失配置/非法端口/超长 database/schema/重复 schema、validateSchemas 成功/查询错误/缺失 schema、Close 分支。
-- 新增 `logics/connectors/local/table/oracle/oracle_additional_test.go`，覆盖 Oracle validateSchemas 成功/查询错误/缺失 schema、ListSchemas 排除系统 schema、ListTables schema 过滤/查询错误、Close 分支。
-- 本批使用纯 helper 断言与 `sqlmock`，不连接真实 OpenSearch/MariaDB/PostgreSQL/Oracle。
+### D2：SQL Access 主体文件
 
-验证：
+文件：
 
-```bash
-cd adp/vega/vega-backend/server
-env GOCACHE=/tmp/go-build-cache go test ./logics/connectors/local/index/opensearch ./logics/connectors/local/table/mariadb ./logics/connectors/local/table/postgresql ./logics/connectors/local/table/oracle -cover
-env GOCACHE=/tmp/go-build-cache go test ./...
-env GOCACHE=/tmp/go-build-cache go test ./... -coverprofile=/tmp/vega-backend-server-cover.out
-env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cover.out
-```
+- `drivenadapters/connector_type/connector_type_access.go`
+- `drivenadapters/build_task/build_task_access.go`
+- `drivenadapters/discover_task/discover_task_access.go`
+- `drivenadapters/discover_schedule/discover_schedule_access.go`
+- `drivenadapters/catalog/catalog_access.go`
+- `drivenadapters/resource/resource_access.go`
 
-结果：
+目标：
 
-- 目标包 `go test` 通过。
-- `go test ./...` 通过。
-- overall statement coverage：**19.8%**。
-- 包覆盖率：`logics/connectors/local/index/opensearch` 26.1%，`logics/connectors/local/table/mariadb` 29.2%，`logics/connectors/local/table/postgresql` 21.1%，`logics/connectors/local/table/oracle` 35.9%。
-- 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。
+- 每个文件内按生产函数整理为对应顶层测试函数。
+- 使用 `sqlmock` 覆盖 create/get/list/update/delete/status/enable/disable 等 SQL access 行为。
+- 覆盖成功、`sql.ErrNoRows`、query error、exec error、scan error、分页/排序/filter 参数。
+- 覆盖 catalog/resource 的 auth resource、health/enabled/status、discover status 等主路径。
+- 动态 SQL 只断言关键结构和参数顺序，避免测试过脆。
+
+建议 commit：`test(vega-backend): cover driven sql access adapters`。
+
+### D3：Extension、Store 与收口文件
+
+文件：
+
+- `drivenadapters/catalog/catalog_extension.go`
+- `drivenadapters/resource/resource_extension.go`
+- `drivenadapters/entityextension/store.go`
+
+目标：
+
+- 覆盖 extension join、extension attach、extension sort/filter helper。
+- 覆盖 store create、replace、delete、get、batch get、join helper、filter keys。
+- 整理 extension/store 旧测试，统一成“一函数一测试函数 + t.Run”。
+- 跑 driven 专项覆盖率，输出剩余未覆盖函数。
+- 更新 defer/IT 清单，明确哪些函数因为真实中间件、阻塞读或缺少注入点暂不放 UT。
+
+建议 commit：`test(vega-backend): complete driven adapter test sweep`。
+
+## 5. 执行顺序
+
+1. D1：外部系统 adapter，从当前打开的 `asynq` 继续，合并 `kafka`、`auth`、`permission`、`user_mgmt`、`model_factory`。
+2. D2：SQL access 主体，覆盖 `connector_type`、`build_task`、`discover_task`、`discover_schedule`、`catalog`、`resource`。
+3. D3：extension/store 与收口，覆盖 catalog/resource extension、`entityextension/store.go`，并产出 driven defer/IT 清单。
+
+## 6. 每批检查清单
+
+- 新增测试前先确认是否已有对应 `Test<Function>`。
+- 如果已有对应测试函数，只新增 `t.Run` case，不新增同函数的 sibling 顶层测试。
+- 如果旧 UT 对同一生产函数拆得过散，本轮触达时顺手合并。
+- 开发中优先跑 `go test ./drivenadapters/<pkg> -run Test<Function> -count=1`。
+- 批次结束跑 `go test ./drivenadapters/... -cover`。
+- 必要时再跑 `go test ./...` 做全仓验证。
+- 每批结束更新本文档的覆盖率快照、已完成文件和 defer/IT 清单。

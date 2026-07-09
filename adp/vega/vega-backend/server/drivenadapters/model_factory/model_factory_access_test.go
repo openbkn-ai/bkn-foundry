@@ -45,7 +45,7 @@ func TestNewModelFactoryAccess(t *testing.T) {
 	assert.Equal(t, access1, access2)
 }
 
-func Test_modelFactoryAccess_GetModelByName(t *testing.T) {
+func TestModelFactoryAccessGetModelByName(t *testing.T) {
 	ctx := context.Background()
 	modelName := "test-model"
 
@@ -132,7 +132,7 @@ func Test_modelFactoryAccess_GetModelByName(t *testing.T) {
 	})
 }
 
-func Test_modelFactoryAccess_GetVector(t *testing.T) {
+func TestModelFactoryAccessGetVector(t *testing.T) {
 	ctx := context.Background()
 	model := &interfaces.SmallModel{
 		ModelID:   "model1",
@@ -193,5 +193,44 @@ func Test_modelFactoryAccess_GetVector(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Empty(t, result)
+	})
+
+	t.Run("HTTP request error", func(t *testing.T) {
+		mfa, mockHTTPClient := setup(t)
+		mockHTTPClient.EXPECT().
+			PostNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(0, []byte(""), errors.New("network error"))
+
+		result, err := mfa.GetVector(ctx, model.ModelID, words)
+
+		require.Error(t, err)
+		assert.Nil(t, result)
+		assert.Contains(t, err.Error(), "get vector request failed")
+	})
+
+	t.Run("HTTP status not OK", func(t *testing.T) {
+		mfa, mockHTTPClient := setup(t)
+		mockHTTPClient.EXPECT().
+			PostNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(http.StatusInternalServerError, []byte("internal error"), nil)
+
+		result, err := mfa.GetVector(ctx, model.ModelID, words)
+
+		require.Error(t, err)
+		assert.Nil(t, result)
+		assert.Contains(t, err.Error(), "status code: 500")
+	})
+
+	t.Run("unmarshal response failed", func(t *testing.T) {
+		mfa, mockHTTPClient := setup(t)
+		mockHTTPClient.EXPECT().
+			PostNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(http.StatusOK, []byte("invalid json"), nil)
+
+		result, err := mfa.GetVector(ctx, model.ModelID, words)
+
+		require.Error(t, err)
+		assert.Nil(t, result)
+		assert.Contains(t, err.Error(), "unmarshal vector response failed")
 	})
 }

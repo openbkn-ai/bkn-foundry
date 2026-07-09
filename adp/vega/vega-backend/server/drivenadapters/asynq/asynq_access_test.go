@@ -17,7 +17,49 @@ import (
 	"vega-backend/common"
 )
 
-func TestAsynqAccessGetRedisClientOpt(t *testing.T) {
+func TestNewAsynqAccess(t *testing.T) {
+	t.Run("returns singleton access", func(t *testing.T) {
+		access1 := NewAsynqAccess(newAsynqAppSetting("standalone"))
+		access2 := NewAsynqAccess(newAsynqAppSetting("cluster"))
+
+		require.NotNil(t, access1)
+		assert.Same(t, access1, access2)
+	})
+}
+
+func TestAsynqAccessCreateClient(t *testing.T) {
+	t.Run("creates client", func(t *testing.T) {
+		access := &asynqAccess{appSetting: newAsynqAppSetting("standalone")}
+
+		client := access.CreateClient()
+		t.Cleanup(func() { _ = client.Close() })
+
+		require.NotNil(t, client)
+	})
+}
+
+func TestAsynqAccessCreateInspector(t *testing.T) {
+	t.Run("creates inspector", func(t *testing.T) {
+		access := &asynqAccess{appSetting: newAsynqAppSetting("standalone")}
+
+		inspector := access.CreateInspector()
+		t.Cleanup(func() { _ = inspector.Close() })
+
+		require.NotNil(t, inspector)
+	})
+}
+
+func TestAsynqAccessCreateServer(t *testing.T) {
+	t.Run("creates server", func(t *testing.T) {
+		access := &asynqAccess{appSetting: newAsynqAppSetting("standalone")}
+
+		server := access.CreateServer()
+
+		require.NotNil(t, server)
+	})
+}
+
+func TestGetRedisClientOpt(t *testing.T) {
 	t.Run("sentinel", func(t *testing.T) {
 		access := &asynqAccess{appSetting: &common.AppSetting{RedisSetting: common.RedisSetting{
 			ConnectType:      "sentinel",
@@ -77,4 +119,14 @@ func TestAsynqAccessGetRedisClientOpt(t *testing.T) {
 			assert.Equal(t, "redis.local:6380", opt.Addr)
 		}
 	})
+}
+
+func newAsynqAppSetting(connectType string) *common.AppSetting {
+	return &common.AppSetting{RedisSetting: common.RedisSetting{
+		ConnectType: connectType,
+		Host:        "redis.local",
+		Port:        6379,
+		Username:    "user",
+		Password:    "pass",
+	}}
 }

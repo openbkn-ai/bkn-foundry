@@ -21,23 +21,17 @@ import (
 	"vega-backend/interfaces"
 )
 
-func TestKafkaAccessOptions(t *testing.T) {
-	t.Run("broker address", func(t *testing.T) {
-		access := newKafkaAccess("kafka.local", 9092, libmq.MQAuthSetting{})
+func TestNewKafkaAccess(t *testing.T) {
+	t.Run("returns singleton access", func(t *testing.T) {
+		access1 := NewKafkaAccess(newKafkaAppSetting("kafka-a.local", 9092, libmq.MQAuthSetting{}))
+		access2 := NewKafkaAccess(newKafkaAppSetting("kafka-b.local", 9093, libmq.MQAuthSetting{}))
 
-		assert.Equal(t, "kafka.local:9092", access.getBrokerAddress())
+		require.NotNil(t, access1)
+		assert.Same(t, access1, access2)
 	})
+}
 
-	t.Run("dialer omits sasl without credentials", func(t *testing.T) {
-		access := newKafkaAccess("kafka.local", 9092, libmq.MQAuthSetting{})
-
-		dialer := access.getSASLDialer()
-
-		assert.Equal(t, 10*time.Second, dialer.Timeout)
-		assert.True(t, dialer.DualStack)
-		assert.Nil(t, dialer.SASLMechanism)
-	})
-
+func TestKafkaAccessGetSASLMechanism(t *testing.T) {
 	t.Run("plain sasl", func(t *testing.T) {
 		access := newKafkaAccess("kafka.local", 9092, libmq.MQAuthSetting{
 			Username:  "user",
@@ -50,7 +44,6 @@ func TestKafkaAccessOptions(t *testing.T) {
 
 		require.True(t, ok)
 		assert.Equal(t, "PLAIN", mechanism.Name())
-		assert.NotNil(t, access.getSASLDialer().SASLMechanism)
 	})
 
 	t.Run("scram mechanisms", func(t *testing.T) {
@@ -79,73 +72,144 @@ func TestKafkaAccessOptions(t *testing.T) {
 	})
 }
 
-func TestKafkaAccessReaderWriterConstruction(t *testing.T) {
-	access := newKafkaAccess("kafka.local", 9092, libmq.MQAuthSetting{
-		Username:  "user",
-		Password:  "pass",
-		Mechanism: "PLAIN",
+func TestKafkaAccessGetSASLDialer(t *testing.T) {
+	t.Run("omits sasl without credentials", func(t *testing.T) {
+		access := newKafkaAccess("kafka.local", 9092, libmq.MQAuthSetting{})
+
+		dialer := access.getSASLDialer()
+
+		assert.Equal(t, 10*time.Second, dialer.Timeout)
+		assert.True(t, dialer.DualStack)
+		assert.Nil(t, dialer.SASLMechanism)
 	})
 
-	reader, err := access.NewReader(context.Background(), "topic-a", "group-a")
-	require.NoError(t, err)
-	require.NotNil(t, reader)
+	t.Run("uses sasl with credentials", func(t *testing.T) {
+		access := newKafkaAccess("kafka.local", 9092, libmq.MQAuthSetting{
+			Username:  "user",
+			Password:  "pass",
+			Mechanism: "PLAIN",
+		})
 
-	writer, err := access.NewWriter(context.Background(), "topic-a")
-	require.NoError(t, err)
-	require.NotNil(t, writer)
-	defer access.CloseWriter(writer)
-	assert.Equal(t, "topic-a", writer.Topic)
-	assert.Equal(t, 1, writer.BatchSize)
-	assert.Equal(t, 10*time.Millisecond, writer.BatchTimeout)
-	assert.Equal(t, 10*time.Second, writer.WriteTimeout)
-	assert.Equal(t, 10*time.Second, writer.ReadTimeout)
-	assert.Equal(t, kafka.RequireAll, writer.RequiredAcks)
-	assert.NotNil(t, writer.Transport)
+		dialer := access.getSASLDialer()
+
+		assert.NotNil(t, dialer.SASLMechanism)
+	})
 }
 
-func TestKafkaAccessReaderWriterWithoutAuth(t *testing.T) {
-	access := newKafkaAccess("kafka.local", 9092, libmq.MQAuthSetting{})
+func TestKafkaAccessGetBrokerAddress(t *testing.T) {
+	t.Run("formats host and port", func(t *testing.T) {
+		access := newKafkaAccess("kafka.local", 9092, libmq.MQAuthSetting{})
 
-	reader, err := access.NewReader(context.Background(), "topic-a", "group-a")
-	require.NoError(t, err)
-	require.NotNil(t, reader)
-	access.CloseReader(reader)
-
-	writer, err := access.NewWriter(context.Background(), "topic-a")
-	require.NoError(t, err)
-	require.NotNil(t, writer)
-	defer access.CloseWriter(writer)
-	assert.Nil(t, writer.Transport)
+		assert.Equal(t, "kafka.local:9092", access.getBrokerAddress())
+	})
 }
 
-func TestKafkaAccessEmptyAndNilOperations(t *testing.T) {
-	access := newKafkaAccess("kafka.local", 9092, libmq.MQAuthSetting{})
+func TestKafkaAccessNewReader(t *testing.T) {
+	t.Run("creates reader", func(t *testing.T) {
+		access := newKafkaAccess("kafka.local", 9092, libmq.MQAuthSetting{})
 
-	require.NoError(t, access.WriteMessages(context.Background(), nil))
-	access.CloseReader(nil)
-	access.CloseWriter(nil)
+		reader, err := access.NewReader(context.Background(), "topic-a", "group-a")
+		t.Cleanup(func() { access.CloseReader(reader) })
+
+		require.NoError(t, err)
+		require.NotNil(t, reader)
+	})
 }
 
-func TestKafkaAccessCreateTopicDialError(t *testing.T) {
-	access := newKafkaAccess("127.0.0.1", 1, libmq.MQAuthSetting{})
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
+func TestKafkaAccessCloseReader(t *testing.T) {
+	t.Run("ignores nil reader", func(t *testing.T) {
+		access := newKafkaAccess("kafka.local", 9092, libmq.MQAuthSetting{})
 
-	err := access.CreateTopic(ctx, "topic-a")
+		access.CloseReader(nil)
+	})
 
-	require.Error(t, err)
+	t.Run("closes reader", func(t *testing.T) {
+		access := newKafkaAccess("kafka.local", 9092, libmq.MQAuthSetting{})
+		reader, err := access.NewReader(context.Background(), "topic-a", "group-a")
+		require.NoError(t, err)
+
+		access.CloseReader(reader)
+	})
+}
+
+func TestKafkaAccessNewWriter(t *testing.T) {
+	t.Run("creates writer with sasl", func(t *testing.T) {
+		access := newKafkaAccess("kafka.local", 9092, libmq.MQAuthSetting{
+			Username:  "user",
+			Password:  "pass",
+			Mechanism: "PLAIN",
+		})
+
+		writer, err := access.NewWriter(context.Background(), "topic-a")
+		t.Cleanup(func() { access.CloseWriter(writer) })
+
+		require.NoError(t, err)
+		require.NotNil(t, writer)
+		assert.Equal(t, "topic-a", writer.Topic)
+		assert.Equal(t, 1, writer.BatchSize)
+		assert.Equal(t, 10*time.Millisecond, writer.BatchTimeout)
+		assert.Equal(t, 10*time.Second, writer.WriteTimeout)
+		assert.Equal(t, 10*time.Second, writer.ReadTimeout)
+		assert.Equal(t, kafka.RequireAll, writer.RequiredAcks)
+		assert.NotNil(t, writer.Transport)
+	})
+
+	t.Run("creates writer without auth", func(t *testing.T) {
+		access := newKafkaAccess("kafka.local", 9092, libmq.MQAuthSetting{})
+
+		writer, err := access.NewWriter(context.Background(), "topic-a")
+		t.Cleanup(func() { access.CloseWriter(writer) })
+
+		require.NoError(t, err)
+		require.NotNil(t, writer)
+		assert.Nil(t, writer.Transport)
+	})
+}
+
+func TestKafkaAccessCloseWriter(t *testing.T) {
+	t.Run("ignores nil writer", func(t *testing.T) {
+		access := newKafkaAccess("kafka.local", 9092, libmq.MQAuthSetting{})
+
+		access.CloseWriter(nil)
+	})
+}
+
+func TestKafkaAccessWriteMessages(t *testing.T) {
+	t.Run("skips empty messages", func(t *testing.T) {
+		access := newKafkaAccess("kafka.local", 9092, libmq.MQAuthSetting{})
+
+		require.NoError(t, access.WriteMessages(context.Background(), nil))
+	})
+}
+
+func TestKafkaAccessCreateTopic(t *testing.T) {
+	t.Run("returns dial error", func(t *testing.T) {
+		access := newKafkaAccess("127.0.0.1", 1, libmq.MQAuthSetting{})
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+
+		err := access.CreateTopic(ctx, "topic-a")
+
+		require.Error(t, err)
+	})
 }
 
 func newKafkaAccess(host string, port int, auth libmq.MQAuthSetting) *kafkaAccess {
-	return &kafkaAccess{appSetting: &common.AppSetting{
+	return &kafkaAccess{appSetting: newKafkaAppSetting(host, port, auth)}
+}
+
+func newKafkaAppSetting(host string, port int, auth libmq.MQAuthSetting) *common.AppSetting {
+	return &common.AppSetting{
 		MQSetting: libmq.MQSetting{
 			MQHost: host,
 			MQPort: port,
 			Auth:   auth,
 		},
-	}}
+	}
 }
 
 func TestKafkaConstantsMatchWriterDefaults(t *testing.T) {
-	assert.Equal(t, 20971520, interfaces.MAX_MESSAGE_BYTES)
+	t.Run("max message bytes", func(t *testing.T) {
+		assert.Equal(t, 20971520, interfaces.MAX_MESSAGE_BYTES)
+	})
 }
