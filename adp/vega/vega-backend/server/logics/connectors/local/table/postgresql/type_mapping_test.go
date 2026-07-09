@@ -9,6 +9,8 @@ package postgresql
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+
 	"vega-backend/interfaces"
 )
 
@@ -35,8 +37,8 @@ func TestPostgresqlMapType(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		if got := c.MapType(tc.in); got != tc.want {
-			t.Errorf("MapType(%q) = %q, want %q", tc.in, got, tc.want)
-		}
+		t.Run(tc.in, func(t *testing.T) {
+			assert.Equal(t, tc.want, c.MapType(tc.in))
+		})
 	}
 }

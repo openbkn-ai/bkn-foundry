@@ -14,7 +14,8 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	. "github.com/smartystreets/goconvey/convey"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
 	"vega-backend/common"
@@ -22,175 +23,272 @@ import (
 	vmock "vega-backend/interfaces/mock"
 )
 
+func setupCatalogHandlerTest(t *testing.T) (*gin.Engine, *vmock.MockCatalogService, *vmock.MockDiscoverTaskService) {
+	t.Helper()
+
+	engine := gin.New()
+	engine.Use(gin.Recovery())
+
+	mockCtrl := gomock.NewController(t)
+	t.Cleanup(mockCtrl.Finish)
+
+	cs := vmock.NewMockCatalogService(mockCtrl)
+	dts := vmock.NewMockDiscoverTaskService(mockCtrl)
+	handler := MockNewRestHandler(&common.AppSetting{}, nil, cs, nil, nil, nil, nil, dts, nil, nil, nil)
+	handler.RegisterPublic(engine)
+	return engine, cs, dts
+}
+
+func setupCatalogHandlerWithResourceTest(
+	t *testing.T,
+) (*gin.Engine, *vmock.MockCatalogService, *vmock.MockDiscoverTaskService, *vmock.MockResourceService) {
+	t.Helper()
+
+	engine := gin.New()
+	engine.Use(gin.Recovery())
+
+	mockCtrl := gomock.NewController(t)
+	t.Cleanup(mockCtrl.Finish)
+
+	cs := vmock.NewMockCatalogService(mockCtrl)
+	dts := vmock.NewMockDiscoverTaskService(mockCtrl)
+	rs := vmock.NewMockResourceService(mockCtrl)
+	handler := MockNewRestHandler(&common.AppSetting{}, nil, cs, rs, nil, nil, nil, dts, nil, nil, nil)
+	handler.RegisterPublic(engine)
+	return engine, cs, dts, rs
+}
+
 func Test_CatalogRestHandler_ListCatalogs(t *testing.T) {
-	Convey("Test CatalogHandler ListCatalogs\n", t, func() {
-		test := setGinMode()
-		defer test()
+	restoreGinMode := setGinMode()
+	defer restoreGinMode()
 
-		engine := gin.New()
-		engine.Use(gin.Recovery())
+	const url = "/api/vega-backend/in/v1/catalogs"
 
-		mockCtrl := gomock.NewController(t)
-		defer mockCtrl.Finish()
+	tests := []struct {
+		name     string
+		query    string
+		wantBody string
+	}{
+		{name: "invalid type", query: "?type=unknown", wantBody: "invalid type: unknown"},
+		{name: "invalid health check status", query: "?health_check_status=unknown", wantBody: "invalid health_check_status: unknown"},
+		{name: "invalid enabled", query: "?enabled=maybe", wantBody: "invalid enabled: maybe"},
+		{name: "invalid disabled health check status", query: "?health_check_status=disabled", wantBody: "invalid health_check_status: disabled"},
+	}
 
-		cs := vmock.NewMockCatalogService(mockCtrl)
-		handler := MockNewRestHandler(&common.AppSetting{}, nil, cs, nil, nil, nil, nil, nil, nil, nil, nil)
-		handler.RegisterPublic(engine)
-
-		url := "/api/vega-backend/in/v1/catalogs"
-
-		Convey("Invalid type\n", func() {
-			req := httptest.NewRequest(http.MethodGet, url+"?type=unknown", nil)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			engine, _, _ := setupCatalogHandlerTest(t)
+			req := httptest.NewRequest(http.MethodGet, url+tt.query, nil)
 			w := httptest.NewRecorder()
+
 			engine.ServeHTTP(w, req)
 
-			So(w.Result().StatusCode, ShouldEqual, http.StatusBadRequest)
-			So(w.Body.String(), ShouldContainSubstring, "VegaBackend.Catalog.InvalidParameter.Type")
-			So(w.Body.String(), ShouldContainSubstring, "invalid type: unknown")
+			require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
+			assert.Contains(t, w.Body.String(), "VegaBackend.Catalog.InvalidParameter")
+			assert.Contains(t, w.Body.String(), tt.wantBody)
 		})
+	}
 
-		Convey("Invalid health check status\n", func() {
-			req := httptest.NewRequest(http.MethodGet, url+"?health_check_status=unknown", nil)
-			w := httptest.NewRecorder()
-			engine.ServeHTTP(w, req)
+	t.Run("success list catalogs with name type and health check status", func(t *testing.T) {
+		engine, cs, _ := setupCatalogHandlerTest(t)
+		cs.EXPECT().List(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, params interfaces.CatalogsQueryParams) ([]*interfaces.Catalog, int64, error) {
+				assert.Equal(t, "lake", params.Name)
+				assert.Equal(t, interfaces.CatalogTypePhysical, params.Type)
+				assert.Equal(t, interfaces.CatalogHealthStatusHealthy, params.HealthCheckStatus)
+				return []*interfaces.Catalog{}, int64(0), nil
+			})
 
-			So(w.Result().StatusCode, ShouldEqual, http.StatusBadRequest)
-			So(w.Body.String(), ShouldContainSubstring, "VegaBackend.Catalog.InvalidParameter")
-			So(w.Body.String(), ShouldContainSubstring, "invalid health_check_status: unknown")
-		})
+		req := httptest.NewRequest(http.MethodGet, url+"?name=lake&type=physical&health_check_status=healthy", nil)
+		w := httptest.NewRecorder()
 
-		Convey("Invalid enabled\n", func() {
-			req := httptest.NewRequest(http.MethodGet, url+"?enabled=maybe", nil)
-			w := httptest.NewRecorder()
-			engine.ServeHTTP(w, req)
+		engine.ServeHTTP(w, req)
 
-			So(w.Result().StatusCode, ShouldEqual, http.StatusBadRequest)
-			So(w.Body.String(), ShouldContainSubstring, "invalid enabled: maybe")
-		})
+		require.Equal(t, http.StatusOK, w.Result().StatusCode)
+	})
 
-		Convey("Success list catalogs with name type and health check status\n", func() {
-			cs.EXPECT().List(gomock.Any(), gomock.Any()).
-				DoAndReturn(func(_ context.Context, params interfaces.CatalogsQueryParams) ([]*interfaces.Catalog, int64, error) {
-					So(params.Name, ShouldEqual, "lake")
-					So(params.Type, ShouldEqual, interfaces.CatalogTypePhysical)
-					So(params.HealthCheckStatus, ShouldEqual, interfaces.CatalogHealthStatusHealthy)
-					return []*interfaces.Catalog{}, int64(0), nil
-				})
+	t.Run("success list catalogs with enabled filter", func(t *testing.T) {
+		engine, cs, _ := setupCatalogHandlerTest(t)
+		cs.EXPECT().List(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, params interfaces.CatalogsQueryParams) ([]*interfaces.Catalog, int64, error) {
+				require.NotNil(t, params.Enabled)
+				assert.False(t, *params.Enabled)
+				return []*interfaces.Catalog{}, int64(0), nil
+			})
 
-			req := httptest.NewRequest(http.MethodGet, url+"?name=lake&type=physical&health_check_status=healthy", nil)
-			w := httptest.NewRecorder()
-			engine.ServeHTTP(w, req)
+		req := httptest.NewRequest(http.MethodGet, url+"?enabled=false", nil)
+		w := httptest.NewRecorder()
 
-			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
-		})
+		engine.ServeHTTP(w, req)
 
-		Convey("Success list catalogs with enabled filter\n", func() {
-			cs.EXPECT().List(gomock.Any(), gomock.Any()).
-				DoAndReturn(func(_ context.Context, params interfaces.CatalogsQueryParams) ([]*interfaces.Catalog, int64, error) {
-					So(params.Enabled, ShouldNotBeNil)
-					So(*params.Enabled, ShouldBeFalse)
-					return []*interfaces.Catalog{}, int64(0), nil
-				})
+		require.Equal(t, http.StatusOK, w.Result().StatusCode)
+	})
 
-			req := httptest.NewRequest(http.MethodGet, url+"?enabled=false", nil)
-			w := httptest.NewRecorder()
-			engine.ServeHTTP(w, req)
+	t.Run("success list catalogs with unchecked health check status", func(t *testing.T) {
+		engine, cs, _ := setupCatalogHandlerTest(t)
+		cs.EXPECT().List(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, params interfaces.CatalogsQueryParams) ([]*interfaces.Catalog, int64, error) {
+				assert.Equal(t, interfaces.CatalogHealthStatusUnchecked, params.HealthCheckStatus)
+				return []*interfaces.Catalog{}, int64(0), nil
+			})
 
-			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
-		})
+		req := httptest.NewRequest(http.MethodGet, url+"?health_check_status=unchecked", nil)
+		w := httptest.NewRecorder()
 
-		Convey("Invalid disabled health check status\n", func() {
-			req := httptest.NewRequest(http.MethodGet, url+"?health_check_status=disabled", nil)
-			w := httptest.NewRecorder()
-			engine.ServeHTTP(w, req)
+		engine.ServeHTTP(w, req)
 
-			So(w.Result().StatusCode, ShouldEqual, http.StatusBadRequest)
-			So(w.Body.String(), ShouldContainSubstring, "invalid health_check_status: disabled")
-		})
-
-		Convey("Success list catalogs with unchecked health check status\n", func() {
-			cs.EXPECT().List(gomock.Any(), gomock.Any()).
-				DoAndReturn(func(_ context.Context, params interfaces.CatalogsQueryParams) ([]*interfaces.Catalog, int64, error) {
-					So(params.HealthCheckStatus, ShouldEqual, interfaces.CatalogHealthStatusUnchecked)
-					return []*interfaces.Catalog{}, int64(0), nil
-				})
-
-			req := httptest.NewRequest(http.MethodGet, url+"?health_check_status=unchecked", nil)
-			w := httptest.NewRecorder()
-			engine.ServeHTTP(w, req)
-
-			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
-		})
+		require.Equal(t, http.StatusOK, w.Result().StatusCode)
 	})
 }
 
 func Test_CatalogRestHandler_SetCatalogEnabled(t *testing.T) {
-	Convey("Test CatalogHandler SetCatalogEnabled\n", t, func() {
-		test := setGinMode()
-		defer test()
+	restoreGinMode := setGinMode()
+	defer restoreGinMode()
 
-		engine := gin.New()
-		engine.Use(gin.Recovery())
+	t.Run("enable disabled catalog", func(t *testing.T) {
+		engine, cs, _ := setupCatalogHandlerTest(t)
+		cs.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
+			Return(&interfaces.Catalog{ID: "catalog-1", Name: "catalog", Enabled: false}, nil)
+		cs.EXPECT().SetEnabled(gomock.Any(), gomock.Any(), true).Return(nil)
 
-		mockCtrl := gomock.NewController(t)
-		defer mockCtrl.Finish()
+		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/catalogs/catalog-1/enable", nil)
+		w := httptest.NewRecorder()
 
-		cs := vmock.NewMockCatalogService(mockCtrl)
-		handler := MockNewRestHandler(&common.AppSetting{}, nil, cs, nil, nil, nil, nil, nil, nil, nil, nil)
-		handler.RegisterPublic(engine)
+		engine.ServeHTTP(w, req)
 
-		Convey("Enable disabled catalog\n", func() {
-			cs.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
-				Return(&interfaces.Catalog{ID: "catalog-1", Name: "catalog", Enabled: false}, nil)
-			cs.EXPECT().SetEnabled(gomock.Any(), gomock.Any(), true).Return(nil)
+		require.Equal(t, http.StatusNoContent, w.Result().StatusCode)
+	})
 
-			req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/catalogs/catalog-1/enable", nil)
-			w := httptest.NewRecorder()
-			engine.ServeHTTP(w, req)
+	t.Run("disable enabled catalog", func(t *testing.T) {
+		engine, cs, _ := setupCatalogHandlerTest(t)
+		cs.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
+			Return(&interfaces.Catalog{ID: "catalog-1", Name: "catalog", Enabled: true}, nil)
+		cs.EXPECT().SetEnabled(gomock.Any(), gomock.Any(), false).Return(nil)
 
-			So(w.Result().StatusCode, ShouldEqual, http.StatusNoContent)
-		})
+		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/catalogs/catalog-1/disable", nil)
+		w := httptest.NewRecorder()
 
-		Convey("Disable enabled catalog\n", func() {
-			cs.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
-				Return(&interfaces.Catalog{ID: "catalog-1", Name: "catalog", Enabled: true}, nil)
-			cs.EXPECT().SetEnabled(gomock.Any(), gomock.Any(), false).Return(nil)
+		engine.ServeHTTP(w, req)
 
-			req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/catalogs/catalog-1/disable", nil)
-			w := httptest.NewRecorder()
-			engine.ServeHTTP(w, req)
+		require.Equal(t, http.StatusNoContent, w.Result().StatusCode)
+	})
 
-			So(w.Result().StatusCode, ShouldEqual, http.StatusNoContent)
-		})
+	t.Run("enable already enabled catalog is idempotent", func(t *testing.T) {
+		engine, cs, _ := setupCatalogHandlerTest(t)
+		cs.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
+			Return(&interfaces.Catalog{ID: "catalog-1", Name: "catalog", Enabled: true}, nil)
 
-		Convey("Enable already enabled catalog is idempotent\n", func() {
-			cs.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
-				Return(&interfaces.Catalog{ID: "catalog-1", Name: "catalog", Enabled: true}, nil)
+		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/catalogs/catalog-1/enable", nil)
+		w := httptest.NewRecorder()
 
-			req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/catalogs/catalog-1/enable", nil)
-			w := httptest.NewRecorder()
-			engine.ServeHTTP(w, req)
+		engine.ServeHTTP(w, req)
 
-			So(w.Result().StatusCode, ShouldEqual, http.StatusNoContent)
-		})
+		require.Equal(t, http.StatusNoContent, w.Result().StatusCode)
+	})
+}
+
+func Test_CatalogRestHandler_CreateCatalog(t *testing.T) {
+	restoreGinMode := setGinMode()
+	defer restoreGinMode()
+
+	const url = "/api/vega-backend/in/v1/catalogs"
+	body := `{"id":"catalog-1","name":"catalog","enabled":true,"connector_type":"mariadb","connector_config":{}}`
+
+	t.Run("creates catalog", func(t *testing.T) {
+		engine, cs, _ := setupCatalogHandlerTest(t)
+		cs.EXPECT().CheckExistByName(gomock.Any(), "catalog").Return(false, nil)
+		cs.EXPECT().CheckExistByID(gomock.Any(), "catalog-1").Return(false, nil)
+		cs.EXPECT().Create(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, req *interfaces.CatalogRequest) (string, error) {
+				assert.Equal(t, "catalog", req.Name)
+				return "catalog-1", nil
+			})
+
+		req := httptest.NewRequest(http.MethodPost, url, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusCreated, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), `"id":"catalog-1"`)
+	})
+
+	t.Run("rejects duplicate name", func(t *testing.T) {
+		engine, cs, _ := setupCatalogHandlerTest(t)
+		cs.EXPECT().CheckExistByName(gomock.Any(), "catalog").Return(true, nil)
+
+		req := httptest.NewRequest(http.MethodPost, url, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusConflict, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), "VegaBackend.Catalog.NameExists")
+	})
+
+	t.Run("rejects duplicate id", func(t *testing.T) {
+		engine, cs, _ := setupCatalogHandlerTest(t)
+		cs.EXPECT().CheckExistByName(gomock.Any(), "catalog").Return(false, nil)
+		cs.EXPECT().CheckExistByID(gomock.Any(), "catalog-1").Return(true, nil)
+
+		req := httptest.NewRequest(http.MethodPost, url, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusConflict, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), "VegaBackend.Catalog.IDExists")
+	})
+}
+
+func Test_CatalogRestHandler_GetCatalogs(t *testing.T) {
+	restoreGinMode := setGinMode()
+	defer restoreGinMode()
+
+	const url = "/api/vega-backend/in/v1/catalogs/catalog-1,catalog-2"
+
+	t.Run("gets catalogs by ids", func(t *testing.T) {
+		engine, cs, _ := setupCatalogHandlerTest(t)
+		cs.EXPECT().GetByIDs(gomock.Any(), []string{"catalog-1", "catalog-2"}).
+			Return([]*interfaces.Catalog{
+				{ID: "catalog-1", Name: "one"},
+				{ID: "catalog-2", Name: "two"},
+			}, nil)
+
+		req := httptest.NewRequest(http.MethodGet, url, nil)
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusOK, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), `"id":"catalog-1"`)
+		assert.Contains(t, w.Body.String(), `"id":"catalog-2"`)
+	})
+
+	t.Run("returns not found when any id is missing", func(t *testing.T) {
+		engine, cs, _ := setupCatalogHandlerTest(t)
+		cs.EXPECT().GetByIDs(gomock.Any(), []string{"catalog-1", "catalog-2"}).
+			Return([]*interfaces.Catalog{{ID: "catalog-1", Name: "one"}}, nil)
+
+		req := httptest.NewRequest(http.MethodGet, url, nil)
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusNotFound, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), "id catalog-2 not found")
 	})
 }
 
 func Test_CatalogRestHandler_UpdateRejectsEnabledChange(t *testing.T) {
-	Convey("Test CatalogHandler Update rejects enabled change\n", t, func() {
-		test := setGinMode()
-		defer test()
+	restoreGinMode := setGinMode()
+	defer restoreGinMode()
 
-		engine := gin.New()
-		engine.Use(gin.Recovery())
-
-		mockCtrl := gomock.NewController(t)
-		defer mockCtrl.Finish()
-
-		cs := vmock.NewMockCatalogService(mockCtrl)
-		handler := MockNewRestHandler(&common.AppSetting{}, nil, cs, nil, nil, nil, nil, nil, nil, nil, nil)
-		handler.RegisterPublic(engine)
-
+	t.Run("rejects enabled change through update API", func(t *testing.T) {
+		engine, cs, _ := setupCatalogHandlerTest(t)
 		cs.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
 			Return(&interfaces.Catalog{
 				ID:            "catalog-1",
@@ -204,28 +302,148 @@ func Test_CatalogRestHandler_UpdateRejectsEnabledChange(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPut, "/api/vega-backend/in/v1/catalogs/catalog-1", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
+
 		engine.ServeHTTP(w, req)
 
-		So(w.Result().StatusCode, ShouldEqual, http.StatusConflict)
-		So(w.Body.String(), ShouldContainSubstring, "use POST /catalogs/{id}/enable or /disable to change enabled state")
+		require.Equal(t, http.StatusConflict, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), "use POST /catalogs/{id}/enable or /disable to change enabled state")
+	})
+}
+
+func Test_CatalogRestHandler_DeleteCatalogs(t *testing.T) {
+	restoreGinMode := setGinMode()
+	defer restoreGinMode()
+
+	t.Run("deletes catalogs without active tasks or resources", func(t *testing.T) {
+		engine, cs, dts, rs := setupCatalogHandlerWithResourceTest(t)
+		cs.EXPECT().CheckExistByID(gomock.Any(), "catalog-1").Return(true, nil)
+		dts.EXPECT().CheckExistByStatuses(gomock.Any(), "catalog-1", []string{
+			interfaces.DiscoverTaskStatusPending,
+			interfaces.DiscoverTaskStatusRunning,
+		}).Return(false, nil)
+		rs.EXPECT().CheckExistByCategories(gomock.Any(), "catalog-1", []string{
+			interfaces.ResourceCategoryDataset,
+			interfaces.ResourceCategoryLogicView,
+		}).Return(false, nil)
+		cs.EXPECT().DeleteByIDs(gomock.Any(), []string{"catalog-1"}).Return(nil)
+
+		req := httptest.NewRequest(http.MethodDelete, "/api/vega-backend/in/v1/catalogs/catalog-1", nil)
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusNoContent, w.Result().StatusCode)
+	})
+
+	t.Run("rejects missing catalog", func(t *testing.T) {
+		engine, cs, _, _ := setupCatalogHandlerWithResourceTest(t)
+		cs.EXPECT().CheckExistByID(gomock.Any(), "missing").Return(false, nil)
+
+		req := httptest.NewRequest(http.MethodDelete, "/api/vega-backend/in/v1/catalogs/missing", nil)
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusNotFound, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), "VegaBackend.Catalog.NotFound")
+	})
+
+	t.Run("rejects catalog with active discover tasks", func(t *testing.T) {
+		engine, cs, dts, _ := setupCatalogHandlerWithResourceTest(t)
+		cs.EXPECT().CheckExistByID(gomock.Any(), "catalog-1").Return(true, nil)
+		dts.EXPECT().CheckExistByStatuses(gomock.Any(), "catalog-1", []string{
+			interfaces.DiscoverTaskStatusPending,
+			interfaces.DiscoverTaskStatusRunning,
+		}).Return(true, nil)
+
+		req := httptest.NewRequest(http.MethodDelete, "/api/vega-backend/in/v1/catalogs/catalog-1", nil)
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), "pending or running")
+	})
+}
+
+func Test_CatalogRestHandler_GetCatalogHealthStatus(t *testing.T) {
+	restoreGinMode := setGinMode()
+	defer restoreGinMode()
+
+	t.Run("gets catalog health status", func(t *testing.T) {
+		engine, cs, _ := setupCatalogHandlerTest(t)
+		cs.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
+			Return(&interfaces.Catalog{
+				ID: "catalog-1",
+				CatalogHealthCheckStatus: interfaces.CatalogHealthCheckStatus{
+					HealthCheckStatus: interfaces.CatalogHealthStatusHealthy,
+					LastCheckTime:     123,
+					HealthCheckResult: "ok",
+				},
+			}, nil)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/vega-backend/in/v1/catalogs/catalog-1/health-status", nil)
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusOK, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), `"health_check_status":"healthy"`)
+		assert.Contains(t, w.Body.String(), `"health_check_result":"ok"`)
+	})
+}
+
+func Test_CatalogRestHandler_TestConnection(t *testing.T) {
+	restoreGinMode := setGinMode()
+	defer restoreGinMode()
+
+	t.Run("returns success for healthy status", func(t *testing.T) {
+		engine, cs, _ := setupCatalogHandlerTest(t)
+		catalog := &interfaces.Catalog{ID: "catalog-1", Name: "catalog"}
+		cs.EXPECT().GetByID(gomock.Any(), "catalog-1", false).Return(catalog, nil)
+		cs.EXPECT().TestConnection(gomock.Any(), catalog).
+			Return(&interfaces.CatalogHealthCheckStatus{
+				HealthCheckStatus: interfaces.CatalogHealthStatusHealthy,
+				HealthCheckResult: "ok",
+			}, nil)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/catalogs/catalog-1/test-connection", nil)
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusOK, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), `"success":true`)
+		assert.Contains(t, w.Body.String(), `"message":"ok"`)
+	})
+
+	t.Run("returns false for unhealthy status", func(t *testing.T) {
+		engine, cs, _ := setupCatalogHandlerTest(t)
+		catalog := &interfaces.Catalog{ID: "catalog-1", Name: "catalog"}
+		cs.EXPECT().GetByID(gomock.Any(), "catalog-1", false).Return(catalog, nil)
+		cs.EXPECT().TestConnection(gomock.Any(), catalog).
+			Return(&interfaces.CatalogHealthCheckStatus{
+				HealthCheckStatus: interfaces.CatalogHealthStatusUnhealthy,
+				HealthCheckResult: "failed",
+			}, nil)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/catalogs/catalog-1/test-connection", nil)
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusOK, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), `"success":false`)
+		assert.Contains(t, w.Body.String(), `"message":"failed"`)
 	})
 }
 
 func Test_CatalogRestHandler_UpdateAllowsDatabaseChange(t *testing.T) {
-	Convey("Test CatalogHandler Update allows database change\n", t, func() {
-		test := setGinMode()
-		defer test()
+	restoreGinMode := setGinMode()
+	defer restoreGinMode()
 
-		engine := gin.New()
-		engine.Use(gin.Recovery())
-
-		mockCtrl := gomock.NewController(t)
-		defer mockCtrl.Finish()
-
-		cs := vmock.NewMockCatalogService(mockCtrl)
-		handler := MockNewRestHandler(&common.AppSetting{}, nil, cs, nil, nil, nil, nil, nil, nil, nil, nil)
-		handler.RegisterPublic(engine)
-
+	t.Run("allows database change through update API", func(t *testing.T) {
+		engine, cs, _ := setupCatalogHandlerTest(t)
 		cs.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
 			Return(&interfaces.Catalog{
 				ID:            "catalog-1",
@@ -239,7 +457,7 @@ func Test_CatalogRestHandler_UpdateAllowsDatabaseChange(t *testing.T) {
 			}, nil)
 		cs.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, _ *interfaces.Catalog, req *interfaces.CatalogRequest) error {
-				So(req.ConnectorCfg["database"], ShouldEqual, "db2")
+				assert.Equal(t, "db2", req.ConnectorCfg["database"])
 				return nil
 			})
 
@@ -247,65 +465,48 @@ func Test_CatalogRestHandler_UpdateAllowsDatabaseChange(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPut, "/api/vega-backend/in/v1/catalogs/catalog-1", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
+
 		engine.ServeHTTP(w, req)
 
-		So(w.Result().StatusCode, ShouldEqual, http.StatusNoContent)
+		require.Equal(t, http.StatusNoContent, w.Result().StatusCode)
 	})
 }
 
 func Test_CatalogRestHandler_DiscoverRejectsDisabledCatalog(t *testing.T) {
-	Convey("Test CatalogHandler Discover rejects disabled catalog\n", t, func() {
-		test := setGinMode()
-		defer test()
+	restoreGinMode := setGinMode()
+	defer restoreGinMode()
 
-		engine := gin.New()
-		engine.Use(gin.Recovery())
-
-		mockCtrl := gomock.NewController(t)
-		defer mockCtrl.Finish()
-
-		cs := vmock.NewMockCatalogService(mockCtrl)
-		dts := vmock.NewMockDiscoverTaskService(mockCtrl)
-		handler := MockNewRestHandler(&common.AppSetting{}, nil, cs, nil, nil, nil, nil, dts, nil, nil, nil)
-		handler.RegisterPublic(engine)
-
+	t.Run("rejects disabled catalog", func(t *testing.T) {
+		engine, cs, _ := setupCatalogHandlerTest(t)
 		cs.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
 			Return(&interfaces.Catalog{ID: "catalog-1", Name: "catalog", Enabled: false}, nil)
 
 		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/catalogs/catalog-1/discover", nil)
 		w := httptest.NewRecorder()
+
 		engine.ServeHTTP(w, req)
 
-		So(w.Result().StatusCode, ShouldEqual, http.StatusConflict)
-		So(w.Body.String(), ShouldContainSubstring, "VegaBackend.Catalog.IsDisabled")
+		require.Equal(t, http.StatusConflict, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), "VegaBackend.Catalog.IsDisabled")
 	})
 }
 
 func Test_CatalogRestHandler_DiscoverRejectsLogicalCatalog(t *testing.T) {
-	Convey("Test CatalogHandler Discover rejects logical catalog\n", t, func() {
-		test := setGinMode()
-		defer test()
+	restoreGinMode := setGinMode()
+	defer restoreGinMode()
 
-		engine := gin.New()
-		engine.Use(gin.Recovery())
-
-		mockCtrl := gomock.NewController(t)
-		defer mockCtrl.Finish()
-
-		cs := vmock.NewMockCatalogService(mockCtrl)
-		dts := vmock.NewMockDiscoverTaskService(mockCtrl)
-		handler := MockNewRestHandler(&common.AppSetting{}, nil, cs, nil, nil, nil, nil, dts, nil, nil, nil)
-		handler.RegisterPublic(engine)
-
+	t.Run("rejects logical catalog", func(t *testing.T) {
+		engine, cs, _ := setupCatalogHandlerTest(t)
 		cs.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
 			Return(&interfaces.Catalog{ID: "catalog-1", Name: "catalog", Type: interfaces.CatalogTypeLogical, Enabled: true}, nil)
 
 		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/catalogs/catalog-1/discover", nil)
 		w := httptest.NewRecorder()
+
 		engine.ServeHTTP(w, req)
 
-		So(w.Result().StatusCode, ShouldEqual, http.StatusBadRequest)
-		So(w.Body.String(), ShouldContainSubstring, "VegaBackend.Catalog.InvalidParameter.Type")
-		So(w.Body.String(), ShouldContainSubstring, "discover only supports physical catalogs")
+		require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), "VegaBackend.Catalog.InvalidParameter.Type")
+		assert.Contains(t, w.Body.String(), "discover only supports physical catalogs")
 	})
 }

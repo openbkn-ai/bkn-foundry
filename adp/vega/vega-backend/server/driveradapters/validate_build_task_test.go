@@ -13,7 +13,8 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	. "github.com/smartystreets/goconvey/convey"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"vega-backend/interfaces"
 )
@@ -28,108 +29,159 @@ func newListCtx(query string) *gin.Context {
 }
 
 func Test_parseBuildTaskStatuses(t *testing.T) {
-	Convey("parseBuildTaskStatuses\n", t, func() {
-		ctx := context.Background()
+	ctx := context.Background()
 
-		Convey("single valid\n", func() {
-			ss, err := parseBuildTaskStatuses(ctx, "running")
-			So(err, ShouldBeNil)
-			So(ss, ShouldResemble, []string{"running"})
-		})
+	tests := []struct {
+		name    string
+		raw     string
+		want    []string
+		wantErr bool
+	}{
+		{
+			name: "single valid",
+			raw:  "running",
+			want: []string{"running"},
+		},
+		{
+			name: "multi valid with spaces",
+			raw:  "running, init",
+			want: []string{"running", "init"},
+		},
+		{
+			name:    "one invalid value returns error",
+			raw:     "running,unknown",
+			wantErr: true,
+		},
+		{
+			name: "only empty segments returns empty slice",
+			raw:  ", , ",
+			want: []string{},
+		},
+	}
 
-		Convey("multi valid with spaces\n", func() {
-			ss, err := parseBuildTaskStatuses(ctx, "running, init")
-			So(err, ShouldBeNil)
-			So(ss, ShouldResemble, []string{"running", "init"})
-		})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseBuildTaskStatuses(ctx, tt.raw)
 
-		Convey("one invalid value -> error\n", func() {
-			_, err := parseBuildTaskStatuses(ctx, "running,unknown")
-			So(err, ShouldNotBeNil)
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
 		})
-
-		Convey("only empty segments -> empty slice\n", func() {
-			ss, err := parseBuildTaskStatuses(ctx, ", , ")
-			So(err, ShouldBeNil)
-			So(len(ss), ShouldEqual, 0)
-		})
-	})
+	}
 }
 
 func Test_isValidBuildTaskOrderBy(t *testing.T) {
-	Convey("isValidBuildTaskOrderBy\n", t, func() {
-		So(isValidBuildTaskOrderBy(interfaces.BuildTaskOrderByDefault), ShouldBeTrue)
-		So(isValidBuildTaskOrderBy(interfaces.BuildTaskOrderByCreatedAt), ShouldBeTrue)
-		So(isValidBuildTaskOrderBy(interfaces.BuildTaskOrderByUpdatedAt), ShouldBeTrue)
-		So(isValidBuildTaskOrderBy(interfaces.BuildTaskOrderByStatus), ShouldBeTrue)
-		So(isValidBuildTaskOrderBy(interfaces.BuildTaskOrderByMode), ShouldBeTrue)
-		So(isValidBuildTaskOrderBy("progress"), ShouldBeFalse)
-		So(isValidBuildTaskOrderBy(""), ShouldBeFalse)
-	})
+	tests := []struct {
+		orderBy string
+		want    bool
+	}{
+		{orderBy: interfaces.BuildTaskOrderByDefault, want: true},
+		{orderBy: interfaces.BuildTaskOrderByCreatedAt, want: true},
+		{orderBy: interfaces.BuildTaskOrderByUpdatedAt, want: true},
+		{orderBy: interfaces.BuildTaskOrderByStatus, want: true},
+		{orderBy: interfaces.BuildTaskOrderByMode, want: true},
+		{orderBy: "progress", want: false},
+		{orderBy: "", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.orderBy, func(t *testing.T) {
+			assert.Equal(t, tt.want, isValidBuildTaskOrderBy(tt.orderBy))
+		})
+	}
 }
 
 func Test_parseBuildTaskListParams(t *testing.T) {
-	Convey("parseBuildTaskListParams\n", t, func() {
-		ctx := context.Background()
+	ctx := context.Background()
 
-		Convey("defaults when no query\n", func() {
-			p, err := parseBuildTaskListParams(ctx, newListCtx(""))
-			So(err, ShouldBeNil)
-			So(p.Offset, ShouldEqual, 0)
-			So(p.Limit, ShouldEqual, 20)
-			So(p.OrderBy, ShouldEqual, interfaces.BuildTaskOrderByDefault)
-			So(p.Order, ShouldEqual, interfaces.DESC_DIRECTION)
-			So(len(p.Statuses), ShouldEqual, 0)
-		})
+	tests := []struct {
+		name    string
+		query   string
+		assert  func(t *testing.T, got interfaces.BuildTasksQueryParams)
+		wantErr bool
+	}{
+		{
+			name:  "defaults when no query",
+			query: "",
+			assert: func(t *testing.T, got interfaces.BuildTasksQueryParams) {
+				assert.Equal(t, 0, got.Offset)
+				assert.Equal(t, 20, got.Limit)
+				assert.Equal(t, interfaces.BuildTaskOrderByDefault, got.OrderBy)
+				assert.Equal(t, interfaces.DESC_DIRECTION, got.Order)
+				assert.Empty(t, got.Statuses)
+			},
+		},
+		{
+			name:  "active true overrides status with running and init",
+			query: "active=true&status=completed",
+			assert: func(t *testing.T, got interfaces.BuildTasksQueryParams) {
+				assert.Equal(t, []string{interfaces.BuildTaskStatusRunning, interfaces.BuildTaskStatusInit}, got.Statuses)
+			},
+		},
+		{
+			name:  "multi-value status",
+			query: "status=running,init",
+			assert: func(t *testing.T, got interfaces.BuildTasksQueryParams) {
+				assert.Equal(t, []string{"running", "init"}, got.Statuses)
+			},
+		},
+		{
+			name:  "order by and order honored",
+			query: "order_by=created_at&order=asc",
+			assert: func(t *testing.T, got interfaces.BuildTasksQueryParams) {
+				assert.Equal(t, interfaces.BuildTaskOrderByCreatedAt, got.OrderBy)
+				assert.Equal(t, interfaces.ASC_DIRECTION, got.Order)
+			},
+		},
+		{
+			name:    "invalid order by returns error",
+			query:   "order_by=bogus",
+			wantErr: true,
+		},
+		{
+			name:    "invalid order returns error",
+			query:   "order=sideways",
+			wantErr: true,
+		},
+		{
+			name:    "invalid status returns error",
+			query:   "status=running,nope",
+			wantErr: true,
+		},
+		{
+			name:    "invalid mode returns error",
+			query:   "mode=nope",
+			wantErr: true,
+		},
+		{
+			name:    "negative offset returns error",
+			query:   "offset=-1",
+			wantErr: true,
+		},
+		{
+			name:  "limit no-limit allowed",
+			query: "limit=-1",
+			assert: func(t *testing.T, got interfaces.BuildTasksQueryParams) {
+				assert.Equal(t, -1, got.Limit)
+			},
+		},
+	}
 
-		Convey("active=true -> running+init, overrides status\n", func() {
-			p, err := parseBuildTaskListParams(ctx, newListCtx("active=true&status=completed"))
-			So(err, ShouldBeNil)
-			So(p.Statuses, ShouldResemble, []string{interfaces.BuildTaskStatusRunning, interfaces.BuildTaskStatusInit})
-		})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseBuildTaskListParams(ctx, newListCtx(tt.query))
 
-		Convey("multi-value status\n", func() {
-			p, err := parseBuildTaskListParams(ctx, newListCtx("status=running,init"))
-			So(err, ShouldBeNil)
-			So(p.Statuses, ShouldResemble, []string{"running", "init"})
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			if tt.assert != nil {
+				tt.assert(t, got)
+			}
 		})
-
-		Convey("order_by + order honored\n", func() {
-			p, err := parseBuildTaskListParams(ctx, newListCtx("order_by=created_at&order=asc"))
-			So(err, ShouldBeNil)
-			So(p.OrderBy, ShouldEqual, interfaces.BuildTaskOrderByCreatedAt)
-			So(p.Order, ShouldEqual, interfaces.ASC_DIRECTION)
-		})
-
-		Convey("invalid order_by -> error\n", func() {
-			_, err := parseBuildTaskListParams(ctx, newListCtx("order_by=bogus"))
-			So(err, ShouldNotBeNil)
-		})
-
-		Convey("invalid order -> error\n", func() {
-			_, err := parseBuildTaskListParams(ctx, newListCtx("order=sideways"))
-			So(err, ShouldNotBeNil)
-		})
-
-		Convey("invalid status -> error\n", func() {
-			_, err := parseBuildTaskListParams(ctx, newListCtx("status=running,nope"))
-			So(err, ShouldNotBeNil)
-		})
-
-		Convey("invalid mode -> error\n", func() {
-			_, err := parseBuildTaskListParams(ctx, newListCtx("mode=nope"))
-			So(err, ShouldNotBeNil)
-		})
-
-		Convey("negative offset -> error\n", func() {
-			_, err := parseBuildTaskListParams(ctx, newListCtx("offset=-1"))
-			So(err, ShouldNotBeNil)
-		})
-
-		Convey("limit=-1 (no-limit) allowed\n", func() {
-			p, err := parseBuildTaskListParams(ctx, newListCtx("limit=-1"))
-			So(err, ShouldBeNil)
-			So(p.Limit, ShouldEqual, -1)
-		})
-	})
+	}
 }

@@ -10,92 +10,111 @@ import (
 	"context"
 	"testing"
 
-	. "github.com/smartystreets/goconvey/convey"
+	"github.com/stretchr/testify/require"
 
 	"vega-backend/interfaces"
 )
 
 func Test_ValidateDiscoverScheduleRequest(t *testing.T) {
-	Convey("Test ValidateDiscoverScheduleRequest\n", t, func() {
-		validReq := func() *interfaces.DiscoverScheduleRequest {
-			return &interfaces.DiscoverScheduleRequest{
-				Name:      "schedule-1",
-				CatalogID: "catalog-1",
-				CronExpr:  "*/5 * * * *",
-				StartTime: 1000,
-				EndTime:   2000,
-				Strategy:  interfaces.DiscoverStrategyFullSync,
-			}
+	validReq := func() *interfaces.DiscoverScheduleRequest {
+		return &interfaces.DiscoverScheduleRequest{
+			Name:      "schedule-1",
+			CatalogID: "catalog-1",
+			CronExpr:  "*/5 * * * *",
+			StartTime: 1000,
+			EndTime:   2000,
+			Strategy:  interfaces.DiscoverStrategyFullSync,
 		}
+	}
 
-		Convey("Valid request\n", func() {
-			err := ValidateDiscoverScheduleRequest(context.Background(), validReq())
-			So(err, ShouldBeNil)
-		})
+	tests := []struct {
+		name    string
+		mutate  func(*interfaces.DiscoverScheduleRequest)
+		wantErr bool
+	}{
+		{
+			name: "valid request",
+		},
+		{
+			name: "missing name",
+			mutate: func(req *interfaces.DiscoverScheduleRequest) {
+				req.Name = ""
+			},
+			wantErr: true,
+		},
+		{
+			name: "missing catalog ID",
+			mutate: func(req *interfaces.DiscoverScheduleRequest) {
+				req.CatalogID = ""
+			},
+			wantErr: true,
+		},
+		{
+			name: "missing cron expression",
+			mutate: func(req *interfaces.DiscoverScheduleRequest) {
+				req.CronExpr = ""
+			},
+			wantErr: true,
+		},
+		{
+			name: "invalid cron expression",
+			mutate: func(req *interfaces.DiscoverScheduleRequest) {
+				req.CronExpr = "invalid"
+			},
+			wantErr: true,
+		},
+		{
+			name: "invalid strategy",
+			mutate: func(req *interfaces.DiscoverScheduleRequest) {
+				req.Strategy = "unknown"
+			},
+			wantErr: true,
+		},
+		{
+			name: "invalid time range",
+			mutate: func(req *interfaces.DiscoverScheduleRequest) {
+				req.StartTime = 2000
+				req.EndTime = 1000
+			},
+			wantErr: true,
+		},
+		{
+			name: "valid time range without end time",
+			mutate: func(req *interfaces.DiscoverScheduleRequest) {
+				req.StartTime = 0
+				req.EndTime = 0
+			},
+		},
+		{
+			name: "negative start time",
+			mutate: func(req *interfaces.DiscoverScheduleRequest) {
+				req.StartTime = -1
+			},
+			wantErr: true,
+		},
+		{
+			name: "negative end time",
+			mutate: func(req *interfaces.DiscoverScheduleRequest) {
+				req.EndTime = -1
+			},
+			wantErr: true,
+		},
+	}
 
-		Convey("Missing name\n", func() {
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			req := validReq()
-			req.Name = ""
-			err := ValidateDiscoverScheduleRequest(context.Background(), req)
-			So(err, ShouldNotBeNil)
-		})
+			if tt.mutate != nil {
+				tt.mutate(req)
+			}
 
-		Convey("Missing catalog ID\n", func() {
-			req := validReq()
-			req.CatalogID = ""
 			err := ValidateDiscoverScheduleRequest(context.Background(), req)
-			So(err, ShouldNotBeNil)
-		})
 
-		Convey("Missing cron expression\n", func() {
-			req := validReq()
-			req.CronExpr = ""
-			err := ValidateDiscoverScheduleRequest(context.Background(), req)
-			So(err, ShouldNotBeNil)
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
 		})
-
-		Convey("Invalid cron expression\n", func() {
-			req := validReq()
-			req.CronExpr = "invalid"
-			err := ValidateDiscoverScheduleRequest(context.Background(), req)
-			So(err, ShouldNotBeNil)
-		})
-
-		Convey("Invalid strategy\n", func() {
-			req := validReq()
-			req.Strategy = "unknown"
-			err := ValidateDiscoverScheduleRequest(context.Background(), req)
-			So(err, ShouldNotBeNil)
-		})
-
-		Convey("Invalid time range\n", func() {
-			req := validReq()
-			req.StartTime = 2000
-			req.EndTime = 1000
-			err := ValidateDiscoverScheduleRequest(context.Background(), req)
-			So(err, ShouldNotBeNil)
-		})
-
-		Convey("Valid time range without end time\n", func() {
-			req := validReq()
-			req.StartTime = 0
-			req.EndTime = 0
-			err := ValidateDiscoverScheduleRequest(context.Background(), req)
-			So(err, ShouldBeNil)
-		})
-
-		Convey("Negative start time\n", func() {
-			req := validReq()
-			req.StartTime = -1
-			err := ValidateDiscoverScheduleRequest(context.Background(), req)
-			So(err, ShouldNotBeNil)
-		})
-
-		Convey("Negative end time\n", func() {
-			req := validReq()
-			req.EndTime = -1
-			err := ValidateDiscoverScheduleRequest(context.Background(), req)
-			So(err, ShouldNotBeNil)
-		})
-	})
+	}
 }
