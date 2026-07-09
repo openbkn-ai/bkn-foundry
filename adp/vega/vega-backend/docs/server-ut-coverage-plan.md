@@ -769,3 +769,33 @@ env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cov
 - overall statement coverage：**13.8%**。
 - 包覆盖率：`logics/extensions` 100.0%，`logics/dataset` 72.5%，`logics/auth` 33.3%，`logics/user_mgmt` 50.0%，`logics/local_index` 61.3%，`logics/query/sqlglot` 15.0%，`logics/connectors/local/table` 90.9%，`postgresql` 10.5%。
 - 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。
+
+### 2026-07-09：Batch 7 Permission / Common / 元信息覆盖
+
+范围：
+
+- 改造 `logics/permission/noop_permission_service_test.go` 为 `testing + testify` 风格。
+- 新增 `logics/permission/permission_service_impl_test.go`，用 fake permission access / fake MQ client 覆盖 CheckPermission、CreateResources、DeleteResources、UpdateResource、FilterResources 的账号校验、参数组装、拒绝/错误分支和空输入分支。
+- 新增 `logics/driven_access_test.go`，覆盖 `logics` 包全局 access setter 的依赖注入行为。
+- 新增 `common/setting_test.go` 与 `common/http_client_test.go`，覆盖认证/调试 env 开关、DB/MQ/OpenSearch/Hydra/Permission/UserMgmt/Redis/KafkaConnect/MF 配置转换、DB env override、crypto key 加载、HTTP client singleton。
+- 新增 `drivenadapters/auth/hydra_auth_access_test.go`，用 fake Hydra 覆盖 VerifyToken 委托成功与错误分支。
+- 新增 `locale/locale_test.go` 与 `version/version_test.go`，覆盖 locale 注册不 panic、版本元信息和 audit 默认来源。
+- 本批不读取真实配置文件，不连接真实 Hydra/MQ/DB/Redis/Kafka。
+
+验证：
+
+```bash
+cd adp/vega/vega-backend/server
+env GOCACHE=/tmp/go-build-cache go test ./common ./drivenadapters/auth ./logics ./logics/permission ./version ./locale -cover
+env GOCACHE=/tmp/go-build-cache go test ./...
+env GOCACHE=/tmp/go-build-cache go test ./... -coverprofile=/tmp/vega-backend-server-cover.out
+env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cover.out
+```
+
+结果：
+
+- 目标包 `go test` 通过。
+- `go test ./...` 通过。
+- overall statement coverage：**14.3%**。
+- 包覆盖率：`common` 59.8%，`drivenadapters/auth` 25.0%，`locale` 70.0%，`logics` 41.9%，`logics/permission` 85.9%，`version` 100.0%。
+- 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。

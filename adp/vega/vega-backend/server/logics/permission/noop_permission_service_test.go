@@ -10,6 +10,9 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"vega-backend/interfaces"
 )
 
@@ -19,9 +22,7 @@ func TestNoopPermission_CheckPermission(t *testing.T) {
 		Type: "catalog",
 		ID:   "all",
 	}, []string{"create"})
-	if err != nil {
-		t.Fatalf("noop should always return nil, got: %v", err)
-	}
+	require.NoError(t, err)
 }
 
 func TestNoopPermission_CreateResources(t *testing.T) {
@@ -29,17 +30,13 @@ func TestNoopPermission_CreateResources(t *testing.T) {
 	err := svc.CreateResources(context.Background(), []interfaces.PermissionResource{
 		{ID: "r1", Type: "catalog", Name: "test"},
 	}, []string{"view", "modify"})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, err)
 }
 
 func TestNoopPermission_DeleteResources(t *testing.T) {
 	svc := NewNoopPermissionService(nil)
 	err := svc.DeleteResources(context.Background(), "catalog", []string{"r1", "r2"})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, err)
 }
 
 func TestNoopPermission_FilterResources(t *testing.T) {
@@ -49,24 +46,13 @@ func TestNoopPermission_FilterResources(t *testing.T) {
 
 	result, err := svc.FilterResources(context.Background(), "catalog",
 		ids, ops, true, interfaces.COMMON_OPERATIONS)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(result) != 3 {
-		t.Errorf("expected 3 results, got %d", len(result))
-	}
+	require.NoError(t, err)
+	require.Len(t, result, 3)
 	for _, id := range ids {
 		r, ok := result[id]
-		if !ok {
-			t.Errorf("expected result for id '%s'", id)
-			continue
-		}
-		if r.ResourceID != id {
-			t.Errorf("expected ResourceID '%s', got '%s'", id, r.ResourceID)
-		}
-		if len(r.Operations) != len(interfaces.COMMON_OPERATIONS) {
-			t.Errorf("expected %d operations, got %d", len(interfaces.COMMON_OPERATIONS), len(r.Operations))
-		}
+		require.True(t, ok)
+		assert.Equal(t, id, r.ResourceID)
+		assert.Equal(t, interfaces.COMMON_OPERATIONS, r.Operations)
 	}
 }
 
@@ -77,7 +63,5 @@ func TestNoopPermission_UpdateResource(t *testing.T) {
 		Type: "catalog",
 		Name: "updated",
 	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, err)
 }
