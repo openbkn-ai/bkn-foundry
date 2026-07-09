@@ -68,19 +68,19 @@ env GOCACHE=/tmp/go-build-cache go test ./drivenadapters/... -cover
 
 | 包 | 覆盖率 |
 | --- | ---: |
-| `drivenadapters/auth` | 100.0% |
-| `drivenadapters/kafka` | 45.7% |
-| `drivenadapters/asynq` | 93.8% |
-| `drivenadapters/catalog` | 45.3% |
-| `drivenadapters/permission` | 90.3% |
-| `drivenadapters/resource` | 53.7% |
+| `drivenadapters/auth` | 25.0% |
+| `drivenadapters/kafka` | 53.1% |
+| `drivenadapters/asynq` | 75.0% |
+| `drivenadapters/catalog` | 74.4% |
+| `drivenadapters/permission` | 88.9% |
+| `drivenadapters/resource` | 79.4% |
 | `drivenadapters/discover_schedule` | 70.4% |
 | `drivenadapters/discover_task` | 72.0% |
 | `drivenadapters/connector_type` | 75.9% |
 | `drivenadapters/build_task` | 78.1% |
 | `drivenadapters/entityextension` | 82.4% |
-| `drivenadapters/model_factory` | 100.0% |
-| `drivenadapters/user_mgmt` | 96.1% |
+| `drivenadapters/model_factory` | 93.2% |
+| `drivenadapters/user_mgmt` | 90.2% |
 
 ## 4. 文件批次计划
 
@@ -113,7 +113,7 @@ env GOCACHE=/tmp/go-build-cache go test ./drivenadapters/... -cover
 状态：
 
 - 已完成：`asynq/asynq_access.go`、`auth/hydra_auth_access.go`、`kafka/kafka_access.go`、`permission/permission_access.go`、`permission/shadow.go`、`user_mgmt/user_mgmt_access.go`、`model_factory/model_factory_access.go` 的测试风格整理和主要分支补齐。
-- 暂缓/IT：`kafka.ReadMessage`、`kafka.CommitMessages` 仍依赖真实 `kafka.Reader` 行为，当前不为覆盖率增加脆弱 UT。
+- 已完成：`kafka.ReadMessage`、`kafka.CommitMessages` 成功和错误分支；测试侧通过 `gomonkey` patch `*kafka.Reader` 方法，不连接真实 Kafka。
 
 ### D2：SQL Access 主体文件
 
@@ -159,6 +159,18 @@ env GOCACHE=/tmp/go-build-cache go test ./drivenadapters/... -cover
 - 更新 defer/IT 清单，明确哪些函数因为真实中间件、阻塞读或缺少注入点暂不放 UT。
 
 建议 commit：`test(vega-backend): complete driven adapter test sweep`。
+
+状态：
+
+- 已完成：`entityextension/store.go` 现有测试按“一函数一测试函数 + t.Run”整理；`ApplyJoinsForCatalog` / `ApplyJoinsForResource` 已拆成独立测试。
+- 已完成：`catalog_extension.go`、`resource_extension.go` 的 column/order/join helper 已拆成独立测试函数；attach helper 覆盖了空列表、关闭 include extensions、nil 单实体等不触 DB 分支。
+- 已完成：`catalog_access.go` 补充 `GetByID`、`GetByIDs`、`AttachListExtensions`、`GetByName`、`DeleteByIDs` 的可隔离分支，包括 not found、query error、scan error、空 ID、关闭 include extensions 等路径。
+- 已完成：`resource_access.go` 补充 `GetByID`、`GetByIDs`、`AttachListExtensions`、`DeleteByIDs`、`DeleteByCatalogIDs` 的可隔离分支，包括 not found、query error、scan error、空 ID、关闭 include extensions 等路径。
+- 已完成：`catalog_access.go`、`resource_access.go` 的 extension attach 成功分支、store error 分支，以及 catalog/resource 非空删除分支；测试侧通过 `gomonkey` patch `entityextension.NewStore` 和 `Store` 方法，不连接真实 DB。
+- 已完成：`kafka.ReadMessage`、`kafka.CommitMessages` 成功和错误分支；测试侧通过 `gomonkey` patch `*kafka.Reader` 方法，不连接真实 Kafka。
+- 已删除：纯构造函数测试用例不纳入本轮补齐范围，包括 `New*Access`、`NewStore` 这类 singleton/DB 初始化入口。
+- 全量复扫：`drivenadapters` 现有顶层 `Test...` 均包含 `t.Run`。
+- 剩余 0%：仅保留构造函数类入口，包括 `NewAsynqAccess`、`NewHydraAuthAccess`、`NewBuildTaskAccess`、`NewCatalogAccess`、`NewConnectorTypeAccess`、`NewDiscoverScheduleAccess`、`NewDiscoverTaskAccess`、`NewStore`、`NewKafkaAccess`、`NewModelFactoryAccess`、`NewPermissionAccess`、`NewResourceAccess`、`NewUserMgmtAccess`。
 
 ## 5. 执行顺序
 

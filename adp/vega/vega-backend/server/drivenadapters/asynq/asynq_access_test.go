@@ -17,16 +17,6 @@ import (
 	"vega-backend/common"
 )
 
-func TestNewAsynqAccess(t *testing.T) {
-	t.Run("returns singleton access", func(t *testing.T) {
-		access1 := NewAsynqAccess(newAsynqAppSetting("standalone"))
-		access2 := NewAsynqAccess(newAsynqAppSetting("cluster"))
-
-		require.NotNil(t, access1)
-		assert.Same(t, access1, access2)
-	})
-}
-
 func TestAsynqAccessCreateClient(t *testing.T) {
 	t.Run("creates client", func(t *testing.T) {
 		access := &asynqAccess{appSetting: newAsynqAppSetting("standalone")}

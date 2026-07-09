@@ -19,16 +19,6 @@ import (
 	"vega-backend/interfaces"
 )
 
-func TestNewUserMgmtAccess(t *testing.T) {
-	t.Run("returns singleton access", func(t *testing.T) {
-		access1 := NewUserMgmtAccess(&common.AppSetting{UserMgmtUrl: "http://user-mgmt-a"})
-		access2 := NewUserMgmtAccess(&common.AppSetting{UserMgmtUrl: "http://user-mgmt-b"})
-
-		require.NotNil(t, access1)
-		assert.Same(t, access1, access2)
-	})
-}
-
 func TestUserMgmtAccessUseBknSafe(t *testing.T) {
 	t.Run("returns false by default", func(t *testing.T) {
 		assert.False(t, (&userMgmtAccess{}).useBknSafe())

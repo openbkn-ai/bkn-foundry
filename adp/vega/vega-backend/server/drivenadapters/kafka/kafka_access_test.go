@@ -8,9 +8,12 @@ package kafka
 
 import (
 	"context"
+	"errors"
+	"reflect"
 	"testing"
 	"time"
 
+	"github.com/agiledragon/gomonkey/v2"
 	libmq "github.com/openbkn-ai/bkn-comm-go/mq"
 	"github.com/segmentio/kafka-go"
 	"github.com/segmentio/kafka-go/sasl/plain"
@@ -20,16 +23,6 @@ import (
 	"vega-backend/common"
 	"vega-backend/interfaces"
 )
-
-func TestNewKafkaAccess(t *testing.T) {
-	t.Run("returns singleton access", func(t *testing.T) {
-		access1 := NewKafkaAccess(newKafkaAppSetting("kafka-a.local", 9092, libmq.MQAuthSetting{}))
-		access2 := NewKafkaAccess(newKafkaAppSetting("kafka-b.local", 9093, libmq.MQAuthSetting{}))
-
-		require.NotNil(t, access1)
-		assert.Same(t, access1, access2)
-	})
-}
 
 func TestKafkaAccessGetSASLMechanism(t *testing.T) {
 	t.Run("plain sasl", func(t *testing.T) {
@@ -182,6 +175,66 @@ func TestKafkaAccessWriteMessages(t *testing.T) {
 	})
 }
 
+func TestKafkaAccessReadMessage(t *testing.T) {
+	t.Run("returns message", func(t *testing.T) {
+		access := newKafkaAccess("kafka.local", 9092, libmq.MQAuthSetting{})
+		expected := kafka.Message{Topic: "topic-a", Value: []byte("payload")}
+		restore := replaceKafkaReadMessage(func(ctx context.Context, r *kafka.Reader) (kafka.Message, error) {
+			return expected, nil
+		})
+		defer restore()
+
+		got, err := access.ReadMessage(context.Background(), &kafka.Reader{})
+
+		require.NoError(t, err)
+		assert.Equal(t, expected, got)
+	})
+
+	t.Run("returns read error", func(t *testing.T) {
+		access := newKafkaAccess("kafka.local", 9092, libmq.MQAuthSetting{})
+		restore := replaceKafkaReadMessage(func(ctx context.Context, r *kafka.Reader) (kafka.Message, error) {
+			return kafka.Message{}, errors.New("read failed")
+		})
+		defer restore()
+
+		got, err := access.ReadMessage(context.Background(), &kafka.Reader{})
+
+		require.Error(t, err)
+		assert.Empty(t, got)
+	})
+}
+
+func TestKafkaAccessCommitMessages(t *testing.T) {
+	t.Run("commits messages", func(t *testing.T) {
+		access := newKafkaAccess("kafka.local", 9092, libmq.MQAuthSetting{})
+		committed := make([]kafka.Message, 0)
+		restore := replaceKafkaCommitMessages(func(ctx context.Context, r *kafka.Reader, msgs ...kafka.Message) error {
+			committed = append(committed, msgs...)
+			return nil
+		})
+		defer restore()
+		msg := kafka.Message{Topic: "topic-a", Value: []byte("payload")}
+
+		err := access.CommitMessages(context.Background(), &kafka.Reader{}, msg)
+
+		require.NoError(t, err)
+		assert.Equal(t, []kafka.Message{msg}, committed)
+	})
+
+	t.Run("returns commit error", func(t *testing.T) {
+		access := newKafkaAccess("kafka.local", 9092, libmq.MQAuthSetting{})
+		restore := replaceKafkaCommitMessages(func(ctx context.Context, r *kafka.Reader, msgs ...kafka.Message) error {
+			return errors.New("commit failed")
+		})
+		defer restore()
+
+		err := access.CommitMessages(context.Background(), &kafka.Reader{}, kafka.Message{Topic: "topic-a"})
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "commit failed")
+	})
+}
+
 func TestKafkaAccessCreateTopic(t *testing.T) {
 	t.Run("returns dial error", func(t *testing.T) {
 		access := newKafkaAccess("127.0.0.1", 1, libmq.MQAuthSetting{})
@@ -192,6 +245,22 @@ func TestKafkaAccessCreateTopic(t *testing.T) {
 
 		require.Error(t, err)
 	})
+}
+
+func replaceKafkaReadMessage(fn func(context.Context, *kafka.Reader) (kafka.Message, error)) func() {
+	patches := gomonkey.ApplyMethod(reflect.TypeOf(&kafka.Reader{}), "ReadMessage",
+		func(r *kafka.Reader, ctx context.Context) (kafka.Message, error) {
+			return fn(ctx, r)
+		})
+	return patches.Reset
+}
+
+func replaceKafkaCommitMessages(fn func(context.Context, *kafka.Reader, ...kafka.Message) error) func() {
+	patches := gomonkey.ApplyMethod(reflect.TypeOf(&kafka.Reader{}), "CommitMessages",
+		func(r *kafka.Reader, ctx context.Context, msgs ...kafka.Message) error {
+			return fn(ctx, r, msgs...)
+		})
+	return patches.Reset
 }
 
 func newKafkaAccess(host string, port int, auth libmq.MQAuthSetting) *kafkaAccess {

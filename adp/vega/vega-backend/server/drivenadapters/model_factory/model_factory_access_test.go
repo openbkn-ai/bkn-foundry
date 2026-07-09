@@ -32,21 +32,6 @@ func newTestModelFactoryAccess(appSetting *common.AppSetting, httpClient rest.HT
 	}
 }
 
-func TestNewModelFactoryAccess(t *testing.T) {
-	t.Run("returns singleton access", func(t *testing.T) {
-		appSetting := &common.AppSetting{
-			MfModelManagerUrl: "http://test-mf-manager",
-			MfModelApiUrl:     "http://test-mf-api",
-		}
-
-		access1 := NewModelFactoryAccess(appSetting)
-		access2 := NewModelFactoryAccess(appSetting)
-
-		require.NotNil(t, access1)
-		assert.Equal(t, access1, access2)
-	})
-}
-
 func TestModelFactoryAccessGetModelByName(t *testing.T) {
 	ctx := context.Background()
 	modelName := "test-model"

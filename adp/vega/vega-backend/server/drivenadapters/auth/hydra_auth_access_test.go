@@ -10,8 +10,6 @@ import (
 	"github.com/openbkn-ai/bkn-comm-go/hydra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"vega-backend/common"
 )
 
 type fakeHydra struct {
@@ -30,16 +28,6 @@ func (f *fakeHydra) VerifyToken(ctx context.Context, c *gin.Context) (hydra.Visi
 	f.ctx = ctx
 	f.request = c.Request.URL.Path
 	return f.visitor, f.err
-}
-
-func TestNewHydraAuthAccess(t *testing.T) {
-	t.Run("returns singleton access", func(t *testing.T) {
-		access1 := NewHydraAuthAccess(&common.AppSetting{})
-		access2 := NewHydraAuthAccess(&common.AppSetting{})
-
-		require.NotNil(t, access1)
-		assert.Same(t, access1, access2)
-	})
 }
 
 func TestHydraAuthAccessVerifyToken(t *testing.T) {

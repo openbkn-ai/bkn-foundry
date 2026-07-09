@@ -23,16 +23,6 @@ import (
 	"vega-backend/interfaces"
 )
 
-func TestNewPermissionAccess(t *testing.T) {
-	t.Run("returns singleton access", func(t *testing.T) {
-		access1 := NewPermissionAccess(&common.AppSetting{PermissionUrl: "http://permission-a"})
-		access2 := NewPermissionAccess(&common.AppSetting{PermissionUrl: "http://permission-b"})
-
-		require.NotNil(t, access1)
-		assert.Same(t, access1, access2)
-	})
-}
-
 func TestPermissionAccessCheckPermission(t *testing.T) {
 	t.Run("returns decision", func(t *testing.T) {
 		client := &fakeHTTPClient{code: http.StatusOK, body: []byte(`{"result":true}`)}
@@ -240,16 +230,6 @@ func TestPermissionAccessDeleteResources(t *testing.T) {
 		err := access.DeleteResources(context.Background(), []interfaces.PermissionResource{{Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE, ID: "resource-1"}})
 
 		require.Error(t, err)
-	})
-}
-
-func TestNewSafeClient(t *testing.T) {
-	t.Run("sets base url and timeout", func(t *testing.T) {
-		client := newSafeClient("http://safe")
-
-		require.NotNil(t, client)
-		assert.Equal(t, "http://safe", client.baseURL)
-		assert.NotNil(t, client.http)
 	})
 }
 

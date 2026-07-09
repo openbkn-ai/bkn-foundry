@@ -8,16 +8,21 @@ package catalog
 
 import (
 	"context"
+	"database/sql"
 	"database/sql/driver"
 	"errors"
+	"reflect"
 	"regexp"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	sq "github.com/Masterminds/squirrel"
+	"github.com/agiledragon/gomonkey/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"vega-backend/common"
+	"vega-backend/drivenadapters/entityextension"
 	"vega-backend/interfaces"
 )
 
@@ -131,6 +136,117 @@ func TestCatalogAccessList(t *testing.T) {
 	})
 }
 
+func TestCatalogAccessGetByID(t *testing.T) {
+	t.Run("returns catalog with extensions", func(t *testing.T) {
+		access, mock, cleanup := newCatalogAccessMock(t)
+		defer cleanup()
+		restore := replaceCatalogExtensionStore(&fakeCatalogExtensionStore{
+			byID: map[string]string{"env": "prod"},
+		})
+		defer restore()
+
+		mock.ExpectQuery(regexp.QuoteMeta(catalogSelectSQL("f_id = ?"))).
+			WithArgs("catalog-1").
+			WillReturnRows(catalogRows().AddRow(catalogRowValues(sampleCatalog())...))
+
+		got, err := access.GetByID(context.Background(), "catalog-1")
+
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		assert.Equal(t, "catalog-1", got.ID)
+		assert.Equal(t, map[string]string{"env": "prod"}, got.Extensions)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("returns nil when catalog is not found", func(t *testing.T) {
+		access, mock, cleanup := newCatalogAccessMock(t)
+		defer cleanup()
+
+		mock.ExpectQuery(regexp.QuoteMeta(catalogSelectSQL("f_id = ?"))).
+			WithArgs("missing").
+			WillReturnError(sql.ErrNoRows)
+
+		got, err := access.GetByID(context.Background(), "missing")
+
+		require.NoError(t, err)
+		assert.Nil(t, got)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("returns scan error", func(t *testing.T) {
+		access, mock, cleanup := newCatalogAccessMock(t)
+		defer cleanup()
+		values := catalogRowValues(sampleCatalog())
+		values[5] = "not-bool"
+
+		mock.ExpectQuery(regexp.QuoteMeta(catalogSelectSQL("f_id = ?"))).
+			WithArgs("catalog-1").
+			WillReturnRows(catalogRows().AddRow(values...))
+
+		got, err := access.GetByID(context.Background(), "catalog-1")
+
+		require.Error(t, err)
+		assert.Nil(t, got)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+}
+
+func TestCatalogAccessGetByIDs(t *testing.T) {
+	t.Run("returns catalogs and clears extensions", func(t *testing.T) {
+		access, mock, cleanup := newCatalogAccessMock(t)
+		defer cleanup()
+		second := sampleCatalogWithID("catalog-2")
+		second.Extensions = map[string]string{"env": "prod"}
+
+		mock.ExpectQuery(regexp.QuoteMeta(catalogSelectSQL("f_id IN (?,?)"))).
+			WithArgs("catalog-1", "catalog-2").
+			WillReturnRows(catalogRows().
+				AddRow(catalogRowValues(sampleCatalog())...).
+				AddRow(catalogRowValues(second)...))
+
+		got, err := access.GetByIDs(context.Background(), []string{"catalog-1", "catalog-2"})
+
+		require.NoError(t, err)
+		require.Len(t, got, 2)
+		assert.Equal(t, []string{"catalog-1", "catalog-2"}, []string{got[0].ID, got[1].ID})
+		assert.Nil(t, got[0].Extensions)
+		assert.Nil(t, got[1].Extensions)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("returns query error", func(t *testing.T) {
+		access, mock, cleanup := newCatalogAccessMock(t)
+		defer cleanup()
+
+		mock.ExpectQuery(regexp.QuoteMeta(catalogSelectSQL("f_id IN (?)"))).
+			WithArgs("catalog-1").
+			WillReturnError(errors.New("db down"))
+
+		got, err := access.GetByIDs(context.Background(), []string{"catalog-1"})
+
+		require.Error(t, err)
+		assert.Empty(t, got)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("returns scan error", func(t *testing.T) {
+		access, mock, cleanup := newCatalogAccessMock(t)
+		defer cleanup()
+		values := catalogRowValues(sampleCatalog())
+		values[5] = "not-bool"
+
+		mock.ExpectQuery(regexp.QuoteMeta(catalogSelectSQL("f_id IN (?)"))).
+			WithArgs("catalog-1").
+			WillReturnRows(catalogRows().AddRow(values...))
+
+		got, err := access.GetByIDs(context.Background(), []string{"catalog-1"})
+
+		require.Error(t, err)
+		assert.Empty(t, got)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+}
+
 func TestCatalogAccessListAuthResources(t *testing.T) {
 	t.Run("returns auth resources", func(t *testing.T) {
 		access, mock, cleanup := newCatalogAccessMock(t)
@@ -150,6 +266,98 @@ func TestCatalogAccessListAuthResources(t *testing.T) {
 		require.Len(t, got, 1)
 		assert.Equal(t, "catalog-1", got[0].ID)
 		assert.Equal(t, interfaces.AUTH_RESOURCE_TYPE_CATALOG, got[0].Type)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+}
+
+func TestCatalogAccessAttachListExtensions(t *testing.T) {
+	t.Run("skips empty catalogs", func(t *testing.T) {
+		access, _, cleanup := newCatalogAccessMock(t)
+		defer cleanup()
+
+		err := access.AttachListExtensions(context.Background(), interfaces.CatalogsQueryParams{IncludeExtensions: true}, nil)
+
+		require.NoError(t, err)
+	})
+
+	t.Run("clears extensions when include extensions is false", func(t *testing.T) {
+		access, _, cleanup := newCatalogAccessMock(t)
+		defer cleanup()
+		catalogs := []*interfaces.Catalog{{ID: "catalog-1", Extensions: map[string]string{"env": "prod"}}}
+
+		err := access.AttachListExtensions(context.Background(), interfaces.CatalogsQueryParams{}, catalogs)
+
+		require.NoError(t, err)
+		assert.Nil(t, catalogs[0].Extensions)
+	})
+
+	t.Run("attaches filtered extensions", func(t *testing.T) {
+		access, _, cleanup := newCatalogAccessMock(t)
+		defer cleanup()
+		restore := replaceCatalogExtensionStore(&fakeCatalogExtensionStore{
+			byIDs: map[string]map[string]string{
+				"catalog-1": {"env": "prod", "owner": "data"},
+			},
+		})
+		defer restore()
+		catalogs := []*interfaces.Catalog{{ID: "catalog-1"}}
+
+		err := access.AttachListExtensions(context.Background(), interfaces.CatalogsQueryParams{
+			IncludeExtensions:    true,
+			IncludeExtensionKeys: "env",
+		}, catalogs)
+
+		require.NoError(t, err)
+		assert.Equal(t, map[string]string{"env": "prod"}, catalogs[0].Extensions)
+	})
+
+	t.Run("returns store error", func(t *testing.T) {
+		access, _, cleanup := newCatalogAccessMock(t)
+		defer cleanup()
+		restore := replaceCatalogExtensionStore(&fakeCatalogExtensionStore{err: errors.New("store down")})
+		defer restore()
+
+		err := access.AttachListExtensions(context.Background(), interfaces.CatalogsQueryParams{IncludeExtensions: true}, []*interfaces.Catalog{{ID: "catalog-1"}})
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "store down")
+	})
+}
+
+func TestCatalogAccessGetByName(t *testing.T) {
+	t.Run("returns catalog with extensions", func(t *testing.T) {
+		access, mock, cleanup := newCatalogAccessMock(t)
+		defer cleanup()
+		restore := replaceCatalogExtensionStore(&fakeCatalogExtensionStore{
+			byID: map[string]string{"env": "prod"},
+		})
+		defer restore()
+
+		mock.ExpectQuery(regexp.QuoteMeta(catalogSelectSQL("f_name = ?"))).
+			WithArgs("Catalog One").
+			WillReturnRows(catalogRows().AddRow(catalogRowValues(sampleCatalog())...))
+
+		got, err := access.GetByName(context.Background(), "Catalog One")
+
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		assert.Equal(t, "catalog-1", got.ID)
+		assert.Equal(t, map[string]string{"env": "prod"}, got.Extensions)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("returns nil when catalog is not found", func(t *testing.T) {
+		access, mock, cleanup := newCatalogAccessMock(t)
+		defer cleanup()
+
+		mock.ExpectQuery(regexp.QuoteMeta(catalogSelectSQL("f_name = ?"))).
+			WithArgs("missing").
+			WillReturnError(sql.ErrNoRows)
+
+		got, err := access.GetByName(context.Background(), "missing")
+
+		require.NoError(t, err)
+		assert.Nil(t, got)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 }
@@ -225,15 +433,113 @@ func TestCatalogAccessUpdateHealthCheckStatus(t *testing.T) {
 	})
 }
 
-func TestCatalogExtensionHelpers(t *testing.T) {
-	t.Run("maps columns and order expressions", func(t *testing.T) {
+func TestCatalogAccessDeleteByIDs(t *testing.T) {
+	t.Run("skips empty ids", func(t *testing.T) {
+		access, mock, cleanup := newCatalogAccessMock(t)
+		defer cleanup()
+
+		require.NoError(t, access.DeleteByIDs(context.Background(), nil))
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("deletes extensions and catalogs", func(t *testing.T) {
+		access, mock, cleanup := newCatalogAccessMock(t)
+		defer cleanup()
+		store := &fakeCatalogExtensionStore{}
+		restore := replaceCatalogExtensionStore(store)
+		defer restore()
+
+		mock.ExpectExec(regexp.QuoteMeta("DELETE FROM t_catalog WHERE f_id IN (?,?)")).
+			WithArgs("catalog-1", "catalog-2").
+			WillReturnResult(sqlmock.NewResult(0, 2))
+
+		err := access.DeleteByIDs(context.Background(), []string{"catalog-1", "catalog-2"})
+
+		require.NoError(t, err)
+		assert.Equal(t, []string{"catalog-1", "catalog-2"}, store.deletedIDs)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("returns extension delete error", func(t *testing.T) {
+		access, mock, cleanup := newCatalogAccessMock(t)
+		defer cleanup()
+		restore := replaceCatalogExtensionStore(&fakeCatalogExtensionStore{err: errors.New("store down")})
+		defer restore()
+
+		err := access.DeleteByIDs(context.Background(), []string{"catalog-1"})
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "store down")
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+}
+
+func TestCatalogExtCol(t *testing.T) {
+	t.Run("qualifies column only when extension joins are present", func(t *testing.T) {
 		assert.Equal(t, "f_id", catalogExtCol(interfaces.CatalogsQueryParams{}, "f_id"))
 		assert.Equal(t, "t_catalog.f_id", catalogExtCol(interfaces.CatalogsQueryParams{ExtensionKeys: []string{"env"}}, "f_id"))
+	})
+}
+
+func TestApplyCatalogExtensionJoins(t *testing.T) {
+	t.Run("skips join when extension keys are empty", func(t *testing.T) {
+		sql, args, err := applyCatalogExtensionJoins(
+			sq.Select("f_id").From("t_catalog"),
+			interfaces.CatalogsQueryParams{},
+		).ToSql()
+
+		require.NoError(t, err)
+		assert.Equal(t, "SELECT f_id FROM t_catalog", sql)
+		assert.Empty(t, args)
+	})
+
+	t.Run("applies extension joins", func(t *testing.T) {
+		sql, args, err := applyCatalogExtensionJoins(
+			sq.Select("t_catalog.f_id").From("t_catalog"),
+			interfaces.CatalogsQueryParams{
+				ExtensionKeys:   []string{"env"},
+				ExtensionValues: []string{"prod"},
+			},
+		).ToSql()
+
+		require.NoError(t, err)
+		assert.Contains(t, sql, "JOIN t_entity_extension vex0")
+		assert.Equal(t, []interface{}{entityextension.KindCatalog, "env", "prod"}, args)
+	})
+}
+
+func TestCatalogListOrderExpr(t *testing.T) {
+	t.Run("builds default and extension-safe order expression", func(t *testing.T) {
 		assert.Equal(t, "f_update_time DESC", catalogListOrderExpr(interfaces.CatalogsQueryParams{PaginationQueryParams: interfaces.PaginationQueryParams{Direction: "DESC"}}))
 		assert.Equal(t, "t_catalog.f_name ASC", catalogListOrderExpr(interfaces.CatalogsQueryParams{
 			PaginationQueryParams: interfaces.PaginationQueryParams{Sort: "f_name", Direction: "ASC"},
 			ExtensionKeys:         []string{"env"},
 		}))
+	})
+}
+
+func TestAttachCatalogExtensions(t *testing.T) {
+	t.Run("skips empty catalogs", func(t *testing.T) {
+		err := attachCatalogExtensions(context.Background(), &common.AppSetting{}, interfaces.CatalogsQueryParams{IncludeExtensions: true}, nil)
+
+		require.NoError(t, err)
+	})
+
+	t.Run("clears extensions when include extensions is false", func(t *testing.T) {
+		catalogs := []*interfaces.Catalog{{ID: "catalog-1", Extensions: map[string]string{"env": "prod"}}}
+
+		err := attachCatalogExtensions(context.Background(), &common.AppSetting{}, interfaces.CatalogsQueryParams{}, catalogs)
+
+		require.NoError(t, err)
+		assert.Nil(t, catalogs[0].Extensions)
+	})
+}
+
+func TestAttachSingleCatalogExtensions(t *testing.T) {
+	t.Run("skips nil catalog", func(t *testing.T) {
+		err := attachSingleCatalogExtensions(context.Background(), &common.AppSetting{}, nil)
+
+		require.NoError(t, err)
 	})
 }
 
@@ -247,6 +553,46 @@ func newCatalogAccessMock(t *testing.T) (*catalogAccess, sqlmock.Sqlmock, func()
 		mock.ExpectClose()
 		require.NoError(t, db.Close())
 	}
+}
+
+type fakeCatalogExtensionStore struct {
+	byID       map[string]string
+	byIDs      map[string]map[string]string
+	deletedIDs []string
+	err        error
+}
+
+func (s *fakeCatalogExtensionStore) DeleteByEntityIDs(ctx context.Context, kind string, entityIDs []string) error {
+	s.deletedIDs = append([]string(nil), entityIDs...)
+	return s.err
+}
+
+func (s *fakeCatalogExtensionStore) GetByEntityID(ctx context.Context, kind string, entityID string) (map[string]string, error) {
+	return s.byID, s.err
+}
+
+func (s *fakeCatalogExtensionStore) GetByEntityIDs(ctx context.Context, kind string, entityIDs []string) (map[string]map[string]string, error) {
+	return s.byIDs, s.err
+}
+
+func replaceCatalogExtensionStore(store *fakeCatalogExtensionStore) func() {
+	patches := gomonkey.NewPatches()
+	patches.ApplyFunc(entityextension.NewStore, func(app *common.AppSetting) *entityextension.Store {
+		return &entityextension.Store{}
+	})
+	patches.ApplyMethod(reflect.TypeOf(&entityextension.Store{}), "DeleteByEntityIDs",
+		func(_ *entityextension.Store, ctx context.Context, kind string, entityIDs []string) error {
+			return store.DeleteByEntityIDs(ctx, kind, entityIDs)
+		})
+	patches.ApplyMethod(reflect.TypeOf(&entityextension.Store{}), "GetByEntityID",
+		func(_ *entityextension.Store, ctx context.Context, kind string, entityID string) (map[string]string, error) {
+			return store.GetByEntityID(ctx, kind, entityID)
+		})
+	patches.ApplyMethod(reflect.TypeOf(&entityextension.Store{}), "GetByEntityIDs",
+		func(_ *entityextension.Store, ctx context.Context, kind string, entityIDs []string) (map[string]map[string]string, error) {
+			return store.GetByEntityIDs(ctx, kind, entityIDs)
+		})
+	return patches.Reset
 }
 
 func sampleCatalog() *interfaces.Catalog {
@@ -268,6 +614,16 @@ func sampleCatalog() *interfaces.Catalog {
 		Updater:                  interfaces.AccountInfo{ID: "u2", Type: interfaces.ACCESSOR_TYPE_USER},
 		UpdateTime:               2,
 	}
+}
+
+func sampleCatalogWithID(id string) *interfaces.Catalog {
+	catalog := sampleCatalog()
+	catalog.ID = id
+	return catalog
+}
+
+func catalogSelectSQL(where string) string {
+	return "SELECT f_id, f_name, f_tags, f_description, f_type, f_enabled, f_internal, f_connector_type, f_connector_config, f_metadata, f_health_check_enabled, f_health_check_status, f_last_check_time, f_health_check_result, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time FROM t_catalog WHERE " + where
 }
 
 func catalogRows() *sqlmock.Rows {
