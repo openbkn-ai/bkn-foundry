@@ -1,6 +1,6 @@
 -- Source: vega/vega-backend/migrations/mariadb/0.5.0/init.sql
 -- Copyright 2026 openbkn.ai
--- Copyright The kweaver.ai Authors.
+-- Copyright The openbkn.ai Authors.
 --
 -- Licensed under the Apache License, Version 2.0.
 -- See the LICENSE file in the project root for details.
@@ -400,7 +400,7 @@ CREATE TABLE IF NOT EXISTS t_build_task (
 
 -- Source: vega/data-connection/migrations/mariadb/0.2.0/init.sql
 -- Copyright 2026 openbkn.ai
--- Copyright The kweaver.ai Authors.
+-- Copyright The openbkn.ai Authors.
 --
 -- Licensed under the Apache License, Version 2.0.
 -- See the LICENSE file in the project root for details.
@@ -1161,7 +1161,7 @@ INSERT INTO t_lineage_graph_info (app_id,graph_id) SELECT '6',0 FROM DUAL WHERE 
 
 -- Source: vega/mdl-data-model/migrations/mariadb/0.1.0/init.sql
 -- Copyright 2026 openbkn.ai
--- Copyright The kweaver.ai Authors.
+-- Copyright The openbkn.ai Authors.
 --
 -- Licensed under the Apache License, Version 2.0.
 -- See the LICENSE file in the project root for details.
@@ -1575,7 +1575,7 @@ WHERE NOT EXISTS(
 
 -- Source: vega/vega-gateway/migrations/mariadb/0.2.0/init.sql
 -- Copyright 2026 openbkn.ai
--- Copyright The kweaver.ai Authors.
+-- Copyright The openbkn.ai Authors.
 --
 -- Licensed under the Apache License, Version 2.0.
 -- See the LICENSE file in the project root for details.

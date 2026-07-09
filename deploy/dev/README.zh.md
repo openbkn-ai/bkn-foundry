@@ -6,15 +6,15 @@
 
 本机用 **kind** 起 Kubernetes，与 Linux `deploy.sh` 使用同一套 Helm Chart；宿主机不跑 **`preflight` / k3s / kubeadm**。
 
-> ⚠️ **macOS 上不要用 `sudo`。** 本节所有命令一律用普通 `bash`。Docker Desktop / `kind` / `$HOME`（含安装配置与 `kweaver` token）都属于当前用户，`sudo` 会把它们重定向到 `/var/root` 并割裂安装与 onboard。`deploy.sh` 已识别 `Darwin` 并跳过 root 检查，`sudo` 在 Mac 上无任何额外作用。
+> ⚠️ **macOS 上不要用 `sudo`。** 本节所有命令一律用普通 `bash`。Docker Desktop / `kind` / `$HOME`（含安装配置与 `bkn` token）都属于当前用户，`sudo` 会把它们重定向到 `/var/root` 并割裂安装与 onboard。`deploy.sh` 已识别 `Darwin` 并跳过 root 检查，`sudo` 在 Mac 上无任何额外作用。
 
 ### 克隆仓库（先做好）
 
-脚本与清单在仓库目录内；**`mac.sh` 不能脱离仓库单独使用**。请先 **[clone kweaver-ai/kweaver-core](https://github.com/kweaver-ai/kweaver-core)**，并切换到实际部署所用分支，然后 **`cd` 进入 `deploy/`**：
+脚本与清单在仓库目录内；**`mac.sh` 不能脱离仓库单独使用**。请先 **[clone openbkn-ai/foundry](https://github.com/openbkn-ai/foundry)**，并切换到实际部署所用分支，然后 **`cd` 进入 `deploy/`**：
 
 ```bash
-git clone https://github.com/kweaver-ai/kweaver-core.git
-cd kweaver-core/deploy   # 在此目录执行 bash ./dev/mac.sh ...（与 deploy.sh 同层）
+git clone https://github.com/openbkn-ai/foundry.git
+cd bkn-core/deploy   # 在此目录执行 bash ./dev/mac.sh ...（与 deploy.sh 同层）
 ```
 
 从产品包解压时，路径中须有 **`deploy/`** 目录，布局与上文一致即可。
@@ -26,32 +26,32 @@ cd kweaver-core/deploy   # 在此目录执行 bash ./dev/mac.sh ...（与 deploy
 ### 访问地址（HTTP 与自动 host）
 
 - **HTTP 与 HTTPS：**HTTPS 加密并校验服务端；HTTP 不加密，开发环境常见；浏览器对 HTTP 的「不安全」提示属预期。
-- **自动 IP：**`mac-config.yaml` 常用 **`accessAddress.scheme: http`**，且可**省略 `host`**（见示例）。**`kweaver-core install`** 会探测本机局域网 IP 并写入 values。若仅本机访问，可设 **`accessAddress.host: localhost`**。
+- **自动 IP：**`mac-config.yaml` 常用 **`accessAddress.scheme: http`**，且可**省略 `host`**（见示例）。**`bkn-core install`** 会探测本机局域网 IP 并写入 values。若仅本机访问，可设 **`accessAddress.host: localhost`**。
 
 ### 操作流程
 
-在 **`deploy/`** 下执行；用 **bash** 调用（如 `bash ./dev/mac.sh ...`）。**`kweaver-core` / `core`** 封装**默认带 `--minimum`**；全量依赖加 **`--full`**。
+在 **`deploy/`** 下执行；用 **bash** 调用（如 `bash ./dev/mac.sh ...`）。**`bkn-core` / `core`** 封装**默认带 `--minimum`**；全量依赖加 **`--full`**。
 
 | 步骤 | 命令 | 是否必需？ |
 |------|------|------------|
 | 1 | `bash ./dev/mac.sh doctor` | 建议 |
 | 2 | `bash ./dev/mac.sh doctor --fix`（或 `-y doctor --fix`） | 缺工具时 |
 | 3 | `bash ./dev/mac.sh cluster up` | **安装前必须** |
-| 4 | `bash ./dev/mac.sh data-services install` | **可选** — 仅单独装/刷新数据层；**`kweaver-core install` 会先跑同一套捆绑安装**（`KWEAVER_SKIP_DATA_SERVICES_BUNDLE=true` 可跳过） |
-| 5 | `bash ./dev/mac.sh kweaver-core download` | **可选**（本地 chart 缓存；默认 **minimum** profile） |
-| 6 | `bash ./dev/mac.sh kweaver-core install` | **必须** — 部署 Core（**默认 `--minimum`**）；默认**先装捆绑 data-services** |
-| 7 | `bash ./dev/mac.sh onboard` | **可选**（需 `kweaver` CLI；`-y` 少交互） |
+| 4 | `bash ./dev/mac.sh data-services install` | **可选** — 仅单独装/刷新数据层；**`bkn-core install` 会先跑同一套捆绑安装**（`OPENBKN_SKIP_DATA_SERVICES_BUNDLE=true` 可跳过） |
+| 5 | `bash ./dev/mac.sh bkn-core download` | **可选**（本地 chart 缓存；默认 **minimum** profile） |
+| 6 | `bash ./dev/mac.sh bkn-core install` | **必须** — 部署 Core（**默认 `--minimum`**）；默认**先装捆绑 data-services** |
+| 7 | `bash ./dev/mac.sh onboard` | **可选**（需 `bkn` CLI；`-y` 少交互） |
 
-其它与 Linux **`deploy.sh`** 相同（须集群就绪、[`CONFIG_YAML_PATH`](conf/mac-config.yaml) 等与安装一致）：`bash ./dev/mac.sh isf install|download|uninstall|status`，`bash ./dev/mac.sh etrino …`（Vega；**`vega`** 为 **`etrino`** 别名）。ISF 对 DB/配置要求常更高。**未接入 `mac.sh`：**`kweaver-dip`。
+其它与 Linux **`deploy.sh`** 相同（须集群就绪、[`CONFIG_YAML_PATH`](conf/mac-config.yaml) 等与安装一致）：`bash ./dev/mac.sh isf install|download|uninstall|status`，`bash ./dev/mac.sh etrino …`（Vega；**`vega`** 为 **`etrino`** 别名）。ISF 对 DB/配置要求常更高。**未接入 `mac.sh`：**`bkn-dip`。
 
-**最短路径：**`cluster up` → `kweaver-core install`（**`--minimum` + 先装数据层**）。若 **`KWEAVER_SKIP_DATA_SERVICES_BUNDLE=true`**，须自备 DB/Kafka 等可达实例，或先执行 **`data-services install`**。
+**最短路径：**`cluster up` → `bkn-core install`（**`--minimum` + 先装数据层**）。若 **`OPENBKN_SKIP_DATA_SERVICES_BUNDLE=true`**，须自备 DB/Kafka 等可达实例，或先执行 **`data-services install`**。
 
 **暂歇省资源（不删集群）：**退出 **Docker Desktop** 即可。kind 依赖 Docker，等于停掉本地集群，**不是** `cluster down`（不会 `kind delete`）。再用时重新打开 Docker。
 
 若 **Docker 要一直开着**，可以只停 kind **节点**容器（效果同样是集群不可用，未执行 `kind delete`）：
 
 ```bash
-CLUSTER="${KIND_CLUSTER_NAME:-kweaver-dev}"
+CLUSTER="${KIND_CLUSTER_NAME:-bkn-dev}"
 docker stop $(docker ps -q --filter "label=io.x-k8s.kind.cluster=${CLUSTER}")
 ```
 
@@ -77,26 +77,26 @@ docker stop $(docker ps -q --filter "label=io.x-k8s.kind.cluster=${CLUSTER}")
   ```
   后面验证 ingress 时也建议加 `--noproxy '*'` 给 curl 兜底。
 
-- **Redis pod `CrashLoopBackOff` 且报 `WRONGPASS invalid username-password pair`**（通常发生在 VM/节点重启后，或 Redis `helm upgrade` 之后）：`proton-redis` 镜像内的 `/config-init.sh` 给 `monitor-user` 写死了一个固定 SHA256 且 else 分支只 `sed` 替换不补行；同时 `sentinel`/`exporter` sidecar 在运行期会跑 `ACL SETUSER` + `ACL SAVE`，把盘上 ACL 写成跟 Secret 不一致的 hash。盘上文件不会自愈，用一条命令修复：
+- **Redis pod `CrashLoopBackOff` 且报 `WRONGPASS invalid username-password pair`**（通常发生在 VM/节点重启后，或 Redis `helm upgrade` 之后）：`redis` 镜像内的 `/config-init.sh` 给 `monitor-user` 写死了一个固定 SHA256 且 else 分支只 `sed` 替换不补行；同时 `sentinel`/`exporter` sidecar 在运行期会跑 `ACL SETUSER` + `ACL SAVE`，把盘上 ACL 写成跟 Secret 不一致的 hash。盘上文件不会自愈，用一条命令修复：
   ```bash
   bash ./deploy.sh redis fix-acl
   ```
   脚本会删掉 PVC 上的 `/data/conf/{users,sentinel-users}.acl` 并删 Pod，让 init 容器走 "if not exists" 分支从 ConfigMap 重新拷正确 hash 的 ACL。依赖 Redis 的应用（`agent-operator-integration`、`coderunner` 等）会在下一次 backoff 后自愈，或 `kubectl delete pod` 加速。如果不方便用 `deploy.sh`，对应的手动等价命令：
   ```bash
-  kubectl exec -n resource redis-proton-redis-0 -c redis -- \
+  kubectl exec -n resource redis-0 -c redis -- \
     rm -f /data/conf/users.acl /data/conf/sentinel-users.acl
-  kubectl delete pod -n resource redis-proton-redis-0
+  kubectl delete pod -n resource redis-0
   ```
 
 - **`onboard --config` 必须用 `=`**：`bash ./dev/mac.sh -y onboard --config=conf/models.yaml`。空格形式 `--config conf/...` 会被底层 `onboard.sh` 拒绝并报 `Unknown: --config`。
 
-- **kind 镜像在 Docker Desktop 的 "Images" 面板看不到**：kind 节点在节点容器内独立跑了一份 `containerd`，跟宿主 Docker 不共享存储。kweaver 应用镜像都在那里，不在 Docker Desktop 的镜像列表里——但仍然占 Docker Desktop 的磁盘配额（全栈 ~15–25 GB）。查看 / 预加载：
+- **kind 镜像在 Docker Desktop 的 "Images" 面板看不到**：kind 节点在节点容器内独立跑了一份 `containerd`，跟宿主 Docker 不共享存储。bkn 应用镜像都在那里，不在 Docker Desktop 的镜像列表里——但仍然占 Docker Desktop 的磁盘配额（全栈 ~15–25 GB）。查看 / 预加载：
   ```bash
-  docker exec kweaver-dev-control-plane crictl images        # 列出 kind 节点内的镜像
-  kind load docker-image <img:tag> --name kweaver-dev        # 把宿主已有镜像推进 kind
+  docker exec bkn-dev-control-plane crictl images        # 列出 kind 节点内的镜像
+  kind load docker-image <img:tag> --name bkn-dev        # 把宿主已有镜像推进 kind
   ```
 
-- **`mac.sh isf install` 会自动把整套切到 HTTPS**：ISF（hydra/oauth2）的 issuer 必须是 https，所以 install 流程会自动：(1) 把 `mac-config.yaml` 的 `accessAddress` 改成 `https/443`，(2) 用 openssl 生 self-signed 证书并落到 Secret `kweaver-ingress-tls`，(3) 对已装的 `kweaver-core` release 做 `helm upgrade` 让它们读到新 https `accessAddress`，(4) 装 ISF 并给 ingress patch TLS。全新场景大约 10 min。浏览器会提示自签证书风险，确认一次即可。**不装 ISF 的话不用动**——`--minimum` 默认就关了 `auth.enabled`。
+- **`mac.sh isf install` 会自动把整套切到 HTTPS**：ISF（hydra/oauth2）的 issuer 必须是 https，所以 install 流程会自动：(1) 把 `mac-config.yaml` 的 `accessAddress` 改成 `https/443`，(2) 用 openssl 生 self-signed 证书并落到 Secret `bkn-ingress-tls`，(3) 对已装的 `bkn-core` release 做 `helm upgrade` 让它们读到新 https `accessAddress`，(4) 装 ISF 并给 ingress patch TLS。全新场景大约 10 min。浏览器会提示自签证书风险，确认一次即可。**不装 ISF 的话不用动**——`--minimum` 默认就关了 `auth.enabled`。
 
 - **装完后的快速验证**（代理已 unset、Core pod 全 Ready 后）：
   ```bash
@@ -108,7 +108,7 @@ docker stop $(docker ps -q --filter "label=io.x-k8s.kind.cluster=${CLUSTER}")
 ### 故障排除
 
 - **`cluster up` 报 Docker API / `docker.sock`：**多为 **CLI 已装但引擎未起**。请先启动 **Docker Desktop**，`docker info` 通过后重试。**`doctor --fix`** 不会拉起守护进程。
-- **`kweaver-core-data-migrator` / Job `BackoffLimitExceeded`：**确认数据层就绪（一般由 **`kweaver-core install` 自动安装**；否则 **`data-services install`**）。确认 **`depServices.rds`** 指向集群内 MariaDB；必要时 `helm uninstall kweaver-core-data-migrator -n <namespace>` 后再装 Core。
+- **`bkn-core-data-migrator` / Job `BackoffLimitExceeded`：**确认数据层就绪（一般由 **`bkn-core install` 自动安装**；否则 **`data-services install`**）。确认 **`depServices.rds`** 指向集群内 MariaDB；必要时 `helm uninstall bkn-core-data-migrator -n <namespace>` 后再装 Core。
 
 ### Onboard 与 `openbkn`（全量安装）
 

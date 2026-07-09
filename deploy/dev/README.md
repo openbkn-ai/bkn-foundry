@@ -6,18 +6,18 @@ English | [中文](README.zh.md)
 
 Local Kubernetes with **kind** plus the same Helm charts as Linux `deploy.sh`. No host `preflight` / k3s / kubeadm.
 
-> ⚠️ **Do not use `sudo` on macOS.** Run every command with plain `bash`. Docker Desktop / `kind` / `$HOME` (config + `kweaver` token) all belong to your user; `sudo` redirects them to `/var/root` and breaks the flow. `deploy.sh` already short-circuits root checks on `Darwin`, so `sudo` adds nothing.
+> ⚠️ **Do not use `sudo` on macOS.** Run every command with plain `bash`. Docker Desktop / `kind` / `$HOME` (config + `bkn` token) all belong to your user; `sudo` redirects them to `/var/root` and breaks the flow. `deploy.sh` already short-circuits root checks on `Darwin`, so `sudo` adds nothing.
 
 ### Repository (clone first)
 
-Scripts and vendored manifests live in the repo tree — **`mac.sh` is not a standalone installer.** Clone **[kweaver-ai/kweaver-core](https://github.com/kweaver-ai/kweaver-core)** (check out the branch you deploy from), then **`cd`** into **`deploy/`** before any command below:
+Scripts and vendored manifests live in the repo tree — **`mac.sh` is not a standalone installer.** Clone **[openbkn-ai/foundry](https://github.com/openbkn-ai/foundry)** (check out the branch you deploy from), then **`cd`** into **`deploy/`** before any command below:
 
 ```bash
-git clone https://github.com/kweaver-ai/kweaver-core.git
-cd kweaver-core/deploy   # always run bash ./dev/mac.sh ... from this directory
+git clone https://github.com/openbkn-ai/foundry.git
+cd bkn-core/deploy   # always run bash ./dev/mac.sh ... from this directory
 ```
 
-Same layout applies if your product tarball extracts to a **`kweaver-core/`** root with a **`deploy/`** subdirectory.
+Same layout applies if your product tarball extracts to a **`bkn-core/`** root with a **`deploy/`** subdirectory.
 
 ### Architecture (Apple Silicon / arm64)
 
@@ -26,32 +26,32 @@ On **Apple Silicon** Macs, kind nodes are **linux/arm64** by default. Charts pul
 ### Access URL (HTTP and automatic host)
 
 - **HTTP vs HTTPS:** HTTPS uses TLS to encrypt traffic and verify the server identity; HTTP is unencrypted. On a trusted LAN, HTTP avoids dealing with local TLS certs and is typical for dev. Browsers may still show “Not secure” for HTTP — expected.
-- **Automatic IP:** Your `mac-config.yaml` uses `accessAddress.scheme: http` and may **omit** `host` (see the example file). On `kweaver-core install`, the flow detects your LAN IP (on macOS, usually the default-route interface) and writes it into values so other devices on the network can open the UI. Set `accessAddress.host` yourself (for example `localhost`) if you want same-machine-only URLs.
+- **Automatic IP:** Your `mac-config.yaml` uses `accessAddress.scheme: http` and may **omit** `host` (see the example file). On `bkn-core install`, the flow detects your LAN IP (on macOS, usually the default-route interface) and writes it into values so other devices on the network can open the UI. Set `accessAddress.host` yourself (for example `localhost`) if you want same-machine-only URLs.
 
 ## Order of operations
 
-Run from the **`deploy/`** directory (`cd deploy` in this repo). Invoke **`mac.sh` with bash** (e.g. `bash ./dev/mac.sh ...`). **`kweaver-core` / `core`:** the wrapper **defaults to `--minimum`** (smaller chart set; skips ISF in manifest terms). Pass **`--full`** for the full manifest profile (adds ISF download/install when the manifest enables it).
+Run from the **`deploy/`** directory (`cd deploy` in this repo). Invoke **`mac.sh` with bash** (e.g. `bash ./dev/mac.sh ...`). **`bkn-core` / `core`:** the wrapper **defaults to `--minimum`** (smaller chart set; skips ISF in manifest terms). Pass **`--full`** for the full manifest profile (adds ISF download/install when the manifest enables it).
 
 | Step | Command | Required? |
 |------|---------|-----------|
 | 1 | `bash ./dev/mac.sh doctor` | Recommended |
 | 2 | `bash ./dev/mac.sh doctor --fix` (or `-y doctor --fix`) | If something is missing |
 | 3 | `bash ./dev/mac.sh cluster up` | **Yes** before install |
-| 4 | `bash ./dev/mac.sh data-services install` | Optional — only to install/refresh **data layer alone**; **`kweaver-core install` invokes the same bundled install first** (`KWEAVER_SKIP_DATA_SERVICES_BUNDLE=true` skips it). |
-| 5 | `bash ./dev/mac.sh kweaver-core download` | Optional (local chart cache; **minimum** by default) |
-| 6 | `bash ./dev/mac.sh kweaver-core install` | **Yes** — deploy Core (**`--minimum` implied**); runs bundled data-services beforehand unless skipped |
-| 7 | `bash ./dev/mac.sh onboard` | Optional (models/BKN; needs `kweaver` CLI; add `-y` to skip prompts) |
+| 4 | `bash ./dev/mac.sh data-services install` | Optional — only to install/refresh **data layer alone**; **`bkn-core install` invokes the same bundled install first** (`OPENBKN_SKIP_DATA_SERVICES_BUNDLE=true` skips it). |
+| 5 | `bash ./dev/mac.sh bkn-core download` | Optional (local chart cache; **minimum** by default) |
+| 6 | `bash ./dev/mac.sh bkn-core install` | **Yes** — deploy Core (**`--minimum` implied**); runs bundled data-services beforehand unless skipped |
+| 7 | `bash ./dev/mac.sh onboard` | Optional (models/BKN; needs `bkn` CLI; add `-y` to skip prompts) |
 
 Optional (same `deploy.sh` Helm paths as Linux; you need a working cluster + values that match your dependencies): `bash ./dev/mac.sh isf install|download|uninstall|status`, `bash ./dev/mac.sh etrino install|...` (Vega stack; **`vega` is an alias of `etrino`**). ISF may require DB/config beyond the minimal mac sample—see Linux `deploy.sh` help and your `CONFIG_YAML_PATH`.
 
-**Minimal path:** `cluster up` → `kweaver-core install` (wrapper implies `--minimum` and runs **data-services** first). If you skip that bundle (`KWEAVER_SKIP_DATA_SERVICES_BUNDLE=true`), you must provide reachable DB/Kafka/etc. yourself or run **`data-services install`** beforehand.
+**Minimal path:** `cluster up` → `bkn-core install` (wrapper implies `--minimum` and runs **data-services** first). If you skip that bundle (`OPENBKN_SKIP_DATA_SERVICES_BUNDLE=true`), you must provide reachable DB/Kafka/etc. yourself or run **`data-services install`** beforehand.
 
 **Pause to save resources (keep the cluster):** Quit **Docker Desktop**. Kind uses Docker, so that stops the cluster without `kind delete`. Open Docker again when you want to keep working.
 
 If Docker should stay up, stop only the kind **node** container(s) (same effect for the cluster; not `kind delete`):
 
 ```bash
-CLUSTER="${KIND_CLUSTER_NAME:-kweaver-dev}"
+CLUSTER="${KIND_CLUSTER_NAME:-bkn-dev}"
 docker stop $(docker ps -q --filter "label=io.x-k8s.kind.cluster=${CLUSTER}")
 ```
 
@@ -60,7 +60,7 @@ Resume: `docker start $(docker ps -aq --filter "label=io.x-k8s.kind.cluster=${CL
 **Teardown (delete the cluster):** Optionally `bash ./dev/mac.sh data-services uninstall` (tear down MariaDB/Redis/Kafka/ZK/OpenSearch Helm releases; keeps kind), then `bash ./dev/mac.sh cluster down` (runs `kind delete cluster`; destroys the cluster).
 
 Config: copy [`dev/conf/mac-config.yaml.example`](conf/mac-config.yaml.example) to **`dev/conf/mac-config.yaml`** (one-time). The real **`mac-config.yaml` is gitignored** so generated passwords are not committed; adjust `accessAddress` and registry as needed.  
-`kweaver-dip` is not wired in `mac.sh` (use Linux `deploy.sh`).
+`bkn-dip` is not wired in `mac.sh` (use Linux `deploy.sh`).
 
 See also: top-of-file comments in [`mac.sh`](mac.sh), `bash ./dev/mac.sh -h`.
 
@@ -78,26 +78,26 @@ See also: top-of-file comments in [`mac.sh`](mac.sh), `bash ./dev/mac.sh -h`.
   ```
   When verifying ingress later, also pass `--noproxy '*'` to curl as a belt-and-braces.
 
-- **Redis pod stuck in `CrashLoopBackOff` with `WRONGPASS invalid username-password pair`** (typically after a VM/node restart, or after a Redis `helm upgrade`): the `proton-redis` image's `/config-init.sh` hard-codes the `monitor-user` password hash and only `sed`-replaces existing ACL lines, while the `sentinel`/`exporter` sidecars run `ACL SETUSER` + `ACL SAVE` at runtime and overwrite the on-disk ACL with hashes that no longer match the Secret. The on-disk file does not self-heal. Recover with:
+- **Redis pod stuck in `CrashLoopBackOff` with `WRONGPASS invalid username-password pair`** (typically after a VM/node restart, or after a Redis `helm upgrade`): the `redis` image's `/config-init.sh` hard-codes the `monitor-user` password hash and only `sed`-replaces existing ACL lines, while the `sentinel`/`exporter` sidecars run `ACL SETUSER` + `ACL SAVE` at runtime and overwrite the on-disk ACL with hashes that no longer match the Secret. The on-disk file does not self-heal. Recover with:
   ```bash
   bash ./deploy.sh redis fix-acl
   ```
   This deletes `/data/conf/{users,sentinel-users}.acl` from the PVC and the Pod, so the init container re-enters its "if file does not exist" branch and copies fresh ACL files (with correct hashes) from the ConfigMap. Pods that crashed waiting on Redis (e.g. `agent-operator-integration`, `coderunner`) recover on their next backoff, or `kubectl delete pod` them to speed up. Equivalent manual recipe if you cannot use `deploy.sh`:
   ```bash
-  kubectl exec -n resource redis-proton-redis-0 -c redis -- \
+  kubectl exec -n resource redis-0 -c redis -- \
     rm -f /data/conf/users.acl /data/conf/sentinel-users.acl
-  kubectl delete pod -n resource redis-proton-redis-0
+  kubectl delete pod -n resource redis-0
   ```
 
 - **`onboard --config` requires `=`**: use `bash ./dev/mac.sh -y onboard --config=conf/models.yaml`. The space form `--config conf/models.yaml` is rejected by the wrapped `onboard.sh` and produces `Unknown: --config`.
 
-- **kind images don't show up in Docker Desktop's "Images" tab**: kind nodes run their own `containerd` inside the node container, separate from the host Docker engine. Kweaver application images live there, not in Docker Desktop's image store. They still consume Docker Desktop's disk budget (~15–25 GB for the full stack). Inspect / preload via:
+- **kind images don't show up in Docker Desktop's "Images" tab**: kind nodes run their own `containerd` inside the node container, separate from the host Docker engine. OPenbkn application images live there, not in Docker Desktop's image store. They still consume Docker Desktop's disk budget (~15–25 GB for the full stack). Inspect / preload via:
   ```bash
-  docker exec kweaver-dev-control-plane crictl images        # list images inside the kind node
-  kind load docker-image <img:tag> --name kweaver-dev        # push a host-built image into kind
+  docker exec bkn-dev-control-plane crictl images        # list images inside the kind node
+  kind load docker-image <img:tag> --name bkn-dev        # push a host-built image into kind
   ```
 
-- **`mac.sh isf install` switches the stack to HTTPS automatically**: ISF (hydra/oauth2) requires HTTPS issuers, so the install path will (1) flip `mac-config.yaml` `accessAddress` to `https/443`, (2) generate a self-signed TLS cert + Secret `kweaver-ingress-tls`, (3) `helm upgrade` any already-installed `kweaver-core` releases so they pick up the new https `accessAddress`, then (4) install ISF and patch its ingress with TLS. Total time ~10 min on a fresh install. Browsers will warn on the self-signed cert — accept once. To stay on HTTP, just don't install ISF (`--minimum` already disables `auth.enabled`).
+- **`mac.sh isf install` switches the stack to HTTPS automatically**: ISF (hydra/oauth2) requires HTTPS issuers, so the install path will (1) flip `mac-config.yaml` `accessAddress` to `https/443`, (2) generate a self-signed TLS cert + Secret `bkn-ingress-tls`, (3) `helm upgrade` any already-installed `bkn-core` releases so they pick up the new https `accessAddress`, then (4) install ISF and patch its ingress with TLS. Total time ~10 min on a fresh install. Browsers will warn on the self-signed cert — accept once. To stay on HTTP, just don't install ISF (`--minimum` already disables `auth.enabled`).
 
 - **Quick verify after install** (proxy unset, Core pods Ready):
   ```bash
@@ -110,7 +110,7 @@ See also: top-of-file comments in [`mac.sh`](mac.sh), `bash ./dev/mac.sh -h`.
 
 - **`failed to connect to the docker API` / `docker.sock: no such file` when running `cluster up`:** the Docker **CLI** is installed but the **engine** is not running. Open **Docker Desktop**, wait until it is fully started, run `docker info` to confirm, then retry `cluster up`. `doctor` also checks engine reachability. **`doctor --fix` does not start Docker** (Homebrew only installs the CLI/cask); if everything else is already installed, just start Desktop and re-run `doctor`.
 
-- **`kweaver-core-data-migrator` / pre-install job `BackoffLimitExceeded`:** ensure the **data layer** is up (normally automatic with **`kweaver-core install`**; otherwise run **`bash ./dev/mac.sh data-services install`**). Ensure **`depServices.rds`** points at in-cluster MariaDB after install (`mac-config` loopback placeholders may be updated when MariaDB is installed). Remove a failed release if Helm left it pending: `helm uninstall kweaver-core-data-migrator -n <namespace>` then re-run `kweaver-core install`.
+- **`bkn-core-data-migrator` / pre-install job `BackoffLimitExceeded`:** ensure the **data layer** is up (normally automatic with **`bkn-core install`**; otherwise run **`bash ./dev/mac.sh data-services install`**). Ensure **`depServices.rds`** points at in-cluster MariaDB after install (`mac-config` loopback placeholders may be updated when MariaDB is installed). Remove a failed release if Helm left it pending: `helm uninstall bkn-core-data-migrator -n <namespace>` then re-run `bkn-core install`.
 
 ### Onboard and `openbkn` (full install)
 

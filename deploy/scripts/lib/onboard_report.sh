@@ -55,7 +55,7 @@ onboard_print_completion_report() {
         echo "  Environment host=$(hostname 2>/dev/null || echo '?')"
         echo "  Node          $(command -v node &>/dev/null && node -v || echo '—')"
         echo "  openbkn       ${_kwh}"
-        echo "  kubectl       ctx=${_kctx}  namespace=${NAMESPACE:-kweaver}"
+        echo "  kubectl       ctx=${_kctx}  namespace=${NAMESPACE:-bkn}"
         echo "  Business -bd  ${_bd}  (DEPLOY_BUSINESS_DOMAIN)"
         echo "  Default base  ${_acurl}"
         echo "${_line}"

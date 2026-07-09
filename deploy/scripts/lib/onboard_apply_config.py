@@ -32,12 +32,12 @@ def expand_env(s: str) -> str:
     )
 
 
-def kweaver_call(*args: str) -> int:
+def bkn_call(*args: str) -> int:
     return subprocess.call(["openbkn", *args], stdin=subprocess.DEVNULL)
 
 
 def jcall(path: str, body: dict) -> int:
-    return kweaver_call("call", path, "-d", json.dumps(body, ensure_ascii=False))
+    return bkn_call("call", path, "-d", json.dumps(body, ensure_ascii=False))
 
 
 def get_json(path: str) -> Any:

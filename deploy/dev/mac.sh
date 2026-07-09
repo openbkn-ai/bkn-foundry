@@ -8,7 +8,7 @@
 #   4. data-services install  — MariaDB / Redis / Kafka / OpenSearch (required before Core on mac)
 #   5. bkn-foundry download  — optional; cache charts locally (mac.sh defaults --minimum unless --full)
 #   6. bkn-foundry install   — Helm install Core (mac.sh adds --minimum unless you pass --full)
-#   7. onboard                — optional; needs kweaver CLI + Core up (add -y for non-interactive)
+#   7. onboard                — optional; needs bkn CLI + Core up (add -y for non-interactive)
 #   Teardown: cluster down
 #   Full write-up: deploy/dev/README.md (EN) · deploy/dev/README.zh.md (中文)
 #
@@ -63,7 +63,7 @@ Typical order (shortest path: doctor? → cluster up → bkn-foundry install [--
   2) cluster up                 kind + ingress; kubectl context kind-<name>
   3) data-services install      optional if you use bkn-foundry install (it runs the same bundled data layer first); run alone to pre-stage or refresh only
   4) bkn-foundry download      optional; charts cache only (minimum profile by default)
-  5) bkn-foundry install ...   Helm install (--minimum implied; bundled data-services first unless KWEAVER_SKIP_DATA_SERVICES_BUNDLE=true)
+  5) bkn-foundry install ...   Helm install (--minimum implied; bundled data-services first unless OPENBKN_SKIP_DATA_SERVICES_BUNDLE=true)
   6) onboard                    optional; after Core is up
   cluster down                  delete kind cluster
   See ${readme}
@@ -88,7 +88,7 @@ Examples:
   ${cmd} onboard
 
 Environment:
-  KIND_CLUSTER_NAME       Default: kweaver-dev
+  KIND_CLUSTER_NAME       Default: bkn-dev
   CONFIG_YAML_PATH        Default: ${mac_cfg} when unset (bkn-foundry|core|data-services)
 
 Note: data-services install runs deploy.sh data-services (Helm charts into the current kube context). Other deploy.sh modules on mac still skip host k3s bootstrap unless you install infra yourself. See ${readme}.
@@ -217,7 +217,7 @@ main() {
             fi
             exec bash "${DEPLOY_ROOT}/deploy.sh" data-services "$@"
             ;;
-        bkn-foundry | foundry | kweaver-core | core)
+        bkn-foundry | foundry | bkn-core | core)
             mac_require_darwin
             if ! mac_doctor; then
                 exit 1
@@ -228,7 +228,7 @@ main() {
             if [[ -z "${CONFIG_YAML_PATH:-}" ]]; then
                 export CONFIG_YAML_PATH="${MAC_DEV_ROOT}/conf/mac-config.yaml"
             fi
-            export KWEAVER_SKIP_PLATFORM_BOOTSTRAP="${KWEAVER_SKIP_PLATFORM_BOOTSTRAP:-true}"
+            export OPENBKN_SKIP_PLATFORM_BOOTSTRAP="${OPENBKN_SKIP_PLATFORM_BOOTSTRAP:-true}"
             # kind already has ingress-nginx; ensure_data_services (pulled in by bkn-foundry install) must not add a second controller.
             export AUTO_INSTALL_INGRESS_NGINX="${AUTO_INSTALL_INGRESS_NGINX:-false}"
             export AUTO_INSTALL_LOCALPV="${AUTO_INSTALL_LOCALPV:-true}"
@@ -298,7 +298,7 @@ main() {
             if [[ -z "${CONFIG_YAML_PATH:-}" ]]; then
                 export CONFIG_YAML_PATH="${MAC_DEV_ROOT}/conf/mac-config.yaml"
             fi
-            export KWEAVER_SKIP_PLATFORM_BOOTSTRAP="${KWEAVER_SKIP_PLATFORM_BOOTSTRAP:-true}"
+            export OPENBKN_SKIP_PLATFORM_BOOTSTRAP="${OPENBKN_SKIP_PLATFORM_BOOTSTRAP:-true}"
             # Mac dev needs HTTPS for ISF (hydra/oauth2 issuer must be https).
             # Auto-prepare TLS secret + flip mac-config before install; patch ingress after.
             if [[ "${1:-}" == "install" ]]; then
@@ -327,7 +327,7 @@ main() {
             if [[ -z "${CONFIG_YAML_PATH:-}" ]]; then
                 export CONFIG_YAML_PATH="${MAC_DEV_ROOT}/conf/mac-config.yaml"
             fi
-            export KWEAVER_SKIP_PLATFORM_BOOTSTRAP="${KWEAVER_SKIP_PLATFORM_BOOTSTRAP:-true}"
+            export OPENBKN_SKIP_PLATFORM_BOOTSTRAP="${OPENBKN_SKIP_PLATFORM_BOOTSTRAP:-true}"
             if [[ ${#global_flags[@]} -gt 0 ]]; then
                 exec bash "${DEPLOY_ROOT}/deploy.sh" "${global_flags[@]}" etrino "$@"
             fi

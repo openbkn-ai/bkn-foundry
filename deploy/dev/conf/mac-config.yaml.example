@@ -37,13 +37,13 @@ depServices:
 
   rds:
     admin_key: 'REPLACE_ME'
-    host: 'mariadb-proton-mariadb.resource.svc.cluster.local'
-    hostRead: 'mariadb-proton-mariadb.resource.svc.cluster.local'
+    host: 'mariadb.resource.svc.cluster.local'
+    hostRead: 'mariadb.resource.svc.cluster.local'
     port: 3306
     portRead: 3306
     source_type: internal
     type: MariaDB
-    user: 'kweaver'
+    user: 'bkn'
     password: 'REPLACE_ME'
     root_password: 'REPLACE_ME'
     database: 'openbkn'
@@ -51,7 +51,7 @@ depServices:
     connectInfo:
       masterGroupName: 'mymaster'
       password: 'REPLACE_ME'
-      sentinelHost: 'redis-proton-redis-sentinel.resource.svc.cluster.local'
+      sentinelHost: 'redis-sentinel.resource.svc.cluster.local'
       sentinelPassword: 'REPLACE_ME'
       sentinelPort: 26379
       sentinelUsername: 'root'

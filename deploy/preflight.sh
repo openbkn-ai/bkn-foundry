@@ -32,23 +32,23 @@ usage() {
     echo "Options:"
     echo "  -h, --help           Show this help"
     echo "  --check-only         Only run checks, do not modify the system (default; still requires root)"
-    echo "  --fix                Check + apply fixes (K8s/sysctl/etc.); also offers optional Node ${PREFLIGHT_KWEAVER_MIN_NODE_MAJOR}+ + kweaver CLIs (each ask y/N unless -y)"
+    echo "  --fix                Check + apply fixes (K8s/sysctl/etc.); also offers optional Node ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR}+ + bkn CLIs (each ask y/N unless -y)"
     echo "  -y, --yes            Auto-approve every fix (skip per-fix y/N prompt)"
     echo "  -n, --no             Auto-decline every fix (preview risk text, change nothing)"
     echo "  --fix-allow=LIST     Comma-separated fix names to auto-approve (others are skipped)."
     echo "                       Names: k3s-uninstall,kubeadm-reset,k8s-pkgs-repo,k8s-bins,kubernetes-cni,containerd-install,helm-v3,"
     echo "                       docker-disable,chrony,firewalld,ufw,selinux,system-tuning,bridge-sysctl,kernel-limits,nofile-limits,ipv6-disable,iptables-legacy,etc-hosts,"
-    echo "                       onboard-tooling,nodejs-npm,node-22,kweaver-sdk"
+    echo "                       onboard-tooling,nodejs-npm,node-22,bkn-sdk"
     echo "  --list-fixes         Run checks then list fixes that would be offered (no changes; requires root)"
     echo "  --output=json        Emit JSON summary to stdout (human logs to stderr); requires python3"
-    echo "  --role=target|admin|both  Target = kubectl/helm only; admin = kweaver/node/npm; both = all (default)"
-    echo "                              openbkn CLI needs Node.js ${PREFLIGHT_KWEAVER_MIN_NODE_MAJOR}+ (per @openbkn/bkn-sdk@alpha on npm; help/zh/install.md)"
+    echo "  --role=target|admin|both  Target = kubectl/helm only; admin = bkn/node/npm; both = all (default)"
+    echo "                              openbkn CLI needs Node.js ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR}+ (per @openbkn/bkn-sdk@alpha on npm; help/zh/install.md)"
     echo "  --no-recheck         Do not re-run full checks after applying fixes"
     echo "  --lenient            Downgrade install-blocking [FAIL] items (sysctl, ip_forward, kernel modules,"
     echo "                       containerd, kubectl, helm, swap, broken apt sources, missing k8s/containerd"
     echo "                       install candidate, ulimit, inotify, vm.max_map_count, overlay) back to [WARN]."
     echo "                       Same as PREFLIGHT_STRICT=false PREFLIGHT_STRICT_SOURCES=false."
-    echo "  --forget-decisions   Wipe remembered \"no\" answers under /var/lib/kweaver/preflight-decline-* before"
+    echo "  --forget-decisions   Wipe remembered \"no\" answers under /var/lib/bkn/preflight-decline-* before"
     echo "                       running. Use after you change your mind about onboard-tooling / node-22 etc."
     echo "                       Same as PREFLIGHT_FORGET_DECISIONS=true."
     echo "  --report=PATH        Append full log to a file"
@@ -56,7 +56,7 @@ usage() {
     echo "  --distro=k8s|k3s     Same as deploy.sh (default: k8s = kubeadm/package stack). Use k3s for single-node lightweight."
     echo "                       Exported as KUBE_DISTRO (and PREFLIGHT_KUBE_DISTRO); legacy kubeadm = k8s."
     echo "  deploy.sh note:      For deploy.sh, --distro must appear BEFORE the module (e.g. deploy.sh --distro=k8s"
-    echo "                       kweaver-core install --minimum). Trailing ... install --minimum --distro=k8s is ignored;"
+    echo "                       bkn-core install --minimum). Trailing ... install --minimum --distro=k8s is ignored;"
     echo "                       use KUBE_DISTRO=k8s or move the flag (same as -y, --force-upgrade)."
     echo ""
     echo "Environment:"
@@ -69,7 +69,7 @@ usage() {
     echo "  PREFLIGHT_STRICT_SOURCES=true|false      [default true] verify apt/yum can fetch kubeadm + containerd"
     echo "  PREFLIGHT_REMEMBER_DECISIONS=true|false  [default true] persist 'no' to onboard-tooling / node-22"
     echo "  PREFLIGHT_FORGET_DECISIONS=true          wipe remembered decisions before this run (one-shot)"
-    echo "  PREFLIGHT_DECISION_DIR=/path             where decision sentinels live (default /var/lib/kweaver)"
+    echo "  PREFLIGHT_DECISION_DIR=/path             where decision sentinels live (default /var/lib/bkn)"
     echo ""
     echo "Exit codes: 0 = OK, 1 = FAIL present, 2 = only WARN (no FAIL)"
     echo ""
@@ -170,8 +170,8 @@ export PREFLIGHT_ASSUME_YES PREFLIGHT_ASSUME_NO PREFLIGHT_FIX_ALLOW
 export PREFLIGHT_OUTPUT_JSON PREFLIGHT_ROLE PREFLIGHT_LIST_FIXES_ONLY PREFLIGHT_NO_RECHECK PREFLIGHT_ROOT
 export PREFLIGHT_STRICT PREFLIGHT_STRICT_SOURCES
 export PREFLIGHT_REMEMBER_DECISIONS PREFLIGHT_FORGET_DECISIONS PREFLIGHT_DECISION_DIR
-export KUBE_DISTRO="$(kweaver_normalize_kube_distro "${KUBE_DISTRO:-k8s}")"
-export PREFLIGHT_KUBE_DISTRO="$(kweaver_normalize_kube_distro "${PREFLIGHT_KUBE_DISTRO:-${KUBE_DISTRO}}")"
+export KUBE_DISTRO="$(bkn_normalize_kube_distro "${KUBE_DISTRO:-k8s}")"
+export PREFLIGHT_KUBE_DISTRO="$(bkn_normalize_kube_distro "${PREFLIGHT_KUBE_DISTRO:-${KUBE_DISTRO}}")"
 
 # Wipe remembered "no" answers (onboard-tooling / node-22) before the run.
 if [[ "${PREFLIGHT_FORGET_DECISIONS:-false}" == "true" ]]; then
@@ -280,15 +280,15 @@ if [[ "${PREFLIGHT_OUTPUT_JSON}" != "true" ]]; then
     fi
 
     _pf_section "Conclusion"
-    _pf_total="${PREFLIGHT_KWEAVER_RELEASE_TOTAL:-0}"
-    _pf_bad="${PREFLIGHT_KWEAVER_RELEASE_BAD:-0}"
+    _pf_total="${PREFLIGHT_OPENBKN_RELEASE_TOTAL:-0}"
+    _pf_bad="${PREFLIGHT_OPENBKN_RELEASE_BAD:-0}"
     if [[ "${_pf_total}" -gt 0 ]]; then
         echo "  BKN Foundry appears INSTALLED on this cluster (${_pf_total} helm release(s))."
         echo "  You probably do NOT need to run a fresh install — the components below already exist:"
-        if [[ -n "${PREFLIGHT_KWEAVER_RELEASE_NAMES:-}" ]]; then
+        if [[ -n "${PREFLIGHT_OPENBKN_RELEASE_NAMES:-}" ]]; then
             _pf_first=true
             _pf_line=""
-            IFS=',' read -r -a _pf_names <<< "${PREFLIGHT_KWEAVER_RELEASE_NAMES}"
+            IFS=',' read -r -a _pf_names <<< "${PREFLIGHT_OPENBKN_RELEASE_NAMES}"
             for _pf_n in "${_pf_names[@]}"; do
                 if [[ -z "${_pf_line}" ]]; then
                     _pf_line="    ${_pf_n}"
@@ -304,24 +304,24 @@ if [[ "${PREFLIGHT_OUTPUT_JSON}" != "true" ]]; then
         if [[ "${_pf_bad}" -eq 0 ]]; then
             echo ""
             echo "  Suggested next step (skip install, just configure / verify):"
-            echo "    - Node/kweaver on an admin host: default preflight is check-only; run sudo bash ./preflight.sh --fix to opt in to help installing Node ${PREFLIGHT_KWEAVER_MIN_NODE_MAJOR}+ and CLIs (y/N per step)"
+            echo "    - Node/bkn on an admin host: default preflight is check-only; run sudo bash ./preflight.sh --fix to opt in to help installing Node ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR}+ and CLIs (y/N per step)"
             echo "    - Configure models / BKN search:    sudo bash ./onboard.sh   (Linux; macOS dev: bash ./dev/mac.sh onboard)"
-            echo "    - Check status:                     sudo bash ./deploy.sh kweaver-core status"
-            echo "    - Only if you really want to upgrade: sudo bash ./deploy.sh kweaver-core install --force-upgrade"
+            echo "    - Check status:                     sudo bash ./deploy.sh bkn-core status"
+            echo "    - Only if you really want to upgrade: sudo bash ./deploy.sh bkn-core install --force-upgrade"
         else
             echo ""
             echo "  However, ${_pf_bad}/${_pf_total} release(s) are NOT in 'deployed' state."
             echo "  Suggested next step:"
-            echo "    - Inspect:  helm list -A | grep -iE 'kweaver|isf|dip'"
-            echo "    - Repair:   sudo bash ./deploy.sh kweaver-core install --force-upgrade"
+            echo "    - Inspect:  helm list -A | grep -iE 'bkn|isf|dip'"
+            echo "    - Repair:   sudo bash ./deploy.sh bkn-core install --force-upgrade"
         fi
     else
         if [[ ${exit_code} -eq 0 ]]; then
             echo "  No BKN Foundry releases detected. Environment looks ready for a first-time install:"
-            echo "    sudo bash ./deploy.sh kweaver-core install --minimum    # try first / for evaluation"
-            echo "    sudo bash ./deploy.sh kweaver-core install              # full install (auth + business-domain)"
+            echo "    sudo bash ./deploy.sh bkn-core install --minimum    # try first / for evaluation"
+            echo "    sudo bash ./deploy.sh bkn-core install              # full install (auth + business-domain)"
             echo ""
-            echo "  After deploy: from this repo's deploy/ directory run sudo bash ./onboard.sh (Linux; macOS dev uses plain bash; needs Node ${PREFLIGHT_KWEAVER_MIN_NODE_MAJOR}+ + kweaver CLI on that host)."
+            echo "  After deploy: from this repo's deploy/ directory run sudo bash ./onboard.sh (Linux; macOS dev uses plain bash; needs Node ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR}+ + bkn CLI on that host)."
             echo "  If this host still lacks Node/CLIs: sudo bash ./preflight.sh --fix"
         else
             echo "  No BKN Foundry releases detected, but preflight above is NOT all clear — fix that before treating deploy as ready."
@@ -329,9 +329,9 @@ if [[ "${PREFLIGHT_OUTPUT_JSON}" != "true" ]]; then
             echo "    sudo bash ./preflight.sh --fix          # applies safe fixes / opt-in tooling (y/N unless -y)"
             echo "    sudo bash ./preflight.sh --check-only   # re-check until blocking [FAIL] items are addressed (or sudo bash ./preflight.sh --check-only --lenient if you accept the caveats)"
             echo "  Only then install:"
-            echo "    sudo bash ./deploy.sh kweaver-core install --minimum    # try first / for evaluation"
-            echo "    sudo bash ./deploy.sh kweaver-core install              # full install (auth + business-domain)"
-            echo "  Finally: sudo bash ./onboard.sh from deploy/ (Linux; macOS dev uses plain bash. Node ${PREFLIGHT_KWEAVER_MIN_NODE_MAJOR}+ + kweaver on PATH; sudo bash ./preflight.sh --fix helps install tooling on this machine)."
+            echo "    sudo bash ./deploy.sh bkn-core install --minimum    # try first / for evaluation"
+            echo "    sudo bash ./deploy.sh bkn-core install              # full install (auth + business-domain)"
+            echo "  Finally: sudo bash ./onboard.sh from deploy/ (Linux; macOS dev uses plain bash. Node ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR}+ + bkn on PATH; sudo bash ./preflight.sh --fix helps install tooling on this machine)."
         fi
     fi
     echo "${_PF_BAR}"

@@ -14,11 +14,11 @@ source "${SCRIPT_DIR}/scripts/services/k3s.sh"
 # shellcheck source=./preflight_checks.sh
 source "${SCRIPT_DIR}/scripts/lib/preflight_checks.sh"
 
-# --- kweaver_normalize_kube_distro (from common.sh) ---
-[[ "$(kweaver_normalize_kube_distro k8s)" == "kubeadm" ]] || fail "k8s -> kubeadm"
-[[ "$(kweaver_normalize_kube_distro kubeadm)" == "kubeadm" ]] || fail "kubeadm alias"
-[[ "$(kweaver_normalize_kube_distro k3s)" == "k3s" ]] || fail "k3s"
-[[ "$(kweaver_normalize_kube_distro "")" == "kubeadm" ]] || fail "empty -> kubeadm default (k8s)"
+# --- bkn_normalize_kube_distro (from common.sh) ---
+[[ "$(bkn_normalize_kube_distro k8s)" == "kubeadm" ]] || fail "k8s -> kubeadm"
+[[ "$(bkn_normalize_kube_distro kubeadm)" == "kubeadm" ]] || fail "kubeadm alias"
+[[ "$(bkn_normalize_kube_distro k3s)" == "k3s" ]] || fail "k3s"
+[[ "$(bkn_normalize_kube_distro "")" == "kubeadm" ]] || fail "empty -> kubeadm default (k8s)"
 
 # --- Test resolve minor ---
 out="$(PREFLIGHT_K8S_APT_MINOR=  preflight_resolve_k8s_apt_minor)"

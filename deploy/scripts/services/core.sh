@@ -1,5 +1,5 @@
 
-# Default kweaver-core namespace
+# Default bkn-core namespace
 CORE_NAMESPACE="${CORE_NAMESPACE:-openbkn}"
 
 # Set to true in parse_core_args when user passes --namespace/--namespace=… (overrides namespace: in YAML).
@@ -38,7 +38,7 @@ declare -a CORE_SQL_MODULES=(
     "sandbox"
 )
 
-# Parse kweaver-core command arguments
+# Parse bkn-core command arguments
 parse_core_args() {
     local action="$1"
     shift
@@ -144,11 +144,11 @@ parse_core_args() {
                 shift 2
                 ;;
             --access_address=*)
-                KWEAVER_ACCESS_ADDRESS="${1#*=}"
+                OPENBKN_ACCESS_ADDRESS="${1#*=}"
                 shift
                 ;;
             --access_address)
-                KWEAVER_ACCESS_ADDRESS="$2"
+                OPENBKN_ACCESS_ADDRESS="$2"
                 shift 2
                 ;;
             --minimum|--min)
@@ -179,7 +179,7 @@ _core_resolve_target_namespace() {
         return 0
     fi
     local yaml_ns
-    yaml_ns="$(kweaver_values_namespace_from_config)"
+    yaml_ns="$(bkn_values_namespace_from_config)"
     if [[ -n "${yaml_ns}" ]]; then
         printf '%s' "${yaml_ns}"
     else
@@ -187,7 +187,7 @@ _core_resolve_target_namespace() {
     fi
 }
 
-# Resolve local charts directory for kweaver-core
+# Resolve local charts directory for bkn-core
 _core_resolve_charts_dir() {
     if [[ -n "${CORE_LOCAL_CHARTS_DIR}" ]]; then
         if [[ -d "${CORE_LOCAL_CHARTS_DIR}" ]]; then
@@ -225,7 +225,7 @@ _core_require_version_manifest() {
     _core_auto_resolve_version_manifest
 
     if [[ -z "${CORE_VERSION_MANIFEST_FILE:-}" ]]; then
-        log_error "No release manifest found for kweaver-core. Provide --version or --version_file."
+        log_error "No release manifest found for bkn-core. Provide --version or --version_file."
         return 1
     fi
 }
@@ -266,7 +266,7 @@ init_core_databases() {
     fi
 
     local -a sql_modules=()
-    kweaver_mapfile_compat sql_modules list_versioned_sql_modules "bkn-foundry" "${HELM_CHART_VERSION:-}"
+    bkn_mapfile_compat sql_modules list_versioned_sql_modules "bkn-foundry" "${HELM_CHART_VERSION:-}"
     if [[ ${#sql_modules[@]} -eq 0 ]]; then
         log_info "Skipping BKN Foundry database initialization: no SQL module directories found in ${sql_base_dir}"
         return 0
@@ -290,7 +290,7 @@ download_core() {
     _core_require_version_manifest || return 1
 
     HELM_CHART_REPO_NAME="${HELM_CHART_REPO_NAME:-openbkn}"
-    HELM_CHART_REPO_URL="${HELM_CHART_REPO_URL:-https://kweaver-ai.github.io/helm-repo/}"
+    HELM_CHART_REPO_URL="${HELM_CHART_REPO_URL:-https://openbkn-ai.github.io/helm-repo/}"
 
     local charts_dir
     charts_dir="$(_core_download_charts_dir)"
@@ -299,7 +299,7 @@ download_core() {
     ensure_chart_source "${HELM_CHART_REPO_NAME}" "${HELM_CHART_REPO_URL}"
 
     local -a release_names=()
-    kweaver_mapfile_compat release_names _core_release_names
+    bkn_mapfile_compat release_names _core_release_names
     local release_name
     local release_version
     local chart_name
@@ -317,7 +317,7 @@ _core_find_local_chart() {
     find_cached_chart_tgz "${charts_dir}" "${chart_name}"
 }
 
-# Install a single kweaver-core release from a local .tgz
+# Install a single bkn-core release from a local .tgz
 _install_core_release_local() {
     local release_name="$1"
     local charts_dir="$2"
@@ -373,7 +373,7 @@ _install_core_release_local() {
     fi
 }
 
-# Install a single kweaver-core release from a Helm repository
+# Install a single bkn-core release from a Helm repository
 _install_core_release_repo() {
     local release_name="$1"
     local namespace="$2"
@@ -456,7 +456,7 @@ _core_config_sets_image_registry() {
     ' "${CONFIG_YAML_PATH}"
 }
 
-# Inject default --set values for kweaver-core if user did not override them.
+# Inject default --set values for bkn-core if user did not override them.
 # Currently: businessDomain.enabled defaults to false at install time.
 _core_apply_default_set_values() {
     # image.registry precedence: explicit --set image.registry=… wins; else an
@@ -489,29 +489,29 @@ _core_apply_default_set_values() {
     # (most app charts ship limits=4-8Gi which is over-provisioned for dev).
     # Defaults are layered upstream:
     #   - mac dev: see deploy/dev/lib/mac_common.sh (mac_common_init)
-    #   - k3s    : see kweaver_apply_k3s_lightweight_defaults in common.sh
+    #   - k3s    : see bkn_apply_k3s_lightweight_defaults in common.sh
     # Apply uniformly to every Core release; per-release tuning (e.g. larger limit for
     # ontology-query) can be added later if a service consistently OOMs at install time.
     local _core_resource_set
     _core_resource_set=0
-    if [[ -n "${KWEAVER_CORE_REQ_CPU:-}" ]]; then
-        CORE_SET_VALUES+=("resources.requests.cpu=${KWEAVER_CORE_REQ_CPU}")
+    if [[ -n "${OPENBKN_CORE_REQ_CPU:-}" ]]; then
+        CORE_SET_VALUES+=("resources.requests.cpu=${OPENBKN_CORE_REQ_CPU}")
         _core_resource_set=1
     fi
-    if [[ -n "${KWEAVER_CORE_REQ_MEM:-}" ]]; then
-        CORE_SET_VALUES+=("resources.requests.memory=${KWEAVER_CORE_REQ_MEM}")
+    if [[ -n "${OPENBKN_CORE_REQ_MEM:-}" ]]; then
+        CORE_SET_VALUES+=("resources.requests.memory=${OPENBKN_CORE_REQ_MEM}")
         _core_resource_set=1
     fi
-    if [[ -n "${KWEAVER_CORE_LIM_CPU:-}" ]]; then
-        CORE_SET_VALUES+=("resources.limits.cpu=${KWEAVER_CORE_LIM_CPU}")
+    if [[ -n "${OPENBKN_CORE_LIM_CPU:-}" ]]; then
+        CORE_SET_VALUES+=("resources.limits.cpu=${OPENBKN_CORE_LIM_CPU}")
         _core_resource_set=1
     fi
-    if [[ -n "${KWEAVER_CORE_LIM_MEM:-}" ]]; then
-        CORE_SET_VALUES+=("resources.limits.memory=${KWEAVER_CORE_LIM_MEM}")
+    if [[ -n "${OPENBKN_CORE_LIM_MEM:-}" ]]; then
+        CORE_SET_VALUES+=("resources.limits.memory=${OPENBKN_CORE_LIM_MEM}")
         _core_resource_set=1
     fi
     if [[ "${_core_resource_set}" == "1" ]]; then
-        log_info "Core resource overrides applied (uniform): req cpu=${KWEAVER_CORE_REQ_CPU:-<chart>} mem=${KWEAVER_CORE_REQ_MEM:-<chart>} / lim cpu=${KWEAVER_CORE_LIM_CPU:-<chart>} mem=${KWEAVER_CORE_LIM_MEM:-<chart>}"
+        log_info "Core resource overrides applied (uniform): req cpu=${OPENBKN_CORE_REQ_CPU:-<chart>} mem=${OPENBKN_CORE_REQ_MEM:-<chart>} / lim cpu=${OPENBKN_CORE_LIM_CPU:-<chart>} mem=${OPENBKN_CORE_LIM_MEM:-<chart>}"
     fi
 }
 
@@ -550,9 +550,9 @@ setup_dockerhub_mirror() {
     # serves this stack's docker.io images over the registry-mirror (?ns=docker.io)
     # protocol. Sentinel = oryd/hydra (some mirrors, e.g. docker.m.daocloud.io,
     # 403 namespaced repos over that protocol). Override the list via
-    # KWEAVER_DOCKERHUB_MIRROR_CANDIDATES (space-separated).
+    # OPENBKN_DOCKERHUB_MIRROR_CANDIDATES (space-separated).
     if [[ "${mirror_host}" == "auto" ]]; then
-        local _candidates="${KWEAVER_DOCKERHUB_MIRROR_CANDIDATES:-docker.1panel.live docker.m.daocloud.io docker.1ms.run dockerproxy.net}"
+        local _candidates="${OPENBKN_DOCKERHUB_MIRROR_CANDIDATES:-docker.1panel.live docker.m.daocloud.io docker.1ms.run dockerproxy.net}"
         local _accept="application/vnd.docker.distribution.manifest.v2+json,application/vnd.oci.image.manifest.v1+json,application/vnd.docker.distribution.manifest.list.v2+json,application/vnd.oci.image.index.v1+json"
         local _cand _picked="" _code
         for _cand in ${_candidates}; do
@@ -620,8 +620,8 @@ install_core() {
 
     # macOS kind / BYOK: platform bootstrap is skipped, so ensure_data_services is not run above.
     # Install the same bundled data layer as `deploy.sh data-services install` unless opted out.
-    if [[ "${KWEAVER_SKIP_PLATFORM_BOOTSTRAP:-false}" == "true" ]] && [[ "${KWEAVER_SKIP_DATA_SERVICES_BUNDLE:-false}" != "true" ]]; then
-        log_info "Bring-your-own cluster: ensuring bundled data services before Core (skip with KWEAVER_SKIP_DATA_SERVICES_BUNDLE=true)"
+    if [[ "${OPENBKN_SKIP_PLATFORM_BOOTSTRAP:-false}" == "true" ]] && [[ "${OPENBKN_SKIP_DATA_SERVICES_BUNDLE:-false}" != "true" ]]; then
+        log_info "Bring-your-own cluster: ensuring bundled data services before Core (skip with OPENBKN_SKIP_DATA_SERVICES_BUNDLE=true)"
         if ! ensure_data_services; then
             log_error "Failed to ensure data services before BKN Foundry"
             return 1
@@ -647,7 +647,7 @@ install_core() {
             log_info "  Version Manifest: ${CORE_VERSION_MANIFEST_FILE}"
         fi
         HELM_CHART_REPO_NAME="${HELM_CHART_REPO_NAME:-openbkn}"
-        HELM_CHART_REPO_URL="${HELM_CHART_REPO_URL:-https://kweaver-ai.github.io/helm-repo/}"
+        HELM_CHART_REPO_URL="${HELM_CHART_REPO_URL:-https://openbkn-ai.github.io/helm-repo/}"
         parse_manifest_source "${CORE_VERSION_MANIFEST_FILE:-}"
         log_chart_source "${HELM_CHART_REPO_NAME}" "${HELM_CHART_REPO_URL}"
         ensure_chart_source "${HELM_CHART_REPO_NAME}" "${HELM_CHART_REPO_URL}"
@@ -661,7 +661,7 @@ install_core() {
     fi
 
     local -a release_names=()
-    kweaver_mapfile_compat release_names _core_release_names
+    bkn_mapfile_compat release_names _core_release_names
 
     # When auth enforcement is off (--minimum / --set auth.enabled=false), services
     # run without tokens, so the bkn-safe auth stack (bkn-safe + bundled hydra + its
@@ -738,7 +738,7 @@ uninstall_core() {
     log_info "Helm target namespace: ${namespace}"
 
     local -a release_names=()
-    kweaver_mapfile_compat release_names _core_release_names
+    bkn_mapfile_compat release_names _core_release_names
     for ((i=${#release_names[@]}-1; i>=0; i--)); do
         local release_name="${release_names[$i]}"
         log_info "Uninstalling ${release_name}..."
@@ -758,7 +758,7 @@ uninstall_core() {
     kubectl delete pod -n "${namespace}" -l sandbox-type=execution --ignore-not-found >/dev/null 2>&1 || true
 
     log_info "Deleting leftover Core Jobs in ${namespace} (e.g. data-migrator / chart hooks)"
-    kweaver_delete_jobs_name_match_ere_in_ns "${namespace}" 'migrator|data-migrator'
+    bkn_delete_jobs_name_match_ere_in_ns "${namespace}" 'migrator|data-migrator'
 
     log_info "BKN Foundry services uninstallation completed."
 }
@@ -774,7 +774,7 @@ show_core_status() {
     log_info ""
 
     local -a release_names=()
-    kweaver_mapfile_compat release_names _core_release_names
+    bkn_mapfile_compat release_names _core_release_names
     for release_name in "${release_names[@]}"; do
         if helm status "${release_name}" -n "${namespace}" >/dev/null 2>&1; then
             local status
