@@ -13,7 +13,8 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	. "github.com/smartystreets/goconvey/convey"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
 	"vega-backend/common"
@@ -22,56 +23,65 @@ import (
 )
 
 func Test_ResourceRestHandler_ListResources(t *testing.T) {
-	Convey("Test ResourceHandler ListResources\n", t, func() {
-		test := setGinMode()
-		defer test()
+	restoreGinMode := setGinMode()
+	defer restoreGinMode()
+
+	setup := func(t *testing.T) (*gin.Engine, *vmock.MockResourceService) {
+		t.Helper()
 
 		engine := gin.New()
 		engine.Use(gin.Recovery())
 
 		mockCtrl := gomock.NewController(t)
-		defer mockCtrl.Finish()
+		t.Cleanup(mockCtrl.Finish)
 
 		rs := vmock.NewMockResourceService(mockCtrl)
 		handler := MockNewRestHandler(&common.AppSetting{}, nil, nil, rs, nil, nil, nil, nil, nil, nil, nil)
 		handler.RegisterPublic(engine)
+		return engine, rs
+	}
 
-		url := "/api/vega-backend/in/v1/resources"
+	const url = "/api/vega-backend/in/v1/resources"
 
-		Convey("Invalid category\n", func() {
-			req := httptest.NewRequest(http.MethodGet, url+"?category=unknown", nil)
-			w := httptest.NewRecorder()
-			engine.ServeHTTP(w, req)
+	t.Run("invalid category", func(t *testing.T) {
+		engine, _ := setup(t)
+		req := httptest.NewRequest(http.MethodGet, url+"?category=unknown", nil)
+		w := httptest.NewRecorder()
 
-			So(w.Result().StatusCode, ShouldEqual, http.StatusBadRequest)
-			So(w.Body.String(), ShouldContainSubstring, "VegaBackend.Resource.InvalidParameter")
-			So(w.Body.String(), ShouldContainSubstring, "invalid category: unknown")
-		})
+		engine.ServeHTTP(w, req)
 
-		Convey("Invalid status\n", func() {
-			req := httptest.NewRequest(http.MethodGet, url+"?status=unknown", nil)
-			w := httptest.NewRecorder()
-			engine.ServeHTTP(w, req)
+		require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), "VegaBackend.Resource.InvalidParameter")
+		assert.Contains(t, w.Body.String(), "invalid category: unknown")
+	})
 
-			So(w.Result().StatusCode, ShouldEqual, http.StatusBadRequest)
-			So(w.Body.String(), ShouldContainSubstring, "VegaBackend.Resource.InvalidParameter")
-			So(w.Body.String(), ShouldContainSubstring, "invalid status: unknown")
-		})
+	t.Run("invalid status", func(t *testing.T) {
+		engine, _ := setup(t)
+		req := httptest.NewRequest(http.MethodGet, url+"?status=unknown", nil)
+		w := httptest.NewRecorder()
 
-		Convey("Success list resources with name category and status\n", func() {
-			rs.EXPECT().List(gomock.Any(), gomock.Any()).
-				DoAndReturn(func(_ context.Context, params interfaces.ResourcesQueryParams) ([]*interfaces.Resource, int64, error) {
-					So(params.Name, ShouldEqual, "orders")
-					So(params.Category, ShouldEqual, interfaces.ResourceCategoryDataset)
-					So(params.Status, ShouldEqual, interfaces.ResourceStatusActive)
-					return []*interfaces.Resource{}, int64(0), nil
-				})
+		engine.ServeHTTP(w, req)
 
-			req := httptest.NewRequest(http.MethodGet, url+"?name=orders&category=dataset&status=active", nil)
-			w := httptest.NewRecorder()
-			engine.ServeHTTP(w, req)
+		require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), "VegaBackend.Resource.InvalidParameter")
+		assert.Contains(t, w.Body.String(), "invalid status: unknown")
+	})
 
-			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
-		})
+	t.Run("success list resources with name category and status", func(t *testing.T) {
+		engine, rs := setup(t)
+		rs.EXPECT().List(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, params interfaces.ResourcesQueryParams) ([]*interfaces.Resource, int64, error) {
+				assert.Equal(t, "orders", params.Name)
+				assert.Equal(t, interfaces.ResourceCategoryDataset, params.Category)
+				assert.Equal(t, interfaces.ResourceStatusActive, params.Status)
+				return []*interfaces.Resource{}, int64(0), nil
+			})
+
+		req := httptest.NewRequest(http.MethodGet, url+"?name=orders&category=dataset&status=active", nil)
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusOK, w.Result().StatusCode)
 	})
 }

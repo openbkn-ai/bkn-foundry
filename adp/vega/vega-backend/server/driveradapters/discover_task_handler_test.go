@@ -13,7 +13,8 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	. "github.com/smartystreets/goconvey/convey"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
 	"vega-backend/common"
@@ -22,103 +23,91 @@ import (
 )
 
 func Test_DiscoverTaskRestHandler_ListDiscoverTasks(t *testing.T) {
-	Convey("Test DiscoverTaskHandler ListDiscoverTasks\n", t, func() {
-		test := setGinMode()
-		defer test()
+	restoreGinMode := setGinMode()
+	defer restoreGinMode()
+
+	setup := func(t *testing.T) (*gin.Engine, *vmock.MockDiscoverTaskService) {
+		t.Helper()
 
 		engine := gin.New()
 		engine.Use(gin.Recovery())
 
 		mockCtrl := gomock.NewController(t)
-		defer mockCtrl.Finish()
+		t.Cleanup(mockCtrl.Finish)
 
 		dts := vmock.NewMockDiscoverTaskService(mockCtrl)
 		handler := MockNewRestHandler(&common.AppSetting{}, nil, nil, nil, nil, nil, nil, dts, nil, nil, nil)
 		handler.RegisterPublic(engine)
+		return engine, dts
+	}
 
-		url := "/api/vega-backend/in/v1/discover-tasks"
+	const url = "/api/vega-backend/in/v1/discover-tasks"
 
-		Convey("Invalid offset\n", func() {
-			req := httptest.NewRequest(http.MethodGet, url+"?offset=-1", nil)
+	tests := []struct {
+		name       string
+		query      string
+		wantStatus int
+		wantBody   string
+	}{
+		{name: "invalid offset", query: "?offset=-1", wantStatus: http.StatusBadRequest, wantBody: "VegaBackend.InvalidParameter.Offset"},
+		{name: "invalid limit", query: "?limit=99999999", wantStatus: http.StatusBadRequest, wantBody: "VegaBackend.InvalidParameter.Limit"},
+		{name: "invalid sort field", query: "?sort=unknown_field", wantStatus: http.StatusBadRequest, wantBody: "VegaBackend.InvalidParameter.Sort"},
+		{name: "invalid direction", query: "?direction=foo", wantStatus: http.StatusBadRequest, wantBody: "VegaBackend.InvalidParameter.Direction"},
+		{name: "invalid trigger type", query: "?trigger_type=foo", wantStatus: http.StatusBadRequest, wantBody: "invalid trigger_type"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			engine, _ := setup(t)
+			req := httptest.NewRequest(http.MethodGet, url+tt.query, nil)
 			w := httptest.NewRecorder()
+
 			engine.ServeHTTP(w, req)
 
-			So(w.Result().StatusCode, ShouldEqual, http.StatusBadRequest)
-			So(w.Body.String(), ShouldContainSubstring, "VegaBackend.InvalidParameter.Offset")
+			require.Equal(t, tt.wantStatus, w.Result().StatusCode)
+			assert.Contains(t, w.Body.String(), tt.wantBody)
 		})
+	}
 
-		Convey("Invalid limit\n", func() {
-			req := httptest.NewRequest(http.MethodGet, url+"?limit=99999999", nil)
-			w := httptest.NewRecorder()
-			engine.ServeHTTP(w, req)
+	t.Run("success with default pagination", func(t *testing.T) {
+		engine, dts := setup(t)
+		dts.EXPECT().List(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTask, int64, error) {
+				assert.Equal(t, 0, params.Offset)
+				assert.Equal(t, 20, params.Limit)
+				assert.Equal(t, "f_create_time", params.Sort)
+				assert.Equal(t, interfaces.DESC_DIRECTION, params.Direction)
+				return []*interfaces.DiscoverTask{}, int64(0), nil
+			})
 
-			So(w.Result().StatusCode, ShouldEqual, http.StatusBadRequest)
-			So(w.Body.String(), ShouldContainSubstring, "VegaBackend.InvalidParameter.Limit")
-		})
+		req := httptest.NewRequest(http.MethodGet, url, nil)
+		w := httptest.NewRecorder()
 
-		Convey("Invalid sort field\n", func() {
-			req := httptest.NewRequest(http.MethodGet, url+"?sort=unknown_field", nil)
-			w := httptest.NewRecorder()
-			engine.ServeHTTP(w, req)
+		engine.ServeHTTP(w, req)
 
-			So(w.Result().StatusCode, ShouldEqual, http.StatusBadRequest)
-			So(w.Body.String(), ShouldContainSubstring, "VegaBackend.InvalidParameter.Sort")
-		})
+		require.Equal(t, http.StatusOK, w.Result().StatusCode)
+	})
 
-		Convey("Invalid direction\n", func() {
-			req := httptest.NewRequest(http.MethodGet, url+"?direction=foo", nil)
-			w := httptest.NewRecorder()
-			engine.ServeHTTP(w, req)
+	t.Run("success with explicit query params", func(t *testing.T) {
+		engine, dts := setup(t)
+		dts.EXPECT().List(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTask, int64, error) {
+				assert.Equal(t, "cat-1", params.CatalogID)
+				assert.Equal(t, "sch-1", params.ScheduleID)
+				assert.Equal(t, interfaces.DiscoverTaskStatusCompleted, params.Status)
+				assert.Equal(t, interfaces.DiscoverTaskTriggerScheduled, params.TriggerType)
+				assert.Equal(t, 5, params.Offset)
+				assert.Equal(t, 10, params.Limit)
+				assert.Equal(t, "f_start_time", params.Sort)
+				assert.Equal(t, interfaces.ASC_DIRECTION, params.Direction)
+				return []*interfaces.DiscoverTask{}, int64(0), nil
+			})
 
-			So(w.Result().StatusCode, ShouldEqual, http.StatusBadRequest)
-			So(w.Body.String(), ShouldContainSubstring, "VegaBackend.InvalidParameter.Direction")
-		})
+		req := httptest.NewRequest(http.MethodGet, url+"?catalog_id=cat-1&schedule_id=sch-1&status=completed&trigger_type=scheduled&offset=5&limit=10&sort=start_time&direction=asc", nil)
+		w := httptest.NewRecorder()
 
-		Convey("Invalid trigger type\n", func() {
-			req := httptest.NewRequest(http.MethodGet, url+"?trigger_type=foo", nil)
-			w := httptest.NewRecorder()
-			engine.ServeHTTP(w, req)
+		engine.ServeHTTP(w, req)
 
-			So(w.Result().StatusCode, ShouldEqual, http.StatusBadRequest)
-			So(w.Body.String(), ShouldContainSubstring, "invalid trigger_type")
-		})
-
-		Convey("Success with default pagination\n", func() {
-			dts.EXPECT().List(gomock.Any(), gomock.Any()).
-				DoAndReturn(func(_ context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTask, int64, error) {
-					So(params.Offset, ShouldEqual, 0)
-					So(params.Limit, ShouldEqual, 20)
-					So(params.Sort, ShouldEqual, "f_create_time")
-					So(params.Direction, ShouldEqual, interfaces.DESC_DIRECTION)
-					return []*interfaces.DiscoverTask{}, int64(0), nil
-				})
-
-			req := httptest.NewRequest(http.MethodGet, url, nil)
-			w := httptest.NewRecorder()
-			engine.ServeHTTP(w, req)
-
-			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
-		})
-
-		Convey("Success with explicit query params\n", func() {
-			dts.EXPECT().List(gomock.Any(), gomock.Any()).
-				DoAndReturn(func(_ context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTask, int64, error) {
-					So(params.CatalogID, ShouldEqual, "cat-1")
-					So(params.ScheduleID, ShouldEqual, "sch-1")
-					So(params.Status, ShouldEqual, interfaces.DiscoverTaskStatusCompleted)
-					So(params.TriggerType, ShouldEqual, interfaces.DiscoverTaskTriggerScheduled)
-					So(params.Offset, ShouldEqual, 5)
-					So(params.Limit, ShouldEqual, 10)
-					So(params.Sort, ShouldEqual, "f_start_time")
-					So(params.Direction, ShouldEqual, interfaces.ASC_DIRECTION)
-					return []*interfaces.DiscoverTask{}, int64(0), nil
-				})
-
-			req := httptest.NewRequest(http.MethodGet, url+"?catalog_id=cat-1&schedule_id=sch-1&status=completed&trigger_type=scheduled&offset=5&limit=10&sort=start_time&direction=asc", nil)
-			w := httptest.NewRecorder()
-			engine.ServeHTTP(w, req)
-
-			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
-		})
+		require.Equal(t, http.StatusOK, w.Result().StatusCode)
 	})
 }

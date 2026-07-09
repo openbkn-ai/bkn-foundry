@@ -13,7 +13,8 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	. "github.com/smartystreets/goconvey/convey"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
 	"vega-backend/common"
@@ -22,115 +23,104 @@ import (
 )
 
 func Test_DiscoverScheduleRestHandler_ListDiscoverSchedules(t *testing.T) {
-	Convey("Test DiscoverScheduleHandler ListDiscoverSchedules\n", t, func() {
-		test := setGinMode()
-		defer test()
+	restoreGinMode := setGinMode()
+	defer restoreGinMode()
+
+	setup := func(t *testing.T) (*gin.Engine, *vmock.MockDiscoverScheduleService) {
+		t.Helper()
 
 		engine := gin.New()
 		engine.Use(gin.Recovery())
 
 		mockCtrl := gomock.NewController(t)
-		defer mockCtrl.Finish()
+		t.Cleanup(mockCtrl.Finish)
 
 		dss := vmock.NewMockDiscoverScheduleService(mockCtrl)
 		handler := MockNewRestHandler(&common.AppSetting{}, nil, nil, nil, nil, nil, nil, nil, dss, nil, nil)
 		handler.RegisterPublic(engine)
+		return engine, dss
+	}
 
-		url := "/api/vega-backend/in/v1/discover-schedules"
+	const url = "/api/vega-backend/in/v1/discover-schedules"
 
-		Convey("Invalid offset\n", func() {
-			req := httptest.NewRequest(http.MethodGet, url+"?offset=-1", nil)
+	tests := []struct {
+		name     string
+		query    string
+		wantBody string
+	}{
+		{name: "invalid offset", query: "?offset=-1", wantBody: "VegaBackend.InvalidParameter.Offset"},
+		{name: "invalid offset non-numeric", query: "?offset=abc", wantBody: "VegaBackend.InvalidParameter.Offset"},
+		{name: "invalid limit exceeds max", query: "?limit=99999999", wantBody: "VegaBackend.InvalidParameter.Limit"},
+		{name: "invalid sort field", query: "?sort=unknown_field", wantBody: "VegaBackend.InvalidParameter.Sort"},
+		{name: "invalid direction", query: "?direction=foo", wantBody: "VegaBackend.InvalidParameter.Direction"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			engine, _ := setup(t)
+			req := httptest.NewRequest(http.MethodGet, url+tt.query, nil)
 			w := httptest.NewRecorder()
+
 			engine.ServeHTTP(w, req)
 
-			So(w.Result().StatusCode, ShouldEqual, http.StatusBadRequest)
-			So(w.Body.String(), ShouldContainSubstring, "VegaBackend.InvalidParameter.Offset")
+			require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
+			assert.Contains(t, w.Body.String(), tt.wantBody)
 		})
+	}
 
-		Convey("Invalid offset non-numeric\n", func() {
-			req := httptest.NewRequest(http.MethodGet, url+"?offset=abc", nil)
-			w := httptest.NewRecorder()
-			engine.ServeHTTP(w, req)
+	t.Run("success with default pagination", func(t *testing.T) {
+		engine, dss := setup(t)
+		dss.EXPECT().List(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, params interfaces.DiscoverScheduleQueryParams) ([]*interfaces.DiscoverSchedule, int64, error) {
+				assert.Equal(t, 0, params.Offset)
+				assert.Equal(t, 20, params.Limit)
+				assert.Equal(t, "f_update_time", params.Sort)
+				assert.Equal(t, interfaces.DESC_DIRECTION, params.Direction)
+				return []*interfaces.DiscoverSchedule{}, int64(0), nil
+			})
 
-			So(w.Result().StatusCode, ShouldEqual, http.StatusBadRequest)
-			So(w.Body.String(), ShouldContainSubstring, "VegaBackend.InvalidParameter.Offset")
-		})
+		req := httptest.NewRequest(http.MethodGet, url, nil)
+		w := httptest.NewRecorder()
 
-		Convey("Invalid limit exceeds max\n", func() {
-			req := httptest.NewRequest(http.MethodGet, url+"?limit=99999999", nil)
-			w := httptest.NewRecorder()
-			engine.ServeHTTP(w, req)
+		engine.ServeHTTP(w, req)
 
-			So(w.Result().StatusCode, ShouldEqual, http.StatusBadRequest)
-			So(w.Body.String(), ShouldContainSubstring, "VegaBackend.InvalidParameter.Limit")
-		})
+		require.Equal(t, http.StatusOK, w.Result().StatusCode)
+	})
 
-		Convey("Invalid sort field\n", func() {
-			req := httptest.NewRequest(http.MethodGet, url+"?sort=unknown_field", nil)
-			w := httptest.NewRecorder()
-			engine.ServeHTTP(w, req)
+	t.Run("success with explicit sort and direction", func(t *testing.T) {
+		engine, dss := setup(t)
+		dss.EXPECT().List(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, params interfaces.DiscoverScheduleQueryParams) ([]*interfaces.DiscoverSchedule, int64, error) {
+				assert.Equal(t, "f_next_run", params.Sort)
+				assert.Equal(t, interfaces.ASC_DIRECTION, params.Direction)
+				assert.Equal(t, 5, params.Offset)
+				assert.Equal(t, 10, params.Limit)
+				return []*interfaces.DiscoverSchedule{}, int64(0), nil
+			})
 
-			So(w.Result().StatusCode, ShouldEqual, http.StatusBadRequest)
-			So(w.Body.String(), ShouldContainSubstring, "VegaBackend.InvalidParameter.Sort")
-		})
+		req := httptest.NewRequest(http.MethodGet, url+"?sort=next_run&direction=asc&offset=5&limit=10", nil)
+		w := httptest.NewRecorder()
 
-		Convey("Invalid direction\n", func() {
-			req := httptest.NewRequest(http.MethodGet, url+"?direction=foo", nil)
-			w := httptest.NewRecorder()
-			engine.ServeHTTP(w, req)
+		engine.ServeHTTP(w, req)
 
-			So(w.Result().StatusCode, ShouldEqual, http.StatusBadRequest)
-			So(w.Body.String(), ShouldContainSubstring, "VegaBackend.InvalidParameter.Direction")
-		})
+		require.Equal(t, http.StatusOK, w.Result().StatusCode)
+	})
 
-		Convey("Success with default pagination\n", func() {
-			dss.EXPECT().List(gomock.Any(), gomock.Any()).
-				DoAndReturn(func(_ context.Context, params interfaces.DiscoverScheduleQueryParams) ([]*interfaces.DiscoverSchedule, int64, error) {
-					So(params.Offset, ShouldEqual, 0)
-					So(params.Limit, ShouldEqual, 20)
-					So(params.Sort, ShouldEqual, "f_update_time")
-					So(params.Direction, ShouldEqual, interfaces.DESC_DIRECTION)
-					return []*interfaces.DiscoverSchedule{}, int64(0), nil
-				})
+	t.Run("success with catalog_id and enabled filters preserved", func(t *testing.T) {
+		engine, dss := setup(t)
+		dss.EXPECT().List(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, params interfaces.DiscoverScheduleQueryParams) ([]*interfaces.DiscoverSchedule, int64, error) {
+				assert.Equal(t, "cat-1", params.CatalogID)
+				require.NotNil(t, params.Enabled)
+				assert.True(t, *params.Enabled)
+				return []*interfaces.DiscoverSchedule{}, int64(0), nil
+			})
 
-			req := httptest.NewRequest(http.MethodGet, url, nil)
-			w := httptest.NewRecorder()
-			engine.ServeHTTP(w, req)
+		req := httptest.NewRequest(http.MethodGet, url+"?catalog_id=cat-1&enabled=true", nil)
+		w := httptest.NewRecorder()
 
-			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
-		})
+		engine.ServeHTTP(w, req)
 
-		Convey("Success with explicit sort and direction\n", func() {
-			dss.EXPECT().List(gomock.Any(), gomock.Any()).
-				DoAndReturn(func(_ context.Context, params interfaces.DiscoverScheduleQueryParams) ([]*interfaces.DiscoverSchedule, int64, error) {
-					So(params.Sort, ShouldEqual, "f_next_run")
-					So(params.Direction, ShouldEqual, interfaces.ASC_DIRECTION)
-					So(params.Offset, ShouldEqual, 5)
-					So(params.Limit, ShouldEqual, 10)
-					return []*interfaces.DiscoverSchedule{}, int64(0), nil
-				})
-
-			req := httptest.NewRequest(http.MethodGet, url+"?sort=next_run&direction=asc&offset=5&limit=10", nil)
-			w := httptest.NewRecorder()
-			engine.ServeHTTP(w, req)
-
-			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
-		})
-
-		Convey("Success with catalog_id and enabled filters preserved\n", func() {
-			dss.EXPECT().List(gomock.Any(), gomock.Any()).
-				DoAndReturn(func(_ context.Context, params interfaces.DiscoverScheduleQueryParams) ([]*interfaces.DiscoverSchedule, int64, error) {
-					So(params.CatalogID, ShouldEqual, "cat-1")
-					So(params.Enabled, ShouldNotBeNil)
-					So(*params.Enabled, ShouldBeTrue)
-					return []*interfaces.DiscoverSchedule{}, int64(0), nil
-				})
-
-			req := httptest.NewRequest(http.MethodGet, url+"?catalog_id=cat-1&enabled=true", nil)
-			w := httptest.NewRecorder()
-			engine.ServeHTTP(w, req)
-
-			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
-		})
+		require.Equal(t, http.StatusOK, w.Result().StatusCode)
 	})
 }

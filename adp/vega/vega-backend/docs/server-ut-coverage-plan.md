@@ -310,3 +310,57 @@ env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cov
 - overall statement coverage：**7.5%**。
 - 包覆盖率保持：`driveradapters` 32.5%。
 - 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。
+
+### 2026-07-09：Step 6 Resource Handler 风格迁移
+
+范围：
+
+- 将 `driveradapters/resource_handler_test.go` 从 goconvey 迁移到 `testing + testify`。
+- 保留原有覆盖语义：`ListResources` 的 invalid category、invalid status、成功解析 name/category/status 并调用 service。
+- 仅调整测试组织和断言风格，不改生产逻辑。
+
+验证：
+
+```bash
+cd adp/vega/vega-backend/server
+env GOCACHE=/tmp/go-build-cache go test ./driveradapters
+env GOCACHE=/tmp/go-build-cache go test ./...
+env GOCACHE=/tmp/go-build-cache go test ./... -coverprofile=/tmp/vega-backend-server-cover.out
+env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cover.out
+```
+
+结果：
+
+- `go test ./driveradapters` 通过。
+- `go test ./...` 通过。
+- overall statement coverage：**7.5%**。
+- 包覆盖率保持：`driveradapters` 32.5%。
+- 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。
+
+### 2026-07-09：Step 7 小型 Handler 风格迁移
+
+范围：
+
+- 将 `driveradapters/auth_resource_handler_test.go` 从 goconvey 迁移到 `testing + testify`。
+- 将 `driveradapters/discover_task_handler_test.go` 从 goconvey 迁移到 `testing + testify`。
+- 将 `driveradapters/discover_schedule_handler_test.go` 从 goconvey 迁移到 `testing + testify`。
+- 保留原有覆盖语义：列表参数校验、状态码断言、service mock 参数透传断言。
+- 仅调整测试组织和断言风格，不改生产逻辑。
+
+验证：
+
+```bash
+cd adp/vega/vega-backend/server
+env GOCACHE=/tmp/go-build-cache go test ./driveradapters
+env GOCACHE=/tmp/go-build-cache go test ./...
+env GOCACHE=/tmp/go-build-cache go test ./... -coverprofile=/tmp/vega-backend-server-cover.out
+env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cover.out
+```
+
+结果：
+
+- `go test ./driveradapters` 通过。
+- `go test ./...` 通过。
+- overall statement coverage：**7.5%**。
+- 包覆盖率保持：`driveradapters` 32.5%。
+- 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。
