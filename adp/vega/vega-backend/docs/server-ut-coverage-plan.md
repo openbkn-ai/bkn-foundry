@@ -74,9 +74,9 @@ env GOCACHE=/tmp/go-build-cache go test ./drivenadapters/... -cover
 | `drivenadapters/catalog` | 45.3% |
 | `drivenadapters/permission` | 90.3% |
 | `drivenadapters/resource` | 53.7% |
-| `drivenadapters/discover_schedule` | 67.2% |
-| `drivenadapters/discover_task` | 68.8% |
-| `drivenadapters/connector_type` | 73.8% |
+| `drivenadapters/discover_schedule` | 70.4% |
+| `drivenadapters/discover_task` | 72.0% |
+| `drivenadapters/connector_type` | 75.9% |
 | `drivenadapters/build_task` | 78.1% |
 | `drivenadapters/entityextension` | 82.4% |
 | `drivenadapters/model_factory` | 100.0% |
@@ -135,6 +135,12 @@ env GOCACHE=/tmp/go-build-cache go test ./drivenadapters/... -cover
 - 动态 SQL 只断言关键结构和参数顺序，避免测试过脆。
 
 建议 commit：`test(vega-backend): cover driven sql access adapters`。
+
+状态：
+
+- 已完成：`connector_type/connector_type_access.go`、`build_task/build_task_access.go`、`discover_task/discover_task_access.go`、`discover_schedule/discover_schedule_access.go`、`catalog/catalog_access.go`、`resource/resource_access.go` 的现有测试按“一函数一测试函数 + t.Run”整理。
+- 已补充：`connector_type` create/update 错误分支，`discover_task` strategy/not found/status/count/delete 分支，`discover_schedule` get/list/create/update 分支。
+- 后续留给 D3/收口：`catalog/resource` 的 extension join/attach helper 与更细的动态 SQL 边界。
 
 ### D3：Extension、Store 与收口文件
 

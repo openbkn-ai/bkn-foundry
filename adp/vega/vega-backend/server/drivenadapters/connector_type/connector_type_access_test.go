@@ -20,126 +20,134 @@ import (
 )
 
 func TestConnectorTypeAccessGetByType(t *testing.T) {
-	access, mock, cleanup := newConnectorTypeAccessMock(t)
-	defer cleanup()
+	t.Run("returns connector type", func(t *testing.T) {
+		access, mock, cleanup := newConnectorTypeAccessMock(t)
+		defer cleanup()
 
-	mock.ExpectQuery("SELECT f_type, f_name, f_tags, f_description, f_mode, f_category, f_endpoint, f_field_config, f_enabled FROM t_connector_type WHERE f_type = ?").
-		WithArgs("remote-api").
-		WillReturnRows(connectorTypeRows().AddRow(
-			"remote-api",
-			"Remote API",
-			"tag-a,tag-b",
-			"desc",
-			interfaces.ConnectorModeRemote,
-			interfaces.ConnectorCategoryAPI,
-			"http://remote",
-			`{"token":{"name":"Token","type":"string","required":true,"encrypted":true}}`,
-			true,
-		))
+		mock.ExpectQuery("SELECT f_type, f_name, f_tags, f_description, f_mode, f_category, f_endpoint, f_field_config, f_enabled FROM t_connector_type WHERE f_type = ?").
+			WithArgs("remote-api").
+			WillReturnRows(connectorTypeRows().AddRow(
+				"remote-api",
+				"Remote API",
+				"tag-a,tag-b",
+				"desc",
+				interfaces.ConnectorModeRemote,
+				interfaces.ConnectorCategoryAPI,
+				"http://remote",
+				`{"token":{"name":"Token","type":"string","required":true,"encrypted":true}}`,
+				true,
+			))
 
-	got, err := access.GetByType(context.Background(), "remote-api")
+		got, err := access.GetByType(context.Background(), "remote-api")
 
-	require.NoError(t, err)
-	assert.Equal(t, "remote-api", got.Type)
-	assert.Equal(t, []string{"tag-a", "tag-b"}, got.Tags)
-	assert.True(t, got.Enabled)
-	require.Contains(t, got.FieldConfig, "token")
-	assert.True(t, got.FieldConfig["token"].Encrypted)
-	require.NoError(t, mock.ExpectationsWereMet())
-}
+		require.NoError(t, err)
+		assert.Equal(t, "remote-api", got.Type)
+		assert.Equal(t, []string{"tag-a", "tag-b"}, got.Tags)
+		assert.True(t, got.Enabled)
+		require.Contains(t, got.FieldConfig, "token")
+		assert.True(t, got.FieldConfig["token"].Encrypted)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
 
-func TestConnectorTypeAccessGetByTypeNotFound(t *testing.T) {
-	access, mock, cleanup := newConnectorTypeAccessMock(t)
-	defer cleanup()
+	t.Run("returns nil when not found", func(t *testing.T) {
+		access, mock, cleanup := newConnectorTypeAccessMock(t)
+		defer cleanup()
 
-	mock.ExpectQuery("SELECT f_type, f_name, f_tags, f_description, f_mode, f_category, f_endpoint, f_field_config, f_enabled FROM t_connector_type WHERE f_type = ?").
-		WithArgs("missing").
-		WillReturnError(sql.ErrNoRows)
+		mock.ExpectQuery("SELECT f_type, f_name, f_tags, f_description, f_mode, f_category, f_endpoint, f_field_config, f_enabled FROM t_connector_type WHERE f_type = ?").
+			WithArgs("missing").
+			WillReturnError(sql.ErrNoRows)
 
-	got, err := access.GetByType(context.Background(), "missing")
+		got, err := access.GetByType(context.Background(), "missing")
 
-	require.NoError(t, err)
-	assert.Nil(t, got)
-	require.NoError(t, mock.ExpectationsWereMet())
+		require.NoError(t, err)
+		assert.Nil(t, got)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
 }
 
 func TestConnectorTypeAccessGetByName(t *testing.T) {
-	access, mock, cleanup := newConnectorTypeAccessMock(t)
-	defer cleanup()
+	t.Run("returns connector type", func(t *testing.T) {
+		access, mock, cleanup := newConnectorTypeAccessMock(t)
+		defer cleanup()
 
-	mock.ExpectQuery("SELECT f_type, f_name, f_tags, f_description, f_mode, f_category, f_endpoint, f_field_config, f_enabled FROM t_connector_type WHERE f_name = ?").
-		WithArgs("Remote API").
-		WillReturnRows(connectorTypeRows().AddRow(
-			"remote-api",
-			"Remote API",
-			"tag-a,tag-b",
-			"desc",
-			interfaces.ConnectorModeRemote,
-			interfaces.ConnectorCategoryAPI,
-			"http://remote",
-			`{"token":{"name":"Token","type":"string","required":true,"encrypted":true}}`,
-			true,
-		))
+		mock.ExpectQuery("SELECT f_type, f_name, f_tags, f_description, f_mode, f_category, f_endpoint, f_field_config, f_enabled FROM t_connector_type WHERE f_name = ?").
+			WithArgs("Remote API").
+			WillReturnRows(connectorTypeRows().AddRow(
+				"remote-api",
+				"Remote API",
+				"tag-a,tag-b",
+				"desc",
+				interfaces.ConnectorModeRemote,
+				interfaces.ConnectorCategoryAPI,
+				"http://remote",
+				`{"token":{"name":"Token","type":"string","required":true,"encrypted":true}}`,
+				true,
+			))
 
-	got, err := access.GetByName(context.Background(), "Remote API")
+		got, err := access.GetByName(context.Background(), "Remote API")
 
-	require.NoError(t, err)
-	require.NotNil(t, got)
-	assert.Equal(t, "remote-api", got.Type)
-	assert.Equal(t, "Remote API", got.Name)
-	require.NoError(t, mock.ExpectationsWereMet())
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		assert.Equal(t, "remote-api", got.Type)
+		assert.Equal(t, "Remote API", got.Name)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
 }
 
 func TestConnectorTypeAccessList(t *testing.T) {
-	access, mock, cleanup := newConnectorTypeAccessMock(t)
-	defer cleanup()
+	t.Run("returns connector types with filters", func(t *testing.T) {
+		access, mock, cleanup := newConnectorTypeAccessMock(t)
+		defer cleanup()
 
-	enabled := true
-	params := interfaces.ConnectorTypesQueryParams{
-		Name:     "remote",
-		Mode:     interfaces.ConnectorModeRemote,
-		Category: interfaces.ConnectorCategoryAPI,
-		Enabled:  &enabled,
-	}
+		enabled := true
+		params := interfaces.ConnectorTypesQueryParams{
+			Name:     "remote",
+			Mode:     interfaces.ConnectorModeRemote,
+			Category: interfaces.ConnectorCategoryAPI,
+			Enabled:  &enabled,
+		}
 
-	mock.ExpectQuery("SELECT COUNT(*) FROM t_connector_type WHERE f_name LIKE ? AND f_mode = ? AND f_category = ? AND f_enabled = ?").
-		WithArgs("%remote%", interfaces.ConnectorModeRemote, interfaces.ConnectorCategoryAPI, true).
-		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
-	mock.ExpectQuery("SELECT f_type, f_name, f_tags, f_description, f_mode, f_category, f_endpoint, f_field_config, f_enabled FROM t_connector_type WHERE f_name LIKE ? AND f_mode = ? AND f_category = ? AND f_enabled = ? ORDER BY f_name ASC").
-		WithArgs("%remote%", interfaces.ConnectorModeRemote, interfaces.ConnectorCategoryAPI, true).
-		WillReturnRows(connectorTypeRows().AddRow("remote-api", "Remote API", "", "", interfaces.ConnectorModeRemote, interfaces.ConnectorCategoryAPI, "", "", true))
+		mock.ExpectQuery("SELECT COUNT(*) FROM t_connector_type WHERE f_name LIKE ? AND f_mode = ? AND f_category = ? AND f_enabled = ?").
+			WithArgs("%remote%", interfaces.ConnectorModeRemote, interfaces.ConnectorCategoryAPI, true).
+			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+		mock.ExpectQuery("SELECT f_type, f_name, f_tags, f_description, f_mode, f_category, f_endpoint, f_field_config, f_enabled FROM t_connector_type WHERE f_name LIKE ? AND f_mode = ? AND f_category = ? AND f_enabled = ? ORDER BY f_name ASC").
+			WithArgs("%remote%", interfaces.ConnectorModeRemote, interfaces.ConnectorCategoryAPI, true).
+			WillReturnRows(connectorTypeRows().AddRow("remote-api", "Remote API", "", "", interfaces.ConnectorModeRemote, interfaces.ConnectorCategoryAPI, "", "", true))
 
-	got, total, err := access.List(context.Background(), params)
+		got, total, err := access.List(context.Background(), params)
 
-	require.NoError(t, err)
-	assert.Equal(t, int64(1), total)
-	require.Len(t, got, 1)
-	assert.Equal(t, "remote-api", got[0].Type)
-	require.NoError(t, mock.ExpectationsWereMet())
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), total)
+		require.Len(t, got, 1)
+		assert.Equal(t, "remote-api", got[0].Type)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
 }
 
 func TestConnectorTypeAccessListAuthResources(t *testing.T) {
-	access, mock, cleanup := newConnectorTypeAccessMock(t)
-	defer cleanup()
+	t.Run("returns auth resources", func(t *testing.T) {
+		access, mock, cleanup := newConnectorTypeAccessMock(t)
+		defer cleanup()
 
-	mock.ExpectQuery("SELECT f_type, f_name FROM t_connector_type WHERE f_type = ? AND f_name LIKE ? ORDER BY f_name ASC").
-		WithArgs("remote-api", "%Remote%").
-		WillReturnRows(sqlmock.NewRows([]string{"f_type", "f_name"}).AddRow("remote-api", "Remote API"))
+		mock.ExpectQuery("SELECT f_type, f_name FROM t_connector_type WHERE f_type = ? AND f_name LIKE ? ORDER BY f_name ASC").
+			WithArgs("remote-api", "%Remote%").
+			WillReturnRows(sqlmock.NewRows([]string{"f_type", "f_name"}).AddRow("remote-api", "Remote API"))
 
-	got, err := access.ListAuthResources(context.Background(), interfaces.AuthResourceQueryParams{
-		ID:      "remote-api",
-		Keyword: "Remote",
+		got, err := access.ListAuthResources(context.Background(), interfaces.AuthResourceQueryParams{
+			ID:      "remote-api",
+			Keyword: "Remote",
+		})
+
+		require.NoError(t, err)
+		require.Len(t, got, 1)
+		assert.Equal(t, "remote-api", got[0].ID)
+		assert.Equal(t, interfaces.AuthResourceTypeConnectorType, got[0].Type)
+		require.NoError(t, mock.ExpectationsWereMet())
 	})
-
-	require.NoError(t, err)
-	require.Len(t, got, 1)
-	assert.Equal(t, "remote-api", got[0].ID)
-	assert.Equal(t, interfaces.AuthResourceTypeConnectorType, got[0].Type)
-	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-func TestConnectorTypeAccessExecs(t *testing.T) {
-	t.Run("create", func(t *testing.T) {
+func TestConnectorTypeAccessCreate(t *testing.T) {
+	t.Run("creates connector type", func(t *testing.T) {
 		access, mock, cleanup := newConnectorTypeAccessMock(t)
 		defer cleanup()
 		ct := sampleConnectorType()
@@ -152,7 +160,25 @@ func TestConnectorTypeAccessExecs(t *testing.T) {
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
-	t.Run("update", func(t *testing.T) {
+	t.Run("returns db error", func(t *testing.T) {
+		access, mock, cleanup := newConnectorTypeAccessMock(t)
+		defer cleanup()
+		ct := sampleConnectorType()
+
+		mock.ExpectExec("INSERT INTO t_connector_type (f_type,f_name,f_tags,f_description,f_mode,f_category,f_endpoint,f_field_config,f_enabled) VALUES (?,?,?,?,?,?,?,?,?)").
+			WithArgs(ct.Type, ct.Name, `"tag-a","tag-b"`, ct.Description, ct.Mode, ct.Category, ct.Endpoint, `{"token":{"name":"Token","type":"string","description":"","required":true,"encrypted":true}}`, ct.Enabled).
+			WillReturnError(errors.New("insert failed"))
+
+		err := access.Create(context.Background(), ct)
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "insert failed")
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+}
+
+func TestConnectorTypeAccessUpdate(t *testing.T) {
+	t.Run("updates connector type", func(t *testing.T) {
 		access, mock, cleanup := newConnectorTypeAccessMock(t)
 		defer cleanup()
 		ct := sampleConnectorType()
@@ -166,7 +192,25 @@ func TestConnectorTypeAccessExecs(t *testing.T) {
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
-	t.Run("set enabled", func(t *testing.T) {
+	t.Run("returns db error", func(t *testing.T) {
+		access, mock, cleanup := newConnectorTypeAccessMock(t)
+		defer cleanup()
+		ct := sampleConnectorType()
+
+		mock.ExpectExec("UPDATE t_connector_type SET f_name = ?, f_tags = ?, f_description = ?, f_mode = ?, f_category = ?, f_endpoint = ?, f_field_config = ?, f_enabled = ? WHERE f_type = ?").
+			WithArgs(ct.Name, `"tag-a","tag-b"`, ct.Description, ct.Mode, ct.Category, ct.Endpoint, `{"token":{"name":"Token","type":"string","description":"","required":true,"encrypted":true}}`, ct.Enabled, ct.Type).
+			WillReturnError(errors.New("update failed"))
+
+		err := access.Update(context.Background(), ct)
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "update failed")
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+}
+
+func TestConnectorTypeAccessSetEnabled(t *testing.T) {
+	t.Run("sets enabled flag", func(t *testing.T) {
 		access, mock, cleanup := newConnectorTypeAccessMock(t)
 		defer cleanup()
 
@@ -177,8 +221,10 @@ func TestConnectorTypeAccessExecs(t *testing.T) {
 		require.NoError(t, access.SetEnabled(context.Background(), "remote-api", false))
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
+}
 
-	t.Run("delete", func(t *testing.T) {
+func TestConnectorTypeAccessDeleteByType(t *testing.T) {
+	t.Run("deletes connector type", func(t *testing.T) {
 		access, mock, cleanup := newConnectorTypeAccessMock(t)
 		defer cleanup()
 
@@ -190,7 +236,7 @@ func TestConnectorTypeAccessExecs(t *testing.T) {
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
-	t.Run("delete returns db error", func(t *testing.T) {
+	t.Run("returns db error", func(t *testing.T) {
 		access, mock, cleanup := newConnectorTypeAccessMock(t)
 		defer cleanup()
 

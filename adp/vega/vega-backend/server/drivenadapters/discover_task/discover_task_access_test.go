@@ -19,67 +19,71 @@ import (
 )
 
 func TestDiscoverTaskAccessGetByID(t *testing.T) {
-	access, mock, cleanup := newDiscoverTaskAccessMock(t)
-	defer cleanup()
+	t.Run("returns discover task", func(t *testing.T) {
+		access, mock, cleanup := newDiscoverTaskAccessMock(t)
+		defer cleanup()
 
-	mock.ExpectQuery("SELECT f_id, f_catalog_id, f_schedule_id, f_strategy, f_trigger_type, f_status, f_progress, f_message, f_start_time, f_finish_time, f_result, f_creator, f_creator_type, f_create_time FROM t_discover_task WHERE f_id = ?").
-		WithArgs("task-1").
-		WillReturnRows(discoverTaskRows().AddRow(
-			"task-1",
-			"catalog-1",
-			"schedule-1",
-			"full_sync",
-			interfaces.DiscoverTaskTriggerManual,
-			interfaces.DiscoverTaskStatusCompleted,
-			100,
-			"done",
-			int64(10),
-			int64(20),
-			`{"databases":[{"name":"db1"}]}`,
-			"u1",
-			interfaces.ACCESSOR_TYPE_USER,
-			int64(1),
-		))
+		mock.ExpectQuery("SELECT f_id, f_catalog_id, f_schedule_id, f_strategy, f_trigger_type, f_status, f_progress, f_message, f_start_time, f_finish_time, f_result, f_creator, f_creator_type, f_create_time FROM t_discover_task WHERE f_id = ?").
+			WithArgs("task-1").
+			WillReturnRows(discoverTaskRows().AddRow(
+				"task-1",
+				"catalog-1",
+				"schedule-1",
+				"full_sync",
+				interfaces.DiscoverTaskTriggerManual,
+				interfaces.DiscoverTaskStatusCompleted,
+				100,
+				"done",
+				int64(10),
+				int64(20),
+				`{"databases":[{"name":"db1"}]}`,
+				"u1",
+				interfaces.ACCESSOR_TYPE_USER,
+				int64(1),
+			))
 
-	got, err := access.GetByID(context.Background(), "task-1")
+		got, err := access.GetByID(context.Background(), "task-1")
 
-	require.NoError(t, err)
-	assert.Equal(t, "task-1", got.ID)
-	assert.Equal(t, interfaces.DiscoverTaskStatusCompleted, got.Status)
-	assert.Equal(t, "u1", got.Creator.ID)
-	require.NotNil(t, got.Result)
-	require.NoError(t, mock.ExpectationsWereMet())
+		require.NoError(t, err)
+		assert.Equal(t, "task-1", got.ID)
+		assert.Equal(t, interfaces.DiscoverTaskStatusCompleted, got.Status)
+		assert.Equal(t, "u1", got.Creator.ID)
+		require.NotNil(t, got.Result)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
 }
 
 func TestDiscoverTaskAccessList(t *testing.T) {
-	access, mock, cleanup := newDiscoverTaskAccessMock(t)
-	defer cleanup()
+	t.Run("returns tasks with filters", func(t *testing.T) {
+		access, mock, cleanup := newDiscoverTaskAccessMock(t)
+		defer cleanup()
 
-	params := interfaces.DiscoverTaskQueryParams{
-		PaginationQueryParams: interfaces.PaginationQueryParams{Offset: 5, Limit: 10, Sort: "f_create_time", Direction: "ASC"},
-		CatalogID:             "catalog-1",
-		Status:                interfaces.DiscoverTaskStatusRunning,
-		TriggerType:           interfaces.DiscoverTaskTriggerScheduled,
-	}
+		params := interfaces.DiscoverTaskQueryParams{
+			PaginationQueryParams: interfaces.PaginationQueryParams{Offset: 5, Limit: 10, Sort: "f_create_time", Direction: "ASC"},
+			CatalogID:             "catalog-1",
+			Status:                interfaces.DiscoverTaskStatusRunning,
+			TriggerType:           interfaces.DiscoverTaskTriggerScheduled,
+		}
 
-	mock.ExpectQuery("SELECT COUNT(*) FROM t_discover_task WHERE f_catalog_id = ? AND f_status = ? AND f_trigger_type = ?").
-		WithArgs("catalog-1", interfaces.DiscoverTaskStatusRunning, interfaces.DiscoverTaskTriggerScheduled).
-		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
-	mock.ExpectQuery("SELECT f_id, f_catalog_id, f_schedule_id, f_strategy, f_trigger_type, f_status, f_progress, f_message, f_start_time, f_finish_time, f_result, f_creator, f_creator_type, f_create_time FROM t_discover_task WHERE f_catalog_id = ? AND f_status = ? AND f_trigger_type = ? ORDER BY f_create_time ASC LIMIT 10 OFFSET 5").
-		WithArgs("catalog-1", interfaces.DiscoverTaskStatusRunning, interfaces.DiscoverTaskTriggerScheduled).
-		WillReturnRows(discoverTaskRows().AddRow("task-1", "catalog-1", "schedule-1", "full_sync", interfaces.DiscoverTaskTriggerScheduled, interfaces.DiscoverTaskStatusRunning, 10, "", int64(0), int64(0), "", "u1", interfaces.ACCESSOR_TYPE_USER, int64(1)))
+		mock.ExpectQuery("SELECT COUNT(*) FROM t_discover_task WHERE f_catalog_id = ? AND f_status = ? AND f_trigger_type = ?").
+			WithArgs("catalog-1", interfaces.DiscoverTaskStatusRunning, interfaces.DiscoverTaskTriggerScheduled).
+			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+		mock.ExpectQuery("SELECT f_id, f_catalog_id, f_schedule_id, f_strategy, f_trigger_type, f_status, f_progress, f_message, f_start_time, f_finish_time, f_result, f_creator, f_creator_type, f_create_time FROM t_discover_task WHERE f_catalog_id = ? AND f_status = ? AND f_trigger_type = ? ORDER BY f_create_time ASC LIMIT 10 OFFSET 5").
+			WithArgs("catalog-1", interfaces.DiscoverTaskStatusRunning, interfaces.DiscoverTaskTriggerScheduled).
+			WillReturnRows(discoverTaskRows().AddRow("task-1", "catalog-1", "schedule-1", "full_sync", interfaces.DiscoverTaskTriggerScheduled, interfaces.DiscoverTaskStatusRunning, 10, "", int64(0), int64(0), "", "u1", interfaces.ACCESSOR_TYPE_USER, int64(1)))
 
-	got, total, err := access.List(context.Background(), params)
+		got, total, err := access.List(context.Background(), params)
 
-	require.NoError(t, err)
-	assert.Equal(t, int64(1), total)
-	require.Len(t, got, 1)
-	assert.Equal(t, "task-1", got[0].ID)
-	require.NoError(t, mock.ExpectationsWereMet())
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), total)
+		require.Len(t, got, 1)
+		assert.Equal(t, "task-1", got[0].ID)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
 }
 
-func TestDiscoverTaskAccessUpdatesAndDelete(t *testing.T) {
-	t.Run("create", func(t *testing.T) {
+func TestDiscoverTaskAccessCreate(t *testing.T) {
+	t.Run("creates discover task", func(t *testing.T) {
 		access, mock, cleanup := newDiscoverTaskAccessMock(t)
 		defer cleanup()
 		task := sampleDiscoverTask()
@@ -91,8 +95,10 @@ func TestDiscoverTaskAccessUpdatesAndDelete(t *testing.T) {
 		require.NoError(t, access.Create(context.Background(), task))
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
+}
 
-	t.Run("get scheduled strategy", func(t *testing.T) {
+func TestDiscoverTaskAccessGetScheduledTaskStrategy(t *testing.T) {
+	t.Run("returns strategy", func(t *testing.T) {
 		access, mock, cleanup := newDiscoverTaskAccessMock(t)
 		defer cleanup()
 
@@ -107,7 +113,24 @@ func TestDiscoverTaskAccessUpdatesAndDelete(t *testing.T) {
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
-	t.Run("update running status sets start time", func(t *testing.T) {
+	t.Run("returns empty when schedule not found", func(t *testing.T) {
+		access, mock, cleanup := newDiscoverTaskAccessMock(t)
+		defer cleanup()
+
+		mock.ExpectQuery("SELECT f_strategy FROM t_discover_schedule WHERE f_id = ?").
+			WithArgs("missing").
+			WillReturnError(sql.ErrNoRows)
+
+		got, err := access.GetScheduledTaskStrategy(context.Background(), "missing")
+
+		require.NoError(t, err)
+		assert.Empty(t, got)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+}
+
+func TestDiscoverTaskAccessUpdateStatus(t *testing.T) {
+	t.Run("sets start time for running status", func(t *testing.T) {
 		access, mock, cleanup := newDiscoverTaskAccessMock(t)
 		defer cleanup()
 
@@ -119,7 +142,23 @@ func TestDiscoverTaskAccessUpdatesAndDelete(t *testing.T) {
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
-	t.Run("update progress", func(t *testing.T) {
+	t.Run("returns db error", func(t *testing.T) {
+		access, mock, cleanup := newDiscoverTaskAccessMock(t)
+		defer cleanup()
+
+		mock.ExpectExec("UPDATE t_discover_task SET f_message = ?, f_status = ? WHERE f_id = ?").
+			WithArgs("failed", interfaces.DiscoverTaskStatusFailed, "task-1").
+			WillReturnError(sql.ErrConnDone)
+
+		err := access.UpdateStatus(context.Background(), "task-1", interfaces.DiscoverTaskStatusFailed, "failed", 0)
+
+		require.Error(t, err)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+}
+
+func TestDiscoverTaskAccessUpdateProgress(t *testing.T) {
+	t.Run("updates progress", func(t *testing.T) {
 		access, mock, cleanup := newDiscoverTaskAccessMock(t)
 		defer cleanup()
 
@@ -130,8 +169,10 @@ func TestDiscoverTaskAccessUpdatesAndDelete(t *testing.T) {
 		require.NoError(t, access.UpdateProgress(context.Background(), "task-1", 30))
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
+}
 
-	t.Run("update result completes task", func(t *testing.T) {
+func TestDiscoverTaskAccessUpdateResult(t *testing.T) {
+	t.Run("completes task with result", func(t *testing.T) {
 		access, mock, cleanup := newDiscoverTaskAccessMock(t)
 		defer cleanup()
 
@@ -146,8 +187,10 @@ func TestDiscoverTaskAccessUpdatesAndDelete(t *testing.T) {
 		}, 999))
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
+}
 
-	t.Run("check exist by statuses", func(t *testing.T) {
+func TestDiscoverTaskAccessCheckExistByStatuses(t *testing.T) {
+	t.Run("returns true when matching task exists", func(t *testing.T) {
 		access, mock, cleanup := newDiscoverTaskAccessMock(t)
 		defer cleanup()
 
@@ -162,7 +205,24 @@ func TestDiscoverTaskAccessUpdatesAndDelete(t *testing.T) {
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
-	t.Run("delete returns sql err no rows when nothing affected", func(t *testing.T) {
+	t.Run("counts by catalog when statuses are empty", func(t *testing.T) {
+		access, mock, cleanup := newDiscoverTaskAccessMock(t)
+		defer cleanup()
+
+		mock.ExpectQuery("SELECT COUNT(*) FROM t_discover_task WHERE f_catalog_id = ?").
+			WithArgs("catalog-1").
+			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
+
+		got, err := access.CheckExistByStatuses(context.Background(), "catalog-1", nil)
+
+		require.NoError(t, err)
+		assert.False(t, got)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+}
+
+func TestDiscoverTaskAccessDelete(t *testing.T) {
+	t.Run("returns sql err no rows when nothing affected", func(t *testing.T) {
 		access, mock, cleanup := newDiscoverTaskAccessMock(t)
 		defer cleanup()
 
@@ -173,6 +233,20 @@ func TestDiscoverTaskAccessUpdatesAndDelete(t *testing.T) {
 		err := access.Delete(context.Background(), "missing")
 
 		require.ErrorIs(t, err, sql.ErrNoRows)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("deletes task", func(t *testing.T) {
+		access, mock, cleanup := newDiscoverTaskAccessMock(t)
+		defer cleanup()
+
+		mock.ExpectExec("DELETE FROM t_discover_task WHERE f_id = ?").
+			WithArgs("task-1").
+			WillReturnResult(sqlmock.NewResult(0, 1))
+
+		err := access.Delete(context.Background(), "task-1")
+
+		require.NoError(t, err)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 }

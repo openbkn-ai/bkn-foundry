@@ -8,6 +8,7 @@ package discover_schedule
 
 import (
 	"context"
+	"database/sql"
 	"testing"
 	"time"
 
@@ -19,19 +20,26 @@ import (
 )
 
 func TestCalculateNextRun(t *testing.T) {
-	base := time.Date(2026, 7, 9, 12, 0, 0, 0, time.UTC)
+	t.Run("returns next run", func(t *testing.T) {
+		base := time.Date(2026, 7, 9, 12, 0, 0, 0, time.UTC)
 
-	next, err := calculateNextRun("0 13 * * *", base)
+		next, err := calculateNextRun("0 13 * * *", base)
 
-	require.NoError(t, err)
-	assert.Equal(t, time.Date(2026, 7, 9, 13, 0, 0, 0, time.UTC), next)
+		require.NoError(t, err)
+		assert.Equal(t, time.Date(2026, 7, 9, 13, 0, 0, 0, time.UTC), next)
+	})
 
-	_, err = calculateNextRun("bad cron", base)
-	require.Error(t, err)
+	t.Run("returns error for invalid cron", func(t *testing.T) {
+		base := time.Date(2026, 7, 9, 12, 0, 0, 0, time.UTC)
+
+		_, err := calculateNextRun("bad cron", base)
+
+		require.Error(t, err)
+	})
 }
 
-func TestDiscoverScheduleAccessGetAndList(t *testing.T) {
-	t.Run("get by id", func(t *testing.T) {
+func TestDiscoverScheduleAccessGetByID(t *testing.T) {
+	t.Run("returns schedule", func(t *testing.T) {
 		access, mock, cleanup := newDiscoverScheduleAccessMock(t)
 		defer cleanup()
 
@@ -48,7 +56,24 @@ func TestDiscoverScheduleAccessGetAndList(t *testing.T) {
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
-	t.Run("list with filters", func(t *testing.T) {
+	t.Run("returns nil when not found", func(t *testing.T) {
+		access, mock, cleanup := newDiscoverScheduleAccessMock(t)
+		defer cleanup()
+
+		mock.ExpectQuery("SELECT f_id, f_name, f_catalog_id, f_cron_expr, f_start_time, f_end_time, f_enabled, f_strategy, f_last_run, f_next_run, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time FROM t_discover_schedule WHERE f_id = ?").
+			WithArgs("missing").
+			WillReturnError(sql.ErrNoRows)
+
+		got, err := access.GetByID(context.Background(), "missing")
+
+		require.NoError(t, err)
+		assert.Nil(t, got)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+}
+
+func TestDiscoverScheduleAccessList(t *testing.T) {
+	t.Run("returns schedules with filters", func(t *testing.T) {
 		access, mock, cleanup := newDiscoverScheduleAccessMock(t)
 		defer cleanup()
 
@@ -75,10 +100,25 @@ func TestDiscoverScheduleAccessGetAndList(t *testing.T) {
 		assert.Equal(t, "Nightly", got[0].Name)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
+
+	t.Run("returns count error", func(t *testing.T) {
+		access, mock, cleanup := newDiscoverScheduleAccessMock(t)
+		defer cleanup()
+
+		mock.ExpectQuery("SELECT COUNT(*) FROM t_discover_schedule").
+			WillReturnError(sql.ErrConnDone)
+
+		got, total, err := access.List(context.Background(), interfaces.DiscoverScheduleQueryParams{})
+
+		require.Error(t, err)
+		assert.Nil(t, got)
+		assert.Zero(t, total)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
 }
 
-func TestDiscoverScheduleAccessExecs(t *testing.T) {
-	t.Run("create calculates next run", func(t *testing.T) {
+func TestDiscoverScheduleAccessCreate(t *testing.T) {
+	t.Run("calculates next run", func(t *testing.T) {
 		access, mock, cleanup := newDiscoverScheduleAccessMock(t)
 		defer cleanup()
 		schedule := sampleDiscoverSchedule()
@@ -92,7 +132,7 @@ func TestDiscoverScheduleAccessExecs(t *testing.T) {
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
-	t.Run("create rejects invalid cron", func(t *testing.T) {
+	t.Run("rejects invalid cron", func(t *testing.T) {
 		access, _, cleanup := newDiscoverScheduleAccessMock(t)
 		defer cleanup()
 		schedule := sampleDiscoverSchedule()
@@ -103,8 +143,10 @@ func TestDiscoverScheduleAccessExecs(t *testing.T) {
 		require.Error(t, err)
 		assert.ErrorContains(t, err, "invalid cron expression")
 	})
+}
 
-	t.Run("disable", func(t *testing.T) {
+func TestDiscoverScheduleAccessDisable(t *testing.T) {
+	t.Run("disables schedule", func(t *testing.T) {
 		access, mock, cleanup := newDiscoverScheduleAccessMock(t)
 		defer cleanup()
 
@@ -115,8 +157,10 @@ func TestDiscoverScheduleAccessExecs(t *testing.T) {
 		require.NoError(t, access.Disable(context.Background(), "schedule-1"))
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
+}
 
-	t.Run("enable gets schedule and sets next run", func(t *testing.T) {
+func TestDiscoverScheduleAccessEnable(t *testing.T) {
+	t.Run("gets schedule and sets next run", func(t *testing.T) {
 		access, mock, cleanup := newDiscoverScheduleAccessMock(t)
 		defer cleanup()
 
@@ -130,8 +174,10 @@ func TestDiscoverScheduleAccessExecs(t *testing.T) {
 		require.NoError(t, access.Enable(context.Background(), "schedule-1"))
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
+}
 
-	t.Run("update", func(t *testing.T) {
+func TestDiscoverScheduleAccessUpdate(t *testing.T) {
+	t.Run("updates schedule", func(t *testing.T) {
 		access, mock, cleanup := newDiscoverScheduleAccessMock(t)
 		defer cleanup()
 		schedule := sampleDiscoverSchedule()
@@ -147,7 +193,21 @@ func TestDiscoverScheduleAccessExecs(t *testing.T) {
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
-	t.Run("delete", func(t *testing.T) {
+	t.Run("rejects invalid cron", func(t *testing.T) {
+		access, _, cleanup := newDiscoverScheduleAccessMock(t)
+		defer cleanup()
+		schedule := sampleDiscoverSchedule()
+		schedule.CronExpr = "bad cron"
+
+		err := access.Update(context.Background(), schedule)
+
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "invalid cron expression")
+	})
+}
+
+func TestDiscoverScheduleAccessDelete(t *testing.T) {
+	t.Run("deletes schedule", func(t *testing.T) {
 		access, mock, cleanup := newDiscoverScheduleAccessMock(t)
 		defer cleanup()
 
@@ -158,8 +218,10 @@ func TestDiscoverScheduleAccessExecs(t *testing.T) {
 		require.NoError(t, access.Delete(context.Background(), "schedule-1"))
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
+}
 
-	t.Run("get enabled schedules", func(t *testing.T) {
+func TestDiscoverScheduleAccessGetEnabledSchedules(t *testing.T) {
+	t.Run("returns enabled schedules", func(t *testing.T) {
 		access, mock, cleanup := newDiscoverScheduleAccessMock(t)
 		defer cleanup()
 
@@ -174,8 +236,10 @@ func TestDiscoverScheduleAccessExecs(t *testing.T) {
 		assert.True(t, got[0].Enabled)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
+}
 
-	t.Run("update last run gets schedule and updates next run", func(t *testing.T) {
+func TestDiscoverScheduleAccessUpdateLastRun(t *testing.T) {
+	t.Run("gets schedule and updates next run", func(t *testing.T) {
 		access, mock, cleanup := newDiscoverScheduleAccessMock(t)
 		defer cleanup()
 

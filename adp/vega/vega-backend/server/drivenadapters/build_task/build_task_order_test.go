@@ -13,7 +13,7 @@ import (
 	"vega-backend/interfaces"
 )
 
-func Test_buildOrderByClause(t *testing.T) {
+func TestBuildOrderByClause(t *testing.T) {
 	t.Run("default puts active statuses first and ignores order", func(t *testing.T) {
 		clause := buildOrderByClause(interfaces.BuildTaskOrderByDefault, "asc")
 
@@ -47,11 +47,13 @@ func Test_buildOrderByClause(t *testing.T) {
 	})
 }
 
-func Test_statusBucketCase(t *testing.T) {
-	clause := statusBucketCase()
-	for _, status := range interfaces.BuildTaskStatusOrder {
-		assert.Contains(t, clause, "WHEN '"+status+"' THEN ")
-	}
-	assert.True(t, strings.HasPrefix(clause, "CASE f_status"))
-	assert.True(t, strings.HasSuffix(clause, "ELSE 99 END"))
+func TestStatusBucketCase(t *testing.T) {
+	t.Run("returns ordered status case expression", func(t *testing.T) {
+		clause := statusBucketCase()
+		for _, status := range interfaces.BuildTaskStatusOrder {
+			assert.Contains(t, clause, "WHEN '"+status+"' THEN ")
+		}
+		assert.True(t, strings.HasPrefix(clause, "CASE f_status"))
+		assert.True(t, strings.HasSuffix(clause, "ELSE 99 END"))
+	})
 }
