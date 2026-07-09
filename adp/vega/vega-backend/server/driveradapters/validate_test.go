@@ -364,9 +364,27 @@ func TestValidateTag(t *testing.T) {
 func TestValidateDescription(t *testing.T) {
 	ctx := context.Background()
 
-	require.NoError(t, validateDescription(ctx, "A valid description"))
-	require.NoError(t, validateDescription(ctx, ""))
-	require.Error(t, validateDescription(ctx, strings.Repeat("a", interfaces.DESCRIPTION_MAX_LENGTH+1)))
+	tests := []struct {
+		name        string
+		description string
+		wantErr     bool
+	}{
+		{name: "valid description", description: "A valid description"},
+		{name: "empty description", description: ""},
+		{name: "exceeds max length", description: strings.Repeat("a", interfaces.DESCRIPTION_MAX_LENGTH+1), wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateDescription(ctx, tt.description)
+
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
 }
 
 func TestValidatePaginationQueryParams(t *testing.T) {

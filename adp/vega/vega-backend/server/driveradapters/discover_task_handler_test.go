@@ -111,3 +111,83 @@ func Test_DiscoverTaskRestHandler_ListDiscoverTasks(t *testing.T) {
 		require.Equal(t, http.StatusOK, w.Result().StatusCode)
 	})
 }
+
+func Test_DiscoverTaskRestHandler_GetDiscoverTask(t *testing.T) {
+	restoreGinMode := setGinMode()
+	defer restoreGinMode()
+
+	setup := func(t *testing.T) (*gin.Engine, *vmock.MockDiscoverTaskService) {
+		t.Helper()
+
+		engine := gin.New()
+		engine.Use(gin.Recovery())
+
+		mockCtrl := gomock.NewController(t)
+		t.Cleanup(mockCtrl.Finish)
+
+		dts := vmock.NewMockDiscoverTaskService(mockCtrl)
+		handler := MockNewRestHandler(&common.AppSetting{}, nil, nil, nil, nil, nil, nil, dts, nil, nil, nil)
+		handler.RegisterPublic(engine)
+		return engine, dts
+	}
+
+	t.Run("gets discover task by id", func(t *testing.T) {
+		engine, dts := setup(t)
+		dts.EXPECT().GetByID(gomock.Any(), "task-1").
+			Return(&interfaces.DiscoverTask{ID: "task-1", CatalogID: "catalog-1", Status: interfaces.DiscoverTaskStatusRunning}, nil)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/vega-backend/in/v1/discover-tasks/task-1", nil)
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusOK, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), `"id":"task-1"`)
+		assert.Contains(t, w.Body.String(), `"status":"running"`)
+	})
+
+	t.Run("returns not found for nil task", func(t *testing.T) {
+		engine, dts := setup(t)
+		dts.EXPECT().GetByID(gomock.Any(), "missing").Return(nil, nil)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/vega-backend/in/v1/discover-tasks/missing", nil)
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusNotFound, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), "VegaBackend.DiscoverTask.NotFound")
+	})
+}
+
+func Test_DiscoverTaskRestHandler_DeleteDiscoverTasks(t *testing.T) {
+	restoreGinMode := setGinMode()
+	defer restoreGinMode()
+
+	setup := func(t *testing.T) (*gin.Engine, *vmock.MockDiscoverTaskService) {
+		t.Helper()
+
+		engine := gin.New()
+		engine.Use(gin.Recovery())
+
+		mockCtrl := gomock.NewController(t)
+		t.Cleanup(mockCtrl.Finish)
+
+		dts := vmock.NewMockDiscoverTaskService(mockCtrl)
+		handler := MockNewRestHandler(&common.AppSetting{}, nil, nil, nil, nil, nil, nil, dts, nil, nil, nil)
+		handler.RegisterPublic(engine)
+		return engine, dts
+	}
+
+	t.Run("deletes discover tasks", func(t *testing.T) {
+		engine, dts := setup(t)
+		dts.EXPECT().Delete(gomock.Any(), []string{"task-1", "task-2"}, true).Return(nil)
+
+		req := httptest.NewRequest(http.MethodDelete, "/api/vega-backend/in/v1/discover-tasks/task-1,task-2?ignore_missing=true", nil)
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusNoContent, w.Result().StatusCode)
+	})
+}

@@ -11,6 +11,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/bytedance/sonic"
@@ -24,6 +25,66 @@ import (
 	"vega-backend/interfaces"
 	vmock "vega-backend/interfaces/mock"
 )
+
+func setupConnectorTypeHandlerTest(t *testing.T) (*gin.Engine, *vmock.MockConnectorTypeService) {
+	t.Helper()
+
+	engine := gin.New()
+	engine.Use(gin.Recovery())
+
+	mockCtrl := gomock.NewController(t)
+	t.Cleanup(mockCtrl.Finish)
+
+	as := vmock.NewMockAuthService(mockCtrl)
+	cts := vmock.NewMockConnectorTypeService(mockCtrl)
+	handler := MockNewRestHandler(&common.AppSetting{}, as, nil, nil, nil, nil, cts, nil, nil, nil, nil)
+	handler.RegisterPublic(engine)
+
+	as.EXPECT().VerifyToken(gomock.Any(), gomock.Any()).AnyTimes().
+		Return(hydra.Visitor{ID: "u1", Type: hydra.VisitorType_User}, nil)
+	return engine, cts
+}
+
+func Test_ConnectorTypeRestHandler_RegisterConnectorType(t *testing.T) {
+	restoreGinMode := setGinMode()
+	defer restoreGinMode()
+
+	const url = "/api/vega-backend/v1/connector-types"
+	body := `{"type":"remote-api","name":"Remote API","mode":"remote","category":"api","endpoint":"https://example.com"}`
+
+	t.Run("registers connector type", func(t *testing.T) {
+		engine, cts := setupConnectorTypeHandlerTest(t)
+		cts.EXPECT().CheckExistByType(gomock.Any(), "remote-api").Return(false, nil)
+		cts.EXPECT().Register(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, req *interfaces.ConnectorTypeReq) error {
+				assert.Equal(t, "remote-api", req.Type)
+				return nil
+			})
+
+		req := httptest.NewRequest(http.MethodPost, url, strings.NewReader(body))
+		req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusCreated, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), `"type":"remote-api"`)
+	})
+
+	t.Run("rejects duplicate type", func(t *testing.T) {
+		engine, cts := setupConnectorTypeHandlerTest(t)
+		cts.EXPECT().CheckExistByType(gomock.Any(), "remote-api").Return(true, nil)
+
+		req := httptest.NewRequest(http.MethodPost, url, strings.NewReader(body))
+		req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusConflict, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), "VegaBackend.ConnectorType.TypeExists")
+	})
+}
 
 func Test_ConnectorTypeRestHandler_UpdateConnectorType(t *testing.T) {
 	restoreGinMode := setGinMode()
@@ -134,6 +195,108 @@ func Test_ConnectorTypeRestHandler_UpdateConnectorType(t *testing.T) {
 
 		require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
 		assert.Contains(t, w.Body.String(), "VegaBackend.ConnectorType.InvalidParameter.Type")
+	})
+}
+
+func Test_ConnectorTypeRestHandler_GetConnectorType(t *testing.T) {
+	restoreGinMode := setGinMode()
+	defer restoreGinMode()
+
+	t.Run("gets connector type", func(t *testing.T) {
+		engine, cts := setupConnectorTypeHandlerTest(t)
+		cts.EXPECT().GetByType(gomock.Any(), "mysql").
+			Return(&interfaces.ConnectorType{
+				Type:     "mysql",
+				Name:     "MySQL",
+				Mode:     interfaces.ConnectorModeLocal,
+				Category: interfaces.ConnectorCategoryTable,
+			}, nil)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/vega-backend/v1/connector-types/mysql", nil)
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusOK, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), `"type":"mysql"`)
+		assert.Contains(t, w.Body.String(), `"name":"MySQL"`)
+	})
+
+	t.Run("returns not found for nil connector type", func(t *testing.T) {
+		engine, cts := setupConnectorTypeHandlerTest(t)
+		cts.EXPECT().GetByType(gomock.Any(), "missing").Return(nil, nil)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/vega-backend/v1/connector-types/missing", nil)
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusNotFound, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), "VegaBackend.ConnectorType.NotFound")
+	})
+}
+
+func Test_ConnectorTypeRestHandler_DeleteConnectorType(t *testing.T) {
+	restoreGinMode := setGinMode()
+	defer restoreGinMode()
+
+	t.Run("deletes remote connector type", func(t *testing.T) {
+		engine, cts := setupConnectorTypeHandlerTest(t)
+		cts.EXPECT().GetByType(gomock.Any(), "remote-api").
+			Return(&interfaces.ConnectorType{Type: "remote-api", Mode: interfaces.ConnectorModeRemote}, nil)
+		cts.EXPECT().DeleteByType(gomock.Any(), "remote-api").Return(nil)
+
+		req := httptest.NewRequest(http.MethodDelete, "/api/vega-backend/v1/connector-types/remote-api", nil)
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusNoContent, w.Result().StatusCode)
+	})
+
+	t.Run("rejects local connector type", func(t *testing.T) {
+		engine, cts := setupConnectorTypeHandlerTest(t)
+		cts.EXPECT().GetByType(gomock.Any(), "mysql").
+			Return(&interfaces.ConnectorType{Type: "mysql", Mode: interfaces.ConnectorModeLocal}, nil)
+
+		req := httptest.NewRequest(http.MethodDelete, "/api/vega-backend/v1/connector-types/mysql", nil)
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusForbidden, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), "can not delete local connector type")
+	})
+}
+
+func Test_ConnectorTypeRestHandler_SetConnectorTypeEnabled(t *testing.T) {
+	restoreGinMode := setGinMode()
+	defer restoreGinMode()
+
+	t.Run("enables connector type", func(t *testing.T) {
+		engine, cts := setupConnectorTypeHandlerTest(t)
+		cts.EXPECT().CheckExistByType(gomock.Any(), "remote-api").Return(true, nil)
+		cts.EXPECT().SetEnabled(gomock.Any(), "remote-api", true).Return(nil)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/v1/connector-types/remote-api/enable", nil)
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusNoContent, w.Result().StatusCode)
+	})
+
+	t.Run("returns not found for missing connector type", func(t *testing.T) {
+		engine, cts := setupConnectorTypeHandlerTest(t)
+		cts.EXPECT().CheckExistByType(gomock.Any(), "missing").Return(false, nil)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/v1/connector-types/missing/disable", nil)
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusNotFound, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), "VegaBackend.ConnectorType.NotFound")
 	})
 }
 

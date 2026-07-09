@@ -10,6 +10,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -21,6 +22,172 @@ import (
 	"vega-backend/interfaces"
 	vmock "vega-backend/interfaces/mock"
 )
+
+func setupBuildTaskHandlerTest(t *testing.T) (*gin.Engine, *vmock.MockBuildTaskService, *vmock.MockResourceService) {
+	t.Helper()
+
+	engine := gin.New()
+	engine.Use(gin.Recovery())
+
+	mockCtrl := gomock.NewController(t)
+	t.Cleanup(mockCtrl.Finish)
+
+	bts := vmock.NewMockBuildTaskService(mockCtrl)
+	rs := vmock.NewMockResourceService(mockCtrl)
+	handler := MockNewRestHandler(&common.AppSetting{}, nil, nil, rs, bts, nil, nil, nil, nil, nil, nil)
+	handler.RegisterPublic(engine)
+	return engine, bts, rs
+}
+
+func Test_BuildTaskRestHandler_CreateBuildTask(t *testing.T) {
+	restoreGinMode := setGinMode()
+	defer restoreGinMode()
+
+	const url = "/api/vega-backend/in/v1/build-tasks"
+	resource := &interfaces.Resource{
+		ID: "res-1",
+		SchemaDefinition: []*interfaces.Property{
+			{Name: "id", Type: interfaces.DataType_String},
+			{Name: "title", Type: interfaces.DataType_Text},
+			{Name: "summary", Type: interfaces.DataType_Text},
+			{Name: "age", Type: interfaces.DataType_Integer},
+			{Name: "created_at", Type: interfaces.DataType_Datetime},
+		},
+	}
+
+	t.Run("creates batch build task", func(t *testing.T) {
+		engine, bts, rs := setupBuildTaskHandlerTest(t)
+		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(resource, nil)
+		bts.EXPECT().CreateBuildTask(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, req *interfaces.CreateBuildTaskRequest) (string, error) {
+				assert.Equal(t, interfaces.BuildTaskModeBatch, req.Mode)
+				assert.Equal(t, "id", req.BuildKeyFields)
+				assert.Equal(t, "title", req.EmbeddingFields)
+				return "task-1", nil
+			})
+
+		body := `{"resource_id":"res-1","mode":"batch","build_key_fields":"id","embedding_fields":"title","fulltext_fields":"title"}`
+		req := httptest.NewRequest(http.MethodPost, url, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusCreated, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), `"id":"task-1"`)
+		assert.Contains(t, w.Body.String(), `"status":"init"`)
+	})
+
+	t.Run("rejects batch without build key fields", func(t *testing.T) {
+		engine, _, rs := setupBuildTaskHandlerTest(t)
+		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(resource, nil)
+
+		body := `{"resource_id":"res-1","mode":"batch"}`
+		req := httptest.NewRequest(http.MethodPost, url, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), "build_key_fields is required")
+	})
+
+	t.Run("rejects missing embedding field", func(t *testing.T) {
+		engine, _, rs := setupBuildTaskHandlerTest(t)
+		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(resource, nil)
+
+		body := `{"resource_id":"res-1","mode":"batch","build_key_fields":"id","embedding_fields":"missing"}`
+		req := httptest.NewRequest(http.MethodPost, url, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), "embedding_field 'missing' not found")
+	})
+
+	t.Run("rejects non-text embedding field", func(t *testing.T) {
+		engine, _, rs := setupBuildTaskHandlerTest(t)
+		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(resource, nil)
+
+		body := `{"resource_id":"res-1","mode":"batch","build_key_fields":"id","embedding_fields":"age"}`
+		req := httptest.NewRequest(http.MethodPost, url, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), "only string/text fields can be embedded")
+	})
+
+	t.Run("rejects non-text embedding field mixed with valid ones", func(t *testing.T) {
+		engine, _, rs := setupBuildTaskHandlerTest(t)
+		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(resource, nil)
+
+		body := `{"resource_id":"res-1","mode":"batch","build_key_fields":"id","embedding_fields":"title,created_at"}`
+		req := httptest.NewRequest(http.MethodPost, url, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), "created_at")
+	})
+
+	t.Run("accepts string and text embedding fields", func(t *testing.T) {
+		engine, bts, rs := setupBuildTaskHandlerTest(t)
+		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(resource, nil)
+		bts.EXPECT().CreateBuildTask(gomock.Any(), gomock.Any()).Return("task-1", nil)
+
+		body := `{"resource_id":"res-1","mode":"batch","build_key_fields":"id","embedding_fields":"id,summary"}`
+		req := httptest.NewRequest(http.MethodPost, url, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusCreated, w.Result().StatusCode)
+	})
+
+	t.Run("rejects non-text fulltext field", func(t *testing.T) {
+		engine, _, rs := setupBuildTaskHandlerTest(t)
+		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(resource, nil)
+
+		body := `{"resource_id":"res-1","mode":"batch","build_key_fields":"id","fulltext_fields":"age"}`
+		req := httptest.NewRequest(http.MethodPost, url, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), "only string/text fields support fulltext")
+	})
+}
+
+func Test_BuildTaskRestHandler_GetBuildTask(t *testing.T) {
+	restoreGinMode := setGinMode()
+	defer restoreGinMode()
+
+	t.Run("gets build task by id", func(t *testing.T) {
+		engine, bts, _ := setupBuildTaskHandlerTest(t)
+		bts.EXPECT().GetBuildTaskByID(gomock.Any(), "task-1").
+			Return(&interfaces.BuildTask{ID: "task-1", ResourceID: "res-1", Status: interfaces.BuildTaskStatusRunning}, nil)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/vega-backend/in/v1/build-tasks/task-1", nil)
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusOK, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), `"id":"task-1"`)
+		assert.Contains(t, w.Body.String(), `"status":"running"`)
+	})
+}
 
 func Test_BuildTaskRestHandler_ListBuildTasks(t *testing.T) {
 	restoreGinMode := setGinMode()
@@ -116,22 +283,81 @@ func Test_BuildTaskRestHandler_DeleteBuildTasks(t *testing.T) {
 	restoreGinMode := setGinMode()
 	defer restoreGinMode()
 
-	engine := gin.New()
-	engine.Use(gin.Recovery())
+	t.Run("deletes build tasks with flags", func(t *testing.T) {
+		engine := gin.New()
+		engine.Use(gin.Recovery())
 
-	mockCtrl := gomock.NewController(t)
-	t.Cleanup(mockCtrl.Finish)
+		mockCtrl := gomock.NewController(t)
+		t.Cleanup(mockCtrl.Finish)
 
-	bts := vmock.NewMockBuildTaskService(mockCtrl)
-	handler := MockNewRestHandler(&common.AppSetting{}, nil, nil, nil, bts, nil, nil, nil, nil, nil, nil)
-	handler.RegisterPublic(engine)
+		bts := vmock.NewMockBuildTaskService(mockCtrl)
+		handler := MockNewRestHandler(&common.AppSetting{}, nil, nil, nil, bts, nil, nil, nil, nil, nil, nil)
+		handler.RegisterPublic(engine)
 
-	bts.EXPECT().DeleteBuildTasks(gomock.Any(), []string{"t1", "t2"}, true, true).Return(nil)
+		bts.EXPECT().DeleteBuildTasks(gomock.Any(), []string{"t1", "t2"}, true, true).Return(nil)
 
-	req := httptest.NewRequest(http.MethodDelete, "/api/vega-backend/in/v1/build-tasks/t1,t2?ignore_missing=true&delete_active_index=true", nil)
-	w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodDelete, "/api/vega-backend/in/v1/build-tasks/t1,t2?ignore_missing=true&delete_active_index=true", nil)
+		w := httptest.NewRecorder()
 
-	engine.ServeHTTP(w, req)
+		engine.ServeHTTP(w, req)
 
-	require.Equal(t, http.StatusNoContent, w.Result().StatusCode)
+		require.Equal(t, http.StatusNoContent, w.Result().StatusCode)
+	})
+}
+
+func Test_BuildTaskRestHandler_StartBuildTask(t *testing.T) {
+	restoreGinMode := setGinMode()
+	defer restoreGinMode()
+
+	t.Run("starts build task with execute type", func(t *testing.T) {
+		engine, bts, _ := setupBuildTaskHandlerTest(t)
+		bts.EXPECT().StartBuildTask(gomock.Any(), "task-1", interfaces.BuildTaskExecuteTypeFull).Return(nil)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/build-tasks/task-1/start", strings.NewReader(`{"execute_type":"full"}`))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusAccepted, w.Result().StatusCode)
+	})
+}
+
+func Test_BuildTaskRestHandler_UpdateBuildTaskConfig(t *testing.T) {
+	restoreGinMode := setGinMode()
+	defer restoreGinMode()
+
+	t.Run("updates build task config", func(t *testing.T) {
+		engine, bts, _ := setupBuildTaskHandlerTest(t)
+		bts.EXPECT().UpdateBuildTaskConfig(gomock.Any(), "task-1", gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ string, req *interfaces.UpdateBuildTaskConfigRequest) error {
+				assert.Equal(t, "title", req.EmbeddingFields)
+				return nil
+			})
+
+		req := httptest.NewRequest(http.MethodPut, "/api/vega-backend/in/v1/build-tasks/task-1", strings.NewReader(`{"embedding_fields":"title"}`))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusAccepted, w.Result().StatusCode)
+	})
+}
+
+func Test_BuildTaskRestHandler_StopBuildTask(t *testing.T) {
+	restoreGinMode := setGinMode()
+	defer restoreGinMode()
+
+	t.Run("stops build task", func(t *testing.T) {
+		engine, bts, _ := setupBuildTaskHandlerTest(t)
+		bts.EXPECT().StopBuildTask(gomock.Any(), "task-1").Return(nil)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/build-tasks/task-1/stop", nil)
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusAccepted, w.Result().StatusCode)
+	})
 }

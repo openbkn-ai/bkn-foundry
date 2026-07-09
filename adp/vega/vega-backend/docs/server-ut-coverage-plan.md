@@ -1,189 +1,110 @@
-# vega-backend drivenadapters UT 补齐计划
+# vega-backend server adapter UT 补齐计划
 
 > 日期：2026-07-09  
-> 范围：`adp/vega/vega-backend/server/drivenadapters`  
-> 目标：聚焦 driven adapter 层，用 Go 原生 `testing` + `testify` 补齐 UT，并统一既有 UT 风格。
+> 当前阶段：`adp/vega/vega-backend/server/driveradapters`  
+> 目标：聚焦 driver adapter 层，用 Go 原生 `testing` + `testify` 补齐 UT，并统一既有 UT 风格。
 
-## 1. 本轮范围
+## 1. 当前阶段范围
 
-本轮只处理 `server/drivenadapters`，不继续扩大到 `logics`、`driveradapters`、`worker`、`common`、`errors` 等目录。
+当前阶段只处理 `server/driveradapters`，不继续扩大到 `logics`、`drivenadapters`、`worker`、`common`、`errors` 等目录。
 
-当前 drivenadapters 文件清单：
+当前 driveradapters 文件清单：
 
 | 文件 | 说明 |
 | --- | --- |
-| `asynq/asynq_access.go` | Asynq/Redis client option 构造 |
-| `auth/hydra_auth_access.go` | Hydra token 校验 |
-| `kafka/kafka_access.go` | Kafka reader/writer/admin 配置与操作 |
-| `permission/permission_access.go` | 权限访问入口 |
-| `permission/shadow.go` | BKN Safe safe/shadow 权限客户端 |
-| `user_mgmt/user_mgmt_access.go` | 用户账号查询 |
-| `model_factory/model_factory_access.go` | 模型工厂 HTTP adapter |
-| `connector_type/connector_type_access.go` | connector type SQL access |
-| `build_task/build_task_access.go` | build task SQL access |
-| `discover_task/discover_task_access.go` | discover task SQL access |
-| `discover_schedule/discover_schedule_access.go` | discover schedule SQL access |
-| `catalog/catalog_access.go` | catalog SQL access |
-| `catalog/catalog_extension.go` | catalog extension join/attach helper |
-| `resource/resource_access.go` | resource SQL access |
-| `resource/resource_extension.go` | resource extension join/attach helper |
-| `entityextension/store.go` | extension store SQL access/helper |
+| `router.go` | Gin 路由注册、中间件、健康检查、鉴权入口 |
+| `catalog_handler.go` | catalog HTTP handler |
+| `resource_handler.go` | resource HTTP handler |
+| `resource_data_handler.go` | resource data HTTP handler |
+| `query_handler.go` | raw query HTTP handler |
+| `connector_type_handler.go` | connector type HTTP handler |
+| `build_task_handler.go` | build task HTTP handler |
+| `discover_task_handler.go` | discover task HTTP handler |
+| `discover_schedule_handler.go` | discover schedule HTTP handler |
+| `auth_resource_handler.go` | auth resource HTTP handler |
+| `validate.go` | 通用参数校验 |
+| `validate_catalog.go` | catalog 参数校验 |
+| `validate_resource.go` | resource 参数校验 |
+| `validate_resource_data.go` | resource data 参数校验 |
+| `validate_connector_type.go` | connector type 参数校验 |
+| `validate_build_task.go` | build task 参数解析/校验 |
+| `validate_discover_task.go` | discover task 参数校验 |
+| `validate_discover_schedule.go` | discover schedule 参数校验 |
 
-## 2. 测试组织规则
+## 2. 通用测试组织规则
 
 - 一个生产函数对应一个顶层测试函数。
 - 顶层测试函数内部所有场景都用 `t.Run` 包裹。
-- 方法测试命名优先使用 `Test<Type><Method>`，例如 `TestAsynqAccessCreateClient`、`TestPermissionAccessCheckPermission`。
-- 包级函数/helper 测试命名使用 `Test<Function>`，例如 `TestGetRedisClientOpt`、`TestCatalogExtCol`。
+- 测试文件名必须和原始业务文件名一一对应：`foo.go` 的测试写在 `foo_test.go`；不要新增按场景、bug、函数类型拆分的测试文件。包级公共 test helper 例外，可放在 `<package>_test.go`。
+- 方法测试命名优先使用 `Test<Type><Method>`，例如 `TestRestHandlerListCatalogs`、`TestRestHandlerCreateResource`。
+- 包级函数/helper 测试命名使用 `Test<Function>`，例如 `TestValidateResourceRequest`、`TestParseBuildTaskListParams`。
 - 如果旧 UT 已经为同一个生产函数拆出多个顶层测试函数，本轮触达时一起合并或调整。
 - 断言使用 `require` 做前置条件和错误 gating，使用 `assert` 做结果校验。
-- SQL access 使用 `sqlmock`；HTTP adapter 使用 fake client 或 `httptest`。
-- 不连接真实 Redis、Kafka、DB、BKN Safe、Hydra。
-- 缺少注入点、必须依赖真实中间件或容易阻塞的函数进入 defer/IT 清单，不为覆盖率写脆弱 UT。
-
-示例：
-
-```go
-func TestAsynqAccessCreateClient(t *testing.T) {
-	t.Run("creates client with standalone redis", func(t *testing.T) {
-		// arrange / act / assert
-	})
-
-	t.Run("creates client with redis cluster", func(t *testing.T) {
-		// arrange / act / assert
-	})
-}
-```
+- HTTP handler 使用 `httptest` + gin test context/router；下游依赖使用 mock service/fake service。
+- 校验函数使用 table-driven cases，覆盖合法值、缺失值、边界值、非法枚举、非法分页/排序等。
+- 只改测试代码和测试必要依赖；不为 UT 修改业务代码。确需 mock 无注入点的方法时，测试侧使用 `gomonkey`。
+- 纯构造函数不作为补齐目标；除非构造函数本身包含需要验证的可观察业务行为。
 
 ## 3. 当前覆盖快照
 
-最近一次专项命令：
+最近一次 driver 专项命令：
 
 ```bash
 cd adp/vega/vega-backend/server
-env GOCACHE=/tmp/go-build-cache go test ./drivenadapters/... -cover
+env GOCACHE=/tmp/go-build-cache go test ./driveradapters -cover
 ```
 
 结果：
 
 | 包 | 覆盖率 |
 | --- | ---: |
-| `drivenadapters/auth` | 25.0% |
-| `drivenadapters/kafka` | 53.1% |
-| `drivenadapters/asynq` | 75.0% |
-| `drivenadapters/catalog` | 74.4% |
-| `drivenadapters/permission` | 88.9% |
-| `drivenadapters/resource` | 79.4% |
-| `drivenadapters/discover_schedule` | 70.4% |
-| `drivenadapters/discover_task` | 72.0% |
-| `drivenadapters/connector_type` | 75.9% |
-| `drivenadapters/build_task` | 78.1% |
-| `drivenadapters/entityextension` | 82.4% |
-| `drivenadapters/model_factory` | 93.2% |
-| `drivenadapters/user_mgmt` | 90.2% |
+| `driveradapters` | 68.6% |
 
-## 4. 文件批次计划
+## 4. Driver 两步计划
 
-### D1：外部系统 Adapter 文件
+### DR1：全部修改
 
-文件：
+状态：已执行第一轮集中补齐。
 
-- `drivenadapters/asynq/asynq_access.go`
-- `drivenadapters/kafka/kafka_access.go`
-- `drivenadapters/auth/hydra_auth_access.go`
-- `drivenadapters/permission/permission_access.go`
-- `drivenadapters/permission/shadow.go`
-- `drivenadapters/user_mgmt/user_mgmt_access.go`
-- `drivenadapters/model_factory/model_factory_access.go`
+范围：
+
+- 全部 `*_handler.go`
+- 全部 `validate*.go`
+- 既有 `driveradapters` UT 风格整理
 
 目标：
 
-- 按“一函数一测试函数”整理已有测试。
-- 覆盖配置转换、client option 构造、外部请求错误、非法响应。
-- `asynq` 覆盖 standalone、cluster、sentinel、master-slave、未知 Redis 模式。
-- `kafka` 覆盖 broker 地址、SASL mechanism/dialer、reader/writer 构造、close/write/create topic 错误路径。
-- `auth` 覆盖 token 校验成功、非 2xx、请求失败、响应解析失败。
-- `permission_access.go` 覆盖权限检查、资源创建/删除、资源过滤的成功和错误透传。
-- `shadow.go` 覆盖 safe client、shadow permission、fallback 行为、shadow 不影响主结果。
-- `user_mgmt_access.go` 和 `model_factory_access.go` 已有覆盖较高，重点做风格统一和遗漏分支补齐。
-- `kafka.ReadMessage`、`kafka.CommitMessages` 如缺少 fake 注入点，先进入 defer/IT 清单。
+- 按“一函数一测试函数 + t.Run”统一现有测试。
+- 补齐 handler 主路径、参数错误、body 解析错误、service error、not found、权限/visitor 场景。
+- 补齐 validate 系列的边界值和非法输入，尤其是 resource / resource data / build task / connector type / discover schedule。
+- 补齐 router/middleware 中可稳定隔离的行为，例如 content-type、language、health check、access log 的非外部依赖分支。
+- 不改业务代码；handler 依赖通过 mock service/fake service 注入，必要时测试侧用 `gomonkey`。
+- 开发过程中优先跑局部测试：`go test ./driveradapters -run Test<Name> -count=1`。
 
-建议 commit：`test(vega-backend): cover driven external adapters`。
+建议 commit：`test(vega-backend): cover driver adapter handlers and validators`。
 
-状态：
+已覆盖：
 
-- 已完成：`asynq/asynq_access.go`、`auth/hydra_auth_access.go`、`kafka/kafka_access.go`、`permission/permission_access.go`、`permission/shadow.go`、`user_mgmt/user_mgmt_access.go`、`model_factory/model_factory_access.go` 的测试风格整理和主要分支补齐。
-- 已完成：`kafka.ReadMessage`、`kafka.CommitMessages` 成功和错误分支；测试侧通过 `gomonkey` patch `*kafka.Reader` 方法，不连接真实 Kafka。
+- 统一既有 `driveradapters` 顶层测试函数的 `t.Run` 组织。
+- 补齐 resource/resource data/query/catalog/build task/discover task/discover schedule/connector type/auth resource handler 的主路径与关键异常路径。
+- 补齐 resource data、logic view、connector type、通用 validate 的边界和非法输入。
+- 补齐 router health check 与 JSON content-type middleware。
+- raw query handler 使用测试侧 `gomonkey` patch 构造函数，不修改业务代码。
 
-### D2：SQL Access 主体文件
+### DR2：收口
 
-文件：
+范围：
 
-- `drivenadapters/connector_type/connector_type_access.go`
-- `drivenadapters/build_task/build_task_access.go`
-- `drivenadapters/discover_task/discover_task_access.go`
-- `drivenadapters/discover_schedule/discover_schedule_access.go`
-- `drivenadapters/catalog/catalog_access.go`
-- `drivenadapters/resource/resource_access.go`
+- `server/driveradapters` 全量复扫
+- 覆盖率、函数级遗漏、测试风格一致性、全仓验证
 
 目标：
 
-- 每个文件内按生产函数整理为对应顶层测试函数。
-- 使用 `sqlmock` 覆盖 create/get/list/update/delete/status/enable/disable 等 SQL access 行为。
-- 覆盖成功、`sql.ErrNoRows`、query error、exec error、scan error、分页/排序/filter 参数。
-- 覆盖 catalog/resource 的 auth resource、health/enabled/status、discover status 等主路径。
-- 动态 SQL 只断言关键结构和参数顺序，避免测试过脆。
+- 跑 `go test ./driveradapters -coverprofile=/tmp/vega-driver-cover.out` 和 `go tool cover -func=/tmp/vega-driver-cover.out`，确认剩余低覆盖/0% 函数。
+- 对 DR1 遗漏的非构造函数继续补 case；对确实不适合 UT 的函数写入说明。
+- 扫描所有顶层 `Test...` 是否包含 `t.Run`。
+- 扫描所有 `*_test.go` 是否和原始业务文件名一一对应，仅保留包级公共 helper 文件例外。
+- 跑 `go test ./driveradapters -cover`、`go test ./...`。
+- 更新本文档的 driver 覆盖率快照、已完成项、剩余说明。
 
-建议 commit：`test(vega-backend): cover driven sql access adapters`。
-
-状态：
-
-- 已完成：`connector_type/connector_type_access.go`、`build_task/build_task_access.go`、`discover_task/discover_task_access.go`、`discover_schedule/discover_schedule_access.go`、`catalog/catalog_access.go`、`resource/resource_access.go` 的现有测试按“一函数一测试函数 + t.Run”整理。
-- 已补充：`connector_type` create/update 错误分支，`discover_task` strategy/not found/status/count/delete 分支，`discover_schedule` get/list/create/update 分支。
-- 后续留给 D3/收口：`catalog/resource` 的 extension join/attach helper 与更细的动态 SQL 边界。
-
-### D3：Extension、Store 与收口文件
-
-文件：
-
-- `drivenadapters/catalog/catalog_extension.go`
-- `drivenadapters/resource/resource_extension.go`
-- `drivenadapters/entityextension/store.go`
-
-目标：
-
-- 覆盖 extension join、extension attach、extension sort/filter helper。
-- 覆盖 store create、replace、delete、get、batch get、join helper、filter keys。
-- 整理 extension/store 旧测试，统一成“一函数一测试函数 + t.Run”。
-- 跑 driven 专项覆盖率，输出剩余未覆盖函数。
-- 更新 defer/IT 清单，明确哪些函数因为真实中间件、阻塞读或缺少注入点暂不放 UT。
-
-建议 commit：`test(vega-backend): complete driven adapter test sweep`。
-
-状态：
-
-- 已完成：`entityextension/store.go` 现有测试按“一函数一测试函数 + t.Run”整理；`ApplyJoinsForCatalog` / `ApplyJoinsForResource` 已拆成独立测试。
-- 已完成：`catalog_extension.go`、`resource_extension.go` 的 column/order/join helper 已拆成独立测试函数；attach helper 覆盖了空列表、关闭 include extensions、nil 单实体等不触 DB 分支。
-- 已完成：`catalog_access.go` 补充 `GetByID`、`GetByIDs`、`AttachListExtensions`、`GetByName`、`DeleteByIDs` 的可隔离分支，包括 not found、query error、scan error、空 ID、关闭 include extensions 等路径。
-- 已完成：`resource_access.go` 补充 `GetByID`、`GetByIDs`、`AttachListExtensions`、`DeleteByIDs`、`DeleteByCatalogIDs` 的可隔离分支，包括 not found、query error、scan error、空 ID、关闭 include extensions 等路径。
-- 已完成：`catalog_access.go`、`resource_access.go` 的 extension attach 成功分支、store error 分支，以及 catalog/resource 非空删除分支；测试侧通过 `gomonkey` patch `entityextension.NewStore` 和 `Store` 方法，不连接真实 DB。
-- 已完成：`kafka.ReadMessage`、`kafka.CommitMessages` 成功和错误分支；测试侧通过 `gomonkey` patch `*kafka.Reader` 方法，不连接真实 Kafka。
-- 已删除：纯构造函数测试用例不纳入本轮补齐范围，包括 `New*Access`、`NewStore` 这类 singleton/DB 初始化入口。
-- 全量复扫：`drivenadapters` 现有顶层 `Test...` 均包含 `t.Run`。
-- 剩余 0%：仅保留构造函数类入口，包括 `NewAsynqAccess`、`NewHydraAuthAccess`、`NewBuildTaskAccess`、`NewCatalogAccess`、`NewConnectorTypeAccess`、`NewDiscoverScheduleAccess`、`NewDiscoverTaskAccess`、`NewStore`、`NewKafkaAccess`、`NewModelFactoryAccess`、`NewPermissionAccess`、`NewResourceAccess`、`NewUserMgmtAccess`。
-
-## 5. 执行顺序
-
-1. D1：外部系统 adapter，从当前打开的 `asynq` 继续，合并 `kafka`、`auth`、`permission`、`user_mgmt`、`model_factory`。
-2. D2：SQL access 主体，覆盖 `connector_type`、`build_task`、`discover_task`、`discover_schedule`、`catalog`、`resource`。
-3. D3：extension/store 与收口，覆盖 catalog/resource extension、`entityextension/store.go`，并产出 driven defer/IT 清单。
-
-## 6. 每批检查清单
-
-- 新增测试前先确认是否已有对应 `Test<Function>`。
-- 如果已有对应测试函数，只新增 `t.Run` case，不新增同函数的 sibling 顶层测试。
-- 如果旧 UT 对同一生产函数拆得过散，本轮触达时顺手合并。
-- 开发中优先跑 `go test ./drivenadapters/<pkg> -run Test<Function> -count=1`。
-- 批次结束跑 `go test ./drivenadapters/... -cover`。
-- 必要时再跑 `go test ./...` 做全仓验证。
-- 每批结束更新本文档的覆盖率快照、已完成文件和 defer/IT 清单。
+建议 commit：`test(vega-backend): finish driver adapter test sweep`。

@@ -146,10 +146,28 @@ func TestValidateConnectorTypeListQueryParams(t *testing.T) {
 func TestValidateOptionalConnectorMode(t *testing.T) {
 	ctx := context.Background()
 
-	require.NoError(t, ValidateOptionalConnectorMode(ctx, ""))
-	require.NoError(t, ValidateOptionalConnectorMode(ctx, interfaces.ConnectorModeLocal))
-	require.NoError(t, ValidateOptionalConnectorMode(ctx, interfaces.ConnectorModeRemote))
-	require.Error(t, ValidateOptionalConnectorMode(ctx, "invalid"))
+	tests := []struct {
+		name    string
+		mode    string
+		wantErr bool
+	}{
+		{name: "accepts empty mode", mode: ""},
+		{name: "accepts local mode", mode: interfaces.ConnectorModeLocal},
+		{name: "accepts remote mode", mode: interfaces.ConnectorModeRemote},
+		{name: "rejects invalid mode", mode: "invalid", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateOptionalConnectorMode(ctx, tt.mode)
+
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
 }
 
 func TestValidateOptionalConnectorCategory(t *testing.T) {
