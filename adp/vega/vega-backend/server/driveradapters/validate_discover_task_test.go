@@ -10,40 +10,54 @@ import (
 	"context"
 	"testing"
 
-	. "github.com/smartystreets/goconvey/convey"
+	"github.com/stretchr/testify/require"
 
 	"vega-backend/interfaces"
 )
 
 func Test_ValidateDiscoverTaskQueryParams(t *testing.T) {
-	Convey("Test ValidateDiscoverTaskQueryParams\n", t, func() {
-		ctx := context.Background()
+	ctx := context.Background()
 
-		Convey("Valid empty params\n", func() {
-			err := ValidateDiscoverTaskQueryParams(ctx, interfaces.DiscoverTaskQueryParams{})
-			So(err, ShouldBeNil)
-		})
-
-		Convey("Valid status and trigger type\n", func() {
-			err := ValidateDiscoverTaskQueryParams(ctx, interfaces.DiscoverTaskQueryParams{
+	tests := []struct {
+		name    string
+		params  interfaces.DiscoverTaskQueryParams
+		wantErr bool
+	}{
+		{
+			name: "valid empty params",
+		},
+		{
+			name: "valid status and trigger type",
+			params: interfaces.DiscoverTaskQueryParams{
 				Status:      interfaces.DiscoverTaskStatusCompleted,
 				TriggerType: interfaces.DiscoverTaskTriggerScheduled,
-			})
-			So(err, ShouldBeNil)
-		})
-
-		Convey("Invalid status\n", func() {
-			err := ValidateDiscoverTaskQueryParams(ctx, interfaces.DiscoverTaskQueryParams{
+			},
+		},
+		{
+			name: "invalid status",
+			params: interfaces.DiscoverTaskQueryParams{
 				Status: "unknown",
-			})
-			So(err, ShouldNotBeNil)
-		})
-
-		Convey("Invalid trigger type\n", func() {
-			err := ValidateDiscoverTaskQueryParams(ctx, interfaces.DiscoverTaskQueryParams{
+			},
+			wantErr: true,
+		},
+		{
+			name: "invalid trigger type",
+			params: interfaces.DiscoverTaskQueryParams{
 				TriggerType: "unknown",
-			})
-			So(err, ShouldNotBeNil)
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateDiscoverTaskQueryParams(ctx, tt.params)
+
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
 		})
-	})
+	}
 }

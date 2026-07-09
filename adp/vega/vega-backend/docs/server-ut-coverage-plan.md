@@ -206,3 +206,55 @@ env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cov
 - overall statement coverage：**7.4%**。
 - 包覆盖率变化：`common/visitor` 到 100.0%，`errors` 到 100.0%，`common` 到 6.5%。
 - 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。
+
+### 2026-07-09：Step 2 Catalog / Connector Type Validator
+
+范围：
+
+- 新增 `driveradapters/validate_catalog_test.go`，覆盖 catalog request 的 ID、name、tags、description、connector config duplicate、extensions，以及 list query 的 type、health status、extension filter pair 校验。
+- 新增 `driveradapters/validate_connector_type_test.go`，覆盖 connector type request/list query 的 mode、category、remote endpoint，以及 optional mode/category helper。
+- 本步骤新增测试全部使用 `testing + testify`。
+
+验证：
+
+```bash
+cd adp/vega/vega-backend/server
+env GOCACHE=/tmp/go-build-cache go test ./driveradapters
+env GOCACHE=/tmp/go-build-cache go test ./...
+env GOCACHE=/tmp/go-build-cache go test ./... -coverprofile=/tmp/vega-backend-server-cover.out
+env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cover.out
+```
+
+结果：
+
+- `go test ./driveradapters` 通过。
+- `go test ./...` 通过。
+- overall statement coverage：**7.5%**。
+- 包覆盖率变化：`driveradapters` 从 31.5% 到 32.5%。
+- 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。
+
+### 2026-07-09：Step 3 Discover Validator 风格迁移
+
+范围：
+
+- 将 `driveradapters/validate_discover_task_test.go` 从 goconvey 迁移到 `testing + testify`。
+- 将 `driveradapters/validate_discover_schedule_test.go` 从 goconvey 迁移到 `testing + testify`。
+- 仅调整测试组织和断言风格，不改生产逻辑。
+
+验证：
+
+```bash
+cd adp/vega/vega-backend/server
+env GOCACHE=/tmp/go-build-cache go test ./driveradapters
+env GOCACHE=/tmp/go-build-cache go test ./...
+env GOCACHE=/tmp/go-build-cache go test ./... -coverprofile=/tmp/vega-backend-server-cover.out
+env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cover.out
+```
+
+结果：
+
+- `go test ./driveradapters` 通过。
+- `go test ./...` 通过。
+- overall statement coverage：**7.5%**。
+- 包覆盖率保持：`driveradapters` 32.5%。
+- 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。
