@@ -392,3 +392,32 @@ env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cov
 - overall statement coverage：**7.5%**。
 - 包覆盖率保持：`driveradapters` 32.5%。
 - 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。
+
+### 2026-07-09：Step 9 Catalog Handler 风格迁移
+
+范围：
+
+- 将 `driveradapters/catalog_handler_test.go` 从 goconvey 迁移到 `testing + testify`。
+- 保留原有覆盖语义：catalog 列表参数校验、enabled/disabled 动作、update enabled 拒绝、database 配置更新、discover 禁用/逻辑 catalog 拦截。
+- 仅调整测试组织和断言风格，不改生产逻辑。
+- 至此 `driveradapters` 包内 `_test.go` 已无 goconvey / Convey / So 残留。
+
+验证：
+
+```bash
+cd adp/vega/vega-backend/server
+env GOCACHE=/tmp/go-build-cache go test ./driveradapters
+env GOCACHE=/tmp/go-build-cache go test ./...
+env GOCACHE=/tmp/go-build-cache go test ./... -coverprofile=/tmp/vega-backend-server-cover.out
+env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cover.out
+rg -l 'smartystreets/goconvey|Convey\(|So\(' driveradapters --glob '*_test.go'
+```
+
+结果：
+
+- `go test ./driveradapters` 通过。
+- `go test ./...` 通过。
+- overall statement coverage：**7.5%**。
+- 包覆盖率保持：`driveradapters` 32.5%。
+- `driveradapters` goconvey 扫描无残留。
+- 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。
