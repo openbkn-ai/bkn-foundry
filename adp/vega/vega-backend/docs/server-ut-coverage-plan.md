@@ -421,3 +421,59 @@ rg -l 'smartystreets/goconvey|Convey\(|So\(' driveradapters --glob '*_test.go'
 - 包覆盖率保持：`driveradapters` 32.5%。
 - `driveradapters` goconvey 扫描无残留。
 - 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。
+
+### 2026-07-09：Step 10 Driven Adapters goconvey 清理
+
+范围：
+
+- 将 `drivenadapters/build_task/build_task_order_test.go` 从 goconvey 迁移到 `testing + testify`。
+- 将 `drivenadapters/model_factory/model_factory_access_test.go` 从 goconvey 迁移到 `testing + testify`。
+- 保留原有覆盖语义：build task order clause/status bucket、model factory model lookup/vector API 成功和失败路径。
+- 至此 `adp/vega/vega-backend/server` 范围内 `_test.go` 已无 goconvey / Convey / So 残留。
+
+验证：
+
+```bash
+cd adp/vega/vega-backend/server
+env GOCACHE=/tmp/go-build-cache go test ./drivenadapters/build_task ./drivenadapters/model_factory
+env GOCACHE=/tmp/go-build-cache go test ./...
+env GOCACHE=/tmp/go-build-cache go test ./... -coverprofile=/tmp/vega-backend-server-cover.out
+env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cover.out
+rg -l 'smartystreets/goconvey|Convey\(|So\(' adp/vega/vega-backend/server --glob '*_test.go'
+```
+
+结果：
+
+- `go test ./drivenadapters/build_task ./drivenadapters/model_factory` 通过。
+- `go test ./...` 通过。
+- overall statement coverage：**7.5%**。
+- server goconvey 扫描无残留。
+- 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。
+
+### 2026-07-09：Step 11 Table Connector Type Mapping / Oracle 基础覆盖
+
+范围：
+
+- 新增 `logics/connectors/local/table/oracle/oracle_test.go`，覆盖 Oracle connector 元数据、enabled setter/getter、敏感字段、字段配置、`New` 成功/配置不完整/非法端口/schema 过长、`MapType` 基础映射。
+- 新增 `logics/connectors/local/table/mariadb/type_mapping_test.go`，覆盖 MariaDB type mapping、unsigned、长度后缀裁剪、大小写/空白归一、unknown/empty 类型。
+- 将 `logics/connectors/local/table/postgresql/type_mapping_test.go` 迁移到 `testing + testify` 断言风格，保留原有语义。
+- 不涉及真实数据库连接，不改生产逻辑。
+
+验证：
+
+```bash
+cd adp/vega/vega-backend/server
+env GOCACHE=/tmp/go-build-cache go test ./logics/connectors/local/table/...
+env GOCACHE=/tmp/go-build-cache go test ./logics/connectors/local/table/... -cover
+env GOCACHE=/tmp/go-build-cache go test ./...
+env GOCACHE=/tmp/go-build-cache go test ./... -coverprofile=/tmp/vega-backend-server-cover.out
+env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cover.out
+```
+
+结果：
+
+- `go test ./logics/connectors/local/table/...` 通过。
+- `go test ./...` 通过。
+- overall statement coverage：**7.6%**。
+- 包覆盖率：`mariadb` 17.9%，`oracle` 8.6%，`postgresql` 9.3%。
+- 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。

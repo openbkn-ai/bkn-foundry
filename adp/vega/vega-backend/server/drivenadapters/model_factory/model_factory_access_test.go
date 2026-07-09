@@ -15,7 +15,8 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-comm-go/rest"
 	rmock "github.com/openbkn-ai/bkn-comm-go/rest/mock"
-	. "github.com/smartystreets/goconvey/convey"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
 	"vega-backend/common"
@@ -32,148 +33,165 @@ func newTestModelFactoryAccess(appSetting *common.AppSetting, httpClient rest.HT
 }
 
 func TestNewModelFactoryAccess(t *testing.T) {
-	Convey("Test NewModelFactoryAccess", t, func() {
-		appSetting := &common.AppSetting{
-			MfModelManagerUrl: "http://test-mf-manager",
-			MfModelApiUrl:     "http://test-mf-api",
-		}
+	appSetting := &common.AppSetting{
+		MfModelManagerUrl: "http://test-mf-manager",
+		MfModelApiUrl:     "http://test-mf-api",
+	}
 
-		access1 := NewModelFactoryAccess(appSetting)
-		access2 := NewModelFactoryAccess(appSetting)
+	access1 := NewModelFactoryAccess(appSetting)
+	access2 := NewModelFactoryAccess(appSetting)
 
-		Convey("Should return singleton instance", func() {
-			So(access1, ShouldNotBeNil)
-			So(access2, ShouldEqual, access1)
-		})
-	})
+	require.NotNil(t, access1)
+	assert.Equal(t, access1, access2)
 }
 
 func Test_modelFactoryAccess_GetModelByName(t *testing.T) {
-	Convey("Test GetModelByName", t, func() {
-		ctx := context.Background()
+	ctx := context.Background()
+	modelName := "test-model"
+
+	setup := func(t *testing.T) (*modelFactoryAccess, *rmock.MockHTTPClient) {
+		t.Helper()
+
 		mockCtrl := gomock.NewController(t)
-		defer mockCtrl.Finish()
+		t.Cleanup(mockCtrl.Finish)
 
 		appSetting := &common.AppSetting{
 			MfModelManagerUrl: "http://test-mf-manager",
 			MfModelApiUrl:     "http://test-mf-api",
 		}
 		mockHTTPClient := rmock.NewMockHTTPClient(mockCtrl)
-		mfa := newTestModelFactoryAccess(appSetting, mockHTTPClient)
+		return newTestModelFactoryAccess(appSetting, mockHTTPClient), mockHTTPClient
+	}
 
-		modelName := "test-model"
-		// httpUrl := "http://test-mf-manager/small-model/get_by_name?model_name=test-model"
+	t.Run("success getting model by name", func(t *testing.T) {
+		mfa, mockHTTPClient := setup(t)
+		model := interfaces.SmallModel{
+			ModelID:   "model1",
+			ModelName: modelName,
+		}
+		respData, err := sonic.Marshal(model)
+		require.NoError(t, err)
 
-		Convey("Success getting model by name", func() {
-			model := interfaces.SmallModel{
-				ModelID:   "model1",
-				ModelName: modelName,
-			}
-			respData, _ := sonic.Marshal(model)
+		mockHTTPClient.EXPECT().
+			GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(http.StatusOK, respData, nil)
 
-			mockHTTPClient.EXPECT().
-				GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-				Return(http.StatusOK, respData, nil)
+		result, err := mfa.GetModelByName(ctx, modelName)
 
-			result, err := mfa.GetModelByName(ctx, modelName)
-			So(err, ShouldBeNil)
-			So(result, ShouldNotBeNil)
-			So(result.ModelName, ShouldEqual, modelName)
-		})
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		assert.Equal(t, modelName, result.ModelName)
+	})
 
-		Convey("Model not found", func() {
-			mockHTTPClient.EXPECT().
-				GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-				Return(http.StatusNotFound, []byte(""), nil)
+	t.Run("model not found", func(t *testing.T) {
+		mfa, mockHTTPClient := setup(t)
+		mockHTTPClient.EXPECT().
+			GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(http.StatusNotFound, []byte(""), nil)
 
-			result, err := mfa.GetModelByName(ctx, modelName)
-			So(err, ShouldNotBeNil)
-			So(result, ShouldBeNil)
-		})
+		result, err := mfa.GetModelByName(ctx, modelName)
 
-		Convey("HTTP request error", func() {
-			mockHTTPClient.EXPECT().
-				GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-				Return(0, []byte(""), errors.New("network error"))
+		require.Error(t, err)
+		assert.Nil(t, result)
+	})
 
-			result, err := mfa.GetModelByName(ctx, modelName)
-			So(err, ShouldNotBeNil)
-			So(result, ShouldBeNil)
-		})
+	t.Run("HTTP request error", func(t *testing.T) {
+		mfa, mockHTTPClient := setup(t)
+		mockHTTPClient.EXPECT().
+			GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(0, []byte(""), errors.New("network error"))
 
-		Convey("HTTP status not OK and not NotFound", func() {
-			mockHTTPClient.EXPECT().
-				GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-				Return(http.StatusInternalServerError, []byte("internal error"), nil)
+		result, err := mfa.GetModelByName(ctx, modelName)
 
-			result, err := mfa.GetModelByName(ctx, modelName)
-			So(err, ShouldNotBeNil)
-			So(result, ShouldBeNil)
-		})
+		require.Error(t, err)
+		assert.Nil(t, result)
+	})
 
-		Convey("Unmarshal response failed", func() {
-			mockHTTPClient.EXPECT().
-				GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-				Return(http.StatusOK, []byte("invalid json"), nil)
+	t.Run("HTTP status not OK and not NotFound", func(t *testing.T) {
+		mfa, mockHTTPClient := setup(t)
+		mockHTTPClient.EXPECT().
+			GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(http.StatusInternalServerError, []byte("internal error"), nil)
 
-			result, err := mfa.GetModelByName(ctx, modelName)
-			So(err, ShouldNotBeNil)
-			So(result, ShouldBeNil)
-		})
+		result, err := mfa.GetModelByName(ctx, modelName)
+
+		require.Error(t, err)
+		assert.Nil(t, result)
+	})
+
+	t.Run("unmarshal response failed", func(t *testing.T) {
+		mfa, mockHTTPClient := setup(t)
+		mockHTTPClient.EXPECT().
+			GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(http.StatusOK, []byte("invalid json"), nil)
+
+		result, err := mfa.GetModelByName(ctx, modelName)
+
+		require.Error(t, err)
+		assert.Nil(t, result)
 	})
 }
 
 func Test_modelFactoryAccess_GetVector(t *testing.T) {
-	Convey("Test GetVector", t, func() {
-		ctx := context.Background()
+	ctx := context.Background()
+	model := &interfaces.SmallModel{
+		ModelID:   "model1",
+		BatchSize: 10,
+		MaxTokens: 100,
+	}
+	words := []string{"word1", "word2", "word3"}
+
+	setup := func(t *testing.T) (*modelFactoryAccess, *rmock.MockHTTPClient) {
+		t.Helper()
+
 		mockCtrl := gomock.NewController(t)
-		defer mockCtrl.Finish()
+		t.Cleanup(mockCtrl.Finish)
 
 		appSetting := &common.AppSetting{
 			MfModelManagerUrl: "http://test-mf-manager",
 			MfModelApiUrl:     "http://test-mf-api",
 		}
 		mockHTTPClient := rmock.NewMockHTTPClient(mockCtrl)
-		mfa := newTestModelFactoryAccess(appSetting, mockHTTPClient)
+		return newTestModelFactoryAccess(appSetting, mockHTTPClient), mockHTTPClient
+	}
 
-		model := &interfaces.SmallModel{
-			ModelID:   "model1",
-			BatchSize: 10,
-			MaxTokens: 100,
+	t.Run("success getting vectors", func(t *testing.T) {
+		mfa, mockHTTPClient := setup(t)
+		response := map[string]any{
+			"data": []*interfaces.VectorResp{
+				{Vector: []float32{0.1, 0.2}},
+				{Vector: []float32{0.3, 0.4}},
+				{Vector: []float32{0.5, 0.6}},
+			},
 		}
-		words := []string{"word1", "word2", "word3"}
-		// httpUrl := "http://test-mf-api/small-model/embeddings"
+		respData, err := sonic.Marshal(response)
+		require.NoError(t, err)
 
-		Convey("Success getting vectors", func() {
-			response := map[string]any{
-				"data": []*interfaces.VectorResp{
-					{Vector: []float32{0.1, 0.2}},
-					{Vector: []float32{0.3, 0.4}},
-					{Vector: []float32{0.5, 0.6}},
-				},
-			}
-			respData, _ := sonic.Marshal(response)
+		mockHTTPClient.EXPECT().
+			PostNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(http.StatusOK, respData, nil)
 
-			mockHTTPClient.EXPECT().
-				PostNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-				Return(http.StatusOK, respData, nil)
+		result, err := mfa.GetVector(ctx, model.ModelID, words)
 
-			result, err := mfa.GetVector(ctx, model.ModelID, words)
-			So(err, ShouldBeNil)
-			So(result, ShouldNotBeNil)
-			So(len(result), ShouldEqual, 3)
-		})
+		require.NoError(t, err)
+		require.Len(t, result, 3)
+	})
 
-		Convey("Empty model name", func() {
-			result, err := mfa.GetVector(ctx, "", words)
-			So(err, ShouldNotBeNil)
-			So(len(result), ShouldEqual, 0)
-		})
+	t.Run("empty model name", func(t *testing.T) {
+		mfa, _ := setup(t)
 
-		Convey("Empty words", func() {
-			result, err := mfa.GetVector(ctx, model.ModelID, []string{})
-			So(err, ShouldBeNil)
-			So(len(result), ShouldEqual, 0)
-		})
+		result, err := mfa.GetVector(ctx, "", words)
+
+		require.Error(t, err)
+		assert.Empty(t, result)
+	})
+
+	t.Run("empty words", func(t *testing.T) {
+		mfa, _ := setup(t)
+
+		result, err := mfa.GetVector(ctx, model.ModelID, []string{})
+
+		require.NoError(t, err)
+		assert.Empty(t, result)
 	})
 }
