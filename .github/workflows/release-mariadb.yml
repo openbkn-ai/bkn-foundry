@@ -1,4 +1,4 @@
-name: release-proton-mariadb
+name: release-mariadb
 
 # Chart-only. Deploys upstream mariadb (values.yaml left pointing upstream,
 # not a first-party GHCR image).
@@ -9,8 +9,8 @@ on:
       - 'v*'
     branches: ['**']
     paths:
-      - 'deploy/charts/proton-mariadb/**'
-      - '.github/workflows/release-proton-mariadb.yml'
+      - 'deploy/charts/mariadb/**'
+      - '.github/workflows/release-mariadb.yml'
       - '.github/workflows/reusable-*.yml'
   workflow_dispatch:
     inputs:
@@ -26,7 +26,7 @@ jobs:
   test:
     uses: ./.github/workflows/reusable-test.yml
     with:
-      service-path: deploy/charts/proton-mariadb
+      service-path: deploy/charts/mariadb
       stack: chart-only
 
   chart:
@@ -34,7 +34,7 @@ jobs:
     uses: ./.github/workflows/reusable-chart.yml
     with:
       service-path: deploy
-      chart-path: charts/proton-mariadb
-      chart-name: proton-mariadb
+      chart-path: charts/mariadb
+      chart-name: mariadb
       version: ${{ needs.test.outputs.version }}
       publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}

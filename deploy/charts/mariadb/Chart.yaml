@@ -1,0 +1,13 @@
+apiVersion: v2
+appVersion: "11.4"
+description: A Helm chart for MariaDB single-node deployment
+keywords:
+- mariadb
+- database
+- sql
+maintainers:
+- email: support@openbkn.com
+  name: openbkn
+name: mariadb
+type: application
+version: 1.0.0
