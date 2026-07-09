@@ -364,3 +364,31 @@ env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cov
 - overall statement coverage：**7.5%**。
 - 包覆盖率保持：`driveradapters` 32.5%。
 - 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。
+
+### 2026-07-09：Step 8 Build Task / Connector Type Handler 风格迁移
+
+范围：
+
+- 将 `driveradapters/build_task_create_validate_test.go` 从 goconvey 迁移到 `testing + testify`。
+- 将 `driveradapters/build_task_handler_test.go` 从 goconvey 迁移到 `testing + testify`。
+- 将 `driveradapters/connector_type_handler_test.go` 从 goconvey 迁移到 `testing + testify`。
+- 保留原有覆盖语义：build task 列表/删除、embedding field type 校验、connector type 更新/列表参数校验。
+- 仅调整测试组织和断言风格，不改生产逻辑。
+
+验证：
+
+```bash
+cd adp/vega/vega-backend/server
+env GOCACHE=/tmp/go-build-cache go test ./driveradapters
+env GOCACHE=/tmp/go-build-cache go test ./...
+env GOCACHE=/tmp/go-build-cache go test ./... -coverprofile=/tmp/vega-backend-server-cover.out
+env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cover.out
+```
+
+结果：
+
+- `go test ./driveradapters` 通过。
+- `go test ./...` 通过。
+- overall statement coverage：**7.5%**。
+- 包覆盖率保持：`driveradapters` 32.5%。
+- 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。
