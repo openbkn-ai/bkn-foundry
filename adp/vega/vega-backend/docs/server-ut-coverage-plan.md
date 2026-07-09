@@ -736,3 +736,36 @@ env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cov
 - overall statement coverage：**13.3%**。
 - 包覆盖率：`worker` 37.2%。
 - 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。
+
+### 2026-07-09：Batch 6 Logics 0% 包与纯转换覆盖
+
+范围：
+
+- 新增 `logics/extensions/validate_test.go`，覆盖 entity/property/schema extensions 配额、空 key、key/value 长度、保留前缀、query pair 数量/配对/空值校验。
+- 新增 `logics/dataset/dataset_service_test.go`，使用 `MockLocalIndexManager` 覆盖 dataset index create/update/delete/check exist、document list/create/get/delete/upsert/delete by query 的成功与错误包装。
+- 新增 `logics/auth/auth_service_test.go`，覆盖 noop auth 从 Gin header 生成 visitor，以及 hydra auth service 对 access 的委托和错误透传。
+- 新增 `logics/user_mgmt/user_mgmt_service_test.go`，覆盖 noop 用户名回填、真实 service 对 access 的委托和错误透传。
+- 新增 `logics/local_index/local_index_manager_test.go`，用 fake index connector 覆盖 local index manager 的 index/document 方法转发，以及 DeleteDocumentsByQuery 的 filter condition 编译。
+- 新增 `logics/query/sqlglot/sqlglot_test.go`，覆盖 datasource type 到 sqlglot dialect 的纯映射与 unsupported 错误；不执行外部 Python/sqlglot 进程。
+- 新增 `logics/connectors/local/table/table_connector_test.go`，覆盖 `ScanRows`、`[]byte` 转 string、rows error 分支。
+- 新增 `logics/connectors/local/table/postgresql/postgresql_ident_test.go`，覆盖 PostgreSQL identifier/table/column quote helper。
+- 本批不访问真实外部服务，不连接真实数据库。
+
+验证：
+
+```bash
+cd adp/vega/vega-backend/server
+env GOCACHE=/tmp/go-build-cache go test ./logics/extensions ./logics/dataset ./logics/auth ./logics/user_mgmt ./logics/local_index ./logics/query/sqlglot ./logics/connectors/local/table ./logics/connectors/local/table/postgresql
+env GOCACHE=/tmp/go-build-cache go test ./logics/extensions ./logics/dataset ./logics/auth ./logics/user_mgmt ./logics/local_index ./logics/query/sqlglot ./logics/connectors/local/table ./logics/connectors/local/table/postgresql -cover
+env GOCACHE=/tmp/go-build-cache go test ./...
+env GOCACHE=/tmp/go-build-cache go test ./... -coverprofile=/tmp/vega-backend-server-cover.out
+env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cover.out
+```
+
+结果：
+
+- 目标包 `go test` 通过。
+- `go test ./...` 通过。
+- overall statement coverage：**13.8%**。
+- 包覆盖率：`logics/extensions` 100.0%，`logics/dataset` 72.5%，`logics/auth` 33.3%，`logics/user_mgmt` 50.0%，`logics/local_index` 61.3%，`logics/query/sqlglot` 15.0%，`logics/connectors/local/table` 90.9%，`postgresql` 10.5%。
+- 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。
