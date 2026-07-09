@@ -678,3 +678,32 @@ env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cov
 - overall statement coverage：**12.2%**。
 - 包覆盖率：`drivenadapters/catalog` 24.9%，`drivenadapters/resource` 28.5%。
 - 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果；本地 logger 写 `/opt/vega-backend/logs` 的 read-only warning 不影响测试结果。
+
+### 2026-07-09：Batch 5 External Adapter 首批
+
+范围：
+
+- 新增 `drivenadapters/asynq/asynq_access_test.go`，覆盖 sentinel、master-slave、standalone/cluster/unknown connect type 的 Redis option 生成，不连接真实 Redis。
+- 新增 `drivenadapters/kafka/kafka_access_test.go`，覆盖 broker address、SASL dialer、PLAIN/SCRAM/unknown mechanism、reader/writer option 构造、空消息写入与 nil close 分支，不连接真实 Kafka。
+- 新增 `drivenadapters/user_mgmt/user_mgmt_access_test.go`，用 fake HTTPClient 覆盖 ISF 与 bkn-safe directory 路由、重复账号去重、用户/应用名回填、缺失名称默认值、请求错误、非 200、非法 JSON。
+- 新增 `drivenadapters/permission/permission_access_test.go`，用 fake HTTPClient 覆盖 CheckPermission 成功/空响应/HTTPError、FilterResources、CreateResources、DeleteResources，以及 MaybeShadow 的 ISF/缺少 safe URL 回退。
+- 本批不启动外部服务、不发真实 Redis/Kafka/HTTP 请求。
+
+验证：
+
+```bash
+cd adp/vega/vega-backend/server
+env GOCACHE=/tmp/go-build-cache go test ./drivenadapters/asynq ./drivenadapters/kafka ./drivenadapters/user_mgmt ./drivenadapters/permission
+env GOCACHE=/tmp/go-build-cache go test ./drivenadapters/asynq ./drivenadapters/kafka ./drivenadapters/user_mgmt ./drivenadapters/permission -cover
+env GOCACHE=/tmp/go-build-cache go test ./...
+env GOCACHE=/tmp/go-build-cache go test ./... -coverprofile=/tmp/vega-backend-server-cover.out
+env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cover.out
+```
+
+结果：
+
+- `go test ./drivenadapters/asynq ./drivenadapters/kafka ./drivenadapters/user_mgmt ./drivenadapters/permission` 通过。
+- `go test ./...` 通过。
+- overall statement coverage：**12.7%**。
+- 包覆盖率：`drivenadapters/asynq` 43.8%，`drivenadapters/kafka` 33.3%，`drivenadapters/user_mgmt` 90.2%，`drivenadapters/permission` 35.6%。
+- 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。
