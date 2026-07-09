@@ -11,7 +11,6 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"errors"
-	"reflect"
 	"regexp"
 	"testing"
 
@@ -580,15 +579,15 @@ func replaceCatalogExtensionStore(store *fakeCatalogExtensionStore) func() {
 	patches.ApplyFunc(entityextension.NewStore, func(app *common.AppSetting) *entityextension.Store {
 		return &entityextension.Store{}
 	})
-	patches.ApplyMethod(reflect.TypeOf(&entityextension.Store{}), "DeleteByEntityIDs",
+	patches.ApplyMethod(&entityextension.Store{}, "DeleteByEntityIDs",
 		func(_ *entityextension.Store, ctx context.Context, kind string, entityIDs []string) error {
 			return store.DeleteByEntityIDs(ctx, kind, entityIDs)
 		})
-	patches.ApplyMethod(reflect.TypeOf(&entityextension.Store{}), "GetByEntityID",
+	patches.ApplyMethod(&entityextension.Store{}, "GetByEntityID",
 		func(_ *entityextension.Store, ctx context.Context, kind string, entityID string) (map[string]string, error) {
 			return store.GetByEntityID(ctx, kind, entityID)
 		})
-	patches.ApplyMethod(reflect.TypeOf(&entityextension.Store{}), "GetByEntityIDs",
+	patches.ApplyMethod(&entityextension.Store{}, "GetByEntityIDs",
 		func(_ *entityextension.Store, ctx context.Context, kind string, entityIDs []string) (map[string]map[string]string, error) {
 			return store.GetByEntityIDs(ctx, kind, entityIDs)
 		})

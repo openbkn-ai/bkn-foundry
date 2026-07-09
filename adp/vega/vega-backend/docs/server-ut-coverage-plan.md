@@ -33,9 +33,9 @@
 
 ## 2. 通用测试组织规则
 
-- 一个生产函数对应一个顶层测试函数。
+- 一个需要覆盖的非构造生产函数对应一个顶层测试函数。
 - 顶层测试函数内部所有场景都用 `t.Run` 包裹。
-- 测试文件名必须和原始业务文件名一一对应：`foo.go` 的测试写在 `foo_test.go`；不要新增按场景、bug、函数类型拆分的测试文件。包级公共 test helper 例外，可放在 `<package>_test.go`。
+- 测试文件名必须和原始业务文件名一一对应：`foo.go` 的测试写在 `foo_test.go`；不要新增按场景、bug、函数类型或包级 helper 拆分的测试文件。公共 test helper 放到最贴近的业务测试文件中。
 - 方法测试命名优先使用 `Test<Type><Method>`，例如 `TestRestHandlerListCatalogs`、`TestRestHandlerCreateResource`。
 - 包级函数/helper 测试命名使用 `Test<Function>`，例如 `TestValidateResourceRequest`、`TestParseBuildTaskListParams`。
 - 如果旧 UT 已经为同一个生产函数拆出多个顶层测试函数，本轮触达时一起合并或调整。
@@ -43,7 +43,7 @@
 - HTTP handler 使用 `httptest` + gin test context/router；下游依赖使用 mock service/fake service。
 - 校验函数使用 table-driven cases，覆盖合法值、缺失值、边界值、非法枚举、非法分页/排序等。
 - 只改测试代码和测试必要依赖；不为 UT 修改业务代码。确需 mock 无注入点的方法时，测试侧使用 `gomonkey`。
-- 纯构造函数不作为补齐目标；除非构造函数本身包含需要验证的可观察业务行为。
+- 构造函数不作为补齐目标，不新增 `TestNew...` / `Test<Constructor>` 用例；已有构造函数测试本轮触达时删除或合并到真实业务行为测试中。
 
 ## 3. 当前覆盖快照
 
@@ -58,7 +58,7 @@ env GOCACHE=/tmp/go-build-cache go test ./driveradapters -cover
 
 | 包 | 覆盖率 |
 | --- | ---: |
-| `driveradapters` | 68.6% |
+| `driveradapters` | 69.9% |
 
 ## 4. Driver 两步计划
 
@@ -93,6 +93,8 @@ env GOCACHE=/tmp/go-build-cache go test ./driveradapters -cover
 
 ### DR2：收口
 
+状态：已执行收口检查。
+
 范围：
 
 - `server/driveradapters` 全量复扫
@@ -101,10 +103,17 @@ env GOCACHE=/tmp/go-build-cache go test ./driveradapters -cover
 目标：
 
 - 跑 `go test ./driveradapters -coverprofile=/tmp/vega-driver-cover.out` 和 `go tool cover -func=/tmp/vega-driver-cover.out`，确认剩余低覆盖/0% 函数。
-- 对 DR1 遗漏的非构造函数继续补 case；对确实不适合 UT 的函数写入说明。
+- 对 DR1 遗漏的非构造函数继续补 case；构造函数不补、不计入待补清单。
 - 扫描所有顶层 `Test...` 是否包含 `t.Run`。
-- 扫描所有 `*_test.go` 是否和原始业务文件名一一对应，仅保留包级公共 helper 文件例外。
+- 扫描所有 `*_test.go` 是否和原始业务文件名一一对应。
 - 跑 `go test ./driveradapters -cover`、`go test ./...`。
 - 更新本文档的 driver 覆盖率快照、已完成项、剩余说明。
 
 建议 commit：`test(vega-backend): finish driver adapter test sweep`。
+
+收口结果：
+
+- `go test ./driveradapters -coverprofile=/tmp/vega-driver-cover.out -count=1` 通过，覆盖率 `69.9%`。
+- 测试文件命名扫描通过：`*_test.go` 均对应同名业务 `.go`。
+- 顶层 `Test...` 结构扫描通过：测试函数均包含 `t.Run` 场景。
+- 剩余 0% 函数主要为外部接口薄 wrapper（`ByEx`）和纯构造函数；构造函数不作为本轮补齐目标。

@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/agiledragon/gomonkey/v2"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -21,6 +22,7 @@ import (
 	"vega-backend/common"
 	"vega-backend/interfaces"
 	vmock "vega-backend/interfaces/mock"
+	"vega-backend/worker"
 )
 
 func setupDiscoverScheduleHandlerTest(
@@ -37,6 +39,24 @@ func setupDiscoverScheduleHandlerTest(
 	cs := vmock.NewMockCatalogService(mockCtrl)
 	dss := vmock.NewMockDiscoverScheduleService(mockCtrl)
 	handler := MockNewRestHandler(&common.AppSetting{}, nil, cs, nil, nil, nil, nil, nil, dss, nil, nil)
+	handler.RegisterPublic(engine)
+	return engine, cs, dss
+}
+
+func setupDiscoverScheduleHandlerWithWorkerTest(
+	t *testing.T,
+) (*gin.Engine, *vmock.MockCatalogService, *vmock.MockDiscoverScheduleService) {
+	t.Helper()
+
+	engine := gin.New()
+	engine.Use(gin.Recovery())
+
+	mockCtrl := gomock.NewController(t)
+	t.Cleanup(mockCtrl.Finish)
+
+	cs := vmock.NewMockCatalogService(mockCtrl)
+	dss := vmock.NewMockDiscoverScheduleService(mockCtrl)
+	handler := MockNewRestHandler(&common.AppSetting{}, nil, cs, nil, nil, nil, nil, nil, dss, nil, &worker.ScheduleWorker{})
 	handler.RegisterPublic(engine)
 	return engine, cs, dss
 }
@@ -93,6 +113,34 @@ func Test_DiscoverScheduleRestHandler_CreateDiscoverSchedule(t *testing.T) {
 
 		require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
 		assert.Contains(t, w.Body.String(), "VegaBackend.DiscoverSchedule.InvalidCronExpr")
+	})
+
+	t.Run("creates enabled discover schedule and schedules it", func(t *testing.T) {
+		engine, cs, dss := setupDiscoverScheduleHandlerWithWorkerTest(t)
+		cs.EXPECT().GetByID(gomock.Any(), "catalog-1", false).Return(&interfaces.Catalog{ID: "catalog-1"}, nil)
+		dss.EXPECT().Create(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, req *interfaces.DiscoverScheduleRequest) (string, error) {
+				assert.True(t, req.Enabled)
+				return "schedule-1", nil
+			})
+		patches := gomonkey.ApplyMethod(
+			&worker.ScheduleWorker{},
+			"Schedule",
+			func(_ *worker.ScheduleWorker, scheduleID string) error {
+				assert.Equal(t, "schedule-1", scheduleID)
+				return nil
+			},
+		)
+		defer patches.Reset()
+
+		req := httptest.NewRequest(http.MethodPost, url, strings.NewReader(`{"name":"daily","catalog_id":"catalog-1","cron_expr":"0 0 * * *","strategy":"full_sync","enabled":true}`))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusCreated, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), `"id":"schedule-1"`)
 	})
 }
 
@@ -273,6 +321,47 @@ func Test_DiscoverScheduleRestHandler_UpdateDiscoverSchedule(t *testing.T) {
 	})
 }
 
+func Test_DiscoverScheduleRestHandler_DeleteDiscoverSchedule(t *testing.T) {
+	restoreGinMode := setGinMode()
+	defer restoreGinMode()
+
+	t.Run("deletes discover schedule", func(t *testing.T) {
+		engine, _, dss := setupDiscoverScheduleHandlerWithWorkerTest(t)
+		current := &interfaces.DiscoverSchedule{ID: "schedule-1", CatalogID: "catalog-1", Enabled: true}
+		dss.EXPECT().GetByID(gomock.Any(), "schedule-1").Return(current, nil)
+		dss.EXPECT().Delete(gomock.Any(), "schedule-1").Return(nil)
+		patches := gomonkey.ApplyMethod(
+			&worker.ScheduleWorker{},
+			"Unschedule",
+			func(_ *worker.ScheduleWorker, scheduleID string) error {
+				assert.Equal(t, "schedule-1", scheduleID)
+				return nil
+			},
+		)
+		defer patches.Reset()
+
+		req := httptest.NewRequest(http.MethodDelete, "/api/vega-backend/in/v1/discover-schedules/schedule-1", nil)
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusNoContent, w.Result().StatusCode)
+	})
+
+	t.Run("returns not found for nil schedule", func(t *testing.T) {
+		engine, _, dss := setupDiscoverScheduleHandlerWithWorkerTest(t)
+		dss.EXPECT().GetByID(gomock.Any(), "missing").Return(nil, nil)
+
+		req := httptest.NewRequest(http.MethodDelete, "/api/vega-backend/in/v1/discover-schedules/missing", nil)
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusNotFound, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), "VegaBackend.DiscoverSchedule.NotFound")
+	})
+}
+
 func Test_DiscoverScheduleRestHandler_ToggleDiscoverSchedule(t *testing.T) {
 	restoreGinMode := setGinMode()
 	defer restoreGinMode()
@@ -294,6 +383,52 @@ func Test_DiscoverScheduleRestHandler_ToggleDiscoverSchedule(t *testing.T) {
 		engine, _, dss := setupDiscoverScheduleHandlerTest(t)
 		dss.EXPECT().GetByID(gomock.Any(), "schedule-1").
 			Return(&interfaces.DiscoverSchedule{ID: "schedule-1", CatalogID: "catalog-1", Enabled: false}, nil)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/discover-schedules/schedule-1/disable", nil)
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusNoContent, w.Result().StatusCode)
+	})
+
+	t.Run("enables disabled schedule", func(t *testing.T) {
+		engine, _, dss := setupDiscoverScheduleHandlerWithWorkerTest(t)
+		dss.EXPECT().GetByID(gomock.Any(), "schedule-1").
+			Return(&interfaces.DiscoverSchedule{ID: "schedule-1", CatalogID: "catalog-1", Enabled: false}, nil)
+		dss.EXPECT().Enable(gomock.Any(), "schedule-1").Return(nil)
+		patches := gomonkey.ApplyMethod(
+			&worker.ScheduleWorker{},
+			"Schedule",
+			func(_ *worker.ScheduleWorker, scheduleID string) error {
+				assert.Equal(t, "schedule-1", scheduleID)
+				return nil
+			},
+		)
+		defer patches.Reset()
+
+		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/discover-schedules/schedule-1/enable", nil)
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusNoContent, w.Result().StatusCode)
+	})
+
+	t.Run("disables enabled schedule", func(t *testing.T) {
+		engine, _, dss := setupDiscoverScheduleHandlerWithWorkerTest(t)
+		dss.EXPECT().GetByID(gomock.Any(), "schedule-1").
+			Return(&interfaces.DiscoverSchedule{ID: "schedule-1", CatalogID: "catalog-1", Enabled: true}, nil)
+		dss.EXPECT().Disable(gomock.Any(), "schedule-1").Return(nil)
+		patches := gomonkey.ApplyMethod(
+			&worker.ScheduleWorker{},
+			"Unschedule",
+			func(_ *worker.ScheduleWorker, scheduleID string) error {
+				assert.Equal(t, "schedule-1", scheduleID)
+				return nil
+			},
+		)
+		defer patches.Reset()
 
 		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/discover-schedules/schedule-1/disable", nil)
 		w := httptest.NewRecorder()

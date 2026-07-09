@@ -9,7 +9,6 @@ package kafka
 import (
 	"context"
 	"errors"
-	"reflect"
 	"testing"
 	"time"
 
@@ -248,7 +247,7 @@ func TestKafkaAccessCreateTopic(t *testing.T) {
 }
 
 func replaceKafkaReadMessage(fn func(context.Context, *kafka.Reader) (kafka.Message, error)) func() {
-	patches := gomonkey.ApplyMethod(reflect.TypeOf(&kafka.Reader{}), "ReadMessage",
+	patches := gomonkey.ApplyMethod(&kafka.Reader{}, "ReadMessage",
 		func(r *kafka.Reader, ctx context.Context) (kafka.Message, error) {
 			return fn(ctx, r)
 		})
@@ -256,7 +255,7 @@ func replaceKafkaReadMessage(fn func(context.Context, *kafka.Reader) (kafka.Mess
 }
 
 func replaceKafkaCommitMessages(fn func(context.Context, *kafka.Reader, ...kafka.Message) error) func() {
-	patches := gomonkey.ApplyMethod(reflect.TypeOf(&kafka.Reader{}), "CommitMessages",
+	patches := gomonkey.ApplyMethod(&kafka.Reader{}, "CommitMessages",
 		func(r *kafka.Reader, ctx context.Context, msgs ...kafka.Message) error {
 			return fn(ctx, r, msgs...)
 		})
