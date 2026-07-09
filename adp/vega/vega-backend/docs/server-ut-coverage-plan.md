@@ -707,3 +707,32 @@ env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cov
 - overall statement coverage：**12.7%**。
 - 包覆盖率：`drivenadapters/asynq` 43.8%，`drivenadapters/kafka` 33.3%，`drivenadapters/user_mgmt` 90.2%，`drivenadapters/permission` 35.6%。
 - 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。
+
+### 2026-07-09：Batch 5 Worker 发现与调度首批
+
+范围：
+
+- 新增 `worker/discover_index_test.go`，覆盖 OpenSearch sub-field 到 VEGA feature 的 keyword/fulltext/vector 映射、unsupported sub-field 跳过、index resource 新建、stale 恢复、missing active 标记 stale。
+- 新增 `worker/discover_fileset_test.go`，覆盖 fileset source identifier 选择、新建 fileset resource、missing active 标记 stale、metadata/schema enrich。
+- 新增 `worker/schedule_worker_test.go`，覆盖 schedule/unschedule/重复调度/非法 cron、Start/Reload/Schedule/UpdateSchedule、executeSchedule 的 disabled/future start/expired/enabled 执行分支。
+- `go.mod` 清理已不再使用的 `goconvey` 直接依赖及其间接依赖；`server` 源码内已无 `goconvey` import/`Convey` 用法。
+- 本批不启动真实 asynq/cron worker 长驻循环，不访问外部服务。
+
+验证：
+
+```bash
+cd adp/vega/vega-backend/server
+env GOCACHE=/tmp/go-build-cache go test ./worker
+env GOCACHE=/tmp/go-build-cache go test ./worker -cover
+env GOCACHE=/tmp/go-build-cache go test ./...
+env GOCACHE=/tmp/go-build-cache go test ./... -coverprofile=/tmp/vega-backend-server-cover.out
+env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cover.out
+```
+
+结果：
+
+- `go test ./worker` 通过。
+- `go test ./...` 通过。
+- overall statement coverage：**13.3%**。
+- 包覆盖率：`worker` 37.2%。
+- 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。
