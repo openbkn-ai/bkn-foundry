@@ -827,3 +827,60 @@ env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cov
 - overall statement coverage：**16.1%**。
 - 包覆盖率：`logics/filter_condition` 62.1%，`logics/query` 31.8%，`logics/connectors/local/index/opensearch` 20.7%，`logics/resource_data` 38.3%。
 - 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。
+
+### 2026-07-09：Batch 9 Build Task Access / Table Query Helper 覆盖
+
+范围：
+
+- 新增 `drivenadapters/build_task/build_task_access_test.go`，用 `sqlmock` 覆盖 build task access 的 scan、Create、GetByID、GetByResourceID、GetByCatalogID、UpdateStatus、GetStatus、List、Delete 成功与错误分支。
+- 新增 `logics/connectors/local/table/mariadb/mariadb_query_helper_test.go`，覆盖 MariaDB HAVING 条件构造、IN 值格式化、calendar interval 到 date_format 的映射、driver 值转换。
+- 新增 `logics/connectors/local/table/postgresql/postgresql_query_helper_test.go`，覆盖 PostgreSQL HAVING 条件构造、IN 值格式化、timestamptz 本地化转换、连接串构造与默认 sslmode。
+- 本批不连接真实数据库。
+
+验证：
+
+```bash
+cd adp/vega/vega-backend/server
+env GOCACHE=/tmp/go-build-cache go test ./drivenadapters/build_task ./logics/connectors/local/table/mariadb ./logics/connectors/local/table/postgresql -cover
+env GOCACHE=/tmp/go-build-cache go test ./...
+env GOCACHE=/tmp/go-build-cache go test ./... -coverprofile=/tmp/vega-backend-server-cover.out
+env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cover.out
+```
+
+结果：
+
+- 目标包 `go test` 通过。
+- `go test ./...` 通过。
+- overall statement coverage：**16.8%**。
+- 包覆盖率：`drivenadapters/build_task` 78.1%，`logics/connectors/local/table/mariadb` 23.4%，`logics/connectors/local/table/postgresql` 16.2%。
+- 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。
+
+### 2026-07-09：Batch 10 Driven Adapters 大批量补充
+
+范围：
+
+- 扩展 `drivenadapters/resource`，覆盖 GetByName、not found、GetByCatalogID、List 过滤/排序、Update 的 SQL 参数与扫描。
+- 扩展 `drivenadapters/discover_task`，覆盖 Create、GetScheduledTaskStrategy、UpdateProgress、UpdateResult，并补齐原有状态/存在性/Delete 分支。
+- 扩展 `drivenadapters/discover_schedule`，覆盖 Create next run、非法 cron、Enable、Update、Delete、GetEnabledSchedules，并补齐原有 Disable/UpdateLastRun 分支。
+- 扩展 `drivenadapters/catalog`，覆盖 List、ListInternalIDs、Update，并保留已有 Create/ListIDs/ListAuthResources/状态更新用例。
+- 扩展 `drivenadapters/connector_type`，覆盖 Create、GetByName、Update、Delete success，并保留已有 Get/List/ListAuthResources/SetEnabled/错误分支。
+- 扩展 `drivenadapters/permission`，覆盖 CheckPermission HTTP client error/非法 body、FilterResources 空响应/HTTPError/非法 body、CreateResources/DeleteResources 非 2xx 错误。
+- 本批仍使用 `sqlmock` / fake HTTP client，不连接真实 DB 或外部服务。
+
+验证：
+
+```bash
+cd adp/vega/vega-backend/server
+env GOCACHE=/tmp/go-build-cache go test ./drivenadapters/... -cover
+env GOCACHE=/tmp/go-build-cache go test ./...
+env GOCACHE=/tmp/go-build-cache go test ./... -coverprofile=/tmp/vega-backend-server-cover.out
+env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cover.out
+```
+
+结果：
+
+- `go test ./drivenadapters/... -cover` 通过。
+- `go test ./...` 通过。
+- overall statement coverage：**18.0%**。
+- 包覆盖率：`drivenadapters/catalog` 45.3%，`drivenadapters/connector_type` 73.8%，`drivenadapters/discover_schedule` 67.2%，`drivenadapters/discover_task` 68.8%，`drivenadapters/permission` 53.2%，`drivenadapters/resource` 53.7%。
+- 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果；本地 logger 写 `/opt/vega-backend/logs` 的 read-only warning 不影响测试结果。

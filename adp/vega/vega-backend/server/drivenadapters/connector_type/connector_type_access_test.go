@@ -63,6 +63,33 @@ func TestConnectorTypeAccessGetByTypeNotFound(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestConnectorTypeAccessGetByName(t *testing.T) {
+	access, mock, cleanup := newConnectorTypeAccessMock(t)
+	defer cleanup()
+
+	mock.ExpectQuery("SELECT f_type, f_name, f_tags, f_description, f_mode, f_category, f_endpoint, f_field_config, f_enabled FROM t_connector_type WHERE f_name = ?").
+		WithArgs("Remote API").
+		WillReturnRows(connectorTypeRows().AddRow(
+			"remote-api",
+			"Remote API",
+			"tag-a,tag-b",
+			"desc",
+			interfaces.ConnectorModeRemote,
+			interfaces.ConnectorCategoryAPI,
+			"http://remote",
+			`{"token":{"name":"Token","type":"string","required":true,"encrypted":true}}`,
+			true,
+		))
+
+	got, err := access.GetByName(context.Background(), "Remote API")
+
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, "remote-api", got.Type)
+	assert.Equal(t, "Remote API", got.Name)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestConnectorTypeAccessList(t *testing.T) {
 	access, mock, cleanup := newConnectorTypeAccessMock(t)
 	defer cleanup()
@@ -112,6 +139,33 @@ func TestConnectorTypeAccessListAuthResources(t *testing.T) {
 }
 
 func TestConnectorTypeAccessExecs(t *testing.T) {
+	t.Run("create", func(t *testing.T) {
+		access, mock, cleanup := newConnectorTypeAccessMock(t)
+		defer cleanup()
+		ct := sampleConnectorType()
+
+		mock.ExpectExec("INSERT INTO t_connector_type (f_type,f_name,f_tags,f_description,f_mode,f_category,f_endpoint,f_field_config,f_enabled) VALUES (?,?,?,?,?,?,?,?,?)").
+			WithArgs(ct.Type, ct.Name, `"tag-a","tag-b"`, ct.Description, ct.Mode, ct.Category, ct.Endpoint, `{"token":{"name":"Token","type":"string","description":"","required":true,"encrypted":true}}`, ct.Enabled).
+			WillReturnResult(sqlmock.NewResult(1, 1))
+
+		require.NoError(t, access.Create(context.Background(), ct))
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("update", func(t *testing.T) {
+		access, mock, cleanup := newConnectorTypeAccessMock(t)
+		defer cleanup()
+		ct := sampleConnectorType()
+		ct.Name = "Remote API Updated"
+
+		mock.ExpectExec("UPDATE t_connector_type SET f_name = ?, f_tags = ?, f_description = ?, f_mode = ?, f_category = ?, f_endpoint = ?, f_field_config = ?, f_enabled = ? WHERE f_type = ?").
+			WithArgs(ct.Name, `"tag-a","tag-b"`, ct.Description, ct.Mode, ct.Category, ct.Endpoint, `{"token":{"name":"Token","type":"string","description":"","required":true,"encrypted":true}}`, ct.Enabled, ct.Type).
+			WillReturnResult(sqlmock.NewResult(0, 1))
+
+		require.NoError(t, access.Update(context.Background(), ct))
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
 	t.Run("set enabled", func(t *testing.T) {
 		access, mock, cleanup := newConnectorTypeAccessMock(t)
 		defer cleanup()
@@ -121,6 +175,18 @@ func TestConnectorTypeAccessExecs(t *testing.T) {
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
 		require.NoError(t, access.SetEnabled(context.Background(), "remote-api", false))
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("delete", func(t *testing.T) {
+		access, mock, cleanup := newConnectorTypeAccessMock(t)
+		defer cleanup()
+
+		mock.ExpectExec("DELETE FROM t_connector_type WHERE f_type = ?").
+			WithArgs("remote-api").
+			WillReturnResult(sqlmock.NewResult(0, 1))
+
+		require.NoError(t, access.DeleteByType(context.Background(), "remote-api"))
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
@@ -154,4 +220,25 @@ func newConnectorTypeAccessMock(t *testing.T) (*connectorTypeAccess, sqlmock.Sql
 
 func connectorTypeRows() *sqlmock.Rows {
 	return sqlmock.NewRows(connectorTypeColumns())
+}
+
+func sampleConnectorType() *interfaces.ConnectorType {
+	return &interfaces.ConnectorType{
+		Type:        "remote-api",
+		Name:        "Remote API",
+		Tags:        []string{"tag-a", "tag-b"},
+		Description: "desc",
+		Mode:        interfaces.ConnectorModeRemote,
+		Category:    interfaces.ConnectorCategoryAPI,
+		Endpoint:    "http://remote",
+		FieldConfig: map[string]interfaces.ConnectorFieldConfig{
+			"token": {
+				Name:      "Token",
+				Type:      "string",
+				Required:  true,
+				Encrypted: true,
+			},
+		},
+		Enabled: true,
+	}
 }

@@ -8,6 +8,7 @@ package permission
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/url"
 	"testing"
@@ -59,33 +60,84 @@ func TestPermissionAccessCheckPermission(t *testing.T) {
 		assert.Equal(t, "Forbidden", httpErr.BaseError.ErrorCode)
 		assert.Equal(t, "denied", httpErr.BaseError.Description)
 	})
+
+	t.Run("http client error is wrapped", func(t *testing.T) {
+		access := newPermissionAccess(&fakeHTTPClient{err: errors.New("network down")})
+
+		got, err := access.CheckPermission(context.Background(), samplePermissionCheck())
+
+		require.Error(t, err)
+		assert.False(t, got)
+		assert.Contains(t, err.Error(), "post operation-check request failed")
+	})
+
+	t.Run("invalid decision body returns unmarshal error", func(t *testing.T) {
+		access := newPermissionAccess(&fakeHTTPClient{code: http.StatusOK, body: []byte(`{`)})
+
+		got, err := access.CheckPermission(context.Background(), samplePermissionCheck())
+
+		require.Error(t, err)
+		assert.False(t, got)
+	})
 }
 
 func TestPermissionAccessFilterResources(t *testing.T) {
-	client := &fakeHTTPClient{
-		code: http.StatusOK,
-		body: []byte(`[{"id":"resource-1","allow_operation":["view_detail","modify"]}]`),
-	}
-	access := newPermissionAccess(client)
+	t.Run("returns allow operations", func(t *testing.T) {
+		client := &fakeHTTPClient{
+			code: http.StatusOK,
+			body: []byte(`[{"id":"resource-1","allow_operation":["view_detail","modify"]}]`),
+		}
+		access := newPermissionAccess(client)
 
-	got, err := access.FilterResources(context.Background(), interfaces.PermissionResourcesFilter{
-		Accessor:   interfaces.PermissionAccessor{Type: interfaces.ACCESSOR_TYPE_USER, ID: "u1"},
-		Resources:  []interfaces.PermissionResource{{Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE, ID: "resource-1"}},
-		Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL, interfaces.OPERATION_TYPE_MODIFY},
+		got, err := access.FilterResources(context.Background(), samplePermissionResourcesFilter())
+
+		require.NoError(t, err)
+		assert.Equal(t, "http://permission/resource-filter", client.url)
+		assert.Equal(t, http.MethodGet, client.reqParam.(interfaces.PermissionResourcesFilter).Method)
+		assert.Equal(t, map[string]interfaces.PermissionResourceOps{
+			"resource-1": {
+				ResourceID: "resource-1",
+				Operations: []string{
+					interfaces.OPERATION_TYPE_VIEW_DETAIL,
+					interfaces.OPERATION_TYPE_MODIFY,
+				},
+			},
+		}, got)
 	})
 
-	require.NoError(t, err)
-	assert.Equal(t, "http://permission/resource-filter", client.url)
-	assert.Equal(t, http.MethodGet, client.reqParam.(interfaces.PermissionResourcesFilter).Method)
-	assert.Equal(t, map[string]interfaces.PermissionResourceOps{
-		"resource-1": {
-			ResourceID: "resource-1",
-			Operations: []string{
-				interfaces.OPERATION_TYPE_VIEW_DETAIL,
-				interfaces.OPERATION_TYPE_MODIFY,
-			},
-		},
-	}, got)
+	t.Run("nil response body returns empty map", func(t *testing.T) {
+		access := newPermissionAccess(&fakeHTTPClient{code: http.StatusOK})
+
+		got, err := access.FilterResources(context.Background(), samplePermissionResourcesFilter())
+
+		require.NoError(t, err)
+		assert.Empty(t, got)
+	})
+
+	t.Run("non ok response becomes http error", func(t *testing.T) {
+		access := newPermissionAccess(&fakeHTTPClient{
+			code: http.StatusForbidden,
+			body: []byte(`{"code":"Forbidden","description":"filtered"}`),
+		})
+
+		got, err := access.FilterResources(context.Background(), samplePermissionResourcesFilter())
+
+		require.Error(t, err)
+		assert.Empty(t, got)
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusForbidden, httpErr.HTTPCode)
+		assert.Equal(t, "filtered", httpErr.BaseError.Description)
+	})
+
+	t.Run("invalid response body returns unmarshal error", func(t *testing.T) {
+		access := newPermissionAccess(&fakeHTTPClient{code: http.StatusOK, body: []byte(`{`)})
+
+		got, err := access.FilterResources(context.Background(), samplePermissionResourcesFilter())
+
+		require.Error(t, err)
+		assert.Empty(t, got)
+	})
 }
 
 func TestPermissionAccessCreateAndDeleteResources(t *testing.T) {
@@ -100,6 +152,20 @@ func TestPermissionAccessCreateAndDeleteResources(t *testing.T) {
 		assert.Equal(t, []interfaces.PermissionPolicy{samplePermissionPolicy()}, client.reqParam)
 	})
 
+	t.Run("create policies handles permission error", func(t *testing.T) {
+		access := newPermissionAccess(&fakeHTTPClient{
+			code: http.StatusBadRequest,
+			body: []byte(`{"code":"BadRequest","message":"bad policy"}`),
+		})
+
+		err := access.CreateResources(context.Background(), []interfaces.PermissionPolicy{samplePermissionPolicy()})
+
+		require.Error(t, err)
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, "BadRequest", httpErr.BaseError.ErrorCode)
+	})
+
 	t.Run("delete policies", func(t *testing.T) {
 		client := &fakeHTTPClient{code: http.StatusNoContent}
 		access := newPermissionAccess(client)
@@ -112,6 +178,20 @@ func TestPermissionAccessCreateAndDeleteResources(t *testing.T) {
 		body := client.reqParam.(map[string]any)
 		assert.Equal(t, http.MethodDelete, body["method"])
 		assert.Equal(t, resources, body["resources"])
+	})
+
+	t.Run("delete policies handles permission error", func(t *testing.T) {
+		access := newPermissionAccess(&fakeHTTPClient{
+			code: http.StatusForbidden,
+			body: []byte(`{"code":"Forbidden","description":"delete denied"}`),
+		})
+
+		err := access.DeleteResources(context.Background(), []interfaces.PermissionResource{{Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE, ID: "resource-1"}})
+
+		require.Error(t, err)
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, "delete denied", httpErr.BaseError.Description)
 	})
 }
 
@@ -149,6 +229,14 @@ func samplePermissionPolicy() interfaces.PermissionPolicy {
 		Operations: interfaces.PermissionPolicyOps{
 			Allow: []interfaces.PermissionOperation{{Operation: interfaces.OPERATION_TYPE_VIEW_DETAIL}},
 		},
+	}
+}
+
+func samplePermissionResourcesFilter() interfaces.PermissionResourcesFilter {
+	return interfaces.PermissionResourcesFilter{
+		Accessor:   interfaces.PermissionAccessor{Type: interfaces.ACCESSOR_TYPE_USER, ID: "u1"},
+		Resources:  []interfaces.PermissionResource{{Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE, ID: "resource-1"}},
+		Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL, interfaces.OPERATION_TYPE_MODIFY},
 	}
 }
 

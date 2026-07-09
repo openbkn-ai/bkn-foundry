@@ -8,6 +8,7 @@ package catalog
 
 import (
 	"context"
+	"database/sql/driver"
 	"errors"
 	"regexp"
 	"testing"
@@ -77,6 +78,51 @@ func TestCatalogAccessListIDs(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestCatalogAccessListInternalIDs(t *testing.T) {
+	access, mock, cleanup := newCatalogAccessMock(t)
+	defer cleanup()
+
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id FROM t_catalog WHERE f_internal = ?")).
+		WithArgs(true).
+		WillReturnRows(sqlmock.NewRows([]string{"f_id"}).AddRow("internal-1").AddRow("internal-2"))
+
+	got, err := access.ListInternalIDs(context.Background())
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"internal-1", "internal-2"}, got)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestCatalogAccessList(t *testing.T) {
+	access, mock, cleanup := newCatalogAccessMock(t)
+	defer cleanup()
+	enabled := true
+	params := interfaces.CatalogsQueryParams{
+		PaginationQueryParams: interfaces.PaginationQueryParams{Sort: "f_name", Direction: "ASC"},
+		Name:                  "Catalog",
+		Tag:                   "tag-a",
+		Type:                  interfaces.CatalogTypePhysical,
+		Enabled:               &enabled,
+		HealthCheckStatus:     interfaces.CatalogHealthStatusHealthy,
+	}
+
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM t_catalog WHERE f_name LIKE ? AND f_tags LIKE ? AND f_type = ? AND f_enabled = ? AND f_health_check_status = ?")).
+		WithArgs("%Catalog%", "%tag-a%", interfaces.CatalogTypePhysical, true, interfaces.CatalogHealthStatusHealthy).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(1)))
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id, f_name, f_tags, f_description, f_type, f_enabled, f_internal, f_connector_type, f_connector_config, f_metadata, f_health_check_enabled, f_health_check_status, f_last_check_time, f_health_check_result, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time FROM t_catalog WHERE f_name LIKE ? AND f_tags LIKE ? AND f_type = ? AND f_enabled = ? AND f_health_check_status = ? ORDER BY f_name ASC")).
+		WithArgs("%Catalog%", "%tag-a%", interfaces.CatalogTypePhysical, true, interfaces.CatalogHealthStatusHealthy).
+		WillReturnRows(catalogRows().AddRow(catalogRowValues(sampleCatalog())...))
+
+	got, total, err := access.List(context.Background(), params)
+
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), total)
+	require.Len(t, got, 1)
+	assert.Equal(t, "catalog-1", got[0].ID)
+	assert.Nil(t, got[0].Extensions)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestCatalogAccessListAuthResources(t *testing.T) {
 	access, mock, cleanup := newCatalogAccessMock(t)
 	defer cleanup()
@@ -99,6 +145,20 @@ func TestCatalogAccessListAuthResources(t *testing.T) {
 }
 
 func TestCatalogAccessUpdates(t *testing.T) {
+	t.Run("update", func(t *testing.T) {
+		access, mock, cleanup := newCatalogAccessMock(t)
+		defer cleanup()
+		catalog := sampleCatalog()
+		catalog.Name = "Updated Catalog"
+
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_catalog SET f_name = ?, f_tags = ?, f_description = ?, f_enabled = ?, f_connector_type = ?, f_connector_config = ?, f_metadata = ?, f_health_check_enabled = ?, f_health_check_status = ?, f_last_check_time = ?, f_health_check_result = ?, f_updater = ?, f_updater_type = ?, f_update_time = ? WHERE f_id = ?")).
+			WithArgs(catalog.Name, `"tag-a","tag-b"`, catalog.Description, catalog.Enabled, catalog.ConnectorType, `{"host":"127.0.0.1"}`, `{"region":"cn"}`, catalog.HealthCheckEnabled, catalog.HealthCheckStatus, catalog.LastCheckTime, catalog.HealthCheckResult, catalog.Updater.ID, catalog.Updater.Type, catalog.UpdateTime, catalog.ID).
+			WillReturnResult(sqlmock.NewResult(0, 1))
+
+		require.NoError(t, access.Update(context.Background(), catalog))
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
 	t.Run("update enabled and health status", func(t *testing.T) {
 		access, mock, cleanup := newCatalogAccessMock(t)
 		defer cleanup()
@@ -189,5 +249,55 @@ func sampleCatalog() *interfaces.Catalog {
 		CreateTime:               1,
 		Updater:                  interfaces.AccountInfo{ID: "u2", Type: interfaces.ACCESSOR_TYPE_USER},
 		UpdateTime:               2,
+	}
+}
+
+func catalogRows() *sqlmock.Rows {
+	return sqlmock.NewRows([]string{
+		"f_id",
+		"f_name",
+		"f_tags",
+		"f_description",
+		"f_type",
+		"f_enabled",
+		"f_internal",
+		"f_connector_type",
+		"f_connector_config",
+		"f_metadata",
+		"f_health_check_enabled",
+		"f_health_check_status",
+		"f_last_check_time",
+		"f_health_check_result",
+		"f_creator",
+		"f_creator_type",
+		"f_create_time",
+		"f_updater",
+		"f_updater_type",
+		"f_update_time",
+	})
+}
+
+func catalogRowValues(catalog *interfaces.Catalog) []driver.Value {
+	return []driver.Value{
+		catalog.ID,
+		catalog.Name,
+		"tag-a,tag-b",
+		catalog.Description,
+		catalog.Type,
+		catalog.Enabled,
+		catalog.Internal,
+		catalog.ConnectorType,
+		`{"host":"127.0.0.1"}`,
+		`{"region":"cn"}`,
+		catalog.HealthCheckEnabled,
+		catalog.HealthCheckStatus,
+		catalog.LastCheckTime,
+		catalog.HealthCheckResult,
+		catalog.Creator.ID,
+		catalog.Creator.Type,
+		catalog.CreateTime,
+		catalog.Updater.ID,
+		catalog.Updater.Type,
+		catalog.UpdateTime,
 	}
 }
