@@ -562,3 +562,32 @@ env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cov
 - overall statement coverage：**8.4%**。
 - 包覆盖率：`factory` 74.3%，`remote` 34.1%，`anyshare` 24.2%，`opensearch` 8.7%。
 - 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。
+
+### 2026-07-09：Batch 2 Service 业务规则首批
+
+范围：
+
+- 新增 `logics/connector_type/connector_type_service_test.go`，覆盖 connector type 详情权限过滤、列表权限过滤与分页、auth resource 授权过滤与分页、存在性检查、enabled 更新成功与错误包装。
+- 新增 `logics/discover_task/discover_task_service_test.go`，覆盖 task get/list 账号名填充、账号服务错误包装、status/result/existence 委托、delete 去重、running/pending 拒绝、missing 处理、ignore missing、access 错误包装。
+- 新增 `logics/discover_schedule/discover_schedule_service_test.go`，覆盖 schedule create cron 校验与持久化字段、update 字段变更、get/list 账号名填充、enable/disable/delete/update last run 委托、ExecuteSchedule 的缺少 task service、已有 running 跳过、创建 scheduled task 并更新 last run、list 错误透传。
+- 本批先覆盖不依赖真实 asynq/worker/factory 的 service 分支；涉及 factory 注册和真实队列的 create/register/update/delete 深路径后续单独处理。
+- 不改生产逻辑。
+
+验证：
+
+```bash
+cd adp/vega/vega-backend/server
+env GOCACHE=/tmp/go-build-cache go test ./logics/connector_type ./logics/discover_task ./logics/discover_schedule
+env GOCACHE=/tmp/go-build-cache go test ./logics/connector_type ./logics/discover_task ./logics/discover_schedule -cover
+env GOCACHE=/tmp/go-build-cache go test ./...
+env GOCACHE=/tmp/go-build-cache go test ./... -coverprofile=/tmp/vega-backend-server-cover.out
+env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cover.out
+```
+
+结果：
+
+- `go test ./logics/connector_type ./logics/discover_task ./logics/discover_schedule` 通过。
+- `go test ./...` 通过。
+- overall statement coverage：**9.1%**。
+- 包覆盖率：`logics/connector_type` 52.6%，`logics/discover_task` 62.2%，`logics/discover_schedule` 75.2%。
+- 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。
