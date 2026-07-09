@@ -103,12 +103,37 @@ func TestKafkaAccessReaderWriterConstruction(t *testing.T) {
 	assert.NotNil(t, writer.Transport)
 }
 
+func TestKafkaAccessReaderWriterWithoutAuth(t *testing.T) {
+	access := newKafkaAccess("kafka.local", 9092, libmq.MQAuthSetting{})
+
+	reader, err := access.NewReader(context.Background(), "topic-a", "group-a")
+	require.NoError(t, err)
+	require.NotNil(t, reader)
+	access.CloseReader(reader)
+
+	writer, err := access.NewWriter(context.Background(), "topic-a")
+	require.NoError(t, err)
+	require.NotNil(t, writer)
+	defer access.CloseWriter(writer)
+	assert.Nil(t, writer.Transport)
+}
+
 func TestKafkaAccessEmptyAndNilOperations(t *testing.T) {
 	access := newKafkaAccess("kafka.local", 9092, libmq.MQAuthSetting{})
 
 	require.NoError(t, access.WriteMessages(context.Background(), nil))
 	access.CloseReader(nil)
 	access.CloseWriter(nil)
+}
+
+func TestKafkaAccessCreateTopicDialError(t *testing.T) {
+	access := newKafkaAccess("127.0.0.1", 1, libmq.MQAuthSetting{})
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	err := access.CreateTopic(ctx, "topic-a")
+
+	require.Error(t, err)
 }
 
 func newKafkaAccess(host string, port int, auth libmq.MQAuthSetting) *kafkaAccess {

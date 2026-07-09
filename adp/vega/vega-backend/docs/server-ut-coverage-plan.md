@@ -884,3 +884,59 @@ env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cov
 - overall statement coverage：**18.0%**。
 - 包覆盖率：`drivenadapters/catalog` 45.3%，`drivenadapters/connector_type` 73.8%，`drivenadapters/discover_schedule` 67.2%，`drivenadapters/discover_task` 68.8%，`drivenadapters/permission` 53.2%，`drivenadapters/resource` 53.7%。
 - 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果；本地 logger 写 `/opt/vega-backend/logs` 的 read-only warning 不影响测试结果。
+
+### 2026-07-09：Batch 11 Logic View Query / Kafka 分支覆盖
+
+范围：
+
+- 新增 `logics/resource_data/logic_view/sql/sql_condition_additional_test.go`，覆盖 SQL filter condition 的 not equal、field compare、in/not in、not like、contain/not contain、range/out range、null/not null、empty/not empty、prefix/not prefix、regex、true/false、before/current/between、and/or 组合及错误分支。
+- 新增 `logics/resource_data/logic_view/sql/sql_builder_additional_test.go`，覆盖 SQLBuilder 的 AddWheres、已有 WHERE/GROUP/HAVING 插入、子查询 alias 包装、OrderBy/Limit、ApplyParams 的 filter/sort/limit 与 stream skip limit/error 分支。
+- 新增 `logics/resource_data/logic_view/dsl/dsl_additional_test.go`，覆盖 DSL condition 的 not equal、field script、not in、like/not like、contain/not contain、out range、not null、prefix/not prefix、regex、false、between、match_phrase、multi_match、knn_vector、before/current、search_after/PIT helper 与错误分支。
+- 扩展 `drivenadapters/kafka/kafka_access_test.go`，覆盖无认证 reader/writer 构造、reader close、CreateTopic dial error 分支。
+- 本批不连接真实 OpenSearch/DB/Kafka，不执行外部查询。
+
+验证：
+
+```bash
+cd adp/vega/vega-backend/server
+env GOCACHE=/tmp/go-build-cache go test ./logics/resource_data/logic_view/sql ./logics/resource_data/logic_view/dsl ./drivenadapters/kafka -cover
+env GOCACHE=/tmp/go-build-cache go test ./...
+env GOCACHE=/tmp/go-build-cache go test ./... -coverprofile=/tmp/vega-backend-server-cover.out
+env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cover.out
+```
+
+结果：
+
+- 目标包 `go test` 通过。
+- `go test ./...` 通过。
+- overall statement coverage：**19.2%**。
+- 包覆盖率：`logics/resource_data/logic_view/sql` 73.3%，`logics/resource_data/logic_view/dsl` 63.5%，`drivenadapters/kafka` 42.0%。
+- 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。
+
+### 2026-07-09：Batch 12 Connector Helper / Config 分支覆盖
+
+范围：
+
+- 新增 `logics/connectors/local/index/opensearch/opensearch_query_helper_test.go`，覆盖 nested terms size、group terms order 递归注入、HAVING bucket selector、IN script 格式化、nested group by flatten、field mapping 的 decimal/vector/geo/text keyword/unsupported feature 分支。
+- 新增 `logics/connectors/local/table/mariadb/mariadb_additional_test.go`，覆盖 MariaDB connector metadata、field config、New 成功/缺失配置/非法端口/超长库名/重复库名、validateDatabases 成功/查询错误/缺失库、Close 分支。
+- 新增 `logics/connectors/local/table/postgresql/postgresql_additional_test.go`，覆盖 PostgreSQL connector metadata、field config、New 成功/缺失配置/非法端口/超长 database/schema/重复 schema、validateSchemas 成功/查询错误/缺失 schema、Close 分支。
+- 新增 `logics/connectors/local/table/oracle/oracle_additional_test.go`，覆盖 Oracle validateSchemas 成功/查询错误/缺失 schema、ListSchemas 排除系统 schema、ListTables schema 过滤/查询错误、Close 分支。
+- 本批使用纯 helper 断言与 `sqlmock`，不连接真实 OpenSearch/MariaDB/PostgreSQL/Oracle。
+
+验证：
+
+```bash
+cd adp/vega/vega-backend/server
+env GOCACHE=/tmp/go-build-cache go test ./logics/connectors/local/index/opensearch ./logics/connectors/local/table/mariadb ./logics/connectors/local/table/postgresql ./logics/connectors/local/table/oracle -cover
+env GOCACHE=/tmp/go-build-cache go test ./...
+env GOCACHE=/tmp/go-build-cache go test ./... -coverprofile=/tmp/vega-backend-server-cover.out
+env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cover.out
+```
+
+结果：
+
+- 目标包 `go test` 通过。
+- `go test ./...` 通过。
+- overall statement coverage：**19.8%**。
+- 包覆盖率：`logics/connectors/local/index/opensearch` 26.1%，`logics/connectors/local/table/mariadb` 29.2%，`logics/connectors/local/table/postgresql` 21.1%，`logics/connectors/local/table/oracle` 35.9%。
+- 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。
