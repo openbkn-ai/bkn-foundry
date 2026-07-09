@@ -49,8 +49,6 @@ type TableConnector interface {
 	// MapType 将源端原生类型映射为 VEGA 统一类型；不识别一律返回 Other
 	MapType(nativeType string) string
 
-	// ListDatabases 列出实例下所有可访问的数据库
-	ListDatabases(ctx context.Context) ([]string, error)
 	ListTables(ctx context.Context) ([]*interfaces.TableMeta, error)
 	GetTableMeta(ctx context.Context, table *interfaces.TableMeta) error
 

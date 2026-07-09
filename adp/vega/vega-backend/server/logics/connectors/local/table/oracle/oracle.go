@@ -87,11 +87,6 @@ type OracleConnector struct {
 	db        *sql.DB
 }
 
-func (c *OracleConnector) ListDatabases(ctx context.Context) ([]string, error) {
-	//TODO implement me
-	panic("implement me")
-}
-
 // NewOracleConnector creates Oracle connector builder
 func NewOracleConnector() connectors.TableConnector {
 	return &OracleConnector{}
@@ -279,35 +274,6 @@ func (c *OracleConnector) validateSchemas(ctx context.Context) error {
 	}
 
 	return nil
-}
-
-// ListSchemas lists all accessible user schemas (excluding system schemas) under the instance.
-func (c *OracleConnector) ListSchemas(ctx context.Context) ([]string, error) {
-	if err := c.Connect(ctx); err != nil {
-		return nil, err
-	}
-
-	query := "SELECT USERNAME FROM ALL_USERS WHERE ORACLE_MAINTAINED = 'N' ORDER BY USERNAME"
-	rows, err := c.db.QueryContext(ctx, query)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list schemas: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-
-	var schemas []string
-	for rows.Next() {
-		var schema string
-		if err := rows.Scan(&schema); err != nil {
-			return nil, fmt.Errorf("failed to scan schema name: %w", err)
-		}
-		if !SYSTEM_SCHEMAS_MAP[strings.ToUpper(schema)] {
-			schemas = append(schemas, schema)
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("failed to iterate schemas: %w", err)
-	}
-	return schemas, nil
 }
 
 // ListTables returns all tables in the database.

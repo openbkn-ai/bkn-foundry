@@ -21,7 +21,6 @@ type TableMeta struct {
 	PKs         []string              `json:"primary_keys"`
 	Indices     []TableIndexMeta      `json:"indices"`      // 索引列表
 	ForeignKeys []TableForeignKeyMeta `json:"foreign_keys"` // 外键列表
-
 }
 
 // TableColumnMeta represents column metadata.

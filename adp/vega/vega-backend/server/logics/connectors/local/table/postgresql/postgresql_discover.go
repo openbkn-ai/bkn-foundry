@@ -19,64 +19,6 @@ import (
 
 var pgSq = sq.StatementBuilder.PlaceholderFormat(sq.Dollar)
 
-// ListDatabases 列出当前连接 database 下可访问的用户 schema（接口名沿用；PostgreSQL 下即 schema 列表）。
-func (c *PostgresqlConnector) ListDatabases(ctx context.Context) ([]string, error) {
-	if err := c.Connect(ctx); err != nil {
-		return nil, err
-	}
-
-	all, err := c.listUserSchemas(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if len(c.config.Schemas) == 0 {
-		return all, nil
-	}
-	allow := make(map[string]struct{}, len(c.config.Schemas))
-	for _, s := range c.config.Schemas {
-		allow[s] = struct{}{}
-	}
-	var out []string
-	for _, s := range all {
-		if _, ok := allow[s]; ok && !SYSTEM_SCHEMAS_MAP[s] {
-			out = append(out, s)
-		}
-	}
-	return out, nil
-}
-
-func (c *PostgresqlConnector) listUserSchemas(ctx context.Context) ([]string, error) {
-	query, args, err := pgSq.Select("nspname").
-		From("pg_catalog.pg_namespace").
-		Where(sq.NotEq{"nspname": SYSTEM_SCHEMAS}).
-		Where(sq.Expr("NOT pg_is_other_temp_schema(oid)")).
-		Where(sq.Expr("oid <> pg_my_temp_schema()")).
-		OrderBy("nspname").
-		ToSql()
-	if err != nil {
-		return nil, fmt.Errorf("failed to build list schemas query: %w", err)
-	}
-
-	rows, err := c.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list schemas: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-
-	var schemas []string
-	for rows.Next() {
-		var name string
-		if err := rows.Scan(&name); err != nil {
-			return nil, err
-		}
-		schemas = append(schemas, name)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return schemas, nil
-}
-
 // ListTables 列出表、视图和物化视图；TableMeta.Database 填 database 名，Schema 填 schema 名。
 func (c *PostgresqlConnector) ListTables(ctx context.Context) ([]*interfaces.TableMeta, error) {
 	if err := c.Connect(ctx); err != nil {

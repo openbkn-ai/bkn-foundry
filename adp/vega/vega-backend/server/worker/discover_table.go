@@ -245,10 +245,10 @@ func (dh *DiscoverHandler) reconcileTableResources(ctx context.Context, catalog 
 func (dh *DiscoverHandler) buildSourceIdentifier(table *interfaces.TableMeta) string {
 	identifier := table.Name
 	if table.Schema != "" {
-		identifier = fmt.Sprintf("%s.%s", table.Schema, identifier)
+		return fmt.Sprintf("%s.%s", table.Schema, identifier)
 	}
 	if table.Database != "" {
-		return fmt.Sprintf("%s.%s", table.Database, identifier)
+		identifier = fmt.Sprintf("%s.%s", table.Database, identifier)
 	}
 	return identifier
 }
