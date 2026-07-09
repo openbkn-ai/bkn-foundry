@@ -15,7 +15,7 @@
 # when MinIO / oss-gateway are absent (e.g. a deployment without sandbox).
 #
 # Tunables (env):
-#   OSS_DEFAULT_BUCKET        bucket to use/create (default: kweaver-oss)
+#   OSS_DEFAULT_BUCKET        bucket to use/create (default: bkn-oss)
 #   OSS_DEFAULT_STORAGE_NAME  display name        (default: minio-default)
 #   ONBOARD_SKIP_OSS_STORAGE  set true to skip entirely
 
@@ -24,7 +24,7 @@ onboard_provision_oss_default_storage() {
     [[ "${ONBOARD_SKIP_OSS_STORAGE:-false}" == "true" ]] && return 0
     command -v kubectl >/dev/null 2>&1 || return 0
 
-    local bucket="${OSS_DEFAULT_BUCKET:-kweaver-oss}"
+    local bucket="${OSS_DEFAULT_BUCKET:-bkn-oss}"
     local sname="${OSS_DEFAULT_STORAGE_NAME:-minio-default}"
 
     # oss-gateway-backend must exist; otherwise nothing to configure.

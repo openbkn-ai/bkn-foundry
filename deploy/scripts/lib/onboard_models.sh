@@ -81,7 +81,7 @@ PY
 
 # True iff both BKN ConfigMaps in this namespace already have defaultSmallModelEnabled+Name.
 onboard_bkn_cm_already_patched() {
-    local ns="${1:-kweaver}"
+    local ns="${1:-bkn}"
     local n1 n2
     n1="$(onboard_bkn_cm_default_small_model_name "${ns}" bkn-backend-cm | head -n1)"
     n2="$(onboard_bkn_cm_default_small_model_name "${ns}" ontology-query-cm | head -n1)"
@@ -90,7 +90,7 @@ onboard_bkn_cm_already_patched() {
 
 # Print the BKN default small-model name when both ConfigMaps agree; empty otherwise.
 onboard_bkn_cm_current_default_name() {
-    local ns="${1:-kweaver}"
+    local ns="${1:-bkn}"
     local n1 n2
     n1="$(onboard_bkn_cm_default_small_model_name "${ns}" bkn-backend-cm | head -n1)"
     n2="$(onboard_bkn_cm_default_small_model_name "${ns}" ontology-query-cm | head -n1)"

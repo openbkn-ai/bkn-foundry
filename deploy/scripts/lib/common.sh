@@ -23,7 +23,7 @@ CONFIG_YAML_PATH="${CONFIG_YAML_PATH:-${CONF_DIR}/config.yaml}"
 
 # Top-level Helm values key `namespace:` from a platform config YAML (same as generate_config_yaml / awk in config.sh).
 # Optional first argument overrides the file path (defaults to CONFIG_YAML_PATH).
-kweaver_values_namespace_from_config() {
+bkn_values_namespace_from_config() {
     local cfg="${1:-${CONFIG_YAML_PATH:-}}"
     [[ -n "${cfg}" && -f "${cfg}" ]] || return 0
     awk '$1=="namespace:"{print $2; exit}' "${cfg}" 2>/dev/null | sed -e 's/^["'\'']//; s/["'\'']$//' | tr -d '\r'
@@ -42,7 +42,7 @@ RESOURCE_NAMESPACE="${RESOURCE_NAMESPACE:-resource}"
 # Cluster bootstrap for ensure_platform_prerequisites (internal: kubeadm | k3s).
 # User-facing env/flags use k8s (default, = kubeadm packages + k8s module) or k3s (single-node lightweight).
 # Legacy: KUBE_DISTRO=kubeadm is still accepted and normalized to kubeadm.
-kweaver_normalize_kube_distro() {
+bkn_normalize_kube_distro() {
     local d="${1:-k8s}"
     case "${d}" in
         k3s|K3S) printf '%s' "k3s" ;;
@@ -55,13 +55,13 @@ kweaver_normalize_kube_distro() {
 # A kubeadm cluster leaves /etc/kubernetes/admin.conf; a k3s install leaves
 # /etc/rancher/k3s/k3s.yaml (and the k3s binary). Prefer explicit kubeadm markers,
 # then k3s, else fall back to kubeadm (the historical default).
-kweaver_detect_kube_distro() {
+bkn_detect_kube_distro() {
     if [[ -f /etc/kubernetes/admin.conf ]]; then printf '%s' "k8s"; return; fi
     if [[ -f /etc/rancher/k3s/k3s.yaml ]] || command -v k3s >/dev/null 2>&1; then printf '%s' "k3s"; return; fi
     printf '%s' "k8s"
 }
 
-KUBE_DISTRO="$(kweaver_normalize_kube_distro "${KUBE_DISTRO:-$(kweaver_detect_kube_distro)}")"
+KUBE_DISTRO="$(bkn_normalize_kube_distro "${KUBE_DISTRO:-$(bkn_detect_kube_distro)}")"
 export KUBE_DISTRO
 
 # On k3s, point KUBECONFIG at the k3s kubeconfig when the caller hasn't set one,
@@ -97,7 +97,7 @@ is_helm_installed() {
 # When a release is failed or pending-*, helm upgrade --install often errors with
 # "has no deployed releases". Uninstall the stuck release so install can proceed.
 # Does not set --wait; chart-managed Pods/STS may be removed; PVCs typically remain.
-kweaver_helm_uninstall_if_not_deployed() {
+bkn_helm_uninstall_if_not_deployed() {
     local release="$1"
     local ns="$2"
     local out st
@@ -116,28 +116,28 @@ kweaver_helm_uninstall_if_not_deployed() {
 # (older clients may parse templates as empty → Helm error "no objects visited").
 KWEAVER_HELM_MIN_SEMVER="${KWEAVER_HELM_MIN_SEMVER:-3.10.0}"
 
-kweaver_semver_ge() {
+bkn_semver_ge() {
     local have="$1"
     local need="$2"
     [[ -n "${have}" && -n "${need}" ]] || return 1
     [[ "$(printf '%s\n' "${need}" "${have}" | sort -V | head -1)" == "${need}" ]]
 }
 
-kweaver_helm_client_semver() {
+bkn_helm_client_semver() {
     local raw
     raw="$(helm version 2>/dev/null || true)"
     # Typical: version.BuildInfo{Version:"v3.19.0", ...}
     printf '%s' "${raw}" | grep -oE 'Version:"v[0-9]+\.[0-9]+\.[0-9]+"' | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || true
 }
 
-kweaver_require_helm_min_for_bitnami() {
+bkn_require_helm_min_for_bitnami() {
     local cur
-    cur="$(kweaver_helm_client_semver)"
+    cur="$(bkn_helm_client_semver)"
     if [[ -z "${cur}" ]]; then
         log_error "Could not parse Helm client version. Install Helm ${KWEAVER_HELM_MIN_SEMVER}+ (e.g. macOS: brew upgrade helm)."
         return 1
     fi
-    if kweaver_semver_ge "${cur}" "${KWEAVER_HELM_MIN_SEMVER}"; then
+    if bkn_semver_ge "${cur}" "${KWEAVER_HELM_MIN_SEMVER}"; then
         return 0
     fi
     log_error "Helm ${cur} is too old for bundled data-service charts (Kafka/OpenSearch use Bitnami common; need >= ${KWEAVER_HELM_MIN_SEMVER})."
@@ -340,9 +340,9 @@ download_chart_to_cache() {
 }
 
 # Bash 3.2–safe substitute for mapfile -t arr < <(cmd) (mapfile needs bash 4+).
-# Usage: kweaver_mapfile_compat <array_name> <command> [args...]
+# Usage: bkn_mapfile_compat <array_name> <command> [args...]
 # Runs <command args...> and stores non-empty lines into the named array.
-kweaver_mapfile_compat() {
+bkn_mapfile_compat() {
     local _dst="$1"
     shift
     local _lines=()
@@ -1012,22 +1012,22 @@ get_existing_password() {
 }
 
 # Name of the StorageClass marked default (storageclass.kubernetes.io/is-default-class=true), or empty.
-kweaver_kubectl_default_storage_class() {
+bkn_kubectl_default_storage_class() {
     if ! command -v kubectl >/dev/null 2>&1; then
         return 0
     fi
     kubectl get storageclass -o jsonpath='{range .items[?(@.metadata.annotations.storageclass\.kubernetes\.io/is-default-class=="true")]}{.metadata.name}{end}' 2>/dev/null || true
 }
 
-# proton-redis: honor REDIS_STORAGE_CLASS; otherwise prefer cluster default SC (matches kind/docker-desktop),
+# redis: honor REDIS_STORAGE_CLASS; otherwise prefer cluster default SC (matches kind/docker-desktop),
 # then "local-path" only if that StorageClass exists (rancher/k3s-style).
-kweaver_resolve_redis_storage_class() {
+bkn_resolve_redis_storage_class() {
     if [[ -n "${REDIS_STORAGE_CLASS:-}" ]]; then
         printf '%s' "${REDIS_STORAGE_CLASS}"
         return 0
     fi
     local def
-    def="$(kweaver_kubectl_default_storage_class)"
+    def="$(bkn_kubectl_default_storage_class)"
     if [[ -n "${def}" ]]; then
         printf '%s' "${def}"
         return 0
@@ -1170,7 +1170,7 @@ HELM_TARBALL_BASEURL="${HELM_TARBALL_BASEURL:-https://repo.huaweicloud.com/helm/
 
 # Global Helm Chart Configuration (for Studio, BKN, and other modules)
 HELM_CHART_VERSION="${HELM_CHART_VERSION:-}"
-HELM_CHART_REPO_URL="${HELM_CHART_REPO_URL:-https://kweaver-ai.github.io/helm-repo/}"
+HELM_CHART_REPO_URL="${HELM_CHART_REPO_URL:-https://openbkn-ai.github.io/helm-repo/}"
 HELM_CHART_REPO_NAME="${HELM_CHART_REPO_NAME:-openbkn}"
 RELEASE_MANIFESTS_DIR="${RELEASE_MANIFESTS_DIR:-${VERSION_MANIFESTS_DIR:-${SCRIPT_DIR}/release-manifests}}"
 
@@ -1196,7 +1196,7 @@ MARIADB_IMAGE_TAG="${MARIADB_IMAGE_TAG:-11.4.7}"
 MARIADB_IMAGE_FALLBACK="${MARIADB_IMAGE_FALLBACK:-mariadb:11.4.7}"
 MARIADB_VERSION="${MARIADB_VERSION:-11.4}"
 MARIADB_CHART_VERSION="${MARIADB_CHART_VERSION:-1.0.0}"
-MARIADB_CHART_TGZ="${MARIADB_CHART_TGZ:-${SCRIPT_DIR}/charts/proton-mariadb-${MARIADB_CHART_VERSION}.tgz}"
+MARIADB_CHART_TGZ="${MARIADB_CHART_TGZ:-${SCRIPT_DIR}/charts/mariadb-${MARIADB_CHART_VERSION}.tgz}"
 MARIADB_PERSISTENCE_ENABLED="${MARIADB_PERSISTENCE_ENABLED:-true}"
 MARIADB_STORAGE_CLASS="${MARIADB_STORAGE_CLASS:-}"
 MARIADB_PURGE_PVC="${MARIADB_PURGE_PVC:-false}"
@@ -1211,12 +1211,12 @@ MARIADB_MAX_CONNECTIONS="${MARIADB_MAX_CONNECTIONS:-5000}"
 REDIS_NAMESPACE="${REDIS_NAMESPACE:-${RESOURCE_NAMESPACE}}"
 REDIS_VERSION="${REDIS_VERSION:-7.4}"
 REDIS_CHART_VERSION="${REDIS_CHART_VERSION:-1.11.2}"
-REDIS_CHART_TGZ="${REDIS_CHART_TGZ:-${SCRIPT_DIR}/charts/proton-redis-${REDIS_CHART_VERSION}.tgz}"
-REDIS_LOCAL_CHART_DIR="${REDIS_LOCAL_CHART_DIR:-${SCRIPT_DIR}/charts/proton-redis}"
+REDIS_CHART_TGZ="${REDIS_CHART_TGZ:-${SCRIPT_DIR}/charts/redis-${REDIS_CHART_VERSION}.tgz}"
+REDIS_LOCAL_CHART_DIR="${REDIS_LOCAL_CHART_DIR:-${SCRIPT_DIR}/charts/redis}"
 REDIS_ARCHITECTURE="${REDIS_ARCHITECTURE:-sentinel}"  # standalone or sentinel
 REDIS_IMAGE="${REDIS_IMAGE:-}"
 REDIS_IMAGE_REGISTRY="${REDIS_IMAGE_REGISTRY:-}"
-REDIS_IMAGE_REPOSITORY="${REDIS_IMAGE_REPOSITORY:-proton/proton-redis}"
+REDIS_IMAGE_REPOSITORY="${REDIS_IMAGE_REPOSITORY:-redis}"
 REDIS_IMAGE_TAG="${REDIS_IMAGE_TAG:-1.11.2-20251029.2.169ac3c0}"
 REDIS_PERSISTENCE_ENABLED="${REDIS_PERSISTENCE_ENABLED:-true}"
 # Empty: pick cluster default StorageClass (e.g. kind "standard"); else local-path if that SC exists; else local-path.
@@ -1229,11 +1229,11 @@ REDIS_REPLICA_COUNT="${REDIS_REPLICA_COUNT:-1}"
 REDIS_SENTINEL_QUORUM="${REDIS_SENTINEL_QUORUM:-1}"
 # Auto-patch StatefulSet to self-heal ACL drift on Pod restart; set false to opt out.
 REDIS_AUTO_PATCH_ACL="${REDIS_AUTO_PATCH_ACL:-true}"
-# Resource overrides for the proton-redis chart. Empty = don't pass --set, keep chart defaults
+# Resource overrides for the redis chart. Empty = don't pass --set, keep chart defaults
 # (chart default: redis.maxmemory=4GB, resources.requests=cpu 100m/memory 512Mi, no limits).
 # Lower defaults for resource-constrained environments are layered on top:
 #   - mac dev: see deploy/dev/lib/mac_common.sh (mac_common_init)
-#   - k3s    : see kweaver_apply_k3s_lightweight_defaults below (KUBE_DISTRO=k3s)
+#   - k3s    : see bkn_apply_k3s_lightweight_defaults below (KUBE_DISTRO=k3s)
 # Note: only the `redis` container gets these resources; the chart template does not wire
 # `resources` into the sentinel/exporter sidecars.
 REDIS_MAXMEMORY="${REDIS_MAXMEMORY:-}"
@@ -1244,7 +1244,7 @@ REDIS_CPU_LIMIT="${REDIS_CPU_LIMIT:-}"
 
 # Apply lightweight defaults for single-node k3s (only fills values the user has not set).
 # Called once below so k8s/kubeadm path is untouched.
-kweaver_apply_k3s_lightweight_defaults() {
+bkn_apply_k3s_lightweight_defaults() {
     [[ "${KUBE_DISTRO}" == "k3s" ]] || return 0
     # redis (chart default 4GB / 512Mi req)
     : "${REDIS_MAXMEMORY:=1gb}"
@@ -1254,7 +1254,7 @@ kweaver_apply_k3s_lightweight_defaults() {
     # opensearch (k8s default below: req=512Mi, lim=2048Mi)
     : "${OPENSEARCH_MEMORY_REQUEST:=512Mi}"
     : "${OPENSEARCH_MEMORY_LIMIT:=1024Mi}"
-    # kweaver-core app services (chart defaults: limits=4-8Gi, mostly request=0)
+    # bkn-core app services (chart defaults: limits=4-8Gi, mostly request=0)
     # Loose ceiling so heavier services (agent-retrieval, ontology-query) still have headroom.
     : "${KWEAVER_CORE_REQ_CPU:=100m}"
     : "${KWEAVER_CORE_REQ_MEM:=128Mi}"
@@ -1271,7 +1271,7 @@ kweaver_apply_k3s_lightweight_defaults() {
            KWEAVER_CORE_REQ_CPU KWEAVER_CORE_REQ_MEM KWEAVER_CORE_LIM_CPU KWEAVER_CORE_LIM_MEM \
            KWEAVER_ISF_REQ_CPU KWEAVER_ISF_REQ_MEM KWEAVER_ISF_LIM_CPU KWEAVER_ISF_LIM_MEM
 }
-kweaver_apply_k3s_lightweight_defaults
+bkn_apply_k3s_lightweight_defaults
 
 # Kafka Configuration
 KAFKA_NAMESPACE="${KAFKA_NAMESPACE:-${RESOURCE_NAMESPACE}}"
@@ -1350,7 +1350,7 @@ MONGODB_CHART_TGZ="${MONGODB_CHART_TGZ:-${SCRIPT_DIR}/charts/mongodb-1.0.0.tgz}"
 MONGODB_NAMESPACE="${MONGODB_NAMESPACE:-${RESOURCE_NAMESPACE}}"
 MONGODB_RELEASE_NAME="${MONGODB_RELEASE_NAME:-mongodb}"
 MONGODB_IMAGE="${MONGODB_IMAGE:-}"
-MONGODB_IMAGE_REPOSITORY="${MONGODB_IMAGE_REPOSITORY:-swr.cn-east-3.myhuaweicloud.com/openbkn-ai/proton/proton-mongo}"
+MONGODB_IMAGE_REPOSITORY="${MONGODB_IMAGE_REPOSITORY:-swr.cn-east-3.myhuaweicloud.com/openbkn-ai/bkn/mongo}"
 MONGODB_IMAGE_TAG="${MONGODB_IMAGE_TAG:-2.1.0-feature-mongo-4.4.30}"
 MONGODB_REPLICAS="${MONGODB_REPLICAS:-1}"
 MONGODB_REPLSET_ENABLED="${MONGODB_REPLSET_ENABLED:-true}"  # Default: single-node replica set mode (requires keyfile)
@@ -1545,7 +1545,7 @@ ensure_data_services() {
 
 # Delete Kubernetes Job objects in a namespace whose names match an ERE (grep -E).
 # Completed Helm hooks / migrator Jobs often keep pods until the Job is deleted when TTL is unset.
-kweaver_delete_jobs_name_match_ere_in_ns() {
+bkn_delete_jobs_name_match_ere_in_ns() {
     local ns="$1"
     local ere="$2"
     [[ -z "${ns}" ]] || [[ -z "${ere}" ]] && return 0
@@ -1574,7 +1574,7 @@ uninstall_platform_data_services() {
     uninstall_redis || true
     uninstall_mariadb "$@" || true
     local rns="${RESOURCE_NAMESPACE:-resource}"
-    kweaver_delete_jobs_name_match_ere_in_ns "${rns}" '(^|[-/])(kafka|opensearch|mariadb|redis)(-|$)|migrator|data-migrator'
+    bkn_delete_jobs_name_match_ere_in_ns "${rns}" '(^|[-/])(kafka|opensearch|mariadb|redis)(-|$)|migrator|data-migrator'
     log_info "Bundled platform data services uninstall finished (PVC defaults unchanged; MariaDB accepts --delete-data)."
 }
 
@@ -1749,7 +1749,7 @@ read_or_fetch() {
 
 # Initialize database by connecting to MariaDB pod and executing SQL files
 # Usage: init_module_database "module_name" "sql_directory"
-# Example: init_module_database "vega" "${SCRIPT_DIR}/scripts/sql/0.5.0/kweaver-core/vega"
+# Example: init_module_database "vega" "${SCRIPT_DIR}/scripts/sql/0.5.0/bkn-core/vega"
 init_module_database() {
     local module_name="$1"
     local sql_dir="$2"
@@ -1763,7 +1763,7 @@ init_module_database() {
     log_info "Initializing ${module_name} database..."
     
     # Check if MariaDB pod is running
-    local mariadb_pod=$(kubectl get pods -n "${mariadb_namespace}" -l "app.kubernetes.io/name=proton-mariadb" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    local mariadb_pod=$(kubectl get pods -n "${mariadb_namespace}" -l "app.kubernetes.io/name=mariadb" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
     if [[ -z "${mariadb_pod}" ]]; then
         log_error "MariaDB pod not found in namespace ${mariadb_namespace}"
         return 1
@@ -1776,8 +1776,8 @@ init_module_database() {
     local mariadb_password=$(grep -A 20 "^  rds:" "${CONFIG_YAML_PATH}" | grep "password:" | head -1 | awk '{print $2}' | tr -d "'\"")
 
     # Set defaults if not found
-    mariadb_user="${mariadb_user:-kweaver}"
-    mariadb_password="${mariadb_password:-kweaver}"
+    mariadb_user="${mariadb_user:-bkn}"
+    mariadb_password="${mariadb_password:-bkn}"
     
     log_info "Using MariaDB user: ${mariadb_user}"
     
@@ -1830,7 +1830,7 @@ create_databases() {
     log_info "Creating databases..."
     
     # Check if MariaDB pod is running
-    local mariadb_pod=$(kubectl get pods -n "${mariadb_namespace}" -l "app.kubernetes.io/name=proton-mariadb" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    local mariadb_pod=$(kubectl get pods -n "${mariadb_namespace}" -l "app.kubernetes.io/name=mariadb" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
     if [[ -z "${mariadb_pod}" ]]; then
         log_error "MariaDB pod not found in namespace ${mariadb_namespace}"
         return 1

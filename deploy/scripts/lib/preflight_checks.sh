@@ -19,12 +19,12 @@ declare -a PREFLIGHT_FAIL_SNAPSHOT=()
 
 # Node major for openbkn / onboard in this deploy path (default 22: aligns with
 # @openbkn/bkn-sdk@alpha; same bar even if npm lists >=18). Override for experiments.
-PREFLIGHT_KWEAVER_MIN_NODE_MAJOR="${PREFLIGHT_KWEAVER_MIN_NODE_MAJOR:-22}"
+PREFLIGHT_OPENBKN_MIN_NODE_MAJOR="${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR:-22}"
 # Minimum CPython for deploy/scripts/lib/onboard_*.py; enforced when python3 is on PATH.
 PREFLIGHT_MIN_PYTHON_MAJOR="${PREFLIGHT_MIN_PYTHON_MAJOR:-3}"
 PREFLIGHT_MIN_PYTHON_MINOR="${PREFLIGHT_MIN_PYTHON_MINOR:-6}"
 # If the user does not install Node 22+ on the server they ran preflight on, they need *some* environment with it.
-PREFLIGHT_OFFHOST_NODE22_HINT="If you do not upgrade Node on this host, run ./onboard.sh and the openbkn CLI from a machine (or job) where Node ${PREFLIGHT_KWEAVER_MIN_NODE_MAJOR}+ is on PATH — e.g. your laptop, a jump box with nvm, a devcontainer, or CI."
+PREFLIGHT_OFFHOST_NODE22_HINT="If you do not upgrade Node on this host, run ./onboard.sh and the openbkn CLI from a machine (or job) where Node ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR}+ is on PATH — e.g. your laptop, a jump box with nvm, a devcontainer, or CI."
 
 # Strict mode (default true): items that block install AND are auto-fixable by --fix
 # are reported as [FAIL] instead of [WARN], so check-only exits 1 (not 2) and operators
@@ -575,7 +575,7 @@ preflight_check_dns() {
         return
     fi
     local h okc=0
-    for h in ghcr.io swr.cn-east-3.myhuaweicloud.com kweaver-ai.github.io; do
+    for h in ghcr.io swr.cn-east-3.myhuaweicloud.com openbkn-ai.github.io; do
         if getent hosts "${h}" &>/dev/null; then
             preflight_ok "DNS: ${h} resolves"
             okc=$((okc + 1))
@@ -618,7 +618,7 @@ preflight_check_ipv6_reachability() {
     fi
 
     # IPv6 default route present → must reach at least one public registry over v6.
-    # Probe in priority order: ghcr.io (kweaver-core/ghcr-hosted), then docker.io
+    # Probe in priority order: ghcr.io (bkn-core/ghcr-hosted), then docker.io
     # (k3s helper-pod busybox source). One success = reachable.
     local v6_ok=false
     local probe
@@ -634,7 +634,7 @@ preflight_check_ipv6_reachability() {
         return 0
     fi
 
-    preflight_strict_warn_or_fail "IPv6 enabled with default route but cannot reach public registries (half-broken IPv6 — docker/containerd will try IPv6 first then time out, blocking image pulls and downstream PVC provisioning). Fix: sudo bash ./preflight.sh --fix → ipv6-disable (writes /etc/sysctl.d/99-kweaver-disable-ipv6.conf + restarts docker), or manually: sudo sysctl -w net.ipv6.conf.all.disable_ipv6=1 net.ipv6.conf.default.disable_ipv6=1 && sudo systemctl restart docker"
+    preflight_strict_warn_or_fail "IPv6 enabled with default route but cannot reach public registries (half-broken IPv6 — docker/containerd will try IPv6 first then time out, blocking image pulls and downstream PVC provisioning). Fix: sudo bash ./preflight.sh --fix → ipv6-disable (writes /etc/sysctl.d/99-bkn-disable-ipv6.conf + restarts docker), or manually: sudo sysctl -w net.ipv6.conf.all.disable_ipv6=1 net.ipv6.conf.default.disable_ipv6=1 && sudo systemctl restart docker"
 }
 
 # --- P0: kubeadm binary dependencies ------------------------------------------
@@ -784,7 +784,7 @@ preflight_check_ulimits() {
         if [[ "${_persist_soft}" -ge 65536 && "${_sysd_soft}" -ge 65536 ]]; then
             preflight_ok "ulimit -n soft=${soft} in this shell, but persistent config is set (limits.d soft=${_persist_soft}, systemd DefaultLimitNOFILE=${_sysd_soft}). New login sessions / restarted services will see the higher limit."
         else
-            preflight_strict_warn_or_fail "ulimit -n soft=${soft} (need >= 65536 for kubelet/containerd; sudo bash ./preflight.sh --fix → nofile-limits will write /etc/security/limits.d/99-kweaver-nofile.conf, /etc/systemd/system.conf.d/99-kweaver-nofile.conf, and kubelet/containerd LimitNOFILE drop-ins)"
+            preflight_strict_warn_or_fail "ulimit -n soft=${soft} (need >= 65536 for kubelet/containerd; sudo bash ./preflight.sh --fix → nofile-limits will write /etc/security/limits.d/99-bkn-nofile.conf, /etc/systemd/system.conf.d/99-bkn-nofile.conf, and kubelet/containerd LimitNOFILE drop-ins)"
         fi
     fi
     if [[ "${hard}" =~ ^[0-9]+$ ]] && [[ "${hard}" -ge 65536 ]]; then
@@ -979,36 +979,36 @@ preflight_check_existing_release() {
     if ! command -v kubectl &>/dev/null || ! kubectl cluster-info &>/dev/null; then
         return 0
     fi
-    log_info "Checking for existing kweaver/isf/dip/bkn-safe-related Helm releases..."
+    log_info "Checking for existing bkn/isf/dip/bkn-safe-related Helm releases..."
     local r total bad bad_names bad_count
-    r="$(helm list -A 2>/dev/null | awk 'NR>1 && tolower($0) ~ /kweaver|isf|dip|bkn-safe/' || true)"
+    r="$(helm list -A 2>/dev/null | awk 'NR>1 && tolower($0) ~ /bkn|isf|dip|bkn-safe/' || true)"
     if [[ -z "${r}" ]]; then
-        PREFLIGHT_KWEAVER_RELEASE_TOTAL=0
-        PREFLIGHT_KWEAVER_RELEASE_BAD=0
-        PREFLIGHT_KWEAVER_RELEASE_NAMES=""
-        export PREFLIGHT_KWEAVER_RELEASE_TOTAL PREFLIGHT_KWEAVER_RELEASE_BAD PREFLIGHT_KWEAVER_RELEASE_NAMES
-        preflight_ok "No obvious kweaver/isf/dip Helm release names in helm list -A"
+        PREFLIGHT_OPENBKN_RELEASE_TOTAL=0
+        PREFLIGHT_OPENBKN_RELEASE_BAD=0
+        PREFLIGHT_OPENBKN_RELEASE_NAMES=""
+        export PREFLIGHT_OPENBKN_RELEASE_TOTAL PREFLIGHT_OPENBKN_RELEASE_BAD PREFLIGHT_OPENBKN_RELEASE_NAMES
+        preflight_ok "No obvious bkn/isf/dip Helm release names in helm list -A"
         return 0
     fi
 
     total="$(echo "${r}" | grep -c . || true)"
-    PREFLIGHT_KWEAVER_RELEASE_TOTAL="${total}"
-    PREFLIGHT_KWEAVER_RELEASE_NAMES="$(echo "${r}" | awk '{print $1}' | sort -u | paste -sd ',' -)"
+    PREFLIGHT_OPENBKN_RELEASE_TOTAL="${total}"
+    PREFLIGHT_OPENBKN_RELEASE_NAMES="$(echo "${r}" | awk '{print $1}' | sort -u | paste -sd ',' -)"
     # Anything other than the healthy steady state "deployed" is worth flagging.
     bad="$(echo "${r}" | awk '$8!="deployed" && $0!~/[Dd]eployed/' || true)"
     if [[ -z "${bad}" ]]; then
-        PREFLIGHT_KWEAVER_RELEASE_BAD=0
-        preflight_ok "Helm has ${total} kweaver/isf/dip release(s), all in 'deployed' state — reusing"
+        PREFLIGHT_OPENBKN_RELEASE_BAD=0
+        preflight_ok "Helm has ${total} bkn/isf/dip release(s), all in 'deployed' state — reusing"
     else
         bad_names="$(echo "${bad}" | awk '{print $1"("$8")"}' | paste -sd ',' -)"
         bad_count="$(echo "${bad}" | grep -c . || true)"
-        PREFLIGHT_KWEAVER_RELEASE_BAD="${bad_count}"
-        preflight_warn "Helm: ${bad_count}/${total} kweaver/isf/dip release(s) not in 'deployed' state: ${bad_names} (others are healthy and will be reused)"
+        PREFLIGHT_OPENBKN_RELEASE_BAD="${bad_count}"
+        preflight_warn "Helm: ${bad_count}/${total} bkn/isf/dip release(s) not in 'deployed' state: ${bad_names} (others are healthy and will be reused)"
     fi
-    export PREFLIGHT_KWEAVER_RELEASE_TOTAL PREFLIGHT_KWEAVER_RELEASE_BAD PREFLIGHT_KWEAVER_RELEASE_NAMES
+    export PREFLIGHT_OPENBKN_RELEASE_TOTAL PREFLIGHT_OPENBKN_RELEASE_BAD PREFLIGHT_OPENBKN_RELEASE_NAMES
     if [[ -n "${PREFLIGHT_REPORT_FILE:-}" ]]; then
         {
-            echo "--- existing helm releases (kweaver/isf/dip) ---"
+            echo "--- existing helm releases (bkn/isf/dip) ---"
             echo "${r}"
         } >> "${PREFLIGHT_REPORT_FILE}" 2>/dev/null || true
     fi
@@ -1228,7 +1228,7 @@ preflight_check_network() {
         "registry.aliyuncs.com"
         "swr.cn-east-3.myhuaweicloud.com"
         "repo.huaweicloud.com"
-        "kweaver-ai.github.io"
+        "openbkn-ai.github.io"
     )
     for h in "${hosts[@]}"; do
         local code
@@ -1388,7 +1388,7 @@ preflight_check_target_tools() {
                 preflight_ok "helm not on PATH yet (normal before bootstrap). deploy.sh ensure_k3s runs install_helm before k3s — no manual install required for the k3s path."
             fi
         else
-            preflight_strict_warn_or_fail "helm not found (deploy.sh kweaver-core install requires Helm v3; sudo bash ./preflight.sh --fix → helm-v3 will install it)"
+            preflight_strict_warn_or_fail "helm not found (deploy.sh bkn-core install requires Helm v3; sudo bash ./preflight.sh --fix → helm-v3 will install it)"
         fi
     fi
 
@@ -1423,19 +1423,19 @@ preflight_node_major() {
 
 preflight_check_admin_tools() {
     preflight_skip "admin-tools" && return 0
-    log_info "Checking admin / optional tools (node, npm, openbkn) — target Node ${PREFLIGHT_KWEAVER_MIN_NODE_MAJOR}+; below that is [WARN] only (not [FAIL])..."
+    log_info "Checking admin / optional tools (node, npm, openbkn) — target Node ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR}+; below that is [WARN] only (not [FAIL])..."
 
     local _nmj
     _nmj=""
     if command -v node &>/dev/null; then
         _nmj="$(preflight_node_major)"
-        if [[ -n "${_nmj}" && $(( 10#${_nmj} )) -ge ${PREFLIGHT_KWEAVER_MIN_NODE_MAJOR} ]]; then
-            preflight_ok "node: $(node -v 2>/dev/null) (>= ${PREFLIGHT_KWEAVER_MIN_NODE_MAJOR}; openbkn CLI + onboard)"
+        if [[ -n "${_nmj}" && $(( 10#${_nmj} )) -ge ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR} ]]; then
+            preflight_ok "node: $(node -v 2>/dev/null) (>= ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR}; openbkn CLI + onboard)"
         else
-            preflight_warn "node: $(node -v 2>/dev/null) (need ${PREFLIGHT_KWEAVER_MIN_NODE_MAJOR}+. Not a hard failure. Fix: sudo bash ./preflight.sh --fix → allow onboard-tooling, then accept node-22 (nvm/NodeSource), or upgrade Node yourself. ${PREFLIGHT_OFFHOST_NODE22_HINT}"
+            preflight_warn "node: $(node -v 2>/dev/null) (need ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR}+. Not a hard failure. Fix: sudo bash ./preflight.sh --fix → allow onboard-tooling, then accept node-22 (nvm/NodeSource), or upgrade Node yourself. ${PREFLIGHT_OFFHOST_NODE22_HINT}"
         fi
     else
-        preflight_warn "node not in PATH (need Node ${PREFLIGHT_KWEAVER_MIN_NODE_MAJOR}+ for CLIs / onboard. [WARN] only. Fix: sudo bash ./preflight.sh --fix and opt in to nodejs-npm + node-22 when prompted. ${PREFLIGHT_OFFHOST_NODE22_HINT}"
+        preflight_warn "node not in PATH (need Node ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR}+ for CLIs / onboard. [WARN] only. Fix: sudo bash ./preflight.sh --fix and opt in to nodejs-npm + node-22 when prompted. ${PREFLIGHT_OFFHOST_NODE22_HINT}"
     fi
 
     if command -v npm &>/dev/null; then
@@ -1447,13 +1447,13 @@ preflight_check_admin_tools() {
     if command -v openbkn &>/dev/null; then
         if ! command -v node &>/dev/null; then
             preflight_ok "openbkn: $(openbkn --version 2>/dev/null | head -1 || echo ok) (node issue called out above)"
-        elif [[ -n "${_nmj}" && $(( 10#${_nmj} )) -ge ${PREFLIGHT_KWEAVER_MIN_NODE_MAJOR} ]]; then
+        elif [[ -n "${_nmj}" && $(( 10#${_nmj} )) -ge ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR} ]]; then
             preflight_ok "openbkn: $(openbkn --version 2>/dev/null | head -1 || echo ok) (provides 'openbkn admin')"
         else
-            preflight_warn "openbkn on PATH, but Node is < ${PREFLIGHT_KWEAVER_MIN_NODE_MAJOR} — prefer upgrading to Node ${PREFLIGHT_KWEAVER_MIN_NODE_MAJOR}+ (npm i -g and onboard expect that here). ${PREFLIGHT_OFFHOST_NODE22_HINT}"
+            preflight_warn "openbkn on PATH, but Node is < ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR} — prefer upgrading to Node ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR}+ (npm i -g and onboard expect that here). ${PREFLIGHT_OFFHOST_NODE22_HINT}"
         fi
     else
-        preflight_warn "openbkn CLI not in PATH (npm i -g @openbkn/bkn-sdk@alpha; or sudo bash ./preflight.sh --fix after Node ${PREFLIGHT_KWEAVER_MIN_NODE_MAJOR}+). 'openbkn admin' ships with it. ${PREFLIGHT_OFFHOST_NODE22_HINT}"
+        preflight_warn "openbkn CLI not in PATH (npm i -g @openbkn/bkn-sdk@alpha; or sudo bash ./preflight.sh --fix after Node ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR}+). 'openbkn admin' ships with it. ${PREFLIGHT_OFFHOST_NODE22_HINT}"
     fi
 }
 
@@ -1933,15 +1933,15 @@ preflight_fix_helm_v3() {
     fi
 }
 
-# Install distro nodejs + npm (opt-in via preflight --fix + y/N; before npm -g kweaver).
+# Install distro nodejs + npm (opt-in via preflight --fix + y/N; before npm -g bkn).
 preflight_fix_node_npm() {
     local _ok=true _mj
     _mj="$(preflight_node_major)"
     if command -v npm &>/dev/null && command -v node &>/dev/null; then
-        if [[ -n "${_mj}" && $(( 10#${_mj} )) -ge ${PREFLIGHT_KWEAVER_MIN_NODE_MAJOR} ]]; then
+        if [[ -n "${_mj}" && $(( 10#${_mj} )) -ge ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR} ]]; then
             return 0
         fi
-        preflight_warn "Node is $(node -v 2>/dev/null) but kweaver CLIs need ${PREFLIGHT_KWEAVER_MIN_NODE_MAJOR}+; 'nodejs-npm' only adds distro packages and will not replace an old Node. Use node-22 fix or nvm/Node LTS. ${PREFLIGHT_OFFHOST_NODE22_HINT}"
+        preflight_warn "Node is $(node -v 2>/dev/null) but bkn CLIs need ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR}+; 'nodejs-npm' only adds distro packages and will not replace an old Node. Use node-22 fix or nvm/Node LTS. ${PREFLIGHT_OFFHOST_NODE22_HINT}"
         return 0
     fi
     if command -v apt-get &>/dev/null; then
@@ -1970,8 +1970,8 @@ preflight_fix_node_npm() {
         fi
     fi
     _mj="$(preflight_node_major)"
-    if command -v node &>/dev/null && [[ -n "${_mj}" && $(( 10#${_mj} )) -lt ${PREFLIGHT_KWEAVER_MIN_NODE_MAJOR} ]]; then
-        preflight_warn "node after install: $(node -v 2>/dev/null) (still < ${PREFLIGHT_KWEAVER_MIN_NODE_MAJOR}; run the node-22 fix if you agreed to it, or nvm/Node 22+). ${PREFLIGHT_OFFHOST_NODE22_HINT}"
+    if command -v node &>/dev/null && [[ -n "${_mj}" && $(( 10#${_mj} )) -lt ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR} ]]; then
+        preflight_warn "node after install: $(node -v 2>/dev/null) (still < ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR}; run the node-22 fix if you agreed to it, or nvm/Node 22+). ${PREFLIGHT_OFFHOST_NODE22_HINT}"
     fi
 }
 
@@ -2003,11 +2003,11 @@ preflight_fix_node_22() {
     fi
     hash -r 2>/dev/null || true
     m="$(preflight_node_major)"
-    if command -v node &>/dev/null && [[ -n "${m}" && $(( 10#${m} )) -ge ${PREFLIGHT_KWEAVER_MIN_NODE_MAJOR} ]]; then
+    if command -v node &>/dev/null && [[ -n "${m}" && $(( 10#${m} )) -ge ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR} ]]; then
         preflight_fixed "Node.js $(node -v) via nvm (NVM_DIR=${NVM_DIR}, $(command -v node); npm $(npm -v 2>/dev/null))"
         return 0
     fi
-    preflight_warn "nvm did not yield Node ${PREFLIGHT_KWEAVER_MIN_NODE_MAJOR}+ in this shell; falling back to NodeSource (adds a third-party OS repo)…"
+    preflight_warn "nvm did not yield Node ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR}+ in this shell; falling back to NodeSource (adds a third-party OS repo)…"
     preflight_fix_node_22_nodesource
 }
 
@@ -2056,7 +2056,7 @@ preflight_fix_node_22_nodesource() {
     hash -r 2>/dev/null || true
     local m
     m="$(preflight_node_major)"
-    if command -v node &>/dev/null && [[ -n "${m}" && $(( 10#${m} )) -ge ${PREFLIGHT_KWEAVER_MIN_NODE_MAJOR} ]]; then
+    if command -v node &>/dev/null && [[ -n "${m}" && $(( 10#${m} )) -ge ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR} ]]; then
         preflight_fixed "Node.js is now $(node -v) at $(command -v node) (includes npm $(npm -v 2>/dev/null))"
     else
         preflight_warn "NodeSource step finished but node is still ${m:-0}: $(node -v 2>/dev/null)"
@@ -2073,8 +2073,8 @@ preflight_fix_iptables_legacy() {
 }
 
 preflight_fix_kernel_limits_sysctl() {
-    preflight_backup_file /etc/sysctl.d/99-kweaver-preflight.conf
-    cat > /etc/sysctl.d/99-kweaver-preflight.conf <<'EOF' || true
+    preflight_backup_file /etc/sysctl.d/99-bkn-preflight.conf
+    cat > /etc/sysctl.d/99-bkn-preflight.conf <<'EOF' || true
 # Added by BKN Foundry preflight
 vm.max_map_count = 262144
 fs.inotify.max_user_watches = 524288
@@ -2082,7 +2082,7 @@ fs.inotify.max_user_instances = 8192
 kernel.pid_max = 4194304
 EOF
     timeout 10 sysctl --system 2>/dev/null || true
-    preflight_fixed "Wrote /etc/sysctl.d/99-kweaver-preflight.conf and ran sysctl --system"
+    preflight_fixed "Wrote /etc/sysctl.d/99-bkn-preflight.conf and ran sysctl --system"
 }
 
 # Persistent nofile bump: /etc/security/limits.d + systemd defaults + drop-ins
@@ -2094,8 +2094,8 @@ preflight_fix_nofile_limits() {
     local soft="${PREFLIGHT_NOFILE_SOFT:-65536}"
     local hard="${PREFLIGHT_NOFILE_HARD:-1048576}"
 
-    preflight_backup_file /etc/security/limits.d/99-kweaver-nofile.conf
-    cat > /etc/security/limits.d/99-kweaver-nofile.conf <<EOF || true
+    preflight_backup_file /etc/security/limits.d/99-bkn-nofile.conf
+    cat > /etc/security/limits.d/99-bkn-nofile.conf <<EOF || true
 # Added by BKN Foundry preflight (nofile-limits fix)
 * soft nofile ${soft}
 * hard nofile ${hard}
@@ -2104,8 +2104,8 @@ root hard nofile ${hard}
 EOF
 
     if [[ -d /etc/systemd/system.conf.d ]] || mkdir -p /etc/systemd/system.conf.d 2>/dev/null; then
-        preflight_backup_file /etc/systemd/system.conf.d/99-kweaver-nofile.conf
-        cat > /etc/systemd/system.conf.d/99-kweaver-nofile.conf <<EOF || true
+        preflight_backup_file /etc/systemd/system.conf.d/99-bkn-nofile.conf
+        cat > /etc/systemd/system.conf.d/99-bkn-nofile.conf <<EOF || true
 # Added by BKN Foundry preflight (nofile-limits fix)
 [Manager]
 DefaultLimitNOFILE=${soft}:${hard}
@@ -2116,8 +2116,8 @@ EOF
     for svc in kubelet containerd; do
         dropin="/etc/systemd/system/${svc}.service.d"
         mkdir -p "${dropin}" 2>/dev/null || true
-        preflight_backup_file "${dropin}/99-kweaver-nofile.conf"
-        cat > "${dropin}/99-kweaver-nofile.conf" <<EOF || true
+        preflight_backup_file "${dropin}/99-bkn-nofile.conf"
+        cat > "${dropin}/99-bkn-nofile.conf" <<EOF || true
 # Added by BKN Foundry preflight (nofile-limits fix)
 [Service]
 LimitNOFILE=${soft}:${hard}
@@ -2134,7 +2134,7 @@ EOF
     # still report 1024. New login sessions will pick up the persistent config.
     ulimit -Sn "${soft}" 2>/dev/null || true
 
-    preflight_fixed "Wrote /etc/security/limits.d/99-kweaver-nofile.conf, /etc/systemd/system.conf.d/99-kweaver-nofile.conf, and kubelet/containerd LimitNOFILE drop-ins (soft=${soft}, hard=${hard}); reloaded systemd. New login sessions will see the new ulimit."
+    preflight_fixed "Wrote /etc/security/limits.d/99-bkn-nofile.conf, /etc/systemd/system.conf.d/99-bkn-nofile.conf, and kubelet/containerd LimitNOFILE drop-ins (soft=${soft}, hard=${hard}); reloaded systemd. New login sessions will see the new ulimit."
 }
 
 preflight_fix_ipv6_disable() {
@@ -2142,8 +2142,8 @@ preflight_fix_ipv6_disable() {
     sysctl -w net.ipv6.conf.default.disable_ipv6=1 2>/dev/null || true
     sysctl -w net.ipv6.conf.lo.disable_ipv6=1 2>/dev/null || true
 
-    preflight_backup_file /etc/sysctl.d/99-kweaver-disable-ipv6.conf
-    cat > /etc/sysctl.d/99-kweaver-disable-ipv6.conf <<'EOF' || true
+    preflight_backup_file /etc/sysctl.d/99-bkn-disable-ipv6.conf
+    cat > /etc/sysctl.d/99-bkn-disable-ipv6.conf <<'EOF' || true
 # Added by BKN Foundry preflight (ipv6-disable fix).
 # Disables the IPv6 kernel stack so docker/containerd skip the IPv6 connect
 # path on hosts where AAAA resolves but routing is broken. Without this,
@@ -2160,18 +2160,18 @@ EOF
         systemctl restart docker 2>/dev/null || true
     fi
 
-    preflight_fixed "Disabled IPv6 (sysctl all/default/lo.disable_ipv6=1) + persisted /etc/sysctl.d/99-kweaver-disable-ipv6.conf + restarted docker if running. Pulls now skip the IPv6 timeout path."
+    preflight_fixed "Disabled IPv6 (sysctl all/default/lo.disable_ipv6=1) + persisted /etc/sysctl.d/99-bkn-disable-ipv6.conf + restarted docker if running. Pulls now skip the IPv6 timeout path."
 }
 
 preflight_fix_bridge_sysctl() {
-    preflight_backup_file /etc/sysctl.d/99-kweaver-bridge.conf
-    cat > /etc/sysctl.d/99-kweaver-bridge.conf <<'EOF' || true
+    preflight_backup_file /etc/sysctl.d/99-bkn-bridge.conf
+    cat > /etc/sysctl.d/99-bkn-bridge.conf <<'EOF' || true
 # Added by BKN Foundry preflight
 net.bridge.bridge-nf-call-iptables = 1
 net.bridge.bridge-nf-call-ip6tables = 1
 EOF
     timeout 10 sysctl --system 2>/dev/null || true
-    preflight_fixed "Wrote /etc/sysctl.d/99-kweaver-bridge.conf and ran sysctl --system (may need br_netfilter loaded first)"
+    preflight_fixed "Wrote /etc/sysctl.d/99-bkn-bridge.conf and ran sysctl --system (may need br_netfilter loaded first)"
 }
 
 # Print suggested fixes from first-pass [FAIL] lines
@@ -2184,7 +2184,7 @@ preflight_print_fix_preview() {
     for line in "${PREFLIGHT_FAIL_SNAPSHOT[@]}"; do
         log_info "  * ${line}"
     done
-    log_info "  Suggested fix names: k3s-uninstall (k8s/kubeadm path only), kubeadm-reset, k8s-pkgs-repo (writes apt OR yum/dnf pkgs.k8s.io repo; legacy name k8s-apt-source still works in --fix-allow), k8s-bins, kubernetes-cni (/opt/cni/bin loopback for kubelet pod sandbox), containerd-install, helm-v3, docker-disable (stop/disable docker.service + docker.socket — CRI conflict with k3s or containerd), chrony, firewalld, ufw, selinux, system-tuning, bridge-sysctl, kernel-limits, nofile-limits (writes /etc/security/limits.d + systemd LimitNOFILE drop-ins), ipv6-disable (writes /etc/sysctl.d/99-kweaver-disable-ipv6.conf + restarts docker for hosts where AAAA resolves but IPv6 routing is broken), iptables-legacy, etc-hosts, onboard-tooling, nodejs-npm, node-22, kweaver-sdk (opt-in; bundle onboard-tooling asks if this host will run ./onboard.sh). Default distro is k8s (kubeadm); use --distro=k3s or KUBE_DISTRO=k3s for single-node k3s checks/fixes."
+    log_info "  Suggested fix names: k3s-uninstall (k8s/kubeadm path only), kubeadm-reset, k8s-pkgs-repo (writes apt OR yum/dnf pkgs.k8s.io repo; legacy name k8s-apt-source still works in --fix-allow), k8s-bins, kubernetes-cni (/opt/cni/bin loopback for kubelet pod sandbox), containerd-install, helm-v3, docker-disable (stop/disable docker.service + docker.socket — CRI conflict with k3s or containerd), chrony, firewalld, ufw, selinux, system-tuning, bridge-sysctl, kernel-limits, nofile-limits (writes /etc/security/limits.d + systemd LimitNOFILE drop-ins), ipv6-disable (writes /etc/sysctl.d/99-bkn-disable-ipv6.conf + restarts docker for hosts where AAAA resolves but IPv6 routing is broken), iptables-legacy, etc-hosts, onboard-tooling, nodejs-npm, node-22, bkn-sdk (opt-in; bundle onboard-tooling asks if this host will run ./onboard.sh). Default distro is k8s (kubeadm); use --distro=k3s or KUBE_DISTRO=k3s for single-node k3s checks/fixes."
     log_info "------------------------------------------------------------------"
 }
 
@@ -2215,7 +2215,7 @@ preflight_onboard_tooling_needed() {
     fi
     local _om
     _om="$(preflight_node_major)"
-    if [[ -n "${_om}" && $(( 10#${_om} )) -lt ${PREFLIGHT_KWEAVER_MIN_NODE_MAJOR} ]]; then
+    if [[ -n "${_om}" && $(( 10#${_om} )) -lt ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR} ]]; then
         return 0
     fi
     if ! command -v openbkn &>/dev/null; then
@@ -2229,9 +2229,9 @@ preflight_onboard_tooling_needed() {
 # long as the underlying state is unchanged — e.g. node still missing because
 # the operator chose to install it on a different host. Persist a "no" to a
 # sentinel file so we stop nagging. Override or wipe with:
-#   sudo rm /var/lib/kweaver/preflight-decline-<name>
+#   sudo rm /var/lib/bkn/preflight-decline-<name>
 # or env: PREFLIGHT_REMEMBER_DECISIONS=false (do not save), PREFLIGHT_FORGET_DECISIONS=true (wipe before run).
-PREFLIGHT_DECISION_DIR="${PREFLIGHT_DECISION_DIR:-/var/lib/kweaver}"
+PREFLIGHT_DECISION_DIR="${PREFLIGHT_DECISION_DIR:-/var/lib/bkn}"
 PREFLIGHT_REMEMBER_DECISIONS="${PREFLIGHT_REMEMBER_DECISIONS:-true}"
 
 _preflight_decision_file() {
@@ -2277,7 +2277,7 @@ preflight_fix_allow_includes_onboard_step() {
     [[ "${PREFLIGHT_FIX_ALLOW}" == *"|onboard-tooling|"* ]] \
         || [[ "${PREFLIGHT_FIX_ALLOW}" == *"|nodejs-npm|"* ]] \
         || [[ "${PREFLIGHT_FIX_ALLOW}" == *"|node-22|"* ]] \
-        || [[ "${PREFLIGHT_FIX_ALLOW}" == *"|kweaver-sdk|"* ]]
+        || [[ "${PREFLIGHT_FIX_ALLOW}" == *"|bkn-sdk|"* ]]
 }
 
 # --- safe auto-fixes (requires root) ------------------------------------------
@@ -2537,17 +2537,17 @@ preflight_apply_safe_fixes() {
 
     if [[ -d /proc/sys/net/bridge ]] && { [[ -f /proc/sys/net/bridge/bridge-nf-call-iptables ]] && [[ "$(cat /proc/sys/net/bridge/bridge-nf-call-iptables 2>/dev/null)" != "1" ]]; }; then
         if preflight_confirm_fix "bridge-sysctl" \
-            "Write /etc/sysctl.d/99-kweaver-bridge.conf" \
+            "Write /etc/sysctl.d/99-bkn-bridge.conf" \
             "Sets bridge-nf-for-iptables; needs br_netfilter loaded to take effect."; then
             preflight_fix_bridge_sysctl
         fi
     fi
 
     # ipv6-disable: only prompt when IPv6 is enabled, has a default route, AND
-    # public IPv6 probes fail. Idempotent — skip when 99-kweaver-disable-ipv6.conf
+    # public IPv6 probes fail. Idempotent — skip when 99-bkn-disable-ipv6.conf
     # already in place or kernel already has the stack disabled.
     if [[ "$(cat /proc/sys/net/ipv6/conf/all/disable_ipv6 2>/dev/null || echo 0)" == "0" ]] \
-        && [[ ! -f /etc/sysctl.d/99-kweaver-disable-ipv6.conf ]] \
+        && [[ ! -f /etc/sysctl.d/99-bkn-disable-ipv6.conf ]] \
         && command -v curl &>/dev/null \
         && ip -6 route show default 2>/dev/null | grep -q .; then
         local _v6_probe_ok=false _v6_probe
@@ -2559,28 +2559,28 @@ preflight_apply_safe_fixes() {
         done
         if [[ "${_v6_probe_ok}" == "false" ]]; then
             if preflight_confirm_fix "ipv6-disable" \
-                "Disable IPv6 stack via sysctl + /etc/sysctl.d/99-kweaver-disable-ipv6.conf, restart docker" \
+                "Disable IPv6 stack via sysctl + /etc/sysctl.d/99-bkn-disable-ipv6.conf, restart docker" \
                 "Forces docker/containerd to use IPv4 only on hosts where AAAA resolves but routing is broken. Reversible: rm the file, sysctl --system, restart docker."; then
                 preflight_fix_ipv6_disable
             fi
         fi
     fi
 
-    # Skip prompt if 99-kweaver-preflight.conf is in place AND every value it
+    # Skip prompt if 99-bkn-preflight.conf is in place AND every value it
     # tunes already meets the threshold.
     local _kl_needs=false
-    if [[ ! -f /etc/sysctl.d/99-kweaver-preflight.conf ]]; then _kl_needs=true; fi
+    if [[ ! -f /etc/sysctl.d/99-bkn-preflight.conf ]]; then _kl_needs=true; fi
     if [[ "$(cat /proc/sys/vm/max_map_count 2>/dev/null || echo 0)" -lt 262144 ]]; then _kl_needs=true; fi
     if [[ "$(cat /proc/sys/fs/inotify/max_user_watches 2>/dev/null || echo 0)" -lt 524288 ]]; then _kl_needs=true; fi
     if [[ "$(cat /proc/sys/fs/inotify/max_user_instances 2>/dev/null || echo 0)" -lt 8192 ]]; then _kl_needs=true; fi
     if [[ "${_kl_needs}" == "true" ]]; then
         if preflight_confirm_fix "kernel-limits" \
-            "Write /etc/sysctl.d/99-kweaver-preflight.conf (vm, inotify, pid_max)" \
+            "Write /etc/sysctl.d/99-bkn-preflight.conf (vm, inotify, pid_max)" \
             "Persistent kernel tuning; remove file to revert."; then
             preflight_fix_kernel_limits_sysctl
         fi
     else
-        log_info "  -> skipping kernel-limits: /etc/sysctl.d/99-kweaver-preflight.conf in place; vm.max_map_count, fs.inotify.* already meet thresholds"
+        log_info "  -> skipping kernel-limits: /etc/sysctl.d/99-bkn-preflight.conf in place; vm.max_map_count, fs.inotify.* already meet thresholds"
     fi
 
     # --- nofile limits (kubelet/containerd Too many open files) -------------
@@ -2589,16 +2589,16 @@ preflight_apply_safe_fixes() {
     # ulimit -Sn stays at the old value until re-login, so checking just the
     # in-shell value would re-prompt forever.
     local _nl_needs=false
-    if [[ ! -f /etc/security/limits.d/99-kweaver-nofile.conf ]]; then _nl_needs=true; fi
-    if [[ ! -f /etc/systemd/system.conf.d/99-kweaver-nofile.conf ]]; then _nl_needs=true; fi
+    if [[ ! -f /etc/security/limits.d/99-bkn-nofile.conf ]]; then _nl_needs=true; fi
+    if [[ ! -f /etc/systemd/system.conf.d/99-bkn-nofile.conf ]]; then _nl_needs=true; fi
     if [[ "${_nl_needs}" == "true" ]]; then
         if preflight_confirm_fix "nofile-limits" \
-            "Write /etc/security/limits.d/99-kweaver-nofile.conf, /etc/systemd/system.conf.d/99-kweaver-nofile.conf, kubelet+containerd LimitNOFILE drop-ins" \
+            "Write /etc/security/limits.d/99-bkn-nofile.conf, /etc/systemd/system.conf.d/99-bkn-nofile.conf, kubelet+containerd LimitNOFILE drop-ins" \
             "Persistent nofile bump (soft=${PREFLIGHT_NOFILE_SOFT:-65536}, hard=${PREFLIGHT_NOFILE_HARD:-1048576}). New login sessions and restarted services pick it up; current shells keep their old soft limit until re-login."; then
             preflight_fix_nofile_limits
         fi
     else
-        log_info "  -> skipping nofile-limits: /etc/security/limits.d/99-kweaver-nofile.conf and /etc/systemd/system.conf.d/99-kweaver-nofile.conf already in place (re-login or restart kubelet/containerd to see the new soft limit)"
+        log_info "  -> skipping nofile-limits: /etc/security/limits.d/99-bkn-nofile.conf and /etc/systemd/system.conf.d/99-bkn-nofile.conf already in place (re-login or restart kubelet/containerd to see the new soft limit)"
     fi
 
     if command -v update-alternatives &>/dev/null && update-alternatives --display iptables 2>/dev/null | grep -qi 'current mode.*nf_tables'; then
@@ -2623,22 +2623,22 @@ preflight_apply_safe_fixes() {
         fi
     fi
 
-    # --- Node / kweaver: first ask if THIS host will run ./onboard.sh (needs minimum Node + kweaver on PATH) ----
+    # --- Node / bkn: first ask if THIS host will run ./onboard.sh (needs minimum Node + bkn on PATH) ----
     local _ot_run=false
     if [[ "${PREFLIGHT_ROLE:-both}" == "target" ]]; then
-        log_info "  -> skipping onboard-tooling / node-22 / kweaver-sdk: PREFLIGHT_ROLE=target (admin tooling lives on another host)"
+        log_info "  -> skipping onboard-tooling / node-22 / bkn-sdk: PREFLIGHT_ROLE=target (admin tooling lives on another host)"
     elif preflight_was_declined "onboard-tooling"; then
         log_info "  -> skipping onboard-tooling: previously declined ($(_preflight_decision_file onboard-tooling)). Re-prompt: sudo rm $(_preflight_decision_file onboard-tooling) (or run preflight with PREFLIGHT_FORGET_DECISIONS=true)"
     elif preflight_onboard_tooling_needed; then
         if preflight_fix_allow_includes_onboard_step; then
             _ot_run=true
         elif preflight_confirm_fix "onboard-tooling" \
-            "Will you run ./onboard.sh (and optionally the openbkn CLI) on this machine? We standardize on Node ${PREFLIGHT_KWEAVER_MIN_NODE_MAJOR}+ (openbkn CLI, onboard); we can nvm/NodeSource → npm -g in the next prompts if you say Yes" \
-            "Choose No if you will run onboard/CLIs on another host with Node ${PREFLIGHT_KWEAVER_MIN_NODE_MAJOR}+ (nvm, container, laptop, etc.). If you stay on this machine without node-22, you still need that other environment. Yes = may run node-22 and global npm; each step y/N unless -y. Saying No is REMEMBERED — preflight will not ask again until you remove the sentinel."; then
+            "Will you run ./onboard.sh (and optionally the openbkn CLI) on this machine? We standardize on Node ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR}+ (openbkn CLI, onboard); we can nvm/NodeSource → npm -g in the next prompts if you say Yes" \
+            "Choose No if you will run onboard/CLIs on another host with Node ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR}+ (nvm, container, laptop, etc.). If you stay on this machine without node-22, you still need that other environment. Yes = may run node-22 and global npm; each step y/N unless -y. Saying No is REMEMBERED — preflight will not ask again until you remove the sentinel."; then
             _ot_run=true
         else
             preflight_remember_no "onboard-tooling"
-            log_info "Skipped preparing this host for onboard (onboard-tooling: No). You still need Node ${PREFLIGHT_KWEAVER_MIN_NODE_MAJOR}+ somewhere for ./onboard.sh and the CLIs — use another machine, nvm in your user, a devcontainer, or CI."
+            log_info "Skipped preparing this host for onboard (onboard-tooling: No). You still need Node ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR}+ somewhere for ./onboard.sh and the CLIs — use another machine, nvm in your user, a devcontainer, or CI."
         fi
     else
         _ot_run=true
@@ -2656,12 +2656,12 @@ preflight_apply_safe_fixes() {
     if command -v node &>/dev/null; then
         local _nmj22
         _nmj22="$(preflight_node_major)"
-        if [[ -n "${_nmj22}" && $(( 10#${_nmj22} )) -lt ${PREFLIGHT_KWEAVER_MIN_NODE_MAJOR} ]]; then
+        if [[ -n "${_nmj22}" && $(( 10#${_nmj22} )) -lt ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR} ]]; then
             if preflight_was_declined "node-22"; then
                 log_info "  -> skipping node-22: previously declined ($(_preflight_decision_file node-22)). Re-prompt: sudo rm $(_preflight_decision_file node-22)"
             elif preflight_confirm_fix "node-22" \
                 "nvm in \$HOME/.nvm + nvm install 22 (LTS); if nvm fails, NodeSource 22.x (adds OS repo; needs HTTPS)" \
-                "For hosts below Node ${PREFLIGHT_KWEAVER_MIN_NODE_MAJOR}. nvm: GitHub+nodejs.org; NodeSource: third-party apt/dnf. Air-gapped: install Node 22+ manually. Saying No is REMEMBERED — preflight will not ask again until you remove the sentinel. ${PREFLIGHT_OFFHOST_NODE22_HINT}"; then
+                "For hosts below Node ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR}. nvm: GitHub+nodejs.org; NodeSource: third-party apt/dnf. Air-gapped: install Node 22+ manually. Saying No is REMEMBERED — preflight will not ask again until you remove the sentinel. ${PREFLIGHT_OFFHOST_NODE22_HINT}"; then
                 preflight_fix_node_22
             else
                 preflight_remember_no "node-22"
@@ -2672,13 +2672,13 @@ preflight_apply_safe_fixes() {
     if command -v npm &>/dev/null; then
         local _npmj
         _npmj="$(preflight_node_major)"
-        if [[ -z "${_npmj}" || $(( 10#${_npmj} )) -lt ${PREFLIGHT_KWEAVER_MIN_NODE_MAJOR} ]]; then
-            preflight_warn "Skipping openbkn CLI (@openbkn/bkn-sdk@alpha) global npm install: need Node ${PREFLIGHT_KWEAVER_MIN_NODE_MAJOR}+ (current: $(node -v 2>/dev/null || echo 'no node')). Run node-22 fix with consent, or upgrade Node manually, then re-run preflight --fix. ${PREFLIGHT_OFFHOST_NODE22_HINT}"
+        if [[ -z "${_npmj}" || $(( 10#${_npmj} )) -lt ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR} ]]; then
+            preflight_warn "Skipping openbkn CLI (@openbkn/bkn-sdk@alpha) global npm install: need Node ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR}+ (current: $(node -v 2>/dev/null || echo 'no node')). Run node-22 fix with consent, or upgrade Node manually, then re-run preflight --fix. ${PREFLIGHT_OFFHOST_NODE22_HINT}"
         else
         if ! command -v openbkn &>/dev/null; then
-            if preflight_confirm_fix "kweaver-sdk" \
+            if preflight_confirm_fix "bkn-sdk" \
                 "npm install -g @openbkn/bkn-sdk@alpha" \
-                "User accepted: installs the openbkn CLI (provides 'openbkn admin'). Requires working npm and Node ${PREFLIGHT_KWEAVER_MIN_NODE_MAJOR}+ on PATH in this root shell (same as https://www.npmjs.com/package/@openbkn/bkn-sdk)."; then
+                "User accepted: installs the openbkn CLI (provides 'openbkn admin'). Requires working npm and Node ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR}+ on PATH in this root shell (same as https://www.npmjs.com/package/@openbkn/bkn-sdk)."; then
                 if npm install -g @openbkn/bkn-sdk@alpha; then
                     preflight_fixed "Installed @openbkn/bkn-sdk@alpha ($(openbkn --version 2>/dev/null | head -n1 || echo ok))"
                 else

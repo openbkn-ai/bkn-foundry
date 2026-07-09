@@ -49,7 +49,7 @@ On the **same Linux host as k3s**, use the file **`/etc/rancher/k3s/k3s.yaml`** 
 
 ### macOS (optional — local dev with kind)
 
-**Use this only for Mac validation; for real installs use Linux above.** Local Kubernetes via **kind** — no `preflight.sh` / `k3s` on the Mac host. **`mac.sh` sets `KWEAVER_SKIP_PLATFORM_BOOTSTRAP`** (no host k3s/kubeadm bootstrap). **`foundry install` now runs `ensure_data_services` first** — same Helm layer as **`data-services install`** (MariaDB, Redis, Kafka, OpenSearch); **`mac.sh` defaults `AUTO_INSTALL_INGRESS_NGINX=false`** so kind’s existing ingress is not duplicated. Set **`KWEAVER_SKIP_DATA_SERVICES_BUNDLE=true`** to skip bundled data installs (advanced / external infra). **`data-services install`** alone remains useful to pre-stage or refresh the data layer. **Apple Silicon:** kind nodes are **arm64**; use arm64/multi-arch images (see `dev/conf/mac-config.yaml`). **Step order:** [dev/README.md](dev/README.md).
+**Use this only for Mac validation; for real installs use Linux above.** Local Kubernetes via **kind** — no `preflight.sh` / `k3s` on the Mac host. **`mac.sh` sets `OPENBKN_SKIP_PLATFORM_BOOTSTRAP`** (no host k3s/kubeadm bootstrap). **`foundry install` now runs `ensure_data_services` first** — same Helm layer as **`data-services install`** (MariaDB, Redis, Kafka, OpenSearch); **`mac.sh` defaults `AUTO_INSTALL_INGRESS_NGINX=false`** so kind’s existing ingress is not duplicated. Set **`OPENBKN_SKIP_DATA_SERVICES_BUNDLE=true`** to skip bundled data installs (advanced / external infra). **`data-services install`** alone remains useful to pre-stage or refresh the data layer. **Apple Silicon:** kind nodes are **arm64**; use arm64/multi-arch images (see `dev/conf/mac-config.yaml`). **Step order:** [dev/README.md](dev/README.md).
 
 ```bash
 cd deploy   # repository deploy/ directory
@@ -89,7 +89,7 @@ dnf install containerd.io
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/kweaver-ai/foundry.git
+git clone https://github.com/openbkn-ai/foundry.git
 cd foundry/deploy
 
 # 2. (Recommended) Pre-install host check / fix
@@ -136,7 +136,7 @@ sudo bash ./onboard.sh -y     # non-interactive (uses defaults)
 sudo bash ./onboard.sh --help # all flags (--config=models.yaml, --enable-bkn-search, --skip-context-loader, …)
 ```
 
-> **Why `sudo`?** `onboard.sh` reads `$HOME/.openbkn-ai/config.yaml` (written by `sudo deploy.sh` into `/root/.openbkn-ai/`) and writes the `kweaver` auth token to `$HOME/.kweaver`. Running it without `sudo` falls back to the in-repo template `deploy/conf/config.yaml` and may resolve a different access URL. **macOS dev path** (`bash ./dev/mac.sh onboard`) does **not** need `sudo`. The script also prints this hint at startup; silence with `ONBOARD_SUDO_HINT_DISABLED=1`.
+> **Why `sudo`?** `onboard.sh` reads `$HOME/.openbkn-ai/config.yaml` (written by `sudo deploy.sh` into `/root/.openbkn-ai/`) and writes the `bkn` auth token to `$HOME/.bkn`. Running it without `sudo` falls back to the in-repo template `deploy/conf/config.yaml` and may resolve a different access URL. **macOS dev path** (`bash ./dev/mac.sh onboard`) does **not** need `sudo`. The script also prints this hint at startup; silence with `ONBOARD_SUDO_HINT_DISABLED=1`.
 
 > Full preflight / onboard flow and Mermaid diagrams: see [help/en/install.md — Post-install: `onboard.sh`](../help/en/install.md#post-install-onboardsh).
 
@@ -187,7 +187,7 @@ On clusters that can't reach `docker.io` or pull GHCR image blobs (read timeouts
 `crictl pull`/retag:
 
 - **`--registry=<swr / ghcr / host/ns>`** — image registry for **BKN images** (sugar for `--set image.registry`). `swr` → `swr.cn-east-3.myhuaweicloud.com/openbkn-ai`, `ghcr` → `ghcr.io/openbkn-ai`. Precedence: explicit `--set image.registry=…` > `--registry` > an `image.registry` already in your `--config` YAML (respected, e.g. `dev/conf/mac-config.yaml`) > default `swr`. SWR mirrors the same `…-main.<date>.sha…` build tags as GHCR.
-- **`--dockerhub-mirror=<auto / host / off>`** — containerd `docker.io` mirror for **third-party images** (otel/hydra/postgres/minio). Writes `/etc/containerd/certs.d/docker.io/hosts.toml` (needs root + a containerd `config_path` certs.d; else it warns and skips, never fails). **Defaults to `auto`** — probes a candidate list and picks the first mirror that serves this stack's docker.io images over the mirror (`?ns=docker.io`) protocol (sentinel `oryd/hydra`; `docker.m.daocloud.io` 403s namespaced repos there, so a fixed default isn't safe). Pass a host to pin one (e.g. `docker.1panel.live`); `off` disables. Candidate list overridable via `KWEAVER_DOCKERHUB_MIRROR_CANDIDATES`.
+- **`--dockerhub-mirror=<auto / host / off>`** — containerd `docker.io` mirror for **third-party images** (otel/hydra/postgres/minio). Writes `/etc/containerd/certs.d/docker.io/hosts.toml` (needs root + a containerd `config_path` certs.d; else it warns and skips, never fails). **Defaults to `auto`** — probes a candidate list and picks the first mirror that serves this stack's docker.io images over the mirror (`?ns=docker.io`) protocol (sentinel `oryd/hydra`; `docker.m.daocloud.io` 403s namespaced repos there, so a fixed default isn't safe). Pass a host to pin one (e.g. `docker.1panel.live`); `off` disables. Candidate list overridable via `OPENBKN_DOCKERHUB_MIRROR_CANDIDATES`.
 - **`--latest`** — when no `--version_file` is given, auto-runs `gen-dev-manifest.sh --latest` and installs the result (run from a repo checkout — it needs `git`).
 
 ```bash
@@ -224,7 +224,7 @@ The deployment scripts need access to these domains:
 | `registry.aliyuncs.com` | Kubernetes component images |
 | `swr.cn-east-3.myhuaweicloud.com` | BKN Foundry application image registry |
 | `repo.huaweicloud.com` | Helm binary download |
-| `kweaver-ai.github.io` | KWeaver Helm chart repository |
+| `openbkn-ai.github.io` | OPenbkn Helm chart repository |
 | `rancher-mirror.rancher.cn` | k3s install script / binary (k3s quickstart path; override with `K3S_INSTALL_URL`) |
 
 ## 📦 Deployment Model

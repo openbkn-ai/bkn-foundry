@@ -65,7 +65,7 @@ depServices:
     connectInfo:
       masterGroupName: mymaster
       password: ''
-      sentinelHost: proton-redis-proton-redis-sentinel.resource.svc.cluster.local
+      sentinelHost: redis-sentinel.resource.svc.cluster.local
       sentinelPassword: ''
       sentinelPort: 26379
       sentinelUsername: root

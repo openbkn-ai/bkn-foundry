@@ -3,7 +3,7 @@
 # Etrino Deployment Script
 # Supports install/status/uninstall for vega-hdfs, vega-calculate, and vega-metadata.
 
-NAMESPACE="${NAMESPACE:-kweaver}"
+NAMESPACE="${NAMESPACE:-bkn}"
 CONFIG_FILE="${CONFIG_FILE:-$HOME/.openbkn-ai/config.yaml}"
 
 VEGA_METADATA_VERSION="3.3.1-release"
@@ -146,7 +146,7 @@ ensure_helm_repo() {
         helm repo update myrepo
     else
         echo "Adding new Helm repo 'myrepo'..."
-        helm repo add myrepo https://kweaver-ai.github.io/helm-repo/
+        helm repo add myrepo https://openbkn-ai.github.io/helm-repo/
         helm repo update
     fi
 }

@@ -1,6 +1,6 @@
 -- Source: bkn/bkn-backend/migrations/mariadb/0.5.0/init.sql
 -- Copyright 2026 openbkn.ai
--- Copyright The kweaver.ai Authors.
+-- Copyright The openbkn.ai Authors.
 --
 -- Licensed under the Apache License, Version 2.0.
 -- See the LICENSE file in the project root for details.

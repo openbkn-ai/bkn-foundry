@@ -148,7 +148,7 @@ EOF
         helm_args+=(--set resources.limits.memory="${OPENSEARCH_MEMORY_LIMIT}")
     fi
 
-    kweaver_helm_uninstall_if_not_deployed "${OPENSEARCH_RELEASE_NAME}" "${OPENSEARCH_NAMESPACE}"
+    bkn_helm_uninstall_if_not_deployed "${OPENSEARCH_RELEASE_NAME}" "${OPENSEARCH_NAMESPACE}"
 
     helm "${helm_args[@]}"
     local helm_ec=$?

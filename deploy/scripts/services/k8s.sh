@@ -1145,7 +1145,6 @@ reset_k8s() {
     rm -rf /root/.kube 2>/dev/null || true
     rm -f /etc/kubernetes/admin.conf 2>/dev/null || true
     rm -f "${HOME}/.openbkn-ai/config.yaml" 2>/dev/null || true
-    rm -f "${HOME}/.kweaver-ai/config.yaml" 2>/dev/null || true
     
     log_warn "Reset completed. iptables/IPVS rules are not automatically cleaned by this script."
     log_info "Kubernetes reset done"

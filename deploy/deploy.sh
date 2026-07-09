@@ -59,7 +59,7 @@ usage() {
     echo "  ingress-nginx install         Install ingress-nginx-controller"
     echo "  ingress-nginx uninstall       Uninstall ingress-nginx-controller"
     echo "  bkn-foundry install          Install BKN Foundry services; auto-installs K8s/data services if missing"
-    echo "  bkn-foundry install          On BYOK (KWEAVER_SKIP_PLATFORM_BOOTSTRAP=true), runs ensure_data_services first unless KWEAVER_SKIP_DATA_SERVICES_BUNDLE=true"
+    echo "  bkn-foundry install          On BYOK (OPENBKN_SKIP_PLATFORM_BOOTSTRAP=true), runs ensure_data_services first unless OPENBKN_SKIP_DATA_SERVICES_BUNDLE=true"
     echo "  bkn-foundry install --minimum  Minimum install (skip auth & business-domain modules)"
     echo "  bkn-foundry download         Download/update BKN Foundry charts into deploy/.tmp/charts"
     echo "  bkn-foundry uninstall        Uninstall BKN Foundry services"
@@ -141,8 +141,8 @@ usage() {
     echo "  $0 bkn-foundry install --latest --registry=swr  # Latest manifest + Huawei SWR registry (CN-friendly)"
     echo "  $0 bkn-foundry download --charts_dir=/path/to/charts # Download Core charts into a specific local directory"
     echo "  $0 bkn-foundry install --charts_dir=/path/to/charts  # Install Core from a local charts directory"
-    echo "  $0 bkn-foundry download --version=0.4.0  # Auto-uses ./release-manifests/0.4.0/kweaver-core.yaml when present"
-    echo "  $0 bkn-foundry download --version=0.4.0 --version_file=./release-manifests/0.4.0/kweaver-core.yaml"
+    echo "  $0 bkn-foundry download --version=0.4.0  # Auto-uses ./release-manifests/0.4.0/bkn-foundry.yaml when present"
+    echo "  $0 bkn-foundry download --version=0.4.0 --version_file=./release-manifests/0.4.0/bkn-foundry.yaml"
     echo "  $0 bkn-foundry install --config=/root/.openbkn-ai/config.yaml --helm_repo_name=openbkn"
 }
 
@@ -269,8 +269,8 @@ confirm_access_address_before_install() {
     local host port path scheme
 
     # --access_address supports: "host", "host:port", or "scheme://host:port/path"
-    if [[ -n "${KWEAVER_ACCESS_ADDRESS:-}" ]]; then
-        local addr="${KWEAVER_ACCESS_ADDRESS}"
+    if [[ -n "${OPENBKN_ACCESS_ADDRESS:-}" ]]; then
+        local addr="${OPENBKN_ACCESS_ADDRESS}"
         if [[ "${addr}" == *"://"* ]]; then
             scheme="${addr%%://*}"
             local remainder="${addr#*://}"
@@ -304,7 +304,7 @@ confirm_access_address_before_install() {
     local url="${scheme}://${host}:${port}${path}"
 
     # If provided via CLI arg, skip interactive confirmation
-    if [[ -n "${KWEAVER_ACCESS_ADDRESS:-}" ]]; then
+    if [[ -n "${OPENBKN_ACCESS_ADDRESS:-}" ]]; then
         log_info "Using accessAddress from --access_address: ${url}"
         # For first-time initialization, generate full config first.
         if [[ "${config_missing_before}" == "true" ]]; then
@@ -367,7 +367,7 @@ require_root_for_helm_cluster_addons_only() {
     if [[ "${os}" == "Darwin" ]]; then
         return 0
     fi
-    if [[ "${KWEAVER_BYOK_CLUSTER:-false}" == "true" ]] || [[ "${KWEAVER_SKIP_PLATFORM_BOOTSTRAP:-false}" == "true" ]]; then
+    if [[ "${OPENBKN_BYOK_CLUSTER:-false}" == "true" ]] || [[ "${OPENBKN_SKIP_PLATFORM_BOOTSTRAP:-false}" == "true" ]]; then
         return 0
     fi
     check_root
@@ -406,7 +406,7 @@ main() {
         export NEEDRESTART_MODE=a
     fi
 
-    export KUBE_DISTRO="$(kweaver_normalize_kube_distro "${KUBE_DISTRO:-k8s}")"
+    export KUBE_DISTRO="$(bkn_normalize_kube_distro "${KUBE_DISTRO:-k8s}")"
 
     local module="${1:-}"
     local action="${2:-}"
@@ -456,8 +456,8 @@ main() {
                 --api_server_address=*) API_SERVER_ADVERTISE_ADDRESS="${1#*=}"; shift ;;
                 --api_server_address)   API_SERVER_ADVERTISE_ADDRESS="$2"; shift 2 ;;
                 --force-upgrade)        FORCE_UPGRADE="true"; shift ;;
-                --access_address=*)     KWEAVER_ACCESS_ADDRESS="${1#*=}"; shift ;;
-                --access_address)       KWEAVER_ACCESS_ADDRESS="$2"; shift 2 ;;
+                --access_address=*)     OPENBKN_ACCESS_ADDRESS="${1#*=}"; shift ;;
+                --access_address)       OPENBKN_ACCESS_ADDRESS="$2"; shift 2 ;;
                 -y|--yes)               ASSUME_YES="true"; shift ;;
                 *) shift ;;
             esac
@@ -572,7 +572,7 @@ main() {
                 ;;
             uninstall)
                 require_root_for_helm_cluster_addons_only
-                shift 2
+                # shift 2
                 uninstall_mariadb "$@"
                 ;;
             *)
@@ -687,8 +687,8 @@ main() {
         return 0
     fi
     
-    # Handle kweaver-core module
-    if [[ "${module}" == "bkn-foundry" ]] || [[ "${module}" == "foundry" ]] || [[ "${module}" == "kweaver-core" ]] || [[ "${module}" == "core" ]]; then
+    # Handle bkn-foundry module
+    if [[ "${module}" == "bkn-foundry" ]] || [[ "${module}" == "foundry" ]] || [[ "${module}" == "bkn-foundry" ]] || [[ "${module}" == "core" ]]; then
         case "${action}" in
             install|init)
                 parse_core_args "install" "$@"
@@ -712,7 +712,7 @@ main() {
                 gen_install_status_json
                 ;;
             *)
-                log_error "Unknown kweaver-core action: ${action}"
+                log_error "Unknown bkn-foundry action: ${action}"
                 usage
                 exit 1
                 ;;
@@ -731,7 +731,7 @@ main() {
 
         case "${action}" in
             install|init)
-                if [[ "${KWEAVER_SKIP_PLATFORM_BOOTSTRAP:-false}" != "true" ]]; then
+                if [[ "${OPENBKN_SKIP_PLATFORM_BOOTSTRAP:-false}" != "true" ]]; then
                     check_root
                 fi
                 CONFIG_FILE="${CONFIG_YAML_PATH}" bash "${etrino_script}" install "$@"
@@ -740,7 +740,7 @@ main() {
                 CONFIG_FILE="${CONFIG_YAML_PATH}" bash "${etrino_script}" status "$@"
                 ;;
             uninstall)
-                if [[ "${KWEAVER_SKIP_PLATFORM_BOOTSTRAP:-false}" != "true" ]]; then
+                if [[ "${OPENBKN_SKIP_PLATFORM_BOOTSTRAP:-false}" != "true" ]]; then
                     check_root
                 fi
                 CONFIG_FILE="${CONFIG_YAML_PATH}" bash "${etrino_script}" uninstall "$@"
@@ -817,8 +817,8 @@ main() {
         return 0
     fi
     
-    # Handle kweaver module (application services)
-    if [[ "${module}" == "bkn" ]] || [[ "${module}" == "kweaver" ]]; then
+    # Handle bkn module (application services)
+    if [[ "${module}" == "bkn" ]] || [[ "${module}" == "bkn" ]]; then
         case "${action}" in
             init)
                 check_root
@@ -827,7 +827,7 @@ main() {
                 log_info "  Deploying BKN Foundry Application Services"
                 log_info "=========================================="
                 
-                # Parse common args for all kweaver services
+                # Parse common args for all bkn services
                 while [[ $# -gt 0 ]]; do
                     case "$1" in
                         --version=*)
@@ -868,7 +868,7 @@ main() {
                 show_core_status
                 ;;
             *)
-                log_error "Unknown kweaver action: ${action}"
+                log_error "Unknown bkn action: ${action}"
                 usage
                 exit 1
                 ;;
@@ -876,7 +876,7 @@ main() {
         return 0
     fi
     
-    # Handle full module (complete deployment: infra + kweaver)
+    # Handle full module (complete deployment: infra + bkn)
     if [[ "${module}" == "full" ]]; then
         case "${action}" in
             init)
@@ -886,8 +886,8 @@ main() {
                 log_info "║       Full Deployment: Infrastructure + BKN Foundry Services       ║"
                 log_info "╚════════════════════════════════════════════════════════════════╝"
                 
-                # Save args for kweaver
-                local kweaver_args=("$@")
+                # Save args for bkn
+                local bkn_args=("$@")
                 
                 # Step 1: Deploy infrastructure
                 log_info ""
@@ -927,8 +927,8 @@ main() {
                 log_info "Step 2/2: Deploying BKN Foundry Application Services..."
                 log_info ""
                 
-                # Parse kweaver args
-                for arg in "${kweaver_args[@]}"; do
+                # Parse bkn args
+                for arg in "${bkn_args[@]}"; do
                     case "$arg" in
                         --version=*)
                             HELM_CHART_VERSION="${arg#*=}"

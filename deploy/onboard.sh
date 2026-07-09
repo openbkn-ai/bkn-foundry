@@ -7,21 +7,11 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Auto-migrate legacy ~/.kweaver-ai to ~/.openbkn-ai (one-time, when target absent).
-if [[ -d "${HOME}/.kweaver-ai" && ! -e "${HOME}/.openbkn-ai" ]]; then
-    if mv "${HOME}/.kweaver-ai" "${HOME}/.openbkn-ai" 2>/dev/null; then
-        echo "[migrate] moved ${HOME}/.kweaver-ai -> ${HOME}/.openbkn-ai" >&2
-    else
-        echo "[migrate][warn] failed to move ${HOME}/.kweaver-ai -> ${HOME}/.openbkn-ai" >&2
-    fi
-fi
-
 # Same as deploy.sh: generated install config lives under $HOME/.openbkn-ai/config.yaml.
 # Prefer it when CONFIG_YAML_PATH is unset so accessAddress matches the machine that ran deploy
-# (vendored deploy/conf/config.yaml is only a template). Legacy ~/.kweaver-ai is honored as a fallback
-# when the auto-migration above could not move the directory (e.g. perms).
+# (vendored deploy/conf/config.yaml is only a template).
 if [[ -z "${CONFIG_YAML_PATH:-}" ]]; then
-    for _ob_rt in "${HOME}/.openbkn-ai/config.yaml" "${HOME}/.kweaver-ai/config.yaml"; do
+    for _ob_rt in "${HOME}/.openbkn-ai/config.yaml"; do
         if [[ -f "${_ob_rt}" ]]; then
             export CONFIG_YAML_PATH="${_ob_rt}"
             break
@@ -41,7 +31,6 @@ if [[ "$(uname -s 2>/dev/null || true)" != "Darwin" ]] \
         && [[ "${EUID:-$(id -u)}" -ne 0 ]] \
         && [[ -z "${ONBOARD_SUDO_HINT_DISABLED:-}" ]] \
         && [[ ! -f "${HOME}/.openbkn-ai/config.yaml" ]] \
-        && [[ ! -f "${HOME}/.kweaver-ai/config.yaml" ]] \
         && [[ -z "${CONFIG_YAML_PATH:-}" ]]; then
     printf '\033[0;33m[onboard][hint] No %s found for user %s.\n' "${HOME}/.openbkn-ai/config.yaml" "${USER:-$(id -un)}" >&2
     printf '              If deploy.sh ran via sudo, accessAddress/depServices live at /root/.openbkn-ai/config.yaml (root home, mode 700).\n' >&2
@@ -97,13 +86,13 @@ SKIP_BKN="false"
 INTERACTIVE="true"
 ONBOARD_ASSUME_YES="false"
 ONBOARD_SKIP_TEST_USER="${ONBOARD_SKIP_TEST_USER:-${ONBOARD_SKIP_ISF_TEST_USER:-false}}"  # ONBOARD_SKIP_ISF_TEST_USER: deprecated alias
-# Populated by onboard_kweaver_tls_insecure_args_to_array (usually empty or -k).
+# Populated by onboard_bkn_tls_insecure_args_to_array (usually empty or -k).
 declare -a ONBOARD_TLS_INSECURE_ARGS=()
 
 # openbkn auth: HTTP sign-in defaults (full install). Console account is usually  admin  /  openbkn  if not changed.
 # Override in CI. Used when you press Enter at username/password prompts.
-: "${ONBOARD_DEFAULT_KWEAVER_USER:=admin}"
-: "${ONBOARD_DEFAULT_KWEAVER_PASSWORD:=openbkn}"
+: "${ONBOARD_DEFAULT_BKN_USER:=admin}"
+: "${ONBOARD_DEFAULT_BKN_PASSWORD:=openbkn}"
 
 # First business user  test  (after  openbkn admin user create ) — platform default is 123456 until  reset-password;
 # we set this for onboard default /  -y  / empty Enter. Override: ONBOARD_TEST_USER_PASSWORD; rename default: ONBOARD_DEFAULT_TEST_USER_PASSWORD
@@ -112,7 +101,7 @@ declare -a ONBOARD_TLS_INSECURE_ARGS=()
 # Same requirement as @openbkn/bkn-sdk on npm (node >= 22). https://www.npmjs.com/package/@openbkn/bkn-sdk
 ONBOARD_MIN_NODE_MAJOR="${ONBOARD_MIN_NODE_MAJOR:-22}"
 
-# Node/kweaver bootstrap prompts use the terminal (even with --config); -y skips those prompts; no TTY + no -y = error.
+# Node/bkn bootstrap prompts use the terminal (even with --config); -y skips those prompts; no TTY + no -y = error.
 onboard_is_bootstrap_tty() {
     [[ -t 0 && -t 1 ]]
 }
@@ -212,7 +201,7 @@ onboard_default_access_base_url() {
 # command substitution — Word-splitting turns it into an extra empty argv and confuses the CLI.
 # Override: ONBOARD_FORCE_INSECURE_LOGIN=true forces -k even for HTTP (rare; debugging only).
 # Populate global array ONBOARD_TLS_INSECURE_ARGS (empty or (-k)).
-onboard_kweaver_tls_insecure_args_to_array() {
+onboard_bkn_tls_insecure_args_to_array() {
     ONBOARD_TLS_INSECURE_ARGS=()
     local _base="$1"
     if [[ "${ONBOARD_FORCE_INSECURE_LOGIN:-false}" == "true" ]]; then
@@ -236,7 +225,7 @@ usage() {
     echo "  Why sudo on Linux: deploy.sh runs as root and writes \$HOME/.openbkn-ai/config.yaml under /root/.openbkn-ai/ (mode 700); onboard.sh also writes \$HOME/.bkn auth state. sudo keeps both pointing at the same root home (silence the startup hint with ONBOARD_SUDO_HINT_DISABLED=1; not needed on macOS dev)."
     echo "  (no flags)                Interactive: nvm+Node 22 and npm -g (Y/n) in your terminal, then models/BKN"
     echo "  -y, --yes                 Auto nvm+Node 22, npm -g, [test] user+roles (no Y/n)"
-    echo "  --config=PATH            YAML: deploy/conf/models.yaml.example; model prompts off, but nvm/kweaver still Y/n in a TTY (use -y to skip those asks)"
+    echo "  --config=PATH            YAML: deploy/conf/models.yaml.example; model prompts off, but nvm/bkn still Y/n in a TTY (use -y to skip those asks)"
     echo "  --skip-test-user         Do not offer: openbkn admin user test + all roles"
     echo ""
     echo "  ADP impex / auth:  openbkn call  uses ~/.bkn from  openbkn auth login ."
@@ -250,12 +239,12 @@ usage() {
     echo "  -h, --help"
     echo ""
     echo "  Environment: ONBOARD_SKIP_NODE_INSTALL=true  skip nvm in onboard (fail if Node < ${ONBOARD_MIN_NODE_MAJOR})"
-    echo "                ONBOARD_SKIP_KWEAVER_INSTALL=true  never run npm -g for openbkn in onboard"
-    echo "                ONBOARD_SKIP_KWEAVER_ADMIN_INSTALL=true  do not auto/offer  npm -g  openbkn admin  (also skipped with  -y )"
+    echo "                ONBOARD_SKIP_OPENBKN_INSTALL=true  never run npm -g for openbkn in onboard"
+    echo "                ONBOARD_SKIP_OPENBKN_ADMIN_INSTALL=true  do not auto/offer  npm -g  openbkn admin  (also skipped with  -y )"
     echo "                ONBOARD_SKIP_TEST_USER=true  same as --skip-test-user"
     echo "                ONBOARD_TEST_USER_PASSWORD=...  override default password for  test  (default: ONBOARD_DEFAULT_TEST_USER_PASSWORD, built-in 111111)"
     echo "                ONBOARD_DEFAULT_TEST_USER_PASSWORD=...  first-user  test  password (default 111111;  -y  non-interactive)"
-    echo "                ONBOARD_KWEAVER_IMPEX_NO_RELLOGIN=1  skip  openbkn auth  as  test  before impex (use current openbkn session)"
+    echo "                ONBOARD_OPENBKN_IMPEX_NO_RELLOGIN=1  skip  openbkn auth  as  test  before impex (use current openbkn session)"
     echo "                ONBOARD_NO_COMPLETION_REPORT=1  do not print the English completion report at the end"
     echo "                ONBOARD_FORCE_INSECURE_LOGIN=true  always pass -k (--insecure) to openbkn auth login (even for http:// bases; default false)"
     echo "                ONBOARD_SKIP_CONFIG_ACCESS_URL=true  do not derive default URL from CONFIG_YAML_PATH accessAddress"
@@ -264,7 +253,7 @@ usage() {
     echo "                onboard uses deploy/dev/conf/mac-config.yaml when that file exists (same as mac.sh)."
     echo "                Else host primary IPv4 + ONBOARD_DEFAULT_ACCESS_SCHEME (https by default)."
     echo "                Set ONBOARD_DEFAULT_ACCESS_BASE to force a URL; ONBOARD_DEFAULT_ACCESS_PORT / SCHEME override fallback IP path."
-    echo "  openbkn auth: you confirm URL. Full install: HTTP defaults user=admin pass=openbkn (if still default); override with ONBOARD_DEFAULT_KWEAVER_USER / _PASSWORD. Enter keeps defaults. Minimum: default --no-auth; Enter to accept."
+    echo "  openbkn auth: you confirm URL. Full install: HTTP defaults user=admin pass=openbkn (if still default); override with ONBOARD_DEFAULT_BKN_USER / _PASSWORD. Enter keeps defaults. Minimum: default --no-auth; Enter to accept."
     echo "  openbkn admin shares the openbkn session (no separate login). First login forces a password change; onboard clears it via /api/safe/v1/auth/change-password (or do it once: openbkn auth change-password <url> -u admin). Then openbkn re-logs in as user test for impex and model steps."
     echo "  Node: onboard is not a login shell — it auto-loads nvm/fnm/asdf/Volta and Homebrew paths so an already-configured Node 22+ is found without re-asking. ONBOARD_SKIP_NVM_INIT=true skips that; ONBOARD_NVM_VERSION=22 (default) is used after  nvm.sh  load."
     echo "  (preflight on the server: sudo bash ./preflight.sh --fix still optional; this script can install Node in your *user* account via nvm.)"
@@ -410,7 +399,7 @@ onboard_ensure_node_22() {
     fi
 }
 
-onboard_ensure_kweaver_cli() {
+onboard_ensure_bkn_cli() {
     if command -v openbkn &>/dev/null; then
         return 0
     fi
@@ -418,8 +407,8 @@ onboard_ensure_kweaver_cli() {
         log_error "openbkn not in PATH and npm not found. With nvm+Node, npm should exist; re-open a shell and re-run."
         exit 1
     fi
-    if [[ "${ONBOARD_SKIP_KWEAVER_INSTALL:-false}" == "true" ]]; then
-        log_error "openbkn not in PATH. Install: npm i -g @openbkn/bkn-sdk@alpha  (or unset ONBOARD_SKIP_KWEAVER_INSTALL to allow this script to run npm -g.)"
+    if [[ "${ONBOARD_SKIP_OPENBKN_INSTALL:-false}" == "true" ]]; then
+        log_error "openbkn not in PATH. Install: npm i -g @openbkn/bkn-sdk@alpha  (or unset ONBOARD_SKIP_OPENBKN_INSTALL to allow this script to run npm -g.)"
         exit 1
     fi
     if [[ "${ONBOARD_ASSUME_YES}" == "true" ]]; then
@@ -461,7 +450,7 @@ onboard_prepend_npm_global_bin_to_path() {
 }
 
 onboard_ensure_node_22
-onboard_ensure_kweaver_cli
+onboard_ensure_bkn_cli
 if ! command -v kubectl &>/dev/null; then
     log_error "kubectl not found"
     exit 1
@@ -536,7 +525,7 @@ onboard_argv_q() {
 }
 
 # For [onboard] logs: absolute path + first line of --version (often semver only, e.g. 0.6.4).
-onboard_kweaver_admin_version_summary() {
+onboard_bkn_admin_version_summary() {
     local _bin _ver
     _bin="$(command -v openbkn 2>/dev/null)" || return 1
     _ver="$(openbkn admin --version 2>/dev/null | head -n1 | tr -d '\r')"
@@ -582,20 +571,20 @@ onboard_bkn_safe_clear_must_change() {
     return 0
 }
 
-onboard_kweaver_auth_login_echo_cmd() {
+onboard_bkn_auth_login_echo_cmd() {
     local _url="$1"
     shift
     onboard_log_info "Running: $(onboard_argv_q openbkn auth login "${_url}" "$@")"
 }
 
 # After access URL is chosen: bkn-safe → credential login (defaults admin / openbkn if unchanged); else minimum → --no-auth (Enter) or HTTP.
-# Env: ONBOARD_DEFAULT_KWEAVER_USER, ONBOARD_DEFAULT_KWEAVER_PASSWORD, ONBOARD_ASSUME_YES (non-interactive: bkn-safe=credentials, min=--no-auth).
-onboard_kweaver_auth_login_for_url() {
+# Env: ONBOARD_DEFAULT_BKN_USER, ONBOARD_DEFAULT_BKN_PASSWORD, ONBOARD_ASSUME_YES (non-interactive: bkn-safe=credentials, min=--no-auth).
+onboard_bkn_auth_login_for_url() {
     local _kurl="$1"
     local _u _p _duser _dpass
-    _duser="${ONBOARD_DEFAULT_KWEAVER_USER:-admin}"
-    _dpass="${ONBOARD_DEFAULT_KWEAVER_PASSWORD:-openbkn}"
-    onboard_kweaver_tls_insecure_args_to_array "${_kurl}"
+    _duser="${ONBOARD_DEFAULT_BKN_USER:-admin}"
+    _dpass="${ONBOARD_DEFAULT_BKN_PASSWORD:-openbkn}"
+    onboard_bkn_tls_insecure_args_to_array "${_kurl}"
     local _kv
     _kv="$(openbkn --version 2>/dev/null | grep -Eo '[vV]?[0-9]+\.[0-9]+\.[0-9]+' | tail -1 || true)"
     [[ -z "${_kv}" ]] && _kv="?"
@@ -604,17 +593,17 @@ onboard_kweaver_auth_login_for_url() {
     # bkn-safe (current auth stack): credential login via the
     # openbkn device-code flow (openbkn auth login -u/-p — no --http-signin). The
     # admin is seeded with a platform initial password (default "openbkn"); set
-    # ONBOARD_DEFAULT_KWEAVER_PASSWORD if it has been changed. A first-login forced
+    # ONBOARD_DEFAULT_BKN_PASSWORD if it has been changed. A first-login forced
     # password change must be completed once (browser or `openbkn auth change-password`)
     # before non-interactive -u/-p login can succeed.
     if type onboard_bkn_safe_detected &>/dev/null && onboard_bkn_safe_detected; then
         local _su _sp
-        _su="${ONBOARD_DEFAULT_KWEAVER_USER:-admin}"
-        _sp="${ONBOARD_DEFAULT_KWEAVER_PASSWORD:-openbkn}"
+        _su="${ONBOARD_DEFAULT_BKN_USER:-admin}"
+        _sp="${ONBOARD_DEFAULT_BKN_PASSWORD:-openbkn}"
         if [[ "${ONBOARD_ASSUME_YES}" == "true" ]]; then
             onboard_log_info "openbkn auth: bkn-safe detected — credential device-flow login (-y): ${_su}"
             onboard_bkn_safe_clear_must_change "${_su}" "${_sp}" "${_kurl}" || true
-            onboard_kweaver_auth_login_echo_cmd "${_kurl}" -u "${_su}" -p "***" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}"
+            onboard_bkn_auth_login_echo_cmd "${_kurl}" -u "${_su}" -p "***" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}"
             if ! openbkn auth login "${_kurl}" -u "${_su}" -p "${_sp}" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}" ; then
                 return 1
             fi
@@ -626,7 +615,7 @@ onboard_kweaver_auth_login_for_url() {
         echo
         _p="${_p:-${_sp}}"
         onboard_bkn_safe_clear_must_change "${_u}" "${_p}" "${_kurl}" || true
-        onboard_kweaver_auth_login_echo_cmd "${_kurl}" -u "${_u}" -p "***" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}"
+        onboard_bkn_auth_login_echo_cmd "${_kurl}" -u "${_u}" -p "***" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}"
         if ! openbkn auth login "${_kurl}" -u "${_u}" -p "${_p}" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}" ; then
             return 1
         fi
@@ -635,7 +624,7 @@ onboard_kweaver_auth_login_for_url() {
 
     if [[ "${ONBOARD_ASSUME_YES}" == "true" ]]; then
         onboard_log_info "openbkn auth: minimum install — --no-auth (default, -y)"
-        onboard_kweaver_auth_login_echo_cmd "${_kurl}" --no-auth "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}"
+        onboard_bkn_auth_login_echo_cmd "${_kurl}" --no-auth "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}"
         if ! openbkn auth login "${_kurl}" --no-auth "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}" ; then
             return 1
         fi
@@ -644,7 +633,7 @@ onboard_kweaver_auth_login_for_url() {
     echo ""
     read -r -p "Minimum install: use --no-auth (typical) [Y/n] (Enter = Y): " _mna
     if [[ -z "${_mna}" || ! "${_mna}" =~ ^[Nn] ]]; then
-        onboard_kweaver_auth_login_echo_cmd "${_kurl}" --no-auth "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}"
+        onboard_bkn_auth_login_echo_cmd "${_kurl}" --no-auth "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}"
         if ! openbkn auth login "${_kurl}" --no-auth "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}" ; then
             return 1
         fi
@@ -655,7 +644,7 @@ onboard_kweaver_auth_login_for_url() {
     read -r -s -p "  Password [Enter = ${_dpass} if default unchanged on console] " _p
     echo
     _p="${_p:-${_dpass}}"
-    onboard_kweaver_auth_login_echo_cmd "${_kurl}" -u "${_u}" -p "***" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}"
+    onboard_bkn_auth_login_echo_cmd "${_kurl}" -u "${_u}" -p "***" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}"
     if ! openbkn auth login "${_kurl}" -u "${_u}" -p "${_p}" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}" ; then
         return 1
     fi
@@ -663,7 +652,7 @@ onboard_kweaver_auth_login_for_url() {
 }
 
 # When openbkn bkn list fails, interactively let the user log in or retry; non-interactive (or -y) exits.
-onboard_ensure_kweaver_auth() {
+onboard_ensure_bkn_auth() {
     while true; do
         if openbkn bkn list &>/dev/null; then
             return 0
@@ -673,8 +662,8 @@ onboard_ensure_kweaver_auth() {
         if [[ "${ONBOARD_ASSUME_YES}" == "true" ]]; then
             _durl="$(onboard_default_access_base_url)"
             onboard_log_warn "openbkn bkn list failed (-y). Trying  openbkn auth login ${_durl}  with defaults…"
-            if ! onboard_kweaver_auth_login_for_url "${_durl}"; then
-                onboard_log_err "openbkn auth login failed. Set ONBOARD_DEFAULT_ACCESS_BASE / ONBOARD_DEFAULT_KWEAVER_USER / _PASSWORD, or run openbkn auth login manually, then re-run: $0 -y"
+            if ! onboard_bkn_auth_login_for_url "${_durl}"; then
+                onboard_log_err "openbkn auth login failed. Set ONBOARD_DEFAULT_ACCESS_BASE / ONBOARD_DEFAULT_BKN_USER / _PASSWORD, or run openbkn auth login manually, then re-run: $0 -y"
                 exit 1
             fi
             if ! openbkn bkn list &>/dev/null; then
@@ -685,7 +674,7 @@ onboard_ensure_kweaver_auth() {
         fi
         if [[ "${INTERACTIVE}" != "true" ]]; then
             _durl="$(onboard_default_access_base_url)"
-            onboard_kweaver_tls_insecure_args_to_array "${_durl}"
+            onboard_bkn_tls_insecure_args_to_array "${_durl}"
             onboard_log_err "openbkn bkn list failed. Run: $(onboard_argv_q openbkn auth login "${_durl}" "${ONBOARD_TLS_INSECURE_ARGS[@]+"${ONBOARD_TLS_INSECURE_ARGS[@]}"}") (or set ONBOARD_DEFAULT_ACCESS_BASE=...)"
             exit 1
         fi
@@ -702,7 +691,7 @@ onboard_ensure_kweaver_auth() {
                 _def_url="$(onboard_default_access_base_url)"
                 read -r -p "Access base URL [Enter = ${_def_url}]: " _kurl
                 _kurl="${_kurl:-${_def_url}}"
-                if ! onboard_kweaver_auth_login_for_url "${_kurl}"; then
+                if ! onboard_bkn_auth_login_for_url "${_kurl}"; then
                     onboard_log_warn "openbkn auth login failed. If you saw engine, SyntaxError, or RegExp issues under node_modules, upgrade Node (see npm @openbkn/bkn-sdk engines), then reinstall the CLI."
                     onboard_log_warn "Otherwise: set ONBOARD_DEFAULT_ACCESS_* or run login manually, then choose 2 to retry."
                 fi
@@ -716,7 +705,7 @@ onboard_ensure_kweaver_auth() {
 
 
 onboard_probe() {
-    onboard_ensure_kweaver_auth
+    onboard_ensure_bkn_auth
     if [[ "${INTERACTIVE}" == "true" ]]; then
         if ! kubectl get ns &>/dev/null; then
             onboard_log_err "kubectl: cannot list namespaces (check KUBECONFIG / cluster access)"

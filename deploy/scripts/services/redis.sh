@@ -9,7 +9,7 @@ install_redis() {
     return $?
 }
 
-# Install Redis in sentinel mode using local chart (proton-redis)
+# Install Redis in sentinel mode using local chart (redis)
 install_redis_sentinel_local() {
     local ns="${REDIS_NAMESPACE}"
     local redis_release_name="redis"
@@ -32,7 +32,7 @@ install_redis_sentinel_local() {
         log_info "Redis is already installed. Skipping installation."
         return 0
     fi
-    log_info "Installing Redis in sentinel mode using proton-redis chart..."
+    log_info "Installing Redis in sentinel mode using redis chart..."
 
     # Build image registry string (default from user's values)
     local image_registry="${REDIS_IMAGE_REGISTRY:-swr.cn-east-3.myhuaweicloud.com/openbkn-ai}"
@@ -45,13 +45,13 @@ install_redis_sentinel_local() {
     fi
 
     local redis_password="${REDIS_PASSWORD}"
-    # ACL drift guard: the proton-redis chart bakes sha256(password) into users.acl on
+    # ACL drift guard: the redis chart bakes sha256(password) into users.acl on
     # first init and writes it onto the PVC. Subsequent installs that retain the PVC
     # but generate a NEW password produce on-disk ACL <-> Secret mismatch and the
     # liveness probe fails with WRONGPASS in a CrashLoop. Prefer reusing the existing
     # Secret password; refuse to randomly regenerate when a stale PVC is present.
-    local redis_secret_name="${redis_release_name}-proton-redis-secret"
-    local redis_pvc_name="redis-datadir-${redis_release_name}-proton-redis-0"
+    local redis_secret_name="${redis_release_name}-redis-secret"
+    local redis_pvc_name="redis-datadir-${redis_release_name}-redis-0"
     if [[ -z "${redis_password}" ]]; then
         local existing_password
         existing_password="$(kubectl get secret "${redis_secret_name}" -n "${ns}" \
@@ -82,7 +82,7 @@ install_redis_sentinel_local() {
     REDIS_PASSWORD="${redis_password}"
 
     local redis_sc
-    redis_sc="$(kweaver_resolve_redis_storage_class)"
+    redis_sc="$(bkn_resolve_redis_storage_class)"
 
     # Prepare Helm values according to user's specification
     local -a helm_args
@@ -156,12 +156,12 @@ install_redis_sentinel_local() {
 
     # ACL self-heal patch (opt-out: REDIS_AUTO_PATCH_ACL=false).
     [[ "${REDIS_AUTO_PATCH_ACL}" == "true" ]] && \
-        _redis_inject_wipe_acl_init "${ns}" "${redis_release_name}-proton-redis"
+        _redis_inject_wipe_acl_init "${ns}" "${redis_release_name}-redis"
 
     # Wait for Pods to be ready
     log_info "Waiting for Redis Pods to be ready..."
     # Try multiple label selectors for different chart naming conventions
-    kubectl wait --for=condition=ready pod -l app="${redis_release_name}-proton-redis" -n "${ns}" --timeout=300s 2>/dev/null || \
+    kubectl wait --for=condition=ready pod -l app="${redis_release_name}-redis" -n "${ns}" --timeout=300s 2>/dev/null || \
     kubectl wait --for=condition=ready pod -l "app.kubernetes.io/instance=${redis_release_name}" -n "${ns}" --timeout=300s 2>/dev/null || {
         log_warn "Redis Pod(s) may not be ready yet"
     }
@@ -207,7 +207,7 @@ EOF
 
 # Recover from a `WRONGPASS` CrashLoop caused by drifted on-disk ACL files.
 #
-# Background: the proton-redis chart and image hard-code parts of the ACL flow:
+# Background: the redis chart and image hard-code parts of the ACL flow:
 #   - templates/_configs.tpl bakes sha256(redis.password) into a ConfigMap users.acl
 #   - the image's /config-init.sh only seeds /data/conf/users.acl when it does not
 #     already exist on the PVC, otherwise it sed-replaces existing lines (and does
@@ -222,7 +222,7 @@ EOF
 # ACL files from the ConfigMap, with hashes that match the Secret.
 fix_redis_acl() {
     local ns="${REDIS_NAMESPACE}"
-    local pod="redis-proton-redis-0"
+    local pod="redis-0"
 
     if ! kubectl get pod "${pod}" -n "${ns}" >/dev/null 2>&1; then
         log_error "Pod ${pod} not found in namespace ${ns}; nothing to fix."

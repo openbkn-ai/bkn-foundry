@@ -16,7 +16,7 @@
 
 ### kubeadm / `KUBE_DISTRO=k8s`（默认）
 
-单节点 kubeadm 流程为 **`bash ./deploy.sh k8s install`**（`deploy/scripts/services/k8s.sh`）。若 `kubectl` 已可用，`ensure_k8s` 会跳过重复安装；随后 **`ensure_platform_prerequisites`** 会安装随平台一起交付的 **data-services**（MariaDB、Redis、Kafka、OpenSearch 等），再装 Core。**macOS kind** 不写宿主机 kubeadm：**`KWEAVER_SKIP_PLATFORM_BOOTSTRAP` 下，`foundry install` 会先跑与 `data-services install` 相同的 Helm 数据层**，见下文 macOS。历史写法 **`kubeadm`** 仍可作为 **`k8s`** 的别名。
+单节点 kubeadm 流程为 **`bash ./deploy.sh k8s install`**（`deploy/scripts/services/k8s.sh`）。若 `kubectl` 已可用，`ensure_k8s` 会跳过重复安装；随后 **`ensure_platform_prerequisites`** 会安装随平台一起交付的 **data-services**（MariaDB、Redis、Kafka、OpenSearch 等），再装 Core。**macOS kind** 不写宿主机 kubeadm：**`OPENBKN_SKIP_PLATFORM_BOOTSTRAP` 下，`foundry install` 会先跑与 `data-services install` 相同的 Helm 数据层**，见下文 macOS。历史写法 **`kubeadm`** 仍可作为 **`k8s`** 的别名。
 
 **`deploy.sh` 全局参数**（`--distro`、`-y`、`--force-upgrade`、`--config` 等）必须写在**子模块名之前**。正确：`bash ./deploy.sh --distro=k3s foundry install --minimum`。错误：`bash ./deploy.sh foundry install --minimum --distro=k3s`（末尾的 `--distro` 不会按全局参数解析）。不想改命令顺序时可用：`export KUBE_DISTRO=k3s` 再执行 `bash ./deploy.sh foundry install --minimum`。
 
@@ -49,7 +49,7 @@ bash ./deploy.sh --distro=k3s foundry install --minimum
 
 ### macOS（可选 — 本机 kind 开发）
 
-**仅供 Mac 上做验证；正式安装请以本文 Linux 章节为准。** 本机用 **kind** 起 Kubernetes，不在 Mac 上跑 `preflight.sh` / `k3s install`。**`mac.sh` 设置 `KWEAVER_SKIP_PLATFORM_BOOTSTRAP`**。**`foundry install` 会先执行 `ensure_data_services`**（与单独跑 `data-services install` 一致：MariaDB、Redis、Kafka、OpenSearch）；**`mac.sh` 默认 `AUTO_INSTALL_INGRESS_NGINX=false`**，避免重复装 ingress。需要跳过自带数据层时使用 **`KWEAVER_SKIP_DATA_SERVICES_BUNDLE=true`**（高级用法 / 外接中间件）。仍可单独执行 **`data-services install`** 只做数据层或刷新。**Apple Silicon：** kind 节点为 **arm64**；**步骤见 [dev/README.zh.md](dev/README.zh.md)。**
+**仅供 Mac 上做验证；正式安装请以本文 Linux 章节为准。** 本机用 **kind** 起 Kubernetes，不在 Mac 上跑 `preflight.sh` / `k3s install`。**`mac.sh` 设置 `OPENBKN_SKIP_PLATFORM_BOOTSTRAP`**。**`foundry install` 会先执行 `ensure_data_services`**（与单独跑 `data-services install` 一致：MariaDB、Redis、Kafka、OpenSearch）；**`mac.sh` 默认 `AUTO_INSTALL_INGRESS_NGINX=false`**，避免重复装 ingress。需要跳过自带数据层时使用 **`OPENBKN_SKIP_DATA_SERVICES_BUNDLE=true`**（高级用法 / 外接中间件）。仍可单独执行 **`data-services install`** 只做数据层或刷新。**Apple Silicon：** kind 节点为 **arm64**；**步骤见 [dev/README.zh.md](dev/README.zh.md)。**
 
 ```bash
 cd deploy   # 仓库的 deploy/ 目录
@@ -88,7 +88,7 @@ dnf install containerd.io
 
 ```bash
 # 1. 克隆仓库
-git clone https://github.com/kweaver-ai/foundry.git
+git clone https://github.com/openbkn-ai/foundry.git
 cd foundry/deploy
 
 # 2.（推荐）装机前体检 / 修复
@@ -134,7 +134,7 @@ sudo bash ./onboard.sh -y     # 非交互模式（按默认）
 sudo bash ./onboard.sh --help # 全部参数（--config=models.yaml、--enable-bkn-search、--skip-context-loader 等）
 ```
 
-> **为什么要 `sudo`？** `onboard.sh` 会读 `$HOME/.openbkn-ai/config.yaml`（由 `sudo deploy.sh` 写到 `/root/.openbkn-ai/` 下）并把 `kweaver` 认证 token 写到 `$HOME/.kweaver`。不加 `sudo` 会回退到仓库内模板 `deploy/conf/config.yaml`，可能解析出和安装时不一致的 access URL。**macOS 开发路径**（`bash ./dev/mac.sh onboard`）**不需要** `sudo`。脚本启动时也会打印这条提示；可用 `ONBOARD_SUDO_HINT_DISABLED=1` 关闭。
+> **为什么要 `sudo`？** `onboard.sh` 会读 `$HOME/.openbkn-ai/config.yaml`（由 `sudo deploy.sh` 写到 `/root/.openbkn-ai/` 下）并把 `bkn` 认证 token 写到 `$HOME/.bkn`。不加 `sudo` 会回退到仓库内模板 `deploy/conf/config.yaml`，可能解析出和安装时不一致的 access URL。**macOS 开发路径**（`bash ./dev/mac.sh onboard`）**不需要** `sudo`。脚本启动时也会打印这条提示；可用 `ONBOARD_SUDO_HINT_DISABLED=1` 关闭。
 
 > 完整的 preflight / onboard 流程与 Mermaid 流程图见 [help/zh/install.md — Post-install：`onboard.sh`](../help/zh/install.md#post-installonboardsh安装后引导)。
 
@@ -182,7 +182,7 @@ sudo bash ./deploy.sh --distro=k3s foundry install --minimum --version_file=/tmp
 三个参数，让**脚本自己处理**——无需手动 `crictl pull`/重打 tag：
 
 - **`--registry=<swr / ghcr / host/ns>`** —— **BKN 镜像**的 registry（`--set image.registry` 的糖）。`swr` → `swr.cn-east-3.myhuaweicloud.com/openbkn-ai`，`ghcr` → `ghcr.io/openbkn-ai`。优先级：显式 `--set image.registry=…` > `--registry` > `--config` YAML 里已有的 `image.registry`（尊重，如 `dev/conf/mac-config.yaml`）> 默认 `swr`。SWR 与 GHCR 同步同样的 `…-main.<日期>.sha…` 构建 tag。
-- **`--dockerhub-mirror=<auto / host / off>`** —— **第三方镜像**（otel/hydra/postgres/minio）的 containerd `docker.io` mirror。写 `/etc/containerd/certs.d/docker.io/hosts.toml`（需 root + containerd 配了 `config_path` certs.d；否则告警跳过、不报错）。**默认 `auto`** —— 探测候选列表，选第一个能经 mirror（`?ns=docker.io`）协议服务本栈 docker.io 镜像的（标志镜像 `oryd/hydra`；`docker.m.daocloud.io` 对带 namespace 的仓库会 403，所以固定默认不安全）。传 host 钉死某个（如 `docker.1panel.live`）；`off` 关闭。候选列表可用 `KWEAVER_DOCKERHUB_MIRROR_CANDIDATES` 覆盖。
+- **`--dockerhub-mirror=<auto / host / off>`** —— **第三方镜像**（otel/hydra/postgres/minio）的 containerd `docker.io` mirror。写 `/etc/containerd/certs.d/docker.io/hosts.toml`（需 root + containerd 配了 `config_path` certs.d；否则告警跳过、不报错）。**默认 `auto`** —— 探测候选列表，选第一个能经 mirror（`?ns=docker.io`）协议服务本栈 docker.io 镜像的（标志镜像 `oryd/hydra`；`docker.m.daocloud.io` 对带 namespace 的仓库会 403，所以固定默认不安全）。传 host 钉死某个（如 `docker.1panel.live`）；`off` 关闭。候选列表可用 `OPENBKN_DOCKERHUB_MIRROR_CANDIDATES` 覆盖。
 - **`--latest`** —— 没给 `--version_file` 时自动跑 `gen-dev-manifest.sh --latest` 并安装结果（需在仓库 checkout 内运行，依赖 `git`）。
 
 ```bash
@@ -218,7 +218,7 @@ sudo bash ./deploy.sh foundry install --version_file=/tmp/m.yaml --registry=swr
 | `registry.aliyuncs.com` | Kubernetes 组件镜像 |
 | `swr.cn-east-3.myhuaweicloud.com` | BKN Foundry 应用镜像仓库 |
 | `repo.huaweicloud.com` | Helm 二进制下载 |
-| `kweaver-ai.github.io` | KWeaver Helm Chart 仓库 |
+| `openbkn-ai.github.io` | OPenbkn Helm Chart 仓库 |
 | `rancher-mirror.rancher.cn` | k3s 安装脚本/二进制（k3s 快速路径；可用 `K3S_INSTALL_URL` 覆盖） |
 
 ## 📦 部署模型

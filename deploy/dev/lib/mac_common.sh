@@ -26,8 +26,8 @@ mac_common_init() {
     export LOCALPV_MANIFEST_PATH="${DEPLOY_ROOT}/conf/local-path-storage.yaml"
     export HELM_INSTALL_SCRIPT_PATH="${DEPLOY_ROOT}/conf/get-helm-3"
 
-    export KIND_CLUSTER_NAME="${KIND_CLUSTER_NAME:-kweaver-dev}"
-    export KWEAVER_SKIP_PLATFORM_BOOTSTRAP="${KWEAVER_SKIP_PLATFORM_BOOTSTRAP:-true}"
+    export KIND_CLUSTER_NAME="${KIND_CLUSTER_NAME:-bkn-dev}"
+    export OPENBKN_SKIP_PLATFORM_BOOTSTRAP="${OPENBKN_SKIP_PLATFORM_BOOTSTRAP:-true}"
 
     # Mac dev (kind on Docker Desktop) is memory-tight; cap data-services to small footprints
     # so the whole stack fits in the default Docker memory budget. Chart defaults are kept for
@@ -44,15 +44,15 @@ mac_common_init() {
     # Tiny request keeps QoS=Burstable (not BestEffort) without hogging scheduling budget;
     # generous 2Gi limit so heavier services (agent-retrieval, ontology-query) don't OOM
     # during normal dev exercises.
-    export KWEAVER_CORE_REQ_CPU="${KWEAVER_CORE_REQ_CPU:-50m}"
-    export KWEAVER_CORE_REQ_MEM="${KWEAVER_CORE_REQ_MEM:-64Mi}"
-    export KWEAVER_CORE_LIM_CPU="${KWEAVER_CORE_LIM_CPU:-2}"
-    export KWEAVER_CORE_LIM_MEM="${KWEAVER_CORE_LIM_MEM:-2Gi}"
+    export OPENBKN_CORE_REQ_CPU="${OPENBKN_CORE_REQ_CPU:-50m}"
+    export OPENBKN_CORE_REQ_MEM="${OPENBKN_CORE_REQ_MEM:-64Mi}"
+    export OPENBKN_CORE_LIM_CPU="${OPENBKN_CORE_LIM_CPU:-2}"
+    export OPENBKN_CORE_LIM_MEM="${OPENBKN_CORE_LIM_MEM:-2Gi}"
     # ISF (chart defaults: limits 1-8Gi). Symmetric with core; only used when --auth.enabled=true.
-    export KWEAVER_ISF_REQ_CPU="${KWEAVER_ISF_REQ_CPU:-50m}"
-    export KWEAVER_ISF_REQ_MEM="${KWEAVER_ISF_REQ_MEM:-64Mi}"
-    export KWEAVER_ISF_LIM_CPU="${KWEAVER_ISF_LIM_CPU:-2}"
-    export KWEAVER_ISF_LIM_MEM="${KWEAVER_ISF_LIM_MEM:-2Gi}"
+    export OPENBKN_ISF_REQ_CPU="${OPENBKN_ISF_REQ_CPU:-50m}"
+    export OPENBKN_ISF_REQ_MEM="${OPENBKN_ISF_REQ_MEM:-64Mi}"
+    export OPENBKN_ISF_LIM_CPU="${OPENBKN_ISF_LIM_CPU:-2}"
+    export OPENBKN_ISF_LIM_MEM="${OPENBKN_ISF_LIM_MEM:-2Gi}"
 }
 
 mac_require_darwin() {
@@ -344,7 +344,7 @@ mac_doctor() {
 # Mac-only: prepare HTTPS for ISF install.
 #   1. flip mac-config.yaml accessAddress to scheme=https / port=443
 #   2. generate a self-signed TLS cert (CN/SAN = accessAddress.host) and
-#      apply it as Secret kweaver-ingress-tls in the kweaver namespace
+#      apply it as Secret bkn-ingress-tls in the bkn namespace
 # Idempotent: re-running just rotates the cert and re-applies the Secret.
 # After ISF install completes, run mac_isf_patch_ingress_tls to wire it in.
 mac_prepare_isf_https() {
@@ -354,8 +354,8 @@ mac_prepare_isf_https() {
     host="$(awk '/^accessAddress:/{f=1;next} f&&/^  host:/{print $2;exit}' "${cfg}" | tr -d "'\"")"
     host="${host:-localhost}"
     local ns="${MAC_ISF_NAMESPACE:-$(awk '/^namespace:/{print $2;exit}' "${cfg}" | tr -d "'\"")}"
-    ns="${ns:-kweaver}"
-    local secret="${MAC_ISF_TLS_SECRET:-kweaver-ingress-tls}"
+    ns="${ns:-bkn}"
+    local secret="${MAC_ISF_TLS_SECRET:-bkn-ingress-tls}"
 
     mac_log_info "Switching ${cfg} accessAddress to https/443 (host=${host})"
     awk '
@@ -391,8 +391,8 @@ mac_prepare_isf_https() {
 mac_isf_patch_ingress_tls() {
     local cfg="${CONFIG_YAML_PATH:-${MAC_DEV_ROOT}/conf/mac-config.yaml}"
     local ns="${MAC_ISF_NAMESPACE:-$(awk '/^namespace:/{print $2;exit}' "${cfg}" | tr -d "'\"")}"
-    ns="${ns:-kweaver}"
-    local secret="${MAC_ISF_TLS_SECRET:-kweaver-ingress-tls}"
+    ns="${ns:-bkn}"
+    local secret="${MAC_ISF_TLS_SECRET:-bkn-ingress-tls}"
     local ing
     ing="$(kubectl get ingress -n "${ns}" -o jsonpath='{.items[?(@.metadata.name=="ingress-informationsecurityfabric")].metadata.name}' 2>/dev/null)"
     [[ -n "${ing}" ]] || { mac_log_warn "ISF ingress not found in ${ns}; skip TLS patch"; return 0; }

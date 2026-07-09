@@ -29,7 +29,7 @@ install_kafka() {
         return 1
     fi
 
-    if ! kweaver_require_helm_min_for_bitnami; then
+    if ! bkn_require_helm_min_for_bitnami; then
         return 1
     fi
 
@@ -230,7 +230,7 @@ EOF
         helm_args+=(--set controller.persistence.enabled=false --set broker.persistence.enabled=false)
     fi
 
-    kweaver_helm_uninstall_if_not_deployed "${KAFKA_RELEASE_NAME}" "${KAFKA_NAMESPACE}"
+    bkn_helm_uninstall_if_not_deployed "${KAFKA_RELEASE_NAME}" "${KAFKA_NAMESPACE}"
 
     local helm_out=""
     set +e

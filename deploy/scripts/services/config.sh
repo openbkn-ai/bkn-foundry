@@ -74,16 +74,16 @@ STORAGE_EOF
 
     # MariaDB
     local mariadb_ns="${MARIADB_NAMESPACE}"
-    local mariadb_host="mariadb-proton-mariadb.${mariadb_ns}.svc.cluster.local"
+    local mariadb_host="mariadb.${mariadb_ns}.svc.cluster.local"
     # Use values from environment or config.yaml if set
-    local mariadb_user="${MARIADB_USER:-kweaver}"
+    local mariadb_user="${MARIADB_USER:-bkn}"
     local mariadb_password="${MARIADB_PASSWORD}"
     local mariadb_root_password="${MARIADB_ROOT_PASSWORD}"
-    local mariadb_database="${MARIADB_DATABASE:-kweaver}"
+    local mariadb_database="${MARIADB_DATABASE:-bkn}"
     local mariadb_configured=false
 
     # Try to find MariaDB secret by label first (more reliable than hardcoded name)
-    # The proton-mariadb chart creates a secret named mariadb-proton-mariadb-auth
+    # The mariadb chart creates a secret named mariadb-auth
     local mariadb_secret
     mariadb_secret="$(kubectl -n "${mariadb_ns}" get secret -l app.kubernetes.io/instance=mariadb,app=mariadb -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
     if [[ -n "${mariadb_secret}" ]]; then
@@ -112,22 +112,13 @@ STORAGE_EOF
 
     # Redis
     local redis_ns="${REDIS_NAMESPACE}"
-    # Try to detect Redis release name (could be "redis" or "proton-redis" depending on chart)
     local redis_release_name="redis"
-    # Check for proton-redis release first
-    if helm list -n "${redis_ns}" -q 2>/dev/null | grep -q "^proton-redis"; then
-        redis_release_name="proton-redis"
-    elif helm list -n "${redis_ns}" -q 2>/dev/null | grep -q "^redis"; then
-        redis_release_name="redis"
-    fi
     
-    # Try to get actual StatefulSet name (could be redis, redis-proton-redis, or proton-redis-proton-redis)
-    # For proton-redis chart: StatefulSet name is {release-name}-proton-redis (e.g., redis-proton-redis)
+    # Try to get actual StatefulSet name
+    # For redis chart: StatefulSet name is {release-name}-redis (e.g., redis)
     local redis_sts_name=""
-    if kubectl -n "${redis_ns}" get statefulset redis-proton-redis >/dev/null 2>&1; then
-        redis_sts_name="redis-proton-redis"
-    elif kubectl -n "${redis_ns}" get statefulset proton-redis-proton-redis >/dev/null 2>&1; then
-        redis_sts_name="proton-redis-proton-redis"
+    if kubectl -n "${redis_ns}" get statefulset redis >/dev/null 2>&1; then
+        redis_sts_name="redis"
     elif kubectl -n "${redis_ns}" get statefulset redis >/dev/null 2>&1; then
         redis_sts_name="redis"
     fi
@@ -164,10 +155,9 @@ STORAGE_EOF
     # Use default value from script defaults (redis-password) if not set
     local redis_password="${REDIS_PASSWORD:-}"
     # Try to get password from secret (check multiple possible secret names)
-    # For proton-redis chart: secret name is {release-name}-proton-redis-secret (e.g., redis-proton-redis-secret)
+    # For redis chart: secret name is {release-name}-redis-secret (e.g., redis-secret)
     local redis_secret_names=(
-        "${redis_release_name}-proton-redis-secret"  # proton-redis chart naming
-        "proton-redis-proton-redis-secret"           # alternative naming
+        "${redis_release_name}-redis-secret"          # redis chart naming
         "${redis_release_name}-secret"                # generic naming
         "redis-auth"                                  # fallback
     )
@@ -214,14 +204,11 @@ STORAGE_EOF
     
     # Check if Redis is deployed in sentinel mode
     # Method 1: Check if sentinel service exists (for local chart)
-    # For proton-redis chart: service name is {release-name}-proton-redis-sentinel
-    # If release name is "redis", service is "redis-proton-redis-sentinel"
-    # If release name is "proton-redis", service is "proton-redis-proton-redis-sentinel"
+    # For redis chart: service name is {release-name}-redis-sentinel
+    # If release name is "redis", service is "redis-sentinel"
     local sentinel_svc_names=(
-        "${redis_release_name}-proton-redis-sentinel"  # proton-redis chart naming (release=redis)
-        "proton-redis-proton-redis-sentinel"           # proton-redis chart naming (release=proton-redis)
+        "${redis_release_name}-redis-sentinel"          # redis chart naming
         "${redis_release_name}-sentinel"               # generic naming
-        "redis-proton-redis-sentinel"                  # fallback
         "redis-sentinel"                                # fallback
     )
     local sentinel_svc_found=false
@@ -251,11 +238,11 @@ STORAGE_EOF
                     break
                 fi
             done
-            # If no service found, use default naming for proton-redis chart
-            # For proton-redis chart: {release-name}-proton-redis-sentinel
+            # If no service found, use default naming for redis chart
+            # For redis chart: {release-name}-redis-sentinel
             if [[ -z "${redis_sentinel_host}" ]]; then
-                # Calculate StatefulSet name: {release-name}-proton-redis
-                local calculated_sts_name="${redis_release_name}-proton-redis"
+                # Calculate StatefulSet name: {release-name}-redis
+                local calculated_sts_name="${redis_release_name}-redis"
                 redis_sentinel_host="${calculated_sts_name}-sentinel.${redis_ns}.svc.cluster.local"
                 redis_sentinel_host="${redis_sentinel_host%.}"  # Remove trailing dot
             fi
@@ -320,7 +307,7 @@ STORAGE_EOF
         fi
     fi
     
-    # MongoDB connection parameters (config.yaml schema expected by proton-cli)
+    # MongoDB connection parameters (config.yaml schema expected by bkn-cli)
     # Set replicaSet based on whether replica set is enabled
     local mongodb_replica_set=""
     if [[ "${mongodb_configured}" == "true" ]]; then

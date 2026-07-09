@@ -130,7 +130,7 @@ setup_mariadb_databases() {
 
     log_info "Setting up additional databases and permissions..."
 
-    # Find the correct pod name (could be mariadb-0 or mariadb-proton-mariadb-0 depending on chart)
+    # Find the correct pod name (could be mariadb-0 or mariadb-0 depending on chart)
     local pod_name
     pod_name=$(kubectl -n "${ns}" get pods -l app=mariadb -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
 
@@ -172,9 +172,9 @@ setup_mariadb_databases() {
     log_info "MariaDB database setup completed"
 }
 
-# Install single-node MariaDB 11 using proton-mariadb Helm chart
+# Install single-node MariaDB 11 using mariadb Helm chart
 install_mariadb_helm() {
-    log_info "Installing MariaDB (single-node) via proton-mariadb Helm chart..."
+    log_info "Installing MariaDB (single-node) via mariadb Helm chart..."
 
     local ns="${MARIADB_NAMESPACE}"
     local fresh_install="true"
@@ -192,10 +192,10 @@ install_mariadb_helm() {
             update_rds_type_to_internal
         fi
         # Reapply grants + ensure DB seed even when chart is already deployed.
-        # First-time installs grant kweaver ALL on *.* via setup_mariadb_databases
+        # First-time installs grant bkn ALL on *.* via setup_mariadb_databases
         # below; without this re-entry, a re-run on an existing cluster (typical
         # for verification or recovery flows) would skip grants entirely, and
-        # data-migrator would fail with 'Access denied for kweaver to deploy'.
+        # data-migrator would fail with 'Access denied for bkn to deploy'.
         # Read passwords directly from the rds: block in config.yaml (the
         # get_existing_password helper only matches dotted-key lines, which
         # the generated yaml does not use).
@@ -207,8 +207,8 @@ install_mariadb_helm() {
         if [[ -n "${existing_root_pass}" ]]; then
             MARIADB_ROOT_PASSWORD="${existing_root_pass}"
             MARIADB_PASSWORD="${MARIADB_PASSWORD:-${existing_user_pass}}"
-            MARIADB_USER="${MARIADB_USER:-${existing_user:-kweaver}}"
-            MARIADB_DATABASE="${MARIADB_DATABASE:-${existing_db:-kweaver}}"
+            MARIADB_USER="${MARIADB_USER:-${existing_user:-bkn}}"
+            MARIADB_DATABASE="${MARIADB_DATABASE:-${existing_db:-bkn}}"
             setup_mariadb_databases || log_warn "MariaDB re-entry setup returned non-zero (continuing)"
         else
             log_warn "MariaDB root password unavailable; skipping grant re-apply on existing install"
@@ -243,7 +243,7 @@ install_mariadb_helm() {
     local image_without_tag="${MARIADB_IMAGE%:*}"
     local image_tag="${MARIADB_IMAGE##*:}"
 
-    local chart_ref="proton-mariadb"
+    local chart_ref="mariadb"
     local use_local_chart="false"
     if [[ -f "${MARIADB_CHART_TGZ}" ]]; then
         chart_ref="${MARIADB_CHART_TGZ}"
@@ -769,7 +769,7 @@ install_mariadb() {
         MARIADB_IMAGE="$(image_from_registry "${MARIADB_IMAGE_REPOSITORY}" "${MARIADB_IMAGE_TAG}" "${MARIADB_IMAGE_FALLBACK}")"
     fi
 
-    # Use proton-mariadb Helm chart by default
+    # Use mariadb Helm chart by default
     install_mariadb_helm
 }
 

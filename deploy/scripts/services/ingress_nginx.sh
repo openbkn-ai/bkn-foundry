@@ -6,7 +6,7 @@ install_ingress_nginx() {
     # Create namespace if not exists
     kubectl create namespace ingress-nginx 2>/dev/null || true
 
-    # Use images from common.sh (already set with kweaver-ai registry)
+    # Use images from common.sh (already set with openbkn-ai registry)
     # INGRESS_NGINX_CONTROLLER_IMAGE and INGRESS_NGINX_WEBHOOK_CERTGEN_IMAGE are pre-configured
 
     if helm status ingress-nginx -n ingress-nginx >/dev/null 2>&1; then
