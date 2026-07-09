@@ -650,3 +650,31 @@ env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cov
 - overall statement coverage：**11.5%**。
 - 包覆盖率：`drivenadapters/connector_type` 53.5%，`drivenadapters/discover_task` 48.7%，`drivenadapters/discover_schedule` 35.6%，`drivenadapters/entityextension` 82.4%。
 - 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果。
+
+### 2026-07-09：Batch 4 Driven Adapters Catalog / Resource Access
+
+范围：
+
+- 新增 `drivenadapters/catalog/catalog_access_test.go`，覆盖 Create JSON/tag 序列化、ListIDs 多过滤与排序、ListAuthResources 排除 internal catalog、UpdateEnabled、UpdateMetadata、UpdateHealthCheckStatus 错误路径，以及 extension helper 列名前缀/排序表达式。
+- 新增 `drivenadapters/resource/resource_access_test.go`，覆盖 Create JSON/tag 序列化、GetByIDsBasic 轻量解析 column_count/row_count、带 extension join 的 ListIDs、ListAuthResources keyword 转义、UpdateStatus、UpdateDiscoverStatus、CheckExistByCategories，以及 extension helper 列名前缀/排序表达式。
+- 本批避开 `GetByID/List` 的 extension 自动加载深路径，避免测试被 `entityextension.NewStore` 单例和第二 DB 连接初始化绑定；extension store 与 join 已在小 access 批次单独覆盖。
+- SQL 使用 `sqlmock` 校验关键 SQL 与参数，不连接真实数据库。
+
+验证：
+
+```bash
+cd adp/vega/vega-backend/server
+env GOCACHE=/tmp/go-build-cache go test ./drivenadapters/catalog ./drivenadapters/resource
+env GOCACHE=/tmp/go-build-cache go test ./drivenadapters/catalog ./drivenadapters/resource -cover
+env GOCACHE=/tmp/go-build-cache go test ./...
+env GOCACHE=/tmp/go-build-cache go test ./... -coverprofile=/tmp/vega-backend-server-cover.out
+env GOCACHE=/tmp/go-build-cache go tool cover -func=/tmp/vega-backend-server-cover.out
+```
+
+结果：
+
+- `go test ./drivenadapters/catalog ./drivenadapters/resource` 通过。
+- `go test ./...` 通过。
+- overall statement coverage：**12.2%**。
+- 包覆盖率：`drivenadapters/catalog` 24.9%，`drivenadapters/resource` 28.5%。
+- 仍有 `/etc/profile.d/ulimit.sh` warning，不影响测试结果；本地 logger 写 `/opt/vega-backend/logs` 的 read-only warning 不影响测试结果。
