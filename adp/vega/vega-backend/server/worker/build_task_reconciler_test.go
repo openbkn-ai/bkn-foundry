@@ -46,3 +46,28 @@ func TestFindStuckBuildTasks(t *testing.T) {
 		assert.Empty(t, got)
 	})
 }
+
+func TestFindStuckStoppingBuildTasks(t *testing.T) {
+	t.Run("returns stopping tasks that are stale and absent from queue", func(t *testing.T) {
+		now := time.Date(2026, 7, 10, 16, 30, 0, 0, time.UTC)
+		staleAfter := 3 * time.Minute
+		ms := func(t time.Time) int64 { return t.UnixMilli() }
+
+		mkTask := func(id, status string, updatedAgo time.Duration) *interfaces.BuildTask {
+			return &interfaces.BuildTask{ID: id, Status: status, UpdateTime: ms(now.Add(-updatedAgo))}
+		}
+
+		tasks := []*interfaces.BuildTask{
+			mkTask("orphan-stopping", interfaces.BuildTaskStatusStopping, 10*time.Minute),
+			mkTask("active-stopping", interfaces.BuildTaskStatusStopping, 10*time.Minute),
+			mkTask("fresh-stopping", interfaces.BuildTaskStatusStopping, 10*time.Second),
+			mkTask("init", interfaces.BuildTaskStatusInit, 10*time.Minute),
+		}
+		queued := map[string]struct{}{"active-stopping": {}}
+
+		stuck := findStuckStoppingBuildTasks(tasks, queued, now, staleAfter)
+
+		require.Len(t, stuck, 1)
+		assert.Equal(t, "orphan-stopping", stuck[0].ID)
+	})
+}
