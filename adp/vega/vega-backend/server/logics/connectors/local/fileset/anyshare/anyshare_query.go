@@ -10,11 +10,11 @@ package anyshare
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 
+	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-comm-go/logger"
 
 	"vega-backend/interfaces"
@@ -123,7 +123,7 @@ func (c *AnyShareConnector) SearchFiles(ctx context.Context, docID, keyword stri
 
 	logger.Debugf("AnyShare file search params: %v", payload)
 
-	body, err := json.Marshal(payload)
+	body, err := sonic.Marshal(payload)
 	if err != nil {
 		return nil, err
 	}
@@ -150,7 +150,7 @@ func (c *AnyShareConnector) SearchFiles(ctx context.Context, docID, keyword stri
 	var result struct {
 		Files []map[string]any `json:"files"`
 	}
-	if err := json.Unmarshal(raw, &result); err != nil {
+	if err := sonic.Unmarshal(raw, &result); err != nil {
 		return nil, fmt.Errorf("file-search decode: %w", err)
 	}
 

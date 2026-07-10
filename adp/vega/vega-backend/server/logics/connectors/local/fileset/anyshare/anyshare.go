@@ -10,7 +10,6 @@ package anyshare
 import (
 	"context"
 	"crypto/tls"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -18,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/mitchellh/mapstructure"
 
 	"vega-backend/interfaces"
@@ -308,7 +308,7 @@ func (c *AnyShareConnector) fetchOAuthToken(ctx context.Context) (string, error)
 		return "", err
 	}
 	var tr tokenResponse
-	if err := json.Unmarshal(body, &tr); err != nil {
+	if err := sonic.Unmarshal(body, &tr); err != nil {
 		return "", fmt.Errorf("oauth2 token decode: %w", err)
 	}
 	if tr.Error != "" || tr.AccessToken == "" {

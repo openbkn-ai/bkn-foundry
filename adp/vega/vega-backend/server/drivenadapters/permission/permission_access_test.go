@@ -8,13 +8,14 @@ package permission
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-comm-go/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -238,7 +239,7 @@ func TestSafeClientCheckOne(t *testing.T) {
 		client := newSafeTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 			assert.Equal(t, "/api/safe/v1/authz/check", r.URL.Path)
 			var body map[string]any
-			require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+			decodeRequestJSON(t, r, &body)
 			assert.Equal(t, "u1", body["accessor_id"])
 			assert.Equal(t, interfaces.OPERATION_TYPE_VIEW_DETAIL, body["operation"])
 			_, _ = w.Write([]byte(`{"allowed":true}`))
@@ -268,7 +269,7 @@ func TestSafeClientAllowedOps(t *testing.T) {
 			var body struct {
 				Operation string `json:"operation"`
 			}
-			require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+			decodeRequestJSON(t, r, &body)
 			allowed := body.Operation == interfaces.OPERATION_TYPE_VIEW_DETAIL
 			_, _ = w.Write([]byte(`{"allowed":` + boolJSON(allowed) + `}`))
 		})
@@ -400,7 +401,7 @@ func TestSafePermissionAccessFilterResources(t *testing.T) {
 				} `json:"resource"`
 				Operation string `json:"operation"`
 			}
-			require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+			decodeRequestJSON(t, r, &body)
 			allowed := body.Resource.ID == "resource-1" && body.Operation == interfaces.OPERATION_TYPE_VIEW_DETAIL
 			_, _ = w.Write([]byte(`{"allowed":` + boolJSON(allowed) + `}`))
 		})
@@ -454,7 +455,7 @@ func TestSafePermissionAccessCreateResources(t *testing.T) {
 			assert.Equal(t, http.MethodPost, r.Method)
 			assert.Equal(t, "/api/safe/v1/authz/policies", r.URL.Path)
 			var body map[string]any
-			require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+			decodeRequestJSON(t, r, &body)
 			bodies = append(bodies, body)
 			w.WriteHeader(http.StatusNoContent)
 		})
@@ -656,6 +657,14 @@ func boolJSON(value bool) string {
 		return "true"
 	}
 	return "false"
+}
+
+func decodeRequestJSON(t *testing.T, r *http.Request, out any) {
+	t.Helper()
+
+	body, err := io.ReadAll(r.Body)
+	require.NoError(t, err)
+	require.NoError(t, sonic.Unmarshal(body, out))
 }
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
