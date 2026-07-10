@@ -915,7 +915,7 @@ func (c *OpenSearchConnector) buildFieldMappings(schemaDefinition []*interfaces.
 			fieldType = "scaled_float"
 		case "string":
 			fieldType = "keyword"
-		case "datetime":
+		case "datetime", "timestamp":
 			fieldType = "date"
 		case "time":
 			fieldType = "keyword"
