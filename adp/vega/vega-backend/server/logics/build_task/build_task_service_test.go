@@ -9,15 +9,18 @@ package build_task
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"testing"
 
+	"github.com/hibiken/asynq"
 	"github.com/openbkn-ai/bkn-comm-go/rest"
 	"go.uber.org/mock/gomock"
 
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
 	mock_interfaces "vega-backend/interfaces/mock"
+	"vega-backend/logics"
 )
 
 func TestCreateBuildTaskRejectsDisabledCatalog(t *testing.T) {
@@ -405,5 +408,178 @@ func TestDeleteBuildTasks_RefusesRunning(t *testing.T) {
 
 	if err := service.DeleteBuildTasks(context.Background(), []string{"t1"}, false, true); err == nil {
 		t.Fatalf("expected 409 when a task is running")
+	}
+}
+
+// neutralizeEnqueue 让 CreateBuildTask/UpdateBuildTaskConfig 末尾的 enqueueBuildTask
+// 不 panic：CreateClient 返回真实但指向不可达 redis 的 client，Enqueue 会失败，
+// 而 enqueueBuildTask 对入队失败仅记日志、不影响返回值。
+func neutralizeEnqueue(t *testing.T, ctrl *gomock.Controller) {
+	t.Helper()
+	mockAQA := mock_interfaces.NewMockAsynqAccess(ctrl)
+	client := asynq.NewClient(asynq.RedisClientOpt{Addr: "127.0.0.1:0"})
+	mockAQA.EXPECT().CreateClient().Return(client).AnyTimes()
+	prev := logics.AQA
+	logics.AQA = mockAQA
+	t.Cleanup(func() {
+		logics.AQA = prev
+		_ = client.Close()
+	})
+}
+
+func TestCreateBuildTaskNormalizesModelNameToID(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+	mockRA := mock_interfaces.NewMockResourceAccess(ctrl)
+	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+	mockMFA := mock_interfaces.NewMockModelFactoryAccess(ctrl)
+	neutralizeEnqueue(t, ctrl)
+	service := &buildTaskService{cs: mockCS, ra: mockRA, bta: mockBTA, mfa: mockMFA}
+
+	mockRA.EXPECT().GetByID(gomock.Any(), "resource-1").
+		Return(&interfaces.Resource{ID: "resource-1", CatalogID: "catalog-1", Category: interfaces.ResourceCategoryTable}, nil)
+	mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
+		Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
+	mockBTA.EXPECT().GetByResourceID(gomock.Any(), "resource-1").Return(nil, nil)
+	mockMFA.EXPECT().GetModelByName(gomock.Any(), "text-embedding-v4").
+		Return(&interfaces.SmallModel{ModelID: "2064382281006583808", ModelName: "text-embedding-v4", EmbeddingDim: 1024}, nil)
+
+	var captured *interfaces.BuildTask
+	mockBTA.EXPECT().Create(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, bt *interfaces.BuildTask) error {
+			captured = bt
+			return nil
+		})
+
+	_, err := service.CreateBuildTask(context.Background(), &interfaces.CreateBuildTaskRequest{
+		ResourceID:      "resource-1",
+		Mode:            interfaces.BuildTaskModeBatch,
+		EmbeddingFields: "family_name,given_name",
+		EmbeddingModel:  "text-embedding-v4",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if captured == nil {
+		t.Fatal("bta.Create was not called")
+	}
+	if captured.EmbeddingModel != "2064382281006583808" {
+		t.Fatalf("embedding_model not normalized to id: got %q", captured.EmbeddingModel)
+	}
+	if captured.ModelDimensions != 1024 {
+		t.Fatalf("model_dimensions not filled from model: got %d", captured.ModelDimensions)
+	}
+}
+
+func TestCreateBuildTaskKeepsModelIDWhenNameLookupFails(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+	mockRA := mock_interfaces.NewMockResourceAccess(ctrl)
+	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+	mockMFA := mock_interfaces.NewMockModelFactoryAccess(ctrl)
+	neutralizeEnqueue(t, ctrl)
+	service := &buildTaskService{cs: mockCS, ra: mockRA, bta: mockBTA, mfa: mockMFA}
+
+	mockRA.EXPECT().GetByID(gomock.Any(), "resource-1").
+		Return(&interfaces.Resource{ID: "resource-1", CatalogID: "catalog-1", Category: interfaces.ResourceCategoryTable}, nil)
+	mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
+		Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
+	mockBTA.EXPECT().GetByResourceID(gomock.Any(), "resource-1").Return(nil, nil)
+	mockMFA.EXPECT().GetModelByName(gomock.Any(), "2064382281006583808").
+		Return(nil, fmt.Errorf("model not found"))
+
+	var captured *interfaces.BuildTask
+	mockBTA.EXPECT().Create(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, bt *interfaces.BuildTask) error {
+			captured = bt
+			return nil
+		})
+
+	_, err := service.CreateBuildTask(context.Background(), &interfaces.CreateBuildTaskRequest{
+		ResourceID:      "resource-1",
+		Mode:            interfaces.BuildTaskModeBatch,
+		EmbeddingFields: "family_name,given_name",
+		EmbeddingModel:  "2064382281006583808",
+		ModelDimensions: 1024,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if captured == nil {
+		t.Fatal("bta.Create was not called")
+	}
+	if captured.EmbeddingModel != "2064382281006583808" {
+		t.Fatalf("embedding_model id was altered: got %q", captured.EmbeddingModel)
+	}
+}
+
+func TestCreateBuildTaskErrorsWhenModelUnresolvableAndNoDimensions(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+	mockRA := mock_interfaces.NewMockResourceAccess(ctrl)
+	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+	mockMFA := mock_interfaces.NewMockModelFactoryAccess(ctrl)
+	service := &buildTaskService{cs: mockCS, ra: mockRA, bta: mockBTA, mfa: mockMFA}
+
+	mockRA.EXPECT().GetByID(gomock.Any(), "resource-1").
+		Return(&interfaces.Resource{ID: "resource-1", CatalogID: "catalog-1", Category: interfaces.ResourceCategoryTable}, nil)
+	mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
+		Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
+	mockBTA.EXPECT().GetByResourceID(gomock.Any(), "resource-1").Return(nil, nil)
+	mockMFA.EXPECT().GetModelByName(gomock.Any(), "bogus-model").
+		Return(nil, fmt.Errorf("model not found"))
+
+	_, err := service.CreateBuildTask(context.Background(), &interfaces.CreateBuildTaskRequest{
+		ResourceID:      "resource-1",
+		Mode:            interfaces.BuildTaskModeBatch,
+		EmbeddingFields: "family_name,given_name",
+		EmbeddingModel:  "bogus-model",
+	})
+	if err == nil {
+		t.Fatal("expected error for unresolvable model without dimensions")
+	}
+	httpErr, ok := err.(*rest.HTTPError)
+	if !ok {
+		t.Fatalf("expected HTTPError, got %T", err)
+	}
+	if httpErr.HTTPCode != http.StatusInternalServerError {
+		t.Fatalf("expected HTTP 500, got %d", httpErr.HTTPCode)
+	}
+}
+
+func TestUpdateBuildTaskConfigNormalizesModelNameToID(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+	mockMFA := mock_interfaces.NewMockModelFactoryAccess(ctrl)
+	neutralizeEnqueue(t, ctrl)
+	service := &buildTaskService{cs: mockCS, bta: mockBTA, mfa: mockMFA}
+
+	mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").
+		Return(&interfaces.BuildTask{ID: "task-1", CatalogID: "catalog-1", Mode: interfaces.BuildTaskModeBatch, Status: interfaces.BuildTaskStatusInit}, nil)
+	mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
+		Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
+	mockMFA.EXPECT().GetModelByName(gomock.Any(), "text-embedding-v4").
+		Return(&interfaces.SmallModel{ModelID: "2064382281006583808", ModelName: "text-embedding-v4", EmbeddingDim: 1024}, nil)
+
+	var captured map[string]any
+	mockBTA.EXPECT().UpdateStatus(gomock.Any(), "task-1", gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ string, updates map[string]any) error {
+			captured = updates
+			return nil
+		})
+
+	err := service.UpdateBuildTaskConfig(context.Background(), "task-1", &interfaces.UpdateBuildTaskConfigRequest{
+		EmbeddingFields: "family_name,given_name",
+		EmbeddingModel:  "text-embedding-v4",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if captured["embeddingModel"] != "2064382281006583808" {
+		t.Fatalf("embedding_model not normalized to id on update: got %v", captured["embeddingModel"])
+	}
+	if captured["modelDimensions"] != 1024 {
+		t.Fatalf("model_dimensions not filled on update: got %v", captured["modelDimensions"])
 	}
 }
