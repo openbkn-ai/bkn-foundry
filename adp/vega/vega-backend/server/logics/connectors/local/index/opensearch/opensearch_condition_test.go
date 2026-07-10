@@ -297,3 +297,27 @@ func opensearchConditionSchema() []*interfaces.Property {
 		{Name: "embedding", OriginalName: "embedding", Type: interfaces.DataType_Vector},
 	}
 }
+
+func TestFulltextFieldName_StringUsesSubfield(t *testing.T) {
+	prop := &interfaces.Property{
+		Name: "team_name",
+		Type: interfaces.DataType_String,
+		Features: []interfaces.PropertyFeature{
+			{FeatureName: "fulltext", FeatureType: interfaces.PropertyFeatureType_Fulltext},
+		},
+	}
+
+	assert.Equal(t, "team_name.fulltext", fulltextFieldName(prop))
+}
+
+func TestFulltextFieldName_TextUsesBareName(t *testing.T) {
+	prop := &interfaces.Property{Name: "body", Type: interfaces.DataType_Text}
+
+	assert.Equal(t, "body", fulltextFieldName(prop))
+}
+
+func TestFulltextFieldName_StringNoFulltextBareName(t *testing.T) {
+	prop := &interfaces.Property{Name: "code", Type: interfaces.DataType_String}
+
+	assert.Equal(t, "code", fulltextFieldName(prop))
+}
