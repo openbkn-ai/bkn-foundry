@@ -294,11 +294,15 @@
             var total = cs.length;
             var restarts = cs.reduce(function (a, c) { return a + (c.restartCount || 0); }, 0);
             var ok = total > 0 && ready === total;
+            var phase = (p.status && p.status.phase) || "";
+            // Completed Job pods (Succeeded) have 0 ready containers by design —
+            // neutral, not red.
+            var readyCls = phase === "Succeeded" ? "" : (ok ? "ok" : "bad");
             var tr = document.createElement("tr");
             tr.innerHTML =
               "<td>" + esc(p.metadata && p.metadata.name) + "</td>" +
-              '<td class="' + (ok ? "ok" : "bad") + '">' + ready + "/" + total + "</td>" +
-              "<td>" + esc(p.status && p.status.phase) + "</td>" +
+              '<td class="' + readyCls + '">' + (phase === "Succeeded" ? "done" : ready + "/" + total) + "</td>" +
+              "<td>" + esc(phase) + "</td>" +
               "<td>" + restarts + "</td>";
             tb.appendChild(tr);
           });
