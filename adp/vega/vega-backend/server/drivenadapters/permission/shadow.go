@@ -7,13 +7,14 @@ package permission
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
 	"time"
+
+	"github.com/bytedance/sonic"
 
 	"vega-backend/interfaces"
 )
@@ -75,7 +76,7 @@ func (c *safeClient) allowedAll(ctx context.Context, accessorID, rtype, rid stri
 }
 
 func (c *safeClient) do(ctx context.Context, method, path string, body, out any) error {
-	b, _ := json.Marshal(body)
+	b, _ := sonic.Marshal(body)
 	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, bytes.NewReader(b))
 	if err != nil {
 		return err
@@ -91,7 +92,7 @@ func (c *safeClient) do(ctx context.Context, method, path string, body, out any)
 		return fmt.Errorf("bkn-safe %s %s: %d: %s", method, path, resp.StatusCode, data)
 	}
 	if out != nil && len(data) > 0 {
-		return json.Unmarshal(data, out)
+		return sonic.Unmarshal(data, out)
 	}
 	return nil
 }

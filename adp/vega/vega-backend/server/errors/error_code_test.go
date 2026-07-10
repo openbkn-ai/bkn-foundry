@@ -49,12 +49,14 @@ func TestErrCodeLists(t *testing.T) {
 }
 
 func TestExtensionsErrCodeList(t *testing.T) {
-	assert.ElementsMatch(t, []string{
-		VegaBackend_Extensions_InvalidFormat,
-		VegaBackend_Extensions_QuotaExceeded,
-		VegaBackend_Extensions_PropertyQuotaExceeded,
-		VegaBackend_Extensions_ReservedKey,
-		VegaBackend_Extensions_MismatchedQueryPairs,
-		VegaBackend_Extensions_TooManyFilterPairs,
-	}, ExtensionsErrCodeList)
+	t.Run("contains expected extension codes", func(t *testing.T) {
+		assert.ElementsMatch(t, []string{
+			VegaBackend_Extensions_InvalidFormat,
+			VegaBackend_Extensions_QuotaExceeded,
+			VegaBackend_Extensions_PropertyQuotaExceeded,
+			VegaBackend_Extensions_ReservedKey,
+			VegaBackend_Extensions_MismatchedQueryPairs,
+			VegaBackend_Extensions_TooManyFilterPairs,
+		}, ExtensionsErrCodeList)
+	})
 }

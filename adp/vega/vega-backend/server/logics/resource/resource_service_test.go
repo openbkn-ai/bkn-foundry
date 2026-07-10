@@ -586,3 +586,64 @@ func TestList_InternalResourceCheckedSeparately(t *testing.T) {
 		t.Errorf("expected only 'r1' visible, got %v", result)
 	}
 }
+
+func newS2STestService(t *testing.T, internalCatalogIDs []string) (
+	*resourceService, *vmock.MockResourceAccess, *vmock.MockPermissionService, *vmock.MockUserMgmtService) {
+	ctrl := gomock.NewController(t)
+	ra := vmock.NewMockResourceAccess(ctrl)
+	ps := vmock.NewMockPermissionService(ctrl)
+	ums := vmock.NewMockUserMgmtService(ctrl)
+	cs := vmock.NewMockCatalogService(ctrl)
+	rs := &resourceService{ra: ra, ps: ps, ums: ums, cs: cs}
+	cs.EXPECT().ListInternalIDs(gomock.Any()).Return(internalCatalogIDs, nil).AnyTimes()
+	return rs, ra, ps, ums
+}
+
+func TestGetByID_S2SInternal_Bypass(t *testing.T) {
+	t.Run("bypasses view detail permission for internal resource with S2S marker", func(t *testing.T) {
+		rs, ra, _, ums := newS2STestService(t, []string{"cat-int"})
+		ra.EXPECT().GetByID(gomock.Any(), "r1").
+			Return(&interfaces.Resource{ID: "r1", CatalogID: "cat-int"}, nil)
+		ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
+
+		res, err := rs.GetByID(interfaces.WithS2SInternalAccess(context.Background()), "r1")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if res == nil || len(res.Operations) == 0 {
+			t.Fatalf("expected operations to be filled, got %+v", res)
+		}
+	})
+}
+
+func TestGetByID_Internal_NoMarker_Forbidden(t *testing.T) {
+	t.Run("rejects internal resource without S2S marker when permission filter returns empty", func(t *testing.T) {
+		rs, ra, ps, _ := newS2STestService(t, []string{"cat-int"})
+		ra.EXPECT().GetByID(gomock.Any(), "r1").
+			Return(&interfaces.Resource{ID: "r1", CatalogID: "cat-int"}, nil)
+		ps.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_INTERNAL_RESOURCE,
+			gomock.Any(), gomock.Any(), true, gomock.Any()).
+			Return(map[string]interfaces.PermissionResourceOps{}, nil)
+
+		_, err := rs.GetByID(context.Background(), "r1")
+		if err == nil {
+			t.Fatal("expected error")
+		}
+	})
+}
+
+func TestGetByID_NonInternal_WithMarker_StillAuthz(t *testing.T) {
+	t.Run("keeps per-account auth for non-internal resource with S2S marker", func(t *testing.T) {
+		rs, ra, ps, _ := newS2STestService(t, []string{})
+		ra.EXPECT().GetByID(gomock.Any(), "r1").
+			Return(&interfaces.Resource{ID: "r1", CatalogID: "cat-user"}, nil)
+		ps.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
+			gomock.Any(), gomock.Any(), true, gomock.Any()).
+			Return(map[string]interfaces.PermissionResourceOps{}, nil)
+
+		_, err := rs.GetByID(interfaces.WithS2SInternalAccess(context.Background()), "r1")
+		if err == nil {
+			t.Fatal("expected error")
+		}
+	})
+}

@@ -8,7 +8,6 @@ package interfaces
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/bytedance/sonic"
@@ -136,40 +135,40 @@ type ViewProperty struct {
 func (v *ViewProperty) UnmarshalJSON(data []byte) error {
 	// 1. 探测是否为纯字符串（通配符模式 "*" 或 投影模式 "field_a"）
 	var s string
-	if err := json.Unmarshal(data, &s); err == nil {
+	if err := sonic.Unmarshal(data, &s); err == nil {
 		v.Name = s
 		return nil
 	}
 
 	// 2. 探测是否为对象
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(data, &raw); err != nil {
+	var raw map[string]sonic.NoCopyRawMessage
+	if err := sonic.Unmarshal(data, &raw); err != nil {
 		return err
 	}
 
 	// 解码基类 Property 的字段 (Name, Type, DisplayName, OriginalName, Description, Features)
 	type PropertyAlias Property
 	var propAlias PropertyAlias
-	if err := json.Unmarshal(data, &propAlias); err != nil {
+	if err := sonic.Unmarshal(data, &propAlias); err != nil {
 		return err
 	}
 	v.Property = Property(propAlias)
 
 	// 解码 from_node
 	if rawFromNode, ok := raw["from_node"]; ok {
-		_ = json.Unmarshal(rawFromNode, &v.FromNode)
+		_ = sonic.Unmarshal(rawFromNode, &v.FromNode)
 	}
 
 	// 解码 from: 可能是 string (映射模式) 或 array (对齐模式)
 	if rawFrom, ok := raw["from"]; ok {
 		// 尝试 string
 		var fromStr string
-		if err := json.Unmarshal(rawFrom, &fromStr); err == nil {
+		if err := sonic.Unmarshal(rawFrom, &fromStr); err == nil {
 			v.From = fromStr
 		} else {
 			// 尝试 array
 			var fromList []*OutputFieldRef
-			if err := json.Unmarshal(rawFrom, &fromList); err == nil {
+			if err := sonic.Unmarshal(rawFrom, &fromList); err == nil {
 				v.FromList = fromList
 			}
 		}
@@ -185,7 +184,7 @@ func (v *ViewProperty) MarshalJSON() ([]byte, error) {
 	if v.Name != "" && v.Type == "" && v.From == "" && v.FromNode == "" &&
 		len(v.FromList) == 0 && v.DisplayName == "" && v.OriginalName == "" &&
 		v.Description == "" && len(v.Features) == 0 {
-		return json.Marshal(v.Name)
+		return sonic.Marshal(v.Name)
 	}
 
 	// 否则序列化为对象 (形态 3, 4, 5)
@@ -204,7 +203,7 @@ func (v *ViewProperty) MarshalJSON() ([]byte, error) {
 		tmp.From = v.From
 	}
 
-	return json.Marshal(tmp)
+	return sonic.Marshal(tmp)
 }
 
 func (v *ViewProperty) String() string {

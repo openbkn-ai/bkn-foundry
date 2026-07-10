@@ -8,12 +8,12 @@ package sqlglot
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
 
+	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-comm-go/logger"
 
 	"vega-backend/interfaces"
@@ -81,7 +81,7 @@ except Exception as e:
 	}
 
 	var result ExtractTablesResult
-	if err := json.Unmarshal(out.Bytes(), &result); err != nil {
+	if err := sonic.Unmarshal(out.Bytes(), &result); err != nil {
 		logger.Errorf("ExtractTables failed, %s", err.Error())
 		return nil, err
 	}
@@ -153,7 +153,7 @@ except Exception as e:
 	}
 
 	var result SQLParseResult
-	if err := json.Unmarshal(out.Bytes(), &result); err != nil {
+	if err := sonic.Unmarshal(out.Bytes(), &result); err != nil {
 		logger.Errorf("TranspileSQL failed, %s", err.Error())
 		return nil, err
 	}

@@ -697,3 +697,60 @@ func TestList_InternalCatalogCheckedSeparately(t *testing.T) {
 		t.Errorf("expected only 'c1' visible, got %v", result)
 	}
 }
+
+func newS2SCatalogService(t *testing.T) (
+	*catalogService, *mock_interfaces.MockCatalogAccess, *mock_interfaces.MockPermissionService, *mock_interfaces.MockUserMgmtService) {
+	t.Helper()
+
+	ctrl := gomock.NewController(t)
+	ca := mock_interfaces.NewMockCatalogAccess(ctrl)
+	ps := mock_interfaces.NewMockPermissionService(ctrl)
+	ums := mock_interfaces.NewMockUserMgmtService(ctrl)
+	cs := &catalogService{ca: ca, ps: ps, ums: ums}
+	return cs, ca, ps, ums
+}
+
+func TestCatalogGetByID_S2SInternal_Bypass(t *testing.T) {
+	cs, ca, _, ums := newS2SCatalogService(t)
+	ca.EXPECT().GetByID(gomock.Any(), "c1").
+		Return(&interfaces.Catalog{ID: "c1", Internal: true}, nil)
+	ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
+
+	ctx := interfaces.WithS2SInternalAccess(context.Background())
+	cat, err := cs.GetByID(ctx, "c1", false)
+	if err != nil {
+		t.Fatalf("internal catalog S2S access should pass, got error: %v", err)
+	}
+	if cat == nil || len(cat.Operations) == 0 {
+		t.Fatalf("expected operations to be filled, got %+v", cat)
+	}
+}
+
+func TestCatalogGetByID_Internal_NoMarker_Forbidden(t *testing.T) {
+	cs, ca, ps, _ := newS2SCatalogService(t)
+	ca.EXPECT().GetByID(gomock.Any(), "c1").
+		Return(&interfaces.Catalog{ID: "c1", Internal: true}, nil)
+	ps.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_INTERNAL_CATALOG,
+		gomock.Any(), gomock.Any(), true, gomock.Any()).
+		Return(map[string]interfaces.PermissionResourceOps{}, nil)
+
+	_, err := cs.GetByID(context.Background(), "c1", false)
+	if err == nil {
+		t.Fatalf("internal catalog without S2S marker should be forbidden")
+	}
+}
+
+func TestCatalogGetByID_NonInternal_WithMarker_StillAuthz(t *testing.T) {
+	cs, ca, ps, _ := newS2SCatalogService(t)
+	ca.EXPECT().GetByID(gomock.Any(), "c1").
+		Return(&interfaces.Catalog{ID: "c1", Internal: false}, nil)
+	ps.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_CATALOG,
+		gomock.Any(), gomock.Any(), true, gomock.Any()).
+		Return(map[string]interfaces.PermissionResourceOps{}, nil)
+
+	ctx := interfaces.WithS2SInternalAccess(context.Background())
+	_, err := cs.GetByID(ctx, "c1", false)
+	if err == nil {
+		t.Fatalf("non-internal catalog should still use per-account authorization")
+	}
+}

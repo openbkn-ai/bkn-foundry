@@ -39,9 +39,21 @@ func TestMapDataSourceTypeToDialect(t *testing.T) {
 }
 
 func TestMapDataSourceTypeToDialectUnsupported(t *testing.T) {
-	got, err := MapDataSourceTypeToDialect("oracle")
+	t.Run("returns error for unsupported source type", func(t *testing.T) {
+		got, err := MapDataSourceTypeToDialect("oracle")
 
-	require.Error(t, err)
-	assert.Empty(t, got)
-	assert.Contains(t, err.Error(), "unsupported dataSourceType: oracle")
+		require.Error(t, err)
+		assert.Empty(t, got)
+		assert.Contains(t, err.Error(), "unsupported dataSourceType: oracle")
+	})
+}
+
+func TestTranspileSQL(t *testing.T) {
+	t.Run("returns mapping error before invoking sqlglot", func(t *testing.T) {
+		got, err := TranspileSQL("select * from t", "mysql", "oracle")
+
+		require.Error(t, err)
+		assert.Nil(t, got)
+		assert.Contains(t, err.Error(), "unsupported dataSourceType: oracle")
+	})
 }

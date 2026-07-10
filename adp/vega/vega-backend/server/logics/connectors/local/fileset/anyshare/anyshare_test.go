@@ -8,12 +8,12 @@ package anyshare
 
 import (
 	"context"
-	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -247,7 +247,7 @@ func TestAnyShareConnectorSearchFiles(t *testing.T) {
 		assert.Equal(t, "Bearer token", r.Header.Get("Authorization"))
 
 		var payload map[string]any
-		require.NoError(t, json.NewDecoder(r.Body).Decode(&payload))
+		decodeAnyShareRequestJSON(t, r, &payload)
 		assert.Equal(t, "needle", payload["keyword"])
 		assert.Equal(t, []any{"doc-1/*"}, payload["range"])
 		assert.Equal(t, float64(10), payload["rows"])
@@ -417,4 +417,12 @@ func jsonResponse(statusCode int, body string) *http.Response {
 		Body:       io.NopCloser(strings.NewReader(body)),
 		Header:     make(http.Header),
 	}
+}
+
+func decodeAnyShareRequestJSON(t *testing.T, r *http.Request, out any) {
+	t.Helper()
+
+	body, err := io.ReadAll(r.Body)
+	require.NoError(t, err)
+	require.NoError(t, sonic.Unmarshal(body, out))
 }
