@@ -23,6 +23,9 @@ const (
 	// buildTaskInitStaleAfter init 停留超过该时长且队列无对应消息即判为消息丢失；
 	// 需大于创建事务提交→入队完成的间隙，避免把正常创建流程误判为卡死
 	buildTaskInitStaleAfter = 3 * time.Minute
+	// buildTaskStoppingStaleAfter stopping 停留超过该时长且队列无对应消息即判为 worker 已不在；
+	// 自动落到 stopped，避免任务永久无法删除或重跑。
+	buildTaskStoppingStaleAfter = 3 * time.Minute
 	// reconcileListPageSize Inspector 翻页大小
 	reconcileListPageSize = 100
 )
@@ -59,7 +62,9 @@ func (r *buildTaskReconciler) run() {
 
 // reconcileOnce 执行一轮对账
 func (r *buildTaskReconciler) reconcileOnce(ctx context.Context) error {
-	tasks, _, err := r.taskAccess.List(ctx, interfaces.BuildTasksQueryParams{Statuses: []string{interfaces.BuildTaskStatusInit}})
+	tasks, _, err := r.taskAccess.List(ctx, interfaces.BuildTasksQueryParams{
+		Statuses: []string{interfaces.BuildTaskStatusInit, interfaces.BuildTaskStatusStopping},
+	})
 	if err != nil {
 		return err
 	}
@@ -72,19 +77,28 @@ func (r *buildTaskReconciler) reconcileOnce(ctx context.Context) error {
 		return err
 	}
 
-	stuck := findStuckBuildTasks(tasks, queued, time.Now(), buildTaskInitStaleAfter)
-	if len(stuck) == 0 {
-		return nil
+	now := time.Now()
+	stuckInit := findStuckBuildTasks(tasks, queued, now, buildTaskInitStaleAfter)
+	if len(stuckInit) > 0 {
+		client := r.aqa.CreateClient()
+		defer func() { _ = client.Close() }()
+		for _, task := range stuckInit {
+			if err := enqueueBuildTaskMessage(client, task); err != nil {
+				logger.Errorf("Reconciler re-enqueue build task %s failed: %v", task.ID, err)
+				continue
+			}
+			logger.Infof("Reconciler re-enqueued stuck build task %s (init since %s)",
+				task.ID, time.UnixMilli(task.UpdateTime).Format(time.RFC3339))
+		}
 	}
 
-	client := r.aqa.CreateClient()
-	defer func() { _ = client.Close() }()
-	for _, task := range stuck {
-		if err := enqueueBuildTaskMessage(client, task); err != nil {
-			logger.Errorf("Reconciler re-enqueue build task %s failed: %v", task.ID, err)
+	stuckStopping := findStuckStoppingBuildTasks(tasks, queued, now, buildTaskStoppingStaleAfter)
+	for _, task := range stuckStopping {
+		if err := r.taskAccess.UpdateStatus(ctx, task.ID, map[string]interface{}{"status": interfaces.BuildTaskStatusStopped}); err != nil {
+			logger.Errorf("Reconciler finalize stopping build task %s failed: %v", task.ID, err)
 			continue
 		}
-		logger.Infof("Reconciler re-enqueued stuck build task %s (init since %s)",
+		logger.Infof("Reconciler finalized stuck stopping build task %s (stopping since %s)",
 			task.ID, time.UnixMilli(task.UpdateTime).Format(time.RFC3339))
 	}
 	return nil
@@ -96,6 +110,25 @@ func findStuckBuildTasks(tasks []*interfaces.BuildTask, queuedIDs map[string]str
 	stuck := []*interfaces.BuildTask{}
 	for _, task := range tasks {
 		if task.Status != interfaces.BuildTaskStatusInit {
+			continue
+		}
+		if now.Sub(time.UnixMilli(task.UpdateTime)) < staleAfter {
+			continue
+		}
+		if _, ok := queuedIDs[task.ID]; ok {
+			continue
+		}
+		stuck = append(stuck, task)
+	}
+	return stuck
+}
+
+// findStuckStoppingBuildTasks 返回卡死停止任务：stopping 停留超过 staleAfter 且队列中无对应消息。
+// 队列中仍存在消息（尤其 active）时不处理，避免把仍在响应停止的 worker 提前落停。
+func findStuckStoppingBuildTasks(tasks []*interfaces.BuildTask, queuedIDs map[string]struct{}, now time.Time, staleAfter time.Duration) []*interfaces.BuildTask {
+	stuck := []*interfaces.BuildTask{}
+	for _, task := range tasks {
+		if task.Status != interfaces.BuildTaskStatusStopping {
 			continue
 		}
 		if now.Sub(time.UnixMilli(task.UpdateTime)) < staleAfter {
