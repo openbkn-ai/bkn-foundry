@@ -81,6 +81,14 @@ func (bh *batchBuildHandler) HandleTask(ctx context.Context, task *asynq.Task) e
 		}
 		return nil
 	}
+	claimed, err := claimBuildTaskExecution(ctx, bh.taskAccess, taskID)
+	if err != nil {
+		return fmt.Errorf("claim build task execution failed: %w", err)
+	}
+	if !claimed {
+		logger.Infof("Task %s is already claimed or not executable, skip execution", taskID)
+		return nil
+	}
 	// 异步任务无原始请求上下文，以任务创建者身份执行下游权限检查
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, buildTaskInfo.Creator)
 	resourceID := buildTaskInfo.ResourceID
@@ -156,12 +164,6 @@ func (bh *batchBuildHandler) executeBuild(ctx context.Context, resource *interfa
 		return fmt.Errorf("create local index failed: %w", err)
 	}
 	indexName := getIndexName(resource.ID, buildTaskInfo.ID)
-
-	// Update task status to running; 实际开始执行时清掉上一轮残留的错误信息
-	err = bh.taskAccess.UpdateStatus(ctx, buildTaskInfo.ID, map[string]interface{}{"status": interfaces.BuildTaskStatusRunning, "errorMsg": ""})
-	if err != nil {
-		return fmt.Errorf("update build task status failed: %w", err)
-	}
 
 	lastSyncedMark := buildTaskInfo.SyncedMark
 	if executeType == interfaces.BuildTaskExecuteTypeFull {

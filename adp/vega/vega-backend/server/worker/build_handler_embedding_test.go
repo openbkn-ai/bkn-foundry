@@ -41,6 +41,9 @@ func TestEmbeddingHandlerHandleTask(t *testing.T) {
 				gotAccount, hasAccount = workerAccountFromCtx(ctx)
 				return nil, nil
 			})
+		taskAccess.EXPECT().UpdateStatus(gomock.Any(), "t1",
+			map[string]interface{}{"status": interfaces.BuildTaskStatusFailed, "errorMsg": "resource not found"}).
+			Return(nil)
 
 		task := asynq.NewTask("build:embedding", workerBuildTaskPayload(t, interfaces.EmbeddingBuildTaskMessage{TaskID: "t1"}))
 		require.NoError(t, eh.HandleTask(context.Background(), task))

@@ -170,6 +170,44 @@ func TestBuildTaskAccessUpdateStatus(t *testing.T) {
 	})
 }
 
+func TestBuildTaskAccessUpdateStatusIfIn(t *testing.T) {
+	t.Run("returns true when a row is claimed", func(t *testing.T) {
+		db, mock, access := newBuildTaskAccessMock(t)
+		defer func() { _ = db.Close() }()
+
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_build_task SET f_status = ?, f_error_msg = ?, f_update_time = ? WHERE f_id = ? AND f_status IN (?)")).
+			WithArgs(interfaces.BuildTaskStatusRunning, "", sqlmock.AnyArg(), "task-1", interfaces.BuildTaskStatusInit).
+			WillReturnResult(sqlmock.NewResult(0, 1))
+
+		claimed, err := access.UpdateStatusIfIn(context.Background(), "task-1",
+			[]string{interfaces.BuildTaskStatusInit},
+			map[string]interface{}{"status": interfaces.BuildTaskStatusRunning, "errorMsg": ""},
+		)
+
+		require.NoError(t, err)
+		assert.True(t, claimed)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("returns false when status does not match", func(t *testing.T) {
+		db, mock, access := newBuildTaskAccessMock(t)
+		defer func() { _ = db.Close() }()
+
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_build_task SET f_status = ?, f_update_time = ? WHERE f_id = ? AND f_status IN (?)")).
+			WithArgs(interfaces.BuildTaskStatusRunning, sqlmock.AnyArg(), "task-1", interfaces.BuildTaskStatusInit).
+			WillReturnResult(sqlmock.NewResult(0, 0))
+
+		claimed, err := access.UpdateStatusIfIn(context.Background(), "task-1",
+			[]string{interfaces.BuildTaskStatusInit},
+			map[string]interface{}{"status": interfaces.BuildTaskStatusRunning},
+		)
+
+		require.NoError(t, err)
+		assert.False(t, claimed)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+}
+
 func TestBuildTaskAccessGetStatus(t *testing.T) {
 	t.Run("returns status", func(t *testing.T) {
 		db, mock, access := newBuildTaskAccessMock(t)

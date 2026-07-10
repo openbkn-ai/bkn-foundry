@@ -273,6 +273,49 @@ func (bta *buildTaskAccess) UpdateStatus(ctx context.Context, id string, updates
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Update build task status")
 	defer span.End()
 
+	sqlStr, vals, err := buildUpdateStatusSQL(id, nil, updates)
+	if err != nil {
+		span.SetStatus(codes.Error, "Build sql failed")
+		return err
+	}
+
+	_, err = bta.db.ExecContext(ctx, sqlStr, vals...)
+	if err != nil {
+		otellog.LogError(ctx, "Update build task status failed", err)
+		return err
+	}
+
+	span.SetStatus(codes.Ok, "")
+	return nil
+}
+
+// UpdateStatusIfIn updates a build task only when the current status is in allowedStatuses.
+func (bta *buildTaskAccess) UpdateStatusIfIn(ctx context.Context, id string, allowedStatuses []string, updates map[string]interface{}) (bool, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Update build task status if in")
+	defer span.End()
+
+	sqlStr, vals, err := buildUpdateStatusSQL(id, allowedStatuses, updates)
+	if err != nil {
+		span.SetStatus(codes.Error, "Build sql failed")
+		return false, err
+	}
+
+	result, err := bta.db.ExecContext(ctx, sqlStr, vals...)
+	if err != nil {
+		otellog.LogError(ctx, "Update build task status failed", err)
+		return false, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		otellog.LogError(ctx, "Get rows affected failed", err)
+		return false, err
+	}
+
+	span.SetStatus(codes.Ok, "")
+	return affected > 0, nil
+}
+
+func buildUpdateStatusSQL(id string, allowedStatuses []string, updates map[string]interface{}) (string, []interface{}, error) {
 	fieldMap := map[string]string{
 		"status":           "f_status",
 		"totalCount":       "f_total_count",
@@ -288,31 +331,44 @@ func (bta *buildTaskAccess) UpdateStatus(ctx context.Context, id string, updates
 		"fulltextAnalyzer": "f_fulltext_analyzer",
 		"failureDetail":    "f_failure_detail",
 	}
+	fieldOrder := []string{
+		"status",
+		"totalCount",
+		"syncedCount",
+		"vectorizedCount",
+		"syncedMark",
+		"errorMsg",
+		"embeddingFields",
+		"buildKeyFields",
+		"embeddingModel",
+		"modelDimensions",
+		"fulltextFields",
+		"fulltextAnalyzer",
+		"failureDetail",
+	}
 
 	builder := sq.Update(BUILD_TASK_TABLE_NAME)
-	for field, value := range updates {
+	for _, field := range fieldOrder {
+		value, exists := updates[field]
+		if !exists {
+			continue
+		}
 		if column, ok := fieldMap[field]; ok {
 			builder = builder.Set(column, value)
 		}
 	}
 
-	sqlStr, vals, err := builder.
+	builder = builder.
 		Set("f_update_time", time.Now().UnixMilli()).
-		Where(sq.Eq{"f_id": id}).
-		ToSql()
-	if err != nil {
-		span.SetStatus(codes.Error, "Build sql failed")
-		return err
+		Where(sq.Eq{"f_id": id})
+	if len(allowedStatuses) > 0 {
+		builder = builder.Where(sq.Eq{"f_status": allowedStatuses})
 	}
-
-	_, err = bta.db.ExecContext(ctx, sqlStr, vals...)
+	sqlStr, vals, err := builder.ToSql()
 	if err != nil {
-		otellog.LogError(ctx, "Update build task status failed", err)
-		return err
+		return "", nil, err
 	}
-
-	span.SetStatus(codes.Ok, "")
-	return nil
+	return sqlStr, vals, nil
 }
 
 // GetStatus retrieves the status of a build task by ID.

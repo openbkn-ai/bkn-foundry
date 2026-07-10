@@ -86,7 +86,9 @@ func (eh *embeddingHandler) HandleTask(ctx context.Context, task *asynq.Task) er
 	}
 	if resource == nil {
 		logger.Errorf("Resource not found for task %s, resourceID: %s", taskID, buildTaskInfo.ResourceID)
-		// Resource not found, return nil to  stop the task
+		if err := eh.taskAccess.UpdateStatus(ctx, taskID, map[string]interface{}{"status": interfaces.BuildTaskStatusFailed, "errorMsg": "resource not found"}); err != nil {
+			return fmt.Errorf("update build task status failed: %w", err)
+		}
 		return nil
 	}
 
@@ -100,8 +102,11 @@ func (eh *embeddingHandler) HandleTask(ctx context.Context, task *asynq.Task) er
 	embed_err := eh.executeEmbedding(ctx, resource, buildTaskInfo)
 	logger.Infof("executeEmbedding completed")
 	if embed_err != nil {
-		// Update task status to failed
-		err = eh.taskAccess.UpdateStatus(ctx, taskID, map[string]interface{}{"errorMsg": embed_err.Error()})
+		updates := map[string]interface{}{"errorMsg": embed_err.Error()}
+		if isAsynqFinalRetry(ctx) {
+			updates["status"] = interfaces.BuildTaskStatusFailed
+		}
+		err = eh.taskAccess.UpdateStatus(ctx, taskID, updates)
 		if err != nil {
 			return fmt.Errorf("update build task status failed: %w", err)
 		}

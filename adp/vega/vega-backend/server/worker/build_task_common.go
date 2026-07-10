@@ -73,6 +73,29 @@ func updateResourceIndexName(ctx context.Context, resource *interfaces.Resource,
 	return nil
 }
 
+func claimBuildTaskExecution(ctx context.Context, taskAccess interfaces.BuildTaskAccess, taskID string) (bool, error) {
+	allowedStatuses := []string{interfaces.BuildTaskStatusInit}
+	if retryCount, ok := asynq.GetRetryCount(ctx); ok && retryCount > 0 {
+		allowedStatuses = append(allowedStatuses, interfaces.BuildTaskStatusRunning)
+	}
+	return taskAccess.UpdateStatusIfIn(ctx, taskID,
+		allowedStatuses,
+		map[string]interface{}{"status": interfaces.BuildTaskStatusRunning, "errorMsg": ""},
+	)
+}
+
+func isAsynqFinalRetry(ctx context.Context) bool {
+	retryCount, ok := asynq.GetRetryCount(ctx)
+	if !ok {
+		return false
+	}
+	maxRetry, ok := asynq.GetMaxRetry(ctx)
+	if !ok {
+		return false
+	}
+	return retryCount >= maxRetry
+}
+
 // createManagedLocalIndex creates a build-task local index through LocalIndexManager.
 func createManagedLocalIndex(ctx context.Context, lim interfaces.LocalIndexManager, buildTask *interfaces.BuildTask, resource *interfaces.Resource) error {
 	newResource := buildLocalIndexResource(buildTask, resource)

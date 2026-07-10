@@ -9,6 +9,7 @@ package build_task
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"net/http"
@@ -240,10 +241,15 @@ func (bts *buildTaskService) enqueueBuildTask(ctx context.Context, buildTask *in
 	client := logics.AQA.CreateClient()
 	if _, err := client.Enqueue(asynqTask,
 		asynq.Queue(interfaces.DefaultQueue),
+		asynq.TaskID(interfaces.BuildTaskQueueTaskID(typename, buildTask.ID)),
 		asynq.MaxRetry(interfaces.BUILD_TASK_MAX_RETRY_COUNT),
 		asynq.Timeout(math.MaxInt64),
 		asynq.Deadline(time.Unix(math.MaxInt64/1000000000, math.MaxInt64%1000000000)),
 	); err != nil {
+		if errors.Is(err, asynq.ErrTaskIDConflict) {
+			logger.Infof("Build task %s is already enqueued", buildTask.ID)
+			return
+		}
 		otellog.LogError(ctx, "Enqueue build task failed", err)
 	} else {
 		logger.Infof("Build task %s enqueued for execution", buildTask.ID)

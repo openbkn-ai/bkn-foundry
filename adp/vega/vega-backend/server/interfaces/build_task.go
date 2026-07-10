@@ -42,6 +42,10 @@ const (
 	BUILD_PREFIX = "vega-build"
 )
 
+func BuildTaskQueueTaskID(taskType string, taskID string) string {
+	return taskType + ":" + taskID
+}
+
 // BuildTaskStatusOrder 定义 default/status 排序的状态桶优先级(下标+1 即优先级)。
 // 活跃任务(running/init)置顶是核心诉求;顺序写死,既是 SQL CASE 的唯一来源,
 // 也保证「构建中」永远排在第一页。

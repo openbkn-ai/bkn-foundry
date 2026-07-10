@@ -99,6 +99,14 @@ func (sh *streamingBuildHandler) HandleTask(ctx context.Context, task *asynq.Tas
 		}
 		return nil
 	}
+	claimed, err := claimBuildTaskExecution(ctx, sh.taskAccess, taskID)
+	if err != nil {
+		return fmt.Errorf("claim build task execution failed: %w", err)
+	}
+	if !claimed {
+		logger.Infof("Task %s is already claimed or not executable, skip execution", taskID)
+		return nil
+	}
 	// 异步任务无原始请求上下文，以任务创建者身份执行下游权限检查
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, buildTaskInfo.Creator)
 	resourceID := buildTaskInfo.ResourceID
@@ -178,14 +186,14 @@ func (sh *streamingBuildHandler) HandleTask(ctx context.Context, task *asynq.Tas
 		logger.Infof("Embedding task sent for task %s", taskID)
 	}
 
-	// Update task status to running
-	_ = sh.taskAccess.UpdateStatus(ctx, taskID, map[string]interface{}{"status": interfaces.BuildTaskStatusRunning, "errorMsg": ""})
-
 	// Execute build
 	err = sh.executeBuild(ctx, catalog, resource, buildTaskInfo, database, sourceId)
 	if err != nil {
-		// Update task status to failed
-		_ = sh.taskAccess.UpdateStatus(ctx, taskID, map[string]interface{}{"errorMsg": err.Error()})
+		updates := map[string]interface{}{"errorMsg": err.Error()}
+		if isAsynqFinalRetry(ctx) {
+			updates["status"] = interfaces.BuildTaskStatusFailed
+		}
+		_ = sh.taskAccess.UpdateStatus(ctx, taskID, updates)
 		return err
 	}
 

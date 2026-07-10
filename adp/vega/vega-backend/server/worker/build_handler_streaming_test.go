@@ -29,8 +29,12 @@ func TestStreamingBuildHandlerHandleTask(t *testing.T) {
 		creator := interfaces.AccountInfo{ID: "u1", Type: "user"}
 
 		taskAccess.EXPECT().GetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{
-			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusRunning, Creator: creator,
+			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusInit, Creator: creator,
 		}, nil)
+		taskAccess.EXPECT().UpdateStatusIfIn(gomock.Any(), "t1",
+			[]string{interfaces.BuildTaskStatusInit},
+			map[string]interface{}{"status": interfaces.BuildTaskStatusRunning, "errorMsg": ""}).
+			Return(true, nil)
 		resAccess.EXPECT().GetByID(gomock.Any(), "r1").Return(&interfaces.Resource{ID: "r1", CatalogID: "c1"}, nil)
 
 		var gotAccount interfaces.AccountInfo
@@ -48,5 +52,22 @@ func TestStreamingBuildHandlerHandleTask(t *testing.T) {
 		assert.Contains(t, err.Error(), "get catalog failed")
 		require.True(t, hasAccount)
 		assert.Equal(t, creator, gotAccount)
+	})
+
+	t.Run("skips duplicate message when task is already claimed", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		taskAccess := vmock.NewMockBuildTaskAccess(ctrl)
+		sh := &streamingBuildHandler{taskAccess: taskAccess}
+
+		taskAccess.EXPECT().GetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{
+			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusInit,
+		}, nil)
+		taskAccess.EXPECT().UpdateStatusIfIn(gomock.Any(), "t1",
+			[]string{interfaces.BuildTaskStatusInit},
+			map[string]interface{}{"status": interfaces.BuildTaskStatusRunning, "errorMsg": ""}).
+			Return(false, nil)
+
+		task := asynq.NewTask("build:streaming", workerBuildTaskPayload(t, interfaces.StreamingBuildTaskMessage{TaskID: "t1"}))
+		require.NoError(t, sh.HandleTask(context.Background(), task))
 	})
 }
