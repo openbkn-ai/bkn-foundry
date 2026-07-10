@@ -511,7 +511,7 @@ func TestRerankRelationPathsAcrossNetworks(t *testing.T) {
 	}
 
 	t.Run("PerNetworkAndTotal", func(t *testing.T) {
-		res := svc.rankRelationTypes(context.Background(), "query", objectTypes, relationTypes, 3, true)
+		res := svc.rankRelationTypes(context.Background(), "query", objectTypes, relationTypes, 3, true, "")
 		if len(res) != 3 {
 			t.Fatalf("Expected 3 relations, got %d", len(res))
 		}
@@ -524,7 +524,7 @@ func TestRerankRelationPathsAcrossNetworks(t *testing.T) {
 	})
 
 	t.Run("GlobalTotalLimit", func(t *testing.T) {
-		res := svc.rankRelationTypes(context.Background(), "query", objectTypes, relationTypes, 1, true)
+		res := svc.rankRelationTypes(context.Background(), "query", objectTypes, relationTypes, 1, true, "")
 		if len(res) != 1 {
 			t.Fatalf("Expected 1 relation, got %d", len(res))
 		}
@@ -532,6 +532,43 @@ func TestRerankRelationPathsAcrossNetworks(t *testing.T) {
 			t.Fatalf("Expected rel_b first, got %s", res[0].ID)
 		}
 	})
+}
+
+// TestRankRelationTypes_RerankUnavailable_DegradesToScore 验证 #114 Phase A：
+// reranker 不可用时降级到粗召回 _score 排序（保留相关性），而非丢相关性的名称匹配。
+func TestRankRelationTypes_RerankUnavailable_DegradesToScore(t *testing.T) {
+	svc := &localSearchImpl{
+		logger:       &mockLogger{},
+		rerankClient: &mockRerankClient{rerankError: errors.New("ModelFactory.ExternalSmallModel.Used.NameNotExist")},
+	}
+	objectTypes := []*interfaces.ObjectType{{ID: "obj_1", Name: "对象1"}, {ID: "obj_2", Name: "对象2"}}
+	// _score 无序给入：期望按 _score 降序返回（rel_b=0.9 > rel_c=0.8 > rel_a=0.3）
+	relationTypes := []*interfaces.RelationType{
+		{ID: "rel_a", Name: "关系A", Score: 0.3, SourceObjectTypeID: "obj_1", TargetObjectTypeID: "obj_2"},
+		{ID: "rel_b", Name: "关系B", Score: 0.9, SourceObjectTypeID: "obj_2", TargetObjectTypeID: "obj_1"},
+		{ID: "rel_c", Name: "关系C", Score: 0.8, SourceObjectTypeID: "obj_1", TargetObjectTypeID: "obj_2"},
+	}
+
+	res := svc.rankRelationTypes(context.Background(), "query", objectTypes, relationTypes, 2, true, "")
+	if len(res) != 2 {
+		t.Fatalf("Expected 2 relations, got %d", len(res))
+	}
+	if res[0].ID != "rel_b" || res[1].ID != "rel_c" {
+		t.Fatalf("Expected [rel_b, rel_c] by _score, got [%s, %s]", res[0].ID, res[1].ID)
+	}
+}
+
+// TestRankRelationTypesByScore_AllZero_SignalsFallback 验证 _score 全 0 时返回 ok=false，
+// 交由上层退到名称匹配。
+func TestRankRelationTypesByScore_AllZero_SignalsFallback(t *testing.T) {
+	relations := []*interfaces.RelationType{{ID: "rel_a"}, {ID: "rel_b"}}
+	if _, ok := rankRelationTypesByScore(relations, 2); ok {
+		t.Fatal("Expected ok=false when all _score are zero")
+	}
+	scored := []*interfaces.RelationType{{ID: "rel_a", Score: 0.1}}
+	if _, ok := rankRelationTypesByScore(scored, 1); !ok {
+		t.Fatal("Expected ok=true when some _score is non-zero")
+	}
 }
 
 func TestCalculateRelevanceScore(t *testing.T) {

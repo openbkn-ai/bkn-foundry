@@ -150,8 +150,9 @@ type OpenSearchConfig struct {
 
 // KnConceptSearchConfig knowledge network concept search configuration
 type KnConceptSearchConfig struct {
-	ConceptRecallSize int `yaml:"concept_recall_size"` // Concept rough recall size
-	KnnKValue         int `yaml:"knn_k"`               // knn k value
+	ConceptRecallSize int    `yaml:"concept_recall_size"`             // Concept rough recall size
+	KnnKValue         int    `yaml:"knn_k"`                           // knn k value
+	RerankModel       string `yaml:"rerank_model" default:"reranker"` // 关系精排小模型名；空则回退 "reranker"。可指向工厂里实际注册的 rerank 小模型，无需改代码
 }
 
 // MFModelAPI 配置使用统一的 PrivateBaseConfig 结构

@@ -23,6 +23,9 @@ type KnSearchLocalRequest struct {
 	RetrievalConfig *KnSearchRetrievalConfig `json:"retrieval_config,omitempty"`
 	OnlySchema      bool                     `json:"only_schema" default:"false"`
 	EnableRerank    bool                     `json:"enable_rerank" default:"true"`
+	// RerankModel overrides the relation fine-ranking small model; empty falls back
+	// to the deployment default (config.concept_search_config.rerank_model).
+	RerankModel string `json:"rerank_model,omitempty"`
 	// IncludeColumns adds each data property's physical column name (mapped_field)
 	// to the response for run_sql. Off by default to keep responses compact.
 	IncludeColumns bool `json:"include_columns" default:"false"`

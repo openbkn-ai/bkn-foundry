@@ -286,6 +286,7 @@ type KnSearchReq struct {
 	RetrievalConfig any                   `json:"retrieval_config,omitempty"`
 	OnlySchema      *bool                 `json:"only_schema,omitempty"`
 	EnableRerank    *bool                 `json:"enable_rerank,omitempty"`
+	RerankModel     *string               `json:"rerank_model,omitempty"` // 精排小模型名覆盖；空走部署级默认
 	IncludeColumns  *bool                 `json:"include_columns,omitempty"`
 }
 

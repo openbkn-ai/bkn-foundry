@@ -33,6 +33,9 @@ type mfModelAPIClient struct {
 	logger     interfaces.Logger
 	baseURL    string
 	httpClient interfaces.HTTPClient
+	// defaultRerankModel 精排小模型名的部署级默认值（config.concept_search_config.rerank_model，
+	// 默认 "reranker"）。Rerank 收到空 model 时用它，避免把模型名硬编码进代码。
+	defaultRerankModel string
 }
 
 var (
@@ -46,9 +49,10 @@ func NewMFModelAPIClient() *mfModelAPIClient {
 	mfModelAPIClientOnce.Do(func() {
 		conf := config.NewConfigLoader()
 		mfModelAPIClientInst = &mfModelAPIClient{
-			logger:     conf.GetLogger(),
-			baseURL:    conf.MFModelAPI.BuildURL("/api/private/mf-model-api"),
-			httpClient: rest.NewHTTPClient(),
+			logger:             conf.GetLogger(),
+			baseURL:            conf.MFModelAPI.BuildURL("/api/private/mf-model-api"),
+			httpClient:         rest.NewHTTPClient(),
+			defaultRerankModel: conf.ConceptSearchConfig.RerankModel,
 		}
 	})
 	return mfModelAPIClientInst
@@ -124,10 +128,14 @@ func (c *mfModelAPIClient) Chat(ctx context.Context, req *interfaces.LLMChatReq)
 // DrivenRerankClient 接口实现
 // ============================================================
 
-// Rerank 对文档进行重排序；model 为空时回退默认 "reranker"
+// Rerank 对文档进行重排序。model 解析优先级：入参 model > 部署级默认
+// (config.concept_search_config.rerank_model) > 字面量 "reranker"（最后兜底）。
 func (c *mfModelAPIClient) Rerank(ctx context.Context, query string, documents []string, model string) (*interfaces.RerankResp, error) {
 	url := fmt.Sprintf("%s%s", c.baseURL, rerankURI)
 
+	if model == "" {
+		model = c.defaultRerankModel
+	}
 	if model == "" {
 		model = "reranker"
 	}
