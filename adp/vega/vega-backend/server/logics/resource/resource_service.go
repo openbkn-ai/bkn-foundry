@@ -11,6 +11,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"reflect"
 	"sync"
 	"time"
 
@@ -40,6 +41,12 @@ var (
 )
 
 const resourceAuthResourcePermissionBatchSize = 10000
+
+var activeResourceBuildTaskStatuses = []string{
+	interfaces.BuildTaskStatusInit,
+	interfaces.BuildTaskStatusRunning,
+	interfaces.BuildTaskStatusStopping,
+}
 
 type resourceService struct {
 	appSetting *common.AppSetting
@@ -614,6 +621,11 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 		return err
 	}
 
+	if err := rs.rejectBuildRelevantUpdateWhenActiveBuildTask(ctx, resource, req); err != nil {
+		span.SetStatus(codes.Error, "Resource has active build task")
+		return err
+	}
+
 	switch resource.Category {
 	case interfaces.ResourceCategoryLogicView:
 		logicType, err := rs.validateLogicDefinition(ctx, req)
@@ -852,6 +864,37 @@ func (rs *resourceService) UpdateResource(ctx context.Context, resource *interfa
 
 	span.SetStatus(codes.Ok, "")
 	return nil
+}
+
+func (rs *resourceService) rejectBuildRelevantUpdateWhenActiveBuildTask(ctx context.Context, resource *interfaces.Resource, req *interfaces.ResourceRequest) error {
+	if !resourceBuildRelevantFieldsChanged(resource, req) {
+		return nil
+	}
+	tasks, _, err := rs.bta.List(ctx, interfaces.BuildTasksQueryParams{
+		PaginationQueryParams: interfaces.PaginationQueryParams{Limit: 1},
+		ResourceID:            resource.ID,
+		Statuses:              activeResourceBuildTaskStatuses,
+	})
+	if err != nil {
+		otellog.LogError(ctx, "Check active build task failed", err)
+		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_GetFailed).
+			WithErrorDetails(err.Error())
+	}
+	if len(tasks) > 0 {
+		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_Exist).
+			WithErrorDetails("resource has an active build task; update build-relevant fields after it finishes")
+	}
+	return nil
+}
+
+func resourceBuildRelevantFieldsChanged(resource *interfaces.Resource, req *interfaces.ResourceRequest) bool {
+	if resource.Category == interfaces.ResourceCategoryLogicView {
+		return !reflect.DeepEqual(resource.LogicDefinition, req.LogicDefinition)
+	}
+	return resource.Database != req.Database ||
+		resource.SourceIdentifier != req.SourceIdentifier ||
+		!reflect.DeepEqual(resource.SourceMetadata, req.SourceMetadata) ||
+		!reflect.DeepEqual(resource.SchemaDefinition, req.SchemaDefinition)
 }
 
 // ListAuthResources lists resource auth resources with filters.

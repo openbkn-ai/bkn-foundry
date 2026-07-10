@@ -323,28 +323,6 @@ func Test_BuildTaskRestHandler_StartBuildTask(t *testing.T) {
 	})
 }
 
-func Test_BuildTaskRestHandler_UpdateBuildTaskConfig(t *testing.T) {
-	restoreGinMode := setGinMode()
-	defer restoreGinMode()
-
-	t.Run("updates build task config", func(t *testing.T) {
-		engine, bts, _ := setupBuildTaskHandlerTest(t)
-		bts.EXPECT().UpdateBuildTaskConfig(gomock.Any(), "task-1", gomock.Any()).
-			DoAndReturn(func(_ context.Context, _ string, req *interfaces.UpdateBuildTaskConfigRequest) error {
-				assert.Equal(t, "title", req.EmbeddingFields)
-				return nil
-			})
-
-		req := httptest.NewRequest(http.MethodPut, "/api/vega-backend/in/v1/build-tasks/task-1", strings.NewReader(`{"embedding_fields":"title"}`))
-		req.Header.Set("Content-Type", "application/json")
-		w := httptest.NewRecorder()
-
-		engine.ServeHTTP(w, req)
-
-		require.Equal(t, http.StatusAccepted, w.Result().StatusCode)
-	})
-}
-
 func Test_BuildTaskRestHandler_StopBuildTask(t *testing.T) {
 	restoreGinMode := setGinMode()
 	defer restoreGinMode()

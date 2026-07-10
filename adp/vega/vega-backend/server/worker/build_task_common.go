@@ -160,8 +160,8 @@ func analyzerOf(config map[string]any) string {
 // 集合内字段补齐(并校正 analyzer)、集合外字段移除残留。返回是否有改动。
 //
 // 批量构建任务是该资源 fulltext 配置的唯一来源，故可权威重写。必须移除残留：
-// 编辑任务去掉某个 fulltext 字段后(PUT /build-tasks/:id)，若只增不减，旧特性留在
-// schema 里，drop+recreate 仍会按残留特性重建出多余子字段。analyzer 为空走默认分词器。
+// 新建构建任务版本去掉某个 fulltext 字段后，若只增不减，旧特性留在 schema 里，
+// 后续建索引仍会按残留特性重建出多余子字段。analyzer 为空走默认分词器。
 func reconcileFulltextFeatures(resource *interfaces.Resource, fulltextFields, analyzer string) bool {
 	set := fieldNameSet(fulltextFields)
 	var config map[string]any

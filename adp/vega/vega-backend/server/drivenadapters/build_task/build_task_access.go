@@ -203,6 +203,7 @@ func (bta *buildTaskAccess) GetByResourceID(ctx context.Context, resourceID stri
 	sqlStr, vals, err := sq.Select(buildTaskColumns()...).
 		From(BUILD_TASK_TABLE_NAME).
 		Where(sq.Eq{"f_resource_id": resourceID}).
+		OrderBy(buildOrderByClause(interfaces.BuildTaskOrderByDefault, interfaces.DEFAULT_BUILD_TASK_ORDER)).
 		Limit(1).
 		ToSql()
 	if err != nil {

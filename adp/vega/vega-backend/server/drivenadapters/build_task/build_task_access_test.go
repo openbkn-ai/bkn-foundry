@@ -95,7 +95,7 @@ func TestBuildTaskAccessGetByResourceID(t *testing.T) {
 		task := sampleBuildTask()
 
 		rows := sqlmock.NewRows(buildTaskColumns()).AddRow(buildTaskRowValues(task)...)
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT " + joinBuildTaskColumns() + " FROM t_build_task WHERE f_resource_id = ? LIMIT 1")).
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT " + joinBuildTaskColumns() + " FROM t_build_task WHERE f_resource_id = ? ORDER BY " + statusBucketCase() + " ASC, f_create_time DESC LIMIT 1")).
 			WithArgs(task.ResourceID).
 			WillReturnRows(rows)
 
