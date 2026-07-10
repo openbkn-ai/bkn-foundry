@@ -81,6 +81,14 @@ func (bh *batchBuildHandler) HandleTask(ctx context.Context, task *asynq.Task) e
 		}
 		return nil
 	}
+	claimed, err := claimBuildTaskExecution(ctx, bh.taskAccess, taskID)
+	if err != nil {
+		return fmt.Errorf("claim build task execution failed: %w", err)
+	}
+	if !claimed {
+		logger.Infof("Task %s is already claimed or not executable, skip execution", taskID)
+		return nil
+	}
 	// 异步任务无原始请求上下文，以任务创建者身份执行下游权限检查
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, buildTaskInfo.Creator)
 	resourceID := buildTaskInfo.ResourceID
@@ -136,15 +144,11 @@ func advanceCursor(cursor []interfaces.KeyValue, keys []string, lastItem map[str
 
 // executeBuild executes the build logic
 func (bh *batchBuildHandler) executeBuild(ctx context.Context, resource *interfaces.Resource, buildTaskInfo *interfaces.BuildTask, executeType string) error {
-	// 全文字段：把 fulltext 特性对账写回资源 schema 并持久化。必须在建索引前做，
-	// 才能让 createLocalIndex 据此生成 text 子字段 mapping；同时让查询侧
-	// fulltextFieldName 从资源 schema 解析出 `字段.fulltext` 命中分词子字段。
-	// 始终对账(不限 FulltextFields 非空)：编辑任务去掉全文字段后须清残留特性。
-	if reconcileFulltextFeatures(resource, buildTaskInfo.FulltextFields, buildTaskInfo.FulltextAnalyzer) {
-		if err := bh.resAccess.Update(ctx, resource); err != nil {
-			return fmt.Errorf("persist fulltext schema failed: %w", err)
-		}
+	buildResource, err := buildResourceForTask(resource, buildTaskInfo)
+	if err != nil {
+		return err
 	}
+
 	// 两个操作均幂等（embedding 任务靠 asynq TaskID 去重，索引已存在则跳过），
 	// 不能只在 init 时执行：stop→start 重启后老 embedding worker 已退出，
 	// 若不补发，文档 ID 堆积在 Kafka 无消费者，向量化永远停滞
@@ -155,32 +159,11 @@ func (bh *batchBuildHandler) executeBuild(ctx context.Context, resource *interfa
 		}
 		logger.Infof("Embedding task sent for task %s", buildTaskInfo.ID)
 	}
-	// full 重建：索引名与 task 绑定，若不先删，createLocalIndex 的 CheckExist 命中后
-	// 直接跳过，改动后的 embedding/fulltext 字段永远不会写进 mapping。先 drop 再重建。
-	if executeType == interfaces.BuildTaskExecuteTypeFull {
-		dropName := getIndexName(resource.ID, buildTaskInfo.ID)
-		exist, err := bh.lim.CheckExist(ctx, dropName)
-		if err != nil {
-			return fmt.Errorf("check index exist for full rebuild failed: %w", err)
-		}
-		if exist {
-			if err := bh.lim.DeleteIndex(ctx, dropName); err != nil {
-				return fmt.Errorf("drop index for full rebuild failed: %w", err)
-			}
-			logger.Infof("Dropped index %s for full rebuild of task %s", dropName, buildTaskInfo.ID)
-		}
-	}
-	err := createManagedLocalIndex(ctx, bh.lim, buildTaskInfo, resource)
+	err = createManagedLocalIndex(ctx, bh.lim, buildTaskInfo, buildResource)
 	if err != nil {
 		return fmt.Errorf("create local index failed: %w", err)
 	}
 	indexName := getIndexName(resource.ID, buildTaskInfo.ID)
-
-	// Update task status to running; 实际开始执行时清掉上一轮残留的错误信息
-	err = bh.taskAccess.UpdateStatus(ctx, buildTaskInfo.ID, map[string]interface{}{"status": interfaces.BuildTaskStatusRunning, "errorMsg": ""})
-	if err != nil {
-		return fmt.Errorf("update build task status failed: %w", err)
-	}
 
 	lastSyncedMark := buildTaskInfo.SyncedMark
 	if executeType == interfaces.BuildTaskExecuteTypeFull {
@@ -419,4 +402,26 @@ func (bh *batchBuildHandler) executeBuild(ctx context.Context, resource *interfa
 	}
 
 	return nil
+}
+
+func buildResourceForTask(resource *interfaces.Resource, buildTaskInfo *interfaces.BuildTask) (*interfaces.Resource, error) {
+	buildResource := *resource
+	if resource.SchemaDefinition != nil {
+		schemaBytes, err := sonic.Marshal(resource.SchemaDefinition)
+		if err != nil {
+			return nil, fmt.Errorf("marshal resource schema failed: %w", err)
+		}
+		var schemaDefinition []*interfaces.Property
+		if err := sonic.Unmarshal(schemaBytes, &schemaDefinition); err != nil {
+			return nil, fmt.Errorf("unmarshal resource schema failed: %w", err)
+		}
+		buildResource.SchemaDefinition = schemaDefinition
+	}
+
+	// Build task can choose the index mapping for this build, but schema changes
+	// are only persisted by update resource. Apply fulltext features to the
+	// build-local copy so OpenSearch mapping matches task config without making
+	// query-side schema visible before the resource is explicitly updated.
+	reconcileFulltextFeatures(&buildResource, buildTaskInfo.FulltextFields, buildTaskInfo.FulltextAnalyzer)
+	return &buildResource, nil
 }

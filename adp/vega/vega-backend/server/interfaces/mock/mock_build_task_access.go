@@ -158,3 +158,18 @@ func (mr *MockBuildTaskAccessMockRecorder) UpdateStatus(ctx, id, updates any) *g
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateStatus", reflect.TypeOf((*MockBuildTaskAccess)(nil).UpdateStatus), ctx, id, updates)
 }
+
+// UpdateStatusIfIn mocks base method.
+func (m *MockBuildTaskAccess) UpdateStatusIfIn(ctx context.Context, id string, allowedStatuses []string, updates map[string]any) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateStatusIfIn", ctx, id, allowedStatuses, updates)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpdateStatusIfIn indicates an expected call of UpdateStatusIfIn.
+func (mr *MockBuildTaskAccessMockRecorder) UpdateStatusIfIn(ctx, id, allowedStatuses, updates any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateStatusIfIn", reflect.TypeOf((*MockBuildTaskAccess)(nil).UpdateStatusIfIn), ctx, id, allowedStatuses, updates)
+}

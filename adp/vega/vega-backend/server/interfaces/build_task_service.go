@@ -22,8 +22,6 @@ type BuildTaskService interface {
 	ListBuildTasks(ctx context.Context, params BuildTasksQueryParams) ([]*BuildTask, int64, error)
 	// StartBuildTask transitions a task from {init, stopped} to running (asynchronous; status persisted by worker).
 	StartBuildTask(ctx context.Context, taskID string, executeType string) error
-	// UpdateBuildTaskConfig edits a task's field config and triggers a full rebuild (drop + recreate mapping).
-	UpdateBuildTaskConfig(ctx context.Context, taskID string, req *UpdateBuildTaskConfigRequest) error
 	// StopBuildTask transitions a task from running to stopping (asynchronous; status persisted by worker).
 	StopBuildTask(ctx context.Context, taskID string) error
 	// DeleteBuildTasks atomically deletes build tasks by IDs.

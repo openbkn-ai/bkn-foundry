@@ -9,6 +9,7 @@ package build_task
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"net/http"
@@ -46,6 +47,12 @@ type buildTaskService struct {
 	mfa        interfaces.ModelFactoryAccess
 	ums        interfaces.UserMgmtService
 	lim        interfaces.LocalIndexManager // 删任务时 drop 其本地索引；测试注入 mock
+}
+
+var activeBuildTaskStatuses = []string{
+	interfaces.BuildTaskStatusInit,
+	interfaces.BuildTaskStatusRunning,
+	interfaces.BuildTaskStatusStopping,
 }
 
 // NewBuildTaskService creates a new BuildTaskService.
@@ -103,16 +110,9 @@ func (bts *buildTaskService) CreateBuildTask(ctx context.Context, req *interface
 			WithErrorDetails("catalog is disabled")
 	}
 
-	existing, err := bts.bta.GetByResourceID(ctx, resourceID)
-	if err != nil {
-		otellog.LogError(ctx, "Check existing build task failed", err)
-		return "", rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_GetFailed).
-			WithErrorDetails(err.Error())
-	}
-	if existing != nil {
-		span.SetStatus(codes.Error, "Resource already has a build task")
-		return "", rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_Exist).
-			WithErrorDetails("Resource already has a build task")
+	if err := bts.rejectIfResourceHasActiveTask(ctx, resourceID, ""); err != nil {
+		span.SetStatus(codes.Error, "Resource already has active build task")
+		return "", err
 	}
 
 	if req.Mode == interfaces.BuildTaskModeStreaming {
@@ -129,47 +129,9 @@ func (bts *buildTaskService) CreateBuildTask(ctx context.Context, req *interface
 		}
 	}
 
-	accountInfo := interfaces.AccountInfo{}
-	if v := ctx.Value(interfaces.ACCOUNT_INFO_KEY); v != nil {
-		accountInfo = v.(interfaces.AccountInfo)
-	}
-
-	if req.EmbeddingModel == "" && req.EmbeddingFields != "" {
-		req.EmbeddingModel = interfaces.DEFAULT_EMBEDDING_MODEL
-	}
-	if req.EmbeddingModel != "" {
-		// embedding_model 统一归一化为模型 ID 存储：传入是模型名则解析为 ID 并补全维度；
-		// 传入已是模型 ID 时 GetModelByName 按名查不到（err != nil），此时若已带维度则原样保留为 ID。
-		// 既解析不到又没维度则无法建向量索引，按错误处理。
-		if embeddingModel, err := bts.mfa.GetModelByName(ctx, req.EmbeddingModel); err == nil {
-			req.EmbeddingModel = embeddingModel.ModelID
-			if req.ModelDimensions == 0 {
-				req.ModelDimensions = embeddingModel.EmbeddingDim
-			}
-		} else if req.ModelDimensions == 0 {
-			span.SetStatus(codes.Error, "Get model by name failed")
-			return "", rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_CreateFailed).
-				WithErrorDetails(err.Error())
-		}
-	}
-
-	now := time.Now().UnixMilli()
-	buildTask := &interfaces.BuildTask{
-		ID:               xid.New().String(),
-		ResourceID:       resourceID,
-		CatalogID:        resource.CatalogID,
-		Status:           interfaces.BuildTaskStatusInit,
-		Mode:             req.Mode,
-		Creator:          accountInfo,
-		CreateTime:       now,
-		Updater:          accountInfo,
-		UpdateTime:       now,
-		EmbeddingFields:  req.EmbeddingFields,
-		BuildKeyFields:   req.BuildKeyFields,
-		EmbeddingModel:   req.EmbeddingModel,
-		ModelDimensions:  req.ModelDimensions,
-		FulltextFields:   req.FulltextFields,
-		FulltextAnalyzer: req.FulltextAnalyzer,
+	buildTask, err := bts.newBuildTaskFromCreateRequest(ctx, resource, req)
+	if err != nil {
+		return "", err
 	}
 
 	if err := bts.bta.Create(ctx, buildTask); err != nil {
@@ -184,6 +146,80 @@ func (bts *buildTaskService) CreateBuildTask(ctx context.Context, req *interface
 
 	span.SetStatus(codes.Ok, "")
 	return buildTask.ID, nil
+}
+
+func (bts *buildTaskService) rejectIfResourceHasActiveTask(ctx context.Context, resourceID string, excludeTaskID string) error {
+	tasks, _, err := bts.bta.List(ctx, interfaces.BuildTasksQueryParams{
+		PaginationQueryParams: interfaces.PaginationQueryParams{Limit: 2},
+		ResourceID:            resourceID,
+		Statuses:              activeBuildTaskStatuses,
+	})
+	if err != nil {
+		otellog.LogError(ctx, "Check active build task failed", err)
+		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_GetFailed).
+			WithErrorDetails(err.Error())
+	}
+	for _, task := range tasks {
+		if excludeTaskID != "" && task.ID == excludeTaskID {
+			continue
+		}
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_Exist).
+			WithErrorDetails("Resource already has an active build task")
+	}
+	return nil
+}
+
+func (bts *buildTaskService) newBuildTaskFromCreateRequest(ctx context.Context, resource *interfaces.Resource, req *interfaces.CreateBuildTaskRequest) (*interfaces.BuildTask, error) {
+	embeddingModel, modelDimensions, err := bts.normalizeEmbeddingModel(ctx, req.EmbeddingModel, req.EmbeddingFields, req.ModelDimensions)
+	if err != nil {
+		return nil, err
+	}
+
+	accountInfo := interfaces.AccountInfo{}
+	if v := ctx.Value(interfaces.ACCOUNT_INFO_KEY); v != nil {
+		accountInfo = v.(interfaces.AccountInfo)
+	}
+
+	now := time.Now().UnixMilli()
+	return &interfaces.BuildTask{
+		ID:               xid.New().String(),
+		ResourceID:       resource.ID,
+		CatalogID:        resource.CatalogID,
+		Status:           interfaces.BuildTaskStatusInit,
+		Mode:             req.Mode,
+		Creator:          accountInfo,
+		CreateTime:       now,
+		Updater:          accountInfo,
+		UpdateTime:       now,
+		EmbeddingFields:  req.EmbeddingFields,
+		BuildKeyFields:   req.BuildKeyFields,
+		EmbeddingModel:   embeddingModel,
+		ModelDimensions:  modelDimensions,
+		FulltextFields:   req.FulltextFields,
+		FulltextAnalyzer: req.FulltextAnalyzer,
+	}, nil
+}
+
+func (bts *buildTaskService) normalizeEmbeddingModel(ctx context.Context, embeddingModel string, embeddingFields string, modelDimensions int) (string, int, error) {
+	if embeddingModel == "" && embeddingFields != "" {
+		embeddingModel = interfaces.DEFAULT_EMBEDDING_MODEL
+	}
+	if embeddingModel == "" {
+		return "", modelDimensions, nil
+	}
+	// embedding_model 统一归一化为模型 ID 存储：传入是模型名则解析为 ID 并补全维度；
+	// 传入已是模型 ID 时 GetModelByName 按名查不到（err != nil），此时若已带维度则原样保留为 ID。
+	// 既解析不到又没维度则无法建向量索引，按错误处理。
+	if model, err := bts.mfa.GetModelByName(ctx, embeddingModel); err == nil {
+		embeddingModel = model.ModelID
+		if modelDimensions == 0 {
+			modelDimensions = model.EmbeddingDim
+		}
+	} else if modelDimensions == 0 {
+		return "", 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_CreateFailed).
+			WithErrorDetails(err.Error())
+	}
+	return embeddingModel, modelDimensions, nil
 }
 
 // enqueueBuildTask 按任务模式投递到 asynq 队列；入队失败仅记录日志，任务保持当前状态
@@ -205,10 +241,15 @@ func (bts *buildTaskService) enqueueBuildTask(ctx context.Context, buildTask *in
 	client := logics.AQA.CreateClient()
 	if _, err := client.Enqueue(asynqTask,
 		asynq.Queue(interfaces.DefaultQueue),
+		asynq.TaskID(interfaces.BuildTaskQueueTaskID(typename, buildTask.ID)),
 		asynq.MaxRetry(interfaces.BUILD_TASK_MAX_RETRY_COUNT),
 		asynq.Timeout(math.MaxInt64),
 		asynq.Deadline(time.Unix(math.MaxInt64/1000000000, math.MaxInt64%1000000000)),
 	); err != nil {
+		if errors.Is(err, asynq.ErrTaskIDConflict) {
+			logger.Infof("Build task %s is already enqueued", buildTask.ID)
+			return
+		}
 		otellog.LogError(ctx, "Enqueue build task failed", err)
 	} else {
 		logger.Infof("Build task %s enqueued for execution", buildTask.ID)
@@ -348,6 +389,11 @@ func (bts *buildTaskService) StartBuildTask(ctx context.Context, taskID string, 
 		span.SetStatus(codes.Error, "Build task not found")
 		return rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_BuildTask_NotFound)
 	}
+	if executeType == interfaces.BuildTaskExecuteTypeFull && buildTask.Status != interfaces.BuildTaskStatusFailed {
+		span.SetStatus(codes.Error, "Invalid full rebuild state")
+		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_InvalidStateTransition).
+			WithErrorDetails("full rebuild is only allowed for failed tasks; create a new build task instead")
+	}
 	// failed 也允许重启：否则失败任务成死胡同，只能删除重建
 	if buildTask.Status != interfaces.BuildTaskStatusInit &&
 		buildTask.Status != interfaces.BuildTaskStatusStopped &&
@@ -374,6 +420,11 @@ func (bts *buildTaskService) StartBuildTask(ctx context.Context, taskID string, 
 			WithErrorDetails("catalog is disabled")
 	}
 
+	if err := bts.rejectIfResourceHasActiveTask(ctx, buildTask.ResourceID, buildTask.ID); err != nil {
+		span.SetStatus(codes.Error, "Resource already has active build task")
+		return err
+	}
+
 	// 入队前先置回 init：worker 出队时会跳过 stopped/stopping 的任务
 	// （防止排队中被停止的任务复活），stopped 状态直接入队会被误跳过。
 	// running 仍由 worker 实际执行时落账。
@@ -386,114 +437,6 @@ func (bts *buildTaskService) StartBuildTask(ctx context.Context, taskID string, 
 	}
 
 	bts.enqueueBuildTask(ctx, buildTask, executeType)
-
-	span.SetStatus(codes.Ok, "")
-	return nil
-}
-
-// UpdateBuildTaskConfig edits a task's field config (embedding / build key /
-// full-text / model) and triggers a full rebuild. The index name is bound to
-// the task id, so the worker drops the old index on full rebuild and recreates
-// the mapping from the new fields. Mode and resource are immutable.
-func (bts *buildTaskService) UpdateBuildTaskConfig(ctx context.Context, taskID string, req *interfaces.UpdateBuildTaskConfigRequest) error {
-	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Update build task config")
-	defer span.End()
-
-	buildTask, err := bts.bta.GetByID(ctx, taskID)
-	if err != nil {
-		span.SetStatus(codes.Error, "Get build task failed")
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_GetFailed).
-			WithErrorDetails(err.Error())
-	}
-	if buildTask == nil {
-		span.SetStatus(codes.Error, "Build task not found")
-		return rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_BuildTask_NotFound)
-	}
-	// MVP 仅支持 batch：streaming worker 不做 fulltext mapping、不走 full drop 重建，
-	// 编辑会造成字段已改、索引未重建的半生效状态。streaming 编辑待架构补齐后再开。
-	if buildTask.Mode != interfaces.BuildTaskModeBatch {
-		span.SetStatus(codes.Error, "Edit only supported for batch")
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
-			WithErrorDetails("editing config is only supported for batch tasks")
-	}
-	// 运行中 / 停止中不可编辑：旧 worker 仍在写索引，需先停再改
-	if buildTask.Status == interfaces.BuildTaskStatusRunning ||
-		buildTask.Status == interfaces.BuildTaskStatusStopping {
-		span.SetStatus(codes.Error, "Invalid state transition for edit")
-		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_InvalidStateTransition).
-			WithErrorDetails(fmt.Sprintf("cannot edit task in status: %s, stop it first", buildTask.Status))
-	}
-
-	cat, err := bts.cs.GetByID(ctx, buildTask.CatalogID, false)
-	if err != nil {
-		span.SetStatus(codes.Error, "Get catalog failed")
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Catalog_InternalError_GetFailed).
-			WithErrorDetails(err.Error())
-	}
-	if cat == nil {
-		span.SetStatus(codes.Error, "Catalog not found")
-		return rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound)
-	}
-	if !cat.Enabled {
-		span.SetStatus(codes.Error, "Catalog is disabled")
-		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Catalog_IsDisabled).
-			WithErrorDetails("catalog is disabled")
-	}
-
-	// embedding 与 fulltext 至少一种，否则任务没有要建的索引
-	if req.EmbeddingFields == "" && req.FulltextFields == "" {
-		span.SetStatus(codes.Error, "No index fields")
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InternalError_CreateFailed).
-			WithErrorDetails("at least one of embedding_fields or fulltext_fields is required")
-	}
-
-	// 维度补全：逻辑与 CreateBuildTask 对齐
-	embeddingModel := req.EmbeddingModel
-	modelDimensions := req.ModelDimensions
-	if embeddingModel == "" && req.EmbeddingFields != "" {
-		embeddingModel = interfaces.DEFAULT_EMBEDDING_MODEL
-	}
-	if embeddingModel != "" {
-		// 归一化逻辑与 CreateBuildTask 对齐：embedding_model 统一存模型 ID。
-		// 传入是模型名则解析为 ID 并补全维度；传入已是 ID 时按名查不到，已带维度则原样保留。
-		if model, err := bts.mfa.GetModelByName(ctx, embeddingModel); err == nil {
-			embeddingModel = model.ModelID
-			if modelDimensions == 0 {
-				modelDimensions = model.EmbeddingDim
-			}
-		} else if modelDimensions == 0 {
-			span.SetStatus(codes.Error, "Get model by name failed")
-			return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_CreateFailed).
-				WithErrorDetails(err.Error())
-		}
-	}
-
-	// 更新配置并置回 init：worker 出队执行时落 running，并对 full 重建 drop 旧索引
-	updates := map[string]any{
-		"embeddingFields":  req.EmbeddingFields,
-		"buildKeyFields":   req.BuildKeyFields,
-		"embeddingModel":   embeddingModel,
-		"modelDimensions":  modelDimensions,
-		"fulltextFields":   req.FulltextFields,
-		"fulltextAnalyzer": req.FulltextAnalyzer,
-		"status":           interfaces.BuildTaskStatusInit,
-		"errorMsg":         "",
-	}
-	if err := bts.bta.UpdateStatus(ctx, taskID, updates); err != nil {
-		otellog.LogError(ctx, "Update build task config failed", err)
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_UpdateFailed).
-			WithErrorDetails(err.Error())
-	}
-
-	// 同步内存对象再入队（enqueue 仅用 ID/mode，仍保持一致）
-	buildTask.EmbeddingFields = req.EmbeddingFields
-	buildTask.BuildKeyFields = req.BuildKeyFields
-	buildTask.EmbeddingModel = embeddingModel
-	buildTask.ModelDimensions = modelDimensions
-	buildTask.FulltextFields = req.FulltextFields
-	buildTask.FulltextAnalyzer = req.FulltextAnalyzer
-
-	bts.enqueueBuildTask(ctx, buildTask, interfaces.BuildTaskExecuteTypeFull)
 
 	span.SetStatus(codes.Ok, "")
 	return nil

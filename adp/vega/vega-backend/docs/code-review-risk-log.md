@@ -5,7 +5,40 @@
 本文用于持续记录本轮 review 中发现的问题、风险、触发条件和候选处理策略。
 每个问题独立成节，便于后续拆 issue / PR。
 
+## 当前状态
+
+截至 `fix/vega-backend/187-build-task-index-versions`：
+
+| 风险项 | 状态 | 当前结论 |
+|---|---|---|
+| R1 | 已修 | 已移除 `PUT /build-tasks/:id` / `UpdateBuildTaskConfig`，索引配置变更改为新建 build task；同一 resource 同时只允许一个 active task；active task 存在时禁止更新 resource 的构建相关字段。 |
+| R2 | 已修 | 单独删除 build task 时默认禁止删除当前 `resource.LocalIndexName` 正在使用的索引；显式 `delete_active_index=true` 时先清空引用再删除。 |
+| R3 | 已修 | `database` / `source_identifier` 等源端字段归扫描写入；update resource 只允许调整 schema 字段的描述、显示名和特征。特征变化会清空旧 `LocalIndexName`，使旧索引显式失效；batch worker 只在构建副本上应用 task fulltext 配置，不再提前写回 resource schema。 |
+| R4 | 主要风险已修 | `updateResourceIndexName` 已改为先更新 DB 指向新索引，更新失败时保留旧 `LocalIndexName`；旧索引的后续清理仍需独立策略。 |
+| R5 | 已修 | batch / streaming 入队使用稳定 `asynq.TaskID` 去重；worker 通过 DB 条件更新 claim `init -> running`，重复消息直接跳过；embedding 重试耗尽后落 `failed`。 |
+
 ## R1：Build Task 同时承担执行记录与索引版本，导致配置和索引生命周期语义混乱
+
+### 当前状态
+
+已修。
+
+当前实现已经移除 build task 配置编辑路径：
+
+- 删除 `PUT /build-tasks/:id`
+- 删除 `UpdateBuildTaskConfig`
+- 索引配置变更走 `POST /build-tasks` 创建新 task
+- task id 继续参与 index name：`BuildIndexName(resource_id, task_id)`
+- 同一 resource 同时只允许一个 active task：`init` / `running` / `stopping`
+- `StartBuildTask` 重启历史 task 前也会检查同 resource 是否已有其他 active task
+- `resourceService.Update` 会在 active task 存在时拒绝修改构建相关字段：
+  - `database`
+  - `source_identifier`
+  - `source_metadata`
+  - `schema_definition`
+  - logic view 的 `logic_definition`
+
+下面保留原风险描述作为历史上下文和后续设计参考。
 
 ### 背景
 
@@ -17,7 +50,7 @@
 - build task 新增 `fulltext_fields` / `fulltext_analyzer`
 - build task 返回 `index_health` / `failure_detail`
 - 删除 build task 会 drop `BuildIndexName(resource_id, task_id)`
-- `PUT /build-tasks/:id` 可以编辑索引配置并触发 full rebuild
+- 曾经存在的 `PUT /build-tasks/:id` 可以编辑索引配置并触发 full rebuild
 - worker/reconciler 会自动重试或重新驱动同一 task
 
 这些能力单独看都有业务诉求，但组合后暴露出一个核心模型问题：
@@ -28,9 +61,9 @@ Build Task 同时承担“构建执行记录”和“索引配置版本”
 
 ### 典型表现：原地编辑索引配置
 
-最直接的表现是本轮新增的 build task 配置编辑能力：
+最直接的表现是当时新增的 build task 配置编辑能力：
 
-- `PUT /build-tasks/:id`
+- `PUT /build-tasks/:id`（当前已移除）
 - 更新 `embedding_fields` / `build_key_fields` / `fulltext_fields` / `fulltext_analyzer`
 - 然后触发 full rebuild
 
@@ -93,7 +126,7 @@ worker 执行时再读取这条 task：
 task.id + task.index_config => 一个具体索引
 ```
 
-但 `PUT /build-tasks/:id` 会在同一个 `task.id` 上改 `task.index_config`，然后复用同一个 index name 做 destructive rebuild。
+旧的 `PUT /build-tasks/:id` 会在同一个 `task.id` 上改 `task.index_config`，然后复用同一个 index name 做 destructive rebuild。当前实现已移除该路径。
 
 ### 问题
 
@@ -142,7 +175,7 @@ task.id + task.index_config => 一个具体索引
 1. task `t1` 已完成，生成 index `vega-build-r1-t1`
 2. resource 的 `LocalIndexName` 指向 `vega-build-r1-t1`
 3. 用户希望把全文字段从 `title` 改为 `title,body`
-4. 当前实现会编辑 `t1`，drop `vega-build-r1-t1`，再用新配置重建同名 index
+4. 旧实现会编辑 `t1`，drop `vega-build-r1-t1`，再用新配置重建同名 index
 5. 这期间 `t1` 的历史配置被改写，旧索引也不再可回退
 
 建议行为应该是：
@@ -156,7 +189,7 @@ t2 成功后 resource.LocalIndexName 从 vega-build-r1-t1 切到 vega-build-r1-t
 
 ### 次级风险：即使保留编辑接口，也缺少字段校验
 
-如果短期仍保留 `PUT /build-tasks/:id`，还需要补齐字段校验。
+当前已移除 `PUT /build-tasks/:id`，因此该风险不再存在于编辑路径。以下保留为“如果未来恢复编辑接口”的约束提醒。
 
 创建 build task 时，handler 会基于 resource schema 做字段校验：
 
@@ -216,6 +249,30 @@ POST /build-tasks/:id/revisions
 
 
 ## R2：删除 Build Task 可能误删使用中的索引
+
+### 当前状态
+
+已修。
+
+当前 `DeleteBuildTasks` 会读取 task 对应 resource，并比较：
+
+```text
+resource.LocalIndexName == BuildIndexName(task.ResourceID, task.ID)
+```
+
+默认行为：
+
+- 如果 task index 正在被 resource 使用，返回 `409 ActiveIndexInUse`
+- 不调用 `DeleteIndex`
+- 不删除 task 行
+
+显式传入 `delete_active_index=true` 时：
+
+- 先清空 `resource.LocalIndexName`
+- 清空成功后再删除 index 和 task
+- 清空失败时返回错误，不执行破坏性删除
+
+下面保留原风险描述作为历史上下文。
 
 ### 背景
 
@@ -431,18 +488,41 @@ DELETE /build-tasks/:id?delete_index=true
 
 ## R3：Full rebuild 先写 resource schema 再 drop 索引，查询侧可能读到半生效状态
 
+### 当前状态
+
+已修。
+
+当前语义：
+
+- `database` / `source_identifier` / `source_metadata` 等源端字段归扫描写入，不允许普通 update resource 修改
+- update resource 只允许调整 schema 字段的 `display_name` / `description` / `features`
+- update resource 修改 schema `features` 时，如果存在 active build task，则返回 409
+- update resource 修改 schema `features` 且无 active build task 时，会清空 `resource.LocalIndexName`
+- update resource 仅修改 schema `display_name` / `description` 时，不影响 `resource.LocalIndexName`
+- 旧索引不再被查询侧继续使用，而是显式失效，后续需要创建新 build task 重建索引
+- batch worker 不再把 task 的 fulltext 配置写回 resource schema
+- batch worker 仅在 build-local resource 副本上应用 `reconcileFulltextFeatures`，用于本次 OpenSearch mapping
+
+因此 R3 的修复不是保持旧 index 继续服务，而是遵循 resource schema 是事实状态的语义：
+
+```text
+update resource 修改 schema features -> 旧 LocalIndexName 失效 -> 新 build task 生成新 index -> 成功后切换 LocalIndexName
+```
+
+下面保留原风险描述作为历史上下文。
+
 ### 背景
 
 全文检索这次引入了两个联动变化：
 
-1. worker 在 build 前把 `fulltext_fields` 对账写入 `resource.SchemaDefinition`
+1. 旧 worker 在 build 前把 `fulltext_fields` 对账写入 `resource.SchemaDefinition`
 2. OpenSearch 查询侧根据 `resource.SchemaDefinition` 上的 fulltext feature 决定查询字段名
 
 这让 resource schema 成为查询 DSL 的关键输入。
 
-### 当前行为
+### 旧行为
 
-`server/worker/build_handler_batch.go` 的 `executeBuild` 大致顺序是：
+旧版 `server/worker/build_handler_batch.go` 的 `executeBuild` 大致顺序是：
 
 ```text
 1. reconcileFulltextFeatures(resource, task.FulltextFields, task.FulltextAnalyzer)
@@ -455,7 +535,7 @@ DELETE /build-tasks/:id?delete_index=true
 
 问题在于：步骤 2 已经让查询侧看到新 schema，但步骤 4/5/6 还没有保证成功。
 
-### 问题
+### 旧问题
 
 如果步骤 2 之后任一阶段失败，就可能留下半生效状态：
 
@@ -487,22 +567,22 @@ if resource.LocalIndexName != "" {
 - API 上 resource 看起来存在，task 也可能只是 failed，但查询链路不可用
 - fulltext health 可能仍基于 `FulltextFields` 显示 `ok`，误导排障
 
-### 触发场景
+### 修复后的触发场景
 
 典型触发流程：
 
 1. task `t1` 已完成，resource 的 `LocalIndexName` 是 `vega-build-r1-t1`
-2. 用户编辑 `t1` 的全文字段或 analyzer
-3. worker 先把新 fulltext feature 写入 resource schema
-4. worker drop `vega-build-r1-t1`
-5. 后续 create index / sync data / embedding 任一阶段失败
-6. resource 仍存在，但查询本地索引失败或按不匹配的 schema 查询
+2. 用户通过 update resource 修改 schema 或 fulltext feature
+3. 后端清空 `resource.LocalIndexName`，旧索引显式失效
+4. 用户创建新 task `t2`
+5. `t2` worker 使用 build-local schema 副本创建新 index
+6. `t2` 成功后，resource 的 `LocalIndexName` 指向 `vega-build-r1-t2`
 
-这个问题不依赖并发；单次 rebuild 失败即可触发。
+此时即使 `t2` 构建失败，查询侧也不会继续拿新 schema 去查旧 index；旧索引已从 resource 引用中失效。
 
 ### 候选处理策略
 
-更稳的方向是把 full rebuild 做成两阶段切换：
+旧候选方案曾考虑把 full rebuild 做成两阶段切换：
 
 1. 使用 staging / generation index 构建新索引，例如 `vega-build-<resource>-<task>-<generation>`
 2. 使用新 schema 创建 mapping 并完成数据同步
@@ -520,12 +600,34 @@ if resource.LocalIndexName != "" {
 
 ## R4：切换 LocalIndexName 前先删除旧索引，DB 更新失败会留下悬空引用
 
+### 当前状态
+
+主要风险已修。
+
+当前 `updateResourceIndexName` 已改为：
+
+```text
+1. 记录旧 LocalIndexName
+2. 先把 resource.LocalIndexName 改为新 index
+3. 调用 ra.Update
+4. 如果 DB 更新失败，内存对象回滚到旧 LocalIndexName
+```
+
+也就是说，已经不再先删除旧索引，因此不会因为 DB 更新失败导致 resource 指向已删除的旧索引。
+
+仍待补充的后续策略：
+
+- DB 切换成功后，旧索引目前不会立即清理
+- 后续可补异步清理或显式旧版本清理 API
+
+下面保留原风险描述作为历史上下文。
+
 ### 背景
 
 batch build 完成后，worker 会通过 `updateResourceIndexName` 把 resource 指向新索引。
-如果 resource 之前已经有本地索引，这个函数会先删旧索引，再更新 resource。
+旧实现里，如果 resource 之前已经有本地索引，这个函数会先删旧索引，再更新 resource。
 
-### 当前行为
+### 旧行为
 
 `server/worker/build_task_common.go`：
 
@@ -607,7 +709,27 @@ if resource.LocalIndexName != indexName {
 - streaming build task 的索引是否也可能写入 `LocalIndexName`，是否需要同样保护？
 - 如果 `resource.LocalIndexName` 指向不存在的索引，是否需要独立健康检查或修复接口？
 
-## R5：构建 worker 自愈增强后的并发与最终状态需要确认
+## R5：构建 worker 自愈增强后的并发与最终状态
+
+### 当前状态
+
+已修。
+
+当前已缓解部分：
+
+- `stopping` 且实际没有 worker 推进时，重复 stop 可以强制落到 `stopped`
+- worker 出队时会跳过 `stopped` / `stopping`
+- R1 移除配置编辑路径后，自动重试不再会通过 `PUT` 触发旧 task 的配置原地 rebuild
+- `completed` task 不允许 `full` rebuild；需要重建索引时必须创建新 task
+- batch worker 的 `full` 路径不再 `DeleteIndex`
+
+当前修复：
+
+- batch / streaming build task enqueue 使用稳定 `asynq.TaskID`
+- `ErrTaskIDConflict` 视为已入队成功，避免重复消息
+- worker 开始执行前通过 DB 条件更新 claim：只有 `init -> running` 成功的 worker 继续执行
+- reconciler 重新入队也使用同一 `TaskID`，扫描/入队竞态由 asynq 去重和 DB claim 双层兜底
+- embedding 硬失败时先写 `errorMsg` 并交给 asynq 重试；最后一次重试失败时落 `status = failed`
 
 ### 背景
 
@@ -620,10 +742,9 @@ if resource.LocalIndexName != indexName {
 - embedding worker 对 Kafka read / commit 失败、ctx cancel、空闲假死、单文档向量化失败等场景做了有界重试和恢复
 
 这些方向整体是合理的，确实是在修复"假排队"、"构建中冻结"、"向量缺失无痕迹"等稳定性问题。
+worker 自动化增强后的边界行为已经通过以下机制收口。
 
-但 worker 变得更自动化以后，有几个边界行为需要确认。
-
-### 待确认 1：reconciler 重新入队是否可能产生重复 worker
+### 修复 1：reconciler 重新入队的重复 worker 风险
 
 `server/worker/build_task_reconciler.go` 的逻辑是：
 
@@ -634,7 +755,7 @@ if resource.LocalIndexName != indexName {
 
 这个逻辑能修复"DB 里有 init task，但入队消息丢失"的问题。
 
-需要确认的是：扫描队列和重新入队之间不是原子操作。
+扫描队列和重新入队之间不是原子操作。
 
 可能存在竞态：
 
@@ -644,7 +765,12 @@ reconciler 扫描队列：没看到 task t1
 当前 reconciler 继续 enqueue t1
 ```
 
-如果 asynq 没有用 task id 去重，同一个 build task 可能有多个消息并发执行。
+当前已修复：
+
+- build task 入队使用稳定 `asynq.TaskID`
+- `ErrTaskIDConflict` 视为已存在消息，不再报错
+- batch / streaming worker 出队后先通过 DB 条件更新 claim：只有 `init -> running` 成功者继续执行
+- 即使 reconciler 和手动 start 并发入队，重复消息也会被 asynq 去重或在 worker claim 阶段跳过
 
 ### 影响
 
@@ -653,7 +779,7 @@ reconciler 扫描队列：没看到 task t1
 | 模式 | 可能影响 |
 |---|---|
 | batch incremental | 两个 worker 可能同时读源表、写同一个 OpenSearch index、更新同一个 `synced_count` / `synced_mark` |
-| batch full | 如果消息 execute type 是 full，可能重复 drop / recreate 同一个 task index |
+| batch full | 当前只允许 failed task full rebuild，且 worker 不再 drop index |
 | embedding | 同一批 doc id 可能被多个 consumer 处理，当前代码有 docID 去重和 count 封顶，但跨 worker 内存去重不共享 |
 | streaming | 多个 streaming worker 可能同时消费/写入同一 task index |
 
@@ -663,73 +789,61 @@ reconciler 扫描队列：没看到 task t1
 从未跑过的任务游标为空，增量等效全量；跑过一半的任务沿游标续跑
 ```
 
-这个设计可以降低 destructive full rebuild 风险，但仍需要确认同一 task 并发执行是否被其他机制排除。
+这个设计可以降低 destructive full rebuild 风险；同一 task 并发执行由 asynq `TaskID` 和 DB claim 双层排除。
 
-### 建议确认
+### 当前结论
 
-- asynq enqueue build task 时是否应使用稳定 `TaskID` 去重，例如 `build:<taskID>:<executeType>`
-- worker 开始执行前是否需要 CAS 状态转换，例如仅允许 `init -> running` 成功的 worker 继续执行
-- `running` 状态下是否可能仍存在第二个同 task worker，尤其是 reconciler 和手动 start 并发时
-- streaming task 是否需要额外单实例保护
+- batch / streaming 入队使用稳定 `TaskID`
+- worker 使用 `init -> running` 条件更新作为执行 claim
+- streaming 与 batch 使用同一 claim 机制
 
-### 待确认 2：embedding 硬失败重试耗尽后，task 是否会永久停在 running
+### 修复 2：embedding 硬失败重试耗尽后的最终状态
 
 `server/worker/build_handler_embedding.go` 在 `executeEmbedding` 返回错误时：
 
 ```go
-err = eh.taskAccess.UpdateStatus(ctx, taskID, map[string]interface{}{"errorMsg": embed_err.Error()})
+updates := map[string]interface{}{"errorMsg": embed_err.Error()}
+if isAsynqFinalRetry(ctx) {
+    updates["status"] = interfaces.BuildTaskStatusFailed
+}
+err = eh.taskAccess.UpdateStatus(ctx, taskID, updates)
 return embed_err
 ```
 
-这里会写 `errorMsg`，但没有把 `status` 改为 `failed`。
+这里保留了中间重试语义：非最后一次失败只写 `errorMsg`，返回 error 交给 asynq 继续重试；最后一次重试失败时落 `status = failed`。
 
-这个行为可能是有意的：返回 error 交给 asynq 重试，任务在重试期间继续保持 `running`，避免中间失败被用户误认为终态失败。
-
-但需要确认 asynq 重试耗尽后的最终状态：
-
-| 场景 | 需要确认 |
+| 场景 | 当前行为 |
 |---|---|
-| Kafka read/commit 持续失败 | 重试耗尽后 task 是否仍是 `running + errorMsg` |
-| ctx cancel / pod 重启反复发生 | 是否可能长时间显示 running |
-| 模型服务持续不可用 | 单文档失败会进入 `failure_detail`，但整任务级失败是否会落 failed |
-| resource/index 更新失败 | `updateResourceIndexName` 失败会返回 error，重试耗尽后状态如何 |
+| Kafka read/commit 持续失败 | 重试期间 `running + errorMsg`；重试耗尽后 `failed + errorMsg` |
+| ctx cancel / pod 重启反复发生 | 交给 asynq 重试；最终失败落库 |
+| 模型服务持续不可用 | 单文档失败进入 `failure_detail`；整任务级失败最终落 `failed` |
+| resource 不存在 | 直接落 `failed` |
 
-如果没有 asynq 失败回调或外部 reconciler 把最终失败落库，用户可能看到：
+### 当前结论
 
-```text
-status = running
-error_msg = last execution error
-asynq 已不再重试
-```
-
-这会和"构建中" UI 语义冲突。
-
-### 建议确认
-
-- asynq 最大重试耗尽时是否有全局 error handler 更新 task `status = failed`
-- 如果没有，embedding worker 是否应在某类不可恢复错误上直接落 `failed`
-- `running + errorMsg` 是否是产品允许的中间状态，UI 是否会提示"正在重试"
+- `running + errorMsg` 是重试期间的中间状态
+- `failed + errorMsg` 是重试耗尽后的终态
 - `failure_detail` 和 `error_msg` 的边界是否清晰：
   - `failure_detail`：completed 但部分文档向量缺失
   - `error_msg`：整任务未完成的硬失败
 
-### 待确认 3：自动重试与 full rebuild/drop index 语义存在耦合
+### 修复 3：自动重试与 full rebuild/drop index 语义解耦
 
 worker 稳定性增强后，失败任务更容易被自动重试、自愈或手动重新 start。
-这对可恢复性是好事，但如果当前执行类型是 full rebuild，仍会触发同名 index 的 drop/recreate。
+这对可恢复性是好事；当前已移除 full rebuild 的 drop index 行为，避免自动重试破坏当前生效索引。
 
-需要确认这些链路是否会反复破坏当前生效索引：
+旧配置编辑路径下的风险链路已经被切断：
 
-- `PUT /build-tasks/:id` 更新配置后触发 full rebuild
-- full rebuild 会 drop `BuildIndexName(resource.ID, task.ID)`
-- 如果这个 index 正是 `resource.LocalIndexName`，查询会受影响
-- worker / asynq 重试可能再次执行 drop/recreate 流程
+- `PUT /build-tasks/:id` 更新配置后触发 full rebuild（当前已移除）
+- full rebuild 不再 drop `BuildIndexName(resource.ID, task.ID)`
+- `completed` task 不允许 full rebuild；需要重建索引必须创建新 task
+- 失败 task 的 full rebuild 只重置进度并重新同步，不删除索引
 
-这与 R2/R3 的语义问题相关：如果配置变更改为创建新 task / 新 index version，那么自动重试只会影响新索引，不会破坏旧的当前生效索引。
+这与 R2/R3 的语义问题相关。当前配置变更已经改为创建新 task / 新 index version，因此自动重试主要影响新索引；同 task 的重复执行由 R5 的入队去重和 DB claim 兜底。
 
-### 建议确认
+### 当前结论
 
-- full rebuild 的 asynq 重试是否可能重复 drop 当前生效 index
-- full rebuild 失败后再次 start 的默认 execute type 是 incremental 还是 full
-- 对当前生效 task 进行 full rebuild 时，是否应该显式进入 rebuilding 状态并阻断查询
-- 是否应先解决 R2 的"配置变更创建新 task"语义，再继续强化自动重试
+- full rebuild 不会 drop 当前生效 index
+- start 默认仍是 incremental
+- `completed` task full rebuild 被拒绝
+- 配置变更继续通过新建 task / 新 index version 表达

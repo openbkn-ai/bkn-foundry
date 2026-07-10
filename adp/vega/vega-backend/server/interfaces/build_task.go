@@ -42,6 +42,10 @@ const (
 	BUILD_PREFIX = "vega-build"
 )
 
+func BuildTaskQueueTaskID(taskType string, taskID string) string {
+	return taskType + ":" + taskID
+}
+
 // BuildTaskStatusOrder 定义 default/status 排序的状态桶优先级(下标+1 即优先级)。
 // 活跃任务(running/init)置顶是核心诉求;顺序写死,既是 SQL CASE 的唯一来源,
 // 也保证「构建中」永远排在第一页。
@@ -56,20 +60,20 @@ var BuildTaskStatusOrder = []string{
 
 // BuildTask represents a build task entity.
 type BuildTask struct {
-	ID              string      `json:"id"`
-	ResourceID      string      `json:"resource_id"`
-	Status          string      `json:"status"`
-	Mode            string      `json:"mode"`             // 任务模式：streaming/batch
-	TotalCount      int64       `json:"total_count"`      // 总数
-	SyncedCount     int64       `json:"synced_count"`     // 已同步数
-	VectorizedCount int64       `json:"vectorized_count"` // 已做向量数
-	SyncedMark      string      `json:"synced_mark"`      // 同步标记
-	ErrorMsg        string      `json:"error_msg,omitempty"`
-	FailureDetail   string      `json:"failure_detail,omitempty"` // 构建完成但部分文档向量化失败的明细，区别于 error_msg 的整任务硬失败
-	Creator         AccountInfo `json:"creator"`
-	CreateTime      int64       `json:"create_time"`
-	Updater         AccountInfo `json:"updater"`
-	UpdateTime      int64       `json:"update_time"`
+	ID               string      `json:"id"`
+	ResourceID       string      `json:"resource_id"`
+	Status           string      `json:"status"`
+	Mode             string      `json:"mode"`             // 任务模式：streaming/batch
+	TotalCount       int64       `json:"total_count"`      // 总数
+	SyncedCount      int64       `json:"synced_count"`     // 已同步数
+	VectorizedCount  int64       `json:"vectorized_count"` // 已做向量数
+	SyncedMark       string      `json:"synced_mark"`      // 同步标记
+	ErrorMsg         string      `json:"error_msg,omitempty"`
+	FailureDetail    string      `json:"failure_detail,omitempty"` // 构建完成但部分文档向量化失败的明细，区别于 error_msg 的整任务硬失败
+	Creator          AccountInfo `json:"creator"`
+	CreateTime       int64       `json:"create_time"`
+	Updater          AccountInfo `json:"updater"`
+	UpdateTime       int64       `json:"update_time"`
 	EmbeddingFields  string      `json:"embedding_fields,omitempty"`  // 需向量化嵌入字段
 	BuildKeyFields   string      `json:"build_key_fields"`            // 构建中依赖的特殊键字段，如批量构建依赖的有时序性的字段，流式构建依赖的唯一标识某行的字段
 	EmbeddingModel   string      `json:"embedding_model,omitempty"`   // 嵌入模型
@@ -97,26 +101,14 @@ type IndexHealth struct {
 // CreateBuildTaskRequest represents the request to create a build task.
 // Used as both the HTTP body for POST /build-tasks and the service input.
 type CreateBuildTaskRequest struct {
-	ResourceID      string `json:"resource_id" binding:"required"`                // 关联 Resource ID
-	Mode            string `json:"mode" binding:"required,oneof=streaming batch"` // 任务模式：streaming/batch
+	ResourceID       string `json:"resource_id" binding:"required"`                // 关联 Resource ID
+	Mode             string `json:"mode" binding:"required,oneof=streaming batch"` // 任务模式：streaming/batch
 	EmbeddingFields  string `json:"embedding_fields,omitempty"`                    // 需向量化嵌入字段
 	BuildKeyFields   string `json:"build_key_fields"`                              // 构建中依赖的特殊键字段，如批量构建依赖的有时序性的字段，流式构建依赖的唯一标识某行的字段
 	EmbeddingModel   string `json:"embedding_model,omitempty"`                     // 嵌入模型
 	ModelDimensions  int    `json:"model_dimensions,omitempty"`                    // 模型维度
 	FulltextFields   string `json:"fulltext_fields,omitempty"`                     // 需建全文索引的字段(逗号分隔)
 	FulltextAnalyzer string `json:"fulltext_analyzer,omitempty"`                   // 全文分词器，空为 OpenSearch 默认 standard
-}
-
-// UpdateBuildTaskConfigRequest represents the HTTP body for PUT /build-tasks/{id}.
-// Edits the index field config and triggers a full rebuild (drop + recreate
-// mapping). resource_id and mode are immutable and not accepted here.
-type UpdateBuildTaskConfigRequest struct {
-	EmbeddingFields  string `json:"embedding_fields,omitempty"`  // 需向量化嵌入字段
-	BuildKeyFields   string `json:"build_key_fields"`            // 构建依赖的键字段
-	EmbeddingModel   string `json:"embedding_model,omitempty"`   // 嵌入模型
-	ModelDimensions  int    `json:"model_dimensions,omitempty"`  // 模型维度
-	FulltextFields   string `json:"fulltext_fields,omitempty"`   // 需建全文索引的字段(逗号分隔)
-	FulltextAnalyzer string `json:"fulltext_analyzer,omitempty"` // 全文分词器，空为 OpenSearch 默认 standard
 }
 
 // UpdateBuildTaskStatusRequest represents update build task status request.

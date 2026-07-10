@@ -6,6 +6,7 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"math"
 	"time"
 
@@ -195,9 +196,13 @@ func enqueueBuildTaskMessage(client *asynq.Client, task *interfaces.BuildTask) e
 	}
 	_, err = client.Enqueue(asynq.NewTask(typename, payload),
 		asynq.Queue(interfaces.DefaultQueue),
+		asynq.TaskID(interfaces.BuildTaskQueueTaskID(typename, task.ID)),
 		asynq.MaxRetry(interfaces.BUILD_TASK_MAX_RETRY_COUNT),
 		asynq.Timeout(math.MaxInt64),
 		asynq.Deadline(time.Unix(math.MaxInt64/1000000000, math.MaxInt64%1000000000)),
 	)
+	if errors.Is(err, asynq.ErrTaskIDConflict) {
+		return nil
+	}
 	return err
 }

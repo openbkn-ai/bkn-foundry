@@ -24,6 +24,8 @@ type BuildTaskAccess interface {
 	List(ctx context.Context, params BuildTasksQueryParams) ([]*BuildTask, int64, error)
 	// UpdateStatus updates a build task's status and other fields.
 	UpdateStatus(ctx context.Context, id string, updates map[string]interface{}) error
+	// UpdateStatusIfIn updates a build task only when its current status is in allowedStatuses.
+	UpdateStatusIfIn(ctx context.Context, id string, allowedStatuses []string, updates map[string]interface{}) (bool, error)
 	// GetStatus retrieves the status of a build task by ID.
 	GetStatus(ctx context.Context, id string) (string, error)
 	// Delete deletes a build task by ID.

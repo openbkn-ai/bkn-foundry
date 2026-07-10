@@ -31,8 +31,12 @@ func TestBatchBuildHandlerHandleTask(t *testing.T) {
 		creator := interfaces.AccountInfo{ID: "u1", Type: "user"}
 
 		taskAccess.EXPECT().GetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{
-			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusRunning, Creator: creator,
+			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusInit, Creator: creator,
 		}, nil)
+		taskAccess.EXPECT().UpdateStatusIfIn(gomock.Any(), "t1",
+			[]string{interfaces.BuildTaskStatusInit},
+			map[string]interface{}{"status": interfaces.BuildTaskStatusRunning, "errorMsg": ""}).
+			Return(true, nil)
 		resAccess.EXPECT().GetByID(gomock.Any(), "r1").Return(&interfaces.Resource{ID: "r1", CatalogID: "c1"}, nil)
 		taskAccess.EXPECT().UpdateStatus(gomock.Any(), "t1", gomock.Any()).Return(nil).AnyTimes()
 
@@ -48,6 +52,23 @@ func TestBatchBuildHandlerHandleTask(t *testing.T) {
 		require.NoError(t, bh.HandleTask(context.Background(), task))
 		require.True(t, hasAccount)
 		assert.Equal(t, creator, gotAccount)
+	})
+
+	t.Run("skips duplicate message when task is already claimed", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		taskAccess := vmock.NewMockBuildTaskAccess(ctrl)
+		bh := &batchBuildHandler{taskAccess: taskAccess}
+
+		taskAccess.EXPECT().GetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{
+			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusInit,
+		}, nil)
+		taskAccess.EXPECT().UpdateStatusIfIn(gomock.Any(), "t1",
+			[]string{interfaces.BuildTaskStatusInit},
+			map[string]interface{}{"status": interfaces.BuildTaskStatusRunning, "errorMsg": ""}).
+			Return(false, nil)
+
+		task := asynq.NewTask("build:batch", workerBuildTaskPayload(t, interfaces.BatchBuildTaskMessage{TaskID: "t1"}))
+		require.NoError(t, bh.HandleTask(context.Background(), task))
 	})
 }
 
@@ -135,6 +156,27 @@ func TestReconcileFulltextFeatures(t *testing.T) {
 
 		assert.Nil(t, res.SchemaDefinition[0].Features[0].Config)
 	})
+}
+
+func TestBuildResourceForTaskDoesNotMutateResourceSchema(t *testing.T) {
+	res := &interfaces.Resource{ID: "r1", SchemaDefinition: []*interfaces.Property{
+		{Name: "title", Type: interfaces.DataType_String},
+		{Name: "body", Type: interfaces.DataType_String},
+	}}
+	task := &interfaces.BuildTask{
+		ID:               "t1",
+		FulltextFields:   "title",
+		FulltextAnalyzer: "ik_max_word",
+	}
+
+	buildRes, err := buildResourceForTask(res, task)
+	require.NoError(t, err)
+
+	require.Len(t, buildRes.SchemaDefinition[0].Features, 1)
+	assert.Equal(t, interfaces.PropertyFeatureType_Fulltext, buildRes.SchemaDefinition[0].Features[0].FeatureType)
+	assert.Equal(t, "ik_max_word", buildRes.SchemaDefinition[0].Features[0].Config["analyzer"])
+	assert.Empty(t, res.SchemaDefinition[0].Features)
+	assert.Empty(t, res.SchemaDefinition[1].Features)
 }
 
 func TestFieldNameSet(t *testing.T) {

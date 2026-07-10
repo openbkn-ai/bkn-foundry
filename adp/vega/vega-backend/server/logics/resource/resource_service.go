@@ -11,6 +11,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"reflect"
 	"sync"
 	"time"
 
@@ -40,6 +41,12 @@ var (
 )
 
 const resourceAuthResourcePermissionBatchSize = 10000
+
+var activeResourceBuildTaskStatuses = []string{
+	interfaces.BuildTaskStatusInit,
+	interfaces.BuildTaskStatusRunning,
+	interfaces.BuildTaskStatusStopping,
+}
 
 type resourceService struct {
 	appSetting *common.AppSetting
@@ -614,6 +621,18 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 		return err
 	}
 
+	buildRelevantChanged, err := rs.validateResourceUpdateScope(ctx, resource, req)
+	if err != nil {
+		span.SetStatus(codes.Error, "Invalid resource update scope")
+		return err
+	}
+	if buildRelevantChanged {
+		if err := rs.rejectBuildRelevantUpdateWhenActiveBuildTask(ctx, resource); err != nil {
+			span.SetStatus(codes.Error, "Resource has active build task")
+			return err
+		}
+	}
+
 	switch resource.Category {
 	case interfaces.ResourceCategoryLogicView:
 		logicType, err := rs.validateLogicDefinition(ctx, req)
@@ -627,6 +646,8 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 		resource.SchemaDefinition = viewFields
 		resource.LogicType = logicType
 		resource.LogicDefinition = req.LogicDefinition
+	default:
+		applyMutableSchemaFields(resource.SchemaDefinition, req.SchemaDefinition)
 	}
 
 	if err := extensions.ValidateSchemaPropertiesExtensions(ctx, resource.SchemaDefinition); err != nil {
@@ -651,6 +672,9 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 	resource.Name = req.Name
 	resource.Tags = req.Tags
 	resource.Description = req.Description
+	if buildRelevantChanged {
+		resource.LocalIndexName = ""
+	}
 
 	// Get account info
 	accountInfo := interfaces.AccountInfo{}
@@ -852,6 +876,116 @@ func (rs *resourceService) UpdateResource(ctx context.Context, resource *interfa
 
 	span.SetStatus(codes.Ok, "")
 	return nil
+}
+
+func (rs *resourceService) rejectBuildRelevantUpdateWhenActiveBuildTask(ctx context.Context, resource *interfaces.Resource) error {
+	tasks, _, err := rs.bta.List(ctx, interfaces.BuildTasksQueryParams{
+		PaginationQueryParams: interfaces.PaginationQueryParams{Limit: 1},
+		ResourceID:            resource.ID,
+		Statuses:              activeResourceBuildTaskStatuses,
+	})
+	if err != nil {
+		otellog.LogError(ctx, "Check active build task failed", err)
+		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_GetFailed).
+			WithErrorDetails(err.Error())
+	}
+	if len(tasks) > 0 {
+		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_Exist).
+			WithErrorDetails("resource has an active build task; update build-relevant fields after it finishes")
+	}
+	return nil
+}
+
+func (rs *resourceService) validateResourceUpdateScope(ctx context.Context, resource *interfaces.Resource, req *interfaces.ResourceRequest) (bool, error) {
+	if resource.Category == interfaces.ResourceCategoryLogicView {
+		return req.LogicDefinition != nil && !reflect.DeepEqual(resource.LogicDefinition, req.LogicDefinition), nil
+	}
+	if req.Database != "" && resource.Database != req.Database {
+		return false, unsupportedResourceUpdateError(ctx, "database is managed by discover and cannot be updated directly")
+	}
+	if req.SourceIdentifier != "" && resource.SourceIdentifier != req.SourceIdentifier {
+		return false, unsupportedResourceUpdateError(ctx, "source_identifier is managed by discover and cannot be updated directly")
+	}
+	if req.SourceMetadata != nil && !reflect.DeepEqual(resource.SourceMetadata, req.SourceMetadata) {
+		return false, unsupportedResourceUpdateError(ctx, "source_metadata is managed by discover and cannot be updated directly")
+	}
+	if req.SchemaDefinition == nil {
+		return false, nil
+	}
+	return validateMutableSchemaUpdate(ctx, resource.SchemaDefinition, req.SchemaDefinition)
+}
+
+func unsupportedResourceUpdateError(ctx context.Context, details string) error {
+	return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+		WithErrorDetails(details)
+}
+
+func validateMutableSchemaUpdate(ctx context.Context, current []*interfaces.Property, requested []*interfaces.Property) (bool, error) {
+	if len(current) != len(requested) {
+		return false, unsupportedResourceUpdateError(ctx, "schema_definition can only update field display_name, description, and features")
+	}
+
+	currentByName := make(map[string]*interfaces.Property, len(current))
+	for _, prop := range current {
+		if prop == nil || prop.Name == "" {
+			return false, unsupportedResourceUpdateError(ctx, "current schema_definition contains an invalid field")
+		}
+		currentByName[prop.Name] = prop
+	}
+
+	featuresChanged := false
+	seen := make(map[string]struct{}, len(requested))
+	for _, requestedProp := range requested {
+		if requestedProp == nil || requestedProp.Name == "" {
+			return false, unsupportedResourceUpdateError(ctx, "schema_definition contains an invalid field")
+		}
+		currentProp, ok := currentByName[requestedProp.Name]
+		if !ok {
+			return false, unsupportedResourceUpdateError(ctx, "schema_definition cannot add, remove, or rename fields")
+		}
+		if _, dup := seen[requestedProp.Name]; dup {
+			return false, unsupportedResourceUpdateError(ctx, "schema_definition contains duplicate fields")
+		}
+		seen[requestedProp.Name] = struct{}{}
+
+		currentComparable := *currentProp
+		requestedComparable := *requestedProp
+		currentComparable.DisplayName = ""
+		currentComparable.Description = ""
+		currentComparable.Features = nil
+		requestedComparable.DisplayName = ""
+		requestedComparable.Description = ""
+		requestedComparable.Features = nil
+		if !reflect.DeepEqual(currentComparable, requestedComparable) {
+			return false, unsupportedResourceUpdateError(ctx, "schema_definition can only update field display_name, description, and features")
+		}
+		if !reflect.DeepEqual(currentProp.Features, requestedProp.Features) {
+			featuresChanged = true
+		}
+	}
+	return featuresChanged, nil
+}
+
+func applyMutableSchemaFields(current []*interfaces.Property, requested []*interfaces.Property) {
+	if requested == nil {
+		return
+	}
+	currentByName := make(map[string]*interfaces.Property, len(current))
+	for _, prop := range current {
+		if prop != nil {
+			currentByName[prop.Name] = prop
+		}
+	}
+	for _, requestedProp := range requested {
+		if requestedProp == nil {
+			continue
+		}
+		if currentProp, ok := currentByName[requestedProp.Name]; ok {
+			currentProp.DisplayName = requestedProp.DisplayName
+			currentProp.Description = requestedProp.Description
+			currentProp.Features = requestedProp.Features
+		}
+	}
 }
 
 // ListAuthResources lists resource auth resources with filters.
