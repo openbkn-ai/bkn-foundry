@@ -67,7 +67,7 @@ func (s *localSearchImpl) conceptRetrieval(
 	}
 
 	// 3. 关系类型排序（基于语义相关性）并取 Top-K
-	rankedRelations := s.rankRelationTypes(ctx, req.Query, networkDetail.ObjectTypes, networkDetail.RelationTypes, config.TopK, req.EnableRerank)
+	rankedRelations := s.rankRelationTypes(ctx, req.Query, networkDetail.ObjectTypes, networkDetail.RelationTypes, config.TopK, req.EnableRerank, req.RerankModel)
 	s.logger.WithContext(ctx).Debugf("[ConceptRetrieval] Ranked relations: %d -> top_k=%d", len(networkDetail.RelationTypes), len(rankedRelations))
 
 	// 4. 对象类型选择：按关系过滤 + 粗召回兜底补齐（以及无关系类型场景的排序截断）
@@ -166,7 +166,7 @@ func (s *localSearchImpl) conceptRetrievalByGroups(
 		return nil, err
 	}
 
-	rankedRelations := s.rankRelationTypes(ctx, req.Query, objects, relations, config.TopK, req.EnableRerank)
+	rankedRelations := s.rankRelationTypes(ctx, req.Query, objects, relations, config.TopK, req.EnableRerank, req.RerankModel)
 	selectedObjects := s.selectObjectTypesForConceptRetrieval(objects, rankedRelations, config.TopK)
 
 	brief := boolValue(config.SchemaBrief)
@@ -523,6 +523,7 @@ func (s *localSearchImpl) rankRelationTypes(
 	relations []*interfaces.RelationType,
 	topK int,
 	enableRerank bool,
+	rerankModel string,
 ) []*interfaces.RelationType {
 	if len(relations) == 0 {
 		return relations
@@ -562,10 +563,17 @@ func (s *localSearchImpl) rankRelationTypes(
 		documents[i] = buildRelationText(sourceName, relationName, targetName, rel.Comment)
 	}
 
-	// 调用 Rerank 服务（粗召回阶段固定用默认 reranker，不受 per-request 覆盖影响）
-	rerankResp, err := s.rerankClient.Rerank(ctx, query, documents, "")
+	// 调用 Rerank 服务；model 为空由 client 解析部署级默认（config.rerank_model → "reranker"）
+	rerankResp, err := s.rerankClient.Rerank(ctx, query, documents, rerankModel)
 	if err != nil {
-		s.logger.WithContext(ctx).Warnf("[RankRelationTypes] Rerank failed, fallback to simple match: %v", err)
+		// 优雅降级：reranker 不可用（未注册 / NameNotExist）时，不丢相关性。
+		// 优先按粗召回 BM25 _score 排序（已有的相关性信号，零额外延迟）；
+		// 仅当 _score 全为 0（如粗召回未启用）时才退到纯名称匹配。
+		s.logger.WithContext(ctx).Warnf("[RankRelationTypes] Rerank unavailable (%v); degrading to coarse-recall _score order", err)
+		if ranked, ok := rankRelationTypesByScore(relations, topK); ok {
+			return ranked
+		}
+		s.logger.WithContext(ctx).Warnf("[RankRelationTypes] coarse-recall _score all zero; falling back to simple name match")
 		return s.rankRelationTypesBySimpleMatch(query, relations, topK)
 	}
 
@@ -623,6 +631,33 @@ func buildRelationText(sourceName, relationName, targetName, relationComment str
 		parts = append(parts, strings.TrimSpace(targetName))
 	}
 	return strings.Join(parts, " ")
+}
+
+// rankRelationTypesByScore 按粗召回 BM25 _score 降序排序并取 Top-K，作为 Rerank
+// 不可用时的相关性保留降级路径。返回 ok=false 表示所有 _score 均为 0（例如未启用
+// 粗召回），此时应退到 rankRelationTypesBySimpleMatch。使用稳定排序，等分保留召回顺序。
+func rankRelationTypesByScore(relations []*interfaces.RelationType, topK int) ([]*interfaces.RelationType, bool) {
+	anyScore := false
+	for _, rel := range relations {
+		if rel != nil && rel.Score != 0 {
+			anyScore = true
+			break
+		}
+	}
+	if !anyScore {
+		return nil, false
+	}
+
+	sorted := make([]*interfaces.RelationType, len(relations))
+	copy(sorted, relations)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		return sorted[i].Score > sorted[j].Score
+	})
+
+	if topK <= 0 || topK > len(sorted) {
+		topK = len(sorted)
+	}
+	return sorted[:topK], true
 }
 
 // rankRelationTypesBySimpleMatch 使用简单匹配进行排序（Rerank 失败时的回退）
