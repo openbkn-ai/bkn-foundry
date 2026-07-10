@@ -186,7 +186,7 @@ On clusters that can't reach `docker.io` or pull GHCR image blobs (read timeouts
 `foundry install` accepts three flags so the **script** handles it — no manual
 `crictl pull`/retag:
 
-- **`--registry=<swr / ghcr / host/ns>`** — image registry for **BKN images** (sugar for `--set image.registry`). `swr` → `swr.cn-east-3.myhuaweicloud.com/openbkn-ai`, `ghcr` → `ghcr.io/openbkn-ai`. Precedence: explicit `--set image.registry=…` > `--registry` > an `image.registry` already in your `--config` YAML (respected, e.g. `dev/conf/mac-config.yaml`) > default `swr`. SWR mirrors the same `…-main.<date>.sha…` build tags as GHCR.
+- **`--registry=<swr / ghcr / host/ns>`** — image registry for **BKN images** (sugar for `--set image.registry`). `swr` → `swr.cn-east-3.myhuaweicloud.com/openbkn-ai`, `ghcr` → `ghcr.io/openbkn-ai`. Precedence: explicit `--set image.registry=…` > `--registry` > an `image.registry` already in your `--config` YAML (respected, e.g. `dev/conf/mac-config.yaml`) > default `swr` (when config file does not set `image.registry`). SWR mirrors the same `…-main.<date>.sha…` build tags as GHCR.
 - **`--dockerhub-mirror=<auto / host / off>`** — containerd `docker.io` mirror for **third-party images** (otel/hydra/postgres/minio). Writes `/etc/containerd/certs.d/docker.io/hosts.toml` (needs root + a containerd `config_path` certs.d; else it warns and skips, never fails). **Defaults to `auto`** — probes a candidate list and picks the first mirror that serves this stack's docker.io images over the mirror (`?ns=docker.io`) protocol (sentinel `oryd/hydra`; `docker.m.daocloud.io` 403s namespaced repos there, so a fixed default isn't safe). Pass a host to pin one (e.g. `docker.1panel.live`); `off` disables. Candidate list overridable via `OPENBKN_DOCKERHUB_MIRROR_CANDIDATES`.
 - **`--latest`** — when no `--version_file` is given, auto-runs `gen-dev-manifest.sh --latest` and installs the result (run from a repo checkout — it needs `git`).
 
@@ -201,6 +201,33 @@ sudo bash ./deploy.sh foundry install --version_file=/tmp/m.yaml --registry=swr
 > The committed migrations fix any DB-schema drift (e.g. `vega-backend` 0.9.x), but
 > only run when the **data-migrator pre-install job** runs — i.e. via `foundry install`,
 > not a bare `kubectl set image`.
+
+### Resource Configuration
+
+You can set Kubernetes resource requests and limits for all Core services via environment variables:
+
+```bash
+# Set CPU and memory requests
+OPENBKN_CORE_REQ_CPU=200m OPENBKN_CORE_REQ_MEM=512Mi \
+  sudo bash ./deploy.sh foundry install --minimum
+
+# Set full resource limits
+OPENBKN_CORE_REQ_CPU=200m OPENBKN_CORE_REQ_MEM=512Mi \
+  OPENBKN_CORE_LIM_CPU=2 OPENBKN_CORE_LIM_MEM=2Gi \
+  sudo bash ./deploy.sh foundry install --minimum
+```
+
+| Environment Variable | Description | Example Values |
+| --- | --- | --- |
+| `OPENBKN_CORE_REQ_CPU` | CPU request value | `200m`, `1` |
+| `OPENBKN_CORE_REQ_MEM` | Memory request value | `512Mi`, `1Gi` |
+| `OPENBKN_CORE_LIM_CPU` | CPU limit value | `2`, `4` |
+| `OPENBKN_CORE_LIM_MEM` | Memory limit value | `2Gi`, `4Gi` |
+
+> **Notes**:
+> - These variables default to empty; chart defaults are used when unset
+> - In k3s mode, lightweight resource defaults are applied (CPU request 100m, memory request 128Mi); override with the variables above
+> - Settings apply uniformly to all bkn-core releases
 
 ## 📋 Prerequisites
 

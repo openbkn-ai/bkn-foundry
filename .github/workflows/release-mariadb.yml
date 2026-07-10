@@ -1,0 +1,40 @@
+name: release-mariadb
+
+# Chart-only. Deploys upstream mariadb (values.yaml left pointing upstream,
+# not a first-party GHCR image).
+
+on:
+  push:
+    tags:
+      - 'v*'
+    branches: ['**']
+    paths:
+      - 'deploy/charts/mariadb/**'
+      - '.github/workflows/release-mariadb.yml'
+      - '.github/workflows/reusable-*.yml'
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish to GHCR (true) or verify build only (false)'
+        type: boolean
+        default: false
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  test:
+    uses: ./.github/workflows/reusable-test.yml
+    with:
+      service-path: deploy/charts/mariadb
+      stack: chart-only
+
+  chart:
+    needs: test
+    uses: ./.github/workflows/reusable-chart.yml
+    with:
+      service-path: deploy
+      chart-path: charts/mariadb
+      chart-name: mariadb
+      version: ${{ needs.test.outputs.version }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}

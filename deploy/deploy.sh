@@ -47,7 +47,9 @@ usage() {
     echo "  k3s uninstall                 Run k3s-uninstall.sh (removes k3s)"
     echo "  k3s status                    Show cluster status (nodes and pods)"
     echo "  mariadb install               Install single-node MariaDB 11"
-    echo "  mariadb uninstall             Uninstall MariaDB (optionally purge PVC)"
+    echo "  mariadb uninstall             Uninstall MariaDB (blocked if bkn-foundry installed)"
+    echo "  mariadb uninstall --force     Force uninstall MariaDB even if bkn-foundry installed (WARNING)"
+    echo "  mariadb uninstall --delete-data  Uninstall MariaDB and delete PVC (data loss!)"
     echo "  redis install                 Install single-node Redis 7"
     echo "  redis uninstall               Uninstall Redis (PVCs will be deleted by default)"
     echo "  kafka install                 Install single-node Kafka"
@@ -75,9 +77,9 @@ usage() {
     echo "  $0 --distro=k3s bkn-foundry install --minimum  # k3s path; default is k8s/kubeadm (omit flag or KUBE_DISTRO=k8s)"
     echo "  POD_CIDR=10.0.0.0/16 $0 k8s install  # Initialize with custom POD_CIDR"
     echo "  $0 mariadb install            # Install MariaDB"
-    echo "  $0 mariadb uninstall          # Uninstall MariaDB"
+    echo "  $0 mariadb uninstall          # Uninstall MariaDB (fails if bkn-foundry installed)"
+    echo "  $0 mariadb uninstall --force  # Force uninstall (WARNING: breaks bkn-foundry)"
     echo "  $0 mariadb uninstall --delete-data  # Uninstall MariaDB and delete PVC (data loss!)"
-    echo "  MARIADB_PURGE_PVC=true $0 mariadb uninstall  # Same as --delete-data (data loss!)"
     echo "  $0 redis install              # Install Redis"
     echo "  $0 redis uninstall            # Uninstall Redis"
     echo "  $0 redis uninstall                         # Uninstall Redis (PVCs deleted by default)"
@@ -133,6 +135,11 @@ usage() {
     echo "Environment (optional, bkn-foundry install):"
     echo "  (Context Loader ADP import moved to deploy/onboard.sh after openbkn auth — openbkn call impex; see onboard -h.)"
     echo "  DEPLOY_BUSINESS_DOMAIN        x-business-domain for openbkn/onboard (default: bd_public)."
+    echo "  OPENBKN_CORE_REQ_CPU         CPU requests for all Core releases (e.g. 200m, 1)"
+    echo "  OPENBKN_CORE_REQ_MEM         Memory requests for all Core releases (e.g. 512Mi, 1Gi)"
+    echo "  OPENBKN_CORE_LIM_CPU         CPU limits for all Core releases (e.g. 2, 4)"
+    echo "  OPENBKN_CORE_LIM_MEM         Memory limits for all Core releases (e.g. 2Gi, 4Gi)"
+    echo "                                Example: OPENBKN_CORE_REQ_CPU=200m OPENBKN_CORE_REQ_MEM=512Mi $0 bkn-foundry install"
     echo ""
     echo "  $0 bkn-foundry install --minimum                 # Minimum install (skip auth & business-domain)"
     echo "  $0 bkn-foundry install --set auth.enabled=false  # Install BKN Foundry with auth enforcement off"
@@ -572,8 +579,26 @@ main() {
                 ;;
             uninstall)
                 require_root_for_helm_cluster_addons_only
+                # Parse additional arguments
                 # shift 2
-                uninstall_mariadb "$@"
+                while [[ $# -gt 0 ]]; do
+                    case "$1" in
+                        --force)
+                            MARIADB_UNINSTALL_FORCE=true
+                            export MARIADB_UNINSTALL_FORCE
+                            shift
+                            ;;
+                        --delete-data)
+                            MARIADB_PURGE_PVC=true
+                            export MARIADB_PURGE_PVC
+                            shift
+                            ;;
+                        *)
+                            shift
+                            ;;
+                    esac
+                done
+                uninstall_mariadb
                 ;;
             *)
                 log_error "Unknown mariadb action: ${action}"
