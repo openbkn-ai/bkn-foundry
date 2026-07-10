@@ -207,7 +207,10 @@
             "  ·  " + ((d.accessAddress && d.accessAddress.scheme) || "") + "://" +
             ((d.accessAddress && d.accessAddress.host) || "") +
             (d.ingressClass ? "  ·  ingressClass " + d.ingressClass : "") + authTxt;
-          document.getElementById("genAt").textContent = d.generatedAt || "—";
+          // generatedAt is UTC ISO ("...Z") — render in the viewer's timezone.
+          var genTs = Date.parse(d.generatedAt || "");
+          document.getElementById("genAt").textContent =
+            genTs ? new Date(genTs).toLocaleString() : (d.generatedAt || "—");
           var rel = renderReleases(d.releases || []);
           renderHealth(d.serviceHealth);
           renderDeps(d.depServices);
