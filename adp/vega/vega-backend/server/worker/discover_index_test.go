@@ -19,23 +19,27 @@ import (
 )
 
 func TestOpenSearchSubFieldFeatures(t *testing.T) {
-	assert.Equal(t, interfaces.PropertyFeatureType_Keyword, osSubFieldTypeToFeatureType("keyword"))
-	assert.Equal(t, interfaces.PropertyFeatureType_Fulltext, osSubFieldTypeToFeatureType("text"))
-	assert.Equal(t, interfaces.PropertyFeatureType_Vector, osSubFieldTypeToFeatureType("knn_vector"))
-	assert.Empty(t, osSubFieldTypeToFeatureType("object"))
-
-	features := buildSubFieldFeatures("title", []interfaces.IndexSubFieldMeta{
-		{Name: "keyword", Type: "keyword", Attributes: map[string]any{"ignore_above": 256}},
-		{Name: "text", Type: "text", Attributes: map[string]any{"analyzer": "ik_max_word"}},
-		{Name: "raw_object", Type: "object"},
+	t.Run("maps opensearch sub field types to features", func(t *testing.T) {
+		assert.Equal(t, interfaces.PropertyFeatureType_Keyword, osSubFieldTypeToFeatureType("keyword"))
+		assert.Equal(t, interfaces.PropertyFeatureType_Fulltext, osSubFieldTypeToFeatureType("text"))
+		assert.Equal(t, interfaces.PropertyFeatureType_Vector, osSubFieldTypeToFeatureType("knn_vector"))
+		assert.Empty(t, osSubFieldTypeToFeatureType("object"))
 	})
 
-	require.Len(t, features, 2)
-	assert.Equal(t, "title.keyword", features[0].FeatureName)
-	assert.Equal(t, interfaces.PropertyFeatureType_Keyword, features[0].FeatureType)
-	assert.Equal(t, map[string]any{"ignore_above": 256}, features[0].Config)
-	assert.Equal(t, "title.text", features[1].FeatureName)
-	assert.Equal(t, interfaces.PropertyFeatureType_Fulltext, features[1].FeatureType)
+	t.Run("builds supported sub field features", func(t *testing.T) {
+		features := buildSubFieldFeatures("title", []interfaces.IndexSubFieldMeta{
+			{Name: "keyword", Type: "keyword", Attributes: map[string]any{"ignore_above": 256}},
+			{Name: "text", Type: "text", Attributes: map[string]any{"analyzer": "ik_max_word"}},
+			{Name: "raw_object", Type: "object"},
+		})
+
+		require.Len(t, features, 2)
+		assert.Equal(t, "title.keyword", features[0].FeatureName)
+		assert.Equal(t, interfaces.PropertyFeatureType_Keyword, features[0].FeatureType)
+		assert.Equal(t, map[string]any{"ignore_above": 256}, features[0].Config)
+		assert.Equal(t, "title.text", features[1].FeatureName)
+		assert.Equal(t, interfaces.PropertyFeatureType_Fulltext, features[1].FeatureType)
+	})
 }
 
 func TestReconcileIndexResources(t *testing.T) {

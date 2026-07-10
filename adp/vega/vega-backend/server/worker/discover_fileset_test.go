@@ -19,8 +19,10 @@ import (
 )
 
 func TestFilesetSourceIdentifier(t *testing.T) {
-	assert.Equal(t, "/team/docs", filesetSourceIdentifier(&interfaces.FilesetMeta{ID: "fs-1", DisplayPath: "/team/docs"}))
-	assert.Equal(t, "fs-1", filesetSourceIdentifier(&interfaces.FilesetMeta{ID: "fs-1"}))
+	t.Run("uses display path then id fallback", func(t *testing.T) {
+		assert.Equal(t, "/team/docs", filesetSourceIdentifier(&interfaces.FilesetMeta{ID: "fs-1", DisplayPath: "/team/docs"}))
+		assert.Equal(t, "fs-1", filesetSourceIdentifier(&interfaces.FilesetMeta{ID: "fs-1"}))
+	})
 }
 
 func TestReconcileFilesetResources(t *testing.T) {
@@ -77,39 +79,41 @@ func TestReconcileFilesetResources(t *testing.T) {
 }
 
 func TestEnrichFilesetMetadata(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	rs := vmock.NewMockResourceService(ctrl)
-	dh := &DiscoverHandler{rs: rs}
-	resource := &interfaces.Resource{
-		ID:                 "r1",
-		SourceIdentifier:   "/team/docs",
-		LastDiscoverStatus: interfaces.DiscoverStatusNew,
-		SourceMetadata:     map[string]any{"keep": "value"},
-	}
+	t.Run("preserves existing metadata and enriches columns", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		rs := vmock.NewMockResourceService(ctrl)
+		dh := &DiscoverHandler{rs: rs}
+		resource := &interfaces.Resource{
+			ID:                 "r1",
+			SourceIdentifier:   "/team/docs",
+			LastDiscoverStatus: interfaces.DiscoverStatusNew,
+			SourceMetadata:     map[string]any{"keep": "value"},
+		}
 
-	rs.EXPECT().UpdateResource(gomock.Any(), gomock.AssignableToTypeOf(&interfaces.Resource{})).
-		DoAndReturn(func(_ context.Context, got *interfaces.Resource) error {
-			assert.Equal(t, "value", got.SourceMetadata["keep"])
-			assert.Equal(t, "Docs", got.SourceMetadata["original_name"])
-			assert.Equal(t, "", got.SourceMetadata["original_description"])
-			assert.Equal(t, []interfaces.FilesetColumnMeta{{Name: "title", Type: "string"}}, got.SourceMetadata["columns"])
-			require.Len(t, got.SchemaDefinition, 1)
-			assert.Equal(t, "title", got.SchemaDefinition[0].Name)
-			assert.Equal(t, "string", got.SchemaDefinition[0].Type)
-			assert.Equal(t, interfaces.DiscoverStatusNew, got.LastDiscoverStatus)
-			return nil
-		})
+		rs.EXPECT().UpdateResource(gomock.Any(), gomock.AssignableToTypeOf(&interfaces.Resource{})).
+			DoAndReturn(func(_ context.Context, got *interfaces.Resource) error {
+				assert.Equal(t, "value", got.SourceMetadata["keep"])
+				assert.Equal(t, "Docs", got.SourceMetadata["original_name"])
+				assert.Equal(t, "", got.SourceMetadata["original_description"])
+				assert.Equal(t, []interfaces.FilesetColumnMeta{{Name: "title", Type: "string"}}, got.SourceMetadata["columns"])
+				require.Len(t, got.SchemaDefinition, 1)
+				assert.Equal(t, "title", got.SchemaDefinition[0].Name)
+				assert.Equal(t, "string", got.SchemaDefinition[0].Type)
+				assert.Equal(t, interfaces.DiscoverStatusNew, got.LastDiscoverStatus)
+				return nil
+			})
 
-	result := &interfaces.DiscoverResult{}
-	err := dh.enrichFilesetMetadata(context.Background(), []filesetDiscoverItem{{
-		resource: resource,
-		meta: &interfaces.FilesetMeta{
-			ID:             "fs-1",
-			Name:           "Docs",
-			SourceMetadata: map[string]any{"owner": "team-a"},
-			Columns:        []interfaces.FilesetColumnMeta{{Name: "title", Type: "string"}},
-		},
-	}}, result)
+		result := &interfaces.DiscoverResult{}
+		err := dh.enrichFilesetMetadata(context.Background(), []filesetDiscoverItem{{
+			resource: resource,
+			meta: &interfaces.FilesetMeta{
+				ID:             "fs-1",
+				Name:           "Docs",
+				SourceMetadata: map[string]any{"owner": "team-a"},
+				Columns:        []interfaces.FilesetColumnMeta{{Name: "title", Type: "string"}},
+			},
+		}}, result)
 
-	require.NoError(t, err)
+		require.NoError(t, err)
+	})
 }
