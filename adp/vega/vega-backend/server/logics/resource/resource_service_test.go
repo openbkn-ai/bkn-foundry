@@ -540,7 +540,14 @@ func TestUpdate_RejectsBuildRelevantChangeWhenActiveBuildTaskExists(t *testing.T
 		CatalogID:        "cat1",
 		Name:             "table",
 		SourceIdentifier: "public.orders",
-		SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String}, {Name: "title", Type: interfaces.DataType_String}},
+		SchemaDefinition: []*interfaces.Property{{
+			Name: "id",
+			Type: interfaces.DataType_String,
+			Features: []interfaces.PropertyFeature{{
+				FeatureName: "fulltext",
+				FeatureType: interfaces.PropertyFeatureType_Fulltext,
+			}},
+		}},
 	})
 
 	httpErr, ok := err.(*rest.HTTPError)
@@ -559,7 +566,13 @@ func TestUpdate_AllowsNonBuildRelevantChangeWhenActiveBuildTaskExists(t *testing
 	rs, mockRA, mockPS, _, _, mockCS, _ := newTestService(t)
 	mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 	mockCS.EXPECT().CheckExistByID(gomock.Any(), "cat1").Return(true, nil)
-	mockRA.EXPECT().Update(gomock.Any(), gomock.Any()).Return(nil)
+	mockRA.EXPECT().Update(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, got *interfaces.Resource) error {
+			if got.LocalIndexName != "vega-build-r1-task-1" {
+				t.Fatalf("expected LocalIndexName to be preserved, got %q", got.LocalIndexName)
+			}
+			return nil
+		})
 
 	err := rs.Update(context.Background(), &interfaces.Resource{
 		ID:               "r1",
@@ -567,6 +580,7 @@ func TestUpdate_AllowsNonBuildRelevantChangeWhenActiveBuildTaskExists(t *testing
 		Category:         interfaces.ResourceCategoryTable,
 		Name:             "table",
 		Description:      "old",
+		LocalIndexName:   "vega-build-r1-task-1",
 		SourceIdentifier: "public.orders",
 		SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String}},
 	}, &interfaces.ResourceRequest{
@@ -578,6 +592,149 @@ func TestUpdate_AllowsNonBuildRelevantChangeWhenActiveBuildTaskExists(t *testing
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestUpdate_ClearsLocalIndexNameWhenBuildRelevantFieldsChange(t *testing.T) {
+	rs, mockRA, mockPS, _, _, mockCS, mockBTA := newTestService(t)
+	mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+	mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTask, int64, error) {
+			if params.ResourceID != "r1" {
+				t.Fatalf("expected resource r1, got %q", params.ResourceID)
+			}
+			return nil, 0, nil
+		})
+	mockCS.EXPECT().CheckExistByID(gomock.Any(), "cat1").Return(true, nil)
+	mockRA.EXPECT().Update(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, got *interfaces.Resource) error {
+			if got.LocalIndexName != "" {
+				t.Fatalf("expected LocalIndexName to be cleared, got %q", got.LocalIndexName)
+			}
+			if len(got.SchemaDefinition) != 1 || len(got.SchemaDefinition[0].Features) != 1 {
+				t.Fatalf("expected updated schema features, got %#v", got.SchemaDefinition)
+			}
+			return nil
+		})
+
+	err := rs.Update(context.Background(), &interfaces.Resource{
+		ID:               "r1",
+		CatalogID:        "cat1",
+		Category:         interfaces.ResourceCategoryTable,
+		Name:             "table",
+		LocalIndexName:   "vega-build-r1-task-1",
+		SourceIdentifier: "public.orders",
+		SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String}},
+	}, &interfaces.ResourceRequest{
+		CatalogID:        "cat1",
+		Name:             "table",
+		SourceIdentifier: "public.orders",
+		SchemaDefinition: []*interfaces.Property{{
+			Name: "id",
+			Type: interfaces.DataType_String,
+			Features: []interfaces.PropertyFeature{{
+				FeatureName: "fulltext",
+				FeatureType: interfaces.PropertyFeatureType_Fulltext,
+			}},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestUpdate_AllowsSchemaDisplayFieldsWithoutClearingLocalIndex(t *testing.T) {
+	rs, mockRA, mockPS, _, _, mockCS, _ := newTestService(t)
+	mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+	mockCS.EXPECT().CheckExistByID(gomock.Any(), "cat1").Return(true, nil)
+	mockRA.EXPECT().Update(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, got *interfaces.Resource) error {
+			if got.LocalIndexName != "vega-build-r1-task-1" {
+				t.Fatalf("expected LocalIndexName to be preserved, got %q", got.LocalIndexName)
+			}
+			if got.SchemaDefinition[0].DisplayName != "Order ID" || got.SchemaDefinition[0].Description != "business id" {
+				t.Fatalf("schema display fields were not updated: %#v", got.SchemaDefinition[0])
+			}
+			return nil
+		})
+
+	err := rs.Update(context.Background(), &interfaces.Resource{
+		ID:               "r1",
+		CatalogID:        "cat1",
+		Category:         interfaces.ResourceCategoryTable,
+		Name:             "table",
+		LocalIndexName:   "vega-build-r1-task-1",
+		SourceIdentifier: "public.orders",
+		SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String}},
+	}, &interfaces.ResourceRequest{
+		CatalogID:        "cat1",
+		Name:             "table",
+		SourceIdentifier: "public.orders",
+		SchemaDefinition: []*interfaces.Property{{
+			Name:        "id",
+			DisplayName: "Order ID",
+			Type:        interfaces.DataType_String,
+			Description: "business id",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestUpdate_RejectsSourceManagedFieldChanges(t *testing.T) {
+	rs, _, mockPS, _, _, _, _ := newTestService(t)
+	mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+
+	err := rs.Update(context.Background(), &interfaces.Resource{
+		ID:               "r1",
+		CatalogID:        "cat1",
+		Category:         interfaces.ResourceCategoryTable,
+		Name:             "table",
+		SourceIdentifier: "public.orders",
+		SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String}},
+	}, &interfaces.ResourceRequest{
+		CatalogID:        "cat1",
+		Name:             "table",
+		SourceIdentifier: "public.customers",
+	})
+
+	httpErr, ok := err.(*rest.HTTPError)
+	if !ok {
+		t.Fatalf("expected HTTPError, got %T", err)
+	}
+	if httpErr.HTTPCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", httpErr.HTTPCode)
+	}
+}
+
+func TestUpdate_RejectsSchemaStructureChanges(t *testing.T) {
+	rs, _, mockPS, _, _, _, _ := newTestService(t)
+	mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+
+	err := rs.Update(context.Background(), &interfaces.Resource{
+		ID:               "r1",
+		CatalogID:        "cat1",
+		Category:         interfaces.ResourceCategoryTable,
+		Name:             "table",
+		SourceIdentifier: "public.orders",
+		SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String}},
+	}, &interfaces.ResourceRequest{
+		CatalogID:        "cat1",
+		Name:             "table",
+		SourceIdentifier: "public.orders",
+		SchemaDefinition: []*interfaces.Property{
+			{Name: "id", Type: interfaces.DataType_String},
+			{Name: "title", Type: interfaces.DataType_String},
+		},
+	})
+
+	httpErr, ok := err.(*rest.HTTPError)
+	if !ok {
+		t.Fatalf("expected HTTPError, got %T", err)
+	}
+	if httpErr.HTTPCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", httpErr.HTTPCode)
 	}
 }
 

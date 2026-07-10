@@ -137,6 +137,27 @@ func TestReconcileFulltextFeatures(t *testing.T) {
 	})
 }
 
+func TestBuildResourceForTaskDoesNotMutateResourceSchema(t *testing.T) {
+	res := &interfaces.Resource{ID: "r1", SchemaDefinition: []*interfaces.Property{
+		{Name: "title", Type: interfaces.DataType_String},
+		{Name: "body", Type: interfaces.DataType_String},
+	}}
+	task := &interfaces.BuildTask{
+		ID:               "t1",
+		FulltextFields:   "title",
+		FulltextAnalyzer: "ik_max_word",
+	}
+
+	buildRes, err := buildResourceForTask(res, task)
+	require.NoError(t, err)
+
+	require.Len(t, buildRes.SchemaDefinition[0].Features, 1)
+	assert.Equal(t, interfaces.PropertyFeatureType_Fulltext, buildRes.SchemaDefinition[0].Features[0].FeatureType)
+	assert.Equal(t, "ik_max_word", buildRes.SchemaDefinition[0].Features[0].Config["analyzer"])
+	assert.Empty(t, res.SchemaDefinition[0].Features)
+	assert.Empty(t, res.SchemaDefinition[1].Features)
+}
+
 func TestFieldNameSet(t *testing.T) {
 	t.Run("trims and skips empty entries", func(t *testing.T) {
 		got := fieldNameSet(" a, b ,, c ")

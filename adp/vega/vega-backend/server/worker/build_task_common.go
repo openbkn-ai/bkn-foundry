@@ -89,9 +89,10 @@ func createManagedLocalIndex(ctx context.Context, lim interfaces.LocalIndexManag
 func buildLocalIndexResource(buildTask *interfaces.BuildTask, resource *interfaces.Resource) *interfaces.Resource {
 	newResource := *resource
 	newResource.ID = getIndexName(resource.ID, buildTask.ID)
-	// resource.SchemaDefinition 已由 executeBuild 写入 fulltext 特性（injectFulltextFeatures），
-	// 这里直接复用——buildFieldMappings 会据此给 string 字段建 text 子字段。
-	// embedding 字段额外追加独立的 _vector 字段。
+	// resource.SchemaDefinition may be a build-local copy with task fulltext
+	// features applied. Persisted schema changes must go through update resource;
+	// build tasks only use this copy for index mapping. Embedding fields append
+	// independent _vector fields.
 	if buildTask.EmbeddingFields != "" {
 		var newSchema []*interfaces.Property
 		newSchema = append(newSchema, resource.SchemaDefinition...)
@@ -156,12 +157,9 @@ func analyzerOf(config map[string]any) string {
 	return ""
 }
 
-// reconcileFulltextFeatures 让 resource schema 中的 fulltext 特性与 fulltextFields 完全一致：
+// reconcileFulltextFeatures 让构建用 schema 中的 fulltext 特性与 fulltextFields 完全一致：
 // 集合内字段补齐(并校正 analyzer)、集合外字段移除残留。返回是否有改动。
-//
-// 批量构建任务是该资源 fulltext 配置的唯一来源，故可权威重写。必须移除残留：
-// 新建构建任务版本去掉某个 fulltext 字段后，若只增不减，旧特性留在 schema 里，
-// 后续建索引仍会按残留特性重建出多余子字段。analyzer 为空走默认分词器。
+// 调用方应在 build-local schema 副本上使用它；持久化 schema 变更只能走 update resource。
 func reconcileFulltextFeatures(resource *interfaces.Resource, fulltextFields, analyzer string) bool {
 	set := fieldNameSet(fulltextFields)
 	var config map[string]any
