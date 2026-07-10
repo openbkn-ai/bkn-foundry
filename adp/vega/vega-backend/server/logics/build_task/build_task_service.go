@@ -383,6 +383,11 @@ func (bts *buildTaskService) StartBuildTask(ctx context.Context, taskID string, 
 		span.SetStatus(codes.Error, "Build task not found")
 		return rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_BuildTask_NotFound)
 	}
+	if executeType == interfaces.BuildTaskExecuteTypeFull && buildTask.Status != interfaces.BuildTaskStatusFailed {
+		span.SetStatus(codes.Error, "Invalid full rebuild state")
+		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_InvalidStateTransition).
+			WithErrorDetails("full rebuild is only allowed for failed tasks; create a new build task instead")
+	}
 	// failed 也允许重启：否则失败任务成死胡同，只能删除重建
 	if buildTask.Status != interfaces.BuildTaskStatusInit &&
 		buildTask.Status != interfaces.BuildTaskStatusStopped &&

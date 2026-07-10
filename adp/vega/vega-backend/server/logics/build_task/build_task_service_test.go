@@ -132,6 +132,27 @@ func TestStartBuildTaskAllowsFailedStatus(t *testing.T) {
 	assertCatalogDisabledError(t, err)
 }
 
+func TestStartBuildTaskRejectsFullRebuildForCompletedTask(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+	service := &buildTaskService{bta: mockBTA}
+
+	mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").
+		Return(&interfaces.BuildTask{
+			ID:     "task-1",
+			Status: interfaces.BuildTaskStatusCompleted,
+		}, nil)
+
+	err := service.StartBuildTask(context.Background(), "task-1", interfaces.BuildTaskExecuteTypeFull)
+	httpErr, ok := err.(*rest.HTTPError)
+	if !ok {
+		t.Fatalf("expected HTTPError, got %T", err)
+	}
+	if httpErr.BaseError.ErrorCode != verrors.VegaBackend_BuildTask_InvalidStateTransition {
+		t.Fatalf("expected %s, got %s", verrors.VegaBackend_BuildTask_InvalidStateTransition, httpErr.BaseError.ErrorCode)
+	}
+}
+
 func TestStartBuildTaskRejectsAnotherActiveTaskForResource(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockCS := mock_interfaces.NewMockCatalogService(ctrl)
