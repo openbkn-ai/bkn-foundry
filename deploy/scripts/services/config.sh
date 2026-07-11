@@ -550,13 +550,31 @@ DEP_EOF
         auth_enabled="false"
     fi
     # Platform initial password for bkn-safe (seeded admin + users created
-    # without an explicit password). Generated once per install and preserved
+    # without an explicit password). Chosen once per install and preserved
     # across config regenerations; the core installer passes it to the bkn-safe
-    # chart. There is no baked-in default anywhere.
+    # chart. Precedence: already recorded > BKN_SAFE_INITIAL_PASSWORD env >
+    # interactive prompt (TTY, not -y) > random. No baked-in default anywhere.
     local bkn_safe_initial_password
     bkn_safe_initial_password="$(config_yaml_top_field bknSafe initialPassword)"
     if [[ -z "${bkn_safe_initial_password}" ]]; then
-        bkn_safe_initial_password="$(generate_random_password 12)"
+        bkn_safe_initial_password="${BKN_SAFE_INITIAL_PASSWORD:-}"
+    fi
+    if [[ -z "${bkn_safe_initial_password}" && -t 0 && "${ASSUME_YES:-false}" != "true" ]]; then
+        local _pw1 _pw2
+        read -r -s -p "Console admin initial password [Enter = random 8 chars]: " _pw1
+        echo "" >&2
+        if [[ -n "${_pw1}" ]]; then
+            read -r -s -p "Confirm password: " _pw2
+            echo "" >&2
+            if [[ "${_pw1}" == "${_pw2}" ]]; then
+                bkn_safe_initial_password="${_pw1}"
+            else
+                log_warn "Passwords do not match — generating a random one instead."
+            fi
+        fi
+    fi
+    if [[ -z "${bkn_safe_initial_password}" ]]; then
+        bkn_safe_initial_password="$(generate_random_password 8)"
     fi
     local bkn_safe_block
     if [[ "${auth_enabled}" == "false" ]]; then

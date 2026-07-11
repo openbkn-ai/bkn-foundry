@@ -28,15 +28,16 @@ import (
 var InitialPasswordEnv = os.Getenv("BKN_SAFE_INITIAL_PASSWORD")
 
 // NewInitialPassword returns the password to assign when none was specified:
-// the env override when configured, otherwise a fresh random one. A generated
-// password is not recoverable later, so the caller must surface it to the
-// operator exactly once (API response or startup log). MustChangePassword is
-// always set on such users, forcing a change on first login either way.
+// the env override when configured, otherwise a fresh random one (8 chars —
+// short-lived by design). A generated password is not recoverable later, so
+// the caller must surface it to the operator exactly once (API response or
+// startup log). MustChangePassword is always set on such users, forcing a
+// change on first login either way.
 func NewInitialPassword() string {
 	if InitialPasswordEnv != "" {
 		return InitialPasswordEnv
 	}
-	return randBase62(16)
+	return randBase62(8)
 }
 
 // ErrInvalidCredentials is returned when account/password verification fails.
