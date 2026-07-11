@@ -624,6 +624,10 @@ accessAddress:
 ${dep_services_section}
 EOF
 
+    # The file holds credentials (middleware + platform initial password):
+    # owner-only, regardless of the caller's umask.
+    chmod 600 "${out}" 2>/dev/null || true
+
     log_info "Wrote config file: ${out}"
     local included_services=()
     [[ "${mongodb_configured}" == "true" ]] && included_services+=("MongoDB")
