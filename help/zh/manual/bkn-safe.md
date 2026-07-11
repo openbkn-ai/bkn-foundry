@@ -17,7 +17,7 @@ npm install -g @openbkn/bkn-sdk                     # Node.js 22+
 openbkn auth login https://<访问地址> -k
 
 openbkn admin org tree                              # 查看部门
-openbkn admin user create --login alice            # 默认密码 123456，首次登录强制改密
+openbkn admin user create --login alice            # 初始密码随机生成，仅创建响应返回一次（initial_password），首次登录强制改密
 openbkn admin user assign-role <userId> <roleId>
 openbkn admin user reset-password -u alice         # 管理员重置
 openbkn admin role list

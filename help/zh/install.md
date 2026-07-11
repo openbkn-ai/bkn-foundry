@@ -267,16 +267,16 @@ sudo bash ./onboard.sh --help
 | 参数 | 含义 |
 | --- | --- |
 | 无参数 | 交互模式：按需引导安装 Node / `openbkn`，完成认证（单一 CLI——管理能力内置于 `openbkn admin`），再依次走模型 / BKN / Context Loader 提示 |
-| `-y` / `--yes` | 全部自动：bootstrap、完整鉴权下 HTTP 默认登录（`admin` / `eisoo.com`）、`test` 用户创建 + 角色同步、`openbkn` 以 `test` 重登、Context Loader 导入。会**跳过交互式模型注册**；如需非交互注册模型，请用 `--config=models.yaml`。 |
+| `-y` / `--yes` | 全部自动：bootstrap、完整鉴权下 HTTP 默认登录（`admin` + 安装时生成、记录在 config.yaml `bknSafe.initialPassword` 的初始密码）、`test` 用户创建 + 角色同步、`openbkn` 以 `test` 重登、Context Loader 导入。会**跳过交互式模型注册**；如需非交互注册模型，请用 `--config=models.yaml`。 |
 | `--config=xxx.yaml` | 非交互：按 YAML 注册模型与可选 BKN；参考 `deploy/conf/models.yaml.example` |
 | `--enable-bkn-search` | 仅做 BKN ConfigMap 类操作（仍先走 probe） |
 | `--skip-context-loader` | 跳过 ADP Context Loader 工具集导入 |
 
 **完整鉴权安装（启用 auth + business domain）**：脚本根据 Helm/命名空间判断为完整鉴权安装 后，**会自动按以下 5 步执行**（你不需要手工逐条做——这里列出来只是让你知道脚本在干什么，以及某一步失败时该回到哪一步）：
 
-1. **`openbkn auth login`**（`onboard_ensure_kweaver_auth`）— 会话写入 `~/.bkn`。HTTP 默认 `admin` / `eisoo.com`（TTY 下也可改走浏览器 OAuth）；`-y` 模式直接走 HTTP 默认。
+1. **`openbkn auth login`**（`onboard_ensure_kweaver_auth`）— 会话写入 `~/.bkn`。HTTP 默认 `admin` + 安装时生成的初始密码（config.yaml `bknSafe.initialPassword`）（TTY 下也可改走浏览器 OAuth）；`-y` 模式直接走 HTTP 默认。
 2. **`openbkn` 在 PATH**（`onboard_ensure_kweaver_admin_for_isf`）— 缺则自动 `npm i -g @openbkn/bkn-sdk`（交互提示，或 `-y` 时自动安装）。管理能力内置于 `openbkn admin` 子命令，无需单独的包。
-3. **管理认证**（`onboard_ensure_kweaver_admin_auth_for_isf`）— 管理操作**复用第 1 步同一份 `openbkn` 登录与 token 存储**（默认仍是 `admin` / `eisoo.com`）。命令是 `-u` / `-p` / `-k`（带上即走 HTTP `/oauth2/signin`）。TTY 下也支持浏览器 OAuth。
+3. **管理认证**（`onboard_ensure_kweaver_admin_auth_for_isf`）— 管理操作**复用第 1 步同一份 `openbkn` 登录与 token 存储**（默认仍是 `admin` + 记录的初始密码）。命令是 `-u` / `-p` / `-k`（带上即走 HTTP `/oauth2/signin`）。TTY 下也支持浏览器 OAuth。
 4. **业务用户 `test`**（`onboard_offer_isf_test_user`）— 创建 `test`，密码 `111111`（可用 `ONBOARD_TEST_USER_PASSWORD` 覆盖），把 `openbkn admin role list` 中**所有**角色都挂上，然后 **`openbkn auth login` 为 `test`**，让 SDK 会话切到业务用户，供后续步骤使用。若 `test` 已存在，则只做角色同步。
 5. **Context Loader + 模型注册**（`onboard_offer_context_loader_toolset` → `openbkn call impex`；随后是交互式或 YAML 模型注册）— 都使用**以 `test` 登录的 `openbkn`（`~/.bkn`）**；仅 **admin** 的 `openbkn` 会话对 impex 常见 **403**。
 
@@ -314,7 +314,7 @@ flowchart TB
 ```mermaid
 flowchart TB
   subgraph probe["onboard_probe"]
-    A["onboard_ensure_kweaver_auth\n（openbkn：HTTP 默认 admin / eisoo 或浏览器）"] --> B["kubectl：命名空间或目标 namespace"]
+    A["onboard_ensure_kweaver_auth\n（openbkn：HTTP 默认 admin + 记录的初始密码，或浏览器）"] --> B["kubectl：命名空间或目标 namespace"]
     B --> C["onboard_prepend_npm_global_bin_to_path"]
     C --> D["onboard_recommend_admin_cli（Helm/命名空间 → 是否完整鉴权）"]
     D --> E["onboard_ensure_kweaver_admin_for_isf\n（完整鉴权时按需 npm -g 安装 openbkn）"]
@@ -337,7 +337,7 @@ sequenceDiagram
   participant K as openbkn
   participant A as openbkn admin
   U->>O: 在 deploy/ 下执行
-  O->>K: openbkn auth — HTTP（admin / eisoo）或浏览器
+  O->>K: openbkn auth — HTTP（admin + 记录的初始密码）或浏览器
   O->>A: openbkn admin（同一登录 / token）— HTTP 默认或 -k 浏览器
   A->>A: 创建 user、设密、挂载角色
   A-->>O: user list 成功
@@ -411,7 +411,7 @@ openbkn admin org members <orgId>     # 查看成员
 
 ```bash
 openbkn admin user list
-openbkn admin user create --login alice            # 默认密码 123456，首次登录强制改密
+openbkn admin user create --login alice            # 初始密码随机生成，仅创建响应返回一次（initial_password），首次登录强制改密
 openbkn admin user reset-password -u alice         # 管理员重置密码
 openbkn admin user roles <userId>
 openbkn admin user assign-role <userId> <roleId>
@@ -459,7 +459,7 @@ openbkn admin --json call /api/eacp/v1/... -X POST -d '{"...":"..."}'
 
 ### ⚠️ 必须知道
 
-- **新建用户的默认密码固定为 `123456`**，首次登录强制改密 — 这是平台用户存储的既定行为。请通过安全渠道把账号交给本人，由其首登时改密；后续忘/失密用 `openbkn admin user reset-password`。
+- **新建用户（未显式传密码）会随机生成初始密码**，仅在创建响应中返回一次（`initial_password`），首次登录强制改密 — 平台不再有全局默认密码。请通过安全渠道把账号交给本人，由其首登时改密；后续忘/失密用 `openbkn admin user reset-password`。
 - **三权分立内置账号**：`system / admin / security / audit` 不可随意删改；操作员请使用**个人账号**而非共享 `admin`，便于审计追溯。
 - **首次登录改密（错误码 401001017）**：`openbkn auth login` 触发该错误时，TTY 下会引导改密并自动重试登录；非 TTY 下显式补充 `--new-password '<新密码>'` 一次性完成。
 - **TLS：** `-k` / `--insecure`（或环境变量 `BKN_TLS_INSECURE=1`）仅用于开发/自签名证书场景，生产请使用受信任证书。
