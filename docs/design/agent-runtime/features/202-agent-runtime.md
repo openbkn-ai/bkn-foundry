@@ -11,14 +11,16 @@
 
 Decision Agent 退役后，平台没有第一方 Agent 运行时，BYO-Agent 是唯一接入模式。平台内部（Studio、业务服务、运营工具）各自需要 agent 能力时，只能重复实现 agent loop、会话管理与监控。
 
+**定位**：agent-runtime 的用户是**平台内部开发者与模块**，不是最终用户。接口、SDK、文档以开发者体验为先——目标是引一个包、几行代码即可发起调用；不承载 to-C 产品语义（界面、用户运营、计费）。文中「调用方」均指内部模块/开发者。
+
 - **目标**：
   1. 提供平台共用的 `agent-runtime` 服务，统一承载内部 agent 的定义、执行、会话与监控。
-  2. 支持对话模式与一次性模式两种执行形态，且一次性任务可作为工具被对话 agent 调用（agent-as-tool）。
+  2. 支持对话模式与一次性模式两种执行形态，且一次性任务可作为工具被对话 agent 调用（agent-as-tool）；两种形态均可加载 capabilities-lab 技能。
   3. 提示词外置于 mf-model-manager，可热更新；执行链路可观测（OTel → agent-observability / trace-ai），上下文可持久化与恢复。
   4. 平台其他模块低成本接入：契约先行（OpenAPI），提供 Go / Python / TypeScript 三语言 SDK；已发布 agent 自动暴露为 MCP 工具，MCP 客户端零 SDK 接入。
 - **非目标 (Non-Goals)**：
   - 不复活 Decision Agent，不改变 BYO-Agent 接入模式；agent-runtime 本身以 BYO-Agent 姿态接入。
-  - 不做前端界面（headless API 先行，Studio 对接另立 issue）。
+  - 不面向最终用户：不做产品界面与 to-C 语义（headless API 先行，Studio 若对接另立 issue）。
   - 不修改 agent-operator-integration / agent-retrieval 现有契约。
   - 不做租户级计费与配额。
 
@@ -69,9 +71,16 @@ agent := {
 
 **对话流程**：`POST /chat` → 加载 agent 定义 → 拉取 prompt（按 prompt_id，带短 TTL 缓存，失效即热更新）→ 组装 graph（system prompt + SKILL + MCP 工具 + agent-as-tool）→ 带 thread_id 执行，checkpointer 每步落盘 → SSE 流式返回。
 
-**一次性流程**：`POST /run` → 创建 task 记录（pending）→ 异步执行单次 graph run → 状态机 pending → running → succeeded / failed（含 failure_detail）→ `GET /tasks/{id}` 查询。
+**一次性流程**：`POST /run` → 创建 task 记录（pending）→ 异步执行单次 graph run（同样含 SKILL 注入与 MCP 工具）→ 状态机 pending → running → succeeded / failed（含 failure_detail）→ `GET /tasks/{id}` 查询。
 
 **互调**：对话 graph 中的 agent_ref 工具触发时，runtime 内部走与 `/run` 相同的执行路径，task 记录同样落库（parent_thread_id 关联），保证被调用的一次性任务同样可监控。
+
+**技能加载**（一等能力，两种模式均支持）：
+
+- 来源：capabilities-lab，按 capability_id 引用；两级挂载——agent 定义级 `skills` + 请求级 `skills[]`（`/chat`、`/run` body 附加，合并去重）。
+- 渐进式注入：默认只把 SKILL 元信息与正文注入 system prompt；skill 附带的大体积资源（脚本、参考文档）不进上下文，由模型经 capabilities-lab 的渐进式读取工具按需拉取——避免上下文膨胀（get_kn_detail 同款教训）。
+- 热更新：skill 内容缓存 TTL 与 prompt 层一致（≤ 60s），capabilities-lab 中更新 skill 后下一轮生效。
+- 失效处理：capability_id 不存在时明确报错，不静默跳过。
 
 ### 3.2 数据模型变更 (Data Schema)
 
@@ -129,7 +138,9 @@ agent := {
 | Python | bkn-comm-py 新增 `agent_runtime` 模块 | mf-model-*、脚本/examples | codegen + 手写流封装 |
 | TypeScript | bkn-sdk 新增 client（openbkn CLI 顺带获得 `agent` 子命令） | bkn-studio、CLI 用户 | 同上 |
 
-SDK 表面统一为五个动作：`chat()`（流式）、`run()` / `wait_task()`、`get_thread()`、`set_prompt()` / `get_prompt()`（调用方覆写）、agents CRUD。鉴权两态：平台内服务走 `/in` 约定透传 x-account-id / x-account-type；平台外走 bkn-safe token 或 bak_ AppKey。
+SDK 表面统一为五个动作：`chat()`（流式）、`run()` / `wait_task()`、`get_thread()`、`set_prompt()` / `get_prompt()`（调用方覆写）、agents CRUD；`chat()` / `run()` 均接受请求级 `skills` 与 `prompt_override` 参数。鉴权两态：平台内服务走 `/in` 约定透传 x-account-id / x-account-type；平台外走 bkn-safe token 或 bak_ AppKey。
+
+**DX 验收**（服务对象是内部开发者，以此为准绳）：模块引入 SDK 后 ≤ 5 行代码完成一次 `chat()` 或 `run()`；SDK 附带最小可运行示例；错误信息带 code / description / solution（对齐平台错误规范）。
 
 **MCP 面（零 SDK 接入）**：标记为 published 的 agent 由 runtime 自动包装为 MCP 工具，复用 agent-retrieval 同款 ToolDependencySync 机制注册进算子工厂 toolbox。已经是 MCP/toolbox 客户端的模块（以及外部 BYO-Agent）无需引 SDK 即可调用。
 
