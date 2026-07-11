@@ -57,7 +57,7 @@ graph TB
 
 **Agent 定义**（存 DB，CRUD 管理）：
 
-```
+```text
 agent := {
   agent_id, name, mode: chat | task,
   prompt_id,            -- 指向 mf-model-manager prompt 表
@@ -106,7 +106,7 @@ agent := {
 | GET | `/threads/{id}` | 会话历史 |
 | GET/PUT/DELETE | `/agents/{id}/prompt` | 调用方提示词覆写（按 account 隔离；GET 返回生效值及来源层级） |
 
-鉴权：公开路由过网关走平台统一 authn/authz（bkn-safe）；对下游服务调用遵循 `/in` 路由约定（信 header 透传 x-account-id / x-account-type，授权押下游）。
+鉴权（**仅内部，硬约束**）：调用主体只有两类——平台模块（服务身份，bkn-safe app account / `/in` 约定透传 x-account-id / x-account-type）与内部工程师（bkn-safe token 或 bak_ AppKey，供脚本/CLI）。**不接受终端用户流量**：网关不为 agent-runtime 开 to-C 入口；若未来 Studio 等产品面需要 agent 能力，由其后端以服务身份代理调用，终端用户身份不直达本服务。对下游服务调用遵循 `/in` 路由约定（信 header，授权押下游）。
 
 ### 3.4 提示词集成
 
@@ -149,7 +149,8 @@ SDK 表面统一为五个动作：`chat()`（流式）、`run()` / `wait_task()`
 - **并发会话写冲突**：同一 thread_id 并发 /chat 请求需串行化（thread 级锁或乐观冲突拒绝）。
 - **工具调用失败**：MCP 调用超时/错误进入 graph 错误分支，反馈给模型重试或终止；task 落 failed + failure_detail，不得静默吞错（vega worker 教训）。
 - **提示词被删**：prompt_id 失效时 agent 拒绝执行并报明确错误，不回退到内置默认词；调用方覆写被删则自然回退到平台默认层。
-- **覆写越权**：`/agents/{id}/prompt` 只允许写本 account 的覆写；空 account 一律 fail-closed（对齐 vega `/in` 授权教训）。
+- **覆写越权**：`/agents/{id}/prompt` 只允许写本 account 的覆写；空 account 一律 fail-closed（对齐 vega `/in` 授权教训）。覆写主体是模块/工程师身份，不存在终端用户维度的覆写。
+- **误暴露为 to-C 入口**：本服务定位仅内部（见第 1 节），部署与网关配置须保证终端用户流量不可直达；评审与上线检查项都要含此项。
 - **循环互调**：agent-as-tool 存在 A→B→A 环风险，执行栈带深度上限（默认 3）。
 - **向后兼容**：全新服务，无迁移负担；DB 变更走 data-migrator 标准流程（勿用 kubectl set image 绕过 pre-upgrade hook）。
 - **性能**：runtime 为 IO-bound 编排层，瓶颈在下游模型/工具；SSE 长连接数与 worker 并发按部署规格压测（M6）。
