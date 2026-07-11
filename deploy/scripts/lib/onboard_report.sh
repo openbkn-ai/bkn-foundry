@@ -14,9 +14,12 @@ onboard_print_completion_report() {
         return 0
     fi
 
-    local _isfu _line _kwh _kctx _bd _acurl _isf _isf_styled
+    local _isfu _line _kwh _kctx _bd _acurl _isf _isf_styled _adm_pwd _tpw
     _isfu="${ONBOARD_REPORT_TEST_USER:-}"
     _line="--------------------------------------------"
+    # Platform account credentials (NOT database passwords) for the summary.
+    _adm_pwd="$(config_yaml_top_field bknSafe initialPassword 2>/dev/null || true)"
+    _tpw="${ONBOARD_TEST_USER_PASSWORD:-${ONBOARD_DEFAULT_TEST_USER_PASSWORD:-111111}}"
 
     if type onboard_bkn_safe_detected &>/dev/null && onboard_bkn_safe_detected 2>/dev/null; then
         _isf="bkn-safe (full install)"
@@ -74,10 +77,28 @@ onboard_print_completion_report() {
                 echo "${_line}"
                 ;;
         esac
+        echo "  Platform accounts (initial passwords, NOT database credentials)"
+        if [[ -n "${_adm_pwd}" ]]; then
+            echo -e "   • admin:  ${YELLOW}admin / ${_adm_pwd}${NC}  (initial — a change is forced on first login)"
+        else
+            echo "   • admin:  initial password not recorded here; see bknSafe.initialPassword in ${CONFIG_YAML_PATH:-config.yaml}"
+        fi
+        case "${_isfu}" in
+            created*)
+                echo -e "   • test:   ${YELLOW}test / ${_tpw}${NC}  (business user created by onboard)"
+                ;;
+            ready*)
+                echo "   • test:   already existed — password unchanged"
+                ;;
+        esac
+        echo "${_line}"
         echo "  Next steps"
         case "${_isfu}" in
-            ready*|created*)
-                echo "   • User test:  default sign-in:  openbkn auth login ${_acurl} -u test -p '<password>' -k"
+            created*)
+                echo "   • User test:  sign-in:  openbkn auth login ${_acurl} -u test -p '${_tpw}' -k"
+                ;;
+            ready*)
+                echo "   • User test:  sign-in:  openbkn auth login ${_acurl} -u test -p '<password>' -k"
                 ;;
         esac
         echo "   • Verify:    openbkn bkn list -bd ${_bd} --pretty"

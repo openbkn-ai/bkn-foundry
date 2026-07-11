@@ -756,16 +756,22 @@ install_core() {
     else
         echo "    curl -k ${_scheme}://${_host}:${_port}/api/v1/health"
     fi
+    # Platform account credentials (NOT database passwords): the console admin
+    # initial password, which is also the initial password handed to users
+    # created without an explicit one. Highlighted — it is the one thing the
+    # operator must take away from this summary.
     local _initial_pwd
     _initial_pwd="$(config_yaml_top_field bknSafe initialPassword)"
     if [[ -n "${_initial_pwd}" ]]; then
         echo ""
-        echo "  Console sign-in (change forced on first login):"
+        echo "  Console sign-in (a password change is forced on first login):"
         echo ""
-        echo "    user:     admin"
-        echo "    password: ${_initial_pwd}"
+        echo -e "    ${YELLOW}user:     admin${NC}"
+        echo -e "    ${YELLOW}password: ${_initial_pwd}${NC}"
         echo ""
-        echo "  (recorded as bknSafe.initialPassword in ${CONFIG_YAML_PATH})"
+        echo "  New users created without an explicit password start with this same"
+        echo "  initial password (also returned once in the create response)."
+        echo "  Recorded as bknSafe.initialPassword in ${CONFIG_YAML_PATH}"
     fi
     echo ""
     echo "============================================"
