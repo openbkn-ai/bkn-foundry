@@ -11,7 +11,7 @@ install_kafka() {
 
     # Kafka password handling
     local existing_pass
-    existing_pass="$(get_existing_password "kafka.password")"
+    existing_pass="$(config_yaml_dep_field mq password)"
     if [[ -n "${existing_pass}" ]]; then
         KAFKA_CLIENT_PASSWORD="${existing_pass}"
         log_info "Using existing Kafka password from config.yaml"

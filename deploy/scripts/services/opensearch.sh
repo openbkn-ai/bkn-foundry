@@ -5,7 +5,7 @@ install_opensearch() {
     local fresh_install="true"
 
     # OpenSearch password handling
-    local existing_pass=$(get_existing_password "opensearch.password")
+    local existing_pass=$(config_yaml_dep_field opensearch password)
     if [[ -n "${existing_pass}" ]]; then
         OPENSEARCH_INITIAL_ADMIN_PASSWORD="${existing_pass}"
         log_info "Using existing OpenSearch password from config.yaml"

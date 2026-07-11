@@ -278,7 +278,9 @@ STORAGE_EOF
     local os_ns="${OPENSEARCH_NAMESPACE}"
     local os_host="${OPENSEARCH_CLUSTER_NAME}-${OPENSEARCH_NODE_GROUP}.${os_ns}.svc.cluster.local"
     local os_user="admin"
-    local os_password="${OPENSEARCH_INITIAL_ADMIN_PASSWORD}"
+    # Standalone `config generate` runs with an empty env — keep the password
+    # already recorded in config.yaml instead of blanking it.
+    local os_password="${OPENSEARCH_INITIAL_ADMIN_PASSWORD:-$(config_yaml_dep_field opensearch password)}"
     local os_protocol="${OPENSEARCH_PROTOCOL}"
     local opensearch_configured=false
     if [[ -z "${os_protocol}" ]]; then
@@ -547,6 +549,15 @@ DEP_EOF
     if [[ "$(get_set_value "auth.enabled" "${CORE_SET_VALUES[@]:-}" 2>/dev/null)" == "false" ]]; then
         auth_enabled="false"
     fi
+    # Platform initial password for bkn-safe (seeded admin + users created
+    # without an explicit password). Generated once per install and preserved
+    # across config regenerations; the core installer passes it to the bkn-safe
+    # chart. There is no baked-in default anywhere.
+    local bkn_safe_initial_password
+    bkn_safe_initial_password="$(config_yaml_top_field bknSafe initialPassword)"
+    if [[ -z "${bkn_safe_initial_password}" ]]; then
+        bkn_safe_initial_password="$(generate_random_password 12)"
+    fi
     local bkn_safe_block
     if [[ "${auth_enabled}" == "false" ]]; then
         bkn_safe_block=$(cat <<'BKNSAFE_OFF'
@@ -570,6 +581,10 @@ bknSafe:
 BKNSAFE_ON
 )
     fi
+    # Recorded in both auth modes so the value survives auth on/off toggles.
+    bkn_safe_block="${bkn_safe_block}
+  # Platform initial password (admin first login + users created without one).
+  initialPassword: $(yaml_quote "${bkn_safe_initial_password}")"
 
     cat > "${out}" <<EOF
 namespace: ${cfg_namespace}
