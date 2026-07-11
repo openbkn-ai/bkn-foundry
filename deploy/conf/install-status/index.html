@@ -29,7 +29,8 @@
     .bar .n { font-size: 22px; font-weight: 700; }
     .bar .ok { color: var(--ok); } .bar .warn { color: var(--warn); }
     .bar .bad { color: var(--bad); }
-    #livepods td.ok { color: var(--ok); } #livepods td.bad { color: var(--bad); }
+    #livepods td.ok, #releases td.ok { color: var(--ok); }
+    #livepods td.bad, #releases td.bad { color: var(--bad); }
     .n.mut { color: var(--muted); }
     table { width: 100%; border-collapse: collapse; margin-top: 6px; }
     th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line);
@@ -66,6 +67,7 @@
 <body>
   <h1>BKN Foundry — Install Status</h1>
   <div class="sub" id="meta">loading…</div>
+  <div class="sub" id="staleHint" style="color:var(--warn)"></div>
   <div id="err"></div>
 
   <div class="bar" id="summary"></div>
@@ -76,12 +78,12 @@
     <th>Pod</th><th>Ready</th><th>Status</th><th>Restarts</th>
   </tr></thead><tbody></tbody></table>
 
-  <h2>Releases</h2>
+  <h2>Releases <span class="sub" style="font-weight:normal">— versions from snapshot; Ready live-updates 60s</span></h2>
   <table id="releases"><thead><tr>
     <th>Release</th><th>Deployed</th><th>App</th><th>Status</th><th>Ready</th><th></th>
   </tr></thead><tbody></tbody></table>
 
-  <h2>Service health</h2>
+  <h2>Service health <span class="sub" style="font-weight:normal">— state live-updates 60s</span></h2>
   <div class="grid" id="health"></div>
 
   <h2>Dependency services</h2>
@@ -111,6 +113,7 @@
       var ok = 0, drift = 0, missing = 0;
       rows.forEach(function (r) {
         var tr = el("tr");
+        tr.setAttribute("data-rel", r.name);
         tr.appendChild(el("td", null, r.name));
         tr.appendChild(el("td", "v", r.chartVersion));
         tr.appendChild(el("td", "v", r.appVersion));
@@ -118,7 +121,7 @@
         var stCls = r.status === "deployed" ? "b-ok" : (r.status === "skipped" ? "b-mut" : "b-bad");
         var sb = el("span", "badge " + stCls, r.status);
         st.appendChild(sb); tr.appendChild(st);
-        tr.appendChild(el("td", null, r.ready));
+        tr.appendChild(el("td", "readyCell", r.ready));
         var flagTd = el("td");
         if (r.status === "skipped") { flagTd.appendChild(el("span", "badge b-mut", "SKIPPED")); }
         else if (r.status === "missing") { flagTd.appendChild(el("span", "badge b-bad", "MISSING")); missing++; }
@@ -138,6 +141,7 @@
       g.innerHTML = "";
       (items || []).forEach(function (h) {
         var card = el("div", "hcard");
+        card.setAttribute("data-svc", h.name);
         var left = el("div");
         left.appendChild(el("div", null, h.name));
         // detail: http -> health path; pod -> k8s readiness; else dash
@@ -153,7 +157,7 @@
         left.appendChild(d);
         var cls = h.state === "up" ? "b-ok" : (h.state === "degraded" ? "b-warn" : "b-mut");
         card.appendChild(left);
-        card.appendChild(el("span", "badge " + cls, h.state));
+        card.appendChild(el("span", "badge stateBadge " + cls, h.state));
         g.appendChild(card);
       });
     }
@@ -203,19 +207,82 @@
             "  ·  " + ((d.accessAddress && d.accessAddress.scheme) || "") + "://" +
             ((d.accessAddress && d.accessAddress.host) || "") +
             (d.ingressClass ? "  ·  ingressClass " + d.ingressClass : "") + authTxt;
-          document.getElementById("genAt").textContent = d.generatedAt || "—";
+          // generatedAt is UTC ISO ("...Z") — render in the viewer's timezone.
+          var genTs = Date.parse(d.generatedAt || "");
+          document.getElementById("genAt").textContent =
+            genTs ? new Date(genTs).toLocaleString() : (d.generatedAt || "—");
           var rel = renderReleases(d.releases || []);
           renderHealth(d.serviceHealth);
           renderDeps(d.depServices);
           summary(rel, d.serviceHealth);
+          overlayLive(lastWorkloads); // re-apply live readiness after re-render
+          var gen = Date.parse(d.generatedAt || "");
+          var hint = document.getElementById("staleHint");
+          if (gen && Date.now() - gen > 24 * 3600 * 1000) {
+            var days = Math.floor((Date.now() - gen) / 86400000);
+            hint.textContent = "snapshot is " + days + "+ day(s) old — versions/deps update only on publish; " +
+              "run ./deploy.sh foundry publish-status on the install host to refresh. Ready & health are live.";
+          } else {
+            hint.textContent = "";
+          }
         })
         .catch(function (e) {
           document.getElementById("err").textContent = "Failed to load install-status.json: " + e.message;
         });
     }
+    // Live overlay — the in-cluster refresher also dumps deploy/sts as
+    // workloads.json; overlay per-release readiness onto the Releases table and
+    // service-health cards so the whole page tracks reality, not the snapshot.
+    var lastWorkloads = null;
+    function overlayLive(w) {
+      if (!w) return;
+      var byKey = {}; // helm release name AND workload name -> {ready,total}
+      (w.items || []).forEach(function (it) {
+        var md = it.metadata || {};
+        var rel = (md.annotations || {})["meta.helm.sh/release-name"] ||
+                  (md.labels || {})["app.kubernetes.io/instance"] || md.name;
+        var total = (it.spec && it.spec.replicas != null) ? it.spec.replicas : 1;
+        var ready = (it.status && it.status.readyReplicas) || 0;
+        [rel, md.name].forEach(function (k) {
+          if (!k) return;
+          if (!byKey[k]) byKey[k] = { ready: 0, total: 0 };
+          if (k === md.name && k === rel) return; // avoid double count on same key
+          byKey[k].ready += ready; byKey[k].total += total;
+        });
+        if (rel === md.name) { byKey[rel].ready += ready; byKey[rel].total += total; }
+      });
+      document.querySelectorAll("#releases tbody tr").forEach(function (tr) {
+        var agg = byKey[tr.getAttribute("data-rel")];
+        if (!agg || !agg.total) return;
+        var cell = tr.querySelector(".readyCell");
+        if (!cell) return;
+        cell.textContent = agg.ready + "/" + agg.total;
+        cell.className = "readyCell " + (agg.ready >= agg.total ? "ok" : "bad");
+      });
+      document.querySelectorAll("#health .hcard").forEach(function (card) {
+        var key = card.getAttribute("data-svc") || "";
+        // http-probe cards are often named after the Service ("foo-svc") —
+        // fall back to the workload name behind it.
+        var agg = byKey[key] || byKey[key.replace(/-svc$/, "")];
+        if (!agg || !agg.total) return;
+        var b = card.querySelector(".stateBadge");
+        if (!b) return;
+        var state = agg.ready >= agg.total ? "up" : (agg.ready > 0 ? "degraded" : "down");
+        b.textContent = state;
+        b.className = "badge stateBadge " +
+          (state === "up" ? "b-ok" : state === "degraded" ? "b-warn" : "b-bad");
+        var tag = card.querySelector(".src");
+        if (tag) tag.textContent = "live";
+      });
+    }
+
     // Live pod health — polls the in-cluster refresher's pods.json (raw
     // `kubectl get pods -o json`). Independent of the publish-time snapshot above.
     function loadLive() {
+      fetch("install-status.workloads.json", { cache: "no-store" })
+        .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(function (d) { lastWorkloads = d; overlayLive(d); })
+        .catch(function () { /* older refresher without workloads.json — snapshot values stay */ });
       fetch("install-status.pods.json", { cache: "no-store" })
         .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
         .then(function (d) {
@@ -227,11 +294,15 @@
             var total = cs.length;
             var restarts = cs.reduce(function (a, c) { return a + (c.restartCount || 0); }, 0);
             var ok = total > 0 && ready === total;
+            var phase = (p.status && p.status.phase) || "";
+            // Completed Job pods (Succeeded) have 0 ready containers by design —
+            // neutral, not red.
+            var readyCls = phase === "Succeeded" ? "" : (ok ? "ok" : "bad");
             var tr = document.createElement("tr");
             tr.innerHTML =
               "<td>" + esc(p.metadata && p.metadata.name) + "</td>" +
-              '<td class="' + (ok ? "ok" : "bad") + '">' + ready + "/" + total + "</td>" +
-              "<td>" + esc(p.status && p.status.phase) + "</td>" +
+              '<td class="' + readyCls + '">' + (phase === "Succeeded" ? "done" : ready + "/" + total) + "</td>" +
+              "<td>" + esc(phase) + "</td>" +
               "<td>" + restarts + "</td>";
             tb.appendChild(tr);
           });
