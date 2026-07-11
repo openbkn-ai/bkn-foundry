@@ -38,6 +38,7 @@ data:
   KAFKAPORT: {{ quote .Values.depServices.mq.mqPort }}
   KAFKAUSER: {{ .Values.depServices.mq.auth.username | quote }}
   KAFKAPASS: {{ .Values.depServices.mq.auth.password | quote }}
+  METERING_BACKEND: {{ .Values.metering.backend | default "auto" | quote }}
   TEXTVECTORMAPPING: {{ quote .Values.depServices.text_vector.mapping | quote }}
   VLMVECTORMAPPING: {{ quote .Values.depServices.text_vector.mapping | quote }}
   TEXTRERANKERMAPPING: {{ quote .Values.depServices.text_reranker.mapping | quote }}

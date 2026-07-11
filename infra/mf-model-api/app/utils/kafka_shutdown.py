@@ -10,6 +10,9 @@ from app.logs.stand_log import StandLogger
 
 def graceful_shutdown():
     """优雅关闭Kafka异步生产者"""
+    if kafka_client is None:
+        # 计量后端非 kafka，无需关闭
+        return
     try:
         StandLogger.info("开始优雅关闭Kafka异步生产者...")
         kafka_client.shutdown_async_producer()

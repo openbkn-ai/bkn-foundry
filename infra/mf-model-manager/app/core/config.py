@@ -105,10 +105,28 @@ class BaseConfig(object):
     KAFKAUSER = os.getenv('KAFKAUSER', KAFKAUSERDEFAULT)
     KAFKAPASS = os.getenv('KAFKAPASS', KAFKAPASSDEFAULT)
 
+    # 计量传输后端：auto=有 KAFKAHOST 环境变量则 kafka，否则 redis
+    METERINGBACKEND = os.getenv('METERING_BACKEND', 'auto')
+    METERINGREDISDB = int(os.getenv('METERING_REDIS_DB', '1'))
+    METERINGSTREAMMAXLEN = int(os.getenv('METERING_STREAM_MAXLEN', '100000'))
+
     # 权限控制开关：true=开启完整鉴权与资源权限逻辑；false=关闭，所有接口放行，不过滤数据
     AUTH_ENABLED = os.getenv('AUTH_ENABLED', 'false').lower() == 'true'
     # 权限关闭时写入审计日志所用的匿名用户ID占位符
     ANONYMOUS_USER_ID = "anonymous-user"
+
+
+def resolve_metering_backend():
+    """解析计量传输后端：kafka | redis。
+
+    auto 模式下以原始环境变量 KAFKAHOST 是否设置为准（KAFKAHOSTDEFAULT
+    是写死的开发默认值，永远非空，不能用解析后的配置判断）。
+    显式指定 kafka/redis 时不做探活，按配置执行。
+    """
+    backend = (BaseConfig.METERINGBACKEND or 'auto').strip().lower()
+    if backend in ('kafka', 'redis'):
+        return backend
+    return 'kafka' if os.getenv('KAFKAHOST') else 'redis'
 
 
 base_config = BaseConfig()

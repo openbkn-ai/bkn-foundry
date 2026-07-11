@@ -3,17 +3,17 @@ from app.interfaces import logics
 from app.logs.stand_log import StandLogger
 import json
 
-from app.mydb.ConnectUtil import kafka_client
+from app.utils.metering_producer import produce_metering_record
 
 
 async def add_llm_model_call_log(para: logics.AddModelUsedAudit):
     """
-    将token消费信息写入kafka
+    将token消费信息写入计量队列（Kafka 或 Redis Stream，按 METERING_BACKEND）
     :param para:
     :return:
     """
     try:
-        
+
         # 准备消息数据，参考kafka_streams_processor.py中消费者的字段
         message_data = {
             'model_id': para.model_id,
@@ -27,19 +27,16 @@ async def add_llm_model_call_log(para: logics.AddModelUsedAudit):
             'referprice_in': 0.0,  # 默认值，会在消费者端更新
             'referprice_out': 0.0  # 默认值，会在消费者端更新
         }
-        
+
         # 将消息数据转换为JSON格式
         message_json = json.dumps(message_data, ensure_ascii=False)
-        
-        # 使用异步方式发送消息到Kafka
-        # 参考ConnectUtil.py中的produce_async方法
-        kafka_client.produce_async(
+
+        # 异步非阻塞发送到计量队列
+        await produce_metering_record(
             value=message_json.encode('utf-8'),
             key=f"{para.model_id}_{para.user_id}_{message_data['conf_id']}".encode('utf-8')  # 加入conf_id以便排查追踪
         )
-        
-        # StandLogger.info_log(f"成功将token消费信息写入Kafka: model_id={para.model_id}, user_id={para.user_id}, conf_id={message_data['conf_id']}")
     except Exception as e:
-        StandLogger.error(f"将token消费信息写入Kafka时出错: {e}")
+        StandLogger.error(f"将token消费信息写入计量队列时出错: {e}")
 
 
