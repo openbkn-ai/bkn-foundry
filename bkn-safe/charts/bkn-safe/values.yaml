@@ -91,8 +91,10 @@ clientSeed:
 
 config:
   seedOnStart: true
-  # Platform initial password override (BKN_SAFE_INITIAL_PASSWORD). Empty = secure
-  # default "openbkn". Set for test environments only, e.g. "111111".
+  # Platform initial password (BKN_SAFE_INITIAL_PASSWORD). deploy.sh generates a
+  # random one per install and records it as bknSafe.initialPassword in
+  # config.yaml. Empty = the server generates a random admin password at seed
+  # time and logs it ONCE — there is no baked-in default.
   initialPassword: ""
   db:
     type: "MySQL"            # MySQL | DM8 | KDB9 (all via openbkn-rds driver)
