@@ -756,12 +756,16 @@ install_core() {
     else
         echo "    curl -k ${_scheme}://${_host}:${_port}/api/v1/health"
     fi
-    if [[ -n "$(config_yaml_top_field bknSafe initialPassword)" ]]; then
+    local _initial_pwd
+    _initial_pwd="$(config_yaml_top_field bknSafe initialPassword)"
+    if [[ -n "${_initial_pwd}" ]]; then
         echo ""
-        echo "  Console sign-in: user 'admin' with the generated initial password"
-        echo "  (a change is forced on first login). Retrieve it with:"
+        echo "  Console sign-in (change forced on first login):"
         echo ""
-        echo "    grep initialPassword ${CONFIG_YAML_PATH}"
+        echo "    user:     admin"
+        echo "    password: ${_initial_pwd}"
+        echo ""
+        echo "  (recorded as bknSafe.initialPassword in ${CONFIG_YAML_PATH})"
     fi
     echo ""
     echo "============================================"
