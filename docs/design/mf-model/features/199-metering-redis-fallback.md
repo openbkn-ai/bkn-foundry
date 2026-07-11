@@ -98,7 +98,9 @@ kafka_client = MyKafkaClient() if resolve_metering_backend() == "kafka" else Non
 
 ### 3.4 helm
 
-两服务 chart：configmap 增加 `METERING_BACKEND: {{ .Values.metering.backend | default "auto" }}`，deployment 注入该 env；values 增加 `metering.backend: auto`。KAFKA* 注入保持现状（#201 处理条件化）。
+两服务 chart：configmap 增加 `METERING_BACKEND: {{ .Values.metering.backend | default "redis" }}`，deployment 注入该 env；values 增加 `metering.backend: "redis"`。
+
+**部署默认值 = `redis`**：Redis 是全系统必装组件，计量开箱即用、不依赖 Kafka 是否部署；大规模部署显式设 `metering.backend: kafka` 切回。`auto` 保留为第三选项（按 KAFKAHOST 注入与否判定）。代码层 env 缺省仍为 `auto`（裸进程/本地开发场景）。KAFKA* 注入保持现状（#201 处理条件化）。
 
 ## 4. 语义对比
 
