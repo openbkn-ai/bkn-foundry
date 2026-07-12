@@ -1,0 +1,1104 @@
+openapi: 3.1.0
+info:
+  title: agent-runtime
+  version: 0.1.0
+paths:
+  /api/agent-runtime/v1/agents:
+    post:
+      tags:
+      - AgentRuntime
+      summary: Create Agent
+      operationId: create_agent_api_agent_runtime_v1_agents_post
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentSpec'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentOut'
+        4XX:
+          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    get:
+      tags:
+      - AgentRuntime
+      summary: List Agents
+      operationId: list_agents_api_agent_runtime_v1_agents_get
+      parameters:
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+          title: Page
+      - name: size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 20
+          title: Size
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentList'
+        4XX:
+          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/agent-runtime/v1/agents/{agent_id}:
+    get:
+      tags:
+      - AgentRuntime
+      summary: Get Agent
+      operationId: get_agent_api_agent_runtime_v1_agents__agent_id__get
+      parameters:
+      - name: agent_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Agent Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentOut'
+        4XX:
+          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    put:
+      tags:
+      - AgentRuntime
+      summary: Update Agent
+      operationId: update_agent_api_agent_runtime_v1_agents__agent_id__put
+      parameters:
+      - name: agent_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Agent Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentSpec'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentOut'
+        4XX:
+          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    delete:
+      tags:
+      - AgentRuntime
+      summary: Delete Agent
+      operationId: delete_agent_api_agent_runtime_v1_agents__agent_id__delete
+      parameters:
+      - name: agent_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Agent Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentDeleted'
+        4XX:
+          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/agent-runtime/v1/chat:
+    post:
+      tags:
+      - AgentRuntime
+      summary: Chat
+      operationId: chat_api_agent_runtime_v1_chat_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+        required: true
+      responses:
+        '200':
+          description: SSE 事件流：meta({thread_id, agent_id}) 先行；正文轮内 token({content})
+            与 tool_call({name}) 交替；正常收尾 done({thread_id})；失败以 error({code, detail})
+            收尾（错误不静默）。
+          content:
+            application/json:
+              schema: {}
+            text/event-stream:
+              schema:
+                type: string
+        4XX:
+          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/agent-runtime/v1/run:
+    post:
+      tags:
+      - AgentRuntime
+      summary: Run
+      operationId: run_api_agent_runtime_v1_run_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskOut'
+        4XX:
+          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/agent-runtime/v1/tasks/{task_id}:
+    get:
+      tags:
+      - AgentRuntime
+      summary: Get Task
+      operationId: get_task_api_agent_runtime_v1_tasks__task_id__get
+      parameters:
+      - name: task_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Task Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskOut'
+        4XX:
+          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/agent-runtime/v1/prompts:
+    post:
+      tags:
+      - AgentRuntime
+      summary: Create Prompt
+      operationId: create_prompt_api_agent_runtime_v1_prompts_post
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PromptSpec'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromptOut'
+        4XX:
+          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    get:
+      tags:
+      - AgentRuntime
+      summary: List Prompts
+      operationId: list_prompts_api_agent_runtime_v1_prompts_get
+      parameters:
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+          title: Page
+      - name: size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 20
+          title: Size
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromptList'
+        4XX:
+          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/agent-runtime/v1/prompts/{prompt_id}:
+    get:
+      tags:
+      - AgentRuntime
+      summary: Get Prompt
+      operationId: get_prompt_api_agent_runtime_v1_prompts__prompt_id__get
+      parameters:
+      - name: prompt_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Prompt Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromptOut'
+        4XX:
+          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    put:
+      tags:
+      - AgentRuntime
+      summary: Publish Version
+      description: 发布新版本：写入 t_agent_prompt_version 并推进 current_version，立即全局生效。
+      operationId: publish_version_api_agent_runtime_v1_prompts__prompt_id__put
+      parameters:
+      - name: prompt_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Prompt Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PromptPublish'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromptOut'
+        4XX:
+          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/agent-runtime/v1/prompts/{prompt_id}/versions:
+    get:
+      tags:
+      - AgentRuntime
+      summary: List Versions
+      operationId: list_versions_api_agent_runtime_v1_prompts__prompt_id__versions_get
+      parameters:
+      - name: prompt_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Prompt Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromptVersionList'
+        4XX:
+          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/agent-runtime/v1/prompts/{prompt_id}/rollback:
+    post:
+      tags:
+      - AgentRuntime
+      summary: Rollback
+      operationId: rollback_api_agent_runtime_v1_prompts__prompt_id__rollback_post
+      parameters:
+      - name: prompt_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Prompt Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PromptRollback'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromptOut'
+        4XX:
+          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/agent-runtime/v1/agents/{agent_id}/prompt:
+    get:
+      tags:
+      - AgentRuntime
+      summary: Get Effective Prompt
+      operationId: get_effective_prompt_api_agent_runtime_v1_agents__agent_id__prompt_get
+      parameters:
+      - name: agent_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Agent Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EffectivePromptOut'
+        4XX:
+          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    put:
+      tags:
+      - AgentRuntime
+      summary: Put Override
+      operationId: put_override_api_agent_runtime_v1_agents__agent_id__prompt_put
+      parameters:
+      - name: agent_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Agent Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OverridePut'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OverrideState'
+        4XX:
+          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    delete:
+      tags:
+      - AgentRuntime
+      summary: Delete Override
+      operationId: delete_override_api_agent_runtime_v1_agents__agent_id__prompt_delete
+      parameters:
+      - name: agent_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Agent Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OverrideDeleted'
+        4XX:
+          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/agent-runtime/v1/threads/{thread_id}:
+    get:
+      tags:
+      - AgentRuntime
+      summary: Get Thread
+      operationId: get_thread_api_agent_runtime_v1_threads__thread_id__get
+      parameters:
+      - name: thread_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Thread Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ThreadOut'
+        4XX:
+          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/health:
+    get:
+      summary: Health
+      operationId: health_api_v1_health_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+components:
+  schemas:
+    AgentDeleted:
+      properties:
+        deleted:
+          type: string
+          title: Deleted
+      type: object
+      required:
+      - deleted
+      title: AgentDeleted
+    AgentLimits:
+      properties:
+        max_turns:
+          anyOf:
+          - type: integer
+            maximum: 200.0
+            minimum: 1.0
+          - type: 'null'
+          title: Max Turns
+        max_tool_calls:
+          anyOf:
+          - type: integer
+            maximum: 500.0
+            minimum: 0.0
+          - type: 'null'
+          title: Max Tool Calls
+        timeout_s:
+          anyOf:
+          - type: integer
+            maximum: 3600.0
+            minimum: 1.0
+          - type: 'null'
+          title: Timeout S
+      type: object
+      title: AgentLimits
+    AgentList:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/AgentOut'
+          type: array
+          title: Items
+        total:
+          type: integer
+          title: Total
+        page:
+          type: integer
+          title: Page
+        size:
+          type: integer
+          title: Size
+      type: object
+      required:
+      - items
+      - total
+      - page
+      - size
+      title: AgentList
+    AgentOut:
+      properties:
+        name:
+          type: string
+          maxLength: 100
+          minLength: 1
+          title: Name
+        mode:
+          type: string
+          enum:
+          - chat
+          - task
+          title: Mode
+          default: chat
+        prompt_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Prompt Id
+        prompt_vars_schema:
+          anyOf:
+          - type: object
+          - type: 'null'
+          title: Prompt Vars Schema
+        model:
+          type: string
+          title: Model
+          default: ''
+        tools:
+          items:
+            type: object
+          type: array
+          title: Tools
+        skills:
+          items:
+            type: string
+          type: array
+          title: Skills
+        limits:
+          anyOf:
+          - $ref: '#/components/schemas/AgentLimits'
+          - type: 'null'
+        status:
+          type: string
+          enum:
+          - draft
+          - published
+          title: Status
+          default: draft
+        agent_id:
+          type: string
+          title: Agent Id
+        create_user:
+          type: string
+          title: Create User
+        update_user:
+          type: string
+          title: Update User
+        create_time:
+          type: integer
+          title: Create Time
+        update_time:
+          type: integer
+          title: Update Time
+      type: object
+      required:
+      - name
+      - agent_id
+      - create_user
+      - update_user
+      - create_time
+      - update_time
+      title: AgentOut
+    AgentSpec:
+      properties:
+        name:
+          type: string
+          maxLength: 100
+          minLength: 1
+          title: Name
+        mode:
+          type: string
+          enum:
+          - chat
+          - task
+          title: Mode
+          default: chat
+        prompt_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Prompt Id
+        prompt_vars_schema:
+          anyOf:
+          - type: object
+          - type: 'null'
+          title: Prompt Vars Schema
+        model:
+          type: string
+          title: Model
+          default: ''
+        tools:
+          items:
+            type: object
+          type: array
+          title: Tools
+        skills:
+          items:
+            type: string
+          type: array
+          title: Skills
+        limits:
+          anyOf:
+          - $ref: '#/components/schemas/AgentLimits'
+          - type: 'null'
+        status:
+          type: string
+          enum:
+          - draft
+          - published
+          title: Status
+          default: draft
+      type: object
+      required:
+      - name
+      title: AgentSpec
+    ChatRequest:
+      properties:
+        agent_id:
+          type: string
+          title: Agent Id
+        thread_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Thread Id
+        message:
+          type: string
+          minLength: 1
+          title: Message
+        skills:
+          items:
+            type: string
+          type: array
+          title: Skills
+        prompt_override:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Prompt Override
+        prompt_vars:
+          type: object
+          title: Prompt Vars
+      type: object
+      required:
+      - agent_id
+      - message
+      title: ChatRequest
+    EffectivePromptOut:
+      properties:
+        source:
+          type: string
+          enum:
+          - override
+          - default
+          title: Source
+        content:
+          type: string
+          title: Content
+        prompt_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Prompt Id
+        version:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Version
+      type: object
+      required:
+      - source
+      - content
+      title: EffectivePromptOut
+    ErrorEnvelope:
+      properties:
+        code:
+          type: string
+          title: Code
+        description:
+          type: string
+          title: Description
+        detail:
+          type: string
+          title: Detail
+        solution:
+          type: string
+          title: Solution
+        link:
+          type: string
+          title: Link
+          default: ''
+      type: object
+      required:
+      - code
+      - description
+      - detail
+      - solution
+      title: ErrorEnvelope
+      description: 平台统一错误封套（所有非 2xx 响应）。
+    OverrideDeleted:
+      properties:
+        deleted:
+          type: boolean
+          title: Deleted
+        fallback:
+          type: string
+          enum:
+          - default
+          const: default
+          title: Fallback
+      type: object
+      required:
+      - deleted
+      - fallback
+      title: OverrideDeleted
+    OverridePut:
+      properties:
+        content:
+          type: string
+          minLength: 1
+          title: Content
+      type: object
+      required:
+      - content
+      title: OverridePut
+    OverrideState:
+      properties:
+        agent_id:
+          type: string
+          title: Agent Id
+        account_id:
+          type: string
+          title: Account Id
+        source:
+          type: string
+          enum:
+          - override
+          const: override
+          title: Source
+      type: object
+      required:
+      - agent_id
+      - account_id
+      - source
+      title: OverrideState
+    PromptList:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/PromptOut'
+          type: array
+          title: Items
+        total:
+          type: integer
+          title: Total
+        page:
+          type: integer
+          title: Page
+        size:
+          type: integer
+          title: Size
+      type: object
+      required:
+      - items
+      - total
+      - page
+      - size
+      title: PromptList
+    PromptOut:
+      properties:
+        prompt_id:
+          type: string
+          title: Prompt Id
+        name:
+          type: string
+          title: Name
+        current_version:
+          type: integer
+          title: Current Version
+        content:
+          type: string
+          title: Content
+        vars_schema:
+          anyOf:
+          - type: object
+          - type: 'null'
+          title: Vars Schema
+        update_user:
+          type: string
+          title: Update User
+        update_time:
+          type: integer
+          title: Update Time
+      type: object
+      required:
+      - prompt_id
+      - name
+      - current_version
+      - content
+      - update_user
+      - update_time
+      title: PromptOut
+    PromptPublish:
+      properties:
+        content:
+          type: string
+          minLength: 1
+          title: Content
+        vars_schema:
+          anyOf:
+          - type: object
+          - type: 'null'
+          title: Vars Schema
+      type: object
+      required:
+      - content
+      title: PromptPublish
+    PromptRollback:
+      properties:
+        version:
+          type: integer
+          minimum: 1.0
+          title: Version
+      type: object
+      required:
+      - version
+      title: PromptRollback
+    PromptSpec:
+      properties:
+        name:
+          type: string
+          maxLength: 100
+          minLength: 1
+          title: Name
+        content:
+          type: string
+          minLength: 1
+          title: Content
+        vars_schema:
+          anyOf:
+          - type: object
+          - type: 'null'
+          title: Vars Schema
+      type: object
+      required:
+      - name
+      - content
+      title: PromptSpec
+    PromptVersionList:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/PromptVersionOut'
+          type: array
+          title: Items
+      type: object
+      required:
+      - items
+      title: PromptVersionList
+    PromptVersionOut:
+      properties:
+        version:
+          type: integer
+          title: Version
+        content:
+          type: string
+          title: Content
+        vars_schema:
+          anyOf:
+          - type: object
+          - type: 'null'
+          title: Vars Schema
+        create_user:
+          type: string
+          title: Create User
+        create_time:
+          type: integer
+          title: Create Time
+      type: object
+      required:
+      - version
+      - content
+      - create_user
+      - create_time
+      title: PromptVersionOut
+    RunRequest:
+      properties:
+        agent_id:
+          type: string
+          title: Agent Id
+        message:
+          type: string
+          minLength: 1
+          title: Message
+        skills:
+          items:
+            type: string
+          type: array
+          title: Skills
+        prompt_override:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Prompt Override
+        prompt_vars:
+          type: object
+          title: Prompt Vars
+      type: object
+      required:
+      - agent_id
+      - message
+      title: RunRequest
+    TaskOut:
+      properties:
+        task_id:
+          type: string
+          title: Task Id
+        agent_id:
+          type: string
+          title: Agent Id
+        status:
+          type: string
+          enum:
+          - pending
+          - running
+          - succeeded
+          - failed
+          title: Status
+        input:
+          anyOf:
+          - type: object
+          - type: 'null'
+          title: Input
+        output:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Output
+        failure_detail:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Failure Detail
+        parent_thread_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Parent Thread Id
+        create_time:
+          type: integer
+          title: Create Time
+        update_time:
+          type: integer
+          title: Update Time
+      type: object
+      required:
+      - task_id
+      - agent_id
+      - status
+      - create_time
+      - update_time
+      title: TaskOut
+    ThreadMessage:
+      properties:
+        role:
+          type: string
+          enum:
+          - user
+          - assistant
+          - tool
+          title: Role
+        content:
+          type: string
+          title: Content
+        tool_calls:
+          items:
+            type: string
+          type: array
+          title: Tool Calls
+      type: object
+      required:
+      - role
+      - content
+      title: ThreadMessage
+    ThreadOut:
+      properties:
+        thread_id:
+          type: string
+          title: Thread Id
+        agent_id:
+          type: string
+          title: Agent Id
+        create_time:
+          type: integer
+          title: Create Time
+        update_time:
+          type: integer
+          title: Update Time
+        messages:
+          items:
+            $ref: '#/components/schemas/ThreadMessage'
+          type: array
+          title: Messages
+      type: object
+      required:
+      - thread_id
+      - agent_id
+      - create_time
+      - update_time
+      - messages
+      title: ThreadOut

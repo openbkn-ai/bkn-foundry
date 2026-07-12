@@ -12,7 +12,17 @@ from app.models import ChatRequest
 router = APIRouter()
 
 
-@router.post("/chat")
+_SSE_DOC = (
+    "SSE 事件流：meta({thread_id, agent_id}) 先行；正文轮内 token({content}) 与 "
+    "tool_call({name}) 交替；正常收尾 done({thread_id})；失败以 error({code, detail}) "
+    "收尾（错误不静默）。"
+)
+
+
+@router.post(
+    "/chat",
+    responses={200: {"description": _SSE_DOC, "content": {"text/event-stream": {"schema": {"type": "string"}}}}},
+)
 async def chat(
     req: ChatRequest,
     account: Account = Depends(get_account),

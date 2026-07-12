@@ -8,11 +8,15 @@ from app.db import get_session
 from app.errors import bad_request, not_found
 from app.models import (
     EffectivePromptOut,
+    OverrideDeleted,
     OverridePut,
+    OverrideState,
+    PromptList,
     PromptOut,
     PromptPublish,
     PromptRollback,
     PromptSpec,
+    PromptVersionList,
 )
 
 router = APIRouter()
@@ -30,7 +34,7 @@ async def create_prompt(
         raise bad_request("NameConflict", "提示词名称已存在", spec.name, "换一个 name。")
 
 
-@router.get("/prompts")
+@router.get("/prompts", response_model=PromptList)
 async def list_prompts(
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
@@ -67,7 +71,7 @@ async def publish_version(
     return prompt
 
 
-@router.get("/prompts/{prompt_id}/versions")
+@router.get("/prompts/{prompt_id}/versions", response_model=PromptVersionList)
 async def list_versions(
     prompt_id: str,
     account: Account = Depends(get_account),
@@ -118,7 +122,7 @@ async def get_effective_prompt(
     )
 
 
-@router.put("/agents/{agent_id}/prompt")
+@router.put("/agents/{agent_id}/prompt", response_model=OverrideState)
 async def put_override(
     agent_id: str,
     body: OverridePut,
@@ -131,7 +135,7 @@ async def put_override(
     return {"agent_id": agent_id, "account_id": account.account_id, "source": "override"}
 
 
-@router.delete("/agents/{agent_id}/prompt")
+@router.delete("/agents/{agent_id}/prompt", response_model=OverrideDeleted)
 async def delete_override(
     agent_id: str,
     account: Account = Depends(get_account),
