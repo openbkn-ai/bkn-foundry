@@ -20,6 +20,7 @@ INSTALL_STATUS_DIR="${SCRIPT_DIR}/conf/install-status"
 INSTALL_STATUS_ENDPOINT_TPL="${INSTALL_STATUS_DIR}/endpoint.yaml"
 INSTALL_STATUS_NGINX_CONF="${INSTALL_STATUS_DIR}/nginx.conf"
 INSTALL_STATUS_INDEX_HTML="${INSTALL_STATUS_DIR}/index.html"
+INSTALL_STATUS_MERGE_JQ="${INSTALL_STATUS_DIR}/merge.jq"
 
 # Image for the install-status refresher sidecar (live pod-health snapshot).
 # MUST contain a /bin/sh and kubectl — distroless kubectl images (rancher/kubectl)
@@ -77,12 +78,18 @@ _status_apply_endpoint() {
         return 0
     fi
 
-    # nginx conf + dashboard HTML ConfigMap (built from real files, not inlined
-    # YAML — keeps them un-escaped and editable). Idempotent.
+    # nginx conf + dashboard HTML + in-cluster merge script ConfigMap (built
+    # from real files, not inlined YAML — keeps them un-escaped and editable).
+    # Idempotent.
     if [[ -f "${INSTALL_STATUS_NGINX_CONF}" && -f "${INSTALL_STATUS_INDEX_HTML}" ]]; then
+        local -a cm_files=(
+            --from-file=nginx.conf="${INSTALL_STATUS_NGINX_CONF}"
+            --from-file=index.html="${INSTALL_STATUS_INDEX_HTML}"
+        )
+        [[ -f "${INSTALL_STATUS_MERGE_JQ}" ]] \
+            && cm_files+=(--from-file=merge.jq="${INSTALL_STATUS_MERGE_JQ}")
         kubectl create configmap install-status-nginx \
-            --from-file=nginx.conf="${INSTALL_STATUS_NGINX_CONF}" \
-            --from-file=index.html="${INSTALL_STATUS_INDEX_HTML}" \
+            "${cm_files[@]}" \
             -n "${namespace}" \
             --dry-run=client -o yaml 2>/dev/null \
             | kubectl apply -f - >/dev/null 2>&1 \
@@ -90,6 +97,13 @@ _status_apply_endpoint() {
     else
         log_warn "install-status nginx.conf / index.html missing under ${INSTALL_STATUS_DIR}."
     fi
+
+    # Drop the legacy standalone refresher stack (early live-overlay iteration,
+    # superseded by the refresher sidecar in this Deployment). Idempotent.
+    kubectl delete deployment/install-status-rt service/install-status-rt \
+        serviceaccount/install-status-rt role/install-status-rt \
+        rolebinding/install-status-rt \
+        -n "${namespace}" --ignore-not-found >/dev/null 2>&1 || true
 
     local ingress_class
     ingress_class="$(_status_detect_ingress_class)"
