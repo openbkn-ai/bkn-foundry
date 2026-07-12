@@ -116,7 +116,10 @@
         tr.setAttribute("data-rel", r.name);
         tr.appendChild(el("td", null, r.name));
         tr.appendChild(el("td", "v", r.chartVersion));
-        tr.appendChild(el("td", "v", r.appVersion));
+        var av = el("td", "v", r.appVersion);
+        // in-cluster merge overlays the actual running image tag
+        if (r.versionSource === "live") av.appendChild(el("span", "src", "live"));
+        tr.appendChild(av);
         var st = el("td");
         var stCls = r.status === "deployed" ? "b-ok" : (r.status === "skipped" ? "b-mut" : "b-bad");
         var sb = el("span", "badge " + stCls, r.status);
@@ -209,8 +212,10 @@
             (d.ingressClass ? "  ·  ingressClass " + d.ingressClass : "") + authTxt;
           // generatedAt is UTC ISO ("...Z") — render in the viewer's timezone.
           var genTs = Date.parse(d.generatedAt || "");
-          document.getElementById("genAt").textContent =
-            genTs ? new Date(genTs).toLocaleString() : (d.generatedAt || "—");
+          var genTxt = genTs ? new Date(genTs).toLocaleString() : (d.generatedAt || "—");
+          // liveMergedAt marks the in-cluster auto-refreshed variant (merge.py)
+          if (d.liveMergedAt) genTxt += " · auto (in-cluster)";
+          document.getElementById("genAt").textContent = genTxt;
           var rel = renderReleases(d.releases || []);
           renderHealth(d.serviceHealth);
           renderDeps(d.depServices);

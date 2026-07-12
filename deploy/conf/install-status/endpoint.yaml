@@ -13,9 +13,13 @@
 #   - /install-status.workloads.json raw `kubectl get deploy,sts -o json` — the
 #     dashboard overlays per-release readiness and service health from it, so
 #     the whole page tracks reality without re-running publish-status.
+#   - /install-status.live.json      publish-time snapshot merged with actual
+#     image tags + readiness (merge.jq); nginx serves it as /install-status.json
+#     via try_files, falling back to the static snapshot when the refresher is
+#     down — the page's stale-snapshot banner then doubles as the outage alert.
 # It needs a ServiceAccount with a minimal Role (pods/deployments/statefulsets
-# read only — NO secrets, NO helm). The rich version/drift/dep snapshot
-# (install-status.json) stays as the externally-collected, publish-time data.
+# read only — NO secrets, NO helm). The expected release list still comes from
+# the publish-time snapshot, mounted read-only from the data ConfigMap.
 #
 # Placeholders __NAMESPACE__ / __INGRESS_CLASS__ / __KUBECTL_IMAGE__ are
 # substituted by status.sh.
@@ -89,6 +93,14 @@ spec:
                   && mv /live/pods.json.tmp /live/pods.json
                 kubectl get deploy,sts -n "__NAMESPACE__" -o json > /live/workloads.json.tmp 2>>/live/err.log \
                   && mv /live/workloads.json.tmp /live/workloads.json
+                # live-merge the publish-time snapshot with actual image tags;
+                # any failure keeps the previous live file (nginx falls back)
+                jq -n --arg now "$(date -u +%FT%TZ)" \
+                    --slurpfile snap /data/install-status.json \
+                    --slurpfile work /live/workloads.json \
+                    -f /scripts/merge.jq > /live/install-status.live.json.tmp 2>>/live/err.log \
+                  && mv /live/install-status.live.json.tmp /live/install-status.live.json \
+                  || rm -f /live/install-status.live.json.tmp
                 sleep "${INTERVAL:-60}"
               done
           env:
@@ -104,6 +116,12 @@ spec:
           volumeMounts:
             - name: live
               mountPath: /live
+            - name: data
+              mountPath: /data
+              readOnly: true
+            - name: scripts
+              mountPath: /scripts
+              readOnly: true
         - name: nginx
           image: swr.cn-east-3.myhuaweicloud.com/openbkn-ai/library/nginx:1.27-alpine
           ports:
@@ -143,6 +161,13 @@ spec:
             items:
               - key: index.html
                 path: index.html
+        - name: scripts
+          configMap:
+            name: install-status-nginx
+            items:
+              - key: merge.jq
+                path: merge.jq
+            optional: true
         - name: data
           configMap:
             name: install-status-data
