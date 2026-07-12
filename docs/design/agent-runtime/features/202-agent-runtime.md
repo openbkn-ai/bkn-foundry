@@ -1,6 +1,6 @@
 # 平台内置 Agent Runtime 技术设计文档
 
-> **状态**：草案
+> **状态**：已通过（2026-07-12 评审）
 > **负责人**：@sh00tg0a1
 > **日期**：2026-07-12
 > **相关 Ticket**：[#202](https://github.com/openbkn-ai/bkn-foundry/issues/202)
@@ -177,7 +177,7 @@ SDK 表面统一为六类动作：`chat()`（流式）、`run()` / `wait_task()`
 
 ## 6. 任务拆分 (Milestones)
 
-- [ ] M1 本设计文档评审通过（含 API 契约与数据模型）
+- [x] M1 本设计文档评审通过（含 API 契约与数据模型）——2026-07-12
 - [ ] M2 runtime 骨架：/agents CRUD + /chat 对话 + checkpointer 持久化（MariaDB/Redis 选型落定）
 - [ ] M3 一次性模式：/run + /tasks + agent-as-tool 互调
 - [ ] M4 提示词子系统：版本化存储 + 三层解析 + 变量填充 + 回滚
