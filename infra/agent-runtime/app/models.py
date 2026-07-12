@@ -135,6 +135,15 @@ class ChatRequest(BaseModel):
     prompt_vars: dict[str, Any] = Field(default_factory=dict)
 
 
+class InvokeRequest(BaseModel):
+    """同步一次性执行（agent_id 在路径上；算子工厂 toolbox 工具经此调用）。"""
+
+    message: str = Field(min_length=1)
+    skills: list[str] = Field(default_factory=list)
+    prompt_override: Optional[str] = None
+    prompt_vars: dict[str, Any] = Field(default_factory=dict)
+
+
 class RunRequest(BaseModel):
     agent_id: str
     message: str = Field(min_length=1)

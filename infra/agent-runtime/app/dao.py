@@ -81,6 +81,15 @@ async def list_agents(session: AsyncSession, page: int, size: int) -> tuple[list
     return [_to_out(r) for r in rows], total
 
 
+async def list_published_agents(session: AsyncSession) -> list[AgentOut]:
+    rows = (
+        await session.execute(
+            select(AgentRow).where(AgentRow.f_status == "published").order_by(AgentRow.f_agent_id)
+        )
+    ).scalars().all()
+    return [_to_out(r) for r in rows]
+
+
 async def update_agent(session: AsyncSession, agent_id: str, spec: AgentSpec, account_id: str) -> Optional[AgentOut]:
     row = await session.get(AgentRow, agent_id)
     if not row:
