@@ -264,16 +264,16 @@ Typical flags:
 | Flag | Meaning |
 | --- | --- |
 | *(none)* | Interactive: walks through Node / `openbkn` install (if missing), auth (single CLI — admin is built in via `openbkn admin`), then model / BKN / Context Loader prompts |
-| `-y` / `--yes` | Auto-accept all prompts: bootstrap, full-auth HTTP defaults (`admin` / `eisoo.com`), `test` user creation + role sync, `openbkn` relogin as `test`, Context Loader import. Skips interactive **model registration**; use `--config=models.yaml` for non-interactive model registration. |
+| `-y` / `--yes` | Auto-accept all prompts: bootstrap, full-auth HTTP defaults (`admin` + the per-install initial password from `bknSafe.initialPassword` in config.yaml), `test` user creation + role sync, `openbkn` relogin as `test`, Context Loader import. Skips interactive **model registration**; use `--config=models.yaml` for non-interactive model registration. |
 | `--config=models.yaml` | Non-interactive: register models (and optional BKN) via YAML; see `deploy/conf/models.yaml.example` |
 | `--enable-bkn-search` | BKN ConfigMap patch only (after probe) |
 | `--skip-context-loader` | Skip ADP Context Loader toolbox import |
 
 **Full install (auth + business domain):** onboarding treats the cluster as a full-auth install when related Helm releases or namespaces exist. **`onboard.sh` then performs the following 5 steps automatically** (you do **not** need to run them by hand — they are listed here so you know what is happening, and what to fall back to if a step fails):
 
-1. **`openbkn auth login`** (`onboard_ensure_kweaver_auth`) — session saved under `~/.bkn`. HTTP defaults to `admin` / `eisoo.com` (or browser OAuth on a TTY); under `-y` HTTP defaults are used automatically.
+1. **`openbkn auth login`** (`onboard_ensure_kweaver_auth`) — session saved under `~/.bkn`. HTTP defaults to `admin` + the per-install initial password (`bknSafe.initialPassword` in config.yaml) (or browser OAuth on a TTY); under `-y` HTTP defaults are used automatically.
 2. **`openbkn` on `PATH`** (`onboard_ensure_kweaver_admin_for_isf`) — runs `npm i -g @openbkn/bkn-sdk` if missing (interactive prompt, or auto under `-y`). Admin is built in via the `openbkn admin` subcommand — no separate package.
-3. **Admin auth** (`onboard_ensure_kweaver_admin_auth_for_isf`) — admin operations reuse the **same `openbkn` login / token store** as step 1 (`admin` / `eisoo.com` defaults). Uses `-u` / `-p` / `-k` (HTTP `/oauth2/signin` is selected automatically). On a TTY a browser flow is also offered.
+3. **Admin auth** (`onboard_ensure_kweaver_admin_auth_for_isf`) — admin operations reuse the **same `openbkn` login / token store** as step 1 (`admin` + recorded initial-password defaults). Uses `-u` / `-p` / `-k` (HTTP `/oauth2/signin` is selected automatically). On a TTY a browser flow is also offered.
 4. **User `test`** (`onboard_offer_isf_test_user`) — created with password `111111` (override with `ONBOARD_TEST_USER_PASSWORD`), every role from `openbkn admin role list` assigned, then **`openbkn auth login` as `test`** so the SDK session matches the business user for the next steps. If `test` already exists, only role-sync runs.
 5. **Context Loader + model registration** (`onboard_offer_context_loader_toolset` → `openbkn call impex`; then interactive / YAML model registration) — both use **`~/.bkn` as `test`** (the console `admin` session usually returns `403` on impex).
 
@@ -311,7 +311,7 @@ flowchart TB
 ```mermaid
 flowchart TB
   subgraph probe["onboard_probe"]
-    A["onboard_ensure_kweaver_auth\n(openbkn: HTTP default admin / eisoo or browser)"] --> B["kubectl: ns or target namespace"]
+    A["onboard_ensure_kweaver_auth\n(openbkn: HTTP default admin + recorded initial password, or browser)"] --> B["kubectl: ns or target namespace"]
     B --> C["onboard_prepend_npm_global_bin_to_path"]
     C --> D["onboard_recommend_admin_cli (Helm / ns → full-auth?)"]
     D --> E["onboard_ensure_kweaver_admin_for_isf\n(npm -g openbkn on full-auth installs if needed)"]
@@ -334,7 +334,7 @@ sequenceDiagram
   participant K as openbkn
   participant A as openbkn admin
   U->>O: run from deploy/
-  O->>K: openbkn auth — HTTP (admin / eisoo) or browser
+  O->>K: openbkn auth — HTTP (admin + recorded initial password) or browser
   O->>A: openbkn admin (same login / token) — HTTP defaults or -k browser
   A->>A: user create, password, assign roles
   A-->>O: user list OK
@@ -408,7 +408,7 @@ openbkn admin org members <orgId>     # list members
 
 ```bash
 openbkn admin user list
-openbkn admin user create --login alice            # default password 123456, forced change at first sign-in
+openbkn admin user create --login alice            # initial password generated + returned once (initial_password); forced change at first sign-in
 openbkn admin user reset-password -u alice         # admin reset
 openbkn admin user roles <userId>
 openbkn admin user assign-role <userId> <roleId>
@@ -456,7 +456,7 @@ openbkn admin --json call /api/eacp/v1/... -X POST -d '{"...":"..."}'
 
 ### ⚠️ Things you must know
 
-- **New users created via `user create` always start with the platform default password `123456`** and are forced to change it at first sign-in. This is the platform user store default behavior. Hand the account to the user over a secure channel; for lost-password rotation use `openbkn admin user reset-password`.
+- **New users created via `user create` (without `--password`) get a randomly generated initial password**, returned exactly once in the create response (`initial_password`), and are forced to change it at first sign-in. There is no platform-wide default password. Hand the account to the user over a secure channel; for lost-password rotation use `openbkn admin user reset-password`.
 - **Separation-of-duties built-in accounts** — `system / admin / security / audit` must not be casually modified; operators should use **individual accounts** rather than the shared `admin` for traceable audit logs.
 - **First-login forced password change (error `401001017`)**: when `openbkn auth login` hits this code, on a TTY the CLI guides you to set a new password and retries the login; in non-TTY contexts pass `--new-password '<new>'` to do it in one shot.
 - **TLS:** `-k` / `--insecure` (or env var `BKN_TLS_INSECURE=1`) is for development / self-signed certs only — never use in production.

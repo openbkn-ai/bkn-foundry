@@ -278,7 +278,9 @@ STORAGE_EOF
     local os_ns="${OPENSEARCH_NAMESPACE}"
     local os_host="${OPENSEARCH_CLUSTER_NAME}-${OPENSEARCH_NODE_GROUP}.${os_ns}.svc.cluster.local"
     local os_user="admin"
-    local os_password="${OPENSEARCH_INITIAL_ADMIN_PASSWORD}"
+    # Standalone `config generate` runs with an empty env — keep the password
+    # already recorded in config.yaml instead of blanking it.
+    local os_password="${OPENSEARCH_INITIAL_ADMIN_PASSWORD:-$(config_yaml_dep_field opensearch password)}"
     local os_protocol="${OPENSEARCH_PROTOCOL}"
     local opensearch_configured=false
     if [[ -z "${os_protocol}" ]]; then
@@ -547,6 +549,33 @@ DEP_EOF
     if [[ "$(get_set_value "auth.enabled" "${CORE_SET_VALUES[@]:-}" 2>/dev/null)" == "false" ]]; then
         auth_enabled="false"
     fi
+    # Platform initial password for bkn-safe (seeded admin + users created
+    # without an explicit password). Chosen once per install and preserved
+    # across config regenerations; the core installer passes it to the bkn-safe
+    # chart. Precedence: already recorded > BKN_SAFE_INITIAL_PASSWORD env >
+    # interactive prompt (TTY, not -y) > random. No baked-in default anywhere.
+    local bkn_safe_initial_password
+    bkn_safe_initial_password="$(config_yaml_top_field bknSafe initialPassword)"
+    if [[ -z "${bkn_safe_initial_password}" ]]; then
+        bkn_safe_initial_password="${BKN_SAFE_INITIAL_PASSWORD:-}"
+    fi
+    if [[ -z "${bkn_safe_initial_password}" && -t 0 && "${ASSUME_YES:-false}" != "true" ]]; then
+        local _pw1 _pw2
+        read -r -s -p "Console admin initial password [Enter = random 8 chars]: " _pw1
+        echo "" >&2
+        if [[ -n "${_pw1}" ]]; then
+            read -r -s -p "Confirm password: " _pw2
+            echo "" >&2
+            if [[ "${_pw1}" == "${_pw2}" ]]; then
+                bkn_safe_initial_password="${_pw1}"
+            else
+                log_warn "Passwords do not match — generating a random one instead."
+            fi
+        fi
+    fi
+    if [[ -z "${bkn_safe_initial_password}" ]]; then
+        bkn_safe_initial_password="$(generate_random_password 8)"
+    fi
     local bkn_safe_block
     if [[ "${auth_enabled}" == "false" ]]; then
         bkn_safe_block=$(cat <<'BKNSAFE_OFF'
@@ -570,6 +599,10 @@ bknSafe:
 BKNSAFE_ON
 )
     fi
+    # Recorded in both auth modes so the value survives auth on/off toggles.
+    bkn_safe_block="${bkn_safe_block}
+  # Platform initial password (admin first login + users created without one).
+  initialPassword: $(yaml_quote "${bkn_safe_initial_password}")"
 
     cat > "${out}" <<EOF
 namespace: ${cfg_namespace}
@@ -590,6 +623,10 @@ accessAddress:
   path: ${access_path}
 ${dep_services_section}
 EOF
+
+    # The file holds credentials (middleware + platform initial password):
+    # owner-only, regardless of the caller's umask.
+    chmod 600 "${out}" 2>/dev/null || true
 
     log_info "Wrote config file: ${out}"
     local included_services=()

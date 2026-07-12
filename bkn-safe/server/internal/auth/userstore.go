@@ -10,7 +10,6 @@
 package auth
 
 import (
-	"cmp"
 	"context"
 	"errors"
 	"os"
@@ -21,15 +20,25 @@ import (
 	"bkn-safe/internal/model"
 )
 
-// DefaultInitialPassword is the platform initial password handed to newly
-// created local users (and the seeded admin) when no password is specified.
-// MustChangePassword is always set, so it must be changed on first login. Single
-// source of truth: seed + admin user-create + the CLI all use this value.
-//
-// Override with BKN_SAFE_INITIAL_PASSWORD for non-production/test environments
-// (e.g. "111111"); unset it for the secure default. A var (not const) so the env
-// is read once at package init.
-var DefaultInitialPassword = cmp.Or(os.Getenv("BKN_SAFE_INITIAL_PASSWORD"), "openbkn")
+// InitialPasswordEnv is the BKN_SAFE_INITIAL_PASSWORD value captured once at
+// package init. When set (non-production/test environments, e.g. "111111"), it
+// is the fixed initial password for the seeded admin and for users created
+// without an explicit password. When empty — the secure default — there is NO
+// baked-in platform password: a random one is generated per user instead.
+var InitialPasswordEnv = os.Getenv("BKN_SAFE_INITIAL_PASSWORD")
+
+// NewInitialPassword returns the password to assign when none was specified:
+// the env override when configured, otherwise a fresh random one (8 chars —
+// short-lived by design). A generated password is not recoverable later, so
+// the caller must surface it to the operator exactly once (API response or
+// startup log). MustChangePassword is always set on such users, forcing a
+// change on first login either way.
+func NewInitialPassword() string {
+	if InitialPasswordEnv != "" {
+		return InitialPasswordEnv
+	}
+	return randBase62(8)
+}
 
 // ErrInvalidCredentials is returned when account/password verification fails.
 // It is deliberately opaque (no "user not found" vs "wrong password" leak).

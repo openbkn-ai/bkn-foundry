@@ -96,6 +96,8 @@ usage() {
     echo "  $0 ingress-nginx install      # Install ingress-nginx-controller"
     echo "  $0 ingress-nginx uninstall    # Uninstall ingress-nginx-controller"
     echo "  $0 config generate            # Generate/update ~/.openbkn-ai/config.yaml"
+    echo "                                Console admin initial password: prompted on first generation (Enter = random);"
+    echo "                                preset with BKN_SAFE_INITIAL_PASSWORD=...; recorded as bknSafe.initialPassword."
     echo "  $0 all install                # Full initialization with all components"
     echo ""
     echo "Global Options (must appear BEFORE <module> <action>, e.g. $0 --distro=k8s bkn-foundry install --minimum):"

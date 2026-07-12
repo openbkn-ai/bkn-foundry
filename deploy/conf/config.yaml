@@ -58,9 +58,12 @@ depServices:
     portRead: 3306
     source_type: internal
     type: MariaDB
-    user: 'adp'
-    password: 'adp@123456'
-    database: 'adp'
+    # Credentials are generated at install time and written to the runtime
+    # config ($HOME/.openbkn-ai/config.yaml). Left empty here on purpose —
+    # never put a real password in this in-repo template.
+    user: 'openbkn'
+    password: ''
+    database: 'openbkn'
   redis:
     connectInfo:
       masterGroupName: mymaster

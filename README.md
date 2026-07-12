@@ -340,7 +340,7 @@ Platform administration (users, organizations, roles, models, audit) is **built 
 
 ```bash
 openbkn admin org tree                          # list departments
-openbkn admin user create --login alice         # default password 123456 (forced change at first login)
+openbkn admin user create --login alice         # initial password generated + returned once (initial_password); forced change at first login
 openbkn admin user reset-password -u alice      # admin reset
 openbkn admin role list
 openbkn admin role add-member <roleId> -u alice
@@ -350,7 +350,7 @@ openbkn admin audit list --user alice --start 2026-04-01 --end 2026-04-30
 openbkn admin call /api/user-management/v1/management/users -X GET   # raw HTTP with auth header
 ```
 
-> New users start with the platform default password **`123456`** and must change it on first sign-in (ISF user-store behavior). Respect the **separation-of-duties** built-in accounts (`system`, `admin`, `security`, `audit`) — operators should use individual accounts, not the shared `admin`.
+> New users created without an explicit password get a randomly generated initial password, returned once in the create response (`initial_password`), and must change it on first sign-in. Respect the **separation-of-duties** built-in accounts (`system`, `admin`, `security`, `audit`) — operators should use individual accounts, not the shared `admin`.
 
 The `openbkn` skill (installed above) also covers these admin tasks. Full command tree and security notes: see the [bkn-sdk](https://github.com/openbkn-ai/bkn-sdk) repository docs.
 

@@ -35,7 +35,7 @@ func registerUserAdmin(g *gin.RouterGroup, users *auth.UserStore, e *authz.Enfor
 			Name          string   `json:"name"`
 			Email         string   `json:"email"`
 			Telephone     string   `json:"telephone"`
-			Password      string   `json:"password"` // optional: defaults to the platform initial password
+			Password      string   `json:"password"` // optional: omitted → generated, returned once as initial_password
 			AccountType   string   `json:"account_type"`
 			DepartmentIDs []string `json:"department_ids"` // optional: initial department membership
 		}
@@ -55,10 +55,14 @@ func registerUserAdmin(g *gin.RouterGroup, users *auth.UserStore, e *authz.Enfor
 		if req.ID == "" {
 			req.ID = auth.NewID()
 		}
-		// No password given → hand out the platform initial password. The user is
-		// forced to change it on first login (CreateLocalUser sets the flag).
+		// No password given → generate a per-user initial password (or the
+		// BKN_SAFE_INITIAL_PASSWORD override) and echo it back ONCE in the
+		// response — it is stored hashed and cannot be recovered later. The user
+		// is forced to change it on first login (CreateLocalUser sets the flag).
+		initialPassword := ""
 		if req.Password == "" {
-			req.Password = auth.DefaultInitialPassword
+			initialPassword = auth.NewInitialPassword()
+			req.Password = initialPassword
 		}
 		at := model.AccountType(req.AccountType)
 		if at == "" {
@@ -78,7 +82,11 @@ func registerUserAdmin(g *gin.RouterGroup, users *auth.UserStore, e *authz.Enfor
 				return
 			}
 		}
-		c.JSON(http.StatusCreated, gin.H{"id": u.ID})
+		resp := gin.H{"id": u.ID}
+		if initialPassword != "" {
+			resp["initial_password"] = initialPassword
+		}
+		c.JSON(http.StatusCreated, resp)
 	})
 
 	// PUT /users/:id/password — admin reset: sets the password and forces the

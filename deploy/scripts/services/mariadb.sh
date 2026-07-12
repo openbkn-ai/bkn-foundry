@@ -196,19 +196,19 @@ install_mariadb_helm() {
         # below; without this re-entry, a re-run on an existing cluster (typical
         # for verification or recovery flows) would skip grants entirely, and
         # data-migrator would fail with 'Access denied for bkn to deploy'.
-        # Read passwords directly from the rds: block in config.yaml (the
-        # get_existing_password helper only matches dotted-key lines, which
-        # the generated yaml does not use).
+        # Read credentials from the rds: block in config.yaml. The cluster's
+        # recorded values win over env defaults here — this path re-applies
+        # grants on an EXISTING install, so config.yaml reflects reality.
         local existing_root_pass existing_user existing_db existing_user_pass
-        existing_root_pass=$(awk '/^  rds:/ {in_b=1} in_b && /^    root_password:/ {gsub(/'"'"'|"/,"",$2);print $2;exit}' "${CONFIG_YAML_PATH}" 2>/dev/null)
-        existing_user_pass=$(awk '/^  rds:/ {in_b=1} in_b && /^    password:/ {gsub(/'"'"'|"/,"",$2);print $2;exit}' "${CONFIG_YAML_PATH}" 2>/dev/null)
-        existing_user=$(awk '/^  rds:/ {in_b=1} in_b && /^    user:/ {gsub(/'"'"'|"/,"",$2);print $2;exit}' "${CONFIG_YAML_PATH}" 2>/dev/null)
-        existing_db=$(awk '/^  rds:/ {in_b=1} in_b && /^    database:/ {gsub(/'"'"'|"/,"",$2);print $2;exit}' "${CONFIG_YAML_PATH}" 2>/dev/null)
+        existing_root_pass=$(config_yaml_dep_field rds root_password)
+        existing_user_pass=$(config_yaml_dep_field rds password)
+        existing_user=$(config_yaml_dep_field rds user)
+        existing_db=$(config_yaml_dep_field rds database)
         if [[ -n "${existing_root_pass}" ]]; then
             MARIADB_ROOT_PASSWORD="${existing_root_pass}"
             MARIADB_PASSWORD="${MARIADB_PASSWORD:-${existing_user_pass}}"
-            MARIADB_USER="${MARIADB_USER:-${existing_user:-bkn}}"
-            MARIADB_DATABASE="${MARIADB_DATABASE:-${existing_db:-bkn}}"
+            MARIADB_USER="${existing_user:-${MARIADB_USER:-bkn}}"
+            MARIADB_DATABASE="${existing_db:-${MARIADB_DATABASE:-bkn}}"
             setup_mariadb_databases || log_warn "MariaDB re-entry setup returned non-zero (continuing)"
         else
             log_warn "MariaDB root password unavailable; skipping grant re-apply on existing install"
@@ -217,7 +217,7 @@ install_mariadb_helm() {
     fi
 
     # MariaDB password handling
-    local existing_pass=$(get_existing_password "mariadb.password")
+    local existing_pass=$(config_yaml_dep_field rds password)
     if [[ -n "${existing_pass}" ]]; then
         MARIADB_PASSWORD="${existing_pass}"
         log_info "Using existing MariaDB password from config.yaml"
@@ -226,7 +226,7 @@ install_mariadb_helm() {
         log_info "Generated random 10-character MariaDB password"
     fi
 
-    local existing_root_pass=$(get_existing_password "mariadb.root_password")
+    local existing_root_pass=$(config_yaml_dep_field rds root_password)
     if [[ -n "${existing_root_pass}" ]]; then
         MARIADB_ROOT_PASSWORD="${existing_root_pass}"
         log_info "Using existing MariaDB root password from config.yaml"
@@ -336,7 +336,7 @@ install_mariadb_official() {
     local ns="${MARIADB_NAMESPACE}"
 
     # MariaDB password handling
-    local existing_pass=$(get_existing_password "mariadb.password")
+    local existing_pass=$(config_yaml_dep_field rds password)
     if [[ -n "${existing_pass}" ]]; then
         MARIADB_PASSWORD="${existing_pass}"
         log_info "Using existing MariaDB password from config.yaml"
@@ -345,7 +345,7 @@ install_mariadb_official() {
         log_info "Generated random 10-character MariaDB password"
     fi
 
-    local existing_root_pass=$(get_existing_password "mariadb.root_password")
+    local existing_root_pass=$(config_yaml_dep_field rds root_password)
     if [[ -n "${existing_root_pass}" ]]; then
         MARIADB_ROOT_PASSWORD="${existing_root_pass}"
         log_info "Using existing MariaDB root password from config.yaml"
@@ -645,7 +645,7 @@ install_mariadb_bitnami() {
     fi
 
     # MariaDB password handling
-    local existing_pass=$(get_existing_password "mariadb.password")
+    local existing_pass=$(config_yaml_dep_field rds password)
     if [[ -n "${existing_pass}" ]]; then
         MARIADB_PASSWORD="${existing_pass}"
         log_info "Using existing MariaDB password from config.yaml"
@@ -654,7 +654,7 @@ install_mariadb_bitnami() {
         log_info "Generated random 10-character MariaDB password"
     fi
 
-    local existing_root_pass=$(get_existing_password "mariadb.root_password")
+    local existing_root_pass=$(config_yaml_dep_field rds root_password)
     if [[ -n "${existing_root_pass}" ]]; then
         MARIADB_ROOT_PASSWORD="${existing_root_pass}"
         log_info "Using existing MariaDB root password from config.yaml"

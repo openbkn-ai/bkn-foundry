@@ -108,6 +108,23 @@ onboard_provision_bkn_safe_test_user() {
         return 0
     fi
 
+    # Let the operator choose the test password (Enter = default). Skipped for
+    # -y, non-TTY, or when ONBOARD_TEST_USER_PASSWORD is preset.
+    if [[ -z "${ONBOARD_TEST_USER_PASSWORD:-}" && -t 0 && "${ONBOARD_ASSUME_YES:-false}" != "true" ]]; then
+        local _p1 _p2
+        read -r -s -p "  Password for business user [test] [Enter = ${ONBOARD_DEFAULT_TEST_USER_PASSWORD:-111111}]: " _p1
+        echo ""
+        if [[ -n "${_p1}" ]]; then
+            read -r -s -p "  Confirm password: " _p2
+            echo ""
+            if [[ "${_p1}" == "${_p2}" ]]; then
+                ONBOARD_TEST_USER_PASSWORD="${_p1}"
+            else
+                onboard_log_warn "Passwords do not match — using the default instead."
+            fi
+        fi
+    fi
+
     local _final _tmp _kurl _id
     _final="${ONBOARD_TEST_USER_PASSWORD:-${ONBOARD_DEFAULT_TEST_USER_PASSWORD:-111111}}"
     _tmp="${_final}.init"   # admin-set temp; must differ from final

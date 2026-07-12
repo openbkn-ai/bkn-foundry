@@ -37,16 +37,17 @@ Use this when you want a custom username, custom role set, or simply prefer not 
 
 ```bash
 npm install -g @openbkn/bkn-sdk
-openbkn auth login <platform-url> -u admin -p eisoo.com -k         # console default account
+# admin initial password: generated at install, recorded as bknSafe.initialPassword in ~/.openbkn-ai/config.yaml
+openbkn auth login <platform-url> -u admin -p '<initial-password>' -k
 openbkn admin role list                                           # all roles and roleIds (e.g. super_admin, normal_user)
-openbkn admin user create --login <new-username>                  # default initial password 123456; first sign-in forces a change
+openbkn admin user create --login <new-username>                  # initial password is generated and returned ONCE (initial_password); first sign-in forces a change
 # Quick start / PoC: assign every roleId from role list to avoid API 403s due to missing roles
 openbkn admin user assign-role <userId> <roleId>
 # … repeat for each role in role list
 openbkn admin user roles <userId>                                 # verify
 ```
 
-- **Path A default password is `111111`** (set by onboard for `test`); **Path B default password is `123456`** (platform hardcoded default). Use whichever matches the path you took.
+- **Path A default password is `111111`** (set by onboard for `test`); **Path B has no fixed default** — `user create` generates a per-user initial password and returns it once in the response. Use whichever matches the path you took.
 - Role / permission notes: [Install — Administrator commands after a full install (`openbkn admin`)](install.md#-administrator-commands-after-a-full-install-openbkn-admin) and [BKN Safe](manual/bkn-safe.md#-administrator-commands-openbkn-admin). In production, grant least privilege; the "every role" pattern is for local / PoC / quick start.
 - **Minimum install** (`--minimum`): both paths are unnecessary — use `openbkn auth login <platform-url> --no-auth`.
 

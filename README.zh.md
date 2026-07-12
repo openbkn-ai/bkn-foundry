@@ -338,7 +338,7 @@ const results  = await bkn.kn.search("<kn-id>", "供应链有哪些风险？");
 
 ```bash
 openbkn admin org tree                          # 列出部门
-openbkn admin user create --login alice         # 默认密码 123456，首次登录强制改密
+openbkn admin user create --login alice         # 初始密码随机生成，仅创建响应返回一次（initial_password），首次登录强制改密
 openbkn admin user reset-password -u alice      # 管理员重置密码
 openbkn admin role list
 openbkn admin role add-member <roleId> -u alice
@@ -348,7 +348,7 @@ openbkn admin audit list --user alice --start 2026-04-01 --end 2026-04-30
 openbkn admin call /api/user-management/v1/management/users -X GET   # 自动带认证头的原始 HTTP
 ```
 
-> `user create` 新建账号的初始密码固定为 **`123456`**，首次登录强制改密（ISF 用户存储的既定行为）。内置「三权分立」账号 `system / admin / security / audit` 请使用各自的个人账号操作，避免共用 `admin`。
+> `user create` 未显式传密码时会为账号随机生成初始密码，仅在创建响应中返回一次（`initial_password`），首次登录强制改密。内置「三权分立」账号 `system / admin / security / audit` 请使用各自的个人账号操作，避免共用 `admin`。
 
 上文安装的 `openbkn` skill 也覆盖这些管理操作。完整命令树与安全说明见 [bkn-sdk](https://github.com/openbkn-ai/bkn-sdk) 仓库文档。
 

@@ -317,6 +317,26 @@ _core_find_local_chart() {
     find_cached_chart_tgz "${charts_dir}" "${chart_name}"
 }
 
+# Per-release extra --set values, filled into CORE_RELEASE_EXTRA_SETS.
+# bkn-safe: pass the per-install platform initial password recorded in
+# config.yaml by generate_config_yaml (seeded admin + users created without an
+# explicit password — no baked-in default). Applied BEFORE CORE_SET_VALUES so an
+# explicit --set config.initialPassword=... still wins.
+CORE_RELEASE_EXTRA_SETS=()
+_core_release_extra_sets() {
+    local release_name="$1"
+    CORE_RELEASE_EXTRA_SETS=()
+    if [[ "${release_name}" == "bkn-safe" ]]; then
+        local initial_pwd
+        initial_pwd="$(config_yaml_top_field bknSafe initialPassword)"
+        if [[ -n "${initial_pwd}" ]]; then
+            CORE_RELEASE_EXTRA_SETS+=("config.initialPassword=${initial_pwd}")
+        else
+            log_warn "bknSafe.initialPassword not recorded in ${CONFIG_YAML_PATH} — bkn-safe will generate an admin password and log it once (re-run 'deploy.sh config generate' to record one)."
+        fi
+    fi
+}
+
 # Install a single bkn-core release from a local .tgz
 _install_core_release_local() {
     local release_name="$1"
@@ -359,8 +379,12 @@ _install_core_release_local() {
         "--wait" "--timeout=600s"
     )
 
-    # Add all --set values
+    # Per-release values first, then all --set values (so explicit --set wins)
     local set_value
+    _core_release_extra_sets "${release_name}"
+    for set_value in "${CORE_RELEASE_EXTRA_SETS[@]}"; do
+        helm_args+=("--set" "${set_value}")
+    done
     for set_value in "${CORE_SET_VALUES[@]}"; do
         helm_args+=("--set" "${set_value}")
     done
@@ -417,8 +441,12 @@ _install_core_release_repo() {
 
     helm_args+=("--devel")
 
-    # Add all --set values
+    # Per-release values first, then all --set values (so explicit --set wins)
     local set_value
+    _core_release_extra_sets "${release_name}"
+    for set_value in "${CORE_RELEASE_EXTRA_SETS[@]}"; do
+        helm_args+=("--set" "${set_value}")
+    done
     for set_value in "${CORE_SET_VALUES[@]}"; do
         helm_args+=("--set" "${set_value}")
     done
@@ -721,12 +749,29 @@ install_core() {
 
     echo ""
     echo "============================================"
-    echo "  Verify your installation:"
+    echo "  Verify your installation (open in a browser):"
     echo ""
     if [[ "${_port}" == "443" || "${_port}" == "80" ]]; then
-        echo "    curl -k ${_scheme}://${_host}/api/v1/health"
+        echo "    ${_scheme}://${_host}/install-status"
     else
-        echo "    curl -k ${_scheme}://${_host}:${_port}/api/v1/health"
+        echo "    ${_scheme}://${_host}:${_port}/install-status"
+    fi
+    # Platform account credentials (NOT database passwords): the console admin
+    # initial password, which is also the initial password handed to users
+    # created without an explicit one. Highlighted — it is the one thing the
+    # operator must take away from this summary.
+    local _initial_pwd
+    _initial_pwd="$(config_yaml_top_field bknSafe initialPassword)"
+    if [[ -n "${_initial_pwd}" ]]; then
+        echo ""
+        echo "  Console sign-in (a password change is forced on first login):"
+        echo ""
+        echo -e "    ${YELLOW}user:     admin${NC}"
+        echo -e "    ${YELLOW}password: ${_initial_pwd}${NC}"
+        echo ""
+        echo "  New users created without an explicit password start with this same"
+        echo "  initial password (also returned once in the create response)."
+        echo "  Recorded as bknSafe.initialPassword in ${CONFIG_YAML_PATH}"
     fi
     echo ""
     echo "============================================"

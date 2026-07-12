@@ -15,6 +15,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
@@ -39,10 +40,6 @@ const (
 // it — the user-admin API refuses to delete or disable it (deleting the only
 // super-admin would lock everyone out). Same UUID as the S2S fallback identity.
 const AdminUserID = adminUserID
-
-// adminInitialPwd is the platform initial password (shared single source).
-// Not a const: auth.DefaultInitialPassword is a runtime var (env-overridable).
-var adminInitialPwd = auth.DefaultInitialPassword
 
 //go:embed data/roles.json
 var rolesJSON []byte
@@ -115,6 +112,10 @@ func Apply(db *gorm.DB, enforcer *authz.Enforcer) error {
 // with adminUserID already exists it returns without touching it — preserving a
 // changed password, cleared MustChangePassword flag, or disabled state across
 // restarts. The super-admin role binding is seeded separately (role-bindings.json).
+//
+// The initial password is BKN_SAFE_INITIAL_PASSWORD when set (deploy generates
+// one per install and passes it here); otherwise a random password is generated
+// and logged ONCE — there is no baked-in default an attacker could try.
 func seedAdminUser(db *gorm.DB) error {
 	var count int64
 	if err := db.Model(&model.User{}).Where("id = ?", adminUserID).Count(&count).Error; err != nil {
@@ -123,11 +124,12 @@ func seedAdminUser(db *gorm.DB) error {
 	if count > 0 {
 		return nil
 	}
-	hash, err := bcrypt.GenerateFromPassword([]byte(adminInitialPwd), bcrypt.DefaultCost)
+	pwd := auth.NewInitialPassword()
+	hash, err := bcrypt.GenerateFromPassword([]byte(pwd), bcrypt.DefaultCost)
 	if err != nil {
 		return err
 	}
-	return db.Create(&model.User{
+	if err := db.Create(&model.User{
 		ID:                 adminUserID,
 		Account:            adminAccount,
 		Name:               "Administrator",
@@ -136,7 +138,16 @@ func seedAdminUser(db *gorm.DB) error {
 		AccountType:        model.AccountTypeOther,
 		PasswordHash:       string(hash),
 		MustChangePassword: true,
-	}).Error
+	}).Error; err != nil {
+		return err
+	}
+	if auth.InitialPasswordEnv == "" {
+		// Only chance to learn the generated password: it is stored bcrypt-hashed.
+		// A forced change on first login limits its lifetime.
+		slog.Warn("seeded built-in admin with a GENERATED initial password (set BKN_SAFE_INITIAL_PASSWORD to control it)",
+			"account", adminAccount, "initial_password", pwd)
+	}
+	return nil
 }
 
 func seedRoles(db *gorm.DB) error {

@@ -89,13 +89,20 @@ ONBOARD_SKIP_TEST_USER="${ONBOARD_SKIP_TEST_USER:-${ONBOARD_SKIP_ISF_TEST_USER:-
 # Populated by onboard_bkn_tls_insecure_args_to_array (usually empty or -k).
 declare -a ONBOARD_TLS_INSECURE_ARGS=()
 
-# openbkn auth: HTTP sign-in defaults (full install). Console account is usually  admin  /  openbkn  if not changed.
-# Override in CI. Used when you press Enter at username/password prompts.
+# openbkn auth: HTTP sign-in defaults (full install). The admin initial password
+# is generated per install by deploy.sh and recorded as bknSafe.initialPassword
+# in config.yaml (there is no baked-in platform default) — read it from there.
+# After the operator changes it, set ONBOARD_DEFAULT_BKN_PASSWORD / answer the
+# prompt. Override in CI. Used when you press Enter at username/password prompts.
 : "${ONBOARD_DEFAULT_BKN_USER:=admin}"
-: "${ONBOARD_DEFAULT_BKN_PASSWORD:=openbkn}"
+if [[ -z "${ONBOARD_DEFAULT_BKN_PASSWORD:-}" ]]; then
+    ONBOARD_DEFAULT_BKN_PASSWORD="$(config_yaml_top_field bknSafe initialPassword 2>/dev/null || true)"
+fi
 
-# First business user  test  (after  openbkn admin user create ) — platform default is 123456 until  reset-password;
-# we set this for onboard default /  -y  / empty Enter. Override: ONBOARD_TEST_USER_PASSWORD; rename default: ONBOARD_DEFAULT_TEST_USER_PASSWORD
+# First business user  test  (after  openbkn admin user create ) — the server
+# generates a random initial password when none is given; onboard immediately
+# reset-passwords it to this value so examples/docs have a known login.
+# Override: ONBOARD_TEST_USER_PASSWORD; rename default: ONBOARD_DEFAULT_TEST_USER_PASSWORD
 : "${ONBOARD_DEFAULT_TEST_USER_PASSWORD:=111111}"
 
 # Same requirement as @openbkn/bkn-sdk on npm (node >= 22). https://www.npmjs.com/package/@openbkn/bkn-sdk
@@ -253,7 +260,7 @@ usage() {
     echo "                onboard uses deploy/dev/conf/mac-config.yaml when that file exists (same as mac.sh)."
     echo "                Else host primary IPv4 + ONBOARD_DEFAULT_ACCESS_SCHEME (https by default)."
     echo "                Set ONBOARD_DEFAULT_ACCESS_BASE to force a URL; ONBOARD_DEFAULT_ACCESS_PORT / SCHEME override fallback IP path."
-    echo "  openbkn auth: you confirm URL. Full install: HTTP defaults user=admin pass=openbkn (if still default); override with ONBOARD_DEFAULT_BKN_USER / _PASSWORD. Enter keeps defaults. Minimum: default --no-auth; Enter to accept."
+    echo "  openbkn auth: you confirm URL. Full install: HTTP defaults user=admin, password = the per-install initial password recorded in config.yaml (bknSafe.initialPassword); override with ONBOARD_DEFAULT_BKN_USER / _PASSWORD. Enter keeps defaults. Minimum: default --no-auth; Enter to accept."
     echo "  openbkn admin shares the openbkn session (no separate login). First login forces a password change; onboard clears it via /api/safe/v1/auth/change-password (or do it once: openbkn auth change-password <url> -u admin). Then openbkn re-logs in as user test for impex and model steps."
     echo "  Node: onboard is not a login shell — it auto-loads nvm/fnm/asdf/Volta and Homebrew paths so an already-configured Node 22+ is found without re-asking. ONBOARD_SKIP_NVM_INIT=true skips that; ONBOARD_NVM_VERSION=22 (default) is used after  nvm.sh  load."
     echo "  (preflight on the server: sudo bash ./preflight.sh --fix still optional; this script can install Node in your *user* account via nvm.)"
@@ -583,7 +590,7 @@ onboard_bkn_auth_login_for_url() {
     local _kurl="$1"
     local _u _p _duser _dpass
     _duser="${ONBOARD_DEFAULT_BKN_USER:-admin}"
-    _dpass="${ONBOARD_DEFAULT_BKN_PASSWORD:-openbkn}"
+    _dpass="${ONBOARD_DEFAULT_BKN_PASSWORD:-}"
     onboard_bkn_tls_insecure_args_to_array "${_kurl}"
     local _kv
     _kv="$(openbkn --version 2>/dev/null | grep -Eo '[vV]?[0-9]+\.[0-9]+\.[0-9]+' | tail -1 || true)"
@@ -592,14 +599,18 @@ onboard_bkn_auth_login_for_url() {
 
     # bkn-safe (current auth stack): credential login via the
     # openbkn device-code flow (openbkn auth login -u/-p — no --http-signin). The
-    # admin is seeded with a platform initial password (default "openbkn"); set
+    # admin is seeded with a per-install initial password recorded as
+    # bknSafe.initialPassword in config.yaml (no baked-in default); set
     # ONBOARD_DEFAULT_BKN_PASSWORD if it has been changed. A first-login forced
     # password change must be completed once (browser or `openbkn auth change-password`)
     # before non-interactive -u/-p login can succeed.
     if type onboard_bkn_safe_detected &>/dev/null && onboard_bkn_safe_detected; then
         local _su _sp
         _su="${ONBOARD_DEFAULT_BKN_USER:-admin}"
-        _sp="${ONBOARD_DEFAULT_BKN_PASSWORD:-openbkn}"
+        _sp="${ONBOARD_DEFAULT_BKN_PASSWORD:-}"
+        if [[ -z "${_sp}" ]]; then
+            onboard_log_warn "No admin password on hand (bknSafe.initialPassword missing from ${CONFIG_YAML_PATH:-config.yaml}); pass ONBOARD_DEFAULT_BKN_PASSWORD or enter it at the prompt."
+        fi
         if [[ "${ONBOARD_ASSUME_YES}" == "true" ]]; then
             onboard_log_info "openbkn auth: bkn-safe detected — credential device-flow login (-y): ${_su}"
             onboard_bkn_safe_clear_must_change "${_su}" "${_sp}" "${_kurl}" || true
@@ -611,7 +622,10 @@ onboard_bkn_auth_login_for_url() {
         fi
         read -r -p "  Username [Enter = ${_su}]: " _u
         _u="${_u:-${_su}}"
-        read -r -s -p "  Password [Enter = ${_sp}] " _p
+        # Never echo the actual secret in the prompt.
+        local _sp_hint="(none on hand — type it)"
+        [[ -n "${_sp}" ]] && _sp_hint="recorded initial password"
+        read -r -s -p "  Password [Enter = ${_sp_hint}] " _p
         echo
         _p="${_p:-${_sp}}"
         onboard_bkn_safe_clear_must_change "${_u}" "${_p}" "${_kurl}" || true

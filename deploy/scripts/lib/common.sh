@@ -1003,12 +1003,35 @@ should_skip_upgrade_same_chart_version() {
     return 1
 }
 
-# Get existing password from config.yaml if it exists
-get_existing_password() {
-    local key="$1"
-    if [[ -f "${CONFIG_YAML_PATH}" ]]; then
-        grep "${key}:" "${CONFIG_YAML_PATH}" | awk '{print $2}' | tr -d '"'\'' '
+# Read a field from a depServices sub-block of the runtime config.yaml, e.g.
+#   config_yaml_dep_field rds password
+#   config_yaml_dep_field opensearch password
+#   config_yaml_dep_field mq password        (matches the nested auth.password)
+# Prints the value (quotes stripped) or nothing when the file/key is absent.
+config_yaml_dep_field() {
+    local section="$1" field="$2"
+    if [[ ! -f "${CONFIG_YAML_PATH}" ]]; then
+        return 0
     fi
+    awk -v sec="${section}:" -v fld="${field}:" '
+        !in_b && $1 == sec && substr($0, 1, 2) == "  " {in_b=1; next}
+        in_b && NF && $0 !~ /^    / {exit}
+        in_b && $1 == fld {gsub(/'"'"'|"/, "", $2); print $2; exit}
+    ' "${CONFIG_YAML_PATH}" 2>/dev/null
+}
+
+# Same as config_yaml_dep_field but for a TOP-LEVEL section of config.yaml,
+# e.g. config_yaml_top_field bknSafe initialPassword
+config_yaml_top_field() {
+    local section="$1" field="$2"
+    if [[ ! -f "${CONFIG_YAML_PATH}" ]]; then
+        return 0
+    fi
+    awk -v sec="${section}:" -v fld="${field}:" '
+        !in_b && $0 == sec {in_b=1; next}
+        in_b && NF && $0 !~ /^  / {exit}
+        in_b && $1 == fld {gsub(/'"'"'|"/, "", $2); print $2; exit}
+    ' "${CONFIG_YAML_PATH}" 2>/dev/null
 }
 
 # Name of the StorageClass marked default (storageclass.kubernetes.io/is-default-class=true), or empty.
@@ -1203,7 +1226,8 @@ MARIADB_PURGE_PVC="${MARIADB_PURGE_PVC:-false}"
 MARIADB_ROOT_PASSWORD="${MARIADB_ROOT_PASSWORD:-}"
 MARIADB_DATABASE="${MARIADB_DATABASE:-openbkn}"
 MARIADB_USER="${MARIADB_USER:-openbkn}"
-MARIADB_PASSWORD="${MARIADB_PASSWORD:-openbkn}"
+# No baked-in default: empty means "reuse from config.yaml or generate at install".
+MARIADB_PASSWORD="${MARIADB_PASSWORD:-}"
 MARIADB_STORAGE_SIZE="${MARIADB_STORAGE_SIZE:-10Gi}"
 MARIADB_MAX_CONNECTIONS="${MARIADB_MAX_CONNECTIONS:-5000}"
 
@@ -1350,7 +1374,8 @@ OPENSEARCH_PERSISTENCE_ENABLED="${OPENSEARCH_PERSISTENCE_ENABLED:-true}"
 OPENSEARCH_STORAGE_CLASS="${OPENSEARCH_STORAGE_CLASS:-}"
 OPENSEARCH_STORAGE_SIZE="${OPENSEARCH_STORAGE_SIZE:-8Gi}"
 OPENSEARCH_PURGE_PVC="${OPENSEARCH_PURGE_PVC:-false}"
-OPENSEARCH_INITIAL_ADMIN_PASSWORD="${OPENSEARCH_INITIAL_ADMIN_PASSWORD:-OpenSearch@123456}"
+# No baked-in default: empty means "reuse from config.yaml or generate at install".
+OPENSEARCH_INITIAL_ADMIN_PASSWORD="${OPENSEARCH_INITIAL_ADMIN_PASSWORD:-}"
 OPENSEARCH_SYSCTL_INIT_ENABLED="${OPENSEARCH_SYSCTL_INIT_ENABLED:-true}"
 OPENSEARCH_SYSCTL_VM_MAX_MAP_COUNT="${OPENSEARCH_SYSCTL_VM_MAX_MAP_COUNT:-262144}"
 

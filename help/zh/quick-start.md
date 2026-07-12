@@ -43,16 +43,17 @@ sudo bash ./onboard.sh -y     # 非交互（按默认）
 
 ```bash
 npm install -g @openbkn/bkn-sdk
-openbkn auth login <平台地址> -u admin -p eisoo.com -k         # 控制台默认账号
+# admin 初始密码：安装时生成，记录在 ~/.openbkn-ai/config.yaml 的 bknSafe.initialPassword
+openbkn auth login <平台地址> -u admin -p '<初始密码>' -k
 openbkn admin role list                                       # 列出全部角色及 roleId（如 super_admin、normal_user）
-openbkn admin user create --login <新用户名>                  # 默认初始密码 123456，首次登录会被要求改密
+openbkn admin user create --login <新用户名>                  # 初始密码随机生成，仅在创建响应中返回一次（initial_password），首次登录强制改密
 # 快速开始/POC：把 role list 中每个 roleId 都挂上，避免后续 API 因缺角色被拒
 openbkn admin user assign-role <userId> <roleId>
 # … 对 role list 中每个角色重复
 openbkn admin user roles <userId>                             # 确认已挂角色
 ```
 
-- **路径 A 默认密码 `111111`**（onboard 给 `test` 设置的）；**路径 B 默认密码 `123456`**（平台硬编码默认）。两者不同，请按实际路径取。
+- **路径 A 默认密码 `111111`**（onboard 给 `test` 设置的）；**路径 B 没有固定默认密码** —— `user create` 为每个用户随机生成初始密码，仅在创建响应中返回一次。请按实际路径取。
 - 角色与权限说明见 [安装与部署 — 完整安装后的管理员命令（`openbkn admin`）](install.md#-完整安装后的管理员命令openbkn-admin) 与 [BKN Safe](manual/bkn-safe.md#-管理员工具openbkn-admin)。生产环境请只赋必要角色；上面「挂齐所有角色」适合本地 / POC / 快速开始。
 - **最小化安装**（`--minimum`）下鉴权与业务域服务被裁剪，**两条路径都不需要**：直接用 `openbkn auth login <平台地址> --no-auth` 即可。
 

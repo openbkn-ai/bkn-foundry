@@ -14,7 +14,7 @@ In a **full install** (with `auth.enabled=true` and `businessDomain.enabled=true
 
 ```bash
 openbkn admin org tree                              # list departments
-openbkn admin user create --login alice             # default password 123456, forced change at first sign-in
+openbkn admin user create --login alice             # initial password generated + returned once (initial_password); forced change at first sign-in
 openbkn admin user assign-role <userId> <roleId>
 openbkn admin user reset-password -u alice          # admin reset
 openbkn admin role list

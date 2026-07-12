@@ -50,7 +50,7 @@ POST /api/safe/v1/admin/users
   "name": "Alice",
   "email": "alice@x.com",
   "telephone": "13800000000",  // 新增
-  "password": "...",           // 可选，缺省发平台初始密码 openbkn 并强制改密
+  "password": "...",           // 可选，缺省随机生成初始密码并在响应中一次性返回（initial_password），强制首登改密
   "account_type": "other",
   "department_ids": ["d-1","d-2"]  // 可选，初始归属
 }
