@@ -142,3 +142,7 @@ observability:
     httpMetricFeedIngesterUrl: "http://feed-ingester-service:13031/api/feed_ingester/v1/jobs/dip-o11y-metric/events"
     grpcTraceFeedIngesterUrl: "feed-ingester-service:30013"
     grpcTraceJobId: "dip-o11y-trace-grpc"
+# 计量传输后端：默认 redis（Redis 是全系统必装组件，计量开箱即用）；
+# 大规模部署可显式切 kafka；auto=按是否注入 KAFKAHOST 自动判定
+metering:
+  backend: "redis"

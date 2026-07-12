@@ -1,7 +1,7 @@
 from confluent_kafka import Producer, Consumer
 from confluent_kafka.admin import AdminClient, NewTopic
 
-from app.core.config import base_config
+from app.core.config import base_config, resolve_metering_backend
 from app.logs.stand_log import StandLogger
 
 import redis
@@ -956,4 +956,11 @@ class MyKafkaClient(object):
 
 # 全局redis_util实例
 redis_util = None
-kafka_client = MyKafkaClient()
+
+# 计量后端为 kafka 时才实例化（MyKafkaClient 构造时会连 broker 建 topic，
+# 无 Kafka 环境下会阻塞 10s 并刷错误日志）；redis 后端见 app/utils/metering_producer.py
+if resolve_metering_backend() == 'kafka':
+    kafka_client = MyKafkaClient()
+else:
+    kafka_client = None
+    StandLogger.info("计量后端为 redis，跳过 Kafka 客户端初始化")

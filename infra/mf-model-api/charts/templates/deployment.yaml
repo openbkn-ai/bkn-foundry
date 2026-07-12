@@ -236,6 +236,11 @@ spec:
                 configMapKeyRef:
                   name: {{ .Release.Name }}-yaml
                   key: KAFKAPASS
+            - name: METERING_BACKEND
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Release.Name }}-yaml
+                  key: METERING_BACKEND
             # 修复以下三个环境变量的配置
             - name: TEXTVECTORMAPPING
               valueFrom:
