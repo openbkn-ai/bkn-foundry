@@ -7,6 +7,7 @@ from langchain_core.messages import AIMessageChunk
 from langgraph.prebuilt import create_react_agent
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import observability
 from app.config import config
 from app.core.checkpoint import open_checkpointer
 from app.core.llm import build_chat_model
@@ -42,7 +43,9 @@ async def stream_chat(
             "等待当前轮结束后重试。",
         )
 
-    system_prompt = await resolve_prompt(session, agent, account_id, req.prompt_override, req.prompt_vars)
+    system_prompt, prompt_source, prompt_version = await resolve_prompt(
+        session, agent, account_id, req.prompt_override, req.prompt_vars
+    )
     skill_ids = list(dict.fromkeys([*agent.skills, *req.skills]))
     system_prompt += await load_skills(skill_ids, account_id, account_type)
     tools = await load_tools(agent.tools, account_id, account_type, depth=0, parent_thread_id=thread_id)
@@ -52,31 +55,40 @@ async def stream_chat(
     max_turns = (limits.max_turns if limits and limits.max_turns else config.DEFAULT_MAX_TURNS)
     timeout_s = (limits.timeout_s if limits and limits.timeout_s else config.DEFAULT_TIMEOUT_S)
 
+    span_attrs = {
+        "agent.id": agent.agent_id,
+        "agent.name": agent.name,
+        "thread.id": thread_id,
+        "prompt.source": prompt_source,
+        "prompt.version": prompt_version,
+    }
+
     async def _events() -> AsyncIterator[str]:
         yield _sse("meta", {"thread_id": thread_id, "agent_id": agent.agent_id})
         async with lock:
-            async with open_checkpointer() as checkpointer:
-                graph = create_react_agent(model, tools, prompt=system_prompt, checkpointer=checkpointer)
-                cfg = {
-                    "configurable": {"thread_id": thread_id},
-                    "recursion_limit": max_turns * 2 + 1,
-                }
-                try:
-                    async with asyncio.timeout(timeout_s):
-                        async for chunk, meta in graph.astream(
-                            {"messages": [("user", req.message)]}, cfg, stream_mode="messages"
-                        ):
-                            if isinstance(chunk, AIMessageChunk):
-                                if chunk.content:
-                                    yield _sse("token", {"content": chunk.content})
-                                for tc in chunk.tool_call_chunks or []:
-                                    if tc.get("name"):
-                                        yield _sse("tool_call", {"name": tc["name"]})
-                    yield _sse("done", {"thread_id": thread_id})
-                except TimeoutError:
-                    yield _sse("error", {"code": "AgentRuntime.Chat.Timeout", "detail": f"超过 {timeout_s}s"})
-                except Exception as e:  # 错误必须显式送到流上，不静默吞
-                    yield _sse("error", {"code": "AgentRuntime.Chat.Failed", "detail": str(e)})
+            with observability.span("agent.chat", span_attrs):
+                async with open_checkpointer() as checkpointer:
+                    graph = create_react_agent(model, tools, prompt=system_prompt, checkpointer=checkpointer)
+                    cfg = {
+                        "configurable": {"thread_id": thread_id},
+                        "recursion_limit": max_turns * 2 + 1,
+                    }
+                    try:
+                        async with asyncio.timeout(timeout_s):
+                            async for chunk, meta in graph.astream(
+                                {"messages": [("user", req.message)]}, cfg, stream_mode="messages"
+                            ):
+                                if isinstance(chunk, AIMessageChunk):
+                                    if chunk.content:
+                                        yield _sse("token", {"content": chunk.content})
+                                    for tc in chunk.tool_call_chunks or []:
+                                        if tc.get("name"):
+                                            yield _sse("tool_call", {"name": tc["name"]})
+                        yield _sse("done", {"thread_id": thread_id})
+                    except TimeoutError:
+                        yield _sse("error", {"code": "AgentRuntime.Chat.Timeout", "detail": f"超过 {timeout_s}s"})
+                    except Exception as e:  # 错误必须显式送到流上，不静默吞
+                        yield _sse("error", {"code": "AgentRuntime.Chat.Failed", "detail": str(e)})
 
     return _events()
 

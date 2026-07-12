@@ -34,16 +34,17 @@ async def resolve_prompt(
     account_id: str,
     request_override: Optional[str],
     prompt_vars: dict[str, Any],
-) -> str:
+) -> tuple[str, str, Optional[int]]:
     """三层解析：请求级 > 调用方级覆写 > agent 默认版本。三层共用 vars_schema。
-    prompt_id 失效必须报明确错误，不回退内置默认词。"""
+    prompt_id 失效必须报明确错误，不回退内置默认词。
+    返回 (正文, 来源层级, 默认层版本号)。"""
     schema = agent.prompt_vars_schema
     if request_override:
-        return _fill(request_override, prompt_vars, schema)
+        return _fill(request_override, prompt_vars, schema), "request", None
 
     override = await dao.get_prompt_override(session, agent.agent_id, account_id)
     if override is not None:
-        return _fill(override, prompt_vars, schema)
+        return _fill(override, prompt_vars, schema), "override", None
 
     if not agent.prompt_id:
         raise err(
@@ -62,5 +63,5 @@ async def resolve_prompt(
             f"prompt {agent.prompt_id} 或其当前版本不存在",
             "检查提示词是否被删除；不会回退到内置默认词。",
         )
-    content, version_schema = default
-    return _fill(content, prompt_vars, version_schema or schema)
+    content, version_schema, version = default
+    return _fill(content, prompt_vars, version_schema or schema), "default", version

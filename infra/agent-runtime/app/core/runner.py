@@ -4,7 +4,7 @@ from typing import Any, Optional
 from langchain_core.messages import AIMessage
 from langgraph.prebuilt import create_react_agent
 
-from app import dao
+from app import dao, observability
 from app.config import config
 from app.core.llm import build_chat_model
 from app.core.prompt import resolve_prompt
@@ -42,7 +42,9 @@ async def run_agent_once(
     from app.core.tools import load_tools  # 延迟导入破 tools↔runner 环
 
     async with SessionLocal() as session:
-        system_prompt = await resolve_prompt(session, agent, account_id, prompt_override, prompt_vars)
+        system_prompt, prompt_source, prompt_version = await resolve_prompt(
+            session, agent, account_id, prompt_override, prompt_vars
+        )
     skill_ids = list(dict.fromkeys([*agent.skills, *skills]))
     system_prompt += await load_skills(skill_ids, account_id, account_type)
     tools = await load_tools(agent.tools, account_id, account_type, depth=depth)
@@ -52,12 +54,22 @@ async def run_agent_once(
     max_turns = limits.max_turns if limits and limits.max_turns else config.DEFAULT_MAX_TURNS
     timeout_s = limits.timeout_s if limits and limits.timeout_s else config.DEFAULT_TIMEOUT_S
 
-    graph = create_react_agent(model, tools, prompt=system_prompt)
-    async with asyncio.timeout(timeout_s):
-        result = await graph.ainvoke(
-            {"messages": [("user", message)]},
-            {"recursion_limit": max_turns * 2 + 1},
-        )
+    with observability.span(
+        "agent.task",
+        {
+            "agent.id": agent.agent_id,
+            "agent.name": agent.name,
+            "task.depth": depth,
+            "prompt.source": prompt_source,
+            "prompt.version": prompt_version,
+        },
+    ):
+        graph = create_react_agent(model, tools, prompt=system_prompt)
+        async with asyncio.timeout(timeout_s):
+            result = await graph.ainvoke(
+                {"messages": [("user", message)]},
+                {"recursion_limit": max_turns * 2 + 1},
+            )
     for msg in reversed(result["messages"]):
         if isinstance(msg, AIMessage) and msg.content:
             return msg.content if isinstance(msg.content, str) else str(msg.content)

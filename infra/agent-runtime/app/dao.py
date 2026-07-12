@@ -166,7 +166,9 @@ async def set_task_status(
     await session.commit()
 
 
-async def get_default_prompt(session: AsyncSession, prompt_id: str) -> Optional[tuple[str, Optional[dict]]]:
+async def get_default_prompt(
+    session: AsyncSession, prompt_id: str
+) -> Optional[tuple[str, Optional[dict], int]]:
     """agent 默认层：t_agent_prompt.current_version 对应版本正文。"""
     head = await session.get(PromptRow, prompt_id)
     if not head:
@@ -174,7 +176,7 @@ async def get_default_prompt(session: AsyncSession, prompt_id: str) -> Optional[
     version = await session.get(PromptVersionRow, (prompt_id, head.f_current_version))
     if not version:
         return None
-    return version.f_content, version.f_vars_schema
+    return version.f_content, version.f_vars_schema, version.f_version
 
 
 async def get_prompt_override(session: AsyncSession, agent_id: str, account_id: str) -> Optional[str]:
