@@ -180,3 +180,154 @@ async def get_default_prompt(session: AsyncSession, prompt_id: str) -> Optional[
 async def get_prompt_override(session: AsyncSession, agent_id: str, account_id: str) -> Optional[str]:
     row = await session.get(PromptOverrideRow, (agent_id, account_id))
     return row.f_content if row else None
+
+
+async def set_prompt_override(session: AsyncSession, agent_id: str, account_id: str, content: str) -> None:
+    row = await session.get(PromptOverrideRow, (agent_id, account_id))
+    if row:
+        row.f_content = content
+        row.f_update_time = _now_ms()
+    else:
+        session.add(
+            PromptOverrideRow(
+                f_agent_id=agent_id, f_account_id=account_id, f_content=content, f_update_time=_now_ms()
+            )
+        )
+    await session.commit()
+
+
+async def delete_prompt_override(session: AsyncSession, agent_id: str, account_id: str) -> bool:
+    result = await session.execute(
+        delete(PromptOverrideRow).where(
+            PromptOverrideRow.f_agent_id == agent_id, PromptOverrideRow.f_account_id == account_id
+        )
+    )
+    await session.commit()
+    return result.rowcount > 0
+
+
+# ---- prompt 管理面（版本化，只增不改） ----
+
+
+async def _prompt_out(session: AsyncSession, head: PromptRow):
+    from app.models import PromptOut
+
+    version = await session.get(PromptVersionRow, (head.f_prompt_id, head.f_current_version))
+    return PromptOut(
+        prompt_id=head.f_prompt_id,
+        name=head.f_name,
+        current_version=head.f_current_version,
+        content=version.f_content if version else "",
+        vars_schema=version.f_vars_schema if version else None,
+        update_user=head.f_update_user,
+        update_time=head.f_update_time,
+    )
+
+
+async def create_prompt(session: AsyncSession, name: str, content: str, vars_schema: Optional[dict], account_id: str):
+    now = _now_ms()
+    prompt_id = str(uuid.uuid4())
+    session.add(
+        PromptRow(
+            f_prompt_id=prompt_id, f_name=name, f_current_version=1, f_update_user=account_id, f_update_time=now
+        )
+    )
+    session.add(
+        PromptVersionRow(
+            f_prompt_id=prompt_id,
+            f_version=1,
+            f_content=content,
+            f_vars_schema=vars_schema,
+            f_create_user=account_id,
+            f_create_time=now,
+        )
+    )
+    await session.commit()
+    head = await session.get(PromptRow, prompt_id)
+    return await _prompt_out(session, head)
+
+
+async def get_prompt(session: AsyncSession, prompt_id: str):
+    head = await session.get(PromptRow, prompt_id)
+    return await _prompt_out(session, head) if head else None
+
+
+async def list_prompts(session: AsyncSession, page: int, size: int):
+    from sqlalchemy import func
+
+    heads = (
+        await session.execute(
+            select(PromptRow).order_by(PromptRow.f_update_time.desc()).offset((page - 1) * size).limit(size)
+        )
+    ).scalars().all()
+    total = (await session.execute(select(func.count()).select_from(PromptRow))).scalar_one()
+    return [await _prompt_out(session, h) for h in heads], total
+
+
+async def publish_prompt_version(
+    session: AsyncSession, prompt_id: str, content: str, vars_schema: Optional[dict], account_id: str
+):
+    head = await session.get(PromptRow, prompt_id)
+    if not head:
+        return None
+    latest = (
+        await session.execute(
+            select(PromptVersionRow.f_version)
+            .where(PromptVersionRow.f_prompt_id == prompt_id)
+            .order_by(PromptVersionRow.f_version.desc())
+            .limit(1)
+        )
+    ).scalar_one()
+    now = _now_ms()
+    session.add(
+        PromptVersionRow(
+            f_prompt_id=prompt_id,
+            f_version=latest + 1,
+            f_content=content,
+            f_vars_schema=vars_schema,
+            f_create_user=account_id,
+            f_create_time=now,
+        )
+    )
+    head.f_current_version = latest + 1
+    head.f_update_user = account_id
+    head.f_update_time = now
+    await session.commit()
+    return await _prompt_out(session, head)
+
+
+async def list_prompt_versions(session: AsyncSession, prompt_id: str):
+    from app.models import PromptVersionOut
+
+    rows = (
+        await session.execute(
+            select(PromptVersionRow)
+            .where(PromptVersionRow.f_prompt_id == prompt_id)
+            .order_by(PromptVersionRow.f_version.desc())
+        )
+    ).scalars().all()
+    return [
+        PromptVersionOut(
+            version=r.f_version,
+            content=r.f_content,
+            vars_schema=r.f_vars_schema,
+            create_user=r.f_create_user,
+            create_time=r.f_create_time,
+        )
+        for r in rows
+    ]
+
+
+async def rollback_prompt(session: AsyncSession, prompt_id: str, version: int, account_id: str):
+    """回滚 = current_version 指回旧版本；版本行只增不改。"""
+    head = await session.get(PromptRow, prompt_id)
+    if not head:
+        return None
+    target = await session.get(PromptVersionRow, (prompt_id, version))
+    if not target:
+        return False
+    head.f_current_version = version
+    head.f_update_user = account_id
+    head.f_update_time = _now_ms()
+    await session.commit()
+    return await _prompt_out(session, head)
