@@ -59,6 +59,21 @@ class PromptOverrideRow(Base):
     f_update_time: Mapped[int] = mapped_column(BigInteger)
 
 
+class TaskRow(Base):
+    __tablename__ = "t_agent_task"
+
+    f_task_id: Mapped[str] = mapped_column(String(50), primary_key=True)
+    f_agent_id: Mapped[str] = mapped_column(String(50))
+    f_status: Mapped[str] = mapped_column(String(20), default="pending")
+    f_input: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    f_output: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    f_failure_detail: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    f_parent_thread_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    f_account_id: Mapped[str] = mapped_column(String(50))
+    f_create_time: Mapped[int] = mapped_column(BigInteger)
+    f_update_time: Mapped[int] = mapped_column(BigInteger)
+
+
 # ---- API schemas ----
 
 ToolRef = dict  # {"type": "mcp"|"toolbox"|"agent", ...}，M3/M7 扩展 toolbox/agent
@@ -97,3 +112,23 @@ class ChatRequest(BaseModel):
     skills: list[str] = Field(default_factory=list)
     prompt_override: Optional[str] = None
     prompt_vars: dict[str, Any] = Field(default_factory=dict)
+
+
+class RunRequest(BaseModel):
+    agent_id: str
+    message: str = Field(min_length=1)
+    skills: list[str] = Field(default_factory=list)
+    prompt_override: Optional[str] = None
+    prompt_vars: dict[str, Any] = Field(default_factory=dict)
+
+
+class TaskOut(BaseModel):
+    task_id: str
+    agent_id: str
+    status: Literal["pending", "running", "succeeded", "failed"]
+    input: Optional[dict] = None
+    output: Optional[str] = None
+    failure_detail: Optional[str] = None
+    parent_thread_id: Optional[str] = None
+    create_time: int
+    update_time: int

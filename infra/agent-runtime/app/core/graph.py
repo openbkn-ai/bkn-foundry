@@ -45,7 +45,7 @@ async def stream_chat(
     system_prompt = await resolve_prompt(session, agent, account_id, req.prompt_override, req.prompt_vars)
     skill_ids = list(dict.fromkeys([*agent.skills, *req.skills]))
     system_prompt += await load_skills(skill_ids, account_id, account_type)
-    tools = await load_tools(agent.tools, account_id, account_type)
+    tools = await load_tools(agent.tools, account_id, account_type, depth=0, parent_thread_id=thread_id)
     model = build_chat_model(agent.model)
 
     limits = agent.limits or None

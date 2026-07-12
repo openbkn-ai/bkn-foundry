@@ -2,13 +2,14 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from app.routers import agents, chat
+from app.routers import agents, chat, tasks
 
 API_PREFIX = "/api/agent-runtime/v1"
 
 app = FastAPI(title="agent-runtime", docs_url=None, redoc_url=None)
 app.include_router(agents.router, prefix=API_PREFIX, tags=["AgentRuntime"])
 app.include_router(chat.router, prefix=API_PREFIX, tags=["AgentRuntime"])
+app.include_router(tasks.router, prefix=API_PREFIX, tags=["AgentRuntime"])
 
 
 @app.get("/api/v1/health")
