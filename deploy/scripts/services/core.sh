@@ -749,12 +749,12 @@ install_core() {
 
     echo ""
     echo "============================================"
-    echo "  Verify your installation:"
+    echo "  Verify your installation (open in a browser):"
     echo ""
     if [[ "${_port}" == "443" || "${_port}" == "80" ]]; then
-        echo "    curl -k ${_scheme}://${_host}/api/v1/health"
+        echo "    ${_scheme}://${_host}/install-status"
     else
-        echo "    curl -k ${_scheme}://${_host}:${_port}/api/v1/health"
+        echo "    ${_scheme}://${_host}:${_port}/install-status"
     fi
     # Platform account credentials (NOT database passwords): the console admin
     # initial password, which is also the initial password handed to users
