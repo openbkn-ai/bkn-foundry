@@ -59,7 +59,7 @@ graph TB
 ```text
 agent := {
   agent_id, name, mode: chat | task,
-  prompt_id,            -- 指向内建 t_prompt（版本化）
+  prompt_id,            -- 指向内建 t_agent_prompt（版本化）
   prompt_vars_schema,   -- 变量填充 schema
   model,                -- 默认为空，走系统默认模型
   tools: [mcp_endpoint | toolbox_ref | agent_ref],  -- agent_ref = agent-as-tool
@@ -83,16 +83,18 @@ agent := {
 
 ### 3.2 数据模型变更 (Data Schema)
 
-新库 `agent_runtime`（MariaDB）：
+落**共享 `openbkn` 库**（MariaDB，平台各服务统一库），纯新增表、零 ALTER。表名带 `agent_` 前缀——库内已有 mf-model-manager 的 `t_prompt_*` 遗留表族，前缀隔开避免混淆：
 
 - `t_agent`：agent 定义（见 3.1）。
-- `t_task`：task_id、agent_id、status、input、output、failure_detail、parent_thread_id、时间戳。状态语义对齐 vega build-task 的教训：completed 必须等于结果可用。
-- `t_prompt`：prompt_id、name、current_version、更新人/时间。
-- `t_prompt_version`：prompt_id + version（唯一键）→ 正文 + vars_schema + created_by/created_at。只增不改，回滚 = 把 current_version 指回旧版本。
-- `t_prompt_override`：agent_id + account_id（唯一键）→ prompt 正文 + 更新时间。调用方级提示词覆写，account 间互不可见。
-- checkpointer 表：LangGraph checkpoint 序列化存储（社区 MySQL saver 或 Redis saver，M2 落定）。
+- `t_agent_task`：task_id、agent_id、status、input、output、failure_detail、parent_thread_id、时间戳。状态语义对齐 vega build-task 的教训：completed 必须等于结果可用。
+- `t_agent_prompt`：prompt_id、name、current_version、更新人/时间。
+- `t_agent_prompt_version`：prompt_id + version（唯一键）→ 正文 + vars_schema + created_by/created_at。只增不改，回滚 = 把 current_version 指回旧版本。
+- `t_agent_prompt_override`：agent_id + account_id（唯一键）→ prompt 正文 + 更新时间。调用方级提示词覆写，account 间互不可见。
+- checkpointer 表：LangGraph checkpoint 序列化存储（社区 MySQL saver 或 Redis saver，M2 落定；若 saver 表名不可配前缀，包一层或改建表语句，同样进迁移固化，不用运行时 setup() 建表）。
 
-数据保留：checkpoint 与 task 记录默认保留 30 天，定期清理（后续可配）。
+迁移走**全局 core-data-migrator**：建表 SQL 放 `migrations/agent-runtime/mariadb/0.1.0/init.sql`（幂等 `CREATE TABLE IF NOT EXISTS`），随 pre-upgrade hook 统一执行，与 mf-model-manager 等既有服务同一套流程。
+
+数据保留：checkpoint 与 task 记录默认保留 30 天，服务内定时清理（后续可配）；共享库注意监控这两类高频写表的体积。
 
 ### 3.3 接口定义 (Interface Definition)
 
@@ -117,8 +119,8 @@ agent := {
 三层解析，高层覆盖低层，逐层回退：
 
 1. **请求级**：`/chat`、`/run` body 可带 `prompt_override`（仅本次调用生效，不落库）。
-2. **调用方级**：`PUT /agents/{id}/prompt` 写入 `t_prompt_override`，按 account_id 隔离——调用方 A 的覆写对 B 不可见，也不影响 agent 默认。
-3. **agent 默认**：agent 定义中的 prompt_id → `t_prompt.current_version` 对应版本正文。发布新版本即全局生效，改坏一键回滚。
+2. **调用方级**：`PUT /agents/{id}/prompt` 写入 `t_agent_prompt_override`，按 account_id 隔离——调用方 A 的覆写对 B 不可见，也不影响 agent 默认。
+3. **agent 默认**：agent 定义中的 prompt_id → `t_agent_prompt.current_version` 对应版本正文。发布新版本即全局生效，改坏一键回滚。
 
 - 变量填充统一由 runtime 本地完成，三层使用同一 `prompt_vars_schema` 校验，覆写文本缺变量时报明确错误。
 - 三层全部同库直读，写库即生效，无跨服务缓存一致性问题；编辑任何一层无需重启。
@@ -152,7 +154,7 @@ SDK 表面统一为六类动作：`chat()`（流式）、`run()` / `wait_task()`
 
 - **并发会话写冲突**：同一 thread_id 并发 /chat 请求需串行化（thread 级锁或乐观冲突拒绝）。
 - **工具调用失败**：MCP 调用超时/错误进入 graph 错误分支，反馈给模型重试或终止；task 落 failed + failure_detail，不得静默吞错（vega worker 教训）。
-- **提示词被删/改坏**：prompt_id 失效时 agent 拒绝执行并报明确错误，不回退到内置默认词；改坏用版本回滚兜底（t_prompt_version 只增不改）；调用方覆写被删则自然回退到 agent 默认层。
+- **提示词被删/改坏**：prompt_id 失效时 agent 拒绝执行并报明确错误，不回退到内置默认词；改坏用版本回滚兜底（t_agent_prompt_version 只增不改）；调用方覆写被删则自然回退到 agent 默认层。
 - **覆写越权**：`/agents/{id}/prompt` 只允许写本 account 的覆写；空 account 一律 fail-closed（对齐 vega `/in` 授权教训）。覆写主体是模块/工程师身份，不存在终端用户维度的覆写。
 - **误暴露为 to-C 入口**：本服务定位仅内部（见第 1 节），部署与网关配置须保证终端用户流量不可直达；评审与上线检查项都要含此项。
 - **循环互调**：agent-as-tool 存在 A→B→A 环风险，执行栈带深度上限（默认 3）。
