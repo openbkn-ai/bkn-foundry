@@ -115,6 +115,17 @@ class AgentOut(AgentSpec):
     update_time: int
 
 
+class AgentList(BaseModel):
+    items: list["AgentOut"]
+    total: int
+    page: int
+    size: int
+
+
+class AgentDeleted(BaseModel):
+    deleted: str
+
+
 class ChatRequest(BaseModel):
     agent_id: str
     thread_id: Optional[str] = None
@@ -165,8 +176,40 @@ class PromptVersionOut(BaseModel):
     create_time: int
 
 
+class PromptList(BaseModel):
+    items: list["PromptOut"]
+    total: int
+    page: int
+    size: int
+
+
+class PromptVersionList(BaseModel):
+    items: list["PromptVersionOut"]
+
+
 class OverridePut(BaseModel):
     content: str = Field(min_length=1)
+
+
+class OverrideState(BaseModel):
+    agent_id: str
+    account_id: str
+    source: Literal["override"]
+
+
+class OverrideDeleted(BaseModel):
+    deleted: bool
+    fallback: Literal["default"]
+
+
+class ErrorEnvelope(BaseModel):
+    """平台统一错误封套（所有非 2xx 响应）。"""
+
+    code: str
+    description: str
+    detail: str
+    solution: str
+    link: str = ""
 
 
 class EffectivePromptOut(BaseModel):

@@ -6,7 +6,7 @@ from app import dao
 from app.auth import Account, get_account
 from app.db import get_session
 from app.errors import bad_request, not_found
-from app.models import AgentOut, AgentSpec
+from app.models import AgentDeleted, AgentList, AgentOut, AgentSpec
 
 router = APIRouter()
 
@@ -23,7 +23,7 @@ async def create_agent(
         raise bad_request("NameConflict", "agent 名称已存在", spec.name, "换一个 name。")
 
 
-@router.get("/agents")
+@router.get("/agents", response_model=AgentList)
 async def list_agents(
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
@@ -59,7 +59,7 @@ async def update_agent(
     return agent
 
 
-@router.delete("/agents/{agent_id}")
+@router.delete("/agents/{agent_id}", response_model=AgentDeleted)
 async def delete_agent(
     agent_id: str,
     account: Account = Depends(get_account),
