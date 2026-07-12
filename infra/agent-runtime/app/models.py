@@ -59,6 +59,16 @@ class PromptOverrideRow(Base):
     f_update_time: Mapped[int] = mapped_column(BigInteger)
 
 
+class ThreadRow(Base):
+    __tablename__ = "t_agent_thread"
+
+    f_thread_id: Mapped[str] = mapped_column(String(50), primary_key=True)
+    f_agent_id: Mapped[str] = mapped_column(String(50))
+    f_account_id: Mapped[str] = mapped_column(String(50))
+    f_create_time: Mapped[int] = mapped_column(BigInteger)
+    f_update_time: Mapped[int] = mapped_column(BigInteger)
+
+
 class TaskRow(Base):
     __tablename__ = "t_agent_task"
 
@@ -164,6 +174,20 @@ class EffectivePromptOut(BaseModel):
     content: str
     prompt_id: Optional[str] = None
     version: Optional[int] = None
+
+
+class ThreadMessage(BaseModel):
+    role: Literal["user", "assistant", "tool"]
+    content: str
+    tool_calls: list[str] = Field(default_factory=list)
+
+
+class ThreadOut(BaseModel):
+    thread_id: str
+    agent_id: str
+    create_time: int
+    update_time: int
+    messages: list[ThreadMessage]
 
 
 class TaskOut(BaseModel):

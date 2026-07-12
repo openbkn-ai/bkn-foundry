@@ -1,21 +1,21 @@
 import asyncio
 import json
 import uuid
-from typing import AsyncIterator, Optional
+from typing import AsyncIterator
 
-from langchain_core.messages import AIMessageChunk
+from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, ToolMessage
 from langgraph.prebuilt import create_react_agent
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import observability
+from app import dao, observability
 from app.config import config
 from app.core.checkpoint import open_checkpointer
 from app.core.llm import build_chat_model
 from app.core.prompt import resolve_prompt
 from app.core.skills import load_skills
 from app.core.tools import load_tools
-from app.errors import err
-from app.models import AgentOut, ChatRequest
+from app.errors import err, not_found
+from app.models import AgentOut, ChatRequest, ThreadMessage
 
 # thread 级串行化（单副本内）。多副本部署的跨副本串行化随 M6 落定（会话粘滞或 DB 锁）。
 _thread_locks: dict[str, asyncio.Lock] = {}
@@ -42,6 +42,20 @@ async def stream_chat(
             f"thread {thread_id} 有未完成的 /chat 请求",
             "等待当前轮结束后重试。",
         )
+
+    thread_row = await dao.get_thread_row(session, thread_id)
+    if thread_row:
+        if thread_row.f_account_id != account_id:  # 不泄露存在性，与查不到同响应
+            raise not_found("thread", thread_id)
+        if thread_row.f_agent_id != agent.agent_id:
+            raise err(
+                400,
+                "Thread.AgentMismatch",
+                "thread 归属其他 agent",
+                f"thread {thread_id} 建立于 agent {thread_row.f_agent_id}",
+                "同一 thread 只能续接创建它的 agent；换 agent 请开新 thread。",
+            )
+    await dao.touch_thread(session, thread_id, agent.agent_id, account_id)
 
     system_prompt, prompt_source, prompt_version = await resolve_prompt(
         session, agent, account_id, req.prompt_override, req.prompt_vars
@@ -93,5 +107,30 @@ async def stream_chat(
     return _events()
 
 
-def get_history_config(thread_id: str) -> Optional[dict]:
-    return {"configurable": {"thread_id": thread_id}}
+def _text(content) -> str:
+    if isinstance(content, str):
+        return content
+    return "".join(p.get("text", "") if isinstance(p, dict) else str(p) for p in content)
+
+
+async def read_thread_messages(thread_id: str) -> list[ThreadMessage]:
+    """会话历史直读 checkpointer 最新 checkpoint；归属校验在路由层。"""
+    async with open_checkpointer() as checkpointer:
+        tup = await checkpointer.aget_tuple({"configurable": {"thread_id": thread_id}})
+    if not tup:
+        return []
+    out: list[ThreadMessage] = []
+    for m in tup.checkpoint.get("channel_values", {}).get("messages", []):
+        if isinstance(m, HumanMessage):
+            out.append(ThreadMessage(role="user", content=_text(m.content)))
+        elif isinstance(m, AIMessage):
+            out.append(
+                ThreadMessage(
+                    role="assistant",
+                    content=_text(m.content),
+                    tool_calls=[tc["name"] for tc in (m.tool_calls or [])],
+                )
+            )
+        elif isinstance(m, ToolMessage):
+            out.append(ThreadMessage(role="tool", content=_text(m.content)))
+    return out
