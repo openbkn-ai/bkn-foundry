@@ -14,3 +14,9 @@ langgraph-checkpoint-mysql~=2.0.15
 sqlalchemy[asyncio]~=2.0.36
 aiomysql~=0.2.0
 aiohttp~=3.10.0
+
+# 可观测（OTLP → otelcol-contrib → agent-observability）
+opentelemetry-sdk~=1.29
+opentelemetry-exporter-otlp-proto-http~=1.29
+opentelemetry-instrumentation-fastapi~=0.50b0
+openinference-instrumentation-langchain~=0.1.29
