@@ -70,6 +70,18 @@ create table if not exists t_agent_prompt_override
     primary key (f_agent_id, f_account_id)
 ) engine = InnoDB default charset = utf8mb4;
 
+-- thread 归属（/chat 续聊与 GET /threads/{id} 的授权依据；消息正文在 checkpointer 表）
+create table if not exists t_agent_thread
+(
+    f_thread_id   varchar(50) not null,
+    f_agent_id    varchar(50) not null,
+    f_account_id  varchar(50) not null,
+    f_create_time bigint      not null,
+    f_update_time bigint      not null,
+    primary key (f_thread_id),
+    key idx_thread_account (f_account_id, f_update_time)
+) engine = InnoDB default charset = utf8mb4;
+
 -- LangGraph checkpointer 表（langgraph-checkpoint-mysql ~2.0）：
 -- 表名由库固定（checkpoints / checkpoint_blobs / checkpoint_writes），暂不带 agent_ 前缀。
 -- DDL 与库版本强绑定，由部署流程在首次安装时执行一次 saver.setup()

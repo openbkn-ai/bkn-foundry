@@ -14,6 +14,7 @@ from app.models import (
     PromptVersionRow,
     TaskOut,
     TaskRow,
+    ThreadRow,
 )
 
 
@@ -103,6 +104,29 @@ async def delete_agent(session: AsyncSession, agent_id: str) -> bool:
     result = await session.execute(delete(AgentRow).where(AgentRow.f_agent_id == agent_id))
     await session.commit()
     return result.rowcount > 0
+
+
+async def get_thread_row(session: AsyncSession, thread_id: str) -> Optional[ThreadRow]:
+    return await session.get(ThreadRow, thread_id)
+
+
+async def touch_thread(session: AsyncSession, thread_id: str, agent_id: str, account_id: str) -> ThreadRow:
+    """新 thread 记归属；老 thread 刷 update_time。归属校验在调用方（fail-closed）。"""
+    now = _now_ms()
+    row = await session.get(ThreadRow, thread_id)
+    if row:
+        row.f_update_time = now
+    else:
+        row = ThreadRow(
+            f_thread_id=thread_id,
+            f_agent_id=agent_id,
+            f_account_id=account_id,
+            f_create_time=now,
+            f_update_time=now,
+        )
+        session.add(row)
+    await session.commit()
+    return row
 
 
 def _task_out(row: TaskRow) -> TaskOut:
