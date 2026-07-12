@@ -122,6 +122,50 @@ class RunRequest(BaseModel):
     prompt_vars: dict[str, Any] = Field(default_factory=dict)
 
 
+class PromptSpec(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    content: str = Field(min_length=1)
+    vars_schema: Optional[dict[str, Any]] = None
+
+
+class PromptPublish(BaseModel):
+    content: str = Field(min_length=1)
+    vars_schema: Optional[dict[str, Any]] = None
+
+
+class PromptRollback(BaseModel):
+    version: int = Field(ge=1)
+
+
+class PromptOut(BaseModel):
+    prompt_id: str
+    name: str
+    current_version: int
+    content: str
+    vars_schema: Optional[dict] = None
+    update_user: str
+    update_time: int
+
+
+class PromptVersionOut(BaseModel):
+    version: int
+    content: str
+    vars_schema: Optional[dict] = None
+    create_user: str
+    create_time: int
+
+
+class OverridePut(BaseModel):
+    content: str = Field(min_length=1)
+
+
+class EffectivePromptOut(BaseModel):
+    source: Literal["override", "default"]
+    content: str
+    prompt_id: Optional[str] = None
+    version: Optional[int] = None
+
+
 class TaskOut(BaseModel):
     task_id: str
     agent_id: str
