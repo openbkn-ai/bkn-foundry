@@ -1,9 +1,11 @@
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from app.bootstrap import toolbox_sync
 from app.models import ErrorEnvelope
 from app.observability import setup_otel
 from app.routers import agents, chat, prompts, tasks, threads
@@ -15,7 +17,14 @@ VERSION = (Path(__file__).resolve().parent.parent / "VERSION").read_text().strip
 # scripts/export_openapi.py 重新导出——test_contract.py 强制两者一致。
 _ERRORS = {"4XX": {"model": ErrorEnvelope, "description": "平台错误封套（400 参数/401 身份/404 不存在/409 冲突）"}}
 
-app = FastAPI(title="agent-runtime", version=VERSION, docs_url=None, redoc_url=None)
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    toolbox_sync.start_startup_sync()
+    yield
+
+
+app = FastAPI(title="agent-runtime", version=VERSION, docs_url=None, redoc_url=None, lifespan=_lifespan)
 setup_otel(app)
 app.include_router(agents.router, prefix=API_PREFIX, tags=["AgentRuntime"], responses=_ERRORS)
 app.include_router(chat.router, prefix=API_PREFIX, tags=["AgentRuntime"], responses=_ERRORS)

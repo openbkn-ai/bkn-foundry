@@ -6,9 +6,37 @@ from app.auth import Account, get_account
 from app.core import runner
 from app.db import get_session
 from app.errors import bad_request, not_found
-from app.models import RunRequest, TaskOut
+from app.models import InvokeRequest, RunRequest, TaskOut
 
 router = APIRouter()
+
+
+@router.post("/invoke/{agent_id}", response_model=TaskOut)
+async def invoke(
+    agent_id: str,
+    req: InvokeRequest,
+    account: Account = Depends(get_account),
+    session: AsyncSession = Depends(get_session),
+):
+    """同步一次性执行，等到终态才返回（算子工厂 toolbox 工具经此调用）。
+
+    仅 published agent 可调（draft 与不存在同响应）；chat/task 模式均可，
+    执行为无状态单轮，不落 thread。任务记录照常落库可监控。
+    """
+    agent = await dao.get_agent(session, agent_id)
+    if not agent or agent.status != "published":
+        raise not_found("agent", agent_id)
+
+    task_input = {
+        "message": req.message,
+        "prompt_vars": req.prompt_vars,
+        "skills": req.skills,
+        "prompt_override": req.prompt_override,
+    }
+    task = await dao.create_task(session, agent.agent_id, task_input, account.account_id)
+    await runner.execute_task(task.task_id, agent, task_input, account.account_id, account.account_type)
+    session.expire_all()  # 终态由 runner 在独立 session 写入，绕过本 session 缓存
+    return await dao.get_task(session, task.task_id)
 
 
 @router.post("/run", response_model=TaskOut)

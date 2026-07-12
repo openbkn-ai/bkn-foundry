@@ -31,6 +31,11 @@ runtime:
   mfModelApiPrivateBase: "http://mf-model-api:9898/api/private/mf-model-api/v1"
   agentRetrievalMcpUrl: "http://agent-retrieval:30779/api/agent-retrieval/v1/mcp"
   capabilitiesLabBase: "http://capabilities-lab:8080/api/capabilities-lab/v1"
+  # published agent 注册进算子工厂 toolbox（#212）
+  operatorIntegrationBase: "http://agent-operator-integration:9000"
+  toolboxSync: "true"
+  # toolbox 工具回调本服务的地址（box_svc_url）
+  selfBaseUrl: "http://agent-runtime:30800"
   defaultModel: ""
   checkpointerBackend: "mysql"
   # 建表统一归 migrations/agent-runtime/（core-data-migrator）。

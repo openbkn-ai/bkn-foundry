@@ -76,7 +76,8 @@ async def run_agent_once(
     raise RuntimeError("graph 结束但没有产出 AI 回复")
 
 
-async def _execute(task_id: str, agent: AgentOut, req_input: dict, account_id: str, account_type: str) -> None:
+async def execute_task(task_id: str, agent: AgentOut, req_input: dict, account_id: str, account_type: str) -> None:
+    """执行到终态并落库（succeeded 必须等于结果可用）。/run 后台跑，/invoke 同步等。"""
     async with SessionLocal() as session:
         await dao.set_task_status(session, task_id, "running")
     try:
@@ -101,6 +102,6 @@ async def _execute(task_id: str, agent: AgentOut, req_input: dict, account_id: s
 
 
 def submit_task(task_id: str, agent: AgentOut, req_input: dict, account_id: str, account_type: str) -> None:
-    task = asyncio.create_task(_execute(task_id, agent, req_input, account_id, account_type))
+    task = asyncio.create_task(execute_task(task_id, agent, req_input, account_id, account_type))
     _background.add(task)
     task.add_done_callback(_background.discard)

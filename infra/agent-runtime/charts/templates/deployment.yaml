@@ -68,6 +68,12 @@ spec:
               value: {{ .Values.runtime.agentRetrievalMcpUrl | quote }}
             - name: CAPABILITIES_LAB_BASE
               value: {{ .Values.runtime.capabilitiesLabBase | quote }}
+            - name: OPERATOR_INTEGRATION_BASE
+              value: {{ .Values.runtime.operatorIntegrationBase | quote }}
+            - name: AGENT_RUNTIME_TOOLBOX_SYNC
+              value: {{ .Values.runtime.toolboxSync | quote }}
+            - name: AGENT_RUNTIME_SELF_BASE_URL
+              value: {{ .Values.runtime.selfBaseUrl | quote }}
             - name: AGENT_RUNTIME_DEFAULT_MODEL
               value: {{ .Values.runtime.defaultModel | quote }}
             - name: CHECKPOINTER_BACKEND

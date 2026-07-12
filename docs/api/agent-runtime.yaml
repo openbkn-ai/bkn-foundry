@@ -175,6 +175,44 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/agent-runtime/v1/invoke/{agent_id}:
+    post:
+      tags:
+      - AgentRuntime
+      summary: Invoke
+      description: '同步一次性执行，等到终态才返回（算子工厂 toolbox 工具经此调用）。
+
+
+        仅 published agent 可调（draft 与不存在同响应）；chat/task 模式均可，
+
+        执行为无状态单轮，不落 thread。任务记录照常落库可监控。'
+      operationId: invoke_api_agent_runtime_v1_invoke__agent_id__post
+      parameters:
+      - name: agent_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Agent Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InvokeRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskOut'
+        4XX:
+          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/agent-runtime/v1/run:
     post:
       tags:
@@ -790,6 +828,30 @@ components:
       - solution
       title: ErrorEnvelope
       description: 平台统一错误封套（所有非 2xx 响应）。
+    InvokeRequest:
+      properties:
+        message:
+          type: string
+          minLength: 1
+          title: Message
+        skills:
+          items:
+            type: string
+          type: array
+          title: Skills
+        prompt_override:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Prompt Override
+        prompt_vars:
+          type: object
+          title: Prompt Vars
+      type: object
+      required:
+      - message
+      title: InvokeRequest
+      description: 同步一次性执行（agent_id 在路径上；算子工厂 toolbox 工具经此调用）。
     OverrideDeleted:
       properties:
         deleted:

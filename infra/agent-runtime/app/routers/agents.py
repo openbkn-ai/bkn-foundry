@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import dao
 from app.auth import Account, get_account
+from app.bootstrap import toolbox_sync
 from app.db import get_session
 from app.errors import bad_request, not_found
 from app.models import AgentDeleted, AgentList, AgentOut, AgentSpec
@@ -18,9 +19,11 @@ async def create_agent(
     session: AsyncSession = Depends(get_session),
 ):
     try:
-        return await dao.create_agent(session, spec, account.account_id)
+        agent = await dao.create_agent(session, spec, account.account_id)
     except IntegrityError:
         raise bad_request("NameConflict", "agent 名称已存在", spec.name, "换一个 name。")
+    toolbox_sync.schedule_resync()
+    return agent
 
 
 @router.get("/agents", response_model=AgentList)
@@ -56,6 +59,7 @@ async def update_agent(
     agent = await dao.update_agent(session, agent_id, spec, account.account_id)
     if not agent:
         raise not_found("agent", agent_id)
+    toolbox_sync.schedule_resync()
     return agent
 
 
@@ -67,4 +71,5 @@ async def delete_agent(
 ):
     if not await dao.delete_agent(session, agent_id):
         raise not_found("agent", agent_id)
+    toolbox_sync.schedule_resync()
     return {"deleted": agent_id}

@@ -21,4 +21,16 @@ uvicorn main:app --port 30800
 
 ## API
 
-`/api/agent-runtime/v1/`：agents CRUD、`POST /chat`（SSE）。任务面（/run、/tasks）与提示词管理面（/prompts）随 M3/M4 落地（issue #208 / #209）。
+契约冻结于 `docs/api/agent-runtime.yaml`（OpenAPI 3.1，#212）。改 API 走 spec 先行：
+先改实现里的路由/模型并跑 `python scripts/export_openapi.py` 重新导出，
+`app/test/test_contract.py` 强制 spec 与实现一致。
+
+`/api/agent-runtime/v1/`：agents CRUD、`POST /chat`（SSE）、`POST /run` + `GET /tasks/{id}`、
+`POST /invoke/{agent_id}`（同步一次性，算子工厂 toolbox 回调）、`GET /threads/{id}`（会话历史）、
+提示词管理与调用方覆写（/prompts、/agents/{id}/prompt）。
+
+## 算子工厂注册
+
+published 状态的 agent 自动注册进算子工厂 toolbox（`app/bootstrap/toolbox_sync.py`，
+ToolDependencySync 同款机制）：启动时全量 upsert（指数退避直到成功），agent 增删改后
+异步重同步。upsert 为整包替换，取消发布/删除自动下架。开关 `AGENT_RUNTIME_TOOLBOX_SYNC`。

@@ -36,6 +36,14 @@ class Config:
         "http://capabilities-lab:8080/api/capabilities-lab/v1",
     )
 
+    # 算子工厂（operator-integration）：published agent 注册为 toolbox 工具（#212）
+    OPERATOR_INTEGRATION_BASE = _env("OPERATOR_INTEGRATION_BASE", "http://agent-operator-integration:9000")
+    TOOLBOX_SYNC_ENABLED = _env("AGENT_RUNTIME_TOOLBOX_SYNC", "true").lower() == "true"
+    TOOLBOX_SYNC_RETRY_INITIAL_S = int(_env("AGENT_RUNTIME_TOOLBOX_RETRY_INITIAL_S", "5"))
+    TOOLBOX_SYNC_RETRY_MAX_S = int(_env("AGENT_RUNTIME_TOOLBOX_RETRY_MAX_S", "60"))
+    # toolbox 工具回调本服务的地址（box_svc_url）
+    SELF_BASE_URL = _env("AGENT_RUNTIME_SELF_BASE_URL", "http://agent-runtime:30800")
+
     # checkpointer: memory | mysql
     CHECKPOINTER_BACKEND = _env("CHECKPOINTER_BACKEND", "mysql")
     # 建表统一走 migrations/agent-runtime/（core-data-migrator）。仅开发环境
