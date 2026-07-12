@@ -5,7 +5,16 @@ from typing import Optional
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import AgentOut, AgentRow, AgentSpec, PromptOverrideRow, PromptRow, PromptVersionRow
+from app.models import (
+    AgentOut,
+    AgentRow,
+    AgentSpec,
+    PromptOverrideRow,
+    PromptRow,
+    PromptVersionRow,
+    TaskOut,
+    TaskRow,
+)
 
 
 def _now_ms() -> int:
@@ -94,6 +103,67 @@ async def delete_agent(session: AsyncSession, agent_id: str) -> bool:
     result = await session.execute(delete(AgentRow).where(AgentRow.f_agent_id == agent_id))
     await session.commit()
     return result.rowcount > 0
+
+
+def _task_out(row: TaskRow) -> TaskOut:
+    return TaskOut(
+        task_id=row.f_task_id,
+        agent_id=row.f_agent_id,
+        status=row.f_status,
+        input=row.f_input,
+        output=row.f_output,
+        failure_detail=row.f_failure_detail,
+        parent_thread_id=row.f_parent_thread_id,
+        create_time=row.f_create_time,
+        update_time=row.f_update_time,
+    )
+
+
+async def create_task(
+    session: AsyncSession,
+    agent_id: str,
+    task_input: dict,
+    account_id: str,
+    parent_thread_id: Optional[str] = None,
+) -> TaskOut:
+    now = _now_ms()
+    row = TaskRow(
+        f_task_id=str(uuid.uuid4()),
+        f_agent_id=agent_id,
+        f_status="pending",
+        f_input=task_input,
+        f_parent_thread_id=parent_thread_id,
+        f_account_id=account_id,
+        f_create_time=now,
+        f_update_time=now,
+    )
+    session.add(row)
+    await session.commit()
+    return _task_out(row)
+
+
+async def get_task(session: AsyncSession, task_id: str) -> Optional[TaskOut]:
+    row = await session.get(TaskRow, task_id)
+    return _task_out(row) if row else None
+
+
+async def set_task_status(
+    session: AsyncSession,
+    task_id: str,
+    status: str,
+    output: Optional[str] = None,
+    failure_detail: Optional[str] = None,
+) -> None:
+    row = await session.get(TaskRow, task_id)
+    if not row:
+        return
+    row.f_status = status
+    if output is not None:
+        row.f_output = output
+    if failure_detail is not None:
+        row.f_failure_detail = failure_detail
+    row.f_update_time = _now_ms()
+    await session.commit()
 
 
 async def get_default_prompt(session: AsyncSession, prompt_id: str) -> Optional[tuple[str, Optional[dict]]]:
