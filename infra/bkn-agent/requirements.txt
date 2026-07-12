@@ -1,0 +1,25 @@
+# 运行服务
+fastapi~=0.115.0
+uvicorn[standard]~=0.30.0
+pydantic~=2.9.0
+
+# 编排引擎
+langgraph~=0.2.60
+langchain-core~=0.3.29
+langchain-openai~=0.2.14
+langchain-mcp-adapters~=0.1.0
+langgraph-checkpoint-mysql~=2.0.15
+
+# 数据与外呼
+sqlalchemy[asyncio]~=2.0.36
+aiomysql~=0.2.0
+aiohttp~=3.10.0
+
+# 契约（docs/api/bkn-agent.yaml 导出与漂移测试）
+pyyaml~=6.0
+
+# 可观测（OTLP → otelcol-contrib → agent-observability）
+opentelemetry-sdk~=1.29
+opentelemetry-exporter-otlp-proto-http~=1.29
+opentelemetry-instrumentation-fastapi~=0.50b0
+openinference-instrumentation-langchain~=0.1.29
