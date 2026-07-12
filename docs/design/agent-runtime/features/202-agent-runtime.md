@@ -16,7 +16,7 @@ Decision Agent 退役后，平台没有第一方 Agent 运行时，BYO-Agent 是
 - **目标**：
   1. 提供平台共用的 `agent-runtime` 服务，统一承载内部 agent 的定义、执行、会话与监控。
   2. 支持对话模式与一次性模式两种执行形态，且一次性任务可作为工具被对话 agent 调用（agent-as-tool）；两种形态均可加载 capabilities-lab 技能。
-  3. 提示词外置于 mf-model-manager，可热更新；执行链路可观测（OTel → agent-observability / trace-ai），上下文可持久化与恢复。
+  3. 提示词由 runtime 自管：版本化存储、调用方覆写、热更新、可回滚；执行链路可观测（OTel → agent-observability / trace-ai），上下文可持久化与恢复。
   4. 平台其他模块低成本接入：契约先行（OpenAPI），提供 Go / Python / TypeScript 三语言 SDK；已发布 agent 自动暴露为 MCP 工具，MCP 客户端零 SDK 接入。
 - **非目标 (Non-Goals)**：
   - 不复活 Decision Agent，不改变 BYO-Agent 接入模式；agent-runtime 本身以 BYO-Agent 姿态接入。
@@ -26,19 +26,18 @@ Decision Agent 退役后，平台没有第一方 Agent 运行时，BYO-Agent 是
 
 ## 2. 方案概览 (High-Level Design)
 
-新增独立服务 `agent-runtime`（Python，LangGraph 作为编排引擎），复用平台既有能力面：模型走 mf-model-api（OpenAI 兼容），工具走 MCP（agent-retrieval 内置工具集 + 算子工厂 toolbox），技能来自 capabilities-lab，提示词来自 mf-model-manager，可观测走 otelcol → agent-observability。
+新增独立服务 `agent-runtime`（Python，LangGraph 作为编排引擎），复用平台既有能力面：模型走 mf-model-api（OpenAI 兼容，集群内走 `/api/private` 内部路由），工具走 MCP（agent-retrieval 内置工具集 + 算子工厂 toolbox），技能来自 capabilities-lab，可观测走 otelcol → agent-observability。提示词由 runtime 自管（版本化存储，见 3.4），不依赖 mf-model-manager 的遗留 prompt 表。
 
 ### 2.1 系统架构图
 
 ```mermaid
 graph TB
-    Caller([Studio / 业务服务 / CLI]) -->|SSE /chat, /run| RT[agent-runtime]
-    RT -->|OpenAI 兼容| MF[mf-model-api]
+    Caller([平台模块 / 内部工程师 CLI]) -->|SSE /chat, /run| RT[agent-runtime<br/>含版本化 prompt 存储]
+    RT -->|OpenAI 兼容 /api/private| MF[mf-model-api]
     RT -->|MCP Streamable HTTP| AR[agent-retrieval<br/>contextloader 工具集]
     RT -->|MCP / toolbox| OI[agent-operator-integration<br/>算子工厂]
     RT -->|拉取 SKILL| CL[capabilities-lab]
-    RT -->|按 prompt_id 拉取| MFM[mf-model-manager<br/>prompt 表]
-    RT -->|checkpointer| DB[(MariaDB / Redis)]
+    RT -->|checkpointer + prompt/task 表| DB[(MariaDB / Redis)]
     RT -->|OTel GenAI spans| OTEL[otelcol → agent-observability / trace-ai]
 ```
 
@@ -60,7 +59,7 @@ graph TB
 ```text
 agent := {
   agent_id, name, mode: chat | task,
-  prompt_id,            -- 指向 mf-model-manager prompt 表
+  prompt_id,            -- 指向内建 t_prompt（版本化）
   prompt_vars_schema,   -- 变量填充 schema
   model,                -- 默认为空，走系统默认模型
   tools: [mcp_endpoint | toolbox_ref | agent_ref],  -- agent_ref = agent-as-tool
@@ -69,7 +68,7 @@ agent := {
 }
 ```
 
-**对话流程**：`POST /chat` → 加载 agent 定义 → 拉取 prompt（按 prompt_id，带短 TTL 缓存，失效即热更新）→ 组装 graph（system prompt + SKILL + MCP 工具 + agent-as-tool）→ 带 thread_id 执行，checkpointer 每步落盘 → SSE 流式返回。
+**对话流程**：`POST /chat` → 加载 agent 定义 → 读取 prompt 生效版本（同库直读，天然热更新）→ 组装 graph（system prompt + SKILL + MCP 工具 + agent-as-tool）→ 带 thread_id 执行，checkpointer 每步落盘 → SSE 流式返回。
 
 **一次性流程**：`POST /run` → 创建 task 记录（pending）→ 异步执行单次 graph run（同样含 SKILL 注入与 MCP 工具）→ 状态机 pending → running → succeeded / failed（含 failure_detail）→ `GET /tasks/{id}` 查询。
 
@@ -88,6 +87,8 @@ agent := {
 
 - `t_agent`：agent 定义（见 3.1）。
 - `t_task`：task_id、agent_id、status、input、output、failure_detail、parent_thread_id、时间戳。状态语义对齐 vega build-task 的教训：completed 必须等于结果可用。
+- `t_prompt`：prompt_id、name、current_version、更新人/时间。
+- `t_prompt_version`：prompt_id + version（唯一键）→ 正文 + vars_schema + created_by/created_at。只增不改，回滚 = 把 current_version 指回旧版本。
 - `t_prompt_override`：agent_id + account_id（唯一键）→ prompt 正文 + 更新时间。调用方级提示词覆写，account 间互不可见。
 - checkpointer 表：LangGraph checkpoint 序列化存储（社区 MySQL saver 或 Redis saver，M2 落定）。
 
@@ -104,20 +105,23 @@ agent := {
 | POST | `/run` | 一次性任务（body: agent_id, input）→ task_id |
 | GET | `/tasks/{id}` | 任务状态与结果 |
 | GET | `/threads/{id}` | 会话历史 |
+| POST/GET/PUT | `/prompts`, `/prompts/{id}` | 提示词管理（PUT 发布新版本；`/prompts/{id}/versions` 列版本、`/prompts/{id}/rollback` 回滚） |
 | GET/PUT/DELETE | `/agents/{id}/prompt` | 调用方提示词覆写（按 account 隔离；GET 返回生效值及来源层级） |
 
 鉴权（**仅内部，硬约束**）：调用主体只有两类——平台模块（服务身份，bkn-safe app account / `/in` 约定透传 x-account-id / x-account-type）与内部工程师（bkn-safe token 或 bak_ AppKey，供脚本/CLI）。**不接受终端用户流量**：网关不为 agent-runtime 开 to-C 入口；若未来 Studio 等产品面需要 agent 能力，由其后端以服务身份代理调用，终端用户身份不直达本服务。对下游服务调用遵循 `/in` 路由约定（信 header，授权押下游）。
 
 ### 3.4 提示词集成
 
-提示词按三层解析，高层覆盖低层，逐层回退：
+提示词由 agent-runtime **自管**（版本化存储，见 3.2），不复用 mf-model-manager 的遗留 prompt 表——那套表是老产品的数据模型（prompt_item/分类/deploy_url 等历史字段），无版本无回滚且处于半停用状态；保持原样不动、不迁移、不依赖，服务边界干净。
+
+三层解析，高层覆盖低层，逐层回退：
 
 1. **请求级**：`/chat`、`/run` body 可带 `prompt_override`（仅本次调用生效，不落库）。
-2. **调用方级**：`PUT /agents/{id}/prompt` 写入 `t_prompt_override`，按 account_id 隔离——调用方 A 的覆写对 B 不可见，也不影响平台默认。
-3. **平台默认**：agent 定义中的 prompt_id，runtime 调 mf-model-manager `GET /api/mf-model-manager/v1/prompt/{prompt_id}` 取正文（管理员在 mf-model-manager 维护；其 prompt_completion 接口处于注释状态，不依赖、不恢复）。
+2. **调用方级**：`PUT /agents/{id}/prompt` 写入 `t_prompt_override`，按 account_id 隔离——调用方 A 的覆写对 B 不可见，也不影响 agent 默认。
+3. **agent 默认**：agent 定义中的 prompt_id → `t_prompt.current_version` 对应版本正文。发布新版本即全局生效，改坏一键回滚。
 
 - 变量填充统一由 runtime 本地完成，三层使用同一 `prompt_vars_schema` 校验，覆写文本缺变量时报明确错误。
-- 平台默认层缓存 TTL ≤ 60s；覆写层写库即生效。编辑任何一层无需重启。
+- 三层全部同库直读，写库即生效，无跨服务缓存一致性问题；编辑任何一层无需重启。
 
 ### 3.5 可观测
 
@@ -138,7 +142,7 @@ agent := {
 | Python | bkn-comm-py 新增 `agent_runtime` 模块 | mf-model-*、脚本/examples | codegen + 手写流封装 |
 | TypeScript | bkn-sdk 新增 client（openbkn CLI 顺带获得 `agent` 子命令） | bkn-studio、CLI 用户 | 同上 |
 
-SDK 表面统一为五个动作：`chat()`（流式）、`run()` / `wait_task()`、`get_thread()`、`set_prompt()` / `get_prompt()`（调用方覆写）、agents CRUD；`chat()` / `run()` 均接受请求级 `skills` 与 `prompt_override` 参数。鉴权两态：平台内服务走 `/in` 约定透传 x-account-id / x-account-type；平台外走 bkn-safe token 或 bak_ AppKey。
+SDK 表面统一为六类动作：`chat()`（流式）、`run()` / `wait_task()`、`get_thread()`、`set_prompt()` / `get_prompt()`（调用方覆写）、prompts 管理（发布版本/回滚）、agents CRUD；`chat()` / `run()` 均接受请求级 `skills` 与 `prompt_override` 参数。鉴权两态：平台内服务走 `/in` 约定透传 x-account-id / x-account-type；平台外走 bkn-safe token 或 bak_ AppKey。
 
 **DX 验收**（服务对象是内部开发者，以此为准绳）：模块引入 SDK 后 ≤ 5 行代码完成一次 `chat()` 或 `run()`；SDK 附带最小可运行示例；错误信息带 code / description / solution（对齐平台错误规范）。
 
@@ -148,7 +152,7 @@ SDK 表面统一为五个动作：`chat()`（流式）、`run()` / `wait_task()`
 
 - **并发会话写冲突**：同一 thread_id 并发 /chat 请求需串行化（thread 级锁或乐观冲突拒绝）。
 - **工具调用失败**：MCP 调用超时/错误进入 graph 错误分支，反馈给模型重试或终止；task 落 failed + failure_detail，不得静默吞错（vega worker 教训）。
-- **提示词被删**：prompt_id 失效时 agent 拒绝执行并报明确错误，不回退到内置默认词；调用方覆写被删则自然回退到平台默认层。
+- **提示词被删/改坏**：prompt_id 失效时 agent 拒绝执行并报明确错误，不回退到内置默认词；改坏用版本回滚兜底（t_prompt_version 只增不改）；调用方覆写被删则自然回退到 agent 默认层。
 - **覆写越权**：`/agents/{id}/prompt` 只允许写本 account 的覆写；空 account 一律 fail-closed（对齐 vega `/in` 授权教训）。覆写主体是模块/工程师身份，不存在终端用户维度的覆写。
 - **误暴露为 to-C 入口**：本服务定位仅内部（见第 1 节），部署与网关配置须保证终端用户流量不可直达；评审与上线检查项都要含此项。
 - **循环互调**：agent-as-tool 存在 A→B→A 环风险，执行栈带深度上限（默认 3）。
@@ -167,12 +171,14 @@ SDK 表面统一为五个动作：`chat()`（流式）、`run()` / `wait_task()`
 
 选择 LangGraph：checkpointer、MCP adapter、agent-as-tool、OTel instrumentation 全部现成，平台已有 Python 服务先例（mf-model-*），落地粘合成本最小。
 
+**提示词存储**也做过取舍：复用 mf-model-manager 遗留 prompt 表（CRUD 与表现成）vs 自建。结论自建——老表数据模型错配（老产品的项目/分类/部署字段）、无版本回滚、半停用无前端；自建成本仅两张表 + 几个端点，换来与 agent 定义/覆写同库的一致性与版本能力。老表保持原样，不迁移不依赖。
+
 ## 6. 任务拆分 (Milestones)
 
 - [ ] M1 本设计文档评审通过（含 API 契约与数据模型）
 - [ ] M2 runtime 骨架：/agents CRUD + /chat 对话 + checkpointer 持久化（MariaDB/Redis 选型落定）
 - [ ] M3 一次性模式：/run + /tasks + agent-as-tool 互调
-- [ ] M4 提示词集成：mf-model-manager 拉取 + 变量填充 + 热更新
+- [ ] M4 提示词子系统：版本化存储 + 三层解析 + 变量填充 + 回滚
 - [ ] M5 可观测：OTel spans → agent-observability，trace-ai 诊断验证
 - [ ] M6 Helm chart + deploy.sh 集成 + VM（10.211.55.4）部署验证
 - [ ] M7 接入面：OpenAPI 契约冻结 → Go/Python/TS SDK（bkn-comm-go / bkn-comm-py / bkn-sdk）+ published agent 注册为算子工厂 MCP 工具
