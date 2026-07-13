@@ -29,10 +29,11 @@ depServices:
 
 runtime:
   mfModelApiPrivateBase: "http://mf-model-api:9898/api/private/mf-model-api/v1"
-  agentRetrievalMcpUrl: "http://agent-retrieval:30779/api/agent-retrieval/v1/mcp"
+  # 默认给每个 agent 挂载的执行工厂 toolbox（逗号分隔；默认=contextloader 内置工具集，置空不挂）
+  defaultToolboxes: "e521d454-4a0b-4dc9-8a28-d0986de1cef9"
   capabilitiesLabBase: "http://capabilities-lab:8080/api/capabilities-lab/v1"
   # published agent 注册进算子工厂 toolbox（#212）
-  operatorIntegrationBase: "http://agent-operator-integration:9000"
+  operatorIntegrationBase: "http://agent-operator-integration:9000/api/agent-operator-integration"
   toolboxSync: "true"
   # toolbox 工具回调本服务的地址（box_svc_url）
   selfBaseUrl: "http://bkn-agent:30800"

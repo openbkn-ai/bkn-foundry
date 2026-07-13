@@ -6,7 +6,9 @@
 
 - 引擎：LangGraph（Python）
 - 模型：mf-model-api（OpenAI 兼容，集群内 `/api/private`，model 为空走系统默认）
-- 工具：MCP（agent-retrieval 内置工具集 / 算子工厂 toolbox）
+- 工具：执行工厂 toolbox 统一工具平面（默认挂 contextloader 内置工具集，
+  执行走 operator-integration 执行代理，身份 header 透传）；外部 MCP 端点经
+  `type: "mcp"` 显式挂载
 - 技能：capabilities-lab（`/skill/content` 注入 + `/skill/files/read` 渐进读取）
 - 存储：共享 `openbkn` 库，`agent_` 前缀表，迁移见 `migrations/bkn-agent/`
 
@@ -17,7 +19,7 @@ pip install -r requirements.txt
 uvicorn main:app --port 30800
 ```
 
-关键环境变量见 `app/config.py`（RDS*、MF_MODEL_API_PRIVATE_BASE、AGENT_RETRIEVAL_MCP_URL、CAPABILITIES_LAB_BASE、CHECKPOINTER_BACKEND）。
+关键环境变量见 `app/config.py`（RDS*、MF_MODEL_API_PRIVATE_BASE、BKN_AGENT_DEFAULT_TOOLBOXES、CAPABILITIES_LAB_BASE、CHECKPOINTER_BACKEND）。默认 toolbox 拉取失败降级告警不击穿对话；`type: "toolbox"` 显式引用失败报错。
 
 ## API
 

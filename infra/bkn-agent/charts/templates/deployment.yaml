@@ -64,8 +64,8 @@ spec:
               value: {{ .Values.depServices.rds.password | quote }}
             - name: MF_MODEL_API_PRIVATE_BASE
               value: {{ .Values.runtime.mfModelApiPrivateBase | quote }}
-            - name: AGENT_RETRIEVAL_MCP_URL
-              value: {{ .Values.runtime.agentRetrievalMcpUrl | quote }}
+            - name: BKN_AGENT_DEFAULT_TOOLBOXES
+              value: {{ .Values.runtime.defaultToolboxes | quote }}
             - name: CAPABILITIES_LAB_BASE
               value: {{ .Values.runtime.capabilitiesLabBase | quote }}
             - name: OPERATOR_INTEGRATION_BASE

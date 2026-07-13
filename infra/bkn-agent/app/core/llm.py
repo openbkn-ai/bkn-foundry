@@ -11,5 +11,4 @@ def build_chat_model(agent_model: str) -> ChatOpenAI:
         api_key="internal",
         model=agent_model or config.DEFAULT_MODEL,
         streaming=True,
-        temperature=None,
     )

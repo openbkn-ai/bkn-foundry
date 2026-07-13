@@ -26,7 +26,7 @@ Decision Agent 退役后，平台没有第一方 Agent 运行时，BYO-Agent 是
 
 ## 2. 方案概览 (High-Level Design)
 
-新增独立服务 `bkn-agent`（Python，LangGraph 作为编排引擎），复用平台既有能力面：模型走 mf-model-api（OpenAI 兼容，集群内走 `/api/private` 内部路由），工具走 MCP（agent-retrieval 内置工具集 + 算子工厂 toolbox），技能来自 capabilities-lab，可观测走 otelcol → agent-observability。提示词由 runtime 自管（版本化存储，见 3.4），不依赖 mf-model-manager 的遗留 prompt 表。
+新增独立服务 `bkn-agent`（Python，LangGraph 作为编排引擎），复用平台既有能力面：模型走 mf-model-api（OpenAI 兼容，集群内走 `/api/private` 内部路由），工具面收敛到执行工厂 toolbox（operator-integration 统一工具平面：contextloader 内置工具集、沙箱、published agent 等；执行走执行代理，身份 header 透传），外部 MCP 端点经 type=mcp 显式挂载，技能来自 capabilities-lab，可观测走 otelcol → agent-observability。提示词由 runtime 自管（版本化存储，见 3.4），不依赖 mf-model-manager 的遗留 prompt 表。
 
 ### 2.1 系统架构图
 
@@ -34,8 +34,8 @@ Decision Agent 退役后，平台没有第一方 Agent 运行时，BYO-Agent 是
 graph TB
     Caller([平台模块 / 内部工程师 CLI]) -->|SSE /chat, /run| RT[bkn-agent<br/>含版本化 prompt 存储]
     RT -->|OpenAI 兼容 /api/private| MF[mf-model-api]
-    RT -->|MCP Streamable HTTP| AR[agent-retrieval<br/>contextloader 工具集]
-    RT -->|MCP / toolbox| OI[agent-operator-integration<br/>算子工厂]
+    RT -->|toolbox 列表+执行代理| OI[agent-operator-integration<br/>算子工厂（统一工具平面）]
+    OI -->|/in HTTP| AR[agent-retrieval<br/>contextloader 工具集]
     RT -->|拉取 SKILL| CL[capabilities-lab]
     RT -->|checkpointer + prompt/task 表| DB[(MariaDB / Redis)]
     RT -->|OTel GenAI spans| OTEL[otelcol → agent-observability / trace-ai]
@@ -45,8 +45,8 @@ graph TB
 
 | 形态 | 载体 | 状态 | 工具面 |
 | --- | --- | --- | --- |
-| 对话模式 | 带 checkpointer 的 LangGraph graph | 多轮会话，断点可恢复 | MCP 工具 + SKILL 注入 + agent-as-tool |
-| 一次性模式 | 无状态单次 graph run | 任务级（task_id 可查询） | prompt 模板 + 单次/少量 MCP 调用 |
+| 对话模式 | 带 checkpointer 的 LangGraph graph | 多轮会话，断点可恢复 | toolbox 工具 + SKILL 注入 + agent-as-tool（外部 MCP 可显式挂）|
+| 一次性模式 | 无状态单次 graph run | 任务级（task_id 可查询） | prompt 模板 + 单次/少量工具调用 |
 
 一次性 agent 在注册时声明输入/输出 schema，runtime 自动将其包装为对话 agent 可见的工具（LangGraph agent-as-tool / 子图），实现多 agent 组合。
 
@@ -68,9 +68,9 @@ agent := {
 }
 ```
 
-**对话流程**：`POST /chat` → 加载 agent 定义 → 读取 prompt 生效版本（同库直读，天然热更新）→ 组装 graph（system prompt + SKILL + MCP 工具 + agent-as-tool）→ 带 thread_id 执行，checkpointer 每步落盘 → SSE 流式返回。
+**对话流程**：`POST /chat` → 加载 agent 定义 → 读取 prompt 生效版本（同库直读，天然热更新）→ 组装 graph（system prompt + SKILL + toolbox 工具 + agent-as-tool）→ 带 thread_id 执行，checkpointer 每步落盘 → SSE 流式返回。
 
-**一次性流程**：`POST /run` → 创建 task 记录（pending）→ 异步执行单次 graph run（同样含 SKILL 注入与 MCP 工具）→ 状态机 pending → running → succeeded / failed（含 failure_detail）→ `GET /tasks/{id}` 查询。
+**一次性流程**：`POST /run` → 创建 task 记录（pending）→ 异步执行单次 graph run（同样含 SKILL 注入与 toolbox 工具）→ 状态机 pending → running → succeeded / failed（含 failure_detail）→ `GET /tasks/{id}` 查询。
 
 **互调**：对话 graph 中的 agent_ref 工具触发时，runtime 内部走与 `/run` 相同的执行路径，task 记录同样落库（parent_thread_id 关联），保证被调用的一次性任务同样可监控。
 
@@ -153,7 +153,7 @@ SDK 表面统一为六类动作：`chat()`（流式）、`run()` / `wait_task()`
 ## 4. 边界情况与风险 (Edge Cases & Risks)
 
 - **并发会话写冲突**：同一 thread_id 并发 /chat 请求需串行化（thread 级锁或乐观冲突拒绝）。
-- **工具调用失败**：MCP 调用超时/错误进入 graph 错误分支，反馈给模型重试或终止；task 落 failed + failure_detail，不得静默吞错（vega worker 教训）。
+- **工具调用失败**：工具调用超时/错误进入 graph 错误分支，反馈给模型重试或终止；task 落 failed + failure_detail，不得静默吞错（vega worker 教训）。
 - **提示词被删/改坏**：prompt_id 失效时 agent 拒绝执行并报明确错误，不回退到内置默认词；改坏用版本回滚兜底（t_agent_prompt_version 只增不改）；调用方覆写被删则自然回退到 agent 默认层。
 - **覆写越权**：`/agents/{id}/prompt` 只允许写本 account 的覆写；空 account 一律 fail-closed（对齐 vega `/in` 授权教训）。覆写主体是模块/工程师身份，不存在终端用户维度的覆写。
 - **误暴露为 to-C 入口**：本服务定位仅内部（见第 1 节），部署与网关配置须保证终端用户流量不可直达；评审与上线检查项都要含此项。
