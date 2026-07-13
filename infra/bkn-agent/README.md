@@ -29,7 +29,9 @@ uvicorn main:app --port 30800
 
 `/api/bkn-agent/v1/`：agents CRUD、`POST /chat`（SSE）、`POST /run` + `GET /tasks/{id}`、
 `POST /invoke/{agent_id}`（同步一次性，算子工厂 toolbox 回调）、`GET /threads/{id}`（会话历史）、
-提示词管理与调用方覆写（/prompts、/agents/{id}/prompt）。
+提示词管理与调用方覆写（/prompts、/agents/{id}/prompt）、导入导出（/export、/import：
+agent 定义+prompt 当前版本，保留原 id upsert 幂等，同名不同 id 记 failed 不中断，
+跨环境引用缺失记 warning）。
 
 ## 算子工厂注册
 

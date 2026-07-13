@@ -252,3 +252,46 @@ class TaskOut(BaseModel):
     parent_thread_id: Optional[str] = None
     create_time: int
     update_time: int
+
+
+# ---------- 导入导出（impex） ----------
+
+
+class PromptExport(BaseModel):
+    prompt_id: str
+    name: str
+    content: str
+    vars_schema: Optional[dict[str, Any]] = None
+
+
+class AgentExportItem(BaseModel):
+    agent_id: str
+    spec: AgentSpec
+    prompt: Optional[PromptExport] = None  # 当前生效版本；导入侧内容有变则发布新版本
+
+
+class ExportRequest(BaseModel):
+    agent_ids: list[str] = Field(min_length=1)
+
+
+class ExportPackage(BaseModel):
+    format: Literal["bkn-agent/v1"] = "bkn-agent/v1"
+    exported_at: int
+    items: list[AgentExportItem]
+
+
+class ImportRequest(BaseModel):
+    package: ExportPackage
+
+
+class ImportItemResult(BaseModel):
+    agent_id: str
+    name: str
+    action: Literal["created", "updated", "failed"]
+    prompt_action: Literal["created", "version_published", "unchanged", "none"] = "none"
+    error: Optional[str] = None
+
+
+class ImportResult(BaseModel):
+    results: list[ImportItemResult]
+    warnings: list[str] = Field(default_factory=list)
