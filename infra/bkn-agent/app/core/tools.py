@@ -1,3 +1,4 @@
+import logging
 from typing import Any
 
 import aiohttp
@@ -5,20 +6,17 @@ from langchain_core.tools import StructuredTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
 from app.config import config
+from app.core.toolbox import load_toolbox_tools
 from app.errors import bad_request
+
+logger = logging.getLogger("bkn-agent.tools")
 
 
 def _mcp_connections(tool_refs: list[dict], account_id: str, account_type: str) -> dict[str, dict]:
-    """agent.tools 中 type=mcp 的条目 + 默认 agent-retrieval 内置工具集。
-    身份经 header 透传（/in 约定，授权押下游）。"""
+    """agent.tools 中 type=mcp 的显式外部 MCP 端点。平台内置工具不走这里
+    （统一从执行工厂 toolbox 装载，见 load_tools）。"""
     headers = {"x-account-id": account_id, "x-account-type": account_type}
-    conns: dict[str, dict] = {
-        "agent-retrieval": {
-            "transport": "streamable_http",
-            "url": config.AGENT_RETRIEVAL_MCP_URL,
-            "headers": headers,
-        }
-    }
+    conns: dict[str, dict] = {}
     for i, ref in enumerate(tool_refs):
         kind = ref.get("type")
         if kind == "mcp":
@@ -30,16 +28,36 @@ def _mcp_connections(tool_refs: list[dict], account_id: str, account_type: str) 
                 "url": url,
                 "headers": headers,
             }
-        elif kind == "agent":
-            continue  # agent-as-tool 单独组装，见 _agent_tool
-        elif kind == "toolbox":
-            # 算子工厂 toolbox 直挂，M7（#212）联调
-            raise bad_request(
-                "ToolRef.NotYet", "toolbox 引用尚未支持", str(ref), "当前请以 MCP 端点形式挂载。"
-            )
+        elif kind in ("agent", "toolbox"):
+            continue  # agent-as-tool 见 _agent_tool；toolbox 见 _toolbox_tools
         else:
             raise bad_request("ToolRef", "未知工具类型", str(ref))
     return conns
+
+
+async def _toolbox_tools(
+    tool_refs: list[dict], account_id: str, account_type: str
+) -> list[StructuredTool]:
+    """执行工厂 toolbox 装载：默认 box（可配，拉不到降级告警不击穿对话）
+    + agent.tools 中 type=toolbox 的显式引用（失败报错）。"""
+    box_ids: list[str] = []
+    for ref in tool_refs:
+        if ref.get("type") == "toolbox":
+            box_id = ref.get("box_id")
+            if not box_id:
+                raise bad_request("ToolRef", "toolbox 工具缺 box_id", str(ref))
+            box_ids.append(box_id)
+    tools: list[StructuredTool] = []
+    for box_id in dict.fromkeys(box_ids):
+        tools.extend(await load_toolbox_tools(box_id, account_id, account_type))
+    for box_id in config.default_toolboxes:
+        if box_id in box_ids:
+            continue
+        try:
+            tools.extend(await load_toolbox_tools(box_id, account_id, account_type))
+        except Exception as e:
+            logger.warning("[Toolbox] default box %s unavailable, degraded: %s", box_id, e)
+    return tools
 
 
 async def _agent_tool(
@@ -104,10 +122,24 @@ async def load_tools(
     depth: int = 0,
     parent_thread_id: str | None = None,
 ) -> list[Any]:
-    client = MultiServerMCPClient(_mcp_connections(tool_refs, account_id, account_type))
-    tools = await client.get_tools()
+    tools: list[Any] = await _toolbox_tools(tool_refs, account_id, account_type)
+    conns = _mcp_connections(tool_refs, account_id, account_type)
+    if conns:
+        client = MultiServerMCPClient(conns)
+        tools.extend(await client.get_tools())
     for ref in tool_refs:
         if ref.get("type") == "agent":
             tools.append(await _agent_tool(ref, account_id, account_type, depth, parent_thread_id))
     tools.append(_read_skill_file_tool(account_id, account_type))
-    return tools
+    # 名字冲突去重（保留先到：显式 toolbox > 默认 box > mcp > agent）
+    seen: set[str] = set()
+    deduped: list[Any] = []
+    for t in tools:
+        name = getattr(t, "name", None)
+        if name in seen:
+            logger.warning("[Tools] duplicate tool name %s dropped", name)
+            continue
+        if name:
+            seen.add(name)
+        deduped.append(t)
+    return deduped

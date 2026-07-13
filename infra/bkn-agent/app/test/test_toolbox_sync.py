@@ -31,6 +31,16 @@ def test_package_version_equals_source_id():
         assert t["source_id"] == t["metadata"]["version"]
 
 
+def test_package_api_spec_impex_shape():
+    """impex 硬约束：api_spec.responses 是数组（status_code 字段），
+    OpenAPI 对象形态 {"200": {...}} 导入直接 400 decode slice。"""
+    t = toolbox_sync.build_package([_agent("a-1")])["toolbox"]["configs"][0]["tools"][0]
+    responses = t["metadata"]["api_spec"]["responses"]
+    assert isinstance(responses, list)
+    assert responses[0]["status_code"] == "200"
+    assert "request_body" in t["metadata"]["api_spec"]
+
+
 def test_package_ids_deterministic_and_path_pinned():
     t1 = toolbox_sync.build_package([_agent("a-1")])["toolbox"]["configs"][0]["tools"][0]
     t2 = toolbox_sync.build_package([_agent("a-1")])["toolbox"]["configs"][0]["tools"][0]

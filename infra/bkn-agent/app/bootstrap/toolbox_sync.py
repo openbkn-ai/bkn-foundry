@@ -57,8 +57,11 @@ _INVOKE_BODY_SCHEMA = {
     },
 }
 
-_INVOKE_RESPONSES = {
-    "200": {
+# impex 的 APISpec.Responses 是数组（status_code 字段），不是 OpenAPI 标准的
+# {"200": {...}} 对象——对象形态导入直接 400 decode slice
+_INVOKE_RESPONSES = [
+    {
+        "status_code": "200",
         "description": "任务终态。status=succeeded 时 output 为结果；failed 时看 failure_detail。",
         "content": {
             "application/json": {
@@ -74,7 +77,7 @@ _INVOKE_RESPONSES = {
             }
         },
     }
-}
+]
 
 
 def _tool_entry(agent: AgentOut, now_ns: int) -> dict:
@@ -144,7 +147,8 @@ def build_package(agents: list[AgentOut]) -> dict:
             "configs": [
                 {
                     "box_id": BOX_ID,
-                    "box_name": "bkn-agent 内置 agent",
+                    # operator-integration 名称校验只收中文/字母/数字/下划线（空格、连字符都不行）
+                    "box_name": "bkn_agent内置agent",
                     "box_desc": "bkn-agent published agent 自动注册；契约见 docs/api/bkn-agent.yaml",
                     "box_svc_url": config.SELF_BASE_URL,
                     "status": "published",

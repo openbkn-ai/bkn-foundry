@@ -6,6 +6,7 @@ WORKDIR /service
 COPY requirements.txt .
 RUN pip install --no-cache-dir -i ${PIP_INDEX_URL} -r requirements.txt
 
+COPY VERSION .
 COPY main.py .
 COPY app ./app
 
