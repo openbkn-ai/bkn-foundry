@@ -33,7 +33,8 @@ class ModelIdList(BaseModel):
 
 class Message(BaseModel):
     role: StrictStr = Field(description="", regex=r'^(user|assistant|system|tool)$')
-    content: Union[StrictStr, List[Dict[str, Union[str, Dict[str, str]]]]]
+    # OpenAI 规范：assistant 消息带 tool_calls 时 content 可为 null
+    content: Optional[Union[StrictStr, List[Dict[str, Union[str, Dict[str, str]]]]]] = Field(default=None)
     tool_calls: List[dict] = Field(default=None)
     tool_call_id: StrictStr = Field(default=None)
 

@@ -122,6 +122,10 @@ async def used_model_openai(request, user_id, language, func_module):
             messages[i].pop("tool_calls")
         if messages[i]["tool_call_id"] is None:
             messages[i].pop("tool_call_id")
+        # OpenAI 规范允许 assistant+tool_calls 的 content 为 null；内部统一空串，
+        # 下游拼接/计量（prompt_str += content）不容忍 None
+        if messages[i]["content"] is None:
+            messages[i]["content"] = ""
         tmp_item = {
             "role": messages[i]["role"],
             "message": messages[i]["content"]
