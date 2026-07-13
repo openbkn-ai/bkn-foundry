@@ -366,3 +366,84 @@ async def rollback_prompt(session: AsyncSession, prompt_id: str, version: int, a
     head.f_update_time = _now_ms()
     await session.commit()
     return await _prompt_out(session, head)
+
+
+# ---------- 导入导出（impex）：保留原 id upsert，name 撞车报错 ----------
+
+
+async def upsert_agent_with_id(
+    session: AsyncSession, agent_id: str, spec: AgentSpec, account_id: str
+) -> tuple[AgentOut, str]:
+    """按 agent_id upsert（导入语义：幂等，重复导入=同步更新）。
+    返回 (agent, "created"|"updated")。同名不同 id 抛 ValueError。"""
+    dup = (
+        await session.execute(
+            select(AgentRow).where(AgentRow.f_name == spec.name, AgentRow.f_agent_id != agent_id)
+        )
+    ).scalar_one_or_none()
+    if dup:
+        raise ValueError(f"agent 名「{spec.name}」已被 {dup.f_agent_id} 占用")
+    now = _now_ms()
+    row = await session.get(AgentRow, agent_id)
+    action = "updated" if row else "created"
+    if not row:
+        row = AgentRow(f_agent_id=agent_id, f_create_user=account_id, f_create_time=now)
+        session.add(row)
+    row.f_name = spec.name
+    row.f_mode = spec.mode
+    row.f_prompt_id = spec.prompt_id
+    row.f_prompt_vars_schema = spec.prompt_vars_schema
+    row.f_model = spec.model
+    row.f_tools = spec.tools
+    row.f_skills = spec.skills
+    row.f_limits = spec.limits.model_dump(exclude_none=True) if spec.limits else None
+    row.f_status = spec.status
+    row.f_update_user = account_id
+    row.f_update_time = now
+    await session.commit()
+    return _to_out(row), action
+
+
+async def upsert_prompt_with_id(
+    session: AsyncSession,
+    prompt_id: str,
+    name: str,
+    content: str,
+    vars_schema: Optional[dict],
+    account_id: str,
+) -> str:
+    """按 prompt_id upsert。已存在且内容有变 → 发布新版本（目标环境自己长版本
+    历史）；无变化 no-op。返回 "created"|"version_published"|"unchanged"。
+    同名不同 id 抛 ValueError。"""
+    dup = (
+        await session.execute(
+            select(PromptRow).where(PromptRow.f_name == name, PromptRow.f_prompt_id != prompt_id)
+        )
+    ).scalar_one_or_none()
+    if dup:
+        raise ValueError(f"prompt 名「{name}」已被 {dup.f_prompt_id} 占用")
+    head = await session.get(PromptRow, prompt_id)
+    if not head:
+        now = _now_ms()
+        session.add(
+            PromptRow(
+                f_prompt_id=prompt_id, f_name=name, f_current_version=1, f_update_user=account_id, f_update_time=now
+            )
+        )
+        session.add(
+            PromptVersionRow(
+                f_prompt_id=prompt_id,
+                f_version=1,
+                f_content=content,
+                f_vars_schema=vars_schema,
+                f_create_user=account_id,
+                f_create_time=now,
+            )
+        )
+        await session.commit()
+        return "created"
+    current = await session.get(PromptVersionRow, (prompt_id, head.f_current_version))
+    if current and current.f_content == content and current.f_vars_schema == vars_schema:
+        return "unchanged"
+    await publish_prompt_version(session, prompt_id, content, vars_schema, account_id)
+    return "version_published"

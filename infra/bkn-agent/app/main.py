@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from app.bootstrap import toolbox_sync
 from app.models import ErrorEnvelope
 from app.observability import setup_otel
-from app.routers import agents, chat, prompts, tasks, threads
+from app.routers import agents, chat, impex, prompts, tasks, threads
 
 API_PREFIX = "/api/bkn-agent/v1"
 VERSION = (Path(__file__).resolve().parent.parent / "VERSION").read_text().strip()
@@ -31,6 +31,7 @@ app.include_router(chat.router, prefix=API_PREFIX, tags=["BknAgent"], responses=
 app.include_router(tasks.router, prefix=API_PREFIX, tags=["BknAgent"], responses=_ERRORS)
 app.include_router(prompts.router, prefix=API_PREFIX, tags=["BknAgent"], responses=_ERRORS)
 app.include_router(threads.router, prefix=API_PREFIX, tags=["BknAgent"], responses=_ERRORS)
+app.include_router(impex.router, prefix=API_PREFIX, tags=["BknAgent"], responses=_ERRORS)
 
 
 @app.get("/api/v1/health")

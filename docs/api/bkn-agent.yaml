@@ -549,6 +549,56 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/bkn-agent/v1/export:
+    post:
+      tags:
+      - BknAgent
+      summary: Export Agents
+      operationId: export_agents_api_bkn_agent_v1_export_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExportRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExportPackage'
+        4XX:
+          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/bkn-agent/v1/import:
+    post:
+      tags:
+      - BknAgent
+      summary: Import Agents
+      operationId: import_agents_api_bkn_agent_v1_import_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImportRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportResult'
+        4XX:
+          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/v1/health:
     get:
       summary: Health
@@ -570,6 +620,22 @@ components:
       required:
       - deleted
       title: AgentDeleted
+    AgentExportItem:
+      properties:
+        agent_id:
+          type: string
+          title: Agent Id
+        spec:
+          $ref: '#/components/schemas/AgentSpec'
+        prompt:
+          anyOf:
+          - $ref: '#/components/schemas/PromptExport'
+          - type: 'null'
+      type: object
+      required:
+      - agent_id
+      - spec
+      title: AgentExportItem
     AgentLimits:
       properties:
         max_turns:
@@ -833,6 +899,97 @@ components:
       - solution
       title: ErrorEnvelope
       description: 平台统一错误封套（所有非 2xx 响应）。
+    ExportPackage:
+      properties:
+        format:
+          type: string
+          const: bkn-agent/v1
+          title: Format
+          default: bkn-agent/v1
+        exported_at:
+          type: integer
+          title: Exported At
+        items:
+          items:
+            $ref: '#/components/schemas/AgentExportItem'
+          type: array
+          title: Items
+      type: object
+      required:
+      - exported_at
+      - items
+      title: ExportPackage
+    ExportRequest:
+      properties:
+        agent_ids:
+          items:
+            type: string
+          type: array
+          minItems: 1
+          title: Agent Ids
+      type: object
+      required:
+      - agent_ids
+      title: ExportRequest
+    ImportItemResult:
+      properties:
+        agent_id:
+          type: string
+          title: Agent Id
+        name:
+          type: string
+          title: Name
+        action:
+          type: string
+          enum:
+          - created
+          - updated
+          - failed
+          title: Action
+        prompt_action:
+          type: string
+          enum:
+          - created
+          - version_published
+          - unchanged
+          - none
+          title: Prompt Action
+          default: none
+        error:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Error
+      type: object
+      required:
+      - agent_id
+      - name
+      - action
+      title: ImportItemResult
+    ImportRequest:
+      properties:
+        package:
+          $ref: '#/components/schemas/ExportPackage'
+      type: object
+      required:
+      - package
+      title: ImportRequest
+    ImportResult:
+      properties:
+        results:
+          items:
+            $ref: '#/components/schemas/ImportItemResult'
+          type: array
+          title: Results
+        warnings:
+          items:
+            type: string
+          type: array
+          title: Warnings
+      type: object
+      required:
+      - results
+      title: ImportResult
     InvokeRequest:
       properties:
         message:
@@ -900,6 +1057,29 @@ components:
       - account_id
       - source
       title: OverrideState
+    PromptExport:
+      properties:
+        prompt_id:
+          type: string
+          title: Prompt Id
+        name:
+          type: string
+          title: Name
+        content:
+          type: string
+          title: Content
+        vars_schema:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Vars Schema
+      type: object
+      required:
+      - prompt_id
+      - name
+      - content
+      title: PromptExport
     PromptList:
       properties:
         items:
