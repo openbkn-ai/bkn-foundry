@@ -577,6 +577,65 @@ func TestCreateBuildTaskNormalizesModelNameToID(t *testing.T) {
 	assert.Equal(t, &interfaces.BuildTaskFulltextConfig{Analyzer: "ik_max_word"}, captured.IndexConfig.Features["family_name"].Fulltext)
 }
 
+func TestCreateBuildTaskSnapshotUnaffectedByResourceMutation(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+	mockRS := mock_interfaces.NewMockResourceService(ctrl)
+	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+	mockMFA := mock_interfaces.NewMockModelFactoryAccess(ctrl)
+	neutralizeEnqueue(t, ctrl)
+	service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA, mfa: mockMFA}
+
+	resource := &interfaces.Resource{
+		ID:        "resource-1",
+		CatalogID: "catalog-1",
+		Category:  interfaces.ResourceCategoryTable,
+		IndexConfig: &interfaces.ResourceIndexConfig{
+			BuildKeyFields:          []string{"id"},
+			DefaultEmbeddingModel:   "text-embedding-v4",
+			DefaultFulltextAnalyzer: "ik_max_word",
+		},
+		SchemaDefinition: []*interfaces.Property{
+			{
+				Name: "family_name",
+				Features: []interfaces.PropertyFeature{
+					{FeatureType: interfaces.PropertyFeatureType_Vector, RefProperty: "family_name"},
+					{FeatureType: interfaces.PropertyFeatureType_Fulltext, RefProperty: "family_name"},
+				},
+			},
+		},
+	}
+	mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(resource, nil)
+	mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
+		Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
+	mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).Return(nil, int64(0), nil)
+	mockMFA.EXPECT().GetModelByName(gomock.Any(), "text-embedding-v4").
+		Return(&interfaces.SmallModel{ModelID: "2064382281006583808", ModelName: "text-embedding-v4", EmbeddingDim: 1024}, nil)
+
+	var captured *interfaces.BuildTask
+	mockBTA.EXPECT().Create(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, bt *interfaces.BuildTask) error {
+			captured = bt
+			return nil
+		})
+
+	_, err := service.CreateBuildTask(context.Background(), &interfaces.CreateBuildTaskRequest{
+		ResourceID: "resource-1",
+		Mode:       interfaces.BuildTaskModeBatch,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, captured)
+	require.NotNil(t, captured.IndexConfig)
+
+	resource.IndexConfig.BuildKeyFields[0] = "changed"
+	resource.IndexConfig.DefaultEmbeddingModel = "changed-model"
+	resource.SchemaDefinition[0].Features = nil
+
+	assert.Equal(t, []string{"id"}, captured.IndexConfig.BuildKeyFields)
+	assert.Equal(t, &interfaces.BuildTaskEmbeddingConfig{ModelID: "2064382281006583808", Dimensions: 1024}, captured.IndexConfig.Features["family_name"].Vector)
+	assert.Equal(t, &interfaces.BuildTaskFulltextConfig{Analyzer: "ik_max_word"}, captured.IndexConfig.Features["family_name"].Fulltext)
+}
+
 func TestCreateBuildTaskUsesFeatureEmbeddingModelOverride(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockCS := mock_interfaces.NewMockCatalogService(ctrl)

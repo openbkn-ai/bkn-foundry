@@ -117,6 +117,46 @@ func TestEmbeddingHandlerExecuteEmbedding(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "use of closed network connection")
 	})
+
+	t.Run("end sentinel switches local index and completes task", func(t *testing.T) {
+		eh, ta, ka := newEmbeddingLoopHandler(t)
+		ctrl := gomock.NewController(t)
+		ra := vmock.NewMockResourceAccess(ctrl)
+		eh.resAccess = ra
+		resource, task := embeddingLoopFixtures()
+		resource.LocalIndexName = interfaces.BuildIndexName("r1", "old-task")
+		task.SyncedCount = 7
+		wantIndexName := interfaces.BuildIndexName("r1", "t1")
+
+		expectEmbeddingKafkaSession(ka)
+		ta.EXPECT().GetStatus(gomock.Any(), "t1").Return(interfaces.BuildTaskStatusRunning, nil)
+		ka.EXPECT().ReadMessage(gomock.Any(), gomock.Any()).
+			Return(kafka.Message{Value: []byte(`{"document_id":"` + interfaces.EmptyDocumentID + `"}`)}, nil)
+		ka.EXPECT().CommitMessages(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		ka.EXPECT().ReadMessage(gomock.Any(), gomock.Any()).
+			Return(kafka.Message{}, context.DeadlineExceeded).
+			Times(embeddingDrainEmptyPolls)
+		ra.EXPECT().Update(gomock.Any(), resource).
+			DoAndReturn(func(_ context.Context, got *interfaces.Resource) error {
+				assert.Equal(t, wantIndexName, got.LocalIndexName)
+				return nil
+			})
+		ta.EXPECT().GetByID(gomock.Any(), "t1").
+			Return(&interfaces.BuildTask{ID: "t1", SyncedCount: 7}, nil)
+		ta.EXPECT().UpdateStatus(gomock.Any(), "t1", gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ string, update interfaces.BuildTaskUpdate, _ ...string) (bool, error) {
+				require.NotNil(t, update.Status)
+				require.NotNil(t, update.VectorizedCount)
+				require.NotNil(t, update.FailureDetail)
+				assert.Equal(t, interfaces.BuildTaskStatusCompleted, *update.Status)
+				assert.Equal(t, int64(7), *update.VectorizedCount)
+				assert.Equal(t, "", *update.FailureDetail)
+				return true, nil
+			})
+
+		require.NoError(t, eh.executeEmbedding(context.Background(), resource, task))
+		assert.Equal(t, wantIndexName, resource.LocalIndexName)
+	})
 }
 
 func TestEmbeddingHandlerVectorizeDoc(t *testing.T) {
