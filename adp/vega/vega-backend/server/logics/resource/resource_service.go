@@ -245,6 +245,7 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 		SourceIdentifier: req.SourceIdentifier,
 		SourceMetadata:   req.SourceMetadata,
 		SchemaDefinition: req.SchemaDefinition,
+		IndexConfig:      req.IndexConfig,
 		LogicType:        logicType,
 		LogicDefinition:  req.LogicDefinition,
 		Creator:          accountInfo,
@@ -649,6 +650,9 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 	default:
 		applyMutableSchemaFields(resource.SchemaDefinition, req.SchemaDefinition)
 	}
+	if req.IndexConfig != nil {
+		resource.IndexConfig = req.IndexConfig
+	}
 
 	if err := extensions.ValidateSchemaPropertiesExtensions(ctx, resource.SchemaDefinition); err != nil {
 		return err
@@ -909,10 +913,12 @@ func (rs *resourceService) validateResourceUpdateScope(ctx context.Context, reso
 	if req.SourceMetadata != nil && !reflect.DeepEqual(resource.SourceMetadata, req.SourceMetadata) {
 		return false, unsupportedResourceUpdateError(ctx, "source_metadata is managed by discover and cannot be updated directly")
 	}
+	indexConfigChanged := req.IndexConfig != nil && !reflect.DeepEqual(resource.IndexConfig, req.IndexConfig)
 	if req.SchemaDefinition == nil {
-		return false, nil
+		return indexConfigChanged, nil
 	}
-	return validateMutableSchemaUpdate(ctx, resource.SchemaDefinition, req.SchemaDefinition)
+	schemaChanged, err := validateMutableSchemaUpdate(ctx, resource.SchemaDefinition, req.SchemaDefinition)
+	return schemaChanged || indexConfigChanged, err
 }
 
 func unsupportedResourceUpdateError(ctx context.Context, details string) error {

@@ -643,6 +643,92 @@ func TestUpdate_ClearsLocalIndexNameWhenBuildRelevantFieldsChange(t *testing.T) 
 	}
 }
 
+func TestUpdate_RejectsIndexConfigChangeWhenActiveBuildTaskExists(t *testing.T) {
+	rs, _, mockPS, _, _, _, mockBTA := newTestService(t)
+	mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+	mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTask, int64, error) {
+			if params.ResourceID != "r1" {
+				t.Fatalf("expected resource r1, got %q", params.ResourceID)
+			}
+			return []*interfaces.BuildTask{{
+				ID:         "task-1",
+				ResourceID: "r1",
+				Status:     interfaces.BuildTaskStatusRunning,
+			}}, 1, nil
+		})
+
+	err := rs.Update(context.Background(), &interfaces.Resource{
+		ID:               "r1",
+		CatalogID:        "cat1",
+		Category:         interfaces.ResourceCategoryTable,
+		Name:             "table",
+		SourceIdentifier: "public.orders",
+		IndexConfig: &interfaces.ResourceIndexConfig{
+			BuildKeyFields: []string{"id"},
+		},
+	}, &interfaces.ResourceRequest{
+		CatalogID:        "cat1",
+		Name:             "table",
+		SourceIdentifier: "public.orders",
+		IndexConfig: &interfaces.ResourceIndexConfig{
+			BuildKeyFields: []string{"updated_at", "id"},
+		},
+	})
+
+	httpErr, ok := err.(*rest.HTTPError)
+	if !ok {
+		t.Fatalf("expected HTTPError, got %T", err)
+	}
+	if httpErr.HTTPCode != http.StatusConflict {
+		t.Fatalf("expected 409, got %d", httpErr.HTTPCode)
+	}
+	if httpErr.BaseError.ErrorCode != verrors.VegaBackend_BuildTask_Exist {
+		t.Fatalf("expected %s, got %s", verrors.VegaBackend_BuildTask_Exist, httpErr.BaseError.ErrorCode)
+	}
+}
+
+func TestUpdate_ClearsLocalIndexNameWhenIndexConfigChanges(t *testing.T) {
+	rs, mockRA, mockPS, _, _, mockCS, mockBTA := newTestService(t)
+	mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+	mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).Return(nil, int64(0), nil)
+	mockCS.EXPECT().CheckExistByID(gomock.Any(), "cat1").Return(true, nil)
+	mockRA.EXPECT().Update(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, got *interfaces.Resource) error {
+			if got.LocalIndexName != "" {
+				t.Fatalf("expected LocalIndexName to be cleared, got %q", got.LocalIndexName)
+			}
+			if got.IndexConfig == nil || len(got.IndexConfig.BuildKeyFields) != 2 {
+				t.Fatalf("expected updated index config, got %#v", got.IndexConfig)
+			}
+			return nil
+		})
+
+	err := rs.Update(context.Background(), &interfaces.Resource{
+		ID:               "r1",
+		CatalogID:        "cat1",
+		Category:         interfaces.ResourceCategoryTable,
+		Name:             "table",
+		LocalIndexName:   "vega-build-r1-task-1",
+		SourceIdentifier: "public.orders",
+		IndexConfig: &interfaces.ResourceIndexConfig{
+			BuildKeyFields: []string{"id"},
+		},
+	}, &interfaces.ResourceRequest{
+		CatalogID:        "cat1",
+		Name:             "table",
+		SourceIdentifier: "public.orders",
+		IndexConfig: &interfaces.ResourceIndexConfig{
+			BuildKeyFields:          []string{"updated_at", "id"},
+			DefaultFulltextAnalyzer: "ik_max_word",
+			DefaultEmbeddingModel:   "embedding",
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestUpdate_AllowsSchemaDisplayFieldsWithoutClearingLocalIndex(t *testing.T) {
 	rs, mockRA, mockPS, _, _, mockCS, _ := newTestService(t)
 	mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)

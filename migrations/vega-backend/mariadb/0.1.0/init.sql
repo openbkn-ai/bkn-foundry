@@ -163,6 +163,7 @@ CREATE TABLE IF NOT EXISTS t_resource (
 
     -- Schema相关
     f_schema_definition       MEDIUMTEXT NOT NULL COMMENT 'Schema定义（JSON数组格式，包含所有字段信息）',
+    f_index_config            MEDIUMTEXT NOT NULL COMMENT '本地索引配置（JSON格式）',
 
     -- LogicView 专属字段
     f_logic_type              VARCHAR(20) NOT NULL DEFAULT '' COMMENT '逻辑类型: derived(衍生), composite(复合), 仅LogicView使用',
