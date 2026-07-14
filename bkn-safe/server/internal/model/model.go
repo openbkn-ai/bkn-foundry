@@ -176,11 +176,31 @@ type APIKey struct {
 	CreatedAt  time.Time
 }
 
+// License is the cluster's single license record (bkn-safe is the cluster-wide
+// license holder — see docs/foundry/bkn-safe/design/issue-224-license-hub.md in
+// bkn-docs). One row with a fixed ID; the activation state lives inside Text
+// (the signed .lic embeds hw_fingerprint after activation), so surviving a
+// restart needs nothing beyond this row.
+type License struct {
+	ID string `gorm:"primaryKey;size:16"` // fixed "current"
+	// Text is the raw signed .lic. Its signature — not this row — is what
+	// modules and bkn-safe itself trust; the DB is only a mailbox.
+	Text string `gorm:"type:text"`
+	// HighWater is the largest unix timestamp the background re-verify loop has
+	// seen, persisted to detect large clock rollbacks on offline deployments.
+	HighWater int64
+	// Version is an optimistic lock: concurrent renewals (multi-replica) must
+	// not overwrite each other's freshly reissued license with a stale one.
+	Version   int64
+	UpdatedAt time.Time
+	CreatedAt time.Time
+}
+
 // AllModels is the migration set (Casbin's table is managed by its adapter).
 func AllModels() []any {
 	return []any{
 		&User{}, &Role{}, &Department{}, &UserDepartment{},
 		&Group{}, &GroupMember{}, &ResourceType{}, &Operation{},
-		&AuditLog{}, &APIKey{},
+		&AuditLog{}, &APIKey{}, &License{},
 	}
 }

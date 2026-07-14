@@ -14,9 +14,30 @@ type Config struct {
 	DB       DBConfig
 	Hydra    HydraConfig
 	LDAP     LDAPConfig
+	License  LicenseConfig `yaml:"license"`
 	// SeedOnStart controls whether roles/resource-types/operations/grants are
 	// seeded into the DB at startup (idempotent). Default true.
 	SeedOnStart bool `yaml:"seed_on_start"`
+}
+
+// LicenseConfig points bkn-safe at the license-server (activation + renewal).
+// bkn-safe is the cluster's ONLY egress to the issuer; modules pull the license
+// from bkn-safe and verify locally. The verification public keys are NOT here
+// on purpose — they are compiled in (licverify/keys), a configurable key would
+// be a self-signing hole.
+type LicenseConfig struct {
+	// ServerURL is the issuer base URL (e.g. https://license.openbkn.ai).
+	// Empty = pure offline deployment: never calls out, activation runs via
+	// request-code/receipt instead.
+	ServerURL string `yaml:"server_url"`
+	// CAFile adds a PEM CA to the trust pool for ServerURL (the issuer
+	// currently serves a self-signed certificate on a bare IP).
+	CAFile string `yaml:"ca_file"`
+	// InsecureSkipVerify disables TLS verification towards ServerURL (logged
+	// loudly). Safe-ish only because licenses are Ed25519-signed — a hijacked
+	// transport can at worst deny renewal, not forge a license. Remove once the
+	// issuer has a real domain + certificate.
+	InsecureSkipVerify bool `yaml:"insecure_skip_verify"`
 }
 
 // DBConfig points bkn-safe at its database. The openbkn-rds driver fakes
