@@ -78,9 +78,9 @@
 ### Issue 生命周期
 
 ```text
-Open → Triaged → In Progress → In Review → Done
-         │                                    │
-         └─────────── Closed (Won't Fix) ─────┘
+Open → Triaged → In Progress → In Review → Validating → Done
+         │                                                │
+         └────────────── Closed (Won't Fix) ────────────┘
 ```
 
 | 状态 | 操作说明 |
@@ -89,8 +89,11 @@ Open → Triaged → In Progress → In Review → Done
 | `Triaged` | 已评估优先级、已分配 Assignee 和 Milestone |
 | `In Progress` | 已创建分支和设计文档，正在开发（**需在 Issue 中更新追踪信息**，见下节） |
 | `In Review` | PR 已提交，待 Code Review |
-| `Done` | PR 已合并，Issue 自动或手动关闭 |
+| `Validating` | PR 已合并，部署到目标环境验证中；无需环境验证的任务跳过此列 |
+| `Done` | 验证通过（或无需验证的任务 PR 已合并），Issue 自动或手动关闭 |
 | `Closed (Won't Fix)` | 决定不做，评论中说明原因 |
+
+> **Validating 与自动关闭的交互**：PR 描述带 `Closes #`，合并即自动关闭 Issue；若看板启用「Issue closed → Done」自动流转，任务会直接进 Done。需环境验证的任务在合并后手动拖回 `Validating`，验证通过再拖 `Done`；验证不通过则 reopen Issue 并拖回 `In Progress`。
 
 ### Issue 分配规范
 
@@ -257,7 +260,7 @@ git checkout -b feature/456-batch-import-nodes
 | **预计完成** | YYYY-MM-DD |
 ```
 
-> **说明**：PR 合并后将此评论的状态更新为 `Done`，并补充 PR 链接。
+> **说明**：PR 合并后将此评论的状态更新为 `Done`（需环境验证的任务先 `Validating`，验证通过再 `Done`），并补充 PR 链接。
 
 ---
 
@@ -507,7 +510,7 @@ Reviewer 在 Code Review 时需确认：
 PR 合并后由合并者或 Assignee 完成：
 
 1. 将设计文档的 `status` 更新为 `implemented`
-2. 更新 Issue 追踪评论，将状态改为 `Done` 并补充 PR 链接
+2. 更新 Issue 追踪评论，将状态改为 `Done`（需环境验证的任务先 `Validating`，验证通过再 `Done`）并补充 PR 链接
 
 ---
 
