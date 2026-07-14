@@ -6,7 +6,7 @@ on:
       service-path:
         type: string
         required: true
-        description: 'Service directory (e.g., trace-ai/agent-observability)'
+        description: 'Service directory (e.g., bkn-trace/agent-observability)'
       stack:
         type: string
         required: true

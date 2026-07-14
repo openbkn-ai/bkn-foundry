@@ -12,7 +12,7 @@
 |----|------------------|
 | `adp` | bkn-backend、ontology-query、agent-retrieval、dataflow（coderunner/dataflow/doc-convert）、operator-integration、vega-backend、kafka-connect |
 | `infra` | mf-model-api、mf-model-manager、oss-gateway-backend、sandbox（control-plane/web） |
-| `trace-ai` | agent-observability、otelcol-contrib（chart-only） |
+| `bkn-trace` | agent-observability、otelcol-contrib（chart-only） |
 
 当前 CI 现状（`.github/workflows/`）：
 
@@ -87,11 +87,11 @@ apiVersion: openbkn-ci/v1
 service: vega-backend            # 唯一名，用于矩阵 / 日志 / 镜像默认名
 
 # 版本来源；相对仓库根。缺省回退到服务目录内 VERSION，再回退根 VERSION。
-versionFile: trace-ai/VERSION
+versionFile: bkn-trace/VERSION
 
 # 触发该服务构建的额外路径（manifest 目录默认已包含）。用于共享 VERSION 等。
 triggerPaths:
-  - trace-ai/VERSION
+  - bkn-trace/VERSION
 
 # 构建单元列表：一个服务可产出 0..N 个镜像。chart-only 服务留空。
 build:
@@ -118,8 +118,8 @@ charts:
 
 - **多镜像服务** `infra/sandbox`：`build:` 列两项——`sandbox_control_plane`(python)、`sandbox_web`(node)。
 - **多 chart 服务** `vega`（vega-backend + kafka-connect）、`dataflow`（coderunner + dataflow + doc-convert）：`charts:` 列多项。
-- **Chart-only** `trace-ai/otelcol-contribute-chart`：`build:` 空，仅 `charts:`。
-- **共享 VERSION** 多个 trace-ai 服务共用 `trace-ai/VERSION`：用 `versionFile` + `triggerPaths` 指向它。
+- **Chart-only** `bkn-trace/otelcol-contribute-chart`：`build:` 空，仅 `charts:`。
+- **共享 VERSION** 多个 bkn-trace 服务共用 `bkn-trace/VERSION`：用 `versionFile` + `triggerPaths` 指向它。
 - **第三方镜像** `doc-convert` 的 gotenberg / tika：`stack: docker`，跳过语言级 test/lint。
 - **go.mod 位置不一**（`server/go.mod` vs 根）：用 `goModFile` 显式指定。
 
@@ -223,7 +223,7 @@ jobs:
 分阶段，零停机：
 
 1. **阶段 0 — 落地骨架**：新增 `reusable-build-service.yml` + `ci-build.yml` + `release-build.yml`，但 discover 暂只匹配 1 个试点服务。
-2. **阶段 1 — 试点**：为 `trace-ai/agent-observability` 写 `ci.yaml`，与旧 `release-agent-observability.yml` **并行**跑，比对产物（镜像 tag、chart 版本）一致。
+2. **阶段 1 — 试点**：为 `bkn-trace/agent-observability` 写 `ci.yaml`，与旧 `release-agent-observability.yml` **并行**跑，比对产物（镜像 tag、chart 版本）一致。
 3. **阶段 2 — 收编 chart-only**：为 `otelcol-contribute-chart` 写 `ci.yaml`（`build:` 空），验证 chart-only 路径。
 4. **阶段 3 — 删除旧 workflow**：两条旧 release workflow 删除，逻辑已收敛到 reusable。
 5. **阶段 4 — 全量铺开**：为其余服务逐个补 `ci.yaml`。每补一个，自动进入构建矩阵，无中心改动。

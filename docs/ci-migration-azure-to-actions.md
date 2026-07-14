@@ -30,7 +30,7 @@
 | 旧 pipeline | 本仓库路径 | 镜像 | Chart | 状态 |
 |---|---|---|---|---|
 | data-agent/agent-backend | `decision-agent/agent-backend` | agent-backend（统一镜像） | agent-backend | ✅ 已迁移 |
-| —（trace-ai） | `trace-ai/agent-observability` | agent-observability | agent-observability | ✅ 已迁移 |
+| —（bkn-trace） | `bkn-trace/agent-observability` | agent-observability | agent-observability | ✅ 已迁移 |
 | bkn/bkn-backend | `adp/bkn/bkn-backend` | bkn-backend (go) | bkn-backend | 待迁移 |
 | bkn/ontology-query | `adp/bkn/ontology-query` | ontology-query (go) | ontology-query | 待迁移 |
 | context-loader/agent-retrieval | `adp/context-loader/agent-retrieval` | agent-retrieval (py) | agent-retrieval | 待迁移 |
@@ -43,7 +43,7 @@
 | studio/model-manager | `infra/mf-model-manager` | mf-model-manager (py) | (chart) | 待迁移（依赖 base） |
 | studio/oss-gateway | `infra/oss-gateway-backend` | oss-gateway (go) | (chart) | 待迁移 |
 | —（deploy） | `deploy/charts/proton-mariadb` | — | proton-mariadb（chart-only） | 待迁移 |
-| —（trace-ai） | `trace-ai/otelcol-contribute-chart` | — | otelcol-contrib（chart-only） | 待迁移 |
+| —（bkn-trace） | `bkn-trace/otelcol-contribute-chart` | — | otelcol-contrib（chart-only） | 待迁移 |
 
 ### 2.2 不在范围
 
@@ -177,7 +177,7 @@ from dbutilsx.pooled_db import PooledDB, PooledDBInfo; print('model-factory-base
 | `app/core/config.py` | `LOG_EXPORTER` 默认 `"http"` → `"console"` |
 | `app/test/conftest.py`（仅 api） | AR mock（tlogging/exporter）改为注释保留 |
 
-> **未来（trace-ai）**：可观测后端将改用仓库自有的 **trace-ai**（OTel collector + agent-observability）。no-op 是干净过渡态 —— 埋点（`@internal_span`/`TraceContext`/上下文传播）原样保留，将来仅需加一个指向 trace-ai 的 `OTLPSpanExporter`，无需改埋点。
+> **未来（bkn-trace）**：可观测后端将改用仓库自有的 **bkn-trace**（OTel collector + agent-observability）。no-op 是干净过渡态 —— 埋点（`@internal_span`/`TraceContext`/上下文传播）原样保留，将来仅需加一个指向 bkn-trace 的 `OTLPSpanExporter`，无需改埋点。
 
 ## 7. Chart 镜像引用标准化
 
@@ -255,7 +255,7 @@ from dbutilsx.pooled_db import PooledDB, PooledDBInfo; print('model-factory-base
 | `release-infra-mf-model-manager` | infra/mf-model-manager | python | → ghcr base | (chart) |
 | `release-infra-oss-gateway` | infra/oss-gateway-backend | go | → golang:1.24.11 + ubuntu:24.04 | (chart) |
 | `release-proton-mariadb` | deploy/charts/proton-mariadb | chart-only | — | proton-mariadb |
-| `release-trace-ai-otelcol` | trace-ai/otelcol-contribute-chart | chart-only | — | otelcol-contrib |
+| `release-bkn-trace-otelcol` | bkn-trace/otelcol-contribute-chart | chart-only | — | otelcol-contrib |
 | `release-infra-model-factory-base` | infra/model-factory-base | docker | python:3.11-bookworm（见 §6.2） | — |
 
 > 每新增一个 `release-*.yml`，需在 `.github/workflows/README.md` 的索引表补一行（既有约定）。

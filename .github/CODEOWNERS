@@ -34,8 +34,8 @@ infra/mf-model-manager/**                  @jiankang-kw
 infra/oss-gateway-backend/**               @jiankang-kw
 infra/sandbox/**                           @guodawn
 
-# ── Trace AI (Observability) ────────────────────────────────
-trace-ai/**                                @guodawn
+# ── BKN Trace (Observability) ────────────────────────────────
+bkn-trace/**                               @guodawn
 
 # ── Deployment ───────────────────────────────────────────────
 deploy/**                                  @sh00tg0a1 @tangkelu

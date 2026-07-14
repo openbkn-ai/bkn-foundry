@@ -264,7 +264,7 @@ openbkn agent chat <agent_id>
 
 ---
 
-### 🎯 场景：追踪推理过程（Trace AI）
+### 🎯 场景：追踪推理过程（BKN Trace）
 
 **故事线**：Agent 给出的回答看起来不太对，你想知道它到底查了哪些数据、调了哪些工具、每一步花了多少时间。
 
@@ -481,5 +481,5 @@ const messages = await bkn.agents.history(agent.key, sessions[0].conversation_id
 | 🗄️ 数据虚拟化与 Catalog 管理 | [vega.md](manual/vega.md) |
 | 📚 MCP 分层检索 | [context-loader.md](manual/context-loader.md) |
 | 🛠️ 工具与技能管理 | [execution-factory.md](manual/execution-factory.md) |
-| 🔭 链路追踪与证据链 | [trace-ai.md](manual/trace-ai.md) |
+| 🔭 链路追踪与证据链 | [bkn-trace.md](manual/bkn-trace.md) |
 | 🔐 认证与安全治理 | [bkn-safe.md](manual/bkn-safe.md) |
