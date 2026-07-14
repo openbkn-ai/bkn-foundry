@@ -1,4 +1,6 @@
 """toolbox 注册包构造与 /invoke 端点（#212）。"""
+import asyncio
+
 from fastapi.testclient import TestClient
 
 from app.bootstrap import toolbox_sync
@@ -12,7 +14,7 @@ SVC = {"x-account-id": "svc-test", "x-account-type": "app"}
 def _agent(agent_id: str = "a-1", status: str = "published") -> AgentOut:
     return AgentOut(
         agent_id=agent_id,
-        name=f"agent-{agent_id}",
+        name=f"agent_{agent_id.replace('-', '_')}",  # 名字字符集受 AgentSpec 校验约束
         mode="task",
         status=status,
         create_user="u-1",
@@ -119,3 +121,62 @@ def test_invoke_waits_for_terminal_state(monkeypatch):
     body = r.json()
     assert body["status"] == "succeeded"
     assert body["output"] == "done"
+
+
+def test_agent_name_charset_enforced_at_api():
+    """P0 回归：工厂只收 中文/字母/数字/下划线；空格、连字符前置拒绝，
+    否则整包注册 400 + 无限重试，堵死所有 published agent 的上下架。"""
+    import pytest
+    from pydantic import ValidationError
+
+    from app.models import AgentSpec
+
+    AgentSpec(name="my_agent_2")  # ok
+    AgentSpec(name="订单助手")  # 汉字 ok
+    for bad in ("My Agent", "my-agent", "agent!", "agent.v2"):
+        with pytest.raises(ValidationError):
+            AgentSpec(name=bad)
+
+
+def test_sync_skips_legacy_bad_names_instead_of_poisoning_package(monkeypatch):
+    """存量脏名（校验上线前建的）单个跳过，不让整包 400 卡死全部注册。"""
+    good = _agent("a-1")
+    bad = _agent("a-2").model_copy(update={"name": "My Agent-2"})  # 绕过 API 校验模拟存量数据
+
+    sent = {}
+
+    class _FakeAsyncCtx:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+    class _Session(_FakeAsyncCtx):
+        def __init__(self, *a, **k):
+            pass
+
+        def post(self, url, data=None, headers=None):
+            sent["data"] = data
+            return _Resp()
+
+    class _Resp(_FakeAsyncCtx):
+        status = 200
+
+        async def text(self):
+            return ""
+
+    class _DBSession(_FakeAsyncCtx):
+        pass
+
+    async def list_published(session):
+        return [good, bad]
+
+    monkeypatch.setattr(toolbox_sync, "SessionLocal", lambda: _DBSession())
+    monkeypatch.setattr(toolbox_sync.dao, "list_published_agents", list_published)
+    monkeypatch.setattr(toolbox_sync.aiohttp, "ClientSession", _Session)
+
+    count = asyncio.run(toolbox_sync.sync_once())
+    assert count == 1  # 脏名被跳过，好的照常注册（而不是整包失败）
+    assert toolbox_sync._NAME_RE.match(good.name)
+    assert not toolbox_sync._NAME_RE.match(bad.name)

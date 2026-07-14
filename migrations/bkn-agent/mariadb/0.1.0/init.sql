@@ -82,7 +82,68 @@ create table if not exists t_agent_thread
     key idx_thread_account (f_account_id, f_update_time)
 ) engine = InnoDB default charset = utf8mb4;
 
--- LangGraph checkpointer 表（langgraph-checkpoint-mysql ~2.0）：
--- 表名由库固定（checkpoints / checkpoint_blobs / checkpoint_writes），暂不带 agent_ 前缀。
--- DDL 与库版本强绑定，由部署流程在首次安装时执行一次 saver.setup()
---（CHECKPOINTER_ALLOW_RUNTIME_DDL=true 的一次性 job），常态运行关闭 DDL。M6（#211）固化。
+-- LangGraph checkpointer 表（langgraph-checkpoint-mysql ~2.0.15）：表名由库固定
+-- （checkpoints / checkpoint_blobs / checkpoint_writes / checkpoint_migrations），
+-- 不带 agent_ 前缀。这里落的是库内 22 条迁移（v=0..21）跑完的终态 schema，
+-- 常态运行 CHECKPOINTER_ALLOW_RUNTIME_DDL=false，不做运行时 DDL。
+--
+-- collation 显式钉 utf8mb4_unicode_ci：saver 的 SELECT 用 json_table(... CHARACTER SET
+-- utf8mb4) 且不带 COLLATE，取的是服务端 charset 默认 collation；MariaDB 11 默认
+-- utf8mb4_uca1400_ai_ci，与建表 collation 不一致会报 1267 Illegal mix of collations。
+-- 建表钉死后不再依赖会话级补丁（app/core/checkpoint.py 的 init_command 是二重保险）。
+
+create table if not exists checkpoint_migrations
+(
+    v integer not null,
+    primary key (v)
+) engine = InnoDB default charset = utf8mb4 collate = utf8mb4_unicode_ci;
+
+create table if not exists checkpoints
+(
+    thread_id            varchar(150)  not null,
+    checkpoint_ns        varchar(2000) not null default '',
+    checkpoint_ns_hash   binary(16),
+    checkpoint_id        varchar(150)  not null,
+    parent_checkpoint_id varchar(150),
+    type                 varchar(150),
+    checkpoint           json          not null,
+    metadata             json          not null default ('{}'),
+    primary key (thread_id, checkpoint_ns_hash, checkpoint_id),
+    key checkpoints_thread_id_idx (thread_id),
+    key checkpoints_checkpoint_id_idx (checkpoint_id)
+) engine = InnoDB default charset = utf8mb4 collate = utf8mb4_unicode_ci;
+
+create table if not exists checkpoint_blobs
+(
+    thread_id          varchar(150)  not null,
+    checkpoint_ns      varchar(2000) not null default '',
+    checkpoint_ns_hash binary(16),
+    channel            varchar(150)  not null,
+    version            varchar(150)  not null,
+    type               varchar(150)  not null,
+    `blob`             longblob,
+    primary key (thread_id, checkpoint_ns_hash, channel, version),
+    key checkpoint_blobs_thread_id_idx (thread_id)
+) engine = InnoDB default charset = utf8mb4 collate = utf8mb4_unicode_ci;
+
+create table if not exists checkpoint_writes
+(
+    thread_id          varchar(150)  not null,
+    checkpoint_ns      varchar(2000) not null default '',
+    checkpoint_ns_hash binary(16),
+    checkpoint_id      varchar(150)  not null,
+    task_id            varchar(150)  not null,
+    task_path          varchar(2000) not null default '',
+    idx                integer       not null,
+    channel            varchar(150)  not null,
+    type               varchar(150),
+    `blob`             longblob      not null,
+    primary key (thread_id, checkpoint_ns_hash, checkpoint_id, task_id, idx),
+    key checkpoint_writes_thread_id_idx (thread_id)
+) engine = InnoDB default charset = utf8mb4 collate = utf8mb4_unicode_ci;
+
+-- 声明上述 22 条库内迁移（v=0..21）已应用：万一有人开了 CHECKPOINTER_ALLOW_RUNTIME_DDL，
+-- saver.setup() 从 max(v)+1 续跑，对已建表零动作；库升级新增迁移时只跑增量。
+insert ignore into checkpoint_migrations (v)
+values (0), (1), (2), (3), (4), (5), (6), (7), (8), (9), (10),
+       (11), (12), (13), (14), (15), (16), (17), (18), (19), (20), (21);

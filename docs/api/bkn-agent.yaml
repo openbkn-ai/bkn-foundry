@@ -690,6 +690,7 @@ components:
           type: string
           maxLength: 100
           minLength: 1
+          pattern: ^[0-9A-Za-z_一-鿿]+$
           title: Name
         mode:
           type: string
@@ -765,6 +766,7 @@ components:
           type: string
           maxLength: 100
           minLength: 1
+          pattern: ^[0-9A-Za-z_一-鿿]+$
           title: Name
         mode:
           type: string

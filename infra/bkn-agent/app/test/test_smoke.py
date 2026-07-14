@@ -109,3 +109,38 @@ def test_thread_owner_reads_history(monkeypatch):
     body = r.json()
     assert body["agent_id"] == "a-1"
     assert [m["role"] for m in body["messages"]] == ["user", "assistant"]
+
+
+def test_task_read_is_owner_scoped(monkeypatch):
+    """P0 回归：GET /tasks/{id} 必须按 account 过滤，越权与不存在同响应（404）。"""
+    from app import dao
+    from app.db import get_session
+    from app.models import TaskOut
+
+    class _S:
+        pass
+
+    async def fake_session():
+        yield _S()
+
+    seen = {}
+
+    async def fake_get_task(session, task_id, account_id=None):
+        seen["account_id"] = account_id
+        if account_id != "owner":  # dao 侧过滤：非 owner 返回 None
+            return None
+        return TaskOut(
+            task_id=task_id, agent_id="a-1", status="succeeded", input={"message": "secret"},
+            output="42", create_time=1, update_time=2,
+        )
+
+    app.dependency_overrides[get_session] = fake_session
+    monkeypatch.setattr(dao, "get_task", fake_get_task)
+
+    r = client.get("/api/bkn-agent/v1/tasks/t-1", headers={"x-account-id": "intruder", "x-account-type": "user"})
+    assert r.status_code == 404
+    assert seen["account_id"] == "intruder"  # 归属条件真的传下去了
+
+    r_ok = client.get("/api/bkn-agent/v1/tasks/t-1", headers={"x-account-id": "owner", "x-account-type": "user"})
+    assert r_ok.status_code == 200 and r_ok.json()["output"] == "42"
+    app.dependency_overrides.pop(get_session, None)

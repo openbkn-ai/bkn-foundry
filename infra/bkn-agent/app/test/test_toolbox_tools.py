@@ -40,6 +40,41 @@ _TOOL_INFO = {
 }
 
 
+_QUERY_TOOL_INFO = {
+    # contextloader 真实形态：必填 kn_id/ot_id 只声明在 parameters(in:query)，body 里没有。
+    # 老实现只读 request_body → LLM 无处填 kn_id → 下游必 400（P0 回归）。
+    "tool_id": "t-2",
+    "name": "query_object_instance",
+    "description": "查对象实例",
+    "status": "enabled",
+    "metadata_type": "openapi",
+    "metadata": {
+        "path": "/api/agent-retrieval/in/v1/kn/query_object_instance",
+        "method": "POST",
+        "api_spec": {
+            "parameters": [
+                {"name": "kn_id", "in": "query", "required": True, "schema": {"type": "string"}},
+                {"name": "ot_id", "in": "query", "required": True, "schema": {"type": "string"}},
+                {"name": "x-account-id", "in": "header", "required": False, "schema": {"type": "string"}},
+            ],
+            "request_body": {
+                "content": {
+                    "application/json": {"schema": {"$ref": "#/components/schemas/QueryReq"}}
+                }
+            },
+            "components": {
+                "schemas": {
+                    "QueryReq": {
+                        "type": "object",
+                        "properties": {"limit": {"type": "integer", "description": "条数"}},
+                    }
+                }
+            },
+        },
+    },
+}
+
+
 def test_safe_name_sanitize_and_fallback():
     assert toolbox._safe_name("get_kn_detail", "x") == "get_kn_detail"
     assert toolbox._safe_name("含 空格-中文", "abcdef1234") == "tool_abcdef12"
@@ -47,7 +82,7 @@ def test_safe_name_sanitize_and_fallback():
 
 
 def test_args_model_required_and_optional():
-    model = toolbox._args_model("t", _TOOL_INFO["metadata"])
+    model, params = toolbox._args_model("t", _TOOL_INFO["metadata"])
     fields = model.model_fields
     assert fields["query"].is_required()
     assert not fields["limit"].is_required()
@@ -55,6 +90,18 @@ def test_args_model_required_and_optional():
         model()  # 缺必填
     m = model(query="q")
     assert m.limit is None
+    assert {p.wire: p.location for p in params} == {"query": "body", "limit": "body"}
+
+
+def test_args_model_includes_query_params_and_resolves_ref():
+    """P0 回归：必填 query 参数（kn_id/ot_id）必须进 args model，身份 header 必须排除。"""
+    model, params = toolbox._args_model("query_object_instance", _QUERY_TOOL_INFO["metadata"])
+    fields = model.model_fields
+    assert fields["kn_id"].is_required() and fields["ot_id"].is_required()
+    assert "limit" in fields and not fields["limit"].is_required()  # $ref body schema 解析
+    assert "x-account-id" not in fields and "x_account_id" not in fields  # 身份不给 LLM
+    loc = {p.wire: p.location for p in params}
+    assert loc == {"kn_id": "query", "ot_id": "query", "limit": "body"}
 
 
 def test_build_tool_skips_disabled_and_non_openapi():
@@ -71,7 +118,7 @@ def test_execute_payload_routing(monkeypatch):
     """POST 参数进 body、GET 进 query；身份 header 双份（外层请求 + 转发 header）。"""
     captured = {}
 
-    async def fake_execute(box_id, tool_id, method, args, account_id, account_type):
+    async def fake_execute(box_id, tool_id, method, args, params, account_id, account_type):
         captured.update(box=box_id, tool=tool_id, method=method, args=args, aid=account_id)
         return "ok"
 
@@ -81,6 +128,57 @@ def test_execute_payload_routing(monkeypatch):
     assert out == "ok"
     assert captured["box"] == "b-1" and captured["tool"] == "t-1"
     assert captured["aid"] == "u-9"
+
+
+def test_execute_splits_query_and_body_by_declared_location(monkeypatch):
+    """P0 回归：POST 工具的 query 参数必须落 payload['query']，不能全塞 body。"""
+    sent = {}
+
+    class _Resp:
+        status = 200
+
+        async def text(self):
+            return '{"status_code": 200, "body": {"ok": true}}'
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+    class _Session:
+        def __init__(self, *a, **k):
+            pass
+
+        def post(self, url, json=None, headers=None):
+            sent.update(url=url, payload=json, headers=headers)
+            return _Resp()
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+    monkeypatch.setattr(toolbox.aiohttp, "ClientSession", _Session)
+    _, params = toolbox._args_model("query_object_instance", _QUERY_TOOL_INFO["metadata"])
+    out = asyncio.run(
+        toolbox._execute("b-1", "t-2", "POST", {"kn_id": "kn1", "ot_id": "ot1", "limit": 5}, params, "u-9", "user")
+    )
+    assert '"ok": true' in out
+    assert sent["payload"]["query"] == {"kn_id": "kn1", "ot_id": "ot1"}
+    assert sent["payload"]["body"] == {"limit": 5}
+    assert sent["payload"]["header"]["x-account-id"] == "u-9"
+
+
+def test_build_tool_survives_bad_args_schema(monkeypatch):
+    """单个工具元数据坏不应连累整箱：跳过并告警，不抛。"""
+
+    def boom(name, metadata):
+        raise ValueError("bad schema")
+
+    monkeypatch.setattr(toolbox, "_args_model", boom)
+    assert toolbox._build_tool("b-1", _TOOL_INFO, "u", "user") is None
 
 
 def test_default_toolbox_degrades_but_explicit_ref_fails(monkeypatch):

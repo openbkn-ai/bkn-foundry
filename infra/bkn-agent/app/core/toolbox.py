@@ -11,13 +11,15 @@ agent-retrieval 保持专用 MCP 通道；外部 MCP 端点仍可经 ToolRef typ
 """
 
 import json
+import keyword
 import logging
 import re
+from dataclasses import dataclass
 from typing import Any, Optional
 
 import aiohttp
 from langchain_core.tools import StructuredTool
-from pydantic import Field, create_model
+from pydantic import ConfigDict, Field, create_model
 
 from app.config import config
 
@@ -34,6 +36,18 @@ _TYPE_MAP = {
 
 # LLM 工具名约束（OpenAI function name 规则）
 _NAME_RE = re.compile(r"[^a-zA-Z0-9_-]")
+# 身份头由 runtime 注入（/in 约定），不交给 LLM 决策
+_IDENTITY_HEADERS = {"x-account-id", "x-account-type", "user_id"}
+
+
+@dataclass(frozen=True)
+class _Param:
+    """一个 LLM 可见参数：field=模型字段名（python 合法），wire=下游真实参数名，
+    location=body|query|path（决定执行代理 payload 落哪个桶）。"""
+
+    field: str
+    wire: str
+    location: str
 
 
 def _safe_name(name: str, tool_id: str) -> str:
@@ -41,6 +55,20 @@ def _safe_name(name: str, tool_id: str) -> str:
     if not re.search(r"[a-zA-Z0-9]", cleaned):
         cleaned = f"tool_{tool_id[:8]}"
     return cleaned
+
+
+def _safe_field(name: str, taken: set[str]) -> str:
+    """参数名 → python 合法且非保留的字段名（pydantic create_model 要求）。"""
+    field = re.sub(r"[^0-9a-zA-Z_]", "_", name or "")
+    if not field or field[0].isdigit():
+        field = f"p_{field}"
+    if keyword.iskeyword(field):
+        field = f"{field}_"
+    base, i = field, 2
+    while field in taken:
+        field = f"{base}_{i}"
+        i += 1
+    return field
 
 
 def _resolve_ref(schema: dict, api_spec: dict) -> dict:
@@ -52,41 +80,82 @@ def _resolve_ref(schema: dict, api_spec: dict) -> dict:
     return schema
 
 
-def _args_model(tool_name: str, metadata: dict):
-    """从工具元数据挖请求体 schema → pydantic 动态模型。impex 的 api_spec 是
-    扁平结构（request_body/responses 数组），非 OpenAPI paths 树。
-    无参数工具返回空模型（LLM 侧零参调用）。"""
+def _args_model(tool_name: str, metadata: dict) -> tuple[Any, list[_Param]]:
+    """工具元数据 → (pydantic 动态模型, 参数位置表)。
+
+    impex 的 api_spec 是扁平结构：request_body（请求体 schema，可能 $ref）+
+    parameters（query/path/header 参数，**必填参数常只在这里**，如 contextloader
+    的 kn_id/ot_id）。两处都要进 args model，否则 LLM 无处可填 → 下游 400。
+    """
     api_spec = metadata.get("api_spec") or {}
-    body = api_spec.get("request_body") or {}
-    schema = ((body.get("content") or {}).get("application/json") or {}).get("schema") or {}
-    schema = _resolve_ref(schema, api_spec)
-    props = schema.get("properties") or {}
-    required = set(schema.get("required") or [])
     fields: dict[str, Any] = {}
-    for pname, p in props.items():
-        p = p or {}
-        typ = _TYPE_MAP.get(p.get("type"), Any)
-        desc = p.get("description") or ""
-        if pname in required:
-            fields[pname] = (typ, Field(description=desc))
+    params: list[_Param] = []
+    taken: set[str] = set()
+
+    def _add(wire: str, location: str, schema: dict, required: bool, desc: str) -> None:
+        if not wire or wire.lower() in _IDENTITY_HEADERS:
+            return
+        field = _safe_field(wire, taken)
+        taken.add(field)
+        params.append(_Param(field=field, wire=wire, location=location))
+        typ = _TYPE_MAP.get((schema or {}).get("type"), Any)
+        enum = (schema or {}).get("enum")
+        if enum:
+            desc = f"{desc}（可选值：{', '.join(str(e) for e in enum)}）" if desc else f"可选值：{', '.join(str(e) for e in enum)}"
+        if required:
+            fields[field] = (typ, Field(description=desc))
         else:
-            fields[pname] = (Optional[typ], Field(default=None, description=desc))
-    return create_model(f"{_safe_name(tool_name, 'x')}_args", **fields)
+            fields[field] = (Optional[typ], Field(default=None, description=desc))
+
+    for p in api_spec.get("parameters") or []:
+        p = p or {}
+        loc = (p.get("in") or "").lower()
+        if loc not in ("query", "path"):
+            continue  # header 参数（身份）由 runtime 注入，不给 LLM
+        _add(p.get("name") or "", loc, p.get("schema") or {}, bool(p.get("required")), p.get("description") or "")
+
+    body = api_spec.get("request_body") or {}
+    schema = _resolve_ref(
+        ((body.get("content") or {}).get("application/json") or {}).get("schema") or {}, api_spec
+    )
+    body_required = set(schema.get("required") or [])
+    for pname, p in (schema.get("properties") or {}).items():
+        p = p or {}
+        _add(pname, "body", p, pname in body_required, p.get("description") or "")
+
+    model = create_model(
+        f"{_safe_name(tool_name, 'x')}_args",
+        __config__=ConfigDict(protected_namespaces=()),  # 允许 model_* 之类的下游参数名
+        **fields,
+    )
+    return model, params
 
 
 async def _execute(
-    box_id: str, tool_id: str, method: str, args: dict, account_id: str, account_type: str
+    box_id: str,
+    tool_id: str,
+    method: str,
+    args: dict,
+    params: list[_Param],
+    account_id: str,
+    account_type: str,
 ) -> str:
     """经执行代理调用工具。工具级失败以字符串返回给 LLM（可自我修正），
-    不抛异常击穿整轮对话。"""
+    不抛异常击穿整轮对话。参数按元数据声明的位置分发到 body/query/path。"""
     url = f"{config.OPERATOR_INTEGRATION_BASE}/internal-v1/tool-box/{box_id}/proxy/{tool_id}"
     identity = {"x-account-id": account_id, "x-account-type": account_type}
-    clean = {k: v for k, v in args.items() if v is not None}
     payload: dict[str, Any] = {"timeout": 60, "header": identity, "body": {}, "query": {}, "path": {}}
-    if method.upper() in ("GET", "DELETE"):
-        payload["query"] = clean
-    else:
-        payload["body"] = clean
+    by_field = {p.field: p for p in params}
+    fallback = "query" if method.upper() in ("GET", "DELETE") else "body"
+    for field, value in args.items():
+        if value is None:
+            continue
+        p = by_field.get(field)
+        bucket, wire = (p.location, p.wire) if p else (fallback, field)
+        if bucket == "path":
+            payload["path"][wire] = str(value)
+        else:
+            payload[bucket][wire] = value
     try:
         async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=90)) as http:
             async with http.post(url, json=payload, headers=identity) as resp:
@@ -118,17 +187,27 @@ def _build_tool(box_id: str, info: dict, account_id: str, account_type: str) -> 
     metadata = info.get("metadata") or {}
     method = metadata.get("method") or "POST"
     tool_id = info["tool_id"]
-    name = _safe_name(info.get("name") or "", tool_id)
+    raw_name = info.get("name") or ""
+    name = _safe_name(raw_name, tool_id)
+    if name != raw_name:  # LLM 见到的名字与注册名不同，日志留映射便于排障
+        logger.info("[Toolbox] tool name sanitized: %r -> %s (id=%s)", raw_name, name, tool_id)
     description = info.get("description") or metadata.get("summary") or name
 
+    # 单个工具元数据坏（非法参数名、schema 畸形）不应连累整箱工具装载
+    try:
+        model, params = _args_model(name, metadata)
+    except Exception as e:
+        logger.warning("[Toolbox] skip tool %s (id=%s): args schema build failed: %s", name, tool_id, e)
+        return None
+
     async def call(**kwargs) -> str:
-        return await _execute(box_id, tool_id, method, kwargs, account_id, account_type)
+        return await _execute(box_id, tool_id, method, kwargs, params, account_id, account_type)
 
     return StructuredTool.from_function(
         coroutine=call,
         name=name,
         description=description,
-        args_schema=_args_model(name, metadata),
+        args_schema=model,
     )
 
 

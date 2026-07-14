@@ -68,7 +68,7 @@ async def get_task(
     account: Account = Depends(get_account),
     session: AsyncSession = Depends(get_session),
 ):
-    task = await dao.get_task(session, task_id)
-    if not task:
+    task = await dao.get_task(session, task_id, account_id=account.account_id)
+    if not task:  # 非 owner 与不存在同响应，不泄露存在性
         raise not_found("task", task_id)
     return task

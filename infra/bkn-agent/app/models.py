@@ -96,7 +96,12 @@ class AgentLimits(BaseModel):
 
 
 class AgentSpec(BaseModel):
-    name: str = Field(min_length=1, max_length=100)
+    # 名字直接用作算子工厂 toolbox 的工具名，字符集须与工厂校验一致
+    # （operator-integration validator: ^[[:word:]\p{Han}]+$ —— ASCII 字母数字下划线
+    # 或汉字；空格、连字符都不收）。这里前置拦住：否则一个非法名会让整包注册 400、
+    # 无限重试，连带堵死所有 published agent 的上下架。
+    # 刻意比 Go 侧略严（汉字取基本区），宁可这里先拒，不让工厂 400。
+    name: str = Field(min_length=1, max_length=100, pattern=r"^[0-9A-Za-z_一-鿿]+$")
     mode: Literal["chat", "task"] = "chat"
     prompt_id: Optional[str] = None
     prompt_vars_schema: Optional[dict[str, Any]] = None

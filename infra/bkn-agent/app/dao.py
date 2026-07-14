@@ -175,9 +175,17 @@ async def create_task(
     return _task_out(row)
 
 
-async def get_task(session: AsyncSession, task_id: str) -> Optional[TaskOut]:
+async def get_task(
+    session: AsyncSession, task_id: str, account_id: Optional[str] = None
+) -> Optional[TaskOut]:
+    """account_id 给定时做归属过滤（非 owner 与不存在同响应，thread 同款 fail-closed）。
+    内部调用（runner 回写、/invoke 自查）不传，按 task_id 直取。"""
     row = await session.get(TaskRow, task_id)
-    return _task_out(row) if row else None
+    if not row:
+        return None
+    if account_id is not None and row.f_account_id != account_id:
+        return None
+    return _task_out(row)
 
 
 async def set_task_status(
