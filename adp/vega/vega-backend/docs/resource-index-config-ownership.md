@@ -79,13 +79,13 @@ resource 索引配置变化时，创建新 task 生成新 index version。新索
 
 ### 迁移成本
 
-当前 worker 和 DAO 已经读取 task 上的 `EmbeddingFields`、`BuildKeyFields`、`FulltextFields`、`FulltextAnalyzer`、`EmbeddingModel`、`ModelDimensions`。如果一次性物理删除这些字段，会牵动 worker、访问层、历史数据和测试。
+当前 worker、DAO 和测试曾经读取 task 上的 `EmbeddingFields`、`BuildKeyFields`、`FulltextFields`、`FulltextAnalyzer`、`EmbeddingModel`、`ModelDimensions`。本次 PR 不保留这些分散字段，而是收敛为 task 的 `index_config` 快照。
 
 缓解策略：
 
-- 本次 PR 保留 task 表字段，但把它们定义为“服务端生成的只读快照”。
-- 禁止 create task 请求直接设置这些字段。
-- worker 仍读取 task 快照，降低改动范围。
+- task 表只保留 `f_index_config` 作为服务端生成的只读快照。
+- 禁止 create task 请求直接设置索引配置字段。
+- worker 读取 `BuildTask.IndexConfig` 快照，避免回读 resource 当前配置造成历史语义漂移。
 
 ### resource 索引配置模型需要补齐
 
@@ -100,12 +100,12 @@ resource 目前已有 `schema_definition.features`，应把它作为字段级索
 
 ### 旧客户端破坏性变更
 
-旧客户端如果仍在 `POST /build-tasks` 中传 `embedding_fields`、`fulltext_fields`、`build_key_fields` 等字段，本次变更后会收到请求体校验错误。
+旧客户端如果仍在 `POST /build-tasks` 中传 `embedding_fields`、`fulltext_fields`、`build_key_fields` 等字段，本次变更后这些字段不再产生任何效果。
 
 缓解策略：
 
 - 不提供旧字段继续驱动 task 配置的兼容路径，避免形成第二个索引配置入口。
-- API 文档和 Issue 明确该变更为本次 PR 的有意破坏性调整。
+- API 文档和 Issue 明确该变更为本次 PR 的有意破坏性调整：旧字段会被忽略，不再参与 task 配置。
 - 调用方必须先更新 resource 索引配置，再调用 `POST /build-tasks` 触发构建。
 
 ### resource update 语义变重
@@ -195,19 +195,19 @@ resource current index semantics
 
 本次 PR 采用 task 持久化配置快照。
 
-task 表仍保存 `embedding_fields`、`fulltext_fields` 等字段，但这些字段不再来自 `POST /build-tasks` 请求，而是创建时由服务端从 resource 派生。
+task 表使用 `f_index_config` 保存索引配置快照。快照不来自 `POST /build-tasks` 请求，而是在创建 task 时由服务端从 resource 派生。
 
 这样做的原因：
 
-- worker 读取 task 即可获得构建时配置。
+- worker 读取 `BuildTask.IndexConfig` 即可获得构建时配置。
 - 历史 task 可完整还原当时构建使用的配置。
-- 对现有 worker 改动较小。
+- task 不需要回读 resource 当前配置，避免 resource 后续修改影响历史构建语义。
 
 约束：
 
-- task 上的配置字段是只读快照。
+- task 上的 `index_config` 是只读快照。
 - 不提供 task 配置编辑接口。
-- create task 请求不能直接设置这些字段。
+- create task 请求不能直接设置索引配置。
 
 后续如果索引配置继续扩展，可以演进为 task 引用 resource index config version：
 
@@ -243,7 +243,7 @@ embedding_model
 model_dimensions
 ```
 
-请求中出现上述字段时，由 JSON 绑定或请求校验返回 400。错误信息必须明确提示索引配置属于 resource，应先更新 resource 配置再创建 build task。
+请求中出现上述字段时，服务端忽略这些旧字段，不把它们作为配置入口。调用方必须先更新 resource 配置，再创建 build task。
 
 ### Update resource index config
 
@@ -344,7 +344,7 @@ feat(vega-backend): add resource index config model
   - `embedding_model`
   - `model_dimensions`
 - 删除 handler 中基于 request 索引字段的校验逻辑。
-- create task 请求携带旧字段时返回 400。
+- create task 请求携带旧字段时忽略旧字段，不把它们作为配置入口。
 - 更新 handler 单测。
 
 建议提交信息：
@@ -357,27 +357,21 @@ fix(vega-backend): restrict build task create request
 
 - `CreateBuildTask` 不再从 request 读取索引配置。
 - service 从 resource 当前状态派生 task 快照：
-  - 从 resource schema/features 派生 `embedding_fields`
-  - 从 resource schema/features 派生 `fulltext_fields`
-  - 从 `resource.index_config.build_key_fields` 或系统默认策略派生 `build_key_fields`
-  - 从 `fulltext` feature 的 `config.analyzer` 或 `index_config.default_fulltext_analyzer` 派生 `fulltext_analyzer`
-  - 从 `vector` feature 的 `config.embedding_model` 或 `index_config.default_embedding_model` 得到 `embedding_model`
-  - 通过模型服务解析得到 `model_dimensions`
+  - 从 resource schema/features 派生 `index_config.features[field].vector`
+  - 从 resource schema/features 派生 `index_config.features[field].fulltext`
+  - 从 `resource.index_config.build_key_fields` 派生 `index_config.build_key_fields`
+  - 从 `fulltext` feature 的 `config.analyzer` 或 `index_config.default_fulltext_analyzer` 派生字段级 analyzer 快照
+  - 从 `vector` feature 的 `config.embedding_model` 或 `index_config.default_embedding_model` 得到字段级 embedding model
+  - 通过模型服务解析得到字段级 embedding dimensions
 - 如果无法解析模型或维度，create task 失败。
 - 如果 resource 当前没有完整索引配置，create task 失败，而不是回退读取 request 字段。
 
-- task 表上的索引配置字段不作为客户端配置入口。
-- 这些字段的语义改为“创建时由服务端生成的只读快照”：
-  - `embedding_fields`
-  - `build_key_fields`
-  - `fulltext_fields`
-  - `fulltext_analyzer`
-  - `embedding_model`
-  - `model_dimensions`
-- task 创建后不允许修改这些快照字段。
+- task 表上的 `f_index_config` 不作为客户端配置入口。
+- `f_index_config` 的语义是“创建时由服务端生成的只读快照”。
+- task 创建后不允许修改快照。
 
-- worker 暂时不改读取方式，继续读取 task 上的快照字段。
-- worker 不需要知道这些字段来自 request 还是 resource，只依赖“task 快照不可变”这个约束。
+- worker 读取 `BuildTask.IndexConfig` 快照。
+- worker 不需要知道快照来自 request 还是 resource，只依赖“task 快照不可变”这个约束。
 
 建议提交信息：
 
@@ -474,11 +468,11 @@ resource schema/features + resource index_config + model service
 
 ## 验收测试
 
-- create task 请求携带 `embedding_fields` 时返回 400。
-- create task 请求携带 `fulltext_fields` 时返回 400。
-- create task 请求携带 `build_key_fields` 时返回 400。
-- create task 请求携带 `embedding_model` 时返回 400。
-- create task 请求携带 `model_dimensions` 时返回 400。
+- create task 请求携带 `embedding_fields` 时忽略该字段。
+- create task 请求携带 `fulltext_fields` 时忽略该字段。
+- create task 请求携带 `build_key_fields` 时忽略该字段。
+- create task 请求携带 `embedding_model` 时忽略该字段。
+- create task 请求携带 `model_dimensions` 时忽略该字段。
 - create task 从 resource schema/features 派生 embedding/fulltext 字段。
 - create task 从 `resource.index_config.build_key_fields` 派生 build key 快照。
 - create task 从 `feature.config` 或 `index_config` 默认值派生 analyzer / embedding model。
