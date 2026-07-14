@@ -71,6 +71,22 @@ async def import_agents(
 
     for item in req.package.items:
         prompt_action = "none"
+        # 先检后写：prompt 与 agent 分两次 commit，写到一半再发现冲突就回不去了
+        # （rollback 撤不掉已提交的 prompt 新版本，线上 agent 会静默换词）
+        conflict = await dao.check_import_conflict(
+            session,
+            item.agent_id,
+            item.spec.name,
+            item.prompt.prompt_id if item.prompt else None,
+            item.prompt.name if item.prompt else None,
+        )
+        if conflict:
+            results.append(
+                ImportItemResult(
+                    agent_id=item.agent_id, name=item.spec.name, action="failed", error=conflict
+                )
+            )
+            continue
         try:
             if item.prompt:
                 prompt_action = await dao.upsert_prompt_with_id(
@@ -84,11 +100,15 @@ async def import_agents(
             agent, action = await dao.upsert_agent_with_id(
                 session, item.agent_id, item.spec, account.account_id
             )
-        except ValueError as e:
+        except ValueError as e:  # 预检与写入之间的并发窗口（他人同时占了名字）
             await session.rollback()
             results.append(
                 ImportItemResult(
-                    agent_id=item.agent_id, name=item.spec.name, action="failed", error=str(e)
+                    agent_id=item.agent_id,
+                    name=item.spec.name,
+                    action="failed",
+                    prompt_action=prompt_action,  # prompt 可能已写入，如实上报
+                    error=str(e),
                 )
             )
             continue

@@ -18,10 +18,12 @@ from dataclasses import dataclass
 from typing import Any, Optional
 
 import aiohttp
+from fastapi import HTTPException
 from langchain_core.tools import StructuredTool
 from pydantic import ConfigDict, Field, create_model
 
 from app.config import config
+from app.errors import bad_request, err
 
 logger = logging.getLogger("bkn-agent.toolbox")
 
@@ -212,21 +214,48 @@ def _build_tool(box_id: str, info: dict, account_id: str, account_type: str) -> 
 
 
 async def _list_tools(box_id: str, account_id: str, account_type: str) -> list[dict]:
+    """拉取一个 box 的工具列表。工厂 4xx（box 不存在/无权限）= 调用方配置问题 → 400；
+    5xx 与网络故障 = 下游不可用 → 502。都走平台错误封套。"""
     url = f"{config.OPERATOR_INTEGRATION_BASE}/internal-v1/tool-box/{box_id}/tools/list"
     headers = {"x-account-id": account_id, "x-account-type": account_type}
     infos: list[dict] = []
     page = 1
-    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as http:
-        while True:
-            params = {"page": page, "page_size": 100, "all": "true"}
-            async with http.get(url, params=params, headers=headers) as resp:
-                if resp.status != 200:
-                    raise RuntimeError(f"toolbox {box_id} list failed: HTTP {resp.status} {(await resp.text())[:300]}")
-                data = await resp.json()
-            infos.extend(data.get("tools") or [])
-            if not data.get("has_next"):
-                return infos
-            page += 1
+    try:
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as http:
+            while True:
+                params = {"page": page, "page_size": 100, "all": "true"}
+                async with http.get(url, params=params, headers=headers) as resp:
+                    body = await resp.text()
+                    if 400 <= resp.status < 500:
+                        raise bad_request(
+                            "ToolRef.BoxUnavailable",
+                            "引用的工具箱不可用",
+                            f"toolbox {box_id}: HTTP {resp.status} {body[:300]}",
+                            "检查 agent.tools 里的 box_id 是否存在、当前账户是否有权访问。",
+                        )
+                    if resp.status != 200:
+                        raise err(
+                            502,
+                            "Toolbox.Upstream",
+                            "算子工厂不可用",
+                            f"toolbox {box_id} list failed: HTTP {resp.status} {body[:300]}",
+                            "稍后重试；持续失败检查 operator-integration。",
+                        )
+                    data = json.loads(body)
+                infos.extend(data.get("tools") or [])
+                if not data.get("has_next"):
+                    return infos
+                page += 1
+    except HTTPException:
+        raise
+    except Exception as e:  # 连接失败/超时/响应体畸形
+        raise err(
+            502,
+            "Toolbox.Upstream",
+            "算子工厂不可用",
+            f"toolbox {box_id} list failed: {type(e).__name__}: {e}",
+            "稍后重试；持续失败检查 operator-integration 与网络。",
+        )
 
 
 async def load_toolbox_tools(box_id: str, account_id: str, account_type: str) -> list[StructuredTool]:

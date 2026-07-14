@@ -13,7 +13,18 @@ class _StrictDict(dict):
 
 
 def _fill(template: str, prompt_vars: dict[str, Any], vars_schema: Optional[dict]) -> str:
-    required = set((vars_schema or {}).get("required", []))
+    """只有声明了变量（vars_schema）或本次传了 prompt_vars 才做模板渲染。
+
+    否则原样返回：提示词里写 JSON 输出示例（`{"answer": ...}`）是常态，无条件跑
+    format_map 会把大括号当变量——KeyError 变成误导性的「变量缺失」400，落单的
+    `}` 直接 ValueError 冒成 500。不渲染的提示词就该原样喂给模型。
+    """
+    schema = vars_schema or {}
+    declared = bool(schema.get("required") or schema.get("properties"))
+    if not declared and not prompt_vars:
+        return template
+
+    required = set(schema.get("required", []))
     missing = required - prompt_vars.keys()
     if missing:
         raise bad_request(
@@ -26,6 +37,13 @@ def _fill(template: str, prompt_vars: dict[str, Any], vars_schema: Optional[dict
         return template.format_map(_StrictDict(prompt_vars))
     except KeyError as e:
         raise bad_request("PromptVars", "提示词变量缺失", f"模板引用了未提供的变量 {e}")
+    except (ValueError, IndexError) as e:  # 大括号不成对/位置参数等模板语法错
+        raise bad_request(
+            "PromptTemplate",
+            "提示词模板语法错误",
+            str(e),
+            "带变量的提示词里，字面大括号要写成 {{ 和 }}。",
+        )
 
 
 async def resolve_prompt(

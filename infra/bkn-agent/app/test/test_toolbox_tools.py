@@ -195,3 +195,50 @@ def test_default_toolbox_degrades_but_explicit_ref_fails(monkeypatch):
 
     with pytest.raises(RuntimeError):
         asyncio.run(_toolbox_tools([{"type": "toolbox", "box_id": "box-x"}], "u", "user"))
+
+
+def test_explicit_box_error_is_classified(monkeypatch):
+    """P1 回归：坏 box_id（工厂 4xx）= 调用方配置错 → 400 封套；
+    工厂 5xx/网络 → 502。老实现一律裸 RuntimeError → 无封套 500。"""
+    from fastapi import HTTPException
+
+    class _Resp:
+        def __init__(self, status, body):
+            self.status = status
+            self._body = body
+
+        async def text(self):
+            return self._body
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+    class _Session:
+        status = 400
+        body = '{"code":"...ToolBoxNotFound"}'
+
+        def __init__(self, *a, **k):
+            pass
+
+        def get(self, url, params=None, headers=None):
+            return _Resp(type(self).status, type(self).body)
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+    monkeypatch.setattr(toolbox.aiohttp, "ClientSession", _Session)
+    with pytest.raises(HTTPException) as e:
+        asyncio.run(toolbox._list_tools("bad-box", "u", "user"))
+    assert e.value.status_code == 400 and "BoxUnavailable" in e.value.detail["code"]
+
+    _Session.status = 503
+    _Session.body = "upstream down"
+    with pytest.raises(HTTPException) as e2:
+        asyncio.run(toolbox._list_tools("b-1", "u", "user"))
+    assert e2.value.status_code == 502 and "Upstream" in e2.value.detail["code"]

@@ -74,8 +74,19 @@ async def _agent_tool(
         raise bad_request("ToolRef", "agent 工具缺 agent_id", str(ref))
     async with SessionLocal() as session:
         sub_agent = await dao.get_agent(session, agent_id)
-    if not sub_agent:
-        raise bad_request("ToolRef", "agent 工具引用不存在", f"agent {agent_id} 不存在")
+    # 与 /run（mode=task）、/invoke（published）同门：否则 draft/chat 型 agent 经
+    # 工具引用就能被无状态执行，绕过 API 其余入口一致的语义
+    if not sub_agent or sub_agent.status != "published":
+        raise bad_request(
+            "ToolRef", "agent 工具引用不可用", f"agent {agent_id} 不存在或未发布", "先发布被引用的 agent。"
+        )
+    if sub_agent.mode != "task":
+        raise bad_request(
+            "ToolRef",
+            "agent 工具只能引用一次性 agent",
+            f"agent {agent_id} mode={sub_agent.mode}",
+            "agent-as-tool 走 /run 同款一次性执行路径，被引用方须 mode=task。",
+        )
 
     async def call_sub_agent(message: str) -> str:
         """调用子 agent 完成一次性任务，返回其最终回复。"""
@@ -130,9 +141,12 @@ async def load_tools(
     for ref in tool_refs:
         if ref.get("type") == "agent":
             tools.append(await _agent_tool(ref, account_id, account_type, depth, parent_thread_id))
-    tools.append(_read_skill_file_tool(account_id, account_type))
-    # 名字冲突去重（保留先到：显式 toolbox > 默认 box > mcp > agent）
-    seen: set[str] = set()
+
+    # 名字冲突去重（保留先到：显式 toolbox > 默认 box > mcp > agent）。
+    # 内置 read_skill_file 预占名字：它是技能加载的一等能力（设计不变量），
+    # 不能被同名的用户工具挤掉——反过来挤掉那个用户工具并告警。
+    builtin = _read_skill_file_tool(account_id, account_type)
+    seen: set[str] = {builtin.name}
     deduped: list[Any] = []
     for t in tools:
         name = getattr(t, "name", None)
@@ -142,4 +156,34 @@ async def load_tools(
         if name:
             seen.add(name)
         deduped.append(t)
+    deduped.append(builtin)
     return deduped
+
+
+def apply_tool_call_cap(tools: list[Any], max_tool_calls: int | None) -> list[Any]:
+    """执行 AgentLimits.max_tool_calls：整轮工具调用次数用尽后，工具改为返回
+    提示串（模型据此收敛作答），而非静默无视上限。None = 不限。"""
+    if max_tool_calls is None:
+        return tools
+    budget = {"left": max(max_tool_calls, 0)}
+    capped: list[Any] = []
+    for t in tools:
+        inner = getattr(t, "coroutine", None)
+        if inner is None:  # 同步工具（当前不产生）保持原样
+            capped.append(t)
+            continue
+
+        async def _guarded(__inner=inner, **kwargs) -> str:
+            if budget["left"] <= 0:
+                # 措辞要斩钉截铁：只说「请直接作答」时模型会继续试探性重试，
+                # 白烧若干轮（VM 实测空转 9 轮才收敛）
+                return (
+                    f"tool call budget exhausted: 已用完本次执行的工具调用配额"
+                    f"（max_tool_calls={max_tool_calls}）。禁止再调用任何工具——"
+                    f"任何后续工具调用都会被拒绝。请立即用已获取的信息给出最终答案。"
+                )
+            budget["left"] -= 1
+            return await __inner(**kwargs)
+
+        capped.append(t.model_copy(update={"coroutine": _guarded}))
+    return capped

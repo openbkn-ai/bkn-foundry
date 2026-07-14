@@ -74,7 +74,11 @@ def test_export_then_import_roundtrip(monkeypatch):
     async def fake_upsert_prompt(session, prompt_id, name, content, vars_schema, account_id):
         return "version_published"
 
+    async def no_conflict(session, agent_id, agent_name, prompt_id, prompt_name):
+        return None
+
     resynced = []
+    monkeypatch.setattr(dao, "check_import_conflict", no_conflict)
     monkeypatch.setattr(dao, "upsert_agent_with_id", fake_upsert_agent)
     monkeypatch.setattr(dao, "upsert_prompt_with_id", fake_upsert_prompt)
     monkeypatch.setattr(toolbox_sync, "schedule_resync", lambda: resynced.append(1))
@@ -90,18 +94,32 @@ def test_export_then_import_roundtrip(monkeypatch):
     app.dependency_overrides.pop(get_session, None)
 
 
-def test_import_name_conflict_isolated_and_missing_ref_warns(monkeypatch):
+def test_import_conflict_precheck_writes_nothing_and_isolates_item(monkeypatch):
+    """P1 回归：名字冲突必须在写入前拦住。
+
+    老实现先 upsert prompt（已 commit）再 upsert agent 撞名抛错，rollback 撤不掉
+    已提交的 prompt 新版本——条目报 failed，线上绑该 prompt 的 agent 却静默换了词。
+    """
     app.dependency_overrides[get_session] = _fake_session
+    written = {"prompts": [], "agents": []}
+
+    async def fake_conflict(session, agent_id, agent_name, prompt_id, prompt_name):
+        return f"agent 名「{agent_name}」已被 a-x 占用" if agent_name == "taken" else None
 
     async def fake_upsert_agent(session, agent_id, spec, account_id):
-        if spec.name == "taken":
-            raise ValueError("agent 名「taken」已被 a-x 占用")
+        written["agents"].append(agent_id)
         return _agent(agent_id, spec.name), "updated"
+
+    async def fake_upsert_prompt(session, prompt_id, name, content, vars_schema, account_id):
+        written["prompts"].append(prompt_id)
+        return "version_published"
 
     async def fake_get_agent(session, agent_id):
         return None  # 引用的子 agent 目标环境不存在
 
+    monkeypatch.setattr(dao, "check_import_conflict", fake_conflict)
     monkeypatch.setattr(dao, "upsert_agent_with_id", fake_upsert_agent)
+    monkeypatch.setattr(dao, "upsert_prompt_with_id", fake_upsert_prompt)
     monkeypatch.setattr(dao, "get_agent", fake_get_agent)
     monkeypatch.setattr(toolbox_sync, "schedule_resync", lambda: None)
 
@@ -109,7 +127,11 @@ def test_import_name_conflict_isolated_and_missing_ref_warns(monkeypatch):
         "format": "bkn-agent/v1",
         "exported_at": 1,
         "items": [
-            {"agent_id": "a-1", "spec": {"name": "taken", "mode": "chat"}},
+            {
+                "agent_id": "a-1",
+                "spec": {"name": "taken", "mode": "chat"},
+                "prompt": {"prompt_id": "p-1", "name": "hp", "content": "新内容"},
+            },
             {
                 "agent_id": "a-2",
                 "spec": {"name": "ok", "mode": "chat", "tools": [{"type": "agent", "agent_id": "ghost"}]},
@@ -121,7 +143,9 @@ def test_import_name_conflict_isolated_and_missing_ref_warns(monkeypatch):
     body = r.json()
     assert body["results"][0]["action"] == "failed"
     assert "已被" in body["results"][0]["error"]
+    assert written["prompts"] == []  # 冲突条目的 prompt 一个字都没写
     assert body["results"][1]["action"] == "updated"  # 冲突不中断后续条目
+    assert written["agents"] == ["a-2"]
     assert any("ghost" in w for w in body["warnings"])
     app.dependency_overrides.pop(get_session, None)
 

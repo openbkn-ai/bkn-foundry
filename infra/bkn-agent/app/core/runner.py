@@ -39,7 +39,7 @@ async def run_agent_once(
             "检查 agent-as-tool 引用链是否成环。",
         )
 
-    from app.core.tools import load_tools  # 延迟导入破 tools↔runner 环
+    from app.core.tools import apply_tool_call_cap, load_tools  # 延迟导入破 tools↔runner 环
 
     async with SessionLocal() as session:
         system_prompt, prompt_source, prompt_version = await resolve_prompt(
@@ -53,6 +53,7 @@ async def run_agent_once(
     limits = agent.limits
     max_turns = limits.max_turns if limits and limits.max_turns else config.DEFAULT_MAX_TURNS
     timeout_s = limits.timeout_s if limits and limits.timeout_s else config.DEFAULT_TIMEOUT_S
+    tools = apply_tool_call_cap(tools, limits.max_tool_calls if limits else None)
 
     with observability.span(
         "agent.task",

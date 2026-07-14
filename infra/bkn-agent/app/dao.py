@@ -379,6 +379,39 @@ async def rollback_prompt(session: AsyncSession, prompt_id: str, version: int, a
 # ---------- 导入导出（impex）：保留原 id upsert，name 撞车报错 ----------
 
 
+async def check_import_conflict(
+    session: AsyncSession,
+    agent_id: str,
+    agent_name: str,
+    prompt_id: Optional[str],
+    prompt_name: Optional[str],
+) -> Optional[str]:
+    """只读预检：返回冲突原因，无冲突返回 None。
+
+    导入必须先检后写：prompt 与 agent 分别 commit，若写到一半才发现 agent 名撞车，
+    rollback 已经回不了 prompt 的提交——那条 agent 报 failed，但 prompt 新版本已
+    对线上生效。预检把两个名字冲突一次查完。
+    """
+    dup_agent = (
+        await session.execute(
+            select(AgentRow).where(AgentRow.f_name == agent_name, AgentRow.f_agent_id != agent_id)
+        )
+    ).scalar_one_or_none()
+    if dup_agent:
+        return f"agent 名「{agent_name}」已被 {dup_agent.f_agent_id} 占用"
+    if prompt_id and prompt_name:
+        dup_prompt = (
+            await session.execute(
+                select(PromptRow).where(
+                    PromptRow.f_name == prompt_name, PromptRow.f_prompt_id != prompt_id
+                )
+            )
+        ).scalar_one_or_none()
+        if dup_prompt:
+            return f"prompt 名「{prompt_name}」已被 {dup_prompt.f_prompt_id} 占用"
+    return None
+
+
 async def upsert_agent_with_id(
     session: AsyncSession, agent_id: str, spec: AgentSpec, account_id: str
 ) -> tuple[AgentOut, str]:

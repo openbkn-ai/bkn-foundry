@@ -38,6 +38,13 @@ class Message(BaseModel):
     tool_calls: List[dict] = Field(default=None)
     tool_call_id: StrictStr = Field(default=None)
 
+    @validator('content', pre=True, always=True, check_fields=False)
+    def coerce_null_content(cls, v):
+        """null → ""：下游拼接/计量（prompt_str += content、message + ""）不容忍 None。
+        在校验层归一，覆盖所有读取路径与所有路由；controller 里逐条改容易漏
+        （曾漏掉 messages[-1]["content"] 的快照读，直接 TypeError 成 500）。"""
+        return "" if v is None else v
+
     @validator('content', check_fields=False)
     def validate_content(cls, v):
         if isinstance(v, list):
