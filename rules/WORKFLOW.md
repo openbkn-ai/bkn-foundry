@@ -78,9 +78,9 @@ Every service / module has an Owner in [`.github/CODEOWNERS`](../.github/CODEOWN
 ### Issue Lifecycle
 
 ```text
-Open → Triaged → In Progress → In Review → Done
-         │                                    │
-         └─────────── Closed (Won't Fix) ─────┘
+Open → Triaged → In Progress → In Review → Validating → Done
+         │                                                │
+         └────────────── Closed (Won't Fix) ────────────┘
 ```
 
 | State | Action |
@@ -89,8 +89,11 @@ Open → Triaged → In Progress → In Review → Done
 | `Triaged` | Priority, Assignee, and Milestone assigned |
 | `In Progress` | Branch and design doc created; development started (**update tracking comment in Issue**, see next section) |
 | `In Review` | PR submitted; awaiting Code Review |
-| `Done` | PR merged; Issue closed automatically or manually |
+| `Validating` | PR merged; being validated in the target environment. Tasks with no environment-validation step skip this column |
+| `Done` | Validation passed (or PR merged, for tasks with no validation step); Issue closed automatically or manually |
 | `Closed (Won't Fix)` | Decided not to implement; reason stated in a comment |
+
+> **Validating vs. auto-close**: A PR whose body contains `Closes #` auto-closes the Issue on merge; if the board has the "Issue closed → Done" automation enabled, the item moves straight to Done. For tasks that need environment validation, drag the item back to `Validating` after merge and move it to `Done` once validation passes; if validation fails, reopen the Issue and move it back to `In Progress`.
 
 ### Issue Triage Rules
 
@@ -257,7 +260,7 @@ After starting development, post one tracking comment in the Issue. Update this 
 | **ETA** | YYYY-MM-DD |
 ```
 
-> **Note**: After the PR is merged, update this comment's Status to `Done` and add the PR link.
+> **Note**: After the PR is merged, update this comment's Status to `Done` (for tasks requiring environment validation, set it to `Validating` first, then `Done` once validation passes) and add the PR link.
 
 ---
 
@@ -507,7 +510,7 @@ Reviewers must confirm:
 After the PR is merged, the merger or Assignee must:
 
 1. Update the design doc's `status` to `implemented`
-2. Update the Issue tracking comment: set Status to `Done` and add the PR link
+2. Update the Issue tracking comment: set Status to `Done` (for tasks requiring environment validation, `Validating` first, then `Done` once validation passes) and add the PR link
 
 ---
 
