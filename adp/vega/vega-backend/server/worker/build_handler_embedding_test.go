@@ -42,8 +42,10 @@ func TestEmbeddingHandlerHandleTask(t *testing.T) {
 				return nil, nil
 			})
 		taskAccess.EXPECT().UpdateStatus(gomock.Any(), "t1",
-			map[string]interface{}{"status": interfaces.BuildTaskStatusFailed, "errorMsg": "resource not found"}).
-			Return(nil)
+			interfaces.NewBuildTaskUpdate().
+				WithStatus(interfaces.BuildTaskStatusFailed).
+				WithErrorMsg("resource not found")).
+			Return(true, nil)
 
 		task := asynq.NewTask("build:embedding", workerBuildTaskPayload(t, interfaces.EmbeddingBuildTaskMessage{TaskID: "t1"}))
 		require.NoError(t, eh.HandleTask(context.Background(), task))
@@ -92,7 +94,7 @@ func TestEmbeddingHandlerExecuteEmbedding(t *testing.T) {
 			Return(map[string]any{"team_name": ""}, nil).Times(3)
 		ka.EXPECT().CommitMessages(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(deadCommit).Times(embeddingKafkaMaxConsecutiveErrors)
-		ta.EXPECT().UpdateStatus(gomock.Any(), "t1", gomock.Any()).Return(nil).AnyTimes()
+		ta.EXPECT().UpdateStatus(gomock.Any(), "t1", gomock.Any()).Return(true, nil).AnyTimes()
 
 		err := eh.executeEmbedding(context.Background(), resource, task)
 
@@ -135,7 +137,7 @@ func TestEmbeddingHandlerVectorizeDoc(t *testing.T) {
 				return []string{"doc1"}, nil
 			})
 
-		require.NoError(t, eh.vectorizeDoc(ctx, "idx", "doc1", "m1", []string{"team_name"}))
+		require.NoError(t, eh.vectorizeDoc(ctx, "idx", "doc1", testEmbeddingConfig("m1", "team_name")))
 	})
 
 	t.Run("empty text is success without embedding", func(t *testing.T) {
@@ -145,7 +147,31 @@ func TestEmbeddingHandlerVectorizeDoc(t *testing.T) {
 		lim.EXPECT().GetDocument(ctx, "idx", "doc1").
 			Return(map[string]any{"team_name": ""}, nil)
 
-		require.NoError(t, eh.vectorizeDoc(ctx, "idx", "doc1", "m1", []string{"team_name"}))
+		require.NoError(t, eh.vectorizeDoc(ctx, "idx", "doc1", testEmbeddingConfig("m1", "team_name")))
+	})
+
+	t.Run("groups fields by model", func(t *testing.T) {
+		eh, lim, mfa := newVectorizeHandler(t)
+		ctx := t.Context()
+
+		lim.EXPECT().GetDocument(ctx, "idx", "doc1").
+			Return(map[string]any{"title": "hello", "body": "world"}, nil)
+		mfa.EXPECT().GetVector(ctx, "m1", []string{"hello"}).
+			Return([]*interfaces.VectorResp{{Vector: []float32{0.1}}}, nil)
+		mfa.EXPECT().GetVector(ctx, "m2", []string{"world"}).
+			Return([]*interfaces.VectorResp{{Vector: []float32{0.2}}}, nil)
+		lim.EXPECT().UpsertDocuments(ctx, "idx", gomock.Any()).
+			DoAndReturn(func(_ any, _ string, reqs []map[string]any) ([]string, error) {
+				doc := reqs[0]["document"].(map[string]any)
+				assert.Contains(t, doc, "title_vector")
+				assert.Contains(t, doc, "body_vector")
+				return []string{"doc1"}, nil
+			})
+
+		require.NoError(t, eh.vectorizeDoc(ctx, "idx", "doc1", map[string]interfaces.BuildTaskEmbeddingConfig{
+			"title": {ModelID: "m1", Dimensions: 1024},
+			"body":  {ModelID: "m2", Dimensions: 2048},
+		}))
 	})
 
 	t.Run("failures return error", func(t *testing.T) {
@@ -179,10 +205,18 @@ func TestEmbeddingHandlerVectorizeDoc(t *testing.T) {
 				ctx := t.Context()
 				tc.setup(lim, mfa, ctx)
 
-				require.Error(t, eh.vectorizeDoc(ctx, "idx", "doc1", "m1", []string{"f"}))
+				require.Error(t, eh.vectorizeDoc(ctx, "idx", "doc1", testEmbeddingConfig("m1", "f")))
 			})
 		}
 	})
+}
+
+func testEmbeddingConfig(model string, fields ...string) map[string]interfaces.BuildTaskEmbeddingConfig {
+	config := map[string]interfaces.BuildTaskEmbeddingConfig{}
+	for _, field := range fields {
+		config[field] = interfaces.BuildTaskEmbeddingConfig{ModelID: model, Dimensions: 1024}
+	}
+	return config
 }
 
 func TestFormatVectorizeFailures(t *testing.T) {
@@ -235,10 +269,13 @@ func newEmbeddingLoopHandler(t *testing.T) (*embeddingHandler, *vmock.MockBuildT
 func embeddingLoopFixtures() (*interfaces.Resource, *interfaces.BuildTask) {
 	resource := &interfaces.Resource{ID: "r1"}
 	task := &interfaces.BuildTask{
-		ID:              "t1",
-		ResourceID:      "r1",
-		EmbeddingFields: "team_name",
-		EmbeddingModel:  "m1",
+		ID:         "t1",
+		ResourceID: "r1",
+		IndexConfig: &interfaces.BuildTaskIndexConfig{
+			Features: map[string]interfaces.BuildTaskFieldIndexFeature{
+				"team_name": {Vector: &interfaces.BuildTaskEmbeddingConfig{ModelID: "m1", Dimensions: 1024}},
+			},
+		},
 		VectorizedCount: 7,
 	}
 	return resource, task
@@ -251,12 +288,12 @@ func expectEmbeddingKafkaSession(ka *vmock.MockKafkaAccess) {
 }
 
 func expectEmbeddingCountFlush(ta *vmock.MockBuildTaskAccess, count int64) *gomock.Call {
-	return ta.EXPECT().UpdateStatus(gomock.Any(), "t1", gomock.AssignableToTypeOf(map[string]interface{}{})).
-		DoAndReturn(func(_ context.Context, _ string, updates map[string]interface{}) error {
-			if got, ok := updates["vectorizedCount"].(int64); !ok || got != count {
-				return errors.New("vectorizedCount not flushed")
+	return ta.EXPECT().UpdateStatus(gomock.Any(), "t1", gomock.AssignableToTypeOf(interfaces.BuildTaskUpdate{})).
+		DoAndReturn(func(_ context.Context, _ string, update interfaces.BuildTaskUpdate, _ ...string) (bool, error) {
+			if update.VectorizedCount == nil || *update.VectorizedCount != count {
+				return false, errors.New("vectorizedCount not flushed")
 			}
-			return nil
+			return true, nil
 		})
 }
 

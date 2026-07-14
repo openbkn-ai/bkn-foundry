@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sort"
 	"strings"
 	"time"
 
@@ -78,9 +79,11 @@ func claimBuildTaskExecution(ctx context.Context, taskAccess interfaces.BuildTas
 	if retryCount, ok := asynq.GetRetryCount(ctx); ok && retryCount > 0 {
 		allowedStatuses = append(allowedStatuses, interfaces.BuildTaskStatusRunning)
 	}
-	return taskAccess.UpdateStatusIfIn(ctx, taskID,
-		allowedStatuses,
-		map[string]interface{}{"status": interfaces.BuildTaskStatusRunning, "errorMsg": ""},
+	return taskAccess.UpdateStatus(ctx, taskID,
+		interfaces.NewBuildTaskUpdate().
+			WithStatus(interfaces.BuildTaskStatusRunning).
+			WithErrorMsg(""),
+		allowedStatuses...,
 	)
 }
 
@@ -116,36 +119,70 @@ func buildLocalIndexResource(buildTask *interfaces.BuildTask, resource *interfac
 	// features applied. Persisted schema changes must go through update resource;
 	// build tasks only use this copy for index mapping. Embedding fields append
 	// independent _vector fields.
-	if buildTask.EmbeddingFields != "" {
+	embeddingFields := buildTaskEmbeddingFields(buildTask)
+	if len(embeddingFields) > 0 {
 		var newSchema []*interfaces.Property
 		newSchema = append(newSchema, resource.SchemaDefinition...)
-		for _, field := range strings.Split(buildTask.EmbeddingFields, ",") {
-			field = strings.TrimSpace(field)
-			if field != "" {
-				newSchema = append(newSchema, &interfaces.Property{
-					Name: field + "_vector",
-					Type: interfaces.DataType_Vector,
-					Features: []interfaces.PropertyFeature{
-						{
-							FeatureType: interfaces.DataType_Vector,
-							Config: map[string]any{
-								"dimension": buildTask.ModelDimensions,
-								"method": map[string]any{
-									"name":   "hnsw",
-									"engine": "lucene",
-									"parameters": map[string]any{
-										"ef_construction": 256,
-									},
+		for _, field := range embeddingFields {
+			newSchema = append(newSchema, &interfaces.Property{
+				Name: field + "_vector",
+				Type: interfaces.DataType_Vector,
+				Features: []interfaces.PropertyFeature{
+					{
+						FeatureType: interfaces.DataType_Vector,
+						Config: map[string]any{
+							"dimension": embeddingDimensionsForField(buildTask, field),
+							"method": map[string]any{
+								"name":   "hnsw",
+								"engine": "lucene",
+								"parameters": map[string]any{
+									"ef_construction": 256,
 								},
 							},
 						},
 					},
-				})
-			}
+				},
+			})
 		}
 		newResource.SchemaDefinition = newSchema
 	}
 	return &newResource
+}
+
+func embeddingDimensionsForField(buildTask *interfaces.BuildTask, field string) int {
+	if feature, ok := buildTaskIndexFeatures(buildTask)[field]; ok && feature.Vector != nil && feature.Vector.Dimensions > 0 {
+		return feature.Vector.Dimensions
+	}
+	return 0
+}
+
+func buildTaskIndexFeatures(buildTask *interfaces.BuildTask) map[string]interfaces.BuildTaskFieldIndexFeature {
+	if buildTask == nil || buildTask.IndexConfig == nil {
+		return nil
+	}
+	return buildTask.IndexConfig.Features
+}
+
+func buildTaskEmbeddingFields(buildTask *interfaces.BuildTask) []string {
+	fields := make([]string, 0)
+	for field, feature := range buildTaskIndexFeatures(buildTask) {
+		if feature.Vector != nil {
+			fields = append(fields, field)
+		}
+	}
+	sort.Strings(fields)
+	return fields
+}
+
+func buildTaskHasEmbedding(buildTask *interfaces.BuildTask) bool {
+	return len(buildTaskEmbeddingFields(buildTask)) > 0
+}
+
+func buildTaskBuildKeyFields(buildTask *interfaces.BuildTask) []string {
+	if buildTask == nil || buildTask.IndexConfig == nil {
+		return nil
+	}
+	return append([]string(nil), buildTask.IndexConfig.BuildKeyFields...)
 }
 
 // fieldNameSet 把逗号分隔的字段名解析为集合。
@@ -184,15 +221,37 @@ func analyzerOf(config map[string]any) string {
 // 集合内字段补齐(并校正 analyzer)、集合外字段移除残留。返回是否有改动。
 // 调用方应在 build-local schema 副本上使用它；持久化 schema 变更只能走 update resource。
 func reconcileFulltextFeatures(resource *interfaces.Resource, fulltextFields, analyzer string) bool {
-	set := fieldNameSet(fulltextFields)
-	var config map[string]any
-	if analyzer != "" {
-		config = map[string]any{"analyzer": analyzer}
+	analyzers := map[string]string{}
+	for field := range fieldNameSet(fulltextFields) {
+		analyzers[field] = analyzer
 	}
+	return reconcileFulltextFeaturesByField(resource, fulltextFields, analyzers)
+}
+
+func reconcileTaskFulltextFeatures(resource *interfaces.Resource, buildTask *interfaces.BuildTask) bool {
+	analyzers := map[string]string{}
+	fields := make([]string, 0)
+	for field, feature := range buildTaskIndexFeatures(buildTask) {
+		if feature.Fulltext != nil {
+			fields = append(fields, field)
+			analyzers[field] = feature.Fulltext.Analyzer
+		}
+	}
+	sort.Strings(fields)
+	return reconcileFulltextFeaturesByField(resource, strings.Join(fields, ","), analyzers)
+}
+
+func reconcileFulltextFeaturesByField(resource *interfaces.Resource, fulltextFields string, analyzers map[string]string) bool {
+	set := fieldNameSet(fulltextFields)
 	changed := false
 	for _, prop := range resource.SchemaDefinition {
 		if prop == nil {
 			continue
+		}
+		analyzer := analyzers[prop.Name]
+		var config map[string]any
+		if analyzer != "" {
+			config = map[string]any{"analyzer": analyzer}
 		}
 		switch {
 		case set[prop.Name] && !hasFulltextFeature(prop):

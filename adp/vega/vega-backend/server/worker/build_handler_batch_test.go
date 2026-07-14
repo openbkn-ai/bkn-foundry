@@ -33,12 +33,14 @@ func TestBatchBuildHandlerHandleTask(t *testing.T) {
 		taskAccess.EXPECT().GetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{
 			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusInit, Creator: creator,
 		}, nil)
-		taskAccess.EXPECT().UpdateStatusIfIn(gomock.Any(), "t1",
-			[]string{interfaces.BuildTaskStatusInit},
-			map[string]interface{}{"status": interfaces.BuildTaskStatusRunning, "errorMsg": ""}).
+		taskAccess.EXPECT().UpdateStatus(gomock.Any(), "t1",
+			interfaces.NewBuildTaskUpdate().
+				WithStatus(interfaces.BuildTaskStatusRunning).
+				WithErrorMsg(""),
+			interfaces.BuildTaskStatusInit).
 			Return(true, nil)
 		resAccess.EXPECT().GetByID(gomock.Any(), "r1").Return(&interfaces.Resource{ID: "r1", CatalogID: "c1"}, nil)
-		taskAccess.EXPECT().UpdateStatus(gomock.Any(), "t1", gomock.Any()).Return(nil).AnyTimes()
+		taskAccess.EXPECT().UpdateStatus(gomock.Any(), "t1", gomock.Any()).Return(true, nil).AnyTimes()
 
 		var gotAccount interfaces.AccountInfo
 		var hasAccount bool
@@ -62,9 +64,11 @@ func TestBatchBuildHandlerHandleTask(t *testing.T) {
 		taskAccess.EXPECT().GetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{
 			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusInit,
 		}, nil)
-		taskAccess.EXPECT().UpdateStatusIfIn(gomock.Any(), "t1",
-			[]string{interfaces.BuildTaskStatusInit},
-			map[string]interface{}{"status": interfaces.BuildTaskStatusRunning, "errorMsg": ""}).
+		taskAccess.EXPECT().UpdateStatus(gomock.Any(), "t1",
+			interfaces.NewBuildTaskUpdate().
+				WithStatus(interfaces.BuildTaskStatusRunning).
+				WithErrorMsg(""),
+			interfaces.BuildTaskStatusInit).
 			Return(false, nil)
 
 		task := asynq.NewTask("build:batch", workerBuildTaskPayload(t, interfaces.BatchBuildTaskMessage{TaskID: "t1"}))
@@ -164,9 +168,12 @@ func TestBuildResourceForTaskDoesNotMutateResourceSchema(t *testing.T) {
 		{Name: "body", Type: interfaces.DataType_String},
 	}}
 	task := &interfaces.BuildTask{
-		ID:               "t1",
-		FulltextFields:   "title",
-		FulltextAnalyzer: "ik_max_word",
+		ID: "t1",
+		IndexConfig: &interfaces.BuildTaskIndexConfig{
+			Features: map[string]interfaces.BuildTaskFieldIndexFeature{
+				"title": {Fulltext: &interfaces.BuildTaskFulltextConfig{Analyzer: "ik_max_word"}},
+			},
+		},
 	}
 
 	buildRes, err := buildResourceForTask(res, task)

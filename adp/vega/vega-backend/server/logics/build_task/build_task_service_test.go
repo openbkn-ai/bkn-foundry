@@ -15,6 +15,8 @@ import (
 
 	"github.com/hibiken/asynq"
 	"github.com/openbkn-ai/bkn-comm-go/rest"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
 	verrors "vega-backend/errors"
@@ -26,10 +28,10 @@ import (
 func TestCreateBuildTaskRejectsDisabledCatalog(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockCS := mock_interfaces.NewMockCatalogService(ctrl)
-	mockRA := mock_interfaces.NewMockResourceAccess(ctrl)
-	service := &buildTaskService{cs: mockCS, ra: mockRA}
+	mockRS := mock_interfaces.NewMockResourceService(ctrl)
+	service := &buildTaskService{cs: mockCS, rs: mockRS}
 
-	mockRA.EXPECT().GetByID(gomock.Any(), "resource-1").
+	mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").
 		Return(&interfaces.Resource{
 			ID:        "resource-1",
 			CatalogID: "catalog-1",
@@ -45,11 +47,11 @@ func TestCreateBuildTaskRejectsDisabledCatalog(t *testing.T) {
 func TestCreateBuildTaskRejectsActiveTaskForResource(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockCS := mock_interfaces.NewMockCatalogService(ctrl)
-	mockRA := mock_interfaces.NewMockResourceAccess(ctrl)
+	mockRS := mock_interfaces.NewMockResourceService(ctrl)
 	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
-	service := &buildTaskService{cs: mockCS, ra: mockRA, bta: mockBTA}
+	service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA}
 
-	mockRA.EXPECT().GetByID(gomock.Any(), "resource-1").
+	mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").
 		Return(&interfaces.Resource{
 			ID:        "resource-1",
 			CatalogID: "catalog-1",
@@ -224,7 +226,7 @@ func TestStopBuildTaskRunningToStopping(t *testing.T) {
 	mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").
 		Return(&interfaces.BuildTask{ID: "task-1", Status: interfaces.BuildTaskStatusRunning}, nil)
 	mockBTA.EXPECT().UpdateStatus(gomock.Any(), "task-1",
-		map[string]any{"status": interfaces.BuildTaskStatusStopping}).Return(nil)
+		interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusStopping)).Return(true, nil)
 
 	if err := service.StopBuildTask(context.Background(), "task-1"); err != nil {
 		t.Fatalf("expected nil, got %v", err)
@@ -241,7 +243,7 @@ func TestStopBuildTaskForceFinalizesStuckStopping(t *testing.T) {
 	mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").
 		Return(&interfaces.BuildTask{ID: "task-1", Status: interfaces.BuildTaskStatusStopping}, nil)
 	mockBTA.EXPECT().UpdateStatus(gomock.Any(), "task-1",
-		map[string]any{"status": interfaces.BuildTaskStatusStopped}).Return(nil)
+		interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusStopped)).Return(true, nil)
 
 	if err := service.StopBuildTask(context.Background(), "task-1"); err != nil {
 		t.Fatalf("expected nil, got %v", err)
@@ -277,32 +279,32 @@ func TestComputeIndexHealth(t *testing.T) {
 	}{
 		{
 			name:          "embedding all failed (completed but vectorized=0) -> failed, fulltext ok, unusable",
-			bt:            interfaces.BuildTask{Status: "completed", EmbeddingFields: "name", FulltextFields: "name", SyncedCount: 6, VectorizedCount: 0},
+			bt:            interfaces.BuildTask{Status: "completed", IndexConfig: testBuildTaskIndexConfig(true, true), SyncedCount: 6, VectorizedCount: 0},
 			wantEmbedding: "failed", wantFulltext: "ok", wantUsable: false,
 		},
 		{
 			name:          "embedding partial -> partial, unusable",
-			bt:            interfaces.BuildTask{Status: "completed", EmbeddingFields: "name", SyncedCount: 6, VectorizedCount: 4},
+			bt:            interfaces.BuildTask{Status: "completed", IndexConfig: testBuildTaskIndexConfig(true, false), SyncedCount: 6, VectorizedCount: 4},
 			wantEmbedding: "partial", wantFulltext: "none", wantUsable: false,
 		},
 		{
 			name:          "embedding full -> ok, usable",
-			bt:            interfaces.BuildTask{Status: "completed", EmbeddingFields: "name", SyncedCount: 6, VectorizedCount: 6},
+			bt:            interfaces.BuildTask{Status: "completed", IndexConfig: testBuildTaskIndexConfig(true, false), SyncedCount: 6, VectorizedCount: 6},
 			wantEmbedding: "ok", wantFulltext: "none", wantUsable: true,
 		},
 		{
 			name:          "no embedding requested -> none, usable",
-			bt:            interfaces.BuildTask{Status: "completed", FulltextFields: "name", SyncedCount: 6},
+			bt:            interfaces.BuildTask{Status: "completed", IndexConfig: testBuildTaskIndexConfig(false, true), SyncedCount: 6},
 			wantEmbedding: "none", wantFulltext: "ok", wantUsable: true,
 		},
 		{
 			name:          "running -> building, not usable yet",
-			bt:            interfaces.BuildTask{Status: "running", EmbeddingFields: "name", SyncedCount: 6, VectorizedCount: 2},
+			bt:            interfaces.BuildTask{Status: "running", IndexConfig: testBuildTaskIndexConfig(true, false), SyncedCount: 6, VectorizedCount: 2},
 			wantEmbedding: "building", wantFulltext: "none", wantUsable: false,
 		},
 		{
 			name:          "empty table -> ok, usable",
-			bt:            interfaces.BuildTask{Status: "completed", EmbeddingFields: "name", SyncedCount: 0, VectorizedCount: 0},
+			bt:            interfaces.BuildTask{Status: "completed", IndexConfig: testBuildTaskIndexConfig(true, false), SyncedCount: 0, VectorizedCount: 0},
 			wantEmbedding: "ok", wantFulltext: "none", wantUsable: true,
 		},
 	}
@@ -317,17 +319,30 @@ func TestComputeIndexHealth(t *testing.T) {
 	}
 }
 
+func testBuildTaskIndexConfig(vector bool, fulltext bool) *interfaces.BuildTaskIndexConfig {
+	feature := interfaces.BuildTaskFieldIndexFeature{}
+	if vector {
+		feature.Vector = &interfaces.BuildTaskEmbeddingConfig{ModelID: "m1", Dimensions: 1024}
+	}
+	if fulltext {
+		feature.Fulltext = &interfaces.BuildTaskFulltextConfig{Analyzer: "ik_max_word"}
+	}
+	return &interfaces.BuildTaskIndexConfig{
+		Features: map[string]interfaces.BuildTaskFieldIndexFeature{"name": feature},
+	}
+}
+
 // 删任务应连带 drop 其 OpenSearch 索引（与删资源/删 catalog 级联语义一致）。
 func TestDeleteBuildTasks_DropsIndexAndRow(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
-	mockRA := mock_interfaces.NewMockResourceAccess(ctrl)
+	mockRS := mock_interfaces.NewMockResourceService(ctrl)
 	mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
-	service := &buildTaskService{bta: mockBTA, ra: mockRA, lim: mockLIM}
+	service := &buildTaskService{bta: mockBTA, rs: mockRS, lim: mockLIM}
 
 	mockBTA.EXPECT().GetByID(gomock.Any(), "t1").
 		Return(&interfaces.BuildTask{ID: "t1", ResourceID: "r1", Status: "completed"}, nil)
-	mockRA.EXPECT().GetByID(gomock.Any(), "r1").
+	mockRS.EXPECT().GetByID(gomock.Any(), "r1").
 		Return(&interfaces.Resource{ID: "r1", LocalIndexName: interfaces.BuildIndexName("r1", "old-task")}, nil)
 	mockLIM.EXPECT().DeleteIndex(gomock.Any(), interfaces.BuildIndexName("r1", "t1")).Return(nil)
 	mockBTA.EXPECT().Delete(gomock.Any(), "t1").Return(nil)
@@ -340,14 +355,14 @@ func TestDeleteBuildTasks_DropsIndexAndRow(t *testing.T) {
 func TestDeleteBuildTasks_RefusesActiveLocalIndex(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
-	mockRA := mock_interfaces.NewMockResourceAccess(ctrl)
+	mockRS := mock_interfaces.NewMockResourceService(ctrl)
 	mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
-	service := &buildTaskService{bta: mockBTA, ra: mockRA, lim: mockLIM}
+	service := &buildTaskService{bta: mockBTA, rs: mockRS, lim: mockLIM}
 
 	idx := interfaces.BuildIndexName("r1", "t1")
 	mockBTA.EXPECT().GetByID(gomock.Any(), "t1").
 		Return(&interfaces.BuildTask{ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusCompleted}, nil)
-	mockRA.EXPECT().GetByID(gomock.Any(), "r1").
+	mockRS.EXPECT().GetByID(gomock.Any(), "r1").
 		Return(&interfaces.Resource{ID: "r1", LocalIndexName: idx}, nil)
 	// Active index conflicts must not delete either the index or the task row.
 
@@ -367,16 +382,16 @@ func TestDeleteBuildTasks_RefusesActiveLocalIndex(t *testing.T) {
 func TestDeleteBuildTasks_DeleteActiveLocalIndexWhenExplicitlyAllowed(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
-	mockRA := mock_interfaces.NewMockResourceAccess(ctrl)
+	mockRS := mock_interfaces.NewMockResourceService(ctrl)
 	mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
-	service := &buildTaskService{bta: mockBTA, ra: mockRA, lim: mockLIM}
+	service := &buildTaskService{bta: mockBTA, rs: mockRS, lim: mockLIM}
 
 	idx := interfaces.BuildIndexName("r1", "t1")
 	resource := &interfaces.Resource{ID: "r1", LocalIndexName: idx}
 	mockBTA.EXPECT().GetByID(gomock.Any(), "t1").
 		Return(&interfaces.BuildTask{ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusCompleted}, nil)
-	mockRA.EXPECT().GetByID(gomock.Any(), "r1").Return(resource, nil)
-	mockRA.EXPECT().Update(gomock.Any(), gomock.Any()).
+	mockRS.EXPECT().GetByID(gomock.Any(), "r1").Return(resource, nil)
+	mockRS.EXPECT().UpdateResource(gomock.Any(), gomock.Any()).
 		DoAndReturn(func(_ context.Context, got *interfaces.Resource) error {
 			if got.ID != "r1" {
 				t.Fatalf("expected resource r1, got %s", got.ID)
@@ -397,16 +412,16 @@ func TestDeleteBuildTasks_DeleteActiveLocalIndexWhenExplicitlyAllowed(t *testing
 func TestDeleteBuildTasks_ClearActiveLocalIndexFailureBlocksDeletion(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
-	mockRA := mock_interfaces.NewMockResourceAccess(ctrl)
+	mockRS := mock_interfaces.NewMockResourceService(ctrl)
 	mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
-	service := &buildTaskService{bta: mockBTA, ra: mockRA, lim: mockLIM}
+	service := &buildTaskService{bta: mockBTA, rs: mockRS, lim: mockLIM}
 
 	idx := interfaces.BuildIndexName("r1", "t1")
 	mockBTA.EXPECT().GetByID(gomock.Any(), "t1").
 		Return(&interfaces.BuildTask{ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusCompleted}, nil)
-	mockRA.EXPECT().GetByID(gomock.Any(), "r1").
+	mockRS.EXPECT().GetByID(gomock.Any(), "r1").
 		Return(&interfaces.Resource{ID: "r1", LocalIndexName: idx}, nil)
-	mockRA.EXPECT().Update(gomock.Any(), gomock.Any()).Return(errors.New("update failed"))
+	mockRS.EXPECT().UpdateResource(gomock.Any(), gomock.Any()).Return(errors.New("update failed"))
 	// Clearing LocalIndexName failed, so the index and task row must remain untouched.
 
 	err := service.DeleteBuildTasks(context.Background(), []string{"t1"}, false, true)
@@ -422,13 +437,13 @@ func TestDeleteBuildTasks_ClearActiveLocalIndexFailureBlocksDeletion(t *testing.
 func TestDeleteBuildTasks_AllowsOrphanTaskWhenResourceMissing(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
-	mockRA := mock_interfaces.NewMockResourceAccess(ctrl)
+	mockRS := mock_interfaces.NewMockResourceService(ctrl)
 	mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
-	service := &buildTaskService{bta: mockBTA, ra: mockRA, lim: mockLIM}
+	service := &buildTaskService{bta: mockBTA, rs: mockRS, lim: mockLIM}
 
 	mockBTA.EXPECT().GetByID(gomock.Any(), "t1").
 		Return(&interfaces.BuildTask{ID: "t1", ResourceID: "missing-resource", Status: interfaces.BuildTaskStatusFailed}, nil)
-	mockRA.EXPECT().GetByID(gomock.Any(), "missing-resource").Return(nil, nil)
+	mockRS.EXPECT().GetByID(gomock.Any(), "missing-resource").Return(nil, nil)
 	mockLIM.EXPECT().DeleteIndex(gomock.Any(), interfaces.BuildIndexName("missing-resource", "t1")).Return(nil)
 	mockBTA.EXPECT().Delete(gomock.Any(), "t1").Return(nil)
 
@@ -440,13 +455,13 @@ func TestDeleteBuildTasks_AllowsOrphanTaskWhenResourceMissing(t *testing.T) {
 func TestDeleteBuildTasks_ResourceLookupFailureBlocksDeletion(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
-	mockRA := mock_interfaces.NewMockResourceAccess(ctrl)
+	mockRS := mock_interfaces.NewMockResourceService(ctrl)
 	mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
-	service := &buildTaskService{bta: mockBTA, ra: mockRA, lim: mockLIM}
+	service := &buildTaskService{bta: mockBTA, rs: mockRS, lim: mockLIM}
 
 	mockBTA.EXPECT().GetByID(gomock.Any(), "t1").
 		Return(&interfaces.BuildTask{ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusStopped}, nil)
-	mockRA.EXPECT().GetByID(gomock.Any(), "r1").Return(nil, errors.New("db unavailable"))
+	mockRS.EXPECT().GetByID(gomock.Any(), "r1").Return(nil, errors.New("db unavailable"))
 	// If the guard cannot prove the index is safe to delete, deletion must not proceed.
 
 	err := service.DeleteBuildTasks(context.Background(), []string{"t1"}, false, false)
@@ -494,14 +509,38 @@ func neutralizeEnqueue(t *testing.T, ctrl *gomock.Controller) {
 func TestCreateBuildTaskNormalizesModelNameToID(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockCS := mock_interfaces.NewMockCatalogService(ctrl)
-	mockRA := mock_interfaces.NewMockResourceAccess(ctrl)
+	mockRS := mock_interfaces.NewMockResourceService(ctrl)
 	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 	mockMFA := mock_interfaces.NewMockModelFactoryAccess(ctrl)
 	neutralizeEnqueue(t, ctrl)
-	service := &buildTaskService{cs: mockCS, ra: mockRA, bta: mockBTA, mfa: mockMFA}
+	service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA, mfa: mockMFA}
 
-	mockRA.EXPECT().GetByID(gomock.Any(), "resource-1").
-		Return(&interfaces.Resource{ID: "resource-1", CatalogID: "catalog-1", Category: interfaces.ResourceCategoryTable}, nil)
+	mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").
+		Return(&interfaces.Resource{
+			ID:        "resource-1",
+			CatalogID: "catalog-1",
+			Category:  interfaces.ResourceCategoryTable,
+			IndexConfig: &interfaces.ResourceIndexConfig{
+				BuildKeyFields:          []string{"id"},
+				DefaultEmbeddingModel:   "text-embedding-v4",
+				DefaultFulltextAnalyzer: "ik_max_word",
+			},
+			SchemaDefinition: []*interfaces.Property{
+				{
+					Name: "family_name",
+					Features: []interfaces.PropertyFeature{
+						{FeatureType: interfaces.PropertyFeatureType_Vector, RefProperty: "family_name"},
+						{FeatureType: interfaces.PropertyFeatureType_Fulltext, RefProperty: "family_name"},
+					},
+				},
+				{
+					Name: "given_name",
+					Features: []interfaces.PropertyFeature{
+						{FeatureType: interfaces.PropertyFeatureType_Vector, RefProperty: "given_name"},
+					},
+				},
+			},
+		}, nil)
 	mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
 		Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
 	mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).
@@ -522,10 +561,8 @@ func TestCreateBuildTaskNormalizesModelNameToID(t *testing.T) {
 		})
 
 	_, err := service.CreateBuildTask(context.Background(), &interfaces.CreateBuildTaskRequest{
-		ResourceID:      "resource-1",
-		Mode:            interfaces.BuildTaskModeBatch,
-		EmbeddingFields: "family_name,given_name",
-		EmbeddingModel:  "text-embedding-v4",
+		ResourceID: "resource-1",
+		Mode:       interfaces.BuildTaskModeBatch,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -533,25 +570,43 @@ func TestCreateBuildTaskNormalizesModelNameToID(t *testing.T) {
 	if captured == nil {
 		t.Fatal("bta.Create was not called")
 	}
-	if captured.EmbeddingModel != "2064382281006583808" {
-		t.Fatalf("embedding_model not normalized to id: got %q", captured.EmbeddingModel)
-	}
-	if captured.ModelDimensions != 1024 {
-		t.Fatalf("model_dimensions not filled from model: got %d", captured.ModelDimensions)
-	}
+	require.NotNil(t, captured.IndexConfig)
+	assert.Equal(t, []string{"id"}, captured.IndexConfig.BuildKeyFields)
+	assert.Equal(t, &interfaces.BuildTaskEmbeddingConfig{ModelID: "2064382281006583808", Dimensions: 1024}, captured.IndexConfig.Features["family_name"].Vector)
+	assert.Equal(t, &interfaces.BuildTaskEmbeddingConfig{ModelID: "2064382281006583808", Dimensions: 1024}, captured.IndexConfig.Features["given_name"].Vector)
+	assert.Equal(t, &interfaces.BuildTaskFulltextConfig{Analyzer: "ik_max_word"}, captured.IndexConfig.Features["family_name"].Fulltext)
 }
 
-func TestCreateBuildTaskKeepsModelIDWhenNameLookupFails(t *testing.T) {
+func TestCreateBuildTaskUsesFeatureEmbeddingModelOverride(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockCS := mock_interfaces.NewMockCatalogService(ctrl)
-	mockRA := mock_interfaces.NewMockResourceAccess(ctrl)
+	mockRS := mock_interfaces.NewMockResourceService(ctrl)
 	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 	mockMFA := mock_interfaces.NewMockModelFactoryAccess(ctrl)
 	neutralizeEnqueue(t, ctrl)
-	service := &buildTaskService{cs: mockCS, ra: mockRA, bta: mockBTA, mfa: mockMFA}
+	service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA, mfa: mockMFA}
 
-	mockRA.EXPECT().GetByID(gomock.Any(), "resource-1").
-		Return(&interfaces.Resource{ID: "resource-1", CatalogID: "catalog-1", Category: interfaces.ResourceCategoryTable}, nil)
+	mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").
+		Return(&interfaces.Resource{
+			ID:        "resource-1",
+			CatalogID: "catalog-1",
+			Category:  interfaces.ResourceCategoryTable,
+			IndexConfig: &interfaces.ResourceIndexConfig{
+				DefaultEmbeddingModel: "default-model",
+			},
+			SchemaDefinition: []*interfaces.Property{
+				{
+					Name: "family_name",
+					Features: []interfaces.PropertyFeature{
+						{
+							FeatureType: interfaces.PropertyFeatureType_Vector,
+							RefProperty: "family_name",
+							Config:      map[string]any{"embedding_model": "text-embedding-v4"},
+						},
+					},
+				},
+			},
+		}, nil)
 	mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
 		Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
 	mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).
@@ -561,8 +616,8 @@ func TestCreateBuildTaskKeepsModelIDWhenNameLookupFails(t *testing.T) {
 			}
 			return nil, 0, nil
 		})
-	mockMFA.EXPECT().GetModelByName(gomock.Any(), "2064382281006583808").
-		Return(nil, fmt.Errorf("model not found"))
+	mockMFA.EXPECT().GetModelByName(gomock.Any(), "text-embedding-v4").
+		Return(&interfaces.SmallModel{ModelID: "2064382281006583808", ModelName: "text-embedding-v4", EmbeddingDim: 1024}, nil)
 
 	var captured *interfaces.BuildTask
 	mockBTA.EXPECT().Create(gomock.Any(), gomock.Any()).
@@ -572,11 +627,8 @@ func TestCreateBuildTaskKeepsModelIDWhenNameLookupFails(t *testing.T) {
 		})
 
 	_, err := service.CreateBuildTask(context.Background(), &interfaces.CreateBuildTaskRequest{
-		ResourceID:      "resource-1",
-		Mode:            interfaces.BuildTaskModeBatch,
-		EmbeddingFields: "family_name,given_name",
-		EmbeddingModel:  "2064382281006583808",
-		ModelDimensions: 1024,
+		ResourceID: "resource-1",
+		Mode:       interfaces.BuildTaskModeBatch,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -584,21 +636,35 @@ func TestCreateBuildTaskKeepsModelIDWhenNameLookupFails(t *testing.T) {
 	if captured == nil {
 		t.Fatal("bta.Create was not called")
 	}
-	if captured.EmbeddingModel != "2064382281006583808" {
-		t.Fatalf("embedding_model id was altered: got %q", captured.EmbeddingModel)
-	}
+	require.NotNil(t, captured.IndexConfig)
+	assert.Equal(t, &interfaces.BuildTaskEmbeddingConfig{ModelID: "2064382281006583808", Dimensions: 1024}, captured.IndexConfig.Features["family_name"].Vector)
 }
 
 func TestCreateBuildTaskErrorsWhenModelUnresolvableAndNoDimensions(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockCS := mock_interfaces.NewMockCatalogService(ctrl)
-	mockRA := mock_interfaces.NewMockResourceAccess(ctrl)
+	mockRS := mock_interfaces.NewMockResourceService(ctrl)
 	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 	mockMFA := mock_interfaces.NewMockModelFactoryAccess(ctrl)
-	service := &buildTaskService{cs: mockCS, ra: mockRA, bta: mockBTA, mfa: mockMFA}
+	service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA, mfa: mockMFA}
 
-	mockRA.EXPECT().GetByID(gomock.Any(), "resource-1").
-		Return(&interfaces.Resource{ID: "resource-1", CatalogID: "catalog-1", Category: interfaces.ResourceCategoryTable}, nil)
+	mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").
+		Return(&interfaces.Resource{
+			ID:        "resource-1",
+			CatalogID: "catalog-1",
+			Category:  interfaces.ResourceCategoryTable,
+			IndexConfig: &interfaces.ResourceIndexConfig{
+				DefaultEmbeddingModel: "bogus-model",
+			},
+			SchemaDefinition: []*interfaces.Property{
+				{
+					Name: "family_name",
+					Features: []interfaces.PropertyFeature{
+						{FeatureType: interfaces.PropertyFeatureType_Vector, RefProperty: "family_name"},
+					},
+				},
+			},
+		}, nil)
 	mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
 		Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
 	mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).
@@ -612,10 +678,8 @@ func TestCreateBuildTaskErrorsWhenModelUnresolvableAndNoDimensions(t *testing.T)
 		Return(nil, fmt.Errorf("model not found"))
 
 	_, err := service.CreateBuildTask(context.Background(), &interfaces.CreateBuildTaskRequest{
-		ResourceID:      "resource-1",
-		Mode:            interfaces.BuildTaskModeBatch,
-		EmbeddingFields: "family_name,given_name",
-		EmbeddingModel:  "bogus-model",
+		ResourceID: "resource-1",
+		Mode:       interfaces.BuildTaskModeBatch,
 	})
 	if err == nil {
 		t.Fatal("expected error for unresolvable model without dimensions")

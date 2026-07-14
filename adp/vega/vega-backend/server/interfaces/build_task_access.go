@@ -22,10 +22,9 @@ type BuildTaskAccess interface {
 	GetByCatalogID(ctx context.Context, catalogID string) ([]*BuildTask, error)
 	// List retrieves build tasks with filters and pagination.
 	List(ctx context.Context, params BuildTasksQueryParams) ([]*BuildTask, int64, error)
-	// UpdateStatus updates a build task's status and other fields.
-	UpdateStatus(ctx context.Context, id string, updates map[string]interface{}) error
-	// UpdateStatusIfIn updates a build task only when its current status is in allowedStatuses.
-	UpdateStatusIfIn(ctx context.Context, id string, allowedStatuses []string, updates map[string]interface{}) (bool, error)
+	// UpdateStatus updates a build task's status and progress fields. When allowedStatuses is not empty,
+	// the update is applied only if the current status matches one of them.
+	UpdateStatus(ctx context.Context, id string, update BuildTaskUpdate, allowedStatuses ...string) (bool, error)
 	// GetStatus retrieves the status of a build task by ID.
 	GetStatus(ctx context.Context, id string) (string, error)
 	// Delete deletes a build task by ID.
