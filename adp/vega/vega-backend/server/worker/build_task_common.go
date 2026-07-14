@@ -12,15 +12,16 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"sort"
 	"strings"
 	"time"
 
 	"github.com/bytedance/sonic"
 	"github.com/hibiken/asynq"
+	"github.com/mohae/deepcopy"
 	"github.com/segmentio/kafka-go"
 
 	"vega-backend/interfaces"
+	"vega-backend/logics"
 )
 
 func getIndexName(resourceID, buildTaskID string) string {
@@ -57,7 +58,7 @@ func getNewDocID(primaryKeyValues []interfaces.KeyValue, document map[string]any
 func updateResourceIndexName(ctx context.Context, resource *interfaces.Resource, ra interfaces.ResourceAccess, indexName string) error {
 	if resource.LocalIndexName == "" {
 		resource.LocalIndexName = indexName
-		return ra.Update(ctx, resource)
+		return ra.Update(ctx, nil, resource)
 	}
 
 	if resource.LocalIndexName == indexName {
@@ -66,11 +67,50 @@ func updateResourceIndexName(ctx context.Context, resource *interfaces.Resource,
 
 	oldIndexName := resource.LocalIndexName
 	resource.LocalIndexName = indexName
-	if err := ra.Update(ctx, resource); err != nil {
+	if err := ra.Update(ctx, nil, resource); err != nil {
 		resource.LocalIndexName = oldIndexName
 		return err
 	}
 
+	return nil
+}
+
+func completeBuildTaskWithoutEmbedding(ctx context.Context, resource *interfaces.Resource, ra interfaces.ResourceAccess, taskAccess interfaces.BuildTaskAccess, taskID, indexName string) error {
+	if logics.DB == nil {
+		return errors.New("database is not initialized")
+	}
+
+	tx, err := logics.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	oldIndexName := resource.LocalIndexName
+	if resource.LocalIndexName != indexName {
+		resource.LocalIndexName = indexName
+		if err := ra.Update(ctx, tx, resource); err != nil {
+			resource.LocalIndexName = oldIndexName
+			return fmt.Errorf("update resource index name: %w", err)
+		}
+	}
+
+	update := interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusCompleted)
+	if _, err := taskAccess.UpdateStatus(ctx, tx, taskID, update); err != nil {
+		resource.LocalIndexName = oldIndexName
+		return fmt.Errorf("update build task status: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		resource.LocalIndexName = oldIndexName
+		return fmt.Errorf("commit transaction: %w", err)
+	}
+	committed = true
 	return nil
 }
 
@@ -79,7 +119,7 @@ func claimBuildTaskExecution(ctx context.Context, taskAccess interfaces.BuildTas
 	if retryCount, ok := asynq.GetRetryCount(ctx); ok && retryCount > 0 {
 		allowedStatuses = append(allowedStatuses, interfaces.BuildTaskStatusRunning)
 	}
-	return taskAccess.UpdateStatus(ctx, taskID,
+	return taskAccess.UpdateStatus(ctx, nil, taskID,
 		interfaces.NewBuildTaskUpdate().
 			WithStatus(interfaces.BuildTaskStatusRunning).
 			WithErrorMsg(""),
@@ -100,60 +140,67 @@ func isAsynqFinalRetry(ctx context.Context) bool {
 }
 
 // createManagedLocalIndex creates a build-task local index through LocalIndexManager.
-func createManagedLocalIndex(ctx context.Context, lim interfaces.LocalIndexManager, buildTask *interfaces.BuildTask, resource *interfaces.Resource) error {
-	newResource := buildLocalIndexResource(buildTask, resource)
-	exist, err := lim.CheckExist(ctx, newResource.ID)
+func createManagedLocalIndex(ctx context.Context, lim interfaces.LocalIndexManager, indexName string, buildTask *interfaces.BuildTask, resource *interfaces.Resource) error {
+	schema, err := buildLocalIndexSchema(buildTask, resource)
+	if err != nil {
+		return err
+	}
+	exist, err := lim.CheckExist(ctx, indexName)
 	if err != nil {
 		return fmt.Errorf("check local index exist failed: %w", err)
 	}
 	if exist {
 		return nil
 	}
-	return lim.CreateIndex(ctx, newResource.ID, newResource.SchemaDefinition)
+	return lim.CreateIndex(ctx, indexName, schema)
 }
 
-func buildLocalIndexResource(buildTask *interfaces.BuildTask, resource *interfaces.Resource) *interfaces.Resource {
-	newResource := *resource
-	newResource.ID = getIndexName(resource.ID, buildTask.ID)
-	// resource.SchemaDefinition may be a build-local copy with task fulltext
-	// features applied. Persisted schema changes must go through update resource;
-	// build tasks only use this copy for index mapping. Embedding fields append
-	// independent _vector fields.
-	embeddingFields := buildTaskEmbeddingFields(buildTask)
-	if len(embeddingFields) > 0 {
-		var newSchema []*interfaces.Property
-		newSchema = append(newSchema, resource.SchemaDefinition...)
-		for _, field := range embeddingFields {
-			newSchema = append(newSchema, &interfaces.Property{
-				Name: field + "_vector",
-				Type: interfaces.DataType_Vector,
-				Features: []interfaces.PropertyFeature{
-					{
-						FeatureType: interfaces.DataType_Vector,
-						Config: map[string]any{
-							"dimension": embeddingDimensionsForField(buildTask, field),
-							"method": map[string]any{
-								"name":   "hnsw",
-								"engine": "lucene",
-								"parameters": map[string]any{
-									"ef_construction": 256,
-								},
+func buildLocalIndexSchema(buildTask *interfaces.BuildTask, resource *interfaces.Resource) ([]*interfaces.Property, error) {
+	var schema []*interfaces.Property
+	if resource.SchemaDefinition != nil {
+		schemaDefinition, ok := deepcopy.Copy(resource.SchemaDefinition).([]*interfaces.Property)
+		if !ok {
+			return nil, fmt.Errorf("copy resource schema failed")
+		}
+		schema = schemaDefinition
+	}
+
+	if err := validateTaskFulltextFeatures(schema, buildTask); err != nil {
+		return nil, err
+	}
+	if err := validateTaskEmbeddingFeatures(schema, buildTask); err != nil {
+		return nil, err
+	}
+	return appendTaskEmbeddingVectorFields(schema, buildTask), nil
+}
+
+func appendTaskEmbeddingVectorFields(schema []*interfaces.Property, buildTask *interfaces.BuildTask) []*interfaces.Property {
+	newSchema := append([]*interfaces.Property{}, schema...)
+	for field, feature := range buildTaskIndexFeatures(buildTask) {
+		if feature.Vector == nil {
+			continue
+		}
+		newSchema = append(newSchema, &interfaces.Property{
+			Name: field + "_vector",
+			Type: interfaces.DataType_Vector,
+			Features: []interfaces.PropertyFeature{
+				{
+					FeatureType: interfaces.DataType_Vector,
+					Config: map[string]any{
+						"dimension": feature.Vector.Dimensions,
+						"method": map[string]any{
+							"name":   "hnsw",
+							"engine": "lucene",
+							"parameters": map[string]any{
+								"ef_construction": 256,
 							},
 						},
 					},
 				},
-			})
-		}
-		newResource.SchemaDefinition = newSchema
+			},
+		})
 	}
-	return &newResource
-}
-
-func embeddingDimensionsForField(buildTask *interfaces.BuildTask, field string) int {
-	if feature, ok := buildTaskIndexFeatures(buildTask)[field]; ok && feature.Vector != nil && feature.Vector.Dimensions > 0 {
-		return feature.Vector.Dimensions
-	}
-	return 0
+	return newSchema
 }
 
 func buildTaskIndexFeatures(buildTask *interfaces.BuildTask) map[string]interfaces.BuildTaskFieldIndexFeature {
@@ -163,19 +210,13 @@ func buildTaskIndexFeatures(buildTask *interfaces.BuildTask) map[string]interfac
 	return buildTask.IndexConfig.Features
 }
 
-func buildTaskEmbeddingFields(buildTask *interfaces.BuildTask) []string {
-	fields := make([]string, 0)
-	for field, feature := range buildTaskIndexFeatures(buildTask) {
+func buildTaskHasEmbedding(buildTask *interfaces.BuildTask) bool {
+	for _, feature := range buildTaskIndexFeatures(buildTask) {
 		if feature.Vector != nil {
-			fields = append(fields, field)
+			return true
 		}
 	}
-	sort.Strings(fields)
-	return fields
-}
-
-func buildTaskHasEmbedding(buildTask *interfaces.BuildTask) bool {
-	return len(buildTaskEmbeddingFields(buildTask)) > 0
+	return false
 }
 
 func buildTaskBuildKeyFields(buildTask *interfaces.BuildTask) []string {
@@ -183,17 +224,6 @@ func buildTaskBuildKeyFields(buildTask *interfaces.BuildTask) []string {
 		return nil
 	}
 	return append([]string(nil), buildTask.IndexConfig.BuildKeyFields...)
-}
-
-// fieldNameSet 把逗号分隔的字段名解析为集合。
-func fieldNameSet(csv string) map[string]bool {
-	set := map[string]bool{}
-	for _, f := range strings.Split(csv, ",") {
-		if f = strings.TrimSpace(f); f != "" {
-			set[f] = true
-		}
-	}
-	return set
 }
 
 // hasFulltextFeature 判断字段是否已带 fulltext 特性。
@@ -217,73 +247,85 @@ func analyzerOf(config map[string]any) string {
 	return ""
 }
 
-// reconcileFulltextFeatures 让构建用 schema 中的 fulltext 特性与 fulltextFields 完全一致：
-// 集合内字段补齐(并校正 analyzer)、集合外字段移除残留。返回是否有改动。
-// 调用方应在 build-local schema 副本上使用它；持久化 schema 变更只能走 update resource。
-func reconcileFulltextFeatures(resource *interfaces.Resource, fulltextFields, analyzer string) bool {
-	analyzers := map[string]string{}
-	for field := range fieldNameSet(fulltextFields) {
-		analyzers[field] = analyzer
-	}
-	return reconcileFulltextFeaturesByField(resource, fulltextFields, analyzers)
-}
-
-func reconcileTaskFulltextFeatures(resource *interfaces.Resource, buildTask *interfaces.BuildTask) bool {
-	analyzers := map[string]string{}
-	fields := make([]string, 0)
+func validateTaskFulltextFeatures(schema []*interfaces.Property, buildTask *interfaces.BuildTask) error {
+	fulltextConfigs := map[string]*interfaces.BuildTaskFulltextConfig{}
 	for field, feature := range buildTaskIndexFeatures(buildTask) {
 		if feature.Fulltext != nil {
-			fields = append(fields, field)
-			analyzers[field] = feature.Fulltext.Analyzer
+			fulltextConfigs[field] = feature.Fulltext
 		}
 	}
-	sort.Strings(fields)
-	return reconcileFulltextFeaturesByField(resource, strings.Join(fields, ","), analyzers)
-}
 
-func reconcileFulltextFeaturesByField(resource *interfaces.Resource, fulltextFields string, analyzers map[string]string) bool {
-	set := fieldNameSet(fulltextFields)
-	changed := false
-	for _, prop := range resource.SchemaDefinition {
+	schemaFulltextFields := map[string]struct{}{}
+	for _, prop := range schema {
 		if prop == nil {
 			continue
 		}
-		analyzer := analyzers[prop.Name]
-		var config map[string]any
-		if analyzer != "" {
-			config = map[string]any{"analyzer": analyzer}
-		}
-		switch {
-		case set[prop.Name] && !hasFulltextFeature(prop):
-			prop.Features = append(prop.Features, interfaces.PropertyFeature{
-				FeatureName: "fulltext",
-				FeatureType: interfaces.PropertyFeatureType_Fulltext,
-				Config:      config,
-			})
-			changed = true
-		case set[prop.Name]:
-			// 已有 fulltext 特性：校正 analyzer(用户改了分词器需重建生效)
-			for i := range prop.Features {
-				if prop.Features[i].FeatureType == interfaces.PropertyFeatureType_Fulltext &&
-					analyzerOf(prop.Features[i].Config) != analyzer {
-					prop.Features[i].Config = config
-					changed = true
-				}
+		for i := range prop.Features {
+			feature := &prop.Features[i]
+			if feature.FeatureType != interfaces.PropertyFeatureType_Fulltext {
+				continue
 			}
-		case !set[prop.Name] && hasFulltextFeature(prop):
-			// 不在集合内但有残留 fulltext 特性：移除(原地过滤)
-			kept := prop.Features[:0]
-			for _, f := range prop.Features {
-				if f.FeatureType == interfaces.PropertyFeatureType_Fulltext {
-					changed = true
-					continue
-				}
-				kept = append(kept, f)
+			fieldName := indexFeatureFieldName(prop, *feature)
+			schemaFulltextFields[fieldName] = struct{}{}
+			fulltextConfig, ok := fulltextConfigs[fieldName]
+			if !ok {
+				return fmt.Errorf("resource schema fulltext field %q is not in build task index config", fieldName)
 			}
-			prop.Features = kept
+			taskAnalyzer := fulltextConfig.Analyzer
+			schemaAnalyzer := analyzerOf(feature.Config)
+			if schemaAnalyzer != "" && schemaAnalyzer != taskAnalyzer {
+				return fmt.Errorf("resource schema fulltext analyzer %q for field %q does not match build task analyzer %q", schemaAnalyzer, fieldName, taskAnalyzer)
+			}
+			if taskAnalyzer != "" && schemaAnalyzer == "" {
+				feature.Config = map[string]any{"analyzer": taskAnalyzer}
+			}
 		}
 	}
-	return changed
+	for field := range fulltextConfigs {
+		if _, ok := schemaFulltextFields[field]; !ok {
+			return fmt.Errorf("build task fulltext field %q is not in resource schema features", field)
+		}
+	}
+	return nil
+}
+
+func validateTaskEmbeddingFeatures(schema []*interfaces.Property, buildTask *interfaces.BuildTask) error {
+	embeddingFields := map[string]struct{}{}
+	for field, feature := range buildTaskIndexFeatures(buildTask) {
+		if feature.Vector != nil {
+			embeddingFields[field] = struct{}{}
+		}
+	}
+
+	schemaEmbeddingFields := map[string]struct{}{}
+	for _, prop := range schema {
+		if prop == nil {
+			continue
+		}
+		for _, feature := range prop.Features {
+			if feature.FeatureType != interfaces.PropertyFeatureType_Vector {
+				continue
+			}
+			fieldName := indexFeatureFieldName(prop, feature)
+			schemaEmbeddingFields[fieldName] = struct{}{}
+			if _, ok := embeddingFields[fieldName]; !ok {
+				return fmt.Errorf("resource schema embedding field %q is not in build task index config", fieldName)
+			}
+		}
+	}
+	for field := range embeddingFields {
+		if _, ok := schemaEmbeddingFields[field]; !ok {
+			return fmt.Errorf("build task embedding field %q is not in resource schema features", field)
+		}
+	}
+	return nil
+}
+
+func indexFeatureFieldName(prop *interfaces.Property, feature interfaces.PropertyFeature) string {
+	if feature.RefProperty != "" {
+		return feature.RefProperty
+	}
+	return prop.Name
 }
 
 // sendEmbeddingTask sends a embedding task to the queue

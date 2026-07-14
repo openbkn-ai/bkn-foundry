@@ -11,6 +11,7 @@ package mock_interfaces
 
 import (
 	context "context"
+	sql "database/sql"
 	reflect "reflect"
 	interfaces "vega-backend/interfaces"
 
@@ -234,17 +235,17 @@ func (mr *MockResourceAccessMockRecorder) ListIDs(ctx, params any) *gomock.Call 
 }
 
 // Update mocks base method.
-func (m *MockResourceAccess) Update(ctx context.Context, resource *interfaces.Resource) error {
+func (m *MockResourceAccess) Update(ctx context.Context, tx *sql.Tx, resource *interfaces.Resource) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Update", ctx, resource)
+	ret := m.ctrl.Call(m, "Update", ctx, tx, resource)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Update indicates an expected call of Update.
-func (mr *MockResourceAccessMockRecorder) Update(ctx, resource any) *gomock.Call {
+func (mr *MockResourceAccessMockRecorder) Update(ctx, tx, resource any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Update", reflect.TypeOf((*MockResourceAccess)(nil).Update), ctx, resource)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Update", reflect.TypeOf((*MockResourceAccess)(nil).Update), ctx, tx, resource)
 }
 
 // UpdateDiscoverStatus mocks base method.

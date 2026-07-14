@@ -94,7 +94,7 @@ func (sh *streamingBuildHandler) HandleTask(ctx context.Context, task *asynq.Tas
 		logger.Infof("Task %s is %s, skip execution", taskID, buildTaskInfo.Status)
 		if buildTaskInfo.Status == interfaces.BuildTaskStatusStopping {
 			update := interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusStopped)
-			if _, err := sh.taskAccess.UpdateStatus(ctx, taskID, update); err != nil {
+			if _, err := sh.taskAccess.UpdateStatus(ctx, nil, taskID, update); err != nil {
 				return fmt.Errorf("update build task status failed: %w", err)
 			}
 		}
@@ -124,7 +124,7 @@ func (sh *streamingBuildHandler) HandleTask(ctx context.Context, task *asynq.Tas
 		update := interfaces.NewBuildTaskUpdate().
 			WithStatus(interfaces.BuildTaskStatusFailed).
 			WithErrorMsg("resource not found")
-		_, err = sh.taskAccess.UpdateStatus(ctx, taskID, update)
+		_, err = sh.taskAccess.UpdateStatus(ctx, nil, taskID, update)
 		if err != nil {
 			return fmt.Errorf("update build task status failed: %w", err)
 		}
@@ -142,7 +142,7 @@ func (sh *streamingBuildHandler) HandleTask(ctx context.Context, task *asynq.Tas
 		update := interfaces.NewBuildTaskUpdate().
 			WithStatus(interfaces.BuildTaskStatusFailed).
 			WithErrorMsg("catalog not found")
-		_, err = sh.taskAccess.UpdateStatus(ctx, buildTaskInfo.ID, update)
+		_, err = sh.taskAccess.UpdateStatus(ctx, nil, buildTaskInfo.ID, update)
 		if err != nil {
 			return fmt.Errorf("update build task status failed: %w", err)
 		}
@@ -154,7 +154,7 @@ func (sh *streamingBuildHandler) HandleTask(ctx context.Context, task *asynq.Tas
 		update := interfaces.NewBuildTaskUpdate().
 			WithStatus(interfaces.BuildTaskStatusFailed).
 			WithErrorMsg("catalog is disabled")
-		_, err = sh.taskAccess.UpdateStatus(ctx, buildTaskInfo.ID, update)
+		_, err = sh.taskAccess.UpdateStatus(ctx, nil, buildTaskInfo.ID, update)
 		if err != nil {
 			return fmt.Errorf("update build task status failed: %w", err)
 		}
@@ -165,7 +165,7 @@ func (sh *streamingBuildHandler) HandleTask(ctx context.Context, task *asynq.Tas
 		update := interfaces.NewBuildTaskUpdate().
 			WithStatus(interfaces.BuildTaskStatusFailed).
 			WithErrorMsg("unsupported connector type")
-		_, err = sh.taskAccess.UpdateStatus(ctx, buildTaskInfo.ID, update)
+		_, err = sh.taskAccess.UpdateStatus(ctx, nil, buildTaskInfo.ID, update)
 		if err != nil {
 			return fmt.Errorf("update build task status failed: %w", err)
 		}
@@ -183,14 +183,15 @@ func (sh *streamingBuildHandler) HandleTask(ctx context.Context, task *asynq.Tas
 		update := interfaces.NewBuildTaskUpdate().
 			WithStatus(interfaces.BuildTaskStatusFailed).
 			WithErrorMsg(err.Error())
-		_, err = sh.taskAccess.UpdateStatus(ctx, buildTaskInfo.ID, update)
+		_, err = sh.taskAccess.UpdateStatus(ctx, nil, buildTaskInfo.ID, update)
 		if err != nil {
 			return fmt.Errorf("update build task status failed: %w", err)
 		}
 		return nil
 	}
 
-	err = createManagedLocalIndex(ctx, sh.lim, buildTaskInfo, resource)
+	indexName := getIndexName(resource.ID, buildTaskInfo.ID)
+	err = createManagedLocalIndex(ctx, sh.lim, indexName, buildTaskInfo, resource)
 	if err != nil {
 		return fmt.Errorf("create local index failed: %w", err)
 	}
@@ -203,13 +204,13 @@ func (sh *streamingBuildHandler) HandleTask(ctx context.Context, task *asynq.Tas
 	}
 
 	// Execute build
-	err = sh.executeBuild(ctx, catalog, resource, buildTaskInfo, database, sourceId)
+	err = sh.executeBuild(ctx, catalog, resource, buildTaskInfo, indexName, database, sourceId)
 	if err != nil {
 		update := interfaces.NewBuildTaskUpdate().WithErrorMsg(err.Error())
 		if isAsynqFinalRetry(ctx) {
 			update = update.WithStatus(interfaces.BuildTaskStatusFailed)
 		}
-		_, _ = sh.taskAccess.UpdateStatus(ctx, taskID, update)
+		_, _ = sh.taskAccess.UpdateStatus(ctx, nil, taskID, update)
 		return err
 	}
 
@@ -218,7 +219,7 @@ func (sh *streamingBuildHandler) HandleTask(ctx context.Context, task *asynq.Tas
 }
 
 // executeBuild executes the build logic
-func (sh *streamingBuildHandler) executeBuild(ctx context.Context, catalog *interfaces.Catalog, resource *interfaces.Resource, buildTaskInfo *interfaces.BuildTask, database any, sourceId string) error {
+func (sh *streamingBuildHandler) executeBuild(ctx context.Context, catalog *interfaces.Catalog, resource *interfaces.Resource, buildTaskInfo *interfaces.BuildTask, indexName string, database any, sourceId string) error {
 	// Use the connector name as the Kafka topic prefix
 	topic := fmt.Sprintf("%s-%s.%s", interfaces.BUILD_PREFIX, catalog.ID, sourceId)
 	groupID := fmt.Sprintf("%s-%s", interfaces.BUILD_PREFIX, resource.ID)
@@ -263,7 +264,6 @@ func (sh *streamingBuildHandler) executeBuild(ctx context.Context, catalog *inte
 		return fmt.Errorf("create kafka connector failed: %w", err)
 	}
 
-	indexName := getIndexName(resource.ID, buildTaskInfo.ID)
 	retryInterval := interfaces.BUILD_TASK_RETRY_INTERVAL * time.Second
 	updatedIndexName := false
 	lastUpdateTime := time.Now()
@@ -297,7 +297,7 @@ func (sh *streamingBuildHandler) executeBuild(ctx context.Context, catalog *inte
 			update := interfaces.NewBuildTaskUpdate().
 				WithStatus(interfaces.BuildTaskStatusStopped).
 				WithSyncedCount(syncedCount)
-			_, err = sh.taskAccess.UpdateStatus(ctx, buildTaskInfo.ID, update)
+			_, err = sh.taskAccess.UpdateStatus(ctx, nil, buildTaskInfo.ID, update)
 			if err != nil {
 				return fmt.Errorf("update build task status failed: %w", err)
 			}
@@ -309,7 +309,7 @@ func (sh *streamingBuildHandler) executeBuild(ctx context.Context, catalog *inte
 		case <-ctx.Done():
 			logger.Infof("Kafka subscription context canceled, exiting")
 			update := interfaces.NewBuildTaskUpdate().WithSyncedCount(syncedCount)
-			_, err = sh.taskAccess.UpdateStatus(ctx, buildTaskInfo.ID, update)
+			_, err = sh.taskAccess.UpdateStatus(ctx, nil, buildTaskInfo.ID, update)
 			if err != nil {
 				return fmt.Errorf("update build task status failed: %w", err)
 			}
@@ -324,7 +324,7 @@ func (sh *streamingBuildHandler) executeBuild(ctx context.Context, catalog *inte
 					// 超时，检查是否需要更新任务状态
 					if syncedCount > buildTaskInfo.SyncedCount && time.Since(lastUpdateTime) > retryInterval {
 						update := interfaces.NewBuildTaskUpdate().WithSyncedCount(syncedCount)
-						_, _ = sh.taskAccess.UpdateStatus(ctx, buildTaskInfo.ID, update)
+						_, _ = sh.taskAccess.UpdateStatus(ctx, nil, buildTaskInfo.ID, update)
 						buildTaskInfo.SyncedCount = syncedCount
 						lastUpdateTime = time.Now()
 					}
@@ -428,7 +428,7 @@ func (sh *streamingBuildHandler) executeBuild(ctx context.Context, catalog *inte
 }
 
 // createKafkaConnector creates a Kafka connector for the build task
-func (sh *streamingBuildHandler) createKafkaConnector(ctx context.Context, catalog *interfaces.Catalog, resource *interfaces.Resource, database any, sourceId string) error {
+func (sh *streamingBuildHandler) createKafkaConnector(ctx context.Context, catalog *interfaces.Catalog, _ *interfaces.Resource, database any, sourceId string) error {
 	// get connector
 	kafkaConnectSetting := sh.appSetting.KafkaConnectSetting
 	// connector name 和 catalog 绑定，catalog 下多个 resource 公有一个 connector，各自订阅自己的表的 topic
@@ -505,7 +505,7 @@ func (sh *streamingBuildHandler) createKafkaConnector(ctx context.Context, catal
 }
 
 // buildConnectorConfig builds the connector configuration
-func (sh *streamingBuildHandler) buildConnectorConfig(connectorName string, catalog *interfaces.Catalog, database any, sourceId string) map[string]any {
+func (sh *streamingBuildHandler) buildConnectorConfig(connectorName string, catalog *interfaces.Catalog, database any, _ string) map[string]any {
 	// Connector not found, create connector
 	mqSetting := sh.appSetting.MQSetting
 	connectorBody := map[string]any{

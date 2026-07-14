@@ -329,7 +329,7 @@ func TestResourceAccessUpdate(t *testing.T) {
 			).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
-		require.NoError(t, access.Update(context.Background(), res))
+		require.NoError(t, access.Update(context.Background(), nil, res))
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 }

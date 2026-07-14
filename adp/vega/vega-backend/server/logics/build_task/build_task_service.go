@@ -526,7 +526,7 @@ func (bts *buildTaskService) StartBuildTask(ctx context.Context, taskID string, 
 	// running 仍由 worker 实际执行时落账。
 	if buildTask.Status != interfaces.BuildTaskStatusInit {
 		update := interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusInit)
-		if _, err := bts.bta.UpdateStatus(ctx, taskID, update); err != nil {
+		if _, err := bts.bta.UpdateStatus(ctx, nil, taskID, update); err != nil {
 			otellog.LogError(ctx, "Update build task status failed", err)
 			return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_UpdateFailed).
 				WithErrorDetails(err.Error())
@@ -574,7 +574,7 @@ func (bts *buildTaskService) StopBuildTask(ctx context.Context, taskID string) e
 		targetStatus = interfaces.BuildTaskStatusStopped
 	}
 	update := interfaces.NewBuildTaskUpdate().WithStatus(targetStatus)
-	if _, err := bts.bta.UpdateStatus(ctx, taskID, update); err != nil {
+	if _, err := bts.bta.UpdateStatus(ctx, nil, taskID, update); err != nil {
 		otellog.LogError(ctx, "Update build task status failed", err)
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_UpdateFailed).
 			WithErrorDetails(err.Error())

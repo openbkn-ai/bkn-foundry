@@ -818,7 +818,7 @@ func (ra *resourceAccess) List(ctx context.Context, params interfaces.ResourcesQ
 }
 
 // Update updates ra Resource.
-func (ra *resourceAccess) Update(ctx context.Context, resource *interfaces.Resource) error {
+func (ra *resourceAccess) Update(ctx context.Context, tx *sql.Tx, resource *interfaces.Resource) error {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Update resource")
 	defer span.End()
 
@@ -870,7 +870,11 @@ func (ra *resourceAccess) Update(ctx context.Context, resource *interfaces.Resou
 		return err
 	}
 
-	_, err = ra.db.ExecContext(ctx, sqlStr, vals...)
+	if tx != nil {
+		_, err = tx.ExecContext(ctx, sqlStr, vals...)
+	} else {
+		_, err = ra.db.ExecContext(ctx, sqlStr, vals...)
+	}
 	if err != nil {
 		span.SetStatus(codes.Error, "Update failed")
 		return err

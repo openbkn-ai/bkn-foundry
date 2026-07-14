@@ -90,7 +90,7 @@ func (eh *embeddingHandler) HandleTask(ctx context.Context, task *asynq.Task) er
 		update := interfaces.NewBuildTaskUpdate().
 			WithStatus(interfaces.BuildTaskStatusFailed).
 			WithErrorMsg("resource not found")
-		if _, err := eh.taskAccess.UpdateStatus(ctx, taskID, update); err != nil {
+		if _, err := eh.taskAccess.UpdateStatus(ctx, nil, taskID, update); err != nil {
 			return fmt.Errorf("update build task status failed: %w", err)
 		}
 		return nil
@@ -98,7 +98,7 @@ func (eh *embeddingHandler) HandleTask(ctx context.Context, task *asynq.Task) er
 
 	// Update task status to running
 	update := interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusRunning)
-	_, err = eh.taskAccess.UpdateStatus(ctx, taskID, update)
+	_, err = eh.taskAccess.UpdateStatus(ctx, nil, taskID, update)
 	if err != nil {
 		return fmt.Errorf("update build task status failed: %w", err)
 	}
@@ -111,7 +111,7 @@ func (eh *embeddingHandler) HandleTask(ctx context.Context, task *asynq.Task) er
 		if isAsynqFinalRetry(ctx) {
 			update = update.WithStatus(interfaces.BuildTaskStatusFailed)
 		}
-		_, err = eh.taskAccess.UpdateStatus(ctx, taskID, update)
+		_, err = eh.taskAccess.UpdateStatus(ctx, nil, taskID, update)
 		if err != nil {
 			return fmt.Errorf("update build task status failed: %w", err)
 		}
@@ -182,7 +182,7 @@ func (eh *embeddingHandler) executeEmbedding(ctx context.Context, resource *inte
 			update := interfaces.NewBuildTaskUpdate().
 				WithStatus(interfaces.BuildTaskStatusStopped).
 				WithVectorizedCount(totalProcessed)
-			_, err := eh.taskAccess.UpdateStatus(ctx, buildTaskInfo.ID, update)
+			_, err := eh.taskAccess.UpdateStatus(ctx, nil, buildTaskInfo.ID, update)
 			if err != nil {
 				return fmt.Errorf("update build task status failed: %w", err)
 			}
@@ -195,7 +195,7 @@ func (eh *embeddingHandler) executeEmbedding(ctx context.Context, resource *inte
 			logger.Infof("Kafka subscription context canceled, exiting")
 			// 最后一次更新任务状态
 			update := interfaces.NewBuildTaskUpdate().WithVectorizedCount(totalProcessed)
-			_, _ = eh.taskAccess.UpdateStatus(context.Background(), buildTaskInfo.ID, update)
+			_, _ = eh.taskAccess.UpdateStatus(context.Background(), nil, buildTaskInfo.ID, update)
 			// 必须返回错误：返回 nil 会让 asynq 把任务标记成功，重启后不再投递，
 			// 任务状态永久停在 running（界面"构建中"冻结），只能人工 stop→start 救活
 			return ctx.Err()
@@ -214,13 +214,13 @@ func (eh *embeddingHandler) executeEmbedding(ctx context.Context, resource *inte
 					// 重建会话从已提交位点续读；流式模式空闲是常态，不适用
 					if buildTaskInfo.Mode == interfaces.BuildTaskModeBatch && time.Since(lastMessageTime) > embeddingIdleRebuildAfter {
 						update := interfaces.NewBuildTaskUpdate().WithVectorizedCount(totalProcessed)
-						_, _ = eh.taskAccess.UpdateStatus(ctx, buildTaskInfo.ID, update)
+						_, _ = eh.taskAccess.UpdateStatus(ctx, nil, buildTaskInfo.ID, update)
 						return fmt.Errorf("no message for %s on batch task, rebuilding consumer session", embeddingIdleRebuildAfter)
 					}
 					// 超时，检查是否需要更新任务状态
 					if totalProcessed > buildTaskInfo.VectorizedCount && time.Since(lastUpdateTime) > updateInterval {
 						update := interfaces.NewBuildTaskUpdate().WithVectorizedCount(totalProcessed)
-						_, _ = eh.taskAccess.UpdateStatus(ctx, buildTaskInfo.ID, update)
+						_, _ = eh.taskAccess.UpdateStatus(ctx, nil, buildTaskInfo.ID, update)
 						buildTaskInfo.VectorizedCount = totalProcessed
 						lastUpdateTime = time.Now()
 					}
@@ -232,7 +232,7 @@ func (eh *embeddingHandler) executeEmbedding(ctx context.Context, resource *inte
 					consecutiveReadErrs++
 					if consecutiveReadErrs >= embeddingKafkaMaxConsecutiveErrors {
 						update := interfaces.NewBuildTaskUpdate().WithVectorizedCount(totalProcessed)
-						_, _ = eh.taskAccess.UpdateStatus(ctx, buildTaskInfo.ID, update)
+						_, _ = eh.taskAccess.UpdateStatus(ctx, nil, buildTaskInfo.ID, update)
 						return fmt.Errorf("read message from kafka: %w", err)
 					}
 					eh.pause(retryInterval)
@@ -271,7 +271,7 @@ func (eh *embeddingHandler) executeEmbedding(ctx context.Context, resource *inte
 						}
 						logger.Errorf("Drain read failed for task %s: %v", buildTaskInfo.ID, derr)
 						update := interfaces.NewBuildTaskUpdate().WithVectorizedCount(totalProcessed)
-						_, _ = eh.taskAccess.UpdateStatus(ctx, buildTaskInfo.ID, update)
+						_, _ = eh.taskAccess.UpdateStatus(ctx, nil, buildTaskInfo.ID, update)
 						return fmt.Errorf("drain read message from kafka: %w", derr)
 					}
 					emptyPolls = 0
@@ -336,7 +336,7 @@ func (eh *embeddingHandler) executeEmbedding(ctx context.Context, resource *inte
 				}
 				// 必须同时回写最终计数：常规回写有 30 秒批量窗口，
 				// 不在这里 flush 会丢最后一个窗口的进度（短任务界面会停在 0%）
-				if _, err := eh.taskAccess.UpdateStatus(ctx, buildTaskInfo.ID, update); err != nil {
+				if _, err := eh.taskAccess.UpdateStatus(ctx, nil, buildTaskInfo.ID, update); err != nil {
 					logger.Errorf("update build task status to completed failed: task %s, %v", buildTaskInfo.ID, err)
 				}
 
@@ -357,7 +357,7 @@ func (eh *embeddingHandler) executeEmbedding(ctx context.Context, resource *inte
 			// 批量更新任务状态
 			if time.Since(lastUpdateTime) > updateInterval {
 				update := interfaces.NewBuildTaskUpdate().WithVectorizedCount(totalProcessed)
-				_, _ = eh.taskAccess.UpdateStatus(ctx, buildTaskInfo.ID, update)
+				_, _ = eh.taskAccess.UpdateStatus(ctx, nil, buildTaskInfo.ID, update)
 				lastUpdateTime = time.Now()
 			}
 
@@ -369,7 +369,7 @@ func (eh *embeddingHandler) executeEmbedding(ctx context.Context, resource *inte
 				consecutiveCommitErrs++
 				if consecutiveCommitErrs >= embeddingKafkaMaxConsecutiveErrors {
 					update := interfaces.NewBuildTaskUpdate().WithVectorizedCount(totalProcessed)
-					_, _ = eh.taskAccess.UpdateStatus(ctx, buildTaskInfo.ID, update)
+					_, _ = eh.taskAccess.UpdateStatus(ctx, nil, buildTaskInfo.ID, update)
 					return fmt.Errorf("commit message to kafka: %w", err)
 				}
 			} else {

@@ -225,7 +225,7 @@ func TestStopBuildTaskRunningToStopping(t *testing.T) {
 
 	mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").
 		Return(&interfaces.BuildTask{ID: "task-1", Status: interfaces.BuildTaskStatusRunning}, nil)
-	mockBTA.EXPECT().UpdateStatus(gomock.Any(), "task-1",
+	mockBTA.EXPECT().UpdateStatus(gomock.Any(), nil, "task-1",
 		interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusStopping)).Return(true, nil)
 
 	if err := service.StopBuildTask(context.Background(), "task-1"); err != nil {
@@ -242,7 +242,7 @@ func TestStopBuildTaskForceFinalizesStuckStopping(t *testing.T) {
 
 	mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").
 		Return(&interfaces.BuildTask{ID: "task-1", Status: interfaces.BuildTaskStatusStopping}, nil)
-	mockBTA.EXPECT().UpdateStatus(gomock.Any(), "task-1",
+	mockBTA.EXPECT().UpdateStatus(gomock.Any(), nil, "task-1",
 		interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusStopped)).Return(true, nil)
 
 	if err := service.StopBuildTask(context.Background(), "task-1"); err != nil {

@@ -31,7 +31,7 @@ func TestStreamingBuildHandlerHandleTask(t *testing.T) {
 		taskAccess.EXPECT().GetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{
 			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusInit, Creator: creator,
 		}, nil)
-		taskAccess.EXPECT().UpdateStatus(gomock.Any(), "t1",
+		taskAccess.EXPECT().UpdateStatus(gomock.Any(), nil, "t1",
 			interfaces.NewBuildTaskUpdate().
 				WithStatus(interfaces.BuildTaskStatusRunning).
 				WithErrorMsg(""),
@@ -64,7 +64,7 @@ func TestStreamingBuildHandlerHandleTask(t *testing.T) {
 		taskAccess.EXPECT().GetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{
 			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusInit,
 		}, nil)
-		taskAccess.EXPECT().UpdateStatus(gomock.Any(), "t1",
+		taskAccess.EXPECT().UpdateStatus(gomock.Any(), nil, "t1",
 			interfaces.NewBuildTaskUpdate().
 				WithStatus(interfaces.BuildTaskStatusRunning).
 				WithErrorMsg(""),

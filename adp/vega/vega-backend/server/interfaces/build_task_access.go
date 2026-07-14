@@ -6,7 +6,10 @@
 
 package interfaces
 
-import "context"
+import (
+	"context"
+	"database/sql"
+)
 
 //go:generate mockgen -source ../interfaces/build_task_access.go -destination ../interfaces/mock/mock_build_task_access.go
 
@@ -24,7 +27,7 @@ type BuildTaskAccess interface {
 	List(ctx context.Context, params BuildTasksQueryParams) ([]*BuildTask, int64, error)
 	// UpdateStatus updates a build task's status and progress fields. When allowedStatuses is not empty,
 	// the update is applied only if the current status matches one of them.
-	UpdateStatus(ctx context.Context, id string, update BuildTaskUpdate, allowedStatuses ...string) (bool, error)
+	UpdateStatus(ctx context.Context, tx *sql.Tx, id string, update BuildTaskUpdate, allowedStatuses ...string) (bool, error)
 	// GetStatus retrieves the status of a build task by ID.
 	GetStatus(ctx context.Context, id string) (string, error)
 	// Delete deletes a build task by ID.

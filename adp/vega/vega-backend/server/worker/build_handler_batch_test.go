@@ -33,14 +33,14 @@ func TestBatchBuildHandlerHandleTask(t *testing.T) {
 		taskAccess.EXPECT().GetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{
 			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusInit, Creator: creator,
 		}, nil)
-		taskAccess.EXPECT().UpdateStatus(gomock.Any(), "t1",
+		taskAccess.EXPECT().UpdateStatus(gomock.Any(), nil, "t1",
 			interfaces.NewBuildTaskUpdate().
 				WithStatus(interfaces.BuildTaskStatusRunning).
 				WithErrorMsg(""),
 			interfaces.BuildTaskStatusInit).
 			Return(true, nil)
 		resAccess.EXPECT().GetByID(gomock.Any(), "r1").Return(&interfaces.Resource{ID: "r1", CatalogID: "c1"}, nil)
-		taskAccess.EXPECT().UpdateStatus(gomock.Any(), "t1", gomock.Any()).Return(true, nil).AnyTimes()
+		taskAccess.EXPECT().UpdateStatus(gomock.Any(), nil, "t1", gomock.Any()).Return(true, nil).AnyTimes()
 
 		var gotAccount interfaces.AccountInfo
 		var hasAccount bool
@@ -64,7 +64,7 @@ func TestBatchBuildHandlerHandleTask(t *testing.T) {
 		taskAccess.EXPECT().GetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{
 			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusInit,
 		}, nil)
-		taskAccess.EXPECT().UpdateStatus(gomock.Any(), "t1",
+		taskAccess.EXPECT().UpdateStatus(gomock.Any(), nil, "t1",
 			interfaces.NewBuildTaskUpdate().
 				WithStatus(interfaces.BuildTaskStatusRunning).
 				WithErrorMsg(""),
@@ -92,7 +92,7 @@ func TestBatchBuildHandlerHandleTask(t *testing.T) {
 		taskAccess.EXPECT().GetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{
 			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusInit,
 		}, nil)
-		taskAccess.EXPECT().UpdateStatus(gomock.Any(), "t1",
+		taskAccess.EXPECT().UpdateStatus(gomock.Any(), nil, "t1",
 			interfaces.NewBuildTaskUpdate().
 				WithStatus(interfaces.BuildTaskStatusRunning).
 				WithErrorMsg(""),
@@ -100,7 +100,7 @@ func TestBatchBuildHandlerHandleTask(t *testing.T) {
 			Return(true, nil)
 		resAccess.EXPECT().GetByID(gomock.Any(), "r1").Return(resource, nil)
 		cs.EXPECT().GetByID(gomock.Any(), "c1", true).Return(nil, errors.New("catalog down"))
-		taskAccess.EXPECT().UpdateStatus(gomock.Any(), "t1",
+		taskAccess.EXPECT().UpdateStatus(gomock.Any(), nil, "t1",
 			interfaces.NewBuildTaskUpdate().
 				WithStatus(interfaces.BuildTaskStatusFailed).
 				WithErrorMsg("get catalog failed: catalog down")).
@@ -141,93 +141,155 @@ func TestAdvanceCursor(t *testing.T) {
 	})
 }
 
-func TestReconcileFulltextFeatures(t *testing.T) {
-	t.Run("adds selected field and is idempotent", func(t *testing.T) {
-		res := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{
+func TestReconcileTaskFulltextFeatures(t *testing.T) {
+	t.Run("errors when task field is missing from schema features", func(t *testing.T) {
+		schema := []*interfaces.Property{
 			{Name: "team_name", Type: interfaces.DataType_String},
 			{Name: "team_code", Type: interfaces.DataType_String},
-		}}
+		}
+		task := buildTaskWithFulltext("team_name", "ik_max_word")
 
-		changed := reconcileFulltextFeatures(res, "team_name", "ik_max_word")
+		err := validateTaskFulltextFeatures(schema, task)
 
-		require.True(t, changed)
-		tn := res.SchemaDefinition[0]
-		require.Len(t, tn.Features, 1)
-		assert.Equal(t, interfaces.PropertyFeatureType_Fulltext, tn.Features[0].FeatureType)
-		assert.Equal(t, "ik_max_word", tn.Features[0].Config["analyzer"])
-		assert.Empty(t, res.SchemaDefinition[1].Features)
-		assert.False(t, reconcileFulltextFeatures(res, "team_name", "ik_max_word"))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), `build task fulltext field "team_name"`)
 	})
 
-	t.Run("removes stale fields", func(t *testing.T) {
-		res := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{
+	t.Run("errors when schema has stale field", func(t *testing.T) {
+		schema := []*interfaces.Property{
 			{Name: "team_name", Type: interfaces.DataType_String, Features: []interfaces.PropertyFeature{
 				{FeatureName: "fulltext", FeatureType: interfaces.PropertyFeatureType_Fulltext, Config: map[string]any{"analyzer": "standard"}},
 			}},
 			{Name: "federation_name", Type: interfaces.DataType_String},
-		}}
+		}
+		task := buildTaskWithFulltext("federation_name", "standard")
 
-		changed := reconcileFulltextFeatures(res, "federation_name", "standard")
+		err := validateTaskFulltextFeatures(schema, task)
 
-		require.True(t, changed)
-		assert.False(t, hasFulltextFeature(res.SchemaDefinition[0]))
-		assert.True(t, hasFulltextFeature(res.SchemaDefinition[1]))
-		require.True(t, reconcileFulltextFeatures(res, "", ""))
-		assert.False(t, hasFulltextFeature(res.SchemaDefinition[1]))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), `resource schema fulltext field "team_name"`)
 	})
 
-	t.Run("updates analyzer", func(t *testing.T) {
-		res := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{
+	t.Run("errors when explicit analyzer differs", func(t *testing.T) {
+		schema := []*interfaces.Property{
 			{Name: "x", Type: interfaces.DataType_String, Features: []interfaces.PropertyFeature{
 				{FeatureName: "fulltext", FeatureType: interfaces.PropertyFeatureType_Fulltext, Config: map[string]any{"analyzer": "standard"}},
 			}},
-		}}
+		}
+		task := buildTaskWithFulltext("x", "ik_max_word")
 
-		require.True(t, reconcileFulltextFeatures(res, "x", "ik_max_word"))
-		assert.Equal(t, "ik_max_word", res.SchemaDefinition[0].Features[0].Config["analyzer"])
+		err := validateTaskFulltextFeatures(schema, task)
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), `does not match build task analyzer`)
 	})
 
-	t.Run("leaves config nil when analyzer is empty", func(t *testing.T) {
-		res := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{
-			{Name: "x", Type: interfaces.DataType_String},
-		}}
+	t.Run("applies task analyzer when schema omits analyzer", func(t *testing.T) {
+		schema := []*interfaces.Property{
+			{Name: "x", Type: interfaces.DataType_String, Features: []interfaces.PropertyFeature{
+				{FeatureName: "fulltext", FeatureType: interfaces.PropertyFeatureType_Fulltext},
+			}},
+		}
+		task := buildTaskWithFulltext("x", "ik_max_word")
 
-		reconcileFulltextFeatures(res, "x", "")
+		err := validateTaskFulltextFeatures(schema, task)
 
-		assert.Nil(t, res.SchemaDefinition[0].Features[0].Config)
+		require.NoError(t, err)
+		assert.Equal(t, "ik_max_word", schema[0].Features[0].Config["analyzer"])
 	})
 }
 
-func TestBuildResourceForTaskDoesNotMutateResourceSchema(t *testing.T) {
+func buildTaskWithFulltext(field string, analyzer string) *interfaces.BuildTask {
+	return &interfaces.BuildTask{
+		IndexConfig: &interfaces.BuildTaskIndexConfig{
+			Features: map[string]interfaces.BuildTaskFieldIndexFeature{
+				field: {Fulltext: &interfaces.BuildTaskFulltextConfig{Analyzer: analyzer}},
+			},
+		},
+	}
+}
+
+func TestValidateTaskEmbeddingFeatures(t *testing.T) {
+	t.Run("errors when task field is missing from schema features", func(t *testing.T) {
+		schema := []*interfaces.Property{{Name: "title", Type: interfaces.DataType_String}}
+
+		err := validateTaskEmbeddingFeatures(schema, buildTaskWithVector("title"))
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), `build task embedding field "title"`)
+	})
+
+	t.Run("errors when schema has stale field", func(t *testing.T) {
+		schema := []*interfaces.Property{{
+			Name: "title",
+			Type: interfaces.DataType_String,
+			Features: []interfaces.PropertyFeature{
+				{FeatureName: "vector", FeatureType: interfaces.PropertyFeatureType_Vector},
+			},
+		}}
+
+		err := validateTaskEmbeddingFeatures(schema, &interfaces.BuildTask{})
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), `resource schema embedding field "title"`)
+	})
+
+	t.Run("passes when schema and task match", func(t *testing.T) {
+		schema := []*interfaces.Property{{
+			Name: "title",
+			Type: interfaces.DataType_String,
+			Features: []interfaces.PropertyFeature{
+				{FeatureName: "vector", FeatureType: interfaces.PropertyFeatureType_Vector},
+			},
+		}}
+
+		err := validateTaskEmbeddingFeatures(schema, buildTaskWithVector("title"))
+
+		require.NoError(t, err)
+	})
+}
+
+func buildTaskWithVector(field string) *interfaces.BuildTask {
+	return &interfaces.BuildTask{
+		IndexConfig: &interfaces.BuildTaskIndexConfig{
+			Features: map[string]interfaces.BuildTaskFieldIndexFeature{
+				field: {Vector: &interfaces.BuildTaskEmbeddingConfig{ModelID: "m1", Dimensions: 1024}},
+			},
+		},
+	}
+}
+
+func TestBuildLocalIndexSchemaAppliesTaskIndexConfigWithoutMutatingResourceSchema(t *testing.T) {
 	res := &interfaces.Resource{ID: "r1", SchemaDefinition: []*interfaces.Property{
-		{Name: "title", Type: interfaces.DataType_String},
-		{Name: "body", Type: interfaces.DataType_String},
+		{Name: "title", Type: interfaces.DataType_String, Features: []interfaces.PropertyFeature{
+			{FeatureName: "fulltext", FeatureType: interfaces.PropertyFeatureType_Fulltext},
+		}},
+		{Name: "body", Type: interfaces.DataType_String, Features: []interfaces.PropertyFeature{
+			{FeatureName: "vector", FeatureType: interfaces.PropertyFeatureType_Vector},
+		}},
 	}}
 	task := &interfaces.BuildTask{
 		ID: "t1",
 		IndexConfig: &interfaces.BuildTaskIndexConfig{
 			Features: map[string]interfaces.BuildTaskFieldIndexFeature{
 				"title": {Fulltext: &interfaces.BuildTaskFulltextConfig{Analyzer: "ik_max_word"}},
+				"body":  {Vector: &interfaces.BuildTaskEmbeddingConfig{ModelID: "m1", Dimensions: 1024}},
 			},
 		},
 	}
 
-	buildRes, err := buildResourceForTask(res, task)
+	schema, err := buildLocalIndexSchema(task, res)
 	require.NoError(t, err)
 
-	require.Len(t, buildRes.SchemaDefinition[0].Features, 1)
-	assert.Equal(t, interfaces.PropertyFeatureType_Fulltext, buildRes.SchemaDefinition[0].Features[0].FeatureType)
-	assert.Equal(t, "ik_max_word", buildRes.SchemaDefinition[0].Features[0].Config["analyzer"])
-	assert.Empty(t, res.SchemaDefinition[0].Features)
-	assert.Empty(t, res.SchemaDefinition[1].Features)
-}
-
-func TestFieldNameSet(t *testing.T) {
-	t.Run("trims and skips empty entries", func(t *testing.T) {
-		got := fieldNameSet(" a, b ,, c ")
-
-		assert.Equal(t, map[string]bool{"a": true, "b": true, "c": true}, got)
-	})
+	require.Len(t, schema[0].Features, 1)
+	assert.Equal(t, interfaces.PropertyFeatureType_Fulltext, schema[0].Features[0].FeatureType)
+	assert.Equal(t, "ik_max_word", schema[0].Features[0].Config["analyzer"])
+	require.Len(t, schema, 3)
+	assert.Equal(t, "body_vector", schema[2].Name)
+	assert.Equal(t, interfaces.DataType_Vector, schema[2].Type)
+	assert.Equal(t, 1024, schema[2].Features[0].Config["dimension"])
+	assert.Nil(t, res.SchemaDefinition[0].Features[0].Config)
+	assert.Len(t, res.SchemaDefinition[1].Features, 1)
 }
 
 func workerAccountFromCtx(ctx context.Context) (interfaces.AccountInfo, bool) {

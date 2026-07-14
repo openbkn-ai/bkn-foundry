@@ -700,7 +700,7 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 	resource.Updater = accountInfo
 	resource.UpdateTime = now
 
-	if err := rs.ra.Update(ctx, resource); err != nil {
+	if err := rs.ra.Update(ctx, nil, resource); err != nil {
 		span.SetStatus(codes.Error, "Update resource failed")
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_UpdateFailed).
 			WithErrorDetails(err.Error())
@@ -882,7 +882,7 @@ func (rs *resourceService) UpdateResource(ctx context.Context, resource *interfa
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Update resource")
 	defer span.End()
 
-	if err := rs.ra.Update(ctx, resource); err != nil {
+	if err := rs.ra.Update(ctx, nil, resource); err != nil {
 		span.SetStatus(codes.Error, "Update resource failed")
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_UpdateFailed).
 			WithErrorDetails(err.Error())

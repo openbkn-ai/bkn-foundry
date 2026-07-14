@@ -262,7 +262,8 @@ func (bta *buildTaskAccess) GetByCatalogID(ctx context.Context, catalogID string
 }
 
 // UpdateStatus updates a build task's status and progress fields.
-func (bta *buildTaskAccess) UpdateStatus(ctx context.Context, id string, update interfaces.BuildTaskUpdate, allowedStatuses ...string) (bool, error) {
+func (bta *buildTaskAccess) UpdateStatus(ctx context.Context, tx *sql.Tx,
+	id string, update interfaces.BuildTaskUpdate, allowedStatuses ...string) (bool, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Update build task status")
 	defer span.End()
 
@@ -303,7 +304,12 @@ func (bta *buildTaskAccess) UpdateStatus(ctx context.Context, id string, update 
 		return false, err
 	}
 
-	result, err := bta.db.ExecContext(ctx, sqlStr, vals...)
+	var result sql.Result
+	if tx != nil {
+		result, err = tx.ExecContext(ctx, sqlStr, vals...)
+	} else {
+		result, err = bta.db.ExecContext(ctx, sqlStr, vals...)
+	}
 	if err != nil {
 		otellog.LogError(ctx, "Update build task status failed", err)
 		return false, err

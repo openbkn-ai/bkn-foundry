@@ -11,6 +11,7 @@ package mock_interfaces
 
 import (
 	context "context"
+	sql "database/sql"
 	reflect "reflect"
 	interfaces "vega-backend/interfaces"
 
@@ -146,9 +147,9 @@ func (mr *MockBuildTaskAccessMockRecorder) List(ctx, params any) *gomock.Call {
 }
 
 // UpdateStatus mocks base method.
-func (m *MockBuildTaskAccess) UpdateStatus(ctx context.Context, id string, update interfaces.BuildTaskUpdate, allowedStatuses ...string) (bool, error) {
+func (m *MockBuildTaskAccess) UpdateStatus(ctx context.Context, tx *sql.Tx, id string, update interfaces.BuildTaskUpdate, allowedStatuses ...string) (bool, error) {
 	m.ctrl.T.Helper()
-	varargs := []any{ctx, id, update}
+	varargs := []any{ctx, tx, id, update}
 	for _, a := range allowedStatuses {
 		varargs = append(varargs, a)
 	}
@@ -159,8 +160,8 @@ func (m *MockBuildTaskAccess) UpdateStatus(ctx context.Context, id string, updat
 }
 
 // UpdateStatus indicates an expected call of UpdateStatus.
-func (mr *MockBuildTaskAccessMockRecorder) UpdateStatus(ctx, id, update any, allowedStatuses ...any) *gomock.Call {
+func (mr *MockBuildTaskAccessMockRecorder) UpdateStatus(ctx, tx, id, update any, allowedStatuses ...any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	varargs := append([]any{ctx, id, update}, allowedStatuses...)
+	varargs := append([]any{ctx, tx, id, update}, allowedStatuses...)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateStatus", reflect.TypeOf((*MockBuildTaskAccess)(nil).UpdateStatus), varargs...)
 }

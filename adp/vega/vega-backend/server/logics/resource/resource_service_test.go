@@ -8,6 +8,7 @@ package resource
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"net/http"
 	"testing"
@@ -458,7 +459,7 @@ func TestUpdateStatus_Error(t *testing.T) {
 func TestUpdateResource_PreservesDiscoverStatus(t *testing.T) {
 	rs, mockRA, _, _, _, _, _ := newTestService(t)
 	resource := &interfaces.Resource{ID: "r1", LastDiscoverStatus: interfaces.DiscoverStatusUpdated}
-	mockRA.EXPECT().Update(gomock.Any(), resource).Return(nil)
+	mockRA.EXPECT().Update(gomock.Any(), nil, resource).Return(nil)
 
 	err := rs.UpdateResource(context.Background(), resource)
 	if err != nil {
@@ -504,7 +505,7 @@ func TestUpdate_Success(t *testing.T) {
 	rs, mockRA, mockPS, _, _, mockCS, _ := newTestService(t)
 	mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 	mockCS.EXPECT().CheckExistByID(gomock.Any(), gomock.Any()).Return(true, nil)
-	mockRA.EXPECT().Update(gomock.Any(), gomock.Any()).Return(nil)
+	mockRA.EXPECT().Update(gomock.Any(), nil, gomock.Any()).Return(nil)
 
 	err := rs.Update(context.Background(), &interfaces.Resource{ID: "r1", Name: "updated"}, &interfaces.ResourceRequest{
 		Name: "updated",
@@ -566,8 +567,8 @@ func TestUpdate_AllowsNonBuildRelevantChangeWhenActiveBuildTaskExists(t *testing
 	rs, mockRA, mockPS, _, _, mockCS, _ := newTestService(t)
 	mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 	mockCS.EXPECT().CheckExistByID(gomock.Any(), "cat1").Return(true, nil)
-	mockRA.EXPECT().Update(gomock.Any(), gomock.Any()).
-		DoAndReturn(func(_ context.Context, got *interfaces.Resource) error {
+	mockRA.EXPECT().Update(gomock.Any(), nil, gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource) error {
 			if got.LocalIndexName != "vega-build-r1-task-1" {
 				t.Fatalf("expected LocalIndexName to be preserved, got %q", got.LocalIndexName)
 			}
@@ -606,8 +607,8 @@ func TestUpdate_ClearsLocalIndexNameWhenBuildRelevantFieldsChange(t *testing.T) 
 			return nil, 0, nil
 		})
 	mockCS.EXPECT().CheckExistByID(gomock.Any(), "cat1").Return(true, nil)
-	mockRA.EXPECT().Update(gomock.Any(), gomock.Any()).
-		DoAndReturn(func(_ context.Context, got *interfaces.Resource) error {
+	mockRA.EXPECT().Update(gomock.Any(), nil, gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource) error {
 			if got.LocalIndexName != "" {
 				t.Fatalf("expected LocalIndexName to be cleared, got %q", got.LocalIndexName)
 			}
@@ -693,8 +694,8 @@ func TestUpdate_ClearsLocalIndexNameWhenIndexConfigChanges(t *testing.T) {
 	mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 	mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).Return(nil, int64(0), nil)
 	mockCS.EXPECT().CheckExistByID(gomock.Any(), "cat1").Return(true, nil)
-	mockRA.EXPECT().Update(gomock.Any(), gomock.Any()).
-		DoAndReturn(func(_ context.Context, got *interfaces.Resource) error {
+	mockRA.EXPECT().Update(gomock.Any(), nil, gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource) error {
 			if got.LocalIndexName != "" {
 				t.Fatalf("expected LocalIndexName to be cleared, got %q", got.LocalIndexName)
 			}
@@ -821,7 +822,7 @@ func TestUpdate_AllowsUnusedDefaultEmbeddingModel(t *testing.T) {
 	mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 	mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).Return(nil, int64(0), nil)
 	mockCS.EXPECT().CheckExistByID(gomock.Any(), "cat1").Return(true, nil)
-	mockRA.EXPECT().Update(gomock.Any(), gomock.Any()).Return(nil)
+	mockRA.EXPECT().Update(gomock.Any(), nil, gomock.Any()).Return(nil)
 
 	err := rs.Update(context.Background(), &interfaces.Resource{
 		ID:               "r1",
@@ -854,8 +855,8 @@ func TestUpdate_AllowsSchemaDisplayFieldsWithoutClearingLocalIndex(t *testing.T)
 	rs, mockRA, mockPS, _, _, mockCS, _ := newTestService(t)
 	mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 	mockCS.EXPECT().CheckExistByID(gomock.Any(), "cat1").Return(true, nil)
-	mockRA.EXPECT().Update(gomock.Any(), gomock.Any()).
-		DoAndReturn(func(_ context.Context, got *interfaces.Resource) error {
+	mockRA.EXPECT().Update(gomock.Any(), nil, gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource) error {
 			if got.LocalIndexName != "vega-build-r1-task-1" {
 				t.Fatalf("expected LocalIndexName to be preserved, got %q", got.LocalIndexName)
 			}

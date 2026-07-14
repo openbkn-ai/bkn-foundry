@@ -6,6 +6,7 @@ package worker
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
@@ -41,7 +42,7 @@ func TestEmbeddingHandlerHandleTask(t *testing.T) {
 				gotAccount, hasAccount = workerAccountFromCtx(ctx)
 				return nil, nil
 			})
-		taskAccess.EXPECT().UpdateStatus(gomock.Any(), "t1",
+		taskAccess.EXPECT().UpdateStatus(gomock.Any(), nil, "t1",
 			interfaces.NewBuildTaskUpdate().
 				WithStatus(interfaces.BuildTaskStatusFailed).
 				WithErrorMsg("resource not found")).
@@ -94,7 +95,7 @@ func TestEmbeddingHandlerExecuteEmbedding(t *testing.T) {
 			Return(map[string]any{"team_name": ""}, nil).Times(3)
 		ka.EXPECT().CommitMessages(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(deadCommit).Times(embeddingKafkaMaxConsecutiveErrors)
-		ta.EXPECT().UpdateStatus(gomock.Any(), "t1", gomock.Any()).Return(true, nil).AnyTimes()
+		ta.EXPECT().UpdateStatus(gomock.Any(), nil, "t1", gomock.Any()).Return(true, nil).AnyTimes()
 
 		err := eh.executeEmbedding(context.Background(), resource, task)
 
@@ -136,15 +137,15 @@ func TestEmbeddingHandlerExecuteEmbedding(t *testing.T) {
 		ka.EXPECT().ReadMessage(gomock.Any(), gomock.Any()).
 			Return(kafka.Message{}, context.DeadlineExceeded).
 			Times(embeddingDrainEmptyPolls)
-		ra.EXPECT().Update(gomock.Any(), resource).
-			DoAndReturn(func(_ context.Context, got *interfaces.Resource) error {
+		ra.EXPECT().Update(gomock.Any(), nil, resource).
+			DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource) error {
 				assert.Equal(t, wantIndexName, got.LocalIndexName)
 				return nil
 			})
 		ta.EXPECT().GetByID(gomock.Any(), "t1").
 			Return(&interfaces.BuildTask{ID: "t1", SyncedCount: 7}, nil)
-		ta.EXPECT().UpdateStatus(gomock.Any(), "t1", gomock.Any()).
-			DoAndReturn(func(_ context.Context, _ string, update interfaces.BuildTaskUpdate, _ ...string) (bool, error) {
+		ta.EXPECT().UpdateStatus(gomock.Any(), nil, "t1", gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ *sql.Tx, _ string, update interfaces.BuildTaskUpdate, _ ...string) (bool, error) {
 				require.NotNil(t, update.Status)
 				require.NotNil(t, update.VectorizedCount)
 				require.NotNil(t, update.FailureDetail)
@@ -328,8 +329,8 @@ func expectEmbeddingKafkaSession(ka *vmock.MockKafkaAccess) {
 }
 
 func expectEmbeddingCountFlush(ta *vmock.MockBuildTaskAccess, count int64) *gomock.Call {
-	return ta.EXPECT().UpdateStatus(gomock.Any(), "t1", gomock.AssignableToTypeOf(interfaces.BuildTaskUpdate{})).
-		DoAndReturn(func(_ context.Context, _ string, update interfaces.BuildTaskUpdate, _ ...string) (bool, error) {
+	return ta.EXPECT().UpdateStatus(gomock.Any(), nil, "t1", gomock.AssignableToTypeOf(interfaces.BuildTaskUpdate{})).
+		DoAndReturn(func(_ context.Context, _ *sql.Tx, _ string, update interfaces.BuildTaskUpdate, _ ...string) (bool, error) {
 			if update.VectorizedCount == nil || *update.VectorizedCount != count {
 				return false, errors.New("vectorizedCount not flushed")
 			}

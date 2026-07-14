@@ -161,7 +161,7 @@ func TestBuildTaskAccessUpdateStatus(t *testing.T) {
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
 		update := interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusRunning)
-		updated, err := access.UpdateStatus(context.Background(), "task-1", update)
+		updated, err := access.UpdateStatus(context.Background(), nil, "task-1", update)
 
 		require.NoError(t, err)
 		assert.True(t, updated)
@@ -178,7 +178,7 @@ func TestBuildTaskAccessUpdateStatusWithAllowedStatuses(t *testing.T) {
 			WithArgs("", interfaces.BuildTaskStatusRunning, sqlmock.AnyArg(), "task-1", interfaces.BuildTaskStatusInit).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
-		claimed, err := access.UpdateStatus(context.Background(), "task-1",
+		claimed, err := access.UpdateStatus(context.Background(), nil, "task-1",
 			interfaces.NewBuildTaskUpdate().
 				WithStatus(interfaces.BuildTaskStatusRunning).
 				WithErrorMsg(""),
@@ -198,7 +198,7 @@ func TestBuildTaskAccessUpdateStatusWithAllowedStatuses(t *testing.T) {
 			WithArgs(interfaces.BuildTaskStatusRunning, sqlmock.AnyArg(), "task-1", interfaces.BuildTaskStatusInit).
 			WillReturnResult(sqlmock.NewResult(0, 0))
 
-		claimed, err := access.UpdateStatus(context.Background(), "task-1",
+		claimed, err := access.UpdateStatus(context.Background(), nil, "task-1",
 			interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusRunning),
 			interfaces.BuildTaskStatusInit,
 		)
