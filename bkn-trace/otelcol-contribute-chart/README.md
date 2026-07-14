@@ -103,7 +103,7 @@ exporters:
 触发：
 
 - 手动触发（`workflow_dispatch`）
-- push（`bkn-trace/otelcol-contribute-chart/**`、`bkn-trace/VERSION`）
+- push（`bkn-trace/otelcol-contribute-chart/**`、workflow 自身或 `reusable-*.yml` 变更）
 
 步骤：
 

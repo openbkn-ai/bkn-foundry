@@ -4,9 +4,9 @@ description: Helm chart for agent-observability service
 type: application
 version: 0.1.0
 appVersion: "0.1.1"
-home: https://github.com/kweaver-ai/kweaver-core/bkn-trace/agent-observability
+home: https://github.com/openbkn-ai/bkn-foundry/tree/main/bkn-trace/agent-observability
 sources:
-  - https://github.com/kweaver-ai/kweaver-core/bkn-trace/agent-observability
+  - https://github.com/openbkn-ai/bkn-foundry/tree/main/bkn-trace/agent-observability
 keywords:
   - agent
   - observability
