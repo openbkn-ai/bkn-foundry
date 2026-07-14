@@ -15,7 +15,7 @@ BKN Foundry 是一个 **monorepo**（[`openbkn-ai/bkn-foundry`](https://github.c
 | 模块 | 路径 | 描述 |
 | --- | --- | --- |
 | **AI Data Platform（ADP）** | [`adp/`](../adp) | 本体引擎（`adp/bkn`）、Context Loader（`adp/context-loader`）、Execution Factory（`adp/execution-factory`）、VEGA 数据虚拟化（`adp/vega`） |
-| **Trace AI** | [`trace-ai/`](../trace-ai) | Agent 可观测与 OpenTelemetry Collector Chart |
+| **BKN Trace** | [`bkn-trace/`](../bkn-trace) | Agent 可观测与 OpenTelemetry Collector Chart |
 | **Infra** | [`infra/`](../infra) | `mf-model-manager`（模型注册）、`oss-gateway-backend`、`sandbox` 运行时 |
 | **BKN 示例** | [`bkn/`](../bkn) | 业务知识网络示例（如 `smart_home_supply_chain`） |
 | **示例** | [`examples/`](../examples) | 端到端 CLI 示例（数据库 / CSV / Action） |

@@ -1,0 +1,50 @@
+name: release-bkn-trace-agent-observability
+
+on:
+  push:
+    tags:
+      - 'v*'
+    branches: ['**']
+    paths:
+      - 'bkn-trace/agent-observability/**'
+      - '.github/workflows/release-bkn-trace-agent-observability.yml'
+      - '.github/workflows/reusable-*.yml'
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish to GHCR (true) or verify build only (false)'
+        type: boolean
+        default: false
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  test:
+    uses: ./.github/workflows/reusable-test.yml
+    with:
+      service-path: bkn-trace/agent-observability
+      stack: go
+      go-mod-file: go.mod
+
+  build:
+    needs: test
+    uses: ./.github/workflows/reusable-build.yml
+    secrets: inherit
+    with:
+      service-path: bkn-trace/agent-observability
+      dockerfile: Dockerfile
+      context: '.'
+      image-name: agent-observability
+      version: ${{ needs.test.outputs.version }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+
+  chart:
+    needs: [test, build]
+    uses: ./.github/workflows/reusable-chart.yml
+    with:
+      service-path: bkn-trace/agent-observability
+      chart-path: charts/agent-observability
+      chart-name: agent-observability
+      version: ${{ needs.test.outputs.version }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}

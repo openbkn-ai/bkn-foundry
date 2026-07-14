@@ -31,7 +31,7 @@ jobs:
               'mf-model-manager':  { owner: 'jiankang-kw', label: 'mf-model-manager' },
               'oss-gateway':       { owner: 'jiankang-kw', label: 'oss-gateway' },
               'sandbox':           { owner: 'guodawn',     label: 'sandbox' },
-              'trace-ai':          { owner: 'guodawn',     label: 'trace-ai' },
+              'bkn-trace':         { owner: 'guodawn',     label: 'bkn-trace' },
               'deploy':            { owner: 'sh00tg0a1',   label: 'deploy' },
             };
 

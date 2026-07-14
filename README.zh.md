@@ -4,7 +4,7 @@
 
 [![License](https://img.shields.io/badge/license-multi--licensed-blue.svg)](LICENSE)
 
-BKN Foundry 是面向企业决策智能体的治理优先（harness-first）基础平台。它将分散的数据、知识、工具和策略转化为受治理的上下文、安全的执行和可验证的反馈闭环。通过语义建模、实时访问、运行时管控和 TraceAI，帮助 AI 系统在复杂企业环境中可靠地推理、适应和行动。
+BKN Foundry 是面向企业决策智能体的治理优先（harness-first）基础平台。它将分散的数据、知识、工具和策略转化为受治理的上下文、安全的执行和可验证的反馈闭环。通过语义建模、实时访问、运行时管控和 BKN Trace，帮助 AI 系统在复杂企业环境中可靠地推理、适应和行动。
 
 **本文目录：** [📚 快速链接](#toc-quick-links) · [🚀 快速开始](#toc-quick-start) · [🛠️ OpenBKN SDK](#toc-bkn-sdk) · [🛡️ 平台管理](#toc-kweaver-admin) · [🏗️ BKN Foundry](#toc-kweaver-core) · [📐 BKN Lang](#toc-bkn-lang) · [📊 基准测试](#toc-benchmarks)
 

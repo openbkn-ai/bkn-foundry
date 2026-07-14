@@ -1,0 +1,27 @@
+name: ci-bkn-trace
+
+# Compile gate for PRs touching bkn-trace. Build-only for now; add `go test`
+# once the test harness is CI-ready.
+
+on:
+  pull_request:
+    paths:
+      - 'bkn-trace/**'
+      - '.github/workflows/ci-bkn-trace.yml'
+
+concurrency:
+  group: ci-bkn-trace-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: bkn-trace/agent-observability
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: bkn-trace/agent-observability/go.mod
+      - run: go build ./...

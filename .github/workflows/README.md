@@ -24,14 +24,14 @@ Workflow YAML files must stay in this directory (flat layout). GitHub does not l
 | [`lint-branch-name.yml`](./lint-branch-name.yml) | Branch Name Lint | `pull_request` | Branch naming rules |
 | [`lint-commit.yml`](./lint-commit.yml) | Commit Message Lint | `pull_request` | Commit message checks |
 | [`ci-execution-factory.yml`](./ci-execution-factory.yml) | ci-execution-factory | `pull_request` / `push` (`adp/execution-factory/**`), `workflow_dispatch` | L2 smoke collect-only + operator-integration Go unit tests; optional live smoke |
-| [`release-agent-observability.yml`](./release-agent-observability.yml) | agent-observability-release | `push` (`trace-ai/agent-observability/**`, …), `workflow_dispatch` | Agent observability image + Helm chart |
-| [`release-otelcol-chart.yaml`](./release-otelcol-chart.yaml) | otelcol-chart-release | `push` (`trace-ai/otelcol-contribute-chart/**`, …), `workflow_dispatch` | OTel collector Helm chart to GHCR |
+| [`ci-bkn-trace.yml`](./ci-bkn-trace.yml) | ci-bkn-trace | `pull_request` (`bkn-trace/**`) | Compile gate for agent-observability |
+| [`release-bkn-trace-agent-observability.yml`](./release-bkn-trace-agent-observability.yml) | release-bkn-trace-agent-observability | `push` (`bkn-trace/agent-observability/**`, …), `workflow_dispatch` | Agent observability image + Helm chart |
 | [`release-infra-model-factory-base.yml`](./release-infra-model-factory-base.yml) | release-infra-model-factory-base | `push` (`infra/model-factory-base/**`), `workflow_dispatch` | Shared base image for mf-model-* → GHCR (`model-factory-base:v2`) |
 | [`release-infra-oss-gateway.yml`](./release-infra-oss-gateway.yml) | release-infra-oss-gateway | `push` (`infra/oss-gateway-backend/**`), `workflow_dispatch` | oss-gateway-backend image + Helm chart |
 | [`release-infra-mf-model-api.yml`](./release-infra-mf-model-api.yml) | release-infra-mf-model-api | `push` (`infra/mf-model-api/**`), `workflow_dispatch` | mf-model-api image + Helm chart (base: model-factory-base) |
 | [`release-infra-mf-model-manager.yml`](./release-infra-mf-model-manager.yml) | release-infra-mf-model-manager | `push` (`infra/mf-model-manager/**`), `workflow_dispatch` | mf-model-manager image + Helm chart (base: model-factory-base) |
 | [`release-proton-mariadb.yml`](./release-proton-mariadb.yml) | release-proton-mariadb | `push` (`deploy/charts/proton-mariadb/**`), `workflow_dispatch` | proton-mariadb Helm chart (chart-only) → GHCR |
-| [`release-trace-ai-otelcol.yml`](./release-trace-ai-otelcol.yml) | release-trace-ai-otelcol | `push` (`trace-ai/otelcol-contribute-chart/**`), `workflow_dispatch` | otelcol-contrib Helm chart (chart-only) → GHCR |
+| [`release-bkn-trace-otelcol.yml`](./release-bkn-trace-otelcol.yml) | release-bkn-trace-otelcol | `push` (`bkn-trace/otelcol-contribute-chart/**`), `workflow_dispatch` | otelcol-contrib Helm chart (chart-only) → GHCR |
 | [`release-adp-bkn-backend.yml`](./release-adp-bkn-backend.yml) | release-adp-bkn-backend | `push` (`adp/bkn/bkn-backend/**`), `workflow_dispatch` | bkn-backend image + Helm chart |
 | [`release-adp-ontology-query.yml`](./release-adp-ontology-query.yml) | release-adp-ontology-query | `push` (`adp/bkn/ontology-query/**`), `workflow_dispatch` | ontology-query image + Helm chart |
 | [`release-adp-agent-retrieval.yml`](./release-adp-agent-retrieval.yml) | release-adp-agent-retrieval | `push` (`adp/context-loader/agent-retrieval/**`), `workflow_dispatch` | agent-retrieval image + Helm chart |

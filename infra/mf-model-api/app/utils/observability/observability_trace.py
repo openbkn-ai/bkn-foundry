@@ -6,7 +6,7 @@
 原 AnyRobot(AR) trace exporter 已移除。当前不安装自定义 TracerProvider，
 OpenTelemetry 默认返回 no-op tracer：span 为 non-recording、开销近零。
 trace_wrapper / trace_context 的埋点保持可用，后续可接入 OTLP exporter
-（例如指向 trace-ai）而无需改动埋点。
+（例如指向 bkn-trace）而无需改动埋点。
 """
 
 from app.utils.observability.observability_setting import TraceSetting, ServerInfo

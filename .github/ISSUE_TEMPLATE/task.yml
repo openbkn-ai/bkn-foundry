@@ -28,7 +28,7 @@ body:
         - mf-model-manager
         - oss-gateway
         - sandbox
-        - trace-ai
+        - bkn-trace
         - deploy
         - other
     validations:

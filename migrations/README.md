@@ -1,7 +1,7 @@
 # migrations —— 数据库初始化脚本
 
 本目录集中管理各服务的数据库初始化 SQL，替代原先散落在
-`adp/*/*/migrations`、`infra/*/migrations`、`trace-ai/*/migrations` 下的分布式布局。
+`adp/*/*/migrations`、`infra/*/migrations`、`bkn-trace/*/migrations` 下的分布式布局。
 集中后便于统一管理与镜像构建。
 
 > 本目录由 [data-migrator](../data-migrator/) 在构建镜像时直接消费：目录布局

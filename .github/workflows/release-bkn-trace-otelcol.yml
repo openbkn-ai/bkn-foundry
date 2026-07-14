@@ -1,0 +1,40 @@
+name: release-bkn-trace-otelcol
+
+# Chart-only. Deploys upstream opentelemetry-collector-contrib (values.yaml left
+# pointing upstream, not a first-party GHCR image).
+
+on:
+  push:
+    tags:
+      - 'v*'
+    branches: ['**']
+    paths:
+      - 'bkn-trace/otelcol-contribute-chart/**'
+      - '.github/workflows/release-bkn-trace-otelcol.yml'
+      - '.github/workflows/reusable-*.yml'
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish to GHCR (true) or verify build only (false)'
+        type: boolean
+        default: false
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  test:
+    uses: ./.github/workflows/reusable-test.yml
+    with:
+      service-path: bkn-trace/otelcol-contribute-chart
+      stack: chart-only
+
+  chart:
+    needs: test
+    uses: ./.github/workflows/reusable-chart.yml
+    with:
+      service-path: bkn-trace/otelcol-contribute-chart
+      chart-path: charts/otelcol-contrib
+      chart-name: otelcol-contrib
+      version: ${{ needs.test.outputs.version }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}

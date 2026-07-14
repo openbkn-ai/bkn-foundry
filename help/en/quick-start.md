@@ -352,7 +352,7 @@ const messages = await bkn.agents.history(agent.key, sessions[0].conversation_id
 
 ---
 
-## 🎯 Scenario: Trace the reasoning (Trace AI)
+## 🎯 Scenario: Trace the reasoning (BKN Trace)
 
 **Story**: The agent's answer looks wrong. You want to know exactly what data it queried, which tools it called, and how long each step took.
 
@@ -446,7 +446,7 @@ On a **Core-only** install, `dataview query` without `--sql` supports structured
 | Data virtualization & catalog management | [vega.md](manual/vega.md) |
 | MCP layered retrieval | [context-loader.md](manual/context-loader.md) |
 | Tools & skill management | [execution-factory.md](manual/execution-factory.md) |
-| Trace & evidence chain | [trace-ai.md](manual/trace-ai.md) |
+| Trace & evidence chain | [bkn-trace.md](manual/bkn-trace.md) |
 | Auth & security governance | [bkn-safe.md](manual/bkn-safe.md) |
 
 Full SDK example code ships with the `@openbkn/bkn-sdk` npm package.
