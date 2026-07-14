@@ -511,9 +511,9 @@ func TestCreateBuildTaskNormalizesModelNameToID(t *testing.T) {
 	mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 	mockRS := mock_interfaces.NewMockResourceService(ctrl)
 	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
-	mockMFA := mock_interfaces.NewMockModelFactoryAccess(ctrl)
+	mockMFS := mock_interfaces.NewMockModelFactoryService(ctrl)
 	neutralizeEnqueue(t, ctrl)
-	service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA, mfa: mockMFA}
+	service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA, mfs: mockMFS}
 
 	mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").
 		Return(&interfaces.Resource{
@@ -550,7 +550,7 @@ func TestCreateBuildTaskNormalizesModelNameToID(t *testing.T) {
 			}
 			return nil, 0, nil
 		})
-	mockMFA.EXPECT().GetModelByName(gomock.Any(), "text-embedding-v4").
+	mockMFS.EXPECT().GetModelByName(gomock.Any(), "text-embedding-v4").
 		Return(&interfaces.SmallModel{ModelID: "2064382281006583808", ModelName: "text-embedding-v4", EmbeddingDim: 1024}, nil)
 
 	var captured *interfaces.BuildTask
@@ -582,9 +582,9 @@ func TestCreateBuildTaskSnapshotUnaffectedByResourceMutation(t *testing.T) {
 	mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 	mockRS := mock_interfaces.NewMockResourceService(ctrl)
 	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
-	mockMFA := mock_interfaces.NewMockModelFactoryAccess(ctrl)
+	mockMFS := mock_interfaces.NewMockModelFactoryService(ctrl)
 	neutralizeEnqueue(t, ctrl)
-	service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA, mfa: mockMFA}
+	service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA, mfs: mockMFS}
 
 	resource := &interfaces.Resource{
 		ID:        "resource-1",
@@ -609,7 +609,7 @@ func TestCreateBuildTaskSnapshotUnaffectedByResourceMutation(t *testing.T) {
 	mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
 		Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
 	mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).Return(nil, int64(0), nil)
-	mockMFA.EXPECT().GetModelByName(gomock.Any(), "text-embedding-v4").
+	mockMFS.EXPECT().GetModelByName(gomock.Any(), "text-embedding-v4").
 		Return(&interfaces.SmallModel{ModelID: "2064382281006583808", ModelName: "text-embedding-v4", EmbeddingDim: 1024}, nil)
 
 	var captured *interfaces.BuildTask
@@ -641,9 +641,9 @@ func TestCreateBuildTaskUsesFeatureEmbeddingModelOverride(t *testing.T) {
 	mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 	mockRS := mock_interfaces.NewMockResourceService(ctrl)
 	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
-	mockMFA := mock_interfaces.NewMockModelFactoryAccess(ctrl)
+	mockMFS := mock_interfaces.NewMockModelFactoryService(ctrl)
 	neutralizeEnqueue(t, ctrl)
-	service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA, mfa: mockMFA}
+	service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA, mfs: mockMFS}
 
 	mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").
 		Return(&interfaces.Resource{
@@ -675,7 +675,7 @@ func TestCreateBuildTaskUsesFeatureEmbeddingModelOverride(t *testing.T) {
 			}
 			return nil, 0, nil
 		})
-	mockMFA.EXPECT().GetModelByName(gomock.Any(), "text-embedding-v4").
+	mockMFS.EXPECT().GetModelByName(gomock.Any(), "text-embedding-v4").
 		Return(&interfaces.SmallModel{ModelID: "2064382281006583808", ModelName: "text-embedding-v4", EmbeddingDim: 1024}, nil)
 
 	var captured *interfaces.BuildTask
@@ -704,8 +704,8 @@ func TestCreateBuildTaskErrorsWhenModelUnresolvableAndNoDimensions(t *testing.T)
 	mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 	mockRS := mock_interfaces.NewMockResourceService(ctrl)
 	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
-	mockMFA := mock_interfaces.NewMockModelFactoryAccess(ctrl)
-	service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA, mfa: mockMFA}
+	mockMFS := mock_interfaces.NewMockModelFactoryService(ctrl)
+	service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA, mfs: mockMFS}
 
 	mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").
 		Return(&interfaces.Resource{
@@ -733,7 +733,7 @@ func TestCreateBuildTaskErrorsWhenModelUnresolvableAndNoDimensions(t *testing.T)
 			}
 			return nil, 0, nil
 		})
-	mockMFA.EXPECT().GetModelByName(gomock.Any(), "bogus-model").
+	mockMFS.EXPECT().GetModelByName(gomock.Any(), "bogus-model").
 		Return(nil, fmt.Errorf("model not found"))
 
 	_, err := service.CreateBuildTask(context.Background(), &interfaces.CreateBuildTaskRequest{

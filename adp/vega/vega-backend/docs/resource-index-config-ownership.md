@@ -10,7 +10,8 @@
 3. 字段级配置覆盖放在 `feature.config`。
 4. resource 级默认值和跨字段构建策略放在 `resource.index_config`。
 5. build task 不接受客户端传入的索引配置；它只保存创建时由服务端从 resource 派生出的不可变构建快照。
-6. `model_dimensions` 只由模型服务解析得到，不进入客户端可写配置。
+6. `model_dimensions` 只由模型服务解析得到，不进入客户端可写配置，也不回写到 resource。
+7. `default_fulltext_analyzer` 和 `default_embedding_model` 不是独立必填项；只有存在对应 feature 且字段级未覆盖时才参与默认填充。
 
 本次 PR 内一次性完成最终模型，不保留旧 create task 入参兼容路径：
 
@@ -139,7 +140,7 @@ resource 目前已有 `schema_definition.features`，应把它作为字段级索
 | fulltext 字段 | `schema_definition[].features` | 字段是否可全文检索是字段级检索语义 |
 | fulltext analyzer | `feature.config.analyzer` / `index_config.default_fulltext_analyzer` | 字段级配置优先，resource 级配置作为默认值 |
 | embedding model | `feature.config.embedding_model` / `index_config.default_embedding_model` | 字段级配置优先，resource 级配置作为默认值 |
-| model dimensions | 模型服务派生 | 由模型服务解析，不接受客户端直接设置 |
+| model dimensions | task 快照中的模型服务派生结果 | 由模型服务解析，不接受客户端直接设置，也不写回 resource |
 
 ### 归 build task 所有
 
@@ -202,6 +203,7 @@ task 表使用 `f_index_config` 保存索引配置快照。快照不来自 `POST
 - worker 读取 `BuildTask.IndexConfig` 即可获得构建时配置。
 - 历史 task 可完整还原当时构建使用的配置。
 - task 不需要回读 resource 当前配置，避免 resource 后续修改影响历史构建语义。
+- 模型维度等执行期派生信息只固化在 task 快照中，不污染 resource 的客户端可写配置。
 
 约束：
 
@@ -426,7 +428,9 @@ resource 级默认值和构建策略放在 `index_config`：
 | `default_fulltext_analyzer` | 未在 feature 上指定 analyzer 时使用的默认全文 analyzer |
 | `default_embedding_model` | 未在 feature 上指定 embedding model 时使用的默认模型引用 |
 
-`model_dimensions` 不进入客户端可写配置，只能在创建 task 快照时由模型服务解析得到。
+如果没有 fulltext feature，`default_fulltext_analyzer` 可以为空；如果没有 vector feature，`default_embedding_model` 可以为空。默认值只有被实际 feature 使用时才参与校验和快照生成。
+
+`model_dimensions` 不进入客户端可写配置，只能在创建 task 快照时由模型服务解析得到，并写入 `BuildTask.IndexConfig`。
 
 ## Update resource index config
 
@@ -435,6 +439,7 @@ resource 级默认值和构建策略放在 `index_config`：
 更新规则：
 
 - 如果同一 resource 存在 active task，返回 409。
+- vector feature 实际使用的 embedding model 必须能被模型服务解析，否则返回 400。
 - 只允许更新明确属于索引配置的字段，不允许顺带修改源端字段。
 - 更新后必须处理旧 `LocalIndexName`：
   - 如果旧索引配置与新 resource 配置不一致，清空或标记 stale。

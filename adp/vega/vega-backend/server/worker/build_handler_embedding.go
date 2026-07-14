@@ -23,6 +23,7 @@ import (
 	"vega-backend/interfaces"
 	"vega-backend/logics"
 	"vega-backend/logics/local_index"
+	model_factory "vega-backend/logics/model_factory"
 )
 
 // embeddingHandler handles embedding tasks.
@@ -32,7 +33,7 @@ type embeddingHandler struct {
 	resAccess   interfaces.ResourceAccess
 	lim         interfaces.LocalIndexManager
 	kafkaAccess interfaces.KafkaAccess
-	mfa         interfaces.ModelFactoryAccess
+	mfs         interfaces.ModelFactoryService
 	sleep       func(time.Duration) // 重试等待，测试中注入空实现避免真实 sleep
 }
 
@@ -53,7 +54,7 @@ func NewEmbeddingBuildHandler(appSetting *common.AppSetting) *embeddingHandler {
 		resAccess:   logics.RA,
 		lim:         local_index.NewLocalIndexManager(appSetting),
 		kafkaAccess: logics.KA,
-		mfa:         logics.MFA,
+		mfs:         model_factory.NewModelFactoryService(appSetting),
 	}
 }
 
@@ -456,7 +457,7 @@ func (eh *embeddingHandler) vectorizeDoc(ctx context.Context, indexName, docID s
 
 	updateDoc := make(map[string]any)
 	for model, words := range wordsByModel {
-		vectorResp, err := eh.mfa.GetVector(ctx, model, words)
+		vectorResp, err := eh.mfs.GetVector(ctx, model, words)
 		if err != nil {
 			return fmt.Errorf("get vector: %w", err)
 		}

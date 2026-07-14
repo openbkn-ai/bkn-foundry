@@ -729,6 +729,127 @@ func TestUpdate_ClearsLocalIndexNameWhenIndexConfigChanges(t *testing.T) {
 	}
 }
 
+func TestUpdate_RejectsMissingDefaultEmbeddingModel(t *testing.T) {
+	rs, _, mockPS, _, _, _, mockBTA := newTestService(t)
+	ctrl := gomock.NewController(t)
+	mockMFS := vmock.NewMockModelFactoryService(ctrl)
+	rs.mfs = mockMFS
+	mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+	mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).Return(nil, int64(0), nil)
+	mockMFS.EXPECT().GetModelByName(gomock.Any(), "missing-model").Return(nil, fmt.Errorf("model not found"))
+
+	err := rs.Update(context.Background(), &interfaces.Resource{
+		ID:               "r1",
+		CatalogID:        "cat1",
+		Category:         interfaces.ResourceCategoryTable,
+		Name:             "table",
+		SourceIdentifier: "public.orders",
+		SchemaDefinition: []*interfaces.Property{
+			{
+				Name: "title",
+				Features: []interfaces.PropertyFeature{
+					{FeatureType: interfaces.PropertyFeatureType_Vector, RefProperty: "title"},
+				},
+			},
+		},
+	}, &interfaces.ResourceRequest{
+		CatalogID:        "cat1",
+		Name:             "table",
+		SourceIdentifier: "public.orders",
+		IndexConfig: &interfaces.ResourceIndexConfig{
+			DefaultEmbeddingModel: "missing-model",
+		},
+	})
+
+	httpErr, ok := err.(*rest.HTTPError)
+	if !ok {
+		t.Fatalf("expected HTTPError, got %T", err)
+	}
+	if httpErr.HTTPCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", httpErr.HTTPCode)
+	}
+	if httpErr.BaseError.ErrorCode != verrors.VegaBackend_InvalidParameter_RequestBody {
+		t.Fatalf("expected %s, got %s", verrors.VegaBackend_InvalidParameter_RequestBody, httpErr.BaseError.ErrorCode)
+	}
+}
+
+func TestCreate_RejectsMissingFeatureEmbeddingModel(t *testing.T) {
+	rs, _, mockPS, _, _, mockCS, _ := newTestService(t)
+	ctrl := gomock.NewController(t)
+	mockMFS := vmock.NewMockModelFactoryService(ctrl)
+	rs.mfs = mockMFS
+	mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+	mockCS.EXPECT().CheckExistByID(gomock.Any(), "cat1").Return(true, nil)
+	mockMFS.EXPECT().GetModelByName(gomock.Any(), "missing-model").Return(nil, fmt.Errorf("model not found"))
+
+	_, err := rs.Create(context.Background(), &interfaces.ResourceRequest{
+		CatalogID:        "cat1",
+		Name:             "table",
+		Category:         interfaces.ResourceCategoryTable,
+		SourceIdentifier: "public.orders",
+		SchemaDefinition: []*interfaces.Property{
+			{
+				Name: "title",
+				Features: []interfaces.PropertyFeature{
+					{
+						FeatureType: interfaces.PropertyFeatureType_Vector,
+						RefProperty: "title",
+						Config:      map[string]any{"embedding_model": "missing-model"},
+					},
+				},
+			},
+		},
+	})
+
+	httpErr, ok := err.(*rest.HTTPError)
+	if !ok {
+		t.Fatalf("expected HTTPError, got %T", err)
+	}
+	if httpErr.HTTPCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", httpErr.HTTPCode)
+	}
+	if httpErr.BaseError.ErrorCode != verrors.VegaBackend_InvalidParameter_RequestBody {
+		t.Fatalf("expected %s, got %s", verrors.VegaBackend_InvalidParameter_RequestBody, httpErr.BaseError.ErrorCode)
+	}
+}
+
+func TestUpdate_AllowsUnusedDefaultEmbeddingModel(t *testing.T) {
+	rs, mockRA, mockPS, _, _, mockCS, mockBTA := newTestService(t)
+	ctrl := gomock.NewController(t)
+	mockMFS := vmock.NewMockModelFactoryService(ctrl)
+	rs.mfs = mockMFS
+	mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+	mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).Return(nil, int64(0), nil)
+	mockCS.EXPECT().CheckExistByID(gomock.Any(), "cat1").Return(true, nil)
+	mockRA.EXPECT().Update(gomock.Any(), gomock.Any()).Return(nil)
+
+	err := rs.Update(context.Background(), &interfaces.Resource{
+		ID:               "r1",
+		CatalogID:        "cat1",
+		Category:         interfaces.ResourceCategoryTable,
+		Name:             "table",
+		SourceIdentifier: "public.orders",
+		SchemaDefinition: []*interfaces.Property{
+			{
+				Name: "title",
+				Features: []interfaces.PropertyFeature{
+					{FeatureType: interfaces.PropertyFeatureType_Fulltext, RefProperty: "title"},
+				},
+			},
+		},
+	}, &interfaces.ResourceRequest{
+		CatalogID:        "cat1",
+		Name:             "table",
+		SourceIdentifier: "public.orders",
+		IndexConfig: &interfaces.ResourceIndexConfig{
+			DefaultEmbeddingModel: "missing-model",
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestUpdate_AllowsSchemaDisplayFieldsWithoutClearingLocalIndex(t *testing.T) {
 	rs, mockRA, mockPS, _, _, mockCS, _ := newTestService(t)
 	mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)

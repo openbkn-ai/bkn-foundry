@@ -161,12 +161,12 @@ func TestEmbeddingHandlerExecuteEmbedding(t *testing.T) {
 
 func TestEmbeddingHandlerVectorizeDoc(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
-		eh, lim, mfa := newVectorizeHandler(t)
+		eh, lim, mfs := newVectorizeHandler(t)
 		ctx := t.Context()
 
 		lim.EXPECT().GetDocument(ctx, "idx", "doc1").
 			Return(map[string]any{"team_name": "Iran", "other": 1}, nil)
-		mfa.EXPECT().GetVector(ctx, "m1", []string{"Iran"}).
+		mfs.EXPECT().GetVector(ctx, "m1", []string{"Iran"}).
 			Return([]*interfaces.VectorResp{{Vector: []float32{0.1, 0.2}}}, nil)
 		lim.EXPECT().UpsertDocuments(ctx, "idx", gomock.Any()).
 			DoAndReturn(func(_ any, _ string, reqs []map[string]any) ([]string, error) {
@@ -191,14 +191,14 @@ func TestEmbeddingHandlerVectorizeDoc(t *testing.T) {
 	})
 
 	t.Run("groups fields by model", func(t *testing.T) {
-		eh, lim, mfa := newVectorizeHandler(t)
+		eh, lim, mfs := newVectorizeHandler(t)
 		ctx := t.Context()
 
 		lim.EXPECT().GetDocument(ctx, "idx", "doc1").
 			Return(map[string]any{"title": "hello", "body": "world"}, nil)
-		mfa.EXPECT().GetVector(ctx, "m1", []string{"hello"}).
+		mfs.EXPECT().GetVector(ctx, "m1", []string{"hello"}).
 			Return([]*interfaces.VectorResp{{Vector: []float32{0.1}}}, nil)
-		mfa.EXPECT().GetVector(ctx, "m2", []string{"world"}).
+		mfs.EXPECT().GetVector(ctx, "m2", []string{"world"}).
 			Return([]*interfaces.VectorResp{{Vector: []float32{0.2}}}, nil)
 		lim.EXPECT().UpsertDocuments(ctx, "idx", gomock.Any()).
 			DoAndReturn(func(_ any, _ string, reqs []map[string]any) ([]string, error) {
@@ -218,22 +218,22 @@ func TestEmbeddingHandlerVectorizeDoc(t *testing.T) {
 		boom := errors.New("boom")
 		cases := []struct {
 			name  string
-			setup func(lim *vmock.MockLocalIndexManager, mfa *vmock.MockModelFactoryAccess, ctx any)
+			setup func(lim *vmock.MockLocalIndexManager, mfs *vmock.MockModelFactoryService, ctx any)
 		}{
-			{"get document fails", func(lim *vmock.MockLocalIndexManager, mfa *vmock.MockModelFactoryAccess, ctx any) {
+			{"get document fails", func(lim *vmock.MockLocalIndexManager, mfs *vmock.MockModelFactoryService, ctx any) {
 				lim.EXPECT().GetDocument(ctx, "idx", "doc1").Return(nil, boom)
 			}},
-			{"get vector fails", func(lim *vmock.MockLocalIndexManager, mfa *vmock.MockModelFactoryAccess, ctx any) {
+			{"get vector fails", func(lim *vmock.MockLocalIndexManager, mfs *vmock.MockModelFactoryService, ctx any) {
 				lim.EXPECT().GetDocument(ctx, "idx", "doc1").Return(map[string]any{"f": "text"}, nil)
-				mfa.EXPECT().GetVector(ctx, "m1", []string{"text"}).Return(nil, boom)
+				mfs.EXPECT().GetVector(ctx, "m1", []string{"text"}).Return(nil, boom)
 			}},
-			{"vector count mismatch", func(lim *vmock.MockLocalIndexManager, mfa *vmock.MockModelFactoryAccess, ctx any) {
+			{"vector count mismatch", func(lim *vmock.MockLocalIndexManager, mfs *vmock.MockModelFactoryService, ctx any) {
 				lim.EXPECT().GetDocument(ctx, "idx", "doc1").Return(map[string]any{"f": "text"}, nil)
-				mfa.EXPECT().GetVector(ctx, "m1", []string{"text"}).Return([]*interfaces.VectorResp{}, nil)
+				mfs.EXPECT().GetVector(ctx, "m1", []string{"text"}).Return([]*interfaces.VectorResp{}, nil)
 			}},
-			{"upsert fails", func(lim *vmock.MockLocalIndexManager, mfa *vmock.MockModelFactoryAccess, ctx any) {
+			{"upsert fails", func(lim *vmock.MockLocalIndexManager, mfs *vmock.MockModelFactoryService, ctx any) {
 				lim.EXPECT().GetDocument(ctx, "idx", "doc1").Return(map[string]any{"f": "text"}, nil)
-				mfa.EXPECT().GetVector(ctx, "m1", []string{"text"}).
+				mfs.EXPECT().GetVector(ctx, "m1", []string{"text"}).
 					Return([]*interfaces.VectorResp{{Vector: []float32{0.1}}}, nil)
 				lim.EXPECT().UpsertDocuments(ctx, "idx", gomock.Any()).Return(nil, boom)
 			}},
@@ -241,9 +241,9 @@ func TestEmbeddingHandlerVectorizeDoc(t *testing.T) {
 
 		for _, tc := range cases {
 			t.Run(tc.name, func(t *testing.T) {
-				eh, lim, mfa := newVectorizeHandler(t)
+				eh, lim, mfs := newVectorizeHandler(t)
 				ctx := t.Context()
-				tc.setup(lim, mfa, ctx)
+				tc.setup(lim, mfs, ctx)
 
 				require.Error(t, eh.vectorizeDoc(ctx, "idx", "doc1", testEmbeddingConfig("m1", "f")))
 			})
@@ -337,11 +337,11 @@ func expectEmbeddingCountFlush(ta *vmock.MockBuildTaskAccess, count int64) *gomo
 		})
 }
 
-func newVectorizeHandler(t *testing.T) (*embeddingHandler, *vmock.MockLocalIndexManager, *vmock.MockModelFactoryAccess) {
+func newVectorizeHandler(t *testing.T) (*embeddingHandler, *vmock.MockLocalIndexManager, *vmock.MockModelFactoryService) {
 	t.Helper()
 
 	ctrl := gomock.NewController(t)
 	lim := vmock.NewMockLocalIndexManager(ctrl)
-	mfa := vmock.NewMockModelFactoryAccess(ctrl)
-	return &embeddingHandler{lim: lim, mfa: mfa}, lim, mfa
+	mfs := vmock.NewMockModelFactoryService(ctrl)
+	return &embeddingHandler{lim: lim, mfs: mfs}, lim, mfs
 }

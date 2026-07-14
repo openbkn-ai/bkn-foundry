@@ -32,6 +32,7 @@ import (
 	"vega-backend/logics"
 	"vega-backend/logics/catalog"
 	"vega-backend/logics/local_index"
+	model_factory "vega-backend/logics/model_factory"
 	"vega-backend/logics/user_mgmt"
 )
 
@@ -45,7 +46,7 @@ type buildTaskService struct {
 	cs         interfaces.CatalogService
 	rs         interfaces.ResourceService
 	bta        interfaces.BuildTaskAccess
-	mfa        interfaces.ModelFactoryAccess
+	mfs        interfaces.ModelFactoryService
 	ums        interfaces.UserMgmtService
 	lim        interfaces.LocalIndexManager // 删任务时 drop 其本地索引；测试注入 mock
 }
@@ -64,7 +65,7 @@ func NewBuildTaskService(appSetting *common.AppSetting, rs interfaces.ResourceSe
 			cs:         catalog.NewCatalogService(appSetting),
 			rs:         rs,
 			bta:        logics.BTA,
-			mfa:        logics.MFA,
+			mfs:        model_factory.NewModelFactoryService(appSetting),
 			ums:        user_mgmt.NewUserMgmtService(appSetting),
 			lim:        local_index.NewLocalIndexManager(appSetting),
 		}
@@ -281,7 +282,7 @@ func (bts *buildTaskService) normalizeEmbeddingModel(ctx context.Context, embedd
 	// embedding_model 统一归一化为模型 ID 存储：传入是模型名则解析为 ID 并补全维度；
 	// 传入已是模型 ID 时 GetModelByName 按名查不到（err != nil），此时若已带维度则原样保留为 ID。
 	// 既解析不到又没维度则无法建向量索引，按错误处理。
-	if model, err := bts.mfa.GetModelByName(ctx, embeddingModel); err == nil {
+	if model, err := bts.mfs.GetModelByName(ctx, embeddingModel); err == nil {
 		embeddingModel = model.ModelID
 		if modelDimensions == 0 {
 			modelDimensions = model.EmbeddingDim
