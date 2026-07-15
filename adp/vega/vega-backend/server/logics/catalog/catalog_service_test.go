@@ -36,667 +36,698 @@ func (m *mockCipher) Signature(data string) (string, error) {
 	return "", nil
 }
 
-// ===== validateAndDecryptSensitiveFields =====
+func TestValidateAndDecryptSensitiveFields(t *testing.T) {
+	t.Run("validate and decrypt no cipher", func(t *testing.T) {
+		cs := &catalogService{cipher: nil}
+		config := map[string]any{"password": "secret123", "host": "localhost"}
 
-func TestValidateAndDecrypt_NoCipher(t *testing.T) {
-	cs := &catalogService{cipher: nil}
-	config := map[string]any{"password": "secret123", "host": "localhost"}
-
-	decrypted, err := cs.validateAndDecryptSensitiveFields([]string{"password"}, config)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if decrypted["password"] != "secret123" {
-		t.Errorf("expected 'secret123', got '%v'", decrypted["password"])
-	}
-	if config["password"] != "secret123" {
-		t.Errorf("original config should not be modified")
-	}
-}
-
-func TestValidateAndDecrypt_WithCipher_Success(t *testing.T) {
-	cs := &catalogService{
-		cipher: &mockCipher{
-			decryptFunc: func(ciphertext string) (string, error) {
-				return "decrypted_" + ciphertext, nil
-			},
-		},
-	}
-	config := map[string]any{"password": "rsa_ciphertext", "host": "localhost"}
-
-	decrypted, err := cs.validateAndDecryptSensitiveFields([]string{"password"}, config)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if decrypted["password"] != "decrypted_rsa_ciphertext" {
-		t.Errorf("expected 'decrypted_rsa_ciphertext', got '%v'", decrypted["password"])
-	}
-	if config["password"] != EncryptedPrefix+"rsa_ciphertext" {
-		t.Errorf("expected ENC: prefix, got '%v'", config["password"])
-	}
-	if decrypted["host"] != "localhost" {
-		t.Errorf("non-sensitive field should be unchanged")
-	}
-}
-
-func TestValidateAndDecrypt_WithCipher_DecryptFails(t *testing.T) {
-	cs := &catalogService{
-		cipher: &mockCipher{
-			decryptFunc: func(ciphertext string) (string, error) {
-				return "", fmt.Errorf("invalid ciphertext")
-			},
-		},
-	}
-	config := map[string]any{"password": "bad_data"}
-
-	_, err := cs.validateAndDecryptSensitiveFields([]string{"password"}, config)
-	if err == nil {
-		t.Fatal("expected error for invalid ciphertext")
-	}
-	if !strings.Contains(err.Error(), "password") {
-		t.Errorf("error should mention field name, got: %v", err)
-	}
-}
-
-func TestValidateAndDecrypt_EmptyValue(t *testing.T) {
-	cs := &catalogService{
-		cipher: &mockCipher{
-			decryptFunc: func(ciphertext string) (string, error) {
-				t.Fatal("should not be called for empty value")
-				return "", nil
-			},
-		},
-	}
-	config := map[string]any{"password": ""}
-
-	_, err := cs.validateAndDecryptSensitiveFields([]string{"password"}, config)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestValidateAndDecrypt_NonStringValue(t *testing.T) {
-	cs := &catalogService{
-		cipher: &mockCipher{
-			decryptFunc: func(ciphertext string) (string, error) {
-				t.Fatal("should not be called for non-string value")
-				return "", nil
-			},
-		},
-	}
-	config := map[string]any{"password": 12345}
-
-	_, err := cs.validateAndDecryptSensitiveFields([]string{"password"}, config)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-// ===== decryptSensitiveFields =====
-
-func TestDecrypt_NoCipher(t *testing.T) {
-	cs := &catalogService{cipher: nil}
-	config := map[string]any{"password": "ENC:ciphertext"}
-
-	decrypted, err := cs.decryptSensitiveFields([]string{"password"}, config)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if decrypted["password"] != "ENC:ciphertext" {
-		t.Errorf("expected original value, got '%v'", decrypted["password"])
-	}
-}
-
-func TestDecrypt_WithCipher_Success(t *testing.T) {
-	cs := &catalogService{
-		cipher: &mockCipher{
-			decryptFunc: func(ciphertext string) (string, error) {
-				return "plaintext_" + ciphertext, nil
-			},
-		},
-	}
-	config := map[string]any{"password": "ENC:rsa_data"}
-
-	decrypted, err := cs.decryptSensitiveFields([]string{"password"}, config)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if decrypted["password"] != "plaintext_rsa_data" {
-		t.Errorf("expected 'plaintext_rsa_data', got '%v'", decrypted["password"])
-	}
-}
-
-func TestDecrypt_MissingEncPrefix(t *testing.T) {
-	cs := &catalogService{
-		cipher: &mockCipher{
-			decryptFunc: func(ciphertext string) (string, error) {
-				return "", nil
-			},
-		},
-	}
-	config := map[string]any{"password": "no_prefix_value"}
-
-	_, err := cs.decryptSensitiveFields([]string{"password"}, config)
-	if err == nil {
-		t.Fatal("expected error for missing ENC: prefix")
-	}
-	if !strings.Contains(err.Error(), "not encrypted") {
-		t.Errorf("expected 'not encrypted' error, got: %v", err)
-	}
-}
-
-func TestDecrypt_DecryptFails(t *testing.T) {
-	cs := &catalogService{
-		cipher: &mockCipher{
-			decryptFunc: func(ciphertext string) (string, error) {
-				return "", fmt.Errorf("corrupted data")
-			},
-		},
-	}
-	config := map[string]any{"password": "ENC:bad_data"}
-
-	_, err := cs.decryptSensitiveFields([]string{"password"}, config)
-	if err == nil {
-		t.Fatal("expected error for corrupted data")
-	}
-	if !strings.Contains(err.Error(), "password") {
-		t.Errorf("error should mention field name, got: %v", err)
-	}
-}
-
-// ===== CheckExistByID（使用 mockgen 生成的 mock） =====
-
-func TestCheckExistByID_Found(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
-	mockCA.EXPECT().GetByID(gomock.Any(), "test-id").
-		Return(&interfaces.Catalog{ID: "test-id"}, nil)
-
-	cs := &catalogService{ca: mockCA}
-	exists, err := cs.CheckExistByID(context.Background(), "test-id")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !exists {
-		t.Error("expected catalog to exist")
-	}
-}
-
-func TestCheckExistByID_NotFound(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
-	mockCA.EXPECT().GetByID(gomock.Any(), "missing-id").
-		Return(nil, nil)
-
-	cs := &catalogService{ca: mockCA}
-	exists, err := cs.CheckExistByID(context.Background(), "missing-id")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if exists {
-		t.Error("expected catalog to not exist")
-	}
-}
-
-func TestCheckExistByID_Error(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
-	mockCA.EXPECT().GetByID(gomock.Any(), "test-id").
-		Return(nil, fmt.Errorf("db error"))
-
-	cs := &catalogService{ca: mockCA}
-	_, err := cs.CheckExistByID(context.Background(), "test-id")
-	if err == nil {
-		t.Fatal("expected error")
-	}
-}
-
-// ===== CheckExistByName =====
-
-func TestCheckExistByName_Found(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
-	mockCA.EXPECT().GetByName(gomock.Any(), "test").
-		Return(&interfaces.Catalog{Name: "test"}, nil)
-
-	cs := &catalogService{ca: mockCA}
-	exists, err := cs.CheckExistByName(context.Background(), "test")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !exists {
-		t.Error("expected catalog to exist")
-	}
-}
-
-// ===== Create =====
-
-func TestCreate_MissingEnabledDefaultsToDisabledAndUnchecked(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
-	mockPS := mock_interfaces.NewMockPermissionService(ctrl)
-
-	mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-	mockCA.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, catalog *interfaces.Catalog) error {
-			if catalog.Enabled {
-				t.Fatal("expected catalog to be disabled by default")
-			}
-			if catalog.HealthCheckStatus != interfaces.CatalogHealthStatusUnchecked {
-				t.Fatalf("expected unchecked status, got %s", catalog.HealthCheckStatus)
-			}
-			return nil
-		},
-	)
-	mockPS.EXPECT().CreateResources(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-
-	cs := &catalogService{ca: mockCA, ps: mockPS}
-	_, err := cs.Create(context.Background(), &interfaces.CatalogRequest{
-		Name: "catalog",
+		decrypted, err := cs.validateAndDecryptSensitiveFields([]string{"password"}, config)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if decrypted["password"] != "secret123" {
+			t.Errorf("expected 'secret123', got '%v'", decrypted["password"])
+		}
+		if config["password"] != "secret123" {
+			t.Errorf("original config should not be modified")
+		}
 	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
+	t.Run("validate and decrypt with cipher success", func(t *testing.T) {
+		cs := &catalogService{
+			cipher: &mockCipher{
+				decryptFunc: func(ciphertext string) (string, error) {
+					return "decrypted_" + ciphertext, nil
+				},
+			},
+		}
+		config := map[string]any{"password": "rsa_ciphertext", "host": "localhost"}
 
-func TestCreate_EnabledTrue(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
-	mockPS := mock_interfaces.NewMockPermissionService(ctrl)
-
-	mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-	mockCA.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, catalog *interfaces.Catalog) error {
-			if !catalog.Enabled {
-				t.Fatal("expected catalog to be enabled")
-			}
-			if catalog.HealthCheckStatus != interfaces.CatalogHealthStatusUnchecked {
-				t.Fatalf("expected unchecked status, got %s", catalog.HealthCheckStatus)
-			}
-			return nil
-		},
-	)
-	mockPS.EXPECT().CreateResources(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-
-	cs := &catalogService{ca: mockCA, ps: mockPS}
-	_, err := cs.Create(context.Background(), &interfaces.CatalogRequest{
-		Name:    "catalog",
-		Enabled: true,
+		decrypted, err := cs.validateAndDecryptSensitiveFields([]string{"password"}, config)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if decrypted["password"] != "decrypted_rsa_ciphertext" {
+			t.Errorf("expected 'decrypted_rsa_ciphertext', got '%v'", decrypted["password"])
+		}
+		if config["password"] != EncryptedPrefix+"rsa_ciphertext" {
+			t.Errorf("expected ENC: prefix, got '%v'", config["password"])
+		}
+		if decrypted["host"] != "localhost" {
+			t.Errorf("non-sensitive field should be unchanged")
+		}
 	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	t.Run("validate and decrypt with cipher decrypt fails", func(t *testing.T) {
+		cs := &catalogService{
+			cipher: &mockCipher{
+				decryptFunc: func(ciphertext string) (string, error) {
+					return "", fmt.Errorf("invalid ciphertext")
+				},
+			},
+		}
+		config := map[string]any{"password": "bad_data"}
+
+		_, err := cs.validateAndDecryptSensitiveFields([]string{"password"}, config)
+		if err == nil {
+			t.Fatal("expected error for invalid ciphertext")
+		}
+		if !strings.Contains(err.Error(), "password") {
+			t.Errorf("error should mention field name, got: %v", err)
+		}
+	})
+	t.Run("validate and decrypt empty value", func(t *testing.T) {
+		cs := &catalogService{
+			cipher: &mockCipher{
+				decryptFunc: func(ciphertext string) (string, error) {
+					t.Fatal("should not be called for empty value")
+					return "", nil
+				},
+			},
+		}
+		config := map[string]any{"password": ""}
+
+		_, err := cs.validateAndDecryptSensitiveFields([]string{"password"}, config)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+	t.Run("validate and decrypt non string value", func(t *testing.T) {
+		cs := &catalogService{
+			cipher: &mockCipher{
+				decryptFunc: func(ciphertext string) (string, error) {
+					t.Fatal("should not be called for non-string value")
+					return "", nil
+				},
+			},
+		}
+		config := map[string]any{"password": 12345}
+
+		_, err := cs.validateAndDecryptSensitiveFields([]string{"password"}, config)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
 }
 
-// ===== TestConnection =====
+func TestDecryptSensitiveFields(t *testing.T) {
+	t.Run("decrypt no cipher", func(t *testing.T) {
+		cs := &catalogService{cipher: nil}
+		config := map[string]any{"password": "ENC:ciphertext"}
 
-func TestTestConnection_NilCatalog(t *testing.T) {
-	cs := &catalogService{}
-	_, err := cs.TestConnection(context.Background(), nil)
-	if err == nil {
-		t.Fatal("expected error for nil catalog")
-	}
+		decrypted, err := cs.decryptSensitiveFields([]string{"password"}, config)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if decrypted["password"] != "ENC:ciphertext" {
+			t.Errorf("expected original value, got '%v'", decrypted["password"])
+		}
+	})
+	t.Run("decrypt with cipher success", func(t *testing.T) {
+		cs := &catalogService{
+			cipher: &mockCipher{
+				decryptFunc: func(ciphertext string) (string, error) {
+					return "plaintext_" + ciphertext, nil
+				},
+			},
+		}
+		config := map[string]any{"password": "ENC:rsa_data"}
+
+		decrypted, err := cs.decryptSensitiveFields([]string{"password"}, config)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if decrypted["password"] != "plaintext_rsa_data" {
+			t.Errorf("expected 'plaintext_rsa_data', got '%v'", decrypted["password"])
+		}
+	})
+	t.Run("decrypt missing enc prefix", func(t *testing.T) {
+		cs := &catalogService{
+			cipher: &mockCipher{
+				decryptFunc: func(ciphertext string) (string, error) {
+					return "", nil
+				},
+			},
+		}
+		config := map[string]any{"password": "no_prefix_value"}
+
+		_, err := cs.decryptSensitiveFields([]string{"password"}, config)
+		if err == nil {
+			t.Fatal("expected error for missing ENC: prefix")
+		}
+		if !strings.Contains(err.Error(), "not encrypted") {
+			t.Errorf("expected 'not encrypted' error, got: %v", err)
+		}
+	})
+	t.Run("decrypt decrypt fails", func(t *testing.T) {
+		cs := &catalogService{
+			cipher: &mockCipher{
+				decryptFunc: func(ciphertext string) (string, error) {
+					return "", fmt.Errorf("corrupted data")
+				},
+			},
+		}
+		config := map[string]any{"password": "ENC:bad_data"}
+
+		_, err := cs.decryptSensitiveFields([]string{"password"}, config)
+		if err == nil {
+			t.Fatal("expected error for corrupted data")
+		}
+		if !strings.Contains(err.Error(), "password") {
+			t.Errorf("error should mention field name, got: %v", err)
+		}
+	})
 }
 
-func TestTestConnection_Valid(t *testing.T) {
-	cs := &catalogService{}
-	catalog := &interfaces.Catalog{
-		CatalogHealthCheckStatus: interfaces.CatalogHealthCheckStatus{
-			HealthCheckStatus: interfaces.CatalogHealthStatusHealthy,
-			LastCheckTime:     1234567890,
-		},
-	}
-	result, err := cs.TestConnection(context.Background(), catalog)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if result.HealthCheckStatus != interfaces.CatalogHealthStatusHealthy {
-		t.Errorf("expected healthy status, got %s", result.HealthCheckStatus)
-	}
+func TestCatalogServiceCheckExistByID(t *testing.T) {
+	t.Run("check exist by idfound", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
+		mockCA.EXPECT().GetByID(gomock.Any(), "test-id").
+			Return(&interfaces.Catalog{ID: "test-id"}, nil)
+
+		cs := &catalogService{ca: mockCA}
+		exists, err := cs.CheckExistByID(context.Background(), "test-id")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !exists {
+			t.Error("expected catalog to exist")
+		}
+	})
+	t.Run("check exist by idnot found", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
+		mockCA.EXPECT().GetByID(gomock.Any(), "missing-id").
+			Return(nil, nil)
+
+		cs := &catalogService{ca: mockCA}
+		exists, err := cs.CheckExistByID(context.Background(), "missing-id")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if exists {
+			t.Error("expected catalog to not exist")
+		}
+	})
+	t.Run("check exist by iderror", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
+		mockCA.EXPECT().GetByID(gomock.Any(), "test-id").
+			Return(nil, fmt.Errorf("db error"))
+
+		cs := &catalogService{ca: mockCA}
+		_, err := cs.CheckExistByID(context.Background(), "test-id")
+		if err == nil {
+			t.Fatal("expected error")
+		}
+	})
 }
 
-func TestSetEnabled_ReenableSetsHealthStatusUnchecked(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
-	mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+func TestCatalogServiceCheckExistByName(t *testing.T) {
+	t.Run("check exist by name found", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
+		mockCA.EXPECT().GetByName(gomock.Any(), "test").
+			Return(&interfaces.Catalog{Name: "test"}, nil)
 
-	mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-	mockCA.EXPECT().UpdateEnabled(gomock.Any(), "catalog-1", true, gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, enabled bool, status interfaces.CatalogHealthCheckStatus, _ int64, _ interfaces.AccountInfo) error {
-			if !enabled {
-				t.Fatal("expected enabled=true")
-			}
-			if status.HealthCheckStatus != interfaces.CatalogHealthStatusUnchecked {
-				t.Fatalf("expected unchecked status, got %s", status.HealthCheckStatus)
-			}
-			return nil
-		},
-	)
-
-	cs := &catalogService{ca: mockCA, ps: mockPS}
-	err := cs.SetEnabled(context.Background(), &interfaces.Catalog{
-		ID:      "catalog-1",
-		Name:    "catalog",
-		Enabled: false,
-		CatalogHealthCheckStatus: interfaces.CatalogHealthCheckStatus{
-			HealthCheckStatus: interfaces.CatalogHealthStatusHealthy,
-		},
-	}, true)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+		cs := &catalogService{ca: mockCA}
+		exists, err := cs.CheckExistByName(context.Background(), "test")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !exists {
+			t.Error("expected catalog to exist")
+		}
+	})
 }
 
-func TestSetEnabled_DisablePreservesHealthStatus(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
-	mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+func TestCatalogServiceCreate(t *testing.T) {
+	t.Run("create missing enabled defaults to disabled and unchecked", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
+		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
 
-	mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-	mockCA.EXPECT().UpdateEnabled(gomock.Any(), "catalog-1", false, gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, enabled bool, status interfaces.CatalogHealthCheckStatus, _ int64, _ interfaces.AccountInfo) error {
-			if enabled {
-				t.Fatal("expected enabled=false")
-			}
-			if status.HealthCheckStatus != interfaces.CatalogHealthStatusHealthy {
-				t.Fatalf("expected preserved healthy status, got %s", status.HealthCheckStatus)
-			}
-			return nil
-		},
-	)
+		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		mockCA.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, catalog *interfaces.Catalog) error {
+				if catalog.Enabled {
+					t.Fatal("expected catalog to be disabled by default")
+				}
+				if catalog.HealthCheckStatus != interfaces.CatalogHealthStatusUnchecked {
+					t.Fatalf("expected unchecked status, got %s", catalog.HealthCheckStatus)
+				}
+				return nil
+			},
+		)
+		mockPS.EXPECT().CreateResources(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 
-	cs := &catalogService{ca: mockCA, ps: mockPS}
-	err := cs.SetEnabled(context.Background(), &interfaces.Catalog{
-		ID:      "catalog-1",
-		Name:    "catalog",
-		Enabled: true,
-		CatalogHealthCheckStatus: interfaces.CatalogHealthCheckStatus{
-			HealthCheckStatus: interfaces.CatalogHealthStatusHealthy,
-		},
-	}, false)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+		cs := &catalogService{ca: mockCA, ps: mockPS}
+		_, err := cs.Create(context.Background(), &interfaces.CatalogRequest{
+			Name: "catalog",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+	t.Run("create enabled true", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
+		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+
+		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		mockCA.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, catalog *interfaces.Catalog) error {
+				if !catalog.Enabled {
+					t.Fatal("expected catalog to be enabled")
+				}
+				if catalog.HealthCheckStatus != interfaces.CatalogHealthStatusUnchecked {
+					t.Fatalf("expected unchecked status, got %s", catalog.HealthCheckStatus)
+				}
+				return nil
+			},
+		)
+		mockPS.EXPECT().CreateResources(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+
+		cs := &catalogService{ca: mockCA, ps: mockPS}
+		_, err := cs.Create(context.Background(), &interfaces.CatalogRequest{
+			Name:    "catalog",
+			Enabled: true,
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+	t.Run("create internal uses internal auth type", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
+		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+
+		mockPS.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+			Type: interfaces.AUTH_RESOURCE_TYPE_INTERNAL_CATALOG,
+			ID:   interfaces.RESOURCE_ID_ALL,
+		}, []string{interfaces.OPERATION_TYPE_CREATE}).Return(nil)
+		mockCA.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, catalog *interfaces.Catalog) error {
+				if !catalog.Internal {
+					t.Fatal("expected catalog.Internal=true")
+				}
+				return nil
+			},
+		)
+		mockPS.EXPECT().CreateResources(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, resources []interfaces.PermissionResource, _ []string) error {
+				if resources[0].Type != interfaces.AUTH_RESOURCE_TYPE_INTERNAL_CATALOG {
+					t.Fatalf("expected internal_catalog auth type, got %s", resources[0].Type)
+				}
+				return nil
+			},
+		)
+
+		cs := &catalogService{ca: mockCA, ps: mockPS}
+		_, err := cs.Create(context.Background(), &interfaces.CatalogRequest{
+			Name:     "internal-catalog",
+			Internal: true,
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+}
+
+func TestCatalogServiceTestConnection(t *testing.T) {
+	t.Run("test connection nil catalog", func(t *testing.T) {
+		cs := &catalogService{}
+		_, err := cs.TestConnection(context.Background(), nil)
+		if err == nil {
+			t.Fatal("expected error for nil catalog")
+		}
+	})
+	t.Run("test connection valid", func(t *testing.T) {
+		cs := &catalogService{}
+		catalog := &interfaces.Catalog{
+			CatalogHealthCheckStatus: interfaces.CatalogHealthCheckStatus{
+				HealthCheckStatus: interfaces.CatalogHealthStatusHealthy,
+				LastCheckTime:     1234567890,
+			},
+		}
+		result, err := cs.TestConnection(context.Background(), catalog)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if result.HealthCheckStatus != interfaces.CatalogHealthStatusHealthy {
+			t.Errorf("expected healthy status, got %s", result.HealthCheckStatus)
+		}
+	})
+}
+
+func TestCatalogServiceSetEnabled(t *testing.T) {
+	t.Run("set enabled reenable sets health status unchecked", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
+		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+
+		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		mockCA.EXPECT().UpdateEnabled(gomock.Any(), "catalog-1", true, gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, _ string, enabled bool, status interfaces.CatalogHealthCheckStatus, _ int64, _ interfaces.AccountInfo) error {
+				if !enabled {
+					t.Fatal("expected enabled=true")
+				}
+				if status.HealthCheckStatus != interfaces.CatalogHealthStatusUnchecked {
+					t.Fatalf("expected unchecked status, got %s", status.HealthCheckStatus)
+				}
+				return nil
+			},
+		)
+
+		cs := &catalogService{ca: mockCA, ps: mockPS}
+		err := cs.SetEnabled(context.Background(), &interfaces.Catalog{
+			ID:      "catalog-1",
+			Name:    "catalog",
+			Enabled: false,
+			CatalogHealthCheckStatus: interfaces.CatalogHealthCheckStatus{
+				HealthCheckStatus: interfaces.CatalogHealthStatusHealthy,
+			},
+		}, true)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+	t.Run("set enabled disable preserves health status", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
+		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+
+		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		mockCA.EXPECT().UpdateEnabled(gomock.Any(), "catalog-1", false, gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, _ string, enabled bool, status interfaces.CatalogHealthCheckStatus, _ int64, _ interfaces.AccountInfo) error {
+				if enabled {
+					t.Fatal("expected enabled=false")
+				}
+				if status.HealthCheckStatus != interfaces.CatalogHealthStatusHealthy {
+					t.Fatalf("expected preserved healthy status, got %s", status.HealthCheckStatus)
+				}
+				return nil
+			},
+		)
+
+		cs := &catalogService{ca: mockCA, ps: mockPS}
+		err := cs.SetEnabled(context.Background(), &interfaces.Catalog{
+			ID:      "catalog-1",
+			Name:    "catalog",
+			Enabled: true,
+			CatalogHealthCheckStatus: interfaces.CatalogHealthCheckStatus{
+				HealthCheckStatus: interfaces.CatalogHealthStatusHealthy,
+			},
+		}, false)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+}
+
+func TestCatalogServiceList(t *testing.T) {
+	t.Run("list return all", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
+		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		mockUMS := mock_interfaces.NewMockUserMgmtService(ctrl)
+
+		ids := []string{"c1", "c2", "c3"}
+		catalogs := []*interfaces.Catalog{{ID: "c1"}, {ID: "c2"}, {ID: "c3"}}
+		mockCA.EXPECT().ListIDs(gomock.Any(), gomock.Any()).Return(ids, nil)
+		mockCA.EXPECT().ListInternalIDs(gomock.Any()).Return([]string{}, nil)
+		mockPS.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), true, gomock.Any()).
+			Return(map[string]interfaces.PermissionResourceOps{
+				"c1": {ResourceID: "c1"}, "c2": {ResourceID: "c2"}, "c3": {ResourceID: "c3"},
+			}, nil)
+		mockCA.EXPECT().GetByIDs(gomock.Any(), gomock.Any()).Return(catalogs, nil)
+		mockCA.EXPECT().AttachListExtensions(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		mockUMS.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
+
+		cs := &catalogService{ca: mockCA, ps: mockPS, ums: mockUMS}
+		result, total, err := cs.List(context.Background(), interfaces.CatalogsQueryParams{
+			PaginationQueryParams: interfaces.PaginationQueryParams{Limit: -1},
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if total != 3 {
+			t.Errorf("expected total 3, got %d", total)
+		}
+		if len(result) != 3 {
+			t.Errorf("expected 3 results, got %d", len(result))
+		}
+	})
+	t.Run("list pagination", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
+		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		mockUMS := mock_interfaces.NewMockUserMgmtService(ctrl)
+
+		ids := []string{"c1", "c2", "c3", "c4", "c5"}
+		mockCA.EXPECT().ListIDs(gomock.Any(), gomock.Any()).Return(ids, nil)
+		mockCA.EXPECT().ListInternalIDs(gomock.Any()).Return([]string{}, nil)
+		mockPS.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), true, gomock.Any()).
+			Return(map[string]interfaces.PermissionResourceOps{
+				"c1": {ResourceID: "c1"}, "c2": {ResourceID: "c2"}, "c3": {ResourceID: "c3"}, "c4": {ResourceID: "c4"}, "c5": {ResourceID: "c5"},
+			}, nil)
+		catalogs := []*interfaces.Catalog{{ID: "c2"}, {ID: "c3"}}
+		mockCA.EXPECT().GetByIDs(gomock.Any(), []string{"c2", "c3"}).Return(catalogs, nil)
+		mockCA.EXPECT().AttachListExtensions(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		mockUMS.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
+
+		cs := &catalogService{ca: mockCA, ps: mockPS, ums: mockUMS}
+		result, total, err := cs.List(context.Background(), interfaces.CatalogsQueryParams{
+			PaginationQueryParams: interfaces.PaginationQueryParams{Offset: 1, Limit: 2},
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if total != 5 {
+			t.Errorf("expected total 5, got %d", total)
+		}
+		if len(result) != 2 {
+			t.Errorf("expected 2 results (page), got %d", len(result))
+		}
+		if result[0].ID != "c2" {
+			t.Errorf("expected first item 'c2', got '%s'", result[0].ID)
+		}
+	})
+	t.Run("list offset beyond total", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
+		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+
+		ids := []string{"c1", "c2"}
+		mockCA.EXPECT().ListIDs(gomock.Any(), gomock.Any()).Return(ids, nil)
+		mockCA.EXPECT().ListInternalIDs(gomock.Any()).Return([]string{}, nil)
+		mockPS.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), true, gomock.Any()).
+			Return(map[string]interfaces.PermissionResourceOps{
+				"c1": {ResourceID: "c1"}, "c2": {ResourceID: "c2"},
+			}, nil)
+
+		cs := &catalogService{ca: mockCA, ps: mockPS}
+		result, total, err := cs.List(context.Background(), interfaces.CatalogsQueryParams{
+			PaginationQueryParams: interfaces.PaginationQueryParams{Offset: 10, Limit: 5},
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if total != 2 {
+			t.Errorf("expected total 2, got %d", total)
+		}
+		if len(result) != 0 {
+			t.Errorf("expected 0 results for offset beyond total, got %d", len(result))
+		}
+	})
+	t.Run("list permission filters out", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
+		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		mockUMS := mock_interfaces.NewMockUserMgmtService(ctrl)
+
+		ids := []string{"c1", "c2", "c3"}
+		catalogs := []*interfaces.Catalog{{ID: "c1"}, {ID: "c3"}}
+		mockCA.EXPECT().ListIDs(gomock.Any(), gomock.Any()).Return(ids, nil)
+		mockCA.EXPECT().ListInternalIDs(gomock.Any()).Return([]string{}, nil)
+		// 权限只返回 c1 和 c3，c2 被过滤
+		mockPS.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), true, gomock.Any()).
+			Return(map[string]interfaces.PermissionResourceOps{
+				"c1": {ResourceID: "c1"}, "c3": {ResourceID: "c3"},
+			}, nil)
+		mockCA.EXPECT().GetByIDs(gomock.Any(), []string{"c1", "c3"}).Return(catalogs, nil)
+		mockCA.EXPECT().AttachListExtensions(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		mockUMS.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
+
+		cs := &catalogService{ca: mockCA, ps: mockPS, ums: mockUMS}
+		result, total, err := cs.List(context.Background(), interfaces.CatalogsQueryParams{
+			PaginationQueryParams: interfaces.PaginationQueryParams{Limit: -1},
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if total != 2 {
+			t.Errorf("expected total 2 after permission filter, got %d", total)
+		}
+		if len(result) != 2 {
+			t.Errorf("expected 2 results, got %d", len(result))
+		}
+	})
+	t.Run("list dberror", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
+		mockCA.EXPECT().ListIDs(gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("db error"))
+
+		cs := &catalogService{ca: mockCA}
+		_, _, err := cs.List(context.Background(), interfaces.CatalogsQueryParams{})
+		if err == nil {
+			t.Fatal("expected error")
+		}
+	})
+	t.Run("list internal catalog checked separately", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
+		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		mockUMS := mock_interfaces.NewMockUserMgmtService(ctrl)
+
+		ids := []string{"c1", "c2"}
+		mockCA.EXPECT().ListIDs(gomock.Any(), gomock.Any()).Return(ids, nil)
+		mockCA.EXPECT().ListInternalIDs(gomock.Any()).Return([]string{"c2"}, nil)
+		// 普通目录按 catalog 类型校验
+		mockPS.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_CATALOG,
+			[]string{"c1"}, gomock.Any(), true, gomock.Any()).
+			Return(map[string]interfaces.PermissionResourceOps{"c1": {ResourceID: "c1"}}, nil)
+		// 内部目录按 internal_catalog 类型校验；数据管理员等业务角色无授权 → 被过滤
+		mockPS.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_INTERNAL_CATALOG,
+			[]string{"c2"}, gomock.Any(), true, gomock.Any()).
+			Return(map[string]interfaces.PermissionResourceOps{}, nil)
+		mockCA.EXPECT().GetByIDs(gomock.Any(), []string{"c1"}).Return([]*interfaces.Catalog{{ID: "c1"}}, nil)
+		mockCA.EXPECT().AttachListExtensions(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		mockUMS.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
+
+		cs := &catalogService{ca: mockCA, ps: mockPS, ums: mockUMS}
+		result, total, err := cs.List(context.Background(), interfaces.CatalogsQueryParams{
+			PaginationQueryParams: interfaces.PaginationQueryParams{Limit: -1},
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if total != 1 {
+			t.Errorf("expected total 1, got %d", total)
+		}
+		if len(result) != 1 || result[0].ID != "c1" {
+			t.Errorf("expected only 'c1' visible, got %v", result)
+		}
+	})
+}
+
+func TestCatalogServiceDeleteByIDs(t *testing.T) {
+	t.Run("delete by ids empty", func(t *testing.T) {
+		cs := &catalogService{}
+		err := cs.DeleteByIDs(context.Background(), []string{})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+	t.Run("delete by ids cascades build tasks and indexes", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
+		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		mockRA := mock_interfaces.NewMockResourceAccess(ctrl)
+		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+		mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
+
+		mockCA.EXPECT().ListInternalIDs(gomock.Any()).Return([]string{}, nil)
+		mockPS.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_CATALOG,
+			[]string{"c1"}, gomock.Any(), true, gomock.Any()).
+			Return(map[string]interfaces.PermissionResourceOps{"c1": {ResourceID: "c1"}}, nil)
+		// catalog c1 下一个已完成任务 t1(资源 r1) → 级联 drop 索引 + 删任务
+		mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).
+			Return([]*interfaces.BuildTask{{ID: "t1", ResourceID: "r1", Status: "completed"}}, int64(1), nil)
+		mockLIM.EXPECT().DeleteIndex(gomock.Any(), interfaces.BuildIndexName("r1", "t1")).Return(nil)
+		mockBTA.EXPECT().Delete(gomock.Any(), "t1").Return(nil)
+		mockCA.EXPECT().DeleteByIDs(gomock.Any(), []string{"c1"}).Return(nil)
+		mockRA.EXPECT().DeleteByCatalogIDs(gomock.Any(), []string{"c1"}).Return(nil)
+		mockPS.EXPECT().DeleteResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_CATALOG, []string{"c1"}).Return(nil)
+
+		cs := &catalogService{ca: mockCA, ps: mockPS, ra: mockRA, bta: mockBTA, lim: mockLIM}
+		if err := cs.DeleteByIDs(context.Background(), []string{"c1"}); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+	t.Run("delete by ids refuses when task running", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
+		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+		mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
+
+		mockCA.EXPECT().ListInternalIDs(gomock.Any()).Return([]string{}, nil)
+		mockPS.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_CATALOG,
+			[]string{"c1"}, gomock.Any(), true, gomock.Any()).
+			Return(map[string]interfaces.PermissionResourceOps{"c1": {ResourceID: "c1"}}, nil)
+		mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).
+			Return([]*interfaces.BuildTask{{ID: "t1", ResourceID: "r1", Status: "running"}}, int64(1), nil)
+		// 不应调用 ca.DeleteByIDs / bta.Delete / ds.Delete
+
+		cs := &catalogService{ca: mockCA, ps: mockPS, bta: mockBTA, lim: mockLIM}
+		if err := cs.DeleteByIDs(context.Background(), []string{"c1"}); err == nil {
+			t.Fatalf("expected error when a build task is running")
+		}
+	})
+}
+
+func TestCatalogServiceGetByID(t *testing.T) {
+	t.Run("catalog get by ids2 sinternal bypass", func(t *testing.T) {
+		cs, ca, _, ums := newS2SCatalogService(t)
+		ca.EXPECT().GetByID(gomock.Any(), "c1").
+			Return(&interfaces.Catalog{ID: "c1", Internal: true}, nil)
+		ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
+
+		ctx := interfaces.WithS2SInternalAccess(context.Background())
+		cat, err := cs.GetByID(ctx, "c1", false)
+		if err != nil {
+			t.Fatalf("internal catalog S2S access should pass, got error: %v", err)
+		}
+		if cat == nil || len(cat.Operations) == 0 {
+			t.Fatalf("expected operations to be filled, got %+v", cat)
+		}
+	})
+	t.Run("catalog get by idinternal no marker forbidden", func(t *testing.T) {
+		cs, ca, ps, _ := newS2SCatalogService(t)
+		ca.EXPECT().GetByID(gomock.Any(), "c1").
+			Return(&interfaces.Catalog{ID: "c1", Internal: true}, nil)
+		ps.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_INTERNAL_CATALOG,
+			gomock.Any(), gomock.Any(), true, gomock.Any()).
+			Return(map[string]interfaces.PermissionResourceOps{}, nil)
+
+		_, err := cs.GetByID(context.Background(), "c1", false)
+		if err == nil {
+			t.Fatalf("internal catalog without S2S marker should be forbidden")
+		}
+	})
+	t.Run("catalog get by idnon internal with marker still authz", func(t *testing.T) {
+		cs, ca, ps, _ := newS2SCatalogService(t)
+		ca.EXPECT().GetByID(gomock.Any(), "c1").
+			Return(&interfaces.Catalog{ID: "c1", Internal: false}, nil)
+		ps.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_CATALOG,
+			gomock.Any(), gomock.Any(), true, gomock.Any()).
+			Return(map[string]interfaces.PermissionResourceOps{}, nil)
+
+		ctx := interfaces.WithS2SInternalAccess(context.Background())
+		_, err := cs.GetByID(ctx, "c1", false)
+		if err == nil {
+			t.Fatalf("non-internal catalog should still use per-account authorization")
+		}
+	})
 }
 
 // ===== List 分页逻辑 =====
 
-func TestList_ReturnAll(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
-	mockPS := mock_interfaces.NewMockPermissionService(ctrl)
-	mockUMS := mock_interfaces.NewMockUserMgmtService(ctrl)
-
-	ids := []string{"c1", "c2", "c3"}
-	catalogs := []*interfaces.Catalog{{ID: "c1"}, {ID: "c2"}, {ID: "c3"}}
-	mockCA.EXPECT().ListIDs(gomock.Any(), gomock.Any()).Return(ids, nil)
-	mockCA.EXPECT().ListInternalIDs(gomock.Any()).Return([]string{}, nil)
-	mockPS.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), true, gomock.Any()).
-		Return(map[string]interfaces.PermissionResourceOps{
-			"c1": {ResourceID: "c1"}, "c2": {ResourceID: "c2"}, "c3": {ResourceID: "c3"},
-		}, nil)
-	mockCA.EXPECT().GetByIDs(gomock.Any(), gomock.Any()).Return(catalogs, nil)
-	mockCA.EXPECT().AttachListExtensions(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-	mockUMS.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
-
-	cs := &catalogService{ca: mockCA, ps: mockPS, ums: mockUMS}
-	result, total, err := cs.List(context.Background(), interfaces.CatalogsQueryParams{
-		PaginationQueryParams: interfaces.PaginationQueryParams{Limit: -1},
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if total != 3 {
-		t.Errorf("expected total 3, got %d", total)
-	}
-	if len(result) != 3 {
-		t.Errorf("expected 3 results, got %d", len(result))
-	}
-}
-
-func TestList_Pagination(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
-	mockPS := mock_interfaces.NewMockPermissionService(ctrl)
-	mockUMS := mock_interfaces.NewMockUserMgmtService(ctrl)
-
-	ids := []string{"c1", "c2", "c3", "c4", "c5"}
-	mockCA.EXPECT().ListIDs(gomock.Any(), gomock.Any()).Return(ids, nil)
-	mockCA.EXPECT().ListInternalIDs(gomock.Any()).Return([]string{}, nil)
-	mockPS.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), true, gomock.Any()).
-		Return(map[string]interfaces.PermissionResourceOps{
-			"c1": {ResourceID: "c1"}, "c2": {ResourceID: "c2"}, "c3": {ResourceID: "c3"}, "c4": {ResourceID: "c4"}, "c5": {ResourceID: "c5"},
-		}, nil)
-	catalogs := []*interfaces.Catalog{{ID: "c2"}, {ID: "c3"}}
-	mockCA.EXPECT().GetByIDs(gomock.Any(), []string{"c2", "c3"}).Return(catalogs, nil)
-	mockCA.EXPECT().AttachListExtensions(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-	mockUMS.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
-
-	cs := &catalogService{ca: mockCA, ps: mockPS, ums: mockUMS}
-	result, total, err := cs.List(context.Background(), interfaces.CatalogsQueryParams{
-		PaginationQueryParams: interfaces.PaginationQueryParams{Offset: 1, Limit: 2},
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if total != 5 {
-		t.Errorf("expected total 5, got %d", total)
-	}
-	if len(result) != 2 {
-		t.Errorf("expected 2 results (page), got %d", len(result))
-	}
-	if result[0].ID != "c2" {
-		t.Errorf("expected first item 'c2', got '%s'", result[0].ID)
-	}
-}
-
-func TestList_OffsetBeyondTotal(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
-	mockPS := mock_interfaces.NewMockPermissionService(ctrl)
-
-	ids := []string{"c1", "c2"}
-	mockCA.EXPECT().ListIDs(gomock.Any(), gomock.Any()).Return(ids, nil)
-	mockCA.EXPECT().ListInternalIDs(gomock.Any()).Return([]string{}, nil)
-	mockPS.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), true, gomock.Any()).
-		Return(map[string]interfaces.PermissionResourceOps{
-			"c1": {ResourceID: "c1"}, "c2": {ResourceID: "c2"},
-		}, nil)
-
-	cs := &catalogService{ca: mockCA, ps: mockPS}
-	result, total, err := cs.List(context.Background(), interfaces.CatalogsQueryParams{
-		PaginationQueryParams: interfaces.PaginationQueryParams{Offset: 10, Limit: 5},
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if total != 2 {
-		t.Errorf("expected total 2, got %d", total)
-	}
-	if len(result) != 0 {
-		t.Errorf("expected 0 results for offset beyond total, got %d", len(result))
-	}
-}
-
-func TestList_PermissionFiltersOut(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
-	mockPS := mock_interfaces.NewMockPermissionService(ctrl)
-	mockUMS := mock_interfaces.NewMockUserMgmtService(ctrl)
-
-	ids := []string{"c1", "c2", "c3"}
-	catalogs := []*interfaces.Catalog{{ID: "c1"}, {ID: "c3"}}
-	mockCA.EXPECT().ListIDs(gomock.Any(), gomock.Any()).Return(ids, nil)
-	mockCA.EXPECT().ListInternalIDs(gomock.Any()).Return([]string{}, nil)
-	// 权限只返回 c1 和 c3，c2 被过滤
-	mockPS.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), true, gomock.Any()).
-		Return(map[string]interfaces.PermissionResourceOps{
-			"c1": {ResourceID: "c1"}, "c3": {ResourceID: "c3"},
-		}, nil)
-	mockCA.EXPECT().GetByIDs(gomock.Any(), []string{"c1", "c3"}).Return(catalogs, nil)
-	mockCA.EXPECT().AttachListExtensions(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-	mockUMS.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
-
-	cs := &catalogService{ca: mockCA, ps: mockPS, ums: mockUMS}
-	result, total, err := cs.List(context.Background(), interfaces.CatalogsQueryParams{
-		PaginationQueryParams: interfaces.PaginationQueryParams{Limit: -1},
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if total != 2 {
-		t.Errorf("expected total 2 after permission filter, got %d", total)
-	}
-	if len(result) != 2 {
-		t.Errorf("expected 2 results, got %d", len(result))
-	}
-}
-
-func TestList_DBError(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
-	mockCA.EXPECT().ListIDs(gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("db error"))
-
-	cs := &catalogService{ca: mockCA}
-	_, _, err := cs.List(context.Background(), interfaces.CatalogsQueryParams{})
-	if err == nil {
-		t.Fatal("expected error")
-	}
-}
-
 // ===== DeleteByIDs empty =====
 
-func TestDeleteByIDs_Empty(t *testing.T) {
-	cs := &catalogService{}
-	err := cs.DeleteByIDs(context.Background(), []string{})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
 // 删 catalog 应级联清掉其下资源的构建任务 + OpenSearch 索引，不留孤儿。
-func TestDeleteByIDs_CascadesBuildTasksAndIndexes(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
-	mockPS := mock_interfaces.NewMockPermissionService(ctrl)
-	mockRA := mock_interfaces.NewMockResourceAccess(ctrl)
-	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
-	mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
-
-	mockCA.EXPECT().ListInternalIDs(gomock.Any()).Return([]string{}, nil)
-	mockPS.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_CATALOG,
-		[]string{"c1"}, gomock.Any(), true, gomock.Any()).
-		Return(map[string]interfaces.PermissionResourceOps{"c1": {ResourceID: "c1"}}, nil)
-	// catalog c1 下一个已完成任务 t1(资源 r1) → 级联 drop 索引 + 删任务
-	mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).
-		Return([]*interfaces.BuildTask{{ID: "t1", ResourceID: "r1", Status: "completed"}}, int64(1), nil)
-	mockLIM.EXPECT().DeleteIndex(gomock.Any(), interfaces.BuildIndexName("r1", "t1")).Return(nil)
-	mockBTA.EXPECT().Delete(gomock.Any(), "t1").Return(nil)
-	mockCA.EXPECT().DeleteByIDs(gomock.Any(), []string{"c1"}).Return(nil)
-	mockRA.EXPECT().DeleteByCatalogIDs(gomock.Any(), []string{"c1"}).Return(nil)
-	mockPS.EXPECT().DeleteResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_CATALOG, []string{"c1"}).Return(nil)
-
-	cs := &catalogService{ca: mockCA, ps: mockPS, ra: mockRA, bta: mockBTA, lim: mockLIM}
-	if err := cs.DeleteByIDs(context.Background(), []string{"c1"}); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
 // 删 catalog 时其下有运行中任务 → 级联拒绝，catalog/资源都不删。
-func TestDeleteByIDs_RefusesWhenTaskRunning(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
-	mockPS := mock_interfaces.NewMockPermissionService(ctrl)
-	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
-	mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
-
-	mockCA.EXPECT().ListInternalIDs(gomock.Any()).Return([]string{}, nil)
-	mockPS.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_CATALOG,
-		[]string{"c1"}, gomock.Any(), true, gomock.Any()).
-		Return(map[string]interfaces.PermissionResourceOps{"c1": {ResourceID: "c1"}}, nil)
-	mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).
-		Return([]*interfaces.BuildTask{{ID: "t1", ResourceID: "r1", Status: "running"}}, int64(1), nil)
-	// 不应调用 ca.DeleteByIDs / bta.Delete / ds.Delete
-
-	cs := &catalogService{ca: mockCA, ps: mockPS, bta: mockBTA, lim: mockLIM}
-	if err := cs.DeleteByIDs(context.Background(), []string{"c1"}); err == nil {
-		t.Fatalf("expected error when a build task is running")
-	}
-}
-
 // ===== Internal catalog（系统内部目录） =====
-
-func TestCreate_InternalUsesInternalAuthType(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
-	mockPS := mock_interfaces.NewMockPermissionService(ctrl)
-
-	mockPS.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
-		Type: interfaces.AUTH_RESOURCE_TYPE_INTERNAL_CATALOG,
-		ID:   interfaces.RESOURCE_ID_ALL,
-	}, []string{interfaces.OPERATION_TYPE_CREATE}).Return(nil)
-	mockCA.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, catalog *interfaces.Catalog) error {
-			if !catalog.Internal {
-				t.Fatal("expected catalog.Internal=true")
-			}
-			return nil
-		},
-	)
-	mockPS.EXPECT().CreateResources(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, resources []interfaces.PermissionResource, _ []string) error {
-			if resources[0].Type != interfaces.AUTH_RESOURCE_TYPE_INTERNAL_CATALOG {
-				t.Fatalf("expected internal_catalog auth type, got %s", resources[0].Type)
-			}
-			return nil
-		},
-	)
-
-	cs := &catalogService{ca: mockCA, ps: mockPS}
-	_, err := cs.Create(context.Background(), &interfaces.CatalogRequest{
-		Name:     "internal-catalog",
-		Internal: true,
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestList_InternalCatalogCheckedSeparately(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
-	mockPS := mock_interfaces.NewMockPermissionService(ctrl)
-	mockUMS := mock_interfaces.NewMockUserMgmtService(ctrl)
-
-	ids := []string{"c1", "c2"}
-	mockCA.EXPECT().ListIDs(gomock.Any(), gomock.Any()).Return(ids, nil)
-	mockCA.EXPECT().ListInternalIDs(gomock.Any()).Return([]string{"c2"}, nil)
-	// 普通目录按 catalog 类型校验
-	mockPS.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_CATALOG,
-		[]string{"c1"}, gomock.Any(), true, gomock.Any()).
-		Return(map[string]interfaces.PermissionResourceOps{"c1": {ResourceID: "c1"}}, nil)
-	// 内部目录按 internal_catalog 类型校验；数据管理员等业务角色无授权 → 被过滤
-	mockPS.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_INTERNAL_CATALOG,
-		[]string{"c2"}, gomock.Any(), true, gomock.Any()).
-		Return(map[string]interfaces.PermissionResourceOps{}, nil)
-	mockCA.EXPECT().GetByIDs(gomock.Any(), []string{"c1"}).Return([]*interfaces.Catalog{{ID: "c1"}}, nil)
-	mockCA.EXPECT().AttachListExtensions(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-	mockUMS.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
-
-	cs := &catalogService{ca: mockCA, ps: mockPS, ums: mockUMS}
-	result, total, err := cs.List(context.Background(), interfaces.CatalogsQueryParams{
-		PaginationQueryParams: interfaces.PaginationQueryParams{Limit: -1},
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if total != 1 {
-		t.Errorf("expected total 1, got %d", total)
-	}
-	if len(result) != 1 || result[0].ID != "c1" {
-		t.Errorf("expected only 'c1' visible, got %v", result)
-	}
-}
 
 func newS2SCatalogService(t *testing.T) (
 	*catalogService, *mock_interfaces.MockCatalogAccess, *mock_interfaces.MockPermissionService, *mock_interfaces.MockUserMgmtService) {
@@ -708,49 +739,4 @@ func newS2SCatalogService(t *testing.T) (
 	ums := mock_interfaces.NewMockUserMgmtService(ctrl)
 	cs := &catalogService{ca: ca, ps: ps, ums: ums}
 	return cs, ca, ps, ums
-}
-
-func TestCatalogGetByID_S2SInternal_Bypass(t *testing.T) {
-	cs, ca, _, ums := newS2SCatalogService(t)
-	ca.EXPECT().GetByID(gomock.Any(), "c1").
-		Return(&interfaces.Catalog{ID: "c1", Internal: true}, nil)
-	ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
-
-	ctx := interfaces.WithS2SInternalAccess(context.Background())
-	cat, err := cs.GetByID(ctx, "c1", false)
-	if err != nil {
-		t.Fatalf("internal catalog S2S access should pass, got error: %v", err)
-	}
-	if cat == nil || len(cat.Operations) == 0 {
-		t.Fatalf("expected operations to be filled, got %+v", cat)
-	}
-}
-
-func TestCatalogGetByID_Internal_NoMarker_Forbidden(t *testing.T) {
-	cs, ca, ps, _ := newS2SCatalogService(t)
-	ca.EXPECT().GetByID(gomock.Any(), "c1").
-		Return(&interfaces.Catalog{ID: "c1", Internal: true}, nil)
-	ps.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_INTERNAL_CATALOG,
-		gomock.Any(), gomock.Any(), true, gomock.Any()).
-		Return(map[string]interfaces.PermissionResourceOps{}, nil)
-
-	_, err := cs.GetByID(context.Background(), "c1", false)
-	if err == nil {
-		t.Fatalf("internal catalog without S2S marker should be forbidden")
-	}
-}
-
-func TestCatalogGetByID_NonInternal_WithMarker_StillAuthz(t *testing.T) {
-	cs, ca, ps, _ := newS2SCatalogService(t)
-	ca.EXPECT().GetByID(gomock.Any(), "c1").
-		Return(&interfaces.Catalog{ID: "c1", Internal: false}, nil)
-	ps.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_CATALOG,
-		gomock.Any(), gomock.Any(), true, gomock.Any()).
-		Return(map[string]interfaces.PermissionResourceOps{}, nil)
-
-	ctx := interfaces.WithS2SInternalAccess(context.Background())
-	_, err := cs.GetByID(ctx, "c1", false)
-	if err == nil {
-		t.Fatalf("non-internal catalog should still use per-account authorization")
-	}
 }

@@ -71,483 +71,8 @@ func TestFilterConditionFactory(t *testing.T) {
 		require.NotNil(t, cond)
 		assert.Equal(t, OperationEqual, cond.GetOperation())
 	})
-}
-
-// ===== IsSlice / IsSameType 工具函数 =====
-
-func TestIsSlice(t *testing.T) {
-	t.Run("returns true for slices and arrays", func(t *testing.T) {
-		assert.True(t, IsSlice([]int{1, 2, 3}))
-		assert.True(t, IsSlice([]string{"a"}))
-		assert.True(t, IsSlice([2]int{1, 2}))
-	})
-
-	t.Run("returns false for scalar values", func(t *testing.T) {
-		assert.False(t, IsSlice("not a slice"))
-		assert.False(t, IsSlice(42))
-	})
-}
-
-func TestIsSameType(t *testing.T) {
-	t.Run("returns true for empty and same-type values", func(t *testing.T) {
-		assert.True(t, IsSameType([]any{}))
-		assert.True(t, IsSameType([]any{1, 2, 3}))
-		assert.True(t, IsSameType([]any{"a", "b"}))
-	})
-
-	t.Run("returns false for mixed types", func(t *testing.T) {
-		assert.False(t, IsSameType([]any{1, "two", 3}))
-	})
-}
-
-// ===== EqualCond =====
-
-func TestEqualCond_Valid(t *testing.T) {
-	cfg := constCfg("name", "==", "alice")
-	cond, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	eq := cond.(*EqualCond)
-	if eq.Lfield.Name != "name" {
-		t.Errorf("expected left field 'name', got '%s'", eq.Lfield.Name)
-	}
-	if eq.Value != "alice" {
-		t.Errorf("expected value 'alice', got '%v'", eq.Value)
-	}
-}
-
-func TestEqualCond_EmptyFieldName(t *testing.T) {
-	cfg := constCfg("", "==", "alice")
-	_, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
-	if err == nil {
-		t.Fatal("expected error for empty field name")
-	}
-	if !strings.Contains(err.Error(), "left field is empty") {
-		t.Errorf("unexpected error: %v", err)
-	}
-}
-
-func TestEqualCond_FieldNotFound(t *testing.T) {
-	cfg := constCfg("nonexistent", "==", "alice")
-	_, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
-	if err == nil {
-		t.Fatal("expected error for unknown field")
-	}
-	if !strings.Contains(err.Error(), "not found") {
-		t.Errorf("unexpected error: %v", err)
-	}
-}
-
-func TestEqualCond_RejectsArrayValue(t *testing.T) {
-	cfg := constCfg("name", "==", []any{"a", "b"})
-	_, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
-	if err == nil {
-		t.Fatal("expected error for array value in equal condition")
-	}
-	if !strings.Contains(err.Error(), "single value") {
-		t.Errorf("unexpected error: %v", err)
-	}
-}
-
-func TestEqualCond_FieldToField(t *testing.T) {
-	cfg := &interfaces.FilterCondCfg{
-		Name:      "name",
-		Operation: "==",
-		ValueOptCfg: interfaces.ValueOptCfg{
-			ValueFrom: interfaces.ValueFrom_Field,
-			Value:     "other_name",
-		},
-	}
-	cond, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	eq := cond.(*EqualCond)
-	if eq.Rfield == nil {
-		t.Fatal("expected right field to be set")
-	}
-	if eq.Rfield.Name != "other_name" {
-		t.Errorf("expected right field 'other_name', got '%s'", eq.Rfield.Name)
-	}
-}
-
-func TestEqualCond_FieldToField_RightNotFound(t *testing.T) {
-	cfg := &interfaces.FilterCondCfg{
-		Name:      "name",
-		Operation: "==",
-		ValueOptCfg: interfaces.ValueOptCfg{
-			ValueFrom: interfaces.ValueFrom_Field,
-			Value:     "nonexistent",
-		},
-	}
-	_, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
-	if err == nil {
-		t.Fatal("expected error for unknown right field")
-	}
-	if !strings.Contains(err.Error(), "right field") {
-		t.Errorf("unexpected error: %v", err)
-	}
-}
-
-func TestEqualCond_AliasOperations(t *testing.T) {
-	// "eq" 是 "==" 的别名
-	cfg := constCfg("name", "eq", "alice")
-	cond, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if cond.GetOperation() != OperationEqual {
-		t.Errorf("expected operation '==', got '%s'", cond.GetOperation())
-	}
-}
-
-// ===== InCond =====
-
-func TestInCond_Valid(t *testing.T) {
-	cfg := constCfg("name", "in", []any{"alice", "bob"})
-	cond, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	in := cond.(*InCond)
-	if len(in.Value) != 2 {
-		t.Errorf("expected 2 values, got %d", len(in.Value))
-	}
-}
-
-func TestInCond_EmptyArray(t *testing.T) {
-	cfg := constCfg("name", "in", []any{})
-	_, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
-	if err == nil {
-		t.Fatal("expected error for empty array")
-	}
-	if !strings.Contains(err.Error(), "length >= 1") {
-		t.Errorf("unexpected error: %v", err)
-	}
-}
-
-func TestInCond_NonArrayValue(t *testing.T) {
-	cfg := constCfg("name", "in", "single_value")
-	_, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
-	if err == nil {
-		t.Fatal("expected error for non-array value")
-	}
-	if !strings.Contains(err.Error(), "should be an array") {
-		t.Errorf("unexpected error: %v", err)
-	}
-}
-
-func TestInCond_RejectsFieldValueFrom(t *testing.T) {
-	cfg := &interfaces.FilterCondCfg{
-		Name:      "name",
-		Operation: "in",
-		ValueOptCfg: interfaces.ValueOptCfg{
-			ValueFrom: interfaces.ValueFrom_Field,
-			Value:     []any{"alice"},
-		},
-	}
-	_, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
-	if err == nil {
-		t.Fatal("expected error for non-const value_from")
-	}
-	if !strings.Contains(err.Error(), "does not support value_from") {
-		t.Errorf("unexpected error: %v", err)
-	}
-}
-
-// ===== LikeCond =====
-
-func TestLikeCond_Valid(t *testing.T) {
-	cfg := constCfg("name", "like", "ali%")
-	cond, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	like := cond.(*LikeCond)
-	if like.Value != "ali%" {
-		t.Errorf("expected value 'ali%%', got '%s'", like.Value)
-	}
-}
-
-func TestLikeCond_NonStringField(t *testing.T) {
-	cfg := constCfg("age", "like", "test")
-	_, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
-	if err == nil {
-		t.Fatal("expected error for non-string field")
-	}
-	if !strings.Contains(err.Error(), "not a string field") {
-		t.Errorf("unexpected error: %v", err)
-	}
-}
-
-func TestLikeCond_NonStringValue(t *testing.T) {
-	cfg := constCfg("name", "like", 123)
-	_, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
-	if err == nil {
-		t.Fatal("expected error for non-string value")
-	}
-	if !strings.Contains(err.Error(), "not a string value") {
-		t.Errorf("unexpected error: %v", err)
-	}
-}
-
-// ===== RangeCond =====
-
-func TestRangeCond_Valid(t *testing.T) {
-	cfg := constCfg("age", "range", []any{18, 65})
-	cond, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	r := cond.(*RangeCond)
-	if len(r.Value) != 2 {
-		t.Errorf("expected 2 values, got %d", len(r.Value))
-	}
-}
-
-func TestRangeCond_WrongArrayLength(t *testing.T) {
-	cfg := constCfg("age", "range", []any{18})
-	_, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
-	if err == nil {
-		t.Fatal("expected error for wrong array length")
-	}
-	if !strings.Contains(err.Error(), "length 2") {
-		t.Errorf("unexpected error: %v", err)
-	}
-}
-
-func TestRangeCond_NonNumericField(t *testing.T) {
-	cfg := constCfg("name", "range", []any{1, 2})
-	_, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
-	if err == nil {
-		t.Fatal("expected error for non-numeric field")
-	}
-	if !strings.Contains(err.Error(), "not a date/number field") {
-		t.Errorf("unexpected error: %v", err)
-	}
-}
-
-func TestRangeCond_DateField(t *testing.T) {
-	cfg := constCfg("created_at", "range", []any{"2024-01-01", "2024-12-31"})
-	_, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-// ===== AndCond =====
-
-func TestAndCond_Valid(t *testing.T) {
-	cfg := &interfaces.FilterCondCfg{
-		Operation: "and",
-		SubConds: []*interfaces.FilterCondCfg{
-			constCfg("name", "==", "alice"),
-			constCfg("age", ">", 18),
-		},
-	}
-	cond, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	and := cond.(*AndCond)
-	if len(and.SubConds) != 2 {
-		t.Errorf("expected 2 sub-conditions, got %d", len(and.SubConds))
-	}
-}
-
-func TestAndCond_EmptySubConds(t *testing.T) {
-	cfg := &interfaces.FilterCondCfg{
-		Operation: "and",
-		SubConds:  []*interfaces.FilterCondCfg{},
-	}
-	_, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
-	if err == nil {
-		t.Fatal("expected error for empty sub-conditions")
-	}
-	if !strings.Contains(err.Error(), "size is 0") {
-		t.Errorf("unexpected error: %v", err)
-	}
-}
-
-func TestAndCond_InvalidSubCond(t *testing.T) {
-	cfg := &interfaces.FilterCondCfg{
-		Operation: "and",
-		SubConds: []*interfaces.FilterCondCfg{
-			constCfg("nonexistent", "==", "test"),
-		},
-	}
-	_, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
-	if err == nil {
-		t.Fatal("expected error for invalid sub-condition")
-	}
-}
-
-func TestAndCond_NestedAndOr(t *testing.T) {
-	cfg := &interfaces.FilterCondCfg{
-		Operation: "and",
-		SubConds: []*interfaces.FilterCondCfg{
-			constCfg("name", "==", "alice"),
-			{
-				Operation: "or",
-				SubConds: []*interfaces.FilterCondCfg{
-					constCfg("age", ">", 18),
-					constCfg("age", "<", 65),
-				},
-			},
-		},
-	}
-	cond, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	and := cond.(*AndCond)
-	if len(and.SubConds) != 2 {
-		t.Errorf("expected 2 sub-conditions, got %d", len(and.SubConds))
-	}
-	if and.SubConds[1].GetOperation() != OperationOr {
-		t.Errorf("expected nested 'or', got '%s'", and.SubConds[1].GetOperation())
-	}
-}
-
-// ===== 所有操作符注册验证 =====
-
-func TestAllOperationsRegistered(t *testing.T) {
-	expectedOps := []string{
-		"and", "or",
-		"==", "eq", "!=", "not_eq",
-		">", "gt", ">=", "gte", "<", "lt", "<=", "lte",
-		"in", "not_in",
-		"like", "not_like",
-		"contain", "not_contain",
-		"range", "out_range",
-		"exist", "not_exist",
-		"empty", "not_empty",
-		"regex", "match", "match_phrase",
-		"prefix", "not_prefix",
-		"null", "not_null",
-		"true", "false",
-		"before", "current", "between",
-		"knn_vector", "multi_match",
-	}
-
-	for _, op := range expectedOps {
-		if _, exists := OperationMap[op]; !exists {
-			t.Errorf("operation '%s' not registered in OperationMap", op)
-		}
-	}
-}
-
-// ===== 比较运算符共通测试 =====
-
-func TestComparisonOps_EmptyField(t *testing.T) {
-	ops := []string{"==", "!=", ">", ">=", "<", "<="}
-	for _, op := range ops {
-		cfg := constCfg("", op, "test")
-		_, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
-		if err == nil {
-			t.Errorf("operation '%s': expected error for empty field name", op)
-		}
-	}
-}
-
-func TestComparisonOps_FieldNotFound(t *testing.T) {
-	// 只测试 == 操作符，因为目前只有 EqualCond 实现了对不存在字段的严格检查
-	ops := []string{"=="}
-	for _, op := range ops {
-		cfg := constCfg("nonexistent", op, "test")
-		_, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
-		if err == nil {
-			t.Errorf("operation '%s': expected error for unknown field", op)
-		}
-	}
-}
-
-// ===== Null/NotNull/Exist/NotExist (无需 value) =====
-
-func TestNullCond_Valid(t *testing.T) {
-	cfg := &interfaces.FilterCondCfg{
-		Name:      "name",
-		Operation: "null",
-	}
-	cond, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if cond.GetOperation() != OperationNull {
-		t.Errorf("expected operation 'null', got '%s'", cond.GetOperation())
-	}
-	if cond.NeedValue() {
-		t.Error("null condition should not need value")
-	}
-}
-
-func TestConditionMetadata(t *testing.T) {
-	tests := []struct {
-		name             string
-		condition        interfaces.FilterCondition
-		operation        string
-		supportSubCond   bool
-		needName         bool
-		needValue        bool
-		needConstValue   bool
-		singleValue      bool
-		fixedArrayValue  bool
-		requiredValueLen int
-	}{
-		{name: "and", condition: &AndCond{}, operation: OperationAnd, supportSubCond: true, requiredValueLen: -1},
-		{name: "or", condition: &OrCond{}, operation: OperationOr, supportSubCond: true, requiredValueLen: -1},
-		{name: "equal", condition: &EqualCond{}, operation: OperationEqual, needName: true, needValue: true, singleValue: true, requiredValueLen: -1},
-		{name: "not equal", condition: &NotEqualCond{}, operation: OperationNotEqual, needName: true, needValue: true, singleValue: true, requiredValueLen: -1},
-		{name: "gt", condition: &GtCond{}, operation: OperationGt, needName: true, needValue: true, singleValue: true, requiredValueLen: -1},
-		{name: "gte", condition: &GteCond{}, operation: OperationGte, needName: true, needValue: true, singleValue: true, requiredValueLen: -1},
-		{name: "lt", condition: &LtCond{}, operation: OperationLt, needName: true, needValue: true, singleValue: true, requiredValueLen: -1},
-		{name: "lte", condition: &LteCond{}, operation: OperationLte, needName: true, needValue: true, singleValue: true, requiredValueLen: -1},
-		{name: "in", condition: &InCond{}, operation: OperationIn, needName: true, needValue: true, needConstValue: true, requiredValueLen: -1},
-		{name: "not in", condition: &NotInCond{}, operation: OperationNotIn, needName: true, needValue: true, needConstValue: true, requiredValueLen: -1},
-		{name: "like", condition: &LikeCond{}, operation: OperationLike, needName: true, needValue: true, needConstValue: true, singleValue: true, requiredValueLen: -1},
-		{name: "not like", condition: &NotLikeCond{}, operation: OperationNotLike, needName: true, needValue: true, needConstValue: true, singleValue: true, requiredValueLen: -1},
-		{name: "contain", condition: &ContainCond{}, operation: OperationContain, needName: true, needValue: true, needConstValue: true, requiredValueLen: -1},
-		{name: "not contain", condition: &NotContainCond{}, operation: OperationNotContain, needName: true, needValue: true, needConstValue: true, requiredValueLen: -1},
-		{name: "range", condition: &RangeCond{}, operation: OperationRange, needName: true, needValue: true, needConstValue: true, fixedArrayValue: true, requiredValueLen: 2},
-		{name: "out range", condition: &OutRangeCond{}, operation: OperationOutRange, needName: true, needValue: true, needConstValue: true, fixedArrayValue: true, requiredValueLen: 2},
-		{name: "exist", condition: &ExistCond{}, operation: OperationExist, needName: true, requiredValueLen: -1},
-		{name: "not exist", condition: &NotExistCond{}, operation: OperationNotExist, needName: true, requiredValueLen: -1},
-		{name: "empty", condition: &EmptyCond{}, operation: OperationEmpty, needName: true, requiredValueLen: -1},
-		{name: "not empty", condition: &NotEmptyCond{}, operation: OperationNotEmpty, needName: true, requiredValueLen: -1},
-		{name: "regex", condition: &RegexCond{}, operation: OperationRegex, needName: true, needValue: true, needConstValue: true, singleValue: true, requiredValueLen: -1},
-		{name: "match", condition: &MatchCond{}, operation: OperationMatch, needValue: true, needConstValue: true, singleValue: true, requiredValueLen: -1},
-		{name: "match phrase", condition: &MatchPhraseCond{}, operation: OperationMatchPhrase, needValue: true, needConstValue: true, singleValue: true, requiredValueLen: -1},
-		{name: "prefix", condition: &PrefixCond{}, operation: OperationPrefix, needName: true, needValue: true, needConstValue: true, singleValue: true, requiredValueLen: -1},
-		{name: "not prefix", condition: &NotPrefixCond{}, operation: OperationNotPrefix, needName: true, needValue: true, needConstValue: true, singleValue: true, requiredValueLen: -1},
-		{name: "null", condition: &NullCond{}, operation: OperationNull, needName: true, requiredValueLen: -1},
-		{name: "not null", condition: &NotNullCond{}, operation: OperationNotNull, needName: true, requiredValueLen: -1},
-		{name: "true", condition: &TrueCond{}, operation: OperationTrue, needName: true, requiredValueLen: -1},
-		{name: "false", condition: &FalseCond{}, operation: OperationFalse, needName: true, requiredValueLen: -1},
-		{name: "before", condition: &BeforeCond{}, operation: OperationBefore, needName: true, needValue: true, needConstValue: true, fixedArrayValue: true, requiredValueLen: 2},
-		{name: "current", condition: &CurrentCond{}, operation: OperationCurrent, needName: true, needValue: true, needConstValue: true, singleValue: true, requiredValueLen: 1},
-		{name: "between", condition: &BetweenCond{}, operation: OperationBetween, needName: true, needValue: true, needConstValue: true, fixedArrayValue: true, requiredValueLen: 2},
-		{name: "knn vector", condition: &KnnVectorCond{}, operation: OperationKnnVector, supportSubCond: true, needName: true, needValue: true, needConstValue: true, requiredValueLen: -1},
-		{name: "multi match", condition: &MultiMatchCond{}, operation: OperationMultiMatch, needValue: true, needConstValue: true, singleValue: true, requiredValueLen: -1},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.operation, tt.condition.GetOperation())
-			assert.Equal(t, tt.supportSubCond, tt.condition.SupportSubCond())
-			assert.Equal(t, tt.needName, tt.condition.NeedName())
-			assert.Equal(t, tt.needValue, tt.condition.NeedValue())
-			assert.Equal(t, tt.needConstValue, tt.condition.NeedConstValue())
-			assert.Equal(t, tt.singleValue, tt.condition.IsSingleValue())
-			assert.Equal(t, tt.fixedArrayValue, tt.condition.IsFixedLenArrayValue())
-			assert.Equal(t, tt.requiredValueLen, tt.condition.RequiredValueLen())
-		})
-	}
-}
-
-func TestFilterConditionFactoryAdvancedSuccess(t *testing.T) {
-	fieldsMap := advancedFieldsMap()
-	tests := []struct {
+	errorFieldsMap := advancedFieldsMap()
+	errorTests := []struct {
 		name      string
 		cfg       *interfaces.FilterCondCfg
 		assertion func(t *testing.T, cond interfaces.FilterCondition)
@@ -631,18 +156,15 @@ func TestFilterConditionFactoryAdvancedSuccess(t *testing.T) {
 		}},
 	}
 
-	for _, tt := range tests {
+	for _, tt := range errorTests {
 		t.Run(tt.name, func(t *testing.T) {
-			cond, err := NewFilterCondition(context.Background(), tt.cfg, fieldsMap)
+			cond, err := NewFilterCondition(context.Background(), tt.cfg, errorFieldsMap)
 
 			require.NoError(t, err)
 			require.NotNil(t, cond)
 			tt.assertion(t, cond)
 		})
 	}
-}
-
-func TestFilterConditionFactoryAdvancedErrors(t *testing.T) {
 	fieldsMap := advancedFieldsMap()
 	tests := []struct {
 		name       string
@@ -674,6 +196,458 @@ func TestFilterConditionFactoryAdvancedErrors(t *testing.T) {
 			require.Error(t, err)
 			assert.Nil(t, cond)
 			assert.ErrorContains(t, err, tt.errContain)
+		})
+	}
+}
+
+func TestEqualCond(t *testing.T) {
+	t.Run("equal cond valid", func(t *testing.T) {
+		cfg := constCfg("name", "==", "alice")
+		cond, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		eq := cond.(*EqualCond)
+		if eq.Lfield.Name != "name" {
+			t.Errorf("expected left field 'name', got '%s'", eq.Lfield.Name)
+		}
+		if eq.Value != "alice" {
+			t.Errorf("expected value 'alice', got '%v'", eq.Value)
+		}
+	})
+	t.Run("equal cond empty field name", func(t *testing.T) {
+		cfg := constCfg("", "==", "alice")
+		_, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
+		if err == nil {
+			t.Fatal("expected error for empty field name")
+		}
+		if !strings.Contains(err.Error(), "left field is empty") {
+			t.Errorf("unexpected error: %v", err)
+		}
+	})
+	t.Run("equal cond field not found", func(t *testing.T) {
+		cfg := constCfg("nonexistent", "==", "alice")
+		_, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
+		if err == nil {
+			t.Fatal("expected error for unknown field")
+		}
+		if !strings.Contains(err.Error(), "not found") {
+			t.Errorf("unexpected error: %v", err)
+		}
+	})
+	t.Run("equal cond rejects array value", func(t *testing.T) {
+		cfg := constCfg("name", "==", []any{"a", "b"})
+		_, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
+		if err == nil {
+			t.Fatal("expected error for array value in equal condition")
+		}
+		if !strings.Contains(err.Error(), "single value") {
+			t.Errorf("unexpected error: %v", err)
+		}
+	})
+	t.Run("equal cond field to field", func(t *testing.T) {
+		cfg := &interfaces.FilterCondCfg{
+			Name:      "name",
+			Operation: "==",
+			ValueOptCfg: interfaces.ValueOptCfg{
+				ValueFrom: interfaces.ValueFrom_Field,
+				Value:     "other_name",
+			},
+		}
+		cond, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		eq := cond.(*EqualCond)
+		if eq.Rfield == nil {
+			t.Fatal("expected right field to be set")
+		}
+		if eq.Rfield.Name != "other_name" {
+			t.Errorf("expected right field 'other_name', got '%s'", eq.Rfield.Name)
+		}
+	})
+	t.Run("equal cond field to field right not found", func(t *testing.T) {
+		cfg := &interfaces.FilterCondCfg{
+			Name:      "name",
+			Operation: "==",
+			ValueOptCfg: interfaces.ValueOptCfg{
+				ValueFrom: interfaces.ValueFrom_Field,
+				Value:     "nonexistent",
+			},
+		}
+		_, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
+		if err == nil {
+			t.Fatal("expected error for unknown right field")
+		}
+		if !strings.Contains(err.Error(), "right field") {
+			t.Errorf("unexpected error: %v", err)
+		}
+	})
+	t.Run("equal cond alias operations", func(t *testing.T) {
+		// "eq" 是 "==" 的别名
+		cfg := constCfg("name", "eq", "alice")
+		cond, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if cond.GetOperation() != OperationEqual {
+			t.Errorf("expected operation '==', got '%s'", cond.GetOperation())
+		}
+	})
+}
+
+func TestInCond(t *testing.T) {
+	t.Run("in cond valid", func(t *testing.T) {
+		cfg := constCfg("name", "in", []any{"alice", "bob"})
+		cond, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		in := cond.(*InCond)
+		if len(in.Value) != 2 {
+			t.Errorf("expected 2 values, got %d", len(in.Value))
+		}
+	})
+	t.Run("in cond empty array", func(t *testing.T) {
+		cfg := constCfg("name", "in", []any{})
+		_, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
+		if err == nil {
+			t.Fatal("expected error for empty array")
+		}
+		if !strings.Contains(err.Error(), "length >= 1") {
+			t.Errorf("unexpected error: %v", err)
+		}
+	})
+	t.Run("in cond non array value", func(t *testing.T) {
+		cfg := constCfg("name", "in", "single_value")
+		_, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
+		if err == nil {
+			t.Fatal("expected error for non-array value")
+		}
+		if !strings.Contains(err.Error(), "should be an array") {
+			t.Errorf("unexpected error: %v", err)
+		}
+	})
+	t.Run("in cond rejects field value from", func(t *testing.T) {
+		cfg := &interfaces.FilterCondCfg{
+			Name:      "name",
+			Operation: "in",
+			ValueOptCfg: interfaces.ValueOptCfg{
+				ValueFrom: interfaces.ValueFrom_Field,
+				Value:     []any{"alice"},
+			},
+		}
+		_, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
+		if err == nil {
+			t.Fatal("expected error for non-const value_from")
+		}
+		if !strings.Contains(err.Error(), "does not support value_from") {
+			t.Errorf("unexpected error: %v", err)
+		}
+	})
+}
+
+func TestLikeCond(t *testing.T) {
+	t.Run("like cond valid", func(t *testing.T) {
+		cfg := constCfg("name", "like", "ali%")
+		cond, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		like := cond.(*LikeCond)
+		if like.Value != "ali%" {
+			t.Errorf("expected value 'ali%%', got '%s'", like.Value)
+		}
+	})
+	t.Run("like cond non string field", func(t *testing.T) {
+		cfg := constCfg("age", "like", "test")
+		_, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
+		if err == nil {
+			t.Fatal("expected error for non-string field")
+		}
+		if !strings.Contains(err.Error(), "not a string field") {
+			t.Errorf("unexpected error: %v", err)
+		}
+	})
+	t.Run("like cond non string value", func(t *testing.T) {
+		cfg := constCfg("name", "like", 123)
+		_, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
+		if err == nil {
+			t.Fatal("expected error for non-string value")
+		}
+		if !strings.Contains(err.Error(), "not a string value") {
+			t.Errorf("unexpected error: %v", err)
+		}
+	})
+}
+
+func TestRangeCond(t *testing.T) {
+	t.Run("range cond valid", func(t *testing.T) {
+		cfg := constCfg("age", "range", []any{18, 65})
+		cond, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		r := cond.(*RangeCond)
+		if len(r.Value) != 2 {
+			t.Errorf("expected 2 values, got %d", len(r.Value))
+		}
+	})
+	t.Run("range cond wrong array length", func(t *testing.T) {
+		cfg := constCfg("age", "range", []any{18})
+		_, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
+		if err == nil {
+			t.Fatal("expected error for wrong array length")
+		}
+		if !strings.Contains(err.Error(), "length 2") {
+			t.Errorf("unexpected error: %v", err)
+		}
+	})
+	t.Run("range cond non numeric field", func(t *testing.T) {
+		cfg := constCfg("name", "range", []any{1, 2})
+		_, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
+		if err == nil {
+			t.Fatal("expected error for non-numeric field")
+		}
+		if !strings.Contains(err.Error(), "not a date/number field") {
+			t.Errorf("unexpected error: %v", err)
+		}
+	})
+	t.Run("range cond date field", func(t *testing.T) {
+		cfg := constCfg("created_at", "range", []any{"2024-01-01", "2024-12-31"})
+		_, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+}
+
+func TestAndCond(t *testing.T) {
+	t.Run("and cond valid", func(t *testing.T) {
+		cfg := &interfaces.FilterCondCfg{
+			Operation: "and",
+			SubConds: []*interfaces.FilterCondCfg{
+				constCfg("name", "==", "alice"),
+				constCfg("age", ">", 18),
+			},
+		}
+		cond, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		and := cond.(*AndCond)
+		if len(and.SubConds) != 2 {
+			t.Errorf("expected 2 sub-conditions, got %d", len(and.SubConds))
+		}
+	})
+	t.Run("and cond empty sub conds", func(t *testing.T) {
+		cfg := &interfaces.FilterCondCfg{
+			Operation: "and",
+			SubConds:  []*interfaces.FilterCondCfg{},
+		}
+		_, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
+		if err == nil {
+			t.Fatal("expected error for empty sub-conditions")
+		}
+		if !strings.Contains(err.Error(), "size is 0") {
+			t.Errorf("unexpected error: %v", err)
+		}
+	})
+	t.Run("and cond invalid sub cond", func(t *testing.T) {
+		cfg := &interfaces.FilterCondCfg{
+			Operation: "and",
+			SubConds: []*interfaces.FilterCondCfg{
+				constCfg("nonexistent", "==", "test"),
+			},
+		}
+		_, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
+		if err == nil {
+			t.Fatal("expected error for invalid sub-condition")
+		}
+	})
+	t.Run("and cond nested and or", func(t *testing.T) {
+		cfg := &interfaces.FilterCondCfg{
+			Operation: "and",
+			SubConds: []*interfaces.FilterCondCfg{
+				constCfg("name", "==", "alice"),
+				{
+					Operation: "or",
+					SubConds: []*interfaces.FilterCondCfg{
+						constCfg("age", ">", 18),
+						constCfg("age", "<", 65),
+					},
+				},
+			},
+		}
+		cond, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		and := cond.(*AndCond)
+		if len(and.SubConds) != 2 {
+			t.Errorf("expected 2 sub-conditions, got %d", len(and.SubConds))
+		}
+		if and.SubConds[1].GetOperation() != OperationOr {
+			t.Errorf("expected nested 'or', got '%s'", and.SubConds[1].GetOperation())
+		}
+	})
+}
+
+func TestComparisonOps(t *testing.T) {
+	t.Run("comparison ops empty field", func(t *testing.T) {
+		ops := []string{"==", "!=", ">", ">=", "<", "<="}
+		for _, op := range ops {
+			cfg := constCfg("", op, "test")
+			_, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
+			if err == nil {
+				t.Errorf("operation '%s': expected error for empty field name", op)
+			}
+		}
+	})
+	t.Run("comparison ops field not found", func(t *testing.T) {
+		// 只测试 == 操作符，因为目前只有 EqualCond 实现了对不存在字段的严格检查
+		ops := []string{"=="}
+		for _, op := range ops {
+			cfg := constCfg("nonexistent", op, "test")
+			_, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
+			if err == nil {
+				t.Errorf("operation '%s': expected error for unknown field", op)
+			}
+		}
+	})
+}
+
+func TestIsSlice(t *testing.T) {
+	t.Run("returns true for slices and arrays", func(t *testing.T) {
+		assert.True(t, IsSlice([]int{1, 2, 3}))
+		assert.True(t, IsSlice([]string{"a"}))
+		assert.True(t, IsSlice([2]int{1, 2}))
+	})
+
+	t.Run("returns false for scalar values", func(t *testing.T) {
+		assert.False(t, IsSlice("not a slice"))
+		assert.False(t, IsSlice(42))
+	})
+}
+
+func TestIsSameType(t *testing.T) {
+	t.Run("returns true for empty and same-type values", func(t *testing.T) {
+		assert.True(t, IsSameType([]any{}))
+		assert.True(t, IsSameType([]any{1, 2, 3}))
+		assert.True(t, IsSameType([]any{"a", "b"}))
+	})
+
+	t.Run("returns false for mixed types", func(t *testing.T) {
+		assert.False(t, IsSameType([]any{1, "two", 3}))
+	})
+}
+
+func TestAllOperationsRegistered(t *testing.T) {
+	t.Run("all operations registered", func(t *testing.T) {
+		expectedOps := []string{
+			"and", "or",
+			"==", "eq", "!=", "not_eq",
+			">", "gt", ">=", "gte", "<", "lt", "<=", "lte",
+			"in", "not_in",
+			"like", "not_like",
+			"contain", "not_contain",
+			"range", "out_range",
+			"exist", "not_exist",
+			"empty", "not_empty",
+			"regex", "match", "match_phrase",
+			"prefix", "not_prefix",
+			"null", "not_null",
+			"true", "false",
+			"before", "current", "between",
+			"knn_vector", "multi_match",
+		}
+
+		for _, op := range expectedOps {
+			if _, exists := OperationMap[op]; !exists {
+				t.Errorf("operation '%s' not registered in OperationMap", op)
+			}
+		}
+	})
+}
+
+func TestNullCondValid(t *testing.T) {
+	t.Run("null cond valid", func(t *testing.T) {
+		cfg := &interfaces.FilterCondCfg{
+			Name:      "name",
+			Operation: "null",
+		}
+		cond, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if cond.GetOperation() != OperationNull {
+			t.Errorf("expected operation 'null', got '%s'", cond.GetOperation())
+		}
+		if cond.NeedValue() {
+			t.Error("null condition should not need value")
+		}
+	})
+}
+
+func TestConditionMetadata(t *testing.T) {
+	tests := []struct {
+		name             string
+		condition        interfaces.FilterCondition
+		operation        string
+		supportSubCond   bool
+		needName         bool
+		needValue        bool
+		needConstValue   bool
+		singleValue      bool
+		fixedArrayValue  bool
+		requiredValueLen int
+	}{
+		{name: "and", condition: &AndCond{}, operation: OperationAnd, supportSubCond: true, requiredValueLen: -1},
+		{name: "or", condition: &OrCond{}, operation: OperationOr, supportSubCond: true, requiredValueLen: -1},
+		{name: "equal", condition: &EqualCond{}, operation: OperationEqual, needName: true, needValue: true, singleValue: true, requiredValueLen: -1},
+		{name: "not equal", condition: &NotEqualCond{}, operation: OperationNotEqual, needName: true, needValue: true, singleValue: true, requiredValueLen: -1},
+		{name: "gt", condition: &GtCond{}, operation: OperationGt, needName: true, needValue: true, singleValue: true, requiredValueLen: -1},
+		{name: "gte", condition: &GteCond{}, operation: OperationGte, needName: true, needValue: true, singleValue: true, requiredValueLen: -1},
+		{name: "lt", condition: &LtCond{}, operation: OperationLt, needName: true, needValue: true, singleValue: true, requiredValueLen: -1},
+		{name: "lte", condition: &LteCond{}, operation: OperationLte, needName: true, needValue: true, singleValue: true, requiredValueLen: -1},
+		{name: "in", condition: &InCond{}, operation: OperationIn, needName: true, needValue: true, needConstValue: true, requiredValueLen: -1},
+		{name: "not in", condition: &NotInCond{}, operation: OperationNotIn, needName: true, needValue: true, needConstValue: true, requiredValueLen: -1},
+		{name: "like", condition: &LikeCond{}, operation: OperationLike, needName: true, needValue: true, needConstValue: true, singleValue: true, requiredValueLen: -1},
+		{name: "not like", condition: &NotLikeCond{}, operation: OperationNotLike, needName: true, needValue: true, needConstValue: true, singleValue: true, requiredValueLen: -1},
+		{name: "contain", condition: &ContainCond{}, operation: OperationContain, needName: true, needValue: true, needConstValue: true, requiredValueLen: -1},
+		{name: "not contain", condition: &NotContainCond{}, operation: OperationNotContain, needName: true, needValue: true, needConstValue: true, requiredValueLen: -1},
+		{name: "range", condition: &RangeCond{}, operation: OperationRange, needName: true, needValue: true, needConstValue: true, fixedArrayValue: true, requiredValueLen: 2},
+		{name: "out range", condition: &OutRangeCond{}, operation: OperationOutRange, needName: true, needValue: true, needConstValue: true, fixedArrayValue: true, requiredValueLen: 2},
+		{name: "exist", condition: &ExistCond{}, operation: OperationExist, needName: true, requiredValueLen: -1},
+		{name: "not exist", condition: &NotExistCond{}, operation: OperationNotExist, needName: true, requiredValueLen: -1},
+		{name: "empty", condition: &EmptyCond{}, operation: OperationEmpty, needName: true, requiredValueLen: -1},
+		{name: "not empty", condition: &NotEmptyCond{}, operation: OperationNotEmpty, needName: true, requiredValueLen: -1},
+		{name: "regex", condition: &RegexCond{}, operation: OperationRegex, needName: true, needValue: true, needConstValue: true, singleValue: true, requiredValueLen: -1},
+		{name: "match", condition: &MatchCond{}, operation: OperationMatch, needValue: true, needConstValue: true, singleValue: true, requiredValueLen: -1},
+		{name: "match phrase", condition: &MatchPhraseCond{}, operation: OperationMatchPhrase, needValue: true, needConstValue: true, singleValue: true, requiredValueLen: -1},
+		{name: "prefix", condition: &PrefixCond{}, operation: OperationPrefix, needName: true, needValue: true, needConstValue: true, singleValue: true, requiredValueLen: -1},
+		{name: "not prefix", condition: &NotPrefixCond{}, operation: OperationNotPrefix, needName: true, needValue: true, needConstValue: true, singleValue: true, requiredValueLen: -1},
+		{name: "null", condition: &NullCond{}, operation: OperationNull, needName: true, requiredValueLen: -1},
+		{name: "not null", condition: &NotNullCond{}, operation: OperationNotNull, needName: true, requiredValueLen: -1},
+		{name: "true", condition: &TrueCond{}, operation: OperationTrue, needName: true, requiredValueLen: -1},
+		{name: "false", condition: &FalseCond{}, operation: OperationFalse, needName: true, requiredValueLen: -1},
+		{name: "before", condition: &BeforeCond{}, operation: OperationBefore, needName: true, needValue: true, needConstValue: true, fixedArrayValue: true, requiredValueLen: 2},
+		{name: "current", condition: &CurrentCond{}, operation: OperationCurrent, needName: true, needValue: true, needConstValue: true, singleValue: true, requiredValueLen: 1},
+		{name: "between", condition: &BetweenCond{}, operation: OperationBetween, needName: true, needValue: true, needConstValue: true, fixedArrayValue: true, requiredValueLen: 2},
+		{name: "knn vector", condition: &KnnVectorCond{}, operation: OperationKnnVector, supportSubCond: true, needName: true, needValue: true, needConstValue: true, requiredValueLen: -1},
+		{name: "multi match", condition: &MultiMatchCond{}, operation: OperationMultiMatch, needValue: true, needConstValue: true, singleValue: true, requiredValueLen: -1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.operation, tt.condition.GetOperation())
+			assert.Equal(t, tt.supportSubCond, tt.condition.SupportSubCond())
+			assert.Equal(t, tt.needName, tt.condition.NeedName())
+			assert.Equal(t, tt.needValue, tt.condition.NeedValue())
+			assert.Equal(t, tt.needConstValue, tt.condition.NeedConstValue())
+			assert.Equal(t, tt.singleValue, tt.condition.IsSingleValue())
+			assert.Equal(t, tt.fixedArrayValue, tt.condition.IsFixedLenArrayValue())
+			assert.Equal(t, tt.requiredValueLen, tt.condition.RequiredValueLen())
 		})
 	}
 }

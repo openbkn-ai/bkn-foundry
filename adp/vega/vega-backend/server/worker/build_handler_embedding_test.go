@@ -204,8 +204,8 @@ func TestEmbeddingHandlerVectorizeDoc(t *testing.T) {
 		lim.EXPECT().UpsertDocuments(ctx, "idx", gomock.Any()).
 			DoAndReturn(func(_ any, _ string, reqs []map[string]any) ([]string, error) {
 				doc := reqs[0]["document"].(map[string]any)
-				assert.Contains(t, doc, "title_vector")
-				assert.Contains(t, doc, "body_vector")
+				assert.Equal(t, []float32{0.1}, doc["title_vector"])
+				assert.Equal(t, []float32{0.2}, doc["body_vector"])
 				return []string{"doc1"}, nil
 			})
 

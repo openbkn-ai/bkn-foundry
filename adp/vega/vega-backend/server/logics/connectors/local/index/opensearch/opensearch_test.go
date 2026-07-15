@@ -13,7 +13,7 @@ import (
 	"vega-backend/interfaces"
 )
 
-func TestBuildFieldMappings_StringFulltextAddsTextSubfield(t *testing.T) {
+func TestBuildFieldMappingsStringFulltextAddsTextSubfield(t *testing.T) {
 	t.Run("string fulltext creates text subfield", func(t *testing.T) {
 		c := &OpenSearchConnector{}
 		schema := []*interfaces.Property{
@@ -44,7 +44,7 @@ func TestBuildFieldMappings_StringFulltextAddsTextSubfield(t *testing.T) {
 	})
 }
 
-func TestBuildFieldMappings_StringFulltextNoConfig(t *testing.T) {
+func TestBuildFieldMappingsStringFulltextNoConfig(t *testing.T) {
 	t.Run("string fulltext without config uses default analyzer", func(t *testing.T) {
 		c := &OpenSearchConnector{}
 		schema := []*interfaces.Property{
@@ -67,7 +67,7 @@ func TestBuildFieldMappings_StringFulltextNoConfig(t *testing.T) {
 	})
 }
 
-func TestBuildFieldMappings_StringKeywordAndFulltext(t *testing.T) {
+func TestBuildFieldMappingsStringKeywordAndFulltext(t *testing.T) {
 	t.Run("string keyword and fulltext keeps keyword config and text subfield", func(t *testing.T) {
 		c := &OpenSearchConnector{}
 		schema := []*interfaces.Property{
@@ -93,7 +93,7 @@ func TestBuildFieldMappings_StringKeywordAndFulltext(t *testing.T) {
 	})
 }
 
-func TestBuildFieldMappings_TextFulltextSetsAnalyzer(t *testing.T) {
+func TestBuildFieldMappingsTextFulltextSetsAnalyzer(t *testing.T) {
 	t.Run("text fulltext sets analyzer on main field", func(t *testing.T) {
 		c := &OpenSearchConnector{}
 		schema := []*interfaces.Property{

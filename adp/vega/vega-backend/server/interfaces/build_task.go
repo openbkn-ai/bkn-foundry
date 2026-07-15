@@ -163,19 +163,14 @@ type IndexHealth struct {
 
 // CreateBuildTaskRequest represents the request to create a build task.
 type CreateBuildTaskRequest struct {
-	ResourceID string `json:"resource_id" binding:"required"`                // 关联 Resource ID
-	Mode       string `json:"mode" binding:"required,oneof=streaming batch"` // 任务模式：streaming/batch
-}
-
-// UpdateBuildTaskStatusRequest represents update build task status request.
-type UpdateBuildTaskStatusRequest struct {
-	Status      string `json:"status" binding:"required,oneof=running stopped"` // 修改任务状态，只允许 running 和 stopped
-	ExecuteType string `json:"execute_type,omitempty"`                          // 执行类型,for batch mode, default is "incremental"
+	ResourceID  string `json:"resource_id" binding:"required"`                                    // 关联 Resource ID
+	Mode        string `json:"mode" binding:"required,oneof=streaming batch"`                     // 任务模式：streaming/batch
+	ExecuteType string `json:"execute_type,omitempty" binding:"omitempty,oneof=incremental full"` // 执行类型, batch only; default full
 }
 
 // StartBuildTaskRequest represents the optional body for POST /build-tasks/{id}/start.
 type StartBuildTaskRequest struct {
-	ExecuteType string `json:"execute_type,omitempty"` // incremental / full; default incremental
+	Reset bool `json:"reset,omitempty"` // true ignores synced_mark and restarts from the beginning
 }
 
 // BuildTasksQueryParams holds filter + pagination parameters for listing build tasks.

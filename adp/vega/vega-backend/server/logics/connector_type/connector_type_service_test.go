@@ -231,7 +231,7 @@ func TestConnectorTypeServiceListAuthResources(t *testing.T) {
 	})
 }
 
-func TestConnectorTypeServiceExistenceAndEnabled(t *testing.T) {
+func TestConnectorTypeServiceCheckExistByType(t *testing.T) {
 	t.Run("checks existence by type", func(t *testing.T) {
 		service, cta, _ := newTestConnectorTypeService(t)
 		cta.EXPECT().GetByType(gomock.Any(), "exists").
@@ -243,6 +243,9 @@ func TestConnectorTypeServiceExistenceAndEnabled(t *testing.T) {
 		assert.True(t, exists)
 	})
 
+}
+
+func TestConnectorTypeServiceCheckExistByName(t *testing.T) {
 	t.Run("checks absence by name", func(t *testing.T) {
 		service, cta, _ := newTestConnectorTypeService(t)
 		cta.EXPECT().GetByName(gomock.Any(), "missing").Return(nil, nil)
@@ -253,6 +256,9 @@ func TestConnectorTypeServiceExistenceAndEnabled(t *testing.T) {
 		assert.False(t, exists)
 	})
 
+}
+
+func TestConnectorTypeServiceSetEnabled(t *testing.T) {
 	t.Run("set enabled checks permission and updates access", func(t *testing.T) {
 		service, cta, ps := newTestConnectorTypeService(t)
 		ps.EXPECT().
@@ -279,14 +285,16 @@ func TestConnectorTypeServiceExistenceAndEnabled(t *testing.T) {
 }
 
 func TestPaginateConnectorTypeAuthResources(t *testing.T) {
-	entries := []*interfaces.AuthResourceEntry{
-		{ID: "a"},
-		{ID: "b"},
-		{ID: "c"},
-	}
+	t.Run("paginate connector type auth resources", func(t *testing.T) {
+		entries := []*interfaces.AuthResourceEntry{
+			{ID: "a"},
+			{ID: "b"},
+			{ID: "c"},
+		}
 
-	assert.Equal(t, entries, paginateConnectorTypeAuthResources(entries, 0, -1))
-	assert.Equal(t, []*interfaces.AuthResourceEntry{{ID: "b"}, {ID: "c"}}, paginateConnectorTypeAuthResources(entries, 1, 10))
-	assert.Empty(t, paginateConnectorTypeAuthResources(entries, -1, 10))
-	assert.Empty(t, paginateConnectorTypeAuthResources(entries, 3, 10))
+		assert.Equal(t, entries, paginateConnectorTypeAuthResources(entries, 0, -1))
+		assert.Equal(t, []*interfaces.AuthResourceEntry{{ID: "b"}, {ID: "c"}}, paginateConnectorTypeAuthResources(entries, 1, 10))
+		assert.Empty(t, paginateConnectorTypeAuthResources(entries, -1, 10))
+		assert.Empty(t, paginateConnectorTypeAuthResources(entries, 3, 10))
+	})
 }

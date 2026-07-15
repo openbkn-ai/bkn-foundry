@@ -109,16 +109,18 @@ func (f *fakeConnector) GetMetadata(ctx context.Context) (map[string]any, error)
 }
 
 func TestConnectorFactoryInitLocalConnectors(t *testing.T) {
-	cf := &ConnectorFactory{connectors: map[string]connectors.Connector{}}
+	t.Run("connector factory init local connectors", func(t *testing.T) {
+		cf := &ConnectorFactory{connectors: map[string]connectors.Connector{}}
 
-	cf.InitLocalConnectors()
+		cf.InitLocalConnectors()
 
-	assert.Contains(t, cf.connectors, interfaces.ConnectorTypeMySQL)
-	assert.Contains(t, cf.connectors, interfaces.ConnectorTypeMariaDB)
-	assert.Contains(t, cf.connectors, interfaces.ConnectorTypePostgreSQL)
-	assert.Contains(t, cf.connectors, interfaces.ConnectorTypeOpenSearch)
-	assert.Contains(t, cf.connectors, interfaces.ConnectorTypeAnyShare)
-	assert.NotContains(t, cf.connectors, interfaces.ConnectorTypeOracle)
+		assert.Contains(t, cf.connectors, interfaces.ConnectorTypeMySQL)
+		assert.Contains(t, cf.connectors, interfaces.ConnectorTypeMariaDB)
+		assert.Contains(t, cf.connectors, interfaces.ConnectorTypePostgreSQL)
+		assert.Contains(t, cf.connectors, interfaces.ConnectorTypeOpenSearch)
+		assert.Contains(t, cf.connectors, interfaces.ConnectorTypeAnyShare)
+		assert.NotContains(t, cf.connectors, interfaces.ConnectorTypeOracle)
+	})
 }
 
 func TestConnectorFactoryRegisterConnector(t *testing.T) {
@@ -171,55 +173,59 @@ func TestConnectorFactoryRegisterConnector(t *testing.T) {
 }
 
 func TestConnectorFactoryDeleteConnector(t *testing.T) {
-	ctx := context.Background()
-	cf := &ConnectorFactory{
-		connectors: map[string]connectors.Connector{
-			"localdb": newFakeConnector("localdb", interfaces.ConnectorModeLocal, true),
-			"remote":  newFakeConnector("remote", interfaces.ConnectorModeRemote, true),
-		},
-	}
+	t.Run("connector factory delete connector", func(t *testing.T) {
+		ctx := context.Background()
+		cf := &ConnectorFactory{
+			connectors: map[string]connectors.Connector{
+				"localdb": newFakeConnector("localdb", interfaces.ConnectorModeLocal, true),
+				"remote":  newFakeConnector("remote", interfaces.ConnectorModeRemote, true),
+			},
+		}
 
-	require.NoError(t, cf.DeleteConnector(ctx, "remote"))
-	assert.NotContains(t, cf.connectors, "remote")
+		require.NoError(t, cf.DeleteConnector(ctx, "remote"))
+		assert.NotContains(t, cf.connectors, "remote")
 
-	err := cf.DeleteConnector(ctx, "localdb")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "can not delete local connector")
+		err := cf.DeleteConnector(ctx, "localdb")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "can not delete local connector")
 
-	err = cf.DeleteConnector(ctx, "missing")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "not implemented")
+		err = cf.DeleteConnector(ctx, "missing")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "not implemented")
+	})
 }
 
 func TestConnectorFactorySetEnabledCreateAndSensitiveFields(t *testing.T) {
-	ctx := context.Background()
-	local := newFakeConnector("localdb", interfaces.ConnectorModeLocal, false)
-	cf := &ConnectorFactory{
-		connectors: map[string]connectors.Connector{
-			local.GetType(): local,
-		},
-	}
+	t.Run("connector factory set enabled create and sensitive fields", func(t *testing.T) {
+		ctx := context.Background()
+		local := newFakeConnector("localdb", interfaces.ConnectorModeLocal, false)
+		cf := &ConnectorFactory{
+			connectors: map[string]connectors.Connector{
+				local.GetType(): local,
+			},
+		}
 
-	instance, err := cf.CreateConnectorInstance(ctx, local.GetType(), interfaces.ConnectorConfig{"host": "db"})
-	require.Error(t, err)
-	assert.Nil(t, instance)
-	assert.Contains(t, err.Error(), "is disabled")
+		instance, err := cf.CreateConnectorInstance(ctx, local.GetType(), interfaces.ConnectorConfig{"host": "db"})
+		require.Error(t, err)
+		assert.Nil(t, instance)
+		assert.Contains(t, err.Error(), "is disabled")
 
-	require.NoError(t, cf.SetConnectorEnabled(ctx, local.GetType(), true))
-	instance, err = cf.CreateConnectorInstance(ctx, local.GetType(), interfaces.ConnectorConfig{"host": "db"})
-	require.NoError(t, err)
-	require.IsType(t, &fakeConnector{}, instance)
-	assert.Equal(t, "db", instance.(*fakeConnector).config["host"])
+		require.NoError(t, cf.SetConnectorEnabled(ctx, local.GetType(), true))
+		instance, err = cf.CreateConnectorInstance(ctx, local.GetType(), interfaces.ConnectorConfig{"host": "db"})
+		require.NoError(t, err)
+		require.IsType(t, &fakeConnector{}, instance)
+		assert.Equal(t, "db", instance.(*fakeConnector).config["host"])
 
-	assert.Equal(t, []string{"password"}, cf.GetSensitiveFields(local.GetType()))
-	assert.Nil(t, cf.GetSensitiveFields("missing"))
+		assert.Equal(t, []string{"password"}, cf.GetSensitiveFields(local.GetType()))
+		assert.Nil(t, cf.GetSensitiveFields("missing"))
 
-	err = cf.SetConnectorEnabled(ctx, "missing", true)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "not implemented")
+		err = cf.SetConnectorEnabled(ctx, "missing", true)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "not implemented")
 
-	instance, err = cf.CreateConnectorInstance(ctx, "missing", nil)
-	require.Error(t, err)
-	assert.Nil(t, instance)
-	assert.Contains(t, err.Error(), "not found")
+		instance, err = cf.CreateConnectorInstance(ctx, "missing", nil)
+		require.Error(t, err)
+		assert.Nil(t, instance)
+		assert.Contains(t, err.Error(), "not found")
+	})
 }

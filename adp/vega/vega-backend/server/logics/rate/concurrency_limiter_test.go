@@ -404,7 +404,9 @@ func TestConcurrencyLimitErrorTypes(t *testing.T) {
 // TestUpdateCatalogLimit tests dynamic catalog limit updates.
 // Note: This feature is not yet implemented, skipping this test.
 func TestUpdateCatalogLimit(t *testing.T) {
-	t.Skip("UpdateCatalogLimit not yet implemented")
+	t.Run("update catalog limit", func(t *testing.T) {
+		t.Skip("UpdateCatalogLimit not yet implemented")
+	})
 }
 
 // TestConfigValidation tests configuration validation.

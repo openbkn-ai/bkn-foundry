@@ -15,20 +15,26 @@ import (
 )
 
 func TestPgQuoteIdent(t *testing.T) {
-	assert.Equal(t, `""`, pgQuoteIdent(""))
-	assert.Equal(t, `"users"`, pgQuoteIdent("users"))
-	assert.Equal(t, `"weird""name"`, pgQuoteIdent(`weird"name`))
+	t.Run("pg quote ident", func(t *testing.T) {
+		assert.Equal(t, `""`, pgQuoteIdent(""))
+		assert.Equal(t, `"users"`, pgQuoteIdent("users"))
+		assert.Equal(t, `"weird""name"`, pgQuoteIdent(`weird"name`))
+	})
 }
 
 func TestQualTable(t *testing.T) {
-	assert.Equal(t, `"users"`, qualTable(&interfaces.Resource{SourceIdentifier: "users"}))
-	assert.Equal(t, `"public"."users"`, qualTable(&interfaces.Resource{SourceIdentifier: " public . users "}))
-	assert.Equal(t, `"db"."public.users"`, qualTable(&interfaces.Resource{SourceIdentifier: "db.public.users"}))
+	t.Run("qual table", func(t *testing.T) {
+		assert.Equal(t, `"users"`, qualTable(&interfaces.Resource{SourceIdentifier: "users"}))
+		assert.Equal(t, `"public"."users"`, qualTable(&interfaces.Resource{SourceIdentifier: " public . users "}))
+		assert.Equal(t, `"db"."public.users"`, qualTable(&interfaces.Resource{SourceIdentifier: "db.public.users"}))
+	})
 }
 
 func TestQuoteColumnName(t *testing.T) {
-	assert.Equal(t, `""`, quoteColumnName(""))
-	assert.Equal(t, `"id"`, quoteColumnName(" id "))
-	assert.Equal(t, `"u"."id"`, quoteColumnName(" u . id "))
-	assert.Equal(t, `"u"."first.name"`, quoteColumnName("u.first.name"))
+	t.Run("quote column name", func(t *testing.T) {
+		assert.Equal(t, `""`, quoteColumnName(""))
+		assert.Equal(t, `"id"`, quoteColumnName(" id "))
+		assert.Equal(t, `"u"."id"`, quoteColumnName(" u . id "))
+		assert.Equal(t, `"u"."first.name"`, quoteColumnName("u.first.name"))
+	})
 }
