@@ -97,6 +97,15 @@ func applyEnv(cfg *Config) {
 	if v := os.Getenv("SAFE_LDAP_USER_FILTER"); v != "" {
 		cfg.LDAP.UserFilter = v
 	}
+	if v := os.Getenv("SAFE_LICENSE_SERVER_URL"); v != "" {
+		cfg.License.ServerURL = v
+	}
+	if v := os.Getenv("SAFE_LICENSE_CA_FILE"); v != "" {
+		cfg.License.CAFile = v
+	}
+	if v, ok := envBool("SAFE_LICENSE_INSECURE_SKIP_VERIFY"); ok {
+		cfg.License.InsecureSkipVerify = v
+	}
 }
 
 func envInt(k string) (int, bool) {

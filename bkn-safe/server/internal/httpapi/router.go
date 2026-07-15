@@ -16,6 +16,7 @@ import (
 	"bkn-safe/internal/auth"
 	"bkn-safe/internal/authz"
 	"bkn-safe/internal/directory"
+	"bkn-safe/internal/license"
 )
 
 // Deps are the collaborators the HTTP layer needs.
@@ -35,6 +36,9 @@ type Deps struct {
 	// ClientAdmin manages login clients' redirect_uris (admin API). Defaults to
 	// Hydra when nil (production); tests inject a stub.
 	ClientAdmin ClientManager
+	// License is the cluster license hub. When nil, the license admin and
+	// internal distribution endpoints are not mounted.
+	License *license.Service
 }
 
 // New builds the gin engine with all routes mounted.
@@ -111,6 +115,17 @@ func New(deps Deps) *gin.Engine {
 		if clientMgr != nil {
 			registerClientAdmin(admin, clientMgr)
 		}
+		// Cluster license hub management (import/activate/remove + detail).
+		if deps.License != nil {
+			registerLicenseAdmin(admin, deps.License)
+		}
+	}
+
+	// In-cluster license distribution: modules pull the signed text and verify
+	// locally. AppKey-authenticated (not anonymous, unlike /authz — upstream
+	// hard rule for this surface).
+	if deps.License != nil && apiKeys != nil {
+		registerLicenseInternal(r, deps.License, apiKeys)
 	}
 
 	// Self-service reads under /api/safe/v1/me — token-gated (RequireUser:
