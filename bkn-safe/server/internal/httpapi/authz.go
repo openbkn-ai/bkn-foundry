@@ -451,7 +451,7 @@ func loadRole(c *gin.Context, db *gorm.DB, id string) (*model.Role, error) {
 func roleJSON(r model.Role) gin.H {
 	return gin.H{
 		"id": r.ID, "name": r.Name, "description": r.Description,
-		"source": r.Source, "built_in": r.BuiltIn(),
+		"source": r.Source, "built_in": r.BuiltIn(), "created_at": r.CreatedAt,
 	}
 }
 

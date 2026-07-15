@@ -1,5 +1,5 @@
 {
-  "_comment": "Resource-type + operation catalog, extracted from each service's enums/consts (2026-06-03). Exact op id strings — these are the seed source of truth. NOTE: 'view' (exec-factory, flow-automation) and 'view_detail' (vega/bkn/pipeline) are DIFFERENT op strings — not normalized. Role->permission GRANTS are in grants.json and are pending role-definition decisions (only 应用管理员 grants are confirmed/coded today).",
+  "_comment": "Resource-type + operation catalog, extracted from each service's enums/consts (2026-06-03). Exact op id strings are the seed source of truth. NOTE: 'view' (exec-factory, flow-automation) and 'view_detail' (vega/bkn/pipeline) are DIFFERENT op strings and are not normalized. Role-to-permission grants are maintained in grants.json for the Studio 0.1.0 role model.",
   "resource_types": [
     {
       "id": "agent",
@@ -180,6 +180,65 @@
         {"id": "modify", "name": "修改"},
         {"id": "delete", "name": "删除"},
         {"id": "execute", "name": "调用/执行"}
+      ]
+    },
+    {
+      "id": "admin-user",
+      "name": "系统用户管理",
+      "_source": "bkn-studio system-admin",
+      "operations": [
+        {"id": "create", "name": "新建用户"},
+        {"id": "edit", "name": "编辑用户"},
+        {"id": "delete", "name": "删除用户"},
+        {"id": "toggle", "name": "启停账号"},
+        {"id": "reset-password", "name": "重置密码"}
+      ]
+    },
+    {
+      "id": "admin-dept",
+      "name": "系统部门管理",
+      "_source": "bkn-studio system-admin",
+      "operations": [
+        {"id": "create", "name": "新建部门"},
+        {"id": "edit", "name": "编辑部门"},
+        {"id": "delete", "name": "删除部门"},
+        {"id": "members", "name": "成员管理"}
+      ]
+    },
+    {
+      "id": "admin-role",
+      "name": "系统角色管理",
+      "_source": "bkn-studio system-admin",
+      "operations": [
+        {"id": "create", "name": "新建角色"},
+        {"id": "edit", "name": "编辑角色"},
+        {"id": "delete", "name": "删除角色"},
+        {"id": "members", "name": "成员管理"}
+      ]
+    },
+    {
+      "id": "admin-authz",
+      "name": "系统授权管理",
+      "_source": "bkn-studio system-admin",
+      "operations": [
+        {"id": "grant", "name": "授权"},
+        {"id": "revoke", "name": "撤权"}
+      ]
+    },
+    {
+      "id": "admin-audit",
+      "name": "系统审计日志",
+      "_source": "bkn-studio system-admin",
+      "operations": [
+        {"id": "view", "name": "查看"}
+      ]
+    },
+    {
+      "id": "safe_admin",
+      "name": "bkn-safe 管理 API",
+      "_source": "bkn-safe",
+      "operations": [
+        {"id": "manage", "name": "访问管理 API"}
       ]
     }
   ]
