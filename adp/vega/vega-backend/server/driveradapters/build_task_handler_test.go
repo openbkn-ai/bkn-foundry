@@ -227,17 +227,29 @@ func Test_BuildTaskRestHandler_StartBuildTask(t *testing.T) {
 	restoreGinMode := setGinMode()
 	defer restoreGinMode()
 
-	t.Run("starts build task with execute type", func(t *testing.T) {
+	t.Run("starts build task with reset", func(t *testing.T) {
 		engine, bts, _ := setupBuildTaskHandlerTest(t)
-		bts.EXPECT().StartBuildTask(gomock.Any(), "task-1", interfaces.BuildTaskExecuteTypeFull).Return(nil)
+		bts.EXPECT().StartBuildTask(gomock.Any(), "task-1", true).Return(nil)
 
-		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/build-tasks/task-1/start", strings.NewReader(`{"execute_type":"full"}`))
+		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/build-tasks/task-1/start", strings.NewReader(`{"reset":true}`))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 
 		engine.ServeHTTP(w, req)
 
 		require.Equal(t, http.StatusAccepted, w.Result().StatusCode)
+	})
+
+	t.Run("rejects invalid start body", func(t *testing.T) {
+		engine, _, _ := setupBuildTaskHandlerTest(t)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/build-tasks/task-1/start", strings.NewReader(`{"reset":`))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
 	})
 }
 

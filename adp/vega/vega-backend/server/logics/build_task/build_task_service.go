@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -95,6 +96,11 @@ func (bts *buildTaskService) CreateBuildTask(ctx context.Context, req *interface
 		return "", rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InternalError_InvalidCategory).
 			WithErrorDetails("Resource category must be table")
 	}
+	executeType, err := normalizeCreateBuildTaskExecuteType(ctx, req)
+	if err != nil {
+		span.SetStatus(codes.Error, "Invalid execute type")
+		return "", err
+	}
 
 	cat, err := bts.cs.GetByID(ctx, resource.CatalogID, false)
 	if err != nil {
@@ -144,10 +150,25 @@ func (bts *buildTaskService) CreateBuildTask(ctx context.Context, req *interface
 
 	// 创建即入队执行：客户端创建后不会再调 /start，不入队任务会永远停在 init（界面"排队中"）。
 	// 入队失败仅记日志，任务保持 init，可由 /start 重新触发
-	bts.enqueueBuildTask(ctx, buildTask, interfaces.BuildTaskExecuteTypeFull)
+	bts.enqueueBuildTask(ctx, buildTask, executeType)
 
 	span.SetStatus(codes.Ok, "")
 	return buildTask.ID, nil
+}
+
+func normalizeCreateBuildTaskExecuteType(ctx context.Context, req *interfaces.CreateBuildTaskRequest) (string, error) {
+	if req.Mode == interfaces.BuildTaskModeStreaming && req.ExecuteType != "" {
+		return "", rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidExecuteType).
+			WithErrorDetails("execute_type is only supported for batch build tasks")
+	}
+	if req.ExecuteType == "" {
+		return interfaces.BuildTaskExecuteTypeFull, nil
+	}
+	if req.ExecuteType != interfaces.BuildTaskExecuteTypeIncremental && req.ExecuteType != interfaces.BuildTaskExecuteTypeFull {
+		return "", rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidExecuteType).
+			WithErrorDetails("Invalid execute type")
+	}
+	return req.ExecuteType, nil
 }
 
 func (bts *buildTaskService) rejectIfResourceHasActiveTask(ctx context.Context, resourceID string, excludeTaskID string) error {
@@ -462,18 +483,9 @@ func (bts *buildTaskService) ListBuildTasks(ctx context.Context, params interfac
 
 // StartBuildTask transitions a task from {init/stopped/completed, failed task auto retry} to running.
 // Note: persisted status remains init/stopped/completed until the worker picks it up — clients should poll.
-func (bts *buildTaskService) StartBuildTask(ctx context.Context, taskID string, executeType string) error {
+func (bts *buildTaskService) StartBuildTask(ctx context.Context, taskID string, reset bool) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Start build task")
 	defer span.End()
-
-	if executeType == "" {
-		executeType = interfaces.BuildTaskExecuteTypeIncremental
-	}
-	if executeType != interfaces.BuildTaskExecuteTypeIncremental && executeType != interfaces.BuildTaskExecuteTypeFull {
-		span.SetStatus(codes.Error, "Invalid execute type")
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidExecuteType).
-			WithErrorDetails("Invalid execute type")
-	}
 
 	buildTask, err := bts.bta.GetByID(ctx, taskID)
 	if err != nil {
@@ -484,11 +496,6 @@ func (bts *buildTaskService) StartBuildTask(ctx context.Context, taskID string, 
 	if buildTask == nil {
 		span.SetStatus(codes.Error, "Build task not found")
 		return rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_BuildTask_NotFound)
-	}
-	if executeType == interfaces.BuildTaskExecuteTypeFull && buildTask.Status != interfaces.BuildTaskStatusFailed {
-		span.SetStatus(codes.Error, "Invalid full rebuild state")
-		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_InvalidStateTransition).
-			WithErrorDetails("full rebuild is only allowed for failed tasks; create a new build task instead")
 	}
 	// failed 也允许重启：否则失败任务成死胡同，只能删除重建
 	if buildTask.Status != interfaces.BuildTaskStatusInit &&
@@ -520,6 +527,10 @@ func (bts *buildTaskService) StartBuildTask(ctx context.Context, taskID string, 
 		span.SetStatus(codes.Error, "Resource already has active build task")
 		return err
 	}
+	if err := bts.validateStartBuildTaskStillCurrent(ctx, buildTask); err != nil {
+		span.SetStatus(codes.Error, "Build task is no longer current")
+		return err
+	}
 
 	// 入队前先置回 init：worker 出队时会跳过 stopped/stopping 的任务
 	// （防止排队中被停止的任务复活），stopped 状态直接入队会被误跳过。
@@ -533,9 +544,52 @@ func (bts *buildTaskService) StartBuildTask(ctx context.Context, taskID string, 
 		}
 	}
 
+	executeType := interfaces.BuildTaskExecuteTypeIncremental
+	if reset {
+		executeType = interfaces.BuildTaskExecuteTypeFull
+	}
 	bts.enqueueBuildTask(ctx, buildTask, executeType)
 
 	span.SetStatus(codes.Ok, "")
+	return nil
+}
+
+func (bts *buildTaskService) validateStartBuildTaskStillCurrent(ctx context.Context, buildTask *interfaces.BuildTask) error {
+	resource, err := bts.rs.GetByID(ctx, buildTask.ResourceID)
+	if err != nil {
+		otellog.LogError(ctx, "Get resource failed", err)
+		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_GetFailed).
+			WithErrorDetails(err.Error())
+	}
+	if resource == nil {
+		return rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
+	}
+
+	currentSnapshot := &interfaces.BuildTask{ResourceID: resource.ID, CatalogID: resource.CatalogID}
+	if err := bts.fillBuildTaskIndexSnapshot(ctx, resource, currentSnapshot); err != nil {
+		return err
+	}
+	if !reflect.DeepEqual(buildTask.IndexConfig, currentSnapshot.IndexConfig) {
+		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_InvalidStateTransition).
+			WithErrorDetails("resource index config has changed; create a new build task instead")
+	}
+
+	tasks, _, err := bts.bta.List(ctx, interfaces.BuildTasksQueryParams{
+		PaginationQueryParams: interfaces.PaginationQueryParams{Limit: 1},
+		ResourceID:            buildTask.ResourceID,
+		Statuses:              []string{interfaces.BuildTaskStatusCompleted},
+		OrderBy:               interfaces.BuildTaskOrderByCreatedAt,
+		Order:                 interfaces.DESC_DIRECTION,
+	})
+	if err != nil {
+		otellog.LogError(ctx, "Check latest completed build task failed", err)
+		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_GetFailed).
+			WithErrorDetails(err.Error())
+	}
+	if len(tasks) > 0 && tasks[0].ID != buildTask.ID && tasks[0].CreateTime > buildTask.CreateTime {
+		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_InvalidStateTransition).
+			WithErrorDetails("resource already has a newer completed build task")
+	}
 	return nil
 }
 

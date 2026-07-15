@@ -117,17 +117,17 @@ func (mr *MockBuildTaskServiceMockRecorder) ListBuildTasks(ctx, params any) *gom
 }
 
 // StartBuildTask mocks base method.
-func (m *MockBuildTaskService) StartBuildTask(ctx context.Context, taskID, executeType string) error {
+func (m *MockBuildTaskService) StartBuildTask(ctx context.Context, taskID string, reset bool) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "StartBuildTask", ctx, taskID, executeType)
+	ret := m.ctrl.Call(m, "StartBuildTask", ctx, taskID, reset)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // StartBuildTask indicates an expected call of StartBuildTask.
-func (mr *MockBuildTaskServiceMockRecorder) StartBuildTask(ctx, taskID, executeType any) *gomock.Call {
+func (mr *MockBuildTaskServiceMockRecorder) StartBuildTask(ctx, taskID, reset any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StartBuildTask", reflect.TypeOf((*MockBuildTaskService)(nil).StartBuildTask), ctx, taskID, executeType)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StartBuildTask", reflect.TypeOf((*MockBuildTaskService)(nil).StartBuildTask), ctx, taskID, reset)
 }
 
 // StopBuildTask mocks base method.

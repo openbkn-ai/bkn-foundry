@@ -76,6 +76,42 @@ func TestCreateBuildTaskRejectsActiveTaskForResource(t *testing.T) {
 	}
 }
 
+func TestCreateBuildTaskRejectsExecuteTypeForStreaming(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockRS := mock_interfaces.NewMockResourceService(ctrl)
+	service := &buildTaskService{rs: mockRS}
+
+	mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").
+		Return(&interfaces.Resource{
+			ID:        "resource-1",
+			CatalogID: "catalog-1",
+			Category:  interfaces.ResourceCategoryTable,
+		}, nil)
+
+	_, err := service.CreateBuildTask(context.Background(), &interfaces.CreateBuildTaskRequest{
+		ResourceID:  "resource-1",
+		Mode:        interfaces.BuildTaskModeStreaming,
+		ExecuteType: interfaces.BuildTaskExecuteTypeFull,
+	})
+
+	httpErr, ok := err.(*rest.HTTPError)
+	if !ok {
+		t.Fatalf("expected HTTPError, got %T", err)
+	}
+	if httpErr.BaseError.ErrorCode != verrors.VegaBackend_BuildTask_InvalidExecuteType {
+		t.Fatalf("expected %s, got %s", verrors.VegaBackend_BuildTask_InvalidExecuteType, httpErr.BaseError.ErrorCode)
+	}
+}
+
+func TestNormalizeCreateBuildTaskExecuteTypeDefaultsToFull(t *testing.T) {
+	executeType, err := normalizeCreateBuildTaskExecuteType(context.Background(), &interfaces.CreateBuildTaskRequest{
+		Mode: interfaces.BuildTaskModeBatch,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, interfaces.BuildTaskExecuteTypeFull, executeType)
+}
+
 func TestStartBuildTaskRejectsDisabledCatalog(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockCS := mock_interfaces.NewMockCatalogService(ctrl)
@@ -91,7 +127,7 @@ func TestStartBuildTaskRejectsDisabledCatalog(t *testing.T) {
 	mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
 		Return(&interfaces.Catalog{ID: "catalog-1", Enabled: false}, nil)
 
-	err := service.StartBuildTask(context.Background(), "task-1", interfaces.BuildTaskExecuteTypeIncremental)
+	err := service.StartBuildTask(context.Background(), "task-1", false)
 	assertCatalogDisabledError(t, err)
 }
 
@@ -130,28 +166,45 @@ func TestStartBuildTaskAllowsFailedStatus(t *testing.T) {
 	mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
 		Return(&interfaces.Catalog{ID: "catalog-1", Enabled: false}, nil)
 
-	err := service.StartBuildTask(context.Background(), "task-1", interfaces.BuildTaskExecuteTypeIncremental)
+	err := service.StartBuildTask(context.Background(), "task-1", false)
 	assertCatalogDisabledError(t, err)
 }
 
-func TestStartBuildTaskRejectsFullRebuildForCompletedTask(t *testing.T) {
+func TestStartBuildTaskAllowsResetForCompletedTask(t *testing.T) {
 	ctrl := gomock.NewController(t)
+	mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+	mockRS := mock_interfaces.NewMockResourceService(ctrl)
 	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
-	service := &buildTaskService{bta: mockBTA}
+	neutralizeEnqueue(t, ctrl)
+	service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA}
 
-	mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").
-		Return(&interfaces.BuildTask{
-			ID:     "task-1",
-			Status: interfaces.BuildTaskStatusCompleted,
-		}, nil)
-
-	err := service.StartBuildTask(context.Background(), "task-1", interfaces.BuildTaskExecuteTypeFull)
-	httpErr, ok := err.(*rest.HTTPError)
-	if !ok {
-		t.Fatalf("expected HTTPError, got %T", err)
+	task := &interfaces.BuildTask{
+		ID:         "task-1",
+		ResourceID: "resource-1",
+		CatalogID:  "catalog-1",
+		Mode:       interfaces.BuildTaskModeBatch,
+		Status:     interfaces.BuildTaskStatusCompleted,
+		CreateTime: 100,
 	}
-	if httpErr.BaseError.ErrorCode != verrors.VegaBackend_BuildTask_InvalidStateTransition {
-		t.Fatalf("expected %s, got %s", verrors.VegaBackend_BuildTask_InvalidStateTransition, httpErr.BaseError.ErrorCode)
+	mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").Return(task, nil)
+	mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
+		Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
+	mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTask, int64, error) {
+			if len(params.Statuses) == 1 && params.Statuses[0] == interfaces.BuildTaskStatusCompleted {
+				return []*interfaces.BuildTask{task}, int64(1), nil
+			}
+			return nil, int64(0), nil
+		}).Times(2)
+	mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(&interfaces.Resource{
+		ID:        "resource-1",
+		CatalogID: "catalog-1",
+	}, nil)
+	mockBTA.EXPECT().UpdateStatus(gomock.Any(), nil, "task-1",
+		interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusInit)).Return(true, nil)
+
+	if err := service.StartBuildTask(context.Background(), "task-1", true); err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
@@ -182,7 +235,7 @@ func TestStartBuildTaskRejectsAnotherActiveTaskForResource(t *testing.T) {
 			}}, 1, nil
 		})
 
-	err := service.StartBuildTask(context.Background(), "task-1", interfaces.BuildTaskExecuteTypeIncremental)
+	err := service.StartBuildTask(context.Background(), "task-1", false)
 	httpErr, ok := err.(*rest.HTTPError)
 	if !ok {
 		t.Fatalf("expected HTTPError, got %T", err)
@@ -192,12 +245,105 @@ func TestStartBuildTaskRejectsAnotherActiveTaskForResource(t *testing.T) {
 	}
 }
 
+func TestStartBuildTaskRejectsChangedIndexConfig(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+	mockRS := mock_interfaces.NewMockResourceService(ctrl)
+	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+	service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA}
+
+	mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").Return(&interfaces.BuildTask{
+		ID:         "task-1",
+		ResourceID: "resource-1",
+		CatalogID:  "catalog-1",
+		Status:     interfaces.BuildTaskStatusStopped,
+		IndexConfig: &interfaces.BuildTaskIndexConfig{
+			BuildKeyFields: []string{"id"},
+			Features:       map[string]interfaces.BuildTaskFieldIndexFeature{},
+		},
+	}, nil)
+	mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
+		Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
+	mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).Return(nil, int64(0), nil)
+	mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(&interfaces.Resource{
+		ID:        "resource-1",
+		CatalogID: "catalog-1",
+		IndexConfig: &interfaces.ResourceIndexConfig{
+			BuildKeyFields: []string{"updated_at"},
+		},
+	}, nil)
+
+	err := service.StartBuildTask(context.Background(), "task-1", false)
+	httpErr, ok := err.(*rest.HTTPError)
+	if !ok {
+		t.Fatalf("expected HTTPError, got %T", err)
+	}
+	if httpErr.BaseError.ErrorCode != verrors.VegaBackend_BuildTask_InvalidStateTransition {
+		t.Fatalf("expected %s, got %s", verrors.VegaBackend_BuildTask_InvalidStateTransition, httpErr.BaseError.ErrorCode)
+	}
+}
+
+func TestStartBuildTaskRejectsNewerCompletedTask(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+	mockRS := mock_interfaces.NewMockResourceService(ctrl)
+	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+	service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA}
+
+	task := &interfaces.BuildTask{
+		ID:         "task-1",
+		ResourceID: "resource-1",
+		CatalogID:  "catalog-1",
+		Status:     interfaces.BuildTaskStatusStopped,
+		CreateTime: 100,
+		IndexConfig: &interfaces.BuildTaskIndexConfig{
+			BuildKeyFields: []string{"id"},
+			Features:       map[string]interfaces.BuildTaskFieldIndexFeature{},
+		},
+	}
+	mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").Return(task, nil)
+	mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
+		Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
+	mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTask, int64, error) {
+			if len(params.Statuses) == 1 && params.Statuses[0] == interfaces.BuildTaskStatusCompleted {
+				if params.OrderBy != interfaces.BuildTaskOrderByCreatedAt || params.Limit != 1 {
+					t.Fatalf("expected latest completed query, got %#v", params)
+				}
+				return []*interfaces.BuildTask{{
+					ID:         "task-2",
+					ResourceID: "resource-1",
+					Status:     interfaces.BuildTaskStatusCompleted,
+					CreateTime: 200,
+				}}, int64(1), nil
+			}
+			return nil, int64(0), nil
+		}).Times(2)
+	mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(&interfaces.Resource{
+		ID:        "resource-1",
+		CatalogID: "catalog-1",
+		IndexConfig: &interfaces.ResourceIndexConfig{
+			BuildKeyFields: []string{"id"},
+		},
+	}, nil)
+
+	err := service.StartBuildTask(context.Background(), "task-1", false)
+	httpErr, ok := err.(*rest.HTTPError)
+	if !ok {
+		t.Fatalf("expected HTTPError, got %T", err)
+	}
+	if httpErr.BaseError.ErrorCode != verrors.VegaBackend_BuildTask_InvalidStateTransition {
+		t.Fatalf("expected %s, got %s", verrors.VegaBackend_BuildTask_InvalidStateTransition, httpErr.BaseError.ErrorCode)
+	}
+}
+
 func TestStartBuildTaskAllowsInitTaskItselfAsActive(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+	mockRS := mock_interfaces.NewMockResourceService(ctrl)
 	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 	neutralizeEnqueue(t, ctrl)
-	service := &buildTaskService{cs: mockCS, bta: mockBTA}
+	service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA}
 
 	task := &interfaces.BuildTask{
 		ID:         "task-1",
@@ -210,9 +356,18 @@ func TestStartBuildTaskAllowsInitTaskItselfAsActive(t *testing.T) {
 	mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
 		Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
 	mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).
-		Return([]*interfaces.BuildTask{task}, int64(1), nil)
+		DoAndReturn(func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTask, int64, error) {
+			if len(params.Statuses) == 1 && params.Statuses[0] == interfaces.BuildTaskStatusCompleted {
+				return nil, int64(0), nil
+			}
+			return []*interfaces.BuildTask{task}, int64(1), nil
+		}).Times(2)
+	mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(&interfaces.Resource{
+		ID:        "resource-1",
+		CatalogID: "catalog-1",
+	}, nil)
 
-	if err := service.StartBuildTask(context.Background(), "task-1", interfaces.BuildTaskExecuteTypeIncremental); err != nil {
+	if err := service.StartBuildTask(context.Background(), "task-1", false); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
