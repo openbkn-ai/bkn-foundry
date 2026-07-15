@@ -44,6 +44,9 @@ hydra:
 	if cfg.DB.Host != "db.example" || cfg.DB.Port != 3307 {
 		t.Fatalf("db = %+v", cfg.DB)
 	}
+	if cfg.License.ServerURL != "https://license.openbkn.ai" {
+		t.Fatalf("license server_url = %q", cfg.License.ServerURL)
+	}
 }
 
 func TestEnvOverridesFile(t *testing.T) {
@@ -67,5 +70,25 @@ db:
 	}
 	if cfg.DB.Host != "from-env" {
 		t.Fatalf("host = %q, want from-env", cfg.DB.Host)
+	}
+}
+
+func TestLicenseServerURLCanBeDisabledByEnv(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "safe.yaml")
+	if err := os.WriteFile(path, []byte(`
+license:
+  server_url: https://license.example.test
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("SAFE_LICENSE_SERVER_URL", "")
+	cfg, err := config.LoadWithOptions(config.LoadOptions{ConfigPath: path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.License.ServerURL != "" {
+		t.Fatalf("license server_url = %q, want empty offline deployment", cfg.License.ServerURL)
 	}
 }

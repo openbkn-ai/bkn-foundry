@@ -112,6 +112,12 @@ config:
     bindPassword: ""
     baseDN: ""
     userFilter: "(uid=%s)"
+  license:
+    # Default public issuer for online activation. Set to "" for a pure offline
+    # deployment; Studio will then use the offline request-code/receipt flow.
+    serverURL: "https://license.openbkn.ai"
+    caFile: ""
+    insecureSkipVerify: false
 
 resources:
   requests:
