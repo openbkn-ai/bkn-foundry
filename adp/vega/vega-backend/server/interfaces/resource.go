@@ -61,7 +61,10 @@ type Resource struct {
 	SourceIdentifier string         `json:"source_identifier"`           // 源端标识（原始表名/路径）
 	SourceMetadata   map[string]any `json:"source_metadata,omitempty"`   // 源端配置（JSON）
 	SchemaDefinition []*Property    `json:"schema_definition,omitempty"` // Schema定义
-	LocalIndexName   string         `json:"index_name,omitempty"`        // 索引名称，由构建任务填充
+
+	// 索引相关
+	IndexConfig    *ResourceIndexConfig `json:"index_config,omitempty"` // 本地索引配置
+	LocalIndexName string               `json:"index_name,omitempty"`   // 索引名称，由构建任务填充
 
 	// 规模信息：列表接口从原始 JSON 轻量计数得到，不反序列化完整结构；nil 表示源端无该信息（序列化时省略）
 	ColumnCount *int   `json:"column_count,omitempty"` // schema_definition 字段数
@@ -118,6 +121,13 @@ type PropertyFeature struct {
 	Config      map[string]any `json:"config"`
 }
 
+// ResourceIndexConfig carries resource-level defaults and cross-field build policy.
+type ResourceIndexConfig struct {
+	BuildKeyFields          []string `json:"build_key_fields,omitempty"`
+	DefaultFulltextAnalyzer string   `json:"default_fulltext_analyzer,omitempty"`
+	DefaultEmbeddingModel   string   `json:"default_embedding_model,omitempty"`
+}
+
 // ResourcesQueryParams holds resource list query parameters.
 type ResourcesQueryParams struct {
 	PaginationQueryParams
@@ -144,11 +154,14 @@ type ResourceRequest struct {
 
 	Status string `json:"status"`
 
-	Database         string                 `json:"database,omitempty"`          // 所属数据库（实例级 Catalog 时填充）
-	SourceIdentifier string                 `json:"source_identifier"`           // 源端标识（原始表名/路径）
-	SourceMetadata   map[string]any         `json:"source_metadata,omitempty"`   // 源端配置（JSON）
-	SchemaDefinition []*Property            `json:"schema_definition,omitempty"` // Schema定义
-	LogicDefinition  []*LogicDefinitionNode `json:"logic_definition,omitempty"`  // 逻辑定义
+	Database         string         `json:"database,omitempty"`          // 所属数据库（实例级 Catalog 时填充）
+	SourceIdentifier string         `json:"source_identifier"`           // 源端标识（原始表名/路径）
+	SourceMetadata   map[string]any `json:"source_metadata,omitempty"`   // 源端配置（JSON）
+	SchemaDefinition []*Property    `json:"schema_definition,omitempty"` // Schema定义
+
+	IndexConfig *ResourceIndexConfig `json:"index_config,omitempty"` // 本地索引配置
+
+	LogicDefinition []*LogicDefinitionNode `json:"logic_definition,omitempty"` // 逻辑定义
 
 	Extensions *map[string]string `json:"extensions,omitempty"`
 }

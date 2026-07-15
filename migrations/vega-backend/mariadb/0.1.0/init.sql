@@ -163,6 +163,7 @@ CREATE TABLE IF NOT EXISTS t_resource (
 
     -- Schema相关
     f_schema_definition       MEDIUMTEXT NOT NULL COMMENT 'Schema定义（JSON数组格式，包含所有字段信息）',
+    f_index_config            MEDIUMTEXT NOT NULL COMMENT '本地索引配置（JSON格式）',
 
     -- LogicView 专属字段
     f_logic_type              VARCHAR(20) NOT NULL DEFAULT '' COMMENT '逻辑类型: derived(衍生), composite(复合), 仅LogicView使用',
@@ -380,10 +381,15 @@ CREATE TABLE IF NOT EXISTS t_build_task (
     -- 主键与关联信息
     f_id                      VARCHAR(40) NOT NULL COMMENT '任务ID',
     f_resource_id             VARCHAR(40) NOT NULL COMMENT '资源ID',
+    f_catalog_id              VARCHAR(40) NOT NULL DEFAULT '' COMMENT '所属catalog ID',
+
+    f_mode                    VARCHAR(20) NOT NULL COMMENT '任务模式: full, incremental, realtime',
+    
+    -- 任务索引配置
+    f_index_config            TEXT NOT NULL COMMENT '索引配置快照(JSON)',
 
     -- 任务状态
     f_status                  VARCHAR(20) NOT NULL COMMENT '任务状态: pending, running, completed, failed',
-    f_mode                    VARCHAR(20) NOT NULL COMMENT '任务模式: full, incremental, realtime',
     f_total_count             BIGINT NOT NULL DEFAULT 0 COMMENT '总数',
     f_synced_count            BIGINT NOT NULL DEFAULT 0 COMMENT '已同步数',
     f_vectorized_count        BIGINT NOT NULL DEFAULT 0 COMMENT '已做向量数',
@@ -395,23 +401,13 @@ CREATE TABLE IF NOT EXISTS t_build_task (
     f_creator                 VARCHAR(40) NOT NULL DEFAULT '' COMMENT '创建者id',
     f_creator_type            VARCHAR(20) NOT NULL DEFAULT '' COMMENT '创建者类型',
     f_create_time             BIGINT(20) NOT NULL DEFAULT 0 COMMENT '创建时间',
-    f_updater                 VARCHAR(40) NOT NULL DEFAULT '' COMMENT '更新者id',
-    f_updater_type            VARCHAR(20) NOT NULL DEFAULT '' COMMENT '更新者类型',
     f_update_time             BIGINT(20) NOT NULL DEFAULT 0 COMMENT '更新时间',
-
-    f_embedding_fields        VARCHAR(255) NOT NULL DEFAULT '' COMMENT '需要向量化嵌入字段',
-    f_build_key_fields        VARCHAR(255) NOT NULL DEFAULT '' COMMENT '构建中依赖的特殊键字段',
-    f_embedding_model         VARCHAR(40) NOT NULL DEFAULT '' COMMENT '嵌入模型',
-    f_model_dimensions        INT NOT NULL DEFAULT 0 COMMENT '模型维度',
-    f_fulltext_fields         VARCHAR(255) NOT NULL DEFAULT '' COMMENT '需建全文索引的字段',
-    f_fulltext_analyzer       VARCHAR(40) NOT NULL DEFAULT '' COMMENT '全文分词器，空为默认 standard',
-    f_catalog_id              VARCHAR(40) NOT NULL DEFAULT '' COMMENT '所属catalog ID',
 
     -- 索引
     PRIMARY KEY (f_id),
     INDEX idx_resource_id (f_resource_id),
-    INDEX idx_status (f_status),
-    INDEX idx_catalog_id (f_catalog_id)
+    INDEX idx_catalog_id (f_catalog_id),
+    INDEX idx_status (f_status)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT='构建任务表';
 
 

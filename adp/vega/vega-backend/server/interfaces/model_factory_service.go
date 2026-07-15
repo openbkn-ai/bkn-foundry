@@ -6,14 +6,12 @@
 
 package interfaces
 
-import (
-	"context"
-)
+import "context"
 
-// ModelFactoryAccess 定义模型工厂相关的访问接口
+// ModelFactoryService defines model factory business logic.
 //
-//go:generate mockgen -source ../interfaces/model_factory_access.go -destination ../interfaces/mock/mock_model_factory_access.go
-type ModelFactoryAccess interface {
+//go:generate mockgen -source ../interfaces/model_factory_service.go -destination ../interfaces/mock/mock_model_factory_service.go
+type ModelFactoryService interface {
 	GetModelByName(ctx context.Context, modelName string) (*SmallModel, error)
 
 	GetVector(ctx context.Context, modelName string, words []string) ([]*VectorResp, error)

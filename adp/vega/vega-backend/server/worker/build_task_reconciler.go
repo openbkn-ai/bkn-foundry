@@ -95,7 +95,8 @@ func (r *buildTaskReconciler) reconcileOnce(ctx context.Context) error {
 
 	stuckStopping := findStuckStoppingBuildTasks(tasks, queued, now, buildTaskStoppingStaleAfter)
 	for _, task := range stuckStopping {
-		if err := r.taskAccess.UpdateStatus(ctx, task.ID, map[string]interface{}{"status": interfaces.BuildTaskStatusStopped}); err != nil {
+		update := interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusStopped)
+		if _, err := r.taskAccess.UpdateStatus(ctx, nil, task.ID, update); err != nil {
 			logger.Errorf("Reconciler finalize stopping build task %s failed: %v", task.ID, err)
 			continue
 		}

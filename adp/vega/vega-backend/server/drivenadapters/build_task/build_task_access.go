@@ -16,6 +16,7 @@ import (
 	"time"
 
 	sq "github.com/Masterminds/squirrel"
+	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-comm-go/db"
 	"github.com/openbkn-ai/bkn-comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
@@ -39,26 +40,21 @@ func buildTaskColumns() []string {
 		"f_id",
 		"f_resource_id",
 		"f_catalog_id",
-		"f_status",
 		"f_mode",
+		"f_index_config",
+
+		"f_status",
 		"f_total_count",
 		"f_synced_count",
 		"f_vectorized_count",
 		"f_synced_mark",
 		"f_error_msg",
+		"f_failure_detail",
+
 		"f_creator",
 		"f_creator_type",
 		"f_create_time",
-		"f_updater",
-		"f_updater_type",
 		"f_update_time",
-		"f_embedding_fields",
-		"f_build_key_fields",
-		"f_embedding_model",
-		"f_model_dimensions",
-		"f_fulltext_fields",
-		"f_fulltext_analyzer",
-		"f_failure_detail",
 	}
 }
 
@@ -72,39 +68,37 @@ type buildTaskScanner interface {
 
 func scanBuildTask(scanner buildTaskScanner) (*interfaces.BuildTask, error) {
 	buildTask := &interfaces.BuildTask{}
-	var creatorID, creatorType, updaterID, updaterType string
+	var creatorID, creatorType string
+	var indexConfigJSON string
 
 	err := scanner.Scan(
 		&buildTask.ID,
 		&buildTask.ResourceID,
 		&buildTask.CatalogID,
-		&buildTask.Status,
 		&buildTask.Mode,
+		&indexConfigJSON,
+		&buildTask.Status,
 		&buildTask.TotalCount,
 		&buildTask.SyncedCount,
 		&buildTask.VectorizedCount,
 		&buildTask.SyncedMark,
 		&buildTask.ErrorMsg,
+		&buildTask.FailureDetail,
 		&creatorID,
 		&creatorType,
 		&buildTask.CreateTime,
-		&updaterID,
-		&updaterType,
 		&buildTask.UpdateTime,
-		&buildTask.EmbeddingFields,
-		&buildTask.BuildKeyFields,
-		&buildTask.EmbeddingModel,
-		&buildTask.ModelDimensions,
-		&buildTask.FulltextFields,
-		&buildTask.FulltextAnalyzer,
-		&buildTask.FailureDetail,
 	)
 	if err != nil {
 		return nil, err
 	}
+	if indexConfigJSON != "" {
+		if err := sonic.UnmarshalString(indexConfigJSON, &buildTask.IndexConfig); err != nil {
+			return nil, err
+		}
+	}
 
 	buildTask.Creator = interfaces.AccountInfo{ID: creatorID, Type: creatorType}
-	buildTask.Updater = interfaces.AccountInfo{ID: updaterID, Type: updaterType}
 	return buildTask, nil
 }
 
@@ -123,32 +117,31 @@ func (bta *buildTaskAccess) Create(ctx context.Context, buildTask *interfaces.Bu
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Create build task")
 	defer span.End()
 
+	indexConfigJSON, err := sonic.MarshalString(buildTask.IndexConfig)
+	if err != nil {
+		span.SetStatus(codes.Error, "Marshal index config failed")
+		return err
+	}
+
 	sqlStr, vals, err := sq.Insert(BUILD_TASK_TABLE_NAME).
 		Columns(buildTaskColumns()...).
 		Values(
 			buildTask.ID,
 			buildTask.ResourceID,
 			buildTask.CatalogID,
-			buildTask.Status,
 			buildTask.Mode,
+			indexConfigJSON,
+			buildTask.Status,
 			buildTask.TotalCount,
 			buildTask.SyncedCount,
 			buildTask.VectorizedCount,
 			buildTask.SyncedMark,
 			buildTask.ErrorMsg,
+			buildTask.FailureDetail,
 			buildTask.Creator.ID,
 			buildTask.Creator.Type,
 			buildTask.CreateTime,
-			buildTask.Updater.ID,
-			buildTask.Updater.Type,
 			buildTask.UpdateTime,
-			buildTask.EmbeddingFields,
-			buildTask.BuildKeyFields,
-			buildTask.EmbeddingModel,
-			buildTask.ModelDimensions,
-			buildTask.FulltextFields,
-			buildTask.FulltextAnalyzer,
-			buildTask.FailureDetail,
 		).ToSql()
 	if err != nil {
 		span.SetStatus(codes.Error, "Build sql failed")
@@ -268,39 +261,55 @@ func (bta *buildTaskAccess) GetByCatalogID(ctx context.Context, catalogID string
 	return buildTasks, nil
 }
 
-// UpdateStatus updates a build task's status and other fields.
-func (bta *buildTaskAccess) UpdateStatus(ctx context.Context, id string, updates map[string]interface{}) error {
+// UpdateStatus updates a build task's status and progress fields.
+func (bta *buildTaskAccess) UpdateStatus(ctx context.Context, tx *sql.Tx,
+	id string, update interfaces.BuildTaskUpdate, allowedStatuses ...string) (bool, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Update build task status")
 	defer span.End()
 
-	sqlStr, vals, err := buildUpdateStatusSQL(id, nil, updates)
-	if err != nil {
-		span.SetStatus(codes.Error, "Build sql failed")
-		return err
+	updateColumns := map[string]interface{}{
+		"f_update_time": time.Now().UnixMilli(),
+	}
+	if update.Status != nil {
+		updateColumns["f_status"] = *update.Status
+	}
+	if update.TotalCount != nil {
+		updateColumns["f_total_count"] = *update.TotalCount
+	}
+	if update.SyncedCount != nil {
+		updateColumns["f_synced_count"] = *update.SyncedCount
+	}
+	if update.VectorizedCount != nil {
+		updateColumns["f_vectorized_count"] = *update.VectorizedCount
+	}
+	if update.SyncedMark != nil {
+		updateColumns["f_synced_mark"] = *update.SyncedMark
+	}
+	if update.ErrorMsg != nil {
+		updateColumns["f_error_msg"] = *update.ErrorMsg
+	}
+	if update.FailureDetail != nil {
+		updateColumns["f_failure_detail"] = *update.FailureDetail
 	}
 
-	_, err = bta.db.ExecContext(ctx, sqlStr, vals...)
-	if err != nil {
-		otellog.LogError(ctx, "Update build task status failed", err)
-		return err
+	builder := sq.Update(BUILD_TASK_TABLE_NAME).
+		SetMap(updateColumns).
+		Where(sq.Eq{"f_id": id})
+	if len(allowedStatuses) > 0 {
+		builder = builder.Where(sq.Eq{"f_status": allowedStatuses})
 	}
-
-	span.SetStatus(codes.Ok, "")
-	return nil
-}
-
-// UpdateStatusIfIn updates a build task only when the current status is in allowedStatuses.
-func (bta *buildTaskAccess) UpdateStatusIfIn(ctx context.Context, id string, allowedStatuses []string, updates map[string]interface{}) (bool, error) {
-	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Update build task status if in")
-	defer span.End()
-
-	sqlStr, vals, err := buildUpdateStatusSQL(id, allowedStatuses, updates)
+	sqlStr, vals, err := builder.ToSql()
 	if err != nil {
 		span.SetStatus(codes.Error, "Build sql failed")
 		return false, err
 	}
 
-	result, err := bta.db.ExecContext(ctx, sqlStr, vals...)
+	var result sql.Result
+	if tx != nil {
+		result, err = tx.ExecContext(ctx, sqlStr, vals...)
+	} else {
+		result, err = bta.db.ExecContext(ctx, sqlStr, vals...)
+	}
 	if err != nil {
 		otellog.LogError(ctx, "Update build task status failed", err)
 		return false, err
@@ -313,62 +322,6 @@ func (bta *buildTaskAccess) UpdateStatusIfIn(ctx context.Context, id string, all
 
 	span.SetStatus(codes.Ok, "")
 	return affected > 0, nil
-}
-
-func buildUpdateStatusSQL(id string, allowedStatuses []string, updates map[string]interface{}) (string, []interface{}, error) {
-	fieldMap := map[string]string{
-		"status":           "f_status",
-		"totalCount":       "f_total_count",
-		"syncedCount":      "f_synced_count",
-		"vectorizedCount":  "f_vectorized_count",
-		"syncedMark":       "f_synced_mark",
-		"errorMsg":         "f_error_msg",
-		"embeddingFields":  "f_embedding_fields",
-		"buildKeyFields":   "f_build_key_fields",
-		"embeddingModel":   "f_embedding_model",
-		"modelDimensions":  "f_model_dimensions",
-		"fulltextFields":   "f_fulltext_fields",
-		"fulltextAnalyzer": "f_fulltext_analyzer",
-		"failureDetail":    "f_failure_detail",
-	}
-	fieldOrder := []string{
-		"status",
-		"totalCount",
-		"syncedCount",
-		"vectorizedCount",
-		"syncedMark",
-		"errorMsg",
-		"embeddingFields",
-		"buildKeyFields",
-		"embeddingModel",
-		"modelDimensions",
-		"fulltextFields",
-		"fulltextAnalyzer",
-		"failureDetail",
-	}
-
-	builder := sq.Update(BUILD_TASK_TABLE_NAME)
-	for _, field := range fieldOrder {
-		value, exists := updates[field]
-		if !exists {
-			continue
-		}
-		if column, ok := fieldMap[field]; ok {
-			builder = builder.Set(column, value)
-		}
-	}
-
-	builder = builder.
-		Set("f_update_time", time.Now().UnixMilli()).
-		Where(sq.Eq{"f_id": id})
-	if len(allowedStatuses) > 0 {
-		builder = builder.Where(sq.Eq{"f_status": allowedStatuses})
-	}
-	sqlStr, vals, err := builder.ToSql()
-	if err != nil {
-		return "", nil, err
-	}
-	return sqlStr, vals, nil
 }
 
 // GetStatus retrieves the status of a build task by ID.

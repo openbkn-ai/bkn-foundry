@@ -60,7 +60,7 @@ type restHandler struct {
 func NewRestHandler(appSetting *common.AppSetting, sw *worker.ScheduleWorker) RestHandler {
 	cs := catalog.NewCatalogService(appSetting)
 	rs := resource.NewResourceService(appSetting)
-	bts := build_task.NewBuildTaskService(appSetting)
+	bts := build_task.NewBuildTaskService(appSetting, rs)
 	ds := dataset.NewDatasetService(appSetting)
 	dts := discover_task.NewDiscoverTaskService(appSetting)
 	dss := discover_schedule.NewDiscoverScheduleService(appSetting, dts)
