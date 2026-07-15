@@ -34,6 +34,7 @@ import (
 	"vega-backend/drivenadapters/model_factory"
 	"vega-backend/drivenadapters/permission"
 	"vega-backend/drivenadapters/resource"
+	"vega-backend/drivenadapters/semantic_understanding_task"
 	"vega-backend/drivenadapters/user_mgmt"
 	"vega-backend/driveradapters"
 	"vega-backend/logics"
@@ -141,6 +142,7 @@ func main() {
 	logics.SetKafkaAccess(kafka.NewKafkaAccess(appSetting))
 	logics.SetModelFactoryAccess(model_factory.NewModelFactoryAccess(appSetting))
 	logics.SetResourceAccess(resource.NewResourceAccess(appSetting))
+	logics.SetSemanticUnderstandingTaskAccess(semantic_understanding_task.NewSemanticUnderstandingTaskAccess(appSetting))
 
 	// 初始化 Connector Factory 并注册内置的 Local Connector Builder
 	factory.Init(appSetting)

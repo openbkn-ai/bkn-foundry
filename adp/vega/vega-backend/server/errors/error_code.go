@@ -107,4 +107,5 @@ func init() {
 	rest.Register(DatasetErrCodeList)
 	rest.Register(DiscoverScheduleErrCodeList)
 	rest.Register(ExtensionsErrCodeList)
+	rest.Register(SemanticUnderstandingTaskErrCodeList)
 }

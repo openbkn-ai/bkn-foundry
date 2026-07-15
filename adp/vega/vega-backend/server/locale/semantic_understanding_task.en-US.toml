@@ -1,0 +1,14 @@
+[VegaBackend.SemanticUnderstandingTask.NotFound]
+Description = "Semantic understanding task not found"
+Solution = "Please check if the semantic understanding task ID exists"
+ErrorLink = "No solution"
+
+[VegaBackend.SemanticUnderstandingTask.HasRunningExecution]
+Description = "Semantic understanding task is pending or running and cannot be deleted"
+Solution = "Wait for the task to complete or fail before deleting"
+ErrorLink = "No solution"
+
+[VegaBackend.SemanticUnderstandingTask.InternalError.DeleteFailed]
+Description = "Failed to delete semantic understanding task"
+Solution = "Please contact the administrator"
+ErrorLink = "No solution"

@@ -1,0 +1,14 @@
+[VegaBackend.SemanticUnderstandingTask.NotFound]
+Description = "语义理解任务不存在"
+Solution = "请检查语义理解任务 ID 是否存在"
+ErrorLink = "暂无"
+
+[VegaBackend.SemanticUnderstandingTask.HasRunningExecution]
+Description = "语义理解任务正在等待或执行中，不能删除"
+Solution = "请等待任务完成或失败后再删除"
+ErrorLink = "暂无"
+
+[VegaBackend.SemanticUnderstandingTask.InternalError.DeleteFailed]
+Description = "删除语义理解任务失败"
+Solution = "请联系管理员"
+ErrorLink = "暂无"
