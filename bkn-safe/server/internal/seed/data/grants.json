@@ -1,9 +1,161 @@
 {
-  "_comment": "Role -> permission grants (2026-06-04). Business admins get FULL ops on the resource types in their domain (admin = full control); super admin gets a wildcard (*:* with act *). The other 5 system roles are seeded (role.json) but intentionally UNGRANTED — they can be activated later purely via the grant API / this file, no code change. Resource-type/operation source files: see docs/isf-replacement/contracts/authz-catalog.md. id_pattern '*' = whole type (keyMatch). 应用管理员 grants mirror DA's coded InitPermission; 数据/AI 管理员 are the agreed mapping (adjust as needed); model resource type TBD (model-factory not yet scanned).",
+  "_comment": "Studio 0.1.0 role -> permission grants. super_admin gets wildcard. admin/security/audit are three-admin roles. network_builder has business build permissions. normal_user can view/query/execute/invoke, but cannot create/edit/delete/publish/authorize.",
   "grants": [
     {
+      "role_id": "7dcfcc9c-ad02-11e8-aa06-000c29358ad6",
+      "role_name": "super_admin",
+      "resource_type": "",
+      "id_pattern": "*",
+      "operations": ["*"],
+      "_note": "wildcard: obj '*' matches any type:id (keyMatch), act '*' matches any op. resource_type empty => obj pattern is just '*'."
+    },
+
+    {
+      "role_id": "d2bd2082-ad03-11e8-aa06-000c29358ad6",
+      "role_name": "admin",
+      "resource_type": "safe_admin",
+      "id_pattern": "console",
+      "operations": ["manage"]
+    },
+    {
+      "role_id": "d2bd2082-ad03-11e8-aa06-000c29358ad6",
+      "role_name": "admin",
+      "resource_type": "admin-user",
+      "id_pattern": "*",
+      "operations": ["create", "edit", "delete", "toggle", "reset-password"]
+    },
+    {
+      "role_id": "d2bd2082-ad03-11e8-aa06-000c29358ad6",
+      "role_name": "admin",
+      "resource_type": "admin-dept",
+      "id_pattern": "*",
+      "operations": ["create", "edit", "delete", "members"]
+    },
+
+    {
+      "role_id": "d8998f72-ad03-11e8-aa06-000c29358ad6",
+      "role_name": "security",
+      "resource_type": "safe_admin",
+      "id_pattern": "console",
+      "operations": ["manage"]
+    },
+    {
+      "role_id": "d8998f72-ad03-11e8-aa06-000c29358ad6",
+      "role_name": "security",
+      "resource_type": "admin-role",
+      "id_pattern": "*",
+      "operations": ["create", "edit", "delete", "members"]
+    },
+    {
+      "role_id": "d8998f72-ad03-11e8-aa06-000c29358ad6",
+      "role_name": "security",
+      "resource_type": "admin-authz",
+      "id_pattern": "*",
+      "operations": ["grant", "revoke"]
+    },
+    {
+      "role_id": "d8998f72-ad03-11e8-aa06-000c29358ad6",
+      "role_name": "security",
+      "resource_type": "admin-user",
+      "id_pattern": "*",
+      "operations": ["edit", "toggle", "reset-password"]
+    },
+
+    {
+      "role_id": "def246f2-ad03-11e8-aa06-000c29358ad6",
+      "role_name": "audit",
+      "resource_type": "safe_admin",
+      "id_pattern": "console",
+      "operations": ["manage"]
+    },
+    {
+      "role_id": "def246f2-ad03-11e8-aa06-000c29358ad6",
+      "role_name": "audit",
+      "resource_type": "admin-audit",
+      "id_pattern": "*",
+      "operations": ["view"]
+    },
+
+    {
       "role_id": "1572fb82-526f-11f0-bde6-e674ec8dde71",
-      "role_name": "应用管理员",
+      "role_name": "network_builder",
+      "resource_type": "catalog",
+      "id_pattern": "*",
+      "operations": ["view_detail", "create", "modify", "delete", "authorize", "task_manage"]
+    },
+    {
+      "role_id": "1572fb82-526f-11f0-bde6-e674ec8dde71",
+      "role_name": "network_builder",
+      "resource_type": "resource",
+      "id_pattern": "*",
+      "operations": ["view_detail", "create", "modify", "delete", "authorize", "task_manage"]
+    },
+    {
+      "role_id": "1572fb82-526f-11f0-bde6-e674ec8dde71",
+      "role_name": "network_builder",
+      "resource_type": "connector_type",
+      "id_pattern": "*",
+      "operations": ["view_detail", "create", "modify", "delete", "authorize", "task_manage"]
+    },
+    {
+      "role_id": "1572fb82-526f-11f0-bde6-e674ec8dde71",
+      "role_name": "network_builder",
+      "resource_type": "knowledge_network",
+      "id_pattern": "*",
+      "operations": ["view_detail", "create", "modify", "delete", "data_query", "authorize", "task_manage"]
+    },
+    {
+      "role_id": "1572fb82-526f-11f0-bde6-e674ec8dde71",
+      "role_name": "network_builder",
+      "resource_type": "stream_data_pipeline",
+      "id_pattern": "*",
+      "operations": ["view_detail", "create", "modify", "delete", "authorize"]
+    },
+    {
+      "role_id": "1572fb82-526f-11f0-bde6-e674ec8dde71",
+      "role_name": "network_builder",
+      "resource_type": "operator",
+      "id_pattern": "*",
+      "operations": ["create", "modify", "delete", "view", "publish", "unpublish", "authorize", "public_access", "execute"]
+    },
+    {
+      "role_id": "1572fb82-526f-11f0-bde6-e674ec8dde71",
+      "role_name": "network_builder",
+      "resource_type": "skill",
+      "id_pattern": "*",
+      "operations": ["create", "modify", "delete", "view", "publish", "unpublish", "authorize", "public_access", "execute"]
+    },
+    {
+      "role_id": "1572fb82-526f-11f0-bde6-e674ec8dde71",
+      "role_name": "network_builder",
+      "resource_type": "mcp",
+      "id_pattern": "*",
+      "operations": ["create", "modify", "delete", "view", "publish", "unpublish", "authorize", "public_access", "execute"]
+    },
+    {
+      "role_id": "1572fb82-526f-11f0-bde6-e674ec8dde71",
+      "role_name": "network_builder",
+      "resource_type": "tool_box",
+      "id_pattern": "*",
+      "operations": ["create", "modify", "delete", "view", "publish", "unpublish", "authorize", "public_access", "execute"]
+    },
+    {
+      "role_id": "1572fb82-526f-11f0-bde6-e674ec8dde71",
+      "role_name": "network_builder",
+      "resource_type": "small_model",
+      "id_pattern": "*",
+      "operations": ["create", "display", "modify", "delete", "execute"]
+    },
+    {
+      "role_id": "1572fb82-526f-11f0-bde6-e674ec8dde71",
+      "role_name": "network_builder",
+      "resource_type": "large_model",
+      "id_pattern": "*",
+      "operations": ["create", "display", "modify", "delete", "execute"]
+    },
+    {
+      "role_id": "1572fb82-526f-11f0-bde6-e674ec8dde71",
+      "role_name": "network_builder",
       "resource_type": "agent",
       "id_pattern": "*",
       "operations": [
@@ -15,98 +167,81 @@
     },
     {
       "role_id": "1572fb82-526f-11f0-bde6-e674ec8dde71",
-      "role_name": "应用管理员",
+      "role_name": "network_builder",
       "resource_type": "agent_tpl",
       "id_pattern": "*",
       "operations": ["publish", "unpublish", "unpublish_other_user_agent_tpl"]
     },
 
     {
-      "role_id": "00990824-4bf7-11f0-8fa7-865d5643e61f",
-      "role_name": "数据管理员",
+      "role_id": "b5f9ac3e-992c-4bbd-8126-95e87e51c46e",
+      "role_name": "normal_user",
       "resource_type": "catalog",
       "id_pattern": "*",
-      "operations": ["view_detail", "create", "modify", "delete", "authorize", "task_manage"]
+      "operations": ["view_detail"]
     },
     {
-      "role_id": "00990824-4bf7-11f0-8fa7-865d5643e61f",
-      "role_name": "数据管理员",
+      "role_id": "b5f9ac3e-992c-4bbd-8126-95e87e51c46e",
+      "role_name": "normal_user",
       "resource_type": "resource",
       "id_pattern": "*",
-      "operations": ["view_detail", "create", "modify", "delete", "authorize", "task_manage"]
+      "operations": ["view_detail"]
     },
     {
-      "role_id": "00990824-4bf7-11f0-8fa7-865d5643e61f",
-      "role_name": "数据管理员",
-      "resource_type": "connector_type",
-      "id_pattern": "*",
-      "operations": ["view_detail", "create", "modify", "delete", "authorize", "task_manage"]
-    },
-    {
-      "role_id": "00990824-4bf7-11f0-8fa7-865d5643e61f",
-      "role_name": "数据管理员",
+      "role_id": "b5f9ac3e-992c-4bbd-8126-95e87e51c46e",
+      "role_name": "normal_user",
       "resource_type": "knowledge_network",
       "id_pattern": "*",
-      "operations": ["view_detail", "create", "modify", "delete", "data_query", "authorize", "task_manage"]
+      "operations": ["view_detail", "data_query"]
     },
     {
-      "role_id": "00990824-4bf7-11f0-8fa7-865d5643e61f",
-      "role_name": "数据管理员",
-      "resource_type": "stream_data_pipeline",
-      "id_pattern": "*",
-      "operations": ["view_detail", "create", "modify", "delete", "authorize"]
-    },
-
-    {
-      "role_id": "3fb94948-5169-11f0-b662-3a7bdba2913f",
-      "role_name": "AI管理员",
-      "resource_type": "operator",
-      "id_pattern": "*",
-      "operations": ["create", "modify", "delete", "view", "publish", "unpublish", "authorize", "public_access", "execute"]
-    },
-    {
-      "role_id": "3fb94948-5169-11f0-b662-3a7bdba2913f",
-      "role_name": "AI管理员",
-      "resource_type": "skill",
-      "id_pattern": "*",
-      "operations": ["create", "modify", "delete", "view", "publish", "unpublish", "authorize", "public_access", "execute"]
-    },
-    {
-      "role_id": "3fb94948-5169-11f0-b662-3a7bdba2913f",
-      "role_name": "AI管理员",
-      "resource_type": "mcp",
-      "id_pattern": "*",
-      "operations": ["create", "modify", "delete", "view", "publish", "unpublish", "authorize", "public_access", "execute"]
-    },
-    {
-      "role_id": "3fb94948-5169-11f0-b662-3a7bdba2913f",
-      "role_name": "AI管理员",
-      "resource_type": "tool_box",
-      "id_pattern": "*",
-      "operations": ["create", "modify", "delete", "view", "publish", "unpublish", "authorize", "public_access", "execute"]
-    },
-    {
-      "role_id": "3fb94948-5169-11f0-b662-3a7bdba2913f",
-      "role_name": "AI管理员",
+      "role_id": "b5f9ac3e-992c-4bbd-8126-95e87e51c46e",
+      "role_name": "normal_user",
       "resource_type": "small_model",
       "id_pattern": "*",
-      "operations": ["create", "display", "modify", "delete", "execute"]
+      "operations": ["display", "execute"]
     },
     {
-      "role_id": "3fb94948-5169-11f0-b662-3a7bdba2913f",
-      "role_name": "AI管理员",
+      "role_id": "b5f9ac3e-992c-4bbd-8126-95e87e51c46e",
+      "role_name": "normal_user",
       "resource_type": "large_model",
       "id_pattern": "*",
-      "operations": ["create", "display", "modify", "delete", "execute"]
+      "operations": ["display", "execute"]
     },
-
     {
-      "role_id": "7dcfcc9c-ad02-11e8-aa06-000c29358ad6",
-      "role_name": "超级管理员",
-      "resource_type": "",
+      "role_id": "b5f9ac3e-992c-4bbd-8126-95e87e51c46e",
+      "role_name": "normal_user",
+      "resource_type": "operator",
       "id_pattern": "*",
-      "operations": ["*"],
-      "_note": "wildcard: obj '*' matches any type:id (keyMatch), act '*' matches any op. resource_type empty => obj pattern is just '*'."
+      "operations": ["view", "execute"]
+    },
+    {
+      "role_id": "b5f9ac3e-992c-4bbd-8126-95e87e51c46e",
+      "role_name": "normal_user",
+      "resource_type": "skill",
+      "id_pattern": "*",
+      "operations": ["view", "execute"]
+    },
+    {
+      "role_id": "b5f9ac3e-992c-4bbd-8126-95e87e51c46e",
+      "role_name": "normal_user",
+      "resource_type": "mcp",
+      "id_pattern": "*",
+      "operations": ["view", "execute"]
+    },
+    {
+      "role_id": "b5f9ac3e-992c-4bbd-8126-95e87e51c46e",
+      "role_name": "normal_user",
+      "resource_type": "tool_box",
+      "id_pattern": "*",
+      "operations": ["view", "execute"]
+    },
+    {
+      "role_id": "b5f9ac3e-992c-4bbd-8126-95e87e51c46e",
+      "role_name": "normal_user",
+      "resource_type": "agent",
+      "id_pattern": "*",
+      "operations": ["use"]
     }
   ]
 }

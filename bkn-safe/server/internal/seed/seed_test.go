@@ -28,7 +28,7 @@ func newDB(t *testing.T) *gorm.DB {
 }
 
 // TestApplySeedsRolesCatalogGrants verifies the central seed lands roles + the
-// catalog and that the app-admin grant makes a real decision pass.
+// catalog and that the network-builder grant makes a real decision pass.
 func TestApplySeedsRolesCatalogGrants(t *testing.T) {
 	db := newDB(t)
 	e, err := authz.New(db)
@@ -39,41 +39,51 @@ func TestApplySeedsRolesCatalogGrants(t *testing.T) {
 		t.Fatalf("apply seed: %v", err)
 	}
 
-	// 9 roles, with the preserved business UUIDs present.
+	// 6 Studio roles, with the preserved three-admin UUIDs present.
 	var roleCount int64
 	db.Model(&model.Role{}).Count(&roleCount)
-	if roleCount != 9 {
-		t.Errorf("role count = %d, want 9", roleCount)
+	if roleCount != 6 {
+		t.Errorf("role count = %d, want 6", roleCount)
 	}
-	for _, id := range []string{
-		"1572fb82-526f-11f0-bde6-e674ec8dde71", // 应用管理员
-		"00990824-4bf7-11f0-8fa7-865d5643e61f", // 数据管理员
-		"3fb94948-5169-11f0-b662-3a7bdba2913f", // AI管理员
+	for id, name := range map[string]string{
+		"7dcfcc9c-ad02-11e8-aa06-000c29358ad6": "super_admin",
+		"d2bd2082-ad03-11e8-aa06-000c29358ad6": "admin",
+		"d8998f72-ad03-11e8-aa06-000c29358ad6": "security",
+		"def246f2-ad03-11e8-aa06-000c29358ad6": "audit",
+		"1572fb82-526f-11f0-bde6-e674ec8dde71": "network_builder",
+		"b5f9ac3e-992c-4bbd-8126-95e87e51c46e": "normal_user",
 	} {
 		var r model.Role
 		if err := db.First(&r, "id = ?", id).Error; err != nil {
 			t.Errorf("preserved role %s missing: %v", id, err)
 		}
+		if r.Name != name {
+			t.Errorf("role %s name = %q, want %q", id, r.Name, name)
+		}
 	}
 
-	// agent resource type + its operations seeded.
+	// agent and Studio admin resource types + their operations seeded.
 	var opCount int64
 	db.Model(&model.Operation{}).Where("resource_type_id = ?", "agent").Count(&opCount)
 	if opCount == 0 {
 		t.Error("expected agent operations seeded")
 	}
+	db.Model(&model.Operation{}).Where("resource_type_id = ?", "admin-user").Count(&opCount)
+	if opCount == 0 {
+		t.Error("expected admin-user operations seeded")
+	}
 
-	// app-admin grant works: a user bound to the role can use an agent.
+	// network_builder grant works: a user bound to the role can create business resources.
 	const user = "u-1"
 	if err := e.AssignRole(user, "1572fb82-526f-11f0-bde6-e674ec8dde71"); err != nil {
 		t.Fatal(err)
 	}
-	ok, err := e.Check(user, "agent", "any-agent-id", "use")
+	ok, err := e.Check(user, "knowledge_network", "kn-1", "create")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !ok {
-		t.Error("app-admin should be able to use agent:* after seed")
+		t.Error("network_builder should be able to create knowledge networks after seed")
 	}
 }
 
@@ -90,23 +100,32 @@ func TestSeededRoleGrants(t *testing.T) {
 	}
 
 	const (
-		appAdmin   = "1572fb82-526f-11f0-bde6-e674ec8dde71"
-		dataAdmin  = "00990824-4bf7-11f0-8fa7-865d5643e61f"
-		aiAdmin    = "3fb94948-5169-11f0-b662-3a7bdba2913f"
-		superAdmin = "7dcfcc9c-ad02-11e8-aa06-000c29358ad6"
+		superAdmin     = "7dcfcc9c-ad02-11e8-aa06-000c29358ad6"
+		admin          = "d2bd2082-ad03-11e8-aa06-000c29358ad6"
+		security       = "d8998f72-ad03-11e8-aa06-000c29358ad6"
+		audit          = "def246f2-ad03-11e8-aa06-000c29358ad6"
+		networkBuilder = "1572fb82-526f-11f0-bde6-e674ec8dde71"
+		normalUser     = "b5f9ac3e-992c-4bbd-8126-95e87e51c46e"
 	)
 	cases := []struct {
 		name, role, typ, id, op string
 		want                    bool
 	}{
-		{"app-admin uses agent", appAdmin, "agent", "x", "use", true},
-		{"app-admin not catalog", appAdmin, "catalog", "x", "create", false},
-		{"data-admin manages catalog", dataAdmin, "catalog", "x", "create", true},
-		{"data-admin manages knowledge_network", dataAdmin, "knowledge_network", "kn1", "data_query", true},
-		{"data-admin not operator", dataAdmin, "operator", "o1", "execute", false},
-		{"ai-admin manages operator", aiAdmin, "operator", "o1", "execute", true},
-		{"ai-admin manages skill", aiAdmin, "skill", "s1", "publish", true},
-		{"ai-admin not catalog", aiAdmin, "catalog", "x", "create", false},
+		{"admin manages users", admin, "admin-user", "x", "create", true},
+		{"admin not role grant", admin, "admin-authz", "x", "grant", false},
+		{"security manages roles", security, "admin-role", "x", "create", true},
+		{"security can reset password", security, "admin-user", "x", "reset-password", true},
+		{"security not audit", security, "admin-audit", "x", "view", false},
+		{"audit views audit logs", audit, "admin-audit", "x", "view", true},
+		{"audit not user edit", audit, "admin-user", "x", "edit", false},
+		{"network-builder manages catalog", networkBuilder, "catalog", "x", "create", true},
+		{"network-builder manages skill", networkBuilder, "skill", "s1", "publish", true},
+		{"network-builder not system users", networkBuilder, "admin-user", "x", "create", false},
+		{"normal-user can query knowledge", normalUser, "knowledge_network", "kn1", "data_query", true},
+		{"normal-user can execute skill", normalUser, "skill", "s1", "execute", true},
+		{"normal-user can use agent", normalUser, "agent", "a1", "use", true},
+		{"normal-user cannot create catalog", normalUser, "catalog", "x", "create", false},
+		{"normal-user cannot publish skill", normalUser, "skill", "s1", "publish", false},
 		{"super-admin does anything (agent)", superAdmin, "agent", "x", "use", true},
 		{"super-admin does anything (any type/op)", superAdmin, "whatever", "z", "some_random_op", true},
 	}
@@ -194,7 +213,90 @@ func TestApplyIdempotent(t *testing.T) {
 	}
 	var roleCount int64
 	db.Model(&model.Role{}).Count(&roleCount)
-	if roleCount != 9 {
-		t.Errorf("role count after re-seed = %d, want 9", roleCount)
+	if roleCount != 6 {
+		t.Errorf("role count after re-seed = %d, want 6", roleCount)
+	}
+}
+
+func TestApplyReconcilesDeprecatedSeedRoles(t *testing.T) {
+	db := newDB(t)
+	e, err := authz.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const (
+		deprecatedDataAdmin = "00990824-4bf7-11f0-8fa7-865d5643e61f"
+		user                = "u-legacy"
+	)
+	if err := db.Create(&model.Role{
+		ID:          deprecatedDataAdmin,
+		Name:        "数据管理员",
+		Description: "legacy seeded role",
+		Source:      model.RoleSourceBusiness,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := e.AssignRole(user, deprecatedDataAdmin); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.GrantRolePermission(deprecatedDataAdmin, "catalog", "*", "create"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Apply(db, e); err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+
+	var count int64
+	if err := db.Model(&model.Role{}).Where("id = ?", deprecatedDataAdmin).Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("deprecated role still exists after seed reconcile")
+	}
+	if ok, err := e.Check(user, "catalog", "c1", "create"); err != nil {
+		t.Fatal(err)
+	} else if ok {
+		t.Fatal("deprecated role binding/grant still allows catalog create")
+	}
+}
+
+func TestApplyReconcilesCurrentSeedRoleGrants(t *testing.T) {
+	db := newDB(t)
+	e, err := authz.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const (
+		normalUserRole = "b5f9ac3e-992c-4bbd-8126-95e87e51c46e"
+		user           = "u-stale-grant"
+	)
+	if err := e.AssignRole(user, normalUserRole); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.GrantRolePermission(normalUserRole, "admin-user", "*", "create"); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := e.Check(user, "admin-user", "u1", "create"); err != nil {
+		t.Fatal(err)
+	} else if !ok {
+		t.Fatal("test setup failed: stale grant did not take effect")
+	}
+
+	if err := Apply(db, e); err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+
+	if ok, err := e.Check(user, "admin-user", "u1", "create"); err != nil {
+		t.Fatal(err)
+	} else if ok {
+		t.Fatal("stale current-role grant still allows admin-user create")
+	}
+	if ok, err := e.Check(user, "catalog", "c1", "view_detail"); err != nil {
+		t.Fatal(err)
+	} else if !ok {
+		t.Fatal("normal_user desired grant was not restored after reconcile")
 	}
 }

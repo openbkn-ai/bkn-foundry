@@ -36,6 +36,13 @@ const (
 	adminAccount = "admin"
 )
 
+var deprecatedSeedRoleIDs = []string{
+	"e63e1c88-ad03-11e8-aa06-000c29358ad6", // 组织管理员
+	"f06ac18e-ad03-11e8-aa06-000c29358ad6", // 组织审计员
+	"00990824-4bf7-11f0-8fa7-865d5643e61f", // 数据管理员
+	"3fb94948-5169-11f0-b662-3a7bdba2913f", // AI管理员
+}
+
 // AdminUserID is the built-in admin user's id, exported so callers can protect
 // it — the user-admin API refuses to delete or disable it (deleting the only
 // super-admin would lock everyone out). Same UUID as the S2S fallback identity.
@@ -95,6 +102,9 @@ func Apply(db *gorm.DB, enforcer *authz.Enforcer) error {
 	}
 	if err := seedCatalog(db); err != nil {
 		return fmt.Errorf("seed catalog: %w", err)
+	}
+	if err := reconcileSeedRoles(db, enforcer); err != nil {
+		return fmt.Errorf("reconcile seed roles: %w", err)
 	}
 	if err := seedGrants(enforcer); err != nil {
 		return fmt.Errorf("seed grants: %w", err)
@@ -165,6 +175,29 @@ func seedRoles(db *gorm.DB) error {
 		Columns:   []clause.Column{{Name: "id"}},
 		DoUpdates: clause.AssignmentColumns([]string{"name", "description", "source"}),
 	}).Create(&rows).Error
+}
+
+func reconcileSeedRoles(db *gorm.DB, enforcer *authz.Enforcer) error {
+	var roles []roleSeed
+	if err := json.Unmarshal(rolesJSON, &roles); err != nil {
+		return err
+	}
+
+	for _, r := range roles {
+		if err := enforcer.RemoveRolePermissions(r.ID); err != nil {
+			return err
+		}
+	}
+
+	for _, roleID := range deprecatedSeedRoleIDs {
+		if err := enforcer.RemoveRoleCompletely(roleID); err != nil {
+			return err
+		}
+		if err := db.Delete(&model.Role{}, "id = ?", roleID).Error; err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func seedCatalog(db *gorm.DB) error {

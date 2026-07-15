@@ -10,11 +10,10 @@ import (
 	"bkn-safe/internal/authz"
 )
 
-// TestRoleResourceMatrix is the authz equivalence / no-leak proof: for every
-// business role × every resource type, a user bound to that role is allowed a
-// representative op IFF the type is in the role's agreed domain — and denied
-// everywhere else (no cross-domain leakage). Super-admin allows everything; an
-// unroled user allows nothing. This pins the full seeded authorization model.
+// TestRoleResourceMatrix is the authz equivalence / no-leak proof: default
+// business roles only get their intended resource/action domain. Super-admin
+// allows everything; an unroled user allows nothing. This pins the full seeded
+// authorization model.
 func TestRoleResourceMatrix(t *testing.T) {
 	db := newDB(t)
 	e, err := authz.New(db)
@@ -26,18 +25,11 @@ func TestRoleResourceMatrix(t *testing.T) {
 	}
 
 	const (
-		appAdmin   = "1572fb82-526f-11f0-bde6-e674ec8dde71"
-		dataAdmin  = "00990824-4bf7-11f0-8fa7-865d5643e61f"
-		aiAdmin    = "3fb94948-5169-11f0-b662-3a7bdba2913f"
-		superAdmin = "7dcfcc9c-ad02-11e8-aa06-000c29358ad6"
+		networkBuilder = "1572fb82-526f-11f0-bde6-e674ec8dde71"
+		normalUser     = "b5f9ac3e-992c-4bbd-8126-95e87e51c46e"
+		superAdmin     = "7dcfcc9c-ad02-11e8-aa06-000c29358ad6"
 	)
 
-	// agreed role -> resource-type domain.
-	domain := map[string]map[string]bool{
-		appAdmin:  set("agent", "agent_tpl"),
-		dataAdmin: set("catalog", "resource", "connector_type", "knowledge_network", "stream_data_pipeline"),
-		aiAdmin:   set("operator", "skill", "mcp", "tool_box", "small_model"),
-	}
 	// a representative, granted op per resource type (positive case uses these).
 	repOp := map[string]string{
 		"agent": "use", "agent_tpl": "publish",
@@ -46,26 +38,43 @@ func TestRoleResourceMatrix(t *testing.T) {
 		"tool_box": "execute", "mcp": "execute", "operator": "execute", "skill": "execute",
 		"small_model": "execute",
 	}
+	roleAllowed := map[string]map[string]string{
+		networkBuilder: repOp,
+		normalUser: {
+			"agent":             "use",
+			"catalog":           "view_detail",
+			"resource":          "view_detail",
+			"knowledge_network": "data_query",
+			"tool_box":          "execute",
+			"mcp":               "execute",
+			"operator":          "execute",
+			"skill":             "execute",
+			"small_model":       "execute",
+		},
+	}
 	allTypes := make([]string, 0, len(repOp))
 	for tpe := range repOp {
 		allTypes = append(allTypes, tpe)
 	}
 
 	// Each role's user; plus super-admin and an unroled user.
-	roles := []string{appAdmin, dataAdmin, aiAdmin}
+	roles := []string{networkBuilder, normalUser}
 	for _, role := range roles {
 		user := "u-" + role
 		if err := e.AssignRole(user, role); err != nil {
 			t.Fatal(err)
 		}
 		for _, tpe := range allTypes {
-			want := domain[role][tpe]
-			got, err := e.Check(user, tpe, "inst-1", repOp[tpe])
+			op, want := roleAllowed[role][tpe]
+			if !want {
+				op = repOp[tpe]
+			}
+			got, err := e.Check(user, tpe, "inst-1", op)
 			if err != nil {
 				t.Fatal(err)
 			}
 			if got != want {
-				t.Errorf("role=%s type=%s op=%s: got allow=%v, want %v (domain=%v)", role, tpe, repOp[tpe], got, want, domain[role][tpe])
+				t.Errorf("role=%s type=%s op=%s: got allow=%v, want %v", role, tpe, op, got, want)
 			}
 		}
 	}
@@ -90,12 +99,4 @@ func TestRoleResourceMatrix(t *testing.T) {
 			t.Errorf("unroled user must be denied %s:%s", tpe, repOp[tpe])
 		}
 	}
-}
-
-func set(xs ...string) map[string]bool {
-	m := make(map[string]bool, len(xs))
-	for _, x := range xs {
-		m[x] = true
-	}
-	return m
 }

@@ -247,6 +247,14 @@ func (en *Enforcer) RemoveRoleCompletely(roleID string) error {
 	return err
 }
 
+// RemoveRolePermissions purges only the p-lines owned by a role, preserving its
+// member bindings. Seed uses this before re-applying the built-in permission
+// matrix so removed grants do not linger across upgrades.
+func (en *Enforcer) RemoveRolePermissions(roleID string) error {
+	_, err := en.e.RemoveFilteredPolicy(0, roleID)
+	return err
+}
+
 // RemoveAccessor purges every casbin trace of an accessor: its role bindings
 // (grouping g-lines with sub=accessor) and any concrete object policies granted
 // directly to it (p-lines with sub=accessor). Called when a user is deleted so
