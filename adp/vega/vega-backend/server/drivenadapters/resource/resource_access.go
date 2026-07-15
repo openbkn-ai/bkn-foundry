@@ -74,6 +74,10 @@ func (ra *resourceAccess) Create(ctx context.Context, resource *interfaces.Resou
 	if resource.SchemaDefinition == nil {
 		schemaDefinitionBytes = []byte("[]")
 	}
+	indexConfigBytes, _ := sonic.Marshal(resource.IndexConfig)
+	if resource.IndexConfig == nil {
+		indexConfigBytes = []byte("{}")
+	}
 	logicDefinitionBytes, _ := sonic.Marshal(resource.LogicDefinition)
 	if resource.LogicDefinition == nil {
 		logicDefinitionBytes = []byte("[]")
@@ -94,6 +98,7 @@ func (ra *resourceAccess) Create(ctx context.Context, resource *interfaces.Resou
 			"f_source_identifier",
 			"f_source_metadata",
 			"f_schema_definition",
+			"f_index_config",
 
 			"f_logic_type",
 			"f_logic_definition",
@@ -130,6 +135,7 @@ func (ra *resourceAccess) Create(ctx context.Context, resource *interfaces.Resou
 			resource.SourceIdentifier,
 			string(sourceMetadataBytes),
 			string(schemaDefinitionBytes),
+			string(indexConfigBytes),
 
 			resource.LogicType,
 			string(logicDefinitionBytes),
@@ -190,6 +196,7 @@ func (ra *resourceAccess) GetByID(ctx context.Context, id string) (*interfaces.R
 		"f_source_identifier",
 		"f_source_metadata",
 		"f_schema_definition",
+		"f_index_config",
 		"f_logic_type",
 		"f_logic_definition",
 		"f_creator",
@@ -210,7 +217,7 @@ func (ra *resourceAccess) GetByID(ctx context.Context, id string) (*interfaces.R
 
 	resource := &interfaces.Resource{}
 	var tagsStr string
-	var database, sourceIdentifier, sourceMetadata, schemaDefinition, logicDefinition sql.NullString
+	var database, sourceIdentifier, sourceMetadata, schemaDefinition, indexConfig, logicDefinition sql.NullString
 
 	row := ra.db.QueryRowContext(ctx, sqlStr, vals...)
 	err = row.Scan(
@@ -227,6 +234,7 @@ func (ra *resourceAccess) GetByID(ctx context.Context, id string) (*interfaces.R
 		&sourceIdentifier,
 		&sourceMetadata,
 		&schemaDefinition,
+		&indexConfig,
 		&resource.LogicType,
 		&logicDefinition,
 		&resource.Creator.ID,
@@ -256,6 +264,9 @@ func (ra *resourceAccess) GetByID(ctx context.Context, id string) (*interfaces.R
 	}
 	if schemaDefinition.Valid && schemaDefinition.String != "" {
 		_ = sonic.Unmarshal([]byte(schemaDefinition.String), &resource.SchemaDefinition)
+	}
+	if indexConfig.Valid && indexConfig.String != "" {
+		_ = sonic.Unmarshal([]byte(indexConfig.String), &resource.IndexConfig)
 	}
 	if logicDefinition.Valid && logicDefinition.String != "" {
 		_ = sonic.Unmarshal([]byte(logicDefinition.String), &resource.LogicDefinition)
@@ -291,6 +302,7 @@ func (ra *resourceAccess) GetByIDs(ctx context.Context, ids []string) ([]*interf
 		"f_source_identifier",
 		"f_source_metadata",
 		"f_schema_definition",
+		"f_index_config",
 		"f_logic_type",
 		"f_logic_definition",
 		"f_creator",
@@ -321,7 +333,7 @@ func (ra *resourceAccess) GetByIDs(ctx context.Context, ids []string) ([]*interf
 	for rows.Next() {
 		resource := &interfaces.Resource{}
 		var tagsStr string
-		var database, sourceIdentifier, sourceMetadata, schemaDefinition, logicDefinition sql.NullString
+		var database, sourceIdentifier, sourceMetadata, schemaDefinition, indexConfig, logicDefinition sql.NullString
 
 		err := rows.Scan(
 			&resource.ID,
@@ -337,6 +349,7 @@ func (ra *resourceAccess) GetByIDs(ctx context.Context, ids []string) ([]*interf
 			&sourceIdentifier,
 			&sourceMetadata,
 			&schemaDefinition,
+			&indexConfig,
 			&resource.LogicType,
 			&logicDefinition,
 			&resource.Creator.ID,
@@ -363,6 +376,9 @@ func (ra *resourceAccess) GetByIDs(ctx context.Context, ids []string) ([]*interf
 		}
 		if schemaDefinition.Valid && schemaDefinition.String != "" {
 			_ = sonic.Unmarshal([]byte(schemaDefinition.String), &resource.SchemaDefinition)
+		}
+		if indexConfig.Valid && indexConfig.String != "" {
+			_ = sonic.Unmarshal([]byte(indexConfig.String), &resource.IndexConfig)
 		}
 		if logicDefinition.Valid && logicDefinition.String != "" {
 			_ = sonic.Unmarshal([]byte(logicDefinition.String), &resource.LogicDefinition)
@@ -517,6 +533,7 @@ func (ra *resourceAccess) GetByName(ctx context.Context, catalogID string, name 
 		"f_source_identifier",
 		"f_source_metadata",
 		"f_schema_definition",
+		"f_index_config",
 		"f_creator",
 		"f_creator_type",
 		"f_create_time",
@@ -535,7 +552,7 @@ func (ra *resourceAccess) GetByName(ctx context.Context, catalogID string, name 
 
 	resource := &interfaces.Resource{}
 	var tagsStr string
-	var database, sourceIdentifier, sourceMetadata, schemaDefinition sql.NullString
+	var database, sourceIdentifier, sourceMetadata, schemaDefinition, indexConfig sql.NullString
 
 	row := ra.db.QueryRowContext(ctx, sqlStr, vals...)
 	err = row.Scan(
@@ -552,6 +569,7 @@ func (ra *resourceAccess) GetByName(ctx context.Context, catalogID string, name 
 		&sourceIdentifier,
 		&sourceMetadata,
 		&schemaDefinition,
+		&indexConfig,
 		&resource.Creator.ID,
 		&resource.Creator.Type,
 		&resource.CreateTime,
@@ -578,6 +596,9 @@ func (ra *resourceAccess) GetByName(ctx context.Context, catalogID string, name 
 	}
 	if schemaDefinition.Valid && schemaDefinition.String != "" {
 		_ = sonic.Unmarshal([]byte(schemaDefinition.String), &resource.SchemaDefinition)
+	}
+	if indexConfig.Valid && indexConfig.String != "" {
+		_ = sonic.Unmarshal([]byte(indexConfig.String), &resource.IndexConfig)
 	}
 
 	span.SetStatus(codes.Ok, "")
@@ -667,6 +688,7 @@ func (ra *resourceAccess) List(ctx context.Context, params interfaces.ResourcesQ
 		resourceExtCol(params, "f_source_identifier"),
 		resourceExtCol(params, "f_source_metadata"),
 		resourceExtCol(params, "f_schema_definition"),
+		resourceExtCol(params, "f_index_config"),
 		resourceExtCol(params, "f_creator"),
 		resourceExtCol(params, "f_creator_type"),
 		resourceExtCol(params, "f_create_time"),
@@ -740,7 +762,7 @@ func (ra *resourceAccess) List(ctx context.Context, params interfaces.ResourcesQ
 	for rows.Next() {
 		resource := &interfaces.Resource{}
 		var tagsStr string
-		var database, sourceIdentifier, sourceMetadata, schemaDefinition sql.NullString
+		var database, sourceIdentifier, sourceMetadata, schemaDefinition, indexConfig sql.NullString
 
 		err := rows.Scan(
 			&resource.ID,
@@ -756,6 +778,7 @@ func (ra *resourceAccess) List(ctx context.Context, params interfaces.ResourcesQ
 			&sourceIdentifier,
 			&sourceMetadata,
 			&schemaDefinition,
+			&indexConfig,
 			&resource.Creator.ID,
 			&resource.Creator.Type,
 			&resource.CreateTime,
@@ -778,6 +801,9 @@ func (ra *resourceAccess) List(ctx context.Context, params interfaces.ResourcesQ
 		if schemaDefinition.Valid && schemaDefinition.String != "" {
 			_ = sonic.Unmarshal([]byte(schemaDefinition.String), &resource.SchemaDefinition)
 		}
+		if indexConfig.Valid && indexConfig.String != "" {
+			_ = sonic.Unmarshal([]byte(indexConfig.String), &resource.IndexConfig)
+		}
 
 		resources = append(resources, resource)
 	}
@@ -792,7 +818,7 @@ func (ra *resourceAccess) List(ctx context.Context, params interfaces.ResourcesQ
 }
 
 // Update updates ra Resource.
-func (ra *resourceAccess) Update(ctx context.Context, resource *interfaces.Resource) error {
+func (ra *resourceAccess) Update(ctx context.Context, tx *sql.Tx, resource *interfaces.Resource) error {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Update resource")
 	defer span.End()
 
@@ -810,6 +836,10 @@ func (ra *resourceAccess) Update(ctx context.Context, resource *interfaces.Resou
 	if resource.SchemaDefinition == nil {
 		schemaDefinitionBytes = []byte("[]")
 	}
+	indexConfigBytes, _ := sonic.Marshal(resource.IndexConfig)
+	if resource.IndexConfig == nil {
+		indexConfigBytes = []byte("{}")
+	}
 	logicDefinitionBytes, _ := sonic.Marshal(resource.LogicDefinition)
 	if resource.LogicDefinition == nil {
 		logicDefinitionBytes = []byte("[]")
@@ -822,6 +852,7 @@ func (ra *resourceAccess) Update(ctx context.Context, resource *interfaces.Resou
 		Set("f_description", resource.Description).
 		Set("f_source_metadata", string(sourceMetadataBytes)).
 		Set("f_schema_definition", string(schemaDefinitionBytes)).
+		Set("f_index_config", string(indexConfigBytes)).
 		Set("f_logic_type", resource.LogicType).
 		Set("f_logic_definition", string(logicDefinitionBytes)).
 		Set("f_updater", resource.Updater.ID).
@@ -839,7 +870,11 @@ func (ra *resourceAccess) Update(ctx context.Context, resource *interfaces.Resou
 		return err
 	}
 
-	_, err = ra.db.ExecContext(ctx, sqlStr, vals...)
+	if tx != nil {
+		_, err = tx.ExecContext(ctx, sqlStr, vals...)
+	} else {
+		_, err = ra.db.ExecContext(ctx, sqlStr, vals...)
+	}
 	if err != nil {
 		span.SetStatus(codes.Error, "Update failed")
 		return err
@@ -870,6 +905,7 @@ func (ra *resourceAccess) GetByCatalogID(ctx context.Context, catalogID string) 
 		"f_source_identifier",
 		"f_source_metadata",
 		"f_schema_definition",
+		"f_index_config",
 		"f_creator",
 		"f_creator_type",
 		"f_create_time",
@@ -897,7 +933,7 @@ func (ra *resourceAccess) GetByCatalogID(ctx context.Context, catalogID string) 
 	for rows.Next() {
 		resource := &interfaces.Resource{}
 		var tagsStr string
-		var database, sourceIdentifier, sourceMetadata, schemaDefinition sql.NullString
+		var database, sourceIdentifier, sourceMetadata, schemaDefinition, indexConfig sql.NullString
 
 		err := rows.Scan(
 			&resource.ID,
@@ -913,6 +949,7 @@ func (ra *resourceAccess) GetByCatalogID(ctx context.Context, catalogID string) 
 			&sourceIdentifier,
 			&sourceMetadata,
 			&schemaDefinition,
+			&indexConfig,
 			&resource.Creator.ID,
 			&resource.Creator.Type,
 			&resource.CreateTime,
@@ -934,6 +971,9 @@ func (ra *resourceAccess) GetByCatalogID(ctx context.Context, catalogID string) 
 		}
 		if schemaDefinition.Valid && schemaDefinition.String != "" {
 			_ = sonic.Unmarshal([]byte(schemaDefinition.String), &resource.SchemaDefinition)
+		}
+		if indexConfig.Valid && indexConfig.String != "" {
+			_ = sonic.Unmarshal([]byte(indexConfig.String), &resource.IndexConfig)
 		}
 
 		resources = append(resources, resource)

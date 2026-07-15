@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
+	"strings"
 	"sync"
 	"time"
 
@@ -31,6 +32,7 @@ import (
 	dataset "vega-backend/logics/dataset"
 	"vega-backend/logics/extensions"
 	"vega-backend/logics/local_index"
+	model_factory "vega-backend/logics/model_factory"
 	"vega-backend/logics/permission"
 	"vega-backend/logics/user_mgmt"
 )
@@ -57,6 +59,7 @@ type resourceService struct {
 	ums        interfaces.UserMgmtService
 	bta        interfaces.BuildTaskAccess
 	lim        interfaces.LocalIndexManager
+	mfs        interfaces.ModelFactoryService
 }
 
 // NewResourceService creates a new ResourceService.
@@ -71,6 +74,7 @@ func NewResourceService(appSetting *common.AppSetting) interfaces.ResourceServic
 			ums:        user_mgmt.NewUserMgmtService(appSetting),
 			bta:        logics.BTA,
 			lim:        local_index.NewLocalIndexManager(appSetting),
+			mfs:        model_factory.NewModelFactoryService(appSetting),
 		}
 	})
 	return rService
@@ -227,6 +231,9 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 	if err := extensions.ValidateSchemaPropertiesExtensions(ctx, req.SchemaDefinition); err != nil {
 		return nil, err
 	}
+	if err := rs.validateIndexConfigModels(ctx, req.SchemaDefinition, req.IndexConfig); err != nil {
+		return nil, err
+	}
 	if req.Extensions != nil {
 		if err := extensions.ValidateEntityExtensionsMap(ctx, *req.Extensions); err != nil {
 			return nil, err
@@ -245,6 +252,7 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 		SourceIdentifier: req.SourceIdentifier,
 		SourceMetadata:   req.SourceMetadata,
 		SchemaDefinition: req.SchemaDefinition,
+		IndexConfig:      req.IndexConfig,
 		LogicType:        logicType,
 		LogicDefinition:  req.LogicDefinition,
 		Creator:          accountInfo,
@@ -649,8 +657,14 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 	default:
 		applyMutableSchemaFields(resource.SchemaDefinition, req.SchemaDefinition)
 	}
+	if req.IndexConfig != nil {
+		resource.IndexConfig = req.IndexConfig
+	}
 
 	if err := extensions.ValidateSchemaPropertiesExtensions(ctx, resource.SchemaDefinition); err != nil {
+		return err
+	}
+	if err := rs.validateIndexConfigModels(ctx, resource.SchemaDefinition, resource.IndexConfig); err != nil {
 		return err
 	}
 	if req.Extensions != nil {
@@ -686,7 +700,7 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 	resource.Updater = accountInfo
 	resource.UpdateTime = now
 
-	if err := rs.ra.Update(ctx, resource); err != nil {
+	if err := rs.ra.Update(ctx, nil, resource); err != nil {
 		span.SetStatus(codes.Error, "Update resource failed")
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_UpdateFailed).
 			WithErrorDetails(err.Error())
@@ -868,7 +882,7 @@ func (rs *resourceService) UpdateResource(ctx context.Context, resource *interfa
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Update resource")
 	defer span.End()
 
-	if err := rs.ra.Update(ctx, resource); err != nil {
+	if err := rs.ra.Update(ctx, nil, resource); err != nil {
 		span.SetStatus(codes.Error, "Update resource failed")
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_UpdateFailed).
 			WithErrorDetails(err.Error())
@@ -909,10 +923,58 @@ func (rs *resourceService) validateResourceUpdateScope(ctx context.Context, reso
 	if req.SourceMetadata != nil && !reflect.DeepEqual(resource.SourceMetadata, req.SourceMetadata) {
 		return false, unsupportedResourceUpdateError(ctx, "source_metadata is managed by discover and cannot be updated directly")
 	}
+	indexConfigChanged := req.IndexConfig != nil && !reflect.DeepEqual(resource.IndexConfig, req.IndexConfig)
 	if req.SchemaDefinition == nil {
-		return false, nil
+		return indexConfigChanged, nil
 	}
-	return validateMutableSchemaUpdate(ctx, resource.SchemaDefinition, req.SchemaDefinition)
+	schemaChanged, err := validateMutableSchemaUpdate(ctx, resource.SchemaDefinition, req.SchemaDefinition)
+	return schemaChanged || indexConfigChanged, err
+}
+
+func (rs *resourceService) validateIndexConfigModels(ctx context.Context, schema []*interfaces.Property, indexConfig *interfaces.ResourceIndexConfig) error {
+	if rs.mfs == nil {
+		return nil
+	}
+	defaultEmbeddingModel := ""
+	if indexConfig != nil {
+		defaultEmbeddingModel = strings.TrimSpace(indexConfig.DefaultEmbeddingModel)
+	}
+	checkedModels := map[string]struct{}{}
+	for _, prop := range schema {
+		if prop == nil {
+			continue
+		}
+		for _, feature := range prop.Features {
+			if feature.FeatureType != interfaces.PropertyFeatureType_Vector {
+				continue
+			}
+			modelName := ""
+			if feature.Config != nil {
+				if value, ok := feature.Config["embedding_model"].(string); ok {
+					modelName = strings.TrimSpace(value)
+				}
+			}
+			if modelName == "" {
+				modelName = defaultEmbeddingModel
+			}
+			if modelName == "" {
+				modelName = interfaces.DEFAULT_EMBEDDING_MODEL
+			}
+			if _, ok := checkedModels[modelName]; ok {
+				continue
+			}
+			if _, err := rs.mfs.GetModelByName(ctx, modelName); err != nil {
+				fieldName := prop.Name
+				if feature.RefProperty != "" {
+					fieldName = feature.RefProperty
+				}
+				return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+					WithErrorDetails(fmt.Sprintf("embedding model %q for field %q not found", modelName, fieldName))
+			}
+			checkedModels[modelName] = struct{}{}
+		}
+	}
+	return nil
 }
 
 func unsupportedResourceUpdateError(ctx context.Context, details string) error {

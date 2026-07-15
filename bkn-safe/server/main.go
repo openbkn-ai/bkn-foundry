@@ -8,6 +8,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"log/slog"
 	"os"
@@ -19,6 +20,7 @@ import (
 	"bkn-safe/internal/database"
 	"bkn-safe/internal/directory"
 	"bkn-safe/internal/httpapi"
+	"bkn-safe/internal/license"
 	"bkn-safe/internal/seed"
 )
 
@@ -70,6 +72,20 @@ func main() {
 	}
 	provider := auth.NewProvider(authenticator, hydraAdmin, userStore)
 	dir := directory.New(db)
+	auditStore := audit.New(db)
+
+	// Cluster license hub: hold the one .lic, be the only egress to the
+	// license-server, distribute to modules. Licensing must never block the
+	// auth service itself — on failure (e.g. no resolvable instance
+	// fingerprint) bkn-safe runs without the license surface.
+	licSvc, err := license.New(db, cfg.License, auditStore)
+	if err != nil {
+		slog.Error("license hub disabled", "err", err)
+		licSvc = nil
+	} else {
+		go licSvc.Run(context.Background())
+		slog.Info("license hub enabled", "instance_fp", licSvc.Fingerprint(), "server_url", cfg.License.ServerURL)
+	}
 
 	r := httpapi.New(httpapi.Deps{
 		Enforcer:  enforcer,
@@ -78,7 +94,8 @@ func main() {
 		Hydra:     hydraAdmin,
 		Directory: dir,
 		Users:     userStore,
-		Audit:     audit.New(db),
+		Audit:     auditStore,
+		License:   licSvc,
 	})
 	slog.Info("bkn-safe listening", "addr", cfg.HTTPAddr)
 	if err := r.Run(cfg.HTTPAddr); err != nil {

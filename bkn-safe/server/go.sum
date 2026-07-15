@@ -165,6 +165,8 @@ github.com/modocache/gover v0.0.0-20171022184752-b58185e213c5/go.mod h1:caMODM3P
 github.com/montanaflynn/stats v0.7.0/go.mod h1:etXPPgVO6n31NxCd9KQUMvCM+ve0ruNzt6R8Bnaayow=
 github.com/openbkn-ai/bkn-comm-go v0.0.4 h1:oYmrMuayyTrDn3fZ+La7PXTuJV4wjHcKr5HTVVolBOo=
 github.com/openbkn-ai/bkn-comm-go v0.0.4/go.mod h1:pyx5ux3IT4zZrUoqni6DVzLaFe1fY8dwAl6wL8PAf7I=
+github.com/openbkn-ai/licverify v0.2.0 h1:pUFRK5kpbVyeH3dMaqVlh19cCAHVq65NOy9Jrl/5e+Y=
+github.com/openbkn-ai/licverify v0.2.0/go.mod h1:9Cnmt/tl7JN48+EjsGCjQERs1mNjuaBHdM+oVx0gvS4=
 github.com/ory/hydra-client-go/v2 v2.2.0 h1:g8hw0YQD5Us1aAgZj7OyBmBGSDwlnY9/2Pb/pQQq8YE=
 github.com/ory/hydra-client-go/v2 v2.2.0/go.mod h1:h0DSI2kQA3S2fN7HyD8DNWcvbgDmYRSxfhwu/mSBhH8=
 github.com/pelletier/go-toml/v2 v2.2.4 h1:mye9XuhQ6gvn5h28+VilKrrPoQVanw5PMw/TB0t5Ec4=

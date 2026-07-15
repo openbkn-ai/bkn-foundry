@@ -6,7 +6,10 @@
 
 package interfaces
 
-import "context"
+import (
+	"context"
+	"database/sql"
+)
 
 // ResourceAccess defines resource data access interface.
 //
@@ -31,7 +34,7 @@ type ResourceAccess interface {
 	// ListIDs lists Resource IDs with filters.
 	ListIDs(ctx context.Context, params ResourcesQueryParams) ([]string, error)
 	// Update updates a Resource.
-	Update(ctx context.Context, resource *Resource) error
+	Update(ctx context.Context, tx *sql.Tx, resource *Resource) error
 	// UpdateStatus updates a Resource's status.
 	UpdateStatus(ctx context.Context, id string, status string, statusMessage string) error
 	// UpdateDiscoverStatus updates a Resource's last discover status.

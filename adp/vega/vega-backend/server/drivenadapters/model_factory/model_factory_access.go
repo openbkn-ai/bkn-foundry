@@ -102,7 +102,7 @@ func (mfa *modelFactoryAccess) GetVector(ctx context.Context, modelID string, wo
 		"Content-Type": "application/json",
 	}
 
-	// buildTask.EmbeddingModel 存的是模型 **id**（已归一到 id），必须发 model_id 字段。
+	// 调用方传入的是已归一化的模型 id，必须发 model_id 字段。
 	// mf-model-api 的 embeddings 解析：model 字段只按 model_name 查、model_id 字段才按 id 查。
 	// 之前把 id 塞进 model（名字）字段 → 按 name 查不到 → ModelFactory.ExternalSmallModel.Used.NameNotExist
 	// （偶尔“成功”只是撞上 model_id 查询写下的同名缓存 key，并非真解析成功）。

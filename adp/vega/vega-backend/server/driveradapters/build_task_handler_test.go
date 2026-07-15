@@ -44,29 +44,17 @@ func Test_BuildTaskRestHandler_CreateBuildTask(t *testing.T) {
 	defer restoreGinMode()
 
 	const url = "/api/vega-backend/in/v1/build-tasks"
-	resource := &interfaces.Resource{
-		ID: "res-1",
-		SchemaDefinition: []*interfaces.Property{
-			{Name: "id", Type: interfaces.DataType_String},
-			{Name: "title", Type: interfaces.DataType_Text},
-			{Name: "summary", Type: interfaces.DataType_Text},
-			{Name: "age", Type: interfaces.DataType_Integer},
-			{Name: "created_at", Type: interfaces.DataType_Datetime},
-		},
-	}
 
 	t.Run("creates batch build task", func(t *testing.T) {
-		engine, bts, rs := setupBuildTaskHandlerTest(t)
-		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(resource, nil)
+		engine, bts, _ := setupBuildTaskHandlerTest(t)
 		bts.EXPECT().CreateBuildTask(gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, req *interfaces.CreateBuildTaskRequest) (string, error) {
 				assert.Equal(t, interfaces.BuildTaskModeBatch, req.Mode)
-				assert.Equal(t, "id", req.BuildKeyFields)
-				assert.Equal(t, "title", req.EmbeddingFields)
+				assert.Equal(t, "res-1", req.ResourceID)
 				return "task-1", nil
 			})
 
-		body := `{"resource_id":"res-1","mode":"batch","build_key_fields":"id","embedding_fields":"title","fulltext_fields":"title"}`
+		body := `{"resource_id":"res-1","mode":"batch"}`
 		req := httptest.NewRequest(http.MethodPost, url, strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
@@ -78,72 +66,16 @@ func Test_BuildTaskRestHandler_CreateBuildTask(t *testing.T) {
 		assert.Contains(t, w.Body.String(), `"status":"init"`)
 	})
 
-	t.Run("rejects batch without build key fields", func(t *testing.T) {
-		engine, _, rs := setupBuildTaskHandlerTest(t)
-		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(resource, nil)
+	t.Run("ignores legacy index config fields", func(t *testing.T) {
+		engine, bts, _ := setupBuildTaskHandlerTest(t)
+		bts.EXPECT().CreateBuildTask(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, req *interfaces.CreateBuildTaskRequest) (string, error) {
+				assert.Equal(t, interfaces.BuildTaskModeBatch, req.Mode)
+				assert.Equal(t, "res-1", req.ResourceID)
+				return "task-1", nil
+			})
 
-		body := `{"resource_id":"res-1","mode":"batch"}`
-		req := httptest.NewRequest(http.MethodPost, url, strings.NewReader(body))
-		req.Header.Set("Content-Type", "application/json")
-		w := httptest.NewRecorder()
-
-		engine.ServeHTTP(w, req)
-
-		require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
-		assert.Contains(t, w.Body.String(), "build_key_fields is required")
-	})
-
-	t.Run("rejects missing embedding field", func(t *testing.T) {
-		engine, _, rs := setupBuildTaskHandlerTest(t)
-		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(resource, nil)
-
-		body := `{"resource_id":"res-1","mode":"batch","build_key_fields":"id","embedding_fields":"missing"}`
-		req := httptest.NewRequest(http.MethodPost, url, strings.NewReader(body))
-		req.Header.Set("Content-Type", "application/json")
-		w := httptest.NewRecorder()
-
-		engine.ServeHTTP(w, req)
-
-		require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
-		assert.Contains(t, w.Body.String(), "embedding_field 'missing' not found")
-	})
-
-	t.Run("rejects non-text embedding field", func(t *testing.T) {
-		engine, _, rs := setupBuildTaskHandlerTest(t)
-		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(resource, nil)
-
-		body := `{"resource_id":"res-1","mode":"batch","build_key_fields":"id","embedding_fields":"age"}`
-		req := httptest.NewRequest(http.MethodPost, url, strings.NewReader(body))
-		req.Header.Set("Content-Type", "application/json")
-		w := httptest.NewRecorder()
-
-		engine.ServeHTTP(w, req)
-
-		require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
-		assert.Contains(t, w.Body.String(), "only string/text fields can be embedded")
-	})
-
-	t.Run("rejects non-text embedding field mixed with valid ones", func(t *testing.T) {
-		engine, _, rs := setupBuildTaskHandlerTest(t)
-		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(resource, nil)
-
-		body := `{"resource_id":"res-1","mode":"batch","build_key_fields":"id","embedding_fields":"title,created_at"}`
-		req := httptest.NewRequest(http.MethodPost, url, strings.NewReader(body))
-		req.Header.Set("Content-Type", "application/json")
-		w := httptest.NewRecorder()
-
-		engine.ServeHTTP(w, req)
-
-		require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
-		assert.Contains(t, w.Body.String(), "created_at")
-	})
-
-	t.Run("accepts string and text embedding fields", func(t *testing.T) {
-		engine, bts, rs := setupBuildTaskHandlerTest(t)
-		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(resource, nil)
-		bts.EXPECT().CreateBuildTask(gomock.Any(), gomock.Any()).Return("task-1", nil)
-
-		body := `{"resource_id":"res-1","mode":"batch","build_key_fields":"id","embedding_fields":"id,summary"}`
+		body := `{"resource_id":"res-1","mode":"batch","build_key_fields":"id","embedding_fields":"title","embedding_model":"embedding","model_dimensions":1024,"fulltext_fields":"title","fulltext_analyzer":"ik_max_word"}`
 		req := httptest.NewRequest(http.MethodPost, url, strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
@@ -151,21 +83,7 @@ func Test_BuildTaskRestHandler_CreateBuildTask(t *testing.T) {
 		engine.ServeHTTP(w, req)
 
 		require.Equal(t, http.StatusCreated, w.Result().StatusCode)
-	})
-
-	t.Run("rejects non-text fulltext field", func(t *testing.T) {
-		engine, _, rs := setupBuildTaskHandlerTest(t)
-		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(resource, nil)
-
-		body := `{"resource_id":"res-1","mode":"batch","build_key_fields":"id","fulltext_fields":"age"}`
-		req := httptest.NewRequest(http.MethodPost, url, strings.NewReader(body))
-		req.Header.Set("Content-Type", "application/json")
-		w := httptest.NewRecorder()
-
-		engine.ServeHTTP(w, req)
-
-		require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
-		assert.Contains(t, w.Body.String(), "only string/text fields support fulltext")
+		assert.Contains(t, w.Body.String(), `"id":"task-1"`)
 	})
 }
 

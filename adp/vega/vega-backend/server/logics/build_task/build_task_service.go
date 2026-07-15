@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -31,6 +32,7 @@ import (
 	"vega-backend/logics"
 	"vega-backend/logics/catalog"
 	"vega-backend/logics/local_index"
+	model_factory "vega-backend/logics/model_factory"
 	"vega-backend/logics/user_mgmt"
 )
 
@@ -42,9 +44,9 @@ var (
 type buildTaskService struct {
 	appSetting *common.AppSetting
 	cs         interfaces.CatalogService
-	ra         interfaces.ResourceAccess
+	rs         interfaces.ResourceService
 	bta        interfaces.BuildTaskAccess
-	mfa        interfaces.ModelFactoryAccess
+	mfs        interfaces.ModelFactoryService
 	ums        interfaces.UserMgmtService
 	lim        interfaces.LocalIndexManager // 删任务时 drop 其本地索引；测试注入 mock
 }
@@ -56,14 +58,14 @@ var activeBuildTaskStatuses = []string{
 }
 
 // NewBuildTaskService creates a new BuildTaskService.
-func NewBuildTaskService(appSetting *common.AppSetting) interfaces.BuildTaskService {
+func NewBuildTaskService(appSetting *common.AppSetting, rs interfaces.ResourceService) interfaces.BuildTaskService {
 	btsOnce.Do(func() {
 		btsInst = &buildTaskService{
 			appSetting: appSetting,
 			cs:         catalog.NewCatalogService(appSetting),
-			ra:         logics.RA,
+			rs:         rs,
 			bta:        logics.BTA,
-			mfa:        logics.MFA,
+			mfs:        model_factory.NewModelFactoryService(appSetting),
 			ums:        user_mgmt.NewUserMgmtService(appSetting),
 			lim:        local_index.NewLocalIndexManager(appSetting),
 		}
@@ -77,7 +79,7 @@ func (bts *buildTaskService) CreateBuildTask(ctx context.Context, req *interface
 	defer span.End()
 
 	resourceID := req.ResourceID
-	resource, err := bts.ra.GetByID(ctx, resourceID)
+	resource, err := bts.rs.GetByID(ctx, resourceID)
 	if err != nil {
 		span.SetStatus(codes.Error, "Get resource failed")
 		return "", rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_GetFailed).
@@ -170,34 +172,104 @@ func (bts *buildTaskService) rejectIfResourceHasActiveTask(ctx context.Context, 
 }
 
 func (bts *buildTaskService) newBuildTaskFromCreateRequest(ctx context.Context, resource *interfaces.Resource, req *interfaces.CreateBuildTaskRequest) (*interfaces.BuildTask, error) {
-	embeddingModel, modelDimensions, err := bts.normalizeEmbeddingModel(ctx, req.EmbeddingModel, req.EmbeddingFields, req.ModelDimensions)
-	if err != nil {
-		return nil, err
-	}
-
 	accountInfo := interfaces.AccountInfo{}
 	if v := ctx.Value(interfaces.ACCOUNT_INFO_KEY); v != nil {
 		accountInfo = v.(interfaces.AccountInfo)
 	}
 
 	now := time.Now().UnixMilli()
-	return &interfaces.BuildTask{
-		ID:               xid.New().String(),
-		ResourceID:       resource.ID,
-		CatalogID:        resource.CatalogID,
-		Status:           interfaces.BuildTaskStatusInit,
-		Mode:             req.Mode,
-		Creator:          accountInfo,
-		CreateTime:       now,
-		Updater:          accountInfo,
-		UpdateTime:       now,
-		EmbeddingFields:  req.EmbeddingFields,
-		BuildKeyFields:   req.BuildKeyFields,
-		EmbeddingModel:   embeddingModel,
-		ModelDimensions:  modelDimensions,
-		FulltextFields:   req.FulltextFields,
-		FulltextAnalyzer: req.FulltextAnalyzer,
-	}, nil
+	buildTask := &interfaces.BuildTask{
+		ID:         xid.New().String(),
+		ResourceID: resource.ID,
+		CatalogID:  resource.CatalogID,
+		Status:     interfaces.BuildTaskStatusInit,
+		Mode:       req.Mode,
+		Creator:    accountInfo,
+		CreateTime: now,
+		UpdateTime: now,
+	}
+
+	if err := bts.fillBuildTaskIndexSnapshot(ctx, resource, buildTask); err != nil {
+		return nil, err
+	}
+
+	return buildTask, nil
+}
+
+func (bts *buildTaskService) fillBuildTaskIndexSnapshot(ctx context.Context, resource *interfaces.Resource, buildTask *interfaces.BuildTask) error {
+	defaultEmbeddingModel := ""
+	defaultFulltextAnalyzer := ""
+	buildTask.IndexConfig = &interfaces.BuildTaskIndexConfig{
+		Features: map[string]interfaces.BuildTaskFieldIndexFeature{},
+	}
+	if resource.IndexConfig != nil {
+		buildTask.IndexConfig.BuildKeyFields = append([]string(nil), resource.IndexConfig.BuildKeyFields...)
+		defaultEmbeddingModel = resource.IndexConfig.DefaultEmbeddingModel
+		defaultFulltextAnalyzer = resource.IndexConfig.DefaultFulltextAnalyzer
+	}
+
+	embeddingModelCache := map[string]interfaces.BuildTaskEmbeddingConfig{}
+
+	for _, prop := range resource.SchemaDefinition {
+		if prop == nil {
+			continue
+		}
+		for _, feature := range prop.Features {
+			fieldName := prop.Name
+			if feature.RefProperty != "" {
+				fieldName = feature.RefProperty
+			}
+			switch feature.FeatureType {
+			case interfaces.PropertyFeatureType_Vector:
+				model := stringConfigValue(feature.Config, "embedding_model")
+				if model == "" {
+					model = defaultEmbeddingModel
+				}
+				embeddingConfig, ok := embeddingModelCache[model]
+				if !ok {
+					normalizedModel, modelDimensions, err := bts.normalizeEmbeddingModel(ctx, model, fieldName, 0)
+					if err != nil {
+						return err
+					}
+					embeddingConfig = interfaces.BuildTaskEmbeddingConfig{
+						ModelID:    normalizedModel,
+						Dimensions: modelDimensions,
+					}
+					embeddingModelCache[model] = embeddingConfig
+				}
+				fieldConfig := buildTask.IndexConfig.Features[fieldName]
+				fieldConfig.Vector = &embeddingConfig
+				buildTask.IndexConfig.Features[fieldName] = fieldConfig
+			case interfaces.PropertyFeatureType_Fulltext:
+				analyzer := stringConfigValue(feature.Config, "analyzer")
+				if analyzer == "" {
+					analyzer = defaultFulltextAnalyzer
+				}
+				fulltextConfig := interfaces.BuildTaskFulltextConfig{
+					Analyzer: analyzer,
+				}
+				fieldConfig := buildTask.IndexConfig.Features[fieldName]
+				fieldConfig.Fulltext = &fulltextConfig
+				buildTask.IndexConfig.Features[fieldName] = fieldConfig
+			}
+		}
+	}
+
+	if len(buildTask.IndexConfig.Features) == 0 && len(buildTask.IndexConfig.BuildKeyFields) == 0 {
+		buildTask.IndexConfig = nil
+	}
+	return nil
+}
+
+func stringConfigValue(config map[string]any, key string) string {
+	if config == nil {
+		return ""
+	}
+	value, ok := config[key].(string)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(value)
 }
 
 func (bts *buildTaskService) normalizeEmbeddingModel(ctx context.Context, embeddingModel string, embeddingFields string, modelDimensions int) (string, int, error) {
@@ -210,7 +282,7 @@ func (bts *buildTaskService) normalizeEmbeddingModel(ctx context.Context, embedd
 	// embedding_model 统一归一化为模型 ID 存储：传入是模型名则解析为 ID 并补全维度；
 	// 传入已是模型 ID 时 GetModelByName 按名查不到（err != nil），此时若已带维度则原样保留为 ID。
 	// 既解析不到又没维度则无法建向量索引，按错误处理。
-	if model, err := bts.mfa.GetModelByName(ctx, embeddingModel); err == nil {
+	if model, err := bts.mfs.GetModelByName(ctx, embeddingModel); err == nil {
 		embeddingModel = model.ModelID
 		if modelDimensions == 0 {
 			modelDimensions = model.EmbeddingDim
@@ -272,7 +344,7 @@ func (bts *buildTaskService) GetBuildTaskByID(ctx context.Context, id string) (*
 		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_BuildTask_NotFound)
 	}
 
-	accountInfos := []*interfaces.AccountInfo{&buildTask.Creator, &buildTask.Updater}
+	accountInfos := []*interfaces.AccountInfo{&buildTask.Creator}
 	if err := bts.ums.GetAccountNames(ctx, accountInfos); err != nil {
 		span.SetStatus(codes.Error, "GetAccountNames error")
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
@@ -289,11 +361,11 @@ func (bts *buildTaskService) GetBuildTaskByID(ctx context.Context, id string) (*
 // 仅在终态给出 ok/partial/failed，进行中统一 building，避免把中途进度误报成失败。
 func computeIndexHealth(bt *interfaces.BuildTask) *interfaces.IndexHealth {
 	h := &interfaces.IndexHealth{Embedding: "none", Fulltext: "none"}
-	if bt.FulltextFields != "" {
+	if hasFulltextIndexConfig(bt) {
 		h.Fulltext = "ok"
 	}
 	switch {
-	case bt.EmbeddingFields == "":
+	case !hasEmbeddingIndexConfig(bt):
 		h.Embedding = "none"
 	case bt.Status == interfaces.BuildTaskStatusRunning || bt.Status == interfaces.BuildTaskStatusInit:
 		h.Embedding = "building"
@@ -311,6 +383,30 @@ func computeIndexHealth(bt *interfaces.BuildTask) *interfaces.IndexHealth {
 	return h
 }
 
+func hasEmbeddingIndexConfig(bt *interfaces.BuildTask) bool {
+	if bt == nil || bt.IndexConfig == nil {
+		return false
+	}
+	for _, feature := range bt.IndexConfig.Features {
+		if feature.Vector != nil {
+			return true
+		}
+	}
+	return false
+}
+
+func hasFulltextIndexConfig(bt *interfaces.BuildTask) bool {
+	if bt == nil || bt.IndexConfig == nil {
+		return false
+	}
+	for _, feature := range bt.IndexConfig.Features {
+		if feature.Fulltext != nil {
+			return true
+		}
+	}
+	return false
+}
+
 // GetBuildTaskByResourceID retrieves a build task by resource ID.
 func (bts *buildTaskService) GetBuildTaskByResourceID(ctx context.Context, resourceID string) (*interfaces.BuildTask, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Get build task by resource ID")
@@ -324,7 +420,7 @@ func (bts *buildTaskService) GetBuildTaskByResourceID(ctx context.Context, resou
 	}
 
 	if buildTask != nil {
-		accountInfos := []*interfaces.AccountInfo{&buildTask.Creator, &buildTask.Updater}
+		accountInfos := []*interfaces.AccountInfo{&buildTask.Creator}
 		if err := bts.ums.GetAccountNames(ctx, accountInfos); err != nil {
 			span.SetStatus(codes.Error, "GetAccountNames error")
 			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
@@ -349,9 +445,9 @@ func (bts *buildTaskService) ListBuildTasks(ctx context.Context, params interfac
 			WithErrorDetails(err.Error())
 	}
 
-	accountInfos := make([]*interfaces.AccountInfo, 0, len(buildTasks)*2)
+	accountInfos := make([]*interfaces.AccountInfo, 0, len(buildTasks))
 	for _, bt := range buildTasks {
-		accountInfos = append(accountInfos, &bt.Creator, &bt.Updater)
+		accountInfos = append(accountInfos, &bt.Creator)
 		bt.IndexHealth = computeIndexHealth(bt)
 	}
 	if err := bts.ums.GetAccountNames(ctx, accountInfos); err != nil {
@@ -429,7 +525,8 @@ func (bts *buildTaskService) StartBuildTask(ctx context.Context, taskID string, 
 	// （防止排队中被停止的任务复活），stopped 状态直接入队会被误跳过。
 	// running 仍由 worker 实际执行时落账。
 	if buildTask.Status != interfaces.BuildTaskStatusInit {
-		if err := bts.bta.UpdateStatus(ctx, taskID, map[string]any{"status": interfaces.BuildTaskStatusInit}); err != nil {
+		update := interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusInit)
+		if _, err := bts.bta.UpdateStatus(ctx, nil, taskID, update); err != nil {
 			otellog.LogError(ctx, "Update build task status failed", err)
 			return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_UpdateFailed).
 				WithErrorDetails(err.Error())
@@ -476,10 +573,8 @@ func (bts *buildTaskService) StopBuildTask(ctx context.Context, taskID string) e
 		buildTask.Status == interfaces.BuildTaskStatusInit {
 		targetStatus = interfaces.BuildTaskStatusStopped
 	}
-	updates := map[string]any{
-		"status": targetStatus,
-	}
-	if err := bts.bta.UpdateStatus(ctx, taskID, updates); err != nil {
+	update := interfaces.NewBuildTaskUpdate().WithStatus(targetStatus)
+	if _, err := bts.bta.UpdateStatus(ctx, nil, taskID, update); err != nil {
 		otellog.LogError(ctx, "Update build task status failed", err)
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_UpdateFailed).
 			WithErrorDetails(err.Error())
@@ -524,7 +619,7 @@ func (bts *buildTaskService) DeleteBuildTasks(ctx context.Context, ids []string,
 			runningIDs = append(runningIDs, id)
 			continue
 		}
-		resource, err := bts.ra.GetByID(ctx, buildTask.ResourceID)
+		resource, err := bts.rs.GetByID(ctx, buildTask.ResourceID)
 		if err != nil {
 			span.SetStatus(codes.Error, "Get resource failed")
 			return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_GetFailed).
@@ -562,7 +657,7 @@ func (bts *buildTaskService) DeleteBuildTasks(ctx context.Context, ids []string,
 	if deleteActiveIndex {
 		for taskID, resource := range activeResources {
 			resource.LocalIndexName = ""
-			if err := bts.ra.Update(ctx, resource); err != nil {
+			if err := bts.rs.UpdateResource(ctx, resource); err != nil {
 				span.SetStatus(codes.Error, "Clear active local index failed")
 				return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_UpdateFailed).
 					WithErrorDetails(map[string]any{

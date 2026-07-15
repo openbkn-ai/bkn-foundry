@@ -60,31 +60,94 @@ var BuildTaskStatusOrder = []string{
 
 // BuildTask represents a build task entity.
 type BuildTask struct {
-	ID               string      `json:"id"`
-	ResourceID       string      `json:"resource_id"`
-	Status           string      `json:"status"`
-	Mode             string      `json:"mode"`             // 任务模式：streaming/batch
-	TotalCount       int64       `json:"total_count"`      // 总数
-	SyncedCount      int64       `json:"synced_count"`     // 已同步数
-	VectorizedCount  int64       `json:"vectorized_count"` // 已做向量数
-	SyncedMark       string      `json:"synced_mark"`      // 同步标记
-	ErrorMsg         string      `json:"error_msg,omitempty"`
-	FailureDetail    string      `json:"failure_detail,omitempty"` // 构建完成但部分文档向量化失败的明细，区别于 error_msg 的整任务硬失败
-	Creator          AccountInfo `json:"creator"`
-	CreateTime       int64       `json:"create_time"`
-	Updater          AccountInfo `json:"updater"`
-	UpdateTime       int64       `json:"update_time"`
-	EmbeddingFields  string      `json:"embedding_fields,omitempty"`  // 需向量化嵌入字段
-	BuildKeyFields   string      `json:"build_key_fields"`            // 构建中依赖的特殊键字段，如批量构建依赖的有时序性的字段，流式构建依赖的唯一标识某行的字段
-	EmbeddingModel   string      `json:"embedding_model,omitempty"`   // 嵌入模型
-	ModelDimensions  int         `json:"model_dimensions,omitempty"`  // 模型维度
-	FulltextFields   string      `json:"fulltext_fields,omitempty"`   // 需建全文索引的字段(逗号分隔)；string→加 text 子字段，text→主字段分词
-	FulltextAnalyzer string      `json:"fulltext_analyzer,omitempty"` // 全文分词器(standard/ik_max_word/hanlp_index 等)，空为 OpenSearch 默认
-	CatalogID        string      `json:"catalog_id"`
+	ID              string                `json:"id"`
+	ResourceID      string                `json:"resource_id"`
+	Status          string                `json:"status"`
+	Mode            string                `json:"mode"`             // 任务模式：streaming/batch
+	TotalCount      int64                 `json:"total_count"`      // 总数
+	SyncedCount     int64                 `json:"synced_count"`     // 已同步数
+	VectorizedCount int64                 `json:"vectorized_count"` // 已做向量数
+	SyncedMark      string                `json:"synced_mark"`      // 同步标记
+	ErrorMsg        string                `json:"error_msg,omitempty"`
+	FailureDetail   string                `json:"failure_detail,omitempty"` // 构建完成但部分文档向量化失败的明细，区别于 error_msg 的整任务硬失败
+	Creator         AccountInfo           `json:"creator"`
+	CreateTime      int64                 `json:"create_time"`
+	UpdateTime      int64                 `json:"update_time"`
+	IndexConfig     *BuildTaskIndexConfig `json:"index_config,omitempty"` // 创建 task 时从 resource 派生的索引配置快照
+	CatalogID       string                `json:"catalog_id"`
 
 	// IndexHealth 为响应时计算的派生状态，**不落库**：让消费方无需自己推断
 	// "completed 其实是失败"。service 层在返回前填充。
 	IndexHealth *IndexHealth `json:"index_health,omitempty"`
+}
+
+// BuildTaskUpdate describes a partial build task update. Nil fields are left unchanged.
+type BuildTaskUpdate struct {
+	Status          *string
+	TotalCount      *int64
+	SyncedCount     *int64
+	VectorizedCount *int64
+	SyncedMark      *string
+	ErrorMsg        *string
+	FailureDetail   *string
+}
+
+func NewBuildTaskUpdate() BuildTaskUpdate {
+	return BuildTaskUpdate{}
+}
+
+func (u BuildTaskUpdate) WithStatus(status string) BuildTaskUpdate {
+	u.Status = &status
+	return u
+}
+
+func (u BuildTaskUpdate) WithTotalCount(totalCount int64) BuildTaskUpdate {
+	u.TotalCount = &totalCount
+	return u
+}
+
+func (u BuildTaskUpdate) WithSyncedCount(syncedCount int64) BuildTaskUpdate {
+	u.SyncedCount = &syncedCount
+	return u
+}
+
+func (u BuildTaskUpdate) WithVectorizedCount(vectorizedCount int64) BuildTaskUpdate {
+	u.VectorizedCount = &vectorizedCount
+	return u
+}
+
+func (u BuildTaskUpdate) WithSyncedMark(syncedMark string) BuildTaskUpdate {
+	u.SyncedMark = &syncedMark
+	return u
+}
+
+func (u BuildTaskUpdate) WithErrorMsg(errorMsg string) BuildTaskUpdate {
+	u.ErrorMsg = &errorMsg
+	return u
+}
+
+func (u BuildTaskUpdate) WithFailureDetail(failureDetail string) BuildTaskUpdate {
+	u.FailureDetail = &failureDetail
+	return u
+}
+
+type BuildTaskIndexConfig struct {
+	BuildKeyFields []string                              `json:"build_key_fields,omitempty"`
+	Features       map[string]BuildTaskFieldIndexFeature `json:"features,omitempty"`
+}
+
+type BuildTaskFieldIndexFeature struct {
+	Vector   *BuildTaskEmbeddingConfig `json:"vector,omitempty"`
+	Fulltext *BuildTaskFulltextConfig  `json:"fulltext,omitempty"`
+}
+
+type BuildTaskEmbeddingConfig struct {
+	ModelID    string `json:"model_id"`
+	Dimensions int    `json:"dimensions"`
+}
+
+type BuildTaskFulltextConfig struct {
+	Analyzer string `json:"analyzer,omitempty"`
 }
 
 // IndexHealth 拆分各索引的健康度。status=completed 只代表 sync 完成 + fulltext 生效，
@@ -99,16 +162,9 @@ type IndexHealth struct {
 }
 
 // CreateBuildTaskRequest represents the request to create a build task.
-// Used as both the HTTP body for POST /build-tasks and the service input.
 type CreateBuildTaskRequest struct {
-	ResourceID       string `json:"resource_id" binding:"required"`                // 关联 Resource ID
-	Mode             string `json:"mode" binding:"required,oneof=streaming batch"` // 任务模式：streaming/batch
-	EmbeddingFields  string `json:"embedding_fields,omitempty"`                    // 需向量化嵌入字段
-	BuildKeyFields   string `json:"build_key_fields"`                              // 构建中依赖的特殊键字段，如批量构建依赖的有时序性的字段，流式构建依赖的唯一标识某行的字段
-	EmbeddingModel   string `json:"embedding_model,omitempty"`                     // 嵌入模型
-	ModelDimensions  int    `json:"model_dimensions,omitempty"`                    // 模型维度
-	FulltextFields   string `json:"fulltext_fields,omitempty"`                     // 需建全文索引的字段(逗号分隔)
-	FulltextAnalyzer string `json:"fulltext_analyzer,omitempty"`                   // 全文分词器，空为 OpenSearch 默认 standard
+	ResourceID string `json:"resource_id" binding:"required"`                // 关联 Resource ID
+	Mode       string `json:"mode" binding:"required,oneof=streaming batch"` // 任务模式：streaming/batch
 }
 
 // UpdateBuildTaskStatusRequest represents update build task status request.

@@ -11,7 +11,6 @@ import (
 	"context"
 	"fmt"
 	"sort"
-	"strings"
 
 	"github.com/bytedance/sonic"
 	"github.com/hibiken/asynq"
@@ -75,7 +74,8 @@ func (bh *batchBuildHandler) HandleTask(ctx context.Context, task *asynq.Task) e
 		buildTaskInfo.Status == interfaces.BuildTaskStatusStopping {
 		logger.Infof("Task %s is %s, skip execution", taskID, buildTaskInfo.Status)
 		if buildTaskInfo.Status == interfaces.BuildTaskStatusStopping {
-			if err := bh.taskAccess.UpdateStatus(ctx, taskID, map[string]interface{}{"status": interfaces.BuildTaskStatusStopped}); err != nil {
+			update := interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusStopped)
+			if _, err := bh.taskAccess.UpdateStatus(ctx, nil, taskID, update); err != nil {
 				return fmt.Errorf("update build task status failed: %w", err)
 			}
 		}
@@ -102,7 +102,10 @@ func (bh *batchBuildHandler) HandleTask(ctx context.Context, task *asynq.Task) e
 	}
 	if resource == nil {
 		logger.Errorf("Resource not found for task %s, resourceID: %s", taskID, resourceID)
-		err = bh.taskAccess.UpdateStatus(ctx, taskID, map[string]interface{}{"status": interfaces.BuildTaskStatusFailed, "errorMsg": "resource not found"})
+		update := interfaces.NewBuildTaskUpdate().
+			WithStatus(interfaces.BuildTaskStatusFailed).
+			WithErrorMsg("resource not found")
+		_, err = bh.taskAccess.UpdateStatus(ctx, nil, taskID, update)
 		if err != nil {
 			return fmt.Errorf("update build task status failed: %w", err)
 		}
@@ -115,7 +118,10 @@ func (bh *batchBuildHandler) HandleTask(ctx context.Context, task *asynq.Task) e
 	if err != nil {
 		// Update task status to failed
 		logger.Errorf("Build failed for task %s: %w", taskID, err)
-		err = bh.taskAccess.UpdateStatus(ctx, taskID, map[string]interface{}{"status": interfaces.BuildTaskStatusFailed, "errorMsg": err.Error()})
+		update := interfaces.NewBuildTaskUpdate().
+			WithStatus(interfaces.BuildTaskStatusFailed).
+			WithErrorMsg(err.Error())
+		_, err = bh.taskAccess.UpdateStatus(ctx, nil, taskID, update)
 		if err != nil {
 			return fmt.Errorf("update build task status failed: %w", err)
 		}
@@ -144,26 +150,22 @@ func advanceCursor(cursor []interfaces.KeyValue, keys []string, lastItem map[str
 
 // executeBuild executes the build logic
 func (bh *batchBuildHandler) executeBuild(ctx context.Context, resource *interfaces.Resource, buildTaskInfo *interfaces.BuildTask, executeType string) error {
-	buildResource, err := buildResourceForTask(resource, buildTaskInfo)
-	if err != nil {
-		return err
-	}
-
+	hasEmbedding := buildTaskHasEmbedding(buildTaskInfo)
 	// 两个操作均幂等（embedding 任务靠 asynq TaskID 去重，索引已存在则跳过），
 	// 不能只在 init 时执行：stop→start 重启后老 embedding worker 已退出，
 	// 若不补发，文档 ID 堆积在 Kafka 无消费者，向量化永远停滞
-	if buildTaskInfo.EmbeddingFields != "" {
+	if hasEmbedding {
 		err := sendEmbeddingTask(bh.client, buildTaskInfo.ID)
 		if err != nil {
 			return fmt.Errorf("send embedding task failed: %w", err)
 		}
 		logger.Infof("Embedding task sent for task %s", buildTaskInfo.ID)
 	}
-	err = createManagedLocalIndex(ctx, bh.lim, buildTaskInfo, buildResource)
+	indexName := getIndexName(resource.ID, buildTaskInfo.ID)
+	err := createManagedLocalIndex(ctx, bh.lim, indexName, buildTaskInfo, resource)
 	if err != nil {
 		return fmt.Errorf("create local index failed: %w", err)
 	}
-	indexName := getIndexName(resource.ID, buildTaskInfo.ID)
 
 	lastSyncedMark := buildTaskInfo.SyncedMark
 	if executeType == interfaces.BuildTaskExecuteTypeFull {
@@ -172,12 +174,16 @@ func (bh *batchBuildHandler) executeBuild(ctx context.Context, resource *interfa
 		// 否则跨运行累计出 synced > total 的显示
 		buildTaskInfo.SyncedCount = 0
 		buildTaskInfo.VectorizedCount = 0
-		if err := bh.taskAccess.UpdateStatus(ctx, buildTaskInfo.ID, map[string]interface{}{"syncedCount": int64(0), "vectorizedCount": int64(0), "syncedMark": ""}); err != nil {
+		update := interfaces.NewBuildTaskUpdate().
+			WithSyncedCount(0).
+			WithVectorizedCount(0).
+			WithSyncedMark("")
+		if _, err := bh.taskAccess.UpdateStatus(ctx, nil, buildTaskInfo.ID, update); err != nil {
 			return fmt.Errorf("update build task status failed: %w", err)
 		}
 	}
 
-	batchFields := strings.Split(buildTaskInfo.BuildKeyFields, ",")
+	batchFields := buildTaskBuildKeyFields(buildTaskInfo)
 	keys := batchFields
 	sort.Strings(keys)
 	var lastBatchKeyValues []interfaces.KeyValue
@@ -203,7 +209,10 @@ func (bh *batchBuildHandler) executeBuild(ctx context.Context, resource *interfa
 	}
 	if catalog == nil {
 		logger.Errorf("Catalog not found for task %s, catalogID: %s", buildTaskInfo.ID, resource.CatalogID)
-		err = bh.taskAccess.UpdateStatus(ctx, buildTaskInfo.ID, map[string]interface{}{"status": interfaces.BuildTaskStatusFailed, "errorMsg": "catalog not found"})
+		update := interfaces.NewBuildTaskUpdate().
+			WithStatus(interfaces.BuildTaskStatusFailed).
+			WithErrorMsg("catalog not found")
+		_, err = bh.taskAccess.UpdateStatus(ctx, nil, buildTaskInfo.ID, update)
 		if err != nil {
 			return fmt.Errorf("update build task status failed: %w", err)
 		}
@@ -212,7 +221,10 @@ func (bh *batchBuildHandler) executeBuild(ctx context.Context, resource *interfa
 	}
 	if !catalog.Enabled {
 		logger.Errorf("Catalog is disabled for task %s, catalogID: %s", buildTaskInfo.ID, resource.CatalogID)
-		err = bh.taskAccess.UpdateStatus(ctx, buildTaskInfo.ID, map[string]interface{}{"status": interfaces.BuildTaskStatusFailed, "errorMsg": "catalog is disabled"})
+		update := interfaces.NewBuildTaskUpdate().
+			WithStatus(interfaces.BuildTaskStatusFailed).
+			WithErrorMsg("catalog is disabled")
+		_, err = bh.taskAccess.UpdateStatus(ctx, nil, buildTaskInfo.ID, update)
 		if err != nil {
 			return fmt.Errorf("update build task status failed: %w", err)
 		}
@@ -246,7 +258,7 @@ func (bh *batchBuildHandler) executeBuild(ctx context.Context, resource *interfa
 	}
 
 	var writer *kafka.Writer
-	if buildTaskInfo.EmbeddingFields != "" {
+	if hasEmbedding {
 		topic := getEmbeddingTopic(resource.ID, buildTaskInfo.ID)
 		// Create Kafka writer
 		writer, err = bh.kafkaAccess.NewWriter(ctx, topic)
@@ -274,7 +286,8 @@ func (bh *batchBuildHandler) executeBuild(ctx context.Context, resource *interfa
 			// Task is stopping, exit the loop
 			logger.Infof("Task %s is stopping, exiting...", buildTaskInfo.ID)
 			// Update task status to stopped
-			err = bh.taskAccess.UpdateStatus(ctx, buildTaskInfo.ID, map[string]interface{}{"status": interfaces.BuildTaskStatusStopped})
+			update := interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusStopped)
+			_, err = bh.taskAccess.UpdateStatus(ctx, nil, buildTaskInfo.ID, update)
 			if err != nil {
 				return fmt.Errorf("update build task status failed: %w", err)
 			}
@@ -316,6 +329,7 @@ func (bh *batchBuildHandler) executeBuild(ctx context.Context, resource *interfa
 			}
 			params.ActualFilterCond = actualFilterCond
 		}
+
 		result, err := tableConnector.ExecuteQuery(ctx, resource, params)
 		if err != nil {
 			return fmt.Errorf("execute query failed: %w", err)
@@ -348,26 +362,26 @@ func (bh *batchBuildHandler) executeBuild(ctx context.Context, resource *interfa
 
 			syncedCount += int64(readRows)
 			// Set firstQuery to false after the first query
-			updates := map[string]interface{}{"syncedCount": syncedCount}
+			update := interfaces.NewBuildTaskUpdate().WithSyncedCount(syncedCount)
 			if firstQuery {
 				firstQuery = false
-				updates["totalCount"] = int64(totalRows)
+				update = update.WithTotalCount(int64(totalRows))
 			}
 			if len(newSyncedMark) > 0 {
 				syncedMarkStr, err := sonic.MarshalString(newSyncedMark)
 				if err != nil {
 					return fmt.Errorf("failed to marshal synced mark: %w", err)
 				} else {
-					updates["syncedMark"] = syncedMarkStr
+					update = update.WithSyncedMark(syncedMarkStr)
 				}
 			}
-			err = bh.taskAccess.UpdateStatus(ctx, buildTaskInfo.ID, updates)
+			_, err = bh.taskAccess.UpdateStatus(ctx, nil, buildTaskInfo.ID, update)
 			if err != nil {
 				return fmt.Errorf("update build task status failed: %w", err)
 			}
 
 			// Send document IDs to Kafka for embedding
-			if len(docIDs) > 0 && buildTaskInfo.EmbeddingFields != "" {
+			if len(docIDs) > 0 && hasEmbedding {
 				err = sendEmbeddingMessage(ctx, writer, bh.kafkaAccess, docIDs)
 				if err != nil {
 					return err
@@ -376,7 +390,7 @@ func (bh *batchBuildHandler) executeBuild(ctx context.Context, resource *interfa
 		}
 
 		if readRows < batchSize {
-			if buildTaskInfo.EmbeddingFields != "" {
+			if hasEmbedding {
 				// sync complete, push a empty document to trigger embedding
 				err = sendEmbeddingMessage(ctx, writer, bh.kafkaAccess, []string{interfaces.EmptyDocumentID})
 				if err != nil {
@@ -387,41 +401,11 @@ func (bh *batchBuildHandler) executeBuild(ctx context.Context, resource *interfa
 		}
 	}
 
-	if buildTaskInfo.EmbeddingFields == "" {
-		// Update resource index name
-		err = updateResourceIndexName(ctx, resource, bh.resAccess, indexName)
-		if err != nil {
-			return fmt.Errorf("failed to update resource index name: %v", err)
-		}
-
-		// Update task status to completed
-		err = bh.taskAccess.UpdateStatus(ctx, buildTaskInfo.ID, map[string]interface{}{"status": interfaces.BuildTaskStatusCompleted})
-		if err != nil {
-			return fmt.Errorf("failed to update task status: %w", err)
+	if !hasEmbedding {
+		if err := completeBuildTaskWithoutEmbedding(ctx, resource, bh.resAccess, bh.taskAccess, buildTaskInfo.ID, indexName); err != nil {
+			return fmt.Errorf("complete build task without embedding: %w", err)
 		}
 	}
 
 	return nil
-}
-
-func buildResourceForTask(resource *interfaces.Resource, buildTaskInfo *interfaces.BuildTask) (*interfaces.Resource, error) {
-	buildResource := *resource
-	if resource.SchemaDefinition != nil {
-		schemaBytes, err := sonic.Marshal(resource.SchemaDefinition)
-		if err != nil {
-			return nil, fmt.Errorf("marshal resource schema failed: %w", err)
-		}
-		var schemaDefinition []*interfaces.Property
-		if err := sonic.Unmarshal(schemaBytes, &schemaDefinition); err != nil {
-			return nil, fmt.Errorf("unmarshal resource schema failed: %w", err)
-		}
-		buildResource.SchemaDefinition = schemaDefinition
-	}
-
-	// Build task can choose the index mapping for this build, but schema changes
-	// are only persisted by update resource. Apply fulltext features to the
-	// build-local copy so OpenSearch mapping matches task config without making
-	// query-side schema visible before the resource is explicitly updated.
-	reconcileFulltextFeatures(&buildResource, buildTaskInfo.FulltextFields, buildTaskInfo.FulltextAnalyzer)
-	return &buildResource, nil
 }

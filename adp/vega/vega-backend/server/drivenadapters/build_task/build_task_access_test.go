@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/bytedance/sonic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -36,8 +37,7 @@ func TestBuildTaskAccessGetByID(t *testing.T) {
 		assert.Equal(t, task.Status, got.Status)
 		assert.Equal(t, task.Mode, got.Mode)
 		assert.Equal(t, task.Creator, got.Creator)
-		assert.Equal(t, task.Updater, got.Updater)
-		assert.Equal(t, task.FulltextAnalyzer, got.FulltextAnalyzer)
+		assert.Equal(t, task.IndexConfig, got.IndexConfig)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
@@ -64,7 +64,7 @@ func TestBuildTaskAccessCreate(t *testing.T) {
 		task := sampleBuildTask()
 
 		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO t_build_task")).
-			WithArgs(buildTaskRowValues(task)...).
+			WithArgs(buildTaskInsertArgs(task)...).
 			WillReturnResult(sqlmock.NewResult(1, 1))
 
 		require.NoError(t, access.Create(context.Background(), task))
@@ -77,7 +77,7 @@ func TestBuildTaskAccessCreate(t *testing.T) {
 		task := sampleBuildTask()
 
 		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO t_build_task")).
-			WithArgs(buildTaskRowValues(task)...).
+			WithArgs(buildTaskInsertArgs(task)...).
 			WillReturnError(errors.New("insert failed"))
 
 		err := access.Create(context.Background(), task)
@@ -160,28 +160,29 @@ func TestBuildTaskAccessUpdateStatus(t *testing.T) {
 			WithArgs(interfaces.BuildTaskStatusRunning, sqlmock.AnyArg(), "task-1").
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
-		err := access.UpdateStatus(context.Background(), "task-1", map[string]interface{}{
-			"status":  interfaces.BuildTaskStatusRunning,
-			"ignored": "value",
-		})
+		update := interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusRunning)
+		updated, err := access.UpdateStatus(context.Background(), nil, "task-1", update)
 
 		require.NoError(t, err)
+		assert.True(t, updated)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 }
 
-func TestBuildTaskAccessUpdateStatusIfIn(t *testing.T) {
+func TestBuildTaskAccessUpdateStatusWithAllowedStatuses(t *testing.T) {
 	t.Run("returns true when a row is claimed", func(t *testing.T) {
 		db, mock, access := newBuildTaskAccessMock(t)
 		defer func() { _ = db.Close() }()
 
-		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_build_task SET f_status = ?, f_error_msg = ?, f_update_time = ? WHERE f_id = ? AND f_status IN (?)")).
-			WithArgs(interfaces.BuildTaskStatusRunning, "", sqlmock.AnyArg(), "task-1", interfaces.BuildTaskStatusInit).
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_build_task SET f_error_msg = ?, f_status = ?, f_update_time = ? WHERE f_id = ? AND f_status IN (?)")).
+			WithArgs("", interfaces.BuildTaskStatusRunning, sqlmock.AnyArg(), "task-1", interfaces.BuildTaskStatusInit).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
-		claimed, err := access.UpdateStatusIfIn(context.Background(), "task-1",
-			[]string{interfaces.BuildTaskStatusInit},
-			map[string]interface{}{"status": interfaces.BuildTaskStatusRunning, "errorMsg": ""},
+		claimed, err := access.UpdateStatus(context.Background(), nil, "task-1",
+			interfaces.NewBuildTaskUpdate().
+				WithStatus(interfaces.BuildTaskStatusRunning).
+				WithErrorMsg(""),
+			interfaces.BuildTaskStatusInit,
 		)
 
 		require.NoError(t, err)
@@ -197,9 +198,9 @@ func TestBuildTaskAccessUpdateStatusIfIn(t *testing.T) {
 			WithArgs(interfaces.BuildTaskStatusRunning, sqlmock.AnyArg(), "task-1", interfaces.BuildTaskStatusInit).
 			WillReturnResult(sqlmock.NewResult(0, 0))
 
-		claimed, err := access.UpdateStatusIfIn(context.Background(), "task-1",
-			[]string{interfaces.BuildTaskStatusInit},
-			map[string]interface{}{"status": interfaces.BuildTaskStatusRunning},
+		claimed, err := access.UpdateStatus(context.Background(), nil, "task-1",
+			interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusRunning),
+			interfaces.BuildTaskStatusInit,
 		)
 
 		require.NoError(t, err)
@@ -395,27 +396,32 @@ func newBuildTaskAccessMock(t *testing.T) (*sql.DB, sqlmock.Sqlmock, *buildTaskA
 
 func sampleBuildTask() *interfaces.BuildTask {
 	return &interfaces.BuildTask{
-		ID:               "task-1",
-		ResourceID:       "resource-1",
-		CatalogID:        "catalog-1",
-		Status:           interfaces.BuildTaskStatusInit,
-		Mode:             interfaces.BuildTaskModeBatch,
-		TotalCount:       100,
-		SyncedCount:      80,
-		VectorizedCount:  70,
-		SyncedMark:       "cursor-1",
-		ErrorMsg:         "soft error",
-		Creator:          interfaces.AccountInfo{ID: "creator-1", Type: interfaces.ACCESSOR_TYPE_USER},
-		CreateTime:       1000,
-		Updater:          interfaces.AccountInfo{ID: "updater-1", Type: interfaces.ACCESSOR_TYPE_USER},
-		UpdateTime:       2000,
-		EmbeddingFields:  "title,body",
-		BuildKeyFields:   "id",
-		EmbeddingModel:   "embedding",
-		ModelDimensions:  1024,
-		FulltextFields:   "title",
-		FulltextAnalyzer: "ik_max_word",
-		FailureDetail:    "partial failed",
+		ID:              "task-1",
+		ResourceID:      "resource-1",
+		CatalogID:       "catalog-1",
+		Status:          interfaces.BuildTaskStatusInit,
+		Mode:            interfaces.BuildTaskModeBatch,
+		TotalCount:      100,
+		SyncedCount:     80,
+		VectorizedCount: 70,
+		SyncedMark:      "cursor-1",
+		ErrorMsg:        "soft error",
+		Creator:         interfaces.AccountInfo{ID: "creator-1", Type: interfaces.ACCESSOR_TYPE_USER},
+		CreateTime:      1000,
+		UpdateTime:      2000,
+		IndexConfig: &interfaces.BuildTaskIndexConfig{
+			BuildKeyFields: []string{"id"},
+			Features: map[string]interfaces.BuildTaskFieldIndexFeature{
+				"title": {
+					Vector:   &interfaces.BuildTaskEmbeddingConfig{ModelID: "embedding", Dimensions: 1024},
+					Fulltext: &interfaces.BuildTaskFulltextConfig{Analyzer: "ik_max_word"},
+				},
+				"body": {
+					Vector: &interfaces.BuildTaskEmbeddingConfig{ModelID: "embedding-v2", Dimensions: 2048},
+				},
+			},
+		},
+		FailureDetail: "partial failed",
 	}
 }
 
@@ -430,27 +436,34 @@ func buildTaskRowValues(task *interfaces.BuildTask) []driver.Value {
 		task.ID,
 		task.ResourceID,
 		task.CatalogID,
-		task.Status,
 		task.Mode,
+		mustMarshalJSON(task.IndexConfig),
+		task.Status,
 		task.TotalCount,
 		task.SyncedCount,
 		task.VectorizedCount,
 		task.SyncedMark,
 		task.ErrorMsg,
+		task.FailureDetail,
 		task.Creator.ID,
 		task.Creator.Type,
 		task.CreateTime,
-		task.Updater.ID,
-		task.Updater.Type,
 		task.UpdateTime,
-		task.EmbeddingFields,
-		task.BuildKeyFields,
-		task.EmbeddingModel,
-		task.ModelDimensions,
-		task.FulltextFields,
-		task.FulltextAnalyzer,
-		task.FailureDetail,
 	}
+}
+
+func buildTaskInsertArgs(task *interfaces.BuildTask) []driver.Value {
+	args := buildTaskRowValues(task)
+	args[4] = sqlmock.AnyArg()
+	return args
+}
+
+func mustMarshalJSON(v any) string {
+	bs, err := sonic.Marshal(v)
+	if err != nil {
+		panic(err)
+	}
+	return string(bs)
 }
 
 func joinBuildTaskColumns() string {
