@@ -216,12 +216,16 @@ func TestRoleCRUDAndBuiltInProtection(t *testing.T) {
 	w := adminReq(t, r, http.MethodGet, "/api/safe/v1/admin/roles", nil)
 	var list struct {
 		Roles []struct {
-			ID string `json:"id"`
+			ID        string `json:"id"`
+			CreatedAt string `json:"created_at"`
 		} `json:"roles"`
 	}
 	_ = json.Unmarshal(w.Body.Bytes(), &list)
 	if len(list.Roles) != 2 {
 		t.Fatalf("list: want 2 roles, got %d", len(list.Roles))
+	}
+	if list.Roles[0].CreatedAt == "" || list.Roles[1].CreatedAt == "" {
+		t.Fatalf("list role created_at should be returned: %+v", list.Roles)
 	}
 
 	if w := adminReq(t, r, http.MethodPut, "/api/safe/v1/admin/roles/c-1", map[string]any{"name": "Audit Team"}); w.Code != http.StatusNoContent {
@@ -241,12 +245,16 @@ func TestRoleCRUDAndBuiltInProtection(t *testing.T) {
 	_ = e.AssignRole("u-9", "c-1")
 	w = adminReq(t, r, http.MethodGet, "/api/safe/v1/admin/roles/c-1", nil)
 	var detail struct {
+		CreatedAt   string   `json:"created_at"`
 		Members     []string `json:"members"`
 		Permissions []struct {
 			Resource map[string]string `json:"resource"`
 		} `json:"permissions"`
 	}
 	_ = json.Unmarshal(w.Body.Bytes(), &detail)
+	if detail.CreatedAt == "" {
+		t.Error("detail role created_at should be returned")
+	}
 	if len(detail.Members) != 1 || detail.Members[0] != "u-9" {
 		t.Errorf("members = %v", detail.Members)
 	}
