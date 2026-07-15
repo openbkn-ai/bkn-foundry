@@ -260,36 +260,84 @@ func buildTaskWithVector(field string) *interfaces.BuildTask {
 }
 
 func TestBuildLocalIndexSchemaAppliesTaskIndexConfigWithoutMutatingResourceSchema(t *testing.T) {
-	res := &interfaces.Resource{ID: "r1", SchemaDefinition: []*interfaces.Property{
-		{Name: "title", Type: interfaces.DataType_String, Features: []interfaces.PropertyFeature{
-			{FeatureName: "fulltext", FeatureType: interfaces.PropertyFeatureType_Fulltext},
-		}},
-		{Name: "body", Type: interfaces.DataType_String, Features: []interfaces.PropertyFeature{
-			{FeatureName: "vector", FeatureType: interfaces.PropertyFeatureType_Vector},
-		}},
-	}}
-	task := &interfaces.BuildTask{
-		ID: "t1",
-		IndexConfig: &interfaces.BuildTaskIndexConfig{
-			Features: map[string]interfaces.BuildTaskFieldIndexFeature{
-				"title": {Fulltext: &interfaces.BuildTaskFulltextConfig{Analyzer: "ik_max_word"}},
-				"body":  {Vector: &interfaces.BuildTaskEmbeddingConfig{ModelID: "m1", Dimensions: 1024}},
+	t.Run("single analyzer and vector field", func(t *testing.T) {
+		res := &interfaces.Resource{ID: "r1", SchemaDefinition: []*interfaces.Property{
+			{Name: "title", Type: interfaces.DataType_String, Features: []interfaces.PropertyFeature{
+				{FeatureName: "fulltext", FeatureType: interfaces.PropertyFeatureType_Fulltext},
+			}},
+			{Name: "body", Type: interfaces.DataType_String, Features: []interfaces.PropertyFeature{
+				{FeatureName: "vector", FeatureType: interfaces.PropertyFeatureType_Vector},
+			}},
+		}}
+		task := &interfaces.BuildTask{
+			ID: "t1",
+			IndexConfig: &interfaces.BuildTaskIndexConfig{
+				Features: map[string]interfaces.BuildTaskFieldIndexFeature{
+					"title": {Fulltext: &interfaces.BuildTaskFulltextConfig{Analyzer: "ik_max_word"}},
+					"body":  {Vector: &interfaces.BuildTaskEmbeddingConfig{ModelID: "m1", Dimensions: 1024}},
+				},
 			},
-		},
-	}
+		}
 
-	schema, err := buildLocalIndexSchema(task, res)
-	require.NoError(t, err)
+		schema, err := buildLocalIndexSchema(task, res)
+		require.NoError(t, err)
 
-	require.Len(t, schema[0].Features, 1)
-	assert.Equal(t, interfaces.PropertyFeatureType_Fulltext, schema[0].Features[0].FeatureType)
-	assert.Equal(t, "ik_max_word", schema[0].Features[0].Config["analyzer"])
-	require.Len(t, schema, 3)
-	assert.Equal(t, "body_vector", schema[2].Name)
-	assert.Equal(t, interfaces.DataType_Vector, schema[2].Type)
-	assert.Equal(t, 1024, schema[2].Features[0].Config["dimension"])
-	assert.Nil(t, res.SchemaDefinition[0].Features[0].Config)
-	assert.Len(t, res.SchemaDefinition[1].Features, 1)
+		require.Len(t, schema[0].Features, 1)
+		assert.Equal(t, interfaces.PropertyFeatureType_Fulltext, schema[0].Features[0].FeatureType)
+		assert.Equal(t, "ik_max_word", schema[0].Features[0].Config["analyzer"])
+		require.Len(t, schema, 3)
+		assert.Equal(t, "body_vector", schema[2].Name)
+		assert.Equal(t, interfaces.DataType_Vector, schema[2].Type)
+		assert.Equal(t, 1024, schema[2].Features[0].Config["dimension"])
+		assert.Nil(t, res.SchemaDefinition[0].Features[0].Config)
+		assert.Len(t, res.SchemaDefinition[1].Features, 1)
+	})
+
+	t.Run("keeps different analyzers and vector dimensions per field", func(t *testing.T) {
+		res := &interfaces.Resource{ID: "r1", SchemaDefinition: []*interfaces.Property{
+			{Name: "title", Type: interfaces.DataType_String, Features: []interfaces.PropertyFeature{
+				{FeatureName: "fulltext", FeatureType: interfaces.PropertyFeatureType_Fulltext},
+				{FeatureName: "vector", FeatureType: interfaces.PropertyFeatureType_Vector},
+			}},
+			{Name: "body", Type: interfaces.DataType_String, Features: []interfaces.PropertyFeature{
+				{FeatureName: "fulltext", FeatureType: interfaces.PropertyFeatureType_Fulltext},
+				{FeatureName: "vector", FeatureType: interfaces.PropertyFeatureType_Vector},
+			}},
+		}}
+		task := &interfaces.BuildTask{
+			ID: "t1",
+			IndexConfig: &interfaces.BuildTaskIndexConfig{
+				Features: map[string]interfaces.BuildTaskFieldIndexFeature{
+					"title": {
+						Fulltext: &interfaces.BuildTaskFulltextConfig{Analyzer: "ik_max_word"},
+						Vector:   &interfaces.BuildTaskEmbeddingConfig{ModelID: "m1", Dimensions: 768},
+					},
+					"body": {
+						Fulltext: &interfaces.BuildTaskFulltextConfig{Analyzer: "standard"},
+						Vector:   &interfaces.BuildTaskEmbeddingConfig{ModelID: "m2", Dimensions: 1024},
+					},
+				},
+			},
+		}
+
+		schema, err := buildLocalIndexSchema(task, res)
+		require.NoError(t, err)
+
+		assert.Equal(t, "ik_max_word", schema[0].Features[0].Config["analyzer"])
+		assert.Equal(t, "standard", schema[1].Features[0].Config["analyzer"])
+		vectorDimensions := map[string]any{}
+		for _, prop := range schema {
+			if prop.Type == interfaces.DataType_Vector {
+				vectorDimensions[prop.Name] = prop.Features[0].Config["dimension"]
+			}
+		}
+		assert.Equal(t, map[string]any{
+			"title_vector": 768,
+			"body_vector":  1024,
+		}, vectorDimensions)
+		assert.Nil(t, res.SchemaDefinition[0].Features[0].Config)
+		assert.Nil(t, res.SchemaDefinition[1].Features[0].Config)
+	})
 }
 
 func workerAccountFromCtx(ctx context.Context) (interfaces.AccountInfo, bool) {
