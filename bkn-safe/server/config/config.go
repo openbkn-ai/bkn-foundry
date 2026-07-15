@@ -26,9 +26,9 @@ type Config struct {
 // on purpose — they are compiled in (licverify/keys), a configurable key would
 // be a self-signing hole.
 type LicenseConfig struct {
-	// ServerURL is the issuer base URL (e.g. https://license.openbkn.ai).
-	// Empty = pure offline deployment: never calls out, activation runs via
-	// request-code/receipt instead.
+	// ServerURL is the issuer base URL. Default is https://license.openbkn.ai.
+	// Set it to an empty string for a pure offline deployment: never calls out,
+	// activation runs via request-code/receipt instead.
 	ServerURL string `yaml:"server_url"`
 	// CAFile adds a PEM CA to the trust pool for ServerURL (the issuer
 	// currently serves a self-signed certificate on a bare IP).
