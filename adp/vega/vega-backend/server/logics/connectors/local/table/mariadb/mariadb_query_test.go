@@ -83,9 +83,11 @@ func TestBuildHavingCondition(t *testing.T) {
 }
 
 func TestFormatInValues(t *testing.T) {
-	assert.Equal(t, "1, 2", formatInValues([]any{1, 2}))
-	assert.Equal(t, "'a', 'b'", formatInValues([]string{"a", "b"}))
-	assert.Equal(t, "single", formatInValues("single"))
+	t.Run("format in values", func(t *testing.T) {
+		assert.Equal(t, "1, 2", formatInValues([]any{1, 2}))
+		assert.Equal(t, "'a', 'b'", formatInValues([]string{"a", "b"}))
+		assert.Equal(t, "single", formatInValues("single"))
+	})
 }
 
 func TestBuildDateFormat(t *testing.T) {
@@ -113,7 +115,9 @@ func TestBuildDateFormat(t *testing.T) {
 }
 
 func TestMariaDBConvertValue(t *testing.T) {
-	assert.Equal(t, "hello", convertValue([]byte("hello")))
-	assert.Equal(t, int64(1), convertValue(int64(1)))
-	assert.Nil(t, convertValue(nil))
+	t.Run("maria dbconvert value", func(t *testing.T) {
+		assert.Equal(t, "hello", convertValue([]byte("hello")))
+		assert.Equal(t, int64(1), convertValue(int64(1)))
+		assert.Nil(t, convertValue(nil))
+	})
 }

@@ -26,81 +26,64 @@ func NewRawQueryServiceWithDeps(cs interfaces.CatalogService, rs interfaces.Reso
 	return &rawQueryService{cs: cs, rs: rs}
 }
 
-func TestExecuteRejectsDisabledCatalogForOpenSearchQuery(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	mockCS := mock_interfaces.NewMockCatalogService(ctrl)
-	mockRS := mock_interfaces.NewMockResourceService(ctrl)
-	service := NewRawQueryServiceWithDeps(mockCS, mockRS)
+func TestRawQueryServiceExecute(t *testing.T) {
+	t.Run("execute rejects disabled catalog for open search query", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+		mockRS := mock_interfaces.NewMockResourceService(ctrl)
+		service := NewRawQueryServiceWithDeps(mockCS, mockRS)
 
-	mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").
-		Return(&interfaces.Resource{ID: "resource-1", CatalogID: "catalog-1"}, nil)
-	mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).
-		Return(&interfaces.Catalog{ID: "catalog-1", Enabled: false, ConnectorType: interfaces.ConnectorTypeOpenSearch}, nil)
+		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").
+			Return(&interfaces.Resource{ID: "resource-1", CatalogID: "catalog-1"}, nil)
+		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).
+			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: false, ConnectorType: interfaces.ConnectorTypeOpenSearch}, nil)
 
-	_, err := service.Execute(context.Background(), &interfaces.RawQueryRequest{
-		ResourceType: interfaces.ConnectorTypeOpenSearch,
-		Query:        map[string]any{"resource_id": "resource-1"},
+		_, err := service.Execute(context.Background(), &interfaces.RawQueryRequest{
+			ResourceType: interfaces.ConnectorTypeOpenSearch,
+			Query:        map[string]any{"resource_id": "resource-1"},
+		})
+		assertCatalogDisabledError(t, err)
 	})
-	if err == nil {
-		t.Fatal("expected error")
-	}
-	httpErr, ok := err.(*rest.HTTPError)
-	if !ok {
-		t.Fatalf("expected HTTPError, got %T", err)
-	}
-	if httpErr.HTTPCode != http.StatusConflict {
-		t.Fatalf("expected HTTP 409, got %d", httpErr.HTTPCode)
-	}
-	if httpErr.BaseError.ErrorCode != verrors.VegaBackend_Catalog_IsDisabled {
-		t.Fatalf("expected %s, got %s", verrors.VegaBackend_Catalog_IsDisabled, httpErr.BaseError.ErrorCode)
-	}
-}
 
-func TestExecuteRejectsDisabledCatalogForExistingStreamSession(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	mockCS := mock_interfaces.NewMockCatalogService(ctrl)
-	mockRS := mock_interfaces.NewMockResourceService(ctrl)
-	service := NewRawQueryServiceWithDeps(mockCS, mockRS)
+	t.Run("execute rejects disabled catalog for existing stream session", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+		mockRS := mock_interfaces.NewMockResourceService(ctrl)
+		service := NewRawQueryServiceWithDeps(mockCS, mockRS)
 
-	session, err := GetStreamQueryManager().CreateSession(
-		interfaces.ConnectorTypeMariaDB,
-		"catalog",
-		"catalog-1",
-		&interfaces.Catalog{ID: "catalog-1", Enabled: true, ConnectorType: interfaces.ConnectorTypeMariaDB},
-		100,
-		"select * from {{resource-1}}",
-		[]string{"resource-1"},
-	)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	defer GetStreamQueryManager().RemoveSession(session.QueryID)
+		session, err := GetStreamQueryManager().CreateSession(
+			interfaces.ConnectorTypeMariaDB,
+			"catalog",
+			"catalog-1",
+			&interfaces.Catalog{ID: "catalog-1", Enabled: true, ConnectorType: interfaces.ConnectorTypeMariaDB},
+			100,
+			"select * from {{resource-1}}",
+			[]string{"resource-1"},
+		)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		defer GetStreamQueryManager().RemoveSession(session.QueryID)
 
-	mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).
-		Return(&interfaces.Catalog{ID: "catalog-1", Enabled: false, ConnectorType: interfaces.ConnectorTypeMariaDB}, nil)
+		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).
+			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: false, ConnectorType: interfaces.ConnectorTypeMariaDB}, nil)
 
-	_, err = service.Execute(context.Background(), &interfaces.RawQueryRequest{
-		QueryType: interfaces.QueryType_Stream,
-		QueryID:   session.QueryID,
+		_, err = service.Execute(context.Background(), &interfaces.RawQueryRequest{
+			QueryType: interfaces.QueryType_Stream,
+			QueryID:   session.QueryID,
+		})
+		assertCatalogDisabledError(t, err)
 	})
-	assertCatalogDisabledError(t, err)
 }
 
 func assertCatalogDisabledError(t *testing.T, err error) {
 	t.Helper()
-	if err == nil {
-		t.Fatal("expected error")
-	}
-	httpErr, ok := err.(*rest.HTTPError)
-	if !ok {
-		t.Fatalf("expected HTTPError, got %T", err)
-	}
-	if httpErr.HTTPCode != http.StatusConflict {
-		t.Fatalf("expected HTTP 409, got %d", httpErr.HTTPCode)
-	}
-	if httpErr.BaseError.ErrorCode != verrors.VegaBackend_Catalog_IsDisabled {
-		t.Fatalf("expected %s, got %s", verrors.VegaBackend_Catalog_IsDisabled, httpErr.BaseError.ErrorCode)
-	}
+	require.Error(t, err)
+
+	var httpErr *rest.HTTPError
+	require.ErrorAs(t, err, &httpErr)
+	assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
+	assert.Equal(t, verrors.VegaBackend_Catalog_IsDisabled, httpErr.BaseError.ErrorCode)
 }
 
 func TestRawQueryServiceValidateRequest(t *testing.T) {
@@ -169,11 +152,8 @@ func TestRawQueryServiceValidateRequest(t *testing.T) {
 			assertHTTPError(t, err, tt.wantStatus)
 		})
 	}
-}
 
-func TestRawQueryServiceValidateRequestSuccess(t *testing.T) {
-	svc := &rawQueryService{}
-	tests := []struct {
+	successTests := []struct {
 		name string
 		req  *interfaces.RawQueryRequest
 	}{
@@ -206,7 +186,7 @@ func TestRawQueryServiceValidateRequestSuccess(t *testing.T) {
 		},
 	}
 
-	for _, tt := range tests {
+	for _, tt := range successTests {
 		t.Run(tt.name, func(t *testing.T) {
 			require.NoError(t, svc.validateRequest(context.Background(), tt.req))
 		})
@@ -214,67 +194,71 @@ func TestRawQueryServiceValidateRequestSuccess(t *testing.T) {
 }
 
 func TestRawQueryServiceExtractResourceIDs(t *testing.T) {
-	svc := &rawQueryService{}
+	t.Run("raw query service extract resource ids", func(t *testing.T) {
+		svc := &rawQueryService{}
 
-	got, err := svc.extractResourceIDs("select * from {{.r1}} join {{r2}} on x where id in (select id from {{.r1}})")
+		got, err := svc.extractResourceIDs("select * from {{.r1}} join {{r2}} on x where id in (select id from {{.r1}})")
 
-	require.NoError(t, err)
-	assert.Equal(t, []string{"r1", "r2"}, got)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"r1", "r2"}, got)
 
-	got, err = svc.extractResourceIDs(map[string]any{"query": map[string]any{"match_all": map[string]any{}}})
-	require.NoError(t, err)
-	assert.Empty(t, got)
+		got, err = svc.extractResourceIDs(map[string]any{"query": map[string]any{"match_all": map[string]any{}}})
+		require.NoError(t, err)
+		assert.Empty(t, got)
+	})
 }
 
 func TestRawQueryServiceReplaceResourceIDWithSchemaTable(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	rs := mock_interfaces.NewMockResourceService(ctrl)
-	svc := &rawQueryService{rs: rs}
+	t.Run("raw query service replace resource idwith schema table", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		rs := mock_interfaces.NewMockResourceService(ctrl)
+		svc := &rawQueryService{rs: rs}
 
-	rs.EXPECT().GetByID(gomock.Any(), "r1").Return(&interfaces.Resource{
-		ID:               "r1",
-		SourceIdentifier: "schema.table_one",
-	}, nil)
-	rs.EXPECT().GetByID(gomock.Any(), "r2").Return(&interfaces.Resource{
-		ID:               "r2",
-		SourceIdentifier: "schema.table_two",
-	}, nil)
+		rs.EXPECT().GetByID(gomock.Any(), "r1").Return(&interfaces.Resource{
+			ID:               "r1",
+			SourceIdentifier: "schema.table_one",
+		}, nil)
+		rs.EXPECT().GetByID(gomock.Any(), "r2").Return(&interfaces.Resource{
+			ID:               "r2",
+			SourceIdentifier: "schema.table_two",
+		}, nil)
 
-	got, err := svc.replaceResourceIDWithSchemaTable(context.Background(),
-		"select * from {{.r1}} join {{r2}} on {{.r1}}.id = {{r2}}.id",
-		[]string{"r1", "r2"},
-		&interfaces.Catalog{Name: "catalog"},
-	)
+		got, err := svc.replaceResourceIDWithSchemaTable(context.Background(),
+			"select * from {{.r1}} join {{r2}} on {{.r1}}.id = {{r2}}.id",
+			[]string{"r1", "r2"},
+			&interfaces.Catalog{Name: "catalog"},
+		)
 
-	require.NoError(t, err)
-	assert.Equal(t, "select * from schema.table_one join schema.table_two on schema.table_one.id = schema.table_two.id", got)
+		require.NoError(t, err)
+		assert.Equal(t, "select * from schema.table_one join schema.table_two on schema.table_one.id = schema.table_two.id", got)
+	})
 }
 
 func TestRawQueryServiceCheckSameDataSource(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	cs := mock_interfaces.NewMockCatalogService(ctrl)
-	rs := mock_interfaces.NewMockResourceService(ctrl)
-	svc := &rawQueryService{cs: cs, rs: rs}
+	t.Run("raw query service check same data source", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		cs := mock_interfaces.NewMockCatalogService(ctrl)
+		rs := mock_interfaces.NewMockResourceService(ctrl)
+		svc := &rawQueryService{cs: cs, rs: rs}
 
-	resources := []*interfaces.Resource{
-		{ID: "r1", CatalogID: "catalog-1", Status: interfaces.ResourceStatusActive},
-		{ID: "r2", CatalogID: "catalog-1", Status: interfaces.ResourceStatusDeprecated},
-	}
-	rs.EXPECT().GetByIDs(gomock.Any(), []string{"r1", "r2"}).Return(resources, nil)
-	cs.EXPECT().GetByID(gomock.Any(), "catalog-1", true).Return(&interfaces.Catalog{
-		ID:      "catalog-1",
-		Enabled: true,
-	}, nil)
+		resources := []*interfaces.Resource{
+			{ID: "r1", CatalogID: "catalog-1", Status: interfaces.ResourceStatusActive},
+			{ID: "r2", CatalogID: "catalog-1", Status: interfaces.ResourceStatusDeprecated},
+		}
+		rs.EXPECT().GetByIDs(gomock.Any(), []string{"r1", "r2"}).Return(resources, nil)
+		cs.EXPECT().GetByID(gomock.Any(), "catalog-1", true).Return(&interfaces.Catalog{
+			ID:      "catalog-1",
+			Enabled: true,
+		}, nil)
 
-	catalog, warnings, err := svc.checkSameDataSource(context.Background(), []string{"r1", "r2"})
+		catalog, warnings, err := svc.checkSameDataSource(context.Background(), []string{"r1", "r2"})
 
-	require.NoError(t, err)
-	assert.Equal(t, "catalog-1", catalog.ID)
-	assert.Len(t, warnings, 1)
-	assert.Contains(t, warnings[0], "r2")
-}
+		require.NoError(t, err)
+		assert.Equal(t, "catalog-1", catalog.ID)
+		assert.Len(t, warnings, 1)
+		assert.Contains(t, warnings[0], "r2")
+	})
 
-func TestRawQueryServiceCheckSameDataSourceErrors(t *testing.T) {
 	t.Run("rejects no ids", func(t *testing.T) {
 		svc := &rawQueryService{}
 
@@ -319,15 +303,17 @@ func TestRawQueryServiceCheckSameDataSourceErrors(t *testing.T) {
 }
 
 func TestEnsureCatalogEnabled(t *testing.T) {
-	require.NoError(t, ensureCatalogEnabled(context.Background(), nil))
-	require.NoError(t, ensureCatalogEnabled(context.Background(), &interfaces.Catalog{Enabled: true}))
+	t.Run("ensure catalog enabled", func(t *testing.T) {
+		require.NoError(t, ensureCatalogEnabled(context.Background(), nil))
+		require.NoError(t, ensureCatalogEnabled(context.Background(), &interfaces.Catalog{Enabled: true}))
 
-	err := ensureCatalogEnabled(context.Background(), &interfaces.Catalog{Enabled: false})
+		err := ensureCatalogEnabled(context.Background(), &interfaces.Catalog{Enabled: false})
 
-	assertHTTPError(t, err, http.StatusConflict)
-	var httpErr *rest.HTTPError
-	require.ErrorAs(t, err, &httpErr)
-	assert.Equal(t, verrors.VegaBackend_Catalog_IsDisabled, httpErr.BaseError.ErrorCode)
+		assertHTTPError(t, err, http.StatusConflict)
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, verrors.VegaBackend_Catalog_IsDisabled, httpErr.BaseError.ErrorCode)
+	})
 }
 
 func assertHTTPError(t *testing.T, err error, status int) {

@@ -21,25 +21,27 @@ import (
 )
 
 func TestAnyShareConnectorMetadata(t *testing.T) {
-	connector := &AnyShareConnector{}
+	t.Run("any share connector metadata", func(t *testing.T) {
+		connector := &AnyShareConnector{}
 
-	assert.Equal(t, interfaces.ConnectorTypeAnyShare, connector.GetType())
-	assert.Equal(t, interfaces.ConnectorTypeAnyShare, connector.GetName())
-	assert.Equal(t, interfaces.ConnectorModeLocal, connector.GetMode())
-	assert.Equal(t, interfaces.ConnectorCategoryFileset, connector.GetCategory())
-	assert.Equal(t, []string{"token", "app_secret"}, connector.GetSensitiveFields())
+		assert.Equal(t, interfaces.ConnectorTypeAnyShare, connector.GetType())
+		assert.Equal(t, interfaces.ConnectorTypeAnyShare, connector.GetName())
+		assert.Equal(t, interfaces.ConnectorModeLocal, connector.GetMode())
+		assert.Equal(t, interfaces.ConnectorCategoryFileset, connector.GetCategory())
+		assert.Equal(t, []string{"token", "app_secret"}, connector.GetSensitiveFields())
 
-	assert.False(t, connector.GetEnabled())
-	connector.SetEnabled(true)
-	assert.True(t, connector.GetEnabled())
+		assert.False(t, connector.GetEnabled())
+		connector.SetEnabled(true)
+		assert.True(t, connector.GetEnabled())
 
-	fields := connector.GetFieldConfig()
-	require.Contains(t, fields, "token")
-	assert.True(t, fields["token"].Encrypted)
-	require.Contains(t, fields, "app_secret")
-	assert.True(t, fields["app_secret"].Encrypted)
-	require.Contains(t, fields, "paths")
-	assert.False(t, fields["paths"].Required)
+		fields := connector.GetFieldConfig()
+		require.Contains(t, fields, "token")
+		assert.True(t, fields["token"].Encrypted)
+		require.Contains(t, fields, "app_secret")
+		assert.True(t, fields["app_secret"].Encrypted)
+		require.Contains(t, fields, "paths")
+		assert.False(t, fields["paths"].Required)
+	})
 }
 
 func TestAnyShareConnectorNew(t *testing.T) {
@@ -211,70 +213,74 @@ func TestAnyShareConnectorConnectAndMetadata(t *testing.T) {
 }
 
 func TestAnyShareConnectorListFilesetsFromEntryDocLib(t *testing.T) {
-	connector := newConnectedTestConnector()
-	connector.httpClient = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
-		assert.Equal(t, "/api/document/v1/entry-doc-lib", r.URL.Path)
-		assert.Equal(t, "knowledge_doc_lib", r.URL.Query().Get("type"))
-		assert.Equal(t, "Bearer token", r.Header.Get("Authorization"))
+	t.Run("any share connector list filesets from entry doc lib", func(t *testing.T) {
+		connector := newConnectedTestConnector()
+		connector.httpClient = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			assert.Equal(t, "/api/document/v1/entry-doc-lib", r.URL.Path)
+			assert.Equal(t, "knowledge_doc_lib", r.URL.Query().Get("type"))
+			assert.Equal(t, "Bearer token", r.Header.Get("Authorization"))
 
-		return jsonResponse(http.StatusOK, `[{
-			"id":"lib-1",
-			"name":"Knowledge",
-			"type":"knowledge_doc_lib",
-			"rev":"1",
-			"created_at":"2026-01-01",
-			"modified_at":"2026-01-02",
-			"created_by":{"id":"u1","name":"Alice","type":"user"},
-			"modified_by":{"id":"u2","name":"Bob","type":"user"}
-		}]`), nil
-	})}
+			return jsonResponse(http.StatusOK, `[{
+				"id":"lib-1",
+				"name":"Knowledge",
+				"type":"knowledge_doc_lib",
+				"rev":"1",
+				"created_at":"2026-01-01",
+				"modified_at":"2026-01-02",
+				"created_by":{"id":"u1","name":"Alice","type":"user"},
+				"modified_by":{"id":"u2","name":"Bob","type":"user"}
+			}]`), nil
+		})}
 
-	filesets, err := connector.ListFilesets(context.Background())
+		filesets, err := connector.ListFilesets(context.Background())
 
-	require.NoError(t, err)
-	require.Len(t, filesets, 1)
-	assert.Equal(t, "lib-1", filesets[0].ID)
-	assert.Equal(t, "Knowledge", filesets[0].Name)
-	assert.Equal(t, "Knowledge", filesets[0].DisplayPath)
-	assert.Len(t, filesets[0].Columns, 20)
-	assert.Equal(t, "1", filesets[0].SourceMetadata["rev"])
+		require.NoError(t, err)
+		require.Len(t, filesets, 1)
+		assert.Equal(t, "lib-1", filesets[0].ID)
+		assert.Equal(t, "Knowledge", filesets[0].Name)
+		assert.Equal(t, "Knowledge", filesets[0].DisplayPath)
+		assert.Len(t, filesets[0].Columns, 20)
+		assert.Equal(t, "1", filesets[0].SourceMetadata["rev"])
+	})
 }
 
 func TestAnyShareConnectorSearchFiles(t *testing.T) {
-	connector := newConnectedTestConnector()
-	connector.httpClient = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
-		assert.Equal(t, "/api/ecosearch/v1/file-search", r.URL.Path)
-		assert.Equal(t, "Bearer token", r.Header.Get("Authorization"))
+	t.Run("any share connector search files", func(t *testing.T) {
+		connector := newConnectedTestConnector()
+		connector.httpClient = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			assert.Equal(t, "/api/ecosearch/v1/file-search", r.URL.Path)
+			assert.Equal(t, "Bearer token", r.Header.Get("Authorization"))
 
-		var payload map[string]any
-		decodeAnyShareRequestJSON(t, r, &payload)
-		assert.Equal(t, "needle", payload["keyword"])
-		assert.Equal(t, []any{"doc-1/*"}, payload["range"])
-		assert.Equal(t, float64(10), payload["rows"])
-		assert.Equal(t, float64(2), payload["start"])
-		assert.Equal(t, []any{"basename"}, payload["dimension"])
-		assert.Equal(t, "semantic", payload["model"])
+			var payload map[string]any
+			decodeAnyShareRequestJSON(t, r, &payload)
+			assert.Equal(t, "needle", payload["keyword"])
+			assert.Equal(t, []any{"doc-1/*"}, payload["range"])
+			assert.Equal(t, float64(10), payload["rows"])
+			assert.Equal(t, float64(2), payload["start"])
+			assert.Equal(t, []any{"basename"}, payload["dimension"])
+			assert.Equal(t, "semantic", payload["model"])
 
-		return jsonResponse(http.StatusOK, `{"files":[{"doc_id":"1","basename":"a.txt","content":"hidden"}]}`), nil
-	})}
+			return jsonResponse(http.StatusOK, `{"files":[{"doc_id":"1","basename":"a.txt","content":"hidden"}]}`), nil
+		})}
 
-	files, err := connector.SearchFiles(
-		context.Background(),
-		"doc-1",
-		"needle",
-		[]string{"basename"},
-		"semantic",
-		[]map[string]interface{}{{"created_at": map[string]any{"gte": 1}}},
-		map[string]interface{}{"extension": []string{"txt"}},
-		10,
-		2,
-		map[string]interface{}{"field": "created_at", "sort_type": "desc"},
-		[]string{"doc_id", "basename"},
-	)
+		files, err := connector.SearchFiles(
+			context.Background(),
+			"doc-1",
+			"needle",
+			[]string{"basename"},
+			"semantic",
+			[]map[string]interface{}{{"created_at": map[string]any{"gte": 1}}},
+			map[string]interface{}{"extension": []string{"txt"}},
+			10,
+			2,
+			map[string]interface{}{"field": "created_at", "sort_type": "desc"},
+			[]string{"doc_id", "basename"},
+		)
 
-	require.NoError(t, err)
-	require.Len(t, files, 1)
-	assert.Equal(t, map[string]any{"doc_id": "1", "basename": "a.txt"}, files[0])
+		require.NoError(t, err)
+		require.Len(t, files, 1)
+		assert.Equal(t, map[string]any{"doc_id": "1", "basename": "a.txt"}, files[0])
+	})
 }
 
 func TestAnyShareQueryHelpers(t *testing.T) {

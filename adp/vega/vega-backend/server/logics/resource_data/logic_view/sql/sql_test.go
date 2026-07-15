@@ -211,9 +211,7 @@ func TestLogicViewSQLHelpers(t *testing.T) {
 
 		assert.Equal(t, "`name` asc, `age` desc", got)
 	})
-}
 
-func TestLogicViewSQLBuilderAdditional(t *testing.T) {
 	generator := NewlogicDefinitionSQLGenerator(testSQLView())
 
 	t.Run("add wheres ignores blank and string builds query", func(t *testing.T) {
@@ -374,11 +372,9 @@ func TestLogicViewSQLConvertFilterCondition(t *testing.T) {
 		assert.Equal(t, "`name` LIKE ?", sqlText)
 		assert.Equal(t, []any{`%a\_\%\'b%`}, args)
 	})
-}
 
-func TestLogicViewSQLConvertFilterConditionAdditional(t *testing.T) {
-	fields := testSQLConditionFieldMap()
-	generator := NewlogicDefinitionSQLGenerator(testSQLView())
+	fields = testSQLConditionFieldMap()
+	generator = NewlogicDefinitionSQLGenerator(testSQLView())
 
 	tests := []struct {
 		name    string
@@ -422,11 +418,9 @@ func TestLogicViewSQLConvertFilterConditionAdditional(t *testing.T) {
 			assert.Equal(t, tt.wantArg, gotArgs)
 		})
 	}
-}
 
-func TestLogicViewSQLConvertFilterConditionGroupsAndErrors(t *testing.T) {
-	fields := testSQLConditionFieldMap()
-	generator := NewlogicDefinitionSQLGenerator(testSQLView())
+	fields = testSQLConditionFieldMap()
+	generator = NewlogicDefinitionSQLGenerator(testSQLView())
 
 	t.Run("and/or group converts sub conditions", func(t *testing.T) {
 		cond := mustSQLCondition(t, &interfaces.FilterCondCfg{

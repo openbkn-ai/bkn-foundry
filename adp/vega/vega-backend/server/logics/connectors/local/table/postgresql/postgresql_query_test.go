@@ -68,46 +68,52 @@ func TestPostgresqlBuildHavingCondition(t *testing.T) {
 }
 
 func TestPostgresqlFormatInValues(t *testing.T) {
-	assert.Equal(t, "1, 2", formatInValues([]any{1, 2}))
-	assert.Equal(t, "'a', 'b'", formatInValues([]string{"a", "b"}))
-	assert.Equal(t, "single", formatInValues("single"))
+	t.Run("postgresql format in values", func(t *testing.T) {
+		assert.Equal(t, "1, 2", formatInValues([]any{1, 2}))
+		assert.Equal(t, "'a', 'b'", formatInValues([]string{"a", "b"}))
+		assert.Equal(t, "single", formatInValues("single"))
+	})
 }
 
 func TestPostgresqlConvertValue(t *testing.T) {
-	utc := time.Date(2026, 7, 9, 8, 0, 0, 0, time.UTC)
-	converted := convertValue(utc, "created_at", map[string]string{
-		"created_at": "timestamptz",
-	})
+	t.Run("postgresql convert value", func(t *testing.T) {
+		utc := time.Date(2026, 7, 9, 8, 0, 0, 0, time.UTC)
+		converted := convertValue(utc, "created_at", map[string]string{
+			"created_at": "timestamptz",
+		})
 
-	require.IsType(t, time.Time{}, converted)
-	assert.Equal(t, utc.Local(), converted)
-	assert.Equal(t, "hello", convertValue([]byte("hello"), "name", map[string]string{"name": "varchar"}))
-	assert.Equal(t, "hello", convertValue([]byte("hello"), "unknown", map[string]string{}))
-	assert.Equal(t, int64(1), convertValue(int64(1), "count", map[string]string{"count": "int8"}))
-	assert.Nil(t, convertValue(nil, "name", map[string]string{"name": "varchar"}))
+		require.IsType(t, time.Time{}, converted)
+		assert.Equal(t, utc.Local(), converted)
+		assert.Equal(t, "hello", convertValue([]byte("hello"), "name", map[string]string{"name": "varchar"}))
+		assert.Equal(t, "hello", convertValue([]byte("hello"), "unknown", map[string]string{}))
+		assert.Equal(t, int64(1), convertValue(int64(1), "count", map[string]string{"count": "int8"}))
+		assert.Nil(t, convertValue(nil, "name", map[string]string{"name": "varchar"}))
+	})
 }
 
 func TestPostgresqlBuildConnString(t *testing.T) {
-	connector := &PostgresqlConnector{
-		config: &postgresqlConfig{
-			Host:     "postgres",
-			Port:     5432,
-			Username: "user",
-			Password: "pa ss",
-			Database: "/app",
-			Options: map[string]any{
-				"search_path": "public",
-				"sslmode":     "require",
+	t.Run("postgresql build conn string", func(t *testing.T) {
+		connector := &PostgresqlConnector{
+			config: &postgresqlConfig{
+				Host:     "postgres",
+				Port:     5432,
+				Username: "user",
+				Password: "pa ss",
+				Database: "/app",
+				Options: map[string]any{
+					"search_path": "public",
+					"sslmode":     "require",
+				},
 			},
-		},
-	}
+		}
 
-	got := connector.buildConnString()
+		got := connector.buildConnString()
 
-	assert.Contains(t, got, "postgres://user:pa%20ss@postgres:5432/app?")
-	assert.Contains(t, got, "search_path=public")
-	assert.Contains(t, got, "sslmode=require")
+		assert.Contains(t, got, "postgres://user:pa%20ss@postgres:5432/app?")
+		assert.Contains(t, got, "search_path=public")
+		assert.Contains(t, got, "sslmode=require")
 
-	connector.config.Options = nil
-	assert.Contains(t, connector.buildConnString(), "sslmode=disable")
+		connector.config.Options = nil
+		assert.Contains(t, connector.buildConnString(), "sslmode=disable")
+	})
 }

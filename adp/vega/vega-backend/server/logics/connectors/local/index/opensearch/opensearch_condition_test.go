@@ -11,7 +11,7 @@ import (
 	"vega-backend/logics/filter_condition"
 )
 
-func TestConvertFilterConditionScalarDSL(t *testing.T) {
+func TestOpenSearchConnectorConvertFilterCondition(t *testing.T) {
 	conn := &OpenSearchConnector{}
 	schema := opensearchConditionSchema()
 	tests := []struct {
@@ -87,161 +87,169 @@ func TestConvertFilterConditionScalarDSL(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
-}
 
-func TestConvertFilterConditionCompositeDSL(t *testing.T) {
-	conn := &OpenSearchConnector{}
-	schema := opensearchConditionSchema()
+	t.Run("convert filter condition composite dsl", func(t *testing.T) {
+		conn := &OpenSearchConnector{}
+		schema := opensearchConditionSchema()
 
-	andCond := mustOSCondition(t, &interfaces.FilterCondCfg{
-		Operation: filter_condition.OperationAnd,
-		SubConds: []*interfaces.FilterCondCfg{
-			osConstCfg("name", filter_condition.OperationEqual, "alice"),
-			osConstCfg("age", filter_condition.OperationGte, 18),
-		},
-	})
-
-	got, err := conn.ConvertFilterCondition(andCond, schema)
-
-	require.NoError(t, err)
-	assert.Equal(t, map[string]any{
-		"bool": map[string]any{
-			"must": []map[string]any{
-				{"term": map[string]any{"name": "alice"}},
-				{"range": map[string]any{"age": map[string]any{"gte": 18}}},
+		andCond := mustOSCondition(t, &interfaces.FilterCondCfg{
+			Operation: filter_condition.OperationAnd,
+			SubConds: []*interfaces.FilterCondCfg{
+				osConstCfg("name", filter_condition.OperationEqual, "alice"),
+				osConstCfg("age", filter_condition.OperationGte, 18),
 			},
-		},
-	}, got)
+		})
 
-	orCond := mustOSCondition(t, &interfaces.FilterCondCfg{
-		Operation: filter_condition.OperationOr,
-		SubConds: []*interfaces.FilterCondCfg{
-			osConstCfg("name", filter_condition.OperationEqual, "alice"),
-			osConstCfg("name", filter_condition.OperationEqual, "bob"),
-		},
-	})
+		got, err := conn.ConvertFilterCondition(andCond, schema)
 
-	got, err = conn.ConvertFilterCondition(orCond, schema)
-
-	require.NoError(t, err)
-	assert.Equal(t, map[string]any{
-		"bool": map[string]any{
-			"should": []map[string]any{
-				{"term": map[string]any{"name": "alice"}},
-				{"term": map[string]any{"name": "bob"}},
-			},
-			"minimum_should_match": 1,
-		},
-	}, got)
-}
-
-func TestConvertFilterConditionFulltextDSL(t *testing.T) {
-	conn := &OpenSearchConnector{}
-	schema := opensearchConditionSchema()
-
-	matchCond := mustOSCondition(t, &interfaces.FilterCondCfg{
-		Operation: filter_condition.OperationMatch,
-		ValueOptCfg: interfaces.ValueOptCfg{
-			ValueFrom: interfaces.ValueFrom_Const,
-			Value:     "hello",
-		},
-		RemainCfg: map[string]any{"fields": []any{"name", "body"}},
-	})
-
-	got, err := conn.ConvertFilterCondition(matchCond, schema)
-
-	require.NoError(t, err)
-	assert.Equal(t, map[string]any{
-		"bool": map[string]any{
-			"should": []map[string]any{
-				{"match": map[string]any{"name.fulltext": "hello"}},
-				{"match": map[string]any{"body": "hello"}},
-			},
-			"minimum_should_match": 1,
-		},
-	}, got)
-
-	multiMatchCond := mustOSCondition(t, &interfaces.FilterCondCfg{
-		Operation: filter_condition.OperationMultiMatch,
-		ValueOptCfg: interfaces.ValueOptCfg{
-			ValueFrom: interfaces.ValueFrom_Const,
-			Value:     "hello",
-		},
-		RemainCfg: map[string]any{
-			"fields":     []any{"name", "body"},
-			"match_type": "best_fields",
-		},
-	})
-
-	got, err = conn.ConvertFilterCondition(multiMatchCond, schema)
-
-	require.NoError(t, err)
-	assert.Equal(t, map[string]any{
-		"multi_match": map[string]any{
-			"query":  "hello",
-			"fields": []string{"name.fulltext", "body"},
-			"type":   "best_fields",
-		},
-	}, got)
-}
-
-func TestConvertFilterConditionKnnVectorDSL(t *testing.T) {
-	conn := &OpenSearchConnector{}
-	schema := opensearchConditionSchema()
-	cfg := &interfaces.FilterCondCfg{
-		Name:      "embedding",
-		Operation: filter_condition.OperationKnnVector,
-		ValueOptCfg: interfaces.ValueOptCfg{
-			ValueFrom: interfaces.ValueFrom_Const,
-			Value:     []float32{0.1, 0.2},
-		},
-		RemainCfg: map[string]any{"limit_key": "k", "limit_value": 3},
-		SubConds: []*interfaces.FilterCondCfg{
-			osConstCfg("is_active", filter_condition.OperationTrue, nil),
-		},
-	}
-	cond := mustOSCondition(t, cfg)
-
-	got, err := conn.ConvertFilterCondition(cond, schema)
-
-	require.NoError(t, err)
-	assert.Equal(t, map[string]any{
-		"knn": map[string]any{
-			"embedding": map[string]any{
-				"vector": []float32{0.1, 0.2},
-				"k":      3,
-			},
-		},
-		"filter": map[string]any{
+		require.NoError(t, err)
+		assert.Equal(t, map[string]any{
 			"bool": map[string]any{
 				"must": []map[string]any{
-					{"term": map[string]any{"is_active": true}},
+					{"term": map[string]any{"name": "alice"}},
+					{"range": map[string]any{"age": map[string]any{"gte": 18}}},
 				},
 			},
-		},
-	}, got)
+		}, got)
+
+		orCond := mustOSCondition(t, &interfaces.FilterCondCfg{
+			Operation: filter_condition.OperationOr,
+			SubConds: []*interfaces.FilterCondCfg{
+				osConstCfg("name", filter_condition.OperationEqual, "alice"),
+				osConstCfg("name", filter_condition.OperationEqual, "bob"),
+			},
+		})
+
+		got, err = conn.ConvertFilterCondition(orCond, schema)
+
+		require.NoError(t, err)
+		assert.Equal(t, map[string]any{
+			"bool": map[string]any{
+				"should": []map[string]any{
+					{"term": map[string]any{"name": "alice"}},
+					{"term": map[string]any{"name": "bob"}},
+				},
+				"minimum_should_match": 1,
+			},
+		}, got)
+	})
+
+	t.Run("convert filter condition fulltext dsl", func(t *testing.T) {
+		conn := &OpenSearchConnector{}
+		schema := opensearchConditionSchema()
+
+		matchCond := mustOSCondition(t, &interfaces.FilterCondCfg{
+			Operation: filter_condition.OperationMatch,
+			ValueOptCfg: interfaces.ValueOptCfg{
+				ValueFrom: interfaces.ValueFrom_Const,
+				Value:     "hello",
+			},
+			RemainCfg: map[string]any{"fields": []any{"name", "body"}},
+		})
+
+		got, err := conn.ConvertFilterCondition(matchCond, schema)
+
+		require.NoError(t, err)
+		assert.Equal(t, map[string]any{
+			"bool": map[string]any{
+				"should": []map[string]any{
+					{"match": map[string]any{"name.fulltext": "hello"}},
+					{"match": map[string]any{"body": "hello"}},
+				},
+				"minimum_should_match": 1,
+			},
+		}, got)
+
+		multiMatchCond := mustOSCondition(t, &interfaces.FilterCondCfg{
+			Operation: filter_condition.OperationMultiMatch,
+			ValueOptCfg: interfaces.ValueOptCfg{
+				ValueFrom: interfaces.ValueFrom_Const,
+				Value:     "hello",
+			},
+			RemainCfg: map[string]any{
+				"fields":     []any{"name", "body"},
+				"match_type": "best_fields",
+			},
+		})
+
+		got, err = conn.ConvertFilterCondition(multiMatchCond, schema)
+
+		require.NoError(t, err)
+		assert.Equal(t, map[string]any{
+			"multi_match": map[string]any{
+				"query":  "hello",
+				"fields": []string{"name.fulltext", "body"},
+				"type":   "best_fields",
+			},
+		}, got)
+	})
+
+	t.Run("convert filter condition knn vector dsl", func(t *testing.T) {
+		conn := &OpenSearchConnector{}
+		schema := opensearchConditionSchema()
+		cfg := &interfaces.FilterCondCfg{
+			Name:      "embedding",
+			Operation: filter_condition.OperationKnnVector,
+			ValueOptCfg: interfaces.ValueOptCfg{
+				ValueFrom: interfaces.ValueFrom_Const,
+				Value:     []float32{0.1, 0.2},
+			},
+			RemainCfg: map[string]any{"limit_key": "k", "limit_value": 3},
+			SubConds: []*interfaces.FilterCondCfg{
+				osConstCfg("is_active", filter_condition.OperationTrue, nil),
+			},
+		}
+		cond := mustOSCondition(t, cfg)
+
+		got, err := conn.ConvertFilterCondition(cond, schema)
+
+		require.NoError(t, err)
+		assert.Equal(t, map[string]any{
+			"knn": map[string]any{
+				"embedding": map[string]any{
+					"vector": []float32{0.1, 0.2},
+					"k":      3,
+				},
+			},
+			"filter": map[string]any{
+				"bool": map[string]any{
+					"must": []map[string]any{
+						{"term": map[string]any{"is_active": true}},
+					},
+				},
+			},
+		}, got)
+	})
 }
 
-func TestConvertFilterConditionErrors(t *testing.T) {
-	conn := &OpenSearchConnector{}
-	schema := opensearchConditionSchema()
+func TestOpenSearchConnectorConvertFilterConditionEqual(t *testing.T) {
+	t.Run("rejects text field without keyword feature", func(t *testing.T) {
+		conn := &OpenSearchConnector{}
 
-	cond := mustOSCondition(t, osConstCfg("body", filter_condition.OperationEqual, "hello"))
-	got, err := conn.ConvertFilterConditionEqual(cond, []*interfaces.Property{
-		{
-			Name:         "body",
-			OriginalName: "body",
-			Type:         interfaces.DataType_Text,
-		},
+		cond := mustOSCondition(t, osConstCfg("body", filter_condition.OperationEqual, "hello"))
+		got, err := conn.ConvertFilterConditionEqual(cond, []*interfaces.Property{
+			{
+				Name:         "body",
+				OriginalName: "body",
+				Type:         interfaces.DataType_Text,
+			},
+		})
+		require.Error(t, err)
+		assert.Nil(t, got)
+		assert.ErrorContains(t, err, "no keyword feature")
 	})
-	require.Error(t, err)
-	assert.Nil(t, got)
-	assert.ErrorContains(t, err, "no keyword feature")
+}
 
-	got, err = conn.ConvertFilterConditionAnd(&filter_condition.EqualCond{}, schema)
-	require.Error(t, err)
-	assert.Nil(t, got)
-	assert.ErrorContains(t, err, "condition is not")
+func TestOpenSearchConnectorConvertFilterConditionAnd(t *testing.T) {
+	t.Run("rejects non and condition", func(t *testing.T) {
+		conn := &OpenSearchConnector{}
+		schema := opensearchConditionSchema()
+
+		got, err := conn.ConvertFilterConditionAnd(&filter_condition.EqualCond{}, schema)
+		require.Error(t, err)
+		assert.Nil(t, got)
+		assert.ErrorContains(t, err, "condition is not")
+	})
 }
 
 func mustOSCondition(t *testing.T, cfg *interfaces.FilterCondCfg) interfaces.FilterCondition {
@@ -298,26 +306,28 @@ func opensearchConditionSchema() []*interfaces.Property {
 	}
 }
 
-func TestFulltextFieldName_StringUsesSubfield(t *testing.T) {
-	prop := &interfaces.Property{
-		Name: "team_name",
-		Type: interfaces.DataType_String,
-		Features: []interfaces.PropertyFeature{
-			{FeatureName: "fulltext", FeatureType: interfaces.PropertyFeatureType_Fulltext},
-		},
-	}
+func TestFulltextFieldName(t *testing.T) {
+	t.Run("fulltext field name string uses subfield", func(t *testing.T) {
+		prop := &interfaces.Property{
+			Name: "team_name",
+			Type: interfaces.DataType_String,
+			Features: []interfaces.PropertyFeature{
+				{FeatureName: "fulltext", FeatureType: interfaces.PropertyFeatureType_Fulltext},
+			},
+		}
 
-	assert.Equal(t, "team_name.fulltext", fulltextFieldName(prop))
-}
+		assert.Equal(t, "team_name.fulltext", fulltextFieldName(prop))
+	})
 
-func TestFulltextFieldName_TextUsesBareName(t *testing.T) {
-	prop := &interfaces.Property{Name: "body", Type: interfaces.DataType_Text}
+	t.Run("fulltext field name text uses bare name", func(t *testing.T) {
+		prop := &interfaces.Property{Name: "body", Type: interfaces.DataType_Text}
 
-	assert.Equal(t, "body", fulltextFieldName(prop))
-}
+		assert.Equal(t, "body", fulltextFieldName(prop))
+	})
 
-func TestFulltextFieldName_StringNoFulltextBareName(t *testing.T) {
-	prop := &interfaces.Property{Name: "code", Type: interfaces.DataType_String}
+	t.Run("fulltext field name string no fulltext bare name", func(t *testing.T) {
+		prop := &interfaces.Property{Name: "code", Type: interfaces.DataType_String}
 
-	assert.Equal(t, "code", fulltextFieldName(prop))
+		assert.Equal(t, "code", fulltextFieldName(prop))
+	})
 }

@@ -18,79 +18,83 @@ import (
 )
 
 func TestLocalIndexManagerDelegatesToIndexConnector(t *testing.T) {
-	ctx := context.Background()
-	connector := &fakeIndexConnector{
-		queryResult: &interfaces.QueryResult{
-			Rows:  []map[string]any{{"id": 1}},
-			Total: 1,
-		},
-		document: map[string]any{"id": 1},
-		exists:   true,
-		docIDs:   []string{"doc-1"},
-	}
-	manager := &localIndexManager{c: connector}
-	schema := []*interfaces.Property{{Name: "id", Type: "integer"}}
-	resource := &interfaces.Resource{ID: "resource-1", SchemaDefinition: schema}
-	params := &interfaces.ResourceDataQueryParams{}
-	docs := []map[string]any{{"id": 1}}
+	t.Run("local index manager delegates to index connector", func(t *testing.T) {
+		ctx := context.Background()
+		connector := &fakeIndexConnector{
+			queryResult: &interfaces.QueryResult{
+				Rows:  []map[string]any{{"id": 1}},
+				Total: 1,
+			},
+			document: map[string]any{"id": 1},
+			exists:   true,
+			docIDs:   []string{"doc-1"},
+		}
+		manager := &localIndexManager{c: connector}
+		schema := []*interfaces.Property{{Name: "id", Type: "integer"}}
+		resource := &interfaces.Resource{ID: "resource-1", SchemaDefinition: schema}
+		params := &interfaces.ResourceDataQueryParams{}
+		docs := []map[string]any{{"id": 1}}
 
-	require.NoError(t, manager.CreateIndex(ctx, "idx", schema))
-	assert.Equal(t, "idx", connector.createdName)
-	require.NoError(t, manager.UpdateIndex(ctx, "idx", schema))
-	assert.Equal(t, "idx", connector.updatedName)
-	require.NoError(t, manager.DeleteIndex(ctx, "idx"))
-	assert.Equal(t, "idx", connector.deletedName)
+		require.NoError(t, manager.CreateIndex(ctx, "idx", schema))
+		assert.Equal(t, "idx", connector.createdName)
+		require.NoError(t, manager.UpdateIndex(ctx, "idx", schema))
+		assert.Equal(t, "idx", connector.updatedName)
+		require.NoError(t, manager.DeleteIndex(ctx, "idx"))
+		assert.Equal(t, "idx", connector.deletedName)
 
-	exists, err := manager.CheckExist(ctx, "idx")
-	require.NoError(t, err)
-	assert.True(t, exists)
+		exists, err := manager.CheckExist(ctx, "idx")
+		require.NoError(t, err)
+		assert.True(t, exists)
 
-	rows, total, err := manager.ListDocuments(ctx, "idx", resource, params)
-	require.NoError(t, err)
-	assert.Equal(t, []map[string]any{{"id": 1}}, rows)
-	assert.Equal(t, int64(1), total)
+		rows, total, err := manager.ListDocuments(ctx, "idx", resource, params)
+		require.NoError(t, err)
+		assert.Equal(t, []map[string]any{{"id": 1}}, rows)
+		assert.Equal(t, int64(1), total)
 
-	doc, err := manager.GetDocument(ctx, "idx", "doc-1")
-	require.NoError(t, err)
-	assert.Equal(t, map[string]any{"id": 1}, doc)
+		doc, err := manager.GetDocument(ctx, "idx", "doc-1")
+		require.NoError(t, err)
+		assert.Equal(t, map[string]any{"id": 1}, doc)
 
-	created, err := manager.CreateDocuments(ctx, "idx", docs)
-	require.NoError(t, err)
-	assert.Equal(t, []string{"doc-1"}, created)
+		created, err := manager.CreateDocuments(ctx, "idx", docs)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"doc-1"}, created)
 
-	upserted, err := manager.UpsertDocuments(ctx, "idx", docs)
-	require.NoError(t, err)
-	assert.Equal(t, []string{"doc-1"}, upserted)
+		upserted, err := manager.UpsertDocuments(ctx, "idx", docs)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"doc-1"}, upserted)
 
-	require.NoError(t, manager.DeleteDocument(ctx, "idx", "doc-1"))
-	assert.Equal(t, "doc-1", connector.deletedDocID)
-	require.NoError(t, manager.DeleteDocuments(ctx, "idx", "doc-1,doc-2"))
-	assert.Equal(t, "doc-1,doc-2", connector.deletedDocIDs)
+		require.NoError(t, manager.DeleteDocument(ctx, "idx", "doc-1"))
+		assert.Equal(t, "doc-1", connector.deletedDocID)
+		require.NoError(t, manager.DeleteDocuments(ctx, "idx", "doc-1,doc-2"))
+		assert.Equal(t, "doc-1,doc-2", connector.deletedDocIDs)
+	})
 }
 
 func TestLocalIndexManagerDeleteDocumentsByQueryBuildsActualFilter(t *testing.T) {
-	ctx := context.Background()
-	connector := &fakeIndexConnector{}
-	manager := &localIndexManager{c: connector}
-	resource := &interfaces.Resource{
-		SchemaDefinition: []*interfaces.Property{{Name: "id", Type: "integer"}},
-	}
-	params := &interfaces.ResourceDataQueryParams{
-		FilterCondCfg: &interfaces.FilterCondCfg{
-			Name:      "id",
-			Operation: "==",
-			ValueOptCfg: interfaces.ValueOptCfg{
-				ValueFrom: interfaces.ValueFrom_Const,
-				Value:     1,
+	t.Run("local index manager delete documents by query builds actual filter", func(t *testing.T) {
+		ctx := context.Background()
+		connector := &fakeIndexConnector{}
+		manager := &localIndexManager{c: connector}
+		resource := &interfaces.Resource{
+			SchemaDefinition: []*interfaces.Property{{Name: "id", Type: "integer"}},
+		}
+		params := &interfaces.ResourceDataQueryParams{
+			FilterCondCfg: &interfaces.FilterCondCfg{
+				Name:      "id",
+				Operation: "==",
+				ValueOptCfg: interfaces.ValueOptCfg{
+					ValueFrom: interfaces.ValueFrom_Const,
+					Value:     1,
+				},
 			},
-		},
-	}
+		}
 
-	require.NoError(t, manager.DeleteDocumentsByQuery(ctx, "idx", resource, params))
-	require.NotNil(t, params.ActualFilterCond)
-	assert.Equal(t, "==", params.ActualFilterCond.GetOperation())
-	assert.Same(t, params, connector.deleteByQueryParams)
-	assert.Equal(t, resource.SchemaDefinition, connector.deleteByQuerySchema)
+		require.NoError(t, manager.DeleteDocumentsByQuery(ctx, "idx", resource, params))
+		require.NotNil(t, params.ActualFilterCond)
+		assert.Equal(t, "==", params.ActualFilterCond.GetOperation())
+		assert.Same(t, params, connector.deleteByQueryParams)
+		assert.Equal(t, resource.SchemaDefinition, connector.deleteByQuerySchema)
+	})
 }
 
 var _ connectors.IndexConnector = (*fakeIndexConnector)(nil)
