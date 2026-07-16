@@ -14,8 +14,9 @@ router = APIRouter()
 
 _SSE_DOC = (
     "SSE 事件流：meta({thread_id, agent_id}) 先行；正文轮内 token({content}) 与 "
-    "tool_call({name}) 交替；正常收尾 done({thread_id})；失败以 error({code, detail}) "
-    "收尾（错误不静默）。"
+    "tool_call({name}) 交替；传了 response_format 时 done 前多一个 "
+    "structured({content: 符合 schema 的对象}) 事件；正常收尾 done({thread_id})；"
+    "失败以 error({code, detail}) 收尾（错误不静默）。"
 )
 
 

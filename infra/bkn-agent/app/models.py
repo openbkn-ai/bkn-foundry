@@ -138,6 +138,10 @@ class ChatRequest(BaseModel):
     skills: list[str] = Field(default_factory=list)
     prompt_override: Optional[str] = None
     prompt_vars: dict[str, Any] = Field(default_factory=dict)
+    # 结构化输出：传 JSON Schema（schema 本体，如 {"type":"object","properties":{...}}），
+    # 工具循环跑完后再做一次结构化调用，结果经 SSE `structured` 事件返回（正文 token 照常流）。
+    # 依赖底层模型支持结构化输出（with_structured_output / function-calling）。
+    response_format: Optional[dict[str, Any]] = None
 
 
 class InvokeRequest(BaseModel):
@@ -147,6 +151,8 @@ class InvokeRequest(BaseModel):
     skills: list[str] = Field(default_factory=list)
     prompt_override: Optional[str] = None
     prompt_vars: dict[str, Any] = Field(default_factory=dict)
+    # 结构化输出：传 JSON Schema，task output 落序列化后的 JSON（见 ChatRequest.response_format）。
+    response_format: Optional[dict[str, Any]] = None
 
 
 class RunRequest(BaseModel):
@@ -155,6 +161,8 @@ class RunRequest(BaseModel):
     skills: list[str] = Field(default_factory=list)
     prompt_override: Optional[str] = None
     prompt_vars: dict[str, Any] = Field(default_factory=dict)
+    # 结构化输出：传 JSON Schema，task output 落序列化后的 JSON（见 ChatRequest.response_format）。
+    response_format: Optional[dict[str, Any]] = None
 
 
 class PromptSpec(BaseModel):

@@ -1,4 +1,5 @@
 import asyncio
+import json
 from typing import Any, Optional
 
 from langchain_core.messages import AIMessage
@@ -28,8 +29,13 @@ async def run_agent_once(
     account_id: str,
     account_type: str,
     depth: int,
+    response_format: Optional[dict[str, Any]] = None,
 ) -> str:
-    """一次性无状态执行：单次 graph run，无 checkpointer。被 /run 与 agent-as-tool 共用。"""
+    """一次性无状态执行：单次 graph run，无 checkpointer。被 /run 与 agent-as-tool 共用。
+
+    response_format（JSON Schema）非空时走结构化输出：工具循环后再做一次结构化调用，
+    返回序列化后的 JSON 字符串；否则返回最后一条 AI 文本回复。
+    """
     if depth > MAX_AGENT_DEPTH:
         raise err(
             409,
@@ -65,12 +71,21 @@ async def run_agent_once(
             "prompt.version": prompt_version,
         },
     ):
-        graph = create_react_agent(model, tools, prompt=system_prompt)
+        graph_kwargs = {"response_format": response_format} if response_format else {}
+        graph = create_react_agent(model, tools, prompt=system_prompt, **graph_kwargs)
         async with asyncio.timeout(timeout_s):
             result = await graph.ainvoke(
                 {"messages": [("user", message)]},
                 {"recursion_limit": max_turns * 2 + 1},
             )
+    if response_format:
+        structured = result.get("structured_response")
+        if structured is None:
+            raise RuntimeError("结构化输出为空（模型未产出符合 schema 的结果）")
+        # structured_response 可能是 pydantic 模型或 dict；统一序列化为 JSON 字符串落库
+        if hasattr(structured, "model_dump"):
+            structured = structured.model_dump()
+        return json.dumps(structured, ensure_ascii=False)
     for msg in reversed(result["messages"]):
         if isinstance(msg, AIMessage) and msg.content:
             return msg.content if isinstance(msg.content, str) else str(msg.content)
@@ -91,6 +106,7 @@ async def execute_task(task_id: str, agent: AgentOut, req_input: dict, account_i
             account_id,
             account_type,
             depth=1,
+            response_format=req_input.get("response_format"),
         )
         async with SessionLocal() as session:
             # succeeded 必须等于结果可用（vega build-task 教训）

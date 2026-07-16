@@ -160,9 +160,9 @@ paths:
         required: true
       responses:
         '200':
-          description: SSE 事件流：meta({thread_id, agent_id}) 先行；正文轮内 token({content})
-            与 tool_call({name}) 交替；正常收尾 done({thread_id})；失败以 error({code, detail})
-            收尾（错误不静默）。
+          description: 'SSE 事件流：meta({thread_id, agent_id}) 先行；正文轮内 token({content})
+            与 tool_call({name}) 交替；传了 response_format 时 done 前多一个 structured({content:
+            符合 schema 的对象}) 事件；正常收尾 done({thread_id})；失败以 error({code, detail}) 收尾（错误不静默）。'
           content:
             application/json:
               schema: {}
@@ -567,7 +567,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ExportPackage'
+                $ref: '#/components/schemas/ExportPackage-Output'
         4XX:
           description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
           content:
@@ -620,7 +620,23 @@ components:
       required:
       - deleted
       title: AgentDeleted
-    AgentExportItem:
+    AgentExportItem-Input:
+      properties:
+        agent_id:
+          type: string
+          title: Agent Id
+        spec:
+          $ref: '#/components/schemas/AgentSpec'
+        prompt:
+          anyOf:
+          - $ref: '#/components/schemas/PromptExport'
+          - type: 'null'
+      type: object
+      required:
+      - agent_id
+      - spec
+      title: AgentExportItem
+    AgentExportItem-Output:
       properties:
         agent_id:
           type: string
@@ -706,8 +722,7 @@ components:
           title: Prompt Id
         prompt_vars_schema:
           anyOf:
-          - additionalProperties: true
-            type: object
+          - type: object
           - type: 'null'
           title: Prompt Vars Schema
         model:
@@ -716,7 +731,6 @@ components:
           default: ''
         tools:
           items:
-            additionalProperties: true
             type: object
           type: array
           title: Tools
@@ -782,8 +796,7 @@ components:
           title: Prompt Id
         prompt_vars_schema:
           anyOf:
-          - additionalProperties: true
-            type: object
+          - type: object
           - type: 'null'
           title: Prompt Vars Schema
         model:
@@ -792,7 +805,6 @@ components:
           default: ''
         tools:
           items:
-            additionalProperties: true
             type: object
           type: array
           title: Tools
@@ -841,9 +853,13 @@ components:
           - type: 'null'
           title: Prompt Override
         prompt_vars:
-          additionalProperties: true
           type: object
           title: Prompt Vars
+        response_format:
+          anyOf:
+          - type: object
+          - type: 'null'
+          title: Response Format
       type: object
       required:
       - agent_id
@@ -901,10 +917,12 @@ components:
       - solution
       title: ErrorEnvelope
       description: 平台统一错误封套（所有非 2xx 响应）。
-    ExportPackage:
+    ExportPackage-Input:
       properties:
         format:
           type: string
+          enum:
+          - bkn-agent/v1
           const: bkn-agent/v1
           title: Format
           default: bkn-agent/v1
@@ -913,7 +931,29 @@ components:
           title: Exported At
         items:
           items:
-            $ref: '#/components/schemas/AgentExportItem'
+            $ref: '#/components/schemas/AgentExportItem-Input'
+          type: array
+          title: Items
+      type: object
+      required:
+      - exported_at
+      - items
+      title: ExportPackage
+    ExportPackage-Output:
+      properties:
+        format:
+          type: string
+          enum:
+          - bkn-agent/v1
+          const: bkn-agent/v1
+          title: Format
+          default: bkn-agent/v1
+        exported_at:
+          type: integer
+          title: Exported At
+        items:
+          items:
+            $ref: '#/components/schemas/AgentExportItem-Output'
           type: array
           title: Items
       type: object
@@ -971,7 +1011,7 @@ components:
     ImportRequest:
       properties:
         package:
-          $ref: '#/components/schemas/ExportPackage'
+          $ref: '#/components/schemas/ExportPackage-Input'
       type: object
       required:
       - package
@@ -1009,9 +1049,13 @@ components:
           - type: 'null'
           title: Prompt Override
         prompt_vars:
-          additionalProperties: true
           type: object
           title: Prompt Vars
+        response_format:
+          anyOf:
+          - type: object
+          - type: 'null'
+          title: Response Format
       type: object
       required:
       - message
@@ -1024,6 +1068,8 @@ components:
           title: Deleted
         fallback:
           type: string
+          enum:
+          - default
           const: default
           title: Fallback
       type: object
@@ -1051,6 +1097,8 @@ components:
           title: Account Id
         source:
           type: string
+          enum:
+          - override
           const: override
           title: Source
       type: object
@@ -1072,8 +1120,7 @@ components:
           title: Content
         vars_schema:
           anyOf:
-          - additionalProperties: true
-            type: object
+          - type: object
           - type: 'null'
           title: Vars Schema
       type: object
@@ -1121,8 +1168,7 @@ components:
           title: Content
         vars_schema:
           anyOf:
-          - additionalProperties: true
-            type: object
+          - type: object
           - type: 'null'
           title: Vars Schema
         update_user:
@@ -1148,8 +1194,7 @@ components:
           title: Content
         vars_schema:
           anyOf:
-          - additionalProperties: true
-            type: object
+          - type: object
           - type: 'null'
           title: Vars Schema
       type: object
@@ -1179,8 +1224,7 @@ components:
           title: Content
         vars_schema:
           anyOf:
-          - additionalProperties: true
-            type: object
+          - type: object
           - type: 'null'
           title: Vars Schema
       type: object
@@ -1209,8 +1253,7 @@ components:
           title: Content
         vars_schema:
           anyOf:
-          - additionalProperties: true
-            type: object
+          - type: object
           - type: 'null'
           title: Vars Schema
         create_user:
@@ -1246,9 +1289,13 @@ components:
           - type: 'null'
           title: Prompt Override
         prompt_vars:
-          additionalProperties: true
           type: object
           title: Prompt Vars
+        response_format:
+          anyOf:
+          - type: object
+          - type: 'null'
+          title: Response Format
       type: object
       required:
       - agent_id
@@ -1272,8 +1319,7 @@ components:
           title: Status
         input:
           anyOf:
-          - additionalProperties: true
-            type: object
+          - type: object
           - type: 'null'
           title: Input
         output:

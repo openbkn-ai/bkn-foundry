@@ -93,7 +93,12 @@ async def stream_chat(
             yield _sse("meta", {"thread_id": thread_id, "agent_id": agent.agent_id})
             with observability.span("agent.chat", span_attrs):
                 async with open_checkpointer() as checkpointer:
-                    graph = create_react_agent(model, tools, prompt=system_prompt, checkpointer=checkpointer)
+                    # response_format（JSON Schema，可选）非空 → 结构化输出：工具循环后再做一次
+                    # 结构化调用，结果落 state["structured_response"]，正文 token 照常流。
+                    graph_kwargs = {"response_format": req.response_format} if req.response_format else {}
+                    graph = create_react_agent(
+                        model, tools, prompt=system_prompt, checkpointer=checkpointer, **graph_kwargs
+                    )
                     cfg = {
                         "configurable": {"thread_id": thread_id},
                         "recursion_limit": max_turns * 2 + 1,
@@ -109,6 +114,14 @@ async def stream_chat(
                                     for tc in chunk.tool_call_chunks or []:
                                         if tc.get("name"):
                                             yield _sse("tool_call", {"name": tc["name"]})
+                        if req.response_format:
+                            # 结构化结果只在终态里，流式末尾单独送 structured 事件
+                            state = await graph.aget_state(cfg)
+                            structured = state.values.get("structured_response")
+                            if structured is not None:
+                                if hasattr(structured, "model_dump"):
+                                    structured = structured.model_dump()
+                                yield _sse("structured", {"content": structured})
                         yield _sse("done", {"thread_id": thread_id})
                     except TimeoutError:
                         yield _sse("error", {"code": "BknAgent.Chat.Timeout", "detail": f"超过 {timeout_s}s"})

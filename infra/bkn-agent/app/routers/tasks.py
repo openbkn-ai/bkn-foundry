@@ -32,6 +32,7 @@ async def invoke(
         "prompt_vars": req.prompt_vars,
         "skills": req.skills,
         "prompt_override": req.prompt_override,
+        "response_format": req.response_format,
     }
     task = await dao.create_task(session, agent.agent_id, task_input, account.account_id)
     await runner.execute_task(task.task_id, agent, task_input, account.account_id, account.account_type)
@@ -56,6 +57,7 @@ async def run(
         "prompt_vars": req.prompt_vars,
         "skills": req.skills,
         "prompt_override": req.prompt_override,
+        "response_format": req.response_format,
     }
     task = await dao.create_task(session, agent.agent_id, task_input, account.account_id)
     runner.submit_task(task.task_id, agent, task_input, account.account_id, account.account_type)
