@@ -130,6 +130,34 @@ func (mr *MockDiscoverTaskServiceMockRecorder) InternalGetByID(ctx, id any) *gom
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalGetByID", reflect.TypeOf((*MockDiscoverTaskService)(nil).InternalGetByID), ctx, id)
 }
 
+// InternalUpdateResult mocks base method.
+func (m *MockDiscoverTaskService) InternalUpdateResult(ctx context.Context, id string, result *interfaces.DiscoverResult, stime int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InternalUpdateResult", ctx, id, result, stime)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// InternalUpdateResult indicates an expected call of InternalUpdateResult.
+func (mr *MockDiscoverTaskServiceMockRecorder) InternalUpdateResult(ctx, id, result, stime any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalUpdateResult", reflect.TypeOf((*MockDiscoverTaskService)(nil).InternalUpdateResult), ctx, id, result, stime)
+}
+
+// InternalUpdateStatus mocks base method.
+func (m *MockDiscoverTaskService) InternalUpdateStatus(ctx context.Context, id, status, message string, stime int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InternalUpdateStatus", ctx, id, status, message, stime)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// InternalUpdateStatus indicates an expected call of InternalUpdateStatus.
+func (mr *MockDiscoverTaskServiceMockRecorder) InternalUpdateStatus(ctx, id, status, message, stime any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalUpdateStatus", reflect.TypeOf((*MockDiscoverTaskService)(nil).InternalUpdateStatus), ctx, id, status, message, stime)
+}
+
 // List mocks base method.
 func (m *MockDiscoverTaskService) List(ctx context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTask, int64, error) {
 	m.ctrl.T.Helper()

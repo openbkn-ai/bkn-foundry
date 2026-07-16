@@ -142,7 +142,7 @@ func (sbw *streamingBuildWorker) HandleTask(ctx context.Context, task *asynq.Tas
 	}
 
 	// Get catalog for MySQL connection
-	catalog, err := sbw.cs.GetByID(ctx, resource.CatalogID, true)
+	catalog, err := sbw.cs.InternalGetByID(ctx, resource.CatalogID, true)
 	if err != nil {
 		return fmt.Errorf("get catalog failed: %w", err)
 	}

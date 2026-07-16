@@ -18,7 +18,7 @@ import (
 	"vega-backend/common"
 	"vega-backend/interfaces"
 	"vega-backend/logics"
-	"vega-backend/logics/connectors/remote"
+	"vega-backend/logics/connector/remote"
 )
 
 var (

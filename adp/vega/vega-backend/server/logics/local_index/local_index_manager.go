@@ -14,7 +14,7 @@ import (
 
 	"vega-backend/common"
 	"vega-backend/interfaces"
-	opensearchConnector "vega-backend/logics/connectors/local/index/opensearch"
+	opensearchConnector "vega-backend/logics/connector/local/index/opensearch"
 	"vega-backend/logics/filter_condition"
 )
 

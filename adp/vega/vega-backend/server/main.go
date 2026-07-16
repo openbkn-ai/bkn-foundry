@@ -39,7 +39,7 @@ import (
 	"vega-backend/drivenadapters/user_mgmt"
 	"vega-backend/driveradapters"
 	"vega-backend/logics"
-	"vega-backend/logics/connectors/factory"
+	"vega-backend/logics/connector/factory"
 	logicsDiscoverSchedule "vega-backend/logics/discover_schedule"
 	logicsDiscoverTask "vega-backend/logics/discover_task"
 	"vega-backend/worker"

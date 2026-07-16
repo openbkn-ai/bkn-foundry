@@ -44,7 +44,7 @@ func TestBatchBuildWorkerHandleTask(t *testing.T) {
 
 		var gotAccount interfaces.AccountInfo
 		var hasAccount bool
-		cs.EXPECT().GetByID(gomock.Any(), "c1", true).DoAndReturn(
+		cs.EXPECT().InternalGetByID(gomock.Any(), "c1", true).DoAndReturn(
 			func(ctx context.Context, id string, withSensitiveFields bool) (*interfaces.Catalog, error) {
 				gotAccount, hasAccount = workerAccountFromCtx(ctx)
 				return nil, errors.New("forbidden")
@@ -99,7 +99,7 @@ func TestBatchBuildWorkerHandleTask(t *testing.T) {
 			interfaces.BuildTaskStatusInit).
 			Return(true, nil)
 		rs.EXPECT().InternalGetByID(gomock.Any(), "r1").Return(resource, nil)
-		cs.EXPECT().GetByID(gomock.Any(), "c1", true).Return(nil, errors.New("catalog down"))
+		cs.EXPECT().InternalGetByID(gomock.Any(), "c1", true).Return(nil, errors.New("catalog down"))
 		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1",
 			interfaces.NewBuildTaskUpdate().
 				WithStatus(interfaces.BuildTaskStatusFailed).

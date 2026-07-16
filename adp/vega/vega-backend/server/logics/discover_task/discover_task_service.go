@@ -213,9 +213,23 @@ func (dts *discoverTaskService) UpdateStatus(ctx context.Context, id, status, me
 	return dts.dta.UpdateStatus(ctx, id, status, message, stime)
 }
 
+func (dts *discoverTaskService) InternalUpdateStatus(ctx context.Context, id, status, message string, stime int64) error {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DiscoverTaskService.InternalUpdateStatus")
+	defer span.End()
+
+	return dts.dta.UpdateStatus(ctx, id, status, message, stime)
+}
+
 // UpdateResult updates a DiscoverTask's result.
 func (dts *discoverTaskService) UpdateResult(ctx context.Context, id string, result *interfaces.DiscoverResult, stime int64) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DiscoverTaskService.UpdateResult")
+	defer span.End()
+
+	return dts.dta.UpdateResult(ctx, id, result, stime)
+}
+
+func (dts *discoverTaskService) InternalUpdateResult(ctx context.Context, id string, result *interfaces.DiscoverResult, stime int64) error {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DiscoverTaskService.InternalUpdateResult")
 	defer span.End()
 
 	return dts.dta.UpdateResult(ctx, id, result, stime)

@@ -17,7 +17,7 @@ import (
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
 	"vega-backend/logics/catalog"
-	"vega-backend/logics/connectors/factory"
+	"vega-backend/logics/connector/factory"
 	"vega-backend/logics/dataset"
 	"vega-backend/logics/filter_condition"
 	"vega-backend/logics/local_index"

@@ -18,7 +18,7 @@ import (
 	"vega-backend/common"
 	"vega-backend/interfaces"
 	"vega-backend/logics/catalog"
-	"vega-backend/logics/connectors/factory"
+	"vega-backend/logics/connector/factory"
 	"vega-backend/logics/discover_task"
 	"vega-backend/logics/resource"
 )
@@ -70,7 +70,7 @@ func (dtw *DiscoverTaskWorker) HandleTask(ctx context.Context, task *asynq.Task)
 
 	// Update task status to running and set start time
 	now := time.Now().UnixMilli()
-	if err := dtw.dts.UpdateStatus(ctx, taskID, interfaces.DiscoverTaskStatusRunning, "", now); err != nil {
+	if err := dtw.dts.InternalUpdateStatus(ctx, taskID, interfaces.DiscoverTaskStatusRunning, "", now); err != nil {
 		logger.Errorf("Failed to set start time for task %s: %v", taskID, err)
 		return err
 	}
@@ -85,13 +85,13 @@ func (dtw *DiscoverTaskWorker) HandleTask(ctx context.Context, task *asynq.Task)
 	if err != nil {
 		// Update task status to failed
 		now = time.Now().UnixMilli()
-		_ = dtw.dts.UpdateStatus(ctx, taskID, interfaces.DiscoverTaskStatusFailed, err.Error(), now)
+		_ = dtw.dts.InternalUpdateStatus(ctx, taskID, interfaces.DiscoverTaskStatusFailed, err.Error(), now)
 		return err
 	}
 
 	// Update task result
 	now = time.Now().UnixMilli()
-	if err := dtw.dts.UpdateResult(ctx, taskID, result, now); err != nil {
+	if err := dtw.dts.InternalUpdateResult(ctx, taskID, result, now); err != nil {
 		logger.Errorf("Failed to update result for task %s: %v", taskID, err)
 		return err
 	}

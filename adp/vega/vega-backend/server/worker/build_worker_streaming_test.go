@@ -41,7 +41,7 @@ func TestStreamingBuildWorkerHandleTask(t *testing.T) {
 
 		var gotAccount interfaces.AccountInfo
 		var hasAccount bool
-		cs.EXPECT().GetByID(gomock.Any(), "c1", true).DoAndReturn(
+		cs.EXPECT().InternalGetByID(gomock.Any(), "c1", true).DoAndReturn(
 			func(ctx context.Context, id string, withSensitiveFields bool) (*interfaces.Catalog, error) {
 				gotAccount, hasAccount = workerAccountFromCtx(ctx)
 				return nil, errors.New("forbidden")

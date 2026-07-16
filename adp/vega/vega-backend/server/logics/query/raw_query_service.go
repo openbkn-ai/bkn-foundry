@@ -22,9 +22,9 @@ import (
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
 	"vega-backend/logics/catalog"
-	"vega-backend/logics/connectors/factory"
-	"vega-backend/logics/connectors/local/table/mariadb"
-	"vega-backend/logics/connectors/local/table/postgresql"
+	"vega-backend/logics/connector/factory"
+	"vega-backend/logics/connector/local/table/mariadb"
+	"vega-backend/logics/connector/local/table/postgresql"
 	"vega-backend/logics/query/sqlglot"
 	resourcelogic "vega-backend/logics/resource"
 )

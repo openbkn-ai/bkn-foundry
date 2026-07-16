@@ -21,7 +21,7 @@ import (
 	"vega-backend/logics"
 	"vega-backend/logics/build_task"
 	"vega-backend/logics/catalog"
-	"vega-backend/logics/connectors/factory"
+	"vega-backend/logics/connector/factory"
 	"vega-backend/logics/filter_condition"
 	"vega-backend/logics/local_index"
 	"vega-backend/logics/resource"
@@ -211,7 +211,7 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, resource *interfa
 	}
 
 	// Get catalog for MySQL connection
-	catalog, err := bbw.cs.GetByID(ctx, resource.CatalogID, true)
+	catalog, err := bbw.cs.InternalGetByID(ctx, resource.CatalogID, true)
 	if err != nil {
 		return fmt.Errorf("get catalog failed: %w", err)
 	}

@@ -130,6 +130,21 @@ func (mr *MockCatalogServiceMockRecorder) GetByIDs(ctx, ids any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByIDs", reflect.TypeOf((*MockCatalogService)(nil).GetByIDs), ctx, ids)
 }
 
+// InternalGetByID mocks base method.
+func (m *MockCatalogService) InternalGetByID(ctx context.Context, id string, withSensitiveFields bool) (*interfaces.Catalog, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InternalGetByID", ctx, id, withSensitiveFields)
+	ret0, _ := ret[0].(*interfaces.Catalog)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// InternalGetByID indicates an expected call of InternalGetByID.
+func (mr *MockCatalogServiceMockRecorder) InternalGetByID(ctx, id, withSensitiveFields any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalGetByID", reflect.TypeOf((*MockCatalogService)(nil).InternalGetByID), ctx, id, withSensitiveFields)
+}
+
 // List mocks base method.
 func (m *MockCatalogService) List(ctx context.Context, params interfaces.CatalogsQueryParams) ([]*interfaces.Catalog, int64, error) {
 	m.ctrl.T.Helper()

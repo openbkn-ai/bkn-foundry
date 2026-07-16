@@ -8,10 +8,10 @@ package factory
 
 import (
 	"vega-backend/interfaces"
-	"vega-backend/logics/connectors/local/fileset/anyshare"
-	"vega-backend/logics/connectors/local/index/opensearch"
-	"vega-backend/logics/connectors/local/table/mariadb"
-	"vega-backend/logics/connectors/local/table/postgresql"
+	"vega-backend/logics/connector/local/fileset/anyshare"
+	"vega-backend/logics/connector/local/index/opensearch"
+	"vega-backend/logics/connector/local/table/mariadb"
+	"vega-backend/logics/connector/local/table/postgresql"
 )
 
 // InitLocalConnectors 初始化本地 connector
