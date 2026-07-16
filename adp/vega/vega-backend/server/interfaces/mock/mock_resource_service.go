@@ -11,6 +11,7 @@ package mock_interfaces
 
 import (
 	context "context"
+	sql "database/sql"
 	reflect "reflect"
 	interfaces "vega-backend/interfaces"
 
@@ -173,6 +174,35 @@ func (m *MockResourceService) GetByName(ctx context.Context, catalogID, name str
 func (mr *MockResourceServiceMockRecorder) GetByName(ctx, catalogID, name any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByName", reflect.TypeOf((*MockResourceService)(nil).GetByName), ctx, catalogID, name)
+}
+
+// InternalGetByID mocks base method.
+func (m *MockResourceService) InternalGetByID(ctx context.Context, id string) (*interfaces.Resource, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InternalGetByID", ctx, id)
+	ret0, _ := ret[0].(*interfaces.Resource)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// InternalGetByID indicates an expected call of InternalGetByID.
+func (mr *MockResourceServiceMockRecorder) InternalGetByID(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalGetByID", reflect.TypeOf((*MockResourceService)(nil).InternalGetByID), ctx, id)
+}
+
+// InternalUpdate mocks base method.
+func (m *MockResourceService) InternalUpdate(ctx context.Context, tx *sql.Tx, resource *interfaces.Resource) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InternalUpdate", ctx, tx, resource)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// InternalUpdate indicates an expected call of InternalUpdate.
+func (mr *MockResourceServiceMockRecorder) InternalUpdate(ctx, tx, resource any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalUpdate", reflect.TypeOf((*MockResourceService)(nil).InternalUpdate), ctx, tx, resource)
 }
 
 // List mocks base method.

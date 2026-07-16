@@ -8,6 +8,7 @@ package interfaces
 
 import (
 	"context"
+	"database/sql"
 
 	"github.com/hibiken/asynq"
 )
@@ -37,4 +38,12 @@ type BuildTaskService interface {
 
 	// InternalGetByID retrieves a build task by ID for internal workers.
 	InternalGetByID(ctx context.Context, id string) (*BuildTask, error)
+	// InternalGetByCatalogID retrieves build tasks by catalog ID for internal workers.
+	InternalGetByCatalogID(ctx context.Context, catalogID string) ([]*BuildTask, error)
+	// InternalList retrieves build tasks for internal workers.
+	InternalList(ctx context.Context, params BuildTasksQueryParams) ([]*BuildTask, int64, error)
+	// InternalUpdateStatus updates a build task status for internal workers.
+	InternalUpdateStatus(ctx context.Context, tx *sql.Tx, id string, update BuildTaskUpdate, allowedStatuses ...string) (bool, error)
+	// InternalGetStatus retrieves the status of a build task for internal workers.
+	InternalGetStatus(ctx context.Context, id string) (string, error)
 }

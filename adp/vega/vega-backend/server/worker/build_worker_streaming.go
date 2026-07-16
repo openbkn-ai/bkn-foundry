@@ -25,8 +25,10 @@ import (
 	"vega-backend/common"
 	"vega-backend/interfaces"
 	"vega-backend/logics"
+	"vega-backend/logics/build_task"
 	"vega-backend/logics/catalog"
 	"vega-backend/logics/local_index"
+	"vega-backend/logics/resource"
 )
 
 // getServerID generates a unique server ID based on the connector name
@@ -46,13 +48,13 @@ func getServerName(hostname string) string {
 // streamingBuildWorker handles build tasks.
 type streamingBuildWorker struct {
 	appSetting  *common.AppSetting
+	bts         interfaces.BuildTaskService
 	client      *asynq.Client
-	taskAccess  interfaces.BuildTaskAccess
-	resAccess   interfaces.ResourceAccess
 	cs          interfaces.CatalogService
-	lim         interfaces.LocalIndexManager
 	httpClient  rest.HTTPClient
 	kafkaAccess interfaces.KafkaAccess
+	lim         interfaces.LocalIndexManager
+	rs          interfaces.ResourceService
 }
 
 // NewStreamingBuildWorker creates a new build worker.
@@ -61,15 +63,16 @@ func NewStreamingBuildWorker(appSetting *common.AppSetting) *streamingBuildWorke
 	if !common.GetDebugMode() && logics.AQA != nil {
 		client = logics.AQA.CreateClient()
 	}
+	rs := resource.NewResourceService(appSetting)
 	return &streamingBuildWorker{
 		appSetting:  appSetting,
 		client:      client,
-		taskAccess:  logics.BTA,
-		resAccess:   logics.RA,
+		bts:         build_task.NewBuildTaskService(appSetting, rs),
 		cs:          catalog.NewCatalogService(appSetting),
-		lim:         local_index.NewLocalIndexManager(appSetting),
 		httpClient:  common.NewHTTPClient(),
 		kafkaAccess: logics.KA,
+		lim:         local_index.NewLocalIndexManager(appSetting),
+		rs:          rs,
 	}
 }
 
@@ -84,7 +87,7 @@ func (sbw *streamingBuildWorker) HandleTask(ctx context.Context, task *asynq.Tas
 	taskID := msg.TaskID
 	logger.Infof("Starting streaming build task: %s", taskID)
 
-	buildTaskInfo, err := sbw.taskAccess.GetByID(ctx, taskID)
+	buildTaskInfo, err := sbw.bts.InternalGetByID(ctx, taskID)
 	if err != nil {
 		return fmt.Errorf("get build task failed: %w", err)
 	}
@@ -102,13 +105,13 @@ func (sbw *streamingBuildWorker) HandleTask(ctx context.Context, task *asynq.Tas
 		logger.Infof("Task %s is %s, skip execution", taskID, buildTaskInfo.Status)
 		if buildTaskInfo.Status == interfaces.BuildTaskStatusStopping {
 			update := interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusStopped)
-			if _, err := sbw.taskAccess.UpdateStatus(ctx, nil, taskID, update); err != nil {
+			if _, err := sbw.bts.InternalUpdateStatus(ctx, nil, taskID, update); err != nil {
 				return fmt.Errorf("update build task status failed: %w", err)
 			}
 		}
 		return nil
 	}
-	claimed, err := claimBuildTaskExecution(ctx, sbw.taskAccess, taskID)
+	claimed, err := claimBuildTaskExecution(ctx, sbw.bts, taskID)
 	if err != nil {
 		return fmt.Errorf("claim build task execution failed: %w", err)
 	}
@@ -120,7 +123,7 @@ func (sbw *streamingBuildWorker) HandleTask(ctx context.Context, task *asynq.Tas
 	logger.Infof("Starting build for task: %s, resource: %s", taskID, resourceID)
 
 	// Get resource info
-	resource, err := sbw.resAccess.GetByID(ctx, resourceID)
+	resource, err := sbw.rs.InternalGetByID(ctx, resourceID)
 	if err != nil {
 		logger.Errorf("Failed to get resource for task %s: %v", taskID, err)
 		return err
@@ -130,7 +133,7 @@ func (sbw *streamingBuildWorker) HandleTask(ctx context.Context, task *asynq.Tas
 		update := interfaces.NewBuildTaskUpdate().
 			WithStatus(interfaces.BuildTaskStatusFailed).
 			WithErrorMsg("resource not found")
-		_, err = sbw.taskAccess.UpdateStatus(ctx, nil, taskID, update)
+		_, err = sbw.bts.InternalUpdateStatus(ctx, nil, taskID, update)
 		if err != nil {
 			return fmt.Errorf("update build task status failed: %w", err)
 		}
@@ -148,7 +151,7 @@ func (sbw *streamingBuildWorker) HandleTask(ctx context.Context, task *asynq.Tas
 		update := interfaces.NewBuildTaskUpdate().
 			WithStatus(interfaces.BuildTaskStatusFailed).
 			WithErrorMsg("catalog not found")
-		_, err = sbw.taskAccess.UpdateStatus(ctx, nil, buildTaskInfo.ID, update)
+		_, err = sbw.bts.InternalUpdateStatus(ctx, nil, buildTaskInfo.ID, update)
 		if err != nil {
 			return fmt.Errorf("update build task status failed: %w", err)
 		}
@@ -160,7 +163,7 @@ func (sbw *streamingBuildWorker) HandleTask(ctx context.Context, task *asynq.Tas
 		update := interfaces.NewBuildTaskUpdate().
 			WithStatus(interfaces.BuildTaskStatusFailed).
 			WithErrorMsg("catalog is disabled")
-		_, err = sbw.taskAccess.UpdateStatus(ctx, nil, buildTaskInfo.ID, update)
+		_, err = sbw.bts.InternalUpdateStatus(ctx, nil, buildTaskInfo.ID, update)
 		if err != nil {
 			return fmt.Errorf("update build task status failed: %w", err)
 		}
@@ -171,7 +174,7 @@ func (sbw *streamingBuildWorker) HandleTask(ctx context.Context, task *asynq.Tas
 		update := interfaces.NewBuildTaskUpdate().
 			WithStatus(interfaces.BuildTaskStatusFailed).
 			WithErrorMsg("unsupported connector type")
-		_, err = sbw.taskAccess.UpdateStatus(ctx, nil, buildTaskInfo.ID, update)
+		_, err = sbw.bts.InternalUpdateStatus(ctx, nil, buildTaskInfo.ID, update)
 		if err != nil {
 			return fmt.Errorf("update build task status failed: %w", err)
 		}
@@ -189,7 +192,7 @@ func (sbw *streamingBuildWorker) HandleTask(ctx context.Context, task *asynq.Tas
 		update := interfaces.NewBuildTaskUpdate().
 			WithStatus(interfaces.BuildTaskStatusFailed).
 			WithErrorMsg(err.Error())
-		_, err = sbw.taskAccess.UpdateStatus(ctx, nil, buildTaskInfo.ID, update)
+		_, err = sbw.bts.InternalUpdateStatus(ctx, nil, buildTaskInfo.ID, update)
 		if err != nil {
 			return fmt.Errorf("update build task status failed: %w", err)
 		}
@@ -216,7 +219,7 @@ func (sbw *streamingBuildWorker) HandleTask(ctx context.Context, task *asynq.Tas
 		if isAsynqFinalRetry(ctx) {
 			update = update.WithStatus(interfaces.BuildTaskStatusFailed)
 		}
-		_, _ = sbw.taskAccess.UpdateStatus(ctx, nil, taskID, update)
+		_, _ = sbw.bts.InternalUpdateStatus(ctx, nil, taskID, update)
 		return err
 	}
 
@@ -277,7 +280,7 @@ func (sbw *streamingBuildWorker) executeBuild(ctx context.Context, catalog *inte
 	// Message processing loop
 	for {
 		// Check task status before each batch
-		taskStatus, err := sbw.taskAccess.GetStatus(ctx, buildTaskInfo.ID)
+		taskStatus, err := sbw.bts.InternalGetStatus(ctx, buildTaskInfo.ID)
 		if err != nil {
 			logger.Errorf("Failed to get task status: %v", err)
 			time.Sleep(retryInterval)
@@ -303,7 +306,7 @@ func (sbw *streamingBuildWorker) executeBuild(ctx context.Context, catalog *inte
 			update := interfaces.NewBuildTaskUpdate().
 				WithStatus(interfaces.BuildTaskStatusStopped).
 				WithSyncedCount(syncedCount)
-			_, err = sbw.taskAccess.UpdateStatus(ctx, nil, buildTaskInfo.ID, update)
+			_, err = sbw.bts.InternalUpdateStatus(ctx, nil, buildTaskInfo.ID, update)
 			if err != nil {
 				return fmt.Errorf("update build task status failed: %w", err)
 			}
@@ -315,7 +318,7 @@ func (sbw *streamingBuildWorker) executeBuild(ctx context.Context, catalog *inte
 		case <-ctx.Done():
 			logger.Infof("Kafka subscription context canceled, exiting")
 			update := interfaces.NewBuildTaskUpdate().WithSyncedCount(syncedCount)
-			_, err = sbw.taskAccess.UpdateStatus(ctx, nil, buildTaskInfo.ID, update)
+			_, err = sbw.bts.InternalUpdateStatus(ctx, nil, buildTaskInfo.ID, update)
 			if err != nil {
 				return fmt.Errorf("update build task status failed: %w", err)
 			}
@@ -330,7 +333,7 @@ func (sbw *streamingBuildWorker) executeBuild(ctx context.Context, catalog *inte
 					// 超时，检查是否需要更新任务状态
 					if syncedCount > buildTaskInfo.SyncedCount && time.Since(lastUpdateTime) > retryInterval {
 						update := interfaces.NewBuildTaskUpdate().WithSyncedCount(syncedCount)
-						_, _ = sbw.taskAccess.UpdateStatus(ctx, nil, buildTaskInfo.ID, update)
+						_, _ = sbw.bts.InternalUpdateStatus(ctx, nil, buildTaskInfo.ID, update)
 						buildTaskInfo.SyncedCount = syncedCount
 						lastUpdateTime = time.Now()
 					}
@@ -416,7 +419,7 @@ func (sbw *streamingBuildWorker) executeBuild(ctx context.Context, catalog *inte
 
 				if !updatedIndexName && op != "r" {
 					// Full snapshot is completed, update index name in resource
-					if err := updateResourceIndexName(ctx, resource, sbw.resAccess, indexName); err != nil {
+					if err := updateResourceIndexName(ctx, resource, sbw.rs, indexName); err != nil {
 						logger.Errorf("Failed to update resource index name: %v", err)
 					} else {
 						updatedIndexName = true
@@ -638,7 +641,7 @@ func (sbw *streamingBuildWorker) formatTableName(sourceIdentifier string, connec
 
 // check connector need to be stop
 func (sbw *streamingBuildWorker) checkConnectorNeedToStop(ctx context.Context, catalogID string) (bool, error) {
-	tasks, err := sbw.taskAccess.GetByCatalogID(ctx, catalogID)
+	tasks, err := sbw.bts.InternalGetByCatalogID(ctx, catalogID)
 	if err != nil {
 		return false, fmt.Errorf("failed to get tasks: %w", err)
 	}

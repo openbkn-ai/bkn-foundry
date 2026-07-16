@@ -9,6 +9,7 @@ package resource
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"net/http"
 	"reflect"
@@ -361,6 +362,13 @@ func (rs *resourceService) GetByID(ctx context.Context, id string) (*interfaces.
 
 	span.SetStatus(codes.Ok, "")
 	return resource, nil
+}
+
+func (rs *resourceService) InternalGetByID(ctx context.Context, id string) (*interfaces.Resource, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ResourceService.InternalGetByID")
+	defer span.End()
+
+	return rs.ra.GetByID(ctx, id)
 }
 
 // GetByIDs retrieves Resources by IDs.
@@ -890,6 +898,13 @@ func (rs *resourceService) UpdateResource(ctx context.Context, resource *interfa
 
 	span.SetStatus(codes.Ok, "")
 	return nil
+}
+
+func (rs *resourceService) InternalUpdate(ctx context.Context, tx *sql.Tx, resource *interfaces.Resource) error {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ResourceService.InternalUpdate")
+	defer span.End()
+
+	return rs.ra.Update(ctx, tx, resource)
 }
 
 func (rs *resourceService) rejectBuildRelevantUpdateWhenActiveBuildTask(ctx context.Context, resource *interfaces.Resource) error {

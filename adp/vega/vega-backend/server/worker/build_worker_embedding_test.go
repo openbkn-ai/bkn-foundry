@@ -26,30 +26,30 @@ import (
 func TestEmbeddingWorkerHandleTask(t *testing.T) {
 	t.Run("injects creator into downstream context", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		taskAccess := vmock.NewMockBuildTaskAccess(ctrl)
-		resAccess := vmock.NewMockResourceAccess(ctrl)
-		eh := &embeddingWorker{taskAccess: taskAccess, resAccess: resAccess}
+		bts := vmock.NewMockBuildTaskService(ctrl)
+		rs := vmock.NewMockResourceService(ctrl)
+		ew := &embeddingWorker{bts: bts, rs: rs}
 		creator := interfaces.AccountInfo{ID: "u1", Type: "user"}
 
-		taskAccess.EXPECT().GetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{
+		bts.EXPECT().InternalGetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{
 			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusRunning, Creator: creator,
 		}, nil)
 
 		var gotAccount interfaces.AccountInfo
 		var hasAccount bool
-		resAccess.EXPECT().GetByID(gomock.Any(), "r1").DoAndReturn(
+		rs.EXPECT().InternalGetByID(gomock.Any(), "r1").DoAndReturn(
 			func(ctx context.Context, id string) (*interfaces.Resource, error) {
 				gotAccount, hasAccount = workerAccountFromCtx(ctx)
 				return nil, nil
 			})
-		taskAccess.EXPECT().UpdateStatus(gomock.Any(), nil, "t1",
+		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1",
 			interfaces.NewBuildTaskUpdate().
 				WithStatus(interfaces.BuildTaskStatusFailed).
 				WithErrorMsg("resource not found")).
 			Return(true, nil)
 
 		task := asynq.NewTask("build:embedding", workerBuildTaskPayload(t, interfaces.EmbeddingBuildTaskMessage{TaskID: "t1"}))
-		require.NoError(t, eh.HandleTask(context.Background(), task))
+		require.NoError(t, ew.HandleTask(context.Background(), task))
 		require.True(t, hasAccount)
 		assert.Equal(t, creator, gotAccount)
 	})
@@ -57,27 +57,27 @@ func TestEmbeddingWorkerHandleTask(t *testing.T) {
 
 func TestEmbeddingWorkerExecuteEmbedding(t *testing.T) {
 	t.Run("ctx canceled returns error for requeue", func(t *testing.T) {
-		eh, ta, ka := newEmbeddingLoopWorker(t)
+		ew, ts, ka := newEmbeddingLoopWorker(t)
 		resource, task := embeddingLoopFixtures()
 
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 
 		expectEmbeddingKafkaSession(ka)
-		ta.EXPECT().GetStatus(gomock.Any(), "t1").Return(interfaces.BuildTaskStatusRunning, nil)
-		expectEmbeddingCountFlush(ta, 7)
+		ts.EXPECT().InternalGetStatus(gomock.Any(), "t1").Return(interfaces.BuildTaskStatusRunning, nil)
+		expectEmbeddingCountFlush(ts, 7)
 
-		err := eh.executeEmbedding(ctx, resource, task)
+		err := ew.executeEmbedding(ctx, resource, task)
 
 		require.Error(t, err)
 		assert.ErrorIs(t, err, context.Canceled)
 	})
 
 	t.Run("persistent commit error gives up for retry", func(t *testing.T) {
-		eh, ta, ka := newEmbeddingLoopWorker(t)
+		ew, ts, ka := newEmbeddingLoopWorker(t)
 		ctrl := gomock.NewController(t)
 		lim := vmock.NewMockLocalIndexManager(ctrl)
-		eh.lim = lim
+		ew.lim = lim
 		resource, task := embeddingLoopFixtures()
 		deadCommit := errors.New("commit on dead generation")
 		docMsg := func(id string) kafka.Message {
@@ -85,7 +85,7 @@ func TestEmbeddingWorkerExecuteEmbedding(t *testing.T) {
 		}
 
 		expectEmbeddingKafkaSession(ka)
-		ta.EXPECT().GetStatus(gomock.Any(), "t1").Return(interfaces.BuildTaskStatusRunning, nil).AnyTimes()
+		ts.EXPECT().InternalGetStatus(gomock.Any(), "t1").Return(interfaces.BuildTaskStatusRunning, nil).AnyTimes()
 		gomock.InOrder(
 			ka.EXPECT().ReadMessage(gomock.Any(), gomock.Any()).Return(docMsg("d1"), nil),
 			ka.EXPECT().ReadMessage(gomock.Any(), gomock.Any()).Return(docMsg("d2"), nil),
@@ -95,56 +95,56 @@ func TestEmbeddingWorkerExecuteEmbedding(t *testing.T) {
 			Return(map[string]any{"team_name": ""}, nil).Times(3)
 		ka.EXPECT().CommitMessages(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(deadCommit).Times(embeddingKafkaMaxConsecutiveErrors)
-		ta.EXPECT().UpdateStatus(gomock.Any(), nil, "t1", gomock.Any()).Return(true, nil).AnyTimes()
+		ts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1", gomock.Any()).Return(true, nil).AnyTimes()
 
-		err := eh.executeEmbedding(context.Background(), resource, task)
+		err := ew.executeEmbedding(context.Background(), resource, task)
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "commit")
 	})
 
 	t.Run("persistent read error gives up for retry", func(t *testing.T) {
-		eh, ta, ka := newEmbeddingLoopWorker(t)
+		ew, ts, ka := newEmbeddingLoopWorker(t)
 		resource, task := embeddingLoopFixtures()
 		deadConn := errors.New("committing message: use of closed network connection")
 
 		expectEmbeddingKafkaSession(ka)
-		ta.EXPECT().GetStatus(gomock.Any(), "t1").Return(interfaces.BuildTaskStatusRunning, nil).Times(embeddingKafkaMaxConsecutiveErrors)
+		ts.EXPECT().InternalGetStatus(gomock.Any(), "t1").Return(interfaces.BuildTaskStatusRunning, nil).Times(embeddingKafkaMaxConsecutiveErrors)
 		ka.EXPECT().ReadMessage(gomock.Any(), gomock.Any()).Return(kafka.Message{}, deadConn).Times(embeddingKafkaMaxConsecutiveErrors)
-		expectEmbeddingCountFlush(ta, 7)
+		expectEmbeddingCountFlush(ts, 7)
 
-		err := eh.executeEmbedding(context.Background(), resource, task)
+		err := ew.executeEmbedding(context.Background(), resource, task)
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "use of closed network connection")
 	})
 
 	t.Run("end sentinel switches local index and completes task", func(t *testing.T) {
-		eh, ta, ka := newEmbeddingLoopWorker(t)
+		ew, ts, ka := newEmbeddingLoopWorker(t)
 		ctrl := gomock.NewController(t)
-		ra := vmock.NewMockResourceAccess(ctrl)
-		eh.resAccess = ra
+		rs := vmock.NewMockResourceService(ctrl)
+		ew.rs = rs
 		resource, task := embeddingLoopFixtures()
 		resource.LocalIndexName = interfaces.BuildIndexName("r1", "old-task")
 		task.SyncedCount = 7
 		wantIndexName := interfaces.BuildIndexName("r1", "t1")
 
 		expectEmbeddingKafkaSession(ka)
-		ta.EXPECT().GetStatus(gomock.Any(), "t1").Return(interfaces.BuildTaskStatusRunning, nil)
+		ts.EXPECT().InternalGetStatus(gomock.Any(), "t1").Return(interfaces.BuildTaskStatusRunning, nil)
 		ka.EXPECT().ReadMessage(gomock.Any(), gomock.Any()).
 			Return(kafka.Message{Value: []byte(`{"document_id":"` + interfaces.EmptyDocumentID + `"}`)}, nil)
 		ka.EXPECT().CommitMessages(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		ka.EXPECT().ReadMessage(gomock.Any(), gomock.Any()).
 			Return(kafka.Message{}, context.DeadlineExceeded).
 			Times(embeddingDrainEmptyPolls)
-		ra.EXPECT().Update(gomock.Any(), nil, resource).
+		rs.EXPECT().InternalUpdate(gomock.Any(), nil, resource).
 			DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource) error {
 				assert.Equal(t, wantIndexName, got.LocalIndexName)
 				return nil
 			})
-		ta.EXPECT().GetByID(gomock.Any(), "t1").
+		ts.EXPECT().InternalGetByID(gomock.Any(), "t1").
 			Return(&interfaces.BuildTask{ID: "t1", SyncedCount: 7}, nil)
-		ta.EXPECT().UpdateStatus(gomock.Any(), nil, "t1", gomock.Any()).
+		ts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1", gomock.Any()).
 			DoAndReturn(func(_ context.Context, _ *sql.Tx, _ string, update interfaces.BuildTaskUpdate, _ ...string) (bool, error) {
 				require.NotNil(t, update.Status)
 				require.NotNil(t, update.VectorizedCount)
@@ -155,14 +155,14 @@ func TestEmbeddingWorkerExecuteEmbedding(t *testing.T) {
 				return true, nil
 			})
 
-		require.NoError(t, eh.executeEmbedding(context.Background(), resource, task))
+		require.NoError(t, ew.executeEmbedding(context.Background(), resource, task))
 		assert.Equal(t, wantIndexName, resource.LocalIndexName)
 	})
 }
 
 func TestEmbeddingWorkerVectorizeDoc(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
-		eh, lim, mfs := newVectorizeWorker(t)
+		ew, lim, mfs := newVectorizeWorker(t)
 		ctx := t.Context()
 
 		lim.EXPECT().GetDocument(ctx, "idx", "doc1").
@@ -178,21 +178,21 @@ func TestEmbeddingWorkerVectorizeDoc(t *testing.T) {
 				return []string{"doc1"}, nil
 			})
 
-		require.NoError(t, eh.vectorizeDoc(ctx, "idx", "doc1", testEmbeddingConfig("m1", "team_name")))
+		require.NoError(t, ew.vectorizeDoc(ctx, "idx", "doc1", testEmbeddingConfig("m1", "team_name")))
 	})
 
 	t.Run("empty text is success without embedding", func(t *testing.T) {
-		eh, lim, _ := newVectorizeWorker(t)
+		ew, lim, _ := newVectorizeWorker(t)
 		ctx := t.Context()
 
 		lim.EXPECT().GetDocument(ctx, "idx", "doc1").
 			Return(map[string]any{"team_name": ""}, nil)
 
-		require.NoError(t, eh.vectorizeDoc(ctx, "idx", "doc1", testEmbeddingConfig("m1", "team_name")))
+		require.NoError(t, ew.vectorizeDoc(ctx, "idx", "doc1", testEmbeddingConfig("m1", "team_name")))
 	})
 
 	t.Run("groups fields by model", func(t *testing.T) {
-		eh, lim, mfs := newVectorizeWorker(t)
+		ew, lim, mfs := newVectorizeWorker(t)
 		ctx := t.Context()
 
 		lim.EXPECT().GetDocument(ctx, "idx", "doc1").
@@ -209,7 +209,7 @@ func TestEmbeddingWorkerVectorizeDoc(t *testing.T) {
 				return []string{"doc1"}, nil
 			})
 
-		require.NoError(t, eh.vectorizeDoc(ctx, "idx", "doc1", map[string]interfaces.BuildTaskEmbeddingConfig{
+		require.NoError(t, ew.vectorizeDoc(ctx, "idx", "doc1", map[string]interfaces.BuildTaskEmbeddingConfig{
 			"title": {ModelID: "m1", Dimensions: 1024},
 			"body":  {ModelID: "m2", Dimensions: 2048},
 		}))
@@ -242,11 +242,11 @@ func TestEmbeddingWorkerVectorizeDoc(t *testing.T) {
 
 		for _, tc := range cases {
 			t.Run(tc.name, func(t *testing.T) {
-				eh, lim, mfs := newVectorizeWorker(t)
+				ew, lim, mfs := newVectorizeWorker(t)
 				ctx := t.Context()
 				tc.setup(lim, mfs, ctx)
 
-				require.Error(t, eh.vectorizeDoc(ctx, "idx", "doc1", testEmbeddingConfig("m1", "f")))
+				require.Error(t, ew.vectorizeDoc(ctx, "idx", "doc1", testEmbeddingConfig("m1", "f")))
 			})
 		}
 	})
@@ -294,17 +294,17 @@ func TestFormatVectorizeFailures(t *testing.T) {
 	})
 }
 
-func newEmbeddingLoopWorker(t *testing.T) (*embeddingWorker, *vmock.MockBuildTaskAccess, *vmock.MockKafkaAccess) {
+func newEmbeddingLoopWorker(t *testing.T) (*embeddingWorker, *vmock.MockBuildTaskService, *vmock.MockKafkaAccess) {
 	t.Helper()
 
 	ctrl := gomock.NewController(t)
-	ta := vmock.NewMockBuildTaskAccess(ctrl)
+	bts := vmock.NewMockBuildTaskService(ctrl)
 	ka := vmock.NewMockKafkaAccess(ctrl)
 	return &embeddingWorker{
-		taskAccess:  ta,
+		bts:         bts,
 		kafkaAccess: ka,
 		sleep:       func(time.Duration) {},
-	}, ta, ka
+	}, bts, ka
 }
 
 func embeddingLoopFixtures() (*interfaces.Resource, *interfaces.BuildTask) {
@@ -328,8 +328,8 @@ func expectEmbeddingKafkaSession(ka *vmock.MockKafkaAccess) {
 	ka.EXPECT().CloseReader(gomock.Any())
 }
 
-func expectEmbeddingCountFlush(ta *vmock.MockBuildTaskAccess, count int64) *gomock.Call {
-	return ta.EXPECT().UpdateStatus(gomock.Any(), nil, "t1", gomock.AssignableToTypeOf(interfaces.BuildTaskUpdate{})).
+func expectEmbeddingCountFlush(ts *vmock.MockBuildTaskService, count int64) *gomock.Call {
+	return ts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1", gomock.AssignableToTypeOf(interfaces.BuildTaskUpdate{})).
 		DoAndReturn(func(_ context.Context, _ *sql.Tx, _ string, update interfaces.BuildTaskUpdate, _ ...string) (bool, error) {
 			if update.VectorizedCount == nil || *update.VectorizedCount != count {
 				return false, errors.New("vectorizedCount not flushed")

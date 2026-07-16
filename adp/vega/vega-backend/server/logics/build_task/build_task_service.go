@@ -9,6 +9,7 @@ package build_task
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"math"
@@ -416,6 +417,34 @@ func (bts *buildTaskService) InternalGetByID(ctx context.Context, id string) (*i
 	defer span.End()
 
 	return bts.bta.GetByID(ctx, id)
+}
+
+func (bts *buildTaskService) InternalGetByCatalogID(ctx context.Context, catalogID string) ([]*interfaces.BuildTask, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "BuildTaskService.InternalGetByCatalogID")
+	defer span.End()
+
+	return bts.bta.GetByCatalogID(ctx, catalogID)
+}
+
+func (bts *buildTaskService) InternalList(ctx context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTask, int64, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "BuildTaskService.InternalList")
+	defer span.End()
+
+	return bts.bta.List(ctx, params)
+}
+
+func (bts *buildTaskService) InternalUpdateStatus(ctx context.Context, tx *sql.Tx, id string, update interfaces.BuildTaskUpdate, allowedStatuses ...string) (bool, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "BuildTaskService.InternalUpdateStatus")
+	defer span.End()
+
+	return bts.bta.UpdateStatus(ctx, tx, id, update, allowedStatuses...)
+}
+
+func (bts *buildTaskService) InternalGetStatus(ctx context.Context, id string) (string, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "BuildTaskService.InternalGetStatus")
+	defer span.End()
+
+	return bts.bta.GetStatus(ctx, id)
 }
 
 // computeIndexHealth 按当前计数派生各索引健康度（不落库）。embedding 与 fulltext

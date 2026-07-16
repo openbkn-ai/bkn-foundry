@@ -23,36 +23,36 @@ import (
 func TestUpdateResourceIndexName(t *testing.T) {
 	t.Run("updates empty old index", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		ra := vmock.NewMockResourceAccess(ctrl)
+		rs := vmock.NewMockResourceService(ctrl)
 		resource := &interfaces.Resource{ID: "r1"}
 
-		ra.EXPECT().Update(gomock.Any(), nil, resource).DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource) error {
+		rs.EXPECT().InternalUpdate(gomock.Any(), nil, resource).DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource) error {
 			assert.Equal(t, "new-index", got.LocalIndexName)
 			return nil
 		})
 
-		require.NoError(t, updateResourceIndexName(context.Background(), resource, ra, "new-index"))
+		require.NoError(t, updateResourceIndexName(context.Background(), resource, rs, "new-index"))
 	})
 
 	t.Run("skips unchanged index", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		ra := vmock.NewMockResourceAccess(ctrl)
+		rs := vmock.NewMockResourceService(ctrl)
 		resource := &interfaces.Resource{ID: "r1", LocalIndexName: "same-index"}
 
-		require.NoError(t, updateResourceIndexName(context.Background(), resource, ra, "same-index"))
+		require.NoError(t, updateResourceIndexName(context.Background(), resource, rs, "same-index"))
 	})
 
 	t.Run("keeps old index after update failure", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		ra := vmock.NewMockResourceAccess(ctrl)
+		rs := vmock.NewMockResourceService(ctrl)
 		resource := &interfaces.Resource{ID: "r1", LocalIndexName: "old-index"}
 
-		ra.EXPECT().Update(gomock.Any(), nil, resource).DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource) error {
+		rs.EXPECT().InternalUpdate(gomock.Any(), nil, resource).DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource) error {
 			assert.Equal(t, "new-index", got.LocalIndexName)
 			return errors.New("update failed")
 		})
 
-		err := updateResourceIndexName(context.Background(), resource, ra, "new-index")
+		err := updateResourceIndexName(context.Background(), resource, rs, "new-index")
 
 		require.Error(t, err)
 		assert.Equal(t, "old-index", resource.LocalIndexName)
@@ -61,8 +61,8 @@ func TestUpdateResourceIndexName(t *testing.T) {
 
 func TestCompleteBuildTaskWithoutEmbedding(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	ra := vmock.NewMockResourceAccess(ctrl)
-	ta := vmock.NewMockBuildTaskAccess(ctrl)
+	rs := vmock.NewMockResourceService(ctrl)
+	ts := vmock.NewMockBuildTaskService(ctrl)
 	resource := &interfaces.Resource{ID: "r1", LocalIndexName: "old-index"}
 
 	db, mock, err := sqlmock.New()
@@ -75,12 +75,12 @@ func TestCompleteBuildTaskWithoutEmbedding(t *testing.T) {
 
 	mock.ExpectBegin()
 	txMatcher := gomock.AssignableToTypeOf(&sql.Tx{})
-	ra.EXPECT().Update(gomock.Any(), txMatcher, resource).
+	rs.EXPECT().InternalUpdate(gomock.Any(), txMatcher, resource).
 		DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource) error {
 			assert.Equal(t, "new-index", got.LocalIndexName)
 			return nil
 		})
-	ta.EXPECT().UpdateStatus(gomock.Any(), txMatcher, "t1", gomock.AssignableToTypeOf(interfaces.BuildTaskUpdate{})).
+	ts.EXPECT().InternalUpdateStatus(gomock.Any(), txMatcher, "t1", gomock.AssignableToTypeOf(interfaces.BuildTaskUpdate{})).
 		DoAndReturn(func(_ context.Context, _ *sql.Tx, _ string, update interfaces.BuildTaskUpdate, _ ...string) (bool, error) {
 			require.NotNil(t, update.Status)
 			assert.Equal(t, interfaces.BuildTaskStatusCompleted, *update.Status)
@@ -88,7 +88,7 @@ func TestCompleteBuildTaskWithoutEmbedding(t *testing.T) {
 		})
 	mock.ExpectCommit()
 
-	err = completeBuildTaskWithoutEmbedding(context.Background(), resource, ra, ta, "t1", "new-index")
+	err = completeBuildTaskWithoutEmbedding(context.Background(), resource, rs, ts, "t1", "new-index")
 
 	require.NoError(t, err)
 	assert.Equal(t, "new-index", resource.LocalIndexName)

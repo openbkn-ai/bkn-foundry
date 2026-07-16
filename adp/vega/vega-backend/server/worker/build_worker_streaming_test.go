@@ -21,23 +21,23 @@ import (
 func TestStreamingBuildWorkerHandleTask(t *testing.T) {
 	t.Run("injects creator into downstream context", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		taskAccess := vmock.NewMockBuildTaskAccess(ctrl)
-		resAccess := vmock.NewMockResourceAccess(ctrl)
+		bts := vmock.NewMockBuildTaskService(ctrl)
+		rs := vmock.NewMockResourceService(ctrl)
 		cs := vmock.NewMockCatalogService(ctrl)
 		lim := vmock.NewMockLocalIndexManager(ctrl)
-		sh := &streamingBuildWorker{taskAccess: taskAccess, resAccess: resAccess, cs: cs, lim: lim}
+		sh := &streamingBuildWorker{bts: bts, rs: rs, cs: cs, lim: lim}
 		creator := interfaces.AccountInfo{ID: "u1", Type: "user"}
 
-		taskAccess.EXPECT().GetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{
+		bts.EXPECT().InternalGetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{
 			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusInit, Creator: creator,
 		}, nil)
-		taskAccess.EXPECT().UpdateStatus(gomock.Any(), nil, "t1",
+		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1",
 			interfaces.NewBuildTaskUpdate().
 				WithStatus(interfaces.BuildTaskStatusRunning).
 				WithErrorMsg(""),
 			interfaces.BuildTaskStatusInit).
 			Return(true, nil)
-		resAccess.EXPECT().GetByID(gomock.Any(), "r1").Return(&interfaces.Resource{ID: "r1", CatalogID: "c1"}, nil)
+		rs.EXPECT().InternalGetByID(gomock.Any(), "r1").Return(&interfaces.Resource{ID: "r1", CatalogID: "c1"}, nil)
 
 		var gotAccount interfaces.AccountInfo
 		var hasAccount bool
@@ -58,13 +58,13 @@ func TestStreamingBuildWorkerHandleTask(t *testing.T) {
 
 	t.Run("skips duplicate message when task is already claimed", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		taskAccess := vmock.NewMockBuildTaskAccess(ctrl)
-		sh := &streamingBuildWorker{taskAccess: taskAccess}
+		bts := vmock.NewMockBuildTaskService(ctrl)
+		sh := &streamingBuildWorker{bts: bts}
 
-		taskAccess.EXPECT().GetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{
+		bts.EXPECT().InternalGetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{
 			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusInit,
 		}, nil)
-		taskAccess.EXPECT().UpdateStatus(gomock.Any(), nil, "t1",
+		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1",
 			interfaces.NewBuildTaskUpdate().
 				WithStatus(interfaces.BuildTaskStatusRunning).
 				WithErrorMsg(""),

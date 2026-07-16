@@ -11,6 +11,7 @@ package mock_interfaces
 
 import (
 	context "context"
+	sql "database/sql"
 	reflect "reflect"
 	interfaces "vega-backend/interfaces"
 
@@ -115,6 +116,21 @@ func (mr *MockBuildTaskServiceMockRecorder) GetByResourceID(ctx, resourceID any)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByResourceID", reflect.TypeOf((*MockBuildTaskService)(nil).GetByResourceID), ctx, resourceID)
 }
 
+// InternalGetByCatalogID mocks base method.
+func (m *MockBuildTaskService) InternalGetByCatalogID(ctx context.Context, catalogID string) ([]*interfaces.BuildTask, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InternalGetByCatalogID", ctx, catalogID)
+	ret0, _ := ret[0].([]*interfaces.BuildTask)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// InternalGetByCatalogID indicates an expected call of InternalGetByCatalogID.
+func (mr *MockBuildTaskServiceMockRecorder) InternalGetByCatalogID(ctx, catalogID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalGetByCatalogID", reflect.TypeOf((*MockBuildTaskService)(nil).InternalGetByCatalogID), ctx, catalogID)
+}
+
 // InternalGetByID mocks base method.
 func (m *MockBuildTaskService) InternalGetByID(ctx context.Context, id string) (*interfaces.BuildTask, error) {
 	m.ctrl.T.Helper()
@@ -128,6 +144,57 @@ func (m *MockBuildTaskService) InternalGetByID(ctx context.Context, id string) (
 func (mr *MockBuildTaskServiceMockRecorder) InternalGetByID(ctx, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalGetByID", reflect.TypeOf((*MockBuildTaskService)(nil).InternalGetByID), ctx, id)
+}
+
+// InternalGetStatus mocks base method.
+func (m *MockBuildTaskService) InternalGetStatus(ctx context.Context, id string) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InternalGetStatus", ctx, id)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// InternalGetStatus indicates an expected call of InternalGetStatus.
+func (mr *MockBuildTaskServiceMockRecorder) InternalGetStatus(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalGetStatus", reflect.TypeOf((*MockBuildTaskService)(nil).InternalGetStatus), ctx, id)
+}
+
+// InternalList mocks base method.
+func (m *MockBuildTaskService) InternalList(ctx context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTask, int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InternalList", ctx, params)
+	ret0, _ := ret[0].([]*interfaces.BuildTask)
+	ret1, _ := ret[1].(int64)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// InternalList indicates an expected call of InternalList.
+func (mr *MockBuildTaskServiceMockRecorder) InternalList(ctx, params any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalList", reflect.TypeOf((*MockBuildTaskService)(nil).InternalList), ctx, params)
+}
+
+// InternalUpdateStatus mocks base method.
+func (m *MockBuildTaskService) InternalUpdateStatus(ctx context.Context, tx *sql.Tx, id string, update interfaces.BuildTaskUpdate, allowedStatuses ...string) (bool, error) {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx, tx, id, update}
+	for _, a := range allowedStatuses {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "InternalUpdateStatus", varargs...)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// InternalUpdateStatus indicates an expected call of InternalUpdateStatus.
+func (mr *MockBuildTaskServiceMockRecorder) InternalUpdateStatus(ctx, tx, id, update any, allowedStatuses ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx, tx, id, update}, allowedStatuses...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalUpdateStatus", reflect.TypeOf((*MockBuildTaskService)(nil).InternalUpdateStatus), varargs...)
 }
 
 // List mocks base method.

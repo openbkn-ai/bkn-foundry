@@ -6,7 +6,10 @@
 
 package interfaces
 
-import "context"
+import (
+	"context"
+	"database/sql"
+)
 
 // ResourceService defines resource business logic interface.
 //
@@ -45,4 +48,9 @@ type ResourceService interface {
 
 	// CheckExistByCategories checks if Resources exists by catalog ID and categories.
 	CheckExistByCategories(ctx context.Context, catalogID string, categories []string) (bool, error)
+
+	// InternalGetByID retrieves a Resource by ID for internal workers.
+	InternalGetByID(ctx context.Context, id string) (*Resource, error)
+	// InternalUpdate updates a Resource for internal workers.
+	InternalUpdate(ctx context.Context, tx *sql.Tx, resource *Resource) error
 }

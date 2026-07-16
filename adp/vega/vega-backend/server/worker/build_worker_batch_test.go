@@ -22,25 +22,25 @@ import (
 func TestBatchBuildWorkerHandleTask(t *testing.T) {
 	t.Run("injects creator into downstream context", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		taskAccess := vmock.NewMockBuildTaskAccess(ctrl)
-		resAccess := vmock.NewMockResourceAccess(ctrl)
+		bts := vmock.NewMockBuildTaskService(ctrl)
+		rs := vmock.NewMockResourceService(ctrl)
 		cs := vmock.NewMockCatalogService(ctrl)
 		lim := vmock.NewMockLocalIndexManager(ctrl)
 		lim.EXPECT().CheckExist(gomock.Any(), gomock.Any()).Return(true, nil).AnyTimes()
-		bh := &batchBuildWorker{taskAccess: taskAccess, resAccess: resAccess, cs: cs, lim: lim}
+		bbw := &batchBuildWorker{bts: bts, rs: rs, cs: cs, lim: lim}
 		creator := interfaces.AccountInfo{ID: "u1", Type: "user"}
 
-		taskAccess.EXPECT().GetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{
+		bts.EXPECT().InternalGetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{
 			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusInit, Creator: creator,
 		}, nil)
-		taskAccess.EXPECT().UpdateStatus(gomock.Any(), nil, "t1",
+		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1",
 			interfaces.NewBuildTaskUpdate().
 				WithStatus(interfaces.BuildTaskStatusRunning).
 				WithErrorMsg(""),
 			interfaces.BuildTaskStatusInit).
 			Return(true, nil)
-		resAccess.EXPECT().GetByID(gomock.Any(), "r1").Return(&interfaces.Resource{ID: "r1", CatalogID: "c1"}, nil)
-		taskAccess.EXPECT().UpdateStatus(gomock.Any(), nil, "t1", gomock.Any()).Return(true, nil).AnyTimes()
+		rs.EXPECT().InternalGetByID(gomock.Any(), "r1").Return(&interfaces.Resource{ID: "r1", CatalogID: "c1"}, nil)
+		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1", gomock.Any()).Return(true, nil).AnyTimes()
 
 		var gotAccount interfaces.AccountInfo
 		var hasAccount bool
@@ -51,20 +51,20 @@ func TestBatchBuildWorkerHandleTask(t *testing.T) {
 			})
 
 		task := asynq.NewTask("build:batch", workerBuildTaskPayload(t, interfaces.BatchBuildTaskMessage{TaskID: "t1"}))
-		require.NoError(t, bh.HandleTask(context.Background(), task))
+		require.NoError(t, bbw.HandleTask(context.Background(), task))
 		require.True(t, hasAccount)
 		assert.Equal(t, creator, gotAccount)
 	})
 
 	t.Run("skips duplicate message when task is already claimed", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		taskAccess := vmock.NewMockBuildTaskAccess(ctrl)
-		bh := &batchBuildWorker{taskAccess: taskAccess}
+		bts := vmock.NewMockBuildTaskService(ctrl)
+		bbw := &batchBuildWorker{bts: bts}
 
-		taskAccess.EXPECT().GetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{
+		bts.EXPECT().InternalGetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{
 			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusInit,
 		}, nil)
-		taskAccess.EXPECT().UpdateStatus(gomock.Any(), nil, "t1",
+		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1",
 			interfaces.NewBuildTaskUpdate().
 				WithStatus(interfaces.BuildTaskStatusRunning).
 				WithErrorMsg(""),
@@ -72,42 +72,42 @@ func TestBatchBuildWorkerHandleTask(t *testing.T) {
 			Return(false, nil)
 
 		task := asynq.NewTask("build:batch", workerBuildTaskPayload(t, interfaces.BatchBuildTaskMessage{TaskID: "t1"}))
-		require.NoError(t, bh.HandleTask(context.Background(), task))
+		require.NoError(t, bbw.HandleTask(context.Background(), task))
 	})
 
 	t.Run("does not switch local index when build fails", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		taskAccess := vmock.NewMockBuildTaskAccess(ctrl)
-		resAccess := vmock.NewMockResourceAccess(ctrl)
+		bts := vmock.NewMockBuildTaskService(ctrl)
+		rs := vmock.NewMockResourceService(ctrl)
 		cs := vmock.NewMockCatalogService(ctrl)
 		lim := vmock.NewMockLocalIndexManager(ctrl)
 		lim.EXPECT().CheckExist(gomock.Any(), gomock.Any()).Return(true, nil).AnyTimes()
-		bh := &batchBuildWorker{taskAccess: taskAccess, resAccess: resAccess, cs: cs, lim: lim}
+		bbw := &batchBuildWorker{bts: bts, rs: rs, cs: cs, lim: lim}
 
 		resource := &interfaces.Resource{
 			ID:             "r1",
 			CatalogID:      "c1",
 			LocalIndexName: interfaces.BuildIndexName("r1", "old-task"),
 		}
-		taskAccess.EXPECT().GetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{
+		bts.EXPECT().InternalGetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{
 			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusInit,
 		}, nil)
-		taskAccess.EXPECT().UpdateStatus(gomock.Any(), nil, "t1",
+		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1",
 			interfaces.NewBuildTaskUpdate().
 				WithStatus(interfaces.BuildTaskStatusRunning).
 				WithErrorMsg(""),
 			interfaces.BuildTaskStatusInit).
 			Return(true, nil)
-		resAccess.EXPECT().GetByID(gomock.Any(), "r1").Return(resource, nil)
+		rs.EXPECT().InternalGetByID(gomock.Any(), "r1").Return(resource, nil)
 		cs.EXPECT().GetByID(gomock.Any(), "c1", true).Return(nil, errors.New("catalog down"))
-		taskAccess.EXPECT().UpdateStatus(gomock.Any(), nil, "t1",
+		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1",
 			interfaces.NewBuildTaskUpdate().
 				WithStatus(interfaces.BuildTaskStatusFailed).
 				WithErrorMsg("get catalog failed: catalog down")).
 			Return(true, nil)
 
 		task := asynq.NewTask("build:batch", workerBuildTaskPayload(t, interfaces.BatchBuildTaskMessage{TaskID: "t1"}))
-		require.NoError(t, bh.HandleTask(context.Background(), task))
+		require.NoError(t, bbw.HandleTask(context.Background(), task))
 		assert.Equal(t, interfaces.BuildIndexName("r1", "old-task"), resource.LocalIndexName)
 	})
 }

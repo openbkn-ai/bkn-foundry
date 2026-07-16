@@ -23,8 +23,8 @@ import (
 )
 
 var (
-	taskWorkerOnce sync.Once
-	taskWorkerMgr  *TaskWorkerManger
+	taskWorkerMangerOnce sync.Once
+	taskWorkerManger     *TaskWorkerManger
 )
 
 // TaskWorkerManger provides unified task processing functionality.
@@ -32,30 +32,31 @@ type TaskWorkerManger struct {
 	appSetting *common.AppSetting
 	aqa        interfaces.AsynqAccess
 
-	discoverTaskWorker *DiscoverTaskWorker
-	sutWorker          *SemanticUnderstandingTaskWorker
-	btBuildWorker      *batchBuildWorker
-	stBuildWorker      *streamingBuildWorker
-	embeddingWorker    *embeddingWorker
-	bts                interfaces.BuildTaskService
+	bbw  *batchBuildWorker
+	bts  interfaces.BuildTaskService
+	ebw  *embeddingWorker
+	dtw  *DiscoverTaskWorker
+	sbw  *streamingBuildWorker
+	sutw *SemanticUnderstandingTaskWorker
 }
 
 // NewTaskWorkerManager creates or returns the singleton TaskWorkerManger.
 func NewTaskWorkerManager(appSetting *common.AppSetting) *TaskWorkerManger {
-	taskWorkerOnce.Do(func() {
-		bts := build_task.NewBuildTaskService(appSetting, resource.NewResourceService(appSetting))
-		taskWorkerMgr = &TaskWorkerManger{
-			appSetting:         appSetting,
-			aqa:                logics.AQA,
-			discoverTaskWorker: NewDiscoverTaskWorker(appSetting),
-			sutWorker:          NewSemanticUnderstandingTaskWorker(appSetting),
-			btBuildWorker:      NewBatchBuildWorker(appSetting),
-			stBuildWorker:      NewStreamingBuildWorker(appSetting),
-			embeddingWorker:    NewEmbeddingBuildWorker(appSetting),
-			bts:                bts,
+	taskWorkerMangerOnce.Do(func() {
+		rs := resource.NewResourceService(appSetting)
+		bts := build_task.NewBuildTaskService(appSetting, rs)
+		taskWorkerManger = &TaskWorkerManger{
+			appSetting: appSetting,
+			aqa:        logics.AQA,
+			bbw:        NewBatchBuildWorker(appSetting),
+			bts:        bts,
+			ebw:        NewEmbeddingBuildWorker(appSetting),
+			dtw:        NewDiscoverTaskWorker(appSetting),
+			sbw:        NewStreamingBuildWorker(appSetting),
+			sutw:       NewSemanticUnderstandingTaskWorker(appSetting),
 		}
 	})
-	return taskWorkerMgr
+	return taskWorkerManger
 }
 
 // Start starts the task worker.
@@ -77,14 +78,14 @@ func (twm *TaskWorkerManger) Start() {
 
 	// 自愈对账：入队消息丢失（pod 更替/入队失败）的任务会永远停在 init（界面"排队中"），
 	// 周期对账把它们重新入队
-	go newBuildTaskReconciler().run()
+	go newBuildTaskReconciler(twm.bts).run()
 
 }
 
 func (twm *TaskWorkerManger) startDebugSubscribers() {
 	go func() {
 		logger.Info("debug discover task channel subscriber started")
-		for task := range twm.discoverTaskWorker.dts.DebugTaskQueue() {
+		for task := range twm.dtw.dts.DebugTaskQueue() {
 			if err := twm.ProcessTask(context.Background(), task); err != nil {
 				logger.Errorf("debug discover task failed: %v", err)
 			}
@@ -92,7 +93,7 @@ func (twm *TaskWorkerManger) startDebugSubscribers() {
 	}()
 	go func() {
 		logger.Info("debug semantic understanding task channel subscriber started")
-		for task := range twm.sutWorker.suts.DebugTaskQueue() {
+		for task := range twm.sutw.suts.DebugTaskQueue() {
 			if err := twm.ProcessTask(context.Background(), task); err != nil {
 				logger.Errorf("debug semantic understanding task failed: %v", err)
 			}
@@ -139,15 +140,15 @@ func (twm *TaskWorkerManger) Run(ctx context.Context) error {
 func (twm *TaskWorkerManger) ProcessTask(ctx context.Context, task *asynq.Task) error {
 	switch task.Type() {
 	case interfaces.DiscoverTaskType:
-		return twm.discoverTaskWorker.HandleTask(ctx, task)
+		return twm.dtw.HandleTask(ctx, task)
 	case interfaces.SemanticUnderstandingTaskType:
-		return twm.sutWorker.HandleTask(ctx, task)
+		return twm.sutw.HandleTask(ctx, task)
 	case interfaces.BuildTaskTypeBatch:
-		return twm.btBuildWorker.HandleTask(ctx, task)
+		return twm.bbw.HandleTask(ctx, task)
 	case interfaces.BuildTaskTypeEmbedding:
-		return twm.embeddingWorker.HandleTask(ctx, task)
+		return twm.ebw.HandleTask(ctx, task)
 	case interfaces.BuildTaskTypeStreaming:
-		return twm.stBuildWorker.HandleTask(ctx, task)
+		return twm.sbw.HandleTask(ctx, task)
 	default:
 		return fmt.Errorf("unknown task type: %s", task.Type())
 	}
