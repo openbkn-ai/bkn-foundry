@@ -64,7 +64,7 @@ func (s *bknAgentService) Run(ctx context.Context, task *interfaces.SemanticUnde
 
 	resp, err := s.baa.Run(ctx, &interfaces.BknAgentRunRequest{
 		AgentID: task.AgentID,
-		Input:   json.RawMessage(task.Input),
+		Message: task.Input,
 	})
 	if err != nil {
 		span.SetStatus(codes.Error, "Run bkn-agent failed")

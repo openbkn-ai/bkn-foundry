@@ -29,7 +29,7 @@ func TestBknAgentServiceRun(t *testing.T) {
 		Run(gomock.Any(), gomock.AssignableToTypeOf(&interfaces.BknAgentRunRequest{})).
 		DoAndReturn(func(_ context.Context, req *interfaces.BknAgentRunRequest) (*interfaces.BknAgentRunResponse, error) {
 			assert.Equal(t, interfaces.SemanticUnderstandingResourceAgentID, req.AgentID)
-			assert.JSONEq(t, `{"resource":{"id":"resource-1"}}`, string(req.Input))
+			assert.JSONEq(t, `{"resource":{"id":"resource-1"}}`, req.Message)
 			return &interfaces.BknAgentRunResponse{TaskID: "agent-task-1"}, nil
 		})
 

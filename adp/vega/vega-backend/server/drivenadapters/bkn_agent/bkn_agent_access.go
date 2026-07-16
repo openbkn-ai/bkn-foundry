@@ -52,9 +52,13 @@ func (baa *bknAgentAccess) Run(ctx context.Context, req *interfaces.BknAgentRunR
 	if baa.baseURL == "" {
 		return nil, fmt.Errorf("bkn-agent url is not configured")
 	}
+	headers, err := bknAgentHeaders(ctx)
+	if err != nil {
+		return nil, err
+	}
 
 	url := fmt.Sprintf("%s/api/bkn-agent/v1/run", baa.baseURL)
-	respCode, respBody, err := baa.httpClient.PostNoUnmarshal(ctx, url, jsonHeaders(), req)
+	respCode, respBody, err := baa.httpClient.PostNoUnmarshal(ctx, url, headers, req)
 	if err != nil {
 		span.SetStatus(codes.Error, "Run bkn-agent task failed")
 		otellog.LogError(ctx, "Run bkn-agent task failed", err)
@@ -95,9 +99,13 @@ func (baa *bknAgentAccess) GetTask(ctx context.Context, taskID string) (*interfa
 	if taskID == "" {
 		return nil, fmt.Errorf("agent task id is required")
 	}
+	headers, err := bknAgentHeaders(ctx)
+	if err != nil {
+		return nil, err
+	}
 
 	url := fmt.Sprintf("%s/api/bkn-agent/v1/tasks/%s", baa.baseURL, taskID)
-	respCode, respBody, err := baa.httpClient.GetNoUnmarshal(ctx, url, nil, jsonHeaders())
+	respCode, respBody, err := baa.httpClient.GetNoUnmarshal(ctx, url, nil, headers)
 	if err != nil {
 		span.SetStatus(codes.Error, "Get bkn-agent task failed")
 		otellog.LogError(ctx, "Get bkn-agent task failed", err)
@@ -114,6 +122,9 @@ func (baa *bknAgentAccess) GetTask(ctx context.Context, taskID string) (*interfa
 	if task.TaskID == "" {
 		task.TaskID = task.ID
 	}
+	if len(task.Result) == 0 && task.Output != "" {
+		task.Result = []byte(task.Output)
+	}
 	if len(task.Result) == 0 && len(task.ResultJSON) > 0 {
 		task.Result = task.ResultJSON
 	}
@@ -122,6 +133,23 @@ func (baa *bknAgentAccess) GetTask(ctx context.Context, taskID string) (*interfa
 	return &task, nil
 }
 
-func jsonHeaders() map[string]string {
-	return map[string]string{"Content-Type": "application/json"}
+func bknAgentHeaders(ctx context.Context) (map[string]string, error) {
+	accountInfo, ok := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
+	if !ok {
+		return nil, fmt.Errorf("account info is required for bkn-agent request")
+	}
+	if accountInfo.ID == "" {
+		return nil, fmt.Errorf("account id is required for bkn-agent request")
+	}
+	if accountInfo.Type == "" {
+		return nil, fmt.Errorf("account type is required for bkn-agent request")
+	}
+
+	headers := map[string]string{
+		interfaces.CONTENT_TYPE_NAME:        interfaces.CONTENT_TYPE_JSON,
+		interfaces.HTTP_HEADER_ACCOUNT_ID:   accountInfo.ID,
+		interfaces.HTTP_HEADER_ACCOUNT_TYPE: accountInfo.Type,
+	}
+
+	return headers, nil
 }

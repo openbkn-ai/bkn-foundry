@@ -31,7 +31,7 @@ func newTestBknAgentAccess(appSetting *common.AppSetting, httpClient rest.HTTPCl
 }
 
 func TestBknAgentAccessRun(t *testing.T) {
-	ctx := context.Background()
+	ctx := contextWithBknAgentAccount("vega-backend", interfaces.ACCESSOR_TYPE_APP)
 
 	setup := func(t *testing.T) (*bknAgentAccess, *rmock.MockHTTPClient) {
 		t.Helper()
@@ -50,12 +50,12 @@ func TestBknAgentAccessRun(t *testing.T) {
 		require.NoError(t, err)
 
 		mockHTTPClient.EXPECT().
-			PostNoUnmarshal(gomock.Any(), "http://bkn-agent/api/bkn-agent/v1/run", gomock.Any(), gomock.Any()).
+			PostNoUnmarshal(gomock.Any(), "http://bkn-agent/api/bkn-agent/v1/run", bknAgentHeaderMatcher("vega-backend", interfaces.ACCESSOR_TYPE_APP), gomock.Any()).
 			Return(http.StatusAccepted, respBody, nil)
 
 		got, err := access.Run(ctx, &interfaces.BknAgentRunRequest{
 			AgentID: interfaces.SemanticUnderstandingResourceAgentID,
-			Input:   []byte(`{"resource":{"id":"resource-1"}}`),
+			Message: `{"resource":{"id":"resource-1"}}`,
 		})
 
 		require.NoError(t, err)
@@ -64,14 +64,18 @@ func TestBknAgentAccessRun(t *testing.T) {
 
 	t.Run("success with fallback id", func(t *testing.T) {
 		access, mockHTTPClient := setup(t)
+		accountCtx := context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{
+			ID:   "user-1",
+			Type: interfaces.ACCESSOR_TYPE_USER,
+		})
 
 		mockHTTPClient.EXPECT().
-			PostNoUnmarshal(gomock.Any(), "http://bkn-agent/api/bkn-agent/v1/run", gomock.Any(), gomock.Any()).
+			PostNoUnmarshal(gomock.Any(), "http://bkn-agent/api/bkn-agent/v1/run", bknAgentHeaderMatcher("user-1", interfaces.ACCESSOR_TYPE_USER), gomock.Any()).
 			Return(http.StatusAccepted, []byte(`{"id":"agent-task-1"}`), nil)
 
-		got, err := access.Run(ctx, &interfaces.BknAgentRunRequest{
+		got, err := access.Run(accountCtx, &interfaces.BknAgentRunRequest{
 			AgentID: interfaces.SemanticUnderstandingResourceAgentID,
-			Input:   []byte(`{"resource":{"id":"resource-1"}}`),
+			Message: `{"resource":{"id":"resource-1"}}`,
 		})
 
 		require.NoError(t, err)
@@ -87,6 +91,19 @@ func TestBknAgentAccessRun(t *testing.T) {
 		assert.Nil(t, got)
 	})
 
+	t.Run("missing account", func(t *testing.T) {
+		access, _ := setup(t)
+
+		got, err := access.Run(context.Background(), &interfaces.BknAgentRunRequest{
+			AgentID: interfaces.SemanticUnderstandingResourceAgentID,
+			Message: `{}`,
+		})
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "account info is required")
+		assert.Nil(t, got)
+	})
+
 	t.Run("http error", func(t *testing.T) {
 		access, mockHTTPClient := setup(t)
 		mockHTTPClient.EXPECT().
@@ -95,7 +112,7 @@ func TestBknAgentAccessRun(t *testing.T) {
 
 		got, err := access.Run(ctx, &interfaces.BknAgentRunRequest{
 			AgentID: interfaces.SemanticUnderstandingResourceAgentID,
-			Input:   []byte(`{}`),
+			Message: `{}`,
 		})
 
 		require.Error(t, err)
@@ -104,7 +121,7 @@ func TestBknAgentAccessRun(t *testing.T) {
 }
 
 func TestBknAgentAccessGetTask(t *testing.T) {
-	ctx := context.Background()
+	ctx := contextWithBknAgentAccount("vega-backend", interfaces.ACCESSOR_TYPE_APP)
 
 	setup := func(t *testing.T) (*bknAgentAccess, *rmock.MockHTTPClient) {
 		t.Helper()
@@ -119,10 +136,10 @@ func TestBknAgentAccessGetTask(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		access, mockHTTPClient := setup(t)
-		respBody := []byte(`{"task_id":"agent-task-1","status":"succeeded","result":{"confidence":0.8}}`)
+		respBody := []byte(`{"task_id":"agent-task-1","status":"succeeded","output":"{\"confidence\":0.8}"}`)
 
 		mockHTTPClient.EXPECT().
-			GetNoUnmarshal(gomock.Any(), "http://bkn-agent/api/bkn-agent/v1/tasks/agent-task-1", nil, gomock.Any()).
+			GetNoUnmarshal(gomock.Any(), "http://bkn-agent/api/bkn-agent/v1/tasks/agent-task-1", nil, bknAgentHeaderMatcher("vega-backend", interfaces.ACCESSOR_TYPE_APP)).
 			Return(http.StatusOK, respBody, nil)
 
 		got, err := access.GetTask(ctx, "agent-task-1")
@@ -144,5 +161,30 @@ func TestBknAgentAccessGetTask(t *testing.T) {
 
 		require.Error(t, err)
 		assert.Nil(t, got)
+	})
+
+	t.Run("missing account", func(t *testing.T) {
+		access, _ := setup(t)
+
+		got, err := access.GetTask(context.Background(), "agent-task-1")
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "account info is required")
+		assert.Nil(t, got)
+	})
+}
+
+func contextWithBknAgentAccount(accountID string, accountType string) context.Context {
+	return context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{
+		ID:   accountID,
+		Type: accountType,
+	})
+}
+
+func bknAgentHeaderMatcher(accountID string, accountType string) gomock.Matcher {
+	return gomock.Cond(func(headers map[string]string) bool {
+		return headers[interfaces.CONTENT_TYPE_NAME] == interfaces.CONTENT_TYPE_JSON &&
+			headers[interfaces.HTTP_HEADER_ACCOUNT_ID] == accountID &&
+			headers[interfaces.HTTP_HEADER_ACCOUNT_TYPE] == accountType
 	})
 }

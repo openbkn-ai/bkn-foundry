@@ -15,8 +15,8 @@ const (
 )
 
 type BknAgentRunRequest struct {
-	AgentID string          `json:"agent_id"`
-	Input   json.RawMessage `json:"input"`
+	AgentID string `json:"agent_id"`
+	Message string `json:"message"`
 }
 
 type BknAgentRunResponse struct {
@@ -27,6 +27,7 @@ type BknAgentTask struct {
 	ID            string          `json:"id,omitempty"`
 	TaskID        string          `json:"task_id,omitempty"`
 	Status        string          `json:"status"`
+	Output        string          `json:"output,omitempty"`
 	Result        json.RawMessage `json:"result,omitempty"`
 	ResultJSON    json.RawMessage `json:"result_json,omitempty"`
 	FailureDetail string          `json:"failure_detail,omitempty"`
