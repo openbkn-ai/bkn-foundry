@@ -12,7 +12,9 @@
 
 [![License](https://img.shields.io/badge/license-multi--licensed-blue.svg)](LICENSE)
 
-BKN Foundry is a harness-first foundation for enterprise decision agents. It turns fragmented data, knowledge, tools, and policies into governed context, safe execution, and verifiable feedback loops. With semantic modeling, real-time access, runtime control, and BKN Trace, it helps AI systems reason, adapt, and act reliably in complex enterprises.
+OpenBKN is an ontology-driven business knowledge network platform. Through ontology modeling, it turns the data and logic scattered across documents, systems, processes, rules, and expert experience into a business knowledge network that agents can understand, execute, and verify — so agents land accurately, safely, and reliably in real business environments, not just generating answers but continuously creating executable, traceable, and verifiable business value.
+
+**BKN Foundry** is the technical foundation of OpenBKN, providing that business knowledge network with unified data access, safe execution, and governance.
 
 **On this page:** [📚 Quick links](#toc-quick-links) · [🚀 Quick start](#toc-quick-start) · [🛠️ OpenBKN SDK](#toc-bkn-sdk) · [🛡️ Administration](#toc-kweaver-admin) · [🏗️ BKN Foundry](#toc-kweaver-core) · [📐 BKN Lang](#toc-bkn-lang) · [📊 Benchmarks](#toc-benchmarks)
 
