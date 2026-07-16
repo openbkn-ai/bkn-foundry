@@ -3,6 +3,15 @@
 install_ingress_nginx() {
     log_info "Installing ingress-nginx-controller..."
 
+    # Override Ingress-Nginx image registry based on OFFLINE_MODE (keep full path)
+    if [[ "${OFFLINE_MODE}" == "true" ]]; then
+        INGRESS_NGINX_CONTROLLER_IMAGE="${OFFLINE_REGISTRY}/openbkn-ai/ingress-nginx/controller:v1.14.1"
+        INGRESS_NGINX_CONTROLLER_IMAGE_REPOSITORY="${OFFLINE_REGISTRY}/openbkn-ai/ingress-nginx/controller"
+        INGRESS_NGINX_WEBHOOK_CERTGEN_IMAGE="${OFFLINE_REGISTRY}/openbkn-ai/ingress-nginx/kube-webhook-certgen:v1.6.1"
+        INGRESS_NGINX_WEBHOOK_CERTGEN_IMAGE_REPOSITORY="${OFFLINE_REGISTRY}/openbkn-ai/ingress-nginx/kube-webhook-certgen"
+        log_info "Offline mode: Using offline registry ${OFFLINE_REGISTRY} for ingress-nginx"
+    fi
+
     # Create namespace if not exists
     kubectl create namespace ingress-nginx 2>/dev/null || true
 

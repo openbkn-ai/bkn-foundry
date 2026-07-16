@@ -3,9 +3,18 @@ install_localpv() {
     log_info "Installing local-path-provisioner (hostPath local PV)..."
 
     # Note: Image addresses are already configured in the YAML file
-    read_or_fetch "${LOCALPV_MANIFEST_PATH}" "${LOCALPV_MANIFEST_URL}" | \
-        sed "s|/opt/local-path-provisioner|${LOCALPV_BASE_PATH}|g" | \
-        kubectl apply -f -
+    # In offline mode, replace image registry domain only (keep full path)
+    if [[ "${OFFLINE_MODE}" == "true" ]]; then
+        log_info "Offline mode: Using offline registry ${OFFLINE_REGISTRY} for local-path-provisioner"
+        read_or_fetch "${LOCALPV_MANIFEST_PATH}" "${LOCALPV_MANIFEST_URL}" | \
+            sed "s|/opt/local-path-provisioner|${LOCALPV_BASE_PATH}|g" | \
+            sed "s|swr.cn-east-3.myhuaweicloud.com|${OFFLINE_REGISTRY}|g" | \
+            kubectl apply -f -
+    else
+        read_or_fetch "${LOCALPV_MANIFEST_PATH}" "${LOCALPV_MANIFEST_URL}" | \
+            sed "s|/opt/local-path-provisioner|${LOCALPV_BASE_PATH}|g" | \
+            kubectl apply -f -
+    fi
 
     kubectl wait --for=condition=Available deployment/local-path-provisioner -n kube-system --timeout=300s 2>/dev/null || true
 

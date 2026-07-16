@@ -34,14 +34,20 @@ install_redis_sentinel_local() {
     fi
     log_info "Installing Redis in sentinel mode using redis chart..."
 
-    # Build image registry string (default from user's values)
-    local image_registry="${REDIS_IMAGE_REGISTRY:-swr.cn-east-3.myhuaweicloud.com/openbkn-ai}"
-    if [[ -z "${image_registry}" ]]; then
-        # Try to get from config.yaml
-        image_registry=$(grep -E "^[[:space:]]*registry:" "${SCRIPT_DIR}/conf/config.yaml" 2>/dev/null | head -1 | sed 's/.*registry:[[:space:]]*//' | tr -d "'\"")
-    fi
-    if [[ -z "${image_registry}" ]]; then
-        image_registry="swr.cn-east-3.myhuaweicloud.com/openbkn-ai"
+    # Build image registry string based on OFFLINE_MODE
+    local image_registry
+    if [[ "${OFFLINE_MODE}" == "true" ]]; then
+        image_registry="${OFFLINE_REGISTRY}/openbkn-ai"
+        log_info "Offline mode: Using offline registry ${image_registry}"
+    else
+        image_registry="${REDIS_IMAGE_REGISTRY:-swr.cn-east-3.myhuaweicloud.com/openbkn-ai}"
+        if [[ -z "${image_registry}" ]]; then
+            # Try to get from config.yaml
+            image_registry=$(grep -E "^[[:space:]]*registry:" "${SCRIPT_DIR}/conf/config.yaml" 2>/dev/null | head -1 | sed 's/.*registry:[[:space:]]*//' | tr -d "'\"")
+        fi
+        if [[ -z "${image_registry}" ]]; then
+            image_registry="swr.cn-east-3.myhuaweicloud.com/openbkn-ai"
+        fi
     fi
 
     local redis_password="${REDIS_PASSWORD}"

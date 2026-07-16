@@ -46,6 +46,13 @@ install_opensearch() {
         fi
     fi
 
+    # Override OpenSearch image registry based on OFFLINE_MODE (in case it was set before OFFLINE_MODE)
+    if [[ "${OFFLINE_MODE}" == "true" ]]; then
+        OPENSEARCH_IMAGE="${OFFLINE_REGISTRY}/openbkn-ai/opensearchproject/opensearch:2.19.4"
+        OPENSEARCH_INIT_IMAGE="${OFFLINE_REGISTRY}/openbkn-ai/busybox:1.36.1"
+        log_info "Offline mode: Using offline registry ${OFFLINE_REGISTRY} for OpenSearch"
+    fi
+
     # Parse image repository/tag from OPENSEARCH_IMAGE (chart expects image.repository + image.tag)
     local os_image_repo="${OPENSEARCH_IMAGE%:*}"
     local os_image_tag="${OPENSEARCH_IMAGE##*:}"
@@ -72,7 +79,14 @@ install_opensearch() {
         log_info "Using remote OpenSearch chart: ${chart_ref} (version ${OPENSEARCH_CHART_VERSION})"
     fi
 
-    if [[ "${use_local_chart}" != "true" ]]; then
+    # In offline mode, skip helm repo operations
+    if [[ "${OFFLINE_MODE}" == "true" ]]; then
+        if [[ ! -f "${OPENSEARCH_CHART_TGZ}" ]]; then
+            log_error "Offline mode requires local OpenSearch chart: ${OPENSEARCH_CHART_TGZ}"
+            log_error "Please prepare the chart in advance"
+            return 1
+        fi
+    elif [[ "${use_local_chart}" != "true" ]]; then
         helm repo add --force-update opensearch "${HELM_REPO_OPENSEARCH}"
         helm repo update
     fi

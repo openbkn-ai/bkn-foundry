@@ -235,14 +235,18 @@ install_mariadb_helm() {
         log_info "Generated random 10-character MariaDB root password"
     fi
 
+    # Override MariaDB image registry based on OFFLINE_MODE (in case it was set before OFFLINE_MODE)
+    if [[ "${OFFLINE_MODE}" == "true" ]]; then
+        MARIADB_IMAGE="${OFFLINE_REGISTRY}/openbkn-ai/mariadb:11.4.7"
+        log_info "Offline mode: Using offline registry ${OFFLINE_REGISTRY} for MariaDB"
+    fi
+
     if [[ -z "${MARIADB_IMAGE}" ]]; then
         MARIADB_IMAGE="$(image_from_registry "${MARIADB_IMAGE_REPOSITORY}" "${MARIADB_IMAGE_TAG}" "${MARIADB_IMAGE_FALLBACK}")"
     fi
-
     # Parse image registry/repository/tag from MARIADB_IMAGE
     local image_without_tag="${MARIADB_IMAGE%:*}"
     local image_tag="${MARIADB_IMAGE##*:}"
-
     local chart_ref="mariadb"
     local use_local_chart="false"
     if [[ -f "${MARIADB_CHART_TGZ}" ]]; then
@@ -661,6 +665,12 @@ install_mariadb_bitnami() {
     else
         MARIADB_ROOT_PASSWORD=$(generate_random_password 10)
         log_info "Generated random 10-character MariaDB root password"
+    fi
+
+    # Override MariaDB image registry based on OFFLINE_MODE (in case it was set before OFFLINE_MODE)
+    if [[ "${OFFLINE_MODE}" == "true" ]]; then
+        MARIADB_IMAGE="${MARIADB_IMAGE:-${OFFLINE_REGISTRY}/openbkn-ai/mariadb:11.4.7}"
+        log_info "Offline mode: Using offline registry ${OFFLINE_REGISTRY} for MariaDB"
     fi
 
     if [[ -z "${MARIADB_IMAGE}" ]]; then
