@@ -8,7 +8,8 @@
 // Run: BKN_SAFE_URL=http://127.0.0.1:13000 go test -tags integration ./drivenadapters/ -run SafeAuthz -v
 // Skipped unless BKN_SAFE_URL is set. Exercises the full Authorization interface
 // exec-factory relies on — grant (CreatePolicy/CreateOwnerPolicy), decide
-// (OperationCheck AND-semantics), filter (ResourceFilter), revoke (DeletePolicy).
+// (OperationCheck AND-semantics), filter (ResourceFilter), list (ResourceList),
+// revoke (DeletePolicy).
 package drivenadapters
 
 import (
@@ -102,7 +103,21 @@ func TestSafeAuthzEndToEnd(t *testing.T) {
 		t.Errorf("ResourceFilter = %v, want [tb1]", res)
 	}
 
-	// 5. revoke -> denied again
+	// 5. ResourceList returns the granted toolbox for view
+	listRes, err := s.ResourceList(ctx, &interfaces.ResourceListRequest{
+		Accessor:  acc,
+		Resource:  &interfaces.AuthResource{Type: rtype},
+		Operation: []interfaces.AuthOperationType{interfaces.AuthOperationTypeView},
+		Method:    interfaces.AuthMethodGet,
+	})
+	if err != nil {
+		t.Fatalf("ResourceList: %v", err)
+	}
+	if len(listRes) != 1 || listRes[0].ID != tb1 {
+		t.Errorf("ResourceList = %v, want [%s]", listRes, tb1)
+	}
+
+	// 6. revoke -> denied again
 	if err := s.DeletePolicy(ctx, &interfaces.AuthDeletePolicyRequest{
 		Method: interfaces.AuthMethodGet, Resources: []*interfaces.AuthResource{{ID: tb1, Type: rtype}},
 	}); err != nil {
@@ -112,5 +127,5 @@ func TestSafeAuthzEndToEnd(t *testing.T) {
 		t.Error("execute should be denied after DeletePolicy")
 	}
 
-	t.Log("bkn-safe authz adapter: grant -> check(AND) -> filter -> revoke all OK")
+	t.Log("bkn-safe authz adapter: grant -> check(AND) -> filter -> list -> revoke all OK")
 }
