@@ -44,7 +44,7 @@ def _to_out(row: AgentRow) -> AgentOut:
 async def create_agent(session: AsyncSession, spec: AgentSpec, account_id: str) -> AgentOut:
     now = _now_ms()
     row = AgentRow(
-        f_agent_id=str(uuid.uuid4()),
+        f_agent_id=spec.agent_id or str(uuid.uuid4()),  # 预设 id 优先，否则生成
         f_name=spec.name,
         f_mode=spec.mode,
         f_prompt_id=spec.prompt_id,
@@ -267,9 +267,16 @@ async def _prompt_out(session: AsyncSession, head: PromptRow):
     )
 
 
-async def create_prompt(session: AsyncSession, name: str, content: str, vars_schema: Optional[dict], account_id: str):
+async def create_prompt(
+    session: AsyncSession,
+    name: str,
+    content: str,
+    vars_schema: Optional[dict],
+    account_id: str,
+    prompt_id: Optional[str] = None,
+):
     now = _now_ms()
-    prompt_id = str(uuid.uuid4())
+    prompt_id = prompt_id or str(uuid.uuid4())  # 预设 id 优先，否则生成
     session.add(
         PromptRow(
             f_prompt_id=prompt_id, f_name=name, f_current_version=1, f_update_user=account_id, f_update_time=now

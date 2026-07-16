@@ -95,7 +95,13 @@ class AgentLimits(BaseModel):
     timeout_s: Optional[int] = Field(default=None, ge=1, le=3600)
 
 
+_ID_PATTERN = r"^[0-9A-Za-z_.-]+$"  # 预设 id 允许字母数字下划线点连字符（跨环境稳定引用用）
+
+
 class AgentSpec(BaseModel):
+    # 预设 id（可选）：创建时指定，便于模块用固定 id 跨环境引用；不传则服务端生成 uuid。
+    # 已存在则创建冲突（不覆盖，跨环境同步用 import 的 upsert）。仅创建生效，更新忽略。
+    agent_id: Optional[str] = Field(default=None, min_length=1, max_length=50, pattern=_ID_PATTERN)
     # 名字直接用作算子工厂 toolbox 的工具名，字符集须与工厂校验一致
     # （operator-integration validator: ^[[:word:]\p{Han}]+$ —— ASCII 字母数字下划线
     # 或汉字；空格、连字符都不收）。这里前置拦住：否则一个非法名会让整包注册 400、
@@ -166,6 +172,8 @@ class RunRequest(BaseModel):
 
 
 class PromptSpec(BaseModel):
+    # 预设 id（可选）：同 AgentSpec.agent_id；不传则服务端生成 uuid，冲突即报错。
+    prompt_id: Optional[str] = Field(default=None, min_length=1, max_length=50, pattern=_ID_PATTERN)
     name: str = Field(min_length=1, max_length=100)
     content: str = Field(min_length=1)
     vars_schema: Optional[dict[str, Any]] = None

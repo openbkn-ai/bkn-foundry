@@ -29,9 +29,14 @@ async def create_prompt(
     session: AsyncSession = Depends(get_session),
 ):
     try:
-        return await dao.create_prompt(session, spec.name, spec.content, spec.vars_schema, account.account_id)
+        return await dao.create_prompt(
+            session, spec.name, spec.content, spec.vars_schema, account.account_id, prompt_id=spec.prompt_id
+        )
     except IntegrityError:
-        raise bad_request("NameConflict", "提示词名称已存在", spec.name, "换一个 name。")
+        raise bad_request(
+            "Conflict", "提示词名称或 id 已存在",
+            f"name={spec.name} id={spec.prompt_id}", "换一个 name，或换/去掉预设 prompt_id。",
+        )
 
 
 @router.get("/prompts", response_model=PromptList)

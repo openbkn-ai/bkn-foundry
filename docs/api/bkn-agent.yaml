@@ -702,6 +702,9 @@ components:
       title: AgentList
     AgentOut:
       properties:
+        agent_id:
+          type: string
+          title: Agent Id
         name:
           type: string
           maxLength: 100
@@ -750,9 +753,6 @@ components:
           - published
           title: Status
           default: draft
-        agent_id:
-          type: string
-          title: Agent Id
         create_user:
           type: string
           title: Create User
@@ -767,8 +767,8 @@ components:
           title: Update Time
       type: object
       required:
-      - name
       - agent_id
+      - name
       - create_user
       - update_user
       - create_time
@@ -776,6 +776,14 @@ components:
       title: AgentOut
     AgentSpec:
       properties:
+        agent_id:
+          anyOf:
+          - type: string
+            maxLength: 50
+            minLength: 1
+            pattern: ^[0-9A-Za-z_.-]+$
+          - type: 'null'
+          title: Agent Id
         name:
           type: string
           maxLength: 100
@@ -1213,6 +1221,14 @@ components:
       title: PromptRollback
     PromptSpec:
       properties:
+        prompt_id:
+          anyOf:
+          - type: string
+            maxLength: 50
+            minLength: 1
+            pattern: ^[0-9A-Za-z_.-]+$
+          - type: 'null'
+          title: Prompt Id
         name:
           type: string
           maxLength: 100

@@ -21,7 +21,10 @@ async def create_agent(
     try:
         agent = await dao.create_agent(session, spec, account.account_id)
     except IntegrityError:
-        raise bad_request("NameConflict", "agent 名称已存在", spec.name, "换一个 name。")
+        raise bad_request(
+            "Conflict", "agent 名称或 id 已存在",
+            f"name={spec.name} id={spec.agent_id}", "换一个 name，或换/去掉预设 agent_id。",
+        )
     toolbox_sync.schedule_resync()
     return agent
 
