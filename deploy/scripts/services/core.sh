@@ -463,8 +463,14 @@ _install_core_release_repo() {
 #   swr  -> swr.cn-east-3.myhuaweicloud.com/openbkn-ai
 #   ghcr -> ghcr.io/openbkn-ai
 #   *    -> used verbatim (treated as a full registry/namespace)
+# In offline mode, all registries resolve to ${OFFLINE_REGISTRY}/openbkn-ai
 _core_resolve_registry() {
     local raw="$1"
+    # In offline mode, always use offline registry
+    if [[ "${OFFLINE_MODE}" == "true" ]]; then
+        echo "${OFFLINE_REGISTRY}/openbkn-ai"
+        return
+    fi
     case "${raw}" in
         swr)  echo "swr.cn-east-3.myhuaweicloud.com/openbkn-ai" ;;
         ghcr) echo "ghcr.io/openbkn-ai" ;;
@@ -487,11 +493,21 @@ _core_config_sets_image_registry() {
 # Inject default --set values for bkn-core if user did not override them.
 # Currently: businessDomain.enabled defaults to false at install time.
 _core_apply_default_set_values() {
-    # image.registry precedence: explicit --set image.registry=… wins; else an
-    # explicit --registry flag is applied; else if CONFIG_YAML_PATH already sets
+    # image.registry precedence in ONLINE mode: explicit --set image.registry=… wins;
+    # else an explicit --registry flag is applied; else if CONFIG_YAML_PATH already sets
     # image.registry we respect it (don't clobber a config's registry, e.g. the
     # Mac dev mac-config.yaml); else default to swr.
-    if get_set_value "image.registry" "${CORE_SET_VALUES[@]}" >/dev/null 2>&1; then
+    #
+    # In OFFLINE mode (--offline flag): Always force offline registry via --set,
+    # which takes precedence over config.yaml's image.registry setting.
+
+    # Highest priority: offline mode
+    if [[ "${OFFLINE_MODE}" == "true" ]]; then
+        local _reg_resolved
+        _reg_resolved="$(_core_resolve_registry "offline")"
+        CORE_SET_VALUES+=("image.registry=${_reg_resolved}")
+        log_info "Offline mode: Forcing image.registry=${_reg_resolved} via --set (overrides config.yaml)"
+    elif get_set_value "image.registry" "${CORE_SET_VALUES[@]}" >/dev/null 2>&1; then
         : # user passed --set image.registry=… explicitly; do not override
     elif [[ -n "${CORE_IMAGE_REGISTRY}" ]]; then
         local _reg_resolved
@@ -639,7 +655,10 @@ _core_resolve_latest_manifest() {
 install_core() {
     log_info "Installing BKN Foundry services via Helm..."
     _core_resolve_latest_manifest || return 1
-    setup_dockerhub_mirror "${CORE_DOCKERHUB_MIRROR}"
+   if [[ "${OFFLINE_MODE}" != "true" ]]; then
+        setup_dockerhub_mirror "${CORE_DOCKERHUB_MIRROR}"
+    fi
+
     _core_require_version_manifest || return 1
     _core_apply_default_set_values
 

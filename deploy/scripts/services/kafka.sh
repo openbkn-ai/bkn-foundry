@@ -94,6 +94,12 @@ EOF
         fi
     fi
 
+    # Override Kafka image registry based on OFFLINE_MODE (in case it was set before OFFLINE_MODE)
+    if [[ "${OFFLINE_MODE}" == "true" ]]; then
+        KAFKA_IMAGE="${OFFLINE_REGISTRY}/openbkn-ai/bitnami/kafka:3.9.0-debian-12-r10"
+        log_info "Offline mode: Using offline registry ${OFFLINE_REGISTRY} for Kafka"
+    fi
+
     # Parse image registry/repository/tag from KAFKA_IMAGE
     local image_without_tag="${KAFKA_IMAGE%:*}"
     local image_tag="${KAFKA_IMAGE##*:}"
@@ -110,7 +116,14 @@ EOF
         log_info "Using remote Kafka chart: ${chart_ref} (version ${KAFKA_CHART_VERSION})"
     fi
 
-    if [[ "${use_local_chart}" != "true" ]]; then
+    # In offline mode, skip helm repo operations
+    if [[ "${OFFLINE_MODE}" == "true" ]]; then
+        if [[ ! -f "${KAFKA_CHART_TGZ}" ]]; then
+            log_error "Offline mode requires local Kafka chart: ${KAFKA_CHART_TGZ}"
+            log_error "Please prepare the chart in advance"
+            return 1
+        fi
+    elif [[ "${use_local_chart}" != "true" ]]; then
         helm repo add --force-update bitnami "${HELM_REPO_BITNAMI}"
         helm repo update
     fi

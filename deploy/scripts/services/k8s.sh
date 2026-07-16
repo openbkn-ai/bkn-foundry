@@ -121,14 +121,21 @@ init_k8s_master() {
     fi
     
     log_info "API Server advertise address: ${API_SERVER_ADVERTISE_ADDRESS}"
-    
+
+    # Override IMAGE_REPOSITORY based on OFFLINE_MODE (in case it was set before OFFLINE_MODE)
+    if [[ "${OFFLINE_MODE}" == "true" ]]; then
+        IMAGE_REPOSITORY="${OFFLINE_REGISTRY}/google_containers"
+        log_info "Offline mode: Using offline registry ${OFFLINE_REGISTRY}"
+    fi
+
     # Pre-pull images before kubeadm init
     log_info "Pre-pulling Kubernetes images from ${IMAGE_REPOSITORY}..."
+
     kubeadm config images pull \
         --kubernetes-version=stable-1.28 \
         --image-repository="${IMAGE_REPOSITORY}" \
         2>&1 || log_warn "Some images may have failed to pull, continuing..."
-    
+
     # Pre-pull pause image with all possible versions and tag them
     log_info "Pre-pulling pause images with all versions..."
     for pause_version in 3.6 3.9 3.10 3.10.0 3.10.1; do
@@ -192,15 +199,15 @@ EOF
     # Fix pause image version in kubelet configuration
     log_info "Fixing pause image version in kubelet configuration..."
     systemctl stop kubelet
-    
-    # Replace pause image versions with 3.9 in all kubelet config files
-    # Replace registry.k8s.io with aliyun registry for all pause versions (including 3.6)
-    sed -i 's|registry\.k8s\.io/pause:[0-9.]*|registry.aliyuncs.com/google_containers/pause:3.9|g' /var/lib/kubelet/kubeadm-flags.env 2>/dev/null || true
-    sed -i 's|registry\.k8s\.io/pause:[0-9.]*|registry.aliyuncs.com/google_containers/pause:3.9|g' /var/lib/kubelet/config.yaml 2>/dev/null || true
-    
+
+    # Replace pause image versions with configured IMAGE_REPOSITORY
+    # In offline mode, IMAGE_REPOSITORY is set to offline registry (e.g., node1:5000/google_containers)
+    sed -i "s|registry\.k8s\.io/pause:[0-9.]*|${IMAGE_REPOSITORY}/pause:3.9|g" /var/lib/kubelet/kubeadm-flags.env 2>/dev/null || true
+    sed -i "s|registry\.k8s\.io/pause:[0-9.]*|${IMAGE_REPOSITORY}/pause:3.9|g" /var/lib/kubelet/config.yaml 2>/dev/null || true
+
     # Ensure pause image is set correctly in kubelet extra args
     if ! grep -q 'pod-infra-container-image' /var/lib/kubelet/kubeadm-flags.env; then
-        sed -i 's|--container-runtime-endpoint|--pod-infra-container-image=registry.aliyuncs.com/google_containers/pause:3.9 --container-runtime-endpoint|g' /var/lib/kubelet/kubeadm-flags.env
+        sed -i "s|--container-runtime-endpoint|--pod-infra-container-image=${IMAGE_REPOSITORY}/pause:3.9 --container-runtime-endpoint|g" /var/lib/kubelet/kubeadm-flags.env
     fi
     
     systemctl start kubelet
@@ -222,11 +229,13 @@ EOF
     sed -i "s|https://127.0.0.1:6443|https://${API_SERVER_ADVERTISE_ADDRESS}:6443|g" /root/.kube/config
     
     # Setup kubeconfig for current user if not root
-    if [[ -n "${SUDO_USER}" ]]; then
+    if [[ -n "${SUDO_USER}" && "${SUDO_USER}" != "root" ]]; then
         USER_HOME=$(getent passwd "${SUDO_USER}" | cut -d: -f6)
-        mkdir -p "${USER_HOME}/.kube"
-        cp -f /root/.kube/config "${USER_HOME}/.kube/config"
-        chown -R "${SUDO_USER}:${SUDO_USER}" "${USER_HOME}/.kube"
+        if [[ -n "${USER_HOME}" && "${USER_HOME}" != "/root" ]]; then
+            mkdir -p "${USER_HOME}/.kube"
+            cp -f /root/.kube/config "${USER_HOME}/.kube/config"
+            chown -R "${SUDO_USER}:${SUDO_USER}" "${USER_HOME}/.kube"
+        fi
     fi
     
     export KUBECONFIG=/root/.kube/config
@@ -259,12 +268,19 @@ install_cni() {
             return 0
         fi
     fi
-    
     # Install Flannel CNI (ensure network CIDR matches POD_CIDR)
-    # Note: Image addresses are already configured in the YAML file
-    cat "${FLANNEL_MANIFEST_PATH}" | \
-        sed "s|10.244.0.0/16|${POD_CIDR}|g" | \
-        kubectl apply -f -
+    # In offline mode, replace image registry domain only (keep full path)
+    if [[ "${OFFLINE_MODE}" == "true" ]]; then
+        log_info "Offline mode: Using offline registry for Flannel images"
+        cat "${FLANNEL_MANIFEST_PATH}" | \
+            sed "s|10.244.0.0/16|${POD_CIDR}|g" | \
+            sed "s|swr.cn-east-3.myhuaweicloud.com|${OFFLINE_REGISTRY}|g" | \
+            kubectl apply -f -
+    else
+        cat "${FLANNEL_MANIFEST_PATH}" | \
+            sed "s|10.244.0.0/16|${POD_CIDR}|g" | \
+            kubectl apply -f -
+    fi
     
     log_info "Waiting for Flannel pods to be ready..."
     sleep 10
@@ -394,6 +410,30 @@ install_helm() {
         fi
     fi
 
+    # In offline mode, skip helm installation - assume it's pre-installed
+    if [[ "${OFFLINE_MODE}" == "true" ]]; then
+        log_info "Offline mode: Skipping Helm installation"
+        log_info "Checking for pre-installed Helm..."
+
+        if ! command -v helm &> /dev/null; then
+            log_error "Helm is not installed."
+            log_error "In offline mode, please pre-install Helm ${HELM_VERSION}"
+            log_error ""
+            log_error "Installation options:"
+            log_error "  1. Package manager (if available in your offline repo):"
+            log_error "     yum install -y helm  # or dnf/apt-get"
+            log_error ""
+            log_error "  2. Binary download and manual installation:"
+            log_error "     wget https://repo.huaweicloud.com/helm/${HELM_VERSION}/helm-${HELM_VERSION}-linux-amd64.tar.gz"
+            log_error "     tar -xzf helm-*.tar.gz"
+            log_error "     mv linux-amd64/helm /usr/local/bin/"
+            return 1
+        fi
+
+        log_info "✓ Helm is pre-installed: $(helm version --short 2>/dev/null | head -1 || echo 'unknown')"
+        return 0
+    fi
+
     # Prefer HuaweiCloud tarball (pinned by version + arch); fallback to get-helm-3 script if needed.
     local arch=""
     case "$(uname -m)" in
@@ -479,6 +519,26 @@ _fix_docker_ce_repo_releasever_for_distro() {
 # Install containerd container runtime
 install_containerd() {
     log_info "Checking containerd installation..."
+
+    # In offline mode, skip containerd installation - assume it's pre-installed
+    if [[ "${OFFLINE_MODE}" == "true" ]]; then
+        log_info "Offline mode: Skipping containerd package installation"
+        log_info "Checking for pre-installed containerd..."
+
+        if ! command -v containerd &> /dev/null; then
+            log_error "containerd is not installed."
+            log_error "In offline mode, please pre-install containerd"
+            log_error ""
+            log_error "Installation options:"
+            log_error "  On RHEL/CentOS/Fedora: yum install -y containerd.io"
+            log_error "  On Ubuntu/Debian: apt-get install -y containerd.io"
+            return 1
+        fi
+
+        log_info "✓ containerd is pre-installed"
+        configure_containerd_runtime
+        return 0
+    fi
 
     detect_package_manager
     
@@ -745,6 +805,11 @@ configure_containerd_runtime() {
         fi
     fi
     
+    # Override IMAGE_REPOSITORY based on OFFLINE_MODE (in case it was set before OFFLINE_MODE)
+    if [[ "${OFFLINE_MODE}" == "true" ]]; then
+        IMAGE_REPOSITORY="${OFFLINE_REGISTRY}/google_containers"
+    fi
+
     # Ensure sandbox_image uses the configured image repository (avoid pulling from registry.k8s.io)
     local desired_sandbox_image="${IMAGE_REPOSITORY}/pause:3.9"
     if grep -q 'sandbox_image' /etc/containerd/config.toml; then
@@ -840,7 +905,7 @@ EOF
 # Install crictl (container runtime interface CLI)
 install_crictl() {
     log_info "Installing crictl..."
-    
+
     if command -v crictl &> /dev/null; then
         log_info "crictl is already installed"
         # Still ensure config file exists
@@ -854,6 +919,18 @@ debug: false
 EOF
         fi
         return 0
+    fi
+
+    # In offline mode, skip crictl installation - assume it's pre-installed
+    if [[ "${OFFLINE_MODE}" == "true" ]]; then
+        log_info "Offline mode: Skipping crictl installation"
+        log_error "crictl is not installed."
+        log_error "In offline mode, please pre-install crictl (cri-tools)"
+        log_error ""
+        log_error "Installation options:"
+        log_error "  On RHEL/CentOS/Fedora: yum install -y cri-tools"
+        log_error "  On Ubuntu/Debian: apt-get install -y cri-tools"
+        return 1
     fi
 
     detect_package_manager
@@ -966,7 +1043,41 @@ _k8s_ensure_cni_bin_plugins() {
 # Install Kubernetes components (kubeadm, kubelet, kubectl)
 install_kubernetes() {
     log_info "Installing Kubernetes components..."
-    
+
+    # In offline mode, skip package installation - assume components are pre-installed
+    if [[ "${OFFLINE_MODE}" == "true" ]]; then
+        log_info "Offline mode: Skipping Kubernetes package installation"
+        log_info "Checking for pre-installed Kubernetes components..."
+
+        local missing_components=()
+        if ! command -v kubeadm &> /dev/null; then
+            missing_components+=("kubeadm")
+        fi
+        if ! command -v kubelet &> /dev/null; then
+            missing_components+=("kubelet")
+        fi
+        if ! command -v kubectl &> /dev/null; then
+            missing_components+=("kubectl")
+        fi
+
+        if [[ ${#missing_components[@]} -gt 0 ]]; then
+            log_error "Missing Kubernetes components: ${missing_components[*]}"
+            log_error "In offline mode, please pre-install these packages:"
+            log_error "  - kubeadm"
+            log_error "  - kubelet"
+            log_error "  - kubectl"
+            log_error "  - kubernetes-cni"
+            log_error ""
+            log_error "On RHEL/CentOS/Fedora: yum install -y kubeadm kubelet kubectl kubernetes-cni"
+            log_error "On Ubuntu/Debian: apt-get install -y kubeadm kubelet kubectl"
+            return 1
+        fi
+
+        log_info "✓ All Kubernetes components are pre-installed"
+        _k8s_ensure_cni_bin_plugins || return 1
+        return 0
+    fi
+
     detect_package_manager
 
     if [[ "${PKG_MANAGER}" == "dnf" ]] || [[ "${PKG_MANAGER}" == "yum" ]]; then
@@ -984,7 +1095,7 @@ EOF
             ${PKG_MANAGER_UPDATE}
         fi
     fi
-    
+
     if ! command -v kubeadm &> /dev/null || ! command -v kubelet &> /dev/null || ! command -v kubectl &> /dev/null; then
         if [[ "${PKG_MANAGER}" == "dnf" ]] || [[ "${PKG_MANAGER}" == "yum" ]]; then
             # RHEL-family only; Ubuntu/Debian use the apt branch below (no --disableexcludes).

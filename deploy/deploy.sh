@@ -104,6 +104,10 @@ usage() {
     echo "                                Trailing flags like ... install --minimum --distro=k8s are NOT parsed here;"
     echo "                                use env KUBE_DISTRO=k8s or move --distro (same rule as -y, --force-upgrade)."
     echo "  -y, --yes                     Skip all interactive prompts and use defaults"
+    echo "  --offline                     Enable offline deployment mode (use offline registry)"
+    echo "                                Default offline registry: registry.openbkn.ai:5000"
+    echo "  --offline=<registry>          Enable offline mode with custom registry"
+    echo "                                Example: --offline=node1:5000"
     echo "  --force-upgrade               Always run helm upgrade even if installed chart version equals target."
     echo "                                Use this after editing config.yaml on a previously-installed cluster."
     echo "  --distro=k8s|k3s              Cluster bootstrap when modules auto-ensure K8s (default: k8s = kubeadm stack)."
@@ -146,6 +150,8 @@ usage() {
     echo "  $0 bkn-foundry install --minimum                 # Minimum install (skip auth & business-domain)"
     echo "  $0 bkn-foundry install --set auth.enabled=false  # Install BKN Foundry with auth enforcement off"
     echo "  $0 bkn-foundry install --set auth.enabled=false --set businessDomain.enabled=false  # Same as --minimum"
+    echo "  $0 --offline k8s install                        # Offline mode: use default offline registry"
+    echo "  $0 --offline=node1:5000 k8s install             # Offline mode: use custom offline registry"
     echo "  $0 bkn-foundry install --set image.registry=my-registry.com --set image.tag=v1.0.0  # Custom image settings"
     echo "  $0 bkn-foundry install --latest --registry=swr  # Latest manifest + Huawei SWR registry (CN-friendly)"
     echo "  $0 bkn-foundry download --charts_dir=/path/to/charts # Download Core charts into a specific local directory"
@@ -389,6 +395,15 @@ main() {
         case "$1" in
             -y|--yes) ASSUME_YES="true"; shift ;;
             --force-upgrade) FORCE_UPGRADE="true"; shift ;;
+            --offline)
+                export OFFLINE_MODE="true"
+                shift
+                ;;
+            --offline=*)
+                export OFFLINE_MODE="true"
+                export OFFLINE_REGISTRY="${1#*=}"
+                shift
+                ;;
             --config=*)
                 CONFIG_YAML_PATH="${1#*=}"
                 shift
