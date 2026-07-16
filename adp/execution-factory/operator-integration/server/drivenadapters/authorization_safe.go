@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"time"
 
@@ -26,8 +27,7 @@ import (
 // BKN_SAFE_URL points at bkn-safe (e.g. http://bkn-safe:3000) for shadow/bkn-safe.
 //
 // safeAuthorization implements interfaces.Authorization against bkn-safe's clean
-// API (/api/safe/v1/authz/*). ResourceList has no business caller in exec-factory
-// (only ResourceFilterIDs is used), so it returns empty.
+// API (/api/safe/v1/authz/*).
 
 type safeAuthorization struct {
 	baseURL string
@@ -89,11 +89,87 @@ func (s *safeAuthorization) ResourceFilter(ctx context.Context, req *interfaces.
 	return out, nil
 }
 
-// ResourceList has no business caller in exec-factory (services enumerate their
-// own resources and filter via ResourceFilter). Return empty.
+// ResourceList enumerates resource-instance IDs the accessor may perform every
+// requested operation on. Type-wide grants (type:*) surface as ResourceIDAll;
+// multi-op requests intersect per-op enumerations (AND semantics).
 func (s *safeAuthorization) ResourceList(ctx context.Context, req *interfaces.ResourceListRequest) ([]*interfaces.AuthResourceResult, error) {
-	s.logger.WithContext(ctx).Debugf("[bkn-safe] ResourceList not implemented (unused); returning empty")
-	return []*interfaces.AuthResourceResult{}, nil
+	if req == nil || req.Accessor == nil || req.Resource == nil || len(req.Operation) == 0 {
+		return []*interfaces.AuthResourceResult{}, nil
+	}
+
+	ok, err := s.allowedAll(ctx, req.Accessor.ID, req.Resource.Type, interfaces.ResourceIDAll, req.Operation)
+	if err != nil {
+		return nil, err
+	}
+	if ok {
+		return []*interfaces.AuthResourceResult{{ID: interfaces.ResourceIDAll}}, nil
+	}
+
+	ids, err := s.accessibleResourceIDsAllOps(ctx, req.Accessor.ID, req.Resource.Type, req.Operation)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*interfaces.AuthResourceResult, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, &interfaces.AuthResourceResult{ID: id})
+	}
+	return out, nil
+}
+
+func (s *safeAuthorization) accessibleResourceIDs(ctx context.Context, accessorID, rtype, op string) ([]string, error) {
+	var out struct {
+		IDs []string `json:"ids"`
+	}
+	q := url.Values{
+		"accessor_id":   {accessorID},
+		"resource_type": {rtype},
+		"operation":     {op},
+	}
+	if err := s.get(ctx, "/api/safe/v1/authz/resources", q, &out); err != nil {
+		return nil, err
+	}
+	return out.IDs, nil
+}
+
+func (s *safeAuthorization) accessibleResourceIDsAllOps(ctx context.Context, accessorID, rtype string, ops []interfaces.AuthOperationType) ([]string, error) {
+	ids, err := s.accessibleResourceIDs(ctx, accessorID, rtype, string(ops[0]))
+	if err != nil {
+		return nil, err
+	}
+	for _, op := range ops[1:] {
+		next, err := s.accessibleResourceIDs(ctx, accessorID, rtype, string(op))
+		if err != nil {
+			return nil, err
+		}
+		ids = intersectStringSlices(ids, next)
+		if len(ids) == 0 {
+			break
+		}
+	}
+	return ids, nil
+}
+
+func intersectStringSlices(a, b []string) []string {
+	if len(a) == 0 || len(b) == 0 {
+		return []string{}
+	}
+	set := make(map[string]struct{}, len(a))
+	for _, id := range a {
+		set[id] = struct{}{}
+	}
+	out := make([]string, 0, len(b))
+	seen := make(map[string]struct{}, len(b))
+	for _, id := range b {
+		if _, ok := set[id]; !ok {
+			continue
+		}
+		if _, dup := seen[id]; dup {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	return out
 }
 
 // CreatePolicy grants each accessor the allowed ops on its resource instance.
@@ -130,6 +206,29 @@ func (s *safeAuthorization) DeletePolicy(ctx context.Context, req *interfaces.Au
 
 func (s *safeAuthorization) post(ctx context.Context, path string, body, out any) error {
 	return s.do(ctx, http.MethodPost, path, body, out)
+}
+func (s *safeAuthorization) get(ctx context.Context, path string, query url.Values, out any) error {
+	target := s.baseURL + path
+	if len(query) > 0 {
+		target += "?" + query.Encode()
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := s.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	data, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("bkn-safe GET %s: %d: %s", path, resp.StatusCode, data)
+	}
+	if out != nil && len(data) > 0 {
+		return json.Unmarshal(data, out)
+	}
+	return nil
 }
 func (s *safeAuthorization) del(ctx context.Context, path string, body any) error {
 	return s.do(ctx, http.MethodDelete, path, body, nil)

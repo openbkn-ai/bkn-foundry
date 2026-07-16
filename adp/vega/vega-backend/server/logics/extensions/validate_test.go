@@ -71,25 +71,27 @@ func TestValidateEntityExtensionsMap(t *testing.T) {
 }
 
 func TestValidatePropertyAndSchemaExtensions(t *testing.T) {
-	ctx := context.Background()
+	t.Run("validate property and schema extensions", func(t *testing.T) {
+		ctx := context.Background()
 
-	require.NoError(t, ValidatePropertyExtensionsMap(ctx, map[string]string{"feature": "keyword"}))
-	assertHTTPError(t,
-		ValidatePropertyExtensionsMap(ctx, repeatExtensionPairs(MaxPropertyExtensionPairs+1)),
-		http.StatusBadRequest,
-		verrors.VegaBackend_Extensions_PropertyQuotaExceeded,
-	)
+		require.NoError(t, ValidatePropertyExtensionsMap(ctx, map[string]string{"feature": "keyword"}))
+		assertHTTPError(t,
+			ValidatePropertyExtensionsMap(ctx, repeatExtensionPairs(MaxPropertyExtensionPairs+1)),
+			http.StatusBadRequest,
+			verrors.VegaBackend_Extensions_PropertyQuotaExceeded,
+		)
 
-	require.NoError(t, ValidateSchemaPropertiesExtensions(ctx, []*interfaces.Property{
-		nil,
-		{Name: "id"},
-		{Name: "name", Extensions: map[string]string{"owner": "team-a"}},
-	}))
-	assertHTTPError(t,
-		ValidateSchemaPropertiesExtensions(ctx, []*interfaces.Property{{Name: "name", Extensions: map[string]string{"vega_bad": "x"}}}),
-		http.StatusBadRequest,
-		verrors.VegaBackend_Extensions_ReservedKey,
-	)
+		require.NoError(t, ValidateSchemaPropertiesExtensions(ctx, []*interfaces.Property{
+			nil,
+			{Name: "id"},
+			{Name: "name", Extensions: map[string]string{"owner": "team-a"}},
+		}))
+		assertHTTPError(t,
+			ValidateSchemaPropertiesExtensions(ctx, []*interfaces.Property{{Name: "name", Extensions: map[string]string{"vega_bad": "x"}}}),
+			http.StatusBadRequest,
+			verrors.VegaBackend_Extensions_ReservedKey,
+		)
+	})
 }
 
 func TestValidateExtensionQueryPairs(t *testing.T) {

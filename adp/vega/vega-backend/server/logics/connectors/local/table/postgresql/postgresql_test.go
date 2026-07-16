@@ -20,23 +20,25 @@ import (
 )
 
 func TestPostgresqlConnectorMetadataAndConfig(t *testing.T) {
-	connector := &PostgresqlConnector{}
+	t.Run("postgresql connector metadata and config", func(t *testing.T) {
+		connector := &PostgresqlConnector{}
 
-	assert.Equal(t, interfaces.ConnectorTypePostgreSQL, connector.GetType())
-	assert.Equal(t, interfaces.ConnectorTypePostgreSQL, connector.GetName())
-	assert.Equal(t, interfaces.ConnectorModeLocal, connector.GetMode())
-	assert.Equal(t, interfaces.ConnectorCategoryTable, connector.GetCategory())
-	assert.Equal(t, []string{"password"}, connector.GetSensitiveFields())
-	assert.False(t, connector.GetEnabled())
-	connector.SetEnabled(true)
-	assert.True(t, connector.GetEnabled())
+		assert.Equal(t, interfaces.ConnectorTypePostgreSQL, connector.GetType())
+		assert.Equal(t, interfaces.ConnectorTypePostgreSQL, connector.GetName())
+		assert.Equal(t, interfaces.ConnectorModeLocal, connector.GetMode())
+		assert.Equal(t, interfaces.ConnectorCategoryTable, connector.GetCategory())
+		assert.Equal(t, []string{"password"}, connector.GetSensitiveFields())
+		assert.False(t, connector.GetEnabled())
+		connector.SetEnabled(true)
+		assert.True(t, connector.GetEnabled())
 
-	fields := connector.GetFieldConfig()
-	require.Contains(t, fields, "password")
-	assert.True(t, fields["password"].Encrypted)
-	assert.True(t, fields["password"].Required)
-	require.Contains(t, fields, "schemas")
-	assert.False(t, fields["schemas"].Required)
+		fields := connector.GetFieldConfig()
+		require.Contains(t, fields, "password")
+		assert.True(t, fields["password"].Encrypted)
+		assert.True(t, fields["password"].Required)
+		require.Contains(t, fields, "schemas")
+		assert.False(t, fields["schemas"].Required)
+	})
 }
 
 func TestPostgresqlConnectorNew(t *testing.T) {
@@ -159,19 +161,21 @@ func TestPostgresqlConnectorValidateSchemas(t *testing.T) {
 }
 
 func TestPostgresqlConnectorClose(t *testing.T) {
-	connector := &PostgresqlConnector{}
-	require.NoError(t, connector.Close(context.Background()))
+	t.Run("postgresql connector close", func(t *testing.T) {
+		connector := &PostgresqlConnector{}
+		require.NoError(t, connector.Close(context.Background()))
 
-	db, mock, err := sqlmock.New()
-	require.NoError(t, err)
-	connector.db = db
-	connector.connected = true
+		db, mock, err := sqlmock.New()
+		require.NoError(t, err)
+		connector.db = db
+		connector.connected = true
 
-	mock.ExpectClose()
-	require.NoError(t, connector.Close(context.Background()))
-	assert.False(t, connector.connected)
-	assert.Nil(t, connector.db)
-	require.NoError(t, mock.ExpectationsWereMet())
+		mock.ExpectClose()
+		require.NoError(t, connector.Close(context.Background()))
+		assert.False(t, connector.connected)
+		assert.Nil(t, connector.db)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
 }
 
 func validPostgresqlConfig(port int) interfaces.ConnectorConfig {

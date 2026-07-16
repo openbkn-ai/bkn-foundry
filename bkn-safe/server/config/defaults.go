@@ -24,5 +24,8 @@ func defaultConfig() *Config {
 		LDAP: LDAPConfig{
 			UserFilter: "(uid=%s)",
 		},
+		License: LicenseConfig{
+			ServerURL: "https://license.openbkn.ai",
+		},
 	}
 }

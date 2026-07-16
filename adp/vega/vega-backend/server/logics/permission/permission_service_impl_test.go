@@ -78,7 +78,7 @@ func (f *fakeMQClient) Sub(topic string, channel string, handler mqclient.Messag
 
 func (f *fakeMQClient) Close() {}
 
-func TestPermissionServiceImpl_CheckPermission(t *testing.T) {
+func TestPermissionServiceImplCheckPermission(t *testing.T) {
 	t.Run("rejects missing account", func(t *testing.T) {
 		access := &fakePermissionAccess{}
 		svc := &PermissionServiceImpl{pa: access}
@@ -130,7 +130,7 @@ func TestPermissionServiceImpl_CheckPermission(t *testing.T) {
 	})
 }
 
-func TestPermissionServiceImpl_CreateResources(t *testing.T) {
+func TestPermissionServiceImplCreateResources(t *testing.T) {
 	t.Run("builds policies for account resources and ops", func(t *testing.T) {
 		access := &fakePermissionAccess{}
 		svc := &PermissionServiceImpl{pa: access}
@@ -180,7 +180,7 @@ func TestPermissionServiceImpl_CreateResources(t *testing.T) {
 	})
 }
 
-func TestPermissionServiceImpl_DeleteResources(t *testing.T) {
+func TestPermissionServiceImplDeleteResources(t *testing.T) {
 	t.Run("skips empty ids", func(t *testing.T) {
 		access := &fakePermissionAccess{}
 		svc := &PermissionServiceImpl{pa: access}
@@ -214,7 +214,7 @@ func TestPermissionServiceImpl_DeleteResources(t *testing.T) {
 	})
 }
 
-func TestPermissionServiceImpl_UpdateResource(t *testing.T) {
+func TestPermissionServiceImplUpdateResource(t *testing.T) {
 	t.Run("publishes resource name modification", func(t *testing.T) {
 		mq := &fakeMQClient{}
 		svc := &PermissionServiceImpl{mqClient: mq}
@@ -238,7 +238,7 @@ func TestPermissionServiceImpl_UpdateResource(t *testing.T) {
 	})
 }
 
-func TestPermissionServiceImpl_FilterResources(t *testing.T) {
+func TestPermissionServiceImplFilterResources(t *testing.T) {
 	t.Run("returns empty map for empty ids without access call", func(t *testing.T) {
 		access := &fakePermissionAccess{}
 		svc := &PermissionServiceImpl{pa: access}

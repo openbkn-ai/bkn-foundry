@@ -16,7 +16,9 @@ type LoadOptions struct {
 }
 
 // LoadWithOptions resolves configuration. File path from ConfigPath or SAFE_CONFIG.
-// Non-empty environment variables override file values.
+// Environment variables override file values. Most overrides ignore empty
+// values, but SAFE_LICENSE_SERVER_URL intentionally accepts empty to support
+// pure offline deployments.
 func LoadWithOptions(opts LoadOptions) (*Config, error) {
 	path := opts.ConfigPath
 	if path == "" {
@@ -97,7 +99,7 @@ func applyEnv(cfg *Config) {
 	if v := os.Getenv("SAFE_LDAP_USER_FILTER"); v != "" {
 		cfg.LDAP.UserFilter = v
 	}
-	if v := os.Getenv("SAFE_LICENSE_SERVER_URL"); v != "" {
+	if v, ok := os.LookupEnv("SAFE_LICENSE_SERVER_URL"); ok {
 		cfg.License.ServerURL = v
 	}
 	if v := os.Getenv("SAFE_LICENSE_CA_FILE"); v != "" {

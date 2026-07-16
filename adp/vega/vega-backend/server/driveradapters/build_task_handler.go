@@ -8,7 +8,9 @@ package driveradapters
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 
@@ -263,10 +265,15 @@ func (r *restHandler) startBuildTask(c *gin.Context, visitor hydra.Visitor) {
 
 	taskID := c.Param("id")
 	var req interfaces.StartBuildTaskRequest
-	// body is optional; bind errors are tolerated
-	_ = c.ShouldBindJSON(&req)
+	if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
+		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+			WithErrorDetails(err.Error())
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
 
-	if err := r.bts.StartBuildTask(ctx, taskID, req.ExecuteType); err != nil {
+	if err := r.bts.StartBuildTask(ctx, taskID, req.Reset); err != nil {
 		httpErr := err.(*rest.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)

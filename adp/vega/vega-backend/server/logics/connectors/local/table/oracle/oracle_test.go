@@ -22,24 +22,26 @@ import (
 )
 
 func TestOracleConnectorMetadata(t *testing.T) {
-	connector := &OracleConnector{}
+	t.Run("oracle connector metadata", func(t *testing.T) {
+		connector := &OracleConnector{}
 
-	assert.Equal(t, interfaces.ConnectorTypeOracle, connector.GetType())
-	assert.Equal(t, interfaces.ConnectorTypeOracle, connector.GetName())
-	assert.Equal(t, interfaces.ConnectorModeLocal, connector.GetMode())
-	assert.Equal(t, interfaces.ConnectorCategoryTable, connector.GetCategory())
-	assert.Equal(t, []string{"password"}, connector.GetSensitiveFields())
+		assert.Equal(t, interfaces.ConnectorTypeOracle, connector.GetType())
+		assert.Equal(t, interfaces.ConnectorTypeOracle, connector.GetName())
+		assert.Equal(t, interfaces.ConnectorModeLocal, connector.GetMode())
+		assert.Equal(t, interfaces.ConnectorCategoryTable, connector.GetCategory())
+		assert.Equal(t, []string{"password"}, connector.GetSensitiveFields())
 
-	assert.False(t, connector.GetEnabled())
-	connector.SetEnabled(true)
-	assert.True(t, connector.GetEnabled())
+		assert.False(t, connector.GetEnabled())
+		connector.SetEnabled(true)
+		assert.True(t, connector.GetEnabled())
 
-	fields := connector.GetFieldConfig()
-	require.Contains(t, fields, "password")
-	assert.True(t, fields["password"].Encrypted)
-	assert.True(t, fields["password"].Required)
-	require.Contains(t, fields, "schemas")
-	assert.False(t, fields["schemas"].Required)
+		fields := connector.GetFieldConfig()
+		require.Contains(t, fields, "password")
+		assert.True(t, fields["password"].Encrypted)
+		assert.True(t, fields["password"].Required)
+		require.Contains(t, fields, "schemas")
+		assert.False(t, fields["schemas"].Required)
+	})
 }
 
 func TestOracleConnectorValidateSchemas(t *testing.T) {
