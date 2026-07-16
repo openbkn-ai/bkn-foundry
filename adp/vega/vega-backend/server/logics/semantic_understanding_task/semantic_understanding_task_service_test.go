@@ -8,7 +8,9 @@ package semantic_understanding_task
 import (
 	"context"
 	"testing"
+	"time"
 
+	"github.com/hibiken/asynq"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -23,7 +25,11 @@ func TestSemanticUnderstandingTaskServiceCreate(t *testing.T) {
 		t.Cleanup(ctrl.Finish)
 		taskAccess := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
 		resourceAccess := mock_interfaces.NewMockResourceAccess(ctrl)
-		service := &semanticUnderstandingTaskService{suta: taskAccess, ra: resourceAccess}
+		service := &semanticUnderstandingTaskService{
+			suta:           taskAccess,
+			ra:             resourceAccess,
+			debugTaskQueue: make(chan *asynq.Task, 1),
+		}
 		ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: "u1", Type: interfaces.ACCESSOR_TYPE_USER})
 		var createdTask *interfaces.SemanticUnderstandingTask
 		var findHash string
@@ -58,6 +64,13 @@ func TestSemanticUnderstandingTaskServiceCreate(t *testing.T) {
 		assert.NotEmpty(t, got.Input)
 		assert.NotEmpty(t, got.InputHash)
 		assert.Equal(t, got.InputHash, findHash)
+
+		select {
+		case queuedTask := <-service.DebugTaskQueue():
+			assert.Equal(t, interfaces.SemanticUnderstandingTaskType, queuedTask.Type())
+		case <-time.After(time.Second):
+			t.Fatal("semantic understanding task was not enqueued")
+		}
 	})
 
 	t.Run("reuses active task with same input hash", func(t *testing.T) {

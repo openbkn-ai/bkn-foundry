@@ -5,7 +5,11 @@
 
 package interfaces
 
-import "context"
+import (
+	"context"
+
+	"github.com/hibiken/asynq"
+)
 
 //go:generate mockgen -source ../interfaces/semantic_understanding_task_service.go -destination ../interfaces/mock/mock_semantic_understanding_task_service.go
 
@@ -15,6 +19,8 @@ type SemanticUnderstandingTaskService interface {
 	GetByID(ctx context.Context, id string) (*SemanticUnderstandingTask, error)
 	List(ctx context.Context, params SemanticUnderstandingTaskQueryParams) ([]*SemanticUnderstandingTask, int64, error)
 	Delete(ctx context.Context, ids []string, ignoreMissing bool) error
+
+	DebugTaskQueue() <-chan *asynq.Task
 
 	MarkRunning(ctx context.Context, id string, agentTaskID string) (bool, error)
 	MarkSucceeded(ctx context.Context, id string, resultJSON string, confidence float64, confidenceDetailJSON string) (bool, error)

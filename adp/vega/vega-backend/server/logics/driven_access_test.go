@@ -27,6 +27,7 @@ func TestDrivenAccessSetters(t *testing.T) {
 		modelFactoryAccess := mock_interfaces.NewMockModelFactoryAccess(ctrl)
 		permissionAccess := mock_interfaces.NewMockPermissionAccess(ctrl)
 		resourceAccess := mock_interfaces.NewMockResourceAccess(ctrl)
+		bknAgentAccess := mock_interfaces.NewMockBknAgentAccess(ctrl)
 		semanticUnderstandingTaskAccess := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
 		userMgmtAccess := mock_interfaces.NewMockUserMgmtAccess(ctrl)
 
@@ -42,6 +43,7 @@ func TestDrivenAccessSetters(t *testing.T) {
 		SetModelFactoryAccess(modelFactoryAccess)
 		SetPermissionAccess(permissionAccess)
 		SetResourceAccess(resourceAccess)
+		SetBknAgentAccess(bknAgentAccess)
 		SetSemanticUnderstandingTaskAccess(semanticUnderstandingTaskAccess)
 		SetUserMgmtAccess(userMgmtAccess)
 
@@ -57,6 +59,7 @@ func TestDrivenAccessSetters(t *testing.T) {
 		assert.Same(t, modelFactoryAccess, MFA)
 		assert.Same(t, permissionAccess, PA)
 		assert.Same(t, resourceAccess, RA)
+		assert.Same(t, bknAgentAccess, BAA)
 		assert.Same(t, semanticUnderstandingTaskAccess, SUTA)
 		assert.Same(t, userMgmtAccess, UMA)
 	})

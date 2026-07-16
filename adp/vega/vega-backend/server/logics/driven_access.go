@@ -17,6 +17,7 @@ var (
 	DB   *sql.DB
 	AA   interfaces.AuthAccess
 	AQA  interfaces.AsynqAccess
+	BAA  interfaces.BknAgentAccess
 	BTA  interfaces.BuildTaskAccess
 	CA   interfaces.CatalogAccess
 	CTA  interfaces.ConnectorTypeAccess
@@ -76,6 +77,10 @@ func SetPermissionAccess(pa interfaces.PermissionAccess) {
 
 func SetResourceAccess(ra interfaces.ResourceAccess) {
 	RA = ra
+}
+
+func SetBknAgentAccess(baa interfaces.BknAgentAccess) {
+	BAA = baa
 }
 
 func SetSemanticUnderstandingTaskAccess(suta interfaces.SemanticUnderstandingTaskAccess) {

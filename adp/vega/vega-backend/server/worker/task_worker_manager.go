@@ -31,6 +31,7 @@ type TaskWorkerManger struct {
 	appSetting       *common.AppSetting
 	aqa              interfaces.AsynqAccess
 	discoverHandler  *DiscoverHandler
+	sutWorker        *SemanticUnderstandingTaskWorker
 	btBuildHandler   *batchBuildHandler
 	stBuildHandler   *streamingBuildHandler
 	embeddingHandler *embeddingHandler
@@ -43,6 +44,7 @@ func NewTaskWorkerManager(appSetting *common.AppSetting) *TaskWorkerManger {
 			appSetting:       appSetting,
 			aqa:              logics.AQA,
 			discoverHandler:  NewDiscoverHandler(appSetting),
+			sutWorker:        NewSemanticUnderstandingTaskWorker(appSetting),
 			btBuildHandler:   NewBatchBuildHandler(appSetting),
 			stBuildHandler:   NewStreamingBuildHandler(appSetting),
 			embeddingHandler: NewEmbeddingBuildHandler(appSetting),
@@ -76,6 +78,14 @@ func (tw *TaskWorkerManger) Start() {
 				}
 			}
 		}()
+		go func() {
+			logger.Info("debug semantic understanding task channel subscriber started")
+			for task := range tw.sutWorker.suts.DebugTaskQueue() {
+				if err := tw.ProcessTask(context.Background(), task); err != nil {
+					logger.Errorf("debug semantic understanding task failed: %v", err)
+				}
+			}
+		}()
 	}
 }
 
@@ -92,11 +102,12 @@ func (tw *TaskWorkerManger) Run(ctx context.Context) error {
 	// Register task handlers
 	mux := asynq.NewServeMux()
 	mux.Handle(interfaces.DiscoverTaskType, tw)
+	mux.Handle(interfaces.SemanticUnderstandingTaskType, tw)
 	mux.Handle(interfaces.BuildTaskTypeBatch, tw)
 	mux.Handle(interfaces.BuildTaskTypeEmbedding, tw)
 	mux.Handle(interfaces.BuildTaskTypeStreaming, tw)
 
-	logger.Infof("Task worker starting, listening for task types: %s, %s, %s, %s", interfaces.DiscoverTaskType, interfaces.BuildTaskTypeBatch, interfaces.BuildTaskTypeEmbedding, interfaces.BuildTaskTypeStreaming)
+	logger.Infof("Task worker starting, listening for task types: %s, %s, %s, %s, %s", interfaces.DiscoverTaskType, interfaces.SemanticUnderstandingTaskType, interfaces.BuildTaskTypeBatch, interfaces.BuildTaskTypeEmbedding, interfaces.BuildTaskTypeStreaming)
 	if err := srv.Run(mux); err != nil {
 		logger.Errorf("Task worker failed: %v", err)
 		return err
@@ -109,6 +120,8 @@ func (tw *TaskWorkerManger) ProcessTask(ctx context.Context, task *asynq.Task) e
 	switch task.Type() {
 	case interfaces.DiscoverTaskType:
 		return tw.discoverHandler.HandleTask(ctx, task)
+	case interfaces.SemanticUnderstandingTaskType:
+		return tw.sutWorker.HandleTask(ctx, task)
 	case interfaces.BuildTaskTypeBatch:
 		return tw.btBuildHandler.HandleTask(ctx, task)
 	case interfaces.BuildTaskTypeEmbedding:
