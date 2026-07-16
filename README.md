@@ -439,9 +439,7 @@ BKN Foundry is multi-licensed. See the repository [license
 overview](LICENSE) and [NOTICE](NOTICE) for the authoritative
 per-component and per-file breakdown:
 
-- Components originating from the upstream
-  [kweaver-ai/kweaver-core](https://github.com/kweaver-ai/kweaver-core)
-  remain under the [Apache License 2.0](LICENSE-APACHE.txt).
+- Components under the [Apache License 2.0](LICENSE-APACHE.txt) remain so.
 - OpenBKN net-new files that expressly reference the OpenBKN License
   use the [OpenBKN License](LICENSE-OPENBKN.txt), a modified version of
   Apache License 2.0 with additional conditions.
