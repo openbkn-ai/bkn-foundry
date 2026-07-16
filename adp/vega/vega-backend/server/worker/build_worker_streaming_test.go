@@ -18,14 +18,14 @@ import (
 	vmock "vega-backend/interfaces/mock"
 )
 
-func TestStreamingBuildHandlerHandleTask(t *testing.T) {
+func TestStreamingBuildWorkerHandleTask(t *testing.T) {
 	t.Run("injects creator into downstream context", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		taskAccess := vmock.NewMockBuildTaskAccess(ctrl)
 		resAccess := vmock.NewMockResourceAccess(ctrl)
 		cs := vmock.NewMockCatalogService(ctrl)
 		lim := vmock.NewMockLocalIndexManager(ctrl)
-		sh := &streamingBuildHandler{taskAccess: taskAccess, resAccess: resAccess, cs: cs, lim: lim}
+		sh := &streamingBuildWorker{taskAccess: taskAccess, resAccess: resAccess, cs: cs, lim: lim}
 		creator := interfaces.AccountInfo{ID: "u1", Type: "user"}
 
 		taskAccess.EXPECT().GetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{
@@ -59,7 +59,7 @@ func TestStreamingBuildHandlerHandleTask(t *testing.T) {
 	t.Run("skips duplicate message when task is already claimed", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		taskAccess := vmock.NewMockBuildTaskAccess(ctrl)
-		sh := &streamingBuildHandler{taskAccess: taskAccess}
+		sh := &streamingBuildWorker{taskAccess: taskAccess}
 
 		taskAccess.EXPECT().GetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{
 			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusInit,

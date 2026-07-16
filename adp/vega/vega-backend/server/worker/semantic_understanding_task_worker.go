@@ -38,7 +38,7 @@ func NewSemanticUnderstandingTaskWorker(appSetting *common.AppSetting) *Semantic
 }
 
 // HandleTask runs a semantic-understanding task through bkn-agent and persists the result.
-func (h *SemanticUnderstandingTaskWorker) HandleTask(ctx context.Context, task *asynq.Task) error {
+func (sutw *SemanticUnderstandingTaskWorker) HandleTask(ctx context.Context, task *asynq.Task) error {
 	var msg interfaces.SemanticUnderstandingTaskMessage
 	if err := sonic.Unmarshal(task.Payload(), &msg); err != nil {
 		logger.Errorf("Failed to unmarshal semantic understanding task message: %v", err)
@@ -48,7 +48,7 @@ func (h *SemanticUnderstandingTaskWorker) HandleTask(ctx context.Context, task *
 		return fmt.Errorf("semantic understanding task id is required")
 	}
 
-	taskInfo, err := h.suts.GetByID(ctx, msg.TaskID)
+	taskInfo, err := sutw.suts.GetByID(ctx, msg.TaskID)
 	if err != nil {
 		logger.Errorf("Failed to get semantic understanding task %s: %v", msg.TaskID, err)
 		return err
@@ -66,13 +66,13 @@ func (h *SemanticUnderstandingTaskWorker) HandleTask(ctx context.Context, task *
 
 	agentTaskID := taskInfo.AgentTaskID
 	if agentTaskID == "" {
-		agentTaskID, err = h.bas.Run(ctx, taskInfo)
+		agentTaskID, err = sutw.bas.Run(ctx, taskInfo)
 		if err != nil {
-			_, _ = h.suts.MarkFailed(ctx, taskInfo.ID, err.Error())
+			_, _ = sutw.suts.MarkFailed(ctx, taskInfo.ID, err.Error())
 			return err
 		}
 
-		running, err := h.suts.MarkRunning(ctx, taskInfo.ID, agentTaskID)
+		running, err := sutw.suts.MarkRunning(ctx, taskInfo.ID, agentTaskID)
 		if err != nil {
 			return err
 		}
@@ -82,23 +82,23 @@ func (h *SemanticUnderstandingTaskWorker) HandleTask(ctx context.Context, task *
 		}
 	}
 
-	agentTask, err := h.bas.WaitResult(ctx, agentTaskID)
+	agentTask, err := sutw.bas.WaitResult(ctx, agentTaskID)
 	if err != nil {
-		_, _ = h.suts.MarkFailed(ctx, taskInfo.ID, err.Error())
+		_, _ = sutw.suts.MarkFailed(ctx, taskInfo.ID, err.Error())
 		return err
 	}
 	if agentTask.Status == interfaces.BknAgentTaskStatusFailed {
-		_, _ = h.suts.MarkFailed(ctx, taskInfo.ID, bknAgentFailureDetail(agentTask))
+		_, _ = sutw.suts.MarkFailed(ctx, taskInfo.ID, bknAgentFailureDetail(agentTask))
 		return nil
 	}
 
 	resultJSON, confidence, confidenceDetailJSON, err := parseBknAgentResult(agentTask)
 	if err != nil {
-		_, _ = h.suts.MarkFailed(ctx, taskInfo.ID, err.Error())
+		_, _ = sutw.suts.MarkFailed(ctx, taskInfo.ID, err.Error())
 		return nil
 	}
 
-	_, err = h.suts.MarkSucceeded(ctx, taskInfo.ID, resultJSON, confidence, confidenceDetailJSON)
+	_, err = sutw.suts.MarkSucceeded(ctx, taskInfo.ID, resultJSON, confidence, confidenceDetailJSON)
 	return err
 }
 

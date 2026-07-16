@@ -24,7 +24,7 @@ func TestReconcileTableResources(t *testing.T) {
 	t.Run("marks new table resource", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		rs := vmock.NewMockResourceService(ctrl)
-		dh := &DiscoverHandler{rs: rs}
+		dh := &DiscoverTaskWorker{rs: rs}
 		table := &interfaces.TableMeta{Name: "users"}
 		created := &interfaces.Resource{ID: "r1", SourceIdentifier: "users", Status: interfaces.ResourceStatusActive}
 		rs.EXPECT().Create(gomock.Any(), gomock.Any()).Return(created, nil)
@@ -43,7 +43,7 @@ func TestReconcileTableResources(t *testing.T) {
 	t.Run("refreshes missing status when already stale", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		rs := vmock.NewMockResourceService(ctrl)
-		dh := &DiscoverHandler{rs: rs}
+		dh := &DiscoverTaskWorker{rs: rs}
 		rs.EXPECT().UpdateDiscoverStatus(gomock.Any(), "r1", interfaces.DiscoverStatusMissing).Return(nil)
 		actions := interfaces.ActionsFromDiscoverStrategy(interfaces.DiscoverStrategyFullSync)
 
@@ -62,7 +62,7 @@ func TestReconcileTableResources(t *testing.T) {
 	t.Run("does not disable user-disabled resource", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		rs := vmock.NewMockResourceService(ctrl)
-		dh := &DiscoverHandler{rs: rs}
+		dh := &DiscoverTaskWorker{rs: rs}
 		rs.EXPECT().UpdateDiscoverStatus(gomock.Any(), "r1", interfaces.DiscoverStatusMissing).Return(nil)
 		actions := interfaces.ActionsFromDiscoverStrategy(interfaces.DiscoverStrategyFullSync)
 
@@ -81,7 +81,7 @@ func TestReconcileTableResources(t *testing.T) {
 	t.Run("marks restored stale table", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		rs := vmock.NewMockResourceService(ctrl)
-		dh := &DiscoverHandler{rs: rs}
+		dh := &DiscoverTaskWorker{rs: rs}
 		rs.EXPECT().UpdateStatus(gomock.Any(), "r1", interfaces.ResourceStatusActive, "").Return(nil)
 		rs.EXPECT().UpdateDiscoverStatus(gomock.Any(), "r1", interfaces.DiscoverStatusRestored).Return(nil)
 		actions := interfaces.ActionsFromDiscoverStrategy(interfaces.DiscoverStrategyFullSync)
@@ -118,7 +118,7 @@ func TestUpdateDiscoverResultForEnrichStatus(t *testing.T) {
 }
 
 func TestBuildSourceIdentifierUsesSchemaAsQueryableNamespace(t *testing.T) {
-	dh := &DiscoverHandler{}
+	dh := &DiscoverTaskWorker{}
 
 	cases := []struct {
 		name  string
@@ -155,7 +155,7 @@ func TestEnrichTableMetadataContinuesWhenOneTableFails(t *testing.T) {
 	t.Run("continues when one table fails", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		rs := vmock.NewMockResourceService(ctrl)
-		dh := &DiscoverHandler{rs: rs}
+		dh := &DiscoverTaskWorker{rs: rs}
 		inaccessible := &interfaces.Resource{ID: "r1", SourceIdentifier: "public.no_access", LastDiscoverStatus: interfaces.DiscoverStatusNew}
 		accessible := &interfaces.Resource{
 			ID:                 "r2",

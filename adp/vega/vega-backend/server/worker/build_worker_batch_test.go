@@ -19,7 +19,7 @@ import (
 	vmock "vega-backend/interfaces/mock"
 )
 
-func TestBatchBuildHandlerHandleTask(t *testing.T) {
+func TestBatchBuildWorkerHandleTask(t *testing.T) {
 	t.Run("injects creator into downstream context", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		taskAccess := vmock.NewMockBuildTaskAccess(ctrl)
@@ -27,7 +27,7 @@ func TestBatchBuildHandlerHandleTask(t *testing.T) {
 		cs := vmock.NewMockCatalogService(ctrl)
 		lim := vmock.NewMockLocalIndexManager(ctrl)
 		lim.EXPECT().CheckExist(gomock.Any(), gomock.Any()).Return(true, nil).AnyTimes()
-		bh := &batchBuildHandler{taskAccess: taskAccess, resAccess: resAccess, cs: cs, lim: lim}
+		bh := &batchBuildWorker{taskAccess: taskAccess, resAccess: resAccess, cs: cs, lim: lim}
 		creator := interfaces.AccountInfo{ID: "u1", Type: "user"}
 
 		taskAccess.EXPECT().GetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{
@@ -59,7 +59,7 @@ func TestBatchBuildHandlerHandleTask(t *testing.T) {
 	t.Run("skips duplicate message when task is already claimed", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		taskAccess := vmock.NewMockBuildTaskAccess(ctrl)
-		bh := &batchBuildHandler{taskAccess: taskAccess}
+		bh := &batchBuildWorker{taskAccess: taskAccess}
 
 		taskAccess.EXPECT().GetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{
 			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusInit,
@@ -82,7 +82,7 @@ func TestBatchBuildHandlerHandleTask(t *testing.T) {
 		cs := vmock.NewMockCatalogService(ctrl)
 		lim := vmock.NewMockLocalIndexManager(ctrl)
 		lim.EXPECT().CheckExist(gomock.Any(), gomock.Any()).Return(true, nil).AnyTimes()
-		bh := &batchBuildHandler{taskAccess: taskAccess, resAccess: resAccess, cs: cs, lim: lim}
+		bh := &batchBuildWorker{taskAccess: taskAccess, resAccess: resAccess, cs: cs, lim: lim}
 
 		resource := &interfaces.Resource{
 			ID:             "r1",

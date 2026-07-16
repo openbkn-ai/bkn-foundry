@@ -23,12 +23,12 @@ import (
 	vmock "vega-backend/interfaces/mock"
 )
 
-func TestEmbeddingHandlerHandleTask(t *testing.T) {
+func TestEmbeddingWorkerHandleTask(t *testing.T) {
 	t.Run("injects creator into downstream context", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		taskAccess := vmock.NewMockBuildTaskAccess(ctrl)
 		resAccess := vmock.NewMockResourceAccess(ctrl)
-		eh := &embeddingHandler{taskAccess: taskAccess, resAccess: resAccess}
+		eh := &embeddingWorker{taskAccess: taskAccess, resAccess: resAccess}
 		creator := interfaces.AccountInfo{ID: "u1", Type: "user"}
 
 		taskAccess.EXPECT().GetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{
@@ -55,9 +55,9 @@ func TestEmbeddingHandlerHandleTask(t *testing.T) {
 	})
 }
 
-func TestEmbeddingHandlerExecuteEmbedding(t *testing.T) {
+func TestEmbeddingWorkerExecuteEmbedding(t *testing.T) {
 	t.Run("ctx canceled returns error for requeue", func(t *testing.T) {
-		eh, ta, ka := newEmbeddingLoopHandler(t)
+		eh, ta, ka := newEmbeddingLoopWorker(t)
 		resource, task := embeddingLoopFixtures()
 
 		ctx, cancel := context.WithCancel(context.Background())
@@ -74,7 +74,7 @@ func TestEmbeddingHandlerExecuteEmbedding(t *testing.T) {
 	})
 
 	t.Run("persistent commit error gives up for retry", func(t *testing.T) {
-		eh, ta, ka := newEmbeddingLoopHandler(t)
+		eh, ta, ka := newEmbeddingLoopWorker(t)
 		ctrl := gomock.NewController(t)
 		lim := vmock.NewMockLocalIndexManager(ctrl)
 		eh.lim = lim
@@ -104,7 +104,7 @@ func TestEmbeddingHandlerExecuteEmbedding(t *testing.T) {
 	})
 
 	t.Run("persistent read error gives up for retry", func(t *testing.T) {
-		eh, ta, ka := newEmbeddingLoopHandler(t)
+		eh, ta, ka := newEmbeddingLoopWorker(t)
 		resource, task := embeddingLoopFixtures()
 		deadConn := errors.New("committing message: use of closed network connection")
 
@@ -120,7 +120,7 @@ func TestEmbeddingHandlerExecuteEmbedding(t *testing.T) {
 	})
 
 	t.Run("end sentinel switches local index and completes task", func(t *testing.T) {
-		eh, ta, ka := newEmbeddingLoopHandler(t)
+		eh, ta, ka := newEmbeddingLoopWorker(t)
 		ctrl := gomock.NewController(t)
 		ra := vmock.NewMockResourceAccess(ctrl)
 		eh.resAccess = ra
@@ -160,9 +160,9 @@ func TestEmbeddingHandlerExecuteEmbedding(t *testing.T) {
 	})
 }
 
-func TestEmbeddingHandlerVectorizeDoc(t *testing.T) {
+func TestEmbeddingWorkerVectorizeDoc(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
-		eh, lim, mfs := newVectorizeHandler(t)
+		eh, lim, mfs := newVectorizeWorker(t)
 		ctx := t.Context()
 
 		lim.EXPECT().GetDocument(ctx, "idx", "doc1").
@@ -182,7 +182,7 @@ func TestEmbeddingHandlerVectorizeDoc(t *testing.T) {
 	})
 
 	t.Run("empty text is success without embedding", func(t *testing.T) {
-		eh, lim, _ := newVectorizeHandler(t)
+		eh, lim, _ := newVectorizeWorker(t)
 		ctx := t.Context()
 
 		lim.EXPECT().GetDocument(ctx, "idx", "doc1").
@@ -192,7 +192,7 @@ func TestEmbeddingHandlerVectorizeDoc(t *testing.T) {
 	})
 
 	t.Run("groups fields by model", func(t *testing.T) {
-		eh, lim, mfs := newVectorizeHandler(t)
+		eh, lim, mfs := newVectorizeWorker(t)
 		ctx := t.Context()
 
 		lim.EXPECT().GetDocument(ctx, "idx", "doc1").
@@ -242,7 +242,7 @@ func TestEmbeddingHandlerVectorizeDoc(t *testing.T) {
 
 		for _, tc := range cases {
 			t.Run(tc.name, func(t *testing.T) {
-				eh, lim, mfs := newVectorizeHandler(t)
+				eh, lim, mfs := newVectorizeWorker(t)
 				ctx := t.Context()
 				tc.setup(lim, mfs, ctx)
 
@@ -294,13 +294,13 @@ func TestFormatVectorizeFailures(t *testing.T) {
 	})
 }
 
-func newEmbeddingLoopHandler(t *testing.T) (*embeddingHandler, *vmock.MockBuildTaskAccess, *vmock.MockKafkaAccess) {
+func newEmbeddingLoopWorker(t *testing.T) (*embeddingWorker, *vmock.MockBuildTaskAccess, *vmock.MockKafkaAccess) {
 	t.Helper()
 
 	ctrl := gomock.NewController(t)
 	ta := vmock.NewMockBuildTaskAccess(ctrl)
 	ka := vmock.NewMockKafkaAccess(ctrl)
-	return &embeddingHandler{
+	return &embeddingWorker{
 		taskAccess:  ta,
 		kafkaAccess: ka,
 		sleep:       func(time.Duration) {},
@@ -338,11 +338,11 @@ func expectEmbeddingCountFlush(ta *vmock.MockBuildTaskAccess, count int64) *gomo
 		})
 }
 
-func newVectorizeHandler(t *testing.T) (*embeddingHandler, *vmock.MockLocalIndexManager, *vmock.MockModelFactoryService) {
+func newVectorizeWorker(t *testing.T) (*embeddingWorker, *vmock.MockLocalIndexManager, *vmock.MockModelFactoryService) {
 	t.Helper()
 
 	ctrl := gomock.NewController(t)
 	lim := vmock.NewMockLocalIndexManager(ctrl)
 	mfs := vmock.NewMockModelFactoryService(ctrl)
-	return &embeddingHandler{lim: lim, mfs: mfs}, lim, mfs
+	return &embeddingWorker{lim: lim, mfs: mfs}, lim, mfs
 }

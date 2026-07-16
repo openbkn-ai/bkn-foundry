@@ -46,7 +46,7 @@ func TestReconcileIndexResources(t *testing.T) {
 	t.Run("creates new index resource", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		rs := vmock.NewMockResourceService(ctrl)
-		dh := &DiscoverHandler{rs: rs}
+		dh := &DiscoverTaskWorker{rs: rs}
 		actions := interfaces.ActionsFromDiscoverStrategy(interfaces.DiscoverStrategyFullSync)
 		created := &interfaces.Resource{ID: "r1", SourceIdentifier: "idx-a", Category: interfaces.ResourceCategoryIndex}
 
@@ -73,7 +73,7 @@ func TestReconcileIndexResources(t *testing.T) {
 	t.Run("restores stale existing index", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		rs := vmock.NewMockResourceService(ctrl)
-		dh := &DiscoverHandler{rs: rs}
+		dh := &DiscoverTaskWorker{rs: rs}
 		actions := interfaces.ActionsFromDiscoverStrategy(interfaces.DiscoverStrategyFullSync)
 
 		rs.EXPECT().UpdateStatus(gomock.Any(), "r1", interfaces.ResourceStatusActive, "").Return(nil)
@@ -98,7 +98,7 @@ func TestReconcileIndexResources(t *testing.T) {
 	t.Run("marks missing active index as stale", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		rs := vmock.NewMockResourceService(ctrl)
-		dh := &DiscoverHandler{rs: rs}
+		dh := &DiscoverTaskWorker{rs: rs}
 		actions := interfaces.ActionsFromDiscoverStrategy(interfaces.DiscoverStrategyFullSync)
 
 		rs.EXPECT().UpdateDiscoverStatus(gomock.Any(), "r1", interfaces.DiscoverStatusMissing).Return(nil)

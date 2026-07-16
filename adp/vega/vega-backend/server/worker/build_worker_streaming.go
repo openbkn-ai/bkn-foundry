@@ -44,8 +44,8 @@ func getServerName(hostname string) string {
 	return fmt.Sprintf("vega-%d", h.Sum32())
 }
 
-// streamingBuildHandler handles build tasks.
-type streamingBuildHandler struct {
+// streamingBuildWorker handles build tasks.
+type streamingBuildWorker struct {
 	appSetting  *common.AppSetting
 	taskAccess  interfaces.BuildTaskAccess
 	resAccess   interfaces.ResourceAccess
@@ -56,9 +56,9 @@ type streamingBuildHandler struct {
 	kafkaAccess interfaces.KafkaAccess
 }
 
-// NewStreamingBuildHandler creates a new build handler.
-func NewStreamingBuildHandler(appSetting *common.AppSetting) *streamingBuildHandler {
-	return &streamingBuildHandler{
+// NewStreamingBuildWorker creates a new build worker.
+func NewStreamingBuildWorker(appSetting *common.AppSetting) *streamingBuildWorker {
+	return &streamingBuildWorker{
 		appSetting:  appSetting,
 		taskAccess:  logics.BTA,
 		resAccess:   logics.RA,
@@ -71,7 +71,7 @@ func NewStreamingBuildHandler(appSetting *common.AppSetting) *streamingBuildHand
 }
 
 // HandleTask handles a build task from the queue.
-func (sh *streamingBuildHandler) HandleTask(ctx context.Context, task *asynq.Task) error {
+func (sbw *streamingBuildWorker) HandleTask(ctx context.Context, task *asynq.Task) error {
 	var msg interfaces.StreamingBuildTaskMessage
 	if err := sonic.Unmarshal(task.Payload(), &msg); err != nil {
 		logger.Errorf("Failed to unmarshal task message: %v", err)
@@ -79,7 +79,7 @@ func (sh *streamingBuildHandler) HandleTask(ctx context.Context, task *asynq.Tas
 	}
 
 	taskID := msg.TaskID
-	buildTaskInfo, err := sh.taskAccess.GetByID(ctx, taskID)
+	buildTaskInfo, err := sbw.taskAccess.GetByID(ctx, taskID)
 	if err != nil {
 		return fmt.Errorf("get build task failed: %w", err)
 	}
@@ -94,13 +94,13 @@ func (sh *streamingBuildHandler) HandleTask(ctx context.Context, task *asynq.Tas
 		logger.Infof("Task %s is %s, skip execution", taskID, buildTaskInfo.Status)
 		if buildTaskInfo.Status == interfaces.BuildTaskStatusStopping {
 			update := interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusStopped)
-			if _, err := sh.taskAccess.UpdateStatus(ctx, nil, taskID, update); err != nil {
+			if _, err := sbw.taskAccess.UpdateStatus(ctx, nil, taskID, update); err != nil {
 				return fmt.Errorf("update build task status failed: %w", err)
 			}
 		}
 		return nil
 	}
-	claimed, err := claimBuildTaskExecution(ctx, sh.taskAccess, taskID)
+	claimed, err := claimBuildTaskExecution(ctx, sbw.taskAccess, taskID)
 	if err != nil {
 		return fmt.Errorf("claim build task execution failed: %w", err)
 	}
@@ -114,7 +114,7 @@ func (sh *streamingBuildHandler) HandleTask(ctx context.Context, task *asynq.Tas
 	logger.Infof("Starting build for task: %s, resource: %s", taskID, resourceID)
 
 	// Get resource info
-	resource, err := sh.resAccess.GetByID(ctx, resourceID)
+	resource, err := sbw.resAccess.GetByID(ctx, resourceID)
 	if err != nil {
 		logger.Errorf("Failed to get resource for task %s: %v", taskID, err)
 		return err
@@ -124,7 +124,7 @@ func (sh *streamingBuildHandler) HandleTask(ctx context.Context, task *asynq.Tas
 		update := interfaces.NewBuildTaskUpdate().
 			WithStatus(interfaces.BuildTaskStatusFailed).
 			WithErrorMsg("resource not found")
-		_, err = sh.taskAccess.UpdateStatus(ctx, nil, taskID, update)
+		_, err = sbw.taskAccess.UpdateStatus(ctx, nil, taskID, update)
 		if err != nil {
 			return fmt.Errorf("update build task status failed: %w", err)
 		}
@@ -133,7 +133,7 @@ func (sh *streamingBuildHandler) HandleTask(ctx context.Context, task *asynq.Tas
 	}
 
 	// Get catalog for MySQL connection
-	catalog, err := sh.cs.GetByID(ctx, resource.CatalogID, true)
+	catalog, err := sbw.cs.GetByID(ctx, resource.CatalogID, true)
 	if err != nil {
 		return fmt.Errorf("get catalog failed: %w", err)
 	}
@@ -142,7 +142,7 @@ func (sh *streamingBuildHandler) HandleTask(ctx context.Context, task *asynq.Tas
 		update := interfaces.NewBuildTaskUpdate().
 			WithStatus(interfaces.BuildTaskStatusFailed).
 			WithErrorMsg("catalog not found")
-		_, err = sh.taskAccess.UpdateStatus(ctx, nil, buildTaskInfo.ID, update)
+		_, err = sbw.taskAccess.UpdateStatus(ctx, nil, buildTaskInfo.ID, update)
 		if err != nil {
 			return fmt.Errorf("update build task status failed: %w", err)
 		}
@@ -154,7 +154,7 @@ func (sh *streamingBuildHandler) HandleTask(ctx context.Context, task *asynq.Tas
 		update := interfaces.NewBuildTaskUpdate().
 			WithStatus(interfaces.BuildTaskStatusFailed).
 			WithErrorMsg("catalog is disabled")
-		_, err = sh.taskAccess.UpdateStatus(ctx, nil, buildTaskInfo.ID, update)
+		_, err = sbw.taskAccess.UpdateStatus(ctx, nil, buildTaskInfo.ID, update)
 		if err != nil {
 			return fmt.Errorf("update build task status failed: %w", err)
 		}
@@ -165,7 +165,7 @@ func (sh *streamingBuildHandler) HandleTask(ctx context.Context, task *asynq.Tas
 		update := interfaces.NewBuildTaskUpdate().
 			WithStatus(interfaces.BuildTaskStatusFailed).
 			WithErrorMsg("unsupported connector type")
-		_, err = sh.taskAccess.UpdateStatus(ctx, nil, buildTaskInfo.ID, update)
+		_, err = sbw.taskAccess.UpdateStatus(ctx, nil, buildTaskInfo.ID, update)
 		if err != nil {
 			return fmt.Errorf("update build task status failed: %w", err)
 		}
@@ -177,13 +177,13 @@ func (sh *streamingBuildHandler) HandleTask(ctx context.Context, task *asynq.Tas
 	if database == nil || database == "" {
 		database = resource.Database
 	}
-	sourceId, err := sh.formatTableName(resource.SourceIdentifier, catalog.ConnectorType, database)
+	sourceId, err := sbw.formatTableName(resource.SourceIdentifier, catalog.ConnectorType, database)
 	if err != nil {
 		logger.Errorf("Failed to format table name: %v", err)
 		update := interfaces.NewBuildTaskUpdate().
 			WithStatus(interfaces.BuildTaskStatusFailed).
 			WithErrorMsg(err.Error())
-		_, err = sh.taskAccess.UpdateStatus(ctx, nil, buildTaskInfo.ID, update)
+		_, err = sbw.taskAccess.UpdateStatus(ctx, nil, buildTaskInfo.ID, update)
 		if err != nil {
 			return fmt.Errorf("update build task status failed: %w", err)
 		}
@@ -191,12 +191,12 @@ func (sh *streamingBuildHandler) HandleTask(ctx context.Context, task *asynq.Tas
 	}
 
 	indexName := getIndexName(resource.ID, buildTaskInfo.ID)
-	err = createManagedLocalIndex(ctx, sh.lim, indexName, buildTaskInfo, resource)
+	err = createManagedLocalIndex(ctx, sbw.lim, indexName, buildTaskInfo, resource)
 	if err != nil {
 		return fmt.Errorf("create local index failed: %w", err)
 	}
 	if buildTaskHasEmbedding(buildTaskInfo) {
-		err = sendEmbeddingTask(sh.client, taskID)
+		err = sendEmbeddingTask(sbw.client, taskID)
 		if err != nil {
 			return fmt.Errorf("send embedding task failed: %w", err)
 		}
@@ -204,13 +204,13 @@ func (sh *streamingBuildHandler) HandleTask(ctx context.Context, task *asynq.Tas
 	}
 
 	// Execute build
-	err = sh.executeBuild(ctx, catalog, resource, buildTaskInfo, indexName, database, sourceId)
+	err = sbw.executeBuild(ctx, catalog, resource, buildTaskInfo, indexName, database, sourceId)
 	if err != nil {
 		update := interfaces.NewBuildTaskUpdate().WithErrorMsg(err.Error())
 		if isAsynqFinalRetry(ctx) {
 			update = update.WithStatus(interfaces.BuildTaskStatusFailed)
 		}
-		_, _ = sh.taskAccess.UpdateStatus(ctx, nil, taskID, update)
+		_, _ = sbw.taskAccess.UpdateStatus(ctx, nil, taskID, update)
 		return err
 	}
 
@@ -219,22 +219,22 @@ func (sh *streamingBuildHandler) HandleTask(ctx context.Context, task *asynq.Tas
 }
 
 // executeBuild executes the build logic
-func (sh *streamingBuildHandler) executeBuild(ctx context.Context, catalog *interfaces.Catalog, resource *interfaces.Resource, buildTaskInfo *interfaces.BuildTask, indexName string, database any, sourceId string) error {
+func (sbw *streamingBuildWorker) executeBuild(ctx context.Context, catalog *interfaces.Catalog, resource *interfaces.Resource, buildTaskInfo *interfaces.BuildTask, indexName string, database any, sourceId string) error {
 	// Use the connector name as the Kafka topic prefix
 	topic := fmt.Sprintf("%s-%s.%s", interfaces.BUILD_PREFIX, catalog.ID, sourceId)
 	groupID := fmt.Sprintf("%s-%s", interfaces.BUILD_PREFIX, resource.ID)
 
 	// Create Kafka topic if it doesn't exist
-	if err := sh.kafkaAccess.CreateTopic(ctx, topic); err != nil {
+	if err := sbw.kafkaAccess.CreateTopic(ctx, topic); err != nil {
 		return fmt.Errorf("failed to create Kafka topic %s: %w", topic, err)
 	}
 
 	// Create Kafka reader
-	reader, err := sh.kafkaAccess.NewReader(ctx, topic, groupID)
+	reader, err := sbw.kafkaAccess.NewReader(ctx, topic, groupID)
 	if err != nil {
 		return fmt.Errorf("failed to create Kafka reader for topic %s: %w", topic, err)
 	}
-	defer sh.kafkaAccess.CloseReader(reader)
+	defer sbw.kafkaAccess.CloseReader(reader)
 
 	logger.Infof("Started Kafka subscription for topic %s with group ID %s", topic, groupID)
 
@@ -248,18 +248,18 @@ func (sh *streamingBuildHandler) executeBuild(ctx context.Context, catalog *inte
 	if buildTaskHasEmbedding(buildTaskInfo) {
 		topic := getEmbeddingTopic(resource.ID, buildTaskInfo.ID)
 		// Create Kafka writer
-		writer, err = sh.kafkaAccess.NewWriter(ctx, topic)
+		writer, err = sbw.kafkaAccess.NewWriter(ctx, topic)
 		if err != nil {
 			logger.Errorf("failed to create Kafka writer: %v", err)
 		}
 		// Create Kafka topic if it doesn't exist
-		if err := sh.kafkaAccess.CreateTopic(ctx, topic); err != nil {
+		if err := sbw.kafkaAccess.CreateTopic(ctx, topic); err != nil {
 			logger.Errorf("Failed to create Kafka topic %s failed: %v", topic, err)
 		}
-		defer sh.kafkaAccess.CloseWriter(writer)
+		defer sbw.kafkaAccess.CloseWriter(writer)
 	}
 
-	err = sh.createKafkaConnector(ctx, catalog, resource, database, sourceId)
+	err = sbw.createKafkaConnector(ctx, catalog, resource, database, sourceId)
 	if err != nil {
 		return fmt.Errorf("create kafka connector failed: %w", err)
 	}
@@ -271,7 +271,7 @@ func (sh *streamingBuildHandler) executeBuild(ctx context.Context, catalog *inte
 	// Message processing loop
 	for {
 		// Check task status before each batch
-		taskStatus, err := sh.taskAccess.GetStatus(ctx, buildTaskInfo.ID)
+		taskStatus, err := sbw.taskAccess.GetStatus(ctx, buildTaskInfo.ID)
 		if err != nil {
 			logger.Errorf("Failed to get task status: %v", err)
 			time.Sleep(retryInterval)
@@ -280,15 +280,15 @@ func (sh *streamingBuildHandler) executeBuild(ctx context.Context, catalog *inte
 
 		// Handle stopping status
 		if taskStatus == interfaces.BuildTaskStatusStopping {
-			needStop, err := sh.checkConnectorNeedToStop(ctx, catalog.ID)
+			needStop, err := sbw.checkConnectorNeedToStop(ctx, catalog.ID)
 			if err != nil {
 				logger.Errorf("Failed to check connector need to stop: %v", err)
 				time.Sleep(retryInterval)
 				continue
 			}
 			if needStop {
-				_, _, _ = sh.httpClient.Put(ctx, fmt.Sprintf("%s/%s/stop",
-					fmt.Sprintf("%s://%s:%d/connectors", sh.appSetting.KafkaConnectSetting.Protocol, sh.appSetting.KafkaConnectSetting.Host, sh.appSetting.KafkaConnectSetting.Port),
+				_, _, _ = sbw.httpClient.Put(ctx, fmt.Sprintf("%s/%s/stop",
+					fmt.Sprintf("%s://%s:%d/connectors", sbw.appSetting.KafkaConnectSetting.Protocol, sbw.appSetting.KafkaConnectSetting.Host, sbw.appSetting.KafkaConnectSetting.Port),
 					fmt.Sprintf("%s-%s", interfaces.BUILD_PREFIX, catalog.ID)),
 					map[string]string{interfaces.CONTENT_TYPE_NAME: interfaces.CONTENT_TYPE_JSON},
 					map[string]interface{}{})
@@ -297,7 +297,7 @@ func (sh *streamingBuildHandler) executeBuild(ctx context.Context, catalog *inte
 			update := interfaces.NewBuildTaskUpdate().
 				WithStatus(interfaces.BuildTaskStatusStopped).
 				WithSyncedCount(syncedCount)
-			_, err = sh.taskAccess.UpdateStatus(ctx, nil, buildTaskInfo.ID, update)
+			_, err = sbw.taskAccess.UpdateStatus(ctx, nil, buildTaskInfo.ID, update)
 			if err != nil {
 				return fmt.Errorf("update build task status failed: %w", err)
 			}
@@ -309,7 +309,7 @@ func (sh *streamingBuildHandler) executeBuild(ctx context.Context, catalog *inte
 		case <-ctx.Done():
 			logger.Infof("Kafka subscription context canceled, exiting")
 			update := interfaces.NewBuildTaskUpdate().WithSyncedCount(syncedCount)
-			_, err = sh.taskAccess.UpdateStatus(ctx, nil, buildTaskInfo.ID, update)
+			_, err = sbw.taskAccess.UpdateStatus(ctx, nil, buildTaskInfo.ID, update)
 			if err != nil {
 				return fmt.Errorf("update build task status failed: %w", err)
 			}
@@ -318,13 +318,13 @@ func (sh *streamingBuildHandler) executeBuild(ctx context.Context, catalog *inte
 			// 创建带超时的上下文，避免ReadMessage一直阻塞
 			timeoutCtx, cancel := context.WithTimeout(context.Background(), retryInterval)
 			defer cancel()
-			msg, err := sh.kafkaAccess.ReadMessage(timeoutCtx, reader)
+			msg, err := sbw.kafkaAccess.ReadMessage(timeoutCtx, reader)
 			if err != nil {
 				if errors.Is(err, context.DeadlineExceeded) {
 					// 超时，检查是否需要更新任务状态
 					if syncedCount > buildTaskInfo.SyncedCount && time.Since(lastUpdateTime) > retryInterval {
 						update := interfaces.NewBuildTaskUpdate().WithSyncedCount(syncedCount)
-						_, _ = sh.taskAccess.UpdateStatus(ctx, nil, buildTaskInfo.ID, update)
+						_, _ = sbw.taskAccess.UpdateStatus(ctx, nil, buildTaskInfo.ID, update)
 						buildTaskInfo.SyncedCount = syncedCount
 						lastUpdateTime = time.Now()
 					}
@@ -345,7 +345,7 @@ func (sh *streamingBuildHandler) executeBuild(ctx context.Context, catalog *inte
 			if len(msg.Value) == 0 {
 				logger.Debugf("Empty message value, skipping processing")
 				// Commit the message to avoid reprocessing
-				if err := sh.kafkaAccess.CommitMessages(ctx, reader, msg); err != nil {
+				if err := sbw.kafkaAccess.CommitMessages(ctx, reader, msg); err != nil {
 					logger.Errorf("Failed to commit message: %v", err)
 				}
 				continue
@@ -375,13 +375,13 @@ func (sh *streamingBuildHandler) executeBuild(ctx context.Context, catalog *inte
 						document[k] = v
 					}
 
-					if docIDs, err := sh.lim.UpsertDocuments(ctx, indexName, []map[string]any{{"id": getOldDocID(getPrimaryKeyValue(keyMap)), "document": document}}); err != nil {
+					if docIDs, err := sbw.lim.UpsertDocuments(ctx, indexName, []map[string]any{{"id": getOldDocID(getPrimaryKeyValue(keyMap)), "document": document}}); err != nil {
 						logger.Errorf("Failed to write document to local index: %v", err)
 						time.Sleep(retryInterval)
 						continue
 					} else if buildTaskHasEmbedding(buildTaskInfo) && len(docIDs) > 0 {
 						// Send document ID to Kafka for embedding
-						err = sendEmbeddingMessage(ctx, writer, sh.kafkaAccess, docIDs)
+						err = sendEmbeddingMessage(ctx, writer, sbw.kafkaAccess, docIDs)
 						if err != nil {
 							logger.Errorf(err.Error())
 							time.Sleep(retryInterval)
@@ -390,14 +390,14 @@ func (sh *streamingBuildHandler) executeBuild(ctx context.Context, catalog *inte
 					}
 				case "u":
 					// Update operation
-					if err := sh.handleUpdateOperation(ctx, keyMap, after, indexName, buildTaskInfo, writer); err != nil {
+					if err := sbw.handleUpdateOperation(ctx, keyMap, after, indexName, buildTaskInfo, writer); err != nil {
 						logger.Errorf("Failed to handle update operation: %v", err)
 						time.Sleep(retryInterval)
 						continue
 					}
 				case "d":
 					// Delete operation
-					if err := sh.handleDeleteOperation(ctx, keyMap, indexName); err != nil {
+					if err := sbw.handleDeleteOperation(ctx, keyMap, indexName); err != nil {
 						logger.Errorf("Failed to handle delete operation: %v", err)
 						time.Sleep(retryInterval)
 						continue
@@ -410,7 +410,7 @@ func (sh *streamingBuildHandler) executeBuild(ctx context.Context, catalog *inte
 
 				if !updatedIndexName && op != "r" {
 					// Full snapshot is completed, update index name in resource
-					if err := updateResourceIndexName(ctx, resource, sh.resAccess, indexName); err != nil {
+					if err := updateResourceIndexName(ctx, resource, sbw.resAccess, indexName); err != nil {
 						logger.Errorf("Failed to update resource index name: %v", err)
 					} else {
 						updatedIndexName = true
@@ -419,7 +419,7 @@ func (sh *streamingBuildHandler) executeBuild(ctx context.Context, catalog *inte
 			}
 
 			// Commit the message
-			if err := sh.kafkaAccess.CommitMessages(ctx, reader, msg); err != nil {
+			if err := sbw.kafkaAccess.CommitMessages(ctx, reader, msg); err != nil {
 				logger.Errorf("Failed to commit message: %v", err)
 			}
 			syncedCount++
@@ -428,9 +428,9 @@ func (sh *streamingBuildHandler) executeBuild(ctx context.Context, catalog *inte
 }
 
 // createKafkaConnector creates a Kafka connector for the build task
-func (sh *streamingBuildHandler) createKafkaConnector(ctx context.Context, catalog *interfaces.Catalog, _ *interfaces.Resource, database any, sourceId string) error {
+func (sbw *streamingBuildWorker) createKafkaConnector(ctx context.Context, catalog *interfaces.Catalog, _ *interfaces.Resource, database any, sourceId string) error {
 	// get connector
-	kafkaConnectSetting := sh.appSetting.KafkaConnectSetting
+	kafkaConnectSetting := sbw.appSetting.KafkaConnectSetting
 	// connector name 和 catalog 绑定，catalog 下多个 resource 公有一个 connector，各自订阅自己的表的 topic
 	connectorName := fmt.Sprintf("%s-%s", interfaces.BUILD_PREFIX, catalog.ID)
 	connectorUrl := fmt.Sprintf("%s://%s:%d/connectors", kafkaConnectSetting.Protocol, kafkaConnectSetting.Host, kafkaConnectSetting.Port)
@@ -438,14 +438,14 @@ func (sh *streamingBuildHandler) createKafkaConnector(ctx context.Context, catal
 	headers := map[string]string{
 		interfaces.CONTENT_TYPE_NAME: interfaces.CONTENT_TYPE_JSON,
 	}
-	respCode, _, err := sh.httpClient.Get(ctx, fmt.Sprintf("%s/%s", connectorUrl, connectorName), nil, headers)
+	respCode, _, err := sbw.httpClient.Get(ctx, fmt.Sprintf("%s/%s", connectorUrl, connectorName), nil, headers)
 	if err != nil {
 		return fmt.Errorf("failed to get kafka connector: %w", err)
 	}
 	switch respCode {
 	case http.StatusNotFound:
-		connectorBody := sh.buildConnectorConfig(connectorName, catalog, database, sourceId)
-		respCode, respBody, err := sh.httpClient.Post(ctx, connectorUrl, headers, connectorBody)
+		connectorBody := sbw.buildConnectorConfig(connectorName, catalog, database, sourceId)
+		respCode, respBody, err := sbw.httpClient.Post(ctx, connectorUrl, headers, connectorBody)
 		if err != nil {
 			return fmt.Errorf("failed to create kafka connector: %w", err)
 		}
@@ -477,14 +477,14 @@ func (sh *streamingBuildHandler) createKafkaConnector(ctx context.Context, catal
 			}
 			newTableList += sourceId
 			config["table.include.list"] = newTableList
-			_, _, err = sh.httpClient.Put(ctx, fmt.Sprintf("%s/%s/config", connectorUrl, connectorName), headers, config)
+			_, _, err = sbw.httpClient.Put(ctx, fmt.Sprintf("%s/%s/config", connectorUrl, connectorName), headers, config)
 			if err != nil {
 				return fmt.Errorf("Failed to update kafka connector config: %w", err)
 			}
 			logger.Infof("Updated kafka connector config to include table: %s", sourceId)
 		}*/
 		// check kafka connector status
-		_, respBody, err := sh.httpClient.Get(ctx, fmt.Sprintf("%s/%s/status", connectorUrl, connectorName), nil, headers)
+		_, respBody, err := sbw.httpClient.Get(ctx, fmt.Sprintf("%s/%s/status", connectorUrl, connectorName), nil, headers)
 		if err != nil {
 			return fmt.Errorf("failed to get kafka connector status: %w", err)
 		}
@@ -493,7 +493,7 @@ func (sh *streamingBuildHandler) createKafkaConnector(ctx context.Context, catal
 			// Type assertion for connector field
 			if connector, ok := statusBody["connector"].(map[string]any); ok {
 				if state, ok := connector["state"].(string); ok && state != "RUNNING" {
-					_, _, err = sh.httpClient.Put(ctx, fmt.Sprintf("%s/%s/resume", connectorUrl, connectorName), headers, map[string]interface{}{})
+					_, _, err = sbw.httpClient.Put(ctx, fmt.Sprintf("%s/%s/resume", connectorUrl, connectorName), headers, map[string]interface{}{})
 					if err != nil {
 						return fmt.Errorf("failed to resume kafka connector: %w", err)
 					}
@@ -505,9 +505,9 @@ func (sh *streamingBuildHandler) createKafkaConnector(ctx context.Context, catal
 }
 
 // buildConnectorConfig builds the connector configuration
-func (sh *streamingBuildHandler) buildConnectorConfig(connectorName string, catalog *interfaces.Catalog, database any, _ string) map[string]any {
+func (sbw *streamingBuildWorker) buildConnectorConfig(connectorName string, catalog *interfaces.Catalog, database any, _ string) map[string]any {
 	// Connector not found, create connector
-	mqSetting := sh.appSetting.MQSetting
+	mqSetting := sbw.appSetting.MQSetting
 	connectorBody := map[string]any{
 		"name": connectorName,
 		"config": map[string]any{
@@ -553,7 +553,7 @@ func (sh *streamingBuildHandler) buildConnectorConfig(connectorName string, cata
 }
 
 // handleUpdateOperation 处理更新操作
-func (sh *streamingBuildHandler) handleUpdateOperation(ctx context.Context, keyMap, after map[string]any, indexName string, buildTaskInfo *interfaces.BuildTask, writer *kafka.Writer) error {
+func (sbw *streamingBuildWorker) handleUpdateOperation(ctx context.Context, keyMap, after map[string]any, indexName string, buildTaskInfo *interfaces.BuildTask, writer *kafka.Writer) error {
 	primaryKeyValues := getPrimaryKeyValue(keyMap)
 	if primaryKeyValues == nil {
 		return fmt.Errorf("failed to extract unique key values from keyMap")
@@ -568,18 +568,18 @@ func (sh *streamingBuildHandler) handleUpdateOperation(ctx context.Context, keyM
 
 	newDocID := getNewDocID(primaryKeyValues, document)
 	if newDocID != oldDocID {
-		err := sh.lim.DeleteDocument(ctx, indexName, oldDocID)
+		err := sbw.lim.DeleteDocument(ctx, indexName, oldDocID)
 		if err != nil {
 			return fmt.Errorf("failed to delete document in local index: %w", err)
 		}
 	}
 
-	_, err := sh.lim.UpsertDocuments(ctx, indexName, []map[string]any{{"id": newDocID, "document": document}})
+	_, err := sbw.lim.UpsertDocuments(ctx, indexName, []map[string]any{{"id": newDocID, "document": document}})
 	if err != nil {
 		return fmt.Errorf("failed to update document in local index: %w", err)
 	} else if buildTaskHasEmbedding(buildTaskInfo) {
 		// Send document ID to Kafka for embedding
-		err = sendEmbeddingMessage(ctx, writer, sh.kafkaAccess, []string{newDocID})
+		err = sendEmbeddingMessage(ctx, writer, sbw.kafkaAccess, []string{newDocID})
 		if err != nil {
 			return err
 		}
@@ -589,7 +589,7 @@ func (sh *streamingBuildHandler) handleUpdateOperation(ctx context.Context, keyM
 }
 
 // handleDeleteOperation 处理删除操作
-func (sh *streamingBuildHandler) handleDeleteOperation(ctx context.Context, keyMap map[string]any, indexName string) error {
+func (sbw *streamingBuildWorker) handleDeleteOperation(ctx context.Context, keyMap map[string]any, indexName string) error {
 	primaryKeyValues := getPrimaryKeyValue(keyMap)
 	if primaryKeyValues == nil {
 		return fmt.Errorf("failed to extract unique key values from keyMap")
@@ -597,7 +597,7 @@ func (sh *streamingBuildHandler) handleDeleteOperation(ctx context.Context, keyM
 	oldDocID := getOldDocID(primaryKeyValues)
 
 	// Delete documents by query
-	if err := sh.lim.DeleteDocument(ctx, indexName, oldDocID); err != nil {
+	if err := sbw.lim.DeleteDocument(ctx, indexName, oldDocID); err != nil {
 		return fmt.Errorf("failed to delete document in local index: %w", err)
 	}
 
@@ -605,7 +605,7 @@ func (sh *streamingBuildHandler) handleDeleteOperation(ctx context.Context, keyM
 }
 
 // 格式化table名称
-func (sh *streamingBuildHandler) formatTableName(sourceIdentifier string, connectorType string, database any) (string, error) {
+func (sbw *streamingBuildWorker) formatTableName(sourceIdentifier string, connectorType string, database any) (string, error) {
 	if database == nil || database == "" {
 		return "", fmt.Errorf("database is empty or nil")
 	}
@@ -631,8 +631,8 @@ func (sh *streamingBuildHandler) formatTableName(sourceIdentifier string, connec
 }
 
 // check connector need to be stop
-func (sh *streamingBuildHandler) checkConnectorNeedToStop(ctx context.Context, catalogID string) (bool, error) {
-	tasks, err := sh.taskAccess.GetByCatalogID(ctx, catalogID)
+func (sbw *streamingBuildWorker) checkConnectorNeedToStop(ctx context.Context, catalogID string) (bool, error) {
+	tasks, err := sbw.taskAccess.GetByCatalogID(ctx, catalogID)
 	if err != nil {
 		return false, fmt.Errorf("failed to get tasks: %w", err)
 	}

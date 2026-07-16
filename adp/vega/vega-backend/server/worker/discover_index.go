@@ -34,7 +34,7 @@ type indexDiscoverItem struct {
 // 返回值:
 //   - *interfaces.DiscoverResult: 发现结果，包含新资源、过期资源和未变化资源的统计信息
 //   - error: 错误信息，如果在发现过程中出现错误则返回
-func (dh *DiscoverHandler) discoverIndexResources(ctx context.Context, catalog *interfaces.Catalog,
+func (dtw *DiscoverTaskWorker) discoverIndexResources(ctx context.Context, catalog *interfaces.Catalog,
 	connector connectors.Connector, task *interfaces.DiscoverTask) (*interfaces.DiscoverResult, error) {
 
 	// 检查连接器是否实现了IndexConnector接口
@@ -51,19 +51,19 @@ func (dh *DiscoverHandler) discoverIndexResources(ctx context.Context, catalog *
 	logger.Infof("Discovered %d indices from source", len(sourceIndices))
 
 	// Step 2: Get Existing Resources：查出db是否已存在，然后做比对
-	existingResources, err := dh.rs.GetByCatalogID(ctx, catalog.ID)
+	existingResources, err := dtw.rs.GetByCatalogID(ctx, catalog.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get existing resources: %w", err)
 	}
 
 	// Step 3: Reconcile:将index数据获取并插入：
-	result, items, err := dh.reconcileIndexResources(ctx, catalog, sourceIndices, existingResources, task.DiscoverActions)
+	result, items, err := dtw.reconcileIndexResources(ctx, catalog, sourceIndices, existingResources, task.DiscoverActions)
 	if err != nil {
 		return nil, fmt.Errorf("failed to reconcile resources: %w", err)
 	}
 
 	// Step 4: Enrich ： 为索引项丰富元数据信息
-	if err := dh.enrichIndexMetadata(ctx, indexConnector, items, result); err != nil {
+	if err := dtw.enrichIndexMetadata(ctx, indexConnector, items, result); err != nil {
 		return nil, fmt.Errorf("failed to enrich index metadata: %w", err)
 	}
 
@@ -85,7 +85,7 @@ func (dh *DiscoverHandler) discoverIndexResources(ctx context.Context, catalog *
 //   - *interfaces.DiscoverResult: 发现结果，包含目录ID和各类资源的统计信息
 //   - []indexDiscoverItem: 索引发现项目列表，包含资源和索引元数据
 //   - error: 错误信息，如果处理过程中出现错误则返回
-func (dh *DiscoverHandler) reconcileIndexResources(ctx context.Context, catalog *interfaces.Catalog, sourceIndices []*interfaces.IndexMeta,
+func (dtw *DiscoverTaskWorker) reconcileIndexResources(ctx context.Context, catalog *interfaces.Catalog, sourceIndices []*interfaces.IndexMeta,
 	existingResources []*interfaces.Resource, actions *interfaces.DiscoverActions) (*interfaces.DiscoverResult, []indexDiscoverItem, error) {
 
 	// 初始化发现结果，设置目录ID
@@ -118,10 +118,10 @@ func (dh *DiscoverHandler) reconcileIndexResources(ctx context.Context, catalog 
 			if actions != nil && actions.Refresh {
 				markAfterEnrich := true
 				if resource.Status == interfaces.ResourceStatusStale {
-					if err := dh.rs.UpdateStatus(ctx, resource.ID, interfaces.ResourceStatusActive, ""); err != nil {
+					if err := dtw.rs.UpdateStatus(ctx, resource.ID, interfaces.ResourceStatusActive, ""); err != nil {
 						logger.Errorf("Failed to reactivate resource %s: %v", resource.ID, err)
 					} else {
-						dh.markDiscover(ctx, resource.ID, interfaces.DiscoverStatusRestored)
+						dtw.markDiscover(ctx, resource.ID, interfaces.DiscoverStatusRestored)
 						resource.Status = interfaces.ResourceStatusActive
 						resource.LastDiscoverStatus = interfaces.DiscoverStatusRestored
 						result.RestoredCount++
@@ -136,11 +136,11 @@ func (dh *DiscoverHandler) reconcileIndexResources(ctx context.Context, catalog 
 			}
 		} else {
 			if actions != nil && actions.Create {
-				resource, err := dh.createIndexResource(ctx, catalog, idx)
+				resource, err := dtw.createIndexResource(ctx, catalog, idx)
 				if err != nil {
 					logger.Errorf("Failed to create resource %s: %v", sourceIdentifier, err)
 				} else {
-					dh.markDiscover(ctx, resource.ID, interfaces.DiscoverStatusNew)
+					dtw.markDiscover(ctx, resource.ID, interfaces.DiscoverStatusNew)
 					resource.LastDiscoverStatus = interfaces.DiscoverStatusNew
 					result.NewCount++
 					items = append(items, indexDiscoverItem{
@@ -156,9 +156,9 @@ func (dh *DiscoverHandler) reconcileIndexResources(ctx context.Context, catalog 
 	if actions != nil && actions.MarkStale {
 		for sourceIdentifier, existing := range existingMap {
 			if _, ok := sourceMap[sourceIdentifier]; !ok {
-				dh.markDiscover(ctx, existing.ID, interfaces.DiscoverStatusMissing)
+				dtw.markDiscover(ctx, existing.ID, interfaces.DiscoverStatusMissing)
 				if existing.Status == interfaces.ResourceStatusActive {
-					if err := dh.rs.UpdateStatus(ctx, existing.ID, interfaces.ResourceStatusStale, ""); err != nil {
+					if err := dtw.rs.UpdateStatus(ctx, existing.ID, interfaces.ResourceStatusStale, ""); err != nil {
 						logger.Errorf("Failed to mark resource %s as stale: %v", existing.ID, err)
 					} else {
 						result.StaleCount++
@@ -172,7 +172,7 @@ func (dh *DiscoverHandler) reconcileIndexResources(ctx context.Context, catalog 
 }
 
 // createIndexResource creates a new resource for an index.
-func (dh *DiscoverHandler) createIndexResource(ctx context.Context, catalog *interfaces.Catalog, index *interfaces.IndexMeta) (*interfaces.Resource, error) {
+func (dtw *DiscoverTaskWorker) createIndexResource(ctx context.Context, catalog *interfaces.Catalog, index *interfaces.IndexMeta) (*interfaces.Resource, error) {
 
 	req := &interfaces.ResourceRequest{
 		CatalogID:        catalog.ID,
@@ -185,7 +185,7 @@ func (dh *DiscoverHandler) createIndexResource(ctx context.Context, catalog *int
 			"original_description": "",
 		},
 	}
-	resource, err := dh.rs.Create(ctx, req)
+	resource, err := dtw.rs.Create(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -202,7 +202,7 @@ func (dh *DiscoverHandler) createIndexResource(ctx context.Context, catalog *int
 //
 // 返回值:
 //   - error: 如果在处理过程中发生错误，则返回错误信息
-func (dh *DiscoverHandler) enrichIndexMetadata(ctx context.Context, indexConnector connectors.IndexConnector, items []indexDiscoverItem, result *interfaces.DiscoverResult) error {
+func (dtw *DiscoverTaskWorker) enrichIndexMetadata(ctx context.Context, indexConnector connectors.IndexConnector, items []indexDiscoverItem, result *interfaces.DiscoverResult) error {
 
 	// 遍历所有需要处理的索引项
 	for _, item := range items {
@@ -257,7 +257,7 @@ func (dh *DiscoverHandler) enrichIndexMetadata(ctx context.Context, indexConnect
 
 		// Update Resource
 		resource.LastDiscoverStatus = discoverStatus
-		if err := dh.rs.UpdateResource(ctx, resource); err != nil {
+		if err := dtw.rs.UpdateResource(ctx, resource); err != nil {
 			logger.Errorf("Failed to update metadata for index %s: %v", idx.Name, err)
 			return err
 		}

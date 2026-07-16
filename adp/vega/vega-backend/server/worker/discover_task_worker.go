@@ -25,17 +25,17 @@ import (
 	"vega-backend/logics/resource"
 )
 
-// DiscoverHandler handles discover tasks.
-type DiscoverHandler struct {
+// DiscoverTaskWorker handles discover tasks.
+type DiscoverTaskWorker struct {
 	appSetting *common.AppSetting
 	rs         interfaces.ResourceService
 	cs         interfaces.CatalogService
 	dts        interfaces.DiscoverTaskService
 }
 
-// NewDiscoverHandler creates a new discover handler.
-func NewDiscoverHandler(appSetting *common.AppSetting) *DiscoverHandler {
-	return &DiscoverHandler{
+// NewDiscoverTaskWorker creates a new discover worker.
+func NewDiscoverTaskWorker(appSetting *common.AppSetting) *DiscoverTaskWorker {
+	return &DiscoverTaskWorker{
 		appSetting: appSetting,
 		rs:         resource.NewResourceService(appSetting),
 		cs:         catalog.NewCatalogService(appSetting),
@@ -44,7 +44,7 @@ func NewDiscoverHandler(appSetting *common.AppSetting) *DiscoverHandler {
 }
 
 // HandleTask handles a discover task from the queue.
-func (dh *DiscoverHandler) HandleTask(ctx context.Context, task *asynq.Task) error {
+func (dtw *DiscoverTaskWorker) HandleTask(ctx context.Context, task *asynq.Task) error {
 	var msg interfaces.DiscoverTaskMessage
 	if err := sonic.Unmarshal(task.Payload(), &msg); err != nil {
 		logger.Errorf("Failed to unmarshal task message: %v", err)
@@ -54,7 +54,7 @@ func (dh *DiscoverHandler) HandleTask(ctx context.Context, task *asynq.Task) err
 	taskID := msg.TaskID
 	logger.Infof("Starting discover for task: %s", taskID)
 
-	taskInfo, err := dh.dts.GetByID(ctx, taskID)
+	taskInfo, err := dtw.dts.GetByID(ctx, taskID)
 	if err != nil {
 		logger.Errorf("Failed to get task info for task %s: %v", taskID, err)
 		return err
@@ -64,7 +64,7 @@ func (dh *DiscoverHandler) HandleTask(ctx context.Context, task *asynq.Task) err
 
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, taskInfo.Creator)
 
-	catalog, err := dh.cs.GetByID(ctx, taskInfo.CatalogID, true)
+	catalog, err := dtw.cs.GetByID(ctx, taskInfo.CatalogID, true)
 	if err != nil {
 		logger.Errorf("Failed to get catalog for task %s: %v", taskID, err)
 		return err
@@ -72,7 +72,7 @@ func (dh *DiscoverHandler) HandleTask(ctx context.Context, task *asynq.Task) err
 
 	// Update task status to running and set start time
 	now := time.Now().UnixMilli()
-	if err := dh.dts.UpdateStatus(ctx, taskID, interfaces.DiscoverTaskStatusRunning, "", now); err != nil {
+	if err := dtw.dts.UpdateStatus(ctx, taskID, interfaces.DiscoverTaskStatusRunning, "", now); err != nil {
 		logger.Errorf("Failed to set start time for task %s: %v", taskID, err)
 		return err
 	}
@@ -83,17 +83,17 @@ func (dh *DiscoverHandler) HandleTask(ctx context.Context, task *asynq.Task) err
 	//然后根据 connector 信息获取 connector 实例，
 	//然后根据 connector 实例获取 catalog 的元数据，
 	//然后根据 catalog 的元数据获取 catalog 的资源信息：元数据
-	result, err := dh.discoverCatalog(ctx, catalog, taskInfo)
+	result, err := dtw.discoverCatalog(ctx, catalog, taskInfo)
 	if err != nil {
 		// Update task status to failed
 		now = time.Now().UnixMilli()
-		_ = dh.dts.UpdateStatus(ctx, taskID, interfaces.DiscoverTaskStatusFailed, err.Error(), now)
+		_ = dtw.dts.UpdateStatus(ctx, taskID, interfaces.DiscoverTaskStatusFailed, err.Error(), now)
 		return err
 	}
 
 	// Update task result
 	now = time.Now().UnixMilli()
-	if err := dh.dts.UpdateResult(ctx, taskID, result, now); err != nil {
+	if err := dtw.dts.UpdateResult(ctx, taskID, result, now); err != nil {
 		logger.Errorf("Failed to update result for task %s: %v", taskID, err)
 		return err
 	}
@@ -112,7 +112,7 @@ func (dh *DiscoverHandler) HandleTask(ctx context.Context, task *asynq.Task) err
 // 返回值:
 //   - *interfaces.DiscoverResult: 发现结果，包含发现的资源信息
 //   - error: 错误信息，如果发现过程中出现错误
-func (dh *DiscoverHandler) discoverCatalog(ctx context.Context, catalog *interfaces.Catalog,
+func (dtw *DiscoverTaskWorker) discoverCatalog(ctx context.Context, catalog *interfaces.Catalog,
 	task *interfaces.DiscoverTask) (*interfaces.DiscoverResult, error) {
 
 	logger.Infof("Starting discover for catalog: %s", catalog.ID)
@@ -123,7 +123,7 @@ func (dh *DiscoverHandler) discoverCatalog(ctx context.Context, catalog *interfa
 	}
 
 	// 1. 创建 Connector 并连接
-	connector, err := dh.createAndConnectConnector(ctx, catalog)
+	connector, err := dtw.createAndConnectConnector(ctx, catalog)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to data source: %w", err)
 	}
@@ -131,7 +131,7 @@ func (dh *DiscoverHandler) discoverCatalog(ctx context.Context, catalog *interfa
 
 	// Update catalog metadata
 	if meta, err := connector.GetMetadata(ctx); err == nil {
-		if err := dh.cs.UpdateMetadata(ctx, catalog.ID, meta); err != nil {
+		if err := dtw.cs.UpdateMetadata(ctx, catalog.ID, meta); err != nil {
 			logger.Errorf("Failed to update catalog metadata: %v", err)
 		}
 	} else {
@@ -142,20 +142,20 @@ func (dh *DiscoverHandler) discoverCatalog(ctx context.Context, catalog *interfa
 	switch category {
 	// table类型的会到这里，例如mysql
 	case interfaces.ConnectorCategoryTable:
-		return dh.discoverTableResources(ctx, catalog, connector, task)
+		return dtw.discoverTableResources(ctx, catalog, connector, task)
 	// index类型的会到这里，例如open search
 	case interfaces.ConnectorCategoryIndex:
-		return dh.discoverIndexResources(ctx, catalog, connector, task)
+		return dtw.discoverIndexResources(ctx, catalog, connector, task)
 	// fileset类型的会到这里，例如anyshare
 	case interfaces.ConnectorCategoryFileset:
-		return dh.discoverFilesetResources(ctx, catalog, connector, task)
+		return dtw.discoverFilesetResources(ctx, catalog, connector, task)
 	default:
 		return nil, fmt.Errorf("unsupported connector category for discover: %s", category)
 	}
 }
 
 // createAndConnectConnector creates and connects a connector for the catalog.
-func (dh *DiscoverHandler) createAndConnectConnector(ctx context.Context, catalog *interfaces.Catalog) (connectors.Connector, error) {
+func (dtw *DiscoverTaskWorker) createAndConnectConnector(ctx context.Context, catalog *interfaces.Catalog) (connectors.Connector, error) {
 
 	// 创建 connector
 	connector, err := factory.GetFactory().CreateConnectorInstance(ctx, catalog.ConnectorType, catalog.ConnectorCfg)
