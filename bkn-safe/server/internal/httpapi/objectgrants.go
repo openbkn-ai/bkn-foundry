@@ -37,7 +37,7 @@ func registerObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 	// -> { entries:[...], total, summary?:{ grants, objects, grantees } }
 	// limit omitted = return all matches (backward compatible). limit present:
 	// defaults to 50, capped at 500. search matches user account/name or resource id.
-	g.GET("/object-grants", func(c *gin.Context) {
+	g.GET("/object-grants", RequirePermission(e, "admin-authz", "view"), func(c *gin.Context) {
 		accessorID := c.Query("accessor_id")
 		resourceType := objectGrantQueryParam(c, "resource_type", "obj_type")
 		resourceID := objectGrantQueryParam(c, "resource_id", "obj_id")
@@ -131,7 +131,7 @@ func registerObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 	// Upsert semantics: the grant's ops become exactly `operations`. An empty
 	// list is rejected (use DELETE to revoke) so an accidental empty body can't
 	// silently wipe a grant.
-	g.POST("/object-grants", func(c *gin.Context) {
+	g.POST("/object-grants", RequirePermission(e, "admin-authz", "grant"), func(c *gin.Context) {
 		var req struct {
 			AccessorID string      `json:"accessor_id" binding:"required"`
 			Resource   resourceRef `json:"resource" binding:"required"`
@@ -186,7 +186,7 @@ func registerObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 	// DELETE /object-grants — revoke one user's grant on one concrete resource
 	// instance, leaving other grantees on the same resource untouched.
 	// { accessor_id, resource{type,id} }
-	g.DELETE("/object-grants", func(c *gin.Context) {
+	g.DELETE("/object-grants", RequirePermission(e, "admin-authz", "revoke"), func(c *gin.Context) {
 		var req struct {
 			AccessorID string      `json:"accessor_id" binding:"required"`
 			Resource   resourceRef `json:"resource" binding:"required"`

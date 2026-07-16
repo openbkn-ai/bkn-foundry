@@ -7,6 +7,7 @@ package httpapi
 import (
 	"errors"
 	"net/http"
+	"slices"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -15,6 +16,12 @@ import (
 	"bkn-safe/internal/authz"
 	"bkn-safe/internal/model"
 )
+
+var threeAdminRoleIDs = []string{
+	"d2bd2082-ad03-11e8-aa06-000c29358ad6", // admin
+	"d8998f72-ad03-11e8-aa06-000c29358ad6", // security
+	"def246f2-ad03-11e8-aa06-000c29358ad6", // audit
+}
 
 // resourceRef is the clean { type, id } object reference used across the authz API.
 type resourceRef struct {
@@ -162,7 +169,7 @@ func registerRoleBindings(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 	// Both ids must reference existing rows: casbin stores the strings verbatim,
 	// so a typo'd accessor (e.g. an account name instead of its ID) would 204
 	// into a grant that never matches at enforce time.
-	g.POST("/role-bindings", func(c *gin.Context) {
+	g.POST("/role-bindings", RequirePermission(e, "admin-role", "members"), func(c *gin.Context) {
 		var req struct {
 			AccessorID string `json:"accessor_id" binding:"required"`
 			RoleID     string `json:"role_id" binding:"required"`
@@ -189,6 +196,19 @@ func registerRoleBindings(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "role_id does not match any role id: " + req.RoleID})
 			return
 		}
+		if isThreeAdminRoleID(req.RoleID) {
+			currentRoleIDs, err := e.RolesForAccessor(req.AccessorID)
+			if err != nil {
+				serverError(c, err)
+				return
+			}
+			for _, currentRoleID := range currentRoleIDs {
+				if currentRoleID != req.RoleID && isThreeAdminRoleID(currentRoleID) {
+					c.JSON(http.StatusConflict, gin.H{"error": "three-admin roles are mutually exclusive for one accessor"})
+					return
+				}
+			}
+		}
 		if err := e.AssignRole(req.AccessorID, req.RoleID); err != nil {
 			serverError(c, err)
 			return
@@ -198,7 +218,7 @@ func registerRoleBindings(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 
 	// GET /role-bindings?accessor_id= — list the role ids bound to an accessor.
 	// -> { role_ids:[...] }. Mirrors ISF accessor_roles (roles-of-user read).
-	g.GET("/role-bindings", func(c *gin.Context) {
+	g.GET("/role-bindings", RequirePermission(e, "admin-role", "view"), func(c *gin.Context) {
 		accessorID := c.Query("accessor_id")
 		if accessorID == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "accessor_id required"})
@@ -214,7 +234,7 @@ func registerRoleBindings(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 
 	// DELETE /role-bindings — unbind an accessor from a role (inverse of POST).
 	// { accessor_id, role_id }
-	g.DELETE("/role-bindings", func(c *gin.Context) {
+	g.DELETE("/role-bindings", RequirePermission(e, "admin-role", "members"), func(c *gin.Context) {
 		var req struct {
 			AccessorID string `json:"accessor_id" binding:"required"`
 			RoleID     string `json:"role_id" binding:"required"`
@@ -230,6 +250,10 @@ func registerRoleBindings(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 	})
 }
 
+func isThreeAdminRoleID(roleID string) bool {
+	return slices.Contains(threeAdminRoleIDs, roleID)
+}
+
 // registerRoles mounts the role catalog endpoints (admin-only, under /admin).
 // Built-in (system/business) roles are read-only — their UUIDs are hardcoded in
 // DA/flow-automation and their permission matrix is owned by the seed files.
@@ -237,7 +261,7 @@ func registerRoleBindings(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 func registerRoles(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 	// GET /roles?source= — list roles, optionally filtered by source.
 	// -> { roles:[ {id,name,description,source} ] }
-	g.GET("/roles", func(c *gin.Context) {
+	g.GET("/roles", RequirePermission(e, "admin-role", "view"), func(c *gin.Context) {
 		q := db.WithContext(c.Request.Context()).Model(&model.Role{})
 		if src := c.Query("source"); src != "" {
 			q = q.Where("source = ?", src)
@@ -255,7 +279,7 @@ func registerRoles(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 	})
 
 	// GET /roles/:id — role detail with its members and permission grants.
-	g.GET("/roles/:id", func(c *gin.Context) {
+	g.GET("/roles/:id", RequirePermission(e, "admin-role", "view"), func(c *gin.Context) {
 		role, err := loadRole(c, db, c.Param("id"))
 		if role == nil {
 			return // loadRole already wrote the response
@@ -278,7 +302,7 @@ func registerRoles(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 	})
 
 	// GET /roles/:id/members — accessor ids bound to the role. -> { accessor_ids:[...] }
-	g.GET("/roles/:id/members", func(c *gin.Context) {
+	g.GET("/roles/:id/members", RequirePermission(e, "admin-role", "view"), func(c *gin.Context) {
 		role, _ := loadRole(c, db, c.Param("id"))
 		if role == nil {
 			return
@@ -293,7 +317,7 @@ func registerRoles(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 
 	// POST /roles — create a custom role. source is forced to "custom" (the API
 	// cannot mint system/business roles). { id?, name, description? } -> { id }
-	g.POST("/roles", func(c *gin.Context) {
+	g.POST("/roles", RequirePermission(e, "admin-role", "create"), func(c *gin.Context) {
 		var req struct {
 			ID          string `json:"id"`
 			Name        string `json:"name" binding:"required"`
@@ -318,7 +342,7 @@ func registerRoles(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 
 	// PUT /roles/:id — rename / re-describe a CUSTOM role. Built-in roles are
 	// rejected with 403. { name?, description? }
-	g.PUT("/roles/:id", func(c *gin.Context) {
+	g.PUT("/roles/:id", RequirePermission(e, "admin-role", "edit"), func(c *gin.Context) {
 		role, _ := loadRole(c, db, c.Param("id"))
 		if role == nil {
 			return
@@ -355,7 +379,7 @@ func registerRoles(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 
 	// DELETE /roles/:id — delete a CUSTOM role and purge its casbin bindings and
 	// permission grants. Built-in roles are rejected with 403.
-	g.DELETE("/roles/:id", func(c *gin.Context) {
+	g.DELETE("/roles/:id", RequirePermission(e, "admin-role", "delete"), func(c *gin.Context) {
 		role, _ := loadRole(c, db, c.Param("id"))
 		if role == nil {
 			return
@@ -377,7 +401,7 @@ func registerRoles(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 
 	// POST /roles/:id/permissions — grant a CUSTOM role an op over a resource
 	// pattern (id "*" = whole type). { resource{type,id}, operations:[...] }
-	g.POST("/roles/:id/permissions", func(c *gin.Context) {
+	g.POST("/roles/:id/permissions", RequirePermission(e, "admin-authz", "grant"), func(c *gin.Context) {
 		role, _ := loadRole(c, db, c.Param("id"))
 		if role == nil {
 			return
@@ -404,7 +428,7 @@ func registerRoles(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 
 	// DELETE /roles/:id/permissions — revoke a CUSTOM role's ops over a resource
 	// pattern. { resource{type,id}, operations:[...] }
-	g.DELETE("/roles/:id/permissions", func(c *gin.Context) {
+	g.DELETE("/roles/:id/permissions", RequirePermission(e, "admin-authz", "revoke"), func(c *gin.Context) {
 		role, _ := loadRole(c, db, c.Param("id"))
 		if role == nil {
 			return

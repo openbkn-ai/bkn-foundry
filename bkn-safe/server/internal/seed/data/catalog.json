@@ -187,6 +187,7 @@
       "name": "系统用户管理",
       "_source": "bkn-studio system-admin",
       "operations": [
+        {"id": "view", "name": "查看用户"},
         {"id": "create", "name": "新建用户"},
         {"id": "edit", "name": "编辑用户"},
         {"id": "delete", "name": "删除用户"},
@@ -199,6 +200,7 @@
       "name": "系统部门管理",
       "_source": "bkn-studio system-admin",
       "operations": [
+        {"id": "view", "name": "查看部门"},
         {"id": "create", "name": "新建部门"},
         {"id": "edit", "name": "编辑部门"},
         {"id": "delete", "name": "删除部门"},
@@ -210,6 +212,7 @@
       "name": "系统角色管理",
       "_source": "bkn-studio system-admin",
       "operations": [
+        {"id": "view", "name": "查看角色"},
         {"id": "create", "name": "新建角色"},
         {"id": "edit", "name": "编辑角色"},
         {"id": "delete", "name": "删除角色"},
@@ -221,6 +224,7 @@
       "name": "系统授权管理",
       "_source": "bkn-studio system-admin",
       "operations": [
+        {"id": "view", "name": "查看权限配置"},
         {"id": "grant", "name": "授权"},
         {"id": "revoke", "name": "撤权"}
       ]
@@ -239,6 +243,31 @@
       "_source": "bkn-safe",
       "operations": [
         {"id": "manage", "name": "访问管理 API"}
+      ]
+    },
+    {
+      "id": "admin-license",
+      "name": "产品授权管理",
+      "_source": "bkn-studio system-admin",
+      "operations": [
+        {"id": "view", "name": "查看授权"},
+        {"id": "manage", "name": "管理授权"}
+      ]
+    },
+    {
+      "id": "admin-client",
+      "name": "登录客户端管理",
+      "_source": "bkn-safe",
+      "operations": [
+        {"id": "manage", "name": "管理客户端"}
+      ]
+    },
+    {
+      "id": "admin-apikey",
+      "name": "全局 AppKey 管理",
+      "_source": "bkn-safe",
+      "operations": [
+        {"id": "manage", "name": "管理 AppKey"}
       ]
     }
   ]

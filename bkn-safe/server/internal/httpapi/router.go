@@ -94,17 +94,17 @@ func New(deps Deps) *gin.Engine {
 		// for authenticated callers (failed-auth 401/403 are not audited).
 		if deps.Audit != nil {
 			admin.Use(auditMiddleware(deps.Audit, deps.Directory, deps.DB))
-			registerAuditReads(admin, deps.Audit)
+			registerAuditReads(admin, deps.Audit, deps.Enforcer)
 		}
 		registerUserAdmin(admin, deps.Users, deps.Enforcer, deps.Directory)
-		registerAdminReads(admin, deps.Directory)
-		registerDeptAdmin(admin, deps.Directory)
+		registerAdminReads(admin, deps.Directory, deps.Enforcer)
+		registerDeptAdmin(admin, deps.Directory, deps.Enforcer)
 		registerRoleBindings(admin, deps.Enforcer, deps.DB)
 		registerRoles(admin, deps.Enforcer, deps.DB)
 		registerObjectGrants(admin, deps.Enforcer, deps.DB)
 		// Global AppKey oversight: list/revoke any user's keys.
 		if apiKeys != nil {
-			registerAdminAPIKeys(admin, apiKeys)
+			registerAdminAPIKeys(admin, apiKeys, deps.Enforcer)
 		}
 		// Login-client redirect-uri management. Falls back to Hydra in production;
 		// only mounted when a manager is available.
@@ -113,11 +113,11 @@ func New(deps Deps) *gin.Engine {
 			clientMgr = deps.Hydra
 		}
 		if clientMgr != nil {
-			registerClientAdmin(admin, clientMgr)
+			registerClientAdmin(admin, clientMgr, deps.Enforcer)
 		}
 		// Cluster license hub management (import/activate/remove + detail).
 		if deps.License != nil {
-			registerLicenseAdmin(admin, deps.License)
+			registerLicenseAdmin(admin, deps.License, deps.Enforcer)
 		}
 	}
 

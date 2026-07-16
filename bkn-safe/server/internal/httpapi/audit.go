@@ -17,6 +17,7 @@ import (
 	"gorm.io/gorm"
 
 	"bkn-safe/internal/audit"
+	"bkn-safe/internal/authz"
 	"bkn-safe/internal/directory"
 	"bkn-safe/internal/model"
 )
@@ -236,11 +237,11 @@ func auditTarget(fullPath string) (resource, action string) {
 
 // registerAuditReads mounts the audit-log read endpoint under the admin group.
 // It is a GET, so auditMiddleware does not record calls to it.
-func registerAuditReads(g *gin.RouterGroup, store *audit.Store) {
+func registerAuditReads(g *gin.RouterGroup, store *audit.Store, e *authz.Enforcer) {
 	// GET /audit-logs — list audit entries newest-first, filterable. Query:
 	// ?actor_id=&resource=&action=&target_id=&from=&to=&offset=&limit=
 	// from/to are RFC3339 timestamps. -> { logs:[...], total }
-	g.GET("/audit-logs", func(c *gin.Context) {
+	g.GET("/audit-logs", RequirePermission(e, "admin-audit", "view"), func(c *gin.Context) {
 		f := audit.Filter{
 			ActorID:  c.Query("actor_id"),
 			Resource: c.Query("resource"),

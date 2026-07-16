@@ -13,6 +13,7 @@ import (
 	"gorm.io/gorm"
 
 	"bkn-safe/internal/auth"
+	"bkn-safe/internal/authz"
 	"bkn-safe/internal/model"
 )
 
@@ -107,9 +108,9 @@ func registerMeAPIKeys(g *gin.RouterGroup, keys *auth.APIKeyStore) {
 // registerAdminAPIKeys mounts global AppKey oversight under /api/safe/v1/admin/
 // api-keys (RequireAdmin): list/revoke ANY user's keys for audit and incident
 // response.
-func registerAdminAPIKeys(g *gin.RouterGroup, keys *auth.APIKeyStore) {
+func registerAdminAPIKeys(g *gin.RouterGroup, keys *auth.APIKeyStore, e *authz.Enforcer) {
 	// GET /admin/api-keys?owner_id= — list all keys (optionally one owner's).
-	g.GET("/api-keys", func(c *gin.Context) {
+	g.GET("/api-keys", RequirePermission(e, "admin-apikey", "manage"), func(c *gin.Context) {
 		list, err := keys.ListAll(c.Request.Context(), c.Query("owner_id"))
 		if err != nil {
 			serverError(c, err)
@@ -119,7 +120,7 @@ func registerAdminAPIKeys(g *gin.RouterGroup, keys *auth.APIKeyStore) {
 	})
 
 	// DELETE /admin/api-keys/:id — revoke any key by id.
-	g.DELETE("/api-keys/:id", func(c *gin.Context) {
+	g.DELETE("/api-keys/:id", RequirePermission(e, "admin-apikey", "manage"), func(c *gin.Context) {
 		err := keys.Delete(c.Request.Context(), c.Param("id"))
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "api key not found"})

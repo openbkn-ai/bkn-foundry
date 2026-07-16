@@ -11,6 +11,8 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+
+	"bkn-safe/internal/authz"
 )
 
 // ClientManager is the slice of hydra's OAuth2 client admin that bkn-safe exposes:
@@ -37,9 +39,9 @@ var manageableClients = map[string]bool{
 // clients under the admin group (RequireAdmin + audited). This is a runtime
 // convenience: a helm upgrade re-seeds clients from chart values, so durable
 // redirect_uris still belong in clientSeed.extraWebRedirectUris.
-func registerClientAdmin(g *gin.RouterGroup, mgr ClientManager) {
+func registerClientAdmin(g *gin.RouterGroup, mgr ClientManager, e *authz.Enforcer) {
 	// GET /clients/:id/redirect-uris -> { "redirect_uris": [...] }
-	g.GET("/clients/:id/redirect-uris", func(c *gin.Context) {
+	g.GET("/clients/:id/redirect-uris", RequirePermission(e, "admin-client", "manage"), func(c *gin.Context) {
 		id := c.Param("id")
 		if !manageableClients[id] {
 			c.JSON(http.StatusForbidden, gin.H{"error": "client not manageable"})
@@ -55,7 +57,7 @@ func registerClientAdmin(g *gin.RouterGroup, mgr ClientManager) {
 
 	// POST /clients/:id/redirect-uris { "redirect_uri": "..." } -> { "redirect_uris" }
 	// Idempotent: adding an already-registered uri returns the unchanged list.
-	g.POST("/clients/:id/redirect-uris", func(c *gin.Context) {
+	g.POST("/clients/:id/redirect-uris", RequirePermission(e, "admin-client", "manage"), func(c *gin.Context) {
 		id := c.Param("id")
 		if !manageableClients[id] {
 			c.JSON(http.StatusForbidden, gin.H{"error": "client not manageable"})
@@ -80,7 +82,7 @@ func registerClientAdmin(g *gin.RouterGroup, mgr ClientManager) {
 	})
 
 	// DELETE /clients/:id/redirect-uris { "redirect_uri": "..." } -> { "redirect_uris" }
-	g.DELETE("/clients/:id/redirect-uris", func(c *gin.Context) {
+	g.DELETE("/clients/:id/redirect-uris", RequirePermission(e, "admin-client", "manage"), func(c *gin.Context) {
 		id := c.Param("id")
 		if !manageableClients[id] {
 			c.JSON(http.StatusForbidden, gin.H{"error": "client not manageable"})
