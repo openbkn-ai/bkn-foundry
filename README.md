@@ -1,3 +1,11 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="help/banner-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="help/banner-light.png">
+    <img src="help/banner-light.png" alt="BKN Foundry" width="100%">
+  </picture>
+</p>
+
 # BKN Foundry
 
 [中文](README.zh.md) | English
