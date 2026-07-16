@@ -10,7 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app import dao, observability
 from app.config import config
 from app.core.checkpoint import open_checkpointer
-from app.core.llm import build_chat_model, normalize_response_format
+from app.core.llm import build_chat_model
+from app.core.structured import structured_extract
 from app.core.prompt import resolve_prompt
 from app.core.skills import load_skills
 from app.core.tools import apply_tool_call_cap, load_tools
@@ -70,8 +71,7 @@ async def stream_chat(
         tools = await load_tools(
             agent.tools, account_id, account_type, depth=0, parent_thread_id=thread_id
         )
-        # 结构化输出走非流式（见 build_chat_model）；此时正文不逐 token 流，结果以 structured 事件送
-        model = build_chat_model(agent.model, streaming=not req.response_format)
+        model = build_chat_model(agent.model)
 
         limits = agent.limits or None
         max_turns = limits.max_turns if limits and limits.max_turns else config.DEFAULT_MAX_TURNS
@@ -94,14 +94,8 @@ async def stream_chat(
             yield _sse("meta", {"thread_id": thread_id, "agent_id": agent.agent_id})
             with observability.span("agent.chat", span_attrs):
                 async with open_checkpointer() as checkpointer:
-                    # response_format（JSON Schema，可选）非空 → 结构化输出：工具循环后再做一次
-                    # 结构化调用，结果落 state["structured_response"]，正文 token 照常流。
-                    graph_kwargs = (
-                        {"response_format": normalize_response_format(req.response_format)}
-                        if req.response_format else {}
-                    )
                     graph = create_react_agent(
-                        model, tools, prompt=system_prompt, checkpointer=checkpointer, **graph_kwargs
+                        model, tools, prompt=system_prompt, checkpointer=checkpointer
                     )
                     cfg = {
                         "configurable": {"thread_id": thread_id},
@@ -119,13 +113,13 @@ async def stream_chat(
                                         if tc.get("name"):
                                             yield _sse("tool_call", {"name": tc["name"]})
                         if req.response_format:
-                            # 结构化结果只在终态里，流式末尾单独送 structured 事件
+                            # 工具循环后单独抽结构化（原生优先→提示词降级），末尾送 structured 事件
                             state = await graph.aget_state(cfg)
-                            structured = state.values.get("structured_response")
-                            if structured is not None:
-                                if hasattr(structured, "model_dump"):
-                                    structured = structured.model_dump()
-                                yield _sse("structured", {"content": structured})
+                            struct_model = build_chat_model(agent.model, streaming=False)
+                            obj = await structured_extract(
+                                struct_model, state.values["messages"], req.response_format
+                            )
+                            yield _sse("structured", {"content": obj})
                         yield _sse("done", {"thread_id": thread_id})
                     except TimeoutError:
                         yield _sse("error", {"code": "BknAgent.Chat.Timeout", "detail": f"超过 {timeout_s}s"})
