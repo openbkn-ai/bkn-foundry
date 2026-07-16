@@ -42,7 +42,11 @@ def _wire(monkeypatch, structured, captured):
         return _FakeGraph(structured)
 
     monkeypatch.setattr(runner, "create_react_agent", fake_create)
-    monkeypatch.setattr(runner, "build_chat_model", lambda m: object())
+    def fake_model(m, streaming=True):
+        captured["streaming"] = streaming
+        return object()
+
+    monkeypatch.setattr(runner, "build_chat_model", fake_model)
     monkeypatch.setattr(runner, "SessionLocal", lambda: _FakeCM())
     monkeypatch.setattr(observability, "span", lambda *a, **k: contextlib.nullcontext())
 
@@ -75,6 +79,7 @@ def test_response_format_passed_and_serialized(monkeypatch):
     passed = captured["kwargs"].get("response_format")
     assert passed.get("title") == "StructuredResponse"
     assert passed["properties"] == SCHEMA["properties"]
+    assert captured["streaming"] is False  # 结构化输出走非流式
     # structured_response 被序列化成 JSON 字符串（中文不转义）
     assert json.loads(out) == {"greeting": "pong"}
 

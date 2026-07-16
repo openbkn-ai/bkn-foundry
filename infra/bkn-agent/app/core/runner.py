@@ -54,7 +54,8 @@ async def run_agent_once(
     skill_ids = list(dict.fromkeys([*agent.skills, *skills]))
     system_prompt += await load_skills(skill_ids, account_id, account_type)
     tools = await load_tools(agent.tools, account_id, account_type, depth=depth)
-    model = build_chat_model(agent.model)
+    # 结构化输出走非流式（见 build_chat_model）
+    model = build_chat_model(agent.model, streaming=not response_format)
 
     limits = agent.limits
     max_turns = limits.max_turns if limits and limits.max_turns else config.DEFAULT_MAX_TURNS

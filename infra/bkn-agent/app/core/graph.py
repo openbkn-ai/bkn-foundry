@@ -70,7 +70,8 @@ async def stream_chat(
         tools = await load_tools(
             agent.tools, account_id, account_type, depth=0, parent_thread_id=thread_id
         )
-        model = build_chat_model(agent.model)
+        # 结构化输出走非流式（见 build_chat_model）；此时正文不逐 token 流，结果以 structured 事件送
+        model = build_chat_model(agent.model, streaming=not req.response_format)
 
         limits = agent.limits or None
         max_turns = limits.max_turns if limits and limits.max_turns else config.DEFAULT_MAX_TURNS
