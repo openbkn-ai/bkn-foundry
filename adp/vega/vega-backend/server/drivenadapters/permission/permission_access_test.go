@@ -12,34 +12,35 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"testing"
 
 	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-comm-go/rest"
+	rmock "github.com/openbkn-ai/bkn-comm-go/rest/mock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"vega-backend/common"
 	"vega-backend/interfaces"
+	vmock "vega-backend/interfaces/mock"
 )
 
 func TestPermissionAccessCheckPermission(t *testing.T) {
 	t.Run("returns decision", func(t *testing.T) {
-		client := &fakeHTTPClient{code: http.StatusOK, body: []byte(`{"result":true}`)}
-		access := newPermissionAccess(client)
+		access, call := newMockPermissionAccess(t, http.StatusOK, []byte(`{"result":true}`), nil)
 
 		got, err := access.CheckPermission(context.Background(), samplePermissionCheck())
 
 		require.NoError(t, err)
 		assert.True(t, got)
-		assert.Equal(t, "http://permission/operation-check", client.url)
-		assert.Equal(t, interfaces.CONTENT_TYPE_JSON, client.headers[interfaces.CONTENT_TYPE_NAME])
-		assert.Equal(t, http.MethodGet, client.reqParam.(interfaces.PermissionCheck).Method)
+		assert.Equal(t, "http://permission/operation-check", call.url)
+		assert.Equal(t, interfaces.CONTENT_TYPE_JSON, call.headers[interfaces.CONTENT_TYPE_NAME])
+		assert.Equal(t, http.MethodGet, call.reqParam.(interfaces.PermissionCheck).Method)
 	})
 
 	t.Run("nil response body denies without error", func(t *testing.T) {
-		access := newPermissionAccess(&fakeHTTPClient{code: http.StatusOK})
+		access, _ := newMockPermissionAccess(t, http.StatusOK, nil, nil)
 
 		got, err := access.CheckPermission(context.Background(), samplePermissionCheck())
 
@@ -48,10 +49,7 @@ func TestPermissionAccessCheckPermission(t *testing.T) {
 	})
 
 	t.Run("non ok response becomes http error", func(t *testing.T) {
-		access := newPermissionAccess(&fakeHTTPClient{
-			code: http.StatusForbidden,
-			body: []byte(`{"code":"Forbidden","message":"denied"}`),
-		})
+		access, _ := newMockPermissionAccess(t, http.StatusForbidden, []byte(`{"code":"Forbidden","message":"denied"}`), nil)
 
 		got, err := access.CheckPermission(context.Background(), samplePermissionCheck())
 
@@ -65,7 +63,7 @@ func TestPermissionAccessCheckPermission(t *testing.T) {
 	})
 
 	t.Run("http client error is wrapped", func(t *testing.T) {
-		access := newPermissionAccess(&fakeHTTPClient{err: errors.New("network down")})
+		access, _ := newMockPermissionAccess(t, 0, nil, errors.New("network down"))
 
 		got, err := access.CheckPermission(context.Background(), samplePermissionCheck())
 
@@ -75,7 +73,7 @@ func TestPermissionAccessCheckPermission(t *testing.T) {
 	})
 
 	t.Run("invalid decision body returns unmarshal error", func(t *testing.T) {
-		access := newPermissionAccess(&fakeHTTPClient{code: http.StatusOK, body: []byte(`{`)})
+		access, _ := newMockPermissionAccess(t, http.StatusOK, []byte(`{`), nil)
 
 		got, err := access.CheckPermission(context.Background(), samplePermissionCheck())
 
@@ -86,17 +84,14 @@ func TestPermissionAccessCheckPermission(t *testing.T) {
 
 func TestPermissionAccessFilterResources(t *testing.T) {
 	t.Run("returns allow operations", func(t *testing.T) {
-		client := &fakeHTTPClient{
-			code: http.StatusOK,
-			body: []byte(`[{"id":"resource-1","allow_operation":["view_detail","modify"]}]`),
-		}
-		access := newPermissionAccess(client)
+		access, call := newMockPermissionAccess(t, http.StatusOK,
+			[]byte(`[{"id":"resource-1","allow_operation":["view_detail","modify"]}]`), nil)
 
 		got, err := access.FilterResources(context.Background(), samplePermissionResourcesFilter())
 
 		require.NoError(t, err)
-		assert.Equal(t, "http://permission/resource-filter", client.url)
-		assert.Equal(t, http.MethodGet, client.reqParam.(interfaces.PermissionResourcesFilter).Method)
+		assert.Equal(t, "http://permission/resource-filter", call.url)
+		assert.Equal(t, http.MethodGet, call.reqParam.(interfaces.PermissionResourcesFilter).Method)
 		assert.Equal(t, map[string]interfaces.PermissionResourceOps{
 			"resource-1": {
 				ResourceID: "resource-1",
@@ -109,7 +104,7 @@ func TestPermissionAccessFilterResources(t *testing.T) {
 	})
 
 	t.Run("nil response body returns empty map", func(t *testing.T) {
-		access := newPermissionAccess(&fakeHTTPClient{code: http.StatusOK})
+		access, _ := newMockPermissionAccess(t, http.StatusOK, nil, nil)
 
 		got, err := access.FilterResources(context.Background(), samplePermissionResourcesFilter())
 
@@ -118,10 +113,7 @@ func TestPermissionAccessFilterResources(t *testing.T) {
 	})
 
 	t.Run("non ok response becomes http error", func(t *testing.T) {
-		access := newPermissionAccess(&fakeHTTPClient{
-			code: http.StatusForbidden,
-			body: []byte(`{"code":"Forbidden","description":"filtered"}`),
-		})
+		access, _ := newMockPermissionAccess(t, http.StatusForbidden, []byte(`{"code":"Forbidden","description":"filtered"}`), nil)
 
 		got, err := access.FilterResources(context.Background(), samplePermissionResourcesFilter())
 
@@ -134,7 +126,7 @@ func TestPermissionAccessFilterResources(t *testing.T) {
 	})
 
 	t.Run("invalid response body returns unmarshal error", func(t *testing.T) {
-		access := newPermissionAccess(&fakeHTTPClient{code: http.StatusOK, body: []byte(`{`)})
+		access, _ := newMockPermissionAccess(t, http.StatusOK, []byte(`{`), nil)
 
 		got, err := access.FilterResources(context.Background(), samplePermissionResourcesFilter())
 
@@ -145,18 +137,17 @@ func TestPermissionAccessFilterResources(t *testing.T) {
 
 func TestPermissionAccessCreateResources(t *testing.T) {
 	t.Run("creates policies", func(t *testing.T) {
-		client := &fakeHTTPClient{code: http.StatusNoContent}
-		access := newPermissionAccess(client)
+		access, call := newMockPermissionAccess(t, http.StatusNoContent, nil, nil)
 
 		err := access.CreateResources(context.Background(), []interfaces.PermissionPolicy{samplePermissionPolicy()})
 
 		require.NoError(t, err)
-		assert.Equal(t, "http://permission/policy", client.url)
-		assert.Equal(t, []interfaces.PermissionPolicy{samplePermissionPolicy()}, client.reqParam)
+		assert.Equal(t, "http://permission/policy", call.url)
+		assert.Equal(t, []interfaces.PermissionPolicy{samplePermissionPolicy()}, call.reqParam)
 	})
 
 	t.Run("wraps http client error", func(t *testing.T) {
-		access := newPermissionAccess(&fakeHTTPClient{err: errors.New("network down")})
+		access, _ := newMockPermissionAccess(t, 0, nil, errors.New("network down"))
 
 		err := access.CreateResources(context.Background(), []interfaces.PermissionPolicy{samplePermissionPolicy()})
 
@@ -165,10 +156,7 @@ func TestPermissionAccessCreateResources(t *testing.T) {
 	})
 
 	t.Run("handles permission error", func(t *testing.T) {
-		access := newPermissionAccess(&fakeHTTPClient{
-			code: http.StatusBadRequest,
-			body: []byte(`{"code":"BadRequest","message":"bad policy"}`),
-		})
+		access, _ := newMockPermissionAccess(t, http.StatusBadRequest, []byte(`{"code":"BadRequest","message":"bad policy"}`), nil)
 
 		err := access.CreateResources(context.Background(), []interfaces.PermissionPolicy{samplePermissionPolicy()})
 
@@ -179,7 +167,7 @@ func TestPermissionAccessCreateResources(t *testing.T) {
 	})
 
 	t.Run("returns unmarshal error for invalid permission error body", func(t *testing.T) {
-		access := newPermissionAccess(&fakeHTTPClient{code: http.StatusBadRequest, body: []byte(`{`)})
+		access, _ := newMockPermissionAccess(t, http.StatusBadRequest, []byte(`{`), nil)
 
 		err := access.CreateResources(context.Background(), []interfaces.PermissionPolicy{samplePermissionPolicy()})
 
@@ -189,21 +177,20 @@ func TestPermissionAccessCreateResources(t *testing.T) {
 
 func TestPermissionAccessDeleteResources(t *testing.T) {
 	t.Run("deletes policies", func(t *testing.T) {
-		client := &fakeHTTPClient{code: http.StatusNoContent}
-		access := newPermissionAccess(client)
+		access, call := newMockPermissionAccess(t, http.StatusNoContent, nil, nil)
 		resources := []interfaces.PermissionResource{{Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE, ID: "resource-1"}}
 
 		err := access.DeleteResources(context.Background(), resources)
 
 		require.NoError(t, err)
-		assert.Equal(t, "http://permission/policy-delete", client.url)
-		body := client.reqParam.(map[string]any)
+		assert.Equal(t, "http://permission/policy-delete", call.url)
+		body := call.reqParam.(map[string]any)
 		assert.Equal(t, http.MethodDelete, body["method"])
 		assert.Equal(t, resources, body["resources"])
 	})
 
 	t.Run("wraps http client error", func(t *testing.T) {
-		access := newPermissionAccess(&fakeHTTPClient{err: errors.New("network down")})
+		access, _ := newMockPermissionAccess(t, 0, nil, errors.New("network down"))
 
 		err := access.DeleteResources(context.Background(), []interfaces.PermissionResource{{Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE, ID: "resource-1"}})
 
@@ -212,10 +199,7 @@ func TestPermissionAccessDeleteResources(t *testing.T) {
 	})
 
 	t.Run("handles permission error", func(t *testing.T) {
-		access := newPermissionAccess(&fakeHTTPClient{
-			code: http.StatusForbidden,
-			body: []byte(`{"code":"Forbidden","description":"delete denied"}`),
-		})
+		access, _ := newMockPermissionAccess(t, http.StatusForbidden, []byte(`{"code":"Forbidden","description":"delete denied"}`), nil)
 
 		err := access.DeleteResources(context.Background(), []interfaces.PermissionResource{{Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE, ID: "resource-1"}})
 
@@ -226,7 +210,7 @@ func TestPermissionAccessDeleteResources(t *testing.T) {
 	})
 
 	t.Run("returns unmarshal error for invalid permission error body", func(t *testing.T) {
-		access := newPermissionAccess(&fakeHTTPClient{code: http.StatusForbidden, body: []byte(`{`)})
+		access, _ := newMockPermissionAccess(t, http.StatusForbidden, []byte(`{`), nil)
 
 		err := access.DeleteResources(context.Background(), []interfaces.PermissionResource{{Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE, ID: "resource-1"}})
 
@@ -348,7 +332,10 @@ func TestShadowPermissionAccessCheckPermission(t *testing.T) {
 		client := newSafeTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 			_, _ = w.Write([]byte(`{"allowed":false}`))
 		})
-		inner := &fakePermissionAccess{checkResult: true}
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		inner := vmock.NewMockPermissionAccess(ctrl)
+		inner.EXPECT().CheckPermission(gomock.Any(), samplePermissionCheck()).Return(true, nil)
 		access := &shadowPermissionAccess{
 			PermissionAccess: inner,
 			safe:             client,
@@ -358,16 +345,19 @@ func TestShadowPermissionAccessCheckPermission(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.True(t, got)
-		assert.Equal(t, 1, inner.checkCalls)
 	})
 
 	t.Run("returns inner error even when safe allows", func(t *testing.T) {
 		client := newSafeTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 			_, _ = w.Write([]byte(`{"allowed":true}`))
 		})
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
 		innerErr := errors.New("isf down")
+		inner := vmock.NewMockPermissionAccess(ctrl)
+		inner.EXPECT().CheckPermission(gomock.Any(), samplePermissionCheck()).Return(false, innerErr)
 		access := &shadowPermissionAccess{
-			PermissionAccess: &fakePermissionAccess{checkErr: innerErr},
+			PermissionAccess: inner,
 			safe:             client,
 		}
 
@@ -491,7 +481,7 @@ func TestSafePermissionAccessDeleteResources(t *testing.T) {
 
 func TestMaybeShadow(t *testing.T) {
 	t.Run("returns inner for isf provider", func(t *testing.T) {
-		inner := newPermissionAccess(&fakeHTTPClient{code: http.StatusOK, body: []byte(`{"result":true}`)})
+		inner, _ := newMockPermissionAccessWithoutExpectation(t)
 		t.Setenv("AUTHZ_PROVIDER", "isf")
 		t.Setenv("BKN_SAFE_URL", "http://safe")
 
@@ -499,7 +489,7 @@ func TestMaybeShadow(t *testing.T) {
 	})
 
 	t.Run("returns inner for unknown provider or empty safe url", func(t *testing.T) {
-		inner := newPermissionAccess(&fakeHTTPClient{code: http.StatusOK, body: []byte(`{"result":true}`)})
+		inner, _ := newMockPermissionAccessWithoutExpectation(t)
 		t.Setenv("AUTHZ_PROVIDER", "unknown")
 		t.Setenv("BKN_SAFE_URL", "")
 
@@ -507,7 +497,7 @@ func TestMaybeShadow(t *testing.T) {
 	})
 
 	t.Run("wraps inner in shadow mode", func(t *testing.T) {
-		inner := newPermissionAccess(&fakeHTTPClient{code: http.StatusOK, body: []byte(`{"result":true}`)})
+		inner, _ := newMockPermissionAccessWithoutExpectation(t)
 		t.Setenv("AUTHZ_PROVIDER", "shadow")
 		t.Setenv("BKN_SAFE_URL", "http://safe")
 
@@ -518,7 +508,7 @@ func TestMaybeShadow(t *testing.T) {
 	})
 
 	t.Run("returns safe access in bkn safe mode", func(t *testing.T) {
-		inner := newPermissionAccess(&fakeHTTPClient{code: http.StatusOK, body: []byte(`{"result":true}`)})
+		inner, _ := newMockPermissionAccessWithoutExpectation(t)
 		t.Setenv("AUTHZ_PROVIDER", "bkn-safe")
 		t.Setenv("BKN_SAFE_URL", "http://safe")
 
@@ -528,7 +518,38 @@ func TestMaybeShadow(t *testing.T) {
 	})
 }
 
-func newPermissionAccess(client *fakeHTTPClient) *permissionAccess {
+type postNoUnmarshalCall struct {
+	url      string
+	headers  map[string]string
+	reqParam any
+}
+
+func newMockPermissionAccess(t *testing.T, code int, body []byte, err error) (*permissionAccess, *postNoUnmarshalCall) {
+	t.Helper()
+
+	access, client := newMockPermissionAccessWithoutExpectation(t)
+	call := &postNoUnmarshalCall{}
+	client.EXPECT().
+		PostNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, url string, headers map[string]string, reqParam any) (int, []byte, error) {
+			call.url = url
+			call.headers = headers
+			call.reqParam = reqParam
+			return code, body, err
+		})
+	return access, call
+}
+
+func newMockPermissionAccessWithoutExpectation(t *testing.T) (*permissionAccess, *rmock.MockHTTPClient) {
+	t.Helper()
+
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+	client := rmock.NewMockHTTPClient(ctrl)
+	return newPermissionAccess(client), client
+}
+
+func newPermissionAccess(client rest.HTTPClient) *permissionAccess {
 	return &permissionAccess{
 		appSetting:    &common.AppSetting{},
 		permissionUrl: "http://permission",
@@ -560,81 +581,6 @@ func samplePermissionResourcesFilter() interfaces.PermissionResourcesFilter {
 		Resources:  []interfaces.PermissionResource{{Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE, ID: "resource-1"}},
 		Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL, interfaces.OPERATION_TYPE_MODIFY},
 	}
-}
-
-type fakeHTTPClient struct {
-	code     int
-	body     []byte
-	err      error
-	url      string
-	headers  map[string]string
-	reqParam any
-}
-
-func (f *fakeHTTPClient) PostNoUnmarshal(_ context.Context, url string, headers map[string]string, reqParam interface{}) (int, []byte, error) {
-	f.url = url
-	f.headers = headers
-	f.reqParam = reqParam
-	return f.code, f.body, f.err
-}
-
-func (f *fakeHTTPClient) Get(context.Context, string, url.Values, map[string]string) (int, interface{}, error) {
-	return 0, nil, nil
-}
-
-func (f *fakeHTTPClient) GetNoUnmarshal(context.Context, string, url.Values, map[string]string) (int, []byte, error) {
-	return 0, nil, nil
-}
-
-func (f *fakeHTTPClient) Delete(context.Context, string, map[string]string) (int, interface{}, error) {
-	return 0, nil, nil
-}
-
-func (f *fakeHTTPClient) DeleteNoUnmarshal(context.Context, string, map[string]string) (int, []byte, error) {
-	return 0, nil, nil
-}
-
-func (f *fakeHTTPClient) Post(context.Context, string, map[string]string, interface{}) (int, interface{}, error) {
-	return 0, nil, nil
-}
-
-func (f *fakeHTTPClient) Put(context.Context, string, map[string]string, interface{}) (int, interface{}, error) {
-	return 0, nil, nil
-}
-
-func (f *fakeHTTPClient) PutNoUnmarshal(context.Context, string, map[string]string, interface{}) (int, []byte, error) {
-	return 0, nil, nil
-}
-
-func (f *fakeHTTPClient) Patch(context.Context, string, map[string]string, interface{}) (int, interface{}, error) {
-	return 0, nil, nil
-}
-
-func (f *fakeHTTPClient) PatchNoUnmarshal(context.Context, string, map[string]string, interface{}) (int, []byte, error) {
-	return 0, nil, nil
-}
-
-type fakePermissionAccess struct {
-	checkResult bool
-	checkErr    error
-	checkCalls  int
-}
-
-func (f *fakePermissionAccess) CheckPermission(context.Context, interfaces.PermissionCheck) (bool, error) {
-	f.checkCalls++
-	return f.checkResult, f.checkErr
-}
-
-func (f *fakePermissionAccess) FilterResources(context.Context, interfaces.PermissionResourcesFilter) (map[string]interfaces.PermissionResourceOps, error) {
-	return nil, nil
-}
-
-func (f *fakePermissionAccess) CreateResources(context.Context, []interfaces.PermissionPolicy) error {
-	return nil
-}
-
-func (f *fakePermissionAccess) DeleteResources(context.Context, []interfaces.PermissionResource) error {
-	return nil
 }
 
 func newSafeTestClient(t *testing.T, handler http.HandlerFunc) *safeClient {
