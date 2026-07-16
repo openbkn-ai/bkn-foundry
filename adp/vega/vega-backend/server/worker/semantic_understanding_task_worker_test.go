@@ -96,7 +96,7 @@ func TestSemanticUnderstandingTaskWorkerHandleTask(t *testing.T) {
 			Return(&interfaces.BknAgentTask{
 				TaskID: "agent-task-1",
 				Status: interfaces.BknAgentTaskStatusSucceeded,
-				Result: []byte(`{"confidence":0.82,"table":{"description":"business resource","confidence":0.82},"fields":[{"name":"id","display_name":"ID","description":"identifier","confidence":0.81}],"warnings":[]}`),
+				Result: []byte(`{"confidence":0.82,"table":{"display_name":"Business Resource","description":"business resource","confidence":0.82},"fields":[{"name":"id","display_name":"ID","description":"identifier","confidence":0.81}],"warnings":[]}`),
 			}, nil)
 		resourceService.EXPECT().
 			GetByID(gomock.Any(), "resource-1").
@@ -104,6 +104,7 @@ func TestSemanticUnderstandingTaskWorkerHandleTask(t *testing.T) {
 		resourceService.EXPECT().
 			UpdateResource(gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, got *interfaces.Resource) error {
+				assert.Equal(t, "Business Resource", got.Name)
 				assert.Equal(t, "business resource", got.Description)
 				require.Len(t, got.SchemaDefinition, 1)
 				assert.Equal(t, "ID", got.SchemaDefinition[0].DisplayName)
@@ -113,7 +114,7 @@ func TestSemanticUnderstandingTaskWorkerHandleTask(t *testing.T) {
 				return nil
 			})
 		taskService.EXPECT().
-			MarkSucceeded(gomock.Any(), "semantic-task-1", `{"confidence":0.82,"table":{"description":"business resource","confidence":0.82},"fields":[{"name":"id","display_name":"ID","description":"identifier","confidence":0.81}],"warnings":[]}`, 0.82, gomock.Any()).
+			MarkSucceeded(gomock.Any(), "semantic-task-1", `{"confidence":0.82,"table":{"display_name":"Business Resource","description":"business resource","confidence":0.82},"fields":[{"name":"id","display_name":"ID","description":"identifier","confidence":0.81}],"warnings":[]}`, 0.82, gomock.Any()).
 			DoAndReturn(func(_ context.Context, _ string, _ string, _ float64, detailJSON string) (bool, error) {
 				var detail map[string]sonic.NoCopyRawMessage
 				require.NoError(t, sonic.Unmarshal([]byte(detailJSON), &detail))
@@ -125,7 +126,7 @@ func TestSemanticUnderstandingTaskWorkerHandleTask(t *testing.T) {
 			MarkApplied(gomock.Any(), "semantic-task-1", true, gomock.Any()).
 			DoAndReturn(func(_ context.Context, _ string, applied bool, detailJSON string) (bool, error) {
 				assert.True(t, applied)
-				assert.JSONEq(t, `{"resource_updated":true,"updated_fields":["id"]}`, detailJSON)
+				assert.JSONEq(t, `{"resource_updated":true,"updated_resource":["name","description"],"updated_fields":["id"]}`, detailJSON)
 				return true, nil
 			})
 
@@ -330,12 +331,25 @@ func TestSemanticUnderstandingTaskWorkerApplyCatalogResult(t *testing.T) {
 }
 
 func TestParseBknAgentResult(t *testing.T) {
-	gotResult, gotConfidence, gotDetail, err := parseBknAgentResult(&interfaces.BknAgentTask{
-		Result: []byte(`{"confidence":0.9,"fields":[{"name":"name"}],"ignored":true}`),
+	t.Run("parses pure json", func(t *testing.T) {
+		gotResult, gotConfidence, gotDetail, err := parseBknAgentResult(&interfaces.BknAgentTask{
+			Result: []byte(`{"confidence":0.9,"fields":[{"name":"name"}],"ignored":true}`),
+		})
+
+		require.NoError(t, err)
+		assert.JSONEq(t, `{"confidence":0.9,"fields":[{"name":"name"}],"ignored":true}`, gotResult)
+		assert.Equal(t, 0.9, gotConfidence)
+		assert.JSONEq(t, `{"fields":[{"name":"name"}]}`, gotDetail)
 	})
 
-	require.NoError(t, err)
-	assert.JSONEq(t, `{"confidence":0.9,"fields":[{"name":"name"}],"ignored":true}`, gotResult)
-	assert.Equal(t, 0.9, gotConfidence)
-	assert.JSONEq(t, `{"fields":[{"name":"name"}]}`, gotDetail)
+	t.Run("extracts json object from agent text", func(t *testing.T) {
+		gotResult, gotConfidence, gotDetail, err := parseBknAgentResult(&interfaces.BknAgentTask{
+			Result: []byte(`No knowledge networks exist. {"confidence":0.8,"logic_views":[],"warnings":["keep {braces} in string"],"obsolete_logic_views":[]} extra text`),
+		})
+
+		require.NoError(t, err)
+		assert.JSONEq(t, `{"confidence":0.8,"logic_views":[],"warnings":["keep {braces} in string"],"obsolete_logic_views":[]}`, gotResult)
+		assert.Equal(t, 0.8, gotConfidence)
+		assert.JSONEq(t, `{"logic_views":[],"warnings":["keep {braces} in string"],"obsolete_logic_views":[]}`, gotDetail)
+	})
 }

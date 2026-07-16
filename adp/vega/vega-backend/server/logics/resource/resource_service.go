@@ -619,8 +619,6 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 		span.SetStatus(codes.Error, "Resource not found")
 		return rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
 	}
-	nameModified := req.Name != resource.Name
-
 	// 判断userid是否有修改权限；内部目录下的资源按 internal_resource 类型校验
 	internalCatalogs, err := rs.internalCatalogIDSet(ctx)
 	if err != nil {
@@ -719,18 +717,6 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 			span.SetStatus(codes.Error, "Replace resource extensions failed")
 			return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_UpdateFailed).
 				WithErrorDetails(err.Error())
-		}
-	}
-
-	// 请求更新资源名称的接口，更新资源的名称
-	if nameModified {
-		err = rs.ps.UpdateResource(ctx, interfaces.PermissionResource{
-			ID:   resource.ID,
-			Type: authType,
-			Name: resource.Name,
-		})
-		if err != nil {
-			return err
 		}
 	}
 

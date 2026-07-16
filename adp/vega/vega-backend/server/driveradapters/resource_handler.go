@@ -22,7 +22,6 @@ import (
 	"github.com/openbkn-ai/bkn-comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-comm-go/rest"
-	"go.opentelemetry.io/otel/codes"
 
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
@@ -199,22 +198,6 @@ func (r *restHandler) createResource(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 
-	// Check if name exists
-	exists, err := r.rs.CheckExistByName(ctx, req.CatalogID, req.Name)
-	if err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			verrors.VegaBackend_Resource_InternalError).WithErrorDetails(err.Error())
-		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		rest.ReplyError(c, httpErr)
-		return
-	}
-	if exists {
-		httpErr := rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Resource_NameExists)
-		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		rest.ReplyError(c, httpErr)
-		return
-	}
-
 	// Check if id exists if provided
 	if req.ID != "" {
 		exists, err := r.rs.CheckExistByID(ctx, req.ID)
@@ -378,24 +361,6 @@ func (r *restHandler) updateResource(c *gin.Context, visitor hydra.Visitor) {
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
-	}
-
-	// Apply updates
-	if req.Name != resource.Name {
-		exists, err := r.rs.CheckExistByName(ctx, req.CatalogID, req.Name)
-		if err != nil {
-			httpErr := err.(*rest.HTTPError)
-			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-			rest.ReplyError(c, httpErr)
-			return
-		}
-		if exists {
-			span.SetStatus(codes.Error, "Resource name exists")
-			httpErr := rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Resource_NameExists)
-			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-			rest.ReplyError(c, httpErr)
-			return
-		}
 	}
 
 	if err := r.rs.Update(ctx, resource, &req); err != nil {

@@ -113,7 +113,6 @@ func Test_ResourceRestHandler_CreateResource(t *testing.T) {
 	t.Run("creates dataset resource", func(t *testing.T) {
 		engine, cs, rs := setupResourceHandlerTest(t)
 		cs.EXPECT().CheckExistByID(gomock.Any(), "catalog-1").Return(true, nil)
-		rs.EXPECT().CheckExistByName(gomock.Any(), "catalog-1", "dataset").Return(false, nil)
 		rs.EXPECT().CheckExistByID(gomock.Any(), "res-1").Return(false, nil)
 		rs.EXPECT().Create(gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, req *interfaces.ResourceRequest) (*interfaces.Resource, error) {
@@ -145,10 +144,12 @@ func Test_ResourceRestHandler_CreateResource(t *testing.T) {
 		assert.Contains(t, w.Body.String(), "VegaBackend.Resource.CatalogNotFound")
 	})
 
-	t.Run("rejects duplicate name", func(t *testing.T) {
+	t.Run("allows duplicate name", func(t *testing.T) {
 		engine, cs, rs := setupResourceHandlerTest(t)
 		cs.EXPECT().CheckExistByID(gomock.Any(), "catalog-1").Return(true, nil)
-		rs.EXPECT().CheckExistByName(gomock.Any(), "catalog-1", "dataset").Return(true, nil)
+		rs.EXPECT().CheckExistByID(gomock.Any(), "res-1").Return(false, nil)
+		rs.EXPECT().Create(gomock.Any(), gomock.Any()).
+			Return(&interfaces.Resource{ID: "res-1", Name: "dataset"}, nil)
 
 		req := httptest.NewRequest(http.MethodPost, url, strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
@@ -156,8 +157,8 @@ func Test_ResourceRestHandler_CreateResource(t *testing.T) {
 
 		engine.ServeHTTP(w, req)
 
-		require.Equal(t, http.StatusConflict, w.Result().StatusCode)
-		assert.Contains(t, w.Body.String(), "VegaBackend.Resource.NameExists")
+		require.Equal(t, http.StatusCreated, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), `"id":"res-1"`)
 	})
 }
 
@@ -211,7 +212,6 @@ func Test_ResourceRestHandler_UpdateResource(t *testing.T) {
 		engine, _, rs := setupResourceHandlerTest(t)
 		current := &interfaces.Resource{ID: "res-1", CatalogID: "catalog-1", Name: "dataset", Category: interfaces.ResourceCategoryDataset}
 		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(current, nil)
-		rs.EXPECT().CheckExistByName(gomock.Any(), "catalog-1", "dataset-new").Return(false, nil)
 		rs.EXPECT().Update(gomock.Any(), current, gomock.Any()).
 			DoAndReturn(func(_ context.Context, _ *interfaces.Resource, req *interfaces.ResourceRequest) error {
 				assert.Equal(t, "dataset-new", req.Name)
@@ -227,11 +227,11 @@ func Test_ResourceRestHandler_UpdateResource(t *testing.T) {
 		require.Equal(t, http.StatusNoContent, w.Result().StatusCode)
 	})
 
-	t.Run("rejects duplicate renamed resource", func(t *testing.T) {
+	t.Run("allows duplicate renamed resource", func(t *testing.T) {
 		engine, _, rs := setupResourceHandlerTest(t)
 		current := &interfaces.Resource{ID: "res-1", CatalogID: "catalog-1", Name: "dataset", Category: interfaces.ResourceCategoryDataset}
 		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(current, nil)
-		rs.EXPECT().CheckExistByName(gomock.Any(), "catalog-1", "dataset-new").Return(true, nil)
+		rs.EXPECT().Update(gomock.Any(), current, gomock.Any()).Return(nil)
 
 		req := httptest.NewRequest(http.MethodPut, url, strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
@@ -239,8 +239,7 @@ func Test_ResourceRestHandler_UpdateResource(t *testing.T) {
 
 		engine.ServeHTTP(w, req)
 
-		require.Equal(t, http.StatusConflict, w.Result().StatusCode)
-		assert.Contains(t, w.Body.String(), "VegaBackend.Resource.NameExists")
+		require.Equal(t, http.StatusNoContent, w.Result().StatusCode)
 	})
 }
 

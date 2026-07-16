@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"time"
+	"unicode/utf8"
 
 	"github.com/bytedance/sonic"
 	"github.com/hibiken/asynq"
@@ -140,6 +141,10 @@ func parseBknAgentResult(agentTask *interfaces.BknAgentTask) (string, float64, s
 	if len(result) == 0 {
 		return "", 0, "", fmt.Errorf("agent task result is empty")
 	}
+	result, err := extractBknAgentResultJSON(result)
+	if err != nil {
+		return "", 0, "", err
+	}
 
 	resultObject := map[string]sonic.NoCopyRawMessage{}
 	if err := sonic.Unmarshal(result, &resultObject); err != nil {
@@ -178,6 +183,53 @@ func parseBknAgentResult(agentTask *interfaces.BknAgentTask) (string, float64, s
 	}
 
 	return string(result), confidence, string(detailJSON), nil
+}
+
+func extractBknAgentResultJSON(result []byte) ([]byte, error) {
+	start := -1
+	for i, b := range result {
+		if b == '{' {
+			start = i
+			break
+		}
+	}
+	if start < 0 {
+		return nil, fmt.Errorf("agent task result missing json object")
+	}
+
+	depth := 0
+	inString := false
+	escaped := false
+	for i := start; i < len(result); i++ {
+		b := result[i]
+		if inString {
+			if escaped {
+				escaped = false
+				continue
+			}
+			switch b {
+			case '\\':
+				escaped = true
+			case '"':
+				inString = false
+			}
+			continue
+		}
+
+		switch b {
+		case '"':
+			inString = true
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return result[start : i+1], nil
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("agent task result json object is incomplete")
 }
 
 func (sutw *SemanticUnderstandingTaskWorker) applyResult(ctx context.Context, task *interfaces.SemanticUnderstandingTask, resultJSON string, confidence float64) (*interfaces.SemanticUnderstandingApplyResult, error) {
@@ -238,6 +290,7 @@ type resourceSemanticUnderstandingFieldResult struct {
 
 type resourceSemanticUnderstandingApplyDetail struct {
 	ResourceUpdated bool     `json:"resource_updated"`
+	UpdatedResource []string `json:"updated_resource,omitempty"`
 	UpdatedFields   []string `json:"updated_fields,omitempty"`
 }
 
@@ -252,6 +305,9 @@ func (sutw *SemanticUnderstandingTaskWorker) applyResourceResult(ctx context.Con
 	}
 	if err := validateConfidence(result.Table.Confidence, "table.confidence"); err != nil {
 		return nil, err
+	}
+	if utf8.RuneCountInString(result.Table.DisplayName) > interfaces.NAME_MAX_LENGTH {
+		return nil, fmt.Errorf("table display_name exceeds max length")
 	}
 
 	resourceInfo, err := sutw.rs.GetByID(ctx, task.ResourceID)
@@ -306,7 +362,14 @@ func (sutw *SemanticUnderstandingTaskWorker) applyResourceResult(ctx context.Con
 		}
 	}
 
-	resourceUpdated := applyStringByMode(task.ApplyMode, &resourceInfo.Description, result.Table.Description)
+	updatedResource := make([]string, 0, 2)
+	if applyStringByMode(task.ApplyMode, &resourceInfo.Name, result.Table.DisplayName) {
+		updatedResource = append(updatedResource, "name")
+	}
+	if applyStringByMode(task.ApplyMode, &resourceInfo.Description, result.Table.Description) {
+		updatedResource = append(updatedResource, "description")
+	}
+	resourceUpdated := len(updatedResource) > 0
 	if !resourceUpdated && len(updatedFields) == 0 {
 		return skippedApplyResult(interfaces.SemanticUnderstandingSkippedApplyDetail{
 			Reason:    "no_resource_changes",
@@ -323,6 +386,7 @@ func (sutw *SemanticUnderstandingTaskWorker) applyResourceResult(ctx context.Con
 
 	detailBytes, err := sonic.Marshal(resourceSemanticUnderstandingApplyDetail{
 		ResourceUpdated: resourceUpdated,
+		UpdatedResource: updatedResource,
 		UpdatedFields:   updatedFields,
 	})
 	if err != nil {
