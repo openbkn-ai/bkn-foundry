@@ -7,7 +7,6 @@ package worker
 
 import (
 	"context"
-	"encoding/json"
 	"testing"
 
 	"github.com/bytedance/sonic"
@@ -35,17 +34,30 @@ func TestSemanticUnderstandingTaskWorkerHandleTask(t *testing.T) {
 
 		taskService := vmock.NewMockSemanticUnderstandingTaskService(ctrl)
 		agentService := vmock.NewMockBknAgentService(ctrl)
+		resourceService := vmock.NewMockResourceService(ctrl)
 		worker := &SemanticUnderstandingTaskWorker{
 			suts: taskService,
 			bas:  agentService,
+			rs:   resourceService,
 		}
 
 		semanticTask := &interfaces.SemanticUnderstandingTask{
-			ID:      "semantic-task-1",
-			Status:  interfaces.SemanticUnderstandingTaskStatusPending,
-			AgentID: interfaces.SemanticUnderstandingResourceAgentID,
-			Input:   `{"resource":{"id":"resource-1"}}`,
-			Creator: interfaces.AccountInfo{ID: "account-1"},
+			ID:                  "semantic-task-1",
+			Scope:               interfaces.SemanticUnderstandingTaskScopeResource,
+			ResourceID:          "resource-1",
+			Status:              interfaces.SemanticUnderstandingTaskStatusPending,
+			AgentID:             interfaces.SemanticUnderstandingResourceAgentID,
+			Input:               `{"resource":{"id":"resource-1"}}`,
+			ApplyMode:           interfaces.SemanticUnderstandingApplyModeFillEmpty,
+			ConfidenceThreshold: 0.75,
+			Creator:             interfaces.AccountInfo{ID: "account-1"},
+		}
+		resourceInfo := &interfaces.Resource{
+			ID:          "resource-1",
+			Description: "",
+			SchemaDefinition: []*interfaces.Property{
+				{Name: "id", Type: interfaces.DataType_String},
+			},
 		}
 
 		taskService.EXPECT().
@@ -62,15 +74,36 @@ func TestSemanticUnderstandingTaskWorkerHandleTask(t *testing.T) {
 			Return(&interfaces.BknAgentTask{
 				TaskID: "agent-task-1",
 				Status: interfaces.BknAgentTaskStatusSucceeded,
-				Result: []byte(`{"confidence":0.82,"fields":[{"name":"id"}],"warnings":[]}`),
+				Result: []byte(`{"confidence":0.82,"table":{"description":"business resource","confidence":0.82},"fields":[{"name":"id","display_name":"ID","description":"identifier","confidence":0.81}],"warnings":[]}`),
 			}, nil)
+		resourceService.EXPECT().
+			GetByID(gomock.Any(), "resource-1").
+			Return(resourceInfo, nil)
+		resourceService.EXPECT().
+			UpdateResource(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, got *interfaces.Resource) error {
+				assert.Equal(t, "business resource", got.Description)
+				require.Len(t, got.SchemaDefinition, 1)
+				assert.Equal(t, "ID", got.SchemaDefinition[0].DisplayName)
+				assert.Equal(t, "identifier", got.SchemaDefinition[0].Description)
+				assert.Equal(t, "account-1", got.Updater.ID)
+				assert.NotZero(t, got.UpdateTime)
+				return nil
+			})
 		taskService.EXPECT().
-			MarkSucceeded(gomock.Any(), "semantic-task-1", `{"confidence":0.82,"fields":[{"name":"id"}],"warnings":[]}`, 0.82, gomock.Any()).
+			MarkSucceeded(gomock.Any(), "semantic-task-1", `{"confidence":0.82,"table":{"description":"business resource","confidence":0.82},"fields":[{"name":"id","display_name":"ID","description":"identifier","confidence":0.81}],"warnings":[]}`, 0.82, gomock.Any()).
 			DoAndReturn(func(_ context.Context, _ string, _ string, _ float64, detailJSON string) (bool, error) {
-				var detail map[string]json.RawMessage
-				require.NoError(t, json.Unmarshal([]byte(detailJSON), &detail))
+				var detail map[string]sonic.NoCopyRawMessage
+				require.NoError(t, sonic.Unmarshal([]byte(detailJSON), &detail))
 				assert.Contains(t, detail, "fields")
 				assert.Contains(t, detail, "warnings")
+				return true, nil
+			})
+		taskService.EXPECT().
+			MarkApplied(gomock.Any(), "semantic-task-1", true, gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ string, applied bool, detailJSON string) (bool, error) {
+				assert.True(t, applied)
+				assert.JSONEq(t, `{"resource_updated":true,"updated_fields":["id"]}`, detailJSON)
 				return true, nil
 			})
 
@@ -115,6 +148,163 @@ func TestSemanticUnderstandingTaskWorkerHandleTask(t *testing.T) {
 
 		require.NoError(t, err)
 	})
+
+	t.Run("marks unapplied detail when confidence is below threshold", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+
+		taskService := vmock.NewMockSemanticUnderstandingTaskService(ctrl)
+		agentService := vmock.NewMockBknAgentService(ctrl)
+		worker := &SemanticUnderstandingTaskWorker{
+			suts: taskService,
+			bas:  agentService,
+		}
+		semanticTask := &interfaces.SemanticUnderstandingTask{
+			ID:                  "semantic-task-1",
+			Scope:               interfaces.SemanticUnderstandingTaskScopeResource,
+			ResourceID:          "resource-1",
+			Status:              interfaces.SemanticUnderstandingTaskStatusRunning,
+			AgentTaskID:         "agent-task-1",
+			ApplyMode:           interfaces.SemanticUnderstandingApplyModeForce,
+			ConfidenceThreshold: 0.9,
+		}
+
+		taskService.EXPECT().
+			GetByID(gomock.Any(), "semantic-task-1").
+			Return(semanticTask, nil)
+		agentService.EXPECT().
+			WaitResult(gomock.Any(), "agent-task-1").
+			Return(&interfaces.BknAgentTask{
+				TaskID: "agent-task-1",
+				Status: interfaces.BknAgentTaskStatusSucceeded,
+				Result: []byte(`{"confidence":0.8,"table":{"description":"business resource"},"fields":[]}`),
+			}, nil)
+		taskService.EXPECT().
+			MarkSucceeded(gomock.Any(), "semantic-task-1", `{"confidence":0.8,"table":{"description":"business resource"},"fields":[]}`, 0.8, gomock.Any()).
+			Return(true, nil)
+		taskService.EXPECT().
+			MarkApplied(gomock.Any(), "semantic-task-1", false, gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ string, applied bool, detailJSON string) (bool, error) {
+				assert.False(t, applied)
+				assert.JSONEq(t, `{"reason":"confidence_below_threshold","confidence":0.8,"confidence_threshold":0.9,"scope":"resource"}`, detailJSON)
+				return true, nil
+			})
+
+		err := worker.HandleTask(context.Background(), semanticUnderstandingWorkerTask(t, "semantic-task-1"))
+
+		require.NoError(t, err)
+	})
+}
+
+func TestSemanticUnderstandingTaskWorkerApplyResourceResult(t *testing.T) {
+	t.Run("skips apply when confidence is below threshold", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+
+		resourceService := vmock.NewMockResourceService(ctrl)
+		worker := &SemanticUnderstandingTaskWorker{rs: resourceService}
+		task := &interfaces.SemanticUnderstandingTask{
+			Scope:               interfaces.SemanticUnderstandingTaskScopeResource,
+			ResourceID:          "resource-1",
+			ApplyMode:           interfaces.SemanticUnderstandingApplyModeForce,
+			ConfidenceThreshold: 0.9,
+		}
+
+		got, err := worker.applyResult(context.Background(), task, `{"confidence":0.8}`, 0.8)
+
+		require.NoError(t, err)
+		assert.False(t, got.Applied)
+		assert.JSONEq(t, `{"reason":"confidence_below_threshold","confidence":0.8,"confidence_threshold":0.9,"scope":"resource"}`, got.DetailJSON)
+	})
+
+	t.Run("rejects unknown fields", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+
+		resourceService := vmock.NewMockResourceService(ctrl)
+		worker := &SemanticUnderstandingTaskWorker{rs: resourceService}
+		task := &interfaces.SemanticUnderstandingTask{
+			Scope:               interfaces.SemanticUnderstandingTaskScopeResource,
+			ResourceID:          "resource-1",
+			ApplyMode:           interfaces.SemanticUnderstandingApplyModeForce,
+			ConfidenceThreshold: 0.75,
+		}
+		resourceService.EXPECT().
+			GetByID(gomock.Any(), "resource-1").
+			Return(&interfaces.Resource{
+				ID: "resource-1",
+				SchemaDefinition: []*interfaces.Property{
+					{Name: "id", Type: interfaces.DataType_String},
+				},
+			}, nil)
+
+		got, err := worker.applyResult(context.Background(), task, `{"confidence":0.8,"fields":[{"name":"missing","display_name":"Missing"}]}`, 0.8)
+
+		require.Error(t, err)
+		assert.Nil(t, got)
+		assert.ErrorContains(t, err, "does not exist")
+	})
+
+	t.Run("skips apply in dry run", func(t *testing.T) {
+		worker := &SemanticUnderstandingTaskWorker{}
+		task := &interfaces.SemanticUnderstandingTask{
+			Scope:               interfaces.SemanticUnderstandingTaskScopeResource,
+			ApplyMode:           interfaces.SemanticUnderstandingApplyModeDryRun,
+			ConfidenceThreshold: 0.75,
+		}
+
+		got, err := worker.applyResult(context.Background(), task, `{"confidence":0.9}`, 0.9)
+
+		require.NoError(t, err)
+		assert.False(t, got.Applied)
+		assert.JSONEq(t, `{"reason":"dry_run","apply_mode":"dry_run","scope":"resource"}`, got.DetailJSON)
+	})
+}
+
+func TestSemanticUnderstandingTaskWorkerApplyCatalogResult(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+
+	resourceService := vmock.NewMockResourceService(ctrl)
+	worker := &SemanticUnderstandingTaskWorker{rs: resourceService}
+	task := &interfaces.SemanticUnderstandingTask{
+		Scope:               interfaces.SemanticUnderstandingTaskScopeCatalog,
+		CatalogID:           "catalog-1",
+		ApplyMode:           interfaces.SemanticUnderstandingApplyModeForce,
+		ConfidenceThreshold: 0.75,
+	}
+	logicDefinition := []*interfaces.LogicDefinitionNode{
+		{ID: "source", Type: interfaces.LogicDefinitionNodeType_Resource},
+		{ID: "output", Type: interfaces.LogicDefinitionNodeType_Output, Inputs: []string{"source"}},
+	}
+
+	resourceService.EXPECT().
+		GetByCatalogID(gomock.Any(), "catalog-1").
+		Return([]*interfaces.Resource{
+			{ID: "resource-1", CatalogID: "catalog-1", Name: "orders", Category: interfaces.ResourceCategoryTable},
+			{ID: "view-2", CatalogID: "catalog-1", Name: "old_view", Category: interfaces.ResourceCategoryLogicView},
+		}, nil)
+	resourceService.EXPECT().
+		Create(gomock.Any(), gomock.AssignableToTypeOf(&interfaces.ResourceRequest{})).
+		DoAndReturn(func(_ context.Context, req *interfaces.ResourceRequest) (*interfaces.Resource, error) {
+			assert.Equal(t, "catalog-1", req.CatalogID)
+			assert.Equal(t, "customer_order_summary", req.Name)
+			assert.Equal(t, "summary view", req.Description)
+			assert.Equal(t, interfaces.ResourceCategoryLogicView, req.Category)
+			assert.Equal(t, logicDefinition, req.LogicDefinition)
+			return &interfaces.Resource{ID: "view-1"}, nil
+		})
+	resourceService.EXPECT().
+		UpdateStatus(gomock.Any(), "view-2", interfaces.ResourceStatusStale, "obsolete").
+		Return(nil)
+
+	resultJSON := `{"confidence":0.84,"logic_views":[{"action":"create","name":"customer_order_summary","description":"summary view","source_resources":["resource-1"],"logic_definition":[{"id":"source","type":"resource"},{"id":"output","type":"output","inputs":["source"]}],"confidence":0.82}],"obsolete_logic_views":[{"target_resource_id":"view-2","reason":"obsolete","confidence":0.91}]}`
+	got, err := worker.applyResult(context.Background(), task, resultJSON, 0.84)
+
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.True(t, got.Applied)
+	assert.JSONEq(t, `{"created_resource_ids":["view-1"],"staled_resource_ids":["view-2"]}`, got.DetailJSON)
 }
 
 func TestParseBknAgentResult(t *testing.T) {

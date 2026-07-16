@@ -322,11 +322,11 @@ func (suts *semanticUnderstandingTaskService) MarkFailed(ctx context.Context, id
 	return suts.suta.MarkFailed(ctx, id, failureDetail)
 }
 
-func (suts *semanticUnderstandingTaskService) MarkApplied(ctx context.Context, id string, applied bool, catalogApplyDetailJSON string) (bool, error) {
+func (suts *semanticUnderstandingTaskService) MarkApplied(ctx context.Context, id string, applied bool, applyDetailJSON string) (bool, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "SemanticUnderstandingTaskService.MarkApplied")
 	defer span.End()
 
-	return suts.suta.MarkApplied(ctx, id, applied, time.Now().UnixMilli(), catalogApplyDetailJSON)
+	return suts.suta.MarkApplied(ctx, id, applied, time.Now().UnixMilli(), applyDetailJSON)
 }
 
 func normalizeResourceSemanticUnderstandingRequest(resource *interfaces.Resource, req *interfaces.CreateSemanticUnderstandingTaskRequest) (*interfaces.SemanticUnderstandingTask, error) {

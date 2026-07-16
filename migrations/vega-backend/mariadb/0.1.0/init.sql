@@ -433,7 +433,7 @@ CREATE TABLE IF NOT EXISTS t_semantic_understanding_task (
     f_confidence_threshold       DECIMAL(5,4) NOT NULL DEFAULT 0.7500 COMMENT '本次任务要求的最低置信分',
     f_confidence                 DECIMAL(5,4) NOT NULL DEFAULT 0.0000 COMMENT '任务级语义置信度',
     f_confidence_detail_json     MEDIUMTEXT NOT NULL COMMENT '字段、逻辑视图、stale 建议等细粒度置信分(JSON)',
-    f_catalog_apply_detail_json  MEDIUMTEXT NOT NULL COMMENT 'catalog 级应用明细(JSON)，resource 级为空',
+    f_apply_detail_json          MEDIUMTEXT NOT NULL COMMENT '应用明细(JSON)',
     f_applied                    TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'agent 结果是否已应用: 0-否, 1-是',
     f_applied_time               BIGINT(20) NOT NULL DEFAULT 0 COMMENT '应用时间',
     f_failure_detail             TEXT NOT NULL COMMENT '失败详情',

@@ -58,7 +58,7 @@ func semanticUnderstandingTaskColumns() []string {
 		"f_confidence_threshold",
 		"f_confidence",
 		"f_confidence_detail_json",
-		"f_catalog_apply_detail_json",
+		"f_apply_detail_json",
 		"f_applied",
 		"f_applied_time",
 		"f_failure_detail",
@@ -86,7 +86,7 @@ func scanSemanticUnderstandingTask(scanner semanticUnderstandingTaskScanner) (*i
 		&task.ConfidenceThreshold,
 		&task.Confidence,
 		&task.ConfidenceDetailJSON,
-		&task.CatalogApplyDetailJSON,
+		&task.ApplyDetailJSON,
 		&task.Applied,
 		&task.AppliedTime,
 		&task.FailureDetail,
@@ -132,7 +132,7 @@ func (a *semanticUnderstandingTaskAccess) Create(ctx context.Context, task *inte
 			task.ConfidenceThreshold,
 			task.Confidence,
 			task.ConfidenceDetailJSON,
-			task.CatalogApplyDetailJSON,
+			task.ApplyDetailJSON,
 			task.Applied,
 			task.AppliedTime,
 			task.FailureDetail,
@@ -415,13 +415,13 @@ func (a *semanticUnderstandingTaskAccess) MarkFailed(ctx context.Context, id str
 	}, interfaces.SemanticUnderstandingTaskStatusPending, interfaces.SemanticUnderstandingTaskStatusRunning)
 }
 
-func (a *semanticUnderstandingTaskAccess) MarkApplied(ctx context.Context, id string, applied bool, appliedTime int64, catalogApplyDetailJSON string) (bool, error) {
+func (a *semanticUnderstandingTaskAccess) MarkApplied(ctx context.Context, id string, applied bool, appliedTime int64, applyDetailJSON string) (bool, error) {
 	updateColumns := map[string]any{
 		"f_applied":      applied,
 		"f_applied_time": appliedTime,
 	}
-	if catalogApplyDetailJSON != "" {
-		updateColumns["f_catalog_apply_detail_json"] = catalogApplyDetailJSON
+	if applyDetailJSON != "" {
+		updateColumns["f_apply_detail_json"] = applyDetailJSON
 	}
 	return a.update(ctx, id, updateColumns, interfaces.SemanticUnderstandingTaskStatusSucceeded)
 }

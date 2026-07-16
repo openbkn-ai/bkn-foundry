@@ -23,5 +23,5 @@ type SemanticUnderstandingTaskAccess interface {
 	MarkRunning(ctx context.Context, id string, agentTaskID string) (bool, error)
 	MarkSucceeded(ctx context.Context, id string, resultJSON string, confidence float64, confidenceDetailJSON string) (bool, error)
 	MarkFailed(ctx context.Context, id string, failureDetail string) (bool, error)
-	MarkApplied(ctx context.Context, id string, applied bool, appliedTime int64, catalogApplyDetailJSON string) (bool, error)
+	MarkApplied(ctx context.Context, id string, applied bool, appliedTime int64, applyDetailJSON string) (bool, error)
 }
