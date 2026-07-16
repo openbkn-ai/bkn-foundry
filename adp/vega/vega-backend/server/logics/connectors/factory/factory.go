@@ -18,7 +18,6 @@ import (
 	"vega-backend/common"
 	"vega-backend/interfaces"
 	"vega-backend/logics"
-	"vega-backend/logics/connectors"
 	"vega-backend/logics/connectors/remote"
 )
 
@@ -37,7 +36,7 @@ type ConnectorFactory struct {
 	appSetting *common.AppSetting
 	cta        interfaces.ConnectorTypeAccess // 数据库访问层
 
-	connectors map[string]connectors.Connector // 内置 connector 构建器
+	connectors map[string]interfaces.Connector // 内置 connector 构建器
 }
 
 // GetFactory returns the singleton connector factory instance.
@@ -51,7 +50,7 @@ func Init(appSetting *common.AppSetting) *ConnectorFactory {
 		factory = &ConnectorFactory{
 			appSetting: appSetting,
 			cta:        logics.CTA,
-			connectors: make(map[string]connectors.Connector, 0),
+			connectors: make(map[string]interfaces.Connector, 0),
 		}
 
 		factory.InitLocalConnectors()
@@ -146,7 +145,7 @@ func (cf *ConnectorFactory) SetConnectorEnabled(ctx context.Context, tp string, 
 }
 
 // CreateConnector 根据类型名称创建 connector 实例
-func (cf *ConnectorFactory) CreateConnectorInstance(ctx context.Context, tp string, cfg interfaces.ConnectorConfig) (connectors.Connector, error) {
+func (cf *ConnectorFactory) CreateConnectorInstance(ctx context.Context, tp string, cfg interfaces.ConnectorConfig) (interfaces.Connector, error) {
 	cf.mu.Lock()
 	defer cf.mu.Unlock()
 

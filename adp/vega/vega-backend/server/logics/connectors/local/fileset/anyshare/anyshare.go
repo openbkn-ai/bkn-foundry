@@ -21,7 +21,6 @@ import (
 	"github.com/mitchellh/mapstructure"
 
 	"vega-backend/interfaces"
-	"vega-backend/logics/connectors"
 )
 
 const (
@@ -128,7 +127,7 @@ type AnyShareConnector struct {
 }
 
 // NewAnyShareConnector returns the builder for the anyshare connector type.
-func NewAnyShareConnector() connectors.FilesetConnector {
+func NewAnyShareConnector() interfaces.FilesetConnector {
 	return &AnyShareConnector{}
 }
 
@@ -183,7 +182,7 @@ func (c *AnyShareConnector) GetFieldConfig() map[string]interfaces.ConnectorFiel
 }
 
 // New creates a configured connector instance.
-func (c *AnyShareConnector) New(cfg interfaces.ConnectorConfig) (connectors.Connector, error) {
+func (c *AnyShareConnector) New(cfg interfaces.ConnectorConfig) (interfaces.Connector, error) {
 	var ac anyshareConfig
 	dec, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
 		Result:           &ac,

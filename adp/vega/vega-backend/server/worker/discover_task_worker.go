@@ -18,7 +18,6 @@ import (
 	"vega-backend/common"
 	"vega-backend/interfaces"
 	"vega-backend/logics/catalog"
-	"vega-backend/logics/connectors"
 	"vega-backend/logics/connectors/factory"
 	"vega-backend/logics/discover_task"
 	"vega-backend/logics/resource"
@@ -154,7 +153,7 @@ func (dtw *DiscoverTaskWorker) discoverCatalog(ctx context.Context, catalog *int
 }
 
 // createAndConnectConnector creates and connects a connector for the catalog.
-func (dtw *DiscoverTaskWorker) createAndConnectConnector(ctx context.Context, catalog *interfaces.Catalog) (connectors.Connector, error) {
+func (dtw *DiscoverTaskWorker) createAndConnectConnector(ctx context.Context, catalog *interfaces.Catalog) (interfaces.Connector, error) {
 
 	// 创建 connector
 	connector, err := factory.GetFactory().CreateConnectorInstance(ctx, catalog.ConnectorType, catalog.ConnectorCfg)

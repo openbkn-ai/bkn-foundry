@@ -14,7 +14,6 @@ import (
 
 	"vega-backend/common"
 	"vega-backend/interfaces"
-	"vega-backend/logics/connectors"
 	opensearchConnector "vega-backend/logics/connectors/local/index/opensearch"
 	"vega-backend/logics/filter_condition"
 )
@@ -25,7 +24,7 @@ var (
 )
 
 type localIndexManager struct {
-	c connectors.IndexConnector
+	c interfaces.IndexConnector
 }
 
 // NewLocalIndexManager creates a LocalIndexManager.
@@ -50,7 +49,7 @@ func NewLocalIndexManager(appSetting *common.AppSetting) interfaces.LocalIndexMa
 		}
 
 		managerInst = &localIndexManager{
-			c: connector.(connectors.IndexConnector),
+			c: connector.(interfaces.IndexConnector),
 		}
 	})
 	return managerInst

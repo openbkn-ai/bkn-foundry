@@ -12,7 +12,6 @@ import (
 	"github.com/openbkn-ai/bkn-comm-go/logger"
 
 	"vega-backend/interfaces"
-	"vega-backend/logics/connectors"
 )
 
 // tableDiscoverItem represents a table discover item.
@@ -25,9 +24,9 @@ type tableDiscoverItem struct {
 // discoverTableResources discovers table resources from a table connector.
 // 分步执行：1. 获取表名列表 2. 创建/更新 Resource 3. 逐个补齐详细元数据
 func (dtw *DiscoverTaskWorker) discoverTableResources(ctx context.Context, catalog *interfaces.Catalog,
-	connector connectors.Connector, task *interfaces.DiscoverTask) (*interfaces.DiscoverResult, error) {
+	connector interfaces.Connector, task *interfaces.DiscoverTask) (*interfaces.DiscoverResult, error) {
 
-	tableConnector, ok := connector.(connectors.TableConnector)
+	tableConnector, ok := connector.(interfaces.TableConnector)
 	if !ok {
 		return nil, fmt.Errorf("connector does not support table discover")
 	}
@@ -70,7 +69,7 @@ func (dtw *DiscoverTaskWorker) discoverTableResources(ctx context.Context, catal
 //
 // 返回值:
 //   - error: 如果在处理过程中发生错误，则返回错误信息
-func (dtw *DiscoverTaskWorker) enrichTableMetadata(ctx context.Context, tableConnector connectors.TableConnector,
+func (dtw *DiscoverTaskWorker) enrichTableMetadata(ctx context.Context, tableConnector interfaces.TableConnector,
 	items []tableDiscoverItem, result *interfaces.DiscoverResult) error {
 
 	// 遍历所有表发现项目

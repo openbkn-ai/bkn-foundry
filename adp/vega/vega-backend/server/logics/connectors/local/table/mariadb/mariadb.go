@@ -17,7 +17,6 @@ import (
 	"github.com/mitchellh/mapstructure"
 
 	"vega-backend/interfaces"
-	"vega-backend/logics/connectors"
 )
 
 type mariadbConfig struct {
@@ -66,7 +65,7 @@ type MariaDBConnector struct {
 }
 
 // NewMariaDBConnector 创建 MariaDB connector 构建器
-func NewMariaDBConnector() connectors.TableConnector {
+func NewMariaDBConnector() interfaces.TableConnector {
 	return &MariaDBConnector{}
 }
 
@@ -119,7 +118,7 @@ func (c *MariaDBConnector) GetFieldConfig() map[string]interfaces.ConnectorField
 
 // New creates a new MariaDB connector.
 // Databases 为可选字段，不指定时连接到实例级别。
-func (c *MariaDBConnector) New(cfg interfaces.ConnectorConfig) (connectors.Connector, error) {
+func (c *MariaDBConnector) New(cfg interfaces.ConnectorConfig) (interfaces.Connector, error) {
 	var mCfg mariadbConfig
 	if err := mapstructure.Decode(cfg, &mCfg); err != nil {
 		return nil, fmt.Errorf("failed to decode mariadb config: %w", err)

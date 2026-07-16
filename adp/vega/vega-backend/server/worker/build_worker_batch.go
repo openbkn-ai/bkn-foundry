@@ -20,7 +20,6 @@ import (
 	"vega-backend/interfaces"
 	"vega-backend/logics"
 	"vega-backend/logics/catalog"
-	"vega-backend/logics/connectors"
 	"vega-backend/logics/connectors/factory"
 	"vega-backend/logics/filter_condition"
 	"vega-backend/logics/local_index"
@@ -247,7 +246,7 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, resource *interfa
 		return fmt.Errorf("connect failed: %w", err)
 	}
 	defer func() { _ = connector.Close(ctx) }()
-	tableConnector, ok := connector.(connectors.TableConnector)
+	tableConnector, ok := connector.(interfaces.TableConnector)
 	if !ok {
 		return fmt.Errorf("connector is not a table connector")
 	}

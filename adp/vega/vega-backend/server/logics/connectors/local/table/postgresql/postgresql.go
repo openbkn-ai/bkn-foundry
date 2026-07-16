@@ -18,7 +18,6 @@ import (
 	"github.com/mitchellh/mapstructure"
 
 	"vega-backend/interfaces"
-	"vega-backend/logics/connectors"
 )
 
 type postgresqlConfig struct {
@@ -61,7 +60,7 @@ type PostgresqlConnector struct {
 }
 
 // NewPostgresqlConnector 创建 PostgreSQL connector 构建器
-func NewPostgresqlConnector() connectors.TableConnector {
+func NewPostgresqlConnector() interfaces.TableConnector {
 	return &PostgresqlConnector{}
 }
 
@@ -114,7 +113,7 @@ func (c *PostgresqlConnector) GetFieldConfig() map[string]interfaces.ConnectorFi
 }
 
 // New 根据配置创建连接器实例。
-func (c *PostgresqlConnector) New(cfg interfaces.ConnectorConfig) (connectors.Connector, error) {
+func (c *PostgresqlConnector) New(cfg interfaces.ConnectorConfig) (interfaces.Connector, error) {
 	var pCfg postgresqlConfig
 	if err := mapstructure.Decode(cfg, &pCfg); err != nil {
 		return nil, fmt.Errorf("failed to decode postgresql config: %w", err)

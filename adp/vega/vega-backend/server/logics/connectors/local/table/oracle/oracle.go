@@ -18,7 +18,6 @@ import (
 	_ "github.com/sijms/go-ora/v2"
 
 	"vega-backend/interfaces"
-	"vega-backend/logics/connectors"
 )
 
 type oracleConfig struct {
@@ -88,7 +87,7 @@ type OracleConnector struct {
 }
 
 // NewOracleConnector creates Oracle connector builder
-func NewOracleConnector() connectors.TableConnector {
+func NewOracleConnector() interfaces.TableConnector {
 	return &OracleConnector{}
 }
 
@@ -142,7 +141,7 @@ func (c *OracleConnector) GetFieldConfig() map[string]interfaces.ConnectorFieldC
 
 // New creates a new Oracle connector.
 // Schemas is optional, if not specified, connects to instance level.
-func (c *OracleConnector) New(cfg interfaces.ConnectorConfig) (connectors.Connector, error) {
+func (c *OracleConnector) New(cfg interfaces.ConnectorConfig) (interfaces.Connector, error) {
 	var oCfg oracleConfig
 	if err := mapstructure.Decode(cfg, &oCfg); err != nil {
 		return nil, fmt.Errorf("failed to decode oracle config: %w", err)

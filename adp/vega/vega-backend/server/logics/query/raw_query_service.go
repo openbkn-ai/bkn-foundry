@@ -22,7 +22,6 @@ import (
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
 	"vega-backend/logics/catalog"
-	"vega-backend/logics/connectors"
 	"vega-backend/logics/connectors/factory"
 	"vega-backend/logics/connectors/local/table/mariadb"
 	"vega-backend/logics/connectors/local/table/postgresql"
@@ -649,7 +648,7 @@ func (rqs *rawQueryService) executeOpenSearchQuery(ctx context.Context, req *int
 	indexName := resource.SourceIdentifier
 
 	// 执行OpenSearch查询
-	opensearchConnector := connector.(connectors.IndexConnector)
+	opensearchConnector := connector.(interfaces.IndexConnector)
 	if !ok {
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
 			WithErrorDetails("connector is not an IndexConnector")

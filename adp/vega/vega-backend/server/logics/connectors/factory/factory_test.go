@@ -12,105 +12,15 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"vega-backend/interfaces"
-	"vega-backend/logics/connectors"
+	vmock "vega-backend/interfaces/mock"
 )
-
-type fakeConnector struct {
-	tp              string
-	name            string
-	mode            string
-	category        string
-	enabled         bool
-	sensitiveFields []string
-	fieldConfig     map[string]interfaces.ConnectorFieldConfig
-	config          interfaces.ConnectorConfig
-}
-
-func newFakeConnector(tp, mode string, enabled bool) *fakeConnector {
-	return &fakeConnector{
-		tp:              tp,
-		name:            tp,
-		mode:            mode,
-		category:        interfaces.ConnectorCategoryTable,
-		enabled:         enabled,
-		sensitiveFields: []string{"password"},
-		fieldConfig: map[string]interfaces.ConnectorFieldConfig{
-			"host":     {Name: "Host", Type: "string", Required: true},
-			"password": {Name: "Password", Type: "string", Required: true, Encrypted: true},
-		},
-	}
-}
-
-func (f *fakeConnector) GetType() string {
-	return f.tp
-}
-
-func (f *fakeConnector) GetName() string {
-	return f.name
-}
-
-func (f *fakeConnector) GetMode() string {
-	return f.mode
-}
-
-func (f *fakeConnector) GetCategory() string {
-	return f.category
-}
-
-func (f *fakeConnector) GetEnabled() bool {
-	return f.enabled
-}
-
-func (f *fakeConnector) SetEnabled(enabled bool) {
-	f.enabled = enabled
-}
-
-func (f *fakeConnector) GetSensitiveFields() []string {
-	return f.sensitiveFields
-}
-
-func (f *fakeConnector) GetFieldConfig() map[string]interfaces.ConnectorFieldConfig {
-	return f.fieldConfig
-}
-
-func (f *fakeConnector) New(cfg interfaces.ConnectorConfig) (connectors.Connector, error) {
-	return &fakeConnector{
-		tp:              f.tp,
-		name:            f.name,
-		mode:            f.mode,
-		category:        f.category,
-		enabled:         f.enabled,
-		sensitiveFields: f.sensitiveFields,
-		fieldConfig:     f.fieldConfig,
-		config:          cfg,
-	}, nil
-}
-
-func (f *fakeConnector) Connect(ctx context.Context) error {
-	return nil
-}
-
-func (f *fakeConnector) Ping(ctx context.Context) error {
-	return nil
-}
-
-func (f *fakeConnector) Close(ctx context.Context) error {
-	return nil
-}
-
-func (f *fakeConnector) TestConnection(ctx context.Context) error {
-	return nil
-}
-
-func (f *fakeConnector) GetMetadata(ctx context.Context) (map[string]any, error) {
-	return map[string]any{"type": f.tp}, nil
-}
 
 func TestConnectorFactoryInitLocalConnectors(t *testing.T) {
 	t.Run("connector factory init local connectors", func(t *testing.T) {
-		cf := &ConnectorFactory{connectors: map[string]connectors.Connector{}}
+		cf := &ConnectorFactory{connectors: map[string]interfaces.Connector{}}
 
 		cf.InitLocalConnectors()
 
@@ -125,27 +35,33 @@ func TestConnectorFactoryInitLocalConnectors(t *testing.T) {
 
 func TestConnectorFactoryRegisterConnector(t *testing.T) {
 	ctx := context.Background()
-	local := newFakeConnector("localdb", interfaces.ConnectorModeLocal, false)
-	cf := &ConnectorFactory{
-		connectors: map[string]connectors.Connector{
-			local.GetType(): local,
-		},
-	}
 
 	t.Run("updates existing local connector enabled state", func(t *testing.T) {
-		err := cf.RegisterConnector(ctx, local.GetType(), &interfaces.ConnectorType{
-			Type:        local.GetType(),
-			Name:        local.GetName(),
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		local := vmock.NewMockConnector(ctrl)
+		local.EXPECT().GetFieldConfig().Return(testConnectorFieldConfig())
+		local.EXPECT().SetEnabled(true)
+		cf := &ConnectorFactory{
+			connectors: map[string]interfaces.Connector{
+				"localdb": local,
+			},
+		}
+
+		err := cf.RegisterConnector(ctx, "localdb", &interfaces.ConnectorType{
+			Type:        "localdb",
+			Name:        "localdb",
 			Mode:        interfaces.ConnectorModeLocal,
-			FieldConfig: local.GetFieldConfig(),
+			FieldConfig: testConnectorFieldConfig(),
 			Enabled:     true,
 		})
 
 		require.NoError(t, err)
-		assert.True(t, local.GetEnabled())
 	})
 
 	t.Run("registers remote connector", func(t *testing.T) {
+		cf := &ConnectorFactory{connectors: map[string]interfaces.Connector{}}
+
 		err := cf.RegisterConnector(ctx, "remote-api", &interfaces.ConnectorType{
 			Type:     "remote-api",
 			Name:     "Remote API",
@@ -161,6 +77,8 @@ func TestConnectorFactoryRegisterConnector(t *testing.T) {
 	})
 
 	t.Run("rejects unimplemented local connector", func(t *testing.T) {
+		cf := &ConnectorFactory{connectors: map[string]interfaces.Connector{}}
+
 		err := cf.RegisterConnector(ctx, "missing-local", &interfaces.ConnectorType{
 			Type: "missing-local",
 			Name: "Missing Local",
@@ -174,11 +92,18 @@ func TestConnectorFactoryRegisterConnector(t *testing.T) {
 
 func TestConnectorFactoryDeleteConnector(t *testing.T) {
 	t.Run("connector factory delete connector", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
 		ctx := context.Background()
+		local := vmock.NewMockConnector(ctrl)
+		remote := vmock.NewMockConnector(ctrl)
+		remote.EXPECT().GetMode().Return(interfaces.ConnectorModeRemote)
+		local.EXPECT().GetMode().Return(interfaces.ConnectorModeLocal)
+		local.EXPECT().GetName().Return("localdb").Times(2)
 		cf := &ConnectorFactory{
-			connectors: map[string]connectors.Connector{
-				"localdb": newFakeConnector("localdb", interfaces.ConnectorModeLocal, true),
-				"remote":  newFakeConnector("remote", interfaces.ConnectorModeRemote, true),
+			connectors: map[string]interfaces.Connector{
+				"localdb": local,
+				"remote":  remote,
 			},
 		}
 
@@ -197,35 +122,52 @@ func TestConnectorFactoryDeleteConnector(t *testing.T) {
 
 func TestConnectorFactorySetEnabledCreateAndSensitiveFields(t *testing.T) {
 	t.Run("connector factory set enabled create and sensitive fields", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
 		ctx := context.Background()
-		local := newFakeConnector("localdb", interfaces.ConnectorModeLocal, false)
+		local := vmock.NewMockConnector(ctrl)
+		instance := vmock.NewMockConnector(ctrl)
+		cfg := interfaces.ConnectorConfig{"host": "db"}
+		gomock.InOrder(
+			local.EXPECT().GetEnabled().Return(false),
+			local.EXPECT().SetEnabled(true),
+			local.EXPECT().GetEnabled().Return(true),
+			local.EXPECT().New(cfg).Return(instance, nil),
+			local.EXPECT().GetSensitiveFields().Return([]string{"password"}),
+		)
 		cf := &ConnectorFactory{
-			connectors: map[string]connectors.Connector{
-				local.GetType(): local,
+			connectors: map[string]interfaces.Connector{
+				"localdb": local,
 			},
 		}
 
-		instance, err := cf.CreateConnectorInstance(ctx, local.GetType(), interfaces.ConnectorConfig{"host": "db"})
+		got, err := cf.CreateConnectorInstance(ctx, "localdb", cfg)
 		require.Error(t, err)
-		assert.Nil(t, instance)
+		assert.Nil(t, got)
 		assert.Contains(t, err.Error(), "is disabled")
 
-		require.NoError(t, cf.SetConnectorEnabled(ctx, local.GetType(), true))
-		instance, err = cf.CreateConnectorInstance(ctx, local.GetType(), interfaces.ConnectorConfig{"host": "db"})
+		require.NoError(t, cf.SetConnectorEnabled(ctx, "localdb", true))
+		got, err = cf.CreateConnectorInstance(ctx, "localdb", cfg)
 		require.NoError(t, err)
-		require.IsType(t, &fakeConnector{}, instance)
-		assert.Equal(t, "db", instance.(*fakeConnector).config["host"])
+		assert.Same(t, instance, got)
 
-		assert.Equal(t, []string{"password"}, cf.GetSensitiveFields(local.GetType()))
+		assert.Equal(t, []string{"password"}, cf.GetSensitiveFields("localdb"))
 		assert.Nil(t, cf.GetSensitiveFields("missing"))
 
 		err = cf.SetConnectorEnabled(ctx, "missing", true)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "not implemented")
 
-		instance, err = cf.CreateConnectorInstance(ctx, "missing", nil)
+		got, err = cf.CreateConnectorInstance(ctx, "missing", nil)
 		require.Error(t, err)
-		assert.Nil(t, instance)
+		assert.Nil(t, got)
 		assert.Contains(t, err.Error(), "not found")
 	})
+}
+
+func testConnectorFieldConfig() map[string]interfaces.ConnectorFieldConfig {
+	return map[string]interfaces.ConnectorFieldConfig{
+		"host":     {Name: "Host", Type: "string", Required: true},
+		"password": {Name: "Password", Type: "string", Required: true, Encrypted: true},
+	}
 }

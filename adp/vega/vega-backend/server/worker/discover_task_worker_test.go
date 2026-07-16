@@ -16,7 +16,6 @@ import (
 
 	"vega-backend/interfaces"
 	vmock "vega-backend/interfaces/mock"
-	"vega-backend/logics/connectors"
 )
 
 func TestReconcileTableResources(t *testing.T) {
@@ -162,14 +161,17 @@ func TestEnrichTableMetadataContinuesWhenOneTableFails(t *testing.T) {
 			LastDiscoverStatus: interfaces.DiscoverStatusNew,
 			SourceMetadata:     map[string]any{"original_name": "public.erp_material"},
 		}
-		connector := &fakeTableConnector{
-			metaErrByName: map[string]error{
-				"no_access": errors.New("permission denied"),
-			},
-			columnsByName: map[string][]interfaces.TableColumnMeta{
-				"erp_material": {{Name: "id", Type: "int4"}},
-			},
-		}
+		connector := vmock.NewMockTableConnector(ctrl)
+		connector.EXPECT().
+			GetTableMeta(gomock.Any(), &interfaces.TableMeta{Name: "no_access", Schema: "public"}).
+			Return(errors.New("permission denied"))
+		connector.EXPECT().
+			GetTableMeta(gomock.Any(), &interfaces.TableMeta{Name: "erp_material", Schema: "public"}).
+			DoAndReturn(func(_ context.Context, table *interfaces.TableMeta) error {
+				table.Columns = []interfaces.TableColumnMeta{{Name: "id", Type: "int4"}}
+				return nil
+			})
+		connector.EXPECT().MapType("int4").Return("int4")
 		rs.EXPECT().UpdateResource(gomock.Any(), gomock.AssignableToTypeOf(&interfaces.Resource{})).
 			DoAndReturn(func(_ context.Context, resource *interfaces.Resource) error {
 				assert.Equal(t, "r1", resource.ID)
@@ -228,64 +230,4 @@ func TestSourceSnapshotHashChangesForSourceMetadata(t *testing.T) {
 
 		assert.NotEqual(t, before, sourceSnapshotHash(resource))
 	})
-}
-
-type fakeTableConnector struct {
-	metaErrByName map[string]error
-	columnsByName map[string][]interfaces.TableColumnMeta
-}
-
-func (c *fakeTableConnector) GetType() string { return "fake" }
-
-func (c *fakeTableConnector) GetName() string { return "fake" }
-
-func (c *fakeTableConnector) GetMode() string { return "local" }
-
-func (c *fakeTableConnector) GetCategory() string { return interfaces.ConnectorCategoryTable }
-
-func (c *fakeTableConnector) GetEnabled() bool { return true }
-
-func (c *fakeTableConnector) SetEnabled(bool) {}
-
-func (c *fakeTableConnector) GetSensitiveFields() []string { return nil }
-
-func (c *fakeTableConnector) GetFieldConfig() map[string]interfaces.ConnectorFieldConfig {
-	return nil
-}
-
-func (c *fakeTableConnector) New(interfaces.ConnectorConfig) (connectors.Connector, error) {
-	return c, nil
-}
-
-func (c *fakeTableConnector) Connect(context.Context) error { return nil }
-
-func (c *fakeTableConnector) Ping(context.Context) error { return nil }
-
-func (c *fakeTableConnector) Close(context.Context) error { return nil }
-
-func (c *fakeTableConnector) TestConnection(context.Context) error { return nil }
-
-func (c *fakeTableConnector) GetMetadata(context.Context) (map[string]any, error) {
-	return nil, nil
-}
-
-func (c *fakeTableConnector) MapType(nativeType string) string {
-	return nativeType
-}
-
-func (c *fakeTableConnector) ListTables(context.Context) ([]*interfaces.TableMeta, error) {
-	return nil, nil
-}
-
-func (c *fakeTableConnector) GetTableMeta(_ context.Context, table *interfaces.TableMeta) error {
-	if err := c.metaErrByName[table.Name]; err != nil {
-		return err
-	}
-	table.Columns = c.columnsByName[table.Name]
-	return nil
-}
-
-func (c *fakeTableConnector) ExecuteQuery(context.Context, *interfaces.Resource,
-	*interfaces.ResourceDataQueryParams) (*interfaces.QueryResult, error) {
-	return nil, nil
 }

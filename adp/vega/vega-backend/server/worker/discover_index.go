@@ -12,7 +12,6 @@ import (
 	"github.com/openbkn-ai/bkn-comm-go/logger"
 
 	"vega-backend/interfaces"
-	"vega-backend/logics/connectors"
 )
 
 // indexDiscoverItem represents an index discover item.
@@ -34,10 +33,10 @@ type indexDiscoverItem struct {
 //   - *interfaces.DiscoverResult: 发现结果，包含新资源、过期资源和未变化资源的统计信息
 //   - error: 错误信息，如果在发现过程中出现错误则返回
 func (dtw *DiscoverTaskWorker) discoverIndexResources(ctx context.Context, catalog *interfaces.Catalog,
-	connector connectors.Connector, task *interfaces.DiscoverTask) (*interfaces.DiscoverResult, error) {
+	connector interfaces.Connector, task *interfaces.DiscoverTask) (*interfaces.DiscoverResult, error) {
 
 	// 检查连接器是否实现了IndexConnector接口
-	indexConnector, ok := connector.(connectors.IndexConnector)
+	indexConnector, ok := connector.(interfaces.IndexConnector)
 	if !ok {
 		return nil, fmt.Errorf("connector does not support index discover")
 	}
@@ -201,7 +200,7 @@ func (dtw *DiscoverTaskWorker) createIndexResource(ctx context.Context, catalog 
 //
 // 返回值:
 //   - error: 如果在处理过程中发生错误，则返回错误信息
-func (dtw *DiscoverTaskWorker) enrichIndexMetadata(ctx context.Context, indexConnector connectors.IndexConnector, items []indexDiscoverItem, result *interfaces.DiscoverResult) error {
+func (dtw *DiscoverTaskWorker) enrichIndexMetadata(ctx context.Context, indexConnector interfaces.IndexConnector, items []indexDiscoverItem, result *interfaces.DiscoverResult) error {
 
 	// 遍历所有需要处理的索引项
 	for _, item := range items {

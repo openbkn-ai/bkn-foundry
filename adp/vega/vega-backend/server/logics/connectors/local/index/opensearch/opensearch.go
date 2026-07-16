@@ -19,7 +19,6 @@ import (
 	"github.com/opensearch-project/opensearch-go/v2/opensearchapi"
 
 	"vega-backend/interfaces"
-	"vega-backend/logics/connectors"
 )
 
 type opensearchConfig struct {
@@ -38,7 +37,7 @@ type OpenSearchConnector struct {
 }
 
 // NewOpenSearchConnector 创建 OpenSearch connector 构建器
-func NewOpenSearchConnector() connectors.IndexConnector {
+func NewOpenSearchConnector() interfaces.IndexConnector {
 	return &OpenSearchConnector{}
 }
 
@@ -89,7 +88,7 @@ func (c *OpenSearchConnector) GetFieldConfig() map[string]interfaces.ConnectorFi
 }
 
 // New creates a new OpenSearch connector.
-func (c *OpenSearchConnector) New(cfg interfaces.ConnectorConfig) (connectors.Connector, error) {
+func (c *OpenSearchConnector) New(cfg interfaces.ConnectorConfig) (interfaces.Connector, error) {
 	var osCfg opensearchConfig
 	if err := mapstructure.Decode(cfg, &osCfg); err != nil {
 		return nil, fmt.Errorf("failed to decode opensearch config: %w", err)

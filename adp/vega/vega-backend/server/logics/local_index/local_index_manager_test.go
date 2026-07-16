@@ -12,35 +12,44 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"vega-backend/interfaces"
-	"vega-backend/logics/connectors"
+	vmock "vega-backend/interfaces/mock"
 )
 
 func TestLocalIndexManagerDelegatesToIndexConnector(t *testing.T) {
 	t.Run("local index manager delegates to index connector", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
 		ctx := context.Background()
-		connector := &fakeIndexConnector{
-			queryResult: &interfaces.QueryResult{
-				Rows:  []map[string]any{{"id": 1}},
-				Total: 1,
-			},
-			document: map[string]any{"id": 1},
-			exists:   true,
-			docIDs:   []string{"doc-1"},
-		}
+		connector := vmock.NewMockIndexConnector(ctrl)
 		manager := &localIndexManager{c: connector}
 		schema := []*interfaces.Property{{Name: "id", Type: "integer"}}
 		resource := &interfaces.Resource{ID: "resource-1", SchemaDefinition: schema}
 		params := &interfaces.ResourceDataQueryParams{}
 		docs := []map[string]any{{"id": 1}}
+		queryResult := &interfaces.QueryResult{
+			Rows:  []map[string]any{{"id": 1}},
+			Total: 1,
+		}
+		document := map[string]any{"id": 1}
+		docIDs := []string{"doc-1"}
+
+		connector.EXPECT().Create(ctx, "idx", schema).Return(nil)
+		connector.EXPECT().Update(ctx, "idx", schema).Return(nil)
+		connector.EXPECT().Delete(ctx, "idx").Return(nil)
+		connector.EXPECT().CheckExist(ctx, "idx").Return(true, nil)
+		connector.EXPECT().ExecuteQuery(ctx, "idx", resource, params).Return(queryResult, nil)
+		connector.EXPECT().GetDocument(ctx, "idx", "doc-1").Return(document, nil)
+		connector.EXPECT().CreateDocuments(ctx, "idx", docs).Return(docIDs, nil)
+		connector.EXPECT().UpsertDocuments(ctx, "idx", docs).Return(docIDs, nil)
+		connector.EXPECT().DeleteDocument(ctx, "idx", "doc-1").Return(nil)
+		connector.EXPECT().DeleteDocuments(ctx, "idx", "doc-1,doc-2").Return(nil)
 
 		require.NoError(t, manager.CreateIndex(ctx, "idx", schema))
-		assert.Equal(t, "idx", connector.createdName)
 		require.NoError(t, manager.UpdateIndex(ctx, "idx", schema))
-		assert.Equal(t, "idx", connector.updatedName)
 		require.NoError(t, manager.DeleteIndex(ctx, "idx"))
-		assert.Equal(t, "idx", connector.deletedName)
 
 		exists, err := manager.CheckExist(ctx, "idx")
 		require.NoError(t, err)
@@ -64,16 +73,16 @@ func TestLocalIndexManagerDelegatesToIndexConnector(t *testing.T) {
 		assert.Equal(t, []string{"doc-1"}, upserted)
 
 		require.NoError(t, manager.DeleteDocument(ctx, "idx", "doc-1"))
-		assert.Equal(t, "doc-1", connector.deletedDocID)
 		require.NoError(t, manager.DeleteDocuments(ctx, "idx", "doc-1,doc-2"))
-		assert.Equal(t, "doc-1,doc-2", connector.deletedDocIDs)
 	})
 }
 
 func TestLocalIndexManagerDeleteDocumentsByQueryBuildsActualFilter(t *testing.T) {
 	t.Run("local index manager delete documents by query builds actual filter", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
 		ctx := context.Background()
-		connector := &fakeIndexConnector{}
+		connector := vmock.NewMockIndexConnector(ctrl)
 		manager := &localIndexManager{c: connector}
 		resource := &interfaces.Resource{
 			SchemaDefinition: []*interfaces.Property{{Name: "id", Type: "integer"}},
@@ -88,105 +97,20 @@ func TestLocalIndexManagerDeleteDocumentsByQueryBuildsActualFilter(t *testing.T)
 				},
 			},
 		}
+		var gotParams *interfaces.ResourceDataQueryParams
+		var gotSchema []*interfaces.Property
+		connector.EXPECT().
+			DeleteDocumentsByQuery(ctx, "idx", params, resource.SchemaDefinition).
+			DoAndReturn(func(_ context.Context, _ string, p *interfaces.ResourceDataQueryParams, schema []*interfaces.Property) error {
+				gotParams = p
+				gotSchema = schema
+				return nil
+			})
 
 		require.NoError(t, manager.DeleteDocumentsByQuery(ctx, "idx", resource, params))
 		require.NotNil(t, params.ActualFilterCond)
 		assert.Equal(t, "==", params.ActualFilterCond.GetOperation())
-		assert.Same(t, params, connector.deleteByQueryParams)
-		assert.Equal(t, resource.SchemaDefinition, connector.deleteByQuerySchema)
+		assert.Same(t, params, gotParams)
+		assert.Equal(t, resource.SchemaDefinition, gotSchema)
 	})
-}
-
-var _ connectors.IndexConnector = (*fakeIndexConnector)(nil)
-
-type fakeIndexConnector struct {
-	queryResult         *interfaces.QueryResult
-	document            map[string]any
-	exists              bool
-	docIDs              []string
-	createdName         string
-	updatedName         string
-	deletedName         string
-	deletedDocID        string
-	deletedDocIDs       string
-	deleteByQueryParams *interfaces.ResourceDataQueryParams
-	deleteByQuerySchema []*interfaces.Property
-}
-
-func (f *fakeIndexConnector) GetType() string { return "fake" }
-func (f *fakeIndexConnector) GetName() string { return "fake" }
-func (f *fakeIndexConnector) GetMode() string { return interfaces.ConnectorModeLocal }
-func (f *fakeIndexConnector) GetCategory() string {
-	return interfaces.ConnectorCategoryIndex
-}
-func (f *fakeIndexConnector) GetEnabled() bool { return true }
-func (f *fakeIndexConnector) SetEnabled(bool)  {}
-func (f *fakeIndexConnector) GetSensitiveFields() []string {
-	return nil
-}
-func (f *fakeIndexConnector) GetFieldConfig() map[string]interfaces.ConnectorFieldConfig {
-	return nil
-}
-func (f *fakeIndexConnector) New(interfaces.ConnectorConfig) (connectors.Connector, error) {
-	return f, nil
-}
-func (f *fakeIndexConnector) Connect(context.Context) error        { return nil }
-func (f *fakeIndexConnector) Ping(context.Context) error           { return nil }
-func (f *fakeIndexConnector) Close(context.Context) error          { return nil }
-func (f *fakeIndexConnector) TestConnection(context.Context) error { return nil }
-func (f *fakeIndexConnector) GetMetadata(context.Context) (map[string]any, error) {
-	return nil, nil
-}
-func (f *fakeIndexConnector) MapType(nativeType string) string { return nativeType }
-func (f *fakeIndexConnector) ListIndexes(context.Context) ([]*interfaces.IndexMeta, error) {
-	return nil, nil
-}
-func (f *fakeIndexConnector) GetIndexMeta(context.Context, *interfaces.IndexMeta) error {
-	return nil
-}
-func (f *fakeIndexConnector) ExecuteQuery(context.Context, string, *interfaces.Resource, *interfaces.ResourceDataQueryParams) (*interfaces.QueryResult, error) {
-	return f.queryResult, nil
-}
-func (f *fakeIndexConnector) ExecuteQueryWithDsl(context.Context, string, string) (*interfaces.QueryResult, error) {
-	return nil, nil
-}
-func (f *fakeIndexConnector) ExecuteRawQuery(context.Context, string, map[string]any) (*interfaces.RawQueryResponse, error) {
-	return nil, nil
-}
-func (f *fakeIndexConnector) Create(_ context.Context, name string, _ []*interfaces.Property) error {
-	f.createdName = name
-	return nil
-}
-func (f *fakeIndexConnector) Update(_ context.Context, name string, _ []*interfaces.Property) error {
-	f.updatedName = name
-	return nil
-}
-func (f *fakeIndexConnector) Delete(_ context.Context, name string) error {
-	f.deletedName = name
-	return nil
-}
-func (f *fakeIndexConnector) CheckExist(context.Context, string) (bool, error) {
-	return f.exists, nil
-}
-func (f *fakeIndexConnector) CreateDocuments(context.Context, string, []map[string]any) ([]string, error) {
-	return f.docIDs, nil
-}
-func (f *fakeIndexConnector) GetDocument(context.Context, string, string) (map[string]any, error) {
-	return f.document, nil
-}
-func (f *fakeIndexConnector) DeleteDocument(_ context.Context, _ string, docID string) error {
-	f.deletedDocID = docID
-	return nil
-}
-func (f *fakeIndexConnector) UpsertDocuments(context.Context, string, []map[string]any) ([]string, error) {
-	return f.docIDs, nil
-}
-func (f *fakeIndexConnector) DeleteDocuments(_ context.Context, _ string, docIDs string) error {
-	f.deletedDocIDs = docIDs
-	return nil
-}
-func (f *fakeIndexConnector) DeleteDocumentsByQuery(_ context.Context, _ string, params *interfaces.ResourceDataQueryParams, schemaDefinition []*interfaces.Property) error {
-	f.deleteByQueryParams = params
-	f.deleteByQuerySchema = schemaDefinition
-	return nil
 }

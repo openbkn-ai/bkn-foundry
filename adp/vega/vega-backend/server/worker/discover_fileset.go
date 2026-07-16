@@ -12,7 +12,6 @@ import (
 	"github.com/openbkn-ai/bkn-comm-go/logger"
 
 	"vega-backend/interfaces"
-	"vega-backend/logics/connectors"
 )
 
 // filesetDiscoverItem represents a fileset discover item.
@@ -24,9 +23,9 @@ type filesetDiscoverItem struct {
 
 // discoverFilesetResources discovers fileset resources from a fileset connector.
 func (dtw *DiscoverTaskWorker) discoverFilesetResources(ctx context.Context, catalog *interfaces.Catalog,
-	connector connectors.Connector, task *interfaces.DiscoverTask) (*interfaces.DiscoverResult, error) {
+	connector interfaces.Connector, task *interfaces.DiscoverTask) (*interfaces.DiscoverResult, error) {
 
-	filesetConnector, ok := connector.(connectors.FilesetConnector)
+	filesetConnector, ok := connector.(interfaces.FilesetConnector)
 	if !ok {
 		return nil, fmt.Errorf("connector does not support fileset discover")
 	}

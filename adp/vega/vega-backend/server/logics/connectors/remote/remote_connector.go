@@ -11,7 +11,6 @@ import (
 	"context"
 
 	"vega-backend/interfaces"
-	"vega-backend/logics/connectors"
 )
 
 // ============================================
@@ -75,7 +74,7 @@ func (rc *RemoteConnector) GetFieldConfig() map[string]interfaces.ConnectorField
 }
 
 // New 创建新的连接器实例
-func (rc *RemoteConnector) New(cfg interfaces.ConnectorConfig) (connectors.Connector, error) {
+func (rc *RemoteConnector) New(cfg interfaces.ConnectorConfig) (interfaces.Connector, error) {
 	return &RemoteConnector{
 		enabled:  rc.enabled,
 		connType: rc.connType,
