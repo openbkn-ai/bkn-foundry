@@ -18,6 +18,8 @@ import (
 	"vega-backend/common"
 	"vega-backend/interfaces"
 	"vega-backend/logics"
+	"vega-backend/logics/build_task"
+	"vega-backend/logics/resource"
 )
 
 var (
@@ -35,11 +37,13 @@ type TaskWorkerManger struct {
 	btBuildWorker      *batchBuildWorker
 	stBuildWorker      *streamingBuildWorker
 	embeddingWorker    *embeddingWorker
+	bts                interfaces.BuildTaskService
 }
 
 // NewTaskWorkerManager creates or returns the singleton TaskWorkerManger.
 func NewTaskWorkerManager(appSetting *common.AppSetting) *TaskWorkerManger {
 	taskWorkerOnce.Do(func() {
+		bts := build_task.NewBuildTaskService(appSetting, resource.NewResourceService(appSetting))
 		taskWorkerMgr = &TaskWorkerManger{
 			appSetting:         appSetting,
 			aqa:                logics.AQA,
@@ -48,6 +52,7 @@ func NewTaskWorkerManager(appSetting *common.AppSetting) *TaskWorkerManger {
 			btBuildWorker:      NewBatchBuildWorker(appSetting),
 			stBuildWorker:      NewStreamingBuildWorker(appSetting),
 			embeddingWorker:    NewEmbeddingBuildWorker(appSetting),
+			bts:                bts,
 		}
 	})
 	return taskWorkerMgr
@@ -55,6 +60,11 @@ func NewTaskWorkerManager(appSetting *common.AppSetting) *TaskWorkerManger {
 
 // Start starts the task worker.
 func (twm *TaskWorkerManger) Start() {
+	if common.GetDebugMode() {
+		twm.startDebugSubscribers()
+		return
+	}
+
 	// Start server in a goroutine
 	go func() {
 		for {
@@ -69,24 +79,33 @@ func (twm *TaskWorkerManger) Start() {
 	// 周期对账把它们重新入队
 	go newBuildTaskReconciler().run()
 
-	if common.GetDebugMode() {
-		go func() {
-			logger.Info("debug task channel subscriber started")
-			for task := range twm.discoverTaskWorker.dts.DebugTaskQueue() {
-				if err := twm.ProcessTask(context.Background(), task); err != nil {
-					logger.Errorf("debug task failed: %v", err)
-				}
+}
+
+func (twm *TaskWorkerManger) startDebugSubscribers() {
+	go func() {
+		logger.Info("debug discover task channel subscriber started")
+		for task := range twm.discoverTaskWorker.dts.DebugTaskQueue() {
+			if err := twm.ProcessTask(context.Background(), task); err != nil {
+				logger.Errorf("debug discover task failed: %v", err)
 			}
-		}()
-		go func() {
-			logger.Info("debug semantic understanding task channel subscriber started")
-			for task := range twm.sutWorker.suts.DebugTaskQueue() {
-				if err := twm.ProcessTask(context.Background(), task); err != nil {
-					logger.Errorf("debug semantic understanding task failed: %v", err)
-				}
+		}
+	}()
+	go func() {
+		logger.Info("debug semantic understanding task channel subscriber started")
+		for task := range twm.sutWorker.suts.DebugTaskQueue() {
+			if err := twm.ProcessTask(context.Background(), task); err != nil {
+				logger.Errorf("debug semantic understanding task failed: %v", err)
 			}
-		}()
-	}
+		}
+	}()
+	go func() {
+		logger.Info("debug build task channel subscriber started")
+		for task := range twm.bts.DebugTaskQueue() {
+			if err := twm.ProcessTask(context.Background(), task); err != nil {
+				logger.Errorf("debug build task failed: %v", err)
+			}
+		}
+	}()
 }
 
 // Run runs the task worker.

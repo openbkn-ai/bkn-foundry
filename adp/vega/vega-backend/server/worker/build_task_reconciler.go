@@ -181,7 +181,7 @@ func (r *buildTaskReconciler) queuedBuildTaskIDs() (map[string]struct{}, error) 
 	return ids, nil
 }
 
-// enqueueBuildTaskMessage 重新投递构建消息，与 build_task_service.enqueueBuildTask 对齐。
+// enqueueBuildTaskMessage 重新投递构建消息，与 build_task_service.enqueueTask 对齐。
 // 执行类型用增量：从未跑过的任务游标为空，增量等效全量；跑过一半的任务沿游标续跑。
 func enqueueBuildTaskMessage(client *asynq.Client, task *interfaces.BuildTask) error {
 	payload, err := sonic.Marshal(&interfaces.BatchBuildTaskMessage{
@@ -197,8 +197,8 @@ func enqueueBuildTaskMessage(client *asynq.Client, task *interfaces.BuildTask) e
 	}
 	_, err = client.Enqueue(asynq.NewTask(typename, payload),
 		asynq.Queue(interfaces.DefaultQueue),
-		asynq.TaskID(interfaces.BuildTaskQueueTaskID(typename, task.ID)),
-		asynq.MaxRetry(interfaces.BUILD_TASK_MAX_RETRY_COUNT),
+		asynq.TaskID(task.ID),
+		asynq.MaxRetry(interfaces.TaskMaxRetryCount),
 		asynq.Timeout(math.MaxInt64),
 		asynq.Deadline(time.Unix(math.MaxInt64/1000000000, math.MaxInt64%1000000000)),
 	)

@@ -38,18 +38,23 @@ import (
 )
 
 var (
-	btsOnce sync.Once
-	btsInst interfaces.BuildTaskService
+	btServiceOnce sync.Once
+	btService     interfaces.BuildTaskService
 )
+
+const debugQueueSize = 100
 
 type buildTaskService struct {
 	appSetting *common.AppSetting
-	cs         interfaces.CatalogService
-	rs         interfaces.ResourceService
+	client     *asynq.Client
 	bta        interfaces.BuildTaskAccess
-	mfs        interfaces.ModelFactoryService
-	ums        interfaces.UserMgmtService
+	cs         interfaces.CatalogService
 	lim        interfaces.LocalIndexManager // 删任务时 drop 其本地索引；测试注入 mock
+	mfs        interfaces.ModelFactoryService
+	rs         interfaces.ResourceService
+	ums        interfaces.UserMgmtService
+
+	debugTaskQueue chan *asynq.Task
 }
 
 var activeBuildTaskStatuses = []string{
@@ -60,18 +65,40 @@ var activeBuildTaskStatuses = []string{
 
 // NewBuildTaskService creates a new BuildTaskService.
 func NewBuildTaskService(appSetting *common.AppSetting, rs interfaces.ResourceService) interfaces.BuildTaskService {
-	btsOnce.Do(func() {
-		btsInst = &buildTaskService{
+	btServiceOnce.Do(func() {
+		var client *asynq.Client
+		if !common.GetDebugMode() && logics.AQA != nil {
+			client = logics.AQA.CreateClient()
+		}
+		btService = &buildTaskService{
 			appSetting: appSetting,
-			cs:         catalog.NewCatalogService(appSetting),
-			rs:         rs,
+			client:     client,
 			bta:        logics.BTA,
-			mfs:        model_factory.NewModelFactoryService(appSetting),
-			ums:        user_mgmt.NewUserMgmtService(appSetting),
+			cs:         catalog.NewCatalogService(appSetting),
 			lim:        local_index.NewLocalIndexManager(appSetting),
+			mfs:        model_factory.NewModelFactoryService(appSetting),
+			rs:         rs,
+			ums:        user_mgmt.NewUserMgmtService(appSetting),
+
+			debugTaskQueue: make(chan *asynq.Task, debugQueueSize),
 		}
 	})
-	return btsInst
+	return btService
+}
+
+// DebugTaskQueue returns the in-process build task queue used in DEBUG_MODE.
+func (bts *buildTaskService) DebugTaskQueue() <-chan *asynq.Task {
+	return bts.debugTaskQueue
+}
+
+// EnqueueDebugTask enqueues a build task to the singleton in-process queue used in DEBUG_MODE.
+func EnqueueDebugTask(task *asynq.Task) bool {
+	service, ok := btService.(*buildTaskService)
+	if !ok {
+		return false
+	}
+	service.debugTaskQueue <- task
+	return true
 }
 
 // CreateBuildTask creates a new build task. resource_id is taken from req.
@@ -150,7 +177,9 @@ func (bts *buildTaskService) CreateBuildTask(ctx context.Context, req *interface
 
 	// 创建即入队执行：客户端创建后不会再调 /start，不入队任务会永远停在 init（界面"排队中"）。
 	// 入队失败仅记日志，任务保持 init，可由 /start 重新触发
-	bts.enqueueBuildTask(ctx, buildTask, executeType)
+	if err := bts.enqueueTask(ctx, buildTask, executeType); err != nil {
+		otellog.LogError(ctx, "Enqueue build task failed", err)
+	}
 
 	span.SetStatus(codes.Ok, "")
 	return buildTask.ID, nil
@@ -315,15 +344,14 @@ func (bts *buildTaskService) normalizeEmbeddingModel(ctx context.Context, embedd
 	return embeddingModel, modelDimensions, nil
 }
 
-// enqueueBuildTask 按任务模式投递到 asynq 队列；入队失败仅记录日志，任务保持当前状态
-func (bts *buildTaskService) enqueueBuildTask(ctx context.Context, buildTask *interfaces.BuildTask, executeType string) {
+// enqueueTask 按任务模式投递到 asynq 队列。
+func (bts *buildTaskService) enqueueTask(ctx context.Context, buildTask *interfaces.BuildTask, executeType string) error {
 	payload, err := sonic.Marshal(&interfaces.BatchBuildTaskMessage{
 		TaskID:      buildTask.ID,
 		ExecuteType: executeType,
 	})
 	if err != nil {
-		otellog.LogError(ctx, "Marshal build task message failed", err)
-		return
+		return err
 	}
 
 	typename := interfaces.BuildTaskTypeBatch
@@ -331,22 +359,28 @@ func (bts *buildTaskService) enqueueBuildTask(ctx context.Context, buildTask *in
 		typename = interfaces.BuildTaskTypeStreaming
 	}
 	asynqTask := asynq.NewTask(typename, payload)
-	client := logics.AQA.CreateClient()
-	if _, err := client.Enqueue(asynqTask,
+	if common.GetDebugMode() || bts.client == nil {
+		bts.debugTaskQueue <- asynqTask
+		logger.Infof("Build task %s enqueued for debug execution", buildTask.ID)
+		return nil
+	}
+
+	if _, err := bts.client.Enqueue(asynqTask,
 		asynq.Queue(interfaces.DefaultQueue),
-		asynq.TaskID(interfaces.BuildTaskQueueTaskID(typename, buildTask.ID)),
-		asynq.MaxRetry(interfaces.BUILD_TASK_MAX_RETRY_COUNT),
+		asynq.TaskID(buildTask.ID),
+		asynq.MaxRetry(interfaces.TaskMaxRetryCount),
 		asynq.Timeout(math.MaxInt64),
 		asynq.Deadline(time.Unix(math.MaxInt64/1000000000, math.MaxInt64%1000000000)),
 	); err != nil {
 		if errors.Is(err, asynq.ErrTaskIDConflict) {
 			logger.Infof("Build task %s is already enqueued", buildTask.ID)
-			return
+			return nil
 		}
-		otellog.LogError(ctx, "Enqueue build task failed", err)
-	} else {
-		logger.Infof("Build task %s enqueued for execution", buildTask.ID)
+		return err
 	}
+
+	logger.Infof("Build task %s enqueued for execution", buildTask.ID)
+	return nil
 }
 
 // GetBuildTaskByID retrieves a build task by ID.
@@ -548,7 +582,9 @@ func (bts *buildTaskService) StartBuildTask(ctx context.Context, taskID string, 
 	if reset {
 		executeType = interfaces.BuildTaskExecuteTypeFull
 	}
-	bts.enqueueBuildTask(ctx, buildTask, executeType)
+	if err := bts.enqueueTask(ctx, buildTask, executeType); err != nil {
+		otellog.LogError(ctx, "Enqueue build task failed", err)
+	}
 
 	span.SetStatus(codes.Ok, "")
 	return nil

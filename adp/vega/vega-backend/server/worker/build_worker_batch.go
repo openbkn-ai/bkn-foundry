@@ -29,23 +29,27 @@ import (
 // batchBuildWorker handles build tasks.
 type batchBuildWorker struct {
 	appSetting  *common.AppSetting
+	client      *asynq.Client
 	taskAccess  interfaces.BuildTaskAccess
 	resAccess   interfaces.ResourceAccess
 	cs          interfaces.CatalogService
 	lim         interfaces.LocalIndexManager
-	client      *asynq.Client
 	kafkaAccess interfaces.KafkaAccess
 }
 
 // NewBatchBuildWorker creates a new build worker.
 func NewBatchBuildWorker(appSetting *common.AppSetting) *batchBuildWorker {
+	var client *asynq.Client
+	if !common.GetDebugMode() && logics.AQA != nil {
+		client = logics.AQA.CreateClient()
+	}
 	return &batchBuildWorker{
 		appSetting:  appSetting,
+		client:      client,
 		taskAccess:  logics.BTA,
 		resAccess:   logics.RA,
 		cs:          catalog.NewCatalogService(appSetting),
 		lim:         local_index.NewLocalIndexManager(appSetting),
-		client:      logics.AQA.CreateClient(),
 		kafkaAccess: logics.KA,
 	}
 }

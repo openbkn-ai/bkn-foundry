@@ -12,6 +12,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"sort"
 	"sync"
@@ -36,14 +37,14 @@ var (
 	sutService     interfaces.SemanticUnderstandingTaskService
 )
 
-const debugSemanticUnderstandingTaskQueueSize = 100
+const debugQueueSize = 100
 
 type semanticUnderstandingTaskService struct {
 	appSetting *common.AppSetting
 	client     *asynq.Client
-	suta       interfaces.SemanticUnderstandingTaskAccess
-	ra         interfaces.ResourceAccess
 	ca         interfaces.CatalogAccess
+	ra         interfaces.ResourceAccess
+	suta       interfaces.SemanticUnderstandingTaskAccess
 
 	debugTaskQueue chan *asynq.Task
 }
@@ -57,11 +58,11 @@ func NewSemanticUnderstandingTaskService(appSetting *common.AppSetting) interfac
 		sutService = &semanticUnderstandingTaskService{
 			appSetting: appSetting,
 			client:     client,
-			suta:       logics.SUTA,
-			ra:         logics.RA,
 			ca:         logics.CA,
+			ra:         logics.RA,
+			suta:       logics.SUTA,
 
-			debugTaskQueue: make(chan *asynq.Task, debugSemanticUnderstandingTaskQueueSize),
+			debugTaskQueue: make(chan *asynq.Task, debugQueueSize),
 		}
 	})
 	return sutService
@@ -179,18 +180,16 @@ func (suts *semanticUnderstandingTaskService) enqueueTask(ctx context.Context, t
 
 	asynqTask := asynq.NewTask(interfaces.SemanticUnderstandingTaskType, payload)
 	if common.GetDebugMode() || suts.client == nil {
-		if suts.debugTaskQueue != nil {
-			suts.debugTaskQueue <- asynqTask
-			logger.Infof("Enqueued debug semantic understanding task: id=%s, type=%s", taskID, asynqTask.Type())
-		}
+		suts.debugTaskQueue <- asynqTask
+		logger.Infof("Enqueued debug semantic understanding task: id=%s, type=%s", taskID, asynqTask.Type())
 		return nil
 	}
 
 	info, err := suts.client.Enqueue(asynqTask,
 		asynq.Queue(interfaces.DefaultQueue),
-		asynq.MaxRetry(3),
-		asynq.Timeout(30*time.Minute),
-		asynq.Deadline(time.Now().Add(12*time.Hour)),
+		asynq.MaxRetry(interfaces.TaskMaxRetryCount),
+		asynq.Timeout(math.MaxInt64),
+		asynq.Deadline(time.Unix(math.MaxInt64/1000000000, math.MaxInt64%1000000000)),
 	)
 	if err != nil {
 		return err

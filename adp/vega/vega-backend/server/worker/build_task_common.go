@@ -19,8 +19,10 @@ import (
 	"github.com/mohae/deepcopy"
 	"github.com/segmentio/kafka-go"
 
+	"vega-backend/common"
 	"vega-backend/interfaces"
 	"vega-backend/logics"
+	"vega-backend/logics/build_task"
 )
 
 func getIndexName(resourceID, buildTaskID string) string {
@@ -337,10 +339,16 @@ func sendEmbeddingTask(client *asynq.Client, taskID string) error {
 		return err
 	} else {
 		embeddingTask := asynq.NewTask(interfaces.BuildTaskTypeEmbedding, payload)
+		if common.GetDebugMode() || client == nil {
+			if !build_task.EnqueueDebugTask(embeddingTask) {
+				return fmt.Errorf("debug build task queue is not initialized")
+			}
+			return nil
+		}
 		_, err = client.Enqueue(embeddingTask,
 			asynq.Queue(interfaces.DefaultQueue),
 			asynq.TaskID(fmt.Sprintf("%s-%s", interfaces.BuildTaskTypeEmbedding, taskID)),
-			asynq.MaxRetry(interfaces.BUILD_TASK_MAX_RETRY_COUNT),
+			asynq.MaxRetry(interfaces.TaskMaxRetryCount),
 			asynq.Timeout(math.MaxInt64),                                                  // 永不超时
 			asynq.Deadline(time.Unix(math.MaxInt64/1000000000, math.MaxInt64%1000000000)), // 永不过期
 		)

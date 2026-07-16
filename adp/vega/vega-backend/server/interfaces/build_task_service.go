@@ -6,7 +6,11 @@
 
 package interfaces
 
-import "context"
+import (
+	"context"
+
+	"github.com/hibiken/asynq"
+)
 
 //go:generate mockgen -source ../interfaces/build_task_service.go -destination ../interfaces/mock/mock_build_task_service.go
 
@@ -27,4 +31,7 @@ type BuildTaskService interface {
 	// DeleteBuildTasks atomically deletes build tasks by IDs.
 	// Pre-validates: any missing id returns 404 unless ignoreMissing=true; any running/stopping id returns 409 (cannot be skipped).
 	DeleteBuildTasks(ctx context.Context, ids []string, ignoreMissing bool, deleteActiveIndex bool) error
+
+	// DebugTaskQueue returns the in-process build task queue used in DEBUG_MODE.
+	DebugTaskQueue() <-chan *asynq.Task
 }

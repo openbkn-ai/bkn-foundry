@@ -14,6 +14,7 @@ import (
 	reflect "reflect"
 	interfaces "vega-backend/interfaces"
 
+	asynq "github.com/hibiken/asynq"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -54,6 +55,20 @@ func (m *MockBuildTaskService) CreateBuildTask(ctx context.Context, req *interfa
 func (mr *MockBuildTaskServiceMockRecorder) CreateBuildTask(ctx, req any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateBuildTask", reflect.TypeOf((*MockBuildTaskService)(nil).CreateBuildTask), ctx, req)
+}
+
+// DebugTaskQueue mocks base method.
+func (m *MockBuildTaskService) DebugTaskQueue() <-chan *asynq.Task {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DebugTaskQueue")
+	ret0, _ := ret[0].(<-chan *asynq.Task)
+	return ret0
+}
+
+// DebugTaskQueue indicates an expected call of DebugTaskQueue.
+func (mr *MockBuildTaskServiceMockRecorder) DebugTaskQueue() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DebugTaskQueue", reflect.TypeOf((*MockBuildTaskService)(nil).DebugTaskQueue))
 }
 
 // DeleteBuildTasks mocks base method.

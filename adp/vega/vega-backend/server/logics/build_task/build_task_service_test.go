@@ -30,7 +30,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		service := &buildTaskService{cs: mockCS, rs: mockRS}
+		service := &buildTaskService{debugTaskQueue: make(chan *asynq.Task, 10), cs: mockCS, rs: mockRS}
 
 		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").
 			Return(&interfaces.Resource{
@@ -49,7 +49,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
-		service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA}
+		service := &buildTaskService{debugTaskQueue: make(chan *asynq.Task, 10), cs: mockCS, rs: mockRS, bta: mockBTA}
 
 		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").
 			Return(&interfaces.Resource{
@@ -72,7 +72,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 	t.Run("rejects execute type for streaming", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		service := &buildTaskService{rs: mockRS}
+		service := &buildTaskService{debugTaskQueue: make(chan *asynq.Task, 10), rs: mockRS}
 
 		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").
 			Return(&interfaces.Resource{
@@ -96,7 +96,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockMFS := mock_interfaces.NewMockModelFactoryService(ctrl)
 		neutralizeEnqueue(t, ctrl)
-		service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA, mfs: mockMFS}
+		service := &buildTaskService{debugTaskQueue: make(chan *asynq.Task, 10), cs: mockCS, rs: mockRS, bta: mockBTA, mfs: mockMFS}
 
 		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").
 			Return(&interfaces.Resource{
@@ -162,7 +162,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockMFS := mock_interfaces.NewMockModelFactoryService(ctrl)
 		neutralizeEnqueue(t, ctrl)
-		service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA, mfs: mockMFS}
+		service := &buildTaskService{debugTaskQueue: make(chan *asynq.Task, 10), cs: mockCS, rs: mockRS, bta: mockBTA, mfs: mockMFS}
 
 		resource := &interfaces.Resource{
 			ID:        "resource-1",
@@ -220,7 +220,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockMFS := mock_interfaces.NewMockModelFactoryService(ctrl)
 		neutralizeEnqueue(t, ctrl)
-		service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA, mfs: mockMFS}
+		service := &buildTaskService{debugTaskQueue: make(chan *asynq.Task, 10), cs: mockCS, rs: mockRS, bta: mockBTA, mfs: mockMFS}
 
 		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").
 			Return(&interfaces.Resource{
@@ -278,7 +278,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockMFS := mock_interfaces.NewMockModelFactoryService(ctrl)
 		neutralizeEnqueue(t, ctrl)
-		service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA, mfs: mockMFS}
+		service := &buildTaskService{debugTaskQueue: make(chan *asynq.Task, 10), cs: mockCS, rs: mockRS, bta: mockBTA, mfs: mockMFS}
 
 		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").
 			Return(&interfaces.Resource{
@@ -354,7 +354,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockMFS := mock_interfaces.NewMockModelFactoryService(ctrl)
-		service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA, mfs: mockMFS}
+		service := &buildTaskService{debugTaskQueue: make(chan *asynq.Task, 10), cs: mockCS, rs: mockRS, bta: mockBTA, mfs: mockMFS}
 
 		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").
 			Return(&interfaces.Resource{
@@ -394,6 +394,26 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 	})
 }
 
+func TestBuildTaskServiceEnqueueBuildTaskDebugMode(t *testing.T) {
+	t.Setenv("DEBUG_MODE", "true")
+
+	service := &buildTaskService{debugTaskQueue: make(chan *asynq.Task, 1)}
+	drainDebugBuildTaskQueue(service.DebugTaskQueue())
+	t.Cleanup(func() { drainDebugBuildTaskQueue(service.DebugTaskQueue()) })
+
+	require.NoError(t, service.enqueueTask(context.Background(), &interfaces.BuildTask{
+		ID:   "build-task-1",
+		Mode: interfaces.BuildTaskModeBatch,
+	}, interfaces.BuildTaskExecuteTypeIncremental))
+
+	select {
+	case task := <-service.DebugTaskQueue():
+		assert.Equal(t, interfaces.BuildTaskTypeBatch, task.Type())
+	default:
+		t.Fatal("expected debug build task to be enqueued")
+	}
+}
+
 func TestNormalizeCreateBuildTaskExecuteType(t *testing.T) {
 	t.Run("defaults to full", func(t *testing.T) {
 		executeType, err := normalizeCreateBuildTaskExecuteType(context.Background(), &interfaces.CreateBuildTaskRequest{
@@ -410,7 +430,7 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
-		service := &buildTaskService{cs: mockCS, bta: mockBTA}
+		service := &buildTaskService{debugTaskQueue: make(chan *asynq.Task, 10), cs: mockCS, bta: mockBTA}
 
 		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").
 			Return(&interfaces.BuildTask{
@@ -428,7 +448,7 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
-		service := &buildTaskService{cs: mockCS, bta: mockBTA}
+		service := &buildTaskService{debugTaskQueue: make(chan *asynq.Task, 10), cs: mockCS, bta: mockBTA}
 
 		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").
 			Return(&interfaces.BuildTask{
@@ -448,7 +468,7 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		neutralizeEnqueue(t, ctrl)
-		service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA}
+		service := &buildTaskService{debugTaskQueue: make(chan *asynq.Task, 10), cs: mockCS, rs: mockRS, bta: mockBTA}
 
 		task := &interfaces.BuildTask{
 			ID:         "task-1",
@@ -481,7 +501,7 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
-		service := &buildTaskService{cs: mockCS, bta: mockBTA}
+		service := &buildTaskService{debugTaskQueue: make(chan *asynq.Task, 10), cs: mockCS, bta: mockBTA}
 
 		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").
 			Return(&interfaces.BuildTask{
@@ -512,7 +532,7 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
-		service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA}
+		service := &buildTaskService{debugTaskQueue: make(chan *asynq.Task, 10), cs: mockCS, rs: mockRS, bta: mockBTA}
 
 		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").Return(&interfaces.BuildTask{
 			ID:         "task-1",
@@ -543,7 +563,7 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
-		service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA}
+		service := &buildTaskService{debugTaskQueue: make(chan *asynq.Task, 10), cs: mockCS, rs: mockRS, bta: mockBTA}
 
 		task := &interfaces.BuildTask{
 			ID:         "task-1",
@@ -592,7 +612,7 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		neutralizeEnqueue(t, ctrl)
-		service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA}
+		service := &buildTaskService{debugTaskQueue: make(chan *asynq.Task, 10), cs: mockCS, rs: mockRS, bta: mockBTA}
 
 		task := &interfaces.BuildTask{
 			ID:         "task-1",
@@ -642,7 +662,7 @@ func TestBuildTaskServiceStopBuildTask(t *testing.T) {
 	t.Run("running to stopping", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
-		service := &buildTaskService{bta: mockBTA}
+		service := &buildTaskService{debugTaskQueue: make(chan *asynq.Task, 10), bta: mockBTA}
 
 		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").
 			Return(&interfaces.BuildTask{ID: "task-1", Status: interfaces.BuildTaskStatusRunning}, nil)
@@ -654,7 +674,7 @@ func TestBuildTaskServiceStopBuildTask(t *testing.T) {
 	t.Run("force finalizes stuck stopping", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
-		service := &buildTaskService{bta: mockBTA}
+		service := &buildTaskService{debugTaskQueue: make(chan *asynq.Task, 10), bta: mockBTA}
 
 		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").
 			Return(&interfaces.BuildTask{ID: "task-1", Status: interfaces.BuildTaskStatusStopping}, nil)
@@ -666,7 +686,7 @@ func TestBuildTaskServiceStopBuildTask(t *testing.T) {
 	t.Run("rejects stopped status", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
-		service := &buildTaskService{bta: mockBTA}
+		service := &buildTaskService{debugTaskQueue: make(chan *asynq.Task, 10), bta: mockBTA}
 
 		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").
 			Return(&interfaces.BuildTask{ID: "task-1", Status: interfaces.BuildTaskStatusStopped}, nil)
@@ -748,7 +768,7 @@ func TestBuildTaskServiceDeleteBuildTasks(t *testing.T) {
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
 		mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
-		service := &buildTaskService{bta: mockBTA, rs: mockRS, lim: mockLIM}
+		service := &buildTaskService{debugTaskQueue: make(chan *asynq.Task, 10), bta: mockBTA, rs: mockRS, lim: mockLIM}
 
 		mockBTA.EXPECT().GetByID(gomock.Any(), "t1").
 			Return(&interfaces.BuildTask{ID: "t1", ResourceID: "r1", Status: "completed"}, nil)
@@ -764,7 +784,7 @@ func TestBuildTaskServiceDeleteBuildTasks(t *testing.T) {
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
 		mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
-		service := &buildTaskService{bta: mockBTA, rs: mockRS, lim: mockLIM}
+		service := &buildTaskService{debugTaskQueue: make(chan *asynq.Task, 10), bta: mockBTA, rs: mockRS, lim: mockLIM}
 
 		idx := interfaces.BuildIndexName("r1", "t1")
 		mockBTA.EXPECT().GetByID(gomock.Any(), "t1").
@@ -782,7 +802,7 @@ func TestBuildTaskServiceDeleteBuildTasks(t *testing.T) {
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
 		mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
-		service := &buildTaskService{bta: mockBTA, rs: mockRS, lim: mockLIM}
+		service := &buildTaskService{debugTaskQueue: make(chan *asynq.Task, 10), bta: mockBTA, rs: mockRS, lim: mockLIM}
 
 		idx := interfaces.BuildIndexName("r1", "t1")
 		resource := &interfaces.Resource{ID: "r1", LocalIndexName: idx}
@@ -809,7 +829,7 @@ func TestBuildTaskServiceDeleteBuildTasks(t *testing.T) {
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
 		mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
-		service := &buildTaskService{bta: mockBTA, rs: mockRS, lim: mockLIM}
+		service := &buildTaskService{debugTaskQueue: make(chan *asynq.Task, 10), bta: mockBTA, rs: mockRS, lim: mockLIM}
 
 		idx := interfaces.BuildIndexName("r1", "t1")
 		mockBTA.EXPECT().GetByID(gomock.Any(), "t1").
@@ -828,7 +848,7 @@ func TestBuildTaskServiceDeleteBuildTasks(t *testing.T) {
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
 		mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
-		service := &buildTaskService{bta: mockBTA, rs: mockRS, lim: mockLIM}
+		service := &buildTaskService{debugTaskQueue: make(chan *asynq.Task, 10), bta: mockBTA, rs: mockRS, lim: mockLIM}
 
 		mockBTA.EXPECT().GetByID(gomock.Any(), "t1").
 			Return(&interfaces.BuildTask{ID: "t1", ResourceID: "missing-resource", Status: interfaces.BuildTaskStatusFailed}, nil)
@@ -843,7 +863,7 @@ func TestBuildTaskServiceDeleteBuildTasks(t *testing.T) {
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
 		mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
-		service := &buildTaskService{bta: mockBTA, rs: mockRS, lim: mockLIM}
+		service := &buildTaskService{debugTaskQueue: make(chan *asynq.Task, 10), bta: mockBTA, rs: mockRS, lim: mockLIM}
 
 		mockBTA.EXPECT().GetByID(gomock.Any(), "t1").
 			Return(&interfaces.BuildTask{ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusStopped}, nil)
@@ -858,7 +878,7 @@ func TestBuildTaskServiceDeleteBuildTasks(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
-		service := &buildTaskService{bta: mockBTA, lim: mockLIM}
+		service := &buildTaskService{debugTaskQueue: make(chan *asynq.Task, 10), bta: mockBTA, lim: mockLIM}
 
 		mockBTA.EXPECT().GetByID(gomock.Any(), "t1").
 			Return(&interfaces.BuildTask{ID: "t1", ResourceID: "r1", Status: "running"}, nil)
@@ -870,9 +890,9 @@ func TestBuildTaskServiceDeleteBuildTasks(t *testing.T) {
 
 // 删任务应连带 drop 其 OpenSearch 索引（与删资源/删 catalog 级联语义一致）。
 // 任一任务运行中 → 整批 409，索引/行都不删。
-// neutralizeEnqueue 让 CreateBuildTask/StartBuildTask 末尾的 enqueueBuildTask
+// neutralizeEnqueue 让 CreateBuildTask/StartBuildTask 末尾的 enqueueTask
 // 不 panic：CreateClient 返回真实但指向不可达 redis 的 client，Enqueue 会失败，
-// 而 enqueueBuildTask 对入队失败仅记日志、不影响返回值。
+// 而 enqueueTask 对入队失败仅记日志、不影响返回值。
 func neutralizeEnqueue(t *testing.T, ctrl *gomock.Controller) {
 	t.Helper()
 	mockAQA := mock_interfaces.NewMockAsynqAccess(ctrl)
@@ -884,4 +904,14 @@ func neutralizeEnqueue(t *testing.T, ctrl *gomock.Controller) {
 		logics.AQA = prev
 		_ = client.Close()
 	})
+}
+
+func drainDebugBuildTaskQueue(queue <-chan *asynq.Task) {
+	for {
+		select {
+		case <-queue:
+		default:
+			return
+		}
+	}
 }

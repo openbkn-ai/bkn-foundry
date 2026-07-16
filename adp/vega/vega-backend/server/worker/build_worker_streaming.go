@@ -46,24 +46,28 @@ func getServerName(hostname string) string {
 // streamingBuildWorker handles build tasks.
 type streamingBuildWorker struct {
 	appSetting  *common.AppSetting
+	client      *asynq.Client
 	taskAccess  interfaces.BuildTaskAccess
 	resAccess   interfaces.ResourceAccess
 	cs          interfaces.CatalogService
 	lim         interfaces.LocalIndexManager
-	client      *asynq.Client
 	httpClient  rest.HTTPClient
 	kafkaAccess interfaces.KafkaAccess
 }
 
 // NewStreamingBuildWorker creates a new build worker.
 func NewStreamingBuildWorker(appSetting *common.AppSetting) *streamingBuildWorker {
+	var client *asynq.Client
+	if !common.GetDebugMode() && logics.AQA != nil {
+		client = logics.AQA.CreateClient()
+	}
 	return &streamingBuildWorker{
 		appSetting:  appSetting,
+		client:      client,
 		taskAccess:  logics.BTA,
 		resAccess:   logics.RA,
 		cs:          catalog.NewCatalogService(appSetting),
 		lim:         local_index.NewLocalIndexManager(appSetting),
-		client:      logics.AQA.CreateClient(),
 		httpClient:  common.NewHTTPClient(),
 		kafkaAccess: logics.KA,
 	}

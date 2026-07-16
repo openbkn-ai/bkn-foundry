@@ -15,6 +15,8 @@ const (
 	HighQueue    = "vega-backend-high"
 	DefaultQueue = "vega-backend-default"
 	LowQueue     = "vega-backend-low"
+
+	TaskMaxRetryCount = 20
 )
 
 // AsynqAccess defines the interface for creating Asynq client and server.

@@ -28,23 +28,15 @@ const (
 	BuildTaskOrderByStatus    string = "status"     // 按状态优先级桶序
 	BuildTaskOrderByMode      string = "mode"       // 按模式
 
-	DEFAULT_BUILD_TASK_ORDER_BY string = BuildTaskOrderByDefault
-	DEFAULT_BUILD_TASK_ORDER    string = DESC_DIRECTION
-
 	BuildTaskExecuteTypeIncremental string = "incremental" // 增量
 	BuildTaskExecuteTypeFull        string = "full"        // 全量
 
 	EmptyDocumentID string = "empty_document"
 
-	BUILD_TASK_MAX_RETRY_COUNT = 50 // 最大重试次数
-	BUILD_TASK_RETRY_INTERVAL  = 5  // 重试间隔，单位秒
+	BUILD_TASK_RETRY_INTERVAL = 5 // 重试间隔，单位秒
 
 	BUILD_PREFIX = "vega-build"
 )
-
-func BuildTaskQueueTaskID(taskType string, taskID string) string {
-	return taskType + ":" + taskID
-}
 
 // BuildTaskStatusOrder 定义 default/status 排序的状态桶优先级(下标+1 即优先级)。
 // 活跃任务(running/init)置顶是核心诉求;顺序写死,既是 SQL CASE 的唯一来源,
