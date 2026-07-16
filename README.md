@@ -30,7 +30,6 @@ OpenBKN is an ontology-driven business knowledge network platform. Through ontol
 - 📘 [Documentation](help/README.md) - Product documentation and usage guides ([EN](help/en/README.md) / [中文](help/zh/README.md))
 - 📦 [Examples](examples/README.md) - End-to-end CLI walkthroughs (DB / CSV / actions)
 - 🧾 [Release Notes](release-notes/) - All notable changes
-- 🔗 [Upstream project](https://github.com/kweaver-ai/kweaver-core) - Forked from kweaver-ai/kweaver-core (Apache-2.0)
 
 <a id="toc-quick-start"></a>
 

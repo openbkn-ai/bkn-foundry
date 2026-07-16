@@ -30,7 +30,6 @@ OpenBKN 是一个本体驱动的业务知识网络平台，它通过本体建模
 - 📘 [产品文档](help/README.md) - 产品文档与使用指南（[中文](help/zh/README.md) / [EN](help/en/README.md)）
 - 📦 [示例](examples/README.zh.md) - 端到端 CLI 示例（数据库 / CSV / Action）
 - 🧾 [版本发布](release-notes/) - 重要变更记录
-- 🔗 [上游项目](https://github.com/kweaver-ai/kweaver-core) - Fork 自 kweaver-ai/kweaver-core（Apache-2.0）
 
 <a id="toc-quick-start"></a>
 
