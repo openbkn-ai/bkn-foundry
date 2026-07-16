@@ -112,6 +112,10 @@ depServices:
     host: mf-model-api
     port: 9898
     protocol: http
+  bkn-agent:
+    host: bkn-agent
+    port: 9898
+    protocol: http
 
 config:
   server:
