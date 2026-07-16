@@ -26,7 +26,7 @@ api-docs-lint:
 
 ## api-docs: 渲染各模块 YAML 为 Markdown，输出到 _generated/<module>.md
 ## 每个 YAML 先渲染到临时文件（widdershins 的编译日志走 stdout，不能用 -o -），
-## 再按模块拼接。
+## 再按模块拼接。--code 关掉多语言代码示例（PHP/Ruby/… 对 REST 参照是噪声）。
 api-docs: api-docs-clean
 	@mkdir -p $(GEN_DIR)
 	@tmp=$$(mktemp); \
@@ -35,10 +35,11 @@ api-docs: api-docs-clean
 	  : > "$(GEN_DIR)/$$m.md"; \
 	  for y in $(API_DIR)/$$m/*.yaml; do \
 	    [ -e "$$y" ] || continue; \
-	    npx widdershins --summary --omitHeader "$$y" -o "$$tmp" >/dev/null 2>&1 || { echo "render failed: $$y"; rm -f "$$tmp"; exit 1; }; \
+	    npx widdershins --code --summary --omitHeader "$$y" -o "$$tmp" >/dev/null 2>&1 || { echo "render failed: $$y"; rm -f "$$tmp"; exit 1; }; \
 	    cat "$$tmp" >> "$(GEN_DIR)/$$m.md"; \
 	    printf '\n\n' >> "$(GEN_DIR)/$$m.md"; \
 	  done; \
+	  perl -i -ne 'print unless /^> Scroll down for code samples/' "$(GEN_DIR)/$$m.md"; \
 	done; \
 	rm -f "$$tmp"
 	@echo "done -> $(GEN_DIR)/"
