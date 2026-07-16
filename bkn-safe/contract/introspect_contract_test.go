@@ -5,8 +5,8 @@
 // Package contract holds executable freeze tests for the ISF replacement.
 //
 // introspect_contract_test.go proves that the frozen hydra introspect golden
-// responses (docs/isf-replacement/contracts/introspect/*.json) parse through
-// the REAL kweaver-go-lib hydra client into the expected TokenIntrospectInfo.
+// responses (testdata/introspect/*.json) parse through the REAL kweaver-go-lib
+// hydra client into the expected TokenIntrospectInfo.
 //
 // Why this matters: the lib's Introspect() parses with unchecked type
 // assertions (no nil checks). A missing claim panics. bkn-safe, acting as
@@ -28,17 +28,15 @@ import (
 	"github.com/openbkn-ai/bkn-comm-go/hydra"
 )
 
-// goldenDir resolves docs/isf-replacement/contracts/introspect relative to
-// this test file, so the test reads the single frozen source (no duplication).
+// goldenDir resolves testdata/introspect next to this test file — the frozen
+// hydra introspect golden captures live here (see testdata/README.md).
 func goldenDir(t *testing.T) string {
 	t.Helper()
 	_, thisFile, _, ok := runtime.Caller(0)
 	if !ok {
 		t.Fatal("runtime.Caller failed")
 	}
-	// bkn-safe/contract/<file> -> repo root is two dirs up.
-	root := filepath.Join(filepath.Dir(thisFile), "..", "..")
-	return filepath.Join(root, "docs", "isf-replacement", "contracts", "introspect")
+	return filepath.Join(filepath.Dir(thisFile), "testdata", "introspect")
 }
 
 // newHydraServing spins an httptest server that answers the hydra admin

@@ -1,0 +1,25 @@
+# 共享认证方案 —— 单一来源
+#
+# 平台对外接口的 securityScheme 集中在此。各模块 YAML 通过
+#   $ref: '../_shared/auth.yaml#/components/securitySchemes/OAuth2'
+# 引用后，在 path/operation 上用 `security:` 引名生效。
+#
+# 现状说明：当前 19 份手写 YAML 中仅 bkn 显式声明了 OAuth2，vega/dataflow 等未声明
+# security。本文件把权威定义收敛到一处；把各模块补齐 security 引用属于后续按模块
+# 独立处理（避免在纯迁移批次里改变文档语义）。
+components:
+  securitySchemes:
+    OAuth2:
+      type: oauth2
+      description: OAuth2 认证，用于外网接口。
+      flows:
+        clientCredentials:
+          tokenUrl: /oauth/token
+          scopes: {}
+    AppKey:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: |
+        应用密钥（`bak_` 前缀）。以 `Authorization: Bearer bak_xxx` 形式携带，
+        用于服务间 / 应用级调用。

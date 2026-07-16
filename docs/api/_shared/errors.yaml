@@ -1,0 +1,36 @@
+# 共享错误响应体 —— 单一来源
+#
+# 由 kweaver-go-lib/rest.BaseError JSON 序列化得到，Go 服务（vega / bkn / dataflow /
+# context-loader / execution-factory / bkn-safe）统一走这套错误信封。各模块 YAML 用
+#   $ref: '../_shared/errors.yaml#/components/schemas/Error'
+# 引用，不再各自内嵌。
+#
+# 注意：mf-model 是 FastAPI，错误信封字段不同（code/detail/link），单列
+#       errors-fastapi.yaml，不并入本文件——不假装全平台一套。
+components:
+  schemas:
+    Error:
+      description: |
+        统一错误响应体。由 `kweaver-go-lib/rest.BaseError` JSON 序列化得到。
+      type: object
+      required:
+        - error_code
+        - description
+        - solution
+        - error_link
+        - error_details
+      properties:
+        error_code:
+          type: string
+          description: 机器可读错误码。
+        description:
+          type: string
+          description: 人类可读错误说明。
+        solution:
+          type: string
+          description: 建议的处理方式。
+        error_link:
+          type: string
+          description: 指向错误详情文档的链接。
+        error_details:
+          description: 详细内容，类型不固定。

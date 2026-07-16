@@ -87,6 +87,9 @@ sandbox_web/dist/
 /kw-studio/build
 /kw-studio/report
 
+# 根级文档工具链依赖（package.json / package-lock.json 提交，依赖目录不提交）
+/node_modules
+
 go.work
 go.work.sum
 ref

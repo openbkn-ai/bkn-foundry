@@ -1,0 +1,63 @@
+name: ci-docs-api
+
+# API 文档流水线：PR 触碰 docs/api 时，校验 OpenAPI YAML（$ref 可解析等）并把
+# YAML 渲染成 Markdown。渲染产物 docs/api/_generated/*.md 是「构建产物」——若与源
+# YAML 不同步，直接把最新 md 提交回 PR 分支，开发者无需手动跑 make。
+#
+# 真相源永远是 YAML；_generated/ 的 md 由本流水线维护，不要手改。
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'docs/api/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'Makefile'
+      - '.redocly.yaml'
+      - '.github/workflows/ci-docs-api.yml'
+
+concurrency:
+  group: ci-docs-api-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write   # 需要把渲染出的 md 提交回 PR 分支
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    # fork 来的 PR 拿不到写 token，跳过自动提交（仍会在 fork 侧本地渲染）
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          token: ${{ github.token }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install doc toolchain
+        run: npm ci || npm install
+
+      - name: Lint OpenAPI YAML
+        run: make api-docs-lint
+
+      - name: Render YAML to Markdown
+        run: make api-docs
+
+      - name: Commit regenerated Markdown if changed
+        run: |
+          set -euo pipefail
+          if [ -z "$(git status --porcelain docs/api/_generated)" ]; then
+            echo "✅ _generated/ already in sync — nothing to commit."
+            exit 0
+          fi
+          git config user.name  'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add docs/api/_generated
+          git commit -m 'docs(api): regenerate Markdown from OpenAPI YAML'
+          git push origin HEAD:${{ github.head_ref }}
+          echo "📝 Committed regenerated Markdown back to the PR branch."

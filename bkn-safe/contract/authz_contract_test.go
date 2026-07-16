@@ -2,14 +2,14 @@
 //
 // Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 
-// authz_contract_test.go proves the Casbin RBAC-subset model (frozen in
-// docs/isf-replacement/contracts/README.md §4) reproduces ISF authorization
-// decisions on the frozen golden traffic. This validates the core replacement
-// assumption: bkn-safe can back the authorization contract with Casbin and
-// stay decision-for-decision compatible with ISF.
+// authz_contract_test.go proves the Casbin RBAC-subset model reproduces ISF
+// authorization decisions on the frozen golden traffic. This validates the core
+// replacement assumption: bkn-safe can back the authorization contract with
+// Casbin and stay decision-for-decision compatible with ISF.
 //
-// Golden source: docs/isf-replacement/isf-contract-freeze §2.1 (dip-poc, real
-// captures) — user f6ae435c, resource agent:probe:
+// The golden values below are inlined constants (this test reads no files). The
+// contract-freeze spec they came from lives in bkn-docs (docs/foundry). Golden:
+// dip-poc real captures — user f6ae435c, resource agent:probe:
 //
 //	operation-check  {accessor user, resource agent:probe, op use} -> {result:true}
 //	resource-operation (allow_operation:true) -> [{id:probe, operation:[mgnt_built_in_agent, use]}]
