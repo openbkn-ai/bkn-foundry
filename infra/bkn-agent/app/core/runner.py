@@ -7,7 +7,7 @@ from langgraph.prebuilt import create_react_agent
 
 from app import dao, observability
 from app.config import config
-from app.core.llm import build_chat_model
+from app.core.llm import build_chat_model, normalize_response_format
 from app.core.prompt import resolve_prompt
 from app.core.skills import load_skills
 from app.db import SessionLocal
@@ -71,7 +71,7 @@ async def run_agent_once(
             "prompt.version": prompt_version,
         },
     ):
-        graph_kwargs = {"response_format": response_format} if response_format else {}
+        graph_kwargs = {"response_format": normalize_response_format(response_format)} if response_format else {}
         graph = create_react_agent(model, tools, prompt=system_prompt, **graph_kwargs)
         async with asyncio.timeout(timeout_s):
             result = await graph.ainvoke(

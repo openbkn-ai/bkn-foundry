@@ -71,8 +71,10 @@ def test_response_format_passed_and_serialized(monkeypatch):
     out = asyncio.run(runner.run_agent_once(
         _agent(), "hi", {}, [], None, "acc", "user", depth=1, response_format=SCHEMA,
     ))
-    # response_format 透传给 create_react_agent
-    assert captured["kwargs"].get("response_format") == SCHEMA
+    # response_format 透传给 create_react_agent，裸 schema 补了 title（否则 Unsupported function）
+    passed = captured["kwargs"].get("response_format")
+    assert passed.get("title") == "StructuredResponse"
+    assert passed["properties"] == SCHEMA["properties"]
     # structured_response 被序列化成 JSON 字符串（中文不转义）
     assert json.loads(out) == {"greeting": "pong"}
 
@@ -98,6 +100,19 @@ def test_no_response_format_keeps_text_path(monkeypatch):
     ))
     assert "response_format" not in captured["kwargs"]  # 可选：没传就不带
     assert out == "纯文本回复"
+
+
+def test_normalize_response_format():
+    from app.core.llm import normalize_response_format
+    # 裸 schema 补 title
+    n = normalize_response_format({"type": "object", "properties": {}})
+    assert n["title"] == "StructuredResponse"
+    # 已有 title 不动
+    assert normalize_response_format({"title": "X", "type": "object"}) == {"title": "X", "type": "object"}
+    # 已有 name 不动
+    assert normalize_response_format({"name": "Y", "parameters": {}}) == {"name": "Y", "parameters": {}}
+    # None 透传
+    assert normalize_response_format(None) is None
 
 
 def test_structured_empty_raises(monkeypatch):

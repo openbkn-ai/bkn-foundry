@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app import dao, observability
 from app.config import config
 from app.core.checkpoint import open_checkpointer
-from app.core.llm import build_chat_model
+from app.core.llm import build_chat_model, normalize_response_format
 from app.core.prompt import resolve_prompt
 from app.core.skills import load_skills
 from app.core.tools import apply_tool_call_cap, load_tools
@@ -95,7 +95,10 @@ async def stream_chat(
                 async with open_checkpointer() as checkpointer:
                     # response_format（JSON Schema，可选）非空 → 结构化输出：工具循环后再做一次
                     # 结构化调用，结果落 state["structured_response"]，正文 token 照常流。
-                    graph_kwargs = {"response_format": req.response_format} if req.response_format else {}
+                    graph_kwargs = (
+                        {"response_format": normalize_response_format(req.response_format)}
+                        if req.response_format else {}
+                    )
                     graph = create_react_agent(
                         model, tools, prompt=system_prompt, checkpointer=checkpointer, **graph_kwargs
                     )

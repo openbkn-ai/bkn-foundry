@@ -1,6 +1,16 @@
+from typing import Any, Optional
+
 from langchain_openai import ChatOpenAI
 
 from app.config import config
+
+
+def normalize_response_format(rf: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
+    """create_react_agent 的 response_format 底层过 convert_to_openai_function：纯 JSON Schema
+    若缺 name/title 会被判 `Unsupported function`。缺就补个 title，调用方可直接传裸 schema。"""
+    if isinstance(rf, dict) and "title" not in rf and "name" not in rf:
+        return {"title": "StructuredResponse", **rf}
+    return rf
 
 
 def build_chat_model(agent_model: str) -> ChatOpenAI:
