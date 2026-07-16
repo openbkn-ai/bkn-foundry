@@ -133,26 +133,9 @@ For full product documentation, see the [Documentation](help/README.md) ([EN](he
 
 ## 🏗️ BKN Foundry
 
-**BKN Foundry** is the AI-native platform foundation for autonomous decision-making. It sits between AI Agents (above) and AI/Data infrastructure (below), with the **Business Knowledge Network (BKN)** at its center, providing unified data access, execution, and security governance for Agents.
+**BKN Foundry** is the technical foundation of OpenBKN. It gives the business knowledge network unified data access, safe execution, and governance, so agents connecting to proprietary data get high-quality context and safe, controllable execution.
 
-```text
-            ┌─────────────────────────────────┐
-            │     AI Agents (Claude Code, GPT,  │
-            │     custom agents, ...)          │
-            └───────────────┬─────────────────┘
-                            │
-            ┌───────────────▼─────────────────┐
-            │     Business Knowledge Network   │
-            │         BKN Foundry             │
-            └───────────────┬─────────────────┘
-                            │
-            ┌───────────────▼─────────────────┐
-            │   AI Infrastructure & Data       │
-            │   Infrastructure                 │
-            └─────────────────────────────────┘
-```
-
-BKN Foundry solves two critical pain points when connecting proprietary data with autonomous AI Agents:
+BKN Foundry addresses two critical pain points when connecting proprietary data with agents:
 
 ### Context Engineering — High-Quality Context for Agents
 
