@@ -30,6 +30,7 @@ import (
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
 	"vega-backend/logics"
+	"vega-backend/logics/user_mgmt"
 )
 
 var (
@@ -45,6 +46,7 @@ type semanticUnderstandingTaskService struct {
 	ca         interfaces.CatalogAccess
 	ra         interfaces.ResourceAccess
 	suta       interfaces.SemanticUnderstandingTaskAccess
+	ums        interfaces.UserMgmtService
 
 	debugTaskQueue chan *asynq.Task
 }
@@ -61,6 +63,7 @@ func NewSemanticUnderstandingTaskService(appSetting *common.AppSetting) interfac
 			ca:         logics.CA,
 			ra:         logics.RA,
 			suta:       logics.SUTA,
+			ums:        user_mgmt.NewUserMgmtService(appSetting),
 
 			debugTaskQueue: make(chan *asynq.Task, debugQueueSize),
 		}
@@ -201,6 +204,28 @@ func (suts *semanticUnderstandingTaskService) enqueueTask(ctx context.Context, t
 
 func (suts *semanticUnderstandingTaskService) GetByID(ctx context.Context, id string) (*interfaces.SemanticUnderstandingTask, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "SemanticUnderstandingTaskService.GetByID")
+	defer span.End()
+
+	task, err := suts.suta.GetByID(ctx, id)
+	if err != nil {
+		span.SetStatus(codes.Error, "Get semantic understanding task failed")
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_InternalError_FilterResourcesFailed).
+			WithErrorDetails(err.Error())
+	}
+	if task == nil {
+		span.SetStatus(codes.Error, "Semantic understanding task not found")
+		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_SemanticUnderstandingTask_NotFound)
+	}
+	if err := suts.ums.GetAccountNames(ctx, []*interfaces.AccountInfo{&task.Creator}); err != nil {
+		span.SetStatus(codes.Error, "GetAccountNames error")
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_SemanticUnderstandingTask_InternalError_GetAccountNamesFailed).WithErrorDetails(err.Error())
+	}
+	return task, nil
+}
+
+func (suts *semanticUnderstandingTaskService) InternalGetByID(ctx context.Context, id string) (*interfaces.SemanticUnderstandingTask, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "SemanticUnderstandingTaskService.InternalGetByID")
 	defer span.End()
 
 	task, err := suts.suta.GetByID(ctx, id)

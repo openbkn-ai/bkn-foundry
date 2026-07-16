@@ -47,7 +47,7 @@ func Test_BuildTaskRestHandler_CreateBuildTask(t *testing.T) {
 
 	t.Run("creates batch build task", func(t *testing.T) {
 		engine, bts, _ := setupBuildTaskHandlerTest(t)
-		bts.EXPECT().CreateBuildTask(gomock.Any(), gomock.Any()).
+		bts.EXPECT().Create(gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, req *interfaces.CreateBuildTaskRequest) (string, error) {
 				assert.Equal(t, interfaces.BuildTaskModeBatch, req.Mode)
 				assert.Equal(t, "res-1", req.ResourceID)
@@ -68,7 +68,7 @@ func Test_BuildTaskRestHandler_CreateBuildTask(t *testing.T) {
 
 	t.Run("ignores legacy index config fields", func(t *testing.T) {
 		engine, bts, _ := setupBuildTaskHandlerTest(t)
-		bts.EXPECT().CreateBuildTask(gomock.Any(), gomock.Any()).
+		bts.EXPECT().Create(gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, req *interfaces.CreateBuildTaskRequest) (string, error) {
 				assert.Equal(t, interfaces.BuildTaskModeBatch, req.Mode)
 				assert.Equal(t, "res-1", req.ResourceID)
@@ -93,7 +93,7 @@ func Test_BuildTaskRestHandler_GetBuildTask(t *testing.T) {
 
 	t.Run("gets build task by id", func(t *testing.T) {
 		engine, bts, _ := setupBuildTaskHandlerTest(t)
-		bts.EXPECT().GetBuildTaskByID(gomock.Any(), "task-1").
+		bts.EXPECT().GetByID(gomock.Any(), "task-1").
 			Return(&interfaces.BuildTask{ID: "task-1", ResourceID: "res-1", Status: interfaces.BuildTaskStatusRunning}, nil)
 
 		req := httptest.NewRequest(http.MethodGet, "/api/vega-backend/in/v1/build-tasks/task-1", nil)
@@ -156,7 +156,7 @@ func Test_BuildTaskRestHandler_ListBuildTasks(t *testing.T) {
 
 	t.Run("success with default pagination", func(t *testing.T) {
 		engine, bts := setup(t)
-		bts.EXPECT().ListBuildTasks(gomock.Any(), gomock.Any()).
+		bts.EXPECT().List(gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTask, int64, error) {
 				assert.Equal(t, 0, params.Offset)
 				assert.Equal(t, 20, params.Limit)
@@ -175,7 +175,7 @@ func Test_BuildTaskRestHandler_ListBuildTasks(t *testing.T) {
 
 	t.Run("success with explicit query params", func(t *testing.T) {
 		engine, bts := setup(t)
-		bts.EXPECT().ListBuildTasks(gomock.Any(), gomock.Any()).
+		bts.EXPECT().List(gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTask, int64, error) {
 				assert.Equal(t, "res-1", params.ResourceID)
 				assert.Equal(t, "cat-1", params.CatalogID)
@@ -212,7 +212,7 @@ func Test_BuildTaskRestHandler_DeleteBuildTasks(t *testing.T) {
 		handler := MockNewRestHandler(&common.AppSetting{}, nil, nil, nil, bts, nil, nil, nil, nil, nil, nil)
 		handler.RegisterPublic(engine)
 
-		bts.EXPECT().DeleteBuildTasks(gomock.Any(), []string{"t1", "t2"}, true, true).Return(nil)
+		bts.EXPECT().Delete(gomock.Any(), []string{"t1", "t2"}, true, true).Return(nil)
 
 		req := httptest.NewRequest(http.MethodDelete, "/api/vega-backend/in/v1/build-tasks/t1,t2?ignore_missing=true&delete_active_index=true", nil)
 		w := httptest.NewRecorder()
@@ -229,7 +229,7 @@ func Test_BuildTaskRestHandler_StartBuildTask(t *testing.T) {
 
 	t.Run("starts build task with reset", func(t *testing.T) {
 		engine, bts, _ := setupBuildTaskHandlerTest(t)
-		bts.EXPECT().StartBuildTask(gomock.Any(), "task-1", true).Return(nil)
+		bts.EXPECT().Start(gomock.Any(), "task-1", true).Return(nil)
 
 		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/build-tasks/task-1/start", strings.NewReader(`{"reset":true}`))
 		req.Header.Set("Content-Type", "application/json")
@@ -259,7 +259,7 @@ func Test_BuildTaskRestHandler_StopBuildTask(t *testing.T) {
 
 	t.Run("stops build task", func(t *testing.T) {
 		engine, bts, _ := setupBuildTaskHandlerTest(t)
-		bts.EXPECT().StopBuildTask(gomock.Any(), "task-1").Return(nil)
+		bts.EXPECT().Stop(gomock.Any(), "task-1").Return(nil)
 
 		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/build-tasks/task-1/stop", nil)
 		w := httptest.NewRecorder()

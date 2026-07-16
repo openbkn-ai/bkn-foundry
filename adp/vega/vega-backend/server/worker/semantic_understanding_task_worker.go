@@ -47,25 +47,25 @@ func (sutw *SemanticUnderstandingTaskWorker) HandleTask(ctx context.Context, tas
 		logger.Errorf("Failed to unmarshal semantic understanding task message: %v", err)
 		return err
 	}
-	if msg.TaskID == "" {
-		return fmt.Errorf("semantic understanding task id is required")
-	}
 
-	taskInfo, err := sutw.suts.GetByID(ctx, msg.TaskID)
+	taskID := msg.TaskID
+	logger.Infof("Starting semantic understanding task: %s", taskID)
+
+	taskInfo, err := sutw.suts.InternalGetByID(ctx, taskID)
 	if err != nil {
-		logger.Errorf("Failed to get semantic understanding task %s: %v", msg.TaskID, err)
+		logger.Errorf("Failed to get semantic understanding task %s: %v", taskID, err)
 		return err
 	}
 	if taskInfo == nil {
-		return fmt.Errorf("semantic understanding task %s not found", msg.TaskID)
+		return fmt.Errorf("semantic understanding task %s not found", taskID)
 	}
+	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, taskInfo.Creator)
+
 	if taskInfo.Status == interfaces.SemanticUnderstandingTaskStatusSucceeded ||
 		taskInfo.Status == interfaces.SemanticUnderstandingTaskStatusFailed {
 		logger.Infof("Semantic understanding task already finished: id=%s, status=%s", taskInfo.ID, taskInfo.Status)
 		return nil
 	}
-
-	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, taskInfo.Creator)
 
 	agentTaskID := taskInfo.AgentTaskID
 	if agentTaskID == "" {

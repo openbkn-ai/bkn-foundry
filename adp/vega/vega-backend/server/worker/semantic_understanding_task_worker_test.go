@@ -27,6 +27,28 @@ func semanticUnderstandingWorkerTask(t *testing.T, taskID string) *asynq.Task {
 	return asynq.NewTask(interfaces.SemanticUnderstandingTaskType, payload)
 }
 
+type accountIDContextMatcher struct {
+	accountID string
+}
+
+func ctxWithAccountID(t *testing.T, accountID string) gomock.Matcher {
+	t.Helper()
+	return accountIDContextMatcher{accountID: accountID}
+}
+
+func (m accountIDContextMatcher) Matches(x any) bool {
+	ctx, ok := x.(context.Context)
+	if !ok {
+		return false
+	}
+	accountInfo, ok := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
+	return ok && accountInfo.ID == m.accountID
+}
+
+func (m accountIDContextMatcher) String() string {
+	return "context with account id " + m.accountID
+}
+
 func TestSemanticUnderstandingTaskWorkerHandleTask(t *testing.T) {
 	t.Run("runs agent and marks succeeded", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
@@ -61,10 +83,10 @@ func TestSemanticUnderstandingTaskWorkerHandleTask(t *testing.T) {
 		}
 
 		taskService.EXPECT().
-			GetByID(gomock.Any(), "semantic-task-1").
+			InternalGetByID(gomock.Any(), "semantic-task-1").
 			Return(semanticTask, nil)
 		agentService.EXPECT().
-			Run(gomock.Any(), semanticTask).
+			Run(ctxWithAccountID(t, "account-1"), semanticTask).
 			Return("agent-task-1", nil)
 		taskService.EXPECT().
 			MarkRunning(gomock.Any(), "semantic-task-1", "agent-task-1").
@@ -131,7 +153,7 @@ func TestSemanticUnderstandingTaskWorkerHandleTask(t *testing.T) {
 		}
 
 		taskService.EXPECT().
-			GetByID(gomock.Any(), "semantic-task-1").
+			InternalGetByID(gomock.Any(), "semantic-task-1").
 			Return(semanticTask, nil)
 		agentService.EXPECT().
 			WaitResult(gomock.Any(), "agent-task-1").
@@ -170,7 +192,7 @@ func TestSemanticUnderstandingTaskWorkerHandleTask(t *testing.T) {
 		}
 
 		taskService.EXPECT().
-			GetByID(gomock.Any(), "semantic-task-1").
+			InternalGetByID(gomock.Any(), "semantic-task-1").
 			Return(semanticTask, nil)
 		agentService.EXPECT().
 			WaitResult(gomock.Any(), "agent-task-1").

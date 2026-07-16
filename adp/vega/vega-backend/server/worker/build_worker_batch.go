@@ -62,6 +62,8 @@ func (bbw *batchBuildWorker) HandleTask(ctx context.Context, task *asynq.Task) e
 	}
 
 	taskID := msg.TaskID
+	logger.Infof("Starting batch build task: %s", taskID)
+
 	buildTaskInfo, err := bbw.taskAccess.GetByID(ctx, taskID)
 	if err != nil {
 		return fmt.Errorf("get build task failed: %w", err)
@@ -70,6 +72,9 @@ func (bbw *batchBuildWorker) HandleTask(ctx context.Context, task *asynq.Task) e
 		// Task not found, return nil
 		return nil
 	}
+	// 异步任务无原始请求上下文，以任务创建者身份执行下游权限检查
+	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, buildTaskInfo.Creator)
+
 	// 排队期间被停止的任务直接跳过，避免出队后复活覆写状态。
 	// stopping 出队说明原 worker 已不在，兜底落停。
 	if buildTaskInfo.Status == interfaces.BuildTaskStatusStopped ||
@@ -91,8 +96,6 @@ func (bbw *batchBuildWorker) HandleTask(ctx context.Context, task *asynq.Task) e
 		logger.Infof("Task %s is already claimed or not executable, skip execution", taskID)
 		return nil
 	}
-	// 异步任务无原始请求上下文，以任务创建者身份执行下游权限检查
-	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, buildTaskInfo.Creator)
 	resourceID := buildTaskInfo.ResourceID
 	logger.Infof("Starting build for task: %s, resource: %s", taskID, resourceID)
 

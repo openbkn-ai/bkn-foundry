@@ -38,4 +38,7 @@ type DiscoverTaskService interface {
 
 	// DebugTaskQueue returns the in-process discover task queue used in DEBUG_MODE.
 	DebugTaskQueue() <-chan *asynq.Task
+
+	// InternalGetByID retrieves a DiscoverTask by ID for internal workers.
+	InternalGetByID(ctx context.Context, id string) (*DiscoverTask, error)
 }

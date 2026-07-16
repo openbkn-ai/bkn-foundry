@@ -12,3 +12,8 @@ ErrorLink = "暂无"
 Description = "删除语义理解任务失败"
 Solution = "请联系管理员"
 ErrorLink = "暂无"
+
+[VegaBackend.SemanticUnderstandingTask.InternalError.GetAccountNamesFailed]
+Description = "获取语义理解任务创建者名称失败"
+Solution = "请联系管理员"
+ErrorLink = "暂无"

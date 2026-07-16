@@ -82,6 +82,8 @@ func (sbw *streamingBuildWorker) HandleTask(ctx context.Context, task *asynq.Tas
 	}
 
 	taskID := msg.TaskID
+	logger.Infof("Starting streaming build task: %s", taskID)
+
 	buildTaskInfo, err := sbw.taskAccess.GetByID(ctx, taskID)
 	if err != nil {
 		return fmt.Errorf("get build task failed: %w", err)
@@ -90,6 +92,9 @@ func (sbw *streamingBuildWorker) HandleTask(ctx context.Context, task *asynq.Tas
 		// Task not found, return nil
 		return nil
 	}
+	// 异步任务无原始请求上下文，以任务创建者身份执行下游权限检查
+	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, buildTaskInfo.Creator)
+
 	// 排队期间被停止的任务直接跳过，避免出队后复活覆写状态。
 	// stopping 出队说明原 worker 已不在，兜底落停。
 	if buildTaskInfo.Status == interfaces.BuildTaskStatusStopped ||
@@ -111,8 +116,6 @@ func (sbw *streamingBuildWorker) HandleTask(ctx context.Context, task *asynq.Tas
 		logger.Infof("Task %s is already claimed or not executable, skip execution", taskID)
 		return nil
 	}
-	// 异步任务无原始请求上下文，以任务创建者身份执行下游权限检查
-	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, buildTaskInfo.Creator)
 	resourceID := buildTaskInfo.ResourceID
 	logger.Infof("Starting build for task: %s, resource: %s", taskID, resourceID)
 

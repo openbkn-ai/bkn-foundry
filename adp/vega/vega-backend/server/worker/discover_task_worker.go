@@ -50,17 +50,17 @@ func (dtw *DiscoverTaskWorker) HandleTask(ctx context.Context, task *asynq.Task)
 	}
 
 	taskID := msg.TaskID
-	logger.Infof("Starting discover for task: %s", taskID)
+	logger.Infof("Starting discover task: %s", taskID)
 
-	taskInfo, err := dtw.dts.GetByID(ctx, taskID)
+	taskInfo, err := dtw.dts.InternalGetByID(ctx, taskID)
 	if err != nil {
 		logger.Errorf("Failed to get task info for task %s: %v", taskID, err)
 		return err
 	}
+	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, taskInfo.Creator)
+
 	actions := interfaces.ActionsFromDiscoverStrategy(taskInfo.Strategy)
 	taskInfo.DiscoverActions = &actions
-
-	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, taskInfo.Creator)
 
 	catalog, err := dtw.cs.GetByID(ctx, taskInfo.CatalogID, true)
 	if err != nil {

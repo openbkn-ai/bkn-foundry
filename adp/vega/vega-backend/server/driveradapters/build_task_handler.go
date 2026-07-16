@@ -64,7 +64,7 @@ func (r *restHandler) createBuildTask(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 
-	taskID, err := r.bts.CreateBuildTask(ctx, &req)
+	taskID, err := r.bts.Create(ctx, &req)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -75,7 +75,7 @@ func (r *restHandler) createBuildTask(c *gin.Context, visitor hydra.Visitor) {
 	audit.NewInfoLog(audit.OPERATION, "build", audit.TransforOperator(visitor),
 		interfaces.GenerateResourceAuditObject(req.ResourceID, ""), "")
 
-	logger.Debug("Handler CreateBuildTask Success")
+	logger.Debug("Handler Create Success")
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusCreated)
 	rest.ReplyOK(c, http.StatusCreated, map[string]any{
 		"id":          taskID,
@@ -111,7 +111,7 @@ func (r *restHandler) getBuildTask(c *gin.Context, visitor hydra.Visitor) {
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
 	taskID := c.Param("id")
-	buildTask, err := r.bts.GetBuildTaskByID(ctx, taskID)
+	buildTask, err := r.bts.GetByID(ctx, taskID)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -159,7 +159,7 @@ func (r *restHandler) listBuildTasks(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 
-	tasks, total, err := r.bts.ListBuildTasks(ctx, params)
+	tasks, total, err := r.bts.List(ctx, params)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -221,7 +221,7 @@ func (r *restHandler) deleteBuildTasks(c *gin.Context, visitor hydra.Visitor) {
 	ignoreMissing := strings.EqualFold(c.Query("ignore_missing"), "true")
 	deleteActiveIndex := strings.EqualFold(c.Query("delete_active_index"), "true")
 
-	if err := r.bts.DeleteBuildTasks(ctx, ids, ignoreMissing, deleteActiveIndex); err != nil {
+	if err := r.bts.Delete(ctx, ids, ignoreMissing, deleteActiveIndex); err != nil {
 		httpErr := err.(*rest.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -273,7 +273,7 @@ func (r *restHandler) startBuildTask(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 
-	if err := r.bts.StartBuildTask(ctx, taskID, req.Reset); err != nil {
+	if err := r.bts.Start(ctx, taskID, req.Reset); err != nil {
 		httpErr := err.(*rest.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -314,7 +314,7 @@ func (r *restHandler) stopBuildTask(c *gin.Context, visitor hydra.Visitor) {
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
 	taskID := c.Param("id")
-	if err := r.bts.StopBuildTask(ctx, taskID); err != nil {
+	if err := r.bts.Stop(ctx, taskID); err != nil {
 		httpErr := err.(*rest.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)

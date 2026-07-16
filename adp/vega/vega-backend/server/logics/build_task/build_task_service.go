@@ -101,8 +101,8 @@ func EnqueueDebugTask(task *asynq.Task) bool {
 	return true
 }
 
-// CreateBuildTask creates a new build task. resource_id is taken from req.
-func (bts *buildTaskService) CreateBuildTask(ctx context.Context, req *interfaces.CreateBuildTaskRequest) (string, error) {
+// Create creates a new build task. resource_id is taken from req.
+func (bts *buildTaskService) Create(ctx context.Context, req *interfaces.CreateBuildTaskRequest) (string, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Create build task")
 	defer span.End()
 
@@ -345,7 +345,7 @@ func (bts *buildTaskService) normalizeEmbeddingModel(ctx context.Context, embedd
 }
 
 // enqueueTask 按任务模式投递到 asynq 队列。
-func (bts *buildTaskService) enqueueTask(ctx context.Context, buildTask *interfaces.BuildTask, executeType string) error {
+func (bts *buildTaskService) enqueueTask(_ context.Context, buildTask *interfaces.BuildTask, executeType string) error {
 	payload, err := sonic.Marshal(&interfaces.BatchBuildTaskMessage{
 		TaskID:      buildTask.ID,
 		ExecuteType: executeType,
@@ -383,8 +383,8 @@ func (bts *buildTaskService) enqueueTask(ctx context.Context, buildTask *interfa
 	return nil
 }
 
-// GetBuildTaskByID retrieves a build task by ID.
-func (bts *buildTaskService) GetBuildTaskByID(ctx context.Context, id string) (*interfaces.BuildTask, error) {
+// GetByID retrieves a build task by ID.
+func (bts *buildTaskService) GetByID(ctx context.Context, id string) (*interfaces.BuildTask, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Get build task")
 	defer span.End()
 
@@ -409,6 +409,13 @@ func (bts *buildTaskService) GetBuildTaskByID(ctx context.Context, id string) (*
 	buildTask.IndexHealth = computeIndexHealth(buildTask)
 	span.SetStatus(codes.Ok, "")
 	return buildTask, nil
+}
+
+func (bts *buildTaskService) InternalGetByID(ctx context.Context, id string) (*interfaces.BuildTask, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "BuildTaskService.InternalGetByID")
+	defer span.End()
+
+	return bts.bta.GetByID(ctx, id)
 }
 
 // computeIndexHealth 按当前计数派生各索引健康度（不落库）。embedding 与 fulltext
@@ -462,8 +469,8 @@ func hasFulltextIndexConfig(bt *interfaces.BuildTask) bool {
 	return false
 }
 
-// GetBuildTaskByResourceID retrieves a build task by resource ID.
-func (bts *buildTaskService) GetBuildTaskByResourceID(ctx context.Context, resourceID string) (*interfaces.BuildTask, error) {
+// GetByResourceID retrieves a build task by resource ID.
+func (bts *buildTaskService) GetByResourceID(ctx context.Context, resourceID string) (*interfaces.BuildTask, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Get build task by resource ID")
 	defer span.End()
 
@@ -488,8 +495,8 @@ func (bts *buildTaskService) GetBuildTaskByResourceID(ctx context.Context, resou
 	return buildTask, nil
 }
 
-// ListBuildTasks retrieves build tasks with filters and pagination.
-func (bts *buildTaskService) ListBuildTasks(ctx context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTask, int64, error) {
+// List retrieves build tasks with filters and pagination.
+func (bts *buildTaskService) List(ctx context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTask, int64, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "List build tasks")
 	defer span.End()
 
@@ -515,9 +522,9 @@ func (bts *buildTaskService) ListBuildTasks(ctx context.Context, params interfac
 	return buildTasks, total, nil
 }
 
-// StartBuildTask transitions a task from {init/stopped/completed, failed task auto retry} to running.
+// Start transitions a task from {init/stopped/completed, failed task auto retry} to running.
 // Note: persisted status remains init/stopped/completed until the worker picks it up — clients should poll.
-func (bts *buildTaskService) StartBuildTask(ctx context.Context, taskID string, reset bool) error {
+func (bts *buildTaskService) Start(ctx context.Context, taskID string, reset bool) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Start build task")
 	defer span.End()
 
@@ -629,9 +636,9 @@ func (bts *buildTaskService) validateStartBuildTaskStillCurrent(ctx context.Cont
 	return nil
 }
 
-// StopBuildTask transitions a task from running to stopping.
+// Stop transitions a task from running to stopping.
 // Note: persisted status remains running until the worker advances it — clients should poll.
-func (bts *buildTaskService) StopBuildTask(ctx context.Context, taskID string) error {
+func (bts *buildTaskService) Stop(ctx context.Context, taskID string) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Stop build task")
 	defer span.End()
 
@@ -674,7 +681,7 @@ func (bts *buildTaskService) StopBuildTask(ctx context.Context, taskID string) e
 	return nil
 }
 
-// DeleteBuildTasks atomically deletes build tasks by IDs after pre-validating existence and status.
+// Delete atomically deletes build tasks by IDs after pre-validating existence and status.
 //
 // Behavior:
 //   - Loads each id; if any missing, returns 404 BuildTask.NotFound with {missing_ids: [...]}
@@ -684,7 +691,7 @@ func (bts *buildTaskService) StopBuildTask(ctx context.Context, taskID string) e
 //   - If any task owns the resource's current LocalIndexName, returns 409 ActiveIndexInUse
 //     unless deleteActiveIndex=true. When deleteActiveIndex=true, clears LocalIndexName before deleting.
 //   - Deletes pass-through tasks one-by-one. Mid-loop errors return 500 (rare, bounded by pre-validation).
-func (bts *buildTaskService) DeleteBuildTasks(ctx context.Context, ids []string, ignoreMissing bool, deleteActiveIndex bool) error {
+func (bts *buildTaskService) Delete(ctx context.Context, ids []string, ignoreMissing bool, deleteActiveIndex bool) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Delete build tasks")
 	defer span.End()
 

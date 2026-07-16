@@ -14,7 +14,8 @@ const (
 	VegaBackend_SemanticUnderstandingTask_HasRunningExecution = "VegaBackend.SemanticUnderstandingTask.HasRunningExecution"
 
 	// 500 Internal Server Error
-	VegaBackend_SemanticUnderstandingTask_InternalError_DeleteFailed = "VegaBackend.SemanticUnderstandingTask.InternalError.DeleteFailed"
+	VegaBackend_SemanticUnderstandingTask_InternalError_DeleteFailed          = "VegaBackend.SemanticUnderstandingTask.InternalError.DeleteFailed"
+	VegaBackend_SemanticUnderstandingTask_InternalError_GetAccountNamesFailed = "VegaBackend.SemanticUnderstandingTask.InternalError.GetAccountNamesFailed"
 )
 
 var SemanticUnderstandingTaskErrCodeList = []string{
@@ -26,4 +27,5 @@ var SemanticUnderstandingTaskErrCodeList = []string{
 
 	// 500 Internal Server Error
 	VegaBackend_SemanticUnderstandingTask_InternalError_DeleteFailed,
+	VegaBackend_SemanticUnderstandingTask_InternalError_GetAccountNamesFailed,
 }

@@ -12,3 +12,8 @@ ErrorLink = "No solution"
 Description = "Failed to delete semantic understanding task"
 Solution = "Please contact the administrator"
 ErrorLink = "No solution"
+
+[VegaBackend.SemanticUnderstandingTask.InternalError.GetAccountNamesFailed]
+Description = "Failed to get semantic understanding task creator names"
+Solution = "Please contact the administrator"
+ErrorLink = "No solution"

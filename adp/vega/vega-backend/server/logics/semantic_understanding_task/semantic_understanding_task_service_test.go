@@ -125,6 +125,49 @@ func TestSemanticUnderstandingTaskServiceStatusUpdates(t *testing.T) {
 	assert.True(t, succeeded)
 }
 
+func TestSemanticUnderstandingTaskServiceGetByID(t *testing.T) {
+	t.Run("enriches creator name", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		taskAccess := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
+		userMgmtService := mock_interfaces.NewMockUserMgmtService(ctrl)
+		service := &semanticUnderstandingTaskService{suta: taskAccess, ums: userMgmtService}
+		task := &interfaces.SemanticUnderstandingTask{
+			ID:      "semantic-task-1",
+			Creator: interfaces.AccountInfo{ID: "u1", Type: interfaces.ACCESSOR_TYPE_USER},
+		}
+
+		taskAccess.EXPECT().GetByID(gomock.Any(), "semantic-task-1").Return(task, nil)
+		userMgmtService.EXPECT().
+			GetAccountNames(gomock.Any(), []*interfaces.AccountInfo{&task.Creator}).
+			DoAndReturn(func(_ context.Context, accountInfos []*interfaces.AccountInfo) error {
+				accountInfos[0].Name = "Alice"
+				return nil
+			})
+
+		got, err := service.GetByID(context.Background(), "semantic-task-1")
+
+		require.NoError(t, err)
+		require.Same(t, task, got)
+		assert.Equal(t, "Alice", got.Creator.Name)
+	})
+
+	t.Run("returns not found when task is missing", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		taskAccess := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
+		service := &semanticUnderstandingTaskService{suta: taskAccess}
+
+		taskAccess.EXPECT().GetByID(gomock.Any(), "missing").Return(nil, nil)
+
+		got, err := service.GetByID(context.Background(), "missing")
+
+		assert.Nil(t, got)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "NotFound")
+	})
+}
+
 func TestSemanticUnderstandingTaskServiceDelete(t *testing.T) {
 	t.Run("deletes completed tasks and ignores missing ids", func(t *testing.T) {
 		ctrl := gomock.NewController(t)

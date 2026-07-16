@@ -160,12 +160,25 @@ func (dts *discoverTaskService) GetByID(ctx context.Context, id string) (*interf
 	if err != nil {
 		return nil, err
 	}
-	if task != nil {
-		if err := dts.ums.GetAccountNames(ctx, []*interfaces.AccountInfo{&task.Creator}); err != nil {
-			span.SetStatus(codes.Error, "GetAccountNames error")
-			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-				verrors.VegaBackend_DiscoverTask_InternalError_GetAccountNamesFailed).WithErrorDetails(err.Error())
-		}
+	if task == nil {
+		span.SetStatus(codes.Error, "Discover task not found")
+		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_DiscoverTask_NotFound)
+	}
+	if err := dts.ums.GetAccountNames(ctx, []*interfaces.AccountInfo{&task.Creator}); err != nil {
+		span.SetStatus(codes.Error, "GetAccountNames error")
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_DiscoverTask_InternalError_GetAccountNamesFailed).WithErrorDetails(err.Error())
+	}
+	return task, nil
+}
+
+func (dts *discoverTaskService) InternalGetByID(ctx context.Context, id string) (*interfaces.DiscoverTask, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DiscoverTaskService.InternalGetByID")
+	defer span.End()
+
+	task, err := dts.dta.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
 	}
 	return task, nil
 }
