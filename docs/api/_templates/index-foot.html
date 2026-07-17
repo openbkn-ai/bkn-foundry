@@ -1,40 +1,20 @@
-      <div class="no-hit" id="nohit">没有匹配的资源</div>
-    </nav>
-  </aside>
-  <main class="content">
-    <iframe name="cdoc" id="cdoc" title="API 文档"></iframe>
-  </main>
+  <div class="no-hit" id="nohit">没有匹配的资源</div>
+</main>
 </div>
 <script>
-  var frame = document.getElementById('cdoc');
-  var links = [].slice.call(document.querySelectorAll('.res'));
-
-  // 点击资源 → 右侧 iframe 加载 + 高亮
-  links.forEach(function(a){
-    a.addEventListener('click', function(e){
-      e.preventDefault();
-      links.forEach(function(x){ x.classList.remove('active'); });
-      a.classList.add('active');
-      frame.src = a.dataset.href;
-    });
-  });
-
-  // 默认加载第一个资源
-  if (links.length) { links[0].classList.add('active'); frame.src = links[0].dataset.href; }
-
-  // 搜索过滤（隐藏不匹配的资源与空模块）
   var q = document.getElementById('q');
+  var cards = [].slice.call(document.querySelectorAll('.card'));
   var mods = [].slice.call(document.querySelectorAll('.mod'));
   var nohit = document.getElementById('nohit');
   q.addEventListener('input', function(){
     var v = q.value.trim().toLowerCase(), any = false;
-    links.forEach(function(a){
-      var hit = a.dataset.name.indexOf(v) > -1;
-      a.style.display = hit ? '' : 'none';
+    cards.forEach(function(c){
+      var hit = c.dataset.name.indexOf(v) > -1;
+      c.style.display = hit ? '' : 'none';
       if (hit) any = true;
     });
     mods.forEach(function(m){
-      var vis = [].slice.call(m.querySelectorAll('.res')).some(function(a){ return a.style.display !== 'none'; });
+      var vis = [].slice.call(m.querySelectorAll('.card')).some(function(c){ return c.style.display !== 'none'; });
       m.style.display = vis ? '' : 'none';
     });
     nohit.style.display = any ? 'none' : 'block';
