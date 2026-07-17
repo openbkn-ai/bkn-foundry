@@ -96,7 +96,7 @@ func TestSemanticUnderstandingTaskWorkerHandleTask(t *testing.T) {
 			Return(&interfaces.BknAgentTask{
 				TaskID: "agent-task-1",
 				Status: interfaces.BknAgentTaskStatusSucceeded,
-				Result: []byte(`{"confidence":0.82,"table":{"display_name":"Business Resource","description":"business resource","confidence":0.82},"fields":[{"name":"id","display_name":"ID","description":"identifier","confidence":0.81}],"warnings":[]}`),
+				Result: []byte(`{"confidence":0.82,"resource":{"display_name":"Business Resource","description":"business resource","confidence":0.82},"fields":[{"name":"id","display_name":"ID","description":"identifier","confidence":0.81}],"warnings":[]}`),
 			}, nil)
 		resourceService.EXPECT().
 			GetByID(gomock.Any(), "resource-1").
@@ -114,10 +114,11 @@ func TestSemanticUnderstandingTaskWorkerHandleTask(t *testing.T) {
 				return nil
 			})
 		taskService.EXPECT().
-			MarkSucceeded(gomock.Any(), "semantic-task-1", `{"confidence":0.82,"table":{"display_name":"Business Resource","description":"business resource","confidence":0.82},"fields":[{"name":"id","display_name":"ID","description":"identifier","confidence":0.81}],"warnings":[]}`, 0.82, gomock.Any()).
+			MarkSucceeded(gomock.Any(), "semantic-task-1", `{"confidence":0.82,"resource":{"display_name":"Business Resource","description":"business resource","confidence":0.82},"fields":[{"name":"id","display_name":"ID","description":"identifier","confidence":0.81}],"warnings":[]}`, 0.82, gomock.Any()).
 			DoAndReturn(func(_ context.Context, _ string, _ string, _ float64, detailJSON string) (bool, error) {
 				var detail map[string]sonic.NoCopyRawMessage
 				require.NoError(t, sonic.Unmarshal([]byte(detailJSON), &detail))
+				assert.Contains(t, detail, "resource")
 				assert.Contains(t, detail, "fields")
 				assert.Contains(t, detail, "warnings")
 				return true, nil
@@ -200,10 +201,10 @@ func TestSemanticUnderstandingTaskWorkerHandleTask(t *testing.T) {
 			Return(&interfaces.BknAgentTask{
 				TaskID: "agent-task-1",
 				Status: interfaces.BknAgentTaskStatusSucceeded,
-				Result: []byte(`{"confidence":0.8,"table":{"description":"business resource"},"fields":[]}`),
+				Result: []byte(`{"confidence":0.8,"resource":{"description":"business resource"},"fields":[]}`),
 			}, nil)
 		taskService.EXPECT().
-			MarkSucceeded(gomock.Any(), "semantic-task-1", `{"confidence":0.8,"table":{"description":"business resource"},"fields":[]}`, 0.8, gomock.Any()).
+			MarkSucceeded(gomock.Any(), "semantic-task-1", `{"confidence":0.8,"resource":{"description":"business resource"},"fields":[]}`, 0.8, gomock.Any()).
 			Return(true, nil)
 		taskService.EXPECT().
 			MarkApplied(gomock.Any(), "semantic-task-1", false, gomock.Any()).

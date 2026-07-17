@@ -165,7 +165,7 @@ func parseBknAgentResult(agentTask *interfaces.BknAgentTask) (string, float64, s
 
 	detail := make(map[string]sonic.NoCopyRawMessage)
 	for _, key := range []string{
-		"table",
+		"resource",
 		"fields",
 		"logic_views",
 		"obsolete_logic_views",
@@ -271,11 +271,11 @@ func skippedApplyResult(detail interfaces.SemanticUnderstandingSkippedApplyDetai
 }
 
 type resourceSemanticUnderstandingResult struct {
-	Table  resourceSemanticUnderstandingTableResult   `json:"table"`
-	Fields []resourceSemanticUnderstandingFieldResult `json:"fields"`
+	Resource resourceSemanticUnderstandingResourceResult `json:"resource"`
+	Fields   []resourceSemanticUnderstandingFieldResult  `json:"fields"`
 }
 
-type resourceSemanticUnderstandingTableResult struct {
+type resourceSemanticUnderstandingResourceResult struct {
 	DisplayName string   `json:"display_name"`
 	Description string   `json:"description"`
 	Confidence  *float64 `json:"confidence,omitempty"`
@@ -303,11 +303,11 @@ func (sutw *SemanticUnderstandingTaskWorker) applyResourceResult(ctx context.Con
 	if err := sonic.Unmarshal([]byte(resultJSON), &result); err != nil {
 		return nil, fmt.Errorf("unmarshal resource semantic understanding result failed: %w", err)
 	}
-	if err := validateConfidence(result.Table.Confidence, "table.confidence"); err != nil {
+	if err := validateConfidence(result.Resource.Confidence, "resource.confidence"); err != nil {
 		return nil, err
 	}
-	if utf8.RuneCountInString(result.Table.DisplayName) > interfaces.NAME_MAX_LENGTH {
-		return nil, fmt.Errorf("table display_name exceeds max length")
+	if utf8.RuneCountInString(result.Resource.DisplayName) > interfaces.NAME_MAX_LENGTH {
+		return nil, fmt.Errorf("resource display_name exceeds max length")
 	}
 
 	resourceInfo, err := sutw.rs.GetByID(ctx, task.ResourceID)
@@ -363,10 +363,10 @@ func (sutw *SemanticUnderstandingTaskWorker) applyResourceResult(ctx context.Con
 	}
 
 	updatedResource := make([]string, 0, 2)
-	if applyStringByMode(task.ApplyMode, &resourceInfo.Name, result.Table.DisplayName) {
+	if applyStringByMode(task.ApplyMode, &resourceInfo.Name, result.Resource.DisplayName) {
 		updatedResource = append(updatedResource, "name")
 	}
-	if applyStringByMode(task.ApplyMode, &resourceInfo.Description, result.Table.Description) {
+	if applyStringByMode(task.ApplyMode, &resourceInfo.Description, result.Resource.Description) {
 		updatedResource = append(updatedResource, "description")
 	}
 	resourceUpdated := len(updatedResource) > 0

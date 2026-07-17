@@ -360,9 +360,6 @@ func normalizeResourceSemanticUnderstandingRequest(resource *interfaces.Resource
 		if req.ApplyMode == "" {
 			normalized.ApplyMode = interfaces.SemanticUnderstandingApplyModeFillEmpty
 		}
-		if req.Language == "" {
-			normalized.Language = interfaces.DefaultSemanticUnderstandingLanguage
-		}
 		if normalized.ConfidenceThreshold == nil {
 			defaultThreshold := interfaces.DefaultSemanticUnderstandingConfidenceThreshold
 			normalized.ConfidenceThreshold = &defaultThreshold
@@ -404,9 +401,6 @@ func normalizeCatalogSemanticUnderstandingRequest(catalog *interfaces.Catalog, r
 		*normalized = *req
 		if req.ApplyMode == "" {
 			normalized.ApplyMode = interfaces.SemanticUnderstandingApplyModeFillEmpty
-		}
-		if req.Language == "" {
-			normalized.Language = interfaces.DefaultSemanticUnderstandingLanguage
 		}
 		if normalized.ConfidenceThreshold == nil {
 			defaultThreshold := interfaces.DefaultSemanticUnderstandingConfidenceThreshold
@@ -451,7 +445,6 @@ func validateSemanticUnderstandingRequest(req *interfaces.CreateSemanticUndersta
 func defaultSemanticUnderstandingRequest() *interfaces.CreateSemanticUnderstandingTaskRequest {
 	defaultThreshold := interfaces.DefaultSemanticUnderstandingConfidenceThreshold
 	return &interfaces.CreateSemanticUnderstandingTaskRequest{
-		Language:            interfaces.DefaultSemanticUnderstandingLanguage,
 		ApplyMode:           interfaces.SemanticUnderstandingApplyModeFillEmpty,
 		ConfidenceThreshold: &defaultThreshold,
 	}
@@ -533,7 +526,7 @@ func buildResourceSemanticUnderstandingInput(resource *interfaces.Resource, req 
 	input := resourceAgentInput{
 		Resource: buildResourceAgentInputResource(resource),
 		Options: resourceAgentInputOptions{
-			Language:            req.Language,
+			Language:            interfaces.DefaultSemanticUnderstandingLanguage,
 			ApplyMode:           req.ApplyMode,
 			ConfidenceThreshold: *req.ConfidenceThreshold,
 			IncludeSampleRows:   req.IncludeSampleRows,
@@ -559,7 +552,7 @@ func buildCatalogSemanticUnderstandingInput(catalog *interfaces.Catalog, resourc
 		Resources:          []catalogAgentInputResource{},
 		ExistingLogicViews: []catalogAgentInputExistingView{},
 		Options: catalogAgentInputOptions{
-			Language:            req.Language,
+			Language:            interfaces.DefaultSemanticUnderstandingLanguage,
 			ApplyMode:           req.ApplyMode,
 			ConfidenceThreshold: *req.ConfidenceThreshold,
 		},

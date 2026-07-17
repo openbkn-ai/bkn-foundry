@@ -81,7 +81,6 @@ type CreateSemanticUnderstandingTaskRequest struct {
 	ResourceID string `json:"resource_id,omitempty"`
 
 	ApplyMode           string                             `json:"apply_mode,omitempty"`
-	Language            string                             `json:"language,omitempty"`
 	ConfidenceThreshold *float64                           `json:"confidence_threshold,omitempty"`
 	IncludeSampleRows   bool                               `json:"include_sample_rows,omitempty"`
 	SamplePolicy        *SemanticUnderstandingSamplePolicy `json:"sample_policy,omitempty"`
