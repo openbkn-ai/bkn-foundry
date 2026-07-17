@@ -313,6 +313,7 @@ func TestSemanticUnderstandingTaskWorkerApplyCatalogResult(t *testing.T) {
 		DoAndReturn(func(_ context.Context, req *interfaces.ResourceRequest) (*interfaces.Resource, error) {
 			assert.Equal(t, "catalog-1", req.CatalogID)
 			assert.Equal(t, "customer_order_summary", req.Name)
+			assert.Equal(t, "customer_order_summary", req.SourceIdentifier)
 			assert.Equal(t, "summary view", req.Description)
 			assert.Equal(t, interfaces.ResourceCategoryLogicView, req.Category)
 			assert.Equal(t, logicDefinition, req.LogicDefinition)
@@ -322,13 +323,34 @@ func TestSemanticUnderstandingTaskWorkerApplyCatalogResult(t *testing.T) {
 		UpdateStatus(gomock.Any(), "view-2", interfaces.ResourceStatusStale, "obsolete").
 		Return(nil)
 
-	resultJSON := `{"confidence":0.84,"logic_views":[{"action":"create","name":"customer_order_summary","description":"summary view","source_resources":["resource-1"],"logic_definition":[{"id":"source","type":"resource"},{"id":"output","type":"output","inputs":["source"]}],"confidence":0.82}],"obsolete_logic_views":[{"target_resource_id":"view-2","reason":"obsolete","confidence":0.91}]}`
+	resultJSON := `{"confidence":0.84,"logic_views":[{"action":"create","name":"customer_order_summary","source_identifier":"customer_order_summary","description":"summary view","source_resources":["resource-1"],"logic_definition":[{"id":"source","type":"resource"},{"id":"output","type":"output","inputs":["source"]}],"confidence":0.82}],"obsolete_logic_views":[{"target_resource_id":"view-2","reason":"obsolete","confidence":0.91}]}`
 	got, err := worker.applyResult(context.Background(), task, resultJSON, 0.84)
 
 	require.NoError(t, err)
 	require.NotNil(t, got)
 	assert.True(t, got.Applied)
 	assert.JSONEq(t, `{"created_resource_ids":["view-1"],"staled_resource_ids":["view-2"]}`, got.DetailJSON)
+}
+
+func TestSemanticUnderstandingTaskWorkerApplyCatalogResultRejectsInvalidSourceIdentifier(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+
+	resourceService := vmock.NewMockResourceService(ctrl)
+	worker := &SemanticUnderstandingTaskWorker{rs: resourceService}
+	task := &interfaces.SemanticUnderstandingTask{
+		Scope:     interfaces.SemanticUnderstandingTaskScopeCatalog,
+		CatalogID: "catalog-1",
+		ApplyMode: interfaces.SemanticUnderstandingApplyModeForce,
+	}
+	resourceService.EXPECT().
+		GetByCatalogID(gomock.Any(), "catalog-1").
+		Return([]*interfaces.Resource{{ID: "resource-1", CatalogID: "catalog-1", Category: interfaces.ResourceCategoryTable}}, nil)
+
+	resultJSON := `{"logic_views":[{"action":"create","name":"订单汇总","source_identifier":"order-summary","source_resources":["resource-1"],"logic_definition":[{"id":"source","type":"resource"}]}]}`
+	_, err := worker.applyCatalogResult(context.Background(), task, resultJSON)
+
+	require.ErrorContains(t, err, "source_identifier must be lower snake_case")
 }
 
 func TestParseBknAgentResult(t *testing.T) {

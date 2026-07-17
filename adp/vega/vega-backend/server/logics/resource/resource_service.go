@@ -226,7 +226,9 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 			return nil, err
 		}
 		req.SchemaDefinition = viewFields
-		req.SourceIdentifier = fmt.Sprintf("%s.%s", req.CatalogID, id)
+		if req.SourceIdentifier == "" {
+			req.SourceIdentifier = fmt.Sprintf("%s.%s", req.CatalogID, id)
+		}
 	}
 
 	if err := extensions.ValidateSchemaPropertiesExtensions(ctx, req.SchemaDefinition); err != nil {

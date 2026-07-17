@@ -7,6 +7,7 @@ package semantic_understanding_task
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -18,6 +19,79 @@ import (
 	"vega-backend/interfaces"
 	mock_interfaces "vega-backend/interfaces/mock"
 )
+
+func TestBuildCatalogSemanticUnderstandingInput(t *testing.T) {
+	threshold := 0.75
+	input, _, err := buildCatalogSemanticUnderstandingInput(
+		&interfaces.Catalog{ID: "catalog-1", Name: "电商目录", Description: "电商业务资源"},
+		[]*interfaces.Resource{
+			{
+				ID:               "logic-view-1",
+				Name:             "订单汇总",
+				SourceIdentifier: "order_summary",
+				Description:      "订单统计逻辑视图",
+				Status:           interfaces.ResourceStatusActive,
+				Category:         interfaces.ResourceCategoryLogicView,
+				LogicDefinition:  []*interfaces.LogicDefinitionNode{{ID: "hidden"}},
+			},
+			{
+				ID:               "resource-1",
+				Name:             "订单",
+				SourceIdentifier: "public.orders",
+				Description:      "销售订单资源",
+				Category:         interfaces.ResourceCategoryTable,
+				Database:         "ecommerce",
+				SourceMetadata: map[string]any{
+					"primary_keys": []any{"order_id"},
+					"indices": []any{
+						map[string]any{"unique": true, "primary": false, "columns": []any{"order_no"}},
+						map[string]any{"unique": true, "primary": true, "columns": []any{"order_id"}},
+					},
+				},
+				SchemaDefinition: []*interfaces.Property{{
+					Name:                "order_id",
+					DisplayName:         "订单ID",
+					Type:                interfaces.DataType_Integer,
+					Description:         "销售订单唯一标识",
+					OriginalName:        "legacy_order_id",
+					OriginalType:        "int8",
+					OriginalDescription: "旧字段说明",
+				}},
+			},
+		},
+		&interfaces.CreateSemanticUnderstandingTaskRequest{
+			ApplyMode:           interfaces.SemanticUnderstandingApplyModeDryRun,
+			ConfidenceThreshold: &threshold,
+		},
+	)
+
+	require.NoError(t, err)
+	var got map[string]any
+	require.NoError(t, json.Unmarshal([]byte(input), &got))
+	assert.Equal(t, "电商业务资源", got["catalog"].(map[string]any)["description"])
+
+	resources := got["resources"].([]any)
+	require.Len(t, resources, 1)
+	resource := resources[0].(map[string]any)
+	assert.NotContains(t, resource, "schema_definition")
+	fields := resource["fields"].([]any)
+	require.Len(t, fields, 1)
+	field := fields[0].(map[string]any)
+	assert.Equal(t, "订单ID", field["display_name"])
+	assert.NotContains(t, field, "original_name")
+	assert.NotContains(t, field, "original_type")
+	assert.NotContains(t, field, "original_description")
+
+	keys := resource["keys"].(map[string]any)
+	assert.Equal(t, []any{"order_id"}, keys["primary"])
+	assert.Equal(t, []any{[]any{"order_no"}}, keys["unique"])
+
+	logicViews := got["existing_logic_views"].([]any)
+	require.Len(t, logicViews, 1)
+	logicView := logicViews[0].(map[string]any)
+	assert.Equal(t, "order_summary", logicView["source_identifier"])
+	assert.NotContains(t, logicView, "logic_definition")
+}
 
 func TestSemanticUnderstandingTaskServiceCreate(t *testing.T) {
 	t.Run("creates pending resource task", func(t *testing.T) {

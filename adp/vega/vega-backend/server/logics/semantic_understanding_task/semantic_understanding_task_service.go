@@ -493,27 +493,39 @@ type catalogAgentInput struct {
 }
 
 type catalogAgentInputCatalog struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
 }
 
 type catalogAgentInputResource struct {
-	ID                string                       `json:"id"`
-	Name              string                       `json:"name"`
-	Description       string                       `json:"description,omitempty"`
-	Category          string                       `json:"category"`
-	Database          string                       `json:"database,omitempty"`
-	SourceIdentifier  string                       `json:"source_identifier"`
-	SourceDescription string                       `json:"source_description,omitempty"`
-	SchemaDefinition  []resourceAgentInputProperty `json:"schema_definition"`
+	ID               string                         `json:"id"`
+	Name             string                         `json:"name"`
+	Description      string                         `json:"description,omitempty"`
+	Database         string                         `json:"database,omitempty"`
+	SourceIdentifier string                         `json:"source_identifier"`
+	Keys             *catalogAgentInputResourceKeys `json:"keys,omitempty"`
+	Fields           []catalogAgentInputProperty    `json:"fields"`
+}
+
+type catalogAgentInputResourceKeys struct {
+	Primary []string   `json:"primary,omitempty"`
+	Unique  [][]string `json:"unique,omitempty"`
+}
+
+type catalogAgentInputProperty struct {
+	Name        string `json:"name"`
+	DisplayName string `json:"display_name,omitempty"`
+	Type        string `json:"type"`
+	Description string `json:"description,omitempty"`
 }
 
 type catalogAgentInputExistingView struct {
-	ID              string                            `json:"id"`
-	Name            string                            `json:"name"`
-	Description     string                            `json:"description,omitempty"`
-	SourceResources []string                          `json:"source_resources,omitempty"`
-	LogicDefinition []*interfaces.LogicDefinitionNode `json:"logic_definition,omitempty"`
+	ID               string `json:"id"`
+	Name             string `json:"name"`
+	SourceIdentifier string `json:"source_identifier"`
+	Description      string `json:"description,omitempty"`
+	Status           string `json:"status"`
 }
 
 type catalogAgentInputOptions struct {
@@ -546,8 +558,9 @@ func buildCatalogSemanticUnderstandingInput(catalog *interfaces.Catalog, resourc
 
 	input := catalogAgentInput{
 		Catalog: catalogAgentInputCatalog{
-			ID:   catalog.ID,
-			Name: catalog.Name,
+			ID:          catalog.ID,
+			Name:        catalog.Name,
+			Description: catalog.Description,
 		},
 		Resources:          []catalogAgentInputResource{},
 		ExistingLogicViews: []catalogAgentInputExistingView{},
@@ -587,20 +600,92 @@ func buildCatalogAgentInputResource(resource *interfaces.Resource) catalogAgentI
 		ID:               resource.ID,
 		Name:             resource.Name,
 		Description:      resource.Description,
-		Category:         resource.Category,
 		Database:         resource.Database,
 		SourceIdentifier: resource.SourceIdentifier,
-		SchemaDefinition: buildResourceAgentInputProperties(resource.SchemaDefinition),
+		Keys:             buildCatalogAgentInputResourceKeys(resource.SourceMetadata),
+		Fields:           buildCatalogAgentInputProperties(resource.SchemaDefinition),
 	}
 }
 
 func buildCatalogAgentInputExistingView(resource *interfaces.Resource) catalogAgentInputExistingView {
 	return catalogAgentInputExistingView{
-		ID:              resource.ID,
-		Name:            resource.Name,
-		Description:     resource.Description,
-		LogicDefinition: resource.LogicDefinition,
+		ID:               resource.ID,
+		Name:             resource.Name,
+		SourceIdentifier: resource.SourceIdentifier,
+		Description:      resource.Description,
+		Status:           resource.Status,
 	}
+}
+
+func buildCatalogAgentInputResourceKeys(sourceMetadata map[string]any) *catalogAgentInputResourceKeys {
+	if len(sourceMetadata) == 0 {
+		return nil
+	}
+
+	keys := &catalogAgentInputResourceKeys{
+		Primary: getCatalogAgentInputStringSlice(sourceMetadata["primary_keys"]),
+	}
+	for _, rawIndex := range getCatalogAgentInputMapSlice(sourceMetadata["indices"]) {
+		unique, _ := rawIndex["unique"].(bool)
+		primary, _ := rawIndex["primary"].(bool)
+		if !unique || primary {
+			continue
+		}
+		if columns := getCatalogAgentInputStringSlice(rawIndex["columns"]); len(columns) > 0 {
+			keys.Unique = append(keys.Unique, columns)
+		}
+	}
+	if len(keys.Primary) == 0 && len(keys.Unique) == 0 {
+		return nil
+	}
+	return keys
+}
+
+func getCatalogAgentInputStringSlice(value any) []string {
+	switch values := value.(type) {
+	case []string:
+		return append([]string(nil), values...)
+	case []any:
+		result := make([]string, 0, len(values))
+		for _, item := range values {
+			if stringValue, ok := item.(string); ok && stringValue != "" {
+				result = append(result, stringValue)
+			}
+		}
+		return result
+	default:
+		return nil
+	}
+}
+
+func getCatalogAgentInputMapSlice(value any) []map[string]any {
+	values, ok := value.([]any)
+	if !ok {
+		return nil
+	}
+	result := make([]map[string]any, 0, len(values))
+	for _, item := range values {
+		if mapValue, ok := item.(map[string]any); ok {
+			result = append(result, mapValue)
+		}
+	}
+	return result
+}
+
+func buildCatalogAgentInputProperties(properties []*interfaces.Property) []catalogAgentInputProperty {
+	result := make([]catalogAgentInputProperty, 0, len(properties))
+	for _, property := range properties {
+		if property == nil {
+			continue
+		}
+		result = append(result, catalogAgentInputProperty{
+			Name:        property.Name,
+			DisplayName: property.DisplayName,
+			Type:        property.Type,
+			Description: property.Description,
+		})
+	}
+	return result
 }
 
 func buildResourceAgentInputProperties(properties []*interfaces.Property) []resourceAgentInputProperty {

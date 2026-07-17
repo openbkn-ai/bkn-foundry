@@ -9,6 +9,7 @@ package worker
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"time"
 	"unicode/utf8"
 
@@ -22,6 +23,8 @@ import (
 	"vega-backend/logics/resource"
 	"vega-backend/logics/semantic_understanding_task"
 )
+
+var semanticUnderstandingSourceIdentifierPattern = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 
 // SemanticUnderstandingTaskWorker handles semantic-understanding execution tasks.
 type SemanticUnderstandingTaskWorker struct {
@@ -438,6 +441,7 @@ type catalogSemanticUnderstandingLogicView struct {
 	Action           string                            `json:"action"`
 	TargetResourceID string                            `json:"target_resource_id"`
 	Name             string                            `json:"name"`
+	SourceIdentifier string                            `json:"source_identifier"`
 	Description      string                            `json:"description"`
 	SourceResources  []string                          `json:"source_resources"`
 	LogicDefinition  []*interfaces.LogicDefinitionNode `json:"logic_definition"`
@@ -472,11 +476,15 @@ func (sutw *SemanticUnderstandingTaskWorker) applyCatalogResult(ctx context.Cont
 	}
 	resourceByID := make(map[string]*interfaces.Resource, len(resources))
 	logicViewByID := make(map[string]*interfaces.Resource)
+	sourceIdentifiers := make(map[string]struct{}, len(resources))
 	for _, res := range resources {
 		if res == nil {
 			continue
 		}
 		resourceByID[res.ID] = res
+		if res.SourceIdentifier != "" {
+			sourceIdentifiers[res.SourceIdentifier] = struct{}{}
+		}
 		if res.Category == interfaces.ResourceCategoryLogicView {
 			logicViewByID[res.ID] = res
 		}
@@ -487,20 +495,21 @@ func (sutw *SemanticUnderstandingTaskWorker) applyCatalogResult(ctx context.Cont
 		if err := validateConfidence(view.Confidence, fmt.Sprintf("logic_views[%d].confidence", i)); err != nil {
 			return nil, err
 		}
-		if err := validateCatalogLogicViewOutput(view, resourceByID, logicViewByID); err != nil {
+		if err := validateCatalogLogicViewOutput(view, resourceByID, logicViewByID, sourceIdentifiers); err != nil {
 			return nil, err
 		}
 
 		switch view.Action {
 		case "create":
+			sourceIdentifiers[view.SourceIdentifier] = struct{}{}
 			created, err := sutw.rs.Create(ctx, &interfaces.ResourceRequest{
 				CatalogID:        task.CatalogID,
 				Name:             view.Name,
+				SourceIdentifier: view.SourceIdentifier,
 				Description:      view.Description,
 				Category:         interfaces.ResourceCategoryLogicView,
 				Status:           interfaces.ResourceStatusActive,
 				LogicDefinition:  view.LogicDefinition,
-				SourceIdentifier: view.Name,
 			})
 			if err != nil {
 				return nil, err
@@ -565,7 +574,7 @@ func (sutw *SemanticUnderstandingTaskWorker) applyCatalogResult(ctx context.Cont
 	}, nil
 }
 
-func validateCatalogLogicViewOutput(view catalogSemanticUnderstandingLogicView, resourceByID map[string]*interfaces.Resource, logicViewByID map[string]*interfaces.Resource) error {
+func validateCatalogLogicViewOutput(view catalogSemanticUnderstandingLogicView, resourceByID map[string]*interfaces.Resource, logicViewByID map[string]*interfaces.Resource, sourceIdentifiers map[string]struct{}) error {
 	switch view.Action {
 	case "create":
 		if view.TargetResourceID != "" {
@@ -573,6 +582,12 @@ func validateCatalogLogicViewOutput(view catalogSemanticUnderstandingLogicView, 
 		}
 		if view.Name == "" {
 			return fmt.Errorf("logic view name is required when creating logic view")
+		}
+		if !semanticUnderstandingSourceIdentifierPattern.MatchString(view.SourceIdentifier) {
+			return fmt.Errorf("source_identifier must be lower snake_case when creating logic view")
+		}
+		if _, exists := sourceIdentifiers[view.SourceIdentifier]; exists {
+			return fmt.Errorf("source_identifier %s already exists in catalog input", view.SourceIdentifier)
 		}
 	case "update":
 		if view.TargetResourceID == "" {
