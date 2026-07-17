@@ -203,7 +203,7 @@ COMMERCIAL LICENSING
 For commercial licensing inquiries (including access to Commercial
 Entitlements, authorization to operate Restricted Hosted Services or
 multi-tenant environments, or other uses requiring a commercial
-license), contact: <CONTACT EMAIL / URL>
+license), contact: community@openbkn.ai
 
 ================================================================
 DISCLAIMER
