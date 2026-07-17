@@ -78,11 +78,11 @@ curl -X POST https://&lt;your-instance&gt;/api/safe/v1/me/api-keys \
 #  "key":"bak_2882bb603277_BSxTZHTBiJXk4QoUBc0u17zSWua",
 #  "masked":"bak_2882****SWua","expires_at":"...","enabled":true}
 
-# 使用（同样是 Bearer；对 Context Loader 面）
+# 使用（同样是 Bearer；对 Context Loader 面。kn_id 必填，也可用 X-Kn-ID 头传）
 curl -X POST https://&lt;your-instance&gt;/api/agent-retrieval/v1/kn/search_schema \
   -H "Authorization: Bearer bak_2882bb603277_BSxTZHTBiJXk4QoUBc0u17zSWua" \
   -H "Content-Type: application/json" \
-  -d '{"query":"客户"}'</code></pre>
+  -d '{"query":"客户","kn_id":"&lt;知识网络ID&gt;"}'</code></pre>
 <p class="muted">CLI 等价：<code>openbkn appkey create --name my-key</code>；使用时 <code>openbkn --token bak_... context ...</code>。管理：<code>GET /api/safe/v1/me/api-keys</code> 列出、<code>DELETE /api/safe/v1/me/api-keys/{id}</code> 撤销、<code>POST /api/safe/v1/me/api-keys/{id}/regenerate</code> 轮换。</p>
 <h3>Python 示例</h3>
 <pre><code class="language-python">import requests
@@ -98,11 +98,11 @@ resp = requests.post(
 )
 app_key = resp.json()["key"]          # bak_...
 
-# 使用（Context Loader 检索面，只读）
+# 使用（Context Loader 检索面，只读；kn_id 必填，也可用 X-Kn-ID 头传）
 r = requests.post(
     f"{BASE}/api/agent-retrieval/v1/kn/search_schema",
     headers={"Authorization": f"Bearer {app_key}"},
-    json={"query": "客户"},
+    json={"query": "客户", "kn_id": "<知识网络ID>"},
 )</code></pre>
 <p class="muted">自签名证书时给每个请求加 <code>verify=False</code>（或用 <code>requests.Session()</code> 统一设置）。</p>
 
