@@ -65,6 +65,7 @@ func (r *restHandler) listCatalogs(c *gin.Context, visitor hydra.Visitor) {
 	name := strings.TrimSpace(c.Query("name"))
 	tag := strings.TrimSpace(c.Query("tag"))
 	typ := c.Query("type")
+	connectorType := strings.TrimSpace(c.Query("connector_type"))
 	var enabled *bool
 	if enabledStr := strings.TrimSpace(c.Query("enabled")); enabledStr != "" {
 		b, err := strconv.ParseBool(enabledStr)
@@ -106,6 +107,7 @@ func (r *restHandler) listCatalogs(c *gin.Context, visitor hydra.Visitor) {
 		Name:                  name,
 		Tag:                   tag,
 		Type:                  typ,
+		ConnectorType:         connectorType,
 		Enabled:               enabled,
 		HealthCheckStatus:     healthCheckStatus,
 		ExtensionKeys:         extKeys,

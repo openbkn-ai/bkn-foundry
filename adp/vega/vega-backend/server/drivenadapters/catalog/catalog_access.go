@@ -615,6 +615,10 @@ func (ca *catalogAccess) List(ctx context.Context, params interfaces.CatalogsQue
 		builder = builder.Where(sq.Eq{catalogExtCol(params, "f_type"): params.Type})
 		countBuilder = countBuilder.Where(sq.Eq{catalogExtCol(params, "f_type"): params.Type})
 	}
+	if params.ConnectorType != "" {
+		builder = builder.Where(sq.Eq{catalogExtCol(params, "f_connector_type"): params.ConnectorType})
+		countBuilder = countBuilder.Where(sq.Eq{catalogExtCol(params, "f_connector_type"): params.ConnectorType})
+	}
 	if params.Enabled != nil {
 		builder = builder.Where(sq.Eq{catalogExtCol(params, "f_enabled"): *params.Enabled})
 		countBuilder = countBuilder.Where(sq.Eq{catalogExtCol(params, "f_enabled"): *params.Enabled})

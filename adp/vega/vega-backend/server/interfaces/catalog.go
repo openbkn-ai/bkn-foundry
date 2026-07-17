@@ -69,6 +69,7 @@ type CatalogsQueryParams struct {
 	Name              string
 	Tag               string
 	Type              string
+	ConnectorType     string
 	Enabled           *bool
 	HealthCheckStatus string
 	// ExtensionKeys / ExtensionValues 成对等长，多对 AND（列表筛选）

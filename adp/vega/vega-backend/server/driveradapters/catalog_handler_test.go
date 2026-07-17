@@ -107,6 +107,22 @@ func Test_CatalogRestHandler_ListCatalogs(t *testing.T) {
 		require.Equal(t, http.StatusOK, w.Result().StatusCode)
 	})
 
+	t.Run("success list catalogs with connector type", func(t *testing.T) {
+		engine, cs, _ := setupCatalogHandlerTest(t)
+		cs.EXPECT().List(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, params interfaces.CatalogsQueryParams) ([]*interfaces.Catalog, int64, error) {
+				assert.Equal(t, "postgresql", params.ConnectorType)
+				return []*interfaces.Catalog{}, int64(0), nil
+			})
+
+		req := httptest.NewRequest(http.MethodGet, url+"?connector_type=postgresql", nil)
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusOK, w.Result().StatusCode)
+	})
+
 	t.Run("success list catalogs with enabled filter", func(t *testing.T) {
 		engine, cs, _ := setupCatalogHandlerTest(t)
 		cs.EXPECT().List(gomock.Any(), gomock.Any()).
