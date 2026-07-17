@@ -10,11 +10,11 @@ Local Kubernetes with **kind** plus the same Helm charts as Linux `deploy.sh`. N
 
 ### Repository (clone first)
 
-Scripts and vendored manifests live in the repo tree — **`mac.sh` is not a standalone installer.** Clone **[openbkn-ai/foundry](https://github.com/openbkn-ai/foundry)** (check out the branch you deploy from), then **`cd`** into **`deploy/`** before any command below:
+Scripts and vendored manifests live in the repo tree — **`mac.sh` is not a standalone installer.** Clone **[openbkn-ai/bkn-foundry](https://github.com/openbkn-ai/bkn-foundry)** (check out the branch you deploy from), then **`cd`** into **`deploy/`** before any command below:
 
 ```bash
-git clone https://github.com/openbkn-ai/foundry.git
-cd bkn-core/deploy   # always run bash ./dev/mac.sh ... from this directory
+git clone https://github.com/openbkn-ai/bkn-foundry.git
+cd bkn-foundry/deploy   # always run bash ./dev/mac.sh ... from this directory
 ```
 
 Same layout applies if your product tarball extracts to a **`bkn-core/`** root with a **`deploy/`** subdirectory.

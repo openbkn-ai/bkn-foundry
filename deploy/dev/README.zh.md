@@ -10,11 +10,11 @@
 
 ### 克隆仓库（先做好）
 
-脚本与清单在仓库目录内；**`mac.sh` 不能脱离仓库单独使用**。请先 **[clone openbkn-ai/foundry](https://github.com/openbkn-ai/foundry)**，并切换到实际部署所用分支，然后 **`cd` 进入 `deploy/`**：
+脚本与清单在仓库目录内；**`mac.sh` 不能脱离仓库单独使用**。请先 **[clone openbkn-ai/bkn-foundry](https://github.com/openbkn-ai/bkn-foundry)**，并切换到实际部署所用分支，然后 **`cd` 进入 `deploy/`**：
 
 ```bash
-git clone https://github.com/openbkn-ai/foundry.git
-cd bkn-core/deploy   # 在此目录执行 bash ./dev/mac.sh ...（与 deploy.sh 同层）
+git clone https://github.com/openbkn-ai/bkn-foundry.git
+cd bkn-foundry/deploy   # 在此目录执行 bash ./dev/mac.sh ...（与 deploy.sh 同层）
 ```
 
 从产品包解压时，路径中须有 **`deploy/`** 目录，布局与上文一致即可。
