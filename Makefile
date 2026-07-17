@@ -14,7 +14,7 @@ TPL_DIR      := $(API_DIR)/_templates
 MODULE_DIRS  := $(dir $(wildcard $(API_DIR)/*/.))
 MODULES      := $(filter-out _shared _generated _templates,$(foreach d,$(MODULE_DIRS),$(notdir $(patsubst %/,%,$(d)))))
 
-.PHONY: api-docs api-docs-html api-docs-lint api-docs-clean print-moddesc print-resname
+.PHONY: api-docs api-docs-html api-docs-lint api-docs-clean print-modtitle print-moddesc print-resname
 
 ## api-docs-lint: 校验各模块 OpenAPI 文档合法且 $ref（含共享 schema）可解析。
 ## _shared/ 是 $ref 片段（无 openapi/info/paths 顶层），不作独立文档 lint，
@@ -48,6 +48,11 @@ api-docs:
 	done; \
 	rm -f "$$tmp"
 	@echo "done -> $(GEN_DIR)/"
+
+## 模块显示标题（index 分区标题用）。未列出的模块回落为目录名。
+MODTITLE_bkn            := BKN
+MODTITLE_ontology-query := Ontology 查询
+MODTITLE_vega           := VEGA 引擎
 
 ## 模块中文描述（index 卡片副标题用）。未列出的模块回落为空。
 MODDESC_bkn            := 业务知识网络：对象类 / 关系类 / 行动类 / 概念组 / 指标 / 导入导出
@@ -98,9 +103,10 @@ api-docs-html:
 	@idx="$(HTML_DIR)/index.html"; \
 	cat "$(TPL_DIR)/index-head.html" > "$$idx"; \
 	for m in $(MODULES); do \
+	  mt=$$(make -s print-modtitle MOD="$$m"); [ -n "$$mt" ] || mt="$$m"; \
 	  desc=$$(make -s print-moddesc MOD="$$m"); \
 	  count=$$(ls $(API_DIR)/$$m/*.yaml 2>/dev/null | wc -l | tr -d ' '); \
-	  printf '<section class="mod">\n<div class="mod-h"><h2>%s</h2><span class="count">%s</span></div>\n' "$$m" "$$count" >> "$$idx"; \
+	  printf '<section class="mod">\n<div class="mod-h"><h2>%s</h2><span class="count">%s</span></div>\n' "$$mt" "$$count" >> "$$idx"; \
 	  [ -n "$$desc" ] && printf '<p class="mod-desc">%s</p>\n' "$$desc" >> "$$idx"; \
 	  printf '<div class="grid">\n' >> "$$idx"; \
 	  for y in $(API_DIR)/$$m/*.yaml; do \
@@ -113,6 +119,10 @@ api-docs-html:
 	done; \
 	cat "$(TPL_DIR)/index-foot.html" >> "$$idx"
 	@echo "done -> $(HTML_DIR)/ (open index.html)"
+
+## print-modtitle: 内部辅助，回显某模块的显示标题（供 index 生成用）
+print-modtitle:
+	@echo "$(MODTITLE_$(MOD))"
 
 ## print-moddesc: 内部辅助，回显某模块的中文描述（供 index 生成用）
 print-moddesc:
