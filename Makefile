@@ -49,7 +49,7 @@ api-docs: api-docs-clean
 ## 模块中文描述（index 卡片副标题用）。未列出的模块回落为空。
 MODDESC_bkn            := 业务知识网络：对象类 / 关系类 / 行动类 / 概念组 / 指标 / 导入导出
 MODDESC_ontology-query := 本体查询与语义检索
-MODDESC_vega           := 数据可观测：Catalog / 资源 / 连接器 / 构建任务 / 发现任务 / 原生查询
+MODDESC_vega           := 数据可观测：目录 / 资源 / 连接器 / 构建任务 / 发现任务 / 原生查询
 
 # 资源中文名（侧栏显示用；未列出的回落为文件名）
 RESNAME_action-schedules          := 行动调度
@@ -64,7 +64,7 @@ RESNAME_relation-type             := 关系类
 RESNAME_risk-types                := 风险类
 RESNAME_auth-resource             := 资源授权
 RESNAME_build-task                := 构建任务
-RESNAME_catalog                   := Catalog
+RESNAME_catalog                   := 目录
 RESNAME_connector-type            := 连接器类型
 RESNAME_discover-schedule         := 发现调度
 RESNAME_discover-task             := 发现任务
