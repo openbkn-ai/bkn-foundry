@@ -38,6 +38,7 @@
   <tr><th>方式</th><th>适用场景</th><th>覆盖范围</th></tr>
   <tr><td>CLI 登录</td><td>人用 / 交互</td><td>全部服务接口</td></tr>
   <tr><td>AppKey（<code>bak_</code>）</td><td>程序 / 自动化</td><td><b>仅 Context Loader</b>（检索 / MCP）</td></tr>
+  <tr><td>应用集成设备码流</td><td>自研应用代用户调用</td><td>全部服务接口</td></tr>
   <tr><td>OAuth2 直连</td><td>服务间 / 已有客户端凭据</td><td>全部服务接口</td></tr>
 </table>
 
@@ -76,8 +77,40 @@ curl -H "Authorization: Bearer bak_2882bb603277_BSxTZHTBiJXk4QoUBc0u17zSWua" \
      https://&lt;your-instance&gt;/api/agent-retrieval/v1/kn/search_schema</code></pre>
 <p class="muted">CLI 等价：<code>openbkn appkey create --name my-key</code>；使用时 <code>openbkn --token bak_... context ...</code>。管理：<code>GET /api/safe/v1/me/api-keys</code> 列出、<code>DELETE /api/safe/v1/me/api-keys/{id}</code> 撤销、<code>POST /api/safe/v1/me/api-keys/{id}/regenerate</code> 轮换。</p>
 
-<h2>方式三 · OAuth2 client credentials（高级 / 服务间，默认不可用）</h2>
-<div class="note"><b>⚠️ 默认部署没有可用的 client-credentials 客户端。</b>普通用户 / 应用请用<b>方式一（CLI 登录）或方式二（AppKey）</b>。本方式仅适用于：平台管理员已在 Hydra 里预置了 client-credentials 客户端（默认不启用；需在 bkn-safe chart 显式配置 <code>clientSeed.ciRunnerSecret</code> 或手动创建客户端）的服务间场景。<code>client_id</code> / <code>client_secret</code> 不能自助申请，须向部署 / 平台管理员索取。</div>
+<h2>方式三 · 在自己的应用里集成登录（设备码流）</h2>
+<p>开发自己的应用调用平台接口时，<b>无需注册 client、无需管理员操作</b>：每套部署都预置了公共客户端 <code>openbkn-sdk</code>（OAuth2 设备码流，RFC 8628）。应用引导用户在浏览器里登录一次，即获得该用户权限的 token，之后靠 refresh token 长期免登录运行。</p>
+<h3>第 1 步 · 发起设备授权</h3>
+<pre><code>curl -X POST https://&lt;your-instance&gt;/oauth2/device/auth \
+  -d "client_id=openbkn-sdk" -d "scope=openid offline"
+# -&gt; {"device_code":"ory_dc_...","user_code":"EKgw7AQa",
+#     "verification_uri_complete":"https://&lt;your-instance&gt;/oauth2/device/verify?user_code=EKgw7AQa",
+#     "expires_in":600,"interval":5}</code></pre>
+<h3>第 2 步 · 用户浏览器确认</h3>
+<p>把 <code>verification_uri_complete</code> 展示给用户（链接或二维码）。用户打开后确认设备码、输入平台账号密码登录并同意授权。</p>
+<h3>第 3 步 · 轮询换取 token</h3>
+<pre><code>curl -X POST https://&lt;your-instance&gt;/oauth2/token \
+  -d "grant_type=urn:ietf:params:oauth:grant-type:device_code" \
+  -d "device_code=ory_dc_..." \
+  -d "client_id=openbkn-sdk"
+# 用户完成前返回 {"error":"authorization_pending"}，按 interval 秒间隔重试；
+# 完成后 -&gt; {"access_token":"...","refresh_token":"...","expires_in":3600,
+#            "scope":"openid offline","token_type":"bearer"}</code></pre>
+<h3>第 4 步 · 调用接口与续期</h3>
+<pre><code># 调用任意服务接口（token 权限 = 登录用户的权限）
+curl -H "Authorization: Bearer &lt;access_token&gt;" \
+     https://&lt;your-instance&gt;/api/bkn-backend/v1/knowledge-networks
+
+# access token 1 小时过期；用 refresh token 续期，无需用户再登录。
+# 每次续期会轮换出新的 refresh_token，务必保存最新一枚：
+curl -X POST https://&lt;your-instance&gt;/oauth2/token \
+  -d "grant_type=refresh_token" \
+  -d "refresh_token=&lt;refresh_token&gt;" \
+  -d "client_id=openbkn-sdk"</code></pre>
+<div class="note">token 是<b>用户委托</b>凭据：应用以「当时登录的那个用户」身份调用，权限随该用户的授权变化。全自动后台服务建议用专属服务账号完成第 2 步登录，之后靠 refresh token 持续运行；refresh token 链一旦失效（长期未用 / 被撤销），需用户重新走一遍登录。</div>
+<p class="muted">提示：<code>openbkn-sdk</code> 是公共客户端（无 secret，凭 PKCE/设备码保障），任何应用可直接使用。若脚本化代替浏览器完成登录页（CI 等无头场景），注意登录 / 授权页 URL 里的 <code>*_challenge</code> 参数是百分号编码的，提交表单前需先 URL 解码，否则会二次编码报错。</p>
+
+<h2>方式四 · OAuth2 client credentials（高级 / 服务间，默认不可用）</h2>
+<div class="note"><b>⚠️ 默认部署没有可用的 client-credentials 客户端。</b>普通用户 / 应用请用<b>方式一（CLI 登录）、方式二（AppKey）或方式三（应用集成设备码流）</b>。本方式仅适用于：平台管理员已在 Hydra 里预置了 client-credentials 客户端（默认不启用；需在 bkn-safe chart 显式配置 <code>clientSeed.ciRunnerSecret</code> 或手动创建客户端）的服务间场景。<code>client_id</code> / <code>client_secret</code> 不能自助申请，须向部署 / 平台管理员索取。</div>
 <p>token 端点是 Hydra 的 <code>POST /oauth2/token</code>（注意<b>不是</b> <code>/oauth/token</code>）。已拿到客户端凭据后（<code>client_secret_post</code>，凭据放请求体，不走 HTTP Basic）：</p>
 <pre><code>curl -X POST https://&lt;your-instance&gt;/oauth2/token \
   -H "Content-Type: application/x-www-form-urlencoded" \
@@ -86,7 +119,7 @@ curl -H "Authorization: Bearer bak_2882bb603277_BSxTZHTBiJXk4QoUBc0u17zSWua" \
   --data-urlencode client_secret=&lt;由管理员提供&gt; \
   --data-urlencode audience=bkn-safe
 # -&gt; {"access_token":"...","token_type":"bearer","expires_in":...}</code></pre>
-<p class="muted">方式一的交互式登录底层用设备码流：<code>POST /oauth2/device/auth</code> 取 device code，再轮询 <code>POST /oauth2/token</code>（<code>grant_type=urn:ietf:params:oauth:grant-type:device_code</code>）。这套由 CLI 自动完成，无需手写。</p>
+<p class="muted">方式一的交互式登录底层就是方式三的设备码流，由 CLI 自动完成，无需手写。</p>
 </div>
 </body>
 </html>
