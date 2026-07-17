@@ -1,5 +1,588 @@
 <!-- Generator: Widdershins v4.0.1 -->
 
+<h1 id="actionschedule">ActionSchedule v0.1.0</h1>
+
+
+行动调度（Action Schedule）管理。行动调度按 cron 表达式定时触发某个行动类对指定实例的
+执行。所有接口在 `/api/bkn-backend/v1` 外网面下，需 OAuth2 认证；`branch` 查询参数默认
+`main`。时间戳字段为 Unix 毫秒。
+
+# Authentication
+
+- oAuth2 authentication. OAuth2 认证，用于外网接口
+
+    - Flow: clientCredentials
+
+    - Token URL = [/oauth2/token](/oauth2/token)
+
+|Scope|Scope Description|
+|---|---|
+
+<h1 id="actionschedule-actionschedule">ActionSchedule</h1>
+
+## 创建行动调度
+
+<a id="opIdcreateActionSchedule"></a>
+
+`POST /api/bkn-backend/v1/knowledge-networks/{kn_id}/action-schedules`
+
+在知识网络 / 分支下创建一个 cron 定时触发的行动调度。需 `Content-Type: application/json`。
+
+> Body parameter
+
+```json
+{
+  "name": "string",
+  "action_type_id": "string",
+  "cron_expression": "string",
+  "_instance_identities": [
+    {}
+  ],
+  "dynamic_params": {},
+  "status": "active"
+}
+```
+
+<h3 id="创建行动调度-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|kn_id|path|string|true|业务知识网络 ID|
+|branch|query|string|false|分支名称，默认 main|
+|body|body|[ActionScheduleCreateRequest](#schemaactionschedulecreaterequest)|true|none|
+
+> Example responses
+
+> 201 Response
+
+```json
+{
+  "id": "string"
+}
+```
+
+<h3 id="创建行动调度-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|创建成功，返回新调度 id|Inline|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|参数错误|None|
+|401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|未授权|None|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|知识网络或行动类不存在|None|
+
+<h3 id="创建行动调度-responseschema">Response Schema</h3>
+
+Status Code **201**
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|» id|string|false|none|none|
+
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+OAuth2
+</aside>
+
+## 列出行动调度
+
+<a id="opIdlistActionSchedules"></a>
+
+`GET /api/bkn-backend/v1/knowledge-networks/{kn_id}/action-schedules`
+
+分页列出知识网络内的行动调度，支持按名称 / 行动类 / 状态过滤。
+
+<h3 id="列出行动调度-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|kn_id|path|string|true|业务知识网络 ID|
+|branch|query|string|false|分支名称，默认 main|
+|name_pattern|query|string|false|按名称模糊匹配，默认空|
+|action_type_id|query|string|false|按绑定的行动类过滤，默认空|
+|status|query|string|false|按状态过滤，默认全部|
+|offset|query|integer(int64)|false|偏移量，>= 0，默认 0|
+|limit|query|integer(int64)|false|每页条数，范围 [1,1000]；`-1` 表示不分页返回全部|
+|sort|query|string|false|排序字段|
+|direction|query|string|false|排序方向|
+
+#### Enumerated Values
+
+|Parameter|Value|
+|---|---|
+|status|active|
+|status|inactive|
+|sort|create_time|
+|sort|update_time|
+|sort|next_run_time|
+|sort|last_run_time|
+|sort|name|
+|direction|asc|
+|direction|desc|
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "entries": [
+    {
+      "id": "string",
+      "name": "string",
+      "kn_id": "string",
+      "branch": "string",
+      "action_type_id": "string",
+      "cron_expression": "string",
+      "_instance_identities": [
+        {}
+      ],
+      "dynamic_params": {},
+      "status": "active",
+      "last_run_time": 0,
+      "next_run_time": 0,
+      "lock_holder": "string",
+      "lock_time": 0,
+      "creator": {
+        "id": "string",
+        "type": "string",
+        "name": "string"
+      },
+      "create_time": 0,
+      "updater": {
+        "id": "string",
+        "type": "string",
+        "name": "string"
+      },
+      "update_time": 0
+    }
+  ],
+  "total_count": 0
+}
+```
+
+<h3 id="列出行动调度-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|ok|Inline|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|参数错误|None|
+|401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|未授权|None|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|知识网络不存在|None|
+
+<h3 id="列出行动调度-responseschema">Response Schema</h3>
+
+Status Code **200**
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|» entries|[[ActionSchedule](#schemaactionschedule)]|false|none|[行动调度对象]|
+|»» id|string|false|none|none|
+|»» name|string|false|none|none|
+|»» kn_id|string|false|none|none|
+|»» branch|string|false|none|none|
+|»» action_type_id|string|false|none|绑定的行动类 ID|
+|»» cron_expression|string|false|none|5 段标准 cron（分 时 日 月 周）|
+|»» _instance_identities|[object]|false|none|实例标识列表（注意 JSON key 带前导下划线）|
+|»» dynamic_params|object|false|none|动态参数|
+|»» status|string|false|none|none|
+|»» last_run_time|integer(int64)|false|none|上次运行时间（Unix 毫秒）|
+|»» next_run_time|integer(int64)|false|none|下次运行时间（Unix 毫秒）|
+|»» lock_holder|string|false|none|none|
+|»» lock_time|integer(int64)|false|none|none|
+|»» creator|[AccountInfo](#schemaaccountinfo)|false|none|账户信息（创建者 / 更新者）|
+|»»» id|string|false|none|none|
+|»»» type|string|false|none|none|
+|»»» name|string|false|none|none|
+|»» create_time|integer(int64)|false|none|创建时间（Unix 毫秒）|
+|»» updater|[AccountInfo](#schemaaccountinfo)|false|none|账户信息（创建者 / 更新者）|
+|»» update_time|integer(int64)|false|none|更新时间（Unix 毫秒）|
+|» total_count|integer(int64)|false|none|none|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|active|
+|status|inactive|
+
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+OAuth2
+</aside>
+
+## 获取单个行动调度
+
+<a id="opIdgetActionSchedule"></a>
+
+`GET /api/bkn-backend/v1/knowledge-networks/{kn_id}/action-schedules/{schedule_id}`
+
+<h3 id="获取单个行动调度-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|kn_id|path|string|true|业务知识网络 ID|
+|schedule_id|path|string|true|行动调度 ID|
+|branch|query|string|false|分支名称，默认 main|
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "id": "string",
+  "name": "string",
+  "kn_id": "string",
+  "branch": "string",
+  "action_type_id": "string",
+  "cron_expression": "string",
+  "_instance_identities": [
+    {}
+  ],
+  "dynamic_params": {},
+  "status": "active",
+  "last_run_time": 0,
+  "next_run_time": 0,
+  "lock_holder": "string",
+  "lock_time": 0,
+  "creator": {
+    "id": "string",
+    "type": "string",
+    "name": "string"
+  },
+  "create_time": 0,
+  "updater": {
+    "id": "string",
+    "type": "string",
+    "name": "string"
+  },
+  "update_time": 0
+}
+```
+
+<h3 id="获取单个行动调度-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|ok|[ActionSchedule](#schemaactionschedule)|
+|401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|未授权|None|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|知识网络或行动调度不存在|None|
+
+<h3 id="获取单个行动调度-responseschema">Response Schema</h3>
+
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+OAuth2
+</aside>
+
+## 更新行动调度
+
+<a id="opIdupdateActionSchedule"></a>
+
+`PUT /api/bkn-backend/v1/knowledge-networks/{kn_id}/action-schedules/{schedule_id}`
+
+更新调度的可变字段（名称 / cron / 实例 / 动态参数），四者至少提供其一。
+本端点不改状态和行动类。需 `Content-Type: application/json`。
+
+> Body parameter
+
+```json
+{
+  "name": "string",
+  "cron_expression": "string",
+  "_instance_identities": [
+    {}
+  ],
+  "dynamic_params": {}
+}
+```
+
+<h3 id="更新行动调度-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|kn_id|path|string|true|业务知识网络 ID|
+|schedule_id|path|string|true|行动调度 ID|
+|branch|query|string|false|分支名称，默认 main|
+|body|body|[ActionScheduleUpdateRequest](#schemaactionscheduleupdaterequest)|true|none|
+
+> Example responses
+
+<h3 id="更新行动调度-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|更新成功，无响应体|None|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|参数错误|None|
+|401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|未授权|None|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|知识网络或行动调度不存在|None|
+
+<h3 id="更新行动调度-responseschema">Response Schema</h3>
+
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+OAuth2
+</aside>
+
+## 切换行动调度状态
+
+<a id="opIdupdateActionScheduleStatus"></a>
+
+`PUT /api/bkn-backend/v1/knowledge-networks/{kn_id}/action-schedules/{schedule_id}/status`
+
+激活 / 停用调度。激活时按存储的 cron 重算下次运行时间。需 `Content-Type: application/json`。
+
+> Body parameter
+
+```json
+{
+  "status": "active"
+}
+```
+
+<h3 id="切换行动调度状态-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|kn_id|path|string|true|业务知识网络 ID|
+|schedule_id|path|string|true|行动调度 ID|
+|branch|query|string|false|分支名称，默认 main|
+|body|body|object|true|none|
+|» status|body|string|true|none|
+
+#### Enumerated Values
+
+|Parameter|Value|
+|---|---|
+|» status|active|
+|» status|inactive|
+
+> Example responses
+
+<h3 id="切换行动调度状态-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|切换成功，无响应体|None|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|状态非法|None|
+|401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|未授权|None|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|知识网络或行动调度不存在|None|
+
+<h3 id="切换行动调度状态-responseschema">Response Schema</h3>
+
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+OAuth2
+</aside>
+
+## 批量删除行动调度
+
+<a id="opIddeleteActionSchedules"></a>
+
+`DELETE /api/bkn-backend/v1/knowledge-networks/{kn_id}/action-schedules/{schedule_ids}`
+
+按 id 列表删除一个或多个调度。
+
+<h3 id="批量删除行动调度-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|kn_id|path|string|true|业务知识网络 ID|
+|schedule_ids|path|string|true|行动调度 ID 列表，逗号分隔|
+|branch|query|string|false|分支名称，默认 main|
+
+> Example responses
+
+<h3 id="批量删除行动调度-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|删除成功，无响应体|None|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|参数错误（id 与 kn/branch 不匹配）|None|
+|401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|未授权|None|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|知识网络或某个行动调度不存在|None|
+
+<h3 id="批量删除行动调度-responseschema">Response Schema</h3>
+
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+OAuth2
+</aside>
+
+# Schemas
+
+<h2 id="tocS_AccountInfo">AccountInfo</h2>
+<!-- backwards compatibility -->
+<a id="schemaaccountinfo"></a>
+<a id="schema_AccountInfo"></a>
+<a id="tocSaccountinfo"></a>
+<a id="tocsaccountinfo"></a>
+
+```json
+{
+  "id": "string",
+  "type": "string",
+  "name": "string"
+}
+
+```
+
+账户信息（创建者 / 更新者）
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|id|string|false|none|none|
+|type|string|false|none|none|
+|name|string|false|none|none|
+
+<h2 id="tocS_ActionSchedule">ActionSchedule</h2>
+<!-- backwards compatibility -->
+<a id="schemaactionschedule"></a>
+<a id="schema_ActionSchedule"></a>
+<a id="tocSactionschedule"></a>
+<a id="tocsactionschedule"></a>
+
+```json
+{
+  "id": "string",
+  "name": "string",
+  "kn_id": "string",
+  "branch": "string",
+  "action_type_id": "string",
+  "cron_expression": "string",
+  "_instance_identities": [
+    {}
+  ],
+  "dynamic_params": {},
+  "status": "active",
+  "last_run_time": 0,
+  "next_run_time": 0,
+  "lock_holder": "string",
+  "lock_time": 0,
+  "creator": {
+    "id": "string",
+    "type": "string",
+    "name": "string"
+  },
+  "create_time": 0,
+  "updater": {
+    "id": "string",
+    "type": "string",
+    "name": "string"
+  },
+  "update_time": 0
+}
+
+```
+
+行动调度对象
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|id|string|false|none|none|
+|name|string|false|none|none|
+|kn_id|string|false|none|none|
+|branch|string|false|none|none|
+|action_type_id|string|false|none|绑定的行动类 ID|
+|cron_expression|string|false|none|5 段标准 cron（分 时 日 月 周）|
+|_instance_identities|[object]|false|none|实例标识列表（注意 JSON key 带前导下划线）|
+|dynamic_params|object|false|none|动态参数|
+|status|string|false|none|none|
+|last_run_time|integer(int64)|false|none|上次运行时间（Unix 毫秒）|
+|next_run_time|integer(int64)|false|none|下次运行时间（Unix 毫秒）|
+|lock_holder|string|false|none|none|
+|lock_time|integer(int64)|false|none|none|
+|creator|[AccountInfo](#schemaaccountinfo)|false|none|账户信息（创建者 / 更新者）|
+|create_time|integer(int64)|false|none|创建时间（Unix 毫秒）|
+|updater|[AccountInfo](#schemaaccountinfo)|false|none|账户信息（创建者 / 更新者）|
+|update_time|integer(int64)|false|none|更新时间（Unix 毫秒）|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|active|
+|status|inactive|
+
+<h2 id="tocS_ActionScheduleCreateRequest">ActionScheduleCreateRequest</h2>
+<!-- backwards compatibility -->
+<a id="schemaactionschedulecreaterequest"></a>
+<a id="schema_ActionScheduleCreateRequest"></a>
+<a id="tocSactionschedulecreaterequest"></a>
+<a id="tocsactionschedulecreaterequest"></a>
+
+```json
+{
+  "name": "string",
+  "action_type_id": "string",
+  "cron_expression": "string",
+  "_instance_identities": [
+    {}
+  ],
+  "dynamic_params": {},
+  "status": "active"
+}
+
+```
+
+创建行动调度请求
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|name|string|true|none|名称，最长 100|
+|action_type_id|string|true|none|行动类 ID，须存在于该 KN/branch|
+|cron_expression|string|true|none|合法的 5 段 cron|
+|_instance_identities|[object]|true|none|实例标识列表，非空（JSON key 带前导下划线）|
+|dynamic_params|object|false|none|none|
+|status|string|false|none|默认 inactive；为 active 时创建即算下次运行时间|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|active|
+|status|inactive|
+
+<h2 id="tocS_ActionScheduleUpdateRequest">ActionScheduleUpdateRequest</h2>
+<!-- backwards compatibility -->
+<a id="schemaactionscheduleupdaterequest"></a>
+<a id="schema_ActionScheduleUpdateRequest"></a>
+<a id="tocSactionscheduleupdaterequest"></a>
+<a id="tocsactionscheduleupdaterequest"></a>
+
+```json
+{
+  "name": "string",
+  "cron_expression": "string",
+  "_instance_identities": [
+    {}
+  ],
+  "dynamic_params": {}
+}
+
+```
+
+更新行动调度请求（四字段至少其一）
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|name|string|false|none|最长 100|
+|cron_expression|string|false|none|合法 cron；仅当调度为 active 时重算 next_run_time|
+|_instance_identities|[object]|false|none|none|
+|dynamic_params|object|false|none|none|
+
+
+
+<!-- Generator: Widdershins v4.0.1 -->
+
 <h1 id="actiontype">ActionType v0.1.0</h1>
 
 
@@ -3944,182 +4527,6 @@ Status Code **200**
 This operation does not require authentication
 </aside>
 
-## 获取指标详情
-
-`GET /api/bkn-backend/v1/knowledge-networks/{kn_id}/metrics/{metric_id}`
-
-<h3 id="获取指标详情-parameters">Parameters</h3>
-
-|Name|In|Type|Required|Description|
-|---|---|---|---|---|
-|kn_id|path|string|true|业务知识网络ID|
-|metric_id|path|string|true|指标ID|
-|branch|query|string|false|分支，不填则使用 main 分支|
-
-> Example responses
-
-> 200 Response
-
-```json
-{
-  "id": "string",
-  "kn_id": "string",
-  "branch": "string",
-  "name": "string",
-  "comment": "string",
-  "tags": [
-    "string"
-  ],
-  "icon": "string",
-  "color": "string",
-  "unit_type": "numUnit",
-  "unit": "none",
-  "metric_type": "atomic",
-  "scope_type": "object_type",
-  "scope_ref": "string",
-  "time_dimension": {
-    "property": "string",
-    "default_range_policy": "last_1h"
-  },
-  "calculation_formula": {
-    "condition": null,
-    "aggregation": {
-      "property": "string",
-      "aggr": "count_distinct"
-    },
-    "group_by": [
-      {
-        "property": "string",
-        "description": "string"
-      }
-    ],
-    "order_by": [
-      {
-        "property": "string",
-        "direction": "asc"
-      }
-    ],
-    "having": {
-      "field": "__value",
-      "operation": "==",
-      "value": null
-    }
-  },
-  "analysis_dimensions": [
-    {
-      "name": "string",
-      "display_name": "string"
-    }
-  ]
-}
-```
-
-<h3 id="获取指标详情-responses">Responses</h3>
-
-|Status|Meaning|Description|Schema|
-|---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|ok|[MetricDefinition](#schemametricdefinition)|
-
-<aside class="success">
-This operation does not require authentication
-</aside>
-
-## 更新指标
-
-`PUT /api/bkn-backend/v1/knowledge-networks/{kn_id}/metrics/{metric_id}`
-
-> Body parameter
-
-```json
-{
-  "comment": "string",
-  "tags": [
-    "string"
-  ],
-  "icon": "string",
-  "color": "string",
-  "unit_type": "numUnit",
-  "unit": "none",
-  "metric_type": "atomic",
-  "time_dimension": {
-    "property": "string",
-    "default_range_policy": "last_1h"
-  },
-  "calculation_formula": {
-    "condition": null,
-    "aggregation": {
-      "property": "string",
-      "aggr": "count_distinct"
-    },
-    "group_by": [
-      {
-        "property": "string",
-        "description": "string"
-      }
-    ],
-    "order_by": [
-      {
-        "property": "string",
-        "direction": "asc"
-      }
-    ],
-    "having": {
-      "field": "__value",
-      "operation": "==",
-      "value": null
-    }
-  },
-  "analysis_dimensions": [
-    {
-      "name": "string",
-      "display_name": "string"
-    }
-  ]
-}
-```
-
-<h3 id="更新指标-parameters">Parameters</h3>
-
-|Name|In|Type|Required|Description|
-|---|---|---|---|---|
-|kn_id|path|string|true|none|
-|metric_id|path|string|true|none|
-|branch|query|string|false|分支，不填则使用 main 分支|
-|strict_mode|query|boolean|false|是否严格校验依赖，默认为 true|
-|body|body|[UpdateMetricRequest](#schemaupdatemetricrequest)|true|none|
-
-<h3 id="更新指标-responses">Responses</h3>
-
-|Status|Meaning|Description|Schema|
-|---|---|---|---|
-|204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|ok|None|
-
-<aside class="success">
-This operation does not require authentication
-</aside>
-
-## 删除指标
-
-`DELETE /api/bkn-backend/v1/knowledge-networks/{kn_id}/metrics/{metric_id}`
-
-<h3 id="删除指标-parameters">Parameters</h3>
-
-|Name|In|Type|Required|Description|
-|---|---|---|---|---|
-|kn_id|path|string|true|none|
-|metric_id|path|string|true|none|
-|branch|query|string|false|分支，不填则使用 main 分支|
-
-<h3 id="删除指标-responses">Responses</h3>
-
-|Status|Meaning|Description|Schema|
-|---|---|---|---|
-|204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|ok|None|
-
-<aside class="success">
-This operation does not require authentication
-</aside>
-
 ## 批量获取指标详情
 
 `GET /api/bkn-backend/v1/knowledge-networks/{kn_id}/metrics/{metric_ids}`
@@ -4199,6 +4606,82 @@ This operation does not require authentication
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|ok|[MetricDefinitions](#schemametricdefinitions)|
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## 更新指标
+
+`PUT /api/bkn-backend/v1/knowledge-networks/{kn_id}/metrics/{metric_ids}`
+
+更新指标定义。路由为 `metrics/{metric_ids}`（与批量获取 / 删除同槽）。需 `Content-Type: application/json`。
+
+> Body parameter
+
+```json
+{
+  "comment": "string",
+  "tags": [
+    "string"
+  ],
+  "icon": "string",
+  "color": "string",
+  "unit_type": "numUnit",
+  "unit": "none",
+  "metric_type": "atomic",
+  "time_dimension": {
+    "property": "string",
+    "default_range_policy": "last_1h"
+  },
+  "calculation_formula": {
+    "condition": null,
+    "aggregation": {
+      "property": "string",
+      "aggr": "count_distinct"
+    },
+    "group_by": [
+      {
+        "property": "string",
+        "description": "string"
+      }
+    ],
+    "order_by": [
+      {
+        "property": "string",
+        "direction": "asc"
+      }
+    ],
+    "having": {
+      "field": "__value",
+      "operation": "==",
+      "value": null
+    }
+  },
+  "analysis_dimensions": [
+    {
+      "name": "string",
+      "display_name": "string"
+    }
+  ]
+}
+```
+
+<h3 id="更新指标-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|kn_id|path|string|true|业务知识网络ID|
+|metric_ids|path|string|true|指标ID|
+|branch|query|string|false|分支，不填则使用 main 分支|
+|strict_mode|query|boolean|false|是否严格校验依赖，默认为 true|
+|body|body|[UpdateMetricRequest](#schemaupdatemetricrequest)|true|none|
+
+<h3 id="更新指标-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|ok|None|
 
 <aside class="success">
 This operation does not require authentication
@@ -5305,6 +5788,130 @@ OAuth2
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|请求参数错误|None|
 |401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|未授权|None|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|知识网络不存在|None|
+
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+OAuth2
+</aside>
+
+<h1 id="bkn-backend-api-bkn">BKN</h1>
+
+## 按 ID 批量取知识网络名称
+
+<a id="opIdqueryKNNamesByIDs"></a>
+
+`POST /api/bkn-backend/v1/knowledge-networks/names`
+
+按 ID 批量回显知识网络名称（用于对象级授权页等）。不存在的 ID 略过，不报错。需 `Content-Type: application/json`。
+
+> Body parameter
+
+```json
+{
+  "ids": [
+    "string"
+  ]
+}
+```
+
+<h3 id="按-id-批量取知识网络名称-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|body|body|object|true|none|
+|» ids|body|[string]|false|待取名的知识网络 ID 列表，空列表返回空 entries|
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "entries": [
+    {
+      "id": "string",
+      "name": "string"
+    }
+  ]
+}
+```
+
+<h3 id="按-id-批量取知识网络名称-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|ok|Inline|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|请求参数错误|None|
+|401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|未授权|None|
+
+<h3 id="按-id-批量取知识网络名称-responseschema">Response Schema</h3>
+
+Status Code **200**
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|» entries|[object]|false|none|none|
+|»» id|string|false|none|none|
+|»» name|string|false|none|none|
+
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+OAuth2
+</aside>
+
+## 列出资源
+
+<a id="opIdlistResources"></a>
+
+`GET /api/bkn-backend/v1/resources`
+
+按资源类型分页列出资源（统一资源平台）。当前支持 `resource_type=kn`（知识网络）。
+
+<h3 id="列出资源-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|resource_type|query|string|true|资源类型，如 `kn`|
+|keyword|query|string|false|名称关键字过滤，默认空|
+|offset|query|integer(int64)|false|偏移量，默认 0|
+|limit|query|integer(int64)|false|每页条数，默认 10|
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "entries": [
+    {
+      "type": "string",
+      "id": "string",
+      "name": "string"
+    }
+  ],
+  "total_count": 0
+}
+```
+
+<h3 id="列出资源-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|ok|Inline|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|请求参数错误|None|
+|401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|未授权|None|
+
+<h3 id="列出资源-responseschema">Response Schema</h3>
+
+Status Code **200**
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|» entries|[object]|false|none|none|
+|»» type|string|false|none|none|
+|»» id|string|false|none|none|
+|»» name|string|false|none|none|
+|» total_count|integer(int64)|false|none|none|
 
 <aside class="warning">
 To perform this operation, you must be authenticated by means of one of the following methods:
@@ -19963,6 +20570,727 @@ xor
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |*anonymous*|[condition_multi_match](#schemacondition_multi_match)|false|none|多字段全文匹配|
+
+
+
+<!-- Generator: Widdershins v4.0.1 -->
+
+<h1 id="risktype">RiskType v0.1.0</h1>
+
+
+风险类（Risk Type）管理。风险类是一个轻量概念，仅含名称、标签、备注与展示元数据
+（icon/color），不绑定行动类或阈值。所有接口在 `/api/bkn-backend/v1` 外网面下，
+需 OAuth2 认证；`branch` 查询参数默认 `main`。
+
+# Authentication
+
+- oAuth2 authentication. OAuth2 认证，用于外网接口
+
+    - Flow: clientCredentials
+
+    - Token URL = [/oauth2/token](/oauth2/token)
+
+|Scope|Scope Description|
+|---|---|
+
+<h1 id="risktype-risktype">RiskType</h1>
+
+## 创建风险类（批量）或按条件搜索
+
+<a id="opIdcreateOrSearchRiskTypes"></a>
+
+`POST /api/bkn-backend/v1/knowledge-networks/{kn_id}/risk-types`
+
+本端点通过请求头 `x-http-method-override` 分发到两种操作：
+- 头缺省或为 `POST`：**批量创建 / 导入**风险类（见请求体 `entries`）。
+- 头为 `GET`：**按条件 / 语义搜索**风险类（请求体为查询条件 `ConceptsQuery`）。
+- 其它取值：返回 400。
+
+需 `Content-Type: application/json`。
+
+> Body parameter
+
+```json
+{
+  "entries": [
+    {
+      "id": "string",
+      "name": "string",
+      "tags": [
+        "string"
+      ],
+      "comment": "string",
+      "icon": "string",
+      "color": "string"
+    }
+  ]
+}
+```
+
+<h3 id="创建风险类（批量）或按条件搜索-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|kn_id|path|string|true|业务知识网络 ID|
+|branch|query|string|false|分支名称，默认 main|
+|x-http-method-override|header|string|false|方法覆盖：空或 `POST` 走批量创建；`GET` 走搜索|
+|import_mode|query|string|false|仅创建时生效。`normal`=已存在则报错；`ignore`=跳过已存在；`overwrite`=按 id 覆盖更新。|
+|body|body|any|true|none|
+
+#### Enumerated Values
+
+|Parameter|Value|
+|---|---|
+|x-http-method-override|POST|
+|x-http-method-override|GET|
+|import_mode|normal|
+|import_mode|ignore|
+|import_mode|overwrite|
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "entries": [
+    {
+      "id": "string",
+      "name": "string",
+      "tags": [
+        "string"
+      ],
+      "comment": "string",
+      "icon": "string",
+      "color": "string",
+      "kn_id": "string",
+      "branch": "string",
+      "module_type": "string",
+      "creator": {
+        "id": "string",
+        "type": "string",
+        "name": "string"
+      },
+      "create_time": 0,
+      "updater": {
+        "id": "string",
+        "type": "string",
+        "name": "string"
+      },
+      "update_time": 0
+    }
+  ],
+  "total_count": 0,
+  "search_after": [
+    null
+  ],
+  "overall_ms": 0
+}
+```
+
+<h3 id="创建风险类（批量）或按条件搜索-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|搜索结果（仅当搜索操作）|[RiskTypesSearchResult](#schemarisktypessearchresult)|
+|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|创建成功，返回各风险类 id 的数组（仅当创建操作）|Inline|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|参数错误|None|
+|401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|未授权|None|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|知识网络不存在|None|
+
+<h3 id="创建风险类（批量）或按条件搜索-responseschema">Response Schema</h3>
+
+Status Code **201**
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|» id|string|false|none|none|
+
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+OAuth2
+</aside>
+
+## 列出风险类
+
+<a id="opIdlistRiskTypes"></a>
+
+`GET /api/bkn-backend/v1/knowledge-networks/{kn_id}/risk-types`
+
+分页列出知识网络内的风险类，支持按名称 / 标签过滤。
+
+<h3 id="列出风险类-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|kn_id|path|string|true|业务知识网络 ID|
+|branch|query|string|false|分支名称，默认 main|
+|name_pattern|query|string|false|按名称或 id 模糊匹配，默认空|
+|tag|query|string|false|按标签模糊匹配，默认空|
+|offset|query|integer(int64)|false|偏移量，>= 0，默认 0|
+|limit|query|integer(int64)|false|每页条数，范围 [1,1000]；`-1` 表示不分页返回全部|
+|sort|query|string|false|排序字段|
+|direction|query|string|false|排序方向|
+
+#### Enumerated Values
+
+|Parameter|Value|
+|---|---|
+|sort|name|
+|sort|update_time|
+|direction|asc|
+|direction|desc|
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "entries": [
+    {
+      "id": "string",
+      "name": "string",
+      "tags": [
+        "string"
+      ],
+      "comment": "string",
+      "icon": "string",
+      "color": "string",
+      "kn_id": "string",
+      "branch": "string",
+      "module_type": "string",
+      "creator": {
+        "id": "string",
+        "type": "string",
+        "name": "string"
+      },
+      "create_time": 0,
+      "updater": {
+        "id": "string",
+        "type": "string",
+        "name": "string"
+      },
+      "update_time": 0
+    }
+  ],
+  "total_count": 0
+}
+```
+
+<h3 id="列出风险类-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|ok|Inline|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|参数错误|None|
+|401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|未授权|None|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|知识网络不存在|None|
+
+<h3 id="列出风险类-responseschema">Response Schema</h3>
+
+Status Code **200**
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|» entries|[[RiskType](#schemarisktype)]|false|none|[风险类对象]|
+|»» id|string|false|none|none|
+|»» name|string|false|none|名称，最长 40|
+|»» tags|[string]|false|none|标签，最多 5 个|
+|»» comment|string|false|none|备注，最长 1000|
+|»» icon|string|false|none|none|
+|»» color|string|false|none|none|
+|»» kn_id|string|false|none|由服务端按路径填充|
+|»» branch|string|false|none|由服务端按 branch 查询参数填充|
+|»» module_type|string|false|none|恒为 `risk_type`|
+|»» creator|[AccountInfo](#schemaaccountinfo)|false|none|账户信息（创建者 / 更新者）|
+|»»» id|string|false|none|none|
+|»»» type|string|false|none|none|
+|»»» name|string|false|none|none|
+|»» create_time|integer(int64)|false|none|创建时间（Unix 毫秒）|
+|»» updater|[AccountInfo](#schemaaccountinfo)|false|none|账户信息（创建者 / 更新者）|
+|»» update_time|integer(int64)|false|none|更新时间（Unix 毫秒）|
+|» total_count|integer(int64)|false|none|none|
+
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+OAuth2
+</aside>
+
+## 更新风险类
+
+<a id="opIdupdateRiskType"></a>
+
+`PUT /api/bkn-backend/v1/knowledge-networks/{kn_id}/risk-types/{rt_id}`
+
+全量更新单个风险类。需 `Content-Type: application/json`。
+
+> Body parameter
+
+```json
+{
+  "id": "string",
+  "name": "string",
+  "tags": [
+    "string"
+  ],
+  "comment": "string",
+  "icon": "string",
+  "color": "string"
+}
+```
+
+<h3 id="更新风险类-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|kn_id|path|string|true|业务知识网络 ID|
+|rt_id|path|string|true|风险类 ID|
+|branch|query|string|false|分支名称，默认 main|
+|body|body|[RiskTypeInput](#schemarisktypeinput)|true|none|
+
+> Example responses
+
+<h3 id="更新风险类-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|更新成功，无响应体|None|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|参数错误（含名称已存在）|None|
+|401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|未授权|None|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|知识网络或风险类不存在|None|
+
+<h3 id="更新风险类-responseschema">Response Schema</h3>
+
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+OAuth2
+</aside>
+
+## 按 id 批量获取风险类
+
+<a id="opIdgetRiskTypes"></a>
+
+`GET /api/bkn-backend/v1/knowledge-networks/{kn_id}/risk-types/{rt_ids}`
+
+批量获取指定 id 的风险类；任一 id 不存在则整体 404。
+
+<h3 id="按-id-批量获取风险类-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|kn_id|path|string|true|业务知识网络 ID|
+|rt_ids|path|string|true|风险类 ID 列表，逗号分隔|
+|branch|query|string|false|分支名称，默认 main|
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "entries": [
+    {
+      "id": "string",
+      "name": "string",
+      "tags": [
+        "string"
+      ],
+      "comment": "string",
+      "icon": "string",
+      "color": "string",
+      "kn_id": "string",
+      "branch": "string",
+      "module_type": "string",
+      "creator": {
+        "id": "string",
+        "type": "string",
+        "name": "string"
+      },
+      "create_time": 0,
+      "updater": {
+        "id": "string",
+        "type": "string",
+        "name": "string"
+      },
+      "update_time": 0
+    }
+  ]
+}
+```
+
+<h3 id="按-id-批量获取风险类-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|ok|Inline|
+|401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|未授权|None|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|知识网络或某个风险类不存在|None|
+
+<h3 id="按-id-批量获取风险类-responseschema">Response Schema</h3>
+
+Status Code **200**
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|» entries|[[RiskType](#schemarisktype)]|false|none|[风险类对象]|
+|»» id|string|false|none|none|
+|»» name|string|false|none|名称，最长 40|
+|»» tags|[string]|false|none|标签，最多 5 个|
+|»» comment|string|false|none|备注，最长 1000|
+|»» icon|string|false|none|none|
+|»» color|string|false|none|none|
+|»» kn_id|string|false|none|由服务端按路径填充|
+|»» branch|string|false|none|由服务端按 branch 查询参数填充|
+|»» module_type|string|false|none|恒为 `risk_type`|
+|»» creator|[AccountInfo](#schemaaccountinfo)|false|none|账户信息（创建者 / 更新者）|
+|»»» id|string|false|none|none|
+|»»» type|string|false|none|none|
+|»»» name|string|false|none|none|
+|»» create_time|integer(int64)|false|none|创建时间（Unix 毫秒）|
+|»» updater|[AccountInfo](#schemaaccountinfo)|false|none|账户信息（创建者 / 更新者）|
+|»» update_time|integer(int64)|false|none|更新时间（Unix 毫秒）|
+
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+OAuth2
+</aside>
+
+## 批量删除风险类
+
+<a id="opIddeleteRiskTypes"></a>
+
+`DELETE /api/bkn-backend/v1/knowledge-networks/{kn_id}/risk-types/{rt_ids}`
+
+按 id 列表删除一个或多个风险类。
+
+<h3 id="批量删除风险类-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|kn_id|path|string|true|业务知识网络 ID|
+|rt_ids|path|string|true|风险类 ID 列表，逗号分隔|
+|branch|query|string|false|分支名称，默认 main|
+
+> Example responses
+
+<h3 id="批量删除风险类-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|删除成功，无响应体|None|
+|401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|未授权|None|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|知识网络或某个风险类不存在|None|
+
+<h3 id="批量删除风险类-responseschema">Response Schema</h3>
+
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+OAuth2
+</aside>
+
+# Schemas
+
+<h2 id="tocS_AccountInfo">AccountInfo</h2>
+<!-- backwards compatibility -->
+<a id="schemaaccountinfo"></a>
+<a id="schema_AccountInfo"></a>
+<a id="tocSaccountinfo"></a>
+<a id="tocsaccountinfo"></a>
+
+```json
+{
+  "id": "string",
+  "type": "string",
+  "name": "string"
+}
+
+```
+
+账户信息（创建者 / 更新者）
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|id|string|false|none|none|
+|type|string|false|none|none|
+|name|string|false|none|none|
+
+<h2 id="tocS_RiskType">RiskType</h2>
+<!-- backwards compatibility -->
+<a id="schemarisktype"></a>
+<a id="schema_RiskType"></a>
+<a id="tocSrisktype"></a>
+<a id="tocsrisktype"></a>
+
+```json
+{
+  "id": "string",
+  "name": "string",
+  "tags": [
+    "string"
+  ],
+  "comment": "string",
+  "icon": "string",
+  "color": "string",
+  "kn_id": "string",
+  "branch": "string",
+  "module_type": "string",
+  "creator": {
+    "id": "string",
+    "type": "string",
+    "name": "string"
+  },
+  "create_time": 0,
+  "updater": {
+    "id": "string",
+    "type": "string",
+    "name": "string"
+  },
+  "update_time": 0
+}
+
+```
+
+风险类对象
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|id|string|false|none|none|
+|name|string|false|none|名称，最长 40|
+|tags|[string]|false|none|标签，最多 5 个|
+|comment|string|false|none|备注，最长 1000|
+|icon|string|false|none|none|
+|color|string|false|none|none|
+|kn_id|string|false|none|由服务端按路径填充|
+|branch|string|false|none|由服务端按 branch 查询参数填充|
+|module_type|string|false|none|恒为 `risk_type`|
+|creator|[AccountInfo](#schemaaccountinfo)|false|none|账户信息（创建者 / 更新者）|
+|create_time|integer(int64)|false|none|创建时间（Unix 毫秒）|
+|updater|[AccountInfo](#schemaaccountinfo)|false|none|账户信息（创建者 / 更新者）|
+|update_time|integer(int64)|false|none|更新时间（Unix 毫秒）|
+
+<h2 id="tocS_RiskTypeInput">RiskTypeInput</h2>
+<!-- backwards compatibility -->
+<a id="schemarisktypeinput"></a>
+<a id="schema_RiskTypeInput"></a>
+<a id="tocSrisktypeinput"></a>
+<a id="tocsrisktypeinput"></a>
+
+```json
+{
+  "id": "string",
+  "name": "string",
+  "tags": [
+    "string"
+  ],
+  "comment": "string",
+  "icon": "string",
+  "color": "string"
+}
+
+```
+
+风险类可写字段（创建 / 更新的入参）
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|id|string|false|none|可选；创建时留空则自动生成|
+|name|string|true|none|none|
+|tags|[string]|false|none|none|
+|comment|string|false|none|none|
+|icon|string|false|none|none|
+|color|string|false|none|none|
+
+<h2 id="tocS_RiskTypeCreateRequest">RiskTypeCreateRequest</h2>
+<!-- backwards compatibility -->
+<a id="schemarisktypecreaterequest"></a>
+<a id="schema_RiskTypeCreateRequest"></a>
+<a id="tocSrisktypecreaterequest"></a>
+<a id="tocsrisktypecreaterequest"></a>
+
+```json
+{
+  "entries": [
+    {
+      "id": "string",
+      "name": "string",
+      "tags": [
+        "string"
+      ],
+      "comment": "string",
+      "icon": "string",
+      "color": "string"
+    }
+  ]
+}
+
+```
+
+批量创建请求
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|entries|[[RiskTypeInput](#schemarisktypeinput)]|true|none|[风险类可写字段（创建 / 更新的入参）]|
+
+<h2 id="tocS_RiskTypesSearchResult">RiskTypesSearchResult</h2>
+<!-- backwards compatibility -->
+<a id="schemarisktypessearchresult"></a>
+<a id="schema_RiskTypesSearchResult"></a>
+<a id="tocSrisktypessearchresult"></a>
+<a id="tocsrisktypessearchresult"></a>
+
+```json
+{
+  "entries": [
+    {
+      "id": "string",
+      "name": "string",
+      "tags": [
+        "string"
+      ],
+      "comment": "string",
+      "icon": "string",
+      "color": "string",
+      "kn_id": "string",
+      "branch": "string",
+      "module_type": "string",
+      "creator": {
+        "id": "string",
+        "type": "string",
+        "name": "string"
+      },
+      "create_time": 0,
+      "updater": {
+        "id": "string",
+        "type": "string",
+        "name": "string"
+      },
+      "update_time": 0
+    }
+  ],
+  "total_count": 0,
+  "search_after": [
+    null
+  ],
+  "overall_ms": 0
+}
+
+```
+
+搜索结果信封
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|entries|[[RiskType](#schemarisktype)]|false|none|[风险类对象]|
+|total_count|integer(int64)|false|none|仅当请求 need_total 时返回|
+|search_after|[any]|false|none|游标，用于翻页|
+|overall_ms|integer(int64)|false|none|none|
+
+<h2 id="tocS_ConceptsQuery">ConceptsQuery</h2>
+<!-- backwards compatibility -->
+<a id="schemaconceptsquery"></a>
+<a id="schema_ConceptsQuery"></a>
+<a id="tocSconceptsquery"></a>
+<a id="tocsconceptsquery"></a>
+
+```json
+{
+  "concept_groups": [
+    "string"
+  ],
+  "condition": {
+    "field": "string",
+    "operation": "string",
+    "sub_conditions": [
+      {}
+    ],
+    "value_from": "string",
+    "value": null
+  },
+  "need_total": true,
+  "limit": 0,
+  "sort": [
+    {
+      "field": "string",
+      "direction": "asc"
+    }
+  ],
+  "search_after": [
+    null
+  ]
+}
+
+```
+
+概念搜索查询体（用于 POST + x-http-method-override:GET）
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|concept_groups|[string]|false|none|none|
+|condition|[Condition](#schemacondition)|false|none|过滤条件树|
+|need_total|boolean|false|none|为 true 时响应返回 total_count|
+|limit|integer|false|none|默认 10|
+|sort|[object]|false|none|none|
+|» field|string|false|none|none|
+|» direction|string|false|none|none|
+|search_after|[any]|false|none|游标翻页|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|direction|asc|
+|direction|desc|
+
+<h2 id="tocS_Condition">Condition</h2>
+<!-- backwards compatibility -->
+<a id="schemacondition"></a>
+<a id="schema_Condition"></a>
+<a id="tocScondition"></a>
+<a id="tocscondition"></a>
+
+```json
+{
+  "field": "string",
+  "operation": "string",
+  "sub_conditions": [
+    {
+      "field": "string",
+      "operation": "string",
+      "sub_conditions": [],
+      "value_from": "string",
+      "value": null
+    }
+  ],
+  "value_from": "string",
+  "value": null
+}
+
+```
+
+过滤条件树
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|field|string|false|none|none|
+|operation|string|false|none|none|
+|sub_conditions|[[Condition](#schemacondition)]|false|none|[过滤条件树]|
+|value_from|string|false|none|none|
+|value|any|false|none|类型不固定|
 
 
 
