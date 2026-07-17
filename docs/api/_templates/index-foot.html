@@ -1,0 +1,13 @@
+</main>
+<footer>YAML 为唯一真相源；本页由 <code>make api-docs-html</code> 从 OpenAPI 渲染。</footer>
+</div>
+<script>
+  var q=document.getElementById('q'),cards=[].slice.call(document.querySelectorAll('.card')),mods=[].slice.call(document.querySelectorAll('.mod'));
+  q.addEventListener('input',function(){
+    var v=q.value.trim().toLowerCase();
+    cards.forEach(function(c){c.style.display=c.dataset.name.indexOf(v)>-1?'':'none';});
+    mods.forEach(function(m){var any=[].slice.call(m.querySelectorAll('.card')).some(function(c){return c.style.display!=='none';});m.style.display=any?'':'none';});
+  });
+</script>
+</body>
+</html>

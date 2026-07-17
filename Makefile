@@ -6,11 +6,12 @@
 API_DIR      := docs/api
 GEN_DIR      := $(API_DIR)/_generated
 HTML_DIR     := $(GEN_DIR)/html
+TPL_DIR      := $(API_DIR)/_templates
 # 模块目录 = docs/api 下除 _shared / _generated 外的子目录。
 # 用 $(API_DIR)/*/. 强制只匹配目录（GNU make 的 */ 通配会把 README.md 也算进来），
 # $(dir ...) 取目录路径，再 notdir 取目录名。
 MODULE_DIRS  := $(dir $(wildcard $(API_DIR)/*/.))
-MODULES      := $(filter-out _shared _generated,$(foreach d,$(MODULE_DIRS),$(notdir $(patsubst %/,%,$(d)))))
+MODULES      := $(filter-out _shared _generated _templates,$(foreach d,$(MODULE_DIRS),$(notdir $(patsubst %/,%,$(d)))))
 
 .PHONY: api-docs api-docs-html api-docs-lint api-docs-clean print-moddesc
 
@@ -51,75 +52,15 @@ MODDESC_ontology-query := 本体查询与语义检索
 MODDESC_vega           := 数据可观测：Catalog / 资源 / 连接器 / 构建任务 / 发现任务 / 原生查询
 MODDESC_dataflow       := 文档流处理管线
 
-# index.html 的静态头部（含样式，主题自适应）。`$$` 是写进文件的字面 `$`。
-define INDEX_HEAD
-<!doctype html>
-<html lang="zh">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>BKN Foundry API 文档</title>
-<style>
-  :root{--bg:#f7f9fb;--fg:#12212b;--muted:#5b6b78;--card:#fff;--line:#e4eaf0;--acc:#0e7c86;--acc-bg:#e1f3f4;--shadow:0 1px 2px rgba(16,32,44,.04),0 3px 12px rgba(16,32,44,.06)}
-  @media(prefers-color-scheme:dark){:root{--bg:#0d1117;--fg:#e6edf3;--muted:#8b98a5;--card:#161b22;--line:#232b34;--acc:#3fb8c2;--acc-bg:#0e3037;--shadow:0 1px 2px rgba(0,0,0,.3),0 3px 12px rgba(0,0,0,.4)}}
-  *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
-  .wrap{max-width:960px;margin:0 auto;padding:56px 24px 96px}
-  header h1{font-size:30px;letter-spacing:-.02em;margin:0 0 8px}
-  header p{color:var(--muted);font-size:16px;margin:0 0 28px}
-  .search{width:100%;max-width:420px;padding:10px 14px;font-size:15px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--fg);margin-bottom:36px;outline:none}
-  .search:focus{border-color:var(--acc)}
-  .mod{margin:0 0 36px}
-  .mod-h{display:flex;align-items:baseline;gap:12px;margin:0 0 4px}
-  .mod-h h2{font-size:20px;margin:0}
-  .mod-h .count{font:600 12px system-ui;color:var(--acc);background:var(--acc-bg);padding:2px 9px;border-radius:20px}
-  .mod-desc{color:var(--muted);font-size:14px;margin:0 0 16px}
-  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}
-  .card{display:block;padding:14px 16px;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);text-decoration:none;color:inherit;transition:transform .12s,border-color .12s}
-  .card:hover{transform:translateY(-2px);border-color:var(--acc)}
-  .card .name{font-weight:600;font-size:15px}
-  .card .arrow{color:var(--acc);float:right}
-  .empty{color:var(--muted);font-size:14px}
-  footer{margin-top:48px;color:var(--muted);font-size:13px;border-top:1px solid var(--line);padding-top:20px}
-</style>
-</head>
-<body>
-<div class="wrap">
-<header>
-  <h1>BKN Foundry API 文档</h1>
-  <p>各服务的 OpenAPI 交互式文档 —— 点开任意资源查看端点、参数与示例。</p>
-  <input class="search" id="q" type="search" placeholder="过滤资源…" autocomplete="off">
-</header>
-<main id="list">
-endef
-
-define INDEX_FOOT
-</main>
-<footer>YAML 为唯一真相源；本页由 <code>make api-docs-html</code> 从 OpenAPI 渲染。</footer>
-</div>
-<script>
-  var q=document.getElementById('q'),cards=[].slice.call(document.querySelectorAll('.card')),mods=[].slice.call(document.querySelectorAll('.mod'));
-  q.addEventListener('input',function(){
-    var v=q.value.trim().toLowerCase();
-    cards.forEach(function(c){c.style.display=c.dataset.name.indexOf(v)>-1?'':'none';});
-    mods.forEach(function(m){var any=[].slice.call(m.querySelectorAll('.card')).some(function(c){return c.style.display!=='none';});m.style.display=any?'':'none';});
-  });
-</script>
-</body>
-</html>
-endef
-
-export INDEX_HEAD
-export INDEX_FOOT
-
 ## api-docs-html: 用 redocly 为每个 YAML 渲染交互式 HTML 文档（带搜索/折叠/示例），
 ## 输出到 _generated/html/<module>/<resource>.html，并生成一个卡片式 index.html 汇总入口。
+## index 的静态头/尾模板在 $(TPL_DIR)/index-{head,foot}.html，中间的模块卡片按数据生成。
 ## HTML 不进 git（见 .gitignore），由 CI 渲染并发布到 GitHub Pages；本地也可自行生成查看。
 api-docs-html:
 	@rm -rf $(HTML_DIR)
 	@mkdir -p $(HTML_DIR)
 	@idx="$(HTML_DIR)/index.html"; \
-	printf '%s\n' "$$INDEX_HEAD" > "$$idx"; \
+	cat "$(TPL_DIR)/index-head.html" > "$$idx"; \
 	for m in $(MODULES); do \
 	  echo "==> html: $$m"; \
 	  mkdir -p "$(HTML_DIR)/$$m"; \
@@ -136,7 +77,7 @@ api-docs-html:
 	  done; \
 	  printf '</div>\n</section>\n' >> "$$idx"; \
 	done; \
-	printf '%s\n' "$$INDEX_FOOT" >> "$$idx"
+	cat "$(TPL_DIR)/index-foot.html" >> "$$idx"
 	@echo "done -> $(HTML_DIR)/ (open index.html)"
 
 ## print-moddesc: 内部辅助，回显某模块的中文描述（供 index 生成用）
