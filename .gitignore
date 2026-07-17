@@ -87,6 +87,12 @@ sandbox_web/dist/
 /kw-studio/build
 /kw-studio/report
 
+# 根级文档工具链依赖（package.json / package-lock.json 提交，依赖目录不提交）
+/node_modules
+
+# API 文档渲染产物（一律不进 git；HTML 由 CI 渲染并发布到 GitHub Pages）
+docs/api/_generated/
+
 go.work
 go.work.sum
 ref

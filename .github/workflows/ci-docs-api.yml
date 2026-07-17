@@ -1,0 +1,152 @@
+name: ci-docs-api
+
+# API 文档流水线：
+#  - PR 触碰 docs/api 时：校验 OpenAPI YAML（$ref 可解析等）。
+#  - push 到 main 后：渲染交互式 HTML（redocly）并发布到 GitHub Pages，供开发者
+#    在线查看（_generated/ 产物一律不进 git，见 .gitignore）。
+#
+# 真相源永远是 YAML。
+#
+# 前置：GitHub Pages 发布需在仓库 Settings → Pages 里把 Source 设为
+# "GitHub Actions"（一次性设置）。
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'docs/api/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'Makefile'
+      - '.redocly.yaml'
+      - '.github/workflows/ci-docs-api.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'docs/api/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'Makefile'
+      - '.redocly.yaml'
+      - '.github/workflows/ci-docs-api.yml'
+    tags:
+      - 'v*'   # 打版本 tag（如 v0.3.0）时归档一套固定版本文档
+
+concurrency:
+  group: ci-docs-api-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write   # 归档 gh-pages 分支需要
+  pages: write      # 发布 GitHub Pages
+  id-token: write   # Pages 部署需要
+
+jobs:
+  lint:
+    # PR 时校验 OpenAPI YAML
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install doc toolchain
+        run: npm ci || npm install
+
+      - name: Lint OpenAPI YAML
+        run: make api-docs-lint
+
+  pages:
+    # push 到 main（发布 latest）或打 v* tag（归档该版本）后：渲染 HTML，按版本
+    # 累积到 gh-pages 分支的 versions/<ver>/，重建带版本下拉的顶层入口，再发布 Pages。
+    # 历史版本一旦发布即固定，不再重渲。
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install doc toolchain
+        run: npm ci || npm install
+
+      - name: Render interactive HTML
+        run: make api-docs-html
+
+      - name: Assemble versioned site (accumulate on gh-pages)
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          # 版本名：tag → tag 名（如 v0.3.0）；main → latest
+          if [ "$REF_TYPE" = "tag" ]; then
+            VER="$REF_NAME"
+          else
+            VER="latest"
+          fi
+          echo "publishing version: $VER"
+
+          # 取回 gh-pages 上已有的版本（若分支存在），作为累积基底
+          rm -rf site && mkdir -p site/versions
+          if git fetch origin gh-pages --depth 1 2>/dev/null; then
+            git --work-tree=site checkout origin/gh-pages -- versions 2>/dev/null || true
+            git reset -q
+          fi
+
+          # 放入本次版本（latest 每次覆盖；tag 版本固定，重复发布会覆盖同名，属幂等）
+          rm -rf "site/versions/$VER"
+          mkdir -p "site/versions/$VER"
+          cp -R docs/api/_generated/html/. "site/versions/$VER/"
+
+          # 生成带版本下拉的顶层入口 site/index.html（列出 versions/ 下所有版本）
+          # latest 固定排首位（根入口默认展示持续更新的 latest），其余 tag 版本按语义版本倒序
+          ALL=$(find site/versions -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
+          VERSIONS=$({ echo "$ALL" | grep -x latest || true; echo "$ALL" | grep -vx latest | sort -rV || true; })
+          {
+            echo '<!doctype html><html lang="zh"><head><meta charset="utf-8">'
+            echo '<meta name="viewport" content="width=device-width,initial-scale=1">'
+            echo '<title>BKN Foundry API 文档中心</title>'
+            echo '<style>body{margin:0;font:16px system-ui,sans-serif;color:#12212b}.bar{display:flex;gap:12px;align-items:center;padding:12px 20px;border-bottom:1px solid #e4eaf0;background:#fff}.bar b{font-size:15px}select{padding:6px 10px;font-size:14px;border:1px solid #e4eaf0;border-radius:8px}iframe{border:0;width:100%;height:calc(100vh - 50px);display:block}</style>'
+            echo '</head><body>'
+            echo '<div class="bar"><b>BKN Foundry API 文档中心</b><label>版本 <select id="v" onchange="document.getElementById(&quot;f&quot;).src=&quot;versions/&quot;+this.value+&quot;/index.html&quot;"></select></label></div>'
+            printf '<iframe id="f" src="versions/%s/index.html"></iframe>\n' "$(echo "$VERSIONS" | head -1)"
+            echo '<script>var vs=['
+            for v in $VERSIONS; do printf '"%s",' "$v"; done
+            echo '];var s=document.getElementById("v");vs.forEach(function(v){var o=document.createElement("option");o.value=o.textContent=v;s.appendChild(o)});</script>'
+            echo '</body></html>'
+          } > site/index.html
+          echo "assembled site with versions: $VERSIONS"
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Persist versions to gh-pages branch (archive)
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          git config user.name  'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          # 把 site/ 内容推到 gh-pages 分支作为历史归档（下次发布从这里累积）
+          cd site
+          git init -q
+          git checkout -q -b gh-pages
+          git add -A
+          git commit -q -m "docs(api): publish API docs site ($REF_NAME)" || { echo "nothing to persist"; exit 0; }
+          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" gh-pages
+          echo "📚 archived to gh-pages branch."

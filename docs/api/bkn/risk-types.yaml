@@ -1,0 +1,489 @@
+---
+openapi: 3.0.2
+info:
+  title: RiskType
+  version: 0.1.0
+  description: |-
+    风险类（Risk Type）管理。风险类是一个轻量概念，仅含名称、标签、备注与展示元数据
+    （icon/color），不绑定行动类或阈值。所有接口在 `/api/bkn-backend/v1` 外网面下，
+    需 OAuth2 认证；`branch` 查询参数默认 `main`。
+security:
+  - OAuth2: []
+paths:
+  /api/bkn-backend/v1/knowledge-networks/{kn_id}/risk-types:
+    post:
+      tags:
+        - RiskType
+      summary: 创建风险类（批量）或按条件搜索
+      description: |-
+        本端点通过请求头 `x-http-method-override` 分发到两种操作：
+        - 头缺省或为 `POST`：**批量创建 / 导入**风险类（见请求体 `entries`）。
+        - 头为 `GET`：**按条件 / 语义搜索**风险类（请求体为查询条件 `ConceptsQuery`）。
+        - 其它取值：返回 400。
+
+        需 `Content-Type: application/json`。
+      operationId: createOrSearchRiskTypes
+      security:
+        - OAuth2: []
+      parameters:
+        - name: kn_id
+          in: path
+          required: true
+          description: 业务知识网络 ID
+          schema:
+            type: string
+        - name: branch
+          in: query
+          description: 分支名称，默认 main
+          schema:
+            type: string
+            default: main
+        - name: x-http-method-override
+          in: header
+          description: 方法覆盖：空或 `POST` 走批量创建；`GET` 走搜索
+          schema:
+            type: string
+            enum:
+              - POST
+              - GET
+        - name: import_mode
+          in: query
+          description: |-
+            仅创建时生效。`normal`=已存在则报错；`ignore`=跳过已存在；`overwrite`=按 id 覆盖更新。
+          schema:
+            type: string
+            enum:
+              - normal
+              - ignore
+              - overwrite
+            default: normal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: "#/components/schemas/RiskTypeCreateRequest"
+                - $ref: "#/components/schemas/ConceptsQuery"
+      responses:
+        "201":
+          description: 创建成功，返回各风险类 id 的数组（仅当创建操作）
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+        "200":
+          description: 搜索结果（仅当搜索操作）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RiskTypesSearchResult"
+        "400":
+          description: 参数错误
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
+        "401":
+          description: 未授权
+        "404":
+          description: 知识网络不存在
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
+    get:
+      tags:
+        - RiskType
+      summary: 列出风险类
+      description: 分页列出知识网络内的风险类，支持按名称 / 标签过滤。
+      operationId: listRiskTypes
+      security:
+        - OAuth2: []
+      parameters:
+        - name: kn_id
+          in: path
+          required: true
+          description: 业务知识网络 ID
+          schema:
+            type: string
+        - name: branch
+          in: query
+          description: 分支名称，默认 main
+          schema:
+            type: string
+            default: main
+        - name: name_pattern
+          in: query
+          description: 按名称或 id 模糊匹配，默认空
+          schema:
+            type: string
+        - name: tag
+          in: query
+          description: 按标签模糊匹配，默认空
+          schema:
+            type: string
+        - name: offset
+          in: query
+          description: 偏移量，>= 0，默认 0
+          schema:
+            type: integer
+            format: int64
+            default: 0
+        - name: limit
+          in: query
+          description: 每页条数，范围 [1,1000]；`-1` 表示不分页返回全部
+          schema:
+            type: integer
+            format: int64
+            default: 10
+        - name: sort
+          in: query
+          description: 排序字段
+          schema:
+            type: string
+            enum:
+              - name
+              - update_time
+            default: update_time
+        - name: direction
+          in: query
+          description: 排序方向
+          schema:
+            type: string
+            enum:
+              - asc
+              - desc
+            default: desc
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entries:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/RiskType"
+                  total_count:
+                    type: integer
+                    format: int64
+        "400":
+          description: 参数错误
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
+        "401":
+          description: 未授权
+        "404":
+          description: 知识网络不存在
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
+  /api/bkn-backend/v1/knowledge-networks/{kn_id}/risk-types/{rt_id}:
+    put:
+      tags:
+        - RiskType
+      summary: 更新风险类
+      description: "全量更新单个风险类。需 `Content-Type: application/json`。"
+      operationId: updateRiskType
+      security:
+        - OAuth2: []
+      parameters:
+        - name: kn_id
+          in: path
+          required: true
+          description: 业务知识网络 ID
+          schema:
+            type: string
+        - name: rt_id
+          in: path
+          required: true
+          description: 风险类 ID
+          schema:
+            type: string
+        - name: branch
+          in: query
+          description: 分支名称，默认 main
+          schema:
+            type: string
+            default: main
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RiskTypeInput"
+      responses:
+        "204":
+          description: 更新成功，无响应体
+        "400":
+          description: 参数错误（含名称已存在）
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
+        "401":
+          description: 未授权
+        "404":
+          description: 知识网络或风险类不存在
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
+  /api/bkn-backend/v1/knowledge-networks/{kn_id}/risk-types/{rt_ids}:
+    get:
+      tags:
+        - RiskType
+      summary: 按 id 批量获取风险类
+      description: 批量获取指定 id 的风险类；任一 id 不存在则整体 404。
+      operationId: getRiskTypes
+      security:
+        - OAuth2: []
+      parameters:
+        - name: kn_id
+          in: path
+          required: true
+          description: 业务知识网络 ID
+          schema:
+            type: string
+        - name: rt_ids
+          in: path
+          required: true
+          description: 风险类 ID 列表，逗号分隔
+          schema:
+            type: string
+        - name: branch
+          in: query
+          description: 分支名称，默认 main
+          schema:
+            type: string
+            default: main
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entries:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/RiskType"
+        "401":
+          description: 未授权
+        "404":
+          description: 知识网络或某个风险类不存在
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
+    delete:
+      tags:
+        - RiskType
+      summary: 批量删除风险类
+      description: 按 id 列表删除一个或多个风险类。
+      operationId: deleteRiskTypes
+      security:
+        - OAuth2: []
+      parameters:
+        - name: kn_id
+          in: path
+          required: true
+          description: 业务知识网络 ID
+          schema:
+            type: string
+        - name: rt_ids
+          in: path
+          required: true
+          description: 风险类 ID 列表，逗号分隔
+          schema:
+            type: string
+        - name: branch
+          in: query
+          description: 分支名称，默认 main
+          schema:
+            type: string
+            default: main
+      responses:
+        "204":
+          description: 删除成功，无响应体
+        "401":
+          description: 未授权
+        "404":
+          description: 知识网络或某个风险类不存在
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
+components:
+  securitySchemes:
+    OAuth2:
+      type: oauth2
+      description: OAuth2 认证，用于外网接口
+      flows:
+        clientCredentials:
+          tokenUrl: /oauth2/token
+          scopes: {}
+  schemas:
+    AccountInfo:
+      type: object
+      description: 账户信息（创建者 / 更新者）
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+        name:
+          type: string
+    RiskType:
+      type: object
+      description: 风险类对象
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+          description: 名称，最长 40
+        tags:
+          type: array
+          description: 标签，最多 5 个
+          items:
+            type: string
+        comment:
+          type: string
+          description: 备注，最长 1000
+        icon:
+          type: string
+        color:
+          type: string
+        kn_id:
+          type: string
+          description: 由服务端按路径填充
+        branch:
+          type: string
+          description: 由服务端按 branch 查询参数填充
+        module_type:
+          type: string
+          description: 恒为 `risk_type`
+        creator:
+          $ref: "#/components/schemas/AccountInfo"
+        create_time:
+          type: integer
+          format: int64
+          description: 创建时间（Unix 毫秒）
+        updater:
+          $ref: "#/components/schemas/AccountInfo"
+        update_time:
+          type: integer
+          format: int64
+          description: 更新时间（Unix 毫秒）
+    RiskTypeInput:
+      type: object
+      description: 风险类可写字段（创建 / 更新的入参）
+      required:
+        - name
+      properties:
+        id:
+          type: string
+          description: 可选；创建时留空则自动生成
+        name:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        comment:
+          type: string
+        icon:
+          type: string
+        color:
+          type: string
+    RiskTypeCreateRequest:
+      type: object
+      description: 批量创建请求
+      required:
+        - entries
+      properties:
+        entries:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/RiskTypeInput"
+    RiskTypesSearchResult:
+      type: object
+      description: 搜索结果信封
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/RiskType"
+        total_count:
+          type: integer
+          format: int64
+          description: 仅当请求 need_total 时返回
+        search_after:
+          type: array
+          description: 游标，用于翻页
+          items: {}
+        overall_ms:
+          type: integer
+          format: int64
+    ConceptsQuery:
+      type: object
+      description: 概念搜索查询体（用于 POST + x-http-method-override:GET）
+      properties:
+        concept_groups:
+          type: array
+          items:
+            type: string
+        condition:
+          $ref: "#/components/schemas/Condition"
+        need_total:
+          type: boolean
+          description: 为 true 时响应返回 total_count
+        limit:
+          type: integer
+          description: 默认 10
+        sort:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              direction:
+                type: string
+                enum:
+                  - asc
+                  - desc
+        search_after:
+          type: array
+          description: 游标翻页
+          items: {}
+    Condition:
+      type: object
+      description: 过滤条件树
+      properties:
+        field:
+          type: string
+        operation:
+          type: string
+        sub_conditions:
+          type: array
+          items:
+            $ref: "#/components/schemas/Condition"
+        value_from:
+          type: string
+        value:
+          description: 类型不固定

@@ -28,6 +28,7 @@ OpenBKN 是一个本体驱动的业务知识网络平台，它通过本体建模
 - 🤝 [贡献指南](rules/CONTRIBUTING.zh.md) - 项目贡献指南
 - 🚢 [部署指南](deploy/README.zh.md) - 一键部署到 Kubernetes
 - 📘 [产品文档](help/README.md) - 产品文档与使用指南（[中文](help/zh/README.md) / [EN](help/en/README.md)）
+- 📖 [API 文档](docs/api/) - 各服务 OpenAPI 文档（YAML 真相源 + 渲染的 Markdown / 交互式 HTML）
 - 📦 [示例](examples/README.zh.md) - 端到端 CLI 示例（数据库 / CSV / Action）
 - 🧾 [版本发布](release-notes/) - 重要变更记录
 

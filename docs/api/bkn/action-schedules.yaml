@@ -1,0 +1,489 @@
+---
+openapi: 3.0.2
+info:
+  title: ActionSchedule
+  version: 0.1.0
+  description: |-
+    行动调度（Action Schedule）管理。行动调度按 cron 表达式定时触发某个行动类对指定实例的
+    执行。所有接口在 `/api/bkn-backend/v1` 外网面下，需 OAuth2 认证；`branch` 查询参数默认
+    `main`。时间戳字段为 Unix 毫秒。
+security:
+  - OAuth2: []
+paths:
+  /api/bkn-backend/v1/knowledge-networks/{kn_id}/action-schedules:
+    post:
+      tags:
+        - ActionSchedule
+      summary: 创建行动调度
+      description: "在知识网络 / 分支下创建一个 cron 定时触发的行动调度。需 `Content-Type: application/json`。"
+      operationId: createActionSchedule
+      security:
+        - OAuth2: []
+      parameters:
+        - name: kn_id
+          in: path
+          required: true
+          description: 业务知识网络 ID
+          schema:
+            type: string
+        - name: branch
+          in: query
+          description: 分支名称，默认 main
+          schema:
+            type: string
+            default: main
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ActionScheduleCreateRequest"
+      responses:
+        "201":
+          description: 创建成功，返回新调度 id
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+        "400":
+          description: 参数错误
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
+        "401":
+          description: 未授权
+        "404":
+          description: 知识网络或行动类不存在
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
+    get:
+      tags:
+        - ActionSchedule
+      summary: 列出行动调度
+      description: 分页列出知识网络内的行动调度，支持按名称 / 行动类 / 状态过滤。
+      operationId: listActionSchedules
+      security:
+        - OAuth2: []
+      parameters:
+        - name: kn_id
+          in: path
+          required: true
+          description: 业务知识网络 ID
+          schema:
+            type: string
+        - name: branch
+          in: query
+          description: 分支名称，默认 main
+          schema:
+            type: string
+            default: main
+        - name: name_pattern
+          in: query
+          description: 按名称模糊匹配，默认空
+          schema:
+            type: string
+        - name: action_type_id
+          in: query
+          description: 按绑定的行动类过滤，默认空
+          schema:
+            type: string
+        - name: status
+          in: query
+          description: 按状态过滤，默认全部
+          schema:
+            type: string
+            enum:
+              - active
+              - inactive
+        - name: offset
+          in: query
+          description: 偏移量，>= 0，默认 0
+          schema:
+            type: integer
+            format: int64
+            default: 0
+        - name: limit
+          in: query
+          description: 每页条数，范围 [1,1000]；`-1` 表示不分页返回全部
+          schema:
+            type: integer
+            format: int64
+            default: 10
+        - name: sort
+          in: query
+          description: 排序字段
+          schema:
+            type: string
+            enum:
+              - create_time
+              - update_time
+              - next_run_time
+              - last_run_time
+              - name
+            default: create_time
+        - name: direction
+          in: query
+          description: 排序方向
+          schema:
+            type: string
+            enum:
+              - asc
+              - desc
+            default: desc
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entries:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ActionSchedule"
+                  total_count:
+                    type: integer
+                    format: int64
+        "400":
+          description: 参数错误
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
+        "401":
+          description: 未授权
+        "404":
+          description: 知识网络不存在
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
+  /api/bkn-backend/v1/knowledge-networks/{kn_id}/action-schedules/{schedule_id}:
+    get:
+      tags:
+        - ActionSchedule
+      summary: 获取单个行动调度
+      operationId: getActionSchedule
+      security:
+        - OAuth2: []
+      parameters:
+        - name: kn_id
+          in: path
+          required: true
+          description: 业务知识网络 ID
+          schema:
+            type: string
+        - name: schedule_id
+          in: path
+          required: true
+          description: 行动调度 ID
+          schema:
+            type: string
+        - name: branch
+          in: query
+          description: 分支名称，默认 main
+          schema:
+            type: string
+            default: main
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActionSchedule"
+        "401":
+          description: 未授权
+        "404":
+          description: 知识网络或行动调度不存在
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
+    put:
+      tags:
+        - ActionSchedule
+      summary: 更新行动调度
+      description: |-
+        更新调度的可变字段（名称 / cron / 实例 / 动态参数），四者至少提供其一。
+        本端点不改状态和行动类。需 `Content-Type: application/json`。
+      operationId: updateActionSchedule
+      security:
+        - OAuth2: []
+      parameters:
+        - name: kn_id
+          in: path
+          required: true
+          description: 业务知识网络 ID
+          schema:
+            type: string
+        - name: schedule_id
+          in: path
+          required: true
+          description: 行动调度 ID
+          schema:
+            type: string
+        - name: branch
+          in: query
+          description: 分支名称，默认 main
+          schema:
+            type: string
+            default: main
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ActionScheduleUpdateRequest"
+      responses:
+        "200":
+          description: 更新成功，无响应体
+        "400":
+          description: 参数错误
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
+        "401":
+          description: 未授权
+        "404":
+          description: 知识网络或行动调度不存在
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
+  /api/bkn-backend/v1/knowledge-networks/{kn_id}/action-schedules/{schedule_id}/status:
+    put:
+      tags:
+        - ActionSchedule
+      summary: 切换行动调度状态
+      description: "激活 / 停用调度。激活时按存储的 cron 重算下次运行时间。需 `Content-Type: application/json`。"
+      operationId: updateActionScheduleStatus
+      security:
+        - OAuth2: []
+      parameters:
+        - name: kn_id
+          in: path
+          required: true
+          description: 业务知识网络 ID
+          schema:
+            type: string
+        - name: schedule_id
+          in: path
+          required: true
+          description: 行动调度 ID
+          schema:
+            type: string
+        - name: branch
+          in: query
+          description: 分支名称，默认 main
+          schema:
+            type: string
+            default: main
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - status
+              properties:
+                status:
+                  type: string
+                  enum:
+                    - active
+                    - inactive
+      responses:
+        "200":
+          description: 切换成功，无响应体
+        "400":
+          description: 状态非法
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
+        "401":
+          description: 未授权
+        "404":
+          description: 知识网络或行动调度不存在
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
+  /api/bkn-backend/v1/knowledge-networks/{kn_id}/action-schedules/{schedule_ids}:
+    delete:
+      tags:
+        - ActionSchedule
+      summary: 批量删除行动调度
+      description: 按 id 列表删除一个或多个调度。
+      operationId: deleteActionSchedules
+      security:
+        - OAuth2: []
+      parameters:
+        - name: kn_id
+          in: path
+          required: true
+          description: 业务知识网络 ID
+          schema:
+            type: string
+        - name: schedule_ids
+          in: path
+          required: true
+          description: 行动调度 ID 列表，逗号分隔
+          schema:
+            type: string
+        - name: branch
+          in: query
+          description: 分支名称，默认 main
+          schema:
+            type: string
+            default: main
+      responses:
+        "204":
+          description: 删除成功，无响应体
+        "400":
+          description: 参数错误（id 与 kn/branch 不匹配）
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
+        "401":
+          description: 未授权
+        "404":
+          description: 知识网络或某个行动调度不存在
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
+components:
+  securitySchemes:
+    OAuth2:
+      type: oauth2
+      description: OAuth2 认证，用于外网接口
+      flows:
+        clientCredentials:
+          tokenUrl: /oauth2/token
+          scopes: {}
+  schemas:
+    AccountInfo:
+      type: object
+      description: 账户信息（创建者 / 更新者）
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+        name:
+          type: string
+    ActionSchedule:
+      type: object
+      description: 行动调度对象
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        kn_id:
+          type: string
+        branch:
+          type: string
+        action_type_id:
+          type: string
+          description: 绑定的行动类 ID
+        cron_expression:
+          type: string
+          description: 5 段标准 cron（分 时 日 月 周）
+        _instance_identities:
+          type: array
+          description: 实例标识列表（注意 JSON key 带前导下划线）
+          items:
+            type: object
+        dynamic_params:
+          type: object
+          description: 动态参数
+        status:
+          type: string
+          enum:
+            - active
+            - inactive
+        last_run_time:
+          type: integer
+          format: int64
+          description: 上次运行时间（Unix 毫秒）
+        next_run_time:
+          type: integer
+          format: int64
+          description: 下次运行时间（Unix 毫秒）
+        lock_holder:
+          type: string
+        lock_time:
+          type: integer
+          format: int64
+        creator:
+          $ref: "#/components/schemas/AccountInfo"
+        create_time:
+          type: integer
+          format: int64
+          description: 创建时间（Unix 毫秒）
+        updater:
+          $ref: "#/components/schemas/AccountInfo"
+        update_time:
+          type: integer
+          format: int64
+          description: 更新时间（Unix 毫秒）
+    ActionScheduleCreateRequest:
+      type: object
+      description: 创建行动调度请求
+      required:
+        - name
+        - action_type_id
+        - cron_expression
+        - _instance_identities
+      properties:
+        name:
+          type: string
+          description: 名称，最长 100
+        action_type_id:
+          type: string
+          description: 行动类 ID，须存在于该 KN/branch
+        cron_expression:
+          type: string
+          description: 合法的 5 段 cron
+        _instance_identities:
+          type: array
+          description: 实例标识列表，非空（JSON key 带前导下划线）
+          minItems: 1
+          items:
+            type: object
+        dynamic_params:
+          type: object
+        status:
+          type: string
+          description: 默认 inactive；为 active 时创建即算下次运行时间
+          enum:
+            - active
+            - inactive
+    ActionScheduleUpdateRequest:
+      type: object
+      description: 更新行动调度请求（四字段至少其一）
+      properties:
+        name:
+          type: string
+          description: 最长 100
+        cron_expression:
+          type: string
+          description: 合法 cron；仅当调度为 active 时重算 next_run_time
+        _instance_identities:
+          type: array
+          items:
+            type: object
+        dynamic_params:
+          type: object

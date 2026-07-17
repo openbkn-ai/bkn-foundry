@@ -1,0 +1,15 @@
+{
+  "name": "bkn-foundry-docs",
+  "version": "0.0.0",
+  "private": true,
+  "description": "API 文档工具链：OpenAPI YAML lint、交互式 HTML 渲染（redocly）与本地 Markdown 渲染（widdershins，产物不进 git）。仅供 docs/api 使用，不参与服务构建。",
+  "scripts": {
+    "api-docs:lint": "make api-docs-lint",
+    "api-docs:html": "make api-docs-html",
+    "api-docs": "make api-docs"
+  },
+  "devDependencies": {
+    "@redocly/cli": "^1.25.0",
+    "widdershins": "^4.0.1"
+  }
+}

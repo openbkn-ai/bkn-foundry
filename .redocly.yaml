@@ -1,0 +1,18 @@
+# redocly lint 配置 —— 仅约束 docs/api 下的手写 OpenAPI 文档。
+#
+# 目的：守住「结构合法 + $ref（含 _shared 共享 schema）可解析」这条底线，
+# 不因既存的 example/描述类内容瑕疵阻断 CI。内容级修复留给各模块补写批次。
+rules:
+  # 底线：$ref 必须能解析（迁移后跨文件引用是否搬对，全靠这条兜）。
+  no-unresolved-refs: error
+  # 结构性问题保持可见但不阻断（既存文档的 servers/security/重复路径等历史瑕疵）
+  no-empty-servers: warn
+  security-defined: warn
+  no-identical-paths: warn
+  struct: warn
+  # example 与 schema 的漂移：既存手写 example 的历史问题，降为提示
+  no-invalid-media-type-examples: warn
+  operation-2xx-response: warn
+  operation-4xx-response: off
+  # operationId 重复（ontology-query 有既存重复）：既存内容瑕疵，降为 warn，待补写时清理
+  operation-operationId-unique: warn
