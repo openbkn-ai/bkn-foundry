@@ -220,3 +220,68 @@ def test_tool_refs_validated_at_creation():
                 [{"type": "agent", "agent_id": ""}]):  # 空引用
         with pytest.raises(ValidationError):
             AgentSpec(name="t", mode="chat", tools=bad)
+
+
+def test_tool_refs_type_checked():
+    """P2 四轮：ToolRef 值类型也校验（url=123 等此前落库、执行才炸）。"""
+    import pytest
+    from pydantic import ValidationError
+
+    from app.models import AgentSpec
+
+    for bad in ([{"type": "mcp", "url": 123}],
+                [{"type": "toolbox", "box_id": {"x": 1}}],
+                [{"type": "agent", "agent_id": 123}],
+                [{"type": "mcp", "url": "not-a-url"}],       # 非 http(s)
+                [{"type": "agent", "agent_id": "a", "name": 42}]):  # name 类型
+        with pytest.raises(ValidationError):
+            AgentSpec(name="t", mode="chat", tools=bad)
+    # 合法值校验后转回 dict（执行链/入库兼容），附加字段保留
+    ok = AgentSpec(name="t", mode="chat", tools=[
+        {"type": "mcp", "url": "http://x/mcp", "name": "m1", "transport": "sse"}])
+    assert isinstance(ok.tools[0], dict)
+    assert ok.tools[0]["transport"] == "sse" and ok.tools[0]["name"] == "m1"
+
+
+def test_agent_out_skips_tools_validation():
+    """P2 四轮：出库（AgentOut）不复验——存量脏 ToolRef/脏 name 不阻断列表与同步。"""
+    from app.models import AgentOut
+
+    dirty = AgentOut(
+        agent_id="legacy-uuid", name="t", mode="chat", model="",
+        tools=[{"type": "xxx"}, {"type": "mcp", "url": 123}, 42],  # 脏存量（含标量）
+        skills=[], status="published",
+        create_user="u", update_user="u", create_time=0, update_time=0,
+    )
+    assert dirty.tools[0]["type"] == "xxx" and dirty.tools[2] == 42  # 原样放行，可读取可修复
+    dirty.model_dump()  # 序列化不炸（列表/同步路径）
+
+
+def test_export_rejects_dirty_agent_with_clear_error(monkeypatch):
+    """P2 四轮：export 回填写入模型遇脏数据报单条明确 400，不落 500。"""
+    from fastapi.testclient import TestClient
+
+    from app import dao
+    from app.db import get_session
+    from app.main import app
+    from app.models import AgentOut
+
+    async def fake_session():
+        yield object()
+
+    async def fake_get_agent(session, agent_id):
+        return AgentOut(agent_id=agent_id, name="t", mode="chat", model="",
+                        tools=[{"type": "xxx"}], skills=[], status="draft",
+                        create_user="u", update_user="u", create_time=0, update_time=0)
+
+    app.dependency_overrides[get_session] = fake_session
+    monkeypatch.setattr(dao, "get_agent", fake_get_agent)
+    try:
+        client = TestClient(app, raise_server_exceptions=False)
+        r = client.post("/api/bkn-agent/v1/export",
+                        headers={"x-account-id": "u", "x-account-type": "user"},
+                        json={"agent_ids": ["a1"]})
+        assert r.status_code == 400
+        assert "DirtyAgent" in r.json()["code"]
+    finally:
+        app.dependency_overrides.clear()

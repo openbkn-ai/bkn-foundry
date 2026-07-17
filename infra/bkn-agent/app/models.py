@@ -2,7 +2,7 @@ from typing import Annotated, Any, Literal, Optional
 
 from jsonschema.exceptions import SchemaError
 from jsonschema.validators import validator_for
-from pydantic import AfterValidator, BaseModel, Field
+from pydantic import AfterValidator, BaseModel, Field, field_serializer, model_validator
 from sqlalchemy import BigInteger, Integer, String, Text
 from sqlalchemy.dialects.mysql import JSON
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -88,24 +88,38 @@ class TaskRow(Base):
 
 # ---- API schemas ----
 
-# {"type": "mcp"|"toolbox"|"agent", ...}。创建边界即校验形态：type 未知或缺必备
-# 引用字段的条目会让 agent 建成功但每次执行必败（load_tools 抛 400），与
-# max_output_tokens 越界同款问题，建时就拒。
-_TOOL_REQUIRED_KEY = {"mcp": "url", "toolbox": "box_id", "agent": "agent_id"}
+# 工具引用：discriminated union（按 type 分派），创建边界即校验类型/长度——
+# 否则 {"url":123} 之类会建成功、到 MCP 客户端/工厂请求/工具注册阶段才炸。
+# extra="allow" 保留调用方附加字段；校验通过后统一转回 dict（见 AgentSpec 的
+# model_validator）——执行链（tools.py 的 ref.get）与入库 JSON 列继续吃 dict，
+# 出库 AgentOut.tools 覆写为裸 dict 不校验（存量脏数据不阻断列表/同步）。
 
 
-def _check_tool_refs(tools: list[dict]) -> list[dict]:
-    for ref in tools:
-        t = ref.get("type")
-        if t not in _TOOL_REQUIRED_KEY:
-            raise ValueError(f'工具类型未知：{ref}（type 只能是 {sorted(_TOOL_REQUIRED_KEY)}）')
-        key = _TOOL_REQUIRED_KEY[t]
-        if not ref.get(key):
-            raise ValueError(f"{t} 工具缺 {key}：{ref}")
-    return tools
+class _ToolRefBase(BaseModel):
+    model_config = {"extra": "allow"}
+    # 工具展示名/说明（可选）：agent-as-tool 与 mcp 连接名会用到
+    name: Optional[str] = Field(default=None, max_length=100)
+    description: Optional[str] = Field(default=None, max_length=500)
 
 
-ToolRef = dict
+class McpToolRef(_ToolRefBase):
+    type: Literal["mcp"]
+    url: str = Field(min_length=1, max_length=2048, pattern=r"^https?://")
+
+
+class ToolboxToolRef(_ToolRefBase):
+    type: Literal["toolbox"]
+    box_id: str = Field(min_length=1, max_length=100)
+
+
+class AgentToolRef(_ToolRefBase):
+    type: Literal["agent"]
+    agent_id: str = Field(min_length=1, max_length=100)
+
+
+ToolRef = Annotated[
+    McpToolRef | ToolboxToolRef | AgentToolRef, Field(discriminator="type")
+]
 
 
 class AgentLimits(BaseModel):
@@ -136,14 +150,38 @@ class AgentSpec(BaseModel):
     prompt_id: Optional[str] = None
     prompt_vars_schema: Optional[dict[str, Any]] = None
     model: str = ""
-    tools: Annotated[list[ToolRef], AfterValidator(_check_tool_refs)] = Field(default_factory=list)
+    tools: list[ToolRef] = Field(default_factory=list)
     skills: list[str] = Field(default_factory=list)
     limits: Optional[AgentLimits] = None
     status: Literal["draft", "published"] = "draft"
 
+    @model_validator(mode="after")
+    def _tools_to_dicts(self):
+        # 校验（union 分派+类型/长度）在字段解析时已完成；这里统一转回 dict，
+        # 执行链（ref.get）与入库 JSON 列不感知 pydantic 模型。
+        self.tools = [
+            t.model_dump(exclude_none=True) if isinstance(t, BaseModel) else t
+            for t in self.tools
+        ]
+        return self
+
+    @field_serializer("tools")
+    def _ser_tools(self, v):
+        # 值在 _tools_to_dicts 已是 dict，与 union 注解不符——显式序列化器原样输出，
+        # 避免 pydantic 每次序列化刷 PydanticSerializationUnexpectedValue 警告。
+        return v
+
 
 class AgentOut(AgentSpec):
-    agent_id: str
+    # 出库（DB 行 → 输出对象）不复验：升级前的存量脏数据若在这里炸，会连坐
+    # /agents 整页 500、单查无法读取修复、list_published_agents 中断导致启动同步
+    # 永久重试。写入模型（AgentSpec）严校验，输出模型放行原样数据——
+    # tools 覆写为裸 dict，agent_id/name 去掉 pattern 复验。
+    agent_id: str = Field(min_length=1)
+    name: str = Field(min_length=1, max_length=100)
+    # list[Any] 而非 list[dict]：手改 DB 塞进的标量元素也放行（列表/修复通道优先，
+    # 执行时才在 load_tools 报错）
+    tools: list[Any] = Field(default_factory=list)
     create_user: str
     update_user: str
     create_time: int

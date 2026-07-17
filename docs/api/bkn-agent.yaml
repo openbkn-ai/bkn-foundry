@@ -711,12 +711,12 @@ components:
       properties:
         agent_id:
           type: string
+          minLength: 1
           title: Agent Id
         name:
           type: string
           maxLength: 100
           minLength: 1
-          pattern: ^[0-9A-Za-z_一-鿿]+$
           title: Name
         mode:
           type: string
@@ -740,8 +740,7 @@ components:
           title: Model
           default: ''
         tools:
-          items:
-            type: object
+          items: {}
           type: array
           title: Tools
         skills:
@@ -820,7 +819,16 @@ components:
           default: ''
         tools:
           items:
-            type: object
+            oneOf:
+            - $ref: '#/components/schemas/McpToolRef'
+            - $ref: '#/components/schemas/ToolboxToolRef'
+            - $ref: '#/components/schemas/AgentToolRef'
+            discriminator:
+              propertyName: type
+              mapping:
+                agent: '#/components/schemas/AgentToolRef'
+                mcp: '#/components/schemas/McpToolRef'
+                toolbox: '#/components/schemas/ToolboxToolRef'
           type: array
           title: Tools
         skills:
@@ -843,6 +851,37 @@ components:
       required:
       - name
       title: AgentSpec
+    AgentToolRef:
+      properties:
+        name:
+          anyOf:
+          - type: string
+            maxLength: 100
+          - type: 'null'
+          title: Name
+        description:
+          anyOf:
+          - type: string
+            maxLength: 500
+          - type: 'null'
+          title: Description
+        type:
+          type: string
+          enum:
+          - agent
+          const: agent
+          title: Type
+        agent_id:
+          type: string
+          maxLength: 100
+          minLength: 1
+          title: Agent Id
+      additionalProperties: true
+      type: object
+      required:
+      - type
+      - agent_id
+      title: AgentToolRef
     ChatRequest:
       properties:
         agent_id:
@@ -1076,6 +1115,38 @@ components:
       - message
       title: InvokeRequest
       description: 同步一次性执行（agent_id 在路径上；算子工厂 toolbox 工具经此调用）。
+    McpToolRef:
+      properties:
+        name:
+          anyOf:
+          - type: string
+            maxLength: 100
+          - type: 'null'
+          title: Name
+        description:
+          anyOf:
+          - type: string
+            maxLength: 500
+          - type: 'null'
+          title: Description
+        type:
+          type: string
+          enum:
+          - mcp
+          const: mcp
+          title: Type
+        url:
+          type: string
+          maxLength: 2048
+          minLength: 1
+          pattern: ^https?://
+          title: Url
+      additionalProperties: true
+      type: object
+      required:
+      - type
+      - url
+      title: McpToolRef
     OverrideDeleted:
       properties:
         deleted:
@@ -1423,3 +1494,34 @@ components:
       - update_time
       - messages
       title: ThreadOut
+    ToolboxToolRef:
+      properties:
+        name:
+          anyOf:
+          - type: string
+            maxLength: 100
+          - type: 'null'
+          title: Name
+        description:
+          anyOf:
+          - type: string
+            maxLength: 500
+          - type: 'null'
+          title: Description
+        type:
+          type: string
+          enum:
+          - toolbox
+          const: toolbox
+          title: Type
+        box_id:
+          type: string
+          maxLength: 100
+          minLength: 1
+          title: Box Id
+      additionalProperties: true
+      type: object
+      required:
+      - type
+      - box_id
+      title: ToolboxToolRef

@@ -10,6 +10,7 @@
 import time
 
 from fastapi import APIRouter, Depends
+from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,7 +18,7 @@ from app import dao
 from app.auth import Account, get_account
 from app.bootstrap import toolbox_sync
 from app.db import get_session
-from app.errors import not_found
+from app.errors import bad_request, not_found
 from app.models import (
     AgentExportItem,
     AgentSpec,
@@ -50,12 +51,18 @@ async def export_agents(
                 prompt = PromptExport(
                     prompt_id=p.prompt_id, name=p.name, content=p.content, vars_schema=p.vars_schema
                 )
-        items.append(
-            AgentExportItem(
-                agent_id=agent.agent_id,
-                spec=AgentSpec(**agent.model_dump(include=AgentSpec.model_fields.keys())),
-                prompt=prompt,
+        try:
+            # 出库数据回填写入模型会复验（union 工具引用/name 字符集）——存量脏数据
+            # 在这里报单条明确错误，不落 500。
+            spec = AgentSpec(**agent.model_dump(include=AgentSpec.model_fields.keys()))
+        except (ValidationError, ValueError) as e:  # pydantic 校验错 + 显式 ValueError
+            raise bad_request(
+                "DirtyAgent", "agent 数据不符合当前校验规则，无法导出",
+                f"agent {agent.agent_id}: {str(e)[:300]}",
+                "先修复该 agent（PUT /agents/{id} 更新为合法配置）再导出。",
             )
+        items.append(
+            AgentExportItem(agent_id=agent.agent_id, spec=spec, prompt=prompt)
         )
     return ExportPackage(exported_at=int(time.time() * 1000), items=items)
 
