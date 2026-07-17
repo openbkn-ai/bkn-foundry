@@ -1,5 +1,4 @@
 // Copyright openbkn.ai
-// Copyright The kweaver.ai Authors.
 //
 // Licensed under the Apache License, Version 2.0.
 // See the LICENSE file in the project root for details.
@@ -29,7 +28,7 @@ func TestReconcileFilesetResources(t *testing.T) {
 	t.Run("creates new fileset resource", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		rs := vmock.NewMockResourceService(ctrl)
-		dh := &DiscoverHandler{rs: rs}
+		dh := &DiscoverTaskWorker{rs: rs}
 		actions := interfaces.ActionsFromDiscoverStrategy(interfaces.DiscoverStrategyFullSync)
 		created := &interfaces.Resource{ID: "r1", SourceIdentifier: "/team/docs", Category: interfaces.ResourceCategoryFileset}
 
@@ -57,7 +56,7 @@ func TestReconcileFilesetResources(t *testing.T) {
 	t.Run("marks active missing fileset stale", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		rs := vmock.NewMockResourceService(ctrl)
-		dh := &DiscoverHandler{rs: rs}
+		dh := &DiscoverTaskWorker{rs: rs}
 		actions := interfaces.ActionsFromDiscoverStrategy(interfaces.DiscoverStrategyFullSync)
 
 		rs.EXPECT().UpdateDiscoverStatus(gomock.Any(), "r1", interfaces.DiscoverStatusMissing).Return(nil)
@@ -82,7 +81,7 @@ func TestEnrichFilesetMetadata(t *testing.T) {
 	t.Run("preserves existing metadata and enriches columns", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		rs := vmock.NewMockResourceService(ctrl)
-		dh := &DiscoverHandler{rs: rs}
+		dh := &DiscoverTaskWorker{rs: rs}
 		resource := &interfaces.Resource{
 			ID:                 "r1",
 			SourceIdentifier:   "/team/docs",

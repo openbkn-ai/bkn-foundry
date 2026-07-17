@@ -45,12 +45,12 @@ func parseBuildTaskListParams(ctx context.Context, c *gin.Context) (interfaces.B
 	params.Limit = lim
 
 	// 排序:order_by / order
-	orderBy := common.GetQueryOrDefault(c, "order_by", interfaces.DEFAULT_BUILD_TASK_ORDER_BY)
+	orderBy := common.GetQueryOrDefault(c, "order_by", interfaces.BuildTaskOrderByDefault)
 	if !isValidBuildTaskOrderBy(orderBy) {
 		return params, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Sort).
 			WithErrorDetails(fmt.Sprintf("invalid order_by: %s", orderBy))
 	}
-	order := common.GetQueryOrDefault(c, "order", interfaces.DEFAULT_BUILD_TASK_ORDER)
+	order := common.GetQueryOrDefault(c, "order", interfaces.DESC_DIRECTION)
 	if order != interfaces.ASC_DIRECTION && order != interfaces.DESC_DIRECTION {
 		return params, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Direction).
 			WithErrorDetails(fmt.Sprintf("invalid order: %s", order))

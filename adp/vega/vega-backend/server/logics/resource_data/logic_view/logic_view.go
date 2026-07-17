@@ -20,8 +20,7 @@ import (
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
 	"vega-backend/logics/catalog"
-	"vega-backend/logics/connectors"
-	"vega-backend/logics/connectors/factory"
+	"vega-backend/logics/connector/factory"
 	"vega-backend/logics/filter_condition"
 	"vega-backend/logics/permission"
 	"vega-backend/logics/query"
@@ -427,7 +426,7 @@ func executeIndexQuery(ctx context.Context, catalog *interfaces.Catalog, resourc
 	}
 	defer func() { _ = connector.Close(ctx) }()
 
-	indexConnector, ok := connector.(connectors.IndexConnector)
+	indexConnector, ok := connector.(interfaces.IndexConnector)
 	if !ok {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InternalError_InvalidCategory).
 			WithErrorDetails(fmt.Sprintf("connector %s does not support index operations", catalog.ConnectorType))
@@ -464,7 +463,7 @@ func executeTableQuery(ctx context.Context, catalog *interfaces.Catalog, resourc
 	}
 	defer func() { _ = connector.Close(ctx) }()
 
-	tableConnector, ok := connector.(connectors.TableConnector)
+	tableConnector, ok := connector.(interfaces.TableConnector)
 	if !ok {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InternalError_InvalidCategory).
 			WithErrorDetails(fmt.Sprintf("connector %s does not support table operations", catalog.ConnectorType))

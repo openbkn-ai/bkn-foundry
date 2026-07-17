@@ -32,6 +32,7 @@ import (
 	"vega-backend/logics/discover_task"
 	"vega-backend/logics/resource"
 	"vega-backend/logics/resource_data"
+	"vega-backend/logics/semantic_understanding_task"
 	"vega-backend/version"
 	"vega-backend/worker"
 )
@@ -52,31 +53,37 @@ type restHandler struct {
 	dts        interfaces.DiscoverTaskService
 	dss        interfaces.DiscoverScheduleService
 	rds        interfaces.ResourceDataService
+	suts       interfaces.SemanticUnderstandingTaskService
 
 	sw *worker.ScheduleWorker
 }
 
 // NewRestHandler creates a new RestHandler.
 func NewRestHandler(appSetting *common.AppSetting, sw *worker.ScheduleWorker) RestHandler {
+	as := auth.NewAuthService(appSetting)
 	cs := catalog.NewCatalogService(appSetting)
 	rs := resource.NewResourceService(appSetting)
 	bts := build_task.NewBuildTaskService(appSetting, rs)
+	cts := connector_type.NewConnectorTypeService(appSetting)
 	ds := dataset.NewDatasetService(appSetting)
 	dts := discover_task.NewDiscoverTaskService(appSetting)
 	dss := discover_schedule.NewDiscoverScheduleService(appSetting, dts)
+	suts := semantic_understanding_task.NewSemanticUnderstandingTaskService(appSetting)
+	rds := resource_data.NewResourceDataService(appSetting)
 
 	return &restHandler{
 		appSetting: appSetting,
-		as:         auth.NewAuthService(appSetting),
-		cs:         cs,
-		rs:         rs,
+		as:         as,
 		bts:        bts,
+		cs:         cs,
+		cts:        cts,
 		ds:         ds,
-		cts:        connector_type.NewConnectorTypeService(appSetting),
-		dts:        dts,
 		dss:        dss,
+		dts:        dts,
+		rds:        rds,
+		rs:         rs,
+		suts:       suts,
 		sw:         sw,
-		rds:        resource_data.NewResourceDataService(appSetting),
 	}
 }
 
@@ -106,6 +113,22 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 			catalogs.DELETE("/:id", r.DeleteCatalogsByEx)
 		}
 
+		// Resource APIs - External
+		resources := apiV1.Group("/resources")
+		{
+			resources.GET("", r.ListResourcesByEx)
+			resources.POST("", r.verifyJsonContentType(), r.CreateResourceByEx)
+			resources.POST("/:id/data", r.verifyJsonContentType(), r.PostResourceDataByEx)
+			resources.PUT("/:id/data", r.verifyJsonContentType(), r.PutResourceDataByEx)
+			resources.GET("/:id/data/:doc_id", r.GetResourceDataDocByEx)
+			resources.PUT("/:id/data/:doc_id", r.verifyJsonContentType(), r.PutResourceDataDocByEx)
+			resources.DELETE("/:id/data/:doc_ids", r.DeleteResourceDataByEx)
+			resources.GET("/:id", r.GetResourcesByEx) // id为资源ID，多个资源ID逗号分隔
+			resources.PUT("/:id", r.verifyJsonContentType(), r.UpdateResourceByEx)
+			resources.DELETE("/:id", r.DeleteResourcesByEx) // id为资源ID，多个资源ID逗号分隔
+			resources.POST("/query", r.verifyJsonContentType(), r.RawQueryByEx)
+		}
+
 		// DiscoverTask APIs - External
 		discoverTasks := apiV1.Group("/discover-tasks")
 		{
@@ -126,22 +149,6 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 			discoverSchedules.POST("/:id/disable", r.DisableDiscoverScheduleByEx)
 		}
 
-		// Resource APIs - External
-		resources := apiV1.Group("/resources")
-		{
-			resources.GET("", r.ListResourcesByEx)
-			resources.POST("", r.verifyJsonContentType(), r.CreateResourceByEx)
-			resources.POST("/:id/data", r.verifyJsonContentType(), r.PostResourceDataByEx)
-			resources.PUT("/:id/data", r.verifyJsonContentType(), r.PutResourceDataByEx)
-			resources.GET("/:id/data/:doc_id", r.GetResourceDataDocByEx)
-			resources.PUT("/:id/data/:doc_id", r.verifyJsonContentType(), r.PutResourceDataDocByEx)
-			resources.DELETE("/:id/data/:doc_ids", r.DeleteResourceDataByEx)
-			resources.GET("/:id", r.GetResourcesByEx) // id为资源ID，多个资源ID逗号分隔
-			resources.PUT("/:id", r.verifyJsonContentType(), r.UpdateResourceByEx)
-			resources.DELETE("/:id", r.DeleteResourcesByEx) // id为资源ID，多个资源ID逗号分隔
-			resources.POST("/query", r.verifyJsonContentType(), r.RawQueryByEx)
-		}
-
 		// BuildTask APIs - External
 		buildTasks := apiV1.Group("/build-tasks")
 		{
@@ -151,6 +158,15 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 			buildTasks.DELETE("/:ids", r.DeleteBuildTasksByEx)
 			buildTasks.POST("/:id/start", r.StartBuildTaskByEx)
 			buildTasks.POST("/:id/stop", r.StopBuildTaskByEx)
+		}
+
+		// SemanticUnderstandingTask APIs - External
+		semanticUnderstandingTasks := apiV1.Group("/semantic-understanding-tasks")
+		{
+			semanticUnderstandingTasks.POST("", r.verifyJsonContentType(), r.CreateSemanticUnderstandingTaskByEx)
+			semanticUnderstandingTasks.GET("", r.ListSemanticUnderstandingTasksByEx)
+			semanticUnderstandingTasks.GET("/:id", r.GetSemanticUnderstandingTaskByEx)
+			semanticUnderstandingTasks.DELETE("/:ids", r.DeleteSemanticUnderstandingTasksByEx)
 		}
 
 		// ConnectorType APIs - External
@@ -184,7 +200,22 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 			catalogs.POST("/:id/discover", r.DiscoverCatalogResourcesByIn)
 			catalogs.GET("/:id", r.GetCatalogsByIn)
 			catalogs.DELETE("/:id", r.DeleteCatalogsByIn)
+		}
 
+		// Resource APIs - Internal
+		resources := apiInV1.Group("/resources")
+		{
+			resources.GET("", r.ListResourcesByIn)
+			resources.POST("", r.verifyJsonContentType(), r.CreateResourceByIn)
+			resources.POST("/:id/data", r.verifyJsonContentType(), r.PostResourceDataByIn)
+			resources.PUT("/:id/data", r.verifyJsonContentType(), r.PutResourceDataByIn)
+			resources.GET("/:id/data/:doc_id", r.GetResourceDataDocByIn)
+			resources.PUT("/:id/data/:doc_id", r.verifyJsonContentType(), r.PutResourceDataDocByIn)
+			resources.DELETE("/:id/data/:doc_ids", r.DeleteResourceDataByIn)
+			resources.GET("/:id", r.GetResourcesByIn) // id为资源ID，多个资源ID逗号分隔
+			resources.PUT("/:id", r.verifyJsonContentType(), r.UpdateResourceByIn)
+			resources.DELETE("/:id", r.DeleteResourcesByIn) // id为资源ID，多个资源ID逗号分隔
+			resources.POST("/query", r.verifyJsonContentType(), r.RawQueryByIn)
 		}
 
 		// DiscoverTask APIs - Internal
@@ -207,22 +238,6 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 			discoverSchedules.POST("/:id/disable", r.DisableDiscoverScheduleByIn)
 		}
 
-		// Resource APIs - Internal
-		resources := apiInV1.Group("/resources")
-		{
-			resources.GET("", r.ListResourcesByIn)
-			resources.POST("", r.verifyJsonContentType(), r.CreateResourceByIn)
-			resources.POST("/:id/data", r.verifyJsonContentType(), r.PostResourceDataByIn)
-			resources.PUT("/:id/data", r.verifyJsonContentType(), r.PutResourceDataByIn)
-			resources.GET("/:id/data/:doc_id", r.GetResourceDataDocByIn)
-			resources.PUT("/:id/data/:doc_id", r.verifyJsonContentType(), r.PutResourceDataDocByIn)
-			resources.DELETE("/:id/data/:doc_ids", r.DeleteResourceDataByIn)
-			resources.GET("/:id", r.GetResourcesByIn) // id为资源ID，多个资源ID逗号分隔
-			resources.PUT("/:id", r.verifyJsonContentType(), r.UpdateResourceByIn)
-			resources.DELETE("/:id", r.DeleteResourcesByIn) // id为资源ID，多个资源ID逗号分隔
-			resources.POST("/query", r.verifyJsonContentType(), r.RawQueryByIn)
-		}
-
 		// BuildTask APIs - Internal
 		buildTasks := apiInV1.Group("/build-tasks")
 		{
@@ -232,6 +247,15 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 			buildTasks.DELETE("/:ids", r.DeleteBuildTasksByIn)
 			buildTasks.POST("/:id/start", r.StartBuildTaskByIn)
 			buildTasks.POST("/:id/stop", r.StopBuildTaskByIn)
+		}
+
+		// SemanticUnderstandingTask APIs - Internal
+		semanticUnderstandingTasks := apiInV1.Group("/semantic-understanding-tasks")
+		{
+			semanticUnderstandingTasks.POST("", r.verifyJsonContentType(), r.CreateSemanticUnderstandingTaskByIn)
+			semanticUnderstandingTasks.GET("", r.ListSemanticUnderstandingTasksByIn)
+			semanticUnderstandingTasks.GET("/:id", r.GetSemanticUnderstandingTaskByIn)
+			semanticUnderstandingTasks.DELETE("/:ids", r.DeleteSemanticUnderstandingTasksByIn)
 		}
 	}
 

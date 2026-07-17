@@ -11,9 +11,11 @@ package mock_interfaces
 
 import (
 	context "context"
+	sql "database/sql"
 	reflect "reflect"
 	interfaces "vega-backend/interfaces"
 
+	asynq "github.com/hibiken/asynq"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -41,105 +43,200 @@ func (m *MockBuildTaskService) EXPECT() *MockBuildTaskServiceMockRecorder {
 	return m.recorder
 }
 
-// CreateBuildTask mocks base method.
-func (m *MockBuildTaskService) CreateBuildTask(ctx context.Context, req *interfaces.CreateBuildTaskRequest) (string, error) {
+// Create mocks base method.
+func (m *MockBuildTaskService) Create(ctx context.Context, req *interfaces.CreateBuildTaskRequest) (string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateBuildTask", ctx, req)
+	ret := m.ctrl.Call(m, "Create", ctx, req)
 	ret0, _ := ret[0].(string)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// CreateBuildTask indicates an expected call of CreateBuildTask.
-func (mr *MockBuildTaskServiceMockRecorder) CreateBuildTask(ctx, req any) *gomock.Call {
+// Create indicates an expected call of Create.
+func (mr *MockBuildTaskServiceMockRecorder) Create(ctx, req any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateBuildTask", reflect.TypeOf((*MockBuildTaskService)(nil).CreateBuildTask), ctx, req)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockBuildTaskService)(nil).Create), ctx, req)
 }
 
-// DeleteBuildTasks mocks base method.
-func (m *MockBuildTaskService) DeleteBuildTasks(ctx context.Context, ids []string, ignoreMissing, deleteActiveIndex bool) error {
+// DebugTaskQueue mocks base method.
+func (m *MockBuildTaskService) DebugTaskQueue() <-chan *asynq.Task {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteBuildTasks", ctx, ids, ignoreMissing, deleteActiveIndex)
+	ret := m.ctrl.Call(m, "DebugTaskQueue")
+	ret0, _ := ret[0].(<-chan *asynq.Task)
+	return ret0
+}
+
+// DebugTaskQueue indicates an expected call of DebugTaskQueue.
+func (mr *MockBuildTaskServiceMockRecorder) DebugTaskQueue() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DebugTaskQueue", reflect.TypeOf((*MockBuildTaskService)(nil).DebugTaskQueue))
+}
+
+// Delete mocks base method.
+func (m *MockBuildTaskService) Delete(ctx context.Context, ids []string, ignoreMissing, deleteActiveIndex bool) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Delete", ctx, ids, ignoreMissing, deleteActiveIndex)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// DeleteBuildTasks indicates an expected call of DeleteBuildTasks.
-func (mr *MockBuildTaskServiceMockRecorder) DeleteBuildTasks(ctx, ids, ignoreMissing, deleteActiveIndex any) *gomock.Call {
+// Delete indicates an expected call of Delete.
+func (mr *MockBuildTaskServiceMockRecorder) Delete(ctx, ids, ignoreMissing, deleteActiveIndex any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteBuildTasks", reflect.TypeOf((*MockBuildTaskService)(nil).DeleteBuildTasks), ctx, ids, ignoreMissing, deleteActiveIndex)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*MockBuildTaskService)(nil).Delete), ctx, ids, ignoreMissing, deleteActiveIndex)
 }
 
-// GetBuildTaskByID mocks base method.
-func (m *MockBuildTaskService) GetBuildTaskByID(ctx context.Context, id string) (*interfaces.BuildTask, error) {
+// GetByID mocks base method.
+func (m *MockBuildTaskService) GetByID(ctx context.Context, id string) (*interfaces.BuildTask, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetBuildTaskByID", ctx, id)
+	ret := m.ctrl.Call(m, "GetByID", ctx, id)
 	ret0, _ := ret[0].(*interfaces.BuildTask)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// GetBuildTaskByID indicates an expected call of GetBuildTaskByID.
-func (mr *MockBuildTaskServiceMockRecorder) GetBuildTaskByID(ctx, id any) *gomock.Call {
+// GetByID indicates an expected call of GetByID.
+func (mr *MockBuildTaskServiceMockRecorder) GetByID(ctx, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBuildTaskByID", reflect.TypeOf((*MockBuildTaskService)(nil).GetBuildTaskByID), ctx, id)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByID", reflect.TypeOf((*MockBuildTaskService)(nil).GetByID), ctx, id)
 }
 
-// GetBuildTaskByResourceID mocks base method.
-func (m *MockBuildTaskService) GetBuildTaskByResourceID(ctx context.Context, resourceID string) (*interfaces.BuildTask, error) {
+// GetByResourceID mocks base method.
+func (m *MockBuildTaskService) GetByResourceID(ctx context.Context, resourceID string) (*interfaces.BuildTask, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetBuildTaskByResourceID", ctx, resourceID)
+	ret := m.ctrl.Call(m, "GetByResourceID", ctx, resourceID)
 	ret0, _ := ret[0].(*interfaces.BuildTask)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// GetBuildTaskByResourceID indicates an expected call of GetBuildTaskByResourceID.
-func (mr *MockBuildTaskServiceMockRecorder) GetBuildTaskByResourceID(ctx, resourceID any) *gomock.Call {
+// GetByResourceID indicates an expected call of GetByResourceID.
+func (mr *MockBuildTaskServiceMockRecorder) GetByResourceID(ctx, resourceID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBuildTaskByResourceID", reflect.TypeOf((*MockBuildTaskService)(nil).GetBuildTaskByResourceID), ctx, resourceID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByResourceID", reflect.TypeOf((*MockBuildTaskService)(nil).GetByResourceID), ctx, resourceID)
 }
 
-// ListBuildTasks mocks base method.
-func (m *MockBuildTaskService) ListBuildTasks(ctx context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTask, int64, error) {
+// InternalGetByCatalogID mocks base method.
+func (m *MockBuildTaskService) InternalGetByCatalogID(ctx context.Context, catalogID string) ([]*interfaces.BuildTask, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListBuildTasks", ctx, params)
+	ret := m.ctrl.Call(m, "InternalGetByCatalogID", ctx, catalogID)
+	ret0, _ := ret[0].([]*interfaces.BuildTask)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// InternalGetByCatalogID indicates an expected call of InternalGetByCatalogID.
+func (mr *MockBuildTaskServiceMockRecorder) InternalGetByCatalogID(ctx, catalogID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalGetByCatalogID", reflect.TypeOf((*MockBuildTaskService)(nil).InternalGetByCatalogID), ctx, catalogID)
+}
+
+// InternalGetByID mocks base method.
+func (m *MockBuildTaskService) InternalGetByID(ctx context.Context, id string) (*interfaces.BuildTask, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InternalGetByID", ctx, id)
+	ret0, _ := ret[0].(*interfaces.BuildTask)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// InternalGetByID indicates an expected call of InternalGetByID.
+func (mr *MockBuildTaskServiceMockRecorder) InternalGetByID(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalGetByID", reflect.TypeOf((*MockBuildTaskService)(nil).InternalGetByID), ctx, id)
+}
+
+// InternalGetStatus mocks base method.
+func (m *MockBuildTaskService) InternalGetStatus(ctx context.Context, id string) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InternalGetStatus", ctx, id)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// InternalGetStatus indicates an expected call of InternalGetStatus.
+func (mr *MockBuildTaskServiceMockRecorder) InternalGetStatus(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalGetStatus", reflect.TypeOf((*MockBuildTaskService)(nil).InternalGetStatus), ctx, id)
+}
+
+// InternalList mocks base method.
+func (m *MockBuildTaskService) InternalList(ctx context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTask, int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InternalList", ctx, params)
 	ret0, _ := ret[0].([]*interfaces.BuildTask)
 	ret1, _ := ret[1].(int64)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
 }
 
-// ListBuildTasks indicates an expected call of ListBuildTasks.
-func (mr *MockBuildTaskServiceMockRecorder) ListBuildTasks(ctx, params any) *gomock.Call {
+// InternalList indicates an expected call of InternalList.
+func (mr *MockBuildTaskServiceMockRecorder) InternalList(ctx, params any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListBuildTasks", reflect.TypeOf((*MockBuildTaskService)(nil).ListBuildTasks), ctx, params)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalList", reflect.TypeOf((*MockBuildTaskService)(nil).InternalList), ctx, params)
 }
 
-// StartBuildTask mocks base method.
-func (m *MockBuildTaskService) StartBuildTask(ctx context.Context, taskID string, reset bool) error {
+// InternalUpdateStatus mocks base method.
+func (m *MockBuildTaskService) InternalUpdateStatus(ctx context.Context, tx *sql.Tx, id string, update interfaces.BuildTaskUpdate, allowedStatuses ...string) (bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "StartBuildTask", ctx, taskID, reset)
+	varargs := []any{ctx, tx, id, update}
+	for _, a := range allowedStatuses {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "InternalUpdateStatus", varargs...)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// InternalUpdateStatus indicates an expected call of InternalUpdateStatus.
+func (mr *MockBuildTaskServiceMockRecorder) InternalUpdateStatus(ctx, tx, id, update any, allowedStatuses ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx, tx, id, update}, allowedStatuses...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalUpdateStatus", reflect.TypeOf((*MockBuildTaskService)(nil).InternalUpdateStatus), varargs...)
+}
+
+// List mocks base method.
+func (m *MockBuildTaskService) List(ctx context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTask, int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "List", ctx, params)
+	ret0, _ := ret[0].([]*interfaces.BuildTask)
+	ret1, _ := ret[1].(int64)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// List indicates an expected call of List.
+func (mr *MockBuildTaskServiceMockRecorder) List(ctx, params any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "List", reflect.TypeOf((*MockBuildTaskService)(nil).List), ctx, params)
+}
+
+// Start mocks base method.
+func (m *MockBuildTaskService) Start(ctx context.Context, taskID string, reset bool) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Start", ctx, taskID, reset)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// StartBuildTask indicates an expected call of StartBuildTask.
-func (mr *MockBuildTaskServiceMockRecorder) StartBuildTask(ctx, taskID, reset any) *gomock.Call {
+// Start indicates an expected call of Start.
+func (mr *MockBuildTaskServiceMockRecorder) Start(ctx, taskID, reset any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StartBuildTask", reflect.TypeOf((*MockBuildTaskService)(nil).StartBuildTask), ctx, taskID, reset)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Start", reflect.TypeOf((*MockBuildTaskService)(nil).Start), ctx, taskID, reset)
 }
 
-// StopBuildTask mocks base method.
-func (m *MockBuildTaskService) StopBuildTask(ctx context.Context, taskID string) error {
+// Stop mocks base method.
+func (m *MockBuildTaskService) Stop(ctx context.Context, taskID string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "StopBuildTask", ctx, taskID)
+	ret := m.ctrl.Call(m, "Stop", ctx, taskID)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// StopBuildTask indicates an expected call of StopBuildTask.
-func (mr *MockBuildTaskServiceMockRecorder) StopBuildTask(ctx, taskID any) *gomock.Call {
+// Stop indicates an expected call of Stop.
+func (mr *MockBuildTaskServiceMockRecorder) Stop(ctx, taskID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StopBuildTask", reflect.TypeOf((*MockBuildTaskService)(nil).StopBuildTask), ctx, taskID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Stop", reflect.TypeOf((*MockBuildTaskService)(nil).Stop), ctx, taskID)
 }

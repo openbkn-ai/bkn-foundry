@@ -35,26 +35,26 @@ const (
 // 入队失败而丢失，DB 状态停在 init（界面"排队中"）后没有任何机制重新入队。
 // 对账把"init 超时且 asynq 队列中无对应消息"的任务重新入队，消除永久假排队。
 type buildTaskReconciler struct {
-	taskAccess interfaces.BuildTaskAccess
-	aqa        interfaces.AsynqAccess
+	bts interfaces.BuildTaskService
+	aqa interfaces.AsynqAccess
 }
 
-func newBuildTaskReconciler() *buildTaskReconciler {
+func newBuildTaskReconciler(bts interfaces.BuildTaskService) *buildTaskReconciler {
 	return &buildTaskReconciler{
-		taskAccess: logics.BTA,
-		aqa:        logics.AQA,
+		bts: bts,
+		aqa: logics.AQA,
 	}
 }
 
 // run 周期执行对账；启动即跑首轮，覆盖"重启前丢消息"的存量卡死任务
-func (r *buildTaskReconciler) run() {
+func (btr *buildTaskReconciler) run() {
 	defer func() {
 		if err := recover(); err != nil {
 			logger.Errorf("Build task reconciler exited with panic: %v", err)
 		}
 	}()
 	for {
-		if err := r.reconcileOnce(context.Background()); err != nil {
+		if err := btr.reconcileOnce(context.Background()); err != nil {
 			logger.Errorf("Build task reconcile failed: %v", err)
 		}
 		time.Sleep(buildTaskReconcileInterval)
@@ -62,8 +62,8 @@ func (r *buildTaskReconciler) run() {
 }
 
 // reconcileOnce 执行一轮对账
-func (r *buildTaskReconciler) reconcileOnce(ctx context.Context) error {
-	tasks, _, err := r.taskAccess.List(ctx, interfaces.BuildTasksQueryParams{
+func (btr *buildTaskReconciler) reconcileOnce(ctx context.Context) error {
+	tasks, _, err := btr.bts.InternalList(ctx, interfaces.BuildTasksQueryParams{
 		Statuses: []string{interfaces.BuildTaskStatusInit, interfaces.BuildTaskStatusStopping},
 	})
 	if err != nil {
@@ -73,7 +73,7 @@ func (r *buildTaskReconciler) reconcileOnce(ctx context.Context) error {
 		return nil
 	}
 
-	queued, err := r.queuedBuildTaskIDs()
+	queued, err := btr.queuedBuildTaskIDs()
 	if err != nil {
 		return err
 	}
@@ -81,7 +81,7 @@ func (r *buildTaskReconciler) reconcileOnce(ctx context.Context) error {
 	now := time.Now()
 	stuckInit := findStuckBuildTasks(tasks, queued, now, buildTaskInitStaleAfter)
 	if len(stuckInit) > 0 {
-		client := r.aqa.CreateClient()
+		client := btr.aqa.CreateClient()
 		defer func() { _ = client.Close() }()
 		for _, task := range stuckInit {
 			if err := enqueueBuildTaskMessage(client, task); err != nil {
@@ -96,7 +96,7 @@ func (r *buildTaskReconciler) reconcileOnce(ctx context.Context) error {
 	stuckStopping := findStuckStoppingBuildTasks(tasks, queued, now, buildTaskStoppingStaleAfter)
 	for _, task := range stuckStopping {
 		update := interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusStopped)
-		if _, err := r.taskAccess.UpdateStatus(ctx, nil, task.ID, update); err != nil {
+		if _, err := btr.bts.InternalUpdateStatus(ctx, nil, task.ID, update); err != nil {
 			logger.Errorf("Reconciler finalize stopping build task %s failed: %v", task.ID, err)
 			continue
 		}
@@ -147,8 +147,8 @@ func findStuckStoppingBuildTasks(tasks []*interfaces.BuildTask, queuedIDs map[st
 // queuedBuildTaskIDs 收集 asynq 队列中所有构建消息对应的任务 ID。
 // 扫描顺序约束：消息只会沿 scheduled/retry → pending → active 方向流动，
 // 按上游到下游的顺序扫描保证迁移中的消息至少出现在一个列表里，不会被误判为丢失。
-func (r *buildTaskReconciler) queuedBuildTaskIDs() (map[string]struct{}, error) {
-	inspector := r.aqa.CreateInspector()
+func (btr *buildTaskReconciler) queuedBuildTaskIDs() (map[string]struct{}, error) {
+	inspector := btr.aqa.CreateInspector()
 	defer func() { _ = inspector.Close() }()
 
 	ids := map[string]struct{}{}
@@ -181,7 +181,7 @@ func (r *buildTaskReconciler) queuedBuildTaskIDs() (map[string]struct{}, error) 
 	return ids, nil
 }
 
-// enqueueBuildTaskMessage 重新投递构建消息，与 build_task_service.enqueueBuildTask 对齐。
+// enqueueBuildTaskMessage 重新投递构建消息，与 build_task_service.enqueueTask 对齐。
 // 执行类型用增量：从未跑过的任务游标为空，增量等效全量；跑过一半的任务沿游标续跑。
 func enqueueBuildTaskMessage(client *asynq.Client, task *interfaces.BuildTask) error {
 	payload, err := sonic.Marshal(&interfaces.BatchBuildTaskMessage{
@@ -197,8 +197,8 @@ func enqueueBuildTaskMessage(client *asynq.Client, task *interfaces.BuildTask) e
 	}
 	_, err = client.Enqueue(asynq.NewTask(typename, payload),
 		asynq.Queue(interfaces.DefaultQueue),
-		asynq.TaskID(interfaces.BuildTaskQueueTaskID(typename, task.ID)),
-		asynq.MaxRetry(interfaces.BUILD_TASK_MAX_RETRY_COUNT),
+		asynq.TaskID(task.ID),
+		asynq.MaxRetry(interfaces.TaskMaxRetryCount),
 		asynq.Timeout(math.MaxInt64),
 		asynq.Deadline(time.Unix(math.MaxInt64/1000000000, math.MaxInt64%1000000000)),
 	)

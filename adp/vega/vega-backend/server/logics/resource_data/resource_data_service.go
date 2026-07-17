@@ -17,8 +17,7 @@ import (
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
 	"vega-backend/logics/catalog"
-	"vega-backend/logics/connectors"
-	"vega-backend/logics/connectors/factory"
+	"vega-backend/logics/connector/factory"
 	"vega-backend/logics/dataset"
 	"vega-backend/logics/filter_condition"
 	"vega-backend/logics/local_index"
@@ -261,7 +260,7 @@ func (rds *resourceDataService) QueryData(ctx context.Context, catalog *interfac
 
 	switch resource.Category {
 	case interfaces.ResourceCategoryTable:
-		tableConnector, ok := connector.(connectors.TableConnector)
+		tableConnector, ok := connector.(interfaces.TableConnector)
 		if !ok {
 			httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InternalError_InvalidCategory).
 				WithErrorDetails(fmt.Sprintf("connector %s does not support table operations", catalog.ConnectorType))
@@ -280,7 +279,7 @@ func (rds *resourceDataService) QueryData(ctx context.Context, catalog *interfac
 		return result.Rows, result.Total, nil
 
 	case interfaces.ResourceCategoryIndex:
-		indexConnector, ok := connector.(connectors.IndexConnector)
+		indexConnector, ok := connector.(interfaces.IndexConnector)
 		if !ok {
 			httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InternalError_InvalidCategory).
 				WithErrorDetails(fmt.Sprintf("connector %s does not support index operations", catalog.ConnectorType))
@@ -299,7 +298,7 @@ func (rds *resourceDataService) QueryData(ctx context.Context, catalog *interfac
 		return result.Rows, result.Total, nil
 
 	case interfaces.ResourceCategoryFileset:
-		fc, ok := connector.(connectors.FilesetConnector)
+		fc, ok := connector.(interfaces.FilesetConnector)
 		if !ok {
 			httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InternalError_InvalidCategory).
 				WithErrorDetails(fmt.Sprintf("connector %s does not support fileset operations", catalog.ConnectorType))

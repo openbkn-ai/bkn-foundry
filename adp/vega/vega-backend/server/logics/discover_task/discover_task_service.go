@@ -10,6 +10,7 @@ package discover_task
 import (
 	"context"
 	"fmt"
+	"math"
 	"net/http"
 	"sync"
 	"time"
@@ -31,11 +32,11 @@ import (
 )
 
 var (
-	dtsOnce    sync.Once
-	dtsService interfaces.DiscoverTaskService
+	dtServiceOnce sync.Once
+	dtService     interfaces.DiscoverTaskService
 )
 
-const debugDiscoverTaskQueueSize = 100
+const debugQueueSize = 100
 
 type discoverTaskService struct {
 	appSetting *common.AppSetting
@@ -48,21 +49,21 @@ type discoverTaskService struct {
 
 // NewDiscoverTaskService creates or returns the singleton DiscoverTaskService.
 func NewDiscoverTaskService(appSetting *common.AppSetting) interfaces.DiscoverTaskService {
-	dtsOnce.Do(func() {
+	dtServiceOnce.Do(func() {
 		var client *asynq.Client
-		if !common.GetDebugMode() {
+		if !common.GetDebugMode() && logics.AQA != nil {
 			client = logics.AQA.CreateClient()
 		}
-		dtsService = &discoverTaskService{
+		dtService = &discoverTaskService{
 			appSetting: appSetting,
 			client:     client,
 			dta:        logics.DTA,
 			ums:        user_mgmt.NewUserMgmtService(appSetting),
 
-			debugTaskQueue: make(chan *asynq.Task, debugDiscoverTaskQueueSize),
+			debugTaskQueue: make(chan *asynq.Task, debugQueueSize),
 		}
 	})
-	return dtsService
+	return dtService
 }
 
 // DebugTaskQueue returns the in-process discover task queue used in DEBUG_MODE.
@@ -110,35 +111,42 @@ func (dts *discoverTaskService) Create(ctx context.Context, req *interfaces.Crea
 		return "", err
 	}
 
-	// 2. Enqueue task to task queue
-	payload, err := sonic.Marshal(&interfaces.DiscoverTaskMessage{
-		TaskID: task.ID,
-	})
-	if err != nil {
-		otellog.LogError(ctx, "Failed to marshal discover task", err)
+	if err := dts.enqueueTask(ctx, task.ID); err != nil {
 		return "", err
-	}
-	// 设置任务执行超时时间为 30 分钟
-	asynqTask := asynq.NewTask(interfaces.DiscoverTaskType, payload)
-	if common.GetDebugMode() {
-		dts.debugTaskQueue <- asynqTask
-		logger.Infof("Enqueued debug discover task: id=%s, type=%s", task.ID, asynqTask.Type())
-	} else {
-		info, err := dts.client.Enqueue(asynqTask,
-			asynq.Queue(interfaces.HighQueue),
-			asynq.MaxRetry(3),
-			asynq.Timeout(30*time.Minute),
-			asynq.Deadline(time.Now().Add(12*time.Hour)),
-		)
-		if err != nil {
-			otellog.LogError(ctx, "Failed to enqueue discover task", err)
-			return "", err
-		}
-
-		logger.Infof("Enqueued task: id=%s, type=%s, queue=%s", info.ID, info.Type, info.Queue)
 	}
 
 	return task.ID, nil
+}
+
+func (dts *discoverTaskService) enqueueTask(ctx context.Context, taskID string) error {
+	payload, err := sonic.Marshal(&interfaces.DiscoverTaskMessage{
+		TaskID: taskID,
+	})
+	if err != nil {
+		otellog.LogError(ctx, "Failed to marshal discover task", err)
+		return err
+	}
+
+	asynqTask := asynq.NewTask(interfaces.DiscoverTaskType, payload)
+	if common.GetDebugMode() || dts.client == nil {
+		dts.debugTaskQueue <- asynqTask
+		logger.Infof("Enqueued debug discover task: id=%s, type=%s", taskID, asynqTask.Type())
+		return nil
+	}
+
+	info, err := dts.client.Enqueue(asynqTask,
+		asynq.Queue(interfaces.HighQueue),
+		asynq.MaxRetry(interfaces.TaskMaxRetryCount),
+		asynq.Timeout(math.MaxInt64),
+		asynq.Deadline(time.Unix(math.MaxInt64/1000000000, math.MaxInt64%1000000000)),
+	)
+	if err != nil {
+		otellog.LogError(ctx, "Failed to enqueue discover task", err)
+		return err
+	}
+
+	logger.Infof("Enqueued discover task: id=%s, type=%s, queue=%s", info.ID, info.Type, info.Queue)
+	return nil
 }
 
 // CreateScheduled method removed - scheduled tasks are now managed by DiscoverScheduleService
@@ -152,12 +160,25 @@ func (dts *discoverTaskService) GetByID(ctx context.Context, id string) (*interf
 	if err != nil {
 		return nil, err
 	}
-	if task != nil {
-		if err := dts.ums.GetAccountNames(ctx, []*interfaces.AccountInfo{&task.Creator}); err != nil {
-			span.SetStatus(codes.Error, "GetAccountNames error")
-			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-				verrors.VegaBackend_DiscoverTask_InternalError_GetAccountNamesFailed).WithErrorDetails(err.Error())
-		}
+	if task == nil {
+		span.SetStatus(codes.Error, "Discover task not found")
+		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_DiscoverTask_NotFound)
+	}
+	if err := dts.ums.GetAccountNames(ctx, []*interfaces.AccountInfo{&task.Creator}); err != nil {
+		span.SetStatus(codes.Error, "GetAccountNames error")
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_DiscoverTask_InternalError_GetAccountNamesFailed).WithErrorDetails(err.Error())
+	}
+	return task, nil
+}
+
+func (dts *discoverTaskService) InternalGetByID(ctx context.Context, id string) (*interfaces.DiscoverTask, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DiscoverTaskService.InternalGetByID")
+	defer span.End()
+
+	task, err := dts.dta.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
 	}
 	return task, nil
 }
@@ -192,9 +213,23 @@ func (dts *discoverTaskService) UpdateStatus(ctx context.Context, id, status, me
 	return dts.dta.UpdateStatus(ctx, id, status, message, stime)
 }
 
+func (dts *discoverTaskService) InternalUpdateStatus(ctx context.Context, id, status, message string, stime int64) error {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DiscoverTaskService.InternalUpdateStatus")
+	defer span.End()
+
+	return dts.dta.UpdateStatus(ctx, id, status, message, stime)
+}
+
 // UpdateResult updates a DiscoverTask's result.
 func (dts *discoverTaskService) UpdateResult(ctx context.Context, id string, result *interfaces.DiscoverResult, stime int64) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DiscoverTaskService.UpdateResult")
+	defer span.End()
+
+	return dts.dta.UpdateResult(ctx, id, result, stime)
+}
+
+func (dts *discoverTaskService) InternalUpdateResult(ctx context.Context, id string, result *interfaces.DiscoverResult, stime int64) error {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DiscoverTaskService.InternalUpdateResult")
 	defer span.End()
 
 	return dts.dta.UpdateResult(ctx, id, result, stime)

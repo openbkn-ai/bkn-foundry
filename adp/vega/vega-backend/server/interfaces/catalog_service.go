@@ -40,4 +40,7 @@ type CatalogService interface {
 
 	// ListAuthResources lists catalog auth resources with filters.
 	ListAuthResources(ctx context.Context, params AuthResourceQueryParams) ([]*AuthResourceEntry, int64, error)
+
+	// InternalGetByID retrieves a Catalog by ID for internal workers.
+	InternalGetByID(ctx context.Context, id string, withSensitiveFields bool) (*Catalog, error)
 }

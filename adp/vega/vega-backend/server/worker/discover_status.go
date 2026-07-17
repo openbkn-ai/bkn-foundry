@@ -1,5 +1,4 @@
 // Copyright openbkn.ai
-// Copyright The kweaver.ai Authors.
 //
 // Licensed under the Apache License, Version 2.0.
 // See the LICENSE file in the project root for details.
@@ -27,7 +26,7 @@ import (
 //     unchanged/updated/missing 是持续观察，每次重写。
 //   - 未来若再加同类"观察"字段，应考虑下沉到独立事件表（PR-B 方向），
 //     而非继续往 Resource 实体塞。
-func (dh *DiscoverHandler) markDiscover(ctx context.Context, resourceID string, status string) {
+func (dh *DiscoverTaskWorker) markDiscover(ctx context.Context, resourceID string, status string) {
 	if err := dh.rs.UpdateDiscoverStatus(ctx, resourceID, status); err != nil {
 		logger.Errorf("Failed to update last discover status for resource %s: %v", resourceID, err)
 	}

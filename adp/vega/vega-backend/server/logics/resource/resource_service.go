@@ -9,6 +9,7 @@ package resource
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"net/http"
 	"reflect"
@@ -225,7 +226,9 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 			return nil, err
 		}
 		req.SchemaDefinition = viewFields
-		req.SourceIdentifier = fmt.Sprintf("%s.%s", req.CatalogID, id)
+		if req.SourceIdentifier == "" {
+			req.SourceIdentifier = fmt.Sprintf("%s.%s", req.CatalogID, id)
+		}
 	}
 
 	if err := extensions.ValidateSchemaPropertiesExtensions(ctx, req.SchemaDefinition); err != nil {
@@ -361,6 +364,13 @@ func (rs *resourceService) GetByID(ctx context.Context, id string) (*interfaces.
 
 	span.SetStatus(codes.Ok, "")
 	return resource, nil
+}
+
+func (rs *resourceService) InternalGetByID(ctx context.Context, id string) (*interfaces.Resource, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ResourceService.InternalGetByID")
+	defer span.End()
+
+	return rs.ra.GetByID(ctx, id)
 }
 
 // GetByIDs retrieves Resources by IDs.
@@ -611,8 +621,6 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 		span.SetStatus(codes.Error, "Resource not found")
 		return rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
 	}
-	nameModified := req.Name != resource.Name
-
 	// 判断userid是否有修改权限；内部目录下的资源按 internal_resource 类型校验
 	internalCatalogs, err := rs.internalCatalogIDSet(ctx)
 	if err != nil {
@@ -711,18 +719,6 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 			span.SetStatus(codes.Error, "Replace resource extensions failed")
 			return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_UpdateFailed).
 				WithErrorDetails(err.Error())
-		}
-	}
-
-	// 请求更新资源名称的接口，更新资源的名称
-	if nameModified {
-		err = rs.ps.UpdateResource(ctx, interfaces.PermissionResource{
-			ID:   resource.ID,
-			Type: authType,
-			Name: resource.Name,
-		})
-		if err != nil {
-			return err
 		}
 	}
 
@@ -890,6 +886,71 @@ func (rs *resourceService) UpdateResource(ctx context.Context, resource *interfa
 
 	span.SetStatus(codes.Ok, "")
 	return nil
+}
+
+func (rs *resourceService) InternalUpdate(ctx context.Context, tx *sql.Tx, resource *interfaces.Resource) error {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ResourceService.InternalUpdate")
+	defer span.End()
+
+	return rs.ra.Update(ctx, tx, resource)
+}
+
+func (rs *resourceService) InternalCreate(ctx context.Context, tx *sql.Tx, req *interfaces.ResourceRequest) (*interfaces.Resource, error) {
+	if tx == nil {
+		return nil, fmt.Errorf("transaction is required")
+	}
+
+	now := time.Now().UnixMilli()
+	id := req.ID
+	if id == "" {
+		id = xid.New().String()
+	}
+
+	var logicType string
+	var err error
+	if req.Category == interfaces.ResourceCategoryLogicView {
+		logicType, err = rs.validateLogicDefinition(ctx, req)
+		if err != nil {
+			return nil, err
+		}
+		req.SchemaDefinition, err = rs.parseLogicDefinition(ctx, req.LogicDefinition)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	accountInfo, _ := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
+	resource := &interfaces.Resource{
+		ID:               id,
+		CatalogID:        req.CatalogID,
+		Name:             req.Name,
+		Tags:             req.Tags,
+		Description:      req.Description,
+		Category:         req.Category,
+		Status:           req.Status,
+		Database:         req.Database,
+		SourceIdentifier: req.SourceIdentifier,
+		SourceMetadata:   req.SourceMetadata,
+		SchemaDefinition: req.SchemaDefinition,
+		IndexConfig:      req.IndexConfig,
+		LogicType:        logicType,
+		LogicDefinition:  req.LogicDefinition,
+		Creator:          accountInfo,
+		CreateTime:       now,
+		Updater:          accountInfo,
+		UpdateTime:       now,
+	}
+	if err := rs.ra.CreateWithTx(ctx, tx, resource); err != nil {
+		return nil, err
+	}
+	return resource, nil
+}
+
+func (rs *resourceService) InternalUpdateStatus(ctx context.Context, tx *sql.Tx, id string, status string, statusMessage string) error {
+	if tx == nil {
+		return fmt.Errorf("transaction is required")
+	}
+	return rs.ra.UpdateStatusWithTx(ctx, tx, id, status, statusMessage)
 }
 
 func (rs *resourceService) rejectBuildRelevantUpdateWhenActiveBuildTask(ctx context.Context, resource *interfaces.Resource) error {

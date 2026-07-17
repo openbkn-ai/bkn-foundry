@@ -410,9 +410,52 @@ CREATE TABLE IF NOT EXISTS t_build_task (
     INDEX idx_status (f_status)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT='构建任务表';
 
+-- ==========================================
+-- 9. t_semantic_understanding_task 语义理解任务表
+-- ==========================================
+CREATE TABLE IF NOT EXISTS t_semantic_understanding_task (
+    -- 主键与关联信息
+    f_id                         VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Vega 语义理解任务唯一标识',
+    f_scope                      VARCHAR(20) NOT NULL DEFAULT '' COMMENT '任务范围: resource, catalog',
+    f_catalog_id                 VARCHAR(40) NOT NULL DEFAULT '' COMMENT '所属 catalog ID',
+    f_resource_id                VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'resource 级任务关联 resource ID，catalog 级为空',
+    f_agent_task_id              VARCHAR(80) NOT NULL DEFAULT '' COMMENT 'bkn-agent 任务 ID',
+    f_agent_id                   VARCHAR(80) NOT NULL DEFAULT '' COMMENT '执行语义理解的 agent ID',
+
+    -- 输入快照与状态
+    f_input                      MEDIUMTEXT NOT NULL COMMENT '发送给 bkn-agent 的完整结构化输入(JSON)',
+    f_input_hash                 VARCHAR(128) NOT NULL DEFAULT '' COMMENT '基于 agent 输入生成的哈希，用于去重和快照匹配',
+    f_status                     VARCHAR(20) NOT NULL DEFAULT 'pending' COMMENT '任务状态: pending, running, succeeded, failed',
+    f_apply_mode                 VARCHAR(20) NOT NULL DEFAULT 'fill_empty' COMMENT '应用模式: dry_run, fill_empty, force',
+
+    -- agent 结果与应用详情
+    f_result_json                MEDIUMTEXT NOT NULL COMMENT 'agent 原始结构化输出(JSON)',
+    f_confidence_threshold       DECIMAL(5,4) NOT NULL DEFAULT 0.7500 COMMENT '本次任务要求的最低置信分',
+    f_confidence                 DECIMAL(5,4) NOT NULL DEFAULT 0.0000 COMMENT '任务级语义置信度',
+    f_confidence_detail_json     MEDIUMTEXT NOT NULL COMMENT '字段、逻辑视图、stale 建议等细粒度置信分(JSON)',
+    f_apply_detail_json          MEDIUMTEXT NOT NULL COMMENT '应用明细(JSON)',
+    f_applied                    TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'agent 结果是否已应用: 0-否, 1-是',
+    f_applied_time               BIGINT(20) NOT NULL DEFAULT 0 COMMENT '应用时间',
+    f_failure_detail             TEXT NOT NULL COMMENT '失败详情',
+
+    -- 审计字段
+    f_creator                    VARCHAR(40) NOT NULL DEFAULT '' COMMENT '创建者id',
+    f_creator_type               VARCHAR(20) NOT NULL DEFAULT '' COMMENT '创建者类型',
+    f_create_time                BIGINT(20) NOT NULL DEFAULT 0 COMMENT '创建时间',
+    f_update_time                BIGINT(20) NOT NULL DEFAULT 0 COMMENT '更新时间',
+
+    -- 索引
+    PRIMARY KEY (f_id),
+    INDEX idx_scope_input_hash_status (f_scope, f_input_hash, f_status),
+    INDEX idx_catalog_id (f_catalog_id),
+    INDEX idx_resource_id (f_resource_id),
+    INDEX idx_agent_task_id (f_agent_task_id),
+    INDEX idx_status (f_status)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT='语义理解任务表，记录 resource/catalog 语义理解异步任务、agent 输出和应用状态';
+
 
 -- ==========================================
--- 9. t_discover_schedule 资源发现调度表
+-- 10. t_discover_schedule 资源发现调度表
 -- ==========================================
 CREATE TABLE IF NOT EXISTS t_discover_schedule (
     -- 主键与关联信息

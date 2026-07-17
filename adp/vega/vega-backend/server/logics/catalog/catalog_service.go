@@ -29,7 +29,7 @@ import (
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
 	"vega-backend/logics"
-	"vega-backend/logics/connectors/factory"
+	"vega-backend/logics/connector/factory"
 	"vega-backend/logics/extensions"
 	"vega-backend/logics/local_index"
 	"vega-backend/logics/permission"
@@ -331,6 +331,40 @@ func (cs *catalogService) GetByID(ctx context.Context, id string, withSensitiveF
 		}
 		catalog.ConnectorCfg = decryptedConfig
 	}
+
+	span.SetStatus(codes.Ok, "")
+	return catalog, nil
+}
+
+func (cs *catalogService) InternalGetByID(ctx context.Context, id string, withSensitiveFields bool) (*interfaces.Catalog, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "CatalogService.InternalGetByID")
+	defer span.End()
+
+	catalog, err := cs.ca.GetByID(ctx, id)
+	if err != nil {
+		span.SetStatus(codes.Error, "Get catalog failed")
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_Catalog_InternalError_GetFailed).WithErrorDetails(err.Error())
+	}
+	if catalog == nil {
+		span.SetStatus(codes.Error, "Catalog not found")
+		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound)
+	}
+
+	if !withSensitiveFields {
+		cs.removeSensitiveFields(catalog)
+		span.SetStatus(codes.Ok, "")
+		return catalog, nil
+	}
+
+	sensitiveFields := factory.GetFactory().GetSensitiveFields(catalog.ConnectorType)
+	decryptedConfig, err := cs.decryptSensitiveFields(sensitiveFields, catalog.ConnectorCfg)
+	if err != nil {
+		otellog.LogError(ctx, "Failed to validate sensitive fields", err)
+		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+			verrors.VegaBackend_Catalog_InvalidParameter_SensitiveFieldNotEncrypted).WithErrorDetails(err.Error())
+	}
+	catalog.ConnectorCfg = decryptedConfig
 
 	span.SetStatus(codes.Ok, "")
 	return catalog, nil

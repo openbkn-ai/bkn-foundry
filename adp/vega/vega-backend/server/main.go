@@ -25,6 +25,7 @@ import (
 	"vega-backend/common"
 	"vega-backend/drivenadapters/asynq"
 	"vega-backend/drivenadapters/auth"
+	"vega-backend/drivenadapters/bkn_agent"
 	"vega-backend/drivenadapters/build_task"
 	"vega-backend/drivenadapters/catalog"
 	"vega-backend/drivenadapters/connector_type"
@@ -34,10 +35,11 @@ import (
 	"vega-backend/drivenadapters/model_factory"
 	"vega-backend/drivenadapters/permission"
 	"vega-backend/drivenadapters/resource"
+	"vega-backend/drivenadapters/semantic_understanding_task"
 	"vega-backend/drivenadapters/user_mgmt"
 	"vega-backend/driveradapters"
 	"vega-backend/logics"
-	"vega-backend/logics/connectors/factory"
+	"vega-backend/logics/connector/factory"
 	logicsDiscoverSchedule "vega-backend/logics/discover_schedule"
 	logicsDiscoverTask "vega-backend/logics/discover_task"
 	"vega-backend/worker"
@@ -141,6 +143,8 @@ func main() {
 	logics.SetKafkaAccess(kafka.NewKafkaAccess(appSetting))
 	logics.SetModelFactoryAccess(model_factory.NewModelFactoryAccess(appSetting))
 	logics.SetResourceAccess(resource.NewResourceAccess(appSetting))
+	logics.SetBknAgentAccess(bkn_agent.NewBknAgentAccess(appSetting))
+	logics.SetSemanticUnderstandingTaskAccess(semantic_understanding_task.NewSemanticUnderstandingTaskAccess(appSetting))
 
 	// 初始化 Connector Factory 并注册内置的 Local Connector Builder
 	factory.Init(appSetting)

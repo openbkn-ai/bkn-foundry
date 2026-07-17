@@ -106,6 +106,7 @@ type AppSetting struct {
 	UserMgmtUrl       string
 	MfModelManagerUrl string
 	MfModelApiUrl     string
+	BknAgentUrl       string
 }
 
 const (
@@ -124,6 +125,7 @@ const (
 	kafkaConnectServiceName   string = "kafka-connect"
 	mfModelManagerServiceName string = "mf-model-manager"
 	mfModelApiServiceName     string = "mf-model-api"
+	bknAgentServiceName       string = "bkn-agent"
 
 	DATA_BASE_NAME string = "openbkn"
 )
@@ -225,6 +227,7 @@ func loadSetting(vp *viper.Viper) {
 
 	SetMfModelManagerSetting()
 	SetMfModelApiSetting()
+	SetBknAgentSetting()
 
 	appSetting.OtelSetting.ServiceName = version.ServerName
 	appSetting.OtelSetting.ServiceVersion = version.ServerVersion
@@ -476,4 +479,17 @@ func SetMfModelApiSetting() {
 	port := setting["port"].(int)
 
 	appSetting.MfModelApiUrl = fmt.Sprintf("%s://%s:%d", protocol, host, port)
+}
+
+func SetBknAgentSetting() {
+	setting, ok := appSetting.DepServices[bknAgentServiceName]
+	if !ok {
+		return
+	}
+
+	protocol := setting["protocol"].(string)
+	host := setting["host"].(string)
+	port := setting["port"].(int)
+
+	appSetting.BknAgentUrl = fmt.Sprintf("%s://%s:%d", protocol, host, port)
 }

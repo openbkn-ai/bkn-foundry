@@ -10,54 +10,11 @@ import (
 	"github.com/openbkn-ai/bkn-comm-go/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"vega-backend/interfaces"
+	vmock "vega-backend/interfaces/mock"
 )
-
-type fakePermissionAccess struct {
-	checkCalled bool
-	check       interfaces.PermissionCheck
-	checkOK     bool
-	checkErr    error
-
-	createCalled bool
-	policies     []interfaces.PermissionPolicy
-	createErr    error
-
-	deleteCalled bool
-	resources    []interfaces.PermissionResource
-	deleteErr    error
-
-	filterCalled bool
-	filter       interfaces.PermissionResourcesFilter
-	filterResult map[string]interfaces.PermissionResourceOps
-	filterErr    error
-}
-
-func (f *fakePermissionAccess) CheckPermission(ctx context.Context, check interfaces.PermissionCheck) (bool, error) {
-	f.checkCalled = true
-	f.check = check
-	return f.checkOK, f.checkErr
-}
-
-func (f *fakePermissionAccess) FilterResources(ctx context.Context,
-	filter interfaces.PermissionResourcesFilter) (map[string]interfaces.PermissionResourceOps, error) {
-	f.filterCalled = true
-	f.filter = filter
-	return f.filterResult, f.filterErr
-}
-
-func (f *fakePermissionAccess) CreateResources(ctx context.Context, policies []interfaces.PermissionPolicy) error {
-	f.createCalled = true
-	f.policies = policies
-	return f.createErr
-}
-
-func (f *fakePermissionAccess) DeleteResources(ctx context.Context, resources []interfaces.PermissionResource) error {
-	f.deleteCalled = true
-	f.resources = resources
-	return f.deleteErr
-}
 
 type fakeMQClient struct {
 	topic string
@@ -80,7 +37,9 @@ func (f *fakeMQClient) Close() {}
 
 func TestPermissionServiceImplCheckPermission(t *testing.T) {
 	t.Run("rejects missing account", func(t *testing.T) {
-		access := &fakePermissionAccess{}
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		access := vmock.NewMockPermissionAccess(ctrl)
 		svc := &PermissionServiceImpl{pa: access}
 
 		err := svc.CheckPermission(context.Background(),
@@ -88,26 +47,36 @@ func TestPermissionServiceImplCheckPermission(t *testing.T) {
 			[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL})
 
 		assertHTTPStatus(t, err, http.StatusForbidden)
-		assert.False(t, access.checkCalled)
 	})
 
 	t.Run("delegates account and resource to access", func(t *testing.T) {
-		access := &fakePermissionAccess{checkOK: true}
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		access := vmock.NewMockPermissionAccess(ctrl)
 		svc := &PermissionServiceImpl{pa: access}
 		ctx := contextWithAccount("user-1", interfaces.ACCESSOR_TYPE_USER)
 		resource := interfaces.PermissionResource{ID: "catalog-1", Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG}
+		var check interfaces.PermissionCheck
+		access.EXPECT().
+			CheckPermission(gomock.Any(), gomock.AssignableToTypeOf(interfaces.PermissionCheck{})).
+			DoAndReturn(func(_ context.Context, got interfaces.PermissionCheck) (bool, error) {
+				check = got
+				return true, nil
+			})
 
 		err := svc.CheckPermission(ctx, resource, []string{interfaces.OPERATION_TYPE_MODIFY})
 
 		require.NoError(t, err)
-		require.True(t, access.checkCalled)
-		assert.Equal(t, interfaces.PermissionAccessor{ID: "user-1", Type: interfaces.ACCESSOR_TYPE_USER}, access.check.Accessor)
-		assert.Equal(t, resource, access.check.Resource)
-		assert.Equal(t, []string{interfaces.OPERATION_TYPE_MODIFY}, access.check.Operations)
+		assert.Equal(t, interfaces.PermissionAccessor{ID: "user-1", Type: interfaces.ACCESSOR_TYPE_USER}, check.Accessor)
+		assert.Equal(t, resource, check.Resource)
+		assert.Equal(t, []string{interfaces.OPERATION_TYPE_MODIFY}, check.Operations)
 	})
 
 	t.Run("wraps access error", func(t *testing.T) {
-		access := &fakePermissionAccess{checkErr: errors.New("safe unavailable")}
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		access := vmock.NewMockPermissionAccess(ctrl)
+		access.EXPECT().CheckPermission(gomock.Any(), gomock.Any()).Return(false, errors.New("safe unavailable"))
 		svc := &PermissionServiceImpl{pa: access}
 
 		err := svc.CheckPermission(contextWithAccount("user-1", interfaces.ACCESSOR_TYPE_USER),
@@ -118,7 +87,10 @@ func TestPermissionServiceImplCheckPermission(t *testing.T) {
 	})
 
 	t.Run("rejects denied result", func(t *testing.T) {
-		access := &fakePermissionAccess{checkOK: false}
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		access := vmock.NewMockPermissionAccess(ctrl)
+		access.EXPECT().CheckPermission(gomock.Any(), gomock.Any()).Return(false, nil)
 		svc := &PermissionServiceImpl{pa: access}
 
 		err := svc.CheckPermission(contextWithAccount("user-1", interfaces.ACCESSOR_TYPE_USER),
@@ -132,31 +104,41 @@ func TestPermissionServiceImplCheckPermission(t *testing.T) {
 
 func TestPermissionServiceImplCreateResources(t *testing.T) {
 	t.Run("builds policies for account resources and ops", func(t *testing.T) {
-		access := &fakePermissionAccess{}
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		access := vmock.NewMockPermissionAccess(ctrl)
 		svc := &PermissionServiceImpl{pa: access}
 		resources := []interfaces.PermissionResource{
 			{ID: "catalog-1", Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG, Name: "Catalog 1"},
 			{ID: "catalog-2", Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG, Name: "Catalog 2"},
 		}
 		ops := []string{interfaces.OPERATION_TYPE_VIEW_DETAIL, interfaces.OPERATION_TYPE_MODIFY}
+		var policies []interfaces.PermissionPolicy
+		access.EXPECT().
+			CreateResources(gomock.Any(), gomock.AssignableToTypeOf([]interfaces.PermissionPolicy{})).
+			DoAndReturn(func(_ context.Context, got []interfaces.PermissionPolicy) error {
+				policies = got
+				return nil
+			})
 
 		err := svc.CreateResources(contextWithAccount("user-1", interfaces.ACCESSOR_TYPE_USER), resources, ops)
 
 		require.NoError(t, err)
-		require.True(t, access.createCalled)
-		require.Len(t, access.policies, 2)
-		assert.Equal(t, resources[0], access.policies[0].Resource)
+		require.Len(t, policies, 2)
+		assert.Equal(t, resources[0], policies[0].Resource)
 		assert.Equal(t, interfaces.PermissionAccessor{ID: "user-1", Type: interfaces.ACCESSOR_TYPE_USER},
-			access.policies[0].Accessor)
+			policies[0].Accessor)
 		assert.Equal(t, []interfaces.PermissionOperation{
 			{Operation: interfaces.OPERATION_TYPE_VIEW_DETAIL},
 			{Operation: interfaces.OPERATION_TYPE_MODIFY},
-		}, access.policies[0].Operations.Allow)
-		assert.Empty(t, access.policies[0].Operations.Deny)
+		}, policies[0].Operations.Allow)
+		assert.Empty(t, policies[0].Operations.Deny)
 	})
 
 	t.Run("rejects missing account before access call", func(t *testing.T) {
-		access := &fakePermissionAccess{}
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		access := vmock.NewMockPermissionAccess(ctrl)
 		svc := &PermissionServiceImpl{pa: access}
 
 		err := svc.CreateResources(context.Background(),
@@ -164,11 +146,13 @@ func TestPermissionServiceImplCreateResources(t *testing.T) {
 			[]string{interfaces.OPERATION_TYPE_CREATE})
 
 		assertHTTPStatus(t, err, http.StatusForbidden)
-		assert.False(t, access.createCalled)
 	})
 
 	t.Run("wraps access error", func(t *testing.T) {
-		access := &fakePermissionAccess{createErr: errors.New("create failed")}
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		access := vmock.NewMockPermissionAccess(ctrl)
+		access.EXPECT().CreateResources(gomock.Any(), gomock.Any()).Return(errors.New("create failed"))
 		svc := &PermissionServiceImpl{pa: access}
 
 		err := svc.CreateResources(contextWithAccount("user-1", interfaces.ACCESSOR_TYPE_USER),
@@ -182,18 +166,28 @@ func TestPermissionServiceImplCreateResources(t *testing.T) {
 
 func TestPermissionServiceImplDeleteResources(t *testing.T) {
 	t.Run("skips empty ids", func(t *testing.T) {
-		access := &fakePermissionAccess{}
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		access := vmock.NewMockPermissionAccess(ctrl)
 		svc := &PermissionServiceImpl{pa: access}
 
 		err := svc.DeleteResources(context.Background(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE, nil)
 
 		require.NoError(t, err)
-		assert.False(t, access.deleteCalled)
 	})
 
 	t.Run("converts ids into resources", func(t *testing.T) {
-		access := &fakePermissionAccess{}
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		access := vmock.NewMockPermissionAccess(ctrl)
 		svc := &PermissionServiceImpl{pa: access}
+		var resources []interfaces.PermissionResource
+		access.EXPECT().
+			DeleteResources(gomock.Any(), gomock.AssignableToTypeOf([]interfaces.PermissionResource{})).
+			DoAndReturn(func(_ context.Context, got []interfaces.PermissionResource) error {
+				resources = got
+				return nil
+			})
 
 		err := svc.DeleteResources(context.Background(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE, []string{"r1", "r2"})
 
@@ -201,11 +195,14 @@ func TestPermissionServiceImplDeleteResources(t *testing.T) {
 		assert.Equal(t, []interfaces.PermissionResource{
 			{ID: "r1", Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE},
 			{ID: "r2", Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE},
-		}, access.resources)
+		}, resources)
 	})
 
 	t.Run("wraps access error", func(t *testing.T) {
-		access := &fakePermissionAccess{deleteErr: errors.New("delete failed")}
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		access := vmock.NewMockPermissionAccess(ctrl)
+		access.EXPECT().DeleteResources(gomock.Any(), gomock.Any()).Return(errors.New("delete failed"))
 		svc := &PermissionServiceImpl{pa: access}
 
 		err := svc.DeleteResources(context.Background(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE, []string{"r1"})
@@ -240,7 +237,9 @@ func TestPermissionServiceImplUpdateResource(t *testing.T) {
 
 func TestPermissionServiceImplFilterResources(t *testing.T) {
 	t.Run("returns empty map for empty ids without access call", func(t *testing.T) {
-		access := &fakePermissionAccess{}
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		access := vmock.NewMockPermissionAccess(ctrl)
 		svc := &PermissionServiceImpl{pa: access}
 
 		got, err := svc.FilterResources(contextWithAccount("user-1", interfaces.ACCESSOR_TYPE_USER),
@@ -249,15 +248,21 @@ func TestPermissionServiceImplFilterResources(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Empty(t, got)
-		assert.False(t, access.filterCalled)
 	})
 
 	t.Run("delegates filter request and maps result by id", func(t *testing.T) {
-		access := &fakePermissionAccess{
-			filterResult: map[string]interfaces.PermissionResourceOps{
-				"ignored-key": {ResourceID: "catalog-2", Operations: []string{interfaces.OPERATION_TYPE_MODIFY}},
-			},
-		}
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		access := vmock.NewMockPermissionAccess(ctrl)
+		var filter interfaces.PermissionResourcesFilter
+		access.EXPECT().
+			FilterResources(gomock.Any(), gomock.AssignableToTypeOf(interfaces.PermissionResourcesFilter{})).
+			DoAndReturn(func(_ context.Context, got interfaces.PermissionResourcesFilter) (map[string]interfaces.PermissionResourceOps, error) {
+				filter = got
+				return map[string]interfaces.PermissionResourceOps{
+					"ignored-key": {ResourceID: "catalog-2", Operations: []string{interfaces.OPERATION_TYPE_MODIFY}},
+				}, nil
+			})
 		svc := &PermissionServiceImpl{pa: access}
 
 		got, err := svc.FilterResources(contextWithAccount("user-1", interfaces.ACCESSOR_TYPE_USER),
@@ -269,17 +274,19 @@ func TestPermissionServiceImplFilterResources(t *testing.T) {
 			"catalog-2": {ResourceID: "catalog-2", Operations: []string{interfaces.OPERATION_TYPE_MODIFY}},
 		}, got)
 		assert.Equal(t, interfaces.PermissionAccessor{ID: "user-1", Type: interfaces.ACCESSOR_TYPE_USER},
-			access.filter.Accessor)
+			filter.Accessor)
 		assert.Equal(t, []interfaces.PermissionResource{
 			{ID: "catalog-1", Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG},
 			{ID: "catalog-2", Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG},
-		}, access.filter.Resources)
-		assert.Equal(t, []string{interfaces.OPERATION_TYPE_MODIFY}, access.filter.Operations)
-		assert.False(t, access.filter.AllowOperation)
+		}, filter.Resources)
+		assert.Equal(t, []string{interfaces.OPERATION_TYPE_MODIFY}, filter.Operations)
+		assert.False(t, filter.AllowOperation)
 	})
 
 	t.Run("rejects missing account", func(t *testing.T) {
-		access := &fakePermissionAccess{}
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		access := vmock.NewMockPermissionAccess(ctrl)
 		svc := &PermissionServiceImpl{pa: access}
 
 		got, err := svc.FilterResources(context.Background(),
@@ -288,11 +295,13 @@ func TestPermissionServiceImplFilterResources(t *testing.T) {
 
 		assertHTTPStatus(t, err, http.StatusForbidden)
 		assert.Nil(t, got)
-		assert.False(t, access.filterCalled)
 	})
 
 	t.Run("wraps access error", func(t *testing.T) {
-		access := &fakePermissionAccess{filterErr: errors.New("filter failed")}
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		access := vmock.NewMockPermissionAccess(ctrl)
+		access.EXPECT().FilterResources(gomock.Any(), gomock.Any()).Return(nil, errors.New("filter failed"))
 		svc := &PermissionServiceImpl{pa: access}
 
 		got, err := svc.FilterResources(contextWithAccount("user-1", interfaces.ACCESSOR_TYPE_USER),

@@ -9,11 +9,12 @@ package user_mgmt
 import (
 	"context"
 	"errors"
-	"net/url"
 	"testing"
 
+	rmock "github.com/openbkn-ai/bkn-comm-go/rest/mock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"vega-backend/common"
 	"vega-backend/interfaces"
@@ -35,10 +36,20 @@ func TestUserMgmtAccessUseBknSafe(t *testing.T) {
 
 func TestUserMgmtAccessGetAccountNames(t *testing.T) {
 	t.Run("isf route fills user and app names", func(t *testing.T) {
-		client := &fakeHTTPClient{
-			code: 200,
-			body: []byte(`{"user_names":[{"id":"u1","name":"User One"}],"app_names":[{"id":"app1","name":"App One"}]}`),
-		}
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		client := rmock.NewMockHTTPClient(ctrl)
+		var gotURL string
+		var gotHeaders map[string]string
+		var gotReqParam any
+		client.EXPECT().
+			PostNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, url string, headers map[string]string, reqParam any) (int, []byte, error) {
+				gotURL = url
+				gotHeaders = headers
+				gotReqParam = reqParam
+				return 200, []byte(`{"user_names":[{"id":"u1","name":"User One"}],"app_names":[{"id":"app1","name":"App One"}]}`), nil
+			})
 		access := &userMgmtAccess{
 			appSetting:  &common.AppSetting{},
 			httpClient:  client,
@@ -54,11 +65,11 @@ func TestUserMgmtAccessGetAccountNames(t *testing.T) {
 		err := access.GetAccountNames(context.Background(), accounts)
 
 		require.NoError(t, err)
-		assert.Equal(t, "http://user-mgmt/api/user-management/v2/names", client.url)
-		assert.Equal(t, "application/json", client.headers["Content-Type"])
-		assert.Equal(t, "GET", client.reqParam.(map[string]any)["method"])
-		assert.Equal(t, []string{"u1"}, client.reqParam.(map[string]any)["user_ids"])
-		assert.Equal(t, []string{"app1", "app-missing"}, client.reqParam.(map[string]any)["app_ids"])
+		assert.Equal(t, "http://user-mgmt/api/user-management/v2/names", gotURL)
+		assert.Equal(t, "application/json", gotHeaders["Content-Type"])
+		assert.Equal(t, "GET", gotReqParam.(map[string]any)["method"])
+		assert.Equal(t, []string{"u1"}, gotReqParam.(map[string]any)["user_ids"])
+		assert.Equal(t, []string{"app1", "app-missing"}, gotReqParam.(map[string]any)["app_ids"])
 		assert.Equal(t, "User One", accounts[0].Name)
 		assert.Equal(t, "User One", accounts[1].Name)
 		assert.Equal(t, "App One", accounts[2].Name)
@@ -66,10 +77,18 @@ func TestUserMgmtAccessGetAccountNames(t *testing.T) {
 	})
 
 	t.Run("bkn safe route uses clean directory endpoint", func(t *testing.T) {
-		client := &fakeHTTPClient{
-			code: 200,
-			body: []byte(`{"user_names":[{"id":"u1","name":"User One"}],"app_names":[]}`),
-		}
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		client := rmock.NewMockHTTPClient(ctrl)
+		var gotURL string
+		var gotReqParam any
+		client.EXPECT().
+			PostNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, url string, _ map[string]string, reqParam any) (int, []byte, error) {
+				gotURL = url
+				gotReqParam = reqParam
+				return 200, []byte(`{"user_names":[{"id":"u1","name":"User One"}],"app_names":[]}`), nil
+			})
 		access := &userMgmtAccess{
 			appSetting:        &common.AppSetting{},
 			httpClient:        client,
@@ -82,21 +101,28 @@ func TestUserMgmtAccessGetAccountNames(t *testing.T) {
 		err := access.GetAccountNames(context.Background(), accounts)
 
 		require.NoError(t, err)
-		assert.Equal(t, "http://safe/api/safe/v1/directory/names", client.url)
-		assert.NotContains(t, client.reqParam.(map[string]any), "method")
+		assert.Equal(t, "http://safe/api/safe/v1/directory/names", gotURL)
+		assert.NotContains(t, gotReqParam.(map[string]any), "method")
 		assert.Equal(t, "User One", accounts[0].Name)
 	})
 
 	t.Run("empty input skips request", func(t *testing.T) {
-		client := &fakeHTTPClient{}
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		client := rmock.NewMockHTTPClient(ctrl)
 		access := &userMgmtAccess{httpClient: client}
 
 		require.NoError(t, access.GetAccountNames(context.Background(), nil))
-		assert.Empty(t, client.url)
 	})
 
 	t.Run("request error", func(t *testing.T) {
-		access := &userMgmtAccess{httpClient: &fakeHTTPClient{err: errors.New("network down")}}
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		client := rmock.NewMockHTTPClient(ctrl)
+		client.EXPECT().
+			PostNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(0, nil, errors.New("network down"))
+		access := &userMgmtAccess{httpClient: client}
 
 		err := access.GetAccountNames(context.Background(), []*interfaces.AccountInfo{{ID: "u1", Type: interfaces.ACCESSOR_TYPE_USER}})
 
@@ -105,7 +131,13 @@ func TestUserMgmtAccessGetAccountNames(t *testing.T) {
 	})
 
 	t.Run("non ok status", func(t *testing.T) {
-		access := &userMgmtAccess{httpClient: &fakeHTTPClient{code: 500, body: []byte(`{"error":"boom"}`)}}
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		client := rmock.NewMockHTTPClient(ctrl)
+		client.EXPECT().
+			PostNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(500, []byte(`{"error":"boom"}`), nil)
+		access := &userMgmtAccess{httpClient: client}
 
 		err := access.GetAccountNames(context.Background(), []*interfaces.AccountInfo{{ID: "u1", Type: interfaces.ACCESSOR_TYPE_USER}})
 
@@ -114,63 +146,17 @@ func TestUserMgmtAccessGetAccountNames(t *testing.T) {
 	})
 
 	t.Run("invalid response json", func(t *testing.T) {
-		access := &userMgmtAccess{httpClient: &fakeHTTPClient{code: 200, body: []byte(`{`)}}
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		client := rmock.NewMockHTTPClient(ctrl)
+		client.EXPECT().
+			PostNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(200, []byte(`{`), nil)
+		access := &userMgmtAccess{httpClient: client}
 
 		err := access.GetAccountNames(context.Background(), []*interfaces.AccountInfo{{ID: "u1", Type: interfaces.ACCESSOR_TYPE_USER}})
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "unmarshal account names response failed")
 	})
-}
-
-type fakeHTTPClient struct {
-	code     int
-	body     []byte
-	err      error
-	url      string
-	headers  map[string]string
-	reqParam any
-}
-
-func (f *fakeHTTPClient) PostNoUnmarshal(_ context.Context, url string, headers map[string]string, reqParam interface{}) (int, []byte, error) {
-	f.url = url
-	f.headers = headers
-	f.reqParam = reqParam
-	return f.code, f.body, f.err
-}
-
-func (f *fakeHTTPClient) Get(context.Context, string, url.Values, map[string]string) (int, interface{}, error) {
-	return 0, nil, nil
-}
-
-func (f *fakeHTTPClient) GetNoUnmarshal(context.Context, string, url.Values, map[string]string) (int, []byte, error) {
-	return 0, nil, nil
-}
-
-func (f *fakeHTTPClient) Delete(context.Context, string, map[string]string) (int, interface{}, error) {
-	return 0, nil, nil
-}
-
-func (f *fakeHTTPClient) DeleteNoUnmarshal(context.Context, string, map[string]string) (int, []byte, error) {
-	return 0, nil, nil
-}
-
-func (f *fakeHTTPClient) Post(context.Context, string, map[string]string, interface{}) (int, interface{}, error) {
-	return 0, nil, nil
-}
-
-func (f *fakeHTTPClient) Put(context.Context, string, map[string]string, interface{}) (int, interface{}, error) {
-	return 0, nil, nil
-}
-
-func (f *fakeHTTPClient) PutNoUnmarshal(context.Context, string, map[string]string, interface{}) (int, []byte, error) {
-	return 0, nil, nil
-}
-
-func (f *fakeHTTPClient) Patch(context.Context, string, map[string]string, interface{}) (int, interface{}, error) {
-	return 0, nil, nil
-}
-
-func (f *fakeHTTPClient) PatchNoUnmarshal(context.Context, string, map[string]string, interface{}) (int, []byte, error) {
-	return 0, nil, nil
 }

@@ -1,5 +1,4 @@
 // Copyright openbkn.ai
-// Copyright The kweaver.ai Authors.
 //
 // Licensed under the Apache License, Version 2.0.
 // See the LICENSE file in the project root for details.
@@ -13,7 +12,6 @@ import (
 	"github.com/openbkn-ai/bkn-comm-go/logger"
 
 	"vega-backend/interfaces"
-	"vega-backend/logics/connectors"
 )
 
 // tableDiscoverItem represents a table discover item.
@@ -25,10 +23,10 @@ type tableDiscoverItem struct {
 
 // discoverTableResources discovers table resources from a table connector.
 // 分步执行：1. 获取表名列表 2. 创建/更新 Resource 3. 逐个补齐详细元数据
-func (dh *DiscoverHandler) discoverTableResources(ctx context.Context, catalog *interfaces.Catalog,
-	connector connectors.Connector, task *interfaces.DiscoverTask) (*interfaces.DiscoverResult, error) {
+func (dtw *DiscoverTaskWorker) discoverTableResources(ctx context.Context, catalog *interfaces.Catalog,
+	connector interfaces.Connector, task *interfaces.DiscoverTask) (*interfaces.DiscoverResult, error) {
 
-	tableConnector, ok := connector.(connectors.TableConnector)
+	tableConnector, ok := connector.(interfaces.TableConnector)
 	if !ok {
 		return nil, fmt.Errorf("connector does not support table discover")
 	}
@@ -41,19 +39,19 @@ func (dh *DiscoverHandler) discoverTableResources(ctx context.Context, catalog *
 	logger.Infof("Discovered %d tables from source", len(sourceTables))
 
 	// Step 2: 获取现有 Resources
-	existingResources, err := dh.rs.GetByCatalogID(ctx, catalog.ID)
+	existingResources, err := dtw.rs.GetByCatalogID(ctx, catalog.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get existing resources: %w", err)
 	}
 
 	// Step 3: 对比并创建/更新 Resource（基础信息）
-	result, items, err := dh.reconcileTableResources(ctx, catalog, sourceTables, existingResources, task.DiscoverActions)
+	result, items, err := dtw.reconcileTableResources(ctx, catalog, sourceTables, existingResources, task.DiscoverActions)
 	if err != nil {
 		return nil, fmt.Errorf("failed to reconcile resources: %w", err)
 	}
 
 	// Step 4: 逐个补齐详细元数据:元数据采集就是补充每一个table的元数据信息
-	if err := dh.enrichTableMetadata(ctx, tableConnector, items, result); err != nil {
+	if err := dtw.enrichTableMetadata(ctx, tableConnector, items, result); err != nil {
 		return nil, fmt.Errorf("failed to enrich table metadata: %w", err)
 	}
 
@@ -71,7 +69,7 @@ func (dh *DiscoverHandler) discoverTableResources(ctx context.Context, catalog *
 //
 // 返回值:
 //   - error: 如果在处理过程中发生错误，则返回错误信息
-func (dh *DiscoverHandler) enrichTableMetadata(ctx context.Context, tableConnector connectors.TableConnector,
+func (dtw *DiscoverTaskWorker) enrichTableMetadata(ctx context.Context, tableConnector interfaces.TableConnector,
 	items []tableDiscoverItem, result *interfaces.DiscoverResult) error {
 
 	// 遍历所有表发现项目
@@ -87,7 +85,7 @@ func (dh *DiscoverHandler) enrichTableMetadata(ctx context.Context, tableConnect
 			resource.LastDiscoverStatus = interfaces.DiscoverStatusError
 			resource.StatusMessage = fmt.Sprintf("discover metadata failed: %v", err)
 			updateDiscoverResultForEnrichStatus(result, interfaces.DiscoverStatusError)
-			if updateErr := dh.rs.UpdateResource(ctx, resource); updateErr != nil {
+			if updateErr := dtw.rs.UpdateResource(ctx, resource); updateErr != nil {
 				logger.Errorf("Failed to update discover error for table %s: %v", table.Name, updateErr)
 				return updateErr
 			}
@@ -142,7 +140,7 @@ func (dh *DiscoverHandler) enrichTableMetadata(ctx context.Context, tableConnect
 
 		// 更新 Resource
 		resource.LastDiscoverStatus = discoverStatus
-		if err := dh.rs.UpdateResource(ctx, resource); err != nil {
+		if err := dtw.rs.UpdateResource(ctx, resource); err != nil {
 			logger.Errorf("Failed to update metadata for table %s: %v", table.Name, err)
 			return err
 		}
@@ -153,7 +151,7 @@ func (dh *DiscoverHandler) enrichTableMetadata(ctx context.Context, tableConnect
 }
 
 // reconcileTableResources reconciles source tables with existing resources.
-func (dh *DiscoverHandler) reconcileTableResources(ctx context.Context, catalog *interfaces.Catalog, sourceTables []*interfaces.TableMeta,
+func (dtw *DiscoverTaskWorker) reconcileTableResources(ctx context.Context, catalog *interfaces.Catalog, sourceTables []*interfaces.TableMeta,
 	existingResources []*interfaces.Resource, actions *interfaces.DiscoverActions) (*interfaces.DiscoverResult, []tableDiscoverItem, error) {
 
 	result := &interfaces.DiscoverResult{
@@ -175,12 +173,12 @@ func (dh *DiscoverHandler) reconcileTableResources(ctx context.Context, catalog 
 	// 构建源端表的 map
 	sourceMap := make(map[string]*interfaces.TableMeta)
 	for _, t := range sourceTables {
-		sourceIdentifier := dh.buildSourceIdentifier(t)
+		sourceIdentifier := dtw.buildSourceIdentifier(t)
 		sourceMap[sourceIdentifier] = t
 	}
 	// 处理新增和保持的资源
 	for _, table := range sourceTables {
-		sourceIdentifier := dh.buildSourceIdentifier(table)
+		sourceIdentifier := dtw.buildSourceIdentifier(table)
 
 		if resource, ok := existingMap[sourceIdentifier]; ok {
 			// 已存在，检查状态
@@ -188,10 +186,10 @@ func (dh *DiscoverHandler) reconcileTableResources(ctx context.Context, catalog 
 				markAfterEnrich := true
 				if resource.Status == interfaces.ResourceStatusStale {
 					// 之前标记为 stale，现在重新激活
-					if err := dh.rs.UpdateStatus(ctx, resource.ID, interfaces.ResourceStatusActive, ""); err != nil {
+					if err := dtw.rs.UpdateStatus(ctx, resource.ID, interfaces.ResourceStatusActive, ""); err != nil {
 						logger.Errorf("Failed to reactivate resource %s: %v", resource.ID, err)
 					} else {
-						dh.markDiscover(ctx, resource.ID, interfaces.DiscoverStatusRestored)
+						dtw.markDiscover(ctx, resource.ID, interfaces.DiscoverStatusRestored)
 						resource.Status = interfaces.ResourceStatusActive
 						resource.LastDiscoverStatus = interfaces.DiscoverStatusRestored
 						result.RestoredCount++
@@ -207,11 +205,11 @@ func (dh *DiscoverHandler) reconcileTableResources(ctx context.Context, catalog 
 		} else {
 			// 新增资源 - 只在策略允许 create 时处理
 			if actions != nil && actions.Create {
-				resource, err := dh.createResource(ctx, catalog, table, sourceIdentifier)
+				resource, err := dtw.createResource(ctx, catalog, table, sourceIdentifier)
 				if err != nil {
 					logger.Errorf("Failed to create resource %s: %v", sourceIdentifier, err)
 				} else {
-					dh.markDiscover(ctx, resource.ID, interfaces.DiscoverStatusNew)
+					dtw.markDiscover(ctx, resource.ID, interfaces.DiscoverStatusNew)
 					resource.LastDiscoverStatus = interfaces.DiscoverStatusNew
 					result.NewCount++
 					items = append(items, tableDiscoverItem{
@@ -227,9 +225,9 @@ func (dh *DiscoverHandler) reconcileTableResources(ctx context.Context, catalog 
 	if actions != nil && actions.MarkStale {
 		for sourceIdentifier, existing := range existingMap {
 			if _, ok := sourceMap[sourceIdentifier]; !ok {
-				dh.markDiscover(ctx, existing.ID, interfaces.DiscoverStatusMissing)
+				dtw.markDiscover(ctx, existing.ID, interfaces.DiscoverStatusMissing)
 				if existing.Status == interfaces.ResourceStatusActive {
-					if err := dh.rs.UpdateStatus(ctx, existing.ID, interfaces.ResourceStatusStale, ""); err != nil {
+					if err := dtw.rs.UpdateStatus(ctx, existing.ID, interfaces.ResourceStatusStale, ""); err != nil {
 						logger.Errorf("Failed to mark resource %s as stale: %v", existing.ID, err)
 					} else {
 						result.StaleCount++
@@ -242,7 +240,7 @@ func (dh *DiscoverHandler) reconcileTableResources(ctx context.Context, catalog 
 }
 
 // buildSourceIdentifier builds the source identifier for a table.
-func (dh *DiscoverHandler) buildSourceIdentifier(table *interfaces.TableMeta) string {
+func (dtw *DiscoverTaskWorker) buildSourceIdentifier(table *interfaces.TableMeta) string {
 	identifier := table.Name
 	if table.Schema != "" {
 		return fmt.Sprintf("%s.%s", table.Schema, identifier)
@@ -254,7 +252,7 @@ func (dh *DiscoverHandler) buildSourceIdentifier(table *interfaces.TableMeta) st
 }
 
 // createResource creates a new resource.
-func (dh *DiscoverHandler) createResource(ctx context.Context, catalog *interfaces.Catalog, table *interfaces.TableMeta, sourceIdentifier string) (*interfaces.Resource, error) {
+func (dtw *DiscoverTaskWorker) createResource(ctx context.Context, catalog *interfaces.Catalog, table *interfaces.TableMeta, sourceIdentifier string) (*interfaces.Resource, error) {
 
 	req := &interfaces.ResourceRequest{
 		CatalogID:        catalog.ID,
@@ -269,7 +267,7 @@ func (dh *DiscoverHandler) createResource(ctx context.Context, catalog *interfac
 			"original_description": table.Description,
 		},
 	}
-	resource, err := dh.rs.Create(ctx, req)
+	resource, err := dtw.rs.Create(ctx, req)
 	if err != nil {
 		return nil, err
 	}

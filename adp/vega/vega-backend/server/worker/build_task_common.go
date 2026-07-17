@@ -1,5 +1,4 @@
 // Copyright openbkn.ai
-// Copyright The kweaver.ai Authors.
 //
 // Licensed under the Apache License, Version 2.0.
 // See the LICENSE file in the project root for details.
@@ -20,8 +19,10 @@ import (
 	"github.com/mohae/deepcopy"
 	"github.com/segmentio/kafka-go"
 
+	"vega-backend/common"
 	"vega-backend/interfaces"
 	"vega-backend/logics"
+	"vega-backend/logics/build_task"
 )
 
 func getIndexName(resourceID, buildTaskID string) string {
@@ -55,10 +56,10 @@ func getNewDocID(primaryKeyValues []interfaces.KeyValue, document map[string]any
 }
 
 // updateResourceIndexName updates the index name of a resource
-func updateResourceIndexName(ctx context.Context, resource *interfaces.Resource, ra interfaces.ResourceAccess, indexName string) error {
+func updateResourceIndexName(ctx context.Context, resource *interfaces.Resource, rs interfaces.ResourceService, indexName string) error {
 	if resource.LocalIndexName == "" {
 		resource.LocalIndexName = indexName
-		return ra.Update(ctx, nil, resource)
+		return rs.InternalUpdate(ctx, nil, resource)
 	}
 
 	if resource.LocalIndexName == indexName {
@@ -67,7 +68,7 @@ func updateResourceIndexName(ctx context.Context, resource *interfaces.Resource,
 
 	oldIndexName := resource.LocalIndexName
 	resource.LocalIndexName = indexName
-	if err := ra.Update(ctx, nil, resource); err != nil {
+	if err := rs.InternalUpdate(ctx, nil, resource); err != nil {
 		resource.LocalIndexName = oldIndexName
 		return err
 	}
@@ -75,7 +76,7 @@ func updateResourceIndexName(ctx context.Context, resource *interfaces.Resource,
 	return nil
 }
 
-func completeBuildTaskWithoutEmbedding(ctx context.Context, resource *interfaces.Resource, ra interfaces.ResourceAccess, taskAccess interfaces.BuildTaskAccess, taskID, indexName string) error {
+func completeBuildTaskWithoutEmbedding(ctx context.Context, resource *interfaces.Resource, rs interfaces.ResourceService, bts interfaces.BuildTaskService, taskID, indexName string) error {
 	if logics.DB == nil {
 		return errors.New("database is not initialized")
 	}
@@ -94,14 +95,14 @@ func completeBuildTaskWithoutEmbedding(ctx context.Context, resource *interfaces
 	oldIndexName := resource.LocalIndexName
 	if resource.LocalIndexName != indexName {
 		resource.LocalIndexName = indexName
-		if err := ra.Update(ctx, tx, resource); err != nil {
+		if err := rs.InternalUpdate(ctx, tx, resource); err != nil {
 			resource.LocalIndexName = oldIndexName
 			return fmt.Errorf("update resource index name: %w", err)
 		}
 	}
 
 	update := interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusCompleted)
-	if _, err := taskAccess.UpdateStatus(ctx, tx, taskID, update); err != nil {
+	if _, err := bts.InternalUpdateStatus(ctx, tx, taskID, update); err != nil {
 		resource.LocalIndexName = oldIndexName
 		return fmt.Errorf("update build task status: %w", err)
 	}
@@ -114,12 +115,12 @@ func completeBuildTaskWithoutEmbedding(ctx context.Context, resource *interfaces
 	return nil
 }
 
-func claimBuildTaskExecution(ctx context.Context, taskAccess interfaces.BuildTaskAccess, taskID string) (bool, error) {
+func claimBuildTaskExecution(ctx context.Context, bts interfaces.BuildTaskService, taskID string) (bool, error) {
 	allowedStatuses := []string{interfaces.BuildTaskStatusInit}
 	if retryCount, ok := asynq.GetRetryCount(ctx); ok && retryCount > 0 {
 		allowedStatuses = append(allowedStatuses, interfaces.BuildTaskStatusRunning)
 	}
-	return taskAccess.UpdateStatus(ctx, nil, taskID,
+	return bts.InternalUpdateStatus(ctx, nil, taskID,
 		interfaces.NewBuildTaskUpdate().
 			WithStatus(interfaces.BuildTaskStatusRunning).
 			WithErrorMsg(""),
@@ -338,10 +339,16 @@ func sendEmbeddingTask(client *asynq.Client, taskID string) error {
 		return err
 	} else {
 		embeddingTask := asynq.NewTask(interfaces.BuildTaskTypeEmbedding, payload)
+		if common.GetDebugMode() || client == nil {
+			if !build_task.EnqueueDebugTask(embeddingTask) {
+				return fmt.Errorf("debug build task queue is not initialized")
+			}
+			return nil
+		}
 		_, err = client.Enqueue(embeddingTask,
 			asynq.Queue(interfaces.DefaultQueue),
 			asynq.TaskID(fmt.Sprintf("%s-%s", interfaces.BuildTaskTypeEmbedding, taskID)),
-			asynq.MaxRetry(interfaces.BUILD_TASK_MAX_RETRY_COUNT),
+			asynq.MaxRetry(interfaces.TaskMaxRetryCount),
 			asynq.Timeout(math.MaxInt64),                                                  // 永不超时
 			asynq.Deadline(time.Unix(math.MaxInt64/1000000000, math.MaxInt64%1000000000)), // 永不过期
 		)

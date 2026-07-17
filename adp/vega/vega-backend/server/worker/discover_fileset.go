@@ -1,5 +1,4 @@
 // Copyright openbkn.ai
-// Copyright The kweaver.ai Authors.
 //
 // Licensed under the Apache License, Version 2.0.
 // See the LICENSE file in the project root for details.
@@ -13,7 +12,6 @@ import (
 	"github.com/openbkn-ai/bkn-comm-go/logger"
 
 	"vega-backend/interfaces"
-	"vega-backend/logics/connectors"
 )
 
 // filesetDiscoverItem represents a fileset discover item.
@@ -24,10 +22,10 @@ type filesetDiscoverItem struct {
 }
 
 // discoverFilesetResources discovers fileset resources from a fileset connector.
-func (dh *DiscoverHandler) discoverFilesetResources(ctx context.Context, catalog *interfaces.Catalog,
-	connector connectors.Connector, task *interfaces.DiscoverTask) (*interfaces.DiscoverResult, error) {
+func (dtw *DiscoverTaskWorker) discoverFilesetResources(ctx context.Context, catalog *interfaces.Catalog,
+	connector interfaces.Connector, task *interfaces.DiscoverTask) (*interfaces.DiscoverResult, error) {
 
-	filesetConnector, ok := connector.(connectors.FilesetConnector)
+	filesetConnector, ok := connector.(interfaces.FilesetConnector)
 	if !ok {
 		return nil, fmt.Errorf("connector does not support fileset discover")
 	}
@@ -38,17 +36,17 @@ func (dh *DiscoverHandler) discoverFilesetResources(ctx context.Context, catalog
 	}
 	logger.Infof("Discovered %d fileset objects from source", len(sourceFilesets))
 
-	existingResources, err := dh.rs.GetByCatalogID(ctx, catalog.ID)
+	existingResources, err := dtw.rs.GetByCatalogID(ctx, catalog.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get existing resources: %w", err)
 	}
 
-	result, items, err := dh.reconcileFilesetResources(ctx, catalog, sourceFilesets, existingResources, task.DiscoverActions)
+	result, items, err := dtw.reconcileFilesetResources(ctx, catalog, sourceFilesets, existingResources, task.DiscoverActions)
 	if err != nil {
 		return nil, fmt.Errorf("failed to reconcile fileset resources: %w", err)
 	}
 
-	if err := dh.enrichFilesetMetadata(ctx, items, result); err != nil {
+	if err := dtw.enrichFilesetMetadata(ctx, items, result); err != nil {
 		return nil, fmt.Errorf("failed to enrich fileset metadata: %w", err)
 	}
 
@@ -58,7 +56,7 @@ func (dh *DiscoverHandler) discoverFilesetResources(ctx context.Context, catalog
 	return result, nil
 }
 
-func (dh *DiscoverHandler) reconcileFilesetResources(ctx context.Context, catalog *interfaces.Catalog, source []*interfaces.FilesetMeta,
+func (dtw *DiscoverTaskWorker) reconcileFilesetResources(ctx context.Context, catalog *interfaces.Catalog, source []*interfaces.FilesetMeta,
 	existingResources []*interfaces.Resource, actions *interfaces.DiscoverActions) (*interfaces.DiscoverResult, []filesetDiscoverItem, error) {
 	result := &interfaces.DiscoverResult{
 		CatalogID: catalog.ID,
@@ -85,10 +83,10 @@ func (dh *DiscoverHandler) reconcileFilesetResources(ctx context.Context, catalo
 			markAfterEnrich := true
 			if actions != nil && actions.Refresh {
 				if resource.Status == interfaces.ResourceStatusStale {
-					if err := dh.rs.UpdateStatus(ctx, resource.ID, interfaces.ResourceStatusActive, ""); err != nil {
+					if err := dtw.rs.UpdateStatus(ctx, resource.ID, interfaces.ResourceStatusActive, ""); err != nil {
 						logger.Errorf("Failed to reactivate resource %s: %v", resource.ID, err)
 					} else {
-						dh.markDiscover(ctx, resource.ID, interfaces.DiscoverStatusRestored)
+						dtw.markDiscover(ctx, resource.ID, interfaces.DiscoverStatusRestored)
 						resource.Status = interfaces.ResourceStatusActive
 						resource.LastDiscoverStatus = interfaces.DiscoverStatusRestored
 						result.RestoredCount++
@@ -99,11 +97,11 @@ func (dh *DiscoverHandler) reconcileFilesetResources(ctx context.Context, catalo
 			}
 		} else {
 			if actions != nil && actions.Create {
-				resource, err := dh.createFilesetResource(ctx, catalog, fs, sourceIdentifier)
+				resource, err := dtw.createFilesetResource(ctx, catalog, fs, sourceIdentifier)
 				if err != nil {
 					logger.Errorf("Failed to create fileset resource %s: %v", sourceIdentifier, err)
 				} else {
-					dh.markDiscover(ctx, resource.ID, interfaces.DiscoverStatusNew)
+					dtw.markDiscover(ctx, resource.ID, interfaces.DiscoverStatusNew)
 					resource.LastDiscoverStatus = interfaces.DiscoverStatusNew
 					result.NewCount++
 					items = append(items, filesetDiscoverItem{resource: resource, meta: fs})
@@ -115,9 +113,9 @@ func (dh *DiscoverHandler) reconcileFilesetResources(ctx context.Context, catalo
 	if actions != nil && actions.MarkStale {
 		for sourceIdentifier, existing := range existingMap {
 			if _, ok := sourceMap[sourceIdentifier]; !ok {
-				dh.markDiscover(ctx, existing.ID, interfaces.DiscoverStatusMissing)
+				dtw.markDiscover(ctx, existing.ID, interfaces.DiscoverStatusMissing)
 				if existing.Status == interfaces.ResourceStatusActive {
-					if err := dh.rs.UpdateStatus(ctx, existing.ID, interfaces.ResourceStatusStale, ""); err != nil {
+					if err := dtw.rs.UpdateStatus(ctx, existing.ID, interfaces.ResourceStatusStale, ""); err != nil {
 						logger.Errorf("Failed to mark resource %s as stale: %v", existing.ID, err)
 					} else {
 						result.StaleCount++
@@ -137,7 +135,7 @@ func filesetSourceIdentifier(fs *interfaces.FilesetMeta) string {
 	return fs.ID
 }
 
-func (dh *DiscoverHandler) createFilesetResource(ctx context.Context, catalog *interfaces.Catalog, fs *interfaces.FilesetMeta, sourceIdentifier string) (*interfaces.Resource, error) {
+func (dtw *DiscoverTaskWorker) createFilesetResource(ctx context.Context, catalog *interfaces.Catalog, fs *interfaces.FilesetMeta, sourceIdentifier string) (*interfaces.Resource, error) {
 	meta := fs.SourceMetadata
 	if meta == nil {
 		meta = make(map[string]any)
@@ -153,14 +151,14 @@ func (dh *DiscoverHandler) createFilesetResource(ctx context.Context, catalog *i
 		SourceIdentifier: sourceIdentifier,
 		SourceMetadata:   meta,
 	}
-	resource, err := dh.rs.Create(ctx, req)
+	resource, err := dtw.rs.Create(ctx, req)
 	if err != nil {
 		return nil, err
 	}
 	return resource, nil
 }
 
-func (dh *DiscoverHandler) enrichFilesetMetadata(ctx context.Context, items []filesetDiscoverItem, result *interfaces.DiscoverResult) error {
+func (dtw *DiscoverTaskWorker) enrichFilesetMetadata(ctx context.Context, items []filesetDiscoverItem, result *interfaces.DiscoverResult) error {
 	for _, item := range items {
 		fs := item.meta
 		resource := item.resource
@@ -196,7 +194,7 @@ func (dh *DiscoverHandler) enrichFilesetMetadata(ctx context.Context, items []fi
 		}
 
 		resource.LastDiscoverStatus = discoverStatus
-		if err := dh.rs.UpdateResource(ctx, resource); err != nil {
+		if err := dtw.rs.UpdateResource(ctx, resource); err != nil {
 			logger.Errorf("Failed to update fileset resource %s: %v", resource.ID, err)
 			return err
 		}

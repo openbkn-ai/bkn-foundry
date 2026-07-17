@@ -55,14 +55,15 @@ func TestDiscoverTaskServiceGetAndList(t *testing.T) {
 		assert.Equal(t, "Alice", got.Creator.Name)
 	})
 
-	t.Run("get returns nil without account lookup", func(t *testing.T) {
+	t.Run("get returns not found without account lookup", func(t *testing.T) {
 		service, dta, _ := newTestDiscoverTaskService(t)
 		dta.EXPECT().GetByID(gomock.Any(), "missing").Return(nil, nil)
 
 		got, err := service.GetByID(context.Background(), "missing")
 
-		require.NoError(t, err)
 		assert.Nil(t, got)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "NotFound")
 	})
 
 	t.Run("list enriches creators", func(t *testing.T) {

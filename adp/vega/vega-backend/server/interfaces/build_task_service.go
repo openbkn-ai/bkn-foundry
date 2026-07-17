@@ -6,25 +6,44 @@
 
 package interfaces
 
-import "context"
+import (
+	"context"
+	"database/sql"
+
+	"github.com/hibiken/asynq"
+)
 
 //go:generate mockgen -source ../interfaces/build_task_service.go -destination ../interfaces/mock/mock_build_task_service.go
 
 // BuildTaskService defines build task business logic interface.
 type BuildTaskService interface {
-	// CreateBuildTask creates a new build task. resource_id and mode come from req.
-	CreateBuildTask(ctx context.Context, req *CreateBuildTaskRequest) (string, error)
-	// GetBuildTaskByID retrieves a build task by ID.
-	GetBuildTaskByID(ctx context.Context, id string) (*BuildTask, error)
-	// GetBuildTaskByResourceID retrieves a build task by resource ID.
-	GetBuildTaskByResourceID(ctx context.Context, resourceID string) (*BuildTask, error)
-	// ListBuildTasks retrieves build tasks with filters and pagination.
-	ListBuildTasks(ctx context.Context, params BuildTasksQueryParams) ([]*BuildTask, int64, error)
-	// StartBuildTask transitions a task from {init, stopped} to running (asynchronous; status persisted by worker).
-	StartBuildTask(ctx context.Context, taskID string, reset bool) error
-	// StopBuildTask transitions a task from running to stopping (asynchronous; status persisted by worker).
-	StopBuildTask(ctx context.Context, taskID string) error
-	// DeleteBuildTasks atomically deletes build tasks by IDs.
+	// Create creates a new build task. resource_id and mode come from req.
+	Create(ctx context.Context, req *CreateBuildTaskRequest) (string, error)
+	// GetByID retrieves a build task by ID.
+	GetByID(ctx context.Context, id string) (*BuildTask, error)
+	// GetByResourceID retrieves a build task by resource ID.
+	GetByResourceID(ctx context.Context, resourceID string) (*BuildTask, error)
+	// List retrieves build tasks with filters and pagination.
+	List(ctx context.Context, params BuildTasksQueryParams) ([]*BuildTask, int64, error)
+	// Start transitions a task from {init, stopped} to running (asynchronous; status persisted by worker).
+	Start(ctx context.Context, taskID string, reset bool) error
+	// Stop transitions a task from running to stopping (asynchronous; status persisted by worker).
+	Stop(ctx context.Context, taskID string) error
+	// Delete atomically deletes build tasks by IDs.
 	// Pre-validates: any missing id returns 404 unless ignoreMissing=true; any running/stopping id returns 409 (cannot be skipped).
-	DeleteBuildTasks(ctx context.Context, ids []string, ignoreMissing bool, deleteActiveIndex bool) error
+	Delete(ctx context.Context, ids []string, ignoreMissing bool, deleteActiveIndex bool) error
+
+	// DebugTaskQueue returns the in-process build task queue used in DEBUG_MODE.
+	DebugTaskQueue() <-chan *asynq.Task
+
+	// InternalGetByID retrieves a build task by ID for internal workers.
+	InternalGetByID(ctx context.Context, id string) (*BuildTask, error)
+	// InternalGetByCatalogID retrieves build tasks by catalog ID for internal workers.
+	InternalGetByCatalogID(ctx context.Context, catalogID string) ([]*BuildTask, error)
+	// InternalList retrieves build tasks for internal workers.
+	InternalList(ctx context.Context, params BuildTasksQueryParams) ([]*BuildTask, int64, error)
+	// InternalUpdateStatus updates a build task status for internal workers.
+	InternalUpdateStatus(ctx context.Context, tx *sql.Tx, id string, update BuildTaskUpdate, allowedStatuses ...string) (bool, error)
+	// InternalGetStatus retrieves the status of a build task for internal workers.
+	InternalGetStatus(ctx context.Context, id string) (string, error)
 }

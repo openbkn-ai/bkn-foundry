@@ -8,49 +8,46 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-comm-go/hydra"
+	hmock "github.com/openbkn-ai/bkn-comm-go/hydra/mock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 )
-
-type fakeHydra struct {
-	visitor hydra.Visitor
-	err     error
-
-	ctx     context.Context
-	request string
-}
-
-func (f *fakeHydra) Introspect(ctx context.Context, token string) (hydra.TokenIntrospectInfo, error) {
-	return hydra.TokenIntrospectInfo{}, nil
-}
-
-func (f *fakeHydra) VerifyToken(ctx context.Context, c *gin.Context) (hydra.Visitor, error) {
-	f.ctx = ctx
-	f.request = c.Request.URL.Path
-	return f.visitor, f.err
-}
 
 func TestHydraAuthAccessVerifyToken(t *testing.T) {
 	t.Run("delegates to hydra client", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
 		visitor := hydra.Visitor{ID: "user-1", Type: hydra.VisitorType_User}
-		fake := &fakeHydra{visitor: visitor}
-		access := &hydraAuthAccess{hydra: fake}
+		hydraClient := hmock.NewMockHydra(ctrl)
+		access := &hydraAuthAccess{hydra: hydraClient}
 		ctx := context.Background()
 		ginCtx := testGinContext("/api/resources")
+		hydraClient.EXPECT().
+			VerifyToken(ctx, ginCtx).
+			DoAndReturn(func(gotCtx context.Context, gotGinCtx *gin.Context) (hydra.Visitor, error) {
+				assert.Equal(t, ctx, gotCtx)
+				assert.Equal(t, "/api/resources", gotGinCtx.Request.URL.Path)
+				return visitor, nil
+			})
 
 		got, err := access.VerifyToken(ctx, ginCtx)
 
 		require.NoError(t, err)
 		assert.Equal(t, visitor, got)
-		assert.Equal(t, ctx, fake.ctx)
-		assert.Equal(t, "/api/resources", fake.request)
 	})
 
 	t.Run("returns hydra error", func(t *testing.T) {
-		fake := &fakeHydra{err: errors.New("invalid token")}
-		access := &hydraAuthAccess{hydra: fake}
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		hydraClient := hmock.NewMockHydra(ctrl)
+		access := &hydraAuthAccess{hydra: hydraClient}
+		ginCtx := testGinContext("/api/resources")
+		hydraClient.EXPECT().
+			VerifyToken(gomock.Any(), ginCtx).
+			Return(hydra.Visitor{}, errors.New("invalid token"))
 
-		got, err := access.VerifyToken(context.Background(), testGinContext("/api/resources"))
+		got, err := access.VerifyToken(context.Background(), ginCtx)
 
 		require.Error(t, err)
 		assert.ErrorContains(t, err, "invalid token")

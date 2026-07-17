@@ -17,22 +17,13 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"vega-backend/common"
 	"vega-backend/interfaces"
+	vmock "vega-backend/interfaces/mock"
 	"vega-backend/logics/query"
 )
-
-type fakeRawQueryService struct {
-	execute func(context.Context, *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error)
-}
-
-func (f fakeRawQueryService) Execute(
-	ctx context.Context,
-	req *interfaces.RawQueryRequest,
-) (*interfaces.RawQueryResponse, error) {
-	return f.execute(ctx, req)
-}
 
 func setupRawQueryHandlerTest(t *testing.T) *gin.Engine {
 	t.Helper()
@@ -52,19 +43,23 @@ func Test_RawQueryRestHandler_RawQuery(t *testing.T) {
 	const url = "/api/vega-backend/in/v1/resources/query"
 
 	t.Run("executes raw query with defaults", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		service := vmock.NewMockRawQueryService(ctrl)
+		service.EXPECT().
+			Execute(gomock.Any(), gomock.AssignableToTypeOf(&interfaces.RawQueryRequest{})).
+			DoAndReturn(func(_ context.Context, req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
+				assert.Equal(t, interfaces.ConnectorTypeMySQL, req.ResourceType)
+				assert.Equal(t, 10000, req.StreamSize)
+				assert.Equal(t, 60, req.QueryTimeout)
+				return &interfaces.RawQueryResponse{
+					Columns: []interfaces.ColumnInfo{{Name: "id", Type: "string"}},
+					Entries: []map[string]any{{"id": "1"}},
+				}, nil
+			})
 		engine := setupRawQueryHandlerTest(t)
 		patches := gomonkey.ApplyFunc(query.NewRawQueryService, func(*common.AppSetting) interfaces.RawQueryService {
-			return fakeRawQueryService{
-				execute: func(_ context.Context, req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
-					assert.Equal(t, interfaces.ConnectorTypeMySQL, req.ResourceType)
-					assert.Equal(t, 10000, req.StreamSize)
-					assert.Equal(t, 60, req.QueryTimeout)
-					return &interfaces.RawQueryResponse{
-						Columns: []interfaces.ColumnInfo{{Name: "id", Type: "string"}},
-						Entries: []map[string]any{{"id": "1"}},
-					}, nil
-				},
-			}
+			return service
 		})
 		defer patches.Reset()
 

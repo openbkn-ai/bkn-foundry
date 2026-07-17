@@ -55,6 +55,14 @@ func NewResourceAccess(appSetting *common.AppSetting) interfaces.ResourceAccess 
 
 // Create creates ra new Resource.
 func (ra *resourceAccess) Create(ctx context.Context, resource *interfaces.Resource) error {
+	return ra.create(ctx, nil, resource)
+}
+
+func (ra *resourceAccess) CreateWithTx(ctx context.Context, tx *sql.Tx, resource *interfaces.Resource) error {
+	return ra.create(ctx, tx, resource)
+}
+
+func (ra *resourceAccess) create(ctx context.Context, tx *sql.Tx, resource *interfaces.Resource) error {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Insert into resource")
 	defer span.End()
 
@@ -165,7 +173,11 @@ func (ra *resourceAccess) Create(ctx context.Context, resource *interfaces.Resou
 
 	otellog.LogInfo(ctx, fmt.Sprintf("Insert resource SQL: %s", sqlStr))
 
-	_, err = ra.db.ExecContext(ctx, sqlStr, vals...)
+	if tx != nil {
+		_, err = tx.ExecContext(ctx, sqlStr, vals...)
+	} else {
+		_, err = ra.db.ExecContext(ctx, sqlStr, vals...)
+	}
 	if err != nil {
 		otellog.LogError(ctx, "Insert resource failed", err)
 		return err
@@ -985,6 +997,14 @@ func (ra *resourceAccess) GetByCatalogID(ctx context.Context, catalogID string) 
 
 // UpdateStatus updates a Resource's status.
 func (ra *resourceAccess) UpdateStatus(ctx context.Context, id string, status string, statusMessage string) error {
+	return ra.updateStatus(ctx, nil, id, status, statusMessage)
+}
+
+func (ra *resourceAccess) UpdateStatusWithTx(ctx context.Context, tx *sql.Tx, id string, status string, statusMessage string) error {
+	return ra.updateStatus(ctx, tx, id, status, statusMessage)
+}
+
+func (ra *resourceAccess) updateStatus(ctx context.Context, tx *sql.Tx, id string, status string, statusMessage string) error {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Update resource status")
 	defer span.End()
 
@@ -1003,7 +1023,11 @@ func (ra *resourceAccess) UpdateStatus(ctx context.Context, id string, status st
 		return err
 	}
 
-	_, err = ra.db.ExecContext(ctx, sqlStr, vals...)
+	if tx != nil {
+		_, err = tx.ExecContext(ctx, sqlStr, vals...)
+	} else {
+		_, err = ra.db.ExecContext(ctx, sqlStr, vals...)
+	}
 	if err != nil {
 		span.SetStatus(codes.Error, "Update failed")
 		return err

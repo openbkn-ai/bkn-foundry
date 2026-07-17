@@ -1,5 +1,4 @@
 // Copyright openbkn.ai
-// Copyright The kweaver.ai Authors.
 //
 // Licensed under the Apache License, Version 2.0.
 // See the LICENSE file in the project root for details.
@@ -19,44 +18,58 @@ import (
 	"vega-backend/common"
 	"vega-backend/interfaces"
 	"vega-backend/logics"
+	"vega-backend/logics/build_task"
+	"vega-backend/logics/resource"
 )
 
 var (
-	taskWorkerOnce sync.Once
-	taskWorkerMgr  *TaskWorkerManger
+	taskWorkerMangerOnce sync.Once
+	taskWorkerManger     *TaskWorkerManger
 )
 
 // TaskWorkerManger provides unified task processing functionality.
 type TaskWorkerManger struct {
-	appSetting       *common.AppSetting
-	aqa              interfaces.AsynqAccess
-	discoverHandler  *DiscoverHandler
-	btBuildHandler   *batchBuildHandler
-	stBuildHandler   *streamingBuildHandler
-	embeddingHandler *embeddingHandler
+	appSetting *common.AppSetting
+	aqa        interfaces.AsynqAccess
+
+	bbw  *batchBuildWorker
+	bts  interfaces.BuildTaskService
+	ebw  *embeddingWorker
+	dtw  *DiscoverTaskWorker
+	sbw  *streamingBuildWorker
+	sutw *SemanticUnderstandingTaskWorker
 }
 
 // NewTaskWorkerManager creates or returns the singleton TaskWorkerManger.
 func NewTaskWorkerManager(appSetting *common.AppSetting) *TaskWorkerManger {
-	taskWorkerOnce.Do(func() {
-		taskWorkerMgr = &TaskWorkerManger{
-			appSetting:       appSetting,
-			aqa:              logics.AQA,
-			discoverHandler:  NewDiscoverHandler(appSetting),
-			btBuildHandler:   NewBatchBuildHandler(appSetting),
-			stBuildHandler:   NewStreamingBuildHandler(appSetting),
-			embeddingHandler: NewEmbeddingBuildHandler(appSetting),
+	taskWorkerMangerOnce.Do(func() {
+		rs := resource.NewResourceService(appSetting)
+		bts := build_task.NewBuildTaskService(appSetting, rs)
+		taskWorkerManger = &TaskWorkerManger{
+			appSetting: appSetting,
+			aqa:        logics.AQA,
+			bbw:        NewBatchBuildWorker(appSetting),
+			bts:        bts,
+			ebw:        NewEmbeddingBuildWorker(appSetting),
+			dtw:        NewDiscoverTaskWorker(appSetting),
+			sbw:        NewStreamingBuildWorker(appSetting),
+			sutw:       NewSemanticUnderstandingTaskWorker(appSetting),
 		}
 	})
-	return taskWorkerMgr
+	return taskWorkerManger
 }
 
 // Start starts the task worker.
-func (tw *TaskWorkerManger) Start() {
+func (twm *TaskWorkerManger) Start() {
+	if common.GetDebugMode() {
+		twm.startDebugSubscribers()
+		return
+	}
+
 	// Start server in a goroutine
 	go func() {
 		for {
-			if err := tw.Run(context.Background()); err != nil {
+			if err := twm.Run(context.Background()); err != nil {
 				logger.Errorf("Task worker failed: %v", err)
 			}
 			time.Sleep(1 * time.Second)
@@ -65,38 +78,57 @@ func (tw *TaskWorkerManger) Start() {
 
 	// 自愈对账：入队消息丢失（pod 更替/入队失败）的任务会永远停在 init（界面"排队中"），
 	// 周期对账把它们重新入队
-	go newBuildTaskReconciler().run()
+	go newBuildTaskReconciler(twm.bts).run()
 
-	if common.GetDebugMode() {
-		go func() {
-			logger.Info("debug task channel subscriber started")
-			for task := range tw.discoverHandler.dts.DebugTaskQueue() {
-				if err := tw.ProcessTask(context.Background(), task); err != nil {
-					logger.Errorf("debug task failed: %v", err)
-				}
+}
+
+func (twm *TaskWorkerManger) startDebugSubscribers() {
+	go func() {
+		logger.Info("debug discover task channel subscriber started")
+		for task := range twm.dtw.dts.DebugTaskQueue() {
+			if err := twm.ProcessTask(context.Background(), task); err != nil {
+				logger.Errorf("debug discover task failed: %v", err)
 			}
-		}()
-	}
+		}
+	}()
+	go func() {
+		logger.Info("debug semantic understanding task channel subscriber started")
+		for task := range twm.sutw.suts.DebugTaskQueue() {
+			if err := twm.ProcessTask(context.Background(), task); err != nil {
+				logger.Errorf("debug semantic understanding task failed: %v", err)
+			}
+		}
+	}()
+	go func() {
+		logger.Info("debug build task channel subscriber started")
+		for task := range twm.bts.DebugTaskQueue() {
+			if err := twm.ProcessTask(context.Background(), task); err != nil {
+				logger.Errorf("debug build task failed: %v", err)
+			}
+		}
+	}()
 }
 
 // Run runs the task worker.
-func (tw *TaskWorkerManger) Run(ctx context.Context) error {
+func (twm *TaskWorkerManger) Run(ctx context.Context) error {
 	defer func() {
 		if err := recover(); err != nil {
 			logger.Errorf("Task worker failed: %v", err)
 		}
 	}()
 
-	srv := tw.aqa.CreateServer()
+	srv := twm.aqa.CreateServer()
 
-	// Register task handlers
+	// Register task workers
 	mux := asynq.NewServeMux()
-	mux.Handle(interfaces.DiscoverTaskType, tw)
-	mux.Handle(interfaces.BuildTaskTypeBatch, tw)
-	mux.Handle(interfaces.BuildTaskTypeEmbedding, tw)
-	mux.Handle(interfaces.BuildTaskTypeStreaming, tw)
+	mux.Handle(interfaces.DiscoverTaskType, twm)
+	mux.Handle(interfaces.SemanticUnderstandingTaskType, twm)
 
-	logger.Infof("Task worker starting, listening for task types: %s, %s, %s, %s", interfaces.DiscoverTaskType, interfaces.BuildTaskTypeBatch, interfaces.BuildTaskTypeEmbedding, interfaces.BuildTaskTypeStreaming)
+	mux.Handle(interfaces.BuildTaskTypeBatch, twm)
+	mux.Handle(interfaces.BuildTaskTypeEmbedding, twm)
+	mux.Handle(interfaces.BuildTaskTypeStreaming, twm)
+
+	logger.Infof("Task worker starting, listening for task types: %s, %s, %s, %s, %s", interfaces.DiscoverTaskType, interfaces.SemanticUnderstandingTaskType, interfaces.BuildTaskTypeBatch, interfaces.BuildTaskTypeEmbedding, interfaces.BuildTaskTypeStreaming)
 	if err := srv.Run(mux); err != nil {
 		logger.Errorf("Task worker failed: %v", err)
 		return err
@@ -105,16 +137,18 @@ func (tw *TaskWorkerManger) Run(ctx context.Context) error {
 }
 
 // ProcessTask processes a task from the queue.
-func (tw *TaskWorkerManger) ProcessTask(ctx context.Context, task *asynq.Task) error {
+func (twm *TaskWorkerManger) ProcessTask(ctx context.Context, task *asynq.Task) error {
 	switch task.Type() {
 	case interfaces.DiscoverTaskType:
-		return tw.discoverHandler.HandleTask(ctx, task)
+		return twm.dtw.HandleTask(ctx, task)
+	case interfaces.SemanticUnderstandingTaskType:
+		return twm.sutw.HandleTask(ctx, task)
 	case interfaces.BuildTaskTypeBatch:
-		return tw.btBuildHandler.HandleTask(ctx, task)
+		return twm.bbw.HandleTask(ctx, task)
 	case interfaces.BuildTaskTypeEmbedding:
-		return tw.embeddingHandler.HandleTask(ctx, task)
+		return twm.ebw.HandleTask(ctx, task)
 	case interfaces.BuildTaskTypeStreaming:
-		return tw.stBuildHandler.HandleTask(ctx, task)
+		return twm.sbw.HandleTask(ctx, task)
 	default:
 		return fmt.Errorf("unknown task type: %s", task.Type())
 	}

@@ -14,19 +14,21 @@ import (
 )
 
 var (
-	DB  *sql.DB
-	AA  interfaces.AuthAccess
-	AQA interfaces.AsynqAccess
-	BTA interfaces.BuildTaskAccess
-	CA  interfaces.CatalogAccess
-	CTA interfaces.ConnectorTypeAccess
-	DSA interfaces.DiscoverScheduleAccess
-	DTA interfaces.DiscoverTaskAccess
-	KA  interfaces.KafkaAccess
-	MFA interfaces.ModelFactoryAccess
-	PA  interfaces.PermissionAccess
-	RA  interfaces.ResourceAccess
-	UMA interfaces.UserMgmtAccess
+	DB   *sql.DB
+	AA   interfaces.AuthAccess
+	AQA  interfaces.AsynqAccess
+	BAA  interfaces.BknAgentAccess
+	BTA  interfaces.BuildTaskAccess
+	CA   interfaces.CatalogAccess
+	CTA  interfaces.ConnectorTypeAccess
+	DSA  interfaces.DiscoverScheduleAccess
+	DTA  interfaces.DiscoverTaskAccess
+	KA   interfaces.KafkaAccess
+	MFA  interfaces.ModelFactoryAccess
+	PA   interfaces.PermissionAccess
+	RA   interfaces.ResourceAccess
+	SUTA interfaces.SemanticUnderstandingTaskAccess
+	UMA  interfaces.UserMgmtAccess
 )
 
 func SetDB(db *sql.DB) {
@@ -75,6 +77,14 @@ func SetPermissionAccess(pa interfaces.PermissionAccess) {
 
 func SetResourceAccess(ra interfaces.ResourceAccess) {
 	RA = ra
+}
+
+func SetBknAgentAccess(baa interfaces.BknAgentAccess) {
+	BAA = baa
+}
+
+func SetSemanticUnderstandingTaskAccess(suta interfaces.SemanticUnderstandingTaskAccess) {
+	SUTA = suta
 }
 
 func SetUserMgmtAccess(uma interfaces.UserMgmtAccess) {
