@@ -108,35 +108,6 @@ func (ots *objectTypeService) validateObjectTypeStrictExternalDeps(ctx context.C
 			}
 		}
 	}
-	if objectType.DataProperties != nil {
-		for _, prop := range objectType.DataProperties {
-			if prop.IndexConfig != nil && prop.IndexConfig.VectorConfig.Enabled && prop.IndexConfig.VectorConfig.ModelID != "" {
-				model, err := ots.mfa.GetModelByID(ctx, prop.IndexConfig.VectorConfig.ModelID)
-				if err != nil {
-					return rest.NewHTTPError(ctx, http.StatusBadRequest,
-						berrors.BknBackend_ObjectType_InvalidParameter).
-						WithErrorDetails(fmt.Sprintf("对象类[%s]属性[%s]的小模型[%s]获取失败: %s",
-							objectType.OTName, prop.Name, prop.IndexConfig.VectorConfig.ModelID, err.Error()))
-				}
-				if model == nil {
-					return rest.NewHTTPError(ctx, http.StatusBadRequest,
-						berrors.BknBackend_ObjectType_InvalidParameter).
-						WithErrorDetails(fmt.Sprintf("对象类[%s]属性[%s]的小模型[%s]不存在",
-							objectType.OTName, prop.Name, prop.IndexConfig.VectorConfig.ModelID))
-				}
-				if model.ModelType != interfaces.SMALL_MODEL_TYPE_EMBEDDING {
-					return rest.NewHTTPError(ctx, http.StatusBadRequest,
-						berrors.BknBackend_ObjectType_InvalidParameter_SmallModel).
-						WithErrorDetails(fmt.Sprintf("model type %s is not %s model", model.ModelType, interfaces.SMALL_MODEL_TYPE_EMBEDDING))
-				}
-				if model.EmbeddingDim == 0 || model.BatchSize == 0 || model.MaxTokens == 0 {
-					return rest.NewHTTPError(ctx, http.StatusBadRequest,
-						berrors.BknBackend_ObjectType_InvalidParameter_SmallModel).
-						WithErrorDetails(fmt.Sprintf("model %s has invalid embedding dim, batch size or max tokens", model.ModelID))
-				}
-			}
-		}
-	}
 	// Schema for logic properties (type, data_source) is validated in driveradapters.ValidateObjectType.
 	for _, lp := range objectType.LogicProperties {
 		switch lp.Type {
@@ -242,6 +213,8 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 				return []string{}, err
 			}
 		}
+
+		stripClientDataPropertyIndexConfig(objectType.DataProperties)
 
 		bknObj := logics.ToBKNObjectType(objectType)
 		objectType.BKNRawContent = bknsdk.SerializeObjectType(bknObj)
@@ -667,8 +640,30 @@ func (ots *objectTypeService) GetObjectTypesByIDs(ctx context.Context, tx *sql.T
 	return objectTypes, nil
 }
 
+func stripClientDataPropertyIndexConfig(properties []*interfaces.DataProperty) {
+	for _, property := range properties {
+		if property != nil {
+			property.IndexConfig = nil
+		}
+	}
+}
+
+func preserveExistingDataPropertyIndexConfig(existingProperties, nextProperties []*interfaces.DataProperty) {
+	existingIndexConfig := make(map[string]*interfaces.IndexConfig, len(existingProperties))
+	for _, property := range existingProperties {
+		if property != nil {
+			existingIndexConfig[property.Name] = property.IndexConfig
+		}
+	}
+	for _, property := range nextProperties {
+		if property != nil {
+			property.IndexConfig = existingIndexConfig[property.Name]
+		}
+	}
+}
+
 // hasDataPropertyIndexAffectingChanges 检测单个数据属性的关键字段是否发生变化
-// 影响索引的字段包括：Name, Type, IndexConfig, MappedField.Name, MappedField.Type
+// 影响索引的字段包括：Name, Type, MappedField.Name, MappedField.Type
 func hasDataPropertyIndexAffectingChanges(oldProp, newProp *interfaces.DataProperty) bool {
 	if oldProp == nil || newProp == nil {
 		return oldProp != newProp
@@ -684,39 +679,12 @@ func hasDataPropertyIndexAffectingChanges(oldProp, newProp *interfaces.DataPrope
 		return true
 	}
 
-	// 比较索引配置
-	if !compareIndexConfig(oldProp.IndexConfig, newProp.IndexConfig) {
-		return true // 如果配置不同，返回 true（有变化）
-	}
-
 	// 比较映射字段名称和类型
 	if !compareMappedField(oldProp.MappedField, newProp.MappedField) {
 		return true
 	}
 
 	return false
-}
-
-// compareIndexConfig 比较两个索引配置是否相同
-func compareIndexConfig(oldConfig, newConfig *interfaces.IndexConfig) bool {
-	if oldConfig == nil && newConfig == nil {
-		return true // 都为空 = 状态相同（都没有配置）
-	}
-	if oldConfig == nil || newConfig == nil {
-		return false // 一个为空一个不为空 = 状态不同
-	}
-
-	// 使用 JSON 序列化比较，确保准确性
-	oldBytes, err := sonic.Marshal(oldConfig)
-	if err != nil {
-		return false
-	}
-	newBytes, err := sonic.Marshal(newConfig)
-	if err != nil {
-		return false
-	}
-
-	return string(oldBytes) == string(newBytes)
 }
 
 // compareMappedField 比较两个映射字段是否相同（只比较 Name 和 Type）
@@ -810,9 +778,6 @@ func (ots *objectTypeService) UpdateObjectType(ctx context.Context, tx *sql.Tx, 
 	currentTime := time.Now().UnixMilli() // 对象类的update_time是int类型
 	objectType.UpdateTime = currentTime
 
-	bknObj := logics.ToBKNObjectType(objectType)
-	objectType.BKNRawContent = bknsdk.SerializeObjectType(bknObj)
-
 	if tx == nil {
 		// 0. 开始事务
 		tx, err = ots.db.Begin()
@@ -854,6 +819,15 @@ func (ots *objectTypeService) UpdateObjectType(ctx context.Context, tx *sql.Tx, 
 	}
 
 	// 检测数据属性是否有影响索引的变化
+	if oldObjectType != nil {
+		preserveExistingDataPropertyIndexConfig(oldObjectType.DataProperties, objectType.DataProperties)
+	} else {
+		stripClientDataPropertyIndexConfig(objectType.DataProperties)
+	}
+
+	bknObj := logics.ToBKNObjectType(objectType)
+	objectType.BKNRawContent = bknsdk.SerializeObjectType(bknObj)
+
 	if oldObjectType != nil && hasAnyDataPropertyIndexAffectingChanges(oldObjectType.DataProperties, objectType.DataProperties) {
 		// 更新索引状态为不可用
 		otStatus := *oldObjectType.Status
@@ -917,35 +891,6 @@ func (ots *objectTypeService) UpdateDataProperties(ctx context.Context,
 		return err
 	}
 
-	// When strictMode is true, validate embedding small model for any submitted property with vector index enabled.
-	if strictMode {
-		for _, prop := range dataProperties {
-			if prop.IndexConfig != nil && prop.IndexConfig.VectorConfig.Enabled {
-				model, err := ots.mfa.GetModelByID(ctx, prop.IndexConfig.VectorConfig.ModelID)
-				if err != nil {
-					return rest.NewHTTPError(ctx, http.StatusInternalServerError,
-						berrors.BknBackend_ObjectType_InternalError_GetSmallModelByIDFailed).
-						WithErrorDetails(err.Error())
-				}
-				if model == nil {
-					return rest.NewHTTPError(ctx, http.StatusNotFound,
-						berrors.BknBackend_ObjectType_SmallModelNotFound).
-						WithErrorDetails(fmt.Sprintf("small model %s not found", prop.IndexConfig.VectorConfig.ModelID))
-				}
-				if model.ModelType != interfaces.SMALL_MODEL_TYPE_EMBEDDING {
-					return rest.NewHTTPError(ctx, http.StatusBadRequest,
-						berrors.BknBackend_ObjectType_InvalidParameter_SmallModel).
-						WithErrorDetails(fmt.Sprintf("small model type %s is not %s model", model.ModelType, interfaces.SMALL_MODEL_TYPE_EMBEDDING))
-				}
-				if model.EmbeddingDim == 0 || model.BatchSize == 0 || model.MaxTokens == 0 {
-					return rest.NewHTTPError(ctx, http.StatusBadRequest,
-						berrors.BknBackend_ObjectType_InvalidParameter_SmallModel).
-						WithErrorDetails(fmt.Sprintf("small model %s has invalid embedding dim, batch size or max tokens", model.ModelID))
-				}
-			}
-		}
-	}
-
 	accountInfo := interfaces.AccountInfo{}
 	if ctx.Value(interfaces.ACCOUNT_INFO_KEY) != nil {
 		accountInfo = ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
@@ -954,34 +899,16 @@ func (ots *objectTypeService) UpdateDataProperties(ctx context.Context,
 	currentTime := time.Now().UnixMilli() // 对象类的update_time是int类型
 	objectType.UpdateTime = currentTime
 
-	// 深拷贝旧的数据属性，用于后续比较
-	oldDataPropertiesBytes, err := sonic.Marshal(objectType.DataProperties)
-	if err != nil {
-		otellog.LogError(ctx, "Failed to marshal old DataProperties, err", err)
-
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			berrors.BknBackend_ObjectType_InternalError).
-			WithErrorDetails(fmt.Sprintf("序列化旧数据属性失败: %s", err.Error()))
-	}
-
-	var oldDataProperties []*interfaces.DataProperty
-	err = sonic.Unmarshal(oldDataPropertiesBytes, &oldDataProperties)
-	if err != nil {
-		otellog.LogError(ctx, "Failed to unmarshal old DataProperties, err", err)
-
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			berrors.BknBackend_ObjectType_InternalError).
-			WithErrorDetails(fmt.Sprintf("反序列化旧数据属性失败: %s", err.Error()))
-	}
-
 	propMap := map[string]int{}
 	for idx, prop := range objectType.DataProperties {
 		propMap[prop.Name] = idx
 	}
 	for _, prop := range dataProperties {
 		if idx, ok := propMap[prop.Name]; ok {
+			prop.IndexConfig = objectType.DataProperties[idx].IndexConfig
 			objectType.DataProperties[idx] = prop // 更新已存在的数据属性
 		} else {
+			prop.IndexConfig = nil
 			objectType.DataProperties = append(objectType.DataProperties, prop) // 添加新的数据属性
 		}
 	}
@@ -1017,28 +944,6 @@ func (ots *objectTypeService) UpdateDataProperties(ctx context.Context,
 			}
 		}
 	}()
-
-	// 检测数据属性是否有影响索引的变化
-	if hasAnyDataPropertyIndexAffectingChanges(oldDataProperties, objectType.DataProperties) {
-		// 更新索引状态为不可用
-		if objectType.Status != nil {
-			otStatus := *objectType.Status
-			otStatus.IndexAvailable = false
-			otStatus.UpdateTime = currentTime
-			// UpdateDataProperties 方法没有 tx 参数，需要在内部管理事务
-			// 但为了保持一致性，我们使用 db.Exec 直接执行
-			err = ots.ota.UpdateObjectTypeStatus(ctx, tx, objectType.KNID, objectType.Branch, objectType.OTID, otStatus)
-			if err != nil {
-				otellog.LogError(ctx, "UpdateObjectTypeStatus error", err)
-
-				return rest.NewHTTPError(ctx, http.StatusInternalServerError,
-					berrors.BknBackend_ObjectType_InternalError).
-					WithErrorDetails(fmt.Sprintf("更新对象类索引状态失败: %s", err.Error()))
-			}
-
-			otellog.LogInfo(ctx, fmt.Sprintf("数据属性变化影响索引，已将对象类[%s]的索引状态设置为不可用", objectType.OTID))
-		}
-	}
 
 	// 更新模型信息
 	err = ots.ota.UpdateDataProperties(ctx, tx, objectType)
@@ -1396,6 +1301,7 @@ func (ots *objectTypeService) InsertDatasetData(ctx context.Context, objectTypes
 		docid := interfaces.GenerateConceptDocuemtnID(objectType.KNID, interfaces.MODULE_TYPE_OBJECT_TYPE,
 			objectType.OTID, objectType.Branch)
 		objectType.ModuleType = interfaces.MODULE_TYPE_OBJECT_TYPE
+		stripClientDataPropertyIndexConfig(objectType.DataProperties)
 
 		// Convert to map for dataset
 		docBytes, err := sonic.Marshal(objectType)
@@ -1986,25 +1892,6 @@ func (ots *objectTypeService) processConditionOperations(objectType *interfaces.
 				opMap[k] = v
 			}
 		case "vector":
-			opMap[cond.OperationKNN] = cond.OperationKNN
-		}
-
-		// 配置了keyword索引
-		if prop.IndexConfig != nil && prop.IndexConfig.KeywordConfig.Enabled {
-			// 把 keyword 支持的操作符添加
-			for k, v := range interfaces.DSL_KEYWORD_OPS_MAP {
-				opMap[k] = v
-			}
-		}
-		// 配置了full text索引,则可以做  match 的操作
-		if prop.IndexConfig != nil && prop.IndexConfig.FulltextConfig.Enabled {
-			opMap[cond.OperationMatch] = cond.OperationMatch
-			opMap[cond.OperationMultiMatch] = cond.OperationMultiMatch
-		}
-		// 配置了 vector 索引, 且向量化小模型是打开的,则可以做 knn 的操作
-		if prop.IndexConfig != nil && prop.IndexConfig.VectorConfig.Enabled &&
-			ots.appSetting.ServerSetting.DefaultSmallModelEnabled {
-
 			opMap[cond.OperationKNN] = cond.OperationKNN
 		}
 

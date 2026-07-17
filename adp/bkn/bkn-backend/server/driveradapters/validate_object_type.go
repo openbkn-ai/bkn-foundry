@@ -394,13 +394,6 @@ func ValidateDataProperty(ctx context.Context, dataProperty *interfaces.DataProp
 			WithErrorDetails(fmt.Sprintf("数据属性[%s]的映射字段名称不能为空", dataProperty.Name))
 	}
 
-	if dataProperty.IndexConfig != nil {
-		err = ValidateIndexConfig(ctx, *dataProperty.IndexConfig, strictMode)
-		if err != nil {
-			return err
-		}
-	}
-
 	return nil
 }
 

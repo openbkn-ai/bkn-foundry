@@ -611,6 +611,23 @@ func Test_ValidateDataProperty(t *testing.T) {
 			So(err, ShouldBeNil)
 		})
 
+		Convey("Success and preserves read-only object type index config metadata\n", func() {
+			prop := &interfaces.DataProperty{
+				Name:        "prop1",
+				Type:        "string",
+				DisplayName: "prop1",
+				IndexConfig: &interfaces.IndexConfig{
+					VectorConfig: interfaces.VectorConfig{
+						Enabled: true,
+						ModelID: "",
+					},
+				},
+			}
+			err := ValidateDataProperty(ctx, prop, true)
+			So(err, ShouldBeNil)
+			So(prop.IndexConfig, ShouldNotBeNil)
+		})
+
 		Convey("Failed with invalid property type\n", func() {
 			prop := &interfaces.DataProperty{
 				Name:        "prop1",

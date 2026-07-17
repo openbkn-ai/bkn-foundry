@@ -3497,45 +3497,54 @@ func Test_objectTypeService_DeleteObjectTypesByKnID(t *testing.T) {
 	})
 }
 
-func Test_compareIndexConfig(t *testing.T) {
-	Convey("Test compareIndexConfig\n", t, func() {
-		Convey("Both nil returns true\n", func() {
-			So(compareIndexConfig(nil, nil), ShouldBeTrue)
-		})
+func Test_stripClientDataPropertyIndexConfig(t *testing.T) {
+	Convey("Test stripClientDataPropertyIndexConfig\n", t, func() {
+		properties := []*interfaces.DataProperty{
+			nil,
+			{
+				Name: "prop1",
+				IndexConfig: &interfaces.IndexConfig{
+					KeywordConfig: interfaces.KeywordConfig{Enabled: true, IgnoreAboveLen: 256},
+				},
+			},
+		}
 
-		Convey("Old nil, new non-nil returns false\n", func() {
-			newCfg := &interfaces.IndexConfig{
-				KeywordConfig: interfaces.KeywordConfig{Enabled: true},
-			}
-			So(compareIndexConfig(nil, newCfg), ShouldBeFalse)
-		})
+		stripClientDataPropertyIndexConfig(properties)
 
-		Convey("Old non-nil, new nil returns false\n", func() {
-			oldCfg := &interfaces.IndexConfig{
-				KeywordConfig: interfaces.KeywordConfig{Enabled: true},
-			}
-			So(compareIndexConfig(oldCfg, nil), ShouldBeFalse)
-		})
+		So(properties[0], ShouldBeNil)
+		So(properties[1].IndexConfig, ShouldBeNil)
+	})
+}
 
-		Convey("Both equal returns true\n", func() {
-			cfg := &interfaces.IndexConfig{
-				KeywordConfig: interfaces.KeywordConfig{Enabled: true, IgnoreAboveLen: 256},
-			}
-			cfg2 := &interfaces.IndexConfig{
-				KeywordConfig: interfaces.KeywordConfig{Enabled: true, IgnoreAboveLen: 256},
-			}
-			So(compareIndexConfig(cfg, cfg2), ShouldBeTrue)
-		})
+func Test_preserveExistingDataPropertyIndexConfig(t *testing.T) {
+	Convey("Test preserveExistingDataPropertyIndexConfig\n", t, func() {
+		existing := []*interfaces.DataProperty{
+			{
+				Name: "prop1",
+				IndexConfig: &interfaces.IndexConfig{
+					KeywordConfig: interfaces.KeywordConfig{Enabled: true, IgnoreAboveLen: 256},
+				},
+			},
+		}
+		next := []*interfaces.DataProperty{
+			{
+				Name: "prop1",
+				IndexConfig: &interfaces.IndexConfig{
+					VectorConfig: interfaces.VectorConfig{Enabled: true, ModelID: "client-model"},
+				},
+			},
+			{
+				Name: "prop2",
+				IndexConfig: &interfaces.IndexConfig{
+					FulltextConfig: interfaces.FulltextConfig{Enabled: true, Analyzer: "ik_max_word"},
+				},
+			},
+		}
 
-		Convey("Different config returns false\n", func() {
-			oldCfg := &interfaces.IndexConfig{
-				KeywordConfig: interfaces.KeywordConfig{Enabled: true, IgnoreAboveLen: 256},
-			}
-			newCfg := &interfaces.IndexConfig{
-				KeywordConfig: interfaces.KeywordConfig{Enabled: false, IgnoreAboveLen: 256},
-			}
-			So(compareIndexConfig(oldCfg, newCfg), ShouldBeFalse)
-		})
+		preserveExistingDataPropertyIndexConfig(existing, next)
+
+		So(next[0].IndexConfig, ShouldEqual, existing[0].IndexConfig)
+		So(next[1].IndexConfig, ShouldBeNil)
 	})
 }
 

@@ -286,7 +286,7 @@ func TestObjectTypeTask_HandleObjectTypeTask(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 
-		Convey("Failed when GetModelByID returns error", func() {
+		Convey("Ignores legacy vector index config", func() {
 			objectTypeWithVector := &interfaces.ObjectType{
 				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
 					OTID:        "ot1",
@@ -319,53 +319,20 @@ func TestObjectTypeTask_HandleObjectTypeTask(t *testing.T) {
 			vectorTask.ja = ja
 			vectorTask.osa = osa
 
-			osa.EXPECT().IndexExists(gomock.Any(), gomock.Any()).Return(false, nil).AnyTimes()
-			osa.EXPECT().CreateIndex(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
-			mfa.EXPECT().GetModelByID(gomock.Any(), gomock.Any()).Return(nil, errors.New("model error")).AnyTimes()
-
-			err := vectorTask.HandleObjectTypeTask(ctx, jobInfo, taskInfo, objectTypeWithVector)
-			So(err, ShouldNotBeNil)
-		})
-
-		Convey("Failed when GetModelByID returns nil", func() {
-			objectTypeWithVector := &interfaces.ObjectType{
-				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
-					OTID:        "ot1",
-					PrimaryKeys: []string{"pk1"},
-					DataSource: &interfaces.ResourceInfo{
-						Type: "data_view",
-						ID:   "dv1",
-					},
-					DataProperties: []*interfaces.DataProperty{
-						{
-							Name: "pk1",
-							Type: "string",
-							MappedField: &interfaces.Field{
-								Name: "field1",
-								Type: "string",
-							},
-							IndexConfig: &interfaces.IndexConfig{
-								VectorConfig: interfaces.VectorConfig{
-									Enabled: true,
-									ModelID: "model1",
-								},
-							},
-						},
-					},
-				},
+			dataView := &interfaces.DataView{
+				ViewID:   "dv1",
+				ViewName: "test_view",
 			}
-			vectorTask := NewObjectTypeTask(appSetting, taskInfo, objectTypeWithVector)
-			vectorTask.dva = dva
-			vectorTask.mfa = mfa
-			vectorTask.ja = ja
-			vectorTask.osa = osa
 
-			osa.EXPECT().IndexExists(gomock.Any(), gomock.Any()).Return(false, nil).AnyTimes()
-			osa.EXPECT().CreateIndex(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
-			mfa.EXPECT().GetModelByID(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
+			osa.EXPECT().IndexExists(ctx, gomock.Any()).Return(false, nil)
+			osa.EXPECT().CreateIndex(ctx, gomock.Any(), gomock.Any()).Return(nil)
+			dva.EXPECT().GetDataViewByID(ctx, "dv1").Return(dataView, nil)
+			dva.EXPECT().GetDataStart(ctx, "dv1", "", nil, 100).Return(nil, errors.New("data view error"))
 
 			err := vectorTask.HandleObjectTypeTask(ctx, jobInfo, taskInfo, objectTypeWithVector)
 			So(err, ShouldNotBeNil)
+			So(objectTypeWithVector.DataProperties[0].IndexConfig, ShouldNotBeNil)
+			So(vectorTask.vectorProperties, ShouldBeEmpty)
 		})
 
 		Convey("Failed when GetDataStart returns error", func() {

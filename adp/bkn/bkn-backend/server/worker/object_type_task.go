@@ -121,25 +121,6 @@ func (ott *ObjectTypeTask) HandleObjectTypeTask(ctx context.Context, jobInfo *in
 		}
 
 		ott.propertyMapping[property.Name] = property.MappedField
-		if property.Type == "varchar" || property.Type == "string" || property.Type == "text" {
-			if property.IndexConfig != nil && property.IndexConfig.VectorConfig.Enabled {
-
-				model, err := ott.mfa.GetModelByID(ctx, property.IndexConfig.VectorConfig.ModelID)
-				if err != nil {
-					return err
-				}
-				if model == nil {
-					return fmt.Errorf("failed to get small model by id '%s'", property.IndexConfig.VectorConfig.ModelID)
-				}
-
-				ott.vectorProperties = append(ott.vectorProperties, &VectorProperty{
-					Name:           property.Name,
-					VectorField:    "_vector_" + property.Name,
-					Model:          model,
-					AllVectorResps: make([]*cond.VectorResp, 0),
-				})
-			}
-		}
 	}
 
 	// 判断主键是否有映射
@@ -332,33 +313,6 @@ func (ott *ObjectTypeTask) handlerIndex(ctx context.Context, index string, objec
 			continue
 		}
 		propConfig = deepcopy.Copy(propConfig)
-
-		if property.IndexConfig != nil {
-			switch property.Type {
-			case "string", "varchar", "keyword":
-				if property.IndexConfig.KeywordConfig.Enabled {
-					propConfig.(map[string]any)["ignore_above"] = property.IndexConfig.KeywordConfig.IgnoreAboveLen
-				}
-				if property.IndexConfig.FulltextConfig.Enabled {
-					textPropConfig := deepcopy.Copy(interfaces.KN_INDEX_PROP_TYPE_MAPPING["text"])
-					textPropConfig.(map[string]any)["analyzer"] = property.IndexConfig.FulltextConfig.Analyzer
-					propConfig.(map[string]any)["fields"] = map[string]any{
-						"text": textPropConfig,
-					}
-				}
-			case "text":
-				if property.IndexConfig.FulltextConfig.Enabled {
-					propConfig.(map[string]any)["analyzer"] = property.IndexConfig.FulltextConfig.Analyzer
-				}
-				if property.IndexConfig.KeywordConfig.Enabled {
-					keywordPropConfig := deepcopy.Copy(interfaces.KN_INDEX_PROP_TYPE_MAPPING["keyword"])
-					keywordPropConfig.(map[string]any)["ignore_above"] = property.IndexConfig.KeywordConfig.IgnoreAboveLen
-					propConfig.(map[string]any)["fields"] = map[string]any{
-						"keyword": keywordPropConfig,
-					}
-				}
-			}
-		}
 
 		propertiesMap[property.Name] = propConfig
 	}
