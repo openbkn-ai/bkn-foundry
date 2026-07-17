@@ -88,7 +88,24 @@ class TaskRow(Base):
 
 # ---- API schemas ----
 
-ToolRef = dict  # {"type": "mcp"|"toolbox"|"agent", ...}，M3/M7 扩展 toolbox/agent
+# {"type": "mcp"|"toolbox"|"agent", ...}。创建边界即校验形态：type 未知或缺必备
+# 引用字段的条目会让 agent 建成功但每次执行必败（load_tools 抛 400），与
+# max_output_tokens 越界同款问题，建时就拒。
+_TOOL_REQUIRED_KEY = {"mcp": "url", "toolbox": "box_id", "agent": "agent_id"}
+
+
+def _check_tool_refs(tools: list[dict]) -> list[dict]:
+    for ref in tools:
+        t = ref.get("type")
+        if t not in _TOOL_REQUIRED_KEY:
+            raise ValueError(f'工具类型未知：{ref}（type 只能是 {sorted(_TOOL_REQUIRED_KEY)}）')
+        key = _TOOL_REQUIRED_KEY[t]
+        if not ref.get(key):
+            raise ValueError(f"{t} 工具缺 {key}：{ref}")
+    return tools
+
+
+ToolRef = dict
 
 
 class AgentLimits(BaseModel):
@@ -119,7 +136,7 @@ class AgentSpec(BaseModel):
     prompt_id: Optional[str] = None
     prompt_vars_schema: Optional[dict[str, Any]] = None
     model: str = ""
-    tools: list[ToolRef] = Field(default_factory=list)
+    tools: Annotated[list[ToolRef], AfterValidator(_check_tool_refs)] = Field(default_factory=list)
     skills: list[str] = Field(default_factory=list)
     limits: Optional[AgentLimits] = None
     status: Literal["draft", "published"] = "draft"

@@ -199,3 +199,24 @@ def test_response_format_root_must_be_object():
                 {"properties": {}}):  # 缺 type 也拒，报错指明包 object
         with pytest.raises(ValidationError):
             ChatRequest(agent_id="a", message="m", response_format=bad)
+
+
+def test_tool_refs_validated_at_creation():
+    """ToolRef 建时校验：未知 type / 缺必备引用字段=建成功执行必败，边界即拒。"""
+    import pytest
+    from pydantic import ValidationError
+
+    from app.models import AgentSpec
+
+    ok = AgentSpec(name="t", mode="chat", tools=[
+        {"type": "toolbox", "box_id": "b1"},
+        {"type": "mcp", "url": "http://x/mcp"},
+        {"type": "agent", "agent_id": "a2"},
+    ])
+    assert len(ok.tools) == 3
+    for bad in ([{"type": "xxx"}],
+                [{"type": "toolbox"}],          # 缺 box_id
+                [{"type": "mcp"}],              # 缺 url
+                [{"type": "agent", "agent_id": ""}]):  # 空引用
+        with pytest.raises(ValidationError):
+            AgentSpec(name="t", mode="chat", tools=bad)
