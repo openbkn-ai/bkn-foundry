@@ -15,8 +15,9 @@ const (
 )
 
 type BknAgentRunRequest struct {
-	AgentID string `json:"agent_id"`
-	Message string `json:"message"`
+	AgentID        string         `json:"agent_id"`
+	Message        string         `json:"message"`
+	ResponseFormat map[string]any `json:"response_format,omitempty"`
 }
 
 type BknAgentRunResponse struct {

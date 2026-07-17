@@ -61,10 +61,15 @@ func (s *bknAgentService) Run(ctx context.Context, task *interfaces.SemanticUnde
 	if !json.Valid([]byte(task.Input)) {
 		return "", fmt.Errorf("input must be valid json")
 	}
+	responseFormat, err := semanticUnderstandingResponseFormat(task.Scope)
+	if err != nil {
+		return "", err
+	}
 
 	resp, err := s.baa.Run(ctx, &interfaces.BknAgentRunRequest{
-		AgentID: task.AgentID,
-		Message: task.Input,
+		AgentID:        task.AgentID,
+		Message:        task.Input,
+		ResponseFormat: responseFormat,
 	})
 	if err != nil {
 		span.SetStatus(codes.Error, "Run bkn-agent failed")
