@@ -9,6 +9,7 @@ package semantic_understanding_task
 import (
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -166,6 +167,9 @@ func (suts *semanticUnderstandingTaskService) createTask(ctx context.Context, ta
 	}
 
 	if err := suts.enqueueTask(ctx, task.ID); err != nil {
+		if _, markErr := suts.suta.MarkFailed(ctx, task.ID, fmt.Sprintf("failed to enqueue task: %v", err)); markErr != nil {
+			logger.Errorf("Failed to mark semantic understanding task failed after enqueue failure: id=%s, error=%v", task.ID, markErr)
+		}
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_InternalError_CreateResourcesFailed).
 			WithErrorDetails(err.Error())
 	}
@@ -235,6 +239,13 @@ func (suts *semanticUnderstandingTaskService) InternalGetByID(ctx context.Contex
 			WithErrorDetails(err.Error())
 	}
 	return task, nil
+}
+
+func (suts *semanticUnderstandingTaskService) InternalMarkApplied(ctx context.Context, tx *sql.Tx, id string, applied bool, applyDetailJSON string) (bool, error) {
+	if tx == nil {
+		return false, fmt.Errorf("transaction is required")
+	}
+	return suts.suta.MarkAppliedWithTx(ctx, tx, id, applied, time.Now().UnixMilli(), applyDetailJSON)
 }
 
 func (suts *semanticUnderstandingTaskService) List(ctx context.Context, params interfaces.SemanticUnderstandingTaskQueryParams) ([]*interfaces.SemanticUnderstandingTask, int64, error) {

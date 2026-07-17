@@ -416,6 +416,14 @@ func (a *semanticUnderstandingTaskAccess) MarkFailed(ctx context.Context, id str
 }
 
 func (a *semanticUnderstandingTaskAccess) MarkApplied(ctx context.Context, id string, applied bool, appliedTime int64, applyDetailJSON string) (bool, error) {
+	return a.markApplied(ctx, nil, id, applied, appliedTime, applyDetailJSON)
+}
+
+func (a *semanticUnderstandingTaskAccess) MarkAppliedWithTx(ctx context.Context, tx *sql.Tx, id string, applied bool, appliedTime int64, applyDetailJSON string) (bool, error) {
+	return a.markApplied(ctx, tx, id, applied, appliedTime, applyDetailJSON)
+}
+
+func (a *semanticUnderstandingTaskAccess) markApplied(ctx context.Context, tx *sql.Tx, id string, applied bool, appliedTime int64, applyDetailJSON string) (bool, error) {
 	updateColumns := map[string]any{
 		"f_applied":      applied,
 		"f_applied_time": appliedTime,
@@ -423,10 +431,14 @@ func (a *semanticUnderstandingTaskAccess) MarkApplied(ctx context.Context, id st
 	if applyDetailJSON != "" {
 		updateColumns["f_apply_detail_json"] = applyDetailJSON
 	}
-	return a.update(ctx, id, updateColumns, interfaces.SemanticUnderstandingTaskStatusSucceeded)
+	return a.updateWithTx(ctx, tx, id, updateColumns, interfaces.SemanticUnderstandingTaskStatusSucceeded)
 }
 
 func (a *semanticUnderstandingTaskAccess) update(ctx context.Context, id string, updateColumns map[string]any, allowedStatuses ...string) (bool, error) {
+	return a.updateWithTx(ctx, nil, id, updateColumns, allowedStatuses...)
+}
+
+func (a *semanticUnderstandingTaskAccess) updateWithTx(ctx context.Context, tx *sql.Tx, id string, updateColumns map[string]any, allowedStatuses ...string) (bool, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Mark semantic understanding task")
 	defer span.End()
 
@@ -444,7 +456,12 @@ func (a *semanticUnderstandingTaskAccess) update(ctx context.Context, id string,
 		return false, err
 	}
 
-	result, err := a.db.ExecContext(ctx, sqlStr, vals...)
+	var result sql.Result
+	if tx != nil {
+		result, err = tx.ExecContext(ctx, sqlStr, vals...)
+	} else {
+		result, err = a.db.ExecContext(ctx, sqlStr, vals...)
+	}
 	if err != nil {
 		otellog.LogError(ctx, "Mark semantic understanding task failed", err)
 		return false, err

@@ -7,6 +7,7 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/bytedance/sonic"
@@ -173,6 +174,93 @@ func TestSemanticUnderstandingTaskWorkerHandleTask(t *testing.T) {
 		require.NoError(t, err)
 	})
 
+	t.Run("resumes applying succeeded task", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+
+		taskService := vmock.NewMockSemanticUnderstandingTaskService(ctrl)
+		worker := &SemanticUnderstandingTaskWorker{suts: taskService}
+		semanticTask := &interfaces.SemanticUnderstandingTask{
+			ID:                  "semantic-task-1",
+			Scope:               interfaces.SemanticUnderstandingTaskScopeResource,
+			Status:              interfaces.SemanticUnderstandingTaskStatusSucceeded,
+			ApplyMode:           interfaces.SemanticUnderstandingApplyModeDryRun,
+			ConfidenceThreshold: 0.75,
+			Confidence:          0.9,
+			ResultJSON:          `{"confidence":0.9}`,
+			Creator:             interfaces.AccountInfo{ID: "account-1"},
+		}
+		taskService.EXPECT().
+			InternalGetByID(gomock.Any(), "semantic-task-1").
+			Return(semanticTask, nil)
+		taskService.EXPECT().
+			MarkApplied(ctxWithAccountID(t, "account-1"), "semantic-task-1", false, gomock.Any()).
+			Return(true, nil)
+
+		err := worker.HandleTask(context.Background(), semanticUnderstandingWorkerTask(t, "semantic-task-1"))
+
+		require.NoError(t, err)
+	})
+
+	t.Run("returns run error without marking failed", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+
+		taskService := vmock.NewMockSemanticUnderstandingTaskService(ctrl)
+		agentService := vmock.NewMockBknAgentService(ctrl)
+		worker := &SemanticUnderstandingTaskWorker{
+			suts: taskService,
+			bas:  agentService,
+		}
+
+		semanticTask := &interfaces.SemanticUnderstandingTask{
+			ID:      "semantic-task-1",
+			Status:  interfaces.SemanticUnderstandingTaskStatusPending,
+			AgentID: interfaces.SemanticUnderstandingResourceAgentID,
+			Input:   `{"resource":{"id":"resource-1"}}`,
+			Creator: interfaces.AccountInfo{ID: "account-1"},
+		}
+		taskService.EXPECT().
+			InternalGetByID(gomock.Any(), "semantic-task-1").
+			Return(semanticTask, nil)
+		agentService.EXPECT().
+			Run(ctxWithAccountID(t, "account-1"), semanticTask).
+			Return("", errors.New("temporary agent error"))
+
+		err := worker.HandleTask(context.Background(), semanticUnderstandingWorkerTask(t, "semantic-task-1"))
+
+		require.ErrorContains(t, err, "temporary agent error")
+	})
+
+	t.Run("returns wait error without marking failed", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+
+		taskService := vmock.NewMockSemanticUnderstandingTaskService(ctrl)
+		agentService := vmock.NewMockBknAgentService(ctrl)
+		worker := &SemanticUnderstandingTaskWorker{
+			suts: taskService,
+			bas:  agentService,
+		}
+
+		semanticTask := &interfaces.SemanticUnderstandingTask{
+			ID:          "semantic-task-1",
+			Status:      interfaces.SemanticUnderstandingTaskStatusRunning,
+			AgentTaskID: "agent-task-1",
+			Creator:     interfaces.AccountInfo{ID: "account-1"},
+		}
+		taskService.EXPECT().
+			InternalGetByID(gomock.Any(), "semantic-task-1").
+			Return(semanticTask, nil)
+		agentService.EXPECT().
+			WaitResult(ctxWithAccountID(t, "account-1"), "agent-task-1").
+			Return(nil, errors.New("temporary agent error"))
+
+		err := worker.HandleTask(context.Background(), semanticUnderstandingWorkerTask(t, "semantic-task-1"))
+
+		require.ErrorContains(t, err, "temporary agent error")
+	})
+
 	t.Run("marks unapplied detail when confidence is below threshold", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
@@ -234,7 +322,7 @@ func TestSemanticUnderstandingTaskWorkerApplyResourceResult(t *testing.T) {
 			ConfidenceThreshold: 0.9,
 		}
 
-		got, err := worker.applyResult(context.Background(), task, `{"confidence":0.8}`, 0.8)
+		got, err := worker.applyResult(context.Background(), task, `{"confidence":0.8}`, 0.8, nil)
 
 		require.NoError(t, err)
 		assert.False(t, got.Applied)
@@ -262,7 +350,7 @@ func TestSemanticUnderstandingTaskWorkerApplyResourceResult(t *testing.T) {
 				},
 			}, nil)
 
-		got, err := worker.applyResult(context.Background(), task, `{"confidence":0.8,"fields":[{"name":"missing","display_name":"Missing"}]}`, 0.8)
+		got, err := worker.applyResult(context.Background(), task, `{"confidence":0.8,"fields":[{"name":"missing","display_name":"Missing"}]}`, 0.8, nil)
 
 		require.Error(t, err)
 		assert.Nil(t, got)
@@ -277,7 +365,7 @@ func TestSemanticUnderstandingTaskWorkerApplyResourceResult(t *testing.T) {
 			ConfidenceThreshold: 0.75,
 		}
 
-		got, err := worker.applyResult(context.Background(), task, `{"confidence":0.9}`, 0.9)
+		got, err := worker.applyResult(context.Background(), task, `{"confidence":0.9}`, 0.9, nil)
 
 		require.NoError(t, err)
 		assert.False(t, got.Applied)
@@ -324,7 +412,7 @@ func TestSemanticUnderstandingTaskWorkerApplyCatalogResult(t *testing.T) {
 		Return(nil)
 
 	resultJSON := `{"confidence":0.84,"logic_views":[{"action":"create","name":"customer_order_summary","source_identifier":"customer_order_summary","description":"summary view","source_resources":["resource-1"],"logic_definition":[{"id":"source","type":"resource"},{"id":"output","type":"output","inputs":["source"]}],"confidence":0.82}],"obsolete_logic_views":[{"target_resource_id":"view-2","reason":"obsolete","confidence":0.91}]}`
-	got, err := worker.applyResult(context.Background(), task, resultJSON, 0.84)
+	got, err := worker.applyResult(context.Background(), task, resultJSON, 0.84, nil)
 
 	require.NoError(t, err)
 	require.NotNil(t, got)
@@ -348,7 +436,7 @@ func TestSemanticUnderstandingTaskWorkerApplyCatalogResultRejectsInvalidSourceId
 		Return([]*interfaces.Resource{{ID: "resource-1", CatalogID: "catalog-1", Category: interfaces.ResourceCategoryTable}}, nil)
 
 	resultJSON := `{"logic_views":[{"action":"create","name":"订单汇总","source_identifier":"order-summary","source_resources":["resource-1"],"logic_definition":[{"id":"source","type":"resource"}]}]}`
-	_, err := worker.applyCatalogResult(context.Background(), task, resultJSON)
+	_, err := worker.applyCatalogResult(context.Background(), task, resultJSON, nil)
 
 	require.ErrorContains(t, err, "source_identifier must be lower snake_case")
 }

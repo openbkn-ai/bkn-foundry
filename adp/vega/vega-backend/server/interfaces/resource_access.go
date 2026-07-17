@@ -17,6 +17,8 @@ import (
 type ResourceAccess interface {
 	// Create creates a new Resource.
 	Create(ctx context.Context, resource *Resource) error
+	// CreateWithTx creates a new Resource within a transaction.
+	CreateWithTx(ctx context.Context, tx *sql.Tx, resource *Resource) error
 	// GetByID retrieves a Resource by ID.
 	GetByID(ctx context.Context, id string) (*Resource, error)
 	// GetByIDs retrieves Resources by IDs.
@@ -37,6 +39,8 @@ type ResourceAccess interface {
 	Update(ctx context.Context, tx *sql.Tx, resource *Resource) error
 	// UpdateStatus updates a Resource's status.
 	UpdateStatus(ctx context.Context, id string, status string, statusMessage string) error
+	// UpdateStatusWithTx updates a Resource's status within a transaction.
+	UpdateStatusWithTx(ctx context.Context, tx *sql.Tx, id string, status string, statusMessage string) error
 	// UpdateDiscoverStatus updates a Resource's last discover status.
 	UpdateDiscoverStatus(ctx context.Context, id string, status string) error
 	// DeleteByIDs deletes Resources by IDs.

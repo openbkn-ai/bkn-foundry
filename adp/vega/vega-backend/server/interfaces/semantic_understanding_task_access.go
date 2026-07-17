@@ -7,6 +7,7 @@ package interfaces
 
 import (
 	"context"
+	"database/sql"
 )
 
 //go:generate mockgen -source ../interfaces/semantic_understanding_task_access.go -destination ../interfaces/mock/mock_semantic_understanding_task_access.go
@@ -24,4 +25,5 @@ type SemanticUnderstandingTaskAccess interface {
 	MarkSucceeded(ctx context.Context, id string, resultJSON string, confidence float64, confidenceDetailJSON string) (bool, error)
 	MarkFailed(ctx context.Context, id string, failureDetail string) (bool, error)
 	MarkApplied(ctx context.Context, id string, applied bool, appliedTime int64, applyDetailJSON string) (bool, error)
+	MarkAppliedWithTx(ctx context.Context, tx *sql.Tx, id string, applied bool, appliedTime int64, applyDetailJSON string) (bool, error)
 }

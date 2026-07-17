@@ -147,6 +147,44 @@ func TestSemanticUnderstandingTaskServiceCreate(t *testing.T) {
 		}
 	})
 
+	t.Run("marks task failed when enqueue fails", func(t *testing.T) {
+		t.Setenv("DEBUG_MODE", "false")
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+
+		taskAccess := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
+		client := asynq.NewClient(asynq.RedisClientOpt{
+			Addr:        "127.0.0.1:0",
+			DialTimeout: time.Millisecond,
+		})
+		t.Cleanup(func() { _ = client.Close() })
+		service := &semanticUnderstandingTaskService{
+			client: client,
+			suta:   taskAccess,
+		}
+
+		taskAccess.EXPECT().
+			FindActiveByInputHash(gomock.Any(), interfaces.SemanticUnderstandingTaskScopeResource, "input-hash").
+			Return(nil, nil)
+		taskAccess.EXPECT().
+			Create(gomock.Any(), gomock.AssignableToTypeOf(&interfaces.SemanticUnderstandingTask{})).
+			Return(nil)
+		taskAccess.EXPECT().
+			MarkFailed(gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ string, failureDetail string) (bool, error) {
+				assert.Contains(t, failureDetail, "failed to enqueue task")
+				return true, nil
+			})
+
+		got, err := service.createTask(context.Background(), &interfaces.SemanticUnderstandingTask{
+			Scope:     interfaces.SemanticUnderstandingTaskScopeResource,
+			InputHash: "input-hash",
+		})
+
+		require.Error(t, err)
+		assert.Nil(t, got)
+	})
+
 	t.Run("reuses active task with same input hash", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)

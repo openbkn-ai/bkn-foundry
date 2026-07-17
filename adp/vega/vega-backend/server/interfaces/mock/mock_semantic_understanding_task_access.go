@@ -11,6 +11,7 @@ package mock_interfaces
 
 import (
 	context "context"
+	sql "database/sql"
 	reflect "reflect"
 	interfaces "vega-backend/interfaces"
 
@@ -158,6 +159,21 @@ func (m *MockSemanticUnderstandingTaskAccess) MarkApplied(ctx context.Context, i
 func (mr *MockSemanticUnderstandingTaskAccessMockRecorder) MarkApplied(ctx, id, applied, appliedTime, applyDetailJSON any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkApplied", reflect.TypeOf((*MockSemanticUnderstandingTaskAccess)(nil).MarkApplied), ctx, id, applied, appliedTime, applyDetailJSON)
+}
+
+// MarkAppliedWithTx mocks base method.
+func (m *MockSemanticUnderstandingTaskAccess) MarkAppliedWithTx(ctx context.Context, tx *sql.Tx, id string, applied bool, appliedTime int64, applyDetailJSON string) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MarkAppliedWithTx", ctx, tx, id, applied, appliedTime, applyDetailJSON)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// MarkAppliedWithTx indicates an expected call of MarkAppliedWithTx.
+func (mr *MockSemanticUnderstandingTaskAccessMockRecorder) MarkAppliedWithTx(ctx, tx, id, applied, appliedTime, applyDetailJSON any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkAppliedWithTx", reflect.TypeOf((*MockSemanticUnderstandingTaskAccess)(nil).MarkAppliedWithTx), ctx, tx, id, applied, appliedTime, applyDetailJSON)
 }
 
 // MarkFailed mocks base method.

@@ -85,6 +85,20 @@ func (mr *MockResourceAccessMockRecorder) Create(ctx, resource any) *gomock.Call
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockResourceAccess)(nil).Create), ctx, resource)
 }
 
+// CreateWithTx mocks base method.
+func (m *MockResourceAccess) CreateWithTx(ctx context.Context, tx *sql.Tx, resource *interfaces.Resource) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateWithTx", ctx, tx, resource)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CreateWithTx indicates an expected call of CreateWithTx.
+func (mr *MockResourceAccessMockRecorder) CreateWithTx(ctx, tx, resource any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateWithTx", reflect.TypeOf((*MockResourceAccess)(nil).CreateWithTx), ctx, tx, resource)
+}
+
 // DeleteByCatalogIDs mocks base method.
 func (m *MockResourceAccess) DeleteByCatalogIDs(ctx context.Context, catalogIDs []string) error {
 	m.ctrl.T.Helper()
@@ -274,4 +288,18 @@ func (m *MockResourceAccess) UpdateStatus(ctx context.Context, id, status, statu
 func (mr *MockResourceAccessMockRecorder) UpdateStatus(ctx, id, status, statusMessage any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateStatus", reflect.TypeOf((*MockResourceAccess)(nil).UpdateStatus), ctx, id, status, statusMessage)
+}
+
+// UpdateStatusWithTx mocks base method.
+func (m *MockResourceAccess) UpdateStatusWithTx(ctx context.Context, tx *sql.Tx, id, status, statusMessage string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateStatusWithTx", ctx, tx, id, status, statusMessage)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateStatusWithTx indicates an expected call of UpdateStatusWithTx.
+func (mr *MockResourceAccessMockRecorder) UpdateStatusWithTx(ctx, tx, id, status, statusMessage any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateStatusWithTx", reflect.TypeOf((*MockResourceAccess)(nil).UpdateStatusWithTx), ctx, tx, id, status, statusMessage)
 }

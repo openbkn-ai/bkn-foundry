@@ -7,6 +7,7 @@ package interfaces
 
 import (
 	"context"
+	"database/sql"
 
 	"github.com/hibiken/asynq"
 )
@@ -28,4 +29,5 @@ type SemanticUnderstandingTaskService interface {
 	DebugTaskQueue() <-chan *asynq.Task
 
 	InternalGetByID(ctx context.Context, id string) (*SemanticUnderstandingTask, error)
+	InternalMarkApplied(ctx context.Context, tx *sql.Tx, id string, applied bool, applyDetailJSON string) (bool, error)
 }

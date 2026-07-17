@@ -53,4 +53,8 @@ type ResourceService interface {
 	InternalGetByID(ctx context.Context, id string) (*Resource, error)
 	// InternalUpdate updates a Resource for internal workers.
 	InternalUpdate(ctx context.Context, tx *sql.Tx, resource *Resource) error
+	// InternalCreate creates a Resource for internal workers within a transaction.
+	InternalCreate(ctx context.Context, tx *sql.Tx, req *ResourceRequest) (*Resource, error)
+	// InternalUpdateStatus updates a Resource status for internal workers within a transaction.
+	InternalUpdateStatus(ctx context.Context, tx *sql.Tx, id string, status string, statusMessage string) error
 }

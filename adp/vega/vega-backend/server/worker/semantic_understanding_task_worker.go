@@ -8,6 +8,7 @@ package worker
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"regexp"
 	"time"
@@ -19,6 +20,7 @@ import (
 
 	"vega-backend/common"
 	"vega-backend/interfaces"
+	"vega-backend/logics"
 	"vega-backend/logics/bkn_agent"
 	"vega-backend/logics/resource"
 	"vega-backend/logics/semantic_understanding_task"
@@ -65,17 +67,22 @@ func (sutw *SemanticUnderstandingTaskWorker) HandleTask(ctx context.Context, tas
 	}
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, taskInfo.Creator)
 
-	if taskInfo.Status == interfaces.SemanticUnderstandingTaskStatusSucceeded ||
-		taskInfo.Status == interfaces.SemanticUnderstandingTaskStatusFailed {
+	if taskInfo.Status == interfaces.SemanticUnderstandingTaskStatusFailed {
 		logger.Infof("Semantic understanding task already finished: id=%s, status=%s", taskInfo.ID, taskInfo.Status)
 		return nil
+	}
+	if taskInfo.Status == interfaces.SemanticUnderstandingTaskStatusSucceeded {
+		if taskInfo.AppliedTime != 0 {
+			logger.Infof("Semantic understanding task already applied: id=%s", taskInfo.ID)
+			return nil
+		}
+		return sutw.applyAndMark(ctx, taskInfo)
 	}
 
 	agentTaskID := taskInfo.AgentTaskID
 	if agentTaskID == "" {
 		agentTaskID, err = sutw.bas.Run(ctx, taskInfo)
 		if err != nil {
-			_, _ = sutw.suts.MarkFailed(ctx, taskInfo.ID, err.Error())
 			return err
 		}
 
@@ -91,7 +98,6 @@ func (sutw *SemanticUnderstandingTaskWorker) HandleTask(ctx context.Context, tas
 
 	agentTask, err := sutw.bas.WaitResult(ctx, agentTaskID)
 	if err != nil {
-		_, _ = sutw.suts.MarkFailed(ctx, taskInfo.ID, err.Error())
 		return err
 	}
 	if agentTask.Status == interfaces.BknAgentTaskStatusFailed {
@@ -105,19 +111,51 @@ func (sutw *SemanticUnderstandingTaskWorker) HandleTask(ctx context.Context, tas
 		return nil
 	}
 
-	applyResult, err := sutw.applyResult(ctx, taskInfo, resultJSON, confidence)
+	succeeded, err := sutw.suts.MarkSucceeded(ctx, taskInfo.ID, resultJSON, confidence, confidenceDetailJSON)
 	if err != nil {
-		_, _ = sutw.suts.MarkFailed(ctx, taskInfo.ID, err.Error())
-		return nil
-	}
-
-	if _, err = sutw.suts.MarkSucceeded(ctx, taskInfo.ID, resultJSON, confidence, confidenceDetailJSON); err != nil {
 		return err
 	}
-	if applyResult.DetailJSON != "" {
-		_, err = sutw.suts.MarkApplied(ctx, taskInfo.ID, applyResult.Applied, applyResult.DetailJSON)
+	if !succeeded {
+		return nil
 	}
-	return err
+	taskInfo.ResultJSON = resultJSON
+	taskInfo.Confidence = confidence
+	return sutw.applyAndMark(ctx, taskInfo)
+}
+
+func (sutw *SemanticUnderstandingTaskWorker) applyAndMark(ctx context.Context, task *interfaces.SemanticUnderstandingTask) error {
+	if logics.DB == nil {
+		applyResult, err := sutw.applyResult(ctx, task, task.ResultJSON, task.Confidence, nil)
+		if err != nil {
+			return err
+		}
+		_, err = sutw.suts.MarkApplied(ctx, task.ID, applyResult.Applied, applyResult.DetailJSON)
+		return err
+	}
+
+	tx, err := logics.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin semantic understanding apply transaction: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	applyResult, err := sutw.applyResult(ctx, task, task.ResultJSON, task.Confidence, tx)
+	if err != nil {
+		return err
+	}
+	if _, err := sutw.suts.InternalMarkApplied(ctx, tx, task.ID, applyResult.Applied, applyResult.DetailJSON); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	committed = true
+	return nil
 }
 
 func bknAgentFailureDetail(agentTask *interfaces.BknAgentTask) string {
@@ -235,7 +273,7 @@ func extractBknAgentResultJSON(result []byte) ([]byte, error) {
 	return nil, fmt.Errorf("agent task result json object is incomplete")
 }
 
-func (sutw *SemanticUnderstandingTaskWorker) applyResult(ctx context.Context, task *interfaces.SemanticUnderstandingTask, resultJSON string, confidence float64) (*interfaces.SemanticUnderstandingApplyResult, error) {
+func (sutw *SemanticUnderstandingTaskWorker) applyResult(ctx context.Context, task *interfaces.SemanticUnderstandingTask, resultJSON string, confidence float64, tx *sql.Tx) (*interfaces.SemanticUnderstandingApplyResult, error) {
 	if confidence < task.ConfidenceThreshold {
 		return skippedApplyResult(interfaces.SemanticUnderstandingSkippedApplyDetail{
 			Reason:              "confidence_below_threshold",
@@ -254,9 +292,9 @@ func (sutw *SemanticUnderstandingTaskWorker) applyResult(ctx context.Context, ta
 
 	switch task.Scope {
 	case interfaces.SemanticUnderstandingTaskScopeResource:
-		return sutw.applyResourceResult(ctx, task, resultJSON)
+		return sutw.applyResourceResult(ctx, task, resultJSON, tx)
 	case interfaces.SemanticUnderstandingTaskScopeCatalog:
-		return sutw.applyCatalogResult(ctx, task, resultJSON)
+		return sutw.applyCatalogResult(ctx, task, resultJSON, tx)
 	default:
 		return nil, fmt.Errorf("unsupported semantic understanding task scope: %s", task.Scope)
 	}
@@ -297,7 +335,7 @@ type resourceSemanticUnderstandingApplyDetail struct {
 	UpdatedFields   []string `json:"updated_fields,omitempty"`
 }
 
-func (sutw *SemanticUnderstandingTaskWorker) applyResourceResult(ctx context.Context, task *interfaces.SemanticUnderstandingTask, resultJSON string) (*interfaces.SemanticUnderstandingApplyResult, error) {
+func (sutw *SemanticUnderstandingTaskWorker) applyResourceResult(ctx context.Context, task *interfaces.SemanticUnderstandingTask, resultJSON string, tx *sql.Tx) (*interfaces.SemanticUnderstandingApplyResult, error) {
 	if task.ResourceID == "" {
 		return nil, fmt.Errorf("resource_id is required for resource semantic understanding task")
 	}
@@ -383,7 +421,12 @@ func (sutw *SemanticUnderstandingTaskWorker) applyResourceResult(ctx context.Con
 
 	resourceInfo.Updater = task.Creator
 	resourceInfo.UpdateTime = time.Now().UnixMilli()
-	if err := sutw.rs.UpdateResource(ctx, resourceInfo); err != nil {
+	if tx != nil {
+		err = sutw.rs.InternalUpdate(ctx, tx, resourceInfo)
+	} else {
+		err = sutw.rs.UpdateResource(ctx, resourceInfo)
+	}
+	if err != nil {
 		return nil, err
 	}
 
@@ -460,7 +503,7 @@ type catalogSemanticUnderstandingApplyDetail struct {
 	StaledResourceIDs  []string `json:"staled_resource_ids,omitempty"`
 }
 
-func (sutw *SemanticUnderstandingTaskWorker) applyCatalogResult(ctx context.Context, task *interfaces.SemanticUnderstandingTask, resultJSON string) (*interfaces.SemanticUnderstandingApplyResult, error) {
+func (sutw *SemanticUnderstandingTaskWorker) applyCatalogResult(ctx context.Context, task *interfaces.SemanticUnderstandingTask, resultJSON string, tx *sql.Tx) (*interfaces.SemanticUnderstandingApplyResult, error) {
 	if task.CatalogID == "" {
 		return nil, fmt.Errorf("catalog_id is required for catalog semantic understanding task")
 	}
@@ -502,7 +545,7 @@ func (sutw *SemanticUnderstandingTaskWorker) applyCatalogResult(ctx context.Cont
 		switch view.Action {
 		case "create":
 			sourceIdentifiers[view.SourceIdentifier] = struct{}{}
-			created, err := sutw.rs.Create(ctx, &interfaces.ResourceRequest{
+			req := &interfaces.ResourceRequest{
 				CatalogID:        task.CatalogID,
 				Name:             view.Name,
 				SourceIdentifier: view.SourceIdentifier,
@@ -510,7 +553,13 @@ func (sutw *SemanticUnderstandingTaskWorker) applyCatalogResult(ctx context.Cont
 				Category:         interfaces.ResourceCategoryLogicView,
 				Status:           interfaces.ResourceStatusActive,
 				LogicDefinition:  view.LogicDefinition,
-			})
+			}
+			var created *interfaces.Resource
+			if tx != nil {
+				created, err = sutw.rs.InternalCreate(ctx, tx, req)
+			} else {
+				created, err = sutw.rs.Create(ctx, req)
+			}
 			if err != nil {
 				return nil, err
 			}
@@ -521,7 +570,7 @@ func (sutw *SemanticUnderstandingTaskWorker) applyCatalogResult(ctx context.Cont
 			current := logicViewByID[view.TargetResourceID]
 			nextDescription := current.Description
 			applyStringByMode(task.ApplyMode, &nextDescription, view.Description)
-			if err := sutw.rs.Update(ctx, current, &interfaces.ResourceRequest{
+			next := &interfaces.ResourceRequest{
 				ID:              current.ID,
 				CatalogID:       current.CatalogID,
 				Name:            current.Name,
@@ -533,7 +582,17 @@ func (sutw *SemanticUnderstandingTaskWorker) applyCatalogResult(ctx context.Cont
 				SourceMetadata:  current.SourceMetadata,
 				IndexConfig:     current.IndexConfig,
 				LogicDefinition: view.LogicDefinition,
-			}); err != nil {
+			}
+			if tx != nil {
+				current.Description = nextDescription
+				current.LogicDefinition = view.LogicDefinition
+				current.Updater = task.Creator
+				current.UpdateTime = time.Now().UnixMilli()
+				err = sutw.rs.InternalUpdate(ctx, tx, current)
+			} else {
+				err = sutw.rs.Update(ctx, current, next)
+			}
+			if err != nil {
 				return nil, err
 			}
 			detail.UpdatedResourceIDs = append(detail.UpdatedResourceIDs, current.ID)
@@ -550,7 +609,12 @@ func (sutw *SemanticUnderstandingTaskWorker) applyCatalogResult(ctx context.Cont
 		if _, ok := logicViewByID[obsolete.TargetResourceID]; !ok {
 			return nil, fmt.Errorf("obsolete logic view %s does not exist in catalog input", obsolete.TargetResourceID)
 		}
-		if err := sutw.rs.UpdateStatus(ctx, obsolete.TargetResourceID, interfaces.ResourceStatusStale, obsolete.Reason); err != nil {
+		if tx != nil {
+			err = sutw.rs.InternalUpdateStatus(ctx, tx, obsolete.TargetResourceID, interfaces.ResourceStatusStale, obsolete.Reason)
+		} else {
+			err = sutw.rs.UpdateStatus(ctx, obsolete.TargetResourceID, interfaces.ResourceStatusStale, obsolete.Reason)
+		}
+		if err != nil {
 			return nil, err
 		}
 		detail.StaledResourceIDs = append(detail.StaledResourceIDs, obsolete.TargetResourceID)

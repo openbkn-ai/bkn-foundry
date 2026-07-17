@@ -93,23 +93,23 @@ func (s *bknAgentService) WaitResult(ctx context.Context, agentTaskID string) (*
 	if maxPolls <= 0 {
 		maxPolls = 1
 	}
+	var lastGetTaskErr error
 	for i := 0; i < maxPolls; i++ {
 		task, err := s.baa.GetTask(ctx, agentTaskID)
 		if err != nil {
-			span.SetStatus(codes.Error, "Get bkn-agent task failed")
-			return nil, err
-		}
-		if task == nil {
+			lastGetTaskErr = err
+		} else if task == nil {
 			return nil, fmt.Errorf("agent task %s not found", agentTaskID)
-		}
-		switch task.Status {
-		case interfaces.BknAgentTaskStatusSucceeded,
-			interfaces.BknAgentTaskStatusFailed:
-			return task, nil
-		case interfaces.BknAgentTaskStatusPending,
-			interfaces.BknAgentTaskStatusRunning:
-		default:
-			return nil, fmt.Errorf("unknown agent task status: %s", task.Status)
+		} else {
+			switch task.Status {
+			case interfaces.BknAgentTaskStatusSucceeded,
+				interfaces.BknAgentTaskStatusFailed:
+				return task, nil
+			case interfaces.BknAgentTaskStatusPending,
+				interfaces.BknAgentTaskStatusRunning:
+			default:
+				return nil, fmt.Errorf("unknown agent task status: %s", task.Status)
+			}
 		}
 
 		if i == maxPolls-1 {
@@ -120,6 +120,10 @@ func (s *bknAgentService) WaitResult(ctx context.Context, agentTaskID string) (*
 			return nil, ctx.Err()
 		case <-time.After(s.pollInterval):
 		}
+	}
+	if lastGetTaskErr != nil {
+		span.SetStatus(codes.Error, "Get bkn-agent task failed")
+		return nil, fmt.Errorf("get agent task %s failed after %d polls: %w", agentTaskID, maxPolls, lastGetTaskErr)
 	}
 	return nil, fmt.Errorf("agent task %s did not finish after %d polls", agentTaskID, maxPolls)
 }

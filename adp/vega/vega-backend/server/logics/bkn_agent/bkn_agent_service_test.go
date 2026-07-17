@@ -7,6 +7,7 @@ package bkn_agent
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -97,5 +98,32 @@ func TestBknAgentServiceWaitResult(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, interfaces.BknAgentTaskStatusFailed, got.Status)
 		assert.Equal(t, "agent failed", got.FailureDetail)
+	})
+
+	t.Run("retries transient get task errors", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+
+		agentAccess := vmock.NewMockBknAgentAccess(ctrl)
+		service := &bknAgentService{
+			baa:          agentAccess,
+			pollInterval: time.Millisecond,
+			maxPolls:     2,
+		}
+
+		agentAccess.EXPECT().
+			GetTask(gomock.Any(), "agent-task-1").
+			Return(nil, errors.New("temporary network error"))
+		agentAccess.EXPECT().
+			GetTask(gomock.Any(), "agent-task-1").
+			Return(&interfaces.BknAgentTask{
+				TaskID: "agent-task-1",
+				Status: interfaces.BknAgentTaskStatusSucceeded,
+			}, nil)
+
+		got, err := service.WaitResult(context.Background(), "agent-task-1")
+
+		require.NoError(t, err)
+		assert.Equal(t, interfaces.BknAgentTaskStatusSucceeded, got.Status)
 	})
 }

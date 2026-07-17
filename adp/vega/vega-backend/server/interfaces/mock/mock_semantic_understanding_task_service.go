@@ -11,6 +11,7 @@ package mock_interfaces
 
 import (
 	context "context"
+	sql "database/sql"
 	reflect "reflect"
 	interfaces "vega-backend/interfaces"
 
@@ -128,6 +129,21 @@ func (m *MockSemanticUnderstandingTaskService) InternalGetByID(ctx context.Conte
 func (mr *MockSemanticUnderstandingTaskServiceMockRecorder) InternalGetByID(ctx, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalGetByID", reflect.TypeOf((*MockSemanticUnderstandingTaskService)(nil).InternalGetByID), ctx, id)
+}
+
+// InternalMarkApplied mocks base method.
+func (m *MockSemanticUnderstandingTaskService) InternalMarkApplied(ctx context.Context, tx *sql.Tx, id string, applied bool, applyDetailJSON string) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InternalMarkApplied", ctx, tx, id, applied, applyDetailJSON)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// InternalMarkApplied indicates an expected call of InternalMarkApplied.
+func (mr *MockSemanticUnderstandingTaskServiceMockRecorder) InternalMarkApplied(ctx, tx, id, applied, applyDetailJSON any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalMarkApplied", reflect.TypeOf((*MockSemanticUnderstandingTaskService)(nil).InternalMarkApplied), ctx, tx, id, applied, applyDetailJSON)
 }
 
 // List mocks base method.
