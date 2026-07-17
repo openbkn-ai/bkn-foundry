@@ -1,5 +1,8 @@
 -- bkn-agent 建表（Epic #202）。共享 openbkn 库，agent_ 前缀，纯新增零 ALTER。
 -- 由全局 core-data-migrator pre-upgrade hook 执行，幂等。
+-- USE 必须有：migrator 连接不带默认库，缺它执行报 1046 No database selected
+-- （与其他服务 init.sql 同惯例）。
+USE openbkn;
 
 create table if not exists t_agent
 (
