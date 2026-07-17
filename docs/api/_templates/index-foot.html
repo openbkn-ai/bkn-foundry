@@ -1,24 +1,4 @@
-  <div class="no-hit" id="nohit">没有匹配的资源</div>
 </main>
 </div>
-<script>
-  var q = document.getElementById('q');
-  var cards = [].slice.call(document.querySelectorAll('.card'));
-  var mods = [].slice.call(document.querySelectorAll('.mod'));
-  var nohit = document.getElementById('nohit');
-  q.addEventListener('input', function(){
-    var v = q.value.trim().toLowerCase(), any = false;
-    cards.forEach(function(c){
-      var hit = c.dataset.name.indexOf(v) > -1;
-      c.style.display = hit ? '' : 'none';
-      if (hit) any = true;
-    });
-    mods.forEach(function(m){
-      var vis = [].slice.call(m.querySelectorAll('.card')).some(function(c){ return c.style.display !== 'none'; });
-      m.style.display = vis ? '' : 'none';
-    });
-    nohit.style.display = any ? 'none' : 'block';
-  });
-</script>
 </body>
 </html>

@@ -9,12 +9,11 @@
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
   .wrap{max-width:960px;margin:0 auto;padding:56px 24px 96px}
-  header .logo{height:40px;width:auto;display:block;margin:0 0 20px}
-  header h1{font-size:30px;letter-spacing:-.02em;margin:0 0 8px}
+  header{padding:0 0 28px;border-bottom:1px solid var(--line);margin:0 0 8px}
+  header .logo{height:72px;width:auto;display:block;margin:0 0 28px}
+  header h1{font-size:34px;letter-spacing:-.02em;margin:0 0 10px}
   header p{color:var(--muted);font-size:16px;margin:0 0 24px}
-  .search{width:100%;max-width:420px;padding:10px 14px;font-size:15px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--fg);outline:none}
-  .search:focus{border-color:var(--acc)}
-  .auth{margin:18px 0 8px}
+  .auth{margin:18px 0 0}
   .auth a{display:inline-block;font-size:14px;color:var(--acc);text-decoration:none;border:1px solid var(--line);border-radius:8px;padding:8px 14px}
   .auth a:hover{border-color:var(--acc)}
   .mod{margin:34px 0 0}
@@ -27,7 +26,6 @@
   .card:hover{transform:translateY(-2px);border-color:var(--acc)}
   .card .name{font-weight:600;font-size:15px}
   .card .arrow{color:var(--acc);margin-left:8px}
-  .no-hit{color:var(--muted);font-size:14px;display:none;margin-top:20px}
 </style>
 </head>
 <body>
@@ -36,7 +34,6 @@
   <img class="logo" src="./openbkn-logo.png" alt="OpenBKN">
   <h1>BKN Foundry API 文档中心</h1>
   <p>各服务的 OpenAPI 交互式文档 —— 点开任意资源查看端点、参数与示例（新标签页打开）。</p>
-  <input class="search" id="q" type="search" placeholder="过滤资源…" autocomplete="off">
   <div class="auth"><a href="./auth.html" target="_blank" rel="noopener">🔑 认证说明 · 如何获取并携带 Token &rarr;</a></div>
 </header>
 <main id="list">
