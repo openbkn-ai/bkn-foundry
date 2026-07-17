@@ -126,6 +126,7 @@ jobs:
             echo '<!doctype html><html lang="zh"><head><meta charset="utf-8">'
             echo '<meta name="viewport" content="width=device-width,initial-scale=1">'
             echo '<title>BKN Foundry API 文档中心</title>'
+            echo '<link rel="icon" type="image/png" href="versions/main/favicon.png">'
             echo '<style>body{margin:0;font:16px system-ui,sans-serif;color:#12212b}.bar{display:flex;gap:12px;align-items:center;padding:12px 20px;border-bottom:1px solid #e4eaf0;background:#fff}.bar b{font-size:15px}select{padding:6px 10px;font-size:14px;border:1px solid #e4eaf0;border-radius:8px}iframe{border:0;width:100%;height:calc(100vh - 50px);display:block}</style>'
             echo '</head><body>'
             echo '<div class="bar"><label>版本 <select id="v" onchange="document.getElementById(&quot;f&quot;).src=&quot;versions/&quot;+this.value+&quot;/index.html&quot;"></select></label></div>'
