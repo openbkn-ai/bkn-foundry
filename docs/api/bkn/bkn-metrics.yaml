@@ -184,88 +184,6 @@ paths:
                     description: 当 valid 为 false 时的说明
         "400":
           description: 请求参数错误等；业务校验「不通过」由 200 + valid:false + detail 表达
-  /api/bkn-backend/v1/knowledge-networks/{kn_id}/metrics/{metric_id}:
-    get:
-      summary: 获取指标详情
-      parameters:
-        - name: kn_id
-          in: path
-          required: true
-          schema:
-            type: string
-          description: 业务知识网络ID
-        - name: metric_id
-          in: path
-          required: true
-          schema:
-            type: string
-          description: 指标ID
-        - name: branch
-          in: query
-          schema:
-            type: string
-          description: 分支，不填则使用 main 分支
-      responses:
-        "200":
-          description: ok
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/MetricDefinition"
-    put:
-      summary: 更新指标
-      parameters:
-        - name: kn_id
-          in: path
-          required: true
-          schema:
-            type: string
-        - name: metric_id
-          in: path
-          required: true
-          schema:
-            type: string
-        - name: branch
-          in: query
-          schema:
-            type: string
-          description: 分支，不填则使用 main 分支
-        - name: strict_mode
-          in: query
-          schema:
-            type: boolean
-            default: true
-          description: 是否严格校验依赖，默认为 true
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/UpdateMetricRequest"
-      responses:
-        "204":
-          description: ok
-    delete:
-      summary: 删除指标
-      parameters:
-        - name: kn_id
-          in: path
-          required: true
-          schema:
-            type: string
-        - name: metric_id
-          in: path
-          required: true
-          schema:
-            type: string
-        - name: branch
-          in: query
-          schema:
-            type: string
-          description: 分支，不填则使用 main 分支
-      responses:
-        "204":
-          description: ok
   /api/bkn-backend/v1/knowledge-networks/{kn_id}/metrics/{metric_ids}:
     get:
       summary: 批量获取指标详情
@@ -296,6 +214,42 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/MetricDefinitions"
+    put:
+      summary: 更新指标
+      description: "更新指标定义。路由为 `metrics/{metric_ids}`（与批量获取 / 删除同槽）。需 `Content-Type: application/json`。"
+      parameters:
+        - name: kn_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: 业务知识网络ID
+        - name: metric_ids
+          in: path
+          required: true
+          schema:
+            type: string
+          description: 指标ID
+        - name: branch
+          in: query
+          schema:
+            type: string
+          description: 分支，不填则使用 main 分支
+        - name: strict_mode
+          in: query
+          schema:
+            type: boolean
+            default: true
+          description: 是否严格校验依赖，默认为 true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateMetricRequest"
+      responses:
+        "204":
+          description: ok
     delete:
       summary: 批量删除指标
       parameters:

@@ -109,6 +109,117 @@ paths:
           description: 未授权
         '404':
           description: 知识网络不存在
+  /api/bkn-backend/v1/knowledge-networks/names:
+    post:
+      tags:
+        - BKN
+      summary: 按 ID 批量取知识网络名称
+      description: "按 ID 批量回显知识网络名称（用于对象级授权页等）。不存在的 ID 略过，不报错。需 `Content-Type: application/json`。"
+      operationId: queryKNNamesByIDs
+      security:
+        - OAuth2: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ids:
+                  type: array
+                  description: 待取名的知识网络 ID 列表，空列表返回空 entries
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entries:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+        '400':
+          description: 请求参数错误
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
+        '401':
+          description: 未授权
+  /api/bkn-backend/v1/resources:
+    get:
+      tags:
+        - BKN
+      summary: 列出资源
+      description: 按资源类型分页列出资源（统一资源平台）。当前支持 `resource_type=kn`（知识网络）。
+      operationId: listResources
+      security:
+        - OAuth2: []
+      parameters:
+        - name: resource_type
+          in: query
+          required: true
+          description: 资源类型，如 `kn`
+          schema:
+            type: string
+        - name: keyword
+          in: query
+          description: 名称关键字过滤，默认空
+          schema:
+            type: string
+        - name: offset
+          in: query
+          description: 偏移量，默认 0
+          schema:
+            type: integer
+            format: int64
+            default: 0
+        - name: limit
+          in: query
+          description: 每页条数，默认 10
+          schema:
+            type: integer
+            format: int64
+            default: 10
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entries:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        type:
+                          type: string
+                        id:
+                          type: string
+                        name:
+                          type: string
+                  total_count:
+                    type: integer
+                    format: int64
+        '400':
+          description: 请求参数错误
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
+        '401':
+          description: 未授权
 
 components:
   securitySchemes:
