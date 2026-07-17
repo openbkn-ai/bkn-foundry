@@ -39,12 +39,15 @@ async def load_skills(capability_ids: list[str], account_id: str, account_type: 
     now = time.monotonic()
     async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as session:
         for cid in dict.fromkeys(capability_ids):
-            cached = _cache.get(cid)
+            # 缓存键含调用方身份：capabilities-lab 可能按账户授权私有技能，只按
+            # capability_id 缓存会让 TTL 窗口内 B 拿到 A 的私有正文且不重发 B 身份。
+            key = (account_type, account_id, cid)
+            cached = _cache.get(key)
             if cached and now - cached[0] < config.SKILL_CACHE_TTL_S:
                 parts.append(cached[1])
                 continue
             content = await _fetch_skill_content(session, cid, headers)
-            _cache[cid] = (now, content)
+            _cache[key] = (now, content)
             parts.append(content)
     body = "\n\n---\n\n".join(parts)
     return (

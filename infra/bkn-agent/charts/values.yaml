@@ -1,3 +1,10 @@
+# 必须保持 1。bkn-agent 当前有进程内状态、不跨副本：
+#   - 一次性任务是进程内 asyncio 任务（重启回收见 dao.recover_stale_tasks）
+#   - 同 thread 并发保护 _busy_threads 是进程内集合
+#   - 算子工厂全量同步在进程内串行
+# 多副本会导致：启动回收误杀别的副本活跃任务 / 同 thread 落不同副本并发写
+# checkpoint / 同步互相覆盖。真·多副本需分布式协调（任务租约+分布式锁+同步选主），
+# 见 issue #246。配合 deployment 的 maxSurge=0（滚动无重叠），单副本语义安全。
 replicaCount: 1
 
 namespace: openbkn

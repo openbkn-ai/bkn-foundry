@@ -10,6 +10,7 @@
 import time
 
 from fastapi import APIRouter, Depends
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import dao
@@ -88,6 +89,8 @@ async def import_agents(
             )
             continue
         try:
+            # 单事务：prompt 与 agent 都 flush（commit=False），末尾一起 commit。
+            # 任一步失败整体 rollback——不再出现「prompt 新版本已生效但 agent 导入失败」的半写。
             if item.prompt:
                 prompt_action = await dao.upsert_prompt_with_id(
                     session,
@@ -96,18 +99,20 @@ async def import_agents(
                     item.prompt.content,
                     item.prompt.vars_schema,
                     account.account_id,
+                    commit=False,
                 )
             agent, action = await dao.upsert_agent_with_id(
-                session, item.agent_id, item.spec, account.account_id
+                session, item.agent_id, item.spec, account.account_id, commit=False
             )
-        except ValueError as e:  # 预检与写入之间的并发窗口（他人同时占了名字）
-            await session.rollback()
+            await session.commit()
+        except (ValueError, IntegrityError) as e:  # 并发占名：ValueError 预检 / IntegrityError 唯一键兜底
+            await session.rollback()  # 未提交，prompt 也一并撤销，不留半写
             results.append(
                 ImportItemResult(
                     agent_id=item.agent_id,
                     name=item.spec.name,
                     action="failed",
-                    prompt_action=prompt_action,  # prompt 可能已写入，如实上报
+                    prompt_action="none",  # 整体回滚，prompt 未生效
                     error=str(e),
                 )
             )

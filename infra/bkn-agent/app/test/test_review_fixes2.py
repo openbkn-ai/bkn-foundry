@@ -1,0 +1,148 @@
+"""PR #237 第二轮审核：技能缓存按账户、原生结构化校验、toolbox 同步串行合并、import 单事务。"""
+import asyncio
+
+from langchain_core.messages import AIMessage
+
+SCHEMA = {"type": "object", "properties": {"greeting": {"type": "string"}}, "required": ["greeting"]}
+
+
+# ---------- P1-A 技能缓存键含账户 ----------
+
+def test_skills_cache_keyed_by_account(monkeypatch):
+    from app.core import skills
+
+    skills._cache.clear()
+    fetched = []
+
+    async def fake_fetch(session, cid, headers):
+        fetched.append((headers["x-account-id"], cid))
+        return f"content-for-{headers['x-account-id']}"
+
+    monkeypatch.setattr(skills, "_fetch_skill_content", fake_fetch)
+    a = asyncio.run(skills.load_skills(["cap1"], "acc-A", "user"))
+    b = asyncio.run(skills.load_skills(["cap1"], "acc-B", "user"))
+    # 两账户各自 fetch（B 不复用 A 的缓存正文），各拿自己的内容
+    assert ("acc-A", "cap1") in fetched and ("acc-B", "cap1") in fetched
+    assert "content-for-acc-A" in a and "content-for-acc-B" in b
+    # 同账户第二次命中缓存（不再 fetch）
+    fetched.clear()
+    asyncio.run(skills.load_skills(["cap1"], "acc-A", "user"))
+    assert fetched == []
+
+
+# ---------- P2-A 原生结构化也过 schema 校验 ----------
+
+def test_native_invalid_falls_back(monkeypatch):
+    from app.core.structured import structured_extract
+
+    class M:
+        def with_structured_output(self, schema):
+            class _R:
+                async def ainvoke(self, m):
+                    return {"wrong": 1}  # 缺 required greeting → 不合法
+            return _R()
+
+        async def ainvoke(self, m):
+            return AIMessage(content='{"greeting": "ok"}')  # 降级合法
+
+    out = asyncio.run(structured_extract(M(), [], SCHEMA))
+    assert out == {"greeting": "ok"}  # 原生不合法未被当成功，落降级拿到合法结果
+
+
+def test_native_valid_returned():
+    from app.core.structured import structured_extract
+
+    class M:
+        def with_structured_output(self, schema):
+            class _R:
+                async def ainvoke(self, m):
+                    return {"greeting": "pong"}
+            return _R()
+
+    out = asyncio.run(structured_extract(M(), [], SCHEMA))
+    assert out == {"greeting": "pong"}
+
+
+# ---------- P1-D toolbox 同步串行 + 合并 ----------
+
+def test_resync_serialized_and_coalesced(monkeypatch):
+    from app.bootstrap import toolbox_sync
+
+    monkeypatch.setattr(toolbox_sync.config, "TOOLBOX_SYNC_ENABLED", True)
+    state = {"concurrent": 0, "max": 0, "count": 0}
+
+    async def fake_sync_once():
+        state["concurrent"] += 1
+        state["max"] = max(state["max"], state["concurrent"])
+        state["count"] += 1
+        await asyncio.sleep(0.01)
+        state["concurrent"] -= 1
+        return 0
+
+    monkeypatch.setattr(toolbox_sync, "sync_once", fake_sync_once)
+    toolbox_sync._resync_queued = False
+
+    async def drive():
+        for _ in range(5):  # 突发 5 次变更
+            toolbox_sync.schedule_resync()
+        while toolbox_sync._background:
+            await asyncio.gather(*list(toolbox_sync._background))
+
+    asyncio.run(drive())
+    assert state["max"] == 1  # 从不并发（串行，消除旧快照覆盖新的）
+    assert state["count"] <= 2  # 突发合并成 ≤2 次实际同步
+
+
+# ---------- P2-B import 单事务：agent 失败整体回滚 ----------
+
+def test_import_single_transaction_rolls_back(monkeypatch):
+    from fastapi.testclient import TestClient
+    from sqlalchemy.exc import IntegrityError
+
+    from app import dao
+    from app.bootstrap import toolbox_sync
+    from app.db import get_session
+    from app.main import app
+
+    committed = {"n": 0}
+    rolled = {"n": 0}
+
+    class _S:
+        async def commit(self):
+            committed["n"] += 1
+
+        async def rollback(self):
+            rolled["n"] += 1
+
+    async def fake_session():
+        yield _S()
+
+    async def fake_conflict(session, agent_id, agent_name, prompt_id, prompt_name):
+        return None  # 预检放过，让写入阶段的 IntegrityError 兜底
+
+    async def fake_prompt(session, prompt_id, name, content, vars_schema, account_id, commit=True):
+        return "created"  # flush 成功
+
+    async def fake_agent(session, agent_id, spec, account_id, commit=True):
+        raise IntegrityError("INSERT", {}, Exception("Duplicate f_name"))  # agent 写入撞唯一键
+
+    app.dependency_overrides[get_session] = fake_session
+    monkeypatch.setattr(dao, "check_import_conflict", fake_conflict)
+    monkeypatch.setattr(dao, "upsert_prompt_with_id", fake_prompt)
+    monkeypatch.setattr(dao, "upsert_agent_with_id", fake_agent)
+    monkeypatch.setattr(toolbox_sync, "schedule_resync", lambda: None)
+    try:
+        client = TestClient(app, raise_server_exceptions=False)
+        pkg = {"package": {"format": "bkn-agent/v1", "exported_at": 1, "items": [{
+            "agent_id": "a1",
+            "spec": {"name": "dup", "mode": "chat", "status": "draft"},
+            "prompt": {"prompt_id": "p1", "name": "pp", "content": "x"},
+        }]}}
+        r = client.post("/api/bkn-agent/v1/import", headers={
+            "x-account-id": "u", "x-account-type": "user", "Content-Type": "application/json"}, json=pkg)
+        assert r.status_code == 200  # 单 item 失败不炸整包
+        item = r.json()["results"][0]
+        assert item["action"] == "failed" and item["prompt_action"] == "none"  # prompt 未生效
+        assert rolled["n"] >= 1 and committed["n"] == 0  # 回滚了，没提交半写
+    finally:
+        app.dependency_overrides.clear()

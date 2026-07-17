@@ -210,7 +210,11 @@ async def set_task_status(
 async def recover_stale_tasks(session: AsyncSession) -> int:
     """启动时兜底：进程内 asyncio 任务不跨重启存活，落库仍为 pending/running 的
     任务在上次进程里已丢失，全部标 failed，避免 GET /tasks 永久悬挂在非终态。
-    返回被回收的数量。"""
+    返回被回收的数量。
+
+    **前提：单副本**（chart replicaCount=1 + maxSurge=0，滚动无重叠）。无条件回收全表
+    pending/running 只在单副本下安全；多副本会误杀别的副本活跃任务，需任务租约/owner
+    才能放开（见 values.yaml 副本约束说明）。"""
     now = _now_ms()
     result = await session.execute(
         update(TaskRow)
@@ -333,7 +337,8 @@ async def list_prompts(session: AsyncSession, page: int, size: int):
 
 
 async def publish_prompt_version(
-    session: AsyncSession, prompt_id: str, content: str, vars_schema: Optional[dict], account_id: str
+    session: AsyncSession, prompt_id: str, content: str, vars_schema: Optional[dict], account_id: str,
+    commit: bool = True,
 ):
     head = await session.get(PromptRow, prompt_id)
     if not head:
@@ -360,7 +365,10 @@ async def publish_prompt_version(
     head.f_current_version = latest + 1
     head.f_update_user = account_id
     head.f_update_time = now
-    await session.commit()
+    if commit:
+        await session.commit()
+    else:
+        await session.flush()
     return await _prompt_out(session, head)
 
 
@@ -438,7 +446,7 @@ async def check_import_conflict(
 
 
 async def upsert_agent_with_id(
-    session: AsyncSession, agent_id: str, spec: AgentSpec, account_id: str
+    session: AsyncSession, agent_id: str, spec: AgentSpec, account_id: str, commit: bool = True
 ) -> tuple[AgentOut, str]:
     """按 agent_id upsert（导入语义：幂等，重复导入=同步更新）。
     返回 (agent, "created"|"updated")。同名不同 id 抛 ValueError。"""
@@ -466,7 +474,10 @@ async def upsert_agent_with_id(
     row.f_status = spec.status
     row.f_update_user = account_id
     row.f_update_time = now
-    await session.commit()
+    if commit:
+        await session.commit()
+    else:
+        await session.flush()
     return _to_out(row), action
 
 
@@ -477,6 +488,7 @@ async def upsert_prompt_with_id(
     content: str,
     vars_schema: Optional[dict],
     account_id: str,
+    commit: bool = True,
 ) -> str:
     """按 prompt_id upsert。已存在且内容有变 → 发布新版本（目标环境自己长版本
     历史）；无变化 no-op。返回 "created"|"version_published"|"unchanged"。
@@ -506,10 +518,13 @@ async def upsert_prompt_with_id(
                 f_create_time=now,
             )
         )
-        await session.commit()
+        if commit:
+            await session.commit()
+        else:
+            await session.flush()
         return "created"
     current = await session.get(PromptVersionRow, (prompt_id, head.f_current_version))
     if current and current.f_content == content and current.f_vars_schema == vars_schema:
         return "unchanged"
-    await publish_prompt_version(session, prompt_id, content, vars_schema, account_id)
+    await publish_prompt_version(session, prompt_id, content, vars_schema, account_id, commit=commit)
     return "version_published"

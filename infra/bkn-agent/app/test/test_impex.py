@@ -15,6 +15,9 @@ class _FakeSession:
     async def rollback(self):
         pass
 
+    async def commit(self):
+        pass
+
 
 async def _fake_session():
     yield _FakeSession()
@@ -67,11 +70,11 @@ def test_export_then_import_roundtrip(monkeypatch):
 
     upserts = []
 
-    async def fake_upsert_agent(session, agent_id, spec, account_id):
+    async def fake_upsert_agent(session, agent_id, spec, account_id, commit=True):
         upserts.append(agent_id)
         return _agent(agent_id, spec.name), "created"
 
-    async def fake_upsert_prompt(session, prompt_id, name, content, vars_schema, account_id):
+    async def fake_upsert_prompt(session, prompt_id, name, content, vars_schema, account_id, commit=True):
         return "version_published"
 
     async def no_conflict(session, agent_id, agent_name, prompt_id, prompt_name):
@@ -106,11 +109,11 @@ def test_import_conflict_precheck_writes_nothing_and_isolates_item(monkeypatch):
     async def fake_conflict(session, agent_id, agent_name, prompt_id, prompt_name):
         return f"agent 名「{agent_name}」已被 a-x 占用" if agent_name == "taken" else None
 
-    async def fake_upsert_agent(session, agent_id, spec, account_id):
+    async def fake_upsert_agent(session, agent_id, spec, account_id, commit=True):
         written["agents"].append(agent_id)
         return _agent(agent_id, spec.name), "updated"
 
-    async def fake_upsert_prompt(session, prompt_id, name, content, vars_schema, account_id):
+    async def fake_upsert_prompt(session, prompt_id, name, content, vars_schema, account_id, commit=True):
         written["prompts"].append(prompt_id)
         return "version_published"
 

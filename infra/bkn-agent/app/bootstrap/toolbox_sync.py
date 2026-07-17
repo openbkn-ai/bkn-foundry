@@ -246,15 +246,29 @@ def start_startup_sync() -> None:
     _spawn(_startup_loop())
 
 
-def schedule_resync() -> None:
-    """agent 增删改后触发。失败仅告警——下次变更或重启兜底，不做重试风暴。"""
-    if not config.TOOLBOX_SYNC_ENABLED:
-        return
+_sync_lock = asyncio.Lock()
+_resync_queued = False
 
-    async def _once() -> None:
+
+async def _serialized_resync() -> None:
+    global _resync_queued
+    # 串行化：sync_once 是「读快照→整包替换」，并发跑时较早快照若最后到达会覆盖较新
+    # 状态（已删 agent 复活/最新改动丢失）。锁保证同一时刻只有一个整包替换，
+    # 且下一个在锁内读到的是最新快照。
+    async with _sync_lock:
+        _resync_queued = False  # 进入执行即清标记：之后的变更会另排一次，读到本次之后的状态
         try:
             await sync_once()
         except Exception as e:
             logger.warning("[ToolboxSync] resync failed (will catch up on next change/restart): %s", e)
 
-    _spawn(_once())
+
+def schedule_resync() -> None:
+    """agent 增删改后触发。串行+合并：已有排队的同步会读到最新状态，突发多次变更合并成一次。"""
+    if not config.TOOLBOX_SYNC_ENABLED:
+        return
+    global _resync_queued
+    if _resync_queued:  # 已有一次在排队，它会读到最新状态，本次并入
+        return
+    _resync_queued = True
+    _spawn(_serialized_resync())

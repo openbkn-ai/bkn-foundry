@@ -36,9 +36,13 @@ async def structured_extract(model, messages: list, schema: dict) -> dict:
     try:
         norm = normalize_response_format(schema)
         r = await model.with_structured_output(norm).ainvoke(messages)
-        return r.model_dump() if hasattr(r, "model_dump") else dict(r)
-    except Exception as e:  # 模型不支持结构化 → 降级
-        logger.warning("[Structured] 原生结构化失败，降级到提示词模式：%s", e)
+        obj = r.model_dump() if hasattr(r, "model_dump") else dict(r)
+        # 原生也校验：with_structured_output 未启 strict，可能缺 required/类型不符；
+        # 不合法则不当成功返回，落到下面提示词降级重试。
+        _jsonschema_validate(obj, schema)
+        return obj
+    except Exception as e:  # 模型不支持结构化或原生结果不合法 → 降级
+        logger.warning("[Structured] 原生结构化失败/不合法，降级到提示词模式：%s", e)
 
     # 2. 提示词强制 JSON + 校验 + 重试一次
     instr = (
