@@ -67,16 +67,15 @@ api-docs-html:
 	  mkdir -p "$(HTML_DIR)/$$m"; \
 	  desc=$$(make -s print-moddesc MOD="$$m"); \
 	  count=$$(ls $(API_DIR)/$$m/*.yaml 2>/dev/null | wc -l | tr -d ' '); \
-	  printf '<section class="mod">\n<div class="mod-h"><h2>%s</h2><span class="count">%s</span></div>\n' "$$m" "$$count" >> "$$idx"; \
-	  [ -n "$$desc" ] && printf '<p class="mod-desc">%s</p>\n' "$$desc" >> "$$idx"; \
-	  printf '<div class="grid">\n' >> "$$idx"; \
+	  printf '<div class="mod">\n<div class="mod-title">%s<span class="count">%s</span></div>\n' "$$m" "$$count" >> "$$idx"; \
+	  [ -n "$$desc" ] && printf '<div class="mod-desc">%s</div>\n' "$$desc" >> "$$idx"; \
 	  for y in $(API_DIR)/$$m/*.yaml; do \
 	    [ -e "$$y" ] || continue; \
 	    base=$$(basename "$$y" .yaml); \
 	    npx @redocly/cli build-docs "$$y" -o "$(HTML_DIR)/$$m/$$base.html" >/dev/null 2>&1 || { echo "build-docs failed: $$y"; exit 1; }; \
-	    printf '<a class="card" data-name="%s" href="./%s/%s.html" target="_blank" rel="noopener"><span class="arrow">&rarr;</span><span class="name">%s</span></a>\n' "$$base" "$$m" "$$base" "$$base" >> "$$idx"; \
+	    printf '<a class="res" data-name="%s" data-href="./%s/%s.html">%s</a>\n' "$$base" "$$m" "$$base" "$$base" >> "$$idx"; \
 	  done; \
-	  printf '</div>\n</section>\n' >> "$$idx"; \
+	  printf '</div>\n' >> "$$idx"; \
 	done; \
 	cat "$(TPL_DIR)/index-foot.html" >> "$$idx"
 	@echo "done -> $(HTML_DIR)/ (open index.html)"
