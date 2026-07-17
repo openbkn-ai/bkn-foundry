@@ -394,6 +394,9 @@ var (
 		Category:    "dataset",
 		Description: "BKN的概念存储数据集",
 		Tags:        []string{"BKN", "概念索引", "concept"},
+		// Vega requires this non-null resource-level configuration. Keep an
+		// explicit empty object so the internal create request includes it.
+		IndexConfig: &VegaResourceIndexConfig{},
 		// Status:           "active",
 		// SchemaDefinition: GetBKNConceptSchemaDefinition(vectorDim),
 	}

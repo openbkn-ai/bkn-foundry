@@ -7,6 +7,7 @@
 package logics
 
 import (
+	"encoding/json"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
@@ -32,6 +33,26 @@ func Test_bknCatalogRequest(t *testing.T) {
 			So(req.Name, ShouldEqual, interfaces.BKN_CATALOG_NAME)
 		})
 	})
+}
+
+func TestBKNConceptDatasetIncludesEmptyIndexConfig(t *testing.T) {
+	data, err := json.Marshal(interfaces.BKN_CONCEPT_DATASET)
+	if err != nil {
+		t.Fatalf("marshal BKN concept dataset: %v", err)
+	}
+
+	var request map[string]any
+	if err := json.Unmarshal(data, &request); err != nil {
+		t.Fatalf("unmarshal BKN concept dataset: %v", err)
+	}
+
+	indexConfig, ok := request["index_config"]
+	if !ok {
+		t.Fatal("create dataset request must include index_config")
+	}
+	if config, ok := indexConfig.(map[string]any); !ok || len(config) != 0 {
+		t.Fatalf("index_config = %#v, want empty object", indexConfig)
+	}
 }
 
 // ── comparePropertyFeature ────────────────────────────────────────────────────
