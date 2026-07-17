@@ -169,3 +169,33 @@ def test_agent_limits_max_output_tokens_bounds():
     assert AgentLimits().max_output_tokens is None
     with pytest.raises(ValidationError):
         AgentLimits(max_output_tokens=0)
+
+
+def test_max_output_tokens_floor_aligns_mf_model_api():
+    """下限=10 对齐 mf-model-api conint(ge=10)：收 1..9 会建成功但执行必 400。"""
+    import pytest
+    from pydantic import ValidationError
+
+    from app.models import AgentLimits
+
+    assert AgentLimits(max_output_tokens=10).max_output_tokens == 10
+    for bad in (1, 9):
+        with pytest.raises(ValidationError):
+            AgentLimits(max_output_tokens=bad)
+
+
+def test_response_format_root_must_be_object():
+    """array/标量根会过 schema 语法校验但执行链必挂（dict(r)/按 {} 抽取），边界即拒。"""
+    import pytest
+    from pydantic import ValidationError
+
+    from app.models import ChatRequest
+
+    ok = ChatRequest(agent_id="a", message="m",
+                     response_format={"type": "object", "properties": {}})
+    assert ok.response_format["type"] == "object"
+    for bad in ({"type": "array", "items": {"type": "object"}},
+                {"type": "string"},
+                {"properties": {}}):  # 缺 type 也拒，报错指明包 object
+        with pytest.raises(ValidationError):
+            ChatRequest(agent_id="a", message="m", response_format=bad)

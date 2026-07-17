@@ -11,8 +11,8 @@ import logging
 import re
 from typing import Any
 
-from jsonschema import ValidationError as SchemaError
 from jsonschema import validate as _jsonschema_validate
+from jsonschema.exceptions import SchemaError, ValidationError
 
 from app.core.llm import normalize_response_format
 
@@ -41,6 +41,10 @@ async def structured_extract(model, messages: list, schema: dict) -> dict:
         # 不合法则不当成功返回，落到下面提示词降级重试。
         _jsonschema_validate(obj, schema)
         return obj
+    except SchemaError:
+        # schema 本体非法：请求边界已用 check_schema 拦（models.py ResponseFormat），
+        # 这里兜底。降级路径同样必炸，直接抛出，不白费模型调用。
+        raise
     except Exception as e:  # 模型不支持结构化或原生结果不合法 → 降级
         logger.warning("[Structured] 原生结构化失败/不合法，降级到提示词模式：%s", e)
 
@@ -59,7 +63,7 @@ async def structured_extract(model, messages: list, schema: dict) -> dict:
             obj = _extract_json(text)
             _jsonschema_validate(obj, schema)
             return obj
-        except (json.JSONDecodeError, SchemaError, ValueError) as e:
+        except (json.JSONDecodeError, ValidationError, ValueError) as e:
             last_err = e
             msgs = msgs + [
                 ("assistant", text),

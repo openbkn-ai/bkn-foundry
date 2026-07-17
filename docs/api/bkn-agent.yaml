@@ -679,7 +679,7 @@ components:
           anyOf:
           - type: integer
             maximum: 65536.0
-            minimum: 1.0
+            minimum: 10.0
           - type: 'null'
           title: Max Output Tokens
       type: object

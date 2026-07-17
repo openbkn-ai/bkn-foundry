@@ -97,7 +97,9 @@ class AgentLimits(BaseModel):
     timeout_s: Optional[int] = Field(default=None, ge=1, le=3600)
     # 单次模型调用的输出 token 上限。不设则用 provider 默认（常见 ~4096，长 JSON 会被
     # 截断——大输入场景配大此值）。透传 OpenAI 兼容 max_tokens，最终受模型自身上限约束。
-    max_output_tokens: Optional[int] = Field(default=None, ge=1, le=65536)
+    # 下限 10 对齐 mf-model-api（logics.py max_tokens: conint(ge=10)）——收 1..9 会让
+    # agent 建成功但每次执行必被下游 400。
+    max_output_tokens: Optional[int] = Field(default=None, ge=10, le=65536)
 
 
 _ID_PATTERN = r"^[0-9A-Za-z_.-]+$"  # 预设 id 允许字母数字下划线点连字符（跨环境稳定引用用）
@@ -154,6 +156,13 @@ def _check_json_schema(v: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
         raise ValueError(f"response_format 不是合法 JSON Schema：{e.message}") from e
     except Exception as e:  # $schema 字段本身畸形等 validator_for 阶段的错
         raise ValueError(f"response_format 不是合法 JSON Schema：{e}") from e
+    # 根类型必须是 object：执行链假设结果是 mapping（原生路径 dict(r)、降级路径按
+    # {..} 区间抽取），array/标量根会过校验但执行必挂。需要列表就包一层
+    # {"type":"object","properties":{"items":{"type":"array",...}}}。
+    if v.get("type") != "object":
+        raise ValueError(
+            'response_format 根类型必须是 "type":"object"（数组/标量请包进 object 属性）'
+        )
     return v
 
 

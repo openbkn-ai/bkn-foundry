@@ -5,7 +5,20 @@ import aiohttp
 from app.config import config
 from app.errors import err
 
-_cache: dict[str, tuple[float, str]] = {}
+# 键含调用方身份（见 load_skills 内注释），基数=账户数×技能数，值是整段技能正文；
+# 必须有上界+过期清理，否则历史账户与技能正文常驻内存永不释放。
+_CACHE_MAX = 1024
+_cache: dict[tuple[str, str, str], tuple[float, str]] = {}
+
+
+def _cache_put(key: tuple[str, str, str], now: float, content: str) -> None:
+    if len(_cache) >= _CACHE_MAX:
+        ttl = config.SKILL_CACHE_TTL_S
+        for k in [k for k, (ts, _) in _cache.items() if now - ts >= ttl]:
+            del _cache[k]
+        while len(_cache) >= _CACHE_MAX:  # 清完过期仍满：逐出最旧，保证有界
+            del _cache[min(_cache, key=lambda k: _cache[k][0])]
+    _cache[key] = (now, content)
 
 
 async def _fetch_skill_content(session: aiohttp.ClientSession, capability_id: str, headers: dict) -> str:
@@ -47,7 +60,7 @@ async def load_skills(capability_ids: list[str], account_id: str, account_type: 
                 parts.append(cached[1])
                 continue
             content = await _fetch_skill_content(session, cid, headers)
-            _cache[key] = (now, content)
+            _cache_put(key, now, content)
             parts.append(content)
     body = "\n\n---\n\n".join(parts)
     return (
