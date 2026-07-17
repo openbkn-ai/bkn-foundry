@@ -147,7 +147,7 @@ func seedAdminUser(db *gorm.DB) error {
 		Source:             model.SourceLocal,
 		AccountType:        model.AccountTypeOther,
 		PasswordHash:       string(hash),
-		MustChangePassword: true,
+		MustChangePassword: false,
 	}).Error; err != nil {
 		return err
 	}

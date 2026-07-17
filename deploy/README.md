@@ -12,17 +12,17 @@ This `deploy` directory provides scripts to install BKN Foundry along with its d
 
 ## Linux: default `k8s` (kubeadm) vs optional k3s
 
-**`KUBE_DISTRO` defaults to `k8s`** (package-manager Kubernetes + **kubeadm** on a single node). **k3s** is an optional lighter single-node stack. If you install k3s with `deploy.sh k3s install`, keep **`preflight.sh`** / **`foundry`** aligned by passing **`--distro=k3s`** **before** the module (or **`export KUBE_DISTRO=k3s`**) — otherwise `preflight` may flag a k3s/kubeadm mismatch and installs can disagree on bootstrap.
+**`KUBE_DISTRO` defaults to `k8s`** (package-manager Kubernetes + **kubeadm** on a single node). **k3s** is an optional lighter single-node stack. If you install k3s with `deploy.sh k3s install`, keep **`preflight.sh`** / **`bkn-foundry`** aligned by passing **`--distro=k3s`** **before** the module (or **`export KUBE_DISTRO=k3s`**) — otherwise `preflight` may flag a k3s/kubeadm mismatch and installs can disagree on bootstrap.
 
 ### kubeadm / `KUBE_DISTRO=k8s` (default)
 
-Single-node kubeadm flow is **`bash ./deploy.sh k8s install`** (`deploy/scripts/services/k8s.sh`). Product modules reuse an existing cluster when `kubectl` already works (`ensure_k8s` skips reinstall), then **`ensure_platform_prerequisites`** installs the bundled **data-services** layer (MariaDB, Redis, Kafka, OpenSearch, …) before Core. **macOS kind** skips host kubeadm but **`foundry install` still runs `ensure_data_services` first** (see macOS section). Legacy **`kubeadm`** is still accepted as an alias for **`k8s`**.
+Single-node kubeadm flow is **`bash ./deploy.sh k8s install`** (`deploy/scripts/services/k8s.sh`). Product modules reuse an existing cluster when `kubectl` already works (`ensure_k8s` skips reinstall), then **`ensure_platform_prerequisites`** installs the bundled **data-services** layer (MariaDB, Redis, Kafka, OpenSearch, …) before Core. **macOS kind** skips host kubeadm but **`bkn-foundry install` still runs `ensure_data_services` first** (see macOS section). Legacy **`kubeadm`** is still accepted as an alias for **`k8s`**.
 
-**`deploy.sh` global flags** (`--distro`, `-y`, `--force-upgrade`, `--config`, …) must appear **before** the module name. Correct: `bash ./deploy.sh --distro=k3s foundry install --minimum`. Wrong: `bash ./deploy.sh foundry install --minimum --distro=k3s` (that `--distro` is not read as a global option). Equivalent without moving flags: `export KUBE_DISTRO=k3s` then `bash ./deploy.sh foundry install --minimum`.
+**`deploy.sh` global flags** (`--distro`, `-y`, `--force-upgrade`, `--config`, …) must appear **before** the module name. Correct: `bash ./deploy.sh --distro=k3s bkn-foundry install --minimum`. Wrong: `bash ./deploy.sh bkn-foundry install --minimum --distro=k3s` (that `--distro` is not read as a global option). Equivalent without moving flags: `export KUBE_DISTRO=k3s` then `bash ./deploy.sh bkn-foundry install --minimum`.
 
 ```bash
 bash ./deploy.sh k8s install
-bash ./deploy.sh foundry install --minimum
+bash ./deploy.sh bkn-foundry install --minimum
 ```
 
 ### k3s (optional — lightweight single-node)
@@ -30,13 +30,13 @@ bash ./deploy.sh foundry install --minimum
 Uses the upstream k3s installer (Traefik disabled; this stack still installs **ingress-nginx** for a consistent chart/accessAddress setup). Override `K3S_INSTALL_URL`, `INSTALL_K3S_VERSION`, or `INSTALL_K3S_MIRROR` if you need a mirror or air-gapped tuning.
 
 ```bash
-cd foundry/deploy
+cd bkn-foundry/deploy
 
 bash ./deploy.sh k3s install
 
 # Align distro with k3s for preflight and platform bootstrap:
-bash ./deploy.sh --distro=k3s foundry install --minimum
-# or: export KUBE_DISTRO=k3s && bash ./deploy.sh foundry install --minimum
+bash ./deploy.sh --distro=k3s bkn-foundry install --minimum
+# or: export KUBE_DISTRO=k3s && bash ./deploy.sh bkn-foundry install --minimum
 ```
 
 Check status: `bash ./deploy.sh k3s status` — remove: `bash ./deploy.sh k3s uninstall`.
@@ -49,16 +49,16 @@ On the **same Linux host as k3s**, use the file **`/etc/rancher/k3s/k3s.yaml`** 
 
 ### macOS (optional — local dev with kind)
 
-**Use this only for Mac validation; for real installs use Linux above.** Local Kubernetes via **kind** — no `preflight.sh` / `k3s` on the Mac host. **`mac.sh` sets `OPENBKN_SKIP_PLATFORM_BOOTSTRAP`** (no host k3s/kubeadm bootstrap). **`foundry install` now runs `ensure_data_services` first** — same Helm layer as **`data-services install`** (MariaDB, Redis, Kafka, OpenSearch); **`mac.sh` defaults `AUTO_INSTALL_INGRESS_NGINX=false`** so kind’s existing ingress is not duplicated. Set **`OPENBKN_SKIP_DATA_SERVICES_BUNDLE=true`** to skip bundled data installs (advanced / external infra). **`data-services install`** alone remains useful to pre-stage or refresh the data layer. **Apple Silicon:** kind nodes are **arm64**; use arm64/multi-arch images (see `dev/conf/mac-config.yaml`). **Step order:** [dev/README.md](dev/README.md).
+**Use this only for Mac validation; for real installs use Linux above.** Local Kubernetes via **kind** — no `preflight.sh` / `k3s` on the Mac host. **`mac.sh` sets `OPENBKN_SKIP_PLATFORM_BOOTSTRAP`** (no host k3s/kubeadm bootstrap). **`bkn-foundry install` now runs `ensure_data_services` first** — same Helm layer as **`data-services install`** (MariaDB, Redis, Kafka, OpenSearch); **`mac.sh` defaults `AUTO_INSTALL_INGRESS_NGINX=false`** so kind’s existing ingress is not duplicated. Set **`OPENBKN_SKIP_DATA_SERVICES_BUNDLE=true`** to skip bundled data installs (advanced / external infra). **`data-services install`** alone remains useful to pre-stage or refresh the data layer. **Apple Silicon:** kind nodes are **arm64**; use arm64/multi-arch images (see `dev/conf/mac-config.yaml`). **Step order:** [dev/README.md](dev/README.md).
 
 ```bash
 cd deploy   # repository deploy/ directory
 bash ./dev/mac.sh doctor
 # optional: install missing tools via Homebrew — bash ./dev/mac.sh doctor --fix (or -y doctor --fix to skip confirm)
 bash ./dev/mac.sh cluster up
-bash ./dev/mac.sh foundry install --minimum   # implies --minimum; bundled data-services first (same as data-services install)
+bash ./dev/mac.sh bkn-foundry install --minimum   # implies --minimum; bundled data-services first (same as data-services install)
 # optional: bash ./dev/mac.sh data-services install   # only if you want the data layer without Core, or to refresh it
-# optional: bash ./dev/mac.sh foundry download
+# optional: bash ./dev/mac.sh bkn-foundry download
 # optional: bash ./dev/mac.sh onboard
 # add leading -y for non-interactive (deploy.sh / onboard)
 ```
@@ -89,8 +89,8 @@ dnf install containerd.io
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/openbkn-ai/foundry.git
-cd foundry/deploy
+git clone https://github.com/openbkn-ai/bkn-foundry.git
+cd bkn-foundry/deploy
 
 # 2. (Recommended) Pre-install host check / fix
 sudo bash ./preflight.sh                # check-only (default)
@@ -103,22 +103,22 @@ sudo bash ./preflight.sh --help         # all flags (--role, --skip, --report, -
 
 # 3. Install BKN Foundry
 # Minimum installation — recommended for first-time experience
-bash ./deploy.sh foundry install --minimum
-# Default is kubeadm (k8s). For single-node k3s instead (--distro must be BEFORE foundry):
-# bash ./deploy.sh --distro=k3s foundry install --minimum
-# or: export KUBE_DISTRO=k3s && bash ./deploy.sh foundry install --minimum
+bash ./deploy.sh bkn-foundry install --minimum
+# Default is kubeadm (k8s). For single-node k3s instead (--distro must be BEFORE bkn-foundry):
+# bash ./deploy.sh --distro=k3s bkn-foundry install --minimum
+# or: export KUBE_DISTRO=k3s && bash ./deploy.sh bkn-foundry install --minimum
 # Equivalent to:
-# bash ./deploy.sh foundry install --set auth.enabled=false --set businessDomain.enabled=false
+# bash ./deploy.sh bkn-foundry install --set auth.enabled=false --set businessDomain.enabled=false
 
 # Full installation (includes auth & business-domain modules)
-bash ./deploy.sh foundry install
+bash ./deploy.sh bkn-foundry install
 
 # The script will interactively prompt for the access address and auto-detect the API server address.
 
 # Or specify addresses explicitly (skips interactive prompts):
 #   --access_address       Address for clients to reach BKN Foundry services (can be IP or domain)
 #   --api_server_address   IP bound to a local network interface for K8s API server (must be a real NIC IP)
-bash ./deploy.sh foundry install \
+bash ./deploy.sh bkn-foundry install \
   --access_address=<your-ip> \
   --api_server_address=<your-ip>
 
@@ -145,7 +145,7 @@ sudo bash ./onboard.sh --help # all flags (--config=models.yaml, --enable-bkn-se
 ### Dev/test: pick chart versions (`--version_file`)
 
 Release installs pin exact chart versions in a committed manifest
-(`release-manifests/<version>/bkn-foundry.yaml`) — a lockfile, reproducible.
+(`release-manifests/<version>/bkn-bkn-foundry.yaml`) — a lockfile, reproducible.
 
 For **dev/test** you usually want the newest builds, and CI only republishes the
 components a branch actually changed. `scripts/gen-dev-manifest.sh` resolves each
@@ -160,7 +160,7 @@ chart's version from GHCR and writes a manifest you pass with `--version_file`:
 ./scripts/gen-dev-manifest.sh --branch=fix/my-thing --out=/tmp/m.yaml
 
 # install the generated manifest
-sudo bash ./deploy.sh --distro=k3s foundry install --minimum --version_file=/tmp/m.yaml
+sudo bash ./deploy.sh --distro=k3s bkn-foundry install --minimum --version_file=/tmp/m.yaml
 ```
 
 Per-chart resolution (stable-first): `--branch` newest build → latest stable →
@@ -183,7 +183,7 @@ build of every component** use `--latest` — it resolves each chart to its newe
 ### Install behind a restricted network (CN / no docker.io / slow GHCR)
 
 On clusters that can't reach `docker.io` or pull GHCR image blobs (read timeouts),
-`foundry install` accepts three flags so the **script** handles it — no manual
+`bkn-foundry install` accepts three flags so the **script** handles it — no manual
 `crictl pull`/retag:
 
 - **`--registry=<swr / ghcr / host/ns>`** — image registry for **BKN images** (sugar for `--set image.registry`). `swr` → `swr.cn-east-3.myhuaweicloud.com/openbkn-ai`, `ghcr` → `ghcr.io/openbkn-ai`. Precedence: explicit `--set image.registry=…` > `--registry` > an `image.registry` already in your `--config` YAML (respected, e.g. `dev/conf/mac-config.yaml`) > default `swr` (when config file does not set `image.registry`). SWR mirrors the same `…-main.<date>.sha…` build tags as GHCR.
@@ -192,14 +192,14 @@ On clusters that can't reach `docker.io` or pull GHCR image blobs (read timeouts
 
 ```bash
 # Newest builds + BKN images from SWR + docker.io third-party via the default mirror:
-sudo bash ./deploy.sh foundry install --latest --registry=swr
+sudo bash ./deploy.sh bkn-foundry install --latest --registry=swr
 
 # Or with a pre-generated manifest (e.g. built on a dev box, no git on the target):
-sudo bash ./deploy.sh foundry install --version_file=/tmp/m.yaml --registry=swr
+sudo bash ./deploy.sh bkn-foundry install --version_file=/tmp/m.yaml --registry=swr
 ```
 
 > The committed migrations fix any DB-schema drift (e.g. `vega-backend` 0.9.x), but
-> only run when the **data-migrator pre-install job** runs — i.e. via `foundry install`,
+> only run when the **data-migrator pre-install job** runs — i.e. via `bkn-foundry install`,
 > not a bare `kubectl set image`.
 
 ### Resource Configuration
@@ -209,12 +209,12 @@ You can set Kubernetes resource requests and limits for all Core services via en
 ```bash
 # Set CPU and memory requests
 OPENBKN_CORE_REQ_CPU=200m OPENBKN_CORE_REQ_MEM=512Mi \
-  sudo bash ./deploy.sh foundry install --minimum
+  sudo bash ./deploy.sh bkn-foundry install --minimum
 
 # Set full resource limits
 OPENBKN_CORE_REQ_CPU=200m OPENBKN_CORE_REQ_MEM=512Mi \
   OPENBKN_CORE_LIM_CPU=2 OPENBKN_CORE_LIM_MEM=2Gi \
-  sudo bash ./deploy.sh foundry install --minimum
+  sudo bash ./deploy.sh bkn-foundry install --minimum
 ```
 
 | Environment Variable | Description | Example Values |
@@ -256,7 +256,7 @@ The deployment scripts need access to these domains:
 
 ## 📦 Deployment Model
 
-`foundry` is the product-level entrypoint in this repository. The install flow is:
+`bkn-foundry` is the product-level entrypoint in this repository. The install flow is:
 
 1. Install or repair single-node Kubernetes, local-path storage, and ingress-nginx.
 2. Install or repair data services: MariaDB, Redis, Kafka, and OpenSearch.
@@ -270,13 +270,13 @@ The Core application layer includes charts for data services management, applica
 
 ```bash
 # Install BKN Foundry
-./deploy.sh foundry install
+./deploy.sh bkn-foundry install
 
 # Show Core status
-./deploy.sh foundry status
+./deploy.sh bkn-foundry status
 
 # Uninstall Core
-./deploy.sh foundry uninstall
+./deploy.sh bkn-foundry uninstall
 
 # Cluster and Pod status
 kubectl get nodes
@@ -285,7 +285,7 @@ kubectl get pods -A
 
 ### Install status & health
 
-`foundry status` prints a live, detailed table for operators on the server — for
+`bkn-foundry status` prints a live, detailed table for operators on the server — for
 every release in the manifest it shows the **expected vs deployed** chart version,
 app version, helm revision/status, workload ready count (`DRIFT`/`MISSING`
 flagged), the bundled dependency services, and a per-service **application health**
@@ -294,11 +294,11 @@ section (probed via the apiserver service proxy: `/health/ready` → `/api/v1/he
 
 ```bash
 # Detailed live status table (versions, ready, drift, service health)
-./deploy.sh foundry status
+./deploy.sh bkn-foundry status
 
 # (Re)publish the non-sensitive JSON snapshot + the /install-status endpoint
-# without reinstalling. Runs automatically at the end of `foundry install`.
-./deploy.sh foundry publish-status
+# without reinstalling. Runs automatically at the end of `bkn-foundry install`.
+./deploy.sh bkn-foundry publish-status
 ```
 
 A **non-sensitive** dashboard is also served, unauthenticated, through the ingress
@@ -338,11 +338,11 @@ deploy/
 
 ## 🗑️ Uninstall
 
-`bash deploy.sh foundry uninstall` removes only the Core application layer.
+`bash deploy.sh bkn-foundry uninstall` removes only the Core application layer.
 
 ```bash
 # Remove the Core application layer
-./deploy.sh foundry uninstall
+./deploy.sh bkn-foundry uninstall
 ```
 
 `bash deploy.sh k8s reset` resets the Kubernetes cluster, including data services and core.
