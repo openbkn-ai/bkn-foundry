@@ -59,6 +59,7 @@ MODDESC_dataflow       := 文档流处理管线
 api-docs-html:
 	@rm -rf $(HTML_DIR)
 	@mkdir -p $(HTML_DIR)
+	@cp "$(TPL_DIR)/openbkn-logo.png" "$(HTML_DIR)/openbkn-logo.png"
 	@idx="$(HTML_DIR)/index.html"; \
 	cat "$(TPL_DIR)/index-head.html" > "$$idx"; \
 	for m in $(MODULES); do \

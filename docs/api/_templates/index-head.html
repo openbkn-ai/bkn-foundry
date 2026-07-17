@@ -5,11 +5,11 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>BKN Foundry API 文档</title>
 <style>
-  :root{--bg:#f7f9fb;--fg:#12212b;--muted:#5b6b78;--card:#fff;--line:#e4eaf0;--acc:#0e7c86;--acc-bg:#e1f3f4;--shadow:0 1px 2px rgba(16,32,44,.04),0 3px 12px rgba(16,32,44,.06)}
-  @media(prefers-color-scheme:dark){:root{--bg:#0d1117;--fg:#e6edf3;--muted:#8b98a5;--card:#161b22;--line:#232b34;--acc:#3fb8c2;--acc-bg:#0e3037;--shadow:0 1px 2px rgba(0,0,0,.3),0 3px 12px rgba(0,0,0,.4)}}
+  :root{--bg:#fff;--fg:#12212b;--muted:#5b6b78;--card:#fff;--line:#e4eaf0;--acc:#0e7c86;--acc-bg:#e1f3f4;--shadow:0 1px 2px rgba(16,32,44,.04),0 3px 12px rgba(16,32,44,.06)}
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
   .wrap{max-width:960px;margin:0 auto;padding:56px 24px 96px}
+  header .logo{height:40px;width:auto;display:block;margin:0 0 20px}
   header h1{font-size:30px;letter-spacing:-.02em;margin:0 0 8px}
   header p{color:var(--muted);font-size:16px;margin:0 0 28px}
   .search{width:100%;max-width:420px;padding:10px 14px;font-size:15px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--fg);margin-bottom:36px;outline:none}
@@ -25,14 +25,35 @@
   .card .name{font-weight:600;font-size:15px}
   .card .arrow{color:var(--acc);float:right}
   .empty{color:var(--muted);font-size:14px}
+  .auth{background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);padding:18px 20px;margin:0 0 36px}
+  .auth h2{font-size:17px;margin:0 0 10px}
+  .auth p{margin:6px 0;font-size:14px;color:var(--muted)}
+  .auth ol{margin:8px 0;padding-left:20px;font-size:14px}
+  .auth li{margin:6px 0}
+  .auth code{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:13px;background:var(--bg);border:1px solid var(--line);padding:1px 5px;border-radius:4px}
+  .auth pre{background:#0d1117;color:#e6edf3;border-radius:8px;padding:12px 14px;overflow-x:auto;font-family:ui-monospace,Menlo,monospace;font-size:12.5px;line-height:1.5;margin:8px 0}
   footer{margin-top:48px;color:var(--muted);font-size:13px;border-top:1px solid var(--line);padding-top:20px}
 </style>
 </head>
 <body>
 <div class="wrap">
 <header>
-  <h1>BKN Foundry API 文档</h1>
+  <img class="logo" src="./openbkn-logo.png" alt="OpenBKN">
+  <h1>BKN Foundry API 文档中心</h1>
   <p>各服务的 OpenAPI 交互式文档 —— 点开任意资源查看端点、参数与示例。</p>
   <input class="search" id="q" type="search" placeholder="过滤资源…" autocomplete="off">
 </header>
+<section class="auth">
+  <h2>🔑 认证 —— 获取并携带 Token</h2>
+  <p>下列接口默认需要认证。请求时在 HTTP 头带上 <code>Authorization: Bearer &lt;token&gt;</code>。获取 token 有两种方式：</p>
+  <ol>
+    <li><b>CLI 登录（推荐）</b>：用 <a href="https://github.com/openbkn-ai/bkn-sdk">bkn-sdk</a> 的 <code>openbkn</code> CLI 登录，token 存到 <code>~/.bkn</code>，CLI 自动携带并刷新：
+<pre>openbkn auth login https://&lt;your-instance&gt; -u &lt;user&gt; -p &lt;password&gt; -k
+# 之后直接调用，如：openbkn bkn list</pre>
+    </li>
+    <li><b>OAuth2 client credentials</b>：服务间调用用 <code>POST /oauth/token</code>（clientCredentials 流）换取 token；或使用应用密钥 <b>AppKey</b>（<code>bak_</code> 前缀）以 <code>Authorization: Bearer bak_xxx</code> 直接携带。</li>
+  </ol>
+  <p>拿到 token 后，可直接调用接口：</p>
+<pre>curl -H "Authorization: Bearer &lt;token&gt;" https://&lt;your-instance&gt;/api/bkn-backend/v1/...</pre>
+</section>
 <main id="list">
