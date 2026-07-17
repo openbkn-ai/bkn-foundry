@@ -93,6 +93,7 @@ api-docs-html:
 	@rm -rf $(HTML_DIR)
 	@mkdir -p $(HTML_DIR) $(foreach m,$(MODULES),$(HTML_DIR)/$(m))
 	@cp "$(TPL_DIR)/openbkn-logo.png" "$(HTML_DIR)/openbkn-logo.png"
+	@cp "$(TPL_DIR)/favicon.png" "$(HTML_DIR)/favicon.png"
 	@cp "$(TPL_DIR)/auth.html" "$(HTML_DIR)/auth.html"
 	@echo "==> html: rendering $(words $(foreach m,$(MODULES),$(wildcard $(API_DIR)/$(m)/*.yaml))) yaml (parallel)"
 	@printf '%s\n' $(foreach m,$(MODULES),$(wildcard $(API_DIR)/$(m)/*.yaml)) | \
