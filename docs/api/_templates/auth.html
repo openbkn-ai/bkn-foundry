@@ -24,33 +24,39 @@
   th,td{text-align:left;padding:7px 12px;border-bottom:1px solid var(--line);vertical-align:top}
   th{background:#f2f5f8;font-weight:600;white-space:nowrap}
   .note{border-left:3px solid var(--acc);background:var(--acc-bg);padding:10px 14px;border-radius:0 8px 8px 0;font-size:13.5px;margin:12px 0}
+  /* 语法高亮（highlight.js github-dark）配深色代码块 */
+  pre code.hljs{padding:0;background:none}
 </style>
+<link rel="stylesheet" href="https://cdn.staticfile.org/highlight.js/11.9.0/styles/github-dark.min.css">
+<script src="https://cdn.staticfile.org/highlight.js/11.9.0/highlight.min.js"></script>
+<script>window.addEventListener('DOMContentLoaded',function(){document.querySelectorAll('pre code').forEach(function(el){window.hljs&&hljs.highlightElement(el);});});</script>
 </head>
 <body>
 <div class="wrap">
 <a class="back" href="./index.html">&larr; 返回文档中心</a>
 <h1>🔑 认证</h1>
 <p class="lede">除内部 <code>/in/v1</code> 面外，接口都需认证。请求时在 HTTP 头带上 <code>Authorization: Bearer &lt;token&gt;</code>。</p>
-<pre><code>curl -H "Authorization: Bearer &lt;token&gt;" \
+<pre><code class="language-bash">curl -H "Authorization: Bearer &lt;token&gt;" \
      https://&lt;your-instance&gt;/api/bkn-backend/v1/knowledge-networks</code></pre>
+<p class="muted">部署使用自签名证书（测试 / 内网环境常见）时：本页所有 <code>curl</code> 命令加 <code>-k</code>，所有 <code>openbkn</code> 命令加 <code>-k</code>（<code>--insecure</code>，跳过 TLS 校验，仅限开发 / 自签名场景）。</p>
 <p>获取 token 有三种方式，按场景选择：</p>
 <table>
   <tr><th>方式</th><th>适用场景</th><th>覆盖范围</th></tr>
   <tr><td>CLI 登录</td><td>人用 / 交互</td><td>全部服务接口</td></tr>
-  <tr><td>AppKey（<code>bak_</code>）</td><td>程序 / 自动化</td><td><b>仅 Context Loader</b>（检索 / MCP）</td></tr>
+  <tr><td>AppKey（<code>bak_</code>）</td><td>程序 / 自动化</td><td><b>仅 Context Loader</b>（检索 / MCP，<b>只读</b>）</td></tr>
   <tr><td>应用集成设备码流</td><td>自研应用代用户调用</td><td>全部服务接口</td></tr>
-  <tr><td>OAuth2 直连</td><td>服务间 / 已有客户端凭据</td><td>全部服务接口</td></tr>
 </table>
 
 <h2>方式一 · CLI 登录（人用，推荐）</h2>
 <p>用 <a href="https://github.com/openbkn-ai/bkn-sdk">bkn-sdk</a> 的 <code>openbkn</code> CLI 登录一次，之后所有命令自动携带 token 并按需刷新。登录走 OAuth2 <b>设备码流</b>（RFC 8628）。</p>
-<pre><code># 浏览器登录（打印 URL + user code，在浏览器里确认）
+<pre><code class="language-bash"># 浏览器登录（打印 URL + user code，在浏览器里确认）
+# 自签名证书的部署需加 -k
 openbkn auth login https://&lt;your-instance&gt;
 
-# 无浏览器 / CI：用户名密码，CLI 在后台代走 login/consent 页
+# 无浏览器 / CI：用户名密码，CLI 在后台代走 login/consent 页（-k 同上）
 openbkn auth login https://&lt;your-instance&gt; -u &lt;account&gt; -p &lt;password&gt; -k</code></pre>
 <p>需要拿到原始 token（例如喂给别的工具 / curl）时，用 <code>token</code> 子命令打印（会自动刷新过期 token）：</p>
-<pre><code>openbkn auth token           # 打印当前 access token（自动刷新）
+<pre><code class="language-bash">openbkn auth token           # 打印当前 access token（自动刷新）
 openbkn auth status          # 查看是否已登录 / 当前平台
 openbkn auth whoami          # 查看当前身份
 
@@ -59,9 +65,9 @@ curl -H "Authorization: Bearer $(openbkn auth token)" \
      https://&lt;your-instance&gt;/api/bkn-backend/v1/knowledge-networks</code></pre>
 
 <h2>方式二 · AppKey（自动化，推荐）</h2>
-<div class="note"><b>覆盖范围</b>：AppKey 是给 <b>Context Loader</b>（检索 / MCP，<code>/api/agent-retrieval/...</code>）用的长期凭据，<b>以签发人身份</b>调用。用于其它服务接口请改用 OAuth token。</div>
-<p>先用已登录的 OAuth 会话签发一枚（AppKey 不能再签发 AppKey）。<code>name</code> 必填；不传 <code>expires_at</code> 默认有效期 1 年。</p>
-<pre><code># 签发（需已登录的 OAuth token）
+<div class="note"><b>覆盖范围</b>：AppKey 是给 <b>Context Loader</b>（检索 / MCP，<code>/api/agent-retrieval/...</code>）用的长期凭据，<b>仅支持只读操作</b>（有意设计，写操作不认 AppKey）。<b>以签发人身份</b>调用，可读范围与签发人的 OAuth token 一致。写操作或其它服务接口请改用 OAuth token。</div>
+<p>两种签发方式：在 <b>BKN Studio 个人中心</b>页面自助签发 / 管理，或用已登录的 OAuth 会话调接口签发（AppKey 不能再签发 AppKey）。<code>name</code> 必填；不传 <code>expires_at</code> 默认有效期 1 年。</p>
+<pre><code class="language-bash"># 签发（需已登录的 OAuth token）
 curl -X POST https://&lt;your-instance&gt;/api/safe/v1/me/api-keys \
   -H "Authorization: Bearer $(openbkn auth token)" \
   -H "Content-Type: application/json" \
@@ -73,14 +79,37 @@ curl -X POST https://&lt;your-instance&gt;/api/safe/v1/me/api-keys \
 #  "masked":"bak_2882****SWua","expires_at":"...","enabled":true}
 
 # 使用（同样是 Bearer；对 Context Loader 面）
-curl -H "Authorization: Bearer bak_2882bb603277_BSxTZHTBiJXk4QoUBc0u17zSWua" \
-     https://&lt;your-instance&gt;/api/agent-retrieval/v1/kn/search_schema</code></pre>
+curl -X POST https://&lt;your-instance&gt;/api/agent-retrieval/v1/kn/search_schema \
+  -H "Authorization: Bearer bak_2882bb603277_BSxTZHTBiJXk4QoUBc0u17zSWua" \
+  -H "Content-Type: application/json" \
+  -d '{"query":"客户"}'</code></pre>
 <p class="muted">CLI 等价：<code>openbkn appkey create --name my-key</code>；使用时 <code>openbkn --token bak_... context ...</code>。管理：<code>GET /api/safe/v1/me/api-keys</code> 列出、<code>DELETE /api/safe/v1/me/api-keys/{id}</code> 撤销、<code>POST /api/safe/v1/me/api-keys/{id}/regenerate</code> 轮换。</p>
+<h3>Python 示例</h3>
+<pre><code class="language-python">import requests
+
+BASE = "https://&lt;your-instance&gt;"
+oauth_token = "&lt;OAuth access token&gt;"  # 例如 CLI 里 `openbkn auth token` 的输出
+
+# 签发（明文 key 只在响应里出现一次，务必保存）
+resp = requests.post(
+    f"{BASE}/api/safe/v1/me/api-keys",
+    headers={"Authorization": f"Bearer {oauth_token}"},
+    json={"name": "my-key"},          # 可选 "expires_at"，缺省 1 年
+)
+app_key = resp.json()["key"]          # bak_...
+
+# 使用（Context Loader 检索面，只读）
+r = requests.post(
+    f"{BASE}/api/agent-retrieval/v1/kn/search_schema",
+    headers={"Authorization": f"Bearer {app_key}"},
+    json={"query": "客户"},
+)</code></pre>
+<p class="muted">自签名证书时给每个请求加 <code>verify=False</code>（或用 <code>requests.Session()</code> 统一设置）。</p>
 
 <h2>方式三 · 在自己的应用里集成登录（设备码流）</h2>
 <p>开发自己的应用调用平台接口时，<b>无需注册 client、无需管理员操作</b>：每套部署都预置了公共客户端 <code>openbkn-sdk</code>（OAuth2 设备码流，RFC 8628）。应用引导用户在浏览器里登录一次，即获得该用户权限的 token，之后靠 refresh token 长期免登录运行。</p>
 <h3>第 1 步 · 发起设备授权</h3>
-<pre><code>curl -X POST https://&lt;your-instance&gt;/oauth2/device/auth \
+<pre><code class="language-bash">curl -X POST https://&lt;your-instance&gt;/oauth2/device/auth \
   -d "client_id=openbkn-sdk" -d "scope=openid offline"
 # -&gt; {"device_code":"ory_dc_...","user_code":"EKgw7AQa",
 #     "verification_uri_complete":"https://&lt;your-instance&gt;/oauth2/device/verify?user_code=EKgw7AQa",
@@ -88,7 +117,7 @@ curl -H "Authorization: Bearer bak_2882bb603277_BSxTZHTBiJXk4QoUBc0u17zSWua" \
 <h3>第 2 步 · 用户浏览器确认</h3>
 <p>把 <code>verification_uri_complete</code> 展示给用户（链接或二维码）。用户打开后确认设备码、输入平台账号密码登录并同意授权。</p>
 <h3>第 3 步 · 轮询换取 token</h3>
-<pre><code>curl -X POST https://&lt;your-instance&gt;/oauth2/token \
+<pre><code class="language-bash">curl -X POST https://&lt;your-instance&gt;/oauth2/token \
   -d "grant_type=urn:ietf:params:oauth:grant-type:device_code" \
   -d "device_code=ory_dc_..." \
   -d "client_id=openbkn-sdk"
@@ -96,7 +125,7 @@ curl -H "Authorization: Bearer bak_2882bb603277_BSxTZHTBiJXk4QoUBc0u17zSWua" \
 # 完成后 -&gt; {"access_token":"...","refresh_token":"...","expires_in":3600,
 #            "scope":"openid offline","token_type":"bearer"}</code></pre>
 <h3>第 4 步 · 调用接口与续期</h3>
-<pre><code># 调用任意服务接口（token 权限 = 登录用户的权限）
+<pre><code class="language-bash"># 调用任意服务接口（token 权限 = 登录用户的权限）
 curl -H "Authorization: Bearer &lt;access_token&gt;" \
      https://&lt;your-instance&gt;/api/bkn-backend/v1/knowledge-networks
 
@@ -106,19 +135,49 @@ curl -X POST https://&lt;your-instance&gt;/oauth2/token \
   -d "grant_type=refresh_token" \
   -d "refresh_token=&lt;refresh_token&gt;" \
   -d "client_id=openbkn-sdk"</code></pre>
+<h3>Python 完整示例</h3>
+<pre><code class="language-python">import time
+import requests
+
+BASE = "https://&lt;your-instance&gt;"
+CLIENT_ID = "openbkn-sdk"
+
+s = requests.Session()
+# s.verify = False   # 自签名证书的部署打开这行
+
+# 1. 发起设备授权
+da = s.post(f"{BASE}/oauth2/device/auth",
+            data={"client_id": CLIENT_ID, "scope": "openid offline"}).json()
+print("请在浏览器打开并登录：", da["verification_uri_complete"])
+
+# 2. 轮询换 token（用户完成登录前返回 authorization_pending）
+while True:
+    time.sleep(da.get("interval", 5))
+    r = s.post(f"{BASE}/oauth2/token", data={
+        "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+        "device_code": da["device_code"],
+        "client_id": CLIENT_ID,
+    }).json()
+    if "access_token" in r:
+        tokens = r
+        break
+    if r.get("error") not in ("authorization_pending", "slow_down"):
+        raise RuntimeError(r)
+
+# 3. 调用接口（token 权限 = 登录用户的权限）
+kns = s.get(f"{BASE}/api/bkn-backend/v1/knowledge-networks",
+            headers={"Authorization": f"Bearer {tokens['access_token']}"}).json()
+
+# 4. access token 1 小时过期；用 refresh token 续期，无需再登录。
+#    每次续期轮换出新 refresh_token，务必覆盖保存最新一枚。
+tokens = s.post(f"{BASE}/oauth2/token", data={
+    "grant_type": "refresh_token",
+    "refresh_token": tokens["refresh_token"],
+    "client_id": CLIENT_ID,
+}).json()</code></pre>
 <div class="note">token 是<b>用户委托</b>凭据：应用以「当时登录的那个用户」身份调用，权限随该用户的授权变化。全自动后台服务建议用专属服务账号完成第 2 步登录，之后靠 refresh token 持续运行；refresh token 链一旦失效（长期未用 / 被撤销），需用户重新走一遍登录。</div>
 <p class="muted">提示：<code>openbkn-sdk</code> 是公共客户端（无 secret，凭 PKCE/设备码保障），任何应用可直接使用。若脚本化代替浏览器完成登录页（CI 等无头场景），注意登录 / 授权页 URL 里的 <code>*_challenge</code> 参数是百分号编码的，提交表单前需先 URL 解码，否则会二次编码报错。</p>
 
-<h2>方式四 · OAuth2 client credentials（高级 / 服务间，默认不可用）</h2>
-<div class="note"><b>⚠️ 默认部署没有可用的 client-credentials 客户端。</b>普通用户 / 应用请用<b>方式一（CLI 登录）、方式二（AppKey）或方式三（应用集成设备码流）</b>。本方式仅适用于：平台管理员已在 Hydra 里预置了 client-credentials 客户端（默认不启用；需在 bkn-safe chart 显式配置 <code>clientSeed.ciRunnerSecret</code> 或手动创建客户端）的服务间场景。<code>client_id</code> / <code>client_secret</code> 不能自助申请，须向部署 / 平台管理员索取。</div>
-<p>token 端点是 Hydra 的 <code>POST /oauth2/token</code>（注意<b>不是</b> <code>/oauth/token</code>）。已拿到客户端凭据后（<code>client_secret_post</code>，凭据放请求体，不走 HTTP Basic）：</p>
-<pre><code>curl -X POST https://&lt;your-instance&gt;/oauth2/token \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  --data-urlencode grant_type=client_credentials \
-  --data-urlencode client_id=&lt;由管理员提供&gt; \
-  --data-urlencode client_secret=&lt;由管理员提供&gt; \
-  --data-urlencode audience=bkn-safe
-# -&gt; {"access_token":"...","token_type":"bearer","expires_in":...}</code></pre>
 <p class="muted">方式一的交互式登录底层就是方式三的设备码流，由 CLI 自动完成，无需手写。</p>
 </div>
 </body>
