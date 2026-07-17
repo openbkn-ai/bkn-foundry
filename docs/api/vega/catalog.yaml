@@ -47,12 +47,14 @@ info:
   version: 0.2.1
 servers:
   - url: /api/vega-backend/v1
+security:
+  - OAuth2: []
 paths:
-  /api/vega-backend/v1/catalogs:
+  /catalogs:
     get:
       summary: 获取 catalog 列表
       description: |
-        分页获取 catalog；支持按 name、tag、type、health_check_status 过滤。
+        分页获取 catalog；支持按 name、tag、type、connector_type、health_check_status 过滤。
 
         **KV 筛选**：`extension_key` / `extension_value` 为数组 query。
         序列化形如 `extension_key=a&extension_key=b&extension_value=1&extension_value=2`。参与筛选的一组参数 **必须等长**，
@@ -76,6 +78,11 @@ paths:
             enum:
               - physical
               - logical
+        - name: connector_type
+          description: 按连接器类型过滤
+          in: query
+          schema:
+            type: string
         - name: health_check_status
           description: 按健康检查状态过滤
           in: query
@@ -210,9 +217,9 @@ paths:
                 $ref: "../_shared/errors.yaml#/components/schemas/Error"
         "500":
           $ref: "#/components/responses/InternalServerError"
-  /api/vega-backend/v1/catalogs/{ids}:
+  /catalogs/{id}:
     parameters:
-      - name: ids
+      - name: id
         description: catalog ID，多个用英文逗号分隔（如 `id1,id2,id3`）
         in: path
         required: true
@@ -253,14 +260,6 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalServerError"
-  /api/vega-backend/v1/catalogs/{id}:
-    parameters:
-      - name: id
-        description: catalog ID
-        in: path
-        required: true
-        schema:
-          type: string
     put:
       summary: 修改 catalog
       description: |
@@ -309,7 +308,7 @@ paths:
                 $ref: "../_shared/errors.yaml#/components/schemas/Error"
         "500":
           $ref: "#/components/responses/InternalServerError"
-  /api/vega-backend/v1/catalogs/{id}/enable:
+  /catalogs/{id}/enable:
     parameters:
       - name: id
         description: catalog ID
@@ -331,7 +330,7 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalServerError"
-  /api/vega-backend/v1/catalogs/{id}/disable:
+  /catalogs/{id}/disable:
     parameters:
       - name: id
         description: catalog ID
@@ -353,7 +352,7 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalServerError"
-  /api/vega-backend/v1/catalogs/{id}/health-status:
+  /catalogs/{id}/health-status:
     parameters:
       - name: id
         description: catalog ID
@@ -375,7 +374,7 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "500":
           $ref: "#/components/responses/InternalServerError"
-  /api/vega-backend/v1/catalogs/{id}/test-connection:
+  /catalogs/{id}/test-connection:
     parameters:
       - name: id
         description: catalog ID
@@ -407,6 +406,9 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerError"
 components:
+  securitySchemes:
+    OAuth2:
+      $ref: "../_shared/auth.yaml#/components/securitySchemes/OAuth2"
   responses:
     BadRequest:
       description: |
@@ -516,6 +518,9 @@ components:
         enabled:
           description: 是否启用
           type: boolean
+        internal:
+          description: 是否为内部 Catalog
+          type: boolean
         connector_type:
           description: 连接器类型标识（参见 connector-type.yaml）
           type: string
@@ -610,6 +615,9 @@ components:
           description: 连接器配置；字段由 ConnectorType.field_config 决定
           type: object
           additionalProperties: true
+        internal:
+          description: 是否创建为内部 Catalog；省略时为 `false`
+          type: boolean
         extensions:
           $ref: "#/components/schemas/EntityExtensions"
     ListCatalogs:

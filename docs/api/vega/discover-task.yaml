@@ -19,8 +19,10 @@ info:
   version: 0.1.0
 servers:
   - url: /api/vega-backend/v1
+security:
+  - OAuth2: []
 paths:
-  /api/vega-backend/v1/discover-tasks:
+  /discover-tasks:
     get:
       summary: 获取发现任务列表
       description: 分页获取发现任务；支持按 catalog_id / schedule_id / status / trigger_type 过滤。
@@ -96,10 +98,10 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "500":
           $ref: "#/components/responses/InternalServerError"
-  /api/vega-backend/v1/discover-tasks/{id}:
+  /discover-tasks/{id}:
     parameters:
       - name: id
-        description: DiscoverTask ID
+        description: DiscoverTask ID；DELETE 时可传逗号分隔的 ID 列表
         in: path
         required: true
         schema:
@@ -119,16 +121,6 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalServerError"
-  /api/vega-backend/v1/discover-tasks/{ids}:
-    parameters:
-      - name: ids
-        description: |
-          DiscoverTask ID 列表，逗号分隔（单条即长度为 1 的退化情形）。
-          重复 id 在 service 层会被去重。
-        in: path
-        required: true
-        schema:
-          type: string
     delete:
       summary: 删除发现任务（整体事务）
       description: |
@@ -162,7 +154,7 @@ paths:
           $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalServerError"
-  /api/vega-backend/v1/catalogs/{id}/discover:
+  /catalogs/{id}/discover:
     parameters:
       - name: id
         description: Catalog ID
@@ -177,10 +169,16 @@ paths:
         的 DiscoverTask 并立即返回 task id；实际发现执行由 worker 异步推进。客户端可用
         返回的 task id 通过 `GET /discover-tasks/{id}` 轮询执行进度。
 
-        无 request body。本端点保留 RPC 风格嵌套形态——是对 catalog 的动作而非创建顶层
-        task；详见 [discover_task_redesign.md] §1 非目标。
+        可选请求体 `{"strategy":"full_sync|create_only|cleanup_only"}`；省略时默认
+        `full_sync`。本端点保留 RPC 风格嵌套形态——是对 catalog 的动作而非创建顶层 task。
 
         仅支持 `type=physical` 的 catalog；`type=logical` 会返回 400。
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DiscoverTriggerRequest"
       responses:
         "200":
           description: 触发成功，DiscoverTask 已创建并入队
@@ -198,9 +196,18 @@ paths:
             application/json:
               schema:
                 $ref: "../_shared/errors.yaml#/components/schemas/Error"
+        "409":
+          description: Catalog 已禁用
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
         "500":
           $ref: "#/components/responses/InternalServerError"
 components:
+  securitySchemes:
+    OAuth2:
+      $ref: "../_shared/auth.yaml#/components/securitySchemes/OAuth2"
   responses:
     BadRequest:
       description: 请求参数 / 请求体非法
@@ -282,7 +289,7 @@ components:
         - id
         - catalog_id
         - schedule_id
-        - strategies
+        - strategy
         - trigger_type
         - status
         - progress
@@ -300,17 +307,13 @@ components:
           description: |
             关联的 DiscoverSchedule ID。trigger_type=manual 时为空字符串。
           type: string
-        strategies:
-          description: |
-            发现策略，可为以下零或多个：`insert` / `delete` / `update`。
-            空数组表示对所有策略执行。
-          type: array
-          items:
-            type: string
-            enum:
-              - insert
-              - delete
-              - update
+        strategy:
+          description: 发现策略
+          type: string
+          enum:
+            - full_sync
+            - create_only
+            - cleanup_only
         trigger_type:
           description: 触发方式
           type: string
@@ -357,6 +360,16 @@ components:
         id:
           description: 新建 DiscoverTask 的 ID；可用 `GET /discover-tasks/{id}` 轮询进度
           type: string
+    DiscoverTriggerRequest:
+      description: 手动触发发现时的可选策略；省略时服务端使用 `full_sync`
+      type: object
+      properties:
+        strategy:
+          type: string
+          enum:
+            - full_sync
+            - create_only
+            - cleanup_only
     ListDiscoverTasks:
       description: 发现任务列表
       type: object

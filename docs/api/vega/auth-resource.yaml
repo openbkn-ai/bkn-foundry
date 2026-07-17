@@ -15,8 +15,10 @@ info:
   version: 0.1.0
 servers:
   - url: /api/vega-backend/v1
+security:
+  - OAuth2: []
 paths:
-  /api/vega-backend/v1/auth-resources:
+  /auth-resources:
     get:
       operationId: listAuthResources
       summary: 获取授权资源列表
@@ -87,6 +89,9 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerError"
 components:
+  securitySchemes:
+    OAuth2:
+      $ref: "../_shared/auth.yaml#/components/securitySchemes/OAuth2"
   schemas:
     AuthResource:
       description: 可授权资源简要信息

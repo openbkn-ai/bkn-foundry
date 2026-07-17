@@ -6,7 +6,7 @@ info:
     Vega Backend 构建任务（BuildTask）相关 API。
 
     BuildTask 是顶级独立资源，每条 task 关联 1 个 Resource，对其执行 streaming /
-    batch / embedding 三种模式之一的构建。状态机：
+    batch 两种模式之一的构建。状态机：
 
       init → running → stopping → stopped
                     ↘ completed
@@ -22,8 +22,10 @@ info:
   version: 0.1.0
 servers:
   - url: /api/vega-backend/v1
+security:
+  - OAuth2: []
 paths:
-  /api/vega-backend/v1/build-tasks:
+  /build-tasks:
     get:
       summary: 获取构建任务列表
       description: 分页获取构建任务；支持按 resource_id / catalog_id / status / mode 过滤。
@@ -58,7 +60,6 @@ paths:
             enum:
               - streaming
               - batch
-              - embedding
         - name: offset
           description: 分页偏移量，>=0，默认 0
           in: query
@@ -74,19 +75,20 @@ paths:
             type: integer
             format: int64
             default: 20
-        - name: sort
-          description: 排序字段，默认 update_time
+        - name: order_by
+          description: 排序字段；默认 `default`（构建中的任务优先）
           in: query
           schema:
             type: string
             enum:
-              - create_time
-              - update_time
+              - default
+              - created_at
+              - updated_at
               - status
               - mode
-            default: update_time
-        - name: direction
-          description: 排序方向，默认 desc
+            default: default
+        - name: order
+          description: 排序方向，默认 desc；`order_by=default` 时固定使用服务端复合排序
           in: query
           schema:
             type: string
@@ -94,6 +96,11 @@ paths:
               - asc
               - desc
             default: desc
+        - name: active
+          description: "`true` 时筛选 `running` 与 `init`，优先于 `status`"
+          in: query
+          schema:
+            type: boolean
       responses:
         "200":
           description: ok
@@ -156,10 +163,10 @@ paths:
           $ref: "#/components/responses/NotAcceptable"
         "500":
           $ref: "#/components/responses/InternalServerError"
-  /api/vega-backend/v1/build-tasks/{id}:
+  /build-tasks/{id}:
     parameters:
       - name: id
-        description: BuildTask ID
+        description: BuildTask ID；DELETE 时可传逗号分隔的 ID 列表
         in: path
         required: true
         schema:
@@ -179,15 +186,6 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalServerError"
-  /api/vega-backend/v1/build-tasks/{ids}:
-    parameters:
-      - name: ids
-        description: |
-          BuildTask ID 列表，逗号分隔（单条即长度为 1 的退化情形）。
-        in: path
-        required: true
-        schema:
-          type: string
     delete:
       summary: 删除构建任务（整体事务）
       description: |
@@ -209,6 +207,12 @@ paths:
           schema:
             type: boolean
             default: false
+        - name: delete_active_index
+          description: 是否删除当前活跃索引；默认 `false`
+          in: query
+          schema:
+            type: boolean
+            default: false
       responses:
         "204":
           description: 删除成功
@@ -220,7 +224,7 @@ paths:
           $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalServerError"
-  /api/vega-backend/v1/build-tasks/{id}/start:
+  /build-tasks/{id}/start:
     parameters:
       - name: id
         description: BuildTask ID
@@ -260,7 +264,7 @@ paths:
           $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalServerError"
-  /api/vega-backend/v1/build-tasks/{id}/stop:
+  /build-tasks/{id}/stop:
     parameters:
       - name: id
         description: BuildTask ID
@@ -293,6 +297,9 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerError"
 components:
+  securitySchemes:
+    OAuth2:
+      $ref: "../_shared/auth.yaml#/components/securitySchemes/OAuth2"
   responses:
     BadRequest:
       description: 请求参数 / 请求体非法
@@ -362,9 +369,7 @@ components:
         - vectorized_count
         - creator
         - create_time
-        - updater
         - update_time
-        - build_key_fields
       properties:
         id:
           description: 全局唯一 ID
@@ -391,7 +396,6 @@ components:
           enum:
             - streaming
             - batch
-            - embedding
         total_count:
           description: 总数
           type: integer
@@ -416,33 +420,70 @@ components:
           description: 创建时间，毫秒级时间戳
           type: integer
           format: int64
-        updater:
-          $ref: "#/components/schemas/AccountInfo"
         update_time:
           description: 更新时间，毫秒级时间戳
           type: integer
           format: int64
-        embedding_fields:
-          description: 需向量化的字段，逗号分隔
+        failure_detail:
+          description: 任务完成但存在部分向量化失败时的明细
           type: string
+        index_config:
+          $ref: "#/components/schemas/BuildTaskIndexConfig"
+        index_health:
+          $ref: "#/components/schemas/IndexHealth"
+    BuildTaskIndexConfig:
+      description: 创建任务时从 Resource 派生的索引配置快照
+      type: object
+      properties:
         build_key_fields:
-          description: |
-            构建中依赖的特殊键字段，逗号分隔。
-            - batch 模式：依赖具有时序性的字段（如 update_time）
-            - streaming 模式：依赖唯一标识某行的字段（如主键）
+          type: array
+          items:
+            type: string
+        features:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/BuildTaskFieldIndexFeature"
+    BuildTaskFieldIndexFeature:
+      type: object
+      properties:
+        vector:
+          type: object
+          required:
+            - model_id
+            - dimensions
+          properties:
+            model_id:
+              type: string
+            dimensions:
+              type: integer
+        fulltext:
+          type: object
+          properties:
+            analyzer:
+              type: string
+    IndexHealth:
+      description: 索引派生健康状态；不持久化
+      type: object
+      required:
+        - embedding
+        - fulltext
+        - usable
+      properties:
+        embedding:
           type: string
-        embedding_model:
-          description: 嵌入模型名
+          enum:
+            - none
+            - building
+            - ok
+            - partial
+            - failed
+        fulltext:
           type: string
-        model_dimensions:
-          description: 模型向量维度
-          type: integer
-        fulltext_fields:
-          description: 已建全文索引的字段，逗号分隔
-          type: string
-        fulltext_analyzer:
-          description: 全文分词器；为空用默认 standard
-          type: string
+          enum:
+            - none
+            - ok
+        usable:
+          type: boolean
     CreateBuildTaskRequest:
       description: 创建构建任务请求体
       type: object
@@ -459,40 +500,20 @@ components:
           enum:
             - streaming
             - batch
-            - embedding
-        embedding_fields:
-          description: 需向量化的字段，逗号分隔
-          type: string
-        build_key_fields:
-          description: 构建键字段，逗号分隔；batch 模式必填
-          type: string
-        embedding_model:
-          description: 嵌入模型名；为空且 embedding_fields 非空时使用默认模型
-          type: string
-        model_dimensions:
-          description: 模型向量维度；为 0 且 embedding_model 非空时按模型查询填入
-          type: integer
-        fulltext_fields:
-          description: >
-            需建全文索引的字段，逗号分隔；仅 string/text 字段可选。
-            string 字段建索引时主字段保持 keyword（精确匹配/排序不变），额外加一个
-            `<字段>.fulltext` 分词子字段；text 字段主字段本身分词。全文检索随结构化
-            数据同步落地（不像 embedding 需异步补）。
-          type: string
-        fulltext_analyzer:
-          description: 全文分词器（standard/ik_max_word/hanlp_index 等）；为空用 OpenSearch 默认 standard
-          type: string
-    StartBuildTaskRequest:
-      description: 启动构建任务请求体（可选）
-      type: object
-      properties:
         execute_type:
-          description: 执行类型；默认 incremental
+          description: batch 执行类型；省略时服务端默认 `full`
           type: string
           enum:
             - incremental
             - full
-          default: incremental
+    StartBuildTaskRequest:
+      description: 启动构建任务请求体（可选）
+      type: object
+      properties:
+        reset:
+          description: 为 true 时忽略已有 `synced_mark`，从头执行
+          type: boolean
+          default: false
     ListBuildTasks:
       description: 构建任务列表
       type: object

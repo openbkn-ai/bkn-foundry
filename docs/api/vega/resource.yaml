@@ -51,8 +51,10 @@ info:
   version: 0.2.1
 servers:
   - url: /api/vega-backend/v1
+security:
+  - OAuth2: []
 paths:
-  /api/vega-backend/v1/resources:
+  /resources:
     get:
       summary: 获取资源列表
       description: |
@@ -222,9 +224,9 @@ paths:
           $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalServerError"
-  /api/vega-backend/v1/resources/{ids}:
+  /resources/{id}:
     parameters:
-      - name: ids
+      - name: id
         description: |
           Resource ID 列表，逗号分隔（单条即长度 1 的退化情形）。
         in: path
@@ -275,14 +277,6 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalServerError"
-  /api/vega-backend/v1/resources/{id}:
-    parameters:
-      - name: id
-        description: Resource ID
-        in: path
-        required: true
-        schema:
-          type: string
     put:
       summary: 更新资源
       description: |
@@ -314,6 +308,9 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerError"
 components:
+  securitySchemes:
+    OAuth2:
+      $ref: "../_shared/auth.yaml#/components/securitySchemes/OAuth2"
   responses:
     BadRequest:
       description: |
@@ -592,6 +589,9 @@ components:
         status_message:
           description: 状态说明（stale/deprecated 时填充）
           type: string
+        last_discover_status:
+          description: 最近一次资源发现的观察状态
+          type: string
         database:
           description: 所属数据库（实例级 Catalog 时填充）
           type: string
@@ -609,9 +609,18 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Property"
+        index_config:
+          $ref: "#/components/schemas/ResourceIndexConfig"
         index_name:
           description: 关联索引名（由构建任务填充）
           type: string
+        column_count:
+          description: "`schema_definition` 的字段数"
+          type: integer
+        row_count:
+          description: 最近一次发现记录的源端行数估算
+          type: integer
+          format: int64
         logic_type:
           description: 逻辑视图类型（仅 category=logicview 有意义）
           type: string
@@ -710,10 +719,24 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Property"
+        index_config:
+          $ref: "#/components/schemas/ResourceIndexConfig"
         logic_definition:
           type: array
           items:
             $ref: "#/components/schemas/LogicDefinitionNode"
+    ResourceIndexConfig:
+      description: 本地索引构建配置
+      type: object
+      properties:
+        build_key_fields:
+          type: array
+          items:
+            type: string
+        default_fulltext_analyzer:
+          type: string
+        default_embedding_model:
+          type: string
     ListResources:
       description: 资源列表响应
       type: object
