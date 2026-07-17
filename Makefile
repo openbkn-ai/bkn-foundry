@@ -1,7 +1,8 @@
 # bkn-foundry API 文档工具链
 #
-# YAML 为唯一真相源，Markdown 由 widdershins 从 YAML 渲染，产物落 docs/api/_generated/。
-# 依赖走根 package.json 的 devDependencies（widdershins + @redocly/cli），先 `npm ci` 或 `npm install`。
+# YAML 为唯一真相源，交互式 HTML 由 redocly 渲染、Markdown 由 widdershins 按需本地渲染，
+# 产物落 docs/api/_generated/（一律不进 git）。
+# 依赖走根 package.json 的 devDependencies（@redocly/cli + widdershins），先 `npm ci` 或 `npm install`。
 
 API_DIR      := docs/api
 GEN_DIR      := $(API_DIR)/_generated
@@ -26,11 +27,13 @@ api-docs-lint:
 	  done; \
 	done
 
-## api-docs: 渲染各模块 YAML 为 Markdown，输出到 _generated/<module>.md
+## api-docs: 渲染各模块 YAML 为 Markdown，输出到 _generated/<module>.md。
+## 本地按需生成（喂飞书 / 离线阅读等），产物不进 git、CI 不渲染。
 ## 每个 YAML 先渲染到临时文件（widdershins 的编译日志走 stdout，不能用 -o -），
 ## 再按模块拼接。--code 关掉多语言代码示例（PHP/Ruby/… 对 REST 参照是噪声）。
-api-docs: api-docs-clean
+api-docs:
 	@mkdir -p $(GEN_DIR)
+	@rm -f $(GEN_DIR)/*.md
 	@tmp=$$(mktemp); \
 	for m in $(MODULES); do \
 	  echo "==> rendering $$m"; \
@@ -77,16 +80,24 @@ RESNAME_ontology-query            := 本体查询
 ## 输出到 _generated/html/<module>/<resource>.html，并生成一个卡片式 index.html 汇总入口。
 ## index 的静态头/尾模板在 $(TPL_DIR)/index-{head,foot}.html，中间的模块卡片按数据生成。
 ## HTML 不进 git（见 .gitignore），由 CI 渲染并发布到 GitHub Pages；本地也可自行生成查看。
+## 渲染分两步：先把全部 YAML 用 redocly 并行转 HTML（重活），再串行拼 index（快）。
+## REDOCLY_TELEMETRY=off 掐掉 redocly 的联网遥测/更新检查（单文件 4.6s -> 1s）；
+## redocly 走本地 devDependency，先 `npm install`，否则 npx 每次上网解析（单文件 30s）。
+api-docs-html: export REDOCLY_TELEMETRY=off
 api-docs-html:
 	@rm -rf $(HTML_DIR)
-	@mkdir -p $(HTML_DIR)
+	@mkdir -p $(HTML_DIR) $(foreach m,$(MODULES),$(HTML_DIR)/$(m))
 	@cp "$(TPL_DIR)/openbkn-logo.png" "$(HTML_DIR)/openbkn-logo.png"
 	@cp "$(TPL_DIR)/auth.html" "$(HTML_DIR)/auth.html"
+	@echo "==> html: rendering $(words $(foreach m,$(MODULES),$(wildcard $(API_DIR)/$(m)/*.yaml))) yaml (parallel)"
+	@printf '%s\n' $(foreach m,$(MODULES),$(wildcard $(API_DIR)/$(m)/*.yaml)) | \
+	  xargs -n 1 -P 8 sh -c 'y="$$1"; m=$$(basename "$$(dirname "$$y")"); b=$$(basename "$$y" .yaml); \
+	    npx @redocly/cli build-docs "$$y" -o "$(HTML_DIR)/$$m/$$b.html" >/dev/null 2>&1 \
+	    || { echo "build-docs failed: $$y" >&2; exit 1; }' _ \
+	  || { echo "api-docs-html: 渲染失败（见上方 failed 行）" >&2; exit 1; }
 	@idx="$(HTML_DIR)/index.html"; \
 	cat "$(TPL_DIR)/index-head.html" > "$$idx"; \
 	for m in $(MODULES); do \
-	  echo "==> html: $$m"; \
-	  mkdir -p "$(HTML_DIR)/$$m"; \
 	  desc=$$(make -s print-moddesc MOD="$$m"); \
 	  count=$$(ls $(API_DIR)/$$m/*.yaml 2>/dev/null | wc -l | tr -d ' '); \
 	  printf '<section class="mod">\n<div class="mod-h"><h2>%s</h2><span class="count">%s</span></div>\n' "$$m" "$$count" >> "$$idx"; \
@@ -96,7 +107,6 @@ api-docs-html:
 	    [ -e "$$y" ] || continue; \
 	    base=$$(basename "$$y" .yaml); \
 	    rn=$$(make -s print-resname RES="$$base"); [ -n "$$rn" ] || rn="$$base"; \
-	    npx @redocly/cli build-docs "$$y" -o "$(HTML_DIR)/$$m/$$base.html" >/dev/null 2>&1 || { echo "build-docs failed: $$y"; exit 1; }; \
 	    printf '<a class="card" data-name="%s %s" href="./%s/%s.html" target="_blank" rel="noopener"><span class="name">%s</span><span class="arrow">&rarr;</span></a>\n' "$$base" "$$rn" "$$m" "$$base" "$$rn" >> "$$idx"; \
 	  done; \
 	  printf '</div>\n</section>\n' >> "$$idx"; \
@@ -114,5 +124,4 @@ print-resname:
 
 ## api-docs-clean: 清空 _generated 的产物（渲染前重建，避免删源后残留旧文件）
 api-docs-clean:
-	@rm -f $(GEN_DIR)/*.md
-	@rm -rf $(HTML_DIR)
+	@rm -rf $(GEN_DIR)

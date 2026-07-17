@@ -1,12 +1,11 @@
 name: ci-docs-api
 
 # API 文档流水线：
-#  - PR 触碰 docs/api 时：校验 OpenAPI YAML（$ref 可解析等），渲染 Markdown，
-#    若 _generated/*.md 与源 YAML 不同步就提交回 PR 分支。
+#  - PR 触碰 docs/api 时：校验 OpenAPI YAML（$ref 可解析等）。
 #  - push 到 main 后：渲染交互式 HTML（redocly）并发布到 GitHub Pages，供开发者
-#    在线查看（HTML 不进 git，见 .gitignore）。
+#    在线查看（_generated/ 产物一律不进 git，见 .gitignore）。
 #
-# 真相源永远是 YAML；_generated/ 的 md 由本流水线维护，不要手改。
+# 真相源永远是 YAML。
 #
 # 前置：GitHub Pages 发布需在仓库 Settings → Pages 里把 Source 设为
 # "GitHub Actions"（一次性设置）。
@@ -38,20 +37,17 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write   # 需要把渲染出的 md 提交回 PR 分支
+  contents: write   # 归档 gh-pages 分支需要
   pages: write      # 发布 GitHub Pages
   id-token: write   # Pages 部署需要
 
 jobs:
-  render:
-    # PR 时渲染 md 并回提交
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+  lint:
+    # PR 时校验 OpenAPI YAML
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.head_ref }}
-          token: ${{ github.token }}
 
       - uses: actions/setup-node@v4
         with:
@@ -62,25 +58,6 @@ jobs:
 
       - name: Lint OpenAPI YAML
         run: make api-docs-lint
-
-      - name: Render YAML to Markdown
-        run: make api-docs
-
-      - name: Commit regenerated Markdown if changed
-        env:
-          HEAD_REF: ${{ github.head_ref }}
-        run: |
-          set -euo pipefail
-          if [ -z "$(git status --porcelain docs/api/_generated)" ]; then
-            echo "✅ _generated/ already in sync — nothing to commit."
-            exit 0
-          fi
-          git config user.name  'github-actions[bot]'
-          git config user.email 'github-actions[bot]@users.noreply.github.com'
-          git add docs/api/_generated
-          git commit -m 'docs(api): regenerate Markdown from OpenAPI YAML'
-          git push origin "HEAD:$HEAD_REF"
-          echo "📝 Committed regenerated Markdown back to the PR branch."
 
   pages:
     # push 到 main（发布 latest）或打 v* tag（归档该版本）后：渲染 HTML，按版本
