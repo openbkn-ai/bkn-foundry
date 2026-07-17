@@ -1,0 +1,1527 @@
+openapi: 3.1.0
+info:
+  title: bkn-agent
+  version: 0.1.0
+paths:
+  /api/bkn-agent/v1/agents:
+    post:
+      tags:
+      - BknAgent
+      summary: Create Agent
+      operationId: create_agent_api_bkn_agent_v1_agents_post
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentSpec'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentOut'
+        4XX:
+          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    get:
+      tags:
+      - BknAgent
+      summary: List Agents
+      operationId: list_agents_api_bkn_agent_v1_agents_get
+      parameters:
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+          title: Page
+      - name: size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 20
+          title: Size
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentList'
+        4XX:
+          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/bkn-agent/v1/agents/{agent_id}:
+    get:
+      tags:
+      - BknAgent
+      summary: Get Agent
+      operationId: get_agent_api_bkn_agent_v1_agents__agent_id__get
+      parameters:
+      - name: agent_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Agent Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentOut'
+        4XX:
+          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    put:
+      tags:
+      - BknAgent
+      summary: Update Agent
+      operationId: update_agent_api_bkn_agent_v1_agents__agent_id__put
+      parameters:
+      - name: agent_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Agent Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentSpec'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentOut'
+        4XX:
+          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    delete:
+      tags:
+      - BknAgent
+      summary: Delete Agent
+      operationId: delete_agent_api_bkn_agent_v1_agents__agent_id__delete
+      parameters:
+      - name: agent_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Agent Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentDeleted'
+        4XX:
+          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/bkn-agent/v1/chat:
+    post:
+      tags:
+      - BknAgent
+      summary: Chat
+      operationId: chat_api_bkn_agent_v1_chat_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+        required: true
+      responses:
+        '200':
+          description: 'SSE 事件流：meta({thread_id, agent_id}) 先行；正文轮内 token({content})
+            与 tool_call({name}) 交替；传了 response_format 时 done 前多一个 structured({content:
+            符合 schema 的对象}) 事件；正常收尾 done({thread_id})；失败以 error({code, detail}) 收尾（错误不静默）。'
+          content:
+            application/json:
+              schema: {}
+            text/event-stream:
+              schema:
+                type: string
+        4XX:
+          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/bkn-agent/v1/invoke/{agent_id}:
+    post:
+      tags:
+      - BknAgent
+      summary: Invoke
+      description: '同步一次性执行，等到终态才返回（算子工厂 toolbox 工具经此调用）。
+
+
+        仅 published agent 可调（draft 与不存在同响应）；chat/task 模式均可，
+
+        执行为无状态单轮，不落 thread。任务记录照常落库可监控。'
+      operationId: invoke_api_bkn_agent_v1_invoke__agent_id__post
+      parameters:
+      - name: agent_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Agent Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InvokeRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskOut'
+        4XX:
+          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/bkn-agent/v1/run:
+    post:
+      tags:
+      - BknAgent
+      summary: Run
+      operationId: run_api_bkn_agent_v1_run_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskOut'
+        4XX:
+          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/bkn-agent/v1/tasks/{task_id}:
+    get:
+      tags:
+      - BknAgent
+      summary: Get Task
+      operationId: get_task_api_bkn_agent_v1_tasks__task_id__get
+      parameters:
+      - name: task_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Task Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskOut'
+        4XX:
+          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/bkn-agent/v1/prompts:
+    post:
+      tags:
+      - BknAgent
+      summary: Create Prompt
+      operationId: create_prompt_api_bkn_agent_v1_prompts_post
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PromptSpec'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromptOut'
+        4XX:
+          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    get:
+      tags:
+      - BknAgent
+      summary: List Prompts
+      operationId: list_prompts_api_bkn_agent_v1_prompts_get
+      parameters:
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+          title: Page
+      - name: size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 20
+          title: Size
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromptList'
+        4XX:
+          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/bkn-agent/v1/prompts/{prompt_id}:
+    get:
+      tags:
+      - BknAgent
+      summary: Get Prompt
+      operationId: get_prompt_api_bkn_agent_v1_prompts__prompt_id__get
+      parameters:
+      - name: prompt_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Prompt Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromptOut'
+        4XX:
+          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    put:
+      tags:
+      - BknAgent
+      summary: Publish Version
+      description: 发布新版本：写入 t_agent_prompt_version 并推进 current_version，立即全局生效。
+      operationId: publish_version_api_bkn_agent_v1_prompts__prompt_id__put
+      parameters:
+      - name: prompt_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Prompt Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PromptPublish'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromptOut'
+        4XX:
+          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/bkn-agent/v1/prompts/{prompt_id}/versions:
+    get:
+      tags:
+      - BknAgent
+      summary: List Versions
+      operationId: list_versions_api_bkn_agent_v1_prompts__prompt_id__versions_get
+      parameters:
+      - name: prompt_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Prompt Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromptVersionList'
+        4XX:
+          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/bkn-agent/v1/prompts/{prompt_id}/rollback:
+    post:
+      tags:
+      - BknAgent
+      summary: Rollback
+      operationId: rollback_api_bkn_agent_v1_prompts__prompt_id__rollback_post
+      parameters:
+      - name: prompt_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Prompt Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PromptRollback'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromptOut'
+        4XX:
+          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/bkn-agent/v1/agents/{agent_id}/prompt:
+    get:
+      tags:
+      - BknAgent
+      summary: Get Effective Prompt
+      operationId: get_effective_prompt_api_bkn_agent_v1_agents__agent_id__prompt_get
+      parameters:
+      - name: agent_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Agent Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EffectivePromptOut'
+        4XX:
+          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    put:
+      tags:
+      - BknAgent
+      summary: Put Override
+      operationId: put_override_api_bkn_agent_v1_agents__agent_id__prompt_put
+      parameters:
+      - name: agent_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Agent Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OverridePut'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OverrideState'
+        4XX:
+          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    delete:
+      tags:
+      - BknAgent
+      summary: Delete Override
+      operationId: delete_override_api_bkn_agent_v1_agents__agent_id__prompt_delete
+      parameters:
+      - name: agent_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Agent Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OverrideDeleted'
+        4XX:
+          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/bkn-agent/v1/threads/{thread_id}:
+    get:
+      tags:
+      - BknAgent
+      summary: Get Thread
+      operationId: get_thread_api_bkn_agent_v1_threads__thread_id__get
+      parameters:
+      - name: thread_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Thread Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ThreadOut'
+        4XX:
+          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/bkn-agent/v1/export:
+    post:
+      tags:
+      - BknAgent
+      summary: Export Agents
+      operationId: export_agents_api_bkn_agent_v1_export_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExportRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExportPackage-Output'
+        4XX:
+          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/bkn-agent/v1/import:
+    post:
+      tags:
+      - BknAgent
+      summary: Import Agents
+      operationId: import_agents_api_bkn_agent_v1_import_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImportRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportResult'
+        4XX:
+          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/health:
+    get:
+      summary: Health
+      operationId: health_api_v1_health_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+components:
+  schemas:
+    AgentDeleted:
+      properties:
+        deleted:
+          type: string
+          title: Deleted
+      type: object
+      required:
+      - deleted
+      title: AgentDeleted
+    AgentExportItem-Input:
+      properties:
+        agent_id:
+          type: string
+          title: Agent Id
+        spec:
+          $ref: '#/components/schemas/AgentSpec'
+        prompt:
+          anyOf:
+          - $ref: '#/components/schemas/PromptExport'
+          - type: 'null'
+      type: object
+      required:
+      - agent_id
+      - spec
+      title: AgentExportItem
+    AgentExportItem-Output:
+      properties:
+        agent_id:
+          type: string
+          title: Agent Id
+        spec:
+          $ref: '#/components/schemas/AgentSpec'
+        prompt:
+          anyOf:
+          - $ref: '#/components/schemas/PromptExport'
+          - type: 'null'
+      type: object
+      required:
+      - agent_id
+      - spec
+      title: AgentExportItem
+    AgentLimits:
+      properties:
+        max_turns:
+          anyOf:
+          - type: integer
+            maximum: 200.0
+            minimum: 1.0
+          - type: 'null'
+          title: Max Turns
+        max_tool_calls:
+          anyOf:
+          - type: integer
+            maximum: 500.0
+            minimum: 0.0
+          - type: 'null'
+          title: Max Tool Calls
+        timeout_s:
+          anyOf:
+          - type: integer
+            maximum: 3600.0
+            minimum: 1.0
+          - type: 'null'
+          title: Timeout S
+        max_output_tokens:
+          anyOf:
+          - type: integer
+            maximum: 65536.0
+            minimum: 10.0
+          - type: 'null'
+          title: Max Output Tokens
+      type: object
+      title: AgentLimits
+    AgentList:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/AgentOut'
+          type: array
+          title: Items
+        total:
+          type: integer
+          title: Total
+        page:
+          type: integer
+          title: Page
+        size:
+          type: integer
+          title: Size
+      type: object
+      required:
+      - items
+      - total
+      - page
+      - size
+      title: AgentList
+    AgentOut:
+      properties:
+        agent_id:
+          type: string
+          minLength: 1
+          title: Agent Id
+        name:
+          type: string
+          maxLength: 100
+          minLength: 1
+          title: Name
+        mode:
+          type: string
+          enum:
+          - chat
+          - task
+          title: Mode
+          default: chat
+        prompt_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Prompt Id
+        prompt_vars_schema:
+          anyOf:
+          - type: object
+          - type: 'null'
+          title: Prompt Vars Schema
+        model:
+          type: string
+          title: Model
+          default: ''
+        tools:
+          items: {}
+          type: array
+          title: Tools
+        skills:
+          items:
+            type: string
+          type: array
+          title: Skills
+        limits:
+          anyOf:
+          - $ref: '#/components/schemas/AgentLimits'
+          - type: 'null'
+        status:
+          type: string
+          enum:
+          - draft
+          - published
+          title: Status
+          default: draft
+        create_user:
+          type: string
+          title: Create User
+        update_user:
+          type: string
+          title: Update User
+        create_time:
+          type: integer
+          title: Create Time
+        update_time:
+          type: integer
+          title: Update Time
+      type: object
+      required:
+      - agent_id
+      - name
+      - create_user
+      - update_user
+      - create_time
+      - update_time
+      title: AgentOut
+    AgentSpec:
+      properties:
+        agent_id:
+          anyOf:
+          - type: string
+            maxLength: 50
+            minLength: 1
+            pattern: ^[0-9A-Za-z_.-]+$
+          - type: 'null'
+          title: Agent Id
+        name:
+          type: string
+          maxLength: 100
+          minLength: 1
+          pattern: ^[0-9A-Za-z_一-鿿]+$
+          title: Name
+        mode:
+          type: string
+          enum:
+          - chat
+          - task
+          title: Mode
+          default: chat
+        prompt_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Prompt Id
+        prompt_vars_schema:
+          anyOf:
+          - type: object
+          - type: 'null'
+          title: Prompt Vars Schema
+        model:
+          type: string
+          title: Model
+          default: ''
+        tools:
+          items:
+            oneOf:
+            - $ref: '#/components/schemas/McpToolRef'
+            - $ref: '#/components/schemas/ToolboxToolRef'
+            - $ref: '#/components/schemas/AgentToolRef'
+            discriminator:
+              propertyName: type
+              mapping:
+                agent: '#/components/schemas/AgentToolRef'
+                mcp: '#/components/schemas/McpToolRef'
+                toolbox: '#/components/schemas/ToolboxToolRef'
+          type: array
+          title: Tools
+        skills:
+          items:
+            type: string
+          type: array
+          title: Skills
+        limits:
+          anyOf:
+          - $ref: '#/components/schemas/AgentLimits'
+          - type: 'null'
+        status:
+          type: string
+          enum:
+          - draft
+          - published
+          title: Status
+          default: draft
+      type: object
+      required:
+      - name
+      title: AgentSpec
+    AgentToolRef:
+      properties:
+        name:
+          anyOf:
+          - type: string
+            maxLength: 100
+          - type: 'null'
+          title: Name
+        description:
+          anyOf:
+          - type: string
+            maxLength: 500
+          - type: 'null'
+          title: Description
+        type:
+          type: string
+          enum:
+          - agent
+          const: agent
+          title: Type
+        agent_id:
+          type: string
+          maxLength: 100
+          minLength: 1
+          title: Agent Id
+      additionalProperties: true
+      type: object
+      required:
+      - type
+      - agent_id
+      title: AgentToolRef
+    ChatRequest:
+      properties:
+        agent_id:
+          type: string
+          title: Agent Id
+        thread_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Thread Id
+        message:
+          type: string
+          minLength: 1
+          title: Message
+        skills:
+          items:
+            type: string
+          type: array
+          title: Skills
+        prompt_override:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Prompt Override
+        prompt_vars:
+          type: object
+          title: Prompt Vars
+        response_format:
+          anyOf:
+          - type: object
+          - type: 'null'
+          title: Response Format
+      type: object
+      required:
+      - agent_id
+      - message
+      title: ChatRequest
+    EffectivePromptOut:
+      properties:
+        source:
+          type: string
+          enum:
+          - override
+          - default
+          title: Source
+        content:
+          type: string
+          title: Content
+        prompt_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Prompt Id
+        version:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Version
+      type: object
+      required:
+      - source
+      - content
+      title: EffectivePromptOut
+    ErrorEnvelope:
+      properties:
+        code:
+          type: string
+          title: Code
+        description:
+          type: string
+          title: Description
+        detail:
+          type: string
+          title: Detail
+        solution:
+          type: string
+          title: Solution
+        link:
+          type: string
+          title: Link
+          default: ''
+      type: object
+      required:
+      - code
+      - description
+      - detail
+      - solution
+      title: ErrorEnvelope
+      description: 平台统一错误封套（所有非 2xx 响应）。
+    ExportPackage-Input:
+      properties:
+        format:
+          type: string
+          enum:
+          - bkn-agent/v1
+          const: bkn-agent/v1
+          title: Format
+          default: bkn-agent/v1
+        exported_at:
+          type: integer
+          title: Exported At
+        items:
+          items:
+            $ref: '#/components/schemas/AgentExportItem-Input'
+          type: array
+          title: Items
+      type: object
+      required:
+      - exported_at
+      - items
+      title: ExportPackage
+    ExportPackage-Output:
+      properties:
+        format:
+          type: string
+          enum:
+          - bkn-agent/v1
+          const: bkn-agent/v1
+          title: Format
+          default: bkn-agent/v1
+        exported_at:
+          type: integer
+          title: Exported At
+        items:
+          items:
+            $ref: '#/components/schemas/AgentExportItem-Output'
+          type: array
+          title: Items
+      type: object
+      required:
+      - exported_at
+      - items
+      title: ExportPackage
+    ExportRequest:
+      properties:
+        agent_ids:
+          items:
+            type: string
+          type: array
+          minItems: 1
+          title: Agent Ids
+      type: object
+      required:
+      - agent_ids
+      title: ExportRequest
+    ImportItemResult:
+      properties:
+        agent_id:
+          type: string
+          title: Agent Id
+        name:
+          type: string
+          title: Name
+        action:
+          type: string
+          enum:
+          - created
+          - updated
+          - failed
+          title: Action
+        prompt_action:
+          type: string
+          enum:
+          - created
+          - version_published
+          - unchanged
+          - none
+          title: Prompt Action
+          default: none
+        error:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Error
+      type: object
+      required:
+      - agent_id
+      - name
+      - action
+      title: ImportItemResult
+    ImportRequest:
+      properties:
+        package:
+          $ref: '#/components/schemas/ExportPackage-Input'
+      type: object
+      required:
+      - package
+      title: ImportRequest
+    ImportResult:
+      properties:
+        results:
+          items:
+            $ref: '#/components/schemas/ImportItemResult'
+          type: array
+          title: Results
+        warnings:
+          items:
+            type: string
+          type: array
+          title: Warnings
+      type: object
+      required:
+      - results
+      title: ImportResult
+    InvokeRequest:
+      properties:
+        message:
+          type: string
+          minLength: 1
+          title: Message
+        skills:
+          items:
+            type: string
+          type: array
+          title: Skills
+        prompt_override:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Prompt Override
+        prompt_vars:
+          type: object
+          title: Prompt Vars
+        response_format:
+          anyOf:
+          - type: object
+          - type: 'null'
+          title: Response Format
+      type: object
+      required:
+      - message
+      title: InvokeRequest
+      description: 同步一次性执行（agent_id 在路径上；算子工厂 toolbox 工具经此调用）。
+    McpToolRef:
+      properties:
+        name:
+          anyOf:
+          - type: string
+            maxLength: 100
+          - type: 'null'
+          title: Name
+        description:
+          anyOf:
+          - type: string
+            maxLength: 500
+          - type: 'null'
+          title: Description
+        type:
+          type: string
+          enum:
+          - mcp
+          const: mcp
+          title: Type
+        url:
+          type: string
+          maxLength: 2048
+          minLength: 1
+          pattern: ^https?://
+          title: Url
+      additionalProperties: true
+      type: object
+      required:
+      - type
+      - url
+      title: McpToolRef
+    OverrideDeleted:
+      properties:
+        deleted:
+          type: boolean
+          title: Deleted
+        fallback:
+          type: string
+          enum:
+          - default
+          const: default
+          title: Fallback
+      type: object
+      required:
+      - deleted
+      - fallback
+      title: OverrideDeleted
+    OverridePut:
+      properties:
+        content:
+          type: string
+          minLength: 1
+          title: Content
+      type: object
+      required:
+      - content
+      title: OverridePut
+    OverrideState:
+      properties:
+        agent_id:
+          type: string
+          title: Agent Id
+        account_id:
+          type: string
+          title: Account Id
+        source:
+          type: string
+          enum:
+          - override
+          const: override
+          title: Source
+      type: object
+      required:
+      - agent_id
+      - account_id
+      - source
+      title: OverrideState
+    PromptExport:
+      properties:
+        prompt_id:
+          type: string
+          title: Prompt Id
+        name:
+          type: string
+          title: Name
+        content:
+          type: string
+          title: Content
+        vars_schema:
+          anyOf:
+          - type: object
+          - type: 'null'
+          title: Vars Schema
+      type: object
+      required:
+      - prompt_id
+      - name
+      - content
+      title: PromptExport
+    PromptList:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/PromptOut'
+          type: array
+          title: Items
+        total:
+          type: integer
+          title: Total
+        page:
+          type: integer
+          title: Page
+        size:
+          type: integer
+          title: Size
+      type: object
+      required:
+      - items
+      - total
+      - page
+      - size
+      title: PromptList
+    PromptOut:
+      properties:
+        prompt_id:
+          type: string
+          title: Prompt Id
+        name:
+          type: string
+          title: Name
+        current_version:
+          type: integer
+          title: Current Version
+        content:
+          type: string
+          title: Content
+        vars_schema:
+          anyOf:
+          - type: object
+          - type: 'null'
+          title: Vars Schema
+        update_user:
+          type: string
+          title: Update User
+        update_time:
+          type: integer
+          title: Update Time
+      type: object
+      required:
+      - prompt_id
+      - name
+      - current_version
+      - content
+      - update_user
+      - update_time
+      title: PromptOut
+    PromptPublish:
+      properties:
+        content:
+          type: string
+          minLength: 1
+          title: Content
+        vars_schema:
+          anyOf:
+          - type: object
+          - type: 'null'
+          title: Vars Schema
+      type: object
+      required:
+      - content
+      title: PromptPublish
+    PromptRollback:
+      properties:
+        version:
+          type: integer
+          minimum: 1.0
+          title: Version
+      type: object
+      required:
+      - version
+      title: PromptRollback
+    PromptSpec:
+      properties:
+        prompt_id:
+          anyOf:
+          - type: string
+            maxLength: 50
+            minLength: 1
+            pattern: ^[0-9A-Za-z_.-]+$
+          - type: 'null'
+          title: Prompt Id
+        name:
+          type: string
+          maxLength: 100
+          minLength: 1
+          title: Name
+        content:
+          type: string
+          minLength: 1
+          title: Content
+        vars_schema:
+          anyOf:
+          - type: object
+          - type: 'null'
+          title: Vars Schema
+      type: object
+      required:
+      - name
+      - content
+      title: PromptSpec
+    PromptVersionList:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/PromptVersionOut'
+          type: array
+          title: Items
+      type: object
+      required:
+      - items
+      title: PromptVersionList
+    PromptVersionOut:
+      properties:
+        version:
+          type: integer
+          title: Version
+        content:
+          type: string
+          title: Content
+        vars_schema:
+          anyOf:
+          - type: object
+          - type: 'null'
+          title: Vars Schema
+        create_user:
+          type: string
+          title: Create User
+        create_time:
+          type: integer
+          title: Create Time
+      type: object
+      required:
+      - version
+      - content
+      - create_user
+      - create_time
+      title: PromptVersionOut
+    RunRequest:
+      properties:
+        agent_id:
+          type: string
+          title: Agent Id
+        message:
+          type: string
+          minLength: 1
+          title: Message
+        skills:
+          items:
+            type: string
+          type: array
+          title: Skills
+        prompt_override:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Prompt Override
+        prompt_vars:
+          type: object
+          title: Prompt Vars
+        response_format:
+          anyOf:
+          - type: object
+          - type: 'null'
+          title: Response Format
+      type: object
+      required:
+      - agent_id
+      - message
+      title: RunRequest
+    TaskOut:
+      properties:
+        task_id:
+          type: string
+          title: Task Id
+        agent_id:
+          type: string
+          title: Agent Id
+        status:
+          type: string
+          enum:
+          - pending
+          - running
+          - succeeded
+          - failed
+          title: Status
+        input:
+          anyOf:
+          - type: object
+          - type: 'null'
+          title: Input
+        output:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Output
+        failure_detail:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Failure Detail
+        parent_thread_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Parent Thread Id
+        create_time:
+          type: integer
+          title: Create Time
+        update_time:
+          type: integer
+          title: Update Time
+      type: object
+      required:
+      - task_id
+      - agent_id
+      - status
+      - create_time
+      - update_time
+      title: TaskOut
+    ThreadMessage:
+      properties:
+        role:
+          type: string
+          enum:
+          - user
+          - assistant
+          - tool
+          title: Role
+        content:
+          type: string
+          title: Content
+        tool_calls:
+          items:
+            type: string
+          type: array
+          title: Tool Calls
+      type: object
+      required:
+      - role
+      - content
+      title: ThreadMessage
+    ThreadOut:
+      properties:
+        thread_id:
+          type: string
+          title: Thread Id
+        agent_id:
+          type: string
+          title: Agent Id
+        create_time:
+          type: integer
+          title: Create Time
+        update_time:
+          type: integer
+          title: Update Time
+        messages:
+          items:
+            $ref: '#/components/schemas/ThreadMessage'
+          type: array
+          title: Messages
+      type: object
+      required:
+      - thread_id
+      - agent_id
+      - create_time
+      - update_time
+      - messages
+      title: ThreadOut
+    ToolboxToolRef:
+      properties:
+        name:
+          anyOf:
+          - type: string
+            maxLength: 100
+          - type: 'null'
+          title: Name
+        description:
+          anyOf:
+          - type: string
+            maxLength: 500
+          - type: 'null'
+          title: Description
+        type:
+          type: string
+          enum:
+          - toolbox
+          const: toolbox
+          title: Type
+        box_id:
+          type: string
+          maxLength: 100
+          minLength: 1
+          title: Box Id
+      additionalProperties: true
+      type: object
+      required:
+      - type
+      - box_id
+      title: ToolboxToolRef

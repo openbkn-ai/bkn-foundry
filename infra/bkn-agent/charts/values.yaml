@@ -1,0 +1,66 @@
+# 必须保持 1。bkn-agent 当前有进程内状态、不跨副本：
+#   - 一次性任务是进程内 asyncio 任务（重启回收见 dao.recover_stale_tasks）
+#   - 同 thread 并发保护 _busy_threads 是进程内集合
+#   - 算子工厂全量同步在进程内串行
+# 多副本会导致：启动回收误杀别的副本活跃任务 / 同 thread 落不同副本并发写
+# checkpoint / 同步互相覆盖。真·多副本需分布式协调（任务租约+分布式锁+同步选主），
+# 见 issue #246。配合 deployment 的 maxSurge=0（滚动无重叠），单副本语义安全。
+replicaCount: 1
+
+namespace: openbkn
+
+image:
+  registry: ghcr.io/openbkn-ai
+  repository: bkn-agent
+  tag: "__VERSION__"
+  pullPolicy: IfNotPresent
+  name: bkn-agent
+
+service:
+  type: ClusterIP
+  ports:
+    port: 30800
+    targetPort: 30800
+
+# 仅面向平台内部（Epic #202 硬约束）：本 chart 不含 ingress 模板，
+# 网关不得为 bkn-agent 开终端用户入口。产品面需要 agent 能力时
+# 由其后端以服务身份代理调用。
+
+depServices:
+  rds:
+    host: "rds-proton-rds-mariadb-cluster"
+    port: "3306"
+    user: "root"
+    password: "password"
+    database: "openbkn"
+
+runtime:
+  mfModelApiPrivateBase: "http://mf-model-api:9898/api/private/mf-model-api/v1"
+  # 默认给每个 agent 挂载的执行工厂 toolbox（逗号分隔；默认=contextloader 内置工具集，置空不挂）
+  defaultToolboxes: "e521d454-4a0b-4dc9-8a28-d0986de1cef9"
+  capabilitiesLabBase: "http://capabilities-lab:9002/api/capabilities-lab/v1"
+  # published agent 注册进算子工厂 toolbox（#212）
+  operatorIntegrationBase: "http://agent-operator-integration:9000/api/agent-operator-integration"
+  toolboxSync: "true"
+  # toolbox 工具回调本服务的地址（box_svc_url）
+  selfBaseUrl: "http://bkn-agent:30800"
+  defaultModel: ""
+  checkpointerBackend: "mysql"
+  # 建表统一归 migrations/bkn-agent/（core-data-migrator）。
+  # checkpointer 三张表（langgraph-checkpoint-mysql 固定表名）当前由首启
+  # 一次性开启此开关建出，后续固化进迁移后关回 false。
+  checkpointerAllowRuntimeDdl: "false"
+
+observability:
+  otelEnabled: "true"
+  otlpEndpoint: "http://otelcol-contrib:4318"
+
+nodeSelector: {}
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: 2
+    memory: 2Gi

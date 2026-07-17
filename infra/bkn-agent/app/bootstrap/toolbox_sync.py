@@ -1,0 +1,284 @@
+"""published agent → 算子工厂 toolbox 注册（ToolDependencySync 同款机制，#212）。
+
+启动时全量 upsert（指数退避重试直到成功），agent 增删改后异步重同步。
+operator-integration 的 upsert 对 box 是整包替换（先删箱内工具再插入），
+因此取消发布/删除的 agent 会自动下架，无残留。
+
+.adp 硬约束：每个工具条目 metadata.version 必须 == source_id，
+否则导入静默损坏 metadata。build_package 内保证，测试守护。
+"""
+import asyncio
+import json
+import logging
+import re
+import time
+import uuid
+
+import aiohttp
+
+from app import dao
+from app.config import config
+from app.db import SessionLocal
+from app.models import AgentOut
+
+logger = logging.getLogger("bkn-agent.toolbox-sync")
+
+# 与 operator-integration 的工具名校验一致（^[[:word:]\p{Han}]+$），
+# 也与 AgentSpec.name 的 pattern 同源
+_NAME_RE = re.compile(r"^[0-9A-Za-z_一-鿿]+$")
+
+# 平台管理员身份 + 公共业务域（与 agent-retrieval ToolDependencySync 一致）
+_ADMIN_ACCOUNT_ID = "266c6a42-6131-4d62-8f39-853e7093701c"
+_BUSINESS_DOMAIN = "bd_public"
+_IMPORT_URI = "/internal-v1/impex/intcomp/import/toolbox"
+
+# 确定性 ID：box 与工具 ID 由固定命名空间派生，重启/重灌不漂移
+_NS = uuid.uuid5(uuid.NAMESPACE_URL, "openbkn://bkn-agent/toolbox")
+BOX_ID = str(uuid.uuid5(_NS, "box"))
+
+_ACCOUNT_HEADER_PARAMS = [
+    {
+        "name": "x-account-id",
+        "in": "header",
+        "description": "调用方账户 ID（/in 约定透传）",
+        "required": False,
+        "schema": {"type": "string"},
+    },
+    {
+        "name": "x-account-type",
+        "in": "header",
+        "description": "账户类型：user(用户), app(应用)",
+        "required": False,
+        "schema": {"enum": ["user", "app"], "type": "string"},
+    },
+]
+
+_INVOKE_BODY_SCHEMA = {
+    "type": "object",
+    "required": ["message"],
+    "properties": {
+        "message": {"type": "string", "description": "交给 agent 的任务描述/问题"},
+        "prompt_vars": {"type": "object", "description": "提示词模板变量（可选）"},
+        "prompt_override": {"type": "string", "description": "请求级提示词覆写（可选，仅本次生效）"},
+        "response_format": {
+            "type": "object",
+            "description": "结构化输出（可选）：JSON Schema 本体，output 为严格符合 schema 的 JSON 字符串",
+        },
+    },
+}
+
+# impex 的 APISpec.Responses 是数组（status_code 字段），不是 OpenAPI 标准的
+# {"200": {...}} 对象——对象形态导入直接 400 decode slice
+_INVOKE_RESPONSES = [
+    {
+        "status_code": "200",
+        "description": "任务终态。status=succeeded 时 output 为结果；failed 时看 failure_detail。",
+        "content": {
+            "application/json": {
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "task_id": {"type": "string"},
+                        "status": {"type": "string", "enum": ["succeeded", "failed"]},
+                        "output": {"type": ["string", "null"]},
+                        "failure_detail": {"type": ["string", "null"]},
+                    },
+                }
+            }
+        },
+    }
+]
+
+
+def _tool_entry(agent: AgentOut, now_ns: int) -> dict:
+    source_id = str(uuid.uuid5(_NS, f"source:{agent.agent_id}"))
+    return {
+        "tool_id": str(uuid.uuid5(_NS, f"tool:{agent.agent_id}")),
+        "name": agent.name,
+        "description": f"平台内置 agent「{agent.name}」一次性执行。",
+        "status": "enabled",
+        "metadata_type": "openapi",
+        "use_rule": "",
+        "global_parameters": {
+            "name": "",
+            "description": "",
+            "required": False,
+            "in": "",
+            "type": "",
+            "value": None,
+        },
+        "create_time": agent.create_time * 1_000_000,
+        "update_time": agent.update_time * 1_000_000,
+        "create_user": agent.create_user,
+        "update_user": agent.update_user,
+        "extend_info": None,
+        "resource_object": "tool",
+        "source_id": source_id,
+        "source_type": "openapi",
+        "script_type": "",
+        "code": "",
+        "dependencies": [],
+        "dependencies_url": "",
+        "metadata": {
+            # 硬约束：version 必须 == source_id
+            "version": source_id,
+            "summary": agent.name,
+            "description": f"平台内置 agent「{agent.name}」一次性执行。",
+            "server_url": config.SELF_BASE_URL,
+            # agent_id 固化进 path，不暴露给调用侧 LLM 决策
+            "path": f"/api/bkn-agent/v1/invoke/{agent.agent_id}",
+            "method": "POST",
+            "create_time": now_ns,
+            "update_time": now_ns,
+            "create_user": _ADMIN_ACCOUNT_ID,
+            "update_user": _ADMIN_ACCOUNT_ID,
+            "api_spec": {
+                "parameters": _ACCOUNT_HEADER_PARAMS,
+                "request_body": {
+                    "description": "",
+                    "required": True,
+                    "content": {"application/json": {"schema": _INVOKE_BODY_SCHEMA}},
+                },
+                "responses": _INVOKE_RESPONSES,
+                "callbacks": {},
+                "components": {},
+                "external_docs": None,
+                "security": None,
+                "tags": None,
+            },
+        },
+    }
+
+
+def build_package(agents: list[AgentOut]) -> dict:
+    now_ns = time.time_ns()
+    return {
+        "toolbox": {
+            "configs": [
+                {
+                    "box_id": BOX_ID,
+                    # operator-integration 名称校验只收中文/字母/数字/下划线（空格、连字符都不行）
+                    "box_name": "bkn_agent内置agent",
+                    "box_desc": "bkn-agent published agent 自动注册；契约见 docs/api/bkn-agent.yaml",
+                    "box_svc_url": config.SELF_BASE_URL,
+                    "status": "published",
+                    "category_type": "other_category",
+                    "category_name": "其他",
+                    "is_internal": True,
+                    "source": "custom",
+                    "metadata_type": "openapi",
+                    "create_time": now_ns,
+                    "update_time": now_ns,
+                    "create_user": _ADMIN_ACCOUNT_ID,
+                    "update_user": _ADMIN_ACCOUNT_ID,
+                    "tools": [_tool_entry(a, now_ns) for a in agents],
+                }
+            ]
+        }
+    }
+
+
+async def sync_once() -> int:
+    """全量同步一次；返回注册的工具数。失败抛异常由调用方决定重试。
+
+    名字非法的 agent 单个跳过而非毒死整包：AgentSpec 已前置校验（models.py），
+    但校验上线前建的存量数据仍可能带空格/连字符——工厂对整包做名字校验并整体
+    400，一条脏数据就会让所有 published agent 的上下架永久卡住。
+    """
+    async with SessionLocal() as session:
+        agents = await dao.list_published_agents(session)
+    valid = []
+    for a in agents:
+        if _NAME_RE.match(a.name):
+            valid.append(a)
+        else:
+            logger.warning(
+                "[ToolboxSync] skip agent %s (%s): 名字含工厂不接受的字符（仅中文/字母/数字/下划线），改名后重新发布",
+                a.agent_id,
+                a.name,
+            )
+    package = build_package(valid)
+    agents = valid
+
+    form = aiohttp.FormData()
+    form.add_field("mode", "upsert")
+    form.add_field(
+        "data",
+        json.dumps(package, ensure_ascii=False).encode("utf-8"),
+        filename="bkn_agent_agents.adp",
+        content_type="application/octet-stream",
+    )
+    headers = {
+        "x-business-domain": _BUSINESS_DOMAIN,
+        "x-account-id": _ADMIN_ACCOUNT_ID,
+        "x-account-type": "user",
+    }
+    url = config.OPERATOR_INTEGRATION_BASE + _IMPORT_URI
+    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as http:
+        async with http.post(url, data=form, headers=headers) as resp:
+            if not 200 <= resp.status < 300:
+                body = await resp.text()
+                raise RuntimeError(f"toolbox import failed: {resp.status} {body[:500]}")
+    logger.info("[ToolboxSync] synced %d published agent(s) to operator-integration", len(agents))
+    return len(agents)
+
+
+_sync_lock = asyncio.Lock()
+_resync_queued = False
+
+
+async def _startup_loop() -> None:
+    delay = max(config.TOOLBOX_SYNC_RETRY_INITIAL_S, 1)
+    while True:
+        try:
+            # 与变更同步共用 _sync_lock：启动全量同样是「读快照→整包替换」，不上锁时
+            # 启动读到的旧快照可能晚于变更同步落地，覆盖更新的状态。锁内读快照，
+            # 保证后拿锁的一方读到前一方写入后的最新状态。
+            async with _sync_lock:
+                await sync_once()
+            return
+        except Exception as e:
+            logger.warning("[ToolboxSync] startup sync failed, retry in %ss: %s", delay, e)
+            # 退避在锁外睡，不阻塞变更同步
+            await asyncio.sleep(delay)
+            delay = min(delay * 2, max(config.TOOLBOX_SYNC_RETRY_MAX_S, delay))
+
+
+_background: set[asyncio.Task] = set()
+
+
+def _spawn(coro) -> None:
+    task = asyncio.create_task(coro)
+    _background.add(task)
+    task.add_done_callback(_background.discard)
+
+
+def start_startup_sync() -> None:
+    if not config.TOOLBOX_SYNC_ENABLED:
+        logger.info("[ToolboxSync] disabled, skip startup sync")
+        return
+    _spawn(_startup_loop())
+
+
+async def _serialized_resync() -> None:
+    global _resync_queued
+    # 串行化：sync_once 是「读快照→整包替换」，并发跑时较早快照若最后到达会覆盖较新
+    # 状态（已删 agent 复活/最新改动丢失）。锁保证同一时刻只有一个整包替换，
+    # 且下一个在锁内读到的是最新快照。
+    async with _sync_lock:
+        _resync_queued = False  # 进入执行即清标记：之后的变更会另排一次，读到本次之后的状态
+        try:
+            await sync_once()
+        except Exception as e:
+            logger.warning("[ToolboxSync] resync failed (will catch up on next change/restart): %s", e)
+
+
+def schedule_resync() -> None:
+    """agent 增删改后触发。串行+合并：已有排队的同步会读到最新状态，突发多次变更合并成一次。"""
+    if not config.TOOLBOX_SYNC_ENABLED:
+        return
+    global _resync_queued
+    if _resync_queued:  # 已有一次在排队，它会读到最新状态，本次并入
+        return
+    _resync_queued = True
+    _spawn(_serialized_resync())

@@ -45,6 +45,9 @@ releases:
   agent-retrieval:
     chart: agent-retrieval
     version: 0.1.0
+  bkn-agent:
+    chart: bkn-agent
+    version: 0.1.0
   agent-observability:
     chart: agent-observability
     version: 0.1.0

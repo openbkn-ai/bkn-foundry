@@ -111,6 +111,8 @@ jobs:
         working-directory: ${{ inputs.service-path }}
         run: |
           pip install -r requirements.txt
+          # 单测专用依赖（pytest/httpx 等）不进运行镜像 requirements.txt，放 test-requirements.txt
+          [ -f test-requirements.txt ] && pip install -r test-requirements.txt || true
           pytest
 
       - name: Setup Helm

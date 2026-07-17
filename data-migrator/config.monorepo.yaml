@@ -51,6 +51,9 @@ services:
   mf-model-manager:
     path: migrations/mf-model-manager
     # check_from: "1.0.0"  # 可选，从指定版本开始检测，不配置则检测所有版本
+  bkn-agent:
+    path: migrations/bkn-agent
+    # check_from: "1.0.0"  # 可选，从指定版本开始检测，不配置则检测所有版本
   oss-gateway-backend:
     path: migrations/oss-gateway-backend
     # check_from: "1.0.0"  # 可选，从指定版本开始检测，不配置则检测所有版本
