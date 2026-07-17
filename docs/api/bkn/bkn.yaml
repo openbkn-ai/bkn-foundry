@@ -228,5 +228,5 @@ components:
       description: OAuth2 认证，用于外网接口
       flows:
         clientCredentials:
-          tokenUrl: /oauth/token
+          tokenUrl: /oauth2/token
           scopes: {}

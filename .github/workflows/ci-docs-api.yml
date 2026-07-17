@@ -108,7 +108,9 @@ jobs:
           cp -R docs/api/_generated/html/. "site/versions/$VER/"
 
           # 生成带版本下拉的顶层入口 site/index.html（列出 versions/ 下所有版本）
-          VERSIONS=$(find site/versions -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | sort -r)
+          # latest 固定排首位（根入口默认展示持续更新的 latest），其余 tag 版本按语义版本倒序
+          ALL=$(find site/versions -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
+          VERSIONS=$({ echo "$ALL" | grep -x latest || true; echo "$ALL" | grep -vx latest | sort -rV || true; })
           {
             echo '<!doctype html><html lang="zh"><head><meta charset="utf-8">'
             echo '<meta name="viewport" content="width=device-width,initial-scale=1">'
