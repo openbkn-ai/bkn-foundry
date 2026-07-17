@@ -55,11 +55,11 @@ async def run_agent_once(
     skill_ids = list(dict.fromkeys([*agent.skills, *skills]))
     system_prompt += await load_skills(skill_ids, account_id, account_type)
     tools = await load_tools(agent.tools, account_id, account_type, depth=depth)
-    model = build_chat_model(agent.model)
-
     limits = agent.limits
     max_turns = limits.max_turns if limits and limits.max_turns else config.DEFAULT_MAX_TURNS
     timeout_s = limits.timeout_s if limits and limits.timeout_s else config.DEFAULT_TIMEOUT_S
+    max_out = limits.max_output_tokens if limits else None
+    model = build_chat_model(agent.model, max_output_tokens=max_out)
     tools = apply_tool_call_cap(tools, limits.max_tool_calls if limits else None)
 
     with observability.span(
@@ -80,7 +80,7 @@ async def run_agent_once(
             )
             if response_format:
                 # 工具循环跑完后单独抽结构化：原生优先，模型不支持则提示词降级
-                struct_model = build_chat_model(agent.model, streaming=False)
+                struct_model = build_chat_model(agent.model, streaming=False, max_output_tokens=max_out)
                 obj = await structured_extract(struct_model, result["messages"], response_format)
                 return json.dumps(obj, ensure_ascii=False)
     for msg in reversed(result["messages"]):

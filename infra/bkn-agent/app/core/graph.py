@@ -71,11 +71,11 @@ async def stream_chat(
         tools = await load_tools(
             agent.tools, account_id, account_type, depth=0, parent_thread_id=thread_id
         )
-        model = build_chat_model(agent.model)
-
         limits = agent.limits or None
         max_turns = limits.max_turns if limits and limits.max_turns else config.DEFAULT_MAX_TURNS
         timeout_s = limits.timeout_s if limits and limits.timeout_s else config.DEFAULT_TIMEOUT_S
+        max_out = limits.max_output_tokens if limits else None
+        model = build_chat_model(agent.model, max_output_tokens=max_out)
         tools = apply_tool_call_cap(tools, limits.max_tool_calls if limits else None)
     except BaseException:
         _busy_threads.discard(thread_id)  # setup 失败必须放位，否则该 thread 永久 409
@@ -115,7 +115,9 @@ async def stream_chat(
                             if req.response_format:
                                 # 工具循环后单独抽结构化（原生优先→提示词降级），受同一 timeout 约束
                                 state = await graph.aget_state(cfg)
-                                struct_model = build_chat_model(agent.model, streaming=False)
+                                struct_model = build_chat_model(
+                                agent.model, streaming=False, max_output_tokens=max_out
+                            )
                                 obj = await structured_extract(
                                     struct_model, state.values["messages"], req.response_format
                                 )

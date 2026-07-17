@@ -675,6 +675,13 @@ components:
             minimum: 1.0
           - type: 'null'
           title: Timeout S
+        max_output_tokens:
+          anyOf:
+          - type: integer
+            maximum: 65536.0
+            minimum: 1.0
+          - type: 'null'
+          title: Max Output Tokens
       type: object
       title: AgentLimits
     AgentList:

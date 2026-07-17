@@ -59,6 +59,11 @@ _INVOKE_BODY_SCHEMA = {
     "properties": {
         "message": {"type": "string", "description": "交给 agent 的任务描述/问题"},
         "prompt_vars": {"type": "object", "description": "提示词模板变量（可选）"},
+        "prompt_override": {"type": "string", "description": "请求级提示词覆写（可选，仅本次生效）"},
+        "response_format": {
+            "type": "object",
+            "description": "结构化输出（可选）：JSON Schema 本体，output 为严格符合 schema 的 JSON 字符串",
+        },
     },
 }
 
@@ -218,14 +223,23 @@ async def sync_once() -> int:
     return len(agents)
 
 
+_sync_lock = asyncio.Lock()
+_resync_queued = False
+
+
 async def _startup_loop() -> None:
     delay = max(config.TOOLBOX_SYNC_RETRY_INITIAL_S, 1)
     while True:
         try:
-            await sync_once()
+            # 与变更同步共用 _sync_lock：启动全量同样是「读快照→整包替换」，不上锁时
+            # 启动读到的旧快照可能晚于变更同步落地，覆盖更新的状态。锁内读快照，
+            # 保证后拿锁的一方读到前一方写入后的最新状态。
+            async with _sync_lock:
+                await sync_once()
             return
         except Exception as e:
             logger.warning("[ToolboxSync] startup sync failed, retry in %ss: %s", delay, e)
+            # 退避在锁外睡，不阻塞变更同步
             await asyncio.sleep(delay)
             delay = min(delay * 2, max(config.TOOLBOX_SYNC_RETRY_MAX_S, delay))
 
@@ -244,10 +258,6 @@ def start_startup_sync() -> None:
         logger.info("[ToolboxSync] disabled, skip startup sync")
         return
     _spawn(_startup_loop())
-
-
-_sync_lock = asyncio.Lock()
-_resync_queued = False
 
 
 async def _serialized_resync() -> None:

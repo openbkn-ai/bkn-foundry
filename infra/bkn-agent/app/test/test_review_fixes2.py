@@ -146,3 +146,26 @@ def test_import_single_transaction_rolls_back(monkeypatch):
         assert rolled["n"] >= 1 and committed["n"] == 0  # 回滚了，没提交半写
     finally:
         app.dependency_overrides.clear()
+
+
+# ---------- max_output_tokens 透传 ----------
+
+def test_max_output_tokens_passes_to_model():
+    from app.core.llm import build_chat_model
+
+    m = build_chat_model("", max_output_tokens=16000)
+    assert m.max_tokens == 16000
+    # 不设则不带（provider 默认）
+    assert build_chat_model("").max_tokens is None
+
+
+def test_agent_limits_max_output_tokens_bounds():
+    import pytest
+    from pydantic import ValidationError
+
+    from app.models import AgentLimits
+
+    assert AgentLimits(max_output_tokens=8192).max_output_tokens == 8192
+    assert AgentLimits().max_output_tokens is None
+    with pytest.raises(ValidationError):
+        AgentLimits(max_output_tokens=0)

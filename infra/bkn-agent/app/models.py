@@ -1,6 +1,8 @@
-from typing import Any, Literal, Optional
+from typing import Annotated, Any, Literal, Optional
 
-from pydantic import BaseModel, Field
+from jsonschema.exceptions import SchemaError
+from jsonschema.validators import validator_for
+from pydantic import AfterValidator, BaseModel, Field
 from sqlalchemy import BigInteger, Integer, String, Text
 from sqlalchemy.dialects.mysql import JSON
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -93,6 +95,9 @@ class AgentLimits(BaseModel):
     max_turns: Optional[int] = Field(default=None, ge=1, le=200)
     max_tool_calls: Optional[int] = Field(default=None, ge=0, le=500)
     timeout_s: Optional[int] = Field(default=None, ge=1, le=3600)
+    # 单次模型调用的输出 token 上限。不设则用 provider 默认（常见 ~4096，长 JSON 会被
+    # 截断——大输入场景配大此值）。透传 OpenAI 兼容 max_tokens，最终受模型自身上限约束。
+    max_output_tokens: Optional[int] = Field(default=None, ge=1, le=65536)
 
 
 _ID_PATTERN = r"^[0-9A-Za-z_.-]+$"  # 预设 id 允许字母数字下划线点连字符（跨环境稳定引用用）
@@ -137,6 +142,25 @@ class AgentDeleted(BaseModel):
     deleted: str
 
 
+def _check_json_schema(v: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
+    """response_format 在请求边界即校验为合法 JSON Schema（非法直接 400）。
+    否则非法 schema 会一路进到结构化调用：原生+提示词降级各白费一次模型调用，
+    最后以任务执行失败收场，错误面目全非。"""
+    if v is None:
+        return v
+    try:
+        validator_for(v).check_schema(v)
+    except SchemaError as e:
+        raise ValueError(f"response_format 不是合法 JSON Schema：{e.message}") from e
+    except Exception as e:  # $schema 字段本身畸形等 validator_for 阶段的错
+        raise ValueError(f"response_format 不是合法 JSON Schema：{e}") from e
+    return v
+
+
+# 结构化输出：传 JSON Schema 本体（如 {"type":"object","properties":{...}}）。
+ResponseFormat = Annotated[Optional[dict[str, Any]], AfterValidator(_check_json_schema)]
+
+
 class ChatRequest(BaseModel):
     agent_id: str
     thread_id: Optional[str] = None
@@ -144,10 +168,10 @@ class ChatRequest(BaseModel):
     skills: list[str] = Field(default_factory=list)
     prompt_override: Optional[str] = None
     prompt_vars: dict[str, Any] = Field(default_factory=dict)
-    # 结构化输出：传 JSON Schema（schema 本体，如 {"type":"object","properties":{...}}），
-    # 工具循环跑完后再做一次结构化调用，结果经 SSE `structured` 事件返回（正文 token 照常流）。
-    # 依赖底层模型支持结构化输出（with_structured_output / function-calling）。
-    response_format: Optional[dict[str, Any]] = None
+    # 结构化输出：工具循环跑完后再做一次结构化调用，结果经 SSE `structured` 事件
+    # 返回（正文 token 照常流）。依赖底层模型支持（with_structured_output /
+    # function-calling），不支持时提示词降级（见 core/structured.py）。
+    response_format: ResponseFormat = None
 
 
 class InvokeRequest(BaseModel):
@@ -157,8 +181,8 @@ class InvokeRequest(BaseModel):
     skills: list[str] = Field(default_factory=list)
     prompt_override: Optional[str] = None
     prompt_vars: dict[str, Any] = Field(default_factory=dict)
-    # 结构化输出：传 JSON Schema，task output 落序列化后的 JSON（见 ChatRequest.response_format）。
-    response_format: Optional[dict[str, Any]] = None
+    # 结构化输出：task output 落序列化后的 JSON（见 ChatRequest.response_format）。
+    response_format: ResponseFormat = None
 
 
 class RunRequest(BaseModel):
@@ -167,8 +191,8 @@ class RunRequest(BaseModel):
     skills: list[str] = Field(default_factory=list)
     prompt_override: Optional[str] = None
     prompt_vars: dict[str, Any] = Field(default_factory=dict)
-    # 结构化输出：传 JSON Schema，task output 落序列化后的 JSON（见 ChatRequest.response_format）。
-    response_format: Optional[dict[str, Any]] = None
+    # 结构化输出：task output 落序列化后的 JSON（见 ChatRequest.response_format）。
+    response_format: ResponseFormat = None
 
 
 class PromptSpec(BaseModel):

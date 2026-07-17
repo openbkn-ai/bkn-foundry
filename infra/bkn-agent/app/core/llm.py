@@ -13,15 +13,22 @@ def normalize_response_format(rf: Optional[dict[str, Any]]) -> Optional[dict[str
     return rf
 
 
-def build_chat_model(agent_model: str, streaming: bool = True) -> ChatOpenAI:
+def build_chat_model(
+    agent_model: str, streaming: bool = True, max_output_tokens: Optional[int] = None
+) -> ChatOpenAI:
     """模型一律经 mf-model-api（集群内 /api/private）。model 为空 → 系统默认模型，
     由 mf-model-api 侧解析，这里不钉模型名。
 
     streaming=False 用于结构化输出：结构化调用是一次性取整个对象，且部分网关在流式
-    结构化时会吐 choices=None 的 chunk 触发 langchain_openai 崩溃，非流式绕开。"""
+    结构化时会吐 choices=None 的 chunk 触发 langchain_openai 崩溃，非流式绕开。
+
+    max_output_tokens（limits.max_output_tokens）透传 OpenAI 兼容 max_tokens：
+    provider 默认输出上限常见 ~4096，长 JSON（如 catalog 语义理解）会被中途截断。"""
+    kwargs = {"max_tokens": max_output_tokens} if max_output_tokens else {}
     return ChatOpenAI(
         base_url=config.MF_MODEL_API_PRIVATE_BASE,
         api_key="internal",
         model=agent_model or config.DEFAULT_MODEL,
         streaming=streaming,
+        **kwargs,
     )
