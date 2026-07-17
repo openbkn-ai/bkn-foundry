@@ -1,10 +1,10 @@
-# BKN Foundry Deploy
+# BKN bkn-foundry Deploy
 
 中文 | [English](README.md)
 
-一键将 **BKN Foundry** 部署到单节点 Kubernetes 集群。
+一键将 **BKN bkn-foundry** 部署到单节点 Kubernetes 集群。
 
-这个 `deploy` 目录提供脚本安装 BKN Foundry 及其依赖，包括 Kubernetes、基础设施服务和数据服务。
+这个 `deploy` 目录提供脚本安装 BKN bkn-foundry 及其依赖，包括 Kubernetes、基础设施服务和数据服务。
 
 **平台说明：** **Linux** 是推荐且文档最完整的目标环境（`preflight.sh`、k3s/kubeadm、数据服务等）。**macOS** 仅作**本机开发/验证**可选方案（Docker + kind + `dev/mac.sh`），详见 **[Mac 安装（开发向）](dev/README.zh.md)**（[English](dev/README.md)），**不能**替代 Linux 上的生产安装。
 
@@ -12,17 +12,17 @@
 
 ## Linux：默认 `k8s`（kubeadm）与可选 k3s
 
-**`KUBE_DISTRO` 默认为 `k8s`**（包管理安装 Kubernetes + 单节点 **kubeadm**）。**k3s** 为可选的更轻的单节点栈。若已用 `deploy.sh k3s install` 装好集群，后续的 **`preflight.sh`** / **`foundry`** 请保持 distro 一致：在子模块名前加 **`--distro=k3s`**，或 **`export KUBE_DISTRO=k3s`**，否则 `preflight` 可能报 k3s 与 kubeadm 路径不一致，bootstrap 行为也容易对不上。
+**`KUBE_DISTRO` 默认为 `k8s`**（包管理安装 Kubernetes + 单节点 **kubeadm**）。**k3s** 为可选的更轻的单节点栈。若已用 `deploy.sh k3s install` 装好集群，后续的 **`preflight.sh`** / **`bkn-foundry`** 请保持 distro 一致：在子模块名前加 **`--distro=k3s`**，或 **`export KUBE_DISTRO=k3s`**，否则 `preflight` 可能报 k3s 与 kubeadm 路径不一致，bootstrap 行为也容易对不上。
 
 ### kubeadm / `KUBE_DISTRO=k8s`（默认）
 
-单节点 kubeadm 流程为 **`bash ./deploy.sh k8s install`**（`deploy/scripts/services/k8s.sh`）。若 `kubectl` 已可用，`ensure_k8s` 会跳过重复安装；随后 **`ensure_platform_prerequisites`** 会安装随平台一起交付的 **data-services**（MariaDB、Redis、Kafka、OpenSearch 等），再装 Core。**macOS kind** 不写宿主机 kubeadm：**`OPENBKN_SKIP_PLATFORM_BOOTSTRAP` 下，`foundry install` 会先跑与 `data-services install` 相同的 Helm 数据层**，见下文 macOS。历史写法 **`kubeadm`** 仍可作为 **`k8s`** 的别名。
+单节点 kubeadm 流程为 **`bash ./deploy.sh k8s install`**（`deploy/scripts/services/k8s.sh`）。若 `kubectl` 已可用，`ensure_k8s` 会跳过重复安装；随后 **`ensure_platform_prerequisites`** 会安装随平台一起交付的 **data-services**（MariaDB、Redis、Kafka、OpenSearch 等），再装 Core。**macOS kind** 不写宿主机 kubeadm：**`OPENBKN_SKIP_PLATFORM_BOOTSTRAP` 下，`bkn-foundry install` 会先跑与 `data-services install` 相同的 Helm 数据层**，见下文 macOS。历史写法 **`kubeadm`** 仍可作为 **`k8s`** 的别名。
 
-**`deploy.sh` 全局参数**（`--distro`、`-y`、`--force-upgrade`、`--config` 等）必须写在**子模块名之前**。正确：`bash ./deploy.sh --distro=k3s foundry install --minimum`。错误：`bash ./deploy.sh foundry install --minimum --distro=k3s`（末尾的 `--distro` 不会按全局参数解析）。不想改命令顺序时可用：`export KUBE_DISTRO=k3s` 再执行 `bash ./deploy.sh foundry install --minimum`。
+**`deploy.sh` 全局参数**（`--distro`、`-y`、`--force-upgrade`、`--config` 等）必须写在**子模块名之前**。正确：`bash ./deploy.sh --distro=k3s bkn-foundry install --minimum`。错误：`bash ./deploy.sh bkn-foundry install --minimum --distro=k3s`（末尾的 `--distro` 不会按全局参数解析）。不想改命令顺序时可用：`export KUBE_DISTRO=k3s` 再执行 `bash ./deploy.sh bkn-foundry install --minimum`。
 
 ```bash
 bash ./deploy.sh k8s install
-bash ./deploy.sh foundry install --minimum
+bash ./deploy.sh bkn-foundry install --minimum
 ```
 
 ### k3s（可选 — 轻量单节点）
@@ -30,13 +30,13 @@ bash ./deploy.sh foundry install --minimum
 使用官方 k3s 安装脚本（禁用 Traefik；仍会安装 **ingress-nginx** 以保持与现有 chart/accessAddress 一致）。可通过 `K3S_INSTALL_URL`、`INSTALL_K3S_VERSION`、`INSTALL_K3S_MIRROR` 等环境变量切换镜像或版本。
 
 ```bash
-cd foundry/deploy
+cd bkn-foundry/deploy
 
 bash ./deploy.sh k3s install
 
 # 与 k3s 对齐 distro，供 preflight 与平台 bootstrap 使用：
-bash ./deploy.sh --distro=k3s foundry install --minimum
-# 或：export KUBE_DISTRO=k3s && bash ./deploy.sh foundry install --minimum
+bash ./deploy.sh --distro=k3s bkn-foundry install --minimum
+# 或：export KUBE_DISTRO=k3s && bash ./deploy.sh bkn-foundry install --minimum
 ```
 
 查看状态：`bash ./deploy.sh k3s status`；卸载：`bash ./deploy.sh k3s uninstall`。
@@ -49,16 +49,16 @@ bash ./deploy.sh --distro=k3s foundry install --minimum
 
 ### macOS（可选 — 本机 kind 开发）
 
-**仅供 Mac 上做验证；正式安装请以本文 Linux 章节为准。** 本机用 **kind** 起 Kubernetes，不在 Mac 上跑 `preflight.sh` / `k3s install`。**`mac.sh` 设置 `OPENBKN_SKIP_PLATFORM_BOOTSTRAP`**。**`foundry install` 会先执行 `ensure_data_services`**（与单独跑 `data-services install` 一致：MariaDB、Redis、Kafka、OpenSearch）；**`mac.sh` 默认 `AUTO_INSTALL_INGRESS_NGINX=false`**，避免重复装 ingress。需要跳过自带数据层时使用 **`OPENBKN_SKIP_DATA_SERVICES_BUNDLE=true`**（高级用法 / 外接中间件）。仍可单独执行 **`data-services install`** 只做数据层或刷新。**Apple Silicon：** kind 节点为 **arm64**；**步骤见 [dev/README.zh.md](dev/README.zh.md)。**
+**仅供 Mac 上做验证；正式安装请以本文 Linux 章节为准。** 本机用 **kind** 起 Kubernetes，不在 Mac 上跑 `preflight.sh` / `k3s install`。**`mac.sh` 设置 `OPENBKN_SKIP_PLATFORM_BOOTSTRAP`**。**`bkn-foundry install` 会先执行 `ensure_data_services`**（与单独跑 `data-services install` 一致：MariaDB、Redis、Kafka、OpenSearch）；**`mac.sh` 默认 `AUTO_INSTALL_INGRESS_NGINX=false`**，避免重复装 ingress。需要跳过自带数据层时使用 **`OPENBKN_SKIP_DATA_SERVICES_BUNDLE=true`**（高级用法 / 外接中间件）。仍可单独执行 **`data-services install`** 只做数据层或刷新。**Apple Silicon：** kind 节点为 **arm64**；**步骤见 [dev/README.zh.md](dev/README.zh.md)。**
 
 ```bash
 cd deploy   # 仓库的 deploy/ 目录
 bash ./dev/mac.sh doctor
 # 可选：用 Homebrew 补全缺失工具 — bash ./dev/mac.sh doctor --fix（或 -y doctor --fix 跳过确认）
 bash ./dev/mac.sh cluster up
-bash ./dev/mac.sh foundry install --minimum   # 默认带 --minimum；前置自动装 data-services（与 data-services install 相同）
+bash ./dev/mac.sh bkn-foundry install --minimum   # 默认带 --minimum；前置自动装 data-services（与 data-services install 相同）
 # 可选：bash ./dev/mac.sh data-services install   # 仅数据层 / 刷新
-# 可选：bash ./dev/mac.sh foundry download
+# 可选：bash ./dev/mac.sh bkn-foundry download
 # 可选：bash ./dev/mac.sh onboard；需非交互时在命令前加 -y
 ```
 
@@ -84,12 +84,12 @@ setenforce 0
 dnf install containerd.io
 ```
 
-### 安装 BKN Foundry
+### 安装 BKN bkn-foundry
 
 ```bash
 # 1. 克隆仓库
-git clone https://github.com/openbkn-ai/foundry.git
-cd foundry/deploy
+git clone https://github.com/openbkn-ai/bkn-foundry.git
+cd bkn-foundry/deploy
 
 # 2.（推荐）装机前体检 / 修复
 sudo bash ./preflight.sh                # 仅检查（默认）
@@ -100,24 +100,24 @@ sudo bash ./preflight.sh --help         # 全部参数（--role、--skip、--rep
 # 默认体检对齐 k8s/kubeadm；走单节点 k3s 时用：sudo bash ./preflight.sh --distro=k3s
 #（与 deploy 共用环境变量 KUBE_DISTRO=k3s）
 
-# 3. 安装 BKN Foundry
+# 3. 安装 BKN bkn-foundry
 # 最小化安装 — 首次体验推荐
-bash ./deploy.sh foundry install --minimum
-# 默认走 kubeadm（k8s）。若改用单节点 k3s（--distro 须写在 foundry 之前）：
-# bash ./deploy.sh --distro=k3s foundry install --minimum
-# 或：export KUBE_DISTRO=k3s && bash ./deploy.sh foundry install --minimum
+bash ./deploy.sh bkn-foundry install --minimum
+# 默认走 kubeadm（k8s）。若改用单节点 k3s（--distro 须写在 bkn-foundry 之前）：
+# bash ./deploy.sh --distro=k3s bkn-foundry install --minimum
+# 或：export KUBE_DISTRO=k3s && bash ./deploy.sh bkn-foundry install --minimum
 # 等价于:
-# bash ./deploy.sh foundry install --set auth.enabled=false --set businessDomain.enabled=false
+# bash ./deploy.sh bkn-foundry install --set auth.enabled=false --set businessDomain.enabled=false
 
 # 完整安装（包含 auth 和 business-domain 模块）
-bash ./deploy.sh foundry install
+bash ./deploy.sh bkn-foundry install
 
 # 脚本会交互式提示输入访问地址，并自动检测 API Server 地址。
 
 # 或显式指定地址（跳过交互提示）：
-#   --access_address       客户端访问 BKN Foundry 服务的地址（可以是 IP 或域名）
+#   --access_address       客户端访问 BKN bkn-foundry 服务的地址（可以是 IP 或域名）
 #   --api_server_address   K8s API Server 绑定的本机网卡 IP（必须是真实的网卡地址）
-bash ./deploy.sh foundry install \
+bash ./deploy.sh bkn-foundry install \
   --access_address=<你的IP> \
   --api_server_address=<你的IP>
 
@@ -142,7 +142,7 @@ sudo bash ./onboard.sh --help # 全部参数（--config=models.yaml、--enable-b
 
 ### 开发/测试：选择 chart 版本（`--version_file`）
 
-正式安装会在提交进仓库的 manifest（`release-manifests/<版本>/bkn-foundry.yaml`）里
+正式安装会在提交进仓库的 manifest（`release-manifests/<版本>/bkn-bkn-foundry.yaml`）里
 **钉死**各 chart 版本 —— 即 lockfile，可复现。
 
 **开发/测试**通常想要最新构建，而 CI 只会重新发布某分支**实际改动到**的组件。
@@ -158,7 +158,7 @@ sudo bash ./onboard.sh --help # 全部参数（--config=models.yaml、--enable-b
 ./scripts/gen-dev-manifest.sh --branch=fix/my-thing --out=/tmp/m.yaml
 
 # 用生成的 manifest 安装
-sudo bash ./deploy.sh --distro=k3s foundry install --minimum --version_file=/tmp/m.yaml
+sudo bash ./deploy.sh --distro=k3s bkn-foundry install --minimum --version_file=/tmp/m.yaml
 ```
 
 逐 chart 解析（stable 优先）：`--branch` 最新构建 → 最新 stable → `--base` 最新构建 → 报错。
@@ -178,7 +178,7 @@ sudo bash ./deploy.sh --distro=k3s foundry install --minimum --version_file=/tmp
 
 ### 受限网络安装（国内 / 连不上 docker.io / GHCR 拉取慢）
 
-集群连不上 `docker.io` 或拉不动 GHCR 镜像层（read timeout）时，`foundry install` 支持
+集群连不上 `docker.io` 或拉不动 GHCR 镜像层（read timeout）时，`bkn-foundry install` 支持
 三个参数，让**脚本自己处理**——无需手动 `crictl pull`/重打 tag：
 
 - **`--registry=<swr / ghcr / host/ns>`** —— **BKN 镜像**的 registry（`--set image.registry` 的糖）。`swr` → `swr.cn-east-3.myhuaweicloud.com/openbkn-ai`，`ghcr` → `ghcr.io/openbkn-ai`。优先级：显式 `--set image.registry=…` > `--registry` > `--config` YAML 里已有的 `image.registry`（尊重，如 `dev/conf/mac-config.yaml`）> 默认 `swr`（当配置文件未设置 `image.registry` 时）。SWR 与 GHCR 同步同样的 `…-main.<日期>.sha…` 构建 tag。
@@ -187,14 +187,14 @@ sudo bash ./deploy.sh --distro=k3s foundry install --minimum --version_file=/tmp
 
 ```bash
 # 最新构建 + BKN 镜像走 SWR + docker.io 第三方走默认 mirror：
-sudo bash ./deploy.sh foundry install --latest --registry=swr
+sudo bash ./deploy.sh bkn-foundry install --latest --registry=swr
 
 # 或用预生成的 manifest（如在开发机生成，目标机无 git）：
-sudo bash ./deploy.sh foundry install --version_file=/tmp/m.yaml --registry=swr
+sudo bash ./deploy.sh bkn-foundry install --version_file=/tmp/m.yaml --registry=swr
 ```
 
 > 提交的迁移会修复 DB schema 漂移（如 `vega-backend` 0.9.x），但只在 **data-migrator
-> pre-install job 运行时**生效——即走 `foundry install`，不是裸 `kubectl set image`。
+> pre-install job 运行时**生效——即走 `bkn-foundry install`，不是裸 `kubectl set image`。
 
 ### 资源配置
 
@@ -203,12 +203,12 @@ sudo bash ./deploy.sh foundry install --version_file=/tmp/m.yaml --registry=swr
 ```bash
 # 设置 CPU 和内存请求
 OPENBKN_CORE_REQ_CPU=200m OPENBKN_CORE_REQ_MEM=512Mi \
-  sudo bash ./deploy.sh foundry install --minimum
+  sudo bash ./deploy.sh bkn-foundry install --minimum
 
 # 设置完整的资源限制
 OPENBKN_CORE_REQ_CPU=200m OPENBKN_CORE_REQ_MEM=512Mi \
   OPENBKN_CORE_LIM_CPU=2 OPENBKN_CORE_LIM_MEM=2Gi \
-  sudo bash ./deploy.sh foundry install --minimum
+  sudo bash ./deploy.sh bkn-foundry install --minimum
 ```
 
 | 环境变量 | 说明 | 示例值 |
@@ -243,18 +243,18 @@ OPENBKN_CORE_REQ_CPU=200m OPENBKN_CORE_REQ_MEM=512Mi \
 | `mirrors.aliyun.com` | RPM 软件包源 |
 | `mirrors.tuna.tsinghua.edu.cn` | `containerd.io` RPM 源 |
 | `registry.aliyuncs.com` | Kubernetes 组件镜像 |
-| `swr.cn-east-3.myhuaweicloud.com` | BKN Foundry 应用镜像仓库 |
+| `swr.cn-east-3.myhuaweicloud.com` | BKN bkn-foundry 应用镜像仓库 |
 | `repo.huaweicloud.com` | Helm 二进制下载 |
 | `openbkn-ai.github.io` | OPenbkn Helm Chart 仓库 |
 | `rancher-mirror.rancher.cn` | k3s 安装脚本/二进制（k3s 快速路径；可用 `K3S_INSTALL_URL` 覆盖） |
 
 ## 📦 部署模型
 
-`foundry` 是这个 `deploy` 目录里的产品入口，安装链路如下：
+`bkn-foundry` 是这个 `deploy` 目录里的产品入口，安装链路如下：
 
 1. 安装或补齐单节点 Kubernetes、local-path storage、ingress-nginx。
 2. 安装或补齐数据服务：MariaDB、Redis、Kafka、OpenSearch。
-3. 部署 BKN Foundry 应用层 chart。
+3. 部署 BKN bkn-foundry 应用层 chart。
 
 Core 应用层包括数据服务管理、应用部署和任务编排相关的 chart。
 
@@ -265,14 +265,14 @@ Core 应用层包括数据服务管理、应用部署和任务编排相关的 ch
 ### 推荐命令
 
 ```bash
-# 安装 BKN Foundry（推荐入口）
-./deploy.sh foundry install
+# 安装 BKN bkn-foundry（推荐入口）
+./deploy.sh bkn-foundry install
 
 # 查看 Core 状态
-./deploy.sh foundry status
+./deploy.sh bkn-foundry status
 
 # 卸载 Core
-./deploy.sh foundry uninstall
+./deploy.sh bkn-foundry uninstall
 
 # 集群与 Pod 状态
 kubectl get nodes
@@ -281,7 +281,7 @@ kubectl get pods -A
 
 ### 安装状态与健康
 
-`foundry status` 输出一张实时详细表(供服务器上运维查看):对清单里每个 release 显示
+`bkn-foundry status` 输出一张实时详细表(供服务器上运维查看):对清单里每个 release 显示
 **期望版本 vs 实际部署版本**、app 版本、helm revision/状态、workload ready 数(标记
 `DRIFT`/`MISSING`)、内置依赖服务,以及逐服务的**应用健康**(经 apiserver service proxy
 探测:`/health/ready` → `/api/v1/health` → `/healthz` → `/health`,分类为
@@ -289,11 +289,11 @@ kubectl get pods -A
 
 ```bash
 # 实时详细状态表(版本、ready、drift、服务健康)
-./deploy.sh foundry status
+./deploy.sh bkn-foundry status
 
 # 不重装,(重新)发布非敏感 JSON 快照 + /install-status 端点。
-# `foundry install` 结束时会自动执行。
-./deploy.sh foundry publish-status
+# `bkn-foundry install` 结束时会自动执行。
+./deploy.sh bkn-foundry publish-status
 ```
 
 同时通过 ingress 以**非敏感**面板对外提供(由一个极小的 nginx 托管 ConfigMap,见
@@ -330,11 +330,11 @@ deploy/
 
 ## 🗑️ Uninstall
 
-`bash deploy.sh foundry uninstall` 只卸载 Core 应用层。
+`bash deploy.sh bkn-foundry uninstall` 只卸载 Core 应用层。
 
 ```bash
 # 1. 卸载 Core 应用层
-./deploy.sh foundry uninstall
+./deploy.sh bkn-foundry uninstall
 
 ```
 `bash deploy.sh k8s reset` 重置 Kubernetes 集群，包括数据服务和core。

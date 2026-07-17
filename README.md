@@ -59,18 +59,16 @@ sudo bash ./preflight.sh --help         # all flags (--role, --skip, --report, -
 ```bash
 # (Same deploy/ directory as step 2)
 
-# Minimum installation — recommended for first-time experience
-./deploy.sh core install --minimum
 # Equivalent to:
 # ./deploy.sh core install --set auth.enabled=false --set businessDomain.enabled=false
 
 # Full installation (includes auth & business-domain modules)
-./deploy.sh core install
+./deploy.sh bkn-foundry install
 
 # Or specify addresses explicitly (skips interactive prompts):
 #   --access_address       Address for clients to reach OpenBKN services (can be IP or domain)
 #   --api_server_address   IP bound to a local network interface for K8s API server (must be a real NIC IP)
-./deploy.sh core install \
+./deploy.sh bkn-foundry install \
   --access_address=<your-ip> \
   --api_server_address=<your-ip>
 
@@ -85,7 +83,7 @@ kubectl get nodes
 kubectl get pods -A
 
 # Check service status
-./deploy.sh core status
+./deploy.sh bkn-foundry status
 ```
 
 5. **Post-install bootstrap with `onboard.sh`** (recommended)

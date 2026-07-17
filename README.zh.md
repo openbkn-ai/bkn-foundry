@@ -59,16 +59,13 @@ sudo bash ./preflight.sh --help         # 全部参数（--role、--skip、--rep
 ```bash
 # （仍在第 2 步的 deploy/ 目录下）
 
-# 最小化安装 — 首次体验推荐
-./deploy.sh core install --minimum
-
-# 完整安装（包含 auth 和 business-domain 模块）
-./deploy.sh core install
+# 完整安装
+./deploy.sh bkn-foundry install
 
 # 或显式指定地址（跳过交互提示）：
 #   --access_address       客户端访问 OpenBKN 服务的地址（可以是 IP 或域名）
 #   --api_server_address   K8s API Server 绑定的本机网卡 IP（必须是真实的网卡地址）
-./deploy.sh core install \
+./deploy.sh bkn-foundry install \
   --access_address=<你的IP> \
   --api_server_address=<你的IP>
 
@@ -84,7 +81,7 @@ kubectl get nodes
 kubectl get pods -A
 
 # 检查服务状态
-./deploy.sh core status
+./deploy.sh bkn-foundry status
 ```
 
 5. **安装后引导：`onboard.sh`**（推荐）
