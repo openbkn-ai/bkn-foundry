@@ -101,6 +101,10 @@ class LLMUsedOpenAI(BaseModel):
     presence_penalty: confloat(ge=-2, le=2) = Field(default=0)
     frequency_penalty: confloat(ge=-2, le=2) = Field(default=0)
     max_tokens: conint(ge=10) = Field(default=1024)
+    # OpenAI 官方已弃用 max_tokens 改名 max_completion_tokens，新版 SDK / langchain-openai
+    # (>=0.2 的 ChatOpenAI) 只发新名——此前被 pydantic 静默丢弃，调用方设的输出上限从未
+    # 到达模型，恒落 max_tokens 默认 1024。兼容收新名，root_validator 里映射到 max_tokens。
+    max_completion_tokens: Optional[conint(ge=10)] = Field(default=None)
     messages: List[Message]
     response_format: Dict = Field(default={})
     stream: bool = Field(default=False)
@@ -110,6 +114,15 @@ class LLMUsedOpenAI(BaseModel):
     tools: List[LLMTool] = Field(default=None)
     tool_choice: Union[str, dict] = Field(default=None)
     model_id: Optional[StrictStr] = Field(description="", default="")
+
+    @root_validator(skip_on_failure=True)
+    def map_max_completion_tokens(cls, values):
+        # 新名优先：显式传了 max_completion_tokens 就覆盖 max_tokens（含其默认值），
+        # 下游各 series 分支只读 max_tokens，一处映射全链生效。
+        mct = values.get("max_completion_tokens")
+        if mct:
+            values["max_tokens"] = mct
+        return values
 
     @validator('stream', pre=True)
     def check_stream(cls, v, values):
