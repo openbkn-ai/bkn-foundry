@@ -111,3 +111,9 @@ jobs:
           provenance: false
           sbom: false
           tags: ${{ steps.tags.outputs.tags }}
+          # Force legacy Docker media types. BuildKit v0.31.0 flipped the
+          # default to OCI media types for all images (previously only when
+          # attestations/annotations were needed); Huawei SWR rejects the OCI
+          # image index with "Invalid image, fail to parse 'manifest.json'".
+          # GHCR accepts Docker media types fine, so one setting fixes both.
+          outputs: type=image,oci-mediatypes=false
