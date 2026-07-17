@@ -1,10 +1,20 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="help/banner-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="help/banner-light.png">
+    <img src="help/banner-light.png" alt="BKN Foundry" width="100%">
+  </picture>
+</p>
+
 # BKN Foundry
 
 [中文](README.zh.md) | English
 
 [![License](https://img.shields.io/badge/license-multi--licensed-blue.svg)](LICENSE)
 
-BKN Foundry is a harness-first foundation for enterprise decision agents. It turns fragmented data, knowledge, tools, and policies into governed context, safe execution, and verifiable feedback loops. With semantic modeling, real-time access, runtime control, and BKN Trace, it helps AI systems reason, adapt, and act reliably in complex enterprises.
+OpenBKN is an ontology-driven business knowledge network platform. Through ontology modeling, it turns the data and logic scattered across documents, systems, processes, rules, and expert experience into a business knowledge network that agents can understand, execute, and verify — so agents land accurately, safely, and reliably in real business environments, not just generating answers but continuously creating executable, traceable, and verifiable business value.
+
+**BKN Foundry** is the technical foundation of OpenBKN, providing that business knowledge network with unified data access, safe execution, and governance.
 
 **On this page:** [📚 Quick links](#toc-quick-links) · [🚀 Quick start](#toc-quick-start) · [🛠️ OpenBKN SDK](#toc-bkn-sdk) · [🛡️ Administration](#toc-kweaver-admin) · [🏗️ BKN Foundry](#toc-kweaver-core) · [📐 BKN Lang](#toc-bkn-lang) · [📊 Benchmarks](#toc-benchmarks)
 
@@ -20,7 +30,6 @@ BKN Foundry is a harness-first foundation for enterprise decision agents. It tur
 - 📘 [Documentation](help/README.md) - Product documentation and usage guides ([EN](help/en/README.md) / [中文](help/zh/README.md))
 - 📦 [Examples](examples/README.md) - End-to-end CLI walkthroughs (DB / CSV / actions)
 - 🧾 [Release Notes](release-notes/) - All notable changes
-- 🔗 [Upstream project](https://github.com/kweaver-ai/kweaver-core) - Forked from kweaver-ai/kweaver-core (Apache-2.0)
 
 <a id="toc-quick-start"></a>
 
@@ -124,26 +133,9 @@ For full product documentation, see the [Documentation](help/README.md) ([EN](he
 
 ## 🏗️ BKN Foundry
 
-**BKN Foundry** is the AI-native platform foundation for autonomous decision-making. It sits between AI Agents (above) and AI/Data infrastructure (below), with the **Business Knowledge Network (BKN)** at its center, providing unified data access, execution, and security governance for Agents.
+**BKN Foundry** is the technical foundation of OpenBKN. It gives the business knowledge network unified data access, safe execution, and governance, so agents connecting to proprietary data get high-quality context and safe, controllable execution.
 
-```text
-            ┌─────────────────────────────────┐
-            │     AI Agents (Claude Code, GPT,  │
-            │     custom agents, ...)          │
-            └───────────────┬─────────────────┘
-                            │
-            ┌───────────────▼─────────────────┐
-            │     Business Knowledge Network   │
-            │         BKN Foundry             │
-            └───────────────┬─────────────────┘
-                            │
-            ┌───────────────▼─────────────────┐
-            │   AI Infrastructure & Data       │
-            │   Infrastructure                 │
-            └─────────────────────────────────┘
-```
-
-BKN Foundry solves two critical pain points when connecting proprietary data with autonomous AI Agents:
+BKN Foundry addresses two critical pain points when connecting proprietary data with agents:
 
 ### Context Engineering — High-Quality Context for Agents
 
@@ -416,15 +408,21 @@ F1 Bench is based on the BIRD test set with the Formula-1 database mixed with 30
 | **SQL Hit Efficiency** | **0.226** | 0.137 |
 | **Total SQL Calls** | **292** | 408 |
 
+## 🤝 Community
+
+Scan the QR code to join the community and get support, share feedback, and stay up to date:
+
+<p align="center">
+  <img src="help/qrcode.png" alt="Join the BKN Foundry community" width="220">
+</p>
+
 ## License
 
 BKN Foundry is multi-licensed. See the repository [license
 overview](LICENSE) and [NOTICE](NOTICE) for the authoritative
 per-component and per-file breakdown:
 
-- Components originating from the upstream
-  [kweaver-ai/kweaver-core](https://github.com/kweaver-ai/kweaver-core)
-  remain under the [Apache License 2.0](LICENSE-APACHE.txt).
+- Components under the [Apache License 2.0](LICENSE-APACHE.txt) remain so.
 - OpenBKN net-new files that expressly reference the OpenBKN License
   use the [OpenBKN License](LICENSE-OPENBKN.txt), a modified version of
   Apache License 2.0 with additional conditions.
