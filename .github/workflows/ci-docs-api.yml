@@ -60,7 +60,7 @@ jobs:
         run: make api-docs-lint
 
   pages:
-    # push 到 main（发布 latest）或打 v* tag（归档该版本）后：渲染 HTML，按版本
+    # push 到 main（发布 main 开发版文档）或打 v* tag（归档该版本）后：渲染 HTML，按版本
     # 累积到 gh-pages 分支的 versions/<ver>/，重建带版本下拉的顶层入口，再发布 Pages。
     # 历史版本一旦发布即固定，不再重渲。
     if: github.event_name == 'push'
@@ -87,11 +87,11 @@ jobs:
           REF_NAME: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          # 版本名：tag → tag 名（如 v0.3.0）；main → latest
+          # 版本名：tag → tag 名（如 v0.3.0）；main 分支 → main（持续更新的开发版文档）
           if [ "$REF_TYPE" = "tag" ]; then
             VER="$REF_NAME"
           else
-            VER="latest"
+            VER="main"
           fi
           echo "publishing version: $VER"
 
@@ -101,16 +101,27 @@ jobs:
             git --work-tree=site checkout origin/gh-pages -- versions 2>/dev/null || true
             git reset -q
           fi
+          # 迁移：旧命名 versions/latest/ 改叫 versions/main/，清掉存量目录，
+          # 另留一个跳转桩兜住外部旧链接（见下）
+          rm -rf site/versions/latest
 
-          # 放入本次版本（latest 每次覆盖；tag 版本固定，重复发布会覆盖同名，属幂等）
+          # 放入本次版本（main 每次覆盖；tag 版本固定，重复发布会覆盖同名，属幂等）
           rm -rf "site/versions/$VER"
           mkdir -p "site/versions/$VER"
           cp -R docs/api/_generated/html/. "site/versions/$VER/"
 
+          # 旧链接兜底：versions/latest/ -> versions/main/
+          mkdir -p site/versions/latest
+          echo '<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=../main/index.html">' > site/versions/latest/index.html
+
           # 生成带版本下拉的顶层入口 site/index.html（列出 versions/ 下所有版本）
-          # latest 固定排首位（根入口默认展示持续更新的 latest），其余 tag 版本按语义版本倒序
-          ALL=$(find site/versions -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
-          VERSIONS=$({ echo "$ALL" | grep -x latest || true; echo "$ALL" | grep -vx latest | sort -rV || true; })
+          # 下拉顺序：main（持续更新）排首位，其余 tag 版本按语义版本倒序。
+          # 默认展示：有发布版本（v* tag）时取最新发布版；一个都没有时才落到 main。
+          ALL=$(find site/versions -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | grep -vx latest)
+          TAGS=$(echo "$ALL" | grep -vx main | sort -rV || true)
+          VERSIONS=$({ echo "$ALL" | grep -x main || true; echo "$TAGS"; } | sed '/^$/d')
+          DEFAULT=$(echo "$TAGS" | head -1)
+          [ -n "$DEFAULT" ] || DEFAULT=main
           {
             echo '<!doctype html><html lang="zh"><head><meta charset="utf-8">'
             echo '<meta name="viewport" content="width=device-width,initial-scale=1">'
@@ -118,10 +129,11 @@ jobs:
             echo '<style>body{margin:0;font:16px system-ui,sans-serif;color:#12212b}.bar{display:flex;gap:12px;align-items:center;padding:12px 20px;border-bottom:1px solid #e4eaf0;background:#fff}.bar b{font-size:15px}select{padding:6px 10px;font-size:14px;border:1px solid #e4eaf0;border-radius:8px}iframe{border:0;width:100%;height:calc(100vh - 50px);display:block}</style>'
             echo '</head><body>'
             echo '<div class="bar"><label>版本 <select id="v" onchange="document.getElementById(&quot;f&quot;).src=&quot;versions/&quot;+this.value+&quot;/index.html&quot;"></select></label></div>'
-            printf '<iframe id="f" src="versions/%s/index.html"></iframe>\n' "$(echo "$VERSIONS" | head -1)"
+            printf '<iframe id="f" src="versions/%s/index.html"></iframe>\n' "$DEFAULT"
             echo '<script>var vs=['
             for v in $VERSIONS; do printf '"%s",' "$v"; done
-            echo '];var s=document.getElementById("v");vs.forEach(function(v){var o=document.createElement("option");o.value=o.textContent=v;s.appendChild(o)});</script>'
+            echo '];var s=document.getElementById("v");vs.forEach(function(v){var o=document.createElement("option");o.value=v;o.textContent=(v==="main"?"main（开发中）":v);s.appendChild(o)});'
+            printf 's.value="%s";</script>\n' "$DEFAULT"
             echo '</body></html>'
           } > site/index.html
           echo "assembled site with versions: $VERSIONS"
