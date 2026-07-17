@@ -76,17 +76,17 @@ curl -H "Authorization: Bearer bak_2882bb603277_BSxTZHTBiJXk4QoUBc0u17zSWua" \
      https://&lt;your-instance&gt;/api/agent-retrieval/v1/kn/search_schema</code></pre>
 <p class="muted">CLI 等价：<code>openbkn appkey create --name my-key</code>；使用时 <code>openbkn --token bak_... context ...</code>。管理：<code>GET /api/safe/v1/me/api-keys</code> 列出、<code>DELETE /api/safe/v1/me/api-keys/{id}</code> 撤销、<code>POST /api/safe/v1/me/api-keys/{id}/regenerate</code> 轮换。</p>
 
-<h2>方式三 · OAuth2 直接换 token</h2>
-<p>token 端点是 Hydra 的 <code>POST /oauth2/token</code>（<b>不是</b> <code>/oauth/token</code>）。服务间调用用 <b>client credentials</b> 流：</p>
+<h2>方式三 · OAuth2 client credentials（高级 / 服务间，默认不可用）</h2>
+<div class="note"><b>⚠️ 默认部署没有可用的 client-credentials 客户端。</b>普通用户 / 应用请用<b>方式一（CLI 登录）或方式二（AppKey）</b>。本方式仅适用于：平台管理员已在 Hydra 里预置了 client-credentials 客户端（默认不启用；需在 bkn-safe chart 显式配置 <code>clientSeed.ciRunnerSecret</code> 或手动创建客户端）的服务间场景。<code>client_id</code> / <code>client_secret</code> 不能自助申请，须向部署 / 平台管理员索取。</div>
+<p>token 端点是 Hydra 的 <code>POST /oauth2/token</code>（注意<b>不是</b> <code>/oauth/token</code>）。已拿到客户端凭据后（<code>client_secret_post</code>，凭据放请求体，不走 HTTP Basic）：</p>
 <pre><code>curl -X POST https://&lt;your-instance&gt;/oauth2/token \
   -H "Content-Type: application/x-www-form-urlencoded" \
   --data-urlencode grant_type=client_credentials \
-  --data-urlencode client_id=&lt;client-id&gt; \
-  --data-urlencode client_secret=&lt;client-secret&gt; \
+  --data-urlencode client_id=&lt;由管理员提供&gt; \
+  --data-urlencode client_secret=&lt;由管理员提供&gt; \
   --data-urlencode audience=bkn-safe
 # -&gt; {"access_token":"...","token_type":"bearer","expires_in":...}</code></pre>
-<div class="note"><b><code>client_id</code> / <code>client_secret</code> 从哪来？</b>它们不是自助申请的，而是<b>平台管理员在部署时</b>为服务间调用预置的 OAuth 客户端（Hydra client seed，凭据放在 bkn-safe chart 的 <code>clientSeed.ciRunnerSecret</code>，默认不启用、需显式配置）。需要一枚 client-credentials 客户端时，请找部署 / 平台管理员在 Hydra 里创建并索取凭据。凭据以 <code>client_secret_post</code> 放在请求体，不走 HTTP Basic。</div>
-<p class="muted">交互式登录（方式一）底层用的是设备码流：<code>POST /oauth2/device/auth</code> 取 device code，再轮询 <code>POST /oauth2/token</code>（<code>grant_type=urn:ietf:params:oauth:grant-type:device_code</code>）。绝大多数场景用方式一或方式二即可，无需手写本流程。</p>
+<p class="muted">方式一的交互式登录底层用设备码流：<code>POST /oauth2/device/auth</code> 取 device code，再轮询 <code>POST /oauth2/token</code>（<code>grant_type=urn:ietf:params:oauth:grant-type:device_code</code>）。这套由 CLI 自动完成，无需手写。</p>
 </div>
 </body>
 </html>

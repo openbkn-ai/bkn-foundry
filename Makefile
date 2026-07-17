@@ -73,6 +73,7 @@ api-docs-html:
 	    [ -e "$$y" ] || continue; \
 	    base=$$(basename "$$y" .yaml); \
 	    npx @redocly/cli build-docs "$$y" -o "$(HTML_DIR)/$$m/$$base.html" >/dev/null 2>&1 || { echo "build-docs failed: $$y"; exit 1; }; \
+	    perl -i -pe 's{</head>}{<style>.menu-content{display:none!important}.api-content{margin-left:0!important}</style></head>}' "$(HTML_DIR)/$$m/$$base.html"; \
 	    printf '<a class="res" data-name="%s" data-href="./%s/%s.html">%s</a>\n' "$$base" "$$m" "$$base" "$$base" >> "$$idx"; \
 	  done; \
 	  printf '</div>\n' >> "$$idx"; \
