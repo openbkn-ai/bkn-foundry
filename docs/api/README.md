@@ -39,7 +39,7 @@ make api-docs          # YAML → Markdown，输出到 _generated/
 
 ## ✍️ 约定
 
-> 完整的编写规则见 [`AUTHORING.md`](AUTHORING.md)。下面是要点：
+> 编写规则见 [`rules/CONTRIBUTING.zh.md`](../../rules/CONTRIBUTING.zh.md) 的「文档放置规范」一节。下面是要点：
 
 - 新增 / 修改 API 文档 → 改对应模块的 `*.yaml`，一资源一 YAML。
 - 跨模块复用的错误 / 认证 → 引 `_shared/`，不复制。
