@@ -39,6 +39,8 @@ make api-docs          # YAML → Markdown，输出到 _generated/
 
 ## ✍️ 约定
 
+> 完整的编写规则见 [`AUTHORING.md`](AUTHORING.md)。下面是要点：
+
 - 新增 / 修改 API 文档 → 改对应模块的 `*.yaml`，一资源一 YAML。
 - 跨模块复用的错误 / 认证 → 引 `_shared/`，不复制。
 - 旧位置 `adp/docs/api/` 只留 [`MOVED.md`](../../adp/docs/api/MOVED.md) 指针，不再放文件。

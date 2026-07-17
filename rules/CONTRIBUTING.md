@@ -39,8 +39,9 @@ Use the location that matches **audience and scope**:
 
 1. **[`docs/`](../docs) (repository root)** — System architecture, repo-wide design, and technical decisions that span multiple subsystems or the whole BKN Foundry platform.
 2. **`<module>/docs/` (inside each subtree)** — Design notes and technical decisions **scoped to that module only** (for example [`adp/bkn/docs/`](../adp/bkn/docs), [`adp/vega/docs/`](../adp/vega/docs) design folders under each service).
-3. **[`help/{en,zh}/manual/`](../help/en/manual)** — Product **manuals / reference**: how subsystems work from a user or operator perspective (install stays next to the manual tree as `help/{lang}/install.md`).
-4. **[`help/{en,zh}/cookbook/`](../help/en/cookbook)** — **Cookbooks**: short, runnable task recipes. Start a new one by copying [`_TEMPLATE.md`](../help/en/cookbook/_TEMPLATE.md), use the worked-out [`cookbook_example.md`](../help/en/cookbook/cookbook_example.md) as reference, and add a row to [`cookbook/README.md`](../help/en/cookbook/README.md) (Chinese lives under `help/zh/cookbook/`).
+3. **[`docs/api/`](../docs/api) (repository root, API docs)** — All services' **OpenAPI docs live here** (not under each module's `docs/`). YAML is the single source of truth; Markdown is rendered from it. Read [`docs/api/AUTHORING.md`](../docs/api/AUTHORING.md) before adding or changing API docs.
+4. **[`help/{en,zh}/manual/`](../help/en/manual)** — Product **manuals / reference**: how subsystems work from a user or operator perspective (install stays next to the manual tree as `help/{lang}/install.md`).
+5. **[`help/{en,zh}/cookbook/`](../help/en/cookbook)** — **Cookbooks**: short, runnable task recipes. Start a new one by copying [`_TEMPLATE.md`](../help/en/cookbook/_TEMPLATE.md), use the worked-out [`cookbook_example.md`](../help/en/cookbook/cookbook_example.md) as reference, and add a row to [`cookbook/README.md`](../help/en/cookbook/README.md) (Chinese lives under `help/zh/cookbook/`).
 
 Keep **English** in `help/en/` and **Chinese** in `help/zh/` for user-facing help.
 
