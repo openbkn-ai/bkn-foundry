@@ -856,7 +856,8 @@ components:
         name:
           anyOf:
           - type: string
-            maxLength: 100
+            maxLength: 64
+            pattern: ^[a-zA-Z0-9_-]+$
           - type: 'null'
           title: Name
         description:

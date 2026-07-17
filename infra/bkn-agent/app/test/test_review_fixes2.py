@@ -285,3 +285,38 @@ def test_export_rejects_dirty_agent_with_clear_error(monkeypatch):
         assert "DirtyAgent" in r.json()["code"]
     finally:
         app.dependency_overrides.clear()
+
+
+def test_agent_tool_name_sanitized_for_openai():
+    """P1 五轮：中文/长 agent 名派生的 function name 必须清洗成 OpenAI 合法名。"""
+    from app.core.toolbox import _safe_name
+
+    # 中文名派生：agent_语义理解 → 清洗后仍含 agent 前缀字母，非法字符转 _
+    n = _safe_name("agent_语义理解", "d9bfcrlcr79gcukmqofg")
+    import re
+    assert re.fullmatch(r"[a-zA-Z0-9_-]{1,64}", n), n
+    # 全非 ASCII：兜底 tool_{id 前缀}
+    n2 = _safe_name("语义理解", "d9bfcrlcr79gcukmqofg")
+    assert re.fullmatch(r"[a-zA-Z0-9_-]{1,64}", n2) and n2.startswith("tool_")
+    # 超长截断
+    assert len(_safe_name("a" * 200, "x")) <= 64
+
+
+def test_agent_tool_ref_explicit_name_constrained():
+    """AgentToolRef 显式 name 只收 ASCII [a-zA-Z0-9_-] ≤64；mcp/toolbox 的 name 不受此限。"""
+    import pytest
+    from pydantic import ValidationError
+
+    from app.models import AgentSpec
+
+    ok = AgentSpec(name="t", mode="chat",
+                   tools=[{"type": "agent", "agent_id": "a1", "name": "semantic_v1"}])
+    assert ok.tools[0]["name"] == "semantic_v1"
+    for bad_name in ("语义理解", "has space", "x" * 65):
+        with pytest.raises(ValidationError):
+            AgentSpec(name="t", mode="chat",
+                      tools=[{"type": "agent", "agent_id": "a1", "name": bad_name}])
+    # mcp 连接名不是 function name，中文仍允许
+    m = AgentSpec(name="t", mode="chat",
+                  tools=[{"type": "mcp", "url": "http://x/mcp", "name": "外部服务"}])
+    assert m.tools[0]["name"] == "外部服务"

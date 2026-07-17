@@ -115,6 +115,10 @@ class ToolboxToolRef(_ToolRefBase):
 class AgentToolRef(_ToolRefBase):
     type: Literal["agent"]
     agent_id: str = Field(min_length=1, max_length=100)
+    # 显式工具名直接当 OpenAI function name：只收 ASCII 字母数字 _ -，≤64
+    # （中文/超长会让引用方每次模型请求稳定 400；中文语义放 description）。
+    # 运行时侧 tools.py 对派生名（agent_{中文名}）同样清洗兜底。
+    name: Optional[str] = Field(default=None, max_length=64, pattern=r"^[a-zA-Z0-9_-]+$")
 
 
 ToolRef = Annotated[
