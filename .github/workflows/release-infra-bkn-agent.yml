@@ -1,9 +1,8 @@
 name: release-infra-bkn-agent
 
 # 平台内置 Agent 运行时 bkn-agent（Epic #202）。Python / LangGraph 服务。
-# test stack = chart-only：单测依赖（pytest / httpx）不进运行镜像 requirements.txt，
-# 故 CI 侧只做 helm lint；单测在本地按 README 跑（44 测全绿）。后续接 python
-# stack 需为其补 test-requirements 再开。
+# test stack = python：跑 app/test 全量单测（回归门禁）。单测专用依赖在
+# test-requirements.txt（reusable-test 检测到就装，不进运行镜像 requirements.txt）。
 # 镜像 FROM python:3.12-slim（reusable-build 多架构：linux/amd64,linux/arm64）。
 
 on:
@@ -30,7 +29,8 @@ jobs:
     uses: ./.github/workflows/reusable-test.yml
     with:
       service-path: infra/bkn-agent
-      stack: chart-only
+      stack: python
+      python-version: '3.12'
 
   build:
     needs: test

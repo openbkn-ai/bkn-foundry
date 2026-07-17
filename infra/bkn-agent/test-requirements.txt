@@ -1,0 +1,4 @@
+# 单测专用依赖（不进运行镜像）。CI python stack 与本地按需装。
+# 运行时依赖（pyyaml/jsonschema 等）在 requirements.txt。
+pytest~=8.3
+httpx~=0.27

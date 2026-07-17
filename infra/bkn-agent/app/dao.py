@@ -2,7 +2,7 @@ import time
 import uuid
 from typing import Optional
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import (
@@ -205,6 +205,24 @@ async def set_task_status(
         row.f_failure_detail = failure_detail
     row.f_update_time = _now_ms()
     await session.commit()
+
+
+async def recover_stale_tasks(session: AsyncSession) -> int:
+    """启动时兜底：进程内 asyncio 任务不跨重启存活，落库仍为 pending/running 的
+    任务在上次进程里已丢失，全部标 failed，避免 GET /tasks 永久悬挂在非终态。
+    返回被回收的数量。"""
+    now = _now_ms()
+    result = await session.execute(
+        update(TaskRow)
+        .where(TaskRow.f_status.in_(("pending", "running")))
+        .values(
+            f_status="failed",
+            f_failure_detail="服务重启中断：任务未持久化执行状态，进程重启无法恢复，请重试。",
+            f_update_time=now,
+        )
+    )
+    await session.commit()
+    return result.rowcount or 0
 
 
 async def get_default_prompt(

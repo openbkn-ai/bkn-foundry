@@ -5,6 +5,7 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.bootstrap import toolbox_sync
 from app.models import ErrorEnvelope
@@ -21,8 +22,24 @@ VERSION = (Path(__file__).resolve().parent.parent / "VERSION").read_text().strip
 _ERRORS = {"4XX": {"model": ErrorEnvelope, "description": "平台错误封套（400 参数/401 身份/404 不存在/409 冲突）"}}
 
 
+async def _recover_stale_tasks() -> None:
+    """启动兜底：把上次进程遗留的 pending/running 任务标 failed（见 dao.recover_stale_tasks）。
+    DB 不可用时只告警不阻断启动。"""
+    from app import dao
+    from app.db import SessionLocal
+
+    try:
+        async with SessionLocal() as session:
+            n = await dao.recover_stale_tasks(session)
+        if n:
+            logger.warning("[BknAgent] 启动回收 %s 个悬挂任务（重启中断→failed）", n)
+    except Exception as e:
+        logger.warning("[BknAgent] 启动回收悬挂任务失败（不阻断启动）：%s", e)
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
+    await _recover_stale_tasks()
     toolbox_sync.start_startup_sync()
     yield
 
@@ -57,6 +74,26 @@ async def validation_handler(request: Request, exc: RequestValidationError):
             "link": "",
         },
     )
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    """业务错误（err()/not_found/bad_request 抛的 HTTPException）契约是**顶层扁平**
+    ErrorEnvelope。Starlette 默认会包成 {"detail": ...}，与 docs/api/bkn-agent.yaml
+    漂移、SDK 解析错位——这里直接把 detail 作为 body 返回。非 dict 的 detail
+    （如 404/405 路由默认串）补齐成封套。"""
+    detail = exc.detail
+    if isinstance(detail, dict) and "code" in detail:
+        content = detail
+    else:
+        content = {
+            "code": f"BknAgent.Http.{exc.status_code}",
+            "description": str(detail) if detail else "请求错误",
+            "detail": str(detail) if detail else "",
+            "solution": "",
+            "link": "",
+        }
+    return JSONResponse(status_code=exc.status_code, content=content, headers=getattr(exc, "headers", None))
 
 
 @app.exception_handler(Exception)

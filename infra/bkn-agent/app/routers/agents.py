@@ -59,7 +59,10 @@ async def update_agent(
     account: Account = Depends(get_account),
     session: AsyncSession = Depends(get_session),
 ):
-    agent = await dao.update_agent(session, agent_id, spec, account.account_id)
+    try:
+        agent = await dao.update_agent(session, agent_id, spec, account.account_id)
+    except IntegrityError:
+        raise bad_request("Conflict", "agent 名称已存在", f"name={spec.name}", "换一个 name。")
     if not agent:
         raise not_found("agent", agent_id)
     toolbox_sync.schedule_resync()

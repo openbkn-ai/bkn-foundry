@@ -15,7 +15,9 @@ def test_health():
 def test_auth_fail_closed_without_identity():
     r = client.get("/api/bkn-agent/v1/agents")
     assert r.status_code == 401
-    assert r.json()["detail"]["code"] == "BknAgent.Auth.AccountRequired"
+    # 顶层扁平 ErrorEnvelope（非 {"detail": {...}} 嵌套）
+    assert r.json()["code"] == "BknAgent.Auth.AccountRequired"
+    assert "detail" in r.json() and isinstance(r.json()["detail"], str)
 
 
 def test_auth_rejects_anonymous():
