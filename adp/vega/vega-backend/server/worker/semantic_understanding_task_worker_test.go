@@ -90,7 +90,10 @@ func TestSemanticUnderstandingTaskWorkerHandleTask(t *testing.T) {
 			Run(ctxWithAccountID(t, "account-1"), semanticTask).
 			Return("agent-task-1", nil)
 		taskService.EXPECT().
-			MarkRunning(gomock.Any(), "semantic-task-1", "agent-task-1").
+			ClaimRunning(ctxWithAccountID(t, "account-1"), "semantic-task-1").
+			Return(true, nil)
+		taskService.EXPECT().
+			SetAgentTaskID(ctxWithAccountID(t, "account-1"), "semantic-task-1", "agent-task-1").
 			Return(true, nil)
 		agentService.EXPECT().
 			WaitResult(gomock.Any(), "agent-task-1").
@@ -223,6 +226,9 @@ func TestSemanticUnderstandingTaskWorkerHandleTask(t *testing.T) {
 		taskService.EXPECT().
 			InternalGetByID(gomock.Any(), "semantic-task-1").
 			Return(semanticTask, nil)
+		taskService.EXPECT().
+			ClaimRunning(ctxWithAccountID(t, "account-1"), "semantic-task-1").
+			Return(true, nil)
 		agentService.EXPECT().
 			Run(ctxWithAccountID(t, "account-1"), semanticTask).
 			Return("", errors.New("temporary agent error"))
@@ -352,9 +358,9 @@ func TestSemanticUnderstandingTaskWorkerApplyResourceResult(t *testing.T) {
 
 		got, err := worker.applyResult(context.Background(), task, `{"confidence":0.8,"fields":[{"name":"missing","display_name":"Missing"}]}`, 0.8, nil)
 
-		require.Error(t, err)
-		assert.Nil(t, got)
-		assert.ErrorContains(t, err, "does not exist")
+		require.NoError(t, err)
+		assert.False(t, got.Applied)
+		assert.JSONEq(t, `{"resource_updated":false,"skipped_fields":["missing: not found"]}`, got.DetailJSON)
 	})
 
 	t.Run("skips apply in dry run", func(t *testing.T) {

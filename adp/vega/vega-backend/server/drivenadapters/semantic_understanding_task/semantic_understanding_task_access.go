@@ -398,6 +398,18 @@ func (a *semanticUnderstandingTaskAccess) MarkRunning(ctx context.Context, id st
 	}, interfaces.SemanticUnderstandingTaskStatusPending)
 }
 
+func (a *semanticUnderstandingTaskAccess) ClaimRunning(ctx context.Context, id string) (bool, error) {
+	return a.update(ctx, id, map[string]any{
+		"f_status": interfaces.SemanticUnderstandingTaskStatusRunning,
+	}, interfaces.SemanticUnderstandingTaskStatusPending)
+}
+
+func (a *semanticUnderstandingTaskAccess) SetAgentTaskID(ctx context.Context, id string, agentTaskID string) (bool, error) {
+	return a.update(ctx, id, map[string]any{
+		"f_agent_task_id": agentTaskID,
+	}, interfaces.SemanticUnderstandingTaskStatusRunning)
+}
+
 func (a *semanticUnderstandingTaskAccess) MarkSucceeded(ctx context.Context, id string, resultJSON string, confidence float64, confidenceDetailJSON string) (bool, error) {
 	return a.update(ctx, id, map[string]any{
 		"f_status":                 interfaces.SemanticUnderstandingTaskStatusSucceeded,

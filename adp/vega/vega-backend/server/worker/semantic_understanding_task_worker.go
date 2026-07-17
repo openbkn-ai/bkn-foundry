@@ -80,13 +80,23 @@ func (sutw *SemanticUnderstandingTaskWorker) HandleTask(ctx context.Context, tas
 	}
 
 	agentTaskID := taskInfo.AgentTaskID
+	if taskInfo.Status == interfaces.SemanticUnderstandingTaskStatusPending {
+		claimed, err := sutw.suts.ClaimRunning(ctx, taskInfo.ID)
+		if err != nil {
+			return err
+		}
+		if !claimed {
+			logger.Infof("Semantic understanding task was not claimed for running: id=%s", taskInfo.ID)
+			return nil
+		}
+	}
 	if agentTaskID == "" {
 		agentTaskID, err = sutw.bas.Run(ctx, taskInfo)
 		if err != nil {
 			return err
 		}
 
-		running, err := sutw.suts.MarkRunning(ctx, taskInfo.ID, agentTaskID)
+		running, err := sutw.suts.SetAgentTaskID(ctx, taskInfo.ID, agentTaskID)
 		if err != nil {
 			return err
 		}
@@ -333,6 +343,7 @@ type resourceSemanticUnderstandingApplyDetail struct {
 	ResourceUpdated bool     `json:"resource_updated"`
 	UpdatedResource []string `json:"updated_resource,omitempty"`
 	UpdatedFields   []string `json:"updated_fields,omitempty"`
+	SkippedFields   []string `json:"skipped_fields,omitempty"`
 }
 
 func (sutw *SemanticUnderstandingTaskWorker) applyResourceResult(ctx context.Context, task *interfaces.SemanticUnderstandingTask, resultJSON string, tx *sql.Tx) (*interfaces.SemanticUnderstandingApplyResult, error) {
@@ -368,27 +379,38 @@ func (sutw *SemanticUnderstandingTaskWorker) applyResourceResult(ctx context.Con
 
 	seenFields := make(map[string]struct{}, len(result.Fields))
 	updatedFields := make([]string, 0)
+	skippedFields := make([]string, 0)
 	for _, field := range result.Fields {
 		if field.Name == "" {
-			return nil, fmt.Errorf("field name is required")
+			skippedFields = append(skippedFields, "<empty>: missing name")
+			continue
 		}
 		if _, ok := seenFields[field.Name]; ok {
-			return nil, fmt.Errorf("duplicate field in semantic understanding result: %s", field.Name)
+			skippedFields = append(skippedFields, fmt.Sprintf("%s: duplicate", field.Name))
+			continue
 		}
 		seenFields[field.Name] = struct{}{}
 
 		property, ok := fieldByName[field.Name]
 		if !ok {
-			return nil, fmt.Errorf("field %s does not exist in resource schema", field.Name)
+			skippedFields = append(skippedFields, fmt.Sprintf("%s: not found", field.Name))
+			continue
 		}
-		if len(field.DisplayName) > interfaces.MaxLength_PropertyDisplayName {
-			return nil, fmt.Errorf("field %s display_name exceeds max length", field.Name)
+		if utf8.RuneCountInString(field.DisplayName) > interfaces.MaxLength_PropertyDisplayName {
+			skippedFields = append(skippedFields, fmt.Sprintf("%s: display_name exceeds max length", field.Name))
+			continue
 		}
-		if len(field.Description) > interfaces.MaxLength_PropertyDescription {
-			return nil, fmt.Errorf("field %s description exceeds max length", field.Name)
+		if utf8.RuneCountInString(field.Description) > interfaces.MaxLength_PropertyDescription {
+			skippedFields = append(skippedFields, fmt.Sprintf("%s: description exceeds max length", field.Name))
+			continue
 		}
 		if err := validateConfidence(field.Confidence, fmt.Sprintf("fields[%s].confidence", field.Name)); err != nil {
-			return nil, err
+			skippedFields = append(skippedFields, fmt.Sprintf("%s: invalid confidence", field.Name))
+			continue
+		}
+		if field.Confidence != nil && *field.Confidence < task.ConfidenceThreshold {
+			skippedFields = append(skippedFields, fmt.Sprintf("%s: confidence below threshold", field.Name))
+			continue
 		}
 
 		fieldUpdated := false
@@ -412,6 +434,13 @@ func (sutw *SemanticUnderstandingTaskWorker) applyResourceResult(ctx context.Con
 	}
 	resourceUpdated := len(updatedResource) > 0
 	if !resourceUpdated && len(updatedFields) == 0 {
+		if len(skippedFields) > 0 {
+			detailBytes, err := sonic.Marshal(resourceSemanticUnderstandingApplyDetail{SkippedFields: skippedFields})
+			if err != nil {
+				return nil, fmt.Errorf("marshal resource semantic understanding apply detail failed: %w", err)
+			}
+			return &interfaces.SemanticUnderstandingApplyResult{Applied: false, DetailJSON: string(detailBytes)}, nil
+		}
 		return skippedApplyResult(interfaces.SemanticUnderstandingSkippedApplyDetail{
 			Reason:    "no_resource_changes",
 			ApplyMode: task.ApplyMode,
@@ -434,6 +463,7 @@ func (sutw *SemanticUnderstandingTaskWorker) applyResourceResult(ctx context.Con
 		ResourceUpdated: resourceUpdated,
 		UpdatedResource: updatedResource,
 		UpdatedFields:   updatedFields,
+		SkippedFields:   skippedFields,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("marshal resource semantic understanding apply detail failed: %w", err)
@@ -570,6 +600,10 @@ func (sutw *SemanticUnderstandingTaskWorker) applyCatalogResult(ctx context.Cont
 			current := logicViewByID[view.TargetResourceID]
 			nextDescription := current.Description
 			applyStringByMode(task.ApplyMode, &nextDescription, view.Description)
+			nextLogicDefinition := current.LogicDefinition
+			if task.ApplyMode == interfaces.SemanticUnderstandingApplyModeForce {
+				nextLogicDefinition = view.LogicDefinition
+			}
 			next := &interfaces.ResourceRequest{
 				ID:              current.ID,
 				CatalogID:       current.CatalogID,
@@ -581,11 +615,11 @@ func (sutw *SemanticUnderstandingTaskWorker) applyCatalogResult(ctx context.Cont
 				Database:        current.Database,
 				SourceMetadata:  current.SourceMetadata,
 				IndexConfig:     current.IndexConfig,
-				LogicDefinition: view.LogicDefinition,
+				LogicDefinition: nextLogicDefinition,
 			}
 			if tx != nil {
 				current.Description = nextDescription
-				current.LogicDefinition = view.LogicDefinition
+				current.LogicDefinition = nextLogicDefinition
 				current.Updater = task.Creator
 				current.UpdateTime = time.Now().UnixMilli()
 				err = sutw.rs.InternalUpdate(ctx, tx, current)

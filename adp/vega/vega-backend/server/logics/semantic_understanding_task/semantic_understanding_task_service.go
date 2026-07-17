@@ -339,6 +339,18 @@ func (suts *semanticUnderstandingTaskService) MarkRunning(ctx context.Context, i
 	return suts.suta.MarkRunning(ctx, id, agentTaskID)
 }
 
+func (suts *semanticUnderstandingTaskService) ClaimRunning(ctx context.Context, id string) (bool, error) {
+	return suts.suta.ClaimRunning(ctx, id)
+}
+
+func (suts *semanticUnderstandingTaskService) SetAgentTaskID(ctx context.Context, id string, agentTaskID string) (bool, error) {
+	if agentTaskID == "" {
+		return false, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Format).
+			WithErrorDetails("agent_task_id is required")
+	}
+	return suts.suta.SetAgentTaskID(ctx, id, agentTaskID)
+}
+
 func (suts *semanticUnderstandingTaskService) MarkSucceeded(ctx context.Context, id string, resultJSON string, confidence float64, confidenceDetailJSON string) (bool, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "SemanticUnderstandingTaskService.MarkSucceeded")
 	defer span.End()

@@ -42,6 +42,21 @@ func (m *MockSemanticUnderstandingTaskAccess) EXPECT() *MockSemanticUnderstandin
 	return m.recorder
 }
 
+// ClaimRunning mocks base method.
+func (m *MockSemanticUnderstandingTaskAccess) ClaimRunning(ctx context.Context, id string) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ClaimRunning", ctx, id)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ClaimRunning indicates an expected call of ClaimRunning.
+func (mr *MockSemanticUnderstandingTaskAccessMockRecorder) ClaimRunning(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClaimRunning", reflect.TypeOf((*MockSemanticUnderstandingTaskAccess)(nil).ClaimRunning), ctx, id)
+}
+
 // Create mocks base method.
 func (m *MockSemanticUnderstandingTaskAccess) Create(ctx context.Context, task *interfaces.SemanticUnderstandingTask) error {
 	m.ctrl.T.Helper()
@@ -219,4 +234,19 @@ func (m *MockSemanticUnderstandingTaskAccess) MarkSucceeded(ctx context.Context,
 func (mr *MockSemanticUnderstandingTaskAccessMockRecorder) MarkSucceeded(ctx, id, resultJSON, confidence, confidenceDetailJSON any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkSucceeded", reflect.TypeOf((*MockSemanticUnderstandingTaskAccess)(nil).MarkSucceeded), ctx, id, resultJSON, confidence, confidenceDetailJSON)
+}
+
+// SetAgentTaskID mocks base method.
+func (m *MockSemanticUnderstandingTaskAccess) SetAgentTaskID(ctx context.Context, id, agentTaskID string) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetAgentTaskID", ctx, id, agentTaskID)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SetAgentTaskID indicates an expected call of SetAgentTaskID.
+func (mr *MockSemanticUnderstandingTaskAccessMockRecorder) SetAgentTaskID(ctx, id, agentTaskID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetAgentTaskID", reflect.TypeOf((*MockSemanticUnderstandingTaskAccess)(nil).SetAgentTaskID), ctx, id, agentTaskID)
 }

@@ -43,6 +43,21 @@ func (m *MockSemanticUnderstandingTaskService) EXPECT() *MockSemanticUnderstandi
 	return m.recorder
 }
 
+// ClaimRunning mocks base method.
+func (m *MockSemanticUnderstandingTaskService) ClaimRunning(ctx context.Context, id string) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ClaimRunning", ctx, id)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ClaimRunning indicates an expected call of ClaimRunning.
+func (mr *MockSemanticUnderstandingTaskServiceMockRecorder) ClaimRunning(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClaimRunning", reflect.TypeOf((*MockSemanticUnderstandingTaskService)(nil).ClaimRunning), ctx, id)
+}
+
 // CreateCatalogTask mocks base method.
 func (m *MockSemanticUnderstandingTaskService) CreateCatalogTask(ctx context.Context, catalogID string, req *interfaces.CreateSemanticUnderstandingTaskRequest) (*interfaces.SemanticUnderstandingTask, error) {
 	m.ctrl.T.Helper()
@@ -220,4 +235,19 @@ func (m *MockSemanticUnderstandingTaskService) MarkSucceeded(ctx context.Context
 func (mr *MockSemanticUnderstandingTaskServiceMockRecorder) MarkSucceeded(ctx, id, resultJSON, confidence, confidenceDetailJSON any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkSucceeded", reflect.TypeOf((*MockSemanticUnderstandingTaskService)(nil).MarkSucceeded), ctx, id, resultJSON, confidence, confidenceDetailJSON)
+}
+
+// SetAgentTaskID mocks base method.
+func (m *MockSemanticUnderstandingTaskService) SetAgentTaskID(ctx context.Context, id, agentTaskID string) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetAgentTaskID", ctx, id, agentTaskID)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SetAgentTaskID indicates an expected call of SetAgentTaskID.
+func (mr *MockSemanticUnderstandingTaskServiceMockRecorder) SetAgentTaskID(ctx, id, agentTaskID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetAgentTaskID", reflect.TypeOf((*MockSemanticUnderstandingTaskService)(nil).SetAgentTaskID), ctx, id, agentTaskID)
 }
