@@ -1,10 +1,10 @@
-# BKN bkn-foundry Deploy
+# BKN Foundry Deploy
 
 中文 | [English](README.md)
 
-一键将 **BKN bkn-foundry** 部署到单节点 Kubernetes 集群。
+一键将 **BKN Foundry** 部署到单节点 Kubernetes 集群。
 
-这个 `deploy` 目录提供脚本安装 BKN bkn-foundry 及其依赖，包括 Kubernetes、基础设施服务和数据服务。
+这个 `deploy` 目录提供脚本安装 BKN Foundry 及其依赖，包括 Kubernetes、基础设施服务和数据服务。
 
 **平台说明：** **Linux** 是推荐且文档最完整的目标环境（`preflight.sh`、k3s/kubeadm、数据服务等）。**macOS** 仅作**本机开发/验证**可选方案（Docker + kind + `dev/mac.sh`），详见 **[Mac 安装（开发向）](dev/README.zh.md)**（[English](dev/README.md)），**不能**替代 Linux 上的生产安装。
 
@@ -84,7 +84,7 @@ setenforce 0
 dnf install containerd.io
 ```
 
-### 安装 BKN bkn-foundry
+### 安装 BKN Foundry
 
 ```bash
 # 1. 克隆仓库
@@ -100,7 +100,7 @@ sudo bash ./preflight.sh --help         # 全部参数（--role、--skip、--rep
 # 默认体检对齐 k8s/kubeadm；走单节点 k3s 时用：sudo bash ./preflight.sh --distro=k3s
 #（与 deploy 共用环境变量 KUBE_DISTRO=k3s）
 
-# 3. 安装 BKN bkn-foundry
+# 3. 安装 BKN Foundry
 # 最小化安装 — 首次体验推荐
 bash ./deploy.sh bkn-foundry install --minimum
 # 默认走 kubeadm（k8s）。若改用单节点 k3s（--distro 须写在 bkn-foundry 之前）：
@@ -115,7 +115,7 @@ bash ./deploy.sh bkn-foundry install
 # 脚本会交互式提示输入访问地址，并自动检测 API Server 地址。
 
 # 或显式指定地址（跳过交互提示）：
-#   --access_address       客户端访问 BKN bkn-foundry 服务的地址（可以是 IP 或域名）
+#   --access_address       客户端访问 BKN Foundry 服务的地址（可以是 IP 或域名）
 #   --api_server_address   K8s API Server 绑定的本机网卡 IP（必须是真实的网卡地址）
 bash ./deploy.sh bkn-foundry install \
   --access_address=<你的IP> \
@@ -243,7 +243,7 @@ OPENBKN_CORE_REQ_CPU=200m OPENBKN_CORE_REQ_MEM=512Mi \
 | `mirrors.aliyun.com` | RPM 软件包源 |
 | `mirrors.tuna.tsinghua.edu.cn` | `containerd.io` RPM 源 |
 | `registry.aliyuncs.com` | Kubernetes 组件镜像 |
-| `swr.cn-east-3.myhuaweicloud.com` | BKN bkn-foundry 应用镜像仓库 |
+| `swr.cn-east-3.myhuaweicloud.com` | BKN Foundry 应用镜像仓库 |
 | `repo.huaweicloud.com` | Helm 二进制下载 |
 | `openbkn-ai.github.io` | OPenbkn Helm Chart 仓库 |
 | `rancher-mirror.rancher.cn` | k3s 安装脚本/二进制（k3s 快速路径；可用 `K3S_INSTALL_URL` 覆盖） |
@@ -254,7 +254,7 @@ OPENBKN_CORE_REQ_CPU=200m OPENBKN_CORE_REQ_MEM=512Mi \
 
 1. 安装或补齐单节点 Kubernetes、local-path storage、ingress-nginx。
 2. 安装或补齐数据服务：MariaDB、Redis、Kafka、OpenSearch。
-3. 部署 BKN bkn-foundry 应用层 chart。
+3. 部署 BKN Foundry 应用层 chart。
 
 Core 应用层包括数据服务管理、应用部署和任务编排相关的 chart。
 
@@ -265,7 +265,7 @@ Core 应用层包括数据服务管理、应用部署和任务编排相关的 ch
 ### 推荐命令
 
 ```bash
-# 安装 BKN bkn-foundry（推荐入口）
+# 安装 BKN Foundry（推荐入口）
 ./deploy.sh bkn-foundry install
 
 # 查看 Core 状态
