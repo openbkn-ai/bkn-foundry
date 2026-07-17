@@ -46,49 +46,6 @@
   <input class="search" id="q" type="search" placeholder="过滤资源…" autocomplete="off">
 </header>
 <section class="auth">
-  <h2>🔑 认证 —— 获取并携带 Token</h2>
-  <p>下列接口需要认证。请求时在 HTTP 头带上 <code>Authorization: Bearer &lt;token&gt;</code>。拿到 token 后即可调用：</p>
-<pre>curl -H "Authorization: Bearer &lt;token&gt;" \
-     https://&lt;your-instance&gt;/api/bkn-backend/v1/knowledge-networks</pre>
-
-  <h3>方式一 · CLI 登录（交互 / 人用，推荐）</h3>
-  <p>用 <a href="https://github.com/openbkn-ai/bkn-sdk">bkn-sdk</a> 的 <code>openbkn</code> CLI 登录一次，token 存到 <code>~/.bkn/</code>，之后所有命令自动携带并按需刷新。登录走 OAuth2 <b>设备码流</b>（RFC 8628）：</p>
-<pre># 浏览器登录（打印 URL + user code，在浏览器里确认）
-openbkn auth login https://&lt;your-instance&gt;
-
-# 无浏览器 / CI：用户名密码，CLI 在后台代走 login/consent 页
-openbkn auth login https://&lt;your-instance&gt; -u &lt;account&gt; -p &lt;password&gt; -k
-
-# 登录后直接调用
-openbkn bkn list</pre>
-
-  <h3>方式二 · AppKey（程序 / 自动化，推荐）</h3>
-  <p>AppKey（<code>bak_</code> 前缀）是长期有效的持有者凭据，<b>以签发人身份</b>调用接口。先用已登录的会话签发一枚（AppKey 不能再签发 AppKey）：</p>
-<pre># 签发：需已登录（OAuth token）。name 必填；不传 expires_at 默认 1 年
-curl -X POST https://&lt;your-instance&gt;/api/safe/v1/me/api-keys \
-  -H "Authorization: Bearer &lt;your-oauth-token&gt;" \
-  -H "Content-Type: application/json" \
-  -d '{"name":"my-key","expires_at":"2027-01-01T00:00:00Z"}'
-
-# 201 响应，明文 key 只在此出现一次，务必保存：
-# {"id":"...","key_id":"2882bb603277","name":"my-key",
-#  "key":"bak_2882bb603277_BSxTZHTBiJXk4QoUBc0u17zSWua",
-#  "masked":"bak_2882****SWua","expires_at":"...","enabled":true}
-
-# 用 AppKey 调用（同样是 Bearer）：
-curl -H "Authorization: Bearer bak_2882bb603277_BSxTZHTBiJXk4QoUBc0u17zSWua" \
-     https://&lt;your-instance&gt;/api/agent-retrieval/v1/kn/search_schema</pre>
-  <p class="muted">CLI 等价：<code>openbkn appkey create --name my-key</code>；调用时 <code>openbkn --token bak_... ...</code>。管理：<code>GET /api/safe/v1/me/api-keys</code> 列出、<code>DELETE /api/safe/v1/me/api-keys/{id}</code> 撤销、<code>POST /api/safe/v1/me/api-keys/{id}/regenerate</code> 轮换。</p>
-
-  <h3>方式三 · OAuth2 直接换 token（协议细节）</h3>
-  <p>token 端点是 Hydra 的 <code>POST /oauth2/token</code>（<b>不是</b> <code>/oauth/token</code>）。服务间调用用 <b>client credentials</b>（需预先配置了 client secret 的客户端，如 <code>ci-runner</code>；凭据放请求体，<code>client_secret_post</code>）：</p>
-<pre>curl -X POST https://&lt;your-instance&gt;/oauth2/token \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  --data-urlencode grant_type=client_credentials \
-  --data-urlencode client_id=&lt;client-id&gt; \
-  --data-urlencode client_secret=&lt;client-secret&gt; \
-  --data-urlencode audience=bkn-safe
-# -&gt; {"access_token":"...","token_type":"bearer","expires_in":...}</pre>
-  <p class="muted">交互式登录（CLI）用的是设备码流：<code>POST /oauth2/device/auth</code> 取 device code，再轮询 <code>POST /oauth2/token</code>（<code>grant_type=urn:ietf:params:oauth:grant-type:device_code</code>）。绝大多数场景用方式一或方式二即可，无需手写本流程。</p>
+  <p>🔑 接口需认证，请求头带 <code>Authorization: Bearer &lt;token&gt;</code>。获取 token（CLI 登录 / AppKey / OAuth2）与示例见 <a href="./auth.html">认证说明 &rarr;</a></p>
 </section>
 <main id="list">

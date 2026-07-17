@@ -22,7 +22,7 @@ api-docs-lint:
 	@set -e; for m in $(MODULES); do \
 	  for y in $(API_DIR)/$$m/*.yaml; do \
 	    [ -e "$$y" ] || continue; \
-	    npx @redocly/cli lint "$$y"; \
+	    npx @redocly/cli lint --config .redocly.yaml "$$y"; \
 	  done; \
 	done
 
@@ -59,6 +59,7 @@ api-docs-html:
 	@rm -rf $(HTML_DIR)
 	@mkdir -p $(HTML_DIR)
 	@cp "$(TPL_DIR)/openbkn-logo.png" "$(HTML_DIR)/openbkn-logo.png"
+	@cp "$(TPL_DIR)/auth.html" "$(HTML_DIR)/auth.html"
 	@idx="$(HTML_DIR)/index.html"; \
 	cat "$(TPL_DIR)/index-head.html" > "$$idx"; \
 	for m in $(MODULES); do \

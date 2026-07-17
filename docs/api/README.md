@@ -2,6 +2,21 @@
 
 本目录统一收纳 bkn-foundry 各服务的 **OpenAPI 文档**。YAML 是唯一真相源，Markdown 由工具从 YAML 自动渲染。
 
+## 👀 如何查看
+
+- **在线（推荐）**：合并到 `main` 后由 CI 发布到 **GitHub Pages**，带版本下拉、按模块的交互式文档（搜索 / 折叠 / 示例）与认证说明，一个链接看全部。
+- **Markdown 直读**：[`_generated/`](_generated/) 下每个模块一份 md，可在 GitHub / 飞书直接阅读（见下表）。
+- **本地生成交互式 HTML**：
+
+  ```bash
+  npm install          # 首次：装 widdershins + @redocly/cli
+  make api-docs-html   # 渲染到 _generated/html/，打开 index.html 查看
+  ```
+
+## 🔑 如何调用（认证）
+
+接口需认证，请求头带 `Authorization: Bearer <token>`。获取 token：**① CLI 登录**（`openbkn auth login`，token 存 `~/.bkn/` 自动携带）；**② AppKey**（`POST /api/safe/v1/me/api-keys` 签发 `bak_` 密钥，适合自动化）；**③ OAuth2**（Hydra `POST /oauth2/token`）。完整示例见在线文档首页的「认证」区块。
+
 ## 🗂️ 模块一览
 
 | 模块 | 目录 | 说明 | Markdown |

@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>认证 · BKN Foundry API 文档中心</title>
+<style>
+  :root{--bg:#fff;--fg:#12212b;--muted:#5b6b78;--card:#fff;--line:#e4eaf0;--acc:#0e7c86;--acc-bg:#e1f3f4;--shadow:0 1px 2px rgba(16,32,44,.04),0 3px 12px rgba(16,32,44,.06)}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:820px;margin:0 auto;padding:48px 24px 96px}
+  .back{display:inline-block;margin-bottom:22px;color:var(--acc);text-decoration:none;font-size:14px}
+  .back:hover{text-decoration:underline}
+  h1{font-size:26px;letter-spacing:-.02em;margin:0 0 6px}
+  .lede{color:var(--muted);font-size:15px;margin:0 0 8px}
+  h2{font-size:19px;margin:34px 0 6px}
+  h3{font-size:15px;margin:20px 0 6px}
+  p{margin:8px 0;font-size:14.5px}
+  .muted{color:var(--muted);font-size:13.5px}
+  code{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:13px;background:#f2f5f8;border:1px solid var(--line);padding:1px 5px;border-radius:4px}
+  pre{background:#0d1117;color:#e6edf3;border-radius:10px;padding:14px 16px;overflow-x:auto;font-family:ui-monospace,Menlo,monospace;font-size:12.5px;line-height:1.55;margin:10px 0}
+  pre code{background:none;border:0;padding:0;color:inherit;font-size:inherit}
+  table{border-collapse:collapse;width:100%;font-size:13.5px;margin:10px 0}
+  th,td{text-align:left;padding:7px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:#f2f5f8;font-weight:600;white-space:nowrap}
+  .note{border-left:3px solid var(--acc);background:var(--acc-bg);padding:10px 14px;border-radius:0 8px 8px 0;font-size:13.5px;margin:12px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+<a class="back" href="./index.html">&larr; 返回文档中心</a>
+<h1>🔑 认证</h1>
+<p class="lede">除内部 <code>/in/v1</code> 面外，接口都需认证。请求时在 HTTP 头带上 <code>Authorization: Bearer &lt;token&gt;</code>。</p>
+<pre><code>curl -H "Authorization: Bearer &lt;token&gt;" \
+     https://&lt;your-instance&gt;/api/bkn-backend/v1/knowledge-networks</code></pre>
+<p>获取 token 有三种方式，按场景选择：</p>
+<table>
+  <tr><th>方式</th><th>适用场景</th><th>覆盖范围</th></tr>
+  <tr><td>CLI 登录</td><td>人用 / 交互</td><td>全部服务接口</td></tr>
+  <tr><td>AppKey（<code>bak_</code>）</td><td>程序 / 自动化</td><td><b>仅 Context Loader</b>（检索 / MCP）</td></tr>
+  <tr><td>OAuth2 直连</td><td>服务间 / 已有客户端凭据</td><td>全部服务接口</td></tr>
+</table>
+
+<h2>方式一 · CLI 登录（人用，推荐）</h2>
+<p>用 <a href="https://github.com/openbkn-ai/bkn-sdk">bkn-sdk</a> 的 <code>openbkn</code> CLI 登录一次，之后所有命令自动携带 token 并按需刷新。登录走 OAuth2 <b>设备码流</b>（RFC 8628）。</p>
+<pre><code># 浏览器登录（打印 URL + user code，在浏览器里确认）
+openbkn auth login https://&lt;your-instance&gt;
+
+# 无浏览器 / CI：用户名密码，CLI 在后台代走 login/consent 页
+openbkn auth login https://&lt;your-instance&gt; -u &lt;account&gt; -p &lt;password&gt; -k</code></pre>
+<p>需要拿到原始 token（例如喂给别的工具 / curl）时，用 <code>token</code> 子命令打印（会自动刷新过期 token）：</p>
+<pre><code>openbkn auth token           # 打印当前 access token（自动刷新）
+openbkn auth status          # 查看是否已登录 / 当前平台
+openbkn auth whoami          # 查看当前身份
+
+# 直接喂给 curl：
+curl -H "Authorization: Bearer $(openbkn auth token)" \
+     https://&lt;your-instance&gt;/api/bkn-backend/v1/knowledge-networks</code></pre>
+
+<h2>方式二 · AppKey（自动化，推荐）</h2>
+<div class="note"><b>覆盖范围</b>：AppKey 是给 <b>Context Loader</b>（检索 / MCP，<code>/api/agent-retrieval/...</code>）用的长期凭据，<b>以签发人身份</b>调用。用于其它服务接口请改用 OAuth token。</div>
+<p>先用已登录的 OAuth 会话签发一枚（AppKey 不能再签发 AppKey）。<code>name</code> 必填；不传 <code>expires_at</code> 默认有效期 1 年。</p>
+<pre><code># 签发（需已登录的 OAuth token）
+curl -X POST https://&lt;your-instance&gt;/api/safe/v1/me/api-keys \
+  -H "Authorization: Bearer $(openbkn auth token)" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"my-key","expires_at":"2027-01-01T00:00:00Z"}'
+
+# 201 响应，明文 key 只在此出现一次，务必保存：
+# {"id":"...","key_id":"2882bb603277","name":"my-key",
+#  "key":"bak_2882bb603277_BSxTZHTBiJXk4QoUBc0u17zSWua",
+#  "masked":"bak_2882****SWua","expires_at":"...","enabled":true}
+
+# 使用（同样是 Bearer；对 Context Loader 面）
+curl -H "Authorization: Bearer bak_2882bb603277_BSxTZHTBiJXk4QoUBc0u17zSWua" \
+     https://&lt;your-instance&gt;/api/agent-retrieval/v1/kn/search_schema</code></pre>
+<p class="muted">CLI 等价：<code>openbkn appkey create --name my-key</code>；使用时 <code>openbkn --token bak_... context ...</code>。管理：<code>GET /api/safe/v1/me/api-keys</code> 列出、<code>DELETE /api/safe/v1/me/api-keys/{id}</code> 撤销、<code>POST /api/safe/v1/me/api-keys/{id}/regenerate</code> 轮换。</p>
+
+<h2>方式三 · OAuth2 直接换 token</h2>
+<p>token 端点是 Hydra 的 <code>POST /oauth2/token</code>（<b>不是</b> <code>/oauth/token</code>）。服务间调用用 <b>client credentials</b> 流：</p>
+<pre><code>curl -X POST https://&lt;your-instance&gt;/oauth2/token \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  --data-urlencode grant_type=client_credentials \
+  --data-urlencode client_id=&lt;client-id&gt; \
+  --data-urlencode client_secret=&lt;client-secret&gt; \
+  --data-urlencode audience=bkn-safe
+# -&gt; {"access_token":"...","token_type":"bearer","expires_in":...}</code></pre>
+<div class="note"><b><code>client_id</code> / <code>client_secret</code> 从哪来？</b>它们不是自助申请的，而是<b>平台管理员在部署时</b>为服务间调用预置的 OAuth 客户端（Hydra client seed，凭据放在 bkn-safe chart 的 <code>clientSeed.ciRunnerSecret</code>，默认不启用、需显式配置）。需要一枚 client-credentials 客户端时，请找部署 / 平台管理员在 Hydra 里创建并索取凭据。凭据以 <code>client_secret_post</code> 放在请求体，不走 HTTP Basic。</div>
+<p class="muted">交互式登录（方式一）底层用的是设备码流：<code>POST /oauth2/device/auth</code> 取 device code，再轮询 <code>POST /oauth2/token</code>（<code>grant_type=urn:ietf:params:oauth:grant-type:device_code</code>）。绝大多数场景用方式一或方式二即可，无需手写本流程。</p>
+</div>
+</body>
+</html>
