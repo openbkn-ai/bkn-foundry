@@ -31,10 +31,12 @@ Markdown 是**产物**，不要手改。改 YAML 后由 CI 自动重渲并提交
 ```bash
 npm install            # 安装 widdershins + @redocly/cli（根 package.json）
 make api-docs-lint     # 校验 OpenAPI YAML（$ref 可解析等）
-make api-docs          # YAML → Markdown，输出到 _generated/
+make api-docs          # YAML → Markdown，输出到 _generated/（进 git）
+make api-docs-html     # YAML → 交互式 HTML，输出到 _generated/html/（不进 git）
 ```
 
-- **CI**：[`.github/workflows/ci-docs-api.yml`](../../.github/workflows/ci-docs-api.yml) 在 PR 触碰 `docs/api/**` 时 lint + 渲染，若 `_generated/` 与源不同步则自动提交最新 md。
+- **两种产物**：`_generated/*.md` 是 Markdown（进 git，GitHub / 飞书直读）；`_generated/html/` 是 redocly 渲染的**交互式 HTML**（带搜索 / 折叠 / 示例，体积大，**不进 git**，本地用 `make api-docs-html` 生成后打开 `_generated/html/index.html` 查看）。
+- **CI**：[`.github/workflows/ci-docs-api.yml`](../../.github/workflows/ci-docs-api.yml)。PR 触碰 `docs/api/**` 时 lint + 渲染 md，若 `_generated/` 与源不同步则自动提交最新 md；push 到 `main` 后渲染 HTML 并发布到 **GitHub Pages**（在线查看，需仓库 Settings → Pages 把 Source 设为 “GitHub Actions”）。
 - **Lint 配置**：[`.redocly.yaml`](../../.redocly.yaml)。底线是 `$ref` 可解析；example/描述类既存瑕疵降为 warn，留各模块补写时清理。
 
 ## ✍️ 约定

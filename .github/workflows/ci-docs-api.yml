@@ -1,14 +1,28 @@
 name: ci-docs-api
 
-# API 文档流水线：PR 触碰 docs/api 时，校验 OpenAPI YAML（$ref 可解析等）并把
-# YAML 渲染成 Markdown。渲染产物 docs/api/_generated/*.md 是「构建产物」——若与源
-# YAML 不同步，直接把最新 md 提交回 PR 分支，开发者无需手动跑 make。
+# API 文档流水线：
+#  - PR 触碰 docs/api 时：校验 OpenAPI YAML（$ref 可解析等），渲染 Markdown，
+#    若 _generated/*.md 与源 YAML 不同步就提交回 PR 分支。
+#  - push 到 main 后：渲染交互式 HTML（redocly）并发布到 GitHub Pages，供开发者
+#    在线查看（HTML 不进 git，见 .gitignore）。
 #
 # 真相源永远是 YAML；_generated/ 的 md 由本流水线维护，不要手改。
+#
+# 前置：GitHub Pages 发布需在仓库 Settings → Pages 里把 Source 设为
+# "GitHub Actions"（一次性设置）。
 
 on:
   pull_request:
     types: [opened, synchronize, reopened]
+    paths:
+      - 'docs/api/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'Makefile'
+      - '.redocly.yaml'
+      - '.github/workflows/ci-docs-api.yml'
+  push:
+    branches: [main]
     paths:
       - 'docs/api/**'
       - 'package.json'
@@ -23,12 +37,14 @@ concurrency:
 
 permissions:
   contents: write   # 需要把渲染出的 md 提交回 PR 分支
+  pages: write      # 发布 GitHub Pages
+  id-token: write   # Pages 部署需要
 
 jobs:
   render:
+    # PR 时渲染 md 并回提交
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    # fork 来的 PR 拿不到写 token，跳过自动提交（仍会在 fork 侧本地渲染）
-    if: github.event.pull_request.head.repo.full_name == github.repository
     steps:
       - uses: actions/checkout@v4
         with:
@@ -61,3 +77,32 @@ jobs:
           git commit -m 'docs(api): regenerate Markdown from OpenAPI YAML'
           git push origin HEAD:${{ github.head_ref }}
           echo "📝 Committed regenerated Markdown back to the PR branch."
+
+  pages:
+    # push 到 main 后渲染 HTML 并发布 Pages
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install doc toolchain
+        run: npm ci || npm install
+
+      - name: Render interactive HTML
+        run: make api-docs-html
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/api/_generated/html
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -90,6 +90,10 @@ sandbox_web/dist/
 # 根级文档工具链依赖（package.json / package-lock.json 提交，依赖目录不提交）
 /node_modules
 
+# API 交互式 HTML 文档（体积大，不进 git；由 CI 渲染并发布到 GitHub Pages。
+# md 版仍在 _generated/ 下提交，供 GitHub / 飞书直读）
+docs/api/_generated/html/
+
 go.work
 go.work.sum
 ref
