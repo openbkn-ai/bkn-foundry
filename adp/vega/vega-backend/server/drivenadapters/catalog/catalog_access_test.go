@@ -113,15 +113,16 @@ func TestCatalogAccessList(t *testing.T) {
 			Name:                  "Catalog",
 			Tag:                   "tag-a",
 			Type:                  interfaces.CatalogTypePhysical,
+			ConnectorType:         "postgresql",
 			Enabled:               &enabled,
 			HealthCheckStatus:     interfaces.CatalogHealthStatusHealthy,
 		}
 
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM t_catalog WHERE f_name LIKE ? AND f_tags LIKE ? AND f_type = ? AND f_enabled = ? AND f_health_check_status = ?")).
-			WithArgs("%Catalog%", "%tag-a%", interfaces.CatalogTypePhysical, true, interfaces.CatalogHealthStatusHealthy).
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM t_catalog WHERE f_name LIKE ? AND f_tags LIKE ? AND f_type = ? AND f_connector_type = ? AND f_enabled = ? AND f_health_check_status = ?")).
+			WithArgs("%Catalog%", "%tag-a%", interfaces.CatalogTypePhysical, "postgresql", true, interfaces.CatalogHealthStatusHealthy).
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(1)))
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id, f_name, f_tags, f_description, f_type, f_enabled, f_internal, f_connector_type, f_connector_config, f_metadata, f_health_check_enabled, f_health_check_status, f_last_check_time, f_health_check_result, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time FROM t_catalog WHERE f_name LIKE ? AND f_tags LIKE ? AND f_type = ? AND f_enabled = ? AND f_health_check_status = ? ORDER BY f_name ASC")).
-			WithArgs("%Catalog%", "%tag-a%", interfaces.CatalogTypePhysical, true, interfaces.CatalogHealthStatusHealthy).
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id, f_name, f_tags, f_description, f_type, f_enabled, f_internal, f_connector_type, f_connector_config, f_metadata, f_health_check_enabled, f_health_check_status, f_last_check_time, f_health_check_result, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time FROM t_catalog WHERE f_name LIKE ? AND f_tags LIKE ? AND f_type = ? AND f_connector_type = ? AND f_enabled = ? AND f_health_check_status = ? ORDER BY f_name ASC")).
+			WithArgs("%Catalog%", "%tag-a%", interfaces.CatalogTypePhysical, "postgresql", true, interfaces.CatalogHealthStatusHealthy).
 			WillReturnRows(catalogRows().AddRow(catalogRowValues(sampleCatalog())...))
 
 		got, total, err := access.List(context.Background(), params)
