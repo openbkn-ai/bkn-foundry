@@ -1,0 +1,198 @@
+---
+openapi: 3.1.1
+info:
+  title: Semantic Understanding Task
+  version: 0.1.0
+  description: |
+    Vega Backend 语义理解异步任务 API。任务可针对单个 Resource 或整个 Catalog 创建；
+    worker 将任务提交给 bkn-agent，并异步写回结果与应用状态。
+servers:
+  - url: /api/vega-backend/v1
+security:
+  - OAuth2: []
+paths:
+  /semantic-understanding-tasks:
+    get:
+      summary: 获取语义理解任务列表
+      parameters:
+        - name: scope
+          in: query
+          schema:
+            type: string
+            enum: [resource, catalog]
+        - name: catalog_id
+          in: query
+          schema: { type: string }
+        - name: resource_id
+          in: query
+          schema: { type: string }
+        - name: status
+          description: 逗号分隔的状态列表；`active=true` 时筛选 pending 与 running。
+          in: query
+          schema:
+            type: string
+        - name: active
+          in: query
+          schema: { type: boolean }
+        - name: offset
+          in: query
+          schema: { type: integer, minimum: 0, default: 0 }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20 }
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [create_time, update_time, status, scope]
+            default: create_time
+        - name: direction
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ListSemanticUnderstandingTasks" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalServerError" }
+    post:
+      summary: 创建语义理解任务
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateSemanticUnderstandingTaskRequest" }
+      responses:
+        "201":
+          description: 创建成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SemanticUnderstandingTask" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "500": { $ref: "#/components/responses/InternalServerError" }
+  /semantic-understanding-tasks/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      summary: 获取语义理解任务详情
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SemanticUnderstandingTask" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalServerError" }
+    delete:
+      summary: 删除语义理解任务
+      description: 路径参数可为逗号分隔的任务 ID；运行中的任务不可删除。
+      parameters:
+        - name: ignore_missing
+          in: query
+          schema: { type: boolean, default: false }
+      responses:
+        "204": { description: 删除成功 }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "500": { $ref: "#/components/responses/InternalServerError" }
+components:
+  securitySchemes:
+    OAuth2:
+      $ref: "../_shared/auth.yaml#/components/securitySchemes/OAuth2"
+  responses:
+    BadRequest:
+      description: 请求参数或请求体非法
+      content: { application/json: { schema: { $ref: "../_shared/errors.yaml#/components/schemas/Error" } } }
+    Unauthorized:
+      description: OAuth Token 校验失败
+      content: { application/json: { schema: { $ref: "../_shared/errors.yaml#/components/schemas/Error" } } }
+    NotFound:
+      description: 资源不存在
+      content: { application/json: { schema: { $ref: "../_shared/errors.yaml#/components/schemas/Error" } } }
+    Conflict:
+      description: 状态冲突或已有活动任务
+      content: { application/json: { schema: { $ref: "../_shared/errors.yaml#/components/schemas/Error" } } }
+    InternalServerError:
+      description: 服务内部错误
+      content: { application/json: { schema: { $ref: "../_shared/errors.yaml#/components/schemas/Error" } } }
+  schemas:
+    AccountInfo:
+      type: object
+      required: [id, type]
+      properties:
+        id: { type: string }
+        type: { type: string }
+        name: { type: string }
+    SamplePolicy:
+      type: object
+      properties:
+        masked: { type: boolean }
+        max_rows: { type: integer }
+    CreateSemanticUnderstandingTaskRequest:
+      type: object
+      required: [scope]
+      properties:
+        scope: { type: string, enum: [resource, catalog] }
+        catalog_id: { type: string }
+        resource_id: { type: string }
+        apply_mode: { type: string, enum: [dry_run, fill_empty, force], default: fill_empty }
+        confidence_threshold: { type: number, format: double, default: 0.75 }
+        include_sample_rows: { type: boolean }
+        sample_policy: { $ref: "#/components/schemas/SamplePolicy" }
+      allOf:
+        - if:
+            properties: { scope: { const: resource } }
+          then:
+            required: [resource_id]
+        - if:
+            properties: { scope: { const: catalog } }
+          then:
+            required: [catalog_id]
+    SemanticUnderstandingTask:
+      type: object
+      required: [id, scope, catalog_id, agent_id, input, input_hash, status, apply_mode, confidence_threshold, confidence, applied, creator, create_time, update_time]
+      properties:
+        id: { type: string }
+        scope: { type: string, enum: [resource, catalog] }
+        catalog_id: { type: string }
+        resource_id: { type: string }
+        agent_task_id: { type: string }
+        agent_id: { type: string }
+        input: { type: string }
+        input_hash: { type: string }
+        status: { type: string, enum: [pending, running, succeeded, failed] }
+        apply_mode: { type: string, enum: [dry_run, fill_empty, force] }
+        result_json: { type: string }
+        confidence_threshold: { type: number, format: double }
+        confidence: { type: number, format: double }
+        confidence_detail_json: { type: string }
+        apply_detail_json: { type: string }
+        applied: { type: boolean }
+        applied_time: { type: integer, format: int64 }
+        failure_detail: { type: string }
+        creator: { $ref: "#/components/schemas/AccountInfo" }
+        create_time: { type: integer, format: int64 }
+        update_time: { type: integer, format: int64 }
+    ListSemanticUnderstandingTasks:
+      type: object
+      required: [entries, total_count]
+      properties:
+        entries:
+          type: array
+          items: { $ref: "#/components/schemas/SemanticUnderstandingTask" }
+        total_count: { type: integer, format: int64 }

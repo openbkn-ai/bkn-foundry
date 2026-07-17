@@ -24,8 +24,10 @@ info:
   version: 0.1.0
 servers:
   - url: /api/vega-backend/v1
+security:
+  - OAuth2: []
 paths:
-  /api/vega-backend/v1/resources/{id}/data:
+  /resources/{id}/data:
     parameters:
       - name: id
         description: Resource ID
@@ -132,7 +134,7 @@ paths:
           $ref: "#/components/responses/NotAcceptable"
         "500":
           $ref: "#/components/responses/InternalServerError"
-  /api/vega-backend/v1/resources/{id}/data/{doc_ids}:
+  /resources/{id}/data/{doc_ids}:
     parameters:
       - name: id
         description: Resource ID
@@ -140,7 +142,7 @@ paths:
         required: true
         schema:
           type: string
-      - name: doc_ids
+      - name: doc_id
         description: |
           文档 ID 列表，逗号分隔（单条即长度 1 的退化情形）。
           缺失 id 静默跳过；本端点不接受 `?ignore_missing` 参数。
@@ -170,20 +172,6 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalServerError"
-  /api/vega-backend/v1/resources/{id}/data/{doc_id}:
-    parameters:
-      - name: id
-        description: Resource ID
-        in: path
-        required: true
-        schema:
-          type: string
-      - name: doc_id
-        description: 文档 ID
-        in: path
-        required: true
-        schema:
-          type: string
     get:
       summary: 获取单条文档
       description: |
@@ -239,6 +227,9 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerError"
 components:
+  securitySchemes:
+    OAuth2:
+      $ref: "../_shared/auth.yaml#/components/securitySchemes/OAuth2"
   responses:
     BadRequest:
       description: |
@@ -316,20 +307,76 @@ components:
           description: 每页数量
           type: integer
           format: int64
-          default: 20
+          default: 10
         sort:
           description: 排序字段
-          type: string
-        direction:
-          description: 排序方向
-          type: string
-          enum:
-            - asc
-            - desc
+          type: array
+          items:
+            $ref: "#/components/schemas/SortField"
+        output_fields:
+          description: 指定输出字段列表
+          type: array
+          items:
+            type: string
         need_total:
           description: 是否在响应里携带 total_count
           type: boolean
           default: false
+        search_after:
+          description: OpenSearch `search_after` 游标值
+          type: array
+          items: {}
+        query_type:
+          description: 查询类型
+          type: string
+        aggregation:
+          $ref: "#/components/schemas/Aggregation"
+        group_by:
+          type: array
+          items:
+            $ref: "#/components/schemas/GroupByItem"
+        having:
+          $ref: "#/components/schemas/HavingClause"
+    SortField:
+      type: object
+      required:
+        - field
+        - direction
+      properties:
+        field:
+          type: string
+        direction:
+          type: string
+          enum: [asc, desc]
+    Aggregation:
+      type: object
+      required: [property, aggr]
+      properties:
+        property: { type: string }
+        aggr:
+          type: string
+          enum: [count, count_distinct, sum, max, min, avg]
+        alias: { type: string }
+    GroupByItem:
+      type: object
+      required: [property]
+      properties:
+        property: { type: string }
+        description: { type: string }
+        calendar_interval:
+          type: string
+          enum: [minute, hour, day, week, month, quarter, year]
+    HavingClause:
+      type: object
+      required: [field, operation, value]
+      properties:
+        field:
+          type: string
+          enum: [__value, "count(*)"]
+        operation:
+          type: string
+          enum: ["==", "!=", ">", ">=", "<", "<=", in, not_in, range, out_range]
+        value: {}
     ListResponse:
       description: |
         查询响应。`total_count` 仅在请求 `need_total=true` 时返回。
@@ -346,6 +393,11 @@ components:
           description: 总条数（仅 need_total=true 时返回）
           type: integer
           format: int64
+        warnings:
+          description: 非阻断告警
+          type: array
+          items:
+            type: string
     IdsResponse:
       description: 写入操作的响应，含成功的文档 ID 数组
       type: object

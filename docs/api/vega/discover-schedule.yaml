@@ -20,8 +20,10 @@ info:
   version: 0.1.0
 servers:
   - url: /api/vega-backend/v1
+security:
+  - OAuth2: []
 paths:
-  /api/vega-backend/v1/discover-schedules:
+  /discover-schedules:
     post:
       summary: 创建发现调度
       description: |
@@ -129,7 +131,7 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "500":
           $ref: "#/components/responses/InternalServerError"
-  /api/vega-backend/v1/discover-schedules/{id}:
+  /discover-schedules/{id}:
     parameters:
       - name: id
         description: DiscoverSchedule ID
@@ -204,7 +206,7 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalServerError"
-  /api/vega-backend/v1/discover-schedules/{id}/enable:
+  /discover-schedules/{id}/enable:
     parameters:
       - name: id
         description: DiscoverSchedule ID
@@ -226,7 +228,7 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalServerError"
-  /api/vega-backend/v1/discover-schedules/{id}/disable:
+  /discover-schedules/{id}/disable:
     parameters:
       - name: id
         description: DiscoverSchedule ID
@@ -251,6 +253,9 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerError"
 components:
+  securitySchemes:
+    OAuth2:
+      $ref: "../_shared/auth.yaml#/components/securitySchemes/OAuth2"
   responses:
     BadRequest:
       description: |
@@ -328,7 +333,7 @@ components:
         - catalog_id
         - cron_expr
         - enabled
-        - strategies
+        - strategy
         - creator
         - create_time
         - updater
@@ -365,16 +370,13 @@ components:
           description: |
             是否启用；**只读**输出字段，状态切换走 `POST .../enable` `POST .../disable`
           type: boolean
-        strategies:
-          description: |
-            发现策略集合，元素为 `insert` / `delete` / `update`；空数组表示全部。
-          type: array
-          items:
-            type: string
-            enum:
-              - insert
-              - delete
-              - update
+        strategy:
+          description: 发现策略；创建或更新时省略则默认为 `full_sync`
+          type: string
+          enum:
+            - full_sync
+            - create_only
+            - cleanup_only
         last_run:
           description: 上次执行时间，毫秒时间戳；系统维护
           type: integer
@@ -401,16 +403,13 @@ components:
 
         - 创建时 `name`、`catalog_id` 与 `cron_expr` 必填；`enabled` 默认 false（可同时传 true 一步启用）
         - PUT 时 `catalog_id` 必填且必须与当前一致（空串 / 缺失视为不一致 → 409 CatalogMismatch）；
-          `enabled` 必须与当前一致（否则 409 EnabledFieldNotAllowed）；`id` 可省略，携带时被忽略
+          `enabled` 必须与当前一致（否则 409 EnabledFieldNotAllowed）。
       type: object
       required:
         - name
         - catalog_id
         - cron_expr
       properties:
-        id:
-          description: 创建时省略；PUT 时如携带必须与 path 一致
-          type: string
         name:
           description: 调度名称，必填，最大长度 255
           type: string
@@ -437,16 +436,13 @@ components:
           description: |
             创建时可选（默认 false）；PUT 时必须与当前一致，否则 409 EnabledFieldNotAllowed
           type: boolean
-        strategies:
-          description: |
-            发现策略，元素必须是 `insert` / `delete` / `update` 的子集；空数组表示全部
-          type: array
-          items:
-            type: string
-            enum:
-              - insert
-              - delete
-              - update
+        strategy:
+          description: 发现策略；省略时服务端默认 `full_sync`
+          type: string
+          enum:
+            - full_sync
+            - create_only
+            - cleanup_only
     ListDiscoverSchedules:
       description: 调度列表响应
       type: object

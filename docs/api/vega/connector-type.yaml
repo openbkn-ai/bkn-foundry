@@ -12,8 +12,10 @@ info:
   version: 0.1.0
 servers:
   - url: /api/vega-backend/v1
+security:
+  - OAuth2: []
 paths:
-  /api/vega-backend/v1/connector-types:
+  /connector-types:
     get:
       summary: 获取连接器类型列表
       description: 分页获取已注册的连接器类型；支持按 name、tag、mode、category、enabled 过滤。
@@ -129,7 +131,7 @@ paths:
                 $ref: "../_shared/errors.yaml#/components/schemas/Error"
         "500":
           $ref: "#/components/responses/InternalServerError"
-  /api/vega-backend/v1/connector-types/{type}:
+  /connector-types/{type}:
     parameters:
       - name: type
         description: 连接器类型标识（如 mysql、postgresql）
@@ -208,7 +210,7 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalServerError"
-  /api/vega-backend/v1/connector-types/{type}/enable:
+  /connector-types/{type}/enable:
     parameters:
       - name: type
         description: 连接器类型标识
@@ -228,7 +230,7 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalServerError"
-  /api/vega-backend/v1/connector-types/{type}/disable:
+  /connector-types/{type}/disable:
     parameters:
       - name: type
         description: 连接器类型标识
@@ -249,6 +251,9 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerError"
 components:
+  securitySchemes:
+    OAuth2:
+      $ref: "../_shared/auth.yaml#/components/securitySchemes/OAuth2"
   responses:
     BadRequest:
       description: 请求参数 / 请求体非法
