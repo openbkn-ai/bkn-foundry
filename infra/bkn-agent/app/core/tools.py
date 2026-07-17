@@ -6,7 +6,7 @@ from langchain_core.tools import StructuredTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
 from app.config import config
-from app.core.toolbox import load_toolbox_tools
+from app.core.toolbox import _safe_name, load_toolbox_tools
 from app.errors import bad_request
 
 logger = logging.getLogger("bkn-agent.tools")
@@ -107,7 +107,11 @@ async def _agent_tool(
             await dao.set_task_status(session, task.task_id, "succeeded", output=output)
         return output
 
-    name = ref.get("name") or f"agent_{sub_agent.name}"
+    # OpenAI function name 只收 ASCII 字母数字 _ - 且 ≤64；AgentSpec.name 合法中文名
+    # 原样当工具名会让引用方每次模型请求稳定 400。统一走 _safe_name 清洗+截断，
+    # 全非 ASCII 名清洗后无字母数字则兜底 tool_{agent_id 前缀}；语义靠 description
+    # 传达（含原始中文名），不靠 function name。
+    name = _safe_name(ref.get("name") or f"agent_{sub_agent.name}", sub_agent.agent_id)
     description = ref.get("description") or f"调用子 agent「{sub_agent.name}」完成一次性任务。"
     return StructuredTool.from_function(coroutine=call_sub_agent, name=name, description=description)
 
