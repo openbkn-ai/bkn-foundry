@@ -14,6 +14,7 @@ import (
 	"gorm.io/gorm"
 
 	"bkn-safe/internal/auth"
+	"bkn-safe/internal/authz"
 	"bkn-safe/internal/directory"
 	"bkn-safe/internal/model"
 )
@@ -175,11 +176,11 @@ func registerDirectory(r *gin.Engine, dir *directory.Service) {
 // user detail, department list) under the /admin group, so the CLI/web admin
 // surface reaches them through the gateway. The internal (ClusterIP) equivalents
 // stay on /api/safe/v1/directory for service-to-service callers.
-func registerAdminReads(g *gin.RouterGroup, dir *directory.Service) {
+func registerAdminReads(g *gin.RouterGroup, dir *directory.Service, e *authz.Enforcer) {
 	// GET /users — list/search users (paginated), or ?account= for an exact
 	// login lookup. Query: ?search=&offset=&limit= | ?account=
 	// -> { users:[{id,account,name,email,enabled,account_type}], total }
-	g.GET("/users", func(c *gin.Context) {
+	g.GET("/users", RequirePermission(e, "admin-user", "view"), func(c *gin.Context) {
 		ctx := c.Request.Context()
 		if acct := c.Query("account"); acct != "" {
 			u, err := dir.FindUserByAccount(ctx, acct)
@@ -211,7 +212,7 @@ func registerAdminReads(g *gin.RouterGroup, dir *directory.Service) {
 	})
 
 	// GET /users/:id — full user detail.
-	g.GET("/users/:id", func(c *gin.Context) {
+	g.GET("/users/:id", RequirePermission(e, "admin-user", "view"), func(c *gin.Context) {
 		d, err := dir.GetUser(c.Request.Context(), c.Param("id"))
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
@@ -227,7 +228,7 @@ func registerAdminReads(g *gin.RouterGroup, dir *directory.Service) {
 	// GET /departments — with ?parent_id= lists that parent's direct children
 	// ("" = roots); without it returns the whole tree flat (paginated/searchable
 	// via ?search=&offset=&limit=) so the client can build the tree.
-	g.GET("/departments", func(c *gin.Context) {
+	g.GET("/departments", RequirePermission(e, "admin-dept", "view"), func(c *gin.Context) {
 		ctx := c.Request.Context()
 		if _, scoped := c.GetQuery("parent_id"); scoped {
 			deps, err := dir.ListDepartmentsWithCounts(ctx, c.Query("parent_id"))
@@ -247,7 +248,7 @@ func registerAdminReads(g *gin.RouterGroup, dir *directory.Service) {
 	})
 
 	// GET /departments/:id — single department detail.
-	g.GET("/departments/:id", func(c *gin.Context) {
+	g.GET("/departments/:id", RequirePermission(e, "admin-dept", "view"), func(c *gin.Context) {
 		d, err := dir.GetDepartmentDetail(c.Request.Context(), c.Param("id"))
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "department not found"})
@@ -261,7 +262,7 @@ func registerAdminReads(g *gin.RouterGroup, dir *directory.Service) {
 	})
 
 	// GET /departments/:id/members — users directly mapped into the department.
-	g.GET("/departments/:id/members", func(c *gin.Context) {
+	g.GET("/departments/:id/members", RequirePermission(e, "admin-dept", "view"), func(c *gin.Context) {
 		members, err := dir.DepartmentMembers(c.Request.Context(), c.Param("id"))
 		if err != nil {
 			serverError(c, err)
@@ -299,10 +300,10 @@ func parseOptionalBool(s string) *bool {
 
 // registerDeptAdmin mounts the department write surface (create/update/delete)
 // under the admin group. Delete refuses a non-empty department (409).
-func registerDeptAdmin(g *gin.RouterGroup, dir *directory.Service) {
+func registerDeptAdmin(g *gin.RouterGroup, dir *directory.Service, e *authz.Enforcer) {
 	// POST /departments — create a department node. Server-assigns the id when
 	// the body omits it. parent_id "" makes it a root. -> { id }
-	g.POST("/departments", func(c *gin.Context) {
+	g.POST("/departments", RequirePermission(e, "admin-dept", "create"), func(c *gin.Context) {
 		var req struct {
 			ID        string `json:"id"`
 			Name      string `json:"name" binding:"required"`
@@ -343,7 +344,7 @@ func registerDeptAdmin(g *gin.RouterGroup, dir *directory.Service) {
 
 	// PUT /departments/:id — update mutable fields. Only fields present in the
 	// body are changed.
-	g.PUT("/departments/:id", func(c *gin.Context) {
+	g.PUT("/departments/:id", RequirePermission(e, "admin-dept", "edit"), func(c *gin.Context) {
 		var req directory.DepartmentPatchRequest
 		if !bind(c, &req) {
 			return
@@ -381,7 +382,7 @@ func registerDeptAdmin(g *gin.RouterGroup, dir *directory.Service) {
 
 	// DELETE /departments/:id — remove an empty department. 409 if it still has
 	// child departments or member users.
-	g.DELETE("/departments/:id", func(c *gin.Context) {
+	g.DELETE("/departments/:id", RequirePermission(e, "admin-dept", "delete"), func(c *gin.Context) {
 		err := dir.DeleteDepartment(c.Request.Context(), c.Param("id"))
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "department not found"})
@@ -402,7 +403,7 @@ func registerDeptAdmin(g *gin.RouterGroup, dir *directory.Service) {
 	// counterpart of GET .../members). Idempotent. { user_ids:[...] }
 	// 404 if the department is unknown; 400 if any user id is unknown (in which
 	// case nothing is written).
-	g.POST("/departments/:id/members", func(c *gin.Context) {
+	g.POST("/departments/:id/members", RequirePermission(e, "admin-dept", "members"), func(c *gin.Context) {
 		var req struct {
 			UserIDs []string `json:"user_ids" binding:"required"`
 		}
@@ -427,7 +428,7 @@ func registerDeptAdmin(g *gin.RouterGroup, dir *directory.Service) {
 
 	// DELETE /departments/:id/members — remove users from the department.
 	// Idempotent. { user_ids:[...] }. 404 if the department is unknown.
-	g.DELETE("/departments/:id/members", func(c *gin.Context) {
+	g.DELETE("/departments/:id/members", RequirePermission(e, "admin-dept", "members"), func(c *gin.Context) {
 		var req struct {
 			UserIDs []string `json:"user_ids" binding:"required"`
 		}

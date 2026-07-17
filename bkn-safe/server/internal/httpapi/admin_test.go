@@ -113,6 +113,131 @@ func TestAdminAuthGate(t *testing.T) {
 	}
 }
 
+func grantAdminSurface(t *testing.T, e *authz.Enforcer, roleID string) {
+	t.Helper()
+	if err := e.Grant(roleID, "safe_admin:console", "manage"); err != nil {
+		t.Fatalf("grant admin surface: %v", err)
+	}
+}
+
+func grantRoleOps(t *testing.T, e *authz.Enforcer, roleID, resourceType string, ops ...string) {
+	t.Helper()
+	for _, op := range ops {
+		if err := e.Grant(roleID, resourceType+":*", op); err != nil {
+			t.Fatalf("grant %s:%s to %s: %v", resourceType, op, roleID, err)
+		}
+	}
+}
+
+func bindRole(t *testing.T, e *authz.Enforcer, accessorID, roleID string) {
+	t.Helper()
+	if err := e.AssignRole(accessorID, roleID); err != nil {
+		t.Fatalf("bind role: %v", err)
+	}
+}
+
+func TestThreeAdminRolesUseEndpointLevelPermissions(t *testing.T) {
+	r, e, db, users := newAdminServer(t)
+	ctx := t.Context()
+
+	const (
+		adminRole    = "role-admin"
+		securityRole = "role-security"
+		auditRole    = "role-audit"
+		adminUser    = "u-admin-role"
+		securityUser = "u-security-role"
+		auditUser    = "u-audit-role"
+	)
+	for _, roleID := range []string{adminRole, securityRole, auditRole} {
+		grantAdminSurface(t, e, roleID)
+	}
+	grantRoleOps(t, e, adminRole, "admin-user", "view", "create", "edit", "delete", "toggle", "reset-password")
+	grantRoleOps(t, e, adminRole, "admin-dept", "view", "create", "edit", "delete", "members")
+	grantRoleOps(t, e, securityRole, "admin-user", "view", "toggle", "reset-password")
+	grantRoleOps(t, e, securityRole, "admin-role", "view", "create", "edit", "delete", "members")
+	grantRoleOps(t, e, securityRole, "admin-authz", "view", "grant", "revoke")
+	grantRoleOps(t, e, auditRole, "admin-user", "view")
+	grantRoleOps(t, e, auditRole, "admin-role", "view")
+	grantRoleOps(t, e, auditRole, "admin-authz", "view")
+	grantRoleOps(t, e, auditRole, "admin-audit", "view")
+
+	for _, userID := range []string{adminUser, securityUser, auditUser, "target-user"} {
+		if err := users.CreateLocalUser(ctx, &model.User{ID: userID, Account: userID, Name: userID, Enabled: true}, "pw-init0"); err != nil {
+			t.Fatalf("create user %s: %v", userID, err)
+		}
+	}
+	if err := db.Create(&model.Role{ID: "target-role", Name: "target-role", Source: model.RoleSourceCustom}).Error; err != nil {
+		t.Fatalf("create target role: %v", err)
+	}
+	bindRole(t, e, adminUser, adminRole)
+	bindRole(t, e, securityUser, securityRole)
+	bindRole(t, e, auditUser, auditRole)
+
+	createUser := func(account string) gin.H {
+		return gin.H{"account": account, "name": account, "password": "pw-init0"}
+	}
+	createRole := func(name string) gin.H {
+		return gin.H{"id": name, "name": name}
+	}
+	bindTarget := gin.H{"accessor_id": "target-user", "role_id": "target-role"}
+
+	cases := []struct {
+		name, token, method, path string
+		body                      any
+		want                      int
+	}{
+		{"admin creates user", adminUser, http.MethodPost, "/api/safe/v1/admin/users", createUser("admin-created"), http.StatusCreated},
+		{"admin cannot create role", adminUser, http.MethodPost, "/api/safe/v1/admin/roles", createRole("admin-role-created"), http.StatusForbidden},
+		{"admin cannot bind role", adminUser, http.MethodPost, "/api/safe/v1/admin/role-bindings", bindTarget, http.StatusForbidden},
+		{"admin cannot read audit", adminUser, http.MethodGet, "/api/safe/v1/admin/audit-logs", nil, http.StatusForbidden},
+		{"security cannot create user", securityUser, http.MethodPost, "/api/safe/v1/admin/users", createUser("security-created-user"), http.StatusForbidden},
+		{"security toggles user", securityUser, http.MethodPut, "/api/safe/v1/admin/users/target-user", gin.H{"enabled": false}, http.StatusNoContent},
+		{"security cannot edit user profile", securityUser, http.MethodPut, "/api/safe/v1/admin/users/target-user", gin.H{"name": "changed"}, http.StatusForbidden},
+		{"security creates role", securityUser, http.MethodPost, "/api/safe/v1/admin/roles", createRole("security-role-created"), http.StatusCreated},
+		{"security binds role", securityUser, http.MethodPost, "/api/safe/v1/admin/role-bindings", bindTarget, http.StatusNoContent},
+		{"security cannot read audit", securityUser, http.MethodGet, "/api/safe/v1/admin/audit-logs", nil, http.StatusForbidden},
+		{"audit cannot create user", auditUser, http.MethodPost, "/api/safe/v1/admin/users", createUser("audit-created-user"), http.StatusForbidden},
+		{"audit cannot create role", auditUser, http.MethodPost, "/api/safe/v1/admin/roles", createRole("audit-role-created"), http.StatusForbidden},
+		{"audit cannot bind role", auditUser, http.MethodPost, "/api/safe/v1/admin/role-bindings", bindTarget, http.StatusForbidden},
+		{"audit reads audit", auditUser, http.MethodGet, "/api/safe/v1/admin/audit-logs", nil, http.StatusOK},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if w := tokReq(t, r, c.method, c.path, c.body, c.token); w.Code != c.want {
+				t.Fatalf("want %d, got %d: %s", c.want, w.Code, w.Body.String())
+			}
+		})
+	}
+}
+
+func TestThreeAdminRoleBindingsAreMutuallyExclusive(t *testing.T) {
+	r, _, _, users := newAdminServer(t)
+	ctx := t.Context()
+	const accessorID = "three-admin-target"
+	if err := users.CreateLocalUser(ctx, &model.User{ID: accessorID, Account: accessorID, Name: accessorID, Enabled: true}, "pw-init0"); err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+	for _, roleID := range threeAdminRoleIDs {
+		if w := adminReq(t, r, http.MethodPost, "/api/safe/v1/admin/roles", gin.H{
+			"id": roleID, "name": roleID,
+		}); w.Code != http.StatusCreated {
+			t.Fatalf("create role %s: want 201, got %d: %s", roleID, w.Code, w.Body.String())
+		}
+	}
+	if w := adminReq(t, r, http.MethodPost, "/api/safe/v1/admin/role-bindings", gin.H{
+		"accessor_id": accessorID,
+		"role_id":     threeAdminRoleIDs[0],
+	}); w.Code != http.StatusNoContent {
+		t.Fatalf("bind first three-admin role: want 204, got %d: %s", w.Code, w.Body.String())
+	}
+	if w := adminReq(t, r, http.MethodPost, "/api/safe/v1/admin/role-bindings", gin.H{
+		"accessor_id": accessorID,
+		"role_id":     threeAdminRoleIDs[1],
+	}); w.Code != http.StatusConflict {
+		t.Fatalf("bind second three-admin role: want 409, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
 func TestUserUpdateAndDelete(t *testing.T) {
 	r, e, db, users := newAdminServer(t)
 	ctx := t.Context()

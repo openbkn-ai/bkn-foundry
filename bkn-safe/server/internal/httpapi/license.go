@@ -14,6 +14,7 @@ import (
 	"github.com/openbkn-ai/licverify"
 
 	"bkn-safe/internal/auth"
+	"bkn-safe/internal/authz"
 	"bkn-safe/internal/license"
 )
 
@@ -21,30 +22,30 @@ import (
 // group (RequireAdmin + audit middleware are inherited from the group).
 // bkn-safe is the cluster's license hub — import/activation/removal happen
 // here and nowhere else; modules only ever read.
-func registerLicenseAdmin(g *gin.RouterGroup, svc *license.Service) {
+func registerLicenseAdmin(g *gin.RouterGroup, svc *license.Service, e *authz.Enforcer) {
 	// POST /license/import — verify and store a .lic; on online deployments an
 	// unbound license is auto-activated. { license } -> license detail.
 	// 409 with stored:true = stored fine but the issuer refused activation.
-	g.POST("/license/import", func(c *gin.Context) {
+	g.POST("/license/import", RequirePermission(e, "admin-license", "manage"), func(c *gin.Context) {
 		importLicense(c, svc)
 	})
 
 	// POST /license/receipt — import the offline activation receipt (a signed,
 	// fingerprint-bound .lic from the customer portal). Same verification as
 	// import; a separate route so the UI flow and the audit trail read right.
-	g.POST("/license/receipt", func(c *gin.Context) {
+	g.POST("/license/receipt", RequirePermission(e, "admin-license", "manage"), func(c *gin.Context) {
 		importLicense(c, svc)
 	})
 
 	// GET /license — current license detail (weak judgement; modules gate by
 	// verifying the signature themselves).
-	g.GET("/license", func(c *gin.Context) {
+	g.GET("/license", RequirePermission(e, "admin-license", "view"), func(c *gin.Context) {
 		c.JSON(http.StatusOK, licenseDetail(svc))
 	})
 
 	// POST /license/activate — report the installed license to the issuer and
 	// store the reissued, fingerprint-bound text.
-	g.POST("/license/activate", func(c *gin.Context) {
+	g.POST("/license/activate", RequirePermission(e, "admin-license", "manage"), func(c *gin.Context) {
 		snap, err := svc.Activate(c.Request.Context())
 		if err != nil {
 			status := http.StatusBadGateway
@@ -64,20 +65,20 @@ func registerLicenseAdmin(g *gin.RouterGroup, svc *license.Service) {
 	// GET /license/fingerprint — this cluster's machine code. Works with no
 	// license installed: the activation guide shows it for portal registration,
 	// and admins quote it for unbind support.
-	g.GET("/license/fingerprint", func(c *gin.Context) {
+	g.GET("/license/fingerprint", RequirePermission(e, "admin-license", "view"), func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"instance_fp": svc.Fingerprint()})
 	})
 
 	// GET /license/activation-code — the offline activation request code the
 	// customer pastes into the license portal (shown next to the fingerprint,
 	// both copyable).
-	g.GET("/license/activation-code", func(c *gin.Context) {
+	g.GET("/license/activation-code", RequirePermission(e, "admin-license", "view"), func(c *gin.Context) {
 		fp, code, licID := svc.ActivationCode()
 		c.JSON(http.StatusOK, gin.H{"instance_fp": fp, "activation_code": code, "lic_id": licID})
 	})
 
 	// DELETE /license — drop the installed license (back to unactivated).
-	g.DELETE("/license", func(c *gin.Context) {
+	g.DELETE("/license", RequirePermission(e, "admin-license", "manage"), func(c *gin.Context) {
 		if err := svc.Remove(c.Request.Context()); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return

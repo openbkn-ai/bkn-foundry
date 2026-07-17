@@ -22,14 +22,14 @@
       "role_name": "admin",
       "resource_type": "admin-user",
       "id_pattern": "*",
-      "operations": ["create", "edit", "delete", "toggle", "reset-password"]
+      "operations": ["view", "create", "edit", "delete", "toggle", "reset-password"]
     },
     {
       "role_id": "d2bd2082-ad03-11e8-aa06-000c29358ad6",
       "role_name": "admin",
       "resource_type": "admin-dept",
       "id_pattern": "*",
-      "operations": ["create", "edit", "delete", "members"]
+      "operations": ["view", "create", "edit", "delete", "members"]
     },
 
     {
@@ -44,21 +44,28 @@
       "role_name": "security",
       "resource_type": "admin-role",
       "id_pattern": "*",
-      "operations": ["create", "edit", "delete", "members"]
+      "operations": ["view", "create", "edit", "delete", "members"]
     },
     {
       "role_id": "d8998f72-ad03-11e8-aa06-000c29358ad6",
       "role_name": "security",
       "resource_type": "admin-authz",
       "id_pattern": "*",
-      "operations": ["grant", "revoke"]
+      "operations": ["view", "grant", "revoke"]
     },
     {
       "role_id": "d8998f72-ad03-11e8-aa06-000c29358ad6",
       "role_name": "security",
       "resource_type": "admin-user",
       "id_pattern": "*",
-      "operations": ["edit", "toggle", "reset-password"]
+      "operations": ["view", "toggle", "reset-password"]
+    },
+    {
+      "role_id": "d8998f72-ad03-11e8-aa06-000c29358ad6",
+      "role_name": "security",
+      "resource_type": "admin-dept",
+      "id_pattern": "*",
+      "operations": ["view"]
     },
 
     {
@@ -72,6 +79,34 @@
       "role_id": "def246f2-ad03-11e8-aa06-000c29358ad6",
       "role_name": "audit",
       "resource_type": "admin-audit",
+      "id_pattern": "*",
+      "operations": ["view"]
+    },
+    {
+      "role_id": "def246f2-ad03-11e8-aa06-000c29358ad6",
+      "role_name": "audit",
+      "resource_type": "admin-user",
+      "id_pattern": "*",
+      "operations": ["view"]
+    },
+    {
+      "role_id": "def246f2-ad03-11e8-aa06-000c29358ad6",
+      "role_name": "audit",
+      "resource_type": "admin-dept",
+      "id_pattern": "*",
+      "operations": ["view"]
+    },
+    {
+      "role_id": "def246f2-ad03-11e8-aa06-000c29358ad6",
+      "role_name": "audit",
+      "resource_type": "admin-role",
+      "id_pattern": "*",
+      "operations": ["view"]
+    },
+    {
+      "role_id": "def246f2-ad03-11e8-aa06-000c29358ad6",
+      "role_name": "audit",
+      "resource_type": "admin-authz",
       "id_pattern": "*",
       "operations": ["view"]
     },

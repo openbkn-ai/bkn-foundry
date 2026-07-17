@@ -28,7 +28,7 @@ import (
 func registerUserAdmin(g *gin.RouterGroup, users *auth.UserStore, e *authz.Enforcer, dir *directory.Service) {
 	// POST /users — create a local (password) user, optionally placing it in
 	// departments (department_ids). -> { id }
-	g.POST("/users", func(c *gin.Context) {
+	g.POST("/users", RequirePermission(e, "admin-user", "create"), func(c *gin.Context) {
 		var req struct {
 			ID            string   `json:"id"`
 			Account       string   `json:"account" binding:"required"`
@@ -91,7 +91,7 @@ func registerUserAdmin(g *gin.RouterGroup, users *auth.UserStore, e *authz.Enfor
 
 	// PUT /users/:id/password — admin reset: sets the password and forces the
 	// user to change it on next login (MustChangePassword=true).
-	g.PUT("/users/:id/password", func(c *gin.Context) {
+	g.PUT("/users/:id/password", RequirePermission(e, "admin-user", "reset-password"), func(c *gin.Context) {
 		var req struct {
 			Password string `json:"password" binding:"required"`
 		}
@@ -121,6 +121,10 @@ func registerUserAdmin(g *gin.RouterGroup, users *auth.UserStore, e *authz.Enfor
 			DepartmentIDs *[]string `json:"department_ids"`
 		}
 		if !bind(c, &req) {
+			return
+		}
+		requiredOp := adminUserUpdatePermissionOp(req.Name, req.Email, req.Telephone, req.Enabled, req.AccountType, req.DepartmentIDs)
+		if !authorizePermission(c, e, "admin-user", requiredOp) {
 			return
 		}
 		ctx := c.Request.Context()
@@ -189,7 +193,7 @@ func registerUserAdmin(g *gin.RouterGroup, users *auth.UserStore, e *authz.Enfor
 
 	// DELETE /users/:id — remove the user, its directory memberships, and all of
 	// its casbin role bindings / direct grants.
-	g.DELETE("/users/:id", func(c *gin.Context) {
+	g.DELETE("/users/:id", RequirePermission(e, "admin-user", "delete"), func(c *gin.Context) {
 		id := c.Param("id")
 		// Defense in depth: never delete the built-in admin (deleting the only
 		// super-admin locks everyone out). The frontend hides the control too.
@@ -248,4 +252,11 @@ func registerSelfServiceAuth(r *gin.Engine, users *auth.UserStore) {
 		}
 		c.Status(http.StatusNoContent)
 	})
+}
+
+func adminUserUpdatePermissionOp(name, email, telephone *string, enabled *bool, accountType *string, departmentIDs *[]string) string {
+	if enabled != nil && name == nil && email == nil && telephone == nil && accountType == nil && departmentIDs == nil {
+		return "toggle"
+	}
+	return "edit"
 }

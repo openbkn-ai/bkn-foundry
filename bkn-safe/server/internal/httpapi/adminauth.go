@@ -55,6 +55,37 @@ func RequireAdmin(v TokenVerifier, e *authz.Enforcer) gin.HandlerFunc {
 	}
 }
 
+// RequirePermission guards one concrete admin operation after RequireAdmin has
+// authenticated the caller and stored ctxAccessorID. safe_admin:console:manage
+// only opens the admin surface; this middleware enforces the endpoint's real
+// resource/action permission.
+func RequirePermission(e *authz.Enforcer, resourceType, op string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if !authorizePermission(c, e, resourceType, op) {
+			return
+		}
+		c.Next()
+	}
+}
+
+func authorizePermission(c *gin.Context, e *authz.Enforcer, resourceType, op string) bool {
+	sub := c.GetString(ctxAccessorID)
+	if sub == "" {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing authenticated accessor"})
+		return false
+	}
+	ok, err := e.Check(sub, resourceType, "*", op)
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return false
+	}
+	if !ok {
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "not authorized for " + resourceType + ":" + op})
+		return false
+	}
+	return true
+}
+
 // RequireUser is the gin middleware guarding self-service APIs (/me). It only
 // authenticates: verify the bearer token and stash the subject as the caller's
 // accessor id. No authz check — any logged-in accessor may read its own data.
