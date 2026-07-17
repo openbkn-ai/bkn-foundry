@@ -65,7 +65,15 @@ type VegaResource struct {
 	Description string   `json:"description"`
 	Category    string   `json:"category"`
 	// Status           string      `json:"status"`
-	SchemaDefinition []*Property `json:"schema_definition,omitempty"`
+	SchemaDefinition []*Property              `json:"schema_definition,omitempty"`
+	IndexConfig      *VegaResourceIndexConfig `json:"index_config,omitempty"`
+}
+
+// VegaResourceIndexConfig mirrors vega-backend's resource-level index configuration.
+type VegaResourceIndexConfig struct {
+	BuildKeyFields          []string `json:"build_key_fields,omitempty"`
+	DefaultFulltextAnalyzer string   `json:"default_fulltext_analyzer,omitempty"`
+	DefaultEmbeddingModel   string   `json:"default_embedding_model,omitempty"`
 }
 
 // CatalogsListResponse represents catalogs list response
