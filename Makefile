@@ -50,7 +50,6 @@ api-docs: api-docs-clean
 MODDESC_bkn            := 业务知识网络：对象类 / 关系类 / 行动类 / 概念组 / 指标 / 导入导出
 MODDESC_ontology-query := 本体查询与语义检索
 MODDESC_vega           := 数据可观测：Catalog / 资源 / 连接器 / 构建任务 / 发现任务 / 原生查询
-MODDESC_dataflow       := 文档流处理管线
 
 ## api-docs-html: 用 redocly 为每个 YAML 渲染交互式 HTML 文档（带搜索/折叠/示例），
 ## 输出到 _generated/html/<module>/<resource>.html，并生成一个卡片式 index.html 汇总入口。
@@ -74,7 +73,7 @@ api-docs-html:
 	    [ -e "$$y" ] || continue; \
 	    base=$$(basename "$$y" .yaml); \
 	    npx @redocly/cli build-docs "$$y" -o "$(HTML_DIR)/$$m/$$base.html" >/dev/null 2>&1 || { echo "build-docs failed: $$y"; exit 1; }; \
-	    printf '<a class="card" data-name="%s" href="./%s/%s.html"><span class="arrow">&rarr;</span><span class="name">%s</span></a>\n' "$$base" "$$m" "$$base" "$$base" >> "$$idx"; \
+	    printf '<a class="card" data-name="%s" href="./%s/%s.html" target="_blank" rel="noopener"><span class="arrow">&rarr;</span><span class="name">%s</span></a>\n' "$$base" "$$m" "$$base" "$$base" >> "$$idx"; \
 	  done; \
 	  printf '</div>\n</section>\n' >> "$$idx"; \
 	done; \

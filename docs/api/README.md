@@ -9,7 +9,6 @@
 | 🟦 bkn-backend | [`bkn/`](bkn/) | 业务知识网络：对象类 / 关系类 / 行动类 / 概念组 / 指标 / 导入导出 | [`_generated/bkn.md`](_generated/bkn.md) |
 | 🟩 ontology-query | [`ontology-query/`](ontology-query/) | 本体查询 / 语义检索 | [`_generated/ontology-query.md`](_generated/ontology-query.md) |
 | 🟨 vega-backend | [`vega/`](vega/) | 数据可观测：Catalog / 资源 / 连接器 / 构建任务 / 发现任务 / 原生查询 | [`_generated/vega.md`](_generated/vega.md) |
-| 🟧 dataflow | [`dataflow/`](dataflow/) | 文档流处理管线 | [`_generated/dataflow.md`](_generated/dataflow.md) |
 
 > 待补写模块（各自独立 PR）：`context-loader`、`execution-factory`、`bkn-safe`、`mf-model`。
 
