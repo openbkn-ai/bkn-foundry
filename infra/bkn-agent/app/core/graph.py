@@ -112,19 +112,21 @@ async def stream_chat(
                                     for tc in chunk.tool_call_chunks or []:
                                         if tc.get("name"):
                                             yield _sse("tool_call", {"name": tc["name"]})
-                        if req.response_format:
-                            # 工具循环后单独抽结构化（原生优先→提示词降级），末尾送 structured 事件
-                            state = await graph.aget_state(cfg)
-                            struct_model = build_chat_model(agent.model, streaming=False)
-                            obj = await structured_extract(
-                                struct_model, state.values["messages"], req.response_format
-                            )
-                            yield _sse("structured", {"content": obj})
+                            if req.response_format:
+                                # 工具循环后单独抽结构化（原生优先→提示词降级），受同一 timeout 约束
+                                state = await graph.aget_state(cfg)
+                                struct_model = build_chat_model(agent.model, streaming=False)
+                                obj = await structured_extract(
+                                    struct_model, state.values["messages"], req.response_format
+                                )
+                                yield _sse("structured", {"content": obj})
                         yield _sse("done", {"thread_id": thread_id})
                     except TimeoutError:
                         yield _sse("error", {"code": "BknAgent.Chat.Timeout", "detail": f"超过 {timeout_s}s"})
                     except Exception as e:  # 错误必须显式送到流上，不静默吞
                         yield _sse("error", {"code": "BknAgent.Chat.Failed", "detail": str(e)})
+        except Exception as e:  # 组装阶段（checkpointer/graph 建立）异常也要送 error，不裸断流
+            yield _sse("error", {"code": "BknAgent.Chat.Failed", "detail": str(e)})
         finally:  # 正常结束、客户端断连（GeneratorExit）、异常，都要放位
             _busy_threads.discard(thread_id)
 
