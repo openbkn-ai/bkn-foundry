@@ -242,6 +242,20 @@ _core_release_names() {
     get_release_manifest_release_names "${CORE_VERSION_MANIFEST_FILE}" "bkn-foundry" "${HELM_CHART_VERSION:-}"
 }
 
+# Release names for uninstall/status: manifest when resolvable, otherwise fall
+# back to what is actually installed in the namespace — keeps both actions
+# working offline while the repo carries no release manifest (pre-first-release).
+# log_error writes to stdout, so the probe must swallow BOTH streams or the
+# error text would be captured into the release-name list.
+_core_release_names_or_installed() {
+    local namespace="$1"
+    if _core_require_version_manifest >/dev/null 2>&1; then
+        get_release_manifest_release_names "${CORE_VERSION_MANIFEST_FILE}" "bkn-foundry" "${HELM_CHART_VERSION:-}"
+        return 0
+    fi
+    helm list -q -n "${namespace}" 2>/dev/null || true
+}
+
 init_core_databases() {
     local sql_base_dir
     sql_base_dir="$(resolve_versioned_sql_dir "bkn-foundry" "${HELM_CHART_VERSION:-}")"
@@ -787,7 +801,7 @@ uninstall_core() {
     log_info "Helm target namespace: ${namespace}"
 
     local -a release_names=()
-    bkn_mapfile_compat release_names _core_release_names
+    bkn_mapfile_compat release_names _core_release_names_or_installed "${namespace}"
     for ((i=${#release_names[@]}-1; i>=0; i--)); do
         local release_name="${release_names[$i]}"
         log_info "Uninstalling ${release_name}..."
@@ -823,7 +837,7 @@ show_core_status() {
     log_info ""
 
     local -a release_names=()
-    bkn_mapfile_compat release_names _core_release_names
+    bkn_mapfile_compat release_names _core_release_names_or_installed "${namespace}"
     for release_name in "${release_names[@]}"; do
         if helm status "${release_name}" -n "${namespace}" >/dev/null 2>&1; then
             local status

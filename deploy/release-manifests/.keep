@@ -1,0 +1,6 @@
+# Release lockfiles live here, one directory per released version:
+#   release-manifests/<x.y.z>/bkn-foundry.yaml
+# None yet — the default install follows the newest main builds until the
+# first release is cut. When a release exists, its manifest becomes the
+# default automatically (newest version wins); select explicitly with
+# --version=<x.y.z>.
