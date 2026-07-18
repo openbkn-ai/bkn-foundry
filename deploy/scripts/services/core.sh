@@ -282,6 +282,7 @@ init_core_databases() {
 download_core() {
     log_info "Downloading BKN Foundry charts..."
     ensure_helm_available
+    _core_resolve_latest_manifest || return 1
     _core_require_version_manifest || return 1
 
     HELM_CHART_REPO_NAME="${HELM_CHART_REPO_NAME:-openbkn}"
@@ -623,11 +624,17 @@ EOF
     log_info "dockerhub-mirror: wrote ${hosts_file} (docker.io -> https://${mirror_host}); hosts.toml is read per-pull, no containerd restart needed."
 }
 
-# When --latest is set and no --version_file was provided, generate a latest
-# manifest via scripts/gen-dev-manifest.sh --latest and use it as the version_file.
+# Resolve the working manifest for install/download. Default (no --version /
+# --version_file / --latest): follow the newest main build per chart — same
+# resolution as --latest. Embedded release manifests are opt-in via
+# --version=<x.y.z> (e.g. 0.1.0), for pinned/reproducible sets.
 _core_resolve_latest_manifest() {
     if [[ "${CORE_USE_LATEST_MANIFEST:-false}" != "true" ]]; then
-        return 0
+        if [[ -n "${HELM_CHART_VERSION:-}" || -n "${CORE_VERSION_MANIFEST_FILE:-}" ]]; then
+            return 0
+        fi
+        log_info "No version specified — following the newest main builds (pass --version=<release> for a pinned set)."
+        CORE_USE_LATEST_MANIFEST="true"
     fi
     if [[ -n "${CORE_VERSION_MANIFEST_FILE:-}" ]]; then
         log_info "--latest ignored: --version_file is set (${CORE_VERSION_MANIFEST_FILE})."
