@@ -13,6 +13,11 @@ Description = "构建任务模式无效"
 Solution = "mode 必须为 streaming / batch 之一"
 ErrorLink = "暂无"
 
+[VegaBackend.BuildTask.InvalidParameter.BuildKeyFields]
+Description = "批量构建键无效"
+Solution = "请在资源 index_config 中配置至少一个存在于 schema 的 build_key_fields 字段"
+ErrorLink = "暂无"
+
 [VegaBackend.BuildTask.InvalidStateTransition]
 Description = "构建任务状态转移非法"
 Solution = "检查当前状态；start 要求 status 为 init 或 stopped；stop 要求 status 为 running"

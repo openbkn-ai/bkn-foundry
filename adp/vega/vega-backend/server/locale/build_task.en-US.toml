@@ -13,6 +13,11 @@ Description = "Invalid build task mode"
 Solution = "Mode must be one of: streaming, batch"
 ErrorLink = "No solution"
 
+[VegaBackend.BuildTask.InvalidParameter.BuildKeyFields]
+Description = "Invalid batch build key fields"
+Solution = "Configure at least one build_key_fields field from the resource schema in index_config"
+ErrorLink = "No solution"
+
 [VegaBackend.BuildTask.InvalidStateTransition]
 Description = "Invalid build task state transition"
 Solution = "Check current task status; start requires status in {init, stopped}; stop requires status == running"

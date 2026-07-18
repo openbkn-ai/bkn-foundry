@@ -26,6 +26,25 @@ import (
 )
 
 func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
+	t.Run("rejects batch task without build key fields", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockRS := mock_interfaces.NewMockResourceService(ctrl)
+		service := &buildTaskService{rs: mockRS}
+
+		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(&interfaces.Resource{
+			ID:        "resource-1",
+			CatalogID: "catalog-1",
+			Category:  interfaces.ResourceCategoryTable,
+		}, nil)
+
+		_, err := service.Create(context.Background(), &interfaces.CreateBuildTaskRequest{
+			ResourceID: "resource-1",
+			Mode:       interfaces.BuildTaskModeBatch,
+		})
+		httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidParameter_BuildKeyFields)
+		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+	})
+
 	t.Run("rejects disabled catalog", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
@@ -34,9 +53,11 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 
 		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").
 			Return(&interfaces.Resource{
-				ID:        "resource-1",
-				CatalogID: "catalog-1",
-				Category:  interfaces.ResourceCategoryTable,
+				ID:               "resource-1",
+				CatalogID:        "catalog-1",
+				Category:         interfaces.ResourceCategoryTable,
+				IndexConfig:      &interfaces.ResourceIndexConfig{BuildKeyFields: []string{"id"}},
+				SchemaDefinition: []*interfaces.Property{{Name: "id"}},
 			}, nil)
 		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
 			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: false}, nil)
@@ -53,9 +74,11 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 
 		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").
 			Return(&interfaces.Resource{
-				ID:        "resource-1",
-				CatalogID: "catalog-1",
-				Category:  interfaces.ResourceCategoryTable,
+				ID:               "resource-1",
+				CatalogID:        "catalog-1",
+				Category:         interfaces.ResourceCategoryTable,
+				IndexConfig:      &interfaces.ResourceIndexConfig{BuildKeyFields: []string{"id"}},
+				SchemaDefinition: []*interfaces.Property{{Name: "id"}},
 			}, nil)
 		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
 			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
@@ -109,6 +132,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 					DefaultFulltextAnalyzer: "ik_max_word",
 				},
 				SchemaDefinition: []*interfaces.Property{
+					{Name: "id"},
 					{
 						Name: "family_name",
 						Features: []interfaces.PropertyFeature{
@@ -174,6 +198,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 				DefaultFulltextAnalyzer: "ik_max_word",
 			},
 			SchemaDefinition: []*interfaces.Property{
+				{Name: "id"},
 				{
 					Name: "family_name",
 					Features: []interfaces.PropertyFeature{
@@ -228,9 +253,11 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 				CatalogID: "catalog-1",
 				Category:  interfaces.ResourceCategoryTable,
 				IndexConfig: &interfaces.ResourceIndexConfig{
+					BuildKeyFields:        []string{"id"},
 					DefaultEmbeddingModel: "default-model",
 				},
 				SchemaDefinition: []*interfaces.Property{
+					{Name: "id"},
 					{
 						Name: "family_name",
 						Features: []interfaces.PropertyFeature{
@@ -291,6 +318,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 					DefaultFulltextAnalyzer: "default_analyzer",
 				},
 				SchemaDefinition: []*interfaces.Property{
+					{Name: "id"},
 					{
 						Name: "title",
 						Features: []interfaces.PropertyFeature{
@@ -362,9 +390,11 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 				CatalogID: "catalog-1",
 				Category:  interfaces.ResourceCategoryTable,
 				IndexConfig: &interfaces.ResourceIndexConfig{
+					BuildKeyFields:        []string{"id"},
 					DefaultEmbeddingModel: "bogus-model",
 				},
 				SchemaDefinition: []*interfaces.Property{
+					{Name: "id"},
 					{
 						Name: "family_name",
 						Features: []interfaces.PropertyFeature{

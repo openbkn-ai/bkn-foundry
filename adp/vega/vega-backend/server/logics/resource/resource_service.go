@@ -993,6 +993,9 @@ func (rs *resourceService) validateResourceUpdateScope(ctx context.Context, reso
 }
 
 func (rs *resourceService) validateIndexConfigModels(ctx context.Context, schema []*interfaces.Property, indexConfig *interfaces.ResourceIndexConfig) error {
+	if err := validateIndexConfigBuildKeyFields(ctx, schema, indexConfig); err != nil {
+		return err
+	}
 	if rs.mfs == nil {
 		return nil
 	}
@@ -1033,6 +1036,26 @@ func (rs *resourceService) validateIndexConfigModels(ctx context.Context, schema
 					WithErrorDetails(fmt.Sprintf("embedding model %q for field %q not found", modelName, fieldName))
 			}
 			checkedModels[modelName] = struct{}{}
+		}
+	}
+	return nil
+}
+
+func validateIndexConfigBuildKeyFields(ctx context.Context, schema []*interfaces.Property, indexConfig *interfaces.ResourceIndexConfig) error {
+	if indexConfig == nil || len(indexConfig.BuildKeyFields) == 0 {
+		return nil
+	}
+
+	schemaFields := make(map[string]struct{}, len(schema))
+	for _, prop := range schema {
+		if prop != nil {
+			schemaFields[prop.Name] = struct{}{}
+		}
+	}
+	for _, field := range indexConfig.BuildKeyFields {
+		if _, exists := schemaFields[field]; !exists {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+				WithErrorDetails(fmt.Sprintf("build_key_fields field %q is not in the resource schema", field))
 		}
 	}
 	return nil
