@@ -6,8 +6,8 @@
 #   2. doctor --fix           — optional; install missing CLIs via Homebrew (prompts; -y skips)
 #   3. cluster up             — kind + ingress-nginx; context becomes kind-<KIND_CLUSTER_NAME>
 #   4. data-services install  — MariaDB / Redis / Kafka / OpenSearch (required before Core on mac)
-#   5. bkn-foundry download  — optional; cache charts locally (mac.sh defaults --minimum unless --full)
-#   6. bkn-foundry install   — Helm install Core (mac.sh adds --minimum unless you pass --full)
+#   5. bkn-foundry download  — optional; cache charts locally
+#   6. bkn-foundry install   — Helm install Core (full stack incl. bkn-safe; --minimum opts out of auth)
 #   7. onboard                — optional; needs bkn CLI + Core up (add -y for non-interactive)
 #   Teardown: cluster down
 #   Full write-up: deploy/dev/README.md (EN) · deploy/dev/README.zh.md (中文)
@@ -58,12 +58,12 @@ usage() {
     cat <<EOF
 BKN Foundry mac dev (kind) — thin wrapper around deploy/onboard.
 
-Typical order (shortest path: doctor? → cluster up → bkn-foundry install [--minimum]):
+Typical order (shortest path: doctor? → cluster up → bkn-foundry install):
   1) doctor                     optional toolchain check
   2) cluster up                 kind + ingress; kubectl context kind-<name>
   3) data-services install      optional if you use bkn-foundry install (it runs the same bundled data layer first); run alone to pre-stage or refresh only
-  4) bkn-foundry download      optional; charts cache only (minimum profile by default)
-  5) bkn-foundry install ...   Helm install (--minimum implied; bundled data-services first unless OPENBKN_SKIP_DATA_SERVICES_BUNDLE=true)
+  4) bkn-foundry download      optional; charts cache only
+  5) bkn-foundry install ...   Helm install full stack incl. bkn-safe (bundled data-services first unless OPENBKN_SKIP_DATA_SERVICES_BUNDLE=true)
   6) onboard                    optional; after Core is up
   cluster down                  delete kind cluster
   See ${readme}
@@ -93,7 +93,7 @@ Environment:
 
 Note: data-services install runs deploy.sh data-services (Helm charts into the current kube context). Other deploy.sh modules on mac still skip host k3s bootstrap unless you install infra yourself. See ${readme}.
 
-Mac default: bkn-foundry / core add --minimum unless you pass --minimum / --min already or opt out with --full.
+Mac default: full install (bkn-safe is mandatory). Pass --minimum / --min explicitly for a no-auth dev stack.
 
 EOF
 }
@@ -232,16 +232,13 @@ main() {
             # kind already has ingress-nginx; ensure_data_services (pulled in by bkn-foundry install) must not add a second controller.
             export AUTO_INSTALL_INGRESS_NGINX="${AUTO_INSTALL_INGRESS_NGINX:-false}"
             export AUTO_INSTALL_LOCALPV="${AUTO_INSTALL_LOCALPV:-true}"
-            # IMPORTANT: deploy.sh parses argv as  module  action  [flags...]  — never put --minimum before
-            # the action (e.g. download|install), or action becomes --minimum and flags are never parsed.
+            # No --minimum auto-injection: bkn-safe is a mandatory module now, and
+            # --minimum's only remaining effect is auth.enabled=false (skips/uninstalls
+            # bkn-safe) — wrong default. Pass --minimum explicitly for a no-auth dev stack.
             local -a _kw_pos=()
-            local _a _kw_saw_min=false _kw_saw_full=false
+            local _a _kw_saw_full=false
             for _a in "$@"; do
                 case "${_a}" in
-                    --minimum | --min)
-                        _kw_saw_min=true
-                        _kw_pos+=("${_a}")
-                        ;;
                     --full)
                         _kw_saw_full=true
                         ;;
@@ -254,22 +251,7 @@ main() {
                 mac_log_error "bkn-foundry|core needs an action (e.g. download, install, status)."
                 exit 1
             fi
-            local -a _kw_final=()
-            # Only `install` gets --minimum auto-injected. For download/uninstall/status it would
-            # either reshape the chart set unexpectedly (download) or scope teardown (uninstall),
-            # so pass through verbatim.
-            if [[ "${_kw_pos[0]}" == "install" ]] \
-                    && [[ "${_kw_saw_full}" != "true" ]] \
-                    && [[ "${_kw_saw_min}" != "true" ]]; then
-                # Insert --minimum after deploy action (index 0), bash 3.2–safe (no ${arr[@]:1}).
-                _kw_final=("${_kw_pos[0]}" --minimum)
-                local _kw_i
-                for ((_kw_i = 1; _kw_i < ${#_kw_pos[@]}; _kw_i++)); do
-                    _kw_final+=("${_kw_pos[_kw_i]}")
-                done
-            else
-                _kw_final=("${_kw_pos[@]}")
-            fi
+            local -a _kw_final=("${_kw_pos[@]}")
             # --full pulls ISF as a manifest dependency; ISF needs https → reuse the
             # same prep/patch helpers as `mac.sh isf install` so it actually works.
             if [[ "${_kw_saw_full}" == "true" ]] && [[ "${_kw_pos[0]:-}" == "install" ]]; then

@@ -17,7 +17,8 @@ update_rds_type_to_internal() {
     
     # Update rds section's source_type from external to internal
     # Use a more flexible sed pattern that doesn't require end-of-line anchor
-    sed -i '/^  rds:/,/^  [a-z]/s/source_type: external/source_type: internal/' "${config_file}"
+    # -i.bak (then rm) keeps this portable: BSD sed on macOS requires a suffix arg to -i.
+    sed -i.bak '/^  rds:/,/^  [a-z]/s/source_type: external/source_type: internal/' "${config_file}" && rm -f "${config_file}.bak"
     
     # Verify the change
     if grep -A 10 "^  rds:" "${config_file}" | grep -q "source_type: internal"; then
@@ -26,7 +27,7 @@ update_rds_type_to_internal() {
     else
         log_warn "⚠ Failed to update RDS type to 'internal', trying alternative method..."
         # Fallback: use a simpler global replacement
-        sed -i 's/source_type: external/source_type: internal/g' "${config_file}"
+        sed -i.bak 's/source_type: external/source_type: internal/g' "${config_file}" && rm -f "${config_file}.bak"
         if grep -q "source_type: internal" "${config_file}"; then
             log_info "✓ RDS type successfully updated to 'internal' (using fallback)"
             return 0
@@ -292,6 +293,20 @@ install_mariadb_helm() {
         if [[ -n "${MARIADB_STORAGE_CLASS}" ]]; then
             helm_args+=(--set mariadb.persistence.storageClassName="${MARIADB_STORAGE_CLASS}")
         fi
+    fi
+
+    # Container resources: empty means chart defaults (req 250m/256Mi, lim 375m/384Mi).
+    if [[ -n "${MARIADB_MEMORY_REQUEST}" ]]; then
+        helm_args+=(--set resources.requests.memory="${MARIADB_MEMORY_REQUEST}")
+    fi
+    if [[ -n "${MARIADB_CPU_REQUEST}" ]]; then
+        helm_args+=(--set resources.requests.cpu="${MARIADB_CPU_REQUEST}")
+    fi
+    if [[ -n "${MARIADB_MEMORY_LIMIT}" ]]; then
+        helm_args+=(--set resources.limits.memory="${MARIADB_MEMORY_LIMIT}")
+    fi
+    if [[ -n "${MARIADB_CPU_LIMIT}" ]]; then
+        helm_args+=(--set resources.limits.cpu="${MARIADB_CPU_LIMIT}")
     fi
 
     helm_args+=(--wait --timeout=600s)

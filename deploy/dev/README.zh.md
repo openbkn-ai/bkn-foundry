@@ -30,7 +30,7 @@ cd bkn-foundry/deploy   # 在此目录执行 bash ./dev/mac.sh ...（与 deploy.
 
 ### 操作流程
 
-在 **`deploy/`** 下执行；用 **bash** 调用（如 `bash ./dev/mac.sh ...`）。**`bkn-core` / `core`** 封装**默认带 `--minimum`**；全量依赖加 **`--full`**。
+在 **`deploy/`** 下执行；用 **bash** 调用（如 `bash ./dev/mac.sh ...`）。**`bkn-core` / `core`** 封装默认装**全量（含必选的 bkn-safe）**；如需无认证开发栈，显式传 **`--minimum`**（`auth.enabled=false`）。
 
 | 步骤 | 命令 | 是否必需？ |
 |------|------|------------|
@@ -38,13 +38,13 @@ cd bkn-foundry/deploy   # 在此目录执行 bash ./dev/mac.sh ...（与 deploy.
 | 2 | `bash ./dev/mac.sh doctor --fix`（或 `-y doctor --fix`） | 缺工具时 |
 | 3 | `bash ./dev/mac.sh cluster up` | **安装前必须** |
 | 4 | `bash ./dev/mac.sh data-services install` | **可选** — 仅单独装/刷新数据层；**`bkn-core install` 会先跑同一套捆绑安装**（`OPENBKN_SKIP_DATA_SERVICES_BUNDLE=true` 可跳过） |
-| 5 | `bash ./dev/mac.sh bkn-core download` | **可选**（本地 chart 缓存；默认 **minimum** profile） |
-| 6 | `bash ./dev/mac.sh bkn-core install` | **必须** — 部署 Core（**默认 `--minimum`**）；默认**先装捆绑 data-services** |
+| 5 | `bash ./dev/mac.sh bkn-core download` | **可选**（本地 chart 缓存） |
+| 6 | `bash ./dev/mac.sh bkn-core install` | **必须** — 部署 Core（全量含 bkn-safe）；默认**先装捆绑 data-services** |
 | 7 | `bash ./dev/mac.sh onboard` | **可选**（需 `bkn` CLI；`-y` 少交互） |
 
 其它与 Linux **`deploy.sh`** 相同（须集群就绪、[`CONFIG_YAML_PATH`](conf/mac-config.yaml) 等与安装一致）：`bash ./dev/mac.sh isf install|download|uninstall|status`，`bash ./dev/mac.sh etrino …`（Vega；**`vega`** 为 **`etrino`** 别名）。ISF 对 DB/配置要求常更高。**未接入 `mac.sh`：**`bkn-dip`。
 
-**最短路径：**`cluster up` → `bkn-core install`（**`--minimum` + 先装数据层**）。若 **`OPENBKN_SKIP_DATA_SERVICES_BUNDLE=true`**，须自备 DB/Kafka 等可达实例，或先执行 **`data-services install`**。
+**最短路径：**`cluster up` → `bkn-core install`（**先装数据层**）。若 **`OPENBKN_SKIP_DATA_SERVICES_BUNDLE=true`**，须自备 DB/Kafka 等可达实例，或先执行 **`data-services install`**。
 
 **暂歇省资源（不删集群）：**退出 **Docker Desktop** 即可。kind 依赖 Docker，等于停掉本地集群，**不是** `cluster down`（不会 `kind delete`）。再用时重新打开 Docker。
 

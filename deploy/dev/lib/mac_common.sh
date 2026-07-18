@@ -32,11 +32,15 @@ mac_common_init() {
     # Mac dev (kind on Docker Desktop) is memory-tight; cap data-services to small footprints
     # so the whole stack fits in the default Docker memory budget. Chart defaults are kept for
     # k8s/kubeadm. Users can still override any of these via env before invoking mac.sh.
-    # redis (chart default 4GB / 512Mi req)
+    # redis (chart default 4GB / 512Mi req). Limit must stay above maxmemory: process
+    # overhead (fragmentation, buffers) lives outside maxmemory, so maxmemory == limit
+    # gets OOMKilled right when the cache fills.
     export REDIS_MAXMEMORY="${REDIS_MAXMEMORY:-512mb}"
     export REDIS_MEMORY_REQUEST="${REDIS_MEMORY_REQUEST:-128Mi}"
-    export REDIS_MEMORY_LIMIT="${REDIS_MEMORY_LIMIT:-512Mi}"
+    export REDIS_MEMORY_LIMIT="${REDIS_MEMORY_LIMIT:-768Mi}"
     export REDIS_CPU_REQUEST="${REDIS_CPU_REQUEST:-50m}"
+    # mariadb (chart default lim 375m/384Mi is too tight for example imports / migrations)
+    export MARIADB_MEMORY_LIMIT="${MARIADB_MEMORY_LIMIT:-768Mi}"
     # opensearch (k8s default: req=512Mi, lim=2048Mi)
     export OPENSEARCH_MEMORY_REQUEST="${OPENSEARCH_MEMORY_REQUEST:-512Mi}"
     export OPENSEARCH_MEMORY_LIMIT="${OPENSEARCH_MEMORY_LIMIT:-1024Mi}"

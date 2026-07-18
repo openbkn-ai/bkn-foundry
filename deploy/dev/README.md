@@ -30,7 +30,7 @@ On **Apple Silicon** Macs, kind nodes are **linux/arm64** by default. Charts pul
 
 ## Order of operations
 
-Run from the **`deploy/`** directory (`cd deploy` in this repo). Invoke **`mac.sh` with bash** (e.g. `bash ./dev/mac.sh ...`). **`bkn-core` / `core`:** the wrapper **defaults to `--minimum`** (smaller chart set; skips ISF in manifest terms). Pass **`--full`** for the full manifest profile (adds ISF download/install when the manifest enables it).
+Run from the **`deploy/`** directory (`cd deploy` in this repo). Invoke **`mac.sh` with bash** (e.g. `bash ./dev/mac.sh ...`). **`bkn-core` / `core`:** the wrapper installs the **full stack including bkn-safe** (auth is mandatory now). Pass **`--minimum`** explicitly for a no-auth dev stack (`auth.enabled=false`).
 
 | Step | Command | Required? |
 |------|---------|-----------|
@@ -38,13 +38,13 @@ Run from the **`deploy/`** directory (`cd deploy` in this repo). Invoke **`mac.s
 | 2 | `bash ./dev/mac.sh doctor --fix` (or `-y doctor --fix`) | If something is missing |
 | 3 | `bash ./dev/mac.sh cluster up` | **Yes** before install |
 | 4 | `bash ./dev/mac.sh data-services install` | Optional — only to install/refresh **data layer alone**; **`bkn-core install` invokes the same bundled install first** (`OPENBKN_SKIP_DATA_SERVICES_BUNDLE=true` skips it). |
-| 5 | `bash ./dev/mac.sh bkn-core download` | Optional (local chart cache; **minimum** by default) |
-| 6 | `bash ./dev/mac.sh bkn-core install` | **Yes** — deploy Core (**`--minimum` implied**); runs bundled data-services beforehand unless skipped |
+| 5 | `bash ./dev/mac.sh bkn-core download` | Optional (local chart cache) |
+| 6 | `bash ./dev/mac.sh bkn-core install` | **Yes** — deploy Core (full stack incl. bkn-safe); runs bundled data-services beforehand unless skipped |
 | 7 | `bash ./dev/mac.sh onboard` | Optional (models/BKN; needs `bkn` CLI; add `-y` to skip prompts) |
 
 Optional (same `deploy.sh` Helm paths as Linux; you need a working cluster + values that match your dependencies): `bash ./dev/mac.sh isf install|download|uninstall|status`, `bash ./dev/mac.sh etrino install|...` (Vega stack; **`vega` is an alias of `etrino`**). ISF may require DB/config beyond the minimal mac sample—see Linux `deploy.sh` help and your `CONFIG_YAML_PATH`.
 
-**Minimal path:** `cluster up` → `bkn-core install` (wrapper implies `--minimum` and runs **data-services** first). If you skip that bundle (`OPENBKN_SKIP_DATA_SERVICES_BUNDLE=true`), you must provide reachable DB/Kafka/etc. yourself or run **`data-services install`** beforehand.
+**Minimal path:** `cluster up` → `bkn-core install` (runs **data-services** first). If you skip that bundle (`OPENBKN_SKIP_DATA_SERVICES_BUNDLE=true`), you must provide reachable DB/Kafka/etc. yourself or run **`data-services install`** beforehand.
 
 **Pause to save resources (keep the cluster):** Quit **Docker Desktop**. Kind uses Docker, so that stops the cluster without `kind delete`. Open Docker again when you want to keep working.
 
