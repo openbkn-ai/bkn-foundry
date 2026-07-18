@@ -1,0 +1,60 @@
+name: automation-mirror-swr-images
+
+# Mirror third-party images to Huawei SWR with their FULL multi-arch manifest.
+# Historical hand-mirroring copied amd64 only, which breaks arm64 clusters
+# (Apple Silicon kind, arm64 k3s) — redis, oryd/hydra and otelcol all hit this.
+# `docker buildx imagetools create` copies the complete manifest list, so every
+# platform the upstream publishes lands on the mirror. Re-running is idempotent
+# and overwriting an amd64-only tag with the multi-arch list is purely additive.
+#
+# To add an image: append "<source-ref> <swr-repo-path>:<tag>" to MIRRORS below.
+
+on:
+  push:
+    branches: ['**']
+    paths:
+      - '.github/workflows/automation-mirror-swr-images.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    env:
+      SWR_REGISTRY: swr.cn-east-3.myhuaweicloud.com
+      SWR_NAMESPACE: openbkn-ai
+      SWR_USERNAME: ${{ secrets.HUAWEI_SWR_USERNAME }}
+      # One "<source-ref> <target-repo>:<tag>" pair per line.
+      MIRRORS: |
+        docker.io/oryd/hydra:v26.2.0 oryd/hydra:v26.2.0
+        docker.io/otel/opentelemetry-collector-contrib:0.148.0 otel/opentelemetry-collector-contrib:0.148.0
+    steps:
+      - name: Check credentials
+        run: |
+          if [ -z "${SWR_USERNAME}" ]; then
+            echo "HUAWEI_SWR_USERNAME not set (fork / credential-less run) — nothing to do."
+            exit 1
+          fi
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Login to Huawei SWR
+        uses: docker/login-action@v3
+        with:
+          registry: swr.cn-east-3.myhuaweicloud.com
+          username: ${{ secrets.HUAWEI_SWR_USERNAME }}
+          password: ${{ secrets.HUAWEI_SWR_PASSWORD }}
+
+      - name: Mirror images (full multi-arch manifests)
+        run: |
+          set -euo pipefail
+          while read -r src dst; do
+            [ -z "${src}" ] && continue
+            target="${SWR_REGISTRY}/${SWR_NAMESPACE}/${dst}"
+            echo "==> ${src}  ->  ${target}"
+            docker buildx imagetools create -t "${target}" "${src}"
+            echo "--- verify platforms on mirror:"
+            docker buildx imagetools inspect "${target}" | grep -E "Platform:" || true
+          done <<< "${MIRRORS}"
