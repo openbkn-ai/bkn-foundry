@@ -1,13 +1,22 @@
 name: automation-mirror-swr-images
 
-# Mirror third-party images to Huawei SWR with their FULL multi-arch manifest.
+# Mirror third-party images to BOTH Huawei SWR and GHCR with their FULL
+# multi-arch manifest. deploy applies a global --set image.registry to every
+# core chart (ghcr.io/openbkn-ai by default, swr.cn-east-3… with --registry=swr),
+# and that override clobbers a third-party sub-chart's own registry (e.g. the
+# otelcol chart ships registry: docker.io). So a third-party image must exist
+# under BOTH mirror namespaces or one install path 403s on it — the default
+# ghcr path did exactly that for otelcol (#307).
+#
 # Historical hand-mirroring copied amd64 only, which breaks arm64 clusters
 # (Apple Silicon kind, arm64 k3s) — redis, oryd/hydra and otelcol all hit this.
-# `docker buildx imagetools create` copies the complete manifest list, so every
-# platform the upstream publishes lands on the mirror. Re-running is idempotent
-# and overwriting an amd64-only tag with the multi-arch list is purely additive.
+# SWR rejects OCI image indexes, so its copy assembles a Docker-media-type
+# manifest list per-arch; GHCR accepts OCI indexes, so a single
+# `skopeo copy --all` mirrors the complete upstream manifest list as-is.
+# Re-running is idempotent.
 #
-# To add an image: append "<source-ref> <swr-repo-path>:<tag>" to MIRRORS below.
+# To add an image: append "<source-ref> <target-repo>:<tag>" to MIRRORS below;
+# it lands on both registries under openbkn-ai/<target-repo>.
 
 on:
   push:
@@ -18,6 +27,7 @@ on:
 
 permissions:
   contents: read
+  packages: write
 
 jobs:
   mirror:
@@ -26,6 +36,8 @@ jobs:
       SWR_REGISTRY: swr.cn-east-3.myhuaweicloud.com
       SWR_NAMESPACE: openbkn-ai
       SWR_USERNAME: ${{ secrets.HUAWEI_SWR_USERNAME }}
+      GHCR_REGISTRY: ghcr.io
+      GHCR_NAMESPACE: openbkn-ai
       # One "<source-ref> <target-repo>:<tag>" pair per line.
       MIRRORS: |
         docker.io/oryd/hydra:v26.2.0 oryd/hydra:v26.2.0
@@ -33,7 +45,7 @@ jobs:
         docker.io/library/postgres:16 postgres:16
         docker.io/portainer/kubectl-shell:latest portainer/kubectl-shell:latest
     steps:
-      - name: Check credentials
+      - name: Check SWR credentials
         run: |
           if [ -z "${SWR_USERNAME}" ]; then
             echo "HUAWEI_SWR_USERNAME not set (fork / credential-less run) — nothing to do."
@@ -50,32 +62,47 @@ jobs:
           echo "${{ secrets.HUAWEI_SWR_PASSWORD }}" | docker login swr.cn-east-3.myhuaweicloud.com \
             -u "${{ secrets.HUAWEI_SWR_USERNAME }}" --password-stdin
 
-      - name: Mirror images (multi-arch, Docker manifest list)
+      - name: Login to GHCR (skopeo)
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | skopeo login ghcr.io \
+            -u "${{ github.actor }}" --password-stdin
+
+      - name: Mirror images (multi-arch) to SWR and GHCR
         # SWR rejects OCI image indexes ("Invalid image, fail to parse
         # manifest.json"), and buildx-built upstreams (e.g. postgres) carry
         # in-toto attestation entries that skopeo's v2s2 conversion of the whole
-        # list chokes on. So copy each real platform individually (single-arch
-        # source has no attestation child -> v2s2 converts cleanly), then
-        # assemble a Docker-media-type manifest list SWR accepts. amd64+arm64
-        # cover every cluster we deploy to.
+        # list chokes on. So for SWR copy each real platform individually
+        # (single-arch source has no attestation child -> v2s2 converts cleanly),
+        # then assemble a Docker-media-type manifest list SWR accepts.
+        # GHCR accepts OCI indexes, so one `skopeo copy --all` mirrors the full
+        # upstream manifest list directly. amd64+arm64 cover every cluster.
         env:
           PLATFORMS: "amd64 arm64"
         run: |
           set -euo pipefail
           while read -r src dst; do
             [ -z "${src}" ] && continue
-            target="${SWR_REGISTRY}/${SWR_NAMESPACE}/${dst}"
-            echo "==> ${src}  ->  ${target}"
+
+            # --- SWR: per-arch v2s2 + Docker manifest list ---
+            swr_target="${SWR_REGISTRY}/${SWR_NAMESPACE}/${dst}"
+            echo "==> ${src}  ->  ${swr_target}"
             arch_refs=()
             for arch in ${PLATFORMS}; do
-              archtag="${target}-${arch}"
+              archtag="${swr_target}-${arch}"
               skopeo copy --format v2s2 --override-os linux --override-arch "${arch}" \
                 "docker://${src}" "docker://${archtag}"
               arch_refs+=("${archtag}")
             done
-            docker manifest rm "${target}" >/dev/null 2>&1 || true
-            docker manifest create "${target}" "${arch_refs[@]}"
-            docker manifest push "${target}"
-            echo "--- verify platforms on mirror:"
-            docker manifest inspect "${target}" | grep -oE '"architecture": "[a-z0-9]+"' | sort -u || true
+            docker manifest rm "${swr_target}" >/dev/null 2>&1 || true
+            docker manifest create "${swr_target}" "${arch_refs[@]}"
+            docker manifest push "${swr_target}"
+            echo "--- verify platforms on SWR:"
+            docker manifest inspect "${swr_target}" | grep -oE '"architecture": "[a-z0-9]+"' | sort -u || true
+
+            # --- GHCR: full OCI index in one copy ---
+            ghcr_target="${GHCR_REGISTRY}/${GHCR_NAMESPACE}/${dst}"
+            echo "==> ${src}  ->  ${ghcr_target}"
+            skopeo copy --all "docker://${src}" "docker://${ghcr_target}"
+            echo "--- verify platforms on GHCR:"
+            skopeo inspect --raw "docker://${ghcr_target}" | grep -oE '"architecture":"[a-z0-9]+"' | sort -u || true
           done <<< "${MIRRORS}"
