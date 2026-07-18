@@ -1223,11 +1223,8 @@ if [[ "${OFFLINE_MODE}" == "true" ]]; then
     LOCALPV_PROVISIONER_IMAGE="${LOCALPV_PROVISIONER_IMAGE:-${OFFLINE_REGISTRY}/openbkn-ai/rancher/local-path-provisioner:v0.0.32}"
     LOCALPV_HELPER_IMAGE="${LOCALPV_HELPER_IMAGE:-${OFFLINE_REGISTRY}/openbkn-ai/busybox:1.36.1}"
 else
-    # Online default: pull third-party images from their public upstream so an
-    # international/GHCR install does not depend on the SWR (CN) mirror. CN /
-    # air-gapped installs pass --offline=<registry> to use a reachable mirror.
-    LOCALPV_PROVISIONER_IMAGE="${LOCALPV_PROVISIONER_IMAGE:-docker.io/rancher/local-path-provisioner:v0.0.32}"
-    LOCALPV_HELPER_IMAGE="${LOCALPV_HELPER_IMAGE:-docker.io/library/busybox:1.36.1}"
+    LOCALPV_PROVISIONER_IMAGE="${LOCALPV_PROVISIONER_IMAGE:-swr.cn-east-3.myhuaweicloud.com/openbkn-ai/rancher/local-path-provisioner:v0.0.32}"
+    LOCALPV_HELPER_IMAGE="${LOCALPV_HELPER_IMAGE:-swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/busybox:1.36.1}"
 fi
 LOCALPV_MANIFEST_PATH="${LOCALPV_MANIFEST_PATH:-${CONF_DIR}/local-path-storage.yaml}"
 LOCALPV_MANIFEST_URL="${LOCALPV_MANIFEST_URL:-https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.32/deploy/local-path-storage.yaml}"
