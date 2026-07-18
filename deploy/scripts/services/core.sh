@@ -151,11 +151,6 @@ parse_core_args() {
                 OPENBKN_ACCESS_ADDRESS="$2"
                 shift 2
                 ;;
-            --minimum|--min)
-                CORE_SET_VALUES+=("auth.enabled=false")
-                CORE_SET_VALUES+=("businessDomain.enabled=false")
-                shift
-                ;;
             -y|--yes)
                 ASSUME_YES="true"
                 shift
@@ -712,33 +707,6 @@ install_core() {
 
     local -a release_names=()
     bkn_mapfile_compat release_names _core_release_names
-
-    # When auth enforcement is off (--minimum / --set auth.enabled=false), services
-    # run without tokens, so the bkn-safe auth stack (bkn-safe + bundled hydra + its
-    # postgres) is not needed — drop it from the install set. Override by also
-    # passing --set bknSafe.install=true. Uninstall is unaffected (still removes it).
-    if [[ "$(get_set_value "auth.enabled" "${CORE_SET_VALUES[@]}" 2>/dev/null)" == "false" \
-       && "$(get_set_value "bknSafe.install" "${CORE_SET_VALUES[@]}" 2>/dev/null)" != "true" ]]; then
-        local -a _kept_releases=()
-        for release_name in "${release_names[@]}"; do
-            if [[ "${release_name}" == "bkn-safe" ]]; then
-                # Downgrade cleanup: if bkn-safe is already installed (auth → no-auth),
-                # uninstall it so it doesn't linger orphaned (services now run auth-off).
-                # The app DB lives in the shared cluster MariaDB and survives; only the
-                # bundled hydra + its Postgres session state are removed.
-                if helm status "bkn-safe" -n "${namespace}" >/dev/null 2>&1; then
-                    log_warn "auth.enabled=false but bkn-safe is installed — uninstalling it (downgrade to no-auth; keep it with --set bknSafe.install=true)."
-                    helm uninstall "bkn-safe" -n "${namespace}" >/dev/null 2>&1 \
-                        || log_warn "bkn-safe uninstall failed; remove manually: helm uninstall bkn-safe -n ${namespace}"
-                else
-                    log_info "auth.enabled=false: skipping bkn-safe auth stack (override: --set bknSafe.install=true)"
-                fi
-                continue
-            fi
-            _kept_releases+=("${release_name}")
-        done
-        release_names=("${_kept_releases[@]}")
-    fi
 
     local release_version
     for release_name in "${release_names[@]}"; do

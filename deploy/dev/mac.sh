@@ -7,7 +7,7 @@
 #   3. cluster up             — kind + ingress-nginx; context becomes kind-<KIND_CLUSTER_NAME>
 #   4. data-services install  — MariaDB / Redis / Kafka / OpenSearch (required before Core on mac)
 #   5. bkn-foundry download  — optional; cache charts locally
-#   6. bkn-foundry install   — Helm install Core (full stack incl. bkn-safe; --minimum opts out of auth)
+#   6. bkn-foundry install   — Helm install bkn-foundry (full stack incl. bkn-safe)
 #   7. onboard                — optional; needs bkn CLI + Core up (add -y for non-interactive)
 #   Teardown: cluster down
 #   Full write-up: deploy/dev/README.md (EN) · deploy/dev/README.zh.md (中文)
@@ -93,7 +93,7 @@ Environment:
 
 Note: data-services install runs deploy.sh data-services (Helm charts into the current kube context). Other deploy.sh modules on mac still skip host k3s bootstrap unless you install infra yourself. See ${readme}.
 
-Mac default: full install (bkn-safe is mandatory). Pass --minimum / --min explicitly for a no-auth dev stack.
+Default: full install — bkn-safe is a mandatory module (the old no-auth --minimum mode has been removed).
 
 EOF
 }
@@ -232,9 +232,8 @@ main() {
             # kind already has ingress-nginx; ensure_data_services (pulled in by bkn-foundry install) must not add a second controller.
             export AUTO_INSTALL_INGRESS_NGINX="${AUTO_INSTALL_INGRESS_NGINX:-false}"
             export AUTO_INSTALL_LOCALPV="${AUTO_INSTALL_LOCALPV:-true}"
-            # No --minimum auto-injection: bkn-safe is a mandatory module now, and
-            # --minimum's only remaining effect is auth.enabled=false (skips/uninstalls
-            # bkn-safe) — wrong default. Pass --minimum explicitly for a no-auth dev stack.
+            # bkn-safe is a mandatory module; the old no-auth --minimum mode is removed,
+            # so arguments pass through verbatim.
             local -a _kw_pos=()
             local _a _kw_saw_full=false
             for _a in "$@"; do
