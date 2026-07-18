@@ -42,7 +42,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 ORG="${ORG:-openbkn-ai}"
-TEMPLATE="${TEMPLATE:-${SCRIPT_DIR}/../release-manifests/0.1.0/bkn-foundry.yaml}"
+TEMPLATE="${TEMPLATE:-${SCRIPT_DIR}/bkn-foundry.template.yaml}"
 BRANCH=""
 BASE="main"
 OUT="./bkn-foundry.dev.yaml"

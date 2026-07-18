@@ -1,0 +1,64 @@
+# Product composition TEMPLATE for gen-dev-manifest.sh — NOT a release lockfile.
+# Lists the releases that make up bkn-foundry; the version fields below are
+# placeholders the generator rewrites (newest main build per chart, or a
+# branch build with --branch). Release lockfiles live in release-manifests/.
+apiVersion: deploy.openbkn.ai/v1alpha1
+kind: VersionSet
+product: bkn-foundry
+version: main
+source:
+  type: oci
+  registry: oci://ghcr.io/openbkn-ai/charts
+releases:
+  core-data-migrator:
+    chart: core-data-migrator
+    version: main
+    stage: pre
+  mf-model-manager:
+    chart: mf-model-manager
+    version: main
+  mf-model-api:
+    chart: mf-model-api
+    version: main
+  oss-gateway-backend:
+    chart: oss-gateway-backend
+    version: main
+  sandbox:
+    chart: sandbox
+    version: main
+  bkn-backend:
+    chart: bkn-backend
+    version: main
+  ontology-query:
+    chart: ontology-query
+    version: main
+  vega-backend:
+    chart: vega-backend
+    version: main
+  kafka-connect:
+    chart: kafka-connect
+    version: main
+  agent-operator-integration:
+    chart: agent-operator-integration
+    version: main
+  capabilities-lab:
+    chart: capabilities-lab
+    version: main
+  agent-retrieval:
+    chart: agent-retrieval
+    version: main
+  bkn-agent:
+    chart: bkn-agent
+    version: main
+  agent-observability:
+    chart: agent-observability
+    version: main
+  otelcol-contrib:
+    chart: otelcol-contrib
+    version: main
+  bkn-safe:
+    chart: bkn-safe
+    version: main
+  bkn-studio:
+    chart: bkn-studio
+    version: main
