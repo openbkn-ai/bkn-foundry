@@ -977,6 +977,14 @@ func (c *OpenSearchConnector) buildFieldMappings(schemaDefinition []*interfaces.
 							}
 						}
 					case "vector":
+						// A vector feature on a source field describes VEGA's embedding
+						// workflow. Only the generated *_vector field is an OpenSearch
+						// vector mapping; its configuration must not be applied to the
+						// source field (for example, a keyword field cannot accept
+						// embedding_model).
+						if column.Type != interfaces.DataType_Vector {
+							continue
+						}
 						for k, v := range feature.Config {
 							fieldProps[k] = v
 						}

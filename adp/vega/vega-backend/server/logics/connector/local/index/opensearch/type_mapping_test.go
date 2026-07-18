@@ -106,6 +106,22 @@ func TestOpenSearchBuildFieldMappings(t *testing.T) {
 		assert.Equal(t, map[string]any{"type": "keyword", "ignore_above": 128}, bodyFields["raw"])
 	})
 
+	t.Run("does not apply embedding metadata to a non-vector field", func(t *testing.T) {
+		properties, hasVector, err := conn.buildFieldMappings([]*interfaces.Property{
+			{Name: "material_name", Type: interfaces.DataType_String, Features: []interfaces.PropertyFeature{
+				{FeatureType: interfaces.PropertyFeatureType_Vector, Config: map[string]any{"embedding_model": "embedding-model"}},
+			}},
+			{Name: "material_name_vector", Type: interfaces.DataType_Vector, Features: []interfaces.PropertyFeature{
+				{FeatureType: interfaces.PropertyFeatureType_Vector, Config: map[string]any{"dimension": 1024}},
+			}},
+		})
+
+		require.NoError(t, err)
+		assert.True(t, hasVector)
+		assert.Equal(t, map[string]any{"type": "keyword"}, properties["material_name"])
+		assert.Equal(t, map[string]any{"type": "knn_vector", "dimension": 1024}, properties["material_name_vector"])
+	})
+
 	t.Run("rejects unsupported feature type with config", func(t *testing.T) {
 		properties, hasVector, err := conn.buildFieldMappings([]*interfaces.Property{
 			{Name: "name", Type: interfaces.DataType_String, Features: []interfaces.PropertyFeature{
