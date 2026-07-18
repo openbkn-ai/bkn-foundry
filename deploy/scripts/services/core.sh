@@ -643,6 +643,12 @@ EOF
 # repo carries none (pre-first-release), fall back to following the newest
 # main build per chart (same resolution as --latest).
 _core_resolve_latest_manifest() {
+    # --version=dev: named alias for the follow-main channel (same as --latest).
+    # Cleared so downstream chart-version resolution never sees "dev" as a version.
+    if [[ "${HELM_CHART_VERSION:-}" == "dev" ]]; then
+        HELM_CHART_VERSION=""
+        CORE_USE_LATEST_MANIFEST="true"
+    fi
     if [[ "${CORE_USE_LATEST_MANIFEST:-false}" != "true" ]]; then
         if [[ -n "${HELM_CHART_VERSION:-}" || -n "${CORE_VERSION_MANIFEST_FILE:-}" ]]; then
             return 0
