@@ -449,6 +449,14 @@ _install_core_release_repo() {
         helm_args+=("--version" "${release_version}")
     fi
 
+    # Bound the post-install hook wait. Helm always waits for post-install hooks
+    # (e.g. bkn-safe's client-seed Job) even without --wait, and defaults to only
+    # 5m — a cold first-install image pull of a hook's dependency (bkn-safe's
+    # bundled postgres, ~8m on a slow CN pull from SWR) blows past that and the
+    # whole release is reported failed even though it self-heals. Match the local
+    # path's explicit timeout, but generous enough for cold pulls (configurable).
+    helm_args+=("--timeout=${CORE_HELM_TIMEOUT:-900s}")
+
     helm_args+=("--devel")
 
     # Per-release values first, then all --set values (so explicit --set wins)
