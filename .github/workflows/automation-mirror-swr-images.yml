@@ -1,4 +1,4 @@
-name: mirror-third-party-images
+name: automation-mirror-swr-images
 
 # Mirror third-party images to Huawei SWR with their FULL multi-arch manifest.
 # Historical hand-mirroring copied amd64 only, which breaks arm64 clusters
@@ -13,7 +13,7 @@ on:
   push:
     branches: ['**']
     paths:
-      - '.github/workflows/mirror-third-party-images.yml'
+      - '.github/workflows/automation-mirror-swr-images.yml'
   workflow_dispatch: {}
 
 permissions:
