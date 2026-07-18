@@ -114,15 +114,27 @@ SSL_CTX=_make_ssl_context()
 
 def reg_tags(chart):
     """List tags for charts/<chart> via the GHCR OCI registry (no gh; anonymous
-    token works for public packages)."""
+    token works for public packages). GHCR pages tags/list at 100 per response
+    with a Link: rel="next" header; busy charts overflow one page, and taking
+    only the first page resolves stale "latest" versions — follow every page."""
     repo=f"{ORG}/charts/{chart}"
     try:
         tok=json.load(urllib.request.urlopen(
             f"https://ghcr.io/token?scope=repository:{repo}:pull",
             timeout=20, context=SSL_CTX))["token"]
-        req=urllib.request.Request(f"https://ghcr.io/v2/{repo}/tags/list",
-                                   headers={"Authorization": f"Bearer {tok}"})
-        return json.load(urllib.request.urlopen(req, timeout=20, context=SSL_CTX)).get("tags") or []
+        tags=[]
+        url=f"https://ghcr.io/v2/{repo}/tags/list?n=1000"
+        for _ in range(100):  # hard stop well above any real tag count
+            req=urllib.request.Request(url, headers={"Authorization": f"Bearer {tok}"})
+            resp=urllib.request.urlopen(req, timeout=20, context=SSL_CTX)
+            tags+=json.load(resp).get("tags") or []
+            m=re.search(r'<([^>]+)>\s*;\s*rel="next"', resp.headers.get("Link") or "")
+            if not m:
+                break
+            url=m.group(1)
+            if url.startswith("/"):
+                url="https://ghcr.io"+url
+        return tags
     except ssl.SSLCertVerificationError:
         # don't swallow silently at the top level; surfaced after the resolve
         # loop if every chart ends up NOT FOUND (see the macOS-CA hint below).
