@@ -1,0 +1,6 @@
+Deprecated 2026-07-18. This 0.1.0 set was cut from release/0.1.0 on
+2026-06-02, before the ISF-to-bkn-safe auth cutover, and is not installable:
+capabilities-lab, bkn-agent, bkn-safe and bkn-studio joined the platform
+after the cut and never published a 0.1.0 chart. Kept for the historical
+record only; the default install skips deprecated releases and follows the
+newest main builds until the next release is cut.
