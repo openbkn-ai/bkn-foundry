@@ -39,23 +39,29 @@ jobs:
             exit 1
           fi
 
-      - uses: docker/setup-buildx-action@v3
+      - name: Install skopeo
+        run: sudo apt-get update && sudo apt-get install -y skopeo
 
       - name: Login to Huawei SWR
-        uses: docker/login-action@v3
-        with:
-          registry: swr.cn-east-3.myhuaweicloud.com
-          username: ${{ secrets.HUAWEI_SWR_USERNAME }}
-          password: ${{ secrets.HUAWEI_SWR_PASSWORD }}
+        run: |
+          skopeo login swr.cn-east-3.myhuaweicloud.com \
+            -u "${{ secrets.HUAWEI_SWR_USERNAME }}" \
+            -p "${{ secrets.HUAWEI_SWR_PASSWORD }}"
 
       - name: Mirror images (full multi-arch manifests)
+        # skopeo copy --all preserves every platform in the manifest list;
+        # --format v2s2 rewrites OCI media types to Docker schema2, because SWR
+        # rejects an OCI image index with "Invalid image, fail to parse
+        # manifest.json" (same constraint the reusable-build handles via
+        # oci-mediatypes=false). buildx imagetools create can't force the
+        # media type, so it fails on OCI-index upstreams like postgres.
         run: |
           set -euo pipefail
           while read -r src dst; do
             [ -z "${src}" ] && continue
             target="${SWR_REGISTRY}/${SWR_NAMESPACE}/${dst}"
             echo "==> ${src}  ->  ${target}"
-            docker buildx imagetools create -t "${target}" "${src}"
+            skopeo copy --all --format v2s2 "docker://${src}" "docker://${target}"
             echo "--- verify platforms on mirror:"
-            docker buildx imagetools inspect "${target}" | grep -E "Platform:" || true
+            skopeo inspect --raw "docker://${target}" | grep -oE '"architecture":"[a-z0-9]+"' | sort -u || true
           done <<< "${MIRRORS}"
