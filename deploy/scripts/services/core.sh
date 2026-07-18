@@ -333,6 +333,30 @@ _core_find_local_chart() {
 # explicit password — no baked-in default). Applied BEFORE CORE_SET_VALUES so an
 # explicit --set config.initialPassword=... still wins.
 CORE_RELEASE_EXTRA_SETS=()
+# Third-party core releases whose image is NOT published under the openbkn
+# registry (ghcr/swr). The global image.registry override would rewrite them to
+# a namespace that has no such image (e.g. ghcr.io/openbkn-ai/otel/... 404), so
+# online they must keep their chart's upstream registry. Offline still uses the
+# offline mirror (the global override applies there, unchanged).
+_core_thirdparty_release_registry() {
+    case "$1" in
+        otelcol-contrib) echo "docker.io" ;;
+        *) echo "" ;;
+    esac
+}
+
+# Append a final --set image.registry for third-party releases so their upstream
+# registry wins over the global openbkn image.registry override. Online only;
+# offline keeps the mirror. $2 is the name of the helm_args array to append to.
+_core_apply_thirdparty_registry_override() {
+    local release_name="$1" _arr_name="$2" _reg
+    [[ "${OFFLINE_MODE:-false}" == "true" ]] && return 0
+    _reg="$(_core_thirdparty_release_registry "${release_name}")"
+    [[ -z "${_reg}" ]] && return 0
+    eval "${_arr_name}+=(\"--set\" \"image.registry=${_reg}\")"
+    log_info "Third-party image: ${release_name} pinned to upstream registry ${_reg} (not the openbkn ${IMAGE_REGISTRY:-registry} mirror)."
+}
+
 _core_release_extra_sets() {
     local release_name="$1"
     CORE_RELEASE_EXTRA_SETS=()
@@ -398,6 +422,7 @@ _install_core_release_local() {
     for set_value in "${CORE_SET_VALUES[@]}"; do
         helm_args+=("--set" "${set_value}")
     done
+    _core_apply_thirdparty_registry_override "${release_name}" helm_args
 
     if helm "${helm_args[@]}"; then
         log_info "✓ ${release_name} installed successfully"
@@ -468,6 +493,7 @@ _install_core_release_repo() {
     for set_value in "${CORE_SET_VALUES[@]}"; do
         helm_args+=("--set" "${set_value}")
     done
+    _core_apply_thirdparty_registry_override "${release_name}" helm_args
 
     if helm "${helm_args[@]}"; then
         log_info "✓ ${release_name} installed successfully"
