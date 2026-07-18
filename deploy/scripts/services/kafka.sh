@@ -1,5 +1,6 @@
 
 install_kafka() {
+    resolve_thirdparty_images_online
     log_info "Installing Kafka (1 controller + 1 broker) via Helm..."
 
     local fresh_install="true"

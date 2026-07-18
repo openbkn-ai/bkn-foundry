@@ -1,5 +1,6 @@
 
 install_opensearch() {
+    resolve_thirdparty_images_online
     log_info "Installing OpenSearch via Helm..."
 
     local fresh_install="true"

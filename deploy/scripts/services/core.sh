@@ -346,15 +346,23 @@ _core_thirdparty_release_registry() {
 }
 
 # Append a final --set image.registry for third-party releases so their upstream
-# registry wins over the global openbkn image.registry override. Online only;
-# offline keeps the mirror. $2 is the name of the helm_args array to append to.
+# registry wins over the global openbkn image.registry override. $2 is the name
+# of the helm_args array to append to. Registry-aware:
+#   offline / registry=swr -> no override; openbkn mirrors the image there, so
+#       the global image.registry override already resolves it.
+#   registry=ghcr / other  -> pin the chart's public upstream (GHCR has no
+#       third-party image, so the global override would 404).
 _core_apply_thirdparty_registry_override() {
     local release_name="$1" _arr_name="$2" _reg
     [[ "${OFFLINE_MODE:-false}" == "true" ]] && return 0
     _reg="$(_core_thirdparty_release_registry "${release_name}")"
     [[ -z "${_reg}" ]] && return 0
+    load_image_registry_from_config
+    case "${IMAGE_REGISTRY}" in
+        *myhuaweicloud.com*) return 0 ;;
+    esac
     eval "${_arr_name}+=(\"--set\" \"image.registry=${_reg}\")"
-    log_info "Third-party image: ${release_name} pinned to upstream registry ${_reg} (not the openbkn ${IMAGE_REGISTRY:-registry} mirror)."
+    log_info "Third-party image: ${release_name} pinned to upstream registry ${_reg} (GHCR hosts no ${release_name} image)."
 }
 
 _core_release_extra_sets() {
