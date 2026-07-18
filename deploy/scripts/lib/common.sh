@@ -764,8 +764,6 @@ resolve_embedded_release_manifest() {
 }
 
 # Resolve the latest embedded release manifest path for one aggregate product.
-# Versions marked deprecated (a DEPRECATED file next to the manifest) are
-# skipped — those stay reachable via an explicit --version=<x.y.z> only.
 # Args: <product>
 resolve_latest_embedded_release_manifest() {
     local product="$1"
@@ -774,16 +772,9 @@ resolve_latest_embedded_release_manifest() {
         return 0
     fi
 
-    local manifest
-    while IFS= read -r manifest; do
-        [[ -z "${manifest}" ]] && continue
-        if [[ -f "$(dirname "${manifest}")/DEPRECATED" ]]; then
-            continue
-        fi
-        printf '%s\n' "${manifest}"
-        return 0
-    done < <(find "${RELEASE_MANIFESTS_DIR}" -mindepth 2 -maxdepth 2 -type f -name "${product}.yaml" 2>/dev/null \
-        | sort -rV)
+    find "${RELEASE_MANIFESTS_DIR}" -mindepth 2 -maxdepth 2 -type f -name "${product}.yaml" 2>/dev/null \
+        | sort -V \
+        | tail -1
 }
 
 # Resolve the exact chart version for one aggregate release.

@@ -208,10 +208,6 @@ _core_auto_resolve_version_manifest() {
     local embedded_manifest
     if [[ -n "${HELM_CHART_VERSION:-}" ]]; then
         embedded_manifest="$(resolve_embedded_release_manifest "bkn-foundry" "${HELM_CHART_VERSION}")"
-        if [[ -n "${embedded_manifest}" && -f "$(dirname "${embedded_manifest}")/DEPRECATED" ]]; then
-            log_warn "Release ${HELM_CHART_VERSION} is DEPRECATED:"
-            sed 's/^/  /' "$(dirname "${embedded_manifest}")/DEPRECATED" >&2 || true
-        fi
     else
         embedded_manifest="$(resolve_latest_embedded_release_manifest "bkn-foundry")"
     fi
@@ -629,10 +625,9 @@ EOF
 }
 
 # Resolve the working manifest for install/download. Default (no --version /
-# --version_file / --latest): the newest NON-DEPRECATED embedded release
-# manifest; when none exists, fall back to following the newest main build per
-# chart (same resolution as --latest). Deprecated releases stay reachable via
-# an explicit --version=<x.y.z>.
+# --version_file / --latest): the newest embedded release manifest; when the
+# repo carries none (pre-first-release), fall back to following the newest
+# main build per chart (same resolution as --latest).
 _core_resolve_latest_manifest() {
     if [[ "${CORE_USE_LATEST_MANIFEST:-false}" != "true" ]]; then
         if [[ -n "${HELM_CHART_VERSION:-}" || -n "${CORE_VERSION_MANIFEST_FILE:-}" ]]; then
@@ -645,7 +640,7 @@ _core_resolve_latest_manifest() {
             log_info "Defaulting to newest release manifest: ${newest_release} (pass --latest to follow main builds instead)."
             return 0
         fi
-        log_info "No usable release manifest (all deprecated or none present) — following the newest main builds (pass --version=<release> to pick one explicitly)."
+        log_info "No release manifest in this repo yet — following the newest main builds (pass --version_file=<manifest> for a pinned set)."
         CORE_USE_LATEST_MANIFEST="true"
     fi
     if [[ -n "${CORE_VERSION_MANIFEST_FILE:-}" ]]; then
