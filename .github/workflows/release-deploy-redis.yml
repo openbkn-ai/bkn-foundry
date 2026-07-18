@@ -1,0 +1,63 @@
+name: release-deploy-redis
+
+# Multi-arch build of the platform Redis image (deploy/images/redis).
+# Versioned off the redis chart line (1.11.2-*), NOT the repo VERSION — see
+# deploy/images/redis/README.md. Branch pushes publish a branch-tagged image
+# (same convention as the service pipelines), so a fix is testable pre-merge.
+
+on:
+  push:
+    branches: ['**']
+    paths:
+      - 'deploy/images/redis/**'
+      - '.github/workflows/release-deploy-redis.yml'
+      - '.github/workflows/reusable-build.yml'
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish to registries (true) or verify build only (false)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  resolve-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Base = redis chart version (deploy/charts/redis-1.11.2.tgz), so
+          # image tags stay in the 1.11.2-* line the chart/scripts expect.
+          BASE_VERSION="1.11.2"
+          REF_NAME="${{ github.ref_name }}"
+          SHORT_SHA="$(git rev-parse --short=7 HEAD)"
+          SANITIZED_BRANCH="$(echo "$REF_NAME" | tr '[:upper:]' '[:lower:]' | sed -E 's#[^0-9a-zA-Z.-]+#-#g; s#-+#-#g; s#^[.-]+##; s#[.-]+$##')"
+          # Commit time (UTC), not build time — monotonic and re-run reproducible.
+          COMMIT_DATE="$(TZ=UTC git show -s --format=%cd --date=format-local:%Y%m%d%H%M%S HEAD)"
+          VERSION="$BASE_VERSION-$SANITIZED_BRANCH.$COMMIT_DATE.sha$SHORT_SHA"
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: resolve-version
+    uses: ./.github/workflows/reusable-build.yml
+    secrets: inherit
+    with:
+      service-path: deploy/images/redis
+      dockerfile: Dockerfile
+      context: '.'
+      image-name: redis
+      version: ${{ needs.resolve-version.outputs.version }}
+      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
