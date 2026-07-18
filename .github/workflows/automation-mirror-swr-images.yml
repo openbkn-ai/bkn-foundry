@@ -31,6 +31,7 @@ jobs:
         docker.io/oryd/hydra:v26.2.0 oryd/hydra:v26.2.0
         docker.io/otel/opentelemetry-collector-contrib:0.148.0 otel/opentelemetry-collector-contrib:0.148.0
         docker.io/library/postgres:16 postgres:16
+        docker.io/portainer/kubectl-shell:latest portainer/kubectl-shell:latest
     steps:
       - name: Check credentials
         run: |
