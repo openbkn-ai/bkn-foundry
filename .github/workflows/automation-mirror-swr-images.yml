@@ -30,6 +30,8 @@ jobs:
       MIRRORS: |
         docker.io/oryd/hydra:v26.2.0 oryd/hydra:v26.2.0
         docker.io/otel/opentelemetry-collector-contrib:0.148.0 otel/opentelemetry-collector-contrib:0.148.0
+        docker.io/library/postgres:16 postgres:16
+        docker.io/portainer/kubectl-shell:latest portainer/kubectl-shell:latest
     steps:
       - name: Check credentials
         run: |
@@ -38,23 +40,42 @@ jobs:
             exit 1
           fi
 
-      - uses: docker/setup-buildx-action@v3
+      - name: Install skopeo
+        run: sudo apt-get update && sudo apt-get install -y skopeo
 
-      - name: Login to Huawei SWR
-        uses: docker/login-action@v3
-        with:
-          registry: swr.cn-east-3.myhuaweicloud.com
-          username: ${{ secrets.HUAWEI_SWR_USERNAME }}
-          password: ${{ secrets.HUAWEI_SWR_PASSWORD }}
+      - name: Login to Huawei SWR (skopeo + docker)
+        run: |
+          skopeo login swr.cn-east-3.myhuaweicloud.com \
+            -u "${{ secrets.HUAWEI_SWR_USERNAME }}" -p "${{ secrets.HUAWEI_SWR_PASSWORD }}"
+          echo "${{ secrets.HUAWEI_SWR_PASSWORD }}" | docker login swr.cn-east-3.myhuaweicloud.com \
+            -u "${{ secrets.HUAWEI_SWR_USERNAME }}" --password-stdin
 
-      - name: Mirror images (full multi-arch manifests)
+      - name: Mirror images (multi-arch, Docker manifest list)
+        # SWR rejects OCI image indexes ("Invalid image, fail to parse
+        # manifest.json"), and buildx-built upstreams (e.g. postgres) carry
+        # in-toto attestation entries that skopeo's v2s2 conversion of the whole
+        # list chokes on. So copy each real platform individually (single-arch
+        # source has no attestation child -> v2s2 converts cleanly), then
+        # assemble a Docker-media-type manifest list SWR accepts. amd64+arm64
+        # cover every cluster we deploy to.
+        env:
+          PLATFORMS: "amd64 arm64"
         run: |
           set -euo pipefail
           while read -r src dst; do
             [ -z "${src}" ] && continue
             target="${SWR_REGISTRY}/${SWR_NAMESPACE}/${dst}"
             echo "==> ${src}  ->  ${target}"
-            docker buildx imagetools create -t "${target}" "${src}"
+            arch_refs=()
+            for arch in ${PLATFORMS}; do
+              archtag="${target}-${arch}"
+              skopeo copy --format v2s2 --override-os linux --override-arch "${arch}" \
+                "docker://${src}" "docker://${archtag}"
+              arch_refs+=("${archtag}")
+            done
+            docker manifest rm "${target}" >/dev/null 2>&1 || true
+            docker manifest create "${target}" "${arch_refs[@]}"
+            docker manifest push "${target}"
             echo "--- verify platforms on mirror:"
-            docker buildx imagetools inspect "${target}" | grep -E "Platform:" || true
+            docker manifest inspect "${target}" | grep -oE '"architecture": "[a-z0-9]+"' | sort -u || true
           done <<< "${MIRRORS}"

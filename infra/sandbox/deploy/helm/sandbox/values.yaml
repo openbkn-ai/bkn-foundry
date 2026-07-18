@@ -42,8 +42,12 @@ controlPlane:
     port: 8000
     annotations: {}
 
+  # Internal execution backend — callers reach it via the cluster service
+  # (sandbox-control-plane:8000), not the gateway. The catch-all "/" ingress was
+  # helm-template boilerplate and hijacked the gateway root from bkn-studio (the
+  # web UI), so nginx admission rejected studio's own "/" ingress. Disabled.
   ingress:
-    enabled: true
+    enabled: false
     className: "nginx"
     annotations: {}
     paths:
