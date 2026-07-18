@@ -75,7 +75,7 @@ command -v git >/dev/null 2>&1 || { echo "Error: git required (for --branch HEAD
 [ -f "${TEMPLATE}" ] || { echo "Error: template not found: ${TEMPLATE}" >&2; exit 1; }
 
 ORG="$ORG" TEMPLATE="$TEMPLATE" BRANCH="$BRANCH" BASE="$BASE" OUT="$OUT" LATEST="$LATEST" python3 - <<'PY'
-import os, re, json, subprocess, ssl, sys
+import os, re, json, subprocess, ssl, sys, time
 
 ORG=os.environ["ORG"]; TEMPLATE=os.environ["TEMPLATE"]
 BRANCH=os.environ["BRANCH"]; BASE=os.environ["BASE"]; OUT=os.environ["OUT"]
@@ -112,35 +112,51 @@ def _make_ssl_context():
 
 SSL_CTX=_make_ssl_context()
 
-def reg_tags(chart):
-    """List tags for charts/<chart> via the GHCR OCI registry (no gh; anonymous
-    token works for public packages). GHCR pages tags/list at 100 per response
-    with a Link: rel="next" header; busy charts overflow one page, and taking
-    only the first page resolves stale "latest" versions — follow every page."""
+def _reg_tags_once(chart):
+    """One attempt: list tags for charts/<chart> via the GHCR OCI registry (no
+    gh; anonymous token works for public packages). GHCR pages tags/list at 100
+    per response with a Link: rel="next" header; busy charts overflow one page,
+    and taking only the first page resolves stale "latest" versions — follow
+    every page. Raises on any network/HTTP error so the caller can retry."""
     repo=f"{ORG}/charts/{chart}"
-    try:
-        tok=json.load(urllib.request.urlopen(
-            f"https://ghcr.io/token?scope=repository:{repo}:pull",
-            timeout=20, context=SSL_CTX))["token"]
-        tags=[]
-        url=f"https://ghcr.io/v2/{repo}/tags/list?n=1000"
-        for _ in range(100):  # hard stop well above any real tag count
-            req=urllib.request.Request(url, headers={"Authorization": f"Bearer {tok}"})
-            resp=urllib.request.urlopen(req, timeout=20, context=SSL_CTX)
-            tags+=json.load(resp).get("tags") or []
-            m=re.search(r'<([^>]+)>\s*;\s*rel="next"', resp.headers.get("Link") or "")
-            if not m:
-                break
-            url=m.group(1)
-            if url.startswith("/"):
-                url="https://ghcr.io"+url
-        return tags
-    except ssl.SSLCertVerificationError:
-        # don't swallow silently at the top level; surfaced after the resolve
-        # loop if every chart ends up NOT FOUND (see the macOS-CA hint below).
-        return []
-    except Exception:
-        return []
+    tok=json.load(urllib.request.urlopen(
+        f"https://ghcr.io/token?scope=repository:{repo}:pull",
+        timeout=20, context=SSL_CTX))["token"]
+    tags=[]
+    url=f"https://ghcr.io/v2/{repo}/tags/list?n=1000"
+    for _ in range(100):  # hard stop well above any real tag count
+        req=urllib.request.Request(url, headers={"Authorization": f"Bearer {tok}"})
+        resp=urllib.request.urlopen(req, timeout=20, context=SSL_CTX)
+        tags+=json.load(resp).get("tags") or []
+        m=re.search(r'<([^>]+)>\s*;\s*rel="next"', resp.headers.get("Link") or "")
+        if not m:
+            break
+        url=m.group(1)
+        if url.startswith("/"):
+            url="https://ghcr.io"+url
+    return tags
+
+def reg_tags(chart):
+    """Retry wrapper. A single transient tag-fetch failure (ghcr hiccup, token
+    blip, rate limit) must not abort the whole manifest — every chart genuinely
+    has tags, so an empty/failed result is retried before giving up. SSL cert
+    errors are not retried (macOS-CA config issue; surfaced with a hint after
+    the resolve loop when every chart ends up NOT FOUND)."""
+    last_exc=None
+    for attempt in range(5):
+        try:
+            tags=_reg_tags_once(chart)
+            if tags:
+                return tags
+        except ssl.SSLCertVerificationError:
+            return []
+        except Exception as e:
+            last_exc=e
+        if attempt < 4:
+            time.sleep(1.5*(attempt+1))
+    if last_exc is not None:
+        print(f"  (warning: {chart} tag fetch failed after retries: {last_exc})", file=sys.stderr)
+    return []
 
 def git_short_sha(ref):
     """7-char sha of a branch ref (origin/<ref> preferred), matching CI's tag sha."""
