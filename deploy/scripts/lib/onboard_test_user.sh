@@ -16,27 +16,43 @@
 # endpoint to leave test directly loginable. Idempotent. Response shapes are
 # bkn-safe's ({"users":[...]}, {"roles":[...]}).
 
-# Print test's user id (empty if absent).
-onboard_bkn_safe_test_user_id() {
-    openbkn admin --json user list --keyword test --limit 200 2>/dev/null | python3 -c "
-import json, sys
+# Print a user's id by login (empty if absent). bkn-safe's role-binding API
+# validates accessor ids and rejects logins, so callers must bind by UUID.
+onboard_bkn_safe_user_id() {
+    openbkn admin --json user list --keyword "${1:-test}" --limit 200 2>/dev/null \
+        | _OB_LOGIN="${1:-test}" python3 -c "
+import json, os, sys
+login = os.environ.get('_OB_LOGIN', 'test')
 try:
     d = json.load(sys.stdin)
 except Exception:
     sys.exit(1)
 for e in d.get('users', []):
-    if (e.get('account') or '') == 'test':
+    if (e.get('account') or '') == login:
         print(e.get('id') or '')
         sys.exit(0)
 sys.exit(1)"
 }
 
+# Print test's user id (empty if absent).
+onboard_bkn_safe_test_user_id() {
+    onboard_bkn_safe_user_id test
+}
+
 # Assign every source=business role to <login> (idempotent; duplicates no-op).
 onboard_bkn_safe_assign_business_roles() {
-    local _login="${1:-test}" rjson rids _rid _ok=0 _n=0
+    local _login="${1:-test}" rjson rids _rid _uid _ok=0 _n=0
     if ! rjson="$(openbkn admin --json role list --limit 1000 2>/dev/null)"; then
         log_warn "openbkn admin role list failed; cannot assign roles to ${_login}"
         return 1
+    fi
+    # bkn-safe role-binding validates the accessor id and rejects logins —
+    # resolve the login to its UUID first (fall back to the login for older
+    # bkn-safe builds that still accept it).
+    _uid="$(onboard_bkn_safe_user_id "${_login}" || true)"
+    if [[ -z "${_uid}" ]]; then
+        log_warn "Could not resolve user id for [${_login}]; passing the login as accessor id"
+        _uid="${_login}"
     fi
     rids="$(echo "${rjson}" | python3 -c "
 import json, sys
@@ -55,9 +71,13 @@ for e in d.get('roles', []):
     while IFS= read -r _rid; do
         [[ -n "${_rid}" ]] || continue
         _n=$((_n + 1))
-        openbkn admin user assign-role "${_login}" "${_rid}" >/dev/null 2>&1 && _ok=$((_ok + 1))
+        openbkn admin user assign-role "${_uid}" "${_rid}" >/dev/null 2>&1 && _ok=$((_ok + 1))
     done <<< "${rids}"
-    log_info "User [test]: ${_ok}/${_n} business roles assigned (check: openbkn admin user roles test)"
+    if [[ "${_ok}" -lt "${_n}" ]]; then
+        log_warn "User [${_login}]: only ${_ok}/${_n} business roles assigned (check: openbkn admin user roles ${_login})"
+    else
+        log_info "User [${_login}]: ${_ok}/${_n} business roles assigned (check: openbkn admin user roles ${_login})"
+    fi
     return 0
 }
 
@@ -128,9 +148,12 @@ onboard_provision_bkn_safe_test_user() {
     local _final _tmp _kurl _id
     _final="${ONBOARD_TEST_USER_PASSWORD:-${ONBOARD_DEFAULT_TEST_USER_PASSWORD:-111111}}"
     _tmp="${_final}.init"   # admin-set temp; must differ from final
-    _kurl="$(onboard_default_access_base_url 2>/dev/null)"
+    _kurl="$(onboard_default_access_base_url 2>/dev/null || true)"
 
-    _id="$(onboard_bkn_safe_test_user_id)"
+    # `|| true`: the lookup exits 1 when [test] does not exist yet — the normal
+    # fresh-install case — and a bare command-substitution assignment would kill
+    # the whole onboard run under `set -e` with no error output.
+    _id="$(onboard_bkn_safe_test_user_id || true)"
     if [[ -n "${_id}" ]]; then
         log_info "User [test] already exists (id ${_id}); re-syncing business roles…"
         onboard_bkn_safe_assign_business_roles test || true
@@ -146,7 +169,9 @@ onboard_provision_bkn_safe_test_user() {
         | python3 -c "import json,sys
 try: print(json.load(sys.stdin).get('id',''))
 except Exception: pass" 2>/dev/null)"
-    [[ -z "${_id}" ]] && _id="$(onboard_bkn_safe_test_user_id)"
+    if [[ -z "${_id}" ]]; then
+        _id="$(onboard_bkn_safe_test_user_id || true)"
+    fi
     if [[ -z "${_id}" ]]; then
         log_warn "Could not create or find user test"
         ONBOARD_REPORT_TEST_USER="error: create user test failed"
