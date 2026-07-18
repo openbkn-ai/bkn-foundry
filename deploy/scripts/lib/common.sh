@@ -1270,13 +1270,13 @@ REDIS_LOCAL_CHART_DIR="${REDIS_LOCAL_CHART_DIR:-${SCRIPT_DIR}/charts/redis}"
 REDIS_ARCHITECTURE="${REDIS_ARCHITECTURE:-sentinel}"  # standalone or sentinel
 # In offline mode, use offline registry; otherwise use SWR mirror
 if [[ "${OFFLINE_MODE}" == "true" ]]; then
-    REDIS_IMAGE="${REDIS_IMAGE:-${OFFLINE_REGISTRY}/openbkn-ai/redis:1.11.2-20251029.2.169ac3c0}"
+    REDIS_IMAGE="${REDIS_IMAGE:-${OFFLINE_REGISTRY}/openbkn-ai/redis:1.11.2-main.20260718025853.shaf24e971}"
 else
-    REDIS_IMAGE="${REDIS_IMAGE:-swr.cn-east-3.myhuaweicloud.com/openbkn-ai/redis:1.11.2-20251029.2.169ac3c0}"
+    REDIS_IMAGE="${REDIS_IMAGE:-swr.cn-east-3.myhuaweicloud.com/openbkn-ai/redis:1.11.2-main.20260718025853.shaf24e971}"
 fi
 REDIS_IMAGE_REGISTRY="${REDIS_IMAGE_REGISTRY:-}"
 REDIS_IMAGE_REPOSITORY="${REDIS_IMAGE_REPOSITORY:-redis}"
-REDIS_IMAGE_TAG="${REDIS_IMAGE_TAG:-1.11.2-20251029.2.169ac3c0}"
+REDIS_IMAGE_TAG="${REDIS_IMAGE_TAG:-1.11.2-main.20260718025853.shaf24e971}"
 REDIS_PERSISTENCE_ENABLED="${REDIS_PERSISTENCE_ENABLED:-true}"
 # Empty: pick cluster default StorageClass (e.g. kind "standard"); else local-path if that SC exists; else local-path.
 REDIS_STORAGE_CLASS="${REDIS_STORAGE_CLASS:-}"
