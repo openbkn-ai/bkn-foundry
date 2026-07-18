@@ -129,6 +129,12 @@ func (bts *buildTaskService) Create(ctx context.Context, req *interfaces.CreateB
 		span.SetStatus(codes.Error, "Invalid execute type")
 		return "", err
 	}
+	if req.Mode == interfaces.BuildTaskModeBatch {
+		if err := validateBatchBuildKeyFields(ctx, resource); err != nil {
+			span.SetStatus(codes.Error, "Invalid batch build key fields")
+			return "", err
+		}
+	}
 
 	cat, err := bts.cs.GetByID(ctx, resource.CatalogID, false)
 	if err != nil {
@@ -184,6 +190,14 @@ func (bts *buildTaskService) Create(ctx context.Context, req *interfaces.CreateB
 
 	span.SetStatus(codes.Ok, "")
 	return buildTask.ID, nil
+}
+
+func validateBatchBuildKeyFields(ctx context.Context, resource *interfaces.Resource) error {
+	if resource.IndexConfig == nil || len(resource.IndexConfig.BuildKeyFields) == 0 {
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_BuildKeyFields).
+			WithErrorDetails("batch build task requires at least one build_key_fields entry")
+	}
+	return nil
 }
 
 func normalizeCreateBuildTaskExecuteType(ctx context.Context, req *interfaces.CreateBuildTaskRequest) (string, error) {

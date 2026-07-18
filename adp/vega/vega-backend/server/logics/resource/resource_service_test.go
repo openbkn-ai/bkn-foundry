@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/openbkn-ai/bkn-comm-go/rest"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
 	verrors "vega-backend/errors"
@@ -51,6 +52,30 @@ func newTestService(t *testing.T) (*resourceService,
 	mockCS.EXPECT().ListInternalIDs(gomock.Any()).Return([]string{}, nil).AnyTimes()
 
 	return rs, mockRA, mockPS, mockDS, mockUMS, mockCS, mockBTA
+}
+
+func TestValidateIndexConfigBuildKeyFields(t *testing.T) {
+	schema := []*interfaces.Property{{Name: "id"}, {Name: "updated_at"}}
+
+	t.Run("allows an empty build key configuration", func(t *testing.T) {
+		require.NoError(t, validateIndexConfigBuildKeyFields(context.Background(), schema, nil))
+	})
+
+	t.Run("allows build keys defined in schema", func(t *testing.T) {
+		err := validateIndexConfigBuildKeyFields(context.Background(), schema, &interfaces.ResourceIndexConfig{
+			BuildKeyFields: []string{"updated_at", "id"},
+		})
+		require.NoError(t, err)
+	})
+
+	t.Run("rejects build keys absent from schema", func(t *testing.T) {
+		err := validateIndexConfigBuildKeyFields(context.Background(), schema, &interfaces.ResourceIndexConfig{
+			BuildKeyFields: []string{"missing_id"},
+		})
+		httpErr := err.(*rest.HTTPError)
+		require.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+		require.Contains(t, httpErr.BaseError.ErrorDetails, `build_key_fields field "missing_id"`)
+	})
 }
 
 func TestResourceServiceCheckExistByID(t *testing.T) {
@@ -843,6 +868,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 			Name:             "table",
 			LocalIndexName:   "vega-build-r1-task-1",
 			SourceIdentifier: "public.orders",
+			SchemaDefinition: []*interfaces.Property{{Name: "id"}, {Name: "updated_at"}},
 			IndexConfig: &interfaces.ResourceIndexConfig{
 				BuildKeyFields: []string{"id"},
 			},

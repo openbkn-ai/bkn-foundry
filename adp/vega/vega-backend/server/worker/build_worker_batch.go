@@ -358,8 +358,10 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, resource *interfa
 			// Convert documents to upsert format
 			upsertRequests := make([]map[string]any, 0, readRows)
 			for _, doc := range result.Rows {
-				// Create document ID using getNewDocID function
 				docID := getNewDocID(lastBatchKeyValues, doc)
+				if docID == "" {
+					return fmt.Errorf("build document ID: no build key values found in source row")
+				}
 				upsertRequests = append(upsertRequests, map[string]any{"id": docID, "document": doc})
 			}
 
