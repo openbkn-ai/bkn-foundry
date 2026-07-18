@@ -1,5 +1,5 @@
 
-# Default bkn-core namespace
+# Default bkn-foundry namespace
 CORE_NAMESPACE="${CORE_NAMESPACE:-openbkn}"
 
 # Set to true in parse_core_args when user passes --namespace/--namespace=… (overrides namespace: in YAML).
@@ -38,7 +38,7 @@ declare -a CORE_SQL_MODULES=(
     "sandbox"
 )
 
-# Parse bkn-core command arguments
+# Parse bkn-foundry command arguments
 parse_core_args() {
     local action="$1"
     shift
@@ -151,11 +151,6 @@ parse_core_args() {
                 OPENBKN_ACCESS_ADDRESS="$2"
                 shift 2
                 ;;
-            --minimum|--min)
-                CORE_SET_VALUES+=("auth.enabled=false")
-                CORE_SET_VALUES+=("businessDomain.enabled=false")
-                shift
-                ;;
             -y|--yes)
                 ASSUME_YES="true"
                 shift
@@ -187,7 +182,7 @@ _core_resolve_target_namespace() {
     fi
 }
 
-# Resolve local charts directory for bkn-core
+# Resolve local charts directory for bkn-foundry
 _core_resolve_charts_dir() {
     if [[ -n "${CORE_LOCAL_CHARTS_DIR}" ]]; then
         if [[ -d "${CORE_LOCAL_CHARTS_DIR}" ]]; then
@@ -225,7 +220,7 @@ _core_require_version_manifest() {
     _core_auto_resolve_version_manifest
 
     if [[ -z "${CORE_VERSION_MANIFEST_FILE:-}" ]]; then
-        log_error "No release manifest found for bkn-core. Provide --version or --version_file."
+        log_error "No release manifest found for bkn-foundry. Provide --version or --version_file."
         return 1
     fi
 }
@@ -261,7 +256,7 @@ init_core_databases() {
     # hook owns DB init; the script must not also run the SQL files.
     _core_require_version_manifest || return 1
     if should_skip_db_init_for_manifest "${CORE_VERSION_MANIFEST_FILE}"; then
-        log_info "Core manifest ${CORE_VERSION_MANIFEST_FILE} has pre-stage data-migrator, skipping SQL initialization"
+        log_info "bkn-foundry manifest ${CORE_VERSION_MANIFEST_FILE} has pre-stage data-migrator, skipping SQL initialization"
         return 0
     fi
 
@@ -337,7 +332,7 @@ _core_release_extra_sets() {
     fi
 }
 
-# Install a single bkn-core release from a local .tgz
+# Install a single bkn-foundry release from a local .tgz
 _install_core_release_local() {
     local release_name="$1"
     local charts_dir="$2"
@@ -397,7 +392,7 @@ _install_core_release_local() {
     fi
 }
 
-# Install a single bkn-core release from a Helm repository
+# Install a single bkn-foundry release from a Helm repository
 _install_core_release_repo() {
     local release_name="$1"
     local namespace="$2"
@@ -490,7 +485,7 @@ _core_config_sets_image_registry() {
     ' "${CONFIG_YAML_PATH}"
 }
 
-# Inject default --set values for bkn-core if user did not override them.
+# Inject default --set values for bkn-foundry if user did not override them.
 # Currently: businessDomain.enabled defaults to false at install time.
 _core_apply_default_set_values() {
     # image.registry precedence in ONLINE mode: explicit --set image.registry=… wins;
@@ -555,7 +550,7 @@ _core_apply_default_set_values() {
         _core_resource_set=1
     fi
     if [[ "${_core_resource_set}" == "1" ]]; then
-        log_info "Core resource overrides applied (uniform): req cpu=${OPENBKN_CORE_REQ_CPU:-<chart>} mem=${OPENBKN_CORE_REQ_MEM:-<chart>} / lim cpu=${OPENBKN_CORE_LIM_CPU:-<chart>} mem=${OPENBKN_CORE_LIM_MEM:-<chart>}"
+        log_info "bkn-foundry resource overrides applied (uniform): req cpu=${OPENBKN_CORE_REQ_CPU:-<chart>} mem=${OPENBKN_CORE_REQ_MEM:-<chart>} / lim cpu=${OPENBKN_CORE_LIM_CPU:-<chart>} mem=${OPENBKN_CORE_LIM_MEM:-<chart>}"
     fi
 }
 
@@ -671,7 +666,7 @@ install_core() {
     # macOS kind / BYOK: platform bootstrap is skipped, so ensure_data_services is not run above.
     # Install the same bundled data layer as `deploy.sh data-services install` unless opted out.
     if [[ "${OPENBKN_SKIP_PLATFORM_BOOTSTRAP:-false}" == "true" ]] && [[ "${OPENBKN_SKIP_DATA_SERVICES_BUNDLE:-false}" != "true" ]]; then
-        log_info "Bring-your-own cluster: ensuring bundled data services before Core (skip with OPENBKN_SKIP_DATA_SERVICES_BUNDLE=true)"
+        log_info "Bring-your-own cluster: ensuring bundled data services before bkn-foundry (skip with OPENBKN_SKIP_DATA_SERVICES_BUNDLE=true)"
         if ! ensure_data_services; then
             log_error "Failed to ensure data services before BKN Foundry"
             return 1
@@ -689,9 +684,9 @@ install_core() {
     local use_local=false
     if [[ -n "${charts_dir}" && -d "${charts_dir}" ]]; then
         use_local=true
-        log_info "Using local Core charts from: ${charts_dir}"
+        log_info "Using local bkn-foundry charts from: ${charts_dir}"
     else
-        log_info "No explicit local Core charts directory provided, using remote chart source."
+        log_info "No explicit local bkn-foundry charts directory provided, using remote chart source."
         log_info "  Version:   ${HELM_CHART_VERSION}"
         if [[ -n "${CORE_VERSION_MANIFEST_FILE:-}" ]]; then
             log_info "  Version Manifest: ${CORE_VERSION_MANIFEST_FILE}"
@@ -712,33 +707,6 @@ install_core() {
 
     local -a release_names=()
     bkn_mapfile_compat release_names _core_release_names
-
-    # When auth enforcement is off (--minimum / --set auth.enabled=false), services
-    # run without tokens, so the bkn-safe auth stack (bkn-safe + bundled hydra + its
-    # postgres) is not needed — drop it from the install set. Override by also
-    # passing --set bknSafe.install=true. Uninstall is unaffected (still removes it).
-    if [[ "$(get_set_value "auth.enabled" "${CORE_SET_VALUES[@]}" 2>/dev/null)" == "false" \
-       && "$(get_set_value "bknSafe.install" "${CORE_SET_VALUES[@]}" 2>/dev/null)" != "true" ]]; then
-        local -a _kept_releases=()
-        for release_name in "${release_names[@]}"; do
-            if [[ "${release_name}" == "bkn-safe" ]]; then
-                # Downgrade cleanup: if bkn-safe is already installed (auth → no-auth),
-                # uninstall it so it doesn't linger orphaned (services now run auth-off).
-                # The app DB lives in the shared cluster MariaDB and survives; only the
-                # bundled hydra + its Postgres session state are removed.
-                if helm status "bkn-safe" -n "${namespace}" >/dev/null 2>&1; then
-                    log_warn "auth.enabled=false but bkn-safe is installed — uninstalling it (downgrade to no-auth; keep it with --set bknSafe.install=true)."
-                    helm uninstall "bkn-safe" -n "${namespace}" >/dev/null 2>&1 \
-                        || log_warn "bkn-safe uninstall failed; remove manually: helm uninstall bkn-safe -n ${namespace}"
-                else
-                    log_info "auth.enabled=false: skipping bkn-safe auth stack (override: --set bknSafe.install=true)"
-                fi
-                continue
-            fi
-            _kept_releases+=("${release_name}")
-        done
-        release_names=("${_kept_releases[@]}")
-    fi
 
     local release_version
     for release_name in "${release_names[@]}"; do
@@ -824,7 +792,7 @@ uninstall_core() {
     log_warn "Deleting sandbox session pods (label: sandbox-type=execution)"
     kubectl delete pod -n "${namespace}" -l sandbox-type=execution --ignore-not-found >/dev/null 2>&1 || true
 
-    log_info "Deleting leftover Core Jobs in ${namespace} (e.g. data-migrator / chart hooks)"
+    log_info "Deleting leftover bkn-foundry Jobs in ${namespace} (e.g. data-migrator / chart hooks)"
     bkn_delete_jobs_name_match_ere_in_ns "${namespace}" 'migrator|data-migrator'
 
     log_info "BKN Foundry services uninstallation completed."

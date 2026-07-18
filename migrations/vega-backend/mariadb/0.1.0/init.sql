@@ -163,7 +163,7 @@ CREATE TABLE IF NOT EXISTS t_resource (
 
     -- Schema相关
     f_schema_definition       MEDIUMTEXT NOT NULL COMMENT 'Schema定义（JSON数组格式，包含所有字段信息）',
-    f_index_config            MEDIUMTEXT NOT NULL COMMENT '本地索引配置（JSON格式）',
+    f_index_config            MEDIUMTEXT NOT NULL DEFAULT '' COMMENT '本地索引配置（JSON格式）',
 
     -- LogicView 专属字段
     f_logic_type              VARCHAR(20) NOT NULL DEFAULT '' COMMENT '逻辑类型: derived(衍生), composite(复合), 仅LogicView使用',
@@ -386,7 +386,7 @@ CREATE TABLE IF NOT EXISTS t_build_task (
     f_mode                    VARCHAR(20) NOT NULL COMMENT '任务模式: full, incremental, realtime',
     
     -- 任务索引配置
-    f_index_config            TEXT NOT NULL COMMENT '索引配置快照(JSON)',
+    f_index_config            TEXT NOT NULL DEFAULT '' COMMENT '索引配置快照(JSON)',
 
     -- 任务状态
     f_status                  VARCHAR(20) NOT NULL COMMENT '任务状态: pending, running, completed, failed',

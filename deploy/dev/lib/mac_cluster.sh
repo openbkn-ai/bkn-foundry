@@ -43,6 +43,21 @@ mac_cluster_up() {
         return 1
     fi
 
+    # Alias IngressClass "class-443" onto the kind nginx controller. The platform's
+    # own ingress-nginx install (Linux path) names its class class-443 and several
+    # charts (bkn-safe / bkn-studio / agent-observability) reference that name
+    # directly; kind's upstream manifest names it "nginx", so without this alias
+    # those Ingresses match no controller and the auth routes 404.
+    kubectl apply -f - <<'INGRESS_CLASS_ALIAS_EOF'
+apiVersion: networking.k8s.io/v1
+kind: IngressClass
+metadata:
+  name: class-443
+spec:
+  controller: k8s.io/ingress-nginx
+INGRESS_CLASS_ALIAS_EOF
+    mac_log_info "IngressClass alias 'class-443' -> kind nginx controller applied."
+
     mac_log_info "Cluster is up. Use kubectl context: kind-${KIND_CLUSTER_NAME}"
 }
 

@@ -541,14 +541,9 @@ DEP_EOF
 )
     fi
 
-    # Auth state, persisted so install-status (and other readers) can tell a
-    # no-auth install from a broken one. auth.enabled=false (--minimum / --set
-    # auth.enabled=false) is a supported install with NO bkn-safe stack; the
-    # bknSafe providers are blanked so nothing routes to an absent service.
+    # Auth is always on: bkn-safe is a mandatory module (the no-auth
+    # auth.enabled=false install mode has been removed).
     local auth_enabled="true"
-    if [[ "$(get_set_value "auth.enabled" "${CORE_SET_VALUES[@]:-}" 2>/dev/null)" == "false" ]]; then
-        auth_enabled="false"
-    fi
     # Platform initial password for bkn-safe (seeded admin + users created
     # without an explicit password). Chosen once per install and preserved
     # across config regenerations; the core installer passes it to the bkn-safe
@@ -577,36 +572,22 @@ DEP_EOF
         bkn_safe_initial_password="$(generate_random_password 8)"
     fi
     local bkn_safe_block
-    if [[ "${auth_enabled}" == "false" ]]; then
-        bkn_safe_block=$(cat <<'BKNSAFE_OFF'
-# auth.enabled=false: no-auth install — the bkn-safe auth stack is NOT installed
-# and services run without token enforcement. Providers blanked intentionally.
-bknSafe:
-  authzProvider: ""
-  directoryProvider: ""
-  url: ""
-BKNSAFE_OFF
-)
-    else
-        bkn_safe_block=$(cat <<'BKNSAFE_ON'
+    bkn_safe_block=$(cat <<'BKNSAFE_ON'
 # ISF replacement: services route authz + directory lookups to bkn-safe (the ISF
 # stack is retired). bkn-safe installs into the same namespace, so url uses the
-# namespace-agnostic short service name. Blank these three to disable bkn-safe.
+# namespace-agnostic short service name.
 bknSafe:
   authzProvider: bkn-safe
   directoryProvider: bkn-safe
   url: http://bkn-safe:3000
 BKNSAFE_ON
 )
-    fi
-    # Recorded in both auth modes so the value survives auth on/off toggles.
     bkn_safe_block="${bkn_safe_block}
   # Platform initial password (admin first login + users created without one).
   initialPassword: $(yaml_quote "${bkn_safe_initial_password}")"
 
     cat > "${out}" <<EOF
 namespace: ${cfg_namespace}
-# auth.enabled=false ⇒ no-auth install (no bkn-safe stack); see bknSafe below.
 auth:
   enabled: ${auth_enabled}
 env:

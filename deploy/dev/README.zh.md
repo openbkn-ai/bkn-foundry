@@ -26,25 +26,25 @@ cd bkn-foundry/deploy   # 在此目录执行 bash ./dev/mac.sh ...（与 deploy.
 ### 访问地址（HTTP 与自动 host）
 
 - **HTTP 与 HTTPS：**HTTPS 加密并校验服务端；HTTP 不加密，开发环境常见；浏览器对 HTTP 的「不安全」提示属预期。
-- **自动 IP：**`mac-config.yaml` 常用 **`accessAddress.scheme: http`**，且可**省略 `host`**（见示例）。**`bkn-core install`** 会探测本机局域网 IP 并写入 values。若仅本机访问，可设 **`accessAddress.host: localhost`**。
+- **自动 IP：**`mac-config.yaml` 常用 **`accessAddress.scheme: http`**，且可**省略 `host`**（见示例）。**`bkn-foundry install`** 会探测本机局域网 IP 并写入 values。若仅本机访问，可设 **`accessAddress.host: localhost`**。
 
 ### 操作流程
 
-在 **`deploy/`** 下执行；用 **bash** 调用（如 `bash ./dev/mac.sh ...`）。**`bkn-core` / `core`** 封装**默认带 `--minimum`**；全量依赖加 **`--full`**。
+在 **`deploy/`** 下执行；用 **bash** 调用（如 `bash ./dev/mac.sh ...`）。**`bkn-foundry` / `core`** 封装默认装**全量（含必选的 bkn-safe）**；旧的无认证 `--minimum` 模式已移除。
 
 | 步骤 | 命令 | 是否必需？ |
 |------|------|------------|
 | 1 | `bash ./dev/mac.sh doctor` | 建议 |
 | 2 | `bash ./dev/mac.sh doctor --fix`（或 `-y doctor --fix`） | 缺工具时 |
 | 3 | `bash ./dev/mac.sh cluster up` | **安装前必须** |
-| 4 | `bash ./dev/mac.sh data-services install` | **可选** — 仅单独装/刷新数据层；**`bkn-core install` 会先跑同一套捆绑安装**（`OPENBKN_SKIP_DATA_SERVICES_BUNDLE=true` 可跳过） |
-| 5 | `bash ./dev/mac.sh bkn-core download` | **可选**（本地 chart 缓存；默认 **minimum** profile） |
-| 6 | `bash ./dev/mac.sh bkn-core install` | **必须** — 部署 Core（**默认 `--minimum`**）；默认**先装捆绑 data-services** |
+| 4 | `bash ./dev/mac.sh data-services install` | **可选** — 仅单独装/刷新数据层；**`bkn-foundry install` 会先跑同一套捆绑安装**（`OPENBKN_SKIP_DATA_SERVICES_BUNDLE=true` 可跳过） |
+| 5 | `bash ./dev/mac.sh bkn-foundry download` | **可选**（本地 chart 缓存） |
+| 6 | `bash ./dev/mac.sh bkn-foundry install` | **必须** — 部署 Core（全量含 bkn-safe）；默认**先装捆绑 data-services** |
 | 7 | `bash ./dev/mac.sh onboard` | **可选**（需 `bkn` CLI；`-y` 少交互） |
 
 其它与 Linux **`deploy.sh`** 相同（须集群就绪、[`CONFIG_YAML_PATH`](conf/mac-config.yaml) 等与安装一致）：`bash ./dev/mac.sh isf install|download|uninstall|status`，`bash ./dev/mac.sh etrino …`（Vega；**`vega`** 为 **`etrino`** 别名）。ISF 对 DB/配置要求常更高。**未接入 `mac.sh`：**`bkn-dip`。
 
-**最短路径：**`cluster up` → `bkn-core install`（**`--minimum` + 先装数据层**）。若 **`OPENBKN_SKIP_DATA_SERVICES_BUNDLE=true`**，须自备 DB/Kafka 等可达实例，或先执行 **`data-services install`**。
+**最短路径：**`cluster up` → `bkn-foundry install`（**先装数据层**）。若 **`OPENBKN_SKIP_DATA_SERVICES_BUNDLE=true`**，须自备 DB/Kafka 等可达实例，或先执行 **`data-services install`**。
 
 **暂歇省资源（不删集群）：**退出 **Docker Desktop** 即可。kind 依赖 Docker，等于停掉本地集群，**不是** `cluster down`（不会 `kind delete`）。再用时重新打开 Docker。
 
@@ -65,7 +65,7 @@ docker stop $(docker ps -q --filter "label=io.x-k8s.kind.cluster=${CLUSTER}")
 
 ### 推荐资源 & 已知问题
 
-- **资源（Docker Desktop / colima）**：建议给虚拟机 **≥ 10 CPU**、**≥ 14 GB 内存**、**60 GB 磁盘**才能稳跑 `--minimum`。给少了的风险：
+- **资源（Docker Desktop / colima）**：建议给虚拟机 **≥ 10 CPU**、**≥ 14 GB 内存**、**60 GB 磁盘**。给少了的风险：
   - **8 GB** Docker 内存对「kind + 数据层 + Core」一般 **明显不够**（现象：Pod **RESTARTS** 很多、长期 **`0/1 Running`**、Docker/虚拟机休眠后更严重）。**~10 GB 可当作能试的底线**；低于约 **12 GiB** 时 **`mac.sh doctor` 会告警**（可用 `MAC_DOCTOR_MIN_MEM_GB` 覆盖）；要稳态仍建议下文 **14–16 GB**。
   - 仅 `doc-convert` 一个 pod 就 request 1.5 CPU；6 CPU 时 7+ 个 pod `Insufficient cpu` 调度失败，8 CPU 也几乎打满。
   - `--memory 12`（GB）实际分配 **11.66 GiB**（GB→GiB 换算损失），**低于 doctor 的 12 GiB 阈值**会报内存不足；建议直接 `--memory 14`。例：`colima start --cpu 10 --memory 14 --disk 60`。
@@ -96,7 +96,7 @@ docker stop $(docker ps -q --filter "label=io.x-k8s.kind.cluster=${CLUSTER}")
   kind load docker-image <img:tag> --name bkn-dev        # 把宿主已有镜像推进 kind
   ```
 
-- **`mac.sh isf install` 会自动把整套切到 HTTPS**：ISF（hydra/oauth2）的 issuer 必须是 https，所以 install 流程会自动：(1) 把 `mac-config.yaml` 的 `accessAddress` 改成 `https/443`，(2) 用 openssl 生 self-signed 证书并落到 Secret `bkn-ingress-tls`，(3) 对已装的 `bkn-core` release 做 `helm upgrade` 让它们读到新 https `accessAddress`，(4) 装 ISF 并给 ingress patch TLS。全新场景大约 10 min。浏览器会提示自签证书风险，确认一次即可。**不装 ISF 的话不用动**——`--minimum` 默认就关了 `auth.enabled`。
+- **`mac.sh isf install` 会自动把整套切到 HTTPS**：ISF（hydra/oauth2）的 issuer 必须是 https，所以 install 流程会自动：(1) 把 `mac-config.yaml` 的 `accessAddress` 改成 `https/443`，(2) 用 openssl 生 self-signed 证书并落到 Secret `bkn-ingress-tls`，(3) 对已装的 `bkn-foundry` release 做 `helm upgrade` 让它们读到新 https `accessAddress`，(4) 装 ISF 并给 ingress patch TLS。全新场景大约 10 min。浏览器会提示自签证书风险，确认一次即可。**不装 ISF 的话不用动**——`--minimum` 默认就关了 `auth.enabled`。
 
 - **装完后的快速验证**（代理已 unset、Core pod 全 Ready 后）：
   ```bash
@@ -108,7 +108,7 @@ docker stop $(docker ps -q --filter "label=io.x-k8s.kind.cluster=${CLUSTER}")
 ### 故障排除
 
 - **`cluster up` 报 Docker API / `docker.sock`：**多为 **CLI 已装但引擎未起**。请先启动 **Docker Desktop**，`docker info` 通过后重试。**`doctor --fix`** 不会拉起守护进程。
-- **`bkn-core-data-migrator` / Job `BackoffLimitExceeded`：**确认数据层就绪（一般由 **`bkn-core install` 自动安装**；否则 **`data-services install`**）。确认 **`depServices.rds`** 指向集群内 MariaDB；必要时 `helm uninstall bkn-core-data-migrator -n <namespace>` 后再装 Core。
+- **`bkn-core-data-migrator` / Job `BackoffLimitExceeded`：**确认数据层就绪（一般由 **`bkn-foundry install` 自动安装**；否则 **`data-services install`**）。确认 **`depServices.rds`** 指向集群内 MariaDB；必要时 `helm uninstall bkn-core-data-migrator -n <namespace>` 后再装 Core。
 
 ### Onboard 与 `openbkn`（全量安装）
 
