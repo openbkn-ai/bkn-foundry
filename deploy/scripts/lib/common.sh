@@ -1327,7 +1327,7 @@ bkn_apply_k3s_lightweight_defaults() {
     # opensearch (k8s default below: req=512Mi, lim=2048Mi)
     : "${OPENSEARCH_MEMORY_REQUEST:=512Mi}"
     : "${OPENSEARCH_MEMORY_LIMIT:=1024Mi}"
-    # bkn-core app services (chart defaults: limits=4-8Gi, mostly request=0)
+    # bkn-foundry app services (chart defaults: limits=4-8Gi, mostly request=0)
     # Loose ceiling so heavier services (agent-retrieval, ontology-query) still have headroom.
     : "${OPENBKN_CORE_REQ_CPU:=100m}"
     : "${OPENBKN_CORE_REQ_MEM:=128Mi}"

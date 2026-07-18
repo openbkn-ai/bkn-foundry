@@ -72,7 +72,7 @@ Commands:
   doctor [--fix] [-y|--yes]        Check toolchain; --fix runs brew after confirm (use -y to skip prompt)
   cluster up|down|status           kind cluster + ingress-nginx (kind manifest)
   data-services install|uninstall  Platform data layer (optional before Core: bkn-foundry install runs it automatically on mac); uninstall tears down bundled charts
-  bkn-foundry|core <action> ...   Delegates to deploy.sh (see deploy.sh help)
+  bkn-foundry <action> ...         Delegates to deploy.sh (aliases: foundry, bkn-core, core)
   onboard [args ...]               Runs deploy/onboard.sh
 
 Examples:
