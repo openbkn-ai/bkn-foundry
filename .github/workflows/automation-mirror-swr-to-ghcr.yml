@@ -22,6 +22,10 @@ name: automation-mirror-swr-to-ghcr
 # the openbkn-ai namespace, identical on SWR and GHCR).
 
 on:
+  push:
+    branches: ['**']
+    paths:
+      - '.github/workflows/automation-mirror-swr-to-ghcr.yml'
   workflow_dispatch: {}
 
 permissions:
