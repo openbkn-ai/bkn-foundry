@@ -1,7 +1,6 @@
 
 # Install ingress-nginx-controller
 install_ingress_nginx() {
-    resolve_thirdparty_images_online
     log_info "Installing ingress-nginx-controller..."
 
     # Override Ingress-Nginx image registry based on OFFLINE_MODE (keep full path)

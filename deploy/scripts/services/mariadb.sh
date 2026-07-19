@@ -790,7 +790,6 @@ install_mariadb_bitnami() {
 }
 
 install_mariadb() {
-    resolve_thirdparty_images_online
     if [[ -z "${MARIADB_IMAGE}" ]]; then
         MARIADB_IMAGE="$(image_from_registry "${MARIADB_IMAGE_REPOSITORY}" "${MARIADB_IMAGE_TAG}" "${MARIADB_IMAGE_FALLBACK}")"
     fi

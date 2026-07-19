@@ -1241,13 +1241,12 @@ MARIADB_NAMESPACE="${MARIADB_NAMESPACE:-${RESOURCE_NAMESPACE}}"
 # In offline mode, use offline registry; otherwise use SWR mirror
 if [[ "${OFFLINE_MODE}" == "true" ]]; then
     MARIADB_IMAGE="${MARIADB_IMAGE:-${OFFLINE_REGISTRY}/openbkn-ai/mariadb:11.4.7}"
+else
+    MARIADB_IMAGE="${MARIADB_IMAGE:-swr.cn-east-3.myhuaweicloud.com/openbkn-ai/mariadb:11.4.7}"
 fi
-# Online: MARIADB_IMAGE is resolved at install time via thirdparty_image_ref so
-# it can follow --registry (SWR mirror vs public upstream), which is parsed
-# after common.sh is sourced.
 MARIADB_IMAGE_REPOSITORY="${MARIADB_IMAGE_REPOSITORY:-mariadb}"
 MARIADB_IMAGE_TAG="${MARIADB_IMAGE_TAG:-11.4.7}"
-MARIADB_IMAGE_FALLBACK="${MARIADB_IMAGE_FALLBACK:-docker.io/library/mariadb:11.4.7}"
+MARIADB_IMAGE_FALLBACK="${MARIADB_IMAGE_FALLBACK:-mariadb:11.4.7}"
 MARIADB_VERSION="${MARIADB_VERSION:-11.4}"
 MARIADB_CHART_VERSION="${MARIADB_CHART_VERSION:-1.0.0}"
 MARIADB_CHART_TGZ="${MARIADB_CHART_TGZ:-${SCRIPT_DIR}/charts/mariadb-${MARIADB_CHART_VERSION}.tgz}"
@@ -1362,13 +1361,12 @@ KAFKA_CHART_TGZ="${KAFKA_CHART_TGZ:-${SCRIPT_DIR}/charts/kafka-${KAFKA_CHART_VER
 # In offline mode, use offline registry; otherwise use SWR mirror
 if [[ "${OFFLINE_MODE}" == "true" ]]; then
     KAFKA_IMAGE="${KAFKA_IMAGE:-${OFFLINE_REGISTRY}/openbkn-ai/bitnami/kafka:3.9.0-debian-12-r10}"
+else
+    KAFKA_IMAGE="${KAFKA_IMAGE:-swr.cn-east-3.myhuaweicloud.com/openbkn-ai/bitnami/kafka:3.9.0-debian-12-r10}"
 fi
-# Online: resolved at install time (SWR mirror keeps the bitnami/ repo path;
-# the public upstream is docker.io/bitnamilegacy/kafka because bitnami removed
-# versioned tags from docker.io/bitnami in 2025).
 KAFKA_IMAGE_REPOSITORY="${KAFKA_IMAGE_REPOSITORY:-bitnami/kafka}"
 KAFKA_IMAGE_TAG="${KAFKA_IMAGE_TAG:-3.9.0-debian-12-r10}"
-KAFKA_IMAGE_FALLBACK="${KAFKA_IMAGE_FALLBACK:-docker.io/bitnamilegacy/kafka:3.9.0-debian-12-r10}"
+KAFKA_IMAGE_FALLBACK="${KAFKA_IMAGE_FALLBACK:-swr.cn-east-3.myhuaweicloud.com/openbkn-ai/bitnami/kafka:3.9.0-debian-12-r10}"
 KAFKA_HELM_TIMEOUT="${KAFKA_HELM_TIMEOUT:-1800s}"
 # NOTE: --atomic will auto-uninstall on failure, which makes debugging hard. Default to false.
 KAFKA_HELM_ATOMIC="${KAFKA_HELM_ATOMIC:-false}"
@@ -1406,17 +1404,19 @@ OPENSEARCH_CHART_TGZ="${OPENSEARCH_CHART_TGZ:-${SCRIPT_DIR}/charts/opensearch-${
 if [[ "${OFFLINE_MODE}" == "true" ]]; then
     OPENSEARCH_IMAGE="${OPENSEARCH_IMAGE:-${OFFLINE_REGISTRY}/openbkn-ai/opensearchproject/opensearch:2.19.4}"
     OPENSEARCH_IMAGE_REPOSITORY="${OPENSEARCH_IMAGE_REPOSITORY:-${OFFLINE_REGISTRY}/openbkn-ai/opensearchproject/opensearch}"
+else
+    OPENSEARCH_IMAGE="${OPENSEARCH_IMAGE:-swr.cn-east-3.myhuaweicloud.com/openbkn-ai/opensearchproject/opensearch:2.19.4}"
+    OPENSEARCH_IMAGE_REPOSITORY="${OPENSEARCH_IMAGE_REPOSITORY:-swr.cn-east-3.myhuaweicloud.com/openbkn-ai/opensearchproject/opensearch}"
 fi
-# Online: OPENSEARCH_IMAGE resolved at install time via thirdparty_image_ref.
-OPENSEARCH_IMAGE_REPOSITORY="${OPENSEARCH_IMAGE_REPOSITORY:-opensearchproject/opensearch}"
 OPENSEARCH_IMAGE_TAG="${OPENSEARCH_IMAGE_TAG:-2.19.4}"
-OPENSEARCH_IMAGE_FALLBACK="${OPENSEARCH_IMAGE_FALLBACK:-docker.io/opensearchproject/opensearch:2.19.4}"
+OPENSEARCH_IMAGE_FALLBACK="${OPENSEARCH_IMAGE_FALLBACK:-swr.cn-east-3.myhuaweicloud.com/openbkn-ai/opensearchproject/opensearch:2.19.4}"
 # OpenSearch chart uses busybox initContainers (fsgroup-volume/sysctl); use a dedicated SWR mirror by default.
 # In offline mode, use offline registry; otherwise use SWR mirror
 if [[ "${OFFLINE_MODE}" == "true" ]]; then
     OPENSEARCH_INIT_IMAGE="${OPENSEARCH_INIT_IMAGE:-${OFFLINE_REGISTRY}/openbkn-ai/busybox:1.36.1}"
+else
+    OPENSEARCH_INIT_IMAGE="${OPENSEARCH_INIT_IMAGE:-swr.cn-east-3.myhuaweicloud.com/openbkn-ai/busybox:1.36.1}"
 fi
-# Online: OPENSEARCH_INIT_IMAGE resolved at install time via thirdparty_image_ref.
 OPENSEARCH_JAVA_OPTS="${OPENSEARCH_JAVA_OPTS:--Xms512m -Xmx512m -XX:MaxDirectMemorySize=128m}"
 OPENSEARCH_MEMORY_REQUEST="${OPENSEARCH_MEMORY_REQUEST:-512Mi}"
 # NOTE: OpenSearch uses heap + direct memory + native overhead. 768Mi is too tight for -Xmx512m.
@@ -1471,9 +1471,12 @@ if [[ "${OFFLINE_MODE}" == "true" ]]; then
     INGRESS_NGINX_CONTROLLER_IMAGE_REPOSITORY="${INGRESS_NGINX_CONTROLLER_IMAGE_REPOSITORY:-${OFFLINE_REGISTRY}/ingress-nginx/controller}"
     INGRESS_NGINX_WEBHOOK_CERTGEN_IMAGE="${INGRESS_NGINX_WEBHOOK_CERTGEN_IMAGE:-${OFFLINE_REGISTRY}/ingress-nginx/kube-webhook-certgen:v1.6.1}"
     INGRESS_NGINX_WEBHOOK_CERTGEN_IMAGE_REPOSITORY="${INGRESS_NGINX_WEBHOOK_CERTGEN_IMAGE_REPOSITORY:-${OFFLINE_REGISTRY}/ingress-nginx/kube-webhook-certgen}"
+else
+    INGRESS_NGINX_CONTROLLER_IMAGE="${INGRESS_NGINX_CONTROLLER_IMAGE:-swr.cn-east-3.myhuaweicloud.com/openbkn-ai/ingress-nginx/controller:v1.14.1}"
+    INGRESS_NGINX_CONTROLLER_IMAGE_REPOSITORY="${INGRESS_NGINX_CONTROLLER_IMAGE_REPOSITORY:-swr.cn-east-3.myhuaweicloud.com/openbkn-ai/ingress-nginx/controller}"
+    INGRESS_NGINX_WEBHOOK_CERTGEN_IMAGE="${INGRESS_NGINX_WEBHOOK_CERTGEN_IMAGE:-swr.cn-east-3.myhuaweicloud.com/openbkn-ai/ingress-nginx/kube-webhook-certgen:v1.6.1}"
+    INGRESS_NGINX_WEBHOOK_CERTGEN_IMAGE_REPOSITORY="${INGRESS_NGINX_WEBHOOK_CERTGEN_IMAGE_REPOSITORY:-swr.cn-east-3.myhuaweicloud.com/openbkn-ai/ingress-nginx/kube-webhook-certgen}"
 fi
-# Online: ingress controller / certgen images resolved at install time via
-# thirdparty_image_ref (SWR mirror vs registry.k8s.io upstream).
 INGRESS_NGINX_CONTROLLER_IMAGE_TAG="${INGRESS_NGINX_CONTROLLER_IMAGE_TAG:-v1.14.1}"
 INGRESS_NGINX_CHART_VERSION="${INGRESS_NGINX_CHART_VERSION:-4.13.1}"
 INGRESS_NGINX_CHART_TGZ="${INGRESS_NGINX_CHART_TGZ:-${SCRIPT_DIR}/charts/ingress-nginx-${INGRESS_NGINX_CHART_VERSION}.tgz}"
@@ -1809,42 +1812,6 @@ image_from_registry() {
     else
         echo "${fallback}"
     fi
-}
-
-# Resolve a THIRD-PARTY image at install time, following the effective registry:
-#   registry=swr (…myhuaweicloud.com…) -> ${IMAGE_REGISTRY}/<repository>:<tag>
-#       (openbkn mirrors every third-party image under its SWR namespace)
-#   registry=ghcr / anything else      -> <upstream> (public upstream ref)
-#       (GHCR hosts only openbkn-built images, so third-party must come from the
-#        public upstream; prefixing GHCR would 404)
-# Unlike image_from_registry, this never prefixes GHCR onto a third-party repo.
-# Offline is handled by each service's own OFFLINE_MODE branch (pre-set image).
-# Resolving here (not at source time) lets it honor --registry, which is parsed
-# after common.sh is sourced.
-thirdparty_image_ref() {
-    local repository="$1" tag="$2" upstream="$3"
-    load_image_registry_from_config
-    case "${IMAGE_REGISTRY}" in
-        *myhuaweicloud.com*) printf '%s/%s:%s\n' "${IMAGE_REGISTRY}" "${repository}" "${tag}" ;;
-        *) printf '%s\n' "${upstream}" ;;
-    esac
-}
-
-# Resolve every data-layer third-party image for the current install, honoring
-# --registry (SWR mirror vs public upstream). Idempotent (only fills unset
-# vars — an explicit *_IMAGE env override or the offline pre-set both win), so
-# it is safe to call at the top of each data-service install function. Offline
-# returns early: each service's OFFLINE_MODE branch already pinned the mirror.
-resolve_thirdparty_images_online() {
-    [[ "${OFFLINE_MODE:-false}" == "true" ]] && return 0
-    : "${MARIADB_IMAGE:=$(thirdparty_image_ref "mariadb" "${MARIADB_IMAGE_TAG}" "docker.io/library/mariadb:${MARIADB_IMAGE_TAG}")}"
-    : "${KAFKA_IMAGE:=$(thirdparty_image_ref "bitnami/kafka" "${KAFKA_IMAGE_TAG}" "docker.io/bitnamilegacy/kafka:${KAFKA_IMAGE_TAG}")}"
-    : "${OPENSEARCH_IMAGE:=$(thirdparty_image_ref "opensearchproject/opensearch" "${OPENSEARCH_IMAGE_TAG}" "docker.io/opensearchproject/opensearch:${OPENSEARCH_IMAGE_TAG}")}"
-    : "${OPENSEARCH_INIT_IMAGE:=$(thirdparty_image_ref "busybox" "1.36.1" "docker.io/library/busybox:1.36.1")}"
-    : "${INGRESS_NGINX_CONTROLLER_IMAGE:=$(thirdparty_image_ref "ingress-nginx/controller" "${INGRESS_NGINX_CONTROLLER_IMAGE_TAG}" "registry.k8s.io/ingress-nginx/controller:${INGRESS_NGINX_CONTROLLER_IMAGE_TAG}")}"
-    : "${INGRESS_NGINX_WEBHOOK_CERTGEN_IMAGE:=$(thirdparty_image_ref "ingress-nginx/kube-webhook-certgen" "${INGRESS_NGINX_WEBHOOK_CERTGEN_IMAGE_TAG}" "registry.k8s.io/ingress-nginx/kube-webhook-certgen:${INGRESS_NGINX_WEBHOOK_CERTGEN_IMAGE_TAG}")}"
-    export MARIADB_IMAGE KAFKA_IMAGE OPENSEARCH_IMAGE OPENSEARCH_INIT_IMAGE \
-        INGRESS_NGINX_CONTROLLER_IMAGE INGRESS_NGINX_WEBHOOK_CERTGEN_IMAGE
 }
 
 get_secret_b64_key() {
