@@ -40,6 +40,11 @@ jobs:
       GHCR_REGISTRY: ghcr.io
       NAMESPACE: openbkn-ai
       # One "<repo>:<tag>" per line (relative to openbkn-ai/).
+      # NB: ingress-nginx/kube-webhook-certgen is intentionally excluded — it is
+      # not published under swr/openbkn-ai (admission webhooks are off by
+      # default, so it is never pulled), and it is a vanilla registry.k8s.io
+      # image, not an openbkn rebuild. If webhooks are enabled, source it from
+      # registry.k8s.io directly rather than mirroring it here.
       MIRRORS: |
         mariadb:11.4.7
         bitnami/kafka:3.9.0-debian-12-r10
@@ -48,7 +53,6 @@ jobs:
         library/nginx:1.27-alpine
         public/oliver006/redis_exporter:v1.77.0
         ingress-nginx/controller:v1.14.1
-        ingress-nginx/kube-webhook-certgen:v1.6.1
         oryd/hydra:v26.2.0
         postgres:16
         portainer/kubectl-shell:latest
