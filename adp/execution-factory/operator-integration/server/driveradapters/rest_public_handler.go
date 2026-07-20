@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/drivenadapters"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/driveradapters/common"
+	sandboxdriver "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/driveradapters/sandbox"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/business_domain"
@@ -15,6 +16,7 @@ import (
 type restPublicHandler struct {
 	Hydra                 interfaces.Hydra
 	AppKeys               interfaces.AppKeyVerifier
+	SandboxHandler        sandboxdriver.ManagementHandler
 	OperatorRestHandler   OperatorRestHandler
 	ToolBoxRestHandler    ToolBoxRestHandler
 	MCPRestHandler        MCPRestHandler
@@ -32,6 +34,7 @@ func NewRestPublicHandler() interfaces.HTTPRouterInterface {
 	return &restPublicHandler{
 		Hydra:                 drivenadapters.NewHydra(),
 		AppKeys:               drivenadapters.NewAppKeyVerifier(),
+		SandboxHandler:        sandboxdriver.NewManagementHandler(),
 		OperatorRestHandler:   NewOperatorRestHandler(),
 		ToolBoxRestHandler:    NewToolBoxRestHandler(),
 		MCPRestHandler:        NewMCPRestHandler(),
@@ -58,6 +61,8 @@ func (r *restPublicHandler) RegisterRouter(engine *gin.RouterGroup) {
 	r.MCPRestHandler.RegisterPublic(engine)
 	// Skill 相关接口
 	r.SkillRestHandler.RegisterPublic(engine)
+	// 沙箱运行时只读观测接口（超管可见，见 #326）
+	r.SandboxHandler.RegisterPublic(engine)
 	// 导入导出
 	engine.GET("/impex/export/:type/:id", r.ImpexHandler.Export)
 	engine.POST("/impex/import/:type", middlewareBusinessDomain(true, false, r.businessDomainService), r.ImpexHandler.Import)
