@@ -1,0 +1,273 @@
+openapi: 3.1.0
+info:
+  title: mf-model-manager large model APIs
+  version: 0.1.0
+  description: |
+    Large model management APIs maintained by mf-model-manager.
+
+    This document currently records the API contracts touched by the model
+    management bug fixes in `fix/model-management-bugs`.
+servers:
+  - url: /api/mf-model-manager/v1
+security:
+  - BearerAuth: []
+tags:
+  - name: ModelManager
+    description: Large model management APIs
+paths:
+  /llm/test:
+    post:
+      tags:
+        - ModelManager
+      summary: Test large model connection
+      operationId: testLargeModelConnection
+      description: |
+        Tests whether the submitted large model configuration can reach the
+        upstream model service.
+
+        For `model_series=openai`, the service sends a real Azure OpenAI chat
+        completions request to the configured deployment. Invalid `api_url`,
+        `api_model` or `api_key` values return `400` instead of being reported
+        as success.
+
+        Successful responses are normalized to `{ "status": "ok", "id": "..." }`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LlmTestRequest'
+            examples:
+              existingModel:
+                summary: Test an existing model by id
+                value:
+                  model_id: "1234567890123456789"
+              changedOpenAIConfig:
+                summary: Test changed OpenAI series config
+                value:
+                  change: true
+                  model_series: openai
+                  model_type: llm
+                  model_config:
+                    api_url: https://example.openai.azure.com/
+                    api_model: gpt-4o
+                    api_key: sk_xxx
+      responses:
+        '200':
+          description: Test connection succeeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusResponse'
+              examples:
+                success:
+                  value:
+                    status: ok
+                    id: "1234567890123456789"
+        '400':
+          description: Test connection failed or request parameters are invalid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '500':
+          description: Internal service error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+  /llm/default/edit:
+    post:
+      tags:
+        - ModelManager
+      summary: Set or clear default large model
+      operationId: editDefaultLargeModel
+      description: |
+        Sets or clears the default large model.
+
+        `default=true` marks the model as the default model and clears the
+        previous default. `default=false` clears the default flag from the
+        specified model. The response includes the resulting default state.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EditDefaultModelRequest'
+            examples:
+              setDefault:
+                value:
+                  model_id: "1234567890123456789"
+                  default: true
+              clearDefault:
+                value:
+                  model_id: "1234567890123456789"
+                  default: false
+      responses:
+        '200':
+          description: Default model state updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EditDefaultModelResponse'
+              examples:
+                clearDefault:
+                  value:
+                    status: ok
+                    id: "1234567890123456789"
+                    default: false
+        '400':
+          description: Invalid request or model does not exist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '403':
+          description: Current user is not allowed to edit the default model
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '500':
+          description: Internal service error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+  /llm/monitor/overview:
+    get:
+      tags:
+        - ModelManager
+      summary: Get large model monitor overview
+      operationId: getLargeModelMonitorOverview
+      description: |
+        Returns large model usage metrics in the requested date range.
+
+        `start_time` and `end_time` must use `YYYY-MM-DD` format. `start_time`
+        must be earlier than or equal to `end_time`; otherwise the service
+        returns `400`.
+
+        The aggregate result only includes records whose `f_model_id` still
+        exists in `t_llm_model`, so non-current or stale model operation records
+        are excluded from the overview.
+      parameters:
+        - name: start_time
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+          example: "2026-07-01"
+        - name: end_time
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+          example: "2026-07-20"
+        - name: model_id
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Optional large model id. Empty means all visible large models.
+      responses:
+        '200':
+          description: Monitor overview returned
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          description: Missing or invalid date range
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '500':
+          description: Internal service error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    LlmTestRequest:
+      type: object
+      properties:
+        model_id:
+          type: string
+          description: Existing large model id. Used when testing a saved model.
+        change:
+          type: boolean
+          default: false
+          description: Whether to test the submitted config instead of the saved config.
+        model_series:
+          type: string
+          description: Model provider or protocol series.
+          examples: [openai, claude, others]
+        model_type:
+          type: string
+          description: Large model type.
+          enum: [llm, rlm, vu]
+        model_config:
+          type: object
+          additionalProperties: true
+          properties:
+            api_url:
+              type: string
+            api_model:
+              type: string
+            api_key:
+              type: string
+          description: Upstream model service configuration.
+    EditDefaultModelRequest:
+      type: object
+      required:
+        - model_id
+        - default
+      properties:
+        model_id:
+          type: string
+          description: Large model id.
+        default:
+          type: boolean
+          description: true sets the model as default; false clears its default flag.
+    StatusResponse:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          const: ok
+        id:
+          type: string
+    EditDefaultModelResponse:
+      allOf:
+        - $ref: '#/components/schemas/StatusResponse'
+        - type: object
+          required:
+            - default
+          properties:
+            default:
+              type: boolean
+              description: Resulting default state.
+    FastApiError:
+      type: object
+      additionalProperties: true
+      properties:
+        code:
+          type: string
+        description:
+          type: string
+        detail:
+          type: string
+        solution:
+          type: string
