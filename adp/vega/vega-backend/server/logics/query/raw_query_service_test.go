@@ -101,6 +101,12 @@ func TestRawQueryValidationError(t *testing.T) {
 	assert.NoError(t, rawQueryValidationError(context.Background(), errors.New("unexpected error")))
 }
 
+func TestRedactSQLForLog(t *testing.T) {
+	input := "SELECT * FROM users WHERE email = 'alice@example.com' AND age >= 42 -- customer note"
+	assert.Equal(t, "SELECT * FROM users WHERE email = '?' AND age >= ? -- …", redactSQLForLog(input))
+	assert.Equal(t, "SELECT /* … */ '?' AS value", redactSQLForLog("SELECT /* secret */ 'value' AS value"))
+}
+
 func TestRawQueryServiceValidateRequest(t *testing.T) {
 	svc := &rawQueryService{}
 	tests := []struct {

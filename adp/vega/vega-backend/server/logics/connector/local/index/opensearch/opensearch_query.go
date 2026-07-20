@@ -130,7 +130,7 @@ func (c *OpenSearchConnector) ExecuteRawQuery(ctx context.Context, index string,
 	}
 
 	// Log the DSL query
-	logger.Infof("[OpenSearch DSL Query] Index: %s, Query: %s", index, string(queryJSON))
+	logger.Infof("[OpenSearch DSL Query] Index: %s", index)
 
 	// Create search request
 	req := opensearchapi.SearchRequest{
@@ -430,7 +430,7 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 			return nil, fmt.Errorf("failed to serialize aggregate query: %w", err)
 		}
 
-		logger.Debugf("OpenSearch aggregate query: %s", string(queryJSON))
+		logger.Debugf("Executing OpenSearch aggregate query")
 
 		// 执行搜索请求
 		req := opensearchapi.SearchRequest{
@@ -586,7 +586,7 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 	if err != nil {
 		return nil, fmt.Errorf("failed to serialize query: %w", err)
 	}
-	logger.Debugf("Executing query: %s", string(queryJSON))
+	logger.Debugf("Executing OpenSearch query")
 
 	// Execute search request
 	req := opensearchapi.SearchRequest{

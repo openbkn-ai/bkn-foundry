@@ -36,7 +36,14 @@ import (
 var (
 	rawQueryServiceOnce     sync.Once
 	rawQueryServiceInstance interfaces.RawQueryService
+	sqlLogBlockComment      = regexp.MustCompile(`(?s)/\*.*?\*/`)
+	sqlLogLineComment       = regexp.MustCompile(`(?m)--[^\r\n]*`)
+	sqlLogDollarLiteral     = regexp.MustCompile(`(?s)\$[A-Za-z_][A-Za-z0-9_]*\$.*?\$[A-Za-z_][A-Za-z0-9_]*\$`)
+	sqlLogStringLiteral     = regexp.MustCompile(`'(?:''|\\.|[^'])*'`)
+	sqlLogNumericLiteral    = regexp.MustCompile(`\b(?:\d+(?:\.\d+)?|\.\d+)\b`)
 )
+
+const maxSQLLogPreviewLength = 4096
 
 type rawQueryService struct {
 	cs interfaces.CatalogService
@@ -659,6 +666,21 @@ func (rqs *rawQueryService) prepareSQLCursorQuery(ctx context.Context, req *inte
 
 func trimSQLTerminator(sql string) string {
 	return strings.TrimSuffix(strings.TrimSpace(sql), ";")
+}
+
+// redactSQLForLog retains the query structure for troubleshooting while
+// removing literals and comments, which may contain user-provided values.
+func redactSQLForLog(sql string) string {
+	redacted := sqlLogBlockComment.ReplaceAllString(sql, "/* … */")
+	redacted = sqlLogLineComment.ReplaceAllString(redacted, "-- …")
+	redacted = sqlLogDollarLiteral.ReplaceAllString(redacted, "$…$")
+	redacted = sqlLogStringLiteral.ReplaceAllString(redacted, "'?'")
+	redacted = sqlLogNumericLiteral.ReplaceAllString(redacted, "?")
+	redacted = strings.TrimSpace(redacted)
+	if len(redacted) > maxSQLLogPreviewLength {
+		return redacted[:maxSQLLogPreviewLength] + " …"
+	}
+	return redacted
 }
 
 func (rqs *rawQueryService) executeSQLCursorPage(ctx context.Context, session *cursorSession, catalog *interfaces.Catalog, warnings []string) (*interfaces.RawQueryResponse, error) {

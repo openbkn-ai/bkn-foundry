@@ -9,6 +9,7 @@ package interfaces
 import (
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -140,6 +141,18 @@ func TestRawQueryContractValidate(t *testing.T) {
 			assert.Contains(t, err.Error(), tt.wantErr)
 		})
 	}
+}
+
+func TestRawQueryResponseDoesNotExposeLegacyPagingState(t *testing.T) {
+	response := RawQueryResponse{
+		Stats: QueryStats{HasMore: true, QueryID: "legacy", SearchAfter: []any{"internal"}, Offset: 10},
+	}
+	encoded, err := sonic.Marshal(response)
+	require.NoError(t, err)
+	assert.NotContains(t, string(encoded), "has_more")
+	assert.NotContains(t, string(encoded), "query_id")
+	assert.NotContains(t, string(encoded), "search_after")
+	assert.NotContains(t, string(encoded), "offset")
 }
 
 func TestRawQueryRequestRejectsContinuationTimeout(t *testing.T) {
