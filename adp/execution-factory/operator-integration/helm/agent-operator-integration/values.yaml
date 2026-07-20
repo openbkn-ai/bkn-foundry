@@ -5,10 +5,15 @@ nodeSelector: {}
 namespace: openbkn
 moduleName: agent-operator-integration
 
-# bkn-safe (ISF replacement) authz cutover knobs. Default empty = ISF behavior.
-# authzProvider: "" | "shadow" | "bkn-safe". url: bkn-safe ClusterIP base. Revertible.
+# bkn-safe authz。authzProvider: "" | "isf" | "shadow" | "bkn-safe"，可回退。
+#
+# 默认取 bkn-safe：ISF 已退役，空值会让 selectAuthz 落到 ISF 适配器
+# （authorization_safe.go:283-286），而授权判定在出错时是 fail-closed
+# （decision.go 的 OperationCheckAll 把错误统一转 403），结果是所有鉴权
+# 一律拒绝。deploy/conf/config.yaml 等实际部署配置本就传 bkn-safe，此处
+# 只是让 chart 默认值与之一致，避免直接 helm install 时踩空。
 bknSafe:
-  authzProvider: ""
+  authzProvider: "bkn-safe"
   url: ""
 
 # 设置为dev则为开发模式.

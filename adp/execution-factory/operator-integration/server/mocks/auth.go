@@ -41,6 +41,20 @@ func (m *MockIAuthorizationService) EXPECT() *MockIAuthorizationServiceMockRecor
 	return m.recorder
 }
 
+// CheckAdminPermission mocks base method.
+func (m *MockIAuthorizationService) CheckAdminPermission(ctx context.Context, accessor *interfaces.AuthAccessor) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CheckAdminPermission", ctx, accessor)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CheckAdminPermission indicates an expected call of CheckAdminPermission.
+func (mr *MockIAuthorizationServiceMockRecorder) CheckAdminPermission(ctx, accessor any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckAdminPermission", reflect.TypeOf((*MockIAuthorizationService)(nil).CheckAdminPermission), ctx, accessor)
+}
+
 // CheckAuthorizePermission mocks base method.
 func (m *MockIAuthorizationService) CheckAuthorizePermission(ctx context.Context, accessor *interfaces.AuthAccessor, resourceID string, resourceType interfaces.AuthResourceType) error {
 	m.ctrl.T.Helper()

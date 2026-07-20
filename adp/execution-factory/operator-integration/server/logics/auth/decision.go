@@ -28,6 +28,24 @@ func (s *authServiceImpl) CheckCreatePermission(ctx context.Context, accessor *i
 	return nil
 }
 
+// CheckAdminPermission 检查超管权限。
+// 判定复用 bkn-safe 的 safe_admin:console:manage 能力位——即 Enforcer.CanAdmin 的口径——
+// 因此执行工厂与 bkn-safe 对「超管」的认定始终一致，无需在本服务硬编码管理员账号。
+// 用于保护返回跨租户数据、不隶属于任何单一业务资源的运维观测接口。
+func (s *authServiceImpl) CheckAdminPermission(ctx context.Context, accessor *interfaces.AuthAccessor) error {
+	authorized, err := s.OperationCheckAll(ctx, accessor,
+		interfaces.SafeAdminConsoleResourceID,
+		interfaces.AuthResourceTypeSafeAdmin,
+		interfaces.AuthOperationTypeManage)
+	if err != nil {
+		return err
+	}
+	if !authorized {
+		return oerrors.NewHTTPError(ctx, http.StatusForbidden, oerrors.ErrExtCommonViewForbidden, nil)
+	}
+	return nil
+}
+
 // CheckModifyPermission 检查编辑权限
 func (s *authServiceImpl) CheckModifyPermission(ctx context.Context, accessor *interfaces.AuthAccessor, resourceID string, resourceType interfaces.AuthResourceType) error {
 	authorized, err := s.OperationCheckAll(ctx, accessor, resourceID, resourceType, interfaces.AuthOperationTypeModify)

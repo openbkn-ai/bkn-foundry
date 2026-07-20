@@ -29,6 +29,7 @@ const (
 	AuthOperationTypeAuthorize    AuthOperationType = "authorize"     // 权限管理
 	AuthOperationTypePublicAccess AuthOperationType = "public_access" // 公共访问
 	AuthOperationTypeExecute      AuthOperationType = "execute"       // 执行
+	AuthOperationTypeManage       AuthOperationType = "manage"        // 管理（用于超管判定，见 AuthResourceTypeSafeAdmin）
 )
 
 var (
@@ -55,7 +56,15 @@ const (
 	AuthResourceTypeMCP      AuthResourceType = "mcp"      // MCP
 	AuthResourceTypeOperator AuthResourceType = "operator" // 算子
 	AuthResourceTypeSkill    AuthResourceType = "skill"    // Skill
+
+	// AuthResourceTypeSafeAdmin 是 bkn-safe 的超管能力位，不是执行工厂自有的资源类型。
+	// bkn-safe 的 Enforcer.CanAdmin 即 Check(accessorID, "safe_admin", "console", "manage")，
+	// 此处复用同一三元组，使执行工厂对「超管」的判定与 bkn-safe 保持单一事实源。
+	AuthResourceTypeSafeAdmin AuthResourceType = "safe_admin"
 )
+
+// SafeAdminConsoleResourceID 是 safe_admin 能力位对应的资源 ID，与 bkn-safe 侧取值一致。
+const SafeAdminConsoleResourceID = "console"
 
 func (a AuthResourceType) String() string {
 	return string(a)
@@ -97,6 +106,9 @@ type IAuthorizationService interface {
 	CheckExecutePermission(ctx context.Context, accessor *AuthAccessor, resourceID string, resourceType AuthResourceType) error
 	// MultiCheckOperationPermission 多操作权限检查
 	MultiCheckOperationPermission(ctx context.Context, accessor *AuthAccessor, resourceID string, resourceType AuthResourceType, operations ...AuthOperationType) error
+	// CheckAdminPermission 检查超管权限。判定口径与 bkn-safe 的 Enforcer.CanAdmin 一致，
+	// 用于保护返回跨租户数据、不属于任何单一资源的运维观测接口。
+	CheckAdminPermission(ctx context.Context, accessor *AuthAccessor) error
 
 	// CreateOwnerPolicy 创建owner权限
 	CreateOwnerPolicy(ctx context.Context, accessor *AuthAccessor, authResource *AuthResource) error
