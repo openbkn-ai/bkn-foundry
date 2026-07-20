@@ -6,6 +6,7 @@ from langchain_core.tools import StructuredTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
 from app.config import config
+from app.core.skills import normalize_skill_id
 from app.core.toolbox import load_toolbox_tools
 from app.errors import bad_request
 
@@ -113,14 +114,23 @@ async def _agent_tool(
 
 
 def _read_skill_file_tool(account_id: str, account_type: str) -> StructuredTool:
-    async def read_skill_file(capability_id: str, path: str) -> str:
-        """读取已挂载技能的附属文件（渐进式加载，大文件不常驻上下文）。"""
-        url = f"{config.CAPABILITIES_LAB_BASE}/capabilities/{capability_id}/skill/files/read"
+    async def read_skill_file(skill_id: str, path: str) -> str:
+        """读取已挂载技能的附属文件（渐进式加载，大文件不常驻上下文）。
+        skill_id 与 path 取 system prompt 中该技能条目列出的值。"""
+        sid = normalize_skill_id(skill_id)
+        url = f"{config.OPERATOR_INTEGRATION_BASE}/internal-v1/skills/{sid}/files/read"
         headers = {"x-account-id": account_id, "x-account-type": account_type}
         async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as session:
-            async with session.post(url, json={"path": path}, headers=headers) as resp:
+            # 字段名是 rel_path，执行工厂侧 validate:"required"；发过 path 会 400
+            async with session.post(url, json={"rel_path": path}, headers=headers) as resp:
                 if resp.status != 200:
-                    return f"read_skill_file failed: HTTP {resp.status}"
+                    detail = (await resp.text())[:200]
+                    return f"read_skill_file failed: HTTP {resp.status} {detail}"
+                meta = await resp.json()
+            # 与 load_skills 同样两跳：发布态只回 presigned URL，不回正文
+            async with session.get(meta["url"]) as resp:
+                if resp.status != 200:
+                    return f"read_skill_file failed: 对象存储 HTTP {resp.status}"
                 return await resp.text()
 
     return StructuredTool.from_function(coroutine=read_skill_file, name="read_skill_file")

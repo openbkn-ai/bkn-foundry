@@ -21,25 +21,70 @@ def _cache_put(key: tuple[str, str, str], now: float, content: str) -> None:
     _cache[key] = (now, content)
 
 
+def normalize_skill_id(capability_id: str) -> str:
+    """capabilities-lab 的 capability id 形如 `skill:<uuid>`，执行工厂要裸 uuid。
+    两种都收，历史配置里存的带前缀 id 不至于失效。"""
+    return capability_id[6:] if capability_id.startswith("skill:") else capability_id
+
+
+def strip_frontmatter(text: str) -> str:
+    """发布态返回原始 SKILL.md（含 YAML frontmatter），注入前剥掉：
+    name/description 是给市场检索用的，进 system prompt 只是噪声。"""
+    if not text.startswith("---"):
+        return text.strip()
+    end = text.find("\n---", 3)
+    return text[end + 4 :].strip() if end != -1 else text.strip()
+
+
 async def _fetch_skill_content(session: aiohttp.ClientSession, capability_id: str, headers: dict) -> str:
-    url = f"{config.CAPABILITIES_LAB_BASE}/capabilities/{capability_id}/skill/content"
+    """从执行工厂取已发布技能正文，与 toolbox 同门（见 core/toolbox.py）。
+
+    走发布态而非管理态：管理态是草稿面，改技能会立刻改变线上 agent 行为，
+    发布流程就失去意义。代价是两跳——发布态只回 presigned URL 不回正文。
+    """
+    skill_id = normalize_skill_id(capability_id)
+    url = f"{config.OPERATOR_INTEGRATION_BASE}/internal-v1/skills/{skill_id}/content"
     async with session.get(url, headers=headers) as resp:
         if resp.status == 404:
             raise err(
                 400,
                 "Skill.NotFound",
                 "技能不存在",
-                f"capability {capability_id} 在 capabilities-lab 中不存在",
-                "请检查 capability_id，技能失效时不会被静默跳过。",
+                f"技能 {skill_id} 在执行工厂中不存在或未发布",
+                "请检查 skill_id，技能失效时不会被静默跳过。",
             )
         if resp.status != 200:
             raise err(
                 502,
                 "Skill.FetchFailed",
                 "技能拉取失败",
-                f"capabilities-lab 返回 {resp.status}（capability {capability_id}）",
+                f"执行工厂返回 {resp.status}（技能 {skill_id}）",
             )
-        return await resp.text()
+        meta = await resp.json()
+
+    # 第二跳：presigned URL 指向集群内 MinIO，不带业务身份，不能透传 headers
+    async with session.get(meta["url"]) as resp:
+        if resp.status != 200:
+            raise err(
+                502,
+                "Skill.FetchFailed",
+                "技能正文拉取失败",
+                f"对象存储返回 {resp.status}（技能 {skill_id}）",
+            )
+        body = strip_frontmatter(await resp.text())
+
+    # 附属文件清单必须进上下文：模型据此知道有哪些文件可读、以及 read_skill_file
+    # 要传的 skill_id —— 否则渐进式加载对模型不可见，等于没有。
+    others = [f["rel_path"] for f in (meta.get("files") or []) if f["rel_path"].upper() != "SKILL.MD"]
+    header = f"## 技能 {skill_id}\n"
+    if others:
+        header += (
+            f"\n本技能有以下附属文件，未加载进上下文，需要时用 read_skill_file 工具读取"
+            f"（skill_id={skill_id}，path 取下列之一）：\n"
+            + "".join(f"- {p}\n" for p in others)
+            + "\n"
+        )
+    return header + body
 
 
 async def load_skills(capability_ids: list[str], account_id: str, account_type: str) -> str:
@@ -52,8 +97,8 @@ async def load_skills(capability_ids: list[str], account_id: str, account_type: 
     now = time.monotonic()
     async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as session:
         for cid in dict.fromkeys(capability_ids):
-            # 缓存键含调用方身份：capabilities-lab 可能按账户授权私有技能，只按
-            # capability_id 缓存会让 TTL 窗口内 B 拿到 A 的私有正文且不重发 B 身份。
+            # 缓存键含调用方身份：执行工厂可能按账户授权私有技能，只按
+            # skill_id 缓存会让 TTL 窗口内 B 拿到 A 的私有正文且不重发 B 身份。
             key = (account_type, account_id, cid)
             cached = _cache.get(key)
             if cached and now - cached[0] < config.SKILL_CACHE_TTL_S:
@@ -64,6 +109,6 @@ async def load_skills(capability_ids: list[str], account_id: str, account_type: 
             parts.append(content)
     body = "\n\n---\n\n".join(parts)
     return (
-        "\n\n# Skills\n\n以下技能已挂载。技能提到的附属文件不在上下文中，"
+        "\n\n# Skills\n\n以下技能已挂载，请按其中的说明执行。技能的附属文件不在上下文中，"
         "需要时调用 read_skill_file 工具按需读取。\n\n" + body
     )

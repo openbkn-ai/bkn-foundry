@@ -72,8 +72,6 @@ spec:
               value: {{ .Values.runtime.mfModelApiPrivateBase | quote }}
             - name: BKN_AGENT_DEFAULT_TOOLBOXES
               value: {{ .Values.runtime.defaultToolboxes | quote }}
-            - name: CAPABILITIES_LAB_BASE
-              value: {{ .Values.runtime.capabilitiesLabBase | quote }}
             - name: OPERATOR_INTEGRATION_BASE
               value: {{ .Values.runtime.operatorIntegrationBase | quote }}
             - name: BKN_AGENT_TOOLBOX_SYNC

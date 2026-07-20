@@ -32,13 +32,8 @@ class Config:
         "e521d454-4a0b-4dc9-8a28-d0986de1cef9",
     )
 
-    # 技能面：capabilities-lab
-    CAPABILITIES_LAB_BASE = _env(
-        "CAPABILITIES_LAB_BASE",
-        "http://capabilities-lab:8080/api/capabilities-lab/v1",
-    )
-
-    # 算子工厂（operator-integration）：published agent 注册为 toolbox 工具（#212）
+    # 算子工厂（operator-integration）：published agent 注册为 toolbox 工具（#212）；
+    # 工具面与技能面统一走这里的 internal-v1（#322 把技能面从 capabilities-lab 收敛过来）
     OPERATOR_INTEGRATION_BASE = _env("OPERATOR_INTEGRATION_BASE", "http://agent-operator-integration:9000/api/agent-operator-integration")
     TOOLBOX_SYNC_ENABLED = _env("BKN_AGENT_TOOLBOX_SYNC", "true").lower() == "true"
     TOOLBOX_SYNC_RETRY_INITIAL_S = int(_env("BKN_AGENT_TOOLBOX_RETRY_INITIAL_S", "5"))
