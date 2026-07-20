@@ -18,9 +18,12 @@ const (
 	PagingModeSingle PagingMode = "single"
 	PagingModeCursor PagingMode = "cursor"
 
-	DefaultInputDialect = "postgres"
-	MinCursorPageSize   = 100
-	MaxCursorPageSize   = 10000
+	DefaultInputDialect       = "postgres"
+	MinCursorPageSize         = 100
+	MaxCursorPageSize         = 10000
+	DefaultCursorKeepAliveSec = 1800
+	MinCursorKeepAliveSec     = 1
+	MaxCursorKeepAliveSec     = 3600
 )
 
 // QueryFormat describes the representation used for the client query.
@@ -100,8 +103,8 @@ func (r RawQueryContract) Validate() error {
 		if r.Paging.Size < MinCursorPageSize || r.Paging.Size > MaxCursorPageSize {
 			return fmt.Errorf("paging.size must be between %d and %d for cursor paging", MinCursorPageSize, MaxCursorPageSize)
 		}
-		if r.Paging.KeepAliveSec < 0 {
-			return fmt.Errorf("paging.keep_alive_sec must not be negative")
+		if r.Paging.KeepAliveSec != 0 && (r.Paging.KeepAliveSec < MinCursorKeepAliveSec || r.Paging.KeepAliveSec > MaxCursorKeepAliveSec) {
+			return fmt.Errorf("paging.keep_alive_sec must be between %d and %d when provided", MinCursorKeepAliveSec, MaxCursorKeepAliveSec)
 		}
 	default:
 		return fmt.Errorf("paging.mode must be either %q or %q", PagingModeSingle, PagingModeCursor)

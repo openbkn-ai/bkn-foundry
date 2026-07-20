@@ -98,9 +98,9 @@ components:
     RawQueryRequest:
       description: 原生查询请求
       type: object
-      required:
-        - query
-        - query_format
+      oneOf:
+        - required: [query, query_format]
+        - required: [paging]
       properties:
         query:
           description: |
@@ -131,7 +131,7 @@ components:
         paging:
           $ref: "#/components/schemas/PagingRequest"
         query_timeout_sec:
-          description: 查询超时（秒），[1, 3600]，默认 60
+          description: 单页查询超时（秒），仅首次请求可设置；cursor 续页沿用首次请求的值。[1, 3600]，默认 60。
           type: integer
           format: int64
           minimum: 1
@@ -149,9 +149,10 @@ components:
           minimum: 100
           maximum: 10000
         keep_alive_sec:
-          description: cursor 成功取页后的空闲租约秒数；仅首次 cursor 请求可设置。
+          description: cursor 成功取页后的空闲租约秒数；仅首次 cursor 请求可设置。省略时默认 1800，取值范围 [1, 3600]。
           type: integer
           minimum: 1
+          maximum: 3600
         cursor:
           type: string
     RawQueryResponse:
@@ -185,6 +186,22 @@ components:
           type: array
           items:
             type: string
+        paging:
+          $ref: "#/components/schemas/PagingResponse"
+    PagingResponse:
+      description: cursor 分页状态。末页时两个字段均为 null。
+      type: object
+      required:
+        - next_cursor
+        - expires_at_sec
+      properties:
+        next_cursor:
+          type: [string, "null"]
+          description: 下一页使用的不透明游标；为空表示已到末页。
+        expires_at_sec:
+          type: [integer, "null"]
+          format: int64
+          description: cursor 空闲租约的到期 Unix 时间戳（秒）；每次成功且仍有下一页时刷新。
     ColumnInfo:
       description: 列元数据
       type: object
@@ -199,29 +216,11 @@ components:
           description: 列类型（取决于底层连接器）
           type: string
     QueryStats:
-      description: 查询统计 / 流式 cursor 状态
+      description: 查询统计
       type: object
       required:
         - is_timeout
-        - has_more
-        - offset
       properties:
         is_timeout:
           description: 是否因 query_timeout_sec 触发超时
           type: boolean
-        query_id:
-          description: |
-            流式查询 ID。流式首次响应时由服务端生成；客户端在后续请求里回传
-            以继续游标。标准查询时为空。
-          type: string
-        has_more:
-          description: 是否还有更多数据（流式查询用；标准查询恒为 false）
-          type: boolean
-        search_after:
-          description: |
-            OpenSearch 流式查询的 search_after 值；服务端内部使用，客户端透传即可。
-          type: array
-          items: {}
-        offset:
-          description: 已获取到的累计数据条数（流式查询模式）
-          type: integer

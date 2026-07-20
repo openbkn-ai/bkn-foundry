@@ -6,7 +6,10 @@
 
 package interfaces
 
-import "context"
+import (
+	"context"
+	"fmt"
+)
 
 const (
 	QueryType_Standard = "standard" // 标准查询
@@ -47,6 +50,9 @@ func (r RawQueryRequest) EffectiveInputDialect() string {
 }
 
 func (r RawQueryRequest) ValidateContract() error {
+	if r.IsContinuation() && r.QueryTimeoutSec != 0 {
+		return fmt.Errorf("query_timeout_sec is only allowed for an initial request")
+	}
 	return r.Contract().Validate()
 }
 
@@ -57,6 +63,7 @@ type RawQueryResponse struct {
 	Stats      QueryStats       `json:"stats"`              // 查询统计
 	TotalCount int64            `json:"total_count"`        // 总条数
 	Warnings   []string         `json:"warnings,omitempty"` // 非阻断告警（如 deprecated 资源命中提示）
+	Paging     *PagingResponse  `json:"paging,omitempty"`
 }
 
 // ColumnInfo 列信息
@@ -67,11 +74,11 @@ type ColumnInfo struct {
 
 // QueryStats 查询统计
 type QueryStats struct {
-	IsTimeout   bool   `json:"is_timeout"`             // 是否超时
-	QueryID     string `json:"query_id,omitempty"`     // 查询 ID
-	HasMore     bool   `json:"has_more"`               // 是否还有更多数据
-	SearchAfter []any  `json:"search_after,omitempty"` // OpenSearch流式查询的search_after值
-	Offset      int    `json:"offset"`                 // 已获取到的数据总数（流式查询模式）
+	IsTimeout   bool   `json:"is_timeout"` // 是否超时
+	QueryID     string `json:"-"`          // Deprecated internal stream state
+	HasMore     bool   `json:"-"`          // Deprecated internal stream state
+	SearchAfter []any  `json:"-"`          // Deprecated internal stream state
+	Offset      int    `json:"-"`          // Deprecated internal stream state
 }
 
 //go:generate mockgen -source ../interfaces/query.go -destination ../interfaces/mock/mock_query.go

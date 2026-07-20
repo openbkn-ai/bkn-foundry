@@ -12,7 +12,9 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/openbkn-ai/bkn-comm-go/logger"
 	"github.com/openbkn-ai/bkn-comm-go/otel/otellog"
@@ -72,18 +74,24 @@ func (rqs *rawQueryService) Execute(ctx context.Context, req *interfaces.RawQuer
 		}
 	}()
 
-	// 记录查询摘要，避免完整 SQL / DSL / PII 进入普通日志。
-	logger.Infof("RawQueryRequest - query_type: %s, resource_type: %s, %s", req.QueryType, req.ResourceType, SafeQuerySummary(req.Query))
+	// 记录请求参数
+	logger.Infof("RawQueryRequest - query_format: %s, paging_mode: %s, %s", req.QueryFormat, req.Paging.Mode, SafeQuerySummary(req.Query))
 
 	// 1. 校验请求
 	if err := rqs.validateRequest(ctx, req); err != nil {
 		otellog.LogError(ctx, "Validate request failed", err)
 		return nil, err
 	}
-	if req.QueryFormat != "" {
-		if req.IsContinuation() || req.Paging.Mode == interfaces.PagingModeCursor {
-			return nil, rest.NewHTTPError(ctx, http.StatusNotImplemented, verrors.VegaBackend_Query_ExecuteFailed).
-				WithErrorDetails("cursor paging is not implemented yet")
+	if isRawQueryContractRequest(req) {
+		if req.IsContinuation() {
+			return rqs.executeSQLCursorContinuation(ctx, req)
+		}
+		if req.Paging.Mode == interfaces.PagingModeCursor {
+			if req.QueryFormat != interfaces.QueryFormatSQL {
+				return nil, rest.NewHTTPError(ctx, http.StatusNotImplemented, verrors.VegaBackend_Query_ExecuteFailed).
+					WithErrorDetails("DSL cursor paging is not implemented yet")
+			}
+			return rqs.executeInitialSQLCursor(ctx, req)
 		}
 		switch req.QueryFormat {
 		case interfaces.QueryFormatSQL:
@@ -414,7 +422,7 @@ func (rqs *rawQueryService) Execute(ctx context.Context, req *interfaces.RawQuer
 
 // validateRequest 校验请求
 func (rqs *rawQueryService) validateRequest(ctx context.Context, req *interfaces.RawQueryRequest) error {
-	if req.QueryFormat != "" || req.IsContinuation() {
+	if isRawQueryContractRequest(req) {
 		if err := req.ValidateContract(); err != nil {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 				WithErrorDetails(err.Error())
@@ -480,6 +488,10 @@ func (rqs *rawQueryService) validateRequest(ctx context.Context, req *interfaces
 	return nil
 }
 
+func isRawQueryContractRequest(req *interfaces.RawQueryRequest) bool {
+	return req.QueryFormat != "" || req.InputDialect != "" || req.Paging.Mode != "" || req.Paging.Size != 0 || req.Paging.KeepAliveSec != 0 || req.IsContinuation()
+}
+
 func (rqs *rawQueryService) executeInitialSQLQuery(ctx context.Context, req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
 	resourceIDs, err := rqs.extractResourceIDs(req.Query)
 	if err != nil {
@@ -522,7 +534,7 @@ func (rqs *rawQueryService) executeInitialSQLQuery(ctx context.Context, req *int
 		}
 		finalSQL = result.SQL
 	}
-	finalSQL = applySingleQueryLimit(finalSQL)
+	finalSQL = applySingleQueryLimit(trimSQLTerminator(finalSQL))
 
 	result, err := rqs.executeSQLWithQueryType(ctx, catalog, finalSQL, string(interfaces.PagingModeSingle))
 	if err != nil {
@@ -533,6 +545,148 @@ func (rqs *rawQueryService) executeInitialSQLQuery(ctx context.Context, req *int
 	}
 	result.Warnings = append(result.Warnings, warnings...)
 	return result, nil
+}
+
+func (rqs *rawQueryService) executeInitialSQLCursor(ctx context.Context, req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
+	prepared, err := rqs.prepareSQLCursorQuery(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	session := rawQueryCursorSessions.create(
+		accountIDFromContext(ctx),
+		prepared.catalog.ID,
+		prepared.resourceIDs,
+		prepared.sql,
+		req.Paging.Size,
+		req.Paging.KeepAliveSec,
+		req.QueryTimeoutSec,
+	)
+	result, err := rqs.executeSQLCursorPage(ctx, session, prepared.catalog, prepared.warnings)
+	if err != nil {
+		// The client has not received this token, so it cannot retry this
+		// session. Do not retain it until idle expiry.
+		rawQueryCursorSessions.remove(session.ID)
+	}
+	return result, err
+}
+
+func (rqs *rawQueryService) executeSQLCursorContinuation(ctx context.Context, req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
+	session, ok := rawQueryCursorSessions.get(req.Paging.Cursor)
+	if !ok {
+		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_InvalidParameter).
+			WithErrorDetails("cursor not found or expired")
+	}
+	if session.AccountID != accountIDFromContext(ctx) {
+		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, verrors.VegaBackend_Query_InvalidParameter).
+			WithErrorDetails("cursor does not belong to the current account")
+	}
+
+	session.mu.Lock()
+	defer session.mu.Unlock()
+	if time.Now().Unix() >= session.ExpiresAtSec {
+		rawQueryCursorSessions.remove(session.ID)
+		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_InvalidParameter).
+			WithErrorDetails("cursor not found or expired")
+	}
+	catalog, warnings, err := rqs.checkSameDataSource(ctx, session.ResourceIDs)
+	if err != nil {
+		return nil, err
+	}
+	if catalog.ID != session.CatalogID {
+		return nil, rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Query_ExecuteFailed).
+			WithErrorDetails("cursor catalog changed")
+	}
+	return rqs.executeSQLCursorPage(ctx, session, catalog, warnings)
+}
+
+type preparedSQLCursorQuery struct {
+	catalog     *interfaces.Catalog
+	resourceIDs []string
+	sql         string
+	warnings    []string
+}
+
+func (rqs *rawQueryService) prepareSQLCursorQuery(ctx context.Context, req *interfaces.RawQueryRequest) (*preparedSQLCursorQuery, error) {
+	resourceIDs, err := rqs.extractResourceIDs(req.Query)
+	if err != nil {
+		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+			WithErrorDetails(fmt.Sprintf("extract resource ids failed: %v", err))
+	}
+	if len(resourceIDs) == 0 {
+		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+			WithErrorDetails("at least one resource_id is required for SQL queries")
+	}
+	catalog, warnings, err := rqs.checkSameDataSource(ctx, resourceIDs)
+	if err != nil {
+		return nil, err
+	}
+	replacedSQL, err := rqs.replaceResourceIDWithSchemaTable(ctx, req.Query, resourceIDs, catalog)
+	if err != nil {
+		return nil, err
+	}
+	inputDialect := req.EffectiveInputDialect()
+	if err := rawQueryPolicy.ValidateSQL(replacedSQL, inputDialect); err != nil {
+		if httpErr := rawQueryValidationError(ctx, err); httpErr != nil {
+			return nil, httpErr
+		}
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
+			WithErrorDetails(fmt.Sprintf("validate SQL failed: %v", err))
+	}
+	targetDialect, err := targetDialectForCatalog(ctx, catalog)
+	if err != nil {
+		return nil, err
+	}
+	finalSQL := replacedSQL
+	if inputDialect != targetDialect {
+		result, err := sqlglot.TranspileSQL(replacedSQL, inputDialect, targetDialect)
+		if err != nil {
+			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
+				WithErrorDetails(fmt.Sprintf("transpile SQL failed: %v", err))
+		}
+		finalSQL = result.SQL
+	}
+	return &preparedSQLCursorQuery{catalog: catalog, resourceIDs: resourceIDs, sql: trimSQLTerminator(finalSQL), warnings: warnings}, nil
+}
+
+func trimSQLTerminator(sql string) string {
+	return strings.TrimSuffix(strings.TrimSpace(sql), ";")
+}
+
+func (rqs *rawQueryService) executeSQLCursorPage(ctx context.Context, session *cursorSession, catalog *interfaces.Catalog, warnings []string) (*interfaces.RawQueryResponse, error) {
+	pageSQL := fmt.Sprintf("SELECT * FROM (%s) AS _raw_query_cursor LIMIT %d OFFSET %d", session.CompiledSQL, session.PageSize+1, session.Offset)
+	pageCtx := ctx
+	if session.QueryTimeoutSec > 0 {
+		var cancel context.CancelFunc
+		pageCtx, cancel = context.WithTimeout(ctx, time.Duration(session.QueryTimeoutSec)*time.Second)
+		defer cancel()
+	}
+	result, err := rqs.executeSQLWithQueryType(pageCtx, catalog, pageSQL, string(interfaces.PagingModeCursor))
+	if err != nil {
+		return nil, err
+	}
+	hasNext := len(result.Entries) > session.PageSize
+	if hasNext {
+		result.Entries = result.Entries[:session.PageSize]
+		result.TotalCount = int64(len(result.Entries))
+		session.Offset += session.PageSize
+		session.refreshExpiry(time.Now())
+		result.Paging = cursorPagingResponse(session)
+	} else {
+		result.TotalCount = int64(len(result.Entries))
+		result.Paging = &interfaces.PagingResponse{}
+		rawQueryCursorSessions.remove(session.ID)
+	}
+	result.Stats.HasMore = hasNext
+	result.Warnings = append(result.Warnings, warnings...)
+	return result, nil
+}
+
+func accountIDFromContext(ctx context.Context) string {
+	account, ok := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
+	if !ok {
+		return ""
+	}
+	return account.ID
 }
 
 func (rqs *rawQueryService) executeInitialDSLQuery(ctx context.Context, req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {

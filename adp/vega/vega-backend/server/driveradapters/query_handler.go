@@ -63,16 +63,18 @@ func (r *restHandler) rawQuery(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 
-	// 校验query_timeout_sec参数，默认值为60，最大值为3600，最小值为1
-	if req.QueryTimeoutSec == 0 {
-		req.QueryTimeoutSec = 60 // 设置默认值
-	} else if req.QueryTimeoutSec < 1 || req.QueryTimeoutSec > 3600 {
+	// query_timeout_sec 仅在首次请求生效；续页使用 cursor session 创建时
+	// 固化的值，不能由客户端改写。
+	if req.QueryTimeoutSec != 0 && (req.QueryTimeoutSec < 1 || req.QueryTimeoutSec > 3600) {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, errors.VegaBackend_Query_InvalidParameter_QueryTimeout).
 			WithErrorDetails(fmt.Sprintf("query_timeout_sec must be between 1 and 3600, got: %d", req.QueryTimeoutSec))
 		otellog.LogError(ctx, "Query timeout is invalid", httpErr)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
+	}
+	if !req.IsContinuation() && req.QueryTimeoutSec == 0 {
+		req.QueryTimeoutSec = 60
 	}
 
 	qs := query.NewRawQueryService(r.appSetting)

@@ -95,6 +95,19 @@ func TestRawQueryContractValidate(t *testing.T) {
 			},
 			wantErr: "only paging.cursor",
 		},
+		{
+			name: "rejects excessive cursor keep alive",
+			request: RawQueryContract{
+				Query:       "SELECT 1",
+				QueryFormat: QueryFormatSQL,
+				Paging: PagingRequest{
+					Mode:         PagingModeCursor,
+					Size:         MinCursorPageSize,
+					KeepAliveSec: MaxCursorKeepAliveSec + 1,
+				},
+			},
+			wantErr: "paging.keep_alive_sec",
+		},
 	}
 
 	for _, tt := range tests {
@@ -108,6 +121,15 @@ func TestRawQueryContractValidate(t *testing.T) {
 			assert.Contains(t, err.Error(), tt.wantErr)
 		})
 	}
+}
+
+func TestRawQueryRequestRejectsContinuationTimeout(t *testing.T) {
+	err := RawQueryRequest{
+		QueryTimeoutSec: 60,
+		Paging:          PagingRequest{Cursor: "opaque-token"},
+	}.ValidateContract()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "query_timeout_sec")
 }
 
 func TestRawQueryContractEffectiveInputDialect(t *testing.T) {
