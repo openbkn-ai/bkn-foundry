@@ -386,6 +386,47 @@ class TestGetModelDefaultParas(TestCase):
 # 对应测试类（TestRenameModel / TestGetApiModelByModelType）随之删除。
 
 
+class TestGetOverviewData(TestCase):
+    def setUp(self) -> None:
+        self.mysqlPool = PymysqlPool
+
+    def tearDown(self) -> None:
+        PymysqlPool = self.mysqlPool
+        StandLogger.stand_log_shutdown()
+
+    def test_get_overview_data_scopes_all_to_current_llm_models(self):
+        m1 = mock.MagicMock()
+        m2 = mock.MagicMock()
+        m1.connection.return_value = m2
+        m3 = mock.MagicMock()
+        m3.fetchall.return_value = []
+        m2.cursor.return_value = m3
+        PymysqlPool.get_pool = mock.Mock(return_value=m1)
+
+        llm_model_dao.get_overview_data("", "2026-07-13", "2026-07-14", "266c6a42-6131-4d62-8f39-853e7093701c")
+
+        executed_sql = "\n".join(call.args[0] for call in m3.execute.call_args_list)
+        self.assertEqual(m3.execute.call_count, 3)
+        self.assertEqual(executed_sql.count("INNER JOIN t_llm_model m ON d.f_model_id = m.f_model_id"), 3)
+        self.assertIn("FROM t_model_op_detail d", executed_sql)
+        self.assertNotIn(" t_small_model ", executed_sql)
+
+    def test_get_overview_data_filters_by_llm_model_id_alias(self):
+        m1 = mock.MagicMock()
+        m2 = mock.MagicMock()
+        m1.connection.return_value = m2
+        m3 = mock.MagicMock()
+        m3.fetchall.return_value = []
+        m2.cursor.return_value = m3
+        PymysqlPool.get_pool = mock.Mock(return_value=m1)
+
+        llm_model_dao.get_overview_data("model-1", "2026-07-13", "2026-07-14", "user-1")
+
+        executed_sql = "\n".join(call.args[0] for call in m3.execute.call_args_list)
+        self.assertEqual(executed_sql.count("and d.f_model_id='model-1'"), 3)
+        self.assertEqual(executed_sql.count("and d.f_user_id='user-1'"), 3)
+
+
 if __name__ == '__main__':
     import unittest
 

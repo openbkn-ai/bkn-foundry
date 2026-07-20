@@ -426,13 +426,14 @@ class ModelDao():
                 SUM(f_input_tokens + f_output_tokens) AS total_tokens,
                 SUM(f_input_tokens) AS input_tokens,
                 SUM(f_output_tokens) AS output_tokens
-            FROM t_model_op_detail
-            WHERE DATE(f_create_time) BETWEEN '{start_time}' AND '{end_time}'
+            FROM t_model_op_detail d
+            INNER JOIN t_llm_model m ON d.f_model_id = m.f_model_id
+            WHERE DATE(d.f_create_time) BETWEEN '{start_time}' AND '{end_time}'
             """
         if model_id:
-            sql1 += f" and f_model_id='{model_id}'"
+            sql1 += f" and d.f_model_id='{model_id}'"
         if userId != "266c6a42-6131-4d62-8f39-853e7093701c":
-            sql1 += f" and f_user_id='{userId}'"
+            sql1 += f" and d.f_user_id='{userId}'"
         cursor.execute(sql1)
         core_metrics = cursor.fetchall()
         sql2 = f"""
@@ -450,22 +451,25 @@ class ModelDao():
             END AS avg_first_time,
             SUM(f_input_tokens + f_output_tokens) / 86400.0 AS avg_rate,
             ROUND(SUM(f_total_count) / 86400.0, 6) AS avg_qps
-        FROM t_model_op_detail
-        WHERE DATE(f_create_time) BETWEEN '{start_time}' AND '{end_time}'"""
+        FROM t_model_op_detail d
+        INNER JOIN t_llm_model m ON d.f_model_id = m.f_model_id
+        WHERE DATE(d.f_create_time) BETWEEN '{start_time}' AND '{end_time}'"""
         if model_id:
-            sql2 += f" and f_model_id='{model_id}'"
+            sql2 += f" and d.f_model_id='{model_id}'"
         if userId != "266c6a42-6131-4d62-8f39-853e7093701c":
-            sql2 += f" and f_user_id='{userId}'"
-        sql2 += " GROUP BY DATE(f_create_time) ORDER BY date_group"
+            sql2 += f" and d.f_user_id='{userId}'"
+        sql2 += " GROUP BY DATE(d.f_create_time) ORDER BY date_group"
         cursor.execute(sql2)
         trend_analysis = cursor.fetchall()
-        sql3 = f"""SELECT DATE_FORMAT(f_create_time, '%Y-%m-%d %H:%i:00') AS date_group,ROUND(SUM(f_total_count) / 300, 6) AS avg_qps
-                  FROM t_model_op_detail WHERE DATE(f_create_time) BETWEEN '{start_time}' AND '{end_time}'"""
+        sql3 = f"""SELECT DATE_FORMAT(d.f_create_time, '%Y-%m-%d %H:%i:00') AS date_group,ROUND(SUM(f_total_count) / 300, 6) AS avg_qps
+                  FROM t_model_op_detail d
+                  INNER JOIN t_llm_model m ON d.f_model_id = m.f_model_id
+                  WHERE DATE(d.f_create_time) BETWEEN '{start_time}' AND '{end_time}'"""
         if model_id:
-            sql3 += f" and f_model_id='{model_id}'"
+            sql3 += f" and d.f_model_id='{model_id}'"
         if userId != "266c6a42-6131-4d62-8f39-853e7093701c":
-            sql3 += f" and f_user_id='{userId}'"
-        sql3 += " GROUP BY DATE_FORMAT(f_create_time, '%Y-%m-%d %H:%i:00') ORDER BY date_group desc limit 96"
+            sql3 += f" and d.f_user_id='{userId}'"
+        sql3 += " GROUP BY DATE_FORMAT(d.f_create_time, '%Y-%m-%d %H:%i:00') ORDER BY date_group desc limit 96"
         cursor.execute(sql3)
         qps_analysis = cursor.fetchall()
         return core_metrics, trend_analysis, qps_analysis
