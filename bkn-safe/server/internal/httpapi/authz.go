@@ -607,6 +607,18 @@ func registerRoles(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
+		// Same invariant the object-grant route enforces: administrative
+		// capability comes from a seeded role binding, never from a grant handed
+		// out at runtime. Without this, a custom role could be given
+		// safe_admin:console:manage and then bound to its own author. Today no
+		// role that can reach this route lacks that capability already, so this
+		// is defence in depth rather than a live hole — but that is a property of
+		// the current grant matrix, not of the code, and splitting out a
+		// role-management role would quietly turn it into one.
+		if req.Resource.Type == adminConsoleResourceType {
+			c.JSON(http.StatusForbidden, gin.H{"error": "admin console capability is granted by role binding, not by role permissions"})
+			return
+		}
 		for _, op := range req.Operations {
 			if err := e.GrantRolePermission(role.ID, req.Resource.Type, req.Resource.ID, op); err != nil {
 				serverError(c, err)

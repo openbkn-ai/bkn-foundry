@@ -346,6 +346,14 @@ func TestRoleBindingEscalationGuards(t *testing.T) {
 		}
 	})
 
+	t.Run("admin console cannot be granted to a custom role either", func(t *testing.T) {
+		if w := tokReq(t, r, http.MethodPost, "/api/safe/v1/admin/roles/role-custom-esc/permissions", gin.H{
+			"resource": gin.H{"type": adminConsoleResourceType, "id": "console"}, "operations": []string{"manage"},
+		}, securityUser); w.Code != http.StatusForbidden {
+			t.Fatalf("want 403, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
 	t.Run("admin console cannot be object-granted", func(t *testing.T) {
 		if w := tokReq(t, r, http.MethodPost, "/api/safe/v1/admin/object-grants", gin.H{
 			"accessor_id": securityUser,
