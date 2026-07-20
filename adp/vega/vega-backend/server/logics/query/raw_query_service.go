@@ -87,11 +87,12 @@ func (rqs *rawQueryService) Execute(ctx context.Context, req *interfaces.RawQuer
 			return rqs.executeSQLCursorContinuation(ctx, req)
 		}
 		if req.Paging.Mode == interfaces.PagingModeCursor {
-			if req.QueryFormat != interfaces.QueryFormatSQL {
-				return nil, rest.NewHTTPError(ctx, http.StatusNotImplemented, verrors.VegaBackend_Query_ExecuteFailed).
-					WithErrorDetails("DSL cursor paging is not implemented yet")
+			switch req.QueryFormat {
+			case interfaces.QueryFormatSQL:
+				return rqs.executeInitialSQLCursor(ctx, req)
+			case interfaces.QueryFormatDSL:
+				return rqs.executeInitialOpenSearchCursor(ctx, req)
 			}
-			return rqs.executeInitialSQLCursor(ctx, req)
 		}
 		switch req.QueryFormat {
 		case interfaces.QueryFormatSQL:
@@ -596,7 +597,15 @@ func (rqs *rawQueryService) executeSQLCursorContinuation(ctx context.Context, re
 		return nil, rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Query_ExecuteFailed).
 			WithErrorDetails("cursor catalog changed")
 	}
-	return rqs.executeSQLCursorPage(ctx, session, catalog, warnings)
+	switch session.QueryFormat {
+	case interfaces.QueryFormatSQL:
+		return rqs.executeSQLCursorPage(ctx, session, catalog, warnings)
+	case interfaces.QueryFormatDSL:
+		return rqs.executeOpenSearchCursorPage(ctx, session, catalog, warnings)
+	default:
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
+			WithErrorDetails("cursor has unsupported query format")
+	}
 }
 
 type preparedSQLCursorQuery struct {
@@ -687,6 +696,132 @@ func accountIDFromContext(ctx context.Context) string {
 		return ""
 	}
 	return account.ID
+}
+
+func (rqs *rawQueryService) executeInitialOpenSearchCursor(ctx context.Context, req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
+	query, indexName, catalog, warning, err := rqs.prepareOpenSearchCursorQuery(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	session := rawQueryCursorSessions.create(
+		accountIDFromContext(ctx), catalog.ID, []string{queryResourceID(req.Query)}, "", req.Paging.Size, req.Paging.KeepAliveSec, req.QueryTimeoutSec,
+	)
+	session.QueryFormat = interfaces.QueryFormatDSL
+	session.OpenSearchQuery = query
+	session.OpenSearchIndex = indexName
+	warnings := make([]string, 0, 1)
+	if warning != "" {
+		warnings = append(warnings, warning)
+	}
+	result, err := rqs.executeOpenSearchCursorPage(ctx, session, catalog, warnings)
+	if err != nil {
+		rawQueryCursorSessions.remove(session.ID)
+	}
+	return result, err
+}
+
+func queryResourceID(query any) string {
+	queryMap, _ := query.(map[string]any)
+	resourceID, _ := queryMap["resource_id"].(string)
+	return resourceID
+}
+
+func (rqs *rawQueryService) prepareOpenSearchCursorQuery(ctx context.Context, req *interfaces.RawQueryRequest) (map[string]any, string, *interfaces.Catalog, string, error) {
+	queryMap := req.Query.(map[string]any)
+	resourceID := queryResourceID(queryMap)
+	if resourceID == "" {
+		return nil, "", nil, "", rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+			WithErrorDetails("resource_id is required for DSL queries")
+	}
+	if _, ok := queryMap["search_after"]; ok {
+		return nil, "", nil, "", rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+			WithErrorDetails("search_after is managed by paging.cursor and must not be supplied")
+	}
+	if sort, ok := queryMap["sort"].([]any); !ok || len(sort) == 0 {
+		return nil, "", nil, "", rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+			WithErrorDetails("sort is required for OpenSearch cursor paging")
+	}
+
+	resource, err := rqs.rs.GetByID(ctx, resourceID)
+	if err != nil {
+		return nil, "", nil, "", err.(*rest.HTTPError)
+	}
+	if resource == nil {
+		return nil, "", nil, "", rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_ResourceNotFound).
+			WithErrorDetails(fmt.Sprintf("resource %s not found", resourceID))
+	}
+	warning, err := resourcelogic.EnsureResourceQueryable(ctx, resource)
+	if err != nil {
+		return nil, "", nil, "", err
+	}
+	catalog, err := rqs.cs.GetByID(ctx, resource.CatalogID, true)
+	if err != nil {
+		return nil, "", nil, "", err.(*rest.HTTPError)
+	}
+	if catalog == nil {
+		return nil, "", nil, "", rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_CatalogNotFound).
+			WithErrorDetails(fmt.Sprintf("catalog %s not found", resource.CatalogID))
+	}
+	if err := ensureCatalogEnabled(ctx, catalog); err != nil {
+		return nil, "", nil, "", err
+	}
+	if catalog.ConnectorType != interfaces.ConnectorTypeOpenSearch {
+		return nil, "", nil, "", rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+			WithErrorDetails(fmt.Sprintf("DSL input requires an opensearch catalog, got: %s", catalog.ConnectorType))
+	}
+
+	prepared := make(map[string]any, len(queryMap))
+	for key, value := range queryMap {
+		if key != "resource_id" && key != "size" {
+			prepared[key] = value
+		}
+	}
+	prepared["size"] = req.Paging.Size
+	return prepared, resource.SourceIdentifier, catalog, warning, nil
+}
+
+func (rqs *rawQueryService) executeOpenSearchCursorPage(ctx context.Context, session *cursorSession, catalog *interfaces.Catalog, warnings []string) (*interfaces.RawQueryResponse, error) {
+	query := make(map[string]any, len(session.OpenSearchQuery)+1)
+	for key, value := range session.OpenSearchQuery {
+		query[key] = value
+	}
+	if len(session.SearchAfter) > 0 {
+		query["search_after"] = session.SearchAfter
+	}
+	pageCtx := ctx
+	if session.QueryTimeoutSec > 0 {
+		var cancel context.CancelFunc
+		pageCtx, cancel = context.WithTimeout(ctx, time.Duration(session.QueryTimeoutSec)*time.Second)
+		defer cancel()
+	}
+	connector, err := factory.GetFactory().CreateConnectorInstance(pageCtx, catalog.ConnectorType, catalog.ConnectorCfg)
+	if err != nil {
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
+			WithErrorDetails(err.Error())
+	}
+	indexConnector, ok := connector.(interfaces.IndexConnector)
+	if !ok {
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
+			WithErrorDetails("opensearch connector does not implement IndexConnector")
+	}
+	result, err := indexConnector.ExecuteRawQuery(pageCtx, session.OpenSearchIndex, query)
+	if err != nil {
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
+			WithErrorDetails(err.Error())
+	}
+
+	hasNext := len(result.Entries) == session.PageSize && len(result.Stats.SearchAfter) > 0
+	if hasNext {
+		session.SearchAfter = append([]any(nil), result.Stats.SearchAfter...)
+		session.Offset += len(result.Entries)
+		session.refreshExpiry(time.Now())
+		result.Paging = cursorPagingResponse(session)
+	} else {
+		result.Paging = &interfaces.PagingResponse{}
+		rawQueryCursorSessions.remove(session.ID)
+	}
+	result.Warnings = append(result.Warnings, warnings...)
+	return result, nil
 }
 
 func (rqs *rawQueryService) executeInitialDSLQuery(ctx context.Context, req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {

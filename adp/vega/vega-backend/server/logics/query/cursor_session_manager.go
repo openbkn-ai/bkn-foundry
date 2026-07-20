@@ -23,6 +23,10 @@ type cursorSession struct {
 	CatalogID       string
 	ResourceIDs     []string
 	CompiledSQL     string
+	QueryFormat     interfaces.QueryFormat
+	OpenSearchQuery map[string]any
+	OpenSearchIndex string
+	SearchAfter     []any
 	PageSize        int
 	KeepAliveSec    int
 	QueryTimeoutSec int
@@ -52,6 +56,7 @@ func (m *cursorSessionManager) create(accountID, catalogID string, resourceIDs [
 		CatalogID:       catalogID,
 		ResourceIDs:     append([]string(nil), resourceIDs...),
 		CompiledSQL:     compiledSQL,
+		QueryFormat:     interfaces.QueryFormatSQL,
 		PageSize:        pageSize,
 		KeepAliveSec:    keepAliveSec,
 		QueryTimeoutSec: queryTimeoutSec,

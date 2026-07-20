@@ -47,6 +47,15 @@ func TestRawQueryContractValidate(t *testing.T) {
 			},
 		},
 		{
+			name: "opensearch DSL cursor",
+			request: RawQueryContract{
+				Query:        map[string]any{"resource_id": "resource-1", "sort": []any{"timestamp"}},
+				QueryFormat:  QueryFormatDSL,
+				InputDialect: "opensearch",
+				Paging:       PagingRequest{Mode: PagingModeCursor, Size: MinCursorPageSize},
+			},
+		},
+		{
 			name: "cursor continuation",
 			request: RawQueryContract{
 				Paging: PagingRequest{Cursor: "opaque-token"},
@@ -107,6 +116,16 @@ func TestRawQueryContractValidate(t *testing.T) {
 				},
 			},
 			wantErr: "paging.keep_alive_sec",
+		},
+		{
+			name: "rejects client search after for DSL cursor",
+			request: RawQueryContract{
+				Query:        map[string]any{"resource_id": "resource-1", "sort": []any{"timestamp"}, "search_after": []any{"cursor"}},
+				QueryFormat:  QueryFormatDSL,
+				InputDialect: "opensearch",
+				Paging:       PagingRequest{Mode: PagingModeCursor, Size: MinCursorPageSize},
+			},
+			wantErr: "search_after",
 		},
 	}
 

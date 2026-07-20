@@ -106,6 +106,16 @@ func (r RawQueryContract) Validate() error {
 		if r.Paging.KeepAliveSec != 0 && (r.Paging.KeepAliveSec < MinCursorKeepAliveSec || r.Paging.KeepAliveSec > MaxCursorKeepAliveSec) {
 			return fmt.Errorf("paging.keep_alive_sec must be between %d and %d when provided", MinCursorKeepAliveSec, MaxCursorKeepAliveSec)
 		}
+		if r.QueryFormat == QueryFormatDSL {
+			query := r.Query.(map[string]any)
+			if _, ok := query["search_after"]; ok {
+				return fmt.Errorf("search_after is managed by paging.cursor and must not be supplied")
+			}
+			sort, ok := query["sort"].([]any)
+			if !ok || len(sort) == 0 {
+				return fmt.Errorf("sort is required for DSL cursor paging")
+			}
+		}
 	default:
 		return fmt.Errorf("paging.mode must be either %q or %q", PagingModeSingle, PagingModeCursor)
 	}
