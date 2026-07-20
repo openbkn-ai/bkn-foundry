@@ -6,6 +6,7 @@ package httpapi
 
 import (
 	"errors"
+	"log/slog"
 	"net/http"
 	"slices"
 
@@ -87,6 +88,14 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 		if !bind(c, &req) {
 			return
 		}
+		// This route is tokenless by design (service-to-service, ClusterIP), so
+		// input validation is the only thing standing between a caller and an
+		// arbitrary policy row. It is staged deliberately — see policyGuard.
+		if err := rejectWildcardGrant(req.Resource.Type, req.Operations); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		auditPolicyWriteShape(c, db, "POST", req.AccessorID, req.Resource, req.Operations)
 		for _, op := range req.Operations {
 			if err := e.GrantObjectPermission(req.AccessorID, req.Resource.Type, req.Resource.ID, op); err != nil {
 				serverError(c, err)
@@ -105,6 +114,13 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 		if !bind(c, &req) {
 			return
 		}
+		// A wildcard type here would drop every policy in the system — an
+		// authorization teardown, not a resource cleanup.
+		if err := rejectWildcardGrant(req.Resource.Type, nil); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		auditPolicyWriteShape(c, db, "DELETE", "", req.Resource, nil)
 		if err := e.RemoveResourcePolicies(req.Resource.Type, req.Resource.ID); err != nil {
 			serverError(c, err)
 			return
@@ -196,6 +212,40 @@ func registerRoleBindings(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "role_id does not match any role id: " + req.RoleID})
 			return
 		}
+		// Escalation guards. The permission gate on this route (admin-role:members)
+		// is held by `security` as well as `admin`, and neither the three-admin
+		// mutual-exclusion check below nor anything else stopped a holder from
+		// naming ITSELF as the grantee of a strictly more privileged role. Two
+		// narrow blocks close that without touching ordinary role assignment:
+		//
+		//  1. nobody may bind super_admin unless they already hold it — otherwise
+		//     the wildcard grant is one request away for any role-manager;
+		//  2. nobody may bind a seeded system role to themselves — self-promotion
+		//     always goes through another administrator.
+		//
+		// Business/custom roles are untouched: assigning those to anyone,
+		// including oneself, keeps working exactly as before.
+		caller := c.GetString(ctxAccessorID)
+		isSuper, err := isSuperAdminRoleID(c, db, req.RoleID)
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		if isSuper {
+			c.JSON(http.StatusForbidden, gin.H{"error": superAdminSeedOnlyMsg})
+			return
+		}
+		if caller != "" && caller == req.AccessorID {
+			role, err := roleByID(c, db, req.RoleID)
+			if err != nil {
+				serverError(c, err)
+				return
+			}
+			if role != nil && role.Source == model.RoleSourceSystem {
+				c.JSON(http.StatusForbidden, gin.H{"error": "a system role cannot be bound to yourself; ask another administrator"})
+				return
+			}
+		}
 		if isThreeAdminRoleID(req.RoleID) {
 			currentRoleIDs, err := e.RolesForAccessor(req.AccessorID)
 			if err != nil {
@@ -242,6 +292,18 @@ func registerRoleBindings(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 		if !bind(c, &req) {
 			return
 		}
+		// Unbinding is blocked for the same reason binding is: with no API path
+		// to grant the role back, a removal would strip the platform of its only
+		// wildcard authority until a restart re-ran the seed.
+		isSuper, err := isSuperAdminRoleID(c, db, req.RoleID)
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		if isSuper {
+			c.JSON(http.StatusForbidden, gin.H{"error": superAdminSeedOnlyMsg})
+			return
+		}
 		if err := e.RemoveRole(req.AccessorID, req.RoleID); err != nil {
 			serverError(c, err)
 			return
@@ -253,6 +315,125 @@ func registerRoleBindings(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 func isThreeAdminRoleID(roleID string) bool {
 	return slices.Contains(threeAdminRoleIDs, roleID)
 }
+
+// superAdminRoleName is the seeded role holding the platform-wide wildcard
+// grant (seed/data/roles.json). It is deliberately NOT part of
+// threeAdminRoleIDs: the three-admin rule is a separation-of-duties constraint
+// among admin/security/audit, while super_admin is a privilege ceiling. Adding
+// it to that list would make it mutually exclusive with the three, which the
+// seeded built-in admin (bound to super_admin) relies on not being the case.
+const superAdminRoleName = "super_admin"
+
+// policyGuard — why the tokenless /authz/policies validation is staged.
+//
+// The route writes casbin rows on behalf of every service that creates a
+// resource (12 call sites across vega, bkn, the execution factory and the model
+// factory), and bkn-safe ships independently of all of them, so there is no
+// window in which a stricter contract could be turned on atomically. The
+// staging is therefore:
+//
+//	stage 1 (here)  reject only the shapes no legitimate caller sends — a
+//	                wildcard resource type or a wildcard operation, both of
+//	                which produce a policy matching every object in the system.
+//	                Everything else is recorded, not refused.
+//	stage 2         require a service credential, accepted-but-logged at first,
+//	                so the un-migrated callers can be enumerated (#333).
+//	stage 3         flip both the credential and the shape findings below to
+//	                hard failures once the log is quiet.
+//
+// Deliberately NOT rejected in stage 1, despite looking wrong:
+//   - the all-zero "public" accessor — the execution factory grants built-in
+//     components to it on purpose (CreateIntCompPolicyForAllUsers);
+//   - a resource type absent from the seed catalog — vega owns two local-only
+//     types (internal_catalog, internal_resource) that were never registered;
+//   - an empty operation list — the execution factory sends one when a request
+//     carries no allow set, and it is a harmless no-op today;
+//   - a wildcard resource ID — bounded to one type, and cheap to keep working.
+func auditPolicyWriteShape(c *gin.Context, db *gorm.DB, verb, accessorID string, resource resourceRef, operations []string) {
+	var findings []string
+	if accessorID != "" {
+		if ok, err := accessorExists(c, db, accessorID); err == nil && !ok && accessorID != authz.PublicAccessorID {
+			findings = append(findings, "unknown accessor")
+		}
+	}
+	if resource.ID == "*" {
+		findings = append(findings, "wildcard resource id")
+	}
+	if valid, err := catalogOpSet(db, resource.Type); err == nil {
+		if len(valid) == 0 {
+			findings = append(findings, "resource type not in catalog")
+		} else {
+			for _, op := range operations {
+				if !valid[op] {
+					findings = append(findings, "operation not registered for type: "+op)
+				}
+			}
+		}
+	}
+	if len(findings) == 0 {
+		return
+	}
+	// Shadow only: this is the inventory that decides when stage 3 can land.
+	slog.WarnContext(c.Request.Context(), "authz policy write with a shape that a stricter contract would reject",
+		"verb", verb, "accessor_id", accessorID, "resource_type", resource.Type, "resource_id", resource.ID,
+		"operations", operations, "findings", findings, "client_ip", c.ClientIP())
+}
+
+// adminConsoleResourceType is the resource type whose grant opens the admin
+// surface (CanAdmin checks safe_admin:console:manage). It must only ever be
+// conferred by binding an administrative role, never by a one-off object grant
+// — otherwise the object-grant route becomes an admin-promotion route.
+const adminConsoleResourceType = "safe_admin"
+
+// rejectWildcardGrant blocks the two wildcard forms that make a policy match
+// everything. Callers that legitimately grant a whole resource type pass a
+// concrete type with id "*", which is unaffected.
+func rejectWildcardGrant(resourceType string, operations []string) error {
+	if resourceType == "*" {
+		return errors.New(`resource.type must be a concrete type (not "*")`)
+	}
+	for _, op := range operations {
+		if op == "*" {
+			return errors.New(`operation must be a concrete operation (not "*")`)
+		}
+	}
+	return nil
+}
+
+// roleByID loads a role without writing an HTTP response; nil means not found.
+// (loadRole is the handler-facing variant that answers 404 itself.)
+func roleByID(c *gin.Context, db *gorm.DB, id string) (*model.Role, error) {
+	var role model.Role
+	err := db.WithContext(c.Request.Context()).First(&role, "id = ?", id).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &role, nil
+}
+
+// isSuperAdminRoleID reports whether roleID is the seeded super_admin role.
+// Resolved by name against the roles table rather than hardcoded, so it stays
+// correct if the seed UUID ever changes.
+func isSuperAdminRoleID(c *gin.Context, db *gorm.DB, roleID string) (bool, error) {
+	var n int64
+	if err := db.WithContext(c.Request.Context()).Model(&model.Role{}).
+		Where("id = ? AND name = ?", roleID, superAdminRoleName).Count(&n).Error; err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
+// superAdminSeedOnlyMsg explains why the super_admin membership is closed to
+// the API. The role is a singleton held by exactly one accessor, fixed by
+// seed/data/role-bindings.json: no API caller may add a holder (not even the
+// current one — there is no succession through this surface), and no API caller
+// may remove one, because after a removal nothing could put it back and the
+// platform would be left with no wildcard authority until a restart re-seeded
+// it. Changing the holder is a deliberate, out-of-band operation.
+const superAdminSeedOnlyMsg = "super_admin membership is fixed by the seed and cannot be changed through the API"
 
 // registerRoles mounts the role catalog endpoints (admin-only, under /admin).
 // Built-in (system/business) roles are read-only — their UUIDs are hardcoded in
@@ -415,6 +596,27 @@ func registerRoles(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 			Operations []string    `json:"operations" binding:"required"`
 		}
 		if !bind(c, &req) {
+			return
+		}
+		// A wildcard resource TYPE (or operation) makes the policy match every
+		// object in the system — the same shape as the seeded super_admin grant.
+		// Minting that from a custom role turns this route into an escalation
+		// path. A wildcard resource ID stays allowed: "whole type" is this
+		// route's documented purpose and is what the admin console sends.
+		if err := rejectWildcardGrant(req.Resource.Type, req.Operations); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		// Same invariant the object-grant route enforces: administrative
+		// capability comes from a seeded role binding, never from a grant handed
+		// out at runtime. Without this, a custom role could be given
+		// safe_admin:console:manage and then bound to its own author. Today no
+		// role that can reach this route lacks that capability already, so this
+		// is defence in depth rather than a live hole — but that is a property of
+		// the current grant matrix, not of the code, and splitting out a
+		// role-management role would quietly turn it into one.
+		if req.Resource.Type == adminConsoleResourceType {
+			c.JSON(http.StatusForbidden, gin.H{"error": "admin console capability is granted by role binding, not by role permissions"})
 			return
 		}
 		for _, op := range req.Operations {

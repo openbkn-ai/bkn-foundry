@@ -167,8 +167,15 @@ func TestSeedsAdminUser(t *testing.T) {
 	if !admin.Enabled || admin.Source != model.SourceLocal || admin.PasswordHash == "" {
 		t.Errorf("admin row malformed: %+v", admin)
 	}
-	if !admin.MustChangePassword {
-		t.Error("seeded admin must have MustChangePassword=true")
+	// The built-in admin is seeded WITHOUT a forced password change: #254 turned
+	// it off because unattended install logs in as admin immediately after the
+	// seed and a forced change blocks it. The assertion is pinned to that
+	// behaviour so the two cannot drift apart again — this test had been failing
+	// on main since #254 landed, unnoticed because CI did not run it.
+	// Whether to reintroduce a forced change (and how, without breaking
+	// unattended install) is an open decision tracked in #328.
+	if admin.MustChangePassword {
+		t.Error("seeded admin must not force a password change (would block unattended install, see #254)")
 	}
 	// Super-admin wildcard reaches the admin via the seeded role binding.
 	ok, err := e.Check(adminUserID, "catalog", "adp_bkn_catalog", "view_detail")
