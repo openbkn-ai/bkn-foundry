@@ -410,6 +410,28 @@ class TestEditDefaultModel(TestCase):
         llm_model_dao.update_model_default_status.assert_not_called()
 
 
+class TestModelOverviewData(TestCase):
+    def setUp(self) -> None:
+        self.get_overview_data = llm_model_dao.get_overview_data
+
+    def tearDown(self) -> None:
+        llm_model_dao.get_overview_data = self.get_overview_data
+        StandLogger.stand_log_shutdown()
+
+    def test_get_overview_data_rejects_reversed_date_range(self):
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        llm_model_dao.get_overview_data = mock.Mock(return_value=([], [], []))
+
+        res = loop.run_until_complete(
+            llm_controller.get_overview_data("111", "zh", "", "2026-07-14", "2026-07-13"))
+
+        body = json.loads(res.body)
+        self.assertEqual(res.status_code, 400)
+        self.assertEqual(body["detail"], "Param start_time must be earlier than or equal to end_time")
+        llm_model_dao.get_overview_data.assert_not_called()
+
+
 if __name__ == '__main__':
     import unittest
 

@@ -1047,22 +1047,29 @@ async def get_overview_data(userId, language, model_id, start_time, end_time):
     try:
         if not start_time:
             error_dict = ModelFactory_Router_ParamError_ParamMissing_Error.copy()
-            error_dict["deatil"] = "Param start_time is required"
+            error_dict["detail"] = "Param start_time is required"
             return JSONResponse(status_code=400, content=error_dict)
         if not end_time:
             error_dict = ModelFactory_Router_ParamError_ParamMissing_Error.copy()
-            error_dict["deatil"] = "Param end_time is required"
+            error_dict["detail"] = "Param end_time is required"
             return JSONResponse(status_code=400, content=error_dict)
 
         # 验证 start_time 和 end_time 的格式是否为 YYYY-MM-DD
         date_pattern = r'^\d{4}-\d{2}-\d{2}$'
         if not re.match(date_pattern, start_time):
             error_dict = ModelFactory_Router_ParamError_TypeError_Error.copy()
-            error_dict["deatil"] = "Param start_time must be in YYYY-MM-DD format"
+            error_dict["detail"] = "Param start_time must be in YYYY-MM-DD format"
             return JSONResponse(status_code=400, content=error_dict)
         if not re.match(date_pattern, end_time):
             error_dict = ModelFactory_Router_ParamError_TypeError_Error.copy()
-            error_dict["deatil"] = "Param end_time must be in YYYY-MM-DD format"
+            error_dict["detail"] = "Param end_time must be in YYYY-MM-DD format"
+            return JSONResponse(status_code=400, content=error_dict)
+        start_date = datetime.strptime(start_time, "%Y-%m-%d")
+        end_date = datetime.strptime(end_time, "%Y-%m-%d")
+        if start_date > end_date:
+            error_dict = ModelFactory_Router_ParamError_TypeError_Error.copy()
+            error_dict["description"] = "Invalid date range"
+            error_dict["detail"] = "Param start_time must be earlier than or equal to end_time"
             return JSONResponse(status_code=400, content=error_dict)
 
         core_metrics, trend_analysis, qps_analysis = llm_model_dao.get_overview_data(model_id, start_time, end_time,
