@@ -26,6 +26,12 @@ import (
 // 响应结构对齐 OAuth2 introspection。
 const appKeyIntrospectURI = "/api/safe/v1/api-keys/introspect"
 
+// appKeyIntrospectTimeout 限制校验请求的耗时。
+// rest.NewHTTPClient() 的默认超时是 600 秒，用在认证路径上意味着 bkn-safe 一旦 hang 住，
+// 单个请求会占住连接 10 分钟。认证必须快速失败，故与 authorization_safe.go 对 bkn-safe
+// 的调用取同一档超时。
+const appKeyIntrospectTimeout = 5
+
 type appKeyVerifier struct {
 	introspectURL string
 	logger        interfaces.Logger
@@ -65,7 +71,7 @@ func NewAppKeyVerifier() interfaces.AppKeyVerifier {
 		appKeyInst = &appKeyVerifier{
 			introspectURL: baseURL + appKeyIntrospectURI,
 			logger:        config.NewConfigLoader().GetLogger(),
-			httpClient:    rest.NewHTTPClient(),
+			httpClient:    rest.NewHTTPClientWithOptions(rest.HTTPClientOptions{TimeOut: appKeyIntrospectTimeout}),
 		}
 	})
 	return appKeyInst
