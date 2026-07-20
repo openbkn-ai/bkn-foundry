@@ -3,8 +3,6 @@ import json
 import aiohttp
 from fastapi.responses import JSONResponse
 from func_timeout import func_set_timeout
-from llmadapter.llms.llm_factory import llm_factory
-from llmadapter.schema import AIMessage
 from urllib3.exceptions import MaxRetryError
 from app.commons.errors import ModelFactory_ModelController_TestModel_Error_Error, LLMTestError
 from app.logs.stand_log import StandLogger
@@ -13,40 +11,45 @@ from app.core.config import base_config
 
 @func_set_timeout(30)
 async def llm_test(series, config, llm_id, user_id, model_type):
-    message = [AIMessage(content="你是")]
     content = "测试连接失败，请重新检查信息"
-    prompt = "你是"
     # 区分openai和其他模型
     if series == 'openai':
         try:
-            try:
-                if "api_key" not in config.keys():
-                    LLMTestError['description'] = "api_key 参数缺失"
-                    LLMTestError['detail'] = "openai大模型需要 api_key"
-                    return JSONResponse(status_code=500, content=LLMTestError)
-                llm = llm_factory.create_llm(llm_type="openai",
-                                             api_type="azure",
-                                             api_version="2023-03-15-preview",
-                                             openai_api_base=config['api_url'],
-                                             openai_api_key=config['api_key'],
-                                             engine=config['api_model'],
-                                             temperature=0.2,
-                                             max_tokens=400)
-                # if llm_id != "":
-                #     log_info = logics.AddModelUsedAudit(
-                #         model_id=llm_id, user_id=user_id, input_tokens=5,
-                #         output_tokens=10)
-                #     await add_llm_model_call_log(log_info)
-                return JSONResponse(status_code=200, content={"res": {"status": True, "model_type": "chat"}})
-
-            except Exception as e:
-                print(e)
-                # if llm_id != "":
-                #     log_info = logics.AddModelUsedAudit(
-                #         model_id=llm_id, user_id=user_id, input_tokens=5,
-                #         output_tokens=10)
-                #     await add_llm_model_call_log(log_info)
-                return JSONResponse(status_code=200, content={"res": {"status": True, "model_type": "chat"}})
+            if "api_key" not in config.keys():
+                LLMTestError['description'] = "api_key parameter is missing"
+                LLMTestError['detail'] = "openai model requires api_key"
+                return JSONResponse(status_code=400, content=LLMTestError)
+            params = {
+                "messages": [
+                    {
+                        "content": "hello",
+                        "role": "user"
+                    }
+                ],
+                "model": config["api_model"],
+                "stream": False,
+                "max_tokens": 16
+            }
+            headers = {
+                "api-key": config["api_key"]
+            }
+            async with aiohttp.ClientSession(timeout=base_config.test_llm_timeout) as session:
+                url = config["api_url"] + (
+                    f"openai/deployments/{config['api_model']}/chat/completions"
+                    "?api-version=2023-05-15&api-type=azure"
+                )
+                async with session.post(url, json=params, headers=headers, ssl=False) as response:
+                    response.encoding = 'utf-8'
+                    if response.status != 200:
+                        error_dict = ModelFactory_ModelController_TestModel_Error_Error.copy()
+                        error_dict["description"] = error_dict["solution"] = content
+                        try:
+                            error_dict["detail"] = await response.text()
+                        except Exception as err:
+                            StandLogger.error(str(err))
+                        error_dict["description"] = "model config error, please check model information"
+                        return JSONResponse(status_code=400, content=error_dict)
+            return JSONResponse(status_code=200, content={"status": "ok", "id": llm_id})
         except Exception as e:
             print(e)
             if isinstance(e.args[0], MaxRetryError):

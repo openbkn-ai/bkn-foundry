@@ -1,12 +1,11 @@
 from datetime import datetime
 from unittest import TestCase, mock
 
-from llmadapter.llms.llm_factory import llm_factory
 from sse_starlette import EventSourceResponse
 
 from app.dao.llm_model_dao import llm_model_dao
 from app.logs.stand_log import StandLogger
-from app.utils import llm_utils
+from app.utils import llm_utils, verify_utils
 from app.controller import llm_controller
 import asyncio
 import json
@@ -155,15 +154,51 @@ class TestAddModel(TestCase):
 class TestTestModel(TestCase):
     def setUp(self) -> None:
         self.get_data_from_model_list_by_id = llm_model_dao.get_data_from_model_list_by_id
+        self.ClientSession = verify_utils.aiohttp.ClientSession
 
     def tearDown(self) -> None:
         llm_model_dao.get_data_from_model_list_by_id = self.get_data_from_model_list_by_id
+        verify_utils.aiohttp.ClientSession = self.ClientSession
         StandLogger.stand_log_shutdown()
 
+    class _Response:
+        def __init__(self, status, body="{}"):
+            self.status = status
+            self.body = body
+            self.encoding = None
+            self.content = []
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def text(self):
+            return self.body
+
+    class _Session:
+        def __init__(self, response):
+            self.response = response
+            self.post_args = None
+            self.post_kwargs = None
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        def post(self, *args, **kwargs):
+            self.post_args = args
+            self.post_kwargs = kwargs
+            return self.response
+
     def test_test_model_success_openai(self):
-        # series=openai 时 llm_test 不发真实请求，直接返回 status=True
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
+        session = self._Session(self._Response(200))
+        verify_utils.aiohttp.ClientSession = mock.Mock(return_value=session)
         request = {"model_id": "111"}
         llm_model_dao.get_data_from_model_list_by_id = mock.Mock(return_value=[{
             "f_model_id": "111",
@@ -175,7 +210,32 @@ class TestTestModel(TestCase):
         }])
         res = loop.run_until_complete(
             llm_controller.test_model(request, "111", "zh"))
-        self.assertEqual(json.loads(res.body)["res"]["status"], True)
+        self.assertEqual(json.loads(res.body)["status"], "ok")
+        self.assertEqual(session.post_args[0],
+                         "https://artificial-intelligence-01.openai.azure.com/"
+                         "openai/deployments/gpt-4-32k/chat/completions"
+                         "?api-version=2023-05-15&api-type=azure")
+        self.assertEqual(session.post_kwargs["json"]["model"], "gpt-4-32k")
+        self.assertEqual(session.post_kwargs["headers"], {"api-key": "111"})
+
+    def test_test_model_fail_openai_non_200(self):
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        session = self._Session(self._Response(401, '{"error":"invalid api key"}'))
+        verify_utils.aiohttp.ClientSession = mock.Mock(return_value=session)
+        request = {"model_id": "111"}
+        llm_model_dao.get_data_from_model_list_by_id = mock.Mock(return_value=[{
+            "f_model_id": "111",
+            "f_create_by": "111",
+            "f_is_delete": 0,
+            "f_model_config": '{"api_key": "bad-key", "api_model": "bad-model", "api_url": "https://example.invalid/v1/chat/completions"}',
+            "f_model_series": "openai",
+            "f_model_type": "chat",
+        }])
+        res = loop.run_until_complete(
+            llm_controller.test_model(request, "111", "zh"))
+        self.assertEqual(res.status_code, 400)
+        self.assertEqual(json.loads(res.body)["code"], "ModelFactory.ModelController.TestModel.Error")
 
     def test_test_model_fail_unreachable(self):
         # 非 openai series 走真实 HTTP，连接失败 -> 返回 TestModel.Error
