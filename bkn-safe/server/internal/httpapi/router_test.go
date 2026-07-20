@@ -166,3 +166,98 @@ func TestAuthzBadRequest(t *testing.T) {
 		t.Errorf("expected 400, got %d", w.Code)
 	}
 }
+
+// TestPolicyWriteWildcardGuard covers the stage-1 contract on the tokenless
+// /authz/policies route: the two wildcard shapes that produce a policy matching
+// every object are refused, and every shape a real service sends today still
+// works. The second half is the compatibility evidence — 12 call sites across
+// vega, bkn, the execution factory and the model factory depend on it.
+func TestPolicyWriteWildcardGuard(t *testing.T) {
+	r, e, _ := newTestServer(t)
+
+	refused := []struct {
+		name string
+		body map[string]any
+	}{
+		{"wildcard type", map[string]any{
+			"accessor_id": "u-1",
+			"resource":    map[string]string{"type": "*", "id": "*"},
+			"operations":  []string{"view_detail"},
+		}},
+		{"wildcard operation", map[string]any{
+			"accessor_id": "u-1",
+			"resource":    map[string]string{"type": "agent", "id": "a-1"},
+			"operations":  []string{"*"},
+		}},
+	}
+	for _, c := range refused {
+		t.Run("refuse "+c.name, func(t *testing.T) {
+			if w := do(t, r, http.MethodPost, "/api/safe/v1/authz/policies", c.body); w.Code != http.StatusBadRequest {
+				t.Fatalf("want 400, got %d: %s", w.Code, w.Body.String())
+			}
+		})
+	}
+
+	t.Run("refuse wildcard type on delete", func(t *testing.T) {
+		if w := do(t, r, http.MethodDelete, "/api/safe/v1/authz/policies", map[string]any{
+			"resource": map[string]string{"type": "*", "id": "*"},
+		}); w.Code != http.StatusBadRequest {
+			t.Fatalf("want 400, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	// Shapes that are logged but must NOT be refused in stage 1.
+	allowed := []struct {
+		name string
+		body map[string]any
+	}{
+		{"ordinary creation grant", map[string]any{
+			"accessor_id": "u-1",
+			"resource":    map[string]string{"type": "agent", "id": "a-1"},
+			"operations":  []string{"use", "modify"},
+		}},
+		{"public accessor (built-in components)", map[string]any{
+			"accessor_id": authz.PublicAccessorID,
+			"resource":    map[string]string{"type": "tool_box", "id": "tb-1"},
+			"operations":  []string{"execute"},
+		}},
+		{"type outside the seeded catalog (vega internal_*)", map[string]any{
+			"accessor_id": "u-1",
+			"resource":    map[string]string{"type": "internal_resource", "id": "ir-1"},
+			"operations":  []string{"view_detail"},
+		}},
+		{"empty operation list (execution factory no-op)", map[string]any{
+			"accessor_id": "u-1",
+			"resource":    map[string]string{"type": "agent", "id": "a-2"},
+			"operations":  []string{},
+		}},
+		{"wildcard resource id", map[string]any{
+			"accessor_id": "u-1",
+			"resource":    map[string]string{"type": "agent", "id": "*"},
+			"operations":  []string{"use"},
+		}},
+	}
+	for _, c := range allowed {
+		t.Run("allow "+c.name, func(t *testing.T) {
+			if w := do(t, r, http.MethodPost, "/api/safe/v1/authz/policies", c.body); w.Code != http.StatusNoContent {
+				t.Fatalf("want 204, got %d: %s", w.Code, w.Body.String())
+			}
+		})
+	}
+
+	// The grants that were accepted must actually be in force.
+	ok, err := e.Check("u-1", "agent", "a-1", "use")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Error("ordinary creation grant did not take effect")
+	}
+	ok, err = e.Check("someone-else", "tool_box", "tb-1", "execute")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Error("public-accessor grant should reach every requester")
+	}
+}

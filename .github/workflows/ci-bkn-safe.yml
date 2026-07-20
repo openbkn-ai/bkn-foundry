@@ -1,7 +1,10 @@
 name: ci-bkn-safe
 
-# Compile gate for PRs touching bkn-safe. Build-only for now; add `go test`
-# once the test harness is CI-ready.
+# Compile + unit-test gate for PRs touching bkn-safe. The suite is hermetic
+# (in-memory sqlite, no external services), so it needs no harness setup — it
+# was simply never wired in. While it was not, a seed invariant regressed on
+# main and stayed red for three days unnoticed (#254 changed the code without
+# the test).
 
 on:
   pull_request:
@@ -14,7 +17,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
+  build-and-test:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -25,3 +28,4 @@ jobs:
         with:
           go-version-file: bkn-safe/server/go.mod
       - run: go build ./...
+      - run: go test ./...

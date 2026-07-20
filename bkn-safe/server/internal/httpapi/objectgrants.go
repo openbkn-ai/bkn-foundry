@@ -148,6 +148,14 @@ func registerObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "operations required; use DELETE to revoke a grant"})
 			return
 		}
+		// safe_admin:console:manage is exactly what CanAdmin tests, so granting it
+		// here would promote any grantee to platform administrator through the
+		// object-grant route — bypassing role binding and its escalation guards.
+		// Administrative capability is role-conferred only.
+		if req.Resource.Type == adminConsoleResourceType {
+			c.JSON(http.StatusForbidden, gin.H{"error": "admin console capability is granted by role binding, not by object grants"})
+			return
+		}
 		// Grantee must be a user (apps are user rows too). Departments/groups are
 		// rejected: their grants never match at enforce time.
 		ok, err := isUserAccessor(c, db, req.AccessorID)

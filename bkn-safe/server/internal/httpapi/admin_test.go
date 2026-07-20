@@ -238,6 +238,125 @@ func TestThreeAdminRoleBindingsAreMutuallyExclusive(t *testing.T) {
 	}
 }
 
+// TestRoleBindingEscalationGuards covers the three ways a role-manager (the
+// `security` admin holds admin-role:members) could previously promote itself to
+// platform administrator without any other administrator's involvement:
+// binding super_admin, binding a system role to itself, and — via the two
+// sibling routes — minting a wildcard policy or grabbing safe_admin directly.
+func TestRoleBindingEscalationGuards(t *testing.T) {
+	r, e, db, users := newAdminServer(t)
+	ctx := t.Context()
+
+	const (
+		securityUser   = "u-security-esc"
+		securityRole   = "role-security-esc"
+		superRoleID    = "role-super-esc"
+		businessRoleID = "role-business-esc"
+		victim         = "u-victim-esc"
+	)
+	for _, id := range []string{securityUser, victim} {
+		if err := users.CreateLocalUser(ctx, &model.User{ID: id, Account: id, Name: id, Enabled: true}, "pw-init0"); err != nil {
+			t.Fatalf("create user %s: %v", id, err)
+		}
+	}
+	// The seeded super_admin role is identified by NAME, so the row must carry it.
+	if err := db.Create(&model.Role{ID: superRoleID, Name: superAdminRoleName, Source: model.RoleSourceSystem}).Error; err != nil {
+		t.Fatalf("create super role: %v", err)
+	}
+	if err := db.Create(&model.Role{ID: businessRoleID, Name: "builder", Source: model.RoleSourceBusiness}).Error; err != nil {
+		t.Fatalf("create business role: %v", err)
+	}
+	if err := e.Grant(superRoleID, "*", "*"); err != nil {
+		t.Fatalf("grant super role: %v", err)
+	}
+	// security: may administer (safe_admin) and may manage role membership and
+	// authorization — exactly the seeded grant set.
+	grantRoleOps(t, e, securityRole, "safe_admin", "manage")
+	grantRoleOps(t, e, securityRole, "admin-role", "members")
+	grantRoleOps(t, e, securityRole, "admin-authz", "grant")
+	bindRole(t, e, securityUser, securityRole)
+
+	// super_admin is a seed-fixed singleton: no caller may add a holder, and a
+	// holder may not appoint a successor either — there is no succession through
+	// this API at all.
+	t.Run("role-manager cannot bind super_admin", func(t *testing.T) {
+		if w := tokReq(t, r, http.MethodPost, "/api/safe/v1/admin/role-bindings", gin.H{
+			"accessor_id": victim, "role_id": superRoleID,
+		}, securityUser); w.Code != http.StatusForbidden {
+			t.Fatalf("want 403, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("super_admin cannot appoint another super_admin", func(t *testing.T) {
+		if w := adminReq(t, r, http.MethodPost, "/api/safe/v1/admin/role-bindings", gin.H{
+			"accessor_id": victim, "role_id": superRoleID,
+		}); w.Code != http.StatusForbidden {
+			t.Fatalf("want 403, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("super_admin binding cannot be removed either", func(t *testing.T) {
+		if w := adminReq(t, r, http.MethodDelete, "/api/safe/v1/admin/role-bindings", gin.H{
+			"accessor_id": adminSub, "role_id": superRoleID,
+		}); w.Code != http.StatusForbidden {
+			t.Fatalf("want 403, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("cannot self-bind a system role", func(t *testing.T) {
+		sysRole := "role-system-esc"
+		if err := db.Create(&model.Role{ID: sysRole, Name: "ops", Source: model.RoleSourceSystem}).Error; err != nil {
+			t.Fatal(err)
+		}
+		if w := tokReq(t, r, http.MethodPost, "/api/safe/v1/admin/role-bindings", gin.H{
+			"accessor_id": securityUser, "role_id": sysRole,
+		}, securityUser); w.Code != http.StatusForbidden {
+			t.Fatalf("want 403, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	// Ordinary role assignment — including to oneself — must keep working.
+	t.Run("self-binding a business role still allowed", func(t *testing.T) {
+		if w := tokReq(t, r, http.MethodPost, "/api/safe/v1/admin/role-bindings", gin.H{
+			"accessor_id": securityUser, "role_id": businessRoleID,
+		}, securityUser); w.Code != http.StatusNoContent {
+			t.Fatalf("want 204, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("custom role cannot be granted a wildcard type or operation", func(t *testing.T) {
+		if w := adminReq(t, r, http.MethodPost, "/api/safe/v1/admin/roles", gin.H{
+			"id": "role-custom-esc", "name": "custom-esc",
+		}); w.Code != http.StatusCreated {
+			t.Fatalf("create custom role: %d %s", w.Code, w.Body.String())
+		}
+		for _, body := range []gin.H{
+			{"resource": gin.H{"type": "*", "id": "*"}, "operations": []string{"view_detail"}},
+			{"resource": gin.H{"type": "agent", "id": "*"}, "operations": []string{"*"}},
+		} {
+			if w := tokReq(t, r, http.MethodPost, "/api/safe/v1/admin/roles/role-custom-esc/permissions", body, securityUser); w.Code != http.StatusBadRequest {
+				t.Fatalf("want 400 for %v, got %d: %s", body, w.Code, w.Body.String())
+			}
+		}
+		// Whole-type grants (concrete type, id "*") remain the documented use.
+		if w := tokReq(t, r, http.MethodPost, "/api/safe/v1/admin/roles/role-custom-esc/permissions", gin.H{
+			"resource": gin.H{"type": "agent", "id": "*"}, "operations": []string{"use"},
+		}, securityUser); w.Code != http.StatusNoContent {
+			t.Fatalf("whole-type grant should still work: %d %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("admin console cannot be object-granted", func(t *testing.T) {
+		if w := tokReq(t, r, http.MethodPost, "/api/safe/v1/admin/object-grants", gin.H{
+			"accessor_id": securityUser,
+			"resource":    gin.H{"type": adminConsoleResourceType, "id": "console"},
+			"operations":  []string{"manage"},
+		}, securityUser); w.Code != http.StatusForbidden {
+			t.Fatalf("want 403, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+}
+
 func TestUserUpdateAndDelete(t *testing.T) {
 	r, e, db, users := newAdminServer(t)
 	ctx := t.Context()
