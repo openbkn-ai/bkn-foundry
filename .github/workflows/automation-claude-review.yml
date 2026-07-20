@@ -1,0 +1,75 @@
+name: Claude Code Review
+
+# 每个 PR 开启（或从 draft 转为 ready）时，由 Claude 做一次代码评审。
+# 与旧的 Copilot ruleset 行为对齐：只评审首版，不在每次 push 后重跑。
+# 需要重新评审时手动触发 workflow_dispatch 并填 PR 编号。
+
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to review'
+        required: true
+        type: string
+
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number || inputs.pr_number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    # fork 发起的 PR 拿不到 secrets，直接跳过避免红叉
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Claude review
+        if: env.ANTHROPIC_API_KEY != ''
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          track_progress: true
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ env.PR_NUMBER }}
+
+            对这个 PR 做代码评审。仓库是 openbkn 单体仓，包含 Go / Python 微服务、
+            Helm chart 与部署脚本。协作规范见 rules/CONTRIBUTING.zh.md。
+
+            重点关注（按优先级）：
+
+            1. **正确性** — 逻辑错误、边界条件、错误处理缺失、并发/竞态、
+               资源泄漏（未关闭的连接、goroutine 泄漏）。
+            2. **安全** — 凭据硬编码、鉴权/授权绕过、注入、越权访问内部接口、
+               日志泄露敏感信息。
+            3. **兼容性** — 数据库迁移是否幂等、接口是否破坏既有调用方、
+               Helm values 变更是否会让存量环境升级失败。这是本仓的高频事故来源。
+            4. **测试** — 新增逻辑是否有覆盖，测试是否验证了真实行为。
+
+            评审要求：
+            - 用中文。
+            - 具体问题用 inline comment 贴到对应行，说明「问题是什么 + 怎么改」。
+            - 顶层 comment 只写整体判断和阻塞项清单，不要复述 diff。
+            - 不确定的推测标注为「待确认」，不要当成缺陷断言。
+            - 没问题就说没问题，不要为了凑数提格式化/命名类的琐碎意见。
+
+          claude_args: |
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
+
+      - name: Warn when API key missing
+        if: env.ANTHROPIC_API_KEY == ''
+        run: |
+          echo "::warning::Secret ANTHROPIC_API_KEY not set — skipping Claude review."
