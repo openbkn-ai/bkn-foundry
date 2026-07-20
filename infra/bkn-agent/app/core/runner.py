@@ -2,8 +2,8 @@ import asyncio
 import json
 from typing import Any, Optional
 
+from langchain.agents import create_agent
 from langchain_core.messages import AIMessage
-from langgraph.prebuilt import create_react_agent
 
 from app import dao, observability
 from app.config import config
@@ -72,7 +72,7 @@ async def run_agent_once(
             "prompt.version": prompt_version,
         },
     ):
-        graph = create_react_agent(model, tools, prompt=system_prompt)
+        graph = create_agent(model, tools, system_prompt=system_prompt)
         async with asyncio.timeout(timeout_s):
             result = await graph.ainvoke(
                 {"messages": [("user", message)]},

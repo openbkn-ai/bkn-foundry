@@ -567,7 +567,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ExportPackage-Output'
+                $ref: '#/components/schemas/ExportPackage'
         4XX:
           description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
           content:
@@ -620,23 +620,7 @@ components:
       required:
       - deleted
       title: AgentDeleted
-    AgentExportItem-Input:
-      properties:
-        agent_id:
-          type: string
-          title: Agent Id
-        spec:
-          $ref: '#/components/schemas/AgentSpec'
-        prompt:
-          anyOf:
-          - $ref: '#/components/schemas/PromptExport'
-          - type: 'null'
-      type: object
-      required:
-      - agent_id
-      - spec
-      title: AgentExportItem
-    AgentExportItem-Output:
+    AgentExportItem:
       properties:
         agent_id:
           type: string
@@ -732,7 +716,8 @@ components:
           title: Prompt Id
         prompt_vars_schema:
           anyOf:
-          - type: object
+          - additionalProperties: true
+            type: object
           - type: 'null'
           title: Prompt Vars Schema
         model:
@@ -810,7 +795,8 @@ components:
           title: Prompt Id
         prompt_vars_schema:
           anyOf:
-          - type: object
+          - additionalProperties: true
+            type: object
           - type: 'null'
           title: Prompt Vars Schema
         model:
@@ -867,8 +853,6 @@ components:
           title: Description
         type:
           type: string
-          enum:
-          - agent
           const: agent
           title: Type
         agent_id:
@@ -907,11 +891,13 @@ components:
           - type: 'null'
           title: Prompt Override
         prompt_vars:
+          additionalProperties: true
           type: object
           title: Prompt Vars
         response_format:
           anyOf:
-          - type: object
+          - additionalProperties: true
+            type: object
           - type: 'null'
           title: Response Format
       type: object
@@ -971,12 +957,10 @@ components:
       - solution
       title: ErrorEnvelope
       description: 平台统一错误封套（所有非 2xx 响应）。
-    ExportPackage-Input:
+    ExportPackage:
       properties:
         format:
           type: string
-          enum:
-          - bkn-agent/v1
           const: bkn-agent/v1
           title: Format
           default: bkn-agent/v1
@@ -985,29 +969,7 @@ components:
           title: Exported At
         items:
           items:
-            $ref: '#/components/schemas/AgentExportItem-Input'
-          type: array
-          title: Items
-      type: object
-      required:
-      - exported_at
-      - items
-      title: ExportPackage
-    ExportPackage-Output:
-      properties:
-        format:
-          type: string
-          enum:
-          - bkn-agent/v1
-          const: bkn-agent/v1
-          title: Format
-          default: bkn-agent/v1
-        exported_at:
-          type: integer
-          title: Exported At
-        items:
-          items:
-            $ref: '#/components/schemas/AgentExportItem-Output'
+            $ref: '#/components/schemas/AgentExportItem'
           type: array
           title: Items
       type: object
@@ -1065,7 +1027,7 @@ components:
     ImportRequest:
       properties:
         package:
-          $ref: '#/components/schemas/ExportPackage-Input'
+          $ref: '#/components/schemas/ExportPackage'
       type: object
       required:
       - package
@@ -1103,11 +1065,13 @@ components:
           - type: 'null'
           title: Prompt Override
         prompt_vars:
+          additionalProperties: true
           type: object
           title: Prompt Vars
         response_format:
           anyOf:
-          - type: object
+          - additionalProperties: true
+            type: object
           - type: 'null'
           title: Response Format
       type: object
@@ -1131,8 +1095,6 @@ components:
           title: Description
         type:
           type: string
-          enum:
-          - mcp
           const: mcp
           title: Type
         url:
@@ -1154,8 +1116,6 @@ components:
           title: Deleted
         fallback:
           type: string
-          enum:
-          - default
           const: default
           title: Fallback
       type: object
@@ -1183,8 +1143,6 @@ components:
           title: Account Id
         source:
           type: string
-          enum:
-          - override
           const: override
           title: Source
       type: object
@@ -1206,7 +1164,8 @@ components:
           title: Content
         vars_schema:
           anyOf:
-          - type: object
+          - additionalProperties: true
+            type: object
           - type: 'null'
           title: Vars Schema
       type: object
@@ -1254,7 +1213,8 @@ components:
           title: Content
         vars_schema:
           anyOf:
-          - type: object
+          - additionalProperties: true
+            type: object
           - type: 'null'
           title: Vars Schema
         update_user:
@@ -1280,7 +1240,8 @@ components:
           title: Content
         vars_schema:
           anyOf:
-          - type: object
+          - additionalProperties: true
+            type: object
           - type: 'null'
           title: Vars Schema
       type: object
@@ -1318,7 +1279,8 @@ components:
           title: Content
         vars_schema:
           anyOf:
-          - type: object
+          - additionalProperties: true
+            type: object
           - type: 'null'
           title: Vars Schema
       type: object
@@ -1347,7 +1309,8 @@ components:
           title: Content
         vars_schema:
           anyOf:
-          - type: object
+          - additionalProperties: true
+            type: object
           - type: 'null'
           title: Vars Schema
         create_user:
@@ -1383,11 +1346,13 @@ components:
           - type: 'null'
           title: Prompt Override
         prompt_vars:
+          additionalProperties: true
           type: object
           title: Prompt Vars
         response_format:
           anyOf:
-          - type: object
+          - additionalProperties: true
+            type: object
           - type: 'null'
           title: Response Format
       type: object
@@ -1413,7 +1378,8 @@ components:
           title: Status
         input:
           anyOf:
-          - type: object
+          - additionalProperties: true
+            type: object
           - type: 'null'
           title: Input
         output:
@@ -1510,8 +1476,6 @@ components:
           title: Description
         type:
           type: string
-          enum:
-          - toolbox
           const: toolbox
           title: Type
         box_id:
