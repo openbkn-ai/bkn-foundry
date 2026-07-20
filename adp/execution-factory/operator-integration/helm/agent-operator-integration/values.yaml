@@ -42,8 +42,12 @@ service:
       enabled: true
       interface:
         path:
+          # 只暴露公开面。internal-v1 不校验令牌——身份取自调用方自填的 X-Account-ID 头，
+          # 该头缺失时 hydra.go 会把调用者降级为硬编码管理员——一旦挂上 Ingress，其下约
+          # 40 条写接口（function/exec、intcomp 注册、impex 导入等）即可从集群外无凭据调用。
+          # 集群内调用方（bkn-agent、agent-retrieval）走 ClusterIP agent-operator-integration:9000，
+          # 不经 Ingress，不受影响。见 #326。
           - /api/agent-operator-integration/v1
-          - /api/agent-operator-integration/internal-v1
   type: ClusterIP
   enableDualStack: false
   port: 9000
