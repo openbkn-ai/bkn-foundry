@@ -221,7 +221,10 @@ class TestTestModel(TestCase):
     def test_test_model_fail_openai_non_200(self):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        session = self._Session(self._Response(401, '{"error":"invalid api key"}'))
+        session = self._Session(self._Response(
+            401,
+            '{"error":{"code":"AuthenticationError","message":"the API key or AK/SK in the request is missing or invalid","type":"Unauthorized"}}'
+        ))
         verify_utils.aiohttp.ClientSession = mock.Mock(return_value=session)
         request = {"model_id": "111"}
         llm_model_dao.get_data_from_model_list_by_id = mock.Mock(return_value=[{
@@ -235,7 +238,10 @@ class TestTestModel(TestCase):
         res = loop.run_until_complete(
             llm_controller.test_model(request, "111", "zh"))
         self.assertEqual(res.status_code, 400)
-        self.assertEqual(json.loads(res.body)["code"], "ModelFactory.ModelController.TestModel.Error")
+        body = json.loads(res.body)
+        self.assertEqual(body["code"], "ModelFactory.ModelController.TestModel.Error")
+        self.assertEqual(body["description"], "模型服务认证失败，请检查 API Key、AK/SK 或授权配置")
+        self.assertEqual(body["solution"], "模型服务认证失败，请检查 API Key、AK/SK 或授权配置")
 
     def test_test_model_fail_unreachable(self):
         # 非 openai series 走真实 HTTP，连接失败 -> 返回 TestModel.Error

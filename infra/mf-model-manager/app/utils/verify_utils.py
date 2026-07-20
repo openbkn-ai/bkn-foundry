@@ -9,6 +9,44 @@ from app.logs.stand_log import StandLogger
 from app.core.config import base_config
 
 
+def _semantic_model_test_error(detail, fallback):
+    upstream_code = ""
+    upstream_type = ""
+    upstream_message = ""
+    try:
+        payload = json.loads(detail)
+        if isinstance(payload, dict):
+            error = payload.get("error")
+            if isinstance(error, dict):
+                upstream_code = str(error.get("code") or "")
+                upstream_type = str(error.get("type") or "")
+                upstream_message = str(error.get("message") or "")
+            elif isinstance(error, str):
+                upstream_message = error
+            if not upstream_message:
+                for key in ("message", "detail", "error_description"):
+                    if payload.get(key):
+                        upstream_message = str(payload[key])
+                        break
+    except Exception:
+        pass
+
+    raw = " ".join(
+        [upstream_code, upstream_type, upstream_message, str(detail)]
+    ).lower()
+    if any(token in raw for token in ("auth", "unauthorized", "api key", "ak/sk", "apikey", "401")):
+        return "模型服务认证失败，请检查 API Key、AK/SK 或授权配置"
+    if any(token in raw for token in ("deploymentnotfound", "model not found", "not found", "404")):
+        return "模型或部署不存在，请检查 API Model 和模型服务地址"
+    if any(token in raw for token in ("timeout", "timed out")):
+        return "模型服务连接超时，请检查服务地址和网络连通性"
+    if any(token in raw for token in ("connection", "connect", "dns", "name resolution", "enotfound")):
+        return "无法访问模型服务，请检查 API URL 和网络连通性"
+    if upstream_message:
+        return f"模型服务返回错误：{upstream_message}"
+    return fallback
+
+
 @func_set_timeout(30)
 async def llm_test(series, config, llm_id, user_id, model_type):
     content = "测试连接失败，请重新检查信息"
@@ -42,23 +80,25 @@ async def llm_test(series, config, llm_id, user_id, model_type):
                     response.encoding = 'utf-8'
                     if response.status != 200:
                         error_dict = ModelFactory_ModelController_TestModel_Error_Error.copy()
-                        error_dict["description"] = error_dict["solution"] = content
+                        detail = ""
                         try:
-                            error_dict["detail"] = await response.text()
+                            detail = await response.text()
                         except Exception as err:
                             StandLogger.error(str(err))
-                        error_dict["description"] = "model config error, please check model information"
+                        error_dict["detail"] = detail
+                        description = _semantic_model_test_error(detail, content)
+                        error_dict["description"] = error_dict["solution"] = description
                         return JSONResponse(status_code=400, content=error_dict)
             return JSONResponse(status_code=200, content={"status": "ok", "id": llm_id})
         except Exception as e:
             print(e)
-            if isinstance(e.args[0], MaxRetryError):
+            detail = str(e.args[0]) if e.args else str(e)
+            if e.args and isinstance(e.args[0], MaxRetryError):
                 content = "无法访问该链接，请检查该链接是否可以访问"
             error_dict = ModelFactory_ModelController_TestModel_Error_Error.copy()
-            error_dict["detail"] = str(e.args[0])
-            error_dict["description"] = error_dict["solution"] = content
-            if not isinstance(e.args[0], MaxRetryError):
-                error_dict["description"] = "模型配置错误，请检查模型信息"
+            error_dict["detail"] = detail
+            description = _semantic_model_test_error(detail, content)
+            error_dict["description"] = error_dict["solution"] = description
             # if error_dict["detail"].strip(" ") != "":
             #     error_dict["description"] = error_dict["detail"]
             # if len(error_dict["description"]) > 500:
@@ -180,12 +220,14 @@ async def llm_test(series, config, llm_id, user_id, model_type):
                     response.encoding = 'utf-8'
                     if response.status != 200:
                         error_dict = ModelFactory_ModelController_TestModel_Error_Error.copy()
-                        error_dict["description"] = error_dict["solution"] = content
+                        detail = ""
                         try:
-                            error_dict["detail"] = await response.text()
+                            detail = await response.text()
                         except Exception as e:
                             StandLogger.error(str(e))
-                        error_dict["description"] = "模型配置错误，请检查模型信息"
+                        error_dict["detail"] = detail
+                        description = _semantic_model_test_error(detail, content)
+                        error_dict["description"] = error_dict["solution"] = description
                         return JSONResponse(status_code=400, content=error_dict)
                     async for chunk in response.content:
                         chunk = chunk.decode('utf-8')
@@ -219,11 +261,11 @@ async def llm_test(series, config, llm_id, user_id, model_type):
         except Exception as e:
             StandLogger.error(str(e))
             content = "测试连接失败，请重新检查信息"
-            if isinstance(e.args[0], MaxRetryError):
+            detail = str(e.args[0]) if e.args else str(e)
+            if e.args and isinstance(e.args[0], MaxRetryError):
                 content = "无法访问该链接，请检查该链接是否可以访问"
             error_dict = ModelFactory_ModelController_TestModel_Error_Error.copy()
-            error_dict["detail"] = str(e.args[0])
-            error_dict["description"] = error_dict["solution"] = content
-            if not isinstance(e.args[0], MaxRetryError):
-                error_dict["description"] = "模型配置错误，请检查模型信息"
+            error_dict["detail"] = detail
+            description = _semantic_model_test_error(detail, content)
+            error_dict["description"] = error_dict["solution"] = description
             return JSONResponse(status_code=400, content=error_dict)
