@@ -1,8 +1,12 @@
 name: Claude Code Review
 
-# 每个 PR 开启（或从 draft 转为 ready）时，由 Claude 做一次代码评审。
-# 与旧的 Copilot ruleset 行为对齐：只评审首版，不在每次 push 后重跑。
-# 需要重新评审时手动触发 workflow_dispatch 并填 PR 编号。
+# 由 Claude 对 PR 做代码评审：开启、重开、从 draft 转 ready，以及每次推送新提交时各跑一次。
+#
+# 覆盖每次推送而非只审首版，是因为评审之后追加的提交往往是「按意见快速改一下」，
+# 恰恰最容易引入新问题；只审首版会让这部分完全不过审。
+# 连续推送的浪费由下面的 concurrency 收敛：新一次运行会取消尚未完成的上一次。
+#
+# 需要对任意 PR 重新评审时，手动触发 workflow_dispatch 并填 PR 编号。
 #
 # 只对代码路径生效。纯配置类改动（release manifest 刷新、镜像同步、workflow 自身
 # 调整、文档）不进评审，既省额度也避免噪声。
@@ -11,7 +15,7 @@ name: Claude Code Review
 
 on:
   pull_request:
-    types: [opened, reopened, ready_for_review]
+    types: [opened, reopened, ready_for_review, synchronize]
     paths:
       - 'adp/**'
       - 'infra/**'
