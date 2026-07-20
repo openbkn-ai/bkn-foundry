@@ -31,10 +31,13 @@ func ValidateResourceDataQueryParams(ctx context.Context, params *interfaces.Res
 		}
 	}
 
-	// limit 默认值为 10
-	if params.Limit == 0 {
-		params.Limit = interfaces.DEFAULT_DATA_LIMIT
+	if params.Paging.Cursor != "" || params.Paging.Mode == interfaces.PagingModeCursor {
+		return rest.NewHTTPError(ctx, http.StatusNotImplemented, verrors.VegaBackend_Query_InvalidParameter).
+			WithErrorDetails("resource data cursor paging is not implemented yet")
 	}
+	params.Paging = params.Paging.Normalized()
+	params.Offset = params.Paging.Offset
+	params.Limit = params.Paging.Size
 
 	// 校验分页参数
 	err := validatePaginationParams(ctx, params.Offset, params.Limit)

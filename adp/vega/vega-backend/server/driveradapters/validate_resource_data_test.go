@@ -27,13 +27,13 @@ func TestValidateResourceDataQueryParams(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Equal(t, interfaces.Format_Original, params.Format)
-		assert.Equal(t, interfaces.DEFAULT_DATA_LIMIT, params.Limit)
+		assert.Equal(t, interfaces.DefaultPageSize, params.Limit)
 	})
 
 	t.Run("accepts valid flat query with filter and aggregation", func(t *testing.T) {
 		params := &interfaces.ResourceDataQueryParams{
 			Format: interfaces.Format_Flat,
-			Limit:  20,
+			Paging: interfaces.PagingRequest{Size: 20},
 			Sort: []*interfaces.SortField{
 				{Field: "name", Direction: interfaces.ASC_DIRECTION},
 			},
@@ -63,10 +63,9 @@ func TestValidateResourceDataQueryParams(t *testing.T) {
 			params *interfaces.ResourceDataQueryParams
 		}{
 			{name: "invalid format", params: &interfaces.ResourceDataQueryParams{Format: "csv", Limit: 10}},
-			{name: "negative offset", params: &interfaces.ResourceDataQueryParams{Offset: -1, Limit: 10}},
-			{name: "limit too small", params: &interfaces.ResourceDataQueryParams{Limit: 0, Offset: -1}},
-			{name: "offset plus limit too large", params: &interfaces.ResourceDataQueryParams{Offset: interfaces.MAX_SEARCH_SIZE, Limit: 1}},
-			{name: "invalid sort direction", params: &interfaces.ResourceDataQueryParams{Limit: 10, Sort: []*interfaces.SortField{{Field: "name", Direction: "up"}}}},
+			{name: "negative offset", params: &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Offset: -1, Size: 10}}},
+			{name: "offset plus limit too large", params: &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Offset: interfaces.MAX_SEARCH_SIZE, Size: 1}}},
+			{name: "invalid sort direction", params: &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Size: 10}, Sort: []*interfaces.SortField{{Field: "name", Direction: "up"}}}},
 			{name: "missing filter operation", params: &interfaces.ResourceDataQueryParams{Limit: 10, FilterCondition: map[string]any{"field": "name"}}},
 			{name: "unsupported filter operation", params: &interfaces.ResourceDataQueryParams{Limit: 10, FilterCondition: map[string]any{"field": "name", "operation": "bad"}}},
 			{name: "filter operation needs field name", params: &interfaces.ResourceDataQueryParams{Limit: 10, FilterCondition: map[string]any{"operation": filter_condition.OperationEqual, "value": "alice"}}},
