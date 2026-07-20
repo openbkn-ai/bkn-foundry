@@ -40,6 +40,6 @@ Workflow YAML files must stay in this directory (flat layout). GitHub does not l
 | [`release-adp-bkn-safe.yml`](./release-adp-bkn-safe.yml) | release-adp-bkn-safe | `push` (`bkn-safe/**`), `workflow_dispatch` | bkn-safe image + bkn-safe & hydra Helm charts (ISF replacement) |
 | [`release-infra-sandbox.yml`](./release-infra-sandbox.yml) | release-infra-sandbox | `push` (`infra/sandbox/**`), `workflow_dispatch` | sandbox bases (v1) + control-plane + web + 2 templates + 2 Helm charts |
 | [`automation-ghcr-cleanup.yml`](./automation-ghcr-cleanup.yml) | automation-ghcr-cleanup | `schedule` (weekly Sun 03:00 UTC), `workflow_dispatch` | Delete old GHCR container packages (branch-suffixed tags > 30d, untagged orphans); keeps semver/v1/v2/latest |
-| [`automation-claude-review.yml`](./automation-claude-review.yml) | Claude Code Review | `pull_request` (opened / reopened / ready_for_review), `workflow_dispatch` | Claude 代码评审（inline comments）；需 repo secret `ANTHROPIC_API_KEY`，缺失时跳过 |
+| [`automation-claude-review.yml`](./automation-claude-review.yml) | Claude Code Review | `pull_request` (opened / reopened / ready_for_review), `workflow_dispatch` | Claude 代码评审（inline comments）；需 repo secret `CLAUDE_CODE_OAUTH_TOKEN`，缺失时跳过 |
 
 When you add a workflow, append a row here and use a `paths` filter when it should only run for part of the monorepo.
