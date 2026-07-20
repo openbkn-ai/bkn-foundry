@@ -15,12 +15,39 @@ const (
 
 // RawQueryRequest SQL查询请求
 type RawQueryRequest struct {
-	Query        any    `json:"query"`                   // SQL查询语句（字符串）或OpenSearch DSL查询（JSON对象）
-	QueryType    string `json:"query_type,omitempty"`    // 可选，指定查询类型（如"standard"、"stream"）
-	QueryID      string `json:"query_id,omitempty"`      // 可选，指定查询 ID，用于游标 session
-	ResourceType string `json:"resource_type,omitempty"` // 可选，指定资源类型（如"opensearch"、"mysql"、"postgresql"）
-	StreamSize   int    `json:"stream_size,omitempty"`   // 流式查询每批数据量，默认10000，流式查询必填
-	QueryTimeout int    `json:"query_timeout,omitempty"` // 查询超时时间（秒），默认60，最小1，最大3600
+	Query           any           `json:"query,omitempty"`
+	QueryFormat     QueryFormat   `json:"query_format,omitempty"`
+	InputDialect    string        `json:"input_dialect,omitempty"`
+	Paging          PagingRequest `json:"paging,omitempty"`
+	QueryTimeoutSec int           `json:"query_timeout_sec,omitempty"` // 查询超时时间（秒），默认60，最小1，最大3600
+
+	// Deprecated internal fields retained only while CursorSession replaces the
+	// legacy stream implementation. They are never bound from the HTTP API.
+	QueryType    string `json:"-"`
+	QueryID      string `json:"-"`
+	ResourceType string `json:"-"`
+	StreamSize   int    `json:"-"`
+}
+
+func (r RawQueryRequest) Contract() RawQueryContract {
+	return RawQueryContract{
+		Query:        r.Query,
+		QueryFormat:  r.QueryFormat,
+		InputDialect: r.InputDialect,
+		Paging:       r.Paging,
+	}
+}
+
+func (r RawQueryRequest) IsContinuation() bool {
+	return r.Contract().IsContinuation()
+}
+
+func (r RawQueryRequest) EffectiveInputDialect() string {
+	return r.Contract().EffectiveInputDialect()
+}
+
+func (r RawQueryRequest) ValidateContract() error {
+	return r.Contract().Validate()
 }
 
 // RawQueryResponse SQL查询响应

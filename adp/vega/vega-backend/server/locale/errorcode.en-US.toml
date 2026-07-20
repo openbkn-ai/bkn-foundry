@@ -200,8 +200,8 @@ Solution = "Please check joins configuration"
 ErrorLink = "None"
 
 [VegaBackend.Query.InvalidParameter.QueryTimeout]
-Description = "Invalid query_timeout parameter"
-Solution = "query_timeout must be between 1 and 3600"
+Description = "Invalid query_timeout_sec parameter"
+Solution = "query_timeout_sec must be between 1 and 3600"
 ErrorLink = "None"
 
 [VegaBackend.Query.CatalogNotFound]

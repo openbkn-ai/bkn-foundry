@@ -80,6 +80,18 @@ func (rqs *rawQueryService) Execute(ctx context.Context, req *interfaces.RawQuer
 		otellog.LogError(ctx, "Validate request failed", err)
 		return nil, err
 	}
+	if req.QueryFormat != "" {
+		if req.IsContinuation() || req.Paging.Mode == interfaces.PagingModeCursor {
+			return nil, rest.NewHTTPError(ctx, http.StatusNotImplemented, verrors.VegaBackend_Query_ExecuteFailed).
+				WithErrorDetails("cursor paging is not implemented yet")
+		}
+		switch req.QueryFormat {
+		case interfaces.QueryFormatSQL:
+			return rqs.executeInitialSQLQuery(ctx, req)
+		case interfaces.QueryFormatDSL:
+			return rqs.executeInitialDSLQuery(ctx, req)
+		}
+	}
 
 	// 2. 判断查询类型
 	// 如果是流式查询，调用executeStreamQuery方法
@@ -402,6 +414,14 @@ func (rqs *rawQueryService) Execute(ctx context.Context, req *interfaces.RawQuer
 
 // validateRequest 校验请求
 func (rqs *rawQueryService) validateRequest(ctx context.Context, req *interfaces.RawQueryRequest) error {
+	if req.QueryFormat != "" || req.IsContinuation() {
+		if err := req.ValidateContract(); err != nil {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+				WithErrorDetails(err.Error())
+		}
+		return nil
+	}
+
 	// 校验查询类型
 	if req.QueryType != "" && req.QueryType != "standard" && req.QueryType != "stream" {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
@@ -458,6 +478,135 @@ func (rqs *rawQueryService) validateRequest(ctx context.Context, req *interfaces
 	}
 
 	return nil
+}
+
+func (rqs *rawQueryService) executeInitialSQLQuery(ctx context.Context, req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
+	resourceIDs, err := rqs.extractResourceIDs(req.Query)
+	if err != nil {
+		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+			WithErrorDetails(fmt.Sprintf("extract resource ids failed: %v", err))
+	}
+	if len(resourceIDs) == 0 {
+		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+			WithErrorDetails("at least one resource_id is required for SQL queries")
+	}
+
+	catalog, warnings, err := rqs.checkSameDataSource(ctx, resourceIDs)
+	if err != nil {
+		return nil, err
+	}
+	replacedSQL, err := rqs.replaceResourceIDWithSchemaTable(ctx, req.Query, resourceIDs, catalog)
+	if err != nil {
+		return nil, err
+	}
+
+	inputDialect := req.EffectiveInputDialect()
+	if err := rawQueryPolicy.ValidateSQL(replacedSQL, inputDialect); err != nil {
+		if httpErr := rawQueryValidationError(ctx, err); httpErr != nil {
+			return nil, httpErr
+		}
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
+			WithErrorDetails(fmt.Sprintf("validate SQL failed: %v", err))
+	}
+
+	targetDialect, err := targetDialectForCatalog(ctx, catalog)
+	if err != nil {
+		return nil, err
+	}
+	finalSQL := replacedSQL
+	if inputDialect != targetDialect {
+		result, err := sqlglot.TranspileSQL(replacedSQL, inputDialect, targetDialect)
+		if err != nil {
+			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
+				WithErrorDetails(fmt.Sprintf("transpile SQL failed: %v", err))
+		}
+		finalSQL = result.SQL
+	}
+	finalSQL = applySingleQueryLimit(finalSQL)
+
+	result, err := rqs.executeSQLWithQueryType(ctx, catalog, finalSQL, string(interfaces.PagingModeSingle))
+	if err != nil {
+		return nil, err
+	}
+	if len(result.Entries) >= 10000 {
+		result.Stats.HasMore = true
+	}
+	result.Warnings = append(result.Warnings, warnings...)
+	return result, nil
+}
+
+func (rqs *rawQueryService) executeInitialDSLQuery(ctx context.Context, req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
+	queryMap := req.Query.(map[string]any)
+	resourceID, _ := queryMap["resource_id"].(string)
+	if resourceID == "" {
+		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+			WithErrorDetails("resource_id is required for DSL queries")
+	}
+
+	resource, err := rqs.rs.GetByID(ctx, resourceID)
+	if err != nil {
+		return nil, err.(*rest.HTTPError)
+	}
+	if resource == nil {
+		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_ResourceNotFound).
+			WithErrorDetails(fmt.Sprintf("resource %s not found", resourceID))
+	}
+	warning, err := resourcelogic.EnsureResourceQueryable(ctx, resource)
+	if err != nil {
+		return nil, err
+	}
+
+	catalog, err := rqs.cs.GetByID(ctx, resource.CatalogID, true)
+	if err != nil {
+		return nil, err.(*rest.HTTPError)
+	}
+	if catalog == nil {
+		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_CatalogNotFound).
+			WithErrorDetails(fmt.Sprintf("catalog %s not found", resource.CatalogID))
+	}
+	if err := ensureCatalogEnabled(ctx, catalog); err != nil {
+		return nil, err
+	}
+	if catalog.ConnectorType != interfaces.ConnectorTypeOpenSearch {
+		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+			WithErrorDetails(fmt.Sprintf("DSL input requires an opensearch catalog, got: %s", catalog.ConnectorType))
+	}
+
+	result, err := rqs.executeOpenSearchQuery(ctx, req, []string{resourceID}, catalog)
+	if err != nil {
+		return nil, err
+	}
+	if warning != "" {
+		result.Warnings = append(result.Warnings, warning)
+	}
+	return result, nil
+}
+
+func targetDialectForCatalog(ctx context.Context, catalog *interfaces.Catalog) (string, error) {
+	switch catalog.ConnectorType {
+	case interfaces.ConnectorTypeMariaDB, interfaces.ConnectorTypeMySQL:
+		return "mysql", nil
+	case interfaces.ConnectorTypePostgreSQL:
+		return "postgres", nil
+	default:
+		return "", rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+			WithErrorDetails(fmt.Sprintf("unsupported connector type: %s", catalog.ConnectorType))
+	}
+}
+
+func applySingleQueryLimit(sql string) string {
+	limitRegex := regexp.MustCompile(`(?i)\bLIMIT\s+(\d+)\s*(?:,\s*\d+)?\s*$`)
+	if !limitRegex.MatchString(sql) {
+		return fmt.Sprintf("%s LIMIT 10000", sql)
+	}
+	matches := limitRegex.FindStringSubmatch(sql)
+	if len(matches) > 1 {
+		var limit int
+		if _, err := fmt.Sscanf(matches[1], "%d", &limit); err == nil && limit > 10000 {
+			return limitRegex.ReplaceAllString(sql, "LIMIT 10000")
+		}
+	}
+	return sql
 }
 
 // extractResourceIDs 从SQL中提取所有{{.resource_id}}占位符

@@ -32,17 +32,18 @@ type PagingMode string
 // PagingRequest is used for either a first cursor request or a continuation.
 // A continuation has only Cursor set; all other fields are forbidden.
 type PagingRequest struct {
-	Mode   PagingMode `json:"mode,omitempty"`
-	Size   int        `json:"size,omitempty"`
-	Cursor string     `json:"cursor,omitempty"`
+	Mode         PagingMode `json:"mode,omitempty"`
+	Size         int        `json:"size,omitempty"`
+	KeepAliveSec int        `json:"keep_alive_sec,omitempty"`
+	Cursor       string     `json:"cursor,omitempty"`
 }
 
 // PagingResponse exposes only opaque cursor state to the client.
 type PagingResponse struct {
 	NextCursor *string `json:"next_cursor"`
-	// ExpiresAt is a Unix timestamp in milliseconds. It is nil when there is no
+	// ExpiresAtSec is a Unix timestamp in seconds. It is nil when there is no
 	// valid cursor to continue, such as on the final page.
-	ExpiresAt *int64 `json:"expires_at"`
+	ExpiresAtSec *int64 `json:"expires_at_sec"`
 }
 
 // RawQueryContract is the replacement public request model. It is introduced
@@ -71,7 +72,7 @@ func (r RawQueryContract) EffectiveInputDialect() string {
 // Validate checks the mutually exclusive first-page and continuation forms.
 func (r RawQueryContract) Validate() error {
 	if r.IsContinuation() {
-		if r.Query != nil || r.QueryFormat != "" || r.InputDialect != "" || r.Paging.Mode != "" || r.Paging.Size != 0 {
+		if r.Query != nil || r.QueryFormat != "" || r.InputDialect != "" || r.Paging.Mode != "" || r.Paging.Size != 0 || r.Paging.KeepAliveSec != 0 {
 			return fmt.Errorf("cursor continuation must contain only paging.cursor")
 		}
 		return nil
@@ -92,12 +93,15 @@ func (r RawQueryContract) Validate() error {
 
 	switch r.Paging.Mode {
 	case "", PagingModeSingle:
-		if r.Paging.Size != 0 {
-			return fmt.Errorf("paging.size is only allowed when paging.mode is %q", PagingModeCursor)
+		if r.Paging.Size != 0 || r.Paging.KeepAliveSec != 0 {
+			return fmt.Errorf("paging.size and paging.keep_alive_sec are only allowed when paging.mode is %q", PagingModeCursor)
 		}
 	case PagingModeCursor:
 		if r.Paging.Size < MinCursorPageSize || r.Paging.Size > MaxCursorPageSize {
 			return fmt.Errorf("paging.size must be between %d and %d for cursor paging", MinCursorPageSize, MaxCursorPageSize)
+		}
+		if r.Paging.KeepAliveSec < 0 {
+			return fmt.Errorf("paging.keep_alive_sec must not be negative")
 		}
 	default:
 		return fmt.Errorf("paging.mode must be either %q or %q", PagingModeSingle, PagingModeCursor)

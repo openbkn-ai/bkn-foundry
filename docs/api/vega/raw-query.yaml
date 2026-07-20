@@ -15,9 +15,9 @@ info:
     | 维度 | `POST /resources/query` | `POST /resources/{id}/data` (Override:GET) |
     |---|---|---|
     | 主键 | 无（不绑定 resource） | 绑定 `:id` |
-    | 输入 | 原生 SQL / DSL + `resource_type` | 结构化 `filter_condition` + 分页 |
+    | 输入 | 原生 SQL / DSL + format/dialect | 结构化 `filter_condition` + 分页 |
     | 输出 | 列元数据 + raw entries + 流式 cursor | 文档对象 + 可选 total_count |
-    | 流式 | ✅ `query_type=stream` + `query_id` 游标 | ❌ |
+    | Cursor | `paging.cursor` / `paging.next_cursor` | ❌ |
     | 用途 | 跨 resource 联表 / 复杂 SQL / 流式大数据 | 应用层结构化访问 |
 
     **安全说明**：本端点把原生 SQL/DSL 直传给底层数据源，是高权限能力。调用方应当
@@ -32,19 +32,12 @@ paths:
     post:
       summary: 执行原生查询（SQL 或 DSL）
       description: |
-        **请求体的 `query` 字段类型依赖 `resource_type`**：
+        **请求体的 `query` 字段类型由 `query_format` 和 `input_dialect` 决定**：
 
-        - `mysql` / `postgresql` / `clickhouse` / `dameng` / `oracle` → SQL 字符串
-          示例：`{"query": "SELECT * FROM t WHERE id = 1", "resource_type": "mysql"}`
-        - `opensearch` / `elasticsearch` → DSL JSON 对象
-          示例：`{"query": {"query": {"match_all": {}}}, "resource_type": "opensearch"}`
+        - SQL：`{"query":"SELECT * FROM {{resource_id}}", "query_format":"sql", "input_dialect":"postgres"}`
+        - OpenSearch DSL：`{"query":{"resource_id":"...","query":{"match_all":{}}}, "query_format":"dsl", "input_dialect":"opensearch"}`
 
-        **流式查询**：`query_type=stream` 启用游标模式。首次请求不带 `query_id`，
-        服务端在响应 `stats.query_id` 中返回；后续请求携带该 `query_id` 继续游标，
-        直到 `stats.has_more=false`。流式仅 OpenSearch 提供 search_after 语义。
-
-        **支持的 `resource_type`** 由 `interfaces.GetSupportedConnectorTypesForQuery()`
-        定义；不在白名单内返回 400 `VegaBackend.InvalidParameter.ResourceType`。
+        实际执行连接器始终从 Resource/Catalog 推导，客户端不能通过输入方言选择数据源。
       requestBody:
         required: true
         content:
@@ -75,9 +68,8 @@ components:
       description: |
         请求参数 / 请求体非法。常见 errcode：
         - `VegaBackend.InvalidParameter.RequestBody`：body schema 不合法
-        - `VegaBackend.InvalidParameter.ResourceType`：`resource_type` 缺失或不在白名单
-        - `VegaBackend.InvalidParameter.StreamSize`：`stream_size` 超出 [100, 10000]
-        - `VegaBackend.Query.InvalidParameter.QueryTimeout`：`query_timeout` 超出 [1, 3600]
+        - `VegaBackend.Query.InvalidParameter`：`query_format`、`input_dialect` 或 paging 参数非法
+        - `VegaBackend.Query.InvalidParameter.QueryTimeout`：`query_timeout_sec` 超出 [1, 3600]
       content:
         application/json:
           schema:
@@ -108,11 +100,11 @@ components:
       type: object
       required:
         - query
-        - resource_type
+        - query_format
       properties:
         query:
           description: |
-            查询语句。类型依赖 `resource_type`：
+            查询语句。类型依赖 `query_format`：
             - SQL 引擎用字符串
             - 索引引擎（OpenSearch/Elasticsearch）用 JSON 对象
           oneOf:
@@ -121,41 +113,47 @@ components:
             - type: object
               description: DSL JSON 对象（OpenSearch / Elasticsearch）
               additionalProperties: true
-        query_type:
-          description: 查询类型；`stream` 启用游标，需配合 `query_id` / `stats.has_more`
+        query_format:
+          description: 输入载体类型。
           type: string
           enum:
-            - standard
-            - stream
-          default: standard
-        query_id:
-          description: |
-            流式查询游标 ID。首次请求留空，服务端在响应 `stats.query_id` 中返回；
-            后续请求带上该 ID 继续游标。
-          type: string
-        resource_type:
-          description: |
-            底层连接器类型，决定 query 字段如何解释。
-            支持值由后端 `GetSupportedConnectorTypesForQuery()` 配置。
+            - sql
+            - dsl
+        input_dialect:
+          description: SQL 输入方言；SQL 省略时默认 `postgres`。DSL 首发必须是 `opensearch`。
           type: string
           examples:
+            - postgres
             - mysql
-            - postgresql
+            - trino
+            - duckdb
             - opensearch
-        stream_size:
-          description: 流式查询每批数据量，[100, 10000]，默认 10000
-          type: integer
-          format: int64
-          minimum: 100
-          maximum: 10000
-          default: 10000
-        query_timeout:
+        paging:
+          $ref: "#/components/schemas/PagingRequest"
+        query_timeout_sec:
           description: 查询超时（秒），[1, 3600]，默认 60
           type: integer
           format: int64
           minimum: 1
           maximum: 3600
           default: 60
+    PagingRequest:
+      type: object
+      properties:
+        mode:
+          type: string
+          enum: [single, cursor]
+          default: single
+        size:
+          type: integer
+          minimum: 100
+          maximum: 10000
+        keep_alive_sec:
+          description: cursor 成功取页后的空闲租约秒数；仅首次 cursor 请求可设置。
+          type: integer
+          minimum: 1
+        cursor:
+          type: string
     RawQueryResponse:
       description: 原生查询响应
       type: object
@@ -209,7 +207,7 @@ components:
         - offset
       properties:
         is_timeout:
-          description: 是否因 query_timeout 触发超时
+          description: 是否因 query_timeout_sec 触发超时
           type: boolean
         query_id:
           description: |

@@ -173,6 +173,21 @@ func TestRawQueryServiceValidateRequest(t *testing.T) {
 		req  *interfaces.RawQueryRequest
 	}{
 		{
+			name: "new SQL contract defaults to postgres",
+			req: &interfaces.RawQueryRequest{
+				Query:       "select * from {{r1}}",
+				QueryFormat: interfaces.QueryFormatSQL,
+			},
+		},
+		{
+			name: "new opensearch DSL contract",
+			req: &interfaces.RawQueryRequest{
+				Query:        map[string]any{"resource_id": "r1"},
+				QueryFormat:  interfaces.QueryFormatDSL,
+				InputDialect: "opensearch",
+			},
+		},
+		{
 			name: "standard sql",
 			req:  &interfaces.RawQueryRequest{QueryType: interfaces.QueryType_Standard, Query: "select * from {{r1}}"},
 		},
@@ -206,6 +221,17 @@ func TestRawQueryServiceValidateRequest(t *testing.T) {
 			require.NoError(t, svc.validateRequest(context.Background(), tt.req))
 		})
 	}
+}
+
+func TestRawQueryServiceValidateRequestNewContract(t *testing.T) {
+	svc := &rawQueryService{}
+	err := svc.validateRequest(context.Background(), &interfaces.RawQueryRequest{
+		Query:        "select 1",
+		QueryFormat:  interfaces.QueryFormatSQL,
+		InputDialect: "opensearch",
+	})
+
+	assertHTTPError(t, err, http.StatusBadRequest)
 }
 
 func TestRawQueryServiceExtractResourceIDs(t *testing.T) {

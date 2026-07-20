@@ -298,11 +298,11 @@ func (lvs *logicViewService) executeCompositeViewByDSL(ctx context.Context, view
 		}
 
 		req := interfaces.RawQueryRequest{
-			Query:        dslMap,
-			ResourceType: resourceType,
-			QueryType:    params.QueryType,
-			StreamSize:   params.Limit,
-			QueryTimeout: int(params.Timeout),
+			Query:           dslMap,
+			ResourceType:    resourceType,
+			QueryType:       params.QueryType,
+			StreamSize:      params.Limit,
+			QueryTimeoutSec: int(params.Timeout.Seconds()),
 		}
 		res, err := lvs.qs.Execute(ctx, &req)
 		if err != nil {
@@ -385,11 +385,11 @@ func (lvs *logicViewService) executeCompositeViewBySQL(ctx context.Context, view
 		}
 
 		req := interfaces.RawQueryRequest{
-			Query:        finalSql,
-			ResourceType: resourceType,
-			QueryType:    params.QueryType,
-			StreamSize:   params.Limit,
-			QueryTimeout: int(params.Timeout),
+			Query:           finalSql,
+			ResourceType:    resourceType,
+			QueryType:       params.QueryType,
+			StreamSize:      params.Limit,
+			QueryTimeoutSec: int(params.Timeout.Seconds()),
 		}
 		res, err := lvs.qs.Execute(ctx, &req)
 		if err != nil {
