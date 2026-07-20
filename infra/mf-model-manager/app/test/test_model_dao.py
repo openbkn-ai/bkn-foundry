@@ -409,6 +409,10 @@ class TestGetOverviewData(TestCase):
         self.assertEqual(m3.execute.call_count, 3)
         self.assertEqual(executed_sql.count("INNER JOIN t_llm_model m ON d.f_model_id = m.f_model_id"), 3)
         self.assertIn("FROM t_model_op_detail d", executed_sql)
+        self.assertIn("DATE(d.f_create_time) AS date_group", executed_sql)
+        self.assertIn("DATE_FORMAT(d.f_create_time", executed_sql)
+        self.assertNotIn("DATE(f_create_time)", executed_sql)
+        self.assertNotIn("SUM(f_total_count)", executed_sql)
         self.assertNotIn(" t_small_model ", executed_sql)
 
     def test_get_overview_data_filters_by_llm_model_id_alias(self):

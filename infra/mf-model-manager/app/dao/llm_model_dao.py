@@ -414,18 +414,18 @@ class ModelDao():
     def get_overview_data(self, model_id, start_time, end_time, userId, connection, cursor):
         # 计算end_time向前8小时的时间
         sql1 = f"""SELECT
-                SUM(f_total_count) AS total_usage,
+                SUM(d.f_total_count) AS total_usage,
                 CASE
-                    WHEN SUM(f_total_count) = 0 THEN 0
-                    ELSE (SUM(f_failed_count) / SUM(f_total_count))
+                    WHEN SUM(d.f_total_count) = 0 THEN 0
+                    ELSE (SUM(d.f_failed_count) / SUM(d.f_total_count))
                 END AS error_rate,
                 CASE
-                    WHEN SUM(f_total_count) = 0 THEN 0
-                    ELSE SUM(f_average_total_time * f_total_count) / SUM(f_total_count)
+                    WHEN SUM(d.f_total_count) = 0 THEN 0
+                    ELSE SUM(d.f_average_total_time * d.f_total_count) / SUM(d.f_total_count)
                 END AS avg_response_time,
-                SUM(f_input_tokens + f_output_tokens) AS total_tokens,
-                SUM(f_input_tokens) AS input_tokens,
-                SUM(f_output_tokens) AS output_tokens
+                SUM(d.f_input_tokens + d.f_output_tokens) AS total_tokens,
+                SUM(d.f_input_tokens) AS input_tokens,
+                SUM(d.f_output_tokens) AS output_tokens
             FROM t_model_op_detail d
             INNER JOIN t_llm_model m ON d.f_model_id = m.f_model_id
             WHERE DATE(d.f_create_time) BETWEEN '{start_time}' AND '{end_time}'
@@ -438,19 +438,19 @@ class ModelDao():
         core_metrics = cursor.fetchall()
         sql2 = f"""
             SELECT
-            DATE(f_create_time) AS date_group,
-            SUM(f_input_tokens) AS input_tokens,
-            SUM(f_output_tokens) AS output_tokens,
+            DATE(d.f_create_time) AS date_group,
+            SUM(d.f_input_tokens) AS input_tokens,
+            SUM(d.f_output_tokens) AS output_tokens,
             CASE
-                WHEN SUM(f_total_count) = 0 THEN 0
-                ELSE SUM(f_average_total_time * f_total_count) / SUM(f_total_count)
+                WHEN SUM(d.f_total_count) = 0 THEN 0
+                ELSE SUM(d.f_average_total_time * d.f_total_count) / SUM(d.f_total_count)
             END AS avg_total_time,
             CASE
-                WHEN SUM(f_total_count) = 0 THEN 0
-                ELSE SUM(f_average_first_time * f_total_count) / SUM(f_total_count)
+                WHEN SUM(d.f_total_count) = 0 THEN 0
+                ELSE SUM(d.f_average_first_time * d.f_total_count) / SUM(d.f_total_count)
             END AS avg_first_time,
-            SUM(f_input_tokens + f_output_tokens) / 86400.0 AS avg_rate,
-            ROUND(SUM(f_total_count) / 86400.0, 6) AS avg_qps
+            SUM(d.f_input_tokens + d.f_output_tokens) / 86400.0 AS avg_rate,
+            ROUND(SUM(d.f_total_count) / 86400.0, 6) AS avg_qps
         FROM t_model_op_detail d
         INNER JOIN t_llm_model m ON d.f_model_id = m.f_model_id
         WHERE DATE(d.f_create_time) BETWEEN '{start_time}' AND '{end_time}'"""
@@ -461,7 +461,7 @@ class ModelDao():
         sql2 += " GROUP BY DATE(d.f_create_time) ORDER BY date_group"
         cursor.execute(sql2)
         trend_analysis = cursor.fetchall()
-        sql3 = f"""SELECT DATE_FORMAT(d.f_create_time, '%Y-%m-%d %H:%i:00') AS date_group,ROUND(SUM(f_total_count) / 300, 6) AS avg_qps
+        sql3 = f"""SELECT DATE_FORMAT(d.f_create_time, '%Y-%m-%d %H:%i:00') AS date_group,ROUND(SUM(d.f_total_count) / 300, 6) AS avg_qps
                   FROM t_model_op_detail d
                   INNER JOIN t_llm_model m ON d.f_model_id = m.f_model_id
                   WHERE DATE(d.f_create_time) BETWEEN '{start_time}' AND '{end_time}'"""
