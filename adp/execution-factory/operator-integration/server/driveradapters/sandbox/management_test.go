@@ -24,12 +24,29 @@ func (f *fakeManagementService) GetPool(ctx context.Context) (*logicssandbox.San
 	return &logicssandbox.SandboxPoolResp{MaxSessions: 3, CurrentActiveSessions: 1}, nil
 }
 
+// sentinelWorkspacePath 是跨租户敏感字段的哨兵值。门禁生效时它不应出现在响应里；
+// 若断言改成恒真（例如让 fake 不填该字段，靠 omitempty 让它天然消失），这组用例
+// 就测不出 requireAdmin 是否真的拦住了请求。
+const sentinelWorkspacePath = "/workspace/sess_leak_probe"
+
 func (f *fakeManagementService) ListSessions(ctx context.Context, req *logicssandbox.SandboxSessionListReq) (*logicssandbox.SandboxSessionListResp, error) {
-	return &logicssandbox.SandboxSessionListResp{Items: []*logicssandbox.SandboxSessionSummary{}, Total: 0}, nil
+	return &logicssandbox.SandboxSessionListResp{
+		Items: []*logicssandbox.SandboxSessionSummary{
+			{ID: "sess_leak_probe", UserID: "other-tenant-user"},
+		},
+		Total: 1,
+	}, nil
 }
 
 func (f *fakeManagementService) GetSessionDetail(ctx context.Context, sessionID string) (*logicssandbox.SandboxSessionDetailResp, error) {
-	return &logicssandbox.SandboxSessionDetailResp{SandboxSessionSummary: &logicssandbox.SandboxSessionSummary{ID: sessionID}}, nil
+	return &logicssandbox.SandboxSessionDetailResp{
+		SandboxSessionSummary: &logicssandbox.SandboxSessionSummary{
+			ID:     sessionID,
+			UserID: "other-tenant-user",
+		},
+		WorkspacePath: sentinelWorkspacePath,
+		PodName:       "sandbox-pod-leak-probe",
+	}, nil
 }
 
 func TestManagementHandlerReadOnlyRoutes(t *testing.T) {
@@ -98,8 +115,11 @@ func TestManagementHandlerPublicRoutesRequireAdmin(t *testing.T) {
 			So(performRequest(engine, http.MethodGet, base+"/health").Code, ShouldEqual, http.StatusOK)
 			So(performRequest(engine, http.MethodGet, base+"/pool").Code, ShouldEqual, http.StatusOK)
 			So(performRequest(engine, http.MethodGet, base+"/sessions").Code, ShouldEqual, http.StatusOK)
-			So(performRequest(engine, http.MethodGet, base+"/sessions/sess_1").Code, ShouldEqual, http.StatusOK)
+			detail := performRequest(engine, http.MethodGet, base+"/sessions/sess_1")
+			So(detail.Code, ShouldEqual, http.StatusOK)
 			So(auth.called, ShouldEqual, 4)
+			// 放行时哨兵字段确实出现在响应里——否则下面「不泄露」的断言恒为真，测不出门禁
+			So(detail.Body.String(), ShouldContainSubstring, sentinelWorkspacePath)
 		})
 
 		Convey("非超管一律拒绝，且不泄露会话数据", func() {
@@ -108,8 +128,11 @@ func TestManagementHandlerPublicRoutesRequireAdmin(t *testing.T) {
 
 			for _, path := range []string{"/health", "/pool", "/sessions", "/sessions/sess_1"} {
 				resp := performRequest(engine, http.MethodGet, base+path)
-				So(resp.Code, ShouldNotEqual, http.StatusOK)
-				So(resp.Body.String(), ShouldNotContainSubstring, "workspace_path")
+				So(resp.Code, ShouldEqual, http.StatusForbidden)
+				// fake service 会返回哨兵值，因此这两条断言只有在 requireAdmin
+				// 真的中止了请求时才成立
+				So(resp.Body.String(), ShouldNotContainSubstring, sentinelWorkspacePath)
+				So(resp.Body.String(), ShouldNotContainSubstring, "other-tenant-user")
 			}
 		})
 
