@@ -359,6 +359,57 @@ class TestCheckModel(TestCase):
         self.assertEqual(json.loads(res.body)["model_id"], "111")
 
 
+class TestEditDefaultModel(TestCase):
+    def setUp(self) -> None:
+        self.check_model_is_exist = llm_model_dao.check_model_is_exist
+        self.get_default_model = llm_model_dao.get_default_model
+        self.update_model_default_status = llm_model_dao.update_model_default_status
+        self.redis_util = llm_controller.redis_util
+
+    def tearDown(self) -> None:
+        llm_model_dao.check_model_is_exist = self.check_model_is_exist
+        llm_model_dao.get_default_model = self.get_default_model
+        llm_model_dao.update_model_default_status = self.update_model_default_status
+        llm_controller.redis_util = self.redis_util
+        StandLogger.stand_log_shutdown()
+
+    def _redis_mock(self):
+        redis_mock = mock.MagicMock()
+        redis_mock.delete_str = mock.AsyncMock(return_value=None)
+        return redis_mock
+
+    def test_edit_default_model_unsets_current_default(self):
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        llm_controller.redis_util = self._redis_mock()
+        llm_model_dao.check_model_is_exist = mock.Mock(return_value=True)
+        llm_model_dao.get_default_model = mock.Mock(return_value=[{"f_model_id": "111"}])
+        llm_model_dao.update_model_default_status = mock.Mock(return_value=None)
+
+        res = loop.run_until_complete(
+            llm_controller.edit_default_model({"model_id": "111", "default": False}, "111", "zh"))
+
+        body = json.loads(res.body)
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(body["default"], False)
+        llm_model_dao.update_model_default_status.assert_called_once_with("111", False)
+        llm_model_dao.get_default_model.assert_not_called()
+
+    def test_edit_default_model_rejects_duplicate_set_default(self):
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        llm_controller.redis_util = self._redis_mock()
+        llm_model_dao.check_model_is_exist = mock.Mock(return_value=True)
+        llm_model_dao.get_default_model = mock.Mock(return_value=[{"f_model_id": "111"}])
+        llm_model_dao.update_model_default_status = mock.Mock(return_value=None)
+
+        res = loop.run_until_complete(
+            llm_controller.edit_default_model({"model_id": "111", "default": True}, "111", "zh"))
+
+        self.assertEqual(res.status_code, 400)
+        llm_model_dao.update_model_default_status.assert_not_called()
+
+
 if __name__ == '__main__':
     import unittest
 

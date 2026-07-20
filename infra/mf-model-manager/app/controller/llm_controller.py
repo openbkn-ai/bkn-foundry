@@ -975,6 +975,7 @@ async def get_monitor_data(userId, language, model_id):
 
 
 async def edit_default_model(model_para, userId, language):
+    global redis_util
     if base_config.AUTH_ENABLED and userId != "266c6a42-6131-4d62-8f39-853e7093701c":
         error_dict = ModelFactory_Router_ParamError_TypeError_Error.copy()
         error_dict['description'] = "无操作权限"
@@ -1002,6 +1003,16 @@ async def edit_default_model(model_para, userId, language):
             return JSONResponse(status_code=400, content=error_dict)
 
         # 获取当前默认模型
+        set_default = model_para["default"]
+        if not set_default:
+            llm_model_dao.update_model_default_status(model_id, False)
+            default_cache_name = "default_model_3ed523"
+            default_cache_key = f"dip:model-api:llm:{default_cache_name}:list"
+            if redis_util is None:
+                redis_util = await get_redis_util()
+            await redis_util.delete_str(default_cache_key)
+            return JSONResponse(status_code=200, content={"status": "ok", "id": model_id, "default": False})
+
         old_default_data = llm_model_dao.get_default_model()
         old_model_id = ""
         if old_default_data:
@@ -1021,11 +1032,10 @@ async def edit_default_model(model_para, userId, language):
         llm_model_dao.update_model_default_status(model_id, True)
         default_cache_name = "default_model_3ed523"
         default_cache_key = f"dip:model-api:llm:{default_cache_name}:list"
-        global redis_util
         if redis_util is None:
             redis_util = await get_redis_util()
         await redis_util.delete_str(default_cache_key)
-        content = {"status": "ok", "id": model_id}
+        content = {"status": "ok", "id": model_id, "default": True}
         return JSONResponse(status_code=200, content=content)
 
     except Exception as e:
