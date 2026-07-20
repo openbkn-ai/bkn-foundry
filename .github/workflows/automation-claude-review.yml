@@ -3,10 +3,21 @@ name: Claude Code Review
 # 每个 PR 开启（或从 draft 转为 ready）时，由 Claude 做一次代码评审。
 # 与旧的 Copilot ruleset 行为对齐：只评审首版，不在每次 push 后重跑。
 # 需要重新评审时手动触发 workflow_dispatch 并填 PR 编号。
+#
+# 只对代码路径生效。纯配置类改动（release manifest 刷新、镜像同步、workflow 自身
+# 调整、文档）不进评审，既省额度也避免噪声。
+# 注意：GitHub Actions 不允许同一事件同时使用 paths 与 paths-ignore，因此这里
+# 只写 include 列表——未列出的路径自动跳过——并用 ! 前缀排除列表内的文档文件。
 
 on:
   pull_request:
     types: [opened, reopened, ready_for_review]
+    paths:
+      - 'adp/**'
+      - 'infra/**'
+      - 'bkn-safe/**'
+      - 'deploy/scripts/**'
+      - '!**/*.md'
   workflow_dispatch:
     inputs:
       pr_number:
