@@ -49,14 +49,29 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          # pull_request 事件下 checkout 会自动落到 PR 的 merge ref；
+          # workflow_dispatch 下只会拿到默认分支，需要下一步显式切到 PR 分支，
+          # 因此这里放开深度以便 gh pr checkout 能建立分支。
+          fetch-depth: ${{ github.event_name == 'workflow_dispatch' && 0 || 1 }}
+
+      - name: Checkout PR branch (manual trigger)
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh pr checkout "$PR_NUMBER"
+          echo "已切到 PR #$PR_NUMBER: $(git rev-parse --abbrev-ref HEAD) @ $(git rev-parse --short HEAD)"
 
       - name: Claude review
         if: env.CLAUDE_CODE_OAUTH_TOKEN != ''
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          track_progress: true
+          # track_progress 只支持 pull_request / issues / issue_comment /
+          # pull_request_review(_comment) 事件，在 workflow_dispatch 下会直接
+          # 报错退出——手动触发那条路径因此从未可用。按事件类型开关。
+          track_progress: ${{ github.event_name != 'workflow_dispatch' }}
           prompt: |
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ env.PR_NUMBER }}
