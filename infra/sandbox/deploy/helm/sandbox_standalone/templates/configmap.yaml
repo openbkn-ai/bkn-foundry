@@ -1,5 +1,5 @@
 {{- if .Values.configMap.create }}
-{{- $templateImageRegistry := default "swr.cn-east-3.myhuaweicloud.com/kweaver-ai/dip" .Values.image.registry }}
+{{- $templateImageRegistry := default "swr.cn-east-3.myhuaweicloud.com/openbkn-ai/dip" .Values.image.registry }}
 {{- $pythonBasicTemplate := .Values.image.defaultTemplate }}
 {{- if .Values.image.defaultTemplates }}
 {{- $pythonBasicTemplate = .Values.image.defaultTemplates.pythonBasic }}

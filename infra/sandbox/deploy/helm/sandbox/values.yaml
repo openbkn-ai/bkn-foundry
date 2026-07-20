@@ -24,10 +24,6 @@ image:
     tag: "__VERSION__"
     pullPolicy: IfNotPresent
   minio:
-    # MinIO is not a first-party image. Pull from upstream quay.io/minio
-    # by overriding the registry only for this entry (templates prefer
-    # image.minio.registry when set, otherwise fall back to image.registry).
-    registry: "quay.io/minio"
     repository: minio
     tag: "RELEASE.2025-09-07T16-13-09Z"
     pullPolicy: IfNotPresent
