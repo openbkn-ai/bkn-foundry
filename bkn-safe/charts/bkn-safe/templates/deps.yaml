@@ -1,12 +1,9 @@
 {{- if .Values.bundledDeps.enabled }}
 {{- /* Cluster MariaDB creds from config.yaml depServices.rds (platform standard).
-       When present, the bkn-safe app DB uses it and the bundled MariaDB below is
-       skipped — only the hydra Postgres (which MariaDB can't host) is bundled. */}}
+       When present, the bkn-safe app DB uses it. */}}
 {{- $rds := (.Values.depServices | default dict).rds | default dict }}
 # Bundled dependencies: PostgreSQL (hydra's DB — MariaDB can't host hydra) is
-# always bundled here and PERSISTED on a PVC; the bundled MariaDB (bkn-safe's app
-# DB) deploys ONLY when no cluster depServices.rds is configured (pure dev). Hydra
-# is upstream ORY v26.2.0.
+# always bundled here and PERSISTED on a PVC. Hydra is upstream ORY v26.2.0.
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -39,7 +36,7 @@ spec:
     spec:
       containers:
         - name: postgres
-          image: {{ .Values.bundledDeps.postgresImage }}
+          image: "{{- if .Values.image.registry }}{{ .Values.image.registry }}/{{ end }}{{ .Values.bundledDeps.postgresImage }}"
           env:
             - { name: POSTGRES_USER, value: "hydra" }
             - { name: POSTGRES_PASSWORD, value: "secret" }
@@ -54,36 +51,6 @@ metadata: { name: {{ .Release.Name }}-postgres, namespace: {{ .Release.Namespace
 spec:
   selector: { app: {{ .Release.Name }}-postgres }
   ports: [{ port: 5432, targetPort: 5432 }]
-{{- if not $rds.host }}
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: {{ .Release.Name }}-mariadb
-  namespace: {{ .Release.Namespace }}
-spec:
-  replicas: 1
-  selector: { matchLabels: { app: {{ .Release.Name }}-mariadb } }
-  template:
-    metadata: { labels: { app: {{ .Release.Name }}-mariadb } }
-    spec:
-      containers:
-        - name: mariadb
-          image: {{ .Values.bundledDeps.mariadbImage }}
-          env:
-            - { name: MARIADB_ROOT_PASSWORD, value: {{ .Values.config.db.password | quote }} }
-            - { name: MARIADB_DATABASE, value: {{ .Values.config.db.name | quote }} }
-          ports: [{ containerPort: 3306 }]
-          volumeMounts: [{ name: data, mountPath: /var/lib/mysql }]
-      volumes: [{ name: data, emptyDir: {} }]
----
-apiVersion: v1
-kind: Service
-metadata: { name: {{ .Values.config.db.host }}, namespace: {{ .Release.Namespace }} }
-spec:
-  selector: { app: {{ .Release.Name }}-mariadb }
-  ports: [{ port: 3306, targetPort: 3306 }]
-{{- end }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -98,13 +65,13 @@ spec:
     spec:
       initContainers:
         - name: migrate
-          image: {{ .Values.bundledDeps.hydraImage }}
+          image: "{{- if .Values.image.registry }}{{ .Values.image.registry }}/{{ end }}{{ .Values.bundledDeps.hydraImage }}"
           command: ["hydra", "migrate", "sql", "-e", "--yes"]
           env:
             - { name: DSN, value: "postgres://hydra:secret@{{ .Release.Name }}-postgres:5432/hydra?sslmode=disable" }
       containers:
         - name: hydra
-          image: {{ .Values.bundledDeps.hydraImage }}
+          image: "{{- if .Values.image.registry }}{{ .Values.image.registry }}/{{ end }}{{ .Values.bundledDeps.hydraImage }}"
           args: ["serve", "all", "--dev"]
           env:
             - { name: DSN, value: "postgres://hydra:secret@{{ .Release.Name }}-postgres:5432/hydra?sslmode=disable" }
