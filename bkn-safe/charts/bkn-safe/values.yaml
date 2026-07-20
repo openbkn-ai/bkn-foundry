@@ -130,16 +130,14 @@ resources:
 nodeSelector: {}
 
 # Bundled dependencies for non-production clusters (dev/staging/CI): an upstream
-# hydra v26.2.0 on PostgreSQL + a MariaDB for bkn-safe. In production set
-# enabled=false and point config.hydra/config.db at the real services.
+# hydra v26.2.0 on PostgreSQL. In production set enabled=false and point
+# config.hydra/config.db at the real services.
 bundledDeps:
   enabled: true
-  hydraImage: swr.cn-east-3.myhuaweicloud.com/openbkn-ai/oryd/hydra:v26.2.0
-  postgresImage: swr.cn-east-3.myhuaweicloud.com/openbkn-ai/postgres:16
-  mariadbImage: mariadb:11.4
+  hydraImage: oryd/hydra:v26.2.0
+  postgresImage: postgres:16
   # Persistent volume for the bundled hydra Postgres (survives pod restarts so
-  # OAuth clients/tokens/admin state aren't lost). The bundled MariaDB (app DB)
-  # only deploys when no cluster depServices.rds is set, so it stays ephemeral.
+  # OAuth clients/tokens/admin state aren't lost).
   postgresStorage: "5Gi"
   hydraSecretsSystem: "dev-only-change-me-32-bytes-secret"
   # Browser-facing public base URL of the gateway (TLS-terminating ingress),
