@@ -1,12 +1,11 @@
 from datetime import datetime
 from unittest import TestCase, mock
 
-from llmadapter.llms.llm_factory import llm_factory
 from sse_starlette import EventSourceResponse
 
 from app.dao.llm_model_dao import llm_model_dao
 from app.logs.stand_log import StandLogger
-from app.utils import llm_utils
+from app.utils import llm_utils, verify_utils
 from app.controller import llm_controller
 import asyncio
 import json
@@ -155,15 +154,51 @@ class TestAddModel(TestCase):
 class TestTestModel(TestCase):
     def setUp(self) -> None:
         self.get_data_from_model_list_by_id = llm_model_dao.get_data_from_model_list_by_id
+        self.ClientSession = verify_utils.aiohttp.ClientSession
 
     def tearDown(self) -> None:
         llm_model_dao.get_data_from_model_list_by_id = self.get_data_from_model_list_by_id
+        verify_utils.aiohttp.ClientSession = self.ClientSession
         StandLogger.stand_log_shutdown()
 
+    class _Response:
+        def __init__(self, status, body="{}"):
+            self.status = status
+            self.body = body
+            self.encoding = None
+            self.content = []
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def text(self):
+            return self.body
+
+    class _Session:
+        def __init__(self, response):
+            self.response = response
+            self.post_args = None
+            self.post_kwargs = None
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        def post(self, *args, **kwargs):
+            self.post_args = args
+            self.post_kwargs = kwargs
+            return self.response
+
     def test_test_model_success_openai(self):
-        # series=openai 时 llm_test 不发真实请求，直接返回 status=True
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
+        session = self._Session(self._Response(200))
+        verify_utils.aiohttp.ClientSession = mock.Mock(return_value=session)
         request = {"model_id": "111"}
         llm_model_dao.get_data_from_model_list_by_id = mock.Mock(return_value=[{
             "f_model_id": "111",
@@ -175,7 +210,38 @@ class TestTestModel(TestCase):
         }])
         res = loop.run_until_complete(
             llm_controller.test_model(request, "111", "zh"))
-        self.assertEqual(json.loads(res.body)["res"]["status"], True)
+        self.assertEqual(json.loads(res.body)["status"], "ok")
+        self.assertEqual(session.post_args[0],
+                         "https://artificial-intelligence-01.openai.azure.com/"
+                         "openai/deployments/gpt-4-32k/chat/completions"
+                         "?api-version=2023-05-15&api-type=azure")
+        self.assertEqual(session.post_kwargs["json"]["model"], "gpt-4-32k")
+        self.assertEqual(session.post_kwargs["headers"], {"api-key": "111"})
+
+    def test_test_model_fail_openai_non_200(self):
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        session = self._Session(self._Response(
+            401,
+            '{"error":{"code":"AuthenticationError","message":"the API key or AK/SK in the request is missing or invalid","type":"Unauthorized"}}'
+        ))
+        verify_utils.aiohttp.ClientSession = mock.Mock(return_value=session)
+        request = {"model_id": "111"}
+        llm_model_dao.get_data_from_model_list_by_id = mock.Mock(return_value=[{
+            "f_model_id": "111",
+            "f_create_by": "111",
+            "f_is_delete": 0,
+            "f_model_config": '{"api_key": "bad-key", "api_model": "bad-model", "api_url": "https://example.invalid/v1/chat/completions"}',
+            "f_model_series": "openai",
+            "f_model_type": "chat",
+        }])
+        res = loop.run_until_complete(
+            llm_controller.test_model(request, "111", "zh"))
+        self.assertEqual(res.status_code, 400)
+        body = json.loads(res.body)
+        self.assertEqual(body["code"], "ModelFactory.ModelController.TestModel.Error")
+        self.assertEqual(body["description"], "模型服务认证失败，请检查 API Key、AK/SK 或授权配置")
+        self.assertEqual(body["solution"], "模型服务认证失败，请检查 API Key、AK/SK 或授权配置")
 
     def test_test_model_fail_unreachable(self):
         # 非 openai series 走真实 HTTP，连接失败 -> 返回 TestModel.Error
@@ -357,6 +423,79 @@ class TestCheckModel(TestCase):
         res = loop.run_until_complete(
             llm_controller.check_model("111", "111", "zh"))
         self.assertEqual(json.loads(res.body)["model_id"], "111")
+
+
+class TestEditDefaultModel(TestCase):
+    def setUp(self) -> None:
+        self.check_model_is_exist = llm_model_dao.check_model_is_exist
+        self.get_default_model = llm_model_dao.get_default_model
+        self.update_model_default_status = llm_model_dao.update_model_default_status
+        self.redis_util = llm_controller.redis_util
+
+    def tearDown(self) -> None:
+        llm_model_dao.check_model_is_exist = self.check_model_is_exist
+        llm_model_dao.get_default_model = self.get_default_model
+        llm_model_dao.update_model_default_status = self.update_model_default_status
+        llm_controller.redis_util = self.redis_util
+        StandLogger.stand_log_shutdown()
+
+    def _redis_mock(self):
+        redis_mock = mock.MagicMock()
+        redis_mock.delete_str = mock.AsyncMock(return_value=None)
+        return redis_mock
+
+    def test_edit_default_model_unsets_current_default(self):
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        llm_controller.redis_util = self._redis_mock()
+        llm_model_dao.check_model_is_exist = mock.Mock(return_value=True)
+        llm_model_dao.get_default_model = mock.Mock(return_value=[{"f_model_id": "111"}])
+        llm_model_dao.update_model_default_status = mock.Mock(return_value=None)
+
+        res = loop.run_until_complete(
+            llm_controller.edit_default_model({"model_id": "111", "default": False}, "111", "zh"))
+
+        body = json.loads(res.body)
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(body["default"], False)
+        llm_model_dao.update_model_default_status.assert_called_once_with("111", False)
+        llm_model_dao.get_default_model.assert_not_called()
+
+    def test_edit_default_model_rejects_duplicate_set_default(self):
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        llm_controller.redis_util = self._redis_mock()
+        llm_model_dao.check_model_is_exist = mock.Mock(return_value=True)
+        llm_model_dao.get_default_model = mock.Mock(return_value=[{"f_model_id": "111"}])
+        llm_model_dao.update_model_default_status = mock.Mock(return_value=None)
+
+        res = loop.run_until_complete(
+            llm_controller.edit_default_model({"model_id": "111", "default": True}, "111", "zh"))
+
+        self.assertEqual(res.status_code, 400)
+        llm_model_dao.update_model_default_status.assert_not_called()
+
+
+class TestModelOverviewData(TestCase):
+    def setUp(self) -> None:
+        self.get_overview_data = llm_model_dao.get_overview_data
+
+    def tearDown(self) -> None:
+        llm_model_dao.get_overview_data = self.get_overview_data
+        StandLogger.stand_log_shutdown()
+
+    def test_get_overview_data_rejects_reversed_date_range(self):
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        llm_model_dao.get_overview_data = mock.Mock(return_value=([], [], []))
+
+        res = loop.run_until_complete(
+            llm_controller.get_overview_data("111", "zh", "", "2026-07-14", "2026-07-13"))
+
+        body = json.loads(res.body)
+        self.assertEqual(res.status_code, 400)
+        self.assertEqual(body["detail"], "Param start_time must be earlier than or equal to end_time")
+        llm_model_dao.get_overview_data.assert_not_called()
 
 
 if __name__ == '__main__':
