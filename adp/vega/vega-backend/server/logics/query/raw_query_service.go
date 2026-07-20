@@ -89,6 +89,7 @@ func (rqs *rawQueryService) Execute(ctx context.Context, req *interfaces.RawQuer
 		otellog.LogError(ctx, "Validate request failed", err)
 		return nil, err
 	}
+	req.NormalizePaging()
 	if isRawQueryContractRequest(req) {
 		if req.IsContinuation() {
 			return rqs.executeSQLCursorContinuation(ctx, req)
@@ -542,7 +543,7 @@ func (rqs *rawQueryService) executeInitialSQLQuery(ctx context.Context, req *int
 		}
 		finalSQL = result.SQL
 	}
-	finalSQL = applySingleQueryLimit(trimSQLTerminator(finalSQL))
+	finalSQL = applySingleQueryPaging(trimSQLTerminator(finalSQL), req.Paging.Offset, req.Paging.Size)
 
 	result, err := rqs.executeSQLWithQueryType(ctx, catalog, finalSQL, string(interfaces.PagingModeSingle))
 	if err != nil {
@@ -569,6 +570,7 @@ func (rqs *rawQueryService) executeInitialSQLCursor(ctx context.Context, req *in
 		req.Paging.KeepAliveSec,
 		req.QueryTimeoutSec,
 	)
+	session.Offset = req.Paging.Offset
 	result, err := rqs.executeSQLCursorPage(ctx, session, prepared.catalog, prepared.warnings)
 	if err != nil {
 		// The client has not received this token, so it cannot retry this
@@ -799,6 +801,9 @@ func (rqs *rawQueryService) prepareOpenSearchCursorQuery(ctx context.Context, re
 		}
 	}
 	prepared["size"] = req.Paging.Size
+	if req.Paging.Offset > 0 {
+		prepared["from"] = req.Paging.Offset
+	}
 	return prepared, resource.SourceIdentifier, catalog, warning, nil
 }
 
@@ -808,6 +813,7 @@ func (rqs *rawQueryService) executeOpenSearchCursorPage(ctx context.Context, ses
 		query[key] = value
 	}
 	if len(session.SearchAfter) > 0 {
+		delete(query, "from")
 		query["search_after"] = session.SearchAfter
 	}
 	pageCtx := ctx
@@ -848,6 +854,8 @@ func (rqs *rawQueryService) executeOpenSearchCursorPage(ctx context.Context, ses
 
 func (rqs *rawQueryService) executeInitialDSLQuery(ctx context.Context, req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
 	queryMap := req.Query.(map[string]any)
+	queryMap["size"] = req.Paging.Size
+	queryMap["from"] = req.Paging.Offset
 	resourceID, _ := queryMap["resource_id"].(string)
 	if resourceID == "" {
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
@@ -905,19 +913,8 @@ func targetDialectForCatalog(ctx context.Context, catalog *interfaces.Catalog) (
 	}
 }
 
-func applySingleQueryLimit(sql string) string {
-	limitRegex := regexp.MustCompile(`(?i)\bLIMIT\s+(\d+)\s*(?:,\s*\d+)?\s*$`)
-	if !limitRegex.MatchString(sql) {
-		return fmt.Sprintf("%s LIMIT 10000", sql)
-	}
-	matches := limitRegex.FindStringSubmatch(sql)
-	if len(matches) > 1 {
-		var limit int
-		if _, err := fmt.Sscanf(matches[1], "%d", &limit); err == nil && limit > 10000 {
-			return limitRegex.ReplaceAllString(sql, "LIMIT 10000")
-		}
-	}
-	return sql
+func applySingleQueryPaging(sql string, offset, size int) string {
+	return fmt.Sprintf("SELECT * FROM (%s) AS _raw_query_single LIMIT %d OFFSET %d", sql, size, offset)
 }
 
 // extractResourceIDs 从SQL中提取所有{{.resource_id}}占位符

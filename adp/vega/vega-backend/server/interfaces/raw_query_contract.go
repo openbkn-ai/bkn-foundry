@@ -19,7 +19,8 @@ const (
 	PagingModeCursor PagingMode = "cursor"
 
 	DefaultInputDialect       = "postgres"
-	MinCursorPageSize         = 100
+	DefaultPageSize           = 20
+	MinCursorPageSize         = 1
 	MaxCursorPageSize         = 10000
 	DefaultCursorKeepAliveSec = 1800
 	MinCursorKeepAliveSec     = 1
@@ -36,6 +37,7 @@ type PagingMode string
 // A continuation has only Cursor set; all other fields are forbidden.
 type PagingRequest struct {
 	Mode         PagingMode `json:"mode,omitempty"`
+	Offset       int        `json:"offset,omitempty"`
 	Size         int        `json:"size,omitempty"`
 	KeepAliveSec int        `json:"keep_alive_sec,omitempty"`
 	Cursor       string     `json:"cursor,omitempty"`
@@ -75,7 +77,7 @@ func (r RawQueryContract) EffectiveInputDialect() string {
 // Validate checks the mutually exclusive first-page and continuation forms.
 func (r RawQueryContract) Validate() error {
 	if r.IsContinuation() {
-		if r.Query != nil || r.QueryFormat != "" || r.InputDialect != "" || r.Paging.Mode != "" || r.Paging.Size != 0 || r.Paging.KeepAliveSec != 0 {
+		if r.Query != nil || r.QueryFormat != "" || r.InputDialect != "" || r.Paging.Mode != "" || r.Paging.Offset != 0 || r.Paging.Size != 0 || r.Paging.KeepAliveSec != 0 {
 			return fmt.Errorf("cursor continuation must contain only paging.cursor")
 		}
 		return nil
@@ -96,13 +98,7 @@ func (r RawQueryContract) Validate() error {
 
 	switch r.Paging.Mode {
 	case "", PagingModeSingle:
-		if r.Paging.Size != 0 || r.Paging.KeepAliveSec != 0 {
-			return fmt.Errorf("paging.size and paging.keep_alive_sec are only allowed when paging.mode is %q", PagingModeCursor)
-		}
 	case PagingModeCursor:
-		if r.Paging.Size < MinCursorPageSize || r.Paging.Size > MaxCursorPageSize {
-			return fmt.Errorf("paging.size must be between %d and %d for cursor paging", MinCursorPageSize, MaxCursorPageSize)
-		}
 		if r.Paging.KeepAliveSec != 0 && (r.Paging.KeepAliveSec < MinCursorKeepAliveSec || r.Paging.KeepAliveSec > MaxCursorKeepAliveSec) {
 			return fmt.Errorf("paging.keep_alive_sec must be between %d and %d when provided", MinCursorKeepAliveSec, MaxCursorKeepAliveSec)
 		}
@@ -119,8 +115,30 @@ func (r RawQueryContract) Validate() error {
 	default:
 		return fmt.Errorf("paging.mode must be either %q or %q", PagingModeSingle, PagingModeCursor)
 	}
+	if r.Paging.Offset < 0 {
+		return fmt.Errorf("paging.offset must not be negative")
+	}
+	size := r.Paging.EffectiveSize()
+	if size < MinCursorPageSize || size > MaxCursorPageSize || r.Paging.Offset+size > MaxCursorPageSize {
+		return fmt.Errorf("paging.offset + paging.size must be between %d and %d", MinCursorPageSize, MaxCursorPageSize)
+	}
 
 	return nil
+}
+
+func (p PagingRequest) EffectiveSize() int {
+	if p.Size == 0 {
+		return DefaultPageSize
+	}
+	return p.Size
+}
+
+func (p PagingRequest) Normalized() PagingRequest {
+	if p.Mode == "" {
+		p.Mode = PagingModeSingle
+	}
+	p.Size = p.EffectiveSize()
+	return p
 }
 
 func (r RawQueryContract) validateQueryShape() error {

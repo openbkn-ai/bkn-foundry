@@ -87,13 +87,12 @@ func TestRawQueryContractValidate(t *testing.T) {
 			wantErr: "DSL input_dialect",
 		},
 		{
-			name: "rejects cursor without page size",
+			name: "cursor defaults page size",
 			request: RawQueryContract{
 				Query:       "SELECT 1",
 				QueryFormat: QueryFormatSQL,
 				Paging:      PagingRequest{Mode: PagingModeCursor},
 			},
-			wantErr: "paging.size",
 		},
 		{
 			name: "rejects fields on continuation",

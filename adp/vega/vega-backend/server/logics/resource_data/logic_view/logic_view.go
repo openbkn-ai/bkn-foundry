@@ -263,24 +263,6 @@ func (lvs *logicViewService) executeCompositeViewByDSL(ctx context.Context, view
 	logger.Infof("executeCompositeViewByDSL DSL: [%s]", dsl)
 
 	if view.IsSingleSource {
-		var resourceType string
-		for _, ref := range view.RefResources {
-			catalog, err := lvs.cs.GetByID(ctx, ref.CatalogID, true)
-			if err != nil {
-				otellog.LogError(ctx, "Get catalog failed", err)
-				return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
-					WithErrorDetails(fmt.Sprintf("failed to get catalog: %v", err))
-			}
-			if catalog == nil {
-				httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_CatalogNotFound).
-					WithErrorDetails(fmt.Sprintf("catalog %s not found", ref.CatalogID))
-				otellog.LogError(ctx, "Catalog not found", httpErr)
-				return nil, 0, httpErr
-			}
-			resourceType = catalog.ConnectorType
-			break
-		}
-
 		// dsl 转为 map
 		dslBytes, err := sonic.Marshal(dsl)
 		if err != nil {
@@ -297,11 +279,17 @@ func (lvs *logicViewService) executeCompositeViewByDSL(ctx context.Context, view
 				WithErrorDetails(fmt.Sprintf("failed to unmarshal dsl: %v", err))
 		}
 
+		if len(view.RefResources) != 1 {
+			return nil, 0, rest.NewHTTPError(ctx, http.StatusNotImplemented, rest.PublicError_NotImplemented).
+				WithErrorDetails("OpenSearch logic views with multiple resources are not supported by raw query")
+		}
+		for resourceID := range view.RefResources {
+			dslMap["resource_id"] = resourceID
+		}
 		req := interfaces.RawQueryRequest{
 			Query:           dslMap,
-			ResourceType:    resourceType,
-			QueryType:       params.QueryType,
-			StreamSize:      params.Limit,
+			QueryFormat:     interfaces.QueryFormatDSL,
+			InputDialect:    "opensearch",
 			QueryTimeoutSec: int(params.Timeout.Seconds()),
 		}
 		res, err := lvs.qs.Execute(ctx, &req)
@@ -366,29 +354,12 @@ func (lvs *logicViewService) executeCompositeViewBySQL(ctx context.Context, view
 	logger.Infof("executeCompositeViewBySQL Final SQL: [%s]", query.SafeQuerySummary(finalSql))
 
 	if view.IsSingleSource {
-		var resourceType string
-		for _, ref := range view.RefResources {
-			catalog, err := lvs.cs.GetByID(ctx, ref.CatalogID, true)
-			if err != nil {
-				otellog.LogError(ctx, "Get catalog failed", err)
-				return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
-					WithErrorDetails(fmt.Sprintf("failed to get catalog: %v", err))
-			}
-			if catalog == nil {
-				httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_CatalogNotFound).
-					WithErrorDetails(fmt.Sprintf("catalog %s not found", ref.CatalogID))
-				otellog.LogError(ctx, "Catalog not found", httpErr)
-				return nil, 0, httpErr
-			}
-			resourceType = catalog.ConnectorType
-			break
-		}
-
 		req := interfaces.RawQueryRequest{
-			Query:           finalSql,
-			ResourceType:    resourceType,
-			QueryType:       params.QueryType,
-			StreamSize:      params.Limit,
+			Query:       finalSql,
+			QueryFormat: interfaces.QueryFormatSQL,
+			// lvsql emits MySQL-style quoted identifiers (backticks). Raw Query
+			// transpiles it when the resolved Catalog uses another SQL dialect.
+			InputDialect:    "mysql",
 			QueryTimeoutSec: int(params.Timeout.Seconds()),
 		}
 		res, err := lvs.qs.Execute(ctx, &req)

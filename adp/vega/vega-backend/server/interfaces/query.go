@@ -56,6 +56,12 @@ func (r RawQueryRequest) ValidateContract() error {
 	return r.Contract().Validate()
 }
 
+func (r *RawQueryRequest) NormalizePaging() {
+	if !r.IsContinuation() {
+		r.Paging = r.Paging.Normalized()
+	}
+}
+
 // RawQueryResponse SQL查询响应
 type RawQueryResponse struct {
 	Columns    []ColumnInfo     `json:"columns"`            // 列信息
