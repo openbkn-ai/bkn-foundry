@@ -158,6 +158,17 @@ type Hydra interface {
 	GenerateVisitor(c *gin.Context) (info *TokenInfo, err error)
 }
 
+// AppKeyPrefix 标识用户自助签发的 AppKey（API Key）凭据。
+// 公开面认证中间件按此前缀分流：带该前缀的交 bkn-safe 校验，其余 bearer token 走 hydra 内省。
+const AppKeyPrefix = "bak_"
+
+// AppKeyVerifier 将 AppKey 解析为持有者的 TokenInfo，由 bkn-safe 完成校验。
+// 返回值与 Hydra.Introspect 同构，因此中间件可以把 AppKey 与 OAuth 令牌等价处理，
+// 下游的 AccountAuthContext 与授权判定完全一致。
+type AppKeyVerifier interface {
+	Verify(ctx context.Context, key string) (tokenInfo *TokenInfo, err error)
+}
+
 const (
 	// DisplayName 用户显示名称
 	DisplayName = "name"

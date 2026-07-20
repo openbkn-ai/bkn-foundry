@@ -73,6 +73,45 @@ func (mr *MockHydraMockRecorder) Introspect(c any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Introspect", reflect.TypeOf((*MockHydra)(nil).Introspect), c)
 }
 
+// MockAppKeyVerifier is a mock of AppKeyVerifier interface.
+type MockAppKeyVerifier struct {
+	ctrl     *gomock.Controller
+	recorder *MockAppKeyVerifierMockRecorder
+	isgomock struct{}
+}
+
+// MockAppKeyVerifierMockRecorder is the mock recorder for MockAppKeyVerifier.
+type MockAppKeyVerifierMockRecorder struct {
+	mock *MockAppKeyVerifier
+}
+
+// NewMockAppKeyVerifier creates a new mock instance.
+func NewMockAppKeyVerifier(ctrl *gomock.Controller) *MockAppKeyVerifier {
+	mock := &MockAppKeyVerifier{ctrl: ctrl}
+	mock.recorder = &MockAppKeyVerifierMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockAppKeyVerifier) EXPECT() *MockAppKeyVerifierMockRecorder {
+	return m.recorder
+}
+
+// Verify mocks base method.
+func (m *MockAppKeyVerifier) Verify(ctx context.Context, key string) (*interfaces.TokenInfo, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Verify", ctx, key)
+	ret0, _ := ret[0].(*interfaces.TokenInfo)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Verify indicates an expected call of Verify.
+func (mr *MockAppKeyVerifierMockRecorder) Verify(ctx, key any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Verify", reflect.TypeOf((*MockAppKeyVerifier)(nil).Verify), ctx, key)
+}
+
 // MockUserManagement is a mock of UserManagement interface.
 type MockUserManagement struct {
 	ctrl     *gomock.Controller
