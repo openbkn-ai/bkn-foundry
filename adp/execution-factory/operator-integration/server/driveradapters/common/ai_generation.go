@@ -14,6 +14,7 @@ import (
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/validator"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/aigeneration"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/auth"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/utils"
 )
 
@@ -28,6 +29,7 @@ type aiGenerationHandler struct {
 	aiGenerationService interfaces.AIGenerationService
 	Logger              interfaces.Logger
 	Validator           interfaces.Validator
+	AuthService         interfaces.IAuthorizationService
 }
 
 var (
@@ -43,13 +45,22 @@ func NewAIGenerationHandler() AIGenerationHandler {
 			aiGenerationService: aigeneration.NewAIGenerationService(),
 			Logger:              confLoader.GetLogger(),
 			Validator:           validator.NewValidator(),
+			AuthService:         auth.NewAuthServiceImpl(),
 		}
 	})
 	return aiGenerationH
 }
 
 // FunctionAIGeneration 处理函数 AI 生成请求
+//
+// 该接口调用大模型生成函数代码并消耗额度，在公开面要求调用方在算子类型上持有 create
+// 权限——与「生成出来的函数最终落地为算子」保持同一口径（见 #345）。
 func (h *aiGenerationHandler) FunctionAIGeneration(c *gin.Context) {
+	if err := requireOperatorTypePermission(c.Request.Context(), h.AuthService,
+		interfaces.AuthOperationTypeCreate); err != nil {
+		rest.ReplyError(c, err)
+		return
+	}
 	req := &interfaces.FunctionAIGenerateReq{}
 	if err := c.ShouldBindUri(req); err != nil {
 		rest.ReplyError(c, err)
@@ -192,6 +203,11 @@ func isEndMarker(line string) bool {
 
 // GetPromptTemplate 获取指定类型的提示词模板
 func (h *aiGenerationHandler) GetPromptTemplate(c *gin.Context) {
+	if err := requireOperatorTypePermission(c.Request.Context(), h.AuthService,
+		interfaces.AuthOperationTypeCreate); err != nil {
+		rest.ReplyError(c, err)
+		return
+	}
 	req := &interfaces.GetPromptTemplateReq{}
 	if err := c.ShouldBindUri(req); err != nil {
 		rest.ReplyError(c, err)
