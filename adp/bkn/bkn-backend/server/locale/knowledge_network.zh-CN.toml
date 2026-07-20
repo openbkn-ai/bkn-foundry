@@ -193,3 +193,8 @@ ErrorLink = "暂无"
 Description = "获取业务知识网络下的风险类数量失败"
 Solution = "请重试该操作，若再次出现该错误请提交工单或联系技术支持工程师。"
 ErrorLink = "暂无"
+
+[BknBackend.KnowledgeNetwork.InternalError.GetMetricsTotalFailed]
+Description = "获取业务知识网络下的指标数量失败"
+Solution = "请重试该操作，若再次出现该错误请提交工单或联系技术支持工程师。"
+ErrorLink = "暂无"

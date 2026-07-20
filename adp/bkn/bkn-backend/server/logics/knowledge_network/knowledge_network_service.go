@@ -56,6 +56,7 @@ type knowledgeNetworkService struct {
 	cgs        interfaces.ConceptGroupService
 	js         interfaces.JobService
 	kna        interfaces.KNAccess
+	ma         interfaces.MetricAccess
 	ms         interfaces.MetricService
 	mfa        interfaces.ModelFactoryAccess
 	ota        interfaces.ObjectTypeAccess
@@ -81,6 +82,7 @@ func NewKNService(appSetting *common.AppSetting) interfaces.KNService {
 			db:         logics.DB,
 			js:         job.NewJobService(appSetting),
 			kna:        logics.KNA,
+			ma:         logics.MA,
 			ms:         metric.NewMetricService(appSetting),
 			mfa:        logics.MFA,
 			ota:        logics.OTA,
@@ -797,12 +799,27 @@ func (kns *knowledgeNetworkService) GetStatByKN(ctx context.Context, kn *interfa
 			berrors.BknBackend_KnowledgeNetwork_InternalError_GetRiskTypesTotalFailed).WithErrorDetails(err.Error())
 	}
 
+	// metrics 数量
+	metricsCnt, err := kns.ma.GetMetricsTotal(ctx, interfaces.MetricsListQueryParams{
+		KNID:   kn.KNID,
+		Branch: kn.Branch,
+	})
+	if err != nil {
+		logger.Errorf("GetMetricsTotal in knowledge network[%s] error: %s", kn.KNID, err.Error())
+		span.SetStatus(codes.Error, fmt.Sprintf("GetMetricsTotal in knowledge network[%s], error: %v", kn.KNID, err))
+		span.End()
+
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			berrors.BknBackend_KnowledgeNetwork_InternalError_GetMetricsTotalFailed).WithErrorDetails(err.Error())
+	}
+
 	statistics := &interfaces.Statistics{
 		CgTotal:       cgCnt,
 		OtTotal:       otCnt,
 		RtTotal:       rtCnt,
 		AtTotal:       atCnt,
 		RiskTypeTotal: riskTypeCnt,
+		MetricsTotal:  metricsCnt,
 	}
 
 	span.SetStatus(codes.Ok, "")
