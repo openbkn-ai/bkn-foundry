@@ -8,6 +8,7 @@ import (
 	"syscall"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/capabilitieslab"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/driveradapters"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/config"
@@ -68,6 +69,12 @@ func (s *Server) Start() {
 		routerGroup := engine.Group("/api/agent-operator-integration/v1")
 		routerGroup.Use(gin.Recovery())
 		s.restPublicHandler.RegisterRouter(routerGroup)
+
+		// 注册能力面路由 - 原 capabilities-lab 独立服务，合并后成为本服务的一个
+		// 路由组。路径保持不变，消费方只需改 base URL 的 host。
+		routerLabGroup := engine.Group("/api/capabilities-lab/v1")
+		routerLabGroup.Use(gin.Recovery())
+		capabilitieslab.RegisterRouter(routerLabGroup)
 
 		url := fmt.Sprintf("%s:%d", s.config.Project.Host, s.config.Project.Port)
 		err := engine.Run(url)
