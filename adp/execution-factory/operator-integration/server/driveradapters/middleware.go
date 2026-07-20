@@ -8,6 +8,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -15,6 +16,7 @@ import (
 	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 	"go.opentelemetry.io/otel/attribute"
 
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/drivenadapters"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/common"
 	oerrors "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/rest"
@@ -34,10 +36,20 @@ type apiLogModel struct {
 // middlewareIntrospectVerify 令牌内省中间件
 // 若未开启认证，则从header中获取accountID和accountType，生成匿名tokenInfo
 // 若开启认证，则从header中获取token，调用hydra.Introspect验证token，若验证失败则返回错误
-func middlewareIntrospectVerify(hydra interfaces.Hydra) gin.HandlerFunc {
+//
+// 凭据二选一：以 AppKey 前缀（bak_）开头的交给 bkn-safe 校验（用户自助签发的 API Key），
+// 其余 bearer token 走 hydra 内省。两条路产出同一个 TokenInfo，下游认证上下文一致。
+// appKeys 为 nil 时（AUTH_ENABLED=false 或 BKN_SAFE_URL 未配置）全部走 hydra。
+func middlewareIntrospectVerify(hydra interfaces.Hydra, appKeys interfaces.AppKeyVerifier) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		tokenInfo, err := hydra.Introspect(c)
+		var tokenInfo *interfaces.TokenInfo
+		var err error
+		if token := drivenadapters.GetToken(c); appKeys != nil && strings.HasPrefix(token, interfaces.AppKeyPrefix) {
+			tokenInfo, err = appKeys.Verify(ctx, token)
+		} else {
+			tokenInfo, err = hydra.Introspect(c)
+		}
 		if err != nil {
 			rest.ReplyError(c, err)
 			c.Abort()

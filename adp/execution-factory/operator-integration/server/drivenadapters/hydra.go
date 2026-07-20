@@ -117,7 +117,7 @@ func (h *hydraService) GenerateVisitor(c *gin.Context) (info *interfaces.TokenIn
 // Introspect token内省
 func (h *hydraService) Introspect(c *gin.Context) (info *interfaces.TokenInfo, err error) {
 	ctx := c.Request.Context()
-	token := getToken(c)
+	token := GetToken(c)
 	target := fmt.Sprintf("%s%s", h.adminAddress, introspectURI)
 	header := map[string]string{"Content-Type": "application/x-www-form-urlencoded"}
 	_, resp, err := h.httpClient.Post(ctx, target, header, []byte(fmt.Sprintf("token=%v", token)))
@@ -182,7 +182,9 @@ func (h *hydraService) Introspect(c *gin.Context) (info *interfaces.TokenInfo, e
 	return
 }
 
-func getToken(c *gin.Context) (token string) {
+// GetToken 从请求中提取凭据，依次尝试 Authorization、X-Authorization 两个头，
+// 都为空时回落到 token 查询参数。公开面认证中间件用它判断凭据类型（见 interfaces.AppKeyPrefix）。
+func GetToken(c *gin.Context) (token string) {
 	tokenID := c.GetHeader("Authorization")
 	if tokenID == "" {
 		tokenID = c.GetHeader("X-Authorization")
