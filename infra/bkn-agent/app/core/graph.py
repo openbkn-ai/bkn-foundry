@@ -3,8 +3,8 @@ import json
 import uuid
 from typing import AsyncIterator
 
+from langchain.agents import create_agent
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, ToolMessage
-from langgraph.prebuilt import create_react_agent
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import dao, observability
@@ -94,8 +94,8 @@ async def stream_chat(
             yield _sse("meta", {"thread_id": thread_id, "agent_id": agent.agent_id})
             with observability.span("agent.chat", span_attrs):
                 async with open_checkpointer() as checkpointer:
-                    graph = create_react_agent(
-                        model, tools, prompt=system_prompt, checkpointer=checkpointer
+                    graph = create_agent(
+                        model, tools, system_prompt=system_prompt, checkpointer=checkpointer
                     )
                     cfg = {
                         "configurable": {"thread_id": thread_id},

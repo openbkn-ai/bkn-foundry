@@ -86,7 +86,7 @@ class _FakeCM:
 
 
 def _wire(monkeypatch, captured):
-    monkeypatch.setattr(runner, "create_react_agent", lambda *a, **k: _FakeGraph())
+    monkeypatch.setattr(runner, "create_agent", lambda *a, **k: _FakeGraph())
 
     def fake_model(m, streaming=True, max_output_tokens=None):
         captured.setdefault("streaming", []).append(streaming)
