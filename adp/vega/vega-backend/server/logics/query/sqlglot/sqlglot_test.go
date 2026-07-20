@@ -24,6 +24,7 @@ func TestMapDataSourceTypeToDialect(t *testing.T) {
 		{name: "mysql", sourceType: interfaces.ConnectorTypeMySQL, want: "mysql"},
 		{name: "upper mysql", sourceType: "MYSQL", want: "mysql"},
 		{name: "postgres alias", sourceType: "postgres", want: "postgres"},
+		{name: "postgres connector type", sourceType: interfaces.ConnectorTypePostgreSQL, want: "postgres"},
 		{name: "mariadb", sourceType: interfaces.ConnectorTypeMariaDB, want: "mysql"},
 		{name: "maria alias", sourceType: "maria", want: "mysql"},
 	}

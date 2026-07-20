@@ -99,7 +99,7 @@ func MapDataSourceTypeToDialect(dataSourceType string) (string, error) {
 	switch strings.ToLower(dataSourceType) {
 	case interfaces.ConnectorTypeMySQL:
 		return "mysql", nil
-	case "postgres":
+	case "postgres", interfaces.ConnectorTypePostgreSQL:
 		return "postgres", nil
 	case "maria", interfaces.ConnectorTypeMariaDB:
 		return "mysql", nil // MariaDB使用mysql方言

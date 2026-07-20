@@ -8,6 +8,7 @@ package query
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"testing"
 
@@ -19,6 +20,7 @@ import (
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
 	mock_interfaces "vega-backend/interfaces/mock"
+	"vega-backend/logics/query/querypolicy"
 )
 
 // NewRawQueryServiceWithDeps 创建SQL查询服务（用于测试）
@@ -84,6 +86,19 @@ func assertCatalogDisabledError(t *testing.T, err error) {
 	require.ErrorAs(t, err, &httpErr)
 	assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
 	assert.Equal(t, verrors.VegaBackend_Catalog_IsDisabled, httpErr.BaseError.ErrorCode)
+}
+
+func TestRawQueryValidationError(t *testing.T) {
+	err := rawQueryValidationError(context.Background(), &querypolicy.ReadOnlySQLValidationError{
+		Reason: "READ_ONLY_SQL_REJECTED: only one top-level SELECT statement is allowed",
+	})
+
+	var httpErr *rest.HTTPError
+	require.ErrorAs(t, err, &httpErr)
+	assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+	assert.Equal(t, verrors.VegaBackend_Query_InvalidParameter, httpErr.BaseError.ErrorCode)
+
+	assert.NoError(t, rawQueryValidationError(context.Background(), errors.New("unexpected error")))
 }
 
 func TestRawQueryServiceValidateRequest(t *testing.T) {

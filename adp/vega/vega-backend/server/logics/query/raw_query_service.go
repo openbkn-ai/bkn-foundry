@@ -8,6 +8,7 @@ package query
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -25,6 +26,7 @@ import (
 	"vega-backend/logics/connector/factory"
 	"vega-backend/logics/connector/local/table/mariadb"
 	"vega-backend/logics/connector/local/table/postgresql"
+	"vega-backend/logics/query/querypolicy"
 	"vega-backend/logics/query/sqlglot"
 	resourcelogic "vega-backend/logics/resource"
 )
@@ -276,11 +278,23 @@ func (rqs *rawQueryService) Execute(ctx context.Context, req *interfaces.RawQuer
 
 		// 如果指定了resource_type为mysql/mariadb/postgresql，则不进行SQL转换，直接执行
 		if req.ResourceType == interfaces.ConnectorTypeMySQL || req.ResourceType == interfaces.ConnectorTypeMariaDB || req.ResourceType == interfaces.ConnectorTypePostgreSQL {
-			// 将resource_id替换为catalog.schema.table格式
+			// 将resource_id替换为schema.table格式
 			replacedSQL, err := rqs.replaceResourceIDWithSchemaTable(ctx, req.Query, resourceIDs, catalog)
 			if err != nil {
 				otellog.LogError(ctx, "Replace resource id failed", err)
 				return nil, err
+			}
+			dialect, err := sqlglot.MapDataSourceTypeToDialect(catalog.ConnectorType)
+			if err != nil {
+				return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+					WithErrorDetails(err.Error())
+			}
+			if err := rawQueryPolicy.ValidateSQL(replacedSQL, dialect); err != nil {
+				if httpErr := rawQueryValidationError(ctx, err); httpErr != nil {
+					return nil, httpErr
+				}
+				return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
+					WithErrorDetails(fmt.Sprintf("validate SQL failed: %v", err))
 			}
 
 			// 直接执行SQL，不进行转换
@@ -314,7 +328,7 @@ func (rqs *rawQueryService) Execute(ctx context.Context, req *interfaces.RawQuer
 	}
 	warnings = append(warnings, ws...)
 
-	// 7. 将resource_id替换为catalog.schema.table格式
+	// 7. 将resource_id替换为schema.table格式
 	replacedSQL, err := rqs.replaceResourceIDWithSchemaTable(ctx, req.Query, resourceIDs, dataSource)
 	if err != nil {
 		otellog.LogError(ctx, "Replace resource id failed", err)
@@ -335,9 +349,20 @@ func (rqs *rawQueryService) Execute(ctx context.Context, req *interfaces.RawQuer
 		return nil, httpErr
 	}
 
+	if err := rawQueryPolicy.ValidateSQL(replacedSQL, "trino"); err != nil {
+		if httpErr := rawQueryValidationError(ctx, err); httpErr != nil {
+			return nil, httpErr
+		}
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
+			WithErrorDetails(fmt.Sprintf("validate SQL failed: %v", err))
+	}
+
 	// 9. 使用sqlglot将Trino SQL转换为目标SQL方言
 	sqlParseResult, err := sqlglot.TranspileSQL(replacedSQL, "trino", targetDialect)
 	if err != nil {
+		if httpErr := rawQueryValidationError(ctx, err); httpErr != nil {
+			return nil, httpErr
+		}
 		otellog.LogError(ctx, "Transpile SQL failed", err)
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
 			WithErrorDetails(fmt.Sprintf("transpile SQL failed: %v", err))
@@ -534,7 +559,7 @@ func ensureCatalogEnabled(ctx context.Context, catalog *interfaces.Catalog) erro
 	return nil
 }
 
-// replaceResourceIDWithSchemaTable 将resource_id替换为catalog.schema.table格式
+// replaceResourceIDWithSchemaTable 将resource_id替换为schema.table格式
 func (rqs *rawQueryService) replaceResourceIDWithSchemaTable(ctx context.Context, sql any, resourceIDs []string, catalog *interfaces.Catalog) (string, error) {
 	replacedSQL := sql.(string)
 	logger.Infof("Before replace - %s, resource_ids: %v", SafeQuerySummary(replacedSQL), resourceIDs)
@@ -550,8 +575,7 @@ func (rqs *rawQueryService) replaceResourceIDWithSchemaTable(ctx context.Context
 				WithErrorDetails(fmt.Sprintf("resource %s not found", resourceID))
 		}
 
-		// 构建catalog.schema.table格式
-		// 使用catalogName + resource.SourceIdentifier
+		// 构建schema.table格式, 使用resource.SourceIdentifier
 		// schemaTable := fmt.Sprintf(`%s.%s`, catalog.Name, resource.SourceIdentifier)
 
 		// 替换{{.resource_id}}和{{resource_id}}为schema.table
@@ -849,7 +873,7 @@ func (rqs *rawQueryService) executeSQLWithSession(ctx context.Context, req *inte
 		effectiveQuery = session.OriginalSQL
 	}
 
-	// 2. 将resource_id替换为catalog.schema.table格式
+	// 2. 将resource_id替换为schema.table格式
 	replacedSQL, err := rqs.replaceResourceIDWithSchemaTable(ctx, effectiveQuery, effectiveResourceIDs, catalog)
 	if err != nil {
 		return nil, err
@@ -867,9 +891,20 @@ func (rqs *rawQueryService) executeSQLWithSession(ctx context.Context, req *inte
 			WithErrorDetails(fmt.Sprintf("unsupported connector type: %s", catalog.ConnectorType))
 	}
 
+	if err := rawQueryPolicy.ValidateSQL(replacedSQL, "trino"); err != nil {
+		if httpErr := rawQueryValidationError(ctx, err); httpErr != nil {
+			return nil, httpErr
+		}
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
+			WithErrorDetails(fmt.Sprintf("validate SQL failed: %v", err))
+	}
+
 	// 4. 使用sqlglot将Trino SQL转换为目标SQL方言
 	sqlParseResult, err := sqlglot.TranspileSQL(replacedSQL, "trino", targetDialect)
 	if err != nil {
+		if httpErr := rawQueryValidationError(ctx, err); httpErr != nil {
+			return nil, httpErr
+		}
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
 			WithErrorDetails(fmt.Sprintf("transpile SQL failed: %v", err))
 	}
@@ -955,3 +990,14 @@ func (rqs *rawQueryService) executeSQLWithSession(ctx context.Context, req *inte
 
 	return result, nil
 }
+
+func rawQueryValidationError(ctx context.Context, err error) error {
+	var validationErr *querypolicy.ReadOnlySQLValidationError
+	if !errors.As(err, &validationErr) {
+		return nil
+	}
+	return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+		WithErrorDetails(validationErr.Error())
+}
+
+var rawQueryPolicy querypolicy.Adapter = querypolicy.NewSQLGlotAdapter()
