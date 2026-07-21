@@ -1,0 +1,42 @@
+{
+  "bkn.trace.schema.version": "1.0.0",
+  "fixture_id": "bkn_ontology_negative_missing_request_id",
+  "fixture_type": "negative",
+  "scenario": "bkn_ontology_missing_request_id",
+  "expected_result": "fail",
+  "trace": {
+    "trace_id": "72040000000000000000000000000004",
+    "traceparent": "00-72040000000000000000000000000004-7204000000000001-01",
+    "sampling.decision": "sampled"
+  },
+  "spans": [
+    {
+      "span_id": "7204000000000001",
+      "parent_span_id": null,
+      "name": "bkn-ontology.request",
+      "kind": "server",
+      "bkn.module.name": "bkn-ontology",
+      "bkn.operation.name": "bkn.schema.get",
+      "bkn.status": "ok",
+      "bkn.timestamp": "2026-07-21T06:13:00.000000000Z",
+      "duration_ms": 4
+    }
+  ],
+  "logs": [
+    {
+      "level": "info",
+      "message": "schema lookup completed",
+      "trace_id": "72040000000000000000000000000004",
+      "span_id": "7204000000000001",
+      "bkn.module.name": "bkn-ontology",
+      "bkn.operation.name": "bkn.schema.get",
+      "bkn.status": "ok",
+      "bkn.timestamp": "2026-07-21T06:13:00.004000000Z",
+      "bkn.trace.schema.version": "1.0.0"
+    }
+  ],
+  "events": [],
+  "baggage": {
+    "bkn.account.type": "service"
+  }
+}

@@ -1,0 +1,65 @@
+{
+  "bkn.trace.schema.version": "1.0.0",
+  "fixture_id": "bkn_ontology_positive_schema_get",
+  "fixture_type": "positive",
+  "scenario": "bkn_ontology_schema_get_success",
+  "expected_result": "pass",
+  "trace": {
+    "trace_id": "72010000000000000000000000000001",
+    "bkn.request.id": "req_bkn_ontology_0001",
+    "traceparent": "00-72010000000000000000000000000001-7201000000000001-01",
+    "sampling.decision": "sampled"
+  },
+  "spans": [
+    {
+      "span_id": "7201000000000001",
+      "parent_span_id": null,
+      "name": "bkn-ontology.request",
+      "kind": "server",
+      "bkn.module.name": "bkn-ontology",
+      "bkn.operation.name": "bkn.schema.get",
+      "bkn.status": "ok",
+      "bkn.timestamp": "2026-07-21T06:10:00.000000000Z",
+      "duration_ms": 24
+    }
+  ],
+  "logs": [
+    {
+      "level": "info",
+      "message": "schema lookup completed",
+      "trace_id": "72010000000000000000000000000001",
+      "span_id": "7201000000000001",
+      "bkn.request.id": "req_bkn_ontology_0001",
+      "bkn.module.name": "bkn-ontology",
+      "bkn.operation.name": "bkn.schema.get",
+      "bkn.status": "ok",
+      "bkn.timestamp": "2026-07-21T06:10:00.024000000Z",
+      "bkn.trace.schema.version": "1.0.0",
+      "bkn.kn.id": "kn_demo",
+      "bkn.object_type.id": "customer"
+    }
+  ],
+  "events": [
+    {
+      "event_id": "evt_bkn_ontology_0001",
+      "event_type": "schema.read",
+      "bkn.trace.schema.version": "1.0.0",
+      "observed_at": "2026-07-21T06:10:00.022000000Z",
+      "emitted_at": "2026-07-21T06:10:00.025000000Z",
+      "producer_module": "bkn-ontology",
+      "trace_id": "72010000000000000000000000000001",
+      "span_id": "7201000000000001",
+      "bkn.request.id": "req_bkn_ontology_0001",
+      "bkn.operation.name": "bkn.schema.get",
+      "payload": {
+        "bkn.kn.id": "kn_demo",
+        "bkn.object_type.id": "customer",
+        "data.classification": "internal"
+      }
+    }
+  ],
+  "baggage": {
+    "bkn.account.type": "service",
+    "bkn.runtime.env": "test"
+  }
+}

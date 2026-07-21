@@ -51,11 +51,11 @@ func (v *vegaBackendAccess) buildHeaders(ctx context.Context) map[string]string 
 		accountInfo = ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
 	}
 	// 用当前token的用户去访问vega
-	return map[string]string{
+	return common.MergeTraceHeaders(ctx, map[string]string{
 		interfaces.CONTENT_TYPE_NAME:        interfaces.CONTENT_TYPE_JSON,
 		interfaces.HTTP_HEADER_ACCOUNT_ID:   accountInfo.ID,
 		interfaces.HTTP_HEADER_ACCOUNT_TYPE: accountInfo.Type,
-	}
+	})
 }
 
 func (v *vegaBackendAccess) QueryResourceData(ctx context.Context, resourceID string, params *interfaces.ResourceDataQueryParams) (*interfaces.DatasetQueryResponse, error) {
