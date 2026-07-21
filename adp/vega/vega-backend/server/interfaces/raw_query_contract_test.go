@@ -75,6 +75,14 @@ func TestRawQueryContractValidate(t *testing.T) {
 			},
 		},
 		{
+			name: "single first page accepts offset",
+			request: RawQueryContract{
+				Query:       "SELECT * FROM {{orders}}",
+				QueryFormat: QueryFormatSQL,
+				Paging:      PagingRequest{Mode: PagingModeSingle, Offset: 20},
+			},
+		},
+		{
 			name: "rejects missing query format",
 			request: RawQueryContract{
 				Query: "SELECT 1",
@@ -114,6 +122,13 @@ func TestRawQueryContractValidate(t *testing.T) {
 				Paging: PagingRequest{
 					Cursor: "opaque-token",
 				},
+			},
+			wantErr: "only paging.cursor",
+		},
+		{
+			name: "rejects offset on continuation",
+			request: RawQueryContract{
+				Paging: PagingRequest{Cursor: "opaque-token", Offset: 1},
 			},
 			wantErr: "only paging.cursor",
 		},

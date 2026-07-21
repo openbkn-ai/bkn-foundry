@@ -502,10 +502,6 @@ func (rqs *rawQueryService) validateRequest(ctx context.Context, req *interfaces
 	*/
 }
 
-func isRawQueryContractRequest(req *interfaces.RawQueryRequest) bool {
-	return req.QueryFormat != "" || req.InputDialect != "" || req.Paging.Mode != "" || req.Paging.Size != 0 || req.Paging.KeepAliveSec != 0 || req.IsContinuation()
-}
-
 func (rqs *rawQueryService) executeInitialSQLQuery(ctx context.Context, req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
 	resourceIDs, err := rqs.extractResourceIDs(req.Query)
 	if err != nil {

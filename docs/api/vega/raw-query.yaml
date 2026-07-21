@@ -39,8 +39,8 @@ paths:
 
         实际执行连接器始终从 Resource/Catalog 推导，客户端不能通过输入方言选择数据源。
 
-        OpenSearch DSL 使用 `paging.mode: cursor` 时必须提供非空 `sort`；客户端不得提交
-        `search_after`，该位置仅由服务端保存在不透明 cursor 中。
+        OpenSearch DSL 使用 `paging.mode: cursor` 时必须提供非空 `sort`。客户端提交的
+        `search_after` 会被服务端忽略；该位置仅由服务端保存在不透明 cursor 中。
       requestBody:
         required: true
         content:
