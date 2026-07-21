@@ -97,7 +97,7 @@ See also: top-of-file comments in [`mac.sh`](mac.sh), `bash ./dev/mac.sh -h`.
   kind load docker-image <img:tag> --name bkn-dev        # push a host-built image into kind
   ```
 
-- **`mac.sh isf install` switches the stack to HTTPS automatically**: ISF (hydra/oauth2) requires HTTPS issuers, so the install path will (1) flip `mac-config.yaml` `accessAddress` to `https/443`, (2) generate a self-signed TLS cert + Secret `bkn-ingress-tls`, (3) `helm upgrade` any already-installed `bkn-foundry` releases so they pick up the new https `accessAddress`, then (4) install ISF and patch its ingress with TLS. Total time ~10 min on a fresh install. Browsers will warn on the self-signed cert — accept once. To stay on HTTP, just don't install ISF (`--minimum` already disables `auth.enabled`).
+- **`mac.sh isf install` switches the stack to HTTPS automatically**: ISF (hydra/oauth2) requires HTTPS issuers, so the install path will (1) flip `mac-config.yaml` `accessAddress` to `https/443`, (2) generate a self-signed TLS cert + Secret `bkn-ingress-tls`, (3) `helm upgrade` any already-installed `bkn-foundry` releases so they pick up the new https `accessAddress`, then (4) install ISF and patch its ingress with TLS. Total time ~10 min on a fresh install. Browsers will warn on the self-signed cert — accept once. To stay on HTTP, just don't install ISF — the default full stack (incl. bkn-safe) also runs on HTTP; only ISF forces HTTPS.
 
 - **Quick verify after install** (proxy unset, Core pods Ready):
   ```bash

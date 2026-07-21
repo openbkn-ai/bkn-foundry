@@ -56,7 +56,7 @@ cd deploy   # 仓库的 deploy/ 目录
 bash ./dev/mac.sh doctor
 # 可选：用 Homebrew 补全缺失工具 — bash ./dev/mac.sh doctor --fix（或 -y doctor --fix 跳过确认）
 bash ./dev/mac.sh cluster up
-bash ./dev/mac.sh bkn-foundry install --minimum   # 默认带 --minimum；前置自动装 data-services（与 data-services install 相同）
+bash ./dev/mac.sh bkn-foundry install   # 全量含必选 bkn-safe（认证已启用）；前置自动装 data-services（与 data-services install 相同）
 # 可选：bash ./dev/mac.sh data-services install   # 仅数据层 / 刷新
 # 可选：bash ./dev/mac.sh bkn-foundry download
 # 可选：bash ./dev/mac.sh onboard；需非交互时在命令前加 -y

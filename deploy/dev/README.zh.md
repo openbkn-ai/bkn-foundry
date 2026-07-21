@@ -96,7 +96,7 @@ docker stop $(docker ps -q --filter "label=io.x-k8s.kind.cluster=${CLUSTER}")
   kind load docker-image <img:tag> --name bkn-dev        # 把宿主已有镜像推进 kind
   ```
 
-- **`mac.sh isf install` 会自动把整套切到 HTTPS**：ISF（hydra/oauth2）的 issuer 必须是 https，所以 install 流程会自动：(1) 把 `mac-config.yaml` 的 `accessAddress` 改成 `https/443`，(2) 用 openssl 生 self-signed 证书并落到 Secret `bkn-ingress-tls`，(3) 对已装的 `bkn-foundry` release 做 `helm upgrade` 让它们读到新 https `accessAddress`，(4) 装 ISF 并给 ingress patch TLS。全新场景大约 10 min。浏览器会提示自签证书风险，确认一次即可。**不装 ISF 的话不用动**——`--minimum` 默认就关了 `auth.enabled`。
+- **`mac.sh isf install` 会自动把整套切到 HTTPS**：ISF（hydra/oauth2）的 issuer 必须是 https，所以 install 流程会自动：(1) 把 `mac-config.yaml` 的 `accessAddress` 改成 `https/443`，(2) 用 openssl 生 self-signed 证书并落到 Secret `bkn-ingress-tls`，(3) 对已装的 `bkn-foundry` release 做 `helm upgrade` 让它们读到新 https `accessAddress`，(4) 装 ISF 并给 ingress patch TLS。全新场景大约 10 min。浏览器会提示自签证书风险，确认一次即可。**不装 ISF 的话不用动**——默认全量安装（含 bkn-safe）也跑在 HTTP 上，只有 ISF 才强制切 https。
 
 - **装完后的快速验证**（代理已 unset、Core pod 全 Ready 后）：
   ```bash
