@@ -147,6 +147,64 @@ func TestRawQueryServiceValidateRequestNewContract(t *testing.T) {
 	assertHTTPError(t, err, http.StatusBadRequest)
 }
 
+func TestPrepareOpenSearchCursorQuery(t *testing.T) {
+	t.Run("requires a stable sort", func(t *testing.T) {
+		svc := &rawQueryService{}
+		_, _, _, _, err := svc.prepareOpenSearchCursorQuery(context.Background(), &interfaces.RawQueryRequest{
+			Query:  map[string]any{"resource_id": "resource-1"},
+			Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Size: 10},
+		})
+
+		assertHTTPError(t, err, http.StatusBadRequest)
+		assert.ErrorContains(t, err, "sort is required")
+	})
+
+	t.Run("drops client search after and freezes first page paging", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+		mockRS := mock_interfaces.NewMockResourceService(ctrl)
+		svc := &rawQueryService{cs: mockCS, rs: mockRS}
+		clientSearchAfter := []any{"client-cursor"}
+		requestQuery := map[string]any{
+			"resource_id":  "resource-1",
+			"sort":         []any{"timestamp"},
+			"search_after": clientSearchAfter,
+			"size":         999,
+		}
+
+		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(&interfaces.Resource{
+			ID:               "resource-1",
+			CatalogID:        "catalog-1",
+			SourceIdentifier: "events",
+		}, nil)
+		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).Return(&interfaces.Catalog{
+			ID:            "catalog-1",
+			Enabled:       true,
+			ConnectorType: interfaces.ConnectorTypeOpenSearch,
+		}, nil)
+
+		prepared, index, catalog, warning, err := svc.prepareOpenSearchCursorQuery(context.Background(), &interfaces.RawQueryRequest{
+			Query: requestQuery,
+			Paging: interfaces.PagingRequest{
+				Mode:   interfaces.PagingModeCursor,
+				Size:   25,
+				Offset: 50,
+			},
+		})
+
+		require.NoError(t, err)
+		assert.Equal(t, "events", index)
+		assert.Equal(t, "catalog-1", catalog.ID)
+		assert.Empty(t, warning)
+		assert.Equal(t, []any{"timestamp"}, prepared["sort"])
+		assert.Equal(t, 25, prepared["size"])
+		assert.Equal(t, 50, prepared["from"])
+		assert.NotContains(t, prepared, "resource_id")
+		assert.NotContains(t, prepared, "search_after")
+		assert.Equal(t, clientSearchAfter, requestQuery["search_after"])
+	})
+}
+
 func TestRawQueryServiceExtractResourceIDs(t *testing.T) {
 	t.Run("raw query service extract resource ids", func(t *testing.T) {
 		svc := &rawQueryService{}
