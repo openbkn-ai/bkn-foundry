@@ -86,13 +86,17 @@ func New(deps Deps) *gin.Engine {
 	if verifier == nil && deps.Hydra != nil {
 		verifier = deps.Hydra
 	}
-	// Wrap the verifier in a short-TTL, singleflight-deduplicated cache. Every
-	// token-gated request (admin + /me) introspects via hydra; the frontend fires
-	// /me and /me/permissions in parallel at login, so this collapses that pair
-	// into one upstream introspection and absorbs repeat pulls. Authorization is
-	// unaffected — only the token->subject step is cached, casbin still runs live.
-	if verifier != nil {
-		verifier = newCachingVerifier(verifier, verifierCacheTTL)
+	// The introspection cache is scoped to /me ONLY. The frontend fires /me and
+	// /me/permissions in parallel at login, so a short-TTL, singleflight-
+	// deduplicated cache collapses that pair into one upstream introspection and
+	// absorbs repeat pulls. It is NOT applied to /admin: that surface keeps the
+	// raw verifier so a revoked/logged-out token stops working on mutating admin
+	// operations immediately, rather than up to a TTL later — the revocation-lag
+	// trade-off stays confined to read-only self-service. Authorization (casbin)
+	// is realtime on both regardless; only the token->subject step is cached.
+	meVerifier := verifier
+	if meVerifier != nil {
+		meVerifier = newCachingVerifier(meVerifier, verifierCacheTTL)
 	}
 	if deps.Enforcer != nil && verifier != nil && deps.Users != nil && deps.Directory != nil {
 		admin := r.Group("/api/safe/v1/admin", RequireAdmin(verifier, deps.Enforcer))
@@ -139,7 +143,7 @@ func New(deps Deps) *gin.Engine {
 	// Self-service reads under /api/safe/v1/me — token-gated (RequireUser:
 	// authn only), gateway-exposed. The caller reads its own permission list.
 	if deps.Enforcer != nil && verifier != nil && deps.Directory != nil {
-		me := r.Group("/api/safe/v1/me", RequireUser(verifier))
+		me := r.Group("/api/safe/v1/me", RequireUser(meVerifier))
 		registerMe(me, deps.Enforcer, deps.DB, deps.Directory, deps.Users)
 		// Self-service AppKey management (issue/list/revoke own keys).
 		if apiKeys != nil {

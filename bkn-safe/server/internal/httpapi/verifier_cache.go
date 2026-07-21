@@ -22,6 +22,12 @@ import (
 // on refresh / re-nav — so a few seconds buys the whole win.
 const verifierCacheTTL = 10 * time.Second
 
+// verifierIntrospectTimeout bounds the shared upstream introspection performed
+// inside a singleflight group. That call is decoupled from any single caller's
+// context (see VerifyToken), so it needs its own deadline instead of inheriting
+// a caller's cancellation.
+const verifierIntrospectTimeout = 10 * time.Second
+
 // cachingVerifier wraps a TokenVerifier with two independent latency cuts:
 //
 //   - singleflight de-duplication: /me and /me/permissions load in parallel with
@@ -81,7 +87,15 @@ func (c *cachingVerifier) VerifyToken(ctx context.Context, token string) (string
 		if s, ok := c.lookup(key); ok {
 			return s, nil
 		}
-		s, err := c.inner.VerifyToken(ctx, token)
+		// The shared introspection must NOT inherit the triggering caller's
+		// cancellation: whichever caller wins the flight would otherwise drag all
+		// the other waiters down with its cancel error — e.g. the browser aborts
+		// one of the parallel /me + /me/permissions requests and the healthy one
+		// gets a spurious 401. Decouple from any single caller's context and give
+		// the shared call its own deadline.
+		sfCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), verifierIntrospectTimeout)
+		defer cancel()
+		s, err := c.inner.VerifyToken(sfCtx, token)
 		if err != nil {
 			return "", err // not cached: fail-closed, re-verified next request
 		}
