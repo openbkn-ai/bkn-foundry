@@ -96,3 +96,24 @@ func TestCursorSessionLifecycleTracksSuccessfulPagesAndClosure(t *testing.T) {
 	_, ok := manager.get(session.ID)
 	assert.False(t, ok)
 }
+
+func TestCursorSessionManagerReclaimerSkipsActiveSession(t *testing.T) {
+	manager := newCursorSessionManager(2)
+	session, err := manager.create("account-1", "catalog-1", nil, "SELECT 1", 1, 60, 30)
+	require.NoError(t, err)
+	session.ExpiresAtSec = time.Now().Add(-time.Second).Unix()
+
+	session.mu.Lock()
+	manager.mu.Lock()
+	manager.removeExpiredLocked(time.Now().Unix())
+	manager.mu.Unlock()
+	_, ok := manager.sessions[session.ID]
+	assert.True(t, ok)
+	session.mu.Unlock()
+
+	manager.mu.Lock()
+	manager.removeExpiredLocked(time.Now().Unix())
+	manager.mu.Unlock()
+	_, ok = manager.get(session.ID)
+	assert.False(t, ok)
+}

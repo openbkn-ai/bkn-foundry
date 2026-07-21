@@ -243,11 +243,12 @@ func TestExecuteOpenSearchCursorPage(t *testing.T) {
 				return &interfaces.RawQueryResponse{
 					Entries:     []map[string]any{{"id": "1"}, {"id": "2"}},
 					SearchAfter: []any{"page-1"},
+					TotalCount:  3,
 				}, nil
 			}
 			assert.NotContains(t, query, "from")
 			assert.Equal(t, []any{"page-1"}, query["search_after"])
-			return &interfaces.RawQueryResponse{Entries: []map[string]any{{"id": "3"}}}, nil
+			return &interfaces.RawQueryResponse{Entries: []map[string]any{{"id": "3"}}, TotalCount: 3}, nil
 		}).Times(2)
 
 	svc := &rawQueryService{}
@@ -263,6 +264,43 @@ func TestExecuteOpenSearchCursorPage(t *testing.T) {
 	require.NotNil(t, last.Paging)
 	assert.Nil(t, last.Paging.NextCursor)
 	assert.Nil(t, last.Paging.ExpiresAtSec)
+	_, ok := manager.get(session.ID)
+	assert.False(t, ok)
+}
+
+func TestOpenSearchCursorDoesNotCreateEmptyPageForExactMultiple(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	indexConnector := mock_interfaces.NewMockIndexConnector(ctrl)
+	manager := newCursorSessionManager(10)
+	previousManager := rawQueryCursorSessions
+	rawQueryCursorSessions = manager
+	t.Cleanup(func() { rawQueryCursorSessions = previousManager })
+
+	session, err := manager.create("account-1", "catalog-1", []string{"resource-1"}, "", 2, 60, 0)
+	require.NoError(t, err)
+	session.QueryFormat = interfaces.QueryFormatDSL
+	session.OpenSearchIndex = "events"
+	session.OpenSearchQuery = map[string]any{"sort": []any{"timestamp"}, "size": 2}
+
+	patches := gomonkey.ApplyFunc(factory.GetFactory, func() *factory.ConnectorFactory {
+		return &factory.ConnectorFactory{}
+	})
+	patches.ApplyMethod(&factory.ConnectorFactory{}, "CreateConnectorInstance",
+		func(*factory.ConnectorFactory, context.Context, string, interfaces.ConnectorConfig) (interfaces.Connector, error) {
+			return indexConnector, nil
+		})
+	defer patches.Reset()
+
+	indexConnector.EXPECT().ExecuteRawQuery(gomock.Any(), "events", gomock.Any()).Return(&interfaces.RawQueryResponse{
+		Entries:     []map[string]any{{"id": "1"}, {"id": "2"}},
+		SearchAfter: []any{"page-2"},
+		TotalCount:  2,
+	}, nil)
+
+	result, err := (&rawQueryService{}).executeOpenSearchCursorPage(context.Background(), session,
+		&interfaces.Catalog{ID: "catalog-1", ConnectorType: interfaces.ConnectorTypeOpenSearch}, nil)
+	require.NoError(t, err)
+	assert.Nil(t, result.Paging.NextCursor)
 	_, ok := manager.get(session.ID)
 	assert.False(t, ok)
 }
@@ -367,6 +405,12 @@ func TestRawQueryServiceExtractResourceIDs(t *testing.T) {
 		require.NoError(t, err)
 		assert.Empty(t, got)
 	})
+}
+
+func TestHasOpenSearchAggregation(t *testing.T) {
+	assert.True(t, hasOpenSearchAggregation(map[string]any{"aggs": map[string]any{"by_category": map[string]any{}}}))
+	assert.True(t, hasOpenSearchAggregation(map[string]any{"aggregations": map[string]any{"by_category": map[string]any{}}}))
+	assert.False(t, hasOpenSearchAggregation(map[string]any{"query": map[string]any{"match_all": map[string]any{}}}))
 }
 
 func TestRawQueryServiceReplaceResourceIDWithSchemaTable(t *testing.T) {

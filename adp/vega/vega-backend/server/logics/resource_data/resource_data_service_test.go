@@ -187,6 +187,25 @@ func TestResourceDataServiceQuery(t *testing.T) {
 	})
 }
 
+func TestResourceDataServiceRejectsIndexAggregationCursor(t *testing.T) {
+	rds := &resourceDataService{}
+	_, err := rds.QueryWithPaging(context.Background(), &interfaces.Resource{
+		ID:       "index-1",
+		Category: interfaces.ResourceCategoryIndex,
+	}, &interfaces.ResourceDataQueryParams{
+		Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Size: 10},
+		Sort:   []*interfaces.SortField{{Field: "timestamp", Direction: "desc"}},
+		GroupBy: []*interfaces.GroupByItem{
+			{Property: "category"},
+		},
+	})
+	require.Error(t, err)
+	var httpErr *rest.HTTPError
+	require.ErrorAs(t, err, &httpErr)
+	assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+	assert.Equal(t, verrors.VegaBackend_Query_InvalidParameter, httpErr.BaseError.ErrorCode)
+}
+
 func TestResourceDataServicePrepareSortParams(t *testing.T) {
 	t.Run("keeps schema aggregation and group fields", func(t *testing.T) {
 		rds := &resourceDataService{}

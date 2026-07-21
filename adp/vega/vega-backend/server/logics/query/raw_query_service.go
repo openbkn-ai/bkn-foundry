@@ -152,6 +152,8 @@ func (rqs *rawQueryService) executeInitialSQLCursor(ctx context.Context, req *in
 		return nil, cursorSessionLimitError(ctx)
 	}
 	session.Offset = req.Paging.Offset
+	session.mu.Lock()
+	defer session.mu.Unlock()
 	result, err := rqs.executeSQLCursorPage(ctx, session, prepared.catalog, prepared.warnings)
 	if err != nil {
 		// The client has not received this token, so it cannot retry this
@@ -322,6 +324,10 @@ func (rqs *rawQueryService) executeInitialOpenSearchCursor(ctx context.Context, 
 	if err != nil {
 		return nil, err
 	}
+	if hasOpenSearchAggregation(query) {
+		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+			WithErrorDetails("cursor paging does not support OpenSearch aggregation queries")
+	}
 	session, err := rawQueryCursorSessions.create(
 		accountIDFromContext(ctx), catalog.ID, []string{queryResourceID(req.Query)}, "", req.Paging.Size, req.Paging.KeepAliveSec, req.QueryTimeoutSec,
 	)
@@ -331,6 +337,8 @@ func (rqs *rawQueryService) executeInitialOpenSearchCursor(ctx context.Context, 
 	session.QueryFormat = interfaces.QueryFormatDSL
 	session.OpenSearchQuery = query
 	session.OpenSearchIndex = indexName
+	session.mu.Lock()
+	defer session.mu.Unlock()
 	warnings := make([]string, 0, 1)
 	if warning != "" {
 		warnings = append(warnings, warning)
@@ -340,6 +348,12 @@ func (rqs *rawQueryService) executeInitialOpenSearchCursor(ctx context.Context, 
 		rawQueryCursorSessions.remove(session.ID)
 	}
 	return result, err
+}
+
+func hasOpenSearchAggregation(query map[string]any) bool {
+	_, hasAggs := query["aggs"]
+	_, hasAggregations := query["aggregations"]
+	return hasAggs || hasAggregations
 }
 
 func queryResourceID(query any) string {
@@ -437,7 +451,10 @@ func (rqs *rawQueryService) executeOpenSearchCursorPage(ctx context.Context, ses
 			WithErrorDetails(err.Error())
 	}
 
-	hasNext := len(result.Entries) == session.PageSize && len(result.SearchAfter) > 0
+	// OpenSearch reports total_count for real connector responses. Keep the
+	// zero-total fallback for connector implementations that do not expose it.
+	hasMoreResults := result.TotalCount == 0 || int64(session.Offset+len(result.Entries)) < result.TotalCount
+	hasNext := len(result.Entries) == session.PageSize && hasMoreResults && len(result.SearchAfter) > 0
 	if hasNext {
 		session.SearchAfter = append([]any(nil), result.SearchAfter...)
 		session.Offset += len(result.Entries)

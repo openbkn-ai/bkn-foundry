@@ -19,11 +19,13 @@ type ResourceDataPageExecutor func(context.Context, *interfaces.ResourceDataQuer
 
 func ExecuteInitialResourceDataCursor(ctx context.Context, accountID string, resource *interfaces.Resource,
 	params *interfaces.ResourceDataQueryParams, execute ResourceDataPageExecutor) (*interfaces.ResourceDataQueryResult, error) {
-	session, err := rawQueryCursorSessions.createResourceData(accountID, resource.CatalogID, resource.ID, params)
+	session, err := rawQueryCursorSessions.createResourceData(accountID, resource, params)
 	if err != nil {
 		return nil, cursorSessionLimitError(ctx)
 	}
 	session.Offset = params.Paging.Offset
+	session.mu.Lock()
+	defer session.mu.Unlock()
 	result, err := executeResourceDataCursorPage(ctx, session, execute)
 	if err != nil {
 		rawQueryCursorSessions.remove(session.ID)
@@ -58,18 +60,31 @@ func executeResourceDataCursorPage(ctx context.Context, session *cursorSession,
 	params := cloneResourceDataQueryParams(session.ResourceDataParams)
 	params.Offset = session.Offset
 	params.Limit = session.PageSize + 1
+	if session.ResourceDataCategory == interfaces.ResourceCategoryIndex {
+		// The connector returns the search_after value from the last fetched hit.
+		// Fetch exactly one page so that value belongs to a returned entry rather
+		// than the dropped lookahead entry.
+		params.Limit = session.PageSize
+	}
 	params.Paging = interfaces.PagingRequest{}
 	params.SearchAfter = append([]any(nil), session.SearchAfter...)
 	entries, total, err := execute(ctx, params)
 	if err != nil {
 		return nil, err
 	}
-	if len(entries) <= session.PageSize {
+	hasNext := len(entries) > session.PageSize
+	if session.ResourceDataCategory == interfaces.ResourceCategoryIndex {
+		hasNext = len(entries) == session.PageSize &&
+			int64(session.Offset+len(entries)) < total && len(params.SearchAfter) > 0
+	}
+	if !hasNext {
 		rawQueryCursorSessions.closeSession(session.ID)
 		return &interfaces.ResourceDataQueryResult{Entries: entries, TotalCount: total, Paging: &interfaces.PagingResponse{}}, nil
 	}
-	entries = entries[:session.PageSize]
-	session.Offset += session.PageSize
+	if session.ResourceDataCategory != interfaces.ResourceCategoryIndex {
+		entries = entries[:session.PageSize]
+	}
+	session.Offset += len(entries)
 	if len(params.SearchAfter) > 0 {
 		session.SearchAfter = append([]any(nil), params.SearchAfter...)
 	}

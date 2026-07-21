@@ -259,6 +259,10 @@ func (rds *resourceDataService) QueryWithPaging(ctx context.Context, resource *i
 				return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 					WithErrorDetails("sort is required for index cursor paging")
 			}
+			if resource.Category == interfaces.ResourceCategoryIndex && isIndexAggregateQuery(params) {
+				return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+					WithErrorDetails("cursor paging does not support index aggregation queries")
+			}
 			return querylogic.ExecuteInitialResourceDataCursor(ctx, accountIDFromContext(ctx), resource, params,
 				func(pageCtx context.Context, pageParams *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
 					return rds.query(pageCtx, resource, pageParams)
@@ -273,6 +277,10 @@ func (rds *resourceDataService) QueryWithPaging(ctx context.Context, resource *i
 		return nil, err
 	}
 	return &interfaces.ResourceDataQueryResult{Entries: entries, TotalCount: total, Paging: &interfaces.PagingResponse{}}, nil
+}
+
+func isIndexAggregateQuery(params *interfaces.ResourceDataQueryParams) bool {
+	return params.Aggregation != nil || len(params.GroupBy) > 0 || params.Having != nil
 }
 
 func resourceDataCursorSupported(category string) bool {

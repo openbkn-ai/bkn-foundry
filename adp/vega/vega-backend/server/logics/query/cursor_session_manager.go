@@ -34,6 +34,7 @@ type cursorSession struct {
 
 	ResourceDataResourceID string
 	ResourceDataParams     *interfaces.ResourceDataQueryParams
+	ResourceDataCategory   string
 
 	Offset   int
 	PageSize int
@@ -112,7 +113,7 @@ func (m *cursorSessionManager) create(accountID, catalogID string, resourceIDs [
 	return session, nil
 }
 
-func (m *cursorSessionManager) createResourceData(accountID, catalogID, resourceID string, params *interfaces.ResourceDataQueryParams) (*cursorSession, error) {
+func (m *cursorSessionManager) createResourceData(accountID string, resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*cursorSession, error) {
 	keepAliveSec := params.Paging.KeepAliveSec
 	if keepAliveSec == 0 {
 		keepAliveSec = interfaces.DefaultCursorKeepAliveSec
@@ -121,10 +122,11 @@ func (m *cursorSessionManager) createResourceData(accountID, catalogID, resource
 	session := &cursorSession{
 		ID:                     uuid.NewString(),
 		AccountID:              accountID,
-		CatalogID:              catalogID,
-		ResourceIDs:            []string{resourceID},
-		ResourceDataResourceID: resourceID,
+		CatalogID:              resource.CatalogID,
+		ResourceIDs:            []string{resource.ID},
+		ResourceDataResourceID: resource.ID,
 		ResourceDataParams:     cloneResourceDataQueryParams(params),
+		ResourceDataCategory:   resource.Category,
 		PageSize:               params.Paging.Size,
 		KeepAliveSec:           keepAliveSec,
 		CreatedAtSec:           now,
@@ -224,7 +226,14 @@ func (m *cursorSessionManager) removeLocked(cursor string) (*cursorSession, bool
 
 func (m *cursorSessionManager) removeExpiredLocked(nowSec int64) {
 	for id, session := range m.sessions {
-		if nowSec >= atomic.LoadInt64(&session.ExpiresAtSec) {
+		// A page execution holds session.mu. Do not remove a session until that
+		// execution finishes, otherwise it can return an unresolvable cursor.
+		if !session.mu.TryLock() {
+			continue
+		}
+		expired := nowSec >= atomic.LoadInt64(&session.ExpiresAtSec)
+		session.mu.Unlock()
+		if expired {
 			m.removeLocked(id)
 			logger.Infof("Cursor session expired: catalog_id=%s, active_sessions=%d", session.CatalogID, len(m.sessions))
 		}
