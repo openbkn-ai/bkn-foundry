@@ -96,8 +96,13 @@ jobs:
             - 不确定的推测标注为「待确认」，不要当成缺陷断言。
             - 没问题就说没问题，不要为了凑数提格式化/命名类的琐碎意见。
 
+          # 48 文件 / 28 commit 这种大 PR，只给 gh pr diff 不够：Claude 需要进
+          # 文件看上下文、比对具体 commit，会伸手 Read/Grep/git diff 等未授权工具而被拒。
+          # 之前一次评审因此连撞 12 次 permission denial、耗尽轮次、评论冻在「进行中」。
+          # 补齐只读检视工具（Read/Grep/Glob/LS + git diff/log/show）并放宽轮次上限。
           claude_args: |
-            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
+            --max-turns 60
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Read,Grep,Glob,LS,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*)"
 
       - name: Warn when credential missing
         if: env.CLAUDE_CODE_OAUTH_TOKEN == ''
