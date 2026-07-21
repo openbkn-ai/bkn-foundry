@@ -126,7 +126,9 @@ func (rqs *rawQueryService) executeInitialSQLQuery(ctx context.Context, req *int
 	}
 	finalSQL := applySingleQueryPaging(prepared.sql, req.Paging.Offset, req.Paging.Limit)
 
-	result, err := rqs.executeSQL(ctx, prepared.catalog, finalSQL, interfaces.PagingModeSingle)
+	queryCtx, cancel := queryExecutionContext(ctx, req.QueryTimeoutSec)
+	defer cancel()
+	result, err := rqs.executeSQL(queryCtx, prepared.catalog, finalSQL, interfaces.PagingModeSingle)
 	if err != nil {
 		return nil, err
 	}
@@ -285,12 +287,8 @@ func trimSQLTerminator(sql string) string {
 
 func (rqs *rawQueryService) executeSQLCursorPage(ctx context.Context, session *cursorSession, catalog *interfaces.Catalog, warnings []string) (*interfaces.RawQueryResponse, error) {
 	pageSQL := fmt.Sprintf("SELECT * FROM (%s) AS _raw_query_cursor LIMIT %d OFFSET %d", session.CompiledSQL, session.PageSize+1, session.Offset)
-	pageCtx := ctx
-	if session.QueryTimeoutSec > 0 {
-		var cancel context.CancelFunc
-		pageCtx, cancel = context.WithTimeout(ctx, time.Duration(session.QueryTimeoutSec)*time.Second)
-		defer cancel()
-	}
+	pageCtx, cancel := queryExecutionContext(ctx, session.QueryTimeoutSec)
+	defer cancel()
 	result, err := rqs.executeSQL(pageCtx, catalog, pageSQL, interfaces.PagingModeCursor)
 	if err != nil {
 		return nil, err
@@ -511,7 +509,9 @@ func (rqs *rawQueryService) executeInitialDSLQuery(ctx context.Context, req *int
 	}
 
 	delete(queryMap, "resource_id")
-	connector, err := factory.GetFactory().CreateConnectorInstance(ctx, catalog.ConnectorType, catalog.ConnectorCfg)
+	queryCtx, cancel := queryExecutionContext(ctx, req.QueryTimeoutSec)
+	defer cancel()
+	connector, err := factory.GetFactory().CreateConnectorInstance(queryCtx, catalog.ConnectorType, catalog.ConnectorCfg)
 	if err != nil {
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
 			WithErrorDetails("connector initialization failed")
@@ -521,7 +521,7 @@ func (rqs *rawQueryService) executeInitialDSLQuery(ctx context.Context, req *int
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
 			WithErrorDetails("opensearch connector does not implement IndexConnector")
 	}
-	result, err := indexConnector.ExecuteRawQuery(ctx, resource.SourceIdentifier, queryMap)
+	result, err := indexConnector.ExecuteRawQuery(queryCtx, resource.SourceIdentifier, queryMap)
 	if err != nil {
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
 			WithErrorDetails("query execution failed")
@@ -530,6 +530,13 @@ func (rqs *rawQueryService) executeInitialDSLQuery(ctx context.Context, req *int
 		result.Warnings = append(result.Warnings, warning)
 	}
 	return result, nil
+}
+
+func queryExecutionContext(ctx context.Context, queryTimeoutSec int) (context.Context, context.CancelFunc) {
+	if queryTimeoutSec <= 0 {
+		return ctx, func() {}
+	}
+	return context.WithTimeout(ctx, time.Duration(queryTimeoutSec)*time.Second)
 }
 
 func targetDialectForCatalog(ctx context.Context, catalog *interfaces.Catalog) (string, error) {

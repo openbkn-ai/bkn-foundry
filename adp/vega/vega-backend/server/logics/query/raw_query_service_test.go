@@ -152,6 +152,60 @@ func TestRawQueryServiceValidateRequestNewContract(t *testing.T) {
 	assertHTTPError(t, err, http.StatusBadRequest)
 }
 
+func TestQueryExecutionContextAppliesTimeout(t *testing.T) {
+	ctx, cancel := queryExecutionContext(context.Background(), 1)
+	defer cancel()
+	_, ok := ctx.Deadline()
+	assert.True(t, ok)
+
+	ctx, cancel = queryExecutionContext(context.Background(), 0)
+	defer cancel()
+	_, ok = ctx.Deadline()
+	assert.False(t, ok)
+}
+
+func TestExecuteInitialDSLQueryAppliesTimeout(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	indexConnector := mock_interfaces.NewMockIndexConnector(ctrl)
+	mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+	mockRS := mock_interfaces.NewMockResourceService(ctrl)
+	svc := &rawQueryService{cs: mockCS, rs: mockRS}
+
+	mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(&interfaces.Resource{
+		ID:               "resource-1",
+		CatalogID:        "catalog-1",
+		SourceIdentifier: "events",
+	}, nil)
+	mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).Return(&interfaces.Catalog{
+		ID:            "catalog-1",
+		Enabled:       true,
+		ConnectorType: interfaces.ConnectorTypeOpenSearch,
+	}, nil)
+
+	patches := gomonkey.ApplyFunc(factory.GetFactory, func() *factory.ConnectorFactory {
+		return &factory.ConnectorFactory{}
+	})
+	patches.ApplyMethod(&factory.ConnectorFactory{}, "CreateConnectorInstance",
+		func(*factory.ConnectorFactory, context.Context, string, interfaces.ConnectorConfig) (interfaces.Connector, error) {
+			return indexConnector, nil
+		})
+	defer patches.Reset()
+
+	indexConnector.EXPECT().ExecuteRawQuery(gomock.Any(), "events", gomock.Any()).
+		DoAndReturn(func(ctx context.Context, _ string, _ map[string]any) (*interfaces.RawQueryResponse, error) {
+			_, ok := ctx.Deadline()
+			assert.True(t, ok)
+			return &interfaces.RawQueryResponse{}, nil
+		})
+
+	_, err := svc.executeInitialDSLQuery(context.Background(), &interfaces.RawQueryRequest{
+		Query:           map[string]any{"resource_id": "resource-1"},
+		QueryTimeoutSec: 1,
+		Paging:          interfaces.PagingRequest{Limit: 10},
+	})
+	require.NoError(t, err)
+}
+
 func TestPrepareOpenSearchCursorQuery(t *testing.T) {
 	t.Run("requires a stable sort", func(t *testing.T) {
 		svc := &rawQueryService{}

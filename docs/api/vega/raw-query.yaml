@@ -193,7 +193,6 @@ components:
       required:
         - columns
         - entries
-        - stats
         - total_count
       properties:
         columns:
@@ -207,8 +206,6 @@ components:
           items:
             type: object
             additionalProperties: true
-        stats:
-          $ref: "#/components/schemas/QueryStats"
         total_count:
           description: 总条数（标准查询返回完整命中数；流式查询为已返回累计数）
           type: integer
@@ -247,12 +244,3 @@ components:
         type:
           description: 列类型（取决于底层连接器）
           type: string
-    QueryStats:
-      description: 查询统计
-      type: object
-      required:
-        - is_timeout
-      properties:
-        is_timeout:
-          description: 是否因 query_timeout_sec 触发超时
-          type: boolean
