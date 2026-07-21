@@ -1,0 +1,45 @@
+{
+  "bkn.trace.schema.version": "1.0.0",
+  "fixture_id": "bkn_agent_negative_invalid_traceparent",
+  "fixture_type": "negative",
+  "scenario": "bkn_agent_rejects_all_zero_traceparent",
+  "expected_result": "fail",
+  "trace": {
+    "trace_id": "7a040000000000000000000000000004",
+    "bkn.request.id": "req_bkn_agent_invalid_0004",
+    "traceparent": "00-00000000000000000000000000000000-0000000000000000-01",
+    "sampling.decision": "sampled"
+  },
+  "spans": [
+    {
+      "span_id": "7a04000000000001",
+      "parent_span_id": null,
+      "name": "bkn-agent.request",
+      "kind": "server",
+      "bkn.module.name": "bkn-agent",
+      "bkn.operation.name": "bkn-agent.health",
+      "bkn.status": "ok",
+      "bkn.timestamp": "2026-07-21T05:03:00.000000000Z",
+      "duration_ms": 5
+    }
+  ],
+  "logs": [
+    {
+      "level": "info",
+      "message": "request completed after rejecting invalid trace context",
+      "trace_id": "7a040000000000000000000000000004",
+      "span_id": "7a04000000000001",
+      "bkn.request.id": "req_bkn_agent_invalid_0004",
+      "bkn.module.name": "bkn-agent",
+      "bkn.operation.name": "bkn-agent.health",
+      "bkn.status": "ok",
+      "bkn.timestamp": "2026-07-21T05:03:00.005000000Z",
+      "bkn.trace.schema.version": "1.0.0"
+    }
+  ],
+  "events": [],
+  "baggage": {
+    "bkn.account.type": "service",
+    "bkn.runtime.env": "test"
+  }
+}

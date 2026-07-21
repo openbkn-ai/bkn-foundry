@@ -945,6 +945,9 @@ components:
         solution:
           type: string
           title: Solution
+        trace_id:
+          type: string
+          title: Trace Id
         link:
           type: string
           title: Link
@@ -955,6 +958,7 @@ components:
       - description
       - detail
       - solution
+      - trace_id
       title: ErrorEnvelope
       description: 平台统一错误封套（所有非 2xx 响应）。
     ExportPackage:

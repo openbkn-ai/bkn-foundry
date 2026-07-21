@@ -88,6 +88,7 @@ async def stream_chat(
         "prompt.source": prompt_source,
         "prompt.version": prompt_version,
     }
+    span_attrs.update(observability.context_attributes())
 
     async def _events() -> AsyncIterator[str]:
         try:

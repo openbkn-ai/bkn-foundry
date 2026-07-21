@@ -10,6 +10,40 @@ def test_health():
     r = client.get("/api/v1/health")
     assert r.status_code == 200
     assert r.json()["status"] == "ok"
+    assert r.headers["x-trace-id"]
+    assert r.headers["bkn-request-id"].startswith("req_")
+    assert r.headers["x-request-id"] == r.headers["bkn-request-id"]
+    assert r.headers["traceparent"].startswith(f"00-{r.headers['x-trace-id']}-")
+
+
+def test_trace_context_propagates_request_id_and_traceparent():
+    trace_id = "1234567890abcdef1234567890abcdef"
+    span_id = "1234567890abcdef"
+    r = client.get(
+        "/api/v1/health",
+        headers={
+            "traceparent": f"00-{trace_id}-{span_id}-01",
+            "bkn-request-id": "req_external_123",
+        },
+    )
+    assert r.status_code == 200
+    assert r.headers["x-trace-id"] == trace_id
+    assert r.headers["bkn-request-id"] == "req_external_123"
+    assert r.headers["x-request-id"] == "req_external_123"
+    assert r.headers["traceparent"] == f"00-{trace_id}-{span_id}-01"
+
+
+def test_invalid_traceparent_is_not_reused():
+    r = client.get(
+        "/api/v1/health",
+        headers={
+            "traceparent": "00-00000000000000000000000000000000-0000000000000000-01",
+            "bkn-request-id": "req_external_456",
+        },
+    )
+    assert r.status_code == 200
+    assert r.headers["x-trace-id"] != "00000000000000000000000000000000"
+    assert r.headers["bkn-request-id"] == "req_external_456"
 
 
 def test_auth_fail_closed_without_identity():
@@ -18,6 +52,7 @@ def test_auth_fail_closed_without_identity():
     # 顶层扁平 ErrorEnvelope（非 {"detail": {...}} 嵌套）
     assert r.json()["code"] == "BknAgent.Auth.AccountRequired"
     assert "detail" in r.json() and isinstance(r.json()["detail"], str)
+    assert r.json()["trace_id"] == r.headers["x-trace-id"]
 
 
 def test_auth_rejects_anonymous():
@@ -34,6 +69,7 @@ def test_validation_error_uses_platform_error_shape():
     body = r.json()
     assert body["code"] == "BknAgent.ParamError.FormatError"
     assert body["solution"]
+    assert body["trace_id"] == r.headers["x-trace-id"]
 
 
 def test_thread_requires_identity():
@@ -79,7 +115,11 @@ def test_thread_missing_and_foreign_owner_indistinguishable(monkeypatch):
         app.dependency_overrides.pop(key, None)
 
     assert r_missing.status_code == r_foreign.status_code == 404
-    assert r_missing.json() == r_foreign.json()
+    missing_body = r_missing.json()
+    foreign_body = r_foreign.json()
+    assert missing_body.pop("trace_id") == r_missing.headers["x-trace-id"]
+    assert foreign_body.pop("trace_id") == r_foreign.headers["x-trace-id"]
+    assert missing_body == foreign_body
 
 
 def test_thread_owner_reads_history(monkeypatch):

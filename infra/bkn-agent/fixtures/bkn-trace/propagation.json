@@ -1,0 +1,60 @@
+{
+  "bkn.trace.schema.version": "1.0.0",
+  "fixture_id": "bkn_agent_propagation_external_context",
+  "fixture_type": "propagation",
+  "scenario": "bkn_agent_preserves_valid_traceparent_and_request_id",
+  "expected_result": "pass",
+  "trace": {
+    "trace_id": "7a020000000000000000000000000002",
+    "bkn.request.id": "req_bkn_agent_external_0002",
+    "traceparent": "00-7a020000000000000000000000000002-7a02000000000001-01",
+    "sampling.decision": "sampled"
+  },
+  "spans": [
+    {
+      "span_id": "7a02000000000001",
+      "parent_span_id": null,
+      "name": "bkn-agent.request",
+      "kind": "server",
+      "bkn.module.name": "bkn-agent",
+      "bkn.operation.name": "bkn-agent.chat",
+      "bkn.status": "ok",
+      "bkn.timestamp": "2026-07-21T05:01:00.000000000Z",
+      "duration_ms": 90
+    },
+    {
+      "span_id": "7a02000000000002",
+      "parent_span_id": "7a02000000000001",
+      "name": "agent.chat",
+      "kind": "internal",
+      "bkn.module.name": "bkn-agent",
+      "bkn.operation.name": "bkn-agent.chat",
+      "bkn.status": "ok",
+      "bkn.timestamp": "2026-07-21T05:01:00.010000000Z",
+      "bkn.agent.id": "agent_profile_demo",
+      "bkn.thread.id": "thread_profile_demo",
+      "duration_ms": 80
+    }
+  ],
+  "logs": [
+    {
+      "level": "info",
+      "message": "chat request completed",
+      "trace_id": "7a020000000000000000000000000002",
+      "span_id": "7a02000000000002",
+      "bkn.request.id": "req_bkn_agent_external_0002",
+      "bkn.module.name": "bkn-agent",
+      "bkn.operation.name": "bkn-agent.chat",
+      "bkn.status": "ok",
+      "bkn.timestamp": "2026-07-21T05:01:00.090000000Z",
+      "bkn.trace.schema.version": "1.0.0",
+      "bkn.agent.id": "agent_profile_demo",
+      "bkn.thread.id": "thread_profile_demo"
+    }
+  ],
+  "events": [],
+  "baggage": {
+    "bkn.account.type": "user",
+    "bkn.runtime.env": "test"
+  }
+}
