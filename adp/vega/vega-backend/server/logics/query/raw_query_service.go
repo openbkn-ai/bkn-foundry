@@ -120,59 +120,22 @@ func (rqs *rawQueryService) validateRequest(ctx context.Context, req *interfaces
 }
 
 func (rqs *rawQueryService) executeInitialSQLQuery(ctx context.Context, req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
-	resourceIDs, err := rqs.extractResourceIDs(req.Query)
-	if err != nil {
-		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
-			WithErrorDetails(fmt.Sprintf("extract resource ids failed: %v", err))
-	}
-	if len(resourceIDs) == 0 {
-		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
-			WithErrorDetails("at least one resource_id is required for SQL queries")
-	}
-
-	catalog, warnings, err := rqs.checkSameDataSource(ctx, resourceIDs)
+	prepared, err := rqs.prepareSQLQuery(ctx, req)
 	if err != nil {
 		return nil, err
 	}
-	replacedSQL, err := rqs.replaceResourceIDWithSchemaTable(ctx, req.Query, resourceIDs, catalog)
+	finalSQL := applySingleQueryPaging(prepared.sql, req.Paging.Offset, req.Paging.Size)
+
+	result, err := rqs.executeSQL(ctx, prepared.catalog, finalSQL, interfaces.PagingModeSingle)
 	if err != nil {
 		return nil, err
 	}
-
-	inputDialect := req.EffectiveInputDialect()
-	if err := rawQueryPolicy.ValidateSQL(replacedSQL, inputDialect); err != nil {
-		if httpErr := rawQueryValidationError(ctx, err); httpErr != nil {
-			return nil, httpErr
-		}
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
-			WithErrorDetails(fmt.Sprintf("validate SQL failed: %v", err))
-	}
-
-	targetDialect, err := targetDialectForCatalog(ctx, catalog)
-	if err != nil {
-		return nil, err
-	}
-	finalSQL := replacedSQL
-	if inputDialect != targetDialect {
-		result, err := sqlglot.TranspileSQL(replacedSQL, inputDialect, targetDialect)
-		if err != nil {
-			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
-				WithErrorDetails(fmt.Sprintf("transpile SQL failed: %v", err))
-		}
-		finalSQL = result.SQL
-	}
-	finalSQL = applySingleQueryPaging(trimSQLTerminator(finalSQL), req.Paging.Offset, req.Paging.Size)
-
-	result, err := rqs.executeSQL(ctx, catalog, finalSQL, interfaces.PagingModeSingle)
-	if err != nil {
-		return nil, err
-	}
-	result.Warnings = append(result.Warnings, warnings...)
+	result.Warnings = append(result.Warnings, prepared.warnings...)
 	return result, nil
 }
 
 func (rqs *rawQueryService) executeInitialSQLCursor(ctx context.Context, req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
-	prepared, err := rqs.prepareSQLCursorQuery(ctx, req)
+	prepared, err := rqs.prepareSQLQuery(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -235,14 +198,17 @@ func (rqs *rawQueryService) executeSQLCursorContinuation(ctx context.Context, re
 	}
 }
 
-type preparedSQLCursorQuery struct {
+type preparedSQLQuery struct {
 	catalog     *interfaces.Catalog
 	resourceIDs []string
 	sql         string
 	warnings    []string
 }
 
-func (rqs *rawQueryService) prepareSQLCursorQuery(ctx context.Context, req *interfaces.RawQueryRequest) (*preparedSQLCursorQuery, error) {
+// prepareSQLQuery is the shared SQL preparation pipeline for both single and
+// cursor execution. Policy validation deliberately happens after controlled
+// resource binding and before compilation or connector execution.
+func (rqs *rawQueryService) prepareSQLQuery(ctx context.Context, req *interfaces.RawQueryRequest) (*preparedSQLQuery, error) {
 	resourceIDs, err := rqs.extractResourceIDs(req.Query)
 	if err != nil {
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
@@ -266,7 +232,7 @@ func (rqs *rawQueryService) prepareSQLCursorQuery(ctx context.Context, req *inte
 			return nil, httpErr
 		}
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
-			WithErrorDetails(fmt.Sprintf("validate SQL failed: %v", err))
+			WithErrorDetails("failed to validate SQL query")
 	}
 	targetDialect, err := targetDialectForCatalog(ctx, catalog)
 	if err != nil {
@@ -277,11 +243,11 @@ func (rqs *rawQueryService) prepareSQLCursorQuery(ctx context.Context, req *inte
 		result, err := sqlglot.TranspileSQL(replacedSQL, inputDialect, targetDialect)
 		if err != nil {
 			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
-				WithErrorDetails(fmt.Sprintf("transpile SQL failed: %v", err))
+				WithErrorDetails("failed to compile SQL query")
 		}
 		finalSQL = result.SQL
 	}
-	return &preparedSQLCursorQuery{catalog: catalog, resourceIDs: resourceIDs, sql: trimSQLTerminator(finalSQL), warnings: warnings}, nil
+	return &preparedSQLQuery{catalog: catalog, resourceIDs: resourceIDs, sql: trimSQLTerminator(finalSQL), warnings: warnings}, nil
 }
 
 func trimSQLTerminator(sql string) string {

@@ -76,18 +76,18 @@ except Exception as e:
 	cmd.Stdout = &out
 	err := cmd.Run()
 	if err != nil {
-		logger.Errorf("ExtractTables failed, %s", err.Error())
+		logger.Errorf("ExtractTables command failed")
 		return nil, err
 	}
 
 	var result ExtractTablesResult
 	if err := sonic.Unmarshal(out.Bytes(), &result); err != nil {
-		logger.Errorf("ExtractTables failed, %s", err.Error())
+		logger.Errorf("ExtractTables response decode failed")
 		return nil, err
 	}
 
 	if result.Error != "" {
-		logger.Errorf("ExtractTables failed, %s", result.Error)
+		logger.Errorf("ExtractTables rejected the SQL input")
 		return nil, errors.New(result.Error)
 	}
 
@@ -148,18 +148,18 @@ except Exception as e:
 	cmd.Stdout = &out
 	err = cmd.Run()
 	if err != nil {
-		logger.Errorf("TranspileSQL failed, %s", err.Error())
+		logger.Errorf("TranspileSQL command failed")
 		return nil, err
 	}
 
 	var result SQLParseResult
 	if err := sonic.Unmarshal(out.Bytes(), &result); err != nil {
-		logger.Errorf("TranspileSQL failed, %s", err.Error())
+		logger.Errorf("TranspileSQL response decode failed")
 		return nil, err
 	}
 
 	if result.Error != "" {
-		logger.Errorf("TranspileSQL failed, %s", result.Error)
+		logger.Errorf("TranspileSQL rejected the SQL input")
 		return nil, errors.New(result.Error)
 	}
 

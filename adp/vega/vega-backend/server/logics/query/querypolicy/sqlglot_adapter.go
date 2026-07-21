@@ -48,13 +48,13 @@ func (a *SQLGlotAdapter) ValidateSQL(sql string, inputDialect string) error {
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	if err := cmd.Run(); err != nil {
-		logger.Errorf("ValidateSQL policy failed, %s", err.Error())
+		logger.Errorf("ValidateSQL policy command failed")
 		return err
 	}
 
 	var result validationResult
 	if err := sonic.Unmarshal(out.Bytes(), &result); err != nil {
-		logger.Errorf("ValidateSQL policy failed, %s", err.Error())
+		logger.Errorf("ValidateSQL policy response decode failed")
 		return err
 	}
 	if result.Error == "" {
