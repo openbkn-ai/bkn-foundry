@@ -10,8 +10,11 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"sync/atomic"
 	"testing"
+	"time"
 
+	"github.com/agiledragon/gomonkey/v2"
 	"github.com/openbkn-ai/bkn-comm-go/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -20,6 +23,7 @@ import (
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
 	mock_interfaces "vega-backend/interfaces/mock"
+	"vega-backend/logics/connector/factory"
 	"vega-backend/logics/query/querypolicy"
 )
 
@@ -203,6 +207,150 @@ func TestPrepareOpenSearchCursorQuery(t *testing.T) {
 		assert.NotContains(t, prepared, "search_after")
 		assert.Equal(t, clientSearchAfter, requestQuery["search_after"])
 	})
+}
+
+func TestExecuteOpenSearchCursorPage(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	indexConnector := mock_interfaces.NewMockIndexConnector(ctrl)
+	manager := newCursorSessionManager(10)
+	previousManager := rawQueryCursorSessions
+	rawQueryCursorSessions = manager
+	t.Cleanup(func() { rawQueryCursorSessions = previousManager })
+
+	session, err := manager.create("account-1", "catalog-1", []string{"resource-1"}, "", 2, 60, 0)
+	require.NoError(t, err)
+	session.QueryFormat = interfaces.QueryFormatDSL
+	session.OpenSearchIndex = "events"
+	session.OpenSearchQuery = map[string]any{"sort": []any{"timestamp"}, "from": 10, "size": 2}
+
+	patches := gomonkey.ApplyFunc(factory.GetFactory, func() *factory.ConnectorFactory {
+		return &factory.ConnectorFactory{}
+	})
+	patches.ApplyMethod(&factory.ConnectorFactory{}, "CreateConnectorInstance",
+		func(*factory.ConnectorFactory, context.Context, string, interfaces.ConnectorConfig) (interfaces.Connector, error) {
+			return indexConnector, nil
+		})
+	defer patches.Reset()
+
+	callCount := 0
+	indexConnector.EXPECT().ExecuteRawQuery(gomock.Any(), "events", gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ string, query map[string]any) (*interfaces.RawQueryResponse, error) {
+			callCount++
+			if callCount == 1 {
+				assert.Equal(t, 10, query["from"])
+				assert.NotContains(t, query, "search_after")
+				return &interfaces.RawQueryResponse{
+					Entries:     []map[string]any{{"id": "1"}, {"id": "2"}},
+					SearchAfter: []any{"page-1"},
+				}, nil
+			}
+			assert.NotContains(t, query, "from")
+			assert.Equal(t, []any{"page-1"}, query["search_after"])
+			return &interfaces.RawQueryResponse{Entries: []map[string]any{{"id": "3"}}}, nil
+		}).Times(2)
+
+	svc := &rawQueryService{}
+	catalog := &interfaces.Catalog{ID: "catalog-1", ConnectorType: interfaces.ConnectorTypeOpenSearch}
+	first, err := svc.executeOpenSearchCursorPage(context.Background(), session, catalog, nil)
+	require.NoError(t, err)
+	require.NotNil(t, first.Paging)
+	require.NotNil(t, first.Paging.NextCursor)
+	assert.Equal(t, session.ID, *first.Paging.NextCursor)
+
+	last, err := svc.executeOpenSearchCursorPage(context.Background(), session, catalog, nil)
+	require.NoError(t, err)
+	require.NotNil(t, last.Paging)
+	assert.Nil(t, last.Paging.NextCursor)
+	assert.Nil(t, last.Paging.ExpiresAtSec)
+	_, ok := manager.get(session.ID)
+	assert.False(t, ok)
+}
+
+func TestOpenSearchCursorContinuationIsSerialized(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	indexConnector := mock_interfaces.NewMockIndexConnector(ctrl)
+	mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+	mockRS := mock_interfaces.NewMockResourceService(ctrl)
+	manager := newCursorSessionManager(10)
+	previousManager := rawQueryCursorSessions
+	rawQueryCursorSessions = manager
+	t.Cleanup(func() { rawQueryCursorSessions = previousManager })
+
+	session, err := manager.create("account-1", "catalog-1", []string{"resource-1"}, "", 1, 60, 0)
+	require.NoError(t, err)
+	session.QueryFormat = interfaces.QueryFormatDSL
+	session.OpenSearchIndex = "events"
+	session.OpenSearchQuery = map[string]any{"sort": []any{"timestamp"}, "size": 1}
+
+	resource := &interfaces.Resource{ID: "resource-1", CatalogID: "catalog-1", Status: interfaces.ResourceStatusActive}
+	catalog := &interfaces.Catalog{ID: "catalog-1", Enabled: true, ConnectorType: interfaces.ConnectorTypeOpenSearch}
+	mockRS.EXPECT().GetByIDs(gomock.Any(), []string{"resource-1"}).Return([]*interfaces.Resource{resource}, nil).Times(2)
+	mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).Return(catalog, nil).Times(2)
+
+	patches := gomonkey.ApplyFunc(factory.GetFactory, func() *factory.ConnectorFactory {
+		return &factory.ConnectorFactory{}
+	})
+	patches.ApplyMethod(&factory.ConnectorFactory{}, "CreateConnectorInstance",
+		func(*factory.ConnectorFactory, context.Context, string, interfaces.ConnectorConfig) (interfaces.Connector, error) {
+			return indexConnector, nil
+		})
+	defer patches.Reset()
+
+	callCount := 0
+	indexConnector.EXPECT().ExecuteRawQuery(gomock.Any(), "events", gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ string, query map[string]any) (*interfaces.RawQueryResponse, error) {
+			callCount++
+			if callCount == 1 {
+				assert.NotContains(t, query, "search_after")
+				return &interfaces.RawQueryResponse{Entries: []map[string]any{{"id": "1"}}, SearchAfter: []any{"page-1"}}, nil
+			}
+			assert.Equal(t, []any{"page-1"}, query["search_after"])
+			return &interfaces.RawQueryResponse{Entries: []map[string]any{}}, nil
+		}).Times(2)
+
+	svc := &rawQueryService{cs: mockCS, rs: mockRS}
+	ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: "account-1"})
+	req := &interfaces.RawQueryRequest{Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Cursor: session.ID}}
+	errs := make(chan error, 2)
+	go func() { _, err := svc.executeSQLCursorContinuation(ctx, req); errs <- err }()
+	go func() { _, err := svc.executeSQLCursorContinuation(ctx, req); errs <- err }()
+
+	require.NoError(t, <-errs)
+	require.NoError(t, <-errs)
+	assert.Equal(t, 2, callCount)
+	_, ok := manager.get(session.ID)
+	assert.False(t, ok)
+}
+
+func TestOpenSearchCursorPageFailureDoesNotRefreshExpiry(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	indexConnector := mock_interfaces.NewMockIndexConnector(ctrl)
+	manager := newCursorSessionManager(10)
+	previousManager := rawQueryCursorSessions
+	rawQueryCursorSessions = manager
+	t.Cleanup(func() { rawQueryCursorSessions = previousManager })
+
+	session, err := manager.create("account-1", "catalog-1", []string{"resource-1"}, "", 1, 60, 0)
+	require.NoError(t, err)
+	session.OpenSearchIndex = "events"
+	session.OpenSearchQuery = map[string]any{"sort": []any{"timestamp"}, "size": 1}
+	expiresAt := time.Now().Add(30 * time.Second).Unix()
+	atomic.StoreInt64(&session.ExpiresAtSec, expiresAt)
+
+	patches := gomonkey.ApplyFunc(factory.GetFactory, func() *factory.ConnectorFactory {
+		return &factory.ConnectorFactory{}
+	})
+	patches.ApplyMethod(&factory.ConnectorFactory{}, "CreateConnectorInstance",
+		func(*factory.ConnectorFactory, context.Context, string, interfaces.ConnectorConfig) (interfaces.Connector, error) {
+			return indexConnector, nil
+		})
+	defer patches.Reset()
+
+	indexConnector.EXPECT().ExecuteRawQuery(gomock.Any(), "events", gomock.Any()).Return(nil, errors.New("backend unavailable"))
+	_, err = (&rawQueryService{}).executeOpenSearchCursorPage(context.Background(), session,
+		&interfaces.Catalog{ID: "catalog-1", ConnectorType: interfaces.ConnectorTypeOpenSearch}, nil)
+	require.Error(t, err)
+	assert.Equal(t, expiresAt, atomic.LoadInt64(&session.ExpiresAtSec))
 }
 
 func TestRawQueryServiceExtractResourceIDs(t *testing.T) {

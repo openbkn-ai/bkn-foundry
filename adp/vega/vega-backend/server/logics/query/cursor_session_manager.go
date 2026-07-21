@@ -9,6 +9,7 @@ package query
 import (
 	"errors"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -20,19 +21,23 @@ import (
 type cursorSession struct {
 	mu sync.Mutex
 
-	ID                      string
-	AccountID               string
-	CatalogID               string
-	ResourceIDs             []string
-	CompiledSQL             string
-	QueryFormat             interfaces.QueryFormat
-	OpenSearchQuery         map[string]any
-	OpenSearchIndex         string
-	SearchAfter             []any
-	PageSize                int
-	KeepAliveSec            int
-	QueryTimeoutSec         int
-	Offset                  int
+	ID          string
+	AccountID   string
+	CatalogID   string
+	ResourceIDs []string
+	CompiledSQL string
+
+	QueryFormat     interfaces.QueryFormat
+	OpenSearchQuery map[string]any
+	OpenSearchIndex string
+	SearchAfter     []any
+
+	Offset   int
+	PageSize int
+
+	KeepAliveSec    int
+	QueryTimeoutSec int
+
 	CreatedAtSec            int64
 	LastSuccessfulPageAtSec int64
 	ExpiresAtSec            int64
@@ -123,7 +128,7 @@ func (m *cursorSessionManager) get(cursor string) (*cursorSession, bool) {
 		m.mu.Unlock()
 		return nil, false
 	}
-	if time.Now().Unix() >= session.ExpiresAtSec {
+	if time.Now().Unix() >= atomic.LoadInt64(&session.ExpiresAtSec) {
 		expiredSession, _ := m.removeLocked(cursor)
 		activeSessions := len(m.sessions)
 		m.mu.Unlock()
@@ -163,7 +168,7 @@ func (m *cursorSessionManager) expire(cursor string) {
 func (m *cursorSessionManager) markPageSuccess(session *cursorSession) {
 	now := time.Now().Unix()
 	session.LastSuccessfulPageAtSec = now
-	session.ExpiresAtSec = now + int64(session.KeepAliveSec)
+	atomic.StoreInt64(&session.ExpiresAtSec, now+int64(session.KeepAliveSec))
 }
 
 func (m *cursorSessionManager) removeLocked(cursor string) (*cursorSession, bool) {
@@ -177,7 +182,7 @@ func (m *cursorSessionManager) removeLocked(cursor string) (*cursorSession, bool
 
 func (m *cursorSessionManager) removeExpiredLocked(nowSec int64) {
 	for id, session := range m.sessions {
-		if nowSec >= session.ExpiresAtSec {
+		if nowSec >= atomic.LoadInt64(&session.ExpiresAtSec) {
 			m.removeLocked(id)
 			logger.Infof("Cursor session expired: catalog_id=%s, active_sessions=%d", session.CatalogID, len(m.sessions))
 		}
@@ -186,6 +191,6 @@ func (m *cursorSessionManager) removeExpiredLocked(nowSec int64) {
 
 func cursorPagingResponse(session *cursorSession) *interfaces.PagingResponse {
 	nextCursor := session.ID
-	expiresAt := session.ExpiresAtSec
+	expiresAt := atomic.LoadInt64(&session.ExpiresAtSec)
 	return &interfaces.PagingResponse{NextCursor: &nextCursor, ExpiresAtSec: &expiresAt}
 }

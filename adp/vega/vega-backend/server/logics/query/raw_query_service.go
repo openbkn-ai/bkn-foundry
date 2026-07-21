@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/openbkn-ai/bkn-comm-go/logger"
@@ -210,7 +211,7 @@ func (rqs *rawQueryService) executeSQLCursorContinuation(ctx context.Context, re
 
 	session.mu.Lock()
 	defer session.mu.Unlock()
-	if time.Now().Unix() >= session.ExpiresAtSec {
+	if time.Now().Unix() >= atomic.LoadInt64(&session.ExpiresAtSec) {
 		rawQueryCursorSessions.expire(session.ID)
 		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_InvalidParameter).
 			WithErrorDetails("cursor not found or expired")
