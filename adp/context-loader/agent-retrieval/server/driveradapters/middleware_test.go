@@ -111,7 +111,8 @@ func TestMiddlewareHeaderAuthContext_SetsTraceContext(t *testing.T) {
 		c, _ := gin.CreateTestContext(w)
 		c.Request = httptest.NewRequest(http.MethodGet, "/test", http.NoBody)
 		c.Request.Header.Set(common.HeaderBKNRequestID, "req_01JZVALIDREQUESTID000000002")
-		c.Request.Header.Set(common.HeaderBaggage, "bkn.account.type=service,bkn.account.id=user-1,prompt=raw,bkn.runtime.env=test")
+		c.Request.Header.Set(string(interfaces.HeaderXAccountType), "tenant")
+		c.Request.Header.Set(common.HeaderBaggage, "bkn.account.type=admin,bkn.account.id=user-1,prompt=raw,bkn.runtime.env=test")
 
 		mw := middlewareHeaderAuthContext()
 		mw(c)
@@ -120,14 +121,13 @@ func TestMiddlewareHeaderAuthContext_SetsTraceContext(t *testing.T) {
 		convey.So(ok, convey.ShouldBeTrue)
 		convey.So(traceCtx.RequestID, convey.ShouldEqual, "req_01JZVALIDREQUESTID000000002")
 		convey.So(traceCtx.Baggage, convey.ShouldResemble, map[string]string{
-			"bkn.account.type": "service",
-			"bkn.runtime.env":  "test",
+			"bkn.runtime.env": "test",
 		})
 
 		header := common.GetHeaderFromCtx(c.Request.Context())
 		convey.So(header[common.HeaderBKNRequestID], convey.ShouldEqual, "req_01JZVALIDREQUESTID000000002")
 		convey.So(header[common.HeaderLegacyRequestID], convey.ShouldEqual, "req_01JZVALIDREQUESTID000000002")
-		convey.So(header[common.HeaderBaggage], convey.ShouldEqual, "bkn.account.type=service,bkn.runtime.env=test")
+		convey.So(header[common.HeaderBaggage], convey.ShouldEqual, "bkn.account.type=tenant,bkn.runtime.env=test")
 	})
 
 	convey.Convey("middlewareHeaderAuthContext falls back to x-request-id and generates missing ids", t, func() {

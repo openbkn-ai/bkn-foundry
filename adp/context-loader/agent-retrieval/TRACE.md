@@ -47,6 +47,13 @@ bkn.account.type
 bkn.runtime.env
 ```
 
+Trust policy:
+
+- `bkn.account.type` is an observability classification only, not an authentication or authorization source.
+- inbound client-provided `bkn.account.type` in `baggage` is not trusted and is dropped during trace context sanitization.
+- outbound `bkn.account.type` is derived from the server-side `AccountAuthContext` produced by header auth or token introspection.
+- downstream services must use account/auth headers and local policy context for access decisions, never `baggage`.
+
 ## Logs
 
 | log type | level | required fields | indexed fields | sensitive fields | example fixture |

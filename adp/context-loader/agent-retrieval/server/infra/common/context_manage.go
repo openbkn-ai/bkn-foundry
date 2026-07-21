@@ -10,6 +10,7 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
+	"log"
 	"regexp"
 	"sort"
 	"strings"
@@ -123,6 +124,7 @@ func IsValidBKNRequestID(requestID string) bool {
 func NewBKNRequestID() string {
 	var b [16]byte
 	if _, err := rand.Read(b[:]); err != nil {
+		log.Printf("bkn trace request id generation degraded: %v", err)
 		return "req_fallback"
 	}
 	b[6] = (b[6] & 0x0f) | 0x40
@@ -142,7 +144,7 @@ func GetHeaderFromCtx(ctx context.Context) (header map[string]string) {
 	if ok {
 		header[HeaderBKNRequestID] = traceContext.RequestID
 		header[HeaderLegacyRequestID] = traceContext.RequestID
-		if baggage := formatBaggage(traceContext.Baggage); baggage != "" {
+		if baggage := formatBaggage(outboundBaggage(traceContext.Baggage, authContext)); baggage != "" {
 			header[HeaderBaggage] = baggage
 		}
 	}
@@ -159,13 +161,25 @@ func sanitizeBaggage(baggage map[string]string) map[string]string {
 	cleaned := map[string]string{}
 	for key, value := range baggage {
 		switch key {
-		case "bkn.account.type", "bkn.runtime.env":
+		case "bkn.runtime.env":
 			cleaned[key] = value
 		}
 	}
 	if len(cleaned) == 0 {
 		return nil
 	}
+	return cleaned
+}
+
+func outboundBaggage(baggage map[string]string, authContext *interfaces.AccountAuthContext) map[string]string {
+	cleaned := sanitizeBaggage(baggage)
+	if authContext == nil || strings.TrimSpace(string(authContext.AccountType)) == "" {
+		return cleaned
+	}
+	if cleaned == nil {
+		cleaned = map[string]string{}
+	}
+	cleaned["bkn.account.type"] = strings.TrimSpace(string(authContext.AccountType))
 	return cleaned
 }
 

@@ -64,8 +64,7 @@ func TestTraceContextHelpers(t *testing.T) {
 		convey.So(ok, convey.ShouldBeTrue)
 		convey.So(traceCtx.RequestID, convey.ShouldEqual, "req_01JZVALIDREQUESTID000000000")
 		convey.So(traceCtx.Baggage, convey.ShouldResemble, map[string]string{
-			"bkn.account.type": "service",
-			"bkn.runtime.env":  "test",
+			"bkn.runtime.env": "test",
 		})
 	})
 
@@ -97,11 +96,32 @@ func TestGetHeaderFromCtxPropagatesTraceContext(t *testing.T) {
 				"bkn.account.id":   "user-1",
 			},
 		})
+		ctx = SetAccountAuthContextToCtx(ctx, &interfaces.AccountAuthContext{
+			AccountID:   "user-1",
+			AccountType: interfaces.AccessorType("tenant"),
+		})
 
 		header := GetHeaderFromCtx(ctx)
 		convey.So(header[HeaderBKNRequestID], convey.ShouldEqual, "req_01JZVALIDREQUESTID000000001")
 		convey.So(header[HeaderLegacyRequestID], convey.ShouldEqual, "req_01JZVALIDREQUESTID000000001")
 		convey.So(header[HeaderTraceparent], convey.ShouldEqual, "00-10111213141516171819202122232425-3031323334353637-01")
-		convey.So(header[HeaderBaggage], convey.ShouldEqual, "bkn.account.type=service")
+		convey.So(header[HeaderBaggage], convey.ShouldEqual, "bkn.account.type=tenant")
+	})
+
+	convey.Convey("GetHeaderFromCtx derives account baggage from trusted auth context", t, func() {
+		ctx := SetTraceContextToCtx(context.Background(), TraceContext{
+			RequestID: "req_01JZVALIDREQUESTID000000004",
+			Baggage: map[string]string{
+				"bkn.account.type": "admin",
+				"bkn.runtime.env":  "test",
+			},
+		})
+		ctx = SetAccountAuthContextToCtx(ctx, &interfaces.AccountAuthContext{
+			AccountID:   "user-1",
+			AccountType: interfaces.AccessorType("service"),
+		})
+
+		header := GetHeaderFromCtx(ctx)
+		convey.So(header[HeaderBaggage], convey.ShouldEqual, "bkn.account.type=service,bkn.runtime.env=test")
 	})
 }
