@@ -58,8 +58,14 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "406":
           $ref: "#/components/responses/NotAcceptable"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalServerError"
 components:
@@ -83,8 +89,26 @@ components:
         application/json:
           schema:
             $ref: "../_shared/errors.yaml#/components/schemas/Error"
+    Forbidden:
+      description: cursor 所属调用方无权限，或资源 / Catalog 权限已变更。
+      content:
+        application/json:
+          schema:
+            $ref: "../_shared/errors.yaml#/components/schemas/Error"
+    NotFound:
+      description: cursor 不存在、已过期或已完成。
+      content:
+        application/json:
+          schema:
+            $ref: "../_shared/errors.yaml#/components/schemas/Error"
     NotAcceptable:
       description: Content-Type 不是 application/json
+      content:
+        application/json:
+          schema:
+            $ref: "../_shared/errors.yaml#/components/schemas/Error"
+    Conflict:
+      description: Catalog 被禁用、资源不可查询或 cursor 指向的 Catalog 已变化。
       content:
         application/json:
           schema:
@@ -149,12 +173,11 @@ components:
           default: single
         size:
           type: integer
-          description: 页大小；省略时默认 20。
+          description: cursor 首次请求的页大小；cursor 模式必填，范围 [1, 10000]。single 模式忽略该字段。
           minimum: 1
           maximum: 10000
-          default: 20
         offset:
-          description: 仅首次请求可用的起始偏移；省略时为 0。
+          description: 仅首次请求可用的起始偏移，适用于 single 和 cursor 的第一页；续页只能传 paging.cursor。
           type: integer
           minimum: 0
         keep_alive_sec:

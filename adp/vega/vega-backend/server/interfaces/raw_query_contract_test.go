@@ -40,6 +40,18 @@ func TestRawQueryContractValidate(t *testing.T) {
 			},
 		},
 		{
+			name: "cursor first page accepts offset",
+			request: RawQueryContract{
+				Query:       "SELECT * FROM {{orders}}",
+				QueryFormat: QueryFormatSQL,
+				Paging: PagingRequest{
+					Mode:   PagingModeCursor,
+					Size:   MinCursorPageSize,
+					Offset: 20,
+				},
+			},
+		},
+		{
 			name: "opensearch DSL",
 			request: RawQueryContract{
 				Query:        map[string]any{"resource_id": "resource-1"},
@@ -87,12 +99,13 @@ func TestRawQueryContractValidate(t *testing.T) {
 			wantErr: "DSL input_dialect",
 		},
 		{
-			name: "cursor defaults page size",
+			name: "rejects cursor without page size",
 			request: RawQueryContract{
 				Query:       "SELECT 1",
 				QueryFormat: QueryFormatSQL,
 				Paging:      PagingRequest{Mode: PagingModeCursor},
 			},
+			wantErr: "paging.size is required",
 		},
 		{
 			name: "rejects fields on continuation",
@@ -118,14 +131,13 @@ func TestRawQueryContractValidate(t *testing.T) {
 			wantErr: "paging.keep_alive_sec",
 		},
 		{
-			name: "rejects client search after for DSL cursor",
+			name: "accepts client search after for DSL cursor because execution drops it",
 			request: RawQueryContract{
 				Query:        map[string]any{"resource_id": "resource-1", "sort": []any{"timestamp"}, "search_after": []any{"cursor"}},
 				QueryFormat:  QueryFormatDSL,
 				InputDialect: "opensearch",
 				Paging:       PagingRequest{Mode: PagingModeCursor, Size: MinCursorPageSize},
 			},
-			wantErr: "search_after",
 		},
 	}
 

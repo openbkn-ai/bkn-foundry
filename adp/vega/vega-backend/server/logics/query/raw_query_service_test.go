@@ -41,38 +41,9 @@ func TestRawQueryServiceExecute(t *testing.T) {
 			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: false, ConnectorType: interfaces.ConnectorTypeOpenSearch}, nil)
 
 		_, err := service.Execute(context.Background(), &interfaces.RawQueryRequest{
-			ResourceType: interfaces.ConnectorTypeOpenSearch,
 			Query:        map[string]any{"resource_id": "resource-1"},
-		})
-		assertCatalogDisabledError(t, err)
-	})
-
-	t.Run("execute rejects disabled catalog for existing stream session", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
-		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		service := NewRawQueryServiceWithDeps(mockCS, mockRS)
-
-		session, err := GetStreamQueryManager().CreateSession(
-			interfaces.ConnectorTypeMariaDB,
-			"catalog",
-			"catalog-1",
-			&interfaces.Catalog{ID: "catalog-1", Enabled: true, ConnectorType: interfaces.ConnectorTypeMariaDB},
-			100,
-			"select * from {{resource-1}}",
-			[]string{"resource-1"},
-		)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		defer GetStreamQueryManager().RemoveSession(session.QueryID)
-
-		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).
-			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: false, ConnectorType: interfaces.ConnectorTypeMariaDB}, nil)
-
-		_, err = service.Execute(context.Background(), &interfaces.RawQueryRequest{
-			QueryType: interfaces.QueryType_Stream,
-			QueryID:   session.QueryID,
+			QueryFormat:  interfaces.QueryFormatDSL,
+			InputDialect: "opensearch",
 		})
 		assertCatalogDisabledError(t, err)
 	})
@@ -115,52 +86,21 @@ func TestRawQueryServiceValidateRequest(t *testing.T) {
 		wantStatus int
 	}{
 		{
-			name:       "rejects unsupported query type",
-			req:        &interfaces.RawQueryRequest{QueryType: "batch", Query: "select 1"},
+			name:       "requires query format",
+			req:        &interfaces.RawQueryRequest{Query: "select 1"},
 			wantStatus: http.StatusBadRequest,
 		},
 		{
-			name:       "requires query when query id is absent",
+			name:       "requires query",
 			req:        &interfaces.RawQueryRequest{},
 			wantStatus: http.StatusBadRequest,
 		},
 		{
-			name:       "requires sql string for non opensearch",
-			req:        &interfaces.RawQueryRequest{Query: map[string]any{}},
-			wantStatus: http.StatusBadRequest,
-		},
-		{
-			name: "requires opensearch map query",
+			name: "rejects cursor without size",
 			req: &interfaces.RawQueryRequest{
-				ResourceType: interfaces.ConnectorTypeOpenSearch,
-				Query:        "not-json-object",
-			},
-			wantStatus: http.StatusBadRequest,
-		},
-		{
-			name: "requires sort for opensearch stream query",
-			req: &interfaces.RawQueryRequest{
-				QueryType:    interfaces.QueryType_Stream,
-				ResourceType: interfaces.ConnectorTypeOpenSearch,
-				Query:        map[string]any{"resource_id": "r1"},
-			},
-			wantStatus: http.StatusBadRequest,
-		},
-		{
-			name: "rejects stream query id and query together",
-			req: &interfaces.RawQueryRequest{
-				QueryType:  interfaces.QueryType_Stream,
-				QueryID:    "q1",
-				Query:      "select * from {{r1}}",
-				StreamSize: 100,
-			},
-			wantStatus: http.StatusBadRequest,
-		},
-		{
-			name: "requires stream size for sql stream",
-			req: &interfaces.RawQueryRequest{
-				QueryType: interfaces.QueryType_Stream,
-				Query:     "select * from {{r1}}",
+				Query:       "select 1",
+				QueryFormat: interfaces.QueryFormatSQL,
+				Paging:      interfaces.PagingRequest{Mode: interfaces.PagingModeCursor},
 			},
 			wantStatus: http.StatusBadRequest,
 		},
@@ -191,33 +131,6 @@ func TestRawQueryServiceValidateRequest(t *testing.T) {
 				Query:        map[string]any{"resource_id": "r1"},
 				QueryFormat:  interfaces.QueryFormatDSL,
 				InputDialect: "opensearch",
-			},
-		},
-		{
-			name: "standard sql",
-			req:  &interfaces.RawQueryRequest{QueryType: interfaces.QueryType_Standard, Query: "select * from {{r1}}"},
-		},
-		{
-			name: "sql stream with size",
-			req: &interfaces.RawQueryRequest{
-				QueryType:  interfaces.QueryType_Stream,
-				Query:      "select * from {{r1}}",
-				StreamSize: 100,
-			},
-		},
-		{
-			name: "stream with existing query id",
-			req:  &interfaces.RawQueryRequest{QueryType: interfaces.QueryType_Stream, QueryID: "q1"},
-		},
-		{
-			name: "opensearch stream with sort",
-			req: &interfaces.RawQueryRequest{
-				QueryType:    interfaces.QueryType_Stream,
-				ResourceType: interfaces.ConnectorTypeOpenSearch,
-				Query: map[string]any{
-					"resource_id": "r1",
-					"sort":        []any{map[string]any{"created_at": "asc"}},
-				},
 			},
 		},
 	}

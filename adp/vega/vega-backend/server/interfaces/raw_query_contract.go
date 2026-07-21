@@ -99,14 +99,14 @@ func (r RawQueryContract) Validate() error {
 	switch r.Paging.Mode {
 	case "", PagingModeSingle:
 	case PagingModeCursor:
+		if r.Paging.Size == 0 {
+			return fmt.Errorf("paging.size is required for cursor paging")
+		}
 		if r.Paging.KeepAliveSec != 0 && (r.Paging.KeepAliveSec < MinCursorKeepAliveSec || r.Paging.KeepAliveSec > MaxCursorKeepAliveSec) {
 			return fmt.Errorf("paging.keep_alive_sec must be between %d and %d when provided", MinCursorKeepAliveSec, MaxCursorKeepAliveSec)
 		}
 		if r.QueryFormat == QueryFormatDSL {
 			query := r.Query.(map[string]any)
-			if _, ok := query["search_after"]; ok {
-				return fmt.Errorf("search_after is managed by paging.cursor and must not be supplied")
-			}
 			sort, ok := query["sort"].([]any)
 			if !ok || len(sort) == 0 {
 				return fmt.Errorf("sort is required for DSL cursor paging")
@@ -118,9 +118,8 @@ func (r RawQueryContract) Validate() error {
 	if r.Paging.Offset < 0 {
 		return fmt.Errorf("paging.offset must not be negative")
 	}
-	size := r.Paging.EffectiveSize()
-	if size < MinCursorPageSize || size > MaxCursorPageSize || r.Paging.Offset+size > MaxCursorPageSize {
-		return fmt.Errorf("paging.offset + paging.size must be between %d and %d", MinCursorPageSize, MaxCursorPageSize)
+	if r.Paging.Mode == PagingModeCursor && (r.Paging.Size < MinCursorPageSize || r.Paging.Size > MaxCursorPageSize) {
+		return fmt.Errorf("paging.size must be between %d and %d for cursor paging", MinCursorPageSize, MaxCursorPageSize)
 	}
 
 	return nil
