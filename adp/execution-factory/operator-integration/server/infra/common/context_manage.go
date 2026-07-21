@@ -90,6 +90,7 @@ func GetResponseWriterFromCtx(ctx context.Context) (http.ResponseWriter, bool) {
 // GetHeaderFromCtx 请求外部接口时，从context中获取Header参数传递
 func GetHeaderFromCtx(ctx context.Context) (header map[string]string) {
 	header = map[string]string{}
+	header = MergeTraceHeaders(ctx, header)
 	authContext, ok := GetAccountAuthContextFromCtx(ctx)
 	if !ok {
 		return

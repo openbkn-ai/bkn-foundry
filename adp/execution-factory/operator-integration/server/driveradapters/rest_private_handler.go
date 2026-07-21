@@ -44,7 +44,7 @@ func NewRestPrivateHandler() interfaces.HTTPRouterInterface {
 // RegisterRouter 内部接口注册路由
 func (r *restPrivateHandler) RegisterRouter(engine *gin.RouterGroup) {
 	mws := []gin.HandlerFunc{}
-	mws = append(mws, middlewareRequestLog(r.Logger), middlewareTrace, middlewareHeaderAuthContext(r.Hydra))
+	mws = append(mws, middlewareRequestLog(r.Logger), middlewareTrace, middlewareTraceContext, middlewareHeaderAuthContext(r.Hydra))
 	engine.Use(mws...)
 	// 算子接口
 	r.OperatorRestHandler.RegisterPrivate(engine)

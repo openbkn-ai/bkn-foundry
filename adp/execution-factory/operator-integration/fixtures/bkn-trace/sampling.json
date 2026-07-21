@@ -1,0 +1,52 @@
+{
+  "bkn.trace.schema.version": "1.0.0",
+  "fixture_id": "action_execution_sampling_forced_denied",
+  "fixture_type": "sampling",
+  "scenario": "action_execution_policy_denied_forced_sampled",
+  "expected_result": "pass",
+  "trace": {
+    "trace_id": "74030000000000000000000000000003",
+    "bkn.request.id": "req_action_execution_0003",
+    "traceparent": "00-74030000000000000000000000000003-7403000000000001-01",
+    "sampling.decision": "forced_sampled"
+  },
+  "spans": [
+    {
+      "span_id": "7403000000000001",
+      "parent_span_id": null,
+      "name": "action-execution.policy.check",
+      "kind": "internal",
+      "bkn.module.name": "action-execution",
+      "bkn.operation.name": "action.approve",
+      "bkn.status": "denied",
+      "bkn.timestamp": "2026-07-21T06:32:00.000000000Z",
+      "duration_ms": 18,
+      "error.category": "policy",
+      "error.code": "ACTION_POLICY_DENIED",
+      "error.retryable": false
+    }
+  ],
+  "logs": [
+    {
+      "level": "error",
+      "message": "action approval denied by policy",
+      "trace_id": "74030000000000000000000000000003",
+      "span_id": "7403000000000001",
+      "bkn.request.id": "req_action_execution_0003",
+      "bkn.module.name": "action-execution",
+      "bkn.operation.name": "action.approve",
+      "bkn.status": "denied",
+      "bkn.timestamp": "2026-07-21T06:32:00.018000000Z",
+      "bkn.trace.schema.version": "1.0.0",
+      "bkn.auth.decision": "deny",
+      "error.category": "policy",
+      "error.code": "ACTION_POLICY_DENIED",
+      "error.retryable": false
+    }
+  ],
+  "events": [],
+  "baggage": {
+    "bkn.account.type": "user",
+    "bkn.runtime.env": "test"
+  }
+}

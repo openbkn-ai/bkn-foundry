@@ -1,0 +1,57 @@
+{
+  "bkn.trace.schema.version": "1.0.0",
+  "fixture_id": "action_execution_propagation_execute",
+  "fixture_type": "propagation",
+  "scenario": "action_execution_execute_keeps_request_context",
+  "expected_result": "pass",
+  "trace": {
+    "trace_id": "74020000000000000000000000000002",
+    "bkn.request.id": "req_action_execution_0002",
+    "traceparent": "00-74020000000000000000000000000002-7402000000000001-01",
+    "sampling.decision": "sampled"
+  },
+  "spans": [
+    {
+      "span_id": "7402000000000001",
+      "parent_span_id": null,
+      "name": "action-execution.request",
+      "kind": "server",
+      "bkn.module.name": "action-execution",
+      "bkn.operation.name": "action.execute",
+      "bkn.status": "ok",
+      "bkn.timestamp": "2026-07-21T06:31:00.000000000Z",
+      "duration_ms": 82
+    },
+    {
+      "span_id": "7402000000000002",
+      "parent_span_id": "7402000000000001",
+      "name": "action-execution.invoke",
+      "kind": "client",
+      "bkn.module.name": "action-execution",
+      "bkn.operation.name": "action.execute",
+      "bkn.status": "ok",
+      "bkn.timestamp": "2026-07-21T06:31:00.020000000Z",
+      "duration_ms": 62
+    }
+  ],
+  "logs": [
+    {
+      "level": "info",
+      "message": "action execution completed",
+      "trace_id": "74020000000000000000000000000002",
+      "span_id": "7402000000000002",
+      "bkn.request.id": "req_action_execution_0002",
+      "bkn.module.name": "action-execution",
+      "bkn.operation.name": "action.execute",
+      "bkn.status": "ok",
+      "bkn.timestamp": "2026-07-21T06:31:00.082000000Z",
+      "bkn.trace.schema.version": "1.0.0",
+      "bkn.action_invocation.id": "action_invocation_ref_001"
+    }
+  ],
+  "events": [],
+  "baggage": {
+    "bkn.account.type": "app",
+    "bkn.runtime.env": "test"
+  }
+}
