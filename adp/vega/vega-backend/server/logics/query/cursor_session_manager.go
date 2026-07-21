@@ -12,44 +12,15 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-comm-go/logger"
+	"github.com/rs/xid"
 
 	"vega-backend/interfaces"
 )
 
-type cursorSession struct {
-	mu sync.Mutex
-
-	ID          string
-	AccountID   string
-	CatalogID   string
-	ResourceIDs []string
-	CompiledSQL string
-
-	QueryFormat     interfaces.QueryFormat
-	OpenSearchQuery map[string]any
-	OpenSearchIndex string
-	SearchAfter     []any
-
-	ResourceDataResourceID string
-	ResourceDataParams     *interfaces.ResourceDataQueryParams
-	ResourceDataCategory   string
-
-	Offset   int
-	PageSize int
-
-	KeepAliveSec    int
-	QueryTimeoutSec int
-
-	CreatedAtSec            int64
-	LastSuccessfulPageAtSec int64
-	ExpiresAtSec            int64
-}
-
 type cursorSessionManager struct {
 	mu          sync.Mutex
-	sessions    map[string]*cursorSession
+	sessions    map[string]*interfaces.CursorSession
 	maxSessions int
 }
 
@@ -68,7 +39,7 @@ func newCursorSessionManager(maxSessions int) *cursorSessionManager {
 		maxSessions = defaultCursorMaxSessions
 	}
 	return &cursorSessionManager{
-		sessions:    make(map[string]*cursorSession),
+		sessions:    make(map[string]*interfaces.CursorSession),
 		maxSessions: maxSessions,
 	}
 }
@@ -82,19 +53,19 @@ func (m *cursorSessionManager) configure(maxSessions int) {
 	m.mu.Unlock()
 }
 
-func (m *cursorSessionManager) create(accountID, catalogID string, resourceIDs []string, compiledSQL string, pageSize, keepAliveSec, queryTimeoutSec int) (*cursorSession, error) {
+func (m *cursorSessionManager) create(accountID, catalogID string, resourceIDs []string, compiledSQL string, limit, keepAliveSec, queryTimeoutSec int) (*interfaces.CursorSession, error) {
 	if keepAliveSec == 0 {
 		keepAliveSec = interfaces.DefaultCursorKeepAliveSec
 	}
 	now := time.Now().Unix()
-	session := &cursorSession{
-		ID:              uuid.NewString(),
+	session := &interfaces.CursorSession{
+		ID:              xid.New().String(),
 		AccountID:       accountID,
 		CatalogID:       catalogID,
 		ResourceIDs:     append([]string(nil), resourceIDs...),
 		CompiledSQL:     compiledSQL,
 		QueryFormat:     interfaces.QueryFormatSQL,
-		PageSize:        pageSize,
+		Limit:           limit,
 		KeepAliveSec:    keepAliveSec,
 		QueryTimeoutSec: queryTimeoutSec,
 		CreatedAtSec:    now,
@@ -113,21 +84,21 @@ func (m *cursorSessionManager) create(accountID, catalogID string, resourceIDs [
 	return session, nil
 }
 
-func (m *cursorSessionManager) createResourceData(accountID string, resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*cursorSession, error) {
+func (m *cursorSessionManager) createResourceData(accountID string, resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.CursorSession, error) {
 	keepAliveSec := params.Paging.KeepAliveSec
 	if keepAliveSec == 0 {
 		keepAliveSec = interfaces.DefaultCursorKeepAliveSec
 	}
 	now := time.Now().Unix()
-	session := &cursorSession{
-		ID:                     uuid.NewString(),
+	session := &interfaces.CursorSession{
+		ID:                     xid.New().String(),
 		AccountID:              accountID,
 		CatalogID:              resource.CatalogID,
 		ResourceIDs:            []string{resource.ID},
 		ResourceDataResourceID: resource.ID,
 		ResourceDataParams:     cloneResourceDataQueryParams(params),
 		ResourceDataCategory:   resource.Category,
-		PageSize:               params.Paging.Limit,
+		Limit:                  params.Paging.Limit,
 		KeepAliveSec:           keepAliveSec,
 		CreatedAtSec:           now,
 		ExpiresAtSec:           now + int64(keepAliveSec),
@@ -165,7 +136,7 @@ func (m *cursorSessionManager) reclaimExpired() {
 	}
 }
 
-func (m *cursorSessionManager) get(cursor string) (*cursorSession, bool) {
+func (m *cursorSessionManager) get(cursor string) (*interfaces.CursorSession, bool) {
 	m.mu.Lock()
 	session, ok := m.sessions[cursor]
 	if !ok {
@@ -173,6 +144,18 @@ func (m *cursorSessionManager) get(cursor string) (*cursorSession, bool) {
 		return nil, false
 	}
 	if time.Now().Unix() >= atomic.LoadInt64(&session.ExpiresAtSec) {
+		// An in-flight page may refresh the idle lease before it returns. Keep
+		// that session reachable rather than deleting it underneath the request.
+		if !session.TryLock() {
+			m.mu.Unlock()
+			return session, true
+		}
+		expired := time.Now().Unix() >= atomic.LoadInt64(&session.ExpiresAtSec)
+		session.Unlock()
+		if !expired {
+			m.mu.Unlock()
+			return session, true
+		}
 		expiredSession, _ := m.removeLocked(cursor)
 		activeSessions := len(m.sessions)
 		m.mu.Unlock()
@@ -209,13 +192,13 @@ func (m *cursorSessionManager) expire(cursor string) {
 	}
 }
 
-func (m *cursorSessionManager) markPageSuccess(session *cursorSession) {
+func (m *cursorSessionManager) markPageSuccess(session *interfaces.CursorSession) {
 	now := time.Now().Unix()
 	session.LastSuccessfulPageAtSec = now
 	atomic.StoreInt64(&session.ExpiresAtSec, now+int64(session.KeepAliveSec))
 }
 
-func (m *cursorSessionManager) removeLocked(cursor string) (*cursorSession, bool) {
+func (m *cursorSessionManager) removeLocked(cursor string) (*interfaces.CursorSession, bool) {
 	session, ok := m.sessions[cursor]
 	if !ok {
 		return nil, false
@@ -226,13 +209,13 @@ func (m *cursorSessionManager) removeLocked(cursor string) (*cursorSession, bool
 
 func (m *cursorSessionManager) removeExpiredLocked(nowSec int64) {
 	for id, session := range m.sessions {
-		// A page execution holds session.mu. Do not remove a session until that
+		// A page execution holds the session lock. Do not remove a session until that
 		// execution finishes, otherwise it can return an unresolvable cursor.
-		if !session.mu.TryLock() {
+		if !session.TryLock() {
 			continue
 		}
 		expired := nowSec >= atomic.LoadInt64(&session.ExpiresAtSec)
-		session.mu.Unlock()
+		session.Unlock()
 		if expired {
 			m.removeLocked(id)
 			logger.Infof("Cursor session expired: catalog_id=%s, active_sessions=%d", session.CatalogID, len(m.sessions))
@@ -240,7 +223,7 @@ func (m *cursorSessionManager) removeExpiredLocked(nowSec int64) {
 	}
 }
 
-func cursorPagingResponse(session *cursorSession) *interfaces.PagingResponse {
+func cursorPagingResponse(session *interfaces.CursorSession) *interfaces.PagingResponse {
 	nextCursor := session.ID
 	expiresAt := atomic.LoadInt64(&session.ExpiresAtSec)
 	return &interfaces.PagingResponse{NextCursor: &nextCursor, ExpiresAtSec: &expiresAt}

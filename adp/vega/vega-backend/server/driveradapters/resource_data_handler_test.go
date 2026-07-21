@@ -112,10 +112,10 @@ func Test_ResourceDataRestHandler_QueryResourceData(t *testing.T) {
 			DoAndReturn(func(_ context.Context, _ *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
 				assert.False(t, params.NeedTotal)
 				return &interfaces.ResourceDataQueryResult{
-					Entries:      []map[string]any{{"id": "doc-1"}},
-					TotalCount:   2,
-					IncludeTotal: true,
-					Paging:       &interfaces.PagingResponse{},
+					Entries:    []map[string]any{{"id": "doc-1"}},
+					TotalCount: 2,
+					NeedTotal:  true,
+					Paging:     &interfaces.PagingResponse{},
 				}, nil
 			})
 

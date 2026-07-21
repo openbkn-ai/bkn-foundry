@@ -7,7 +7,6 @@
 package interfaces
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 )
@@ -21,8 +20,8 @@ const (
 
 	DefaultInputDialect       = "postgres"
 	DefaultPageLimit          = 20
-	MinCursorPageLimit        = 1
-	MaxCursorPageLimit        = 10000
+	MinPageLimit              = 1
+	MaxPageLimit              = 10000
 	DefaultCursorKeepAliveSec = 1800
 	MinCursorKeepAliveSec     = 1
 	MaxCursorKeepAliveSec     = 3600
@@ -42,25 +41,6 @@ type PagingRequest struct {
 	Limit        int        `json:"limit,omitempty"`
 	KeepAliveSec int        `json:"keep_alive_sec,omitempty"`
 	Cursor       string     `json:"cursor,omitempty"`
-}
-
-// UnmarshalJSON rejects the removed paging.size field instead of silently
-// applying the default limit to old clients.
-func (p *PagingRequest) UnmarshalJSON(data []byte) error {
-	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(data, &fields); err != nil {
-		return err
-	}
-	if _, ok := fields["size"]; ok {
-		return fmt.Errorf("paging.size is not supported; use paging.limit")
-	}
-	type pagingRequest PagingRequest
-	var decoded pagingRequest
-	if err := json.Unmarshal(data, &decoded); err != nil {
-		return err
-	}
-	*p = PagingRequest(decoded)
-	return nil
 }
 
 // PagingResponse exposes only opaque cursor state to the client.
@@ -118,6 +98,8 @@ func (r RawQueryContract) Validate() error {
 
 	switch r.Paging.Mode {
 	case "", PagingModeSingle:
+		// Single paging owns no cursor session. KeepAliveSec is therefore
+		// intentionally ignored for forward-compatible clients.
 	case PagingModeCursor:
 		if r.Paging.Limit == 0 {
 			return fmt.Errorf("paging.limit is required for cursor paging")
@@ -138,8 +120,11 @@ func (r RawQueryContract) Validate() error {
 	if r.Paging.Offset < 0 {
 		return fmt.Errorf("paging.offset must not be negative")
 	}
-	if r.Paging.Mode == PagingModeCursor && (r.Paging.Limit < MinCursorPageLimit || r.Paging.Limit > MaxCursorPageLimit) {
-		return fmt.Errorf("paging.limit must be between %d and %d for cursor paging", MinCursorPageLimit, MaxCursorPageLimit)
+	if r.Paging.Limit < 0 || r.Paging.Limit > MaxPageLimit {
+		return fmt.Errorf("paging.limit must be between %d and %d when provided", MinPageLimit, MaxPageLimit)
+	}
+	if r.Paging.Mode == PagingModeCursor && r.Paging.Limit < MinPageLimit {
+		return fmt.Errorf("paging.limit must be between %d and %d for cursor paging", MinPageLimit, MaxPageLimit)
 	}
 
 	return nil

@@ -63,11 +63,11 @@ func TestResourceDataCursorPreservesNeedTotalAcrossContinuation(t *testing.T) {
 	first, err := ExecuteInitialResourceDataCursor(context.Background(), "account-1", resource, params, executor)
 	require.NoError(t, err)
 	require.NotNil(t, first.Paging.NextCursor)
-	assert.True(t, first.IncludeTotal)
+	assert.True(t, first.NeedTotal)
 
 	continuation, err := ExecuteResourceDataCursorContinuation(context.Background(), "account-1", resource.ID, *first.Paging.NextCursor, executor)
 	require.NoError(t, err)
-	assert.True(t, continuation.IncludeTotal)
+	assert.True(t, continuation.NeedTotal)
 	assert.Equal(t, int64(2), continuation.TotalCount)
 }
 
@@ -144,7 +144,7 @@ func TestResourceDataIndexCursorUsesLastReturnedHitForSearchAfter(t *testing.T) 
 	}
 
 	result, err := ExecuteInitialResourceDataCursor(context.Background(), "account-1", resource,
-		&interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 1}}, executor)
+		&interfaces.ResourceDataQueryParams{NeedTotal: true, Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 1}}, executor)
 	require.NoError(t, err)
 	assert.Equal(t, []map[string]any{{"id": 1}}, result.Entries)
 	for expectedID := 2; result.Paging.NextCursor != nil; expectedID++ {
@@ -153,6 +153,25 @@ func TestResourceDataIndexCursorUsesLastReturnedHitForSearchAfter(t *testing.T) 
 		assert.Equal(t, []map[string]any{{"id": expectedID}}, result.Entries)
 	}
 	assert.Equal(t, 3, pageIndex)
+}
+
+func TestResourceDataCursorUsesPhysicalPaginationCategory(t *testing.T) {
+	previousManager := rawQueryCursorSessions
+	rawQueryCursorSessions = newCursorSessionManager(10)
+	t.Cleanup(func() { rawQueryCursorSessions = previousManager })
+
+	resource := &interfaces.Resource{ID: "view-1", Category: interfaces.ResourceCategoryLogicView, CatalogID: "catalog-1"}
+	result, err := ExecuteInitialResourceDataCursorWithCategory(context.Background(), "account-1", resource,
+		interfaces.ResourceCategoryIndex,
+		&interfaces.ResourceDataQueryParams{NeedTotal: true, Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 1}},
+		func(_ context.Context, pageParams *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
+			assert.Equal(t, 1, pageParams.Limit)
+			assert.True(t, pageParams.TrackTotalHits)
+			pageParams.SearchAfter = []any{"sort-1"}
+			return []map[string]any{{"id": 1}}, 2, nil
+		})
+	require.NoError(t, err)
+	require.NotNil(t, result.Paging.NextCursor)
 }
 
 func TestResourceDataCursorInitialPageIsNotReclaimedWhileExecuting(t *testing.T) {
@@ -180,7 +199,7 @@ func TestResourceDataCursorInitialPageIsNotReclaimedWhileExecuting(t *testing.T)
 	<-started
 
 	manager.mu.Lock()
-	var session *cursorSession
+	var session *interfaces.CursorSession
 	for _, candidate := range manager.sessions {
 		session = candidate
 	}

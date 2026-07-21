@@ -59,7 +59,7 @@ func TestValidateResourceDataQueryParams(t *testing.T) {
 
 	t.Run("accepts initial cursor paging and a cursor-only continuation", func(t *testing.T) {
 		initial := &interfaces.ResourceDataQueryParams{
-			Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Offset: 50, Limit: interfaces.MinCursorPageLimit},
+			Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Offset: 50, Limit: interfaces.MinPageLimit},
 		}
 		require.NoError(t, ValidateResourceDataQueryParams(ctx, initial))
 		assert.Equal(t, 50, initial.Offset)

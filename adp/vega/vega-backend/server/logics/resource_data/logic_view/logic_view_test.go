@@ -3,8 +3,10 @@ package logic_view
 import (
 	"context"
 	"errors"
+	"net/http"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-comm-go/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -38,6 +40,7 @@ func TestLogicViewServiceCursorContinuation(t *testing.T) {
 		})).Return(&interfaces.RawQueryResponse{
 			Entries:    []map[string]any{{"id": "row-1"}},
 			TotalCount: 1,
+			NeedTotal:  true,
 			Paging:     &interfaces.PagingResponse{NextCursor: &nextCursor},
 		}, nil)
 
@@ -48,6 +51,44 @@ func TestLogicViewServiceCursorContinuation(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, []map[string]any{{"id": "row-1"}}, result.Entries)
 		assert.Equal(t, &nextCursor, result.Paging.NextCursor)
+		assert.True(t, result.NeedTotal)
+	})
+}
+
+func TestQueryDerivedLogicViewRejectsUnavailableSource(t *testing.T) {
+	view := &interfaces.LogicView{Resource: interfaces.Resource{LogicDefinition: []*interfaces.LogicDefinitionNode{{
+		Type:   interfaces.LogicDefinitionNodeType_Resource,
+		Config: map[string]any{"resource_id": "source-1"},
+	}}}}
+
+	t.Run("disabled source resource", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockRS := vmock.NewMockResourceService(ctrl)
+		svc := &logicViewService{rs: mockRS}
+		mockRS.EXPECT().GetByID(gomock.Any(), "source-1").Return(&interfaces.Resource{
+			ID: "source-1", Status: interfaces.ResourceStatusDisabled,
+		}, nil)
+
+		_, _, err := svc.queryDerivedLogicView(context.Background(), view, &interfaces.ResourceDataQueryParams{})
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
+	})
+
+	t.Run("disabled source catalog", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockRS := vmock.NewMockResourceService(ctrl)
+		mockCS := vmock.NewMockCatalogService(ctrl)
+		svc := &logicViewService{rs: mockRS, cs: mockCS}
+		mockRS.EXPECT().GetByID(gomock.Any(), "source-1").Return(&interfaces.Resource{
+			ID: "source-1", CatalogID: "catalog-1", Status: interfaces.ResourceStatusActive,
+		}, nil)
+		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).Return(&interfaces.Catalog{ID: "catalog-1", Enabled: false}, nil)
+
+		_, _, err := svc.queryDerivedLogicView(context.Background(), view, &interfaces.ResourceDataQueryParams{})
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
 	})
 }
 

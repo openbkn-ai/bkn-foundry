@@ -19,13 +19,23 @@ type ResourceDataPageExecutor func(context.Context, *interfaces.ResourceDataQuer
 
 func ExecuteInitialResourceDataCursor(ctx context.Context, accountID string, resource *interfaces.Resource,
 	params *interfaces.ResourceDataQueryParams, execute ResourceDataPageExecutor) (*interfaces.ResourceDataQueryResult, error) {
+	return ExecuteInitialResourceDataCursorWithCategory(ctx, accountID, resource, resource.Category, params, execute)
+}
+
+// ExecuteInitialResourceDataCursorWithCategory uses the physical data category
+// when a virtual resource (such as a Derived Logic View) delegates to another
+// connector. This keeps its first page and continuation on the same strategy.
+func ExecuteInitialResourceDataCursorWithCategory(ctx context.Context, accountID string, resource *interfaces.Resource,
+	paginationCategory string, params *interfaces.ResourceDataQueryParams,
+	execute ResourceDataPageExecutor) (*interfaces.ResourceDataQueryResult, error) {
 	session, err := rawQueryCursorSessions.createResourceData(accountID, resource, params)
 	if err != nil {
 		return nil, cursorSessionLimitError(ctx)
 	}
+	session.ResourceDataCategory = paginationCategory
 	session.Offset = params.Paging.Offset
-	session.mu.Lock()
-	defer session.mu.Unlock()
+	session.Lock()
+	defer session.Unlock()
 	result, err := executeResourceDataCursorPage(ctx, session, execute)
 	if err != nil {
 		rawQueryCursorSessions.remove(session.ID)
@@ -46,8 +56,8 @@ func ExecuteResourceDataCursorContinuation(ctx context.Context, accountID, resou
 	if session.ResourceDataResourceID != resourceID {
 		return nil, cursorNotFoundError(ctx)
 	}
-	session.mu.Lock()
-	defer session.mu.Unlock()
+	session.Lock()
+	defer session.Unlock()
 	if time.Now().Unix() >= atomic.LoadInt64(&session.ExpiresAtSec) {
 		rawQueryCursorSessions.expire(session.ID)
 		return nil, cursorNotFoundError(ctx)
@@ -55,16 +65,18 @@ func ExecuteResourceDataCursorContinuation(ctx context.Context, accountID, resou
 	return executeResourceDataCursorPage(ctx, session, execute)
 }
 
-func executeResourceDataCursorPage(ctx context.Context, session *cursorSession,
+func executeResourceDataCursorPage(ctx context.Context, session *interfaces.CursorSession,
 	execute ResourceDataPageExecutor) (*interfaces.ResourceDataQueryResult, error) {
 	params := cloneResourceDataQueryParams(session.ResourceDataParams)
 	params.Offset = session.Offset
-	params.Limit = session.PageSize + 1
+	params.Limit = session.Limit + 1
 	if session.ResourceDataCategory == interfaces.ResourceCategoryIndex {
-		// The connector returns the search_after value from the last fetched hit.
-		// Fetch exactly one page so that value belongs to a returned entry rather
-		// than the dropped lookahead entry.
-		params.Limit = session.PageSize
+		params.TrackTotalHits = params.NeedTotal
+		if params.NeedTotal {
+			// Exact totals let the cursor determine the final page without a
+			// look-ahead hit.
+			params.Limit = session.Limit
+		}
 	}
 	params.Paging = interfaces.PagingRequest{}
 	params.SearchAfter = append([]any(nil), session.SearchAfter...)
@@ -72,24 +84,28 @@ func executeResourceDataCursorPage(ctx context.Context, session *cursorSession,
 	if err != nil {
 		return nil, err
 	}
-	hasNext := len(entries) > session.PageSize
+	hasNext := len(entries) > session.Limit
 	if session.ResourceDataCategory == interfaces.ResourceCategoryIndex {
-		hasNext = len(entries) == session.PageSize &&
-			int64(session.Offset+len(entries)) < total && len(params.SearchAfter) > 0
+		if params.NeedTotal {
+			hasNext = len(entries) == session.Limit &&
+				int64(session.Offset+len(entries)) < total && len(params.SearchAfter) > 0
+		} else {
+			hasNext = len(entries) == session.Limit && len(params.SearchAfter) > 0
+		}
 	}
 	if !hasNext {
 		rawQueryCursorSessions.closeSession(session.ID)
-		return &interfaces.ResourceDataQueryResult{Entries: entries, TotalCount: total, Paging: &interfaces.PagingResponse{}, IncludeTotal: session.ResourceDataParams.NeedTotal}, nil
+		return &interfaces.ResourceDataQueryResult{Entries: entries, TotalCount: total, Paging: &interfaces.PagingResponse{}, NeedTotal: session.ResourceDataParams.NeedTotal}, nil
 	}
 	if session.ResourceDataCategory != interfaces.ResourceCategoryIndex {
-		entries = entries[:session.PageSize]
+		entries = entries[:session.Limit]
 	}
 	session.Offset += len(entries)
 	if len(params.SearchAfter) > 0 {
 		session.SearchAfter = append([]any(nil), params.SearchAfter...)
 	}
 	rawQueryCursorSessions.markPageSuccess(session)
-	return &interfaces.ResourceDataQueryResult{Entries: entries, TotalCount: total, Paging: cursorPagingResponse(session), IncludeTotal: session.ResourceDataParams.NeedTotal}, nil
+	return &interfaces.ResourceDataQueryResult{Entries: entries, TotalCount: total, Paging: cursorPagingResponse(session), NeedTotal: session.ResourceDataParams.NeedTotal}, nil
 }
 
 func cursorNotFoundError(ctx context.Context) error {

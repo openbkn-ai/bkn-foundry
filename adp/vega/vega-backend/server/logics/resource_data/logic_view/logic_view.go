@@ -91,7 +91,11 @@ func (lvs *logicViewService) QueryWithPaging(ctx context.Context, resource *inte
 	switch resource.LogicType {
 	case interfaces.LogicType_Derived:
 		if params.Paging.Mode == interfaces.PagingModeCursor {
-			return query.ExecuteInitialResourceDataCursor(ctx, accountIDFromContext(ctx), resource, params,
+			paginationCategory, err := lvs.derivedPaginationCategory(ctx, view)
+			if err != nil {
+				return nil, err
+			}
+			return query.ExecuteInitialResourceDataCursorWithCategory(ctx, accountIDFromContext(ctx), resource, paginationCategory, params,
 				func(pageCtx context.Context, pageParams *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
 					return lvs.queryDerivedLogicView(pageCtx, view, pageParams)
 				})
@@ -111,6 +115,33 @@ func (lvs *logicViewService) QueryWithPaging(ctx context.Context, resource *inte
 	}
 }
 
+func (lvs *logicViewService) derivedPaginationCategory(ctx context.Context, view *interfaces.LogicView) (string, error) {
+	for _, node := range view.LogicDefinition {
+		if node.Type != interfaces.LogicDefinitionNodeType_Resource {
+			continue
+		}
+		var nodeCfg interfaces.ResourceNodeCfg
+		if err := mapstructure.Decode(node.Config, &nodeCfg); err != nil {
+			return "", rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
+				WithErrorDetails(fmt.Sprintf("failed to decode source resource config: %v", err))
+		}
+		source, err := lvs.rs.GetByID(ctx, nodeCfg.ResourceID)
+		if err != nil {
+			return "", err
+		}
+		if source == nil {
+			return "", rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound).
+				WithErrorDetails(fmt.Sprintf("source resource %s not found", nodeCfg.ResourceID))
+		}
+		if _, err := resource.EnsureResourceQueryable(ctx, source); err != nil {
+			return "", err
+		}
+		return source.Category, nil
+	}
+	return "", rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InternalError_InvalidCategory).
+		WithErrorDetails("derived logic view has no source resource")
+}
+
 func accountIDFromContext(ctx context.Context) string {
 	accountInfo, _ := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
 	return accountInfo.ID
@@ -121,6 +152,7 @@ func rawQueryResult(response *interfaces.RawQueryResponse) *interfaces.ResourceD
 		Entries:    response.Entries,
 		TotalCount: response.TotalCount,
 		Paging:     response.Paging,
+		NeedTotal:  response.NeedTotal,
 	}
 }
 
@@ -157,6 +189,9 @@ func (lvs *logicViewService) queryDerivedLogicView(ctx context.Context, view *in
 		otellog.LogError(ctx, "Source resource not found", httpErr)
 		return nil, 0, httpErr
 	}
+	if _, err := resource.EnsureResourceQueryable(ctx, fromResource); err != nil {
+		return nil, 0, err
+	}
 
 	catalog, err := lvs.cs.GetByID(ctx, fromResource.CatalogID, true)
 	if err != nil {
@@ -169,6 +204,10 @@ func (lvs *logicViewService) queryDerivedLogicView(ctx context.Context, view *in
 			WithErrorDetails(fmt.Sprintf("catalog %s not found", fromResource.CatalogID))
 		otellog.LogError(ctx, "Catalog not found", httpErr)
 		return nil, 0, httpErr
+	}
+	if !catalog.Enabled {
+		return nil, 0, rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Catalog_IsDisabled).
+			WithErrorDetails("catalog is disabled")
 	}
 
 	fieldMap := map[string]*interfaces.Property{}
@@ -332,6 +371,7 @@ func (lvs *logicViewService) executeCompositeViewByDSL(ctx context.Context, view
 			QueryFormat:     interfaces.QueryFormatDSL,
 			InputDialect:    "opensearch",
 			QueryTimeoutSec: int(params.Timeout.Seconds()),
+			NeedTotal:       params.NeedTotal,
 			Paging:          paging,
 		}
 		res, err := lvs.qs.Execute(ctx, &req)
@@ -404,6 +444,7 @@ func (lvs *logicViewService) executeCompositeViewBySQL(ctx context.Context, view
 			// transpiles it when the resolved Catalog uses another SQL dialect.
 			InputDialect:    "mysql",
 			QueryTimeoutSec: int(params.Timeout.Seconds()),
+			NeedTotal:       params.NeedTotal,
 			Paging:          paging,
 		}
 		res, err := lvs.qs.Execute(ctx, &req)
@@ -473,6 +514,7 @@ func executeIndexQuery(ctx context.Context, catalog *interfaces.Catalog, resourc
 		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
 			WithErrorDetails(fmt.Sprintf("failed to execute query: %v", err))
 	}
+	params.SearchAfter = append([]any(nil), result.SearchAfter...)
 	return result.Rows, result.Total, nil
 }
 

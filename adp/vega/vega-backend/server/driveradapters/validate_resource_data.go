@@ -86,9 +86,9 @@ func validateResourceDataPaging(ctx context.Context, params *interfaces.Resource
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Offset).
 				WithErrorDetails("paging.offset must not be negative")
 		}
-		if params.Limit < interfaces.MinCursorPageLimit || params.Limit > interfaces.MaxCursorPageLimit {
+		if params.Limit < interfaces.MinPageLimit || params.Limit > interfaces.MaxPageLimit {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Limit).
-				WithErrorDetails(fmt.Sprintf("paging.limit must be in the range of [%d,%d] for cursor paging", interfaces.MinCursorPageLimit, interfaces.MaxCursorPageLimit))
+				WithErrorDetails(fmt.Sprintf("paging.limit must be in the range of [%d,%d] for cursor paging", interfaces.MinPageLimit, interfaces.MaxPageLimit))
 		}
 		if params.Paging.KeepAliveSec != 0 && (params.Paging.KeepAliveSec < interfaces.MinCursorKeepAliveSec || params.Paging.KeepAliveSec > interfaces.MaxCursorKeepAliveSec) {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).

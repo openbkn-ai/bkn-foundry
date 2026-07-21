@@ -52,6 +52,7 @@ func Test_RawQueryRestHandler_RawQuery(t *testing.T) {
 				assert.Equal(t, interfaces.QueryFormatSQL, req.QueryFormat)
 				assert.Equal(t, "postgres", req.EffectiveInputDialect())
 				assert.Equal(t, 60, req.QueryTimeoutSec)
+				assert.True(t, req.NeedTotal)
 				return &interfaces.RawQueryResponse{
 					Columns: []interfaces.ColumnInfo{{Name: "id", Type: "string"}},
 					Entries: []map[string]any{{"id": "1"}},
@@ -63,7 +64,7 @@ func Test_RawQueryRestHandler_RawQuery(t *testing.T) {
 		})
 		defer patches.Reset()
 
-		req := httptest.NewRequest(http.MethodPost, url, strings.NewReader(`{"query_format":"sql","query":"select 1"}`))
+		req := httptest.NewRequest(http.MethodPost, url, strings.NewReader(`{"query_format":"sql","query":"select 1","need_total":true}`))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 

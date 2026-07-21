@@ -23,7 +23,7 @@ type RawQueryRequest struct {
 	InputDialect    string        `json:"input_dialect,omitempty"`
 	Paging          PagingRequest `json:"paging,omitempty"`
 	QueryTimeoutSec int           `json:"query_timeout_sec,omitempty"` // 查询超时时间（秒），默认60，最小1，最大3600
-
+	NeedTotal       bool          `json:"need_total,omitempty"`        // 是否返回完整总数
 }
 
 func (r RawQueryRequest) Contract() RawQueryContract {
@@ -64,6 +64,7 @@ type RawQueryResponse struct {
 	Warnings    []string         `json:"warnings,omitempty"` // 非阻断告警（如 deprecated 资源命中提示）
 	Paging      *PagingResponse  `json:"paging,omitempty"`
 	SearchAfter []any            `json:"-"` // OpenSearch internal cursor state
+	NeedTotal   bool             `json:"-"` // 请求意图；cursor 续页时由 session 保留
 }
 
 // ColumnInfo 列信息

@@ -5,7 +5,7 @@ info:
   description: |
     Vega Backend 原生查询端点（`POST /resources/query`）相关 API。
 
-    本端点把 query 透传给底层连接器执行，**不做结构化 filter 解析**：
+    本端点执行经服务端校验和资源绑定的原生查询，**不做结构化 filter 解析**：
 
     - SQL 引擎（mysql / postgresql / clickhouse / 达梦 / oracle）→ `query` 字段为 SQL 字符串
     - 索引引擎（opensearch / elasticsearch）→ `query` 字段为 DSL JSON 对象
@@ -14,14 +14,15 @@ info:
 
     | 维度 | `POST /resources/query` | `POST /resources/{id}/data` (Override:GET) |
     |---|---|---|
-    | 主键 | 无（不绑定 resource） | 绑定 `:id` |
+    | 资源定位 | SQL 使用受控 `{{resource_id}}` 占位符；DSL 使用顶层 `resource_id` | 绑定 `:id` |
     | 输入 | 原生 SQL / DSL + format/dialect | 结构化 `filter_condition` + 分页 |
-    | 输出 | 列元数据 + raw entries + 流式 cursor | 文档对象 + 可选 total_count |
-    | Cursor | `paging.cursor` / `paging.next_cursor` | ❌ |
-    | 用途 | 跨 resource 联表 / 复杂 SQL / 流式大数据 | 应用层结构化访问 |
+    | 输出 | 列元数据 + raw entries + cursor 分页 | 文档对象 + 可选 total_count + cursor 分页 |
+    | Cursor | `paging.cursor` / `paging.next_cursor` | `paging.cursor` / `paging.next_cursor` |
+    | 用途 | 同一 Catalog 内的复杂 SQL / DSL | 应用层结构化访问 |
 
-    **安全说明**：本端点把原生 SQL/DSL 直传给底层数据源，是高权限能力。调用方应当
-    受 RBAC 约束；外部 OAuth 调用方建议在网关层做白名单 / 限流。
+    **安全说明**：SQL 只允许单条顶层 `SELECT`，且所有物理表必须由受权限保护的
+    Resource 占位符解析；DSL 的索引同样只能由 Resource 推导。调用方仍应受 RBAC
+    与限流约束，底层账号必须保持只读。
   version: 0.1.0
 servers:
   - url: /api/vega-backend/v1
@@ -40,7 +41,8 @@ paths:
         实际执行连接器始终从 Resource/Catalog 推导，客户端不能通过输入方言选择数据源。
 
         OpenSearch DSL 使用 `paging.mode: cursor` 时必须提供非空 `sort`。客户端提交的
-        `search_after` 会被服务端忽略；该位置仅由服务端保存在不透明 cursor 中。
+        `search_after` 会被服务端忽略；该位置仅由服务端保存在不透明 cursor 中。排序应
+        包含稳定且唯一的 tiebreaker，避免相同排序值跨页重复或遗漏。
       requestBody:
         required: true
         content:
@@ -66,6 +68,8 @@ paths:
           $ref: "#/components/responses/NotAcceptable"
         "409":
           $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
         "500":
           $ref: "#/components/responses/InternalServerError"
 components:
@@ -109,6 +113,12 @@ components:
             $ref: "../_shared/errors.yaml#/components/schemas/Error"
     Conflict:
       description: Catalog 被禁用、资源不可查询或 cursor 指向的 Catalog 已变化。
+      content:
+        application/json:
+          schema:
+            $ref: "../_shared/errors.yaml#/components/schemas/Error"
+    TooManyRequests:
+      description: Cursor session 数量达到全局上限；请稍后重试或等待已有 cursor 过期。
       content:
         application/json:
           schema:
@@ -164,6 +174,10 @@ components:
           minimum: 1
           maximum: 3600
           default: 60
+        need_total:
+          description: 是否需要完整总数。cursor 首次请求的值会由服务端冻结并用于所有续页。
+          type: boolean
+          default: false
     PagingRequest:
       type: object
       properties:
@@ -181,7 +195,7 @@ components:
           type: integer
           minimum: 0
         keep_alive_sec:
-          description: cursor 成功取页后的空闲租约秒数；仅首次 cursor 请求可设置。省略时默认 1800，取值范围 [1, 3600]。
+          description: cursor 成功取页后的空闲租约秒数；首次 cursor 请求时取值范围 [1, 3600]，single 模式下忽略。省略时默认 1800。
           type: integer
           minimum: 1
           maximum: 3600
@@ -207,7 +221,7 @@ components:
             type: object
             additionalProperties: true
         total_count:
-          description: 总条数（标准查询返回完整命中数；流式查询为已返回累计数）
+          description: 当前查询完整命中数；cursor 的每一页返回同一个冻结总数。
           type: integer
           format: int64
         warnings:

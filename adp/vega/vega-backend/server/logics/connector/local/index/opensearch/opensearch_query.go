@@ -171,7 +171,7 @@ func (c *OpenSearchConnector) ExecuteRawQuery(ctx context.Context, index string,
 		return &interfaces.RawQueryResponse{
 			Columns:    []interfaces.ColumnInfo{},
 			Entries:    []map[string]any{},
-			TotalCount: 0,
+			TotalCount: searchResp.Hits.Total.Value,
 		}, nil
 	}
 
@@ -549,6 +549,9 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 
 	// Handle pagination
 	if params != nil {
+		if params.TrackTotalHits {
+			query["track_total_hits"] = true
+		}
 		if params.Offset > 0 && params.SearchAfter == nil {
 			query["from"] = params.Offset
 		}

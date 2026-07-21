@@ -10,8 +10,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -43,6 +45,8 @@ type rawQueryService struct {
 	cs interfaces.CatalogService
 	rs interfaces.ResourceService
 }
+
+const rawQueryTotalCountColumn = "_raw_query_total_count"
 
 // NewRawQueryService 创建SQL查询服务（单例模式）
 func NewRawQueryService(appSetting *common.AppSetting) interfaces.RawQueryService {
@@ -128,16 +132,28 @@ func (rqs *rawQueryService) executeInitialSQLQuery(ctx context.Context, req *int
 
 	queryCtx, cancel := queryExecutionContext(ctx, req.QueryTimeoutSec)
 	defer cancel()
+	totalCount, err := rqs.executeSQLTotalCount(queryCtx, prepared.catalog, prepared.sql)
+	if err != nil {
+		return nil, err
+	}
 	result, err := rqs.executeSQL(queryCtx, prepared.catalog, finalSQL, interfaces.PagingModeSingle)
 	if err != nil {
 		return nil, err
 	}
+	result.TotalCount = totalCount
+	result.NeedTotal = req.NeedTotal
 	result.Warnings = append(result.Warnings, prepared.warnings...)
 	return result, nil
 }
 
 func (rqs *rawQueryService) executeInitialSQLCursor(ctx context.Context, req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
 	prepared, err := rqs.prepareSQLQuery(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	queryCtx, cancel := queryExecutionContext(ctx, req.QueryTimeoutSec)
+	defer cancel()
+	totalCount, err := rqs.executeSQLTotalCount(queryCtx, prepared.catalog, prepared.sql)
 	if err != nil {
 		return nil, err
 	}
@@ -154,9 +170,12 @@ func (rqs *rawQueryService) executeInitialSQLCursor(ctx context.Context, req *in
 		return nil, cursorSessionLimitError(ctx)
 	}
 	session.Offset = req.Paging.Offset
-	session.mu.Lock()
-	defer session.mu.Unlock()
-	result, err := rqs.executeSQLCursorPage(ctx, session, prepared.catalog, prepared.warnings)
+	session.TotalCount = totalCount
+	session.HasTotalCount = true
+	session.NeedTotal = req.NeedTotal
+	session.Lock()
+	defer session.Unlock()
+	result, err := rqs.executeSQLCursorPage(queryCtx, session, prepared.catalog, prepared.warnings)
 	if err != nil {
 		// The client has not received this token, so it cannot retry this
 		// session. Do not retain it until idle expiry.
@@ -176,8 +195,8 @@ func (rqs *rawQueryService) executeSQLCursorContinuation(ctx context.Context, re
 			WithErrorDetails("cursor does not belong to the current account")
 	}
 
-	session.mu.Lock()
-	defer session.mu.Unlock()
+	session.Lock()
+	defer session.Unlock()
 	if time.Now().Unix() >= atomic.LoadInt64(&session.ExpiresAtSec) {
 		rawQueryCursorSessions.expire(session.ID)
 		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_InvalidParameter).
@@ -285,26 +304,30 @@ func trimSQLTerminator(sql string) string {
 	return strings.TrimSuffix(strings.TrimSpace(sql), ";")
 }
 
-func (rqs *rawQueryService) executeSQLCursorPage(ctx context.Context, session *cursorSession, catalog *interfaces.Catalog, warnings []string) (*interfaces.RawQueryResponse, error) {
-	pageSQL := fmt.Sprintf("SELECT * FROM (%s) AS _raw_query_cursor LIMIT %d OFFSET %d", session.CompiledSQL, session.PageSize+1, session.Offset)
+func (rqs *rawQueryService) executeSQLCursorPage(ctx context.Context, session *interfaces.CursorSession, catalog *interfaces.Catalog, warnings []string) (*interfaces.RawQueryResponse, error) {
+	pageSQL := fmt.Sprintf("SELECT * FROM (%s) AS _raw_query_cursor LIMIT %d OFFSET %d", session.CompiledSQL, session.Limit+1, session.Offset)
 	pageCtx, cancel := queryExecutionContext(ctx, session.QueryTimeoutSec)
 	defer cancel()
 	result, err := rqs.executeSQL(pageCtx, catalog, pageSQL, interfaces.PagingModeCursor)
 	if err != nil {
 		return nil, err
 	}
-	hasNext := len(result.Entries) > session.PageSize
+	hasNext := len(result.Entries) > session.Limit
 	if hasNext {
-		result.Entries = result.Entries[:session.PageSize]
-		result.TotalCount = int64(len(result.Entries))
-		session.Offset += session.PageSize
+		result.Entries = result.Entries[:session.Limit]
+		session.Offset += session.Limit
 		rawQueryCursorSessions.markPageSuccess(session)
 		result.Paging = cursorPagingResponse(session)
 	} else {
-		result.TotalCount = int64(len(result.Entries))
 		result.Paging = &interfaces.PagingResponse{}
 		rawQueryCursorSessions.closeSession(session.ID)
 	}
+	if session.HasTotalCount {
+		result.TotalCount = session.TotalCount
+	} else {
+		result.TotalCount = int64(len(result.Entries))
+	}
+	result.NeedTotal = session.NeedTotal
 	result.Warnings = append(result.Warnings, warnings...)
 	return result, nil
 }
@@ -335,8 +358,10 @@ func (rqs *rawQueryService) executeInitialOpenSearchCursor(ctx context.Context, 
 	session.QueryFormat = interfaces.QueryFormatDSL
 	session.OpenSearchQuery = query
 	session.OpenSearchIndex = indexName
-	session.mu.Lock()
-	defer session.mu.Unlock()
+	session.Offset = req.Paging.Offset
+	session.NeedTotal = req.NeedTotal
+	session.Lock()
+	defer session.Unlock()
 	warnings := make([]string, 0, 1)
 	if warning != "" {
 		warnings = append(warnings, warning)
@@ -412,13 +437,17 @@ func (rqs *rawQueryService) prepareOpenSearchCursorQuery(ctx context.Context, re
 		}
 	}
 	prepared["size"] = req.Paging.Limit
+	if req.NeedTotal {
+		// Exact hit counts are only required when the caller asks for one.
+		prepared["track_total_hits"] = true
+	}
 	if req.Paging.Offset > 0 {
 		prepared["from"] = req.Paging.Offset
 	}
 	return prepared, resource.SourceIdentifier, catalog, warning, nil
 }
 
-func (rqs *rawQueryService) executeOpenSearchCursorPage(ctx context.Context, session *cursorSession, catalog *interfaces.Catalog, warnings []string) (*interfaces.RawQueryResponse, error) {
+func (rqs *rawQueryService) executeOpenSearchCursorPage(ctx context.Context, session *interfaces.CursorSession, catalog *interfaces.Catalog, warnings []string) (*interfaces.RawQueryResponse, error) {
 	query := make(map[string]any, len(session.OpenSearchQuery)+1)
 	for key, value := range session.OpenSearchQuery {
 		query[key] = value
@@ -436,8 +465,9 @@ func (rqs *rawQueryService) executeOpenSearchCursorPage(ctx context.Context, ses
 	connector, err := factory.GetFactory().CreateConnectorInstance(pageCtx, catalog.ConnectorType, catalog.ConnectorCfg)
 	if err != nil {
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
-			WithErrorDetails(err.Error())
+			WithErrorDetails("connector initialization failed")
 	}
+	defer func() { _ = connector.Close(pageCtx) }()
 	indexConnector, ok := connector.(interfaces.IndexConnector)
 	if !ok {
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
@@ -446,13 +476,21 @@ func (rqs *rawQueryService) executeOpenSearchCursorPage(ctx context.Context, ses
 	result, err := indexConnector.ExecuteRawQuery(pageCtx, session.OpenSearchIndex, query)
 	if err != nil {
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
-			WithErrorDetails(err.Error())
+			WithErrorDetails("query execution failed")
 	}
 
-	// OpenSearch reports total_count for real connector responses. Keep the
-	// zero-total fallback for connector implementations that do not expose it.
-	hasMoreResults := result.TotalCount == 0 || int64(session.Offset+len(result.Entries)) < result.TotalCount
-	hasNext := len(result.Entries) == session.PageSize && hasMoreResults && len(result.SearchAfter) > 0
+	hasNext := false
+	if session.NeedTotal {
+		// OpenSearch reports total_count for real connector responses. Keep the
+		// zero-total fallback for connector implementations that do not expose it.
+		hasMoreResults := result.TotalCount == 0 || int64(session.Offset+len(result.Entries)) < result.TotalCount
+		hasNext = len(result.Entries) == session.Limit && hasMoreResults && len(result.SearchAfter) > 0
+	} else {
+		// Without an exact total, a full page may be the final page. Preserve
+		// the cursor and let one final empty request close that exact-multiple
+		// case; this keeps size within OpenSearch's result-window limit.
+		hasNext = len(result.Entries) == session.Limit && len(result.SearchAfter) > 0
+	}
 	if hasNext {
 		session.SearchAfter = append([]any(nil), result.SearchAfter...)
 		session.Offset += len(result.Entries)
@@ -462,6 +500,7 @@ func (rqs *rawQueryService) executeOpenSearchCursorPage(ctx context.Context, ses
 		result.Paging = &interfaces.PagingResponse{}
 		rawQueryCursorSessions.closeSession(session.ID)
 	}
+	result.NeedTotal = session.NeedTotal
 	result.Warnings = append(result.Warnings, warnings...)
 	return result, nil
 }
@@ -516,6 +555,7 @@ func (rqs *rawQueryService) executeInitialDSLQuery(ctx context.Context, req *int
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
 			WithErrorDetails("connector initialization failed")
 	}
+	defer func() { _ = connector.Close(queryCtx) }()
 	indexConnector, ok := connector.(interfaces.IndexConnector)
 	if !ok {
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
@@ -529,6 +569,7 @@ func (rqs *rawQueryService) executeInitialDSLQuery(ctx context.Context, req *int
 	if warning != "" {
 		result.Warnings = append(result.Warnings, warning)
 	}
+	result.NeedTotal = req.NeedTotal
 	return result, nil
 }
 
@@ -555,11 +596,53 @@ func applySingleQueryPaging(sql string, offset, size int) string {
 	return fmt.Sprintf("SELECT * FROM (%s) AS _raw_query_single LIMIT %d OFFSET %d", sql, size, offset)
 }
 
+func (rqs *rawQueryService) executeSQLTotalCount(ctx context.Context, catalog *interfaces.Catalog, sql string) (int64, error) {
+	countSQL := fmt.Sprintf("SELECT COUNT(*) AS %s FROM (%s) AS _raw_query_total", rawQueryTotalCountColumn, sql)
+	result, err := rqs.executeSQL(ctx, catalog, countSQL, interfaces.PagingModeSingle)
+	if err != nil {
+		return 0, err
+	}
+	return rawQueryTotalCount(result)
+}
+
+func rawQueryTotalCount(result *interfaces.RawQueryResponse) (int64, error) {
+	if result == nil || len(result.Entries) != 1 {
+		return 0, fmt.Errorf("count query returned an invalid result")
+	}
+	value, ok := result.Entries[0][rawQueryTotalCountColumn]
+	if !ok {
+		return 0, fmt.Errorf("count query did not return %s", rawQueryTotalCountColumn)
+	}
+	switch v := value.(type) {
+	case int64:
+		return v, nil
+	case int:
+		return int64(v), nil
+	case int32:
+		return int64(v), nil
+	case float64:
+		if math.Trunc(v) != v || v < 0 || v > math.MaxInt64 {
+			return 0, fmt.Errorf("count query returned an invalid number")
+		}
+		return int64(v), nil
+	case string:
+		count, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || count < 0 {
+			return 0, fmt.Errorf("count query returned an invalid number")
+		}
+		return count, nil
+	default:
+		return 0, fmt.Errorf("count query returned an unsupported value")
+	}
+}
+
 // extractResourceIDs 从SQL中提取所有{{.resource_id}}占位符
 func (rqs *rawQueryService) extractResourceIDs(query any) ([]string, error) {
 	// 如果query是字符串类型，使用正则表达式提取resource_id
 	if queryStr, ok := query.(string); ok {
-		re := regexp.MustCompile(`\{\{\.?(\w+)\}\}`)
+		// Keep this grammar aligned with Resource ID validation: lower-case
+		// letters, digits, underscores, and hyphens are all valid IDs.
+		re := regexp.MustCompile(`\{\{\.?([a-z0-9][a-z0-9_-]{0,39})\}\}`)
 		matches := re.FindAllStringSubmatch(queryStr, -1)
 
 		resourceIDs := make([]string, 0, len(matches))
@@ -695,6 +778,7 @@ func (rqs *rawQueryService) executeSQL(ctx context.Context, catalog *interfaces.
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
 			WithErrorDetails("connector initialization failed")
 	}
+	defer func() { _ = connector.Close(ctx) }()
 
 	// 根据connector类型执行SQL
 	var result *interfaces.RawQueryResponse

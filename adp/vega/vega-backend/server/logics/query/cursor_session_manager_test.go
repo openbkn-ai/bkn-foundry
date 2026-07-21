@@ -7,6 +7,7 @@
 package query
 
 import (
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -103,17 +104,32 @@ func TestCursorSessionManagerReclaimerSkipsActiveSession(t *testing.T) {
 	require.NoError(t, err)
 	session.ExpiresAtSec = time.Now().Add(-time.Second).Unix()
 
-	session.mu.Lock()
+	session.Lock()
 	manager.mu.Lock()
 	manager.removeExpiredLocked(time.Now().Unix())
 	manager.mu.Unlock()
 	_, ok := manager.sessions[session.ID]
 	assert.True(t, ok)
-	session.mu.Unlock()
+	session.Unlock()
 
 	manager.mu.Lock()
 	manager.removeExpiredLocked(time.Now().Unix())
 	manager.mu.Unlock()
 	_, ok = manager.get(session.ID)
 	assert.False(t, ok)
+}
+
+func TestCursorSessionManagerGetKeepsActiveExpiredSession(t *testing.T) {
+	manager := newCursorSessionManager(2)
+	session, err := manager.create("account-1", "catalog-1", nil, "SELECT 1", 1, 60, 30)
+	require.NoError(t, err)
+	t.Cleanup(func() { manager.remove(session.ID) })
+	atomic.StoreInt64(&session.ExpiresAtSec, time.Now().Add(-time.Second).Unix())
+
+	session.Lock()
+	defer session.Unlock()
+	got, ok := manager.get(session.ID)
+
+	assert.True(t, ok)
+	assert.Equal(t, session, got)
 }

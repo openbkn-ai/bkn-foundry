@@ -46,7 +46,7 @@ func TestRawQueryContractValidate(t *testing.T) {
 				QueryFormat: QueryFormatSQL,
 				Paging: PagingRequest{
 					Mode:   PagingModeCursor,
-					Limit:  MinCursorPageLimit,
+					Limit:  MinPageLimit,
 					Offset: 20,
 				},
 			},
@@ -65,7 +65,7 @@ func TestRawQueryContractValidate(t *testing.T) {
 				Query:        map[string]any{"resource_id": "resource-1", "sort": []any{"timestamp"}},
 				QueryFormat:  QueryFormatDSL,
 				InputDialect: "opensearch",
-				Paging:       PagingRequest{Mode: PagingModeCursor, Limit: MinCursorPageLimit},
+				Paging:       PagingRequest{Mode: PagingModeCursor, Limit: MinPageLimit},
 			},
 		},
 		{
@@ -139,11 +139,37 @@ func TestRawQueryContractValidate(t *testing.T) {
 				QueryFormat: QueryFormatSQL,
 				Paging: PagingRequest{
 					Mode:         PagingModeCursor,
-					Limit:        MinCursorPageLimit,
+					Limit:        MinPageLimit,
 					KeepAliveSec: MaxCursorKeepAliveSec + 1,
 				},
 			},
 			wantErr: "paging.keep_alive_sec",
+		},
+		{
+			name: "rejects negative single limit",
+			request: RawQueryContract{
+				Query:       "SELECT 1",
+				QueryFormat: QueryFormatSQL,
+				Paging:      PagingRequest{Mode: PagingModeSingle, Limit: -1},
+			},
+			wantErr: "paging.limit",
+		},
+		{
+			name: "rejects oversized single limit",
+			request: RawQueryContract{
+				Query:       "SELECT 1",
+				QueryFormat: QueryFormatSQL,
+				Paging:      PagingRequest{Mode: PagingModeSingle, Limit: MaxPageLimit + 1},
+			},
+			wantErr: "paging.limit",
+		},
+		{
+			name: "ignores keep alive for single paging",
+			request: RawQueryContract{
+				Query:       "SELECT 1",
+				QueryFormat: QueryFormatSQL,
+				Paging:      PagingRequest{Mode: PagingModeSingle, KeepAliveSec: 60},
+			},
 		},
 		{
 			name: "accepts client search after for DSL cursor because execution drops it",
@@ -151,7 +177,7 @@ func TestRawQueryContractValidate(t *testing.T) {
 				Query:        map[string]any{"resource_id": "resource-1", "sort": []any{"timestamp"}, "search_after": []any{"cursor"}},
 				QueryFormat:  QueryFormatDSL,
 				InputDialect: "opensearch",
-				Paging:       PagingRequest{Mode: PagingModeCursor, Limit: MinCursorPageLimit},
+				Paging:       PagingRequest{Mode: PagingModeCursor, Limit: MinPageLimit},
 			},
 		},
 	}
@@ -172,6 +198,7 @@ func TestRawQueryContractValidate(t *testing.T) {
 func TestRawQueryResponseDoesNotExposeLegacyPagingState(t *testing.T) {
 	response := RawQueryResponse{
 		SearchAfter: []any{"internal"},
+		NeedTotal:   true,
 	}
 	encoded, err := sonic.Marshal(response)
 	require.NoError(t, err)
@@ -179,13 +206,14 @@ func TestRawQueryResponseDoesNotExposeLegacyPagingState(t *testing.T) {
 	assert.NotContains(t, string(encoded), "query_id")
 	assert.NotContains(t, string(encoded), "search_after")
 	assert.NotContains(t, string(encoded), "offset")
+	assert.NotContains(t, string(encoded), "need_total")
 }
 
-func TestPagingRequestRejectsRemovedSizeField(t *testing.T) {
+func TestPagingRequestIgnoresRemovedSizeField(t *testing.T) {
 	var request PagingRequest
 	err := sonic.Unmarshal([]byte(`{"size": 10}`), &request)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "paging.size is not supported")
+	require.NoError(t, err)
+	assert.Zero(t, request.Limit)
 
 	err = sonic.Unmarshal([]byte(`{"limit": 10}`), &request)
 	require.NoError(t, err)
