@@ -166,7 +166,7 @@ func TestResourceDataCursorUsesPhysicalPaginationCategory(t *testing.T) {
 		&interfaces.ResourceDataQueryParams{NeedTotal: true, Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 1}},
 		func(_ context.Context, pageParams *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
 			assert.Equal(t, 1, pageParams.Limit)
-			assert.True(t, pageParams.TrackTotalHits)
+			assert.True(t, pageParams.NeedTotal)
 			pageParams.SearchAfter = []any{"sort-1"}
 			return []map[string]any{{"id": 1}}, 2, nil
 		})

@@ -310,7 +310,7 @@ components:
           items:
             type: string
         need_total:
-          description: 是否在响应里携带 total_count
+          description: 是否在响应里携带 total_count。cursor 首次请求的值会被冻结；续页携带的值被忽略。
           type: boolean
           default: false
         aggregation:
@@ -385,7 +385,7 @@ components:
           items:
             type: string
     PagingRequest:
-      description: 首次请求使用 offset 和 limit；cursor 续页只能传 cursor。
+      description: 首次请求使用 offset 和 limit；cursor 续页以 cursor 定位，need_total 可携带但不会覆盖首次请求冻结值，其余查询参数不得重传。
       type: object
       properties:
         mode:

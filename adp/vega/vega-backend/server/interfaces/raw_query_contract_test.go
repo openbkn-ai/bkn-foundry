@@ -164,6 +164,24 @@ func TestRawQueryContractValidate(t *testing.T) {
 			wantErr: "paging.limit",
 		},
 		{
+			name: "rejects opensearch result window overflow",
+			request: RawQueryContract{
+				Query:        map[string]any{"resource_id": "resource-1"},
+				QueryFormat:  QueryFormatDSL,
+				InputDialect: "opensearch",
+				Paging:       PagingRequest{Mode: PagingModeSingle, Offset: MaxPageLimit - 5, Limit: 10},
+			},
+			wantErr: "paging.offset + paging.limit",
+		},
+		{
+			name: "allows sql beyond opensearch result window",
+			request: RawQueryContract{
+				Query:       "SELECT * FROM {{orders}}",
+				QueryFormat: QueryFormatSQL,
+				Paging:      PagingRequest{Mode: PagingModeSingle, Offset: MaxPageLimit, Limit: 10},
+			},
+		},
+		{
 			name: "ignores keep alive for single paging",
 			request: RawQueryContract{
 				Query:       "SELECT 1",
@@ -198,7 +216,6 @@ func TestRawQueryContractValidate(t *testing.T) {
 func TestRawQueryResponseDoesNotExposeLegacyPagingState(t *testing.T) {
 	response := RawQueryResponse{
 		SearchAfter: []any{"internal"},
-		NeedTotal:   true,
 	}
 	encoded, err := sonic.Marshal(response)
 	require.NoError(t, err)
@@ -207,6 +224,17 @@ func TestRawQueryResponseDoesNotExposeLegacyPagingState(t *testing.T) {
 	assert.NotContains(t, string(encoded), "search_after")
 	assert.NotContains(t, string(encoded), "offset")
 	assert.NotContains(t, string(encoded), "need_total")
+}
+
+func TestRawQueryResponseOptionalTotalCount(t *testing.T) {
+	withoutTotal, err := sonic.Marshal(RawQueryResponse{})
+	require.NoError(t, err)
+	assert.NotContains(t, string(withoutTotal), "total_count")
+
+	totalCount := int64(0)
+	withTotal, err := sonic.Marshal(RawQueryResponse{TotalCount: &totalCount})
+	require.NoError(t, err)
+	assert.Contains(t, string(withTotal), `"total_count":0`)
 }
 
 func TestPagingRequestIgnoresRemovedSizeField(t *testing.T) {

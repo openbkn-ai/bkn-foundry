@@ -293,7 +293,8 @@ func (c *PostgresqlConnector) ExecuteRawSQL(ctx context.Context, sql string) (*i
 		return nil, fmt.Errorf("iterate rows failed: %w", err)
 	}
 
-	response.TotalCount = int64(len(response.Entries))
+	totalCount := int64(len(response.Entries))
+	response.TotalCount = &totalCount
 
 	return response, nil
 }

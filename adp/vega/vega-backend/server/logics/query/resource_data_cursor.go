@@ -3,8 +3,6 @@ package query
 import (
 	"context"
 	"net/http"
-	"sync/atomic"
-	"time"
 
 	"github.com/openbkn-ai/bkn-comm-go/rest"
 
@@ -45,21 +43,19 @@ func ExecuteInitialResourceDataCursorWithCategory(ctx context.Context, accountID
 
 func ExecuteResourceDataCursorContinuation(ctx context.Context, accountID, resourceID, cursor string,
 	execute ResourceDataPageExecutor) (*interfaces.ResourceDataQueryResult, error) {
-	session, ok := rawQueryCursorSessions.get(cursor)
+	session, ok := rawQueryCursorSessions.acquire(cursor)
 	if !ok || session.ResourceDataParams == nil {
+		if ok {
+			rawQueryCursorSessions.release(session)
+		}
 		return nil, cursorNotFoundError(ctx)
 	}
+	defer rawQueryCursorSessions.release(session)
 	if session.AccountID != accountID {
 		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, verrors.VegaBackend_Query_InvalidParameter).
 			WithErrorDetails("cursor does not belong to the current account")
 	}
 	if session.ResourceDataResourceID != resourceID {
-		return nil, cursorNotFoundError(ctx)
-	}
-	session.Lock()
-	defer session.Unlock()
-	if time.Now().Unix() >= atomic.LoadInt64(&session.ExpiresAtSec) {
-		rawQueryCursorSessions.expire(session.ID)
 		return nil, cursorNotFoundError(ctx)
 	}
 	return executeResourceDataCursorPage(ctx, session, execute)
@@ -71,7 +67,6 @@ func executeResourceDataCursorPage(ctx context.Context, session *interfaces.Curs
 	params.Offset = session.Offset
 	params.Limit = session.Limit + 1
 	if session.ResourceDataCategory == interfaces.ResourceCategoryIndex {
-		params.TrackTotalHits = params.NeedTotal
 		if params.NeedTotal {
 			// Exact totals let the cursor determine the final page without a
 			// look-ahead hit.

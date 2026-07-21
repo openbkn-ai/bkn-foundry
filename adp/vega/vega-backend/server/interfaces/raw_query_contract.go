@@ -126,6 +126,14 @@ func (r RawQueryContract) Validate() error {
 	if r.Paging.Mode == PagingModeCursor && r.Paging.Limit < MinPageLimit {
 		return fmt.Errorf("paging.limit must be between %d and %d for cursor paging", MinPageLimit, MaxPageLimit)
 	}
+	if r.QueryFormat == QueryFormatDSL {
+		query := r.Query.(map[string]any)
+		_, hasAggs := query["aggs"]
+		_, hasAggregations := query["aggregations"]
+		if !hasAggs && !hasAggregations && r.Paging.Offset > MaxPageLimit-r.Paging.EffectiveLimit() {
+			return fmt.Errorf("paging.offset + paging.limit must not exceed %d for OpenSearch queries", MaxPageLimit)
+		}
+	}
 
 	return nil
 }

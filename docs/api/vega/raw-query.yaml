@@ -43,6 +43,11 @@ paths:
         OpenSearch DSL 使用 `paging.mode: cursor` 时必须提供非空 `sort`。客户端提交的
         `search_after` 会被服务端忽略；该位置仅由服务端保存在不透明 cursor 中。排序应
         包含稳定且唯一的 tiebreaker，避免相同排序值跨页重复或遗漏。
+
+        OpenSearch 聚合 DSL 仅支持 `paging.mode: single`，服务端强制 `size: 0`，并将
+        metric、terms/date_histogram 及其单链嵌套 bucket 展开为逐行 `entries`。不能
+        转换为行结构的聚合在访问 OpenSearch 前返回 400；`paging.offset/limit` 应用于
+        展开后的行结果，cursor 模式不支持聚合。
       requestBody:
         required: true
         content:
@@ -175,7 +180,7 @@ components:
           maximum: 3600
           default: 60
         need_total:
-          description: 是否需要完整总数。cursor 首次请求的值会由服务端冻结并用于所有续页。
+          description: 是否需要完整总数。仅为 true 时响应包含 total_count；cursor 首次请求的值会由服务端冻结并用于所有续页，续页携带的值不改变该行为。
           type: boolean
           default: false
     PagingRequest:
@@ -191,7 +196,7 @@ components:
           minimum: 1
           maximum: 10000
         offset:
-          description: 仅首次请求可用的起始偏移，适用于 single 和 cursor 的第一页；续页只能传 paging.cursor。
+          description: 仅首次请求可用的起始偏移，适用于 single 和 cursor 的第一页；续页只能传 paging.cursor。非聚合 OpenSearch DSL 要求 offset + limit 不超过 10000。
           type: integer
           minimum: 0
         keep_alive_sec:
@@ -207,7 +212,6 @@ components:
       required:
         - columns
         - entries
-        - total_count
       properties:
         columns:
           description: 列元数据
@@ -215,13 +219,13 @@ components:
           items:
             $ref: "#/components/schemas/ColumnInfo"
         entries:
-          description: 查询结果（每条为一行/一个文档，结构开放）
+          description: 查询结果（每条为一行/一个文档；支持的 OpenSearch 聚合也展开为逐行结果）
           type: array
           items:
             type: object
             additionalProperties: true
         total_count:
-          description: 当前查询完整命中数；cursor 的每一页返回同一个冻结总数。
+          description: 当前查询完整命中数；仅 need_total=true 时返回，cursor 的每一页返回同一个冻结总数。
           type: integer
           format: int64
         warnings:

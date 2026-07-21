@@ -318,7 +318,8 @@ func (c *MariaDBConnector) ExecuteRawSQL(ctx context.Context, sql string) (*inte
 		return nil, fmt.Errorf("iterate rows failed: %w", err)
 	}
 
-	response.TotalCount = int64(len(response.Entries))
+	totalCount := int64(len(response.Entries))
+	response.TotalCount = &totalCount
 
 	return response, nil
 }

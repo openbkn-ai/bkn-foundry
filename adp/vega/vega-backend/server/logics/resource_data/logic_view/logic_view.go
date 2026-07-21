@@ -95,6 +95,16 @@ func (lvs *logicViewService) QueryWithPaging(ctx context.Context, resource *inte
 			if err != nil {
 				return nil, err
 			}
+			if paginationCategory == interfaces.ResourceCategoryIndex {
+				if len(params.Sort) == 0 {
+					return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+						WithErrorDetails("sort is required for index cursor paging")
+				}
+				if params.Aggregation != nil || len(params.GroupBy) > 0 || params.Having != nil {
+					return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+						WithErrorDetails("cursor paging does not support index aggregation queries")
+				}
+			}
 			return query.ExecuteInitialResourceDataCursorWithCategory(ctx, accountIDFromContext(ctx), resource, paginationCategory, params,
 				func(pageCtx context.Context, pageParams *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
 					return lvs.queryDerivedLogicView(pageCtx, view, pageParams)
@@ -148,12 +158,15 @@ func accountIDFromContext(ctx context.Context) string {
 }
 
 func rawQueryResult(response *interfaces.RawQueryResponse) *interfaces.ResourceDataQueryResult {
-	return &interfaces.ResourceDataQueryResult{
-		Entries:    response.Entries,
-		TotalCount: response.TotalCount,
-		Paging:     response.Paging,
-		NeedTotal:  response.NeedTotal,
+	result := &interfaces.ResourceDataQueryResult{
+		Entries: response.Entries,
+		Paging:  response.Paging,
 	}
+	if response.TotalCount != nil {
+		result.TotalCount = *response.TotalCount
+		result.NeedTotal = true
+	}
+	return result
 }
 
 func (lvs *logicViewService) queryDerivedLogicView(ctx context.Context, view *interfaces.LogicView,

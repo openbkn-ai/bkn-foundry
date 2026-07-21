@@ -119,6 +119,10 @@ func (c *OpenSearchConnector) ExecuteQueryWithDsl(ctx context.Context, resourceN
 
 // ExecuteRawQuery executes a raw OpenSearch DSL query on the specified index.
 func (c *OpenSearchConnector) ExecuteRawQuery(ctx context.Context, index string, query map[string]any) (*interfaces.RawQueryResponse, error) {
+	aggregationPlan, err := compileRawAggregationPlan(query)
+	if err != nil {
+		return nil, err
+	}
 	if err := c.Connect(ctx); err != nil {
 		return nil, fmt.Errorf("connect failed: %w", err)
 	}
@@ -160,10 +164,23 @@ func (c *OpenSearchConnector) ExecuteRawQuery(ctx context.Context, index string,
 				Sort   []any          `json:"sort"` // 添加sort字段
 			} `json:"hits"`
 		} `json:"hits"`
+		Aggregations map[string]any `json:"aggregations"`
 	}
 
 	if err := sonic.ConfigDefault.NewDecoder(resp.Body).Decode(&searchResp); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+	totalCount := searchResp.Hits.Total.Value
+	if aggregationPlan != nil {
+		entries, err := aggregationPlan.flatten(searchResp.Aggregations)
+		if err != nil {
+			return nil, err
+		}
+		return &interfaces.RawQueryResponse{
+			Columns:    []interfaces.ColumnInfo{},
+			Entries:    entries,
+			TotalCount: &totalCount,
+		}, nil
 	}
 
 	// If no hits, return empty result
@@ -171,7 +188,7 @@ func (c *OpenSearchConnector) ExecuteRawQuery(ctx context.Context, index string,
 		return &interfaces.RawQueryResponse{
 			Columns:    []interfaces.ColumnInfo{},
 			Entries:    []map[string]any{},
-			TotalCount: searchResp.Hits.Total.Value,
+			TotalCount: &totalCount,
 		}, nil
 	}
 
@@ -204,12 +221,10 @@ func (c *OpenSearchConnector) ExecuteRawQuery(ctx context.Context, index string,
 
 	// 构建响应
 	// total_count设置为OpenSearch返回的总数据量
-	totalCount := searchResp.Hits.Total.Value
-
 	response := &interfaces.RawQueryResponse{
 		Columns:    columns,
 		Entries:    entries,
-		TotalCount: totalCount,
+		TotalCount: &totalCount,
 	}
 
 	// 如果有结果，检查是否需要返回search_after
@@ -293,6 +308,9 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 		// 构建OpenSearch聚合查询
 		query := map[string]any{
 			"size": 0, // 聚合查询不需要返回文档
+		}
+		if params.NeedTotal {
+			query["track_total_hits"] = true
 		}
 
 		// 处理过滤条件
@@ -549,7 +567,7 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 
 	// Handle pagination
 	if params != nil {
-		if params.TrackTotalHits {
+		if params.NeedTotal {
 			query["track_total_hits"] = true
 		}
 		if params.Offset > 0 && params.SearchAfter == nil {

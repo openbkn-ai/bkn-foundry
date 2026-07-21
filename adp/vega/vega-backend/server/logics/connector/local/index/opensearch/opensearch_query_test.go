@@ -7,13 +7,89 @@
 package opensearch
 
 import (
+	"context"
+	"io"
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strconv"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"vega-backend/interfaces"
 )
+
+func TestOpenSearchQueryTracksTotalOnlyWhenRequested(t *testing.T) {
+	queries := make(chan map[string]any, 3)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		var query map[string]any
+		require.NoError(t, sonic.Unmarshal(body, &query))
+		queries <- query
+		w.Header().Set("Content-Type", "application/json")
+		_, err = w.Write([]byte(`{"hits":{"total":{"value":0},"hits":[]}}`))
+		require.NoError(t, err)
+	}))
+	t.Cleanup(server.Close)
+
+	serverURL, err := url.Parse(server.URL)
+	require.NoError(t, err)
+	host, portText, err := net.SplitHostPort(serverURL.Host)
+	require.NoError(t, err)
+	port, err := strconv.Atoi(portText)
+	require.NoError(t, err)
+	connector := &OpenSearchConnector{Config: &opensearchConfig{Host: host, Port: port}}
+	resource := &interfaces.Resource{}
+
+	_, err = connector.ExecuteQuery(context.Background(), "events", resource, &interfaces.ResourceDataQueryParams{})
+	require.NoError(t, err)
+	assert.NotContains(t, <-queries, "track_total_hits")
+
+	_, err = connector.ExecuteQuery(context.Background(), "events", resource, &interfaces.ResourceDataQueryParams{NeedTotal: true})
+	require.NoError(t, err)
+	assert.Equal(t, true, (<-queries)["track_total_hits"])
+
+	_, err = connector.ExecuteQuery(context.Background(), "events", resource, &interfaces.ResourceDataQueryParams{
+		NeedTotal:   true,
+		Aggregation: &interfaces.Aggregation{Property: "status", Aggr: "count"},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, true, (<-queries)["track_total_hits"])
+}
+
+func TestExecuteRawQueryFlattensAggregationsIntoEntries(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, err := w.Write([]byte(`{
+			"hits":{"total":{"value":4},"hits":[]},
+			"aggregations":{"by_status":{"buckets":[{"key":"open","doc_count":3}]}}
+		}`))
+		require.NoError(t, err)
+	}))
+	t.Cleanup(server.Close)
+
+	serverURL, err := url.Parse(server.URL)
+	require.NoError(t, err)
+	host, portText, err := net.SplitHostPort(serverURL.Host)
+	require.NoError(t, err)
+	port, err := strconv.Atoi(portText)
+	require.NoError(t, err)
+	connector := &OpenSearchConnector{Config: &opensearchConfig{Host: host, Port: port}}
+
+	result, err := connector.ExecuteRawQuery(context.Background(), "events", map[string]any{
+		"size": 0,
+		"aggs": map[string]any{"by_status": map[string]any{"terms": map[string]any{"field": "status"}}},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []map[string]any{{"status": "open", "__value": float64(3)}}, result.Entries)
+	require.NotNil(t, result.TotalCount)
+	assert.Equal(t, int64(4), *result.TotalCount)
+}
 
 func TestOpenSearchFlattenNestedGroupByRows(t *testing.T) {
 	conn := &OpenSearchConnector{}

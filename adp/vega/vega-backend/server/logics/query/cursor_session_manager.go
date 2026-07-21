@@ -136,34 +136,30 @@ func (m *cursorSessionManager) reclaimExpired() {
 	}
 }
 
-func (m *cursorSessionManager) get(cursor string) (*interfaces.CursorSession, bool) {
+// acquire returns a session only when this request obtains exclusive ownership
+// immediately. The session remains registered so it still counts toward the
+// global limit and remains visible to the expiry reclaimer while in use.
+func (m *cursorSessionManager) acquire(cursor string) (*interfaces.CursorSession, bool) {
 	m.mu.Lock()
 	session, ok := m.sessions[cursor]
-	if !ok {
+	if !ok || !session.TryLock() {
 		m.mu.Unlock()
 		return nil, false
 	}
 	if time.Now().Unix() >= atomic.LoadInt64(&session.ExpiresAtSec) {
-		// An in-flight page may refresh the idle lease before it returns. Keep
-		// that session reachable rather than deleting it underneath the request.
-		if !session.TryLock() {
-			m.mu.Unlock()
-			return session, true
-		}
-		expired := time.Now().Unix() >= atomic.LoadInt64(&session.ExpiresAtSec)
+		m.removeLocked(cursor)
 		session.Unlock()
-		if !expired {
-			m.mu.Unlock()
-			return session, true
-		}
-		expiredSession, _ := m.removeLocked(cursor)
 		activeSessions := len(m.sessions)
 		m.mu.Unlock()
-		logger.Infof("Cursor session expired: catalog_id=%s, active_sessions=%d", expiredSession.CatalogID, activeSessions)
+		logger.Infof("Cursor session expired: catalog_id=%s, active_sessions=%d", session.CatalogID, activeSessions)
 		return nil, false
 	}
 	m.mu.Unlock()
 	return session, true
+}
+
+func (m *cursorSessionManager) release(session *interfaces.CursorSession) {
+	session.Unlock()
 }
 
 func (m *cursorSessionManager) remove(cursor string) {
@@ -179,16 +175,6 @@ func (m *cursorSessionManager) closeSession(cursor string) {
 	m.mu.Unlock()
 	if ok {
 		logger.Infof("Cursor session closed at final page: catalog_id=%s, active_sessions=%d", session.CatalogID, activeSessions)
-	}
-}
-
-func (m *cursorSessionManager) expire(cursor string) {
-	m.mu.Lock()
-	session, ok := m.removeLocked(cursor)
-	activeSessions := len(m.sessions)
-	m.mu.Unlock()
-	if ok {
-		logger.Infof("Cursor session expired: catalog_id=%s, active_sessions=%d", session.CatalogID, activeSessions)
 	}
 }
 

@@ -35,12 +35,12 @@ func TestLogicViewServiceCursorContinuation(t *testing.T) {
 		queryService := vmock.NewMockRawQueryService(ctrl)
 		svc := &logicViewService{qs: queryService}
 		nextCursor := "next"
+		totalCount := int64(1)
 		queryService.EXPECT().Execute(gomock.Any(), gomock.Cond(func(req *interfaces.RawQueryRequest) bool {
 			return req.Query == nil && req.QueryFormat == "" && req.Paging.Cursor == "opaque-cursor"
 		})).Return(&interfaces.RawQueryResponse{
 			Entries:    []map[string]any{{"id": "row-1"}},
-			TotalCount: 1,
-			NeedTotal:  true,
+			TotalCount: &totalCount,
 			Paging:     &interfaces.PagingResponse{NextCursor: &nextCursor},
 		}, nil)
 
@@ -90,6 +90,40 @@ func TestQueryDerivedLogicViewRejectsUnavailableSource(t *testing.T) {
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
 	})
+}
+
+func TestDerivedIndexCursorRequiresSort(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockRS := vmock.NewMockResourceService(ctrl)
+	mockCS := vmock.NewMockCatalogService(ctrl)
+	svc := &logicViewService{rs: mockRS, cs: mockCS}
+	source := &interfaces.Resource{
+		ID:        "source-1",
+		CatalogID: "catalog-1",
+		Category:  interfaces.ResourceCategoryIndex,
+		Status:    interfaces.ResourceStatusActive,
+	}
+	mockRS.EXPECT().GetByID(gomock.Any(), "source-1").Return(source, nil).AnyTimes()
+	mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).
+		Return(&interfaces.Catalog{ID: "catalog-1", Enabled: false}, nil).AnyTimes()
+
+	result, err := svc.QueryWithPaging(context.Background(), &interfaces.Resource{
+		ID:        "logic-1",
+		Category:  interfaces.ResourceCategoryLogicView,
+		LogicType: interfaces.LogicType_Derived,
+		LogicDefinition: []*interfaces.LogicDefinitionNode{{
+			Type:   interfaces.LogicDefinitionNodeType_Resource,
+			Config: map[string]any{"resource_id": "source-1"},
+		}},
+	}, &interfaces.ResourceDataQueryParams{
+		Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 10},
+	})
+
+	assert.Nil(t, result)
+	var httpErr *rest.HTTPError
+	require.ErrorAs(t, err, &httpErr)
+	assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+	assert.Contains(t, err.Error(), "sort is required")
 }
 
 func TestExecutePhysicalQuery(t *testing.T) {

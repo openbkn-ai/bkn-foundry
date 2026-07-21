@@ -49,13 +49,15 @@ func Test_RawQueryRestHandler_RawQuery(t *testing.T) {
 		service.EXPECT().
 			Execute(gomock.Any(), gomock.AssignableToTypeOf(&interfaces.RawQueryRequest{})).
 			DoAndReturn(func(_ context.Context, req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
+				totalCount := int64(0)
 				assert.Equal(t, interfaces.QueryFormatSQL, req.QueryFormat)
 				assert.Equal(t, "postgres", req.EffectiveInputDialect())
 				assert.Equal(t, 60, req.QueryTimeoutSec)
 				assert.True(t, req.NeedTotal)
 				return &interfaces.RawQueryResponse{
-					Columns: []interfaces.ColumnInfo{{Name: "id", Type: "string"}},
-					Entries: []map[string]any{{"id": "1"}},
+					Columns:    []interfaces.ColumnInfo{{Name: "id", Type: "string"}},
+					Entries:    []map[string]any{{"id": "1"}},
+					TotalCount: &totalCount,
 				}, nil
 			})
 		engine := setupRawQueryHandlerTest(t)
@@ -73,6 +75,36 @@ func Test_RawQueryRestHandler_RawQuery(t *testing.T) {
 		require.Equal(t, http.StatusOK, w.Result().StatusCode)
 		assert.Contains(t, w.Body.String(), `"columns"`)
 		assert.Contains(t, w.Body.String(), `"entries"`)
+		assert.Contains(t, w.Body.String(), `"total_count":0`)
+	})
+
+	t.Run("omits total count when not requested", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		service := vmock.NewMockRawQueryService(ctrl)
+		service.EXPECT().
+			Execute(gomock.Any(), gomock.AssignableToTypeOf(&interfaces.RawQueryRequest{})).
+			DoAndReturn(func(_ context.Context, req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
+				assert.False(t, req.NeedTotal)
+				return &interfaces.RawQueryResponse{
+					Columns: []interfaces.ColumnInfo{},
+					Entries: []map[string]any{},
+				}, nil
+			})
+		engine := setupRawQueryHandlerTest(t)
+		patches := gomonkey.ApplyFunc(query.NewRawQueryService, func(*common.AppSetting) interfaces.RawQueryService {
+			return service
+		})
+		defer patches.Reset()
+
+		req := httptest.NewRequest(http.MethodPost, url, strings.NewReader(`{"query_format":"sql","query":"select 1"}`))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusOK, w.Result().StatusCode)
+		assert.NotContains(t, w.Body.String(), `"total_count"`)
 	})
 
 	t.Run("rejects invalid query timeout", func(t *testing.T) {

@@ -24,12 +24,17 @@ import (
 	"vega-backend/interfaces"
 	mock_interfaces "vega-backend/interfaces/mock"
 	"vega-backend/logics/connector/factory"
+	opensearchconnector "vega-backend/logics/connector/local/index/opensearch"
 	"vega-backend/logics/query/querypolicy"
 )
 
 // NewRawQueryServiceWithDeps 创建SQL查询服务（用于测试）
 func NewRawQueryServiceWithDeps(cs interfaces.CatalogService, rs interfaces.ResourceService) interfaces.RawQueryService {
 	return &rawQueryService{cs: cs, rs: rs}
+}
+
+func int64Pointer(value int64) *int64 {
+	return &value
 }
 
 func expectIndexConnectorClose(connector *mock_interfaces.MockIndexConnector) {
@@ -186,7 +191,7 @@ func TestQueryExecutionContextAppliesTimeout(t *testing.T) {
 	assert.False(t, ok)
 }
 
-func TestExecuteInitialDSLQueryAppliesTimeout(t *testing.T) {
+func TestExecuteInitialDSLQueryControlsTrackTotalHits(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	indexConnector := mock_interfaces.NewMockIndexConnector(ctrl)
 	expectIndexConnectorClose(indexConnector)
@@ -198,12 +203,12 @@ func TestExecuteInitialDSLQueryAppliesTimeout(t *testing.T) {
 		ID:               "resource-1",
 		CatalogID:        "catalog-1",
 		SourceIdentifier: "events",
-	}, nil)
+	}, nil).Times(4)
 	mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).Return(&interfaces.Catalog{
 		ID:            "catalog-1",
 		Enabled:       true,
 		ConnectorType: interfaces.ConnectorTypeOpenSearch,
-	}, nil)
+	}, nil).Times(4)
 
 	patches := gomonkey.ApplyFunc(factory.GetFactory, func() *factory.ConnectorFactory {
 		return &factory.ConnectorFactory{}
@@ -214,19 +219,67 @@ func TestExecuteInitialDSLQueryAppliesTimeout(t *testing.T) {
 		})
 	defer patches.Reset()
 
+	callCount := 0
 	indexConnector.EXPECT().ExecuteRawQuery(gomock.Any(), "events", gomock.Any()).
-		DoAndReturn(func(ctx context.Context, _ string, _ map[string]any) (*interfaces.RawQueryResponse, error) {
+		DoAndReturn(func(ctx context.Context, _ string, query map[string]any) (*interfaces.RawQueryResponse, error) {
+			callCount++
 			_, ok := ctx.Deadline()
 			assert.True(t, ok)
+			if callCount == 1 {
+				assert.NotContains(t, query, "track_total_hits")
+			} else if callCount == 2 {
+				assert.Equal(t, true, query["track_total_hits"])
+			} else {
+				assert.Equal(t, 0, query["size"])
+				assert.NotContains(t, query, "from")
+			}
+			if callCount == 3 {
+				return &interfaces.RawQueryResponse{Entries: []map[string]any{{"id": 1}, {"id": 2}, {"id": 3}}}, nil
+			}
+			if callCount == 4 {
+				return nil, &opensearchconnector.RawAggregationValidationError{Path: "aggs", Reason: "exactly one aggregation is required"}
+			}
 			return &interfaces.RawQueryResponse{}, nil
-		})
+		}).Times(4)
 
 	_, err := svc.executeInitialDSLQuery(context.Background(), &interfaces.RawQueryRequest{
-		Query:           map[string]any{"resource_id": "resource-1"},
+		Query:           map[string]any{"resource_id": "resource-1", "track_total_hits": true},
 		QueryTimeoutSec: 1,
 		Paging:          interfaces.PagingRequest{Limit: 10},
 	})
 	require.NoError(t, err)
+
+	_, err = svc.executeInitialDSLQuery(context.Background(), &interfaces.RawQueryRequest{
+		Query:           map[string]any{"resource_id": "resource-1", "track_total_hits": false},
+		QueryTimeoutSec: 1,
+		NeedTotal:       true,
+		Paging:          interfaces.PagingRequest{Limit: 10},
+	})
+	require.NoError(t, err)
+
+	result, err := svc.executeInitialDSLQuery(context.Background(), &interfaces.RawQueryRequest{
+		Query: map[string]any{
+			"resource_id": "resource-1",
+			"aggs":        map[string]any{"by_status": map[string]any{"terms": map[string]any{"field": "status"}}},
+		},
+		QueryTimeoutSec: 1,
+		Paging:          interfaces.PagingRequest{Limit: 1, Offset: 1},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []map[string]any{{"id": 2}}, result.Entries)
+
+	_, err = svc.executeInitialDSLQuery(context.Background(), &interfaces.RawQueryRequest{
+		Query: map[string]any{
+			"resource_id": "resource-1",
+			"aggs": map[string]any{
+				"by_status": map[string]any{"terms": map[string]any{"field": "status"}},
+				"by_type":   map[string]any{"terms": map[string]any{"field": "type"}},
+			},
+		},
+		QueryTimeoutSec: 1,
+		Paging:          interfaces.PagingRequest{Limit: 2},
+	})
+	assertHTTPError(t, err, http.StatusBadRequest)
 }
 
 func TestPrepareOpenSearchCursorQuery(t *testing.T) {
@@ -323,7 +376,7 @@ func TestInitialOpenSearchCursorRespectsInitialOffsetForLastPage(t *testing.T) {
 			return &interfaces.RawQueryResponse{
 				Entries:     []map[string]any{{"id": "91"}, {"id": "92"}},
 				SearchAfter: []any{"page-92"},
-				TotalCount:  92,
+				TotalCount:  int64Pointer(92),
 			}, nil
 		})
 
@@ -338,6 +391,8 @@ func TestInitialOpenSearchCursorRespectsInitialOffsetForLastPage(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Nil(t, result.Paging.NextCursor)
+	require.NotNil(t, result.TotalCount)
+	assert.Equal(t, int64(92), *result.TotalCount)
 }
 
 func TestExecuteOpenSearchCursorPage(t *testing.T) {
@@ -375,12 +430,12 @@ func TestExecuteOpenSearchCursorPage(t *testing.T) {
 				return &interfaces.RawQueryResponse{
 					Entries:     []map[string]any{{"id": "1"}, {"id": "2"}},
 					SearchAfter: []any{"page-1"},
-					TotalCount:  3,
+					TotalCount:  int64Pointer(3),
 				}, nil
 			}
 			assert.NotContains(t, query, "from")
 			assert.Equal(t, []any{"page-1"}, query["search_after"])
-			return &interfaces.RawQueryResponse{Entries: []map[string]any{{"id": "3"}}, TotalCount: 3}, nil
+			return &interfaces.RawQueryResponse{Entries: []map[string]any{{"id": "3"}}, TotalCount: int64Pointer(3)}, nil
 		}).Times(2)
 
 	svc := &rawQueryService{}
@@ -390,14 +445,17 @@ func TestExecuteOpenSearchCursorPage(t *testing.T) {
 	require.NotNil(t, first.Paging)
 	require.NotNil(t, first.Paging.NextCursor)
 	assert.Equal(t, session.ID, *first.Paging.NextCursor)
-	assert.True(t, first.NeedTotal)
+	require.NotNil(t, first.TotalCount)
+	assert.Equal(t, int64(3), *first.TotalCount)
 
 	last, err := svc.executeOpenSearchCursorPage(context.Background(), session, catalog, nil)
 	require.NoError(t, err)
 	require.NotNil(t, last.Paging)
 	assert.Nil(t, last.Paging.NextCursor)
 	assert.Nil(t, last.Paging.ExpiresAtSec)
-	_, ok := manager.get(session.ID)
+	require.NotNil(t, last.TotalCount)
+	assert.Equal(t, int64(3), *last.TotalCount)
+	_, ok := manager.acquire(session.ID)
 	assert.False(t, ok)
 }
 
@@ -429,18 +487,20 @@ func TestOpenSearchCursorDoesNotCreateEmptyPageForExactMultiple(t *testing.T) {
 	indexConnector.EXPECT().ExecuteRawQuery(gomock.Any(), "events", gomock.Any()).Return(&interfaces.RawQueryResponse{
 		Entries:     []map[string]any{{"id": "1"}, {"id": "2"}},
 		SearchAfter: []any{"page-2"},
-		TotalCount:  2,
+		TotalCount:  int64Pointer(2),
 	}, nil)
 
 	result, err := (&rawQueryService{}).executeOpenSearchCursorPage(context.Background(), session,
 		&interfaces.Catalog{ID: "catalog-1", ConnectorType: interfaces.ConnectorTypeOpenSearch}, nil)
 	require.NoError(t, err)
 	assert.Nil(t, result.Paging.NextCursor)
-	_, ok := manager.get(session.ID)
+	require.NotNil(t, result.TotalCount)
+	assert.Equal(t, int64(2), *result.TotalCount)
+	_, ok := manager.acquire(session.ID)
 	assert.False(t, ok)
 }
 
-func TestOpenSearchCursorContinuationIsSerialized(t *testing.T) {
+func TestOpenSearchCursorContinuationRejectsConcurrentUse(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	indexConnector := mock_interfaces.NewMockIndexConnector(ctrl)
 	expectIndexConnectorClose(indexConnector)
@@ -460,8 +520,8 @@ func TestOpenSearchCursorContinuationIsSerialized(t *testing.T) {
 
 	resource := &interfaces.Resource{ID: "resource-1", CatalogID: "catalog-1", Status: interfaces.ResourceStatusActive}
 	catalog := &interfaces.Catalog{ID: "catalog-1", Enabled: true, ConnectorType: interfaces.ConnectorTypeOpenSearch}
-	mockRS.EXPECT().GetByIDs(gomock.Any(), []string{"resource-1"}).Return([]*interfaces.Resource{resource}, nil).Times(2)
-	mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).Return(catalog, nil).Times(2)
+	mockRS.EXPECT().GetByIDs(gomock.Any(), []string{"resource-1"}).Return([]*interfaces.Resource{resource}, nil)
+	mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).Return(catalog, nil)
 
 	patches := gomonkey.ApplyFunc(factory.GetFactory, func() *factory.ConnectorFactory {
 		return &factory.ConnectorFactory{}
@@ -472,29 +532,28 @@ func TestOpenSearchCursorContinuationIsSerialized(t *testing.T) {
 		})
 	defer patches.Reset()
 
-	callCount := 0
+	started := make(chan struct{})
+	finish := make(chan struct{})
 	indexConnector.EXPECT().ExecuteRawQuery(gomock.Any(), "events", gomock.Any()).
 		DoAndReturn(func(_ context.Context, _ string, query map[string]any) (*interfaces.RawQueryResponse, error) {
-			callCount++
-			if callCount == 1 {
-				assert.NotContains(t, query, "search_after")
-				return &interfaces.RawQueryResponse{Entries: []map[string]any{{"id": "1"}}, SearchAfter: []any{"page-1"}}, nil
-			}
-			assert.Equal(t, []any{"page-1"}, query["search_after"])
+			assert.NotContains(t, query, "search_after")
+			close(started)
+			<-finish
 			return &interfaces.RawQueryResponse{Entries: []map[string]any{}}, nil
-		}).Times(2)
+		})
 
 	svc := &rawQueryService{cs: mockCS, rs: mockRS}
 	ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: "account-1"})
 	req := &interfaces.RawQueryRequest{Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Cursor: session.ID}}
-	errs := make(chan error, 2)
-	go func() { _, err := svc.executeSQLCursorContinuation(ctx, req); errs <- err }()
-	go func() { _, err := svc.executeSQLCursorContinuation(ctx, req); errs <- err }()
+	firstErr := make(chan error, 1)
+	go func() { _, err := svc.executeSQLCursorContinuation(ctx, req); firstErr <- err }()
+	<-started
 
-	require.NoError(t, <-errs)
-	require.NoError(t, <-errs)
-	assert.Equal(t, 2, callCount)
-	_, ok := manager.get(session.ID)
+	_, err = svc.executeSQLCursorContinuation(ctx, req)
+	require.Error(t, err)
+	close(finish)
+	require.NoError(t, <-firstErr)
+	_, ok := manager.acquire(session.ID)
 	assert.False(t, ok)
 }
 

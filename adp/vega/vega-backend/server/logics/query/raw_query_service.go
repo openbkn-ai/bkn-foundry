@@ -16,7 +16,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/openbkn-ai/bkn-comm-go/logger"
@@ -29,6 +28,7 @@ import (
 	"vega-backend/interfaces"
 	"vega-backend/logics/catalog"
 	"vega-backend/logics/connector/factory"
+	opensearchconnector "vega-backend/logics/connector/local/index/opensearch"
 	"vega-backend/logics/connector/local/table/mariadb"
 	"vega-backend/logics/connector/local/table/postgresql"
 	"vega-backend/logics/query/querypolicy"
@@ -132,16 +132,22 @@ func (rqs *rawQueryService) executeInitialSQLQuery(ctx context.Context, req *int
 
 	queryCtx, cancel := queryExecutionContext(ctx, req.QueryTimeoutSec)
 	defer cancel()
-	totalCount, err := rqs.executeSQLTotalCount(queryCtx, prepared.catalog, prepared.sql)
-	if err != nil {
-		return nil, err
+	var totalCount int64
+	if req.NeedTotal {
+		totalCount, err = rqs.executeSQLTotalCount(queryCtx, prepared.catalog, prepared.sql)
+		if err != nil {
+			return nil, err
+		}
 	}
 	result, err := rqs.executeSQL(queryCtx, prepared.catalog, finalSQL, interfaces.PagingModeSingle)
 	if err != nil {
 		return nil, err
 	}
-	result.TotalCount = totalCount
-	result.NeedTotal = req.NeedTotal
+	if req.NeedTotal {
+		result.TotalCount = &totalCount
+	} else {
+		result.TotalCount = nil
+	}
 	result.Warnings = append(result.Warnings, prepared.warnings...)
 	return result, nil
 }
@@ -153,9 +159,12 @@ func (rqs *rawQueryService) executeInitialSQLCursor(ctx context.Context, req *in
 	}
 	queryCtx, cancel := queryExecutionContext(ctx, req.QueryTimeoutSec)
 	defer cancel()
-	totalCount, err := rqs.executeSQLTotalCount(queryCtx, prepared.catalog, prepared.sql)
-	if err != nil {
-		return nil, err
+	var totalCount int64
+	if req.NeedTotal {
+		totalCount, err = rqs.executeSQLTotalCount(queryCtx, prepared.catalog, prepared.sql)
+		if err != nil {
+			return nil, err
+		}
 	}
 	session, err := rawQueryCursorSessions.create(
 		accountIDFromContext(ctx),
@@ -171,7 +180,7 @@ func (rqs *rawQueryService) executeInitialSQLCursor(ctx context.Context, req *in
 	}
 	session.Offset = req.Paging.Offset
 	session.TotalCount = totalCount
-	session.HasTotalCount = true
+	session.HasTotalCount = req.NeedTotal
 	session.NeedTotal = req.NeedTotal
 	session.Lock()
 	defer session.Unlock()
@@ -185,22 +194,18 @@ func (rqs *rawQueryService) executeInitialSQLCursor(ctx context.Context, req *in
 }
 
 func (rqs *rawQueryService) executeSQLCursorContinuation(ctx context.Context, req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
-	session, ok := rawQueryCursorSessions.get(req.Paging.Cursor)
+	session, ok := rawQueryCursorSessions.acquire(req.Paging.Cursor)
 	if !ok || session.ResourceDataParams != nil {
+		if ok {
+			rawQueryCursorSessions.release(session)
+		}
 		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_InvalidParameter).
 			WithErrorDetails("cursor not found or expired")
 	}
+	defer rawQueryCursorSessions.release(session)
 	if session.AccountID != accountIDFromContext(ctx) {
 		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, verrors.VegaBackend_Query_InvalidParameter).
 			WithErrorDetails("cursor does not belong to the current account")
-	}
-
-	session.Lock()
-	defer session.Unlock()
-	if time.Now().Unix() >= atomic.LoadInt64(&session.ExpiresAtSec) {
-		rawQueryCursorSessions.expire(session.ID)
-		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_InvalidParameter).
-			WithErrorDetails("cursor not found or expired")
 	}
 	catalog, warnings, err := rqs.checkSameDataSource(ctx, session.ResourceIDs)
 	if err != nil {
@@ -323,11 +328,11 @@ func (rqs *rawQueryService) executeSQLCursorPage(ctx context.Context, session *i
 		rawQueryCursorSessions.closeSession(session.ID)
 	}
 	if session.HasTotalCount {
-		result.TotalCount = session.TotalCount
+		totalCount := session.TotalCount
+		result.TotalCount = &totalCount
 	} else {
-		result.TotalCount = int64(len(result.Entries))
+		result.TotalCount = nil
 	}
-	result.NeedTotal = session.NeedTotal
 	result.Warnings = append(result.Warnings, warnings...)
 	return result, nil
 }
@@ -432,7 +437,7 @@ func (rqs *rawQueryService) prepareOpenSearchCursorQuery(ctx context.Context, re
 
 	prepared := make(map[string]any, len(queryMap))
 	for key, value := range queryMap {
-		if key != "resource_id" && key != "size" && key != "search_after" {
+		if key != "resource_id" && key != "size" && key != "from" && key != "search_after" && key != "track_total_hits" {
 			prepared[key] = value
 		}
 	}
@@ -483,7 +488,8 @@ func (rqs *rawQueryService) executeOpenSearchCursorPage(ctx context.Context, ses
 	if session.NeedTotal {
 		// OpenSearch reports total_count for real connector responses. Keep the
 		// zero-total fallback for connector implementations that do not expose it.
-		hasMoreResults := result.TotalCount == 0 || int64(session.Offset+len(result.Entries)) < result.TotalCount
+		hasMoreResults := result.TotalCount == nil || *result.TotalCount == 0 ||
+			int64(session.Offset+len(result.Entries)) < *result.TotalCount
 		hasNext = len(result.Entries) == session.Limit && hasMoreResults && len(result.SearchAfter) > 0
 	} else {
 		// Without an exact total, a full page may be the final page. Preserve
@@ -500,18 +506,35 @@ func (rqs *rawQueryService) executeOpenSearchCursorPage(ctx context.Context, ses
 		result.Paging = &interfaces.PagingResponse{}
 		rawQueryCursorSessions.closeSession(session.ID)
 	}
-	result.NeedTotal = session.NeedTotal
+	if !session.NeedTotal {
+		result.TotalCount = nil
+	}
 	result.Warnings = append(result.Warnings, warnings...)
 	return result, nil
 }
 
 func (rqs *rawQueryService) executeInitialDSLQuery(ctx context.Context, req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
-	queryMap := req.Query.(map[string]any)
-	// search_after is cursor-internal state. A client-supplied value is never
-	// forwarded; cursor continuation supplies the server-owned value instead.
-	delete(queryMap, "search_after")
-	queryMap["size"] = req.Paging.Limit
-	queryMap["from"] = req.Paging.Offset
+	requestQuery := req.Query.(map[string]any)
+	queryMap := make(map[string]any, len(requestQuery)+2)
+	for key, value := range requestQuery {
+		// Paging and total-count behavior are controlled by the API contract.
+		if key != "search_after" && key != "track_total_hits" {
+			queryMap[key] = value
+		}
+	}
+	isAggregation := hasOpenSearchAggregation(queryMap)
+	if isAggregation {
+		// Aggregations are expanded into row-oriented entries. Document paging
+		// must not rewrite the aggregation into a hit query.
+		queryMap["size"] = 0
+		delete(queryMap, "from")
+	} else {
+		queryMap["size"] = req.Paging.Limit
+		queryMap["from"] = req.Paging.Offset
+	}
+	if req.NeedTotal {
+		queryMap["track_total_hits"] = true
+	}
 	resourceID, _ := queryMap["resource_id"].(string)
 	if resourceID == "" {
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
@@ -563,13 +586,28 @@ func (rqs *rawQueryService) executeInitialDSLQuery(ctx context.Context, req *int
 	}
 	result, err := indexConnector.ExecuteRawQuery(queryCtx, resource.SourceIdentifier, queryMap)
 	if err != nil {
+		var validationErr *opensearchconnector.RawAggregationValidationError
+		if errors.As(err, &validationErr) {
+			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+				WithErrorDetails(validationErr.Error())
+		}
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
 			WithErrorDetails("query execution failed")
+	}
+	if isAggregation {
+		start := min(req.Paging.Offset, len(result.Entries))
+		end := len(result.Entries)
+		if req.Paging.Limit > 0 {
+			end = min(start+req.Paging.Limit, end)
+		}
+		result.Entries = result.Entries[start:end]
 	}
 	if warning != "" {
 		result.Warnings = append(result.Warnings, warning)
 	}
-	result.NeedTotal = req.NeedTotal
+	if !req.NeedTotal {
+		result.TotalCount = nil
+	}
 	return result, nil
 }
 

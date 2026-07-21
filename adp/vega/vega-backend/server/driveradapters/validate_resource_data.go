@@ -106,13 +106,16 @@ func validateResourceDataPaging(ctx context.Context, params *interfaces.Resource
 func validateResourceDataCursorContinuation(ctx context.Context, params *interfaces.ResourceDataQueryParams) error {
 	paging := params.Paging
 	if paging.Mode != "" || paging.Offset != 0 || paging.Limit != 0 || paging.KeepAliveSec != 0 ||
-		params.FilterCondition != nil || len(params.Sort) != 0 || len(params.OutputFields) != 0 || params.NeedTotal ||
+		params.FilterCondition != nil || len(params.Sort) != 0 || len(params.OutputFields) != 0 ||
 		params.Aggregation != nil || len(params.GroupBy) != 0 || params.Having != nil {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 			WithErrorDetails("cursor continuation must contain only paging.cursor")
 	}
 	params.Offset = 0
 	params.Limit = 0
+	// The initial request freezes this value in the cursor session. A value on
+	// continuation is accepted for request-shape consistency but cannot change it.
+	params.NeedTotal = false
 	return nil
 }
 

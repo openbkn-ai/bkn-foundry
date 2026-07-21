@@ -64,18 +64,18 @@ func TestValidateResourceDataQueryParams(t *testing.T) {
 		require.NoError(t, ValidateResourceDataQueryParams(ctx, initial))
 		assert.Equal(t, 50, initial.Offset)
 
-		continuation := &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Cursor: "opaque-cursor"}}
+		continuation := &interfaces.ResourceDataQueryParams{
+			Paging:    interfaces.PagingRequest{Cursor: "opaque-cursor"},
+			NeedTotal: true,
+		}
 		require.NoError(t, ValidateResourceDataQueryParams(ctx, continuation))
 		assert.Zero(t, continuation.Offset)
 		assert.Zero(t, continuation.Limit)
+		assert.False(t, continuation.NeedTotal)
 	})
 
 	t.Run("rejects query fields on cursor continuation", func(t *testing.T) {
 		for name, params := range map[string]*interfaces.ResourceDataQueryParams{
-			"need total": {
-				Paging:    interfaces.PagingRequest{Cursor: "opaque-cursor"},
-				NeedTotal: true,
-			},
 			"filter": {
 				Paging:          interfaces.PagingRequest{Cursor: "opaque-cursor"},
 				FilterCondition: map[string]any{"field": "name", "operation": "==", "value": "alice"},

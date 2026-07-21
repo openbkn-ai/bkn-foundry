@@ -67,11 +67,10 @@ type ResourceDataQueryParams struct {
 
 	OutputFields []string `json:"output_fields"` // 指定输出的字段列表
 
-	NeedTotal      bool          `json:"need_total,omitempty"`
-	Format         string        `json:"-"`
-	Timeout        time.Duration `json:"-"` // 超时时间，查询参数
-	SearchAfter    []any         `json:"-"` // OpenSearch internal continuation state
-	TrackTotalHits bool          `json:"-"` // OpenSearch cursor requires an exact hit count
+	NeedTotal   bool          `json:"need_total,omitempty"`
+	Format      string        `json:"-"`
+	Timeout     time.Duration `json:"-"` // 超时时间，查询参数
+	SearchAfter []any         `json:"-"` // OpenSearch internal continuation state
 
 	QueryType string `json:"-"`
 

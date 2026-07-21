@@ -21,9 +21,10 @@ func TestCursorSessionManagerExpiryAndResponse(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { manager.remove(session.ID) })
 
-	got, ok := manager.get(session.ID)
+	got, ok := manager.acquire(session.ID)
 	require.True(t, ok)
 	assert.Equal(t, session, got)
+	manager.release(got)
 	assert.Positive(t, session.CreatedAtSec)
 	assert.Zero(t, session.LastSuccessfulPageAtSec)
 
@@ -34,7 +35,7 @@ func TestCursorSessionManagerExpiryAndResponse(t *testing.T) {
 	assert.Equal(t, session.ExpiresAtSec, *response.ExpiresAtSec)
 
 	session.ExpiresAtSec = time.Now().Add(-time.Second).Unix()
-	_, ok = manager.get(session.ID)
+	_, ok = manager.acquire(session.ID)
 	assert.False(t, ok)
 }
 
@@ -45,17 +46,20 @@ func TestCursorSessionManagerRejectsNewSessionAtCapacity(t *testing.T) {
 	second, err := manager.create("account-1", "catalog-1", nil, "SELECT 2", 1, 60, 30)
 	require.NoError(t, err)
 
-	_, ok := manager.get(first.ID)
+	got, ok := manager.acquire(first.ID)
 	require.True(t, ok)
+	manager.release(got)
 	third, err := manager.create("account-1", "catalog-1", nil, "SELECT 3", 1, 60, 30)
 	require.ErrorIs(t, err, errCursorSessionLimitReached)
 	assert.Nil(t, third)
 
-	_, ok = manager.get(second.ID)
+	got, ok = manager.acquire(second.ID)
 	assert.True(t, ok)
-	got, ok := manager.get(first.ID)
+	manager.release(got)
+	got, ok = manager.acquire(first.ID)
 	require.True(t, ok)
 	assert.Equal(t, first, got)
+	manager.release(got)
 }
 
 func TestCursorSessionManagerRejectsNewSessionAfterCapacityIsReduced(t *testing.T) {
@@ -72,15 +76,18 @@ func TestCursorSessionManagerRejectsNewSessionAfterCapacityIsReduced(t *testing.
 	require.ErrorIs(t, err, errCursorSessionLimitReached)
 	assert.Nil(t, fourth)
 
-	got, ok := manager.get(first.ID)
+	got, ok := manager.acquire(first.ID)
 	require.True(t, ok)
 	assert.Equal(t, first, got)
-	got, ok = manager.get(second.ID)
+	manager.release(got)
+	got, ok = manager.acquire(second.ID)
 	require.True(t, ok)
 	assert.Equal(t, second, got)
-	got, ok = manager.get(third.ID)
+	manager.release(got)
+	got, ok = manager.acquire(third.ID)
 	require.True(t, ok)
 	assert.Equal(t, third, got)
+	manager.release(got)
 }
 
 func TestCursorSessionLifecycleTracksSuccessfulPagesAndClosure(t *testing.T) {
@@ -94,7 +101,7 @@ func TestCursorSessionLifecycleTracksSuccessfulPagesAndClosure(t *testing.T) {
 	assert.Equal(t, session.LastSuccessfulPageAtSec+60, session.ExpiresAtSec)
 
 	manager.closeSession(session.ID)
-	_, ok := manager.get(session.ID)
+	_, ok := manager.acquire(session.ID)
 	assert.False(t, ok)
 }
 
@@ -115,11 +122,11 @@ func TestCursorSessionManagerReclaimerSkipsActiveSession(t *testing.T) {
 	manager.mu.Lock()
 	manager.removeExpiredLocked(time.Now().Unix())
 	manager.mu.Unlock()
-	_, ok = manager.get(session.ID)
+	_, ok = manager.acquire(session.ID)
 	assert.False(t, ok)
 }
 
-func TestCursorSessionManagerGetKeepsActiveExpiredSession(t *testing.T) {
+func TestCursorSessionManagerAcquireRejectsActiveExpiredSessionWithoutRemovingIt(t *testing.T) {
 	manager := newCursorSessionManager(2)
 	session, err := manager.create("account-1", "catalog-1", nil, "SELECT 1", 1, 60, 30)
 	require.NoError(t, err)
@@ -127,9 +134,32 @@ func TestCursorSessionManagerGetKeepsActiveExpiredSession(t *testing.T) {
 	atomic.StoreInt64(&session.ExpiresAtSec, time.Now().Add(-time.Second).Unix())
 
 	session.Lock()
-	defer session.Unlock()
-	got, ok := manager.get(session.ID)
+	_, ok := manager.acquire(session.ID)
 
-	assert.True(t, ok)
-	assert.Equal(t, session, got)
+	assert.False(t, ok)
+	manager.mu.Lock()
+	_, retained := manager.sessions[session.ID]
+	manager.mu.Unlock()
+	assert.True(t, retained)
+	session.Unlock()
+}
+
+func TestCursorSessionManagerAcquireIsExclusive(t *testing.T) {
+	manager := newCursorSessionManager(2)
+	session, err := manager.create("account-1", "catalog-1", nil, "SELECT 1", 1, 60, 30)
+	require.NoError(t, err)
+	t.Cleanup(func() { manager.remove(session.ID) })
+
+	acquired, ok := manager.acquire(session.ID)
+	require.True(t, ok)
+	assert.Equal(t, session, acquired)
+
+	_, ok = manager.acquire(session.ID)
+	assert.False(t, ok)
+
+	manager.release(acquired)
+	reacquired, ok := manager.acquire(session.ID)
+	require.True(t, ok)
+	assert.Equal(t, session, reacquired)
+	manager.release(reacquired)
 }
