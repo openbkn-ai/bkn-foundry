@@ -286,9 +286,6 @@ func (c *MariaDBConnector) ExecuteRawSQL(ctx context.Context, sql string) (*inte
 	response := &interfaces.RawQueryResponse{
 		Columns: make([]interfaces.ColumnInfo, len(columns)),
 		Entries: make([]map[string]any, 0),
-		Stats: interfaces.QueryStats{
-			IsTimeout: false,
-		},
 	}
 
 	// 填充列信息

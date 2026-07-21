@@ -172,9 +172,6 @@ func (c *OpenSearchConnector) ExecuteRawQuery(ctx context.Context, index string,
 			Columns:    []interfaces.ColumnInfo{},
 			Entries:    []map[string]any{},
 			TotalCount: 0,
-			Stats: interfaces.QueryStats{
-				IsTimeout: false,
-			},
 		}, nil
 	}
 
@@ -213,9 +210,6 @@ func (c *OpenSearchConnector) ExecuteRawQuery(ctx context.Context, index string,
 		Columns:    columns,
 		Entries:    entries,
 		TotalCount: totalCount,
-		Stats: interfaces.QueryStats{
-			IsTimeout: false,
-		},
 	}
 
 	// 如果有结果，检查是否需要返回search_after
@@ -223,7 +217,7 @@ func (c *OpenSearchConnector) ExecuteRawQuery(ctx context.Context, index string,
 		lastHit := searchResp.Hits.Hits[len(searchResp.Hits.Hits)-1]
 		// 如果最后一条记录有sort值，将其作为search_after返回
 		if len(lastHit.Sort) > 0 {
-			response.Stats.SearchAfter = lastHit.Sort
+			response.SearchAfter = lastHit.Sort
 		}
 	}
 

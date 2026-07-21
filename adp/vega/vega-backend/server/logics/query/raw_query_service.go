@@ -162,12 +162,9 @@ func (rqs *rawQueryService) executeInitialSQLQuery(ctx context.Context, req *int
 	}
 	finalSQL = applySingleQueryPaging(trimSQLTerminator(finalSQL), req.Paging.Offset, req.Paging.Size)
 
-	result, err := rqs.executeSQLWithQueryType(ctx, catalog, finalSQL, string(interfaces.PagingModeSingle))
+	result, err := rqs.executeSQL(ctx, catalog, finalSQL, interfaces.PagingModeSingle)
 	if err != nil {
 		return nil, err
-	}
-	if len(result.Entries) >= 10000 {
-		result.Stats.HasMore = true
 	}
 	result.Warnings = append(result.Warnings, warnings...)
 	return result, nil
@@ -298,7 +295,7 @@ func (rqs *rawQueryService) executeSQLCursorPage(ctx context.Context, session *c
 		pageCtx, cancel = context.WithTimeout(ctx, time.Duration(session.QueryTimeoutSec)*time.Second)
 		defer cancel()
 	}
-	result, err := rqs.executeSQLWithQueryType(pageCtx, catalog, pageSQL, string(interfaces.PagingModeCursor))
+	result, err := rqs.executeSQL(pageCtx, catalog, pageSQL, interfaces.PagingModeCursor)
 	if err != nil {
 		return nil, err
 	}
@@ -314,7 +311,6 @@ func (rqs *rawQueryService) executeSQLCursorPage(ctx context.Context, session *c
 		result.Paging = &interfaces.PagingResponse{}
 		rawQueryCursorSessions.closeSession(session.ID)
 	}
-	result.Stats.HasMore = hasNext
 	result.Warnings = append(result.Warnings, warnings...)
 	return result, nil
 }
@@ -447,9 +443,9 @@ func (rqs *rawQueryService) executeOpenSearchCursorPage(ctx context.Context, ses
 			WithErrorDetails(err.Error())
 	}
 
-	hasNext := len(result.Entries) == session.PageSize && len(result.Stats.SearchAfter) > 0
+	hasNext := len(result.Entries) == session.PageSize && len(result.SearchAfter) > 0
 	if hasNext {
-		session.SearchAfter = append([]any(nil), result.Stats.SearchAfter...)
+		session.SearchAfter = append([]any(nil), result.SearchAfter...)
 		session.Offset += len(result.Entries)
 		rawQueryCursorSessions.markPageSuccess(session)
 		result.Paging = cursorPagingResponse(session)
@@ -670,10 +666,9 @@ func (rqs *rawQueryService) replaceResourceIDWithSchemaTable(ctx context.Context
 	return replacedSQL, nil
 }
 
-// executeSQLWithQueryType 执行SQL查询并记录日志
-func (rqs *rawQueryService) executeSQLWithQueryType(ctx context.Context, catalog *interfaces.Catalog, sql string, queryType string) (*interfaces.RawQueryResponse, error) {
-	// 打印SQL日志，包含查询类型
-	logger.Infof("Executing %s query - %s, catalog: %s", queryType, SafeQuerySummary(sql), catalog.Name)
+// executeSQL 执行 SQL 查询并记录分页模式。
+func (rqs *rawQueryService) executeSQL(ctx context.Context, catalog *interfaces.Catalog, sql string, pagingMode interfaces.PagingMode) (*interfaces.RawQueryResponse, error) {
+	logger.Infof("Executing query - %s, paging_mode: %s, catalog: %s", SafeQuerySummary(sql), pagingMode, catalog.Name)
 
 	// 创建connector
 	connector, err := factory.GetFactory().CreateConnectorInstance(ctx, catalog.ConnectorType, catalog.ConnectorCfg)
@@ -703,7 +698,7 @@ func (rqs *rawQueryService) executeSQLWithQueryType(ctx context.Context, catalog
 			WithErrorDetails("query execution failed")
 	}
 
-	logger.Infof("SQL query executed successfully - query_type: %s, returned rows: %d", queryType, len(result.Entries))
+	logger.Infof("SQL query executed successfully: paging_mode=%s, returned_rows=%d", pagingMode, len(result.Entries))
 	return result, nil
 }
 

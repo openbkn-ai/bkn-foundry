@@ -184,11 +184,6 @@ Description = "查询参数非法"
 Solution = "请检查请求参数"
 ErrorLink = "暂无"
 
-[VegaBackend.Query.InvalidParameter.QueryIDRequired]
-Description = "query_id 为必填项"
-Solution = "请提供 query_id"
-ErrorLink = "暂无"
-
 [VegaBackend.Query.InvalidParameter.LimitExceeded]
 Description = "limit 不能超过 10000"
 Solution = "请调整 limit 参数"

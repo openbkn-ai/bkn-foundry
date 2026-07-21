@@ -11,7 +11,6 @@ package errors
 const (
 	// 400 Bad Request
 	VegaBackend_Query_InvalidParameter                      = "VegaBackend.Query.InvalidParameter"
-	VegaBackend_Query_InvalidParameter_QueryIDRequired      = "VegaBackend.Query.InvalidParameter.QueryIDRequired"
 	VegaBackend_Query_InvalidParameter_LimitExceeded        = "VegaBackend.Query.InvalidParameter.LimitExceeded"
 	VegaBackend_Query_InvalidParameter_JoinTableNotInTables = "VegaBackend.Query.InvalidParameter.JoinTableNotInTables"
 	VegaBackend_Query_InvalidParameter_QueryTimeout         = "VegaBackend.Query.InvalidParameter.QueryTimeout"
@@ -37,7 +36,6 @@ const (
 var QueryErrCodeList = []string{
 	// 400 Bad Request
 	VegaBackend_Query_InvalidParameter,
-	VegaBackend_Query_InvalidParameter_QueryIDRequired,
 	VegaBackend_Query_InvalidParameter_LimitExceeded,
 	VegaBackend_Query_InvalidParameter_JoinTableNotInTables,
 	VegaBackend_Query_InvalidParameter_QueryTimeout,

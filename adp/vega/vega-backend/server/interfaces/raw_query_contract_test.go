@@ -171,7 +171,7 @@ func TestRawQueryContractValidate(t *testing.T) {
 
 func TestRawQueryResponseDoesNotExposeLegacyPagingState(t *testing.T) {
 	response := RawQueryResponse{
-		Stats: QueryStats{HasMore: true, QueryID: "legacy", SearchAfter: []any{"internal"}, Offset: 10},
+		SearchAfter: []any{"internal"},
 	}
 	encoded, err := sonic.Marshal(response)
 	require.NoError(t, err)
