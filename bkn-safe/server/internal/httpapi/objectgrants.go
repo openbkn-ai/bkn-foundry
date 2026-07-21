@@ -43,64 +43,77 @@ func registerObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 		resourceID := objectGrantQueryParam(c, "resource_id", "obj_id")
 		search := strings.TrimSpace(c.Query("search"))
 
-		grants, err := e.ListObjectGrants(accessorID, resourceType, resourceID)
-		if err != nil {
-			serverError(c, err)
-			return
+		// Read the casbin_rule grant table directly (not casbin's in-memory
+		// GetPolicy) so filtering, grouping and pagination all happen in SQL:
+		// the query is O(page) instead of materializing every grant. Object keys
+		// are "type:id" (obj()); splitObjectKey splits on the FIRST colon, so the
+		// rtype/rid expressions below mirror it with INSTR/SUBSTR — portable
+		// across sqlite (tests) and MariaDB (prod). casbin autosave keeps this
+		// table in sync with the in-memory model on every grant/revoke.
+		const rtypeExpr = "SUBSTR(v1, 1, INSTR(v1, ':') - 1)"
+		const ridExpr = "SUBSTR(v1, INSTR(v1, ':') + 1)"
+
+		where := []string{
+			"ptype = 'p'",
+			"INSTR(v1, ':') > 0",               // has the type:id shape
+			ridExpr + " NOT IN ('', '*')",      // concrete instance only (skip type-wide / bare "*")
+			"v0 NOT IN (SELECT id FROM roles)", // role subjects are not user object grants
+			"v0 <> ?",                          // exclude the public accessor
 		}
-		roleIDs, err := roleIDSet(c, db)
-		if err != nil {
+		args := []any{authz.PublicAccessorID}
+		if accessorID != "" {
+			where = append(where, "v0 = ?")
+			args = append(args, accessorID)
+		}
+		if resourceType != "" {
+			where = append(where, rtypeExpr+" = ?")
+			args = append(args, resourceType)
+		}
+		if resourceID != "" {
+			where = append(where, ridExpr+" = ?")
+			args = append(args, resourceID)
+		}
+		if search != "" {
+			like := "%" + search + "%"
+			where = append(where,
+				"(v0 IN (SELECT id FROM users WHERE account LIKE ? OR name LIKE ?) OR "+ridExpr+" LIKE ?)")
+			args = append(args, like, like, like)
+		}
+		whereSQL := strings.Join(where, " AND ")
+		qdb := db.WithContext(c.Request.Context())
+
+		// total = number of (accessor, object) groups after filtering.
+		var total int64
+		if err := qdb.Raw(
+			"SELECT COUNT(*) FROM (SELECT 1 FROM casbin_rule WHERE "+whereSQL+" GROUP BY v0, v1) t",
+			args...).Scan(&total).Error; err != nil {
 			serverError(c, err)
 			return
 		}
 
-		var userSearch map[string]bool
-		if search != "" {
-			userSearch, err = userIDsMatchingSearch(c, db, search)
-			if err != nil {
+		resp := gin.H{"total": total}
+		if c.Query("include_summary") == "true" {
+			var objects, grantees int64
+			if err := qdb.Raw("SELECT COUNT(DISTINCT v1) FROM casbin_rule WHERE "+whereSQL, args...).
+				Scan(&objects).Error; err != nil {
 				serverError(c, err)
 				return
 			}
-		}
-		searchLower := strings.ToLower(search)
-
-		entries := make([]gin.H, 0, len(grants))
-		objectIDs := make(map[string]bool)
-		granteeIDs := make(map[string]bool)
-		for _, gr := range grants {
-			if roleIDs[gr.AccessorID] || gr.AccessorID == authz.PublicAccessorID {
-				continue // not a user object grant
+			if err := qdb.Raw("SELECT COUNT(DISTINCT v0) FROM casbin_rule WHERE "+whereSQL, args...).
+				Scan(&grantees).Error; err != nil {
+				serverError(c, err)
+				return
 			}
-			if search != "" {
-				if !userSearch[gr.AccessorID] && !strings.Contains(strings.ToLower(gr.ResourceID), searchLower) {
-					continue
-				}
-			}
-			entries = append(entries, gin.H{
-				"accessor_id": gr.AccessorID,
-				"resource":    gin.H{"type": gr.ResourceType, "id": gr.ResourceID},
-				"operations":  gr.Operations,
-			})
-			objectIDs[gr.ResourceType+":"+gr.ResourceID] = true
-			granteeIDs[gr.AccessorID] = true
+			resp["summary"] = gin.H{"grants": total, "objects": objects, "grantees": grantees}
 		}
 
-		total := len(entries)
-		resp := gin.H{
-			"entries": entries,
-			"total":   total,
-		}
-		if c.Query("include_summary") == "true" {
-			resp["summary"] = gin.H{
-				"grants":   total,
-				"objects":  len(objectIDs),
-				"grantees": len(granteeIDs),
-			}
-		}
-
-		_, limitSet := c.GetQuery("limit")
-		if limitSet {
-			offset := atoiDefault(c.Query("offset"), 0)
+		// entries page: one row per (accessor, object), ops aggregated. Ordered by
+		// (v0, v1) so paging is deterministic.
+		rowsSQL := "SELECT v0 AS accessor, " + rtypeExpr + " AS rtype, " + ridExpr + " AS rid, " +
+			"GROUP_CONCAT(DISTINCT v2) AS ops FROM casbin_rule WHERE " + whereSQL +
+			" GROUP BY v0, v1 ORDER BY v0, v1"
+		rowArgs := append([]any{}, args...)
+		if _, limitSet := c.GetQuery("limit"); limitSet {
 			limit := atoiDefault(c.Query("limit"), 0)
 			if limit <= 0 {
 				limit = 50
@@ -108,20 +121,38 @@ func registerObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 			if limit > 500 {
 				limit = 500
 			}
+			offset := atoiDefault(c.Query("offset"), 0)
 			if offset < 0 {
 				offset = 0
 			}
-			if offset >= len(entries) {
-				entries = []gin.H{}
-			} else {
-				end := offset + limit
-				if end > len(entries) {
-					end = len(entries)
-				}
-				entries = entries[offset:end]
-			}
-			resp["entries"] = entries
+			rowsSQL += " LIMIT ? OFFSET ?"
+			rowArgs = append(rowArgs, limit, offset)
 		}
+
+		var rows []struct {
+			Accessor string
+			Rtype    string
+			Rid      string
+			Ops      string
+		}
+		if err := qdb.Raw(rowsSQL, rowArgs...).Scan(&rows).Error; err != nil {
+			serverError(c, err)
+			return
+		}
+
+		entries := make([]gin.H, 0, len(rows))
+		for _, row := range rows {
+			var ops []string
+			if row.Ops != "" {
+				ops = strings.Split(row.Ops, ",")
+			}
+			entries = append(entries, gin.H{
+				"accessor_id": row.Accessor,
+				"resource":    gin.H{"type": row.Rtype, "id": row.Rid},
+				"operations":  ops,
+			})
+		}
+		resp["entries"] = entries
 
 		c.JSON(http.StatusOK, resp)
 	})
@@ -225,42 +256,11 @@ func isUserAccessor(c *gin.Context, db *gorm.DB, id string) (bool, error) {
 	return n > 0, nil
 }
 
-// roleIDSet loads every role id into a lookup set, used to exclude role subjects
-// from the user object-grant listing.
-func roleIDSet(c *gin.Context, db *gorm.DB) (map[string]bool, error) {
-	var ids []string
-	if err := db.WithContext(c.Request.Context()).Model(&model.Role{}).
-		Pluck("id", &ids).Error; err != nil {
-		return nil, err
-	}
-	set := make(map[string]bool, len(ids))
-	for _, id := range ids {
-		set[id] = true
-	}
-	return set, nil
-}
-
 func objectGrantQueryParam(c *gin.Context, primary, alias string) string {
 	if v := c.Query(primary); v != "" {
 		return v
 	}
 	return c.Query(alias)
-}
-
-// userIDsMatchingSearch returns user ids whose account or name matches search.
-func userIDsMatchingSearch(c *gin.Context, db *gorm.DB, search string) (map[string]bool, error) {
-	var ids []string
-	like := "%" + search + "%"
-	if err := db.WithContext(c.Request.Context()).Model(&model.User{}).
-		Where("account LIKE ? OR name LIKE ?", like, like).
-		Pluck("id", &ids).Error; err != nil {
-		return nil, err
-	}
-	set := make(map[string]bool, len(ids))
-	for _, id := range ids {
-		set[id] = true
-	}
-	return set, nil
 }
 
 // catalogOpSet returns the resource type's registered operation ids as a set
