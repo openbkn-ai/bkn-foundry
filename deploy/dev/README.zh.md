@@ -67,7 +67,7 @@ docker stop $(docker ps -q --filter "label=io.x-k8s.kind.cluster=${CLUSTER}")
 
 - **资源（Docker Desktop / colima）**：建议给虚拟机 **≥ 10 CPU**、**≥ 14 GB 内存**、**60 GB 磁盘**。给少了的风险：
   - **8 GB** Docker 内存对「kind + 数据层 + Core」一般 **明显不够**（现象：Pod **RESTARTS** 很多、长期 **`0/1 Running`**、Docker/虚拟机休眠后更严重）。**~10 GB 可当作能试的底线**；低于约 **12 GiB** 时 **`mac.sh doctor` 会告警**（可用 `MAC_DOCTOR_MIN_MEM_GB` 覆盖）；要稳态仍建议下文 **14–16 GB**。
-  - 仅 `doc-convert` 一个 pod 就 request 1.5 CPU；6 CPU 时 7+ 个 pod `Insufficient cpu` 调度失败，8 CPU 也几乎打满。
+  - 全量栈 CPU 请求合计约 **4 核**：4 CPU 的 VM 无调度余量（会 `Insufficient cpu`），6 CPU 才有富余，故建议 **≥ 6**。
   - `--memory 12`（GB）实际分配 **11.66 GiB**（GB→GiB 换算损失），**低于 doctor 的 12 GiB 阈值**会报内存不足；建议直接 `--memory 14`。例：`colima start --cpu 10 --memory 14 --disk 60`。
   - **不要安装中途 resize**：Helm 部署完后停/起 VM 会触发下面的 Redis ACL bug。
 
