@@ -113,3 +113,31 @@ func Test_RestHandler_VerifyJsonContentType(t *testing.T) {
 		assert.Contains(t, w.Body.String(), "VegaBackend.InvalidRequestHeader.ContentType")
 	})
 }
+
+func Test_RestHandler_TraceContextMiddleware(t *testing.T) {
+	restoreGinMode := setGinMode()
+	defer restoreGinMode()
+
+	engine := gin.New()
+	handler := &restHandler{}
+	engine.Use(handler.TraceContextMiddleware())
+	engine.GET("/trace", func(c *gin.Context) {
+		traceCtx, ok := common.GetTraceContextFromCtx(c.Request.Context())
+		require.True(t, ok)
+		assert.Equal(t, "req_01JZVALIDREQUESTID000000024", traceCtx.RequestID)
+		assert.Equal(t, map[string]string{
+			"bkn.account.type": "service",
+			"bkn.runtime.env":  "test",
+		}, traceCtx.Baggage)
+		c.Status(http.StatusNoContent)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/trace", nil)
+	req.Header.Set(common.HeaderBKNRequestID, "req_01JZVALIDREQUESTID000000024")
+	req.Header.Set(common.HeaderBaggage, "bkn.account.type=service,bkn.account.id=user-1,bkn.runtime.env=test,prompt=raw")
+	w := httptest.NewRecorder()
+
+	engine.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusNoContent, w.Result().StatusCode)
+}

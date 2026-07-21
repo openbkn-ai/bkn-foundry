@@ -70,8 +70,8 @@ func (rqs *rawQueryService) Execute(ctx context.Context, req *interfaces.RawQuer
 		}
 	}()
 
-	// 记录请求参数
-	logger.Infof("RawQueryRequest - query_type: %s, resource_type: %s, query: %v", req.QueryType, req.ResourceType, req.Query)
+	// 记录查询摘要，避免完整 SQL / DSL / PII 进入普通日志。
+	logger.Infof("RawQueryRequest - query_type: %s, resource_type: %s, %s", req.QueryType, req.ResourceType, SafeQuerySummary(req.Query))
 
 	// 1. 校验请求
 	if err := rqs.validateRequest(ctx, req); err != nil {
@@ -537,7 +537,7 @@ func ensureCatalogEnabled(ctx context.Context, catalog *interfaces.Catalog) erro
 // replaceResourceIDWithSchemaTable 将resource_id替换为catalog.schema.table格式
 func (rqs *rawQueryService) replaceResourceIDWithSchemaTable(ctx context.Context, sql any, resourceIDs []string, catalog *interfaces.Catalog) (string, error) {
 	replacedSQL := sql.(string)
-	logger.Infof("Before replace - sql: %s, resource_ids: %v", replacedSQL, resourceIDs)
+	logger.Infof("Before replace - %s, resource_ids: %v", SafeQuerySummary(replacedSQL), resourceIDs)
 
 	for _, resourceID := range resourceIDs {
 		// 获取资源信息
@@ -561,14 +561,14 @@ func (rqs *rawQueryService) replaceResourceIDWithSchemaTable(ctx context.Context
 		replacedSQL = regexp.MustCompile(regexp.QuoteMeta(placeholder2)).ReplaceAllString(replacedSQL, resource.SourceIdentifier)
 	}
 
-	logger.Infof("After replace - sql: %s", replacedSQL)
+	logger.Infof("After replace - %s", SafeQuerySummary(replacedSQL))
 	return replacedSQL, nil
 }
 
 // executeSQLWithQueryType 执行SQL查询并记录日志
 func (rqs *rawQueryService) executeSQLWithQueryType(ctx context.Context, catalog *interfaces.Catalog, sql string, queryType string) (*interfaces.RawQueryResponse, error) {
 	// 打印SQL日志，包含查询类型
-	logger.Infof("Executing %s query - sql: %s, catalog: %s", queryType, sql, catalog.Name)
+	logger.Infof("Executing %s query - %s, catalog: %s", queryType, SafeQuerySummary(sql), catalog.Name)
 
 	// 创建connector
 	connector, err := factory.GetFactory().CreateConnectorInstance(ctx, catalog.ConnectorType, catalog.ConnectorCfg)
@@ -778,7 +778,7 @@ func (rqs *rawQueryService) executeStreamQueryNewSession(ctx context.Context, re
 	}
 
 	// 记录query_id和query的对应关系
-	logger.Infof("Created stream query session - query_id: %s, query: %s, resource_ids: %v", session.QueryID, originalSQL, resourceIDs)
+	logger.Infof("Created stream query session - query_id: %s, %s, resource_ids: %v", session.QueryID, SafeQuerySummary(originalSQL), resourceIDs)
 
 	// 7. 执行查询
 	return rqs.executeSQLWithSession(ctx, req, resourceIDs, session)
@@ -806,8 +806,8 @@ func (rqs *rawQueryService) executeStreamQueryWithSession(ctx context.Context, r
 	}
 
 	// 记录使用已有会话时的query_id和query的对应关系
-	logger.Infof("Using existing stream query session - query_id: %s, query: %s, resource_ids: %v, offset: %d",
-		session.QueryID, session.OriginalSQL, session.ResourceIDs, session.Offset)
+	logger.Infof("Using existing stream query session - query_id: %s, %s, resource_ids: %v, offset: %d",
+		session.QueryID, SafeQuerySummary(session.OriginalSQL), session.ResourceIDs, session.Offset)
 
 	// 3. 执行查询
 	return rqs.executeSQLWithSession(ctx, req, resourceIDs, session)
@@ -887,7 +887,7 @@ func (rqs *rawQueryService) executeSQLWithSession(ctx context.Context, req *inte
 	var finalSQL string
 	// 匹配 LIMIT 子句（可能包含 OFFSET）
 	limitRegex := regexp.MustCompile(`(?i)\bLIMIT\s+(\d+)\s*(?:OFFSET\s+(\d+))?\s*$`)
-	logger.Infof("Before LIMIT/OFFSET processing - sql: %s", sqlParseResult.SQL)
+	logger.Infof("Before LIMIT/OFFSET processing - %s", SafeQuerySummary(sqlParseResult.SQL))
 	logger.Infof("LIMIT regex match: %v", limitRegex.MatchString(sqlParseResult.SQL))
 
 	// 计算当前页应该返回的数据量
@@ -909,16 +909,16 @@ func (rqs *rawQueryService) executeSQLWithSession(ctx context.Context, req *inte
 		}
 		// 使用计算后的limitSize替换用户指定的LIMIT值，并添加或替换OFFSET
 		finalSQL = limitRegex.ReplaceAllString(sqlParseResult.SQL, fmt.Sprintf("LIMIT %d OFFSET %d", limitSize, currentSession.Offset))
-		logger.Infof("Replaced existing LIMIT clause - finalSQL: %s", finalSQL)
+		logger.Infof("Replaced existing LIMIT clause - %s", SafeQuerySummary(finalSQL))
 	} else {
 		// 如果没有包含LIMIT子句，使用StreamSize添加它
 		finalSQL = fmt.Sprintf("%s LIMIT %d OFFSET %d", sqlParseResult.SQL, limitSize, currentSession.Offset)
-		logger.Infof("Added new LIMIT clause - finalSQL: %s", finalSQL)
+		logger.Infof("Added new LIMIT clause - %s", SafeQuerySummary(finalSQL))
 	}
 
 	// 记录执行查询的详细信息
-	logger.Infof("Executing stream query - query_id: %s, offset: %d, stream_size: %d, sql: %s",
-		currentSession.QueryID, currentSession.Offset, currentSession.StreamSize, finalSQL)
+	logger.Infof("Executing stream query - query_id: %s, offset: %d, stream_size: %d, %s",
+		currentSession.QueryID, currentSession.Offset, currentSession.StreamSize, SafeQuerySummary(finalSQL))
 
 	// 7. 使用会话中的catalog执行查询
 	result, err := rqs.executeSQLWithQueryType(ctx, currentSession.Catalog, finalSQL, "stream")
