@@ -64,6 +64,13 @@ func NewLogicViewService(appSetting *common.AppSetting) interfaces.LogicViewServ
 func (lvs *logicViewService) QueryWithPaging(ctx context.Context, resource *interfaces.Resource,
 	params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
 	if params.Paging.Cursor != "" {
+		if resource.LogicType == interfaces.LogicType_Derived {
+			return query.ExecuteResourceDataCursorContinuation(ctx, accountIDFromContext(ctx), resource.ID, params.Paging.Cursor,
+				func(pageCtx context.Context, pageParams *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
+					view := &interfaces.LogicView{Resource: *resource}
+					return lvs.queryDerivedLogicView(pageCtx, view, pageParams)
+				})
+		}
 		response, err := lvs.qs.Execute(ctx, &interfaces.RawQueryRequest{Paging: params.Paging})
 		if err != nil {
 			return nil, err
@@ -84,8 +91,10 @@ func (lvs *logicViewService) QueryWithPaging(ctx context.Context, resource *inte
 	switch resource.LogicType {
 	case interfaces.LogicType_Derived:
 		if params.Paging.Mode == interfaces.PagingModeCursor {
-			return nil, rest.NewHTTPError(ctx, http.StatusNotImplemented, verrors.VegaBackend_Query_InvalidParameter).
-				WithErrorDetails("cursor paging is not implemented for derived logic views")
+			return query.ExecuteInitialResourceDataCursor(ctx, accountIDFromContext(ctx), resource, params,
+				func(pageCtx context.Context, pageParams *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
+					return lvs.queryDerivedLogicView(pageCtx, view, pageParams)
+				})
 		}
 		entries, total, err := lvs.queryDerivedLogicView(ctx, view, params)
 		if err != nil {
@@ -100,6 +109,11 @@ func (lvs *logicViewService) QueryWithPaging(ctx context.Context, resource *inte
 		otellog.LogError(ctx, "Unsupported logic view type", httpErr)
 		return nil, httpErr
 	}
+}
+
+func accountIDFromContext(ctx context.Context) string {
+	accountInfo, _ := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
+	return accountInfo.ID
 }
 
 func rawQueryResult(response *interfaces.RawQueryResponse) *interfaces.ResourceDataQueryResult {

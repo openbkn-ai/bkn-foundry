@@ -244,7 +244,7 @@ func (rds *resourceDataService) QueryWithPaging(ctx context.Context, resource *i
 		return rds.lvs.QueryWithPaging(ctx, resource, params)
 	}
 	if params.Paging.Cursor != "" {
-		if resource.Category != interfaces.ResourceCategoryTable && resource.Category != interfaces.ResourceCategoryIndex {
+		if !resourceDataCursorSupported(resource.Category) {
 			return nil, rest.NewHTTPError(ctx, http.StatusNotImplemented, verrors.VegaBackend_Query_InvalidParameter).
 				WithErrorDetails("cursor paging is not implemented for this resource category")
 		}
@@ -254,7 +254,7 @@ func (rds *resourceDataService) QueryWithPaging(ctx context.Context, resource *i
 			})
 	}
 	if params.Paging.Mode == interfaces.PagingModeCursor {
-		if resource.Category == interfaces.ResourceCategoryTable || resource.Category == interfaces.ResourceCategoryIndex {
+		if resourceDataCursorSupported(resource.Category) {
 			return querylogic.ExecuteInitialResourceDataCursor(ctx, accountIDFromContext(ctx), resource, params,
 				func(pageCtx context.Context, pageParams *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
 					return rds.query(pageCtx, resource, pageParams)
@@ -269,6 +269,13 @@ func (rds *resourceDataService) QueryWithPaging(ctx context.Context, resource *i
 		return nil, err
 	}
 	return &interfaces.ResourceDataQueryResult{Entries: entries, TotalCount: total, Paging: &interfaces.PagingResponse{}}, nil
+}
+
+func resourceDataCursorSupported(category string) bool {
+	return category == interfaces.ResourceCategoryTable ||
+		category == interfaces.ResourceCategoryIndex ||
+		category == interfaces.ResourceCategoryDataset ||
+		category == interfaces.ResourceCategoryFileset
 }
 
 func accountIDFromContext(ctx context.Context) string {
