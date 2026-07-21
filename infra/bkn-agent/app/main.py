@@ -130,6 +130,7 @@ async def unhandled_handler(request: Request, exc: Exception):
     契约里「4XX/5XX 一律 ErrorEnvelope」的约定，SDK 侧解析直接崩。
     """
     logger.exception("[BknAgent] unhandled error on %s %s", request.method, request.url.path)
+    ctx = observability.context_from_request(request)
     return JSONResponse(
         status_code=500,
         content={
@@ -138,7 +139,7 @@ async def unhandled_handler(request: Request, exc: Exception):
             "detail": f"{type(exc).__name__}: {exc}",
             "solution": "查看 bkn-agent 日志与 trace_id 定位；下游不可用时稍后重试。",
             "link": "",
-            "trace_id": observability.current_trace_id(),
+            "trace_id": observability.current_trace_id(ctx),
         },
-        headers=observability.response_headers(),
+        headers=observability.response_headers(ctx),
     )

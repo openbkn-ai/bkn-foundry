@@ -87,6 +87,10 @@ def parse_traceparent(value: str | None) -> tuple[Optional[str], Optional[str]]:
     return trace_id, span_id
 
 
+def format_traceparent(trace_id: str, span_id: str, flags: str = "01") -> str:
+    return f"00-{trace_id}-{span_id}-{flags}"
+
+
 def build_context(headers) -> TraceContext:
     """Build BKN Trace phase-one context from inbound request headers.
 
@@ -100,7 +104,7 @@ def build_context(headers) -> TraceContext:
     request_id = headers.get(REQUEST_ID_HEADER) or headers.get(LEGACY_REQUEST_ID_HEADER)
     if not _valid_request_id(request_id):
         request_id = _new_request_id()
-    traceparent = incoming_traceparent if span_id else f"00-{trace_id}-{_new_span_id()}-01"
+    traceparent = format_traceparent(trace_id, span_id) if span_id else format_traceparent(trace_id, _new_span_id())
     return TraceContext(
         trace_id=trace_id,
         request_id=request_id,
@@ -122,13 +126,17 @@ def current_context() -> Optional[TraceContext]:
     return _current_context.get()
 
 
-def current_trace_id() -> str:
-    ctx = current_context()
+def context_from_request(request) -> Optional[TraceContext]:
+    return getattr(getattr(request, "state", None), "bkn_trace_context", None)
+
+
+def current_trace_id(ctx: Optional[TraceContext] = None) -> str:
+    ctx = ctx or current_context()
     return ctx.trace_id if ctx else _new_trace_id()
 
 
-def response_headers() -> dict[str, str]:
-    ctx = current_context()
+def response_headers(ctx: Optional[TraceContext] = None) -> dict[str, str]:
+    ctx = ctx or current_context()
     if not ctx:
         return {}
     return {

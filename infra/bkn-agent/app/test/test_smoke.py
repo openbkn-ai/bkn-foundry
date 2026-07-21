@@ -33,6 +33,21 @@ def test_trace_context_propagates_request_id_and_traceparent():
     assert r.headers["traceparent"] == f"00-{trace_id}-{span_id}-01"
 
 
+def test_traceparent_is_normalized_before_response():
+    trace_id = "ABCDEFABCDEFABCDEFABCDEFABCDEFAB"
+    span_id = "ABCDEFABCDEFABCD"
+    r = client.get(
+        "/api/v1/health",
+        headers={
+            "traceparent": f" 00-{trace_id}-{span_id}-01 ",
+            "bkn-request-id": "req_external_124",
+        },
+    )
+    assert r.status_code == 200
+    assert r.headers["x-trace-id"] == trace_id.lower()
+    assert r.headers["traceparent"] == f"00-{trace_id.lower()}-{span_id.lower()}-01"
+
+
 def test_invalid_traceparent_is_not_reused():
     r = client.get(
         "/api/v1/health",
@@ -70,6 +85,41 @@ def test_validation_error_uses_platform_error_shape():
     assert body["code"] == "BknAgent.ParamError.FormatError"
     assert body["solution"]
     assert body["trace_id"] == r.headers["x-trace-id"]
+
+
+def test_unhandled_exception_preserves_trace_context(monkeypatch):
+    from app import dao
+    from app.db import get_session
+
+    async def fake_session():
+        yield None
+
+    async def fail_list_agents(session, page, size):
+        raise RuntimeError("db down")
+
+    app.dependency_overrides[get_session] = fake_session
+    monkeypatch.setattr(dao, "list_agents", fail_list_agents)
+    try:
+        trace_id = "1234567890abcdef1234567890abcdef"
+        span_id = "1234567890abcdef"
+        error_client = TestClient(app, raise_server_exceptions=False)
+        r = error_client.get(
+            "/api/bkn-agent/v1/agents",
+            headers={
+                **SVC,
+                "traceparent": f"00-{trace_id}-{span_id}-01",
+                "bkn-request-id": "req_external_500",
+            },
+        )
+    finally:
+        app.dependency_overrides.pop(get_session, None)
+
+    assert r.status_code == 500
+    assert r.headers["x-trace-id"] == trace_id
+    assert r.headers["bkn-request-id"] == "req_external_500"
+    assert r.headers["x-request-id"] == "req_external_500"
+    assert r.headers["traceparent"] == f"00-{trace_id}-{span_id}-01"
+    assert r.json()["trace_id"] == trace_id
 
 
 def test_thread_requires_identity():
