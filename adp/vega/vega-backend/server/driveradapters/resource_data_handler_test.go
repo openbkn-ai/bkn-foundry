@@ -80,12 +80,16 @@ func Test_ResourceDataRestHandler_QueryResourceData(t *testing.T) {
 		engine, rs, _, rds := setupResourceDataHandlerTest(t)
 		resource := sampleDatasetResource()
 		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(resource, nil)
-		rds.EXPECT().Query(gomock.Any(), resource, gomock.Any()).
-			DoAndReturn(func(_ context.Context, _ *interfaces.Resource, params *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
+		rds.EXPECT().QueryWithPaging(gomock.Any(), resource, gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
 				assert.True(t, params.NeedTotal)
 				assert.Equal(t, 0, params.Offset)
 				assert.Equal(t, 2, params.Limit)
-				return []map[string]any{{"id": "doc-1"}}, int64(1), nil
+				return &interfaces.ResourceDataQueryResult{
+					Entries:    []map[string]any{{"id": "doc-1"}},
+					TotalCount: 1,
+					Paging:     &interfaces.PagingResponse{},
+				}, nil
 			})
 
 		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/resources/res-1/data", strings.NewReader(`{"paging":{"size":2},"need_total":true}`))

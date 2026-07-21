@@ -31,16 +31,7 @@ func ValidateResourceDataQueryParams(ctx context.Context, params *interfaces.Res
 		}
 	}
 
-	if params.Paging.Cursor != "" || params.Paging.Mode == interfaces.PagingModeCursor {
-		return rest.NewHTTPError(ctx, http.StatusNotImplemented, verrors.VegaBackend_Query_InvalidParameter).
-			WithErrorDetails("resource data cursor paging is not implemented yet")
-	}
-	params.Paging = params.Paging.Normalized()
-	params.Offset = params.Paging.Offset
-	params.Limit = params.Paging.Size
-
-	// 校验分页参数
-	err := validatePaginationParams(ctx, params.Offset, params.Limit)
+	err := validateResourceDataPaging(ctx, params)
 	if err != nil {
 		return err
 	}
@@ -75,6 +66,47 @@ func ValidateResourceDataQueryParams(ctx context.Context, params *interfaces.Res
 	}
 
 	return nil
+}
+
+func validateResourceDataPaging(ctx context.Context, params *interfaces.ResourceDataQueryParams) error {
+	paging := params.Paging
+	if paging.Cursor != "" {
+		if paging.Mode != "" || paging.Offset != 0 || paging.Size != 0 || paging.KeepAliveSec != 0 {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+				WithErrorDetails("cursor continuation must contain only paging.cursor")
+		}
+		params.Offset = 0
+		params.Limit = 0
+		return nil
+	}
+
+	if paging.Mode == interfaces.PagingModeCursor && paging.Size == 0 {
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Limit).
+			WithErrorDetails("paging.size is required for cursor paging")
+	}
+	params.Paging = paging.Normalized()
+	params.Offset = params.Paging.Offset
+	params.Limit = params.Paging.Size
+	if params.Paging.Mode == interfaces.PagingModeCursor {
+		if params.Offset < 0 {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Offset).
+				WithErrorDetails("paging.offset must not be negative")
+		}
+		if params.Limit < interfaces.MinCursorPageSize || params.Limit > interfaces.MaxCursorPageSize {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Limit).
+				WithErrorDetails(fmt.Sprintf("paging.size must be in the range of [%d,%d] for cursor paging", interfaces.MinCursorPageSize, interfaces.MaxCursorPageSize))
+		}
+		if params.Paging.KeepAliveSec != 0 && (params.Paging.KeepAliveSec < interfaces.MinCursorKeepAliveSec || params.Paging.KeepAliveSec > interfaces.MaxCursorKeepAliveSec) {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+				WithErrorDetails(fmt.Sprintf("paging.keep_alive_sec must be between %d and %d", interfaces.MinCursorKeepAliveSec, interfaces.MaxCursorKeepAliveSec))
+		}
+		return nil
+	}
+	if params.Paging.Mode != interfaces.PagingModeSingle {
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+			WithErrorDetails("paging.mode must be either single or cursor")
+	}
+	return validatePaginationParams(ctx, params.Offset, params.Limit)
 }
 
 func validateFormat(ctx context.Context, format string) error {

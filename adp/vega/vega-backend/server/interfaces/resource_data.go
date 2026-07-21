@@ -85,3 +85,12 @@ type ResourceDataQueryParams struct {
 	GroupBy     []*GroupByItem `json:"group_by,omitempty"`    // 分组维度
 	Having      *HavingClause  `json:"having,omitempty"`      // 对聚合结果过滤（HAVING）
 }
+
+// ResourceDataQueryResult is the common response model for resource-data and
+// logic-view queries. Paging follows the same single/cursor contract as raw
+// queries.
+type ResourceDataQueryResult struct {
+	Entries    []map[string]any
+	TotalCount int64
+	Paging     *PagingResponse
+}

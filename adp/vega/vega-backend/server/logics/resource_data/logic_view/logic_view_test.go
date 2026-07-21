@@ -7,22 +7,47 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"vega-backend/interfaces"
+	vmock "vega-backend/interfaces/mock"
 )
 
-func TestLogicViewServiceQuery(t *testing.T) {
+func TestLogicViewServiceQueryWithPaging(t *testing.T) {
 	t.Run("returns error for unsupported logic type", func(t *testing.T) {
 		svc := &logicViewService{}
-		rows, total, err := svc.Query(context.Background(), &interfaces.Resource{
+		result, err := svc.QueryWithPaging(context.Background(), &interfaces.Resource{
 			ID:        "logic-1",
 			LogicType: "unsupported",
 		}, &interfaces.ResourceDataQueryParams{})
 
 		require.Error(t, err)
-		assert.Nil(t, rows)
-		assert.Zero(t, total)
+		assert.Nil(t, result)
 		assert.Contains(t, err.Error(), "not supported")
+	})
+}
+
+func TestLogicViewServiceCursorContinuation(t *testing.T) {
+	t.Run("delegates cursor continuation to raw query service", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		queryService := vmock.NewMockRawQueryService(ctrl)
+		svc := &logicViewService{qs: queryService}
+		nextCursor := "next"
+		queryService.EXPECT().Execute(gomock.Any(), gomock.Cond(func(req *interfaces.RawQueryRequest) bool {
+			return req.Query == nil && req.QueryFormat == "" && req.Paging.Cursor == "opaque-cursor"
+		})).Return(&interfaces.RawQueryResponse{
+			Entries:    []map[string]any{{"id": "row-1"}},
+			TotalCount: 1,
+			Paging:     &interfaces.PagingResponse{NextCursor: &nextCursor},
+		}, nil)
+
+		result, err := svc.QueryWithPaging(context.Background(), &interfaces.Resource{}, &interfaces.ResourceDataQueryParams{
+			Paging: interfaces.PagingRequest{Cursor: "opaque-cursor"},
+		})
+
+		require.NoError(t, err)
+		assert.Equal(t, []map[string]any{{"id": "row-1"}}, result.Entries)
+		assert.Equal(t, &nextCursor, result.Paging.NextCursor)
 	})
 }
 

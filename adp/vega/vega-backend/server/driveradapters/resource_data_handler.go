@@ -133,7 +133,7 @@ func (r *restHandler) queryResourceData(c *gin.Context, ctx context.Context, spa
 		otellog.LogWarn(ctx, "Query hit deprecated resource: "+warning)
 	}
 
-	entries, total, err := r.rds.Query(ctx, resource, &params)
+	result, err := r.rds.QueryWithPaging(ctx, resource, &params)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
 		otellog.LogError(ctx, "Query resource data failed", httpErr)
@@ -143,10 +143,13 @@ func (r *restHandler) queryResourceData(c *gin.Context, ctx context.Context, spa
 	}
 
 	resultData := map[string]any{
-		"entries": entries,
+		"entries": result.Entries,
 	}
 	if params.NeedTotal {
-		resultData["total_count"] = total
+		resultData["total_count"] = result.TotalCount
+	}
+	if result.Paging != nil {
+		resultData["paging"] = result.Paging
 	}
 	if warning != "" {
 		resultData["warnings"] = []string{warning}

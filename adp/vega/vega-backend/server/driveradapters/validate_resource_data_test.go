@@ -57,6 +57,19 @@ func TestValidateResourceDataQueryParams(t *testing.T) {
 		assert.Equal(t, "name", params.FilterCondCfg.Name)
 	})
 
+	t.Run("accepts initial cursor paging and a cursor-only continuation", func(t *testing.T) {
+		initial := &interfaces.ResourceDataQueryParams{
+			Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Offset: 50, Size: interfaces.MinCursorPageSize},
+		}
+		require.NoError(t, ValidateResourceDataQueryParams(ctx, initial))
+		assert.Equal(t, 50, initial.Offset)
+
+		continuation := &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Cursor: "opaque-cursor"}}
+		require.NoError(t, ValidateResourceDataQueryParams(ctx, continuation))
+		assert.Zero(t, continuation.Offset)
+		assert.Zero(t, continuation.Limit)
+	})
+
 	t.Run("returns errors for invalid parameters", func(t *testing.T) {
 		tests := []struct {
 			name   string
@@ -64,6 +77,8 @@ func TestValidateResourceDataQueryParams(t *testing.T) {
 		}{
 			{name: "invalid format", params: &interfaces.ResourceDataQueryParams{Format: "csv", Limit: 10}},
 			{name: "negative offset", params: &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Offset: -1, Size: 10}}},
+			{name: "cursor continuation has first-page fields", params: &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Cursor: "opaque-cursor", Size: 10}}},
+			{name: "cursor size is zero", params: &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor}}},
 			{name: "offset plus limit too large", params: &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Offset: interfaces.MAX_SEARCH_SIZE, Size: 1}}},
 			{name: "invalid sort direction", params: &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Size: 10}, Sort: []*interfaces.SortField{{Field: "name", Direction: "up"}}}},
 			{name: "missing filter operation", params: &interfaces.ResourceDataQueryParams{Limit: 10, FilterCondition: map[string]any{"field": "name"}}},

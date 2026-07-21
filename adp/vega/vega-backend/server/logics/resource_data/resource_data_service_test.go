@@ -73,7 +73,7 @@ func TestResourceDataServiceQuery(t *testing.T) {
 		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).
 			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: false}, nil)
 
-		_, _, err := rds.Query(context.Background(), resource, &interfaces.ResourceDataQueryParams{})
+		_, _, err := rds.query(context.Background(), resource, &interfaces.ResourceDataQueryParams{})
 		assertCatalogDisabledError(t, err)
 	})
 
@@ -99,7 +99,7 @@ func TestResourceDataServiceQuery(t *testing.T) {
 		mockLIM.EXPECT().ListDocuments(gomock.Any(), resource.LocalIndexName, resource, params).
 			Return(wantRows, int64(1), nil)
 
-		rows, total, err := rds.Query(context.Background(), resource, params)
+		rows, total, err := rds.query(context.Background(), resource, params)
 		require.NoError(t, err)
 		assert.Equal(t, int64(1), total)
 		assert.Equal(t, wantRows, rows)
@@ -140,7 +140,7 @@ func TestResourceDataServiceQuery(t *testing.T) {
 				return wantRows, int64(1), nil
 			})
 
-		rows, total, err := rds.Query(context.Background(), resource, params)
+		rows, total, err := rds.query(context.Background(), resource, params)
 
 		require.NoError(t, err)
 		assert.Equal(t, wantRows, rows)
@@ -171,15 +171,15 @@ func TestResourceDataServiceQuery(t *testing.T) {
 
 		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).
 			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
-		mockLVS.EXPECT().Query(gomock.Any(), resource, params).
+		mockLVS.EXPECT().QueryWithPaging(gomock.Any(), resource, params).
 			DoAndReturn(func(ctx context.Context, gotResource *interfaces.Resource,
-				gotParams *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
+				gotParams *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
 				assert.Equal(t, []*interfaces.SortField{{Field: "name", Direction: "asc"}}, gotParams.Sort)
 				assert.Equal(t, []string{"name"}, gotParams.OutputFields)
-				return wantRows, int64(1), nil
+				return &interfaces.ResourceDataQueryResult{Entries: wantRows, TotalCount: 1, Paging: &interfaces.PagingResponse{}}, nil
 			})
 
-		rows, total, err := rds.Query(context.Background(), resource, params)
+		rows, total, err := rds.query(context.Background(), resource, params)
 
 		require.NoError(t, err)
 		assert.Equal(t, wantRows, rows)
