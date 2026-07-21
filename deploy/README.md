@@ -56,7 +56,7 @@ cd deploy   # repository deploy/ directory
 bash ./dev/mac.sh doctor
 # optional: install missing tools via Homebrew — bash ./dev/mac.sh doctor --fix (or -y doctor --fix to skip confirm)
 bash ./dev/mac.sh cluster up
-bash ./dev/mac.sh bkn-foundry install --minimum   # implies --minimum; bundled data-services first (same as data-services install)
+bash ./dev/mac.sh bkn-foundry install   # full stack incl. mandatory bkn-safe (auth on); bundled data-services first (same as data-services install)
 # optional: bash ./dev/mac.sh data-services install   # only if you want the data layer without Core, or to refresh it
 # optional: bash ./dev/mac.sh bkn-foundry download
 # optional: bash ./dev/mac.sh onboard

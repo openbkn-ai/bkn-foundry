@@ -68,7 +68,7 @@ See also: top-of-file comments in [`mac.sh`](mac.sh), `bash ./dev/mac.sh -h`.
 
 - **Resources (Docker Desktop / colima)**: give the VM **≥ 10 CPU**, **≥ 14 GB**, **60 GB disk** for a comfortable install. Less is risky:
   - **8 GB** Docker RAM is usually **too small** for this stack (symptoms: high pod **RESTARTS**, long-lived **`0/1 Running`**, or thrashing after the VM sleeps). Treat **~10 GB as a practical floor** to even try; **`mac.sh doctor` warns below ~12 GiB** (`MAC_DOCTOR_MIN_MEM_GB`); use **14–16 GB** for stable headroom as below.
-  - `doc-convert` alone requests 1.5 CPU; 6 CPU schedulers fail with `Insufficient cpu` on 7+ Pending pods, 8 CPU still leaves no headroom.
+  - The full stack requests ~**4 CPU** total: a 4 CPU VM has no scheduling headroom (`Insufficient cpu`), 6 CPU leaves room, so give it **≥ 6**.
   - `--memory 12` (GB) actually allocates **11.66 GiB** to the VM (GB→GiB conversion), which is **below the 12 GiB doctor threshold** — set `--memory 14` to clear it. Example: `colima start --cpu 10 --memory 14 --disk 60`.
   - **Avoid resizing mid-install.** Stopping/starting the VM after Helm releases are deployed has triggered the Redis ACL bug below.
 
@@ -97,7 +97,7 @@ See also: top-of-file comments in [`mac.sh`](mac.sh), `bash ./dev/mac.sh -h`.
   kind load docker-image <img:tag> --name bkn-dev        # push a host-built image into kind
   ```
 
-- **`mac.sh isf install` switches the stack to HTTPS automatically**: ISF (hydra/oauth2) requires HTTPS issuers, so the install path will (1) flip `mac-config.yaml` `accessAddress` to `https/443`, (2) generate a self-signed TLS cert + Secret `bkn-ingress-tls`, (3) `helm upgrade` any already-installed `bkn-foundry` releases so they pick up the new https `accessAddress`, then (4) install ISF and patch its ingress with TLS. Total time ~10 min on a fresh install. Browsers will warn on the self-signed cert — accept once. To stay on HTTP, just don't install ISF (`--minimum` already disables `auth.enabled`).
+- **`mac.sh isf install` switches the stack to HTTPS automatically**: ISF (hydra/oauth2) requires HTTPS issuers, so the install path will (1) flip `mac-config.yaml` `accessAddress` to `https/443`, (2) generate a self-signed TLS cert + Secret `bkn-ingress-tls`, (3) `helm upgrade` any already-installed `bkn-foundry` releases so they pick up the new https `accessAddress`, then (4) install ISF and patch its ingress with TLS. Total time ~10 min on a fresh install. Browsers will warn on the self-signed cert — accept once. To stay on HTTP, just don't install ISF — the default full stack (incl. bkn-safe) also runs on HTTP; only ISF forces HTTPS.
 
 - **Quick verify after install** (proxy unset, Core pods Ready):
   ```bash
