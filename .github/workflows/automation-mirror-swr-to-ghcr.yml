@@ -46,13 +46,6 @@ jobs:
       # image, not an openbkn rebuild. If webhooks are enabled, source it from
       # registry.k8s.io directly rather than mirroring it here.
       MIRRORS: |
-        google_containers/kube-apiserver:v1.28.15
-        google_containers/kube-controller-manager:v1.28.15
-        google_containers/kube-scheduler:v1.28.15
-        google_containers/kube-proxy:v1.28.15 
-        google_containers/pause:v3.9
-        google_containers/etcd:v3.5.15-0
-        google_containers/coredns:v1.10.1
         flannel/flannel-cni-plugin:v1.5.1-flannel1
         flannel/flannel:v0.25.5
         rancher/local-path-provisioner:v0.0.32
