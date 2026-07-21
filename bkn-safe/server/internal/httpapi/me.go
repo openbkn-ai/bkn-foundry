@@ -153,7 +153,17 @@ func registerMe(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB, dir *directo
 	}
 
 	// GET /permissions -> { is_admin, permissions:[ { resource{type,id}, operations:[...] } ] }
-	// Includes role-inherited grants; type-wide patterns keep id "*".
+	// Returns the EFFECTIVE (collapsed) authorization, not one row per instance:
+	// a resource-wildcard holder gets a single {type:"*",id:"*",ops:["*"]} row;
+	// everyone else gets one type-wide row per type plus an instance row only
+	// where that instance's ops exceed the type-wide set (carrying just the
+	// surplus). The frontend unions the id:"*" row with instance rows to judge
+	// a concrete (type,id). is_admin stays a separate flag (CanAdmin), decoupled
+	// from whether permissions is the wildcard single row.
+	//
+	// Optional scope filters: ?resource_type=<T> narrows to one type;
+	// &resource_id=<id1,id2,...> (comma-separated) narrows the instance rows,
+	// keeping the type-wide id:"*" row. resource_id requires resource_type.
 	g.GET("/permissions", func(c *gin.Context) {
 		accessorID := c.GetString(ctxAccessorID)
 		isAdmin, err := e.CanAdmin(accessorID)
@@ -161,7 +171,23 @@ func registerMe(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB, dir *directo
 			serverError(c, err)
 			return
 		}
-		grants, err := e.AccessorPermissions(accessorID)
+		resourceType := c.Query("resource_type")
+		var resourceIDs []string
+		if raw := c.Query("resource_id"); raw != "" {
+			for _, id := range strings.Split(raw, ",") {
+				if id = strings.TrimSpace(id); id != "" {
+					resourceIDs = append(resourceIDs, id)
+				}
+			}
+		}
+		if len(resourceIDs) > 0 && resourceType == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "resource_id requires resource_type"})
+			return
+		}
+		_, grants, err := e.EffectivePermissions(accessorID, authz.PermQuery{
+			ResourceType: resourceType,
+			ResourceIDs:  resourceIDs,
+		})
 		if err != nil {
 			serverError(c, err)
 			return

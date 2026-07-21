@@ -195,18 +195,6 @@ func (en *Enforcer) RolePermissions(roleID string) ([]RoleGrant, error) {
 	return groupGrantsByObject(rows), nil
 }
 
-// AccessorPermissions lists every policy grant effective for an accessor —
-// its direct per-object grants plus everything inherited via roles — grouped
-// by object pattern. The accessor's own permission list (the "what can I do"
-// self-service read); type-wide "*" patterns are kept verbatim.
-func (en *Enforcer) AccessorPermissions(accessorID string) ([]RoleGrant, error) {
-	rows, err := en.e.GetImplicitPermissionsForUser(accessorID)
-	if err != nil {
-		return nil, err
-	}
-	return groupGrantsByObject(rows), nil
-}
-
 // groupGrantsByObject collapses raw (sub, obj, act) policy rows into per-object
 // grants, de-duplicating acts (the same grant can arrive via several roles).
 // Objects follow first appearance; ops within an object follow row order.
@@ -234,6 +222,119 @@ func groupGrantsByObject(rows [][]string) []RoleGrant {
 		out = append(out, RoleGrant{Object: o, Operations: ops[o]})
 	}
 	return out
+}
+
+// PermQuery narrows an EffectivePermissions read. The zero value returns the
+// full effective set; ResourceType scopes to one type and ResourceIDs further
+// narrows the instance exception rows (ResourceIDs is only meaningful with a
+// ResourceType set).
+type PermQuery struct {
+	ResourceType string   // "" = all types
+	ResourceIDs  []string // empty = all instances of the type
+}
+
+// EffectivePermissions returns the accessor's authorization as a COLLAPSED,
+// effective set rather than one row per (instance, op) — the payload behind the
+// /me/permissions self-service read. It exists to keep that response bounded:
+// its size is proportional to (#types + #real exceptions), not to the number of
+// resource instances the accessor can see.
+//
+// Two shapes:
+//
+//   - Resource wildcard holder: if the accessor holds a bare "*"/"*" grant, the
+//     whole set collapses to a single {type:"*", id:"*", ops:["*"]} row (scoped:
+//     projected onto the queried type as {type, id:"*", ops:["*"]}). This is
+//     gated on the ACTUAL wildcard grant, NOT on CanAdmin/is_admin: an
+//     admin-console-only role holds safe_admin:console:manage without the
+//     resource wildcard and must not be reported as all-powerful over every
+//     resource. hasWildcard reports whether this short-circuit fired.
+//
+//   - Otherwise, per type: one type-wide row {type, id:"*", typeWideOps} plus an
+//     instance row ONLY when that instance grants ops beyond its type-wide set
+//     (the row carries just the surplus ops). Instances fully covered by a
+//     type-wide grant are dropped. Callers/frontends judge "may do op on
+//     (type,id)" as op ∈ typeWide(type) OR op ∈ instance(type,id) — i.e. they
+//     union the id:"*" row with the instance row.
+//
+// Object/op order follows GetImplicitPermissionsForUser; callers treat the
+// result as sets.
+func (en *Enforcer) EffectivePermissions(accessorID string, q PermQuery) (hasWildcard bool, grants []RoleGrant, err error) {
+	rows, err := en.e.GetImplicitPermissionsForUser(accessorID)
+	if err != nil {
+		return false, nil, err
+	}
+	grouped := groupGrantsByObject(rows)
+
+	// Wildcard short-circuit — keyed on a real "*"/"*" grant, not is_admin.
+	for _, g := range grouped {
+		rtype, _ := splitObjectKey(g.Object)
+		if rtype == ActAll && hasOp(g.Operations, ActAll) {
+			if q.ResourceType == "" {
+				return true, []RoleGrant{{Object: ActAll + ":" + ActAll, Operations: []string{ActAll}}}, nil
+			}
+			return true, []RoleGrant{{Object: q.ResourceType + ":*", Operations: []string{ActAll}}}, nil
+		}
+	}
+
+	// Type-wide op set per type (the id "*" rows).
+	typeWide := map[string]map[string]bool{}
+	for _, g := range grouped {
+		rtype, rid := splitObjectKey(g.Object)
+		if rid == "*" {
+			if typeWide[rtype] == nil {
+				typeWide[rtype] = map[string]bool{}
+			}
+			for _, op := range g.Operations {
+				typeWide[rtype][op] = true
+			}
+		}
+	}
+
+	idFilter := map[string]bool{}
+	for _, id := range q.ResourceIDs {
+		idFilter[id] = true
+	}
+
+	out := make([]RoleGrant, 0, len(grouped))
+	for _, g := range grouped {
+		rtype, rid := splitObjectKey(g.Object)
+		if q.ResourceType != "" && rtype != q.ResourceType {
+			continue
+		}
+		if rid == "*" {
+			// Type-wide row: always kept within scope; the frontend unions on it.
+			out = append(out, RoleGrant{Object: g.Object, Operations: g.Operations})
+			continue
+		}
+		// Instance row: keep only ops beyond the type-wide set; drop if fully
+		// covered (this is what removes the per-instance fan-out).
+		tw := typeWide[rtype]
+		extra := make([]string, 0, len(g.Operations))
+		for _, op := range g.Operations {
+			if tw[op] {
+				continue
+			}
+			extra = append(extra, op)
+		}
+		if len(extra) == 0 {
+			continue
+		}
+		if len(idFilter) > 0 && !idFilter[rid] {
+			continue
+		}
+		out = append(out, RoleGrant{Object: g.Object, Operations: extra})
+	}
+	return false, out, nil
+}
+
+// hasOp reports whether ops contains want.
+func hasOp(ops []string, want string) bool {
+	for _, op := range ops {
+		if op == want {
+			return true
+		}
+	}
+	return false
 }
 
 // RemoveRoleCompletely purges every casbin trace of a role: its bindings
