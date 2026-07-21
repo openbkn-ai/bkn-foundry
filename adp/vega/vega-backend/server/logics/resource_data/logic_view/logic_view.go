@@ -432,9 +432,9 @@ func withoutPagingLimit(params *interfaces.ResourceDataQueryParams) interfaces.R
 
 func rawPaging(params *interfaces.ResourceDataQueryParams) interfaces.PagingRequest {
 	paging := params.Paging
-	if paging.Mode == "" && paging.Cursor == "" && paging.Size == 0 && (params.Offset != 0 || params.Limit != 0) {
+	if paging.Mode == "" && paging.Cursor == "" && paging.Limit == 0 && (params.Offset != 0 || params.Limit != 0) {
 		paging.Offset = params.Offset
-		paging.Size = params.Limit
+		paging.Limit = params.Limit
 	}
 	return paging
 }

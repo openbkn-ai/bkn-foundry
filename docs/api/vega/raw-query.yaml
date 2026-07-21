@@ -171,9 +171,9 @@ components:
           type: string
           enum: [single, cursor]
           default: single
-        size:
+        limit:
           type: integer
-          description: cursor 首次请求的页大小；cursor 模式必填，范围 [1, 10000]。single 模式忽略该字段。
+          description: 单次最多返回条数；cursor 首次请求必填，范围 [1, 10000]。single 模式省略时使用默认值。
           minimum: 1
           maximum: 10000
         offset:

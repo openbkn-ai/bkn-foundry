@@ -127,7 +127,7 @@ func (m *cursorSessionManager) createResourceData(accountID string, resource *in
 		ResourceDataResourceID: resource.ID,
 		ResourceDataParams:     cloneResourceDataQueryParams(params),
 		ResourceDataCategory:   resource.Category,
-		PageSize:               params.Paging.Size,
+		PageSize:               params.Paging.Limit,
 		KeepAliveSec:           keepAliveSec,
 		CreatedAtSec:           now,
 		ExpiresAtSec:           now + int64(keepAliveSec),

@@ -34,8 +34,8 @@ func TestRawQueryContractValidate(t *testing.T) {
 				QueryFormat:  QueryFormatSQL,
 				InputDialect: "trino",
 				Paging: PagingRequest{
-					Mode: PagingModeCursor,
-					Size: 100,
+					Mode:  PagingModeCursor,
+					Limit: 100,
 				},
 			},
 		},
@@ -46,7 +46,7 @@ func TestRawQueryContractValidate(t *testing.T) {
 				QueryFormat: QueryFormatSQL,
 				Paging: PagingRequest{
 					Mode:   PagingModeCursor,
-					Size:   MinCursorPageSize,
+					Limit:  MinCursorPageLimit,
 					Offset: 20,
 				},
 			},
@@ -65,7 +65,7 @@ func TestRawQueryContractValidate(t *testing.T) {
 				Query:        map[string]any{"resource_id": "resource-1", "sort": []any{"timestamp"}},
 				QueryFormat:  QueryFormatDSL,
 				InputDialect: "opensearch",
-				Paging:       PagingRequest{Mode: PagingModeCursor, Size: MinCursorPageSize},
+				Paging:       PagingRequest{Mode: PagingModeCursor, Limit: MinCursorPageLimit},
 			},
 		},
 		{
@@ -113,7 +113,7 @@ func TestRawQueryContractValidate(t *testing.T) {
 				QueryFormat: QueryFormatSQL,
 				Paging:      PagingRequest{Mode: PagingModeCursor},
 			},
-			wantErr: "paging.size is required",
+			wantErr: "paging.limit is required",
 		},
 		{
 			name: "rejects fields on continuation",
@@ -139,7 +139,7 @@ func TestRawQueryContractValidate(t *testing.T) {
 				QueryFormat: QueryFormatSQL,
 				Paging: PagingRequest{
 					Mode:         PagingModeCursor,
-					Size:         MinCursorPageSize,
+					Limit:        MinCursorPageLimit,
 					KeepAliveSec: MaxCursorKeepAliveSec + 1,
 				},
 			},
@@ -151,7 +151,7 @@ func TestRawQueryContractValidate(t *testing.T) {
 				Query:        map[string]any{"resource_id": "resource-1", "sort": []any{"timestamp"}, "search_after": []any{"cursor"}},
 				QueryFormat:  QueryFormatDSL,
 				InputDialect: "opensearch",
-				Paging:       PagingRequest{Mode: PagingModeCursor, Size: MinCursorPageSize},
+				Paging:       PagingRequest{Mode: PagingModeCursor, Limit: MinCursorPageLimit},
 			},
 		},
 	}
@@ -179,6 +179,17 @@ func TestRawQueryResponseDoesNotExposeLegacyPagingState(t *testing.T) {
 	assert.NotContains(t, string(encoded), "query_id")
 	assert.NotContains(t, string(encoded), "search_after")
 	assert.NotContains(t, string(encoded), "offset")
+}
+
+func TestPagingRequestRejectsRemovedSizeField(t *testing.T) {
+	var request PagingRequest
+	err := sonic.Unmarshal([]byte(`{"size": 10}`), &request)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "paging.size is not supported")
+
+	err = sonic.Unmarshal([]byte(`{"limit": 10}`), &request)
+	require.NoError(t, err)
+	assert.Equal(t, 10, request.Limit)
 }
 
 func TestRawQueryRequestRejectsContinuationTimeout(t *testing.T) {

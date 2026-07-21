@@ -193,7 +193,7 @@ func TestResourceDataServiceRejectsIndexAggregationCursor(t *testing.T) {
 		ID:       "index-1",
 		Category: interfaces.ResourceCategoryIndex,
 	}, &interfaces.ResourceDataQueryParams{
-		Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Size: 10},
+		Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 10},
 		Sort:   []*interfaces.SortField{{Field: "timestamp", Direction: "desc"}},
 		GroupBy: []*interfaces.GroupByItem{
 			{Property: "category"},

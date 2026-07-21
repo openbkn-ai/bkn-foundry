@@ -124,7 +124,7 @@ func (rqs *rawQueryService) executeInitialSQLQuery(ctx context.Context, req *int
 	if err != nil {
 		return nil, err
 	}
-	finalSQL := applySingleQueryPaging(prepared.sql, req.Paging.Offset, req.Paging.Size)
+	finalSQL := applySingleQueryPaging(prepared.sql, req.Paging.Offset, req.Paging.Limit)
 
 	result, err := rqs.executeSQL(ctx, prepared.catalog, finalSQL, interfaces.PagingModeSingle)
 	if err != nil {
@@ -144,7 +144,7 @@ func (rqs *rawQueryService) executeInitialSQLCursor(ctx context.Context, req *in
 		prepared.catalog.ID,
 		prepared.resourceIDs,
 		prepared.sql,
-		req.Paging.Size,
+		req.Paging.Limit,
 		req.Paging.KeepAliveSec,
 		req.QueryTimeoutSec,
 	)
@@ -329,7 +329,7 @@ func (rqs *rawQueryService) executeInitialOpenSearchCursor(ctx context.Context, 
 			WithErrorDetails("cursor paging does not support OpenSearch aggregation queries")
 	}
 	session, err := rawQueryCursorSessions.create(
-		accountIDFromContext(ctx), catalog.ID, []string{queryResourceID(req.Query)}, "", req.Paging.Size, req.Paging.KeepAliveSec, req.QueryTimeoutSec,
+		accountIDFromContext(ctx), catalog.ID, []string{queryResourceID(req.Query)}, "", req.Paging.Limit, req.Paging.KeepAliveSec, req.QueryTimeoutSec,
 	)
 	if err != nil {
 		return nil, cursorSessionLimitError(ctx)
@@ -413,7 +413,7 @@ func (rqs *rawQueryService) prepareOpenSearchCursorQuery(ctx context.Context, re
 			prepared[key] = value
 		}
 	}
-	prepared["size"] = req.Paging.Size
+	prepared["size"] = req.Paging.Limit
 	if req.Paging.Offset > 0 {
 		prepared["from"] = req.Paging.Offset
 	}
@@ -473,7 +473,7 @@ func (rqs *rawQueryService) executeInitialDSLQuery(ctx context.Context, req *int
 	// search_after is cursor-internal state. A client-supplied value is never
 	// forwarded; cursor continuation supplies the server-owned value instead.
 	delete(queryMap, "search_after")
-	queryMap["size"] = req.Paging.Size
+	queryMap["size"] = req.Paging.Limit
 	queryMap["from"] = req.Paging.Offset
 	resourceID, _ := queryMap["resource_id"].(string)
 	if resourceID == "" {

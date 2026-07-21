@@ -7,6 +7,7 @@
 package interfaces
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 )
@@ -19,9 +20,9 @@ const (
 	PagingModeCursor PagingMode = "cursor"
 
 	DefaultInputDialect       = "postgres"
-	DefaultPageSize           = 20
-	MinCursorPageSize         = 1
-	MaxCursorPageSize         = 10000
+	DefaultPageLimit          = 20
+	MinCursorPageLimit        = 1
+	MaxCursorPageLimit        = 10000
 	DefaultCursorKeepAliveSec = 1800
 	MinCursorKeepAliveSec     = 1
 	MaxCursorKeepAliveSec     = 3600
@@ -38,9 +39,28 @@ type PagingMode string
 type PagingRequest struct {
 	Mode         PagingMode `json:"mode,omitempty"`
 	Offset       int        `json:"offset,omitempty"`
-	Size         int        `json:"size,omitempty"`
+	Limit        int        `json:"limit,omitempty"`
 	KeepAliveSec int        `json:"keep_alive_sec,omitempty"`
 	Cursor       string     `json:"cursor,omitempty"`
+}
+
+// UnmarshalJSON rejects the removed paging.size field instead of silently
+// applying the default limit to old clients.
+func (p *PagingRequest) UnmarshalJSON(data []byte) error {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	if _, ok := fields["size"]; ok {
+		return fmt.Errorf("paging.size is not supported; use paging.limit")
+	}
+	type pagingRequest PagingRequest
+	var decoded pagingRequest
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*p = PagingRequest(decoded)
+	return nil
 }
 
 // PagingResponse exposes only opaque cursor state to the client.
@@ -77,7 +97,7 @@ func (r RawQueryContract) EffectiveInputDialect() string {
 // Validate checks the mutually exclusive first-page and continuation forms.
 func (r RawQueryContract) Validate() error {
 	if r.IsContinuation() {
-		if r.Query != nil || r.QueryFormat != "" || r.InputDialect != "" || r.Paging.Mode != "" || r.Paging.Offset != 0 || r.Paging.Size != 0 || r.Paging.KeepAliveSec != 0 {
+		if r.Query != nil || r.QueryFormat != "" || r.InputDialect != "" || r.Paging.Mode != "" || r.Paging.Offset != 0 || r.Paging.Limit != 0 || r.Paging.KeepAliveSec != 0 {
 			return fmt.Errorf("cursor continuation must contain only paging.cursor")
 		}
 		return nil
@@ -99,8 +119,8 @@ func (r RawQueryContract) Validate() error {
 	switch r.Paging.Mode {
 	case "", PagingModeSingle:
 	case PagingModeCursor:
-		if r.Paging.Size == 0 {
-			return fmt.Errorf("paging.size is required for cursor paging")
+		if r.Paging.Limit == 0 {
+			return fmt.Errorf("paging.limit is required for cursor paging")
 		}
 		if r.Paging.KeepAliveSec != 0 && (r.Paging.KeepAliveSec < MinCursorKeepAliveSec || r.Paging.KeepAliveSec > MaxCursorKeepAliveSec) {
 			return fmt.Errorf("paging.keep_alive_sec must be between %d and %d when provided", MinCursorKeepAliveSec, MaxCursorKeepAliveSec)
@@ -118,25 +138,25 @@ func (r RawQueryContract) Validate() error {
 	if r.Paging.Offset < 0 {
 		return fmt.Errorf("paging.offset must not be negative")
 	}
-	if r.Paging.Mode == PagingModeCursor && (r.Paging.Size < MinCursorPageSize || r.Paging.Size > MaxCursorPageSize) {
-		return fmt.Errorf("paging.size must be between %d and %d for cursor paging", MinCursorPageSize, MaxCursorPageSize)
+	if r.Paging.Mode == PagingModeCursor && (r.Paging.Limit < MinCursorPageLimit || r.Paging.Limit > MaxCursorPageLimit) {
+		return fmt.Errorf("paging.limit must be between %d and %d for cursor paging", MinCursorPageLimit, MaxCursorPageLimit)
 	}
 
 	return nil
 }
 
-func (p PagingRequest) EffectiveSize() int {
-	if p.Size == 0 {
-		return DefaultPageSize
+func (p PagingRequest) EffectiveLimit() int {
+	if p.Limit == 0 {
+		return DefaultPageLimit
 	}
-	return p.Size
+	return p.Limit
 }
 
 func (p PagingRequest) Normalized() PagingRequest {
 	if p.Mode == "" {
 		p.Mode = PagingModeSingle
 	}
-	p.Size = p.EffectiveSize()
+	p.Limit = p.EffectiveLimit()
 	return p
 }
 

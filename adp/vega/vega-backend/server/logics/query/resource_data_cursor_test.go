@@ -19,8 +19,8 @@ func TestResourceDataCursorPagesAndCloses(t *testing.T) {
 
 	resource := &interfaces.Resource{ID: "table-1", CatalogID: "catalog-1"}
 	params := &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{
-		Mode: interfaces.PagingModeCursor,
-		Size: 2,
+		Mode:  interfaces.PagingModeCursor,
+		Limit: 2,
 	}}
 	var offsets []int
 	executor := func(_ context.Context, pageParams *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
@@ -50,7 +50,7 @@ func TestResourceDataCursorRejectsWrongResource(t *testing.T) {
 
 	resource := &interfaces.Resource{ID: "table-1", CatalogID: "catalog-1"}
 	result, err := ExecuteInitialResourceDataCursor(context.Background(), "account-1", resource,
-		&interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Size: 1}},
+		&interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 1}},
 		func(_ context.Context, _ *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
 			return []map[string]any{{"id": 1}, {"id": 2}}, 2, nil
 		})
@@ -81,7 +81,7 @@ func TestResourceDataCursorPreservesOpenSearchSearchAfter(t *testing.T) {
 	}
 
 	first, err := ExecuteInitialResourceDataCursor(context.Background(), "account-1", resource,
-		&interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Size: 1}}, executor)
+		&interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 1}}, executor)
 	require.NoError(t, err)
 	require.NotNil(t, first.Paging.NextCursor)
 	_, err = ExecuteResourceDataCursorContinuation(context.Background(), "account-1", resource.ID, *first.Paging.NextCursor, executor)
@@ -116,7 +116,7 @@ func TestResourceDataIndexCursorUsesLastReturnedHitForSearchAfter(t *testing.T) 
 	}
 
 	result, err := ExecuteInitialResourceDataCursor(context.Background(), "account-1", resource,
-		&interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Size: 1}}, executor)
+		&interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 1}}, executor)
 	require.NoError(t, err)
 	assert.Equal(t, []map[string]any{{"id": 1}}, result.Entries)
 	for expectedID := 2; result.Paging.NextCursor != nil; expectedID++ {
@@ -140,7 +140,7 @@ func TestResourceDataCursorInitialPageIsNotReclaimedWhileExecuting(t *testing.T)
 	go func() {
 		result, err := ExecuteInitialResourceDataCursor(context.Background(), "account-1",
 			&interfaces.Resource{ID: "table-1", CatalogID: "catalog-1"},
-			&interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Size: 1}},
+			&interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 1}},
 			func(_ context.Context, _ *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
 				close(started)
 				<-finish

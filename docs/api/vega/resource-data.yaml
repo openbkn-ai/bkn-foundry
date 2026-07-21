@@ -49,8 +49,8 @@ paths:
         | `POST` | 批量创建文档 | **dataset 强制** | `DocumentArray`（每条 id 可选，无则后端生成） |
         | `DELETE` | 按 filter 删除文档 | **dataset 强制** | `ResourceDataQueryParams`（`filter_condition` 必填非空） |
 
-        **`Override: GET` 响应**：200 + `{ entries, total_count? }`。`total_count` 仅在
-        `ResourceDataQueryParams.need_total=true` 时返回（保留现有行为）。
+        **`Override: GET` 响应**：200 + `{ entries, total_count, paging }`。cursor 模式通过
+        `paging.next_cursor` 续页；`total_count` 仅在 `need_total=true` 时返回。
 
         **`Override: POST` 响应**：201 + `{ ids: [...] }`。后端为无 id 的文档生成 id。
 
@@ -297,17 +297,8 @@ components:
             过滤条件，结构由 `FilterCondCfg` 决定。Override=DELETE 时必填且非空。
           type: object
           additionalProperties: true
-        offset:
-          description: 分页偏移量，>=0
-          type: integer
-          format: int64
-          minimum: 0
-          default: 0
-        limit:
-          description: 每页数量
-          type: integer
-          format: int64
-          default: 10
+        paging:
+          $ref: "#/components/schemas/PagingRequest"
         sort:
           description: 排序字段
           type: array
@@ -322,13 +313,6 @@ components:
           description: 是否在响应里携带 total_count
           type: boolean
           default: false
-        search_after:
-          description: OpenSearch `search_after` 游标值
-          type: array
-          items: {}
-        query_type:
-          description: 查询类型
-          type: string
         aggregation:
           $ref: "#/components/schemas/Aggregation"
         group_by:
@@ -393,11 +377,45 @@ components:
           description: 总条数（仅 need_total=true 时返回）
           type: integer
           format: int64
+        paging:
+          $ref: "#/components/schemas/PagingResponse"
         warnings:
           description: 非阻断告警
           type: array
           items:
             type: string
+    PagingRequest:
+      description: 首次请求使用 offset 和 limit；cursor 续页只能传 cursor。
+      type: object
+      properties:
+        mode:
+          type: string
+          enum: [single, cursor]
+          default: single
+        offset:
+          description: 首次请求的起始偏移，>=0。
+          type: integer
+          minimum: 0
+        limit:
+          description: 单次最多返回条数；cursor 模式必填，范围 [1, 10000]。
+          type: integer
+          minimum: 1
+          maximum: 10000
+        keep_alive_sec:
+          type: integer
+          minimum: 1
+          maximum: 3600
+        cursor:
+          type: string
+    PagingResponse:
+      type: object
+      required: [next_cursor, expires_at_sec]
+      properties:
+        next_cursor:
+          type: [string, "null"]
+        expires_at_sec:
+          type: [integer, "null"]
+          format: int64
     IdsResponse:
       description: 写入操作的响应，含成功的文档 ID 数组
       type: object

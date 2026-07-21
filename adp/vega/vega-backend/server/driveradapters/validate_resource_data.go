@@ -71,7 +71,7 @@ func ValidateResourceDataQueryParams(ctx context.Context, params *interfaces.Res
 func validateResourceDataPaging(ctx context.Context, params *interfaces.ResourceDataQueryParams) error {
 	paging := params.Paging
 	if paging.Cursor != "" {
-		if paging.Mode != "" || paging.Offset != 0 || paging.Size != 0 || paging.KeepAliveSec != 0 {
+		if paging.Mode != "" || paging.Offset != 0 || paging.Limit != 0 || paging.KeepAliveSec != 0 {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 				WithErrorDetails("cursor continuation must contain only paging.cursor")
 		}
@@ -80,21 +80,21 @@ func validateResourceDataPaging(ctx context.Context, params *interfaces.Resource
 		return nil
 	}
 
-	if paging.Mode == interfaces.PagingModeCursor && paging.Size == 0 {
+	if paging.Mode == interfaces.PagingModeCursor && paging.Limit == 0 {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Limit).
-			WithErrorDetails("paging.size is required for cursor paging")
+			WithErrorDetails("paging.limit is required for cursor paging")
 	}
 	params.Paging = paging.Normalized()
 	params.Offset = params.Paging.Offset
-	params.Limit = params.Paging.Size
+	params.Limit = params.Paging.Limit
 	if params.Paging.Mode == interfaces.PagingModeCursor {
 		if params.Offset < 0 {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Offset).
 				WithErrorDetails("paging.offset must not be negative")
 		}
-		if params.Limit < interfaces.MinCursorPageSize || params.Limit > interfaces.MaxCursorPageSize {
+		if params.Limit < interfaces.MinCursorPageLimit || params.Limit > interfaces.MaxCursorPageLimit {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Limit).
-				WithErrorDetails(fmt.Sprintf("paging.size must be in the range of [%d,%d] for cursor paging", interfaces.MinCursorPageSize, interfaces.MaxCursorPageSize))
+				WithErrorDetails(fmt.Sprintf("paging.limit must be in the range of [%d,%d] for cursor paging", interfaces.MinCursorPageLimit, interfaces.MaxCursorPageLimit))
 		}
 		if params.Paging.KeepAliveSec != 0 && (params.Paging.KeepAliveSec < interfaces.MinCursorKeepAliveSec || params.Paging.KeepAliveSec > interfaces.MaxCursorKeepAliveSec) {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).

@@ -157,7 +157,7 @@ func TestPrepareOpenSearchCursorQuery(t *testing.T) {
 		svc := &rawQueryService{}
 		_, _, _, _, err := svc.prepareOpenSearchCursorQuery(context.Background(), &interfaces.RawQueryRequest{
 			Query:  map[string]any{"resource_id": "resource-1"},
-			Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Size: 10},
+			Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 10},
 		})
 
 		assertHTTPError(t, err, http.StatusBadRequest)
@@ -192,7 +192,7 @@ func TestPrepareOpenSearchCursorQuery(t *testing.T) {
 			Query: requestQuery,
 			Paging: interfaces.PagingRequest{
 				Mode:   interfaces.PagingModeCursor,
-				Size:   25,
+				Limit:  25,
 				Offset: 50,
 			},
 		})

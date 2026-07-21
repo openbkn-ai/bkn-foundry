@@ -92,7 +92,7 @@ func Test_ResourceDataRestHandler_QueryResourceData(t *testing.T) {
 				}, nil
 			})
 
-		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/resources/res-1/data", strings.NewReader(`{"paging":{"size":2},"need_total":true}`))
+		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/resources/res-1/data", strings.NewReader(`{"paging":{"limit":2},"need_total":true}`))
 		req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, http.MethodGet)
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
