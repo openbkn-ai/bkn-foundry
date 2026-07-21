@@ -186,12 +186,27 @@ func Test_ResourceRestHandler_GetResources(t *testing.T) {
 		assert.Contains(t, w.Body.String(), `"id":"res-2"`)
 	})
 
-	t.Run("multi-id batch returns the found ones and skips missing", func(t *testing.T) {
+	t.Run("multi-id with a missing id 404s by default", func(t *testing.T) {
 		engine, _, rs := setupResourceHandlerTest(t)
 		rs.EXPECT().GetByIDs(gomock.Any(), []string{"res-1", "res-2"}).
 			Return([]*interfaces.Resource{{ID: "res-1", Name: "one"}}, nil)
 
 		req := httptest.NewRequest(http.MethodGet, url, nil)
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		// Default is strict all-or-nothing, same as the batch DELETE convention.
+		require.Equal(t, http.StatusNotFound, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), "id res-2 not found")
+	})
+
+	t.Run("ignore_missing skips missing ids in a multi-id batch", func(t *testing.T) {
+		engine, _, rs := setupResourceHandlerTest(t)
+		rs.EXPECT().GetByIDs(gomock.Any(), []string{"res-1", "res-2"}).
+			Return([]*interfaces.Resource{{ID: "res-1", Name: "one"}}, nil)
+
+		req := httptest.NewRequest(http.MethodGet, url+"?ignore_missing=true", nil)
 		w := httptest.NewRecorder()
 
 		engine.ServeHTTP(w, req)

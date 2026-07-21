@@ -420,13 +420,9 @@ func RunCommonReadTests(suite *TestSuite) {
 		// 批量获取（包含不存在的ID）
 		ids := []string{existingID, "non-existent-id-99999"}
 		batchResp := suite.GetResources(ids)
-		// 多 id 批量为展示解析：部分不存在时返回存在的部分（跳过缺失），不整批 404
-		So(batchResp.StatusCode, ShouldEqual, http.StatusOK)
-		if batchResp.Body != nil {
-			if entries, ok := batchResp.Body["entries"].([]any); ok {
-				So(len(entries), ShouldEqual, 1)
-			}
-		}
+		// 默认严格：任一 id 不存在则整批 404（与批量 DELETE 约定一致）。
+		// 需容忍缺失时调用方传 ?ignore_missing=true。
+		So(batchResp.StatusCode, ShouldEqual, http.StatusNotFound)
 	})
 
 	Convey("RM206: 按catalog_id过滤列表", func() {

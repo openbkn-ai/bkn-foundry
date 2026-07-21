@@ -270,14 +270,12 @@ func (r *restHandler) getResources(c *gin.Context, visitor hydra.Visitor) {
 
 	ids := strings.Split(c.Param("id"), ",")
 
-	// A multi-id GET is a display-resolution batch: return the resources that
-	// exist and skip the missing ones instead of 404-ing the whole request, so a
-	// single deleted id (e.g. a stale object-grant pointing at a removed
-	// resource) can't poison the entire page's detail lookup. Callers detect the
-	// dropped ids from the response (fewer entries than ids requested). A
-	// single-id GET stays strict — fetching one resource that does not exist is a
-	// 404. ?ignore_missing=true forces tolerance even for a single id (mirrors
-	// the batch DELETE convention).
+	// By default any missing id 404s the whole request (all-or-nothing), for both
+	// single- and multi-id GETs — matching the strict default of the sibling
+	// batch DELETE. ?ignore_missing=true opts into tolerance: skip the missing
+	// ids and return the found ones (the caller detects drops from fewer entries
+	// than ids requested). That opt-in is the display-resolution escape hatch for
+	// a stale object-grant pointing at a removed resource.
 	ignoreMissing := strings.EqualFold(strings.TrimSpace(c.Query("ignore_missing")), "true")
 
 	resources, err := r.rs.GetByIDs(ctx, ids)
@@ -288,8 +286,7 @@ func (r *restHandler) getResources(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 
-	strict := len(ids) == 1 && !ignoreMissing
-	if strict && len(resources) != len(ids) {
+	if !ignoreMissing && len(resources) != len(ids) {
 		for _, id := range ids {
 			found := false
 			for _, resource := range resources {
