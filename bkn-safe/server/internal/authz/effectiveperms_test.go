@@ -142,6 +142,38 @@ func TestEffectivePermissionsInstanceExceedsTypeWide(t *testing.T) {
 	}
 }
 
+// A type-wide ActAll ("*") grant covers every op on the type, so instance rows
+// are dropped whatever their ops — even ops not literally in the type-wide set.
+// (Defensive: rejectWildcardGrant keeps such a grant off the HTTP write paths,
+// but the fold must not silently fail if one ever exists.)
+func TestEffectivePermissionsTypeWideActAllCoversInstances(t *testing.T) {
+	e := newTestEnforcer(t)
+	const (
+		role = "r-a"
+		user = "u1"
+	)
+	mustNoErr(t, e.GrantRolePermission(role, "agent", "*", "*")) // type-wide ActAll
+	mustNoErr(t, e.AssignRole(user, role))
+	mustNoErr(t, e.GrantObjectPermission(user, "agent", "a1", "use"))
+	mustNoErr(t, e.GrantObjectPermission(user, "agent", "a2", "publish"))
+
+	has, grants, err := e.EffectivePermissions(user, PermQuery{})
+	mustNoErr(t, err)
+	if has {
+		t.Fatal("hasWildcard: want false — this is a type-scoped ActAll, not a bare */*")
+	}
+	idx := byObject(grants)
+	if _, ok := idx["agent:a1"]; ok {
+		t.Errorf("agent:a1 must be dropped under type-wide agent:*/[*]: %+v", grants)
+	}
+	if _, ok := idx["agent:a2"]; ok {
+		t.Errorf("agent:a2 must be dropped under type-wide agent:*/[*]: %+v", grants)
+	}
+	if !eqOps(idx["agent:*"], "*") {
+		t.Errorf("agent:* = %v, want [*]", idx["agent:*"])
+	}
+}
+
 // A pure instance grant with no type-wide grant survives in full.
 func TestEffectivePermissionsPureInstance(t *testing.T) {
 	e := newTestEnforcer(t)

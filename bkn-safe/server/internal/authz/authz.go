@@ -307,8 +307,15 @@ func (en *Enforcer) EffectivePermissions(accessorID string, q PermQuery) (hasWil
 			continue
 		}
 		// Instance row: keep only ops beyond the type-wide set; drop if fully
-		// covered (this is what removes the per-instance fan-out).
+		// covered (this is what removes the per-instance fan-out). A type-wide
+		// ActAll ("*") grant covers every op on the type, so the instance row is
+		// always redundant — handle it explicitly rather than relying on literal
+		// op matching. (rejectWildcardGrant keeps a "type:*"/"*" grant off the
+		// write paths today, so this branch is defensive.)
 		tw := typeWide[rtype]
+		if tw[ActAll] {
+			continue
+		}
 		extra := make([]string, 0, len(g.Operations))
 		for _, op := range g.Operations {
 			if tw[op] {
