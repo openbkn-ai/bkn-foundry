@@ -14,6 +14,7 @@ import (
 	"io"
 	"net/http"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
@@ -28,8 +29,6 @@ var clearUserPassRe = regexp.MustCompile(`(://)[^/]*@`)
 const (
 	// maxHeaderLogSize 请求头日志记录最大字节数
 	maxHeaderLogSize = 4096
-	// maxBodyLogSize 请求体日志记录最大字节数
-	maxBodyLogSize = 2048
 )
 
 // HTTPRequest 发起HTTP请求
@@ -56,26 +55,15 @@ func HTTPRequest(ctx context.Context, req *http.Request, fn func(req *http.Reque
 
 		// 记录请求头
 		if req.Header != nil {
-			headerBytes, _ := json.Marshal(req.Header)
-			headerStr := string(headerBytes)
+			headerStr := sanitizeHeadersForSpan(req.Header)
 			if len(headerStr) > maxHeaderLogSize {
 				headerStr = headerStr[:maxHeaderLogSize] + "...[truncated]"
 			}
 			span.SetAttributes(attribute.Key("http.request_headers").String(headerStr))
 		}
 
-		// 记录请求体
-		if req.Body != nil && req.ContentLength > 0 && req.ContentLength < 1024*1024 {
-			bodyBytes, _ := io.ReadAll(req.Body)
-			if len(bodyBytes) > 0 {
-				bodyStr := string(bodyBytes)
-				if len(bodyStr) > maxBodyLogSize {
-					bodyStr = bodyStr[:maxBodyLogSize] + "...[truncated]"
-				}
-				span.SetAttributes(attribute.Key("http.request_body").String(bodyStr))
-				// 重置Body以便后续读取
-				req.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
-			}
+		if req.Body != nil && req.ContentLength > 0 {
+			span.SetAttributes(attribute.Key("http.request_body").String(requestBodyPolicyForSpan(req.ContentLength)))
 		}
 
 		if req.Header == nil {
@@ -98,6 +86,53 @@ func HTTPRequest(ctx context.Context, req *http.Request, fn func(req *http.Reque
 	}
 	rsp, err = fn(req)
 	return
+}
+
+func sanitizeHeadersForSpan(headers http.Header) string {
+	sanitized := map[string][]string{}
+	keys := make([]string, 0, len(headers))
+	for key := range headers {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		values := headers.Values(key)
+		if isSensitiveHeader(key) {
+			sanitized[key] = []string{"[redacted]"}
+			continue
+		}
+		sanitized[key] = values
+	}
+	headerBytes, _ := json.Marshal(sanitized)
+	return string(headerBytes)
+}
+
+func isSensitiveHeader(key string) bool {
+	normalized := strings.ToLower(key)
+	return normalized == "authorization" ||
+		normalized == "x-authorization" ||
+		normalized == "cookie" ||
+		normalized == "set-cookie" ||
+		strings.Contains(normalized, "token") ||
+		strings.Contains(normalized, "api-key") ||
+		strings.Contains(normalized, "apikey") ||
+		strings.Contains(normalized, "secret")
+}
+
+func requestBodyPolicyForSpan(contentLength int64) string {
+	return jsonCompact(map[string]interface{}{
+		"redacted":       true,
+		"content_length": contentLength,
+		"reason":         "body omitted by BKN Trace phase-one sensitive data policy",
+	})
+}
+
+func jsonCompact(value interface{}) string {
+	bytes, err := json.Marshal(value)
+	if err != nil {
+		return `{"redacted":true}`
+	}
+	return string(bytes)
 }
 
 func recordHTTPErrorBody(rsp *http.Response) (err error) {

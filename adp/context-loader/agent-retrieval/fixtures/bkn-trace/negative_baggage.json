@@ -1,0 +1,45 @@
+{
+  "bkn.trace.schema.version": "1.0.0",
+  "fixture_id": "context_loader_negative_baggage",
+  "fixture_type": "negative",
+  "scenario": "context_loader_rejects_forbidden_baggage",
+  "expected_result": "fail",
+  "trace": {
+    "trace_id": "71040000000000000000000000000004",
+    "bkn.request.id": "req_context_loader_0004",
+    "traceparent": "00-71040000000000000000000000000004-7104000000000001-01",
+    "sampling.decision": "sampled"
+  },
+  "spans": [
+    {
+      "span_id": "7104000000000001",
+      "parent_span_id": null,
+      "name": "context-loader.request",
+      "kind": "server",
+      "bkn.module.name": "context-loader",
+      "bkn.operation.name": "context.search_schema",
+      "bkn.status": "ok",
+      "bkn.timestamp": "2026-07-21T06:03:00.000000000Z",
+      "duration_ms": 7
+    }
+  ],
+  "logs": [
+    {
+      "level": "info",
+      "message": "schema search completed",
+      "trace_id": "71040000000000000000000000000004",
+      "span_id": "7104000000000001",
+      "bkn.request.id": "req_context_loader_0004",
+      "bkn.module.name": "context-loader",
+      "bkn.operation.name": "context.search_schema",
+      "bkn.status": "ok",
+      "bkn.timestamp": "2026-07-21T06:03:00.007000000Z",
+      "bkn.trace.schema.version": "1.0.0"
+    }
+  ],
+  "events": [],
+  "baggage": {
+    "bkn.account.type": "service",
+    "bkn.account.id": "acct_forbidden"
+  }
+}

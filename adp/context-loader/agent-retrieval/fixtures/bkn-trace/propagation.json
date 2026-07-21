@@ -1,0 +1,58 @@
+{
+  "bkn.trace.schema.version": "1.0.0",
+  "fixture_id": "context_loader_propagation_tool_call",
+  "fixture_type": "propagation",
+  "scenario": "context_loader_joins_upstream_tool_call",
+  "expected_result": "pass",
+  "trace": {
+    "trace_id": "71020000000000000000000000000002",
+    "bkn.request.id": "req_context_loader_0002",
+    "traceparent": "00-71020000000000000000000000000002-7102000000000001-01",
+    "sampling.decision": "sampled"
+  },
+  "spans": [
+    {
+      "span_id": "7102000000000001",
+      "parent_span_id": null,
+      "name": "context-loader.request",
+      "kind": "server",
+      "bkn.module.name": "context-loader",
+      "bkn.operation.name": "context.query_object",
+      "bkn.status": "partial",
+      "bkn.timestamp": "2026-07-21T06:01:00.000000000Z",
+      "duration_ms": 58
+    },
+    {
+      "span_id": "7102000000000002",
+      "parent_span_id": "7102000000000001",
+      "name": "context-loader.source.resolve",
+      "kind": "internal",
+      "bkn.module.name": "context-loader",
+      "bkn.operation.name": "context.resolve_source",
+      "bkn.status": "partial",
+      "bkn.timestamp": "2026-07-21T06:01:00.020000000Z",
+      "duration_ms": 38
+    }
+  ],
+  "logs": [
+    {
+      "level": "info",
+      "message": "object query returned partial refs",
+      "trace_id": "71020000000000000000000000000002",
+      "span_id": "7102000000000002",
+      "bkn.request.id": "req_context_loader_0002",
+      "bkn.module.name": "context-loader",
+      "bkn.operation.name": "context.resolve_source",
+      "bkn.status": "partial",
+      "bkn.timestamp": "2026-07-21T06:01:00.058000000Z",
+      "bkn.trace.schema.version": "1.0.0",
+      "bkn.resource.id": "resource_demo",
+      "partial_reason": "source_ref_limited"
+    }
+  ],
+  "events": [],
+  "baggage": {
+    "bkn.account.type": "app",
+    "bkn.runtime.env": "test"
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "bkn.trace.schema.version": "1.0.0",
+  "fixture_id": "context_loader_sampling_forced_tool_error",
+  "fixture_type": "sampling",
+  "scenario": "context_loader_tool_error_forced_sampled",
+  "expected_result": "pass",
+  "trace": {
+    "trace_id": "71030000000000000000000000000003",
+    "bkn.request.id": "req_context_loader_0003",
+    "traceparent": "00-71030000000000000000000000000003-7103000000000001-01",
+    "sampling.decision": "forced_sampled"
+  },
+  "spans": [
+    {
+      "span_id": "7103000000000001",
+      "parent_span_id": null,
+      "name": "context-loader.request",
+      "kind": "server",
+      "bkn.module.name": "context-loader",
+      "bkn.operation.name": "context.load_refs",
+      "bkn.status": "error",
+      "bkn.timestamp": "2026-07-21T06:02:00.000000000Z",
+      "duration_ms": 19,
+      "error.category": "tool",
+      "error.code": "CONTEXT_TOOL_TIMEOUT",
+      "error.retryable": true
+    }
+  ],
+  "logs": [
+    {
+      "level": "error",
+      "message": "context loader tool timed out",
+      "trace_id": "71030000000000000000000000000003",
+      "span_id": "7103000000000001",
+      "bkn.request.id": "req_context_loader_0003",
+      "bkn.module.name": "context-loader",
+      "bkn.operation.name": "context.load_refs",
+      "bkn.status": "error",
+      "bkn.timestamp": "2026-07-21T06:02:00.019000000Z",
+      "bkn.trace.schema.version": "1.0.0",
+      "error.category": "tool",
+      "error.code": "CONTEXT_TOOL_TIMEOUT",
+      "error.retryable": true
+    }
+  ],
+  "events": [],
+  "baggage": {
+    "bkn.account.type": "service",
+    "bkn.runtime.env": "test"
+  }
+}

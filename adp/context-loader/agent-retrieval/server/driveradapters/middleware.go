@@ -81,6 +81,7 @@ func middlewareIntrospectVerify(hydra interfaces.Hydra, appKeys interfaces.AppKe
 		tokenInfo.UserAgent = c.GetHeader("User-Agent")
 
 		ctx = common.SetPublicAPIToCtx(ctx, true)
+		ctx = common.SetTraceContextToCtx(ctx, common.TraceContextFromHeaders(c.GetHeader))
 		// 设置认证上下文到context
 		authContext := &interfaces.AccountAuthContext{
 			AccountID:   tokenInfo.VisitorID,
@@ -98,6 +99,7 @@ func middlewareIntrospectVerify(hydra interfaces.Hydra, appKeys interfaces.AppKe
 func middlewareHeaderAuthContext() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
+		ctx = common.SetTraceContextToCtx(ctx, common.TraceContextFromHeaders(c.GetHeader))
 		// 获取Header中xAccountType账户类型
 		xAccountType := c.GetHeader(string(interfaces.HeaderXAccountType))
 
