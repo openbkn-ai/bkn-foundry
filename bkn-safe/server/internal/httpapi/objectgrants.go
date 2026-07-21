@@ -82,6 +82,18 @@ func registerObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 		whereSQL := strings.Join(where, " AND ")
 		qdb := db.WithContext(c.Request.Context())
 
+		// Grouped views for the admin UI: group_by=object lists distinct objects
+		// (each with its grantee count + union of ops), group_by=grantee lists
+		// distinct grantees (each with its object count). The UI paginates GROUPS
+		// (e.g. 10 objects/page), which a flat grant page cannot serve — one
+		// object's grants may span pages, so client-side grouping would have to
+		// pull every grant. Grouping happens in SQL, so a page stays small
+		// regardless of the total grant count.
+		if gb := c.Query("group_by"); gb == "object" || gb == "grantee" {
+			listGroupedObjectGrants(c, qdb, gb, whereSQL, args)
+			return
+		}
+
 		// total = number of (accessor, object) groups after filtering.
 		var total int64
 		if err := qdb.Raw(
@@ -243,6 +255,81 @@ func registerObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 		}
 		c.Status(http.StatusNoContent)
 	})
+}
+
+// listGroupedObjectGrants serves the grouped, paginated object-grant views the
+// admin UI needs: group_by=object (distinct objects, each with a grantee count)
+// or group_by=grantee (distinct grantees, each with an object count). Both carry
+// the union of operations. Grouping + pagination run in SQL so a page is a
+// handful of groups no matter how many grants exist. `whereSQL`/`args` are the
+// same concrete-grant filter the flat listing uses (roles/public/type-wide
+// already excluded, plus any request filters).
+func listGroupedObjectGrants(c *gin.Context, qdb *gorm.DB, groupBy, whereSQL string, args []any) {
+	keyCol, cntCol := "v1", "v0" // group_by=object: key on the object, count grantees
+	if groupBy == "grantee" {
+		keyCol, cntCol = "v0", "v1"
+	}
+
+	var total int64
+	if err := qdb.Raw(
+		"SELECT COUNT(*) FROM (SELECT 1 FROM casbin_rule WHERE "+whereSQL+" GROUP BY "+keyCol+") t",
+		args...).Scan(&total).Error; err != nil {
+		serverError(c, err)
+		return
+	}
+
+	sql := "SELECT " + keyCol + " AS k, COUNT(DISTINCT " + cntCol + ") AS cnt, " +
+		"GROUP_CONCAT(DISTINCT v2) AS ops FROM casbin_rule WHERE " + whereSQL +
+		" GROUP BY " + keyCol + " ORDER BY " + keyCol
+	rowArgs := append([]any{}, args...)
+	if _, limitSet := c.GetQuery("limit"); limitSet {
+		limit := atoiDefault(c.Query("limit"), 0)
+		if limit <= 0 {
+			limit = 50
+		}
+		if limit > 500 {
+			limit = 500
+		}
+		offset := atoiDefault(c.Query("offset"), 0)
+		if offset < 0 {
+			offset = 0
+		}
+		sql += " LIMIT ? OFFSET ?"
+		rowArgs = append(rowArgs, limit, offset)
+	}
+
+	var rows []struct {
+		K   string
+		Cnt int64
+		Ops string
+	}
+	if err := qdb.Raw(sql, rowArgs...).Scan(&rows).Error; err != nil {
+		serverError(c, err)
+		return
+	}
+
+	groups := make([]gin.H, 0, len(rows))
+	for _, r := range rows {
+		var ops []string
+		if r.Ops != "" {
+			ops = strings.Split(r.Ops, ",")
+		}
+		if groupBy == "object" {
+			rtype, rid, _ := strings.Cut(r.K, ":")
+			groups = append(groups, gin.H{
+				"object":        gin.H{"type": rtype, "id": rid},
+				"grantee_count": r.Cnt,
+				"operations":    ops,
+			})
+		} else {
+			groups = append(groups, gin.H{
+				"accessor_id":  r.K,
+				"object_count": r.Cnt,
+				"operations":   ops,
+			})
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"groups": groups, "total": total})
 }
 
 // isUserAccessor reports whether id is a known user row (real user or app
