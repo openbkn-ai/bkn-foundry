@@ -21,9 +21,9 @@ Execution Factory is an open-source platform for managing and executing AI opera
 
 ## Core Components
 
-This project consists of two main components:
+Execution Factory ships as a single service, `operator-integration`, which exposes two API faces.
 
-### 1. Operator Integration (`operator-integration`)
+### Operator Integration (`operator-integration`)
 The core integration service platform responsible for the full lifecycle management of operators and tools.
 - **Operator Management**: Supports registration, versioning, publishing, and deprecation of operators.
 - **Toolbox**: Enables grouping multiple tools into toolboxes for unified management and invocation.
@@ -31,11 +31,13 @@ The core integration service platform responsible for the full lifecycle managem
 - **Multi-Protocol Adaptation**: Supports various communication protocols like HTTP and SSE.
 - **Access Control**: Built-in policy-based access control mechanism.
 
-### 2. Operator App (`operator-app`)
-Application-side runtime and reference implementation.
-- Provides a lightweight operator execution environment.
-- Demonstrates how to integrate and utilize the core capabilities of Execution Factory.
-- Includes examples of MCP client-server interactions.
+#### API faces
+
+| Prefix | Purpose |
+| --- | --- |
+| `/api/agent-operator-integration/v1` | Public API for operators, toolboxes, MCP servers and skills. |
+| `/api/agent-operator-integration/internal-v1` | Service-to-service API. Cluster-internal; not for browser clients. |
+| `/api/capabilities-lab/v1` | Capability face: flattens tools, MCP servers and skills into a single `capability` model. Previously a separate `capabilities-lab` service, merged in as a route group — the paths are unchanged. |
 
 ## Features
 
@@ -62,17 +64,6 @@ go mod tidy
 go build -o operator-integration server/main.go
 # Run (requires appropriate configuration files)
 ./operator-integration
-```
-
-#### Run Operator App
-```bash
-cd operator-app
-# Install dependencies
-go mod tidy
-# Build
-go build -o operator-app server/main.go
-# Run
-./operator-app
 ```
 
 ## Contribution

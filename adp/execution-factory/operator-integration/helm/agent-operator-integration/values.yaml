@@ -48,6 +48,10 @@ service:
           # 集群内调用方（bkn-agent、agent-retrieval）走 ClusterIP agent-operator-integration:9000，
           # 不经 Ingress，不受影响。见 #326。
           - /api/agent-operator-integration/v1
+          # 能力面：原 capabilities-lab 独立服务的 Ingress 路径。该服务已合并
+          # 进本服务（其 chart 随之删除），路径不变，改由本服务承接。该面同样是
+          # 公开面（走令牌校验），与 internal-v1 的收口（#326 第 3 步）不冲突。
+          - /api/capabilities-lab/v1
   type: ClusterIP
   enableDualStack: false
   port: 9000
