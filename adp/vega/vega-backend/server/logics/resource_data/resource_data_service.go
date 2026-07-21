@@ -255,6 +255,10 @@ func (rds *resourceDataService) QueryWithPaging(ctx context.Context, resource *i
 	}
 	if params.Paging.Mode == interfaces.PagingModeCursor {
 		if resourceDataCursorSupported(resource.Category) {
+			if resource.Category == interfaces.ResourceCategoryIndex && len(params.Sort) == 0 {
+				return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+					WithErrorDetails("sort is required for index cursor paging")
+			}
 			return querylogic.ExecuteInitialResourceDataCursor(ctx, accountIDFromContext(ctx), resource, params,
 				func(pageCtx context.Context, pageParams *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
 					return rds.query(pageCtx, resource, pageParams)
@@ -343,6 +347,7 @@ func (rds *resourceDataService) QueryData(ctx context.Context, catalog *interfac
 		}
 
 		span.SetStatus(codes.Ok, "")
+		params.SearchAfter = append([]any(nil), result.SearchAfter...)
 		return result.Rows, result.Total, nil
 
 	case interfaces.ResourceCategoryFileset:

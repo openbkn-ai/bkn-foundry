@@ -59,6 +59,7 @@ func executeResourceDataCursorPage(ctx context.Context, session *cursorSession,
 	params.Offset = session.Offset
 	params.Limit = session.PageSize + 1
 	params.Paging = interfaces.PagingRequest{}
+	params.SearchAfter = append([]any(nil), session.SearchAfter...)
 	entries, total, err := execute(ctx, params)
 	if err != nil {
 		return nil, err
@@ -69,6 +70,9 @@ func executeResourceDataCursorPage(ctx context.Context, session *cursorSession,
 	}
 	entries = entries[:session.PageSize]
 	session.Offset += session.PageSize
+	if len(params.SearchAfter) > 0 {
+		session.SearchAfter = append([]any(nil), params.SearchAfter...)
+	}
 	rawQueryCursorSessions.markPageSuccess(session)
 	return &interfaces.ResourceDataQueryResult{Entries: entries, TotalCount: total, Paging: cursorPagingResponse(session)}, nil
 }

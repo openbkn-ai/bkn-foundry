@@ -61,3 +61,28 @@ func TestResourceDataCursorRejectsWrongResource(t *testing.T) {
 		})
 	assertHTTPError(t, err, 404)
 }
+
+func TestResourceDataCursorPreservesOpenSearchSearchAfter(t *testing.T) {
+	previousManager := rawQueryCursorSessions
+	rawQueryCursorSessions = newCursorSessionManager(10)
+	t.Cleanup(func() { rawQueryCursorSessions = previousManager })
+
+	resource := &interfaces.Resource{ID: "index-1", CatalogID: "catalog-1"}
+	var continuationSearchAfter []any
+	executor := func(_ context.Context, pageParams *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
+		if pageParams.Offset == 0 {
+			pageParams.SearchAfter = []any{"sort-2"}
+			return []map[string]any{{"id": 1}, {"id": 2}}, 2, nil
+		}
+		continuationSearchAfter = append([]any(nil), pageParams.SearchAfter...)
+		return []map[string]any{}, 2, nil
+	}
+
+	first, err := ExecuteInitialResourceDataCursor(context.Background(), "account-1", resource,
+		&interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Size: 1}}, executor)
+	require.NoError(t, err)
+	require.NotNil(t, first.Paging.NextCursor)
+	_, err = ExecuteResourceDataCursorContinuation(context.Background(), "account-1", resource.ID, *first.Paging.NextCursor, executor)
+	require.NoError(t, err)
+	assert.Equal(t, []any{"sort-2"}, continuationSearchAfter)
+}

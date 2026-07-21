@@ -624,6 +624,7 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 
 	// Extract documents from hits
 	documents := make([]map[string]any, 0, len(hitsArray))
+	var searchAfter []any
 	for _, hit := range hitsArray {
 		hitMap, ok := hit.(map[string]any)
 		if !ok {
@@ -641,11 +642,15 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 			source["_score"] = score
 		}
 		documents = append(documents, source)
+		if sort, ok := hitMap["sort"].([]any); ok {
+			searchAfter = sort
+		}
 	}
 
 	return &interfaces.QueryResult{
-		Rows:  documents,
-		Total: int64(total),
+		Rows:        documents,
+		Total:       int64(total),
+		SearchAfter: searchAfter,
 	}, nil
 }
 
