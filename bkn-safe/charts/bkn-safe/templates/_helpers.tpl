@@ -24,11 +24,18 @@ side effect of `helm upgrade`.
 {{- if .Values.bundledDeps.hydraSecretsSystem -}}
 {{- .Values.bundledDeps.hydraSecretsSystem -}}
 {{- else -}}
-{{- $secretName := printf "%s-secrets" .Release.Name -}}
+{{- $secretName := printf "%s-hydra-secrets" .Release.Name -}}
 {{- $existing := lookup "v1" "Secret" .Release.Namespace $secretName -}}
 {{- if and $existing $existing.data (index $existing.data "SECRETS_SYSTEM") -}}
 {{- index $existing.data "SECRETS_SYSTEM" | b64dec -}}
-{{- else if .Release.IsUpgrade -}}
+{{- else if lookup "apps/v1" "Deployment" .Release.Namespace (printf "%s-hydra" .Release.Name) -}}
+{{- /* A bundled hydra Deployment already exists but no hydra Secret does: this
+       is an install that predates the Secret, and hydra is running under the
+       old inline constant. Carry it forward so upgrading never rotates the key.
+       Gating on the hydra Deployment (not merely .Release.IsUpgrade) matters:
+       an upgrade that flips bundledDeps.enabled false->true for the first time
+       has no prior bundled hydra, so it must NOT inherit the public constant —
+       it falls through to a fresh random below. */ -}}
 {{- "dev-only-change-me-32-bytes-secret" -}}
 {{- else -}}
 {{- randAlphaNum 48 -}}

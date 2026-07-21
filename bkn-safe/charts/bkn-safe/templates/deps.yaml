@@ -5,6 +5,21 @@
 # Bundled dependencies: PostgreSQL (hydra's DB — MariaDB can't host hydra) is
 # always bundled here and PERSISTED on a PVC. Hydra is upstream ORY v26.2.0.
 ---
+# hydra's signing/encryption key, in its own Secret. Kept separate from the main
+# bkn-safe Secret because its value is non-deterministic on a fresh install
+# (random) — folding it into a Secret that a deployment checksums would make that
+# checksum unstable between the install render and the first upgrade render. It
+# is resolved by bkn-safe.hydraSecret: random on a fresh install, preserved
+# (never rotated) thereafter.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ .Release.Name }}-hydra-secrets
+  namespace: {{ .Release.Namespace }}
+type: Opaque
+stringData:
+  SECRETS_SYSTEM: {{ include "bkn-safe.hydraSecret" . | quote }}
+---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -103,7 +118,7 @@ spec:
             - name: SECRETS_SYSTEM
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Release.Name }}-secrets
+                  name: {{ .Release.Name }}-hydra-secrets
                   key: SECRETS_SYSTEM
             - { name: OAUTH2_EXPOSE_INTERNAL_ERRORS, value: "true" }
             {{- /* serve all --dev issues cookies without Secure; a SameSite=None */}}
