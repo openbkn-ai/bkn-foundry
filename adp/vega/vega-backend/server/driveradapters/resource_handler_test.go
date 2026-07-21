@@ -186,7 +186,7 @@ func Test_ResourceRestHandler_GetResources(t *testing.T) {
 		assert.Contains(t, w.Body.String(), `"id":"res-2"`)
 	})
 
-	t.Run("returns not found when any id is missing", func(t *testing.T) {
+	t.Run("multi-id batch returns the found ones and skips missing", func(t *testing.T) {
 		engine, _, rs := setupResourceHandlerTest(t)
 		rs.EXPECT().GetByIDs(gomock.Any(), []string{"res-1", "res-2"}).
 			Return([]*interfaces.Resource{{ID: "res-1", Name: "one"}}, nil)
@@ -196,8 +196,38 @@ func Test_ResourceRestHandler_GetResources(t *testing.T) {
 
 		engine.ServeHTTP(w, req)
 
+		require.Equal(t, http.StatusOK, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), `"id":"res-1"`)
+		assert.NotContains(t, w.Body.String(), `"id":"res-2"`)
+		assert.NotContains(t, w.Body.String(), "not found")
+	})
+
+	t.Run("single missing id still returns 404", func(t *testing.T) {
+		engine, _, rs := setupResourceHandlerTest(t)
+		rs.EXPECT().GetByIDs(gomock.Any(), []string{"res-x"}).
+			Return([]*interfaces.Resource{}, nil)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/vega-backend/in/v1/resources/res-x", nil)
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
 		require.Equal(t, http.StatusNotFound, w.Result().StatusCode)
-		assert.Contains(t, w.Body.String(), "id res-2 not found")
+		assert.Contains(t, w.Body.String(), "id res-x not found")
+	})
+
+	t.Run("ignore_missing tolerates a missing single id", func(t *testing.T) {
+		engine, _, rs := setupResourceHandlerTest(t)
+		rs.EXPECT().GetByIDs(gomock.Any(), []string{"res-x"}).
+			Return([]*interfaces.Resource{}, nil)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/vega-backend/in/v1/resources/res-x?ignore_missing=true", nil)
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusOK, w.Result().StatusCode)
+		assert.NotContains(t, w.Body.String(), "not found")
 	})
 }
 
