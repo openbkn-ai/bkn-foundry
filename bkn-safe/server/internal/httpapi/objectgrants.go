@@ -121,6 +121,13 @@ func registerObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 
 		// entries page: one row per (accessor, object), ops aggregated. Ordered by
 		// (v0, v1) so paging is deterministic.
+		//
+		// GROUP_CONCAT(DISTINCT v2) is safe against MariaDB's default 1024-byte
+		// group_concat_max_len: DISTINCT collapses the ops to the operation
+		// VOCABULARY (a fixed ~dozen ids like view_detail/modify/authorize), not
+		// per-grant, so the concatenation is bounded by vocabulary size — not grant
+		// count — and stays far under 1024. Op ids contain no ",", so splitting the
+		// result on "," below is safe.
 		rowsSQL := "SELECT v0 AS accessor, " + rtypeExpr + " AS rtype, " + ridExpr + " AS rid, " +
 			"GROUP_CONCAT(DISTINCT v2) AS ops FROM casbin_rule WHERE " + whereSQL +
 			" GROUP BY v0, v1 ORDER BY v0, v1"
@@ -278,6 +285,9 @@ func listGroupedObjectGrants(c *gin.Context, qdb *gorm.DB, groupBy, whereSQL str
 		return
 	}
 
+	// GROUP_CONCAT(DISTINCT v2): as in the flat listing, DISTINCT collapses ops to
+	// the fixed operation vocabulary (a comma-free ~dozen ids), so the result
+	// stays well under group_concat_max_len and splits cleanly on ",".
 	sql := "SELECT " + keyCol + " AS k, COUNT(DISTINCT " + cntCol + ") AS cnt, " +
 		"GROUP_CONCAT(DISTINCT v2) AS ops FROM casbin_rule WHERE " + whereSQL +
 		" GROUP BY " + keyCol + " ORDER BY " + keyCol
