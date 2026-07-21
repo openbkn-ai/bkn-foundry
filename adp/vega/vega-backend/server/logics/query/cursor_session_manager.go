@@ -7,10 +7,12 @@
 package query
 
 import (
+	"errors"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/openbkn-ai/bkn-comm-go/logger"
 
 	"vega-backend/interfaces"
 )
@@ -18,34 +20,60 @@ import (
 type cursorSession struct {
 	mu sync.Mutex
 
-	ID              string
-	AccountID       string
-	CatalogID       string
-	ResourceIDs     []string
-	CompiledSQL     string
-	QueryFormat     interfaces.QueryFormat
-	OpenSearchQuery map[string]any
-	OpenSearchIndex string
-	SearchAfter     []any
-	PageSize        int
-	KeepAliveSec    int
-	QueryTimeoutSec int
-	Offset          int
-	ExpiresAtSec    int64
+	ID                      string
+	AccountID               string
+	CatalogID               string
+	ResourceIDs             []string
+	CompiledSQL             string
+	QueryFormat             interfaces.QueryFormat
+	OpenSearchQuery         map[string]any
+	OpenSearchIndex         string
+	SearchAfter             []any
+	PageSize                int
+	KeepAliveSec            int
+	QueryTimeoutSec         int
+	Offset                  int
+	CreatedAtSec            int64
+	LastSuccessfulPageAtSec int64
+	ExpiresAtSec            int64
 }
 
 type cursorSessionManager struct {
-	mu       sync.Mutex
-	sessions map[string]*cursorSession
+	mu          sync.Mutex
+	sessions    map[string]*cursorSession
+	maxSessions int
 }
 
-var rawQueryCursorSessions = &cursorSessionManager{sessions: make(map[string]*cursorSession)}
+const defaultCursorMaxSessions = 1000
+
+var errCursorSessionLimitReached = errors.New("cursor session limit reached")
+
+var rawQueryCursorSessions = newCursorSessionManager(defaultCursorMaxSessions)
 
 func init() {
 	go rawQueryCursorSessions.reclaimExpired()
 }
 
-func (m *cursorSessionManager) create(accountID, catalogID string, resourceIDs []string, compiledSQL string, pageSize, keepAliveSec, queryTimeoutSec int) *cursorSession {
+func newCursorSessionManager(maxSessions int) *cursorSessionManager {
+	if maxSessions <= 0 {
+		maxSessions = defaultCursorMaxSessions
+	}
+	return &cursorSessionManager{
+		sessions:    make(map[string]*cursorSession),
+		maxSessions: maxSessions,
+	}
+}
+
+func (m *cursorSessionManager) configure(maxSessions int) {
+	if maxSessions <= 0 {
+		maxSessions = defaultCursorMaxSessions
+	}
+	m.mu.Lock()
+	m.maxSessions = maxSessions
+	m.mu.Unlock()
+}
+
+func (m *cursorSessionManager) create(accountID, catalogID string, resourceIDs []string, compiledSQL string, pageSize, keepAliveSec, queryTimeoutSec int) (*cursorSession, error) {
 	if keepAliveSec == 0 {
 		keepAliveSec = interfaces.DefaultCursorKeepAliveSec
 	}
@@ -60,12 +88,20 @@ func (m *cursorSessionManager) create(accountID, catalogID string, resourceIDs [
 		PageSize:        pageSize,
 		KeepAliveSec:    keepAliveSec,
 		QueryTimeoutSec: queryTimeoutSec,
+		CreatedAtSec:    now,
 		ExpiresAtSec:    now + int64(keepAliveSec),
 	}
 	m.mu.Lock()
+	m.removeExpiredLocked(time.Now().Unix())
+	if len(m.sessions) >= m.maxSessions {
+		m.mu.Unlock()
+		return nil, errCursorSessionLimitReached
+	}
 	m.sessions[session.ID] = session
+	activeSessionsLen := len(m.sessions)
 	m.mu.Unlock()
-	return session
+	logger.Infof("Cursor session created: catalog_id=%s, query_format=%s, active_sessions_len=%d", session.CatalogID, session.QueryFormat, activeSessionsLen)
+	return session, nil
 }
 
 // reclaimExpired bounds memory usage for cursors that are never continued.
@@ -75,37 +111,77 @@ func (m *cursorSessionManager) reclaimExpired() {
 	defer ticker.Stop()
 	for now := range ticker.C {
 		m.mu.Lock()
-		for id, session := range m.sessions {
-			if now.Unix() >= session.ExpiresAtSec {
-				delete(m.sessions, id)
-			}
-		}
+		m.removeExpiredLocked(now.Unix())
 		m.mu.Unlock()
 	}
 }
 
 func (m *cursorSessionManager) get(cursor string) (*cursorSession, bool) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	session, ok := m.sessions[cursor]
 	if !ok {
+		m.mu.Unlock()
 		return nil, false
 	}
 	if time.Now().Unix() >= session.ExpiresAtSec {
-		delete(m.sessions, cursor)
+		expiredSession, _ := m.removeLocked(cursor)
+		activeSessions := len(m.sessions)
+		m.mu.Unlock()
+		logger.Infof("Cursor session expired: catalog_id=%s, active_sessions=%d", expiredSession.CatalogID, activeSessions)
 		return nil, false
 	}
+	m.mu.Unlock()
 	return session, true
 }
 
 func (m *cursorSessionManager) remove(cursor string) {
 	m.mu.Lock()
-	delete(m.sessions, cursor)
+	m.removeLocked(cursor)
 	m.mu.Unlock()
 }
 
-func (s *cursorSession) refreshExpiry(now time.Time) {
-	s.ExpiresAtSec = now.Unix() + int64(s.KeepAliveSec)
+func (m *cursorSessionManager) closeSession(cursor string) {
+	m.mu.Lock()
+	session, ok := m.removeLocked(cursor)
+	activeSessions := len(m.sessions)
+	m.mu.Unlock()
+	if ok {
+		logger.Infof("Cursor session closed at final page: catalog_id=%s, active_sessions=%d", session.CatalogID, activeSessions)
+	}
+}
+
+func (m *cursorSessionManager) expire(cursor string) {
+	m.mu.Lock()
+	session, ok := m.removeLocked(cursor)
+	activeSessions := len(m.sessions)
+	m.mu.Unlock()
+	if ok {
+		logger.Infof("Cursor session expired: catalog_id=%s, active_sessions=%d", session.CatalogID, activeSessions)
+	}
+}
+
+func (m *cursorSessionManager) markPageSuccess(session *cursorSession) {
+	now := time.Now().Unix()
+	session.LastSuccessfulPageAtSec = now
+	session.ExpiresAtSec = now + int64(session.KeepAliveSec)
+}
+
+func (m *cursorSessionManager) removeLocked(cursor string) (*cursorSession, bool) {
+	session, ok := m.sessions[cursor]
+	if !ok {
+		return nil, false
+	}
+	delete(m.sessions, cursor)
+	return session, true
+}
+
+func (m *cursorSessionManager) removeExpiredLocked(nowSec int64) {
+	for id, session := range m.sessions {
+		if nowSec >= session.ExpiresAtSec {
+			m.removeLocked(id)
+			logger.Infof("Cursor session expired: catalog_id=%s, active_sessions=%d", session.CatalogID, len(m.sessions))
+		}
+	}
 }
 
 func cursorPagingResponse(session *cursorSession) *interfaces.PagingResponse {

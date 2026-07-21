@@ -24,12 +24,6 @@ type RawQueryRequest struct {
 	Paging          PagingRequest `json:"paging,omitempty"`
 	QueryTimeoutSec int           `json:"query_timeout_sec,omitempty"` // 查询超时时间（秒），默认60，最小1，最大3600
 
-	// Deprecated internal fields are retained temporarily while unused legacy
-	// implementation code is removed. They are not part of the HTTP contract.
-	QueryType    string `json:"-"`
-	QueryID      string `json:"-"`
-	ResourceType string `json:"-"`
-	StreamSize   int    `json:"-"`
 }
 
 func (r RawQueryRequest) Contract() RawQueryContract {

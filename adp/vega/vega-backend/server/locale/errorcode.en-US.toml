@@ -229,6 +229,11 @@ Description = "Query concurrency limit exceeded"
 Solution = "Please try again later"
 ErrorLink = "None"
 
+[VegaBackend.Query.CursorSessionLimitExceeded]
+Description = "Cursor session limit exceeded"
+Solution = "Please try again later"
+ErrorLink = "None"
+
 [VegaBackend.Query.ExecuteFailed]
 Description = "Query execution failed"
 Solution = "Please contact the administrator"

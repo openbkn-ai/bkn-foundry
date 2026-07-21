@@ -23,8 +23,9 @@ const (
 	// 410 Gone（流式 session 过期）
 	VegaBackend_Query_SessionExpired = "VegaBackend.Query.SessionExpired"
 
-	// 429 Too Many Requests（并发限流）
-	VegaBackend_Query_ConcurrencyLimitExceeded = "VegaBackend.Query.ConcurrencyLimitExceeded"
+	// 429 Too Many Requests（并发与 cursor session 限流）
+	VegaBackend_Query_ConcurrencyLimitExceeded   = "VegaBackend.Query.ConcurrencyLimitExceeded"
+	VegaBackend_Query_CursorSessionLimitExceeded = "VegaBackend.Query.CursorSessionLimitExceeded"
 
 	// 500 Internal Server Error
 	VegaBackend_Query_ExecuteFailed = "VegaBackend.Query.ExecuteFailed"
@@ -50,6 +51,7 @@ var QueryErrCodeList = []string{
 
 	// 429 Too Many Requests
 	VegaBackend_Query_ConcurrencyLimitExceeded,
+	VegaBackend_Query_CursorSessionLimitExceeded,
 
 	// 500 Internal Server Error
 	VegaBackend_Query_ExecuteFailed,
