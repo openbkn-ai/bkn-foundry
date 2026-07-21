@@ -84,10 +84,9 @@ func (m *operatorManager) editOperator(ctx context.Context, req *interfaces.Oper
 		return nil, err
 	}
 	defer func() {
-		if err != nil {
-			_ = tx.Rollback()
-		} else {
-			_ = tx.Commit()
+		finishErr := finishTx(tx, err != nil)
+		if finishErr != nil && err == nil {
+			err = finishErr
 		}
 	}()
 	switch interfaces.BizStatus(operator.Status) {
@@ -152,15 +151,13 @@ func (m *operatorManager) UpdateOperatorStatus(ctx context.Context, req *interfa
 		return
 	}
 	defer func() {
-		if err != nil {
-			e := tx.Rollback()
-			if e != nil {
-				m.Logger.Errorf("rollback failed, err: %v", e)
-			}
-		} else {
-			e := tx.Commit()
-			if e != nil {
-				m.Logger.Errorf("commit failed, err: %v", e)
+		finishErr := finishTx(tx, err != nil)
+		if finishErr != nil {
+			if err != nil {
+				m.Logger.Errorf("rollback failed, err: %v", finishErr)
+			} else {
+				m.Logger.Errorf("commit failed, err: %v", finishErr)
+				err = finishErr
 			}
 		}
 	}()

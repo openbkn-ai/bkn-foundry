@@ -282,13 +282,9 @@ func (m *operatorManager) registerOperator(ctx context.Context, req *interfaces.
 		return
 	}
 	defer func() {
-		if tx == nil {
-			return
-		}
-		if err != nil {
-			_ = tx.Rollback()
-		} else {
-			_ = tx.Commit()
+		finishErr := finishTx(tx, err != nil)
+		if finishErr != nil && err == nil {
+			err = finishErr
 		}
 	}()
 	// 2. 插入元数据
