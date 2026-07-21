@@ -86,6 +86,14 @@ func New(deps Deps) *gin.Engine {
 	if verifier == nil && deps.Hydra != nil {
 		verifier = deps.Hydra
 	}
+	// Wrap the verifier in a short-TTL, singleflight-deduplicated cache. Every
+	// token-gated request (admin + /me) introspects via hydra; the frontend fires
+	// /me and /me/permissions in parallel at login, so this collapses that pair
+	// into one upstream introspection and absorbs repeat pulls. Authorization is
+	// unaffected — only the token->subject step is cached, casbin still runs live.
+	if verifier != nil {
+		verifier = newCachingVerifier(verifier, verifierCacheTTL)
+	}
 	if deps.Enforcer != nil && verifier != nil && deps.Users != nil && deps.Directory != nil {
 		admin := r.Group("/api/safe/v1/admin", RequireAdmin(verifier, deps.Enforcer))
 		// Audit every mutating admin request. Use() must precede the route
