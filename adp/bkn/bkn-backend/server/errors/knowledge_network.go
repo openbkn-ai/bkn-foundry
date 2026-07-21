@@ -45,6 +45,7 @@ const (
 	BknBackend_KnowledgeNetwork_InternalError_GetObjectTypesTotalFailed   = "BknBackend.KnowledgeNetwork.InternalError.GetObjectTypesTotalFailed"
 	BknBackend_KnowledgeNetwork_InternalError_GetRelationTypesTotalFailed = "BknBackend.KnowledgeNetwork.InternalError.GetRelationTypesTotalFailed"
 	BknBackend_KnowledgeNetwork_InternalError_GetRiskTypesTotalFailed     = "BknBackend.KnowledgeNetwork.InternalError.GetRiskTypesTotalFailed"
+	BknBackend_KnowledgeNetwork_InternalError_GetMetricsTotalFailed       = "BknBackend.KnowledgeNetwork.InternalError.GetMetricsTotalFailed"
 	BknBackend_KnowledgeNetwork_InternalError_GetVectorFailed             = "BknBackend.KnowledgeNetwork.InternalError.GetVectorFailed"
 	BknBackend_KnowledgeNetwork_InternalError_InsertOpenSearchDataFailed  = "BknBackend.KnowledgeNetwork.InternalError.InsertOpenSearchDataFailed"
 	BknBackend_KnowledgeNetwork_InternalError_CreateObjectTypesFailed     = "BknBackend.KnowledgeNetwork.InternalError.CreateObjectTypesFailed"
@@ -94,6 +95,7 @@ var (
 		BknBackend_KnowledgeNetwork_InternalError_GetObjectTypesTotalFailed,
 		BknBackend_KnowledgeNetwork_InternalError_GetRelationTypesTotalFailed,
 		BknBackend_KnowledgeNetwork_InternalError_GetRiskTypesTotalFailed,
+		BknBackend_KnowledgeNetwork_InternalError_GetMetricsTotalFailed,
 		BknBackend_KnowledgeNetwork_InternalError_GetVectorFailed,
 		BknBackend_KnowledgeNetwork_InternalError_InsertOpenSearchDataFailed,
 		BknBackend_KnowledgeNetwork_InternalError_CreateObjectTypesFailed,

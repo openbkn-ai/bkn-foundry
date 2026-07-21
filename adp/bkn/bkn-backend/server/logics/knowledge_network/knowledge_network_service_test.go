@@ -188,6 +188,7 @@ func Test_knowledgeNetworkService_GetStatByKN(t *testing.T) {
 		ata := bmock.NewMockActionTypeAccess(mockCtrl)
 		cga := bmock.NewMockConceptGroupAccess(mockCtrl)
 		rtA := bmock.NewMockRiskTypeAccess(mockCtrl)
+		ma := bmock.NewMockMetricAccess(mockCtrl)
 
 		service := &knowledgeNetworkService{
 			appSetting: appSetting,
@@ -196,6 +197,7 @@ func Test_knowledgeNetworkService_GetStatByKN(t *testing.T) {
 			ata:        ata,
 			cga:        cga,
 			riskTypeA:  rtA,
+			ma:         ma,
 		}
 
 		Convey("Success getting statistics\n", func() {
@@ -209,6 +211,7 @@ func Test_knowledgeNetworkService_GetStatByKN(t *testing.T) {
 			ata.EXPECT().GetActionTypesTotal(gomock.Any(), gomock.Any()).Return(3, nil)
 			cga.EXPECT().GetConceptGroupsTotal(gomock.Any(), gomock.Any()).Return(2, nil)
 			rtA.EXPECT().GetRiskTypesTotal(gomock.Any(), gomock.Any()).Return(4, nil)
+			ma.EXPECT().GetMetricsTotal(gomock.Any(), gomock.Any()).Return(7, nil)
 
 			stats, err := service.GetStatByKN(ctx, kn)
 			So(err, ShouldBeNil)
@@ -218,6 +221,7 @@ func Test_knowledgeNetworkService_GetStatByKN(t *testing.T) {
 			So(stats.AtTotal, ShouldEqual, 3)
 			So(stats.CgTotal, ShouldEqual, 2)
 			So(stats.RiskTypeTotal, ShouldEqual, 4)
+			So(stats.MetricsTotal, ShouldEqual, 7)
 		})
 
 		Convey("Failed when getting object types total returns error\n", func() {
@@ -303,6 +307,26 @@ func Test_knowledgeNetworkService_GetStatByKN(t *testing.T) {
 			So(stats, ShouldBeNil)
 			httpErr := err.(*rest.HTTPError)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_InternalError_GetRiskTypesTotalFailed)
+		})
+
+		Convey("Failed when getting metrics total returns error\n", func() {
+			kn := &interfaces.KN{
+				KNID:   "kn1",
+				Branch: interfaces.MAIN_BRANCH,
+			}
+
+			ota.EXPECT().GetObjectTypesTotal(gomock.Any(), gomock.Any()).Return(10, nil)
+			rta.EXPECT().GetRelationTypesTotal(gomock.Any(), gomock.Any()).Return(5, nil)
+			ata.EXPECT().GetActionTypesTotal(gomock.Any(), gomock.Any()).Return(3, nil)
+			cga.EXPECT().GetConceptGroupsTotal(gomock.Any(), gomock.Any()).Return(2, nil)
+			rtA.EXPECT().GetRiskTypesTotal(gomock.Any(), gomock.Any()).Return(4, nil)
+			ma.EXPECT().GetMetricsTotal(gomock.Any(), gomock.Any()).Return(0, rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
+
+			stats, err := service.GetStatByKN(ctx, kn)
+			So(err, ShouldNotBeNil)
+			So(stats, ShouldBeNil)
+			httpErr := err.(*rest.HTTPError)
+			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_InternalError_GetMetricsTotalFailed)
 		})
 	})
 }

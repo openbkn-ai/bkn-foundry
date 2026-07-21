@@ -193,3 +193,8 @@ ErrorLink = "None"
 Description = "Get Risk Types Total In Knowledge Network Failed"
 Solution = "Please try again. If the error occurs again, please submit the work order or contact technical support."
 ErrorLink = "None"
+
+[BknBackend.KnowledgeNetwork.InternalError.GetMetricsTotalFailed]
+Description = "Get Metrics Total In Knowledge Network Failed"
+Solution = "Please try again. If the error occurs again, please submit the work order or contact technical support."
+ErrorLink = "None"

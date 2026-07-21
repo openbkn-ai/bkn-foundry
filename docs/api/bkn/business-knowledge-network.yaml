@@ -1773,6 +1773,9 @@ components:
         action_types_total:
           description: 行动类数量
           type: integer
+        metrics_total:
+          description: 指标数量
+          type: integer
     ConceptGroupInfo:
       description: 概念分组自身的信息
       type: object

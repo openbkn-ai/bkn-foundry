@@ -216,6 +216,7 @@ type Statistics struct {
 	RtTotal       int `json:"relation_types_total"`
 	AtTotal       int `json:"action_types_total"`
 	RiskTypeTotal int `json:"risk_types_total"`
+	MetricsTotal  int `json:"metrics_total"`
 }
 
 // 业务知识网络的分页查询
