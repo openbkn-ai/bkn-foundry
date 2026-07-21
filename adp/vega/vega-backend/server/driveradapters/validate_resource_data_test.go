@@ -70,6 +70,31 @@ func TestValidateResourceDataQueryParams(t *testing.T) {
 		assert.Zero(t, continuation.Limit)
 	})
 
+	t.Run("rejects query fields on cursor continuation", func(t *testing.T) {
+		for name, params := range map[string]*interfaces.ResourceDataQueryParams{
+			"need total": {
+				Paging:    interfaces.PagingRequest{Cursor: "opaque-cursor"},
+				NeedTotal: true,
+			},
+			"filter": {
+				Paging:          interfaces.PagingRequest{Cursor: "opaque-cursor"},
+				FilterCondition: map[string]any{"field": "name", "operation": "==", "value": "alice"},
+			},
+			"sort": {
+				Paging: interfaces.PagingRequest{Cursor: "opaque-cursor"},
+				Sort:   []*interfaces.SortField{{Field: "name", Direction: "asc"}},
+			},
+			"aggregation": {
+				Paging:      interfaces.PagingRequest{Cursor: "opaque-cursor"},
+				Aggregation: &interfaces.Aggregation{Property: "score", Aggr: "sum"},
+			},
+		} {
+			t.Run(name, func(t *testing.T) {
+				require.Error(t, ValidateResourceDataQueryParams(ctx, params))
+			})
+		}
+	})
+
 	t.Run("returns errors for invalid parameters", func(t *testing.T) {
 		tests := []struct {
 			name   string

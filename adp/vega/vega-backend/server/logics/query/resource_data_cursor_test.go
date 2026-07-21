@@ -43,6 +43,34 @@ func TestResourceDataCursorPagesAndCloses(t *testing.T) {
 	assert.Equal(t, []int{0, 2}, offsets)
 }
 
+func TestResourceDataCursorPreservesNeedTotalAcrossContinuation(t *testing.T) {
+	previousManager := rawQueryCursorSessions
+	rawQueryCursorSessions = newCursorSessionManager(10)
+	t.Cleanup(func() { rawQueryCursorSessions = previousManager })
+
+	resource := &interfaces.Resource{ID: "table-1", CatalogID: "catalog-1"}
+	params := &interfaces.ResourceDataQueryParams{
+		NeedTotal: true,
+		Paging:    interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 1},
+	}
+	executor := func(_ context.Context, pageParams *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
+		if pageParams.Offset == 0 {
+			return []map[string]any{{"id": 1}, {"id": 2}}, 2, nil
+		}
+		return []map[string]any{{"id": 2}}, 2, nil
+	}
+
+	first, err := ExecuteInitialResourceDataCursor(context.Background(), "account-1", resource, params, executor)
+	require.NoError(t, err)
+	require.NotNil(t, first.Paging.NextCursor)
+	assert.True(t, first.IncludeTotal)
+
+	continuation, err := ExecuteResourceDataCursorContinuation(context.Background(), "account-1", resource.ID, *first.Paging.NextCursor, executor)
+	require.NoError(t, err)
+	assert.True(t, continuation.IncludeTotal)
+	assert.Equal(t, int64(2), continuation.TotalCount)
+}
+
 func TestResourceDataCursorRejectsWrongResource(t *testing.T) {
 	previousManager := rawQueryCursorSessions
 	rawQueryCursorSessions = newCursorSessionManager(10)

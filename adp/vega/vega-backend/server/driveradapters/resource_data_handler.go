@@ -145,7 +145,7 @@ func (r *restHandler) queryResourceData(c *gin.Context, ctx context.Context, spa
 	resultData := map[string]any{
 		"entries": result.Entries,
 	}
-	if params.NeedTotal {
+	if params.NeedTotal || result.IncludeTotal {
 		resultData["total_count"] = result.TotalCount
 	}
 	if result.Paging != nil {

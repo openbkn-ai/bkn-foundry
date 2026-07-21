@@ -79,7 +79,7 @@ func executeResourceDataCursorPage(ctx context.Context, session *cursorSession,
 	}
 	if !hasNext {
 		rawQueryCursorSessions.closeSession(session.ID)
-		return &interfaces.ResourceDataQueryResult{Entries: entries, TotalCount: total, Paging: &interfaces.PagingResponse{}}, nil
+		return &interfaces.ResourceDataQueryResult{Entries: entries, TotalCount: total, Paging: &interfaces.PagingResponse{}, IncludeTotal: session.ResourceDataParams.NeedTotal}, nil
 	}
 	if session.ResourceDataCategory != interfaces.ResourceCategoryIndex {
 		entries = entries[:session.PageSize]
@@ -89,7 +89,7 @@ func executeResourceDataCursorPage(ctx context.Context, session *cursorSession,
 		session.SearchAfter = append([]any(nil), params.SearchAfter...)
 	}
 	rawQueryCursorSessions.markPageSuccess(session)
-	return &interfaces.ResourceDataQueryResult{Entries: entries, TotalCount: total, Paging: cursorPagingResponse(session)}, nil
+	return &interfaces.ResourceDataQueryResult{Entries: entries, TotalCount: total, Paging: cursorPagingResponse(session), IncludeTotal: session.ResourceDataParams.NeedTotal}, nil
 }
 
 func cursorNotFoundError(ctx context.Context) error {

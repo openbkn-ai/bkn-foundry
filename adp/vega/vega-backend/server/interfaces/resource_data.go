@@ -90,7 +90,8 @@ type ResourceDataQueryParams struct {
 // logic-view queries. Paging follows the same single/cursor contract as raw
 // queries.
 type ResourceDataQueryResult struct {
-	Entries    []map[string]any
-	TotalCount int64
-	Paging     *PagingResponse
+	Entries      []map[string]any
+	TotalCount   int64
+	Paging       *PagingResponse
+	IncludeTotal bool
 }

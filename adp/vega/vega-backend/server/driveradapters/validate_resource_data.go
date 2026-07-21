@@ -21,6 +21,10 @@ import (
 
 // 资源数据查询参数校验
 func ValidateResourceDataQueryParams(ctx context.Context, params *interfaces.ResourceDataQueryParams) error {
+	if params.Paging.Cursor != "" {
+		return validateResourceDataCursorContinuation(ctx, params)
+	}
+
 	// 校验format是否为 original 或者 flat
 	if params.Format == "" {
 		params.Format = interfaces.Format_Original
@@ -70,16 +74,6 @@ func ValidateResourceDataQueryParams(ctx context.Context, params *interfaces.Res
 
 func validateResourceDataPaging(ctx context.Context, params *interfaces.ResourceDataQueryParams) error {
 	paging := params.Paging
-	if paging.Cursor != "" {
-		if paging.Mode != "" || paging.Offset != 0 || paging.Limit != 0 || paging.KeepAliveSec != 0 {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
-				WithErrorDetails("cursor continuation must contain only paging.cursor")
-		}
-		params.Offset = 0
-		params.Limit = 0
-		return nil
-	}
-
 	if paging.Mode == interfaces.PagingModeCursor && paging.Limit == 0 {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Limit).
 			WithErrorDetails("paging.limit is required for cursor paging")
@@ -107,6 +101,19 @@ func validateResourceDataPaging(ctx context.Context, params *interfaces.Resource
 			WithErrorDetails("paging.mode must be either single or cursor")
 	}
 	return validatePaginationParams(ctx, params.Offset, params.Limit)
+}
+
+func validateResourceDataCursorContinuation(ctx context.Context, params *interfaces.ResourceDataQueryParams) error {
+	paging := params.Paging
+	if paging.Mode != "" || paging.Offset != 0 || paging.Limit != 0 || paging.KeepAliveSec != 0 ||
+		params.FilterCondition != nil || len(params.Sort) != 0 || len(params.OutputFields) != 0 || params.NeedTotal ||
+		params.Aggregation != nil || len(params.GroupBy) != 0 || params.Having != nil {
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+			WithErrorDetails("cursor continuation must contain only paging.cursor")
+	}
+	params.Offset = 0
+	params.Limit = 0
+	return nil
 }
 
 func validateFormat(ctx context.Context, format string) error {
