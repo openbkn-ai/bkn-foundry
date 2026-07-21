@@ -65,7 +65,7 @@ func (lvs *logicViewService) QueryWithPaging(ctx context.Context, resource *inte
 	params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
 	if params.Paging.Cursor != "" {
 		if resource.LogicType == interfaces.LogicType_Derived {
-			return query.ExecuteResourceDataCursorContinuation(ctx, accountIDFromContext(ctx), resource.ID, params.Paging.Cursor,
+			return query.ExecuteResourceDataCursorContinuation(ctx, accountIDFromContext(ctx), resource, params.Paging.Cursor,
 				func(pageCtx context.Context, pageParams *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
 					view := &interfaces.LogicView{Resource: *resource}
 					return lvs.queryDerivedLogicView(pageCtx, view, pageParams)
@@ -204,6 +204,15 @@ func (lvs *logicViewService) queryDerivedLogicView(ctx context.Context, view *in
 	}
 	if _, err := resource.EnsureResourceQueryable(ctx, fromResource); err != nil {
 		return nil, 0, err
+	}
+	if fromResource.Category == interfaces.ResourceCategoryIndex &&
+		params.Aggregation == nil && len(params.GroupBy) == 0 && params.Having == nil {
+		paging := rawPaging(params)
+		limit := paging.EffectiveLimit()
+		if limit <= interfaces.MaxPageLimit && paging.Offset > interfaces.MaxPageLimit-limit {
+			return nil, 0, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+				WithErrorDetails(fmt.Sprintf("paging.offset + paging.limit must not exceed %d for OpenSearch queries", interfaces.MaxPageLimit))
+		}
 	}
 
 	catalog, err := lvs.cs.GetByID(ctx, fromResource.CatalogID, true)

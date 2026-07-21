@@ -133,8 +133,7 @@ func (c *OpenSearchConnector) ExecuteRawQuery(ctx context.Context, index string,
 		return nil, fmt.Errorf("failed to marshal query: %w", err)
 	}
 
-	// Log the DSL query
-	logger.Infof("[OpenSearch DSL Query] Index: %s", index)
+	logger.Debugf("Executing OpenSearch DSL query")
 
 	// Create search request
 	req := opensearchapi.SearchRequest{

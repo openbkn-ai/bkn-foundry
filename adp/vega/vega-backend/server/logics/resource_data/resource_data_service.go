@@ -243,27 +243,35 @@ func (rds *resourceDataService) QueryWithPaging(ctx context.Context, resource *i
 	if resource.Category == interfaces.ResourceCategoryLogicView {
 		return rds.lvs.QueryWithPaging(ctx, resource, params)
 	}
+	paginationCategory := resourceDataPaginationCategory(resource)
 	if params.Paging.Cursor != "" {
 		if !resourceDataCursorSupported(resource.Category) {
 			return nil, rest.NewHTTPError(ctx, http.StatusNotImplemented, verrors.VegaBackend_Query_InvalidParameter).
 				WithErrorDetails("cursor paging is not implemented for this resource category")
 		}
-		return querylogic.ExecuteResourceDataCursorContinuation(ctx, accountIDFromContext(ctx), resource.ID, params.Paging.Cursor,
+		return querylogic.ExecuteResourceDataCursorContinuation(ctx, accountIDFromContext(ctx), resource, params.Paging.Cursor,
 			func(pageCtx context.Context, pageParams *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
 				return rds.query(pageCtx, resource, pageParams)
 			})
 	}
+	if paginationCategory == interfaces.ResourceCategoryIndex && !isIndexAggregateQuery(params) {
+		limit := params.Paging.EffectiveLimit()
+		if limit <= interfaces.MaxPageLimit && params.Paging.Offset > interfaces.MaxPageLimit-limit {
+			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+				WithErrorDetails(fmt.Sprintf("paging.offset + paging.limit must not exceed %d for OpenSearch queries", interfaces.MaxPageLimit))
+		}
+	}
 	if params.Paging.Mode == interfaces.PagingModeCursor {
 		if resourceDataCursorSupported(resource.Category) {
-			if resource.Category == interfaces.ResourceCategoryIndex && len(params.Sort) == 0 {
+			if paginationCategory == interfaces.ResourceCategoryIndex && len(params.Sort) == 0 {
 				return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 					WithErrorDetails("sort is required for index cursor paging")
 			}
-			if resource.Category == interfaces.ResourceCategoryIndex && isIndexAggregateQuery(params) {
+			if paginationCategory == interfaces.ResourceCategoryIndex && isIndexAggregateQuery(params) {
 				return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 					WithErrorDetails("cursor paging does not support index aggregation queries")
 			}
-			return querylogic.ExecuteInitialResourceDataCursor(ctx, accountIDFromContext(ctx), resource, params,
+			return querylogic.ExecuteInitialResourceDataCursorWithCategory(ctx, accountIDFromContext(ctx), resource, paginationCategory, params,
 				func(pageCtx context.Context, pageParams *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
 					return rds.query(pageCtx, resource, pageParams)
 				})
@@ -281,6 +289,18 @@ func (rds *resourceDataService) QueryWithPaging(ctx context.Context, resource *i
 
 func isIndexAggregateQuery(params *interfaces.ResourceDataQueryParams) bool {
 	return params.Aggregation != nil || len(params.GroupBy) > 0 || params.Having != nil
+}
+
+func resourceDataPaginationCategory(resource *interfaces.Resource) string {
+	if resource == nil {
+		return ""
+	}
+	if resource.Category == interfaces.ResourceCategoryDataset ||
+		resource.Category == interfaces.ResourceCategoryIndex ||
+		(resource.Category == interfaces.ResourceCategoryTable && resource.LocalIndexName != "") {
+		return interfaces.ResourceCategoryIndex
+	}
+	return resource.Category
 }
 
 func resourceDataCursorSupported(category string) bool {

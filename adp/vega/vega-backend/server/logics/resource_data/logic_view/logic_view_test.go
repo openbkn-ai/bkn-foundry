@@ -126,6 +126,41 @@ func TestDerivedIndexCursorRequiresSort(t *testing.T) {
 	assert.Contains(t, err.Error(), "sort is required")
 }
 
+func TestDerivedIndexRejectsFirstPageWindowOverflow(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockRS := vmock.NewMockResourceService(ctrl)
+	mockCS := vmock.NewMockCatalogService(ctrl)
+	svc := &logicViewService{rs: mockRS, cs: mockCS}
+	source := &interfaces.Resource{
+		ID:        "source-1",
+		CatalogID: "catalog-1",
+		Category:  interfaces.ResourceCategoryIndex,
+		Status:    interfaces.ResourceStatusActive,
+	}
+	mockRS.EXPECT().GetByID(gomock.Any(), "source-1").Return(source, nil).AnyTimes()
+	mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).
+		Return(&interfaces.Catalog{ID: "catalog-1", Enabled: false}, nil).AnyTimes()
+
+	result, err := svc.QueryWithPaging(context.Background(), &interfaces.Resource{
+		ID:        "logic-1",
+		Category:  interfaces.ResourceCategoryLogicView,
+		LogicType: interfaces.LogicType_Derived,
+		LogicDefinition: []*interfaces.LogicDefinitionNode{{
+			Type:   interfaces.LogicDefinitionNodeType_Resource,
+			Config: map[string]any{"resource_id": "source-1"},
+		}},
+	}, &interfaces.ResourceDataQueryParams{
+		Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Offset: interfaces.MaxPageLimit, Limit: 1},
+		Sort:   []*interfaces.SortField{{Field: "timestamp", Direction: "asc"}},
+	})
+
+	assert.Nil(t, result)
+	var httpErr *rest.HTTPError
+	require.ErrorAs(t, err, &httpErr)
+	assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+	assert.Contains(t, err.Error(), "offset + paging.limit")
+}
+
 func TestExecutePhysicalQuery(t *testing.T) {
 	t.Run("returns error for unsupported category", func(t *testing.T) {
 		rows, total, err := executePhysicalQuery(context.Background(), &interfaces.Catalog{}, &interfaces.Resource{

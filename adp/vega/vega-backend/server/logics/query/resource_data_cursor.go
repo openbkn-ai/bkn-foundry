@@ -41,7 +41,7 @@ func ExecuteInitialResourceDataCursorWithCategory(ctx context.Context, accountID
 	return result, err
 }
 
-func ExecuteResourceDataCursorContinuation(ctx context.Context, accountID, resourceID, cursor string,
+func ExecuteResourceDataCursorContinuation(ctx context.Context, accountID string, resource *interfaces.Resource, cursor string,
 	execute ResourceDataPageExecutor) (*interfaces.ResourceDataQueryResult, error) {
 	session, ok := rawQueryCursorSessions.acquire(cursor)
 	if !ok || session.ResourceDataParams == nil {
@@ -55,7 +55,11 @@ func ExecuteResourceDataCursorContinuation(ctx context.Context, accountID, resou
 		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, verrors.VegaBackend_Query_InvalidParameter).
 			WithErrorDetails("cursor does not belong to the current account")
 	}
-	if session.ResourceDataResourceID != resourceID {
+	if resource == nil || session.ResourceDataResourceID != resource.ID {
+		return nil, cursorNotFoundError(ctx)
+	}
+	if session.ResourceDataUpdateTime != resource.UpdateTime {
+		rawQueryCursorSessions.closeSession(session.ID)
 		return nil, cursorNotFoundError(ctx)
 	}
 	return executeResourceDataCursorPage(ctx, session, execute)
@@ -65,13 +69,12 @@ func executeResourceDataCursorPage(ctx context.Context, session *interfaces.Curs
 	execute ResourceDataPageExecutor) (*interfaces.ResourceDataQueryResult, error) {
 	params := cloneResourceDataQueryParams(session.ResourceDataParams)
 	params.Offset = session.Offset
+	params.NeedTotal = session.ResourceDataParams.NeedTotal && !session.HasTotalCount
 	params.Limit = session.Limit + 1
 	if session.ResourceDataCategory == interfaces.ResourceCategoryIndex {
-		if params.NeedTotal {
-			// Exact totals let the cursor determine the final page without a
-			// look-ahead hit.
-			params.Limit = session.Limit
-		}
+		// OpenSearch uses search_after and must not request limit+1: size plus
+		// the first-page offset can otherwise exceed max_result_window.
+		params.Limit = session.Limit
 	}
 	params.Paging = interfaces.PagingRequest{}
 	params.SearchAfter = append([]any(nil), session.SearchAfter...)
@@ -79,18 +82,26 @@ func executeResourceDataCursorPage(ctx context.Context, session *interfaces.Curs
 	if err != nil {
 		return nil, err
 	}
+	if session.ResourceDataParams.NeedTotal && !session.HasTotalCount {
+		session.TotalCount = total
+		session.HasTotalCount = true
+	}
+	responseTotal := total
+	if session.HasTotalCount {
+		responseTotal = session.TotalCount
+	}
 	hasNext := len(entries) > session.Limit
 	if session.ResourceDataCategory == interfaces.ResourceCategoryIndex {
-		if params.NeedTotal {
+		if session.HasTotalCount {
 			hasNext = len(entries) == session.Limit &&
-				int64(session.Offset+len(entries)) < total && len(params.SearchAfter) > 0
+				int64(session.Offset+len(entries)) < session.TotalCount && len(params.SearchAfter) > 0
 		} else {
 			hasNext = len(entries) == session.Limit && len(params.SearchAfter) > 0
 		}
 	}
 	if !hasNext {
 		rawQueryCursorSessions.closeSession(session.ID)
-		return &interfaces.ResourceDataQueryResult{Entries: entries, TotalCount: total, Paging: &interfaces.PagingResponse{}, NeedTotal: session.ResourceDataParams.NeedTotal}, nil
+		return &interfaces.ResourceDataQueryResult{Entries: entries, TotalCount: responseTotal, Paging: &interfaces.PagingResponse{}, NeedTotal: session.ResourceDataParams.NeedTotal}, nil
 	}
 	if session.ResourceDataCategory != interfaces.ResourceCategoryIndex {
 		entries = entries[:session.Limit]
@@ -100,7 +111,7 @@ func executeResourceDataCursorPage(ctx context.Context, session *interfaces.Curs
 		session.SearchAfter = append([]any(nil), params.SearchAfter...)
 	}
 	rawQueryCursorSessions.markPageSuccess(session)
-	return &interfaces.ResourceDataQueryResult{Entries: entries, TotalCount: total, Paging: cursorPagingResponse(session), NeedTotal: session.ResourceDataParams.NeedTotal}, nil
+	return &interfaces.ResourceDataQueryResult{Entries: entries, TotalCount: responseTotal, Paging: cursorPagingResponse(session), NeedTotal: session.ResourceDataParams.NeedTotal}, nil
 }
 
 func cursorNotFoundError(ctx context.Context) error {

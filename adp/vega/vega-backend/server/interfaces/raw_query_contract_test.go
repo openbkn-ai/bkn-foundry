@@ -133,6 +133,19 @@ func TestRawQueryContractValidate(t *testing.T) {
 			wantErr: "only paging.cursor",
 		},
 		{
+			name: "rejects cursor keep alive below minimum",
+			request: RawQueryContract{
+				Query:       "SELECT 1",
+				QueryFormat: QueryFormatSQL,
+				Paging: PagingRequest{
+					Mode:         PagingModeCursor,
+					Limit:        MinPageLimit,
+					KeepAliveSec: 59,
+				},
+			},
+			wantErr: "paging.keep_alive_sec",
+		},
+		{
 			name: "rejects excessive cursor keep alive",
 			request: RawQueryContract{
 				Query:       "SELECT 1",
@@ -186,7 +199,7 @@ func TestRawQueryContractValidate(t *testing.T) {
 			request: RawQueryContract{
 				Query:       "SELECT 1",
 				QueryFormat: QueryFormatSQL,
-				Paging:      PagingRequest{Mode: PagingModeSingle, KeepAliveSec: 60},
+				Paging:      PagingRequest{Mode: PagingModeSingle, KeepAliveSec: 1},
 			},
 		},
 		{

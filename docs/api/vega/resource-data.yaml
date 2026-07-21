@@ -387,13 +387,25 @@ components:
     PagingRequest:
       description: 首次请求使用 offset 和 limit；cursor 续页以 cursor 定位，need_total 可携带但不会覆盖首次请求冻结值，其余查询参数不得重传。
       type: object
+      allOf:
+        - if:
+            required: [mode]
+            properties:
+              mode:
+                const: cursor
+          then:
+            required: [limit]
+            properties:
+              keep_alive_sec:
+                minimum: 60
+                maximum: 3600
       properties:
         mode:
           type: string
           enum: [single, cursor]
           default: single
         offset:
-          description: 首次请求的起始偏移，>=0。
+          description: 首次请求的起始偏移，>=0；实际物理查询为 OpenSearch 的非聚合请求要求 offset + limit 不超过 10000。
           type: integer
           minimum: 0
         limit:
@@ -402,9 +414,8 @@ components:
           minimum: 1
           maximum: 10000
         keep_alive_sec:
+          description: cursor 成功取页后的空闲租约秒数；首次 cursor 请求时取值范围 [60, 3600]，single 模式下忽略。省略时默认 1800。
           type: integer
-          minimum: 1
-          maximum: 3600
         cursor:
           type: string
     PagingResponse:

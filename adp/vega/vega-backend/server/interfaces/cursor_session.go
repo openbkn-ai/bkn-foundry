@@ -25,6 +25,7 @@ type CursorSession struct {
 	SearchAfter     []any
 
 	ResourceDataResourceID string
+	ResourceDataUpdateTime int64
 	ResourceDataParams     *ResourceDataQueryParams
 	ResourceDataCategory   string
 

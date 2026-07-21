@@ -7,6 +7,7 @@
 package sqlglot
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -51,10 +52,21 @@ func TestMapDataSourceTypeToDialectUnsupported(t *testing.T) {
 
 func TestTranspileSQL(t *testing.T) {
 	t.Run("returns mapping error before invoking sqlglot", func(t *testing.T) {
-		got, err := TranspileSQL("select * from t", "mysql", "oracle")
+		got, err := TranspileSQL(context.Background(), "select * from t", "mysql", "oracle")
 
 		require.Error(t, err)
 		assert.Nil(t, got)
 		assert.Contains(t, err.Error(), "unsupported dataSourceType: oracle")
+	})
+
+	t.Run("honors canceled context", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		got, err := TranspileSQL(ctx, "select * from t", "mysql", "postgres")
+
+		require.Error(t, err)
+		assert.ErrorIs(t, err, context.Canceled)
+		assert.Nil(t, got)
 	})
 }

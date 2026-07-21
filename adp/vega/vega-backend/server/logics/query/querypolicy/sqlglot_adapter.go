@@ -10,6 +10,7 @@ package querypolicy
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"os/exec"
 	"strings"
@@ -22,8 +23,8 @@ const rejectedPrefix = "READ_ONLY_SQL_REJECTED:"
 
 // Adapter validates a query against the Raw Query policy.
 type Adapter interface {
-	ValidateSQL(sql string, inputDialect string) error
-	ValidateTableReferences(sql string, inputDialect string, allowedReferences []string) error
+	ValidateSQL(ctx context.Context, sql string, inputDialect string) error
+	ValidateTableReferences(ctx context.Context, sql string, inputDialect string, allowedReferences []string) error
 }
 
 // ReadOnlySQLValidationError indicates that SQL is outside the intentionally
@@ -43,13 +44,16 @@ func NewSQLGlotAdapter() *SQLGlotAdapter {
 	return &SQLGlotAdapter{}
 }
 
-func (a *SQLGlotAdapter) ValidateSQL(sql string, inputDialect string) error {
-	cmd := exec.Command("python3", "-c", validationScript, sql, inputDialect)
+func (a *SQLGlotAdapter) ValidateSQL(ctx context.Context, sql string, inputDialect string) error {
+	cmd := exec.CommandContext(ctx, "python3", "-c", validationScript, sql, inputDialect)
 
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	if err := cmd.Run(); err != nil {
 		logger.Errorf("ValidateSQL policy command failed")
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
 		return err
 	}
 
@@ -73,17 +77,20 @@ func (a *SQLGlotAdapter) ValidateSQL(sql string, inputDialect string) error {
 // one of the server-resolved Resource source identifiers. It deliberately
 // rejects a query when a source identifier cannot be parsed, rather than
 // weakening the resource permission boundary.
-func (a *SQLGlotAdapter) ValidateTableReferences(sql string, inputDialect string, allowedReferences []string) error {
+func (a *SQLGlotAdapter) ValidateTableReferences(ctx context.Context, sql string, inputDialect string, allowedReferences []string) error {
 	allowedJSON, err := sonic.Marshal(allowedReferences)
 	if err != nil {
 		return err
 	}
-	cmd := exec.Command("python3", "-c", tableReferenceValidationScript, sql, inputDialect, string(allowedJSON))
+	cmd := exec.CommandContext(ctx, "python3", "-c", tableReferenceValidationScript, sql, inputDialect, string(allowedJSON))
 
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	if err := cmd.Run(); err != nil {
 		logger.Errorf("ValidateTableReferences policy command failed")
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
 		return err
 	}
 

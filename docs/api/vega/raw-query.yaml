@@ -139,10 +139,13 @@ components:
   schemas:
     RawQueryRequest:
       description: 原生查询请求
-      type: object
       oneOf:
-        - required: [query, query_format]
-        - required: [paging]
+        - $ref: "#/components/schemas/RawQueryInitialRequest"
+        - $ref: "#/components/schemas/RawQueryContinuationRequest"
+    RawQueryInitialRequest:
+      description: 原生查询首次请求
+      type: object
+      required: [query, query_format]
       properties:
         query:
           description: |
@@ -171,7 +174,10 @@ components:
             - duckdb
             - opensearch
         paging:
-          $ref: "#/components/schemas/PagingRequest"
+          allOf:
+            - $ref: "#/components/schemas/PagingRequest"
+            - not:
+                required: [cursor]
         query_timeout_sec:
           description: 单页查询超时（秒），仅首次请求可设置；cursor 续页沿用首次请求的值。[1, 3600]，默认 60。
           type: integer
@@ -183,8 +189,47 @@ components:
           description: 是否需要完整总数。仅为 true 时响应包含 total_count；cursor 首次请求的值会由服务端冻结并用于所有续页，续页携带的值不改变该行为。
           type: boolean
           default: false
+    RawQueryContinuationRequest:
+      description: 原生查询 cursor 续页请求；除 need_total 外，首次请求字段不得重传。
+      type: object
+      required: [paging]
+      not:
+        anyOf:
+          - required: [query]
+          - required: [query_format]
+          - required: [input_dialect]
+          - required: [query_timeout_sec]
+      properties:
+        paging:
+          type: object
+          required: [cursor]
+          not:
+            anyOf:
+              - required: [mode]
+              - required: [offset]
+              - required: [limit]
+              - required: [keep_alive_sec]
+          properties:
+            cursor:
+              type: string
+              minLength: 1
+        need_total:
+          description: 可携带但不会覆盖首次请求冻结的值。
+          type: boolean
     PagingRequest:
       type: object
+      allOf:
+        - if:
+            required: [mode]
+            properties:
+              mode:
+                const: cursor
+          then:
+            required: [limit]
+            properties:
+              keep_alive_sec:
+                minimum: 60
+                maximum: 3600
       properties:
         mode:
           type: string
@@ -200,10 +245,8 @@ components:
           type: integer
           minimum: 0
         keep_alive_sec:
-          description: cursor 成功取页后的空闲租约秒数；首次 cursor 请求时取值范围 [1, 3600]，single 模式下忽略。省略时默认 1800。
+          description: cursor 成功取页后的空闲租约秒数；首次 cursor 请求时取值范围 [60, 3600]，single 模式下忽略。省略时默认 1800。
           type: integer
-          minimum: 1
-          maximum: 3600
         cursor:
           type: string
     RawQueryResponse:

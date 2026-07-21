@@ -141,11 +141,6 @@ func validatePaginationParams(ctx context.Context, offset, limit int) error {
 			WithErrorDetails(fmt.Sprintf("Limit should be in the range of [%d,%d]", interfaces.MIN_LIMIT, interfaces.MAX_SEARCH_SIZE))
 	}
 
-	if offset+limit > interfaces.MAX_SEARCH_SIZE {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Limit).
-			WithErrorDetails(fmt.Sprintf("Offset + limit should be <= %d", interfaces.MAX_SEARCH_SIZE))
-	}
-
 	return nil
 }
 

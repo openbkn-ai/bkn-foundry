@@ -96,6 +96,7 @@ func (m *cursorSessionManager) createResourceData(accountID string, resource *in
 		CatalogID:              resource.CatalogID,
 		ResourceIDs:            []string{resource.ID},
 		ResourceDataResourceID: resource.ID,
+		ResourceDataUpdateTime: resource.UpdateTime,
 		ResourceDataParams:     cloneResourceDataQueryParams(params),
 		ResourceDataCategory:   resource.Category,
 		Limit:                  params.Paging.Limit,

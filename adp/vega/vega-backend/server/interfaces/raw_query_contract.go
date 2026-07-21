@@ -23,7 +23,7 @@ const (
 	MinPageLimit              = 1
 	MaxPageLimit              = 10000
 	DefaultCursorKeepAliveSec = 1800
-	MinCursorKeepAliveSec     = 1
+	MinCursorKeepAliveSec     = 60
 	MaxCursorKeepAliveSec     = 3600
 )
 

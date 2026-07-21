@@ -7,6 +7,7 @@
 package querypolicy
 
 import (
+	"context"
 	"errors"
 	"os/exec"
 	"testing"
@@ -25,7 +26,7 @@ func TestSQLGlotAdapterValidateSQL(t *testing.T) {
 		"SELECT LOWER(name) FROM orders",
 	} {
 		t.Run(sql, func(t *testing.T) {
-			require.NoError(t, adapter.ValidateSQL(sql, "trino"))
+			require.NoError(t, adapter.ValidateSQL(context.Background(), sql, "trino"))
 		})
 	}
 
@@ -60,7 +61,7 @@ func TestSQLGlotAdapterValidateSQL(t *testing.T) {
 		"SELECT dblink_exec('connection', 'DELETE FROM orders')",
 	} {
 		t.Run(sql, func(t *testing.T) {
-			err := adapter.ValidateSQL(sql, "trino")
+			err := adapter.ValidateSQL(context.Background(), sql, "trino")
 			require.Error(t, err)
 
 			var validationErr *ReadOnlySQLValidationError
@@ -73,12 +74,12 @@ func TestSQLGlotAdapterValidateTableReferences(t *testing.T) {
 	requireSQLGlotRuntime(t)
 
 	adapter := NewSQLGlotAdapter()
-	require.NoError(t, adapter.ValidateTableReferences(
+	require.NoError(t, adapter.ValidateTableReferences(context.Background(),
 		"SELECT * FROM public.orders JOIN public.customers ON orders.customer_id = customers.id",
 		"postgres", []string{"public.orders", "public.customers"},
 	))
 
-	err := adapter.ValidateTableReferences(
+	err := adapter.ValidateTableReferences(context.Background(),
 		"SELECT * FROM public.orders JOIN private.secret_customers ON true",
 		"postgres", []string{"public.orders"},
 	)
@@ -86,6 +87,20 @@ func TestSQLGlotAdapterValidateTableReferences(t *testing.T) {
 	var validationErr *ReadOnlySQLValidationError
 	require.ErrorAs(t, err, &validationErr)
 	assert.Contains(t, validationErr.Reason, "unbound physical table")
+}
+
+func TestSQLGlotAdapterHonorsCanceledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	adapter := NewSQLGlotAdapter()
+
+	err := adapter.ValidateSQL(ctx, "SELECT 1", "postgres")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, context.Canceled)
+
+	err = adapter.ValidateTableReferences(ctx, "SELECT * FROM orders", "postgres", []string{"orders"})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, context.Canceled)
 }
 
 func requireSQLGlotRuntime(t *testing.T) {

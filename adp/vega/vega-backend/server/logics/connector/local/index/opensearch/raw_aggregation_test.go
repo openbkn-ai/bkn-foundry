@@ -53,7 +53,16 @@ func TestCompileRawAggregationPlanRejectsNonTabularDSL(t *testing.T) {
 			aggs: map[string]any{
 				"total": map[string]any{"sum": map[string]any{"script": "doc['amount'].value"}},
 			},
-			match: "non-empty field",
+			match: "script is not supported",
+		},
+		{
+			name: "script with field",
+			aggs: map[string]any{
+				"total": map[string]any{"sum": map[string]any{
+					"field": "amount", "script": "_value * 2",
+				}},
+			},
+			match: "script is not supported",
 		},
 		{
 			name: "keyed bucket response",

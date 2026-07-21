@@ -124,14 +124,14 @@ func (rqs *rawQueryService) validateRequest(ctx context.Context, req *interfaces
 }
 
 func (rqs *rawQueryService) executeInitialSQLQuery(ctx context.Context, req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
-	prepared, err := rqs.prepareSQLQuery(ctx, req)
+	queryCtx, cancel := queryExecutionContext(ctx, req.QueryTimeoutSec)
+	defer cancel()
+	prepared, err := rqs.prepareSQLQuery(queryCtx, req)
 	if err != nil {
 		return nil, err
 	}
 	finalSQL := applySingleQueryPaging(prepared.sql, req.Paging.Offset, req.Paging.Limit)
 
-	queryCtx, cancel := queryExecutionContext(ctx, req.QueryTimeoutSec)
-	defer cancel()
 	var totalCount int64
 	if req.NeedTotal {
 		totalCount, err = rqs.executeSQLTotalCount(queryCtx, prepared.catalog, prepared.sql)
@@ -153,12 +153,12 @@ func (rqs *rawQueryService) executeInitialSQLQuery(ctx context.Context, req *int
 }
 
 func (rqs *rawQueryService) executeInitialSQLCursor(ctx context.Context, req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
-	prepared, err := rqs.prepareSQLQuery(ctx, req)
+	queryCtx, cancel := queryExecutionContext(ctx, req.QueryTimeoutSec)
+	defer cancel()
+	prepared, err := rqs.prepareSQLQuery(queryCtx, req)
 	if err != nil {
 		return nil, err
 	}
-	queryCtx, cancel := queryExecutionContext(ctx, req.QueryTimeoutSec)
-	defer cancel()
 	var totalCount int64
 	if req.NeedTotal {
 		totalCount, err = rqs.executeSQLTotalCount(queryCtx, prepared.catalog, prepared.sql)
@@ -207,7 +207,9 @@ func (rqs *rawQueryService) executeSQLCursorContinuation(ctx context.Context, re
 		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, verrors.VegaBackend_Query_InvalidParameter).
 			WithErrorDetails("cursor does not belong to the current account")
 	}
-	catalog, warnings, err := rqs.checkSameDataSource(ctx, session.ResourceIDs)
+	queryCtx, cancel := queryExecutionContext(ctx, session.QueryTimeoutSec)
+	defer cancel()
+	catalog, warnings, err := rqs.checkSameDataSource(queryCtx, session.ResourceIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -217,9 +219,9 @@ func (rqs *rawQueryService) executeSQLCursorContinuation(ctx context.Context, re
 	}
 	switch session.QueryFormat {
 	case interfaces.QueryFormatSQL:
-		return rqs.executeSQLCursorPage(ctx, session, catalog, warnings)
+		return rqs.executeSQLCursorPage(queryCtx, session, catalog, warnings)
 	case interfaces.QueryFormatDSL:
-		return rqs.executeOpenSearchCursorPage(ctx, session, catalog, warnings)
+		return rqs.executeOpenSearchCursorPage(queryCtx, session, catalog, warnings)
 	default:
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
 			WithErrorDetails("cursor has unsupported query format")
@@ -255,7 +257,7 @@ func (rqs *rawQueryService) prepareSQLQuery(ctx context.Context, req *interfaces
 		return nil, err
 	}
 	inputDialect := req.EffectiveInputDialect()
-	if err := rawQueryPolicy.ValidateSQL(replacedSQL, inputDialect); err != nil {
+	if err := rawQueryPolicy.ValidateSQL(ctx, replacedSQL, inputDialect); err != nil {
 		if httpErr := rawQueryValidationError(ctx, err); httpErr != nil {
 			return nil, httpErr
 		}
@@ -266,7 +268,7 @@ func (rqs *rawQueryService) prepareSQLQuery(ctx context.Context, req *interfaces
 	if err != nil {
 		return nil, err
 	}
-	if err := rawQueryPolicy.ValidateTableReferences(replacedSQL, inputDialect, allowedReferences); err != nil {
+	if err := rawQueryPolicy.ValidateTableReferences(ctx, replacedSQL, inputDialect, allowedReferences); err != nil {
 		if httpErr := rawQueryValidationError(ctx, err); httpErr != nil {
 			return nil, httpErr
 		}
@@ -279,7 +281,7 @@ func (rqs *rawQueryService) prepareSQLQuery(ctx context.Context, req *interfaces
 	}
 	finalSQL := replacedSQL
 	if inputDialect != targetDialect {
-		result, err := sqlglot.TranspileSQL(replacedSQL, inputDialect, targetDialect)
+		result, err := sqlglot.TranspileSQL(ctx, replacedSQL, inputDialect, targetDialect)
 		if err != nil {
 			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
 				WithErrorDetails("failed to compile SQL query")
@@ -346,7 +348,10 @@ func accountIDFromContext(ctx context.Context) string {
 }
 
 func (rqs *rawQueryService) executeInitialOpenSearchCursor(ctx context.Context, req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
-	query, indexName, catalog, warning, err := rqs.prepareOpenSearchCursorQuery(ctx, req)
+	queryCtx, cancel := queryExecutionContext(ctx, req.QueryTimeoutSec)
+	defer cancel()
+
+	query, indexName, catalog, warning, err := rqs.prepareOpenSearchCursorQuery(queryCtx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -371,7 +376,7 @@ func (rqs *rawQueryService) executeInitialOpenSearchCursor(ctx context.Context, 
 	if warning != "" {
 		warnings = append(warnings, warning)
 	}
-	result, err := rqs.executeOpenSearchCursorPage(ctx, session, catalog, warnings)
+	result, err := rqs.executeOpenSearchCursorPage(queryCtx, session, catalog, warnings)
 	if err != nil {
 		rawQueryCursorSessions.remove(session.ID)
 	}
@@ -461,6 +466,9 @@ func (rqs *rawQueryService) executeOpenSearchCursorPage(ctx context.Context, ses
 		delete(query, "from")
 		query["search_after"] = session.SearchAfter
 	}
+	if session.NeedTotal && session.HasTotalCount {
+		delete(query, "track_total_hits")
+	}
 	pageCtx := ctx
 	if session.QueryTimeoutSec > 0 {
 		var cancel context.CancelFunc
@@ -483,13 +491,17 @@ func (rqs *rawQueryService) executeOpenSearchCursorPage(ctx context.Context, ses
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
 			WithErrorDetails("query execution failed")
 	}
+	if session.NeedTotal && !session.HasTotalCount && result.TotalCount != nil {
+		session.TotalCount = *result.TotalCount
+		session.HasTotalCount = true
+	}
 
 	hasNext := false
 	if session.NeedTotal {
-		// OpenSearch reports total_count for real connector responses. Keep the
-		// zero-total fallback for connector implementations that do not expose it.
-		hasMoreResults := result.TotalCount == nil || *result.TotalCount == 0 ||
-			int64(session.Offset+len(result.Entries)) < *result.TotalCount
+		// Real OpenSearch responses provide an exact total on the first page.
+		// Retain the fallback for connector implementations that omit it.
+		hasMoreResults := !session.HasTotalCount ||
+			int64(session.Offset+len(result.Entries)) < session.TotalCount
 		hasNext = len(result.Entries) == session.Limit && hasMoreResults && len(result.SearchAfter) > 0
 	} else {
 		// Without an exact total, a full page may be the final page. Preserve
@@ -506,7 +518,10 @@ func (rqs *rawQueryService) executeOpenSearchCursorPage(ctx context.Context, ses
 		result.Paging = &interfaces.PagingResponse{}
 		rawQueryCursorSessions.closeSession(session.ID)
 	}
-	if !session.NeedTotal {
+	if session.HasTotalCount {
+		totalCount := session.TotalCount
+		result.TotalCount = &totalCount
+	} else if !session.NeedTotal {
 		result.TotalCount = nil
 	}
 	result.Warnings = append(result.Warnings, warnings...)
@@ -514,6 +529,9 @@ func (rqs *rawQueryService) executeOpenSearchCursorPage(ctx context.Context, ses
 }
 
 func (rqs *rawQueryService) executeInitialDSLQuery(ctx context.Context, req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
+	queryCtx, cancel := queryExecutionContext(ctx, req.QueryTimeoutSec)
+	defer cancel()
+
 	requestQuery := req.Query.(map[string]any)
 	queryMap := make(map[string]any, len(requestQuery)+2)
 	for key, value := range requestQuery {
@@ -541,7 +559,7 @@ func (rqs *rawQueryService) executeInitialDSLQuery(ctx context.Context, req *int
 			WithErrorDetails("resource_id is required for DSL queries")
 	}
 
-	resource, err := rqs.rs.GetByID(ctx, resourceID)
+	resource, err := rqs.rs.GetByID(queryCtx, resourceID)
 	if err != nil {
 		return nil, err.(*rest.HTTPError)
 	}
@@ -549,12 +567,12 @@ func (rqs *rawQueryService) executeInitialDSLQuery(ctx context.Context, req *int
 		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_ResourceNotFound).
 			WithErrorDetails(fmt.Sprintf("resource %s not found", resourceID))
 	}
-	warning, err := resourcelogic.EnsureResourceQueryable(ctx, resource)
+	warning, err := resourcelogic.EnsureResourceQueryable(queryCtx, resource)
 	if err != nil {
 		return nil, err
 	}
 
-	catalog, err := rqs.cs.GetByID(ctx, resource.CatalogID, true)
+	catalog, err := rqs.cs.GetByID(queryCtx, resource.CatalogID, true)
 	if err != nil {
 		return nil, err.(*rest.HTTPError)
 	}
@@ -562,7 +580,7 @@ func (rqs *rawQueryService) executeInitialDSLQuery(ctx context.Context, req *int
 		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_CatalogNotFound).
 			WithErrorDetails(fmt.Sprintf("catalog %s not found", resource.CatalogID))
 	}
-	if err := ensureCatalogEnabled(ctx, catalog); err != nil {
+	if err := ensureCatalogEnabled(queryCtx, catalog); err != nil {
 		return nil, err
 	}
 	if catalog.ConnectorType != interfaces.ConnectorTypeOpenSearch {
@@ -571,8 +589,6 @@ func (rqs *rawQueryService) executeInitialDSLQuery(ctx context.Context, req *int
 	}
 
 	delete(queryMap, "resource_id")
-	queryCtx, cancel := queryExecutionContext(ctx, req.QueryTimeoutSec)
-	defer cancel()
 	connector, err := factory.GetFactory().CreateConnectorInstance(queryCtx, catalog.ConnectorType, catalog.ConnectorCfg)
 	if err != nil {
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).

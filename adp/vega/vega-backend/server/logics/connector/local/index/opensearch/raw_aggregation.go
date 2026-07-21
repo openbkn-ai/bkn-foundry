@@ -107,6 +107,9 @@ func compileRawAggregationNode(container map[string]any, path string, outputName
 	if !ok {
 		return nil, rawAggregationError(nodePath+"."+operator, "aggregation configuration must be an object")
 	}
+	if _, scripted := config["script"]; scripted {
+		return nil, rawAggregationError(nodePath+"."+operator, "script is not supported")
+	}
 	field, ok := config["field"].(string)
 	if !ok || strings.TrimSpace(field) == "" {
 		return nil, rawAggregationError(nodePath+"."+operator, "a non-empty field is required")

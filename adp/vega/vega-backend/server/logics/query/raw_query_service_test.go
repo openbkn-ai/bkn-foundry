@@ -41,6 +41,19 @@ func expectIndexConnectorClose(connector *mock_interfaces.MockIndexConnector) {
 	connector.EXPECT().Close(gomock.Any()).Return(nil).AnyTimes()
 }
 
+type deadlineInspectingPolicy struct {
+	sawDeadline bool
+}
+
+func (p *deadlineInspectingPolicy) ValidateSQL(ctx context.Context, _ string, _ string) error {
+	_, p.sawDeadline = ctx.Deadline()
+	return errors.New("stop after inspecting policy context")
+}
+
+func (p *deadlineInspectingPolicy) ValidateTableReferences(context.Context, string, string, []string) error {
+	return nil
+}
+
 func TestRawQueryServiceExecute(t *testing.T) {
 	t.Run("execute rejects disabled catalog for open search query", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
@@ -191,6 +204,38 @@ func TestQueryExecutionContextAppliesTimeout(t *testing.T) {
 	assert.False(t, ok)
 }
 
+func TestInitialSQLQueryAppliesTimeoutBeforePolicyValidation(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+	mockRS := mock_interfaces.NewMockResourceService(ctrl)
+	svc := &rawQueryService{cs: mockCS, rs: mockRS}
+	resource := &interfaces.Resource{
+		ID:               "resource-1",
+		CatalogID:        "catalog-1",
+		SourceIdentifier: "public.orders",
+		Status:           interfaces.ResourceStatusActive,
+	}
+	mockRS.EXPECT().GetByIDs(gomock.Any(), []string{"resource-1"}).Return([]*interfaces.Resource{resource}, nil)
+	mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).Return(&interfaces.Catalog{
+		ID: "catalog-1", Enabled: true, ConnectorType: interfaces.ConnectorTypePostgreSQL,
+	}, nil)
+	mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(resource, nil)
+
+	policy := &deadlineInspectingPolicy{}
+	previousPolicy := rawQueryPolicy
+	rawQueryPolicy = policy
+	t.Cleanup(func() { rawQueryPolicy = previousPolicy })
+
+	_, err := svc.executeInitialSQLQuery(context.Background(), &interfaces.RawQueryRequest{
+		Query:           "SELECT * FROM {{resource-1}}",
+		QueryFormat:     interfaces.QueryFormatSQL,
+		QueryTimeoutSec: 1,
+		Paging:          interfaces.PagingRequest{Limit: 1},
+	})
+	require.Error(t, err)
+	assert.True(t, policy.sawDeadline)
+}
+
 func TestExecuteInitialDSLQueryControlsTrackTotalHits(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	indexConnector := mock_interfaces.NewMockIndexConnector(ctrl)
@@ -199,16 +244,26 @@ func TestExecuteInitialDSLQueryControlsTrackTotalHits(t *testing.T) {
 	mockRS := mock_interfaces.NewMockResourceService(ctrl)
 	svc := &rawQueryService{cs: mockCS, rs: mockRS}
 
-	mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(&interfaces.Resource{
-		ID:               "resource-1",
-		CatalogID:        "catalog-1",
-		SourceIdentifier: "events",
-	}, nil).Times(4)
-	mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).Return(&interfaces.Catalog{
-		ID:            "catalog-1",
-		Enabled:       true,
-		ConnectorType: interfaces.ConnectorTypeOpenSearch,
-	}, nil).Times(4)
+	mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").DoAndReturn(
+		func(ctx context.Context, _ string) (*interfaces.Resource, error) {
+			_, hasDeadline := ctx.Deadline()
+			assert.True(t, hasDeadline)
+			return &interfaces.Resource{
+				ID:               "resource-1",
+				CatalogID:        "catalog-1",
+				SourceIdentifier: "events",
+			}, nil
+		}).Times(4)
+	mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).DoAndReturn(
+		func(ctx context.Context, _ string, _ bool) (*interfaces.Catalog, error) {
+			_, hasDeadline := ctx.Deadline()
+			assert.True(t, hasDeadline)
+			return &interfaces.Catalog{
+				ID:            "catalog-1",
+				Enabled:       true,
+				ConnectorType: interfaces.ConnectorTypeOpenSearch,
+			}, nil
+		}).Times(4)
 
 	patches := gomonkey.ApplyFunc(factory.GetFactory, func() *factory.ConnectorFactory {
 		return &factory.ConnectorFactory{}
@@ -350,16 +405,26 @@ func TestInitialOpenSearchCursorRespectsInitialOffsetForLastPage(t *testing.T) {
 	mockRS := mock_interfaces.NewMockResourceService(ctrl)
 	svc := &rawQueryService{cs: mockCS, rs: mockRS}
 
-	mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(&interfaces.Resource{
-		ID:               "resource-1",
-		CatalogID:        "catalog-1",
-		SourceIdentifier: "events",
-	}, nil)
-	mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).Return(&interfaces.Catalog{
-		ID:            "catalog-1",
-		Enabled:       true,
-		ConnectorType: interfaces.ConnectorTypeOpenSearch,
-	}, nil)
+	mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").DoAndReturn(
+		func(ctx context.Context, _ string) (*interfaces.Resource, error) {
+			_, hasDeadline := ctx.Deadline()
+			assert.True(t, hasDeadline)
+			return &interfaces.Resource{
+				ID:               "resource-1",
+				CatalogID:        "catalog-1",
+				SourceIdentifier: "events",
+			}, nil
+		})
+	mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).DoAndReturn(
+		func(ctx context.Context, _ string, _ bool) (*interfaces.Catalog, error) {
+			_, hasDeadline := ctx.Deadline()
+			assert.True(t, hasDeadline)
+			return &interfaces.Catalog{
+				ID:            "catalog-1",
+				Enabled:       true,
+				ConnectorType: interfaces.ConnectorTypeOpenSearch,
+			}, nil
+		})
 
 	patches := gomonkey.ApplyFunc(factory.GetFactory, func() *factory.ConnectorFactory {
 		return &factory.ConnectorFactory{}
@@ -385,8 +450,9 @@ func TestInitialOpenSearchCursorRespectsInitialOffsetForLastPage(t *testing.T) {
 			"resource_id": "resource-1",
 			"sort":        []any{"timestamp"},
 		},
-		NeedTotal: true,
-		Paging:    interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Offset: 90, Limit: 2},
+		NeedTotal:       true,
+		QueryTimeoutSec: 1,
+		Paging:          interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Offset: 90, Limit: 2},
 	})
 
 	require.NoError(t, err)
@@ -408,7 +474,7 @@ func TestExecuteOpenSearchCursorPage(t *testing.T) {
 	require.NoError(t, err)
 	session.QueryFormat = interfaces.QueryFormatDSL
 	session.OpenSearchIndex = "events"
-	session.OpenSearchQuery = map[string]any{"sort": []any{"timestamp"}, "from": 10, "size": 2}
+	session.OpenSearchQuery = map[string]any{"sort": []any{"timestamp"}, "from": 10, "size": 2, "track_total_hits": true}
 	session.NeedTotal = true
 
 	patches := gomonkey.ApplyFunc(factory.GetFactory, func() *factory.ConnectorFactory {
@@ -427,6 +493,7 @@ func TestExecuteOpenSearchCursorPage(t *testing.T) {
 			if callCount == 1 {
 				assert.Equal(t, 10, query["from"])
 				assert.NotContains(t, query, "search_after")
+				assert.Equal(t, true, query["track_total_hits"])
 				return &interfaces.RawQueryResponse{
 					Entries:     []map[string]any{{"id": "1"}, {"id": "2"}},
 					SearchAfter: []any{"page-1"},
@@ -434,8 +501,9 @@ func TestExecuteOpenSearchCursorPage(t *testing.T) {
 				}, nil
 			}
 			assert.NotContains(t, query, "from")
+			assert.NotContains(t, query, "track_total_hits")
 			assert.Equal(t, []any{"page-1"}, query["search_after"])
-			return &interfaces.RawQueryResponse{Entries: []map[string]any{{"id": "3"}}, TotalCount: int64Pointer(3)}, nil
+			return &interfaces.RawQueryResponse{Entries: []map[string]any{{"id": "3"}}, TotalCount: int64Pointer(99)}, nil
 		}).Times(2)
 
 	svc := &rawQueryService{}

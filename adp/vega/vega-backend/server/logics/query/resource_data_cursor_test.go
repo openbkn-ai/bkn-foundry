@@ -2,6 +2,7 @@ package query
 
 import (
 	"context"
+	"net/http"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -36,7 +37,7 @@ func TestResourceDataCursorPagesAndCloses(t *testing.T) {
 	require.NotNil(t, first.Paging.NextCursor)
 	assert.Len(t, first.Entries, 2)
 
-	final, err := ExecuteResourceDataCursorContinuation(context.Background(), "account-1", resource.ID, *first.Paging.NextCursor, executor)
+	final, err := ExecuteResourceDataCursorContinuation(context.Background(), "account-1", resource, *first.Paging.NextCursor, executor)
 	require.NoError(t, err)
 	assert.Len(t, final.Entries, 1)
 	assert.Nil(t, final.Paging.NextCursor)
@@ -55,9 +56,11 @@ func TestResourceDataCursorPreservesNeedTotalAcrossContinuation(t *testing.T) {
 	}
 	executor := func(_ context.Context, pageParams *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
 		if pageParams.Offset == 0 {
+			assert.True(t, pageParams.NeedTotal)
 			return []map[string]any{{"id": 1}, {"id": 2}}, 2, nil
 		}
-		return []map[string]any{{"id": 2}}, 2, nil
+		assert.False(t, pageParams.NeedTotal)
+		return []map[string]any{{"id": 2}}, 99, nil
 	}
 
 	first, err := ExecuteInitialResourceDataCursor(context.Background(), "account-1", resource, params, executor)
@@ -65,7 +68,7 @@ func TestResourceDataCursorPreservesNeedTotalAcrossContinuation(t *testing.T) {
 	require.NotNil(t, first.Paging.NextCursor)
 	assert.True(t, first.NeedTotal)
 
-	continuation, err := ExecuteResourceDataCursorContinuation(context.Background(), "account-1", resource.ID, *first.Paging.NextCursor, executor)
+	continuation, err := ExecuteResourceDataCursorContinuation(context.Background(), "account-1", resource, *first.Paging.NextCursor, executor)
 	require.NoError(t, err)
 	assert.True(t, continuation.NeedTotal)
 	assert.Equal(t, int64(2), continuation.TotalCount)
@@ -85,7 +88,7 @@ func TestResourceDataCursorRejectsWrongResource(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result.Paging.NextCursor)
 
-	_, err = ExecuteResourceDataCursorContinuation(context.Background(), "account-1", "table-2", *result.Paging.NextCursor,
+	_, err = ExecuteResourceDataCursorContinuation(context.Background(), "account-1", &interfaces.Resource{ID: "table-2"}, *result.Paging.NextCursor,
 		func(_ context.Context, _ *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
 			return nil, 0, nil
 		})
@@ -112,7 +115,7 @@ func TestResourceDataCursorPreservesOpenSearchSearchAfter(t *testing.T) {
 		&interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 1}}, executor)
 	require.NoError(t, err)
 	require.NotNil(t, first.Paging.NextCursor)
-	_, err = ExecuteResourceDataCursorContinuation(context.Background(), "account-1", resource.ID, *first.Paging.NextCursor, executor)
+	_, err = ExecuteResourceDataCursorContinuation(context.Background(), "account-1", resource, *first.Paging.NextCursor, executor)
 	require.NoError(t, err)
 	assert.Equal(t, []any{"sort-2"}, continuationSearchAfter)
 }
@@ -148,11 +151,43 @@ func TestResourceDataIndexCursorUsesLastReturnedHitForSearchAfter(t *testing.T) 
 	require.NoError(t, err)
 	assert.Equal(t, []map[string]any{{"id": 1}}, result.Entries)
 	for expectedID := 2; result.Paging.NextCursor != nil; expectedID++ {
-		result, err = ExecuteResourceDataCursorContinuation(context.Background(), "account-1", resource.ID, *result.Paging.NextCursor, executor)
+		result, err = ExecuteResourceDataCursorContinuation(context.Background(), "account-1", resource, *result.Paging.NextCursor, executor)
 		require.NoError(t, err)
 		assert.Equal(t, []map[string]any{{"id": expectedID}}, result.Entries)
 	}
 	assert.Equal(t, 3, pageIndex)
+}
+
+func TestResourceDataCursorRejectsUpdatedResource(t *testing.T) {
+	previousManager := rawQueryCursorSessions
+	rawQueryCursorSessions = newCursorSessionManager(10)
+	t.Cleanup(func() { rawQueryCursorSessions = previousManager })
+
+	resource := &interfaces.Resource{ID: "view-1", CatalogID: "catalog-1", UpdateTime: 100}
+	result, err := ExecuteInitialResourceDataCursor(context.Background(), "account-1", resource,
+		&interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 1}},
+		func(_ context.Context, _ *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
+			return []map[string]any{{"id": 1}, {"id": 2}}, 2, nil
+		})
+	require.NoError(t, err)
+	require.NotNil(t, result.Paging.NextCursor)
+
+	updatedResource := *resource
+	updatedResource.UpdateTime++
+	executed := false
+	_, err = ExecuteResourceDataCursorContinuation(context.Background(), "account-1", &updatedResource, *result.Paging.NextCursor,
+		func(_ context.Context, _ *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
+			executed = true
+			return nil, 0, nil
+		})
+	assertHTTPError(t, err, http.StatusNotFound)
+	assert.False(t, executed)
+
+	_, err = ExecuteResourceDataCursorContinuation(context.Background(), "account-1", resource, *result.Paging.NextCursor,
+		func(_ context.Context, _ *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
+			return nil, 0, nil
+		})
+	assertHTTPError(t, err, http.StatusNotFound)
 }
 
 func TestResourceDataCursorUsesPhysicalPaginationCategory(t *testing.T) {
