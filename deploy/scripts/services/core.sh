@@ -762,6 +762,10 @@ install_core() {
 
     log_info "BKN Foundry services installation completed."
 
+    # 退役已被别处接管/下线的历史 release（见 _CORE_RETIRED_RELEASES）。
+    # 放在装完全部在册 release 之后：确保承接方已就绪，退役旧 release 不留服务空窗。
+    _core_uninstall_retired_releases "${namespace}"
+
     # Publish the non-sensitive install-status snapshot + /install-status endpoint.
     # Best-effort: never fails the install.
     gen_install_status_json || true
@@ -804,6 +808,53 @@ install_core() {
     fi
     echo ""
     echo "============================================"
+}
+
+# 已退役的 Helm release：合并进别的服务、或整体下线，因此不再出现在版本 manifest 里。
+#
+# install 循环只装 manifest 里声明的 release，不会主动清除“已不在清单、但集群里还
+# 留着”的旧 release。升级现有环境时，这类旧 release 的 pod 与 Ingress 会滞留，其中
+# Ingress 尤其危险：若旧 Ingress 与新承接方声明了同一条 host+path，nginx 按 Ingress
+# 的 creationTimestamp“最老者胜”裁决，而 helm upgrade 只 patch 不重建、保住新承接方
+# 的年龄，于是升级后侥幸落到新服务；但一旦新承接方被 helm uninstall 后重装（时间戳
+# 重置），年龄反转，流量会静默回退到旧 release 的 pod。
+#
+# 因此升级时按本清单主动退役。每加入一项，等于声明“这个 release 已被别处接管/下线，
+# 见到就清掉”。仅清点名的 release，绝不做“删掉所有不在 manifest 里的 release”式的
+# 通用 prune —— 那样任何 manifest 笔误都会误删。
+#
+# 格式：每行一个 "<release>|<原因，含关联 issue/PR>"。
+_CORE_RETIRED_RELEASES=(
+    "capabilities-lab|合并进 operator-integration（#324/#350）；旧 Ingress 与 agent-operator-integration 的 /api/capabilities-lab/v1 同 path"
+)
+
+# 判断某个 Helm release 是否存在（任意状态：deployed/failed/pending 皆算）。
+# 与 is_helm_installed 不同——后者只认 deployed；退役需要把处于任何状态的残留都清掉。
+_core_release_exists() {
+    local release="$1"
+    local ns="$2"
+    helm status "${release}" -n "${ns}" >/dev/null 2>&1
+}
+
+# 逐条退役 _CORE_RETIRED_RELEASES 中仍存在的 release。
+# 幂等：不存在则跳过。失败只告警不中断——退役失败不应让整个 install/upgrade 挂掉。
+# 由 install_core 在装完全部在册 release 之后调用，确保承接方已就绪、无服务空窗。
+_core_uninstall_retired_releases() {
+    local namespace="$1"
+    local entry release_name reason
+    for entry in "${_CORE_RETIRED_RELEASES[@]}"; do
+        release_name="${entry%%|*}"
+        reason="${entry#*|}"
+        if _core_release_exists "${release_name}" "${namespace}"; then
+            log_warn "Retiring release '${release_name}' (${reason})"
+            local helm_err
+            if helm_err=$(helm uninstall "${release_name}" -n "${namespace}" 2>&1); then
+                log_info "✓ ${release_name} retired"
+            else
+                log_warn "⚠ ${release_name} retire failed, manual cleanup may be needed: ${helm_err}"
+            fi
+        fi
+    done
 }
 
 # Uninstall BKN Foundry services
