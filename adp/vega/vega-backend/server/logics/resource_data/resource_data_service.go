@@ -21,6 +21,7 @@ import (
 	"vega-backend/logics/dataset"
 	"vega-backend/logics/filter_condition"
 	"vega-backend/logics/local_index"
+	querylogic "vega-backend/logics/query"
 	"vega-backend/logics/rate"
 	"vega-backend/logics/resource"
 	"vega-backend/logics/resource_data/logic_view"
@@ -242,7 +243,23 @@ func (rds *resourceDataService) QueryWithPaging(ctx context.Context, resource *i
 	if resource.Category == interfaces.ResourceCategoryLogicView {
 		return rds.lvs.QueryWithPaging(ctx, resource, params)
 	}
-	if params.Paging.Mode == interfaces.PagingModeCursor || params.Paging.Cursor != "" {
+	if params.Paging.Cursor != "" {
+		if resource.Category != interfaces.ResourceCategoryTable && resource.Category != interfaces.ResourceCategoryIndex {
+			return nil, rest.NewHTTPError(ctx, http.StatusNotImplemented, verrors.VegaBackend_Query_InvalidParameter).
+				WithErrorDetails("cursor paging is not implemented for this resource category")
+		}
+		return querylogic.ExecuteResourceDataCursorContinuation(ctx, accountIDFromContext(ctx), resource.ID, params.Paging.Cursor,
+			func(pageCtx context.Context, pageParams *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
+				return rds.query(pageCtx, resource, pageParams)
+			})
+	}
+	if params.Paging.Mode == interfaces.PagingModeCursor {
+		if resource.Category == interfaces.ResourceCategoryTable || resource.Category == interfaces.ResourceCategoryIndex {
+			return querylogic.ExecuteInitialResourceDataCursor(ctx, accountIDFromContext(ctx), resource, params,
+				func(pageCtx context.Context, pageParams *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
+					return rds.query(pageCtx, resource, pageParams)
+				})
+		}
 		return nil, rest.NewHTTPError(ctx, http.StatusNotImplemented, verrors.VegaBackend_Query_InvalidParameter).
 			WithErrorDetails("cursor paging is not implemented for this resource category")
 	}
@@ -252,6 +269,11 @@ func (rds *resourceDataService) QueryWithPaging(ctx context.Context, resource *i
 		return nil, err
 	}
 	return &interfaces.ResourceDataQueryResult{Entries: entries, TotalCount: total, Paging: &interfaces.PagingResponse{}}, nil
+}
+
+func accountIDFromContext(ctx context.Context) string {
+	accountInfo, _ := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
+	return accountInfo.ID
 }
 
 func (rds *resourceDataService) QueryData(ctx context.Context, catalog *interfaces.Catalog, resource *interfaces.Resource,

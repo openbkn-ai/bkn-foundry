@@ -163,7 +163,7 @@ func (rqs *rawQueryService) executeInitialSQLCursor(ctx context.Context, req *in
 
 func (rqs *rawQueryService) executeSQLCursorContinuation(ctx context.Context, req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
 	session, ok := rawQueryCursorSessions.get(req.Paging.Cursor)
-	if !ok {
+	if !ok || session.ResourceDataParams != nil {
 		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_InvalidParameter).
 			WithErrorDetails("cursor not found or expired")
 	}

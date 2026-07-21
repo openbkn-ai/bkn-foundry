@@ -32,6 +32,9 @@ type cursorSession struct {
 	OpenSearchIndex string
 	SearchAfter     []any
 
+	ResourceDataResourceID string
+	ResourceDataParams     *interfaces.ResourceDataQueryParams
+
 	Offset   int
 	PageSize int
 
@@ -107,6 +110,45 @@ func (m *cursorSessionManager) create(accountID, catalogID string, resourceIDs [
 	m.mu.Unlock()
 	logger.Infof("Cursor session created: catalog_id=%s, query_format=%s, active_sessions_len=%d", session.CatalogID, session.QueryFormat, activeSessionsLen)
 	return session, nil
+}
+
+func (m *cursorSessionManager) createResourceData(accountID, catalogID, resourceID string, params *interfaces.ResourceDataQueryParams) (*cursorSession, error) {
+	keepAliveSec := params.Paging.KeepAliveSec
+	if keepAliveSec == 0 {
+		keepAliveSec = interfaces.DefaultCursorKeepAliveSec
+	}
+	now := time.Now().Unix()
+	session := &cursorSession{
+		ID:                     uuid.NewString(),
+		AccountID:              accountID,
+		CatalogID:              catalogID,
+		ResourceIDs:            []string{resourceID},
+		ResourceDataResourceID: resourceID,
+		ResourceDataParams:     cloneResourceDataQueryParams(params),
+		PageSize:               params.Paging.Size,
+		KeepAliveSec:           keepAliveSec,
+		CreatedAtSec:           now,
+		ExpiresAtSec:           now + int64(keepAliveSec),
+	}
+	m.mu.Lock()
+	m.removeExpiredLocked(now)
+	if len(m.sessions) >= m.maxSessions {
+		m.mu.Unlock()
+		return nil, errCursorSessionLimitReached
+	}
+	m.sessions[session.ID] = session
+	activeSessionsLen := len(m.sessions)
+	m.mu.Unlock()
+	logger.Infof("Cursor session created: catalog_id=%s, query_format=resource_data, active_sessions_len=%d", session.CatalogID, activeSessionsLen)
+	return session, nil
+}
+
+func cloneResourceDataQueryParams(params *interfaces.ResourceDataQueryParams) *interfaces.ResourceDataQueryParams {
+	copy := *params
+	copy.Sort = append([]*interfaces.SortField(nil), params.Sort...)
+	copy.OutputFields = append([]string(nil), params.OutputFields...)
+	copy.GroupBy = append([]*interfaces.GroupByItem(nil), params.GroupBy...)
+	return &copy
 }
 
 // reclaimExpired bounds memory usage for cursors that are never continued.
