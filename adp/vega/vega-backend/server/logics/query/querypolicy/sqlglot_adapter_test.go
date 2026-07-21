@@ -22,6 +22,7 @@ func TestSQLGlotAdapterValidateSQL(t *testing.T) {
 	for _, sql := range []string{
 		"SELECT id, name FROM orders WHERE id = 1",
 		"SELECT COUNT(*) AS total FROM orders",
+		"SELECT LOWER(name) FROM orders",
 	} {
 		t.Run(sql, func(t *testing.T) {
 			require.NoError(t, adapter.ValidateSQL(sql, "trino"))
@@ -53,6 +54,10 @@ func TestSQLGlotAdapterValidateSQL(t *testing.T) {
 		"SELECT pg_sleep(1)",
 		"SELECT load_file('/etc/passwd')",
 		"SELECT * FROM read_csv_auto('/etc/passwd')",
+		"SELECT nextval('orders_id_seq')",
+		"SELECT set_config('search_path', 'public', false)",
+		"SELECT pg_advisory_lock(1)",
+		"SELECT dblink_exec('connection', 'DELETE FROM orders')",
 	} {
 		t.Run(sql, func(t *testing.T) {
 			err := adapter.ValidateSQL(sql, "trino")
@@ -62,6 +67,25 @@ func TestSQLGlotAdapterValidateSQL(t *testing.T) {
 			assert.True(t, errors.As(err, &validationErr))
 		})
 	}
+}
+
+func TestSQLGlotAdapterValidateTableReferences(t *testing.T) {
+	requireSQLGlotRuntime(t)
+
+	adapter := NewSQLGlotAdapter()
+	require.NoError(t, adapter.ValidateTableReferences(
+		"SELECT * FROM public.orders JOIN public.customers ON orders.customer_id = customers.id",
+		"postgres", []string{"public.orders", "public.customers"},
+	))
+
+	err := adapter.ValidateTableReferences(
+		"SELECT * FROM public.orders JOIN private.secret_customers ON true",
+		"postgres", []string{"public.orders"},
+	)
+	require.Error(t, err)
+	var validationErr *ReadOnlySQLValidationError
+	require.ErrorAs(t, err, &validationErr)
+	assert.Contains(t, validationErr.Reason, "unbound physical table")
 }
 
 func requireSQLGlotRuntime(t *testing.T) {

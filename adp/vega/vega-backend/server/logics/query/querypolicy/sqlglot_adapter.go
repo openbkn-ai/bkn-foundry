@@ -23,6 +23,7 @@ const rejectedPrefix = "READ_ONLY_SQL_REJECTED:"
 // Adapter validates a query against the Raw Query policy.
 type Adapter interface {
 	ValidateSQL(sql string, inputDialect string) error
+	ValidateTableReferences(sql string, inputDialect string, allowedReferences []string) error
 }
 
 // ReadOnlySQLValidationError indicates that SQL is outside the intentionally
@@ -68,6 +69,40 @@ func (a *SQLGlotAdapter) ValidateSQL(sql string, inputDialect string) error {
 	return errors.New(result.Error)
 }
 
+// ValidateTableReferences verifies that every physical table parsed from sql is
+// one of the server-resolved Resource source identifiers. It deliberately
+// rejects a query when a source identifier cannot be parsed, rather than
+// weakening the resource permission boundary.
+func (a *SQLGlotAdapter) ValidateTableReferences(sql string, inputDialect string, allowedReferences []string) error {
+	allowedJSON, err := sonic.Marshal(allowedReferences)
+	if err != nil {
+		return err
+	}
+	cmd := exec.Command("python3", "-c", tableReferenceValidationScript, sql, inputDialect, string(allowedJSON))
+
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	if err := cmd.Run(); err != nil {
+		logger.Errorf("ValidateTableReferences policy command failed")
+		return err
+	}
+
+	var result validationResult
+	if err := sonic.Unmarshal(out.Bytes(), &result); err != nil {
+		logger.Errorf("ValidateTableReferences policy response decode failed")
+		return err
+	}
+	if result.Error == "" {
+		return nil
+	}
+	if strings.HasPrefix(result.Error, rejectedPrefix) {
+		return &ReadOnlySQLValidationError{
+			Reason: strings.TrimSpace(strings.TrimPrefix(result.Error, rejectedPrefix)),
+		}
+	}
+	return errors.New(result.Error)
+}
+
 type validationResult struct {
 	Error string `json:"error"`
 }
@@ -82,6 +117,8 @@ from sqlglot import exp
 REJECTED_PREFIX = "READ_ONLY_SQL_REJECTED:"
 FORBIDDEN_NODE_NAMES = {
     "Into", "Lock", "SessionParameter", "Set", "Command", "Transaction",
+    "With", "Union", "Intersect", "Except", "Insert", "Update", "Delete",
+    "Merge", "Copy", "Create", "Alter", "Drop", "Truncate", "Grant", "Revoke",
 }
 FORBIDDEN_FUNCTIONS = {
     "benchmark", "dblink", "http_get", "load_file", "lo_import",
@@ -113,10 +150,64 @@ try:
             reject("unsupported SQL construct: " + type(node).__name__)
         if isinstance(node, exp.Func):
             name = str(getattr(node, "name", "")).lower()
+            # Unknown functions are UDFs in SQLGlot. They cannot be proven
+            # read-only, so the Raw Query policy rejects them by default.
+            if isinstance(node, exp.Anonymous):
+                reject("unsupported function")
             if name in FORBIDDEN_FUNCTIONS:
                 reject("unsupported function: " + name)
 
     print(json.dumps({"error": None}))
 except Exception as e:
     print(json.dumps({"error": REJECTED_PREFIX + "invalid SQL: " + str(e)}))
+`
+
+const tableReferenceValidationScript = `
+import json
+import sys
+
+import sqlglot
+from sqlglot import exp
+
+REJECTED_PREFIX = "READ_ONLY_SQL_REJECTED:"
+
+def reject(reason):
+    print(json.dumps({"error": REJECTED_PREFIX + reason}))
+    sys.exit(0)
+
+def canonical_identifier(identifier):
+    if identifier is None:
+        return None
+    name = identifier.name
+    if identifier.args.get("quoted"):
+        return ("quoted", name)
+    return ("unquoted", name.lower())
+
+def canonical_table(table):
+    return (
+        canonical_identifier(table.args.get("catalog")),
+        canonical_identifier(table.args.get("db")),
+        canonical_identifier(table.this),
+    )
+
+try:
+    sql = sys.argv[1]
+    dialect = sys.argv[2]
+    allowed_references = json.loads(sys.argv[3])
+
+    allowed = set()
+    for reference in allowed_references:
+        source = sqlglot.parse_one("SELECT 1 FROM " + reference, read=dialect)
+        tables = list(source.find_all(exp.Table))
+        if len(tables) != 1:
+            reject("invalid resource source identifier")
+        allowed.add(canonical_table(tables[0]))
+
+    statement = sqlglot.parse_one(sql, read=dialect)
+    for table in statement.find_all(exp.Table):
+        if canonical_table(table) not in allowed:
+            reject("SQL references an unbound physical table")
+    print(json.dumps({"error": None}))
+except Exception as e:
+    print(json.dumps({"error": REJECTED_PREFIX + "invalid SQL table reference: " + str(e)}))
 `

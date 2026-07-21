@@ -234,6 +234,17 @@ func (rqs *rawQueryService) prepareSQLQuery(ctx context.Context, req *interfaces
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
 			WithErrorDetails("failed to validate SQL query")
 	}
+	allowedReferences, err := rqs.resourceSourceIdentifiers(ctx, resourceIDs)
+	if err != nil {
+		return nil, err
+	}
+	if err := rawQueryPolicy.ValidateTableReferences(replacedSQL, inputDialect, allowedReferences); err != nil {
+		if httpErr := rawQueryValidationError(ctx, err); httpErr != nil {
+			return nil, httpErr
+		}
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
+			WithErrorDetails("failed to validate SQL resource references")
+	}
 	targetDialect, err := targetDialectForCatalog(ctx, catalog)
 	if err != nil {
 		return nil, err
@@ -248,6 +259,22 @@ func (rqs *rawQueryService) prepareSQLQuery(ctx context.Context, req *interfaces
 		finalSQL = result.SQL
 	}
 	return &preparedSQLQuery{catalog: catalog, resourceIDs: resourceIDs, sql: trimSQLTerminator(finalSQL), warnings: warnings}, nil
+}
+
+func (rqs *rawQueryService) resourceSourceIdentifiers(ctx context.Context, resourceIDs []string) ([]string, error) {
+	identifiers := make([]string, 0, len(resourceIDs))
+	for _, resourceID := range resourceIDs {
+		resource, err := rqs.rs.GetByID(ctx, resourceID)
+		if err != nil {
+			return nil, err.(*rest.HTTPError)
+		}
+		if resource == nil || strings.TrimSpace(resource.SourceIdentifier) == "" {
+			return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_ResourceNotFound).
+				WithErrorDetails(fmt.Sprintf("resource %s has no queryable source", resourceID))
+		}
+		identifiers = append(identifiers, resource.SourceIdentifier)
+	}
+	return identifiers, nil
 }
 
 func trimSQLTerminator(sql string) string {
