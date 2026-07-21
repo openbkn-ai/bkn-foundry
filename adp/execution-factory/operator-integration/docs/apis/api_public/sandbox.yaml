@@ -1,10 +1,19 @@
 openapi: "3.0.3"
 info:
-  title: "Sandbox Runtime Private Management APIs"
+  title: "Sandbox Runtime Observability APIs"
   version: "1.0.0"
-  description: "Read-only Sandbox Runtime observability APIs for Execution Factory Lab."
+  description: |
+    Read-only Sandbox Runtime observability APIs for Execution Factory Lab.
+
+    These endpoints live on the public face only. Responses carry cross-tenant fields
+    (user_id, capability_id, workspace_path, pod_name, python_package_index_url), so
+    every route additionally requires the caller to be a super admin — the same
+    safe_admin:console:manage capability bkn-safe's Enforcer.CanAdmin checks.
+
+    They were previously registered on internal-v1 as well; that registration was
+    removed because the internal face does not verify tokens (see #326).
 servers:
-  - url: "http://127.0.0.1:9000/api/agent-operator-integration/internal-v1"
+  - url: "http://{host}:{port}/api/agent-operator-integration/v1"
 tags:
   - name: "Sandbox Runtime"
     description: "Read-only runtime health, pool, and session diagnostics."
@@ -20,6 +29,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SandboxHealthResp"
+        "401":
+          description: "Missing or invalid credentials."
+        "403":
+          description: "Caller is not a super admin."
   /sandbox/pool:
     get:
       tags: ["Sandbox Runtime"]
@@ -31,6 +44,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SandboxPoolResp"
+        "401":
+          description: "Missing or invalid credentials."
+        "403":
+          description: "Caller is not a super admin."
   /sandbox/sessions:
     get:
       tags: ["Sandbox Runtime"]
@@ -74,6 +91,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SandboxSessionListResp"
+        "401":
+          description: "Missing or invalid credentials."
+        "403":
+          description: "Caller is not a super admin."
   /sandbox/sessions/{id}:
     get:
       tags: ["Sandbox Runtime"]
@@ -93,6 +114,10 @@ paths:
                 $ref: "#/components/schemas/SandboxSessionDetailResp"
         "404":
           description: "Session not found."
+        "401":
+          description: "Missing or invalid credentials."
+        "403":
+          description: "Caller is not a super admin."
 components:
   schemas:
     SandboxHealthResp:

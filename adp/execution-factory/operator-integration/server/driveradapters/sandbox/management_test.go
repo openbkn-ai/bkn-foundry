@@ -49,23 +49,6 @@ func (f *fakeManagementService) GetSessionDetail(ctx context.Context, sessionID 
 	}, nil
 }
 
-func TestManagementHandlerReadOnlyRoutes(t *testing.T) {
-	Convey("Sandbox management handler should expose only read-only routes", t, func() {
-		gin.SetMode(gin.TestMode)
-		engine := gin.New()
-		group := engine.Group("/api/agent-operator-integration/internal-v1")
-		NewManagementHandlerWithService(&fakeManagementService{}).RegisterPrivate(group)
-
-		So(performRequest(engine, http.MethodGet, "/api/agent-operator-integration/internal-v1/sandbox/health").Code, ShouldEqual, http.StatusOK)
-		So(performRequest(engine, http.MethodGet, "/api/agent-operator-integration/internal-v1/sandbox/pool").Code, ShouldEqual, http.StatusOK)
-		So(performRequest(engine, http.MethodGet, "/api/agent-operator-integration/internal-v1/sandbox/sessions?status=failed").Code, ShouldEqual, http.StatusOK)
-		So(performRequest(engine, http.MethodGet, "/api/agent-operator-integration/internal-v1/sandbox/sessions/sess_aoi_1").Code, ShouldEqual, http.StatusOK)
-
-		So(performRequest(engine, http.MethodDelete, "/api/agent-operator-integration/internal-v1/sandbox/sessions/sess_aoi_1").Code, ShouldEqual, http.StatusNotFound)
-		So(performRequest(engine, http.MethodPost, "/api/agent-operator-integration/internal-v1/sandbox/pool/prewarm").Code, ShouldEqual, http.StatusNotFound)
-	})
-}
-
 func performRequest(engine *gin.Engine, method, path string) *httptest.ResponseRecorder {
 	recorder := httptest.NewRecorder()
 	req := httptest.NewRequest(method, path, nil)
@@ -103,7 +86,6 @@ func newPublicEngine(authService interfaces.IAuthorizationService, accountID str
 	NewManagementHandlerWithAuth(&fakeManagementService{}, authService).RegisterPublic(group)
 	return engine
 }
-
 func TestManagementHandlerPublicRoutesRequireAdmin(t *testing.T) {
 	const base = "/api/agent-operator-integration/v1/sandbox"
 
@@ -150,5 +132,21 @@ func TestManagementHandlerPublicRoutesRequireAdmin(t *testing.T) {
 			So(performRequest(engine, http.MethodDelete, base+"/sessions/sess_1").Code, ShouldEqual, http.StatusNotFound)
 			So(performRequest(engine, http.MethodPost, base+"/pool/prewarm").Code, ShouldEqual, http.StatusNotFound)
 		})
+	})
+}
+
+// TestInternalFaceNoLongerRegistersSandbox 守住 #326 第 3 步：沙箱观测接口只在公开面
+// 注册。内部面不校验令牌，身份取自调用方自填的 X-Account-ID 头，一旦重新挂上就等于
+// 绕过公开面的超管门禁。ManagementHandler 已不再提供 RegisterPrivate——本用例确认
+// 接口面上不存在该方法，任何重新引入都会在编译期被此断言挡下。
+func TestInternalFaceNoLongerRegistersSandbox(t *testing.T) {
+	Convey("沙箱处理器不再暴露内部面注册入口", t, func() {
+		var handler ManagementHandler = NewManagementHandlerWithService(&fakeManagementService{})
+
+		_, hasPrivateRegistration := any(handler).(interface {
+			RegisterPrivate(engine *gin.RouterGroup)
+		})
+
+		So(hasPrivateRegistration, ShouldBeFalse)
 	})
 }

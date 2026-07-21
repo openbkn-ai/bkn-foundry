@@ -14,7 +14,6 @@ import (
 )
 
 type ManagementHandler interface {
-	RegisterPrivate(engine *gin.RouterGroup)
 	RegisterPublic(engine *gin.RouterGroup)
 	GetHealth(c *gin.Context)
 	GetPool(c *gin.Context)
@@ -45,15 +44,7 @@ func NewManagementHandlerWithAuth(service sandbox.SandboxManagementService, auth
 	return &managementHandler{service: service, authService: authService}
 }
 
-func (h *managementHandler) RegisterPrivate(engine *gin.RouterGroup) {
-	group := engine.Group("/sandbox")
-	group.GET("/health", h.GetHealth)
-	group.GET("/pool", h.GetPool)
-	group.GET("/sessions", h.ListSessions)
-	group.GET("/sessions/:id", h.GetSessionDetail)
-}
-
-// RegisterPublic 在公开面注册同一组沙箱只读观测接口。
+// RegisterPublic 在公开面注册沙箱只读观测接口。
 //
 // 这四条接口原本只在 internal-v1 上，而 internal-v1 不校验令牌、身份由 X-Account-ID 头
 // 声明；为了让 Studio 的沙箱运行时页能访问，该前缀被开到了 Ingress（见 #326）。公开面走
