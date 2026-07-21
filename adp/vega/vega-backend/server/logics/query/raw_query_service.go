@@ -709,7 +709,7 @@ func rawQueryValidationError(ctx context.Context, err error) error {
 		return nil
 	}
 	return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
-		WithErrorDetails(validationErr.Error())
+		WithErrorDetails("raw query rejected by read-only policy")
 }
 
 var rawQueryPolicy querypolicy.Adapter = querypolicy.NewSQLGlotAdapter()

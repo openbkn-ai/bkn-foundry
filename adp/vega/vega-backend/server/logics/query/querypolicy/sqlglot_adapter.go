@@ -84,7 +84,9 @@ FORBIDDEN_NODE_NAMES = {
     "Into", "Lock", "SessionParameter", "Set", "Command", "Transaction",
 }
 FORBIDDEN_FUNCTIONS = {
-    "benchmark", "load_file", "pg_sleep", "sleep",
+    "benchmark", "dblink", "http_get", "load_file", "lo_import",
+    "pg_read_file", "pg_sleep", "read_csv", "read_csv_auto", "read_json",
+    "read_json_auto", "read_parquet", "sleep", "system", "sys_exec", "xp_cmdshell",
 }
 
 def reject(reason):

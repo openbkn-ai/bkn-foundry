@@ -29,12 +29,30 @@ func TestSQLGlotAdapterValidateSQL(t *testing.T) {
 	}
 
 	for _, sql := range []string{
+		"INSERT INTO orders VALUES (1)",
+		"UPDATE orders SET status = 'closed'",
 		"DELETE FROM orders",
+		"MERGE INTO orders USING updates ON orders.id = updates.id WHEN MATCHED THEN UPDATE SET status = 'closed'",
+		"COPY orders TO '/tmp/orders.csv'",
+		"CREATE TABLE archived_orders AS SELECT * FROM orders",
+		"ALTER TABLE orders ADD COLUMN note VARCHAR",
+		"DROP TABLE orders",
+		"TRUNCATE TABLE orders",
+		"GRANT SELECT ON orders TO analyst",
+		"REVOKE SELECT ON orders FROM analyst",
+		"BEGIN",
+		"SET ROLE analyst",
+		"CALL refresh_orders()",
 		"SELECT 1; DELETE FROM orders",
+		"/* comment */ DELETE FROM orders",
+		"DeLeTe FROM orders",
 		"WITH recent AS (SELECT * FROM orders) SELECT * FROM recent",
 		"SELECT 1 UNION SELECT 2",
 		"SELECT * FROM orders FOR UPDATE",
 		"SELECT * INTO archived_orders FROM orders",
+		"SELECT pg_sleep(1)",
+		"SELECT load_file('/etc/passwd')",
+		"SELECT * FROM read_csv_auto('/etc/passwd')",
 	} {
 		t.Run(sql, func(t *testing.T) {
 			err := adapter.ValidateSQL(sql, "trino")

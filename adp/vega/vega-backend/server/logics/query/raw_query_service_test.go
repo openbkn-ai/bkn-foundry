@@ -65,13 +65,14 @@ func assertCatalogDisabledError(t *testing.T, err error) {
 
 func TestRawQueryValidationError(t *testing.T) {
 	err := rawQueryValidationError(context.Background(), &querypolicy.ReadOnlySQLValidationError{
-		Reason: "READ_ONLY_SQL_REJECTED: only one top-level SELECT statement is allowed",
+		Reason: "READ_ONLY_SQL_REJECTED: invalid SQL SELECT * FROM accounts WHERE password = 'secret'",
 	})
 
 	var httpErr *rest.HTTPError
 	require.ErrorAs(t, err, &httpErr)
 	assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
 	assert.Equal(t, verrors.VegaBackend_Query_InvalidParameter, httpErr.BaseError.ErrorCode)
+	assert.NotContains(t, httpErr.Error(), "secret")
 
 	assert.NoError(t, rawQueryValidationError(context.Background(), errors.New("unexpected error")))
 }
