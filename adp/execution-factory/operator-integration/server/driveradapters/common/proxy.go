@@ -13,6 +13,7 @@ import (
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/rest"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/auth"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/metadata"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/sandbox"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/utils"
@@ -33,6 +34,7 @@ type unifiedProxyHandler struct {
 	Logger          interfaces.Logger
 	MetadataService interfaces.IMetadataService
 	SessionPool     sandbox.SessionPool
+	AuthService     interfaces.IAuthorizationService
 }
 
 var (
@@ -47,14 +49,24 @@ func NewUnifiedProxyHandler() UnifiedProxyHandler {
 			Logger:          conf.Logger,
 			MetadataService: metadata.NewMetadataService(),
 			SessionPool:     sandbox.GetSessionPool(),
+			AuthService:     auth.NewAuthServiceImpl(),
 		}
 	})
 	return proxyHandler
 }
 
 // FunctionExecute 函数执行
+//
+// 该接口在沙箱中执行调用方提交的任意代码，因此在公开面要求调用方在算子类型上持有 execute
+// 权限（见 #345）。此前公开面无任何授权判定，任何持有有效令牌的账号——包括权限集为空的
+// 账号——都可借此获得沙箱内的代码执行能力。
 func (h *unifiedProxyHandler) FunctionExecute(c *gin.Context) {
 	var err error
+	if err = requireOperatorTypePermission(c.Request.Context(), h.AuthService,
+		interfaces.AuthOperationTypeExecute); err != nil {
+		rest.ReplyError(c, err)
+		return
+	}
 	req := &interfaces.FunctionProxyExecuteCodeReq{}
 	if err = c.ShouldBindJSON(req); err != nil {
 		err = errors.NewHTTPError(c.Request.Context(), http.StatusBadRequest, errors.ErrExtDebugParamsInvalid,
