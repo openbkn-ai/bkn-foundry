@@ -46,22 +46,22 @@ jobs:
       # image, not an openbkn rebuild. If webhooks are enabled, source it from
       # registry.k8s.io directly rather than mirroring it here.
       MIRRORS: |
+        flannel/flannel-cni-plugin:v1.5.1-flannel1
+        flannel/flannel:v0.25.5
+        rancher/local-path-provisioner:v0.0.32
+        ingress-nginx/controller:v1.14.1
+        busybox:1.36.1
+        opensearchproject/opensearch:2.19.4
         mariadb:11.4.7
         bitnami/kafka:3.9.0-debian-12-r10
-        opensearchproject/opensearch:2.19.4
-        busybox:1.36.1
-        library/nginx:1.27-alpine
         public/oliver006/redis_exporter:v1.77.0
         redis:1.11.2-20251029.2.169ac3c0
-        ingress-nginx/controller:v1.14.1
+        library/nginx:1.27-alpine
         oryd/hydra:v26.2.0
         postgres:16
         portainer/kubectl-shell:latest
         otel/opentelemetry-collector-contrib:0.148.0
-        flannel/flannel-cni-plugin:v1.5.1-flannel1
-        flannel/flannel:v0.25.5
-        rancher/local-path-provisioner:v0.0.32
-        minio:RELEASE.2025-09-07T16-13-09Z
+        minio/minio:RELEASE.2025-09-07T16-13-09Z
     steps:
       - name: Check SWR credentials
         run: |
