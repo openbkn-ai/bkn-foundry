@@ -254,13 +254,19 @@ func TestValidateCursorResourceBinding(t *testing.T) {
 	previousManager := rawQueryCursorSessions
 	rawQueryCursorSessions = newCursorSessionManager(10)
 	t.Cleanup(func() { rawQueryCursorSessions = previousManager })
+	rawSession, err := rawQueryCursorSessions.create("account-1", "catalog-1", nil, "SELECT 1", 1, 60, 60)
+	require.NoError(t, err)
+	err = validateCursorResourceBinding(context.Background(), rawSession, &interfaces.RawQueryRequest{ResourceDataResourceID: "logic-1"})
+	var httpErr *rest.HTTPError
+	require.ErrorAs(t, err, &httpErr)
+	assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
+	require.NoError(t, validateCursorResourceBinding(context.Background(), rawSession, &interfaces.RawQueryRequest{}))
 
 	session, err := rawQueryCursorSessions.create("account-1", "catalog-1", nil, "SELECT 1", 1, 60, 60)
 	require.NoError(t, err)
 	bindCursorResource(session, &interfaces.RawQueryRequest{ResourceDataResourceID: "logic-1", ResourceDataUpdateTime: 10})
 
 	err = validateCursorResourceBinding(context.Background(), session, &interfaces.RawQueryRequest{ResourceDataResourceID: "logic-2", ResourceDataUpdateTime: 10})
-	var httpErr *rest.HTTPError
 	require.ErrorAs(t, err, &httpErr)
 	assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
 	_, exists := rawQueryCursorSessions.acquire(session.ID)

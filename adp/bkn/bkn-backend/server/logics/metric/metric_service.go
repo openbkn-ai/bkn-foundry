@@ -824,10 +824,7 @@ func (ms *metricService) SearchMetrics(ctx context.Context, query *interfaces.Co
 			nextCursor = datasetResp.Paging.NextCursor
 		}
 
-		if (query.Limit > 0 && len(entries) >= query.Limit) || nextCursor == nil && len(datasetResp.Entries) < limit {
-			break
-		}
-		if nextCursor == nil {
+		if (query.Limit > 0 && len(entries) >= query.Limit) || nextCursor == nil {
 			break
 		}
 		cursor = *nextCursor

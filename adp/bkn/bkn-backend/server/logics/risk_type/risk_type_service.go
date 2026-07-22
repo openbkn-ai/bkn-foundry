@@ -640,7 +640,7 @@ func (rts *riskTypeService) SearchRiskTypes(ctx context.Context, query *interfac
 			nextCursor = datasetResp.Paging.NextCursor
 		}
 
-		if (query.Limit > 0 && len(riskTypes) >= query.Limit) || nextCursor == nil && len(datasetResp.Entries) < limit {
+		if (query.Limit > 0 && len(riskTypes) >= query.Limit) || nextCursor == nil {
 			break
 		}
 
