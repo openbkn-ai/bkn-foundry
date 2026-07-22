@@ -1,6 +1,66 @@
 version: "2"
 
+run:
+  timeout: 5m
+  tests: true
+  modules-download-mode: readonly
+
 linters:
   default: none
   enable:
+    # Go 官方与基础正确性检查
+    - govet
+    - copyloopvar
+    - nilerr
+    - nilnesserr
+
+    # 资源释放与上下文相关检查
+    - bodyclose
     - rowserrcheck
+    - sqlclosecheck
+    - spancheck
+
+    # 可维护性与安全的低噪声检查
+    - asciicheck
+    - bidichk
+    - errname
+    - exptostd
+    - fatcontext
+    - gocheckcompilerdirectives
+    - gochecksumtype
+    - gomoddirectives
+    - goprintffuncname
+    - loggercheck
+    - makezero
+    - mirror
+    - misspell
+    - nolintlint
+    - reassign
+
+  exclusions:
+    generated: lax
+    paths:
+      - interfaces/mock
+      - tests
+
+# 以下检查存在历史存量问题，完成清债后逐项启用，禁止用目录级排除掩盖：
+# durationcheck、errcheck、errorlint、ineffassign、staticcheck、unused。
+
+formatters:
+  enable:
+    - gofmt
+  exclusions:
+    generated: lax
+    paths:
+      - interfaces/mock
+      - tests
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+output:
+  formats:
+    text:
+      path: stdout
+      colors: true

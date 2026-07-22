@@ -1,13 +1,12 @@
 name: ci-adp-vega
 
-# Compile gate for PRs touching adp/vega. Build-only for now: many services'
-# unit tests assume a working directory / locale paths and fatal-exit under a
-# plain `go test ./...`. Add `go test` here once the test harness is CI-ready.
+# VEGA Backend PR gate: lint, unit tests, coverage and build.
 
 on:
   pull_request:
     paths:
       - 'adp/vega/**'
+      - '.github/actions/golangci-lint/**'
       - '.github/workflows/ci-adp-vega.yml'
 
 concurrency:
@@ -15,18 +14,33 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
+  ci:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: adp/vega/vega-backend/server
+        working-directory: adp/vega/vega-backend
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: adp/vega/vega-backend/server/go.mod
-      - run: go build ./...
-      - uses: golangci/golangci-lint-action@v7
+
+      - name: 静态检查
+        uses: ./.github/actions/golangci-lint
         with:
-          version: v2.6.2
           working-directory: adp/vega/vega-backend/server
+
+      - name: 单元测试与覆盖率
+        run: make test-cover COVERAGE_THRESHOLD=0
+
+      - name: 构建
+        run: cd server && go build ./...
+
+      - name: 上传覆盖率产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: vega-backend-coverage
+          path: |
+            adp/vega/vega-backend/test-result/coverage.out
+            adp/vega/vega-backend/test-result/coverage.html
+            adp/vega/vega-backend/test-result/coverage.xml
