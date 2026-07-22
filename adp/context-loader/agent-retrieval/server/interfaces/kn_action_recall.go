@@ -130,8 +130,49 @@ type ActionParams struct {
 
 // ==================== Service Interfaces ====================
 
+// KnActionExecuteRequest Knowledge Network Action Execution Request
+type KnActionExecuteRequest struct {
+	// Query Parameters
+	KnID string `json:"kn_id" validate:"required"` // Knowledge Network ID
+	AtID string `json:"at_id" validate:"required"` // Action Type ID
+
+	// Request Body
+	InstanceIdentities []map[string]any `json:"_instance_identities" validate:"omitempty"` // Target instances; empty means scan-by-condition
+	DynamicParams      map[string]any   `json:"dynamic_params" validate:"omitempty"`       // Dynamic parameter values (value_from=input)
+
+	// Header Fields
+	AccountID   string `json:"-" header:"x-account-id"`
+	AccountType string `json:"-" header:"x-account-type"`
+}
+
+// KnActionExecuteResponse Knowledge Network Action Execution Response (async)
+type KnActionExecuteResponse struct {
+	ExecutionID string `json:"execution_id"`
+	Status      string `json:"status"`
+	Message     string `json:"message"`
+	CreatedAt   int64  `json:"created_at"`
+}
+
+// ExecuteActionsRequest Action Execution Request to ontology-query
+type ExecuteActionsRequest struct {
+	KnID               string           `json:"-"`
+	AtID               string           `json:"-"`
+	InstanceIdentities []map[string]any `json:"_instance_identities"`
+	DynamicParams      map[string]any   `json:"dynamic_params,omitempty"`
+}
+
+// ExecuteActionsResponse Action Execution Response from ontology-query
+type ExecuteActionsResponse struct {
+	ExecutionID string `json:"execution_id"`
+	Status      string `json:"status"`
+	Message     string `json:"message"`
+	CreatedAt   int64  `json:"created_at"`
+}
+
 // IKnActionRecallService Knowledge Network Action Recall Service Interface
 type IKnActionRecallService interface {
 	// GetActionInfo gets action information (action recall)
 	GetActionInfo(ctx context.Context, req *KnActionRecallRequest) (*KnActionRecallResponse, error)
+	// ExecuteAction executes an action type (async), returning an execution id
+	ExecuteAction(ctx context.Context, req *KnActionExecuteRequest) (*KnActionExecuteResponse, error)
 }

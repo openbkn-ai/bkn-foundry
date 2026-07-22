@@ -1,0 +1,54 @@
+{
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "kn_id": {
+        "type": "string",
+        "description": "知识网络 ID。也可改用 X-Kn-ID 请求头传入。"
+      },
+      "at_id": {
+        "type": "string",
+        "description": "行动类型 ID，由 search_schema 或 get_kn_detail 返回。"
+      },
+      "_instance_identities": {
+        "type": "array",
+        "description": "目标实例列表；为空时由行动驱动按行动条件扫描全部匹配实例。每个元素需从 query_object_instance 或 query_instance_subgraph 的 _instance_identity 字段提取，不可臆造。",
+        "items": {
+          "type": "object",
+          "description": "实例标识对象，包含动态的属性键值对",
+          "additionalProperties": true
+        }
+      },
+      "dynamic_params": {
+        "type": "object",
+        "description": "行动的动态参数值（对应行动类型中 value_from=input 的参数）。请先调用 get_action_info 获取该行动的 dynamic_params schema 与参数名，再在此按名逐个填入真实值。注意：每个参数是独立的键，不要把多个参数名拼成一个键。",
+        "additionalProperties": true
+      }
+    },
+    "required": [
+      "kn_id",
+      "at_id"
+    ]
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "execution_id": {
+        "type": "string",
+        "description": "本次执行的 ID，可用于查询执行状态与结果"
+      },
+      "status": {
+        "type": "string",
+        "description": "执行状态，提交后通常为 pending"
+      },
+      "message": {
+        "type": "string",
+        "description": "提交结果说明"
+      },
+      "created_at": {
+        "type": "integer",
+        "description": "提交时间（Unix 毫秒）"
+      }
+    }
+  }
+}

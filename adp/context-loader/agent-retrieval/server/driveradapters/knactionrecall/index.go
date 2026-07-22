@@ -25,6 +25,7 @@ import (
 // KnActionRecallHandler 业务知识网络行动召回处理器
 type KnActionRecallHandler interface {
 	GetActionInfo(c *gin.Context)
+	ExecuteAction(c *gin.Context)
 }
 
 type knActionRecallHandler struct {
@@ -98,5 +99,57 @@ func (h *knActionRecallHandler) GetActionInfo(c *gin.Context) {
 	}
 
 	// 返回成功响应
+	rest.ReplyOK(c, http.StatusOK, resp)
+}
+
+// ExecuteAction 执行行动（异步）
+func (h *knActionRecallHandler) ExecuteAction(c *gin.Context) {
+	var err error
+	req := &interfaces.KnActionExecuteRequest{}
+
+	// 绑定 Header
+	if err = c.ShouldBindHeader(req); err != nil {
+		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error())
+		rest.ReplyError(c, err)
+		return
+	}
+
+	// 绑定 Query Parameters
+	if err = c.ShouldBindQuery(req); err != nil {
+		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error())
+		rest.ReplyError(c, err)
+		return
+	}
+
+	// 绑定 JSON Body
+	if err = c.ShouldBindJSON(req); err != nil {
+		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error())
+		rest.ReplyError(c, err)
+		return
+	}
+
+	// 设置默认值
+	if err = defaults.Set(req); err != nil {
+		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error())
+		rest.ReplyError(c, err)
+		return
+	}
+
+	// 参数校验
+	err = validator.New().Struct(req)
+	if err != nil {
+		rest.ReplyError(c, err)
+		return
+	}
+
+	// 调用业务逻辑
+	resp, err := h.KnActionRecallService.ExecuteAction(c.Request.Context(), req)
+	if err != nil {
+		h.Logger.Errorf("[KnActionRecallHandler#ExecuteAction] ExecuteAction failed, err: %v", err)
+		rest.ReplyError(c, err)
+		return
+	}
+
+	// 返回成功响应（异步，返回 execution_id）
 	rest.ReplyOK(c, http.StatusOK, resp)
 }

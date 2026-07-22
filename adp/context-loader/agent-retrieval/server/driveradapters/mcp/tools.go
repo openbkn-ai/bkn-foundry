@@ -233,6 +233,43 @@ func handleGetActionInfo(service interfaces.IKnActionRecallService) func(ctx con
 	}
 }
 
+// handleExecuteAction handles execute_action tool calls.
+// 与 get_action_info 配对：Agent 先用 get_action_info 拿到 dynamic_params schema，
+// 再用本工具填入真实动态参数值触发执行（异步，返回 execution_id）。
+func handleExecuteAction(service interfaces.IKnActionRecallService) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		authCtx, ok := common.GetAccountAuthContextFromCtx(ctx)
+		if !ok {
+			return mcp.NewToolResultError("authentication required"), nil
+		}
+
+		execReq := &interfaces.KnActionExecuteRequest{}
+		if err := bindArguments(req, execReq); err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		if execReq.KnID == "" {
+			execReq.KnID = getKnIDFromHeader(req)
+		}
+		execReq.AccountID = authCtx.AccountID
+		execReq.AccountType = string(authCtx.AccountType)
+
+		if err := validator.New().Struct(execReq); err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		resp, err := service.ExecuteAction(ctx, execReq)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		// execute_action 始终返回 JSON：execution_id 等需机器可消费。
+		result, err := BuildMCPToolResult(resp, rest.FormatJSON)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return result, nil
+	}
+}
+
 // handleListKnowledgeNetworks handles list_knowledge_networks tool calls.
 // 用于让外部 Agent 发现可用的 kn_id（其余查询工具的前置）。
 func handleListKnowledgeNetworks(bkn interfaces.BknBackendAccess) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {

@@ -13,9 +13,8 @@ import (
 	context "context"
 	reflect "reflect"
 
-	gomock "go.uber.org/mock/gomock"
-
 	interfaces "github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/interfaces"
+	gomock "go.uber.org/mock/gomock"
 )
 
 // MockDrivenOntologyQuery is a mock of DrivenOntologyQuery interface.
@@ -40,6 +39,21 @@ func NewMockDrivenOntologyQuery(ctrl *gomock.Controller) *MockDrivenOntologyQuer
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockDrivenOntologyQuery) EXPECT() *MockDrivenOntologyQueryMockRecorder {
 	return m.recorder
+}
+
+// ExecuteActions mocks base method.
+func (m *MockDrivenOntologyQuery) ExecuteActions(ctx context.Context, req *interfaces.ExecuteActionsRequest) (*interfaces.ExecuteActionsResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ExecuteActions", ctx, req)
+	ret0, _ := ret[0].(*interfaces.ExecuteActionsResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ExecuteActions indicates an expected call of ExecuteActions.
+func (mr *MockDrivenOntologyQueryMockRecorder) ExecuteActions(ctx, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteActions", reflect.TypeOf((*MockDrivenOntologyQuery)(nil).ExecuteActions), ctx, req)
 }
 
 // QueryActions mocks base method.

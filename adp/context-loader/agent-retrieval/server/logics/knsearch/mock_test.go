@@ -141,6 +141,10 @@ func (m *mockOntologyQuery) QueryActions(ctx context.Context, req *interfaces.Qu
 	return nil, nil
 }
 
+func (m *mockOntologyQuery) ExecuteActions(ctx context.Context, req *interfaces.ExecuteActionsRequest) (*interfaces.ExecuteActionsResponse, error) {
+	return nil, nil
+}
+
 func (m *mockOntologyQuery) QueryInstanceSubgraph(ctx context.Context, req *interfaces.QueryInstanceSubgraphReq) (resp *interfaces.QueryInstanceSubgraphResp, err error) {
 	return nil, nil
 }

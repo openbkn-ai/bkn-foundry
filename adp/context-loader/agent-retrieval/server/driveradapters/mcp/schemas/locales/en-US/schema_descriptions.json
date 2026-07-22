@@ -155,5 +155,15 @@
     "output_schema.properties.relation_types.description": "Matched relation types.",
     "output_schema.properties.action_types.description": "Matched action types.",
     "output_schema.properties.metric_types.description": "Matched metric types."
+  },
+  "execute_action": {
+    "input_schema.properties.kn_id.description": "Knowledge network id. Can also be supplied by the X-Kn-ID request header.",
+    "input_schema.properties.at_id.description": "Action type id returned by search_schema or get_kn_detail.",
+    "input_schema.properties._instance_identities.description": "Target instances; when empty the action driver scans all instances matching the action condition. Each element must be taken from the _instance_identity field of query_object_instance or query_instance_subgraph, never fabricated.",
+    "input_schema.properties.dynamic_params.description": "Dynamic parameter values for the action (parameters whose value_from=input). First call get_action_info to obtain this action's dynamic_params schema and parameter names, then fill in the real values by name. Each parameter is a separate key; do not concatenate multiple parameter names into one key.",
+    "output_schema.properties.execution_id.description": "Execution id, usable to query execution status and results.",
+    "output_schema.properties.status.description": "Execution status; usually pending right after submission.",
+    "output_schema.properties.message.description": "Submission result message.",
+    "output_schema.properties.created_at.description": "Submission time (Unix milliseconds)."
   }
 }

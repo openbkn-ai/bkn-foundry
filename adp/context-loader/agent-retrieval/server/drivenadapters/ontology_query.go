@@ -39,6 +39,8 @@ const (
 	queryLogicPropertiesURI = "/in/v1/knowledge-networks/%s/object-types/%s/properties"
 	// https://{host}:{port}/api/ontology-query/v1/knowledge-networks/:kn_id/action-types/:at_id
 	queryActionsURI = "/in/v1/knowledge-networks/%s/action-types/%s"
+	// https://{host}:{port}/api/ontology-query/in/v1/knowledge-networks/:kn_id/action-types/:at_id/execute
+	executeActionsURI = "/in/v1/knowledge-networks/%s/action-types/%s/execute"
 	// https://{host}:{port}/api/ontology-query/in/v1/knowledge-networks/:kn_id/subgraph
 	queryInstanceSubgraphURI = "/in/v1/knowledge-networks/%s/subgraph"
 )
@@ -189,6 +191,49 @@ func (o *ontologyQueryClient) QueryActions(ctx context.Context, req *interfaces.
 	// 记录响应日志
 	respJSON, _ := json.Marshal(resp)
 	o.logger.WithContext(ctx).Debugf("[OntologyQuery#QueryActions] Response: %s", string(respJSON))
+
+	return resp, nil
+}
+
+// ExecuteActions 执行行动（异步），返回 execution_id
+func (o *ontologyQueryClient) ExecuteActions(ctx context.Context, req *interfaces.ExecuteActionsRequest) (resp *interfaces.ExecuteActionsResponse, err error) {
+	uri := fmt.Sprintf(executeActionsURI, req.KnID, req.AtID)
+	url := fmt.Sprintf("%s%s", o.baseURL, uri)
+
+	// 构建请求体（真实执行，携带动态参数；不设 method-override，为真正的 POST）
+	body := map[string]any{
+		"_instance_identities": req.InstanceIdentities,
+	}
+	if len(req.DynamicParams) > 0 {
+		body["dynamic_params"] = req.DynamicParams
+	}
+
+	// 记录请求日志
+	bodyJSON, _ := json.Marshal(body)
+	o.logger.WithContext(ctx).Debugf("[OntologyQuery#ExecuteActions] URL: %s", url)
+	o.logger.WithContext(ctx).Debugf("[OntologyQuery#ExecuteActions] Request Body: %s", string(bodyJSON))
+
+	header := common.GetHeaderFromCtx(ctx)
+	header[rest.ContentTypeKey] = rest.ContentTypeJSON
+
+	_, respBody, err := o.httpClient.Post(ctx, url, header, body)
+	if err != nil {
+		o.logger.WithContext(ctx).Errorf("[OntologyQuery#ExecuteActions] Request failed, err: %v", err)
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway, fmt.Sprintf("行动执行接口调用失败: %v", err))
+	}
+
+	resp = &interfaces.ExecuteActionsResponse{}
+	resultByt := utils.ObjectToByte(respBody)
+	err = json.Unmarshal(resultByt, resp)
+	if err != nil {
+		o.logger.WithContext(ctx).Errorf("[OntologyQuery#ExecuteActions] Unmarshal failed, body: %s, err: %v", string(resultByt), err)
+		err = infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError, fmt.Sprintf("解析行动执行响应失败: %v", err))
+		return nil, err
+	}
+
+	// 记录响应日志
+	respJSON, _ := json.Marshal(resp)
+	o.logger.WithContext(ctx).Debugf("[OntologyQuery#ExecuteActions] Response: %s", string(respJSON))
 
 	return resp, nil
 }

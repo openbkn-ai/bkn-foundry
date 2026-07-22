@@ -16,6 +16,16 @@ type stubActionRecallService struct {
 	called bool
 }
 
+func (s *stubActionRecallService) ExecuteAction(_ context.Context, _ *interfaces.KnActionExecuteRequest) (*interfaces.KnActionExecuteResponse, error) {
+	s.called = true
+	return &interfaces.KnActionExecuteResponse{
+		ExecutionID: "exec-001",
+		Status:      "pending",
+		Message:     "Action execution started",
+		CreatedAt:   1,
+	}, nil
+}
+
 func (s *stubActionRecallService) GetActionInfo(_ context.Context, _ *interfaces.KnActionRecallRequest) (*interfaces.KnActionRecallResponse, error) {
 	s.called = true
 	return &interfaces.KnActionRecallResponse{
