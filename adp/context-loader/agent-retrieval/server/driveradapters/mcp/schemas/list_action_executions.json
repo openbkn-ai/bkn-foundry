@@ -42,6 +42,11 @@
       "limit": {
         "type": "integer",
         "description": "分页条数（可选），默认 20，最大 1000。"
+      },
+      "search_after": {
+        "type": "array",
+        "description": "游标分页（可选）：将上一页响应返回的 search_after 原样传入以获取下一页，比 offset 更适合深翻页。",
+        "items": {}
       }
     },
     "required": [

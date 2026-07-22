@@ -161,6 +161,10 @@ func TestListActionExecutions_Success(t *testing.T) {
 				convey.So(r.KnID, convey.ShouldEqual, "kn-001")
 				convey.So(r.Status, convey.ShouldEqual, "completed")
 				convey.So(r.Limit, convey.ShouldEqual, 10)
+				// 游标透传：上一页 search_after 原样传到转发结构
+				convey.So(len(r.SearchAfter), convey.ShouldEqual, 2)
+				convey.So(r.SearchAfter[0], convey.ShouldEqual, int64(1784703617885))
+				convey.So(r.SearchAfter[1], convey.ShouldEqual, "d9g6l08acb8s73c6l470")
 				return map[string]any{
 					"total_count": 1,
 					"entries": []any{
@@ -175,6 +179,7 @@ func TestListActionExecutions_Success(t *testing.T) {
 
 		resp, err := service.ListActionExecutions(context.Background(), &interfaces.KnListActionExecutionsRequest{
 			KnID: "kn-001", Status: "completed", Limit: 10,
+			SearchAfter: []any{int64(1784703617885), "d9g6l08acb8s73c6l470"},
 		})
 		convey.So(err, convey.ShouldBeNil)
 		convey.So(resp["total_count"], convey.ShouldEqual, 1)

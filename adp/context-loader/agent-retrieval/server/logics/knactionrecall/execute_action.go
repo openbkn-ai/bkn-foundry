@@ -121,6 +121,7 @@ func (s *knActionRecallServiceImpl) ListActionExecutions(ctx context.Context, re
 		StartTimeTo:   req.StartTimeTo,
 		Offset:        req.Offset,
 		Limit:         req.Limit,
+		SearchAfter:   req.SearchAfter,
 	})
 	if err != nil {
 		s.logger.WithContext(ctx).Errorf("[KnActionRecall#ListActionExecutions] ListActionExecutions failed, err: %v", err)

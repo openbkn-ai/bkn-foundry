@@ -188,6 +188,7 @@ type KnListActionExecutionsRequest struct {
 	StartTimeTo   int64  `json:"start_time_to,omitempty"`   // 起始时间上界（Unix 毫秒，可选）
 	Offset        int    `json:"offset,omitempty"`          // 分页偏移（可选）
 	Limit         int    `json:"limit,omitempty"`           // 分页条数，默认 20，最大 1000（可选）
+	SearchAfter   []any  `json:"search_after,omitempty"`    // 游标分页：上一页响应的 search_after 原样回传（可选）
 
 	AccountID   string `json:"-" header:"x-account-id"`
 	AccountType string `json:"-" header:"x-account-type"`
@@ -209,6 +210,7 @@ type ListActionExecutionsRequest struct {
 	StartTimeTo   int64
 	Offset        int
 	Limit         int
+	SearchAfter   []any
 }
 
 // IKnActionRecallService Knowledge Network Action Recall Service Interface

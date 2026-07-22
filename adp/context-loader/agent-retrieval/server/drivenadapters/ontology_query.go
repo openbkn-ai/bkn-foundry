@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/common"
@@ -214,10 +215,14 @@ func (o *ontologyQueryClient) ExecuteActions(ctx context.Context, req *interface
 		body["dynamic_params"] = req.DynamicParams
 	}
 
-	// 记录请求日志
-	bodyJSON, _ := json.Marshal(body)
-	o.logger.WithContext(ctx).Debugf("[OntologyQuery#ExecuteActions] URL: %s", url)
-	o.logger.WithContext(ctx).Debugf("[OntologyQuery#ExecuteActions] Request Body: %s", string(bodyJSON))
+	// 记录请求日志（脱敏：dynamic_params 是任意工具输入，可能含令牌/密码等敏感值，
+	// 仅记录参数名与实例数，不输出参数值。见 PR #379 review P1）
+	dynamicParamKeys := make([]string, 0, len(req.DynamicParams))
+	for k := range req.DynamicParams {
+		dynamicParamKeys = append(dynamicParamKeys, k)
+	}
+	o.logger.WithContext(ctx).Debugf("[OntologyQuery#ExecuteActions] URL: %s, instances: %d, dynamic_param_keys: %v",
+		url, len(req.InstanceIdentities), dynamicParamKeys)
 
 	header := common.GetHeaderFromCtx(ctx)
 	header[rest.ContentTypeKey] = rest.ContentTypeJSON
@@ -296,6 +301,15 @@ func (o *ontologyQueryClient) ListActionExecutions(ctx context.Context, req *int
 	}
 	if req.Limit > 0 {
 		query.Set("limit", strconv.Itoa(req.Limit))
+	}
+	// 游标分页：下游 action-logs 以逗号分隔字符串接收 search_after（GET query），
+	// 故将上一页返回的 search_after 数组按元素拼成逗号分隔转发。
+	if len(req.SearchAfter) > 0 {
+		parts := make([]string, 0, len(req.SearchAfter))
+		for _, v := range req.SearchAfter {
+			parts = append(parts, fmt.Sprintf("%v", v))
+		}
+		query.Set("search_after", strings.Join(parts, ","))
 	}
 	// 默认返回总数，便于分页
 	query.Set("need_total", "true")
