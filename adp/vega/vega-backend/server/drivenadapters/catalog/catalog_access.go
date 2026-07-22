@@ -349,6 +349,11 @@ func (ca *catalogAccess) GetByIDs(ctx context.Context, ids []string) ([]*interfa
 
 		catalogs = append(catalogs, catalog)
 	}
+	if err := rows.Err(); err != nil {
+		logger.Errorf("Iterate catalog rows failed: %v", err)
+		span.SetStatus(codes.Error, "Rows iteration failed")
+		return []*interfaces.Catalog{}, err
+	}
 
 	if err := attachCatalogExtensions(ctx, ca.appSetting, interfaces.CatalogsQueryParams{IncludeExtensions: false}, catalogs); err != nil {
 		span.SetStatus(codes.Error, "Load catalog extensions failed")
@@ -531,6 +536,10 @@ func (ca *catalogAccess) ListIDs(ctx context.Context, params interfaces.Catalogs
 		}
 		ids = append(ids, id)
 	}
+	if err := rows.Err(); err != nil {
+		span.SetStatus(codes.Error, "Rows iteration failed")
+		return nil, err
+	}
 
 	span.SetStatus(codes.Ok, "")
 	return ids, nil
@@ -564,6 +573,10 @@ func (ca *catalogAccess) ListInternalIDs(ctx context.Context) ([]string, error) 
 			return nil, err
 		}
 		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		span.SetStatus(codes.Error, "Rows iteration failed")
+		return nil, err
 	}
 
 	span.SetStatus(codes.Ok, "")
@@ -720,6 +733,10 @@ func (ca *catalogAccess) List(ctx context.Context, params interfaces.CatalogsQue
 
 		catalogs = append(catalogs, catalog)
 	}
+	if err := rows.Err(); err != nil {
+		span.SetStatus(codes.Error, "Rows iteration failed")
+		return nil, 0, err
+	}
 
 	if err := attachCatalogExtensions(ctx, ca.appSetting, params, catalogs); err != nil {
 		span.SetStatus(codes.Error, "Load catalog extensions failed")
@@ -786,6 +803,10 @@ func (ca *catalogAccess) ListAuthResources(ctx context.Context, params interface
 
 		entry.Type = interfaces.AUTH_RESOURCE_TYPE_CATALOG
 		entries = append(entries, entry)
+	}
+	if err := rows.Err(); err != nil {
+		span.SetStatus(codes.Error, "Rows iteration failed")
+		return nil, err
 	}
 
 	span.SetStatus(codes.Ok, "")

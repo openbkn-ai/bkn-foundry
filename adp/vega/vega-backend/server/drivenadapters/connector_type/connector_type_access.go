@@ -286,6 +286,10 @@ func (cta *connectorTypeAccess) List(ctx context.Context, params interfaces.Conn
 
 		connectorTypes = append(connectorTypes, ct)
 	}
+	if err := rows.Err(); err != nil {
+		span.SetStatus(codes.Error, "Rows iteration failed")
+		return nil, 0, err
+	}
 
 	span.SetStatus(codes.Ok, "")
 	return connectorTypes, total, nil
@@ -338,6 +342,10 @@ func (cta *connectorTypeAccess) ListAuthResources(ctx context.Context, params in
 		}
 		entry.Type = interfaces.AuthResourceTypeConnectorType
 		entries = append(entries, entry)
+	}
+	if err := rows.Err(); err != nil {
+		span.SetStatus(codes.Error, "Rows iteration failed")
+		return nil, err
 	}
 
 	span.SetStatus(codes.Ok, "")

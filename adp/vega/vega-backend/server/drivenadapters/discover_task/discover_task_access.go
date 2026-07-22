@@ -286,6 +286,10 @@ func (dta *discoverTaskAccess) List(ctx context.Context, params interfaces.Disco
 
 		tasks = append(tasks, task)
 	}
+	if err := rows.Err(); err != nil {
+		span.SetStatus(codes.Error, "Rows iteration failed")
+		return nil, 0, err
+	}
 
 	span.SetStatus(codes.Ok, "")
 	return tasks, total, nil

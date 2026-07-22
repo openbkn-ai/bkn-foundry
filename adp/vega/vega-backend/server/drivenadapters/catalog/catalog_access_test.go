@@ -103,6 +103,23 @@ func TestCatalogAccessListInternalIDs(t *testing.T) {
 	})
 }
 
+func TestCatalogAccessListIDsReturnsIterationError(t *testing.T) {
+	access, mock, cleanup := newCatalogAccessMock(t)
+	defer cleanup()
+
+	rows := sqlmock.NewRows([]string{"f_id"}).
+		AddRow("catalog-1").
+		AddRow("catalog-2").
+		RowError(1, errors.New("rows interrupted"))
+	mock.ExpectQuery("SELECT f_id FROM t_catalog").WillReturnRows(rows)
+
+	got, err := access.ListIDs(context.Background(), interfaces.CatalogsQueryParams{})
+
+	require.ErrorContains(t, err, "rows interrupted")
+	assert.Nil(t, got)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestCatalogAccessList(t *testing.T) {
 	t.Run("returns catalogs with filters", func(t *testing.T) {
 		access, mock, cleanup := newCatalogAccessMock(t)

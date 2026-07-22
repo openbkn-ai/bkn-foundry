@@ -398,6 +398,11 @@ func (ra *resourceAccess) GetByIDs(ctx context.Context, ids []string) ([]*interf
 
 		resources = append(resources, resource)
 	}
+	if err := rows.Err(); err != nil {
+		logger.Errorf("Iterate resource rows failed: %v", err)
+		span.SetStatus(codes.Error, "Rows iteration failed")
+		return []*interfaces.Resource{}, err
+	}
 
 	if err := attachResourceExtensions(ctx, ra.appSetting, interfaces.ResourcesQueryParams{IncludeExtensions: false}, resources); err != nil {
 		span.SetStatus(codes.Error, "Load resource extensions failed")
@@ -518,6 +523,11 @@ func (ra *resourceAccess) GetByIDsBasic(ctx context.Context, ids []string) ([]*i
 		}
 
 		resources = append(resources, resource)
+	}
+	if err := rows.Err(); err != nil {
+		logger.Errorf("Iterate resource rows failed: %v", err)
+		span.SetStatus(codes.Error, "Rows iteration failed")
+		return []*interfaces.Resource{}, err
 	}
 
 	span.SetStatus(codes.Ok, "")
@@ -676,6 +686,10 @@ func (ra *resourceAccess) ListIDs(ctx context.Context, params interfaces.Resourc
 		}
 		ids = append(ids, id)
 	}
+	if err := rows.Err(); err != nil {
+		span.SetStatus(codes.Error, "Rows iteration failed")
+		return nil, err
+	}
 
 	span.SetStatus(codes.Ok, "")
 	return ids, nil
@@ -818,6 +832,10 @@ func (ra *resourceAccess) List(ctx context.Context, params interfaces.ResourcesQ
 		}
 
 		resources = append(resources, resource)
+	}
+	if err := rows.Err(); err != nil {
+		span.SetStatus(codes.Error, "Rows iteration failed")
+		return nil, 0, err
 	}
 
 	if err := attachResourceExtensions(ctx, ra.appSetting, params, resources); err != nil {
@@ -990,6 +1008,11 @@ func (ra *resourceAccess) GetByCatalogID(ctx context.Context, catalogID string) 
 
 		resources = append(resources, resource)
 	}
+	if err := rows.Err(); err != nil {
+		logger.Errorf("Iterate resource rows failed: %v", err)
+		span.SetStatus(codes.Error, "Rows iteration failed")
+		return nil, err
+	}
 
 	span.SetStatus(codes.Ok, "")
 	return resources, nil
@@ -1148,6 +1171,10 @@ func (ra *resourceAccess) ListAuthResources(ctx context.Context, params interfac
 		}
 		entry.Type = interfaces.AUTH_RESOURCE_TYPE_RESOURCE
 		entries = append(entries, entry)
+	}
+	if err := rows.Err(); err != nil {
+		span.SetStatus(codes.Error, "Rows iteration failed")
+		return nil, err
 	}
 
 	span.SetStatus(codes.Ok, "")
