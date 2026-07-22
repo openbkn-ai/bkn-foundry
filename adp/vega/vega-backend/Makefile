@@ -1,7 +1,8 @@
 .DEFAULT_GOAL := help
 .PHONY: help generate-mock lint test test-cover test-race test-at test-at-catalog test-at-verbose test-at-catalog-verbose test-at-setup ci clean-test
 
-COVERAGE_THRESHOLD ?= 0
+COVERAGE_THRESHOLD ?= 10
+GOCOVER_COBERTURA_VERSION ?= v1.5.0
 GOCOVER_COBERTURA := $(shell command -v gocover-cobertura 2>/dev/null)
 ifeq ($(GOCOVER_COBERTURA),)
 GOCOVER_COBERTURA := $(CURDIR)/test-result/tools/bin/gocover-cobertura
@@ -38,7 +39,7 @@ test:
 
 $(GOCOVER_COBERTURA):
 	@mkdir -p "$(dir $@)"
-	GOBIN="$(dir $@)" go install github.com/boumenot/gocover-cobertura@latest
+	GOBIN="$(dir $@)" go install github.com/boumenot/gocover-cobertura@$(GOCOVER_COBERTURA_VERSION)
 
 test-cover: $(GOCOVER_COBERTURA)
 	@mkdir -p test-result

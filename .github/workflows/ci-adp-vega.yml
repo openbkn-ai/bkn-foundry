@@ -31,15 +31,17 @@ jobs:
           working-directory: adp/vega/vega-backend/server
 
       - name: 单元测试与覆盖率
-        run: make test-cover COVERAGE_THRESHOLD=0
+        run: make test-cover COVERAGE_THRESHOLD=10
 
       - name: 构建
         run: cd server && go build ./...
 
       - name: 上传覆盖率产物
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: vega-backend-coverage
+          if-no-files-found: warn
           path: |
             adp/vega/vega-backend/test-result/coverage.out
             adp/vega/vega-backend/test-result/coverage.html
