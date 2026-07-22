@@ -151,6 +151,11 @@ func (rs *resourceService) fillResourceOpsBulk(ctx context.Context, ids []string
 	if v := ctx.Value(interfaces.ACCOUNT_INFO_KEY); v != nil {
 		accountInfo = v.(interfaces.AccountInfo)
 	}
+	// fail-closed：账户缺失时不以空 accessor 调鉴权后端，回退到逐资源路径——
+	// 那里的 PermissionServiceImpl.FilterResources 对空账户返回 403，与旧行为一致。
+	if accountInfo.ID == "" || accountInfo.Type == "" {
+		return interfaces.ErrBulkAuthzUnsupported
+	}
 
 	resAccess, err := lister.AccessibleResourceIDs(ctx, accountInfo.ID,
 		resourceAuthResourceType(false), interfaces.COMMON_OPERATIONS)

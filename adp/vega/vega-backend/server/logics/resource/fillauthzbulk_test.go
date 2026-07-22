@@ -8,6 +8,7 @@ package resource
 
 import (
 	"context"
+	"errors"
 	"sort"
 	"testing"
 
@@ -44,7 +45,7 @@ func TestFillResourceOpsBulk(t *testing.T) {
 	}}
 
 	ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY,
-		interfaces.AccountInfo{ID: "u-1"})
+		interfaces.AccountInfo{ID: "u-1", Type: interfaces.ACCESSOR_TYPE_USER})
 	ids := []string{"r1", "r2", "r3", "i1"} // r3 has no access; i1 is internal
 	internal := map[string]struct{}{"i1": {}}
 
@@ -78,5 +79,30 @@ func TestFillResourceOpsBulk(t *testing.T) {
 	// i1: internal, type-wide view_detail only (other ops not granted).
 	if got := opsSet(out["i1"]); !(got[interfaces.OPERATION_TYPE_VIEW_DETAIL] && len(got) == 1) {
 		t.Fatalf("i1 ops = %v, want {view_detail}", out["i1"].Operations)
+	}
+}
+
+// A missing account id/type must not reach the authz backend with an empty
+// accessor; it returns ErrBulkAuthzUnsupported so List falls back to the
+// per-resource path, which fail-closes with 403 (matching the old behaviour).
+func TestFillResourceOpsBulkFailsClosedOnEmptyAccount(t *testing.T) {
+	lister := stubLister{byType: map[string]map[string]interfaces.OpAccess{}}
+	rs := &resourceService{}
+
+	cases := []interfaces.AccountInfo{
+		{},                                    // no id, no type
+		{ID: "u-1"},                           // missing type
+		{Type: interfaces.ACCESSOR_TYPE_USER}, // missing id
+	}
+	for _, ai := range cases {
+		ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY, ai)
+		out := map[string]interfaces.PermissionResourceOps{}
+		err := rs.fillResourceOpsBulk(ctx, []string{"r1"}, nil, lister, out)
+		if !errors.Is(err, interfaces.ErrBulkAuthzUnsupported) {
+			t.Fatalf("account %+v: want ErrBulkAuthzUnsupported, got %v", ai, err)
+		}
+		if len(out) != 0 {
+			t.Fatalf("account %+v: must not populate on fail-closed, got %+v", ai, out)
+		}
 	}
 }
