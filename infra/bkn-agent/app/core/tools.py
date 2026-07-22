@@ -198,7 +198,7 @@ def apply_tool_call_cap(
     提示串（模型据此收敛作答），而非静默无视上限。None = 不限。"""
     if max_tool_calls is None:
         return tools
-    budget = {"left": max(max_tool_calls, 0)}
+    budget = {"left": max(max_tool_calls, 0), "exhausted_emitted": False}
     capped: list[Any] = []
     for t in tools:
         inner = getattr(t, "coroutine", None)
@@ -210,12 +210,14 @@ def apply_tool_call_cap(
 
         async def _guarded(__inner=inner, __tool_name=tool_name, **kwargs) -> str:
             if budget["left"] <= 0:
-                event = evidence.tool_budget_exhausted(
-                    max_tool_calls=max_tool_calls,
-                    operation_name="bkn.agent.tool.call",
-                    tool_name=__tool_name,
-                )
-                await evidence.submit_events([event] if event else [], account_id, account_type)
+                if not budget["exhausted_emitted"]:
+                    budget["exhausted_emitted"] = True
+                    event = evidence.tool_budget_exhausted(
+                        max_tool_calls=max_tool_calls,
+                        operation_name="bkn.agent.tool.call",
+                        tool_name=__tool_name,
+                    )
+                    await evidence.submit_events([event] if event else [], account_id, account_type)
                 # 措辞要斩钉截铁：只说「请直接作答」时模型会继续试探性重试，
                 # 白烧若干轮（VM 实测空转 9 轮才收敛）
                 return (

@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import json
 import logging
@@ -13,6 +14,7 @@ from app.config import config
 logger = logging.getLogger("bkn-agent.evidence")
 
 CONTRACT_VERSION = "2.0.0"
+_background: set[asyncio.Task] = set()
 
 
 def hash_value(value: Any) -> str:
@@ -94,6 +96,12 @@ async def submit_events(events: list[dict[str, Any]], account_id: str, account_t
     batch = build_batch(events, account_id, account_type)
     if not batch or not config.BKN_TRACE_EVIDENCE_INGEST_URL:
         return
+    task = asyncio.create_task(_send_batch(batch))
+    _background.add(task)
+    task.add_done_callback(_background.discard)
+
+
+async def _send_batch(batch: dict[str, Any]) -> None:
     try:
         async with aiohttp.ClientSession(
             timeout=aiohttp.ClientTimeout(total=config.BKN_TRACE_EVIDENCE_TIMEOUT_S)

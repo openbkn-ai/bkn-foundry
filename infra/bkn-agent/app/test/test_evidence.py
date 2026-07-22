@@ -68,3 +68,36 @@ def test_submit_events_is_noop_when_endpoint_unset(monkeypatch):
         asyncio.run(evidence.submit_events([event], "acct-1", "user"))
     finally:
         observability.reset_context(token)
+
+
+def test_submit_events_schedules_background_send(monkeypatch):
+    sent = []
+    release = asyncio.Event()
+
+    async def fake_send(batch):
+        sent.append(batch)
+        await release.wait()
+
+    token = observability.set_context(_ctx())
+    try:
+        event = evidence.claim_created(
+            claim_id_value="claim_1",
+            claim_type="answer",
+            claim_hash="sha256:answer",
+            operation_name="bkn.agent.chat",
+            partial_reason=["source_refs_pending"],
+        )
+        monkeypatch.setattr(evidence.config, "BKN_TRACE_EVIDENCE_INGEST_URL", "http://bkn-trace.local/events")
+        monkeypatch.setattr(evidence, "_send_batch", fake_send)
+
+        async def drive():
+            await evidence.submit_events([event], "acct-1", "user")
+            assert len(evidence._background) == 1
+            await asyncio.sleep(0)
+            assert sent[0]["trace"]["bkn.request.id"] == "req_evidence_001"
+            release.set()
+            await asyncio.sleep(0)
+
+        asyncio.run(drive())
+    finally:
+        observability.reset_context(token)

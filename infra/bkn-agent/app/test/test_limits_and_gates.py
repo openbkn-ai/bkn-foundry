@@ -54,13 +54,15 @@ def test_max_tool_calls_emits_budget_exhausted_event(monkeypatch):
     )
 
     async def drive():
-        return await capped[0].coroutine(x="a")
+        return await capped[0].coroutine(x="a"), await capped[0].coroutine(x="b")
 
     try:
-        result = asyncio.run(drive())
+        result1, result2 = asyncio.run(drive())
     finally:
         observability.reset_context(token)
-    assert "budget exhausted" in result
+    assert "budget exhausted" in result1
+    assert "budget exhausted" in result2
+    assert len(emitted) == 1
     assert emitted[0]["event_type"] == "tool.budget.exhausted"
     assert emitted[0]["payload"]["tool_name"] == "t1"
 
