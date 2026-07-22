@@ -24,12 +24,12 @@ const (
 	VegaBackend_Catalog_NotFound = "VegaBackend.Catalog.NotFound"
 
 	// 409 Conflict（命名冲突 / 状态冲突）
-	VegaBackend_Catalog_NameExists              = "VegaBackend.Catalog.NameExists"
-	VegaBackend_Catalog_IDExists                = "VegaBackend.Catalog.IDExists"
-	VegaBackend_Catalog_IDMismatch              = "VegaBackend.Catalog.IDMismatch"
-	VegaBackend_Catalog_HasAssets               = "VegaBackend.Catalog.HasAssets"
-	VegaBackend_Catalog_IsDisabled              = "VegaBackend.Catalog.IsDisabled"
-	VegaBackend_Catalog_EnabledFieldNotAllowed  = "VegaBackend.Catalog.EnabledFieldNotAllowed"
+	VegaBackend_Catalog_NameExists             = "VegaBackend.Catalog.NameExists"
+	VegaBackend_Catalog_IDExists               = "VegaBackend.Catalog.IDExists"
+	VegaBackend_Catalog_IDMismatch             = "VegaBackend.Catalog.IDMismatch"
+	VegaBackend_Catalog_HasAssets              = "VegaBackend.Catalog.HasAssets"
+	VegaBackend_Catalog_IsDisabled             = "VegaBackend.Catalog.IsDisabled"
+	VegaBackend_Catalog_EnabledFieldNotAllowed = "VegaBackend.Catalog.EnabledFieldNotAllowed"
 
 	// 500 Internal Server Error
 	VegaBackend_Catalog_InternalError                       = "VegaBackend.Catalog.InternalError"
