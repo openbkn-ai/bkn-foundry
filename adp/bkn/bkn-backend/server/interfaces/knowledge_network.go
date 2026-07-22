@@ -233,11 +233,10 @@ type ConceptsQuery struct {
 	ConceptGroups []string       `json:"concept_groups,omitempty"`
 	Condition     map[string]any `json:"condition,omitempty"`
 	// 分页信息
-	NeedTotal bool `json:"need_total"`
-	Limit     int  `json:"limit"`
-	// UseSearchAfter bool          `json:"use_search_after"` // 业务知识网络只提供search after的方式，不需要提供这个参数
-	Sort []*SortParams `json:"sort"`
-	SearchAfterParams
+	NeedTotal bool          `json:"need_total"`
+	Limit     int           `json:"limit"`
+	Sort      []*SortParams `json:"sort"`
+	Cursor    string        `json:"cursor,omitempty"`
 
 	KNID            string        `json:"-"`
 	Branch          string        `json:"-"`
@@ -248,12 +247,6 @@ type ConceptsQuery struct {
 type SortParams struct {
 	Field     string `json:"field"`
 	Direction string `json:"direction"`
-}
-
-type SearchAfterParams struct {
-	SearchAfter []any `json:"search_after"`
-	// PitID        string `json:"pit_id"`
-	// PitKeepAlive string `json:"pit_keep_alive"`
 }
 
 // 基于起点、方向和路径长度获取对象子图的请求体

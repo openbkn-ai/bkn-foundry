@@ -553,9 +553,11 @@ func (rts *riskTypeService) SearchRiskTypes(ctx context.Context, query *interfac
 	if query.NeedTotal {
 		params := &interfaces.ResourceDataQueryParams{
 			FilterCondition: filterCondition,
-			Offset:          0,
-			Limit:           1,
-			NeedTotal:       true,
+			Paging: interfaces.ResourceDataPagingRequest{
+				Mode:  "single",
+				Limit: 1,
+			},
+			NeedTotal: true,
 		}
 		datasetResp, err := rts.vba.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
 		if err != nil {
@@ -570,16 +572,24 @@ func (rts *riskTypeService) SearchRiskTypes(ctx context.Context, query *interfac
 
 	riskTypes := []*interfaces.RiskType{}
 	offset := 0
+	cursor := query.Cursor
+	var nextCursor *string
 	limit := query.Limit
 	if limit == 0 {
-		limit = interfaces.SearchAfter_Limit
+		limit = interfaces.ConceptQueryLimit
 	}
 
 	for {
+		paging := interfaces.ResourceDataPagingRequest{Mode: "single", Offset: offset, Limit: limit}
+		if len(query.Sort) > 0 {
+			paging.Mode = "cursor"
+		}
+		if cursor != "" {
+			paging = interfaces.ResourceDataPagingRequest{Cursor: cursor}
+		}
 		params := &interfaces.ResourceDataQueryParams{
 			FilterCondition: filterCondition,
-			Offset:          offset,
-			Limit:           limit,
+			Paging:          paging,
 			NeedTotal:       false,
 			Sort:            query.Sort,
 		}
@@ -625,17 +635,24 @@ func (rts *riskTypeService) SearchRiskTypes(ctx context.Context, query *interfac
 			}
 		}
 
-		query.SearchAfter = datasetResp.SearchAfter
+		nextCursor = nil
+		if datasetResp.Paging != nil {
+			nextCursor = datasetResp.Paging.NextCursor
+		}
 
-		if (query.Limit > 0 && len(riskTypes) >= query.Limit) || len(datasetResp.Entries) < limit {
+		if (query.Limit > 0 && len(riskTypes) >= query.Limit) || nextCursor == nil && len(datasetResp.Entries) < limit {
 			break
 		}
 
-		offset += limit
+		if nextCursor != nil {
+			cursor = *nextCursor
+		} else {
+			offset += limit
+		}
 	}
 
 	response.Entries = riskTypes
-	response.SearchAfter = query.SearchAfter
+	response.NextCursor = nextCursor
 	span.SetStatus(codes.Ok, "")
 	return response, nil
 }

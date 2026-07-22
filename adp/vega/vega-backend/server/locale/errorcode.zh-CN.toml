@@ -199,6 +199,11 @@ Description = "query_timeout_sec 参数非法"
 Solution = "query_timeout_sec 必须在 1 到 3600 之间"
 ErrorLink = "暂无"
 
+[VegaBackend.Query.CursorResourceChanged]
+Description = "cursor 创建后资源已变更"
+Solution = "请重新发起查询"
+ErrorLink = "暂无"
+
 [VegaBackend.Query.CatalogNotFound]
 Description = "Catalog 不存在"
 Solution = "请检查 catalog_id"

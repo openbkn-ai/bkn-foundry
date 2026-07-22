@@ -75,7 +75,7 @@ paths:
       description: |
         与对象类 `POST .../object-types` 一致：通过请求头 `x-http-method-override` 区分语义。
         - `POST`：批量创建，请求体为 `ReqMetrics`（`entries` 数组）。
-        - `GET`：概念/条件检索（search_after 分页），请求体与对象类检索相同，复用 `FirstQueryWithSearchAfter` / `PageTurnQueryWithSearchAfter`（见 `object-type.yaml` 中 `override--get`）。
+        - `GET`：概念/条件检索（cursor 分页），请求体与对象类检索相同，复用 `FirstQueryWithCursor` / `PageTurnQueryWithCursor`（见 `object-type.yaml` 中 `override--get`）。
       requestBody:
         required: true
         content:
@@ -387,8 +387,8 @@ components:
     metric-override--get:
       description: 指标概念检索请求体（与 override--get 同构，复用对象类检索 schema）
       oneOf:
-        - $ref: "./object-type.yaml#/components/schemas/FirstQueryWithSearchAfter"
-        - $ref: "./object-type.yaml#/components/schemas/PageTurnQueryWithSearchAfter"
+        - $ref: "./object-type.yaml#/components/schemas/FirstQueryWithCursor"
+        - $ref: "./object-type.yaml#/components/schemas/PageTurnQueryWithCursor"
       type: object
     override:
       description: post 重载批量创建、指标概念检索（与 object-types 的 override 同构）
@@ -408,7 +408,6 @@ components:
         - groups
         - type
         - entries
-        - search_after
       type: object
       properties:
         entries:
@@ -419,10 +418,9 @@ components:
         total_count:
           description: 总条数
           type: integer
-        search_after:
-          description: 表示返回的最后一个文档的排序值，用于下一次 search_after 分页
-          type: array
-          items: {}
+        next_cursor:
+          description: 不透明续页游标；下一页将其作为 cursor 传回。
+          type: string
         groups:
           description: 概念分组信息（与对象类检索一致）
           type: array

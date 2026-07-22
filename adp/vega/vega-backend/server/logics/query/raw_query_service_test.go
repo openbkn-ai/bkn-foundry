@@ -26,6 +26,7 @@ import (
 	"vega-backend/logics/connector/factory"
 	opensearchconnector "vega-backend/logics/connector/local/index/opensearch"
 	"vega-backend/logics/query/querypolicy"
+	"vega-backend/logics/query/sqlglot"
 )
 
 // NewRawQueryServiceWithDeps 创建SQL查询服务（用于测试）
@@ -43,6 +44,19 @@ func expectIndexConnectorClose(connector *mock_interfaces.MockIndexConnector) {
 
 type deadlineInspectingPolicy struct {
 	sawDeadline bool
+}
+
+type recordingPolicy struct {
+	dialects []string
+}
+
+func (p *recordingPolicy) ValidateSQL(_ context.Context, _ string, dialect string) error {
+	p.dialects = append(p.dialects, dialect)
+	return nil
+}
+
+func (p *recordingPolicy) ValidateTableReferences(context.Context, string, string, []string) error {
+	return nil
 }
 
 func (p *deadlineInspectingPolicy) ValidateSQL(ctx context.Context, _ string, _ string) error {
@@ -219,7 +233,7 @@ func TestInitialSQLQueryAppliesTimeoutBeforePolicyValidation(t *testing.T) {
 	mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).Return(&interfaces.Catalog{
 		ID: "catalog-1", Enabled: true, ConnectorType: interfaces.ConnectorTypePostgreSQL,
 	}, nil)
-	mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(resource, nil)
+	mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(resource, nil).Times(2)
 
 	policy := &deadlineInspectingPolicy{}
 	previousPolicy := rawQueryPolicy
@@ -234,6 +248,69 @@ func TestInitialSQLQueryAppliesTimeoutBeforePolicyValidation(t *testing.T) {
 	})
 	require.Error(t, err)
 	assert.True(t, policy.sawDeadline)
+}
+
+func TestValidateCursorResourceBinding(t *testing.T) {
+	previousManager := rawQueryCursorSessions
+	rawQueryCursorSessions = newCursorSessionManager(10)
+	t.Cleanup(func() { rawQueryCursorSessions = previousManager })
+
+	session, err := rawQueryCursorSessions.create("account-1", "catalog-1", nil, "SELECT 1", 1, 60, 60)
+	require.NoError(t, err)
+	bindCursorResource(session, &interfaces.RawQueryRequest{ResourceDataResourceID: "logic-1", ResourceDataUpdateTime: 10})
+
+	err = validateCursorResourceBinding(context.Background(), session, &interfaces.RawQueryRequest{ResourceDataResourceID: "logic-2", ResourceDataUpdateTime: 10})
+	var httpErr *rest.HTTPError
+	require.ErrorAs(t, err, &httpErr)
+	assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
+	_, exists := rawQueryCursorSessions.acquire(session.ID)
+	assert.True(t, exists)
+	if exists {
+		rawQueryCursorSessions.release(session)
+	}
+
+	err = validateCursorResourceBinding(context.Background(), session, &interfaces.RawQueryRequest{ResourceDataResourceID: "logic-1", ResourceDataUpdateTime: 11})
+	require.ErrorAs(t, err, &httpErr)
+	assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
+	_, exists = rawQueryCursorSessions.acquire(session.ID)
+	assert.False(t, exists)
+}
+
+func TestPrepareSQLQueryRevalidatesTranspiledSQL(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+	mockRS := mock_interfaces.NewMockResourceService(ctrl)
+	svc := &rawQueryService{cs: mockCS, rs: mockRS}
+	resource := &interfaces.Resource{
+		ID:               "resource-1",
+		CatalogID:        "catalog-1",
+		SourceIdentifier: "orders",
+		Status:           interfaces.ResourceStatusActive,
+	}
+	mockRS.EXPECT().GetByIDs(gomock.Any(), []string{"resource-1"}).Return([]*interfaces.Resource{resource}, nil)
+	mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(resource, nil).AnyTimes()
+	mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).Return(&interfaces.Catalog{
+		ID: "catalog-1", Enabled: true, ConnectorType: interfaces.ConnectorTypeMySQL,
+	}, nil)
+
+	policy := &recordingPolicy{}
+	previousPolicy := rawQueryPolicy
+	rawQueryPolicy = policy
+	t.Cleanup(func() { rawQueryPolicy = previousPolicy })
+	patches := gomonkey.ApplyFunc(sqlglot.TranspileSQL,
+		func(context.Context, string, string, string) (*sqlglot.SQLParseResult, error) {
+			return &sqlglot.SQLParseResult{SQL: "SELECT * FROM `orders`"}, nil
+		})
+	defer patches.Reset()
+
+	prepared, err := svc.prepareSQLQuery(context.Background(), &interfaces.RawQueryRequest{
+		Query:        "SELECT * FROM {{resource-1}}",
+		QueryFormat:  interfaces.QueryFormatSQL,
+		InputDialect: "trino",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "SELECT * FROM `orders`", prepared.sql)
+	assert.Equal(t, []string{"trino", "mysql"}, policy.dialects)
 }
 
 func TestExecuteInitialDSLQueryControlsTrackTotalHits(t *testing.T) {

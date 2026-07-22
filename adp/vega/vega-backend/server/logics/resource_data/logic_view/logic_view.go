@@ -71,7 +71,11 @@ func (lvs *logicViewService) QueryWithPaging(ctx context.Context, resource *inte
 					return lvs.queryDerivedLogicView(pageCtx, view, pageParams)
 				})
 		}
-		response, err := lvs.qs.Execute(ctx, &interfaces.RawQueryRequest{Paging: params.Paging})
+		response, err := lvs.qs.Execute(ctx, &interfaces.RawQueryRequest{
+			Paging:                 params.Paging,
+			ResourceDataResourceID: resource.ID,
+			ResourceDataUpdateTime: resource.UpdateTime,
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -389,12 +393,14 @@ func (lvs *logicViewService) executeCompositeViewByDSL(ctx context.Context, view
 		}
 		paging := rawPaging(params)
 		req := interfaces.RawQueryRequest{
-			Query:           dslMap,
-			QueryFormat:     interfaces.QueryFormatDSL,
-			InputDialect:    "opensearch",
-			QueryTimeoutSec: int(params.Timeout.Seconds()),
-			NeedTotal:       params.NeedTotal,
-			Paging:          paging,
+			Query:                  dslMap,
+			QueryFormat:            interfaces.QueryFormatDSL,
+			InputDialect:           "opensearch",
+			QueryTimeoutSec:        int(params.Timeout.Seconds()),
+			NeedTotal:              params.NeedTotal,
+			Paging:                 paging,
+			ResourceDataResourceID: view.Resource.ID,
+			ResourceDataUpdateTime: view.Resource.UpdateTime,
 		}
 		res, err := lvs.qs.Execute(ctx, &req)
 		if err != nil {
@@ -464,10 +470,12 @@ func (lvs *logicViewService) executeCompositeViewBySQL(ctx context.Context, view
 			QueryFormat: interfaces.QueryFormatSQL,
 			// lvsql emits MySQL-style quoted identifiers (backticks). Raw Query
 			// transpiles it when the resolved Catalog uses another SQL dialect.
-			InputDialect:    "mysql",
-			QueryTimeoutSec: int(params.Timeout.Seconds()),
-			NeedTotal:       params.NeedTotal,
-			Paging:          paging,
+			InputDialect:           "mysql",
+			QueryTimeoutSec:        int(params.Timeout.Seconds()),
+			NeedTotal:              params.NeedTotal,
+			Paging:                 paging,
+			ResourceDataResourceID: view.Resource.ID,
+			ResourceDataUpdateTime: view.Resource.UpdateTime,
 		}
 		res, err := lvs.qs.Execute(ctx, &req)
 		if err != nil {

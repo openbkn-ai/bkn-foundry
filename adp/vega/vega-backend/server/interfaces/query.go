@@ -24,6 +24,11 @@ type RawQueryRequest struct {
 	Paging          PagingRequest `json:"paging,omitempty"`
 	QueryTimeoutSec int           `json:"query_timeout_sec,omitempty"` // 查询超时时间（秒），默认60，最小1，最大3600
 	NeedTotal       bool          `json:"need_total,omitempty"`        // 是否返回完整总数
+
+	// These fields are service-internal bindings supplied by a Logic View when
+	// it delegates to Raw Query; they are never accepted from HTTP payloads.
+	ResourceDataResourceID string `json:"-"`
+	ResourceDataUpdateTime int64  `json:"-"`
 }
 
 func (r RawQueryRequest) Contract() RawQueryContract {

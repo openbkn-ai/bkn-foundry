@@ -432,10 +432,9 @@ components:
           type: integer
           format: int64
           description: 仅当请求 need_total 时返回
-        search_after:
-          type: array
-          description: 游标，用于翻页
-          items: {}
+        next_cursor:
+          type: string
+          description: 不透明续页游标；下一页将其作为 cursor 传回。
         overall_ms:
           type: integer
           format: int64
@@ -467,10 +466,9 @@ components:
                 enum:
                   - asc
                   - desc
-        search_after:
-          type: array
-          description: 游标翻页
-          items: {}
+        cursor:
+          type: string
+          description: 上次响应返回的 next_cursor。
     Condition:
       type: object
       description: 过滤条件树

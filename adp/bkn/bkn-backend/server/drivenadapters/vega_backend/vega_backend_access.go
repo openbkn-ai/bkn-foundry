@@ -380,10 +380,14 @@ func (vba *vegaBackendAccess) QueryResourceData(ctx context.Context, resourceID 
 		HttpContentType: rest.ContentTypeJson,
 	})
 
+	request, err := resourceDataQueryRequest(params)
+	if err != nil {
+		return nil, err
+	}
 	headers := vba.buildHeaders(ctx)
 	headers[oteltrace.HTTP_HEADER_METHOD_OVERRIDE] = http.MethodGet
-	paramsJson, _ := sonic.Marshal(params)
-	respCode, respData, err := vba.httpClient.PostNoUnmarshal(ctx, httpUrl, headers, params)
+	paramsJson, _ := sonic.Marshal(request)
+	respCode, respData, err := vba.httpClient.PostNoUnmarshal(ctx, httpUrl, headers, request)
 	logger.Debugf("QueryDatasetData [%s] finished, request is [%s], response code is [%d],  error is [%v]",
 		httpUrl, string(paramsJson), respCode, err)
 
@@ -407,9 +411,19 @@ func (vba *vegaBackendAccess) QueryResourceData(ctx context.Context, resourceID 
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmarshal QueryDatasetData response failed")
 		return nil, fmt.Errorf("failed to unmarshal QueryDatasetData response: %v", err)
 	}
-
 	oteltrace.AddHttpAttrs4Ok(span, respCode)
 	return &response, nil
+}
+
+func resourceDataQueryRequest(params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryParams, error) {
+	if params == nil {
+		return nil, fmt.Errorf("resource data query params are required")
+	}
+	request := *params
+	if request.Paging.Cursor == "" && request.Paging.Mode == "" {
+		return nil, fmt.Errorf("resource data paging mode or cursor is required")
+	}
+	return &request, nil
 }
 
 func (vba *vegaBackendAccess) WriteDatasetDocuments(ctx context.Context, datasetID string, documents []map[string]any) error {

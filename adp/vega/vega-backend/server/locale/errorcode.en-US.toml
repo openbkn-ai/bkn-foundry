@@ -199,6 +199,11 @@ Description = "Invalid query_timeout_sec parameter"
 Solution = "query_timeout_sec must be between 1 and 3600"
 ErrorLink = "None"
 
+[VegaBackend.Query.CursorResourceChanged]
+Description = "The resource changed after cursor creation"
+Solution = "Please restart the query"
+ErrorLink = "None"
+
 [VegaBackend.Query.CatalogNotFound]
 Description = "Catalog not found"
 Solution = "Please check catalog_id"

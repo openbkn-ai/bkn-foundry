@@ -37,14 +37,15 @@ func TestLogicViewServiceCursorContinuation(t *testing.T) {
 		nextCursor := "next"
 		totalCount := int64(1)
 		queryService.EXPECT().Execute(gomock.Any(), gomock.Cond(func(req *interfaces.RawQueryRequest) bool {
-			return req.Query == nil && req.QueryFormat == "" && req.Paging.Cursor == "opaque-cursor"
+			return req.Query == nil && req.QueryFormat == "" && req.Paging.Cursor == "opaque-cursor" &&
+				req.ResourceDataResourceID == "logic-1" && req.ResourceDataUpdateTime == 42
 		})).Return(&interfaces.RawQueryResponse{
 			Entries:    []map[string]any{{"id": "row-1"}},
 			TotalCount: &totalCount,
 			Paging:     &interfaces.PagingResponse{NextCursor: &nextCursor},
 		}, nil)
 
-		result, err := svc.QueryWithPaging(context.Background(), &interfaces.Resource{}, &interfaces.ResourceDataQueryParams{
+		result, err := svc.QueryWithPaging(context.Background(), &interfaces.Resource{ID: "logic-1", UpdateTime: 42}, &interfaces.ResourceDataQueryParams{
 			Paging: interfaces.PagingRequest{Cursor: "opaque-cursor"},
 		})
 

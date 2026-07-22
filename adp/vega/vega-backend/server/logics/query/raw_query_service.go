@@ -182,6 +182,7 @@ func (rqs *rawQueryService) executeInitialSQLCursor(ctx context.Context, req *in
 	session.TotalCount = totalCount
 	session.HasTotalCount = req.NeedTotal
 	session.NeedTotal = req.NeedTotal
+	bindCursorResource(session, req)
 	session.Lock()
 	defer session.Unlock()
 	result, err := rqs.executeSQLCursorPage(queryCtx, session, prepared.catalog, prepared.warnings)
@@ -206,6 +207,9 @@ func (rqs *rawQueryService) executeSQLCursorContinuation(ctx context.Context, re
 	if session.AccountID != accountIDFromContext(ctx) {
 		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, verrors.VegaBackend_Query_InvalidParameter).
 			WithErrorDetails("cursor does not belong to the current account")
+	}
+	if err := validateCursorResourceBinding(ctx, session, req); err != nil {
+		return nil, err
 	}
 	queryCtx, cancel := queryExecutionContext(ctx, session.QueryTimeoutSec)
 	defer cancel()
@@ -257,23 +261,12 @@ func (rqs *rawQueryService) prepareSQLQuery(ctx context.Context, req *interfaces
 		return nil, err
 	}
 	inputDialect := req.EffectiveInputDialect()
-	if err := rawQueryPolicy.ValidateSQL(ctx, replacedSQL, inputDialect); err != nil {
-		if httpErr := rawQueryValidationError(ctx, err); httpErr != nil {
-			return nil, httpErr
-		}
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
-			WithErrorDetails("failed to validate SQL query")
-	}
 	allowedReferences, err := rqs.resourceSourceIdentifiers(ctx, resourceIDs)
 	if err != nil {
 		return nil, err
 	}
-	if err := rawQueryPolicy.ValidateTableReferences(ctx, replacedSQL, inputDialect, allowedReferences); err != nil {
-		if httpErr := rawQueryValidationError(ctx, err); httpErr != nil {
-			return nil, httpErr
-		}
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
-			WithErrorDetails("failed to validate SQL resource references")
+	if err := validateSQLPolicy(ctx, replacedSQL, inputDialect, allowedReferences); err != nil {
+		return nil, err
 	}
 	targetDialect, err := targetDialectForCatalog(ctx, catalog)
 	if err != nil {
@@ -287,8 +280,32 @@ func (rqs *rawQueryService) prepareSQLQuery(ctx context.Context, req *interfaces
 				WithErrorDetails("failed to compile SQL query")
 		}
 		finalSQL = result.SQL
+		// The connector executes finalSQL, not the input-dialect SQL validated
+		// above. Revalidate the target-dialect output so the read-only and
+		// table-reference boundaries apply to the executable statement.
+		if err := validateSQLPolicy(ctx, finalSQL, targetDialect, allowedReferences); err != nil {
+			return nil, err
+		}
 	}
 	return &preparedSQLQuery{catalog: catalog, resourceIDs: resourceIDs, sql: trimSQLTerminator(finalSQL), warnings: warnings}, nil
+}
+
+func validateSQLPolicy(ctx context.Context, sql, dialect string, allowedReferences []string) error {
+	if err := rawQueryPolicy.ValidateSQL(ctx, sql, dialect); err != nil {
+		if httpErr := rawQueryValidationError(ctx, err); httpErr != nil {
+			return httpErr
+		}
+		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
+			WithErrorDetails("failed to validate SQL query")
+	}
+	if err := rawQueryPolicy.ValidateTableReferences(ctx, sql, dialect, allowedReferences); err != nil {
+		if httpErr := rawQueryValidationError(ctx, err); httpErr != nil {
+			return httpErr
+		}
+		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
+			WithErrorDetails("failed to validate SQL resource references")
+	}
+	return nil
 }
 
 func (rqs *rawQueryService) resourceSourceIdentifiers(ctx context.Context, resourceIDs []string) ([]string, error) {
@@ -366,6 +383,7 @@ func (rqs *rawQueryService) executeInitialOpenSearchCursor(ctx context.Context, 
 		return nil, cursorSessionLimitError(ctx)
 	}
 	session.QueryFormat = interfaces.QueryFormatDSL
+	bindCursorResource(session, req)
 	session.OpenSearchQuery = query
 	session.OpenSearchIndex = indexName
 	session.Offset = req.Paging.Offset
@@ -398,6 +416,31 @@ func queryResourceID(query any) string {
 func cursorSessionLimitError(ctx context.Context) error {
 	return rest.NewHTTPError(ctx, http.StatusTooManyRequests, verrors.VegaBackend_Query_CursorSessionLimitExceeded).
 		WithErrorDetails("cursor session limit reached, please retry later")
+}
+
+func bindCursorResource(session *interfaces.CursorSession, req *interfaces.RawQueryRequest) {
+	if req == nil || req.ResourceDataResourceID == "" {
+		return
+	}
+	session.ResourceDataResourceID = req.ResourceDataResourceID
+	session.ResourceDataUpdateTime = req.ResourceDataUpdateTime
+}
+
+func validateCursorResourceBinding(ctx context.Context, session *interfaces.CursorSession,
+	req *interfaces.RawQueryRequest) error {
+	if session.ResourceDataResourceID == "" {
+		return nil
+	}
+	if req == nil || req.ResourceDataResourceID != session.ResourceDataResourceID {
+		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Query_CursorResourceChanged).
+			WithErrorDetails("cursor does not belong to the current resource")
+	}
+	if req.ResourceDataUpdateTime != session.ResourceDataUpdateTime {
+		rawQueryCursorSessions.closeSession(session.ID)
+		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Query_CursorResourceChanged).
+			WithErrorDetails("resource changed after cursor creation")
+	}
+	return nil
 }
 
 func (rqs *rawQueryService) prepareOpenSearchCursorQuery(ctx context.Context, req *interfaces.RawQueryRequest) (map[string]any, string, *interfaces.Catalog, string, error) {

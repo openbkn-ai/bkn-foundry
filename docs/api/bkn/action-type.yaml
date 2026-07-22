@@ -150,9 +150,7 @@ paths:
                           - 10
               检索行动类-非第一次请求:
                 value:
-                  search_after:
-                    - 5.0170403
-                    - restart_pod
+                  cursor: cursor-action-types-1
                   need_total: true
                   limit: 1
                   condition:
@@ -272,9 +270,7 @@ paths:
                         IfNameModify: false
                         module_type: action_type
                     total_count: 2
-                    search_after:
-                      - 5.0170403
-                      - restart_pod
+                    next_cursor: cursor-action-types-1
                 检索行动类-非第一次请求:
                   value:
                     entries:
@@ -332,9 +328,7 @@ paths:
                           expression: ""
                         IfNameModify: false
                         module_type: action_type
-                    search_after:
-                      - 5.011528
-                      - restart_pod_test
+                    next_cursor: cursor-action-types-2
           description: "重载GET, 检索行动类"
         "201":
           content:
@@ -793,8 +787,8 @@ components:
       type: object
     override--get:
       oneOf:
-        - $ref: "#/components/schemas/FirstQueryWithSearchAfter"
-        - $ref: "#/components/schemas/PageTurnQueryWithSearchAfter"
+        - $ref: "#/components/schemas/FirstQueryWithCursor"
+        - $ref: "#/components/schemas/PageTurnQueryWithCursor"
       description: 行动类检索请求体
       type: object
     Sort:
@@ -819,7 +813,6 @@ components:
         - groups
         - type
         - entries
-        - search_after
       type: object
       properties:
         entries:
@@ -830,10 +823,9 @@ components:
         total_count:
           description: 总条数
           type: integer
-        search_after:
-          description: 表示返回的最后一个文档的排序值，获取这个用于下一次 search_after 分页。
-          type: array
-          items: {}
+        next_cursor:
+          description: 不透明续页游标；下一页将其作为 cursor 传回。
+          type: string
     Parameter:
       description: 工具参数
       required:
@@ -882,7 +874,7 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ReqActionType"
-    FirstQueryWithSearchAfter:
+    FirstQueryWithCursor:
       description: 行动类检索第一次请求
       required:
         - condition
@@ -908,11 +900,11 @@ components:
         need_total:
           description: 是否需要总数，默认false
           type: boolean
-    PageTurnQueryWithSearchAfter:
+    PageTurnQueryWithCursor:
       description: 分页查询的后续分页查询请求
       required:
         - limit
-        - search_after
+        - cursor
         - condition
       type: object
       properties:
@@ -935,10 +927,9 @@ components:
         need_total:
           description: 是否需要总数，默认false
           type: boolean
-        search_after:
-          description: 上次查询返回的最后一个文档的排序值。
-          type: array
-          items: {}
+        cursor:
+          description: 上次响应返回的 next_cursor。
+          type: string
     MCPSource:
       description: MCP资源
       required:

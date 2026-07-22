@@ -1005,9 +1005,11 @@ func (ats *actionTypeService) SearchActionTypes(ctx context.Context, query *inte
 			// 查询总数
 			params := &interfaces.ResourceDataQueryParams{
 				FilterCondition: filterCondition,
-				Offset:          0,
-				Limit:           1, // 查询1条数据，获取total
-				NeedTotal:       true,
+				Paging: interfaces.ResourceDataPagingRequest{
+					Mode:  "single",
+					Limit: 1, // 查询1条数据，获取total
+				},
+				NeedTotal: true,
 			}
 			datasetResp, err := ats.vba.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
 			if err != nil {
@@ -1028,22 +1030,29 @@ func (ats *actionTypeService) SearchActionTypes(ctx context.Context, query *inte
 		}
 	}
 
-	// 4. 迭代查询直到获取足够数量或没有更多数据
-	// 保留 search_after 的循环查询结构，当前使用 offset 分页作为临时方案
+	// 4. 迭代查询直到获取足够数量或没有更多数据。
 	actionTypes := []*interfaces.ActionType{}
 	var totalFilteredCount int64 = 0
 	offset := 0
+	cursor := query.Cursor
+	var nextCursor *string
 	limit := query.Limit
 	if limit == 0 {
-		limit = interfaces.SearchAfter_Limit
+		limit = interfaces.ConceptQueryLimit
 	}
 
 	for {
+		paging := interfaces.ResourceDataPagingRequest{Mode: "single", Offset: offset, Limit: limit}
+		if len(query.Sort) > 0 {
+			paging.Mode = "cursor"
+		}
+		if cursor != "" {
+			paging = interfaces.ResourceDataPagingRequest{Cursor: cursor}
+		}
 		// 调用 dataset 查询
 		params := &interfaces.ResourceDataQueryParams{
 			FilterCondition: filterCondition,
-			Offset:          offset,
-			Limit:           limit,
+			Paging:          paging,
 			NeedTotal:       false,
 			Sort:            query.Sort,
 		}
@@ -1128,19 +1137,25 @@ func (ats *actionTypeService) SearchActionTypes(ctx context.Context, query *inte
 			}
 		}
 
-		query.SearchAfter = datasetResp.SearchAfter
+		nextCursor = nil
+		if datasetResp.Paging != nil {
+			nextCursor = datasetResp.Paging.NextCursor
+		}
 
 		// 如果已经收集到足够的数量或者没有更多数据了，跳出循环
-		if (query.Limit > 0 && len(actionTypes) >= query.Limit) || len(datasetResp.Entries) < limit {
+		if (query.Limit > 0 && len(actionTypes) >= query.Limit) || nextCursor == nil && len(datasetResp.Entries) < limit {
 			break
 		}
 
-		// 更新 offset 用于下一次查询（当前使用 offset 分页作为临时方案）
-		offset += limit
+		if nextCursor != nil {
+			cursor = *nextCursor
+		} else {
+			offset += limit
+		}
 	}
 
 	response.Entries = actionTypes
-	response.SearchAfter = query.SearchAfter
+	response.NextCursor = nextCursor
 	return response, nil
 }
 
@@ -1173,9 +1188,11 @@ func (ats *actionTypeService) GetTotal(ctx context.Context, filterCondition map[
 
 	params := &interfaces.ResourceDataQueryParams{
 		FilterCondition: filterCondition,
-		Offset:          0,
-		Limit:           1, // 查询1条数据，获取total
-		NeedTotal:       true,
+		Paging: interfaces.ResourceDataPagingRequest{
+			Mode:  "single",
+			Limit: 1, // 查询1条数据，获取total
+		},
+		NeedTotal: true,
 	}
 	datasetResp, err := ats.vba.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
 	if err != nil {
