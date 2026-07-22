@@ -571,7 +571,10 @@ func (rts *riskTypeService) SearchRiskTypes(ctx context.Context, query *interfac
 	}
 
 	riskTypes := []*interfaces.RiskType{}
-	offset := 0
+	sort := query.Sort
+	if len(sort) == 0 {
+		sort = []*interfaces.SortParams{{Field: "id", Direction: "asc"}}
+	}
 	cursor := query.Cursor
 	var nextCursor *string
 	limit := query.Limit
@@ -580,10 +583,7 @@ func (rts *riskTypeService) SearchRiskTypes(ctx context.Context, query *interfac
 	}
 
 	for {
-		paging := interfaces.ResourceDataPagingRequest{Mode: "single", Offset: offset, Limit: limit}
-		if len(query.Sort) > 0 {
-			paging.Mode = "cursor"
-		}
+		paging := interfaces.ResourceDataPagingRequest{Mode: "cursor", Limit: limit}
 		if cursor != "" {
 			paging = interfaces.ResourceDataPagingRequest{Cursor: cursor}
 		}
@@ -591,7 +591,7 @@ func (rts *riskTypeService) SearchRiskTypes(ctx context.Context, query *interfac
 			FilterCondition: filterCondition,
 			Paging:          paging,
 			NeedTotal:       false,
-			Sort:            query.Sort,
+			Sort:            sort,
 		}
 		datasetResp, err := rts.vba.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
 		if err != nil {
@@ -640,15 +640,13 @@ func (rts *riskTypeService) SearchRiskTypes(ctx context.Context, query *interfac
 			nextCursor = datasetResp.Paging.NextCursor
 		}
 
-		if (query.Limit > 0 && len(riskTypes) >= query.Limit) || nextCursor == nil && len(datasetResp.Entries) < limit {
+		if query.Limit > 0 && len(riskTypes) >= query.Limit {
 			break
 		}
-
-		if nextCursor != nil {
-			cursor = *nextCursor
-		} else {
-			offset += limit
+		if nextCursor == nil {
+			break
 		}
+		cursor = *nextCursor
 	}
 
 	response.Entries = riskTypes

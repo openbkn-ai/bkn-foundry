@@ -995,7 +995,10 @@ func (rts *relationTypeService) SearchRelationTypes(ctx context.Context,
 	// 4. 迭代查询直到获取足够数量或没有更多数据
 	relationTypes := []*interfaces.RelationType{}
 	var totalFilteredCount int64 = 0
-	offset := 0
+	sort := query.Sort
+	if len(sort) == 0 {
+		sort = []*interfaces.SortParams{{Field: "id", Direction: "asc"}}
+	}
 	cursor := query.Cursor
 	var nextCursor *string
 	limit := query.Limit
@@ -1004,10 +1007,7 @@ func (rts *relationTypeService) SearchRelationTypes(ctx context.Context,
 	}
 
 	for {
-		paging := interfaces.ResourceDataPagingRequest{Mode: "single", Offset: offset, Limit: limit}
-		if len(query.Sort) > 0 {
-			paging.Mode = "cursor"
-		}
+		paging := interfaces.ResourceDataPagingRequest{Mode: "cursor", Limit: limit}
 		if cursor != "" {
 			paging = interfaces.ResourceDataPagingRequest{Cursor: cursor}
 		}
@@ -1016,7 +1016,7 @@ func (rts *relationTypeService) SearchRelationTypes(ctx context.Context,
 			FilterCondition: filterCondition,
 			Paging:          paging,
 			NeedTotal:       true,
-			Sort:            query.Sort,
+			Sort:            sort,
 		}
 		datasetResp, err := rts.vba.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
 		if err != nil {
@@ -1073,16 +1073,13 @@ func (rts *relationTypeService) SearchRelationTypes(ctx context.Context,
 			nextCursor = datasetResp.Paging.NextCursor
 		}
 
-		// 如果已经收集到足够的数量或者没有更多数据了，跳出循环
-		if (query.Limit > 0 && len(relationTypes) >= query.Limit) || nextCursor == nil && len(datasetResp.Entries) < limit {
+		if query.Limit > 0 && len(relationTypes) >= query.Limit {
 			break
 		}
-
-		if nextCursor != nil {
-			cursor = *nextCursor
-		} else {
-			offset += limit
+		if nextCursor == nil {
+			break
 		}
+		cursor = *nextCursor
 	}
 
 	response.Entries = relationTypes

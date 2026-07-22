@@ -1506,7 +1506,6 @@ func (ots *objectTypeService) SearchObjectTypes(ctx context.Context,
 	otIDMap := map[string]bool{} // 分组下的对象类id
 	otIDs := []string{}          // 不同组下的对象类可以重叠，所以需要对对象类id的数组去重
 	if len(query.ConceptGroups) > 0 {
-
 		// 校验分组是否都存在，按分组id获取分组
 		cgCnt, err := ots.cga.GetConceptGroupsTotal(ctx, interfaces.ConceptGroupsQueryParams{
 			KNID:   query.KNID,
@@ -1592,6 +1591,10 @@ func (ots *objectTypeService) SearchObjectTypes(ctx context.Context,
 	// 4. 迭代查询直到获取足够数量或没有更多数据。
 	objectTypes := []*interfaces.ObjectType{}
 	var totalFilteredCount int64 = 0
+	sort := query.Sort
+	if len(sort) == 0 {
+		sort = []*interfaces.SortParams{{Field: "id", Direction: "asc"}}
+	}
 	cursor := query.Cursor
 	var nextCursor *string
 	limit := query.Limit
@@ -1600,10 +1603,7 @@ func (ots *objectTypeService) SearchObjectTypes(ctx context.Context,
 	}
 
 	for {
-		paging := interfaces.ResourceDataPagingRequest{Mode: "single", Limit: limit}
-		if len(query.Sort) > 0 {
-			paging.Mode = "cursor"
-		}
+		paging := interfaces.ResourceDataPagingRequest{Mode: "cursor", Limit: limit}
 		if cursor != "" {
 			paging = interfaces.ResourceDataPagingRequest{Cursor: cursor}
 		}
@@ -1612,7 +1612,7 @@ func (ots *objectTypeService) SearchObjectTypes(ctx context.Context,
 			FilterCondition: filterCondition,
 			Paging:          paging,
 			NeedTotal:       false,
-			Sort:            query.Sort,
+			Sort:            sort,
 		}
 		datasetResp, err := ots.vba.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
 		if err != nil {
@@ -1698,8 +1698,7 @@ func (ots *objectTypeService) SearchObjectTypes(ctx context.Context,
 			nextCursor = datasetResp.Paging.NextCursor
 		}
 
-		// 如果已经收集到足够的数量或者没有更多数据了，跳出循环
-		if (query.Limit > 0 && len(objectTypes) >= query.Limit) || nextCursor == nil && len(datasetResp.Entries) < limit {
+		if query.Limit > 0 && len(objectTypes) >= query.Limit {
 			break
 		}
 		if nextCursor == nil {
@@ -1710,6 +1709,7 @@ func (ots *objectTypeService) SearchObjectTypes(ctx context.Context,
 
 	response.Entries = objectTypes
 	response.NextCursor = nextCursor
+	span.SetStatus(codes.Ok, "")
 	return response, nil
 }
 

@@ -689,7 +689,7 @@ func (ms *metricService) SearchMetrics(ctx context.Context, query *interfaces.Co
 	}
 
 	otIDMap := map[string]bool{}
-	var otIDs []string
+	otIDs := []string{}
 	if len(query.ConceptGroups) > 0 {
 		cgCnt, err := ms.cga.GetConceptGroupsTotal(ctx, interfaces.ConceptGroupsQueryParams{
 			KNID:   query.KNID,
@@ -721,7 +721,6 @@ func (ms *metricService) SearchMetrics(ctx context.Context, query *interfaces.Co
 				query.KNID, query.Branch, query.ConceptGroups, err)
 			logger.Errorf(errStr)
 			span.SetStatus(codes.Error, errStr)
-
 			return response, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_Metric_InternalError).WithErrorDetails(err.Error())
 		}
@@ -754,20 +753,20 @@ func (ms *metricService) SearchMetrics(ctx context.Context, query *interfaces.Co
 		}
 	}
 
+	entries := make([]*interfaces.MetricDefinition, 0)
+	sort := query.Sort
+	if len(sort) == 0 {
+		sort = []*interfaces.SortParams{{Field: "id", Direction: "asc"}}
+	}
+	cursor := query.Cursor
+	var nextCursor *string
 	limit := query.Limit
 	if limit == 0 {
 		limit = interfaces.ConceptQueryLimit
 	}
 
-	entries := make([]*interfaces.MetricDefinition, 0)
-	cursor := query.Cursor
-	var nextCursor *string
-
 	for {
-		paging := interfaces.ResourceDataPagingRequest{Mode: "single", Limit: limit}
-		if len(query.Sort) > 0 {
-			paging.Mode = "cursor"
-		}
+		paging := interfaces.ResourceDataPagingRequest{Mode: "cursor", Limit: limit}
 		if cursor != "" {
 			paging = interfaces.ResourceDataPagingRequest{Cursor: cursor}
 		}
@@ -775,7 +774,7 @@ func (ms *metricService) SearchMetrics(ctx context.Context, query *interfaces.Co
 			FilterCondition: filterCondition,
 			Paging:          paging,
 			NeedTotal:       false,
-			Sort:            query.Sort,
+			Sort:            sort,
 		}
 		datasetResp, err := ms.vba.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
 		if err != nil {
@@ -824,7 +823,7 @@ func (ms *metricService) SearchMetrics(ctx context.Context, query *interfaces.Co
 			nextCursor = datasetResp.Paging.NextCursor
 		}
 
-		if (query.Limit > 0 && len(entries) >= query.Limit) || nextCursor == nil && len(datasetResp.Entries) < limit {
+		if query.Limit > 0 && len(entries) >= query.Limit {
 			break
 		}
 		if nextCursor == nil {
