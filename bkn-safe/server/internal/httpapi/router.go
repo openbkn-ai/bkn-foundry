@@ -143,11 +143,20 @@ func New(deps Deps) *gin.Engine {
 	// Self-service reads under /api/safe/v1/me — token-gated (RequireUser:
 	// authn only), gateway-exposed. The caller reads its own permission list.
 	if deps.Enforcer != nil && verifier != nil && deps.Directory != nil {
-		me := r.Group("/api/safe/v1/me", RequireUser(meVerifier))
-		registerMe(me, deps.Enforcer, deps.DB, deps.Directory, deps.Users)
+		// Read-only /me (GET "" + GET /permissions): the login burst fires these
+		// two in parallel, so they get the cached, singleflight-deduplicated
+		// verifier.
+		meReads := r.Group("/api/safe/v1/me", RequireUser(meVerifier))
+		registerMeReads(meReads, deps.Enforcer, deps.DB, deps.Directory)
+
+		// Mutating /me (profile PUT, AppKey issue/revoke) uses the RAW verifier so
+		// a revoked/logged-out token cannot edit the profile or mint a long-lived
+		// API key within the read cache's TTL window.
+		meWrites := r.Group("/api/safe/v1/me", RequireUser(verifier))
+		registerMeProfile(meWrites, deps.Users)
 		// Self-service AppKey management (issue/list/revoke own keys).
 		if apiKeys != nil {
-			registerMeAPIKeys(me, apiKeys)
+			registerMeAPIKeys(meWrites, apiKeys)
 		}
 	}
 
