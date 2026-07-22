@@ -1,0 +1,57 @@
+{
+  "bkn.trace.schema.version": "1.0.0",
+  "fixture_id": "bkn_ontology_propagation_object_query",
+  "fixture_type": "propagation",
+  "scenario": "bkn_ontology_object_query_keeps_request_context",
+  "expected_result": "pass",
+  "trace": {
+    "trace_id": "72020000000000000000000000000002",
+    "bkn.request.id": "req_bkn_ontology_0002",
+    "traceparent": "00-72020000000000000000000000000002-7202000000000001-01",
+    "sampling.decision": "sampled"
+  },
+  "spans": [
+    {
+      "span_id": "7202000000000001",
+      "parent_span_id": null,
+      "name": "bkn-ontology.request",
+      "kind": "server",
+      "bkn.module.name": "bkn-ontology",
+      "bkn.operation.name": "bkn.object.query",
+      "bkn.status": "ok",
+      "bkn.timestamp": "2026-07-21T06:11:00.000000000Z",
+      "duration_ms": 51
+    },
+    {
+      "span_id": "7202000000000002",
+      "parent_span_id": "7202000000000001",
+      "name": "bkn-ontology.instance.query",
+      "kind": "internal",
+      "bkn.module.name": "bkn-ontology",
+      "bkn.operation.name": "bkn.object.query",
+      "bkn.status": "ok",
+      "bkn.timestamp": "2026-07-21T06:11:00.006000000Z",
+      "duration_ms": 45
+    }
+  ],
+  "logs": [
+    {
+      "level": "info",
+      "message": "object query completed with refs",
+      "trace_id": "72020000000000000000000000000002",
+      "span_id": "7202000000000002",
+      "bkn.request.id": "req_bkn_ontology_0002",
+      "bkn.module.name": "bkn-ontology",
+      "bkn.operation.name": "bkn.object.query",
+      "bkn.status": "ok",
+      "bkn.timestamp": "2026-07-21T06:11:00.051000000Z",
+      "bkn.trace.schema.version": "1.0.0",
+      "bkn.object_instance.ref": "objref_customer_hash_001"
+    }
+  ],
+  "events": [],
+  "baggage": {
+    "bkn.account.type": "app",
+    "bkn.runtime.env": "test"
+  }
+}
