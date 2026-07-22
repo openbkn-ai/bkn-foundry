@@ -256,19 +256,39 @@ _upsert_access_address() {
     mv "${tmp}" "${CONFIG_YAML_PATH}"
 }
 
+_sync_ingress_ports_from_access_address() {
+    local port="$1"
+    local scheme="$2"
+
+    [[ -n "${port}" ]] || return 0
+
+    case "${scheme,,}" in
+        http)
+            export INGRESS_NGINX_HTTP_PORT="${port}"
+            ;;
+        https|*)
+            export INGRESS_NGINX_HTTPS_PORT="${port}"
+            ;;
+    esac
+}
+
+_default_access_port_for_scheme() {
+    local scheme="${1:-https}"
+    case "${scheme,,}" in
+        http)
+            printf '%s' "${INGRESS_NGINX_HTTP_PORT:-80}"
+            ;;
+        https|*)
+            printf '%s' "${INGRESS_NGINX_HTTPS_PORT:-443}"
+            ;;
+    esac
+}
+
 confirm_access_address_before_install() {
     local confirm_switch="${CONFIRM_ACCESS_ADDRESS:-true}"
     local config_missing_before="false"
     if [[ ! -f "${CONFIG_YAML_PATH}" ]]; then
         config_missing_before="true"
-    fi
-    if [[ "${confirm_switch}" == "false" ]]; then
-        # Still materialize CONFIG_YAML_PATH when missing so installs read namespace/accessAddress from one file.
-        if [[ "${config_missing_before}" == "true" ]] && [[ "${AUTO_GENERATE_CONFIG:-true}" == "true" ]]; then
-            log_info "Config not found, generating: ${CONFIG_YAML_PATH}"
-            generate_config_yaml
-        fi
-        return 0
     fi
 
     local raw_host raw_port raw_path raw_scheme
@@ -302,17 +322,32 @@ confirm_access_address_before_install() {
         else
             host="${addr}"
         fi
-        port="${port:-${raw_port:-${INGRESS_NGINX_HTTPS_PORT:-443}}}"
+        port="${port:-${raw_port:-$(_default_access_port_for_scheme "${scheme:-${raw_scheme:-https}}")}}"
         path="${path:-${raw_path:-/}}"
         scheme="${scheme:-${raw_scheme:-https}}"
     else
         host="${raw_host:-$(_detect_node_ip)}"
-        port="${raw_port:-${INGRESS_NGINX_HTTPS_PORT:-443}}"
-        path="${raw_path:-/}"
         scheme="${raw_scheme:-https}"
+        port="${raw_port:-$(_default_access_port_for_scheme "${scheme}")}"
+        path="${raw_path:-/}"
     fi
 
     local url="${scheme}://${host}:${port}${path}"
+    _sync_ingress_ports_from_access_address "${port}" "${scheme}"
+
+    if [[ "${confirm_switch}" == "false" ]]; then
+        # Still materialize CONFIG_YAML_PATH when missing so installs read namespace/accessAddress from one file.
+        if [[ "${config_missing_before}" == "true" ]] && [[ "${AUTO_GENERATE_CONFIG:-true}" == "true" ]]; then
+            log_info "Config not found, generating: ${CONFIG_YAML_PATH}"
+            generate_config_yaml
+        fi
+
+        if [[ -n "${OPENBKN_ACCESS_ADDRESS:-}" ]]; then
+            log_info "Using accessAddress from --access_address: ${url}"
+            _upsert_access_address "${host}" "${port}" "${path}" "${scheme}"
+        fi
+        return 0
+    fi
 
     # If provided via CLI arg, skip interactive confirmation
     if [[ -n "${OPENBKN_ACCESS_ADDRESS:-}" ]]; then

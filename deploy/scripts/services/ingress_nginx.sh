@@ -1,5 +1,87 @@
 
 # Install ingress-nginx-controller
+_ingress_nginx_live_http_port() {
+    if [[ "${INGRESS_NGINX_HOSTNETWORK}" == "true" ]]; then
+        kubectl -n ingress-nginx get deploy ingress-nginx-controller \
+            -o jsonpath='{.spec.template.spec.containers[0].ports[?(@.name=="http")].hostPort}' 2>/dev/null || true
+    else
+        kubectl -n ingress-nginx get svc ingress-nginx-controller \
+            -o jsonpath='{.spec.ports[?(@.name=="http")].nodePort}' 2>/dev/null || true
+    fi
+}
+
+_ingress_nginx_live_https_port() {
+    if [[ "${INGRESS_NGINX_HOSTNETWORK}" == "true" ]]; then
+        kubectl -n ingress-nginx get deploy ingress-nginx-controller \
+            -o jsonpath='{.spec.template.spec.containers[0].ports[?(@.name=="https")].hostPort}' 2>/dev/null || true
+    else
+        kubectl -n ingress-nginx get svc ingress-nginx-controller \
+            -o jsonpath='{.spec.ports[?(@.name=="https")].nodePort}' 2>/dev/null || true
+    fi
+}
+
+_ingress_nginx_release_needs_upgrade() {
+    local current_image=""
+    local current_http_port=""
+    local current_https_port=""
+    local current_service_type=""
+    local current_host_network=""
+    local current_webhook_exists="false"
+
+    current_image="$(kubectl -n ingress-nginx get deploy ingress-nginx-controller -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null || true)"
+    if kubectl get validatingwebhookconfiguration ingress-nginx-admission >/dev/null 2>&1; then
+        current_webhook_exists="true"
+    fi
+
+    if [[ "${INGRESS_NGINX_HOSTNETWORK}" == "true" ]]; then
+        current_host_network="$(kubectl -n ingress-nginx get deploy ingress-nginx-controller -o jsonpath='{.spec.template.spec.hostNetwork}' 2>/dev/null || true)"
+        current_http_port="$(_ingress_nginx_live_http_port)"
+        current_https_port="$(_ingress_nginx_live_https_port)"
+        if [[ "${current_host_network}" != "true" ]]; then
+            return 0
+        fi
+    else
+        current_service_type="$(kubectl -n ingress-nginx get svc ingress-nginx-controller -o jsonpath='{.spec.type}' 2>/dev/null || true)"
+        current_http_port="$(_ingress_nginx_live_http_port)"
+        current_https_port="$(_ingress_nginx_live_https_port)"
+        if [[ "${current_service_type}" != "NodePort" ]]; then
+            return 0
+        fi
+    fi
+
+    if [[ -z "${current_image}" || "${current_image}" != "${INGRESS_NGINX_CONTROLLER_IMAGE}" ]]; then
+        return 0
+    fi
+
+    if [[ "${INGRESS_NGINX_HOSTNETWORK}" == "true" ]]; then
+        if [[ "${current_http_port}" != "${INGRESS_NGINX_HTTP_PORT:-80}" ]]; then
+            return 0
+        fi
+        if [[ "${current_https_port}" != "${INGRESS_NGINX_HTTPS_PORT:-443}" ]]; then
+            return 0
+        fi
+    else
+        if [[ "${current_http_port}" != "${INGRESS_NGINX_HTTP_PORT}" ]]; then
+            return 0
+        fi
+        if [[ "${current_https_port}" != "${INGRESS_NGINX_HTTPS_PORT}" ]]; then
+            return 0
+        fi
+    fi
+
+    if [[ "${INGRESS_NGINX_ADMISSION_WEBHOOKS_ENABLED}" == "true" ]]; then
+        if [[ "${current_webhook_exists}" != "true" ]]; then
+            return 0
+        fi
+    else
+        if [[ "${current_webhook_exists}" == "true" ]]; then
+            return 0
+        fi
+    fi
+
+    return 1
+}
+
 install_ingress_nginx() {
     log_info "Installing ingress-nginx-controller..."
 
@@ -20,22 +102,11 @@ install_ingress_nginx() {
 
     if helm status ingress-nginx -n ingress-nginx >/dev/null 2>&1; then
         if kubectl -n ingress-nginx rollout status deployment/ingress-nginx-controller --timeout=3s >/dev/null 2>&1; then
-            local current_image=""
-            current_image="$(kubectl -n ingress-nginx get deploy ingress-nginx-controller -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null || true)"
-            if [[ -n "${current_image}" && "${current_image}" == "${INGRESS_NGINX_CONTROLLER_IMAGE}" ]]; then
-                if [[ "${INGRESS_NGINX_ADMISSION_WEBHOOKS_ENABLED}" != "true" ]]; then
-                    if kubectl get validatingwebhookconfiguration ingress-nginx-admission >/dev/null 2>&1; then
-                        log_warn "ingress-nginx admission webhook still exists but is disabled in config; upgrading/cleaning..."
-                    else
-                        log_info "ingress-nginx is already installed with desired image (${current_image}), skipping"
-                        return 0
-                    fi
-                else
-                    log_info "ingress-nginx is already installed with desired image (${current_image}), skipping"
-                    return 0
-                fi
+            if [[ "${FORCE_UPGRADE}" != "true" ]] && ! _ingress_nginx_release_needs_upgrade; then
+                log_info "ingress-nginx is already installed with the desired image and ports, skipping"
+                return 0
             fi
-            log_warn "ingress-nginx installed but image differs (${current_image} != ${INGRESS_NGINX_CONTROLLER_IMAGE}); upgrading..."
+            log_warn "ingress-nginx release exists but desired state changed; upgrading..."
         fi
     fi
 
@@ -100,6 +171,7 @@ install_ingress_nginx() {
             --set controller.hostNetwork=true
             --set controller.dnsPolicy=ClusterFirstWithHostNet
             --set controller.service.type=ClusterIP
+            --set controller.updateStrategy.type=Recreate
             --set controller.containerPort.http="${INGRESS_NGINX_HTTP_PORT:-80}"
             --set controller.containerPort.https="${INGRESS_NGINX_HTTPS_PORT:-443}"
             --set controller.hostPort.enabled=true

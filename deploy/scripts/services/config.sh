@@ -51,9 +51,17 @@ generate_config_yaml() {
         fi
     fi
     
-    # Use existing values or defaults for other accessAddress fields
-    local access_port="${cfg_access_port:-${INGRESS_NGINX_HTTPS_PORT:-443}}"
+    # Use existing values or defaults for other accessAddress fields.
+    # Keep the default port aligned with the selected scheme so HTTP installs
+    # do not silently inherit the HTTPS port and vice versa.
     local access_scheme="${cfg_access_scheme:-https}"
+    local access_port_default
+    if [[ "${access_scheme,,}" == "http" ]]; then
+        access_port_default="${INGRESS_NGINX_HTTP_PORT:-80}"
+    else
+        access_port_default="${INGRESS_NGINX_HTTPS_PORT:-443}"
+    fi
+    local access_port="${cfg_access_port:-${access_port_default}}"
     local access_path="${cfg_access_path:-/}"
 
     # Storage (local-path)
