@@ -5,7 +5,9 @@
 当前提供：
 - Trace 原始 DSL 查询接口：`POST /api/agent-observability/v1/traces/_search`
 - Conversation 维度包装查询接口：`GET /api/agent-observability/v1/traces/by-conversation?conversation_id=...`
+- Evidence 事件接收接口：`POST /api/agent-observability/v1/evidence/events`
 - OpenSearch 查询客户端
+- 阶段二 Evidence ingestion 校验、归一化和可替换存储接口
 - Swagger 文档生成
 - Docker 镜像构建
 - Helm Deployment Chart
@@ -18,6 +20,14 @@
 ```bash
 make test
 ```
+
+仅测试 BKN Trace 服务：
+
+```bash
+GOCACHE=/tmp/openbkn-go-build-cache GOMODCACHE=/tmp/openbkn-go-mod-cache go test ./...
+```
+
+阶段二 evidence ingestion 接口接受 `bkn.trace.schema.version=2.0.0` 的事件批次，包含 `trace` 与 `events`。当前版本先完成 contract 校验、敏感 payload 拒绝、归一化计数和内存 repository 写入；后续 PR 会把 repository 替换为持久化 evidence index。
 
 生成 Swagger 文档：
 
