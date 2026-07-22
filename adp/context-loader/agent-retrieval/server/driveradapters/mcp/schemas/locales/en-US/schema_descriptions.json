@@ -189,7 +189,7 @@
     "input_schema.properties.limit.description": "Pagination size (optional), default 20, max 1000.",
     "output_schema.description": "Paginated action execution history.",
     "output_schema.properties.total_count.description": "Total number of matching executions.",
-    "output_schema.properties.entries.description": "List of execution records (each with id, action_type_id, status, counts, timestamps and action_type_snapshot).",
+    "output_schema.properties.entries.description": "List of execution records (each with id, action_type_id, status, counts, timestamps; action_type_snapshot and other heavy fields are stripped to save tokens).",
     "output_schema.properties.search_after.description": "Pagination cursor; pass this value as search_after in the next request to continue paging.",
     "input_schema.properties.response_format.description": "Response format: json or toon, default toon (fewer tokens)."
   }

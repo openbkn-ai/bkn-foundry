@@ -155,19 +155,36 @@ func TestListActionExecutions_Success(t *testing.T) {
 			operatorIntegration: mockOperatorIntegration,
 		}
 
+		// ontology-query 真实响应键名为 total_count / entries / search_after
 		mockOntologyQuery.EXPECT().ListActionExecutions(gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, r *interfaces.ListActionExecutionsRequest) (map[string]any, error) {
 				convey.So(r.KnID, convey.ShouldEqual, "kn-001")
 				convey.So(r.Status, convey.ShouldEqual, "completed")
 				convey.So(r.Limit, convey.ShouldEqual, 10)
-				return map[string]any{"total": 1, "executions": []any{map[string]any{"id": "exec-001"}}}, nil
+				return map[string]any{
+					"total_count": 1,
+					"entries": []any{
+						map[string]any{
+							"id":                   "exec-001",
+							"status":               "completed",
+							"action_type_snapshot": map[string]any{"parameters": []any{"x"}}, // 重货，list 精简后应剔除
+						},
+					},
+				}, nil
 			})
 
 		resp, err := service.ListActionExecutions(context.Background(), &interfaces.KnListActionExecutionsRequest{
 			KnID: "kn-001", Status: "completed", Limit: 10,
 		})
 		convey.So(err, convey.ShouldBeNil)
-		convey.So(resp["total"], convey.ShouldEqual, 1)
+		convey.So(resp["total_count"], convey.ShouldEqual, 1)
+		// 列表每条也应精简：保留 id/status，剔除 action_type_snapshot
+		entries := resp["entries"].([]any)
+		convey.So(len(entries), convey.ShouldEqual, 1)
+		e0 := entries[0].(map[string]any)
+		convey.So(e0["id"], convey.ShouldEqual, "exec-001")
+		convey.So(e0["status"], convey.ShouldEqual, "completed")
+		convey.So(e0["action_type_snapshot"], convey.ShouldBeNil)
 	})
 }
 

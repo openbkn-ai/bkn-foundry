@@ -58,7 +58,7 @@
       },
       "entries": {
         "type": "array",
-        "description": "执行记录列表（每条含 id、action_type_id、status、计数、时间与 action_type_snapshot 等）",
+        "description": "执行记录列表（每条含 id、action_type_id、status、计数、时间等概览字段；action_type_snapshot 等重货已剔除以省 token）",
         "items": {
           "type": "object",
           "additionalProperties": true
