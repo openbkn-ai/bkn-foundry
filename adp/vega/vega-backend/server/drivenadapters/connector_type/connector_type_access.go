@@ -287,6 +287,7 @@ func (cta *connectorTypeAccess) List(ctx context.Context, params interfaces.Conn
 		connectorTypes = append(connectorTypes, ct)
 	}
 	if err := rows.Err(); err != nil {
+		logger.Errorf("Iterate connector_type rows failed: %v", err)
 		span.SetStatus(codes.Error, "Rows iteration failed")
 		return nil, 0, err
 	}
@@ -344,6 +345,7 @@ func (cta *connectorTypeAccess) ListAuthResources(ctx context.Context, params in
 		entries = append(entries, entry)
 	}
 	if err := rows.Err(); err != nil {
+		logger.Errorf("Iterate connector_type authorization resource rows failed: %v", err)
 		span.SetStatus(codes.Error, "Rows iteration failed")
 		return nil, err
 	}

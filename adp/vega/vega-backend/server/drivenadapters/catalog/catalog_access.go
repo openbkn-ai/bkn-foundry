@@ -537,6 +537,7 @@ func (ca *catalogAccess) ListIDs(ctx context.Context, params interfaces.Catalogs
 		ids = append(ids, id)
 	}
 	if err := rows.Err(); err != nil {
+		logger.Errorf("Iterate catalog rows failed: %v", err)
 		span.SetStatus(codes.Error, "Rows iteration failed")
 		return nil, err
 	}
@@ -575,6 +576,7 @@ func (ca *catalogAccess) ListInternalIDs(ctx context.Context) ([]string, error) 
 		ids = append(ids, id)
 	}
 	if err := rows.Err(); err != nil {
+		logger.Errorf("Iterate internal catalog rows failed: %v", err)
 		span.SetStatus(codes.Error, "Rows iteration failed")
 		return nil, err
 	}
@@ -734,6 +736,7 @@ func (ca *catalogAccess) List(ctx context.Context, params interfaces.CatalogsQue
 		catalogs = append(catalogs, catalog)
 	}
 	if err := rows.Err(); err != nil {
+		logger.Errorf("Iterate catalog rows failed: %v", err)
 		span.SetStatus(codes.Error, "Rows iteration failed")
 		return nil, 0, err
 	}
@@ -805,6 +808,7 @@ func (ca *catalogAccess) ListAuthResources(ctx context.Context, params interface
 		entries = append(entries, entry)
 	}
 	if err := rows.Err(); err != nil {
+		logger.Errorf("Iterate catalog authorization resource rows failed: %v", err)
 		span.SetStatus(codes.Error, "Rows iteration failed")
 		return nil, err
 	}

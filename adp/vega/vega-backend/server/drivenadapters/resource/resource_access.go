@@ -687,6 +687,7 @@ func (ra *resourceAccess) ListIDs(ctx context.Context, params interfaces.Resourc
 		ids = append(ids, id)
 	}
 	if err := rows.Err(); err != nil {
+		logger.Errorf("Iterate resource ID rows failed: %v", err)
 		span.SetStatus(codes.Error, "Rows iteration failed")
 		return nil, err
 	}
@@ -834,6 +835,7 @@ func (ra *resourceAccess) List(ctx context.Context, params interfaces.ResourcesQ
 		resources = append(resources, resource)
 	}
 	if err := rows.Err(); err != nil {
+		logger.Errorf("Iterate resource rows failed: %v", err)
 		span.SetStatus(codes.Error, "Rows iteration failed")
 		return nil, 0, err
 	}
@@ -1173,6 +1175,7 @@ func (ra *resourceAccess) ListAuthResources(ctx context.Context, params interfac
 		entries = append(entries, entry)
 	}
 	if err := rows.Err(); err != nil {
+		logger.Errorf("Iterate resource authorization resource rows failed: %v", err)
 		span.SetStatus(codes.Error, "Rows iteration failed")
 		return nil, err
 	}
