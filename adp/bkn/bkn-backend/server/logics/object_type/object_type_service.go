@@ -1506,7 +1506,6 @@ func (ots *objectTypeService) SearchObjectTypes(ctx context.Context,
 	otIDMap := map[string]bool{} // 分组下的对象类id
 	otIDs := []string{}          // 不同组下的对象类可以重叠，所以需要对对象类id的数组去重
 	if len(query.ConceptGroups) > 0 {
-
 		// 校验分组是否都存在，按分组id获取分组
 		cgCnt, err := ots.cga.GetConceptGroupsTotal(ctx, interfaces.ConceptGroupsQueryParams{
 			KNID:   query.KNID,
@@ -1592,6 +1591,7 @@ func (ots *objectTypeService) SearchObjectTypes(ctx context.Context,
 	// 4. 迭代查询直到获取足够数量或没有更多数据。
 	objectTypes := []*interfaces.ObjectType{}
 	var totalFilteredCount int64 = 0
+	offset := 0
 	cursor := query.Cursor
 	var nextCursor *string
 	limit := query.Limit
@@ -1600,13 +1600,14 @@ func (ots *objectTypeService) SearchObjectTypes(ctx context.Context,
 	}
 
 	for {
-		paging := interfaces.ResourceDataPagingRequest{Mode: "single", Limit: limit}
+		paging := interfaces.ResourceDataPagingRequest{Mode: "single", Offset: offset, Limit: limit}
 		if len(query.Sort) > 0 {
 			paging.Mode = "cursor"
 		}
 		if cursor != "" {
 			paging = interfaces.ResourceDataPagingRequest{Cursor: cursor}
 		}
+		isCursorPaging := paging.Mode == "cursor" || paging.Cursor != ""
 		// 调用 dataset 查询
 		params := &interfaces.ResourceDataQueryParams{
 			FilterCondition: filterCondition,
@@ -1698,15 +1699,25 @@ func (ots *objectTypeService) SearchObjectTypes(ctx context.Context,
 			nextCursor = datasetResp.Paging.NextCursor
 		}
 
-		// 如果已经收集到足够的数量或者没有更多数据了，跳出循环
-		if (query.Limit > 0 && len(objectTypes) >= query.Limit) || nextCursor == nil {
+		if query.Limit > 0 && len(objectTypes) >= query.Limit {
 			break
 		}
-		cursor = *nextCursor
+		if isCursorPaging {
+			if nextCursor == nil {
+				break
+			}
+			cursor = *nextCursor
+			continue
+		}
+		if len(datasetResp.Entries) < limit {
+			break
+		}
+		offset += limit
 	}
 
 	response.Entries = objectTypes
 	response.NextCursor = nextCursor
+	span.SetStatus(codes.Ok, "")
 	return response, nil
 }
 

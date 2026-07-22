@@ -1671,6 +1671,39 @@ func Test_relationTypeService_SearchRelationTypes(t *testing.T) {
 			So(result.Entries, ShouldNotBeNil)
 		})
 
+		Convey("Single paging continues after a full page when concept-group filtering needs more entries\n", func() {
+			query := &interfaces.ConceptsQuery{
+				KNID:          "kn1",
+				Branch:        interfaces.MAIN_BRANCH,
+				Limit:         2,
+				ConceptGroups: []string{"cg1"},
+			}
+			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			cga.EXPECT().GetConceptGroupsTotal(gomock.Any(), gomock.Any()).Return(1, nil)
+			cga.EXPECT().GetRelationTypeIDsFromConceptGroupRelation(gomock.Any(), gomock.Any()).Return([]string{"keep-1", "keep-2"}, nil)
+			gomock.InOrder(
+				vba.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).
+					DoAndReturn(func(_ context.Context, _ string, params *interfaces.ResourceDataQueryParams) (*interfaces.DatasetQueryResponse, error) {
+						So(params.Paging, ShouldResemble, interfaces.ResourceDataPagingRequest{Mode: "single", Offset: 0, Limit: 2})
+						return &interfaces.DatasetQueryResponse{Entries: []map[string]any{
+							{"id": "skip", "name": "skip"},
+							{"id": "keep-1", "name": "keep-1"},
+						}}, nil
+					}),
+				vba.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).
+					DoAndReturn(func(_ context.Context, _ string, params *interfaces.ResourceDataQueryParams) (*interfaces.DatasetQueryResponse, error) {
+						So(params.Paging, ShouldResemble, interfaces.ResourceDataPagingRequest{Mode: "single", Offset: 2, Limit: 2})
+						return &interfaces.DatasetQueryResponse{Entries: []map[string]any{{"id": "keep-2", "name": "keep-2"}}}, nil
+					}),
+			)
+
+			result, err := service.SearchRelationTypes(ctx, query)
+			So(err, ShouldBeNil)
+			So(len(result.Entries), ShouldEqual, 2)
+			So(result.Entries[0].RTID, ShouldEqual, "keep-1")
+			So(result.Entries[1].RTID, ShouldEqual, "keep-2")
+		})
+
 		Convey("Failed when concept groups not found\n", func() {
 			query := &interfaces.ConceptsQuery{
 				KNID:          "kn1",

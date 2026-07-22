@@ -547,6 +547,39 @@ func Test_metricService_SearchMetrics(t *testing.T) {
 			So(result.Entries[0].ScopeRef, ShouldEqual, "ot_keep")
 		})
 
+		Convey("Single paging continues after a full page when concept-group filtering needs more entries\n", func() {
+			query := &interfaces.ConceptsQuery{
+				KNID:          "kn1",
+				Branch:        interfaces.MAIN_BRANCH,
+				Limit:         2,
+				ConceptGroups: []string{"cg1"},
+			}
+			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			cga.EXPECT().GetConceptGroupsTotal(gomock.Any(), gomock.Any()).Return(1, nil)
+			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"ot_keep"}, nil)
+			gomock.InOrder(
+				vba.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).
+					DoAndReturn(func(_ context.Context, _ string, params *interfaces.ResourceDataQueryParams) (*interfaces.DatasetQueryResponse, error) {
+						So(params.Paging, ShouldResemble, interfaces.ResourceDataPagingRequest{Mode: "single", Offset: 0, Limit: 2})
+						return &interfaces.DatasetQueryResponse{Entries: []map[string]any{
+							{"id": "skip", "name": "skip", "scope_ref": "ot_other"},
+							{"id": "keep-1", "name": "keep-1", "scope_ref": "ot_keep"},
+						}}, nil
+					}),
+				vba.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).
+					DoAndReturn(func(_ context.Context, _ string, params *interfaces.ResourceDataQueryParams) (*interfaces.DatasetQueryResponse, error) {
+						So(params.Paging, ShouldResemble, interfaces.ResourceDataPagingRequest{Mode: "single", Offset: 2, Limit: 2})
+						return &interfaces.DatasetQueryResponse{Entries: []map[string]any{{"id": "keep-2", "name": "keep-2", "scope_ref": "ot_keep"}}}, nil
+					}),
+			)
+
+			result, err := service.SearchMetrics(ctx, query)
+			So(err, ShouldBeNil)
+			So(len(result.Entries), ShouldEqual, 2)
+			So(result.Entries[0].ID, ShouldEqual, "keep-1")
+			So(result.Entries[1].ID, ShouldEqual, "keep-2")
+		})
+
 		Convey("NeedTotal with concept groups uses batched scope_ref total\n", func() {
 			query := &interfaces.ConceptsQuery{
 				KNID:          "kn1",
