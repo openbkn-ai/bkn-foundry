@@ -290,14 +290,6 @@ confirm_access_address_before_install() {
     if [[ ! -f "${CONFIG_YAML_PATH}" ]]; then
         config_missing_before="true"
     fi
-    if [[ "${confirm_switch}" == "false" ]]; then
-        # Still materialize CONFIG_YAML_PATH when missing so installs read namespace/accessAddress from one file.
-        if [[ "${config_missing_before}" == "true" ]] && [[ "${AUTO_GENERATE_CONFIG:-true}" == "true" ]]; then
-            log_info "Config not found, generating: ${CONFIG_YAML_PATH}"
-            generate_config_yaml
-        fi
-        return 0
-    fi
 
     local raw_host raw_port raw_path raw_scheme
     raw_host="$(_read_access_address_field "host")"
@@ -342,6 +334,20 @@ confirm_access_address_before_install() {
 
     local url="${scheme}://${host}:${port}${path}"
     _sync_ingress_ports_from_access_address "${port}" "${scheme}"
+
+    if [[ "${confirm_switch}" == "false" ]]; then
+        # Still materialize CONFIG_YAML_PATH when missing so installs read namespace/accessAddress from one file.
+        if [[ "${config_missing_before}" == "true" ]] && [[ "${AUTO_GENERATE_CONFIG:-true}" == "true" ]]; then
+            log_info "Config not found, generating: ${CONFIG_YAML_PATH}"
+            generate_config_yaml
+        fi
+
+        if [[ -n "${OPENBKN_ACCESS_ADDRESS:-}" ]]; then
+            log_info "Using accessAddress from --access_address: ${url}"
+            _upsert_access_address "${host}" "${port}" "${path}" "${scheme}"
+        fi
+        return 0
+    fi
 
     # If provided via CLI arg, skip interactive confirmation
     if [[ -n "${OPENBKN_ACCESS_ADDRESS:-}" ]]; then
