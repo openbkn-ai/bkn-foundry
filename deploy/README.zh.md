@@ -121,9 +121,15 @@ bash ./deploy.sh bkn-foundry install \
   --access_address=<你的IP> \
   --api_server_address=<你的IP>
 
+# 如果 `--access_address` 里带了端口，脚本在安装 ingress-nginx 时会把它
+# 用到对应协议的 ingress 端口上（例如 https://...:8443 会更新 HTTPS 端口，
+# http://...:8080 会更新 HTTP 端口）。
+
 # （可选）自定义 ingress 端口（默认 80/443）：
 export INGRESS_NGINX_HTTP_PORT=8080
 export INGRESS_NGINX_HTTPS_PORT=8443
+# 修改后请重新执行同一个安装命令；脚本现在会检测端口漂移并升级
+# 已存在的 ingress-nginx release。
 
 # 4.（推荐）安装后引导
 #    注册 LLM + embedding（已有则跳过）；只有当默认 embedding 实际变更时才会 patch BKN ConfigMap；

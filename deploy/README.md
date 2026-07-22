@@ -122,9 +122,15 @@ bash ./deploy.sh bkn-foundry install \
   --access_address=<your-ip> \
   --api_server_address=<your-ip>
 
+# If you include a port in --access_address, that port is used for the matching
+# ingress protocol when the script installs ingress-nginx (for example, https://...:8443
+# updates the HTTPS ingress port, while http://...:8080 updates the HTTP port).
+
 # (Optional) Customize ingress ports (default 80/443):
 export INGRESS_NGINX_HTTP_PORT=8080
 export INGRESS_NGINX_HTTPS_PORT=8443
+# Re-run the same install command after changing these values; the script now
+# detects port drift and upgrades the existing ingress-nginx release.
 
 # 4. (Recommended) Post-install bootstrap
 #    Registers an LLM + embedding (skips when already there), patches the BKN ConfigMap

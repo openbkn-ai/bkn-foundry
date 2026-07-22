@@ -256,6 +256,22 @@ _upsert_access_address() {
     mv "${tmp}" "${CONFIG_YAML_PATH}"
 }
 
+_sync_ingress_ports_from_access_address() {
+    local port="$1"
+    local scheme="$2"
+
+    [[ -n "${port}" ]] || return 0
+
+    case "${scheme,,}" in
+        http)
+            export INGRESS_NGINX_HTTP_PORT="${port}"
+            ;;
+        https|*)
+            export INGRESS_NGINX_HTTPS_PORT="${port}"
+            ;;
+    esac
+}
+
 confirm_access_address_before_install() {
     local confirm_switch="${CONFIRM_ACCESS_ADDRESS:-true}"
     local config_missing_before="false"
@@ -313,6 +329,7 @@ confirm_access_address_before_install() {
     fi
 
     local url="${scheme}://${host}:${port}${path}"
+    _sync_ingress_ports_from_access_address "${port}" "${scheme}"
 
     # If provided via CLI arg, skip interactive confirmation
     if [[ -n "${OPENBKN_ACCESS_ADDRESS:-}" ]]; then
