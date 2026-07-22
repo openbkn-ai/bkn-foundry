@@ -13,6 +13,8 @@ Read this first, then load the rules under [`rules/`](rules/). Before working in
 | API / HTTP / error conventions | [rules/DEVELOPMENT.md](rules/DEVELOPMENT.md) |
 | Testing conventions | [rules/TESTING.md](rules/TESTING.md) |
 | Module owners (review routing) | [.github/CODEOWNERS](.github/CODEOWNERS) |
+| Issue templates (bug / feature / task) | [.github/ISSUE_TEMPLATE/](.github/ISSUE_TEMPLATE/) |
+| Pull request template | [.github/pull_request_template.md](.github/pull_request_template.md) |
 
 ## Hard rules for Agents
 
@@ -21,6 +23,7 @@ Read this first, then load the rules under [`rules/`](rules/). Before working in
 - **Clarify material ambiguity**: Before editing, ask for direction when an ambiguity would materially change scope, behavior, risk, or the intended solution; otherwise proceed with a stated, reasonable assumption.
 - **Bug regression coverage**: For bug fixes, add or update a focused regression test that demonstrates the reported failure whenever it is practical.
 - **Verification handoff**: After implementing a change, report relevant edge cases and any remaining test-coverage gaps along with the commands run.
+- **Issue / PR templates**: Before creating an Issue, select the matching template under [`.github/ISSUE_TEMPLATE/`](.github/ISSUE_TEMPLATE/) and preserve its structure when filling in all applicable sections. Before creating or updating a PR, read and fully complete [`.github/pull_request_template.md`](.github/pull_request_template.md). Do not delete required sections; mark non-applicable items explicitly with a brief reason.
 - **Only pick up Issues labeled `agent-ready`** (acceptance criteria complete + independently doable) that are unassigned. Self-assign to lock.
 - **Acceptance criteria**: a human approves them (label `ac-approved`) before an Issue becomes `agent-ready`. You may *draft* them for human approval.
 - **Risky operations** (deploy, delete/modify data, schema migration, prod config, secrets/permissions, major dependency bumps, cross-service breaking changes): do **not** execute. Post the three-part confirmation (what / blast radius / rollback), apply label `awaiting-confirmation`, and wait for an Owner to apply `owner-confirmed`.
