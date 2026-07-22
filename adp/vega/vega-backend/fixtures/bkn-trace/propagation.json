@@ -1,0 +1,64 @@
+{
+  "bkn.trace.schema.version": "1.0.0",
+  "fixture_id": "vega_data_propagation_snapshot",
+  "fixture_type": "propagation",
+  "scenario": "vega_data_snapshot_keeps_request_context",
+  "expected_result": "pass",
+  "trace": {
+    "trace_id": "73020000000000000000000000000002",
+    "bkn.request.id": "req_vega_data_0002",
+    "traceparent": "00-73020000000000000000000000000002-7302000000000001-01",
+    "sampling.decision": "sampled"
+  },
+  "spans": [
+    {
+      "span_id": "7302000000000001",
+      "parent_span_id": null,
+      "name": "vega-data.request",
+      "kind": "server",
+      "bkn.module.name": "vega-data",
+      "bkn.operation.name": "data.snapshot.create",
+      "bkn.status": "ok",
+      "bkn.timestamp": "2026-07-21T06:21:00.000000000Z",
+      "duration_ms": 64
+    }
+  ],
+  "logs": [
+    {
+      "level": "info",
+      "message": "snapshot ref created",
+      "trace_id": "73020000000000000000000000000002",
+      "span_id": "7302000000000001",
+      "bkn.request.id": "req_vega_data_0002",
+      "bkn.module.name": "vega-data",
+      "bkn.operation.name": "data.snapshot.create",
+      "bkn.status": "ok",
+      "bkn.timestamp": "2026-07-21T06:21:00.064000000Z",
+      "bkn.trace.schema.version": "1.0.0",
+      "snapshot.ref": "snapshot_ref_hash_001",
+      "data.classification": "internal"
+    }
+  ],
+  "events": [
+    {
+      "event_id": "evt_vega_snapshot_0002",
+      "event_type": "snapshot.created",
+      "bkn.trace.schema.version": "1.0.0",
+      "observed_at": "2026-07-21T06:21:00.062000000Z",
+      "emitted_at": "2026-07-21T06:21:00.065000000Z",
+      "producer_module": "vega-data",
+      "trace_id": "73020000000000000000000000000002",
+      "span_id": "7302000000000001",
+      "bkn.request.id": "req_vega_data_0002",
+      "bkn.operation.name": "data.snapshot.create",
+      "payload": {
+        "snapshot_ref": "snapshot_ref_hash_001",
+        "snapshot_hash": "sha256:snapshot_demo"
+      }
+    }
+  ],
+  "baggage": {
+    "bkn.account.type": "app",
+    "bkn.runtime.env": "test"
+  }
+}

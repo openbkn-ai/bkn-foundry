@@ -16,6 +16,7 @@ import (
 	"github.com/openbkn-ai/bkn-comm-go/logger"
 
 	"vega-backend/interfaces"
+	"vega-backend/logics/connector/local/table/safelog"
 )
 
 func convertRawValue(v any) any {
@@ -217,9 +218,9 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 
 	isAggregate := params.Aggregation != nil || len(params.GroupBy) > 0 || params.Having != nil
 	if isAggregate {
-		logger.Debugf("postgresql aggregate query: %s, args: %v", query, args)
+		logger.Debugf("postgresql aggregate query: %s", safelog.SQLSummary(query, args))
 	} else {
-		logger.Debugf("postgresql query: %s, args: %v", query, args)
+		logger.Debugf("postgresql query: %s", safelog.SQLSummary(query, args))
 	}
 
 	rows, err := c.db.QueryContext(ctx, query, args...)
@@ -265,7 +266,7 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 		if countErr != nil {
 			return nil, fmt.Errorf("failed to build count query: %w", countErr)
 		}
-		logger.Debugf("postgresql count query: %s, args: %v", countQuery, countArgs)
+		logger.Debugf("postgresql count query: %s", safelog.SQLSummary(countQuery, countArgs))
 		var total int64
 		row := c.db.QueryRowContext(ctx, countQuery, countArgs...)
 		if err := row.Scan(&total); err != nil {

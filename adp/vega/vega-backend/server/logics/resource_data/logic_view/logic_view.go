@@ -363,7 +363,7 @@ func (lvs *logicViewService) executeCompositeViewBySQL(ctx context.Context, view
 	}
 
 	finalSql := builder.Build()
-	logger.Infof("executeCompositeViewBySQL Final SQL: [%s]", finalSql)
+	logger.Infof("executeCompositeViewBySQL Final SQL: [%s]", query.SafeQuerySummary(finalSql))
 
 	if view.IsSingleSource {
 		var resourceType string

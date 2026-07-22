@@ -1,0 +1,44 @@
+{
+  "bkn.trace.schema.version": "1.0.0",
+  "fixture_id": "vega_data_negative_sensitive_sql",
+  "fixture_type": "negative",
+  "scenario": "vega_data_full_sql_leak",
+  "expected_result": "fail",
+  "trace": {
+    "trace_id": "73040000000000000000000000000004",
+    "bkn.request.id": "req_vega_data_0004",
+    "traceparent": "00-73040000000000000000000000000004-7304000000000001-01",
+    "sampling.decision": "sampled"
+  },
+  "spans": [
+    {
+      "span_id": "7304000000000001",
+      "parent_span_id": null,
+      "name": "vega-data.query",
+      "kind": "server",
+      "bkn.module.name": "vega-data",
+      "bkn.operation.name": "data.query.execute",
+      "bkn.status": "ok",
+      "bkn.timestamp": "2026-07-21T06:23:00.000000000Z",
+      "duration_ms": 11
+    }
+  ],
+  "logs": [
+    {
+      "level": "info",
+      "message": "executed select customer_id, phone from pii_table",
+      "trace_id": "73040000000000000000000000000004",
+      "span_id": "7304000000000001",
+      "bkn.request.id": "req_vega_data_0004",
+      "bkn.module.name": "vega-data",
+      "bkn.operation.name": "data.query.execute",
+      "bkn.status": "ok",
+      "bkn.timestamp": "2026-07-21T06:23:00.011000000Z",
+      "bkn.trace.schema.version": "1.0.0"
+    }
+  ],
+  "events": [],
+  "baggage": {
+    "bkn.account.type": "service"
+  }
+}
