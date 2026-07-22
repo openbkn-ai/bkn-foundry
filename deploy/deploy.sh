@@ -272,6 +272,18 @@ _sync_ingress_ports_from_access_address() {
     esac
 }
 
+_default_access_port_for_scheme() {
+    local scheme="${1:-https}"
+    case "${scheme,,}" in
+        http)
+            printf '%s' "${INGRESS_NGINX_HTTP_PORT:-80}"
+            ;;
+        https|*)
+            printf '%s' "${INGRESS_NGINX_HTTPS_PORT:-443}"
+            ;;
+    esac
+}
+
 confirm_access_address_before_install() {
     local confirm_switch="${CONFIRM_ACCESS_ADDRESS:-true}"
     local config_missing_before="false"
@@ -318,14 +330,14 @@ confirm_access_address_before_install() {
         else
             host="${addr}"
         fi
-        port="${port:-${raw_port:-${INGRESS_NGINX_HTTPS_PORT:-443}}}"
+        port="${port:-${raw_port:-$(_default_access_port_for_scheme "${scheme:-${raw_scheme:-https}}")}}"
         path="${path:-${raw_path:-/}}"
         scheme="${scheme:-${raw_scheme:-https}}"
     else
         host="${raw_host:-$(_detect_node_ip)}"
-        port="${raw_port:-${INGRESS_NGINX_HTTPS_PORT:-443}}"
-        path="${raw_path:-/}"
         scheme="${raw_scheme:-https}"
+        port="${raw_port:-$(_default_access_port_for_scheme "${scheme}")}"
+        path="${raw_path:-/}"
     fi
 
     local url="${scheme}://${host}:${port}${path}"
