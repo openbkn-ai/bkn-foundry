@@ -373,6 +373,11 @@ func (dsa *discoverScheduleAccess) List(ctx context.Context, params interfaces.D
 		}
 		schedules = append(schedules, schedule)
 	}
+	if err := rows.Err(); err != nil {
+		logger.Errorf("Iterate discover_schedule rows failed: %v", err)
+		span.SetStatus(codes.Error, "Rows iteration failed")
+		return nil, 0, err
+	}
 
 	span.SetStatus(codes.Ok, "")
 	return schedules, total, nil
@@ -554,6 +559,11 @@ func (dsa *discoverScheduleAccess) GetEnabledSchedules(ctx context.Context) ([]*
 			return nil, err
 		}
 		schedules = append(schedules, schedule)
+	}
+	if err := rows.Err(); err != nil {
+		logger.Errorf("Iterate discover_schedule rows failed: %v", err)
+		span.SetStatus(codes.Error, "Rows iteration failed")
+		return nil, err
 	}
 
 	span.SetStatus(codes.Ok, "")
