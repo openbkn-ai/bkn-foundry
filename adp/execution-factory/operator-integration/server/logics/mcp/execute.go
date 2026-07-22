@@ -104,11 +104,14 @@ func (s *mcpServiceImpl) GetMCPTools(ctx context.Context, req *interfaces.MCPPro
 func (s *mcpServiceImpl) CallMCPTool(ctx context.Context, req *interfaces.MCPProxyCallToolRequest) (resp *interfaces.MCPProxyCallToolResponse, err error) {
 	// 记录可观测
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
-	defer oteltrace.EndSpan(ctx, err)
-	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
-		"mcp_id":  req.MCPID,
-		"user_id": req.UserID,
-	})
+	defer func() {
+		telemetry.SetSpanAttributes(ctx, actionExecutionSpanAttrs(ctx, "action.execute", err, map[string]interface{}{
+			"mcp_id":        req.MCPID,
+			"user_id":       req.UserID,
+			"bkn.tool.name": req.ToolName,
+		}))
+		oteltrace.EndSpan(ctx, err)
+	}()
 	accessor, err := s.AuthService.GetAccessor(ctx, req.UserID)
 	if err != nil {
 		return
@@ -249,6 +252,14 @@ func (s *mcpServiceImpl) listTools(ctx context.Context, req *ListToolsRequest) (
 
 // ExecuteTool 执行MCP工具
 func (s *mcpServiceImpl) ExecuteTool(ctx context.Context, mcpToolID string, params interfaces.HTTPRequestParams) (*interfaces.HTTPResponse, error) {
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	var err error
+	defer func() {
+		telemetry.SetSpanAttributes(ctx, actionExecutionSpanAttrs(ctx, "action.execute", err, map[string]interface{}{
+			"mcp_tool_id": mcpToolID,
+		}))
+		oteltrace.EndSpan(ctx, err)
+	}()
 	// 获取MCP工具配置信息
 	tool, err := s.DBMCPTool.SelectByMCPToolID(ctx, nil, mcpToolID)
 	if err != nil {
@@ -271,4 +282,25 @@ func (s *mcpServiceImpl) ExecuteTool(ctx context.Context, mcpToolID string, para
 		return nil, err
 	}
 	return executeToolResp, nil
+}
+
+func actionExecutionSpanAttrs(ctx context.Context, operation string, err error, refs map[string]interface{}) map[string]interface{} {
+	attrs := map[string]interface{}{
+		"bkn.module.name":          "action-execution",
+		"bkn.operation.name":       operation,
+		"bkn.trace.schema.version": "1.0.0",
+		"bkn.status":               "ok",
+	}
+	if err != nil {
+		attrs["bkn.status"] = "error"
+	}
+	if traceContext, ok := common.GetTraceContextFromCtx(ctx); ok {
+		attrs["bkn.request.id"] = traceContext.RequestID
+	}
+	for key, value := range refs {
+		if value != "" && value != nil {
+			attrs[key] = value
+		}
+	}
+	return attrs
 }

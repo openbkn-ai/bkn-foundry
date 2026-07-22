@@ -97,12 +97,15 @@ func (s *ToolServiceImpl) DebugTool(ctx context.Context, req *interfaces.Execute
 func (s *ToolServiceImpl) ExecuteTool(ctx context.Context, req *interfaces.ExecuteToolReq) (resp *interfaces.HTTPResponse, err error) {
 	// 记录可观测
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
-	defer oteltrace.EndSpan(ctx, err)
-	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
-		"box_id":  req.BoxID,
-		"tool_id": req.ToolID,
-		"user_id": req.UserID,
-	})
+	defer func() {
+		telemetry.SetSpanAttributes(ctx, actionExecutionSpanAttrs(ctx, "action.execute", err, map[string]interface{}{
+			"box_id":      req.BoxID,
+			"tool_id":     req.ToolID,
+			"user_id":     req.UserID,
+			"bkn.tool.id": req.ToolID,
+		}))
+		oteltrace.EndSpan(ctx, err)
+	}()
 	var accessor *interfaces.AuthAccessor
 	accessor, err = s.AuthService.GetAccessor(ctx, req.UserID)
 	if err != nil {
@@ -177,6 +180,16 @@ func (s *ToolServiceImpl) ExecuteTool(ctx context.Context, req *interfaces.Execu
 
 // ExecuteToolCore 执行工具核心逻辑（不包含权限校验和审计日志）
 func (s *ToolServiceImpl) ExecuteToolCore(ctx context.Context, req *interfaces.ExecuteToolReq) (resp *interfaces.HTTPResponse, err error) {
+	ctx, _ = oteltrace.StartInternalSpan(ctx)
+	defer func() {
+		telemetry.SetSpanAttributes(ctx, actionExecutionSpanAttrs(ctx, "action.execute", err, map[string]interface{}{
+			"box_id":      req.BoxID,
+			"tool_id":     req.ToolID,
+			"user_id":     req.UserID,
+			"bkn.tool.id": req.ToolID,
+		}))
+		oteltrace.EndSpan(ctx, err)
+	}()
 	// 检查工具箱是否存在
 	exist, toolBox, err := s.ToolBoxDB.SelectToolBox(ctx, req.BoxID)
 	if err != nil {
@@ -244,4 +257,25 @@ func (s *ToolServiceImpl) executeTool(ctx context.Context, req *interfaces.Execu
 	}
 	resp, err = s.Proxy.HandlerRequest(ctx, proxyReq)
 	return
+}
+
+func actionExecutionSpanAttrs(ctx context.Context, operation string, err error, refs map[string]interface{}) map[string]interface{} {
+	attrs := map[string]interface{}{
+		"bkn.module.name":          "action-execution",
+		"bkn.operation.name":       operation,
+		"bkn.trace.schema.version": "1.0.0",
+		"bkn.status":               "ok",
+	}
+	if err != nil {
+		attrs["bkn.status"] = "error"
+	}
+	if traceContext, ok := common.GetTraceContextFromCtx(ctx); ok {
+		attrs["bkn.request.id"] = traceContext.RequestID
+	}
+	for key, value := range refs {
+		if value != "" && value != nil {
+			attrs[key] = value
+		}
+	}
+	return attrs
 }

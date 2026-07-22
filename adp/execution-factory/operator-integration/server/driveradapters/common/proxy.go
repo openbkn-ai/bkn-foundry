@@ -1,6 +1,7 @@
 package common
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"net/http"
 	"sync"
@@ -100,7 +101,7 @@ func (h *unifiedProxyHandler) FunctionExecute(c *gin.Context) {
 		rest.ReplyError(c, err)
 		return
 	}
-	h.Logger.Infof("FunctionExecute resp: %v", resp)
+	h.Logger.Infof("FunctionExecute response summary: %v", summarizeExecutionResponse(resp))
 	result := &FunctionExecuteResp{
 		Stdout:  resp.Stdout,
 		Stderr:  resp.Stderr,
@@ -229,7 +230,7 @@ func (h *unifiedProxyHandler) FunctionExecuteProxy(c *gin.Context) {
 		rest.ReplyError(c, err)
 		return
 	}
-	h.Logger.Infof("FunctionExecuteProxy resp: %v", resp)
+	h.Logger.Infof("FunctionExecuteProxy response summary: %v", summarizeExecutionResponse(resp))
 	// 转换为 FunctionExecuteResp
 	result := &FunctionExecuteResp{
 		Stdout:  resp.Stdout,
@@ -238,6 +239,27 @@ func (h *unifiedProxyHandler) FunctionExecuteProxy(c *gin.Context) {
 		Metrics: resp.Metrics,
 	}
 	rest.ReplyOK(c, http.StatusOK, result)
+}
+
+func summarizeExecutionResponse(resp *interfaces.ExecuteCodeResp) map[string]any {
+	summary := map[string]any{
+		"stdout_length": 0,
+		"stderr_length": 0,
+	}
+	if resp == nil {
+		return summary
+	}
+	summary["stdout_length"] = len(resp.Stdout)
+	summary["stderr_length"] = len(resp.Stderr)
+	if resp.Stdout != "" {
+		sum := sha256.Sum256([]byte(resp.Stdout))
+		summary["stdout_hash"] = fmt.Sprintf("sha256:%x", sum[:])
+	}
+	if resp.Stderr != "" {
+		sum := sha256.Sum256([]byte(resp.Stderr))
+		summary["stderr_hash"] = fmt.Sprintf("sha256:%x", sum[:])
+	}
+	return summary
 }
 
 // QueryPypiVersions 查询Pypi依赖库版本
