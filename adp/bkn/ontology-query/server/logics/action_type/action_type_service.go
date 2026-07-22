@@ -79,11 +79,9 @@ func (ats *actionTypeService) GetActionsByActionTypeID(ctx context.Context,
 		return resps, httpErr
 	}
 
-	if missing := logics.MissingActionInputDynamicParamNames(&actionType, query.DynamicParams); len(missing) > 0 {
-		return resps, rest.NewHTTPError(ctx, http.StatusBadRequest,
-			oerrors.OntologyQuery_ActionType_InvalidParameter_DynamicParams).
-			WithErrorDetails(fmt.Sprintf("当前请求查询的行动类[%s]所需的动态参数未完整传入，缺少参数 %v，请在请求的 dynamic_params 中填充", actionType.ATName, missing))
-	}
+	// 注意：行动召回/预览路径（get_action_info 走此路）不校验动态参数完整性。
+	// 该阶段目的是返回行动的可执行定义与参数 schema，Agent 需先读到 schema 才知道要传哪些动态参数；
+	// 若此处强制校验会造成死锁（见 issue #371，#291 regression）。动态参数完整性校验只在执行阶段（ExecuteAction）进行。
 
 	// 2. 检查是否绑定了对象类
 	isObjectTypeBound := actionType.ObjectTypeID != ""

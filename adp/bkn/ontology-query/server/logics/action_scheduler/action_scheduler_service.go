@@ -103,7 +103,7 @@ func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfa
 
 	if missing := logics.MissingActionInputDynamicParamNames(&actionType, req.DynamicParams); len(missing) > 0 {
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter).
-			WithErrorDetails(fmt.Sprintf("当前请求执行的行动类[%s]所需的动态参数未完整传入，缺少参数 %v，请在请求的 dynamic_params 中填充", actionType.ATName, missing))
+			WithErrorDetails(fmt.Sprintf("当前请求执行的行动类[%s]所需的动态参数未完整传入，缺少参数 %s，请在请求的 dynamic_params 中填充", actionType.ATName, logics.FormatMissingParamNames(missing)))
 	}
 
 	// Get instances based on action type configuration and request parameters

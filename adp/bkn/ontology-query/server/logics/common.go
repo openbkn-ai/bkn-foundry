@@ -1354,3 +1354,16 @@ func MissingActionInputDynamicParamNames(actionType *interfaces.ActionType, dyna
 	}
 	return missing
 }
+
+// FormatMissingParamNames renders a missing-parameter name list as a quoted,
+// comma-separated string like `"message", "name"`. Using fmt's default %v on a
+// []string yields space-separated names without delimiters (e.g. `[message name]`),
+// which reads as a single parameter named "message name" and misleads callers/agents
+// (see issue #371). This helper keeps each name individually quoted and comma-separated.
+func FormatMissingParamNames(names []string) string {
+	quoted := make([]string, 0, len(names))
+	for _, n := range names {
+		quoted = append(quoted, fmt.Sprintf("%q", n))
+	}
+	return strings.Join(quoted, ", ")
+}
