@@ -1,0 +1,80 @@
+{
+  "bkn.trace.schema.version": "2.0.0",
+  "fixture_id": "bkn_agent_phase2_chat_l2_positive",
+  "expected_result": "pass",
+  "trace": {
+    "trace_id": "7a210000000000000000000000000001",
+    "traceparent": "00-7a210000000000000000000000000001-7a21000000000001-01",
+    "bkn.request.id": "req_bkn_agent_phase2_chat_0001",
+    "business_domain": "acct_demo",
+    "bkn.account.id": "acct_demo",
+    "bkn.account.type": "user"
+  },
+  "spans": [
+    {
+      "span_id": "7a21000000000001",
+      "parent_span_id": null,
+      "name": "agent.chat",
+      "bkn.module.name": "bkn-agent",
+      "bkn.operation.name": "bkn.agent.chat",
+      "bkn.status": "ok",
+      "bkn.timestamp": "2026-07-22T10:00:00.000000Z"
+    }
+  ],
+  "events": [
+    {
+      "event_id": "evt_bkn_agent_chat_claim",
+      "event_type": "claim.created",
+      "bkn.trace.schema.version": "2.0.0",
+      "observed_at": "2026-07-22T10:00:00.000000Z",
+      "emitted_at": "2026-07-22T10:00:00.001000Z",
+      "producer_module": "bkn-agent",
+      "trace_id": "7a210000000000000000000000000001",
+      "span_id": "7a21000000000001",
+      "bkn.request.id": "req_bkn_agent_phase2_chat_0001",
+      "bkn.operation.name": "bkn.agent.chat",
+      "payload": {
+        "claim_id": "claim_bkn_agent_chat_0001",
+        "claim_type": "answer",
+        "claim_hash": "sha256:answer_hash_only",
+        "visibility": "visible",
+        "version_status": "unversioned",
+        "partial_reason": ["source_refs_unversioned"],
+        "subject_refs": {
+          "agent_id": "agent_demo",
+          "thread_id": "thread_demo",
+          "prompt_source": "default",
+          "prompt_version": 3
+        }
+      }
+    },
+    {
+      "event_id": "evt_bkn_agent_chat_refs",
+      "event_type": "evidence.refs.created",
+      "bkn.trace.schema.version": "2.0.0",
+      "observed_at": "2026-07-22T10:00:00.002000Z",
+      "emitted_at": "2026-07-22T10:00:00.003000Z",
+      "producer_module": "bkn-agent",
+      "trace_id": "7a210000000000000000000000000001",
+      "span_id": "7a21000000000001",
+      "bkn.request.id": "req_bkn_agent_phase2_chat_0001",
+      "bkn.operation.name": "bkn.agent.chat",
+      "payload": {
+        "claim_id": "claim_bkn_agent_chat_0001",
+        "evidence_refs": [
+          {
+            "ref_id": "tool:search_schema",
+            "ref_type": "tool_result_ref",
+            "source_system": "bkn-agent",
+            "summary_hash": "sha256:tool_result_summary_hash_only",
+            "tool_name": "search_schema",
+            "validity": "observed",
+            "visibility": "visible",
+            "version_status": "unversioned",
+            "partial_reason": ["tool_result_unversioned"]
+          }
+        ]
+      }
+    }
+  ]
+}

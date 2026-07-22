@@ -53,6 +53,8 @@ runtime:
 observability:
   otelEnabled: "true"
   otlpEndpoint: "http://otelcol-contrib:4318"
+  bknTraceEvidenceIngestUrl: ""
+  bknTraceEvidenceTimeoutS: "3"
 
 nodeSelector: {}
 

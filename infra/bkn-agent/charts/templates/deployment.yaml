@@ -88,6 +88,10 @@ spec:
               value: {{ .Values.observability.otelEnabled | quote }}
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: {{ .Values.observability.otlpEndpoint | quote }}
+            - name: BKN_TRACE_EVIDENCE_INGEST_URL
+              value: {{ .Values.observability.bknTraceEvidenceIngestUrl | quote }}
+            - name: BKN_TRACE_EVIDENCE_TIMEOUT_S
+              value: {{ .Values.observability.bknTraceEvidenceTimeoutS | quote }}
           volumeMounts:
             - name: host-time
               mountPath: /etc/localtime

@@ -1,0 +1,71 @@
+{
+  "bkn.trace.schema.version": "2.0.0",
+  "fixture_id": "bkn_agent_phase2_structured_output_l2_positive",
+  "expected_result": "pass",
+  "trace": {
+    "trace_id": "7a220000000000000000000000000002",
+    "traceparent": "00-7a220000000000000000000000000002-7a22000000000001-01",
+    "bkn.request.id": "req_bkn_agent_phase2_structured_0002",
+    "business_domain": "acct_demo",
+    "bkn.account.id": "acct_demo",
+    "bkn.account.type": "user"
+  },
+  "spans": [
+    {
+      "span_id": "7a22000000000001",
+      "parent_span_id": null,
+      "name": "agent.task",
+      "bkn.module.name": "bkn-agent",
+      "bkn.operation.name": "bkn.agent.task",
+      "bkn.status": "ok",
+      "bkn.timestamp": "2026-07-22T10:01:00.000000Z"
+    }
+  ],
+  "events": [
+    {
+      "event_id": "evt_bkn_agent_structured_claim",
+      "event_type": "claim.created",
+      "bkn.trace.schema.version": "2.0.0",
+      "observed_at": "2026-07-22T10:01:00.000000Z",
+      "emitted_at": "2026-07-22T10:01:00.001000Z",
+      "producer_module": "bkn-agent",
+      "trace_id": "7a220000000000000000000000000002",
+      "span_id": "7a22000000000001",
+      "bkn.request.id": "req_bkn_agent_phase2_structured_0002",
+      "bkn.operation.name": "bkn.agent.task",
+      "payload": {
+        "claim_id": "claim_bkn_agent_structured_0002",
+        "claim_type": "structured_output",
+        "claim_hash": "sha256:structured_output_hash_only",
+        "visibility": "visible",
+        "version_status": "unversioned",
+        "subject_refs": {
+          "agent_id": "agent_demo",
+          "task_id": "task_demo",
+          "prompt_source": "default",
+          "prompt_version": 3,
+          "response_format_schema_hash": "sha256:schema_hash_only"
+        },
+        "partial_reason": ["source_refs_pending"]
+      }
+    },
+    {
+      "event_id": "evt_bkn_agent_structured_validated",
+      "event_type": "structured_output.validated",
+      "bkn.trace.schema.version": "2.0.0",
+      "observed_at": "2026-07-22T10:01:00.002000Z",
+      "emitted_at": "2026-07-22T10:01:00.003000Z",
+      "producer_module": "bkn-agent",
+      "trace_id": "7a220000000000000000000000000002",
+      "span_id": "7a22000000000001",
+      "bkn.request.id": "req_bkn_agent_phase2_structured_0002",
+      "bkn.operation.name": "bkn.agent.structured_output",
+      "payload": {
+        "claim_id": "claim_bkn_agent_structured_0002",
+        "schema_hash": "sha256:schema_hash_only",
+        "validation_result": "valid",
+        "validation_path": "native"
+      }
+    }
+  ]
+}

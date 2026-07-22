@@ -10,7 +10,7 @@ from app import observability
 from app.core import runner
 from app.core import structured
 from app.core import tools as tools_mod
-from app.core.structured import structured_extract
+from app.core.structured import structured_extract, structured_extract_with_path
 from app.models import AgentOut
 
 SCHEMA = {"type": "object", "properties": {"greeting": {"type": "string"}}, "required": ["greeting"]}
@@ -53,9 +53,21 @@ def test_native_path():
     assert out == {"greeting": "pong"}
 
 
+def test_native_path_reports_trace_path():
+    out, path = asyncio.run(structured_extract_with_path(_NativeOK({"greeting": "pong"}), [], SCHEMA))
+    assert out == {"greeting": "pong"}
+    assert path == "native"
+
+
 def test_fallback_valid():
     out = asyncio.run(structured_extract(_Fallback(['{"greeting": "hi"}']), [], SCHEMA))
     assert out == {"greeting": "hi"}
+
+
+def test_fallback_reports_trace_path():
+    out, path = asyncio.run(structured_extract_with_path(_Fallback(['{"greeting": "hi"}']), [], SCHEMA))
+    assert out == {"greeting": "hi"}
+    assert path == "fallback"
 
 
 def test_fallback_strips_fence_and_retries():
@@ -108,7 +120,12 @@ def _wire(monkeypatch, captured):
     monkeypatch.setattr(runner, "resolve_prompt", fake_prompt)
     monkeypatch.setattr(runner, "load_skills", fake_skills)
     monkeypatch.setattr(tools_mod, "load_tools", fake_tools)
-    monkeypatch.setattr(tools_mod, "apply_tool_call_cap", lambda t, cap: t)
+    monkeypatch.setattr(tools_mod, "apply_tool_call_cap", lambda t, cap, *a: t)
+    monkeypatch.setattr(runner.evidence, "submit_events", lambda *a, **k: _noop())
+
+
+async def _noop():
+    return None
 
 
 def _agent():
@@ -123,9 +140,9 @@ def test_run_with_response_format_serializes(monkeypatch):
     _wire(monkeypatch, captured)
 
     async def fake_extract(model, messages, schema):
-        return {"greeting": "pong"}
+        return {"greeting": "pong"}, "native"
 
-    monkeypatch.setattr(runner, "structured_extract", fake_extract)
+    monkeypatch.setattr(runner, "structured_extract_with_path", fake_extract)
     out = asyncio.run(runner.run_agent_once(
         _agent(), "hi", {}, [], None, "acc", "user", depth=1, response_format=SCHEMA,
     ))

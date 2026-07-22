@@ -6,6 +6,7 @@ from fastapi import HTTPException
 from langchain_core.tools import StructuredTool
 
 from app.core import graph, tools
+from app import observability
 from app.models import AgentOut
 
 
@@ -33,6 +34,35 @@ def test_max_tool_calls_enforced():
     assert r1 == "t1:ok" and r2 == "t2:ok"
     assert "budget exhausted" in r3  # 返回提示串让模型收敛，而非静默继续
     assert calls == ["t1", "t2"]  # 第 3 次没真打下游
+
+
+def test_max_tool_calls_emits_budget_exhausted_event(monkeypatch):
+    emitted = []
+
+    async def fake_submit(events, account_id, account_type):
+        emitted.extend(events)
+
+    monkeypatch.setattr(tools.evidence, "submit_events", fake_submit)
+    capped = tools.apply_tool_call_cap([_tool("t1", [])], 0, "acct-1", "user")
+    token = observability.set_context(
+        observability.TraceContext(
+            trace_id="1234567890abcdef1234567890abcdef",
+            request_id="req_budget_001",
+            traceparent="00-1234567890abcdef1234567890abcdef-1234567890abcdef-01",
+            entry_boundary="external",
+        )
+    )
+
+    async def drive():
+        return await capped[0].coroutine(x="a")
+
+    try:
+        result = asyncio.run(drive())
+    finally:
+        observability.reset_context(token)
+    assert "budget exhausted" in result
+    assert emitted[0]["event_type"] == "tool.budget.exhausted"
+    assert emitted[0]["payload"]["tool_name"] == "t1"
 
 
 def test_no_cap_when_unset():
