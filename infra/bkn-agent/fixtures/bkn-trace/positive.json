@@ -1,0 +1,47 @@
+{
+  "bkn.trace.schema.version": "1.0.0",
+  "fixture_id": "bkn_agent_positive_health",
+  "fixture_type": "positive",
+  "scenario": "bkn_agent_generates_trace_context_without_upstream",
+  "expected_result": "pass",
+  "trace": {
+    "trace_id": "7a010000000000000000000000000001",
+    "bkn.request.id": "req_bkn_agent_health_0001",
+    "traceparent": "00-7a010000000000000000000000000001-7a01000000000001-01",
+    "sampling.decision": "sampled"
+  },
+  "spans": [
+    {
+      "span_id": "7a01000000000001",
+      "parent_span_id": null,
+      "name": "bkn-agent.request",
+      "kind": "server",
+      "bkn.module.name": "bkn-agent",
+      "bkn.operation.name": "bkn-agent.health",
+      "bkn.status": "ok",
+      "bkn.timestamp": "2026-07-21T05:00:00.000000000Z",
+      "duration_ms": 8
+    }
+  ],
+  "logs": [
+    {
+      "level": "info",
+      "message": "health request completed",
+      "trace_id": "7a010000000000000000000000000001",
+      "span_id": "7a01000000000001",
+      "bkn.request.id": "req_bkn_agent_health_0001",
+      "bkn.module.name": "bkn-agent",
+      "bkn.operation.name": "bkn-agent.health",
+      "bkn.status": "ok",
+      "bkn.timestamp": "2026-07-21T05:00:00.008000000Z",
+      "bkn.trace.schema.version": "1.0.0",
+      "bkn.account.type": "service",
+      "duration_ms": 8
+    }
+  ],
+  "events": [],
+  "baggage": {
+    "bkn.account.type": "service",
+    "bkn.runtime.env": "test"
+  }
+}

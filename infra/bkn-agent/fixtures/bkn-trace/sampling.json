@@ -1,0 +1,72 @@
+{
+  "bkn.trace.schema.version": "1.0.0",
+  "fixture_id": "bkn_agent_sampling_forced_error",
+  "fixture_type": "sampling",
+  "scenario": "bkn_agent_error_path_is_forced_sampled",
+  "expected_result": "pass",
+  "trace": {
+    "trace_id": "7a030000000000000000000000000003",
+    "bkn.request.id": "req_bkn_agent_error_0003",
+    "traceparent": "00-7a030000000000000000000000000003-7a03000000000001-01",
+    "sampling.decision": "forced_sampled"
+  },
+  "spans": [
+    {
+      "span_id": "7a03000000000001",
+      "parent_span_id": null,
+      "name": "bkn-agent.request",
+      "kind": "server",
+      "bkn.module.name": "bkn-agent",
+      "bkn.operation.name": "bkn-agent.task",
+      "bkn.status": "error",
+      "bkn.timestamp": "2026-07-21T05:02:00.000000000Z",
+      "duration_ms": 33,
+      "error.category": "model",
+      "error.code": "BKN_AGENT_MODEL_UNAVAILABLE",
+      "error.retryable": true
+    }
+  ],
+  "logs": [
+    {
+      "level": "error",
+      "message": "task failed with retryable model error",
+      "trace_id": "7a030000000000000000000000000003",
+      "span_id": "7a03000000000001",
+      "bkn.request.id": "req_bkn_agent_error_0003",
+      "bkn.module.name": "bkn-agent",
+      "bkn.operation.name": "bkn-agent.task",
+      "bkn.status": "error",
+      "bkn.timestamp": "2026-07-21T05:02:00.033000000Z",
+      "bkn.trace.schema.version": "1.0.0",
+      "error.category": "model",
+      "error.code": "BKN_AGENT_MODEL_UNAVAILABLE",
+      "error.retryable": true
+    }
+  ],
+  "events": [
+    {
+      "event_id": "evt_bkn_agent_error_0003",
+      "event_type": "agent.task.failed",
+      "bkn.trace.schema.version": "1.0.0",
+      "observed_at": "2026-07-21T05:02:00.033000000Z",
+      "emitted_at": "2026-07-21T05:02:00.034000000Z",
+      "sequence_no": 1,
+      "attempt_no": 1,
+      "producer_module": "bkn-agent",
+      "trace_id": "7a030000000000000000000000000003",
+      "span_id": "7a03000000000001",
+      "bkn.request.id": "req_bkn_agent_error_0003",
+      "bkn.operation.name": "bkn-agent.task",
+      "payload": {
+        "error.category": "model",
+        "error.code": "BKN_AGENT_MODEL_UNAVAILABLE",
+        "error.retryable": true,
+        "data.classification": "internal"
+      }
+    }
+  ],
+  "baggage": {
+    "bkn.account.type": "service",
+    "bkn.runtime.env": "test"
+  }
+}
