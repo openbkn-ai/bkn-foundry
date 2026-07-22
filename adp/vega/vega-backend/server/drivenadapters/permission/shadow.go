@@ -11,6 +11,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"time"
 
@@ -60,6 +61,23 @@ func (c *safeClient) allowedOps(ctx context.Context, accessorID, rtype, rid stri
 		}
 	}
 	return out, nil
+}
+
+// accessibleIDs returns the concrete resource ids of rtype the accessor may
+// perform op on (type-wide "*" grants are excluded by bkn-safe; the caller
+// detects those via a separate obj="*" check). One bulk round-trip.
+func (c *safeClient) accessibleIDs(ctx context.Context, accessorID, rtype, op string) ([]string, error) {
+	q := url.Values{}
+	q.Set("accessor_id", accessorID)
+	q.Set("resource_type", rtype)
+	q.Set("operation", op)
+	var out struct {
+		IDs []string `json:"ids"`
+	}
+	if err := c.do(ctx, http.MethodGet, "/api/safe/v1/authz/resources?"+q.Encode(), nil, &out); err != nil {
+		return nil, err
+	}
+	return out.IDs, nil
 }
 
 func (c *safeClient) allowedAll(ctx context.Context, accessorID, rtype, rid string, ops []string) (bool, error) {
@@ -136,6 +154,35 @@ func (s *safePermissionAccess) FilterResources(ctx context.Context, filter inter
 		if len(ops) > 0 {
 			out[r.ID] = interfaces.PermissionResourceOps{ResourceID: r.ID, Operations: ops}
 		}
+	}
+	return out, nil
+}
+
+// AccessibleResourceIDs resolves, per op, the accessor's accessible ids for a
+// resource type in ONE bulk round-trip per op: a type-wide/wildcard grant is
+// detected with a single obj="*" check (All=true), otherwise bkn-safe returns
+// the concrete id set. This replaces the per-resource permission fan-out that
+// times out for accounts holding grants across the whole catalog (#357).
+func (s *safePermissionAccess) AccessibleResourceIDs(ctx context.Context, accessorID, resourceType string, ops []string) (map[string]interfaces.OpAccess, error) {
+	out := make(map[string]interfaces.OpAccess, len(ops))
+	for _, op := range ops {
+		wild, err := s.safe.checkOne(ctx, accessorID, resourceType, "*", op)
+		if err != nil {
+			return nil, err
+		}
+		if wild {
+			out[op] = interfaces.OpAccess{All: true}
+			continue
+		}
+		ids, err := s.safe.accessibleIDs(ctx, accessorID, resourceType, op)
+		if err != nil {
+			return nil, err
+		}
+		set := make(map[string]bool, len(ids))
+		for _, id := range ids {
+			set[id] = true
+		}
+		out[op] = interfaces.OpAccess{IDs: set}
 	}
 	return out, nil
 }
