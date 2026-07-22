@@ -245,3 +245,89 @@ func TestObjectGrantsPaginationAndSearch(t *testing.T) {
 		t.Fatalf("obj_* aliases: %+v", got)
 	}
 }
+
+func TestObjectGrantsGroupedViews(t *testing.T) {
+	r, _, db, users := newAdminServer(t)
+	ctx := t.Context()
+	for _, u := range []model.User{
+		{ID: "u-1", Account: "alice", Name: "Alice", Enabled: true},
+		{ID: "u-2", Account: "bob", Name: "Bob", Enabled: true},
+	} {
+		if err := users.CreateLocalUser(ctx, &u, "pw-init0"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	seedCatalogOps(t, db, "catalog", "view_detail", "modify")
+
+	grant := func(accessorID, id string, ops ...string) {
+		t.Helper()
+		w := adminReq(t, r, http.MethodPost, "/api/safe/v1/admin/object-grants", map[string]any{
+			"accessor_id": accessorID,
+			"resource":    map[string]any{"type": "catalog", "id": id},
+			"operations":  ops,
+		})
+		if w.Code != http.StatusNoContent {
+			t.Fatalf("grant %s/%s: %d (%s)", accessorID, id, w.Code, w.Body.String())
+		}
+	}
+	// c1: granted to both u-1 and u-2; c2: only u-1.
+	grant("u-1", "c1", "view_detail", "modify")
+	grant("u-2", "c1", "view_detail")
+	grant("u-1", "c2", "view_detail")
+
+	decode := func(query string) struct {
+		Groups []map[string]any `json:"groups"`
+		Total  int              `json:"total"`
+	} {
+		t.Helper()
+		w := adminReq(t, r, http.MethodGet, "/api/safe/v1/admin/object-grants"+query, nil)
+		if w.Code != http.StatusOK {
+			t.Fatalf("grouped list %s: %d (%s)", query, w.Code, w.Body.String())
+		}
+		var body struct {
+			Groups []map[string]any `json:"groups"`
+			Total  int              `json:"total"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		return body
+	}
+
+	// group_by=object: 2 distinct objects (c1, c2); c1 has 2 grantees, c2 has 1.
+	byObj := decode("?group_by=object")
+	if byObj.Total != 2 || len(byObj.Groups) != 2 {
+		t.Fatalf("group_by=object: total=%d groups=%d", byObj.Total, len(byObj.Groups))
+	}
+	for _, g := range byObj.Groups {
+		obj := g["object"].(map[string]any)
+		want := 1.0
+		if obj["id"] == "c1" {
+			want = 2.0
+		}
+		if g["grantee_count"].(float64) != want {
+			t.Fatalf("object %v grantee_count = %v, want %v", obj["id"], g["grantee_count"], want)
+		}
+	}
+
+	// group_by=grantee: 2 distinct grantees; u-1 on 2 objects, u-2 on 1.
+	byGrantee := decode("?group_by=grantee")
+	if byGrantee.Total != 2 || len(byGrantee.Groups) != 2 {
+		t.Fatalf("group_by=grantee: total=%d groups=%d", byGrantee.Total, len(byGrantee.Groups))
+	}
+	for _, g := range byGrantee.Groups {
+		want := 1.0
+		if g["accessor_id"] == "u-1" {
+			want = 2.0
+		}
+		if g["object_count"].(float64) != want {
+			t.Fatalf("grantee %v object_count = %v, want %v", g["accessor_id"], g["object_count"], want)
+		}
+	}
+
+	// grouped pagination: 1 object per page, total still 2.
+	page := decode("?group_by=object&limit=1&offset=0")
+	if page.Total != 2 || len(page.Groups) != 1 {
+		t.Fatalf("grouped pagination: total=%d groups=%d", page.Total, len(page.Groups))
+	}
+}

@@ -43,64 +43,96 @@ func registerObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 		resourceID := objectGrantQueryParam(c, "resource_id", "obj_id")
 		search := strings.TrimSpace(c.Query("search"))
 
-		grants, err := e.ListObjectGrants(accessorID, resourceType, resourceID)
-		if err != nil {
-			serverError(c, err)
+		// Read the casbin_rule grant table directly (not casbin's in-memory
+		// GetPolicy) so filtering, grouping and pagination all happen in SQL:
+		// the query is O(page) instead of materializing every grant. Object keys
+		// are "type:id" (obj()); splitObjectKey splits on the FIRST colon, so the
+		// rtype/rid expressions below mirror it with INSTR/SUBSTR — portable
+		// across sqlite (tests) and MariaDB (prod). casbin autosave keeps this
+		// table in sync with the in-memory model on every grant/revoke.
+		const rtypeExpr = "SUBSTR(v1, 1, INSTR(v1, ':') - 1)"
+		const ridExpr = "SUBSTR(v1, INSTR(v1, ':') + 1)"
+
+		where := []string{
+			"ptype = 'p'",
+			"INSTR(v1, ':') > 0",               // has the type:id shape
+			ridExpr + " NOT IN ('', '*')",      // concrete instance only (skip type-wide / bare "*")
+			"v0 NOT IN (SELECT id FROM roles)", // role subjects are not user object grants
+			"v0 <> ?",                          // exclude the public accessor
+		}
+		args := []any{authz.PublicAccessorID}
+		if accessorID != "" {
+			where = append(where, "v0 = ?")
+			args = append(args, accessorID)
+		}
+		if resourceType != "" {
+			where = append(where, rtypeExpr+" = ?")
+			args = append(args, resourceType)
+		}
+		if resourceID != "" {
+			where = append(where, ridExpr+" = ?")
+			args = append(args, resourceID)
+		}
+		if search != "" {
+			like := "%" + search + "%"
+			where = append(where,
+				"(v0 IN (SELECT id FROM users WHERE account LIKE ? OR name LIKE ?) OR "+ridExpr+" LIKE ?)")
+			args = append(args, like, like, like)
+		}
+		whereSQL := strings.Join(where, " AND ")
+		qdb := db.WithContext(c.Request.Context())
+
+		// Grouped views for the admin UI: group_by=object lists distinct objects
+		// (each with its grantee count + union of ops), group_by=grantee lists
+		// distinct grantees (each with its object count). The UI paginates GROUPS
+		// (e.g. 10 objects/page), which a flat grant page cannot serve — one
+		// object's grants may span pages, so client-side grouping would have to
+		// pull every grant. Grouping happens in SQL, so a page stays small
+		// regardless of the total grant count.
+		if gb := c.Query("group_by"); gb == "object" || gb == "grantee" {
+			listGroupedObjectGrants(c, qdb, gb, whereSQL, args)
 			return
 		}
-		roleIDs, err := roleIDSet(c, db)
-		if err != nil {
+
+		// total = number of (accessor, object) groups after filtering.
+		var total int64
+		if err := qdb.Raw(
+			"SELECT COUNT(*) FROM (SELECT 1 FROM casbin_rule WHERE "+whereSQL+" GROUP BY v0, v1) t",
+			args...).Scan(&total).Error; err != nil {
 			serverError(c, err)
 			return
 		}
 
-		var userSearch map[string]bool
-		if search != "" {
-			userSearch, err = userIDsMatchingSearch(c, db, search)
-			if err != nil {
+		resp := gin.H{"total": total}
+		if c.Query("include_summary") == "true" {
+			var objects, grantees int64
+			if err := qdb.Raw("SELECT COUNT(DISTINCT v1) FROM casbin_rule WHERE "+whereSQL, args...).
+				Scan(&objects).Error; err != nil {
 				serverError(c, err)
 				return
 			}
-		}
-		searchLower := strings.ToLower(search)
-
-		entries := make([]gin.H, 0, len(grants))
-		objectIDs := make(map[string]bool)
-		granteeIDs := make(map[string]bool)
-		for _, gr := range grants {
-			if roleIDs[gr.AccessorID] || gr.AccessorID == authz.PublicAccessorID {
-				continue // not a user object grant
+			if err := qdb.Raw("SELECT COUNT(DISTINCT v0) FROM casbin_rule WHERE "+whereSQL, args...).
+				Scan(&grantees).Error; err != nil {
+				serverError(c, err)
+				return
 			}
-			if search != "" {
-				if !userSearch[gr.AccessorID] && !strings.Contains(strings.ToLower(gr.ResourceID), searchLower) {
-					continue
-				}
-			}
-			entries = append(entries, gin.H{
-				"accessor_id": gr.AccessorID,
-				"resource":    gin.H{"type": gr.ResourceType, "id": gr.ResourceID},
-				"operations":  gr.Operations,
-			})
-			objectIDs[gr.ResourceType+":"+gr.ResourceID] = true
-			granteeIDs[gr.AccessorID] = true
+			resp["summary"] = gin.H{"grants": total, "objects": objects, "grantees": grantees}
 		}
 
-		total := len(entries)
-		resp := gin.H{
-			"entries": entries,
-			"total":   total,
-		}
-		if c.Query("include_summary") == "true" {
-			resp["summary"] = gin.H{
-				"grants":   total,
-				"objects":  len(objectIDs),
-				"grantees": len(granteeIDs),
-			}
-		}
-
-		_, limitSet := c.GetQuery("limit")
-		if limitSet {
-			offset := atoiDefault(c.Query("offset"), 0)
+		// entries page: one row per (accessor, object), ops aggregated. Ordered by
+		// (v0, v1) so paging is deterministic.
+		//
+		// GROUP_CONCAT(DISTINCT v2) is safe against MariaDB's default 1024-byte
+		// group_concat_max_len: DISTINCT collapses the ops to the operation
+		// VOCABULARY (a fixed ~dozen ids like view_detail/modify/authorize), not
+		// per-grant, so the concatenation is bounded by vocabulary size — not grant
+		// count — and stays far under 1024. Op ids contain no ",", so splitting the
+		// result on "," below is safe.
+		rowsSQL := "SELECT v0 AS accessor, " + rtypeExpr + " AS rtype, " + ridExpr + " AS rid, " +
+			"GROUP_CONCAT(DISTINCT v2) AS ops FROM casbin_rule WHERE " + whereSQL +
+			" GROUP BY v0, v1 ORDER BY v0, v1"
+		rowArgs := append([]any{}, args...)
+		if _, limitSet := c.GetQuery("limit"); limitSet {
 			limit := atoiDefault(c.Query("limit"), 0)
 			if limit <= 0 {
 				limit = 50
@@ -108,20 +140,38 @@ func registerObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 			if limit > 500 {
 				limit = 500
 			}
+			offset := atoiDefault(c.Query("offset"), 0)
 			if offset < 0 {
 				offset = 0
 			}
-			if offset >= len(entries) {
-				entries = []gin.H{}
-			} else {
-				end := offset + limit
-				if end > len(entries) {
-					end = len(entries)
-				}
-				entries = entries[offset:end]
-			}
-			resp["entries"] = entries
+			rowsSQL += " LIMIT ? OFFSET ?"
+			rowArgs = append(rowArgs, limit, offset)
 		}
+
+		var rows []struct {
+			Accessor string
+			Rtype    string
+			Rid      string
+			Ops      string
+		}
+		if err := qdb.Raw(rowsSQL, rowArgs...).Scan(&rows).Error; err != nil {
+			serverError(c, err)
+			return
+		}
+
+		entries := make([]gin.H, 0, len(rows))
+		for _, row := range rows {
+			var ops []string
+			if row.Ops != "" {
+				ops = strings.Split(row.Ops, ",")
+			}
+			entries = append(entries, gin.H{
+				"accessor_id": row.Accessor,
+				"resource":    gin.H{"type": row.Rtype, "id": row.Rid},
+				"operations":  ops,
+			})
+		}
+		resp["entries"] = entries
 
 		c.JSON(http.StatusOK, resp)
 	})
@@ -214,6 +264,84 @@ func registerObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 	})
 }
 
+// listGroupedObjectGrants serves the grouped, paginated object-grant views the
+// admin UI needs: group_by=object (distinct objects, each with a grantee count)
+// or group_by=grantee (distinct grantees, each with an object count). Both carry
+// the union of operations. Grouping + pagination run in SQL so a page is a
+// handful of groups no matter how many grants exist. `whereSQL`/`args` are the
+// same concrete-grant filter the flat listing uses (roles/public/type-wide
+// already excluded, plus any request filters).
+func listGroupedObjectGrants(c *gin.Context, qdb *gorm.DB, groupBy, whereSQL string, args []any) {
+	keyCol, cntCol := "v1", "v0" // group_by=object: key on the object, count grantees
+	if groupBy == "grantee" {
+		keyCol, cntCol = "v0", "v1"
+	}
+
+	var total int64
+	if err := qdb.Raw(
+		"SELECT COUNT(*) FROM (SELECT 1 FROM casbin_rule WHERE "+whereSQL+" GROUP BY "+keyCol+") t",
+		args...).Scan(&total).Error; err != nil {
+		serverError(c, err)
+		return
+	}
+
+	// GROUP_CONCAT(DISTINCT v2): as in the flat listing, DISTINCT collapses ops to
+	// the fixed operation vocabulary (a comma-free ~dozen ids), so the result
+	// stays well under group_concat_max_len and splits cleanly on ",".
+	sql := "SELECT " + keyCol + " AS k, COUNT(DISTINCT " + cntCol + ") AS cnt, " +
+		"GROUP_CONCAT(DISTINCT v2) AS ops FROM casbin_rule WHERE " + whereSQL +
+		" GROUP BY " + keyCol + " ORDER BY " + keyCol
+	rowArgs := append([]any{}, args...)
+	if _, limitSet := c.GetQuery("limit"); limitSet {
+		limit := atoiDefault(c.Query("limit"), 0)
+		if limit <= 0 {
+			limit = 50
+		}
+		if limit > 500 {
+			limit = 500
+		}
+		offset := atoiDefault(c.Query("offset"), 0)
+		if offset < 0 {
+			offset = 0
+		}
+		sql += " LIMIT ? OFFSET ?"
+		rowArgs = append(rowArgs, limit, offset)
+	}
+
+	var rows []struct {
+		K   string
+		Cnt int64
+		Ops string
+	}
+	if err := qdb.Raw(sql, rowArgs...).Scan(&rows).Error; err != nil {
+		serverError(c, err)
+		return
+	}
+
+	groups := make([]gin.H, 0, len(rows))
+	for _, r := range rows {
+		var ops []string
+		if r.Ops != "" {
+			ops = strings.Split(r.Ops, ",")
+		}
+		if groupBy == "object" {
+			rtype, rid, _ := strings.Cut(r.K, ":")
+			groups = append(groups, gin.H{
+				"object":        gin.H{"type": rtype, "id": rid},
+				"grantee_count": r.Cnt,
+				"operations":    ops,
+			})
+		} else {
+			groups = append(groups, gin.H{
+				"accessor_id":  r.K,
+				"object_count": r.Cnt,
+				"operations":   ops,
+			})
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"groups": groups, "total": total})
+}
+
 // isUserAccessor reports whether id is a known user row (real user or app
 // account; both are model.User distinguished by account_type).
 func isUserAccessor(c *gin.Context, db *gorm.DB, id string) (bool, error) {
@@ -225,42 +353,11 @@ func isUserAccessor(c *gin.Context, db *gorm.DB, id string) (bool, error) {
 	return n > 0, nil
 }
 
-// roleIDSet loads every role id into a lookup set, used to exclude role subjects
-// from the user object-grant listing.
-func roleIDSet(c *gin.Context, db *gorm.DB) (map[string]bool, error) {
-	var ids []string
-	if err := db.WithContext(c.Request.Context()).Model(&model.Role{}).
-		Pluck("id", &ids).Error; err != nil {
-		return nil, err
-	}
-	set := make(map[string]bool, len(ids))
-	for _, id := range ids {
-		set[id] = true
-	}
-	return set, nil
-}
-
 func objectGrantQueryParam(c *gin.Context, primary, alias string) string {
 	if v := c.Query(primary); v != "" {
 		return v
 	}
 	return c.Query(alias)
-}
-
-// userIDsMatchingSearch returns user ids whose account or name matches search.
-func userIDsMatchingSearch(c *gin.Context, db *gorm.DB, search string) (map[string]bool, error) {
-	var ids []string
-	like := "%" + search + "%"
-	if err := db.WithContext(c.Request.Context()).Model(&model.User{}).
-		Where("account LIKE ? OR name LIKE ?", like, like).
-		Pluck("id", &ids).Error; err != nil {
-		return nil, err
-	}
-	set := make(map[string]bool, len(ids))
-	for _, id := range ids {
-		set[id] = true
-	}
-	return set, nil
 }
 
 // catalogOpSet returns the resource type's registered operation ids as a set

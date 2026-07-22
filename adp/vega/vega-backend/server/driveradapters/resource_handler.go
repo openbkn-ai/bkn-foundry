@@ -270,6 +270,14 @@ func (r *restHandler) getResources(c *gin.Context, visitor hydra.Visitor) {
 
 	ids := strings.Split(c.Param("id"), ",")
 
+	// By default any missing id 404s the whole request (all-or-nothing), for both
+	// single- and multi-id GETs — matching the strict default of the sibling
+	// batch DELETE. ?ignore_missing=true opts into tolerance: skip the missing
+	// ids and return the found ones (the caller detects drops from fewer entries
+	// than ids requested). That opt-in is the display-resolution escape hatch for
+	// a stale object-grant pointing at a removed resource.
+	ignoreMissing := strings.EqualFold(strings.TrimSpace(c.Query("ignore_missing")), "true")
+
 	resources, err := r.rs.GetByIDs(ctx, ids)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
@@ -278,7 +286,7 @@ func (r *restHandler) getResources(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 
-	if len(resources) != len(ids) {
+	if !ignoreMissing && len(resources) != len(ids) {
 		for _, id := range ids {
 			found := false
 			for _, resource := range resources {

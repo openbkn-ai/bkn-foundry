@@ -7,6 +7,7 @@ package httpapi
 import (
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"bkn-safe/internal/model"
@@ -224,7 +225,8 @@ func TestMePermissions(t *testing.T) {
 		t.Errorf("kn/kn-1 ops: want [view], got %v", ops)
 	}
 
-	// super-admin: is_admin true, wildcard grant surfaces as type "*".
+	// super-admin (holds "*"/"*"): is_admin true AND permissions collapses to a
+	// single {type:"*", id:"*", ops:["*"]} row — not the per-instance fan-out.
 	w = adminReq(t, r, http.MethodGet, path, nil)
 	if w.Code != http.StatusOK {
 		t.Fatalf("admin: want 200, got %d", w.Code)
@@ -234,5 +236,92 @@ func TestMePermissions(t *testing.T) {
 	}
 	if !resp.IsAdmin {
 		t.Error("admin: is_admin must be true")
+	}
+	if len(resp.Permissions) != 1 {
+		t.Fatalf("admin: want single collapsed row, got %d: %s", len(resp.Permissions), w.Body.String())
+	}
+	if p := resp.Permissions[0]; p.Resource.Type != "*" || p.Resource.ID != "*" ||
+		len(p.Operations) != 1 || p.Operations[0] != "*" {
+		t.Errorf("admin collapsed row = %+v, want {*,*,[*]}", resp.Permissions[0])
+	}
+}
+
+// TestMePermissionsScope covers the scope filters and their validation.
+func TestMePermissionsScope(t *testing.T) {
+	r, e, _, _ := newAdminServer(t)
+	const path = "/api/safe/v1/me/permissions"
+
+	// u1: type-wide large_model:* [display,execute] via role, plus two instance
+	// surplus grants, plus an unrelated agent grant that scope must filter out.
+	if err := e.GrantRolePermission("role-m", "large_model", "*", "display"); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.GrantRolePermission("role-m", "large_model", "*", "execute"); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.AssignRole("u1", "role-m"); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.GrantObjectPermission("u1", "large_model", "m1", "modify"); err != nil { // surplus
+		t.Fatal(err)
+	}
+	if err := e.GrantObjectPermission("u1", "large_model", "m2", "modify"); err != nil { // surplus
+		t.Fatal(err)
+	}
+	if err := e.GrantObjectPermission("u1", "agent", "a1", "use"); err != nil { // filtered out
+		t.Fatal(err)
+	}
+
+	decode := func(w *httptest.ResponseRecorder) map[string][]string {
+		t.Helper()
+		if w.Code != http.StatusOK {
+			t.Fatalf("want 200, got %d (%s)", w.Code, w.Body.String())
+		}
+		var resp struct {
+			Permissions []struct {
+				Resource struct {
+					Type string `json:"type"`
+					ID   string `json:"id"`
+				} `json:"resource"`
+				Operations []string `json:"operations"`
+			} `json:"permissions"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		out := map[string][]string{}
+		for _, p := range resp.Permissions {
+			out[p.Resource.Type+"/"+p.Resource.ID] = p.Operations
+		}
+		return out
+	}
+
+	// resource_type=large_model: only large_model rows (type-wide + instances).
+	got := decode(tokReq(t, r, http.MethodGet, path+"?resource_type=large_model", nil, "u1"))
+	if _, ok := got["agent/a1"]; ok {
+		t.Errorf("agent/a1 must be filtered by resource_type: %v", got)
+	}
+	if got["large_model/*"] == nil {
+		t.Errorf("type-wide large_model/* row missing: %v", got)
+	}
+	if len(got["large_model/m1"]) != 1 || got["large_model/m1"][0] != "modify" {
+		t.Errorf("large_model/m1 surplus = %v, want [modify]", got["large_model/m1"])
+	}
+
+	// resource_id=m1: narrows instances to m1 but keeps the type-wide row.
+	got = decode(tokReq(t, r, http.MethodGet, path+"?resource_type=large_model&resource_id=m1", nil, "u1"))
+	if _, ok := got["large_model/m2"]; ok {
+		t.Errorf("large_model/m2 must be narrowed out: %v", got)
+	}
+	if got["large_model/*"] == nil {
+		t.Errorf("type-wide row must remain under resource_id filter: %v", got)
+	}
+	if got["large_model/m1"] == nil {
+		t.Errorf("large_model/m1 expected: %v", got)
+	}
+
+	// resource_id without resource_type -> 400.
+	if w := tokReq(t, r, http.MethodGet, path+"?resource_id=m1", nil, "u1"); w.Code != http.StatusBadRequest {
+		t.Errorf("resource_id without resource_type: want 400, got %d", w.Code)
 	}
 }

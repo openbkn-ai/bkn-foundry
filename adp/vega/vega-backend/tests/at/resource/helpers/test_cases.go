@@ -420,7 +420,8 @@ func RunCommonReadTests(suite *TestSuite) {
 		// 批量获取（包含不存在的ID）
 		ids := []string{existingID, "non-existent-id-99999"}
 		batchResp := suite.GetResources(ids)
-		// 部分不存在时，应返回存在的部分或报错
+		// 默认严格：任一 id 不存在则整批 404（与批量 DELETE 约定一致）。
+		// 需容忍缺失时调用方传 ?ignore_missing=true。
 		So(batchResp.StatusCode, ShouldEqual, http.StatusNotFound)
 	})
 
