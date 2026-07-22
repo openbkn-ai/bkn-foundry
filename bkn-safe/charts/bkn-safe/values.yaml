@@ -129,6 +129,21 @@ resources:
 
 nodeSelector: {}
 
+# Default-deny ingress NetworkPolicy for the tokenless internal APIs. Ships
+# DISABLED: an over-tight policy silently breaks authorization platform-wide, so
+# turn it on only after the ingress list below is confirmed against the target
+# cluster. See templates/networkpolicy.yaml.
+networkPolicy:
+  enabled: false
+  # Ingress rules, verbatim NetworkPolicyIngressRule entries. Example (fill in
+  # the real gateway namespace/labels before enabling):
+  #   - from:
+  #       - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: ingress-nginx } }
+  #       - podSelector: { matchLabels: { app.kubernetes.io/part-of: bkn } }
+  #     ports:
+  #       - { protocol: TCP, port: 3000 }
+  ingress: []
+
 # Bundled dependencies for non-production clusters (dev/staging/CI): an upstream
 # hydra v26.2.0 on PostgreSQL. In production set enabled=false and point
 # config.hydra/config.db at the real services.
@@ -139,7 +154,13 @@ bundledDeps:
   # Persistent volume for the bundled hydra Postgres (survives pod restarts so
   # OAuth clients/tokens/admin state aren't lost).
   postgresStorage: "5Gi"
-  hydraSecretsSystem: "dev-only-change-me-32-bytes-secret"
+  # hydra signing/encryption key. Empty = resolved per install by the chart
+  # (bkn-safe.hydraSecret): a random value on a fresh install, stored in the
+  # release Secret and preserved unchanged on every upgrade. Set a value here
+  # ONLY to pin or deliberately rotate the key (rotation invalidates active
+  # sessions and needs the old key kept for decryption — a maintenance-window
+  # operation, not a routine upgrade). Must NOT be a shipped constant.
+  hydraSecretsSystem: ""
   # Browser-facing public base URL of the gateway (TLS-terminating ingress),
   # e.g. https://10.211.55.4. When set, hydra advertises this as the issuer and
   # builds login/consent/device page URLs from it so human browser flows work
