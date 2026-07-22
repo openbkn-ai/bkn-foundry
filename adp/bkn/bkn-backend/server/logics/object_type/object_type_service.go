@@ -1699,10 +1699,7 @@ func (ots *objectTypeService) SearchObjectTypes(ctx context.Context,
 		}
 
 		// 如果已经收集到足够的数量或者没有更多数据了，跳出循环
-		if (query.Limit > 0 && len(objectTypes) >= query.Limit) || nextCursor == nil && len(datasetResp.Entries) < limit {
-			break
-		}
-		if nextCursor == nil {
+		if (query.Limit > 0 && len(objectTypes) >= query.Limit) || nextCursor == nil {
 			break
 		}
 		cursor = *nextCursor

@@ -429,6 +429,10 @@ func bindCursorResource(session *interfaces.CursorSession, req *interfaces.RawQu
 func validateCursorResourceBinding(ctx context.Context, session *interfaces.CursorSession,
 	req *interfaces.RawQueryRequest) error {
 	if session.ResourceDataResourceID == "" {
+		if req != nil && req.ResourceDataResourceID != "" {
+			return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Query_CursorResourceChanged).
+				WithErrorDetails("raw query cursor cannot be used for resource data paging")
+		}
 		return nil
 	}
 	if req == nil || req.ResourceDataResourceID != session.ResourceDataResourceID {

@@ -1143,7 +1143,7 @@ func (ats *actionTypeService) SearchActionTypes(ctx context.Context, query *inte
 		}
 
 		// 如果已经收集到足够的数量或者没有更多数据了，跳出循环
-		if (query.Limit > 0 && len(actionTypes) >= query.Limit) || nextCursor == nil && len(datasetResp.Entries) < limit {
+		if (query.Limit > 0 && len(actionTypes) >= query.Limit) || nextCursor == nil {
 			break
 		}
 
