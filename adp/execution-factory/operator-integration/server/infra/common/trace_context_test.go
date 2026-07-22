@@ -2,6 +2,7 @@ package common
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/smartystreets/goconvey/convey"
@@ -64,6 +65,34 @@ func TestTraceContextFromHeaders(t *testing.T) {
 
 		convey.So(ok, convey.ShouldBeTrue)
 		convey.So(traceCtx.RequestID, convey.ShouldEqual, "req_01JZVALIDREQUESTID000000212")
+
+		headers = map[string]string{
+			HeaderBKNRequestID:    "bad id",
+			HeaderLegacyRequestID: "req_01JZVALIDREQUESTID000000214",
+		}
+		traceCtx = TraceContextFromHeaders(func(key string) string { return headers[key] })
+		ctx = SetTraceContextToCtx(context.Background(), traceCtx)
+		traceCtx, ok = GetTraceContextFromCtx(ctx)
+
+		convey.So(ok, convey.ShouldBeTrue)
+		convey.So(traceCtx.RequestID, convey.ShouldEqual, "req_01JZVALIDREQUESTID000000214")
+	})
+}
+
+func TestNewBKNRequestIDFallbackIsValidAndUnique(t *testing.T) {
+	convey.Convey("NewBKNRequestID returns valid unique ids when crypto rand fails", t, func() {
+		originalRandRead := randRead
+		defer func() { randRead = originalRandRead }()
+		randRead = func([]byte) (int, error) {
+			return 0, errors.New("entropy unavailable")
+		}
+
+		first := NewBKNRequestID()
+		second := NewBKNRequestID()
+
+		convey.So(IsValidBKNRequestID(first), convey.ShouldBeTrue)
+		convey.So(IsValidBKNRequestID(second), convey.ShouldBeTrue)
+		convey.So(first, convey.ShouldNotEqual, second)
 	})
 }
 

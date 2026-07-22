@@ -4,9 +4,12 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
+	"log"
 	"regexp"
 	"sort"
 	"strings"
+	"sync/atomic"
+	"time"
 
 	"go.opentelemetry.io/otel/trace"
 )
@@ -23,6 +26,8 @@ type traceContextKey string
 const keyTraceContext traceContextKey = "bkn_trace_context"
 
 var bknRequestIDRe = regexp.MustCompile(`^req_[A-Za-z0-9_-]{8,128}$`)
+var fallbackRequestIDCounter uint64
+var randRead = rand.Read
 
 // TraceContext carries the OpenBKN phase-one correlation context.
 type TraceContext struct {
@@ -45,7 +50,7 @@ func GetTraceContextFromCtx(ctx context.Context) (TraceContext, bool) {
 
 func TraceContextFromHeaders(getHeader func(string) string) TraceContext {
 	requestID := strings.TrimSpace(getHeader(HeaderBKNRequestID))
-	if requestID == "" {
+	if requestID == "" || !IsValidBKNRequestID(requestID) {
 		requestID = strings.TrimSpace(getHeader(HeaderLegacyRequestID))
 	}
 	return TraceContext{
@@ -60,8 +65,10 @@ func IsValidBKNRequestID(requestID string) bool {
 
 func NewBKNRequestID() string {
 	var b [16]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		return "req_fallback"
+	if _, err := randRead(b[:]); err != nil {
+		log.Printf("bkn trace request id generation degraded: %v", err)
+		counter := atomic.AddUint64(&fallbackRequestIDCounter, 1)
+		return fmt.Sprintf("req_fallback_%d_%d", time.Now().UnixNano(), counter)
 	}
 	b[6] = (b[6] & 0x0f) | 0x40
 	b[8] = (b[8] & 0x3f) | 0x80
