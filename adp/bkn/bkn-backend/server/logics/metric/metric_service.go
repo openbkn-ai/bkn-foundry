@@ -721,8 +721,6 @@ func (ms *metricService) SearchMetrics(ctx context.Context, query *interfaces.Co
 				query.KNID, query.Branch, query.ConceptGroups, err)
 			logger.Errorf(errStr)
 			span.SetStatus(codes.Error, errStr)
-			span.End()
-
 			return response, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_Metric_InternalError).WithErrorDetails(err.Error())
 		}
@@ -756,7 +754,10 @@ func (ms *metricService) SearchMetrics(ctx context.Context, query *interfaces.Co
 	}
 
 	entries := make([]*interfaces.MetricDefinition, 0)
-	offset := 0
+	sort := query.Sort
+	if len(sort) == 0 {
+		sort = []*interfaces.SortParams{{Field: "id", Direction: "asc"}}
+	}
 	cursor := query.Cursor
 	var nextCursor *string
 	limit := query.Limit
@@ -765,19 +766,15 @@ func (ms *metricService) SearchMetrics(ctx context.Context, query *interfaces.Co
 	}
 
 	for {
-		paging := interfaces.ResourceDataPagingRequest{Mode: "single", Offset: offset, Limit: limit}
-		if len(query.Sort) > 0 {
-			paging.Mode = "cursor"
-		}
+		paging := interfaces.ResourceDataPagingRequest{Mode: "cursor", Limit: limit}
 		if cursor != "" {
 			paging = interfaces.ResourceDataPagingRequest{Cursor: cursor}
 		}
-		isCursorPaging := paging.Mode == "cursor" || paging.Cursor != ""
 		params := &interfaces.ResourceDataQueryParams{
 			FilterCondition: filterCondition,
 			Paging:          paging,
 			NeedTotal:       false,
-			Sort:            query.Sort,
+			Sort:            sort,
 		}
 		datasetResp, err := ms.vba.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
 		if err != nil {
@@ -829,17 +826,10 @@ func (ms *metricService) SearchMetrics(ctx context.Context, query *interfaces.Co
 		if query.Limit > 0 && len(entries) >= query.Limit {
 			break
 		}
-		if isCursorPaging {
-			if nextCursor == nil {
-				break
-			}
-			cursor = *nextCursor
-			continue
-		}
-		if len(datasetResp.Entries) < limit {
+		if nextCursor == nil {
 			break
 		}
-		offset += limit
+		cursor = *nextCursor
 	}
 
 	response.Entries = entries

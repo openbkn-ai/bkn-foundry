@@ -45,8 +45,8 @@ var (
 type actionTypeService struct {
 	appSetting *common.AppSetting
 	db         *sql.DB
-	ata        interfaces.ActionTypeAccess
 	aoa        interfaces.AgentOperatorAccess
+	ata        interfaces.ActionTypeAccess
 	cga        interfaces.ConceptGroupAccess
 	mfa        interfaces.ModelFactoryAccess
 	ots        interfaces.ObjectTypeService
@@ -986,6 +986,7 @@ func (ats *actionTypeService) SearchActionTypes(ctx context.Context, query *inte
 			return response, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ActionType_InternalError).WithErrorDetails(errStr)
 		}
+
 		// 概念分组下没有行动类,返回空
 		if len(atIDArr) == 0 {
 			return response, nil
@@ -1033,7 +1034,10 @@ func (ats *actionTypeService) SearchActionTypes(ctx context.Context, query *inte
 	// 4. 迭代查询直到获取足够数量或没有更多数据。
 	actionTypes := []*interfaces.ActionType{}
 	var totalFilteredCount int64 = 0
-	offset := 0
+	sort := query.Sort
+	if len(sort) == 0 {
+		sort = []*interfaces.SortParams{{Field: "id", Direction: "asc"}}
+	}
 	cursor := query.Cursor
 	var nextCursor *string
 	limit := query.Limit
@@ -1042,20 +1046,16 @@ func (ats *actionTypeService) SearchActionTypes(ctx context.Context, query *inte
 	}
 
 	for {
-		paging := interfaces.ResourceDataPagingRequest{Mode: "single", Offset: offset, Limit: limit}
-		if len(query.Sort) > 0 {
-			paging.Mode = "cursor"
-		}
+		paging := interfaces.ResourceDataPagingRequest{Mode: "cursor", Limit: limit}
 		if cursor != "" {
 			paging = interfaces.ResourceDataPagingRequest{Cursor: cursor}
 		}
-		isCursorPaging := paging.Mode == "cursor" || paging.Cursor != ""
 		// 调用 dataset 查询
 		params := &interfaces.ResourceDataQueryParams{
 			FilterCondition: filterCondition,
 			Paging:          paging,
 			NeedTotal:       false,
-			Sort:            query.Sort,
+			Sort:            sort,
 		}
 		datasetResp, err := ats.vba.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
 		if err != nil {
@@ -1146,17 +1146,10 @@ func (ats *actionTypeService) SearchActionTypes(ctx context.Context, query *inte
 		if query.Limit > 0 && len(actionTypes) >= query.Limit {
 			break
 		}
-		if isCursorPaging {
-			if nextCursor == nil {
-				break
-			}
-			cursor = *nextCursor
-			continue
-		}
-		if len(datasetResp.Entries) < limit {
+		if nextCursor == nil {
 			break
 		}
-		offset += limit
+		cursor = *nextCursor
 	}
 
 	response.Entries = actionTypes
