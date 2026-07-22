@@ -40,6 +40,26 @@ func TestEvidenceHandlerRejectsSensitivePayload(t *testing.T) {
 	}
 }
 
+func TestEvidenceHandlerReturnsValidationErrorDetails(t *testing.T) {
+	handler := NewEvidenceHandler(evidencesvc.New(evidencestore.New()))
+	body := strings.Replace(validHandlerBatch(), `"claim_hash": "sha256:claim",`, "", 1)
+	body = strings.Replace(body, `"visibility": "visible",`, "", 1)
+	req := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/evidence/events", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	handler.IngestEvidenceEvents(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"details"`) {
+		t.Fatalf("expected validation details, got: %s", rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `claim_hash`) || !strings.Contains(rec.Body.String(), `visibility`) {
+		t.Fatalf("expected all validation errors in details, got: %s", rec.Body.String())
+	}
+}
+
 func validHandlerBatch() string {
 	return `{
   "bkn.trace.schema.version": "2.0.0",

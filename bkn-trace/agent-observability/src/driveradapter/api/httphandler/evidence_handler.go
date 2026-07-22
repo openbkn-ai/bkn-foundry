@@ -67,6 +67,7 @@ func (h *EvidenceHandler) IngestEvidenceEvents(w http.ResponseWriter, r *http.Re
 		writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{
 			Code:    validationErrors[0].Code,
 			Message: validationErrors[0].Message,
+			Details: validationErrors,
 		})
 		return
 	}

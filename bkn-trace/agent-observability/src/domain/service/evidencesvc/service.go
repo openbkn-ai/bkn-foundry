@@ -16,19 +16,41 @@ var (
 	traceIDRE     = regexp.MustCompile(`^[0-9a-f]{32}$`)
 	requestIDRE   = regexp.MustCompile(`^req_[0-9A-Za-z_.-]+$`)
 	timestampRE   = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$`)
-	rawKeyRE      = regexp.MustCompile(`(?i)(raw[_-]?(sql|prompt|answer|output|input)|row[_-]?data|authorization|cookie|token|api[_-]?key)`)
 )
 
 var sensitivePatterns = []*regexp.Regexp{
-	regexp.MustCompile(`(?i)authorization`),
-	regexp.MustCompile(`(?i)bearer\s+[A-Za-z0-9._-]+`),
-	regexp.MustCompile(`(?i)access[_-]?token`),
-	regexp.MustCompile(`(?i)api[_-]?key`),
-	regexp.MustCompile(`(?i)cookie`),
+	regexp.MustCompile(`(?i)\bauthorization\s*[:=]\s*\S+`),
+	regexp.MustCompile(`(?i)\bbearer\s+[A-Za-z0-9._-]+`),
+	regexp.MustCompile(`(?i)\b(access|refresh|id)[_-]?token\s*[:=]\s*[A-Za-z0-9._-]+`),
+	regexp.MustCompile(`(?i)\bapi[_-]?key\s*[:=]\s*[A-Za-z0-9._-]+`),
+	regexp.MustCompile(`(?i)\bcookie\s*[:=]\s*\S+`),
 	regexp.MustCompile(`(?is)\bselect\s+.+\s+from\b`),
-	regexp.MustCompile(`(?i)prompt\s*[:=]`),
-	regexp.MustCompile(`(?i)https?://[^\s"']+`),
-	regexp.MustCompile(`[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}`),
+}
+
+var forbiddenRawKeys = map[string]struct{}{
+	"access-token":  {},
+	"access_token":  {},
+	"api-key":       {},
+	"api_key":       {},
+	"authorization": {},
+	"cookie":        {},
+	"id-token":      {},
+	"id_token":      {},
+	"raw-answer":    {},
+	"raw-input":     {},
+	"raw-output":    {},
+	"raw-prompt":    {},
+	"raw-sql":       {},
+	"raw_answer":    {},
+	"raw_input":     {},
+	"raw_output":    {},
+	"raw_prompt":    {},
+	"raw_sql":       {},
+	"refresh-token": {},
+	"refresh_token": {},
+	"row-data":      {},
+	"row_data":      {},
+	"token":         {},
 }
 
 var eventTypes = map[string]struct{}{
@@ -211,10 +233,8 @@ func checkRefs(payload map[string]any, base string, key string, knownClaims map[
 	claimID, ok := stringField(payload, "claim_id")
 	if !ok || claimID == "" {
 		add(errors, "BKN_TRACE_REQUIRED_FIELD_MISSING", base+".claim_id", "missing required field claim_id")
-	} else if len(knownClaims) > 0 {
-		if _, exists := knownClaims[claimID]; !exists {
-			add(errors, "BKN_TRACE_UNKNOWN_CLAIM_ID", base+".claim_id", "refs must point to a known claim_id")
-		}
+	} else if _, exists := knownClaims[claimID]; !exists {
+		add(errors, "BKN_TRACE_UNKNOWN_CLAIM_ID", base+".claim_id", "refs must point to a known claim_id in the same batch")
 	}
 	refs := arrayField(payload, key)
 	if len(refs) == 0 {
@@ -227,7 +247,7 @@ func checkSensitive(value any, path string, errors *evidencevo.ValidationErrors)
 	case map[string]any:
 		for k, v := range typed {
 			childPath := path + "." + k
-			if rawKeyRE.MatchString(k) {
+			if forbiddenRawKey(k) {
 				add(errors, "BKN_TRACE_FORBIDDEN_RAW_PAYLOAD_FIELD", childPath, "raw prompt, SQL, answer, tool IO, row data, token, cookie, or authorization fields are forbidden")
 			}
 			checkSensitive(v, childPath, errors)
@@ -244,6 +264,11 @@ func checkSensitive(value any, path string, errors *evidencevo.ValidationErrors)
 			}
 		}
 	}
+}
+
+func forbiddenRawKey(key string) bool {
+	_, ok := forbiddenRawKeys[strings.ToLower(key)]
+	return ok
 }
 
 func validTraceparent(value string) bool {

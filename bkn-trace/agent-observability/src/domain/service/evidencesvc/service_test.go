@@ -2,6 +2,7 @@ package evidencesvc
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
@@ -74,6 +75,138 @@ func TestIngestRejectsSensitivePayload(t *testing.T) {
 	if store.calls != 0 {
 		t.Fatalf("invalid batch must not be stored")
 	}
+}
+
+func TestIngestRejectsUnknownClaimIDWithoutClaimBatch(t *testing.T) {
+	store := &fakeStore{}
+	service := New(store)
+
+	_, validationErrors, err := service.Ingest(context.Background(), []byte(unknownClaimIDBatch()))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !hasValidationCode(validationErrors, "BKN_TRACE_UNKNOWN_CLAIM_ID") {
+		t.Fatalf("expected unknown claim id error, got %+v", validationErrors)
+	}
+	if store.calls != 0 {
+		t.Fatalf("invalid batch must not be stored")
+	}
+}
+
+func TestIngestRejectsJoinMismatch(t *testing.T) {
+	store := &fakeStore{}
+	service := New(store)
+	body := strings.Replace(validBatch(), `"bkn.request.id": "req_phase2_001",`, `"bkn.request.id": "req_phase2_other",`, 1)
+
+	_, validationErrors, err := service.Ingest(context.Background(), []byte(body))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !hasValidationCode(validationErrors, "BKN_TRACE_JOIN_FAILED") {
+		t.Fatalf("expected join failed error, got %+v", validationErrors)
+	}
+	if store.calls != 0 {
+		t.Fatalf("invalid batch must not be stored")
+	}
+}
+
+func TestIngestRejectsUnsupportedSchemaVersion(t *testing.T) {
+	store := &fakeStore{}
+	service := New(store)
+	body := strings.Replace(validBatch(), `"bkn.trace.schema.version": "2.0.0"`, `"bkn.trace.schema.version": "1.0.0"`, 1)
+
+	_, validationErrors, err := service.Ingest(context.Background(), []byte(body))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !hasValidationCode(validationErrors, "BKN_TRACE_SCHEMA_VERSION_UNSUPPORTED") {
+		t.Fatalf("expected unsupported schema error, got %+v", validationErrors)
+	}
+	if store.calls != 0 {
+		t.Fatalf("invalid batch must not be stored")
+	}
+}
+
+func TestIngestRejectsInvalidTraceparent(t *testing.T) {
+	store := &fakeStore{}
+	service := New(store)
+	body := strings.Replace(validBatch(), `"traceparent": "00-8c0d0000000000000000000000000001-1f12000000000001-01"`, `"traceparent": "00-00000000000000000000000000000000-0000000000000000-01"`, 1)
+
+	_, validationErrors, err := service.Ingest(context.Background(), []byte(body))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !hasValidationCode(validationErrors, "BKN_TRACE_INVALID_TRACEPARENT") {
+		t.Fatalf("expected invalid traceparent error, got %+v", validationErrors)
+	}
+	if store.calls != 0 {
+		t.Fatalf("invalid batch must not be stored")
+	}
+}
+
+func TestIngestRejectsInvalidTimestamp(t *testing.T) {
+	store := &fakeStore{}
+	service := New(store)
+	body := strings.Replace(validBatch(), `"observed_at": "2026-07-22T04:00:00.000000000Z"`, `"observed_at": "2026-07-22 04:00:00"`, 1)
+
+	_, validationErrors, err := service.Ingest(context.Background(), []byte(body))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !hasValidationCode(validationErrors, "BKN_TRACE_INVALID_TIMESTAMP") {
+		t.Fatalf("expected invalid timestamp error, got %+v", validationErrors)
+	}
+	if store.calls != 0 {
+		t.Fatalf("invalid batch must not be stored")
+	}
+}
+
+func TestIngestRejectsEmptyEvents(t *testing.T) {
+	store := &fakeStore{}
+	service := New(store)
+
+	_, validationErrors, err := service.Ingest(context.Background(), []byte(emptyEventsBatch()))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !hasValidationCode(validationErrors, "BKN_TRACE_REQUIRED_FIELD_MISSING") {
+		t.Fatalf("expected required field error, got %+v", validationErrors)
+	}
+	if store.calls != 0 {
+		t.Fatalf("invalid batch must not be stored")
+	}
+}
+
+func TestIngestAllowsReferenceLikeStringsAndNonSensitiveKeySubstrings(t *testing.T) {
+	store := &fakeStore{}
+	service := New(store)
+	body := strings.Replace(validBatch(), `"version_status": "versioned"`, `"version_status": "versioned",
+        "source_url": "https://docs.example.com/source/123",
+        "owner_ref": "user@company.com",
+        "prompt_note": "prompt: is a label in external documentation",
+        "token_bucket": "rate-limit-window",
+        "cookie_policy": "same-site",
+        "authorization_scope": "trace:evidence"`, 1)
+
+	_, validationErrors, err := service.Ingest(context.Background(), []byte(body))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(validationErrors) > 0 {
+		t.Fatalf("unexpected validation errors: %+v", validationErrors)
+	}
+	if store.calls != 1 {
+		t.Fatalf("expected evidence to be stored once, got %d", store.calls)
+	}
+}
+
+func hasValidationCode(validationErrors evidencevo.ValidationErrors, code string) bool {
+	for _, validationError := range validationErrors {
+		if validationError.Code == code {
+			return true
+		}
+	}
+	return false
 }
 
 func validBatch() string {
@@ -207,5 +340,52 @@ func sensitiveBatch() string {
       }
     }
   ]
+}`
+}
+
+func unknownClaimIDBatch() string {
+	return `{
+  "bkn.trace.schema.version": "2.0.0",
+  "trace": {
+    "trace_id": "8c0d0000000000000000000000000004",
+    "bkn.request.id": "req_phase2_004",
+    "traceparent": "00-8c0d0000000000000000000000000004-1f12000000000004-01",
+    "business_domain": "bd_demo",
+    "bkn.account.id": "acct_demo",
+    "bkn.account.type": "app"
+  },
+  "events": [
+    {
+      "event_id": "evt_unknown_claim",
+      "event_type": "evidence.refs.created",
+      "bkn.trace.schema.version": "2.0.0",
+      "observed_at": "2026-07-22T04:00:00.000000000Z",
+      "emitted_at": "2026-07-22T04:00:00.001000000Z",
+      "producer_module": "third-party-agent",
+      "trace_id": "8c0d0000000000000000000000000004",
+      "span_id": "1f12000000000004",
+      "bkn.request.id": "req_phase2_004",
+      "bkn.operation.name": "agent.answer",
+      "payload": {
+        "claim_id": "claim_DOES_NOT_EXIST",
+        "evidence_refs": [{"ref_id": "eref_004"}]
+      }
+    }
+  ]
+}`
+}
+
+func emptyEventsBatch() string {
+	return `{
+  "bkn.trace.schema.version": "2.0.0",
+  "trace": {
+    "trace_id": "8c0d0000000000000000000000000005",
+    "bkn.request.id": "req_phase2_005",
+    "traceparent": "00-8c0d0000000000000000000000000005-1f12000000000005-01",
+    "business_domain": "bd_demo",
+    "bkn.account.id": "acct_demo",
+    "bkn.account.type": "app"
+  },
+  "events": []
 }`
 }
