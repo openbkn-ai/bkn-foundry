@@ -1,0 +1,66 @@
+{
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "kn_id": {
+        "type": "string",
+        "description": "知识网络 ID。也可改用 X-Kn-ID 请求头传入。"
+      },
+      "action_type_id": {
+        "type": "string",
+        "description": "按行动类型 ID 过滤（可选）。"
+      },
+      "status": {
+        "type": "string",
+        "description": "按执行状态过滤（可选）：pending/running/completed/failed/cancelled。"
+      },
+      "trigger_type": {
+        "type": "string",
+        "description": "按触发方式过滤（可选）：manual/scheduled。"
+      },
+      "start_time_from": {
+        "type": "integer",
+        "description": "起始时间下界（Unix 毫秒，可选）。"
+      },
+      "start_time_to": {
+        "type": "integer",
+        "description": "起始时间上界（Unix 毫秒，可选）。"
+      },
+      "offset": {
+        "type": "integer",
+        "description": "分页偏移（可选）。"
+      },
+      "limit": {
+        "type": "integer",
+        "description": "分页条数（可选），默认 20，最大 1000。"
+      }
+    },
+    "required": [
+      "kn_id"
+    ]
+  },
+  "output_schema": {
+    "type": "object",
+    "description": "行动执行历史列表（分页）。",
+    "properties": {
+      "total_count": {
+        "type": "integer",
+        "description": "匹配的执行总数"
+      },
+      "entries": {
+        "type": "array",
+        "description": "执行记录列表（每条含 id、action_type_id、status、计数、时间与 action_type_snapshot 等）",
+        "items": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "search_after": {
+        "type": "array",
+        "description": "分页游标；将本值作为下一页请求的 search_after 传入以继续翻页",
+        "items": {}
+      }
+    },
+    "additionalProperties": true
+  }
+}

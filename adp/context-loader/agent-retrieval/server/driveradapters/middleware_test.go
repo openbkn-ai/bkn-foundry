@@ -195,6 +195,14 @@ func (stubActionRecallHandler) ExecuteAction(c *gin.Context) {
 	c.Status(http.StatusOK)
 }
 
+func (stubActionRecallHandler) GetActionExecution(c *gin.Context) {
+	c.Status(http.StatusOK)
+}
+
+func (stubActionRecallHandler) ListActionExecutions(c *gin.Context) {
+	c.Status(http.StatusOK)
+}
+
 type stubQueryObjectInstanceHandler struct{}
 
 func (stubQueryObjectInstanceHandler) QueryObjectInstance(c *gin.Context) {

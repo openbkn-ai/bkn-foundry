@@ -26,6 +26,16 @@ func (s *stubActionRecallService) ExecuteAction(_ context.Context, _ *interfaces
 	}, nil
 }
 
+func (s *stubActionRecallService) GetActionExecution(_ context.Context, _ *interfaces.KnGetActionExecutionRequest) (map[string]any, error) {
+	s.called = true
+	return map[string]any{"id": "exec-001", "status": "completed"}, nil
+}
+
+func (s *stubActionRecallService) ListActionExecutions(_ context.Context, _ *interfaces.KnListActionExecutionsRequest) (map[string]any, error) {
+	s.called = true
+	return map[string]any{"total": 0, "executions": []any{}}, nil
+}
+
 func (s *stubActionRecallService) GetActionInfo(_ context.Context, _ *interfaces.KnActionRecallRequest) (*interfaces.KnActionRecallResponse, error) {
 	s.called = true
 	return &interfaces.KnActionRecallResponse{

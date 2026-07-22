@@ -39,3 +39,37 @@ func (s *knActionRecallServiceImpl) ExecuteAction(ctx context.Context, req *inte
 		CreatedAt:   resp.CreatedAt,
 	}, nil
 }
+
+// GetActionExecution 查询单次行动执行的状态与结果。
+// 与 execute_action 配对：Agent 用 execute_action 提交后拿到 execution_id，
+// 再用本接口查询该次执行的 status 与逐对象 results。
+func (s *knActionRecallServiceImpl) GetActionExecution(ctx context.Context, req *interfaces.KnGetActionExecutionRequest) (map[string]any, error) {
+	resp, err := s.ontologyQuery.GetActionExecution(ctx, &interfaces.GetActionExecutionRequest{
+		KnID:        req.KnID,
+		ExecutionID: req.ExecutionID,
+	})
+	if err != nil {
+		s.logger.WithContext(ctx).Errorf("[KnActionRecall#GetActionExecution] GetActionExecution failed, err: %v", err)
+		return nil, err
+	}
+	return resp, nil
+}
+
+// ListActionExecutions 列出行动执行历史（可按行动类型/状态/触发方式过滤，分页）。
+func (s *knActionRecallServiceImpl) ListActionExecutions(ctx context.Context, req *interfaces.KnListActionExecutionsRequest) (map[string]any, error) {
+	resp, err := s.ontologyQuery.ListActionExecutions(ctx, &interfaces.ListActionExecutionsRequest{
+		KnID:          req.KnID,
+		ActionTypeID:  req.ActionTypeID,
+		Status:        req.Status,
+		TriggerType:   req.TriggerType,
+		StartTimeFrom: req.StartTimeFrom,
+		StartTimeTo:   req.StartTimeTo,
+		Offset:        req.Offset,
+		Limit:         req.Limit,
+	})
+	if err != nil {
+		s.logger.WithContext(ctx).Errorf("[KnActionRecall#ListActionExecutions] ListActionExecutions failed, err: %v", err)
+		return nil, err
+	}
+	return resp, nil
+}

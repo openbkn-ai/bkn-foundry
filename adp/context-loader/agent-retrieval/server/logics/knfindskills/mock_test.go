@@ -125,6 +125,14 @@ func (m *testOntologyQuery) ExecuteActions(ctx context.Context, req *interfaces.
 	return nil, nil
 }
 
+func (m *testOntologyQuery) GetActionExecution(ctx context.Context, req *interfaces.GetActionExecutionRequest) (map[string]any, error) {
+	return nil, nil
+}
+
+func (m *testOntologyQuery) ListActionExecutions(ctx context.Context, req *interfaces.ListActionExecutionsRequest) (map[string]any, error) {
+	return nil, nil
+}
+
 func makeSkillInstances(count int) []any {
 	data := make([]any, count)
 	for i := 0; i < count; i++ {

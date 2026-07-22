@@ -35,6 +35,8 @@ const (
 	toolKeyGetLogicPropertiesValues = "get_logic_properties_values"
 	toolKeyGetActionInfo            = "get_action_info"
 	toolKeyExecuteAction           = "execute_action"
+	toolKeyGetActionExecution      = "get_action_execution"
+	toolKeyListActionExecutions    = "list_action_executions"
 	toolKeyFindSkills               = "find_skills"
 	toolKeyListKnowledgeNetworks    = "list_knowledge_networks"
 	toolKeyGetKnDetail              = "get_kn_detail"
@@ -136,6 +138,20 @@ func NewMCPHandler() http.Handler {
 	mcpServer.AddTool(
 		newToolWithSchemas(executeActionName, executeActionDesc, eaInput, eaOutput),
 		handleExecuteAction(getActionInfoService),
+	)
+
+	getActionExecutionName, getActionExecutionDesc := localeBundle.ToolMeta(toolKeyGetActionExecution)
+	gaeInput, gaeOutput := localeBundle.ToolSchemas(toolKeyGetActionExecution)
+	mcpServer.AddTool(
+		newToolWithSchemas(getActionExecutionName, getActionExecutionDesc, gaeInput, gaeOutput),
+		handleGetActionExecution(getActionInfoService),
+	)
+
+	listActionExecutionsName, listActionExecutionsDesc := localeBundle.ToolMeta(toolKeyListActionExecutions)
+	laeInput, laeOutput := localeBundle.ToolSchemas(toolKeyListActionExecutions)
+	mcpServer.AddTool(
+		newToolWithSchemas(listActionExecutionsName, listActionExecutionsDesc, laeInput, laeOutput),
+		handleListActionExecutions(getActionInfoService),
 	)
 
 	findSkillsService := logicsFs.NewFindSkillsService()

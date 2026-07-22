@@ -11,6 +11,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
+	"strconv"
 	"sync"
 
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/common"
@@ -41,6 +43,10 @@ const (
 	queryActionsURI = "/in/v1/knowledge-networks/%s/action-types/%s"
 	// https://{host}:{port}/api/ontology-query/in/v1/knowledge-networks/:kn_id/action-types/:at_id/execute
 	executeActionsURI = "/in/v1/knowledge-networks/%s/action-types/%s/execute"
+	// https://{host}:{port}/api/ontology-query/in/v1/knowledge-networks/:kn_id/action-executions/:execution_id
+	getActionExecutionURI = "/in/v1/knowledge-networks/%s/action-executions/%s"
+	// https://{host}:{port}/api/ontology-query/in/v1/knowledge-networks/:kn_id/action-logs
+	listActionExecutionsURI = "/in/v1/knowledge-networks/%s/action-logs"
 	// https://{host}:{port}/api/ontology-query/in/v1/knowledge-networks/:kn_id/subgraph
 	queryInstanceSubgraphURI = "/in/v1/knowledge-networks/%s/subgraph"
 )
@@ -236,6 +242,83 @@ func (o *ontologyQueryClient) ExecuteActions(ctx context.Context, req *interface
 	o.logger.WithContext(ctx).Debugf("[OntologyQuery#ExecuteActions] Response: %s", string(respJSON))
 
 	return resp, nil
+}
+
+// GetActionExecution 查询单次行动执行的状态与结果
+func (o *ontologyQueryClient) GetActionExecution(ctx context.Context, req *interfaces.GetActionExecutionRequest) (map[string]any, error) {
+	uri := fmt.Sprintf(getActionExecutionURI, req.KnID, req.ExecutionID)
+	reqURL := fmt.Sprintf("%s%s", o.baseURL, uri)
+
+	o.logger.WithContext(ctx).Debugf("[OntologyQuery#GetActionExecution] URL: %s", reqURL)
+
+	header := common.GetHeaderFromCtx(ctx)
+	header[rest.ContentTypeKey] = rest.ContentTypeJSON
+
+	_, respBody, err := o.httpClient.Get(ctx, reqURL, nil, header)
+	if err != nil {
+		o.logger.WithContext(ctx).Errorf("[OntologyQuery#GetActionExecution] Request failed, err: %v", err)
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway, fmt.Sprintf("行动执行查询接口调用失败: %v", err))
+	}
+
+	result := map[string]any{}
+	resultByt := utils.ObjectToByte(respBody)
+	if err = json.Unmarshal(resultByt, &result); err != nil {
+		o.logger.WithContext(ctx).Errorf("[OntologyQuery#GetActionExecution] Unmarshal failed, body: %s, err: %v", string(resultByt), err)
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError, fmt.Sprintf("解析行动执行查询响应失败: %v", err))
+	}
+
+	return result, nil
+}
+
+// ListActionExecutions 列出行动执行历史（可过滤，分页）
+func (o *ontologyQueryClient) ListActionExecutions(ctx context.Context, req *interfaces.ListActionExecutionsRequest) (map[string]any, error) {
+	uri := fmt.Sprintf(listActionExecutionsURI, req.KnID)
+	reqURL := fmt.Sprintf("%s%s", o.baseURL, uri)
+
+	query := url.Values{}
+	if req.ActionTypeID != "" {
+		query.Set("action_type_id", req.ActionTypeID)
+	}
+	if req.Status != "" {
+		query.Set("status", req.Status)
+	}
+	if req.TriggerType != "" {
+		query.Set("trigger_type", req.TriggerType)
+	}
+	if req.StartTimeFrom > 0 {
+		query.Set("start_time_from", strconv.FormatInt(req.StartTimeFrom, 10))
+	}
+	if req.StartTimeTo > 0 {
+		query.Set("start_time_to", strconv.FormatInt(req.StartTimeTo, 10))
+	}
+	if req.Offset > 0 {
+		query.Set("offset", strconv.Itoa(req.Offset))
+	}
+	if req.Limit > 0 {
+		query.Set("limit", strconv.Itoa(req.Limit))
+	}
+	// 默认返回总数，便于分页
+	query.Set("need_total", "true")
+
+	o.logger.WithContext(ctx).Debugf("[OntologyQuery#ListActionExecutions] URL: %s?%s", reqURL, query.Encode())
+
+	header := common.GetHeaderFromCtx(ctx)
+	header[rest.ContentTypeKey] = rest.ContentTypeJSON
+
+	_, respBody, err := o.httpClient.Get(ctx, reqURL, query, header)
+	if err != nil {
+		o.logger.WithContext(ctx).Errorf("[OntologyQuery#ListActionExecutions] Request failed, err: %v", err)
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway, fmt.Sprintf("行动执行历史查询接口调用失败: %v", err))
+	}
+
+	result := map[string]any{}
+	resultByt := utils.ObjectToByte(respBody)
+	if err = json.Unmarshal(resultByt, &result); err != nil {
+		o.logger.WithContext(ctx).Errorf("[OntologyQuery#ListActionExecutions] Unmarshal failed, body: %s, err: %v", string(resultByt), err)
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError, fmt.Sprintf("解析行动执行历史查询响应失败: %v", err))
+	}
+
+	return result, nil
 }
 
 // QueryInstanceSubgraph 查询对象子图

@@ -26,6 +26,8 @@ import (
 type KnActionRecallHandler interface {
 	GetActionInfo(c *gin.Context)
 	ExecuteAction(c *gin.Context)
+	GetActionExecution(c *gin.Context)
+	ListActionExecutions(c *gin.Context)
 }
 
 type knActionRecallHandler struct {
@@ -151,5 +153,85 @@ func (h *knActionRecallHandler) ExecuteAction(c *gin.Context) {
 	}
 
 	// 返回成功响应（异步，返回 execution_id）
+	rest.ReplyOK(c, http.StatusOK, resp)
+}
+
+// GetActionExecution 查询单次行动执行的状态与结果
+func (h *knActionRecallHandler) GetActionExecution(c *gin.Context) {
+	var err error
+	req := &interfaces.KnGetActionExecutionRequest{}
+
+	if err = c.ShouldBindHeader(req); err != nil {
+		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error())
+		rest.ReplyError(c, err)
+		return
+	}
+	if err = c.ShouldBindQuery(req); err != nil {
+		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error())
+		rest.ReplyError(c, err)
+		return
+	}
+	if err = c.ShouldBindJSON(req); err != nil {
+		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error())
+		rest.ReplyError(c, err)
+		return
+	}
+	if err = defaults.Set(req); err != nil {
+		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error())
+		rest.ReplyError(c, err)
+		return
+	}
+	if err = validator.New().Struct(req); err != nil {
+		rest.ReplyError(c, err)
+		return
+	}
+
+	resp, err := h.KnActionRecallService.GetActionExecution(c.Request.Context(), req)
+	if err != nil {
+		h.Logger.Errorf("[KnActionRecallHandler#GetActionExecution] GetActionExecution failed, err: %v", err)
+		rest.ReplyError(c, err)
+		return
+	}
+
+	rest.ReplyOK(c, http.StatusOK, resp)
+}
+
+// ListActionExecutions 列出行动执行历史（可过滤，分页）
+func (h *knActionRecallHandler) ListActionExecutions(c *gin.Context) {
+	var err error
+	req := &interfaces.KnListActionExecutionsRequest{}
+
+	if err = c.ShouldBindHeader(req); err != nil {
+		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error())
+		rest.ReplyError(c, err)
+		return
+	}
+	if err = c.ShouldBindQuery(req); err != nil {
+		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error())
+		rest.ReplyError(c, err)
+		return
+	}
+	if err = c.ShouldBindJSON(req); err != nil {
+		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error())
+		rest.ReplyError(c, err)
+		return
+	}
+	if err = defaults.Set(req); err != nil {
+		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error())
+		rest.ReplyError(c, err)
+		return
+	}
+	if err = validator.New().Struct(req); err != nil {
+		rest.ReplyError(c, err)
+		return
+	}
+
+	resp, err := h.KnActionRecallService.ListActionExecutions(c.Request.Context(), req)
+	if err != nil {
+		h.Logger.Errorf("[KnActionRecallHandler#ListActionExecutions] ListActionExecutions failed, err: %v", err)
+		rest.ReplyError(c, err)
+		return
+	}
+
 	rest.ReplyOK(c, http.StatusOK, resp)
 }

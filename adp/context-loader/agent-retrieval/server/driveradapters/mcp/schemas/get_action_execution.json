@@ -1,0 +1,54 @@
+{
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "kn_id": {
+        "type": "string",
+        "description": "知识网络 ID。也可改用 X-Kn-ID 请求头传入。"
+      },
+      "execution_id": {
+        "type": "string",
+        "description": "行动执行 ID，由 execute_action 返回。"
+      }
+    },
+    "required": [
+      "kn_id",
+      "execution_id"
+    ]
+  },
+  "output_schema": {
+    "type": "object",
+    "description": "单次行动执行的详情，含整体状态与逐对象结果。",
+    "properties": {
+      "id": {
+        "type": "string",
+        "description": "执行 ID"
+      },
+      "status": {
+        "type": "string",
+        "description": "整体状态：pending/running/completed/failed/cancelled"
+      },
+      "total_count": {
+        "type": "integer",
+        "description": "本次执行涉及的对象总数"
+      },
+      "success_count": {
+        "type": "integer",
+        "description": "成功对象数"
+      },
+      "failed_count": {
+        "type": "integer",
+        "description": "失败对象数"
+      },
+      "results": {
+        "type": "array",
+        "description": "逐对象执行结果（含 status、parameters、result/error 等）",
+        "items": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "additionalProperties": true
+  }
+}

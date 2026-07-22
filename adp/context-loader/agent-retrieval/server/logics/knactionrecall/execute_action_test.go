@@ -101,3 +101,72 @@ func TestExecuteAction_Error(t *testing.T) {
 		convey.So(err, convey.ShouldNotBeNil)
 	})
 }
+
+// TestGetActionExecution_Success 透传单次执行查询结果
+func TestGetActionExecution_Success(t *testing.T) {
+	convey.Convey("TestGetActionExecution_Success", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockLogger := mocks.NewMockLogger(ctrl)
+		mockOntologyQuery := mocks.NewMockDrivenOntologyQuery(ctrl)
+		mockOperatorIntegration := mocks.NewMockDrivenOperatorIntegration(ctrl)
+		mockLogger.EXPECT().WithContext(gomock.Any()).Return(mockLogger).AnyTimes()
+		mockLogger.EXPECT().Errorf(gomock.Any(), gomock.Any()).AnyTimes()
+
+		service := &knActionRecallServiceImpl{
+			logger:              mockLogger,
+			config:              &config.Config{},
+			ontologyQuery:       mockOntologyQuery,
+			operatorIntegration: mockOperatorIntegration,
+		}
+
+		mockOntologyQuery.EXPECT().GetActionExecution(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, r *interfaces.GetActionExecutionRequest) (map[string]any, error) {
+				convey.So(r.KnID, convey.ShouldEqual, "kn-001")
+				convey.So(r.ExecutionID, convey.ShouldEqual, "exec-001")
+				return map[string]any{"id": "exec-001", "status": "completed"}, nil
+			})
+
+		resp, err := service.GetActionExecution(context.Background(), &interfaces.KnGetActionExecutionRequest{
+			KnID: "kn-001", ExecutionID: "exec-001",
+		})
+		convey.So(err, convey.ShouldBeNil)
+		convey.So(resp["status"], convey.ShouldEqual, "completed")
+	})
+}
+
+// TestListActionExecutions_Success 透传执行历史查询,过滤参数正确传递
+func TestListActionExecutions_Success(t *testing.T) {
+	convey.Convey("TestListActionExecutions_Success", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockLogger := mocks.NewMockLogger(ctrl)
+		mockOntologyQuery := mocks.NewMockDrivenOntologyQuery(ctrl)
+		mockOperatorIntegration := mocks.NewMockDrivenOperatorIntegration(ctrl)
+		mockLogger.EXPECT().WithContext(gomock.Any()).Return(mockLogger).AnyTimes()
+		mockLogger.EXPECT().Errorf(gomock.Any(), gomock.Any()).AnyTimes()
+
+		service := &knActionRecallServiceImpl{
+			logger:              mockLogger,
+			config:              &config.Config{},
+			ontologyQuery:       mockOntologyQuery,
+			operatorIntegration: mockOperatorIntegration,
+		}
+
+		mockOntologyQuery.EXPECT().ListActionExecutions(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, r *interfaces.ListActionExecutionsRequest) (map[string]any, error) {
+				convey.So(r.KnID, convey.ShouldEqual, "kn-001")
+				convey.So(r.Status, convey.ShouldEqual, "completed")
+				convey.So(r.Limit, convey.ShouldEqual, 10)
+				return map[string]any{"total": 1, "executions": []any{map[string]any{"id": "exec-001"}}}, nil
+			})
+
+		resp, err := service.ListActionExecutions(context.Background(), &interfaces.KnListActionExecutionsRequest{
+			KnID: "kn-001", Status: "completed", Limit: 10,
+		})
+		convey.So(err, convey.ShouldBeNil)
+		convey.So(resp["total"], convey.ShouldEqual, 1)
+	})
+}

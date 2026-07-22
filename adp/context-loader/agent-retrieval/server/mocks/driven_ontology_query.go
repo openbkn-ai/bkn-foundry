@@ -56,6 +56,36 @@ func (mr *MockDrivenOntologyQueryMockRecorder) ExecuteActions(ctx, req any) *gom
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteActions", reflect.TypeOf((*MockDrivenOntologyQuery)(nil).ExecuteActions), ctx, req)
 }
 
+// GetActionExecution mocks base method.
+func (m *MockDrivenOntologyQuery) GetActionExecution(ctx context.Context, req *interfaces.GetActionExecutionRequest) (map[string]any, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetActionExecution", ctx, req)
+	ret0, _ := ret[0].(map[string]any)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetActionExecution indicates an expected call of GetActionExecution.
+func (mr *MockDrivenOntologyQueryMockRecorder) GetActionExecution(ctx, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetActionExecution", reflect.TypeOf((*MockDrivenOntologyQuery)(nil).GetActionExecution), ctx, req)
+}
+
+// ListActionExecutions mocks base method.
+func (m *MockDrivenOntologyQuery) ListActionExecutions(ctx context.Context, req *interfaces.ListActionExecutionsRequest) (map[string]any, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListActionExecutions", ctx, req)
+	ret0, _ := ret[0].(map[string]any)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListActionExecutions indicates an expected call of ListActionExecutions.
+func (mr *MockDrivenOntologyQueryMockRecorder) ListActionExecutions(ctx, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListActionExecutions", reflect.TypeOf((*MockDrivenOntologyQuery)(nil).ListActionExecutions), ctx, req)
+}
+
 // QueryActions mocks base method.
 func (m *MockDrivenOntologyQuery) QueryActions(ctx context.Context, req *interfaces.QueryActionsRequest) (*interfaces.QueryActionsResponse, error) {
 	m.ctrl.T.Helper()

@@ -169,10 +169,56 @@ type ExecuteActionsResponse struct {
 	CreatedAt   int64  `json:"created_at"`
 }
 
+// KnGetActionExecutionRequest 查询单次行动执行的状态与结果
+type KnGetActionExecutionRequest struct {
+	KnID        string `json:"kn_id" validate:"required"`       // Knowledge Network ID
+	ExecutionID string `json:"execution_id" validate:"required"` // 由 execute_action 返回的执行 ID
+
+	AccountID   string `json:"-" header:"x-account-id"`
+	AccountType string `json:"-" header:"x-account-type"`
+}
+
+// KnListActionExecutionsRequest 列出行动执行历史（可按行动类型/状态/触发方式过滤，分页）
+type KnListActionExecutionsRequest struct {
+	KnID          string `json:"kn_id" validate:"required"` // Knowledge Network ID
+	ActionTypeID  string `json:"action_type_id,omitempty"`  // 按行动类型过滤（可选）
+	Status        string `json:"status,omitempty"`          // 按状态过滤：pending/running/completed/failed/cancelled（可选）
+	TriggerType   string `json:"trigger_type,omitempty"`    // 按触发方式过滤：manual/scheduled（可选）
+	StartTimeFrom int64  `json:"start_time_from,omitempty"` // 起始时间下界（Unix 毫秒，可选）
+	StartTimeTo   int64  `json:"start_time_to,omitempty"`   // 起始时间上界（Unix 毫秒，可选）
+	Offset        int    `json:"offset,omitempty"`          // 分页偏移（可选）
+	Limit         int    `json:"limit,omitempty"`           // 分页条数，默认 20，最大 1000（可选）
+
+	AccountID   string `json:"-" header:"x-account-id"`
+	AccountType string `json:"-" header:"x-account-type"`
+}
+
+// GetActionExecutionRequest 转发到 ontology-query 的单次执行查询请求
+type GetActionExecutionRequest struct {
+	KnID        string `json:"-"`
+	ExecutionID string `json:"-"`
+}
+
+// ListActionExecutionsRequest 转发到 ontology-query 的执行历史查询请求
+type ListActionExecutionsRequest struct {
+	KnID          string
+	ActionTypeID  string
+	Status        string
+	TriggerType   string
+	StartTimeFrom int64
+	StartTimeTo   int64
+	Offset        int
+	Limit         int
+}
+
 // IKnActionRecallService Knowledge Network Action Recall Service Interface
 type IKnActionRecallService interface {
 	// GetActionInfo gets action information (action recall)
 	GetActionInfo(ctx context.Context, req *KnActionRecallRequest) (*KnActionRecallResponse, error)
 	// ExecuteAction executes an action type (async), returning an execution id
 	ExecuteAction(ctx context.Context, req *KnActionExecuteRequest) (*KnActionExecuteResponse, error)
+	// GetActionExecution retrieves a single execution's status and results by execution id
+	GetActionExecution(ctx context.Context, req *KnGetActionExecutionRequest) (map[string]any, error)
+	// ListActionExecutions lists action execution history with optional filters and pagination
+	ListActionExecutions(ctx context.Context, req *KnListActionExecutionsRequest) (map[string]any, error)
 }

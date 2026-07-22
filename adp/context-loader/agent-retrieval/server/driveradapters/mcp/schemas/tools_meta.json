@@ -23,6 +23,14 @@
     "name": "execute_action",
     "description": "执行行动。先用 get_action_info 获取行动的 dynamic_params schema，再填入真实动态参数值触发执行（异步，返回 execution_id）。"
   },
+  "get_action_execution": {
+    "name": "get_action_execution",
+    "description": "查询单次行动执行的状态与结果。用 execute_action 返回的 execution_id 查询整体 status 与逐对象 results。"
+  },
+  "list_action_executions": {
+    "name": "list_action_executions",
+    "description": "列出行动执行历史，可按行动类型、状态、触发方式过滤并分页。"
+  },
   "find_skills": {
     "name": "find_skills",
     "description": "技能召回。根据知识网络、对象类型、实例上下文等召回匹配的可用技能列表。"

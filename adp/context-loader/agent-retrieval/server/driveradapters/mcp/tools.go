@@ -270,6 +270,78 @@ func handleExecuteAction(service interfaces.IKnActionRecallService) func(ctx con
 	}
 }
 
+// handleGetActionExecution handles get_action_execution tool calls.
+// 与 execute_action 配对：用 execute_action 返回的 execution_id 查询该次执行的 status 与 results。
+func handleGetActionExecution(service interfaces.IKnActionRecallService) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		authCtx, ok := common.GetAccountAuthContextFromCtx(ctx)
+		if !ok {
+			return mcp.NewToolResultError("authentication required"), nil
+		}
+
+		getReq := &interfaces.KnGetActionExecutionRequest{}
+		if err := bindArguments(req, getReq); err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		if getReq.KnID == "" {
+			getReq.KnID = getKnIDFromHeader(req)
+		}
+		getReq.AccountID = authCtx.AccountID
+		getReq.AccountType = string(authCtx.AccountType)
+
+		if err := validator.New().Struct(getReq); err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		resp, err := service.GetActionExecution(ctx, getReq)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		// 执行状态/结果需机器可消费，始终返回 JSON。
+		result, err := BuildMCPToolResult(resp, rest.FormatJSON)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return result, nil
+	}
+}
+
+// handleListActionExecutions handles list_action_executions tool calls.
+// 列出行动执行历史（可按行动类型/状态/触发方式过滤，分页）。
+func handleListActionExecutions(service interfaces.IKnActionRecallService) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		authCtx, ok := common.GetAccountAuthContextFromCtx(ctx)
+		if !ok {
+			return mcp.NewToolResultError("authentication required"), nil
+		}
+
+		listReq := &interfaces.KnListActionExecutionsRequest{}
+		if err := bindArguments(req, listReq); err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		if listReq.KnID == "" {
+			listReq.KnID = getKnIDFromHeader(req)
+		}
+		listReq.AccountID = authCtx.AccountID
+		listReq.AccountType = string(authCtx.AccountType)
+
+		if err := validator.New().Struct(listReq); err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		resp, err := service.ListActionExecutions(ctx, listReq)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		// 执行历史需机器可消费，始终返回 JSON。
+		result, err := BuildMCPToolResult(resp, rest.FormatJSON)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return result, nil
+	}
+}
+
 // handleListKnowledgeNetworks handles list_knowledge_networks tool calls.
 // 用于让外部 Agent 发现可用的 kn_id（其余查询工具的前置）。
 func handleListKnowledgeNetworks(bkn interfaces.BknBackendAccess) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
