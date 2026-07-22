@@ -157,15 +157,38 @@ func (rs *resourceService) fillResourceOpsBulk(ctx context.Context, ids []string
 		return interfaces.ErrBulkAuthzUnsupported
 	}
 
-	resAccess, err := lister.AccessibleResourceIDs(ctx, accountInfo.ID,
-		resourceAuthResourceType(false), interfaces.COMMON_OPERATIONS)
-	if err != nil {
-		return err
+	// 只对本次 ids 里实际出现的资源类型发起 bulk 解析：多数账号/部署没有内部资源，
+	// 否则每次 List 都会白打一组 internal_resource 的鉴权往返。
+	var hasNormal, hasInternal bool
+	for _, id := range ids {
+		if _, isInternal := internalSet[id]; isInternal {
+			hasInternal = true
+		} else {
+			hasNormal = true
+		}
+		if hasNormal && hasInternal {
+			break
+		}
 	}
-	internalAccess, err := lister.AccessibleResourceIDs(ctx, accountInfo.ID,
-		resourceAuthResourceType(true), interfaces.COMMON_OPERATIONS)
-	if err != nil {
-		return err
+
+	var (
+		resAccess      map[string]interfaces.OpAccess
+		internalAccess map[string]interfaces.OpAccess
+		err            error
+	)
+	if hasNormal {
+		resAccess, err = lister.AccessibleResourceIDs(ctx, accountInfo.ID,
+			resourceAuthResourceType(false), interfaces.COMMON_OPERATIONS)
+		if err != nil {
+			return err
+		}
+	}
+	if hasInternal {
+		internalAccess, err = lister.AccessibleResourceIDs(ctx, accountInfo.ID,
+			resourceAuthResourceType(true), interfaces.COMMON_OPERATIONS)
+		if err != nil {
+			return err
+		}
 	}
 
 	for _, id := range ids {
