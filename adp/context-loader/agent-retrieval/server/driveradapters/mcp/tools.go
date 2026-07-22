@@ -293,12 +293,16 @@ func handleGetActionExecution(service interfaces.IKnActionRecallService) func(ct
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 
+		format, err := GetResponseFormatFromRequest(req)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
 		resp, err := service.GetActionExecution(ctx, getReq)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-		// 执行状态/结果需机器可消费，始终返回 JSON。
-		result, err := BuildMCPToolResult(resp, rest.FormatJSON)
+		result, err := BuildMCPToolResult(resp, format)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
@@ -329,12 +333,16 @@ func handleListActionExecutions(service interfaces.IKnActionRecallService) func(
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 
+		format, err := GetResponseFormatFromRequest(req)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
 		resp, err := service.ListActionExecutions(ctx, listReq)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-		// 执行历史需机器可消费，始终返回 JSON。
-		result, err := BuildMCPToolResult(resp, rest.FormatJSON)
+		result, err := BuildMCPToolResult(resp, format)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}

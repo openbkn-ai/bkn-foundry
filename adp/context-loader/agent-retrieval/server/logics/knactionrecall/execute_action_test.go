@@ -170,3 +170,60 @@ func TestListActionExecutions_Success(t *testing.T) {
 		convey.So(resp["total"], convey.ShouldEqual, 1)
 	})
 }
+
+// TestSlimActionExecution 精简投影剔除重货、保留核心字段
+func TestSlimActionExecution(t *testing.T) {
+	convey.Convey("TestSlimActionExecution", t, func() {
+		full := map[string]any{
+			"id":                  "exec-1",
+			"status":              "failed",
+			"total_count":         1,
+			"success_count":       0,
+			"failed_count":        1,
+			"dynamic_params":      map[string]any{"message": "hi"},
+			"action_type_snapshot": map[string]any{"parameters": []any{"a", "b"}}, // 重货，应剔除
+			"executor":            map[string]any{"id": "u1"},                     // 冗余，应剔除
+			"executor_id":         "u1",                                           // 冗余，应剔除
+			"action_source":       map[string]any{"tool_id": "t1"},               // 冗余，应剔除
+			"results_limit":       1000,                                           // 分页元数据，应剔除
+			"results": []any{
+				map[string]any{
+					"_instance_id":  "obj-14",
+					"_display":      "1990 World Cup",
+					"status":        "failed",
+					"parameters":    map[string]any{"message": "hi", "name": "张三"},
+					"error_message": "503",
+					"duration_ms":   1374,
+					"end_time":      123, // 逐对象里未列入保留集，应剔除
+				},
+			},
+		}
+
+		slim := slimActionExecution(full)
+
+		convey.Convey("保留核心字段", func() {
+			convey.So(slim["id"], convey.ShouldEqual, "exec-1")
+			convey.So(slim["status"], convey.ShouldEqual, "failed")
+			convey.So(slim["failed_count"], convey.ShouldEqual, 1)
+			convey.So(slim["dynamic_params"], convey.ShouldNotBeNil)
+		})
+		convey.Convey("剔除重货字段", func() {
+			convey.So(slim["action_type_snapshot"], convey.ShouldBeNil)
+			convey.So(slim["executor"], convey.ShouldBeNil)
+			convey.So(slim["executor_id"], convey.ShouldBeNil)
+			convey.So(slim["action_source"], convey.ShouldBeNil)
+			convey.So(slim["results_limit"], convey.ShouldBeNil)
+		})
+		convey.Convey("逐对象结果精简", func() {
+			results := slim["results"].([]any)
+			convey.So(len(results), convey.ShouldEqual, 1)
+			r := results[0].(map[string]any)
+			convey.So(r["_instance_id"], convey.ShouldEqual, "obj-14")
+			convey.So(r["status"], convey.ShouldEqual, "failed")
+			convey.So(r["error_message"], convey.ShouldEqual, "503")
+			convey.So(r["parameters"], convey.ShouldNotBeNil)
+			// 未列入保留集的字段被剔除
+			convey.So(r["end_time"], convey.ShouldBeNil)
+		})
+	})
+}
