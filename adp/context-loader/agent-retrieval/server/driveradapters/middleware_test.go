@@ -103,6 +103,58 @@ func TestMiddlewareHeaderAuthContext_LeavesMissingAccountHeadersEmpty(t *testing
 	})
 }
 
+func TestMiddlewareHeaderAuthContext_SetsTraceContext(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	convey.Convey("middlewareHeaderAuthContext preserves request id and sanitizes baggage", t, func() {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodGet, "/test", http.NoBody)
+		c.Request.Header.Set(common.HeaderBKNRequestID, "req_01JZVALIDREQUESTID000000002")
+		c.Request.Header.Set(string(interfaces.HeaderXAccountType), "tenant")
+		c.Request.Header.Set(common.HeaderBaggage, "bkn.account.type=admin,bkn.account.id=user-1,prompt=raw,bkn.runtime.env=test")
+
+		mw := middlewareHeaderAuthContext()
+		mw(c)
+
+		traceCtx, ok := common.GetTraceContextFromCtx(c.Request.Context())
+		convey.So(ok, convey.ShouldBeTrue)
+		convey.So(traceCtx.RequestID, convey.ShouldEqual, "req_01JZVALIDREQUESTID000000002")
+		convey.So(traceCtx.Baggage, convey.ShouldResemble, map[string]string{
+			"bkn.runtime.env": "test",
+		})
+
+		header := common.GetHeaderFromCtx(c.Request.Context())
+		convey.So(header[common.HeaderBKNRequestID], convey.ShouldEqual, "req_01JZVALIDREQUESTID000000002")
+		convey.So(header[common.HeaderLegacyRequestID], convey.ShouldEqual, "req_01JZVALIDREQUESTID000000002")
+		convey.So(header[common.HeaderBaggage], convey.ShouldEqual, "bkn.account.type=tenant,bkn.runtime.env=test")
+	})
+
+	convey.Convey("middlewareHeaderAuthContext falls back to x-request-id and generates missing ids", t, func() {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodGet, "/test", http.NoBody)
+		c.Request.Header.Set(common.HeaderLegacyRequestID, "req_01JZVALIDREQUESTID000000003")
+
+		mw := middlewareHeaderAuthContext()
+		mw(c)
+
+		traceCtx, ok := common.GetTraceContextFromCtx(c.Request.Context())
+		convey.So(ok, convey.ShouldBeTrue)
+		convey.So(traceCtx.RequestID, convey.ShouldEqual, "req_01JZVALIDREQUESTID000000003")
+
+		w = httptest.NewRecorder()
+		c, _ = gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodGet, "/test", http.NoBody)
+
+		mw(c)
+
+		traceCtx, ok = common.GetTraceContextFromCtx(c.Request.Context())
+		convey.So(ok, convey.ShouldBeTrue)
+		convey.So(common.IsValidBKNRequestID(traceCtx.RequestID), convey.ShouldBeTrue)
+	})
+}
+
 type stubPublicHydra struct{}
 
 func (stubPublicHydra) Introspect(_ context.Context, _ string) (*interfaces.TokenInfo, error) {

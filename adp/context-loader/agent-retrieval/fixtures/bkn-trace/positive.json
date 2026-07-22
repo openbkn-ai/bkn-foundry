@@ -1,0 +1,65 @@
+{
+  "bkn.trace.schema.version": "1.0.0",
+  "fixture_id": "context_loader_positive_search_schema",
+  "fixture_type": "positive",
+  "scenario": "context_loader_search_schema_success",
+  "expected_result": "pass",
+  "trace": {
+    "trace_id": "71010000000000000000000000000001",
+    "bkn.request.id": "req_context_loader_0001",
+    "traceparent": "00-71010000000000000000000000000001-7101000000000001-01",
+    "sampling.decision": "sampled"
+  },
+  "spans": [
+    {
+      "span_id": "7101000000000001",
+      "parent_span_id": null,
+      "name": "context-loader.request",
+      "kind": "server",
+      "bkn.module.name": "context-loader",
+      "bkn.operation.name": "context.search_schema",
+      "bkn.status": "ok",
+      "bkn.timestamp": "2026-07-21T06:00:00.000000000Z",
+      "duration_ms": 42
+    }
+  ],
+  "logs": [
+    {
+      "level": "info",
+      "message": "schema search completed",
+      "trace_id": "71010000000000000000000000000001",
+      "span_id": "7101000000000001",
+      "bkn.request.id": "req_context_loader_0001",
+      "bkn.module.name": "context-loader",
+      "bkn.operation.name": "context.search_schema",
+      "bkn.status": "ok",
+      "bkn.timestamp": "2026-07-21T06:00:00.042000000Z",
+      "bkn.trace.schema.version": "1.0.0",
+      "bkn.kn.id": "kn_demo",
+      "bkn.object_type.id": "customer",
+      "result.count": 3
+    }
+  ],
+  "events": [
+    {
+      "event_id": "evt_context_loader_0001",
+      "event_type": "context.refs.resolved",
+      "bkn.trace.schema.version": "1.0.0",
+      "observed_at": "2026-07-21T06:00:00.040000000Z",
+      "emitted_at": "2026-07-21T06:00:00.043000000Z",
+      "producer_module": "context-loader",
+      "trace_id": "71010000000000000000000000000001",
+      "span_id": "7101000000000001",
+      "bkn.request.id": "req_context_loader_0001",
+      "bkn.operation.name": "context.search_schema",
+      "payload": {
+        "result_count": 3,
+        "data.classification": "internal"
+      }
+    }
+  ],
+  "baggage": {
+    "bkn.account.type": "service",
+    "bkn.runtime.env": "test"
+  }
+}
