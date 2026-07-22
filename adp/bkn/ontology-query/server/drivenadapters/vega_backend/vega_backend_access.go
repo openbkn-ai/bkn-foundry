@@ -16,6 +16,7 @@ import (
 
 	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-comm-go/logger"
+	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-comm-go/rest"
 
 	"ontology-query/common"
@@ -59,6 +60,9 @@ func (v *vegaBackendAccess) buildHeaders(ctx context.Context) map[string]string 
 }
 
 func (v *vegaBackendAccess) QueryResourceData(ctx context.Context, resourceID string, params *interfaces.ResourceDataQueryParams) (*interfaces.DatasetQueryResponse, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "QueryResourceData")
+	defer span.End()
+
 	httpURL := fmt.Sprintf("%s/resources/%s/data", v.baseURL, url.PathEscape(resourceID))
 	headers := v.buildHeaders(ctx)
 	headers[interfaces.HTTP_HEADER_METHOD_OVERRIDE] = http.MethodGet
