@@ -565,9 +565,7 @@ paths:
                     module_type: object_type
               检索对象类-非第一次:
                 value:
-                  search_after:
-                    - 4.8061843
-                    - pod_has_metric_test
+                  cursor: cursor-object-types-1
                   need_total: true
                   limit: 1
                   condition:
@@ -1095,9 +1093,7 @@ paths:
                         IfNameModify: false
                         module_type: object_type
                     total_count: 2
-                    search_after:
-                      - 4.8061843
-                      - pod_has_metric_test
+                    next_cursor: cursor-object-types-1
                 检索对象类-非第一次:
                   value:
                     entries:
@@ -1584,9 +1580,7 @@ paths:
                         display_key: pod_name
                         IfNameModify: false
                         module_type: object_type
-                    search_after:
-                      - 4.806153
-                      - pod_has_metric_test2
+                    next_cursor: cursor-object-types-2
           description: "重载GET, 检索对象类"
       summary: 创建或检索对象类
     parameters:
@@ -2398,8 +2392,8 @@ components:
           type: string
     override--get:
       oneOf:
-        - $ref: "#/components/schemas/FirstQueryWithSearchAfter"
-        - $ref: "#/components/schemas/PageTurnQueryWithSearchAfter"
+        - $ref: "#/components/schemas/FirstQueryWithCursor"
+        - $ref: "#/components/schemas/PageTurnQueryWithCursor"
       description: 对象类检索请求体
       type: object
     ObjectTypeSearchResponse:
@@ -2408,7 +2402,6 @@ components:
         - groups
         - type
         - entries
-        - search_after
       type: object
       properties:
         entries:
@@ -2419,10 +2412,9 @@ components:
         total_count:
           description: 总条数
           type: integer
-        search_after:
-          description: 表示返回的最后一个文档的排序值，获取这个用于下一次 search_after 分页。
-          type: array
-          items: {}
+        next_cursor:
+          description: 不透明续页游标；下一页将其作为 cursor 传回。
+          type: string
     Parameter4Operator:
       description: 逻辑参数
       required:
@@ -2918,7 +2910,7 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Condition"
-    FirstQueryWithSearchAfter:
+    FirstQueryWithCursor:
       description: 对象类检索第一次请求
       required:
         - limit
@@ -2943,11 +2935,11 @@ components:
         need_total:
           description: 是否需要总数，默认false
           type: boolean
-    PageTurnQueryWithSearchAfter:
+    PageTurnQueryWithCursor:
       description: 分页查询的后续分页查询请求
       required:
         - limit
-        - search_after
+        - cursor
         - condition
       type: object
       properties:
@@ -2970,10 +2962,9 @@ components:
         need_total:
           description: 是否需要总数，默认false
           type: boolean
-        search_after:
-          description: 上次查询返回的最后一个文档的排序值。
-          type: array
-          items: {}
+        cursor:
+          description: 上次响应返回的 next_cursor。
+          type: string
     condition_and:
       description: and的过滤条件
       required:

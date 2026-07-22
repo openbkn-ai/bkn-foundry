@@ -3,27 +3,163 @@ package logic_view
 import (
 	"context"
 	"errors"
+	"net/http"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-comm-go/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"vega-backend/interfaces"
+	vmock "vega-backend/interfaces/mock"
 )
 
-func TestLogicViewServiceQuery(t *testing.T) {
+func TestLogicViewServiceQueryWithPaging(t *testing.T) {
 	t.Run("returns error for unsupported logic type", func(t *testing.T) {
 		svc := &logicViewService{}
-		rows, total, err := svc.Query(context.Background(), &interfaces.Resource{
+		result, err := svc.QueryWithPaging(context.Background(), &interfaces.Resource{
 			ID:        "logic-1",
 			LogicType: "unsupported",
 		}, &interfaces.ResourceDataQueryParams{})
 
 		require.Error(t, err)
-		assert.Nil(t, rows)
-		assert.Zero(t, total)
+		assert.Nil(t, result)
 		assert.Contains(t, err.Error(), "not supported")
 	})
+}
+
+func TestLogicViewServiceCursorContinuation(t *testing.T) {
+	t.Run("delegates cursor continuation to raw query service", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		queryService := vmock.NewMockRawQueryService(ctrl)
+		svc := &logicViewService{qs: queryService}
+		nextCursor := "next"
+		totalCount := int64(1)
+		queryService.EXPECT().Execute(gomock.Any(), gomock.Cond(func(req *interfaces.RawQueryRequest) bool {
+			return req.Query == nil && req.QueryFormat == "" && req.Paging.Cursor == "opaque-cursor" &&
+				req.ResourceDataResourceID == "logic-1" && req.ResourceDataUpdateTime == 42
+		})).Return(&interfaces.RawQueryResponse{
+			Entries:    []map[string]any{{"id": "row-1"}},
+			TotalCount: &totalCount,
+			Paging:     &interfaces.PagingResponse{NextCursor: &nextCursor},
+		}, nil)
+
+		result, err := svc.QueryWithPaging(context.Background(), &interfaces.Resource{ID: "logic-1", UpdateTime: 42}, &interfaces.ResourceDataQueryParams{
+			Paging: interfaces.PagingRequest{Cursor: "opaque-cursor"},
+		})
+
+		require.NoError(t, err)
+		assert.Equal(t, []map[string]any{{"id": "row-1"}}, result.Entries)
+		assert.Equal(t, &nextCursor, result.Paging.NextCursor)
+		assert.True(t, result.NeedTotal)
+	})
+}
+
+func TestQueryDerivedLogicViewRejectsUnavailableSource(t *testing.T) {
+	view := &interfaces.LogicView{Resource: interfaces.Resource{LogicDefinition: []*interfaces.LogicDefinitionNode{{
+		Type:   interfaces.LogicDefinitionNodeType_Resource,
+		Config: map[string]any{"resource_id": "source-1"},
+	}}}}
+
+	t.Run("disabled source resource", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockRS := vmock.NewMockResourceService(ctrl)
+		svc := &logicViewService{rs: mockRS}
+		mockRS.EXPECT().GetByID(gomock.Any(), "source-1").Return(&interfaces.Resource{
+			ID: "source-1", Status: interfaces.ResourceStatusDisabled,
+		}, nil)
+
+		_, _, err := svc.queryDerivedLogicView(context.Background(), view, &interfaces.ResourceDataQueryParams{})
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
+	})
+
+	t.Run("disabled source catalog", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockRS := vmock.NewMockResourceService(ctrl)
+		mockCS := vmock.NewMockCatalogService(ctrl)
+		svc := &logicViewService{rs: mockRS, cs: mockCS}
+		mockRS.EXPECT().GetByID(gomock.Any(), "source-1").Return(&interfaces.Resource{
+			ID: "source-1", CatalogID: "catalog-1", Status: interfaces.ResourceStatusActive,
+		}, nil)
+		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).Return(&interfaces.Catalog{ID: "catalog-1", Enabled: false}, nil)
+
+		_, _, err := svc.queryDerivedLogicView(context.Background(), view, &interfaces.ResourceDataQueryParams{})
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
+	})
+}
+
+func TestDerivedIndexCursorRequiresSort(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockRS := vmock.NewMockResourceService(ctrl)
+	mockCS := vmock.NewMockCatalogService(ctrl)
+	svc := &logicViewService{rs: mockRS, cs: mockCS}
+	source := &interfaces.Resource{
+		ID:        "source-1",
+		CatalogID: "catalog-1",
+		Category:  interfaces.ResourceCategoryIndex,
+		Status:    interfaces.ResourceStatusActive,
+	}
+	mockRS.EXPECT().GetByID(gomock.Any(), "source-1").Return(source, nil).AnyTimes()
+	mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).
+		Return(&interfaces.Catalog{ID: "catalog-1", Enabled: false}, nil).AnyTimes()
+
+	result, err := svc.QueryWithPaging(context.Background(), &interfaces.Resource{
+		ID:        "logic-1",
+		Category:  interfaces.ResourceCategoryLogicView,
+		LogicType: interfaces.LogicType_Derived,
+		LogicDefinition: []*interfaces.LogicDefinitionNode{{
+			Type:   interfaces.LogicDefinitionNodeType_Resource,
+			Config: map[string]any{"resource_id": "source-1"},
+		}},
+	}, &interfaces.ResourceDataQueryParams{
+		Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 10},
+	})
+
+	assert.Nil(t, result)
+	var httpErr *rest.HTTPError
+	require.ErrorAs(t, err, &httpErr)
+	assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+	assert.Contains(t, err.Error(), "sort is required")
+}
+
+func TestDerivedIndexRejectsFirstPageWindowOverflow(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockRS := vmock.NewMockResourceService(ctrl)
+	mockCS := vmock.NewMockCatalogService(ctrl)
+	svc := &logicViewService{rs: mockRS, cs: mockCS}
+	source := &interfaces.Resource{
+		ID:        "source-1",
+		CatalogID: "catalog-1",
+		Category:  interfaces.ResourceCategoryIndex,
+		Status:    interfaces.ResourceStatusActive,
+	}
+	mockRS.EXPECT().GetByID(gomock.Any(), "source-1").Return(source, nil).AnyTimes()
+	mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).
+		Return(&interfaces.Catalog{ID: "catalog-1", Enabled: false}, nil).AnyTimes()
+
+	result, err := svc.QueryWithPaging(context.Background(), &interfaces.Resource{
+		ID:        "logic-1",
+		Category:  interfaces.ResourceCategoryLogicView,
+		LogicType: interfaces.LogicType_Derived,
+		LogicDefinition: []*interfaces.LogicDefinitionNode{{
+			Type:   interfaces.LogicDefinitionNodeType_Resource,
+			Config: map[string]any{"resource_id": "source-1"},
+		}},
+	}, &interfaces.ResourceDataQueryParams{
+		Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Offset: interfaces.MaxPageLimit, Limit: 1},
+		Sort:   []*interfaces.SortField{{Field: "timestamp", Direction: "asc"}},
+	})
+
+	assert.Nil(t, result)
+	var httpErr *rest.HTTPError
+	require.ErrorAs(t, err, &httpErr)
+	assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+	assert.Contains(t, err.Error(), "offset + paging.limit")
 }
 
 func TestExecutePhysicalQuery(t *testing.T) {

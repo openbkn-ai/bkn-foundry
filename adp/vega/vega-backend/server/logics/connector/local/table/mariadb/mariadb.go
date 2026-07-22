@@ -286,9 +286,6 @@ func (c *MariaDBConnector) ExecuteRawSQL(ctx context.Context, sql string) (*inte
 	response := &interfaces.RawQueryResponse{
 		Columns: make([]interfaces.ColumnInfo, len(columns)),
 		Entries: make([]map[string]any, 0),
-		Stats: interfaces.QueryStats{
-			IsTimeout: false,
-		},
 	}
 
 	// 填充列信息
@@ -321,7 +318,8 @@ func (c *MariaDBConnector) ExecuteRawSQL(ctx context.Context, sql string) (*inte
 		return nil, fmt.Errorf("iterate rows failed: %w", err)
 	}
 
-	response.TotalCount = int64(len(response.Entries))
+	totalCount := int64(len(response.Entries))
+	response.TotalCount = &totalCount
 
 	return response, nil
 }

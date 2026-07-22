@@ -6,7 +6,10 @@
 
 package interfaces
 
-import "context"
+import (
+	"context"
+	"fmt"
+)
 
 const (
 	QueryType_Standard = "standard" // 标准查询
@@ -15,36 +18,63 @@ const (
 
 // RawQueryRequest SQL查询请求
 type RawQueryRequest struct {
-	Query        any    `json:"query"`                   // SQL查询语句（字符串）或OpenSearch DSL查询（JSON对象）
-	QueryType    string `json:"query_type,omitempty"`    // 可选，指定查询类型（如"standard"、"stream"）
-	QueryID      string `json:"query_id,omitempty"`      // 可选，指定查询 ID，用于游标 session
-	ResourceType string `json:"resource_type,omitempty"` // 可选，指定资源类型（如"opensearch"、"mysql"、"postgresql"）
-	StreamSize   int    `json:"stream_size,omitempty"`   // 流式查询每批数据量，默认10000，流式查询必填
-	QueryTimeout int    `json:"query_timeout,omitempty"` // 查询超时时间（秒），默认60，最小1，最大3600
+	Query           any           `json:"query,omitempty"`
+	QueryFormat     QueryFormat   `json:"query_format,omitempty"`
+	InputDialect    string        `json:"input_dialect,omitempty"`
+	Paging          PagingRequest `json:"paging,omitempty"`
+	QueryTimeoutSec int           `json:"query_timeout_sec,omitempty"` // 查询超时时间（秒），默认60，最小1，最大3600
+	NeedTotal       bool          `json:"need_total,omitempty"`        // 是否返回完整总数
+
+	// These fields are service-internal bindings supplied by a Logic View when
+	// it delegates to Raw Query; they are never accepted from HTTP payloads.
+	ResourceDataResourceID string `json:"-"`
+	ResourceDataUpdateTime int64  `json:"-"`
+}
+
+func (r RawQueryRequest) Contract() RawQueryContract {
+	return RawQueryContract{
+		Query:        r.Query,
+		QueryFormat:  r.QueryFormat,
+		InputDialect: r.InputDialect,
+		Paging:       r.Paging,
+	}
+}
+
+func (r RawQueryRequest) IsContinuation() bool {
+	return r.Contract().IsContinuation()
+}
+
+func (r RawQueryRequest) EffectiveInputDialect() string {
+	return r.Contract().EffectiveInputDialect()
+}
+
+func (r RawQueryRequest) ValidateContract() error {
+	if r.IsContinuation() && r.QueryTimeoutSec != 0 {
+		return fmt.Errorf("query_timeout_sec is only allowed for an initial request")
+	}
+	return r.Contract().Validate()
+}
+
+func (r *RawQueryRequest) NormalizePaging() {
+	if !r.IsContinuation() {
+		r.Paging = r.Paging.Normalized()
+	}
 }
 
 // RawQueryResponse SQL查询响应
 type RawQueryResponse struct {
-	Columns    []ColumnInfo     `json:"columns"`            // 列信息
-	Entries    []map[string]any `json:"entries"`            // 查询结果
-	Stats      QueryStats       `json:"stats"`              // 查询统计
-	TotalCount int64            `json:"total_count"`        // 总条数
-	Warnings   []string         `json:"warnings,omitempty"` // 非阻断告警（如 deprecated 资源命中提示）
+	Columns     []ColumnInfo     `json:"columns"`               // 列信息
+	Entries     []map[string]any `json:"entries"`               // 查询结果
+	TotalCount  *int64           `json:"total_count,omitempty"` // 总条数；nil 表示未请求
+	Warnings    []string         `json:"warnings,omitempty"`    // 非阻断告警（如 deprecated 资源命中提示）
+	Paging      *PagingResponse  `json:"paging,omitempty"`
+	SearchAfter []any            `json:"-"` // OpenSearch internal cursor state
 }
 
 // ColumnInfo 列信息
 type ColumnInfo struct {
 	Name string `json:"name"` // 列名
 	Type string `json:"type"` // 列类型
-}
-
-// QueryStats 查询统计
-type QueryStats struct {
-	IsTimeout   bool   `json:"is_timeout"`             // 是否超时
-	QueryID     string `json:"query_id,omitempty"`     // 查询 ID
-	HasMore     bool   `json:"has_more"`               // 是否还有更多数据
-	SearchAfter []any  `json:"search_after,omitempty"` // OpenSearch流式查询的search_after值
-	Offset      int    `json:"offset"`                 // 已获取到的数据总数（流式查询模式）
 }
 
 //go:generate mockgen -source ../interfaces/query.go -destination ../interfaces/mock/mock_query.go

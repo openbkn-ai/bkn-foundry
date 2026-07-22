@@ -1627,9 +1627,8 @@ func Test_relationTypeService_SearchRelationTypes(t *testing.T) {
 
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			vba.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.DatasetQueryResponse{
-				Entries:     []map[string]any{},
-				TotalCount:  0,
-				SearchAfter: nil,
+				Entries:    []map[string]any{},
+				TotalCount: 0,
 			}, nil)
 
 			result, err := service.SearchRelationTypes(ctx, query)
@@ -1663,9 +1662,8 @@ func Test_relationTypeService_SearchRelationTypes(t *testing.T) {
 			cga.EXPECT().GetConceptGroupsTotal(gomock.Any(), gomock.Any()).Return(1, nil)
 			cga.EXPECT().GetRelationTypeIDsFromConceptGroupRelation(gomock.Any(), gomock.Any()).Return([]string{"rt1"}, nil)
 			vba.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.DatasetQueryResponse{
-				Entries:     []map[string]any{},
-				TotalCount:  0,
-				SearchAfter: nil,
+				Entries:    []map[string]any{},
+				TotalCount: 0,
 			}, nil)
 
 			result, err := service.SearchRelationTypes(ctx, query)
@@ -1732,9 +1730,8 @@ func Test_relationTypeService_SearchRelationTypes(t *testing.T) {
 
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			vba.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.DatasetQueryResponse{
-				Entries:     []map[string]any{},
-				TotalCount:  0,
-				SearchAfter: nil,
+				Entries:    []map[string]any{},
+				TotalCount: 0,
 			}, nil)
 
 			result, err := service.SearchRelationTypes(ctx, query)

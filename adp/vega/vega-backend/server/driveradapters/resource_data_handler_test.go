@@ -80,15 +80,19 @@ func Test_ResourceDataRestHandler_QueryResourceData(t *testing.T) {
 		engine, rs, _, rds := setupResourceDataHandlerTest(t)
 		resource := sampleDatasetResource()
 		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(resource, nil)
-		rds.EXPECT().Query(gomock.Any(), resource, gomock.Any()).
-			DoAndReturn(func(_ context.Context, _ *interfaces.Resource, params *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
+		rds.EXPECT().QueryWithPaging(gomock.Any(), resource, gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
 				assert.True(t, params.NeedTotal)
 				assert.Equal(t, 0, params.Offset)
 				assert.Equal(t, 2, params.Limit)
-				return []map[string]any{{"id": "doc-1"}}, int64(1), nil
+				return &interfaces.ResourceDataQueryResult{
+					Entries:    []map[string]any{{"id": "doc-1"}},
+					TotalCount: 1,
+					Paging:     &interfaces.PagingResponse{},
+				}, nil
 			})
 
-		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/resources/res-1/data", strings.NewReader(`{"offset":0,"limit":2,"need_total":true}`))
+		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/resources/res-1/data", strings.NewReader(`{"paging":{"limit":2},"need_total":true}`))
 		req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, http.MethodGet)
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
@@ -98,6 +102,32 @@ func Test_ResourceDataRestHandler_QueryResourceData(t *testing.T) {
 		require.Equal(t, http.StatusOK, w.Result().StatusCode)
 		assert.Contains(t, w.Body.String(), `"entries"`)
 		assert.Contains(t, w.Body.String(), `"total_count":1`)
+	})
+
+	t.Run("preserves total count requested by cursor session", func(t *testing.T) {
+		engine, rs, _, rds := setupResourceDataHandlerTest(t)
+		resource := sampleDatasetResource()
+		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(resource, nil)
+		rds.EXPECT().QueryWithPaging(gomock.Any(), resource, gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
+				assert.False(t, params.NeedTotal)
+				return &interfaces.ResourceDataQueryResult{
+					Entries:    []map[string]any{{"id": "doc-1"}},
+					TotalCount: 2,
+					NeedTotal:  true,
+					Paging:     &interfaces.PagingResponse{},
+				}, nil
+			})
+
+		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/resources/res-1/data", strings.NewReader(`{"paging":{"cursor":"opaque-cursor"}}`))
+		req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, http.MethodGet)
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusOK, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), `"total_count":2`)
 	})
 
 	t.Run("returns not found for missing resource", func(t *testing.T) {

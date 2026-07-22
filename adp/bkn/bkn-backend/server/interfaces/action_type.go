@@ -177,10 +177,10 @@ type ActionTypesQueryParams struct {
 
 // 检索行动类列表
 type ActionTypes struct {
-	Entries     []*ActionType `json:"entries"`
-	TotalCount  int64         `json:"total_count,omitempty"`
-	SearchAfter []any         `json:"search_after,omitempty"`
-	OverallMs   int64         `json:"overall_ms"`
+	Entries    []*ActionType `json:"entries"`
+	TotalCount int64         `json:"total_count,omitempty"`
+	NextCursor *string       `json:"next_cursor,omitempty"`
+	OverallMs  int64         `json:"overall_ms"`
 }
 
 func IsValidActionSourceType(m string) bool {

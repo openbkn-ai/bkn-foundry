@@ -41,18 +41,17 @@ func (m *MockResourceDataService) EXPECT() *MockResourceDataServiceMockRecorder 
 	return m.recorder
 }
 
-// Query mocks base method.
-func (m *MockResourceDataService) Query(ctx context.Context, resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
+// QueryWithPaging mocks base method.
+func (m *MockResourceDataService) QueryWithPaging(ctx context.Context, resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Query", ctx, resource, params)
-	ret0, _ := ret[0].([]map[string]any)
-	ret1, _ := ret[1].(int64)
-	ret2, _ := ret[2].(error)
-	return ret0, ret1, ret2
+	ret := m.ctrl.Call(m, "QueryWithPaging", ctx, resource, params)
+	ret0, _ := ret[0].(*interfaces.ResourceDataQueryResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
-// Query indicates an expected call of Query.
-func (mr *MockResourceDataServiceMockRecorder) Query(ctx, resource, params any) *gomock.Call {
+// QueryWithPaging indicates an expected call of QueryWithPaging.
+func (mr *MockResourceDataServiceMockRecorder) QueryWithPaging(ctx, resource, params any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Query", reflect.TypeOf((*MockResourceDataService)(nil).Query), ctx, resource, params)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "QueryWithPaging", reflect.TypeOf((*MockResourceDataService)(nil).QueryWithPaging), ctx, resource, params)
 }

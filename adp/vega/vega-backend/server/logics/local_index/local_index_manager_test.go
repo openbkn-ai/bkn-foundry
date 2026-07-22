@@ -30,8 +30,9 @@ func TestLocalIndexManagerDelegatesToIndexConnector(t *testing.T) {
 		params := &interfaces.ResourceDataQueryParams{}
 		docs := []map[string]any{{"id": 1}}
 		queryResult := &interfaces.QueryResult{
-			Rows:  []map[string]any{{"id": 1}},
-			Total: 1,
+			Rows:        []map[string]any{{"id": 1}},
+			Total:       1,
+			SearchAfter: []any{"sort-1"},
 		}
 		document := map[string]any{"id": 1}
 		docIDs := []string{"doc-1"}
@@ -59,6 +60,7 @@ func TestLocalIndexManagerDelegatesToIndexConnector(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, []map[string]any{{"id": 1}}, rows)
 		assert.Equal(t, int64(1), total)
+		assert.Equal(t, []any{"sort-1"}, params.SearchAfter)
 
 		doc, err := manager.GetDocument(ctx, "idx", "doc-1")
 		require.NoError(t, err)

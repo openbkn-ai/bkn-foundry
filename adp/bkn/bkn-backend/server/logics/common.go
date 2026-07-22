@@ -36,26 +36,12 @@ func BuildDslQuery(ctx context.Context, queryStr string, query *interfaces.Conce
 		})
 	}
 
-	if len(query.SearchAfter) > 0 {
-		query.NeedTotal = false
-	}
-
-	// 如果没传 limit，传了 search_after 参数，设置默认limit 10000
-	if query.Limit == 0 && query.SearchAfter != nil && len(query.SearchAfter) > 0 {
-		query.Limit = interfaces.SearchAfter_Limit
-	}
-
 	dsl := map[string]any{
 		"size":         query.Limit,
 		"sort":         sort,
 		"track_scores": true,
 	}
 	dsl["query"] = dslMap
-
-	// 存在search after时需加上search_after
-	if query.SearchAfter != nil {
-		dsl["search_after"] = query.SearchAfter
-	}
 
 	return dsl, nil
 }

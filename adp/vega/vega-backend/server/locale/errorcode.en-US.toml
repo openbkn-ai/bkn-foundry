@@ -184,11 +184,6 @@ Description = "Invalid query parameter"
 Solution = "Please check request parameters"
 ErrorLink = "None"
 
-[VegaBackend.Query.InvalidParameter.QueryIDRequired]
-Description = "query_id is required"
-Solution = "Please provide query_id"
-ErrorLink = "None"
-
 [VegaBackend.Query.InvalidParameter.LimitExceeded]
 Description = "limit cannot exceed 10000"
 Solution = "Please adjust limit parameter"
@@ -200,8 +195,13 @@ Solution = "Please check joins configuration"
 ErrorLink = "None"
 
 [VegaBackend.Query.InvalidParameter.QueryTimeout]
-Description = "Invalid query_timeout parameter"
-Solution = "query_timeout must be between 1 and 3600"
+Description = "Invalid query_timeout_sec parameter"
+Solution = "query_timeout_sec must be between 1 and 3600"
+ErrorLink = "None"
+
+[VegaBackend.Query.CursorResourceChanged]
+Description = "The resource changed after cursor creation"
+Solution = "Please restart the query"
 ErrorLink = "None"
 
 [VegaBackend.Query.CatalogNotFound]
@@ -226,6 +226,11 @@ ErrorLink = "None"
 
 [VegaBackend.Query.ConcurrencyLimitExceeded]
 Description = "Query concurrency limit exceeded"
+Solution = "Please try again later"
+ErrorLink = "None"
+
+[VegaBackend.Query.CursorSessionLimitExceeded]
+Description = "Cursor session limit exceeded"
 Solution = "Please try again later"
 ErrorLink = "None"
 

@@ -184,11 +184,6 @@ Description = "查询参数非法"
 Solution = "请检查请求参数"
 ErrorLink = "暂无"
 
-[VegaBackend.Query.InvalidParameter.QueryIDRequired]
-Description = "query_id 为必填项"
-Solution = "请提供 query_id"
-ErrorLink = "暂无"
-
 [VegaBackend.Query.InvalidParameter.LimitExceeded]
 Description = "limit 不能超过 10000"
 Solution = "请调整 limit 参数"
@@ -200,8 +195,13 @@ Solution = "请检查 joins 配置"
 ErrorLink = "暂无"
 
 [VegaBackend.Query.InvalidParameter.QueryTimeout]
-Description = "query_timeout 参数非法"
-Solution = "query_timeout 必须在 1 到 3600 之间"
+Description = "query_timeout_sec 参数非法"
+Solution = "query_timeout_sec 必须在 1 到 3600 之间"
+ErrorLink = "暂无"
+
+[VegaBackend.Query.CursorResourceChanged]
+Description = "cursor 创建后资源已变更"
+Solution = "请重新发起查询"
 ErrorLink = "暂无"
 
 [VegaBackend.Query.CatalogNotFound]
@@ -226,6 +226,11 @@ ErrorLink = "暂无"
 
 [VegaBackend.Query.ConcurrencyLimitExceeded]
 Description = "查询并发数超过限制"
+Solution = "请稍后重试"
+ErrorLink = "暂无"
+
+[VegaBackend.Query.CursorSessionLimitExceeded]
+Description = "Cursor session 数量超过限制"
 Solution = "请稍后重试"
 ErrorLink = "暂无"
 

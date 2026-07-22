@@ -63,47 +63,18 @@ func (r *restHandler) rawQuery(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 
-	// 校验resource_type参数，必填，必须是当前统一查询接口支持的连接器类型
-	if req.ResourceType == "" {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, errors.VegaBackend_InvalidParameter_ResourceType).
-			WithErrorDetails(fmt.Sprintf("resource_type is required and must be one of: %v", interfaces.GetSupportedConnectorTypesForQuery()))
-		otellog.LogError(ctx, "Resource type is required", httpErr)
-		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		rest.ReplyError(c, httpErr)
-		return
-	}
-
-	if !interfaces.IsConnectorTypeSupportedForQuery(req.ResourceType) {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, errors.VegaBackend_InvalidParameter_ResourceType).
-			WithErrorDetails(fmt.Sprintf("resource_type must be one of: %v, got: %s", interfaces.GetSupportedConnectorTypesForQuery(), req.ResourceType))
-		otellog.LogError(ctx, "Resource type is not supported", httpErr)
-		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		rest.ReplyError(c, httpErr)
-		return
-	}
-
-	// 校验stream_size参数，默认值为10000，最大值为10000，最小值为100
-	if req.StreamSize == 0 {
-		req.StreamSize = 10000 // 设置默认值
-	} else if req.StreamSize < 100 || req.StreamSize > 10000 {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, errors.VegaBackend_InvalidParameter_StreamSize).
-			WithErrorDetails(fmt.Sprintf("stream_size must be between 100 and 10000, got: %d", req.StreamSize))
-		otellog.LogError(ctx, "Stream size is invalid", httpErr)
-		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		rest.ReplyError(c, httpErr)
-		return
-	}
-
-	// 校验query_timeout参数，默认值为60，最大值为3600，最小值为1
-	if req.QueryTimeout == 0 {
-		req.QueryTimeout = 60 // 设置默认值
-	} else if req.QueryTimeout < 1 || req.QueryTimeout > 3600 {
+	// query_timeout_sec 仅在首次请求生效；续页使用 cursor session 创建时
+	// 固化的值，不能由客户端改写。
+	if req.QueryTimeoutSec != 0 && (req.QueryTimeoutSec < 1 || req.QueryTimeoutSec > 3600) {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, errors.VegaBackend_Query_InvalidParameter_QueryTimeout).
-			WithErrorDetails(fmt.Sprintf("query_timeout must be between 1 and 3600, got: %d", req.QueryTimeout))
+			WithErrorDetails(fmt.Sprintf("query_timeout_sec must be between 1 and 3600, got: %d", req.QueryTimeoutSec))
 		otellog.LogError(ctx, "Query timeout is invalid", httpErr)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
+	}
+	if !req.IsContinuation() && req.QueryTimeoutSec == 0 {
+		req.QueryTimeoutSec = 60
 	}
 
 	qs := query.NewRawQueryService(r.appSetting)

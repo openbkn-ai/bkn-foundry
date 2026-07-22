@@ -86,6 +86,11 @@ type GlobalConcurrencyConfig struct {
 	MaxConcurrentQueries int `mapstructure:"max_concurrent_queries"`
 }
 
+// QueryConfig query 服务配置项
+type QueryConfig struct {
+	CursorMaxSessions int `mapstructure:"cursorMaxSessions"`
+}
+
 // AppSetting app配置项
 type AppSetting struct {
 	ServerSetting       ServerSetting             `mapstructure:"server"`
@@ -94,6 +99,7 @@ type AppSetting struct {
 	CryptoSetting       CryptoSetting             `mapstructure:"crypto"`
 	DepServices         map[string]map[string]any `mapstructure:"depServices"`
 	RateLimitingSetting RateLimitingConfig        `mapstructure:"rateLimiting"`
+	QuerySetting        QueryConfig               `mapstructure:"query"`
 
 	DBSetting           libdb.DBSetting
 	MQSetting           libmq.MQSetting

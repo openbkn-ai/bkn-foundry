@@ -756,17 +756,25 @@ func (ms *metricService) SearchMetrics(ctx context.Context, query *interfaces.Co
 
 	limit := query.Limit
 	if limit == 0 {
-		limit = interfaces.SearchAfter_Limit
+		limit = interfaces.ConceptQueryLimit
 	}
 
 	entries := make([]*interfaces.MetricDefinition, 0)
+	cursor := query.Cursor
+	var nextCursor *string
 
 	for {
+		paging := interfaces.ResourceDataPagingRequest{Mode: "single", Limit: limit}
+		if len(query.Sort) > 0 {
+			paging.Mode = "cursor"
+		}
+		if cursor != "" {
+			paging = interfaces.ResourceDataPagingRequest{Cursor: cursor}
+		}
 		params := &interfaces.ResourceDataQueryParams{
 			FilterCondition: filterCondition,
-			Limit:           limit,
+			Paging:          paging,
 			NeedTotal:       false,
-			SearchAfter:     query.SearchAfter,
 			Sort:            query.Sort,
 		}
 		datasetResp, err := ms.vba.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
@@ -811,15 +819,22 @@ func (ms *metricService) SearchMetrics(ctx context.Context, query *interfaces.Co
 			}
 		}
 
-		query.SearchAfter = datasetResp.SearchAfter
+		nextCursor = nil
+		if datasetResp.Paging != nil {
+			nextCursor = datasetResp.Paging.NextCursor
+		}
 
-		if (query.Limit > 0 && len(entries) >= query.Limit) || len(datasetResp.Entries) < limit {
+		if (query.Limit > 0 && len(entries) >= query.Limit) || nextCursor == nil && len(datasetResp.Entries) < limit {
 			break
 		}
+		if nextCursor == nil {
+			break
+		}
+		cursor = *nextCursor
 	}
 
 	response.Entries = entries
-	response.SearchAfter = query.SearchAfter
+	response.NextCursor = nextCursor
 	span.SetStatus(codes.Ok, "")
 	return response, nil
 }
@@ -831,9 +846,11 @@ func (ms *metricService) getMetricDatasetTotal(ctx context.Context, filterCondit
 
 	params := &interfaces.ResourceDataQueryParams{
 		FilterCondition: filterCondition,
-		Offset:          0,
-		Limit:           1,
-		NeedTotal:       true,
+		Paging: interfaces.ResourceDataPagingRequest{
+			Mode:  "single",
+			Limit: 1,
+		},
+		NeedTotal: true,
 	}
 	datasetResp, err := ms.vba.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
 	if err != nil {
