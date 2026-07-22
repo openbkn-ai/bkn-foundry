@@ -980,8 +980,7 @@ func (cs *ConceptSyncer) getAllKNsFromDataset(ctx context.Context) (map[string]*
 
 	params := &interfaces.ResourceDataQueryParams{
 		FilterCondition: filterCondition,
-		Offset:          0,
-		Limit:           10000,
+		Paging:          interfaces.ResourceDataPagingRequest{Mode: "single", Limit: 10000},
 		NeedTotal:       false,
 	}
 	response, err := cs.vba.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
@@ -1032,8 +1031,7 @@ func (cs *ConceptSyncer) getAllObjectTypesFromDatasetByKnID(ctx context.Context,
 
 	params := &interfaces.ResourceDataQueryParams{
 		FilterCondition: filterCondition,
-		Offset:          0,
-		Limit:           10000,
+		Paging:          interfaces.ResourceDataPagingRequest{Mode: "single", Limit: 10000},
 		NeedTotal:       false,
 	}
 	response, err := cs.vba.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
@@ -1102,8 +1100,7 @@ func (cs *ConceptSyncer) getAllRelationTypesFromDatasetByKnID(ctx context.Contex
 
 	params := &interfaces.ResourceDataQueryParams{
 		FilterCondition: filterCondition,
-		Offset:          0,
-		Limit:           10000,
+		Paging:          interfaces.ResourceDataPagingRequest{Mode: "single", Limit: 10000},
 		NeedTotal:       false,
 	}
 	response, err := cs.vba.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
@@ -1154,8 +1151,7 @@ func (cs *ConceptSyncer) getAllActionTypesFromDatasetByKnID(ctx context.Context,
 
 	params := &interfaces.ResourceDataQueryParams{
 		FilterCondition: filterCondition,
-		Offset:          0,
-		Limit:           10000,
+		Paging:          interfaces.ResourceDataPagingRequest{Mode: "single", Limit: 10000},
 		NeedTotal:       false,
 	}
 	response, err := cs.vba.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
@@ -1232,8 +1228,7 @@ func (cs *ConceptSyncer) getAllRiskTypesFromDatasetByKnID(ctx context.Context,
 
 	params := &interfaces.ResourceDataQueryParams{
 		FilterCondition: filterCondition,
-		Offset:          0,
-		Limit:           10000,
+		Paging:          interfaces.ResourceDataPagingRequest{Mode: "single", Limit: 10000},
 		NeedTotal:       false,
 	}
 	response, err := cs.vba.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
@@ -1284,8 +1279,7 @@ func (cs *ConceptSyncer) getAllConceptGroupsFromDatasetByKnID(ctx context.Contex
 
 	params := &interfaces.ResourceDataQueryParams{
 		FilterCondition: filterCondition,
-		Offset:          0,
-		Limit:           10000,
+		Paging:          interfaces.ResourceDataPagingRequest{Mode: "single", Limit: 10000},
 		NeedTotal:       false,
 	}
 	response, err := cs.vba.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
@@ -1336,8 +1330,7 @@ func (cs *ConceptSyncer) getAllMetricsFromDatasetByKnID(ctx context.Context,
 
 	params := &interfaces.ResourceDataQueryParams{
 		FilterCondition: filterCondition,
-		Offset:          0,
-		Limit:           10000,
+		Paging:          interfaces.ResourceDataPagingRequest{Mode: "single", Limit: 10000},
 		NeedTotal:       false,
 	}
 	response, err := cs.vba.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
