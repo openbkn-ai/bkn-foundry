@@ -97,6 +97,12 @@ type DrivenOntologyQuery interface {
 	QueryLogicProperties(ctx context.Context, req *QueryLogicPropertiesReq) (resp *QueryLogicPropertiesResp, err error)
 	// QueryActions queries actions
 	QueryActions(ctx context.Context, req *QueryActionsRequest) (resp *QueryActionsResponse, err error)
+	// ExecuteActions executes an action type (async), returning an execution id
+	ExecuteActions(ctx context.Context, req *ExecuteActionsRequest) (resp *ExecuteActionsResponse, err error)
+	// GetActionExecution retrieves a single execution's status and results by execution id
+	GetActionExecution(ctx context.Context, req *GetActionExecutionRequest) (resp map[string]any, err error)
+	// ListActionExecutions lists action execution history with optional filters and pagination
+	ListActionExecutions(ctx context.Context, req *ListActionExecutionsRequest) (resp map[string]any, err error)
 	// QueryInstanceSubgraph queries object subgraph
 	QueryInstanceSubgraph(ctx context.Context, req *QueryInstanceSubgraphReq) (resp *QueryInstanceSubgraphResp, err error)
 }

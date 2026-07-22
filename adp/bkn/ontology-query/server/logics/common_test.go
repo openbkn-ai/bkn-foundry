@@ -1665,3 +1665,61 @@ func TestCondCfgToFilterMap(t *testing.T) {
 		So(m["field"], ShouldEqual, "f1")
 	})
 }
+
+func Test_MissingActionInputDynamicParamNames(t *testing.T) {
+	mkAT := func(params ...interfaces.Parameter) *interfaces.ActionType {
+		return &interfaces.ActionType{Parameters: params}
+	}
+	inputParam := func(name string) interfaces.Parameter {
+		return interfaces.Parameter{Name: name, ValueFrom: interfaces.LOGIC_PARAMS_VALUE_FROM_INPUT}
+	}
+	propParam := func(name string) interfaces.Parameter {
+		return interfaces.Parameter{Name: name, ValueFrom: interfaces.LOGIC_PARAMS_VALUE_FROM_PROP}
+	}
+
+	Convey("Test MissingActionInputDynamicParamNames", t, func() {
+		Convey("nil dynamicParams -> all input params missing", func() {
+			missing := MissingActionInputDynamicParamNames(mkAT(inputParam("message"), inputParam("name")), nil)
+			So(missing, ShouldResemble, []string{"message", "name"})
+		})
+		Convey("partial dynamicParams -> only unfilled input params missing", func() {
+			missing := MissingActionInputDynamicParamNames(
+				mkAT(inputParam("message"), inputParam("name")),
+				map[string]any{"message": "hi"},
+			)
+			So(missing, ShouldResemble, []string{"name"})
+		})
+		Convey("null value counts as missing", func() {
+			missing := MissingActionInputDynamicParamNames(
+				mkAT(inputParam("message")),
+				map[string]any{"message": nil},
+			)
+			So(missing, ShouldResemble, []string{"message"})
+		})
+		Convey("non-input params are never reported", func() {
+			missing := MissingActionInputDynamicParamNames(mkAT(propParam("from_prop")), nil)
+			So(missing, ShouldBeEmpty)
+		})
+		Convey("all filled -> nothing missing", func() {
+			missing := MissingActionInputDynamicParamNames(
+				mkAT(inputParam("message"), inputParam("name")),
+				map[string]any{"message": "hi", "name": "zhangsan"},
+			)
+			So(missing, ShouldBeEmpty)
+		})
+	})
+}
+
+func Test_FormatMissingParamNames(t *testing.T) {
+	Convey("Test FormatMissingParamNames", t, func() {
+		Convey("multiple names -> quoted, comma-separated (issue #371, no ambiguous [a b])", func() {
+			So(FormatMissingParamNames([]string{"message", "name"}), ShouldEqual, `"message", "name"`)
+		})
+		Convey("single name -> quoted", func() {
+			So(FormatMissingParamNames([]string{"message"}), ShouldEqual, `"message"`)
+		})
+		Convey("empty -> empty string", func() {
+			So(FormatMissingParamNames(nil), ShouldEqual, "")
+		})
+	})
+}

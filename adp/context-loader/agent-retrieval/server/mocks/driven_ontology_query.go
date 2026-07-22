@@ -13,9 +13,8 @@ import (
 	context "context"
 	reflect "reflect"
 
-	gomock "go.uber.org/mock/gomock"
-
 	interfaces "github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/interfaces"
+	gomock "go.uber.org/mock/gomock"
 )
 
 // MockDrivenOntologyQuery is a mock of DrivenOntologyQuery interface.
@@ -40,6 +39,51 @@ func NewMockDrivenOntologyQuery(ctrl *gomock.Controller) *MockDrivenOntologyQuer
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockDrivenOntologyQuery) EXPECT() *MockDrivenOntologyQueryMockRecorder {
 	return m.recorder
+}
+
+// ExecuteActions mocks base method.
+func (m *MockDrivenOntologyQuery) ExecuteActions(ctx context.Context, req *interfaces.ExecuteActionsRequest) (*interfaces.ExecuteActionsResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ExecuteActions", ctx, req)
+	ret0, _ := ret[0].(*interfaces.ExecuteActionsResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ExecuteActions indicates an expected call of ExecuteActions.
+func (mr *MockDrivenOntologyQueryMockRecorder) ExecuteActions(ctx, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteActions", reflect.TypeOf((*MockDrivenOntologyQuery)(nil).ExecuteActions), ctx, req)
+}
+
+// GetActionExecution mocks base method.
+func (m *MockDrivenOntologyQuery) GetActionExecution(ctx context.Context, req *interfaces.GetActionExecutionRequest) (map[string]any, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetActionExecution", ctx, req)
+	ret0, _ := ret[0].(map[string]any)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetActionExecution indicates an expected call of GetActionExecution.
+func (mr *MockDrivenOntologyQueryMockRecorder) GetActionExecution(ctx, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetActionExecution", reflect.TypeOf((*MockDrivenOntologyQuery)(nil).GetActionExecution), ctx, req)
+}
+
+// ListActionExecutions mocks base method.
+func (m *MockDrivenOntologyQuery) ListActionExecutions(ctx context.Context, req *interfaces.ListActionExecutionsRequest) (map[string]any, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListActionExecutions", ctx, req)
+	ret0, _ := ret[0].(map[string]any)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListActionExecutions indicates an expected call of ListActionExecutions.
+func (mr *MockDrivenOntologyQueryMockRecorder) ListActionExecutions(ctx, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListActionExecutions", reflect.TypeOf((*MockDrivenOntologyQuery)(nil).ListActionExecutions), ctx, req)
 }
 
 // QueryActions mocks base method.

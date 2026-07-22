@@ -191,6 +191,18 @@ func (stubActionRecallHandler) GetActionInfo(c *gin.Context) {
 	c.Status(http.StatusOK)
 }
 
+func (stubActionRecallHandler) ExecuteAction(c *gin.Context) {
+	c.Status(http.StatusOK)
+}
+
+func (stubActionRecallHandler) GetActionExecution(c *gin.Context) {
+	c.Status(http.StatusOK)
+}
+
+func (stubActionRecallHandler) ListActionExecutions(c *gin.Context) {
+	c.Status(http.StatusOK)
+}
+
 type stubQueryObjectInstanceHandler struct{}
 
 func (stubQueryObjectInstanceHandler) QueryObjectInstance(c *gin.Context) {
@@ -254,5 +266,46 @@ func TestRestPublicHandler_AppliesResponseFormatMiddleware(t *testing.T) {
 
 		convey.So(w.Code, convey.ShouldEqual, http.StatusOK)
 		convey.So(w.Body.String(), convey.ShouldEqual, "ok")
+	})
+}
+
+func TestRedactSensitiveFields(t *testing.T) {
+	convey.Convey("TestRedactSensitiveFields", t, func() {
+		convey.Convey("REST 顶层 dynamic_params 脱敏，其余保留", func() {
+			in := map[string]interface{}{
+				"kn_id":                "kn-1",
+				"at_id":                "at-1",
+				"_instance_identities": []interface{}{map[string]interface{}{"key_id": "14"}},
+				"dynamic_params":       map[string]interface{}{"message": "SECRET", "name": "张三"},
+			}
+			out := redactSensitiveFields(in).(map[string]interface{})
+			convey.So(out["kn_id"], convey.ShouldEqual, "kn-1")
+			convey.So(out["dynamic_params"], convey.ShouldEqual, "[REDACTED]")
+			// 非敏感字段结构原样
+			convey.So(out["_instance_identities"], convey.ShouldNotBeNil)
+		})
+		convey.Convey("MCP JSON-RPC 嵌套 params.arguments.dynamic_params 脱敏", func() {
+			in := map[string]interface{}{
+				"jsonrpc": "2.0",
+				"method":  "tools/call",
+				"params": map[string]interface{}{
+					"name": "execute_action",
+					"arguments": map[string]interface{}{
+						"kn_id":          "kn-1",
+						"dynamic_params": map[string]interface{}{"token": "SECRET"},
+					},
+				},
+			}
+			out := redactSensitiveFields(in).(map[string]interface{})
+			args := out["params"].(map[string]interface{})["arguments"].(map[string]interface{})
+			convey.So(args["kn_id"], convey.ShouldEqual, "kn-1")
+			convey.So(args["dynamic_params"], convey.ShouldEqual, "[REDACTED]")
+		})
+		convey.Convey("无敏感字段时原样返回", func() {
+			in := map[string]interface{}{"kn_id": "kn-1", "limit": float64(10)}
+			out := redactSensitiveFields(in).(map[string]interface{})
+			convey.So(out["kn_id"], convey.ShouldEqual, "kn-1")
+			convey.So(out["limit"], convey.ShouldEqual, float64(10))
+		})
 	})
 }
