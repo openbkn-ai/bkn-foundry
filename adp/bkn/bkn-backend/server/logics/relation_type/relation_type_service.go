@@ -1011,6 +1011,7 @@ func (rts *relationTypeService) SearchRelationTypes(ctx context.Context,
 		if cursor != "" {
 			paging = interfaces.ResourceDataPagingRequest{Cursor: cursor}
 		}
+		isCursorPaging := paging.Mode == "cursor" || paging.Cursor != ""
 		// 调用 dataset 查询
 		params := &interfaces.ResourceDataQueryParams{
 			FilterCondition: filterCondition,
@@ -1073,16 +1074,20 @@ func (rts *relationTypeService) SearchRelationTypes(ctx context.Context,
 			nextCursor = datasetResp.Paging.NextCursor
 		}
 
-		// 如果已经收集到足够的数量或者没有更多数据了，跳出循环
-		if (query.Limit > 0 && len(relationTypes) >= query.Limit) || nextCursor == nil {
+		if query.Limit > 0 && len(relationTypes) >= query.Limit {
 			break
 		}
-
-		if nextCursor != nil {
+		if isCursorPaging {
+			if nextCursor == nil {
+				break
+			}
 			cursor = *nextCursor
-		} else {
-			offset += limit
+			continue
 		}
+		if len(datasetResp.Entries) < limit {
+			break
+		}
+		offset += limit
 	}
 
 	response.Entries = relationTypes

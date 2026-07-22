@@ -587,6 +587,7 @@ func (rts *riskTypeService) SearchRiskTypes(ctx context.Context, query *interfac
 		if cursor != "" {
 			paging = interfaces.ResourceDataPagingRequest{Cursor: cursor}
 		}
+		isCursorPaging := paging.Mode == "cursor" || paging.Cursor != ""
 		params := &interfaces.ResourceDataQueryParams{
 			FilterCondition: filterCondition,
 			Paging:          paging,
@@ -640,15 +641,20 @@ func (rts *riskTypeService) SearchRiskTypes(ctx context.Context, query *interfac
 			nextCursor = datasetResp.Paging.NextCursor
 		}
 
-		if (query.Limit > 0 && len(riskTypes) >= query.Limit) || nextCursor == nil {
+		if query.Limit > 0 && len(riskTypes) >= query.Limit {
 			break
 		}
-
-		if nextCursor != nil {
+		if isCursorPaging {
+			if nextCursor == nil {
+				break
+			}
 			cursor = *nextCursor
-		} else {
-			offset += limit
+			continue
 		}
+		if len(datasetResp.Entries) < limit {
+			break
+		}
+		offset += limit
 	}
 
 	response.Entries = riskTypes
