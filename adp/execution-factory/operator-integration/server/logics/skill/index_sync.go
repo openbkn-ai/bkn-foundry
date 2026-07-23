@@ -111,6 +111,10 @@ func (s *skillIndexSync) Init(ctx context.Context) (err error) {
 	}
 	s.setDatasetID(datasetID)
 	if resource != nil {
+		// 收养到的 dataset 可能挂在另一个目录下(混合形态)，写入受它自己的父目录管辖
+		if err := s.ensureDatasetCatalogEnabled(ctx, resource, catalogID); err != nil {
+			return err
+		}
 		// dataset 已存在：读回建时锁定的模型名(建模型==查模型)。
 		// 旧 dataset 两种形态都兜住，都取不到时回退按名 "embedding"，与改造前行为一致。
 		modelName := extractEmbeddingModelFromIndexConfig(resource.IndexConfig)
@@ -179,7 +183,9 @@ func (s *skillIndexSync) ensureCatalog(ctx context.Context) (string, error) {
 		}
 		if legacy != nil {
 			s.logger.WithContext(ctx).Infof("adopting legacy catalog, catalog_id=%s", legacy.ID)
-			s.reconcileCatalog(ctx, legacy)
+			if err := s.reconcileCatalog(ctx, legacy); err != nil {
+				return "", err
+			}
 			return legacy.ID, nil
 		}
 		s.logger.WithContext(ctx).Infof("catalog not found, creating catalog, catalog_id=%s", executionFactoryCatalogID)
@@ -200,14 +206,19 @@ func (s *skillIndexSync) ensureCatalog(ctx context.Context) (string, error) {
 		}
 		return executionFactoryCatalogID, nil
 	}
-	s.reconcileCatalog(ctx, catalog)
+	if err := s.reconcileCatalog(ctx, catalog); err != nil {
+		return "", err
+	}
 	return catalog.ID, nil
 }
 
 // reconcileCatalog 把存量目录对齐到当前预期：展示名迁到新品牌名、补 internal 标签、
-// 目录置为启用。三个动作都是尽力而为——失败只告警不阻断启动，索引读写本身不依赖
-// 它们成功。
-func (s *skillIndexSync) reconcileCatalog(ctx context.Context, catalog *interfaces.VegaCatalog) {
+// 目录置为启用。
+//
+// 改名与补标签是展示项，失败只告警；「启用」是功能项——目录 disabled 时其下 dataset
+// 的读写会被 vega 以 409 拒绝，所以启用失败必须冒泡成 Init 失败，交给重试循环，
+// 否则会带着必然写失败的状态标记成已初始化。
+func (s *skillIndexSync) reconcileCatalog(ctx context.Context, catalog *interfaces.VegaCatalog) error {
 	tags := appendInternalTag(catalog.Tags)
 	// vega 的 tag 数量上限是 5；超限时放弃补标签，保住「改名」这个主目标，
 	// 否则整个 PUT 会 400，改名和补标签一起永久失败。
@@ -231,13 +242,41 @@ func (s *skillIndexSync) reconcileCatalog(ctx context.Context, catalog *interfac
 			s.logger.WithContext(ctx).Infof("catalog reconciled, catalog_id=%s, name=%s, tags=%v", catalog.ID, executionFactoryCatalogID, tags)
 		}
 	}
-	if !catalog.Enabled {
-		if err := s.vegaClient.EnableCatalog(ctx, catalog.ID); err != nil {
-			s.logger.WithContext(ctx).Warnf("enable catalog failed, catalog_id=%s, err=%v", catalog.ID, err)
-		} else {
-			s.logger.WithContext(ctx).Infof("catalog enabled, catalog_id=%s", catalog.ID)
-		}
+	return s.ensureCatalogEnabled(ctx, catalog)
+}
+
+// ensureCatalogEnabled 保证目录处于启用状态。目录 disabled 时其下 dataset 的读写
+// 会被 vega 以 409 Catalog.IsDisabled 拒绝，因此失败要作为错误返回。
+func (s *skillIndexSync) ensureCatalogEnabled(ctx context.Context, catalog *interfaces.VegaCatalog) error {
+	if catalog.Enabled {
+		return nil
 	}
+	if err := s.vegaClient.EnableCatalog(ctx, catalog.ID); err != nil {
+		s.logger.WithContext(ctx).Errorf("enable catalog failed, catalog_id=%s, err=%v", catalog.ID, err)
+		return err
+	}
+	s.logger.WithContext(ctx).Infof("catalog enabled, catalog_id=%s", catalog.ID)
+	return nil
+}
+
+// ensureDatasetCatalogEnabled 保证「收养到的 dataset 自己挂的那个目录」是启用的。
+//
+// 混合形态下两者可能不是同一个目录：ensureCatalog 解析到新 ID 的目录，而 dataset
+// 仍挂在旧目录上。写入受 dataset 的父目录管辖，只启用前者不够。
+func (s *skillIndexSync) ensureDatasetCatalogEnabled(ctx context.Context, resource *interfaces.VegaResource, resolvedCatalogID string) error {
+	if resource == nil || resource.CatalogID == "" || resource.CatalogID == resolvedCatalogID {
+		return nil
+	}
+	parent, err := s.vegaClient.GetCatalogByID(ctx, resource.CatalogID)
+	if err != nil {
+		s.logger.WithContext(ctx).Errorf("get dataset parent catalog failed, resource_id=%s, catalog_id=%s, err=%v", resource.ID, resource.CatalogID, err)
+		return err
+	}
+	if parent == nil {
+		return fmt.Errorf("skill dataset %s points to missing catalog %s", resource.ID, resource.CatalogID)
+	}
+	s.logger.WithContext(ctx).Infof("skill dataset lives in another catalog, resource_id=%s, catalog_id=%s", resource.ID, parent.ID)
+	return s.ensureCatalogEnabled(ctx, parent)
 }
 
 // appendInternalTag 补上 internal 标签；已有(忽略大小写与首尾空格)则原样返回。

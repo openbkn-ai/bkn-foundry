@@ -240,10 +240,56 @@ func TestSkillIndexSync(t *testing.T) {
 				}, nil)
 			mockVegaClient.EXPECT().GetResourceByID(gomock.Any(), executionFactorySkillDataset).Return(nil, nil)
 			mockVegaClient.EXPECT().GetResourceByID(gomock.Any(), legacyExecutionFactorySkillDataset).
-				Return(&interfaces.VegaResource{ID: legacyExecutionFactorySkillDataset, Name: legacyExecutionFactorySkillDataset}, nil)
+				Return(&interfaces.VegaResource{
+					ID:        legacyExecutionFactorySkillDataset,
+					Name:      legacyExecutionFactorySkillDataset,
+					CatalogID: legacyExecutionFactoryCatalogID,
+				}, nil)
+			// dataset 挂在旧目录下：写入受它自己的父目录管辖，disabled 就得启用
+			mockVegaClient.EXPECT().GetCatalogByID(gomock.Any(), legacyExecutionFactoryCatalogID).
+				Return(&interfaces.VegaCatalog{ID: legacyExecutionFactoryCatalogID, Name: executionFactoryCatalogID, Enabled: false}, nil)
+			mockVegaClient.EXPECT().EnableCatalog(gomock.Any(), legacyExecutionFactoryCatalogID).Return(nil)
 
 			So(syncer.Init(context.Background()), ShouldBeNil)
 			So(syncer.getDatasetID(), ShouldEqual, legacyExecutionFactorySkillDataset)
+		})
+
+		Convey("Init fails when the catalog cannot be enabled, so the retry loop takes over", func() {
+			mockVegaClient := mocks.NewMockVegaBackendClient(ctrl)
+			syncer := &skillIndexSync{vegaClient: mockVegaClient, logger: logger.DefaultLogger()}
+			mockVegaClient.EXPECT().GetCatalogByID(gomock.Any(), executionFactoryCatalogID).
+				Return(&interfaces.VegaCatalog{
+					ID:      executionFactoryCatalogID,
+					Name:    executionFactoryCatalogID,
+					Tags:    []string{internalCatalogTag},
+					Enabled: false,
+				}, nil)
+			mockVegaClient.EXPECT().EnableCatalog(gomock.Any(), executionFactoryCatalogID).Return(errors.New("vega 500"))
+
+			// disabled 目录下的数据读写会被 vega 409 拒绝，不能带着这个状态标记成已初始化
+			So(syncer.Init(context.Background()), ShouldNotBeNil)
+			So(syncer.isInitialized(), ShouldBeFalse)
+		})
+
+		Convey("Init fails when the adopted dataset points to a missing catalog", func() {
+			mockVegaClient := mocks.NewMockVegaBackendClient(ctrl)
+			syncer := &skillIndexSync{vegaClient: mockVegaClient, logger: logger.DefaultLogger()}
+			mockVegaClient.EXPECT().GetCatalogByID(gomock.Any(), executionFactoryCatalogID).
+				Return(&interfaces.VegaCatalog{
+					ID:      executionFactoryCatalogID,
+					Name:    executionFactoryCatalogID,
+					Tags:    []string{internalCatalogTag},
+					Enabled: true,
+				}, nil)
+			mockVegaClient.EXPECT().GetResourceByID(gomock.Any(), executionFactorySkillDataset).Return(nil, nil)
+			mockVegaClient.EXPECT().GetResourceByID(gomock.Any(), legacyExecutionFactorySkillDataset).
+				Return(&interfaces.VegaResource{ID: legacyExecutionFactorySkillDataset, CatalogID: "ghost_catalog"}, nil)
+			mockVegaClient.EXPECT().GetCatalogByID(gomock.Any(), "ghost_catalog").Return(nil, nil)
+
+			err := syncer.Init(context.Background())
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "missing catalog")
+			So(syncer.isInitialized(), ShouldBeFalse)
 		})
 
 		Convey("Init skips the internal tag backfill when the catalog already has 5 tags", func() {
