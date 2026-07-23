@@ -125,6 +125,14 @@ func newExecutionEnv() map[string]any {
 	return env
 }
 
+// 推导 schema 同样会执行用户代码,身份键必须一并覆盖 ——
+// 少发一个,池化容器里上一个调用方的身份就会被用户代码读到。
+func inferSchemaExecutionEnv() map[string]any {
+	env := newExecutionEnv()
+	env["source"] = "function_infer_schema"
+	return env
+}
+
 func buildFunctionProxyExecutionEnv(version string) map[string]any {
 	env := newExecutionEnv()
 	env["source"] = "function_proxy"
@@ -399,7 +407,7 @@ func (h *unifiedProxyHandler) FunctionInferSchema(c *gin.Context) {
 		Code:     req.Code + inferSchemaProbe,
 		Event:    map[string]any{},
 		Language: string(interfaces.ScriptTypePython),
-		EnvVars:  map[string]any{"source": "function_infer_schema"},
+		EnvVars:  inferSchemaExecutionEnv(),
 	})
 	if err != nil {
 		rest.ReplyError(c, err)

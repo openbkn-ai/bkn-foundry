@@ -149,7 +149,7 @@ func (s *ToolServiceImpl) buildFunctionInput(ctx context.Context, req *interface
 	// 元数据是整体重建的,请求没带的字段会被写成空值。编辑只想改其中一项时
 	// （比如只换依赖）,其余字段必须沿用已存值,否则参数定义和依赖会被静默清空。
 	if input.Code != "" && input.Inputs != nil && input.Outputs != nil &&
-		input.Dependencies != nil && input.ScriptType != "" {
+		input.Dependencies != nil && input.ScriptType != "" && input.DependenciesURL != "" {
 		return input, nil
 	}
 	has, current, err := s.MetadataService.GetMetadataBySource(ctx, toolDB.SourceID, toolDB.SourceType)
