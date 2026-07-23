@@ -94,6 +94,13 @@ func EmitQueryObjectInstanceEvents(ctx context.Context, logger interfaces.Logger
 	SubmitEvents(ctx, logger, req, BuildQueryObjectInstanceEvents(ctx, req, resp))
 }
 
+func EmitQueryInstanceSubgraphEvents(ctx context.Context, logger interfaces.Logger, req *interfaces.QueryInstanceSubgraphReq, resp *interfaces.QueryInstanceSubgraphResp) {
+	if !EvidenceEnabled() {
+		return
+	}
+	SubmitEvents(ctx, logger, req, BuildQueryInstanceSubgraphEvents(ctx, req, resp))
+}
+
 func BuildSearchSchemaEvents(ctx context.Context, req *interfaces.SearchSchemaReq, resp *interfaces.SearchSchemaResp) []Event {
 	ec, ok := contextFromRequest(ctx, req)
 	if !ok {
@@ -183,6 +190,47 @@ func BuildQueryObjectInstanceEvents(ctx context.Context, req *interfaces.QueryOb
 			},
 		}),
 		buildEvent(ec, "evidence.refs.created", "context.query_object", map[string]any{
+			"claim_id":      claimID,
+			"evidence_refs": refs,
+		}),
+	}
+}
+
+func BuildQueryInstanceSubgraphEvents(ctx context.Context, req *interfaces.QueryInstanceSubgraphReq, resp *interfaces.QueryInstanceSubgraphResp) []Event {
+	ec, ok := contextFromRequest(ctx, nil)
+	if !ok {
+		return nil
+	}
+	refs := subgraphEvidenceRefs(resp)
+	if len(refs) == 0 {
+		return nil
+	}
+
+	resultSummary := map[string]any{
+		"kn_id":                querySubgraphKnID(req),
+		"path_hash":            querySubgraphPathHash(req),
+		"entry_count":          subgraphEntryCount(resp),
+		"include_logic_params": querySubgraphIncludeLogicParams(req),
+	}
+	claimID := ClaimID("context_loader.query_instance_subgraph", querySubgraphKnID(req), resultSummary)
+
+	return []Event{
+		buildEvent(ec, "claim.created", "context.query_instance_subgraph", map[string]any{
+			"claim_id":       claimID,
+			"claim_type":     "finding",
+			"claim_hash":     HashValue(resultSummary),
+			"visibility":     "visible",
+			"version_status": "unversioned",
+			"partial_reason": []string{"row_refs_unversioned", "schema_refs_unversioned"},
+			"subject_refs": map[string]any{
+				"kn_id":                querySubgraphKnID(req),
+				"path_hash":            resultSummary["path_hash"],
+				"returned_ref_count":   len(refs),
+				"include_logic_params": querySubgraphIncludeLogicParams(req),
+				"data.classification":  "internal",
+			},
+		}),
+		buildEvent(ec, "evidence.refs.created", "context.query_instance_subgraph", map[string]any{
 			"claim_id":      claimID,
 			"evidence_refs": refs,
 		}),
@@ -545,6 +593,103 @@ func queryObjectLimit(req *interfaces.QueryObjectInstancesReq) int {
 		return 0
 	}
 	return req.Limit
+}
+
+func subgraphEvidenceRefs(resp *interfaces.QueryInstanceSubgraphResp) []map[string]any {
+	if resp == nil || resp.Entries == nil {
+		return nil
+	}
+	refs := make([]map[string]any, 0)
+	seen := make(map[string]struct{})
+	walkSubgraphValue(resp.Entries, func(item map[string]any) {
+		if identity, ok := objectInstanceIdentity(item); ok {
+			ref := map[string]any{
+				"ref_id":         "subgraph_instance:" + hashSuffix(identity),
+				"ref_type":       "row_ref",
+				"source_system":  ModuleName,
+				"summary_hash":   HashValue(map[string]any{"identity_hash": HashValue(identity)}),
+				"validity":       "observed",
+				"version_status": "unversioned",
+				"visibility":     "visible",
+				"partial_reason": []string{"row_ref_unversioned"},
+			}
+			appendEvidenceRef(&refs, seen, ref)
+		}
+		if relationID := firstString(item, "relation_type_id", "relation_type"); relationID != "" {
+			ref := map[string]any{
+				"ref_id":         "relation_type:" + relationID,
+				"ref_type":       "schema_ref",
+				"source_system":  ModuleName,
+				"summary_hash":   HashValue(map[string]any{"relation_id": relationID}),
+				"validity":       "observed",
+				"version_status": "unversioned",
+				"visibility":     "visible",
+				"partial_reason": []string{"schema_ref_unversioned"},
+			}
+			appendEvidenceRef(&refs, seen, ref)
+		}
+	})
+	return refs
+}
+
+func appendEvidenceRef(refs *[]map[string]any, seen map[string]struct{}, ref map[string]any) {
+	key := firstString(ref, "ref_type") + ":" + firstString(ref, "ref_id")
+	if _, ok := seen[key]; ok {
+		return
+	}
+	seen[key] = struct{}{}
+	*refs = append(*refs, ref)
+}
+
+func walkSubgraphValue(value any, visit func(map[string]any)) {
+	switch typed := value.(type) {
+	case []any:
+		for _, item := range typed {
+			walkSubgraphValue(item, visit)
+		}
+	case map[string]any:
+		visit(typed)
+		for _, nested := range typed {
+			walkSubgraphValue(nested, visit)
+		}
+	default:
+		if item, ok := asMap(value); ok {
+			visit(item)
+			for _, nested := range item {
+				walkSubgraphValue(nested, visit)
+			}
+		}
+	}
+}
+
+func querySubgraphKnID(req *interfaces.QueryInstanceSubgraphReq) string {
+	if req == nil {
+		return ""
+	}
+	return strings.TrimSpace(req.KnID)
+}
+
+func querySubgraphPathHash(req *interfaces.QueryInstanceSubgraphReq) string {
+	if req == nil {
+		return HashValue(nil)
+	}
+	return HashValue(req.RelationTypePaths)
+}
+
+func querySubgraphIncludeLogicParams(req *interfaces.QueryInstanceSubgraphReq) bool {
+	return req != nil && req.IncludeLogicParams
+}
+
+func subgraphEntryCount(resp *interfaces.QueryInstanceSubgraphResp) int {
+	if resp == nil || resp.Entries == nil {
+		return 0
+	}
+	switch entries := resp.Entries.(type) {
+	case []any:
+		return len(entries)
+	default:
+		return 1
+	}
 }
 
 func hashSuffix(value any) string {
