@@ -408,7 +408,7 @@ func TestValidatePaginationQueryParams(t *testing.T) {
 			assert: func(t *testing.T, got interfaces.PaginationQueryParams) {
 				assert.Equal(t, 0, got.Offset)
 				assert.Equal(t, 10, got.Limit)
-				assert.Equal(t, "f_name", got.Sort)
+				assert.Equal(t, "name", got.Sort)
 				assert.Equal(t, "asc", got.Direction)
 			},
 		},

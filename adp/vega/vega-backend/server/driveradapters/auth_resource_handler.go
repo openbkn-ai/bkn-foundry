@@ -142,6 +142,7 @@ func parseAuthResourceQuery(ctx context.Context, span trace.Span, c *gin.Context
 		rest.ReplyError(c, httpErr)
 		return interfaces.AuthResourceQueryParams{}, false
 	}
+	pageParam.Sort = interfaces.AuthResourceSort[sort]
 
 	return interfaces.AuthResourceQueryParams{
 		PaginationQueryParams: pageParam,

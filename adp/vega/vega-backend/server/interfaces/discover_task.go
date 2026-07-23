@@ -27,9 +27,10 @@ const (
 
 var (
 	DISCOVER_TASK_SORT = map[string]string{
-		"create_time": "f_create_time",
-		"start_time":  "f_start_time",
-		"finish_time": "f_finish_time",
+		"default":     "",
+		"create_time": "",
+		"start_time":  "",
+		"finish_time": "",
 	}
 )
 
@@ -61,6 +62,7 @@ type DiscoverTaskQueryParams struct {
 	CatalogID   string `form:"catalog_id" json:"catalog_id"`
 	ScheduleID  string `form:"schedule_id" json:"schedule_id"`
 	Status      string `form:"status" json:"status"`
+	Strategy    string `form:"strategy" json:"strategy"`
 	TriggerType string `form:"trigger_type" json:"trigger_type"`
 }
 

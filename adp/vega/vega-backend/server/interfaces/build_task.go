@@ -50,6 +50,14 @@ var BuildTaskStatusOrder = []string{
 	BuildTaskStatusCompleted, // 6 已完成
 }
 
+// BUILD_TASK_SORT is a whitelist of supported order_by values. Values are unused;
+// the data access layer owns the mapping from API fields to database columns.
+var BUILD_TASK_SORT = map[string]string{
+	BuildTaskOrderByDefault:   "",
+	BuildTaskOrderByCreatedAt: "",
+	BuildTaskOrderByUpdatedAt: "",
+}
+
 // BuildTask represents a build task entity.
 type BuildTask struct {
 	ID              string                `json:"id"`

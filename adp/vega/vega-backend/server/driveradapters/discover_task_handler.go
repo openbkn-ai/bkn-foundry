@@ -54,7 +54,7 @@ func (r *restHandler) listDiscoverTasks(c *gin.Context, visitor hydra.Visitor) {
 
 	offset := common.GetQueryOrDefault(c, "offset", interfaces.DEFAULT_OFFSET)
 	limit := common.GetQueryOrDefault(c, "limit", interfaces.DEFAULT_LIMIT)
-	sort := common.GetQueryOrDefault(c, "sort", "create_time")
+	sort := common.GetQueryOrDefault(c, "sort", "default")
 	direction := common.GetQueryOrDefault(c, "direction", interfaces.DESC_DIRECTION)
 
 	pageParam, err := validatePaginationQueryParams(ctx,
@@ -67,12 +67,12 @@ func (r *restHandler) listDiscoverTasks(c *gin.Context, visitor hydra.Visitor) {
 		rest.ReplyError(c, httpErr)
 		return
 	}
-
 	params := interfaces.DiscoverTaskQueryParams{
 		PaginationQueryParams: pageParam,
 		CatalogID:             c.Query("catalog_id"),
 		ScheduleID:            c.Query("schedule_id"),
 		Status:                c.Query("status"),
+		Strategy:              c.Query("strategy"),
 		TriggerType:           c.Query("trigger_type"),
 	}
 

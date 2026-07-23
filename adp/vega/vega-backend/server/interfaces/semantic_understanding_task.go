@@ -34,10 +34,9 @@ var (
 	}
 
 	SEMANTIC_UNDERSTANDING_TASK_SORT = map[string]string{
-		"create_time": "create_time",
-		"update_time": "update_time",
-		"status":      "status",
-		"scope":       "scope",
+		"default":     "",
+		"create_time": "",
+		"update_time": "",
 	}
 )
 
@@ -92,6 +91,8 @@ type SemanticUnderstandingTaskQueryParams struct {
 	CatalogID  string
 	ResourceID string
 	Statuses   []string
+	ApplyMode  string
+	Applied    *bool
 }
 
 type SemanticUnderstandingTaskMessage struct {

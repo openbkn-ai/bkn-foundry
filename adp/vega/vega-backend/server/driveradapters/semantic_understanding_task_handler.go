@@ -252,14 +252,13 @@ func parseSemanticUnderstandingTaskListParams(ctx context.Context, c *gin.Contex
 
 	offset := common.GetQueryOrDefault(c, "offset", interfaces.DEFAULT_OFFSET)
 	limit := common.GetQueryOrDefault(c, "limit", interfaces.DEFAULT_LIMIT)
-	sort := common.GetQueryOrDefault(c, "sort", "create_time")
+	sort := common.GetQueryOrDefault(c, "sort", "default")
 	direction := common.GetQueryOrDefault(c, "direction", interfaces.DESC_DIRECTION)
 
 	pageParam, err := validatePaginationQueryParams(ctx, offset, limit, sort, direction, interfaces.SEMANTIC_UNDERSTANDING_TASK_SORT)
 	if err != nil {
 		return params, err
 	}
-
 	scope := c.Query("scope")
 	if scope != "" && scope != interfaces.SemanticUnderstandingTaskScopeResource && scope != interfaces.SemanticUnderstandingTaskScopeCatalog {
 		return params, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Format).
@@ -276,10 +275,27 @@ func parseSemanticUnderstandingTaskListParams(ctx context.Context, c *gin.Contex
 		params.Statuses = statuses
 	}
 
+	applyMode := c.Query("apply_mode")
+	if applyMode != "" && applyMode != interfaces.SemanticUnderstandingApplyModeDryRun &&
+		applyMode != interfaces.SemanticUnderstandingApplyModeFillEmpty &&
+		applyMode != interfaces.SemanticUnderstandingApplyModeForce {
+		return params, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Format).
+			WithErrorDetails("invalid apply_mode")
+	}
+	if raw := c.Query("applied"); raw != "" {
+		applied, err := strconv.ParseBool(raw)
+		if err != nil {
+			return params, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Format).
+				WithErrorDetails("applied must be true or false")
+		}
+		params.Applied = &applied
+	}
+
 	params.PaginationQueryParams = pageParam
 	params.Scope = scope
 	params.CatalogID = c.Query("catalog_id")
 	params.ResourceID = c.Query("resource_id")
+	params.ApplyMode = applyMode
 	return params, nil
 }
 

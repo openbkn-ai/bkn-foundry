@@ -80,6 +80,7 @@ func (r *restHandler) listResources(c *gin.Context, visitor hydra.Visitor) {
 		rest.ReplyError(c, httpErr)
 		return
 	}
+	pageParam.Sort = interfaces.RESOURCE_SORT[sort]
 
 	extKeys := c.QueryArray("extension_key")
 	extVals := c.QueryArray("extension_value")

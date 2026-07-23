@@ -27,9 +27,10 @@ func Test_ValidateDiscoverTaskQueryParams(t *testing.T) {
 			name: "valid empty params",
 		},
 		{
-			name: "valid status and trigger type",
+			name: "valid status, strategy and trigger type",
 			params: interfaces.DiscoverTaskQueryParams{
 				Status:      interfaces.DiscoverTaskStatusCompleted,
+				Strategy:    interfaces.DiscoverStrategyFullSync,
 				TriggerType: interfaces.DiscoverTaskTriggerScheduled,
 			},
 		},
@@ -37,6 +38,13 @@ func Test_ValidateDiscoverTaskQueryParams(t *testing.T) {
 			name: "invalid status",
 			params: interfaces.DiscoverTaskQueryParams{
 				Status: "unknown",
+			},
+			wantErr: true,
+		},
+		{
+			name: "invalid strategy",
+			params: interfaces.DiscoverTaskQueryParams{
+				Strategy: "unknown",
 			},
 			wantErr: true,
 		},

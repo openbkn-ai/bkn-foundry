@@ -145,6 +145,7 @@ func (r *restHandler) listDiscoverSchedules(c *gin.Context, visitor hydra.Visito
 		rest.ReplyError(c, httpErr)
 		return
 	}
+	pageParam.Sort = interfaces.DISCOVER_SCHEDULE_SORT[sort]
 
 	params := interfaces.DiscoverScheduleQueryParams{
 		PaginationQueryParams: pageParam,

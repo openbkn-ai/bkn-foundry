@@ -31,6 +31,17 @@ paths:
           in: query
           schema:
             type: string
+        - name: apply_mode
+          description: 应用方式。
+          in: query
+          schema:
+            type: string
+            enum: [dry_run, fill_empty, force]
+        - name: applied
+          description: 是否已应用。
+          in: query
+          schema:
+            type: boolean
         - name: active
           in: query
           schema: { type: boolean }
@@ -44,8 +55,8 @@ paths:
           in: query
           schema:
             type: string
-            enum: [create_time, update_time, status, scope]
-            default: create_time
+            enum: [default, create_time, update_time]
+            default: default
         - name: direction
           in: query
           schema:

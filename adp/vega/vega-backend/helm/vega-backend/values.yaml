@@ -114,7 +114,7 @@ depServices:
     protocol: http
   bkn-agent:
     host: bkn-agent
-    port: 9898
+    port: 30800
     protocol: http
 
 config:
