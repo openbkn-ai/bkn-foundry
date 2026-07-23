@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"regexp"
 	"strings"
 
 	"github.com/getkin/kin-openapi/openapi3"
@@ -15,6 +14,12 @@ import (
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/utils"
 	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
+)
+
+const (
+	sandboxSDKModule  = "sandbox_sdk"
+	toolDecoratorName = "tool"
+	handlerFuncName   = "handler"
 )
 
 // pythonFunctionParser Python 函数解析器
@@ -59,16 +64,111 @@ func (p *pythonFunctionParser) validate(ctx context.Context, inputValue any) (in
 	return
 }
 
-// 入口函数的两种写法：@tool 装饰的普通函数（沙箱 SDK 负责把 event 解包成形参），
-// 或 handler(event)（AWS Lambda 风格）。沙箱两条执行路径都按同样的顺序识别。
-var (
-	handlerEntryPattern = regexp.MustCompile(`def\s+handler\s*\(`)
-	toolEntryPattern    = regexp.MustCompile(`(?m)^\s*@(?:\w+\.)?tool\b`)
-)
+// hasEntryPoint 判断代码是否有入口函数。
+//
+// 两种写法：@tool 装饰的普通函数（沙箱 SDK 把 event 解包成形参），或
+// handler(event)（AWS Lambda 风格）。判定必须与沙箱执行期一致 —— 保存时放行、
+// 执行时找不到入口,或者反过来保存时拒掉沙箱支持的写法,两种都是错的。
+//
+// 因此和沙箱一样按 AST 判断,并且只认来自 sandbox_sdk 的 tool：tool 也是
+// LangChain 的装饰器名,还可能是用户自己的函数名,只比对名字会误判。
+func hasEntryPoint(code string) bool {
+	mod, err := parser.ParseString(code, "exec")
+	if err != nil {
+		// 解析不了就无从判断,交给后续的语法校验报错
+		return false
+	}
+	return moduleHasEntryPoint(mod)
+}
+
+func moduleHasEntryPoint(mod ast.Ast) bool {
+	// 先收集 sandbox_sdk 绑定的名字
+	sdkToolNames := map[string]bool{}   // from sandbox_sdk import tool [as x]
+	sdkModuleNames := map[string]bool{} // import sandbox_sdk [as x]
+	ast.Walk(mod, func(node ast.Ast) bool {
+		switch n := node.(type) {
+		case *ast.ImportFrom:
+			if string(n.Module) != sandboxSDKModule {
+				return true
+			}
+			for _, alias := range n.Names {
+				if string(alias.Name) != toolDecoratorName {
+					continue
+				}
+				if alias.AsName != "" {
+					sdkToolNames[string(alias.AsName)] = true
+				} else {
+					sdkToolNames[string(alias.Name)] = true
+				}
+			}
+		case *ast.Import:
+			for _, alias := range n.Names {
+				if string(alias.Name) != sandboxSDKModule {
+					continue
+				}
+				if alias.AsName != "" {
+					sdkModuleNames[string(alias.AsName)] = true
+				} else {
+					sdkModuleNames[string(alias.Name)] = true
+				}
+			}
+		}
+		return true
+	})
+
+	var found bool
+	ast.Walk(mod, func(node ast.Ast) bool {
+		fn, ok := node.(*ast.FunctionDef)
+		if !ok {
+			return true
+		}
+		if string(fn.Name) == handlerFuncName {
+			found = true
+			return true
+		}
+		for _, deco := range fn.DecoratorList {
+			if isSandboxSDKTool(deco, sdkToolNames, sdkModuleNames) {
+				found = true
+				return true
+			}
+		}
+		return true
+	})
+	return found
+}
+
+// isSandboxSDKTool 判断一个装饰器表达式是否是 sandbox_sdk 的 tool。
+func isSandboxSDKTool(expr ast.Expr, sdkToolNames, sdkModuleNames map[string]bool) bool {
+	switch e := expr.(type) {
+	case *ast.Call:
+		// @tool(name="...")
+		return isSandboxSDKTool(e.Func, sdkToolNames, sdkModuleNames)
+	case *ast.Name:
+		id := string(e.Id)
+		// @tool，且 tool 来自 sandbox_sdk
+		if sdkToolNames[id] {
+			return true
+		}
+		// gpython 把 @sandbox_sdk.tool 归约成一个 Name（Id 含点），
+		// 不像 CPython 那样给出 Attribute
+		if base, attr, ok := strings.Cut(id, "."); ok {
+			return attr == toolDecoratorName && sdkModuleNames[base]
+		}
+		return false
+	case *ast.Attribute:
+		// @sandbox_sdk.tool
+		if string(e.Attr) != toolDecoratorName {
+			return false
+		}
+		base, ok := e.Value.(*ast.Name)
+		return ok && sdkModuleNames[string(base.Id)]
+	}
+	return false
+}
 
 // 检查是否包含入口函数
 func checkRegexpHandler(ctx context.Context, code string) (err error) {
-	if handlerEntryPattern.MatchString(code) || toolEntryPattern.MatchString(code) {
+	if hasEntryPoint(code) {
 		return nil
 	}
 	return errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtFunctionNoHandlerFound,
@@ -144,23 +244,9 @@ func (p *pythonFunctionParser) GetAllContent(ctx context.Context, inputValue any
 		err = errors.DefaultHTTPError(ctx, http.StatusBadRequest, fmt.Sprintf("解析Python代码失败: %v", err))
 		return
 	}
-	// 检查入口函数。两种写法都算：@tool 装饰的普通函数,或 handler(event)。
-	// 判定与 checkRegexpHandler 保持一致,避免同一段代码在两条路径上结论不同。
-	var hasEntry bool
-	ast.Walk(mod, func(node ast.Ast) bool {
-		n, ok := node.(*ast.FunctionDef)
-		if !ok {
-			return true
-		}
-		if n.Name == "handler" {
-			hasEntry = true
-		}
-		return true
-	})
-	if !hasEntry {
-		hasEntry = toolEntryPattern.MatchString(input.Code)
-	}
-	if !hasEntry {
+	// 检查入口函数,与 checkRegexpHandler 用同一套判定,
+	// 避免同一段代码在两条路径上结论不同。
+	if !moduleHasEntryPoint(mod) {
 		err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtFunctionNoHandlerFound,
 			"python function must define a @tool decorated function or a handler(event) function")
 		return

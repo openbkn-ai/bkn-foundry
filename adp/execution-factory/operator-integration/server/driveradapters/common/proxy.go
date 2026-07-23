@@ -107,13 +107,31 @@ func (h *unifiedProxyHandler) FunctionExecute(c *gin.Context) {
 	rest.ReplyOK(c, http.StatusOK, newFunctionExecuteResp(resp))
 }
 
-func buildFunctionProxyExecutionEnv(version string) map[string]any {
-	return map[string]any{
-		"source":              "function_proxy",
-		"task_id":             "function_proxy_" + uuid.NewString(),
-		"capability_id":       "function_version:" + version,
-		"function_version_id": version,
+// 执行上下文的全部键。沙箱会话是池化复用的,容器环境里留着上一个调用方的值,
+// 而下发的 env_vars 只是覆盖同名键 —— 漏掉哪个,函数读到的就是别人的身份。
+// 所以每次执行都下发全套,未知的显式置空。
+func executionEnvKeys() []string {
+	return []string{
+		"source", "task_id", "capability_id", "capability_name",
+		"function_version_id", "user_id", "user_name",
 	}
+}
+
+func newExecutionEnv() map[string]any {
+	env := make(map[string]any, len(executionEnvKeys()))
+	for _, k := range executionEnvKeys() {
+		env[k] = ""
+	}
+	return env
+}
+
+func buildFunctionProxyExecutionEnv(version string) map[string]any {
+	env := newExecutionEnv()
+	env["source"] = "function_proxy"
+	env["task_id"] = "function_proxy_" + uuid.NewString()
+	env["capability_id"] = "function_version:" + version
+	env["function_version_id"] = version
+	return env
 }
 
 // FunctionExecuteResp 函数执行响应
@@ -147,7 +165,8 @@ func newFunctionExecuteResp(resp *interfaces.ExecuteCodeResp) *FunctionExecuteRe
 }
 
 func buildFunctionExecutionEnv(req *interfaces.FunctionProxyExecuteCodeReq) map[string]any {
-	env := map[string]any{"source": "function_debug"}
+	env := newExecutionEnv()
+	env["source"] = "function_debug"
 	if req == nil {
 		return env
 	}
