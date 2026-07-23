@@ -19,10 +19,10 @@ import (
 	"github.com/openbkn-ai/licverify"
 	"gorm.io/gorm"
 
-	"bkn-safe/config"
-	"bkn-safe/internal/audit"
-	"bkn-safe/internal/database"
-	"bkn-safe/internal/model"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/config"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/audit"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/database"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
 const testInstanceID = "test-cluster-uid"

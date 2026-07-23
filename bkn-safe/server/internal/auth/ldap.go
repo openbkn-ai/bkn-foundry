@@ -14,8 +14,8 @@ import (
 	ldapv3 "github.com/go-ldap/ldap/v3"
 	"gorm.io/gorm"
 
-	"bkn-safe/config"
-	"bkn-safe/internal/model"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/config"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
 // LDAPAuthenticator federates authentication to an external LDAP/AD directory

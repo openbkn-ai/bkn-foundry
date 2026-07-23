@@ -10,7 +10,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"bkn-safe/internal/model"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
 // seedTree builds a 3-level org: d0(root) <- d1 <- d2; u1 in d2, u3 in d1;

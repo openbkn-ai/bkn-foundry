@@ -13,9 +13,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/licverify"
 
-	"bkn-safe/internal/auth"
-	"bkn-safe/internal/authz"
-	"bkn-safe/internal/license"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/auth"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/license"
 )
 
 // registerLicenseAdmin mounts the license management surface on the admin

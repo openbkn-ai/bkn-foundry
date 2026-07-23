@@ -13,9 +13,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
-	"bkn-safe/internal/auth"
-	"bkn-safe/internal/authz"
-	"bkn-safe/internal/model"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/auth"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
 var threeAdminRoleIDs = []string{

@@ -24,8 +24,8 @@ import (
 
 	"github.com/openbkn-ai/licverify"
 
-	"bkn-safe/config"
-	"bkn-safe/internal/audit"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/config"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/audit"
 )
 
 const (

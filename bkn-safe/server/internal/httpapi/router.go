@@ -12,11 +12,11 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
-	"bkn-safe/internal/audit"
-	"bkn-safe/internal/auth"
-	"bkn-safe/internal/authz"
-	"bkn-safe/internal/directory"
-	"bkn-safe/internal/license"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/audit"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/auth"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/directory"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/license"
 )
 
 // Deps are the collaborators the HTTP layer needs.
@@ -148,6 +148,12 @@ func New(deps Deps) *gin.Engine {
 		// verifier.
 		meReads := r.Group("/api/safe/v1/me", RequireUser(meVerifier))
 		registerMeReads(meReads, deps.Enforcer, deps.DB, deps.Directory)
+
+		// What this deployment can do, for the frontend's menu. Authn only:
+		// it describes the cluster, not the caller. Enforcement stays at each
+		// gated call site (open-core-gating §2.5).
+		caps := r.Group("/api/safe/v1", RequireUser(meVerifier))
+		registerCapabilities(caps, deps.License)
 
 		// Mutating /me (profile PUT, AppKey issue/revoke) uses the RAW verifier so
 		// a revoked/logged-out token cannot edit the profile or mint a long-lived

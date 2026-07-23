@@ -8,7 +8,7 @@ import (
 	"context"
 	"time"
 
-	"bkn-safe/internal/model"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
 // UserListFilter is the admin user-list query (pagination + optional filters).

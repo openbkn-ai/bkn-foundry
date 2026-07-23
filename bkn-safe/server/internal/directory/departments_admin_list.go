@@ -7,7 +7,7 @@ package directory
 import (
 	"context"
 
-	"bkn-safe/internal/model"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
 // DepartmentListItem is the admin list view of a department (snake_case JSON).

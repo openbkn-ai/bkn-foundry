@@ -11,9 +11,9 @@ import (
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 
-	"bkn-safe/internal/authz"
-	"bkn-safe/internal/database"
-	"bkn-safe/internal/model"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/database"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
 func newSvc(t *testing.T) (*Service, *gorm.DB) {

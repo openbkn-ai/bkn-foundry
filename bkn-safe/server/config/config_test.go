@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"bkn-safe/config"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/config"
 )
 
 func TestLoadFromFile(t *testing.T) {
