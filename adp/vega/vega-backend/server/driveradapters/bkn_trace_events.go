@@ -61,9 +61,19 @@ func emitResourceDataEvidence(c *gin.Context, ctx context.Context, resource *int
 		QueryHash:     bkntrace.HashValue(safeResourceDataQueryShape(params)),
 		ReturnedCount: len(result.Entries),
 		TotalCount:    result.TotalCount,
-		Truncated:     result.Paging != nil,
+		Truncated:     resourceDataEvidenceTruncated(result),
 	}
 	bkntrace.EmitDataQueryEvents(ctx, vegaTraceRequestContext(c, ctx), subject, refs)
+}
+
+func resourceDataEvidenceTruncated(result *interfaces.ResourceDataQueryResult) bool {
+	if result == nil {
+		return false
+	}
+	if result.Paging != nil && result.Paging.NextCursor != nil {
+		return true
+	}
+	return result.TotalCount > 0 && int64(len(result.Entries)) < result.TotalCount
 }
 
 func safeResourceListQueryShape(params interfaces.ResourcesQueryParams) map[string]any {
