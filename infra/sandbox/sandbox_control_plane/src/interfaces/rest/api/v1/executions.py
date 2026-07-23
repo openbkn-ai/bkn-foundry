@@ -61,6 +61,7 @@ async def submit_execution(
         language=request.language,
         timeout=request.timeout,
         event_data=request.event,
+        env_vars=request.env_vars,
         working_directory=request.working_directory,
     )
 
@@ -108,6 +109,7 @@ async def execute_code_sync(
         language=request.language,
         timeout=request.timeout,
         event_data=request.event,
+        env_vars=request.env_vars,
         working_directory=request.working_directory,
     )
     execution_dto = await service.execute_code(command)

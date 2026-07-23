@@ -134,6 +134,13 @@ class ExecuteCodeRequest(BaseModel):
     language: Literal["python", "javascript", "shell"] = Field(..., description="编程语言")
     timeout: int = Field(30, ge=1, le=3600, description="执行超时（秒）")
     event: Optional[Dict] = Field(None, description="事件数据")
+    env_vars: Dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "本次执行的环境变量，覆盖会话创建时的同名值。"
+            "会话是池化复用的，调用方身份这类随执行变化的信息必须每次下发。"
+        ),
+    )
     working_directory: Optional[str] = Field(
         None, description="可选执行目录，相对于 workspace 根目录；未传时默认使用 workspace 根目录。"
     )
