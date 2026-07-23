@@ -1,8 +1,8 @@
 # vega-backend Trace Contract
 
-> 状态：阶段一模块接入合同  
-> 适用版本：`bkn.trace.schema.version=1.0.0`  
-> 依据：`bkn-docs/docs/foundry/bkn-trace/design/阶段一：OpenBKN 可观测记录规范与 Trace Context 基线.md`
+> 状态：阶段二数据证据接入合同
+> 适用版本：`bkn.trace.schema.version=2.0.0`
+> 依据：`bkn-docs/docs/foundry/bkn-trace/design/BKN Trace 设计.md`、`bkn-docs/docs/foundry/bkn-trace/design/BKN Trace 三段式实施计划.md`
 
 ## Module
 
@@ -12,14 +12,14 @@
 - service identity: `vega-backend`
 - runtime: Go HTTP service
 - repository path: `adp/vega/vega-backend`
-- contract version: `1.0.0`
+- contract version: `2.0.0`
 
 ## Entry Operations
 
 | operation | trigger | required context | emitted spans | emitted events |
 | --- | --- | --- | --- | --- |
-| `data.resource.query` | resource data query | `traceparent`、`bkn-request-id`、account/auth context | `vega-data.request`、`vega-data.query` | `data.query.executed` |
-| `data.catalog.get` | catalog/resource metadata query | `traceparent`、`bkn-request-id`、account/auth context | `vega-data.request` | `schema.read` / metadata read event |
+| `data.resource.query` | resource data query | `traceparent`、`bkn-request-id`、account/auth context | `vega-data.request`、`vega-data.query` | `claim.created`、`evidence.refs.created` |
+| `data.catalog.get` | resource metadata list/get | `traceparent`、`bkn-request-id`、account/auth context | `vega-data.request` | `claim.created`、`evidence.refs.created` |
 | `data.query.execute` | raw SQL / OpenSearch query | `traceparent`、`bkn-request-id`、resource refs | `vega-data.request`、`vega-data.query` | `data.query.executed`、`data.query.failed` |
 | `data.snapshot.create` | snapshot/export follow-up | `traceparent`、`bkn-request-id`、resource refs | `vega-data.snapshot` | `snapshot.created` |
 
@@ -71,6 +71,8 @@ bkn.runtime.env
 | `data.query.executed` | vega-backend | resource id、catalog id、query hash、row count、truncated | result truncated / connector unavailable | business event |
 | `data.query.failed` | vega-backend | resource id、catalog id、query hash、error code、retryable | timeout / dependency / validation | forced retention on error |
 | `snapshot.created` | vega-backend | snapshot ref、hash、format、classification | snapshot unavailable | evidence ref |
+| `claim.created` | vega-backend | resource id、catalog id、query hash、returned count、evidence refs hash | data refs unversioned | business event |
+| `evidence.refs.created` | vega-backend | `resource_ref` and `row_ref` controlled refs with summary hash | resource/row refs unversioned | business event |
 
 ## Business Refs
 
@@ -85,6 +87,7 @@ bkn.runtime.env
 
 - never log: token、authorization、cookie、完整 SQL、完整结果集、行级数据、PII、连接串、对象存储裸 URL。
 - hash only: raw SQL、OpenSearch DSL、query body、large result summary。
+- runtime evidence event payload only contains safe query shape hash、row hash、counts、resource/catalog ids and controlled refs; full SQL、filter values、output field names and row data are not emitted.
 - controlled reference: row refs、snapshot refs、large result artifacts。
 - redact: unauthorized resource detail、PII fields、secret connection metadata。
 - `data.classification`: `public|internal|confidential|pii|secret`。
@@ -114,6 +117,7 @@ bkn.runtime.env
 | negative | `fixtures/bkn-trace/negative_sensitive_sql.json` | full SQL leakage rejection | fail |
 | propagation | `fixtures/bkn-trace/propagation.json` | snapshot/resource propagation | pass |
 | sampling | `fixtures/bkn-trace/sampling.json` | forced sampled timeout | pass |
+| phase2 vega data evidence | `fixtures/bkn-trace/phase2/vega_data_evidence_l2_positive.json` | resource metadata and row refs baseline | pass |
 
 ## Covered GWT
 
@@ -127,7 +131,8 @@ bkn.runtime.env
 
 ## Known Gaps
 
-- runtime `data.query.executed/data.query.failed/snapshot.created` event emitters are not complete in this branch.
+- legacy phase-one event names `data.query.executed/data.query.failed` are superseded by phase-two `claim.created` / `evidence.refs.created` for implemented successful resource metadata and resource data query paths.
+- snapshot refs and immutable evidence artifact storage remain a follow-up; current data evidence emits resource/row refs and summary hashes only.
 - outbound permission/model-factory/bkn-agent clients should be migrated to `common.MergeTraceHeaders` in follow-up commits.
 - full registry validation and indexing policy validation currently rely on `bkn-docs` validator follow-up.
 - S3 health metrics are not implemented yet.
@@ -135,6 +140,6 @@ bkn.runtime.env
 ## Owner Sign-off
 
 - owner: OpenBKN Foundry / Vega data
-- reviewed at: 2026-07-21
+- reviewed at: 2026-07-23
 - reviewer: pending
 - compatibility risk: low; new headers are additive and legacy `x-request-id` remains supported.

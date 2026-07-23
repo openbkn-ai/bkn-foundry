@@ -20,6 +20,7 @@ import (
 	"github.com/openbkn-ai/bkn-comm-go/rest"
 	attr "go.opentelemetry.io/otel/attribute"
 
+	"ontology-query/common/bkntrace"
 	"ontology-query/common/visitor"
 	oerrors "ontology-query/errors"
 	"ontology-query/interfaces"
@@ -182,6 +183,7 @@ func (r *restHandler) GetObjectsSubgraph(c *gin.Context, visitor hydra.Visitor) 
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 
 	result.OverallMs = time.Now().UnixMilli() - startTime.UnixMilli()
+	emitSubgraphEvidence(c, ctx, visitor, knID, branch, "bkn.relation.query", safeSubgraphSourceQueryShape(&query), &result)
 	rest.ReplyOK(c, http.StatusOK, result)
 }
 
@@ -301,6 +303,19 @@ func (r *restHandler) GetObjectsSubgraphByTypePath(c *gin.Context, visitor hydra
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 
 	// result.OverallMs = time.Now().UnixMilli() - startTime.UnixMilli()
+	refs := make([]bkntrace.EvidenceRef, 0)
+	for i := range result.Entries {
+		refs = append(refs, bkntrace.SubgraphRefs(knID, branch, &result.Entries[i])...)
+	}
+	bkntrace.EmitDataQueryEvents(ctx, ontologyTraceRequestContext(c, ctx, visitor), bkntrace.DataQuerySubject{
+		EntityKind:    bkntrace.EntityKindRelationPath,
+		Operation:     "bkn.relation.query",
+		KNID:          knID,
+		Branch:        branch,
+		SubjectID:     "subgraph_type_path",
+		QueryHash:     bkntrace.HashValue(paths),
+		ReturnedCount: len(result.Entries),
+	}, refs)
 	rest.ReplyOK(c, http.StatusOK, result)
 }
 
@@ -430,5 +445,6 @@ func (r *restHandler) GetObjectsSubgraphByObjects(c *gin.Context, visitor hydra.
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 
 	result.OverallMs = time.Now().UnixMilli() - startTime.UnixMilli()
+	emitSubgraphEvidence(c, ctx, visitor, knID, branch, "bkn.relation.query", safeSubgraphByObjectsQueryShape(&query), &result)
 	rest.ReplyOK(c, http.StatusOK, result)
 }

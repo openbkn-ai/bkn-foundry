@@ -157,6 +157,7 @@ func (r *restHandler) queryResourceData(c *gin.Context, ctx context.Context, spa
 
 	logger.Debug("Handler queryResourceData Success")
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	emitResourceDataEvidence(c, ctx, resource, &params, result)
 	rest.ReplyOkWithHeaders(c, http.StatusOK, resultData, map[string]string{
 		interfaces.X_REQUEST_TOOK: time.Since(start).String(),
 	})

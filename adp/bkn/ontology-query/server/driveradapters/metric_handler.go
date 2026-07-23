@@ -43,6 +43,9 @@ func (r *restHandler) PostMetricDataByIn(c *gin.Context) {
 
 func (r *restHandler) postMetricData(c *gin.Context, vis hydra.Visitor) {
 	start := time.Now()
+	traceCtx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+
 	ctx := rest.GetLanguageCtx(c)
 	accountInfo := interfaces.AccountInfo{ID: vis.ID, Type: string(vis.Type)}
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
@@ -90,6 +93,7 @@ func (r *restHandler) postMetricData(c *gin.Context, vis hydra.Visitor) {
 	}
 
 	logger.Infof("PostMetricData done in %dms", time.Since(start).Milliseconds())
+	emitMetricEvidence(c, traceCtx, vis, knID, branch, metricID, "bkn.metric.get", safeMetricQueryShape(knID, branch, metricID, body), &out)
 	rest.ReplyOK(c, http.StatusOK, out)
 }
 
@@ -112,6 +116,9 @@ func (r *restHandler) PostMetricDryRunByIn(c *gin.Context) {
 
 func (r *restHandler) postMetricDryRun(c *gin.Context, vis hydra.Visitor) {
 	start := time.Now()
+	traceCtx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+
 	ctx := rest.GetLanguageCtx(c)
 	accountInfo := interfaces.AccountInfo{ID: vis.ID, Type: string(vis.Type)}
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
@@ -159,5 +166,13 @@ func (r *restHandler) postMetricDryRun(c *gin.Context, vis hydra.Visitor) {
 	}
 
 	logger.Infof("PostMetricDryRun done in %dms", time.Since(start).Milliseconds())
+	metricID := ""
+	if body.MetricConfig != nil {
+		metricID = body.MetricConfig.ID
+	}
+	if metricID == "" {
+		metricID = "dry_run"
+	}
+	emitMetricEvidence(c, traceCtx, vis, knID, branch, metricID, "bkn.metric.dry_run", safeMetricQueryShape(knID, branch, metricID, body), &out)
 	rest.ReplyOK(c, http.StatusOK, out)
 }

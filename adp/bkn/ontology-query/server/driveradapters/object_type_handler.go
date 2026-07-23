@@ -173,6 +173,7 @@ func (r *restHandler) GetObjectsInObjectType(c *gin.Context, visitor hydra.Visit
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 
 	result.OverallMs = time.Now().UnixMilli() - startTime.UnixMilli()
+	emitObjectQueryEvidence(c, ctx, visitor, &query, &result)
 	rest.ReplyOK(c, http.StatusOK, result)
 
 }

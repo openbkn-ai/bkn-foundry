@@ -123,6 +123,7 @@ func (r *restHandler) listResources(c *gin.Context, visitor hydra.Visitor) {
 
 	logger.Debug("Handler ListResources Success")
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	emitResourceReadEvidence(c, ctx, "data.catalog.get", entries, total, safeResourceListQueryShape(params))
 	rest.ReplyOK(c, http.StatusOK, result)
 }
 
@@ -309,6 +310,7 @@ func (r *restHandler) getResources(c *gin.Context, visitor hydra.Visitor) {
 
 	logger.Debug("Handler GetResource Success")
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	emitResourceReadEvidence(c, ctx, "data.catalog.get", resources, int64(len(resources)), safeResourceIDsQueryShape(ids, ignoreMissing))
 	rest.ReplyOK(c, http.StatusOK, result)
 }
 
