@@ -737,21 +737,34 @@ func (ots *objectTypeService) GetObjectTypeSampleData(ctx context.Context,
 	switch dsType {
 	case interfaces.DATA_SOURCE_TYPE_RESOURCE:
 		datasetResp, err = ots.vba.QueryResourceData(ctx, objectType.DataSource.ID, &interfaces.ResourceDataQueryParams{
-			Limit:        query.Limit,
+			Paging: interfaces.ResourceDataPagingRequest{
+				Mode:   "single",
+				Limit:  query.Limit,
+				Offset: query.Offset,
+			},
 			NeedTotal:    query.NeedTotal,
-			Offset:       query.Offset,
 			OutputFields: outputFields,
 		})
 	default:
-		viewResp, viewErr := ots.dva.GetDataStart(ctx, objectType.DataSource.ID, "", nil, query.Limit)
+		if query.Offset > 0 {
+			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+				berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails("data_view sample data uses search_after pagination and does not support offset")
+		}
+		var viewResp *interfaces.ViewQueryResult
+		var viewErr error
+		if len(query.SearchAfter) > 0 {
+			viewResp, viewErr = ots.dva.GetDataNext(ctx, objectType.DataSource.ID, query.SearchAfter, query.Limit)
+		} else {
+			viewResp, viewErr = ots.dva.GetDataStart(ctx, objectType.DataSource.ID, "", nil, query.Limit)
+		}
 		if viewErr != nil {
 			err = viewErr
 		} else if viewResp != nil {
 			datasetResp = &interfaces.DatasetQueryResponse{
-				Entries:     viewResp.Entries,
-				TotalCount:  viewResp.TotalCount,
-				SearchAfter: viewResp.SearchAfter,
+				Entries:    viewResp.Entries,
+				TotalCount: viewResp.TotalCount,
 			}
+			result.SearchAfter = viewResp.SearchAfter
 		}
 	}
 	if err != nil {
@@ -772,7 +785,6 @@ func (ots *objectTypeService) GetObjectTypeSampleData(ctx context.Context,
 		result.Entries = append(result.Entries, row)
 	}
 	result.TotalCount = datasetResp.TotalCount
-	result.SearchAfter = datasetResp.SearchAfter
 	span.SetStatus(codes.Ok, "")
 	return result, nil
 }

@@ -956,7 +956,7 @@ func (ms *metricService) validateMetricAgainstResolvedOT(ctx context.Context, me
 	if dsType == "" {
 		dsType = interfaces.DATA_SOURCE_TYPE_DATA_VIEW
 	}
-	if dsType != interfaces.DATA_SOURCE_TYPE_RESOURCE && dsType != interfaces.DATA_SOURCE_TYPE_DATA_VIEW {
+	if dsType != interfaces.DATA_SOURCE_TYPE_RESOURCE {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
 			WithErrorDetails(fmt.Sprintf("metric[%s]'s scope object type data_source.type[%s] is not supported", metric.ID, ds.Type))
 	}

@@ -224,9 +224,10 @@ type ObjectTypeSampleDataColumn struct {
 }
 
 type ObjectTypeSampleDataQueryParams struct {
-	Offset    int  `json:"offset,omitempty"`
-	Limit     int  `json:"limit,omitempty"`
-	NeedTotal bool `json:"need_total,omitempty"`
+	Offset      int   `json:"offset,omitempty"`
+	Limit       int   `json:"limit,omitempty"`
+	NeedTotal   bool  `json:"need_total,omitempty"`
+	SearchAfter []any `json:"search_after,omitempty"`
 }
 
 type ObjectTypeSampleData struct {
