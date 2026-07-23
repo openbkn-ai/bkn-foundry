@@ -1,4 +1,15 @@
 
+_opensearch_resolve_image_defaults() {
+    local image_registry="${OPENSEARCH_IMAGE_REGISTRY:-$(resolve_openbkn_image_registry)}"
+    OPENSEARCH_IMAGE_REGISTRY="${image_registry}"
+    if [[ -z "${OPENSEARCH_IMAGE}" ]]; then
+        OPENSEARCH_IMAGE="$(compose_image_ref "${image_registry}" "${OPENSEARCH_IMAGE_REPOSITORY:-opensearchproject/opensearch}" "${OPENSEARCH_IMAGE_TAG}")"
+    fi
+    if [[ -z "${OPENSEARCH_INIT_IMAGE}" ]]; then
+        OPENSEARCH_INIT_IMAGE="$(compose_image_ref "${image_registry}" "${OPENSEARCH_INIT_IMAGE_REPOSITORY:-busybox}" "${OPENSEARCH_INIT_IMAGE_TAG}")"
+    fi
+}
+
 install_opensearch() {
     log_info "Installing OpenSearch via Helm..."
 
@@ -27,9 +38,7 @@ install_opensearch() {
 
     kubectl create namespace "${OPENSEARCH_NAMESPACE}" 2>/dev/null || true
 
-    if [[ -z "${OPENSEARCH_IMAGE}" ]]; then
-        OPENSEARCH_IMAGE="$(image_from_registry "${OPENSEARCH_IMAGE_REPOSITORY}" "${OPENSEARCH_IMAGE_TAG}" "${OPENSEARCH_IMAGE_FALLBACK}")"
-    fi
+    _opensearch_resolve_image_defaults
 
     local persistence_enabled="${OPENSEARCH_PERSISTENCE_ENABLED}"
     if [[ "${persistence_enabled}" == "true" ]]; then
@@ -44,13 +53,6 @@ install_opensearch() {
                 persistence_enabled="false"
             fi
         fi
-    fi
-
-    # Override OpenSearch image registry based on OFFLINE_MODE (in case it was set before OFFLINE_MODE)
-    if [[ "${OFFLINE_MODE}" == "true" ]]; then
-        OPENSEARCH_IMAGE="${OFFLINE_REGISTRY}/openbkn-ai/opensearchproject/opensearch:2.19.4"
-        OPENSEARCH_INIT_IMAGE="${OFFLINE_REGISTRY}/openbkn-ai/busybox:1.36.1"
-        log_info "Offline mode: Using offline registry ${OFFLINE_REGISTRY} for OpenSearch"
     fi
 
     # Parse image repository/tag from OPENSEARCH_IMAGE (chart expects image.repository + image.tag)

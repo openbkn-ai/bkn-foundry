@@ -65,6 +65,14 @@ sync_config_rds_for_in_cluster_mariadb() {
     mv "${tmp}" "${config_file}"
 }
 
+_mariadb_resolve_image_defaults() {
+    local image_registry="${MARIADB_IMAGE_REGISTRY:-$(resolve_openbkn_image_registry)}"
+    MARIADB_IMAGE_REGISTRY="${image_registry}"
+    if [[ -z "${MARIADB_IMAGE}" ]]; then
+        MARIADB_IMAGE="$(compose_image_ref "${image_registry}" "${MARIADB_IMAGE_REPOSITORY:-mariadb}" "${MARIADB_IMAGE_TAG}")"
+    fi
+}
+
 # Grant permissions to MariaDB user (always run for internal MariaDB)
 grant_mariadb_user_permissions() {
     local ns="${MARIADB_NAMESPACE}"
@@ -236,15 +244,7 @@ install_mariadb_helm() {
         log_info "Generated random 10-character MariaDB root password"
     fi
 
-    # Override MariaDB image registry based on OFFLINE_MODE (in case it was set before OFFLINE_MODE)
-    if [[ "${OFFLINE_MODE}" == "true" ]]; then
-        MARIADB_IMAGE="${OFFLINE_REGISTRY}/openbkn-ai/mariadb:11.4.7"
-        log_info "Offline mode: Using offline registry ${OFFLINE_REGISTRY} for MariaDB"
-    fi
-
-    if [[ -z "${MARIADB_IMAGE}" ]]; then
-        MARIADB_IMAGE="$(image_from_registry "${MARIADB_IMAGE_REPOSITORY}" "${MARIADB_IMAGE_TAG}" "${MARIADB_IMAGE_FALLBACK}")"
-    fi
+    _mariadb_resolve_image_defaults
     # Parse image registry/repository/tag from MARIADB_IMAGE
     local image_without_tag="${MARIADB_IMAGE%:*}"
     local image_tag="${MARIADB_IMAGE##*:}"
@@ -386,9 +386,7 @@ install_mariadb_official() {
         return 0
     fi
 
-    if [[ -z "${MARIADB_IMAGE}" ]]; then
-        MARIADB_IMAGE="$(image_from_registry "${MARIADB_IMAGE_REPOSITORY}" "${MARIADB_IMAGE_TAG}" "${MARIADB_IMAGE_FALLBACK}")"
-    fi
+    _mariadb_resolve_image_defaults
 
     # Create namespace if not exists
     kubectl create namespace "${ns}" 2>/dev/null || true
@@ -682,15 +680,7 @@ install_mariadb_bitnami() {
         log_info "Generated random 10-character MariaDB root password"
     fi
 
-    # Override MariaDB image registry based on OFFLINE_MODE (in case it was set before OFFLINE_MODE)
-    if [[ "${OFFLINE_MODE}" == "true" ]]; then
-        MARIADB_IMAGE="${MARIADB_IMAGE:-${OFFLINE_REGISTRY}/openbkn-ai/mariadb:11.4.7}"
-        log_info "Offline mode: Using offline registry ${OFFLINE_REGISTRY} for MariaDB"
-    fi
-
-    if [[ -z "${MARIADB_IMAGE}" ]]; then
-        MARIADB_IMAGE="$(image_from_registry "${MARIADB_IMAGE_REPOSITORY}" "${MARIADB_IMAGE_TAG}" "${MARIADB_IMAGE_FALLBACK}")"
-    fi
+    _mariadb_resolve_image_defaults
 
     # Parse image registry/repository/tag from MARIADB_IMAGE
     local image_without_tag="${MARIADB_IMAGE%:*}"
@@ -790,9 +780,7 @@ install_mariadb_bitnami() {
 }
 
 install_mariadb() {
-    if [[ -z "${MARIADB_IMAGE}" ]]; then
-        MARIADB_IMAGE="$(image_from_registry "${MARIADB_IMAGE_REPOSITORY}" "${MARIADB_IMAGE_TAG}" "${MARIADB_IMAGE_FALLBACK}")"
-    fi
+    _mariadb_resolve_image_defaults
 
     # Use mariadb Helm chart by default
     install_mariadb_helm

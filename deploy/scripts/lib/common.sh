@@ -1235,15 +1235,7 @@ STORAGE_STORAGE_CLASS_NAME="${STORAGE_STORAGE_CLASS_NAME:-}"
 
 # MariaDB Configuration
 MARIADB_NAMESPACE="${MARIADB_NAMESPACE:-${RESOURCE_NAMESPACE}}"
-# Default to the SWR-hosted image (same registry as kafka/opensearch) so
-# it is NOT prefixed with the foundry IMAGE_REGISTRY (ghcr.io/openbkn-ai), which
-# does not host the data-layer images (anonymous pull → 403).
-# In offline mode, use offline registry; otherwise use SWR mirror
-if [[ "${OFFLINE_MODE}" == "true" ]]; then
-    MARIADB_IMAGE="${MARIADB_IMAGE:-${OFFLINE_REGISTRY}/openbkn-ai/mariadb:11.4.7}"
-else
-    MARIADB_IMAGE="${MARIADB_IMAGE:-swr.cn-east-3.myhuaweicloud.com/openbkn-ai/mariadb:11.4.7}"
-fi
+MARIADB_IMAGE="${MARIADB_IMAGE:-}"
 MARIADB_IMAGE_REPOSITORY="${MARIADB_IMAGE_REPOSITORY:-mariadb}"
 MARIADB_IMAGE_TAG="${MARIADB_IMAGE_TAG:-11.4.7}"
 MARIADB_IMAGE_FALLBACK="${MARIADB_IMAGE_FALLBACK:-mariadb:11.4.7}"
@@ -1273,12 +1265,7 @@ REDIS_CHART_VERSION="${REDIS_CHART_VERSION:-1.11.2}"
 REDIS_CHART_TGZ="${REDIS_CHART_TGZ:-${SCRIPT_DIR}/charts/redis-${REDIS_CHART_VERSION}.tgz}"
 REDIS_LOCAL_CHART_DIR="${REDIS_LOCAL_CHART_DIR:-${SCRIPT_DIR}/charts/redis}"
 REDIS_ARCHITECTURE="${REDIS_ARCHITECTURE:-sentinel}"  # standalone or sentinel
-# In offline mode, use offline registry; otherwise use SWR mirror
-if [[ "${OFFLINE_MODE}" == "true" ]]; then
-    REDIS_IMAGE="${REDIS_IMAGE:-${OFFLINE_REGISTRY}/openbkn-ai/redis:1.11.2-main.20260718025853.shaf24e971}"
-else
-    REDIS_IMAGE="${REDIS_IMAGE:-swr.cn-east-3.myhuaweicloud.com/openbkn-ai/redis:1.11.2-main.20260718025853.shaf24e971}"
-fi
+REDIS_IMAGE="${REDIS_IMAGE:-}"
 REDIS_IMAGE_REGISTRY="${REDIS_IMAGE_REGISTRY:-}"
 REDIS_IMAGE_REPOSITORY="${REDIS_IMAGE_REPOSITORY:-redis}"
 REDIS_IMAGE_TAG="${REDIS_IMAGE_TAG:-1.11.2-main.20260718025853.shaf24e971}"
@@ -1358,12 +1345,7 @@ KAFKA_CHART_TGZ="${KAFKA_CHART_TGZ:-${SCRIPT_DIR}/charts/kafka-${KAFKA_CHART_VER
 #   UnsupportedVersionException: Received request for api with key 11 (JoinGroup) and unsupported version 1
 # Default to a Kafka 3.x image for broader client compatibility; you can override via KAFKA_IMAGE/KAFKA_IMAGE_TAG.
 # Use an SWR mirror by default to improve pull reliability in restricted networks.
-# In offline mode, use offline registry; otherwise use SWR mirror
-if [[ "${OFFLINE_MODE}" == "true" ]]; then
-    KAFKA_IMAGE="${KAFKA_IMAGE:-${OFFLINE_REGISTRY}/openbkn-ai/bitnami/kafka:3.9.0-debian-12-r10}"
-else
-    KAFKA_IMAGE="${KAFKA_IMAGE:-swr.cn-east-3.myhuaweicloud.com/openbkn-ai/bitnami/kafka:3.9.0-debian-12-r10}"
-fi
+KAFKA_IMAGE="${KAFKA_IMAGE:-}"
 KAFKA_IMAGE_REPOSITORY="${KAFKA_IMAGE_REPOSITORY:-bitnami/kafka}"
 KAFKA_IMAGE_TAG="${KAFKA_IMAGE_TAG:-3.9.0-debian-12-r10}"
 KAFKA_IMAGE_FALLBACK="${KAFKA_IMAGE_FALLBACK:-swr.cn-east-3.myhuaweicloud.com/openbkn-ai/bitnami/kafka:3.9.0-debian-12-r10}"
@@ -1400,23 +1382,14 @@ OPENSEARCH_CLUSTER_NAME="${OPENSEARCH_CLUSTER_NAME:-opensearch-cluster}"
 OPENSEARCH_NODE_GROUP="${OPENSEARCH_NODE_GROUP:-master}"
 OPENSEARCH_CHART_VERSION="${OPENSEARCH_CHART_VERSION:-2.36.0}"
 OPENSEARCH_CHART_TGZ="${OPENSEARCH_CHART_TGZ:-${SCRIPT_DIR}/charts/opensearch-${OPENSEARCH_CHART_VERSION}.tgz}"
-# In offline mode, use offline registry; otherwise use SWR mirror
-if [[ "${OFFLINE_MODE}" == "true" ]]; then
-    OPENSEARCH_IMAGE="${OPENSEARCH_IMAGE:-${OFFLINE_REGISTRY}/openbkn-ai/opensearchproject/opensearch:2.19.4}"
-    OPENSEARCH_IMAGE_REPOSITORY="${OPENSEARCH_IMAGE_REPOSITORY:-${OFFLINE_REGISTRY}/openbkn-ai/opensearchproject/opensearch}"
-else
-    OPENSEARCH_IMAGE="${OPENSEARCH_IMAGE:-swr.cn-east-3.myhuaweicloud.com/openbkn-ai/opensearchproject/opensearch:2.19.4}"
-    OPENSEARCH_IMAGE_REPOSITORY="${OPENSEARCH_IMAGE_REPOSITORY:-swr.cn-east-3.myhuaweicloud.com/openbkn-ai/opensearchproject/opensearch}"
-fi
+OPENSEARCH_IMAGE="${OPENSEARCH_IMAGE:-}"
+OPENSEARCH_IMAGE_REPOSITORY="${OPENSEARCH_IMAGE_REPOSITORY:-opensearchproject/opensearch}"
 OPENSEARCH_IMAGE_TAG="${OPENSEARCH_IMAGE_TAG:-2.19.4}"
 OPENSEARCH_IMAGE_FALLBACK="${OPENSEARCH_IMAGE_FALLBACK:-swr.cn-east-3.myhuaweicloud.com/openbkn-ai/opensearchproject/opensearch:2.19.4}"
 # OpenSearch chart uses busybox initContainers (fsgroup-volume/sysctl); use a dedicated SWR mirror by default.
-# In offline mode, use offline registry; otherwise use SWR mirror
-if [[ "${OFFLINE_MODE}" == "true" ]]; then
-    OPENSEARCH_INIT_IMAGE="${OPENSEARCH_INIT_IMAGE:-${OFFLINE_REGISTRY}/openbkn-ai/busybox:1.36.1}"
-else
-    OPENSEARCH_INIT_IMAGE="${OPENSEARCH_INIT_IMAGE:-swr.cn-east-3.myhuaweicloud.com/openbkn-ai/busybox:1.36.1}"
-fi
+OPENSEARCH_INIT_IMAGE="${OPENSEARCH_INIT_IMAGE:-}"
+OPENSEARCH_INIT_IMAGE_REPOSITORY="${OPENSEARCH_INIT_IMAGE_REPOSITORY:-busybox}"
+OPENSEARCH_INIT_IMAGE_TAG="${OPENSEARCH_INIT_IMAGE_TAG:-1.36.1}"
 OPENSEARCH_JAVA_OPTS="${OPENSEARCH_JAVA_OPTS:--Xms512m -Xmx512m -XX:MaxDirectMemorySize=128m}"
 OPENSEARCH_MEMORY_REQUEST="${OPENSEARCH_MEMORY_REQUEST:-512Mi}"
 # NOTE: OpenSearch uses heap + direct memory + native overhead. 768Mi is too tight for -Xmx512m.
@@ -1465,21 +1438,13 @@ INGRESS_NGINX_HTTPS_PORT="${INGRESS_NGINX_HTTPS_PORT:-443}"
 INGRESS_NGINX_CLASS="${INGRESS_NGINX_CLASS:-class-443}"
 
 # Ingress-Nginx Image Configuration
-# In offline mode, use offline registry; otherwise use SWR mirror
-if [[ "${OFFLINE_MODE}" == "true" ]]; then
-    INGRESS_NGINX_CONTROLLER_IMAGE="${INGRESS_NGINX_CONTROLLER_IMAGE:-${OFFLINE_REGISTRY}/ingress-nginx/controller:v1.14.1}"
-    INGRESS_NGINX_CONTROLLER_IMAGE_REPOSITORY="${INGRESS_NGINX_CONTROLLER_IMAGE_REPOSITORY:-${OFFLINE_REGISTRY}/ingress-nginx/controller}"
-    INGRESS_NGINX_WEBHOOK_CERTGEN_IMAGE="${INGRESS_NGINX_WEBHOOK_CERTGEN_IMAGE:-${OFFLINE_REGISTRY}/ingress-nginx/kube-webhook-certgen:v1.6.1}"
-    INGRESS_NGINX_WEBHOOK_CERTGEN_IMAGE_REPOSITORY="${INGRESS_NGINX_WEBHOOK_CERTGEN_IMAGE_REPOSITORY:-${OFFLINE_REGISTRY}/ingress-nginx/kube-webhook-certgen}"
-else
-    INGRESS_NGINX_CONTROLLER_IMAGE="${INGRESS_NGINX_CONTROLLER_IMAGE:-swr.cn-east-3.myhuaweicloud.com/openbkn-ai/ingress-nginx/controller:v1.14.1}"
-    INGRESS_NGINX_CONTROLLER_IMAGE_REPOSITORY="${INGRESS_NGINX_CONTROLLER_IMAGE_REPOSITORY:-swr.cn-east-3.myhuaweicloud.com/openbkn-ai/ingress-nginx/controller}"
-    INGRESS_NGINX_WEBHOOK_CERTGEN_IMAGE="${INGRESS_NGINX_WEBHOOK_CERTGEN_IMAGE:-swr.cn-east-3.myhuaweicloud.com/openbkn-ai/ingress-nginx/kube-webhook-certgen:v1.6.1}"
-    INGRESS_NGINX_WEBHOOK_CERTGEN_IMAGE_REPOSITORY="${INGRESS_NGINX_WEBHOOK_CERTGEN_IMAGE_REPOSITORY:-swr.cn-east-3.myhuaweicloud.com/openbkn-ai/ingress-nginx/kube-webhook-certgen}"
-fi
+INGRESS_NGINX_CONTROLLER_IMAGE="${INGRESS_NGINX_CONTROLLER_IMAGE:-}"
+INGRESS_NGINX_CONTROLLER_IMAGE_REPOSITORY="${INGRESS_NGINX_CONTROLLER_IMAGE_REPOSITORY:-ingress-nginx/controller}"
 INGRESS_NGINX_CONTROLLER_IMAGE_TAG="${INGRESS_NGINX_CONTROLLER_IMAGE_TAG:-v1.14.1}"
 INGRESS_NGINX_CHART_VERSION="${INGRESS_NGINX_CHART_VERSION:-4.13.1}"
 INGRESS_NGINX_CHART_TGZ="${INGRESS_NGINX_CHART_TGZ:-${SCRIPT_DIR}/charts/ingress-nginx-${INGRESS_NGINX_CHART_VERSION}.tgz}"
+INGRESS_NGINX_WEBHOOK_CERTGEN_IMAGE="${INGRESS_NGINX_WEBHOOK_CERTGEN_IMAGE:-}"
+INGRESS_NGINX_WEBHOOK_CERTGEN_IMAGE_REPOSITORY="${INGRESS_NGINX_WEBHOOK_CERTGEN_IMAGE_REPOSITORY:-ingress-nginx/kube-webhook-certgen}"
 INGRESS_NGINX_WEBHOOK_CERTGEN_IMAGE_TAG="${INGRESS_NGINX_WEBHOOK_CERTGEN_IMAGE_TAG:-v1.6.1}"
 INGRESS_NGINX_HOSTNETWORK="${INGRESS_NGINX_HOSTNETWORK:-true}"
 INGRESS_NGINX_ADMISSION_WEBHOOKS_ENABLED="${INGRESS_NGINX_ADMISSION_WEBHOOKS_ENABLED:-false}"
@@ -1790,15 +1755,51 @@ get_config_image_registry() {
     ' "${cfg}" 2>/dev/null | sed -e 's/^["'\'']//; s/["'\'']$//' | tr -d '\r' || true
 }
 
+resolve_openbkn_image_registry() {
+    local raw_registry="${1:-${CORE_IMAGE_REGISTRY:-}}"
+
+    if [[ "${OFFLINE_MODE}" == "true" ]]; then
+        printf '%s' "${OFFLINE_REGISTRY}/openbkn-ai"
+        return 0
+    fi
+
+    if [[ -n "${raw_registry}" ]]; then
+        if declare -F _core_resolve_registry >/dev/null 2>&1; then
+            _core_resolve_registry "${raw_registry}"
+            return 0
+        fi
+
+        case "${raw_registry}" in
+            swr)  printf '%s' "swr.cn-east-3.myhuaweicloud.com/openbkn-ai" ;;
+            ghcr) printf '%s' "ghcr.io/openbkn-ai" ;;
+            *)    printf '%s' "${raw_registry}" ;;
+        esac
+        return 0
+    fi
+
+    local cfg_registry
+    cfg_registry="$(get_config_image_registry)"
+    cfg_registry="${cfg_registry%/}"
+    if [[ -n "${cfg_registry}" ]]; then
+        printf '%s' "${cfg_registry}"
+        return 0
+    fi
+
+    printf '%s' "swr.cn-east-3.myhuaweicloud.com/openbkn-ai"
+}
+
+compose_image_ref() {
+    local registry="$1"
+    local repository="$2"
+    local tag="$3"
+    printf '%s/%s:%s' "${registry%/}" "${repository#/}" "${tag}"
+}
+
 load_image_registry_from_config() {
     if [[ -n "${IMAGE_REGISTRY}" ]]; then
         return 0
     fi
-    IMAGE_REGISTRY="$(get_config_image_registry)"
-    IMAGE_REGISTRY="${IMAGE_REGISTRY%/}"
-    if [[ -z "${IMAGE_REGISTRY}" ]]; then
-        IMAGE_REGISTRY="ghcr.io/openbkn-ai"
-    fi
+    IMAGE_REGISTRY="$(resolve_openbkn_image_registry)"
 }
 
 image_from_registry() {

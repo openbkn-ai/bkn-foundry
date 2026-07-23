@@ -1,5 +1,16 @@
 
 # Install ingress-nginx-controller
+_ingress_nginx_resolve_image_defaults() {
+    local image_registry="${INGRESS_NGINX_IMAGE_REGISTRY:-$(resolve_openbkn_image_registry)}"
+    INGRESS_NGINX_IMAGE_REGISTRY="${image_registry}"
+    if [[ -z "${INGRESS_NGINX_CONTROLLER_IMAGE}" ]]; then
+        INGRESS_NGINX_CONTROLLER_IMAGE="$(compose_image_ref "${image_registry}" "${INGRESS_NGINX_CONTROLLER_IMAGE_REPOSITORY:-ingress-nginx/controller}" "${INGRESS_NGINX_CONTROLLER_IMAGE_TAG}")"
+    fi
+    if [[ -z "${INGRESS_NGINX_WEBHOOK_CERTGEN_IMAGE}" ]]; then
+        INGRESS_NGINX_WEBHOOK_CERTGEN_IMAGE="$(compose_image_ref "${image_registry}" "${INGRESS_NGINX_WEBHOOK_CERTGEN_IMAGE_REPOSITORY:-ingress-nginx/kube-webhook-certgen}" "${INGRESS_NGINX_WEBHOOK_CERTGEN_IMAGE_TAG}")"
+    fi
+}
+
 _ingress_nginx_live_http_port() {
     if [[ "${INGRESS_NGINX_HOSTNETWORK}" == "true" ]]; then
         kubectl -n ingress-nginx get deploy ingress-nginx-controller \
@@ -85,20 +96,10 @@ _ingress_nginx_release_needs_upgrade() {
 install_ingress_nginx() {
     log_info "Installing ingress-nginx-controller..."
 
-    # Override Ingress-Nginx image registry based on OFFLINE_MODE (keep full path)
-    if [[ "${OFFLINE_MODE}" == "true" ]]; then
-        INGRESS_NGINX_CONTROLLER_IMAGE="${OFFLINE_REGISTRY}/openbkn-ai/ingress-nginx/controller:v1.14.1"
-        INGRESS_NGINX_CONTROLLER_IMAGE_REPOSITORY="${OFFLINE_REGISTRY}/openbkn-ai/ingress-nginx/controller"
-        INGRESS_NGINX_WEBHOOK_CERTGEN_IMAGE="${OFFLINE_REGISTRY}/openbkn-ai/ingress-nginx/kube-webhook-certgen:v1.6.1"
-        INGRESS_NGINX_WEBHOOK_CERTGEN_IMAGE_REPOSITORY="${OFFLINE_REGISTRY}/openbkn-ai/ingress-nginx/kube-webhook-certgen"
-        log_info "Offline mode: Using offline registry ${OFFLINE_REGISTRY} for ingress-nginx"
-    fi
+    _ingress_nginx_resolve_image_defaults
 
     # Create namespace if not exists
     kubectl create namespace ingress-nginx 2>/dev/null || true
-
-    # Use images from common.sh (already set with openbkn-ai registry)
-    # INGRESS_NGINX_CONTROLLER_IMAGE and INGRESS_NGINX_WEBHOOK_CERTGEN_IMAGE are pre-configured
 
     if helm status ingress-nginx -n ingress-nginx >/dev/null 2>&1; then
         if kubectl -n ingress-nginx rollout status deployment/ingress-nginx-controller --timeout=3s >/dev/null 2>&1; then
