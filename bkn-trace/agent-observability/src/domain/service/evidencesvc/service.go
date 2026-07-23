@@ -226,8 +226,11 @@ func buildBusinessGraph(traces []evidencevo.NormalizedTrace) evidencevo.Business
 		RequestID: traces[0].RequestID,
 	}
 	knownClaims := map[string]struct{}{}
+	visibleClaims := map[string]struct{}{}
 	claimNodes := map[string]struct{}{}
 	businessNodes := map[string]struct{}{}
+	businessRefs := map[string]struct{}{}
+	edges := map[string]struct{}{}
 	partialReasons := map[string]struct{}{}
 	edgeIndex := 0
 	businessRefEvents := 0
@@ -242,9 +245,11 @@ func buildBusinessGraph(traces []evidencevo.NormalizedTrace) evidencevo.Business
 				knownClaims[claimID] = struct{}{}
 			}
 			if claimID != "" && visible(event.Payload) {
+				visibleClaims[claimID] = struct{}{}
 				addClaimNode(&response, claimNodes, event.Payload, claimID)
 			} else if !visible(event.Payload) {
 				countVisibility(event.Payload, &response.VisibilitySummary)
+				partialReasons["hidden_claim"] = struct{}{}
 			}
 		}
 	}
@@ -259,9 +264,11 @@ func buildBusinessGraph(traces []evidencevo.NormalizedTrace) evidencevo.Business
 				} else if _, ok := knownClaims[claimID]; !ok {
 					partialReasons["missing_claim"] = struct{}{}
 				}
-				if claimID != "" {
-					ensureSyntheticClaimNode(&response, claimNodes, claimID)
+				if _, ok := visibleClaims[claimID]; !ok {
+					countVisibleBusinessRefsAsOmitted(event.Payload, &response.VisibilitySummary)
+					continue
 				}
+				ensureSyntheticClaimNode(&response, claimNodes, claimID)
 				for _, item := range arrayField(event.Payload, "business_refs") {
 					ref, ok := item.(map[string]any)
 					if !ok {
@@ -277,9 +284,12 @@ func buildBusinessGraph(traces []evidencevo.NormalizedTrace) evidencevo.Business
 						partialReasons["business_ref_id_missing"] = struct{}{}
 						continue
 					}
-					response.VisibilitySummary.AuthorizedRefCount++
+					if _, ok := businessRefs[refID]; !ok {
+						businessRefs[refID] = struct{}{}
+						response.VisibilitySummary.AuthorizedRefCount++
+					}
 					addBusinessNode(&response, businessNodes, refID, claimID, ref)
-					if claimID != "" {
+					if claimID != "" && !edgeSeen(edges, "claim:"+claimID, "business:"+refID, businessEdgeType(ref)) {
 						edgeIndex++
 						response.Data.Edges = append(response.Data.Edges, evidencevo.BusinessGraphEdge{
 							ID:         "edge:" + strconv.Itoa(edgeIndex),
@@ -351,6 +361,20 @@ func countVisibility(item map[string]any, summary *evidencevo.VisibilitySummary)
 	}
 }
 
+func countVisibleBusinessRefsAsOmitted(payload map[string]any, summary *evidencevo.VisibilitySummary) {
+	for _, item := range arrayField(payload, "business_refs") {
+		ref, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		if visible(ref) {
+			summary.OmittedRefCount++
+			continue
+		}
+		countVisibility(ref, summary)
+	}
+}
+
 func cloneMap(value map[string]any) map[string]any {
 	clone := make(map[string]any, len(value))
 	for key, item := range value {
@@ -417,6 +441,15 @@ func businessEdgeType(ref map[string]any) string {
 		return "claim_to_business_ref"
 	}
 	return "claim_to_" + refType
+}
+
+func edgeSeen(edges map[string]struct{}, sourceID, targetID, edgeType string) bool {
+	key := sourceID + "|" + targetID + "|" + edgeType
+	if _, ok := edges[key]; ok {
+		return true
+	}
+	edges[key] = struct{}{}
+	return false
 }
 
 func visibilityValue(item map[string]any) string {
