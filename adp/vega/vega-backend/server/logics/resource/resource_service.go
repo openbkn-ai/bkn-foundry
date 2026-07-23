@@ -10,7 +10,6 @@ package resource
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 	"net/http"
 	"reflect"
@@ -136,79 +135,6 @@ func partitionResourceIDs(ids []string, internalSet map[string]struct{}) (normal
 		}
 	}
 	return normalIDs, internalIDs
-}
-
-// fillResourceOpsBulk 用批量可访问集解析代替逐资源鉴权：对 resource 与
-// internal_resource 两类各按 op 发一次 bulk 调用，得到「每个 op 的可访问 id 集
-// 或通配标记」，据此判定可见性（view_detail）并计算每个可见资源的完整操作权限。
-// 对每个可见 id 写入一条 out（与 filterResourcePermissions 的结果等价），但鉴权
-// 往返数从 O(资源数) 降为 O(op 数 × 资源类型数)，与资源规模脱钩。
-func (rs *resourceService) fillResourceOpsBulk(ctx context.Context, ids []string,
-	internalSet map[string]struct{}, lister interfaces.AccessibleResourceLister,
-	out map[string]interfaces.PermissionResourceOps) error {
-
-	accountInfo := interfaces.AccountInfo{}
-	if v := ctx.Value(interfaces.ACCOUNT_INFO_KEY); v != nil {
-		accountInfo = v.(interfaces.AccountInfo)
-	}
-	// fail-closed：账户缺失时不以空 accessor 调鉴权后端，回退到逐资源路径——
-	// 那里的 PermissionServiceImpl.FilterResources 对空账户返回 403，与旧行为一致。
-	if accountInfo.ID == "" || accountInfo.Type == "" {
-		return interfaces.ErrBulkAuthzUnsupported
-	}
-
-	// 只对本次 ids 里实际出现的资源类型发起 bulk 解析：多数账号/部署没有内部资源，
-	// 否则每次 List 都会白打一组 internal_resource 的鉴权往返。
-	var hasNormal, hasInternal bool
-	for _, id := range ids {
-		if _, isInternal := internalSet[id]; isInternal {
-			hasInternal = true
-		} else {
-			hasNormal = true
-		}
-		if hasNormal && hasInternal {
-			break
-		}
-	}
-
-	var (
-		resAccess      map[string]interfaces.OpAccess
-		internalAccess map[string]interfaces.OpAccess
-		err            error
-	)
-	if hasNormal {
-		resAccess, err = lister.AccessibleResourceIDs(ctx, accountInfo.ID,
-			resourceAuthResourceType(false), interfaces.COMMON_OPERATIONS)
-		if err != nil {
-			return err
-		}
-	}
-	if hasInternal {
-		internalAccess, err = lister.AccessibleResourceIDs(ctx, accountInfo.ID,
-			resourceAuthResourceType(true), interfaces.COMMON_OPERATIONS)
-		if err != nil {
-			return err
-		}
-	}
-
-	for _, id := range ids {
-		access := resAccess
-		if _, isInternal := internalSet[id]; isInternal {
-			access = internalAccess
-		}
-		// 无 view_detail 则不可见，跳过
-		if vd := access[interfaces.OPERATION_TYPE_VIEW_DETAIL]; !vd.All && !vd.IDs[id] {
-			continue
-		}
-		ops := make([]string, 0, len(interfaces.COMMON_OPERATIONS))
-		for _, op := range interfaces.COMMON_OPERATIONS {
-			if a := access[op]; a.All || a.IDs[id] {
-				ops = append(ops, op)
-			}
-		}
-		out[id] = interfaces.PermissionResourceOps{ResourceID: id, Operations: ops}
-	}
-	return nil
 }
 
 // filterResourcePermissions 按内部/普通资源分组做权限过滤：内部目录下的资源按
@@ -574,51 +500,31 @@ func (rs *resourceService) List(ctx context.Context, params interfaces.Resources
 		return []*interfaces.Resource{}, 0, err
 	}
 
-	// 根据权限过滤有查看权限的ID数组，附带每个可见资源的操作权限
+	// 根据权限过滤有查看权限的ID数组
+	// 分批处理，每批1万个ids, fix权限接口报错prepared statement contains too many placeholders
+	batchSize := 10000
 	// 所有有权限的resource及其操作权限
 	matchResourceOpsMap := make(map[string]interfaces.PermissionResourceOps)
 
-	// 快路径：权限服务支持批量可访问集解析时（bkn-safe），按 op 各发一次 bulk
-	// 调用解析可见集与每资源操作权限，避免对全部资源逐个鉴权的 fan-out——持全量
-	// 目录授权的账号会因逐个鉴权而超时（#357）。后端无 bulk 解析器时返回
-	// ErrBulkAuthzUnsupported，退回逐批 filter 的旧路径。
-	bulkDone := false
-	if lister, ok := rs.ps.(interfaces.AccessibleResourceLister); ok {
-		err = rs.fillResourceOpsBulk(ctx, ids, internalResources, lister, matchResourceOpsMap)
-		switch {
-		case err == nil:
-			bulkDone = true
-		case errors.Is(err, interfaces.ErrBulkAuthzUnsupported):
-			// 后端不支持 bulk 解析，退回逐资源过滤
-		default:
-			span.SetStatus(codes.Error, "Bulk authz resolve error")
+	for i := 0; i < len(ids); i += batchSize {
+		end := i + batchSize
+		if end > len(ids) {
+			end = len(ids)
+		}
+		batchIDs := ids[i:end]
+
+		var batchMatchResources map[string]interfaces.PermissionResourceOps
+		// 校验权限管理的操作权限
+		batchMatchResources, err = rs.filterResourcePermissions(ctx, batchIDs, internalResources,
+			[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true)
+		if err != nil {
+			span.SetStatus(codes.Error, "Filter resources error")
 			return []*interfaces.Resource{}, 0, err
 		}
-	}
-	if !bulkDone {
-		// 旧路径：分批逐个过滤，每批1万个ids，
-		// fix权限接口报错prepared statement contains too many placeholders
-		batchSize := 10000
-		for i := 0; i < len(ids); i += batchSize {
-			end := i + batchSize
-			if end > len(ids) {
-				end = len(ids)
-			}
-			batchIDs := ids[i:end]
 
-			var batchMatchResources map[string]interfaces.PermissionResourceOps
-			// 校验权限管理的操作权限
-			batchMatchResources, err = rs.filterResourcePermissions(ctx, batchIDs, internalResources,
-				[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true)
-			if err != nil {
-				span.SetStatus(codes.Error, "Filter resources error")
-				return []*interfaces.Resource{}, 0, err
-			}
-
-			// 合并结果
-			for _, resourceOps := range batchMatchResources {
-				matchResourceOpsMap[resourceOps.ResourceID] = resourceOps
-			}
+		// 合并结果
+		for _, resourceOps := range batchMatchResources {
+			matchResourceOpsMap[resourceOps.ResourceID] = resourceOps
 		}
 	}
 

@@ -8,13 +8,7 @@ package interfaces
 
 import (
 	"context"
-	"errors"
 )
-
-// ErrBulkAuthzUnsupported is returned by AccessibleResourceIDs when the
-// underlying permission backend has no bulk accessible-id resolver; callers
-// fall back to per-resource filtering.
-var ErrBulkAuthzUnsupported = errors.New("bulk accessible-resource resolution unsupported")
 
 const (
 	// 访问者类型
@@ -113,25 +107,6 @@ type PermissionOperation struct {
 type PermissionResourceOps struct {
 	ResourceID string   `json:"id"`
 	Operations []string `json:"operation,omitempty"`
-}
-
-// OpAccess describes an accessor's grant for one operation on one resource type.
-// All is true when a type-wide / wildcard grant covers every instance (in which
-// case IDs is nil); otherwise IDs holds the concrete resource ids the accessor
-// may perform the operation on.
-type OpAccess struct {
-	All bool
-	IDs map[string]bool
-}
-
-// AccessibleResourceLister is an OPTIONAL PermissionAccess capability: resolve,
-// per operation, the accessor's accessible resource ids (or a wildcard flag) in
-// ONE bulk round-trip per op — instead of a per-resource permission fan-out.
-// Callers detect support via a type assertion and fall back to FilterResources
-// when it is absent. This is what lets resource listing scale to accounts that
-// hold grants across the whole catalog (see issue #357).
-type AccessibleResourceLister interface {
-	AccessibleResourceIDs(ctx context.Context, accessorID, resourceType string, ops []string) (map[string]OpAccess, error)
 }
 
 //go:generate mockgen -source ../interfaces/permission_access.go -destination ../interfaces/mock/mock_permission_access.go

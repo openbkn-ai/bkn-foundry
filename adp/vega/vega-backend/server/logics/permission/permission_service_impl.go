@@ -39,19 +39,6 @@ func NewPermissionServiceImpl(appSetting *common.AppSetting) interfaces.Permissi
 	}
 }
 
-// AccessibleResourceIDs delegates to the permission backend's bulk accessible-id
-// resolver when it supports one (bkn-safe), so resource listing can avoid the
-// per-resource permission fan-out that times out for accounts holding grants
-// across the whole catalog (#357). Returns ErrBulkAuthzUnsupported when the
-// backend has no bulk resolver so callers fall back to per-resource filtering.
-func (ps *PermissionServiceImpl) AccessibleResourceIDs(ctx context.Context, accessorID, resourceType string, ops []string) (map[string]interfaces.OpAccess, error) {
-	lister, ok := ps.pa.(interfaces.AccessibleResourceLister)
-	if !ok {
-		return nil, interfaces.ErrBulkAuthzUnsupported
-	}
-	return lister.AccessibleResourceIDs(ctx, accessorID, resourceType, ops)
-}
-
 func (ps *PermissionServiceImpl) CheckPermission(ctx context.Context, resource interfaces.PermissionResource, ops []string) error {
 	accountInfo := interfaces.AccountInfo{}
 	if ctx.Value(interfaces.ACCOUNT_INFO_KEY) != nil {
