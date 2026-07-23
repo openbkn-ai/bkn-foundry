@@ -458,9 +458,10 @@ func queryObjectConditionHash(req *interfaces.QueryObjectInstancesReq) string {
 		return HashValue(nil)
 	}
 	return HashValue(map[string]any{
-		"condition": req.Cond,
-		"filters":   req.Filters,
-		"offset":    req.Offset,
+		"condition":    req.Cond,
+		"filters":      req.Filters,
+		"offset":       req.Offset,
+		"search_after": req.SearchAfter,
 	})
 }
 
@@ -478,10 +479,10 @@ func queryObjectTruncated(req *interfaces.QueryObjectInstancesReq, resp *interfa
 	if len(resp.SearchAfter) > 0 {
 		return true
 	}
-	if req == nil || req.Limit <= 0 {
+	if req == nil || resp.TotalCount <= 0 {
 		return false
 	}
-	return len(resp.Data) >= req.Limit
+	return int64(req.Offset+len(resp.Data)) < resp.TotalCount
 }
 
 func queryObjectKnID(req *interfaces.QueryObjectInstancesReq) string {

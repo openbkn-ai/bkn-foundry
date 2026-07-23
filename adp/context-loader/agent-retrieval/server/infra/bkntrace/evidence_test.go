@@ -173,3 +173,52 @@ func TestBuildQueryObjectInstanceEventsUsesRowRefsOnly(t *testing.T) {
 		}
 	}
 }
+
+func TestQueryObjectConditionHashIncludesSearchAfter(t *testing.T) {
+	base := &interfaces.QueryObjectInstancesReq{
+		KnID:        "kn_demo",
+		OtID:        "customer",
+		Limit:       10,
+		SearchAfter: []any{"cursor_page_1"},
+	}
+	next := &interfaces.QueryObjectInstancesReq{
+		KnID:        "kn_demo",
+		OtID:        "customer",
+		Limit:       10,
+		SearchAfter: []any{"cursor_page_2"},
+	}
+
+	if queryObjectConditionHash(base) == queryObjectConditionHash(next) {
+		t.Fatalf("condition hash should differ across search_after pages")
+	}
+}
+
+func TestQueryObjectTruncatedUsesExplicitNextPageSignals(t *testing.T) {
+	req := &interfaces.QueryObjectInstancesReq{
+		Limit:  2,
+		Offset: 0,
+	}
+	lastPageResp := &interfaces.QueryObjectInstancesResp{
+		Data:       []any{map[string]any{"id": "inst_1"}, map[string]any{"id": "inst_2"}},
+		TotalCount: 2,
+	}
+	if queryObjectTruncated(req, lastPageResp) {
+		t.Fatalf("truncated should be false when total_count proves the current page is complete")
+	}
+
+	hasNextCursorResp := &interfaces.QueryObjectInstancesResp{
+		Data:        []any{map[string]any{"id": "inst_1"}},
+		SearchAfter: []any{"cursor_next"},
+	}
+	if !queryObjectTruncated(req, hasNextCursorResp) {
+		t.Fatalf("truncated should be true when search_after indicates a next page")
+	}
+
+	hasMoreOffsetResp := &interfaces.QueryObjectInstancesResp{
+		Data:       []any{map[string]any{"id": "inst_1"}, map[string]any{"id": "inst_2"}},
+		TotalCount: 3,
+	}
+	if !queryObjectTruncated(req, hasMoreOffsetResp) {
+		t.Fatalf("truncated should be true when total_count exceeds returned offset range")
+	}
+}
