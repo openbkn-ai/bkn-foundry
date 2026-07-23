@@ -402,6 +402,8 @@ console.log('===SANDBOX_RESULT===' + JSON.stringify(result) + '===SANDBOX_RESULT
 
     def _build_pythonpath(self, existing_pythonpath: str | None) -> str:
         dependency_path = settings.dependency_install_path
+        sdk_path = settings.sdk_install_path
+        parts = [sdk_path, dependency_path]
         if existing_pythonpath:
-            return f"{dependency_path}:{existing_pythonpath}"
-        return dependency_path
+            parts.append(existing_pythonpath)
+        return ":".join(parts)

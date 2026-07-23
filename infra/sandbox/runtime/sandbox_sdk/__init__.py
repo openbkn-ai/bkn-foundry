@@ -216,6 +216,13 @@ def _inline_defs(schema: dict) -> dict:
     return resolve(schema, frozenset())
 
 
+def _is_optional_annotation(anno: Any) -> bool:
+    """注解是否允许 None（Optional[X] / X | None）。"""
+    if anno is None:
+        return False
+    return get_origin(anno) in _UNION_ORIGINS and type(None) in get_args(anno)
+
+
 def _annotation_to_param(name: str, anno: Any, required: bool,
                          default: Any = None, description: str = "") -> ParamDef:
     """把一个类型注解翻成 ParamDef，支持 List[X] / Dict / Optional[X] / pydantic 模型 / 嵌套。"""
@@ -401,7 +408,12 @@ def dispatch(event: dict = None, entry: str = None) -> Any:
                 val = anno(**val)         # 校验失败会抛 pydantic ValidationError
             kwargs[pname] = val
         elif p.default is inspect.Parameter.empty:
-            missing.append(pname)         # 必填但 event 没给
+            # Optional[X] 没有默认值时 schema 记的是非必填,这里得一致地放行,
+            # 否则调用方按 schema 省略该参数就会被拦下。
+            if _is_optional_annotation(hints.get(pname)):
+                kwargs[pname] = None
+            else:
+                missing.append(pname)     # 必填但 event 没给
 
     if missing:
         raise ValueError("缺少必填参数: %s（event 里没有这些 key）" % ", ".join(missing))

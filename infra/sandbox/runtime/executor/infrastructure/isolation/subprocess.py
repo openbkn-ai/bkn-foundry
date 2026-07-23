@@ -185,6 +185,35 @@ class SubprocessRunner:
                 return_value=None,
                 metrics=None,
             )
+        finally:
+            # The caller wraps this in its own wait_for with the same timeout and
+            # starts counting earlier, so in practice it fires first and cancels
+            # us — that surfaces as CancelledError, which the except clauses above
+            # do not catch. Without this the process group would survive.
+            #
+            # Cancellation also makes awaiting unreliable here, so the last resort
+            # is a synchronous SIGKILL rather than the graceful sequence.
+            self._kill_process_group_now(process, execution.execution_id)
+
+    def _kill_process_group_now(self, process, execution_id: str) -> None:
+        """
+        Last-resort synchronous kill, safe to call while being cancelled.
+
+        No-op when the process already exited, so the success path pays nothing.
+        """
+        if process is None or process.returncode is not None:
+            return
+        try:
+            os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+            logger.warning(
+                f"Killed surviving process group, execution_id={execution_id}, pid={process.pid}"
+            )
+        except (ProcessLookupError, PermissionError):
+            pass
+        except Exception as e:
+            logger.error(
+                f"Failed to kill process group, execution_id={execution_id}, error={e}"
+            )
 
     async def _terminate_process_group(self, process, execution_id: str) -> None:
         """

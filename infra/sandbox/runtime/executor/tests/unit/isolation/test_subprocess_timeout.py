@@ -116,3 +116,39 @@ async def test_successful_run_is_unaffected(tmp_path):
     assert result.status == ExecutionStatus.COMPLETED
     assert result.return_value == {"ok": True}
     assert result.execution_time_ms > 0
+
+
+@pytest.mark.asyncio
+async def test_outer_cancellation_still_kills_the_process(tmp_path):
+    """
+    The real call chain wraps execute() in its own wait_for with the same
+    timeout, and starts counting first — so it cancels us before our own
+    timeout fires. Cleanup has to survive that, not just TimeoutError.
+    """
+    marker = tmp_path / "child.pid"
+    code = f'''
+import subprocess, sys, time
+def handler(event):
+    child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+    open({str(marker)!r}, "w").write(str(child.pid))
+    time.sleep(60)
+    return {{}}
+'''
+    runner = SubprocessRunner(tmp_path)
+    execution = _execution(code, timeout_seconds=2, tmp_path=tmp_path)
+
+    # Same shape as ExecuteCodeCommand._execute_with_timeout
+    outer_timed_out = False
+    try:
+        await asyncio.wait_for(runner.execute(execution), timeout=2)
+    except asyncio.TimeoutError:
+        outer_timed_out = True
+
+    assert outer_timed_out, "outer layer should be the one that fires"
+
+    await asyncio.sleep(0.5)
+    assert marker.exists(), "grandchild was never started; test is not exercising the kill"
+    grandchild_pid = int(marker.read_text())
+
+    with pytest.raises(OSError):
+        os.kill(grandchild_pid, 0)

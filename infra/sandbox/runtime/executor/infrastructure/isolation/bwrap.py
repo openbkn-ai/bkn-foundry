@@ -17,7 +17,11 @@ import structlog
 
 from executor.domain.entities import Execution
 from executor.domain.value_objects import ExecutionResult, ExecutionStatus, ExecutionMetrics
-from executor.infrastructure.isolation.code_wrapper import normalize_shell_code
+from executor.infrastructure.isolation.code_wrapper import (
+    defines_handler,
+    normalize_shell_code,
+    uses_tool_decorator,
+)
 from executor.infrastructure.config import settings
 from executor.infrastructure.isolation.result_parser import remove_markers_from_output
 
@@ -269,10 +273,19 @@ class BubblewrapRunner:
         Returns:
             Complete wrapper script
         """
+        # Same rule as the other runners: handler wins when both are present,
+        # and a `tool` name only counts when it came from sandbox_sdk.
+        if defines_handler(user_code) or not uses_tool_decorator(user_code):
+            preamble = ""
+            invoke = "handler(event)"
+        else:
+            preamble = "import sandbox_sdk"
+            invoke = "sandbox_sdk.dispatch(event)"
         return f"""
 import json
 import sys
 import os
+{preamble}
 
 # User code
 {user_code}
@@ -285,35 +298,22 @@ except json.JSONDecodeError as e:
     print(f"Error parsing event JSON: {{e}}", file=sys.stderr)
     sys.exit(1)
 
-# Invoke the user function.
-# A @tool decorated function registers itself in sandbox_sdk, so ask the SDK
-# directly rather than inspecting globals: `from sandbox_sdk import tool` does
-# not bind the module name here.
+# Invoke the user function. The entry style is decided when this wrapper is
+# built, the same way the other runners decide it, so identical code does not
+# take different paths depending on which runner happens to execute it.
 try:
-    _entry = None
-    try:
-        import sandbox_sdk as _sdk
-        _entry = getattr(_sdk, '_ENTRY', None)
-    except ImportError:
-        _sdk = None
-
-    if _entry:
-        result = _sdk.dispatch(event)
-    elif 'handler' in globals():
-        result = handler(event)
-    else:
-        raise ValueError("必须定义 @tool 函数或 handler(event) 函数")
+    result = {invoke}
 
     # Output result with markers
-    print("\n===SANDBOX_RESULT===")
+    print("===SANDBOX_RESULT===")
     print(json.dumps(result))
-    print("\n===SANDBOX_RESULT_END===")
+    print("===SANDBOX_RESULT_END===")
 
 except Exception as e:
     import traceback
-    print("\n===SANDBOX_ERROR===")
+    print("===SANDBOX_ERROR===")
     print(traceback.format_exc())
-    print("\n===SANDBOX_ERROR_END===")
+    print("===SANDBOX_ERROR_END===")
     sys.exit(1)
 """
 
