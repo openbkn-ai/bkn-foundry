@@ -7,11 +7,11 @@ from langchain.agents import create_agent
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, ToolMessage
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import dao, observability
+from app import dao, evidence, observability
 from app.config import config
 from app.core.checkpoint import open_checkpointer
 from app.core.llm import build_chat_model
-from app.core.structured import structured_extract
+from app.core.structured import structured_extract_with_path
 from app.core.prompt import resolve_prompt
 from app.core.skills import load_skills
 from app.core.tools import apply_tool_call_cap, load_tools
@@ -76,7 +76,12 @@ async def stream_chat(
         timeout_s = limits.timeout_s if limits and limits.timeout_s else config.DEFAULT_TIMEOUT_S
         max_out = limits.max_output_tokens if limits else None
         model = build_chat_model(agent.model, max_output_tokens=max_out)
-        tools = apply_tool_call_cap(tools, limits.max_tool_calls if limits else None)
+        tools = apply_tool_call_cap(
+            tools,
+            limits.max_tool_calls if limits else None,
+            account_id,
+            account_type,
+        )
     except BaseException:
         _busy_threads.discard(thread_id)  # setup 失败必须放位，否则该 thread 永久 409
         raise
@@ -91,6 +96,8 @@ async def stream_chat(
     span_attrs.update(observability.context_attributes())
 
     async def _events() -> AsyncIterator[str]:
+        answer_parts: list[str] = []
+        tool_names: list[str] = []
         try:
             yield _sse("meta", {"thread_id": thread_id, "agent_id": agent.agent_id})
             with observability.span("agent.chat", span_attrs):
@@ -109,20 +116,49 @@ async def stream_chat(
                             ):
                                 if isinstance(chunk, AIMessageChunk):
                                     if chunk.content:
+                                        answer_parts.append(chunk.content if isinstance(chunk.content, str) else str(chunk.content))
                                         yield _sse("token", {"content": chunk.content})
                                     for tc in chunk.tool_call_chunks or []:
                                         if tc.get("name"):
+                                            tool_names.append(tc["name"])
                                             yield _sse("tool_call", {"name": tc["name"]})
                             if req.response_format:
                                 # 工具循环后单独抽结构化（原生优先→提示词降级），受同一 timeout 约束
                                 state = await graph.aget_state(cfg)
                                 struct_model = build_chat_model(
-                                agent.model, streaming=False, max_output_tokens=max_out
-                            )
-                                obj = await structured_extract(
+                                    agent.model, streaming=False, max_output_tokens=max_out
+                                )
+                                obj, validation_path = await structured_extract_with_path(
                                     struct_model, state.values["messages"], req.response_format
                                 )
                                 yield _sse("structured", {"content": obj})
+                                await _emit_chat_evidence(
+                                    agent=agent,
+                                    thread_id=thread_id,
+                                    prompt_source=prompt_source,
+                                    prompt_version=prompt_version,
+                                    account_id=account_id,
+                                    account_type=account_type,
+                                    output=obj,
+                                    claim_type="structured_output",
+                                    response_format=req.response_format,
+                                    structured_validation_path=validation_path,
+                                    tool_names=tool_names,
+                                )
+                            elif answer_parts:
+                                await _emit_chat_evidence(
+                                    agent=agent,
+                                    thread_id=thread_id,
+                                    prompt_source=prompt_source,
+                                    prompt_version=prompt_version,
+                                    account_id=account_id,
+                                    account_type=account_type,
+                                    output="".join(answer_parts),
+                                    claim_type="answer",
+                                    response_format=None,
+                                    structured_validation_path=None,
+                                    tool_names=tool_names,
+                                )
                         yield _sse("done", {"thread_id": thread_id})
                     except TimeoutError:
                         yield _sse("error", {"code": "BknAgent.Chat.Timeout", "detail": f"超过 {timeout_s}s"})
@@ -134,6 +170,73 @@ async def stream_chat(
             _busy_threads.discard(thread_id)
 
     return _events()
+
+
+async def _emit_chat_evidence(
+    *,
+    agent: AgentOut,
+    thread_id: str,
+    prompt_source: str,
+    prompt_version: str,
+    account_id: str,
+    account_type: str,
+    output,
+    claim_type: str,
+    response_format: dict | None,
+    structured_validation_path: str | None,
+    tool_names: list[str],
+) -> None:
+    cid = evidence.claim_id(claim_type, thread_id, output)
+    events = [
+        evidence.claim_created(
+            claim_id_value=cid,
+            claim_type=claim_type,
+            claim_hash=evidence.hash_value(output),
+            operation_name="bkn.agent.chat",
+            version_status="unversioned",
+            subject_refs={
+                "agent_id": agent.agent_id,
+                "thread_id": thread_id,
+                "prompt_source": prompt_source,
+                "prompt_version": prompt_version,
+                "response_format_schema_hash": evidence.schema_hash(response_format),
+            },
+            partial_reason=["source_refs_pending"] if not tool_names else ["source_refs_unversioned"],
+        )
+    ]
+    if response_format:
+        events.append(
+            evidence.structured_output_validated(
+                claim_id_value=cid,
+                schema_hash_value=evidence.schema_hash(response_format),
+                validation_path=structured_validation_path or "unknown",
+                valid=True,
+                operation_name="bkn.agent.structured_output",
+            )
+        )
+    if tool_names:
+        refs = [
+            {
+                "ref_id": f"tool:{evidence.hash_value(name)[7:23]}",
+                "ref_type": "tool_result_ref",
+                "source_system": "bkn-agent",
+                "summary_hash": evidence.hash_value({"tool_name": name}),
+                "tool_name": name,
+                "validity": "observed",
+                "visibility": "visible",
+                "version_status": "unversioned",
+                "partial_reason": ["tool_result_unversioned"],
+            }
+            for name in dict.fromkeys(tool_names)
+        ]
+        events.append(
+            evidence.evidence_refs_created(
+                claim_id_value=cid,
+                evidence_refs=refs,
+                operation_name="bkn.agent.chat",
+            )
+        )
+    await evidence.submit_events([event for event in events if event], account_id, account_type)
 
 
 def _text(content) -> str:
