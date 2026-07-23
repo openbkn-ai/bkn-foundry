@@ -4,6 +4,7 @@ definitions:
     properties:
       code:
         type: string
+      details: {}
       message:
         type: string
     type: object
@@ -13,6 +14,42 @@ info:
   title: Agent Observability API
   version: "1.0"
 paths:
+  /api/agent-observability/v1/evidence/events:
+    post:
+      consumes:
+      - application/json
+      description: Accepts claim.created, evidence.refs.created, and business.refs.resolved
+        events and stores the normalized evidence model.
+      parameters:
+      - description: BKN Trace phase-two evidence event batch
+        in: body
+        name: request
+        required: true
+        schema:
+          type: string
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "405":
+          description: Method Not Allowed
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+      summary: Ingest BKN Trace phase-two evidence events
+      tags:
+      - evidence
   /api/agent-observability/v1/traces/_search:
     post:
       consumes:
@@ -48,6 +85,80 @@ paths:
       summary: Search traces with raw OpenSearch DSL
       tags:
       - traces
+  /api/agent-observability/v1/traces/{trace_id}/business-graph:
+    get:
+      description: Returns claim and business semantic nodes/edges derived from business.refs.resolved
+        events.
+      parameters:
+      - description: Trace ID
+        in: path
+        name: trace_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "405":
+          description: Method Not Allowed
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+      summary: Get business semantic graph by trace ID
+      tags:
+      - evidence
+  /api/agent-observability/v1/traces/{trace_id}/evidence-chain:
+    get:
+      description: Returns normalized claim, evidence refs, business refs, pagination,
+        partial reasons, and visibility summary for a trace.
+      parameters:
+      - description: Trace ID
+        in: path
+        name: trace_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "405":
+          description: Method Not Allowed
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+      summary: Get evidence chain by trace ID
+      tags:
+      - evidence
   /api/agent-observability/v1/traces/by-conversation:
     get:
       consumes:
@@ -86,4 +197,78 @@ paths:
       summary: Search traces by conversation ID
       tags:
       - traces
+  /api/agent-observability/v1/traces/by-request:
+    get:
+      description: Returns normalized claim, evidence refs, business refs, pagination,
+        partial reasons, and visibility summary for a request.
+      parameters:
+      - description: BKN request ID
+        in: query
+        name: request_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "405":
+          description: Method Not Allowed
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+      summary: Get evidence chain by BKN request ID
+      tags:
+      - evidence
+  /api/agent-observability/v1/traces/by-request/business-graph:
+    get:
+      description: Returns claim and business semantic nodes/edges derived from business.refs.resolved
+        events.
+      parameters:
+      - description: BKN request ID
+        in: query
+        name: request_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "405":
+          description: Method Not Allowed
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+      summary: Get business semantic graph by BKN request ID
+      tags:
+      - evidence
 swagger: "2.0"

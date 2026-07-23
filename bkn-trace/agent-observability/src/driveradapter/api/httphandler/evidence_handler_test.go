@@ -150,6 +150,62 @@ func TestEvidenceHandlerReturnsEvidenceChainByRequest(t *testing.T) {
 	}
 }
 
+func TestEvidenceHandlerReturnsBusinessGraphByTrace(t *testing.T) {
+	store := evidencestore.New()
+	handler := NewEvidenceHandler(evidencesvc.New(store))
+	ingestReq := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/evidence/events", strings.NewReader(validHandlerBusinessBatch()))
+	ingestRec := httptest.NewRecorder()
+	handler.IngestEvidenceEvents(ingestRec, ingestReq)
+	if ingestRec.Code != http.StatusAccepted {
+		t.Fatalf("expected ingest 202, got %d: %s", ingestRec.Code, ingestRec.Body.String())
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/agent-observability/v1/traces/9c0d0000000000000000000000000002/business-graph", nil)
+	rec := httptest.NewRecorder()
+	handler.GetTraceSubresource(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"nodes"`) || !strings.Contains(rec.Body.String(), `"edges"`) {
+		t.Fatalf("expected graph data in body: %s", rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"target_id":"business:object:customer"`) {
+		t.Fatalf("expected business node edge in body: %s", rec.Body.String())
+	}
+}
+
+func TestEvidenceHandlerReturnsBusinessGraphByRequest(t *testing.T) {
+	store := evidencestore.New()
+	handler := NewEvidenceHandler(evidencesvc.New(store))
+	ingestReq := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/evidence/events", strings.NewReader(validHandlerBusinessBatch()))
+	ingestRec := httptest.NewRecorder()
+	handler.IngestEvidenceEvents(ingestRec, ingestReq)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/agent-observability/v1/traces/by-request/business-graph?request_id=req_handler_002", nil)
+	rec := httptest.NewRecorder()
+	handler.GetBusinessGraphByRequestID(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"bkn.request.id":"req_handler_002"`) {
+		t.Fatalf("unexpected body: %s", rec.Body.String())
+	}
+}
+
+func TestEvidenceHandlerReturnsNotFoundForUnknownTraceSubresource(t *testing.T) {
+	handler := NewEvidenceHandler(evidencesvc.New(evidencestore.New()))
+	req := httptest.NewRequest(http.MethodGet, "/api/agent-observability/v1/traces/9c0d0000000000000000000000000001/unknown", nil)
+	rec := httptest.NewRecorder()
+
+	handler.GetTraceSubresource(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestEvidenceHandlerReturnsNotFoundForMissingEvidenceChain(t *testing.T) {
 	handler := NewEvidenceHandler(evidencesvc.New(evidencestore.New()))
 	req := httptest.NewRequest(http.MethodGet, "/api/agent-observability/v1/traces/missing/evidence-chain", nil)
@@ -191,6 +247,65 @@ func validHandlerBatch() string {
         "claim_hash": "sha256:claim",
         "visibility": "visible",
         "version_status": "versioned"
+      }
+    }
+  ]
+}`
+}
+
+func validHandlerBusinessBatch() string {
+	return `{
+  "bkn.trace.schema.version": "2.0.0",
+  "trace": {
+    "trace_id": "9c0d0000000000000000000000000002",
+    "bkn.request.id": "req_handler_002",
+    "traceparent": "00-9c0d0000000000000000000000000002-2f12000000000002-01",
+    "business_domain": "bd_demo",
+    "bkn.account.id": "acct_demo",
+    "bkn.account.type": "app"
+  },
+  "events": [
+    {
+      "event_id": "evt_claim_business",
+      "event_type": "claim.created",
+      "bkn.trace.schema.version": "2.0.0",
+      "observed_at": "2026-07-22T04:00:00.000000000Z",
+      "emitted_at": "2026-07-22T04:00:00.001000000Z",
+      "producer_module": "third-party-agent",
+      "trace_id": "9c0d0000000000000000000000000002",
+      "span_id": "2f12000000000002",
+      "bkn.request.id": "req_handler_002",
+      "bkn.operation.name": "agent.answer",
+      "payload": {
+        "claim_id": "claim_handler_business",
+        "claim_type": "answer",
+        "claim_hash": "sha256:claim",
+        "visibility": "visible",
+        "version_status": "versioned"
+      }
+    },
+    {
+      "event_id": "evt_business",
+      "event_type": "business.refs.resolved",
+      "bkn.trace.schema.version": "2.0.0",
+      "observed_at": "2026-07-22T04:00:00.002000000Z",
+      "emitted_at": "2026-07-22T04:00:00.003000000Z",
+      "producer_module": "bkn-trace",
+      "trace_id": "9c0d0000000000000000000000000002",
+      "span_id": "2f12000000000002",
+      "bkn.request.id": "req_handler_002",
+      "bkn.operation.name": "bkn_trace.resolve_business_refs",
+      "payload": {
+        "claim_id": "claim_handler_business",
+        "business_refs": [
+          {
+            "ref_id": "object:customer",
+            "ref_type": "object",
+            "label": "Customer",
+            "visibility": "visible",
+            "version_status": "versioned"
+          }
+        ]
       }
     }
   ]

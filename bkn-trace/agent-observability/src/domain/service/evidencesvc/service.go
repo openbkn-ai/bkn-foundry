@@ -140,6 +140,28 @@ func (s *Service) GetEvidenceChainByRequestID(ctx context.Context, requestID str
 	return buildEvidenceChain(traces), true, nil
 }
 
+func (s *Service) GetBusinessGraphByTraceID(ctx context.Context, traceID string) (evidencevo.BusinessGraphResponse, bool, error) {
+	traces, err := s.store.GetEvidenceByTraceID(ctx, strings.TrimSpace(traceID))
+	if err != nil {
+		return evidencevo.BusinessGraphResponse{}, false, err
+	}
+	if len(traces) == 0 {
+		return evidencevo.BusinessGraphResponse{}, false, nil
+	}
+	return buildBusinessGraph(traces), true, nil
+}
+
+func (s *Service) GetBusinessGraphByRequestID(ctx context.Context, requestID string) (evidencevo.BusinessGraphResponse, bool, error) {
+	traces, err := s.store.GetEvidenceByRequestID(ctx, strings.TrimSpace(requestID))
+	if err != nil {
+		return evidencevo.BusinessGraphResponse{}, false, err
+	}
+	if len(traces) == 0 {
+		return evidencevo.BusinessGraphResponse{}, false, nil
+	}
+	return buildBusinessGraph(traces), true, nil
+}
+
 func buildEvidenceChain(traces []evidencevo.NormalizedTrace) evidencevo.EvidenceChainResponse {
 	response := evidencevo.EvidenceChainResponse{
 		TraceID:   traces[0].TraceID,
@@ -198,6 +220,100 @@ func buildEvidenceChain(traces []evidencevo.NormalizedTrace) evidencevo.Evidence
 	return response
 }
 
+func buildBusinessGraph(traces []evidencevo.NormalizedTrace) evidencevo.BusinessGraphResponse {
+	response := evidencevo.BusinessGraphResponse{
+		TraceID:   traces[0].TraceID,
+		RequestID: traces[0].RequestID,
+	}
+	knownClaims := map[string]struct{}{}
+	claimNodes := map[string]struct{}{}
+	businessNodes := map[string]struct{}{}
+	partialReasons := map[string]struct{}{}
+	edgeIndex := 0
+	businessRefEvents := 0
+
+	for _, trace := range traces {
+		for _, event := range trace.Events {
+			if event.EventType != "claim.created" {
+				continue
+			}
+			claimID, _ := stringField(event.Payload, "claim_id")
+			if claimID != "" {
+				knownClaims[claimID] = struct{}{}
+			}
+			if claimID != "" && visible(event.Payload) {
+				addClaimNode(&response, claimNodes, event.Payload, claimID)
+			} else if !visible(event.Payload) {
+				countVisibility(event.Payload, &response.VisibilitySummary)
+			}
+		}
+	}
+
+	for _, trace := range traces {
+		for _, event := range trace.Events {
+			if event.EventType == "business.refs.resolved" {
+				businessRefEvents++
+				claimID, _ := stringField(event.Payload, "claim_id")
+				if claimID == "" {
+					partialReasons["missing_claim"] = struct{}{}
+				} else if _, ok := knownClaims[claimID]; !ok {
+					partialReasons["missing_claim"] = struct{}{}
+				}
+				if claimID != "" {
+					ensureSyntheticClaimNode(&response, claimNodes, claimID)
+				}
+				for _, item := range arrayField(event.Payload, "business_refs") {
+					ref, ok := item.(map[string]any)
+					if !ok {
+						partialReasons["business_ref_invalid"] = struct{}{}
+						continue
+					}
+					if !visible(ref) {
+						countVisibility(ref, &response.VisibilitySummary)
+						continue
+					}
+					refID, _ := stringField(ref, "ref_id")
+					if refID == "" {
+						partialReasons["business_ref_id_missing"] = struct{}{}
+						continue
+					}
+					response.VisibilitySummary.AuthorizedRefCount++
+					addBusinessNode(&response, businessNodes, refID, claimID, ref)
+					if claimID != "" {
+						edgeIndex++
+						response.Data.Edges = append(response.Data.Edges, evidencevo.BusinessGraphEdge{
+							ID:         "edge:" + strconv.Itoa(edgeIndex),
+							SourceID:   "claim:" + claimID,
+							TargetID:   "business:" + refID,
+							EdgeType:   businessEdgeType(ref),
+							Visibility: visibilityValue(ref),
+						})
+					}
+				}
+			}
+		}
+	}
+
+	if len(knownClaims) == 0 {
+		partialReasons["missing_claim"] = struct{}{}
+	}
+	if businessRefEvents == 0 {
+		partialReasons["missing_business_refs"] = struct{}{}
+	}
+	if response.VisibilitySummary.UnresolvedRefCount > 0 {
+		partialReasons["business_ref_unresolved"] = struct{}{}
+	}
+	if len(response.Data.Nodes) == 0 {
+		partialReasons["empty_business_graph"] = struct{}{}
+	}
+
+	response.PartialReasons = sortedKeys(partialReasons)
+	response.Partial = len(response.PartialReasons) > 0
+	response.Page.NodeCount = len(response.Data.Nodes)
+	response.Page.EdgeCount = len(response.Data.Edges)
+	return response
+}
+
 func appendVisibleRefs(target []map[string]any, refs []any, summary *evidencevo.VisibilitySummary) []map[string]any {
 	for _, item := range refs {
 		ref, ok := item.(map[string]any)
@@ -241,6 +357,74 @@ func cloneMap(value map[string]any) map[string]any {
 		clone[key] = item
 	}
 	return clone
+}
+
+func addClaimNode(response *evidencevo.BusinessGraphResponse, seen map[string]struct{}, payload map[string]any, claimID string) {
+	if _, ok := seen[claimID]; ok {
+		return
+	}
+	seen[claimID] = struct{}{}
+	label, _ := stringField(payload, "claim_type")
+	versionStatus, _ := stringField(payload, "version_status")
+	response.Data.Nodes = append(response.Data.Nodes, evidencevo.BusinessGraphNode{
+		ID:            "claim:" + claimID,
+		NodeType:      "claim",
+		Label:         label,
+		ClaimID:       claimID,
+		VersionStatus: versionStatus,
+		Visibility:    visibilityValue(payload),
+		Properties:    cloneMap(payload),
+	})
+}
+
+func ensureSyntheticClaimNode(response *evidencevo.BusinessGraphResponse, seen map[string]struct{}, claimID string) {
+	if _, ok := seen[claimID]; ok {
+		return
+	}
+	seen[claimID] = struct{}{}
+	response.Data.Nodes = append(response.Data.Nodes, evidencevo.BusinessGraphNode{
+		ID:       "claim:" + claimID,
+		NodeType: "claim",
+		ClaimID:  claimID,
+	})
+}
+
+func addBusinessNode(response *evidencevo.BusinessGraphResponse, seen map[string]struct{}, refID string, claimID string, ref map[string]any) {
+	if _, ok := seen[refID]; ok {
+		return
+	}
+	seen[refID] = struct{}{}
+	nodeType, _ := stringField(ref, "ref_type")
+	if nodeType == "" {
+		nodeType = "business_ref"
+	}
+	label, _ := stringField(ref, "label")
+	versionStatus, _ := stringField(ref, "version_status")
+	response.Data.Nodes = append(response.Data.Nodes, evidencevo.BusinessGraphNode{
+		ID:            "business:" + refID,
+		NodeType:      nodeType,
+		Label:         label,
+		ClaimID:       claimID,
+		VersionStatus: versionStatus,
+		Visibility:    visibilityValue(ref),
+		Properties:    cloneMap(ref),
+	})
+}
+
+func businessEdgeType(ref map[string]any) string {
+	refType, _ := stringField(ref, "ref_type")
+	if refType == "" {
+		return "claim_to_business_ref"
+	}
+	return "claim_to_" + refType
+}
+
+func visibilityValue(item map[string]any) string {
+	visibility, _ := item["visibility"].(string)
+	if visibility == "" {
+		return "visible"
+	}
+	return visibility
 }
 
 func sortedKeys(values map[string]struct{}) []string {
