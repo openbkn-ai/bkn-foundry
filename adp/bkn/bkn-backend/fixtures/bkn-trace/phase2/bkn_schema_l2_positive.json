@@ -46,6 +46,7 @@
           "branch": "main",
           "entity_kind": "object_type",
           "requested_hash": "sha256:requested_ids_hash_only",
+          "evidence_refs_hash": "sha256:sorted_ref_id_and_summary_hashes_only",
           "returned_ref_count": 4,
           "returned_count": 4,
           "total_count": 4,

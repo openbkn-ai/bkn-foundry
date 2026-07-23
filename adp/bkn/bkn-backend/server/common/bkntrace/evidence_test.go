@@ -147,6 +147,39 @@ func TestBuildSchemaReadEventsCoversRelationActionAndMetricRefs(t *testing.T) {
 	})
 }
 
+func TestBuildSchemaReadEventsDifferentiatesSameCountDifferentRefs(t *testing.T) {
+	subject := ReadSubject{
+		EntityKind:    EntityKindObjectType,
+		Operation:     "bkn.schema.object_type.list",
+		KNID:          "kn_demo",
+		Branch:        "main",
+		ReturnedCount: 1,
+		TotalCount:    1,
+	}
+	customerEvents := BuildSchemaReadEvents(testTraceContext(), testRequestContext(), subject, ObjectTypeRefs([]*interfaces.ObjectType{
+		{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "customer"}, KNID: "kn_demo", Branch: "main"},
+	}))
+	orderEvents := BuildSchemaReadEvents(testTraceContext(), testRequestContext(), subject, ObjectTypeRefs([]*interfaces.ObjectType{
+		{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "order"}, KNID: "kn_demo", Branch: "main"},
+	}))
+
+	customerClaim := claimPayload(t, customerEvents)
+	orderClaim := claimPayload(t, orderEvents)
+	if customerClaim["claim_id"] == orderClaim["claim_id"] {
+		t.Fatalf("claim_id should differ for same-count different refs: %v", customerClaim["claim_id"])
+	}
+	if customerClaim["claim_hash"] == orderClaim["claim_hash"] {
+		t.Fatalf("claim_hash should differ for same-count different refs: %v", customerClaim["claim_hash"])
+	}
+	customerSubjectRefs, ok := customerClaim["subject_refs"].(map[string]any)
+	if !ok {
+		t.Fatalf("subject_refs missing or invalid: %#v", customerClaim["subject_refs"])
+	}
+	if _, ok := customerSubjectRefs["evidence_refs_hash"].(string); !ok {
+		t.Fatalf("missing evidence_refs_hash in subject_refs: %#v", customerSubjectRefs)
+	}
+}
+
 func TestBuildSchemaReadEventsRequiresTraceAndRequestContext(t *testing.T) {
 	events := BuildSchemaReadEvents(context.Background(), testRequestContext(), ReadSubject{
 		EntityKind:    EntityKindObjectType,
@@ -169,6 +202,18 @@ func TestBuildSchemaReadEventsRequiresTraceAndRequestContext(t *testing.T) {
 	if len(events) != 0 {
 		t.Fatalf("len(events)=%d, want 0 without request context", len(events))
 	}
+}
+
+func claimPayload(t *testing.T, events []Event) map[string]any {
+	t.Helper()
+	if len(events) == 0 {
+		t.Fatalf("events are empty")
+	}
+	payload, ok := events[0]["payload"].(map[string]any)
+	if !ok {
+		t.Fatalf("claim payload missing or invalid: %#v", events[0]["payload"])
+	}
+	return payload
 }
 
 func assertSafeEvents(t *testing.T, events []Event, want []string, forbidden []string) {

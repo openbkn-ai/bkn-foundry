@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -128,41 +129,49 @@ func BuildSchemaReadEvents(ctx context.Context, reqCtx RequestContext, subject R
 	}
 
 	evidenceRefs := make([]map[string]any, 0, len(refs))
+	refFingerprints := make([]string, 0, len(refs))
 	for _, ref := range refs {
 		if strings.TrimSpace(ref.RefID) == "" || strings.TrimSpace(ref.RefType) == "" {
 			continue
 		}
+		refID := strings.TrimSpace(ref.RefID)
+		refType := strings.TrimSpace(ref.RefType)
+		summaryHash := HashValue(ref.Summary)
 		partialReasons := ref.PartialReasons
 		if len(partialReasons) == 0 {
-			partialReasons = []string{ref.RefType + "_unversioned"}
+			partialReasons = []string{refType + "_unversioned"}
 		}
 		evidenceRefs = append(evidenceRefs, map[string]any{
-			"ref_id":         strings.TrimSpace(ref.RefID),
-			"ref_type":       strings.TrimSpace(ref.RefType),
+			"ref_id":         refID,
+			"ref_type":       refType,
 			"source_system":  ModuleName,
 			"summary":        ref.Summary,
-			"summary_hash":   HashValue(ref.Summary),
+			"summary_hash":   summaryHash,
 			"validity":       "observed",
 			"version_status": "unversioned",
 			"visibility":     "visible",
 			"partial_reason": partialReasons,
 		})
+		refFingerprints = append(refFingerprints, refType+":"+refID+":"+summaryHash)
 	}
 	if len(evidenceRefs) == 0 {
 		return nil
 	}
+	sort.Strings(refFingerprints)
+	evidenceRefsHash := HashValue(refFingerprints)
 
 	resultSummary := map[string]any{
-		"kn_id":            strings.TrimSpace(subject.KNID),
-		"branch":           strings.TrimSpace(subject.Branch),
-		"entity_kind":      strings.TrimSpace(subject.EntityKind),
-		"requested_hash":   HashValue(subject.RequestedIDs),
-		"returned_count":   subject.ReturnedCount,
-		"total_count":      subject.TotalCount,
-		"evidence_count":   len(evidenceRefs),
-		"operation":        operation,
-		"producer_module":  ModuleName,
-		"contract_version": ContractVersion,
+		"kn_id":              strings.TrimSpace(subject.KNID),
+		"branch":             strings.TrimSpace(subject.Branch),
+		"entity_kind":        strings.TrimSpace(subject.EntityKind),
+		"requested_hash":     HashValue(subject.RequestedIDs),
+		"returned_count":     subject.ReturnedCount,
+		"total_count":        subject.TotalCount,
+		"evidence_count":     len(evidenceRefs),
+		"evidence_refs_hash": evidenceRefsHash,
+		"operation":          operation,
+		"producer_module":    ModuleName,
+		"contract_version":   ContractVersion,
 	}
 	claimID := ClaimID(operation, subject.KNID, resultSummary)
 
@@ -179,6 +188,7 @@ func BuildSchemaReadEvents(ctx context.Context, reqCtx RequestContext, subject R
 				"branch":              strings.TrimSpace(subject.Branch),
 				"entity_kind":         strings.TrimSpace(subject.EntityKind),
 				"requested_hash":      resultSummary["requested_hash"],
+				"evidence_refs_hash":  evidenceRefsHash,
 				"returned_ref_count":  len(evidenceRefs),
 				"returned_count":      subject.ReturnedCount,
 				"total_count":         subject.TotalCount,

@@ -45,6 +45,9 @@ func bknTraceRequestContext(c *gin.Context, vis hydra.Visitor) bkntrace.RequestC
 }
 
 func emitObjectTypeSchemaRead(ctx context.Context, c *gin.Context, vis hydra.Visitor, operation, knID, branch string, requestedIDs []string, items []*interfaces.ObjectType, total int64) {
+	if !bkntrace.EvidenceEnabled() {
+		return
+	}
 	bkntrace.EmitSchemaReadEvents(ctx, bknTraceRequestContext(c, vis), bkntrace.ReadSubject{
 		EntityKind:    bkntrace.EntityKindObjectType,
 		Operation:     operation,
@@ -57,6 +60,9 @@ func emitObjectTypeSchemaRead(ctx context.Context, c *gin.Context, vis hydra.Vis
 }
 
 func emitRelationTypeSchemaRead(ctx context.Context, c *gin.Context, vis hydra.Visitor, operation, knID, branch string, requestedIDs []string, items []*interfaces.RelationType, total int64) {
+	if !bkntrace.EvidenceEnabled() {
+		return
+	}
 	bkntrace.EmitSchemaReadEvents(ctx, bknTraceRequestContext(c, vis), bkntrace.ReadSubject{
 		EntityKind:    bkntrace.EntityKindRelationType,
 		Operation:     operation,
@@ -69,6 +75,9 @@ func emitRelationTypeSchemaRead(ctx context.Context, c *gin.Context, vis hydra.V
 }
 
 func emitActionTypeSchemaRead(ctx context.Context, c *gin.Context, vis hydra.Visitor, operation, knID, branch string, requestedIDs []string, items []*interfaces.ActionType, total int64) {
+	if !bkntrace.EvidenceEnabled() {
+		return
+	}
 	bkntrace.EmitSchemaReadEvents(ctx, bknTraceRequestContext(c, vis), bkntrace.ReadSubject{
 		EntityKind:    bkntrace.EntityKindActionType,
 		Operation:     operation,
@@ -81,6 +90,9 @@ func emitActionTypeSchemaRead(ctx context.Context, c *gin.Context, vis hydra.Vis
 }
 
 func emitMetricSchemaRead(ctx context.Context, c *gin.Context, vis hydra.Visitor, operation, knID, branch string, requestedIDs []string, items []*interfaces.MetricDefinition, total int64) {
+	if !bkntrace.EvidenceEnabled() {
+		return
+	}
 	bkntrace.EmitSchemaReadEvents(ctx, bknTraceRequestContext(c, vis), bkntrace.ReadSubject{
 		EntityKind:    bkntrace.EntityKindMetric,
 		Operation:     operation,

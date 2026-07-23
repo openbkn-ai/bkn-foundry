@@ -38,6 +38,7 @@
 - Successful schema read paths emit one `claim.created` event and one `evidence.refs.created` event after the service read succeeds and before the HTTP response is written.
 - Object type and relation type reads emit `schema_ref`; action type reads emit `action_ref`; metric reads emit `metric_ref`.
 - `claim.created.payload.claim_type` is `finding`; `claim_hash` is computed from safe result summary only.
+- `claim_id` / `claim_hash` must include a hash of the sorted `ref_id + ref_type + summary_hash` set so same-count list results with different schema refs remain distinguishable.
 - `evidence_refs[].summary` may contain IDs, `kn_id`, `branch`, type fields, counts, booleans and timestamps. It must not contain names, comments, property names, mapping rule details, action intent text, metric formula content, SQL, row data, prompt, tool input/output, token, cookie or authorization values.
 - `summary_hash` is always present and computed from the safe summary.
 - `version_status` is currently `unversioned`; refs must include `partial_reason` such as `schema_ref_unversioned`、`action_ref_unversioned`、`metric_ref_unversioned` until schema/snapshot versioning is connected.
