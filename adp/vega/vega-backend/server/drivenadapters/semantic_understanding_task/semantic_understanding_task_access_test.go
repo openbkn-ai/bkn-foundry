@@ -137,13 +137,15 @@ func TestSemanticUnderstandingTaskAccessList(t *testing.T) {
 				interfaces.SemanticUnderstandingTaskStatusPending,
 				interfaces.SemanticUnderstandingTaskStatusRunning,
 			},
+			ApplyMode: interfaces.SemanticUnderstandingApplyModeFillEmpty,
+			Applied:   boolPtr(true),
 		}
 
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM t_semantic_understanding_task WHERE f_scope = ? AND f_catalog_id = ? AND f_resource_id = ? AND f_status IN (?,?)")).
-			WithArgs(interfaces.SemanticUnderstandingTaskScopeResource, "catalog-1", "resource-1", interfaces.SemanticUnderstandingTaskStatusPending, interfaces.SemanticUnderstandingTaskStatusRunning).
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM t_semantic_understanding_task WHERE f_scope = ? AND f_catalog_id = ? AND f_resource_id = ? AND f_status IN (?,?) AND f_apply_mode = ? AND f_applied = ?")).
+			WithArgs(interfaces.SemanticUnderstandingTaskScopeResource, "catalog-1", "resource-1", interfaces.SemanticUnderstandingTaskStatusPending, interfaces.SemanticUnderstandingTaskStatusRunning, interfaces.SemanticUnderstandingApplyModeFillEmpty, true).
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT "+joinSemanticUnderstandingTaskColumns()+" FROM t_semantic_understanding_task WHERE f_scope = ? AND f_catalog_id = ? AND f_resource_id = ? AND f_status IN (?,?) ORDER BY f_create_time ASC LIMIT 10 OFFSET 5")).
-			WithArgs(interfaces.SemanticUnderstandingTaskScopeResource, "catalog-1", "resource-1", interfaces.SemanticUnderstandingTaskStatusPending, interfaces.SemanticUnderstandingTaskStatusRunning).
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT "+joinSemanticUnderstandingTaskColumns()+" FROM t_semantic_understanding_task WHERE f_scope = ? AND f_catalog_id = ? AND f_resource_id = ? AND f_status IN (?,?) AND f_apply_mode = ? AND f_applied = ? ORDER BY f_create_time ASC LIMIT 10 OFFSET 5")).
+			WithArgs(interfaces.SemanticUnderstandingTaskScopeResource, "catalog-1", "resource-1", interfaces.SemanticUnderstandingTaskStatusPending, interfaces.SemanticUnderstandingTaskStatusRunning, interfaces.SemanticUnderstandingApplyModeFillEmpty, true).
 			WillReturnRows(sqlmock.NewRows(semanticUnderstandingTaskColumns()).AddRow(semanticUnderstandingTaskRowValues(task)...))
 
 		got, total, err := access.List(context.Background(), params)
@@ -154,6 +156,10 @@ func TestSemanticUnderstandingTaskAccessList(t *testing.T) {
 		assert.Equal(t, task.ID, got[0].ID)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
+}
+
+func boolPtr(value bool) *bool {
+	return &value
 }
 
 func TestSemanticUnderstandingTaskAccessMarkRunning(t *testing.T) {

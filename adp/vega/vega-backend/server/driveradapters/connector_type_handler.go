@@ -82,6 +82,7 @@ func (r *restHandler) ListConnectorTypes(c *gin.Context) {
 		rest.ReplyError(c, httpErr)
 		return
 	}
+	pageParam.Sort = interfaces.CONNECTOR_TYPE_SORT[sort]
 
 	params := interfaces.ConnectorTypesQueryParams{
 		PaginationQueryParams: pageParam,

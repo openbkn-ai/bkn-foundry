@@ -146,7 +146,7 @@ func validatePaginationQueryParams(ctx context.Context, offset, limit, sort, dir
 	return interfaces.PaginationQueryParams{
 		Offset:    off,
 		Limit:     lim,
-		Sort:      supportedSortTypes[sort],
+		Sort:      sort,
 		Direction: direction,
 	}, nil
 }

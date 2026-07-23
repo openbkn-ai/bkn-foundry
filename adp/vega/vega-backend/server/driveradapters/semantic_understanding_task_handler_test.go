@@ -159,6 +159,8 @@ func Test_SemanticUnderstandingTaskRestHandler_ListTasks(t *testing.T) {
 		{name: "invalid direction", query: "?direction=foo", wantBody: "VegaBackend.InvalidParameter.Direction"},
 		{name: "invalid scope", query: "?scope=unknown", wantBody: "scope must be resource or catalog"},
 		{name: "invalid status", query: "?status=unknown", wantBody: "invalid status"},
+		{name: "invalid apply mode", query: "?apply_mode=unknown", wantBody: "invalid apply_mode"},
+		{name: "invalid applied", query: "?applied=unknown", wantBody: "applied must be true or false"},
 	}
 
 	for _, tt := range tests {
@@ -185,6 +187,9 @@ func Test_SemanticUnderstandingTaskRestHandler_ListTasks(t *testing.T) {
 					interfaces.SemanticUnderstandingTaskStatusPending,
 					interfaces.SemanticUnderstandingTaskStatusRunning,
 				}, params.Statuses)
+				assert.Equal(t, interfaces.SemanticUnderstandingApplyModeFillEmpty, params.ApplyMode)
+				require.NotNil(t, params.Applied)
+				assert.True(t, *params.Applied)
 				assert.Equal(t, 5, params.Offset)
 				assert.Equal(t, 10, params.Limit)
 				assert.Equal(t, "create_time", params.Sort)
@@ -201,7 +206,7 @@ func Test_SemanticUnderstandingTaskRestHandler_ListTasks(t *testing.T) {
 				}, int64(1), nil
 			})
 
-		req := httptest.NewRequest(http.MethodGet, semanticUnderstandingTaskURL+"?scope=resource&catalog_id=catalog-1&resource_id=res-1&status=pending,running&offset=5&limit=10&sort=create_time&direction=asc", nil)
+		req := httptest.NewRequest(http.MethodGet, semanticUnderstandingTaskURL+"?scope=resource&catalog_id=catalog-1&resource_id=res-1&status=pending,running&apply_mode=fill_empty&applied=true&offset=5&limit=10&sort=create_time&direction=asc", nil)
 		w := httptest.NewRecorder()
 
 		engine.ServeHTTP(w, req)

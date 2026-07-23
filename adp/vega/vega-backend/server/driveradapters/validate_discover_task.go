@@ -23,6 +23,11 @@ func ValidateDiscoverTaskQueryParams(ctx context.Context, params interfaces.Disc
 			WithErrorDetails(fmt.Sprintf("invalid status: %s", params.Status))
 	}
 
+	if params.Strategy != "" && !interfaces.IsValidDiscoverStrategy(params.Strategy) {
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+			WithErrorDetails(fmt.Sprintf("invalid strategy: %s", params.Strategy))
+	}
+
 	if params.TriggerType != "" && !isValidDiscoverTaskTriggerType(params.TriggerType) {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
 			WithErrorDetails(fmt.Sprintf("invalid trigger_type: %s", params.TriggerType))

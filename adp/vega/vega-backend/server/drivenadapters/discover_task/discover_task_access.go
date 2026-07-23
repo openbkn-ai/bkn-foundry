@@ -11,6 +11,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -239,6 +240,10 @@ func (dta *discoverTaskAccess) List(ctx context.Context, params interfaces.Disco
 		builder = builder.Where(sq.Eq{"f_status": params.Status})
 		countBuilder = countBuilder.Where(sq.Eq{"f_status": params.Status})
 	}
+	if params.Strategy != "" {
+		builder = builder.Where(sq.Eq{"f_strategy": params.Strategy})
+		countBuilder = countBuilder.Where(sq.Eq{"f_strategy": params.Strategy})
+	}
 	if params.TriggerType != "" {
 		builder = builder.Where(sq.Eq{"f_trigger_type": params.TriggerType})
 		countBuilder = countBuilder.Where(sq.Eq{"f_trigger_type": params.TriggerType})
@@ -257,11 +262,7 @@ func (dta *discoverTaskAccess) List(ctx context.Context, params interfaces.Disco
 	if params.Limit > 0 {
 		builder = builder.Limit(uint64(params.Limit)).Offset(uint64(params.Offset))
 	}
-	if params.Sort != "" && params.Direction != "" {
-		builder = builder.OrderBy(fmt.Sprintf("%s %s", params.Sort, params.Direction))
-	} else {
-		builder = builder.OrderBy("f_create_time DESC")
-	}
+	builder = builder.OrderBy(buildOrderByClause(params.Sort, params.Direction))
 
 	sqlStr, vals, err := builder.ToSql()
 	if err != nil {
@@ -294,6 +295,28 @@ func (dta *discoverTaskAccess) List(ctx context.Context, params interfaces.Disco
 
 	span.SetStatus(codes.Ok, "")
 	return tasks, total, nil
+}
+
+func buildOrderByClause(sort, direction string) string {
+	if sort == "default" {
+		return "CASE f_status WHEN 'running' THEN 1 WHEN 'pending' THEN 2 WHEN 'failed' THEN 3 WHEN 'completed' THEN 4 ELSE 999 END ASC, f_create_time DESC"
+	}
+
+	column := "f_create_time"
+	switch sort {
+	case "start_time":
+		column = "f_start_time"
+	case "finish_time":
+		column = "f_finish_time"
+	case "create_time", "":
+		column = "f_create_time"
+	}
+
+	dir := "DESC"
+	if strings.EqualFold(direction, interfaces.ASC_DIRECTION) {
+		dir = "ASC"
+	}
+	return fmt.Sprintf("%s %s", column, dir)
 }
 
 // UpdateStatus updates a DiscoverTask's status and message.

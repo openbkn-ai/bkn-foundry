@@ -81,8 +81,8 @@ func Test_isValidBuildTaskOrderBy(t *testing.T) {
 		{orderBy: interfaces.BuildTaskOrderByDefault, want: true},
 		{orderBy: interfaces.BuildTaskOrderByCreatedAt, want: true},
 		{orderBy: interfaces.BuildTaskOrderByUpdatedAt, want: true},
-		{orderBy: interfaces.BuildTaskOrderByStatus, want: true},
-		{orderBy: interfaces.BuildTaskOrderByMode, want: true},
+		{orderBy: interfaces.BuildTaskOrderByStatus, want: false},
+		{orderBy: interfaces.BuildTaskOrderByMode, want: false},
 		{orderBy: "progress", want: false},
 		{orderBy: "", want: false},
 	}

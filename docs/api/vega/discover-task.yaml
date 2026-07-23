@@ -25,7 +25,7 @@ paths:
   /discover-tasks:
     get:
       summary: 获取发现任务列表
-      description: 分页获取发现任务；支持按 catalog_id / schedule_id / status / trigger_type 过滤。
+      description: 分页获取发现任务；支持按 catalog_id / schedule_id / status / strategy / trigger_type 过滤。
       parameters:
         - name: catalog_id
           description: 按归属 catalog 过滤
@@ -48,6 +48,15 @@ paths:
               - running
               - completed
               - failed
+        - name: strategy
+          description: 按探查策略过滤
+          in: query
+          schema:
+            type: string
+            enum:
+              - full_sync
+              - create_only
+              - cleanup_only
         - name: trigger_type
           description: 按触发方式过滤
           in: query
@@ -72,10 +81,12 @@ paths:
             format: int64
             default: 20
         - name: sort
-          description: 排序字段（当前数据访问层固定按 create_time 倒序，sort 参数预留）
+          description: 排序字段；默认 `default`（执行中、等待中、失败、已完成，同状态按创建时间倒序）。
           in: query
           schema:
             type: string
+            enum: [default, create_time, start_time, finish_time]
+            default: default
         - name: direction
           description: 排序方向
           in: query
