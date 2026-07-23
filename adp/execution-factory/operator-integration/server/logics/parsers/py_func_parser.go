@@ -143,17 +143,26 @@ func (p *pythonFunctionParser) GetAllContent(ctx context.Context, inputValue any
 	if err != nil {
 		err = errors.DefaultHTTPError(ctx, http.StatusBadRequest, fmt.Sprintf("解析Python代码失败: %v", err))
 		return
-	} // 检查是否包含入口函数handler
-	var hasHandler bool
+	}
+	// 检查入口函数。两种写法都算：@tool 装饰的普通函数,或 handler(event)。
+	// 判定与 checkRegexpHandler 保持一致,避免同一段代码在两条路径上结论不同。
+	var hasEntry bool
 	ast.Walk(mod, func(node ast.Ast) bool {
 		n, ok := node.(*ast.FunctionDef)
-		if ok && n.Name == "handler" {
-			hasHandler = true
+		if !ok {
+			return true
+		}
+		if n.Name == "handler" {
+			hasEntry = true
 		}
 		return true
 	})
-	if !hasHandler {
-		err = errors.DefaultHTTPError(ctx, http.StatusBadRequest, "python function must have a handler function")
+	if !hasEntry {
+		hasEntry = toolEntryPattern.MatchString(input.Code)
+	}
+	if !hasEntry {
+		err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtFunctionNoHandlerFound,
+			"python function must define a @tool decorated function or a handler(event) function")
 		return
 	}
 	content = convertToPathItemContent(input)

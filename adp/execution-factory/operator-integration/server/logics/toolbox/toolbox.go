@@ -172,6 +172,9 @@ func (s *ToolServiceImpl) QueryToolBoxList(ctx context.Context, req *interfaces.
 	// 构造查询条件
 	filter := make(map[string]interface{})
 	filter["all"] = req.All
+	if req.MetadataType != "" {
+		filter["metadata_type"] = req.MetadataType
+	}
 	if req.BoxName != "" {
 		filter["name"] = req.BoxName
 	}

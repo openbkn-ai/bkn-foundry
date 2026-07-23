@@ -141,6 +141,8 @@ type QueryToolBoxListReq struct {
 	BoxCategory      BizCategory `form:"category"`                                                      // 分类
 	Status           BizStatus   `form:"status" validate:"omitempty,oneof=unpublish published offline"` // 工具箱状态
 	BoxName          string      `form:"name"`                                                          // 工具箱名称
+	// 按元数据类型筛选。工具箱只有 openapi 与 function 两类,函数工具工作台据此只列函数工具箱。
+	MetadataType MetadataType `form:"metadata_type" validate:"omitempty,oneof=openapi function"`
 	CommonPageParams
 }
 

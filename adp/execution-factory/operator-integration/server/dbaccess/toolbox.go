@@ -148,6 +148,9 @@ func (b *toolboxDB) buildQueryConditions(query *ormhelper.SelectBuilder, conditi
 	if conditions["status"] != nil {
 		query = query.WhereEq("f_status", conditions["status"])
 	}
+	if conditions["metadata_type"] != nil {
+		query = query.WhereEq("f_metadata_type", conditions["metadata_type"])
+	}
 	if conditions["category"] != nil {
 		query = query.WhereEq("f_category", conditions["category"])
 	}
