@@ -203,6 +203,72 @@ def test_thread_owner_reads_history(monkeypatch):
     assert [m["role"] for m in body["messages"]] == ["user", "assistant"]
 
 
+def _agent_out(agent_id, owner):
+    from app.models import AgentOut
+
+    return AgentOut(
+        agent_id=agent_id, name="a", mode="chat", model="", tools=[], skills=[],
+        status="draft", create_user=owner, update_user=owner, create_time=1, update_time=2,
+    )
+
+
+def _override_get_agent(monkeypatch, returns):
+    from app import dao
+    from app.db import get_session
+
+    async def fake_session():
+        class _S:
+            pass
+
+        yield _S()
+
+    async def fake_get_agent(session, agent_id):
+        return returns
+
+    app.dependency_overrides[get_session] = fake_session
+    monkeypatch.setattr(dao, "get_agent", fake_get_agent)
+
+
+def test_update_agent_rejects_non_owner(monkeypatch):
+    """写操作止血：非创建者不得修改他人 agent（此前 account 被解析后忽略）。"""
+    _override_get_agent(monkeypatch, _agent_out("a-1", owner="owner"))
+    body = {"name": "renamed"}
+    r = client.put(
+        "/api/bkn-agent/v1/agents/a-1", json=body,
+        headers={"x-account-id": "intruder", "x-account-type": "user"},
+    )
+    assert r.status_code == 403, r.text
+    app.dependency_overrides.clear()
+
+
+def test_delete_agent_rejects_non_owner(monkeypatch):
+    _override_get_agent(monkeypatch, _agent_out("a-1", owner="owner"))
+    r = client.delete(
+        "/api/bkn-agent/v1/agents/a-1",
+        headers={"x-account-id": "intruder", "x-account-type": "user"},
+    )
+    assert r.status_code == 403, r.text
+    app.dependency_overrides.clear()
+
+
+def test_update_agent_allows_legacy_unowned(monkeypatch):
+    """兼容：f_create_user 为空的存量 agent 不因归属校验被锁死。"""
+    from app import dao
+
+    _override_get_agent(monkeypatch, _agent_out("a-1", owner=""))
+
+    async def fake_update(session, agent_id, spec, account_id):
+        return _agent_out(agent_id, owner="")
+
+    monkeypatch.setattr(dao, "update_agent", fake_update)
+    r = client.put(
+        "/api/bkn-agent/v1/agents/a-1", json={"name": "renamed"},
+        headers={"x-account-id": "anyone", "x-account-type": "user"},
+    )
+    assert r.status_code == 200, r.text
+    app.dependency_overrides.clear()
+
+
 def test_task_read_is_owner_scoped(monkeypatch):
     """P0 回归：GET /tasks/{id} 必须按 account 过滤，越权与不存在同响应（404）。"""
     from app import dao
