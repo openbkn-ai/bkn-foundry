@@ -11,7 +11,7 @@ tags: []
 
 | Type | ID | Name |
 |------|----|------|
-| resource | kweaver_execution_factory_skill_dataset | kweaver_execution_factory_skill_dataset |
+| resource | bkn_execution_factory_skill_dataset | bkn_execution_factory_skill_dataset |
 
 ### Data Properties
 

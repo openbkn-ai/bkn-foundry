@@ -700,21 +700,6 @@ func (m *MockMFModelManager) EXPECT() *MockMFModelManagerMockRecorder {
 	return m.recorder
 }
 
-// GetEmbeddingModel mocks base method.
-func (m *MockMFModelManager) GetEmbeddingModel(ctx context.Context, modelName, modelType string) (*interfaces.EmbeddingModel, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetEmbeddingModel", ctx, modelName, modelType)
-	ret0, _ := ret[0].(*interfaces.EmbeddingModel)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetEmbeddingModel indicates an expected call of GetEmbeddingModel.
-func (mr *MockMFModelManagerMockRecorder) GetEmbeddingModel(ctx, modelName, modelType any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEmbeddingModel", reflect.TypeOf((*MockMFModelManager)(nil).GetEmbeddingModel), ctx, modelName, modelType)
-}
-
 // GetDefaultEmbeddingModel mocks base method.
 func (m *MockMFModelManager) GetDefaultEmbeddingModel(ctx context.Context, modelType string) (*interfaces.EmbeddingModel, error) {
 	m.ctrl.T.Helper()
@@ -728,6 +713,21 @@ func (m *MockMFModelManager) GetDefaultEmbeddingModel(ctx context.Context, model
 func (mr *MockMFModelManagerMockRecorder) GetDefaultEmbeddingModel(ctx, modelType any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDefaultEmbeddingModel", reflect.TypeOf((*MockMFModelManager)(nil).GetDefaultEmbeddingModel), ctx, modelType)
+}
+
+// GetEmbeddingModel mocks base method.
+func (m *MockMFModelManager) GetEmbeddingModel(ctx context.Context, modelName, modelType string) (*interfaces.EmbeddingModel, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetEmbeddingModel", ctx, modelName, modelType)
+	ret0, _ := ret[0].(*interfaces.EmbeddingModel)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetEmbeddingModel indicates an expected call of GetEmbeddingModel.
+func (mr *MockMFModelManagerMockRecorder) GetEmbeddingModel(ctx, modelName, modelType any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEmbeddingModel", reflect.TypeOf((*MockMFModelManager)(nil).GetEmbeddingModel), ctx, modelName, modelType)
 }
 
 // GetPromptByPromptID mocks base method.
@@ -813,6 +813,20 @@ func (mr *MockVegaBackendClientMockRecorder) DeleteDatasetDocumentByID(ctx, data
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteDatasetDocumentByID", reflect.TypeOf((*MockVegaBackendClient)(nil).DeleteDatasetDocumentByID), ctx, datasetID, docID)
 }
 
+// EnableCatalog mocks base method.
+func (m *MockVegaBackendClient) EnableCatalog(ctx context.Context, id string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "EnableCatalog", ctx, id)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// EnableCatalog indicates an expected call of EnableCatalog.
+func (mr *MockVegaBackendClientMockRecorder) EnableCatalog(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EnableCatalog", reflect.TypeOf((*MockVegaBackendClient)(nil).EnableCatalog), ctx, id)
+}
+
 // GetCatalogByID mocks base method.
 func (m *MockVegaBackendClient) GetCatalogByID(ctx context.Context, id string) (*interfaces.VegaCatalog, error) {
 	m.ctrl.T.Helper()
@@ -841,6 +855,20 @@ func (m *MockVegaBackendClient) GetResourceByID(ctx context.Context, id string) 
 func (mr *MockVegaBackendClientMockRecorder) GetResourceByID(ctx, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetResourceByID", reflect.TypeOf((*MockVegaBackendClient)(nil).GetResourceByID), ctx, id)
+}
+
+// UpdateCatalog mocks base method.
+func (m *MockVegaBackendClient) UpdateCatalog(ctx context.Context, req *interfaces.VegaCatalogRequest) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateCatalog", ctx, req)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateCatalog indicates an expected call of UpdateCatalog.
+func (mr *MockVegaBackendClientMockRecorder) UpdateCatalog(ctx, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateCatalog", reflect.TypeOf((*MockVegaBackendClient)(nil).UpdateCatalog), ctx, req)
 }
 
 // UpdateDatasetDocuments mocks base method.
