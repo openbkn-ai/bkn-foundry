@@ -8,9 +8,11 @@ WARNING: This provides NO security isolation and should ONLY be used
 for development purposes.
 """
 import asyncio
-import time
 import json
 import logging
+import os
+import signal
+import time
 from pathlib import Path
 from typing import List, Tuple
 
@@ -18,6 +20,9 @@ from executor.domain.entities import Execution
 from executor.domain.value_objects import ExecutionResult, ExecutionStatus, ExecutionMetrics
 from executor.infrastructure.config import settings
 from executor.infrastructure.isolation.code_wrapper import normalize_shell_code, uses_tool_decorator
+
+# 超时后先发 SIGTERM，等这么久仍未退出就 SIGKILL
+_TERMINATE_GRACE_SECONDS = 3
 
 logger = logging.getLogger(__name__)
 
@@ -67,23 +72,29 @@ class SubprocessRunner:
         start_cpu = time.process_time()
         logger.info(f"Executing code without isolation (DEVELOPMENT MODE), execution_id={execution.execution_id}, language={execution.language}")
 
+        process = None
+
         try:
             # Build language-specific command and environment
             cmd, env_args = self._build_command(execution)
             cwd_path = execution.context.resolve_working_directory_path()
 
-            # Execute using asyncio subprocess
+            # start_new_session puts the child in its own process group, so a
+            # timeout can take down everything it spawned rather than just the
+            # direct child.
             process = await asyncio.create_subprocess_exec(
                 *cmd,
                 cwd=str(cwd_path),
                 env=env_args,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                start_new_session=True,
             )
 
+            timeout_seconds = execution.timeout_seconds or settings.default_timeout
             stdout, stderr = await asyncio.wait_for(
                 process.communicate(),
-                timeout=30  # Default timeout, outer layer handles actual timeout
+                timeout=timeout_seconds,
             )
 
             duration = time.perf_counter() - start_time
@@ -145,13 +156,21 @@ class SubprocessRunner:
             )
 
         except asyncio.TimeoutError:
-            logger.warning(f"Execution timed out, execution_id={execution.execution_id}")
+            # Returning without killing leaves the process — and anything it
+            # spawned — burning CPU inside the container while the session is
+            # still reported healthy and keeps taking work.
+            await self._terminate_process_group(process, execution.execution_id)
+            duration_ms = (time.perf_counter() - start_time) * 1000
+            logger.warning(
+                f"Execution timed out, execution_id={execution.execution_id}, "
+                f"duration_ms={duration_ms}"
+            )
             return ExecutionResult(
                 status=ExecutionStatus.TIMEOUT,
                 stdout="",
                 stderr="Execution timed out",
                 exit_code=124,
-                execution_time_ms=30000,
+                execution_time_ms=duration_ms,
                 return_value=None,
                 metrics=None,
             )
@@ -165,6 +184,45 @@ class SubprocessRunner:
                 execution_time_ms=0,
                 return_value=None,
                 metrics=None,
+            )
+
+    async def _terminate_process_group(self, process, execution_id: str) -> None:
+        """
+        Kill the timed-out process and everything it spawned.
+
+        The child was started with start_new_session=True, so it leads its own
+        process group and killpg reaches grandchildren too. SIGTERM first to let
+        the code clean up, SIGKILL if it does not go away.
+        """
+        if process is None or process.returncode is not None:
+            return
+        try:
+            pgid = os.getpgid(process.pid)
+        except (ProcessLookupError, PermissionError):
+            pgid = None
+
+        try:
+            if pgid is not None:
+                os.killpg(pgid, signal.SIGTERM)
+            else:
+                process.terminate()
+            try:
+                await asyncio.wait_for(process.wait(), timeout=_TERMINATE_GRACE_SECONDS)
+                return
+            except asyncio.TimeoutError:
+                pass
+
+            if pgid is not None:
+                os.killpg(pgid, signal.SIGKILL)
+            else:
+                process.kill()
+            await process.wait()
+        except ProcessLookupError:
+            # Already gone between the check and the signal.
+            pass
+        except Exception as e:
+            logger.error(
+                f"Failed to terminate process group, execution_id={execution_id}, error={e}"
             )
 
     def _build_command(self, execution: Execution) -> Tuple[List[str], dict]:
