@@ -118,9 +118,8 @@ func TestSkillIndexSync(t *testing.T) {
 			So(syncer.getDatasetID(), ShouldEqual, executionFactorySkillDataset)
 		})
 
-		Convey("Init adopts the legacy kweaver catalog/dataset and renames them in place", func() {
+		Convey("Init adopts the legacy kweaver catalog/dataset, renaming the catalog in place", func() {
 			var renamedCatalog *interfaces.VegaCatalogRequest
-			var renamedResourceName string
 			mockVegaClient := mocks.NewMockVegaBackendClient(ctrl)
 			syncer := &skillIndexSync{
 				vegaClient: mockVegaClient,
@@ -148,11 +147,6 @@ func TestSkillIndexSync(t *testing.T) {
 			mockVegaClient.EXPECT().EnableCatalog(gomock.Any(), legacyExecutionFactoryCatalogID).Return(nil)
 			mockVegaClient.EXPECT().GetResourceByID(gomock.Any(), executionFactorySkillDataset).Return(nil, nil)
 			mockVegaClient.EXPECT().GetResourceByID(gomock.Any(), legacyExecutionFactorySkillDataset).Return(legacyResource, nil)
-			mockVegaClient.EXPECT().RenameResource(gomock.Any(), legacyResource, executionFactorySkillDataset).
-				DoAndReturn(func(ctx context.Context, resource *interfaces.VegaResource, name string) error {
-					renamedResourceName = name
-					return nil
-				})
 
 			err := syncer.Init(context.Background())
 			So(err, ShouldBeNil)
@@ -164,7 +158,8 @@ func TestSkillIndexSync(t *testing.T) {
 			// 存量目录补 internal 标签，原有标签保留
 			So(renamedCatalog.Tags, ShouldContain, internalCatalogTag)
 			So(renamedCatalog.Tags, ShouldContain, "execution-factory")
-			So(renamedResourceName, ShouldEqual, executionFactorySkillDataset)
+			// dataset 只收养不改名：vega 会对存量 schema 跑模型校验，改名请求必然 400
+			So(syncer.getDatasetID(), ShouldEqual, legacyExecutionFactorySkillDataset)
 			So(syncer.getDatasetID(), ShouldEqual, legacyExecutionFactorySkillDataset)
 			// 建时锁定的 embedding 模型从旧 dataset 的 tag 读回
 			So(syncer.getEmbeddingModelName(), ShouldEqual, "text-embedding-v4")
@@ -220,7 +215,7 @@ func TestSkillIndexSync(t *testing.T) {
 			So(reconciled.Tags, ShouldResemble, []string{"execution-factory", "索引", internalCatalogTag})
 		})
 
-		Convey("Init survives a failed rename and still serves the legacy dataset", func() {
+		Convey("Init survives a failed catalog rename and still serves the legacy dataset", func() {
 			mockVegaClient := mocks.NewMockVegaBackendClient(ctrl)
 			syncer := &skillIndexSync{
 				vegaClient: mockVegaClient,
@@ -233,7 +228,6 @@ func TestSkillIndexSync(t *testing.T) {
 			mockVegaClient.EXPECT().UpdateCatalog(gomock.Any(), gomock.Any()).Return(errors.New("vega 500"))
 			mockVegaClient.EXPECT().GetResourceByID(gomock.Any(), executionFactorySkillDataset).Return(nil, nil)
 			mockVegaClient.EXPECT().GetResourceByID(gomock.Any(), legacyExecutionFactorySkillDataset).Return(legacyResource, nil)
-			mockVegaClient.EXPECT().RenameResource(gomock.Any(), legacyResource, executionFactorySkillDataset).Return(errors.New("vega 500"))
 
 			err := syncer.Init(context.Background())
 			So(err, ShouldBeNil)

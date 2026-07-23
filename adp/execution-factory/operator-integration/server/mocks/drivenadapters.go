@@ -857,20 +857,6 @@ func (mr *MockVegaBackendClientMockRecorder) GetResourceByID(ctx, id any) *gomoc
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetResourceByID", reflect.TypeOf((*MockVegaBackendClient)(nil).GetResourceByID), ctx, id)
 }
 
-// RenameResource mocks base method.
-func (m *MockVegaBackendClient) RenameResource(ctx context.Context, resource *interfaces.VegaResource, name string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RenameResource", ctx, resource, name)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// RenameResource indicates an expected call of RenameResource.
-func (mr *MockVegaBackendClientMockRecorder) RenameResource(ctx, resource, name any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RenameResource", reflect.TypeOf((*MockVegaBackendClient)(nil).RenameResource), ctx, resource, name)
-}
-
 // UpdateCatalog mocks base method.
 func (m *MockVegaBackendClient) UpdateCatalog(ctx context.Context, req *interfaces.VegaCatalogRequest) error {
 	m.ctrl.T.Helper()

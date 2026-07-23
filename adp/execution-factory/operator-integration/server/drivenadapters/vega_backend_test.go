@@ -101,28 +101,6 @@ func TestVegaBackendClient(t *testing.T) {
 			So(client.EnableCatalog(ctx, "kweaver_execution_factory_catalog"), ShouldBeNil)
 		})
 
-		Convey("renames resource without touching schema", func() {
-			resource := &interfaces.VegaResource{
-				ID:        "kweaver_execution_factory_skill_dataset",
-				CatalogID: "kweaver_execution_factory_catalog",
-				Name:      "kweaver_execution_factory_skill_dataset",
-				Tags:      []string{"execution-factory", "skill"},
-				// schema 不参与请求体：回填有损 schema 会被 vega 判成 schema 变更并清空 LocalIndexName
-				SchemaDefinition: []interfaces.VegaProperty{{Name: "skill_id", Type: "string"}},
-			}
-			expectedPayload := map[string]any{
-				"id":          "kweaver_execution_factory_skill_dataset",
-				"catalog_id":  "kweaver_execution_factory_catalog",
-				"name":        "bkn_execution_factory_skill_dataset",
-				"tags":        []string{"execution-factory", "skill"},
-				"description": "",
-			}
-			httpClient.EXPECT().PutNoUnmarshal(gomock.Any(), "http://vega-backend:9898/api/vega-backend/v1/resources/kweaver_execution_factory_skill_dataset", headers, expectedPayload).
-				Return(http.StatusNoContent, []byte{}, nil)
-
-			So(client.RenameResource(ctx, resource, "bkn_execution_factory_skill_dataset"), ShouldBeNil)
-		})
-
 		Convey("gets resource from entries response", func() {
 			httpClient.EXPECT().GetNoUnmarshal(gomock.Any(), "http://vega-backend:9898/api/vega-backend/v1/resources/bkn_execution_factory_skill_dataset", gomock.Nil(), headers).
 				Return(http.StatusOK, []byte(`{"entries":[{"id":"bkn_execution_factory_skill_dataset","catalog_id":"bkn_execution_factory_catalog"}]}`), nil)

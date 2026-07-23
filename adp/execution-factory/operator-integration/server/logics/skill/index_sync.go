@@ -254,14 +254,11 @@ func (s *skillIndexSync) resolveDataset(ctx context.Context) (string, *interface
 		return "", nil, err
 	}
 	if legacy != nil {
+		// 只收养、不改名：vega 的 Update 无条件对「已存的」schema 跑模型校验，而所有
+		// 存量 dataset 的 _vector 都没有 embedding_model(快照机制之前建的)，vega 回退
+		// 到常量 "embedding" 并因该模型未注册而 400 —— 改名请求对这批 dataset 必然
+		// 失败(VM 实测)。dataset 藏在内置目录下、仅超管可见，旧显示名无碍。
 		s.logger.WithContext(ctx).Infof("adopting legacy skill dataset, resource_id=%s", legacy.ID)
-		if legacy.Name != executionFactorySkillDataset {
-			if err := s.vegaClient.RenameResource(ctx, legacy, executionFactorySkillDataset); err != nil {
-				s.logger.WithContext(ctx).Warnf("rename legacy skill dataset failed, resource_id=%s, err=%v", legacy.ID, err)
-			} else {
-				s.logger.WithContext(ctx).Infof("legacy skill dataset renamed, resource_id=%s, name=%s", legacy.ID, executionFactorySkillDataset)
-			}
-		}
 		return legacy.ID, legacy, nil
 	}
 	return executionFactorySkillDataset, nil, nil

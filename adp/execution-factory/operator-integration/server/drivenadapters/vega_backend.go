@@ -191,36 +191,6 @@ func (v *vegaBackendClient) GetResourceByID(ctx context.Context, id string) (*in
 	return resource, nil
 }
 
-// RenameResource 只改资源展示名，不动 schema。
-//
-// 请求体刻意不带 category 与 schema_definition：
-//   - vega 的 dataset 分支校验要求 schema_definition 非空，带上就得回填整份 schema；
-//     而本服务的 VegaProperty 是 vega Property 的有损投影(缺 original_type、
-//     attributes、extensions 等)，回填会被判定成 schema 变更，进而清空
-//     resource.LocalIndexName，把已建好的 skill 索引悬空。
-//   - schema_definition 为 nil 时 vega 走「不改 schema」分支，仅套用名称/标签/描述。
-func (v *vegaBackendClient) RenameResource(ctx context.Context, resource *interfaces.VegaResource, name string) error {
-	src := fmt.Sprintf("%s/v1/resources/%s", v.baseURL, url.PathEscape(resource.ID))
-	headers := v.buildHeaders(ctx)
-	payload := map[string]any{
-		"id":          resource.ID,
-		"catalog_id":  resource.CatalogID,
-		"name":        name,
-		"tags":        resource.Tags,
-		"description": resource.Description,
-	}
-	v.logger.WithContext(ctx).Infof("rename vega resource, resource_id=%s, name=%s, url=%s", resource.ID, name, src)
-	respCode, respData, err := v.httpClient.PutNoUnmarshal(ctx, src, headers, payload)
-	if err != nil {
-		v.logger.WithContext(ctx).Errorf("failed to rename vega resource, resource_id=%s, url=%s, err=%v", resource.ID, src, err)
-		return err
-	}
-	if respCode != http.StatusNoContent && respCode != http.StatusOK {
-		return fmt.Errorf("rename resource failed: %s", string(respData))
-	}
-	return nil
-}
-
 func (v *vegaBackendClient) CreateResource(ctx context.Context, req *interfaces.VegaResourceRequest) (*interfaces.VegaResource, error) {
 	src := fmt.Sprintf("%s/v1/resources", v.baseURL)
 	headers := v.buildHeaders(ctx)

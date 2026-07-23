@@ -914,8 +914,6 @@ type VegaBackendClient interface {
 	// EnableCatalog 启用目录(vega 的 enabled 只能走该端点，PUT 改会 409)。
 	EnableCatalog(ctx context.Context, id string) error
 	GetResourceByID(ctx context.Context, id string) (*VegaResource, error)
-	// RenameResource 只改资源展示名(及标签/描述)，不触碰 schema。
-	RenameResource(ctx context.Context, resource *VegaResource, name string) error
 	CreateResource(ctx context.Context, req *VegaResourceRequest) (*VegaResource, error)
 	WriteDatasetDocuments(ctx context.Context, datasetID string, documents []map[string]any) error
 	UpdateDatasetDocuments(ctx context.Context, datasetID string, documents []map[string]any) error
