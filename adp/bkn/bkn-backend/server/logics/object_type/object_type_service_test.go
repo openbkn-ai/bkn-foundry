@@ -898,6 +898,14 @@ func Test_objectTypeService_GetObjectTypeSampleData(t *testing.T) {
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ota.EXPECT().GetObjectTypesByIDs(gomock.Any(), gomock.Any(), "kn1", interfaces.MAIN_BRANCH, []string{"ot1"}).Return([]*interfaces.ObjectType{objectType}, nil)
 			cga.EXPECT().GetConceptGroupsByOTIDs(gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string][]*interfaces.ConceptGroup{}, nil)
+			vba.EXPECT().GetResourceByID(gomock.Any(), "resource1").Return(&interfaces.VegaResource{
+				ID:   "resource1",
+				Name: "resource1",
+				SchemaDefinition: []*interfaces.Property{
+					{Name: "code", DisplayName: "物料编码", Type: "string"},
+					{Name: "material_name", DisplayName: "物料名称", Type: "string"},
+				},
+			}, nil)
 			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
 			smock.ExpectCommit()
 			vba.EXPECT().QueryResourceData(gomock.Any(), "resource1", gomock.Any()).DoAndReturn(
@@ -964,6 +972,14 @@ func Test_objectTypeService_GetObjectTypeSampleData(t *testing.T) {
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ota.EXPECT().GetObjectTypesByIDs(gomock.Any(), gomock.Any(), "kn1", interfaces.MAIN_BRANCH, []string{"ot1"}).Return([]*interfaces.ObjectType{objectType}, nil)
 			cga.EXPECT().GetConceptGroupsByOTIDs(gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string][]*interfaces.ConceptGroup{}, nil)
+			dva.EXPECT().GetDataViewByID(gomock.Any(), "view1").Return(&interfaces.DataView{
+				ViewID:   "view1",
+				ViewName: "view1",
+				FieldsMap: map[string]*interfaces.ViewField{
+					"source_code":   {Name: "source_code", DisplayName: "物料编码", Type: "string"},
+					"material_name": {Name: "material_name", DisplayName: "物料名称", Type: "string"},
+				},
+			}, nil)
 			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
 			smock.ExpectCommit()
 			dva.EXPECT().GetDataStart(gomock.Any(), "view1", "", nil, 20).Return(&interfaces.ViewQueryResult{
@@ -1012,6 +1028,13 @@ func Test_objectTypeService_GetObjectTypeSampleData(t *testing.T) {
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ota.EXPECT().GetObjectTypesByIDs(gomock.Any(), gomock.Any(), "kn1", interfaces.MAIN_BRANCH, []string{"ot1"}).Return([]*interfaces.ObjectType{objectType}, nil)
 			cga.EXPECT().GetConceptGroupsByOTIDs(gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string][]*interfaces.ConceptGroup{}, nil)
+			dva.EXPECT().GetDataViewByID(gomock.Any(), "view1").Return(&interfaces.DataView{
+				ViewID:   "view1",
+				ViewName: "view1",
+				FieldsMap: map[string]*interfaces.ViewField{
+					"source_code": {Name: "source_code", DisplayName: "物料编码", Type: "string"},
+				},
+			}, nil)
 			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
 			smock.ExpectCommit()
 			dva.EXPECT().GetDataNext(gomock.Any(), "view1", cursor, 20).Return(&interfaces.ViewQueryResult{
@@ -1044,6 +1067,13 @@ func Test_objectTypeService_GetObjectTypeSampleData(t *testing.T) {
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ota.EXPECT().GetObjectTypesByIDs(gomock.Any(), gomock.Any(), "kn1", interfaces.MAIN_BRANCH, []string{"ot1"}).Return([]*interfaces.ObjectType{objectType}, nil)
 			cga.EXPECT().GetConceptGroupsByOTIDs(gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string][]*interfaces.ConceptGroup{}, nil)
+			dva.EXPECT().GetDataViewByID(gomock.Any(), "view1").Return(&interfaces.DataView{
+				ViewID:   "view1",
+				ViewName: "view1",
+				FieldsMap: map[string]*interfaces.ViewField{
+					"material_code": {Name: "material_code", DisplayName: "物料编码", Type: "string"},
+				},
+			}, nil)
 			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
 			smock.ExpectCommit()
 
