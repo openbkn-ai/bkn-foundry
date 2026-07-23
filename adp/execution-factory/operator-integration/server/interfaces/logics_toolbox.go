@@ -53,7 +53,9 @@ type UpdateToolBoxReq struct {
 	BoxDesc       string       `json:"box_desc" form:"box_desc" validate:"required"`                                  // 工具箱描述
 	BoxSvcURL     string       `json:"box_svc_url" form:"box_svc_url"`                                                // 工具箱服务地址(当metadata_type为openapi时必填)
 	Category      BizCategory  `json:"box_category" form:"box_category" default:"other_category" validate:"required"` // 分类
-	MetadataType  MetadataType `json:"metadata_type" form:"metadata_type" validate:"oneof=openapi function"`          // 元数据类型(可选参数)
+	// 元数据类型(可选参数)。工具箱建成后类型不会变,编辑请求可以不带;
+	// 带了才校验取值,否则「可选」的注释与 oneof 冲突,不传就被判成非法值。
+	MetadataType  MetadataType `json:"metadata_type" form:"metadata_type" validate:"omitempty,oneof=openapi function"`
 	*OpenAPIInput `json:",inline"`
 }
 
