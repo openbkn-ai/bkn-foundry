@@ -73,6 +73,11 @@ type Service struct {
 	store ievidencestore.EvidenceStorePort
 }
 
+const (
+	DefaultEvidenceQueryLimit = 1000
+	MaxEvidenceQueryLimit     = 1000
+)
+
 func New(store ievidencestore.EvidenceStorePort) *Service {
 	return &Service{store: store}
 }
@@ -118,51 +123,51 @@ func (s *Service) Ingest(ctx context.Context, body []byte) (evidencevo.IngestRes
 	}, nil, nil
 }
 
-func (s *Service) GetEvidenceChainByTraceID(ctx context.Context, traceID string) (evidencevo.EvidenceChainResponse, bool, error) {
-	traces, err := s.store.GetEvidenceByTraceID(ctx, strings.TrimSpace(traceID))
+func (s *Service) GetEvidenceChainByTraceID(ctx context.Context, traceID string, options evidencevo.EvidenceQueryOptions) (evidencevo.EvidenceChainResponse, bool, error) {
+	result, err := s.store.GetEvidenceByTraceID(ctx, strings.TrimSpace(traceID), normalizeQueryOptions(options))
 	if err != nil {
 		return evidencevo.EvidenceChainResponse{}, false, err
 	}
-	if len(traces) == 0 {
+	if len(result.Traces) == 0 {
 		return evidencevo.EvidenceChainResponse{}, false, nil
 	}
-	return buildEvidenceChain(traces), true, nil
+	return buildEvidenceChain(result.Traces, result.Truncated), true, nil
 }
 
-func (s *Service) GetEvidenceChainByRequestID(ctx context.Context, requestID string) (evidencevo.EvidenceChainResponse, bool, error) {
-	traces, err := s.store.GetEvidenceByRequestID(ctx, strings.TrimSpace(requestID))
+func (s *Service) GetEvidenceChainByRequestID(ctx context.Context, requestID string, options evidencevo.EvidenceQueryOptions) (evidencevo.EvidenceChainResponse, bool, error) {
+	result, err := s.store.GetEvidenceByRequestID(ctx, strings.TrimSpace(requestID), normalizeQueryOptions(options))
 	if err != nil {
 		return evidencevo.EvidenceChainResponse{}, false, err
 	}
-	if len(traces) == 0 {
+	if len(result.Traces) == 0 {
 		return evidencevo.EvidenceChainResponse{}, false, nil
 	}
-	return buildEvidenceChain(traces), true, nil
+	return buildEvidenceChain(result.Traces, result.Truncated), true, nil
 }
 
-func (s *Service) GetBusinessGraphByTraceID(ctx context.Context, traceID string) (evidencevo.BusinessGraphResponse, bool, error) {
-	traces, err := s.store.GetEvidenceByTraceID(ctx, strings.TrimSpace(traceID))
+func (s *Service) GetBusinessGraphByTraceID(ctx context.Context, traceID string, options evidencevo.EvidenceQueryOptions) (evidencevo.BusinessGraphResponse, bool, error) {
+	result, err := s.store.GetEvidenceByTraceID(ctx, strings.TrimSpace(traceID), normalizeQueryOptions(options))
 	if err != nil {
 		return evidencevo.BusinessGraphResponse{}, false, err
 	}
-	if len(traces) == 0 {
+	if len(result.Traces) == 0 {
 		return evidencevo.BusinessGraphResponse{}, false, nil
 	}
-	return buildBusinessGraph(traces), true, nil
+	return buildBusinessGraph(result.Traces, result.Truncated), true, nil
 }
 
-func (s *Service) GetBusinessGraphByRequestID(ctx context.Context, requestID string) (evidencevo.BusinessGraphResponse, bool, error) {
-	traces, err := s.store.GetEvidenceByRequestID(ctx, strings.TrimSpace(requestID))
+func (s *Service) GetBusinessGraphByRequestID(ctx context.Context, requestID string, options evidencevo.EvidenceQueryOptions) (evidencevo.BusinessGraphResponse, bool, error) {
+	result, err := s.store.GetEvidenceByRequestID(ctx, strings.TrimSpace(requestID), normalizeQueryOptions(options))
 	if err != nil {
 		return evidencevo.BusinessGraphResponse{}, false, err
 	}
-	if len(traces) == 0 {
+	if len(result.Traces) == 0 {
 		return evidencevo.BusinessGraphResponse{}, false, nil
 	}
-	return buildBusinessGraph(traces), true, nil
+	return buildBusinessGraph(result.Traces, result.Truncated), true, nil
 }
 
-func buildEvidenceChain(traces []evidencevo.NormalizedTrace) evidencevo.EvidenceChainResponse {
+func buildEvidenceChain(traces []evidencevo.NormalizedTrace, truncated bool) evidencevo.EvidenceChainResponse {
 	response := evidencevo.EvidenceChainResponse{
 		TraceID:   traces[0].TraceID,
 		RequestID: traces[0].RequestID,
@@ -212,15 +217,19 @@ func buildEvidenceChain(traces []evidencevo.NormalizedTrace) evidencevo.Evidence
 			partialReasons["version_status_missing"] = struct{}{}
 		}
 	}
+	if truncated {
+		partialReasons["evidence_query_truncated"] = struct{}{}
+	}
 
 	response.PartialReasons = sortedKeys(partialReasons)
 	response.Partial = len(response.PartialReasons) > 0
 	response.Page.NodeCount = len(response.Data.Claims) + len(response.Data.EvidenceRefs) + len(response.Data.BusinessRefs)
 	response.Page.EdgeCount = len(response.Data.EvidenceRefs) + len(response.Data.BusinessRefs)
+	response.Page.Truncated = truncated
 	return response
 }
 
-func buildBusinessGraph(traces []evidencevo.NormalizedTrace) evidencevo.BusinessGraphResponse {
+func buildBusinessGraph(traces []evidencevo.NormalizedTrace, truncated bool) evidencevo.BusinessGraphResponse {
 	response := evidencevo.BusinessGraphResponse{
 		TraceID:   traces[0].TraceID,
 		RequestID: traces[0].RequestID,
@@ -316,12 +325,26 @@ func buildBusinessGraph(traces []evidencevo.NormalizedTrace) evidencevo.Business
 	if len(response.Data.Nodes) == 0 {
 		partialReasons["empty_business_graph"] = struct{}{}
 	}
+	if truncated {
+		partialReasons["evidence_query_truncated"] = struct{}{}
+	}
 
 	response.PartialReasons = sortedKeys(partialReasons)
 	response.Partial = len(response.PartialReasons) > 0
 	response.Page.NodeCount = len(response.Data.Nodes)
 	response.Page.EdgeCount = len(response.Data.Edges)
+	response.Page.Truncated = truncated
 	return response
+}
+
+func normalizeQueryOptions(options evidencevo.EvidenceQueryOptions) evidencevo.EvidenceQueryOptions {
+	if options.Limit <= 0 {
+		options.Limit = DefaultEvidenceQueryLimit
+	}
+	if options.Limit > MaxEvidenceQueryLimit {
+		options.Limit = MaxEvidenceQueryLimit
+	}
+	return options
 }
 
 func appendVisibleRefs(target []map[string]any, refs []any, summary *evidencevo.VisibilitySummary) []map[string]any {

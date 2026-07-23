@@ -18,24 +18,34 @@ func (s *fakeStore) StoreEvidence(_ context.Context, _ evidencevo.NormalizedTrac
 	return nil
 }
 
-func (s *fakeStore) GetEvidenceByTraceID(_ context.Context, traceID string) ([]evidencevo.NormalizedTrace, error) {
+func (s *fakeStore) GetEvidenceByTraceID(_ context.Context, traceID string, options evidencevo.EvidenceQueryOptions) (evidencevo.EvidenceQueryResult, error) {
 	var result []evidencevo.NormalizedTrace
 	for _, trace := range s.traces {
 		if trace.TraceID == traceID {
 			result = append(result, trace)
 		}
 	}
-	return result, nil
+	return fakeLimitedResult(result, options.Limit), nil
 }
 
-func (s *fakeStore) GetEvidenceByRequestID(_ context.Context, requestID string) ([]evidencevo.NormalizedTrace, error) {
+func (s *fakeStore) GetEvidenceByRequestID(_ context.Context, requestID string, options evidencevo.EvidenceQueryOptions) (evidencevo.EvidenceQueryResult, error) {
 	var result []evidencevo.NormalizedTrace
 	for _, trace := range s.traces {
 		if trace.RequestID == requestID {
 			result = append(result, trace)
 		}
 	}
-	return result, nil
+	return fakeLimitedResult(result, options.Limit), nil
+}
+
+func fakeLimitedResult(traces []evidencevo.NormalizedTrace, limit int) evidencevo.EvidenceQueryResult {
+	if limit <= 0 || len(traces) <= limit {
+		return evidencevo.EvidenceQueryResult{Traces: traces}
+	}
+	return evidencevo.EvidenceQueryResult{
+		Traces:    traces[:limit],
+		Truncated: true,
+	}
 }
 
 func TestIngestAcceptsPhaseTwoEvidenceBatch(t *testing.T) {
@@ -225,7 +235,7 @@ func TestGetEvidenceChainByTraceIDFiltersHiddenRefsAndReturnsEnvelope(t *testing
 	store := &fakeStore{traces: []evidencevo.NormalizedTrace{queryTrace("trace_query_001", "req_query_001")}}
 	service := New(store)
 
-	response, found, err := service.GetEvidenceChainByTraceID(context.Background(), "trace_query_001")
+	response, found, err := service.GetEvidenceChainByTraceID(context.Background(), "trace_query_001", evidencevo.EvidenceQueryOptions{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -268,7 +278,7 @@ func TestGetEvidenceChainByRequestIDReturnsMissingClaimPartial(t *testing.T) {
 	}}}
 	service := New(store)
 
-	response, found, err := service.GetEvidenceChainByRequestID(context.Background(), "req_no_claim")
+	response, found, err := service.GetEvidenceChainByRequestID(context.Background(), "req_no_claim", evidencevo.EvidenceQueryOptions{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -280,11 +290,30 @@ func TestGetEvidenceChainByRequestIDReturnsMissingClaimPartial(t *testing.T) {
 	}
 }
 
+func TestGetEvidenceChainMarksQueryTruncated(t *testing.T) {
+	store := &fakeStore{traces: []evidencevo.NormalizedTrace{
+		queryTrace("trace_query_001", "req_query_truncated"),
+		queryTrace("trace_query_002", "req_query_truncated"),
+	}}
+	service := New(store)
+
+	response, found, err := service.GetEvidenceChainByRequestID(context.Background(), "req_query_truncated", evidencevo.EvidenceQueryOptions{Limit: 1})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !found {
+		t.Fatal("expected evidence chain to be found")
+	}
+	if !response.Partial || !response.Page.Truncated || !contains(response.PartialReasons, "evidence_query_truncated") {
+		t.Fatalf("expected truncated partial response, got: %+v", response)
+	}
+}
+
 func TestGetBusinessGraphByTraceIDReturnsClaimAndBusinessNodes(t *testing.T) {
 	store := &fakeStore{traces: []evidencevo.NormalizedTrace{queryTrace("trace_graph_001", "req_graph_001")}}
 	service := New(store)
 
-	response, found, err := service.GetBusinessGraphByTraceID(context.Background(), "trace_graph_001")
+	response, found, err := service.GetBusinessGraphByTraceID(context.Background(), "trace_graph_001", evidencevo.EvidenceQueryOptions{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -315,7 +344,7 @@ func TestGetBusinessGraphByRequestIDHandlesHiddenAndUnresolvedRefs(t *testing.T)
 	store := &fakeStore{traces: []evidencevo.NormalizedTrace{businessGraphTraceWithGovernance("trace_graph_002", "req_graph_002")}}
 	service := New(store)
 
-	response, found, err := service.GetBusinessGraphByRequestID(context.Background(), "req_graph_002")
+	response, found, err := service.GetBusinessGraphByRequestID(context.Background(), "req_graph_002", evidencevo.EvidenceQueryOptions{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -337,7 +366,7 @@ func TestGetBusinessGraphDoesNotDependOnEventOrder(t *testing.T) {
 	store := &fakeStore{traces: []evidencevo.NormalizedTrace{businessGraphTraceWithBusinessBeforeClaim("trace_graph_003", "req_graph_003")}}
 	service := New(store)
 
-	response, found, err := service.GetBusinessGraphByTraceID(context.Background(), "trace_graph_003")
+	response, found, err := service.GetBusinessGraphByTraceID(context.Background(), "trace_graph_003", evidencevo.EvidenceQueryOptions{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -356,7 +385,7 @@ func TestGetBusinessGraphDeduplicatesEdgesAndAuthorizedRefs(t *testing.T) {
 	store := &fakeStore{traces: []evidencevo.NormalizedTrace{businessGraphTraceWithDuplicateRefs("trace_graph_004", "req_graph_004")}}
 	service := New(store)
 
-	response, found, err := service.GetBusinessGraphByTraceID(context.Background(), "trace_graph_004")
+	response, found, err := service.GetBusinessGraphByTraceID(context.Background(), "trace_graph_004", evidencevo.EvidenceQueryOptions{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -375,7 +404,7 @@ func TestGetBusinessGraphDoesNotLeakHiddenClaimThroughSyntheticNode(t *testing.T
 	store := &fakeStore{traces: []evidencevo.NormalizedTrace{businessGraphTraceWithHiddenClaim("trace_graph_005", "req_graph_005")}}
 	service := New(store)
 
-	response, found, err := service.GetBusinessGraphByTraceID(context.Background(), "trace_graph_005")
+	response, found, err := service.GetBusinessGraphByTraceID(context.Background(), "trace_graph_005", evidencevo.EvidenceQueryOptions{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -412,7 +441,7 @@ func TestGetBusinessGraphReturnsMissingBusinessRefsPartial(t *testing.T) {
 	}}}
 	service := New(store)
 
-	response, found, err := service.GetBusinessGraphByTraceID(context.Background(), "trace_no_business_refs")
+	response, found, err := service.GetBusinessGraphByTraceID(context.Background(), "trace_no_business_refs", evidencevo.EvidenceQueryOptions{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -427,7 +456,7 @@ func TestGetBusinessGraphReturnsMissingBusinessRefsPartial(t *testing.T) {
 func TestGetEvidenceChainByTraceIDNotFound(t *testing.T) {
 	service := New(&fakeStore{})
 
-	_, found, err := service.GetEvidenceChainByTraceID(context.Background(), "missing")
+	_, found, err := service.GetEvidenceChainByTraceID(context.Background(), "missing", evidencevo.EvidenceQueryOptions{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

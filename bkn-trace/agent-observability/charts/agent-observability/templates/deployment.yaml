@@ -39,6 +39,10 @@ spec:
               value: {{ .Values.opensearch.endpoint | quote }}
             - name: OPENSEARCH_TRACE_INDEX
               value: {{ .Values.opensearch.traceIndex | quote }}
+            - name: OPENSEARCH_EVIDENCE_INDEX
+              value: {{ .Values.evidence.index | quote }}
+            - name: BKN_TRACE_EVIDENCE_STORE
+              value: {{ .Values.evidence.store | quote }}
             - name: OPENSEARCH_AUTH_ENABLED
               value: {{ ternary "true" "false" .Values.opensearch.auth.enabled | quote }}
             {{- if .Values.opensearch.auth.enabled }}

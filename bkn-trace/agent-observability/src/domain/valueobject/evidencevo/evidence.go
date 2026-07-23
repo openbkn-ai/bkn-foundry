@@ -59,6 +59,15 @@ type NormalizedTrace struct {
 	BusinessRefCount int
 }
 
+type EvidenceQueryOptions struct {
+	Limit int
+}
+
+type EvidenceQueryResult struct {
+	Traces    []NormalizedTrace
+	Truncated bool
+}
+
 type EvidenceChainResponse struct {
 	TraceID           string            `json:"trace_id"`
 	RequestID         string            `json:"bkn.request.id"`

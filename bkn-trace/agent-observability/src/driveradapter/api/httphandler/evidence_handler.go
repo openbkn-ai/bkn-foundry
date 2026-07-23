@@ -5,9 +5,11 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/evidencesvc"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/driveradapter/api/rdto"
 )
 
@@ -97,6 +99,7 @@ func (h *EvidenceHandler) IngestEvidenceEvents(w http.ResponseWriter, r *http.Re
 // @Tags evidence
 // @Produce json
 // @Param trace_id path string true "Trace ID"
+// @Param limit query int false "Maximum evidence trace batches to read, 1..1000"
 // @Success 200 {object} map[string]interface{}
 // @Failure 400 {object} rdto.ErrorResponse
 // @Failure 404 {object} rdto.ErrorResponse
@@ -121,7 +124,12 @@ func (h *EvidenceHandler) GetEvidenceChainByTraceID(w http.ResponseWriter, r *ht
 		return
 	}
 
-	response, found, err := h.evidenceService.GetEvidenceChainByTraceID(r.Context(), traceID)
+	options, ok := evidenceQueryOptionsFromRequest(w, r)
+	if !ok {
+		return
+	}
+
+	response, found, err := h.evidenceService.GetEvidenceChainByTraceID(r.Context(), traceID, options)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, rdto.ErrorResponse{
 			Code:    "QUERY_FAILED",
@@ -161,6 +169,7 @@ func (h *EvidenceHandler) GetTraceSubresource(w http.ResponseWriter, r *http.Req
 // @Tags evidence
 // @Produce json
 // @Param trace_id path string true "Trace ID"
+// @Param limit query int false "Maximum evidence trace batches to read, 1..1000"
 // @Success 200 {object} map[string]interface{}
 // @Failure 400 {object} rdto.ErrorResponse
 // @Failure 404 {object} rdto.ErrorResponse
@@ -185,7 +194,12 @@ func (h *EvidenceHandler) GetBusinessGraphByTraceID(w http.ResponseWriter, r *ht
 		return
 	}
 
-	response, found, err := h.evidenceService.GetBusinessGraphByTraceID(r.Context(), traceID)
+	options, ok := evidenceQueryOptionsFromRequest(w, r)
+	if !ok {
+		return
+	}
+
+	response, found, err := h.evidenceService.GetBusinessGraphByTraceID(r.Context(), traceID, options)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, rdto.ErrorResponse{
 			Code:    "QUERY_FAILED",
@@ -210,6 +224,7 @@ func (h *EvidenceHandler) GetBusinessGraphByTraceID(w http.ResponseWriter, r *ht
 // @Tags evidence
 // @Produce json
 // @Param request_id query string true "BKN request ID"
+// @Param limit query int false "Maximum evidence trace batches to read, 1..1000"
 // @Success 200 {object} map[string]interface{}
 // @Failure 400 {object} rdto.ErrorResponse
 // @Failure 404 {object} rdto.ErrorResponse
@@ -234,7 +249,12 @@ func (h *EvidenceHandler) GetEvidenceChainByRequestID(w http.ResponseWriter, r *
 		return
 	}
 
-	response, found, err := h.evidenceService.GetEvidenceChainByRequestID(r.Context(), requestID)
+	options, ok := evidenceQueryOptionsFromRequest(w, r)
+	if !ok {
+		return
+	}
+
+	response, found, err := h.evidenceService.GetEvidenceChainByRequestID(r.Context(), requestID, options)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, rdto.ErrorResponse{
 			Code:    "QUERY_FAILED",
@@ -259,6 +279,7 @@ func (h *EvidenceHandler) GetEvidenceChainByRequestID(w http.ResponseWriter, r *
 // @Tags evidence
 // @Produce json
 // @Param request_id query string true "BKN request ID"
+// @Param limit query int false "Maximum evidence trace batches to read, 1..1000"
 // @Success 200 {object} map[string]interface{}
 // @Failure 400 {object} rdto.ErrorResponse
 // @Failure 404 {object} rdto.ErrorResponse
@@ -283,7 +304,12 @@ func (h *EvidenceHandler) GetBusinessGraphByRequestID(w http.ResponseWriter, r *
 		return
 	}
 
-	response, found, err := h.evidenceService.GetBusinessGraphByRequestID(r.Context(), requestID)
+	options, ok := evidenceQueryOptionsFromRequest(w, r)
+	if !ok {
+		return
+	}
+
+	response, found, err := h.evidenceService.GetBusinessGraphByRequestID(r.Context(), requestID, options)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, rdto.ErrorResponse{
 			Code:    "QUERY_FAILED",
@@ -314,6 +340,22 @@ func traceIDFromEvidenceChainPath(path string) string {
 		return ""
 	}
 	return strings.TrimSpace(traceID)
+}
+
+func evidenceQueryOptionsFromRequest(w http.ResponseWriter, r *http.Request) (evidencevo.EvidenceQueryOptions, bool) {
+	rawLimit := strings.TrimSpace(r.URL.Query().Get("limit"))
+	if rawLimit == "" {
+		return evidencevo.EvidenceQueryOptions{}, true
+	}
+	limit, err := strconv.Atoi(rawLimit)
+	if err != nil || limit <= 0 || limit > evidencesvc.MaxEvidenceQueryLimit {
+		writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{
+			Code:    "INVALID_ARGUMENT",
+			Message: "limit must be an integer between 1 and 1000",
+		})
+		return evidencevo.EvidenceQueryOptions{}, false
+	}
+	return evidencevo.EvidenceQueryOptions{Limit: limit}, true
 }
 
 func traceIDFromBusinessGraphPath(path string) string {
