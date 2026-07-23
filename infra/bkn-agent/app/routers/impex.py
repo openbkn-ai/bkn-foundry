@@ -87,6 +87,7 @@ async def import_agents(
             item.spec.name,
             item.prompt.prompt_id if item.prompt else None,
             item.prompt.name if item.prompt else None,
+            account.account_id,
         )
         if conflict:
             results.append(

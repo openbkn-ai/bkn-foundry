@@ -418,13 +418,25 @@ async def check_import_conflict(
     agent_name: str,
     prompt_id: Optional[str],
     prompt_name: Optional[str],
+    account_id: str = "",
 ) -> Optional[str]:
     """只读预检：返回冲突原因，无冲突返回 None。
 
     导入必须先检后写：prompt 与 agent 分别 commit，若写到一半才发现 agent 名撞车，
     rollback 已经回不了 prompt 的提交——那条 agent 报 failed，但 prompt 新版本已
     对线上生效。预检把两个名字冲突一次查完。
+
+    归属也在这里检：导入按 agent_id upsert，命中他人已有的 agent 会覆盖其定义
+    （工具、提示词、模型全部改写），与直接 PUT 是同一类越权，只是换了入口。放在
+    预检里而不是抛 403，是为了保持导入的按条语义——一条归属不符只让该条 failed，
+    不中断整批。创建者未知的存量数据放行，与写接口的取舍一致。
     """
+    if account_id:
+        existing = await session.get(AgentRow, agent_id)
+        if existing:
+            owner = (existing.f_create_user or "").strip()
+            if owner and owner != account_id:
+                return f"agent {agent_id} 属于 {owner}，不能通过导入覆盖他人 agent"
     dup_agent = (
         await session.execute(
             select(AgentRow).where(AgentRow.f_name == agent_name, AgentRow.f_agent_id != agent_id)

@@ -77,7 +77,7 @@ def test_export_then_import_roundtrip(monkeypatch):
     async def fake_upsert_prompt(session, prompt_id, name, content, vars_schema, account_id, commit=True):
         return "version_published"
 
-    async def no_conflict(session, agent_id, agent_name, prompt_id, prompt_name):
+    async def no_conflict(session, agent_id, agent_name, prompt_id, prompt_name, account_id=""):
         return None
 
     resynced = []
@@ -106,7 +106,7 @@ def test_import_conflict_precheck_writes_nothing_and_isolates_item(monkeypatch):
     app.dependency_overrides[get_session] = _fake_session
     written = {"prompts": [], "agents": []}
 
-    async def fake_conflict(session, agent_id, agent_name, prompt_id, prompt_name):
+    async def fake_conflict(session, agent_id, agent_name, prompt_id, prompt_name, account_id=""):
         return f"agent 名「{agent_name}」已被 a-x 占用" if agent_name == "taken" else None
 
     async def fake_upsert_agent(session, agent_id, spec, account_id, commit=True):
@@ -156,3 +156,46 @@ def test_import_conflict_precheck_writes_nothing_and_isolates_item(monkeypatch):
 def test_impex_requires_identity():
     r = client.post("/api/bkn-agent/v1/export", json={"agent_ids": ["a-1"]})
     assert r.status_code == 401
+
+
+def test_import_cannot_overwrite_foreign_agent():
+    """越权回归：导入按 agent_id upsert，命中他人 agent 会整份覆盖其定义
+    （工具/提示词/模型全改写）——与直接 PUT 是同一类越权，只是换了入口。
+    预检必须拦住，且按条 failed（不中断整批）。
+    """
+    import asyncio
+
+    from app.models import AgentRow
+
+    class _Result:
+        def scalar_one_or_none(self):
+            return None  # 无重名冲突，确保命中的是归属分支
+
+    class _Session:
+        def __init__(self, owner):
+            self._owner = owner
+
+        async def get(self, model, agent_id):
+            if self._owner is None:
+                return None
+            return AgentRow(f_agent_id=agent_id, f_create_user=self._owner)
+
+        async def execute(self, stmt):
+            return _Result()
+
+    async def reason_for(owner, caller):
+        return await dao.check_import_conflict(
+            _Session(owner), "a-1", "some-name", None, None, caller
+        )
+
+    foreign = asyncio.run(reason_for("someone-else", "u-1"))
+    assert foreign and "属于" in foreign
+
+    own = asyncio.run(reason_for("u-1", "u-1"))
+    assert own is None  # 覆盖自己的 agent 仍然允许（导入幂等）
+
+    legacy = asyncio.run(reason_for("", "u-1"))
+    assert legacy is None  # 创建者未知的存量数据放行，与写接口取舍一致
+
+    fresh = asyncio.run(reason_for(None, "u-1"))
+    assert fresh is None  # 新建（目标环境不存在该 id）不受影响
