@@ -384,16 +384,20 @@ func TestSafePermissionAccessCheckPermission(t *testing.T) {
 
 func TestSafePermissionAccessFilterResources(t *testing.T) {
 	t.Run("returns resources with allowed operations", func(t *testing.T) {
+		// 鉴权按 op 批量解析：先探类型级通配（此处无），再取该 op 的可访问 id 集
 		client := newSafeTestClient(t, func(w http.ResponseWriter, r *http.Request) {
-			var body struct {
-				Resource struct {
-					ID string `json:"id"`
-				} `json:"resource"`
-				Operation string `json:"operation"`
+			switch r.URL.Path {
+			case "/api/safe/v1/authz/check":
+				_, _ = w.Write([]byte(`{"allowed":false}`)) // 无类型级通配授权
+			case "/api/safe/v1/authz/resources":
+				if r.URL.Query().Get("operation") == interfaces.OPERATION_TYPE_VIEW_DETAIL {
+					_, _ = w.Write([]byte(`{"ids":["resource-1"]}`))
+					return
+				}
+				_, _ = w.Write([]byte(`{"ids":[]}`))
+			default:
+				w.WriteHeader(http.StatusNotFound)
 			}
-			decodeRequestJSON(t, r, &body)
-			allowed := body.Resource.ID == "resource-1" && body.Operation == interfaces.OPERATION_TYPE_VIEW_DETAIL
-			_, _ = w.Write([]byte(`{"allowed":` + boolJSON(allowed) + `}`))
 		})
 		access := &safePermissionAccess{safe: client}
 
