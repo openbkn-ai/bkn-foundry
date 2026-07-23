@@ -1,0 +1,71 @@
+{{- if and .Values.evidence.indexManagement.enabled .Values.evidence.indexManagement.createJob.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "agent-observability.fullname" . }}-evidence-index-setup
+  labels:
+    {{- include "agent-observability.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: {{ .Values.evidence.indexManagement.createJob.backoffLimit }}
+  template:
+    metadata:
+      labels:
+        {{- include "agent-observability.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: evidence-index-setup
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: evidence-index-setup
+          image: {{ printf "%s/%s:%s" .Values.evidence.indexManagement.createJob.image.registry .Values.evidence.indexManagement.createJob.image.repository .Values.evidence.indexManagement.createJob.image.tag | quote }}
+          imagePullPolicy: {{ .Values.evidence.indexManagement.createJob.image.pullPolicy }}
+          env:
+            - name: OPENSEARCH_ENDPOINT
+              value: {{ .Values.opensearch.endpoint | quote }}
+            - name: OPENSEARCH_EVIDENCE_INDEX
+              value: {{ .Values.evidence.index | quote }}
+            - name: OPENSEARCH_AUTH_ENABLED
+              value: {{ ternary "true" "false" .Values.opensearch.auth.enabled | quote }}
+            {{- if .Values.opensearch.auth.enabled }}
+            - name: OPENSEARCH_AUTH_USERNAME
+              value: {{ .Values.opensearch.auth.username | quote }}
+            - name: OPENSEARCH_AUTH_PASSWORD
+              value: {{ .Values.opensearch.auth.password | quote }}
+            {{- end }}
+          command:
+            - /bin/sh
+            - -ec
+            - |
+              curl_opensearch() {
+                if [ "${OPENSEARCH_AUTH_ENABLED}" = "true" ]; then
+                  curl -u "${OPENSEARCH_AUTH_USERNAME}:${OPENSEARCH_AUTH_PASSWORD}" "$@"
+                else
+                  curl "$@"
+                fi
+              }
+              status="$(curl_opensearch -sS -o /tmp/evidence-index-check.out -w "%{http_code}" "${OPENSEARCH_ENDPOINT}/${OPENSEARCH_EVIDENCE_INDEX}")"
+              if [ "${status}" = "200" ]; then
+                echo "evidence index already exists: ${OPENSEARCH_EVIDENCE_INDEX}"
+                exit 0
+              fi
+              if [ "${status}" != "404" ]; then
+                echo "failed to check evidence index, status=${status}" >&2
+                cat /tmp/evidence-index-check.out >&2
+                exit 1
+              fi
+              curl_opensearch -sS -f \
+                -H "Content-Type: application/json" \
+                -X PUT "${OPENSEARCH_ENDPOINT}/${OPENSEARCH_EVIDENCE_INDEX}" \
+                --data-binary @/etc/agent-observability/evidence-index/evidence-index.json
+          volumeMounts:
+            - name: evidence-index-template
+              mountPath: /etc/agent-observability/evidence-index
+              readOnly: true
+      volumes:
+        - name: evidence-index-template
+          configMap:
+            name: {{ include "agent-observability.fullname" . }}-evidence-index-template
+{{- end }}

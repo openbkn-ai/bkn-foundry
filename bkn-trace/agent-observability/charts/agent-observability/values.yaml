@@ -35,6 +35,18 @@ ingress:
 evidence:
   store: memory
   index: bkn-trace-evidence-v1
+  indexManagement:
+    enabled: false
+    maxResultWindow: 10000
+    refreshInterval: 5s
+    createJob:
+      enabled: false
+      image:
+        registry: docker.io
+        repository: curlimages/curl
+        tag: "8.10.1"
+        pullPolicy: IfNotPresent
+      backoffLimit: 1
   ingestAuth:
     existingSecret: ""
     secretKey: token
