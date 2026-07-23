@@ -48,6 +48,7 @@ type objectTypeService struct {
 	cga        interfaces.ConceptGroupAccess
 	dda        interfaces.DataModelAccess
 	dva        interfaces.DataViewAccess
+	ma         interfaces.MetricAccess
 	mfa        interfaces.ModelFactoryAccess
 	ota        interfaces.ObjectTypeAccess
 	ps         interfaces.PermissionService
@@ -64,6 +65,7 @@ func NewObjectTypeService(appSetting *common.AppSetting) interfaces.ObjectTypeSe
 			cga:        logics.CGA,
 			dda:        logics.DDA,
 			dva:        logics.DVA,
+			ma:         logics.MA,
 			mfa:        logics.MFA,
 			ota:        logics.OTA,
 			ps:         permission.NewPermissionService(appSetting),
@@ -141,13 +143,13 @@ func (ots *objectTypeService) validateObjectTypeStrictExternalDeps(ctx context.C
 	for _, lp := range objectType.LogicProperties {
 		switch lp.Type {
 		case interfaces.LOGIC_PROPERTY_TYPE_METRIC:
-			model, err := ots.dda.GetMetricModelByID(ctx, lp.DataSource.ID)
+			_, exist, err := ots.ma.CheckMetricExistByID(ctx, objectType.KNID, objectType.Branch, lp.DataSource.ID)
 			if err != nil {
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
 					WithErrorDetails(fmt.Sprintf("对象类[%s]逻辑属性[%s]的指标模型[%s]获取失败: %s",
 						objectType.OTName, lp.Name, lp.DataSource.ID, err.Error()))
 			}
-			if model == nil {
+			if !exist {
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
 					WithErrorDetails(fmt.Sprintf("对象类[%s]逻辑属性[%s]的指标模型[%s]不存在",
 						objectType.OTName, lp.Name, lp.DataSource.ID))
@@ -665,6 +667,122 @@ func (ots *objectTypeService) GetObjectTypesByIDs(ctx context.Context, tx *sql.T
 
 	span.SetStatus(codes.Ok, "")
 	return objectTypes, nil
+}
+
+func (ots *objectTypeService) GetObjectTypeSampleData(ctx context.Context,
+	knID string, branch string, otID string, query interfaces.ObjectTypeSampleDataQueryParams) (*interfaces.ObjectTypeSampleData, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "query object type sample data")
+	defer span.End()
+
+	if query.Limit <= 0 {
+		query.Limit = 20
+	}
+	if query.Limit > 100 {
+		query.Limit = 100
+	}
+	if query.Offset < 0 {
+		query.Offset = 0
+	}
+
+	objectTypes, err := ots.GetObjectTypesByIDs(ctx, nil, knID, branch, []string{otID})
+	if err != nil {
+		return nil, err
+	}
+	if len(objectTypes) == 0 || objectTypes[0] == nil {
+		return nil, rest.NewHTTPError(ctx, http.StatusNotFound,
+			berrors.BknBackend_ObjectType_ObjectTypeNotFound).WithErrorDetails(fmt.Sprintf("object type[%s] not found", otID))
+	}
+
+	objectType := objectTypes[0]
+	result := &interfaces.ObjectTypeSampleData{
+		Columns: []*interfaces.ObjectTypeSampleDataColumn{},
+		Entries: []map[string]any{},
+		Name:    objectType.OTName,
+	}
+	if objectType.DataSource == nil || strings.TrimSpace(objectType.DataSource.ID) == "" {
+		return result, nil
+	}
+
+	fieldMappings := []struct {
+		sourceField  string
+		propertyName string
+	}{}
+	outputFields := []string{}
+	for _, prop := range objectType.DataProperties {
+		if prop == nil || strings.TrimSpace(prop.Name) == "" {
+			continue
+		}
+
+		title := prop.DisplayName
+		if title == "" {
+			title = prop.Name
+		}
+		result.Columns = append(result.Columns, &interfaces.ObjectTypeSampleDataColumn{
+			DataIndex: prop.Name,
+			Title:     title,
+		})
+
+		sourceField := prop.Name
+		if prop.MappedField != nil && strings.TrimSpace(prop.MappedField.Name) != "" {
+			sourceField = prop.MappedField.Name
+		}
+		fieldMappings = append(fieldMappings, struct {
+			sourceField  string
+			propertyName string
+		}{
+			sourceField:  sourceField,
+			propertyName: prop.Name,
+		})
+		outputFields = append(outputFields, sourceField)
+	}
+
+	dsType := objectType.DataSource.Type
+	if dsType == "" {
+		dsType = interfaces.DATA_SOURCE_TYPE_DATA_VIEW
+	}
+
+	var datasetResp *interfaces.DatasetQueryResponse
+	switch dsType {
+	case interfaces.DATA_SOURCE_TYPE_RESOURCE:
+		datasetResp, err = ots.vba.QueryResourceData(ctx, objectType.DataSource.ID, &interfaces.ResourceDataQueryParams{
+			Limit:        query.Limit,
+			NeedTotal:    query.NeedTotal,
+			Offset:       query.Offset,
+			OutputFields: outputFields,
+		})
+	default:
+		viewResp, viewErr := ots.dva.GetDataStart(ctx, objectType.DataSource.ID, "", nil, query.Limit)
+		if viewErr != nil {
+			err = viewErr
+		} else if viewResp != nil {
+			datasetResp = &interfaces.DatasetQueryResponse{
+				Entries:     viewResp.Entries,
+				TotalCount:  viewResp.TotalCount,
+				SearchAfter: viewResp.SearchAfter,
+			}
+		}
+	}
+	if err != nil {
+		logger.Errorf("Query object type sample data error: %s", err.Error())
+		span.SetStatus(codes.Error, "query object type sample data failed")
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
+	}
+	if datasetResp == nil {
+		return result, nil
+	}
+
+	for _, entry := range datasetResp.Entries {
+		row := map[string]any{}
+		for _, mapping := range fieldMappings {
+			row[mapping.propertyName] = entry[mapping.sourceField]
+		}
+		result.Entries = append(result.Entries, row)
+	}
+	result.TotalCount = datasetResp.TotalCount
+	result.SearchAfter = datasetResp.SearchAfter
+	span.SetStatus(codes.Ok, "")
+	return result, nil
 }
 
 // hasDataPropertyIndexAffectingChanges 检测单个数据属性的关键字段是否发生变化
@@ -1756,20 +1874,20 @@ func (ots *objectTypeService) processObjectTypeDetails(ctx context.Context, obje
 				case interfaces.LOGIC_PROPERTY_TYPE_METRIC:
 					if logicProp.DataSource.ID != "" {
 						// 获取指标模型名称
-						model, err := ots.dda.GetMetricModelByID(ctx, logicProp.DataSource.ID)
-						if err != nil || model == nil {
+						metric, err := ots.ma.GetMetricByID(ctx, objectType.KNID, objectType.Branch, logicProp.DataSource.ID)
+						if err != nil || metric == nil {
 							// 依赖不存在或者请求报错，不报错，跳过
 							otellog.LogWarn(ctx, fmt.Sprintf("Object type [%s]'s logic property [%s] metric model [%s] not found, error: %v",
-								objectType.OTID, logicProp.Name, objectType.DataSource.ID, err))
+								objectType.OTID, logicProp.Name, logicProp.DataSource.ID, err))
 						} else {
 							// 依赖存在时才做相关操作
-							objectType.LogicProperties[j].DataSource.Name = model.ModelName
+							objectType.LogicProperties[j].DataSource.Name = metric.Name
 
 							// 逻辑属性-指标，返回指标模型的分析维度
-							objectType.LogicProperties[j].AnalysisDims = model.AnalysisDims
+							objectType.LogicProperties[j].AnalysisDims = metricAnalysisDimensionsToFields(metric.AnalysisDimensions)
 
 							// 对参数填充comment
-							processMetricPropertyParamComment(ctx, logicProp, model, objectType, j)
+							processMetricPropertyParamComment(ctx, logicProp, nil, objectType, j)
 						}
 					}
 				case interfaces.LOGIC_PROPERTY_TYPE_OPERATOR:
@@ -1780,6 +1898,20 @@ func (ots *objectTypeService) processObjectTypeDetails(ctx context.Context, obje
 		}
 	}
 	return nil
+}
+
+func metricAnalysisDimensionsToFields(dimensions []interfaces.MetricAnalysisDimension) []interfaces.Field {
+	fields := make([]interfaces.Field, 0, len(dimensions))
+	for _, dimension := range dimensions {
+		if strings.TrimSpace(dimension.Name) == "" {
+			continue
+		}
+		fields = append(fields, interfaces.Field{
+			Name:        dimension.Name,
+			DisplayName: dimension.DisplayName,
+		})
+	}
+	return fields
 }
 
 // 处理指标属性的参数的comment

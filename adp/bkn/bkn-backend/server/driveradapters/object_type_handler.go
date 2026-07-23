@@ -1011,6 +1011,91 @@ func (r *restHandler) GetObjectTypes(c *gin.Context, visitor hydra.Visitor) {
 	rest.ReplyOK(c, http.StatusOK, httpResult)
 }
 
+func (r *restHandler) GetObjectTypeSampleDataByIn(c *gin.Context) {
+	logger.Debug("Handler GetObjectTypeSampleDataByIn Start")
+	visitor := visitor.GenerateVisitor(c)
+	r.GetObjectTypeSampleData(c, visitor)
+}
+
+func (r *restHandler) GetObjectTypeSampleDataByEx(c *gin.Context) {
+	logger.Debug("Handler GetObjectTypeSampleDataByEx Start")
+	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	if err != nil {
+		return
+	}
+	r.GetObjectTypeSampleData(c, visitor)
+}
+
+func (r *restHandler) GetObjectTypeSampleData(c *gin.Context, visitor hydra.Visitor) {
+	logger.Debug("Handler GetObjectTypeSampleData Start")
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+
+	accountInfo := interfaces.AccountInfo{
+		ID:   visitor.ID,
+		Type: string(visitor.Type),
+	}
+	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	knID := c.Param("kn_id")
+	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
+	otID := c.Param("ot_ids")
+	limit, err := strconv.Atoi(c.DefaultQuery("limit", "20"))
+	if err != nil {
+		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
+			WithErrorDetails("limit must be integer")
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+	offset, err := strconv.Atoi(c.DefaultQuery("offset", "0"))
+	if err != nil {
+		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
+			WithErrorDetails("offset must be integer")
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+	needTotal := c.DefaultQuery("need_total", "true") != "false"
+
+	span.SetAttributes(
+		attr.Key("kn_id").String(knID),
+		attr.Key("branch").String(branch),
+		attr.Key("ot_id").String(otID),
+	)
+
+	_, exist, err := r.kns.CheckKNExistByID(ctx, knID, branch)
+	if err != nil {
+		httpErr := err.(*rest.HTTPError)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+	if !exist {
+		httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_KnowledgeNetwork_NotFound)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	result, err := r.ots.GetObjectTypeSampleData(ctx, knID, branch, otID, interfaces.ObjectTypeSampleDataQueryParams{
+		Limit:     limit,
+		NeedTotal: needTotal,
+		Offset:    offset,
+	})
+	if err != nil {
+		httpErr := err.(*rest.HTTPError)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	logger.Debug("Handler GetObjectTypeSampleData Success")
+	rest.ReplyOK(c, http.StatusOK, result)
+}
+
 // 检索对象类（外部）
 func (r *restHandler) SearchObjectTypesByIn(c *gin.Context) {
 	logger.Debug("Handler SearchObjectTypesByIn Start")

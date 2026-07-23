@@ -217,3 +217,22 @@ type ObjectTypes struct {
 	SearchAfter []any         `json:"search_after,omitempty"`
 	OverallMs   int64         `json:"overall_ms"`
 }
+
+type ObjectTypeSampleDataColumn struct {
+	DataIndex string `json:"data_index"`
+	Title     string `json:"title"`
+}
+
+type ObjectTypeSampleDataQueryParams struct {
+	Offset    int  `json:"offset,omitempty"`
+	Limit     int  `json:"limit,omitempty"`
+	NeedTotal bool `json:"need_total,omitempty"`
+}
+
+type ObjectTypeSampleData struct {
+	Columns     []*ObjectTypeSampleDataColumn `json:"columns"`
+	Entries     []map[string]any              `json:"entries"`
+	Name        string                        `json:"name"`
+	TotalCount  int64                         `json:"total_count,omitempty"`
+	SearchAfter []any                         `json:"search_after,omitempty"`
+}

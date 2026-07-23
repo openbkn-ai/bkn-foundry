@@ -27,6 +27,7 @@ type ObjectTypeService interface {
 	GetAllObjectTypesByKnID(ctx context.Context, knID string, branch string) (map[string]*ObjectType, error)
 	GetObjectTypeIDsByKnID(ctx context.Context, knID string, branch string) ([]string, error)
 	DeleteObjectTypesByKnID(ctx context.Context, tx *sql.Tx, knID string, branch string) error
+	GetObjectTypeSampleData(ctx context.Context, knID string, branch string, otID string, query ObjectTypeSampleDataQueryParams) (*ObjectTypeSampleData, error)
 
 	SearchObjectTypes(ctx context.Context, query *ConceptsQuery) (ObjectTypes, error)
 

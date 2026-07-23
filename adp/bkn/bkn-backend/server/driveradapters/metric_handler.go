@@ -308,6 +308,11 @@ func (r *restHandler) ListMetrics(c *gin.Context, vis hydra.Visitor) {
 
 	namePattern := c.Query("name_pattern")
 	tag := strings.Trim(c.Query("tag"), " ")
+	scopeRef := strings.TrimSpace(c.Query("scope_ref"))
+	scopeType := strings.TrimSpace(c.Query("scope_type"))
+	if scopeRef != "" && scopeType == "" {
+		scopeType = interfaces.ScopeTypeObjectType
+	}
 	offset := c.DefaultQuery("offset", interfaces.DEFAULT_OFFEST)
 	limit := c.DefaultQuery("limit", interfaces.DEFAULT_LIMIT)
 	sort := c.DefaultQuery("sort", "update_time")
@@ -330,6 +335,8 @@ func (r *restHandler) ListMetrics(c *gin.Context, vis hydra.Visitor) {
 		},
 		NamePattern: namePattern,
 		Tag:         tag,
+		ScopeType:   scopeType,
+		ScopeRef:    scopeRef,
 		Branch:      branch,
 		KNID:        knID,
 	}
