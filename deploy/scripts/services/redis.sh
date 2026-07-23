@@ -11,7 +11,8 @@ install_redis() {
 
 # Install Redis in sentinel mode using local chart (redis)
 _redis_resolve_image_defaults() {
-    local image_registry="${REDIS_IMAGE_REGISTRY:-$(resolve_openbkn_image_registry)}"
+    local image_registry
+    image_registry="$(resolve_openbkn_image_registry "${REDIS_IMAGE_REGISTRY:-}")"
     REDIS_IMAGE_REGISTRY="${image_registry}"
     if [[ -z "${REDIS_IMAGE}" ]]; then
         REDIS_IMAGE="$(compose_image_ref "${image_registry}" "${REDIS_IMAGE_REPOSITORY:-redis}" "${REDIS_IMAGE_TAG}")"

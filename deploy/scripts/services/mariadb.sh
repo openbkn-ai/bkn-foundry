@@ -66,7 +66,8 @@ sync_config_rds_for_in_cluster_mariadb() {
 }
 
 _mariadb_resolve_image_defaults() {
-    local image_registry="${MARIADB_IMAGE_REGISTRY:-$(resolve_openbkn_image_registry)}"
+    local image_registry
+    image_registry="$(resolve_openbkn_image_registry "${MARIADB_IMAGE_REGISTRY:-}")"
     MARIADB_IMAGE_REGISTRY="${image_registry}"
     if [[ -z "${MARIADB_IMAGE}" ]]; then
         MARIADB_IMAGE="$(compose_image_ref "${image_registry}" "${MARIADB_IMAGE_REPOSITORY:-mariadb}" "${MARIADB_IMAGE_TAG}")"

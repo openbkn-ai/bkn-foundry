@@ -21,6 +21,8 @@ assert_eq() {
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=../lib/common.sh
 source "${SCRIPT_DIR}/scripts/lib/common.sh"
+# shellcheck source=../services/redis.sh
+source "${SCRIPT_DIR}/scripts/services/redis.sh"
 
 tmp_cfg="$(mktemp)"
 trap 'rm -f "${tmp_cfg}"' EXIT
@@ -58,6 +60,15 @@ assert_eq "offline-registry" "$(resolve_openbkn_image_registry)" "registry.openb
 
 # 5. Compose helper keeps nested repo paths intact.
 assert_eq "compose-image" "$(compose_image_ref "registry.example.com/ns" "bitnami/kafka" "3.9.0")" "registry.example.com/ns/bitnami/kafka:3.9.0"
+
+# 6. Service helper should not let env-based registry override offline mode.
+OFFLINE_MODE="true"
+OFFLINE_REGISTRY="registry.openbkn.ai:5000"
+REDIS_IMAGE_REGISTRY="ghcr"
+REDIS_IMAGE=""
+_redis_resolve_image_defaults
+assert_eq "redis-offline-override" "${REDIS_IMAGE_REGISTRY}" "registry.openbkn.ai:5000/openbkn-ai"
+assert_eq "redis-offline-image" "${REDIS_IMAGE}" "registry.openbkn.ai:5000/openbkn-ai/redis:1.11.2-main.20260718025853.shaf24e971"
 
 if [[ "${FAIL}" -eq 0 ]]; then
     echo "registry_test: all ${PASS} checks passed"

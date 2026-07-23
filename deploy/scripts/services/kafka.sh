@@ -1,6 +1,7 @@
 
 _kafka_resolve_image_defaults() {
-    local image_registry="${KAFKA_IMAGE_REGISTRY:-$(resolve_openbkn_image_registry)}"
+    local image_registry
+    image_registry="$(resolve_openbkn_image_registry "${KAFKA_IMAGE_REGISTRY:-}")"
     KAFKA_IMAGE_REGISTRY="${image_registry}"
     if [[ -z "${KAFKA_IMAGE}" ]]; then
         KAFKA_IMAGE="$(compose_image_ref "${image_registry}" "${KAFKA_IMAGE_REPOSITORY:-bitnami/kafka}" "${KAFKA_IMAGE_TAG}")"

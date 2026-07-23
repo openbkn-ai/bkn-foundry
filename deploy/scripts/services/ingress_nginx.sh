@@ -1,7 +1,8 @@
 
 # Install ingress-nginx-controller
 _ingress_nginx_resolve_image_defaults() {
-    local image_registry="${INGRESS_NGINX_IMAGE_REGISTRY:-$(resolve_openbkn_image_registry)}"
+    local image_registry
+    image_registry="$(resolve_openbkn_image_registry "${INGRESS_NGINX_IMAGE_REGISTRY:-}")"
     INGRESS_NGINX_IMAGE_REGISTRY="${image_registry}"
     if [[ -z "${INGRESS_NGINX_CONTROLLER_IMAGE}" ]]; then
         INGRESS_NGINX_CONTROLLER_IMAGE="$(compose_image_ref "${image_registry}" "${INGRESS_NGINX_CONTROLLER_IMAGE_REPOSITORY:-ingress-nginx/controller}" "${INGRESS_NGINX_CONTROLLER_IMAGE_TAG}")"

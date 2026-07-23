@@ -1,6 +1,7 @@
 
 _opensearch_resolve_image_defaults() {
-    local image_registry="${OPENSEARCH_IMAGE_REGISTRY:-$(resolve_openbkn_image_registry)}"
+    local image_registry
+    image_registry="$(resolve_openbkn_image_registry "${OPENSEARCH_IMAGE_REGISTRY:-}")"
     OPENSEARCH_IMAGE_REGISTRY="${image_registry}"
     if [[ -z "${OPENSEARCH_IMAGE}" ]]; then
         OPENSEARCH_IMAGE="$(compose_image_ref "${image_registry}" "${OPENSEARCH_IMAGE_REPOSITORY:-opensearchproject/opensearch}" "${OPENSEARCH_IMAGE_TAG}")"
