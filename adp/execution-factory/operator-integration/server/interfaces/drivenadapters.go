@@ -881,28 +881,38 @@ type VegaCatalog struct {
 	ConnectorType string   `json:"connector_type"`
 }
 
+// VegaResourceIndexConfig 资源级索引配置。DefaultEmbeddingModel 是 vega 解析向量
+// 字段模型的兜底位置，且不会进 OpenSearch mapping —— 模型快照必须落在这里，不能
+// 放进向量属性的 feature config(那会被原样拷进 knn_vector mapping 并被 OpenSearch
+// 以 unknown parameter 拒绝，索引建不出来)。
+type VegaResourceIndexConfig struct {
+	DefaultEmbeddingModel string `json:"default_embedding_model,omitempty"`
+}
+
 type VegaResourceRequest struct {
-	ID               string         `json:"id"`
-	CatalogID        string         `json:"catalog_id"`
-	Name             string         `json:"name"`
-	Tags             []string       `json:"tags"`
-	Description      string         `json:"description"`
-	Category         string         `json:"category"`
-	Status           string         `json:"status"`
-	SourceIdentifier string         `json:"source_identifier"`
-	SchemaDefinition []VegaProperty `json:"schema_definition"`
+	ID               string                   `json:"id"`
+	CatalogID        string                   `json:"catalog_id"`
+	Name             string                   `json:"name"`
+	Tags             []string                 `json:"tags"`
+	Description      string                   `json:"description"`
+	Category         string                   `json:"category"`
+	Status           string                   `json:"status"`
+	SourceIdentifier string                   `json:"source_identifier"`
+	SchemaDefinition []VegaProperty           `json:"schema_definition"`
+	IndexConfig      *VegaResourceIndexConfig `json:"index_config,omitempty"`
 }
 
 type VegaResource struct {
-	ID               string         `json:"id"`
-	CatalogID        string         `json:"catalog_id"`
-	Name             string         `json:"name"`
-	Tags             []string       `json:"tags"`
-	Description      string         `json:"description"`
-	Category         string         `json:"category"`
-	Status           string         `json:"status"`
-	SourceIdentifier string         `json:"source_identifier"`
-	SchemaDefinition []VegaProperty `json:"schema_definition,omitempty"`
+	ID               string                   `json:"id"`
+	CatalogID        string                   `json:"catalog_id"`
+	Name             string                   `json:"name"`
+	Tags             []string                 `json:"tags"`
+	Description      string                   `json:"description"`
+	Category         string                   `json:"category"`
+	Status           string                   `json:"status"`
+	SourceIdentifier string                   `json:"source_identifier"`
+	SchemaDefinition []VegaProperty           `json:"schema_definition,omitempty"`
+	IndexConfig      *VegaResourceIndexConfig `json:"index_config,omitempty"`
 }
 
 type VegaBackendClient interface {

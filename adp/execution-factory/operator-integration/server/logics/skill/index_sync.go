@@ -29,9 +29,12 @@ const (
 	// internal 字段，靠 metadata/tag/名称前缀启发式判定内置目录，该 tag 命中它的
 	// 内置标签集合 —— 前端零改就能正确显示「内置」并收起管理操作。
 	internalCatalogTag = "internal"
-	// embeddingModelConfigKey 把"建 dataset 时锁定的 embedding 模型名"快照进向量特征
-	// 的 config，重启/实时同步时读回，保证写入向量用的模型与建索引时一致(建模型==查模型)。
-	// 这也是 vega 解析向量字段模型的键。
+	// vegaMaxTags 与 vega 的 TAGS_MAX_NUMBER 对齐(超出会 400)
+	vegaMaxTags = 5
+	// embeddingModelConfigKey 是向量特征 config 里的模型键。只用于读：曾经把模型
+	// 快照写在这里，但 vega 会把向量属性的 feature config 原样拷进 OpenSearch
+	// knn_vector mapping，OpenSearch 以 unknown parameter 拒绝，索引建不出来。
+	// 写路径改用资源级 index_config.default_embedding_model。
 	embeddingModelConfigKey = "embedding_model"
 	// embeddingModelTagPrefix 是该快照的旧载体(resource tag)。vega 的 tag 校验禁掉了
 	// ':'，带这种 tag 的建 dataset 请求会 400，因此只保留读路径兼容老 dataset。
@@ -110,7 +113,10 @@ func (s *skillIndexSync) Init(ctx context.Context) (err error) {
 	if resource != nil {
 		// dataset 已存在：读回建时锁定的模型名(建模型==查模型)。
 		// 旧 dataset 两种形态都兜住，都取不到时回退按名 "embedding"，与改造前行为一致。
-		modelName := extractEmbeddingModelFromSchema(resource.SchemaDefinition)
+		modelName := extractEmbeddingModelFromIndexConfig(resource.IndexConfig)
+		if modelName == "" {
+			modelName = extractEmbeddingModelFromSchema(resource.SchemaDefinition)
+		}
 		if modelName == "" {
 			modelName = extractEmbeddingModelFromTags(resource.Tags)
 		}
@@ -131,18 +137,19 @@ func (s *skillIndexSync) Init(ctx context.Context) (err error) {
 	s.logger.WithContext(ctx).Infof("creating skill dataset resource, resource_id=%s, catalog_id=%s, embedding_model=%s, dimension=%d",
 		datasetID, catalogID, embeddingModel.ModelName, embeddingModel.EmbeddingDim)
 	_, err = s.vegaClient.CreateResource(ctx, &interfaces.VegaResourceRequest{
-		ID:        datasetID,
-		CatalogID: catalogID,
+		ID:               datasetID,
+		CatalogID:        catalogID,
 		Name:             datasetID,
 		Tags:             []string{"execution-factory", "skill", "索引"},
 		Description:      executionFactoryDatasetDesc,
 		Category:         "dataset",
 		Status:           executionFactoryDatasetStatus,
 		SourceIdentifier: datasetID,
-		// 建时锁定的模型名快照进向量特征的 config.embedding_model —— 这也是 vega
-		// 自己解析向量模型的位置。不能再放 tag：vega 的 tag 校验禁掉了 ':' '.' 等
-		// 字符，"embedding_model:<name>" 这种 tag 会让整个建 dataset 请求 400。
-		SchemaDefinition: buildSkillIndexSchema(embeddingModel.EmbeddingDim, embeddingModel.ModelName),
+		SchemaDefinition: buildSkillIndexSchema(embeddingModel.EmbeddingDim),
+		// 建时锁定的模型名快照进资源级 index_config：vega 解析向量模型时拿它兜底，
+		// 且它不进 OpenSearch mapping。不能放 tag(vega tag 校验禁 ':' 会 400)，也不能
+		// 放向量属性的 feature config(会被拷进 knn_vector mapping，OpenSearch 拒绝)。
+		IndexConfig: &interfaces.VegaResourceIndexConfig{DefaultEmbeddingModel: embeddingModel.ModelName},
 	})
 	if err != nil {
 		s.logger.WithContext(ctx).Errorf("create skill dataset resource failed, resource_id=%s, err=%v", datasetID, err)
@@ -202,6 +209,12 @@ func (s *skillIndexSync) ensureCatalog(ctx context.Context) (string, error) {
 // 它们成功。
 func (s *skillIndexSync) reconcileCatalog(ctx context.Context, catalog *interfaces.VegaCatalog) {
 	tags := appendInternalTag(catalog.Tags)
+	// vega 的 tag 数量上限是 5；超限时放弃补标签，保住「改名」这个主目标，
+	// 否则整个 PUT 会 400，改名和补标签一起永久失败。
+	if len(tags) > vegaMaxTags {
+		s.logger.WithContext(ctx).Warnf("skip internal tag backfill, tag limit reached, catalog_id=%s, tags=%d", catalog.ID, len(tags))
+		tags = catalog.Tags
+	}
 	if catalog.Name != executionFactoryCatalogID || len(tags) != len(catalog.Tags) {
 		req := &interfaces.VegaCatalogRequest{
 			ID:            catalog.ID,
@@ -275,7 +288,16 @@ func (s *skillIndexSync) resolveBuildEmbeddingModel(ctx context.Context) (*inter
 	return s.modelManager.GetEmbeddingModel(ctx, interfaces.SmallModelTypeEmbedding, interfaces.SmallModelTypeEmbedding)
 }
 
-// extractEmbeddingModelFromSchema 从向量特征的 config.embedding_model 读回建时锁定的模型名
+// extractEmbeddingModelFromIndexConfig 从资源级 index_config 读回建时锁定的模型名(当前写法)
+func extractEmbeddingModelFromIndexConfig(indexConfig *interfaces.VegaResourceIndexConfig) string {
+	if indexConfig == nil {
+		return ""
+	}
+	return indexConfig.DefaultEmbeddingModel
+}
+
+// extractEmbeddingModelFromSchema 从向量特征的 config.embedding_model 读回模型名。
+// 只服务于短暂写过该位置的 dataset，新建 dataset 不再往 schema 里写模型名。
 func extractEmbeddingModelFromSchema(schema []interfaces.VegaProperty) string {
 	for _, property := range schema {
 		for _, feature := range property.Features {
@@ -451,9 +473,9 @@ func buildEmbeddingInput(name string, description string) string {
 	return strings.Join(parts, "\n")
 }
 
-// buildSkillIndexSchema 生成 skill 索引 schema。embeddingModel 会写进向量特征的
-// config.embedding_model，既是 vega 建索引时用的模型，也是本服务重启后读回的快照。
-func buildSkillIndexSchema(dimension int, embeddingModel string) []interfaces.VegaProperty {
+// buildSkillIndexSchema 生成 skill 索引 schema。模型名不进这里 —— 向量属性的
+// feature config 会被 vega 原样拷进 OpenSearch mapping，多余键会让建索引失败。
+func buildSkillIndexSchema(dimension int) []interfaces.VegaProperty {
 	return []interfaces.VegaProperty{
 		{
 			Name:         "skill_id",
@@ -625,8 +647,7 @@ func buildSkillIndexSchema(dimension int, embeddingModel string) []interfaces.Ve
 				IsDefault:   true,
 				IsNative:    false,
 				Config: map[string]any{
-					"dimension":             dimension,
-					embeddingModelConfigKey: embeddingModel,
+					"dimension": dimension,
 					"method": map[string]any{
 						"name":       "hnsw",
 						"space_type": "cosinesimil",

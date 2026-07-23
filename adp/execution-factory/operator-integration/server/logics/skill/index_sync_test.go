@@ -60,11 +60,20 @@ func TestSkillIndexSync(t *testing.T) {
 			So(createdResource, ShouldNotBeNil)
 			So(createdResource.ID, ShouldEqual, executionFactorySkillDataset)
 			So(createdResource.Status, ShouldEqual, executionFactoryDatasetStatus)
-			// 模型名快照进向量特征 config，不再进 tag(vega tag 校验禁 ':'，带上会 400)
+			// 模型快照进资源级 index_config：tag 会被 vega 的 ':' 校验打回，
+			// 向量属性的 feature config 会被拷进 knn_vector mapping 让建索引失败
 			for _, tag := range createdResource.Tags {
 				So(tag, ShouldNotContainSubstring, ":")
 			}
-			So(extractEmbeddingModelFromSchema(createdResource.SchemaDefinition), ShouldEqual, interfaces.SmallModelTypeEmbedding)
+			So(createdResource.IndexConfig, ShouldNotBeNil)
+			So(createdResource.IndexConfig.DefaultEmbeddingModel, ShouldEqual, interfaces.SmallModelTypeEmbedding)
+			So(extractEmbeddingModelFromSchema(createdResource.SchemaDefinition), ShouldBeEmpty)
+			for _, property := range createdResource.SchemaDefinition {
+				for _, feature := range property.Features {
+					_, ok := feature.Config[embeddingModelConfigKey]
+					So(ok, ShouldBeFalse)
+				}
+			}
 			So(len(createdResource.SchemaDefinition), ShouldEqual, 10)
 			var nameProperty interfaces.VegaProperty
 			var descriptionProperty interfaces.VegaProperty
@@ -186,6 +195,83 @@ func TestSkillIndexSync(t *testing.T) {
 			err := syncer.Init(context.Background())
 			So(err, ShouldBeNil)
 			So(syncer.getDatasetID(), ShouldEqual, legacyExecutionFactorySkillDataset)
+		})
+
+		Convey("Init reads the model snapshot from index_config first, then schema, then tag", func() {
+			mockVegaClient := mocks.NewMockVegaBackendClient(ctrl)
+			syncer := &skillIndexSync{vegaClient: mockVegaClient, logger: logger.DefaultLogger()}
+			mockVegaClient.EXPECT().GetCatalogByID(gomock.Any(), executionFactoryCatalogID).
+				Return(&interfaces.VegaCatalog{
+					ID:      executionFactoryCatalogID,
+					Name:    executionFactoryCatalogID,
+					Tags:    []string{internalCatalogTag},
+					Enabled: true,
+				}, nil)
+			mockVegaClient.EXPECT().GetResourceByID(gomock.Any(), executionFactorySkillDataset).
+				Return(&interfaces.VegaResource{
+					ID:          executionFactorySkillDataset,
+					Name:        executionFactorySkillDataset,
+					IndexConfig: &interfaces.VegaResourceIndexConfig{DefaultEmbeddingModel: "text-embedding-v4"},
+					// schema 与 tag 里的旧快照都在，index_config 优先
+					SchemaDefinition: []interfaces.VegaProperty{{
+						Name: "_vector",
+						Type: "vector",
+						Features: []interfaces.VegaPropertyFeature{{
+							FeatureType: "vector",
+							Config:      map[string]any{embeddingModelConfigKey: "stale-from-schema"},
+						}},
+					}},
+					Tags: []string{embeddingModelTagPrefix + "stale-from-tag"},
+				}, nil)
+
+			So(syncer.Init(context.Background()), ShouldBeNil)
+			So(syncer.getEmbeddingModelName(), ShouldEqual, "text-embedding-v4")
+		})
+
+		Convey("Init pairs the new catalog with a legacy dataset when only the dataset is legacy", func() {
+			mockVegaClient := mocks.NewMockVegaBackendClient(ctrl)
+			syncer := &skillIndexSync{vegaClient: mockVegaClient, logger: logger.DefaultLogger()}
+			mockVegaClient.EXPECT().GetCatalogByID(gomock.Any(), executionFactoryCatalogID).
+				Return(&interfaces.VegaCatalog{
+					ID:      executionFactoryCatalogID,
+					Name:    executionFactoryCatalogID,
+					Tags:    []string{internalCatalogTag},
+					Enabled: true,
+				}, nil)
+			mockVegaClient.EXPECT().GetResourceByID(gomock.Any(), executionFactorySkillDataset).Return(nil, nil)
+			mockVegaClient.EXPECT().GetResourceByID(gomock.Any(), legacyExecutionFactorySkillDataset).
+				Return(&interfaces.VegaResource{ID: legacyExecutionFactorySkillDataset, Name: legacyExecutionFactorySkillDataset}, nil)
+
+			So(syncer.Init(context.Background()), ShouldBeNil)
+			So(syncer.getDatasetID(), ShouldEqual, legacyExecutionFactorySkillDataset)
+		})
+
+		Convey("Init skips the internal tag backfill when the catalog already has 5 tags", func() {
+			var reconciled *interfaces.VegaCatalogRequest
+			mockVegaClient := mocks.NewMockVegaBackendClient(ctrl)
+			syncer := &skillIndexSync{vegaClient: mockVegaClient, logger: logger.DefaultLogger()}
+			fullTags := []string{"a", "b", "c", "d", "e"}
+			mockVegaClient.EXPECT().GetCatalogByID(gomock.Any(), executionFactoryCatalogID).Return(nil, nil)
+			mockVegaClient.EXPECT().GetCatalogByID(gomock.Any(), legacyExecutionFactoryCatalogID).
+				Return(&interfaces.VegaCatalog{
+					ID:      legacyExecutionFactoryCatalogID,
+					Name:    legacyExecutionFactoryCatalogID,
+					Tags:    fullTags,
+					Enabled: true,
+				}, nil)
+			mockVegaClient.EXPECT().UpdateCatalog(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, req *interfaces.VegaCatalogRequest) error {
+				reconciled = req
+				return nil
+			})
+			mockVegaClient.EXPECT().GetResourceByID(gomock.Any(), executionFactorySkillDataset).Return(nil, nil)
+			mockVegaClient.EXPECT().GetResourceByID(gomock.Any(), legacyExecutionFactorySkillDataset).
+				Return(&interfaces.VegaResource{ID: legacyExecutionFactorySkillDataset}, nil)
+
+			So(syncer.Init(context.Background()), ShouldBeNil)
+			// 标签超限就别塞，改名这个主目标不能被 400 一起带走
+			So(reconciled, ShouldNotBeNil)
+			So(reconciled.Name, ShouldEqual, executionFactoryCatalogID)
+			So(reconciled.Tags, ShouldResemble, fullTags)
 		})
 
 		Convey("Init backfills the internal tag when only the tag is missing", func() {
