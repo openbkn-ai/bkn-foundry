@@ -33,7 +33,7 @@ func vegaTraceRequestContext(c *gin.Context, ctx context.Context) bkntrace.Reque
 }
 
 func emitResourceReadEvidence(c *gin.Context, ctx context.Context, operation string, resources []*interfaces.Resource, total int64, queryShape any) {
-	if len(resources) == 0 {
+	if !bkntrace.EvidenceEnabled() || len(resources) == 0 {
 		return
 	}
 	subject := bkntrace.DataQuerySubject{
@@ -50,7 +50,7 @@ func emitResourceReadEvidence(c *gin.Context, ctx context.Context, operation str
 }
 
 func emitResourceDataEvidence(c *gin.Context, ctx context.Context, resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams, result *interfaces.ResourceDataQueryResult) {
-	if resource == nil || result == nil {
+	if !bkntrace.EvidenceEnabled() || resource == nil || result == nil {
 		return
 	}
 	refs := append(bkntrace.ResourceRefs([]*interfaces.Resource{resource}), bkntrace.ResourceRowRefs(resource, result.Entries)...)

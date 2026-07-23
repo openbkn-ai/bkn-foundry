@@ -33,7 +33,7 @@ func ontologyTraceRequestContext(c *gin.Context, ctx context.Context, visitor hy
 }
 
 func emitObjectQueryEvidence(c *gin.Context, ctx context.Context, visitor hydra.Visitor, query *interfaces.ObjectQueryBaseOnObjectType, result *interfaces.Objects) {
-	if result == nil {
+	if !bkntrace.EvidenceEnabled() || result == nil {
 		return
 	}
 	subject := bkntrace.DataQuerySubject{
@@ -52,7 +52,7 @@ func emitObjectQueryEvidence(c *gin.Context, ctx context.Context, visitor hydra.
 }
 
 func emitSubgraphEvidence(c *gin.Context, ctx context.Context, visitor hydra.Visitor, knID, branch, operation string, queryShape any, result *interfaces.ObjectSubGraph) {
-	if result == nil {
+	if !bkntrace.EvidenceEnabled() || result == nil {
 		return
 	}
 	subject := bkntrace.DataQuerySubject{
@@ -70,8 +70,27 @@ func emitSubgraphEvidence(c *gin.Context, ctx context.Context, visitor hydra.Vis
 		bkntrace.SubgraphRefs(knID, branch, result))
 }
 
+func emitSubgraphEntriesEvidence(c *gin.Context, ctx context.Context, visitor hydra.Visitor, knID, branch string, queryShape any, result interfaces.PathsEntries) {
+	if !bkntrace.EvidenceEnabled() {
+		return
+	}
+	refs := make([]bkntrace.EvidenceRef, 0)
+	for i := range result.Entries {
+		refs = append(refs, bkntrace.SubgraphRefs(knID, branch, &result.Entries[i])...)
+	}
+	bkntrace.EmitDataQueryEvents(ctx, ontologyTraceRequestContext(c, ctx, visitor), bkntrace.DataQuerySubject{
+		EntityKind:    bkntrace.EntityKindRelationPath,
+		Operation:     "bkn.relation.query",
+		KNID:          knID,
+		Branch:        branch,
+		SubjectID:     "subgraph_type_path",
+		QueryHash:     bkntrace.HashValue(queryShape),
+		ReturnedCount: len(result.Entries),
+	}, refs)
+}
+
 func emitMetricEvidence(c *gin.Context, traceCtx context.Context, visitor hydra.Visitor, knID, branch, metricID, operation string, queryShape any, result *interfaces.MetricData) {
-	if result == nil {
+	if !bkntrace.EvidenceEnabled() || result == nil {
 		return
 	}
 	subject := bkntrace.DataQuerySubject{
