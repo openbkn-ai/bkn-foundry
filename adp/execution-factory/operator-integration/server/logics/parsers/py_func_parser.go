@@ -2,8 +2,8 @@ package parsers
 
 import (
 	"context"
-	"fmt"
 	"net/http"
+	"regexp"
 	"strings"
 
 	"github.com/getkin/kin-openapi/openapi3"
@@ -20,6 +20,12 @@ const (
 	sandboxSDKModule  = "sandbox_sdk"
 	toolDecoratorName = "tool"
 	handlerFuncName   = "handler"
+)
+
+// 解析不了时的兜底判定。放宽而不是收紧：沙箱跑得动的代码不能被这里挡死。
+var (
+	handlerEntryPattern = regexp.MustCompile(`def\s+handler\s*\(`)
+	toolEntryPattern    = regexp.MustCompile(`(?m)^\s*@(?:\w+\.)?tool\b`)
 )
 
 // pythonFunctionParser Python 函数解析器
@@ -75,10 +81,20 @@ func (p *pythonFunctionParser) validate(ctx context.Context, inputValue any) (in
 func hasEntryPoint(code string) bool {
 	mod, err := parser.ParseString(code, "exec")
 	if err != nil {
-		// 解析不了就无从判断,交给后续的语法校验报错
-		return false
+		// gpython 只到 Python 3.4 级语法,f-string、async def、PEP 526 注解
+		// （pydantic 模型的类体写法）都解析不了。这些代码在沙箱里跑得好好的,
+		// 判成「没有入口」会把它们挡在保存之外,而且报错原因还是错的。
+		// 解析不了时退回宽松正则。
+		return entryPatternFallback(code)
 	}
 	return moduleHasEntryPoint(mod)
+}
+
+// entryPatternFallback 只看形状不看来源,会把别的库的 @tool 也算成入口。
+// 相比之下漏放行的代价更大 —— 这里放行了,执行期至多报「找不到入口」;
+// 这里拒了,用户根本存不进去。
+func entryPatternFallback(code string) bool {
+	return handlerEntryPattern.MatchString(code) || toolEntryPattern.MatchString(code)
 }
 
 func moduleHasEntryPoint(mod ast.Ast) bool {
@@ -238,17 +254,10 @@ func (p *pythonFunctionParser) GetAllContent(ctx context.Context, inputValue any
 	if err != nil {
 		return nil, err
 	}
-	// 解析Python代码
-	mod, err := parser.ParseString(input.Code, "exec")
-	if err != nil {
-		err = errors.DefaultHTTPError(ctx, http.StatusBadRequest, fmt.Sprintf("解析Python代码失败: %v", err))
-		return
-	}
-	// 检查入口函数,与 checkRegexpHandler 用同一套判定,
-	// 避免同一段代码在两条路径上结论不同。
-	if !moduleHasEntryPoint(mod) {
-		err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtFunctionNoHandlerFound,
-			"python function must define a @tool decorated function or a handler(event) function")
+	// 与保存路径用同一套入口判定,含解析失败时的兜底。
+	// 不在这里因为 gpython 解析不了就报语法错 —— 它只到 Python 3.4,
+	// f-string 之类沙箱跑得动的代码会被误判。真正的语法错由沙箱执行时报出。
+	if err = checkRegexpHandler(ctx, input.Code); err != nil {
 		return
 	}
 	content = convertToPathItemContent(input)
@@ -275,21 +284,15 @@ func convertToPathItemContent(input *interfaces.FunctionInput) (result *interfac
 }
 
 // 构造Parameter参数
+//
+// api_spec 只描述用户声明的契约。执行超时是沙箱的基础设施开关,曾经作为
+// query 参数写进这里,结果 Agent 把它当成一个可选业务入参去推断,按 schema
+// 渲染参数表的界面也会把它和真实入参并列展示,还要用户为它选固定值或动态输入。
+//
+// 执行侧仍然接受 query 里的 timeout（见 FunctionExecuteProxyReq），
+// 只是不再宣告成工具契约的一部分。
 func createParameter() []*interfaces.Parameter {
-	parameters := make([]*interfaces.Parameter, 0)
-	// 超时时间
-	timeoutParam := &interfaces.Parameter{
-		Name:        "timeout",
-		In:          "query",
-		Description: "函数执行超时时间，单位毫秒",
-		Required:    false,
-		Schema: openapi3.NewSchemaRef("", &openapi3.Schema{
-			Type:        &openapi3.Types{openapi3.TypeNumber},
-			Description: "函数执行超时时间，单位毫秒",
-		}),
-	}
-	parameters = append(parameters, timeoutParam)
-	return parameters
+	return make([]*interfaces.Parameter, 0)
 }
 
 // 构造请求体结构

@@ -59,3 +59,29 @@ func TestCheckRegexpHandler(t *testing.T) {
 		So(checkRegexpHandler(ctx, "x = 1"), ShouldNotBeNil)
 	})
 }
+
+// gpython 钉在 v0.2.0，只到 Python 3.4 级语法。沙箱跑的是 3.11，
+// 这些写法解析不了但完全合法，判定必须放行而不是挡在保存之外。
+func TestEntryPointBeyondGpythonSyntax(t *testing.T) {
+	ctx := context.Background()
+
+	cases := map[string]string{
+		"f-string":        "def handler(event):\n    return f\"hi {event}\"",
+		"async def":       "async def handler(event):\n    return event",
+		"pydantic 类体注解": "from sandbox_sdk import tool\nfrom pydantic import BaseModel\nclass Req(BaseModel):\n    name: str\n@tool\ndef f(r: Req) -> dict:\n    return {}",
+		"变量注解":            "x: int = 1\ndef handler(event):\n    return event",
+		"walrus":          "def handler(event):\n    if (n := len(event)) > 0:\n        return n\n    return 0",
+	}
+
+	Convey("解析不了的新语法仍按有入口放行", t, func() {
+		for name, code := range cases {
+			Convey(name, func() {
+				So(checkRegexpHandler(ctx, code), ShouldBeNil)
+			})
+		}
+	})
+
+	Convey("解析不了且确实没有入口时仍然报错", t, func() {
+		So(checkRegexpHandler(ctx, "x: int = 1\ny = f\"{x}\""), ShouldNotBeNil)
+	})
+}

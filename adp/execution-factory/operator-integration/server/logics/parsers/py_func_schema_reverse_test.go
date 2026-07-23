@@ -109,3 +109,24 @@ func TestFunctionParamsFromAPISpec(t *testing.T) {
 		So(len(outputs), ShouldEqual, 0)
 	})
 }
+
+func TestAPISpecCarriesOnlyDeclaredContract(t *testing.T) {
+	Convey("api_spec 不宣告执行超时这类基础设施开关", t, func() {
+		pathItem := convertToPathItemContent(&interfaces.FunctionInput{
+			Name: "add",
+			Inputs: []*interfaces.ParameterDef{
+				{Name: "a", Type: interfaces.ParameterTypeNumber, Required: true},
+			},
+		})
+
+		Convey("parameters 为空", func() {
+			So(len(pathItem.APISpec.Parameters), ShouldEqual, 0)
+		})
+
+		Convey("业务入参仍在 request_body", func() {
+			inputs, _ := FunctionParamsFromAPISpec(pathItem.APISpec.ToJSON())
+			So(len(inputs), ShouldEqual, 1)
+			So(inputs[0].Name, ShouldEqual, "a")
+		})
+	})
+}
