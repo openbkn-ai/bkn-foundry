@@ -964,8 +964,6 @@ func Test_ObjectTypeRestHandler_GetObjectTypeSampleDataByIn(t *testing.T) {
 		})
 
 		Convey("Failed when search_after is not JSON array\n", func() {
-			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, interfaces.MAIN_BRANCH).Return(knID, true, nil)
-
 			req := httptest.NewRequest(http.MethodGet, baseURL+"?search_after=cursor-1", nil)
 			req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_ID, "user1")
 			w := httptest.NewRecorder()
