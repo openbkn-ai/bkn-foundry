@@ -7,6 +7,7 @@ data from stdin, calls the user's handler(event) function, and prints the return
 value between special markers for extraction.
 """
 
+import ast
 import json
 import re
 from pathlib import Path
@@ -55,19 +56,108 @@ COMMON_SHELL_COMMANDS = {
 }
 
 
-def generate_python_wrapper(user_code: str) -> str:
+def defines_handler(code: str) -> bool:
     """
-    Generate Python wrapper code around user code for Lambda-style execution.
-
-    The wrapper:
-    1. Defines the user's code (including the handler function)
-    2. Reads event data from stdin
-    3. Calls handler(event)
-    4. Prints the return value between ===SANDBOX_RESULT=== markers
-    5. Handles exceptions and prints tracebacks to stderr
+    Detect a module-level ``handler`` function.
 
     Args:
-        user_code: Python code containing a handler(event) function
+        code: User-supplied Python source
+
+    Returns:
+        True when the code defines ``handler``
+    """
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return False
+    for item in ast.walk(tree):
+        if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)) and item.name == "handler":
+            return True
+    return False
+
+
+def uses_tool_decorator(code: str) -> bool:
+    """
+    Detect whether user code registers a function through ``sandbox_sdk``'s
+    ``@tool`` decorator.
+
+    The name alone is not enough: ``tool`` is also LangChain's decorator and is
+    a plausible name for a user's own helper. Decorating with one of those and
+    keeping a ``handler(event)`` would otherwise be dispatched through the SDK,
+    which has no registration to find. So the name is only accepted when it was
+    imported from — or accessed on — ``sandbox_sdk``.
+
+    Parsing is AST-based so that ``@tool`` inside a comment or string is not a
+    false positive, and unparsable code falls back to the handler path.
+
+    Args:
+        code: User-supplied Python source
+
+    Returns:
+        True when a function is decorated with sandbox_sdk's ``tool``
+    """
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return False
+
+    # Names bound to sandbox_sdk's tool via `from sandbox_sdk import tool [as x]`
+    sdk_tool_aliases = set()
+    # Names bound to the module itself via `import sandbox_sdk [as x]`
+    sdk_module_aliases = set()
+    for item in ast.walk(tree):
+        if isinstance(item, ast.ImportFrom) and item.module == "sandbox_sdk":
+            for alias in item.names:
+                if alias.name == "tool":
+                    sdk_tool_aliases.add(alias.asname or alias.name)
+        elif isinstance(item, ast.Import):
+            for alias in item.names:
+                if alias.name == "sandbox_sdk":
+                    sdk_module_aliases.add(alias.asname or alias.name)
+
+    def _is_sdk_tool(node: ast.AST) -> bool:
+        # @tool(...) — unwrap to the callable being applied
+        if isinstance(node, ast.Call):
+            return _is_sdk_tool(node.func)
+        # @tool, where tool came from sandbox_sdk
+        if isinstance(node, ast.Name):
+            return node.id in sdk_tool_aliases
+        # @sandbox_sdk.tool
+        if isinstance(node, ast.Attribute):
+            return (
+                node.attr == "tool"
+                and isinstance(node.value, ast.Name)
+                and node.value.id in sdk_module_aliases
+            )
+        return False
+
+    for item in ast.walk(tree):
+        if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for deco in item.decorator_list:
+                if _is_sdk_tool(deco):
+                    return True
+    return False
+
+
+def generate_python_wrapper(user_code: str) -> str:
+    """
+    Generate Python wrapper code around user code.
+
+    Two execution modes are supported:
+
+    1. ``@tool`` mode (sandbox_sdk): user writes a plain annotated function and
+       the SDK unpacks ``event`` into named parameters. Selected when the code
+       carries a ``@tool`` decorator.
+    2. ``handler(event)`` mode (AWS Lambda style): the legacy contract, kept as
+       the default so existing functions keep working unchanged.
+
+    In both modes the wrapper reads the event JSON from stdin and prints the
+    return value as the last JSON line on stdout, which is the contract the
+    result parser relies on.
+
+    Args:
+        user_code: Python code containing either a ``@tool`` function or a
+            ``handler(event)`` function
 
     Returns:
         Complete wrapped code ready for execution via python3 -c
@@ -79,10 +169,24 @@ def generate_python_wrapper(user_code: str) -> str:
         True
         >>> '===SANDBOX_RESULT===' in wrapped
         True
+        >>> tool_code = '@tool\\ndef add(a: int, b: int) -> int:\\n    return a + b'
+        >>> 'sandbox_sdk.dispatch(event)' in generate_python_wrapper(tool_code)
+        True
     """
+    # handler wins when both are present: it is the established contract, and a
+    # @tool from another library would otherwise route to a dispatch with nothing
+    # registered.
+    if defines_handler(user_code) or not uses_tool_decorator(user_code):
+        preamble = ""
+        invoke = "handler(event)"
+    else:
+        preamble = "import sandbox_sdk"
+        invoke = "sandbox_sdk.dispatch(event)"
+
     wrapper = f'''import sys
 import json
 import traceback
+{preamble}
 
 # User code starts here
 {user_code}
@@ -98,8 +202,8 @@ if __name__ == "__main__":
         else:
             event = {{}}
 
-        # Call the handler
-        result = handler(event)
+        # Invoke user function
+        result = {invoke}
 
         # Print result between markers for extraction
         print("===SANDBOX_RESULT===")
@@ -248,12 +352,11 @@ def _should_strip_shell_prefix(next_token: str, cwd: Path) -> bool:
 
 def validate_python_handler(code: str) -> tuple[bool, Optional[str]]:
     """
-    Validate that Python code contains a handler function.
+    Validate that Python code exposes an entry point.
 
-    Checks for:
-    - Presence of 'def handler('
-    - At least one parameter (event)
-    - Proper function definition syntax
+    Accepts either entry style:
+    - a ``@tool`` decorated function (sandbox_sdk), or
+    - a ``handler(event)`` function (AWS Lambda style)
 
     Args:
         code: Python code to validate
@@ -264,8 +367,11 @@ def validate_python_handler(code: str) -> tuple[bool, Optional[str]]:
     if not code or not code.strip():
         return False, "Code is empty"
 
-    if "def handler(" not in code:
-        return False, "handler(event) function not found. Please define a handler function."
+    if "def handler(" not in code and not uses_tool_decorator(code):
+        return False, (
+            "No entry point found. Define a @tool decorated function "
+            "or a handler(event) function."
+        )
 
     # Basic syntax check
     try:

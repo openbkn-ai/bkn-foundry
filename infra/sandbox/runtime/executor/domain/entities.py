@@ -36,6 +36,8 @@ class Execution:
     completed_at: Optional[datetime] = None
     retry_count: int = 0
     error_message: Optional[str] = None
+    # 调用方申请的超时（秒）。隔离层据此约束子进程，不再各自使用固定值。
+    timeout_seconds: Optional[int] = None
 
     def mark_as_running(self) -> None:
         """Mark the execution as running."""

@@ -68,6 +68,9 @@ func (r *restPublicHandler) RegisterRouter(engine *gin.RouterGroup) {
 	engine.POST("/impex/import/:type", middlewareBusinessDomain(true, false, r.businessDomainService), r.ImpexHandler.Import)
 	// 函数执行
 	engine.POST("/function/execute", r.UnifiedProxyHandler.FunctionExecute)
+
+	// 从函数代码推导参数定义（@tool 函数的签名即参数定义）
+	engine.POST("/function/infer-schema", r.UnifiedProxyHandler.FunctionInferSchema)
 	// 查询Pypi依赖库版本
 	engine.GET("/function/dependency-versions/:package_name", r.UnifiedProxyHandler.QueryPypiVersions)
 	// 获取依赖库列表

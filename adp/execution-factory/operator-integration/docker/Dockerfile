@@ -22,6 +22,12 @@ WORKDIR /app/operator-integration
 
 COPY --from=builder /out/operator-integration ./operator-integration
 
+# Go 二进制不自带根证书，基础镜像里也没有，任何出网 HTTPS 请求都会以
+# "certificate signed by unknown authority" 失败（例如查询 PyPI 版本）。
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
 # 创建非root用户
 RUN useradd -m -r -s /bin/bash aishu \
     && chown -R aishu:aishu /app/operator-integration

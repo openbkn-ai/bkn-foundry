@@ -104,6 +104,7 @@ class ExecuteCodeCommand:
             code=request.code,
             language=request.language,
             context=context,
+            timeout_seconds=request.timeout,
         )
 
         # Mark as running

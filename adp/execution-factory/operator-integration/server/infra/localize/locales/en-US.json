@@ -164,7 +164,7 @@
         "OpenAPIInvalidSpecificationOperation": "Operation \"%s\" failed, please check if there is any other error",
         "OpenAPIInvalidSpecificationSummaryEmpty": "The \"%s\" Summary is empty, please fill in the summary",
         "OpenAPIInvalidComponent": "Component definition is invalid, please check if the component definition is correct",
-        "FunctionNoHandlerFound": "No handler(event) function found, please check if the function code is correct",
+        "FunctionNoHandlerFound": "No entry point found, decorate a function with @tool or define handler(event)",
         "FunctionInvalidParameterType": "Parameter \"%s\" type is invalid: \"%s\", must be string, number, boolean, array, object",
         "FunctionInvalidParameterSubParameters": "Parameter \"%s\" type is \"%s\", which does not support sub_parameters field, only array and object types can have sub-parameters",
         "FunctionInvalidParameterSubParametersCount": "Parameter \"%s\" is array type, sub_parameters must contain only one element to define the structure of array items, but current has %d elements",

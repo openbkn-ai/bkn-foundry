@@ -12,6 +12,7 @@ import (
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/metric"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/parsers"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/utils"
 	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 )
@@ -130,6 +131,61 @@ func (s *ToolServiceImpl) checkToolNameExist(ctx context.Context, boxID, toolNam
 	return
 }
 
+// resolveFunctionCode 取本次编辑要落库的函数代码。
+// 请求没带 code 时说明用户只改依赖或参数定义,沿用已存代码,避免整段元数据更新被跳过。
+func (s *ToolServiceImpl) buildFunctionInput(ctx context.Context, req *interfaces.UpdateToolReq,
+	toolDB *model.ToolDB) (*interfaces.FunctionInput, error) {
+	edit := req.FunctionInputEdit
+	input := &interfaces.FunctionInput{
+		Name:            req.ToolName,
+		Description:     req.ToolDesc,
+		Inputs:          edit.Inputs,
+		Outputs:         edit.Outputs,
+		ScriptType:      edit.ScriptType,
+		Code:            edit.Code,
+		Dependencies:    edit.Dependencies,
+		DependenciesURL: edit.DependenciesURL,
+	}
+	// 元数据是整体重建的,请求没带的字段会被写成空值。编辑只想改其中一项时
+	// （比如只换依赖）,其余字段必须沿用已存值,否则参数定义和依赖会被静默清空。
+	if input.Code != "" && input.Inputs != nil && input.Outputs != nil &&
+		input.Dependencies != nil && input.ScriptType != "" && input.DependenciesURL != "" {
+		return input, nil
+	}
+	has, current, err := s.MetadataService.GetMetadataBySource(ctx, toolDB.SourceID, toolDB.SourceType)
+	if err != nil {
+		s.Logger.WithContext(ctx).Errorf("select metadata failed, err: %v", err)
+		return nil, oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+	}
+	if !has {
+		return nil, oerrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.ErrExtMetadataNotFound,
+			fmt.Sprintf("metadata %s not found", toolDB.SourceID))
+	}
+	if input.Code == "" {
+		input.Code = current.GetCode()
+	}
+	if input.ScriptType == "" {
+		input.ScriptType = interfaces.ScriptType(current.GetScriptType())
+	}
+	if input.Dependencies == nil && current.GetDependencies() != "" {
+		input.Dependencies = utils.JSONToObject[[]*interfaces.DependencyInfo](current.GetDependencies())
+	}
+	if input.DependenciesURL == "" {
+		input.DependenciesURL = current.GetDependenciesURL()
+	}
+	// 参数定义落库时展开进了 API 规格,沿用时反解回来
+	if input.Inputs == nil || input.Outputs == nil {
+		storedInputs, storedOutputs := parsers.FunctionParamsFromAPISpec(current.GetAPISpec())
+		if input.Inputs == nil {
+			input.Inputs = storedInputs
+		}
+		if input.Outputs == nil {
+			input.Outputs = storedOutputs
+		}
+	}
+	return input, nil
+}
+
 // 校验并更新工具元数据
 func (s *ToolServiceImpl) updateToolMetadata(ctx context.Context, req *interfaces.UpdateToolReq, toolDB *model.ToolDB) (err error) {
 	var needUpdate bool
@@ -137,7 +193,9 @@ func (s *ToolServiceImpl) updateToolMetadata(ctx context.Context, req *interface
 	case interfaces.MetadataTypeAPI:
 		needUpdate = req.OpenAPIInput != nil && req.OpenAPIInput.Data != nil
 	case interfaces.MetadataTypeFunc:
-		needUpdate = req.FunctionInputEdit != nil && req.FunctionInputEdit.Code != ""
+		// 只改依赖、参数定义而不改代码也是合法编辑,因此不再要求必须带 code。
+		// code 为空时沿用已存代码,见下方 resolveFunctionCode。
+		needUpdate = req.FunctionInputEdit != nil
 	}
 	var metadatas []interfaces.IMetadataDB
 	if needUpdate {
@@ -145,15 +203,10 @@ func (s *ToolServiceImpl) updateToolMetadata(ctx context.Context, req *interface
 		case model.SourceTypeOpenAPI:
 			metadatas, err = s.MetadataService.ParseMetadata(ctx, req.MetadataType, req.OpenAPIInput)
 		case model.SourceTypeFunction:
-			functionInput := &interfaces.FunctionInput{
-				Name:            req.ToolName,
-				Description:     req.ToolDesc,
-				Inputs:          req.FunctionInputEdit.Inputs,
-				Outputs:         req.FunctionInputEdit.Outputs,
-				ScriptType:      req.FunctionInputEdit.ScriptType,
-				Code:            req.FunctionInputEdit.Code,
-				Dependencies:    req.FunctionInputEdit.Dependencies,
-				DependenciesURL: req.FunctionInputEdit.DependenciesURL,
+			var functionInput *interfaces.FunctionInput
+			functionInput, err = s.buildFunctionInput(ctx, req, toolDB)
+			if err != nil {
+				return
 			}
 			metadatas, err = s.MetadataService.ParseMetadata(ctx, req.MetadataType, functionInput)
 		case model.SourceTypeOperator:

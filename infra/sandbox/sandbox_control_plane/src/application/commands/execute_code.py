@@ -21,6 +21,7 @@ class ExecuteCodeCommand:
     stdin: Optional[str] = None
     timeout: int = 30
     event_data: Optional[dict] = None
+    env_vars: Optional[dict] = None
     working_directory: Optional[str] = None
 
     def __post_init__(self):

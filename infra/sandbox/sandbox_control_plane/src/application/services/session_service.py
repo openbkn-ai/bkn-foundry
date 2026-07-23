@@ -637,7 +637,9 @@ class SessionService:
             language=command.language,
             event=command.event_data or {},
             timeout=command.timeout or 300,
-            env_vars=session.env_vars,
+            # 会话创建时的值打底，本次执行下发的覆盖它。
+            # 池化会话里留着上一个调用方的身份，不覆盖就会被当前函数读到。
+            env_vars={**(session.env_vars or {}), **(command.env_vars or {})},
             execution_id=execution_id,
             session_id=session.id,
             working_directory=command.working_directory,

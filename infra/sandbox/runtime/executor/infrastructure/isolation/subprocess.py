@@ -8,16 +8,21 @@ WARNING: This provides NO security isolation and should ONLY be used
 for development purposes.
 """
 import asyncio
-import time
 import json
 import logging
+import os
+import signal
+import time
 from pathlib import Path
 from typing import List, Tuple
 
 from executor.domain.entities import Execution
 from executor.domain.value_objects import ExecutionResult, ExecutionStatus, ExecutionMetrics
 from executor.infrastructure.config import settings
-from executor.infrastructure.isolation.code_wrapper import normalize_shell_code
+from executor.infrastructure.isolation.code_wrapper import defines_handler, normalize_shell_code, uses_tool_decorator
+
+# 超时后先发 SIGTERM，等这么久仍未退出就 SIGKILL
+_TERMINATE_GRACE_SECONDS = 3
 
 logger = logging.getLogger(__name__)
 
@@ -67,23 +72,29 @@ class SubprocessRunner:
         start_cpu = time.process_time()
         logger.info(f"Executing code without isolation (DEVELOPMENT MODE), execution_id={execution.execution_id}, language={execution.language}")
 
+        process = None
+
         try:
             # Build language-specific command and environment
             cmd, env_args = self._build_command(execution)
             cwd_path = execution.context.resolve_working_directory_path()
 
-            # Execute using asyncio subprocess
+            # start_new_session puts the child in its own process group, so a
+            # timeout can take down everything it spawned rather than just the
+            # direct child.
             process = await asyncio.create_subprocess_exec(
                 *cmd,
                 cwd=str(cwd_path),
                 env=env_args,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                start_new_session=True,
             )
 
+            timeout_seconds = execution.timeout_seconds or settings.default_timeout
             stdout, stderr = await asyncio.wait_for(
                 process.communicate(),
-                timeout=30  # Default timeout, outer layer handles actual timeout
+                timeout=timeout_seconds,
             )
 
             duration = time.perf_counter() - start_time
@@ -145,13 +156,21 @@ class SubprocessRunner:
             )
 
         except asyncio.TimeoutError:
-            logger.warning(f"Execution timed out, execution_id={execution.execution_id}")
+            # Returning without killing leaves the process — and anything it
+            # spawned — burning CPU inside the container while the session is
+            # still reported healthy and keeps taking work.
+            await self._terminate_process_group(process, execution.execution_id)
+            duration_ms = (time.perf_counter() - start_time) * 1000
+            logger.warning(
+                f"Execution timed out, execution_id={execution.execution_id}, "
+                f"duration_ms={duration_ms}"
+            )
             return ExecutionResult(
                 status=ExecutionStatus.TIMEOUT,
                 stdout="",
                 stderr="Execution timed out",
                 exit_code=124,
-                execution_time_ms=30000,
+                execution_time_ms=duration_ms,
                 return_value=None,
                 metrics=None,
             )
@@ -165,6 +184,81 @@ class SubprocessRunner:
                 execution_time_ms=0,
                 return_value=None,
                 metrics=None,
+            )
+        finally:
+            # The caller wraps this in its own wait_for with the same timeout and
+            # starts counting earlier, so in practice it fires first and cancels
+            # us — that surfaces as CancelledError, which the except clauses above
+            # do not catch. Without this the process group would survive.
+            #
+            # Cancellation also makes awaiting unreliable here, so the last resort
+            # is a synchronous SIGKILL rather than the graceful sequence.
+            self._kill_process_group_now(process, execution.execution_id)
+
+    def _kill_process_group_now(self, process, execution_id: str) -> None:
+        """
+        Last-resort synchronous kill, safe to call while being cancelled.
+
+        No-op when the process already exited, so the success path pays nothing.
+        """
+        if process is None or process.returncode is not None:
+            return
+        try:
+            os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+            logger.warning(
+                f"Killed surviving process group, execution_id={execution_id}, pid={process.pid}"
+            )
+        except (ProcessLookupError, PermissionError):
+            pass
+        except Exception as e:
+            logger.error(
+                f"Failed to kill process group, execution_id={execution_id}, error={e}"
+            )
+
+    async def _terminate_process_group(self, process, execution_id: str) -> None:
+        """
+        Kill the timed-out process and everything it spawned, gracefully.
+
+        The child was started with start_new_session=True, so it leads its own
+        process group and killpg reaches grandchildren too. SIGTERM first to let
+        the code clean up, SIGKILL if it does not go away.
+
+        Note that today this path does not run: the caller times out on the same
+        value and starts counting earlier, so it cancels us before our own
+        wait_for expires and the finally block's straight SIGKILL is what
+        actually happens. User code therefore gets no grace period. Kept for when
+        the two layers stop sharing a deadline — until then, do not read this as
+        evidence that a graceful stop is on offer.
+        """
+        if process is None or process.returncode is not None:
+            return
+        try:
+            pgid = os.getpgid(process.pid)
+        except (ProcessLookupError, PermissionError):
+            pgid = None
+
+        try:
+            if pgid is not None:
+                os.killpg(pgid, signal.SIGTERM)
+            else:
+                process.terminate()
+            try:
+                await asyncio.wait_for(process.wait(), timeout=_TERMINATE_GRACE_SECONDS)
+                return
+            except asyncio.TimeoutError:
+                pass
+
+            if pgid is not None:
+                os.killpg(pgid, signal.SIGKILL)
+            else:
+                process.kill()
+            await process.wait()
+        except ProcessLookupError:
+            # Already gone between the check and the signal.
+            pass
+        except Exception as e:
+            logger.error(
+                f"Failed to terminate process group, execution_id={execution_id}, error={e}"
             )
 
     def _build_command(self, execution: Execution) -> Tuple[List[str], dict]:
@@ -201,21 +295,30 @@ class SubprocessRunner:
 
         # Language-specific commands
         if language in ("python", "python3"):
-            # For Python Lambda handlers, wrap the code to:
-            # 1. Define the handler function from user code
-            # 2. Call the handler with the event data
-            # 3. Serialize and print the return value as JSON
+            # Two entry styles are supported:
+            #   @tool     - sandbox_sdk unpacks the event into named parameters
+            #   handler   - AWS Lambda style, the original contract
+            # Detection is AST-based so @tool in a comment or string is not a
+            # false positive, and unparsable code falls back to handler.
+            # handler wins when both are present, see code_wrapper for why
+            if defines_handler(code) or not uses_tool_decorator(code):
+                preamble = ""
+                invoke = "handler(event_data)"
+            else:
+                preamble = "import sandbox_sdk"
+                invoke = "sandbox_sdk.dispatch(event_data)"
             wrapped_code = f'''
 import json
 import sys
+{preamble}
 
 # User's code
 {code}
 
-# Execute the Lambda handler
+# Invoke the user function
 if __name__ == "__main__":
     event_data = json.loads({json.dumps(event_json)})
-    result = handler(event_data)
+    result = {invoke}
     print(json.dumps(result))
 '''
             cmd = ["python3", "-c", wrapped_code]
@@ -241,6 +344,8 @@ console.log(JSON.stringify(result));
 
     def _build_pythonpath(self, existing_pythonpath: str | None) -> str:
         dependency_path = settings.dependency_install_path
+        sdk_path = settings.sdk_install_path
+        parts = [sdk_path, dependency_path]
         if existing_pythonpath:
-            return f"{dependency_path}:{existing_pythonpath}"
-        return dependency_path
+            parts.append(existing_pythonpath)
+        return ":".join(parts)

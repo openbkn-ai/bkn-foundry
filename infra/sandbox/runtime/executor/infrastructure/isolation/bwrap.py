@@ -17,7 +17,11 @@ import structlog
 
 from executor.domain.entities import Execution
 from executor.domain.value_objects import ExecutionResult, ExecutionStatus, ExecutionMetrics
-from executor.infrastructure.isolation.code_wrapper import normalize_shell_code
+from executor.infrastructure.isolation.code_wrapper import (
+    defines_handler,
+    normalize_shell_code,
+    uses_tool_decorator,
+)
 from executor.infrastructure.config import settings
 from executor.infrastructure.isolation.result_parser import remove_markers_from_output
 
@@ -97,6 +101,7 @@ class BubblewrapRunner:
             List of bwrap command arguments
         """
         dependency_path = settings.dependency_install_path
+        sdk_path = settings.sdk_install_path
         return [
             "bwrap",
             # Filesystem isolation
@@ -107,6 +112,9 @@ class BubblewrapRunner:
             "--ro-bind", "/sbin", "/sbin",
             # Session-installed third-party dependencies remain read-only during execution.
             "--ro-bind", dependency_path, dependency_path,
+            # sandbox_sdk lives outside the dependency directory, which is wiped
+            # before every dependency sync, and outside /app, which is not mounted.
+            "--ro-bind", sdk_path, sdk_path,
             # Workspace (writable)
             "--bind", str(self.workspace_path), "/workspace",
             "--chdir", container_working_directory,
@@ -126,6 +134,9 @@ class BubblewrapRunner:
             "--setenv", "PATH", EXECUTION_PATH,
             "--setenv", "HOME", "/workspace",
             "--setenv", "TMPDIR", "/tmp",
+            # --clearenv drops the image PYTHONPATH, so the interpreter would find
+            # neither the session dependencies nor the SDK. Set it explicitly.
+            "--setenv", "PYTHONPATH", f"{sdk_path}:{dependency_path}",
             # Security (Note: --cap-drop and --no-new-privs not available in bwrap 0.11.0)
             # These are handled by container-level security (non-privileged user, namespaces)
         ]
@@ -262,10 +273,19 @@ class BubblewrapRunner:
         Returns:
             Complete wrapper script
         """
+        # Same rule as the other runners: handler wins when both are present,
+        # and a `tool` name only counts when it came from sandbox_sdk.
+        if defines_handler(user_code) or not uses_tool_decorator(user_code):
+            preamble = ""
+            invoke = "handler(event)"
+        else:
+            preamble = "import sandbox_sdk"
+            invoke = "sandbox_sdk.dispatch(event)"
         return f"""
 import json
 import sys
 import os
+{preamble}
 
 # User code
 {user_code}
@@ -278,23 +298,22 @@ except json.JSONDecodeError as e:
     print(f"Error parsing event JSON: {{e}}", file=sys.stderr)
     sys.exit(1)
 
-# Call handler
+# Invoke the user function. The entry style is decided when this wrapper is
+# built, the same way the other runners decide it, so identical code does not
+# take different paths depending on which runner happens to execute it.
 try:
-    if 'handler' not in globals():
-        raise ValueError("必须定义 handler(event) 函数")
-
-    result = handler(event)
+    result = {invoke}
 
     # Output result with markers
-    print("\n===SANDBOX_RESULT===")
+    print("===SANDBOX_RESULT===")
     print(json.dumps(result))
-    print("\n===SANDBOX_RESULT_END===")
+    print("===SANDBOX_RESULT_END===")
 
 except Exception as e:
     import traceback
-    print("\n===SANDBOX_ERROR===")
+    print("===SANDBOX_ERROR===")
     print(traceback.format_exc())
-    print("\n===SANDBOX_ERROR_END===")
+    print("===SANDBOX_ERROR_END===")
     sys.exit(1)
 """
 
@@ -401,9 +420,11 @@ console.log('===SANDBOX_RESULT===' + JSON.stringify(result) + '===SANDBOX_RESULT
 
     def _build_pythonpath(self, existing_pythonpath: str | None) -> str:
         dependency_path = settings.dependency_install_path
+        sdk_path = settings.sdk_install_path
+        parts = [sdk_path, dependency_path]
         if existing_pythonpath:
-            return f"{dependency_path}:{existing_pythonpath}"
-        return dependency_path
+            parts.append(existing_pythonpath)
+        return ":".join(parts)
 
     def _build_execution_env(self, execution: Execution) -> dict[str, str]:
         env_args: dict[str, str] = {

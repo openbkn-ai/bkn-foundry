@@ -35,6 +35,13 @@ class Settings(BaseModel):
         default="/opt/sandbox-venv",
         description="Directory for dynamically installed session dependencies",
     )
+    sdk_install_path: str = Field(
+        default="/opt/sandbox-sdk",
+        description=(
+            "Directory holding sandbox_sdk. Kept apart from the dependency "
+            "directory, which is emptied before every dependency sync."
+        ),
+    )
     pip_cache_path: str = Field(
         default="/tmp/pip-cache",
         description="Cache directory for pip install operations",
