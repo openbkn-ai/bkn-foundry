@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -115,6 +116,143 @@ func (s *Service) Ingest(ctx context.Context, body []byte) (evidencevo.IngestRes
 		EvidenceRefCount: normalized.EvidenceRefCount,
 		BusinessRefCount: normalized.BusinessRefCount,
 	}, nil, nil
+}
+
+func (s *Service) GetEvidenceChainByTraceID(ctx context.Context, traceID string) (evidencevo.EvidenceChainResponse, bool, error) {
+	traces, err := s.store.GetEvidenceByTraceID(ctx, strings.TrimSpace(traceID))
+	if err != nil {
+		return evidencevo.EvidenceChainResponse{}, false, err
+	}
+	if len(traces) == 0 {
+		return evidencevo.EvidenceChainResponse{}, false, nil
+	}
+	return buildEvidenceChain(traces), true, nil
+}
+
+func (s *Service) GetEvidenceChainByRequestID(ctx context.Context, requestID string) (evidencevo.EvidenceChainResponse, bool, error) {
+	traces, err := s.store.GetEvidenceByRequestID(ctx, strings.TrimSpace(requestID))
+	if err != nil {
+		return evidencevo.EvidenceChainResponse{}, false, err
+	}
+	if len(traces) == 0 {
+		return evidencevo.EvidenceChainResponse{}, false, nil
+	}
+	return buildEvidenceChain(traces), true, nil
+}
+
+func buildEvidenceChain(traces []evidencevo.NormalizedTrace) evidencevo.EvidenceChainResponse {
+	response := evidencevo.EvidenceChainResponse{
+		TraceID:   traces[0].TraceID,
+		RequestID: traces[0].RequestID,
+	}
+	knownClaims := map[string]struct{}{}
+	claimRefs := map[string]struct{}{}
+	partialReasons := map[string]struct{}{}
+
+	for _, trace := range traces {
+		for _, event := range trace.Events {
+			switch event.EventType {
+			case "claim.created":
+				if visible(event.Payload) {
+					response.Data.Claims = append(response.Data.Claims, cloneMap(event.Payload))
+				} else {
+					countVisibility(event.Payload, &response.VisibilitySummary)
+				}
+				if claimID, ok := stringField(event.Payload, "claim_id"); ok && claimID != "" {
+					knownClaims[claimID] = struct{}{}
+				}
+			case "evidence.refs.created":
+				claimID, _ := stringField(event.Payload, "claim_id")
+				if claimID != "" {
+					claimRefs[claimID] = struct{}{}
+				}
+				response.Data.EvidenceRefs = appendVisibleRefs(response.Data.EvidenceRefs, arrayField(event.Payload, "evidence_refs"), &response.VisibilitySummary)
+			case "business.refs.resolved":
+				claimID, _ := stringField(event.Payload, "claim_id")
+				if claimID != "" {
+					claimRefs[claimID] = struct{}{}
+				}
+				response.Data.BusinessRefs = appendVisibleRefs(response.Data.BusinessRefs, arrayField(event.Payload, "business_refs"), &response.VisibilitySummary)
+			}
+		}
+	}
+
+	if len(knownClaims) == 0 {
+		partialReasons["missing_claim"] = struct{}{}
+	}
+	for claimID := range claimRefs {
+		if _, ok := knownClaims[claimID]; !ok {
+			partialReasons["missing_claim"] = struct{}{}
+		}
+	}
+	for _, claim := range response.Data.Claims {
+		if _, ok := claim["version_status"].(string); !ok {
+			partialReasons["version_status_missing"] = struct{}{}
+		}
+	}
+
+	response.PartialReasons = sortedKeys(partialReasons)
+	response.Partial = len(response.PartialReasons) > 0
+	response.Page.NodeCount = len(response.Data.Claims) + len(response.Data.EvidenceRefs) + len(response.Data.BusinessRefs)
+	response.Page.EdgeCount = len(response.Data.EvidenceRefs) + len(response.Data.BusinessRefs)
+	return response
+}
+
+func appendVisibleRefs(target []map[string]any, refs []any, summary *evidencevo.VisibilitySummary) []map[string]any {
+	for _, item := range refs {
+		ref, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		if visible(ref) {
+			target = append(target, cloneMap(ref))
+			summary.AuthorizedRefCount++
+			continue
+		}
+		countVisibility(ref, summary)
+	}
+	return target
+}
+
+func visible(item map[string]any) bool {
+	visibility, _ := item["visibility"].(string)
+	return visibility == "" || visibility == "visible"
+}
+
+func countVisibility(item map[string]any, summary *evidencevo.VisibilitySummary) {
+	visibility, _ := item["visibility"].(string)
+	switch visibility {
+	case "redacted":
+		summary.RedactedRefCount++
+	case "hidden":
+		summary.HiddenRefCount++
+	case "omitted":
+		summary.OmittedRefCount++
+	case "unresolved":
+		summary.UnresolvedRefCount++
+	default:
+		summary.OmittedRefCount++
+	}
+}
+
+func cloneMap(value map[string]any) map[string]any {
+	clone := make(map[string]any, len(value))
+	for key, item := range value {
+		clone[key] = item
+	}
+	return clone
+}
+
+func sortedKeys(values map[string]struct{}) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func normalize(req evidencevo.IngestRequest, errors *evidencevo.ValidationErrors) evidencevo.NormalizedTrace {

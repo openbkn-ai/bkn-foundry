@@ -6,6 +6,8 @@
 - Trace 原始 DSL 查询接口：`POST /api/agent-observability/v1/traces/_search`
 - Conversation 维度包装查询接口：`GET /api/agent-observability/v1/traces/by-conversation?conversation_id=...`
 - Evidence 事件接收接口：`POST /api/agent-observability/v1/evidence/events`
+- Evidence Chain 查询接口：`GET /api/agent-observability/v1/traces/{trace_id}/evidence-chain`
+- Request 维度 Evidence Chain 查询接口：`GET /api/agent-observability/v1/traces/by-request?request_id=...`
 - OpenSearch 查询客户端
 - 阶段二 Evidence ingestion 校验、归一化和可替换存储接口
 - Swagger 文档生成
@@ -27,7 +29,36 @@ make test
 GOCACHE=/tmp/openbkn-go-build-cache GOMODCACHE=/tmp/openbkn-go-mod-cache go test ./...
 ```
 
-阶段二 evidence ingestion 接口接受 `bkn.trace.schema.version=2.0.0` 的事件批次，包含 `trace` 与 `events`。当前版本先完成 contract 校验、敏感 payload 拒绝、归一化计数和内存 repository 写入；后续 PR 会把 repository 替换为持久化 evidence index。
+阶段二 evidence ingestion 接口接受 `bkn.trace.schema.version=2.0.0` 的事件批次，包含 `trace` 与 `events`。当前版本先完成 contract 校验、敏感 payload 拒绝、归一化计数、内存 repository 写入和最小 Evidence Chain 查询；后续 PR 会把 repository 替换为持久化 evidence index。
+
+Evidence Chain 查询返回稳定 envelope：
+
+```json
+{
+  "trace_id": "9c0d...",
+  "bkn.request.id": "req_handler_001",
+  "partial": false,
+  "partial_reason": [],
+  "visibility_summary": {
+    "authorized_ref_count": 2,
+    "redacted_ref_count": 0,
+    "hidden_ref_count": 0,
+    "omitted_ref_count": 0,
+    "unresolved_ref_count": 0
+  },
+  "page": {
+    "next_cursor": null,
+    "node_count": 3,
+    "edge_count": 2,
+    "truncated": false
+  },
+  "data": {
+    "claims": [],
+    "evidence_refs": [],
+    "business_refs": []
+  }
+}
+```
 
 生成 Swagger 文档：
 

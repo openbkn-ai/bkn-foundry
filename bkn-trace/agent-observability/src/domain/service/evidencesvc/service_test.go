@@ -9,12 +9,33 @@ import (
 )
 
 type fakeStore struct {
-	calls int
+	calls  int
+	traces []evidencevo.NormalizedTrace
 }
 
 func (s *fakeStore) StoreEvidence(_ context.Context, _ evidencevo.NormalizedTrace) error {
 	s.calls++
 	return nil
+}
+
+func (s *fakeStore) GetEvidenceByTraceID(_ context.Context, traceID string) ([]evidencevo.NormalizedTrace, error) {
+	var result []evidencevo.NormalizedTrace
+	for _, trace := range s.traces {
+		if trace.TraceID == traceID {
+			result = append(result, trace)
+		}
+	}
+	return result, nil
+}
+
+func (s *fakeStore) GetEvidenceByRequestID(_ context.Context, requestID string) ([]evidencevo.NormalizedTrace, error) {
+	var result []evidencevo.NormalizedTrace
+	for _, trace := range s.traces {
+		if trace.RequestID == requestID {
+			result = append(result, trace)
+		}
+	}
+	return result, nil
 }
 
 func TestIngestAcceptsPhaseTwoEvidenceBatch(t *testing.T) {
@@ -200,6 +221,77 @@ func TestIngestAllowsReferenceLikeStringsAndNonSensitiveKeySubstrings(t *testing
 	}
 }
 
+func TestGetEvidenceChainByTraceIDFiltersHiddenRefsAndReturnsEnvelope(t *testing.T) {
+	store := &fakeStore{traces: []evidencevo.NormalizedTrace{queryTrace("trace_query_001", "req_query_001")}}
+	service := New(store)
+
+	response, found, err := service.GetEvidenceChainByTraceID(context.Background(), "trace_query_001")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !found {
+		t.Fatal("expected evidence chain to be found")
+	}
+	if response.TraceID != "trace_query_001" || response.RequestID != "req_query_001" {
+		t.Fatalf("unexpected identity: %+v", response)
+	}
+	if response.Partial {
+		t.Fatalf("expected complete visible response, got partial: %+v", response.PartialReasons)
+	}
+	if response.VisibilitySummary.HiddenRefCount != 1 || response.VisibilitySummary.AuthorizedRefCount != 2 {
+		t.Fatalf("unexpected visibility summary: %+v", response.VisibilitySummary)
+	}
+	if response.Page.NodeCount != 3 || response.Page.EdgeCount != 2 || response.Page.Truncated {
+		t.Fatalf("unexpected page: %+v", response.Page)
+	}
+	if len(response.Data.Claims) != 1 || len(response.Data.EvidenceRefs) != 1 || len(response.Data.BusinessRefs) != 1 {
+		t.Fatalf("unexpected data counts: %+v", response.Data)
+	}
+	if response.Data.EvidenceRefs[0]["ref_id"] != "row:visible" {
+		t.Fatalf("hidden evidence ref leaked or visible ref missing: %+v", response.Data.EvidenceRefs)
+	}
+}
+
+func TestGetEvidenceChainByRequestIDReturnsMissingClaimPartial(t *testing.T) {
+	store := &fakeStore{traces: []evidencevo.NormalizedTrace{{
+		TraceID:   "trace_no_claim",
+		RequestID: "req_no_claim",
+		Events: []evidencevo.EvidenceEvent{
+			{
+				EventType: "evidence.refs.created",
+				Payload: map[string]any{
+					"claim_id":      "missing_claim",
+					"evidence_refs": []any{map[string]any{"ref_id": "row:visible", "visibility": "visible"}},
+				},
+			},
+		},
+	}}}
+	service := New(store)
+
+	response, found, err := service.GetEvidenceChainByRequestID(context.Background(), "req_no_claim")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !found {
+		t.Fatal("expected evidence chain to be found")
+	}
+	if !response.Partial || !contains(response.PartialReasons, "missing_claim") {
+		t.Fatalf("expected missing claim partial, got: %+v", response)
+	}
+}
+
+func TestGetEvidenceChainByTraceIDNotFound(t *testing.T) {
+	service := New(&fakeStore{})
+
+	_, found, err := service.GetEvidenceChainByTraceID(context.Background(), "missing")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if found {
+		t.Fatal("expected not found")
+	}
+}
+
 func hasValidationCode(validationErrors evidencevo.ValidationErrors, code string) bool {
 	for _, validationError := range validationErrors {
 		if validationError.Code == code {
@@ -207,6 +299,51 @@ func hasValidationCode(validationErrors evidencevo.ValidationErrors, code string
 		}
 	}
 	return false
+}
+
+func contains(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
+}
+
+func queryTrace(traceID, requestID string) evidencevo.NormalizedTrace {
+	return evidencevo.NormalizedTrace{
+		TraceID:   traceID,
+		RequestID: requestID,
+		Events: []evidencevo.EvidenceEvent{
+			{
+				EventType: "claim.created",
+				Payload: map[string]any{
+					"claim_id":       "claim_visible",
+					"claim_type":     "finding",
+					"claim_hash":     "sha256:claim",
+					"visibility":     "visible",
+					"version_status": "versioned",
+				},
+			},
+			{
+				EventType: "evidence.refs.created",
+				Payload: map[string]any{
+					"claim_id": "claim_visible",
+					"evidence_refs": []any{
+						map[string]any{"ref_id": "row:visible", "ref_type": "row_ref", "visibility": "visible"},
+						map[string]any{"ref_id": "row:hidden", "ref_type": "row_ref", "visibility": "hidden"},
+					},
+				},
+			},
+			{
+				EventType: "business.refs.resolved",
+				Payload: map[string]any{
+					"claim_id":      "claim_visible",
+					"business_refs": []any{map[string]any{"ref_id": "object:customer", "ref_type": "object", "visibility": "visible"}},
+				},
+			},
+		},
+	}
 }
 
 func validBatch() string {
