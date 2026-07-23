@@ -11,7 +11,7 @@
 - Business Graph 查询接口：`GET /api/agent-observability/v1/traces/{trace_id}/business-graph`
 - Request 维度 Business Graph 查询接口：`GET /api/agent-observability/v1/traces/by-request/business-graph?request_id=...`
 - OpenSearch 查询客户端
-- 阶段二 Evidence ingestion 校验、归一化和可替换存储接口
+- 阶段二 Evidence ingestion 校验、归一化和可替换存储接口，支持内存 store 与 OpenSearch evidence index store
 - Swagger 文档生成
 - Docker 镜像构建
 - Helm Deployment Chart
@@ -31,7 +31,34 @@ make test
 GOCACHE=/tmp/openbkn-go-build-cache GOMODCACHE=/tmp/openbkn-go-mod-cache go test ./...
 ```
 
-阶段二 evidence ingestion 接口接受 `bkn.trace.schema.version=2.0.0` 的事件批次，包含 `trace` 与 `events`。当前版本先完成 contract 校验、敏感 payload 拒绝、归一化计数、内存 repository 写入、最小 Evidence Chain 查询和 Business Graph 查询；后续 PR 会把 repository 替换为持久化 evidence index。
+阶段二 evidence ingestion 接口接受 `bkn.trace.schema.version=2.0.0` 的事件批次，包含 `trace` 与 `events`。当前版本先完成 contract 校验、敏感 payload 拒绝、归一化计数、最小 Evidence Chain 查询和 Business Graph 查询；默认使用内存 repository，生产或共享测试环境可切换到 OpenSearch evidence index store。
+
+### Evidence Store
+
+默认配置保持兼容：
+
+```text
+BKN_TRACE_EVIDENCE_STORE=memory
+```
+
+启用 OpenSearch 持久化 evidence index：
+
+```bash
+helm upgrade --install agent-observability charts/agent-observability \
+  --set evidence.store=opensearch \
+  --set evidence.index=bkn-trace-evidence-v1 \
+  --set opensearch.endpoint=http://opensearch-cluster-master:9200 \
+  -n observability --create-namespace
+```
+
+对应环境变量：
+
+```text
+BKN_TRACE_EVIDENCE_STORE=opensearch
+OPENSEARCH_EVIDENCE_INDEX=bkn-trace-evidence-v1
+```
+
+当前 PR 不自动创建 index，不要求服务账号具备 OpenSearch index-management 权限；部署方需要提前创建 `OPENSEARCH_EVIDENCE_INDEX`。后续部署治理 PR 会补 index mapping、retention/ILM、权限与迁移脚本。
 
 ### Evidence 写入安全边界
 

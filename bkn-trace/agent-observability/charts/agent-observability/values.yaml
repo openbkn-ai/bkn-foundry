@@ -33,6 +33,8 @@ ingress:
   tls: []
 
 evidence:
+  store: memory
+  index: bkn-trace-evidence-v1
   ingestAuth:
     existingSecret: ""
     secretKey: token
