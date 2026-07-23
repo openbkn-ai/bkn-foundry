@@ -742,6 +742,11 @@ install_core() {
 
     log_info "Target namespace: ${namespace}"
 
+    local bkn_safe_existed_before_install="false"
+    if _core_release_exists "bkn-safe" "${namespace}"; then
+        bkn_safe_existed_before_install="true"
+    fi
+
     if ! init_core_databases; then
         log_error "Failed to initialize BKN Foundry databases"
         return 1
@@ -792,10 +797,10 @@ install_core() {
     # Platform account credentials (NOT database passwords): the console admin
     # initial password, which is also the initial password handed to users
     # created without an explicit one. Highlighted — it is the one thing the
-    # operator must take away from this summary.
+    # operator must take away from this summary, but only on the first install.
     local _initial_pwd
     _initial_pwd="$(config_yaml_top_field bknSafe initialPassword)"
-    if [[ -n "${_initial_pwd}" ]]; then
+    if _core_should_show_bkn_safe_initial_password "${bkn_safe_existed_before_install}" "${_initial_pwd}"; then
         echo ""
         echo "  Console sign-in (a password change is forced on first login):"
         echo ""
@@ -834,6 +839,15 @@ _core_release_exists() {
     local release="$1"
     local ns="$2"
     helm status "${release}" -n "${ns}" >/dev/null 2>&1
+}
+
+# Decide whether the bkn-safe initial password should be shown in the install
+# summary. Only a fresh install should reveal it; upgrades/retries stay quiet
+# even if config.yaml still carries bknSafe.initialPassword.
+_core_should_show_bkn_safe_initial_password() {
+    local release_existed_before_install="$1"
+    local initial_password="$2"
+    [[ "${release_existed_before_install}" != "true" && -n "${initial_password}" ]]
 }
 
 # 逐条退役 _CORE_RETIRED_RELEASES 中仍存在的 release。
