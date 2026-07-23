@@ -358,7 +358,12 @@ type FunctionInferSchemaResp struct {
 //
 // 在模块级直接打印并退出，不定义 handler：用户代码带 @tool 时，wrapper 会走
 // dispatch 分支去调用用户函数，探针若写成 handler 形态根本不会被执行，而 dispatch
-// 会因为缺少业务入参而失败。打印的 JSON 是 stdout 的最后一行，正是执行结果的提取契约。
+// 会因为缺少业务入参而失败。
+//
+// 结果按标记包裹。隔离层有两种提取方式：subprocess 取 stdout 里最后一个合法 JSON 行，
+// bwrap 与 macseatbelt 只认 ===SANDBOX_RESULT=== 标记。裸打印在后者下取不到值，
+// 推导会恒为 supported:false —— 带上标记则两种都命中（标记行本身不是合法 JSON，
+// 不影响末行 JSON 的判定）。
 const inferSchemaProbe = `
 
 import json as _bkn_json, sys as _bkn_sys
@@ -374,7 +379,9 @@ try:
     } if _bkn_schema else {"supported": False}
 except Exception:
     _bkn_out = {"supported": False}
+print("===SANDBOX_RESULT===")
 print(_bkn_json.dumps(_bkn_out))
+print("===SANDBOX_RESULT_END===")
 _bkn_sys.exit(0)
 `
 
