@@ -23,6 +23,7 @@ const rejectedPrefix = "READ_ONLY_SQL_REJECTED:"
 
 // Adapter validates a query against the Raw Query policy.
 type Adapter interface {
+	ExtractTableResourceIDs(ctx context.Context, sql string, inputDialect string) ([]string, error)
 	ValidateSQL(ctx context.Context, sql string, inputDialect string) error
 	ValidateTableReferences(ctx context.Context, sql string, inputDialect string, allowedReferences []string) error
 }
@@ -42,6 +43,10 @@ type SQLGlotAdapter struct{}
 
 func NewSQLGlotAdapter() *SQLGlotAdapter {
 	return &SQLGlotAdapter{}
+}
+
+func (a *SQLGlotAdapter) ExtractTableResourceIDs(ctx context.Context, sql string, inputDialect string) ([]string, error) {
+	return ExtractTableResourceIDs(ctx, sql, inputDialect)
 }
 
 func (a *SQLGlotAdapter) ValidateSQL(ctx context.Context, sql string, inputDialect string) error {
@@ -190,7 +195,7 @@ def replace_code_placeholders(sql):
                         continue
                     end += 1
                     break
-                if sql[end] == "\\\\" and quote == "'" and end + 1 < len(sql):
+                if dialect == "mysql" and sql[end] == "\\" and quote == "'" and end + 1 < len(sql):
                     end += 2
                     continue
                 end += 1

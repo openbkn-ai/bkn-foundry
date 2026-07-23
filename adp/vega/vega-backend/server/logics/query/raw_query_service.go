@@ -256,7 +256,7 @@ func (rqs *rawQueryService) prepareSQLQuery(ctx context.Context, req *interfaces
 	if err != nil {
 		return nil, err
 	}
-	replacedSQL, err := rqs.replaceResourceIDWithSchemaTable(ctx, req.Query, resourceIDs, catalog)
+	replacedSQL, err := rqs.replaceResourceIDWithSchemaTable(ctx, req.Query, resourceIDs, catalog, inputDialect)
 	if err != nil {
 		return nil, err
 	}
@@ -739,7 +739,7 @@ func rawQueryTotalCount(result *interfaces.RawQueryResponse) (int64, error) {
 // extractResourceIDs 从 FROM/JOIN 表引用中提取所有 {{.resource_id}} 占位符。
 func (rqs *rawQueryService) extractResourceIDs(ctx context.Context, query any, inputDialect string) ([]string, error) {
 	if queryStr, ok := query.(string); ok {
-		return querypolicy.ExtractTableResourceIDs(ctx, queryStr, inputDialect)
+		return rawQueryPolicy.ExtractTableResourceIDs(ctx, queryStr, inputDialect)
 	}
 
 	// 如果query是map类型（OpenSearch DSL），返回空数组
@@ -819,7 +819,7 @@ func ensureCatalogEnabled(ctx context.Context, catalog *interfaces.Catalog) erro
 }
 
 // replaceResourceIDWithSchemaTable 将resource_id替换为schema.table格式
-func (rqs *rawQueryService) replaceResourceIDWithSchemaTable(ctx context.Context, sql any, resourceIDs []string, catalog *interfaces.Catalog) (string, error) {
+func (rqs *rawQueryService) replaceResourceIDWithSchemaTable(ctx context.Context, sql any, resourceIDs []string, catalog *interfaces.Catalog, inputDialect string) (string, error) {
 	replacedSQL := sql.(string)
 	logger.Infof("Before replace - %s, resource_ids: %v", SafeQuerySummary(replacedSQL), resourceIDs)
 
@@ -840,8 +840,8 @@ func (rqs *rawQueryService) replaceResourceIDWithSchemaTable(ctx context.Context
 		// 替换{{.resource_id}}和{{resource_id}}为schema.table
 		placeholder1 := fmt.Sprintf("{{.%s}}", resourceID)
 		placeholder2 := fmt.Sprintf("{{%s}}", resourceID)
-		replacedSQL = replacePlaceholderInSQLCode(replacedSQL, placeholder1, resource.SourceIdentifier)
-		replacedSQL = replacePlaceholderInSQLCode(replacedSQL, placeholder2, resource.SourceIdentifier)
+		replacedSQL = replacePlaceholderInSQLCode(replacedSQL, placeholder1, resource.SourceIdentifier, inputDialect)
+		replacedSQL = replacePlaceholderInSQLCode(replacedSQL, placeholder2, resource.SourceIdentifier, inputDialect)
 	}
 
 	logger.Infof("After replace - %s", SafeQuerySummary(replacedSQL))
@@ -850,7 +850,7 @@ func (rqs *rawQueryService) replaceResourceIDWithSchemaTable(ctx context.Context
 
 // replacePlaceholderInSQLCode preserves comments and quoted literals. They
 // are not resource bindings and must remain semantically unchanged.
-func replacePlaceholderInSQLCode(sql, placeholder, replacement string) string {
+func replacePlaceholderInSQLCode(sql, placeholder, replacement, inputDialect string) string {
 	var output strings.Builder
 	output.Grow(len(sql))
 	for index := 0; index < len(sql); {
@@ -888,7 +888,7 @@ func replacePlaceholderInSQLCode(sql, placeholder, replacement string) string {
 					end++
 					break
 				}
-				if quote == '\'' && sql[end] == '\\' && end+1 < len(sql) {
+				if inputDialect == "mysql" && quote == '\'' && sql[end] == '\\' && end+1 < len(sql) {
 					end += 2
 					continue
 				}

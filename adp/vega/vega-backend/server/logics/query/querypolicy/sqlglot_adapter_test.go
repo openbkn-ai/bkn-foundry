@@ -68,6 +68,7 @@ func TestSQLGlotAdapterValidateSQL(t *testing.T) {
 			assert.True(t, errors.As(err, &validationErr))
 		})
 	}
+
 }
 
 func TestSQLGlotAdapterValidateTableReferences(t *testing.T) {
@@ -108,6 +109,11 @@ func TestExtractTableResourceIDs(t *testing.T) {
 			assert.Empty(t, ids)
 		})
 	}
+
+	ids, err = ExtractTableResourceIDs(context.Background(),
+		"SELECT 'it\\'s {{ignored-resource}}' FROM {{orders-2026}}", "mysql")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"orders-2026"}, ids)
 }
 
 func TestSQLGlotAdapterHonorsCanceledContext(t *testing.T) {
