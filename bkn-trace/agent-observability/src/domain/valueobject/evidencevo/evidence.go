@@ -90,6 +90,39 @@ type EvidenceChainData struct {
 	BusinessRefs []map[string]any `json:"business_refs"`
 }
 
+type BusinessGraphResponse struct {
+	TraceID           string            `json:"trace_id"`
+	RequestID         string            `json:"bkn.request.id"`
+	Partial           bool              `json:"partial"`
+	PartialReasons    []string          `json:"partial_reason"`
+	VisibilitySummary VisibilitySummary `json:"visibility_summary"`
+	Page              EvidencePage      `json:"page"`
+	Data              BusinessGraphData `json:"data"`
+}
+
+type BusinessGraphData struct {
+	Nodes []BusinessGraphNode `json:"nodes"`
+	Edges []BusinessGraphEdge `json:"edges"`
+}
+
+type BusinessGraphNode struct {
+	ID            string         `json:"id"`
+	NodeType      string         `json:"node_type"`
+	Label         string         `json:"label,omitempty"`
+	ClaimID       string         `json:"claim_id,omitempty"`
+	VersionStatus string         `json:"version_status,omitempty"`
+	Visibility    string         `json:"visibility,omitempty"`
+	Properties    map[string]any `json:"properties,omitempty"`
+}
+
+type BusinessGraphEdge struct {
+	ID         string `json:"id"`
+	SourceID   string `json:"source_id"`
+	TargetID   string `json:"target_id"`
+	EdgeType   string `json:"edge_type"`
+	Visibility string `json:"visibility,omitempty"`
+}
+
 type IngestResponse struct {
 	TraceID          string `json:"trace_id"`
 	RequestID        string `json:"bkn.request.id"`

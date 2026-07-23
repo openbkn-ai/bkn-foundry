@@ -280,6 +280,150 @@ func TestGetEvidenceChainByRequestIDReturnsMissingClaimPartial(t *testing.T) {
 	}
 }
 
+func TestGetBusinessGraphByTraceIDReturnsClaimAndBusinessNodes(t *testing.T) {
+	store := &fakeStore{traces: []evidencevo.NormalizedTrace{queryTrace("trace_graph_001", "req_graph_001")}}
+	service := New(store)
+
+	response, found, err := service.GetBusinessGraphByTraceID(context.Background(), "trace_graph_001")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !found {
+		t.Fatal("expected business graph to be found")
+	}
+	if response.TraceID != "trace_graph_001" || response.RequestID != "req_graph_001" {
+		t.Fatalf("unexpected identity: %+v", response)
+	}
+	if response.Partial {
+		t.Fatalf("expected complete graph, got partial: %+v", response.PartialReasons)
+	}
+	if response.Page.NodeCount != 2 || response.Page.EdgeCount != 1 {
+		t.Fatalf("unexpected page: %+v", response.Page)
+	}
+	if response.VisibilitySummary.AuthorizedRefCount != 1 {
+		t.Fatalf("unexpected visibility summary: %+v", response.VisibilitySummary)
+	}
+	if len(response.Data.Nodes) != 2 || len(response.Data.Edges) != 1 {
+		t.Fatalf("unexpected graph size: %+v", response.Data)
+	}
+	if response.Data.Edges[0].SourceID != "claim:claim_visible" || response.Data.Edges[0].TargetID != "business:object:customer" {
+		t.Fatalf("unexpected edge: %+v", response.Data.Edges[0])
+	}
+}
+
+func TestGetBusinessGraphByRequestIDHandlesHiddenAndUnresolvedRefs(t *testing.T) {
+	store := &fakeStore{traces: []evidencevo.NormalizedTrace{businessGraphTraceWithGovernance("trace_graph_002", "req_graph_002")}}
+	service := New(store)
+
+	response, found, err := service.GetBusinessGraphByRequestID(context.Background(), "req_graph_002")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !found {
+		t.Fatal("expected business graph to be found")
+	}
+	if !response.Partial || !contains(response.PartialReasons, "business_ref_unresolved") {
+		t.Fatalf("expected unresolved partial reason, got: %+v", response)
+	}
+	if response.VisibilitySummary.HiddenRefCount != 1 || response.VisibilitySummary.UnresolvedRefCount != 1 {
+		t.Fatalf("unexpected visibility summary: %+v", response.VisibilitySummary)
+	}
+	if len(response.Data.Nodes) != 2 {
+		t.Fatalf("hidden/unresolved refs must not leak as graph nodes: %+v", response.Data.Nodes)
+	}
+}
+
+func TestGetBusinessGraphDoesNotDependOnEventOrder(t *testing.T) {
+	store := &fakeStore{traces: []evidencevo.NormalizedTrace{businessGraphTraceWithBusinessBeforeClaim("trace_graph_003", "req_graph_003")}}
+	service := New(store)
+
+	response, found, err := service.GetBusinessGraphByTraceID(context.Background(), "trace_graph_003")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !found {
+		t.Fatal("expected business graph to be found")
+	}
+	if contains(response.PartialReasons, "missing_claim") {
+		t.Fatalf("business graph must collect claims before linking refs: %+v", response)
+	}
+	if response.Page.NodeCount != 2 || response.Page.EdgeCount != 1 {
+		t.Fatalf("unexpected page: %+v", response.Page)
+	}
+}
+
+func TestGetBusinessGraphDeduplicatesEdgesAndAuthorizedRefs(t *testing.T) {
+	store := &fakeStore{traces: []evidencevo.NormalizedTrace{businessGraphTraceWithDuplicateRefs("trace_graph_004", "req_graph_004")}}
+	service := New(store)
+
+	response, found, err := service.GetBusinessGraphByTraceID(context.Background(), "trace_graph_004")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !found {
+		t.Fatal("expected business graph to be found")
+	}
+	if response.Page.EdgeCount != 1 || len(response.Data.Edges) != 1 {
+		t.Fatalf("expected duplicate edges to be collapsed, got page=%+v edges=%+v", response.Page, response.Data.Edges)
+	}
+	if response.VisibilitySummary.AuthorizedRefCount != 1 {
+		t.Fatalf("expected duplicate refs to count once, got %+v", response.VisibilitySummary)
+	}
+}
+
+func TestGetBusinessGraphDoesNotLeakHiddenClaimThroughSyntheticNode(t *testing.T) {
+	store := &fakeStore{traces: []evidencevo.NormalizedTrace{businessGraphTraceWithHiddenClaim("trace_graph_005", "req_graph_005")}}
+	service := New(store)
+
+	response, found, err := service.GetBusinessGraphByTraceID(context.Background(), "trace_graph_005")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !found {
+		t.Fatal("expected business graph to be found")
+	}
+	if !response.Partial || !contains(response.PartialReasons, "hidden_claim") {
+		t.Fatalf("expected hidden claim partial, got %+v", response)
+	}
+	if response.Page.NodeCount != 0 || response.Page.EdgeCount != 0 {
+		t.Fatalf("hidden claim must not leak through nodes or edges: %+v", response)
+	}
+	if response.VisibilitySummary.HiddenRefCount != 1 || response.VisibilitySummary.OmittedRefCount != 1 {
+		t.Fatalf("expected hidden claim and omitted business ref counts, got %+v", response.VisibilitySummary)
+	}
+}
+
+func TestGetBusinessGraphReturnsMissingBusinessRefsPartial(t *testing.T) {
+	store := &fakeStore{traces: []evidencevo.NormalizedTrace{{
+		TraceID:   "trace_no_business_refs",
+		RequestID: "req_no_business_refs",
+		Events: []evidencevo.EvidenceEvent{
+			{
+				EventType: "claim.created",
+				Payload: map[string]any{
+					"claim_id":       "claim_no_business_refs",
+					"claim_type":     "answer",
+					"claim_hash":     "sha256:claim",
+					"visibility":     "visible",
+					"version_status": "versioned",
+				},
+			},
+		},
+	}}}
+	service := New(store)
+
+	response, found, err := service.GetBusinessGraphByTraceID(context.Background(), "trace_no_business_refs")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !found {
+		t.Fatal("expected business graph to be found")
+	}
+	if !response.Partial || !contains(response.PartialReasons, "missing_business_refs") {
+		t.Fatalf("expected missing business refs partial, got: %+v", response)
+	}
+}
+
 func TestGetEvidenceChainByTraceIDNotFound(t *testing.T) {
 	service := New(&fakeStore{})
 
@@ -339,11 +483,43 @@ func queryTrace(traceID, requestID string) evidencevo.NormalizedTrace {
 				EventType: "business.refs.resolved",
 				Payload: map[string]any{
 					"claim_id":      "claim_visible",
-					"business_refs": []any{map[string]any{"ref_id": "object:customer", "ref_type": "object", "visibility": "visible"}},
+					"business_refs": []any{map[string]any{"ref_id": "object:customer", "ref_type": "object", "label": "Customer", "visibility": "visible", "version_status": "versioned"}},
 				},
 			},
 		},
 	}
+}
+
+func businessGraphTraceWithGovernance(traceID, requestID string) evidencevo.NormalizedTrace {
+	trace := queryTrace(traceID, requestID)
+	trace.Events[2].Payload["business_refs"] = []any{
+		map[string]any{"ref_id": "object:customer", "ref_type": "object", "visibility": "visible", "version_status": "versioned"},
+		map[string]any{"ref_id": "object:hidden", "ref_type": "object", "visibility": "hidden"},
+		map[string]any{"ref_id": "object:deleted", "ref_type": "object", "visibility": "unresolved"},
+	}
+	return trace
+}
+
+func businessGraphTraceWithBusinessBeforeClaim(traceID, requestID string) evidencevo.NormalizedTrace {
+	trace := queryTrace(traceID, requestID)
+	trace.Events[0], trace.Events[2] = trace.Events[2], trace.Events[0]
+	return trace
+}
+
+func businessGraphTraceWithDuplicateRefs(traceID, requestID string) evidencevo.NormalizedTrace {
+	trace := queryTrace(traceID, requestID)
+	trace.Events[2].Payload["business_refs"] = []any{
+		map[string]any{"ref_id": "object:customer", "ref_type": "object", "visibility": "visible", "version_status": "versioned"},
+		map[string]any{"ref_id": "object:customer", "ref_type": "object", "visibility": "visible", "version_status": "versioned"},
+	}
+	trace.Events = append(trace.Events, trace.Events[2])
+	return trace
+}
+
+func businessGraphTraceWithHiddenClaim(traceID, requestID string) evidencevo.NormalizedTrace {
+	trace := queryTrace(traceID, requestID)
+	trace.Events[0].Payload["visibility"] = "hidden"
+	return trace
 }
 
 func validBatch() string {
