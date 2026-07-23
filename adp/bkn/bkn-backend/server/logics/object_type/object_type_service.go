@@ -48,6 +48,7 @@ type objectTypeService struct {
 	cga        interfaces.ConceptGroupAccess
 	dda        interfaces.DataModelAccess
 	dva        interfaces.DataViewAccess
+	ma         interfaces.MetricAccess
 	mfa        interfaces.ModelFactoryAccess
 	ota        interfaces.ObjectTypeAccess
 	ps         interfaces.PermissionService
@@ -64,6 +65,7 @@ func NewObjectTypeService(appSetting *common.AppSetting) interfaces.ObjectTypeSe
 			cga:        logics.CGA,
 			dda:        logics.DDA,
 			dva:        logics.DVA,
+			ma:         logics.MA,
 			mfa:        logics.MFA,
 			ota:        logics.OTA,
 			ps:         permission.NewPermissionService(appSetting),
@@ -141,16 +143,8 @@ func (ots *objectTypeService) validateObjectTypeStrictExternalDeps(ctx context.C
 	for _, lp := range objectType.LogicProperties {
 		switch lp.Type {
 		case interfaces.LOGIC_PROPERTY_TYPE_METRIC:
-			model, err := ots.dda.GetMetricModelByID(ctx, lp.DataSource.ID)
-			if err != nil {
-				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-					WithErrorDetails(fmt.Sprintf("对象类[%s]逻辑属性[%s]的指标模型[%s]获取失败: %s",
-						objectType.OTName, lp.Name, lp.DataSource.ID, err.Error()))
-			}
-			if model == nil {
-				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-					WithErrorDetails(fmt.Sprintf("对象类[%s]逻辑属性[%s]的指标模型[%s]不存在",
-						objectType.OTName, lp.Name, lp.DataSource.ID))
+			if err := ots.validateLogicMetricProperty(ctx, objectType, lp); err != nil {
+				return err
 			}
 		case interfaces.LOGIC_PROPERTY_TYPE_OPERATOR:
 			op, err := ots.aoa.GetAgentOperatorByID(ctx, lp.DataSource.ID)
@@ -665,6 +659,134 @@ func (ots *objectTypeService) GetObjectTypesByIDs(ctx context.Context, tx *sql.T
 
 	span.SetStatus(codes.Ok, "")
 	return objectTypes, nil
+}
+
+func (ots *objectTypeService) GetObjectTypeSampleData(ctx context.Context,
+	knID string, branch string, otID string, query interfaces.ObjectTypeSampleDataQueryParams) (*interfaces.ObjectTypeSampleData, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "query object type sample data")
+	defer span.End()
+
+	if query.Limit <= 0 {
+		query.Limit = 20
+	}
+	if query.Limit > 100 {
+		query.Limit = 100
+	}
+	if query.Offset < 0 {
+		query.Offset = 0
+	}
+
+	objectTypes, err := ots.GetObjectTypesByIDs(ctx, nil, knID, branch, []string{otID})
+	if err != nil {
+		return nil, err
+	}
+	if len(objectTypes) == 0 || objectTypes[0] == nil {
+		return nil, rest.NewHTTPError(ctx, http.StatusNotFound,
+			berrors.BknBackend_ObjectType_ObjectTypeNotFound).WithErrorDetails(fmt.Sprintf("object type[%s] not found", otID))
+	}
+
+	objectType := objectTypes[0]
+	result := &interfaces.ObjectTypeSampleData{
+		Columns: []*interfaces.ObjectTypeSampleDataColumn{},
+		Entries: []map[string]any{},
+		Name:    objectType.OTName,
+	}
+	if objectType.DataSource == nil || strings.TrimSpace(objectType.DataSource.ID) == "" {
+		return result, nil
+	}
+
+	fieldMappings := []struct {
+		sourceField  string
+		propertyName string
+	}{}
+	outputFields := []string{}
+	for _, prop := range objectType.DataProperties {
+		if prop == nil || strings.TrimSpace(prop.Name) == "" {
+			continue
+		}
+
+		title := prop.DisplayName
+		if title == "" {
+			title = prop.Name
+		}
+		result.Columns = append(result.Columns, &interfaces.ObjectTypeSampleDataColumn{
+			DataIndex: prop.Name,
+			Title:     title,
+		})
+
+		sourceField := prop.Name
+		if prop.MappedField != nil && strings.TrimSpace(prop.MappedField.Name) != "" {
+			sourceField = prop.MappedField.Name
+		}
+		fieldMappings = append(fieldMappings, struct {
+			sourceField  string
+			propertyName string
+		}{
+			sourceField:  sourceField,
+			propertyName: prop.Name,
+		})
+		outputFields = append(outputFields, sourceField)
+	}
+
+	dsType := objectType.DataSource.Type
+	if dsType == "" {
+		dsType = interfaces.DATA_SOURCE_TYPE_DATA_VIEW
+	}
+
+	var datasetResp *interfaces.DatasetQueryResponse
+	switch dsType {
+	case interfaces.DATA_SOURCE_TYPE_RESOURCE:
+		datasetResp, err = ots.vba.QueryResourceData(ctx, objectType.DataSource.ID, &interfaces.ResourceDataQueryParams{
+			Paging: interfaces.ResourceDataPagingRequest{
+				Mode:   "single",
+				Limit:  query.Limit,
+				Offset: query.Offset,
+			},
+			NeedTotal:    query.NeedTotal,
+			OutputFields: outputFields,
+		})
+	default:
+		if query.Offset > 0 {
+			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+				berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails("data_view sample data uses search_after pagination and does not support offset")
+		}
+		var viewResp *interfaces.ViewQueryResult
+		var viewErr error
+		if len(query.SearchAfter) > 0 {
+			viewResp, viewErr = ots.dva.GetDataNext(ctx, objectType.DataSource.ID, query.SearchAfter, query.Limit)
+		} else {
+			viewResp, viewErr = ots.dva.GetDataStart(ctx, objectType.DataSource.ID, "", nil, query.Limit)
+		}
+		if viewErr != nil {
+			err = viewErr
+		} else if viewResp != nil {
+			datasetResp = &interfaces.DatasetQueryResponse{
+				Entries:    viewResp.Entries,
+				TotalCount: viewResp.TotalCount,
+			}
+			result.SearchAfter = viewResp.SearchAfter
+		}
+	}
+	if err != nil {
+		logger.Errorf("Query object type sample data error: %s", err.Error())
+		span.SetStatus(codes.Error, "query object type sample data failed")
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
+	}
+	if datasetResp == nil {
+		return result, nil
+	}
+
+	for _, entry := range datasetResp.Entries {
+		row := map[string]any{}
+		for _, mapping := range fieldMappings {
+			row[mapping.propertyName] = entry[mapping.sourceField]
+		}
+		result.Entries = append(result.Entries, row)
+	}
+	result.TotalCount = datasetResp.TotalCount
+	span.SetStatus(codes.Ok, "")
+	return result, nil
 }
 
 // hasDataPropertyIndexAffectingChanges 检测单个数据属性的关键字段是否发生变化
@@ -1770,22 +1892,7 @@ func (ots *objectTypeService) processObjectTypeDetails(ctx context.Context, obje
 				switch logicProp.DataSource.Type {
 				case interfaces.LOGIC_PROPERTY_TYPE_METRIC:
 					if logicProp.DataSource.ID != "" {
-						// 获取指标模型名称
-						model, err := ots.dda.GetMetricModelByID(ctx, logicProp.DataSource.ID)
-						if err != nil || model == nil {
-							// 依赖不存在或者请求报错，不报错，跳过
-							otellog.LogWarn(ctx, fmt.Sprintf("Object type [%s]'s logic property [%s] metric model [%s] not found, error: %v",
-								objectType.OTID, logicProp.Name, objectType.DataSource.ID, err))
-						} else {
-							// 依赖存在时才做相关操作
-							objectType.LogicProperties[j].DataSource.Name = model.ModelName
-
-							// 逻辑属性-指标，返回指标模型的分析维度
-							objectType.LogicProperties[j].AnalysisDims = model.AnalysisDims
-
-							// 对参数填充comment
-							processMetricPropertyParamComment(ctx, logicProp, model, objectType, j)
-						}
+						ots.enrichLogicMetricProperty(ctx, objectType, logicProp, j)
 					}
 				case interfaces.LOGIC_PROPERTY_TYPE_OPERATOR:
 					//todo: 算子的名称,前端翻译
@@ -1795,42 +1902,6 @@ func (ots *objectTypeService) processObjectTypeDetails(ctx context.Context, obje
 		}
 	}
 	return nil
-}
-
-// 处理指标属性的参数的comment
-func processMetricPropertyParamComment(ctx context.Context, logicProp *interfaces.LogicProperty, model *interfaces.MetricModel,
-	objectType *interfaces.ObjectType, j int) {
-
-	// 对参数填充comment
-	for k, param := range logicProp.Parameters {
-		// 存在则给，否则不给，不报错，记录warn日志
-		if model != nil && model.FieldsMap != nil {
-			if field, exist := model.FieldsMap[param.Name]; exist {
-				objectType.LogicProperties[j].Parameters[k].Comment = field.Comment
-				continue
-			} else {
-				// 字段不存在，记录warn日志
-				otellog.LogWarn(ctx, fmt.Sprintf("Object type [%s]'s logic property [%s]'s parameter[%s] not found in metric model[%s]",
-					objectType.OTID, logicProp.Name, param.Name, objectType.DataSource.ID))
-			}
-		}
-
-		// 处理特殊参数或记录warn日志
-		switch param.Name {
-		case "instant":
-			comment := "是否是即时查询。可选，默认为 false。当 instant = true 时，表示即时查询；当 instant = false 时，表示范围查询。"
-			objectType.LogicProperties[j].Parameters[k].Comment = &comment
-		case "start":
-			comment := "指标查询的开始时间。 start=<unix_timestamp>，单位到毫秒。 例如: 1646360670123"
-			objectType.LogicProperties[j].Parameters[k].Comment = &comment
-		case "end":
-			comment := "指标查询的结束时间。end=<unix_timestamp>，单位到毫秒。例如: 1646471470123"
-			objectType.LogicProperties[j].Parameters[k].Comment = &comment
-		case "step":
-			comment := "范围查询的步长。当 instant 为 false 时, 必须。step=<time_durations>，用一个数字，后面跟时间单位来定义。"
-			objectType.LogicProperties[j].Parameters[k].Comment = &comment
-		}
-	}
 }
 
 func (ots *objectTypeService) GetTotal(ctx context.Context, filterCondition map[string]any) (total int64, err error) {

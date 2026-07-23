@@ -162,6 +162,21 @@ func (mr *MockObjectTypeServiceMockRecorder) GetObjectTypeIDsByKnID(ctx, knID, b
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetObjectTypeIDsByKnID", reflect.TypeOf((*MockObjectTypeService)(nil).GetObjectTypeIDsByKnID), ctx, knID, branch)
 }
 
+// GetObjectTypeSampleData mocks base method.
+func (m *MockObjectTypeService) GetObjectTypeSampleData(ctx context.Context, knID, branch, otID string, query interfaces.ObjectTypeSampleDataQueryParams) (*interfaces.ObjectTypeSampleData, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetObjectTypeSampleData", ctx, knID, branch, otID, query)
+	ret0, _ := ret[0].(*interfaces.ObjectTypeSampleData)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetObjectTypeSampleData indicates an expected call of GetObjectTypeSampleData.
+func (mr *MockObjectTypeServiceMockRecorder) GetObjectTypeSampleData(ctx, knID, branch, otID, query any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetObjectTypeSampleData", reflect.TypeOf((*MockObjectTypeService)(nil).GetObjectTypeSampleData), ctx, knID, branch, otID, query)
+}
+
 // GetObjectTypesByIDs mocks base method.
 func (m *MockObjectTypeService) GetObjectTypesByIDs(ctx context.Context, tx *sql.Tx, knID, branch string, otIDs []string) ([]*interfaces.ObjectType, error) {
 	m.ctrl.T.Helper()

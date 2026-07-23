@@ -497,6 +497,41 @@ func Test_ValidateObjectType(t *testing.T) {
 			So(err, ShouldBeNil)
 		})
 
+		Convey("Success with metric logic property on data_view object type\n", func() {
+			ot := &interfaces.ObjectType{
+				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+					OTID:   "ot1",
+					OTName: "object1",
+					DataProperties: []*interfaces.DataProperty{
+						{
+							Name:        "prop1",
+							Type:        "string",
+							DisplayName: "prop1",
+						},
+					},
+					PrimaryKeys: []string{"prop1"},
+					DisplayKey:  "prop1",
+					DataSource: &interfaces.ResourceInfo{
+						Type: interfaces.DATA_SOURCE_TYPE_DATA_VIEW,
+						ID:   "view1",
+					},
+					LogicProperties: []*interfaces.LogicProperty{
+						{
+							Name:        "logic1",
+							Type:        "metric",
+							DisplayName: "logic1",
+							DataSource: &interfaces.ResourceInfo{
+								Type: "metric",
+								ID:   "metric-model-1",
+							},
+						},
+					},
+				},
+			}
+			err := ValidateObjectType(ctx, ot, true)
+			So(err, ShouldBeNil)
+		})
+
 		Convey("Failed with invalid data property\n", func() {
 			ot := &interfaces.ObjectType{
 				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{

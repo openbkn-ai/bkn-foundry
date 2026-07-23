@@ -111,7 +111,8 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 		apiV1.DELETE("/knowledge-networks/:kn_id/object-types/:ot_ids", r.DeleteObjectTypes) // path上用kn_ids接，实际上只能传一个id
 		apiV1.PUT("/knowledge-networks/:kn_id/object-types/:ot_id", r.verifyJsonContentType(), r.UpdateObjectTypeByEx)
 		apiV1.PUT("/knowledge-networks/:kn_id/object-types/:ot_id/data_properties/:property_names", r.verifyJsonContentType(), r.UpdateDataProperties)
-		apiV1.GET("/knowledge-networks/:kn_id/object-types", r.ListObjectTypesByEx)        // path上用kn_ids接，实际上只能传一个id
+		apiV1.GET("/knowledge-networks/:kn_id/object-types", r.ListObjectTypesByEx) // path上用kn_ids接，实际上只能传一个id
+		apiV1.GET("/knowledge-networks/:kn_id/object-types/:ot_ids/sample-data", r.GetObjectTypeSampleDataByEx)
 		apiV1.GET("/knowledge-networks/:kn_id/object-types/:ot_ids", r.GetObjectTypesByEx) // path上用kn_ids接，实际上只能传一个id
 
 		// 关系类
@@ -195,6 +196,7 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 		apiInV1.POST("/knowledge-networks/:kn_id/object-types/validation", r.verifyJsonContentType(), r.ValidateObjectTypesByIn)
 		apiInV1.PUT("/knowledge-networks/:kn_id/object-types/:ot_id", r.verifyJsonContentType(), r.UpdateObjectTypeByIn)
 		apiInV1.GET("/knowledge-networks/:kn_id/object-types", r.ListObjectTypesByIn)
+		apiInV1.GET("/knowledge-networks/:kn_id/object-types/:ot_ids/sample-data", r.GetObjectTypeSampleDataByIn)
 		apiInV1.GET("/knowledge-networks/:kn_id/object-types/:ot_ids", r.GetObjectTypesByIn) // path上用kn_ids接，实际上只能传一个id
 
 		// 关系类
