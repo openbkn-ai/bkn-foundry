@@ -1,4 +1,13 @@
 
+_kafka_resolve_image_defaults() {
+    local image_registry
+    image_registry="$(resolve_openbkn_image_registry "${KAFKA_IMAGE_REGISTRY:-}")"
+    KAFKA_IMAGE_REGISTRY="${image_registry}"
+    if [[ -z "${KAFKA_IMAGE}" ]]; then
+        KAFKA_IMAGE="$(compose_image_ref "${image_registry}" "${KAFKA_IMAGE_REPOSITORY:-bitnami/kafka}" "${KAFKA_IMAGE_TAG}")"
+    fi
+}
+
 install_kafka() {
     log_info "Installing Kafka (1 controller + 1 broker) via Helm..."
 
@@ -33,9 +42,7 @@ install_kafka() {
         return 1
     fi
 
-    if [[ -z "${KAFKA_IMAGE}" ]]; then
-        KAFKA_IMAGE="$(image_from_registry "${KAFKA_IMAGE_REPOSITORY}" "${KAFKA_IMAGE_TAG}" "${KAFKA_IMAGE_FALLBACK}")"
-    fi
+    _kafka_resolve_image_defaults
 
     if [[ "${KAFKA_AUTH_ENABLED}" == "true" ]]; then
         # Ensure passwords exist (and persist via a Secret for idempotency)
@@ -92,12 +99,6 @@ EOF
                 persistence_enabled="false"
             fi
         fi
-    fi
-
-    # Override Kafka image registry based on OFFLINE_MODE (in case it was set before OFFLINE_MODE)
-    if [[ "${OFFLINE_MODE}" == "true" ]]; then
-        KAFKA_IMAGE="${OFFLINE_REGISTRY}/openbkn-ai/bitnami/kafka:3.9.0-debian-12-r10"
-        log_info "Offline mode: Using offline registry ${OFFLINE_REGISTRY} for Kafka"
     fi
 
     # Parse image registry/repository/tag from KAFKA_IMAGE
