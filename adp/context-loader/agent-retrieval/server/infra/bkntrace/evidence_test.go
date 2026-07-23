@@ -118,3 +118,58 @@ func TestBuildSearchSchemaEventsRequiresTraceContext(t *testing.T) {
 		t.Fatalf("len(events)=%d, want 0", len(events))
 	}
 }
+
+func TestBuildQueryObjectInstanceEventsUsesRowRefsOnly(t *testing.T) {
+	req := &interfaces.QueryObjectInstancesReq{
+		KnID:  "kn_demo",
+		OtID:  "customer",
+		Limit: 10,
+		Filters: []interfaces.FlatFilter{
+			{Field: "phone", Op: interfaces.KnOperationTypeEqual, Value: "18800001111"},
+		},
+		Properties: []string{"customer_name", "phone"},
+	}
+	resp := &interfaces.QueryObjectInstancesResp{
+		Data: []any{
+			map[string]any{
+				"_instance_identity": map[string]any{"customer_id": "cust_001"},
+				"customer_name":      "Alice",
+				"phone":              "18800001111",
+			},
+		},
+		SearchAfter: []any{"cursor_001"},
+	}
+
+	events := BuildQueryObjectInstanceEvents(testTraceContext(), req, resp)
+	if len(events) != 2 {
+		t.Fatalf("len(events)=%d, want 2", len(events))
+	}
+	raw, err := json.Marshal(events)
+	if err != nil {
+		t.Fatalf("marshal events: %v", err)
+	}
+	text := string(raw)
+	if !strings.Contains(text, `"event_type":"claim.created"`) {
+		t.Fatalf("missing claim.created event: %s", text)
+	}
+	if !strings.Contains(text, `"event_type":"evidence.refs.created"`) {
+		t.Fatalf("missing evidence.refs.created event: %s", text)
+	}
+	if !strings.Contains(text, `"ref_type":"row_ref"`) {
+		t.Fatalf("missing row_ref evidence: %s", text)
+	}
+	if !strings.Contains(text, `"condition_hash":"sha256:`) {
+		t.Fatalf("missing condition hash: %s", text)
+	}
+	if !strings.Contains(text, `"properties_hash":"sha256:`) {
+		t.Fatalf("missing properties hash: %s", text)
+	}
+	if !strings.Contains(text, `"truncated":true`) {
+		t.Fatalf("missing truncation signal: %s", text)
+	}
+	for _, leaked := range []string{"18800001111", "Alice", "cust_001", "customer_name"} {
+		if strings.Contains(text, leaked) {
+			t.Fatalf("event leaked raw object query content %q: %s", leaked, text)
+		}
+	}
+}

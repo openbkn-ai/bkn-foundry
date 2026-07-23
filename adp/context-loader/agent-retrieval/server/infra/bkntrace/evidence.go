@@ -114,7 +114,57 @@ func BuildSearchSchemaEvents(ctx context.Context, req *interfaces.SearchSchemaRe
 	}
 }
 
-func SubmitEvents(ctx context.Context, logger interfaces.Logger, req *interfaces.SearchSchemaReq, events []Event) {
+func BuildQueryObjectInstanceEvents(ctx context.Context, req *interfaces.QueryObjectInstancesReq, resp *interfaces.QueryObjectInstancesResp) []Event {
+	ec, ok := contextFromRequest(ctx, nil)
+	if !ok {
+		return nil
+	}
+	refs := objectInstanceEvidenceRefs(req, resp)
+	if len(refs) == 0 {
+		return nil
+	}
+
+	resultSummary := map[string]any{
+		"kn_id":          queryObjectKnID(req),
+		"object_type_id": queryObjectTypeID(req),
+		"condition_hash": queryObjectConditionHash(req),
+		"result_count":   len(resp.Data),
+		"truncated":      queryObjectTruncated(req, resp),
+	}
+	claimID := ClaimID("context_loader.query_object_instance", queryObjectTypeID(req), resultSummary)
+
+	partialReason := []string{"row_refs_unversioned"}
+	if queryObjectTruncated(req, resp) {
+		partialReason = append(partialReason, "result_truncated")
+	}
+
+	return []Event{
+		buildEvent(ec, "claim.created", "context.query_object", map[string]any{
+			"claim_id":       claimID,
+			"claim_type":     "finding",
+			"claim_hash":     HashValue(resultSummary),
+			"visibility":     "visible",
+			"version_status": "unversioned",
+			"partial_reason": partialReason,
+			"subject_refs": map[string]any{
+				"kn_id":               queryObjectKnID(req),
+				"object_type_id":      queryObjectTypeID(req),
+				"condition_hash":      resultSummary["condition_hash"],
+				"properties_hash":     queryObjectPropertiesHash(req),
+				"limit":               queryObjectLimit(req),
+				"returned_ref_count":  len(refs),
+				"truncated":           queryObjectTruncated(req, resp),
+				"data.classification": "internal",
+			},
+		}),
+		buildEvent(ec, "evidence.refs.created", "context.query_object", map[string]any{
+			"claim_id":      claimID,
+			"evidence_refs": refs,
+		}),
+	}
+}
+
+func SubmitEvents(ctx context.Context, logger interfaces.Logger, req any, events []Event) {
 	if len(events) == 0 {
 		return
 	}
@@ -182,7 +232,7 @@ func evidenceTimeout() time.Duration {
 	return time.Duration(ms) * time.Millisecond
 }
 
-func contextFromRequest(ctx context.Context, req *interfaces.SearchSchemaReq) (eventContext, bool) {
+func contextFromRequest(ctx context.Context, req any) (eventContext, bool) {
 	spanContext := trace.SpanContextFromContext(ctx)
 	if !spanContext.IsValid() {
 		return eventContext{}, false
@@ -198,12 +248,12 @@ func contextFromRequest(ctx context.Context, req *interfaces.SearchSchemaReq) (e
 		accountID = strings.TrimSpace(authContext.AccountID)
 		accountType = strings.TrimSpace(string(authContext.AccountType))
 	}
-	if req != nil {
+	if schemaReq, ok := req.(*interfaces.SearchSchemaReq); ok && schemaReq != nil {
 		if accountID == "" {
-			accountID = strings.TrimSpace(req.XAccountID)
+			accountID = strings.TrimSpace(schemaReq.XAccountID)
 		}
 		if accountType == "" {
-			accountType = strings.TrimSpace(req.XAccountType)
+			accountType = strings.TrimSpace(schemaReq.XAccountType)
 		}
 	}
 	flags := "00"
@@ -362,4 +412,103 @@ func maxConcepts(req *interfaces.SearchSchemaReq) int {
 
 func boolValue(value *bool) bool {
 	return value != nil && *value
+}
+
+func objectInstanceEvidenceRefs(req *interfaces.QueryObjectInstancesReq, resp *interfaces.QueryObjectInstancesResp) []map[string]any {
+	if req == nil || resp == nil || len(resp.Data) == 0 {
+		return nil
+	}
+	refs := make([]map[string]any, 0, len(resp.Data))
+	for index, item := range resp.Data {
+		identity, ok := objectInstanceIdentity(item)
+		if !ok {
+			identity = map[string]any{
+				"row_index": index,
+				"row_hash":  HashValue(item),
+			}
+		}
+		refs = append(refs, map[string]any{
+			"ref_id":         "object_instance:" + queryObjectTypeID(req) + ":" + hashSuffix(identity),
+			"ref_type":       "row_ref",
+			"source_system":  ModuleName,
+			"summary_hash":   HashValue(map[string]any{"identity_hash": HashValue(identity), "object_type_id": queryObjectTypeID(req)}),
+			"validity":       "observed",
+			"version_status": "unversioned",
+			"visibility":     "visible",
+			"partial_reason": []string{"row_ref_unversioned"},
+		})
+	}
+	return refs
+}
+
+func objectInstanceIdentity(item any) (map[string]any, bool) {
+	itemMap, ok := asMap(item)
+	if !ok {
+		return nil, false
+	}
+	identity, ok := itemMap["_instance_identity"]
+	if !ok {
+		return nil, false
+	}
+	return asMap(identity)
+}
+
+func queryObjectConditionHash(req *interfaces.QueryObjectInstancesReq) string {
+	if req == nil {
+		return HashValue(nil)
+	}
+	return HashValue(map[string]any{
+		"condition": req.Cond,
+		"filters":   req.Filters,
+		"offset":    req.Offset,
+	})
+}
+
+func queryObjectPropertiesHash(req *interfaces.QueryObjectInstancesReq) string {
+	if req == nil {
+		return HashValue(nil)
+	}
+	return HashValue(req.Properties)
+}
+
+func queryObjectTruncated(req *interfaces.QueryObjectInstancesReq, resp *interfaces.QueryObjectInstancesResp) bool {
+	if resp == nil {
+		return false
+	}
+	if len(resp.SearchAfter) > 0 {
+		return true
+	}
+	if req == nil || req.Limit <= 0 {
+		return false
+	}
+	return len(resp.Data) >= req.Limit
+}
+
+func queryObjectKnID(req *interfaces.QueryObjectInstancesReq) string {
+	if req == nil {
+		return ""
+	}
+	return strings.TrimSpace(req.KnID)
+}
+
+func queryObjectTypeID(req *interfaces.QueryObjectInstancesReq) string {
+	if req == nil {
+		return ""
+	}
+	return strings.TrimSpace(req.OtID)
+}
+
+func queryObjectLimit(req *interfaces.QueryObjectInstancesReq) int {
+	if req == nil {
+		return 0
+	}
+	return req.Limit
+}
+
+func hashSuffix(value any) string {
+	hash := strings.TrimPrefix(HashValue(value), "sha256:")
+	if len(hash) > 24 {
+		return hash[:24]
+	}
+	return hash
 }
