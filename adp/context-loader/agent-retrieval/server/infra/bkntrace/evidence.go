@@ -34,7 +34,14 @@ const (
 	envEvidenceIngestTimeoutMS = "BKN_TRACE_EVIDENCE_TIMEOUT_MS"
 )
 
+const maxInFlightEvidenceBatches = 64
+
 type Event map[string]any
+
+var (
+	evidenceHTTPClient = &http.Client{}
+	evidenceInFlight   = make(chan struct{}, maxInFlightEvidenceBatches)
+)
 
 type batch struct {
 	ContractVersion string         `json:"bkn.trace.schema.version"`
@@ -67,6 +74,24 @@ func ClaimID(kind, subjectID string, value any) string {
 		"value":      value,
 	})))
 	return "claim_" + hex.EncodeToString(sum[:])[:24]
+}
+
+func EvidenceEnabled() bool {
+	return evidenceIngestURL() != ""
+}
+
+func EmitSearchSchemaEvents(ctx context.Context, logger interfaces.Logger, req *interfaces.SearchSchemaReq, resp *interfaces.SearchSchemaResp) {
+	if !EvidenceEnabled() {
+		return
+	}
+	SubmitEvents(ctx, logger, req, BuildSearchSchemaEvents(ctx, req, resp))
+}
+
+func EmitQueryObjectInstanceEvents(ctx context.Context, logger interfaces.Logger, req *interfaces.QueryObjectInstancesReq, resp *interfaces.QueryObjectInstancesResp) {
+	if !EvidenceEnabled() {
+		return
+	}
+	SubmitEvents(ctx, logger, req, BuildQueryObjectInstanceEvents(ctx, req, resp))
 }
 
 func BuildSearchSchemaEvents(ctx context.Context, req *interfaces.SearchSchemaReq, resp *interfaces.SearchSchemaResp) []Event {
@@ -172,7 +197,7 @@ func SubmitEvents(ctx context.Context, logger interfaces.Logger, req any, events
 	if !ok || ec.accountID == "" || ec.accountType == "" {
 		return
 	}
-	ingestURL := strings.TrimSpace(os.Getenv(envEvidenceIngestURL))
+	ingestURL := evidenceIngestURL()
 	if ingestURL == "" {
 		return
 	}
@@ -190,7 +215,17 @@ func SubmitEvents(ctx context.Context, logger interfaces.Logger, req any, events
 		Events: events,
 	}
 
+	select {
+	case evidenceInFlight <- struct{}{}:
+	default:
+		if logger != nil {
+			logger.WithContext(ctx).Warn("BKN Trace evidence ingestion dropped: in-flight limit reached")
+		}
+		return
+	}
+
 	go func() {
+		defer func() { <-evidenceInFlight }()
 		if err := postBatch(ingestURL, timeout, payload); err != nil && logger != nil {
 			logger.WithContext(ctx).Warnf("BKN Trace evidence ingestion unavailable: %v", err)
 		}
@@ -202,14 +237,16 @@ func postBatch(ingestURL string, timeout time.Duration, payload batch) error {
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, ingestURL, bytes.NewReader(body))
+	postCtx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(postCtx, http.MethodPost, ingestURL, bytes.NewReader(body))
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{Timeout: timeout}
-	resp, err := client.Do(req)
+	resp, err := evidenceHTTPClient.Do(req)
 	if err != nil {
 		return err
 	}
@@ -218,6 +255,10 @@ func postBatch(ingestURL string, timeout time.Duration, payload batch) error {
 		return fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
 	return nil
+}
+
+func evidenceIngestURL() string {
+	return strings.TrimSpace(os.Getenv(envEvidenceIngestURL))
 }
 
 func evidenceTimeout() time.Duration {

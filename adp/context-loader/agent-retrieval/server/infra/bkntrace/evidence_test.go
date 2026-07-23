@@ -9,8 +9,12 @@ package bkntrace
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/interfaces"
@@ -221,4 +225,50 @@ func TestQueryObjectTruncatedUsesExplicitNextPageSignals(t *testing.T) {
 	if !queryObjectTruncated(req, hasMoreOffsetResp) {
 		t.Fatalf("truncated should be true when total_count exceeds returned offset range")
 	}
+}
+
+func TestEmitSearchSchemaEventsNoopsWhenIngestDisabled(t *testing.T) {
+	t.Setenv(envEvidenceIngestURL, "")
+	maxConcepts := 5
+
+	EmitSearchSchemaEvents(testTraceContext(), nil, &interfaces.SearchSchemaReq{
+		Query:       "schema",
+		KnID:        "kn_demo",
+		MaxConcepts: &maxConcepts,
+	}, &interfaces.SearchSchemaResp{
+		ObjectTypes: []any{map[string]any{"concept_id": "customer"}},
+	})
+}
+
+func TestSubmitEventsNoopsWhenAccountContextMissing(t *testing.T) {
+	t.Setenv(envEvidenceIngestURL, "http://127.0.0.1:1/ingest")
+	ctx := common.SetTraceContextToCtx(trace.ContextWithSpanContext(context.Background(), trace.NewSpanContext(trace.SpanContextConfig{
+		TraceID: trace.TraceID{0x71, 0x21, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2},
+		SpanID:  trace.SpanID{0x71, 0x21, 0, 0, 0, 0, 0, 2},
+	})), common.TraceContext{RequestID: "req_context_loader_phase2_no_account"})
+
+	SubmitEvents(ctx, nil, nil, []Event{{"event_type": "claim.created"}})
+}
+
+func TestSubmitEventsHandlesServerFailureWithoutBlocking(t *testing.T) {
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	t.Setenv(envEvidenceIngestURL, server.URL)
+	t.Setenv(envEvidenceIngestTimeoutMS, "500")
+
+	SubmitEvents(testTraceContext(), nil, nil, []Event{{"event_type": "claim.created"}})
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if calls.Load() > 0 {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("expected evidence ingestion request")
 }

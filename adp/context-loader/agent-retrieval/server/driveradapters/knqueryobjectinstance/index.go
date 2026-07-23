@@ -98,7 +98,7 @@ func (h *knQueryObjectInstanceHandler) QueryObjectInstance(c *gin.Context) {
 		rest.ReplyError(c, err)
 		return
 	}
-	bkntrace.SubmitEvents(c.Request.Context(), h.Logger, req, bkntrace.BuildQueryObjectInstanceEvents(c.Request.Context(), req, resp))
+	bkntrace.EmitQueryObjectInstanceEvents(c.Request.Context(), h.Logger, req, resp)
 
 	// 返回成功响应
 	rest.ReplyOK(c, http.StatusOK, resp)

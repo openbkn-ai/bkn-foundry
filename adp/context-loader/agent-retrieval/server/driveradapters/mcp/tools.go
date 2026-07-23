@@ -109,7 +109,7 @@ func handleQueryObjectInstance(ontologyQuery interfaces.DrivenOntologyQuery) fun
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-		bkntrace.SubmitEvents(ctx, nil, queryReq, bkntrace.BuildQueryObjectInstanceEvents(ctx, queryReq, resp))
+		bkntrace.EmitQueryObjectInstanceEvents(ctx, nil, queryReq, resp)
 		resp.ObjectConcept = nil
 		result, err := BuildMCPToolResult(resp, format)
 		if err != nil {

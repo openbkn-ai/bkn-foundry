@@ -44,7 +44,7 @@ func (s *knSearchService) SearchSchema(ctx context.Context, req *interfaces.Sear
 	}
 
 	filtered := FilterSearchSchemaResp(resp, metricTypes, scope, *req.MaxConcepts)
-	bkntrace.SubmitEvents(ctx, s.Logger, req, bkntrace.BuildSearchSchemaEvents(ctx, req, filtered))
+	bkntrace.EmitSearchSchemaEvents(ctx, s.Logger, req, filtered)
 	return filtered, nil
 }
 
