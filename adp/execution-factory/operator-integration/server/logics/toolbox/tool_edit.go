@@ -130,6 +130,24 @@ func (s *ToolServiceImpl) checkToolNameExist(ctx context.Context, boxID, toolNam
 	return
 }
 
+// resolveFunctionCode 取本次编辑要落库的函数代码。
+// 请求没带 code 时说明用户只改依赖或参数定义,沿用已存代码,避免整段元数据更新被跳过。
+func (s *ToolServiceImpl) resolveFunctionCode(ctx context.Context, code string, toolDB *model.ToolDB) (string, error) {
+	if code != "" {
+		return code, nil
+	}
+	has, currentMetadataDB, err := s.MetadataService.GetMetadataBySource(ctx, toolDB.SourceID, toolDB.SourceType)
+	if err != nil {
+		s.Logger.WithContext(ctx).Errorf("select metadata failed, err: %v", err)
+		return "", oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+	}
+	if !has {
+		return "", oerrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.ErrExtMetadataNotFound,
+			fmt.Sprintf("metadata %s not found", toolDB.SourceID))
+	}
+	return currentMetadataDB.GetCode(), nil
+}
+
 // 校验并更新工具元数据
 func (s *ToolServiceImpl) updateToolMetadata(ctx context.Context, req *interfaces.UpdateToolReq, toolDB *model.ToolDB) (err error) {
 	var needUpdate bool
@@ -137,7 +155,9 @@ func (s *ToolServiceImpl) updateToolMetadata(ctx context.Context, req *interface
 	case interfaces.MetadataTypeAPI:
 		needUpdate = req.OpenAPIInput != nil && req.OpenAPIInput.Data != nil
 	case interfaces.MetadataTypeFunc:
-		needUpdate = req.FunctionInputEdit != nil && req.FunctionInputEdit.Code != ""
+		// 只改依赖、参数定义而不改代码也是合法编辑,因此不再要求必须带 code。
+		// code 为空时沿用已存代码,见下方 resolveFunctionCode。
+		needUpdate = req.FunctionInputEdit != nil
 	}
 	var metadatas []interfaces.IMetadataDB
 	if needUpdate {
@@ -145,13 +165,18 @@ func (s *ToolServiceImpl) updateToolMetadata(ctx context.Context, req *interface
 		case model.SourceTypeOpenAPI:
 			metadatas, err = s.MetadataService.ParseMetadata(ctx, req.MetadataType, req.OpenAPIInput)
 		case model.SourceTypeFunction:
+			var code string
+			code, err = s.resolveFunctionCode(ctx, req.FunctionInputEdit.Code, toolDB)
+			if err != nil {
+				return
+			}
 			functionInput := &interfaces.FunctionInput{
 				Name:            req.ToolName,
 				Description:     req.ToolDesc,
 				Inputs:          req.FunctionInputEdit.Inputs,
 				Outputs:         req.FunctionInputEdit.Outputs,
 				ScriptType:      req.FunctionInputEdit.ScriptType,
-				Code:            req.FunctionInputEdit.Code,
+				Code:            code,
 				Dependencies:    req.FunctionInputEdit.Dependencies,
 				DependenciesURL: req.FunctionInputEdit.DependenciesURL,
 			}

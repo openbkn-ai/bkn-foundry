@@ -102,13 +102,7 @@ func (h *unifiedProxyHandler) FunctionExecute(c *gin.Context) {
 		return
 	}
 	h.Logger.Infof("FunctionExecute response summary: %v", summarizeExecutionResponse(resp))
-	result := &FunctionExecuteResp{
-		Stdout:  resp.Stdout,
-		Stderr:  resp.Stderr,
-		Result:  resp.ReturnValue,
-		Metrics: resp.Metrics,
-	}
-	rest.ReplyOK(c, http.StatusOK, result)
+	rest.ReplyOK(c, http.StatusOK, newFunctionExecuteResp(resp))
 }
 
 func buildFunctionProxyExecutionEnv(version string) map[string]any {
@@ -122,10 +116,32 @@ func buildFunctionProxyExecutionEnv(version string) map[string]any {
 
 // FunctionExecuteResp 函数执行响应
 type FunctionExecuteResp struct {
-	Stdout  string `json:"stdout"`  // 标准输出
-	Stderr  string `json:"stderr"`  // 标准错误输出
-	Result  any    `json:"result"`  // 执行结果值
-	Metrics any    `json:"metrics"` // 执行指标
+	Stdout          string `json:"stdout"`                     // 标准输出
+	Stderr          string `json:"stderr"`                     // 标准错误输出
+	Result          any    `json:"result"`                     // 执行结果值
+	Metrics         any    `json:"metrics"`                    // 执行指标
+	ExitCode        int    `json:"exit_code"`                  // 退出码,0 表示成功
+	ErrorMessage    string `json:"error_message,omitempty"`    // 沙箱侧错误信息
+	ExecutionTimeMS int64  `json:"execution_time_ms"`          // 执行耗时,单位毫秒
+	Artifacts       any    `json:"artifacts,omitempty"`        // 文件制品
+	SessionID       string `json:"session_id,omitempty"`       // 沙箱会话ID,便于排障
+}
+
+// newFunctionExecuteResp 把沙箱执行结果转成对外响应。
+// 沙箱本身返回了退出码、耗时、制品等信息,调试函数时这些和 stdout/stderr 同样关键,
+// 因此整体透出而不是只保留输出流。
+func newFunctionExecuteResp(resp *interfaces.ExecuteCodeResp) *FunctionExecuteResp {
+	return &FunctionExecuteResp{
+		Stdout:          resp.Stdout,
+		Stderr:          resp.Stderr,
+		Result:          resp.ReturnValue,
+		Metrics:         resp.Metrics,
+		ExitCode:        resp.ExitCode,
+		ErrorMessage:    resp.ErrorMessage,
+		ExecutionTimeMS: resp.ExecutionTime,
+		Artifacts:       resp.Artifacts,
+		SessionID:       resp.SessionID,
+	}
 }
 
 func buildFunctionExecutionEnv(req *interfaces.FunctionProxyExecuteCodeReq) map[string]any {
@@ -231,14 +247,7 @@ func (h *unifiedProxyHandler) FunctionExecuteProxy(c *gin.Context) {
 		return
 	}
 	h.Logger.Infof("FunctionExecuteProxy response summary: %v", summarizeExecutionResponse(resp))
-	// 转换为 FunctionExecuteResp
-	result := &FunctionExecuteResp{
-		Stdout:  resp.Stdout,
-		Stderr:  resp.Stderr,
-		Result:  resp.ReturnValue,
-		Metrics: resp.Metrics,
-	}
-	rest.ReplyOK(c, http.StatusOK, result)
+	rest.ReplyOK(c, http.StatusOK, newFunctionExecuteResp(resp))
 }
 
 func summarizeExecutionResponse(resp *interfaces.ExecuteCodeResp) map[string]any {
