@@ -20,3 +20,7 @@ def not_found(what: str, ident: str) -> HTTPException:
 
 def bad_request(code: str, description: str, detail: str = "", solution: str = "") -> HTTPException:
     return err(400, f"ParamError.{code}", description, detail, solution)
+
+
+def forbidden(description: str, detail: str = "", solution: str = "") -> HTTPException:
+    return err(403, "Forbidden", description, detail, solution)
