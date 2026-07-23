@@ -1,7 +1,5 @@
 package evidencevo
 
-import "encoding/json"
-
 const ContractVersion = "2.0.0"
 
 type IngestRequest struct {
@@ -21,18 +19,17 @@ type TraceContext struct {
 }
 
 type EvidenceEvent struct {
-	EventID       string          `json:"event_id"`
-	EventType     string          `json:"event_type"`
-	SchemaVersion string          `json:"bkn.trace.schema.version"`
-	ObservedAt    string          `json:"observed_at"`
-	EmittedAt     string          `json:"emitted_at"`
-	Producer      string          `json:"producer_module"`
-	TraceID       string          `json:"trace_id"`
-	SpanID        string          `json:"span_id"`
-	RequestID     string          `json:"bkn.request.id"`
-	OperationName string          `json:"bkn.operation.name"`
-	Payload       map[string]any  `json:"payload"`
-	RawPayload    json.RawMessage `json:"-"`
+	EventID       string         `json:"event_id"`
+	EventType     string         `json:"event_type"`
+	SchemaVersion string         `json:"bkn.trace.schema.version"`
+	ObservedAt    string         `json:"observed_at"`
+	EmittedAt     string         `json:"emitted_at"`
+	Producer      string         `json:"producer_module"`
+	TraceID       string         `json:"trace_id"`
+	SpanID        string         `json:"span_id"`
+	RequestID     string         `json:"bkn.request.id"`
+	OperationName string         `json:"bkn.operation.name"`
+	Payload       map[string]any `json:"payload"`
 }
 
 type ValidationError struct {

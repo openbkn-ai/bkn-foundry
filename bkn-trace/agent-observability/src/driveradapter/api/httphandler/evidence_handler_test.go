@@ -25,6 +25,52 @@ func TestEvidenceHandlerAcceptsValidBatch(t *testing.T) {
 	}
 }
 
+func TestEvidenceHandlerRejectsIngestWithoutConfiguredToken(t *testing.T) {
+	store := evidencestore.New()
+	handler := NewEvidenceHandlerWithIngestToken(evidencesvc.New(store), "secret-token")
+	req := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/evidence/events", strings.NewReader(validHandlerBatch()))
+	rec := httptest.NewRecorder()
+
+	handler.IngestEvidenceEvents(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	queryReq := httptest.NewRequest(http.MethodGet, "/api/agent-observability/v1/traces/9c0d0000000000000000000000000001/evidence-chain", nil)
+	queryRec := httptest.NewRecorder()
+	handler.GetEvidenceChainByTraceID(queryRec, queryReq)
+	if queryRec.Code != http.StatusNotFound {
+		t.Fatalf("expected rejected event to stay unstored, got %d: %s", queryRec.Code, queryRec.Body.String())
+	}
+}
+
+func TestEvidenceHandlerAcceptsBearerIngestToken(t *testing.T) {
+	handler := NewEvidenceHandlerWithIngestToken(evidencesvc.New(evidencestore.New()), "secret-token")
+	req := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/evidence/events", strings.NewReader(validHandlerBatch()))
+	req.Header.Set("Authorization", "Bearer secret-token")
+	rec := httptest.NewRecorder()
+
+	handler.IngestEvidenceEvents(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestEvidenceHandlerAcceptsIngestTokenHeader(t *testing.T) {
+	handler := NewEvidenceHandlerWithIngestToken(evidencesvc.New(evidencestore.New()), "secret-token")
+	req := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/evidence/events", strings.NewReader(validHandlerBatch()))
+	req.Header.Set("X-BKN-Trace-Ingest-Token", "secret-token")
+	rec := httptest.NewRecorder()
+
+	handler.IngestEvidenceEvents(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestEvidenceHandlerRejectsSensitivePayload(t *testing.T) {
 	handler := NewEvidenceHandler(evidencesvc.New(evidencestore.New()))
 	req := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/evidence/events", strings.NewReader(strings.Replace(validHandlerBatch(), `"claim_hash": "sha256:claim"`, `"raw_sql": "select email from customer"`, 1)))

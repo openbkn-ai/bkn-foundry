@@ -47,6 +47,13 @@ spec:
             - name: OPENSEARCH_AUTH_PASSWORD
               value: {{ .Values.opensearch.auth.password | quote }}
             {{- end }}
+            {{- if .Values.evidence.ingestAuth.existingSecret }}
+            - name: BKN_TRACE_EVIDENCE_INGEST_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.evidence.ingestAuth.existingSecret | quote }}
+                  key: {{ .Values.evidence.ingestAuth.secretKey | quote }}
+            {{- end }}
           livenessProbe:
             tcpSocket:
               port: http

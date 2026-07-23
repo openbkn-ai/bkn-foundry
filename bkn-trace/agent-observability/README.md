@@ -31,6 +31,26 @@ GOCACHE=/tmp/openbkn-go-build-cache GOMODCACHE=/tmp/openbkn-go-mod-cache go test
 
 阶段二 evidence ingestion 接口接受 `bkn.trace.schema.version=2.0.0` 的事件批次，包含 `trace` 与 `events`。当前版本先完成 contract 校验、敏感 payload 拒绝、归一化计数、内存 repository 写入和最小 Evidence Chain 查询；后续 PR 会把 repository 替换为持久化 evidence index。
 
+### Evidence 写入安全边界
+
+`POST /api/agent-observability/v1/evidence/events` 是写接口，生产环境必须通过平台网关鉴权保护，或配置服务内最小 ingest token：
+
+```bash
+kubectl create secret generic bkn-trace-evidence-ingest \
+  --from-literal=token='<strong-token>' \
+  -n observability
+```
+
+```bash
+helm upgrade --install agent-observability charts/agent-observability \
+  --set evidence.ingestAuth.existingSecret=bkn-trace-evidence-ingest \
+  -n observability
+```
+
+启用后，写入方需要携带 `Authorization: Bearer <strong-token>` 或 `X-BKN-Trace-Ingest-Token: <strong-token>`。未配置 `BKN_TRACE_EVIDENCE_INGEST_TOKEN` 时保持当前兼容行为，依赖平台网关/网络边界保护。
+
+当前阶段的 Evidence Chain 查询只依据事件生产方声明的 `visibility` 做响应过滤，不按调用者身份做细粒度可见性裁决。resolver-backed authorization、按账号/租户的 evidence ref 授权与审计将在后续持久化 evidence index 阶段接入。
+
 Evidence Chain 查询返回稳定 envelope：
 
 ```json

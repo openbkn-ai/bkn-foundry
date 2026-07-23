@@ -1,8 +1,10 @@
 package httphandler
 
 import (
+	"crypto/subtle"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/evidencesvc"
@@ -10,13 +12,23 @@ import (
 )
 
 const maxEvidenceBodyBytes = 1 << 20
+const evidenceIngestTokenEnv = "BKN_TRACE_EVIDENCE_INGEST_TOKEN"
+const evidenceIngestTokenHeader = "X-BKN-Trace-Ingest-Token"
 
 type EvidenceHandler struct {
 	evidenceService *evidencesvc.Service
+	ingestToken     string
 }
 
 func NewEvidenceHandler(evidenceService *evidencesvc.Service) *EvidenceHandler {
-	return &EvidenceHandler{evidenceService: evidenceService}
+	return NewEvidenceHandlerWithIngestToken(evidenceService, os.Getenv(evidenceIngestTokenEnv))
+}
+
+func NewEvidenceHandlerWithIngestToken(evidenceService *evidencesvc.Service, ingestToken string) *EvidenceHandler {
+	return &EvidenceHandler{
+		evidenceService: evidenceService,
+		ingestToken:     strings.TrimSpace(ingestToken),
+	}
 }
 
 // IngestEvidenceEvents godoc
@@ -37,6 +49,9 @@ func (h *EvidenceHandler) IngestEvidenceEvents(w http.ResponseWriter, r *http.Re
 			Code:    "METHOD_NOT_ALLOWED",
 			Message: "only POST is supported",
 		})
+		return
+	}
+	if !h.authorizeEvidenceIngest(w, r) {
 		return
 	}
 
@@ -186,4 +201,35 @@ func traceIDFromEvidenceChainPath(path string) string {
 		return ""
 	}
 	return strings.TrimSpace(traceID)
+}
+
+func (h *EvidenceHandler) authorizeEvidenceIngest(w http.ResponseWriter, r *http.Request) bool {
+	if h.ingestToken == "" {
+		return true
+	}
+	if secureTokenEqual(r.Header.Get(evidenceIngestTokenHeader), h.ingestToken) {
+		return true
+	}
+
+	authHeader := strings.TrimSpace(r.Header.Get("Authorization"))
+	if len(authHeader) > len("Bearer ") && strings.EqualFold(authHeader[:len("Bearer ")], "Bearer ") {
+		if secureTokenEqual(strings.TrimSpace(authHeader[len("Bearer "):]), h.ingestToken) {
+			return true
+		}
+	}
+
+	writeJSON(w, http.StatusUnauthorized, rdto.ErrorResponse{
+		Code:    "UNAUTHORIZED",
+		Message: "evidence ingest authentication is required",
+	})
+	return false
+}
+
+func secureTokenEqual(actual, expected string) bool {
+	actual = strings.TrimSpace(actual)
+	expected = strings.TrimSpace(expected)
+	if actual == "" || expected == "" {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(actual), []byte(expected)) == 1
 }
