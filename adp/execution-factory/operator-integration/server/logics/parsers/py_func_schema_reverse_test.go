@@ -130,3 +130,99 @@ func TestAPISpecCarriesOnlyDeclaredContract(t *testing.T) {
 		})
 	})
 }
+
+// 参数定义要经「展开成 OpenAPI 落库 → 读回来反解」一个来回，调用方拿到的是反解结果。
+// 嵌套越深越容易在某一层丢结构，这里覆盖真实工具会用到的形状。
+func TestNestedParamsSurviveRoundTrip(t *testing.T) {
+	item := func(name string) *interfaces.ParameterDef {
+		return &interfaces.ParameterDef{
+			Name: name, Type: interfaces.ParameterTypeObject, Required: true,
+			SubParameters: []*interfaces.ParameterDef{
+				{Name: "id", Type: interfaces.ParameterTypeString, Required: true},
+				{Name: "qty", Type: interfaces.ParameterTypeNumber, Required: false, Default: 1},
+			},
+		}
+	}
+	findParam := func(params []*interfaces.ParameterDef, name string) *interfaces.ParameterDef {
+		for _, p := range params {
+			if p.Name == name {
+				return p
+			}
+		}
+		return nil
+	}
+
+	Convey("对象数组的元素结构保留", t, func() {
+		inputs, _ := roundTrip(&interfaces.FunctionInput{
+			Name: "f",
+			Inputs: []*interfaces.ParameterDef{{
+				Name: "items", Type: interfaces.ParameterTypeArray, Required: true,
+				SubParameters: []*interfaces.ParameterDef{item("items")},
+			}},
+		})
+
+		So(len(inputs), ShouldEqual, 1)
+		element := inputs[0].SubParameters[0]
+		So(element.Type, ShouldEqual, interfaces.ParameterTypeObject)
+		So(len(element.SubParameters), ShouldEqual, 2)
+		So(findParam(element.SubParameters, "id").Required, ShouldBeTrue)
+		qty := findParam(element.SubParameters, "qty")
+		So(qty.Required, ShouldBeFalse)
+		So(qty.Default, ShouldEqual, 1)
+	})
+
+	Convey("三层嵌套：对象里的数组里的对象", t, func() {
+		inputs, _ := roundTrip(&interfaces.FunctionInput{
+			Name: "f",
+			Inputs: []*interfaces.ParameterDef{{
+				Name: "envelope", Type: interfaces.ParameterTypeObject, Required: true,
+				SubParameters: []*interfaces.ParameterDef{
+					{Name: "no", Type: interfaces.ParameterTypeString, Required: true},
+					{
+						Name: "lines", Type: interfaces.ParameterTypeArray, Required: true,
+						SubParameters: []*interfaces.ParameterDef{item("items")},
+					},
+				},
+			}},
+		})
+
+		envelope := inputs[0]
+		lines := findParam(envelope.SubParameters, "lines")
+		So(lines, ShouldNotBeNil)
+		So(lines.Type, ShouldEqual, interfaces.ParameterTypeArray)
+		element := lines.SubParameters[0]
+		So(findParam(element.SubParameters, "id").Type, ShouldEqual, interfaces.ParameterTypeString)
+	})
+
+	Convey("嵌套数组", t, func() {
+		inputs, _ := roundTrip(&interfaces.FunctionInput{
+			Name: "f",
+			Inputs: []*interfaces.ParameterDef{{
+				Name: "matrix", Type: interfaces.ParameterTypeArray, Required: true,
+				SubParameters: []*interfaces.ParameterDef{{
+					Name: "items", Type: interfaces.ParameterTypeArray,
+					SubParameters: []*interfaces.ParameterDef{
+						{Name: "items", Type: interfaces.ParameterTypeNumber},
+					},
+				}},
+			}},
+		})
+
+		inner := inputs[0].SubParameters[0]
+		So(inner.Type, ShouldEqual, interfaces.ParameterTypeArray)
+		So(inner.SubParameters[0].Type, ShouldEqual, interfaces.ParameterTypeNumber)
+	})
+
+	Convey("输出参数的嵌套同样保留", t, func() {
+		_, outputs := roundTrip(&interfaces.FunctionInput{
+			Name: "f",
+			Outputs: []*interfaces.ParameterDef{{
+				Name: "matched", Type: interfaces.ParameterTypeArray, Required: true,
+				SubParameters: []*interfaces.ParameterDef{item("items")},
+			}},
+		})
+
+		element := outputs[0].SubParameters[0]
+		So(len(element.SubParameters), ShouldEqual, 2)
+	})
+}

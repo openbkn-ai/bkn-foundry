@@ -162,6 +162,15 @@ def _jsonschema_prop_to_param(name: str, prop: dict, required: bool) -> ParamDef
     p = ParamDef(name=name, type=ptype, required=required,
                  description=prop.get("description", ""),
                  default=prop.get("default"))
+    # Dict[str, X]：pydantic 用 additionalProperties 描述 value 的结构。
+    # 不展开的话调用方只知道"要个对象",不知道每个值长什么样,
+    # 约定用名为 values 的子参数描述它。
+    if js_type == "object" and "properties" not in prop:
+        extra = prop.get("additionalProperties")
+        if isinstance(extra, dict):
+            p.sub_parameters = [_jsonschema_prop_to_param("values", extra, True)]
+            return p
+
     # object：展开子字段
     if js_type == "object" and "properties" in prop:
         req = set(prop.get("required", []))
@@ -216,6 +225,30 @@ def _inline_defs(schema: dict) -> dict:
     return resolve(schema, frozenset())
 
 
+def _coerce_to_annotation(value: Any, anno: Any) -> Any:
+    """
+    按注解把 event 里的原始值转成用户函数期望的类型。
+
+    直接判 BaseModel 只能覆盖参数本身就是模型的情形，List[Model]、
+    Dict[str, Model] 里的元素会以 dict 原样传进去，用户按模型访问属性就报
+    AttributeError。交给 pydantic 的 TypeAdapter 处理任意注解，
+    校验失败照旧抛 ValidationError。
+    """
+    if anno is None or anno is inspect.Parameter.empty or not _HAS_PYDANTIC:
+        return value
+    try:
+        from pydantic import TypeAdapter
+    except ImportError:
+        return value
+    try:
+        return TypeAdapter(anno).validate_python(value)
+    except Exception as e:
+        # 校验错误要暴露给调用方；注解本身无法构造适配器（比如自定义类型）时不拦
+        if type(e).__name__ == "ValidationError":
+            raise
+        return value
+
+
 def _is_optional_annotation(anno: Any) -> bool:
     """注解是否允许 None（Optional[X] / X | None）。"""
     if anno is None:
@@ -253,9 +286,14 @@ def _annotation_to_param(name: str, anno: Any, required: bool,
         sub = [_annotation_to_param("items", args[0], True)] if args else []
         return ParamDef(name, "array", description, required, default, sub)
 
-    # Dict → object（不深挖 key/value，保持宽松）
+    # Dict[K, V] → object。V 有具体类型时展开成名为 values 的子参数，
+    # 否则调用方只知道要个对象，不知道每个值长什么样。裸 dict 保持宽松。
     if origin in (dict, getattr(typing, "Dict", dict)) or anno is dict:
-        return ParamDef(name, "object", description, required, default)
+        param = ParamDef(name, "object", description, required, default)
+        args = get_args(anno)
+        if len(args) == 2 and args[1] is not Any:
+            param.sub_parameters = [_annotation_to_param("values", args[1], True)]
+        return param
 
     # 基础类型，未知注解兜底 string
     return ParamDef(name, _PY_TO_PARAM.get(anno, "string"), description, required, default)
@@ -410,10 +448,7 @@ def dispatch(event: dict = None, entry: str = None) -> Any:
         if pname in event:
             val = event[pname]
             anno = hints.get(pname)
-            # 参数是 pydantic 模型：用 event 的 dict 构造实例（带校验）
-            if _is_pydantic_model(anno) and isinstance(val, dict):
-                val = anno(**val)         # 校验失败会抛 pydantic ValidationError
-            kwargs[pname] = val
+            kwargs[pname] = _coerce_to_annotation(val, anno)
         elif p.default is inspect.Parameter.empty:
             # Optional[X] 没有默认值时 schema 记的是非必填,这里得一致地放行,
             # 否则调用方按 schema 省略该参数就会被拦下。
