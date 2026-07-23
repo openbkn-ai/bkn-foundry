@@ -14,9 +14,6 @@ _redis_resolve_image_defaults() {
     local image_registry
     image_registry="$(resolve_openbkn_image_registry "${REDIS_IMAGE_REGISTRY:-}")"
     REDIS_IMAGE_REGISTRY="${image_registry}"
-    if [[ -z "${REDIS_IMAGE}" ]]; then
-        REDIS_IMAGE="$(compose_image_ref "${image_registry}" "${REDIS_IMAGE_REPOSITORY:-redis}" "${REDIS_IMAGE_TAG}")"
-    fi
 }
 
 install_redis_sentinel_local() {
