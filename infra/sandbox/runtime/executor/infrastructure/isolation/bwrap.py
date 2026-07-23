@@ -278,12 +278,24 @@ except json.JSONDecodeError as e:
     print(f"Error parsing event JSON: {{e}}", file=sys.stderr)
     sys.exit(1)
 
-# Call handler
+# Invoke the user function.
+# A @tool decorated function registers itself in sandbox_sdk, so ask the SDK
+# directly rather than inspecting globals: `from sandbox_sdk import tool` does
+# not bind the module name here.
 try:
-    if 'handler' not in globals():
-        raise ValueError("必须定义 handler(event) 函数")
+    _entry = None
+    try:
+        import sandbox_sdk as _sdk
+        _entry = getattr(_sdk, '_ENTRY', None)
+    except ImportError:
+        _sdk = None
 
-    result = handler(event)
+    if _entry:
+        result = _sdk.dispatch(event)
+    elif 'handler' in globals():
+        result = handler(event)
+    else:
+        raise ValueError("必须定义 @tool 函数或 handler(event) 函数")
 
     # Output result with markers
     print("\n===SANDBOX_RESULT===")

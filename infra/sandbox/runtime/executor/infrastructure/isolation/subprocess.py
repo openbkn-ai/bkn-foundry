@@ -17,7 +17,7 @@ from typing import List, Tuple
 from executor.domain.entities import Execution
 from executor.domain.value_objects import ExecutionResult, ExecutionStatus, ExecutionMetrics
 from executor.infrastructure.config import settings
-from executor.infrastructure.isolation.code_wrapper import normalize_shell_code
+from executor.infrastructure.isolation.code_wrapper import normalize_shell_code, uses_tool_decorator
 
 logger = logging.getLogger(__name__)
 
@@ -201,21 +201,29 @@ class SubprocessRunner:
 
         # Language-specific commands
         if language in ("python", "python3"):
-            # For Python Lambda handlers, wrap the code to:
-            # 1. Define the handler function from user code
-            # 2. Call the handler with the event data
-            # 3. Serialize and print the return value as JSON
+            # Two entry styles are supported:
+            #   @tool     - sandbox_sdk unpacks the event into named parameters
+            #   handler   - AWS Lambda style, the original contract
+            # Detection is AST-based so @tool in a comment or string is not a
+            # false positive, and unparsable code falls back to handler.
+            if uses_tool_decorator(code):
+                preamble = "import sandbox_sdk"
+                invoke = "sandbox_sdk.dispatch(event_data)"
+            else:
+                preamble = ""
+                invoke = "handler(event_data)"
             wrapped_code = f'''
 import json
 import sys
+{preamble}
 
 # User's code
 {code}
 
-# Execute the Lambda handler
+# Invoke the user function
 if __name__ == "__main__":
     event_data = json.loads({json.dumps(event_json)})
-    result = handler(event_data)
+    result = {invoke}
     print(json.dumps(result))
 '''
             cmd = ["python3", "-c", wrapped_code]
