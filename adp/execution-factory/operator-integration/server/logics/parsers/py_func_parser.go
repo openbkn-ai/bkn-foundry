@@ -59,19 +59,20 @@ func (p *pythonFunctionParser) validate(ctx context.Context, inputValue any) (in
 	return
 }
 
-// 检查是否包含入口函数handler
+// 入口函数的两种写法：@tool 装饰的普通函数（沙箱 SDK 负责把 event 解包成形参），
+// 或 handler(event)（AWS Lambda 风格）。沙箱两条执行路径都按同样的顺序识别。
+var (
+	handlerEntryPattern = regexp.MustCompile(`def\s+handler\s*\(`)
+	toolEntryPattern    = regexp.MustCompile(`(?m)^\s*@(?:\w+\.)?tool\b`)
+)
+
+// 检查是否包含入口函数
 func checkRegexpHandler(ctx context.Context, code string) (err error) {
-	// 使用正则表达式检查是否包含 handler 函数定义
-	pattern := `def\s+handler\s*\(`
-	matched, err := regexp.MatchString(pattern, code)
-	if err != nil {
-		return errors.DefaultHTTPError(ctx, http.StatusInternalServerError, fmt.Sprintf("check handler regexp failed: %v", err))
+	if handlerEntryPattern.MatchString(code) || toolEntryPattern.MatchString(code) {
+		return nil
 	}
-	if !matched {
-		// 必须包含 handler 函数定义
-		return errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtFunctionNoHandlerFound, "python function must have a handler(event) function")
-	}
-	return nil
+	return errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtFunctionNoHandlerFound,
+		"python function must define a @tool decorated function or a handler(event) function")
 }
 
 // func checAstkHandler(ctx context.Context, code string) (err error) {
