@@ -221,6 +221,10 @@ func TestExtractResourceIDsSupportsHyphenatedIDs(t *testing.T) {
 
 func TestPrepareSQLQueryRejectsResourcePlaceholderOutsideTableReference(t *testing.T) {
 	svc := &rawQueryService{}
+	previousPolicy := rawQueryPolicy
+	rawQueryPolicy = &recordingPolicy{}
+	t.Cleanup(func() { rawQueryPolicy = previousPolicy })
+
 	for _, sql := range []string{
 		"SELECT * FROM public.orders /* {{resource-1}} */",
 		"SELECT * FROM public.orders -- {{resource-1}}\n",
@@ -233,6 +237,9 @@ func TestPrepareSQLQueryRejectsResourcePlaceholderOutsideTableReference(t *testi
 				InputDialect: "postgres",
 			})
 			assertHTTPError(t, err, http.StatusBadRequest)
+			var httpErr *rest.HTTPError
+			require.ErrorAs(t, err, &httpErr)
+			assert.Equal(t, "at least one resource_id is required for SQL queries", httpErr.BaseError.ErrorDetails)
 		})
 	}
 }
