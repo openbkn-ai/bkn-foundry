@@ -431,10 +431,12 @@ func (sutw *SemanticUnderstandingTaskWorker) applyResourceResult(ctx context.Con
 	}
 
 	updatedResource := make([]string, 0, 2)
-	if applyStringByMode(task.ApplyMode, &resourceInfo.Name, result.Resource.DisplayName, false) {
+	if applyStringByMode(task.ApplyMode, &resourceInfo.Name, result.Resource.DisplayName,
+		resourceInfo.Name == resourceInfo.SourceIdentifier) {
 		updatedResource = append(updatedResource, "name")
 	}
-	if applyStringByMode(task.ApplyMode, &resourceInfo.Description, result.Resource.Description, resourceInfo.Description == sourceOriginalDescription(resourceInfo.SourceMetadata)) {
+	if applyStringByMode(task.ApplyMode, &resourceInfo.Description, result.Resource.Description,
+		resourceInfo.Description == sourceOriginalDescription(resourceInfo.SourceMetadata)) {
 		updatedResource = append(updatedResource, "description")
 	}
 	resourceUpdated := len(updatedResource) > 0
