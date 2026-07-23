@@ -401,11 +401,12 @@ func Test_objectTypeService_GetObjectTypesByIDs(t *testing.T) {
 			knID := "kn1"
 			branch := interfaces.MAIN_BRANCH
 			otIDs := []string{"ot1"}
+			ma := bmock.NewMockMetricAccess(mockCtrl)
 			otArr := []*interfaces.ObjectType{
 				{
 					ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
-						OTID:       "ot1",
-						OTName:     "ot1",
+						OTID:   "ot1",
+						OTName: "ot1",
 						DataSource: &interfaces.ResourceInfo{ID: "dv1"},
 						LogicProperties: []*interfaces.LogicProperty{
 							{
@@ -417,6 +418,8 @@ func Test_objectTypeService_GetObjectTypesByIDs(t *testing.T) {
 							},
 						},
 					},
+					KNID:   knID,
+					Branch: branch,
 				},
 			}
 
@@ -425,9 +428,11 @@ func Test_objectTypeService_GetObjectTypesByIDs(t *testing.T) {
 			ota.EXPECT().GetObjectTypesByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(otArr, nil)
 			cga.EXPECT().GetConceptGroupsByOTIDs(gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string][]*interfaces.ConceptGroup{}, nil)
 			dva.EXPECT().GetDataViewByID(gomock.Any(), gomock.Any()).Return(&interfaces.DataView{}, nil)
-			ma.EXPECT().GetMetricByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, "metric1").Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
+			ma.EXPECT().GetMetricByID(gomock.Any(), knID, branch, "metric1").Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
 			smock.ExpectCommit()
+
+			service.ma = ma
 
 			result, err := service.GetObjectTypesByIDs(ctx, nil, knID, branch, otIDs)
 			So(err, ShouldBeNil)
@@ -1031,11 +1036,16 @@ func Test_objectTypeService_ValidateObjectTypes(t *testing.T) {
 			So(err, ShouldBeNil)
 		})
 
-		Convey("Fails strict mode when metric model does not exist\n", func() {
+		Convey("Fails strict mode when KN metric does not exist\n", func() {
 			objectTypes := []*interfaces.ObjectType{
 				{
 					ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+						OTID:   "ot1",
 						OTName: "ot1",
+						DataSource: &interfaces.ResourceInfo{
+							Type: interfaces.DATA_SOURCE_TYPE_RESOURCE,
+							ID:   "res1",
+						},
 						LogicProperties: []*interfaces.LogicProperty{
 							{
 								Name: "lp1",
@@ -1047,21 +1057,28 @@ func Test_objectTypeService_ValidateObjectTypes(t *testing.T) {
 							},
 						},
 					},
-					KNID: "kn1",
+					KNID:   "kn1",
+					Branch: interfaces.MAIN_BRANCH,
 				},
 			}
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			expectImportModeOK()
-			ma.EXPECT().CheckMetricExistByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, "mid1").Return("", false, nil)
+			vba.EXPECT().GetResourceByID(gomock.Any(), "res1").Return(&interfaces.VegaResource{Name: "r1"}, nil)
+			ma.EXPECT().GetMetricByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, "mid1").Return(nil, nil)
 			err := service.ValidateObjectTypes(ctx, "kn1", interfaces.MAIN_BRANCH, objectTypes, true, nil, interfaces.ImportMode_Normal)
 			So(err, ShouldNotBeNil)
 		})
 
-		Convey("Success strict mode when metric exists\n", func() {
+		Convey("Success strict mode when KN metric exists and scope matches\n", func() {
 			objectTypes := []*interfaces.ObjectType{
 				{
 					ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+						OTID:   "ot1",
 						OTName: "ot1",
+						DataSource: &interfaces.ResourceInfo{
+							Type: interfaces.DATA_SOURCE_TYPE_RESOURCE,
+							ID:   "res1",
+						},
 						LogicProperties: []*interfaces.LogicProperty{
 							{
 								Name: "lp1",
@@ -1073,12 +1090,17 @@ func Test_objectTypeService_ValidateObjectTypes(t *testing.T) {
 							},
 						},
 					},
-					KNID: "kn1",
+					KNID:   "kn1",
+					Branch: interfaces.MAIN_BRANCH,
 				},
 			}
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			expectImportModeOK()
-			ma.EXPECT().CheckMetricExistByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, "mid1").Return("metric1", true, nil)
+			vba.EXPECT().GetResourceByID(gomock.Any(), "res1").Return(&interfaces.VegaResource{Name: "r1"}, nil)
+			ma.EXPECT().GetMetricByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, "mid1").Return(&interfaces.MetricDefinition{
+				ID:       "mid1",
+				ScopeRef: "ot1",
+			}, nil)
 			err := service.ValidateObjectTypes(ctx, "kn1", interfaces.MAIN_BRANCH, objectTypes, true, nil, interfaces.ImportMode_Normal)
 			So(err, ShouldBeNil)
 		})
@@ -2676,7 +2698,8 @@ func Test_objectTypeService_SearchObjectTypes(t *testing.T) {
 			}
 			vba.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(datasetResp, nil)
 			dva.EXPECT().GetDataViewByID(gomock.Any(), gomock.Any()).Return(&interfaces.DataView{}, nil)
-			ma.EXPECT().GetMetricByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, "metric1").Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
+			ma.EXPECT().GetMetricByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, "metric1").
+				Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 
 			result, err := service.SearchObjectTypes(ctx, query)
 			So(err, ShouldBeNil)

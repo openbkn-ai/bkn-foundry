@@ -228,11 +228,20 @@ func validateObjectTypeLogicProperties(ctx context.Context, objectType *interfac
 			WithErrorDetails(fmt.Sprintf("对象类[%s]逻辑属性数[%d]超过最大限制[%d]", objectType.OTName, len(objectType.LogicProperties), interfaces.MAX_PROPERTY_NUM))
 	}
 
+	dataPropNames := make(map[string]struct{}, len(objectType.DataProperties))
+	for _, dp := range objectType.DataProperties {
+		dataPropNames[dp.Name] = struct{}{}
+	}
+
 	ifSystemGen := true
 	for i, prop := range objectType.LogicProperties {
 		// 校验属性名合法性（支持大写字母，规则与 id 不同）
 		if err := ValidatePropertyName(ctx, prop.Name); err != nil {
 			return err
+		}
+		if _, exists := dataPropNames[prop.Name]; exists {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
+				WithErrorDetails(fmt.Sprintf("对象类[%s]逻辑属性[%s]与数据属性重名", objectType.OTName, prop.Name))
 		}
 
 		// 校验 displayName
@@ -284,6 +293,19 @@ func validateObjectTypeLogicProperties(ctx context.Context, objectType *interfac
 			if param.Name == "" {
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
 					WithErrorDetails(fmt.Sprintf("对象类[%s]逻辑属性[%s]的参数名称不能为空", objectType.OTName, prop.Name))
+			}
+			if param.ValueFrom == interfaces.VALUE_FROM_PROPERTY {
+				propName, ok := param.Value.(string)
+				if !ok || strings.TrimSpace(propName) == "" {
+					return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
+						WithErrorDetails(fmt.Sprintf("对象类[%s]逻辑属性[%s]参数[%s]的 property 绑定无效",
+							objectType.OTName, prop.Name, param.Name))
+				}
+				if _, exists := dataPropNames[propName]; !exists {
+					return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
+						WithErrorDetails(fmt.Sprintf("对象类[%s]逻辑属性[%s]参数[%s]绑定的数据属性[%s]不存在",
+							objectType.OTName, prop.Name, param.Name, propName))
+				}
 			}
 		}
 

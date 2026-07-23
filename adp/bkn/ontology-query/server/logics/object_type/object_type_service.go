@@ -29,6 +29,7 @@ import (
 	oerrors "ontology-query/errors"
 	"ontology-query/interfaces"
 	"ontology-query/logics"
+	"ontology-query/logics/metric"
 )
 
 var (
@@ -44,6 +45,7 @@ type objectTypeService struct {
 	osa        interfaces.OpenSearchAccess
 	uAccess    interfaces.UniqueryAccess
 	vba        interfaces.VegaBackendAccess
+	mqs        interfaces.MetricQueryService
 }
 
 func NewObjectTypeService(appSetting *common.AppSetting) interfaces.ObjectTypeService {
@@ -56,6 +58,7 @@ func NewObjectTypeService(appSetting *common.AppSetting) interfaces.ObjectTypeSe
 			osa:        logics.OSA,
 			uAccess:    logics.UA,
 			vba:        logics.VBA,
+			mqs:        metric.NewMetricQueryService(appSetting),
 		}
 	})
 	return otService
@@ -782,7 +785,8 @@ func (ots *objectTypeService) GetObjectPropertyValue(ctx context.Context,
 					defer wg.Done()
 
 					logger.Debugf("处理对象[%d]的逻辑属性: %s", i, propName)
-					resultValue, err := ots.processLogicProperty(ctx, propName, propValue, logicProp, query.DynamicParams)
+					resultValue, err := ots.processLogicProperty(ctx, query.KNID, query.Branch, query.ObjectTypeID,
+						propName, propValue, logicProp, query.DynamicParams)
 					if err != nil {
 						errChan <- fmt.Errorf("对象[%d]的逻辑属性[%s]处理失败: %w", objIndex, propName, err)
 						return
@@ -820,6 +824,7 @@ func (ots *objectTypeService) GetObjectPropertyValue(ctx context.Context,
 
 // processLogicProperty 处理单个逻辑属性（封装了原有的处理逻辑）
 func (ots *objectTypeService) processLogicProperty(ctx context.Context,
+	knID, branch, otID string,
 	propName string,
 	propValue any,
 	logicProp *interfaces.LogicProperty,
@@ -827,7 +832,7 @@ func (ots *objectTypeService) processLogicProperty(ctx context.Context,
 
 	switch logicProp.Type {
 	case interfaces.PROPERTY_TYPE_METRIC:
-		return ots.handleMetricProperty(ctx, propName, propValue, logicProp, dynamicParams)
+		return ots.handleMetricProperty(ctx, knID, branch, otID, propName, propValue, logicProp, dynamicParams)
 	case interfaces.PROPERTY_TYPE_OPERATOR:
 		return ots.handleOperatorProperty(ctx, propName, propValue, logicProp, dynamicParams)
 	default:
@@ -836,41 +841,26 @@ func (ots *objectTypeService) processLogicProperty(ctx context.Context,
 	}
 }
 
-// handleMetricProperty 处理指标类型逻辑属性
+// handleMetricProperty 处理指标类型逻辑属性（KN MetricDefinition + Vega 算值内核）
 func (ots *objectTypeService) handleMetricProperty(ctx context.Context,
+	knID, branch, otID string,
 	propName string,
 	propValue any,
 	logicProp *interfaces.LogicProperty,
 	dynamicParams map[string]map[string]any) (interfaces.MetricData, error) {
 
-	// 用请求的动态参数填充。
 	var (
 		start     int64
 		end       int64
 		isInstant bool
 		step      string
-		err       error
 	)
 
-	// 如果只给 start、没有给 end，则end 为当前。
-	// 如果只给了end，没有给start，则start为 end - 30min
-	// metricValue 是从对象类中获取的对象的指标计算参数
 	metricValue := propValue.(interfaces.MetricProperty)
 	start = time.Now().Add(-30 * time.Minute).UnixMilli()
 	end = time.Now().UnixMilli()
 	isInstant = true
 
-	// 1. 指标需要动态参数，校验必要的动态参数是否已给
-	// if _, dynamicParamExist := dynamicParams[propName]; !dynamicParamExist {
-	// 	// 动态参数没有，即 start end都没有，给默认值
-	// 	dynamicParams[propName] = map[string]any{
-	// 		"start":   start,
-	// 		"end":     end,
-	// 		"instant": isInstant,
-	// 	}
-	// }
-
-	// 2. 解析 dynamic_params 为 MetricPropertyDynamicParams 结构
 	var metricParams interfaces.MetricPropertyDynamicParams
 	paramBytes, err := sonic.Marshal(dynamicParams[propName])
 	if err != nil {
@@ -884,13 +874,11 @@ func (ots *objectTypeService) handleMetricProperty(ctx context.Context,
 			WithErrorDetails(fmt.Sprintf("属性[%s]的动态参数解析失败: %v", propName, err))
 	}
 
-	// 3. 提取时间参数（start, end, instant, step）
 	if metricParams.Start != nil {
 		start = *metricParams.Start
 	}
 	if metricParams.End != nil {
 		end = *metricParams.End
-		// 如果只给了end，没有给start，则start为 end - 30min
 		if metricParams.Start == nil {
 			start = end - 30*time.Minute.Milliseconds()
 		}
@@ -902,30 +890,23 @@ func (ots *objectTypeService) handleMetricProperty(ctx context.Context,
 		step = *metricParams.Step
 	}
 
-	// 4. 读取配置的动态参数（从 metricValue.DynamicParams 中获取参数名）
 	for paramK := range metricValue.DynamicParams {
 		switch paramK {
 		case "start", "end", "instant", "step":
-			// 这些参数已经在上面处理了，跳过
 			continue
 		default:
-			// 校验必须的动态参数是否已给
 			paramValue, paramExist := dynamicParams[propName][paramK]
 			if !paramExist {
 				return interfaces.MetricData{}, rest.NewHTTPError(ctx, http.StatusBadRequest,
 					oerrors.OntologyQuery_ObjectType_InvalidParameter_DynamicParams).
 					WithErrorDetails(fmt.Sprintf("指标属性[%s]所需的动态参数[%s]为空", propName, paramK))
 			}
-			// 构建filter，需要从属性配置里拿到当前参数的配置逻辑
 			operation := "=="
 			for _, configParam := range logicProp.Parameters {
-				if configParam.Name == paramK {
-					if configParam.Operation != "" {
-						operation = configParam.Operation
-					}
+				if configParam.Name == paramK && configParam.Operation != "" {
+					operation = configParam.Operation
 				}
 			}
-			// 构建filters
 			metricValue.Parameters.Filters = append(metricValue.Parameters.Filters,
 				interfaces.Filter{
 					Name:      paramK,
@@ -935,28 +916,8 @@ func (ots *objectTypeService) handleMetricProperty(ctx context.Context,
 		}
 	}
 
-	// 5. 组装指标数据查询的query，发起查询
-	metricQuery := interfaces.MetricQuery{
-		Start:              &start,
-		End:                &end,
-		StepStr:            &step,
-		IsInstantQuery:     isInstant,
-		Filters:            metricValue.Parameters.Filters,
-		AnalysisDimensions: metricParams.AnalysisDimensions,
-		OrderByFields:      metricParams.OrderByFields,
-		HavingCondition:    metricParams.HavingCondition,
-		Metrics:            metricParams.Metrics,
-	}
-
-	metricData, err := ots.uAccess.GetMetricDataByID(ctx, logicProp.DataSource.ID, metricQuery)
-	if err != nil {
-		return interfaces.MetricData{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			oerrors.OntologyQuery_ObjectType_InternalError_GetMetricDataByIDFailed).
-			WithErrorDetails(fmt.Sprintf("属性[%s]的指标数据失败,error: %v", propName, err))
-	}
-
-	// 6. 结果赋值给属性。如果过滤出多个序列，不报错，多个序列都返回。
-	return metricData, nil
+	return ots.queryLogicMetricViaKN(ctx, knID, branch, otID, logicProp,
+		metricValue.Parameters.Filters, metricParams, start, end, isInstant, step)
 }
 
 // handleOperatorProperty 处理算子类型逻辑属性

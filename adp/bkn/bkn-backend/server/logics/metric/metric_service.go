@@ -936,13 +936,13 @@ func (ms *metricService) validateMetricAgainstResolvedOT(ctx context.Context, me
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
 			WithErrorDetails(fmt.Sprintf("metric[%s]'s object type data_source resource id is required", metric.ID))
 	}
-	if ds.Type == interfaces.DATA_SOURCE_TYPE_DATA_VIEW {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
-			WithErrorDetails(fmt.Sprintf("metric[%s] is not supported for object types backed by data_view; use resource-backed object types", metric.ID))
+	dsType := ds.Type
+	if dsType == "" {
+		dsType = interfaces.DATA_SOURCE_TYPE_DATA_VIEW
 	}
-	if ds.Type != interfaces.DATA_SOURCE_TYPE_RESOURCE {
+	if dsType != interfaces.DATA_SOURCE_TYPE_RESOURCE && dsType != interfaces.DATA_SOURCE_TYPE_DATA_VIEW {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
-			WithErrorDetails(fmt.Sprintf("only resource-backed object types can define metric[%s]", metric.ID))
+			WithErrorDetails(fmt.Sprintf("metric[%s]'s scope object type data_source.type[%s] is not supported", metric.ID, ds.Type))
 	}
 
 	propertyMap := map[string]*interfaces.DataProperty{}

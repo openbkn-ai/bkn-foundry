@@ -1160,12 +1160,15 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 		omAccess := omock.NewMockOntologyManagerAccess(mockCtrl)
 		osa := omock.NewMockOpenSearchAccess(mockCtrl)
 		uAccess := omock.NewMockUniqueryAccess(mockCtrl)
+		vba := omock.NewMockVegaBackendAccess(mockCtrl)
+		mqs := omock.NewMockMetricQueryService(mockCtrl)
 		mfa := omock.NewMockModelFactoryAccess(mockCtrl)
 		aoAccess := omock.NewMockAgentOperatorAccess(mockCtrl)
 
 		logics.OMA = omAccess
 		logics.OSA = osa
 		logics.UA = uAccess
+		logics.VBA = vba
 		logics.MFA = mfa
 		logics.AOA = aoAccess
 
@@ -1174,6 +1177,8 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 			omAccess:   omAccess,
 			osa:        osa,
 			uAccess:    uAccess,
+			vba:        vba,
+			mqs:        mqs,
 			mfa:        mfa,
 			aoAccess:   aoAccess,
 		}
@@ -1265,14 +1270,15 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 						},
 					},
 					DataSource: &interfaces.ResourceInfo{
-						ID: "view1",
+						Type: interfaces.DATA_SOURCE_TYPE_RESOURCE,
+						ID: "res1",
 					},
 				},
 			}
 
-			omAccess.EXPECT().GetObjectType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(objectType, true, nil)
-			uAccess.EXPECT().GetViewDataByID(gomock.Any(), "view1", gomock.Any()).Return(interfaces.ViewData{
-				Datas: []map[string]any{
+			omAccess.EXPECT().GetObjectType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(objectType, true, nil).AnyTimes()
+			vba.EXPECT().QueryResourceData(gomock.Any(), "res1", gomock.Any()).Return(&interfaces.DatasetQueryResponse{
+				Entries: []map[string]any{
 					{
 						"id":    "123",
 						"prop1": "value1",
@@ -1294,7 +1300,11 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 				},
 				TotalCount: 1,
 			}, nil)
-			uAccess.EXPECT().GetMetricDataByID(gomock.Any(), "metric1", gomock.Any()).Return(interfaces.MetricData{
+			omAccess.EXPECT().GetMetricDefinition(gomock.Any(), "kn1", "main", "metric1").Return(&interfaces.MetricDefinition{
+				ID:       "metric1",
+				ScopeRef: "ot1",
+			}, true, nil)
+			mqs.EXPECT().QueryMetricData(gomock.Any(), "kn1", "main", "metric1", gomock.Any()).Return(interfaces.MetricData{
 				Datas: []interfaces.Data{
 					{
 						Labels: map[string]string{"param1": "value1"},
@@ -1370,39 +1380,24 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 						},
 					},
 					DataSource: &interfaces.ResourceInfo{
-						ID: "view1",
+						Type: interfaces.DATA_SOURCE_TYPE_RESOURCE,
+						ID:   "res1",
 					},
 				},
 			}
 
-			omAccess.EXPECT().GetObjectType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(objectType, true, nil)
-			uAccess.EXPECT().GetViewDataByID(gomock.Any(), "view1", gomock.Any()).Return(interfaces.ViewData{
-				Datas: []map[string]any{
-					{
-						"id": "123",
-						"logic_prop1": interfaces.MetricProperty{
-							PropertyType:    interfaces.LOGIC_PROPERTY_TYPE_METRIC,
-							MappingSourceId: "metric1",
-							Parameters: interfaces.MetricFilters{
-								Filters: []interfaces.Filter{
-									{
-										Name:      "param1",
-										Operation: "==",
-										Value:     "123",
-									},
-								},
-							},
-							DynamicParams: map[string]any{
-								"start":   int64(1234567890),
-								"end":     int64(1234567890),
-								"instant": true,
-							},
-						},
-					},
+			omAccess.EXPECT().GetObjectType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(objectType, true, nil).AnyTimes()
+			vba.EXPECT().QueryResourceData(gomock.Any(), "res1", gomock.Any()).Return(&interfaces.DatasetQueryResponse{
+				Entries: []map[string]any{
+					{"id": "123"},
 				},
 				TotalCount: 1,
 			}, nil)
-			uAccess.EXPECT().GetMetricDataByID(gomock.Any(), "metric1", gomock.Any()).Return(interfaces.MetricData{
+			omAccess.EXPECT().GetMetricDefinition(gomock.Any(), "kn1", "main", "metric1").Return(&interfaces.MetricDefinition{
+				ID:       "metric1",
+				ScopeRef: "ot1",
+			}, true, nil)
+			mqs.EXPECT().QueryMetricData(gomock.Any(), "kn1", "main", "metric1", gomock.Any()).Return(interfaces.MetricData{
 				Datas: []interfaces.Data{
 					{
 						Labels: map[string]string{"param1": "123"},
