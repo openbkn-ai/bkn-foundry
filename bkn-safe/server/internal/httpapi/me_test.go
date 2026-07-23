@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"bkn-safe/internal/model"
@@ -349,5 +350,16 @@ func TestMePermissionsScope(t *testing.T) {
 	}
 	if w := tokReq(t, r, http.MethodGet, path+"?scope=type&resource_type=large_model&resource_id=m1", nil, "u1"); w.Code != http.StatusBadRequest {
 		t.Errorf("scope=type with resource_id: want 400, got %d", w.Code)
+	}
+
+	// scope=type + resource_id but NO resource_type: both rules would reject, and
+	// the scope conflict must win — telling the caller to add resource_type would
+	// send it into a second 400 on a request that can never be satisfied.
+	w := tokReq(t, r, http.MethodGet, path+"?scope=type&resource_id=m1", nil, "u1")
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("scope=type with bare resource_id: want 400, got %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "conflicts with scope=type") {
+		t.Errorf("want the scope-conflict error, got %s", w.Body.String())
 	}
 }
