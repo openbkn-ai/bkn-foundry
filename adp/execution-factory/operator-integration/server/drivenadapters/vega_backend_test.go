@@ -62,6 +62,15 @@ func TestVegaBackendClient(t *testing.T) {
 			So(resp.Enabled, ShouldBeFalse)
 		})
 
+		Convey("ignores entries that do not match the requested catalog id", func() {
+			httpClient.EXPECT().GetNoUnmarshal(gomock.Any(), "http://vega-backend:9898/api/vega-backend/v1/catalogs/bkn_execution_factory_catalog", gomock.Nil(), headers).
+				Return(http.StatusOK, []byte(`{"entries":[{"id":"some_other_catalog","name":"other"}]}`), nil)
+
+			resp, err := client.GetCatalogByID(ctx, "bkn_execution_factory_catalog")
+			So(err, ShouldBeNil)
+			So(resp, ShouldBeNil)
+		})
+
 		Convey("treats an empty catalog payload as not found", func() {
 			httpClient.EXPECT().GetNoUnmarshal(gomock.Any(), "http://vega-backend:9898/api/vega-backend/v1/catalogs/bkn_execution_factory_catalog", gomock.Nil(), headers).
 				Return(http.StatusOK, []byte(`{"entries":[]}`), nil)

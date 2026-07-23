@@ -75,7 +75,13 @@ func (v *vegaBackendClient) GetCatalogByID(ctx context.Context, id string) (*int
 		Entries []*interfaces.VegaCatalog `json:"entries"`
 	}
 	if err = json.Unmarshal(respData, &entries); err == nil && len(entries.Entries) > 0 {
-		return entries.Entries[0], nil
+		// 按 id 挑，不认列表顺序：调用方(存量目录收养)强依赖拿到的就是请求的那个目录
+		for _, entry := range entries.Entries {
+			if entry != nil && entry.ID == id {
+				return entry, nil
+			}
+		}
+		return nil, nil
 	}
 
 	catalog := &interfaces.VegaCatalog{}
@@ -165,7 +171,13 @@ func (v *vegaBackendClient) GetResourceByID(ctx context.Context, id string) (*in
 		Entries []*interfaces.VegaResource `json:"entries"`
 	}
 	if err = json.Unmarshal(respData, &entries); err == nil && len(entries.Entries) > 0 {
-		return entries.Entries[0], nil
+		// 同 GetCatalogByID：按 id 挑，收养存量 dataset 时必须确认拿到的就是它
+		for _, entry := range entries.Entries {
+			if entry != nil && entry.ID == id {
+				return entry, nil
+			}
+		}
+		return nil, nil
 	}
 
 	resource := &interfaces.VegaResource{}

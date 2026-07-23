@@ -45,9 +45,8 @@ type skillIndexSync struct {
 	logger       interfaces.Logger
 	mu           sync.RWMutex
 	initialized  bool
-	// catalogID / datasetID 为本进程实际使用的目录/数据集 ID：新装是 bkn_*，
-	// 存量环境解析到 legacy 的 kweaver_*；空值表示尚未解析，取新装默认值。
-	catalogID string
+	// datasetID 为本进程实际使用的数据集 ID：新装是 bkn_*，存量环境解析到
+	// legacy 的 kweaver_*；空值表示尚未解析，取新装默认值。
 	datasetID string
 	// embeddingModelName 该系统 skill dataset 建时锁定的 embedding 模型名(系统默认快照)，
 	// 受 mu 保护；upsert 读回它生成向量，而非每次重取当前默认。
@@ -102,7 +101,6 @@ func (s *skillIndexSync) Init(ctx context.Context) (err error) {
 	if err != nil {
 		return err
 	}
-	s.setCatalogID(catalogID)
 
 	datasetID, resource, err := s.resolveDataset(ctx)
 	if err != nil {
@@ -335,12 +333,6 @@ func (s *skillIndexSync) setDatasetID(id string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.datasetID = id
-}
-
-func (s *skillIndexSync) setCatalogID(id string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.catalogID = id
 }
 
 func (s *skillIndexSync) UpsertSkill(ctx context.Context, skill *model.SkillRepositoryDB) error {
