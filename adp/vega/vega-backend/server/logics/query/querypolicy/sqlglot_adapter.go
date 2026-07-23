@@ -114,6 +114,117 @@ type validationResult struct {
 	Error string `json:"error"`
 }
 
+type resourceIDExtractionResult struct {
+	ResourceIDs []string `json:"resource_ids"`
+	Error       string   `json:"error"`
+}
+
+// ExtractTableResourceIDs returns Resource IDs only when their placeholders
+// occur in SQL Table nodes. Comments and string literals are intentionally
+// left untouched before parsing, so they can never establish a binding.
+func ExtractTableResourceIDs(ctx context.Context, sql string, inputDialect string) ([]string, error) {
+	cmd := exec.CommandContext(ctx, "python3", "-c", resourceIDExtractionScript, sql, inputDialect)
+
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	if err := cmd.Run(); err != nil {
+		logger.Errorf("ExtractTableResourceIDs policy command failed")
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
+		return nil, err
+	}
+
+	var result resourceIDExtractionResult
+	if err := sonic.Unmarshal(out.Bytes(), &result); err != nil {
+		logger.Errorf("ExtractTableResourceIDs policy response decode failed")
+		return nil, err
+	}
+	if result.Error != "" {
+		return nil, errors.New("invalid SQL resource placeholder")
+	}
+	return result.ResourceIDs, nil
+}
+
+const resourceIDExtractionScript = `
+import json
+import re
+import secrets
+import sys
+
+import sqlglot
+from sqlglot import exp
+
+PLACEHOLDER = re.compile(r"\{\{\.?([a-z0-9][a-z0-9_-]{0,39})\}\}")
+
+def replace_code_placeholders(sql):
+    marker_prefix = "__bkn_resource_" + secrets.token_hex(16) + "_"
+    resource_by_marker = {}
+    output = []
+    index = 0
+    marker_index = 0
+    while index < len(sql):
+        if sql.startswith("--", index):
+            end = sql.find("\n", index)
+            if end == -1:
+                output.append(sql[index:])
+                break
+            output.append(sql[index:end + 1])
+            index = end + 1
+            continue
+        if sql.startswith("/*", index):
+            end = sql.find("*/", index + 2)
+            if end == -1:
+                output.append(sql[index:])
+                break
+            output.append(sql[index:end + 2])
+            index = end + 2
+            continue
+        if sql[index] in "'\"" or sql[index] == chr(96):
+            quote = sql[index]
+            end = index + 1
+            while end < len(sql):
+                if sql[end] == quote:
+                    if end + 1 < len(sql) and sql[end + 1] == quote:
+                        end += 2
+                        continue
+                    end += 1
+                    break
+                if sql[end] == "\\\\" and quote == "'" and end + 1 < len(sql):
+                    end += 2
+                    continue
+                end += 1
+            output.append(sql[index:end])
+            index = end
+            continue
+        match = PLACEHOLDER.match(sql, index)
+        if match:
+            marker = marker_prefix + str(marker_index)
+            marker_index += 1
+            resource_by_marker[marker] = match.group(1)
+            output.append(marker)
+            index = match.end()
+            continue
+        output.append(sql[index])
+        index += 1
+    return "".join(output), resource_by_marker
+
+try:
+    sql, dialect = sys.argv[1], sys.argv[2]
+    transformed, resource_by_marker = replace_code_placeholders(sql)
+    statement = sqlglot.parse_one(transformed, read=dialect)
+    resource_ids = []
+    seen = set()
+    for table in statement.find_all(exp.Table):
+        resource_id = resource_by_marker.get(table.name)
+        if resource_id is not None and resource_id not in seen:
+            seen.add(resource_id)
+            resource_ids.append(resource_id)
+    print(json.dumps({"resource_ids": resource_ids, "error": None}))
+except Exception as e:
+    print(json.dumps({"resource_ids": [], "error": "invalid SQL resource placeholder: " + str(e)}))
+`
+
 const validationScript = `
 import json
 import sys

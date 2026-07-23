@@ -89,6 +89,27 @@ func TestSQLGlotAdapterValidateTableReferences(t *testing.T) {
 	assert.Contains(t, validationErr.Reason, "unbound physical table")
 }
 
+func TestExtractTableResourceIDs(t *testing.T) {
+	requireSQLGlotRuntime(t)
+
+	ids, err := ExtractTableResourceIDs(context.Background(),
+		"SELECT * FROM {{orders-2026}} JOIN {{.customer_data}} ON true", "postgres")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"orders-2026", "customer_data"}, ids)
+
+	for _, sql := range []string{
+		"SELECT * FROM public.orders /* {{orders-2026}} */",
+		"SELECT * FROM public.orders -- {{orders-2026}}\n",
+		"SELECT '{{orders-2026}}' FROM public.orders",
+	} {
+		t.Run(sql, func(t *testing.T) {
+			ids, err := ExtractTableResourceIDs(context.Background(), sql, "postgres")
+			require.NoError(t, err)
+			assert.Empty(t, ids)
+		})
+	}
+}
+
 func TestSQLGlotAdapterHonorsCanceledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

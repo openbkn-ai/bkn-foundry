@@ -200,10 +200,36 @@ func TestRawQueryServiceValidateRequestNewContract(t *testing.T) {
 }
 
 func TestExtractResourceIDsSupportsHyphenatedIDs(t *testing.T) {
-	ids, err := (&rawQueryService{}).extractResourceIDs("SELECT * FROM {{orders-2026}} JOIN {{.customer_data}} ON true")
+	ids, err := (&rawQueryService{}).extractResourceIDs(context.Background(), "SELECT * FROM {{orders-2026}} JOIN {{.customer_data}} ON true", "postgres")
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"orders-2026", "customer_data"}, ids)
+}
+
+func TestPrepareSQLQueryRejectsResourcePlaceholderOutsideTableReference(t *testing.T) {
+	svc := &rawQueryService{}
+	for _, sql := range []string{
+		"SELECT * FROM public.orders /* {{resource-1}} */",
+		"SELECT * FROM public.orders -- {{resource-1}}\n",
+		"SELECT '{{resource-1}}' FROM public.orders",
+	} {
+		t.Run(sql, func(t *testing.T) {
+			_, err := svc.prepareSQLQuery(context.Background(), &interfaces.RawQueryRequest{
+				Query:        sql,
+				QueryFormat:  interfaces.QueryFormatSQL,
+				InputDialect: "postgres",
+			})
+			assertHTTPError(t, err, http.StatusBadRequest)
+		})
+	}
+}
+
+func TestReplacePlaceholderInSQLCodePreservesCommentsAndLiterals(t *testing.T) {
+	got := replacePlaceholderInSQLCode(
+		"SELECT '{{resource-1}}' FROM {{resource-1}} /* {{resource-1}} */ -- {{resource-1}}\n",
+		"{{resource-1}}", "public.orders",
+	)
+	assert.Equal(t, "SELECT '{{resource-1}}' FROM public.orders /* {{resource-1}} */ -- {{resource-1}}\n", got)
 }
 
 func TestQueryExecutionContextAppliesTimeout(t *testing.T) {
@@ -744,12 +770,12 @@ func TestRawQueryServiceExtractResourceIDs(t *testing.T) {
 	t.Run("raw query service extract resource ids", func(t *testing.T) {
 		svc := &rawQueryService{}
 
-		got, err := svc.extractResourceIDs("select * from {{.r1}} join {{r2}} on x where id in (select id from {{.r1}})")
+		got, err := svc.extractResourceIDs(context.Background(), "select * from {{.r1}} join {{r2}} on x where id in (select id from {{.r1}})", "postgres")
 
 		require.NoError(t, err)
 		assert.Equal(t, []string{"r1", "r2"}, got)
 
-		got, err = svc.extractResourceIDs(map[string]any{"query": map[string]any{"match_all": map[string]any{}}})
+		got, err = svc.extractResourceIDs(context.Background(), map[string]any{"query": map[string]any{"match_all": map[string]any{}}}, "postgres")
 		require.NoError(t, err)
 		assert.Empty(t, got)
 	})
