@@ -45,6 +45,8 @@ func NewApp() *App {
 	mux := http.NewServeMux()
 	mux.HandleFunc(APIBasePath+"/traces/_search", traceHandler.SearchTraces)
 	mux.HandleFunc(APIBasePath+"/traces/by-conversation", traceHandler.SearchTracesByConversationID)
+	mux.HandleFunc(APIBasePath+"/traces/by-request", evidenceHandler.GetEvidenceChainByRequestID)
+	mux.HandleFunc(APIBasePath+"/traces/", evidenceHandler.GetEvidenceChainByTraceID)
 	mux.HandleFunc(APIBasePath+"/evidence/events", evidenceHandler.IngestEvidenceEvents)
 	mux.Handle(APIBasePath+"/swagger/", httpSwagger.Handler(
 		httpSwagger.URL(APIBasePath+"/swagger/doc.json"),

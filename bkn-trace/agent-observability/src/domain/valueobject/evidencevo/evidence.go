@@ -1,7 +1,5 @@
 package evidencevo
 
-import "encoding/json"
-
 const ContractVersion = "2.0.0"
 
 type IngestRequest struct {
@@ -21,18 +19,17 @@ type TraceContext struct {
 }
 
 type EvidenceEvent struct {
-	EventID       string          `json:"event_id"`
-	EventType     string          `json:"event_type"`
-	SchemaVersion string          `json:"bkn.trace.schema.version"`
-	ObservedAt    string          `json:"observed_at"`
-	EmittedAt     string          `json:"emitted_at"`
-	Producer      string          `json:"producer_module"`
-	TraceID       string          `json:"trace_id"`
-	SpanID        string          `json:"span_id"`
-	RequestID     string          `json:"bkn.request.id"`
-	OperationName string          `json:"bkn.operation.name"`
-	Payload       map[string]any  `json:"payload"`
-	RawPayload    json.RawMessage `json:"-"`
+	EventID       string         `json:"event_id"`
+	EventType     string         `json:"event_type"`
+	SchemaVersion string         `json:"bkn.trace.schema.version"`
+	ObservedAt    string         `json:"observed_at"`
+	EmittedAt     string         `json:"emitted_at"`
+	Producer      string         `json:"producer_module"`
+	TraceID       string         `json:"trace_id"`
+	SpanID        string         `json:"span_id"`
+	RequestID     string         `json:"bkn.request.id"`
+	OperationName string         `json:"bkn.operation.name"`
+	Payload       map[string]any `json:"payload"`
 }
 
 type ValidationError struct {
@@ -60,6 +57,37 @@ type NormalizedTrace struct {
 	ClaimCount       int
 	EvidenceRefCount int
 	BusinessRefCount int
+}
+
+type EvidenceChainResponse struct {
+	TraceID           string            `json:"trace_id"`
+	RequestID         string            `json:"bkn.request.id"`
+	Partial           bool              `json:"partial"`
+	PartialReasons    []string          `json:"partial_reason"`
+	VisibilitySummary VisibilitySummary `json:"visibility_summary"`
+	Page              EvidencePage      `json:"page"`
+	Data              EvidenceChainData `json:"data"`
+}
+
+type VisibilitySummary struct {
+	AuthorizedRefCount int `json:"authorized_ref_count"`
+	RedactedRefCount   int `json:"redacted_ref_count"`
+	HiddenRefCount     int `json:"hidden_ref_count"`
+	OmittedRefCount    int `json:"omitted_ref_count"`
+	UnresolvedRefCount int `json:"unresolved_ref_count"`
+}
+
+type EvidencePage struct {
+	NextCursor *string `json:"next_cursor"`
+	NodeCount  int     `json:"node_count"`
+	EdgeCount  int     `json:"edge_count"`
+	Truncated  bool    `json:"truncated"`
+}
+
+type EvidenceChainData struct {
+	Claims       []map[string]any `json:"claims"`
+	EvidenceRefs []map[string]any `json:"evidence_refs"`
+	BusinessRefs []map[string]any `json:"business_refs"`
 }
 
 type IngestResponse struct {

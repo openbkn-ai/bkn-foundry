@@ -25,6 +25,52 @@ func TestEvidenceHandlerAcceptsValidBatch(t *testing.T) {
 	}
 }
 
+func TestEvidenceHandlerRejectsIngestWithoutConfiguredToken(t *testing.T) {
+	store := evidencestore.New()
+	handler := NewEvidenceHandlerWithIngestToken(evidencesvc.New(store), "secret-token")
+	req := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/evidence/events", strings.NewReader(validHandlerBatch()))
+	rec := httptest.NewRecorder()
+
+	handler.IngestEvidenceEvents(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	queryReq := httptest.NewRequest(http.MethodGet, "/api/agent-observability/v1/traces/9c0d0000000000000000000000000001/evidence-chain", nil)
+	queryRec := httptest.NewRecorder()
+	handler.GetEvidenceChainByTraceID(queryRec, queryReq)
+	if queryRec.Code != http.StatusNotFound {
+		t.Fatalf("expected rejected event to stay unstored, got %d: %s", queryRec.Code, queryRec.Body.String())
+	}
+}
+
+func TestEvidenceHandlerAcceptsBearerIngestToken(t *testing.T) {
+	handler := NewEvidenceHandlerWithIngestToken(evidencesvc.New(evidencestore.New()), "secret-token")
+	req := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/evidence/events", strings.NewReader(validHandlerBatch()))
+	req.Header.Set("Authorization", "Bearer secret-token")
+	rec := httptest.NewRecorder()
+
+	handler.IngestEvidenceEvents(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestEvidenceHandlerAcceptsIngestTokenHeader(t *testing.T) {
+	handler := NewEvidenceHandlerWithIngestToken(evidencesvc.New(evidencestore.New()), "secret-token")
+	req := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/evidence/events", strings.NewReader(validHandlerBatch()))
+	req.Header.Set("X-BKN-Trace-Ingest-Token", "secret-token")
+	rec := httptest.NewRecorder()
+
+	handler.IngestEvidenceEvents(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestEvidenceHandlerRejectsSensitivePayload(t *testing.T) {
 	handler := NewEvidenceHandler(evidencesvc.New(evidencestore.New()))
 	req := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/evidence/events", strings.NewReader(strings.Replace(validHandlerBatch(), `"claim_hash": "sha256:claim"`, `"raw_sql": "select email from customer"`, 1)))
@@ -57,6 +103,62 @@ func TestEvidenceHandlerReturnsValidationErrorDetails(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), `claim_hash`) || !strings.Contains(rec.Body.String(), `visibility`) {
 		t.Fatalf("expected all validation errors in details, got: %s", rec.Body.String())
+	}
+}
+
+func TestEvidenceHandlerReturnsEvidenceChainByTrace(t *testing.T) {
+	store := evidencestore.New()
+	handler := NewEvidenceHandler(evidencesvc.New(store))
+	ingestReq := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/evidence/events", strings.NewReader(validHandlerBatch()))
+	ingestRec := httptest.NewRecorder()
+	handler.IngestEvidenceEvents(ingestRec, ingestReq)
+	if ingestRec.Code != http.StatusAccepted {
+		t.Fatalf("expected ingest 202, got %d: %s", ingestRec.Code, ingestRec.Body.String())
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/agent-observability/v1/traces/9c0d0000000000000000000000000001/evidence-chain", nil)
+	rec := httptest.NewRecorder()
+	handler.GetEvidenceChainByTraceID(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"trace_id":"9c0d0000000000000000000000000001"`) {
+		t.Fatalf("unexpected body: %s", rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"claims"`) {
+		t.Fatalf("expected claims in body: %s", rec.Body.String())
+	}
+}
+
+func TestEvidenceHandlerReturnsEvidenceChainByRequest(t *testing.T) {
+	store := evidencestore.New()
+	handler := NewEvidenceHandler(evidencesvc.New(store))
+	ingestReq := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/evidence/events", strings.NewReader(validHandlerBatch()))
+	ingestRec := httptest.NewRecorder()
+	handler.IngestEvidenceEvents(ingestRec, ingestReq)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/agent-observability/v1/traces/by-request?request_id=req_handler_001", nil)
+	rec := httptest.NewRecorder()
+	handler.GetEvidenceChainByRequestID(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"bkn.request.id":"req_handler_001"`) {
+		t.Fatalf("unexpected body: %s", rec.Body.String())
+	}
+}
+
+func TestEvidenceHandlerReturnsNotFoundForMissingEvidenceChain(t *testing.T) {
+	handler := NewEvidenceHandler(evidencesvc.New(evidencestore.New()))
+	req := httptest.NewRequest(http.MethodGet, "/api/agent-observability/v1/traces/missing/evidence-chain", nil)
+	rec := httptest.NewRecorder()
+
+	handler.GetEvidenceChainByTraceID(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 

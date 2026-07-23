@@ -32,6 +32,11 @@ ingress:
     - /api/agent-observability/v1
   tls: []
 
+evidence:
+  ingestAuth:
+    existingSecret: ""
+    secretKey: token
+
 resources:
   limits:
     cpu: 500m
