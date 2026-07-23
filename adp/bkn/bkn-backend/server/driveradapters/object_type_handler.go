@@ -8,6 +8,7 @@ package driveradapters
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -1060,6 +1061,16 @@ func (r *restHandler) GetObjectTypeSampleData(c *gin.Context, visitor hydra.Visi
 		return
 	}
 	needTotal := c.DefaultQuery("need_total", "true") != "false"
+	var searchAfter []any
+	if rawSearchAfter := strings.TrimSpace(c.Query("search_after")); rawSearchAfter != "" {
+		if err := json.Unmarshal([]byte(rawSearchAfter), &searchAfter); err != nil {
+			httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
+				WithErrorDetails("search_after must be a JSON array")
+			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+			rest.ReplyError(c, httpErr)
+			return
+		}
+	}
 
 	span.SetAttributes(
 		attr.Key("kn_id").String(knID),
@@ -1082,9 +1093,10 @@ func (r *restHandler) GetObjectTypeSampleData(c *gin.Context, visitor hydra.Visi
 	}
 
 	result, err := r.ots.GetObjectTypeSampleData(ctx, knID, branch, otID, interfaces.ObjectTypeSampleDataQueryParams{
-		Limit:     limit,
-		NeedTotal: needTotal,
-		Offset:    offset,
+		Limit:       limit,
+		NeedTotal:   needTotal,
+		Offset:      offset,
+		SearchAfter: searchAfter,
 	})
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)

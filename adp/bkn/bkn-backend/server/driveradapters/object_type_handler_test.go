@@ -8,8 +8,10 @@ package driveradapters
 
 import (
 	"bytes"
+	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 
 	"github.com/bytedance/sonic"
@@ -927,6 +929,49 @@ func Test_ObjectTypeRestHandler_SearchObjectTypesByIn(t *testing.T) {
 			engine.ServeHTTP(w, req)
 
 			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+		})
+	})
+}
+
+func Test_ObjectTypeRestHandler_GetObjectTypeSampleDataByIn(t *testing.T) {
+	Convey("Test ObjectTypeHandler GetObjectTypeSampleDataByIn\n", t, func() {
+		test := setGinMode()
+		defer test()
+		_, mockCtrl, engine, ots, _, _, kns := newObjectTypeTestHandler(t)
+		defer mockCtrl.Finish()
+
+		knID := "kn1"
+		otID := "ot1"
+		baseURL := "/api/bkn-backend/in/v1/knowledge-networks/" + knID + "/object-types/" + otID + "/sample-data"
+
+		Convey("Success with search_after\n", func() {
+			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, interfaces.MAIN_BRANCH).Return(knID, true, nil)
+			ots.EXPECT().GetObjectTypeSampleData(gomock.Any(), knID, interfaces.MAIN_BRANCH, otID, gomock.Any()).
+				DoAndReturn(func(_ context.Context, _ string, _ string, _ string, query interfaces.ObjectTypeSampleDataQueryParams) (*interfaces.ObjectTypeSampleData, error) {
+					So(query.Limit, ShouldEqual, 10)
+					So(query.Offset, ShouldEqual, 0)
+					So(query.NeedTotal, ShouldBeFalse)
+					So(query.SearchAfter, ShouldResemble, []any{"cursor-1", float64(2)})
+					return &interfaces.ObjectTypeSampleData{}, nil
+				})
+
+			req := httptest.NewRequest(http.MethodGet, baseURL+"?limit=10&need_total=false&search_after="+url.QueryEscape(`["cursor-1",2]`), nil)
+			req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_ID, "user1")
+			w := httptest.NewRecorder()
+			engine.ServeHTTP(w, req)
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+		})
+
+		Convey("Failed when search_after is not JSON array\n", func() {
+			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, interfaces.MAIN_BRANCH).Return(knID, true, nil)
+
+			req := httptest.NewRequest(http.MethodGet, baseURL+"?search_after=cursor-1", nil)
+			req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_ID, "user1")
+			w := httptest.NewRecorder()
+			engine.ServeHTTP(w, req)
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusBadRequest)
 		})
 	})
 }
