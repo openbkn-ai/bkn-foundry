@@ -164,6 +164,9 @@ observability:
   trace:
     enabled: false
     sampling_rate: 1.0
+  evidence:
+    ingest_url: ""
+    timeout_ms: 2000
   log:
     enabled: false
     level: info

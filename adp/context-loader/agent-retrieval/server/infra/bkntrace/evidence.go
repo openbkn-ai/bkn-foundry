@@ -1,0 +1,365 @@
+// Copyright openbkn.ai
+// Copyright The kweaver.ai Authors.
+//
+// Licensed under the Apache License, Version 2.0.
+// See the LICENSE file in the project root for details.
+
+package bkntrace
+
+import (
+	"bytes"
+	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"os"
+	"strings"
+	"time"
+
+	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/common"
+	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/interfaces"
+	"go.opentelemetry.io/otel/trace"
+)
+
+const (
+	ContractVersion = "2.0.0"
+	ModuleName      = "context-loader"
+)
+
+const (
+	envEvidenceIngestURL       = "BKN_TRACE_EVIDENCE_INGEST_URL"
+	envEvidenceIngestTimeoutMS = "BKN_TRACE_EVIDENCE_TIMEOUT_MS"
+)
+
+type Event map[string]any
+
+type batch struct {
+	ContractVersion string         `json:"bkn.trace.schema.version"`
+	Trace           map[string]any `json:"trace"`
+	Events          []Event        `json:"events"`
+}
+
+type eventContext struct {
+	traceID     string
+	spanID      string
+	traceparent string
+	requestID   string
+	accountID   string
+	accountType string
+}
+
+func HashValue(value any) string {
+	raw, err := json.Marshal(value)
+	if err != nil {
+		raw = []byte(fmt.Sprintf("%v", value))
+	}
+	sum := sha256.Sum256(raw)
+	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
+func ClaimID(kind, subjectID string, value any) string {
+	sum := sha256.Sum256([]byte(HashValue(map[string]any{
+		"kind":       kind,
+		"subject_id": subjectID,
+		"value":      value,
+	})))
+	return "claim_" + hex.EncodeToString(sum[:])[:24]
+}
+
+func BuildSearchSchemaEvents(ctx context.Context, req *interfaces.SearchSchemaReq, resp *interfaces.SearchSchemaResp) []Event {
+	ec, ok := contextFromRequest(ctx, req)
+	if !ok {
+		return nil
+	}
+	refs := schemaEvidenceRefs(resp)
+	if len(refs) == 0 {
+		return nil
+	}
+
+	resultSummary := map[string]any{
+		"kn_id":               resolvedKnID(req),
+		"query_hash":          HashValue(strings.TrimSpace(req.Query)),
+		"object_type_count":   len(resp.ObjectTypes),
+		"relation_type_count": len(resp.RelationTypes),
+		"action_type_count":   len(resp.ActionTypes),
+		"metric_type_count":   len(resp.MetricTypes),
+	}
+	claimID := ClaimID("context_loader.search_schema", resolvedKnID(req), resultSummary)
+
+	return []Event{
+		buildEvent(ec, "claim.created", "context.search_schema", map[string]any{
+			"claim_id":       claimID,
+			"claim_type":     "finding",
+			"claim_hash":     HashValue(resultSummary),
+			"visibility":     "visible",
+			"version_status": "unversioned",
+			"partial_reason": []string{"schema_refs_unversioned"},
+			"subject_refs": map[string]any{
+				"kn_id":               resolvedKnID(req),
+				"query_hash":          resultSummary["query_hash"],
+				"max_concepts":        maxConcepts(req),
+				"include_columns":     boolValue(req.IncludeColumns),
+				"schema_brief":        boolValue(req.SchemaBrief),
+				"returned_ref_count":  len(refs),
+				"data.classification": "internal",
+			},
+		}),
+		buildEvent(ec, "evidence.refs.created", "context.search_schema", map[string]any{
+			"claim_id":      claimID,
+			"evidence_refs": refs,
+		}),
+	}
+}
+
+func SubmitEvents(ctx context.Context, logger interfaces.Logger, req *interfaces.SearchSchemaReq, events []Event) {
+	if len(events) == 0 {
+		return
+	}
+	ec, ok := contextFromRequest(ctx, req)
+	if !ok || ec.accountID == "" || ec.accountType == "" {
+		return
+	}
+	ingestURL := strings.TrimSpace(os.Getenv(envEvidenceIngestURL))
+	if ingestURL == "" {
+		return
+	}
+	timeout := evidenceTimeout()
+	payload := batch{
+		ContractVersion: ContractVersion,
+		Trace: map[string]any{
+			"trace_id":         ec.traceID,
+			"traceparent":      ec.traceparent,
+			"bkn.request.id":   ec.requestID,
+			"business_domain":  ec.accountID,
+			"bkn.account.id":   ec.accountID,
+			"bkn.account.type": ec.accountType,
+		},
+		Events: events,
+	}
+
+	go func() {
+		if err := postBatch(ingestURL, timeout, payload); err != nil && logger != nil {
+			logger.WithContext(ctx).Warnf("BKN Trace evidence ingestion unavailable: %v", err)
+		}
+	}()
+}
+
+func postBatch(ingestURL string, timeout time.Duration, payload batch) error {
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, ingestURL, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: timeout}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= http.StatusBadRequest {
+		return fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+	return nil
+}
+
+func evidenceTimeout() time.Duration {
+	value := strings.TrimSpace(os.Getenv(envEvidenceIngestTimeoutMS))
+	if value == "" {
+		return 2 * time.Second
+	}
+	var ms int
+	if _, err := fmt.Sscanf(value, "%d", &ms); err != nil || ms <= 0 {
+		return 2 * time.Second
+	}
+	return time.Duration(ms) * time.Millisecond
+}
+
+func contextFromRequest(ctx context.Context, req *interfaces.SearchSchemaReq) (eventContext, bool) {
+	spanContext := trace.SpanContextFromContext(ctx)
+	if !spanContext.IsValid() {
+		return eventContext{}, false
+	}
+	traceContext, ok := common.GetTraceContextFromCtx(ctx)
+	if !ok || !common.IsValidBKNRequestID(traceContext.RequestID) {
+		return eventContext{}, false
+	}
+	authContext, _ := common.GetAccountAuthContextFromCtx(ctx)
+	accountID := ""
+	accountType := ""
+	if authContext != nil {
+		accountID = strings.TrimSpace(authContext.AccountID)
+		accountType = strings.TrimSpace(string(authContext.AccountType))
+	}
+	if req != nil {
+		if accountID == "" {
+			accountID = strings.TrimSpace(req.XAccountID)
+		}
+		if accountType == "" {
+			accountType = strings.TrimSpace(req.XAccountType)
+		}
+	}
+	flags := "00"
+	if spanContext.TraceFlags().IsSampled() {
+		flags = "01"
+	}
+	return eventContext{
+		traceID:     spanContext.TraceID().String(),
+		spanID:      spanContext.SpanID().String(),
+		traceparent: fmt.Sprintf("00-%s-%s-%s", spanContext.TraceID().String(), spanContext.SpanID().String(), flags),
+		requestID:   traceContext.RequestID,
+		accountID:   accountID,
+		accountType: accountType,
+	}, true
+}
+
+func buildEvent(ec eventContext, eventType, operationName string, payload map[string]any) Event {
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	return Event{
+		"event_id":                 "evt_" + randomHex(16),
+		"event_type":               eventType,
+		"bkn.trace.schema.version": ContractVersion,
+		"observed_at":              now,
+		"emitted_at":               now,
+		"producer_module":          ModuleName,
+		"trace_id":                 ec.traceID,
+		"span_id":                  ec.spanID,
+		"bkn.request.id":           ec.requestID,
+		"bkn.operation.name":       operationName,
+		"payload":                  payload,
+	}
+}
+
+func randomHex(length int) string {
+	if length <= 0 {
+		return ""
+	}
+	buf := make([]byte, (length+1)/2)
+	if _, err := rand.Read(buf); err != nil {
+		sum := sha256.Sum256([]byte(time.Now().UTC().Format(time.RFC3339Nano)))
+		return hex.EncodeToString(sum[:])[:length]
+	}
+	return hex.EncodeToString(buf)[:length]
+}
+
+func schemaEvidenceRefs(resp *interfaces.SearchSchemaResp) []map[string]any {
+	if resp == nil {
+		return nil
+	}
+	refs := make([]map[string]any, 0, len(resp.ObjectTypes)+len(resp.RelationTypes)+len(resp.ActionTypes)+len(resp.MetricTypes))
+	refs = append(refs, conceptRefs("object_type", "schema_ref", resp.ObjectTypes)...)
+	refs = append(refs, conceptRefs("relation_type", "schema_ref", resp.RelationTypes)...)
+	refs = append(refs, conceptRefs("action_type", "action_ref", resp.ActionTypes)...)
+	refs = append(refs, conceptRefs("metric_type", "metric_ref", resp.MetricTypes)...)
+	return refs
+}
+
+func conceptRefs(kind, refType string, items []any) []map[string]any {
+	refs := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		itemMap, ok := asMap(item)
+		if !ok {
+			continue
+		}
+		id := firstString(itemMap, "concept_id", "id")
+		if id == "" {
+			continue
+		}
+		refs = append(refs, map[string]any{
+			"ref_id":         kind + ":" + id,
+			"ref_type":       refType,
+			"source_system":  ModuleName,
+			"summary_hash":   HashValue(safeConceptSummary(kind, itemMap)),
+			"validity":       "observed",
+			"version_status": "unversioned",
+			"visibility":     "visible",
+			"partial_reason": []string{"schema_ref_unversioned"},
+		})
+	}
+	return refs
+}
+
+func safeConceptSummary(kind string, item map[string]any) map[string]any {
+	return map[string]any{
+		"kind":                  kind,
+		"id":                    firstString(item, "concept_id", "id"),
+		"module_type":           firstString(item, "module_type"),
+		"source_object_type_id": firstString(item, "source_object_type_id"),
+		"target_object_type_id": firstString(item, "target_object_type_id"),
+		"object_type_id":        firstString(item, "object_type_id"),
+		"score_bucket":          scoreBucket(item),
+	}
+}
+
+func asMap(value any) (map[string]any, bool) {
+	if value == nil {
+		return nil, false
+	}
+	if itemMap, ok := value.(map[string]any); ok {
+		return itemMap, true
+	}
+	raw, err := json.Marshal(value)
+	if err != nil {
+		return nil, false
+	}
+	var itemMap map[string]any
+	if err := json.Unmarshal(raw, &itemMap); err != nil {
+		return nil, false
+	}
+	return itemMap, true
+}
+
+func firstString(item map[string]any, keys ...string) string {
+	for _, key := range keys {
+		if value, ok := item[key].(string); ok && strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
+}
+
+func scoreBucket(item map[string]any) string {
+	score, ok := item["_score"].(float64)
+	if !ok {
+		score, ok = item["score"].(float64)
+	}
+	if !ok {
+		return "unknown"
+	}
+	switch {
+	case score >= 0.8:
+		return "high"
+	case score >= 0.5:
+		return "medium"
+	default:
+		return "low"
+	}
+}
+
+func resolvedKnID(req *interfaces.SearchSchemaReq) string {
+	if req == nil {
+		return ""
+	}
+	if strings.TrimSpace(req.XKnID) != "" {
+		return strings.TrimSpace(req.XKnID)
+	}
+	return strings.TrimSpace(req.KnID)
+}
+
+func maxConcepts(req *interfaces.SearchSchemaReq) int {
+	if req == nil || req.MaxConcepts == nil {
+		return 0
+	}
+	return *req.MaxConcepts
+}
+
+func boolValue(value *bool) bool {
+	return value != nil && *value
+}

@@ -16,6 +16,7 @@ import (
 	"github.com/creasty/defaults"
 
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/drivenadapters"
+	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/bkntrace"
 	aerrors "github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/interfaces"
 )
@@ -42,7 +43,9 @@ func (s *knSearchService) SearchSchema(ctx context.Context, req *interfaces.Sear
 		}
 	}
 
-	return FilterSearchSchemaResp(resp, metricTypes, scope, *req.MaxConcepts), nil
+	filtered := FilterSearchSchemaResp(resp, metricTypes, scope, *req.MaxConcepts)
+	bkntrace.SubmitEvents(ctx, s.Logger, req, bkntrace.BuildSearchSchemaEvents(ctx, req, filtered))
+	return filtered, nil
 }
 
 // SearchSchemaScope holds the resolved boolean flags for output filtering.
