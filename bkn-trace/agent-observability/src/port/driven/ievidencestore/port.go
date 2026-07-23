@@ -8,6 +8,6 @@ import (
 
 type EvidenceStorePort interface {
 	StoreEvidence(ctx context.Context, trace evidencevo.NormalizedTrace) error
-	GetEvidenceByTraceID(ctx context.Context, traceID string) ([]evidencevo.NormalizedTrace, error)
-	GetEvidenceByRequestID(ctx context.Context, requestID string) ([]evidencevo.NormalizedTrace, error)
+	GetEvidenceByTraceID(ctx context.Context, traceID string, options evidencevo.EvidenceQueryOptions) (evidencevo.EvidenceQueryResult, error)
+	GetEvidenceByRequestID(ctx context.Context, requestID string, options evidencevo.EvidenceQueryOptions) (evidencevo.EvidenceQueryResult, error)
 }

@@ -60,6 +60,15 @@ OPENSEARCH_EVIDENCE_INDEX=bkn-trace-evidence-v1
 
 当前 PR 不自动创建 index，不要求服务账号具备 OpenSearch index-management 权限；部署方需要提前创建 `OPENSEARCH_EVIDENCE_INDEX`。后续部署治理 PR 会补 index mapping、retention/ILM、权限与迁移脚本。
 
+Evidence Chain 与 Business Graph 查询支持可选 `limit` 参数，限制本次读取的 evidence trace 批次数：
+
+```http
+GET /api/agent-observability/v1/traces/{trace_id}/evidence-chain?limit=100
+GET /api/agent-observability/v1/traces/by-request/business-graph?request_id=req_x&limit=100
+```
+
+`limit` 取值范围为 `1..1000`，默认 `1000`。命中上限时响应会返回 `partial=true`、`partial_reason=["evidence_query_truncated"]`，并设置 `page.truncated=true`，调用方不得把该结果展示为完整证据链。
+
 ### Evidence 写入安全边界
 
 `POST /api/agent-observability/v1/evidence/events` 是写接口，生产环境必须通过平台网关鉴权保护，或配置服务内最小 ingest token：

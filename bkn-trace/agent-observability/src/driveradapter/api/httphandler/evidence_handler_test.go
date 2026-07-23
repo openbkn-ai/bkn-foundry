@@ -150,6 +150,21 @@ func TestEvidenceHandlerReturnsEvidenceChainByRequest(t *testing.T) {
 	}
 }
 
+func TestEvidenceHandlerRejectsInvalidEvidenceQueryLimit(t *testing.T) {
+	handler := NewEvidenceHandler(evidencesvc.New(evidencestore.New()))
+	req := httptest.NewRequest(http.MethodGet, "/api/agent-observability/v1/traces/by-request?request_id=req_handler_001&limit=0", nil)
+	rec := httptest.NewRecorder()
+
+	handler.GetEvidenceChainByRequestID(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"limit must be an integer between 1 and 1000"`) {
+		t.Fatalf("unexpected body: %s", rec.Body.String())
+	}
+}
+
 func TestEvidenceHandlerReturnsBusinessGraphByTrace(t *testing.T) {
 	store := evidencestore.New()
 	handler := NewEvidenceHandler(evidencesvc.New(store))

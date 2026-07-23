@@ -62,17 +62,21 @@ func (s *Store) StoreEvidence(ctx context.Context, trace evidencevo.NormalizedTr
 	return nil
 }
 
-func (s *Store) GetEvidenceByTraceID(ctx context.Context, traceID string) ([]evidencevo.NormalizedTrace, error) {
-	return s.search(ctx, "trace_id", traceID)
+func (s *Store) GetEvidenceByTraceID(ctx context.Context, traceID string, options evidencevo.EvidenceQueryOptions) (evidencevo.EvidenceQueryResult, error) {
+	return s.search(ctx, "trace_id", traceID, options)
 }
 
-func (s *Store) GetEvidenceByRequestID(ctx context.Context, requestID string) ([]evidencevo.NormalizedTrace, error) {
-	return s.search(ctx, "bkn.request.id", requestID)
+func (s *Store) GetEvidenceByRequestID(ctx context.Context, requestID string, options evidencevo.EvidenceQueryOptions) (evidencevo.EvidenceQueryResult, error) {
+	return s.search(ctx, "bkn.request.id", requestID, options)
 }
 
-func (s *Store) search(ctx context.Context, field string, value string) ([]evidencevo.NormalizedTrace, error) {
+func (s *Store) search(ctx context.Context, field string, value string, options evidencevo.EvidenceQueryOptions) (evidencevo.EvidenceQueryResult, error) {
+	limit := options.Limit
+	if limit <= 0 {
+		limit = maxEvidenceSearchResults
+	}
 	query, err := json.Marshal(map[string]any{
-		"size": maxEvidenceSearchResults,
+		"size": limit + 1,
 		"query": map[string]any{
 			"bool": exactTermQuery(field, value),
 		},
@@ -81,24 +85,29 @@ func (s *Store) search(ctx context.Context, field string, value string) ([]evide
 		},
 	})
 	if err != nil {
-		return nil, fmt.Errorf("marshal evidence search query: %w", err)
+		return evidencevo.EvidenceQueryResult{}, fmt.Errorf("marshal evidence search query: %w", err)
 	}
 
 	body, err := s.client.Search(ctx, s.index, query)
 	if err != nil {
-		return nil, err
+		return evidencevo.EvidenceQueryResult{}, err
 	}
 
 	var response searchResponse
 	if err := json.Unmarshal(body, &response); err != nil {
-		return nil, fmt.Errorf("decode evidence search response: %w", err)
+		return evidencevo.EvidenceQueryResult{}, fmt.Errorf("decode evidence search response: %w", err)
 	}
 
 	traces := make([]evidencevo.NormalizedTrace, 0, len(response.Hits.Hits))
 	for _, hit := range response.Hits.Hits {
 		traces = append(traces, fromDocument(hit.Source))
 	}
-	return traces, nil
+	result := evidencevo.EvidenceQueryResult{Traces: traces}
+	if len(result.Traces) > limit {
+		result.Truncated = true
+		result.Traces = result.Traces[:limit]
+	}
+	return result, nil
 }
 
 func toDocument(trace evidencevo.NormalizedTrace, ingestedAt time.Time) document {
