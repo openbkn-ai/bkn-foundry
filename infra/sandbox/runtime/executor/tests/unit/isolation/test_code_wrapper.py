@@ -16,6 +16,7 @@ from executor.infrastructure.isolation.code_wrapper import (
     extract_handler_signature,
     wrap_for_execution,
     unwrap_python_code,
+    uses_tool_decorator,
 )
 
 
@@ -350,3 +351,98 @@ class TestUnwrapPythonCode:
         unwrapped = unwrap_python_code("")
 
         assert unwrapped == ""
+
+
+class TestUsesToolDecorator:
+    """Tests for uses_tool_decorator detection."""
+
+    def test_detects_plain_decorator(self):
+        """Test @tool is detected."""
+        code = "@tool\ndef add(a: int, b: int) -> int:\n    return a + b"
+
+        assert uses_tool_decorator(code) is True
+
+    def test_detects_call_form(self):
+        """Test @tool(name=...) is detected."""
+        code = '@tool(name="add")\ndef add(a, b):\n    return a + b'
+
+        assert uses_tool_decorator(code) is True
+
+    def test_detects_qualified_form(self):
+        """Test @sandbox_sdk.tool is detected."""
+        code = "@sandbox_sdk.tool\ndef add(a, b):\n    return a + b"
+
+        assert uses_tool_decorator(code) is True
+
+    def test_ignores_mention_in_comment(self):
+        """Test @tool inside a comment is not a false positive."""
+        code = "# use @tool to register\ndef handler(event):\n    return event"
+
+        assert uses_tool_decorator(code) is False
+
+    def test_ignores_mention_in_string(self):
+        """Test @tool inside a string literal is not a false positive."""
+        code = 'def handler(event):\n    return "@tool"'
+
+        assert uses_tool_decorator(code) is False
+
+    def test_handles_syntax_error(self):
+        """Test unparsable code falls back to False."""
+        assert uses_tool_decorator("def broken(") is False
+
+    def test_plain_handler_returns_false(self):
+        """Test legacy handler code is not detected as tool code."""
+        code = "def handler(event):\n    return event"
+
+        assert uses_tool_decorator(code) is False
+
+
+class TestDualModeWrapper:
+    """Tests for wrapper mode selection between @tool and handler(event)."""
+
+    def test_tool_mode_dispatches_via_sdk(self):
+        """Test @tool code is wrapped to call sandbox_sdk.dispatch."""
+        code = "@tool\ndef add(a: int, b: int) -> int:\n    return a + b"
+
+        wrapper = generate_python_wrapper(code)
+
+        assert "import sandbox_sdk" in wrapper
+        assert "sandbox_sdk.dispatch(event)" in wrapper
+        assert "handler(event)" not in wrapper
+
+    def test_handler_mode_unchanged(self):
+        """Test legacy handler code keeps calling handler(event)."""
+        code = "def handler(event):\n    return event"
+
+        wrapper = generate_python_wrapper(code)
+
+        assert "result = handler(event)" in wrapper
+        assert "sandbox_sdk" not in wrapper
+
+    def test_both_modes_read_event_from_stdin(self):
+        """Test event contract is identical in both modes."""
+        tool_wrapper = generate_python_wrapper("@tool\ndef f(a: int) -> int:\n    return a")
+        handler_wrapper = generate_python_wrapper("def handler(event):\n    return event")
+
+        for wrapper in (tool_wrapper, handler_wrapper):
+            assert "sys.stdin.read()" in wrapper
+            assert "json.loads(stdin_data)" in wrapper
+            assert "print(json.dumps(result))" in wrapper
+
+    def test_tool_code_passes_validation(self):
+        """Test @tool code without handler is accepted by the validator."""
+        code = "@tool\ndef add(a: int, b: int) -> int:\n    return a + b"
+
+        is_valid, error = validate_python_handler(code)
+
+        assert is_valid is True
+        assert error is None
+
+    def test_code_without_entry_point_rejected(self):
+        """Test code with neither entry style is rejected."""
+        code = "x = 1"
+
+        is_valid, error = validate_python_handler(code)
+
+        assert is_valid is False
+        assert "No entry point found" in error

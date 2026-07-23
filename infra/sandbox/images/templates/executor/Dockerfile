@@ -42,6 +42,10 @@ WORKDIR /app
 
 COPY --from=builder /app/.venv ./.venv
 COPY runtime/executor/ ./executor/
+# sandbox_sdk: user-facing runtime (@tool decorator, event unpacking, schema
+# inference). Ships with the image rather than being pip-installed per session,
+# so `import sandbox_sdk` works offline and stays version-locked to the wrapper.
+COPY runtime/sandbox_sdk/ ./sandbox_sdk/
 
 RUN chown -R sandbox:sandbox /app /workspace /opt/sandbox-venv
 
