@@ -92,15 +92,15 @@ func TestGetEvidenceByTraceIDParsesSearchHits(t *testing.T) {
 
 	store := New(client, "bkn-trace-evidence-test")
 
-	traces, err := store.GetEvidenceByTraceID(context.Background(), "trace_index_001")
+	result, err := store.GetEvidenceByTraceID(context.Background(), "trace_index_001", evidencevo.EvidenceQueryOptions{})
 	if err != nil {
 		t.Fatalf("query evidence: %v", err)
 	}
-	if len(traces) != 1 {
-		t.Fatalf("expected one trace, got %d", len(traces))
+	if len(result.Traces) != 1 {
+		t.Fatalf("expected one trace, got %d", len(result.Traces))
 	}
-	if traces[0].TraceID != "trace_index_001" || traces[0].RequestID != "req_index_001" || traces[0].ClaimCount != 1 {
-		t.Fatalf("unexpected trace: %+v", traces[0])
+	if result.Traces[0].TraceID != "trace_index_001" || result.Traces[0].RequestID != "req_index_001" || result.Traces[0].ClaimCount != 1 {
+		t.Fatalf("unexpected trace: %+v", result.Traces[0])
 	}
 	queryBytes, _ := json.Marshal(query)
 	if !strings.Contains(string(queryBytes), `"trace_id.keyword"`) {
@@ -122,12 +122,42 @@ func TestGetEvidenceByRequestIDUsesRequestIDField(t *testing.T) {
 
 	store := New(client, "bkn-trace-evidence-test")
 
-	if _, err := store.GetEvidenceByRequestID(context.Background(), "req_index_001"); err != nil {
+	if _, err := store.GetEvidenceByRequestID(context.Background(), "req_index_001", evidencevo.EvidenceQueryOptions{}); err != nil {
 		t.Fatalf("query evidence: %v", err)
 	}
 	queryBytes, _ := json.Marshal(query)
 	if !strings.Contains(string(queryBytes), `"bkn.request.id.keyword"`) {
 		t.Fatalf("expected request id keyword term, got %s", string(queryBytes))
+	}
+}
+
+func TestGetEvidenceByTraceIDFetchesLimitPlusOneAndTruncates(t *testing.T) {
+	var query map[string]any
+	client := newFakeOpenSearchClient(func(r *http.Request) (*http.Response, error) {
+		if err := json.NewDecoder(r.Body).Decode(&query); err != nil {
+			t.Fatalf("decode query: %v", err)
+		}
+		return jsonResponse(`{
+		  "hits": {
+		    "hits": [
+		      {"_source": {"trace_id": "trace_index_001", "bkn.request.id": "req_index_001", "events": []}},
+		      {"_source": {"trace_id": "trace_index_002", "bkn.request.id": "req_index_001", "events": []}}
+		    ]
+		  }
+		}`), nil
+	})
+
+	store := New(client, "bkn-trace-evidence-test")
+
+	result, err := store.GetEvidenceByTraceID(context.Background(), "trace_index_001", evidencevo.EvidenceQueryOptions{Limit: 1})
+	if err != nil {
+		t.Fatalf("query evidence: %v", err)
+	}
+	if query["size"] != float64(2) {
+		t.Fatalf("expected size limit+1, got %+v", query["size"])
+	}
+	if !result.Truncated || len(result.Traces) != 1 {
+		t.Fatalf("expected truncated single result, got %+v", result)
 	}
 }
 
