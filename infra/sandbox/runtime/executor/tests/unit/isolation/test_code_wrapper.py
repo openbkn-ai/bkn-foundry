@@ -17,6 +17,7 @@ from executor.infrastructure.isolation.code_wrapper import (
     wrap_for_execution,
     unwrap_python_code,
     uses_tool_decorator,
+    defines_handler,
 )
 
 
@@ -358,19 +359,19 @@ class TestUsesToolDecorator:
 
     def test_detects_plain_decorator(self):
         """Test @tool is detected."""
-        code = "@tool\ndef add(a: int, b: int) -> int:\n    return a + b"
+        code = "from sandbox_sdk import tool\n@tool\ndef add(a: int, b: int) -> int:\n    return a + b"
 
         assert uses_tool_decorator(code) is True
 
     def test_detects_call_form(self):
         """Test @tool(name=...) is detected."""
-        code = '@tool(name="add")\ndef add(a, b):\n    return a + b'
+        code = 'from sandbox_sdk import tool\n@tool(name="add")\ndef add(a, b):\n    return a + b'
 
         assert uses_tool_decorator(code) is True
 
     def test_detects_qualified_form(self):
         """Test @sandbox_sdk.tool is detected."""
-        code = "@sandbox_sdk.tool\ndef add(a, b):\n    return a + b"
+        code = "import sandbox_sdk\n@sandbox_sdk.tool\ndef add(a, b):\n    return a + b"
 
         assert uses_tool_decorator(code) is True
 
@@ -402,7 +403,7 @@ class TestDualModeWrapper:
 
     def test_tool_mode_dispatches_via_sdk(self):
         """Test @tool code is wrapped to call sandbox_sdk.dispatch."""
-        code = "@tool\ndef add(a: int, b: int) -> int:\n    return a + b"
+        code = "from sandbox_sdk import tool\n@tool\ndef add(a: int, b: int) -> int:\n    return a + b"
 
         wrapper = generate_python_wrapper(code)
 
@@ -419,9 +420,15 @@ class TestDualModeWrapper:
         assert "result = handler(event)" in wrapper
         assert "sandbox_sdk" not in wrapper
 
-    def test_both_modes_read_event_from_stdin(self):
-        """Test event contract is identical in both modes."""
-        tool_wrapper = generate_python_wrapper("@tool\ndef f(a: int) -> int:\n    return a")
+    def test_both_modes_share_this_wrappers_event_contract(self):
+        """
+        Both modes of *this* wrapper read the event the same way.
+
+        Only applies to code_wrapper: BubblewrapRunner and MacSeatbeltRunner
+        pass the event through EVENT_JSON, and SubprocessRunner inlines it.
+        """
+        tool_code = "from sandbox_sdk import tool\n@tool\ndef f(a: int) -> int:\n    return a"
+        tool_wrapper = generate_python_wrapper(tool_code)
         handler_wrapper = generate_python_wrapper("def handler(event):\n    return event")
 
         for wrapper in (tool_wrapper, handler_wrapper):
@@ -431,7 +438,7 @@ class TestDualModeWrapper:
 
     def test_tool_code_passes_validation(self):
         """Test @tool code without handler is accepted by the validator."""
-        code = "@tool\ndef add(a: int, b: int) -> int:\n    return a + b"
+        code = "from sandbox_sdk import tool\n@tool\ndef add(a: int, b: int) -> int:\n    return a + b"
 
         is_valid, error = validate_python_handler(code)
 
@@ -446,3 +453,66 @@ class TestDualModeWrapper:
 
         assert is_valid is False
         assert "No entry point found" in error
+
+
+class TestEntryPointPriority:
+    """Which entry style wins, and where a `tool` name is accepted from."""
+
+    def test_langchain_tool_with_handler_uses_handler(self):
+        """A tool decorator from another library must not route to the SDK."""
+        code = (
+            "from langchain_core.tools import tool\n"
+            "@tool\n"
+            "def search(q: str) -> str:\n"
+            "    return q\n"
+            "def handler(event):\n"
+            "    return search(event['q'])"
+        )
+
+        assert uses_tool_decorator(code) is False
+        wrapper = generate_python_wrapper(code)
+        assert "result = handler(event)" in wrapper
+        assert "sandbox_sdk" not in wrapper
+
+    def test_locally_defined_tool_is_not_the_sdk(self):
+        code = (
+            "def tool(f):\n"
+            "    return f\n"
+            "@tool\n"
+            "def helper(x):\n"
+            "    return x\n"
+            "def handler(event):\n"
+            "    return helper(event)"
+        )
+
+        assert uses_tool_decorator(code) is False
+
+    def test_handler_wins_when_both_present(self):
+        """Even the SDK's own decorator yields to an explicit handler."""
+        code = (
+            "from sandbox_sdk import tool\n"
+            "@tool\n"
+            "def add(a: int, b: int) -> int:\n"
+            "    return a + b\n"
+            "def handler(event):\n"
+            "    return add(event['a'], event['b'])"
+        )
+
+        wrapper = generate_python_wrapper(code)
+        assert "result = handler(event)" in wrapper
+
+    def test_aliased_import_is_recognised(self):
+        code = (
+            "from sandbox_sdk import tool as register\n"
+            "@register\n"
+            "def add(a: int, b: int) -> int:\n"
+            "    return a + b"
+        )
+
+        assert uses_tool_decorator(code) is True
+
+    def test_defines_handler_detection(self):
+        assert defines_handler("def handler(event):\n    return event") is True
+        assert defines_handler("def other(event):\n    return event") is False
+        assert defines_handler("# def handler(event)") is False
+        assert defines_handler("def broken(") is False

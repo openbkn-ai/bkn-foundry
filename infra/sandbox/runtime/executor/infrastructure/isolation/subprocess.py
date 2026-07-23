@@ -19,7 +19,7 @@ from typing import List, Tuple
 from executor.domain.entities import Execution
 from executor.domain.value_objects import ExecutionResult, ExecutionStatus, ExecutionMetrics
 from executor.infrastructure.config import settings
-from executor.infrastructure.isolation.code_wrapper import normalize_shell_code, uses_tool_decorator
+from executor.infrastructure.isolation.code_wrapper import defines_handler, normalize_shell_code, uses_tool_decorator
 
 # 超时后先发 SIGTERM，等这么久仍未退出就 SIGKILL
 _TERMINATE_GRACE_SECONDS = 3
@@ -264,12 +264,13 @@ class SubprocessRunner:
             #   handler   - AWS Lambda style, the original contract
             # Detection is AST-based so @tool in a comment or string is not a
             # false positive, and unparsable code falls back to handler.
-            if uses_tool_decorator(code):
-                preamble = "import sandbox_sdk"
-                invoke = "sandbox_sdk.dispatch(event_data)"
-            else:
+            # handler wins when both are present, see code_wrapper for why
+            if defines_handler(code) or not uses_tool_decorator(code):
                 preamble = ""
                 invoke = "handler(event_data)"
+            else:
+                preamble = "import sandbox_sdk"
+                invoke = "sandbox_sdk.dispatch(event_data)"
             wrapped_code = f'''
 import json
 import sys
@@ -307,6 +308,8 @@ console.log(JSON.stringify(result));
 
     def _build_pythonpath(self, existing_pythonpath: str | None) -> str:
         dependency_path = settings.dependency_install_path
+        sdk_path = settings.sdk_install_path
+        parts = [sdk_path, dependency_path]
         if existing_pythonpath:
-            return f"{dependency_path}:{existing_pythonpath}"
-        return dependency_path
+            parts.append(existing_pythonpath)
+        return ":".join(parts)

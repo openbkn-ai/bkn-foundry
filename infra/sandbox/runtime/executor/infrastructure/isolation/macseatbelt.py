@@ -18,7 +18,11 @@ import structlog
 from executor.domain.entities import Execution
 from executor.domain.value_objects import ExecutionResult, ExecutionStatus, ExecutionMetrics
 from executor.infrastructure.config import settings
-from executor.infrastructure.isolation.code_wrapper import normalize_shell_code
+from executor.infrastructure.isolation.code_wrapper import (
+    defines_handler,
+    normalize_shell_code,
+    uses_tool_decorator,
+)
 from executor.infrastructure.isolation.result_parser import remove_markers_from_output
 
 
@@ -253,6 +257,10 @@ class MacSeatbeltRunner:
 
     def _build_python_command(self, execution: Execution, profile_path: str) -> tuple[list, dict]:
         """Build command for Python handler execution."""
+        # handler wins when both entry styles are present, matching the other runners
+        tool_mode = (
+            not defines_handler(execution.code) and uses_tool_decorator(execution.code)
+        )
         # Wrap user code in AWS Lambda handler pattern
         wrapped_code = f'''
 import json
@@ -266,8 +274,13 @@ if __name__ == "__main__":
     event_json = os.environ.get("EVENT_JSON", "{{}}")
     event = json.loads(event_json)
 
-    # Call handler function
-    result = handler(event)
+    # Invoke user function: @tool goes through the SDK, otherwise handler(event).
+    # handler wins when both are present, matching the other runners.
+    if {tool_mode}:
+        import sandbox_sdk
+        result = sandbox_sdk.dispatch(event)
+    else:
+        result = handler(event)
 
     # Print result with marker for parsing
     print("===SANDBOX_RESULT===" + json.dumps(result) + "===SANDBOX_RESULT_END===")

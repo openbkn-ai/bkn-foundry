@@ -97,6 +97,7 @@ class BubblewrapRunner:
             List of bwrap command arguments
         """
         dependency_path = settings.dependency_install_path
+        sdk_path = settings.sdk_install_path
         return [
             "bwrap",
             # Filesystem isolation
@@ -107,6 +108,9 @@ class BubblewrapRunner:
             "--ro-bind", "/sbin", "/sbin",
             # Session-installed third-party dependencies remain read-only during execution.
             "--ro-bind", dependency_path, dependency_path,
+            # sandbox_sdk lives outside the dependency directory, which is wiped
+            # before every dependency sync, and outside /app, which is not mounted.
+            "--ro-bind", sdk_path, sdk_path,
             # Workspace (writable)
             "--bind", str(self.workspace_path), "/workspace",
             "--chdir", container_working_directory,
@@ -126,6 +130,9 @@ class BubblewrapRunner:
             "--setenv", "PATH", EXECUTION_PATH,
             "--setenv", "HOME", "/workspace",
             "--setenv", "TMPDIR", "/tmp",
+            # --clearenv drops the image PYTHONPATH, so the interpreter would find
+            # neither the session dependencies nor the SDK. Set it explicitly.
+            "--setenv", "PYTHONPATH", f"{sdk_path}:{dependency_path}",
             # Security (Note: --cap-drop and --no-new-privs not available in bwrap 0.11.0)
             # These are handled by container-level security (non-privileged user, namespaces)
         ]
@@ -413,9 +420,11 @@ console.log('===SANDBOX_RESULT===' + JSON.stringify(result) + '===SANDBOX_RESULT
 
     def _build_pythonpath(self, existing_pythonpath: str | None) -> str:
         dependency_path = settings.dependency_install_path
+        sdk_path = settings.sdk_install_path
+        parts = [sdk_path, dependency_path]
         if existing_pythonpath:
-            return f"{dependency_path}:{existing_pythonpath}"
-        return dependency_path
+            parts.append(existing_pythonpath)
+        return ":".join(parts)
 
     def _build_execution_env(self, execution: Execution) -> dict[str, str]:
         env_args: dict[str, str] = {

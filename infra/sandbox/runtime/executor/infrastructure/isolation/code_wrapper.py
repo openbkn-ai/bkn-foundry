@@ -56,43 +56,85 @@ COMMON_SHELL_COMMANDS = {
 }
 
 
-def uses_tool_decorator(code: str) -> bool:
+def defines_handler(code: str) -> bool:
     """
-    Detect whether user code uses the ``@tool`` decorator from ``sandbox_sdk``.
-
-    Uses AST parsing rather than substring matching so that mentions of
-    ``@tool`` inside comments or string literals do not trigger a false
-    positive. Falls back to False when the code cannot be parsed, which keeps
-    the legacy ``handler(event)`` path as the safe default.
+    Detect a module-level ``handler`` function.
 
     Args:
         code: User-supplied Python source
 
     Returns:
-        True when at least one function is decorated with ``tool`` /
-        ``sandbox_sdk.tool`` / ``tool(...)``
+        True when the code defines ``handler``
+    """
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return False
+    for item in ast.walk(tree):
+        if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)) and item.name == "handler":
+            return True
+    return False
+
+
+def uses_tool_decorator(code: str) -> bool:
+    """
+    Detect whether user code registers a function through ``sandbox_sdk``'s
+    ``@tool`` decorator.
+
+    The name alone is not enough: ``tool`` is also LangChain's decorator and is
+    a plausible name for a user's own helper. Decorating with one of those and
+    keeping a ``handler(event)`` would otherwise be dispatched through the SDK,
+    which has no registration to find. So the name is only accepted when it was
+    imported from — or accessed on — ``sandbox_sdk``.
+
+    Parsing is AST-based so that ``@tool`` inside a comment or string is not a
+    false positive, and unparsable code falls back to the handler path.
+
+    Args:
+        code: User-supplied Python source
+
+    Returns:
+        True when a function is decorated with sandbox_sdk's ``tool``
     """
     try:
         tree = ast.parse(code)
     except SyntaxError:
         return False
 
-    def _decorator_name(node: ast.AST) -> Optional[str]:
-        # @tool
+    # Names bound to sandbox_sdk's tool via `from sandbox_sdk import tool [as x]`
+    sdk_tool_aliases = set()
+    # Names bound to the module itself via `import sandbox_sdk [as x]`
+    sdk_module_aliases = set()
+    for item in ast.walk(tree):
+        if isinstance(item, ast.ImportFrom) and item.module == "sandbox_sdk":
+            for alias in item.names:
+                if alias.name == "tool":
+                    sdk_tool_aliases.add(alias.asname or alias.name)
+        elif isinstance(item, ast.Import):
+            for alias in item.names:
+                if alias.name == "sandbox_sdk":
+                    sdk_module_aliases.add(alias.asname or alias.name)
+
+    def _is_sdk_tool(node: ast.AST) -> bool:
+        # @tool(...) — unwrap to the callable being applied
+        if isinstance(node, ast.Call):
+            return _is_sdk_tool(node.func)
+        # @tool, where tool came from sandbox_sdk
         if isinstance(node, ast.Name):
-            return node.id
+            return node.id in sdk_tool_aliases
         # @sandbox_sdk.tool
         if isinstance(node, ast.Attribute):
-            return node.attr
-        # @tool(name="...")
-        if isinstance(node, ast.Call):
-            return _decorator_name(node.func)
-        return None
+            return (
+                node.attr == "tool"
+                and isinstance(node.value, ast.Name)
+                and node.value.id in sdk_module_aliases
+            )
+        return False
 
     for item in ast.walk(tree):
         if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
             for deco in item.decorator_list:
-                if _decorator_name(deco) == "tool":
+                if _is_sdk_tool(deco):
                     return True
     return False
 
@@ -131,12 +173,15 @@ def generate_python_wrapper(user_code: str) -> str:
         >>> 'sandbox_sdk.dispatch(event)' in generate_python_wrapper(tool_code)
         True
     """
-    if uses_tool_decorator(user_code):
-        preamble = "import sandbox_sdk"
-        invoke = "sandbox_sdk.dispatch(event)"
-    else:
+    # handler wins when both are present: it is the established contract, and a
+    # @tool from another library would otherwise route to a dispatch with nothing
+    # registered.
+    if defines_handler(user_code) or not uses_tool_decorator(user_code):
         preamble = ""
         invoke = "handler(event)"
+    else:
+        preamble = "import sandbox_sdk"
+        invoke = "sandbox_sdk.dispatch(event)"
 
     wrapper = f'''import sys
 import json

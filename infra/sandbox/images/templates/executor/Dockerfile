@@ -45,13 +45,17 @@ COPY runtime/executor/ ./executor/
 # sandbox_sdk: user-facing runtime (@tool decorator, event unpacking, schema
 # inference). Ships with the image rather than being pip-installed per session,
 # so `import sandbox_sdk` works offline and stays version-locked to the wrapper.
-COPY runtime/sandbox_sdk/ ./sandbox_sdk/
+#
+# It lives in /opt rather than /app because user code has to import it: bwrap
+# does not mount /app, and the dependency directory is emptied before every
+# dependency sync.
+COPY runtime/sandbox_sdk/ /opt/sandbox-sdk/sandbox_sdk/
 
-RUN chown -R sandbox:sandbox /app /workspace /opt/sandbox-venv
+RUN chown -R sandbox:sandbox /app /workspace /opt/sandbox-venv /opt/sandbox-sdk
 
 USER sandbox
 
-ENV PYTHONPATH=/app/.venv/lib/python3.11/site-packages:/app
+ENV PYTHONPATH=/app/.venv/lib/python3.11/site-packages:/app:/opt/sandbox-sdk
 ENV PATH="/app/.venv/bin:${PATH}"
 
 EXPOSE 8080
