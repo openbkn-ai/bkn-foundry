@@ -89,6 +89,7 @@ Trust policy:
 - `context.query_object` 在 REST/MCP 成功返回后发射局部 L2 事件：`claim.created` 表示“本次对象实例查询产生了一个数据 finding”，`evidence.refs.created` 记录实例级 `row_ref`；`condition`、`filters`、`properties`、实例 identity 和行内容只能进入 hash，不得原样进入 payload。
 - `context.query_object` 的 `truncated=true` 只来自明确下一页信号：响应存在 `search_after`，或 `total_count > offset + returned_count`；不得用 `len(data) >= limit` 猜测截断。
 - `context.query_instance_subgraph` 在 service 成功返回后发射局部 L2 事件：`claim.created` 表示“本次实例子图查询产生了一个关系上下文 finding”，`evidence.refs.created` 记录相关实例 `row_ref` 和关系类型 `schema_ref`；`relation_type_paths`、实例 identity、路径条件和返回行内容只能进入 hash，不得原样进入 payload。
+- `context.query_instance_subgraph` 的 `evidence_refs` 最多保留 100 条，超过后 `subject_refs.refs_truncated=true` 且 `partial_reason` 包含 `refs_truncated`；关系类型只从 `relation`、`relations`、`relation_path(s)`、`relation_type(s)` 等关系容器提取，不从普通实例字段启发式提取。
 - `version_status` 当前为 `unversioned`，schema refs 必须携带 `partial_reason=["schema_ref_unversioned"]`，row refs 必须携带 `partial_reason=["row_ref_unversioned"]`；后续接入 BKN schema version / snapshot 后才能改为 `versioned`。
 - 证据事件上报由 `BKN_TRACE_EVIDENCE_INGEST_URL` 控制，默认关闭；开启后异步提交，不阻塞 schema 检索主路径。
 - 上报失败只记录 warning，不改变业务响应；BKN Trace 核心服务负责后续 Evidence Graph 汇聚、查询、快照和 Studio 可视化。

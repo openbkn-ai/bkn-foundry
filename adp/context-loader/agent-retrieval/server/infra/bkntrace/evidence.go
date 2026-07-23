@@ -35,6 +35,7 @@ const (
 )
 
 const maxInFlightEvidenceBatches = 64
+const maxSubgraphEvidenceRefs = 100
 
 type Event map[string]any
 
@@ -201,7 +202,7 @@ func BuildQueryInstanceSubgraphEvents(ctx context.Context, req *interfaces.Query
 	if !ok {
 		return nil
 	}
-	refs := subgraphEvidenceRefs(resp)
+	refs, refsTruncated := subgraphEvidenceRefs(resp)
 	if len(refs) == 0 {
 		return nil
 	}
@@ -214,6 +215,11 @@ func BuildQueryInstanceSubgraphEvents(ctx context.Context, req *interfaces.Query
 	}
 	claimID := ClaimID("context_loader.query_instance_subgraph", querySubgraphKnID(req), resultSummary)
 
+	partialReason := []string{"row_refs_unversioned", "schema_refs_unversioned"}
+	if refsTruncated {
+		partialReason = append(partialReason, "refs_truncated")
+	}
+
 	return []Event{
 		buildEvent(ec, "claim.created", "context.query_instance_subgraph", map[string]any{
 			"claim_id":       claimID,
@@ -221,12 +227,13 @@ func BuildQueryInstanceSubgraphEvents(ctx context.Context, req *interfaces.Query
 			"claim_hash":     HashValue(resultSummary),
 			"visibility":     "visible",
 			"version_status": "unversioned",
-			"partial_reason": []string{"row_refs_unversioned", "schema_refs_unversioned"},
+			"partial_reason": partialReason,
 			"subject_refs": map[string]any{
 				"kn_id":                querySubgraphKnID(req),
 				"path_hash":            resultSummary["path_hash"],
 				"returned_ref_count":   len(refs),
 				"include_logic_params": querySubgraphIncludeLogicParams(req),
+				"refs_truncated":       refsTruncated,
 				"data.classification":  "internal",
 			},
 		}),
@@ -595,13 +602,14 @@ func queryObjectLimit(req *interfaces.QueryObjectInstancesReq) int {
 	return req.Limit
 }
 
-func subgraphEvidenceRefs(resp *interfaces.QueryInstanceSubgraphResp) []map[string]any {
+func subgraphEvidenceRefs(resp *interfaces.QueryInstanceSubgraphResp) ([]map[string]any, bool) {
 	if resp == nil || resp.Entries == nil {
-		return nil
+		return nil, false
 	}
 	refs := make([]map[string]any, 0)
 	seen := make(map[string]struct{})
-	walkSubgraphValue(resp.Entries, func(item map[string]any) {
+	truncated := false
+	walkSubgraphValue(resp.Entries, func(item map[string]any) bool {
 		if identity, ok := objectInstanceIdentity(item); ok {
 			ref := map[string]any{
 				"ref_id":         "subgraph_instance:" + hashSuffix(identity),
@@ -613,8 +621,17 @@ func subgraphEvidenceRefs(resp *interfaces.QueryInstanceSubgraphResp) []map[stri
 				"visibility":     "visible",
 				"partial_reason": []string{"row_ref_unversioned"},
 			}
-			appendEvidenceRef(&refs, seen, ref)
+			if !appendEvidenceRef(&refs, seen, ref) {
+				truncated = true
+				return false
+			}
 		}
+		return true
+	})
+	if truncated {
+		return refs, true
+	}
+	walkRelationContainers(resp.Entries, func(item map[string]any) bool {
 		if relationID := firstString(item, "relation_type_id", "relation_type"); relationID != "" {
 			ref := map[string]any{
 				"ref_id":         "relation_type:" + relationID,
@@ -626,39 +643,83 @@ func subgraphEvidenceRefs(resp *interfaces.QueryInstanceSubgraphResp) []map[stri
 				"visibility":     "visible",
 				"partial_reason": []string{"schema_ref_unversioned"},
 			}
-			appendEvidenceRef(&refs, seen, ref)
+			if !appendEvidenceRef(&refs, seen, ref) {
+				truncated = true
+				return false
+			}
 		}
+		return true
 	})
-	return refs
+	return refs, truncated
 }
 
-func appendEvidenceRef(refs *[]map[string]any, seen map[string]struct{}, ref map[string]any) {
+func appendEvidenceRef(refs *[]map[string]any, seen map[string]struct{}, ref map[string]any) bool {
 	key := firstString(ref, "ref_type") + ":" + firstString(ref, "ref_id")
 	if _, ok := seen[key]; ok {
-		return
+		return true
+	}
+	if len(*refs) >= maxSubgraphEvidenceRefs {
+		return false
 	}
 	seen[key] = struct{}{}
 	*refs = append(*refs, ref)
+	return true
 }
 
-func walkSubgraphValue(value any, visit func(map[string]any)) {
+func walkSubgraphValue(value any, visit func(map[string]any) bool) bool {
 	switch typed := value.(type) {
+	case nil, string, bool, int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
+		return true
 	case []any:
 		for _, item := range typed {
-			walkSubgraphValue(item, visit)
+			if !walkSubgraphValue(item, visit) {
+				return false
+			}
 		}
 	case map[string]any:
-		visit(typed)
+		if !visit(typed) {
+			return false
+		}
 		for _, nested := range typed {
-			walkSubgraphValue(nested, visit)
+			if !walkSubgraphValue(nested, visit) {
+				return false
+			}
 		}
 	default:
 		if item, ok := asMap(value); ok {
-			visit(item)
+			if !visit(item) {
+				return false
+			}
 			for _, nested := range item {
-				walkSubgraphValue(nested, visit)
+				if !walkSubgraphValue(nested, visit) {
+					return false
+				}
 			}
 		}
+	}
+	return true
+}
+
+func walkRelationContainers(value any, visit func(map[string]any) bool) bool {
+	return walkSubgraphValue(value, func(item map[string]any) bool {
+		for key, nested := range item {
+			if !isRelationContainerKey(key) {
+				continue
+			}
+			if !walkSubgraphValue(nested, visit) {
+				return false
+			}
+		}
+		return true
+	})
+}
+
+func isRelationContainerKey(key string) bool {
+	switch key {
+	case "relation", "relations", "relation_path", "relation_paths", "relation_type", "relation_types":
+		return true
+	default:
+		return false
 	}
 }
 
