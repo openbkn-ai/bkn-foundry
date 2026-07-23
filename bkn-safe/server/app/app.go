@@ -4,8 +4,9 @@
 
 // Package app is bkn-safe's bootstrap, split out of package main so that a
 // second entry point can reuse it. The community binary (bkn-safe/server) and
-// the enterprise binary (bkn-foundry-ee cmd/bkn-safe-ee) run byte-identical
-// startup logic; they differ only in what happens between Boot and Run.
+// the enterprise binary (openbkn-ee bkn-safe/cmd/bkn-safe-ee) run
+// byte-identical startup logic; they differ only in what happens between Boot
+// and Run.
 //
 //	// community
 //	a, err := app.Boot(app.Options{})

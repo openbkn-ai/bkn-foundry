@@ -4,8 +4,8 @@
 
 // Package extension is the socket core exposes to the enterprise code line.
 // It is deliberately outside internal/ — Go's internal rule would otherwise
-// make it unimportable from bkn-foundry-ee, and the whole open-core model
-// rests on ee being able to plug in from another repository.
+// make it unimportable from openbkn-ee, and the whole open-core model rests on
+// ee being able to plug in from another repository.
 //
 // Two mechanisms live here, and they are not the same thing:
 //
@@ -17,8 +17,8 @@
 //     the call site degrades. perm_object_level is the first one.
 //
 // Dependency direction is always ee -> core. Core knows nothing about ee; a
-// single `import ".../bkn-foundry-ee/..."` anywhere in core collapses the
-// model, so CI lints for it.
+// single `import ".../openbkn-ee/..."` anywhere in core collapses the model,
+// so CI lints for it.
 //
 // Design: license-server docs/design/open-core-gating.md §2.5.
 package extension

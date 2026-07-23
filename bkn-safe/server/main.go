@@ -8,8 +8,8 @@
 //
 // This is the community entry point. It registers no extensions, so the paid
 // enterprise code is not merely switched off here — it is not in the binary.
-// The enterprise entry point lives in the private bkn-foundry-ee repository
-// and differs only by its Setup calls between Boot and Run.
+// The enterprise entry point lives in the private openbkn-ee repository and
+// differs only by its Setup calls between Boot and Run.
 package main
 
 import (

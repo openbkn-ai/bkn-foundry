@@ -4,7 +4,7 @@
 
 // Package permobject is the mode ② socket for perm_object_level — object-level
 // authorization and advanced role control, implemented in the private ee code
-// line (bkn-foundry-ee) and absent from community binaries.
+// line (openbkn-ee) and absent from community binaries.
 //
 // The socket layers on top of core's verdict rather than replacing it. Core's
 // casbin model is allow-only: a policy line grants, nothing revokes, and a
