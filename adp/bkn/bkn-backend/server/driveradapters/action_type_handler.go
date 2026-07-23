@@ -718,6 +718,7 @@ func (r *restHandler) ListActionTypes(c *gin.Context, visitor hydra.Visitor) {
 
 	logger.Debug("Handler ListActionTypes Success")
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	emitActionTypeSchemaRead(ctx, c, visitor, "bkn.schema.action_type.list", knID, branch, nil, otList, int64(total))
 	rest.ReplyOK(c, http.StatusOK, result)
 }
 
@@ -804,6 +805,7 @@ func (r *restHandler) GetActionTypes(c *gin.Context, visitor hydra.Visitor) {
 
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	logger.Debug("Handler GetActionTypes Success")
+	emitActionTypeSchemaRead(ctx, c, visitor, "bkn.schema.action_type.get", knID, branch, atIDs, actionTypes, int64(len(actionTypes)))
 	rest.ReplyOK(c, http.StatusOK, httpResult)
 }
 

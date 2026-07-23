@@ -706,6 +706,7 @@ func (r *restHandler) ListRelationTypes(c *gin.Context, visitor hydra.Visitor) {
 
 	logger.Debug("Handler ListRelationTypes Success")
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	emitRelationTypeSchemaRead(ctx, c, visitor, "bkn.schema.relation_type.list", knID, branch, nil, otList, int64(total))
 	rest.ReplyOK(c, http.StatusOK, result)
 }
 
@@ -792,6 +793,7 @@ func (r *restHandler) GetRelationTypes(c *gin.Context, visitor hydra.Visitor) {
 
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	logger.Debug("Handler GetRelationTypes Success")
+	emitRelationTypeSchemaRead(ctx, c, visitor, "bkn.schema.relation_type.get", knID, branch, rtIDs, result, int64(len(result)))
 	rest.ReplyOK(c, http.StatusOK, httpResult)
 }
 
