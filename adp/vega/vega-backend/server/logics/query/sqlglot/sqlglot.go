@@ -8,6 +8,7 @@ package sqlglot
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"os/exec"
@@ -76,18 +77,18 @@ except Exception as e:
 	cmd.Stdout = &out
 	err := cmd.Run()
 	if err != nil {
-		logger.Errorf("ExtractTables failed, %s", err.Error())
+		logger.Errorf("ExtractTables command failed")
 		return nil, err
 	}
 
 	var result ExtractTablesResult
 	if err := sonic.Unmarshal(out.Bytes(), &result); err != nil {
-		logger.Errorf("ExtractTables failed, %s", err.Error())
+		logger.Errorf("ExtractTables response decode failed")
 		return nil, err
 	}
 
 	if result.Error != "" {
-		logger.Errorf("ExtractTables failed, %s", result.Error)
+		logger.Errorf("ExtractTables rejected the SQL input")
 		return nil, errors.New(result.Error)
 	}
 
@@ -99,7 +100,7 @@ func MapDataSourceTypeToDialect(dataSourceType string) (string, error) {
 	switch strings.ToLower(dataSourceType) {
 	case interfaces.ConnectorTypeMySQL:
 		return "mysql", nil
-	case "postgres":
+	case "postgres", interfaces.ConnectorTypePostgreSQL:
 		return "postgres", nil
 	case "maria", interfaces.ConnectorTypeMariaDB:
 		return "mysql", nil // MariaDB使用mysql方言
@@ -110,7 +111,7 @@ func MapDataSourceTypeToDialect(dataSourceType string) (string, error) {
 }
 
 // TranspileSQL 将SQL从一种方言转换为另一种方言
-func TranspileSQL(sql string, fromDialect string, dataSourceType string) (*SQLParseResult, error) {
+func TranspileSQL(ctx context.Context, sql string, fromDialect string, dataSourceType string) (*SQLParseResult, error) {
 
 	// 映射数据源类型到sqlglot方言
 	toDialect, err := MapDataSourceTypeToDialect(dataSourceType)
@@ -119,7 +120,7 @@ func TranspileSQL(sql string, fromDialect string, dataSourceType string) (*SQLPa
 		return nil, err
 	}
 
-	cmd := exec.Command("python3", "-c", `
+	cmd := exec.CommandContext(ctx, "python3", "-c", `
 import sys
 import json
 import sqlglot
@@ -148,18 +149,21 @@ except Exception as e:
 	cmd.Stdout = &out
 	err = cmd.Run()
 	if err != nil {
-		logger.Errorf("TranspileSQL failed, %s", err.Error())
+		logger.Errorf("TranspileSQL command failed")
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
 		return nil, err
 	}
 
 	var result SQLParseResult
 	if err := sonic.Unmarshal(out.Bytes(), &result); err != nil {
-		logger.Errorf("TranspileSQL failed, %s", err.Error())
+		logger.Errorf("TranspileSQL response decode failed")
 		return nil, err
 	}
 
 	if result.Error != "" {
-		logger.Errorf("TranspileSQL failed, %s", result.Error)
+		logger.Errorf("TranspileSQL rejected the SQL input")
 		return nil, errors.New(result.Error)
 	}
 

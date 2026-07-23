@@ -27,13 +27,13 @@ func TestValidateResourceDataQueryParams(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Equal(t, interfaces.Format_Original, params.Format)
-		assert.Equal(t, interfaces.DEFAULT_DATA_LIMIT, params.Limit)
+		assert.Equal(t, interfaces.DefaultPageLimit, params.Limit)
 	})
 
 	t.Run("accepts valid flat query with filter and aggregation", func(t *testing.T) {
 		params := &interfaces.ResourceDataQueryParams{
 			Format: interfaces.Format_Flat,
-			Limit:  20,
+			Paging: interfaces.PagingRequest{Limit: 20},
 			Sort: []*interfaces.SortField{
 				{Field: "name", Direction: interfaces.ASC_DIRECTION},
 			},
@@ -57,16 +57,68 @@ func TestValidateResourceDataQueryParams(t *testing.T) {
 		assert.Equal(t, "name", params.FilterCondCfg.Name)
 	})
 
+	t.Run("accepts initial cursor paging and a cursor-only continuation", func(t *testing.T) {
+		initial := &interfaces.ResourceDataQueryParams{
+			Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Offset: 50, Limit: interfaces.MinPageLimit},
+		}
+		require.NoError(t, ValidateResourceDataQueryParams(ctx, initial))
+		assert.Equal(t, 50, initial.Offset)
+
+		continuation := &interfaces.ResourceDataQueryParams{
+			Paging:    interfaces.PagingRequest{Cursor: "opaque-cursor"},
+			NeedTotal: true,
+		}
+		require.NoError(t, ValidateResourceDataQueryParams(ctx, continuation))
+		assert.Zero(t, continuation.Offset)
+		assert.Zero(t, continuation.Limit)
+		assert.False(t, continuation.NeedTotal)
+	})
+
+	t.Run("rejects cursor keep alive below minimum", func(t *testing.T) {
+		params := &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{
+			Mode: interfaces.PagingModeCursor, Limit: 1, KeepAliveSec: 59,
+		}}
+		require.Error(t, ValidateResourceDataQueryParams(ctx, params))
+	})
+
+	t.Run("ignores keep alive below minimum for single paging", func(t *testing.T) {
+		params := &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{
+			Mode: interfaces.PagingModeSingle, KeepAliveSec: 1,
+		}}
+		require.NoError(t, ValidateResourceDataQueryParams(ctx, params))
+	})
+
+	t.Run("rejects query fields on cursor continuation", func(t *testing.T) {
+		for name, params := range map[string]*interfaces.ResourceDataQueryParams{
+			"filter": {
+				Paging:          interfaces.PagingRequest{Cursor: "opaque-cursor"},
+				FilterCondition: map[string]any{"field": "name", "operation": "==", "value": "alice"},
+			},
+			"sort": {
+				Paging: interfaces.PagingRequest{Cursor: "opaque-cursor"},
+				Sort:   []*interfaces.SortField{{Field: "name", Direction: "asc"}},
+			},
+			"aggregation": {
+				Paging:      interfaces.PagingRequest{Cursor: "opaque-cursor"},
+				Aggregation: &interfaces.Aggregation{Property: "score", Aggr: "sum"},
+			},
+		} {
+			t.Run(name, func(t *testing.T) {
+				require.Error(t, ValidateResourceDataQueryParams(ctx, params))
+			})
+		}
+	})
+
 	t.Run("returns errors for invalid parameters", func(t *testing.T) {
 		tests := []struct {
 			name   string
 			params *interfaces.ResourceDataQueryParams
 		}{
 			{name: "invalid format", params: &interfaces.ResourceDataQueryParams{Format: "csv", Limit: 10}},
-			{name: "negative offset", params: &interfaces.ResourceDataQueryParams{Offset: -1, Limit: 10}},
-			{name: "limit too small", params: &interfaces.ResourceDataQueryParams{Limit: 0, Offset: -1}},
-			{name: "offset plus limit too large", params: &interfaces.ResourceDataQueryParams{Offset: interfaces.MAX_SEARCH_SIZE, Limit: 1}},
-			{name: "invalid sort direction", params: &interfaces.ResourceDataQueryParams{Limit: 10, Sort: []*interfaces.SortField{{Field: "name", Direction: "up"}}}},
+			{name: "negative offset", params: &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Offset: -1, Limit: 10}}},
+			{name: "cursor continuation has first-page fields", params: &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Cursor: "opaque-cursor", Limit: 10}}},
+			{name: "cursor size is zero", params: &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor}}},
+			{name: "invalid sort direction", params: &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Limit: 10}, Sort: []*interfaces.SortField{{Field: "name", Direction: "up"}}}},
 			{name: "missing filter operation", params: &interfaces.ResourceDataQueryParams{Limit: 10, FilterCondition: map[string]any{"field": "name"}}},
 			{name: "unsupported filter operation", params: &interfaces.ResourceDataQueryParams{Limit: 10, FilterCondition: map[string]any{"field": "name", "operation": "bad"}}},
 			{name: "filter operation needs field name", params: &interfaces.ResourceDataQueryParams{Limit: 10, FilterCondition: map[string]any{"operation": filter_condition.OperationEqual, "value": "alice"}}},
@@ -105,13 +157,13 @@ func TestValidatePaginationParams(t *testing.T) {
 	t.Run("accepts boundary values", func(t *testing.T) {
 		require.NoError(t, validatePaginationParams(ctx, 0, interfaces.MIN_LIMIT))
 		require.NoError(t, validatePaginationParams(ctx, 0, interfaces.MAX_SEARCH_SIZE))
+		require.NoError(t, validatePaginationParams(ctx, interfaces.MAX_SEARCH_SIZE, 1))
 	})
 
 	t.Run("rejects invalid values", func(t *testing.T) {
 		require.Error(t, validatePaginationParams(ctx, -1, 10))
 		require.Error(t, validatePaginationParams(ctx, 0, 0))
 		require.Error(t, validatePaginationParams(ctx, 0, interfaces.MAX_SEARCH_SIZE+1))
-		require.Error(t, validatePaginationParams(ctx, interfaces.MAX_SEARCH_SIZE, 1))
 	})
 }
 

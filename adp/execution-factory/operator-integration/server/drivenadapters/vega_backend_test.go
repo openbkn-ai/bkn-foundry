@@ -36,28 +36,79 @@ func TestVegaBackendClient(t *testing.T) {
 
 		Convey("creates catalog with fixed fields", func() {
 			req := &interfaces.VegaCatalogRequest{
-				ID:          "kweaver_execution_factory_catalog",
-				Name:        "kweaver_execution_factory_catalog",
+				ID:          "bkn_execution_factory_catalog",
+				Name:        "bkn_execution_factory_catalog",
 				Tags:        []string{"execution-factory", "索引"},
 				Description: "执行工厂的逻辑命名空间",
 			}
 			httpClient.EXPECT().PostNoUnmarshal(gomock.Any(), "http://vega-backend:9898/api/vega-backend/v1/catalogs", headers, req).
-				Return(http.StatusCreated, []byte(`{"id":"kweaver_execution_factory_catalog","name":"kweaver_execution_factory_catalog"}`), nil)
+				Return(http.StatusCreated, []byte(`{"id":"bkn_execution_factory_catalog","name":"bkn_execution_factory_catalog"}`), nil)
 
 			resp, err := client.CreateCatalog(ctx, req)
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
+			So(resp.ID, ShouldEqual, "bkn_execution_factory_catalog")
+		})
+
+		Convey("gets catalog from entries response", func() {
+			httpClient.EXPECT().GetNoUnmarshal(gomock.Any(), "http://vega-backend:9898/api/vega-backend/v1/catalogs/kweaver_execution_factory_catalog", gomock.Nil(), headers).
+				Return(http.StatusOK, []byte(`{"entries":[{"id":"kweaver_execution_factory_catalog","name":"kweaver_execution_factory_catalog","enabled":false}]}`), nil)
+
+			resp, err := client.GetCatalogByID(ctx, "kweaver_execution_factory_catalog")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
 			So(resp.ID, ShouldEqual, "kweaver_execution_factory_catalog")
+			So(resp.Name, ShouldEqual, "kweaver_execution_factory_catalog")
+			So(resp.Enabled, ShouldBeFalse)
+		})
+
+		Convey("ignores entries that do not match the requested catalog id", func() {
+			httpClient.EXPECT().GetNoUnmarshal(gomock.Any(), "http://vega-backend:9898/api/vega-backend/v1/catalogs/bkn_execution_factory_catalog", gomock.Nil(), headers).
+				Return(http.StatusOK, []byte(`{"entries":[{"id":"some_other_catalog","name":"other"}]}`), nil)
+
+			resp, err := client.GetCatalogByID(ctx, "bkn_execution_factory_catalog")
+			So(err, ShouldBeNil)
+			So(resp, ShouldBeNil)
+		})
+
+		Convey("treats an empty catalog payload as not found", func() {
+			httpClient.EXPECT().GetNoUnmarshal(gomock.Any(), "http://vega-backend:9898/api/vega-backend/v1/catalogs/bkn_execution_factory_catalog", gomock.Nil(), headers).
+				Return(http.StatusOK, []byte(`{"entries":[]}`), nil)
+
+			resp, err := client.GetCatalogByID(ctx, "bkn_execution_factory_catalog")
+			So(err, ShouldBeNil)
+			So(resp, ShouldBeNil)
+		})
+
+		Convey("renames catalog in place via PUT", func() {
+			req := &interfaces.VegaCatalogRequest{
+				ID:       "kweaver_execution_factory_catalog",
+				Name:     "bkn_execution_factory_catalog",
+				Tags:     []string{"execution-factory", "索引"},
+				Internal: true,
+				Enabled:  true,
+			}
+			httpClient.EXPECT().PutNoUnmarshal(gomock.Any(), "http://vega-backend:9898/api/vega-backend/v1/catalogs/kweaver_execution_factory_catalog", headers, req).
+				Return(http.StatusNoContent, []byte{}, nil)
+
+			So(client.UpdateCatalog(ctx, req), ShouldBeNil)
+		})
+
+		Convey("enables catalog", func() {
+			httpClient.EXPECT().PostNoUnmarshal(gomock.Any(), "http://vega-backend:9898/api/vega-backend/v1/catalogs/kweaver_execution_factory_catalog/enable", headers, nil).
+				Return(http.StatusNoContent, []byte{}, nil)
+
+			So(client.EnableCatalog(ctx, "kweaver_execution_factory_catalog"), ShouldBeNil)
 		})
 
 		Convey("gets resource from entries response", func() {
-			httpClient.EXPECT().GetNoUnmarshal(gomock.Any(), "http://vega-backend:9898/api/vega-backend/v1/resources/kweaver_execution_factory_skill_dataset", gomock.Nil(), headers).
-				Return(http.StatusOK, []byte(`{"entries":[{"id":"kweaver_execution_factory_skill_dataset","catalog_id":"kweaver_execution_factory_catalog"}]}`), nil)
+			httpClient.EXPECT().GetNoUnmarshal(gomock.Any(), "http://vega-backend:9898/api/vega-backend/v1/resources/bkn_execution_factory_skill_dataset", gomock.Nil(), headers).
+				Return(http.StatusOK, []byte(`{"entries":[{"id":"bkn_execution_factory_skill_dataset","catalog_id":"bkn_execution_factory_catalog"}]}`), nil)
 
-			resp, err := client.GetResourceByID(ctx, "kweaver_execution_factory_skill_dataset")
+			resp, err := client.GetResourceByID(ctx, "bkn_execution_factory_skill_dataset")
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
-			So(resp.ID, ShouldEqual, "kweaver_execution_factory_skill_dataset")
+			So(resp.ID, ShouldEqual, "bkn_execution_factory_skill_dataset")
 		})
 
 		Convey("writes dataset documents", func() {
@@ -70,10 +121,10 @@ func TestVegaBackendClient(t *testing.T) {
 				"x-account-type":         "user",
 				"X-HTTP-Method-Override": "POST",
 			}
-			httpClient.EXPECT().PostNoUnmarshal(gomock.Any(), "http://vega-backend:9898/api/vega-backend/v1/resources/kweaver_execution_factory_skill_dataset/data", writeHeaders, docs).
+			httpClient.EXPECT().PostNoUnmarshal(gomock.Any(), "http://vega-backend:9898/api/vega-backend/v1/resources/bkn_execution_factory_skill_dataset/data", writeHeaders, docs).
 				Return(http.StatusCreated, []byte(`{}`), nil)
 
-			err := client.WriteDatasetDocuments(ctx, "kweaver_execution_factory_skill_dataset", docs)
+			err := client.WriteDatasetDocuments(ctx, "bkn_execution_factory_skill_dataset", docs)
 			So(err, ShouldBeNil)
 		})
 
@@ -81,18 +132,18 @@ func TestVegaBackendClient(t *testing.T) {
 			docs := []map[string]any{
 				{"_id": "skill-1", "skill_id": "skill-1", "name": "demo-updated"},
 			}
-			httpClient.EXPECT().PutNoUnmarshal(gomock.Any(), "http://vega-backend:9898/api/vega-backend/v1/resources/kweaver_execution_factory_skill_dataset/data", headers, docs).
+			httpClient.EXPECT().PutNoUnmarshal(gomock.Any(), "http://vega-backend:9898/api/vega-backend/v1/resources/bkn_execution_factory_skill_dataset/data", headers, docs).
 				Return(http.StatusOK, []byte(`{}`), nil)
 
-			err := client.UpdateDatasetDocuments(ctx, "kweaver_execution_factory_skill_dataset", docs)
+			err := client.UpdateDatasetDocuments(ctx, "bkn_execution_factory_skill_dataset", docs)
 			So(err, ShouldBeNil)
 		})
 
 		Convey("deletes dataset document by id", func() {
-			httpClient.EXPECT().DeleteNoUnmarshal(gomock.Any(), "http://vega-backend:9898/api/vega-backend/v1/resources/kweaver_execution_factory_skill_dataset/data/skill-1", headers).
+			httpClient.EXPECT().DeleteNoUnmarshal(gomock.Any(), "http://vega-backend:9898/api/vega-backend/v1/resources/bkn_execution_factory_skill_dataset/data/skill-1", headers).
 				Return(http.StatusNoContent, []byte{}, nil)
 
-			err := client.DeleteDatasetDocumentByID(ctx, "kweaver_execution_factory_skill_dataset", "skill-1")
+			err := client.DeleteDatasetDocumentByID(ctx, "bkn_execution_factory_skill_dataset", "skill-1")
 			So(err, ShouldBeNil)
 		})
 	})

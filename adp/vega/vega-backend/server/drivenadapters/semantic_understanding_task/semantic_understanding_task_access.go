@@ -275,6 +275,12 @@ func (a *semanticUnderstandingTaskAccess) List(ctx context.Context, params inter
 		if len(params.Statuses) > 0 {
 			b = b.Where(sq.Eq{"f_status": params.Statuses})
 		}
+		if params.ApplyMode != "" {
+			b = b.Where(sq.Eq{"f_apply_mode": params.ApplyMode})
+		}
+		if params.Applied != nil {
+			b = b.Where(sq.Eq{"f_applied": *params.Applied})
+		}
 		return b
 	}
 	builder = applyFilters(builder)
@@ -292,7 +298,7 @@ func (a *semanticUnderstandingTaskAccess) List(ctx context.Context, params inter
 		return nil, 0, err
 	}
 
-	builder = builder.OrderBy(semanticUnderstandingTaskOrderBy(params.Sort, params.Direction))
+	builder = builder.OrderBy(buildOrderByClause(params.Sort, params.Direction))
 	if params.Limit > 0 {
 		builder = builder.Limit(uint64(params.Limit)).Offset(uint64(params.Offset))
 	}
@@ -487,7 +493,10 @@ func (a *semanticUnderstandingTaskAccess) updateWithTx(ctx context.Context, tx *
 	return affected > 0, nil
 }
 
-func semanticUnderstandingTaskOrderBy(sort, direction string) string {
+func buildOrderByClause(sort, direction string) string {
+	if sort == "default" {
+		return "CASE f_status WHEN 'running' THEN 1 WHEN 'pending' THEN 2 WHEN 'failed' THEN 3 WHEN 'succeeded' THEN 4 ELSE 999 END ASC, f_create_time DESC"
+	}
 	column := "f_create_time"
 	switch sort {
 	case "update_time":

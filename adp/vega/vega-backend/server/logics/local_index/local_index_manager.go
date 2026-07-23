@@ -76,6 +76,9 @@ func (lim *localIndexManager) ListDocuments(ctx context.Context, indexName strin
 	if err != nil {
 		return nil, 0, err
 	}
+	if params != nil {
+		params.SearchAfter = append([]any(nil), queryResult.SearchAfter...)
+	}
 
 	return queryResult.Rows, queryResult.Total, nil
 }

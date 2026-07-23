@@ -302,11 +302,11 @@ type MetricsList struct {
 
 // MetricSearchResult is the POST override GET response (concept search, MetricSearchResponse in OpenAPI).
 type MetricSearchResult struct {
-	Entries     []*MetricDefinition `json:"entries"`
-	TotalCount  int64               `json:"total_count,omitempty"`
-	SearchAfter []any               `json:"search_after,omitempty"`
-	Groups      []any               `json:"groups,omitempty"`
-	Type        string              `json:"type,omitempty"`
+	Entries    []*MetricDefinition `json:"entries"`
+	TotalCount int64               `json:"total_count,omitempty"`
+	NextCursor *string             `json:"next_cursor,omitempty"`
+	Groups     []any               `json:"groups,omitempty"`
+	Type       string              `json:"type,omitempty"`
 }
 
 var (

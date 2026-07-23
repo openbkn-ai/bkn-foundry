@@ -9,6 +9,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.bootstrap import toolbox_sync
 from app.models import ErrorEnvelope
+from app import observability
 from app.observability import setup_otel
 from app.routers import agents, chat, impex, prompts, tasks, threads
 
@@ -54,6 +55,25 @@ app.include_router(threads.router, prefix=API_PREFIX, tags=["BknAgent"], respons
 app.include_router(impex.router, prefix=API_PREFIX, tags=["BknAgent"], responses=_ERRORS)
 
 
+@app.middleware("http")
+async def bkn_trace_context_middleware(request: Request, call_next):
+    ctx = observability.build_context(request.headers)
+    request.state.bkn_trace_context = ctx
+    token = observability.set_context(ctx)
+    try:
+        response = await call_next(request)
+    finally:
+        observability.reset_context(token)
+    for key, value in {
+        observability.TRACE_ID_HEADER: ctx.trace_id,
+        observability.REQUEST_ID_HEADER: ctx.request_id,
+        observability.LEGACY_REQUEST_ID_HEADER: ctx.request_id,
+        "traceparent": ctx.traceparent,
+    }.items():
+        response.headers[key] = value
+    return response
+
+
 @app.get("/api/v1/health")
 async def health():
     return {"status": "ok"}
@@ -72,7 +92,9 @@ async def validation_handler(request: Request, exc: RequestValidationError):
             "detail": detail,
             "solution": "请检查请求体格式。",
             "link": "",
+            "trace_id": observability.current_trace_id(),
         },
+        headers=observability.response_headers(),
     )
 
 
@@ -84,7 +106,7 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
     （如 404/405 路由默认串）补齐成封套。"""
     detail = exc.detail
     if isinstance(detail, dict) and "code" in detail:
-        content = detail
+        content = observability.enrich_error(detail)
     else:
         content = {
             "code": f"BknAgent.Http.{exc.status_code}",
@@ -92,8 +114,11 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
             "detail": str(detail) if detail else "",
             "solution": "",
             "link": "",
+            "trace_id": observability.current_trace_id(),
         }
-    return JSONResponse(status_code=exc.status_code, content=content, headers=getattr(exc, "headers", None))
+    headers = dict(getattr(exc, "headers", None) or {})
+    headers.update(observability.response_headers())
+    return JSONResponse(status_code=exc.status_code, content=content, headers=headers)
 
 
 @app.exception_handler(Exception)
@@ -105,6 +130,7 @@ async def unhandled_handler(request: Request, exc: Exception):
     契约里「4XX/5XX 一律 ErrorEnvelope」的约定，SDK 侧解析直接崩。
     """
     logger.exception("[BknAgent] unhandled error on %s %s", request.method, request.url.path)
+    ctx = observability.context_from_request(request)
     return JSONResponse(
         status_code=500,
         content={
@@ -113,5 +139,7 @@ async def unhandled_handler(request: Request, exc: Exception):
             "detail": f"{type(exc).__name__}: {exc}",
             "solution": "查看 bkn-agent 日志与 trace_id 定位；下游不可用时稍后重试。",
             "link": "",
+            "trace_id": observability.current_trace_id(ctx),
         },
+        headers=observability.response_headers(ctx),
     )

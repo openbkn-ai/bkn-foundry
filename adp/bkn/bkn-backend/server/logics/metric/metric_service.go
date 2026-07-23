@@ -689,7 +689,7 @@ func (ms *metricService) SearchMetrics(ctx context.Context, query *interfaces.Co
 	}
 
 	otIDMap := map[string]bool{}
-	var otIDs []string
+	otIDs := []string{}
 	if len(query.ConceptGroups) > 0 {
 		cgCnt, err := ms.cga.GetConceptGroupsTotal(ctx, interfaces.ConceptGroupsQueryParams{
 			KNID:   query.KNID,
@@ -721,7 +721,6 @@ func (ms *metricService) SearchMetrics(ctx context.Context, query *interfaces.Co
 				query.KNID, query.Branch, query.ConceptGroups, err)
 			logger.Errorf(errStr)
 			span.SetStatus(codes.Error, errStr)
-
 			return response, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_Metric_InternalError).WithErrorDetails(err.Error())
 		}
@@ -754,20 +753,28 @@ func (ms *metricService) SearchMetrics(ctx context.Context, query *interfaces.Co
 		}
 	}
 
+	entries := make([]*interfaces.MetricDefinition, 0)
+	sort := query.Sort
+	if len(sort) == 0 {
+		sort = []*interfaces.SortParams{{Field: "id", Direction: "asc"}}
+	}
+	cursor := query.Cursor
+	var nextCursor *string
 	limit := query.Limit
 	if limit == 0 {
-		limit = interfaces.SearchAfter_Limit
+		limit = interfaces.ConceptQueryLimit
 	}
 
-	entries := make([]*interfaces.MetricDefinition, 0)
-
 	for {
+		paging := interfaces.ResourceDataPagingRequest{Mode: "cursor", Limit: limit}
+		if cursor != "" {
+			paging = interfaces.ResourceDataPagingRequest{Cursor: cursor}
+		}
 		params := &interfaces.ResourceDataQueryParams{
 			FilterCondition: filterCondition,
-			Limit:           limit,
+			Paging:          paging,
 			NeedTotal:       false,
-			SearchAfter:     query.SearchAfter,
-			Sort:            query.Sort,
+			Sort:            sort,
 		}
 		datasetResp, err := ms.vba.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
 		if err != nil {
@@ -811,15 +818,22 @@ func (ms *metricService) SearchMetrics(ctx context.Context, query *interfaces.Co
 			}
 		}
 
-		query.SearchAfter = datasetResp.SearchAfter
+		nextCursor = nil
+		if datasetResp.Paging != nil {
+			nextCursor = datasetResp.Paging.NextCursor
+		}
 
-		if (query.Limit > 0 && len(entries) >= query.Limit) || len(datasetResp.Entries) < limit {
+		if query.Limit > 0 && len(entries) >= query.Limit {
 			break
 		}
+		if nextCursor == nil {
+			break
+		}
+		cursor = *nextCursor
 	}
 
 	response.Entries = entries
-	response.SearchAfter = query.SearchAfter
+	response.NextCursor = nextCursor
 	span.SetStatus(codes.Ok, "")
 	return response, nil
 }
@@ -831,9 +845,11 @@ func (ms *metricService) getMetricDatasetTotal(ctx context.Context, filterCondit
 
 	params := &interfaces.ResourceDataQueryParams{
 		FilterCondition: filterCondition,
-		Offset:          0,
-		Limit:           1,
-		NeedTotal:       true,
+		Paging: interfaces.ResourceDataPagingRequest{
+			Mode:  "single",
+			Limit: 1,
+		},
+		NeedTotal: true,
 	}
 	datasetResp, err := ms.vba.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
 	if err != nil {

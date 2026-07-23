@@ -103,6 +103,58 @@ func TestMiddlewareHeaderAuthContext_LeavesMissingAccountHeadersEmpty(t *testing
 	})
 }
 
+func TestMiddlewareHeaderAuthContext_SetsTraceContext(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	convey.Convey("middlewareHeaderAuthContext preserves request id and sanitizes baggage", t, func() {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodGet, "/test", http.NoBody)
+		c.Request.Header.Set(common.HeaderBKNRequestID, "req_01JZVALIDREQUESTID000000002")
+		c.Request.Header.Set(string(interfaces.HeaderXAccountType), "tenant")
+		c.Request.Header.Set(common.HeaderBaggage, "bkn.account.type=admin,bkn.account.id=user-1,prompt=raw,bkn.runtime.env=test")
+
+		mw := middlewareHeaderAuthContext()
+		mw(c)
+
+		traceCtx, ok := common.GetTraceContextFromCtx(c.Request.Context())
+		convey.So(ok, convey.ShouldBeTrue)
+		convey.So(traceCtx.RequestID, convey.ShouldEqual, "req_01JZVALIDREQUESTID000000002")
+		convey.So(traceCtx.Baggage, convey.ShouldResemble, map[string]string{
+			"bkn.runtime.env": "test",
+		})
+
+		header := common.GetHeaderFromCtx(c.Request.Context())
+		convey.So(header[common.HeaderBKNRequestID], convey.ShouldEqual, "req_01JZVALIDREQUESTID000000002")
+		convey.So(header[common.HeaderLegacyRequestID], convey.ShouldEqual, "req_01JZVALIDREQUESTID000000002")
+		convey.So(header[common.HeaderBaggage], convey.ShouldEqual, "bkn.account.type=tenant,bkn.runtime.env=test")
+	})
+
+	convey.Convey("middlewareHeaderAuthContext falls back to x-request-id and generates missing ids", t, func() {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodGet, "/test", http.NoBody)
+		c.Request.Header.Set(common.HeaderLegacyRequestID, "req_01JZVALIDREQUESTID000000003")
+
+		mw := middlewareHeaderAuthContext()
+		mw(c)
+
+		traceCtx, ok := common.GetTraceContextFromCtx(c.Request.Context())
+		convey.So(ok, convey.ShouldBeTrue)
+		convey.So(traceCtx.RequestID, convey.ShouldEqual, "req_01JZVALIDREQUESTID000000003")
+
+		w = httptest.NewRecorder()
+		c, _ = gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodGet, "/test", http.NoBody)
+
+		mw(c)
+
+		traceCtx, ok = common.GetTraceContextFromCtx(c.Request.Context())
+		convey.So(ok, convey.ShouldBeTrue)
+		convey.So(common.IsValidBKNRequestID(traceCtx.RequestID), convey.ShouldBeTrue)
+	})
+}
+
 type stubPublicHydra struct{}
 
 func (stubPublicHydra) Introspect(_ context.Context, _ string) (*interfaces.TokenInfo, error) {
@@ -136,6 +188,18 @@ func (stubLogicPropertyResolverHandler) ResolveLogicProperties(c *gin.Context) {
 type stubActionRecallHandler struct{}
 
 func (stubActionRecallHandler) GetActionInfo(c *gin.Context) {
+	c.Status(http.StatusOK)
+}
+
+func (stubActionRecallHandler) ExecuteAction(c *gin.Context) {
+	c.Status(http.StatusOK)
+}
+
+func (stubActionRecallHandler) GetActionExecution(c *gin.Context) {
+	c.Status(http.StatusOK)
+}
+
+func (stubActionRecallHandler) ListActionExecutions(c *gin.Context) {
 	c.Status(http.StatusOK)
 }
 
@@ -202,5 +266,46 @@ func TestRestPublicHandler_AppliesResponseFormatMiddleware(t *testing.T) {
 
 		convey.So(w.Code, convey.ShouldEqual, http.StatusOK)
 		convey.So(w.Body.String(), convey.ShouldEqual, "ok")
+	})
+}
+
+func TestRedactSensitiveFields(t *testing.T) {
+	convey.Convey("TestRedactSensitiveFields", t, func() {
+		convey.Convey("REST 顶层 dynamic_params 脱敏，其余保留", func() {
+			in := map[string]interface{}{
+				"kn_id":                "kn-1",
+				"at_id":                "at-1",
+				"_instance_identities": []interface{}{map[string]interface{}{"key_id": "14"}},
+				"dynamic_params":       map[string]interface{}{"message": "SECRET", "name": "张三"},
+			}
+			out := redactSensitiveFields(in).(map[string]interface{})
+			convey.So(out["kn_id"], convey.ShouldEqual, "kn-1")
+			convey.So(out["dynamic_params"], convey.ShouldEqual, "[REDACTED]")
+			// 非敏感字段结构原样
+			convey.So(out["_instance_identities"], convey.ShouldNotBeNil)
+		})
+		convey.Convey("MCP JSON-RPC 嵌套 params.arguments.dynamic_params 脱敏", func() {
+			in := map[string]interface{}{
+				"jsonrpc": "2.0",
+				"method":  "tools/call",
+				"params": map[string]interface{}{
+					"name": "execute_action",
+					"arguments": map[string]interface{}{
+						"kn_id":          "kn-1",
+						"dynamic_params": map[string]interface{}{"token": "SECRET"},
+					},
+				},
+			}
+			out := redactSensitiveFields(in).(map[string]interface{})
+			args := out["params"].(map[string]interface{})["arguments"].(map[string]interface{})
+			convey.So(args["kn_id"], convey.ShouldEqual, "kn-1")
+			convey.So(args["dynamic_params"], convey.ShouldEqual, "[REDACTED]")
+		})
+		convey.Convey("无敏感字段时原样返回", func() {
+			in := map[string]interface{}{"kn_id": "kn-1", "limit": float64(10)}
+			out := redactSensitiveFields(in).(map[string]interface{})
+			convey.So(out["kn_id"], convey.ShouldEqual, "kn-1")
+			convey.So(out["limit"], convey.ShouldEqual, float64(10))
+		})
 	})
 }

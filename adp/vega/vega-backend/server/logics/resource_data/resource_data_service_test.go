@@ -73,7 +73,7 @@ func TestResourceDataServiceQuery(t *testing.T) {
 		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).
 			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: false}, nil)
 
-		_, _, err := rds.Query(context.Background(), resource, &interfaces.ResourceDataQueryParams{})
+		_, _, err := rds.query(context.Background(), resource, &interfaces.ResourceDataQueryParams{})
 		assertCatalogDisabledError(t, err)
 	})
 
@@ -99,7 +99,7 @@ func TestResourceDataServiceQuery(t *testing.T) {
 		mockLIM.EXPECT().ListDocuments(gomock.Any(), resource.LocalIndexName, resource, params).
 			Return(wantRows, int64(1), nil)
 
-		rows, total, err := rds.Query(context.Background(), resource, params)
+		rows, total, err := rds.query(context.Background(), resource, params)
 		require.NoError(t, err)
 		assert.Equal(t, int64(1), total)
 		assert.Equal(t, wantRows, rows)
@@ -140,7 +140,7 @@ func TestResourceDataServiceQuery(t *testing.T) {
 				return wantRows, int64(1), nil
 			})
 
-		rows, total, err := rds.Query(context.Background(), resource, params)
+		rows, total, err := rds.query(context.Background(), resource, params)
 
 		require.NoError(t, err)
 		assert.Equal(t, wantRows, rows)
@@ -171,20 +171,134 @@ func TestResourceDataServiceQuery(t *testing.T) {
 
 		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).
 			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
-		mockLVS.EXPECT().Query(gomock.Any(), resource, params).
+		mockLVS.EXPECT().QueryWithPaging(gomock.Any(), resource, params).
 			DoAndReturn(func(ctx context.Context, gotResource *interfaces.Resource,
-				gotParams *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
+				gotParams *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
 				assert.Equal(t, []*interfaces.SortField{{Field: "name", Direction: "asc"}}, gotParams.Sort)
 				assert.Equal(t, []string{"name"}, gotParams.OutputFields)
-				return wantRows, int64(1), nil
+				return &interfaces.ResourceDataQueryResult{Entries: wantRows, TotalCount: 1, Paging: &interfaces.PagingResponse{}}, nil
 			})
 
-		rows, total, err := rds.Query(context.Background(), resource, params)
+		rows, total, err := rds.query(context.Background(), resource, params)
 
 		require.NoError(t, err)
 		assert.Equal(t, wantRows, rows)
 		assert.Equal(t, int64(1), total)
 	})
+}
+
+func TestResourceDataServiceRejectsIndexAggregationCursor(t *testing.T) {
+	rds := &resourceDataService{}
+	_, err := rds.QueryWithPaging(context.Background(), &interfaces.Resource{
+		ID:       "index-1",
+		Category: interfaces.ResourceCategoryIndex,
+	}, &interfaces.ResourceDataQueryParams{
+		Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 10},
+		Sort:   []*interfaces.SortField{{Field: "timestamp", Direction: "desc"}},
+		GroupBy: []*interfaces.GroupByItem{
+			{Property: "category"},
+		},
+	})
+	require.Error(t, err)
+	var httpErr *rest.HTTPError
+	require.ErrorAs(t, err, &httpErr)
+	assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+	assert.Equal(t, verrors.VegaBackend_Query_InvalidParameter, httpErr.BaseError.ErrorCode)
+}
+
+func TestResourceDataPaginationCategoryUsesPhysicalEngine(t *testing.T) {
+	tests := []struct {
+		name     string
+		resource *interfaces.Resource
+		want     string
+	}{
+		{name: "index", resource: &interfaces.Resource{Category: interfaces.ResourceCategoryIndex}, want: interfaces.ResourceCategoryIndex},
+		{name: "dataset", resource: &interfaces.Resource{Category: interfaces.ResourceCategoryDataset}, want: interfaces.ResourceCategoryIndex},
+		{name: "local index table", resource: &interfaces.Resource{Category: interfaces.ResourceCategoryTable, LocalIndexName: "index-1"}, want: interfaces.ResourceCategoryIndex},
+		{name: "rds table", resource: &interfaces.Resource{Category: interfaces.ResourceCategoryTable}, want: interfaces.ResourceCategoryTable},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, resourceDataPaginationCategory(tt.resource))
+		})
+	}
+}
+
+func TestResourceDataServiceRejectsOpenSearchCursorWithoutSort(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+	mockDS := mock_interfaces.NewMockDatasetService(ctrl)
+	rds := &resourceDataService{cs: mockCS, ds: mockDS}
+	resource := &interfaces.Resource{ID: "dataset-1", CatalogID: "catalog-1", Category: interfaces.ResourceCategoryDataset}
+	mockCS.EXPECT().GetByID(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().
+		Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
+	mockDS.EXPECT().ListDocuments(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().
+		Return(nil, int64(0), nil)
+
+	_, err := rds.QueryWithPaging(context.Background(), resource, &interfaces.ResourceDataQueryParams{
+		Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 1},
+	})
+	require.Error(t, err)
+	var httpErr *rest.HTTPError
+	require.ErrorAs(t, err, &httpErr)
+	assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+}
+
+func TestResourceDataServiceRejectsOpenSearchFirstPageWindowOverflow(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+	mockDS := mock_interfaces.NewMockDatasetService(ctrl)
+	rds := &resourceDataService{cs: mockCS, ds: mockDS}
+	resource := &interfaces.Resource{ID: "dataset-1", CatalogID: "catalog-1", Category: interfaces.ResourceCategoryDataset}
+	mockCS.EXPECT().GetByID(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().
+		Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
+	mockDS.EXPECT().ListDocuments(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().
+		Return(nil, int64(0), nil)
+
+	_, err := rds.QueryWithPaging(context.Background(), resource, &interfaces.ResourceDataQueryParams{
+		Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Offset: interfaces.MaxPageLimit, Limit: 1},
+		Sort:   []*interfaces.SortField{{Field: "id", Direction: "asc"}},
+	})
+	require.Error(t, err)
+	var httpErr *rest.HTTPError
+	require.ErrorAs(t, err, &httpErr)
+	assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+}
+
+func TestDatasetCursorUsesSearchAfterPagination(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+	mockDS := mock_interfaces.NewMockDatasetService(ctrl)
+	rds := &resourceDataService{cs: mockCS, ds: mockDS}
+	resource := &interfaces.Resource{ID: "dataset-1", CatalogID: "catalog-1", Category: interfaces.ResourceCategoryDataset}
+	params := &interfaces.ResourceDataQueryParams{
+		Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 1},
+		Sort:   []*interfaces.SortField{{Field: "id", Direction: "asc"}},
+	}
+	mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).Times(2).
+		Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
+	firstPage := true
+	mockDS.EXPECT().ListDocuments(gomock.Any(), "dataset-1", resource, gomock.Any()).Times(2).
+		DoAndReturn(func(_ context.Context, _ string, _ *interfaces.Resource, pageParams *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
+			assert.Equal(t, 1, pageParams.Limit)
+			if firstPage {
+				firstPage = false
+				assert.Empty(t, pageParams.SearchAfter)
+				pageParams.SearchAfter = []any{"sort-1"}
+				return []map[string]any{{"id": 1}}, 0, nil
+			}
+			assert.Equal(t, []any{"sort-1"}, pageParams.SearchAfter)
+			return nil, 0, nil
+		})
+
+	first, err := rds.QueryWithPaging(context.Background(), resource, params)
+	require.NoError(t, err)
+	require.NotNil(t, first.Paging.NextCursor)
+	final, err := rds.QueryWithPaging(context.Background(), resource, &interfaces.ResourceDataQueryParams{
+		Paging: interfaces.PagingRequest{Cursor: *first.Paging.NextCursor},
+	})
+	require.NoError(t, err)
+	assert.Nil(t, final.Paging.NextCursor)
 }
 
 func TestResourceDataServicePrepareSortParams(t *testing.T) {

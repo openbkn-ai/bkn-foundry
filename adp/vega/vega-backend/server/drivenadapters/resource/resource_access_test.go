@@ -412,6 +412,23 @@ func TestResourceAccessListIDs(t *testing.T) {
 	})
 }
 
+func TestResourceAccessListIDsReturnsIterationError(t *testing.T) {
+	access, mock, cleanup := newResourceAccessMock(t)
+	defer cleanup()
+
+	rows := sqlmock.NewRows([]string{"f_id"}).
+		AddRow("resource-1").
+		AddRow("resource-2").
+		RowError(1, errors.New("rows interrupted"))
+	mock.ExpectQuery("SELECT f_id FROM t_resource").WillReturnRows(rows)
+
+	got, err := access.ListIDs(context.Background(), interfaces.ResourcesQueryParams{})
+
+	require.ErrorContains(t, err, "rows interrupted")
+	assert.Nil(t, got)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestResourceAccessDeleteByIDs(t *testing.T) {
 	t.Run("skips empty ids", func(t *testing.T) {
 		access, mock, cleanup := newResourceAccessMock(t)

@@ -133,6 +133,35 @@ func Test_RestHandler_verifyJsonContentType(t *testing.T) {
 	})
 }
 
+func Test_RestHandler_TraceContextMiddleware(t *testing.T) {
+	Convey("Test RestHandler TraceContextMiddleware", t, func() {
+		test := setGinMode()
+		defer test()
+
+		handler := &restHandler{}
+		engine := gin.New()
+		engine.Use(handler.TraceContextMiddleware())
+		engine.GET("/test", func(c *gin.Context) {
+			traceCtx, ok := common.GetTraceContextFromCtx(c.Request.Context())
+			So(ok, ShouldBeTrue)
+			So(traceCtx.RequestID, ShouldEqual, "req_01JZVALIDREQUESTID000000015")
+			So(traceCtx.Baggage, ShouldResemble, map[string]string{
+				"bkn.account.type": "service",
+				"bkn.runtime.env":  "test",
+			})
+			c.Status(http.StatusOK)
+		})
+
+		req := httptest.NewRequest(http.MethodGet, "/test", nil)
+		req.Header.Set(common.HeaderBKNRequestID, "req_01JZVALIDREQUESTID000000015")
+		req.Header.Set(common.HeaderBaggage, "bkn.account.type=service,bkn.account.id=user-1,bkn.runtime.env=test,prompt=raw")
+		w := httptest.NewRecorder()
+		engine.ServeHTTP(w, req)
+
+		So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+	})
+}
+
 func Test_RestHandler_verifyOAuth(t *testing.T) {
 	Convey("Test RestHandler verifyOAuth", t, func() {
 		test := setGinMode()

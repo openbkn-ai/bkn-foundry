@@ -922,6 +922,7 @@ func (r *restHandler) ListObjectTypes(c *gin.Context, visitor hydra.Visitor) {
 
 	logger.Debug("Handler ListObjectTypes Success")
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	emitObjectTypeSchemaRead(ctx, c, visitor, "bkn.schema.object_type.list", knID, branch, nil, otList, int64(total))
 	rest.ReplyOK(c, http.StatusOK, result)
 }
 
@@ -1008,6 +1009,7 @@ func (r *restHandler) GetObjectTypes(c *gin.Context, visitor hydra.Visitor) {
 
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	logger.Debug("Handler GetObjectTypes Success")
+	emitObjectTypeSchemaRead(ctx, c, visitor, "bkn.schema.object_type.get", knID, branch, otIDs, result, int64(len(result)))
 	rest.ReplyOK(c, http.StatusOK, httpResult)
 }
 

@@ -51,7 +51,7 @@ func NewRestPublicHandler() interfaces.HTTPRouterInterface {
 // RegisterPublic 注册公共路由
 func (r *restPublicHandler) RegisterRouter(engine *gin.RouterGroup) {
 	mws := []gin.HandlerFunc{}
-	mws = append(mws, middlewareRequestLog(r.Logger), middlewareTrace, middlewareIntrospectVerify(r.Hydra, r.AppKeys))
+	mws = append(mws, middlewareRequestLog(r.Logger), middlewareTrace, middlewareTraceContext, middlewareIntrospectVerify(r.Hydra, r.AppKeys))
 	engine.Use(mws...)
 	// 算子注册相关接口
 	r.OperatorRestHandler.RegisterPublic(engine)

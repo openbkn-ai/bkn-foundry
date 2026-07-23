@@ -5,6 +5,7 @@ import aiohttp
 from langchain_core.tools import StructuredTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
+from app import evidence
 from app.config import config
 from app.core.skills import normalize_skill_id
 from app.core.toolbox import load_toolbox_tools
@@ -96,9 +97,26 @@ async def _agent_tool(
                 session, sub_agent.agent_id, {"message": message}, account_id, parent_thread_id
             )
             await dao.set_task_status(session, task.task_id, "running")
+        event = evidence.agent_as_tool_invoked(
+            parent_thread_id=parent_thread_id,
+            child_task_id=task.task_id,
+            child_agent_id=sub_agent.agent_id,
+            depth=depth + 1,
+            message_hash=evidence.hash_value(message),
+            operation_name="bkn.agent.agent_as_tool",
+        )
+        await evidence.submit_events([event] if event else [], account_id, account_type)
         try:
             output = await runner.run_agent_once(
-                sub_agent, message, {}, [], None, account_id, account_type, depth=depth + 1
+                sub_agent,
+                message,
+                {},
+                [],
+                None,
+                account_id,
+                account_type,
+                depth=depth + 1,
+                task_id=task.task_id,
             )
         except Exception as e:
             async with SessionLocal() as session:
@@ -170,12 +188,17 @@ async def load_tools(
     return deduped
 
 
-def apply_tool_call_cap(tools: list[Any], max_tool_calls: int | None) -> list[Any]:
+def apply_tool_call_cap(
+    tools: list[Any],
+    max_tool_calls: int | None,
+    account_id: str = "",
+    account_type: str = "",
+) -> list[Any]:
     """执行 AgentLimits.max_tool_calls：整轮工具调用次数用尽后，工具改为返回
     提示串（模型据此收敛作答），而非静默无视上限。None = 不限。"""
     if max_tool_calls is None:
         return tools
-    budget = {"left": max(max_tool_calls, 0)}
+    budget = {"left": max(max_tool_calls, 0), "exhausted_emitted": False}
     capped: list[Any] = []
     for t in tools:
         inner = getattr(t, "coroutine", None)
@@ -183,8 +206,18 @@ def apply_tool_call_cap(tools: list[Any], max_tool_calls: int | None) -> list[An
             capped.append(t)
             continue
 
-        async def _guarded(__inner=inner, **kwargs) -> str:
+        tool_name = getattr(t, "name", None)
+
+        async def _guarded(__inner=inner, __tool_name=tool_name, **kwargs) -> str:
             if budget["left"] <= 0:
+                if not budget["exhausted_emitted"]:
+                    budget["exhausted_emitted"] = True
+                    event = evidence.tool_budget_exhausted(
+                        max_tool_calls=max_tool_calls,
+                        operation_name="bkn.agent.tool.call",
+                        tool_name=__tool_name,
+                    )
+                    await evidence.submit_events([event] if event else [], account_id, account_type)
                 # 措辞要斩钉截铁：只说「请直接作答」时模型会继续试探性重试，
                 # 白烧若干轮（VM 实测空转 9 轮才收敛）
                 return (

@@ -130,7 +130,12 @@ func (sutw *SemanticUnderstandingTaskWorker) HandleTask(ctx context.Context, tas
 	}
 	taskInfo.ResultJSON = resultJSON
 	taskInfo.Confidence = confidence
-	return sutw.applyAndMark(ctx, taskInfo)
+	if err := sutw.applyAndMark(ctx, taskInfo); err != nil {
+		return err
+	}
+
+	logger.Infof("Semantic understanding completed for task: %s", taskID)
+	return nil
 }
 
 func (sutw *SemanticUnderstandingTaskWorker) applyAndMark(ctx context.Context, task *interfaces.SemanticUnderstandingTask) error {
@@ -414,10 +419,10 @@ func (sutw *SemanticUnderstandingTaskWorker) applyResourceResult(ctx context.Con
 		}
 
 		fieldUpdated := false
-		if applyStringByMode(task.ApplyMode, &property.DisplayName, field.DisplayName) {
+		if applyStringByMode(task.ApplyMode, &property.DisplayName, field.DisplayName, property.DisplayName == property.Name) {
 			fieldUpdated = true
 		}
-		if applyStringByMode(task.ApplyMode, &property.Description, field.Description) {
+		if applyStringByMode(task.ApplyMode, &property.Description, field.Description, property.Description == property.OriginalDescription) {
 			fieldUpdated = true
 		}
 		if fieldUpdated {
@@ -426,10 +431,12 @@ func (sutw *SemanticUnderstandingTaskWorker) applyResourceResult(ctx context.Con
 	}
 
 	updatedResource := make([]string, 0, 2)
-	if applyStringByMode(task.ApplyMode, &resourceInfo.Name, result.Resource.DisplayName) {
+	if applyStringByMode(task.ApplyMode, &resourceInfo.Name, result.Resource.DisplayName,
+		resourceInfo.Name == resourceInfo.SourceIdentifier) {
 		updatedResource = append(updatedResource, "name")
 	}
-	if applyStringByMode(task.ApplyMode, &resourceInfo.Description, result.Resource.Description) {
+	if applyStringByMode(task.ApplyMode, &resourceInfo.Description, result.Resource.Description,
+		resourceInfo.Description == sourceOriginalDescription(resourceInfo.SourceMetadata)) {
 		updatedResource = append(updatedResource, "description")
 	}
 	resourceUpdated := len(updatedResource) > 0
@@ -475,13 +482,13 @@ func (sutw *SemanticUnderstandingTaskWorker) applyResourceResult(ctx context.Con
 	}, nil
 }
 
-func applyStringByMode(mode string, current *string, next string) bool {
+func applyStringByMode(mode string, current *string, next string, treatCurrentAsEmpty bool) bool {
 	if next == "" {
 		return false
 	}
 	switch mode {
 	case interfaces.SemanticUnderstandingApplyModeFillEmpty:
-		if *current != "" {
+		if *current != "" && !treatCurrentAsEmpty {
 			return false
 		}
 	case interfaces.SemanticUnderstandingApplyModeForce:
@@ -493,6 +500,14 @@ func applyStringByMode(mode string, current *string, next string) bool {
 	}
 	*current = next
 	return true
+}
+
+func sourceOriginalDescription(metadata map[string]any) string {
+	if metadata == nil {
+		return ""
+	}
+	description, _ := metadata["original_description"].(string)
+	return description
 }
 
 func validateConfidence(confidence *float64, path string) error {
@@ -599,7 +614,7 @@ func (sutw *SemanticUnderstandingTaskWorker) applyCatalogResult(ctx context.Cont
 		case "update":
 			current := logicViewByID[view.TargetResourceID]
 			nextDescription := current.Description
-			applyStringByMode(task.ApplyMode, &nextDescription, view.Description)
+			applyStringByMode(task.ApplyMode, &nextDescription, view.Description, false)
 			nextLogicDefinition := current.LogicDefinition
 			if task.ApplyMode == interfaces.SemanticUnderstandingApplyModeForce {
 				nextLogicDefinition = view.LogicDefinition

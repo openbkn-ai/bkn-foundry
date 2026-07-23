@@ -9,10 +9,23 @@ import "context"
 // VegaRawQueryReq vega 原始 SQL 查询请求（只读）。
 // Query 为 Trino 方言 SQL，表名用 {{.resource_id}} 占位符引用，由 vega 解析成真实表名。
 type VegaRawQueryReq struct {
-	Query        string `json:"query"`                   // Trino 方言 SQL
-	ResourceType string `json:"resource_type"`           // 连接器类型：mysql / mariadb / postgresql
-	QueryType    string `json:"query_type,omitempty"`    // standard / stream，默认 standard
-	QueryTimeout int    `json:"query_timeout,omitempty"` // 查询超时（秒），1-3600
+	Query           string            `json:"query"`                       // Trino 方言 SQL
+	QueryFormat     string            `json:"query_format"`                // 固定为 sql
+	InputDialect    string            `json:"input_dialect"`               // 固定为 trino
+	QueryTimeoutSec int               `json:"query_timeout_sec,omitempty"` // 查询超时（秒），1-3600
+	Paging          VegaPagingRequest `json:"paging"`
+}
+
+type VegaPagingRequest struct {
+	Mode   string `json:"mode"`
+	Offset int    `json:"offset,omitempty"`
+	Limit  int    `json:"limit"`
+	Cursor string `json:"cursor,omitempty"`
+}
+
+type VegaPagingResponse struct {
+	NextCursor   *string `json:"next_cursor"`
+	ExpiresAtSec *int64  `json:"expires_at_sec"`
 }
 
 // VegaColumn vega 查询返回的列信息。
@@ -23,11 +36,11 @@ type VegaColumn struct {
 
 // VegaRawQueryResp vega 原始查询响应。
 type VegaRawQueryResp struct {
-	Columns    []VegaColumn     `json:"columns"`
-	Entries    []map[string]any `json:"entries"`
-	Stats      map[string]any   `json:"stats,omitempty"`
-	TotalCount int64            `json:"total_count"`
-	Warnings   []string         `json:"warnings,omitempty"`
+	Columns    []VegaColumn        `json:"columns"`
+	Entries    []map[string]any    `json:"entries"`
+	TotalCount *int64              `json:"total_count,omitempty"`
+	Warnings   []string            `json:"warnings,omitempty"`
+	Paging     *VegaPagingResponse `json:"paging,omitempty"`
 }
 
 // VegaListResourcesReq vega 资源列表查询入参（数据层直查，脱离本体）。
@@ -68,7 +81,7 @@ type DrivenVega interface {
 	// RawQuery 执行只读 SQL。调用方（MCP 工具层）须自行保证 SELECT-only，本接口不做语句校验。
 	RawQuery(ctx context.Context, req *VegaRawQueryReq) (*VegaRawQueryResp, error)
 	// GetResourceConnectorType 按 resource_id 解析其所属 catalog 的连接器类型，
-	// 用于自动填充 RawQueryReq.ResourceType。
+	// 用于资源发现和展示。
 	GetResourceConnectorType(ctx context.Context, resourceID string) (string, error)
 	// ListResources 列出可查询的数据资源（按账户 view_detail 授权过滤，由 vega 强制）。
 	ListResources(ctx context.Context, req *VegaListResourcesReq) (*VegaListResourcesResp, error)

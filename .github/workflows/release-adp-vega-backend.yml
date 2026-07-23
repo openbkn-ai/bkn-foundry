@@ -38,6 +38,8 @@ jobs:
       context: '.'
       image-name: vega-backend
       version: ${{ needs.test.outputs.version }}
+      build-args: |
+        SERVER_VERSION=${{ needs.test.outputs.version }}
       publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
 
   build-kafka-connect:

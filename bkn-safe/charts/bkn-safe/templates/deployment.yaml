@@ -18,6 +18,7 @@ spec:
       labels:
         app: {{ .Values.image.name }}
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum | trunc 10 | quote }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum | trunc 10 | quote }}
     spec:
       {{- with .Values.nodeSelector }}
       nodeSelector:
@@ -30,6 +31,8 @@ spec:
           envFrom:
             - configMapRef:
                 name: {{ .Release.Name }}-config
+            - secretRef:
+                name: {{ .Release.Name }}-secrets
           ports:
             - name: http
               containerPort: {{ .Values.service.ports.port }}

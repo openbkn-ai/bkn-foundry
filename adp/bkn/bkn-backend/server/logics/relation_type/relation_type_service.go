@@ -967,9 +967,11 @@ func (rts *relationTypeService) SearchRelationTypes(ctx context.Context,
 			// 未指定分组，直接搜索.总数从dataset的结果中读取
 			params := &interfaces.ResourceDataQueryParams{
 				FilterCondition: filterCondition,
-				Offset:          0,
-				Limit:           1, // 查询1条数据，获取total
-				NeedTotal:       true,
+				Paging: interfaces.ResourceDataPagingRequest{
+					Mode:  "single",
+					Limit: 1, // 查询1条数据，获取total
+				},
+				NeedTotal: true,
 			}
 			datasetResp, err := rts.vba.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
 			if err != nil {
@@ -993,20 +995,28 @@ func (rts *relationTypeService) SearchRelationTypes(ctx context.Context,
 	// 4. 迭代查询直到获取足够数量或没有更多数据
 	relationTypes := []*interfaces.RelationType{}
 	var totalFilteredCount int64 = 0
-	offset := 0
+	sort := query.Sort
+	if len(sort) == 0 {
+		sort = []*interfaces.SortParams{{Field: "id", Direction: "asc"}}
+	}
+	cursor := query.Cursor
+	var nextCursor *string
 	limit := query.Limit
 	if limit == 0 {
-		limit = interfaces.SearchAfter_Limit
+		limit = interfaces.ConceptQueryLimit
 	}
 
 	for {
+		paging := interfaces.ResourceDataPagingRequest{Mode: "cursor", Limit: limit}
+		if cursor != "" {
+			paging = interfaces.ResourceDataPagingRequest{Cursor: cursor}
+		}
 		// 调用 dataset 查询
 		params := &interfaces.ResourceDataQueryParams{
 			FilterCondition: filterCondition,
-			Offset:          offset,
-			Limit:           limit,
+			Paging:          paging,
 			NeedTotal:       true,
-			Sort:            query.Sort,
+			Sort:            sort,
 		}
 		datasetResp, err := rts.vba.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
 		if err != nil {
@@ -1058,19 +1068,22 @@ func (rts *relationTypeService) SearchRelationTypes(ctx context.Context,
 				}
 			}
 		}
-		query.SearchAfter = datasetResp.SearchAfter
-
-		// 如果已经收集到足够的数量或者没有更多数据了，跳出循环
-		if (query.Limit > 0 && len(relationTypes) >= query.Limit) || len(datasetResp.Entries) < limit {
-			break
+		nextCursor = nil
+		if datasetResp.Paging != nil {
+			nextCursor = datasetResp.Paging.NextCursor
 		}
 
-		// 更新 offset 用于下一次查询（当前使用 offset 分页作为临时方案）
-		offset += limit
+		if query.Limit > 0 && len(relationTypes) >= query.Limit {
+			break
+		}
+		if nextCursor == nil {
+			break
+		}
+		cursor = *nextCursor
 	}
 
 	response.Entries = relationTypes
-	response.SearchAfter = query.SearchAfter
+	response.NextCursor = nextCursor
 	return response, nil
 }
 
@@ -1080,9 +1093,11 @@ func (rts *relationTypeService) GetTotal(ctx context.Context, filterCondition ma
 
 	params := &interfaces.ResourceDataQueryParams{
 		FilterCondition: filterCondition,
-		Offset:          0,
-		Limit:           1, // 查询1条数据，获取total
-		NeedTotal:       true,
+		Paging: interfaces.ResourceDataPagingRequest{
+			Mode:  "single",
+			Limit: 1, // 查询1条数据，获取total
+		},
+		NeedTotal: true,
 	}
 	datasetResp, err := rts.vba.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
 	if err != nil {

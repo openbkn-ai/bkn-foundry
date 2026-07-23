@@ -81,6 +81,7 @@ func middlewareIntrospectVerify(hydra interfaces.Hydra, appKeys interfaces.AppKe
 		tokenInfo.UserAgent = c.GetHeader("User-Agent")
 
 		ctx = common.SetPublicAPIToCtx(ctx, true)
+		ctx = common.SetTraceContextToCtx(ctx, common.TraceContextFromHeaders(c.GetHeader))
 		// 设置认证上下文到context
 		authContext := &interfaces.AccountAuthContext{
 			AccountID:   tokenInfo.VisitorID,
@@ -98,6 +99,7 @@ func middlewareIntrospectVerify(hydra interfaces.Hydra, appKeys interfaces.AppKe
 func middlewareHeaderAuthContext() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
+		ctx = common.SetTraceContextToCtx(ctx, common.TraceContextFromHeaders(c.GetHeader))
 		// 获取Header中xAccountType账户类型
 		xAccountType := c.GetHeader(string(interfaces.HeaderXAccountType))
 
@@ -139,7 +141,7 @@ func middlewareRequestLog(logger interfaces.Logger) gin.HandlerFunc {
 			URI:          c.Request.RequestURI,
 			Method:       c.Request.Method,
 			RemoteAddr:   c.Request.RemoteAddr,
-			RequestBody:  byteToInterface(req),
+			RequestBody:  redactSensitiveFields(byteToInterface(req)),
 			ResponseCode: c.Writer.Status(),
 			Latency:      float64(time.Since(now).Nanoseconds()) / 1e6, //nolint:mnd
 		})
@@ -186,6 +188,39 @@ func byteToInterface(byt []byte) interface{} {
 
 	m["string"] = string(byt)
 	return m
+}
+
+// sensitiveBodyKeys 是请求体中需要在日志里脱敏的字段名。dynamic_params 是任意
+// 工具输入，可能含令牌/密码等敏感值（见 PR #379 review P1）；对其值整体脱敏，
+// 仅保留字段名以维持可观测性。
+var sensitiveBodyKeys = map[string]struct{}{
+	"dynamic_params": {},
+}
+
+// redactSensitiveFields 递归遍历已解析的请求体（map / slice），将 sensitiveBodyKeys
+// 命中的字段值替换为脱敏标记，其余结构原样保留。覆盖 REST 顶层 dynamic_params 与
+// MCP JSON-RPC 嵌套的 params.arguments.dynamic_params 两种形态。
+func redactSensitiveFields(v interface{}) interface{} {
+	switch val := v.(type) {
+	case map[string]interface{}:
+		out := make(map[string]interface{}, len(val))
+		for k, vv := range val {
+			if _, ok := sensitiveBodyKeys[k]; ok {
+				out[k] = "[REDACTED]"
+				continue
+			}
+			out[k] = redactSensitiveFields(vv)
+		}
+		return out
+	case []interface{}:
+		out := make([]interface{}, len(val))
+		for i, vv := range val {
+			out[i] = redactSensitiveFields(vv)
+		}
+		return out
+	default:
+		return v
+	}
 }
 
 // middlewareResponseFormat 解析 Query 参数 response_format（默认 json），非法值返回 400，并写入 context

@@ -57,8 +57,30 @@ func NewLogicViewService(appSetting *common.AppSetting) interfaces.LogicViewServ
 	return lvService
 }
 
-func (lvs *logicViewService) Query(ctx context.Context, resource *interfaces.Resource,
-	params *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
+// QueryWithPaging executes composite single-source logic views through
+// RawQueryService, so their single and cursor pages have the same contract and
+// session ownership as raw queries. Derived and multi-source views retain their
+// current execution model.
+func (lvs *logicViewService) QueryWithPaging(ctx context.Context, resource *interfaces.Resource,
+	params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
+	if params.Paging.Cursor != "" {
+		if resource.LogicType == interfaces.LogicType_Derived {
+			return query.ExecuteResourceDataCursorContinuation(ctx, accountIDFromContext(ctx), resource, params.Paging.Cursor,
+				func(pageCtx context.Context, pageParams *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
+					view := &interfaces.LogicView{Resource: *resource}
+					return lvs.queryDerivedLogicView(pageCtx, view, pageParams)
+				})
+		}
+		response, err := lvs.qs.Execute(ctx, &interfaces.RawQueryRequest{
+			Paging:                 params.Paging,
+			ResourceDataResourceID: resource.ID,
+			ResourceDataUpdateTime: resource.UpdateTime,
+		})
+		if err != nil {
+			return nil, err
+		}
+		return rawQueryResult(response), nil
+	}
 
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Query logic view")
 	defer span.End()
@@ -72,15 +94,83 @@ func (lvs *logicViewService) Query(ctx context.Context, resource *interfaces.Res
 
 	switch resource.LogicType {
 	case interfaces.LogicType_Derived:
-		return lvs.queryDerivedLogicView(ctx, view, params)
+		if params.Paging.Mode == interfaces.PagingModeCursor {
+			paginationCategory, err := lvs.derivedPaginationCategory(ctx, view)
+			if err != nil {
+				return nil, err
+			}
+			if paginationCategory == interfaces.ResourceCategoryIndex {
+				if len(params.Sort) == 0 {
+					return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+						WithErrorDetails("sort is required for index cursor paging")
+				}
+				if params.Aggregation != nil || len(params.GroupBy) > 0 || params.Having != nil {
+					return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+						WithErrorDetails("cursor paging does not support index aggregation queries")
+				}
+			}
+			return query.ExecuteInitialResourceDataCursorWithCategory(ctx, accountIDFromContext(ctx), resource, paginationCategory, params,
+				func(pageCtx context.Context, pageParams *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
+					return lvs.queryDerivedLogicView(pageCtx, view, pageParams)
+				})
+		}
+		entries, total, err := lvs.queryDerivedLogicView(ctx, view, params)
+		if err != nil {
+			return nil, err
+		}
+		return &interfaces.ResourceDataQueryResult{Entries: entries, TotalCount: total, Paging: &interfaces.PagingResponse{}}, nil
 	case interfaces.LogicType_Composite:
 		return lvs.queryCompositeLogicView(ctx, view, params)
 	default:
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InternalError_InvalidCategory).
 			WithErrorDetails(fmt.Sprintf("The logic type of the custom view '%s' is not supported", resource.ID))
 		otellog.LogError(ctx, "Unsupported logic view type", httpErr)
-		return nil, 0, httpErr
+		return nil, httpErr
 	}
+}
+
+func (lvs *logicViewService) derivedPaginationCategory(ctx context.Context, view *interfaces.LogicView) (string, error) {
+	for _, node := range view.LogicDefinition {
+		if node.Type != interfaces.LogicDefinitionNodeType_Resource {
+			continue
+		}
+		var nodeCfg interfaces.ResourceNodeCfg
+		if err := mapstructure.Decode(node.Config, &nodeCfg); err != nil {
+			return "", rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
+				WithErrorDetails(fmt.Sprintf("failed to decode source resource config: %v", err))
+		}
+		source, err := lvs.rs.GetByID(ctx, nodeCfg.ResourceID)
+		if err != nil {
+			return "", err
+		}
+		if source == nil {
+			return "", rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound).
+				WithErrorDetails(fmt.Sprintf("source resource %s not found", nodeCfg.ResourceID))
+		}
+		if _, err := resource.EnsureResourceQueryable(ctx, source); err != nil {
+			return "", err
+		}
+		return source.Category, nil
+	}
+	return "", rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InternalError_InvalidCategory).
+		WithErrorDetails("derived logic view has no source resource")
+}
+
+func accountIDFromContext(ctx context.Context) string {
+	accountInfo, _ := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
+	return accountInfo.ID
+}
+
+func rawQueryResult(response *interfaces.RawQueryResponse) *interfaces.ResourceDataQueryResult {
+	result := &interfaces.ResourceDataQueryResult{
+		Entries: response.Entries,
+		Paging:  response.Paging,
+	}
+	if response.TotalCount != nil {
+		result.TotalCount = *response.TotalCount
+		result.NeedTotal = true
+	}
+	return result
 }
 
 func (lvs *logicViewService) queryDerivedLogicView(ctx context.Context, view *interfaces.LogicView,
@@ -116,6 +206,18 @@ func (lvs *logicViewService) queryDerivedLogicView(ctx context.Context, view *in
 		otellog.LogError(ctx, "Source resource not found", httpErr)
 		return nil, 0, httpErr
 	}
+	if _, err := resource.EnsureResourceQueryable(ctx, fromResource); err != nil {
+		return nil, 0, err
+	}
+	if fromResource.Category == interfaces.ResourceCategoryIndex &&
+		params.Aggregation == nil && len(params.GroupBy) == 0 && params.Having == nil {
+		paging := rawPaging(params)
+		limit := paging.EffectiveLimit()
+		if limit <= interfaces.MaxPageLimit && paging.Offset > interfaces.MaxPageLimit-limit {
+			return nil, 0, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+				WithErrorDetails(fmt.Sprintf("paging.offset + paging.limit must not exceed %d for OpenSearch queries", interfaces.MaxPageLimit))
+		}
+	}
 
 	catalog, err := lvs.cs.GetByID(ctx, fromResource.CatalogID, true)
 	if err != nil {
@@ -128,6 +230,10 @@ func (lvs *logicViewService) queryDerivedLogicView(ctx context.Context, view *in
 			WithErrorDetails(fmt.Sprintf("catalog %s not found", fromResource.CatalogID))
 		otellog.LogError(ctx, "Catalog not found", httpErr)
 		return nil, 0, httpErr
+	}
+	if !catalog.Enabled {
+		return nil, 0, rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Catalog_IsDisabled).
+			WithErrorDetails("catalog is disabled")
 	}
 
 	fieldMap := map[string]*interfaces.Property{}
@@ -186,7 +292,7 @@ func executePhysicalQuery(ctx context.Context, catalog *interfaces.Catalog, reso
 }
 
 func (lvs *logicViewService) queryCompositeLogicView(ctx context.Context, view *interfaces.LogicView,
-	params *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
+	params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Query composite logic view")
 	defer span.End()
 
@@ -199,21 +305,21 @@ func (lvs *logicViewService) queryCompositeLogicView(ctx context.Context, view *
 			var nodeCfg interfaces.ResourceNodeCfg
 			if err := mapstructure.Decode(logicNode.Config, &nodeCfg); err != nil {
 				otellog.LogError(ctx, "Decode resource node config failed", err)
-				return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
+				return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
 					WithErrorDetails(fmt.Sprintf("failed to decode resource node config: %v", err))
 			}
 
 			fromResource, err := lvs.rs.GetByID(ctx, nodeCfg.ResourceID)
 			if err != nil {
 				otellog.LogError(ctx, "Get source resource failed", err)
-				return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
+				return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
 					WithErrorDetails(fmt.Sprintf("failed to get source resource %s: %v", nodeCfg.ResourceID, err))
 			}
 			if fromResource == nil {
 				httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound).
 					WithErrorDetails(fmt.Sprintf("source resource %s not found", nodeCfg.ResourceID))
 				otellog.LogError(ctx, "Source resource not found", httpErr)
-				return nil, 0, httpErr
+				return nil, httpErr
 			}
 			refResources[nodeCfg.ResourceID] = fromResource
 
@@ -235,7 +341,7 @@ func (lvs *logicViewService) queryCompositeLogicView(ctx context.Context, view *
 }
 
 func (lvs *logicViewService) executeCompositeViewByDSL(ctx context.Context, view *interfaces.LogicView,
-	params *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
+	params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Query composite view data")
 	defer span.End()
 
@@ -243,49 +349,30 @@ func (lvs *logicViewService) executeCompositeViewByDSL(ctx context.Context, view
 	_, indices, viewIndicesMap, err := lvs.getIndicesByView(view)
 	if err != nil {
 		otellog.LogError(ctx, "Get indices failed", err)
-		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			rest.PublicError_InternalServerError).WithErrorDetails(err.Error())
 	}
 
 	// 如果索引列表为空，则返回空数据, 不需要下面拼接dsl
 	if len(indices) == 0 {
 		span.SetStatus(codes.Ok, "No indices found")
-		return nil, 0, nil
+		return &interfaces.ResourceDataQueryResult{Paging: &interfaces.PagingResponse{}}, nil
 	}
 
 	generator := lvdsl.NewlogicViewDSLGenerator(view)
-	dsl, httpErr := generator.BuildDSL(ctx, *params, view, viewIndicesMap)
+	queryParams := withoutPagingLimit(params)
+	dsl, httpErr := generator.BuildDSL(ctx, queryParams, view, viewIndicesMap)
 	if httpErr != nil {
 		otellog.LogError(ctx, "Convert to DSL failed", httpErr)
-		return nil, 0, httpErr
+		return nil, httpErr
 	}
 
-	logger.Infof("executeCompositeViewByDSL DSL: [%s]", dsl)
-
 	if view.IsSingleSource {
-		var resourceType string
-		for _, ref := range view.RefResources {
-			catalog, err := lvs.cs.GetByID(ctx, ref.CatalogID, true)
-			if err != nil {
-				otellog.LogError(ctx, "Get catalog failed", err)
-				return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
-					WithErrorDetails(fmt.Sprintf("failed to get catalog: %v", err))
-			}
-			if catalog == nil {
-				httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_CatalogNotFound).
-					WithErrorDetails(fmt.Sprintf("catalog %s not found", ref.CatalogID))
-				otellog.LogError(ctx, "Catalog not found", httpErr)
-				return nil, 0, httpErr
-			}
-			resourceType = catalog.ConnectorType
-			break
-		}
-
 		// dsl 转为 map
 		dslBytes, err := sonic.Marshal(dsl)
 		if err != nil {
 			otellog.LogError(ctx, "Marshal DSL failed", err)
-			return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, rest.PublicError_InternalServerError).
+			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, rest.PublicError_InternalServerError).
 				WithErrorDetails(fmt.Sprintf("failed to marshal dsl: %v", err))
 		}
 
@@ -293,29 +380,39 @@ func (lvs *logicViewService) executeCompositeViewByDSL(ctx context.Context, view
 		err = sonic.Unmarshal(dslBytes, &dslMap)
 		if err != nil {
 			otellog.LogError(ctx, "Unmarshal DSL failed", err)
-			return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, rest.PublicError_InternalServerError).
+			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, rest.PublicError_InternalServerError).
 				WithErrorDetails(fmt.Sprintf("failed to unmarshal dsl: %v", err))
 		}
 
+		if len(view.RefResources) != 1 {
+			return nil, rest.NewHTTPError(ctx, http.StatusNotImplemented, rest.PublicError_NotImplemented).
+				WithErrorDetails("OpenSearch logic views with multiple resources are not supported by raw query")
+		}
+		for resourceID := range view.RefResources {
+			dslMap["resource_id"] = resourceID
+		}
+		paging := rawPaging(params)
 		req := interfaces.RawQueryRequest{
-			Query:        dslMap,
-			ResourceType: resourceType,
-			QueryType:    params.QueryType,
-			StreamSize:   params.Limit,
-			QueryTimeout: int(params.Timeout),
+			Query:                  dslMap,
+			QueryFormat:            interfaces.QueryFormatDSL,
+			InputDialect:           "opensearch",
+			QueryTimeoutSec:        int(params.Timeout.Seconds()),
+			NeedTotal:              params.NeedTotal,
+			Paging:                 paging,
+			ResourceDataResourceID: view.Resource.ID,
+			ResourceDataUpdateTime: view.Resource.UpdateTime,
 		}
 		res, err := lvs.qs.Execute(ctx, &req)
 		if err != nil {
 			otellog.LogError(ctx, "Execute raw query failed", err)
-			return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, rest.PublicError_InternalServerError).
-				WithErrorDetails(err.Error())
+			return nil, err
 		}
-		return res.Entries, res.TotalCount, nil
+		return rawQueryResult(res), nil
 	} else {
 		httpErr := rest.NewHTTPError(ctx, http.StatusNotImplemented, rest.PublicError_NotImplemented).
 			WithErrorDetails("composite view execution is not implemented")
 		otellog.LogError(ctx, "Composite view execution is not implemented", httpErr)
-		return nil, 0, httpErr
+		return nil, httpErr
 	}
 }
 
@@ -345,65 +442,72 @@ func (lvs *logicViewService) getIndicesByView(view *interfaces.LogicView) (strin
 }
 
 func (lvs *logicViewService) executeCompositeViewBySQL(ctx context.Context, view *interfaces.LogicView,
-	params *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
+	params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
 	// 理想状态：从生成器直接获取 SQL 构建器
 	ldGenerator := lvsql.NewlogicDefinitionSQLGenerator(view)
 	builder, err := ldGenerator.NewQueryBuilder(ctx, view)
 	if err != nil {
 		otellog.LogError(ctx, "Initialize query builder failed", err)
-		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, rest.PublicError_InternalServerError).
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, rest.PublicError_InternalServerError).
 			WithErrorDetails(fmt.Sprintf("failed to initialize query builder: %v", err))
 	}
 
 	// 统一应用查询参数（过滤、排序、分页）
-	if err := builder.ApplyParams(ctx, params, view); err != nil {
+	queryParams := withoutPagingLimit(params)
+	if err := builder.ApplyParams(ctx, &queryParams, view); err != nil {
 		otellog.LogError(ctx, "Apply query parameters failed", err)
-		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, rest.PublicError_InternalServerError).
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, rest.PublicError_InternalServerError).
 			WithErrorDetails(fmt.Sprintf("failed to apply query parameters: %v", err))
 	}
 
 	finalSql := builder.Build()
-	logger.Infof("executeCompositeViewBySQL Final SQL: [%s]", finalSql)
+	logger.Infof("executeCompositeViewBySQL Final SQL: [%s]", query.SafeQuerySummary(finalSql))
 
 	if view.IsSingleSource {
-		var resourceType string
-		for _, ref := range view.RefResources {
-			catalog, err := lvs.cs.GetByID(ctx, ref.CatalogID, true)
-			if err != nil {
-				otellog.LogError(ctx, "Get catalog failed", err)
-				return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
-					WithErrorDetails(fmt.Sprintf("failed to get catalog: %v", err))
-			}
-			if catalog == nil {
-				httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_CatalogNotFound).
-					WithErrorDetails(fmt.Sprintf("catalog %s not found", ref.CatalogID))
-				otellog.LogError(ctx, "Catalog not found", httpErr)
-				return nil, 0, httpErr
-			}
-			resourceType = catalog.ConnectorType
-			break
-		}
-
+		paging := rawPaging(params)
 		req := interfaces.RawQueryRequest{
-			Query:        finalSql,
-			ResourceType: resourceType,
-			QueryType:    params.QueryType,
-			StreamSize:   params.Limit,
-			QueryTimeout: int(params.Timeout),
+			Query:       finalSql,
+			QueryFormat: interfaces.QueryFormatSQL,
+			// lvsql emits MySQL-style quoted identifiers (backticks). Raw Query
+			// transpiles it when the resolved Catalog uses another SQL dialect.
+			InputDialect:           "mysql",
+			QueryTimeoutSec:        int(params.Timeout.Seconds()),
+			NeedTotal:              params.NeedTotal,
+			Paging:                 paging,
+			ResourceDataResourceID: view.Resource.ID,
+			ResourceDataUpdateTime: view.Resource.UpdateTime,
 		}
 		res, err := lvs.qs.Execute(ctx, &req)
 		if err != nil {
 			otellog.LogError(ctx, "Execute raw query failed", err)
-			return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, rest.PublicError_InternalServerError).
-				WithErrorDetails(err.Error())
+			return nil, err
 		}
-		return res.Entries, res.TotalCount, nil
+		return rawQueryResult(res), nil
 	} else {
 		httpErr := rest.NewHTTPError(ctx, http.StatusNotImplemented, rest.PublicError_NotImplemented).
 			WithErrorDetails("composite view execution is not implemented")
 		otellog.LogError(ctx, "Composite view execution is not implemented", httpErr)
-		return nil, 0, httpErr
+		return nil, httpErr
 	}
+}
+
+// withoutPagingLimit leaves filtering and sorting with the logic-view
+// generator, while RawQueryService owns offset/size for both single and cursor
+// pages. This prevents a generated LIMIT/from from competing with cursor state.
+func withoutPagingLimit(params *interfaces.ResourceDataQueryParams) interfaces.ResourceDataQueryParams {
+	copy := *params
+	copy.Offset = 0
+	copy.Limit = 0
+	return copy
+}
+
+func rawPaging(params *interfaces.ResourceDataQueryParams) interfaces.PagingRequest {
+	paging := params.Paging
+	if paging.Mode == "" && paging.Cursor == "" && paging.Limit == 0 && (params.Offset != 0 || params.Limit != 0) {
+		paging.Offset = params.Offset
+		paging.Limit = params.Limit
+	}
+	return paging
 }
 
 func executeIndexQuery(ctx context.Context, catalog *interfaces.Catalog, resource *interfaces.Resource,
@@ -440,6 +544,7 @@ func executeIndexQuery(ctx context.Context, catalog *interfaces.Catalog, resourc
 		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
 			WithErrorDetails(fmt.Sprintf("failed to execute query: %v", err))
 	}
+	params.SearchAfter = append([]any(nil), result.SearchAfter...)
 	return result.Rows, result.Total, nil
 }
 

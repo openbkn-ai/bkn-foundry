@@ -24,7 +24,6 @@ var (
 // RunSQLReq run_sql 入参（MCP 工具与内部 REST 端点共用）。
 type RunSQLReq struct {
 	SQL          string `json:"sql"`           // Trino 方言 SQL，表名用 {{.resource_id}} 占位
-	ResourceType string `json:"resource_type"` // 连接器类型，留空则按 resource_id 自动解析
 	QueryTimeout int    `json:"query_timeout"` // 查询超时（秒），可选
 }
 
@@ -57,7 +56,7 @@ func NewKnRunSQLServiceWith(vega interfaces.DrivenVega) KnRunSQLService {
 	return &knRunSQLService{vega: vega}
 }
 
-// RunSQL 守卫 → 提取 resource_id → 解析连接器类型 → 调 vega 原始查询。
+// RunSQL 守卫 → 提取 resource_id → 按固定 Raw Query 契约调 Vega。
 func (s *knRunSQLService) RunSQL(ctx context.Context, req *RunSQLReq) (*interfaces.VegaRawQueryResp, error) {
 	if req == nil || strings.TrimSpace(req.SQL) == "" {
 		return nil, ErrSQLRequired
@@ -74,20 +73,14 @@ func (s *knRunSQLService) RunSQL(ctx context.Context, req *RunSQLReq) (*interfac
 		return nil, ErrNoResourcePlaceholder
 	}
 
-	// resource_type 未显式给出时，按第一个 resource_id 自动解析其连接器类型。
-	resourceType := strings.TrimSpace(req.ResourceType)
-	if resourceType == "" {
-		rt, err := s.vega.GetResourceConnectorType(ctx, resourceIDs[0])
-		if err != nil {
-			return nil, err
-		}
-		resourceType = rt
-	}
-
 	return s.vega.RawQuery(ctx, &interfaces.VegaRawQueryReq{
-		Query:        req.SQL,
-		ResourceType: resourceType,
-		QueryType:    "standard",
-		QueryTimeout: req.QueryTimeout,
+		Query:           req.SQL,
+		QueryFormat:     "sql",
+		InputDialect:    "trino",
+		QueryTimeoutSec: req.QueryTimeout,
+		Paging: interfaces.VegaPagingRequest{
+			Mode:  "single",
+			Limit: 10000,
+		},
 	})
 }

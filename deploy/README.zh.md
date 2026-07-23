@@ -121,9 +121,15 @@ bash ./deploy.sh bkn-foundry install \
   --access_address=<你的IP> \
   --api_server_address=<你的IP>
 
+# 如果 `--access_address` 里带了端口，脚本在安装 ingress-nginx 时会把它
+# 用到对应协议的 ingress 端口上（例如 https://...:8443 会更新 HTTPS 端口，
+# http://...:8080 会更新 HTTP 端口）。
+
 # （可选）自定义 ingress 端口（默认 80/443）：
 export INGRESS_NGINX_HTTP_PORT=8080
 export INGRESS_NGINX_HTTPS_PORT=8443
+# 修改后请重新执行同一个安装命令；脚本现在会检测端口漂移并升级
+# 已存在的 ingress-nginx release。
 
 # 4.（推荐）安装后引导
 #    注册 LLM + embedding（已有则跳过）；只有当默认 embedding 实际变更时才会 patch BKN ConfigMap；
@@ -181,7 +187,7 @@ sudo bash ./deploy.sh --distro=k3s bkn-foundry install --minimum --version_file=
 集群连不上 `docker.io` 或拉不动 GHCR 镜像层（read timeout）时，`bkn-foundry install` 支持
 三个参数，让**脚本自己处理**——无需手动 `crictl pull`/重打 tag：
 
-- **`--registry=<swr / ghcr / host/ns>`** —— **BKN 镜像**的 registry（`--set image.registry` 的糖）。`swr` → `swr.cn-east-3.myhuaweicloud.com/openbkn-ai`，`ghcr` → `ghcr.io/openbkn-ai`。优先级：显式 `--set image.registry=…` > `--registry` > `--config` YAML 里已有的 `image.registry`（尊重，如 `dev/conf/mac-config.yaml`）> 默认 `swr`（当配置文件未设置 `image.registry` 时）。SWR 与 GHCR 同步同样的 `…-main.<日期>.sha…` 构建 tag。
+- **`--registry=<swr / ghcr / host/ns>`** —— **BKN 镜像**以及内置 **数据服务 / ingress** 镜像的 registry（`--set image.registry` 的糖）。`swr` → `swr.cn-east-3.myhuaweicloud.com/openbkn-ai`，`ghcr` → `ghcr.io/openbkn-ai`。优先级：显式 `--set image.registry=…` > `--registry` > `--config` YAML 里已有的 `image.registry`（尊重，如 `dev/conf/mac-config.yaml`）> 默认 `swr`（当配置文件未设置 `image.registry` 时）。SWR 与 GHCR 同步同样的 `…-main.<日期>.sha…` 构建 tag。
 - **`--dockerhub-mirror=<auto / host / off>`** —— **第三方镜像**（otel/hydra/postgres/minio）的 containerd `docker.io` mirror。写 `/etc/containerd/certs.d/docker.io/hosts.toml`（需 root + containerd 配了 `config_path` certs.d；否则告警跳过、不报错）。**默认 `auto`** —— 探测候选列表，选第一个能经 mirror（`?ns=docker.io`）协议服务本栈 docker.io 镜像的（标志镜像 `oryd/hydra`；`docker.m.daocloud.io` 对带 namespace 的仓库会 403，所以固定默认不安全）。传 host 钉死某个（如 `docker.1panel.live`）；`off` 关闭。候选列表可用 `OPENBKN_DOCKERHUB_MIRROR_CANDIDATES` 覆盖。
 - **`--latest`** —— 没给 `--version_file` 时自动跑 `gen-dev-manifest.sh --latest` 并安装结果（需在仓库 checkout 内运行，依赖 `git`）。
 

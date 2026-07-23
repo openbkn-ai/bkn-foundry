@@ -349,6 +349,9 @@ func (r *restHandler) ListMetrics(c *gin.Context, vis hydra.Visitor) {
 		return
 	}
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	if list != nil {
+		emitMetricSchemaRead(ctx, c, vis, "bkn.schema.metric.list", knID, branch, nil, list.Entries, list.TotalCount)
+	}
 	rest.ReplyOK(c, http.StatusOK, list)
 }
 
@@ -416,6 +419,7 @@ func (r *restHandler) GetMetricsByIDs(c *gin.Context, vis hydra.Visitor) {
 		return
 	}
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	emitMetricSchemaRead(ctx, c, vis, "bkn.schema.metric.get", knID, branch, ids, list, int64(len(list)))
 	rest.ReplyOK(c, http.StatusOK, map[string]any{"entries": list})
 }
 

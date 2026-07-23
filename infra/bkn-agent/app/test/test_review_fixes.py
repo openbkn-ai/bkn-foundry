@@ -42,13 +42,24 @@ def test_put_agent_name_conflict_not_500(monkeypatch):
     from app import dao
     from app.db import get_session
 
+    from app.models import AgentOut
+
     async def fake_session():
         yield object()
+
+    async def fake_get_agent(session, agent_id):
+        # Owned by the caller (u-1) so the ownership guard passes and the flow
+        # reaches update_agent, where the conflict is raised.
+        return AgentOut(
+            agent_id=agent_id, name="orig", mode="chat", model="", tools=[], skills=[],
+            status="draft", create_user="u-1", update_user="u-1", create_time=1, update_time=2,
+        )
 
     async def fake_update(session, agent_id, spec, account_id):
         raise IntegrityError("UPDATE ...", {}, Exception("Duplicate entry for key f_name"))
 
     app.dependency_overrides[get_session] = fake_session
+    monkeypatch.setattr(dao, "get_agent", fake_get_agent)
     monkeypatch.setattr(dao, "update_agent", fake_update)
     monkeypatch.setattr("app.routers.agents.toolbox_sync.schedule_resync", lambda: None)
     try:

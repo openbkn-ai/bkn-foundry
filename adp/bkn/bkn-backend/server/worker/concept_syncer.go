@@ -970,6 +970,28 @@ func (cs *ConceptSyncer) insertDatasetDataForMetrics(ctx context.Context, metric
 	return nil
 }
 
+const conceptSyncPageLimit = 10000
+
+func (cs *ConceptSyncer) queryAllDatasetEntries(ctx context.Context, filterCondition map[string]any) ([]map[string]any, error) {
+	params := &interfaces.ResourceDataQueryParams{
+		FilterCondition: filterCondition,
+		Sort:            []*interfaces.SortParams{{Field: "id", Direction: "asc"}},
+		Paging:          interfaces.ResourceDataPagingRequest{Mode: "cursor", Limit: conceptSyncPageLimit},
+	}
+	entries := make([]map[string]any, 0)
+	for {
+		response, err := cs.vba.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
+		if err != nil {
+			return nil, err
+		}
+		entries = append(entries, response.Entries...)
+		if response.Paging == nil || response.Paging.NextCursor == nil {
+			return entries, nil
+		}
+		params = &interfaces.ResourceDataQueryParams{Paging: interfaces.ResourceDataPagingRequest{Cursor: *response.Paging.NextCursor}}
+	}
+}
+
 func (cs *ConceptSyncer) getAllKNsFromDataset(ctx context.Context) (map[string]*interfaces.KN, error) {
 	filterCondition := map[string]any{
 		"field":      "module_type",
@@ -978,19 +1000,13 @@ func (cs *ConceptSyncer) getAllKNsFromDataset(ctx context.Context) (map[string]*
 		"value_from": "const",
 	}
 
-	params := &interfaces.ResourceDataQueryParams{
-		FilterCondition: filterCondition,
-		Offset:          0,
-		Limit:           10000,
-		NeedTotal:       false,
-	}
-	response, err := cs.vba.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
+	entries, err := cs.queryAllDatasetEntries(ctx, filterCondition)
 	if err != nil {
 		return map[string]*interfaces.KN{}, err
 	}
 
 	kns := map[string]*interfaces.KN{}
-	for _, entry := range response.Entries {
+	for _, entry := range entries {
 		kn := interfaces.KN{}
 		err := mapstructure.Decode(entry, &kn)
 		if err != nil {
@@ -1030,19 +1046,13 @@ func (cs *ConceptSyncer) getAllObjectTypesFromDatasetByKnID(ctx context.Context,
 		},
 	}
 
-	params := &interfaces.ResourceDataQueryParams{
-		FilterCondition: filterCondition,
-		Offset:          0,
-		Limit:           10000,
-		NeedTotal:       false,
-	}
-	response, err := cs.vba.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
+	entries, err := cs.queryAllDatasetEntries(ctx, filterCondition)
 	if err != nil {
 		return map[string]*interfaces.ObjectType{}, err
 	}
 
 	objectTypes := map[string]*interfaces.ObjectType{}
-	for _, entry := range response.Entries {
+	for _, entry := range entries {
 		// Deserialize logic_properties[].parameters from JSON string
 		if logicProps, ok := entry["logic_properties"].([]any); ok {
 			for _, lp := range logicProps {
@@ -1100,19 +1110,13 @@ func (cs *ConceptSyncer) getAllRelationTypesFromDatasetByKnID(ctx context.Contex
 		},
 	}
 
-	params := &interfaces.ResourceDataQueryParams{
-		FilterCondition: filterCondition,
-		Offset:          0,
-		Limit:           10000,
-		NeedTotal:       false,
-	}
-	response, err := cs.vba.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
+	entries, err := cs.queryAllDatasetEntries(ctx, filterCondition)
 	if err != nil {
 		return map[string]*interfaces.RelationType{}, err
 	}
 
 	relationTypes := map[string]*interfaces.RelationType{}
-	for _, entry := range response.Entries {
+	for _, entry := range entries {
 		relationType := interfaces.RelationType{}
 		err = mapstructure.Decode(entry, &relationType)
 		if err != nil {
@@ -1152,19 +1156,13 @@ func (cs *ConceptSyncer) getAllActionTypesFromDatasetByKnID(ctx context.Context,
 		},
 	}
 
-	params := &interfaces.ResourceDataQueryParams{
-		FilterCondition: filterCondition,
-		Offset:          0,
-		Limit:           10000,
-		NeedTotal:       false,
-	}
-	response, err := cs.vba.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
+	entries, err := cs.queryAllDatasetEntries(ctx, filterCondition)
 	if err != nil {
 		return map[string]*interfaces.ActionType{}, err
 	}
 
 	actionTypes := map[string]*interfaces.ActionType{}
-	for _, entry := range response.Entries {
+	for _, entry := range entries {
 		// Deserialize condition from JSON string
 		if condStr, exists := entry["condition"]; exists {
 			if condStrStr, ok := condStr.(string); ok && condStrStr != "" {
@@ -1230,19 +1228,13 @@ func (cs *ConceptSyncer) getAllRiskTypesFromDatasetByKnID(ctx context.Context,
 		},
 	}
 
-	params := &interfaces.ResourceDataQueryParams{
-		FilterCondition: filterCondition,
-		Offset:          0,
-		Limit:           10000,
-		NeedTotal:       false,
-	}
-	response, err := cs.vba.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
+	entries, err := cs.queryAllDatasetEntries(ctx, filterCondition)
 	if err != nil {
 		return map[string]*interfaces.RiskType{}, err
 	}
 
 	riskTypes := map[string]*interfaces.RiskType{}
-	for _, entry := range response.Entries {
+	for _, entry := range entries {
 		riskType := interfaces.RiskType{}
 		err := mapstructure.Decode(entry, &riskType)
 		if err != nil {
@@ -1282,19 +1274,13 @@ func (cs *ConceptSyncer) getAllConceptGroupsFromDatasetByKnID(ctx context.Contex
 		},
 	}
 
-	params := &interfaces.ResourceDataQueryParams{
-		FilterCondition: filterCondition,
-		Offset:          0,
-		Limit:           10000,
-		NeedTotal:       false,
-	}
-	response, err := cs.vba.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
+	entries, err := cs.queryAllDatasetEntries(ctx, filterCondition)
 	if err != nil {
 		return map[string]*interfaces.ConceptGroup{}, err
 	}
 
 	conceptGroups := map[string]*interfaces.ConceptGroup{}
-	for _, entry := range response.Entries {
+	for _, entry := range entries {
 		conceptGroup := interfaces.ConceptGroup{}
 		err := mapstructure.Decode(entry, &conceptGroup)
 		if err != nil {
@@ -1334,19 +1320,13 @@ func (cs *ConceptSyncer) getAllMetricsFromDatasetByKnID(ctx context.Context,
 		},
 	}
 
-	params := &interfaces.ResourceDataQueryParams{
-		FilterCondition: filterCondition,
-		Offset:          0,
-		Limit:           10000,
-		NeedTotal:       false,
-	}
-	response, err := cs.vba.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
+	entries, err := cs.queryAllDatasetEntries(ctx, filterCondition)
 	if err != nil {
 		return map[string]*interfaces.MetricDefinition{}, err
 	}
 
 	metrics := map[string]*interfaces.MetricDefinition{}
-	for _, entry := range response.Entries {
+	for _, entry := range entries {
 		md := interfaces.MetricDefinition{}
 		if err := mapstructure.WeakDecode(entry, &md); err != nil {
 			return map[string]*interfaces.MetricDefinition{}, err

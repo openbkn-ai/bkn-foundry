@@ -21,6 +21,10 @@ import (
 
 // 资源数据查询参数校验
 func ValidateResourceDataQueryParams(ctx context.Context, params *interfaces.ResourceDataQueryParams) error {
+	if params.Paging.Cursor != "" {
+		return validateResourceDataCursorContinuation(ctx, params)
+	}
+
 	// 校验format是否为 original 或者 flat
 	if params.Format == "" {
 		params.Format = interfaces.Format_Original
@@ -31,13 +35,7 @@ func ValidateResourceDataQueryParams(ctx context.Context, params *interfaces.Res
 		}
 	}
 
-	// limit 默认值为 10
-	if params.Limit == 0 {
-		params.Limit = interfaces.DEFAULT_DATA_LIMIT
-	}
-
-	// 校验分页参数
-	err := validatePaginationParams(ctx, params.Offset, params.Limit)
+	err := validateResourceDataPaging(ctx, params)
 	if err != nil {
 		return err
 	}
@@ -74,6 +72,53 @@ func ValidateResourceDataQueryParams(ctx context.Context, params *interfaces.Res
 	return nil
 }
 
+func validateResourceDataPaging(ctx context.Context, params *interfaces.ResourceDataQueryParams) error {
+	paging := params.Paging
+	if paging.Mode == interfaces.PagingModeCursor && paging.Limit == 0 {
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Limit).
+			WithErrorDetails("paging.limit is required for cursor paging")
+	}
+	params.Paging = paging.Normalized()
+	params.Offset = params.Paging.Offset
+	params.Limit = params.Paging.Limit
+	if params.Paging.Mode == interfaces.PagingModeCursor {
+		if params.Offset < 0 {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Offset).
+				WithErrorDetails("paging.offset must not be negative")
+		}
+		if params.Limit < interfaces.MinPageLimit || params.Limit > interfaces.MaxPageLimit {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Limit).
+				WithErrorDetails(fmt.Sprintf("paging.limit must be in the range of [%d,%d] for cursor paging", interfaces.MinPageLimit, interfaces.MaxPageLimit))
+		}
+		if params.Paging.KeepAliveSec != 0 && (params.Paging.KeepAliveSec < interfaces.MinCursorKeepAliveSec || params.Paging.KeepAliveSec > interfaces.MaxCursorKeepAliveSec) {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+				WithErrorDetails(fmt.Sprintf("paging.keep_alive_sec must be between %d and %d", interfaces.MinCursorKeepAliveSec, interfaces.MaxCursorKeepAliveSec))
+		}
+		return nil
+	}
+	if params.Paging.Mode != interfaces.PagingModeSingle {
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+			WithErrorDetails("paging.mode must be either single or cursor")
+	}
+	return validatePaginationParams(ctx, params.Offset, params.Limit)
+}
+
+func validateResourceDataCursorContinuation(ctx context.Context, params *interfaces.ResourceDataQueryParams) error {
+	paging := params.Paging
+	if paging.Mode != "" || paging.Offset != 0 || paging.Limit != 0 || paging.KeepAliveSec != 0 ||
+		params.FilterCondition != nil || len(params.Sort) != 0 || len(params.OutputFields) != 0 ||
+		params.Aggregation != nil || len(params.GroupBy) != 0 || params.Having != nil {
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+			WithErrorDetails("cursor continuation must contain only paging.cursor")
+	}
+	params.Offset = 0
+	params.Limit = 0
+	// The initial request freezes this value in the cursor session. A value on
+	// continuation is accepted for request-shape consistency but cannot change it.
+	params.NeedTotal = false
+	return nil
+}
+
 func validateFormat(ctx context.Context, format string) error {
 	if format != interfaces.Format_Original && format != interfaces.Format_Flat {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Format).
@@ -94,11 +139,6 @@ func validatePaginationParams(ctx context.Context, offset, limit int) error {
 	if limit < interfaces.MIN_LIMIT || limit > interfaces.MAX_SEARCH_SIZE {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Limit).
 			WithErrorDetails(fmt.Sprintf("Limit should be in the range of [%d,%d]", interfaces.MIN_LIMIT, interfaces.MAX_SEARCH_SIZE))
-	}
-
-	if offset+limit > interfaces.MAX_SEARCH_SIZE {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Limit).
-			WithErrorDetails(fmt.Sprintf("Offset + limit should be <= %d", interfaces.MAX_SEARCH_SIZE))
 	}
 
 	return nil

@@ -35,6 +35,40 @@ func TestNewConceptSyncer(t *testing.T) {
 	})
 }
 
+func TestConceptSyncerQueryAllDatasetEntriesUsesCursor(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	vba := bmock.NewMockVegaBackendAccess(ctrl)
+	cs := &ConceptSyncer{vba: vba}
+	nextCursor := "cursor-1"
+	filter := map[string]any{"field": "module_type"}
+
+	gomock.InOrder(
+		vba.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ string, params *interfaces.ResourceDataQueryParams) (*interfaces.DatasetQueryResponse, error) {
+				if params.Paging.Mode != "cursor" || params.Paging.Limit != conceptSyncPageLimit || len(params.Sort) != 1 || params.Sort[0].Field != "id" {
+					t.Fatalf("unexpected initial paging request: %#v", params)
+				}
+				return &interfaces.DatasetQueryResponse{Entries: []map[string]any{{"id": "1"}}, Paging: &interfaces.ResourceDataPagingResult{NextCursor: &nextCursor}}, nil
+			}),
+		vba.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ string, params *interfaces.ResourceDataQueryParams) (*interfaces.DatasetQueryResponse, error) {
+				if params.Paging.Cursor != nextCursor {
+					t.Fatalf("unexpected continuation request: %#v", params)
+				}
+				return &interfaces.DatasetQueryResponse{Entries: []map[string]any{{"id": "2"}}}, nil
+			}),
+	)
+
+	entries, err := cs.queryAllDatasetEntries(context.Background(), filter)
+	if err != nil {
+		t.Fatalf("queryAllDatasetEntries() error = %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("queryAllDatasetEntries() returned %d entries, want 2", len(entries))
+	}
+}
+
 func TestConceptSyncer_handleKNs(t *testing.T) {
 	Convey("Test handleKNs", t, func() {
 		ctx := context.Background()

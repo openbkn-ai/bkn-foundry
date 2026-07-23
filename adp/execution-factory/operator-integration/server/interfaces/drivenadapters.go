@@ -863,43 +863,66 @@ type VegaCatalogRequest struct {
 	Description string   `json:"description"`
 	// Internal 系统内部目录：在权限服务按 internal_catalog 类型注册，仅超级管理员可见
 	Internal bool `json:"internal"`
+	// Enabled 目录启用状态。逻辑目录若为 false，其下 dataset 的读写会被
+	// vega 以 Catalog.IsDisabled(409) 拒绝，因此内置目录必须建成 enabled。
+	Enabled bool `json:"enabled"`
+	// ConnectorType 连接器类型：逻辑目录恒为空。PUT 更新时该字段不可变，
+	// 必须原样回填当前值，否则 vega 返回 400。
+	ConnectorType string `json:"connector_type,omitempty"`
 }
 
 type VegaCatalog struct {
-	ID          string   `json:"id"`
-	Name        string   `json:"name"`
-	Tags        []string `json:"tags"`
-	Description string   `json:"description"`
-	Type        string   `json:"type"`
+	ID            string   `json:"id"`
+	Name          string   `json:"name"`
+	Tags          []string `json:"tags"`
+	Description   string   `json:"description"`
+	Type          string   `json:"type"`
+	Enabled       bool     `json:"enabled"`
+	ConnectorType string   `json:"connector_type"`
+}
+
+// VegaResourceIndexConfig 资源级索引配置。DefaultEmbeddingModel 是 vega 解析向量
+// 字段模型的兜底位置，且不会进 OpenSearch mapping —— 模型快照必须落在这里，不能
+// 放进向量属性的 feature config(那会被原样拷进 knn_vector mapping 并被 OpenSearch
+// 以 unknown parameter 拒绝，索引建不出来)。
+type VegaResourceIndexConfig struct {
+	DefaultEmbeddingModel string `json:"default_embedding_model,omitempty"`
 }
 
 type VegaResourceRequest struct {
-	ID               string         `json:"id"`
-	CatalogID        string         `json:"catalog_id"`
-	Name             string         `json:"name"`
-	Tags             []string       `json:"tags"`
-	Description      string         `json:"description"`
-	Category         string         `json:"category"`
-	Status           string         `json:"status"`
-	SourceIdentifier string         `json:"source_identifier"`
-	SchemaDefinition []VegaProperty `json:"schema_definition"`
+	ID               string                   `json:"id"`
+	CatalogID        string                   `json:"catalog_id"`
+	Name             string                   `json:"name"`
+	Tags             []string                 `json:"tags"`
+	Description      string                   `json:"description"`
+	Category         string                   `json:"category"`
+	Status           string                   `json:"status"`
+	SourceIdentifier string                   `json:"source_identifier"`
+	SchemaDefinition []VegaProperty           `json:"schema_definition"`
+	IndexConfig      *VegaResourceIndexConfig `json:"index_config,omitempty"`
 }
 
 type VegaResource struct {
-	ID               string         `json:"id"`
-	CatalogID        string         `json:"catalog_id"`
-	Name             string         `json:"name"`
-	Tags             []string       `json:"tags"`
-	Description      string         `json:"description"`
-	Category         string         `json:"category"`
-	Status           string         `json:"status"`
-	SourceIdentifier string         `json:"source_identifier"`
-	SchemaDefinition []VegaProperty `json:"schema_definition,omitempty"`
+	ID               string                   `json:"id"`
+	CatalogID        string                   `json:"catalog_id"`
+	Name             string                   `json:"name"`
+	Tags             []string                 `json:"tags"`
+	Description      string                   `json:"description"`
+	Category         string                   `json:"category"`
+	Status           string                   `json:"status"`
+	SourceIdentifier string                   `json:"source_identifier"`
+	SchemaDefinition []VegaProperty           `json:"schema_definition,omitempty"`
+	IndexConfig      *VegaResourceIndexConfig `json:"index_config,omitempty"`
 }
 
 type VegaBackendClient interface {
 	GetCatalogByID(ctx context.Context, id string) (*VegaCatalog, error)
 	CreateCatalog(ctx context.Context, req *VegaCatalogRequest) (*VegaCatalog, error)
+	// UpdateCatalog 更新目录的展示信息(名称/标签/描述)。enabled 与 connector_type
+	// 不可由该接口改动，调用方须原样回填。
+	UpdateCatalog(ctx context.Context, req *VegaCatalogRequest) error
+	// EnableCatalog 启用目录(vega 的 enabled 只能走该端点，PUT 改会 409)。
+	EnableCatalog(ctx context.Context, id string) error
 	GetResourceByID(ctx context.Context, id string) (*VegaResource, error)
 	CreateResource(ctx context.Context, req *VegaResourceRequest) (*VegaResource, error)
 	WriteDatasetDocuments(ctx context.Context, datasetID string, documents []map[string]any) error

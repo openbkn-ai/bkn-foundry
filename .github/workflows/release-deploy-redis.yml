@@ -44,8 +44,8 @@ jobs:
           REF_NAME="${{ github.ref_name }}"
           SHORT_SHA="$(git rev-parse --short=7 HEAD)"
           SANITIZED_BRANCH="$(echo "$REF_NAME" | tr '[:upper:]' '[:lower:]' | sed -E 's#[^0-9a-zA-Z.-]+#-#g; s#-+#-#g; s#^[.-]+##; s#[.-]+$##')"
-          # Commit time (UTC), not build time — monotonic and re-run reproducible.
-          COMMIT_DATE="$(TZ=UTC git show -s --format=%cd --date=format-local:%Y%m%d%H%M%S HEAD)"
+          # Commit time (Asia/Shanghai), not build time — monotonic and re-run reproducible.
+          COMMIT_DATE="$(TZ=Asia/Shanghai git show -s --format=%cd --date=format-local:%Y%m%d%H%M%S HEAD)"
           VERSION="$BASE_VERSION-$SANITIZED_BRANCH.$COMMIT_DATE.sha$SHORT_SHA"
 
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"

@@ -11,10 +11,12 @@ package errors
 const (
 	// 400 Bad Request
 	VegaBackend_Query_InvalidParameter                      = "VegaBackend.Query.InvalidParameter"
-	VegaBackend_Query_InvalidParameter_QueryIDRequired      = "VegaBackend.Query.InvalidParameter.QueryIDRequired"
 	VegaBackend_Query_InvalidParameter_LimitExceeded        = "VegaBackend.Query.InvalidParameter.LimitExceeded"
 	VegaBackend_Query_InvalidParameter_JoinTableNotInTables = "VegaBackend.Query.InvalidParameter.JoinTableNotInTables"
 	VegaBackend_Query_InvalidParameter_QueryTimeout         = "VegaBackend.Query.InvalidParameter.QueryTimeout"
+
+	// 409 Conflict
+	VegaBackend_Query_CursorResourceChanged = "VegaBackend.Query.CursorResourceChanged"
 
 	// 404 Not Found
 	VegaBackend_Query_CatalogNotFound  = "VegaBackend.Query.CatalogNotFound"
@@ -23,8 +25,9 @@ const (
 	// 410 Gone（流式 session 过期）
 	VegaBackend_Query_SessionExpired = "VegaBackend.Query.SessionExpired"
 
-	// 429 Too Many Requests（并发限流）
-	VegaBackend_Query_ConcurrencyLimitExceeded = "VegaBackend.Query.ConcurrencyLimitExceeded"
+	// 429 Too Many Requests（并发与 cursor session 限流）
+	VegaBackend_Query_ConcurrencyLimitExceeded   = "VegaBackend.Query.ConcurrencyLimitExceeded"
+	VegaBackend_Query_CursorSessionLimitExceeded = "VegaBackend.Query.CursorSessionLimitExceeded"
 
 	// 500 Internal Server Error
 	VegaBackend_Query_ExecuteFailed = "VegaBackend.Query.ExecuteFailed"
@@ -36,10 +39,12 @@ const (
 var QueryErrCodeList = []string{
 	// 400 Bad Request
 	VegaBackend_Query_InvalidParameter,
-	VegaBackend_Query_InvalidParameter_QueryIDRequired,
 	VegaBackend_Query_InvalidParameter_LimitExceeded,
 	VegaBackend_Query_InvalidParameter_JoinTableNotInTables,
 	VegaBackend_Query_InvalidParameter_QueryTimeout,
+
+	// 409 Conflict
+	VegaBackend_Query_CursorResourceChanged,
 
 	// 404 Not Found
 	VegaBackend_Query_CatalogNotFound,
@@ -50,6 +55,7 @@ var QueryErrCodeList = []string{
 
 	// 429 Too Many Requests
 	VegaBackend_Query_ConcurrencyLimitExceeded,
+	VegaBackend_Query_CursorSessionLimitExceeded,
 
 	// 500 Internal Server Error
 	VegaBackend_Query_ExecuteFailed,

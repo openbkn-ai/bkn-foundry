@@ -10,6 +10,55 @@ def test_health():
     r = client.get("/api/v1/health")
     assert r.status_code == 200
     assert r.json()["status"] == "ok"
+    assert r.headers["x-trace-id"]
+    assert r.headers["bkn-request-id"].startswith("req_")
+    assert r.headers["x-request-id"] == r.headers["bkn-request-id"]
+    assert r.headers["traceparent"].startswith(f"00-{r.headers['x-trace-id']}-")
+
+
+def test_trace_context_propagates_request_id_and_traceparent():
+    trace_id = "1234567890abcdef1234567890abcdef"
+    span_id = "1234567890abcdef"
+    r = client.get(
+        "/api/v1/health",
+        headers={
+            "traceparent": f"00-{trace_id}-{span_id}-01",
+            "bkn-request-id": "req_external_123",
+        },
+    )
+    assert r.status_code == 200
+    assert r.headers["x-trace-id"] == trace_id
+    assert r.headers["bkn-request-id"] == "req_external_123"
+    assert r.headers["x-request-id"] == "req_external_123"
+    assert r.headers["traceparent"] == f"00-{trace_id}-{span_id}-01"
+
+
+def test_traceparent_is_normalized_before_response():
+    trace_id = "ABCDEFABCDEFABCDEFABCDEFABCDEFAB"
+    span_id = "ABCDEFABCDEFABCD"
+    r = client.get(
+        "/api/v1/health",
+        headers={
+            "traceparent": f" 00-{trace_id}-{span_id}-01 ",
+            "bkn-request-id": "req_external_124",
+        },
+    )
+    assert r.status_code == 200
+    assert r.headers["x-trace-id"] == trace_id.lower()
+    assert r.headers["traceparent"] == f"00-{trace_id.lower()}-{span_id.lower()}-01"
+
+
+def test_invalid_traceparent_is_not_reused():
+    r = client.get(
+        "/api/v1/health",
+        headers={
+            "traceparent": "00-00000000000000000000000000000000-0000000000000000-01",
+            "bkn-request-id": "req_external_456",
+        },
+    )
+    assert r.status_code == 200
+    assert r.headers["x-trace-id"] != "00000000000000000000000000000000"
+    assert r.headers["bkn-request-id"] == "req_external_456"
 
 
 def test_auth_fail_closed_without_identity():
@@ -18,6 +67,7 @@ def test_auth_fail_closed_without_identity():
     # 顶层扁平 ErrorEnvelope（非 {"detail": {...}} 嵌套）
     assert r.json()["code"] == "BknAgent.Auth.AccountRequired"
     assert "detail" in r.json() and isinstance(r.json()["detail"], str)
+    assert r.json()["trace_id"] == r.headers["x-trace-id"]
 
 
 def test_auth_rejects_anonymous():
@@ -34,6 +84,42 @@ def test_validation_error_uses_platform_error_shape():
     body = r.json()
     assert body["code"] == "BknAgent.ParamError.FormatError"
     assert body["solution"]
+    assert body["trace_id"] == r.headers["x-trace-id"]
+
+
+def test_unhandled_exception_preserves_trace_context(monkeypatch):
+    from app import dao
+    from app.db import get_session
+
+    async def fake_session():
+        yield None
+
+    async def fail_list_agents(session, page, size):
+        raise RuntimeError("db down")
+
+    app.dependency_overrides[get_session] = fake_session
+    monkeypatch.setattr(dao, "list_agents", fail_list_agents)
+    try:
+        trace_id = "1234567890abcdef1234567890abcdef"
+        span_id = "1234567890abcdef"
+        error_client = TestClient(app, raise_server_exceptions=False)
+        r = error_client.get(
+            "/api/bkn-agent/v1/agents",
+            headers={
+                **SVC,
+                "traceparent": f"00-{trace_id}-{span_id}-01",
+                "bkn-request-id": "req_external_500",
+            },
+        )
+    finally:
+        app.dependency_overrides.pop(get_session, None)
+
+    assert r.status_code == 500
+    assert r.headers["x-trace-id"] == trace_id
+    assert r.headers["bkn-request-id"] == "req_external_500"
+    assert r.headers["x-request-id"] == "req_external_500"
+    assert r.headers["traceparent"] == f"00-{trace_id}-{span_id}-01"
+    assert r.json()["trace_id"] == trace_id
 
 
 def test_thread_requires_identity():
@@ -79,7 +165,11 @@ def test_thread_missing_and_foreign_owner_indistinguishable(monkeypatch):
         app.dependency_overrides.pop(key, None)
 
     assert r_missing.status_code == r_foreign.status_code == 404
-    assert r_missing.json() == r_foreign.json()
+    missing_body = r_missing.json()
+    foreign_body = r_foreign.json()
+    assert missing_body.pop("trace_id") == r_missing.headers["x-trace-id"]
+    assert foreign_body.pop("trace_id") == r_foreign.headers["x-trace-id"]
+    assert missing_body == foreign_body
 
 
 def test_thread_owner_reads_history(monkeypatch):
@@ -111,6 +201,72 @@ def test_thread_owner_reads_history(monkeypatch):
     body = r.json()
     assert body["agent_id"] == "a-1"
     assert [m["role"] for m in body["messages"]] == ["user", "assistant"]
+
+
+def _agent_out(agent_id, owner):
+    from app.models import AgentOut
+
+    return AgentOut(
+        agent_id=agent_id, name="a", mode="chat", model="", tools=[], skills=[],
+        status="draft", create_user=owner, update_user=owner, create_time=1, update_time=2,
+    )
+
+
+def _override_get_agent(monkeypatch, returns):
+    from app import dao
+    from app.db import get_session
+
+    async def fake_session():
+        class _S:
+            pass
+
+        yield _S()
+
+    async def fake_get_agent(session, agent_id):
+        return returns
+
+    app.dependency_overrides[get_session] = fake_session
+    monkeypatch.setattr(dao, "get_agent", fake_get_agent)
+
+
+def test_update_agent_rejects_non_owner(monkeypatch):
+    """写操作止血：非创建者不得修改他人 agent（此前 account 被解析后忽略）。"""
+    _override_get_agent(monkeypatch, _agent_out("a-1", owner="owner"))
+    body = {"name": "renamed"}
+    r = client.put(
+        "/api/bkn-agent/v1/agents/a-1", json=body,
+        headers={"x-account-id": "intruder", "x-account-type": "user"},
+    )
+    assert r.status_code == 403, r.text
+    app.dependency_overrides.clear()
+
+
+def test_delete_agent_rejects_non_owner(monkeypatch):
+    _override_get_agent(monkeypatch, _agent_out("a-1", owner="owner"))
+    r = client.delete(
+        "/api/bkn-agent/v1/agents/a-1",
+        headers={"x-account-id": "intruder", "x-account-type": "user"},
+    )
+    assert r.status_code == 403, r.text
+    app.dependency_overrides.clear()
+
+
+def test_update_agent_allows_legacy_unowned(monkeypatch):
+    """兼容：f_create_user 为空的存量 agent 不因归属校验被锁死。"""
+    from app import dao
+
+    _override_get_agent(monkeypatch, _agent_out("a-1", owner=""))
+
+    async def fake_update(session, agent_id, spec, account_id):
+        return _agent_out(agent_id, owner="")
+
+    monkeypatch.setattr(dao, "update_agent", fake_update)
+    r = client.put(
+        "/api/bkn-agent/v1/agents/a-1", json={"name": "renamed"},
+        headers={"x-account-id": "anyone", "x-account-type": "user"},
+    )
+    assert r.status_code == 200, r.text
+    app.dependency_overrides.clear()
 
 
 def test_task_read_is_owner_scoped(monkeypatch):

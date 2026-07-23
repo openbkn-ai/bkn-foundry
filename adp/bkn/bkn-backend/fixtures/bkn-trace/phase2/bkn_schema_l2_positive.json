@@ -1,0 +1,162 @@
+{
+  "bkn.trace.schema.version": "2.0.0",
+  "fixture_id": "bkn_backend_phase2_schema_l2_positive",
+  "expected_result": "pass",
+  "trace": {
+    "trace_id": "71310000000000000000000000000001",
+    "traceparent": "00-71310000000000000000000000000001-7131000000000001-01",
+    "bkn.request.id": "req_bkn_backend_phase2_schema_0001",
+    "business_domain": "domain_demo",
+    "bkn.account.id": "acct_demo",
+    "bkn.account.type": "service"
+  },
+  "spans": [
+    {
+      "span_id": "7131000000000001",
+      "parent_span_id": null,
+      "name": "bkn-backend.request",
+      "kind": "server",
+      "bkn.module.name": "bkn-backend",
+      "bkn.operation.name": "bkn.schema.object_type.list",
+      "bkn.status": "ok",
+      "bkn.timestamp": "2026-07-23T14:30:00.000000Z"
+    }
+  ],
+  "events": [
+    {
+      "event_id": "evt_bkn_backend_schema_claim",
+      "event_type": "claim.created",
+      "bkn.trace.schema.version": "2.0.0",
+      "observed_at": "2026-07-23T14:30:00.001000Z",
+      "emitted_at": "2026-07-23T14:30:00.002000Z",
+      "producer_module": "bkn-backend",
+      "trace_id": "71310000000000000000000000000001",
+      "span_id": "7131000000000001",
+      "bkn.request.id": "req_bkn_backend_phase2_schema_0001",
+      "bkn.operation.name": "bkn.schema.object_type.list",
+      "payload": {
+        "claim_id": "claim_bkn_backend_schema_0001",
+        "claim_type": "finding",
+        "claim_hash": "sha256:bkn_schema_read_summary_hash_only",
+        "visibility": "visible",
+        "version_status": "unversioned",
+        "partial_reason": ["schema_refs_unversioned"],
+        "subject_refs": {
+          "kn_id": "kn_demo",
+          "branch": "main",
+          "entity_kind": "object_type",
+          "requested_hash": "sha256:requested_ids_hash_only",
+          "evidence_refs_hash": "sha256:sorted_ref_id_and_summary_hashes_only",
+          "returned_ref_count": 4,
+          "returned_count": 4,
+          "total_count": 4,
+          "data.classification": "internal"
+        }
+      }
+    },
+    {
+      "event_id": "evt_bkn_backend_schema_refs",
+      "event_type": "evidence.refs.created",
+      "bkn.trace.schema.version": "2.0.0",
+      "observed_at": "2026-07-23T14:30:00.003000Z",
+      "emitted_at": "2026-07-23T14:30:00.004000Z",
+      "producer_module": "bkn-backend",
+      "trace_id": "71310000000000000000000000000001",
+      "span_id": "7131000000000001",
+      "bkn.request.id": "req_bkn_backend_phase2_schema_0001",
+      "bkn.operation.name": "bkn.schema.object_type.list",
+      "payload": {
+        "claim_id": "claim_bkn_backend_schema_0001",
+        "evidence_refs": [
+          {
+            "ref_id": "object_type:customer",
+            "ref_type": "schema_ref",
+            "source_system": "bkn-backend",
+            "summary": {
+              "kind": "object_type",
+              "id": "customer",
+              "kn_id": "kn_demo",
+              "branch": "main",
+              "property_count": 8,
+              "data_property_count": 6,
+              "logic_property_count": 2,
+              "primary_key_count": 1,
+              "has_status": true,
+              "update_time": 1795319400000
+            },
+            "summary_hash": "sha256:object_type_summary_hash_only",
+            "validity": "observed",
+            "version_status": "unversioned",
+            "visibility": "visible",
+            "partial_reason": ["schema_ref_unversioned"]
+          },
+          {
+            "ref_id": "relation_type:customer_has_order",
+            "ref_type": "schema_ref",
+            "source_system": "bkn-backend",
+            "summary": {
+              "kind": "relation_type",
+              "id": "customer_has_order",
+              "kn_id": "kn_demo",
+              "branch": "main",
+              "source_object_type_id": "customer",
+              "target_object_type_id": "order",
+              "relation_type": "direct",
+              "has_mapping_rules": true,
+              "update_time": 1795319400000
+            },
+            "summary_hash": "sha256:relation_type_summary_hash_only",
+            "validity": "observed",
+            "version_status": "unversioned",
+            "visibility": "visible",
+            "partial_reason": ["schema_ref_unversioned"]
+          },
+          {
+            "ref_id": "action_type:notify_owner",
+            "ref_type": "action_ref",
+            "source_system": "bkn-backend",
+            "summary": {
+              "kind": "action_type",
+              "id": "notify_owner",
+              "kn_id": "kn_demo",
+              "branch": "main",
+              "object_type_id": "customer",
+              "action_type": "tool",
+              "parameter_count": 3,
+              "impact_contract_count": 1,
+              "update_time": 1795319400000
+            },
+            "summary_hash": "sha256:action_type_summary_hash_only",
+            "validity": "observed",
+            "version_status": "unversioned",
+            "visibility": "visible",
+            "partial_reason": ["action_ref_unversioned"]
+          },
+          {
+            "ref_id": "metric:customer_risk_score",
+            "ref_type": "metric_ref",
+            "source_system": "bkn-backend",
+            "summary": {
+              "kind": "metric",
+              "id": "customer_risk_score",
+              "kn_id": "kn_demo",
+              "branch": "main",
+              "metric_type": "derived",
+              "scope_type": "object_type",
+              "scope_ref": "customer",
+              "has_time_dimension": false,
+              "has_calculation_formula": true,
+              "analysis_dimension_count": 2,
+              "update_time": 1795319400000
+            },
+            "summary_hash": "sha256:metric_summary_hash_only",
+            "validity": "observed",
+            "version_status": "unversioned",
+            "visibility": "visible",
+            "partial_reason": ["metric_ref_unversioned"]
+          }
+        ]
+      }
+    }
+  ]
+}

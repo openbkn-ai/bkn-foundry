@@ -93,8 +93,8 @@ const (
 	// 属性类型
 	PROPERTY_TYPE_METRIC = "metric"
 
-	// search after默认的limit大小
-	SearchAfter_Limit = 10000
+	// 概念检索未指定 limit 时的最大页面大小。
+	ConceptQueryLimit = 10000
 
 	// 按_score排序
 	OPENSEARCH_SCORE_FIELD = "_score"

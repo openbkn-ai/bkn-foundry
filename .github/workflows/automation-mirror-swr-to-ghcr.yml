@@ -61,7 +61,7 @@ jobs:
         postgres:16
         portainer/kubectl-shell:latest
         otel/opentelemetry-collector-contrib:0.148.0
-        minio/minio:RELEASE.2025-09-07T16-13-09Z
+        minio:RELEASE.2025-09-07T16-13-09Z
     steps:
       - name: Check SWR credentials
         run: |

@@ -9,6 +9,7 @@ import (
 	jsoniter "github.com/json-iterator/go"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/errors"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/telemetry"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/metric"
@@ -108,7 +109,14 @@ func (m *operatorManager) DebugOperator(ctx context.Context, req *interfaces.Deb
 func (m *operatorManager) ExecuteOperator(ctx context.Context, req *interfaces.ExecuteOperatorReq) (resp *interfaces.HTTPResponse, err error) {
 	// 记录可观测
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
-	defer oteltrace.EndSpan(ctx, err)
+	defer func() {
+		telemetry.SetSpanAttributes(ctx, actionExecutionSpanAttrs(ctx, "action.execute", err, map[string]interface{}{
+			"operator_id":        req.OperatorID,
+			"user_id":            req.UserID,
+			"bkn.action_type.id": req.OperatorID,
+		}))
+		oteltrace.EndSpan(ctx, err)
+	}()
 	// 检查算子是否存在
 	exist, operator, err := m.OpReleaseDB.SelectByOpID(ctx, req.OperatorID)
 	if err != nil {
@@ -166,6 +174,27 @@ func (m *operatorManager) ExecuteOperator(ctx context.Context, req *interfaces.E
 		})
 	}()
 	return
+}
+
+func actionExecutionSpanAttrs(ctx context.Context, operation string, err error, refs map[string]interface{}) map[string]interface{} {
+	attrs := map[string]interface{}{
+		"bkn.module.name":          "action-execution",
+		"bkn.operation.name":       operation,
+		"bkn.trace.schema.version": "1.0.0",
+		"bkn.status":               "ok",
+	}
+	if err != nil {
+		attrs["bkn.status"] = "error"
+	}
+	if traceContext, ok := common.GetTraceContextFromCtx(ctx); ok {
+		attrs["bkn.request.id"] = traceContext.RequestID
+	}
+	for key, value := range refs {
+		if value != "" && value != nil {
+			attrs[key] = value
+		}
+	}
+	return attrs
 }
 
 func (m *operatorManager) executeOperator(ctx context.Context, operatorID string, reqParam interfaces.HTTPRequestParams,

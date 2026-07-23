@@ -94,20 +94,31 @@ type ResourcesListResponse struct {
 
 // DatasetQueryResponse represents dataset query response
 type DatasetQueryResponse struct {
-	Entries     []map[string]any `json:"entries"`
-	TotalCount  int64            `json:"total_count"`
-	SearchAfter []any            `json:"search_after"`
+	Entries    []map[string]any          `json:"entries"`
+	TotalCount int64                     `json:"total_count"`
+	Paging     *ResourceDataPagingResult `json:"paging,omitempty"`
+}
+
+type ResourceDataPagingRequest struct {
+	Mode         string `json:"mode,omitempty"`
+	Offset       int    `json:"offset,omitempty"`
+	Limit        int    `json:"limit,omitempty"`
+	KeepAliveSec int    `json:"keep_alive_sec,omitempty"`
+	Cursor       string `json:"cursor,omitempty"`
+}
+
+type ResourceDataPagingResult struct {
+	NextCursor   *string `json:"next_cursor"`
+	ExpiresAtSec *int64  `json:"expires_at_sec"`
 }
 
 // ResourceDataQueryParams represents query parameters for dataset data retrieval
 type ResourceDataQueryParams struct {
-	FilterCondition map[string]any `json:"filter_condition,omitempty"`
-	SearchAfter     []any          `json:"search_after,omitempty"`
-	Offset          int            `json:"offset,omitempty"`
-	Limit           int            `json:"limit,omitempty"`
-	NeedTotal       bool           `json:"need_total,omitempty"`
-	Sort            []*SortParams  `json:"sort,omitempty"`
-	OutputFields    []string       `json:"output_fields,omitempty"`
+	FilterCondition map[string]any            `json:"filter_condition,omitempty"`
+	Paging          ResourceDataPagingRequest `json:"paging,omitempty"`
+	NeedTotal       bool                      `json:"need_total,omitempty"`
+	Sort            []*SortParams             `json:"sort,omitempty"`
+	OutputFields    []string                  `json:"output_fields,omitempty"`
 }
 
 // VegaBackendAccess defines the interface for accessing vega-backend service

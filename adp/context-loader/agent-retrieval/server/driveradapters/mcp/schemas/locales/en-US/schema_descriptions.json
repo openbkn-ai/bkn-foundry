@@ -155,5 +155,42 @@
     "output_schema.properties.relation_types.description": "Matched relation types.",
     "output_schema.properties.action_types.description": "Matched action types.",
     "output_schema.properties.metric_types.description": "Matched metric types."
+  },
+  "execute_action": {
+    "input_schema.properties.kn_id.description": "Knowledge network id. Can also be supplied by the X-Kn-ID request header.",
+    "input_schema.properties.at_id.description": "Action type id returned by search_schema or get_kn_detail.",
+    "input_schema.properties._instance_identities.description": "Target instances; when empty the action driver scans all instances matching the action condition. Each element must be taken from the _instance_identity field of query_object_instance or query_instance_subgraph, never fabricated.",
+    "input_schema.properties.dynamic_params.description": "Dynamic parameter values for the action (parameters whose value_from=input). First call get_action_info to obtain this action's dynamic_params schema and parameter names, then fill in the real values by name. Each parameter is a separate key; do not concatenate multiple parameter names into one key.",
+    "output_schema.properties.execution_id.description": "Execution id, usable to query execution status and results.",
+    "output_schema.properties.status.description": "Execution status; usually pending right after submission.",
+    "output_schema.properties.message.description": "Submission result message.",
+    "output_schema.properties.created_at.description": "Submission time (Unix milliseconds)."
+  },
+  "get_action_execution": {
+    "input_schema.properties.kn_id.description": "Knowledge network id. Can also be supplied by the X-Kn-ID request header.",
+    "input_schema.properties.execution_id.description": "Action execution id, returned by execute_action.",
+    "output_schema.description": "Details of a single action execution, including overall status and per-object results.",
+    "output_schema.properties.id.description": "Execution id.",
+    "output_schema.properties.status.description": "Overall status: pending/running/completed/failed/cancelled.",
+    "output_schema.properties.total_count.description": "Total number of objects involved in this execution.",
+    "output_schema.properties.success_count.description": "Number of succeeded objects.",
+    "output_schema.properties.failed_count.description": "Number of failed objects.",
+    "output_schema.properties.results.description": "Per-object execution results (each with status, parameters, result/error, etc.).",
+    "input_schema.properties.response_format.description": "Response format: json or toon, default toon (fewer tokens)."
+  },
+  "list_action_executions": {
+    "input_schema.properties.kn_id.description": "Knowledge network id. Can also be supplied by the X-Kn-ID request header.",
+    "input_schema.properties.action_type_id.description": "Filter by action type id (optional).",
+    "input_schema.properties.status.description": "Filter by execution status (optional): pending/running/completed/failed/cancelled.",
+    "input_schema.properties.trigger_type.description": "Filter by trigger type (optional): manual/scheduled.",
+    "input_schema.properties.start_time_from.description": "Lower bound of start time (Unix milliseconds, optional).",
+    "input_schema.properties.start_time_to.description": "Upper bound of start time (Unix milliseconds, optional).",
+    "input_schema.properties.offset.description": "Pagination offset (optional).",
+    "input_schema.properties.limit.description": "Pagination size (optional), default 20, max 1000.",
+    "output_schema.description": "Paginated action execution history.",
+    "output_schema.properties.total_count.description": "Total number of matching executions.",
+    "output_schema.properties.entries.description": "List of execution records (each with id, action_type_id, status, counts, timestamps; action_type_snapshot and other heavy fields are stripped to save tokens).",
+    "output_schema.properties.search_after.description": "Pagination cursor; pass this value as search_after in the next request to continue paging.",
+    "input_schema.properties.response_format.description": "Response format: json or toon, default toon (fewer tokens)."
   }
 }

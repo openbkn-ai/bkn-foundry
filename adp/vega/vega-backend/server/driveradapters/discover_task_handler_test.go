@@ -53,6 +53,7 @@ func Test_DiscoverTaskRestHandler_ListDiscoverTasks(t *testing.T) {
 		{name: "invalid limit", query: "?limit=99999999", wantStatus: http.StatusBadRequest, wantBody: "VegaBackend.InvalidParameter.Limit"},
 		{name: "invalid sort field", query: "?sort=unknown_field", wantStatus: http.StatusBadRequest, wantBody: "VegaBackend.InvalidParameter.Sort"},
 		{name: "invalid direction", query: "?direction=foo", wantStatus: http.StatusBadRequest, wantBody: "VegaBackend.InvalidParameter.Direction"},
+		{name: "invalid strategy", query: "?strategy=foo", wantStatus: http.StatusBadRequest, wantBody: "invalid strategy"},
 		{name: "invalid trigger type", query: "?trigger_type=foo", wantStatus: http.StatusBadRequest, wantBody: "invalid trigger_type"},
 	}
 
@@ -75,7 +76,7 @@ func Test_DiscoverTaskRestHandler_ListDiscoverTasks(t *testing.T) {
 			DoAndReturn(func(_ context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTask, int64, error) {
 				assert.Equal(t, 0, params.Offset)
 				assert.Equal(t, 20, params.Limit)
-				assert.Equal(t, "f_create_time", params.Sort)
+				assert.Equal(t, "default", params.Sort)
 				assert.Equal(t, interfaces.DESC_DIRECTION, params.Direction)
 				return []*interfaces.DiscoverTask{}, int64(0), nil
 			})
@@ -95,15 +96,16 @@ func Test_DiscoverTaskRestHandler_ListDiscoverTasks(t *testing.T) {
 				assert.Equal(t, "cat-1", params.CatalogID)
 				assert.Equal(t, "sch-1", params.ScheduleID)
 				assert.Equal(t, interfaces.DiscoverTaskStatusCompleted, params.Status)
+				assert.Equal(t, interfaces.DiscoverStrategyFullSync, params.Strategy)
 				assert.Equal(t, interfaces.DiscoverTaskTriggerScheduled, params.TriggerType)
 				assert.Equal(t, 5, params.Offset)
 				assert.Equal(t, 10, params.Limit)
-				assert.Equal(t, "f_start_time", params.Sort)
+				assert.Equal(t, "start_time", params.Sort)
 				assert.Equal(t, interfaces.ASC_DIRECTION, params.Direction)
 				return []*interfaces.DiscoverTask{}, int64(0), nil
 			})
 
-		req := httptest.NewRequest(http.MethodGet, url+"?catalog_id=cat-1&schedule_id=sch-1&status=completed&trigger_type=scheduled&offset=5&limit=10&sort=start_time&direction=asc", nil)
+		req := httptest.NewRequest(http.MethodGet, url+"?catalog_id=cat-1&schedule_id=sch-1&status=completed&strategy=full_sync&trigger_type=scheduled&offset=5&limit=10&sort=start_time&direction=asc", nil)
 		w := httptest.NewRecorder()
 
 		engine.ServeHTTP(w, req)

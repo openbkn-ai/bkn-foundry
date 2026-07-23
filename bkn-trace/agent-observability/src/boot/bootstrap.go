@@ -6,8 +6,10 @@ import (
 
 	docs "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/docs/swagger"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/conf"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/evidencesvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/tracesvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/opensearchtraceaccess"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/memoryaccess/evidencestore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/driveradapter/api/httphandler"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/infra/opensearch"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/infra/server/httpserver"
@@ -37,10 +39,15 @@ func NewApp() *App {
 	traceDetailClient := opensearchtraceaccess.New(openSearchClient, openSearchConfig.TraceIndex)
 	traceQueryService := tracesvc.New(traceDetailClient)
 	traceHandler := httphandler.NewTraceHandler(traceQueryService)
+	evidenceService := evidencesvc.New(evidencestore.New())
+	evidenceHandler := httphandler.NewEvidenceHandler(evidenceService)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc(APIBasePath+"/traces/_search", traceHandler.SearchTraces)
 	mux.HandleFunc(APIBasePath+"/traces/by-conversation", traceHandler.SearchTracesByConversationID)
+	mux.HandleFunc(APIBasePath+"/traces/by-request", evidenceHandler.GetEvidenceChainByRequestID)
+	mux.HandleFunc(APIBasePath+"/traces/", evidenceHandler.GetEvidenceChainByTraceID)
+	mux.HandleFunc(APIBasePath+"/evidence/events", evidenceHandler.IngestEvidenceEvents)
 	mux.Handle(APIBasePath+"/swagger/", httpSwagger.Handler(
 		httpSwagger.URL(APIBasePath+"/swagger/doc.json"),
 	))

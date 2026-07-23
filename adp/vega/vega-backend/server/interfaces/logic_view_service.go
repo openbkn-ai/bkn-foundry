@@ -245,6 +245,6 @@ type SearchAfterParams struct {
 
 //go:generate mockgen -source ../interfaces/logic_view_service.go -destination ../interfaces/mock/mock_logic_view_service.go
 type LogicViewService interface {
-	// Query queries Resource data.
-	Query(ctx context.Context, resource *Resource, params *ResourceDataQueryParams) ([]map[string]any, int64, error)
+	// QueryWithPaging queries logic-view data and returns cursor paging state when supported.
+	QueryWithPaging(ctx context.Context, resource *Resource, params *ResourceDataQueryParams) (*ResourceDataQueryResult, error)
 }

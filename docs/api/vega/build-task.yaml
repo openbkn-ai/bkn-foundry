@@ -84,8 +84,6 @@ paths:
               - default
               - created_at
               - updated_at
-              - status
-              - mode
             default: default
         - name: order
           description: 排序方向，默认 desc；`order_by=default` 时固定使用服务端复合排序

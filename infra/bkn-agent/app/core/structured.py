@@ -32,6 +32,12 @@ def _extract_json(text: str) -> Any:
 
 async def structured_extract(model, messages: list, schema: dict) -> dict:
     """从 messages 抽出符合 schema 的对象。model 应为非流式（见 build_chat_model）。"""
+    obj, _ = await structured_extract_with_path(model, messages, schema)
+    return obj
+
+
+async def structured_extract_with_path(model, messages: list, schema: dict) -> tuple[dict, str]:
+    """返回结构化对象及 validation path：native 或 fallback。"""
     # 1. 原生
     try:
         norm = normalize_response_format(schema)
@@ -40,7 +46,7 @@ async def structured_extract(model, messages: list, schema: dict) -> dict:
         # 原生也校验：with_structured_output 未启 strict，可能缺 required/类型不符；
         # 不合法则不当成功返回，落到下面提示词降级重试。
         _jsonschema_validate(obj, schema)
-        return obj
+        return obj, "native"
     except SchemaError:
         # schema 本体非法：请求边界已用 check_schema 拦（models.py ResponseFormat），
         # 这里兜底。降级路径同样必炸，直接抛出，不白费模型调用。
@@ -62,7 +68,7 @@ async def structured_extract(model, messages: list, schema: dict) -> dict:
         try:
             obj = _extract_json(text)
             _jsonschema_validate(obj, schema)
-            return obj
+            return obj, "fallback"
         except (json.JSONDecodeError, ValidationError, ValueError) as e:
             last_err = e
             msgs = msgs + [

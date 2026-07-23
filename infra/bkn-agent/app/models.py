@@ -327,6 +327,7 @@ class ErrorEnvelope(BaseModel):
     description: str
     detail: str
     solution: str
+    trace_id: str
     link: str = ""
 
 

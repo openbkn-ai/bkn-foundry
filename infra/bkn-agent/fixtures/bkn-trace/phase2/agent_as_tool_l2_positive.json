@@ -1,0 +1,45 @@
+{
+  "bkn.trace.schema.version": "2.0.0",
+  "fixture_id": "bkn_agent_phase2_agent_as_tool_l2_positive",
+  "expected_result": "pass",
+  "trace": {
+    "trace_id": "7a230000000000000000000000000003",
+    "traceparent": "00-7a230000000000000000000000000003-7a23000000000001-01",
+    "bkn.request.id": "req_bkn_agent_phase2_agent_tool_0003",
+    "business_domain": "acct_demo",
+    "bkn.account.id": "acct_demo",
+    "bkn.account.type": "user"
+  },
+  "spans": [
+    {
+      "span_id": "7a23000000000001",
+      "parent_span_id": null,
+      "name": "agent.agent_as_tool",
+      "bkn.module.name": "bkn-agent",
+      "bkn.operation.name": "bkn.agent.agent_as_tool",
+      "bkn.status": "ok",
+      "bkn.timestamp": "2026-07-22T10:02:00.000000Z"
+    }
+  ],
+  "events": [
+    {
+      "event_id": "evt_bkn_agent_as_tool_invoked",
+      "event_type": "agent_as_tool.invoked",
+      "bkn.trace.schema.version": "2.0.0",
+      "observed_at": "2026-07-22T10:02:00.000000Z",
+      "emitted_at": "2026-07-22T10:02:00.001000Z",
+      "producer_module": "bkn-agent",
+      "trace_id": "7a230000000000000000000000000003",
+      "span_id": "7a23000000000001",
+      "bkn.request.id": "req_bkn_agent_phase2_agent_tool_0003",
+      "bkn.operation.name": "bkn.agent.agent_as_tool",
+      "payload": {
+        "parent_thread_id": "thread_parent",
+        "child_task_id": "task_child",
+        "child_agent_id": "agent_child",
+        "depth": 2,
+        "message_hash": "sha256:message_hash_only"
+      }
+    }
+  ]
+}

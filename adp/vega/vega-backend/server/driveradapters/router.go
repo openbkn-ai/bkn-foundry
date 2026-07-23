@@ -91,6 +91,7 @@ func NewRestHandler(appSetting *common.AppSetting, sw *worker.ScheduleWorker) Re
 func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	c.Use(r.AccessLog())
 	c.Use(middleware.TracingMiddleware())
+	c.Use(r.TraceContextMiddleware())
 	c.Use(r.LanguageMiddleware())
 
 	c.GET("/health", r.HealthCheck)
@@ -297,6 +298,15 @@ func (r *restHandler) verifyJsonContentType() gin.HandlerFunc {
 func (r *restHandler) LanguageMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Request = c.Request.WithContext(rest.GetLanguageCtx(c))
+		c.Next()
+	}
+}
+
+// TraceContextMiddleware parses OpenBKN phase-one trace context into request context.
+func (r *restHandler) TraceContextMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx := common.SetTraceContextToCtx(c.Request.Context(), common.TraceContextFromHeaders(c.GetHeader))
+		c.Request = c.Request.WithContext(ctx)
 		c.Next()
 	}
 }

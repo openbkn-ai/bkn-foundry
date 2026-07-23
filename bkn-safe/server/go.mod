@@ -14,8 +14,10 @@ require (
 	github.com/glebarez/sqlite v1.7.0
 	github.com/go-ldap/ldap/v3 v3.4.13
 	github.com/openbkn-ai/bkn-comm-go v0.0.4
+	github.com/openbkn-ai/licverify v0.2.0
 	github.com/ory/hydra-client-go/v2 v2.2.0
 	golang.org/x/crypto v0.53.0
+	golang.org/x/sync v0.21.0
 	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/driver/mysql v1.5.7
 	gorm.io/gorm v1.25.12
@@ -61,7 +63,6 @@ require (
 	github.com/microsoft/go-mssqldb v1.6.0 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
-	github.com/openbkn-ai/licverify v0.2.0 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
 	github.com/quic-go/qpack v0.6.0 // indirect
 	github.com/quic-go/quic-go v0.59.0 // indirect
@@ -73,7 +74,6 @@ require (
 	golang.org/x/arch v0.26.0 // indirect
 	golang.org/x/net v0.56.0 // indirect
 	golang.org/x/oauth2 v0.17.0 // indirect
-	golang.org/x/sync v0.21.0 // indirect
 	golang.org/x/sys v0.46.0 // indirect
 	golang.org/x/text v0.39.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect

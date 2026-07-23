@@ -87,8 +87,8 @@ type RelationTypesQueryParams struct {
 
 // 检索关系类列表
 type RelationTypes struct {
-	Entries     []*RelationType `json:"entries"`
-	TotalCount  int64           `json:"total_count,omitempty"`
-	SearchAfter []any           `json:"search_after,omitempty"`
-	OverallMs   int64           `json:"overall_ms"`
+	Entries    []*RelationType `json:"entries"`
+	TotalCount int64           `json:"total_count,omitempty"`
+	NextCursor *string         `json:"next_cursor,omitempty"`
+	OverallMs  int64           `json:"overall_ms"`
 }

@@ -56,9 +56,12 @@ type HavingClause struct {
 
 // ResourceDataQueryParams represents query parameters for data retrieval.
 type ResourceDataQueryParams struct {
-	Offset int          `json:"offset,omitempty"`
-	Limit  int          `json:"limit,omitempty"`
-	Sort   []*SortField `json:"sort,omitempty"`
+	// Offset and Limit remain internal connector inputs. The HTTP contract uses
+	// Paging so Raw Query and Resource Data share the same request shape.
+	Offset int           `json:"-"`
+	Limit  int           `json:"-"`
+	Paging PagingRequest `json:"paging,omitempty"`
+	Sort   []*SortField  `json:"sort,omitempty"`
 
 	FilterCondition any `json:"filter_condition,omitempty"`
 
@@ -66,10 +69,10 @@ type ResourceDataQueryParams struct {
 
 	NeedTotal   bool          `json:"need_total,omitempty"`
 	Format      string        `json:"-"`
-	Timeout     time.Duration `json:"-"`                      // 超时时间，查询参数
-	SearchAfter []any         `json:"search_after,omitempty"` // OpenSearch search after参数
+	Timeout     time.Duration `json:"-"` // 超时时间，查询参数
+	SearchAfter []any         `json:"-"` // OpenSearch internal continuation state
 
-	QueryType string `json:"query_type"`
+	QueryType string `json:"-"`
 
 	FilterCondCfg    *FilterCondCfg  `json:"-"`
 	ActualFilterCond FilterCondition `json:"-"`
@@ -81,4 +84,14 @@ type ResourceDataQueryParams struct {
 	Aggregation *Aggregation   `json:"aggregation,omitempty"` // 聚合度量
 	GroupBy     []*GroupByItem `json:"group_by,omitempty"`    // 分组维度
 	Having      *HavingClause  `json:"having,omitempty"`      // 对聚合结果过滤（HAVING）
+}
+
+// ResourceDataQueryResult is the common response model for resource-data and
+// logic-view queries. Paging follows the same single/cursor contract as raw
+// queries.
+type ResourceDataQueryResult struct {
+	Entries    []map[string]any
+	TotalCount int64
+	Paging     *PagingResponse
+	NeedTotal  bool
 }

@@ -14,6 +14,7 @@ import (
 	validator "github.com/go-playground/validator/v10"
 	"github.com/mark3labs/mcp-go/mcp"
 
+	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/bkntrace"
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/rest"
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/interfaces"
@@ -108,6 +109,7 @@ func handleQueryObjectInstance(ontologyQuery interfaces.DrivenOntologyQuery) fun
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
+		bkntrace.EmitQueryObjectInstanceEvents(ctx, nil, queryReq, resp)
 		resp.ObjectConcept = nil
 		result, err := BuildMCPToolResult(resp, format)
 		if err != nil {
@@ -226,6 +228,123 @@ func handleGetActionInfo(service interfaces.IKnActionRecallService) func(ctx con
 		}
 		// get_action_info 始终返回 JSON：行动工具定义需机器可消费，忽略 response_format（TOON 会破坏结构）。
 		result, err := BuildMCPToolResult(resp, rest.FormatJSON)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return result, nil
+	}
+}
+
+// handleExecuteAction handles execute_action tool calls.
+// 与 get_action_info 配对：Agent 先用 get_action_info 拿到 dynamic_params schema，
+// 再用本工具填入真实动态参数值触发执行（异步，返回 execution_id）。
+func handleExecuteAction(service interfaces.IKnActionRecallService) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		authCtx, ok := common.GetAccountAuthContextFromCtx(ctx)
+		if !ok {
+			return mcp.NewToolResultError("authentication required"), nil
+		}
+
+		execReq := &interfaces.KnActionExecuteRequest{}
+		if err := bindArguments(req, execReq); err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		if execReq.KnID == "" {
+			execReq.KnID = getKnIDFromHeader(req)
+		}
+		execReq.AccountID = authCtx.AccountID
+		execReq.AccountType = string(authCtx.AccountType)
+
+		if err := validator.New().Struct(execReq); err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		resp, err := service.ExecuteAction(ctx, execReq)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		// execute_action 始终返回 JSON：execution_id 等需机器可消费。
+		result, err := BuildMCPToolResult(resp, rest.FormatJSON)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return result, nil
+	}
+}
+
+// handleGetActionExecution handles get_action_execution tool calls.
+// 与 execute_action 配对：用 execute_action 返回的 execution_id 查询该次执行的 status 与 results。
+func handleGetActionExecution(service interfaces.IKnActionRecallService) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		authCtx, ok := common.GetAccountAuthContextFromCtx(ctx)
+		if !ok {
+			return mcp.NewToolResultError("authentication required"), nil
+		}
+
+		getReq := &interfaces.KnGetActionExecutionRequest{}
+		if err := bindArguments(req, getReq); err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		if getReq.KnID == "" {
+			getReq.KnID = getKnIDFromHeader(req)
+		}
+		getReq.AccountID = authCtx.AccountID
+		getReq.AccountType = string(authCtx.AccountType)
+
+		if err := validator.New().Struct(getReq); err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		format, err := GetResponseFormatFromRequest(req)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		resp, err := service.GetActionExecution(ctx, getReq)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		result, err := BuildMCPToolResult(resp, format)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return result, nil
+	}
+}
+
+// handleListActionExecutions handles list_action_executions tool calls.
+// 列出行动执行历史（可按行动类型/状态/触发方式过滤，分页）。
+func handleListActionExecutions(service interfaces.IKnActionRecallService) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		authCtx, ok := common.GetAccountAuthContextFromCtx(ctx)
+		if !ok {
+			return mcp.NewToolResultError("authentication required"), nil
+		}
+
+		listReq := &interfaces.KnListActionExecutionsRequest{}
+		if err := bindArguments(req, listReq); err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		if listReq.KnID == "" {
+			listReq.KnID = getKnIDFromHeader(req)
+		}
+		listReq.AccountID = authCtx.AccountID
+		listReq.AccountType = string(authCtx.AccountType)
+
+		if err := validator.New().Struct(listReq); err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		format, err := GetResponseFormatFromRequest(req)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		resp, err := service.ListActionExecutions(ctx, listReq)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		result, err := BuildMCPToolResult(resp, format)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}

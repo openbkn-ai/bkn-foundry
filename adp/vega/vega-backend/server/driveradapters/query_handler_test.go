@@ -49,12 +49,15 @@ func Test_RawQueryRestHandler_RawQuery(t *testing.T) {
 		service.EXPECT().
 			Execute(gomock.Any(), gomock.AssignableToTypeOf(&interfaces.RawQueryRequest{})).
 			DoAndReturn(func(_ context.Context, req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
-				assert.Equal(t, interfaces.ConnectorTypeMySQL, req.ResourceType)
-				assert.Equal(t, 10000, req.StreamSize)
-				assert.Equal(t, 60, req.QueryTimeout)
+				totalCount := int64(0)
+				assert.Equal(t, interfaces.QueryFormatSQL, req.QueryFormat)
+				assert.Equal(t, "postgres", req.EffectiveInputDialect())
+				assert.Equal(t, 60, req.QueryTimeoutSec)
+				assert.True(t, req.NeedTotal)
 				return &interfaces.RawQueryResponse{
-					Columns: []interfaces.ColumnInfo{{Name: "id", Type: "string"}},
-					Entries: []map[string]any{{"id": "1"}},
+					Columns:    []interfaces.ColumnInfo{{Name: "id", Type: "string"}},
+					Entries:    []map[string]any{{"id": "1"}},
+					TotalCount: &totalCount,
 				}, nil
 			})
 		engine := setupRawQueryHandlerTest(t)
@@ -63,7 +66,7 @@ func Test_RawQueryRestHandler_RawQuery(t *testing.T) {
 		})
 		defer patches.Reset()
 
-		req := httptest.NewRequest(http.MethodPost, url, strings.NewReader(`{"resource_type":"mysql","query":"select 1"}`))
+		req := httptest.NewRequest(http.MethodPost, url, strings.NewReader(`{"query_format":"sql","query":"select 1","need_total":true}`))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 
@@ -72,51 +75,42 @@ func Test_RawQueryRestHandler_RawQuery(t *testing.T) {
 		require.Equal(t, http.StatusOK, w.Result().StatusCode)
 		assert.Contains(t, w.Body.String(), `"columns"`)
 		assert.Contains(t, w.Body.String(), `"entries"`)
+		assert.Contains(t, w.Body.String(), `"total_count":0`)
 	})
 
-	t.Run("rejects missing resource type", func(t *testing.T) {
+	t.Run("omits total count when not requested", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		service := vmock.NewMockRawQueryService(ctrl)
+		service.EXPECT().
+			Execute(gomock.Any(), gomock.AssignableToTypeOf(&interfaces.RawQueryRequest{})).
+			DoAndReturn(func(_ context.Context, req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
+				assert.False(t, req.NeedTotal)
+				return &interfaces.RawQueryResponse{
+					Columns: []interfaces.ColumnInfo{},
+					Entries: []map[string]any{},
+				}, nil
+			})
 		engine := setupRawQueryHandlerTest(t)
+		patches := gomonkey.ApplyFunc(query.NewRawQueryService, func(*common.AppSetting) interfaces.RawQueryService {
+			return service
+		})
+		defer patches.Reset()
 
-		req := httptest.NewRequest(http.MethodPost, url, strings.NewReader(`{"query":"select 1"}`))
+		req := httptest.NewRequest(http.MethodPost, url, strings.NewReader(`{"query_format":"sql","query":"select 1"}`))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 
 		engine.ServeHTTP(w, req)
 
-		require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
-		assert.Contains(t, w.Body.String(), "VegaBackend.InvalidParameter.ResourceType")
-	})
-
-	t.Run("rejects unsupported resource type", func(t *testing.T) {
-		engine := setupRawQueryHandlerTest(t)
-
-		req := httptest.NewRequest(http.MethodPost, url, strings.NewReader(`{"resource_type":"oracle","query":"select 1"}`))
-		req.Header.Set("Content-Type", "application/json")
-		w := httptest.NewRecorder()
-
-		engine.ServeHTTP(w, req)
-
-		require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
-		assert.Contains(t, w.Body.String(), "VegaBackend.InvalidParameter.ResourceType")
-	})
-
-	t.Run("rejects invalid stream size", func(t *testing.T) {
-		engine := setupRawQueryHandlerTest(t)
-
-		req := httptest.NewRequest(http.MethodPost, url, strings.NewReader(`{"resource_type":"mysql","query":"select 1","stream_size":10}`))
-		req.Header.Set("Content-Type", "application/json")
-		w := httptest.NewRecorder()
-
-		engine.ServeHTTP(w, req)
-
-		require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
-		assert.Contains(t, w.Body.String(), "VegaBackend.InvalidParameter.StreamSize")
+		require.Equal(t, http.StatusOK, w.Result().StatusCode)
+		assert.NotContains(t, w.Body.String(), `"total_count"`)
 	})
 
 	t.Run("rejects invalid query timeout", func(t *testing.T) {
 		engine := setupRawQueryHandlerTest(t)
 
-		req := httptest.NewRequest(http.MethodPost, url, strings.NewReader(`{"resource_type":"mysql","query":"select 1","query_timeout":3601}`))
+		req := httptest.NewRequest(http.MethodPost, url, strings.NewReader(`{"query_format":"sql","query":"select 1","query_timeout_sec":3601}`))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 

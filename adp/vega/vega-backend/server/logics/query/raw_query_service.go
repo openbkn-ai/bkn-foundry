@@ -8,10 +8,15 @@ package query
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"regexp"
+	"strconv"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/openbkn-ai/bkn-comm-go/logger"
 	"github.com/openbkn-ai/bkn-comm-go/otel/otellog"
@@ -23,8 +28,10 @@ import (
 	"vega-backend/interfaces"
 	"vega-backend/logics/catalog"
 	"vega-backend/logics/connector/factory"
+	opensearchconnector "vega-backend/logics/connector/local/index/opensearch"
 	"vega-backend/logics/connector/local/table/mariadb"
 	"vega-backend/logics/connector/local/table/postgresql"
+	"vega-backend/logics/query/querypolicy"
 	"vega-backend/logics/query/sqlglot"
 	resourcelogic "vega-backend/logics/resource"
 )
@@ -39,8 +46,13 @@ type rawQueryService struct {
 	rs interfaces.ResourceService
 }
 
+const rawQueryTotalCountColumn = "_raw_query_total_count"
+
 // NewRawQueryService 创建SQL查询服务（单例模式）
 func NewRawQueryService(appSetting *common.AppSetting) interfaces.RawQueryService {
+	if appSetting != nil {
+		rawQueryCursorSessions.configure(appSetting.QuerySetting.CursorMaxSessions)
+	}
 	rawQueryServiceOnce.Do(func() {
 		rawQueryServiceInstance = &rawQueryService{
 			cs: catalog.NewCatalogService(appSetting),
@@ -59,6 +71,9 @@ func (rqs *rawQueryService) Execute(ctx context.Context, req *interfaces.RawQuer
 	// 同时落到当前 span 关联的日志里，便于事后审计。
 	var warnings []string
 	defer func() {
+		if resp != nil && resp.Paging == nil {
+			resp.Paging = &interfaces.PagingResponse{}
+		}
 		if len(warnings) == 0 {
 			return
 		}
@@ -71,375 +86,664 @@ func (rqs *rawQueryService) Execute(ctx context.Context, req *interfaces.RawQuer
 	}()
 
 	// 记录请求参数
-	logger.Infof("RawQueryRequest - query_type: %s, resource_type: %s, query: %v", req.QueryType, req.ResourceType, req.Query)
+	logger.Infof("RawQueryRequest - query_format: %s, paging_mode: %s, %s", req.QueryFormat, req.Paging.Mode, SafeQuerySummary(req.Query))
 
 	// 1. 校验请求
 	if err := rqs.validateRequest(ctx, req); err != nil {
 		otellog.LogError(ctx, "Validate request failed", err)
 		return nil, err
 	}
-
-	// 2. 判断查询类型
-	// 如果是流式查询，调用executeStreamQuery方法
-	if req.QueryType == "stream" {
-		// OpenSearch流式查询直接调用executeOpenSearchQuery
-		if req.ResourceType == interfaces.ConnectorTypeOpenSearch {
-			// 从query中获取resource_id
-			queryMap, ok := req.Query.(map[string]any)
-			if !ok {
-				return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
-					WithErrorDetails("query must be a JSON object for opensearch queries")
-			}
-
-			var resourceID string
-			if rid, ok := queryMap["resource_id"].(string); ok && rid != "" {
-				resourceID = rid
-			} else {
-				return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
-					WithErrorDetails("resource_id is required for opensearch queries")
-			}
-
-			// 获取资源信息
-			resource, err := rqs.rs.GetByID(ctx, resourceID)
-			if err != nil {
-				otellog.LogError(ctx, "Get resource failed", err)
-				return nil, err.(*rest.HTTPError)
-			}
-			if resource == nil {
-				httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_ResourceNotFound).
-					WithErrorDetails(fmt.Sprintf("resource %s not found", resourceID))
-				otellog.LogError(ctx, "Resource not found", httpErr)
-				return nil, httpErr
-			}
-			w, err := resourcelogic.EnsureResourceQueryable(ctx, resource)
-			if err != nil {
-				otellog.LogError(ctx, "Resource is not queryable", err)
-				return nil, err
-			}
-			if w != "" {
-				warnings = append(warnings, w)
-			}
-
-			// 获取catalog
-			catalog, err := rqs.cs.GetByID(ctx, resource.CatalogID, true)
-			if err != nil {
-				otellog.LogError(ctx, "Get catalog failed", err)
-				return nil, err.(*rest.HTTPError)
-			}
-			if catalog == nil {
-				httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_CatalogNotFound).
-					WithErrorDetails(fmt.Sprintf("catalog %s not found", resource.CatalogID))
-				otellog.LogError(ctx, "Catalog not found", httpErr)
-				return nil, httpErr
-			}
-			if err := ensureCatalogEnabled(ctx, catalog); err != nil {
-				otellog.LogError(ctx, "Catalog is disabled", err)
-				return nil, err
-			}
-
-			return rqs.executeOpenSearchQuery(ctx, req, []string{}, catalog)
-		}
-		// SQL流式查询
-		return rqs.executeStreamQuery(ctx, req)
+	req.NormalizePaging()
+	if req.IsContinuation() {
+		return rqs.executeSQLCursorContinuation(ctx, req)
 	}
-
-	// 优先检查resource_type，因为OpenSearch查询的query是JSON对象，不包含resource_id占位符
-	if req.ResourceType == interfaces.ConnectorTypeOpenSearch {
-		// OpenSearch查询，跳过resource_id提取
-		// 从query中获取resource_id
-		queryMap, ok := req.Query.(map[string]any)
-		if !ok {
-			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
-				WithErrorDetails("query must be a JSON object for opensearch queries")
+	if req.Paging.Mode == interfaces.PagingModeCursor {
+		switch req.QueryFormat {
+		case interfaces.QueryFormatSQL:
+			return rqs.executeInitialSQLCursor(ctx, req)
+		case interfaces.QueryFormatDSL:
+			return rqs.executeInitialOpenSearchCursor(ctx, req)
 		}
+	}
+	switch req.QueryFormat {
+	case interfaces.QueryFormatSQL:
+		return rqs.executeInitialSQLQuery(ctx, req)
+	case interfaces.QueryFormatDSL:
+		return rqs.executeInitialDSLQuery(ctx, req)
+	}
+	return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+		WithErrorDetails("unsupported raw query request")
+}
 
-		var resourceID string
-		if rid, ok := queryMap["resource_id"].(string); ok && rid != "" {
-			resourceID = rid
-		} else {
-			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
-				WithErrorDetails("resource_id is required for opensearch queries")
-		}
+func (rqs *rawQueryService) validateRequest(ctx context.Context, req *interfaces.RawQueryRequest) error {
+	if err := req.ValidateContract(); err != nil {
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+			WithErrorDetails(err.Error())
+	}
+	return nil
+}
 
-		// 获取资源信息
-		resource, err := rqs.rs.GetByID(ctx, resourceID)
+func (rqs *rawQueryService) executeInitialSQLQuery(ctx context.Context, req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
+	queryCtx, cancel := queryExecutionContext(ctx, req.QueryTimeoutSec)
+	defer cancel()
+	prepared, err := rqs.prepareSQLQuery(queryCtx, req)
+	if err != nil {
+		return nil, err
+	}
+	finalSQL := applySingleQueryPaging(prepared.sql, req.Paging.Offset, req.Paging.Limit)
+
+	var totalCount int64
+	if req.NeedTotal {
+		totalCount, err = rqs.executeSQLTotalCount(queryCtx, prepared.catalog, prepared.sql)
 		if err != nil {
-			otellog.LogError(ctx, "Get resource failed", err)
-			return nil, err.(*rest.HTTPError)
-		}
-		if resource == nil {
-			httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_ResourceNotFound).
-				WithErrorDetails(fmt.Sprintf("resource %s not found", resourceID))
-			otellog.LogError(ctx, "Resource not found", httpErr)
-			return nil, httpErr
-		}
-		w, err := resourcelogic.EnsureResourceQueryable(ctx, resource)
-		if err != nil {
-			otellog.LogError(ctx, "Resource is not queryable", err)
 			return nil, err
 		}
-		if w != "" {
-			warnings = append(warnings, w)
-		}
+	}
+	result, err := rqs.executeSQL(queryCtx, prepared.catalog, finalSQL, interfaces.PagingModeSingle)
+	if err != nil {
+		return nil, err
+	}
+	if req.NeedTotal {
+		result.TotalCount = &totalCount
+	} else {
+		result.TotalCount = nil
+	}
+	result.Warnings = append(result.Warnings, prepared.warnings...)
+	return result, nil
+}
 
-		// 获取catalog
-		catalog, err := rqs.cs.GetByID(ctx, resource.CatalogID, true)
+func (rqs *rawQueryService) executeInitialSQLCursor(ctx context.Context, req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
+	queryCtx, cancel := queryExecutionContext(ctx, req.QueryTimeoutSec)
+	defer cancel()
+	prepared, err := rqs.prepareSQLQuery(queryCtx, req)
+	if err != nil {
+		return nil, err
+	}
+	var totalCount int64
+	if req.NeedTotal {
+		totalCount, err = rqs.executeSQLTotalCount(queryCtx, prepared.catalog, prepared.sql)
 		if err != nil {
-			otellog.LogError(ctx, "Get catalog failed", err)
-			return nil, err.(*rest.HTTPError)
-		}
-		if catalog == nil {
-			httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_CatalogNotFound).
-				WithErrorDetails(fmt.Sprintf("catalog %s not found", resource.CatalogID))
-			otellog.LogError(ctx, "Catalog not found", httpErr)
-			return nil, httpErr
-		}
-		if err := ensureCatalogEnabled(ctx, catalog); err != nil {
-			otellog.LogError(ctx, "Catalog is disabled", err)
 			return nil, err
 		}
-
-		return rqs.executeOpenSearchQuery(ctx, req, []string{}, catalog)
 	}
+	session, err := rawQueryCursorSessions.create(
+		accountIDFromContext(ctx),
+		prepared.catalog.ID,
+		prepared.resourceIDs,
+		prepared.sql,
+		req.Paging.Limit,
+		req.Paging.KeepAliveSec,
+		req.QueryTimeoutSec,
+	)
+	if err != nil {
+		return nil, cursorSessionLimitError(ctx)
+	}
+	session.Offset = req.Paging.Offset
+	session.TotalCount = totalCount
+	session.HasTotalCount = req.NeedTotal
+	session.NeedTotal = req.NeedTotal
+	bindCursorResource(session, req)
+	session.Lock()
+	defer session.Unlock()
+	result, err := rqs.executeSQLCursorPage(queryCtx, session, prepared.catalog, prepared.warnings)
+	if err != nil {
+		// The client has not received this token, so it cannot retry this
+		// session. Do not retain it until idle expiry.
+		rawQueryCursorSessions.remove(session.ID)
+	}
+	return result, err
+}
 
-	// 3. 从SQL中提取所有{{.resource_id}}占位符
+func (rqs *rawQueryService) executeSQLCursorContinuation(ctx context.Context, req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
+	session, ok := rawQueryCursorSessions.acquire(req.Paging.Cursor)
+	if !ok || session.ResourceDataParams != nil {
+		if ok {
+			rawQueryCursorSessions.release(session)
+		}
+		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_InvalidParameter).
+			WithErrorDetails("cursor not found or expired")
+	}
+	defer rawQueryCursorSessions.release(session)
+	if session.AccountID != accountIDFromContext(ctx) {
+		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, verrors.VegaBackend_Query_InvalidParameter).
+			WithErrorDetails("cursor does not belong to the current account")
+	}
+	if err := validateCursorResourceBinding(ctx, session, req); err != nil {
+		return nil, err
+	}
+	queryCtx, cancel := queryExecutionContext(ctx, session.QueryTimeoutSec)
+	defer cancel()
+	catalog, warnings, err := rqs.checkSameDataSource(queryCtx, session.ResourceIDs)
+	if err != nil {
+		return nil, err
+	}
+	if catalog.ID != session.CatalogID {
+		return nil, rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Query_ExecuteFailed).
+			WithErrorDetails("cursor catalog changed")
+	}
+	switch session.QueryFormat {
+	case interfaces.QueryFormatSQL:
+		return rqs.executeSQLCursorPage(queryCtx, session, catalog, warnings)
+	case interfaces.QueryFormatDSL:
+		return rqs.executeOpenSearchCursorPage(queryCtx, session, catalog, warnings)
+	default:
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
+			WithErrorDetails("cursor has unsupported query format")
+	}
+}
+
+type preparedSQLQuery struct {
+	catalog     *interfaces.Catalog
+	resourceIDs []string
+	sql         string
+	warnings    []string
+}
+
+// prepareSQLQuery is the shared SQL preparation pipeline for both single and
+// cursor execution. Policy validation deliberately happens after controlled
+// resource binding and before compilation or connector execution.
+func (rqs *rawQueryService) prepareSQLQuery(ctx context.Context, req *interfaces.RawQueryRequest) (*preparedSQLQuery, error) {
 	resourceIDs, err := rqs.extractResourceIDs(req.Query)
 	if err != nil {
-		otellog.LogError(ctx, "Extract resource ids failed", err)
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 			WithErrorDetails(fmt.Sprintf("extract resource ids failed: %v", err))
 	}
-
-	// 4. 判断查询类型
 	if len(resourceIDs) == 0 {
-		// 没有resource_id，直接执行原生SQL（需要指定resource_type）
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
-			WithErrorDetails("resource_type is required when no resource_id in query")
-		otellog.LogError(ctx, "Resource type is required", httpErr)
-		return nil, httpErr
+		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+			WithErrorDetails("at least one resource_id is required for SQL queries")
 	}
-
-	// 5. 判断所有resource_id是否来自同一个数据源
-	// 获取catalog（从第一个resource_id获取）
-	if len(resourceIDs) > 0 {
-		// 批量获取所有 resource_id 对应的资源，统一做存在性 + 状态校验。
-		// 即便后续 fast-path（OpenSearch/MySQL）只用 resources[0] 拿 catalog，
-		// 多 resource 场景下也必须全部检查，否则非 active 资源会被绕过。
-		resources, err := rqs.rs.GetByIDs(ctx, resourceIDs)
-		if err != nil {
-			otellog.LogError(ctx, "Get resources failed", err)
-			return nil, err.(*rest.HTTPError)
-		}
-		if len(resources) != len(resourceIDs) {
-			existing := make(map[string]bool, len(resources))
-			for _, r := range resources {
-				existing[r.ID] = true
-			}
-			for _, id := range resourceIDs {
-				if !existing[id] {
-					httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_ResourceNotFound).
-						WithErrorDetails(fmt.Sprintf("resource %s not found", id))
-					otellog.LogError(ctx, "Resource not found", httpErr)
-					return nil, httpErr
-				}
-			}
-		}
-		ws, err := resourcelogic.EnsureResourcesQueryable(ctx, resources)
-		if err != nil {
-			otellog.LogError(ctx, "Resource is not queryable", err)
-			return nil, err
-		}
-		warnings = append(warnings, ws...)
-
-		resource := resources[0]
-		// 获取catalog
-		catalog, err := rqs.cs.GetByID(ctx, resource.CatalogID, true)
-		if err != nil {
-			otellog.LogError(ctx, "Get catalog failed", err)
-			return nil, err.(*rest.HTTPError)
-		}
-		if catalog == nil {
-			httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_CatalogNotFound).
-				WithErrorDetails(fmt.Sprintf("catalog %s not found", resource.CatalogID))
-			otellog.LogError(ctx, "Catalog not found", httpErr)
-			return nil, httpErr
-		}
-		if err := ensureCatalogEnabled(ctx, catalog); err != nil {
-			otellog.LogError(ctx, "Catalog is disabled", err)
-			return nil, err
-		}
-
-		// 根据catalog的ConnectorType来决定调用哪个方法
-		if catalog.ConnectorType == interfaces.ConnectorTypeOpenSearch {
-			return rqs.executeOpenSearchQuery(ctx, req, resourceIDs, catalog)
-		}
-
-		// 如果指定了resource_type为mysql/mariadb/postgresql，则不进行SQL转换，直接执行
-		if req.ResourceType == interfaces.ConnectorTypeMySQL || req.ResourceType == interfaces.ConnectorTypeMariaDB || req.ResourceType == interfaces.ConnectorTypePostgreSQL {
-			// 将resource_id替换为catalog.schema.table格式
-			replacedSQL, err := rqs.replaceResourceIDWithSchemaTable(ctx, req.Query, resourceIDs, catalog)
-			if err != nil {
-				otellog.LogError(ctx, "Replace resource id failed", err)
-				return nil, err
-			}
-
-			// 直接执行SQL，不进行转换
-			result, err := rqs.executeSQLWithQueryType(ctx, catalog, replacedSQL, req.QueryType)
-			if err != nil {
-				otellog.LogError(ctx, "Execute SQL failed", err)
-				return nil, err
-			}
-
-			// standard模式下，限制最大返回数据量为10000
-			if req.QueryType == "" || req.QueryType == "standard" {
-				if len(result.Entries) > 10000 {
-					result.Entries = result.Entries[:10000]
-					result.Stats.HasMore = true
-				}
-				// 更新TotalCount为实际返回的数据条数
-				result.TotalCount = int64(len(result.Entries))
-			}
-
-			return result, nil
-		}
-
-		// 对于非OpenSearch查询，继续执行下面的SQL处理逻辑
-	}
-
-	// 6. 判断所有resource_id是否来自同一个数据源
-	dataSource, ws, err := rqs.checkSameDataSource(ctx, resourceIDs)
+	catalog, warnings, err := rqs.checkSameDataSource(ctx, resourceIDs)
 	if err != nil {
-		otellog.LogError(ctx, "Check data source failed", err)
 		return nil, err
 	}
-	warnings = append(warnings, ws...)
-
-	// 7. 将resource_id替换为catalog.schema.table格式
-	replacedSQL, err := rqs.replaceResourceIDWithSchemaTable(ctx, req.Query, resourceIDs, dataSource)
+	replacedSQL, err := rqs.replaceResourceIDWithSchemaTable(ctx, req.Query, resourceIDs, catalog)
 	if err != nil {
-		otellog.LogError(ctx, "Replace resource id failed", err)
 		return nil, err
 	}
-
-	// 8. 根据catalog的ConnectorType决定目标SQL方言
-	var targetDialect string
-	switch dataSource.ConnectorType {
-	case interfaces.ConnectorTypeMariaDB, interfaces.ConnectorTypeMySQL:
-		targetDialect = "mysql"
-	case interfaces.ConnectorTypePostgreSQL:
-		targetDialect = "postgres"
-	default:
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
-			WithErrorDetails(fmt.Sprintf("unsupported connector type: %s", dataSource.ConnectorType))
-		otellog.LogError(ctx, "Unsupported connector type", httpErr)
-		return nil, httpErr
-	}
-
-	// 9. 使用sqlglot将Trino SQL转换为目标SQL方言
-	sqlParseResult, err := sqlglot.TranspileSQL(replacedSQL, "trino", targetDialect)
+	inputDialect := req.EffectiveInputDialect()
+	allowedReferences, err := rqs.resourceSourceIdentifiers(ctx, resourceIDs)
 	if err != nil {
-		otellog.LogError(ctx, "Transpile SQL failed", err)
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
-			WithErrorDetails(fmt.Sprintf("transpile SQL failed: %v", err))
+		return nil, err
 	}
+	if err := validateSQLPolicy(ctx, replacedSQL, inputDialect, allowedReferences); err != nil {
+		return nil, err
+	}
+	targetDialect, err := targetDialectForCatalog(ctx, catalog)
+	if err != nil {
+		return nil, err
+	}
+	finalSQL := replacedSQL
+	if inputDialect != targetDialect {
+		result, err := sqlglot.TranspileSQL(ctx, replacedSQL, inputDialect, targetDialect)
+		if err != nil {
+			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
+				WithErrorDetails("failed to compile SQL query")
+		}
+		finalSQL = result.SQL
+		// The connector executes finalSQL, not the input-dialect SQL validated
+		// above. Revalidate the target-dialect output so the read-only and
+		// table-reference boundaries apply to the executable statement.
+		if err := validateSQLPolicy(ctx, finalSQL, targetDialect, allowedReferences); err != nil {
+			return nil, err
+		}
+	}
+	return &preparedSQLQuery{catalog: catalog, resourceIDs: resourceIDs, sql: trimSQLTerminator(finalSQL), warnings: warnings}, nil
+}
 
-	// 10. 为standard模式查询添加LIMIT 10000限制
-	// 使用正则表达式检查SQL是否已经包含LIMIT子句（不区分大小写）
-	finalSQL := sqlParseResult.SQL
-	limitRegex := regexp.MustCompile(`(?i)\bLIMIT\s+(\d+)\s*(?:,\s*\d+)?\s*$`)
-	if !limitRegex.MatchString(finalSQL) {
-		// 如果没有包含LIMIT子句，添加LIMIT 10000
-		finalSQL = fmt.Sprintf("%s LIMIT 10000", finalSQL)
+func validateSQLPolicy(ctx context.Context, sql, dialect string, allowedReferences []string) error {
+	if err := rawQueryPolicy.ValidateSQL(ctx, sql, dialect); err != nil {
+		if httpErr := rawQueryValidationError(ctx, err); httpErr != nil {
+			return httpErr
+		}
+		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
+			WithErrorDetails("failed to validate SQL query")
+	}
+	if err := rawQueryPolicy.ValidateTableReferences(ctx, sql, dialect, allowedReferences); err != nil {
+		if httpErr := rawQueryValidationError(ctx, err); httpErr != nil {
+			return httpErr
+		}
+		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
+			WithErrorDetails("failed to validate SQL resource references")
+	}
+	return nil
+}
+
+func (rqs *rawQueryService) resourceSourceIdentifiers(ctx context.Context, resourceIDs []string) ([]string, error) {
+	identifiers := make([]string, 0, len(resourceIDs))
+	for _, resourceID := range resourceIDs {
+		resource, err := rqs.rs.GetByID(ctx, resourceID)
+		if err != nil {
+			return nil, err.(*rest.HTTPError)
+		}
+		if resource == nil || strings.TrimSpace(resource.SourceIdentifier) == "" {
+			return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_ResourceNotFound).
+				WithErrorDetails(fmt.Sprintf("resource %s has no queryable source", resourceID))
+		}
+		identifiers = append(identifiers, resource.SourceIdentifier)
+	}
+	return identifiers, nil
+}
+
+func trimSQLTerminator(sql string) string {
+	return strings.TrimSuffix(strings.TrimSpace(sql), ";")
+}
+
+func (rqs *rawQueryService) executeSQLCursorPage(ctx context.Context, session *interfaces.CursorSession, catalog *interfaces.Catalog, warnings []string) (*interfaces.RawQueryResponse, error) {
+	pageSQL := fmt.Sprintf("SELECT * FROM (%s) AS _raw_query_cursor LIMIT %d OFFSET %d", session.CompiledSQL, session.Limit+1, session.Offset)
+	pageCtx, cancel := queryExecutionContext(ctx, session.QueryTimeoutSec)
+	defer cancel()
+	result, err := rqs.executeSQL(pageCtx, catalog, pageSQL, interfaces.PagingModeCursor)
+	if err != nil {
+		return nil, err
+	}
+	hasNext := len(result.Entries) > session.Limit
+	if hasNext {
+		result.Entries = result.Entries[:session.Limit]
+		session.Offset += session.Limit
+		rawQueryCursorSessions.markPageSuccess(session)
+		result.Paging = cursorPagingResponse(session)
 	} else {
-		// 如果已经包含LIMIT子句，检查是否超过10000
-		matches := limitRegex.FindStringSubmatch(finalSQL)
-		if len(matches) > 1 {
-			var limit int
-			_, err := fmt.Sscanf(matches[1], "%d", &limit)
-			if err == nil && limit > 10000 {
-				// 如果LIMIT超过10000，替换为10000
-				finalSQL = limitRegex.ReplaceAllString(finalSQL, "LIMIT 10000")
-			}
-		}
+		result.Paging = &interfaces.PagingResponse{}
+		rawQueryCursorSessions.closeSession(session.ID)
 	}
+	if session.HasTotalCount {
+		totalCount := session.TotalCount
+		result.TotalCount = &totalCount
+	} else {
+		result.TotalCount = nil
+	}
+	result.Warnings = append(result.Warnings, warnings...)
+	return result, nil
+}
 
-	// 11. 执行转换后的SQL
-	result, err := rqs.executeSQLWithQueryType(ctx, dataSource, finalSQL, req.QueryType)
+func accountIDFromContext(ctx context.Context) string {
+	account, ok := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
+	if !ok {
+		return ""
+	}
+	return account.ID
+}
+
+func (rqs *rawQueryService) executeInitialOpenSearchCursor(ctx context.Context, req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
+	queryCtx, cancel := queryExecutionContext(ctx, req.QueryTimeoutSec)
+	defer cancel()
+
+	query, indexName, catalog, warning, err := rqs.prepareOpenSearchCursorQuery(queryCtx, req)
 	if err != nil {
 		return nil, err
 	}
-	// standard查询模式下，如果返回数据条数等于10000，则has_more设置为true
-	if len(result.Entries) >= 10000 {
-		result.Stats.HasMore = true
+	if hasOpenSearchAggregation(query) {
+		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+			WithErrorDetails("cursor paging does not support OpenSearch aggregation queries")
+	}
+	session, err := rawQueryCursorSessions.create(
+		accountIDFromContext(ctx), catalog.ID, []string{queryResourceID(req.Query)}, "", req.Paging.Limit, req.Paging.KeepAliveSec, req.QueryTimeoutSec,
+	)
+	if err != nil {
+		return nil, cursorSessionLimitError(ctx)
+	}
+	session.QueryFormat = interfaces.QueryFormatDSL
+	bindCursorResource(session, req)
+	session.OpenSearchQuery = query
+	session.OpenSearchIndex = indexName
+	session.Offset = req.Paging.Offset
+	session.NeedTotal = req.NeedTotal
+	session.Lock()
+	defer session.Unlock()
+	warnings := make([]string, 0, 1)
+	if warning != "" {
+		warnings = append(warnings, warning)
+	}
+	result, err := rqs.executeOpenSearchCursorPage(queryCtx, session, catalog, warnings)
+	if err != nil {
+		rawQueryCursorSessions.remove(session.ID)
+	}
+	return result, err
+}
+
+func hasOpenSearchAggregation(query map[string]any) bool {
+	_, hasAggs := query["aggs"]
+	_, hasAggregations := query["aggregations"]
+	return hasAggs || hasAggregations
+}
+
+func queryResourceID(query any) string {
+	queryMap, _ := query.(map[string]any)
+	resourceID, _ := queryMap["resource_id"].(string)
+	return resourceID
+}
+
+func cursorSessionLimitError(ctx context.Context) error {
+	return rest.NewHTTPError(ctx, http.StatusTooManyRequests, verrors.VegaBackend_Query_CursorSessionLimitExceeded).
+		WithErrorDetails("cursor session limit reached, please retry later")
+}
+
+func bindCursorResource(session *interfaces.CursorSession, req *interfaces.RawQueryRequest) {
+	if req == nil || req.ResourceDataResourceID == "" {
+		return
+	}
+	session.ResourceDataResourceID = req.ResourceDataResourceID
+	session.ResourceDataUpdateTime = req.ResourceDataUpdateTime
+}
+
+func validateCursorResourceBinding(ctx context.Context, session *interfaces.CursorSession,
+	req *interfaces.RawQueryRequest) error {
+	if session.ResourceDataResourceID == "" {
+		if req != nil && req.ResourceDataResourceID != "" {
+			return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Query_CursorResourceChanged).
+				WithErrorDetails("raw query cursor cannot be used for resource data paging")
+		}
+		return nil
+	}
+	if req == nil || req.ResourceDataResourceID != session.ResourceDataResourceID {
+		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Query_CursorResourceChanged).
+			WithErrorDetails("cursor does not belong to the current resource")
+	}
+	if req.ResourceDataUpdateTime != session.ResourceDataUpdateTime {
+		rawQueryCursorSessions.closeSession(session.ID)
+		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Query_CursorResourceChanged).
+			WithErrorDetails("resource changed after cursor creation")
+	}
+	return nil
+}
+
+func (rqs *rawQueryService) prepareOpenSearchCursorQuery(ctx context.Context, req *interfaces.RawQueryRequest) (map[string]any, string, *interfaces.Catalog, string, error) {
+	queryMap := req.Query.(map[string]any)
+	resourceID := queryResourceID(queryMap)
+	if resourceID == "" {
+		return nil, "", nil, "", rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+			WithErrorDetails("resource_id is required for DSL queries")
+	}
+	if sort, ok := queryMap["sort"].([]any); !ok || len(sort) == 0 {
+		return nil, "", nil, "", rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+			WithErrorDetails("sort is required for OpenSearch cursor paging")
+	}
+
+	resource, err := rqs.rs.GetByID(ctx, resourceID)
+	if err != nil {
+		return nil, "", nil, "", err.(*rest.HTTPError)
+	}
+	if resource == nil {
+		return nil, "", nil, "", rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_ResourceNotFound).
+			WithErrorDetails(fmt.Sprintf("resource %s not found", resourceID))
+	}
+	warning, err := resourcelogic.EnsureResourceQueryable(ctx, resource)
+	if err != nil {
+		return nil, "", nil, "", err
+	}
+	catalog, err := rqs.cs.GetByID(ctx, resource.CatalogID, true)
+	if err != nil {
+		return nil, "", nil, "", err.(*rest.HTTPError)
+	}
+	if catalog == nil {
+		return nil, "", nil, "", rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_CatalogNotFound).
+			WithErrorDetails(fmt.Sprintf("catalog %s not found", resource.CatalogID))
+	}
+	if err := ensureCatalogEnabled(ctx, catalog); err != nil {
+		return nil, "", nil, "", err
+	}
+	if catalog.ConnectorType != interfaces.ConnectorTypeOpenSearch {
+		return nil, "", nil, "", rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+			WithErrorDetails(fmt.Sprintf("DSL input requires an opensearch catalog, got: %s", catalog.ConnectorType))
+	}
+
+	prepared := make(map[string]any, len(queryMap))
+	for key, value := range queryMap {
+		if key != "resource_id" && key != "size" && key != "from" && key != "search_after" && key != "track_total_hits" {
+			prepared[key] = value
+		}
+	}
+	prepared["size"] = req.Paging.Limit
+	if req.NeedTotal {
+		// Exact hit counts are only required when the caller asks for one.
+		prepared["track_total_hits"] = true
+	}
+	if req.Paging.Offset > 0 {
+		prepared["from"] = req.Paging.Offset
+	}
+	return prepared, resource.SourceIdentifier, catalog, warning, nil
+}
+
+func (rqs *rawQueryService) executeOpenSearchCursorPage(ctx context.Context, session *interfaces.CursorSession, catalog *interfaces.Catalog, warnings []string) (*interfaces.RawQueryResponse, error) {
+	query := make(map[string]any, len(session.OpenSearchQuery)+1)
+	for key, value := range session.OpenSearchQuery {
+		query[key] = value
+	}
+	if len(session.SearchAfter) > 0 {
+		delete(query, "from")
+		query["search_after"] = session.SearchAfter
+	}
+	if session.NeedTotal && session.HasTotalCount {
+		delete(query, "track_total_hits")
+	}
+	pageCtx := ctx
+	if session.QueryTimeoutSec > 0 {
+		var cancel context.CancelFunc
+		pageCtx, cancel = context.WithTimeout(ctx, time.Duration(session.QueryTimeoutSec)*time.Second)
+		defer cancel()
+	}
+	connector, err := factory.GetFactory().CreateConnectorInstance(pageCtx, catalog.ConnectorType, catalog.ConnectorCfg)
+	if err != nil {
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
+			WithErrorDetails("connector initialization failed")
+	}
+	defer func() { _ = connector.Close(pageCtx) }()
+	indexConnector, ok := connector.(interfaces.IndexConnector)
+	if !ok {
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
+			WithErrorDetails("opensearch connector does not implement IndexConnector")
+	}
+	result, err := indexConnector.ExecuteRawQuery(pageCtx, session.OpenSearchIndex, query)
+	if err != nil {
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
+			WithErrorDetails("query execution failed")
+	}
+	if session.NeedTotal && !session.HasTotalCount && result.TotalCount != nil {
+		session.TotalCount = *result.TotalCount
+		session.HasTotalCount = true
+	}
+
+	hasNext := false
+	if session.NeedTotal {
+		// Real OpenSearch responses provide an exact total on the first page.
+		// Retain the fallback for connector implementations that omit it.
+		hasMoreResults := !session.HasTotalCount ||
+			int64(session.Offset+len(result.Entries)) < session.TotalCount
+		hasNext = len(result.Entries) == session.Limit && hasMoreResults && len(result.SearchAfter) > 0
+	} else {
+		// Without an exact total, a full page may be the final page. Preserve
+		// the cursor and let one final empty request close that exact-multiple
+		// case; this keeps size within OpenSearch's result-window limit.
+		hasNext = len(result.Entries) == session.Limit && len(result.SearchAfter) > 0
+	}
+	if hasNext {
+		session.SearchAfter = append([]any(nil), result.SearchAfter...)
+		session.Offset += len(result.Entries)
+		rawQueryCursorSessions.markPageSuccess(session)
+		result.Paging = cursorPagingResponse(session)
+	} else {
+		result.Paging = &interfaces.PagingResponse{}
+		rawQueryCursorSessions.closeSession(session.ID)
+	}
+	if session.HasTotalCount {
+		totalCount := session.TotalCount
+		result.TotalCount = &totalCount
+	} else if !session.NeedTotal {
+		result.TotalCount = nil
+	}
+	result.Warnings = append(result.Warnings, warnings...)
+	return result, nil
+}
+
+func (rqs *rawQueryService) executeInitialDSLQuery(ctx context.Context, req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
+	queryCtx, cancel := queryExecutionContext(ctx, req.QueryTimeoutSec)
+	defer cancel()
+
+	requestQuery := req.Query.(map[string]any)
+	queryMap := make(map[string]any, len(requestQuery)+2)
+	for key, value := range requestQuery {
+		// Paging and total-count behavior are controlled by the API contract.
+		if key != "search_after" && key != "track_total_hits" {
+			queryMap[key] = value
+		}
+	}
+	isAggregation := hasOpenSearchAggregation(queryMap)
+	if isAggregation {
+		// Aggregations are expanded into row-oriented entries. Document paging
+		// must not rewrite the aggregation into a hit query.
+		queryMap["size"] = 0
+		delete(queryMap, "from")
+	} else {
+		queryMap["size"] = req.Paging.Limit
+		queryMap["from"] = req.Paging.Offset
+	}
+	if req.NeedTotal {
+		queryMap["track_total_hits"] = true
+	}
+	resourceID, _ := queryMap["resource_id"].(string)
+	if resourceID == "" {
+		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+			WithErrorDetails("resource_id is required for DSL queries")
+	}
+
+	resource, err := rqs.rs.GetByID(queryCtx, resourceID)
+	if err != nil {
+		return nil, err.(*rest.HTTPError)
+	}
+	if resource == nil {
+		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_ResourceNotFound).
+			WithErrorDetails(fmt.Sprintf("resource %s not found", resourceID))
+	}
+	warning, err := resourcelogic.EnsureResourceQueryable(queryCtx, resource)
+	if err != nil {
+		return nil, err
+	}
+
+	catalog, err := rqs.cs.GetByID(queryCtx, resource.CatalogID, true)
+	if err != nil {
+		return nil, err.(*rest.HTTPError)
+	}
+	if catalog == nil {
+		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_CatalogNotFound).
+			WithErrorDetails(fmt.Sprintf("catalog %s not found", resource.CatalogID))
+	}
+	if err := ensureCatalogEnabled(queryCtx, catalog); err != nil {
+		return nil, err
+	}
+	if catalog.ConnectorType != interfaces.ConnectorTypeOpenSearch {
+		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+			WithErrorDetails(fmt.Sprintf("DSL input requires an opensearch catalog, got: %s", catalog.ConnectorType))
+	}
+
+	delete(queryMap, "resource_id")
+	connector, err := factory.GetFactory().CreateConnectorInstance(queryCtx, catalog.ConnectorType, catalog.ConnectorCfg)
+	if err != nil {
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
+			WithErrorDetails("connector initialization failed")
+	}
+	defer func() { _ = connector.Close(queryCtx) }()
+	indexConnector, ok := connector.(interfaces.IndexConnector)
+	if !ok {
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
+			WithErrorDetails("opensearch connector does not implement IndexConnector")
+	}
+	result, err := indexConnector.ExecuteRawQuery(queryCtx, resource.SourceIdentifier, queryMap)
+	if err != nil {
+		var validationErr *opensearchconnector.RawAggregationValidationError
+		if errors.As(err, &validationErr) {
+			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+				WithErrorDetails(validationErr.Error())
+		}
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
+			WithErrorDetails("query execution failed")
+	}
+	if isAggregation {
+		start := min(req.Paging.Offset, len(result.Entries))
+		end := len(result.Entries)
+		if req.Paging.Limit > 0 {
+			end = min(start+req.Paging.Limit, end)
+		}
+		result.Entries = result.Entries[start:end]
+	}
+	if warning != "" {
+		result.Warnings = append(result.Warnings, warning)
+	}
+	if !req.NeedTotal {
+		result.TotalCount = nil
 	}
 	return result, nil
 }
 
-// validateRequest 校验请求
-func (rqs *rawQueryService) validateRequest(ctx context.Context, req *interfaces.RawQueryRequest) error {
-	// 校验查询类型
-	if req.QueryType != "" && req.QueryType != "standard" && req.QueryType != "stream" {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
-			WithErrorDetails("query_type must be either 'standard' or 'stream'")
+func queryExecutionContext(ctx context.Context, queryTimeoutSec int) (context.Context, context.CancelFunc) {
+	if queryTimeoutSec <= 0 {
+		return ctx, func() {}
 	}
+	return context.WithTimeout(ctx, time.Duration(queryTimeoutSec)*time.Second)
+}
 
-	// 当不存在query_id时，query参数必填
-	if req.QueryID == "" && req.Query == nil {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
-			WithErrorDetails("query is required when query_id is not provided")
+func targetDialectForCatalog(ctx context.Context, catalog *interfaces.Catalog) (string, error) {
+	switch catalog.ConnectorType {
+	case interfaces.ConnectorTypeMariaDB, interfaces.ConnectorTypeMySQL:
+		return "mysql", nil
+	case interfaces.ConnectorTypePostgreSQL:
+		return "postgres", nil
+	default:
+		return "", rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+			WithErrorDetails(fmt.Sprintf("unsupported connector type: %s", catalog.ConnectorType))
 	}
+}
 
-	// 如果提供了query参数，需要进行类型校验
-	if req.Query != nil {
-		// 如果是OpenSearch查询，query应该是map类型
-		if req.ResourceType == interfaces.ConnectorTypeOpenSearch {
-			if _, ok := req.Query.(map[string]any); !ok {
-				return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
-					WithErrorDetails("query must be a JSON object for opensearch queries")
-			}
-			// 如果是OpenSearch流式查询，校验query中是否包含sort参数
-			if req.QueryType == "stream" {
-				if queryMap, ok := req.Query.(map[string]any); ok {
-					if _, ok := queryMap["sort"]; !ok {
-						return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
-							WithErrorDetails("sort is required for opensearch stream query")
-					}
-				}
-			}
-		} else {
-			// 其他类型的查询，query应该是字符串类型
-			if queryStr, ok := req.Query.(string); !ok || queryStr == "" {
-				return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
-					WithErrorDetails("query cannot be empty")
-			}
+func applySingleQueryPaging(sql string, offset, size int) string {
+	return fmt.Sprintf("SELECT * FROM (%s) AS _raw_query_single LIMIT %d OFFSET %d", sql, size, offset)
+}
+
+func (rqs *rawQueryService) executeSQLTotalCount(ctx context.Context, catalog *interfaces.Catalog, sql string) (int64, error) {
+	countSQL := fmt.Sprintf("SELECT COUNT(*) AS %s FROM (%s) AS _raw_query_total", rawQueryTotalCountColumn, sql)
+	result, err := rqs.executeSQL(ctx, catalog, countSQL, interfaces.PagingModeSingle)
+	if err != nil {
+		return 0, err
+	}
+	return rawQueryTotalCount(result)
+}
+
+func rawQueryTotalCount(result *interfaces.RawQueryResponse) (int64, error) {
+	if result == nil || len(result.Entries) != 1 {
+		return 0, fmt.Errorf("count query returned an invalid result")
+	}
+	value, ok := result.Entries[0][rawQueryTotalCountColumn]
+	if !ok {
+		return 0, fmt.Errorf("count query did not return %s", rawQueryTotalCountColumn)
+	}
+	switch v := value.(type) {
+	case int64:
+		return v, nil
+	case int:
+		return int64(v), nil
+	case int32:
+		return int64(v), nil
+	case float64:
+		if math.Trunc(v) != v || v < 0 || v > math.MaxInt64 {
+			return 0, fmt.Errorf("count query returned an invalid number")
 		}
+		return int64(v), nil
+	case string:
+		count, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || count < 0 {
+			return 0, fmt.Errorf("count query returned an invalid number")
+		}
+		return count, nil
+	default:
+		return 0, fmt.Errorf("count query returned an unsupported value")
 	}
-
-	// 流式查询时，query_id和query不能同时出现
-	if req.QueryType == "stream" && req.QueryID != "" && req.Query != nil {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
-			WithErrorDetails("query_id and query cannot be provided at the same time for stream query")
-	}
-
-	// 流式查询时，如果提供了query_id，则不需要校验query
-	if req.QueryType == "stream" && req.QueryID != "" {
-		return nil
-	}
-
-	// 流式查询时，stream_size必填（OpenSearch流式查询除外，使用size参数）
-	if req.QueryType == "stream" && req.ResourceType != interfaces.ConnectorTypeOpenSearch && req.StreamSize <= 0 {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
-			WithErrorDetails("stream_size is required for stream query and must be greater than 0")
-	}
-
-	return nil
 }
 
 // extractResourceIDs 从SQL中提取所有{{.resource_id}}占位符
 func (rqs *rawQueryService) extractResourceIDs(query any) ([]string, error) {
 	// 如果query是字符串类型，使用正则表达式提取resource_id
 	if queryStr, ok := query.(string); ok {
-		re := regexp.MustCompile(`\{\{\.?(\w+)\}\}`)
+		// Keep this grammar aligned with Resource ID validation: lower-case
+		// letters, digits, underscores, and hyphens are all valid IDs.
+		re := regexp.MustCompile(`\{\{\.?([a-z0-9][a-z0-9_-]{0,39})\}\}`)
 		matches := re.FindAllStringSubmatch(queryStr, -1)
 
 		resourceIDs := make([]string, 0, len(matches))
@@ -534,10 +838,10 @@ func ensureCatalogEnabled(ctx context.Context, catalog *interfaces.Catalog) erro
 	return nil
 }
 
-// replaceResourceIDWithSchemaTable 将resource_id替换为catalog.schema.table格式
+// replaceResourceIDWithSchemaTable 将resource_id替换为schema.table格式
 func (rqs *rawQueryService) replaceResourceIDWithSchemaTable(ctx context.Context, sql any, resourceIDs []string, catalog *interfaces.Catalog) (string, error) {
 	replacedSQL := sql.(string)
-	logger.Infof("Before replace - sql: %s, resource_ids: %v", replacedSQL, resourceIDs)
+	logger.Infof("Before replace - %s, resource_ids: %v", SafeQuerySummary(replacedSQL), resourceIDs)
 
 	for _, resourceID := range resourceIDs {
 		// 获取资源信息
@@ -550,8 +854,7 @@ func (rqs *rawQueryService) replaceResourceIDWithSchemaTable(ctx context.Context
 				WithErrorDetails(fmt.Sprintf("resource %s not found", resourceID))
 		}
 
-		// 构建catalog.schema.table格式
-		// 使用catalogName + resource.SourceIdentifier
+		// 构建schema.table格式, 使用resource.SourceIdentifier
 		// schemaTable := fmt.Sprintf(`%s.%s`, catalog.Name, resource.SourceIdentifier)
 
 		// 替换{{.resource_id}}和{{resource_id}}为schema.table
@@ -561,22 +864,22 @@ func (rqs *rawQueryService) replaceResourceIDWithSchemaTable(ctx context.Context
 		replacedSQL = regexp.MustCompile(regexp.QuoteMeta(placeholder2)).ReplaceAllString(replacedSQL, resource.SourceIdentifier)
 	}
 
-	logger.Infof("After replace - sql: %s", replacedSQL)
+	logger.Infof("After replace - %s", SafeQuerySummary(replacedSQL))
 	return replacedSQL, nil
 }
 
-// executeSQLWithQueryType 执行SQL查询并记录日志
-func (rqs *rawQueryService) executeSQLWithQueryType(ctx context.Context, catalog *interfaces.Catalog, sql string, queryType string) (*interfaces.RawQueryResponse, error) {
-	// 打印SQL日志，包含查询类型
-	logger.Infof("Executing %s query - sql: %s, catalog: %s", queryType, sql, catalog.Name)
+// executeSQL 执行 SQL 查询并记录分页模式。
+func (rqs *rawQueryService) executeSQL(ctx context.Context, catalog *interfaces.Catalog, sql string, pagingMode interfaces.PagingMode) (*interfaces.RawQueryResponse, error) {
+	logger.Infof("Executing query - %s, paging_mode: %s, catalog: %s", SafeQuerySummary(sql), pagingMode, catalog.Name)
 
 	// 创建connector
 	connector, err := factory.GetFactory().CreateConnectorInstance(ctx, catalog.ConnectorType, catalog.ConnectorCfg)
 	if err != nil {
 		otellog.LogError(ctx, "Create connector failed", err)
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
-			WithErrorDetails(err.Error())
+			WithErrorDetails("connector initialization failed")
 	}
+	defer func() { _ = connector.Close(ctx) }()
 
 	// 根据connector类型执行SQL
 	var result *interfaces.RawQueryResponse
@@ -595,363 +898,20 @@ func (rqs *rawQueryService) executeSQLWithQueryType(ctx context.Context, catalog
 	if err != nil {
 		otellog.LogError(ctx, "Execute SQL failed", err)
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
-			WithErrorDetails(err.Error())
+			WithErrorDetails("query execution failed")
 	}
 
-	logger.Infof("SQL query executed successfully - query_type: %s, returned rows: %d", queryType, len(result.Entries))
+	logger.Infof("SQL query executed successfully: paging_mode=%s, returned_rows=%d", pagingMode, len(result.Entries))
 	return result, nil
 }
 
-// executeOpenSearchQuery 执行OpenSearch DSL查询
-func (rqs *rawQueryService) executeOpenSearchQuery(ctx context.Context, req *interfaces.RawQueryRequest, resourceIDs []string, catalog *interfaces.Catalog) (*interfaces.RawQueryResponse, error) {
-	// 验证query字段是否为有效的JSON对象
-	queryMap, ok := req.Query.(map[string]any)
-	if !ok {
-		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
-			WithErrorDetails("query must be a JSON object for opensearch queries")
+func rawQueryValidationError(ctx context.Context, err error) error {
+	var validationErr *querypolicy.ReadOnlySQLValidationError
+	if !errors.As(err, &validationErr) {
+		return nil
 	}
-
-	// 确定resource_id
-	var resourceID string
-	// 优先从query参数中获取resource_id
-	if rid, ok := queryMap["resource_id"].(string); ok && rid != "" {
-		resourceID = rid
-		// 从query中移除resource_id，避免传递给OpenSearch
-		delete(queryMap, "resource_id")
-	} else if len(resourceIDs) > 0 {
-		// 如果query中没有resource_id，从resourceIDs中获取
-		resourceID = resourceIDs[0]
-	} else {
-		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
-			WithErrorDetails("resource_id is required for opensearch queries")
-	}
-
-	// 创建connector
-	connector, err := factory.GetFactory().CreateConnectorInstance(ctx, catalog.ConnectorType, catalog.ConnectorCfg)
-	if err != nil {
-		otellog.LogError(ctx, "Create connector failed", err)
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
-			WithErrorDetails(err.Error())
-	}
-
-	// 获取资源信息
-	resource, err := rqs.rs.GetByID(ctx, resourceID)
-	if err != nil {
-		return nil, err.(*rest.HTTPError)
-	}
-	if resource == nil {
-		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_ResourceNotFound).
-			WithErrorDetails(fmt.Sprintf("resource %s not found", resourceID))
-	}
-
-	// 使用resource.SourceIdentifier作为索引名
-	indexName := resource.SourceIdentifier
-
-	// 执行OpenSearch查询
-	opensearchConnector := connector.(interfaces.IndexConnector)
-	if !ok {
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
-			WithErrorDetails("connector is not an IndexConnector")
-	}
-
-	// 判断是否为流式查询
-	isStreamQuery := req.QueryType == "stream"
-
-	// 如果是流式查询，确保query中包含sort参数
-	if isStreamQuery {
-		if _, ok := queryMap["sort"]; !ok {
-			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
-				WithErrorDetails("sort is required for opensearch stream query")
-		}
-	} else {
-		// 如果是standard模式查询，限制最多返回10000条数据
-		const maxStandardQuerySize = 10000
-		if size, ok := queryMap["size"]; ok {
-			// 如果已经设置了size，检查是否超过10000
-			if sizeFloat, ok := size.(float64); ok && sizeFloat > maxStandardQuerySize {
-				queryMap["size"] = maxStandardQuerySize
-			}
-		} else {
-			// 如果没有设置size，设置为10000
-			queryMap["size"] = maxStandardQuerySize
-		}
-	}
-
-	result, err := opensearchConnector.ExecuteRawQuery(ctx, indexName, queryMap)
-	if err != nil {
-		otellog.LogError(ctx, "Execute OpenSearch query failed", err)
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
-			WithErrorDetails(err.Error())
-	}
-
-	// 设置has_more
-	if isStreamQuery {
-		// 流式查询：判断是否还有更多数据
-		size := 10 // 默认值
-		if s, ok := queryMap["size"].(float64); ok {
-			size = int(s)
-		}
-		result.Stats.HasMore = len(result.Entries) >= size
-		// search_after值已经由OpenSearch连接器在ExecuteRawQuery中设置
-	} else {
-		// 标准查询：判断是否还有更多数据
-		const maxStandardQuerySize = 10000
-		// 如果返回的数据量达到最大限制，说明可能还有更多数据
-		if len(result.Entries) >= maxStandardQuerySize {
-			result.Stats.HasMore = true
-		} else {
-			// 否则，比较返回的数据条数和总数据量
-			result.Stats.HasMore = int64(len(result.Entries)) < result.TotalCount
-		}
-	}
-
-	return result, nil
+	return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+		WithErrorDetails("raw query rejected by read-only policy")
 }
 
-// executeStreamQuery 执行流式查询
-func (rqs *rawQueryService) executeStreamQuery(ctx context.Context, req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
-	// 1. 如果提供了query_id，则使用已有会话
-	if req.QueryID != "" {
-		return rqs.executeStreamQueryWithSession(ctx, req)
-	}
-
-	// 2. 如果没有提供query_id，则创建新会话
-	return rqs.executeStreamQueryNewSession(ctx, req)
-}
-
-// executeStreamQueryNewSession 创建新会话并执行流式查询
-func (rqs *rawQueryService) executeStreamQueryNewSession(ctx context.Context, req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
-	// 1. 从SQL中提取resource_id
-	resourceIDs, err := rqs.extractResourceIDs(req.Query)
-	if err != nil {
-		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
-			WithErrorDetails(fmt.Sprintf("extract resource ids failed: %v", err))
-	}
-
-	if len(resourceIDs) == 0 {
-		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
-			WithErrorDetails("resource_id is required for stream query")
-	}
-
-	// 2. 获取资源信息
-	resource, err := rqs.rs.GetByID(ctx, resourceIDs[0])
-	if err != nil {
-		return nil, err.(*rest.HTTPError)
-	}
-	if resource == nil {
-		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_ResourceNotFound).
-			WithErrorDetails(fmt.Sprintf("resource %s not found", resourceIDs[0]))
-	}
-
-	// 3. 获取catalog
-	catalog, err := rqs.cs.GetByID(ctx, resource.CatalogID, true)
-	if err != nil {
-		return nil, err.(*rest.HTTPError)
-	}
-	if catalog == nil {
-		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_CatalogNotFound).
-			WithErrorDetails(fmt.Sprintf("catalog %s not found", resource.CatalogID))
-	}
-	if err := ensureCatalogEnabled(ctx, catalog); err != nil {
-		return nil, err
-	}
-
-	// 4. 检查是否支持流式查询
-	if catalog.ConnectorType != interfaces.ConnectorTypeMariaDB && catalog.ConnectorType != interfaces.ConnectorTypeMySQL && catalog.ConnectorType != interfaces.ConnectorTypePostgreSQL {
-		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
-			WithErrorDetails(fmt.Sprintf("stream query is not supported for connector type: %s", catalog.ConnectorType))
-	}
-
-	// 5. 获取原始SQL
-	var originalSQL string
-	if queryStr, ok := req.Query.(string); ok {
-		originalSQL = queryStr
-	}
-
-	// 6. 创建流式查询会话
-	streamManager := GetStreamQueryManager()
-	session, err := streamManager.CreateSession(catalog.ConnectorType, catalog.Name, catalog.ID, catalog, req.StreamSize, originalSQL, resourceIDs)
-	if err != nil {
-		otellog.LogError(ctx, "Create stream query session failed", err)
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
-			WithErrorDetails(err.Error())
-	}
-
-	// 记录query_id和query的对应关系
-	logger.Infof("Created stream query session - query_id: %s, query: %s, resource_ids: %v", session.QueryID, originalSQL, resourceIDs)
-
-	// 7. 执行查询
-	return rqs.executeSQLWithSession(ctx, req, resourceIDs, session)
-}
-
-// executeStreamQueryWithSession 使用已有会话执行流式查询
-func (rqs *rawQueryService) executeStreamQueryWithSession(ctx context.Context, req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
-	// 1. 获取会话
-	streamManager := GetStreamQueryManager()
-	session, ok := streamManager.GetSession(req.QueryID)
-	if !ok {
-		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_InvalidParameter).
-			WithErrorDetails(fmt.Sprintf("stream query session not found: %s", req.QueryID))
-	}
-
-	// 2. 如果提供了query参数，从SQL中提取resource_id
-	var resourceIDs []string
-	if req.Query != nil {
-		var err error
-		resourceIDs, err = rqs.extractResourceIDs(req.Query)
-		if err != nil {
-			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
-				WithErrorDetails(fmt.Sprintf("extract resource ids failed: %v", err))
-		}
-	}
-
-	// 记录使用已有会话时的query_id和query的对应关系
-	logger.Infof("Using existing stream query session - query_id: %s, query: %s, resource_ids: %v, offset: %d",
-		session.QueryID, session.OriginalSQL, session.ResourceIDs, session.Offset)
-
-	// 3. 执行查询
-	return rqs.executeSQLWithSession(ctx, req, resourceIDs, session)
-}
-
-// executeSQLWithSession 使用会话执行SQL查询
-func (rqs *rawQueryService) executeSQLWithSession(ctx context.Context, req *interfaces.RawQueryRequest, resourceIDs []string, session *StreamQuerySession) (*interfaces.RawQueryResponse, error) {
-	// 1. 获取catalog和resourceIDs
-	var catalog *interfaces.Catalog
-	var err error
-	var effectiveResourceIDs []string
-	var effectiveQuery any
-	var sessionWarnings []string
-
-	// 如果请求中提供了resourceIDs，则使用请求中的
-	if len(resourceIDs) > 0 {
-		effectiveResourceIDs = resourceIDs
-		effectiveQuery = req.Query
-		// 从resourceIDs获取catalog
-		catalog, sessionWarnings, err = rqs.checkSameDataSource(ctx, effectiveResourceIDs)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		// 否则使用会话中的catalog和resourceIDs
-		catalog, err = rqs.cs.GetByID(ctx, session.CatalogID, true)
-		if err != nil {
-			return nil, err.(*rest.HTTPError)
-		}
-		if catalog == nil {
-			return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_CatalogNotFound).
-				WithErrorDetails(fmt.Sprintf("catalog %s not found", session.CatalogID))
-		}
-		if err := ensureCatalogEnabled(ctx, catalog); err != nil {
-			return nil, err
-		}
-		effectiveResourceIDs = session.ResourceIDs
-		// 使用会话中保存的原始SQL
-		effectiveQuery = session.OriginalSQL
-	}
-
-	// 2. 将resource_id替换为catalog.schema.table格式
-	replacedSQL, err := rqs.replaceResourceIDWithSchemaTable(ctx, effectiveQuery, effectiveResourceIDs, catalog)
-	if err != nil {
-		return nil, err
-	}
-
-	// 3. 根据catalog的ConnectorType决定目标SQL方言
-	var targetDialect string
-	switch catalog.ConnectorType {
-	case interfaces.ConnectorTypeMariaDB, interfaces.ConnectorTypeMySQL:
-		targetDialect = "mysql"
-	case interfaces.ConnectorTypePostgreSQL:
-		targetDialect = "postgres"
-	default:
-		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
-			WithErrorDetails(fmt.Sprintf("unsupported connector type: %s", catalog.ConnectorType))
-	}
-
-	// 4. 使用sqlglot将Trino SQL转换为目标SQL方言
-	sqlParseResult, err := sqlglot.TranspileSQL(replacedSQL, "trino", targetDialect)
-	if err != nil {
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
-			WithErrorDetails(fmt.Sprintf("transpile SQL failed: %v", err))
-	}
-
-	// 5. 获取当前偏移量
-	streamManager := GetStreamQueryManager()
-	currentSession, ok := streamManager.GetSession(session.QueryID)
-	if !ok {
-		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_InvalidParameter).
-			WithErrorDetails(fmt.Sprintf("stream query session not found: %s", session.QueryID))
-	}
-
-	// 6. 添加或替换LIMIT和OFFSET子句
-	// 使用正则表达式检查SQL是否已经包含LIMIT子句（不区分大小写）
-	var finalSQL string
-	// 匹配 LIMIT 子句（可能包含 OFFSET）
-	limitRegex := regexp.MustCompile(`(?i)\bLIMIT\s+(\d+)\s*(?:OFFSET\s+(\d+))?\s*$`)
-	logger.Infof("Before LIMIT/OFFSET processing - sql: %s", sqlParseResult.SQL)
-	logger.Infof("LIMIT regex match: %v", limitRegex.MatchString(sqlParseResult.SQL))
-
-	// 计算当前页应该返回的数据量
-	limitSize := currentSession.StreamSize
-	if limitRegex.MatchString(sqlParseResult.SQL) {
-		// 如果SQL中包含LIMIT子句，解析出原始LIMIT值
-		matches := limitRegex.FindStringSubmatch(sqlParseResult.SQL)
-		if len(matches) > 1 {
-			originalLimit := 0
-			_, err := fmt.Sscanf(matches[1], "%d", &originalLimit)
-			if err != nil {
-				return nil, err
-			}
-			// 计算剩余需要返回的数据量
-			remaining := originalLimit - currentSession.Offset
-			if remaining > 0 && remaining < limitSize {
-				limitSize = remaining
-			}
-		}
-		// 使用计算后的limitSize替换用户指定的LIMIT值，并添加或替换OFFSET
-		finalSQL = limitRegex.ReplaceAllString(sqlParseResult.SQL, fmt.Sprintf("LIMIT %d OFFSET %d", limitSize, currentSession.Offset))
-		logger.Infof("Replaced existing LIMIT clause - finalSQL: %s", finalSQL)
-	} else {
-		// 如果没有包含LIMIT子句，使用StreamSize添加它
-		finalSQL = fmt.Sprintf("%s LIMIT %d OFFSET %d", sqlParseResult.SQL, limitSize, currentSession.Offset)
-		logger.Infof("Added new LIMIT clause - finalSQL: %s", finalSQL)
-	}
-
-	// 记录执行查询的详细信息
-	logger.Infof("Executing stream query - query_id: %s, offset: %d, stream_size: %d, sql: %s",
-		currentSession.QueryID, currentSession.Offset, currentSession.StreamSize, finalSQL)
-
-	// 7. 使用会话中的catalog执行查询
-	result, err := rqs.executeSQLWithQueryType(ctx, currentSession.Catalog, finalSQL, "stream")
-	if err != nil {
-		return nil, err
-	}
-
-	// 8. 设置流式查询响应
-	result.Stats.QueryID = currentSession.QueryID
-	// 如果返回的数据量小于stream_size，说明这是最后一页
-	result.Stats.HasMore = len(result.Entries) >= currentSession.StreamSize
-	// 设置已获取到的数据总数
-	result.Stats.Offset = currentSession.Offset
-
-	logger.Infof("Stream query result - query_id: %s, returned rows: %d, stream_size: %d, has_more: %v, offset: %d",
-		currentSession.QueryID, len(result.Entries), currentSession.StreamSize, result.Stats.HasMore, currentSession.Offset)
-
-	if len(sessionWarnings) > 0 {
-		for _, w := range sessionWarnings {
-			otellog.LogWarn(ctx, "Stream query hit deprecated resource: "+w)
-		}
-		result.Warnings = append(result.Warnings, sessionWarnings...)
-	}
-
-	// 9. 只有在还有更多数据时才更新偏移量，为下一次查询做准备
-	if result.Stats.HasMore {
-		currentSession.Offset += currentSession.StreamSize
-		logger.Infof("Updated offset for next query - query_id: %s, new offset: %d", currentSession.QueryID, currentSession.Offset)
-	} else {
-		// 如果没有更多数据，删除会话，防止重复请求
-		logger.Infof("No more data - removing session - query_id: %s", currentSession.QueryID)
-		streamManager.RemoveSession(currentSession.QueryID)
-	}
-
-	return result, nil
-}
+var rawQueryPolicy querypolicy.Adapter = querypolicy.NewSQLGlotAdapter()

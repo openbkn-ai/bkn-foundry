@@ -5,7 +5,7 @@ info:
   description: |
     Vega Backend 原生查询端点（`POST /resources/query`）相关 API。
 
-    本端点把 query 透传给底层连接器执行，**不做结构化 filter 解析**：
+    本端点执行经服务端校验和资源绑定的原生查询，**不做结构化 filter 解析**：
 
     - SQL 引擎（mysql / postgresql / clickhouse / 达梦 / oracle）→ `query` 字段为 SQL 字符串
     - 索引引擎（opensearch / elasticsearch）→ `query` 字段为 DSL JSON 对象
@@ -14,14 +14,15 @@ info:
 
     | 维度 | `POST /resources/query` | `POST /resources/{id}/data` (Override:GET) |
     |---|---|---|
-    | 主键 | 无（不绑定 resource） | 绑定 `:id` |
-    | 输入 | 原生 SQL / DSL + `resource_type` | 结构化 `filter_condition` + 分页 |
-    | 输出 | 列元数据 + raw entries + 流式 cursor | 文档对象 + 可选 total_count |
-    | 流式 | ✅ `query_type=stream` + `query_id` 游标 | ❌ |
-    | 用途 | 跨 resource 联表 / 复杂 SQL / 流式大数据 | 应用层结构化访问 |
+    | 资源定位 | SQL 使用受控 `{{resource_id}}` 占位符；DSL 使用顶层 `resource_id` | 绑定 `:id` |
+    | 输入 | 原生 SQL / DSL + format/dialect | 结构化 `filter_condition` + 分页 |
+    | 输出 | 列元数据 + raw entries + cursor 分页 | 文档对象 + 可选 total_count + cursor 分页 |
+    | Cursor | `paging.cursor` / `paging.next_cursor` | `paging.cursor` / `paging.next_cursor` |
+    | 用途 | 同一 Catalog 内的复杂 SQL / DSL | 应用层结构化访问 |
 
-    **安全说明**：本端点把原生 SQL/DSL 直传给底层数据源，是高权限能力。调用方应当
-    受 RBAC 约束；外部 OAuth 调用方建议在网关层做白名单 / 限流。
+    **安全说明**：SQL 只允许单条顶层 `SELECT`，且所有物理表必须由受权限保护的
+    Resource 占位符解析；DSL 的索引同样只能由 Resource 推导。调用方仍应受 RBAC
+    与限流约束，底层账号必须保持只读。
   version: 0.1.0
 servers:
   - url: /api/vega-backend/v1
@@ -32,19 +33,21 @@ paths:
     post:
       summary: 执行原生查询（SQL 或 DSL）
       description: |
-        **请求体的 `query` 字段类型依赖 `resource_type`**：
+        **请求体的 `query` 字段类型由 `query_format` 和 `input_dialect` 决定**：
 
-        - `mysql` / `postgresql` / `clickhouse` / `dameng` / `oracle` → SQL 字符串
-          示例：`{"query": "SELECT * FROM t WHERE id = 1", "resource_type": "mysql"}`
-        - `opensearch` / `elasticsearch` → DSL JSON 对象
-          示例：`{"query": {"query": {"match_all": {}}}, "resource_type": "opensearch"}`
+        - SQL：`{"query":"SELECT * FROM {{resource_id}}", "query_format":"sql", "input_dialect":"postgres"}`
+        - OpenSearch DSL：`{"query":{"resource_id":"...","query":{"match_all":{}}}, "query_format":"dsl", "input_dialect":"opensearch"}`
 
-        **流式查询**：`query_type=stream` 启用游标模式。首次请求不带 `query_id`，
-        服务端在响应 `stats.query_id` 中返回；后续请求携带该 `query_id` 继续游标，
-        直到 `stats.has_more=false`。流式仅 OpenSearch 提供 search_after 语义。
+        实际执行连接器始终从 Resource/Catalog 推导，客户端不能通过输入方言选择数据源。
 
-        **支持的 `resource_type`** 由 `interfaces.GetSupportedConnectorTypesForQuery()`
-        定义；不在白名单内返回 400 `VegaBackend.InvalidParameter.ResourceType`。
+        OpenSearch DSL 使用 `paging.mode: cursor` 时必须提供非空 `sort`。客户端提交的
+        `search_after` 会被服务端忽略；该位置仅由服务端保存在不透明 cursor 中。排序应
+        包含稳定且唯一的 tiebreaker，避免相同排序值跨页重复或遗漏。
+
+        OpenSearch 聚合 DSL 仅支持 `paging.mode: single`，服务端强制 `size: 0`，并将
+        metric、terms/date_histogram 及其单链嵌套 bucket 展开为逐行 `entries`。不能
+        转换为行结构的聚合在访问 OpenSearch 前返回 400；`paging.offset/limit` 应用于
+        展开后的行结果，cursor 模式不支持聚合。
       requestBody:
         required: true
         content:
@@ -62,8 +65,16 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "406":
           $ref: "#/components/responses/NotAcceptable"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
         "500":
           $ref: "#/components/responses/InternalServerError"
 components:
@@ -75,9 +86,8 @@ components:
       description: |
         请求参数 / 请求体非法。常见 errcode：
         - `VegaBackend.InvalidParameter.RequestBody`：body schema 不合法
-        - `VegaBackend.InvalidParameter.ResourceType`：`resource_type` 缺失或不在白名单
-        - `VegaBackend.InvalidParameter.StreamSize`：`stream_size` 超出 [100, 10000]
-        - `VegaBackend.Query.InvalidParameter.QueryTimeout`：`query_timeout` 超出 [1, 3600]
+        - `VegaBackend.Query.InvalidParameter`：`query_format`、`input_dialect` 或 paging 参数非法
+        - `VegaBackend.Query.InvalidParameter.QueryTimeout`：`query_timeout_sec` 超出 [1, 3600]
       content:
         application/json:
           schema:
@@ -88,8 +98,32 @@ components:
         application/json:
           schema:
             $ref: "../_shared/errors.yaml#/components/schemas/Error"
+    Forbidden:
+      description: cursor 所属调用方无权限，或资源 / Catalog 权限已变更。
+      content:
+        application/json:
+          schema:
+            $ref: "../_shared/errors.yaml#/components/schemas/Error"
+    NotFound:
+      description: cursor 不存在、已过期或已完成。
+      content:
+        application/json:
+          schema:
+            $ref: "../_shared/errors.yaml#/components/schemas/Error"
     NotAcceptable:
       description: Content-Type 不是 application/json
+      content:
+        application/json:
+          schema:
+            $ref: "../_shared/errors.yaml#/components/schemas/Error"
+    Conflict:
+      description: Catalog 被禁用、资源不可查询或 cursor 指向的 Catalog 已变化。
+      content:
+        application/json:
+          schema:
+            $ref: "../_shared/errors.yaml#/components/schemas/Error"
+    TooManyRequests:
+      description: Cursor session 数量达到全局上限；请稍后重试或等待已有 cursor 过期。
       content:
         application/json:
           schema:
@@ -105,14 +139,17 @@ components:
   schemas:
     RawQueryRequest:
       description: 原生查询请求
+      oneOf:
+        - $ref: "#/components/schemas/RawQueryInitialRequest"
+        - $ref: "#/components/schemas/RawQueryContinuationRequest"
+    RawQueryInitialRequest:
+      description: 原生查询首次请求
       type: object
-      required:
-        - query
-        - resource_type
+      required: [query, query_format]
       properties:
         query:
           description: |
-            查询语句。类型依赖 `resource_type`：
+            查询语句。类型依赖 `query_format`：
             - SQL 引擎用字符串
             - 索引引擎（OpenSearch/Elasticsearch）用 JSON 对象
           oneOf:
@@ -121,49 +158,104 @@ components:
             - type: object
               description: DSL JSON 对象（OpenSearch / Elasticsearch）
               additionalProperties: true
-        query_type:
-          description: 查询类型；`stream` 启用游标，需配合 `query_id` / `stats.has_more`
+        query_format:
+          description: 输入载体类型。
           type: string
           enum:
-            - standard
-            - stream
-          default: standard
-        query_id:
-          description: |
-            流式查询游标 ID。首次请求留空，服务端在响应 `stats.query_id` 中返回；
-            后续请求带上该 ID 继续游标。
-          type: string
-        resource_type:
-          description: |
-            底层连接器类型，决定 query 字段如何解释。
-            支持值由后端 `GetSupportedConnectorTypesForQuery()` 配置。
+            - sql
+            - dsl
+        input_dialect:
+          description: SQL 输入方言；SQL 省略时默认 `postgres`。DSL 首发必须是 `opensearch`。
           type: string
           examples:
+            - postgres
             - mysql
-            - postgresql
+            - trino
+            - duckdb
             - opensearch
-        stream_size:
-          description: 流式查询每批数据量，[100, 10000]，默认 10000
-          type: integer
-          format: int64
-          minimum: 100
-          maximum: 10000
-          default: 10000
-        query_timeout:
-          description: 查询超时（秒），[1, 3600]，默认 60
+        paging:
+          allOf:
+            - $ref: "#/components/schemas/PagingRequest"
+            - not:
+                required: [cursor]
+        query_timeout_sec:
+          description: 单页查询超时（秒），仅首次请求可设置；cursor 续页沿用首次请求的值。[1, 3600]，默认 60。
           type: integer
           format: int64
           minimum: 1
           maximum: 3600
           default: 60
+        need_total:
+          description: 是否需要完整总数。仅为 true 时响应包含 total_count；cursor 首次请求的值会由服务端冻结并用于所有续页，续页携带的值不改变该行为。
+          type: boolean
+          default: false
+    RawQueryContinuationRequest:
+      description: 原生查询 cursor 续页请求；除 need_total 外，首次请求字段不得重传。
+      type: object
+      required: [paging]
+      not:
+        anyOf:
+          - required: [query]
+          - required: [query_format]
+          - required: [input_dialect]
+          - required: [query_timeout_sec]
+      properties:
+        paging:
+          type: object
+          required: [cursor]
+          not:
+            anyOf:
+              - required: [mode]
+              - required: [offset]
+              - required: [limit]
+              - required: [keep_alive_sec]
+          properties:
+            cursor:
+              type: string
+              minLength: 1
+        need_total:
+          description: 可携带但不会覆盖首次请求冻结的值。
+          type: boolean
+    PagingRequest:
+      description: SQL cursor 使用 OFFSET 分页；为避免底层数据变更导致跨页重复或遗漏，调用方应提供包含唯一 tiebreaker 的确定性 ORDER BY。服务端暂不强制校验该排序。
+      type: object
+      allOf:
+        - if:
+            required: [mode]
+            properties:
+              mode:
+                const: cursor
+          then:
+            required: [limit]
+            properties:
+              keep_alive_sec:
+                minimum: 60
+                maximum: 3600
+      properties:
+        mode:
+          type: string
+          enum: [single, cursor]
+          default: single
+        limit:
+          type: integer
+          description: 单次最多返回条数；cursor 首次请求必填，范围 [1, 10000]。single 模式省略时使用默认值。
+          minimum: 1
+          maximum: 10000
+        offset:
+          description: 仅首次请求可用的起始偏移，适用于 single 和 cursor 的第一页；续页只能传 paging.cursor。非聚合 OpenSearch DSL 要求 offset + limit 不超过 10000。
+          type: integer
+          minimum: 0
+        keep_alive_sec:
+          description: cursor 成功取页后的空闲租约秒数；首次 cursor 请求时取值范围 [60, 3600]，single 模式下忽略。省略时默认 1800。
+          type: integer
+        cursor:
+          type: string
     RawQueryResponse:
       description: 原生查询响应
       type: object
       required:
         - columns
         - entries
-        - stats
-        - total_count
       properties:
         columns:
           description: 列元数据
@@ -171,15 +263,13 @@ components:
           items:
             $ref: "#/components/schemas/ColumnInfo"
         entries:
-          description: 查询结果（每条为一行/一个文档，结构开放）
+          description: 查询结果（每条为一行/一个文档；支持的 OpenSearch 聚合也展开为逐行结果）
           type: array
           items:
             type: object
             additionalProperties: true
-        stats:
-          $ref: "#/components/schemas/QueryStats"
         total_count:
-          description: 总条数（标准查询返回完整命中数；流式查询为已返回累计数）
+          description: 当前查询完整命中数；仅 need_total=true 时返回，cursor 的每一页返回同一个冻结总数。
           type: integer
           format: int64
         warnings:
@@ -187,6 +277,22 @@ components:
           type: array
           items:
             type: string
+        paging:
+          $ref: "#/components/schemas/PagingResponse"
+    PagingResponse:
+      description: cursor 分页状态。末页时两个字段均为 null。
+      type: object
+      required:
+        - next_cursor
+        - expires_at_sec
+      properties:
+        next_cursor:
+          type: [string, "null"]
+          description: 下一页使用的不透明游标；为空表示已到末页。
+        expires_at_sec:
+          type: [integer, "null"]
+          format: int64
+          description: cursor 空闲租约的到期 Unix 时间戳（秒）；每次成功且仍有下一页时刷新。
     ColumnInfo:
       description: 列元数据
       type: object
@@ -200,30 +306,3 @@ components:
         type:
           description: 列类型（取决于底层连接器）
           type: string
-    QueryStats:
-      description: 查询统计 / 流式 cursor 状态
-      type: object
-      required:
-        - is_timeout
-        - has_more
-        - offset
-      properties:
-        is_timeout:
-          description: 是否因 query_timeout 触发超时
-          type: boolean
-        query_id:
-          description: |
-            流式查询 ID。流式首次响应时由服务端生成；客户端在后续请求里回传
-            以继续游标。标准查询时为空。
-          type: string
-        has_more:
-          description: 是否还有更多数据（流式查询用；标准查询恒为 false）
-          type: boolean
-        search_after:
-          description: |
-            OpenSearch 流式查询的 search_after 值；服务端内部使用，客户端透传即可。
-          type: array
-          items: {}
-        offset:
-          description: 已获取到的累计数据条数（流式查询模式）
-          type: integer

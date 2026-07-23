@@ -117,7 +117,7 @@ def test_import_single_transaction_rolls_back(monkeypatch):
     async def fake_session():
         yield _S()
 
-    async def fake_conflict(session, agent_id, agent_name, prompt_id, prompt_name):
+    async def fake_conflict(session, agent_id, agent_name, prompt_id, prompt_name, account_id=""):
         return None  # 预检放过，让写入阶段的 IntegrityError 兜底
 
     async def fake_prompt(session, prompt_id, name, content, vars_schema, account_id, commit=True):

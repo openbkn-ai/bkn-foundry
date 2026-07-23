@@ -110,3 +110,7 @@ rateLimiting:
     enabled: false
     global:
       max_concurrent_queries: 10
+
+query:
+  # 进程内 cursor session 的全局上限；达到上限时拒绝新的 cursor 请求。
+  cursorMaxSessions: 1000

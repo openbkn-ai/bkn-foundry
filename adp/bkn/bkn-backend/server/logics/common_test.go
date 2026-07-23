@@ -43,35 +43,6 @@ func Test_BuildDslQuery(t *testing.T) {
 			So(sort[0]["name"], ShouldEqual, "asc")
 		})
 
-		Convey("Success with search_after parameter\n", func() {
-			queryStr := `{"match_all": {}}`
-			query := &interfaces.ConceptsQuery{
-				Limit: 10,
-				SearchAfterParams: interfaces.SearchAfterParams{
-					SearchAfter: []any{"value1", 123},
-				},
-			}
-			dsl, err := BuildDslQuery(ctx, queryStr, query)
-			So(err, ShouldBeNil)
-			So(dsl, ShouldNotBeNil)
-			So(dsl["search_after"], ShouldNotBeNil)
-			So(query.NeedTotal, ShouldBeFalse)
-		})
-
-		Convey("Success with search_after and zero limit sets default limit\n", func() {
-			queryStr := `{"match_all": {}}`
-			query := &interfaces.ConceptsQuery{
-				Limit: 0,
-				SearchAfterParams: interfaces.SearchAfterParams{
-					SearchAfter: []any{"value1", 123},
-				},
-			}
-			dsl, err := BuildDslQuery(ctx, queryStr, query)
-			So(err, ShouldBeNil)
-			So(dsl, ShouldNotBeNil)
-			So(query.Limit, ShouldEqual, interfaces.SearchAfter_Limit)
-		})
-
 		Convey("Success with empty sort\n", func() {
 			queryStr := `{"match_all": {}}`
 			query := &interfaces.ConceptsQuery{

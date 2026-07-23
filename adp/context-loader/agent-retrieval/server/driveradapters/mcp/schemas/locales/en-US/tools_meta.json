@@ -19,6 +19,18 @@
     "name": "get_action_info",
     "description": "Return executable action definitions for object instances, including dynamic tool schemas that an agent can call."
   },
+  "execute_action": {
+    "name": "execute_action",
+    "description": "Execute an action. First call get_action_info to obtain the action's dynamic_params schema, then fill in the real dynamic parameter values to trigger execution (asynchronous, returns an execution_id)."
+  },
+  "get_action_execution": {
+    "name": "get_action_execution",
+    "description": "Query the status and results of a single action execution. Use the execution_id returned by execute_action to fetch the overall status and per-object results."
+  },
+  "list_action_executions": {
+    "name": "list_action_executions",
+    "description": "List action execution history, filterable by action type, status, and trigger type, with pagination."
+  },
   "find_skills": {
     "name": "find_skills",
     "description": "Find available skills that match a knowledge network, object type, instance context, or user intent."

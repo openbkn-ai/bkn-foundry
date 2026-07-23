@@ -86,6 +86,18 @@ func New(deps Deps) *gin.Engine {
 	if verifier == nil && deps.Hydra != nil {
 		verifier = deps.Hydra
 	}
+	// The introspection cache is scoped to /me ONLY. The frontend fires /me and
+	// /me/permissions in parallel at login, so a short-TTL, singleflight-
+	// deduplicated cache collapses that pair into one upstream introspection and
+	// absorbs repeat pulls. It is NOT applied to /admin: that surface keeps the
+	// raw verifier so a revoked/logged-out token stops working on mutating admin
+	// operations immediately, rather than up to a TTL later — the revocation-lag
+	// trade-off stays confined to read-only self-service. Authorization (casbin)
+	// is realtime on both regardless; only the token->subject step is cached.
+	meVerifier := verifier
+	if meVerifier != nil {
+		meVerifier = newCachingVerifier(meVerifier, verifierCacheTTL)
+	}
 	if deps.Enforcer != nil && verifier != nil && deps.Users != nil && deps.Directory != nil {
 		admin := r.Group("/api/safe/v1/admin", RequireAdmin(verifier, deps.Enforcer))
 		// Audit every mutating admin request. Use() must precede the route
@@ -131,11 +143,20 @@ func New(deps Deps) *gin.Engine {
 	// Self-service reads under /api/safe/v1/me — token-gated (RequireUser:
 	// authn only), gateway-exposed. The caller reads its own permission list.
 	if deps.Enforcer != nil && verifier != nil && deps.Directory != nil {
-		me := r.Group("/api/safe/v1/me", RequireUser(verifier))
-		registerMe(me, deps.Enforcer, deps.DB, deps.Directory, deps.Users)
+		// Read-only /me (GET "" + GET /permissions): the login burst fires these
+		// two in parallel, so they get the cached, singleflight-deduplicated
+		// verifier.
+		meReads := r.Group("/api/safe/v1/me", RequireUser(meVerifier))
+		registerMeReads(meReads, deps.Enforcer, deps.DB, deps.Directory)
+
+		// Mutating /me (profile PUT, AppKey issue/revoke) uses the RAW verifier so
+		// a revoked/logged-out token cannot edit the profile or mint a long-lived
+		// API key within the read cache's TTL window.
+		meWrites := r.Group("/api/safe/v1/me", RequireUser(verifier))
+		registerMeProfile(meWrites, deps.Users)
 		// Self-service AppKey management (issue/list/revoke own keys).
 		if apiKeys != nil {
-			registerMeAPIKeys(me, apiKeys)
+			registerMeAPIKeys(meWrites, apiKeys)
 		}
 	}
 

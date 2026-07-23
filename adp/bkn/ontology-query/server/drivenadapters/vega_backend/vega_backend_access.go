@@ -16,6 +16,7 @@ import (
 
 	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-comm-go/logger"
+	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-comm-go/rest"
 
 	"ontology-query/common"
@@ -51,14 +52,17 @@ func (v *vegaBackendAccess) buildHeaders(ctx context.Context) map[string]string 
 		accountInfo = ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
 	}
 	// 用当前token的用户去访问vega
-	return map[string]string{
+	return common.MergeTraceHeaders(ctx, map[string]string{
 		interfaces.CONTENT_TYPE_NAME:        interfaces.CONTENT_TYPE_JSON,
 		interfaces.HTTP_HEADER_ACCOUNT_ID:   accountInfo.ID,
 		interfaces.HTTP_HEADER_ACCOUNT_TYPE: accountInfo.Type,
-	}
+	})
 }
 
 func (v *vegaBackendAccess) QueryResourceData(ctx context.Context, resourceID string, params *interfaces.ResourceDataQueryParams) (*interfaces.DatasetQueryResponse, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "QueryResourceData")
+	defer span.End()
+
 	httpURL := fmt.Sprintf("%s/resources/%s/data", v.baseURL, url.PathEscape(resourceID))
 	headers := v.buildHeaders(ctx)
 	headers[interfaces.HTTP_HEADER_METHOD_OVERRIDE] = http.MethodGet

@@ -5,7 +5,11 @@
 当前提供：
 - Trace 原始 DSL 查询接口：`POST /api/agent-observability/v1/traces/_search`
 - Conversation 维度包装查询接口：`GET /api/agent-observability/v1/traces/by-conversation?conversation_id=...`
+- Evidence 事件接收接口：`POST /api/agent-observability/v1/evidence/events`
+- Evidence Chain 查询接口：`GET /api/agent-observability/v1/traces/{trace_id}/evidence-chain`
+- Request 维度 Evidence Chain 查询接口：`GET /api/agent-observability/v1/traces/by-request?request_id=...`
 - OpenSearch 查询客户端
+- 阶段二 Evidence ingestion 校验、归一化和可替换存储接口
 - Swagger 文档生成
 - Docker 镜像构建
 - Helm Deployment Chart
@@ -17,6 +21,63 @@
 
 ```bash
 make test
+```
+
+仅测试 BKN Trace 服务：
+
+```bash
+GOCACHE=/tmp/openbkn-go-build-cache GOMODCACHE=/tmp/openbkn-go-mod-cache go test ./...
+```
+
+阶段二 evidence ingestion 接口接受 `bkn.trace.schema.version=2.0.0` 的事件批次，包含 `trace` 与 `events`。当前版本先完成 contract 校验、敏感 payload 拒绝、归一化计数、内存 repository 写入和最小 Evidence Chain 查询；后续 PR 会把 repository 替换为持久化 evidence index。
+
+### Evidence 写入安全边界
+
+`POST /api/agent-observability/v1/evidence/events` 是写接口，生产环境必须通过平台网关鉴权保护，或配置服务内最小 ingest token：
+
+```bash
+kubectl create secret generic bkn-trace-evidence-ingest \
+  --from-literal=token='<strong-token>' \
+  -n observability
+```
+
+```bash
+helm upgrade --install agent-observability charts/agent-observability \
+  --set evidence.ingestAuth.existingSecret=bkn-trace-evidence-ingest \
+  -n observability
+```
+
+启用后，写入方需要携带 `Authorization: Bearer <strong-token>` 或 `X-BKN-Trace-Ingest-Token: <strong-token>`。未配置 `BKN_TRACE_EVIDENCE_INGEST_TOKEN` 时保持当前兼容行为，依赖平台网关/网络边界保护。
+
+当前阶段的 Evidence Chain 查询只依据事件生产方声明的 `visibility` 做响应过滤，不按调用者身份做细粒度可见性裁决。resolver-backed authorization、按账号/租户的 evidence ref 授权与审计将在后续持久化 evidence index 阶段接入。
+
+Evidence Chain 查询返回稳定 envelope：
+
+```json
+{
+  "trace_id": "9c0d...",
+  "bkn.request.id": "req_handler_001",
+  "partial": false,
+  "partial_reason": [],
+  "visibility_summary": {
+    "authorized_ref_count": 2,
+    "redacted_ref_count": 0,
+    "hidden_ref_count": 0,
+    "omitted_ref_count": 0,
+    "unresolved_ref_count": 0
+  },
+  "page": {
+    "next_cursor": null,
+    "node_count": 3,
+    "edge_count": 2,
+    "truncated": false
+  },
+  "data": {
+    "claims": [],
+    "evidence_refs": [],
+    "business_refs": []
+  }
+}
 ```
 
 生成 Swagger 文档：

@@ -553,9 +553,11 @@ func (rts *riskTypeService) SearchRiskTypes(ctx context.Context, query *interfac
 	if query.NeedTotal {
 		params := &interfaces.ResourceDataQueryParams{
 			FilterCondition: filterCondition,
-			Offset:          0,
-			Limit:           1,
-			NeedTotal:       true,
+			Paging: interfaces.ResourceDataPagingRequest{
+				Mode:  "single",
+				Limit: 1,
+			},
+			NeedTotal: true,
 		}
 		datasetResp, err := rts.vba.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
 		if err != nil {
@@ -569,19 +571,27 @@ func (rts *riskTypeService) SearchRiskTypes(ctx context.Context, query *interfac
 	}
 
 	riskTypes := []*interfaces.RiskType{}
-	offset := 0
+	sort := query.Sort
+	if len(sort) == 0 {
+		sort = []*interfaces.SortParams{{Field: "id", Direction: "asc"}}
+	}
+	cursor := query.Cursor
+	var nextCursor *string
 	limit := query.Limit
 	if limit == 0 {
-		limit = interfaces.SearchAfter_Limit
+		limit = interfaces.ConceptQueryLimit
 	}
 
 	for {
+		paging := interfaces.ResourceDataPagingRequest{Mode: "cursor", Limit: limit}
+		if cursor != "" {
+			paging = interfaces.ResourceDataPagingRequest{Cursor: cursor}
+		}
 		params := &interfaces.ResourceDataQueryParams{
 			FilterCondition: filterCondition,
-			Offset:          offset,
-			Limit:           limit,
+			Paging:          paging,
 			NeedTotal:       false,
-			Sort:            query.Sort,
+			Sort:            sort,
 		}
 		datasetResp, err := rts.vba.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
 		if err != nil {
@@ -625,17 +635,22 @@ func (rts *riskTypeService) SearchRiskTypes(ctx context.Context, query *interfac
 			}
 		}
 
-		query.SearchAfter = datasetResp.SearchAfter
-
-		if (query.Limit > 0 && len(riskTypes) >= query.Limit) || len(datasetResp.Entries) < limit {
-			break
+		nextCursor = nil
+		if datasetResp.Paging != nil {
+			nextCursor = datasetResp.Paging.NextCursor
 		}
 
-		offset += limit
+		if query.Limit > 0 && len(riskTypes) >= query.Limit {
+			break
+		}
+		if nextCursor == nil {
+			break
+		}
+		cursor = *nextCursor
 	}
 
 	response.Entries = riskTypes
-	response.SearchAfter = query.SearchAfter
+	response.NextCursor = nextCursor
 	span.SetStatus(codes.Ok, "")
 	return response, nil
 }

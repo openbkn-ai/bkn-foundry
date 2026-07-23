@@ -1,0 +1,39 @@
+{{- /*
+Default-deny ingress for bkn-safe, admitting only:
+  - the gateway/ingress controller, for the browser- and CLI-facing routes;
+  - an explicit set of in-cluster peers, for the tokenless internal APIs
+    (/authz, /directory, /api-keys/introspect).
+
+These internal APIs authenticate no caller by design — their whole security
+model is "only in-cluster services can reach them", which a ClusterIP Service
+does NOT provide (any pod in the cluster can reach a ClusterIP). This policy is
+what makes that boundary real.
+
+Ships DISABLED by default: an over-tight policy silently breaks authorization
+platform-wide, so it must be switched on only after the allow-list is confirmed
+against a live cluster. Enable with networkPolicy.enabled=true once the peer set
+below matches the deployment.
+*/ -}}
+{{- $np := .Values.networkPolicy | default dict }}
+{{- if $np.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  podSelector:
+    matchLabels:
+      app: {{ .Values.image.name }}
+  policyTypes:
+    - Ingress
+  ingress:
+    {{- with .Values.networkPolicy.ingress }}
+    {{- toYaml . | nindent 4 }}
+    {{- else }}
+    # No peers configured: with policyTypes=[Ingress] and an empty rule set this
+    # denies ALL ingress. Populate networkPolicy.ingress before enabling, or the
+    # service becomes unreachable.
+    []
+    {{- end }}
+{{- end }}

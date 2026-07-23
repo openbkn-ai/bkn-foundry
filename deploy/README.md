@@ -122,9 +122,15 @@ bash ./deploy.sh bkn-foundry install \
   --access_address=<your-ip> \
   --api_server_address=<your-ip>
 
+# If you include a port in --access_address, that port is used for the matching
+# ingress protocol when the script installs ingress-nginx (for example, https://...:8443
+# updates the HTTPS ingress port, while http://...:8080 updates the HTTP port).
+
 # (Optional) Customize ingress ports (default 80/443):
 export INGRESS_NGINX_HTTP_PORT=8080
 export INGRESS_NGINX_HTTPS_PORT=8443
+# Re-run the same install command after changing these values; the script now
+# detects port drift and upgrades the existing ingress-nginx release.
 
 # 4. (Recommended) Post-install bootstrap
 #    Registers an LLM + embedding (skips when already there), patches the BKN ConfigMap
@@ -186,7 +192,7 @@ On clusters that can't reach `docker.io` or pull GHCR image blobs (read timeouts
 `bkn-foundry install` accepts three flags so the **script** handles it — no manual
 `crictl pull`/retag:
 
-- **`--registry=<swr / ghcr / host/ns>`** — image registry for **BKN images** (sugar for `--set image.registry`). `swr` → `swr.cn-east-3.myhuaweicloud.com/openbkn-ai`, `ghcr` → `ghcr.io/openbkn-ai`. Precedence: explicit `--set image.registry=…` > `--registry` > an `image.registry` already in your `--config` YAML (respected, e.g. `dev/conf/mac-config.yaml`) > default `swr` (when config file does not set `image.registry`). SWR mirrors the same `…-main.<date>.sha…` build tags as GHCR.
+- **`--registry=<swr / ghcr / host/ns>`** — image registry for **BKN images** and the bundled **data-service / ingress** images (sugar for `--set image.registry`). `swr` → `swr.cn-east-3.myhuaweicloud.com/openbkn-ai`, `ghcr` → `ghcr.io/openbkn-ai`. Precedence: explicit `--set image.registry=…` > `--registry` > an `image.registry` already in your `--config` YAML (respected, e.g. `dev/conf/mac-config.yaml`) > default `swr` (when config file does not set `image.registry`). SWR mirrors the same `…-main.<date>.sha…` build tags as GHCR.
 - **`--dockerhub-mirror=<auto / host / off>`** — containerd `docker.io` mirror for **third-party images** (otel/hydra/postgres/minio). Writes `/etc/containerd/certs.d/docker.io/hosts.toml` (needs root + a containerd `config_path` certs.d; else it warns and skips, never fails). **Defaults to `auto`** — probes a candidate list and picks the first mirror that serves this stack's docker.io images over the mirror (`?ns=docker.io`) protocol (sentinel `oryd/hydra`; `docker.m.daocloud.io` 403s namespaced repos there, so a fixed default isn't safe). Pass a host to pin one (e.g. `docker.1panel.live`); `off` disables. Candidate list overridable via `OPENBKN_DOCKERHUB_MIRROR_CANDIDATES`.
 - **`--latest`** — when no `--version_file` is given, auto-runs `gen-dev-manifest.sh --latest` and installs the result (run from a repo checkout — it needs `git`).
 

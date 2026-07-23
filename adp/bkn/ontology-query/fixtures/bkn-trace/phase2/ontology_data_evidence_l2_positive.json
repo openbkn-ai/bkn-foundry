@@ -1,0 +1,107 @@
+{
+  "bkn.trace.schema.version": "2.0.0",
+  "fixture_id": "ontology_query_phase2_data_evidence_l2_positive",
+  "expected_result": "pass",
+  "trace": {
+    "trace_id": "72220000000000000000000000000001",
+    "traceparent": "00-72220000000000000000000000000001-7222000000000001-01",
+    "bkn.request.id": "req_ontology_phase2_data_evidence_0001",
+    "business_domain": "domain_demo",
+    "bkn.account.id": "acct_demo",
+    "bkn.account.type": "user"
+  },
+  "spans": [
+    {
+      "span_id": "7222000000000001",
+      "parent_span_id": null,
+      "name": "bkn-ontology.instance.query",
+      "kind": "internal",
+      "bkn.module.name": "bkn-ontology",
+      "bkn.operation.name": "bkn.object.query",
+      "bkn.status": "ok",
+      "bkn.timestamp": "2026-07-23T12:00:00.000000Z"
+    }
+  ],
+  "events": [
+    {
+      "event_id": "evt_ontology_data_claim",
+      "event_type": "claim.created",
+      "bkn.trace.schema.version": "2.0.0",
+      "observed_at": "2026-07-23T12:00:00.001000Z",
+      "emitted_at": "2026-07-23T12:00:00.002000Z",
+      "producer_module": "bkn-ontology",
+      "trace_id": "72220000000000000000000000000001",
+      "span_id": "7222000000000001",
+      "bkn.request.id": "req_ontology_phase2_data_evidence_0001",
+      "bkn.operation.name": "bkn.object.query",
+      "payload": {
+        "claim_id": "claim_ontology_data_evidence_0001",
+        "claim_type": "finding",
+        "claim_hash": "sha256:ontology_data_query_claim_hash_only",
+        "visibility": "visible",
+        "version_status": "unversioned",
+        "partial_reason": ["data_refs_unversioned"],
+        "subject_refs": {
+          "kn_id": "kn_demo",
+          "branch": "main",
+          "entity_kind": "object_instance",
+          "subject_id": "customer",
+          "query_hash": "sha256:ontology_query_shape_hash_only",
+          "evidence_refs_hash": "sha256:ontology_data_evidence_refs_hash_only",
+          "returned_ref_count": 3,
+          "returned_count": 2,
+          "total_count": 2,
+          "truncated": false,
+          "data.classification": "internal"
+        }
+      }
+    },
+    {
+      "event_id": "evt_ontology_data_refs",
+      "event_type": "evidence.refs.created",
+      "bkn.trace.schema.version": "2.0.0",
+      "observed_at": "2026-07-23T12:00:00.003000Z",
+      "emitted_at": "2026-07-23T12:00:00.004000Z",
+      "producer_module": "bkn-ontology",
+      "trace_id": "72220000000000000000000000000001",
+      "span_id": "7222000000000001",
+      "bkn.request.id": "req_ontology_phase2_data_evidence_0001",
+      "bkn.operation.name": "bkn.object.query",
+      "payload": {
+        "claim_id": "claim_ontology_data_evidence_0001",
+        "evidence_refs": [
+          {
+            "ref_id": "object_instance:customer:row_hash_0001",
+            "ref_type": "row_ref",
+            "source_system": "bkn-ontology",
+            "summary_hash": "sha256:object_row_summary_hash_only_0001",
+            "validity": "observed",
+            "version_status": "unversioned",
+            "visibility": "visible",
+            "partial_reason": ["row_ref_unversioned"]
+          },
+          {
+            "ref_id": "relation_type:customer_has_order",
+            "ref_type": "schema_ref",
+            "source_system": "bkn-ontology",
+            "summary_hash": "sha256:relation_type_summary_hash_only",
+            "validity": "observed",
+            "version_status": "unversioned",
+            "visibility": "visible",
+            "partial_reason": ["schema_ref_unversioned"]
+          },
+          {
+            "ref_id": "metric:risk_score",
+            "ref_type": "metric_ref",
+            "source_system": "bkn-ontology",
+            "summary_hash": "sha256:metric_summary_hash_only",
+            "validity": "observed",
+            "version_status": "unversioned",
+            "visibility": "visible",
+            "partial_reason": ["metric_ref_unversioned"]
+          }
+        ]
+      }
+    }
+  ]
+}

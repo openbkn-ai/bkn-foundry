@@ -49,6 +49,18 @@ func (s *stubOntologyQuery) QueryActions(_ context.Context, _ *interfaces.QueryA
 	return nil, nil
 }
 
+func (s *stubOntologyQuery) ExecuteActions(_ context.Context, _ *interfaces.ExecuteActionsRequest) (*interfaces.ExecuteActionsResponse, error) {
+	return nil, nil
+}
+
+func (s *stubOntologyQuery) GetActionExecution(_ context.Context, _ *interfaces.GetActionExecutionRequest) (map[string]any, error) {
+	return nil, nil
+}
+
+func (s *stubOntologyQuery) ListActionExecutions(_ context.Context, _ *interfaces.ListActionExecutionsRequest) (map[string]any, error) {
+	return nil, nil
+}
+
 func (s *stubOntologyQuery) QueryInstanceSubgraph(_ context.Context, _ *interfaces.QueryInstanceSubgraphReq) (*interfaces.QueryInstanceSubgraphResp, error) {
 	return nil, nil
 }

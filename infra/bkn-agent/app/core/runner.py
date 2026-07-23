@@ -3,12 +3,12 @@ import json
 from typing import Any, Optional
 
 from langchain.agents import create_agent
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, ToolMessage
 
-from app import dao, observability
+from app import dao, evidence, observability
 from app.config import config
 from app.core.llm import build_chat_model
-from app.core.structured import structured_extract
+from app.core.structured import structured_extract_with_path
 from app.core.prompt import resolve_prompt
 from app.core.skills import load_skills
 from app.db import SessionLocal
@@ -31,6 +31,7 @@ async def run_agent_once(
     account_type: str,
     depth: int,
     response_format: Optional[dict[str, Any]] = None,
+    task_id: Optional[str] = None,
 ) -> str:
     """一次性无状态执行：单次 graph run，无 checkpointer。被 /run 与 agent-as-tool 共用。
 
@@ -60,7 +61,12 @@ async def run_agent_once(
     timeout_s = limits.timeout_s if limits and limits.timeout_s else config.DEFAULT_TIMEOUT_S
     max_out = limits.max_output_tokens if limits else None
     model = build_chat_model(agent.model, max_output_tokens=max_out)
-    tools = apply_tool_call_cap(tools, limits.max_tool_calls if limits else None)
+    tools = apply_tool_call_cap(
+        tools,
+        limits.max_tool_calls if limits else None,
+        account_id,
+        account_type,
+    )
 
     with observability.span(
         "agent.task",
@@ -81,11 +87,39 @@ async def run_agent_once(
             if response_format:
                 # 工具循环跑完后单独抽结构化：原生优先，模型不支持则提示词降级
                 struct_model = build_chat_model(agent.model, streaming=False, max_output_tokens=max_out)
-                obj = await structured_extract(struct_model, result["messages"], response_format)
-                return json.dumps(obj, ensure_ascii=False)
+                obj, validation_path = await structured_extract_with_path(struct_model, result["messages"], response_format)
+                output = json.dumps(obj, ensure_ascii=False)
+                await _emit_task_evidence(
+                    agent=agent,
+                    task_id=task_id,
+                    prompt_source=prompt_source,
+                    prompt_version=prompt_version,
+                    account_id=account_id,
+                    account_type=account_type,
+                    output=obj,
+                    claim_type="structured_output",
+                    response_format=response_format,
+                    structured_validation_path=validation_path,
+                    result_messages=result["messages"],
+                )
+                return output
     for msg in reversed(result["messages"]):
         if isinstance(msg, AIMessage) and msg.content:
-            return msg.content if isinstance(msg.content, str) else str(msg.content)
+            output = msg.content if isinstance(msg.content, str) else str(msg.content)
+            await _emit_task_evidence(
+                agent=agent,
+                task_id=task_id,
+                prompt_source=prompt_source,
+                prompt_version=prompt_version,
+                account_id=account_id,
+                account_type=account_type,
+                output=output,
+                claim_type="answer",
+                response_format=None,
+                structured_validation_path=None,
+                result_messages=result["messages"],
+            )
+            return output
     raise RuntimeError("graph 结束但没有产出 AI 回复")
 
 
@@ -104,6 +138,7 @@ async def execute_task(task_id: str, agent: AgentOut, req_input: dict, account_i
             account_type,
             depth=1,
             response_format=req_input.get("response_format"),
+            task_id=task_id,
         )
         async with SessionLocal() as session:
             # succeeded 必须等于结果可用（vega build-task 教训）
@@ -119,3 +154,75 @@ def submit_task(task_id: str, agent: AgentOut, req_input: dict, account_id: str,
     task = asyncio.create_task(execute_task(task_id, agent, req_input, account_id, account_type))
     _background.add(task)
     task.add_done_callback(_background.discard)
+
+
+async def _emit_task_evidence(
+    *,
+    agent: AgentOut,
+    task_id: str | None,
+    prompt_source: str,
+    prompt_version: str,
+    account_id: str,
+    account_type: str,
+    output,
+    claim_type: str,
+    response_format: dict[str, Any] | None,
+    structured_validation_path: str | None,
+    result_messages: list[Any],
+) -> None:
+    subject_id = task_id or agent.agent_id
+    cid = evidence.claim_id(claim_type, subject_id, output)
+    tool_names = [
+        getattr(message, "name", "") or getattr(message, "tool_call_id", "")
+        for message in result_messages
+        if isinstance(message, ToolMessage)
+    ]
+    events = [
+        evidence.claim_created(
+            claim_id_value=cid,
+            claim_type=claim_type,
+            claim_hash=evidence.hash_value(output),
+            operation_name="bkn.agent.task",
+            version_status="unversioned",
+            subject_refs={
+                "agent_id": agent.agent_id,
+                "task_id": task_id,
+                "prompt_source": prompt_source,
+                "prompt_version": prompt_version,
+                "response_format_schema_hash": evidence.schema_hash(response_format),
+            },
+            partial_reason=["source_refs_pending"] if not tool_names else ["source_refs_unversioned"],
+        )
+    ]
+    if response_format:
+        events.append(
+            evidence.structured_output_validated(
+                claim_id_value=cid,
+                schema_hash_value=evidence.schema_hash(response_format),
+                validation_path=structured_validation_path or "unknown",
+                valid=True,
+                operation_name="bkn.agent.structured_output",
+            )
+        )
+    if tool_names:
+        events.append(
+            evidence.evidence_refs_created(
+                claim_id_value=cid,
+                evidence_refs=[
+                    {
+                        "ref_id": f"tool:{evidence.hash_value(name)[7:23]}",
+                        "ref_type": "tool_result_ref",
+                        "source_system": "bkn-agent",
+                        "summary_hash": evidence.hash_value({"tool_name": name}),
+                        "tool_name": name,
+                        "validity": "observed",
+                        "visibility": "visible",
+                        "version_status": "unversioned",
+                        "partial_reason": ["tool_result_unversioned"],
+                    }
+                    for name in dict.fromkeys(tool_names)
+                ],
+                operation_name="bkn.agent.task",
+            )
+        )
+    await evidence.submit_events([event for event in events if event], account_id, account_type)

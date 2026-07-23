@@ -41,6 +41,11 @@ class Config:
     # toolbox 工具回调本服务的地址（box_svc_url）
     SELF_BASE_URL = _env("BKN_AGENT_SELF_BASE_URL", "http://bkn-agent:30800")
 
+    # BKN Trace phase-two evidence ingestion. Empty URL = construct evidence facts
+    # locally but do not submit them, so bkn-agent can deploy before bkn-trace.
+    BKN_TRACE_EVIDENCE_INGEST_URL = _env("BKN_TRACE_EVIDENCE_INGEST_URL", "")
+    BKN_TRACE_EVIDENCE_TIMEOUT_S = float(_env("BKN_TRACE_EVIDENCE_TIMEOUT_S", "3"))
+
     # checkpointer: memory | mysql
     CHECKPOINTER_BACKEND = _env("CHECKPOINTER_BACKEND", "mysql")
     # 建表统一走 migrations/bkn-agent/（core-data-migrator）。仅开发环境

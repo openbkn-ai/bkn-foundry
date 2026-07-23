@@ -1,0 +1,45 @@
+{
+  "bkn.trace.schema.version": "1.0.0",
+  "fixture_id": "action_execution_negative_baggage_actor",
+  "fixture_type": "negative",
+  "scenario": "action_execution_actor_id_in_baggage",
+  "expected_result": "fail",
+  "trace": {
+    "trace_id": "74040000000000000000000000000004",
+    "bkn.request.id": "req_action_execution_0004",
+    "traceparent": "00-74040000000000000000000000000004-7404000000000001-01",
+    "sampling.decision": "sampled"
+  },
+  "spans": [
+    {
+      "span_id": "7404000000000001",
+      "parent_span_id": null,
+      "name": "action-execution.request",
+      "kind": "server",
+      "bkn.module.name": "action-execution",
+      "bkn.operation.name": "action.execute",
+      "bkn.status": "ok",
+      "bkn.timestamp": "2026-07-21T06:33:00.000000000Z",
+      "duration_ms": 9
+    }
+  ],
+  "logs": [
+    {
+      "level": "info",
+      "message": "action execution completed",
+      "trace_id": "74040000000000000000000000000004",
+      "span_id": "7404000000000001",
+      "bkn.request.id": "req_action_execution_0004",
+      "bkn.module.name": "action-execution",
+      "bkn.operation.name": "action.execute",
+      "bkn.status": "ok",
+      "bkn.timestamp": "2026-07-21T06:33:00.009000000Z",
+      "bkn.trace.schema.version": "1.0.0"
+    }
+  ],
+  "events": [],
+  "baggage": {
+    "bkn.account.type": "user",
+    "bkn.actor.id": "actor_forbidden"
+  }
+}

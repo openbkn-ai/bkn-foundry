@@ -102,15 +102,8 @@ func parseBuildTaskStatuses(ctx context.Context, raw string) ([]string, error) {
 }
 
 func isValidBuildTaskOrderBy(o string) bool {
-	switch o {
-	case interfaces.BuildTaskOrderByDefault,
-		interfaces.BuildTaskOrderByCreatedAt,
-		interfaces.BuildTaskOrderByUpdatedAt,
-		interfaces.BuildTaskOrderByStatus,
-		interfaces.BuildTaskOrderByMode:
-		return true
-	}
-	return false
+	_, ok := interfaces.BUILD_TASK_SORT[o]
+	return ok
 }
 
 func isValidBuildTaskStatus(s string) bool {

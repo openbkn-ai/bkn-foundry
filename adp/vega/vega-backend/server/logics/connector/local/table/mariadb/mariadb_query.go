@@ -17,6 +17,7 @@ import (
 	"github.com/openbkn-ai/bkn-comm-go/logger"
 
 	"vega-backend/interfaces"
+	"vega-backend/logics/connector/local/table/safelog"
 )
 
 // convertValue converts []byte to string for MariaDB driver compatibility
@@ -230,9 +231,9 @@ func (c *MariaDBConnector) ExecuteQuery(ctx context.Context, resource *interface
 
 	isAggregate := params.Aggregation != nil || len(params.GroupBy) > 0 || params.Having != nil
 	if isAggregate {
-		logger.Debugf("aggregate query: %s, args: %v", query, args)
+		logger.Debugf("aggregate query: %s", safelog.SQLSummary(query, args))
 	} else {
-		logger.Debugf("query: %s, args: %v", query, args)
+		logger.Debugf("query: %s", safelog.SQLSummary(query, args))
 	}
 
 	rows, err := c.db.QueryContext(ctx, query, args...)
@@ -280,7 +281,7 @@ func (c *MariaDBConnector) ExecuteQuery(ctx context.Context, resource *interface
 		if countErr != nil {
 			return nil, fmt.Errorf("failed to build count query: %w", countErr)
 		}
-		logger.Debugf("count query: %s, args: %v", countQuery, countArgs)
+		logger.Debugf("count query: %s", safelog.SQLSummary(countQuery, countArgs))
 		var total int64
 		row := c.db.QueryRowContext(ctx, countQuery, countArgs...)
 		if err := row.Scan(&total); err != nil {

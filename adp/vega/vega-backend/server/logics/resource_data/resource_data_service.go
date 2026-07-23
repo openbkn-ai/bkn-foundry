@@ -21,6 +21,7 @@ import (
 	"vega-backend/logics/dataset"
 	"vega-backend/logics/filter_condition"
 	"vega-backend/logics/local_index"
+	querylogic "vega-backend/logics/query"
 	"vega-backend/logics/rate"
 	"vega-backend/logics/resource"
 	"vega-backend/logics/resource_data/logic_view"
@@ -68,8 +69,9 @@ func NewResourceDataService(appSetting *common.AppSetting) interfaces.ResourceDa
 	return rdService
 }
 
-// Query 列出 resource 中的文档
-func (rds *resourceDataService) Query(ctx context.Context, resource *interfaces.Resource,
+// query executes the existing structured resource-data path. Public callers
+// use QueryWithPaging so every result has the common paging envelope.
+func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.Resource,
 	params *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
 
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "List resource documents")
@@ -202,7 +204,7 @@ func (rds *resourceDataService) Query(ctx context.Context, resource *interfaces.
 		params = rds.prepareOutputFieldsParams(resource, params)
 
 		// 逻辑视图查询数据
-		data, total, err := rds.lvs.Query(ctx, resource, params)
+		result, err := rds.lvs.QueryWithPaging(ctx, resource, params)
 		if err != nil {
 			otellog.LogError(ctx, "Query logic view data failed", err)
 			return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
@@ -210,7 +212,7 @@ func (rds *resourceDataService) Query(ctx context.Context, resource *interfaces.
 		}
 
 		span.SetStatus(codes.Ok, "")
-		return data, total, nil
+		return result.Entries, result.TotalCount, nil
 
 	case interfaces.ResourceCategoryFileset:
 		// 准备 sort参数
@@ -233,6 +235,84 @@ func (rds *resourceDataService) Query(ctx context.Context, resource *interfaces.
 		otellog.LogError(ctx, "Unsupported resource category", httpErr)
 		return nil, 0, httpErr
 	}
+}
+
+// QueryWithPaging is the sole public resource-data query entrypoint.
+func (rds *resourceDataService) QueryWithPaging(ctx context.Context, resource *interfaces.Resource,
+	params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
+	if resource.Category == interfaces.ResourceCategoryLogicView {
+		return rds.lvs.QueryWithPaging(ctx, resource, params)
+	}
+	paginationCategory := resourceDataPaginationCategory(resource)
+	if params.Paging.Cursor != "" {
+		if !resourceDataCursorSupported(resource.Category) {
+			return nil, rest.NewHTTPError(ctx, http.StatusNotImplemented, verrors.VegaBackend_Query_InvalidParameter).
+				WithErrorDetails("cursor paging is not implemented for this resource category")
+		}
+		return querylogic.ExecuteResourceDataCursorContinuation(ctx, accountIDFromContext(ctx), resource, params.Paging.Cursor,
+			func(pageCtx context.Context, pageParams *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
+				return rds.query(pageCtx, resource, pageParams)
+			})
+	}
+	if paginationCategory == interfaces.ResourceCategoryIndex && !isIndexAggregateQuery(params) {
+		limit := params.Paging.EffectiveLimit()
+		if limit <= interfaces.MaxPageLimit && params.Paging.Offset > interfaces.MaxPageLimit-limit {
+			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+				WithErrorDetails(fmt.Sprintf("paging.offset + paging.limit must not exceed %d for OpenSearch queries", interfaces.MaxPageLimit))
+		}
+	}
+	if params.Paging.Mode == interfaces.PagingModeCursor {
+		if resourceDataCursorSupported(resource.Category) {
+			if paginationCategory == interfaces.ResourceCategoryIndex && len(params.Sort) == 0 {
+				return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+					WithErrorDetails("sort is required for index cursor paging")
+			}
+			if paginationCategory == interfaces.ResourceCategoryIndex && isIndexAggregateQuery(params) {
+				return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+					WithErrorDetails("cursor paging does not support index aggregation queries")
+			}
+			return querylogic.ExecuteInitialResourceDataCursorWithCategory(ctx, accountIDFromContext(ctx), resource, paginationCategory, params,
+				func(pageCtx context.Context, pageParams *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
+					return rds.query(pageCtx, resource, pageParams)
+				})
+		}
+		return nil, rest.NewHTTPError(ctx, http.StatusNotImplemented, verrors.VegaBackend_Query_InvalidParameter).
+			WithErrorDetails("cursor paging is not implemented for this resource category")
+	}
+
+	entries, total, err := rds.query(ctx, resource, params)
+	if err != nil {
+		return nil, err
+	}
+	return &interfaces.ResourceDataQueryResult{Entries: entries, TotalCount: total, Paging: &interfaces.PagingResponse{}}, nil
+}
+
+func isIndexAggregateQuery(params *interfaces.ResourceDataQueryParams) bool {
+	return params.Aggregation != nil || len(params.GroupBy) > 0 || params.Having != nil
+}
+
+func resourceDataPaginationCategory(resource *interfaces.Resource) string {
+	if resource == nil {
+		return ""
+	}
+	if resource.Category == interfaces.ResourceCategoryDataset ||
+		resource.Category == interfaces.ResourceCategoryIndex ||
+		(resource.Category == interfaces.ResourceCategoryTable && resource.LocalIndexName != "") {
+		return interfaces.ResourceCategoryIndex
+	}
+	return resource.Category
+}
+
+func resourceDataCursorSupported(category string) bool {
+	return category == interfaces.ResourceCategoryTable ||
+		category == interfaces.ResourceCategoryIndex ||
+		category == interfaces.ResourceCategoryDataset ||
+		category == interfaces.ResourceCategoryFileset
+}
+
+func accountIDFromContext(ctx context.Context) string {
+	accountInfo, _ := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
+	return accountInfo.ID
 }
 
 func (rds *resourceDataService) QueryData(ctx context.Context, catalog *interfaces.Catalog, resource *interfaces.Resource,
@@ -295,6 +375,7 @@ func (rds *resourceDataService) QueryData(ctx context.Context, catalog *interfac
 		}
 
 		span.SetStatus(codes.Ok, "")
+		params.SearchAfter = append([]any(nil), result.SearchAfter...)
 		return result.Rows, result.Total, nil
 
 	case interfaces.ResourceCategoryFileset:

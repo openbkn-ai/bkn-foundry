@@ -1,0 +1,52 @@
+{
+  "bkn.trace.schema.version": "1.0.0",
+  "fixture_id": "bkn_ontology_sampling_forced_authz_deny",
+  "fixture_type": "sampling",
+  "scenario": "bkn_ontology_authz_deny_forced_sampled",
+  "expected_result": "pass",
+  "trace": {
+    "trace_id": "72030000000000000000000000000003",
+    "bkn.request.id": "req_bkn_ontology_0003",
+    "traceparent": "00-72030000000000000000000000000003-7203000000000001-01",
+    "sampling.decision": "forced_sampled"
+  },
+  "spans": [
+    {
+      "span_id": "7203000000000001",
+      "parent_span_id": null,
+      "name": "bkn-ontology.request",
+      "kind": "server",
+      "bkn.module.name": "bkn-ontology",
+      "bkn.operation.name": "bkn.relation.query",
+      "bkn.status": "denied",
+      "bkn.timestamp": "2026-07-21T06:12:00.000000000Z",
+      "duration_ms": 13,
+      "error.category": "authz",
+      "error.code": "BKN_ONTOLOGY_ACCESS_DENIED",
+      "error.retryable": false
+    }
+  ],
+  "logs": [
+    {
+      "level": "error",
+      "message": "relation query denied",
+      "trace_id": "72030000000000000000000000000003",
+      "span_id": "7203000000000001",
+      "bkn.request.id": "req_bkn_ontology_0003",
+      "bkn.module.name": "bkn-ontology",
+      "bkn.operation.name": "bkn.relation.query",
+      "bkn.status": "denied",
+      "bkn.timestamp": "2026-07-21T06:12:00.013000000Z",
+      "bkn.trace.schema.version": "1.0.0",
+      "bkn.auth.decision": "deny",
+      "error.category": "authz",
+      "error.code": "BKN_ONTOLOGY_ACCESS_DENIED",
+      "error.retryable": false
+    }
+  ],
+  "events": [],
+  "baggage": {
+    "bkn.account.type": "user",
+    "bkn.runtime.env": "test"
+  }
+}

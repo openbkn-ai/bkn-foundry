@@ -1,0 +1,95 @@
+{
+  "bkn.trace.schema.version": "2.0.0",
+  "fixture_id": "vega_backend_phase2_data_evidence_l2_positive",
+  "expected_result": "pass",
+  "trace": {
+    "trace_id": "73220000000000000000000000000001",
+    "traceparent": "00-73220000000000000000000000000001-7322000000000001-01",
+    "bkn.request.id": "req_vega_phase2_data_evidence_0001",
+    "business_domain": "domain_demo",
+    "bkn.account.id": "acct_demo",
+    "bkn.account.type": "user"
+  },
+  "spans": [
+    {
+      "span_id": "7322000000000001",
+      "parent_span_id": null,
+      "name": "vega-data.query",
+      "kind": "internal",
+      "bkn.module.name": "vega-data",
+      "bkn.operation.name": "data.resource.query",
+      "bkn.status": "ok",
+      "bkn.timestamp": "2026-07-23T12:05:00.000000Z"
+    }
+  ],
+  "events": [
+    {
+      "event_id": "evt_vega_data_claim",
+      "event_type": "claim.created",
+      "bkn.trace.schema.version": "2.0.0",
+      "observed_at": "2026-07-23T12:05:00.001000Z",
+      "emitted_at": "2026-07-23T12:05:00.002000Z",
+      "producer_module": "vega-data",
+      "trace_id": "73220000000000000000000000000001",
+      "span_id": "7322000000000001",
+      "bkn.request.id": "req_vega_phase2_data_evidence_0001",
+      "bkn.operation.name": "data.resource.query",
+      "payload": {
+        "claim_id": "claim_vega_data_evidence_0001",
+        "claim_type": "finding",
+        "claim_hash": "sha256:vega_data_query_claim_hash_only",
+        "visibility": "visible",
+        "version_status": "unversioned",
+        "partial_reason": ["data_refs_unversioned"],
+        "subject_refs": {
+          "resource_id": "res_customer_table",
+          "catalog_id": "cat_prod",
+          "query_hash": "sha256:vega_query_shape_hash_only",
+          "evidence_refs_hash": "sha256:vega_data_evidence_refs_hash_only",
+          "returned_ref_count": 2,
+          "returned_count": 1,
+          "total_count": 1,
+          "truncated": false,
+          "data.classification": "internal"
+        }
+      }
+    },
+    {
+      "event_id": "evt_vega_data_refs",
+      "event_type": "evidence.refs.created",
+      "bkn.trace.schema.version": "2.0.0",
+      "observed_at": "2026-07-23T12:05:00.003000Z",
+      "emitted_at": "2026-07-23T12:05:00.004000Z",
+      "producer_module": "vega-data",
+      "trace_id": "73220000000000000000000000000001",
+      "span_id": "7322000000000001",
+      "bkn.request.id": "req_vega_phase2_data_evidence_0001",
+      "bkn.operation.name": "data.resource.query",
+      "payload": {
+        "claim_id": "claim_vega_data_evidence_0001",
+        "evidence_refs": [
+          {
+            "ref_id": "resource:res_customer_table",
+            "ref_type": "resource_ref",
+            "source_system": "vega-data",
+            "summary_hash": "sha256:resource_summary_hash_only",
+            "validity": "observed",
+            "version_status": "unversioned",
+            "visibility": "visible",
+            "partial_reason": ["resource_ref_unversioned"]
+          },
+          {
+            "ref_id": "resource_row:res_customer_table:row_hash_0001",
+            "ref_type": "row_ref",
+            "source_system": "vega-data",
+            "summary_hash": "sha256:resource_row_summary_hash_only_0001",
+            "validity": "observed",
+            "version_status": "unversioned",
+            "visibility": "visible",
+            "partial_reason": ["row_ref_unversioned"]
+          }
+        ]
+      }
+    }
+  ]
+}

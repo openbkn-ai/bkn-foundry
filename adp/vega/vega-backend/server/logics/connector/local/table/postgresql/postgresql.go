@@ -261,9 +261,6 @@ func (c *PostgresqlConnector) ExecuteRawSQL(ctx context.Context, sql string) (*i
 	response := &interfaces.RawQueryResponse{
 		Columns: make([]interfaces.ColumnInfo, len(columns)),
 		Entries: make([]map[string]any, 0),
-		Stats: interfaces.QueryStats{
-			IsTimeout: false,
-		},
 	}
 
 	// 填充列信息
@@ -296,7 +293,8 @@ func (c *PostgresqlConnector) ExecuteRawSQL(ctx context.Context, sql string) (*i
 		return nil, fmt.Errorf("iterate rows failed: %w", err)
 	}
 
-	response.TotalCount = int64(len(response.Entries))
+	totalCount := int64(len(response.Entries))
+	response.TotalCount = &totalCount
 
 	return response, nil
 }
