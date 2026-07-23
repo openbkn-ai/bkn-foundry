@@ -14,6 +14,7 @@ import (
 	validator "github.com/go-playground/validator/v10"
 	"github.com/mark3labs/mcp-go/mcp"
 
+	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/bkntrace"
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/rest"
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/interfaces"
@@ -108,6 +109,7 @@ func handleQueryObjectInstance(ontologyQuery interfaces.DrivenOntologyQuery) fun
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
+		bkntrace.EmitQueryObjectInstanceEvents(ctx, nil, queryReq, resp)
 		resp.ObjectConcept = nil
 		result, err := BuildMCPToolResult(resp, format)
 		if err != nil {

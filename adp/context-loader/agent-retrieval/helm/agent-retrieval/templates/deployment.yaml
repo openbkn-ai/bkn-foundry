@@ -79,6 +79,14 @@ spec:
               - name: AUTH_ENABLED
                 value: {{ .Values.auth.enabled | quote }}
             {{- end}}
+            {{- if .Values.observability.evidence.ingest_url }}
+              - name: BKN_TRACE_EVIDENCE_INGEST_URL
+                value: {{ .Values.observability.evidence.ingest_url | quote }}
+            {{- end}}
+            {{- if .Values.observability.evidence.timeout_ms }}
+              - name: BKN_TRACE_EVIDENCE_TIMEOUT_MS
+                value: {{ .Values.observability.evidence.timeout_ms | quote }}
+            {{- end}}
 
           ports:
             - name: public-port

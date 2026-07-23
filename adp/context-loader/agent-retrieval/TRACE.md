@@ -1,7 +1,7 @@
 # context-loader Trace Contract
 
-> 状态：阶段一模块接入合同  
-> 适用版本：`bkn.trace.schema.version=1.0.0`  
+> 状态：阶段二 L2 证据事件局部接入
+> 适用版本：`bkn.trace.schema.version=2.0.0`（阶段一日志/传播 fixture 仍保留 `1.0.0`）
 > 依据：`bkn-docs/docs/foundry/bkn-trace/design/阶段一：OpenBKN 可观测记录规范与 Trace Context 基线.md`
 
 ## Module
@@ -11,14 +11,14 @@
 - service identity: `context-loader`
 - runtime: Go HTTP / MCP / toolbox service
 - repository path: `adp/context-loader/agent-retrieval`
-- contract version: `1.0.0`
+- contract version: `2.0.0`
 
 ## Entry Operations
 
 | operation | trigger | required context | emitted spans | emitted events |
 | --- | --- | --- | --- | --- |
-| `context.search_schema` | schema search HTTP/MCP/tool call | `traceparent`、`bkn-request-id`、account/auth context | `context-loader.request`、`context-loader.search` | `context.refs.resolved` |
-| `context.query_object` | object query HTTP/MCP/tool call | `traceparent`、`bkn-request-id`、account/auth context | `context-loader.request`、`context-loader.source.resolve` | `tool.called`、`tool.failed` |
+| `context.search_schema` | schema search HTTP/MCP/tool call | `traceparent`、`bkn-request-id`、account/auth context | `context-loader.request`、`context-loader.search` | `claim.created`、`evidence.refs.created`、`context.refs.resolved` |
+| `context.query_object` | object query HTTP/MCP/tool call | `traceparent`、`bkn-request-id`、account/auth context | `context-loader.request`、`context-loader.source.resolve` | `claim.created`、`evidence.refs.created`、`tool.called`、`tool.failed` |
 | `context.load_refs` | source refs load | `traceparent`、`bkn-request-id`、business refs | `context-loader.source.resolve` | `context.refs.resolved` |
 | `context.resolve_source` | source resolver call | `traceparent`、`bkn-request-id`、resource refs | `context-loader.source.resolve` | `context.refs.resolved` |
 
@@ -74,9 +74,22 @@ Trust policy:
 
 | event type | producer | payload summary | partial reason | retention class |
 | --- | --- | --- | --- | --- |
+| `claim.created` | context-loader | schema search result-set finding hash、kn id、query hash、result counts | schema refs unversioned | evidence event |
+| `evidence.refs.created` | context-loader | object/relation/action/metric schema refs、summary hash、visibility、version status | schema ref unversioned | evidence event |
 | `tool.called` | context-loader | tool id/name、args hash、result count、duration | source unavailable / result truncated | business event |
 | `tool.failed` | context-loader | tool id/name、error code、retryable | dependency timeout / validation failed | forced retention on error |
 | `context.refs.resolved` | context-loader | source ref count、classification、truncated | missing version / unauthorized / truncated | business event |
+
+## Phase 2 Evidence Event Rules
+
+- `context.search_schema` 在成功返回后发射一组局部 L2 事件：`claim.created` 表示“本次 schema 检索产生了一个候选上下文 finding”，`evidence.refs.created` 记录该 finding 使用的 schema/action/metric refs。
+- `claim.created.payload.claim_type` 固定为 `finding`，`claim_hash` 只基于结果数量、`kn_id`、`query_hash` 等摘要字段计算，不包含原始 query、schema 名称、comment、字段说明或完整结果。
+- `evidence.refs.created.payload.evidence_refs` 只包含 `ref_id`、`ref_type`、`source_system`、`summary_hash`、`validity`、`version_status`、`visibility`、`partial_reason`；`summary_hash` 来自安全摘要，不包含原始 schema 内容。
+- `context.query_object` 在 REST/MCP 成功返回后发射局部 L2 事件：`claim.created` 表示“本次对象实例查询产生了一个数据 finding”，`evidence.refs.created` 记录实例级 `row_ref`；`condition`、`filters`、`properties`、实例 identity 和行内容只能进入 hash，不得原样进入 payload。
+- `context.query_object` 的 `truncated=true` 来源包括响应存在 `search_after` 或返回条数达到请求 `limit`；该信号只表示“结果可能仍有后续页”，不表示审计级完整性。
+- `version_status` 当前为 `unversioned`，schema refs 必须携带 `partial_reason=["schema_ref_unversioned"]`，row refs 必须携带 `partial_reason=["row_ref_unversioned"]`；后续接入 BKN schema version / snapshot 后才能改为 `versioned`。
+- 证据事件上报由 `BKN_TRACE_EVIDENCE_INGEST_URL` 控制，默认关闭；开启后异步提交，不阻塞 schema 检索主路径。
+- 上报失败只记录 warning，不改变业务响应；BKN Trace 核心服务负责后续 Evidence Graph 汇聚、查询、快照和 Studio 可视化。
 
 ## Business Refs
 
@@ -122,6 +135,9 @@ Trust policy:
 | negative | `fixtures/bkn-trace/negative_baggage.json` | forbidden baggage field | fail |
 | propagation | `fixtures/bkn-trace/propagation.json` | inbound/outbound request context | pass |
 | sampling | `fixtures/bkn-trace/sampling.json` | forced sampled tool error | pass |
+| phase2 positive | `fixtures/bkn-trace/phase2/search_schema_l2_positive.json` | schema search L2 finding and evidence refs | pass |
+| phase2 positive | `fixtures/bkn-trace/phase2/query_object_instance_l2_positive.json` | object query L2 finding and row refs | pass |
+| phase2 negative | `fixtures/bkn-trace/phase2/negative_raw_query_payload.json` | raw query/prompt payload rejection | fail |
 
 ## Covered GWT
 
@@ -131,17 +147,24 @@ Trust policy:
 - GWT-08 工具或依赖失败。
 - GWT-10 敏感数据扫描。
 - GWT-13 字段索引分层。
+- GWT-21 Given 合法入站 trace/request/account context，When `search_schema` 成功返回候选对象/关系/行动/指标，Then 模块发射 `claim.created` 和 `evidence.refs.created`，且事件可通过同一 `trace_id`、`span_id`、`bkn.request.id` 关联。
+- GWT-22 Given schema 检索 query 与候选结果含业务名称/comment/字段，When 生成 L2 证据事件，Then payload 只包含 hash/ref/count，不包含原始 query、完整 schema、字段说明或结果行。
+- GWT-23 Given 未配置 `BKN_TRACE_EVIDENCE_INGEST_URL`，When `search_schema` 成功执行，Then 业务响应不受影响且不上报事件。
+- GWT-24 Given Trace 后端暂时不可用，When 异步上报失败，Then 只产生 warning，不改变 `search_schema` 的响应状态。
+- GWT-25 Given 合法入站 trace/request/account context，When `query_object_instance` 成功返回对象实例，Then 模块发射 `claim.created` 和 `evidence.refs.created`，其中实例证据为 `row_ref`。
+- GWT-26 Given 对象实例查询条件、属性列表、实例 identity 或返回行包含用户数据，When 生成 L2 证据事件，Then payload 只包含 condition/properties/identity/row hash，不包含原始过滤值、属性名、实例名或行级数据。
 
 ## Known Gaps
 
-- full `tool.called/tool.failed/context.refs.resolved` runtime event emitter is not complete in this branch.
+- runtime L2 emitter currently covers `context.search_schema` and `context.query_object` row refs; `query_instance_subgraph`、`run_sql` and resolver-level source refs remain follow-up.
+- cross-module global Evidence Graph assembly is owned by BKN Trace core service, not by context-loader.
 - full registry validation and indexing policy validation currently rely on `bkn-docs` validator follow-up.
-- partial evidence resolver and audit-grade evidence snapshot belong to later BKN Trace phases.
+- audit-grade evidence snapshot, versioned schema refs, source data snapshot refs, and Studio visualization belong to later BKN Trace phases.
 - S3 health metrics are not implemented yet.
 
 ## Owner Sign-off
 
 - owner: OpenBKN Foundry / context-loader
-- reviewed at: 2026-07-21
+- reviewed at: 2026-07-23
 - reviewer: pending
 - compatibility risk: low; new headers are additive and legacy `x-request-id` remains supported.

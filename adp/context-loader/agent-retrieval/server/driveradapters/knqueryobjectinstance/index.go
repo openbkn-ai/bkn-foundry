@@ -16,6 +16,7 @@ import (
 	validator "github.com/go-playground/validator/v10"
 
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/drivenadapters"
+	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/bkntrace"
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/config"
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/rest"
@@ -97,6 +98,7 @@ func (h *knQueryObjectInstanceHandler) QueryObjectInstance(c *gin.Context) {
 		rest.ReplyError(c, err)
 		return
 	}
+	bkntrace.EmitQueryObjectInstanceEvents(c.Request.Context(), h.Logger, req, resp)
 
 	// 返回成功响应
 	rest.ReplyOK(c, http.StatusOK, resp)
