@@ -19,6 +19,7 @@
 | --- | --- | --- | --- | --- |
 | `context.search_schema` | schema search HTTP/MCP/tool call | `traceparent`、`bkn-request-id`、account/auth context | `context-loader.request`、`context-loader.search` | `claim.created`、`evidence.refs.created`、`context.refs.resolved` |
 | `context.query_object` | object query HTTP/MCP/tool call | `traceparent`、`bkn-request-id`、account/auth context | `context-loader.request`、`context-loader.source.resolve` | `claim.created`、`evidence.refs.created`、`tool.called`、`tool.failed` |
+| `context.query_instance_subgraph` | instance subgraph HTTP/MCP/tool call | `traceparent`、`bkn-request-id`、account/auth context | `context-loader.request`、`context-loader.source.resolve` | `claim.created`、`evidence.refs.created` |
 | `context.load_refs` | source refs load | `traceparent`、`bkn-request-id`、business refs | `context-loader.source.resolve` | `context.refs.resolved` |
 | `context.resolve_source` | source resolver call | `traceparent`、`bkn-request-id`、resource refs | `context-loader.source.resolve` | `context.refs.resolved` |
 
@@ -86,7 +87,9 @@ Trust policy:
 - `claim.created.payload.claim_type` 固定为 `finding`，`claim_hash` 只基于结果数量、`kn_id`、`query_hash` 等摘要字段计算，不包含原始 query、schema 名称、comment、字段说明或完整结果。
 - `evidence.refs.created.payload.evidence_refs` 只包含 `ref_id`、`ref_type`、`source_system`、`summary_hash`、`validity`、`version_status`、`visibility`、`partial_reason`；`summary_hash` 来自安全摘要，不包含原始 schema 内容。
 - `context.query_object` 在 REST/MCP 成功返回后发射局部 L2 事件：`claim.created` 表示“本次对象实例查询产生了一个数据 finding”，`evidence.refs.created` 记录实例级 `row_ref`；`condition`、`filters`、`properties`、实例 identity 和行内容只能进入 hash，不得原样进入 payload。
-- `context.query_object` 的 `truncated=true` 来源包括响应存在 `search_after` 或返回条数达到请求 `limit`；该信号只表示“结果可能仍有后续页”，不表示审计级完整性。
+- `context.query_object` 的 `truncated=true` 只来自明确下一页信号：响应存在 `search_after`，或 `total_count > offset + returned_count`；不得用 `len(data) >= limit` 猜测截断。
+- `context.query_instance_subgraph` 在 service 成功返回后发射局部 L2 事件：`claim.created` 表示“本次实例子图查询产生了一个关系上下文 finding”，`evidence.refs.created` 记录相关实例 `row_ref` 和关系类型 `schema_ref`；`relation_type_paths`、实例 identity、路径条件和返回行内容只能进入 hash，不得原样进入 payload。
+- `context.query_instance_subgraph` 的 `evidence_refs` 最多保留 100 条，超过后 `subject_refs.refs_truncated=true` 且 `partial_reason` 包含 `refs_truncated`；关系类型只从 `relation`、`relations`、`relation_path(s)`、`relation_type(s)` 等关系容器提取，不从普通实例字段启发式提取。
 - `version_status` 当前为 `unversioned`，schema refs 必须携带 `partial_reason=["schema_ref_unversioned"]`，row refs 必须携带 `partial_reason=["row_ref_unversioned"]`；后续接入 BKN schema version / snapshot 后才能改为 `versioned`。
 - 证据事件上报由 `BKN_TRACE_EVIDENCE_INGEST_URL` 控制，默认关闭；开启后异步提交，不阻塞 schema 检索主路径。
 - 上报失败只记录 warning，不改变业务响应；BKN Trace 核心服务负责后续 Evidence Graph 汇聚、查询、快照和 Studio 可视化。
@@ -137,6 +140,7 @@ Trust policy:
 | sampling | `fixtures/bkn-trace/sampling.json` | forced sampled tool error | pass |
 | phase2 positive | `fixtures/bkn-trace/phase2/search_schema_l2_positive.json` | schema search L2 finding and evidence refs | pass |
 | phase2 positive | `fixtures/bkn-trace/phase2/query_object_instance_l2_positive.json` | object query L2 finding and row refs | pass |
+| phase2 positive | `fixtures/bkn-trace/phase2/query_instance_subgraph_l2_positive.json` | instance subgraph L2 finding, row refs and relation schema refs | pass |
 | phase2 negative | `fixtures/bkn-trace/phase2/negative_raw_query_payload.json` | raw query/prompt payload rejection | fail |
 
 ## Covered GWT
@@ -153,10 +157,12 @@ Trust policy:
 - GWT-24 Given Trace 后端暂时不可用，When 异步上报失败，Then 只产生 warning，不改变 `search_schema` 的响应状态。
 - GWT-25 Given 合法入站 trace/request/account context，When `query_object_instance` 成功返回对象实例，Then 模块发射 `claim.created` 和 `evidence.refs.created`，其中实例证据为 `row_ref`。
 - GWT-26 Given 对象实例查询条件、属性列表、实例 identity 或返回行包含用户数据，When 生成 L2 证据事件，Then payload 只包含 condition/properties/identity/row hash，不包含原始过滤值、属性名、实例名或行级数据。
+- GWT-27 Given 合法入站 trace/request/account context，When `query_instance_subgraph` 成功返回关系子图，Then 模块发射 `claim.created` 和 `evidence.refs.created`，其中相关实例为 `row_ref`，关系类型为 `schema_ref`。
+- GWT-28 Given 子图 relation paths、实例 identity 或返回节点/边包含用户数据，When 生成 L2 证据事件，Then payload 只包含 path/identity/entry hash，不包含原始路径条件、实例主键值或行级数据。
 
 ## Known Gaps
 
-- runtime L2 emitter currently covers `context.search_schema` and `context.query_object` row refs; `query_instance_subgraph`、`run_sql` and resolver-level source refs remain follow-up.
+- runtime L2 emitter currently covers `context.search_schema`、`context.query_object` row refs and `context.query_instance_subgraph` row/schema refs; `run_sql` and resolver-level source refs remain follow-up.
 - cross-module global Evidence Graph assembly is owned by BKN Trace core service, not by context-loader.
 - full registry validation and indexing policy validation currently rely on `bkn-docs` validator follow-up.
 - audit-grade evidence snapshot, versioned schema refs, source data snapshot refs, and Studio visualization belong to later BKN Trace phases.

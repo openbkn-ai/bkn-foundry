@@ -13,6 +13,7 @@ import (
 	"sync"
 
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/drivenadapters"
+	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/bkntrace"
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/config"
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/interfaces"
 )
@@ -48,5 +49,8 @@ func NewKnQuerySubgraphService() KnQuerySubgraphService {
 func (s *knQuerySubgraphService) QueryInstanceSubgraph(ctx context.Context, req *interfaces.QueryInstanceSubgraphReq) (resp *interfaces.QueryInstanceSubgraphResp, err error) {
 	// 调用 drivenadapters 层查询子图
 	resp, err = s.OntologyQuery.QueryInstanceSubgraph(ctx, req)
+	if err == nil {
+		bkntrace.EmitQueryInstanceSubgraphEvents(ctx, s.Logger, req, resp)
+	}
 	return
 }

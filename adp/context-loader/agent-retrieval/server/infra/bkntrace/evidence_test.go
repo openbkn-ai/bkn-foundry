@@ -227,6 +227,134 @@ func TestQueryObjectTruncatedUsesExplicitNextPageSignals(t *testing.T) {
 	}
 }
 
+func TestBuildQueryInstanceSubgraphEventsUsesHashAndRefsOnly(t *testing.T) {
+	req := &interfaces.QueryInstanceSubgraphReq{
+		KnID: "kn_demo",
+		RelationTypePaths: []any{
+			map[string]any{
+				"source_ot_id":          "customer",
+				"relation_type_id":      "has_order",
+				"target_ot_id":          "order",
+				"source_instance_id":    "cust_001",
+				"target_instance_phone": "18800001111",
+				"limit":                 20,
+			},
+		},
+	}
+	resp := &interfaces.QueryInstanceSubgraphResp{
+		Entries: []any{
+			map[string]any{
+				"source": map[string]any{
+					"_instance_identity": map[string]any{"customer_id": "cust_001"},
+					"name":               "Alice",
+					"phone":              "18800001111",
+					"relation_type":      "vip_customer_segment",
+				},
+				"relation": map[string]any{
+					"relation_type_id": "has_order",
+					"amount":           99.5,
+				},
+				"target": map[string]any{
+					"_instance_identity": map[string]any{"order_id": "ord_001"},
+					"address":            "Sensitive Address",
+				},
+			},
+		},
+	}
+
+	events := BuildQueryInstanceSubgraphEvents(testTraceContext(), req, resp)
+	if len(events) != 2 {
+		t.Fatalf("len(events)=%d, want 2", len(events))
+	}
+	raw, err := json.Marshal(events)
+	if err != nil {
+		t.Fatalf("marshal events: %v", err)
+	}
+	text := string(raw)
+	if !strings.Contains(text, `"event_type":"claim.created"`) {
+		t.Fatalf("missing claim.created event: %s", text)
+	}
+	if !strings.Contains(text, `"event_type":"evidence.refs.created"`) {
+		t.Fatalf("missing evidence.refs.created event: %s", text)
+	}
+	if !strings.Contains(text, `"ref_type":"row_ref"`) {
+		t.Fatalf("missing row_ref evidence: %s", text)
+	}
+	if !strings.Contains(text, `"ref_id":"relation_type:has_order"`) {
+		t.Fatalf("missing relation type evidence: %s", text)
+	}
+	if !strings.Contains(text, `"ref_type":"schema_ref"`) {
+		t.Fatalf("missing schema_ref evidence: %s", text)
+	}
+	if !strings.Contains(text, `"path_hash":"sha256:`) {
+		t.Fatalf("missing relation path hash: %s", text)
+	}
+	for _, leaked := range []string{"cust_001", "ord_001", "Alice", "18800001111", "Sensitive Address", "target_instance_phone"} {
+		if strings.Contains(text, leaked) {
+			t.Fatalf("event leaked raw subgraph content %q: %s", leaked, text)
+		}
+	}
+	if strings.Contains(text, "vip_customer_segment") {
+		t.Fatalf("event treated data field relation_type as schema ref: %s", text)
+	}
+}
+
+func TestBuildQueryInstanceSubgraphEventsDeduplicatesRefs(t *testing.T) {
+	req := &interfaces.QueryInstanceSubgraphReq{KnID: "kn_demo"}
+	resp := &interfaces.QueryInstanceSubgraphResp{
+		Entries: []any{
+			map[string]any{
+				"source":   map[string]any{"_instance_identity": map[string]any{"customer_id": "cust_001"}},
+				"relation": map[string]any{"relation_type_id": "has_order"},
+				"target":   map[string]any{"_instance_identity": map[string]any{"order_id": "ord_001"}},
+			},
+			map[string]any{
+				"source":   map[string]any{"_instance_identity": map[string]any{"customer_id": "cust_001"}},
+				"relation": map[string]any{"relation_type_id": "has_order"},
+				"target":   map[string]any{"_instance_identity": map[string]any{"order_id": "ord_001"}},
+			},
+		},
+	}
+
+	events := BuildQueryInstanceSubgraphEvents(testTraceContext(), req, resp)
+	raw, err := json.Marshal(events)
+	if err != nil {
+		t.Fatalf("marshal events: %v", err)
+	}
+	text := string(raw)
+	if got := strings.Count(text, `"ref_type":"row_ref"`); got != 2 {
+		t.Fatalf("row_ref count=%d, want 2 unique refs: %s", got, text)
+	}
+	if got := strings.Count(text, `"ref_id":"relation_type:has_order"`); got != 1 {
+		t.Fatalf("relation schema ref count=%d, want 1: %s", got, text)
+	}
+}
+
+func TestBuildQueryInstanceSubgraphEventsCapsEvidenceRefs(t *testing.T) {
+	entries := make([]any, 0, maxSubgraphEvidenceRefs+5)
+	for i := 0; i < maxSubgraphEvidenceRefs+5; i++ {
+		entries = append(entries, map[string]any{
+			"source": map[string]any{
+				"_instance_identity": map[string]any{"customer_id": i},
+			},
+		})
+	}
+	resp := &interfaces.QueryInstanceSubgraphResp{Entries: entries}
+
+	events := BuildQueryInstanceSubgraphEvents(testTraceContext(), &interfaces.QueryInstanceSubgraphReq{KnID: "kn_demo"}, resp)
+	raw, err := json.Marshal(events)
+	if err != nil {
+		t.Fatalf("marshal events: %v", err)
+	}
+	text := string(raw)
+	if got := strings.Count(text, `"ref_type":"row_ref"`); got != maxSubgraphEvidenceRefs {
+		t.Fatalf("row_ref count=%d, want capped %d: %s", got, maxSubgraphEvidenceRefs, text)
+	}
+	if !strings.Contains(text, `"refs_truncated"`) {
+		t.Fatalf("missing refs_truncated partial reason: %s", text)
+	}
+}
+
 func TestEmitSearchSchemaEventsNoopsWhenIngestDisabled(t *testing.T) {
 	t.Setenv(envEvidenceIngestURL, "")
 	maxConcepts := 5
