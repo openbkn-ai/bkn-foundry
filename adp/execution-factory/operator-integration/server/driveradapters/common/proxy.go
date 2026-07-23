@@ -24,6 +24,8 @@ import (
 type UnifiedProxyHandler interface {
 	FunctionExecuteProxy(c *gin.Context)
 	FunctionExecute(c *gin.Context)
+	// 从函数代码推导参数定义
+	FunctionInferSchema(c *gin.Context)
 	// 从Pypi源查询依赖库版本
 	QueryPypiVersions(c *gin.Context)
 	// 获取依赖库列表
@@ -308,4 +310,96 @@ func (h *unifiedProxyHandler) GetDependencies(c *gin.Context) {
 		return
 	}
 	rest.ReplyOK(c, http.StatusOK, resp)
+}
+
+// FunctionInferSchemaReq 从函数代码推导参数定义的请求
+type FunctionInferSchemaReq struct {
+	Code string `json:"code" validate:"required"` // 用户函数代码
+}
+
+// FunctionInferSchemaResp 推导结果。代码未使用 @tool 时 Supported 为 false，
+// 其余字段为空，调用方据此回退到手工填写。
+type FunctionInferSchemaResp struct {
+	Supported   bool                      `json:"supported"`             // 是否推导出了 @tool 函数
+	Name        string                    `json:"name,omitempty"`        // 函数名
+	Description string                    `json:"description,omitempty"` // 取自 docstring
+	Inputs      []*interfaces.ParameterDef `json:"inputs,omitempty"`     // 输入参数定义
+	Outputs     []*interfaces.ParameterDef `json:"outputs,omitempty"`    // 输出参数定义
+}
+
+// 探针代码：附在用户代码之后，向 SDK 取它登记的 schema。
+//
+// 在模块级直接打印并退出，不定义 handler：用户代码带 @tool 时，wrapper 会走
+// dispatch 分支去调用用户函数，探针若写成 handler 形态根本不会被执行，而 dispatch
+// 会因为缺少业务入参而失败。打印的 JSON 是 stdout 的最后一行，正是执行结果的提取契约。
+const inferSchemaProbe = `
+
+import json as _bkn_json, sys as _bkn_sys
+try:
+    import sandbox_sdk as _bkn_sdk
+    _bkn_schema = _bkn_sdk.export_schema()
+    _bkn_out = {
+        "supported": True,
+        "name": _bkn_schema.get("name", ""),
+        "description": _bkn_schema.get("description", ""),
+        "inputs": _bkn_schema.get("inputs", []),
+        "outputs": _bkn_schema.get("outputs", []),
+    } if _bkn_schema else {"supported": False}
+except Exception:
+    _bkn_out = {"supported": False}
+print(_bkn_json.dumps(_bkn_out))
+_bkn_sys.exit(0)
+`
+
+// FunctionInferSchema 从函数代码推导参数定义。
+//
+// 参数定义本来要用户在界面上再填一遍,而 @tool 函数的签名、类型注解和 docstring
+// 已经描述了同样的信息。这里在沙箱中执行用户代码,向 SDK 取它登记的 schema,
+// 让签名成为唯一事实源。
+//
+// 执行用户代码意味着与 FunctionExecute 同等的能力,因此沿用同一套 execute 授权。
+func (h *unifiedProxyHandler) FunctionInferSchema(c *gin.Context) {
+	ctx := c.Request.Context()
+	if err := requireOperatorTypePermission(ctx, h.AuthService,
+		interfaces.AuthOperationTypeExecute); err != nil {
+		rest.ReplyError(c, err)
+		return
+	}
+	req := &FunctionInferSchemaReq{}
+	if err := c.ShouldBindJSON(req); err != nil {
+		rest.ReplyError(c, errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtDebugParamsInvalid,
+			fmt.Sprintf("invalid request body, err: %v", err)))
+		return
+	}
+	if err := validator.New().Struct(req); err != nil {
+		rest.ReplyError(c, err)
+		return
+	}
+
+	resp, err := h.SessionPool.ExecuteCode(ctx, &interfaces.ExecuteCodeReq{
+		Code:     req.Code + inferSchemaProbe,
+		Event:    map[string]any{},
+		Language: string(interfaces.ScriptTypePython),
+		EnvVars:  map[string]any{"source": "function_infer_schema"},
+	})
+	if err != nil {
+		rest.ReplyError(c, err)
+		return
+	}
+	// 用户代码本身有语法错误或 import 失败时推导不出结果,这不是服务端故障,
+	// 按「无法推导」返回,让调用方回退到手工填写。
+	if resp.ExitCode != 0 || resp.ReturnValue == nil {
+		h.Logger.WithContext(ctx).Infof("infer schema produced no result, exit_code: %d, stderr: %s",
+			resp.ExitCode, resp.Stderr)
+		rest.ReplyOK(c, http.StatusOK, &FunctionInferSchemaResp{Supported: false})
+		return
+	}
+
+	result := &FunctionInferSchemaResp{}
+	if err = utils.StringToObject(utils.ObjectToJSON(resp.ReturnValue), result); err != nil {
+		h.Logger.WithContext(ctx).Errorf("decode infer schema result failed, err: %v", err)
+		rest.ReplyOK(c, http.StatusOK, &FunctionInferSchemaResp{Supported: false})
+		return
+	}
+	rest.ReplyOK(c, http.StatusOK, result)
 }
