@@ -131,6 +131,9 @@ type FunctionContent struct {
 	Code            string           `json:"code" form:"code" validate:"required"`                                             // Python 代码（必填）
 	Dependencies    []DependencyInfo `json:"dependencies" form:"dependencies"`                                                 // 依赖库列表
 	DependenciesURL string           `json:"dependencies_url" form:"dependencies_url"`                                         // 依赖库安装源地址
+	// 参数定义在落库时展开进了 API 规格,读取时反解回来,供调用方按原始形状使用
+	Inputs  []*ParameterDef `json:"inputs,omitempty"`  // 输入参数定义
+	Outputs []*ParameterDef `json:"outputs,omitempty"` // 输出参数定义
 }
 
 // ParameterType 参数类型

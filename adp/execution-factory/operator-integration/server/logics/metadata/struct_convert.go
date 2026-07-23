@@ -3,6 +3,7 @@ package metadata
 import (
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces/model"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/parsers"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/utils"
 )
 
@@ -28,11 +29,15 @@ func MetadataDBToStruct(metadataDB interfaces.IMetadataDB) *interfaces.MetadataI
 		if v.GetDependencies() != "" {
 			dependencies = utils.JSONToObject[[]interfaces.DependencyInfo](v.GetDependencies())
 		}
+		// 参数定义落库时被展开进 API 规格,这里反解回来,调用方无需自行解析 OpenAPI
+		inputs, outputs := parsers.FunctionParamsFromAPISpec(v.GetAPISpec())
 		metadata.FunctionContent = &interfaces.FunctionContent{
 			ScriptType:      interfaces.ScriptType(v.GetScriptType()),
 			Code:            v.GetCode(),
 			Dependencies:    dependencies,
 			DependenciesURL: v.GetDependenciesURL(),
+			Inputs:          inputs,
+			Outputs:         outputs,
 		}
 		return metadata
 	case *model.APIMetadataDB:
