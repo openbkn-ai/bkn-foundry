@@ -68,6 +68,7 @@ func TestSQLGlotAdapterValidateSQL(t *testing.T) {
 			assert.True(t, errors.As(err, &validationErr))
 		})
 	}
+
 }
 
 func TestSQLGlotAdapterValidateTableReferences(t *testing.T) {
@@ -87,6 +88,32 @@ func TestSQLGlotAdapterValidateTableReferences(t *testing.T) {
 	var validationErr *ReadOnlySQLValidationError
 	require.ErrorAs(t, err, &validationErr)
 	assert.Contains(t, validationErr.Reason, "unbound physical table")
+}
+
+func TestExtractTableResourceIDs(t *testing.T) {
+	requireSQLGlotRuntime(t)
+
+	ids, err := ExtractTableResourceIDs(context.Background(),
+		"SELECT * FROM {{orders-2026}} JOIN {{.customer_data}} ON true", "postgres")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"orders-2026", "customer_data"}, ids)
+
+	for _, sql := range []string{
+		"SELECT * FROM public.orders /* {{orders-2026}} */",
+		"SELECT * FROM public.orders -- {{orders-2026}}\n",
+		"SELECT '{{orders-2026}}' FROM public.orders",
+	} {
+		t.Run(sql, func(t *testing.T) {
+			ids, err := ExtractTableResourceIDs(context.Background(), sql, "postgres")
+			require.NoError(t, err)
+			assert.Empty(t, ids)
+		})
+	}
+
+	ids, err = ExtractTableResourceIDs(context.Background(),
+		"SELECT 'it\\'s {{ignored-resource}}' FROM {{orders-2026}}", "mysql")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"orders-2026"}, ids)
 }
 
 func TestSQLGlotAdapterHonorsCanceledContext(t *testing.T) {

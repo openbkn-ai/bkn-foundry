@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"math"
 	"net/http"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -243,7 +242,8 @@ type preparedSQLQuery struct {
 // cursor execution. Policy validation deliberately happens after controlled
 // resource binding and before compilation or connector execution.
 func (rqs *rawQueryService) prepareSQLQuery(ctx context.Context, req *interfaces.RawQueryRequest) (*preparedSQLQuery, error) {
-	resourceIDs, err := rqs.extractResourceIDs(req.Query)
+	inputDialect := req.EffectiveInputDialect()
+	resourceIDs, err := rqs.extractResourceIDs(ctx, req.Query, inputDialect)
 	if err != nil {
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 			WithErrorDetails(fmt.Sprintf("extract resource ids failed: %v", err))
@@ -256,11 +256,10 @@ func (rqs *rawQueryService) prepareSQLQuery(ctx context.Context, req *interfaces
 	if err != nil {
 		return nil, err
 	}
-	replacedSQL, err := rqs.replaceResourceIDWithSchemaTable(ctx, req.Query, resourceIDs, catalog)
+	replacedSQL, err := rqs.replaceResourceIDWithSchemaTable(ctx, req.Query, resourceIDs, catalog, inputDialect)
 	if err != nil {
 		return nil, err
 	}
-	inputDialect := req.EffectiveInputDialect()
 	allowedReferences, err := rqs.resourceSourceIdentifiers(ctx, resourceIDs)
 	if err != nil {
 		return nil, err
@@ -737,29 +736,10 @@ func rawQueryTotalCount(result *interfaces.RawQueryResponse) (int64, error) {
 	}
 }
 
-// extractResourceIDs 从SQL中提取所有{{.resource_id}}占位符
-func (rqs *rawQueryService) extractResourceIDs(query any) ([]string, error) {
-	// 如果query是字符串类型，使用正则表达式提取resource_id
+// extractResourceIDs 从 FROM/JOIN 表引用中提取所有 {{.resource_id}} 占位符。
+func (rqs *rawQueryService) extractResourceIDs(ctx context.Context, query any, inputDialect string) ([]string, error) {
 	if queryStr, ok := query.(string); ok {
-		// Keep this grammar aligned with Resource ID validation: lower-case
-		// letters, digits, underscores, and hyphens are all valid IDs.
-		re := regexp.MustCompile(`\{\{\.?([a-z0-9][a-z0-9_-]{0,39})\}\}`)
-		matches := re.FindAllStringSubmatch(queryStr, -1)
-
-		resourceIDs := make([]string, 0, len(matches))
-		seen := make(map[string]bool)
-
-		for _, match := range matches {
-			if len(match) > 1 {
-				resourceID := match[1]
-				if !seen[resourceID] {
-					seen[resourceID] = true
-					resourceIDs = append(resourceIDs, resourceID)
-				}
-			}
-		}
-
-		return resourceIDs, nil
+		return rawQueryPolicy.ExtractTableResourceIDs(ctx, queryStr, inputDialect)
 	}
 
 	// 如果query是map类型（OpenSearch DSL），返回空数组
@@ -839,7 +819,7 @@ func ensureCatalogEnabled(ctx context.Context, catalog *interfaces.Catalog) erro
 }
 
 // replaceResourceIDWithSchemaTable 将resource_id替换为schema.table格式
-func (rqs *rawQueryService) replaceResourceIDWithSchemaTable(ctx context.Context, sql any, resourceIDs []string, catalog *interfaces.Catalog) (string, error) {
+func (rqs *rawQueryService) replaceResourceIDWithSchemaTable(ctx context.Context, sql any, resourceIDs []string, catalog *interfaces.Catalog, inputDialect string) (string, error) {
 	replacedSQL := sql.(string)
 	logger.Infof("Before replace - %s, resource_ids: %v", SafeQuerySummary(replacedSQL), resourceIDs)
 
@@ -860,12 +840,73 @@ func (rqs *rawQueryService) replaceResourceIDWithSchemaTable(ctx context.Context
 		// 替换{{.resource_id}}和{{resource_id}}为schema.table
 		placeholder1 := fmt.Sprintf("{{.%s}}", resourceID)
 		placeholder2 := fmt.Sprintf("{{%s}}", resourceID)
-		replacedSQL = regexp.MustCompile(regexp.QuoteMeta(placeholder1)).ReplaceAllString(replacedSQL, resource.SourceIdentifier)
-		replacedSQL = regexp.MustCompile(regexp.QuoteMeta(placeholder2)).ReplaceAllString(replacedSQL, resource.SourceIdentifier)
+		replacedSQL = replacePlaceholderInSQLCode(replacedSQL, placeholder1, resource.SourceIdentifier, inputDialect)
+		replacedSQL = replacePlaceholderInSQLCode(replacedSQL, placeholder2, resource.SourceIdentifier, inputDialect)
 	}
 
 	logger.Infof("After replace - %s", SafeQuerySummary(replacedSQL))
 	return replacedSQL, nil
+}
+
+// replacePlaceholderInSQLCode preserves comments and quoted literals. They
+// are not resource bindings and must remain semantically unchanged.
+func replacePlaceholderInSQLCode(sql, placeholder, replacement, inputDialect string) string {
+	var output strings.Builder
+	output.Grow(len(sql))
+	for index := 0; index < len(sql); {
+		if strings.HasPrefix(sql[index:], "--") {
+			end := strings.IndexByte(sql[index:], '\n')
+			if end < 0 {
+				output.WriteString(sql[index:])
+				break
+			}
+			end += index + 1
+			output.WriteString(sql[index:end])
+			index = end
+			continue
+		}
+		if strings.HasPrefix(sql[index:], "/*") {
+			end := strings.Index(sql[index+2:], "*/")
+			if end < 0 {
+				output.WriteString(sql[index:])
+				break
+			}
+			end += index + 4
+			output.WriteString(sql[index:end])
+			index = end
+			continue
+		}
+		if sql[index] == '\'' || sql[index] == '"' || sql[index] == '`' {
+			quote := sql[index]
+			end := index + 1
+			for end < len(sql) {
+				if sql[end] == quote {
+					if end+1 < len(sql) && sql[end+1] == quote {
+						end += 2
+						continue
+					}
+					end++
+					break
+				}
+				if inputDialect == "mysql" && quote == '\'' && sql[end] == '\\' && end+1 < len(sql) {
+					end += 2
+					continue
+				}
+				end++
+			}
+			output.WriteString(sql[index:end])
+			index = end
+			continue
+		}
+		if strings.HasPrefix(sql[index:], placeholder) {
+			output.WriteString(replacement)
+			index += len(placeholder)
+			continue
+		}
+		output.WriteByte(sql[index])
+		index++
+	}
+	return output.String()
 }
 
 // executeSQL 执行 SQL 查询并记录分页模式。

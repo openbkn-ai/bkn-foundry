@@ -47,12 +47,21 @@ type deadlineInspectingPolicy struct {
 }
 
 type recordingPolicy struct {
-	dialects []string
+	dialects    []string
+	resourceIDs []string
+}
+
+func (p *recordingPolicy) ExtractTableResourceIDs(context.Context, string, string) ([]string, error) {
+	return p.resourceIDs, nil
 }
 
 func (p *recordingPolicy) ValidateSQL(_ context.Context, _ string, dialect string) error {
 	p.dialects = append(p.dialects, dialect)
 	return nil
+}
+
+func (p *deadlineInspectingPolicy) ExtractTableResourceIDs(context.Context, string, string) ([]string, error) {
+	return []string{"resource-1"}, nil
 }
 
 func (p *recordingPolicy) ValidateTableReferences(context.Context, string, string, []string) error {
@@ -200,10 +209,55 @@ func TestRawQueryServiceValidateRequestNewContract(t *testing.T) {
 }
 
 func TestExtractResourceIDsSupportsHyphenatedIDs(t *testing.T) {
-	ids, err := (&rawQueryService{}).extractResourceIDs("SELECT * FROM {{orders-2026}} JOIN {{.customer_data}} ON true")
+	previousPolicy := rawQueryPolicy
+	rawQueryPolicy = &recordingPolicy{resourceIDs: []string{"orders-2026", "customer_data"}}
+	t.Cleanup(func() { rawQueryPolicy = previousPolicy })
+
+	ids, err := (&rawQueryService{}).extractResourceIDs(context.Background(), "SELECT * FROM {{orders-2026}} JOIN {{.customer_data}} ON true", "postgres")
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"orders-2026", "customer_data"}, ids)
+}
+
+func TestPrepareSQLQueryRejectsResourcePlaceholderOutsideTableReference(t *testing.T) {
+	svc := &rawQueryService{}
+	previousPolicy := rawQueryPolicy
+	rawQueryPolicy = &recordingPolicy{}
+	t.Cleanup(func() { rawQueryPolicy = previousPolicy })
+
+	for _, sql := range []string{
+		"SELECT * FROM public.orders /* {{resource-1}} */",
+		"SELECT * FROM public.orders -- {{resource-1}}\n",
+		"SELECT '{{resource-1}}' FROM public.orders",
+	} {
+		t.Run(sql, func(t *testing.T) {
+			_, err := svc.prepareSQLQuery(context.Background(), &interfaces.RawQueryRequest{
+				Query:        sql,
+				QueryFormat:  interfaces.QueryFormatSQL,
+				InputDialect: "postgres",
+			})
+			assertHTTPError(t, err, http.StatusBadRequest)
+			var httpErr *rest.HTTPError
+			require.ErrorAs(t, err, &httpErr)
+			assert.Equal(t, "at least one resource_id is required for SQL queries", httpErr.BaseError.ErrorDetails)
+		})
+	}
+}
+
+func TestReplacePlaceholderInSQLCodePreservesCommentsAndLiterals(t *testing.T) {
+	got := replacePlaceholderInSQLCode(
+		"SELECT '{{resource-1}}' FROM {{resource-1}} /* {{resource-1}} */ -- {{resource-1}}\n",
+		"{{resource-1}}", "public.orders", "postgres",
+	)
+	assert.Equal(t, "SELECT '{{resource-1}}' FROM public.orders /* {{resource-1}} */ -- {{resource-1}}\n", got)
+}
+
+func TestReplacePlaceholderInSQLCodeHonorsMySQLBackslashEscapes(t *testing.T) {
+	got := replacePlaceholderInSQLCode(
+		"SELECT 'it\\'s {{resource-1}}' FROM {{resource-1}}",
+		"{{resource-1}}", "public.orders", "mysql",
+	)
+	assert.Equal(t, "SELECT 'it\\'s {{resource-1}}' FROM public.orders", got)
 }
 
 func TestQueryExecutionContextAppliesTimeout(t *testing.T) {
@@ -299,7 +353,7 @@ func TestPrepareSQLQueryRevalidatesTranspiledSQL(t *testing.T) {
 		ID: "catalog-1", Enabled: true, ConnectorType: interfaces.ConnectorTypeMySQL,
 	}, nil)
 
-	policy := &recordingPolicy{}
+	policy := &recordingPolicy{resourceIDs: []string{"resource-1"}}
 	previousPolicy := rawQueryPolicy
 	rawQueryPolicy = policy
 	t.Cleanup(func() { rawQueryPolicy = previousPolicy })
@@ -743,13 +797,16 @@ func TestOpenSearchCursorPageFailureDoesNotRefreshExpiry(t *testing.T) {
 func TestRawQueryServiceExtractResourceIDs(t *testing.T) {
 	t.Run("raw query service extract resource ids", func(t *testing.T) {
 		svc := &rawQueryService{}
+		previousPolicy := rawQueryPolicy
+		rawQueryPolicy = &recordingPolicy{resourceIDs: []string{"r1", "r2"}}
+		t.Cleanup(func() { rawQueryPolicy = previousPolicy })
 
-		got, err := svc.extractResourceIDs("select * from {{.r1}} join {{r2}} on x where id in (select id from {{.r1}})")
+		got, err := svc.extractResourceIDs(context.Background(), "select * from {{.r1}} join {{r2}} on x where id in (select id from {{.r1}})", "postgres")
 
 		require.NoError(t, err)
 		assert.Equal(t, []string{"r1", "r2"}, got)
 
-		got, err = svc.extractResourceIDs(map[string]any{"query": map[string]any{"match_all": map[string]any{}}})
+		got, err = svc.extractResourceIDs(context.Background(), map[string]any{"query": map[string]any{"match_all": map[string]any{}}}, "postgres")
 		require.NoError(t, err)
 		assert.Empty(t, got)
 	})
@@ -780,6 +837,7 @@ func TestRawQueryServiceReplaceResourceIDWithSchemaTable(t *testing.T) {
 			"select * from {{.r1}} join {{r2}} on {{.r1}}.id = {{r2}}.id",
 			[]string{"r1", "r2"},
 			&interfaces.Catalog{Name: "catalog"},
+			"postgres",
 		)
 
 		require.NoError(t, err)
