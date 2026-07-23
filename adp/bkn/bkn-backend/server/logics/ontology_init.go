@@ -117,7 +117,8 @@ func bknCatalogRequest() *interfaces.CatalogRequest {
 		ID:          interfaces.BKN_CATALOG_ID,
 		Name:        interfaces.BKN_CATALOG_NAME,
 		Description: "BKN的逻辑命名空间",
-		Tags:        []string{"BKN", "概念索引"},
+		// internal 标签让前端不必靠名称前缀猜内置目录（Studio 暂未读后端 internal 字段）
+		Tags: []string{"BKN", "概念索引", "internal"},
 		Enabled:     true,
 		// 系统内部目录：仅超级管理员可见，业务角色（数据管理员等）的 catalog:* 授权匹配不到
 		Internal: true,

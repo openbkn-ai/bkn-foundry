@@ -25,6 +25,10 @@ const (
 	// 因此只把「展示名」迁到新品牌名，ID 保持不动、不产生两套目录。
 	legacyExecutionFactoryCatalogID    = "kweaver_execution_factory_catalog"
 	legacyExecutionFactorySkillDataset = "kweaver_execution_factory_skill_dataset"
+	// internalCatalogTag 让内置目录自带「内置」语义标签。Studio 目前不读后端的
+	// internal 字段，靠 metadata/tag/名称前缀启发式判定内置目录，该 tag 命中它的
+	// 内置标签集合 —— 前端零改就能正确显示「内置」并收起管理操作。
+	internalCatalogTag = "internal"
 	// embeddingModelConfigKey 把"建 dataset 时锁定的 embedding 模型名"快照进向量特征
 	// 的 config，重启/实时同步时读回，保证写入向量用的模型与建索引时一致(建模型==查模型)。
 	// 这也是 vega 解析向量字段模型的键。
@@ -177,7 +181,7 @@ func (s *skillIndexSync) ensureCatalog(ctx context.Context) (string, error) {
 		_, err = s.vegaClient.CreateCatalog(ctx, &interfaces.VegaCatalogRequest{
 			ID:          executionFactoryCatalogID,
 			Name:        executionFactoryCatalogID,
-			Tags:        []string{"execution-factory", "索引"},
+			Tags:        []string{"execution-factory", "索引", internalCatalogTag},
 			Description: executionFactoryCatalogDesc,
 			// 系统内部目录：仅超级管理员可见，业务角色（数据管理员等）的 catalog:* 授权匹配不到
 			Internal: true,
@@ -195,23 +199,25 @@ func (s *skillIndexSync) ensureCatalog(ctx context.Context) (string, error) {
 	return catalog.ID, nil
 }
 
-// reconcileCatalog 把存量目录对齐到当前预期：展示名迁到新品牌名、目录置为启用。
-// 两个动作都是尽力而为——失败只告警不阻断启动，索引读写本身不依赖它们成功。
+// reconcileCatalog 把存量目录对齐到当前预期：展示名迁到新品牌名、补 internal 标签、
+// 目录置为启用。三个动作都是尽力而为——失败只告警不阻断启动，索引读写本身不依赖
+// 它们成功。
 func (s *skillIndexSync) reconcileCatalog(ctx context.Context, catalog *interfaces.VegaCatalog) {
-	if catalog.Name != executionFactoryCatalogID {
+	tags := appendInternalTag(catalog.Tags)
+	if catalog.Name != executionFactoryCatalogID || len(tags) != len(catalog.Tags) {
 		req := &interfaces.VegaCatalogRequest{
 			ID:            catalog.ID,
 			Name:          executionFactoryCatalogID,
-			Tags:          catalog.Tags,
+			Tags:          tags,
 			Description:   catalog.Description,
 			Internal:      true,
 			Enabled:       catalog.Enabled,
 			ConnectorType: catalog.ConnectorType,
 		}
 		if err := s.vegaClient.UpdateCatalog(ctx, req); err != nil {
-			s.logger.WithContext(ctx).Warnf("rename catalog failed, catalog_id=%s, name=%s, err=%v", catalog.ID, executionFactoryCatalogID, err)
+			s.logger.WithContext(ctx).Warnf("reconcile catalog failed, catalog_id=%s, name=%s, err=%v", catalog.ID, executionFactoryCatalogID, err)
 		} else {
-			s.logger.WithContext(ctx).Infof("catalog renamed, catalog_id=%s, name=%s", catalog.ID, executionFactoryCatalogID)
+			s.logger.WithContext(ctx).Infof("catalog reconciled, catalog_id=%s, name=%s, tags=%v", catalog.ID, executionFactoryCatalogID, tags)
 		}
 	}
 	if !catalog.Enabled {
@@ -221,6 +227,16 @@ func (s *skillIndexSync) reconcileCatalog(ctx context.Context, catalog *interfac
 			s.logger.WithContext(ctx).Infof("catalog enabled, catalog_id=%s", catalog.ID)
 		}
 	}
+}
+
+// appendInternalTag 补上 internal 标签；已有(忽略大小写与首尾空格)则原样返回。
+func appendInternalTag(tags []string) []string {
+	for _, tag := range tags {
+		if strings.EqualFold(strings.TrimSpace(tag), internalCatalogTag) {
+			return tags
+		}
+	}
+	return append(append([]string{}, tags...), internalCatalogTag)
 }
 
 // resolveDataset 解析本进程使用的 skill dataset：新装取 bkn_*，存量环境沿用

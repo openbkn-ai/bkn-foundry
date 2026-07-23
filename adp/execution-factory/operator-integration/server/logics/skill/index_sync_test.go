@@ -55,6 +55,8 @@ func TestSkillIndexSync(t *testing.T) {
 			// 逻辑目录必须建成 enabled，否则其下 dataset 读写被 vega 409 拒绝
 			So(createdCatalog.Enabled, ShouldBeTrue)
 			So(createdCatalog.Internal, ShouldBeTrue)
+			// internal 标签：Studio 靠它认内置目录（前端不读 internal 字段）
+			So(createdCatalog.Tags, ShouldContain, internalCatalogTag)
 			So(createdResource, ShouldNotBeNil)
 			So(createdResource.ID, ShouldEqual, executionFactorySkillDataset)
 			So(createdResource.Status, ShouldEqual, executionFactoryDatasetStatus)
@@ -101,7 +103,12 @@ func TestSkillIndexSync(t *testing.T) {
 				logger:       logger.DefaultLogger(),
 			}
 			mockVegaClient.EXPECT().GetCatalogByID(gomock.Any(), executionFactoryCatalogID).
-				Return(&interfaces.VegaCatalog{ID: executionFactoryCatalogID, Name: executionFactoryCatalogID, Enabled: true}, nil)
+				Return(&interfaces.VegaCatalog{
+					ID:      executionFactoryCatalogID,
+					Name:    executionFactoryCatalogID,
+					Tags:    []string{internalCatalogTag},
+					Enabled: true,
+				}, nil)
 			mockVegaClient.EXPECT().GetResourceByID(gomock.Any(), executionFactorySkillDataset).
 				Return(&interfaces.VegaResource{ID: executionFactorySkillDataset, Name: executionFactorySkillDataset}, nil)
 
@@ -154,6 +161,9 @@ func TestSkillIndexSync(t *testing.T) {
 			So(renamedCatalog, ShouldNotBeNil)
 			So(renamedCatalog.ID, ShouldEqual, legacyExecutionFactoryCatalogID)
 			So(renamedCatalog.Name, ShouldEqual, executionFactoryCatalogID)
+			// 存量目录补 internal 标签，原有标签保留
+			So(renamedCatalog.Tags, ShouldContain, internalCatalogTag)
+			So(renamedCatalog.Tags, ShouldContain, "execution-factory")
 			So(renamedResourceName, ShouldEqual, executionFactorySkillDataset)
 			So(syncer.getDatasetID(), ShouldEqual, legacyExecutionFactorySkillDataset)
 			// 建时锁定的 embedding 模型从旧 dataset 的 tag 读回
@@ -168,7 +178,12 @@ func TestSkillIndexSync(t *testing.T) {
 			}
 			mockVegaClient.EXPECT().GetCatalogByID(gomock.Any(), executionFactoryCatalogID).Return(nil, nil)
 			mockVegaClient.EXPECT().GetCatalogByID(gomock.Any(), legacyExecutionFactoryCatalogID).
-				Return(&interfaces.VegaCatalog{ID: legacyExecutionFactoryCatalogID, Name: executionFactoryCatalogID, Enabled: true}, nil)
+				Return(&interfaces.VegaCatalog{
+					ID:      legacyExecutionFactoryCatalogID,
+					Name:    executionFactoryCatalogID,
+					Tags:    []string{"execution-factory", internalCatalogTag},
+					Enabled: true,
+				}, nil)
 			mockVegaClient.EXPECT().GetResourceByID(gomock.Any(), executionFactorySkillDataset).Return(nil, nil)
 			mockVegaClient.EXPECT().GetResourceByID(gomock.Any(), legacyExecutionFactorySkillDataset).
 				Return(&interfaces.VegaResource{ID: legacyExecutionFactorySkillDataset, Name: executionFactorySkillDataset}, nil)
@@ -176,6 +191,33 @@ func TestSkillIndexSync(t *testing.T) {
 			err := syncer.Init(context.Background())
 			So(err, ShouldBeNil)
 			So(syncer.getDatasetID(), ShouldEqual, legacyExecutionFactorySkillDataset)
+		})
+
+		Convey("Init backfills the internal tag when only the tag is missing", func() {
+			var reconciled *interfaces.VegaCatalogRequest
+			mockVegaClient := mocks.NewMockVegaBackendClient(ctrl)
+			syncer := &skillIndexSync{
+				vegaClient: mockVegaClient,
+				logger:     logger.DefaultLogger(),
+			}
+			mockVegaClient.EXPECT().GetCatalogByID(gomock.Any(), executionFactoryCatalogID).
+				Return(&interfaces.VegaCatalog{
+					ID:      executionFactoryCatalogID,
+					Name:    executionFactoryCatalogID,
+					Tags:    []string{"execution-factory", "索引"},
+					Enabled: true,
+				}, nil)
+			mockVegaClient.EXPECT().UpdateCatalog(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, req *interfaces.VegaCatalogRequest) error {
+				reconciled = req
+				return nil
+			})
+			mockVegaClient.EXPECT().GetResourceByID(gomock.Any(), executionFactorySkillDataset).
+				Return(&interfaces.VegaResource{ID: executionFactorySkillDataset, Name: executionFactorySkillDataset}, nil)
+
+			err := syncer.Init(context.Background())
+			So(err, ShouldBeNil)
+			So(reconciled, ShouldNotBeNil)
+			So(reconciled.Tags, ShouldResemble, []string{"execution-factory", "索引", internalCatalogTag})
 		})
 
 		Convey("Init survives a failed rename and still serves the legacy dataset", func() {
