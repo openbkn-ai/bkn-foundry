@@ -1,8 +1,8 @@
 # ontology-query Trace Contract
 
-> 状态：阶段一模块接入合同  
-> 适用版本：`bkn.trace.schema.version=1.0.0`  
-> 依据：`bkn-docs/docs/foundry/bkn-trace/design/阶段一：OpenBKN 可观测记录规范与 Trace Context 基线.md`
+> 状态：阶段二数据证据接入合同
+> 适用版本：`bkn.trace.schema.version=2.0.0`
+> 依据：`bkn-docs/docs/foundry/bkn-trace/design/BKN Trace 设计.md`、`bkn-docs/docs/foundry/bkn-trace/design/BKN Trace 三段式实施计划.md`
 
 ## Module
 
@@ -12,16 +12,17 @@
 - service identity: `ontology-query`
 - runtime: Go HTTP service
 - repository path: `adp/bkn/ontology-query`
-- contract version: `1.0.0`
+- contract version: `2.0.0`
 
 ## Entry Operations
 
 | operation | trigger | required context | emitted spans | emitted events |
 | --- | --- | --- | --- | --- |
-| `bkn.object.query` | object instance query | `traceparent`、`bkn-request-id`、account/auth context | `bkn-ontology.request`、`bkn-ontology.instance.query` | `object.query.executed` |
-| `bkn.relation.query` | subgraph/path query | `traceparent`、`bkn-request-id`、account/auth context | `bkn-ontology.request`、`bkn-ontology.instance.query` | `relation.query.executed` |
+| `bkn.object.query` | object instance query | `traceparent`、`bkn-request-id`、account/auth context | `bkn-ontology.request`、`bkn-ontology.instance.query` | `claim.created`、`evidence.refs.created` |
+| `bkn.relation.query` | subgraph/path query | `traceparent`、`bkn-request-id`、account/auth context | `bkn-ontology.request`、`bkn-ontology.instance.query` | `claim.created`、`evidence.refs.created` |
 | `bkn.action_type.get` | action type query | `traceparent`、`bkn-request-id`、account/auth context | `bkn-ontology.request`、`bkn-ontology.schema.lookup` | `schema.read` |
-| `bkn.metric.get` | metric dry-run/data query | `traceparent`、`bkn-request-id`、account/auth context | `bkn-ontology.request`、`bkn-ontology.instance.query` | `object.query.executed` |
+| `bkn.metric.get` | metric data query | `traceparent`、`bkn-request-id`、account/auth context | `bkn-ontology.request`、`bkn-ontology.instance.query` | `claim.created`、`evidence.refs.created` |
+| `bkn.metric.dry_run` | metric dry-run query | `traceparent`、`bkn-request-id`、account/auth context | `bkn-ontology.request`、`bkn-ontology.instance.query` | `claim.created`、`evidence.refs.created` |
 
 ## Inbound Context
 
@@ -72,6 +73,8 @@ bkn.runtime.env
 | `object.query.executed` | ontology-query | object type、result count、truncated、classification | result truncated / data unavailable | business event |
 | `relation.query.executed` | ontology-query | relation path、node count、edge count、truncated | max path exceeded / unauthorized | business event |
 | `schema.change.requested` | BKN backend, not ontology-query | change summary and actor | not emitted by query service | audit event |
+| `claim.created` | ontology-query | kn id、branch、entity kind、subject id、query hash、returned count、evidence refs hash | data refs unversioned | business event |
+| `evidence.refs.created` | ontology-query | `row_ref`、`schema_ref`、`metric_ref` 的受控引用和 summary hash | row/schema/metric refs unversioned | business event |
 
 ## Business Refs
 
@@ -89,6 +92,7 @@ bkn.runtime.env
 
 - never log: token、authorization、cookie、完整 SQL、完整对象实例属性、行级数据、PII、连接串、对象存储裸 URL。
 - hash only: query body、large result summary、operator inputs。
+- runtime evidence event payload only contains safe query shape hash、row hash、counts、type/resource ids and controlled refs; full object instance properties and metric labels/values are not emitted.
 - controlled reference: `bkn.object_instance.ref`、row refs、snapshot refs。
 - redact: unauthorized object/resource detail、PII fields、policy restricted values。
 - `data.classification`: `public|internal|confidential|pii|secret`。
@@ -117,6 +121,7 @@ bkn.runtime.env
 | negative | `fixtures/bkn-trace/negative_missing_request_id.json` | missing request id | fail |
 | propagation | `fixtures/bkn-trace/propagation.json` | object query propagation | pass |
 | sampling | `fixtures/bkn-trace/sampling.json` | forced sampled authz denial | pass |
+| phase2 ontology data evidence | `fixtures/bkn-trace/phase2/ontology_data_evidence_l2_positive.json` | object/subgraph/metric data refs baseline | pass |
 
 ## Covered GWT
 
@@ -129,7 +134,8 @@ bkn.runtime.env
 
 ## Known Gaps
 
-- runtime `schema.read`、`object.query.executed`、`relation.query.executed` event emitters are not complete in this branch.
+- legacy phase-one event names `schema.read`、`object.query.executed`、`relation.query.executed` are superseded by phase-two `claim.created` / `evidence.refs.created` for implemented data evidence paths.
+- evidence refs are currently unversioned row/schema/metric refs; snapshot refs and immutable evidence artifact storage remain a follow-up.
 - current code baseline wires Vega backend outbound trace headers; ontology-manager/model-factory/agent-operator should be migrated to `common.MergeTraceHeaders` in follow-up commits.
 - full registry validation and indexing policy validation currently rely on `bkn-docs` validator follow-up.
 - S3 health metrics are not implemented yet.
@@ -137,6 +143,6 @@ bkn.runtime.env
 ## Owner Sign-off
 
 - owner: OpenBKN Foundry / BKN ontology
-- reviewed at: 2026-07-21
+- reviewed at: 2026-07-23
 - reviewer: pending
 - compatibility risk: low; new headers are additive and legacy `x-request-id` remains supported.

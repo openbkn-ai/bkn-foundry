@@ -182,6 +182,7 @@ func (r *restHandler) GetObjectsSubgraph(c *gin.Context, visitor hydra.Visitor) 
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 
 	result.OverallMs = time.Now().UnixMilli() - startTime.UnixMilli()
+	emitSubgraphEvidence(c, ctx, visitor, knID, branch, "bkn.relation.query", safeSubgraphSourceQueryShape(&query), &result)
 	rest.ReplyOK(c, http.StatusOK, result)
 }
 
@@ -301,6 +302,7 @@ func (r *restHandler) GetObjectsSubgraphByTypePath(c *gin.Context, visitor hydra
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 
 	// result.OverallMs = time.Now().UnixMilli() - startTime.UnixMilli()
+	emitSubgraphEntriesEvidence(c, ctx, visitor, knID, branch, paths, result)
 	rest.ReplyOK(c, http.StatusOK, result)
 }
 
@@ -430,5 +432,6 @@ func (r *restHandler) GetObjectsSubgraphByObjects(c *gin.Context, visitor hydra.
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 
 	result.OverallMs = time.Now().UnixMilli() - startTime.UnixMilli()
+	emitSubgraphEvidence(c, ctx, visitor, knID, branch, "bkn.relation.query", safeSubgraphByObjectsQueryShape(&query), &result)
 	rest.ReplyOK(c, http.StatusOK, result)
 }
