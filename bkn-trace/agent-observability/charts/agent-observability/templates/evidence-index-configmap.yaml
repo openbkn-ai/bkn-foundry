@@ -1,0 +1,44 @@
+{{- if .Values.evidence.indexManagement.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "agent-observability.fullname" . }}-evidence-index-template
+  labels:
+    {{- include "agent-observability.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation
+data:
+  evidence-index.json: |
+    {
+      "settings": {
+        "index": {
+          "max_result_window": {{ .Values.evidence.indexManagement.maxResultWindow }},
+          "refresh_interval": {{ .Values.evidence.indexManagement.refreshInterval | quote }}
+        }
+      },
+      "mappings": {
+        "dynamic": false,
+        "properties": {
+          "document_id": { "type": "keyword" },
+          "trace_id": { "type": "keyword" },
+          "bkn.request.id": { "type": "keyword" },
+          "bkn.trace.schema.version": { "type": "keyword" },
+          "claim_ids": { "type": "keyword" },
+          "accepted_event_count": { "type": "integer" },
+          "claim_count": { "type": "integer" },
+          "evidence_ref_count": { "type": "integer" },
+          "business_ref_count": { "type": "integer" },
+          "ingested_at": {
+            "type": "date",
+            "format": "strict_date_optional_time_nanos||strict_date_optional_time||epoch_millis"
+          },
+          "events": {
+            "type": "object",
+            "enabled": false
+          }
+        }
+      }
+    }
+{{- end }}

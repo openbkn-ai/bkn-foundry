@@ -58,7 +58,21 @@ BKN_TRACE_EVIDENCE_STORE=opensearch
 OPENSEARCH_EVIDENCE_INDEX=bkn-trace-evidence-v1
 ```
 
-当前 PR 不自动创建 index，不要求服务账号具备 OpenSearch index-management 权限；部署方需要提前创建 `OPENSEARCH_EVIDENCE_INDEX`。后续部署治理 PR 会补 index mapping、retention/ILM、权限与迁移脚本。
+默认部署不自动创建 index，不要求服务账号具备 OpenSearch index-management 权限；部署方需要提前创建 `OPENSEARCH_EVIDENCE_INDEX`。
+
+如果部署环境允许 Helm pre-install/pre-upgrade hook 创建 OpenSearch index，可以显式启用最小 index setup：
+
+```bash
+helm upgrade --install agent-observability charts/agent-observability \
+  --set evidence.store=opensearch \
+  --set evidence.index=bkn-trace-evidence-v1 \
+  --set evidence.indexManagement.enabled=true \
+  --set evidence.indexManagement.createJob.enabled=true \
+  --set opensearch.endpoint=http://opensearch-cluster-master:9200 \
+  -n observability --create-namespace
+```
+
+启用后 Chart 会渲染 evidence index mapping ConfigMap，并在 index 不存在时由 hook Job 创建 index。最小 mapping 将 `trace_id`、`bkn.request.id`、`document_id` 等查询字段设为 `keyword`，将 `ingested_at` 设为 `date`，并把 `events` 保留在 `_source` 中但不展开索引，避免 event payload 动态字段膨胀。retention/ILM、细粒度权限、迁移脚本仍属于后续部署治理能力。
 
 Evidence Chain 与 Business Graph 查询支持可选 `limit` 参数，限制本次读取的 evidence trace 批次数：
 
