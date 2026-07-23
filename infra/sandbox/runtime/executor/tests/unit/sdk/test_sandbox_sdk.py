@@ -83,6 +83,18 @@ class TestSchemaInference:
         assert param["type"] == "array"
         assert param["sub_parameters"][0]["type"] == "string"
 
+    def test_union_without_none_stays_required(self):
+        """Union[int, str] says the type may vary, not that it is optional."""
+        from typing import Union
+
+        @tool
+        def f(x: Union[int, str]) -> str:
+            return str(x)
+
+        assert f.inputs[0]["required"] is True
+        with pytest.raises(ValueError, match="x"):
+            sandbox_sdk.dispatch({})
+
     def test_varargs_are_not_parameters(self):
         @tool
         def f(a: int, *extra, **opts) -> int:

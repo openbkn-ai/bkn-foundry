@@ -217,11 +217,18 @@ class SubprocessRunner:
 
     async def _terminate_process_group(self, process, execution_id: str) -> None:
         """
-        Kill the timed-out process and everything it spawned.
+        Kill the timed-out process and everything it spawned, gracefully.
 
         The child was started with start_new_session=True, so it leads its own
         process group and killpg reaches grandchildren too. SIGTERM first to let
         the code clean up, SIGKILL if it does not go away.
+
+        Note that today this path does not run: the caller times out on the same
+        value and starts counting earlier, so it cancels us before our own
+        wait_for expires and the finally block's straight SIGKILL is what
+        actually happens. User code therefore gets no grace period. Kept for when
+        the two layers stop sharing a deadline — until then, do not read this as
+        evidence that a graceful stop is on offer.
         """
         if process is None or process.returncode is not None:
             return

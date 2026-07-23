@@ -235,10 +235,17 @@ def _annotation_to_param(name: str, anno: Any, required: bool,
     # Optional[X] / Union[X, None] / X | None → 取 X，转为非必填。
     # PEP 604 的 `int | None` 求出的 origin 是 types.UnionType，与 typing.Union 不是同一个对象，
     # 只判后者会让两种同义写法推出不同的类型。
+    #
+    # 不含 None 的联合（Union[int, str]）只是"类型可以是其中之一"，与必填无关，
+    # 因此沿用调用方给的 required，只取第一个分支来描述类型。
     if origin in _UNION_ORIGINS:
-        non_none = [a for a in get_args(anno) if a is not type(None)]
+        args = get_args(anno)
+        non_none = [a for a in args if a is not type(None)]
         if non_none:
-            return _annotation_to_param(name, non_none[0], False, default, description)
+            optional = type(None) in args
+            return _annotation_to_param(
+                name, non_none[0], required and not optional, default, description
+            )
 
     # List[X] → array，元素结构进 sub_parameters（约定名 items）
     if origin in (list, getattr(typing, "List", list)):
