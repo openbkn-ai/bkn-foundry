@@ -102,6 +102,11 @@ func registerMeReads(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB, dir *di
 	// Optional scope filters: ?resource_type=<T> narrows to one type;
 	// &resource_id=<id1,id2,...> (comma-separated) narrows the instance rows,
 	// keeping the type-wide id:"*" row. resource_id requires resource_type.
+	// ?scope=type drops instance exception rows entirely (only id:"*" rows and
+	// the wildcard row) — for the login/boot call that renders menus from
+	// type-level grants and discards instance rows anyway; with per-object
+	// grants those rows dominate the payload (#353). Conflicts with
+	// resource_id (asking for instance rows while dropping them) -> 400.
 	g.GET("/permissions", func(c *gin.Context) {
 		accessorID := c.GetString(ctxAccessorID)
 		isAdmin, err := e.CanAdmin(accessorID)
@@ -122,9 +127,19 @@ func registerMeReads(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB, dir *di
 			c.JSON(http.StatusBadRequest, gin.H{"error": "resource_id requires resource_type"})
 			return
 		}
+		scope := c.Query("scope")
+		if scope != "" && scope != "type" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": `unknown scope: only "type" is supported`})
+			return
+		}
+		if scope == "type" && len(resourceIDs) > 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "resource_id conflicts with scope=type"})
+			return
+		}
 		_, grants, err := e.EffectivePermissions(accessorID, authz.PermQuery{
 			ResourceType: resourceType,
 			ResourceIDs:  resourceIDs,
+			TypeWideOnly: scope == "type",
 		})
 		if err != nil {
 			serverError(c, err)
