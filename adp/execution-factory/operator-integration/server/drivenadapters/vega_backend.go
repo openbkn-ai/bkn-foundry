@@ -68,10 +68,23 @@ func (v *vegaBackendClient) GetCatalogByID(ctx context.Context, id string) (*int
 		return nil, fmt.Errorf("get catalog by id failed: %s", string(respData))
 	}
 
+	// vega 的按 ID 查询走的是批量端点，响应是 {"entries":[...]} 包装；
+	// 直接反序列化成 VegaCatalog 只会得到零值(ID 为空)，历史上因为调用方只判
+	// nil 而没暴露出来。
+	var entries struct {
+		Entries []*interfaces.VegaCatalog `json:"entries"`
+	}
+	if err = json.Unmarshal(respData, &entries); err == nil && len(entries.Entries) > 0 {
+		return entries.Entries[0], nil
+	}
+
 	catalog := &interfaces.VegaCatalog{}
 	if err = json.Unmarshal(respData, catalog); err != nil {
 		v.logger.WithContext(ctx).Errorf("failed to unmarshal catalog: %v", err)
 		return nil, err
+	}
+	if catalog.ID == "" {
+		return nil, nil
 	}
 	return catalog, nil
 }
@@ -96,6 +109,40 @@ func (v *vegaBackendClient) CreateCatalog(ctx context.Context, req *interfaces.V
 		return nil, err
 	}
 	return catalog, nil
+}
+
+// UpdateCatalog 更新Vega目录的展示信息(名称/标签/描述)
+// vega 的 PUT /catalogs/{id} 要求 connector_type 与 enabled 与当前值一致，
+// 调用方须从 GetCatalogByID 的返回里原样回填这两个字段。
+func (v *vegaBackendClient) UpdateCatalog(ctx context.Context, req *interfaces.VegaCatalogRequest) error {
+	src := fmt.Sprintf("%s/v1/catalogs/%s", v.baseURL, url.PathEscape(req.ID))
+	headers := v.buildHeaders(ctx)
+	v.logger.WithContext(ctx).Infof("update vega catalog, catalog_id=%s, name=%s, url=%s", req.ID, req.Name, src)
+	respCode, respData, err := v.httpClient.PutNoUnmarshal(ctx, src, headers, req)
+	if err != nil {
+		v.logger.WithContext(ctx).Errorf("failed to update vega catalog, catalog_id=%s, url=%s, err=%v", req.ID, src, err)
+		return err
+	}
+	if respCode != http.StatusNoContent && respCode != http.StatusOK {
+		return fmt.Errorf("update catalog failed: %s", string(respData))
+	}
+	return nil
+}
+
+// EnableCatalog 启用Vega目录
+func (v *vegaBackendClient) EnableCatalog(ctx context.Context, id string) error {
+	src := fmt.Sprintf("%s/v1/catalogs/%s/enable", v.baseURL, url.PathEscape(id))
+	headers := v.buildHeaders(ctx)
+	v.logger.WithContext(ctx).Infof("enable vega catalog, catalog_id=%s, url=%s", id, src)
+	respCode, respData, err := v.httpClient.PostNoUnmarshal(ctx, src, headers, nil)
+	if err != nil {
+		v.logger.WithContext(ctx).Errorf("failed to enable vega catalog, catalog_id=%s, url=%s, err=%v", id, src, err)
+		return err
+	}
+	if respCode != http.StatusNoContent && respCode != http.StatusOK {
+		return fmt.Errorf("enable catalog failed: %s", string(respData))
+	}
+	return nil
 }
 
 func (v *vegaBackendClient) GetResourceByID(ctx context.Context, id string) (*interfaces.VegaResource, error) {
@@ -130,6 +177,36 @@ func (v *vegaBackendClient) GetResourceByID(ctx context.Context, id string) (*in
 		return nil, nil
 	}
 	return resource, nil
+}
+
+// RenameResource 只改资源展示名，不动 schema。
+//
+// 请求体刻意不带 category 与 schema_definition：
+//   - vega 的 dataset 分支校验要求 schema_definition 非空，带上就得回填整份 schema；
+//     而本服务的 VegaProperty 是 vega Property 的有损投影(缺 original_type、
+//     attributes、extensions 等)，回填会被判定成 schema 变更，进而清空
+//     resource.LocalIndexName，把已建好的 skill 索引悬空。
+//   - schema_definition 为 nil 时 vega 走「不改 schema」分支，仅套用名称/标签/描述。
+func (v *vegaBackendClient) RenameResource(ctx context.Context, resource *interfaces.VegaResource, name string) error {
+	src := fmt.Sprintf("%s/v1/resources/%s", v.baseURL, url.PathEscape(resource.ID))
+	headers := v.buildHeaders(ctx)
+	payload := map[string]any{
+		"id":          resource.ID,
+		"catalog_id":  resource.CatalogID,
+		"name":        name,
+		"tags":        resource.Tags,
+		"description": resource.Description,
+	}
+	v.logger.WithContext(ctx).Infof("rename vega resource, resource_id=%s, name=%s, url=%s", resource.ID, name, src)
+	respCode, respData, err := v.httpClient.PutNoUnmarshal(ctx, src, headers, payload)
+	if err != nil {
+		v.logger.WithContext(ctx).Errorf("failed to rename vega resource, resource_id=%s, url=%s, err=%v", resource.ID, src, err)
+		return err
+	}
+	if respCode != http.StatusNoContent && respCode != http.StatusOK {
+		return fmt.Errorf("rename resource failed: %s", string(respData))
+	}
+	return nil
 }
 
 func (v *vegaBackendClient) CreateResource(ctx context.Context, req *interfaces.VegaResourceRequest) (*interfaces.VegaResource, error) {

@@ -15,13 +15,22 @@ import (
 )
 
 const (
-	executionFactoryCatalogID     = "kweaver_execution_factory_catalog"
+	executionFactoryCatalogID     = "bkn_execution_factory_catalog"
 	executionFactoryCatalogDesc   = "执行工厂的逻辑命名空间"
-	executionFactorySkillDataset  = "kweaver_execution_factory_skill_dataset"
+	executionFactorySkillDataset  = "bkn_execution_factory_skill_dataset"
 	executionFactoryDatasetDesc   = "执行工厂的Skill索引数据集"
 	executionFactoryDatasetStatus = "active"
-	// embeddingModelTagPrefix 把"建 dataset 时锁定的 embedding 模型名"快照进 resource tag，
-	// 重启/实时同步时读回，保证写入向量用的模型与建索引时一致(建模型==查模型)。
+	// legacy* 是 kweaver 品牌期建的内置目录/数据集 ID(issue #372)。
+	// 存量环境沿用旧 ID：ID 是索引数据的落点，换 ID 等于重建索引，
+	// 因此只把「展示名」迁到新品牌名，ID 保持不动、不产生两套目录。
+	legacyExecutionFactoryCatalogID    = "kweaver_execution_factory_catalog"
+	legacyExecutionFactorySkillDataset = "kweaver_execution_factory_skill_dataset"
+	// embeddingModelConfigKey 把"建 dataset 时锁定的 embedding 模型名"快照进向量特征
+	// 的 config，重启/实时同步时读回，保证写入向量用的模型与建索引时一致(建模型==查模型)。
+	// 这也是 vega 解析向量字段模型的键。
+	embeddingModelConfigKey = "embedding_model"
+	// embeddingModelTagPrefix 是该快照的旧载体(resource tag)。vega 的 tag 校验禁掉了
+	// ':'，带这种 tag 的建 dataset 请求会 400，因此只保留读路径兼容老 dataset。
 	embeddingModelTagPrefix = "embedding_model:"
 )
 
@@ -32,6 +41,10 @@ type skillIndexSync struct {
 	logger       interfaces.Logger
 	mu           sync.RWMutex
 	initialized  bool
+	// catalogID / datasetID 为本进程实际使用的目录/数据集 ID：新装是 bkn_*，
+	// 存量环境解析到 legacy 的 kweaver_*；空值表示尚未解析，取新装默认值。
+	catalogID string
+	datasetID string
 	// embeddingModelName 该系统 skill dataset 建时锁定的 embedding 模型名(系统默认快照)，
 	// 受 mu 保护；upsert 读回它生成向量，而非每次重取当前默认。
 	embeddingModelName string
@@ -81,12 +94,85 @@ func (s *skillIndexSync) Init(ctx context.Context) (err error) {
 		s.setInitialized(initialized)
 	}()
 	s.logger.WithContext(ctx).Infof("init skill index dataset, catalog_id=%s, resource_id=%s", executionFactoryCatalogID, executionFactorySkillDataset)
+	catalogID, err := s.ensureCatalog(ctx)
+	if err != nil {
+		return err
+	}
+	s.setCatalogID(catalogID)
+
+	datasetID, resource, err := s.resolveDataset(ctx)
+	if err != nil {
+		return err
+	}
+	s.setDatasetID(datasetID)
+	if resource != nil {
+		// dataset 已存在：读回建时锁定的模型名(建模型==查模型)。
+		// 旧 dataset 两种形态都兜住，都取不到时回退按名 "embedding"，与改造前行为一致。
+		modelName := extractEmbeddingModelFromSchema(resource.SchemaDefinition)
+		if modelName == "" {
+			modelName = extractEmbeddingModelFromTags(resource.Tags)
+		}
+		if modelName == "" {
+			modelName = interfaces.SmallModelTypeEmbedding
+		}
+		s.setEmbeddingModelName(modelName)
+		initialized = true
+		s.logger.WithContext(ctx).Infof("resource already exists, resource_id=%s, embedding_model=%s", datasetID, modelName)
+		return nil
+	}
+	// 首次创建 dataset：用系统默认 embedding 模型(接口式可配)；未配置默认时回退按名 "embedding"。
+	embeddingModel, err := s.resolveBuildEmbeddingModel(ctx)
+	if err != nil {
+		s.logger.WithContext(ctx).Errorf("resolve embedding model failed, resource_id=%s, err=%v", datasetID, err)
+		return err
+	}
+	s.logger.WithContext(ctx).Infof("creating skill dataset resource, resource_id=%s, catalog_id=%s, embedding_model=%s, dimension=%d",
+		datasetID, catalogID, embeddingModel.ModelName, embeddingModel.EmbeddingDim)
+	_, err = s.vegaClient.CreateResource(ctx, &interfaces.VegaResourceRequest{
+		ID:        datasetID,
+		CatalogID: catalogID,
+		Name:             datasetID,
+		Tags:             []string{"execution-factory", "skill", "索引"},
+		Description:      executionFactoryDatasetDesc,
+		Category:         "dataset",
+		Status:           executionFactoryDatasetStatus,
+		SourceIdentifier: datasetID,
+		// 建时锁定的模型名快照进向量特征的 config.embedding_model —— 这也是 vega
+		// 自己解析向量模型的位置。不能再放 tag：vega 的 tag 校验禁掉了 ':' '.' 等
+		// 字符，"embedding_model:<name>" 这种 tag 会让整个建 dataset 请求 400。
+		SchemaDefinition: buildSkillIndexSchema(embeddingModel.EmbeddingDim, embeddingModel.ModelName),
+	})
+	if err != nil {
+		s.logger.WithContext(ctx).Errorf("create skill dataset resource failed, resource_id=%s, err=%v", datasetID, err)
+		return err
+	}
+	s.setEmbeddingModelName(embeddingModel.ModelName)
+	initialized = true
+	return nil
+}
+
+// ensureCatalog 解析并保证内置目录存在，返回本进程实际使用的目录 ID。
+//
+// 新装取 bkn_execution_factory_catalog；存量环境(kweaver 品牌期建的目录)沿用旧
+// ID，只把展示名迁到新品牌名 —— 换 ID 会新建一套目录并让已建索引失联，
+// 见 issue #372。
+func (s *skillIndexSync) ensureCatalog(ctx context.Context) (string, error) {
 	catalog, err := s.vegaClient.GetCatalogByID(ctx, executionFactoryCatalogID)
 	if err != nil {
 		s.logger.WithContext(ctx).Errorf("get catalog failed during ensure dataset, catalog_id=%s, err=%v", executionFactoryCatalogID, err)
-		return err
+		return "", err
 	}
 	if catalog == nil {
+		legacy, err := s.vegaClient.GetCatalogByID(ctx, legacyExecutionFactoryCatalogID)
+		if err != nil {
+			s.logger.WithContext(ctx).Errorf("get legacy catalog failed, catalog_id=%s, err=%v", legacyExecutionFactoryCatalogID, err)
+			return "", err
+		}
+		if legacy != nil {
+			s.logger.WithContext(ctx).Infof("adopting legacy catalog, catalog_id=%s", legacy.ID)
+			s.reconcileCatalog(ctx, legacy)
+			return legacy.ID, nil
+		}
 		s.logger.WithContext(ctx).Infof("catalog not found, creating catalog, catalog_id=%s", executionFactoryCatalogID)
 		_, err = s.vegaClient.CreateCatalog(ctx, &interfaces.VegaCatalogRequest{
 			ID:          executionFactoryCatalogID,
@@ -95,57 +181,76 @@ func (s *skillIndexSync) Init(ctx context.Context) (err error) {
 			Description: executionFactoryCatalogDesc,
 			// 系统内部目录：仅超级管理员可见，业务角色（数据管理员等）的 catalog:* 授权匹配不到
 			Internal: true,
+			// 逻辑目录若建成 disabled，其下 dataset 的读写会被 vega 以 409
+			// Catalog.IsDisabled 拒绝(bkn-backend 的内置目录同样显式置 true)
+			Enabled: true,
 		})
 		if err != nil {
 			s.logger.WithContext(ctx).Errorf("create catalog failed, catalog_id=%s, err=%v", executionFactoryCatalogID, err)
-			return err
+			return "", err
+		}
+		return executionFactoryCatalogID, nil
+	}
+	s.reconcileCatalog(ctx, catalog)
+	return catalog.ID, nil
+}
+
+// reconcileCatalog 把存量目录对齐到当前预期：展示名迁到新品牌名、目录置为启用。
+// 两个动作都是尽力而为——失败只告警不阻断启动，索引读写本身不依赖它们成功。
+func (s *skillIndexSync) reconcileCatalog(ctx context.Context, catalog *interfaces.VegaCatalog) {
+	if catalog.Name != executionFactoryCatalogID {
+		req := &interfaces.VegaCatalogRequest{
+			ID:            catalog.ID,
+			Name:          executionFactoryCatalogID,
+			Tags:          catalog.Tags,
+			Description:   catalog.Description,
+			Internal:      true,
+			Enabled:       catalog.Enabled,
+			ConnectorType: catalog.ConnectorType,
+		}
+		if err := s.vegaClient.UpdateCatalog(ctx, req); err != nil {
+			s.logger.WithContext(ctx).Warnf("rename catalog failed, catalog_id=%s, name=%s, err=%v", catalog.ID, executionFactoryCatalogID, err)
+		} else {
+			s.logger.WithContext(ctx).Infof("catalog renamed, catalog_id=%s, name=%s", catalog.ID, executionFactoryCatalogID)
 		}
 	}
+	if !catalog.Enabled {
+		if err := s.vegaClient.EnableCatalog(ctx, catalog.ID); err != nil {
+			s.logger.WithContext(ctx).Warnf("enable catalog failed, catalog_id=%s, err=%v", catalog.ID, err)
+		} else {
+			s.logger.WithContext(ctx).Infof("catalog enabled, catalog_id=%s", catalog.ID)
+		}
+	}
+}
 
+// resolveDataset 解析本进程使用的 skill dataset：新装取 bkn_*，存量环境沿用
+// kweaver_* 旧 ID(只迁展示名)。返回的 resource 为 nil 表示两者都不存在，需新建。
+func (s *skillIndexSync) resolveDataset(ctx context.Context) (string, *interfaces.VegaResource, error) {
 	resource, err := s.vegaClient.GetResourceByID(ctx, executionFactorySkillDataset)
 	if err != nil {
 		s.logger.WithContext(ctx).Errorf("get resource failed during ensure dataset, resource_id=%s, err=%v", executionFactorySkillDataset, err)
-		return err
+		return "", nil, err
 	}
 	if resource != nil {
-		// dataset 已存在：从 tag 读回建时锁定的模型名(建模型==查模型)。
-		// 旧 dataset(改造前创建)无该 tag，回退到按名 "embedding"，与改造前行为一致。
-		modelName := extractEmbeddingModelFromTags(resource.Tags)
-		if modelName == "" {
-			modelName = interfaces.SmallModelTypeEmbedding
+		return resource.ID, resource, nil
+	}
+	legacy, err := s.vegaClient.GetResourceByID(ctx, legacyExecutionFactorySkillDataset)
+	if err != nil {
+		s.logger.WithContext(ctx).Errorf("get legacy resource failed, resource_id=%s, err=%v", legacyExecutionFactorySkillDataset, err)
+		return "", nil, err
+	}
+	if legacy != nil {
+		s.logger.WithContext(ctx).Infof("adopting legacy skill dataset, resource_id=%s", legacy.ID)
+		if legacy.Name != executionFactorySkillDataset {
+			if err := s.vegaClient.RenameResource(ctx, legacy, executionFactorySkillDataset); err != nil {
+				s.logger.WithContext(ctx).Warnf("rename legacy skill dataset failed, resource_id=%s, err=%v", legacy.ID, err)
+			} else {
+				s.logger.WithContext(ctx).Infof("legacy skill dataset renamed, resource_id=%s, name=%s", legacy.ID, executionFactorySkillDataset)
+			}
 		}
-		s.setEmbeddingModelName(modelName)
-		initialized = true
-		s.logger.WithContext(ctx).Infof("resource already exists, resource_id=%s, embedding_model=%s", executionFactorySkillDataset, modelName)
-		return nil
+		return legacy.ID, legacy, nil
 	}
-	// 首次创建 dataset：用系统默认 embedding 模型(接口式可配)；未配置默认时回退按名 "embedding"。
-	embeddingModel, err := s.resolveBuildEmbeddingModel(ctx)
-	if err != nil {
-		s.logger.WithContext(ctx).Errorf("resolve embedding model failed, resource_id=%s, err=%v", executionFactorySkillDataset, err)
-		return err
-	}
-	s.logger.WithContext(ctx).Infof("creating skill dataset resource, resource_id=%s, embedding_model=%s, dimension=%d",
-		executionFactorySkillDataset, embeddingModel.ModelName, embeddingModel.EmbeddingDim)
-	_, err = s.vegaClient.CreateResource(ctx, &interfaces.VegaResourceRequest{
-		ID:        executionFactorySkillDataset,
-		CatalogID: executionFactoryCatalogID,
-		Name:      executionFactorySkillDataset,
-		// 把建时锁定的模型名快照进 tag，供重启/实时同步读回
-		Tags:             []string{"execution-factory", "skill", "索引", embeddingModelTagPrefix + embeddingModel.ModelName},
-		Description:      executionFactoryDatasetDesc,
-		Category:         "dataset",
-		Status:           executionFactoryDatasetStatus,
-		SourceIdentifier: executionFactorySkillDataset,
-		SchemaDefinition: buildSkillIndexSchema(embeddingModel.EmbeddingDim),
-	})
-	if err != nil {
-		s.logger.WithContext(ctx).Errorf("create skill dataset resource failed, resource_id=%s, err=%v", executionFactorySkillDataset, err)
-		return err
-	}
-	s.setEmbeddingModelName(embeddingModel.ModelName)
-	initialized = true
-	return nil
+	return executionFactorySkillDataset, nil, nil
 }
 
 // resolveBuildEmbeddingModel 建 dataset 时确定 embedding 模型：优先系统默认(接口式)，未配置则回退按名 "embedding"(改造前行为)。
@@ -159,7 +264,23 @@ func (s *skillIndexSync) resolveBuildEmbeddingModel(ctx context.Context) (*inter
 	return s.modelManager.GetEmbeddingModel(ctx, interfaces.SmallModelTypeEmbedding, interfaces.SmallModelTypeEmbedding)
 }
 
-// extractEmbeddingModelFromTags 从 resource tags 解析建时锁定的 embedding 模型名
+// extractEmbeddingModelFromSchema 从向量特征的 config.embedding_model 读回建时锁定的模型名
+func extractEmbeddingModelFromSchema(schema []interfaces.VegaProperty) string {
+	for _, property := range schema {
+		for _, feature := range property.Features {
+			if feature.FeatureType != "vector" || feature.Config == nil {
+				continue
+			}
+			if name, ok := feature.Config[embeddingModelConfigKey].(string); ok && name != "" {
+				return name
+			}
+		}
+	}
+	return ""
+}
+
+// extractEmbeddingModelFromTags 从 resource tags 解析建时锁定的 embedding 模型名。
+// 只服务于 tag 快照时期建的老 dataset，新建 dataset 不再写这个 tag。
 func extractEmbeddingModelFromTags(tags []string) string {
 	for _, t := range tags {
 		if strings.HasPrefix(t, embeddingModelTagPrefix) {
@@ -184,6 +305,28 @@ func (s *skillIndexSync) setEmbeddingModelName(name string) {
 	s.embeddingModelName = name
 }
 
+// getDatasetID 返回本进程实际使用的 dataset ID；未解析时取新装默认值。
+func (s *skillIndexSync) getDatasetID() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.datasetID == "" {
+		return executionFactorySkillDataset
+	}
+	return s.datasetID
+}
+
+func (s *skillIndexSync) setDatasetID(id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.datasetID = id
+}
+
+func (s *skillIndexSync) setCatalogID(id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.catalogID = id
+}
+
 func (s *skillIndexSync) UpsertSkill(ctx context.Context, skill *model.SkillRepositoryDB) error {
 	log := s.logger
 	if !s.isInitialized() {
@@ -195,8 +338,9 @@ func (s *skillIndexSync) UpsertSkill(ctx context.Context, skill *model.SkillRepo
 		log.Errorf("build skill index document failed, skill_id=%s, err=%v", skill.SkillID, err)
 		return err
 	}
-	log.Infof("upsert skill index document, skill_id=%s, resource_id=%s", skill.SkillID, executionFactorySkillDataset)
-	if err = s.vegaClient.WriteDatasetDocuments(ctx, executionFactorySkillDataset, []map[string]any{document}); err != nil {
+	datasetID := s.getDatasetID()
+	log.Infof("upsert skill index document, skill_id=%s, resource_id=%s", skill.SkillID, datasetID)
+	if err = s.vegaClient.WriteDatasetDocuments(ctx, datasetID, []map[string]any{document}); err != nil {
 		log.Errorf("write skill index document failed, skill_id=%s, err=%v", skill.SkillID, err)
 		return err
 	}
@@ -214,8 +358,9 @@ func (s *skillIndexSync) UpdateSkill(ctx context.Context, skill *model.SkillRepo
 		log.Errorf("build skill index document failed, skill_id=%s, err=%v", skill.SkillID, err)
 		return err
 	}
-	log.Infof("update skill index document, skill_id=%s, resource_id=%s", skill.SkillID, executionFactorySkillDataset)
-	if err = s.vegaClient.UpdateDatasetDocuments(ctx, executionFactorySkillDataset, []map[string]any{document}); err != nil {
+	datasetID := s.getDatasetID()
+	log.Infof("update skill index document, skill_id=%s, resource_id=%s", skill.SkillID, datasetID)
+	if err = s.vegaClient.UpdateDatasetDocuments(ctx, datasetID, []map[string]any{document}); err != nil {
 		log.Errorf("update skill index document failed, skill_id=%s, err=%v", skill.SkillID, err)
 		return err
 	}
@@ -227,8 +372,9 @@ func (s *skillIndexSync) DeleteSkill(ctx context.Context, skillID string) error 
 		s.logger.WithContext(ctx).Warnf("skip skill index delete because dataset is not initialized, skill_id=%s", skillID)
 		return nil
 	}
-	s.logger.Infof("delete skill index document, skill_id=%s, resource_id=%s", skillID, executionFactorySkillDataset)
-	if err := s.vegaClient.DeleteDatasetDocumentByID(ctx, executionFactorySkillDataset, skillID); err != nil {
+	datasetID := s.getDatasetID()
+	s.logger.Infof("delete skill index document, skill_id=%s, resource_id=%s", skillID, datasetID)
+	if err := s.vegaClient.DeleteDatasetDocumentByID(ctx, datasetID, skillID); err != nil {
 		s.logger.WithContext(ctx).Errorf("delete skill index document failed, skill_id=%s, err=%v", skillID, err)
 		return err
 	}
@@ -300,7 +446,9 @@ func buildEmbeddingInput(name string, description string) string {
 	return strings.Join(parts, "\n")
 }
 
-func buildSkillIndexSchema(dimension int) []interfaces.VegaProperty {
+// buildSkillIndexSchema 生成 skill 索引 schema。embeddingModel 会写进向量特征的
+// config.embedding_model，既是 vega 建索引时用的模型，也是本服务重启后读回的快照。
+func buildSkillIndexSchema(dimension int, embeddingModel string) []interfaces.VegaProperty {
 	return []interfaces.VegaProperty{
 		{
 			Name:         "skill_id",
@@ -472,7 +620,8 @@ func buildSkillIndexSchema(dimension int) []interfaces.VegaProperty {
 				IsDefault:   true,
 				IsNative:    false,
 				Config: map[string]any{
-					"dimension": dimension,
+					"dimension":             dimension,
+					embeddingModelConfigKey: embeddingModel,
 					"method": map[string]any{
 						"name":       "hnsw",
 						"space_type": "cosinesimil",
