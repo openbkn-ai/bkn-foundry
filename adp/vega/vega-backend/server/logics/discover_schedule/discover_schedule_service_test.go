@@ -11,10 +11,12 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-comm-go/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
 	vmock "vega-backend/interfaces/mock"
 )
@@ -143,6 +145,18 @@ func TestDiscoverScheduleServiceGetListAndSimpleDelegates(t *testing.T) {
 		assert.Same(t, schedule, got)
 	})
 
+	t.Run("get wraps access error", func(t *testing.T) {
+		service, dsa, _, _ := newTestDiscoverScheduleService(t)
+		dsa.EXPECT().GetByID(gomock.Any(), "schedule-1").Return(nil, errors.New("database unavailable"))
+
+		got, err := service.GetByID(context.Background(), "schedule-1")
+
+		require.Nil(t, got)
+		httpErr, ok := err.(*rest.HTTPError)
+		require.True(t, ok)
+		assert.Equal(t, verrors.VegaBackend_DiscoverSchedule_InternalError_GetFailed, httpErr.BaseError.ErrorCode)
+	})
+
 	t.Run("list enriches all creator and updater accounts", func(t *testing.T) {
 		service, dsa, _, ums := newTestDiscoverScheduleService(t)
 		params := interfaces.DiscoverScheduleQueryParams{CatalogID: "catalog-1"}
@@ -159,6 +173,19 @@ func TestDiscoverScheduleServiceGetListAndSimpleDelegates(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, int64(2), total)
 		assert.Equal(t, schedules, got)
+	})
+
+	t.Run("list wraps access error", func(t *testing.T) {
+		service, dsa, _, _ := newTestDiscoverScheduleService(t)
+		dsa.EXPECT().List(gomock.Any(), gomock.Any()).Return(nil, int64(0), errors.New("database unavailable"))
+
+		got, total, err := service.List(context.Background(), interfaces.DiscoverScheduleQueryParams{})
+
+		require.Nil(t, got)
+		assert.Zero(t, total)
+		httpErr, ok := err.(*rest.HTTPError)
+		require.True(t, ok)
+		assert.Equal(t, verrors.VegaBackend_DiscoverSchedule_InternalError_GetFailed, httpErr.BaseError.ErrorCode)
 	})
 
 	t.Run("delegates enable disable delete and last run", func(t *testing.T) {
@@ -209,6 +236,37 @@ func TestDiscoverScheduleServicePopulatesCatalogName(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Equal(t, "目录二", got.CatalogName)
+	})
+
+	t.Run("list keeps schedules when reference lookup fails", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		dsa := vmock.NewMockDiscoverScheduleAccess(ctrl)
+		cs := vmock.NewMockCatalogService(ctrl)
+		ums := vmock.NewMockUserMgmtService(ctrl)
+		service := &discoverScheduleService{dsa: dsa, cs: cs, ums: ums}
+		schedules := []*interfaces.DiscoverSchedule{{ID: "schedule-4", CatalogID: "catalog-3"}}
+
+		dsa.EXPECT().List(gomock.Any(), gomock.Any()).Return(schedules, int64(1), nil)
+		cs.EXPECT().InternalGetByIDs(gomock.Any(), []string{"catalog-3"}).Return(nil, errors.New("catalog service down"))
+		ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
+
+		got, total, err := service.List(context.Background(), interfaces.DiscoverScheduleQueryParams{})
+
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), total)
+		assert.Equal(t, "schedule-4", got[0].ID)
+		assert.Empty(t, got[0].CatalogName)
+	})
+
+	t.Run("get keeps schedule when account lookup fails", func(t *testing.T) {
+		schedule := &interfaces.DiscoverSchedule{ID: "schedule-5"}
+		dsa.EXPECT().GetByID(gomock.Any(), "schedule-5").Return(schedule, nil)
+		ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(errors.New("user service down"))
+
+		got, err := service.GetByID(context.Background(), "schedule-5")
+
+		require.NoError(t, err)
+		assert.Equal(t, "schedule-5", got.ID)
 	})
 }
 

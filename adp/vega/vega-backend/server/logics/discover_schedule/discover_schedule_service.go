@@ -117,16 +117,16 @@ func (dss *discoverScheduleService) GetByID(ctx context.Context, id string) (*in
 
 	schedule, err := dss.dsa.GetByID(ctx, id)
 	if err != nil {
-		return nil, err
+		span.SetStatus(codes.Error, "Get discover schedule failed")
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_DiscoverSchedule_InternalError_GetFailed).
+			WithErrorDetails(err.Error())
 	}
 	if schedule != nil {
 		if err := dss.populateDiscoverScheduleReferences(ctx, []*interfaces.DiscoverSchedule{schedule}); err != nil {
-			return nil, err
+			logger.Warnf("Failed to populate discover schedule references: %v", err)
 		}
 		if err := dss.ums.GetAccountNames(ctx, []*interfaces.AccountInfo{&schedule.Creator, &schedule.Updater}); err != nil {
-			span.SetStatus(codes.Error, "GetAccountNames error")
-			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-				verrors.VegaBackend_DiscoverSchedule_InternalError_GetAccountNamesFailed).WithErrorDetails(err.Error())
+			logger.Warnf("Failed to populate discover schedule account names: %v", err)
 		}
 	}
 	return schedule, nil
@@ -139,10 +139,12 @@ func (dss *discoverScheduleService) List(ctx context.Context, params interfaces.
 
 	schedules, total, err := dss.dsa.List(ctx, params)
 	if err != nil {
-		return nil, 0, err
+		span.SetStatus(codes.Error, "List discover schedules failed")
+		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_DiscoverSchedule_InternalError_GetFailed).
+			WithErrorDetails(err.Error())
 	}
 	if err := dss.populateDiscoverScheduleReferences(ctx, schedules); err != nil {
-		return nil, 0, err
+		logger.Warnf("Failed to populate discover schedule references: %v", err)
 	}
 
 	accountInfos := make([]*interfaces.AccountInfo, 0, len(schedules)*2)
@@ -150,9 +152,7 @@ func (dss *discoverScheduleService) List(ctx context.Context, params interfaces.
 		accountInfos = append(accountInfos, &s.Creator, &s.Updater)
 	}
 	if err := dss.ums.GetAccountNames(ctx, accountInfos); err != nil {
-		span.SetStatus(codes.Error, "GetAccountNames error")
-		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			verrors.VegaBackend_DiscoverSchedule_InternalError_GetAccountNamesFailed).WithErrorDetails(err.Error())
+		logger.Warnf("Failed to populate discover schedule account names: %v", err)
 	}
 	return schedules, total, nil
 }

@@ -77,6 +77,49 @@ func TestBuildTaskServicePopulatesTaskReferencesForListAndGet(t *testing.T) {
 		assert.Equal(t, "orders", got.ResourceName)
 		assert.Equal(t, "production", got.CatalogName)
 	})
+
+	t.Run("list keeps tasks when reference lookup fails", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+		mockRS := mock_interfaces.NewMockResourceService(ctrl)
+		mockUMS := mock_interfaces.NewMockUserMgmtService(ctrl)
+		service := &buildTaskService{bta: mockBTA, cs: mockCS, rs: mockRS, ums: mockUMS}
+		tasks := []*interfaces.BuildTask{{ID: "task-1", ResourceID: "resource-1", CatalogID: "catalog-1"}}
+
+		mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).Return(tasks, int64(1), nil)
+		mockRS.EXPECT().InternalGetByIDs(gomock.Any(), []string{"resource-1"}).Return(nil, errors.New("resource service down"))
+		mockCS.EXPECT().InternalGetByIDs(gomock.Any(), []string{"catalog-1"}).Return([]*interfaces.Catalog{{ID: "catalog-1", Name: "production"}}, nil)
+		mockUMS.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
+
+		got, total, err := service.List(context.Background(), interfaces.BuildTasksQueryParams{})
+
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), total)
+		assert.Equal(t, "task-1", got[0].ID)
+		assert.Empty(t, got[0].ResourceName)
+		assert.Equal(t, "production", got[0].CatalogName)
+	})
+
+	t.Run("get keeps task when account lookup fails", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+		mockRS := mock_interfaces.NewMockResourceService(ctrl)
+		mockUMS := mock_interfaces.NewMockUserMgmtService(ctrl)
+		service := &buildTaskService{bta: mockBTA, cs: mockCS, rs: mockRS, ums: mockUMS}
+		task := &interfaces.BuildTask{ID: "task-2"}
+
+		mockBTA.EXPECT().GetByID(gomock.Any(), "task-2").Return(task, nil)
+		mockRS.EXPECT().InternalGetByIDs(gomock.Any(), []string{}).Return([]*interfaces.Resource{}, nil)
+		mockCS.EXPECT().InternalGetByIDs(gomock.Any(), []string{}).Return([]*interfaces.Catalog{}, nil)
+		mockUMS.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(errors.New("user service down"))
+
+		got, err := service.GetByID(context.Background(), "task-2")
+
+		require.NoError(t, err)
+		assert.Equal(t, "task-2", got.ID)
+	})
 }
 
 func TestBuildTaskServiceCreateBuildTask(t *testing.T) {

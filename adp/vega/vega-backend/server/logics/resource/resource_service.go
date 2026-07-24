@@ -356,10 +356,7 @@ func (rs *resourceService) GetByID(ctx context.Context, id string) (*interfaces.
 	accountInfos := []*interfaces.AccountInfo{&resource.Creator, &resource.Updater}
 	err = rs.ums.GetAccountNames(ctx, accountInfos)
 	if err != nil {
-		span.SetStatus(codes.Error, "GetAccountNames error")
-
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			verrors.VegaBackend_Resource_InternalError_GetAccountNamesFailed).WithErrorDetails(err.Error())
+		logger.Warnf("Failed to populate resource account names: %v", err)
 	}
 
 	span.SetStatus(codes.Ok, "")
@@ -461,10 +458,7 @@ func (rs *resourceService) GetByIDs(ctx context.Context, ids []string) ([]*inter
 
 	err = rs.ums.GetAccountNames(ctx, accountInfos)
 	if err != nil {
-		span.SetStatus(codes.Error, "GetAccountNames error")
-
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			verrors.VegaBackend_Resource_InternalError_GetAccountNamesFailed).WithErrorDetails(err.Error())
+		logger.Warnf("Failed to populate resource account names: %v", err)
 	}
 
 	span.SetStatus(codes.Ok, "")
@@ -634,10 +628,7 @@ func (rs *resourceService) List(ctx context.Context, params interfaces.Resources
 
 	err = rs.ums.GetAccountNames(ctx, accountInfos)
 	if err != nil {
-		span.SetStatus(codes.Error, "GetAccountNames error")
-
-		return []*interfaces.Resource{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_GetFailed).
-			WithErrorDetails(err.Error())
+		logger.Warnf("Failed to populate resource account names: %v", err)
 	}
 
 	span.SetStatus(codes.Ok, "")

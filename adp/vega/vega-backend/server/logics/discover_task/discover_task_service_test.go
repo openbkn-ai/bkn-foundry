@@ -11,10 +11,12 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-comm-go/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
 	vmock "vega-backend/interfaces/mock"
 )
@@ -66,6 +68,18 @@ func TestDiscoverTaskServiceGetAndList(t *testing.T) {
 		assert.Contains(t, err.Error(), "NotFound")
 	})
 
+	t.Run("get wraps access error", func(t *testing.T) {
+		service, dta, _ := newTestDiscoverTaskService(t)
+		dta.EXPECT().GetByID(gomock.Any(), "task-1").Return(nil, errors.New("database unavailable"))
+
+		got, err := service.GetByID(context.Background(), "task-1")
+
+		require.Nil(t, got)
+		httpErr, ok := err.(*rest.HTTPError)
+		require.True(t, ok)
+		assert.Equal(t, verrors.VegaBackend_DiscoverTask_InternalError_GetFailed, httpErr.BaseError.ErrorCode)
+	})
+
 	t.Run("list enriches creators", func(t *testing.T) {
 		service, dta, ums := newTestDiscoverTaskService(t)
 		params := interfaces.DiscoverTaskQueryParams{CatalogID: "catalog-1"}
@@ -91,7 +105,7 @@ func TestDiscoverTaskServiceGetAndList(t *testing.T) {
 		assert.Equal(t, "Bob", got[1].Creator.Name)
 	})
 
-	t.Run("list wraps account lookup error", func(t *testing.T) {
+	t.Run("list keeps tasks when account lookup fails", func(t *testing.T) {
 		service, dta, ums := newTestDiscoverTaskService(t)
 		dta.EXPECT().List(gomock.Any(), gomock.Any()).
 			Return([]*interfaces.DiscoverTask{{ID: "task-1"}}, int64(1), nil)
@@ -99,10 +113,22 @@ func TestDiscoverTaskServiceGetAndList(t *testing.T) {
 
 		got, total, err := service.List(context.Background(), interfaces.DiscoverTaskQueryParams{})
 
-		require.Error(t, err)
-		assert.Nil(t, got)
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), total)
+		assert.Equal(t, "task-1", got[0].ID)
+	})
+
+	t.Run("list wraps access error", func(t *testing.T) {
+		service, dta, _ := newTestDiscoverTaskService(t)
+		dta.EXPECT().List(gomock.Any(), gomock.Any()).Return(nil, int64(0), errors.New("database unavailable"))
+
+		got, total, err := service.List(context.Background(), interfaces.DiscoverTaskQueryParams{})
+
+		require.Nil(t, got)
 		assert.Zero(t, total)
-		assert.Contains(t, err.Error(), "user service down")
+		httpErr, ok := err.(*rest.HTTPError)
+		require.True(t, ok)
+		assert.Equal(t, verrors.VegaBackend_DiscoverTask_InternalError_GetFailed, httpErr.BaseError.ErrorCode)
 	})
 }
 
@@ -140,6 +166,26 @@ func TestDiscoverTaskServicePopulatesCatalogName(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Equal(t, "目录二", got.CatalogName)
+	})
+
+	t.Run("list keeps tasks when reference lookup fails", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		dta := vmock.NewMockDiscoverTaskAccess(ctrl)
+		cs := vmock.NewMockCatalogService(ctrl)
+		ums := vmock.NewMockUserMgmtService(ctrl)
+		service := &discoverTaskService{dta: dta, cs: cs, ums: ums}
+		tasks := []*interfaces.DiscoverTask{{ID: "task-4", CatalogID: "catalog-3"}}
+
+		dta.EXPECT().List(gomock.Any(), gomock.Any()).Return(tasks, int64(1), nil)
+		cs.EXPECT().InternalGetByIDs(gomock.Any(), []string{"catalog-3"}).Return(nil, errors.New("catalog service down"))
+		ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
+
+		got, total, err := service.List(context.Background(), interfaces.DiscoverTaskQueryParams{})
+
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), total)
+		assert.Equal(t, "task-4", got[0].ID)
+		assert.Empty(t, got[0].CatalogName)
 	})
 }
 

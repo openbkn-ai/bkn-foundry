@@ -8,6 +8,7 @@ package semantic_understanding_task
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -278,6 +279,23 @@ func TestSemanticUnderstandingTaskServiceGetByID(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "NotFound")
 	})
+
+	t.Run("keeps task when account lookup fails", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		taskAccess := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
+		userMgmtService := mock_interfaces.NewMockUserMgmtService(ctrl)
+		service := &semanticUnderstandingTaskService{suta: taskAccess, ums: userMgmtService}
+		task := &interfaces.SemanticUnderstandingTask{ID: "semantic-task-2"}
+
+		taskAccess.EXPECT().GetByID(gomock.Any(), "semantic-task-2").Return(task, nil)
+		userMgmtService.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(errors.New("user service down"))
+
+		got, err := service.GetByID(context.Background(), "semantic-task-2")
+
+		require.NoError(t, err)
+		assert.Equal(t, "semantic-task-2", got.ID)
+	})
 }
 
 func TestSemanticUnderstandingTaskServicePopulatesReferenceNames(t *testing.T) {
@@ -322,6 +340,21 @@ func TestSemanticUnderstandingTaskServicePopulatesReferenceNames(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "资源二", got.ResourceName)
 		assert.Equal(t, "目录二", got.CatalogName)
+	})
+
+	t.Run("list keeps tasks when reference lookup fails", func(t *testing.T) {
+		tasks := []*interfaces.SemanticUnderstandingTask{{ID: "task-4", CatalogID: "catalog-3", ResourceID: "resource-3"}}
+		taskAccess.EXPECT().List(gomock.Any(), gomock.Any()).Return(tasks, int64(1), nil)
+		resourceService.EXPECT().InternalGetByIDs(gomock.Any(), []string{"resource-3"}).Return(nil, errors.New("resource service down"))
+		catalogService.EXPECT().InternalGetByIDs(gomock.Any(), []string{"catalog-3"}).Return([]*interfaces.Catalog{{ID: "catalog-3", Name: "目录三"}}, nil)
+
+		got, total, err := service.List(context.Background(), interfaces.SemanticUnderstandingTaskQueryParams{})
+
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), total)
+		assert.Equal(t, "task-4", got[0].ID)
+		assert.Empty(t, got[0].ResourceName)
+		assert.Equal(t, "目录三", got[0].CatalogName)
 	})
 }
 

@@ -414,16 +414,12 @@ func (bts *buildTaskService) GetByID(ctx context.Context, id string) (*interface
 		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_BuildTask_NotFound)
 	}
 	if err := bts.populateBuildTaskReferences(ctx, []*interfaces.BuildTask{buildTask}); err != nil {
-		span.SetStatus(codes.Error, "Populate build task references failed")
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_GetFailed).
-			WithErrorDetails(err.Error())
+		logger.Warnf("Failed to populate build task references: %v", err)
 	}
 
 	accountInfos := []*interfaces.AccountInfo{&buildTask.Creator}
 	if err := bts.ums.GetAccountNames(ctx, accountInfos); err != nil {
-		span.SetStatus(codes.Error, "GetAccountNames error")
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			verrors.VegaBackend_BuildTask_InternalError_GetAccountNamesFailed).WithErrorDetails(err.Error())
+		logger.Warnf("Failed to populate build task account names: %v", err)
 	}
 
 	buildTask.IndexHealth = computeIndexHealth(buildTask)
@@ -485,22 +481,25 @@ func (bts *buildTaskService) populateBuildTaskReferences(ctx context.Context, bu
 		}
 	}
 
+	var referenceErrors []error
+	resourcesByID := make(map[string]*interfaces.Resource, len(resourceIDs))
 	resources, err := bts.rs.InternalGetByIDs(ctx, resourceIDs)
 	if err != nil {
-		return err
-	}
-	resourcesByID := make(map[string]*interfaces.Resource, len(resources))
-	for _, resource := range resources {
-		resourcesByID[resource.ID] = resource
+		referenceErrors = append(referenceErrors, err)
+	} else {
+		for _, resource := range resources {
+			resourcesByID[resource.ID] = resource
+		}
 	}
 
+	catalogsByID := make(map[string]*interfaces.Catalog, len(catalogIDs))
 	catalogs, err := bts.cs.InternalGetByIDs(ctx, catalogIDs)
 	if err != nil {
-		return err
-	}
-	catalogsByID := make(map[string]*interfaces.Catalog, len(catalogs))
-	for _, catalog := range catalogs {
-		catalogsByID[catalog.ID] = catalog
+		referenceErrors = append(referenceErrors, err)
+	} else {
+		for _, catalog := range catalogs {
+			catalogsByID[catalog.ID] = catalog
+		}
 	}
 
 	for _, buildTask := range buildTasks {
@@ -511,7 +510,7 @@ func (bts *buildTaskService) populateBuildTaskReferences(ctx context.Context, bu
 			buildTask.CatalogName = catalog.Name
 		}
 	}
-	return nil
+	return errors.Join(referenceErrors...)
 }
 
 func (bts *buildTaskService) InternalGetStatus(ctx context.Context, id string) (string, error) {
@@ -587,9 +586,7 @@ func (bts *buildTaskService) GetByResourceID(ctx context.Context, resourceID str
 	if buildTask != nil {
 		accountInfos := []*interfaces.AccountInfo{&buildTask.Creator}
 		if err := bts.ums.GetAccountNames(ctx, accountInfos); err != nil {
-			span.SetStatus(codes.Error, "GetAccountNames error")
-			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-				verrors.VegaBackend_BuildTask_InternalError_GetAccountNamesFailed).WithErrorDetails(err.Error())
+			logger.Warnf("Failed to populate build task account names: %v", err)
 		}
 		buildTask.IndexHealth = computeIndexHealth(buildTask)
 	}
@@ -610,9 +607,7 @@ func (bts *buildTaskService) List(ctx context.Context, params interfaces.BuildTa
 			WithErrorDetails(err.Error())
 	}
 	if err := bts.populateBuildTaskReferences(ctx, buildTasks); err != nil {
-		span.SetStatus(codes.Error, "Populate build task references failed")
-		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_GetFailed).
-			WithErrorDetails(err.Error())
+		logger.Warnf("Failed to populate build task references: %v", err)
 	}
 
 	accountInfos := make([]*interfaces.AccountInfo, 0, len(buildTasks))
@@ -621,9 +616,7 @@ func (bts *buildTaskService) List(ctx context.Context, params interfaces.BuildTa
 		bt.IndexHealth = computeIndexHealth(bt)
 	}
 	if err := bts.ums.GetAccountNames(ctx, accountInfos); err != nil {
-		span.SetStatus(codes.Error, "GetAccountNames error")
-		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			verrors.VegaBackend_BuildTask_InternalError_GetAccountNamesFailed).WithErrorDetails(err.Error())
+		logger.Warnf("Failed to populate build task account names: %v", err)
 	}
 
 	span.SetStatus(codes.Ok, "")

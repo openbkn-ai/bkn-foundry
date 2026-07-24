@@ -8,6 +8,7 @@ package catalog
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -445,7 +446,7 @@ func TestCatalogServiceSetEnabled(t *testing.T) {
 }
 
 func TestCatalogServiceList(t *testing.T) {
-	t.Run("list return all", func(t *testing.T) {
+	t.Run("keeps catalogs when account name lookup fails", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
 		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
@@ -461,7 +462,7 @@ func TestCatalogServiceList(t *testing.T) {
 			}, nil)
 		mockCA.EXPECT().GetByIDs(gomock.Any(), gomock.Any()).Return(catalogs, nil)
 		mockCA.EXPECT().AttachListExtensions(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-		mockUMS.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
+		mockUMS.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(errors.New("user management unavailable"))
 
 		cs := &catalogService{ca: mockCA, ps: mockPS, ums: mockUMS}
 		result, total, err := cs.List(context.Background(), interfaces.CatalogsQueryParams{

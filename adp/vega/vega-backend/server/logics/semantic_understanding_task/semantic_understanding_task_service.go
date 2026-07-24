@@ -12,6 +12,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"net/http"
@@ -223,12 +224,10 @@ func (suts *semanticUnderstandingTaskService) GetByID(ctx context.Context, id st
 		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_SemanticUnderstandingTask_NotFound)
 	}
 	if err := suts.populateSemanticUnderstandingTaskReferences(ctx, []*interfaces.SemanticUnderstandingTask{task}); err != nil {
-		return nil, err
+		logger.Warnf("Failed to populate semantic understanding task references: %v", err)
 	}
 	if err := suts.ums.GetAccountNames(ctx, []*interfaces.AccountInfo{&task.Creator}); err != nil {
-		span.SetStatus(codes.Error, "GetAccountNames error")
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			verrors.VegaBackend_SemanticUnderstandingTask_InternalError_GetAccountNamesFailed).WithErrorDetails(err.Error())
+		logger.Warnf("Failed to populate semantic understanding task account names: %v", err)
 	}
 	return task, nil
 }
@@ -264,7 +263,7 @@ func (suts *semanticUnderstandingTaskService) List(ctx context.Context, params i
 			WithErrorDetails(err.Error())
 	}
 	if err := suts.populateSemanticUnderstandingTaskReferences(ctx, tasks); err != nil {
-		return nil, 0, err
+		logger.Warnf("Failed to populate semantic understanding task references: %v", err)
 	}
 	return tasks, total, nil
 }
@@ -290,24 +289,27 @@ func (suts *semanticUnderstandingTaskService) populateSemanticUnderstandingTaskR
 		}
 	}
 
+	var referenceErrors []error
 	resourcesByID := make(map[string]*interfaces.Resource, len(resourceIDs))
 	if len(resourceIDs) > 0 {
 		resources, err := suts.rs.InternalGetByIDs(ctx, resourceIDs)
 		if err != nil {
-			return err
-		}
-		for _, resource := range resources {
-			resourcesByID[resource.ID] = resource
+			referenceErrors = append(referenceErrors, err)
+		} else {
+			for _, resource := range resources {
+				resourcesByID[resource.ID] = resource
+			}
 		}
 	}
 	catalogsByID := make(map[string]*interfaces.Catalog, len(catalogIDs))
 	if len(catalogIDs) > 0 {
 		catalogs, err := suts.cs.InternalGetByIDs(ctx, catalogIDs)
 		if err != nil {
-			return err
-		}
-		for _, catalog := range catalogs {
-			catalogsByID[catalog.ID] = catalog
+			referenceErrors = append(referenceErrors, err)
+		} else {
+			for _, catalog := range catalogs {
+				catalogsByID[catalog.ID] = catalog
+			}
 		}
 	}
 	for _, task := range tasks {
@@ -318,7 +320,7 @@ func (suts *semanticUnderstandingTaskService) populateSemanticUnderstandingTaskR
 			task.CatalogName = catalog.Name
 		}
 	}
-	return nil
+	return errors.Join(referenceErrors...)
 }
 
 func (suts *semanticUnderstandingTaskService) Delete(ctx context.Context, ids []string, ignoreMissing bool) error {
