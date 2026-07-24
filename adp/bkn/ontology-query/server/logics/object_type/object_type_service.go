@@ -954,7 +954,9 @@ func (ots *objectTypeService) handleToolProperty(ctx context.Context,
 	if logicProp.DataSource.ResultPath != "" {
 		toolResult, err = jsonpath.Get(logicProp.DataSource.ResultPath, toolResult)
 		if err != nil {
-			return nil, fmt.Errorf("extract tool result with path %q: %w", logicProp.DataSource.ResultPath, err)
+			logger.Warnf("extract tool result with path %q failed for logic property %s: %v",
+				logicProp.DataSource.ResultPath, propName, err)
+			return nil, nil
 		}
 	}
 

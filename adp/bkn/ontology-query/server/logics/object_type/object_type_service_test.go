@@ -1241,7 +1241,7 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 			So(result, ShouldEqual, "success")
 		})
 
-		Convey("失败 - 工具箱逻辑属性结果路径未命中", func() {
+		Convey("成功 - 工具箱逻辑属性结果路径未命中时返回空值", func() {
 			logicProp := &interfaces.LogicProperty{
 				Name: "logic_prop1",
 				Type: interfaces.LOGIC_PROPERTY_TYPE_TOOL,
@@ -1258,10 +1258,10 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 
 			result, err := service.handleToolProperty(ctx, "logic_prop1", toolValue, logicProp, nil)
 			So(result, ShouldBeNil)
-			So(err, ShouldNotBeNil)
+			So(err, ShouldBeNil)
 		})
 
-		Convey("失败 - 工具箱逻辑属性结果不是 JSON", func() {
+		Convey("成功 - 工具箱逻辑属性结果不是 JSON 时返回空值", func() {
 			logicProp := &interfaces.LogicProperty{
 				Name: "logic_prop1",
 				Type: interfaces.LOGIC_PROPERTY_TYPE_TOOL,
@@ -1278,7 +1278,7 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 
 			result, err := service.handleToolProperty(ctx, "logic_prop1", toolValue, logicProp, nil)
 			So(result, ShouldBeNil)
-			So(err, ShouldNotBeNil)
+			So(err, ShouldBeNil)
 		})
 
 		Convey("成功 - 获取对象属性值", func() {
