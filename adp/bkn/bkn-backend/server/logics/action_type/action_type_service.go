@@ -362,19 +362,32 @@ func (ats *actionTypeService) ListActionTypes(ctx context.Context, query interfa
 		return []*interfaces.ActionType{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ActionType_InternalError).WithErrorDetails(err.Error())
 	}
+
+	total, err := ats.ata.GetActionTypesTotal(ctx, query)
+	if err != nil {
+		logger.Errorf("GetActionTypesTotal error: %s", err.Error())
+		span.SetStatus(codes.Error, "Get action types total error")
+		return []*interfaces.ActionType{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			berrors.BknBackend_ActionType_InternalError).WithErrorDetails(err.Error())
+	}
 	if len(actionTypes) == 0 {
 		span.SetStatus(codes.Ok, "")
-		return actionTypes, 0, nil
+		return actionTypes, total, nil
 	}
 
-	// 获取绑定对象类的名称拿到
+	objectTypeIDs := make([]string, 0, len(actionTypes))
 	for _, actionType := range actionTypes {
-		objectTypeMap, err := ats.ots.GetObjectTypesMapByIDs(ctx, query.KNID,
-			query.Branch, []string{actionType.ObjectTypeID}, false)
-		if err != nil {
-			return []*interfaces.ActionType{}, 0, err
-		}
+		objectTypeIDs = append(objectTypeIDs, actionType.ObjectTypeID)
+	}
 
+	objectTypeMap, err := ats.ots.GetObjectTypesMapByIDs(ctx, query.KNID,
+		query.Branch, common.DuplicateSlice(objectTypeIDs), false)
+	if err != nil {
+		return []*interfaces.ActionType{}, 0, err
+	}
+
+	// 补充当前页行动类绑定对象类的名称。
+	for _, actionType := range actionTypes {
 		if objectTypeMap[actionType.ObjectTypeID] != nil {
 			actionType.ObjectType = interfaces.SimpleObjectType{
 				OTID:   objectTypeMap[actionType.ObjectTypeID].OTID,
@@ -383,24 +396,6 @@ func (ats *actionTypeService) ListActionTypes(ctx context.Context, query interfa
 				Color:  objectTypeMap[actionType.ObjectTypeID].Color,
 			}
 		}
-	}
-	total := len(actionTypes)
-
-	// limit = -1,则返回所有
-	if query.Limit != -1 {
-		// 分页
-		// 检查起始位置是否越界
-		if query.Offset < 0 || query.Offset >= len(actionTypes) {
-			span.SetStatus(codes.Ok, "")
-			return []*interfaces.ActionType{}, total, nil
-		}
-		// 计算结束位置
-		end := query.Offset + query.Limit
-		if end > len(actionTypes) {
-			end = len(actionTypes)
-		}
-
-		actionTypes = actionTypes[query.Offset:end]
 	}
 
 	accountInfos := make([]*interfaces.AccountInfo, 0, len(actionTypes)*2)

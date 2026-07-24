@@ -466,7 +466,7 @@ func Test_ActionTypeAccess_ListActionTypes(t *testing.T) {
 			sqlStr := fmt.Sprintf("SELECT f_id, f_name, f_tags, f_comment, f_icon, f_color, f_bkn_raw_content, "+
 				"f_kn_id, f_branch, f_action_type, f_action_intent, f_impact_contracts, f_object_type_id, f_condition, f_affect, f_action_source, "+
 				"f_parameters, f_schedule, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time "+
-				"FROM %s WHERE f_kn_id = ? AND f_branch = ? ORDER BY f_name ASC", AT_TABLE_NAME)
+				"FROM %s WHERE f_kn_id = ? AND f_branch = ? ORDER BY f_name ASC LIMIT 20 OFFSET 10", AT_TABLE_NAME)
 
 			rows := sqlmock.NewRows([]string{
 				"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content",
@@ -484,6 +484,8 @@ func Test_ActionTypeAccess_ListActionTypes(t *testing.T) {
 
 			queryWithSort := interfaces.ActionTypesQueryParams{
 				PaginationQueryParameters: interfaces.PaginationQueryParameters{
+					Limit:     20,
+					Offset:    10,
 					Sort:      "f_name",
 					Direction: "ASC",
 				},
