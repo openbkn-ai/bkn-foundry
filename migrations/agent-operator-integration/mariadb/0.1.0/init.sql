@@ -1,3 +1,8 @@
+-- Copyright 2026 openbkn.ai
+--
+-- Licensed under the Apache License, Version 2.0.
+-- See the LICENSE file in the project root for details.
+
 USE openbkn;
 
 CREATE TABLE IF NOT EXISTS `t_metadata_api` (
