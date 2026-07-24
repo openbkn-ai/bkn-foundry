@@ -430,7 +430,7 @@ func TestExtractLogicProperties_Success(t *testing.T) {
 			ID: "ot-001",
 			LogicProperties: []*interfaces.LogicPropertyDef{
 				{Name: "prop1", Type: interfaces.LogicPropertyTypeMetric},
-				{Name: "prop2", Type: interfaces.LogicPropertyTypeOperator},
+				{Name: "prop2", Type: interfaces.LogicPropertyTypeTool},
 				{Name: "prop3", Type: interfaces.LogicPropertyTypeMetric},
 			},
 		}

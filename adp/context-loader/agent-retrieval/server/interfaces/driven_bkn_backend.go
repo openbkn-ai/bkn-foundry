@@ -39,8 +39,8 @@ const (
 type LogicPropertyType string
 
 const (
-	LogicPropertyTypeMetric   LogicPropertyType = "metric"   // Metric type
-	LogicPropertyTypeOperator LogicPropertyType = "operator" // Operator type
+	LogicPropertyTypeMetric LogicPropertyType = "metric" // Metric type
+	LogicPropertyTypeTool   LogicPropertyType = "tool"   // Tool type
 )
 
 type KnBaseError struct {
@@ -72,7 +72,7 @@ type DataProperty struct {
 	// hyphens (-), and cannot start with underscore or hyphen
 	Name                string            `json:"name"`
 	DisplayName         string            `json:"display_name,omitempty"`         // Property display name
-	Type                string            `json:"type"`                           // Property data type. In addition to view field types, there are metric, objective, event, trace, log, operator
+	Type                string            `json:"type"`                           // Property data type.
 	Comment             string            `json:"comment,omitempty"`              // Comment
 	MappedField         any               `json:"mapped_field,omitempty"`         // View field info
 	ConditionOperations []KnOperationType `json:"condition_operations,omitempty"` // List of query condition operators supported by this data property
@@ -82,7 +82,7 @@ type DataProperty struct {
 type LogicPropertyDef struct {
 	Name        string              `json:"name"`
 	DisplayName string              `json:"display_name,omitempty"`
-	Type        LogicPropertyType   `json:"type"` // Logic property type: metric or operator
+	Type        LogicPropertyType   `json:"type"` // Logic property type: metric or tool
 	Comment     string              `json:"comment,omitempty"`
 	DataSource  map[string]any      `json:"data_source,omitempty"`
 	Parameters  []PropertyParameter `json:"parameters,omitempty"`

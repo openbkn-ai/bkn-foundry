@@ -10,7 +10,6 @@
 package mock_interfaces
 
 import (
-	interfaces "bkn-backend/interfaces"
 	context "context"
 	reflect "reflect"
 
@@ -39,21 +38,6 @@ func NewMockAgentOperatorAccess(ctrl *gomock.Controller) *MockAgentOperatorAcces
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockAgentOperatorAccess) EXPECT() *MockAgentOperatorAccessMockRecorder {
 	return m.recorder
-}
-
-// GetAgentOperatorByID mocks base method.
-func (m *MockAgentOperatorAccess) GetAgentOperatorByID(ctx context.Context, operatorID string) (interfaces.AgentOperator, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetAgentOperatorByID", ctx, operatorID)
-	ret0, _ := ret[0].(interfaces.AgentOperator)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetAgentOperatorByID indicates an expected call of GetAgentOperatorByID.
-func (mr *MockAgentOperatorAccessMockRecorder) GetAgentOperatorByID(ctx, operatorID any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAgentOperatorByID", reflect.TypeOf((*MockAgentOperatorAccess)(nil).GetAgentOperatorByID), ctx, operatorID)
 }
 
 // GetMcpToolByName mocks base method.

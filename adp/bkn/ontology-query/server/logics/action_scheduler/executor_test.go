@@ -29,7 +29,7 @@ func Test_ExecuteTool_Validation(t *testing.T) {
 			So(actionType.ActionSource.ToolID, ShouldEqual, "")
 		})
 
-		Convey("should build correct OperatorExecutionRequest", func() {
+		Convey("should build correct ToolExecutionRequest", func() {
 			actionType := &interfaces.ActionType{
 				ActionSource: interfaces.ActionSource{
 					Type:   interfaces.ActionSourceTypeTool,
@@ -348,27 +348,6 @@ func Test_ExecuteMCP_Validation(t *testing.T) {
 			So(mcpRequest.Parameters["namespace"], ShouldEqual, "default")
 			So(mcpRequest.Parameters["force_restart"], ShouldEqual, true)
 			So(mcpRequest.Timeout, ShouldEqual, int64(60))
-		})
-	})
-}
-
-func Test_OperatorExecutionRequest(t *testing.T) {
-	Convey("Test OperatorExecutionRequest", t, func() {
-		Convey("should build correct request", func() {
-			req := interfaces.OperatorExecutionRequest{
-				Header: map[string]any{},
-				Body: map[string]any{
-					"key1": "value1",
-					"key2": 123,
-				},
-				Query:   map[string]any{},
-				Path:    map[string]any{},
-				Timeout: 300,
-			}
-
-			So(req.Body["key1"], ShouldEqual, "value1")
-			So(req.Body["key2"], ShouldEqual, 123)
-			So(req.Timeout, ShouldEqual, int64(300))
 		})
 	})
 }

@@ -56,21 +56,6 @@ func (mr *MockAgentOperatorAccessMockRecorder) ExecuteMCP(ctx, mcpID, toolName, 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteMCP", reflect.TypeOf((*MockAgentOperatorAccess)(nil).ExecuteMCP), ctx, mcpID, toolName, execRequest)
 }
 
-// ExecuteOperator mocks base method.
-func (m *MockAgentOperatorAccess) ExecuteOperator(ctx context.Context, operatorID string, execRequest interfaces.OperatorExecutionRequest) (any, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ExecuteOperator", ctx, operatorID, execRequest)
-	ret0, _ := ret[0].(any)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ExecuteOperator indicates an expected call of ExecuteOperator.
-func (mr *MockAgentOperatorAccessMockRecorder) ExecuteOperator(ctx, operatorID, execRequest any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteOperator", reflect.TypeOf((*MockAgentOperatorAccess)(nil).ExecuteOperator), ctx, operatorID, execRequest)
-}
-
 // ExecuteTool mocks base method.
 func (m *MockAgentOperatorAccess) ExecuteTool(ctx context.Context, boxID, toolID string, execRequest interfaces.ToolExecutionRequest) (any, error) {
 	m.ctrl.T.Helper()
@@ -84,19 +69,4 @@ func (m *MockAgentOperatorAccess) ExecuteTool(ctx context.Context, boxID, toolID
 func (mr *MockAgentOperatorAccessMockRecorder) ExecuteTool(ctx, boxID, toolID, execRequest any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteTool", reflect.TypeOf((*MockAgentOperatorAccess)(nil).ExecuteTool), ctx, boxID, toolID, execRequest)
-}
-
-// GetAgentOperatorByID mocks base method.
-func (m *MockAgentOperatorAccess) GetAgentOperatorByID(ctx context.Context, operatorID string) (interfaces.AgentOperator, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetAgentOperatorByID", ctx, operatorID)
-	ret0, _ := ret[0].(interfaces.AgentOperator)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetAgentOperatorByID indicates an expected call of GetAgentOperatorByID.
-func (mr *MockAgentOperatorAccessMockRecorder) GetAgentOperatorByID(ctx, operatorID any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAgentOperatorByID", reflect.TypeOf((*MockAgentOperatorAccess)(nil).GetAgentOperatorByID), ctx, operatorID)
 }

@@ -44,13 +44,8 @@ Description = "内部错误"
 Solution = "请重试该操作，若再次出现该错误请提交工单或联系技术支持工程师。"
 ErrorLink = "暂无"
 
-[OntologyQuery.ObjectType.InternalError.ExecuteOperatorFailed]
-Description = "算子执行失败"
-Solution = "请重试该操作，若再次出现该错误请提交工单或联系技术支持工程师。"
-ErrorLink = "暂无"
-
-[OntologyQuery.ObjectType.InternalError.GetAgentOperatorByIDFailed]
-Description = "按id获取算子详情失败"
+[OntologyQuery.ObjectType.InternalError.ExecuteToolFailed]
+Description = "工具执行失败"
 Solution = "请重试该操作，若再次出现该错误请提交工单或联系技术支持工程师。"
 ErrorLink = "暂无"
 
