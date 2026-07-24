@@ -529,6 +529,11 @@ func (kns *knowledgeNetworkService) ListKNs(ctx context.Context, parameter inter
 	}
 	total := len(visibleKNIDs)
 
+	if total == 0 {
+		span.SetStatus(codes.Ok, "")
+		return []*interfaces.KN{}, 0, nil
+	}
+
 	if parameter.Limit == 0 {
 		span.SetStatus(codes.Ok, "")
 		return []*interfaces.KN{}, total, nil

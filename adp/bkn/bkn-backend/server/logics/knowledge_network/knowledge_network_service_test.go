@@ -493,6 +493,27 @@ func Test_knowledgeNetworkService_ListKNs(t *testing.T) {
 			So(len(kns), ShouldEqual, 1)
 		})
 
+		Convey("Returns empty result when no knowledge networks are visible", func() {
+			parameter := interfaces.KNsQueryParams{
+				PaginationQueryParameters: interfaces.PaginationQueryParameters{
+					Limit:  -1,
+					Offset: 0,
+				},
+			}
+			knArr := []*interfaces.KN{{KNID: "kn1", KNName: "kn1"}}
+			candidateQuery := parameter
+			candidateQuery.OnlyIDs = true
+
+			kna.EXPECT().ListKNs(gomock.Any(), candidateQuery).Return(knArr, nil)
+			ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				Return(map[string]interfaces.PermissionResourceOps{}, nil)
+
+			kns, total, err := service.ListKNs(ctx, parameter)
+			So(err, ShouldBeNil)
+			So(total, ShouldEqual, 0)
+			So(kns, ShouldResemble, []*interfaces.KN{})
+		})
+
 		Convey("Success with Offset out of bounds\n", func() {
 			parameter := interfaces.KNsQueryParams{
 				PaginationQueryParameters: interfaces.PaginationQueryParameters{
