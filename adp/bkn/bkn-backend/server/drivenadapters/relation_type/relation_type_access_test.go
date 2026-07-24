@@ -331,7 +331,7 @@ func Test_relationTypeAccess_ListRelationTypes(t *testing.T) {
 			 f_kn_id, f_branch, f_source_object_type_id, f_target_object_type_id, f_type, f_mapping_rules, 
 			 f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time 
 			 FROM t_relation_type WHERE (instr(f_name, ?) > 0 OR instr(f_id, ?) > 0) AND instr(f_tags, ?) > 0 AND f_branch = ? 
-			 AND f_source_object_type_id IN (?) AND f_target_object_type_id IN (?) ORDER BY f_name ASC`
+			 AND f_source_object_type_id IN (?) AND f_target_object_type_id IN (?) ORDER BY f_name ASC LIMIT 20 OFFSET 10`
 
 			rows := sqlmock.NewRows([]string{
 				"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content",
@@ -339,7 +339,9 @@ func Test_relationTypeAccess_ListRelationTypes(t *testing.T) {
 				"f_creator", "f_creator_type", "f_create_time", "f_updater", "f_updater_type", "f_update_time",
 			})
 
-			smock.ExpectQuery(sqlStrWithAll).WithArgs().WillReturnRows(rows)
+			smock.ExpectQuery(sqlStrWithAll).
+				WithArgs("test", "test", `"tag1"`, interfaces.MAIN_BRANCH, "ot1", "ot2").
+				WillReturnRows(rows)
 
 			relationTypes, err := rta.ListRelationTypes(testCtx, queryWithAll)
 			So(err, ShouldBeNil)

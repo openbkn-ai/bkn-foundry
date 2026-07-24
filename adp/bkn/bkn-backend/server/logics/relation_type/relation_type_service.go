@@ -263,20 +263,33 @@ func (rts *relationTypeService) ListRelationTypes(ctx context.Context,
 		return []*interfaces.RelationType{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_RelationType_InternalError).WithErrorDetails(err.Error())
 	}
+
+	total, err := rts.rta.GetRelationTypesTotal(ctx, query)
+	if err != nil {
+		logger.Errorf("GetRelationTypesTotal error: %s", err.Error())
+		span.SetStatus(codes.Error, "Get relation types total error")
+
+		return []*interfaces.RelationType{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			berrors.BknBackend_RelationType_InternalError).WithErrorDetails(err.Error())
+	}
 	if len(relationTypes) == 0 {
 		span.SetStatus(codes.Ok, "")
-		return relationTypes, 0, nil
+		return relationTypes, total, nil
 	}
 
-	// 把起点终点对象类的名称拿到
+	objectTypeIDs := make([]string, 0, len(relationTypes)*2)
 	for _, relationType := range relationTypes {
-		// 起点终点对象类的名称拿到
-		objectTypeMap, err := rts.ots.GetObjectTypesMapByIDs(ctx, query.KNID, query.Branch,
-			[]string{relationType.SourceObjectTypeID, relationType.TargetObjectTypeID}, true)
-		if err != nil {
-			return []*interfaces.RelationType{}, 0, err
-		}
+		objectTypeIDs = append(objectTypeIDs, relationType.SourceObjectTypeID, relationType.TargetObjectTypeID)
+	}
 
+	objectTypeMap, err := rts.ots.GetObjectTypesMapByIDs(ctx, query.KNID, query.Branch,
+		common.DuplicateSlice(objectTypeIDs), false)
+	if err != nil {
+		return []*interfaces.RelationType{}, 0, err
+	}
+
+	// 补充当前页关系类的起点和终点对象类名称。
+	for _, relationType := range relationTypes {
 		sourceObj := objectTypeMap[relationType.SourceObjectTypeID]
 		targetObj := objectTypeMap[relationType.TargetObjectTypeID]
 
@@ -296,24 +309,6 @@ func (rts *relationTypeService) ListRelationTypes(ctx context.Context,
 				Color:  targetObj.Color,
 			}
 		}
-	}
-	total := len(relationTypes)
-
-	// limit = -1,则返回所有
-	if query.Limit != -1 {
-
-		// 分页
-		// 检查起始位置是否越界
-		if query.Offset < 0 || query.Offset >= len(relationTypes) {
-			span.SetStatus(codes.Ok, "")
-			return []*interfaces.RelationType{}, total, nil
-		}
-		// 计算结束位置
-		end := query.Offset + query.Limit
-		if end > len(relationTypes) {
-			end = len(relationTypes)
-		}
-		relationTypes = relationTypes[query.Offset:end]
 	}
 
 	accountInfos := make([]*interfaces.AccountInfo, 0, len(relationTypes)*2)

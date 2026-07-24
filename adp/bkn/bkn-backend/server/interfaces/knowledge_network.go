@@ -193,6 +193,8 @@ func slimObjectTypeForSummary(ot *ObjectType) {
 	}
 }
 
+const KN_BATCH_NAMES_MAX_IDS = 100
+
 // KNBatchNamesReq 按 ID 批量取知识网络名称请求(对象级授权页回显，统一契约)
 type KNBatchNamesReq struct {
 	IDs []string `json:"ids"` // 待取名的知识网络 ID 列表，空列表返回空 entries
@@ -226,6 +228,10 @@ type KNsQueryParams struct {
 	Tag            string
 	BusinessDomain string
 	Branch         string
+	// CandidateIDs restricts an internal detail query to permission-filtered IDs.
+	CandidateIDs []string `json:"-" form:"-"`
+	// OnlyIDs avoids loading list detail before permission filtering.
+	OnlyIDs bool `json:"-" form:"-"`
 }
 
 // 概念搜索

@@ -467,27 +467,18 @@ func (ots *objectTypeService) ListObjectTypes(ctx context.Context, tx *sql.Tx,
 		return []*interfaces.ObjectType{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
 	}
+
+	total, err := ots.ota.GetObjectTypesTotal(ctx, query)
+	if err != nil {
+		logger.Errorf("GetObjectTypesTotal error: %s", err.Error())
+		span.SetStatus(codes.Error, "Get object types total error")
+
+		return []*interfaces.ObjectType{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
+	}
 	if len(objectTypes) == 0 {
 		span.SetStatus(codes.Ok, "")
-		return objectTypes, 0, nil
-	}
-
-	total := len(objectTypes)
-	// limit = -1,则返回所有
-	if query.Limit != -1 {
-
-		// 分页
-		// 检查起始位置是否越界
-		if query.Offset < 0 || query.Offset >= len(objectTypes) {
-			span.SetStatus(codes.Ok, "")
-			return []*interfaces.ObjectType{}, total, nil
-		}
-		// 计算结束位置
-		end := query.Offset + query.Limit
-		if end > len(objectTypes) {
-			end = len(objectTypes)
-		}
-		objectTypes = objectTypes[query.Offset:end]
+		return objectTypes, total, nil
 	}
 
 	accountInfos := make([]*interfaces.AccountInfo, 0, len(objectTypes)*2)

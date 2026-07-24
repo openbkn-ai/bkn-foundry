@@ -865,18 +865,28 @@ func (r *restHandler) GetRelationTypePaths(c *gin.Context, visitor hydra.Visitor
 
 // QueryKNNamesByIDs 按 ID 批量取知识网络名称(对象级授权页回显，统一契约)。
 // 请求 {"ids":[...]}，响应 {"entries":[{"id","name"}]}；缺失 id 略过、空 ids 返回空 entries。
-// 绕过授权过滤：授权页需为用户无权但被引用的 KN 回显名称，故不做 token/权限校验，与
-// operator-integration 的 /skills/names、/operator/names、/tool-box/names 契约一致。
+// 授权页需为用户无权但被引用的 KN 回显名称，故不做知识网络权限过滤；调用方仍必须完成 OAuth 认证。
 func (r *restHandler) QueryKNNamesByIDs(c *gin.Context) {
 	logger.Debug("Handler QueryKNNamesByIDs Start")
 	ctx, span := oteltrace.StartServerSpan(c)
 	defer span.End()
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
+	if _, err := r.verifyOAuth(ctx, c); err != nil {
+		return
+	}
+
 	req := interfaces.KNBatchNamesReq{}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
 			WithErrorDetails("Binding Parameter Failed: " + err.Error())
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+	if len(req.IDs) > interfaces.KN_BATCH_NAMES_MAX_IDS {
+		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
+			WithErrorDetails(fmt.Sprintf("ids exceeds the maximum size of %d", interfaces.KN_BATCH_NAMES_MAX_IDS))
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return

@@ -127,7 +127,8 @@ paths:
               properties:
                 ids:
                   type: array
-                  description: 待取名的知识网络 ID 列表，空列表返回空 entries
+                  description: 待取名的知识网络 ID 列表，最多 100 个；空列表返回空 entries
+                  maxItems: 100
                   items:
                     type: string
       responses:

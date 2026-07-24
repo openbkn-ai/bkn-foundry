@@ -716,7 +716,7 @@ func Test_objectTypeAccess_ListObjectTypes(t *testing.T) {
 			   FROM t_object_type AS ot JOIN t_object_type_status AS ots ON ot.f_id = ots.f_id 
 			   AND ot.f_kn_id = ots.f_kn_id AND ot.f_branch = ots.f_branch 
 			   WHERE (instr(ot.f_name, ?) > 0 OR instr(ot.f_id, ?) > 0) AND instr(ot.f_tags, ?) > 0 AND ot.f_branch = ? 
-			   AND ot.f_id IN (?,?) ORDER BY ot.ot.f_name ASC`
+			   AND ot.f_id IN (?,?) ORDER BY ot.ot.f_name ASC LIMIT 20 OFFSET 10`
 
 			rows := sqlmock.NewRows([]string{
 				"ot.f_id", "ot.f_name", "ot.f_tags", "ot.f_comment", "ot.f_icon", "ot.f_color", "ot.f_bkn_raw_content",

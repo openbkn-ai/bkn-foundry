@@ -413,27 +413,18 @@ func (cgs *conceptGroupService) ListConceptGroups(ctx context.Context,
 		return []*interfaces.ConceptGroup{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ConceptGroup_InternalError).WithErrorDetails(err.Error())
 	}
+
+	total, err := cgs.cga.GetConceptGroupsTotal(ctx, query)
+	if err != nil {
+		logger.Errorf("GetConceptGroupsTotal error: %s", err.Error())
+		span.SetStatus(codes.Error, "Get concept groups total error")
+
+		return []*interfaces.ConceptGroup{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			berrors.BknBackend_ConceptGroup_InternalError).WithErrorDetails(err.Error())
+	}
 	if len(conceptGroups) == 0 {
 		span.SetStatus(codes.Ok, "")
-		return []*interfaces.ConceptGroup{}, 0, nil
-	}
-
-	total := len(conceptGroups)
-
-	// limit = -1,则返回所有
-	if query.Limit != -1 {
-		// 分页
-		// 检查起始位置是否越界
-		if query.Offset < 0 || query.Offset >= len(conceptGroups) {
-			span.SetStatus(codes.Ok, "")
-			return []*interfaces.ConceptGroup{}, total, nil
-		}
-		// 计算结束位置
-		end := query.Offset + query.Limit
-		if end > len(conceptGroups) {
-			end = len(conceptGroups)
-		}
-		conceptGroups = conceptGroups[query.Offset:end]
+		return []*interfaces.ConceptGroup{}, total, nil
 	}
 
 	accountInfos := make([]*interfaces.AccountInfo, 0, len(conceptGroups)*2)
@@ -451,12 +442,6 @@ func (cgs *conceptGroupService) ListConceptGroups(ctx context.Context,
 
 	// 分组列表为每个组生成本体对象统计信息
 	for _, conceptGroup := range conceptGroups {
-		stats, err := cgs.GetStatByConceptGroup(ctx, conceptGroup)
-		if err != nil {
-			return []*interfaces.ConceptGroup{}, 0, err
-		}
-		conceptGroup.Statistics = stats
-
 		otIDs, err := cgs.cga.GetConceptIDsByConceptGroupIDs(ctx, conceptGroup.KNID,
 			conceptGroup.Branch, []string{conceptGroup.CGID}, interfaces.MODULE_TYPE_OBJECT_TYPE)
 		if err != nil {
@@ -469,6 +454,12 @@ func (cgs *conceptGroupService) ListConceptGroups(ctx context.Context,
 				berrors.BknBackend_ConceptGroup_InternalError).WithErrorDetails(err.Error())
 		}
 		conceptGroup.ObjectTypeIDs = otIDs
+
+		stats, err := cgs.getStatByObjectTypeIDs(ctx, conceptGroup, otIDs)
+		if err != nil {
+			return []*interfaces.ConceptGroup{}, 0, err
+		}
+		conceptGroup.Statistics = stats
 	}
 
 	span.SetStatus(codes.Ok, "")
@@ -613,6 +604,15 @@ func (cgs *conceptGroupService) GetStatByConceptGroup(ctx context.Context, conce
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ConceptGroup_InternalError_GetConceptIDsByConceptGroupIDsFailed).WithErrorDetails(err.Error())
 	}
+
+	return cgs.getStatByObjectTypeIDs(ctx, conceptGroup, otIDs)
+}
+
+func (cgs *conceptGroupService) getStatByObjectTypeIDs(ctx context.Context,
+	conceptGroup *interfaces.ConceptGroup, otIDs []string) (*interfaces.Statistics, error) {
+
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, fmt.Sprintf("查询概念分组[%s]统计信息", conceptGroup.KNID))
+	defer span.End()
 
 	if len(otIDs) == 0 {
 		return &interfaces.Statistics{
