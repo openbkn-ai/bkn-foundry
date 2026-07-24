@@ -123,7 +123,6 @@ const (
 	MODULE_TYPE_OBJECT_TYPE            = "object_type"
 	MODULE_TYPE_RELATION_TYPE          = "relation_type"
 	MODULE_TYPE_ACTION_TYPE            = "action_type"
-	MODULE_TYPE_JOB                    = "job"
 	MODULE_TYPE_CONCEPT_GROUP          = "concept_group"
 	MODULE_TYPE_CONCEPT_GROUP_RELATION = "concept_group_relation"
 	MODULE_TYPE_ACTION_SCHEDULE        = "action_schedule"
@@ -295,14 +294,6 @@ func GenerateRelationTypeAuditObject(id string, name string) audit.AuditObject {
 func GenerateActionTypeAuditObject(id string, name string) audit.AuditObject {
 	return audit.AuditObject{
 		Type: MODULE_TYPE_ACTION_TYPE,
-		ID:   id,
-		Name: name,
-	}
-}
-
-func GenerateJobAuditObject(id string, name string) audit.AuditObject {
-	return audit.AuditObject{
-		Type: MODULE_TYPE_JOB,
 		ID:   id,
 		Name: name,
 	}
