@@ -311,6 +311,7 @@ func (cs *catalogService) GetByID(ctx context.Context, id string, withSensitiveF
 	accountInfos := []*interfaces.AccountInfo{&catalog.Creator, &catalog.Updater}
 	err = cs.ums.GetAccountNames(ctx, accountInfos)
 	if err != nil {
+		span.RecordError(err)
 		logger.Warnf("Failed to populate catalog account names: %v", err)
 	}
 
@@ -441,6 +442,7 @@ func (cs *catalogService) GetByIDs(ctx context.Context, ids []string) ([]*interf
 
 	err = cs.ums.GetAccountNames(ctx, accountInfos)
 	if err != nil {
+		span.RecordError(err)
 		logger.Warnf("Failed to populate catalog account names: %v", err)
 	}
 
@@ -573,6 +575,7 @@ func (cs *catalogService) List(ctx context.Context, params interfaces.CatalogsQu
 
 	err = cs.ums.GetAccountNames(ctx, accountInfos)
 	if err != nil {
+		span.RecordError(err)
 		logger.Warnf("Failed to populate catalog account names: %v", err)
 	}
 

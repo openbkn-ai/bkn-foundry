@@ -356,6 +356,7 @@ func (rs *resourceService) GetByID(ctx context.Context, id string) (*interfaces.
 	accountInfos := []*interfaces.AccountInfo{&resource.Creator, &resource.Updater}
 	err = rs.ums.GetAccountNames(ctx, accountInfos)
 	if err != nil {
+		span.RecordError(err)
 		logger.Warnf("Failed to populate resource account names: %v", err)
 	}
 
@@ -458,6 +459,7 @@ func (rs *resourceService) GetByIDs(ctx context.Context, ids []string) ([]*inter
 
 	err = rs.ums.GetAccountNames(ctx, accountInfos)
 	if err != nil {
+		span.RecordError(err)
 		logger.Warnf("Failed to populate resource account names: %v", err)
 	}
 
@@ -628,6 +630,7 @@ func (rs *resourceService) List(ctx context.Context, params interfaces.Resources
 
 	err = rs.ums.GetAccountNames(ctx, accountInfos)
 	if err != nil {
+		span.RecordError(err)
 		logger.Warnf("Failed to populate resource account names: %v", err)
 	}
 

@@ -414,11 +414,13 @@ func (bts *buildTaskService) GetByID(ctx context.Context, id string) (*interface
 		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_BuildTask_NotFound)
 	}
 	if err := bts.populateBuildTaskReferences(ctx, []*interfaces.BuildTask{buildTask}); err != nil {
+		span.RecordError(err)
 		logger.Warnf("Failed to populate build task references: %v", err)
 	}
 
 	accountInfos := []*interfaces.AccountInfo{&buildTask.Creator}
 	if err := bts.ums.GetAccountNames(ctx, accountInfos); err != nil {
+		span.RecordError(err)
 		logger.Warnf("Failed to populate build task account names: %v", err)
 	}
 
@@ -586,6 +588,7 @@ func (bts *buildTaskService) GetByResourceID(ctx context.Context, resourceID str
 	if buildTask != nil {
 		accountInfos := []*interfaces.AccountInfo{&buildTask.Creator}
 		if err := bts.ums.GetAccountNames(ctx, accountInfos); err != nil {
+			span.RecordError(err)
 			logger.Warnf("Failed to populate build task account names: %v", err)
 		}
 		buildTask.IndexHealth = computeIndexHealth(buildTask)
@@ -607,6 +610,7 @@ func (bts *buildTaskService) List(ctx context.Context, params interfaces.BuildTa
 			WithErrorDetails(err.Error())
 	}
 	if err := bts.populateBuildTaskReferences(ctx, buildTasks); err != nil {
+		span.RecordError(err)
 		logger.Warnf("Failed to populate build task references: %v", err)
 	}
 
@@ -616,6 +620,7 @@ func (bts *buildTaskService) List(ctx context.Context, params interfaces.BuildTa
 		bt.IndexHealth = computeIndexHealth(bt)
 	}
 	if err := bts.ums.GetAccountNames(ctx, accountInfos); err != nil {
+		span.RecordError(err)
 		logger.Warnf("Failed to populate build task account names: %v", err)
 	}
 

@@ -224,9 +224,11 @@ func (suts *semanticUnderstandingTaskService) GetByID(ctx context.Context, id st
 		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_SemanticUnderstandingTask_NotFound)
 	}
 	if err := suts.populateSemanticUnderstandingTaskReferences(ctx, []*interfaces.SemanticUnderstandingTask{task}); err != nil {
+		span.RecordError(err)
 		logger.Warnf("Failed to populate semantic understanding task references: %v", err)
 	}
 	if err := suts.ums.GetAccountNames(ctx, []*interfaces.AccountInfo{&task.Creator}); err != nil {
+		span.RecordError(err)
 		logger.Warnf("Failed to populate semantic understanding task account names: %v", err)
 	}
 	return task, nil
@@ -263,6 +265,7 @@ func (suts *semanticUnderstandingTaskService) List(ctx context.Context, params i
 			WithErrorDetails(err.Error())
 	}
 	if err := suts.populateSemanticUnderstandingTaskReferences(ctx, tasks); err != nil {
+		span.RecordError(err)
 		logger.Warnf("Failed to populate semantic understanding task references: %v", err)
 	}
 	return tasks, total, nil

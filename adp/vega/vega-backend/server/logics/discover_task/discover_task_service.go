@@ -170,9 +170,11 @@ func (dts *discoverTaskService) GetByID(ctx context.Context, id string) (*interf
 		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_DiscoverTask_NotFound)
 	}
 	if err := dts.populateDiscoverTaskReferences(ctx, []*interfaces.DiscoverTask{task}); err != nil {
+		span.RecordError(err)
 		logger.Warnf("Failed to populate discover task references: %v", err)
 	}
 	if err := dts.ums.GetAccountNames(ctx, []*interfaces.AccountInfo{&task.Creator}); err != nil {
+		span.RecordError(err)
 		logger.Warnf("Failed to populate discover task account names: %v", err)
 	}
 	return task, nil
@@ -201,6 +203,7 @@ func (dts *discoverTaskService) List(ctx context.Context, params interfaces.Disc
 			WithErrorDetails(err.Error())
 	}
 	if err := dts.populateDiscoverTaskReferences(ctx, tasks); err != nil {
+		span.RecordError(err)
 		logger.Warnf("Failed to populate discover task references: %v", err)
 	}
 
@@ -209,6 +212,7 @@ func (dts *discoverTaskService) List(ctx context.Context, params interfaces.Disc
 		accountInfos = append(accountInfos, &t.Creator)
 	}
 	if err := dts.ums.GetAccountNames(ctx, accountInfos); err != nil {
+		span.RecordError(err)
 		logger.Warnf("Failed to populate discover task account names: %v", err)
 	}
 	return tasks, total, nil

@@ -123,9 +123,11 @@ func (dss *discoverScheduleService) GetByID(ctx context.Context, id string) (*in
 	}
 	if schedule != nil {
 		if err := dss.populateDiscoverScheduleReferences(ctx, []*interfaces.DiscoverSchedule{schedule}); err != nil {
+			span.RecordError(err)
 			logger.Warnf("Failed to populate discover schedule references: %v", err)
 		}
 		if err := dss.ums.GetAccountNames(ctx, []*interfaces.AccountInfo{&schedule.Creator, &schedule.Updater}); err != nil {
+			span.RecordError(err)
 			logger.Warnf("Failed to populate discover schedule account names: %v", err)
 		}
 	}
@@ -144,6 +146,7 @@ func (dss *discoverScheduleService) List(ctx context.Context, params interfaces.
 			WithErrorDetails(err.Error())
 	}
 	if err := dss.populateDiscoverScheduleReferences(ctx, schedules); err != nil {
+		span.RecordError(err)
 		logger.Warnf("Failed to populate discover schedule references: %v", err)
 	}
 
@@ -152,6 +155,7 @@ func (dss *discoverScheduleService) List(ctx context.Context, params interfaces.
 		accountInfos = append(accountInfos, &s.Creator, &s.Updater)
 	}
 	if err := dss.ums.GetAccountNames(ctx, accountInfos); err != nil {
+		span.RecordError(err)
 		logger.Warnf("Failed to populate discover schedule account names: %v", err)
 	}
 	return schedules, total, nil
