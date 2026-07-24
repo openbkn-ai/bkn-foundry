@@ -31,7 +31,7 @@ func TestGetTraceGraphByTraceIDBuildsTreeStatusAndDuration(t *testing.T) {
 	if !found {
 		t.Fatal("expected trace graph to be found")
 	}
-	if !strings.Contains(string(port.query), `"traceId.keyword":"trace_graph_001"`) {
+	if !strings.Contains(string(port.query), `"traceId":"trace_graph_001"`) {
 		t.Fatalf("expected trace id term query, got %s", string(port.query))
 	}
 	if response.TraceID != "trace_graph_001" || response.Status != "error" || response.DurationNano != 110 {
@@ -51,6 +51,65 @@ func TestGetTraceGraphByTraceIDBuildsTreeStatusAndDuration(t *testing.T) {
 	}
 	if response.Data.Nodes[2].Status != "error" || response.Data.Nodes[2].ErrorMessage != "tool failed" {
 		t.Fatalf("expected error node with message: %+v", response.Data.Nodes[2])
+	}
+}
+
+func TestGetTraceGraphByTraceIDSupportsSS4OFlatSpanDocuments(t *testing.T) {
+	port := &fakeTracePort{result: opensearchvo.SearchResult(traceGraphSS4OFlatSearchResult())}
+	service := New(port)
+
+	response, found, err := service.GetTraceGraphByTraceID(context.Background(), "trace_graph_ss4o")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !found {
+		t.Fatal("expected trace graph to be found")
+	}
+	if strings.Contains(string(port.query), "startTimeUnixNano") {
+		t.Fatalf("query must not sort on missing SS4O field startTimeUnixNano: %s", string(port.query))
+	}
+	if response.Page.NodeCount != 1 || len(response.Data.Nodes) != 1 {
+		t.Fatalf("expected one SS4O span node, got %+v", response)
+	}
+	node := response.Data.Nodes[0]
+	if node.SpanID != "ss4o_span" || node.ServiceName != "bkn-trace-e2e-lite-probe" {
+		t.Fatalf("unexpected SS4O node mapping: %+v", node)
+	}
+	if node.StartNano == 0 || node.EndNano == 0 || node.DurationNano != int64(1000000000) {
+		t.Fatalf("expected RFC3339 timestamps to map to nanos, got %+v", node)
+	}
+}
+
+func TestGetTraceGraphByTraceIDSupportsSS4OFlatSpanWithoutAttributes(t *testing.T) {
+	port := &fakeTracePort{result: opensearchvo.SearchResult(traceGraphSS4OFlatWithoutAttributesSearchResult())}
+	service := New(port)
+
+	response, found, err := service.GetTraceGraphByTraceID(context.Background(), "trace_graph_ss4o_no_attrs")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !found {
+		t.Fatal("expected trace graph to be found")
+	}
+	node := response.Data.Nodes[0]
+	if node.StartNano == 0 || node.ServiceName != "bkn-trace-e2e-lite-probe" {
+		t.Fatalf("expected SS4O flat span mapping without attributes, got %+v", node)
+	}
+}
+
+func TestGetTraceGraphByTraceIDRecognizesSS4OErrorStatus(t *testing.T) {
+	port := &fakeTracePort{result: opensearchvo.SearchResult(traceGraphSS4OErrorSearchResult())}
+	service := New(port)
+
+	response, found, err := service.GetTraceGraphByTraceID(context.Background(), "trace_graph_ss4o_error")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !found {
+		t.Fatal("expected trace graph to be found")
+	}
+	if response.Status != "error" || response.Data.Nodes[0].Status != "error" {
+		t.Fatalf("expected SS4O Error status to map to error, got %+v", response)
 	}
 }
 
@@ -239,6 +298,91 @@ func traceGraphOrphanSearchResult() []byte {
               ]
             }
           ]
+        }
+      }
+    ]
+  }
+}`)
+}
+
+func traceGraphSS4OFlatSearchResult() []byte {
+	return []byte(`{
+  "hits": {
+    "hits": [
+      {
+        "_source": {
+          "attributes": {
+            "bkn.module.name": "bkn-trace",
+            "bkn.request.id": "req_bkn_trace_e2e_lite_probe_001"
+          },
+          "endTime": "2026-07-24T11:57:31Z",
+          "kind": "Server",
+          "name": "bkn-trace.e2e_lite_probe",
+          "parentSpanId": "",
+          "resource": {
+            "service.name": "bkn-trace-e2e-lite-probe"
+          },
+          "spanId": "ss4o_span",
+          "startTime": "2026-07-24T11:57:30Z",
+          "status": {
+            "code": "Ok",
+            "message": ""
+          },
+          "traceId": "trace_graph_ss4o"
+        }
+      }
+    ]
+  }
+}`)
+}
+
+func traceGraphSS4OFlatWithoutAttributesSearchResult() []byte {
+	return []byte(`{
+  "hits": {
+    "hits": [
+      {
+        "_source": {
+          "endTime": "2026-07-24T11:57:31Z",
+          "kind": "Server",
+          "name": "bkn-trace.e2e_lite_probe",
+          "parentSpanId": "",
+          "resource": {
+            "service.name": "bkn-trace-e2e-lite-probe"
+          },
+          "spanId": "ss4o_span_no_attrs",
+          "startTime": "2026-07-24T11:57:30Z",
+          "status": {
+            "code": "Ok",
+            "message": ""
+          },
+          "traceId": "trace_graph_ss4o_no_attrs"
+        }
+      }
+    ]
+  }
+}`)
+}
+
+func traceGraphSS4OErrorSearchResult() []byte {
+	return []byte(`{
+  "hits": {
+    "hits": [
+      {
+        "_source": {
+          "endTime": "2026-07-24T11:57:31Z",
+          "kind": "Server",
+          "name": "bkn-trace.e2e_lite_probe",
+          "parentSpanId": "",
+          "resource": {
+            "service.name": "bkn-trace-e2e-lite-probe"
+          },
+          "spanId": "ss4o_span_error",
+          "startTime": "2026-07-24T11:57:30Z",
+          "status": {
+            "code": "Error",
+            "message": "failed"
+          },
+          "traceId": "trace_graph_ss4o_error"
         }
       }
     ]
