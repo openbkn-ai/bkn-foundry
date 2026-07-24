@@ -326,16 +326,44 @@ func TestMePermissionsScope(t *testing.T) {
 		t.Errorf("resource_id without resource_type: want 400, got %d", w.Code)
 	}
 
-	// scope=type: only type-wide rows; every instance row (surplus or
-	// instance-only) is dropped.
-	got = decode(tokReq(t, r, http.MethodGet, path+"?scope=type", nil, "u1"))
-	if got["large_model/*"] == nil {
-		t.Errorf("type-wide large_model/* row missing under scope=type: %v", got)
+	// scope=type: one row per type, no instance rows — but the ops held only on
+	// instances survive in instance_operations.
+	w := tokReq(t, r, http.MethodGet, path+"?scope=type", nil, "u1")
+	if w.Code != http.StatusOK {
+		t.Fatalf("scope=type: want 200, got %d (%s)", w.Code, w.Body.String())
+	}
+	var scoped struct {
+		Permissions []struct {
+			Resource struct {
+				Type string `json:"type"`
+				ID   string `json:"id"`
+			} `json:"resource"`
+			Operations         []string `json:"operations"`
+			InstanceOperations []string `json:"instance_operations"`
+		} `json:"permissions"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &scoped); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	rows := map[string][]string{}
+	instRows := map[string][]string{}
+	for _, p := range scoped.Permissions {
+		key := p.Resource.Type + "/" + p.Resource.ID
+		rows[key] = p.Operations
+		instRows[key] = p.InstanceOperations
 	}
 	for _, k := range []string{"large_model/m1", "large_model/m2", "agent/a1"} {
-		if _, ok := got[k]; ok {
-			t.Errorf("%s must be dropped under scope=type: %v", k, got)
+		if _, ok := rows[k]; ok {
+			t.Errorf("%s: no instance row may survive scope=type: %v", k, rows)
 		}
+	}
+	if len(instRows["large_model/*"]) != 1 || instRows["large_model/*"][0] != "modify" {
+		t.Errorf("large_model instance_operations = %v, want [modify]", instRows["large_model/*"])
+	}
+	// agent access is object-only: the row exists solely to keep that access
+	// visible, so instance_operations carries it while operations stays empty.
+	if len(instRows["agent/*"]) != 1 || instRows["agent/*"][0] != "use" {
+		t.Errorf("agent instance_operations = %v, want [use]", instRows["agent/*"])
 	}
 
 	// scope=type composes with resource_type.
@@ -355,7 +383,7 @@ func TestMePermissionsScope(t *testing.T) {
 	// scope=type + resource_id but NO resource_type: both rules would reject, and
 	// the scope conflict must win — telling the caller to add resource_type would
 	// send it into a second 400 on a request that can never be satisfied.
-	w := tokReq(t, r, http.MethodGet, path+"?scope=type&resource_id=m1", nil, "u1")
+	w = tokReq(t, r, http.MethodGet, path+"?scope=type&resource_id=m1", nil, "u1")
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("scope=type with bare resource_id: want 400, got %d", w.Code)
 	}

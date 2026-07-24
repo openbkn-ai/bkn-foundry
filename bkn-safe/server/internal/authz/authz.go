@@ -180,9 +180,16 @@ func (en *Enforcer) RoleMembers(roleID string) ([]string, error) {
 
 // RoleGrant is one resource-object grant held by a role: the object pattern
 // ("type:id", id may be "*") and the operations allowed on it.
+//
+// InstanceOperations is only ever set by EffectivePermissions under
+// PermQuery.TypeWideOnly: it reports ops the accessor holds on AT LEAST ONE
+// instance of the type without holding them type-wide. It answers "is there any
+// object of this type I may do X to" (menu/entry-point visibility) — never
+// "may I do X to a given object", which still needs a per-instance check.
 type RoleGrant struct {
-	Object     string
-	Operations []string
+	Object             string
+	Operations         []string
+	InstanceOperations []string
 }
 
 // RolePermissions lists the policy grants whose subject is the role, grouped by
@@ -294,6 +301,10 @@ func (en *Enforcer) EffectivePermissions(accessorID string, q PermQuery) (hasWil
 		}
 	}
 
+	if q.TypeWideOnly {
+		return false, typeWideGrants(grouped, typeWide, q.ResourceType), nil
+	}
+
 	idFilter := map[string]bool{}
 	for _, id := range q.ResourceIDs {
 		idFilter[id] = true
@@ -308,9 +319,6 @@ func (en *Enforcer) EffectivePermissions(accessorID string, q PermQuery) (hasWil
 		if rid == "*" {
 			// Type-wide row: always kept within scope; the frontend unions on it.
 			out = append(out, RoleGrant{Object: g.Object, Operations: g.Operations})
-			continue
-		}
-		if q.TypeWideOnly {
 			continue
 		}
 		// Instance row: keep only ops beyond the type-wide set; drop if fully
@@ -339,6 +347,84 @@ func (en *Enforcer) EffectivePermissions(accessorID string, q PermQuery) (hasWil
 		out = append(out, RoleGrant{Object: g.Object, Operations: extra})
 	}
 	return false, out, nil
+}
+
+// typeWideGrants builds the scope=type answer: exactly one row per resource
+// type, carrying the type-wide ops plus (in InstanceOperations) the ops held
+// only on individual instances.
+//
+// Instance ops are SUMMARISED, not dropped. Dropping them would silently strip
+// entry points from anyone whose access is purely object-level — the shape the
+// object-authorization page produces: a menu gated on "may view a toolbox"
+// would vanish even though the accessor was explicitly granted one, and a
+// role-less accessor would end up with an empty permission set. Summarising
+// keeps the payload proportional to #types while preserving the "do I have any
+// access of this kind" answer the caller needs.
+//
+// Types whose only grants are instance-level still get a row (empty Operations,
+// non-empty InstanceOperations) — that is precisely the object-only accessor.
+// Row order follows first appearance in grouped, matching the unscoped path.
+func typeWideGrants(grouped []RoleGrant, typeWide map[string]map[string]bool, resourceType string) []RoleGrant {
+	instanceOps := map[string]map[string]bool{}
+	order := make([]string, 0, len(grouped))
+	seen := map[string]bool{}
+
+	for _, g := range grouped {
+		rtype, rid := splitObjectKey(g.Object)
+		if resourceType != "" && rtype != resourceType {
+			continue
+		}
+		if !seen[rtype] {
+			seen[rtype] = true
+			order = append(order, rtype)
+		}
+		if rid == "*" {
+			continue
+		}
+		// Only ops the accessor lacks type-wide are worth reporting separately;
+		// a type-wide ActAll ("*") covers everything, so nothing is surplus.
+		tw := typeWide[rtype]
+		if tw[ActAll] {
+			continue
+		}
+		for _, op := range g.Operations {
+			if tw[op] {
+				continue
+			}
+			if instanceOps[rtype] == nil {
+				instanceOps[rtype] = map[string]bool{}
+			}
+			instanceOps[rtype][op] = true
+		}
+	}
+
+	out := make([]RoleGrant, 0, len(order))
+	for _, rtype := range order {
+		row := RoleGrant{Object: rtype + ":*"}
+		// Preserve op order from the original type-wide row rather than ranging
+		// over the set (map order is random; callers compare as sets but stable
+		// output keeps responses diffable).
+		for _, g := range grouped {
+			gt, gid := splitObjectKey(g.Object)
+			if gt == rtype && gid == "*" {
+				row.Operations = append(row.Operations, g.Operations...)
+			}
+		}
+		for _, g := range grouped {
+			gt, gid := splitObjectKey(g.Object)
+			if gt != rtype || gid == "*" {
+				continue
+			}
+			for _, op := range g.Operations {
+				if instanceOps[rtype][op] {
+					delete(instanceOps[rtype], op)
+					row.InstanceOperations = append(row.InstanceOperations, op)
+				}
+			}
+		}
+		out = append(out, row)
+	}
+	return out
 }
 
 // hasOp reports whether ops contains want.

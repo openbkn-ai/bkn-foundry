@@ -233,14 +233,16 @@ func TestEffectivePermissionsScope(t *testing.T) {
 	}
 }
 
-// TypeWideOnly drops every instance exception row — including instance-only
-// grants with no type-wide row — and composes with ResourceType.
+// TypeWideOnly collapses to one row per type: no instance rows, but the ops
+// held only on instances are summarised in InstanceOperations rather than lost.
 func TestEffectivePermissionsTypeWideOnly(t *testing.T) {
 	e := newTestEnforcer(t)
 	const user = "u-tw"
 	mustNoErr(t, e.GrantRolePermission("role-tw", "large_model", "*", "view"))
 	mustNoErr(t, e.AssignRole(user, "role-tw"))
 	mustNoErr(t, e.GrantObjectPermission(user, "large_model", "m1", "modify")) // surplus over type-wide
+	mustNoErr(t, e.GrantObjectPermission(user, "large_model", "m2", "modify")) // same op, must not duplicate
+	mustNoErr(t, e.GrantObjectPermission(user, "large_model", "m3", "view"))   // already type-wide, not surplus
 	mustNoErr(t, e.GrantObjectPermission(user, "agent", "a1", "use"))          // instance-only, no type-wide row
 
 	has, grants, err := e.EffectivePermissions(user, PermQuery{TypeWideOnly: true})
@@ -249,21 +251,53 @@ func TestEffectivePermissionsTypeWideOnly(t *testing.T) {
 		t.Fatal("hasWildcard: want false")
 	}
 	idx := byObject(grants)
-	if !eqOps(idx["large_model:*"], "view") {
-		t.Errorf("large_model:* = %v, want [view]", idx["large_model:*"])
+	instIdx := map[string][]string{}
+	for _, g := range grants {
+		ops := append([]string(nil), g.InstanceOperations...)
+		sort.Strings(ops)
+		instIdx[g.Object] = ops
+	}
+	if len(grants) != 2 {
+		t.Fatalf("want exactly one row per type, got %d: %+v", len(grants), grants)
 	}
 	if _, ok := idx["large_model:m1"]; ok {
-		t.Errorf("surplus instance row must be dropped: %+v", grants)
+		t.Errorf("no instance row may survive: %+v", grants)
 	}
-	if _, ok := idx["agent:a1"]; ok {
-		t.Errorf("instance-only grant must be dropped: %+v", grants)
+	if !eqOps(idx["large_model:*"], "view") {
+		t.Errorf("large_model:* ops = %v, want [view]", idx["large_model:*"])
+	}
+	// modify appears once despite two instances holding it; view is type-wide so
+	// it is not repeated as an instance op.
+	if !eqOps(instIdx["large_model:*"], "modify") {
+		t.Errorf("large_model:* instance ops = %v, want [modify]", instIdx["large_model:*"])
+	}
+	// The object-only accessor: no type-wide grant, yet the type must still be
+	// reported or its entry points vanish.
+	if len(idx["agent:*"]) != 0 {
+		t.Errorf("agent:* ops = %v, want none", idx["agent:*"])
+	}
+	if !eqOps(instIdx["agent:*"], "use") {
+		t.Errorf("agent:* instance ops = %v, want [use]", instIdx["agent:*"])
 	}
 
-	// Composes with ResourceType: single type-wide row of the queried type.
+	// Composes with ResourceType: only the queried type's row.
 	_, grants, err = e.EffectivePermissions(user, PermQuery{ResourceType: "large_model", TypeWideOnly: true})
 	mustNoErr(t, err)
-	idx = byObject(grants)
-	if len(idx) != 1 || !eqOps(idx["large_model:*"], "view") {
-		t.Errorf("scoped type-wide = %+v, want only large_model:* [view]", grants)
+	if len(grants) != 1 || grants[0].Object != "large_model:*" {
+		t.Errorf("scoped type-wide = %+v, want only large_model:*", grants)
+	}
+}
+
+// A wildcard holder short-circuits before the type-wide collapse, so scope=type
+// still reports the single all-powerful row (never an empty permission set).
+func TestEffectivePermissionsTypeWideOnlyWildcard(t *testing.T) {
+	e := newTestEnforcer(t)
+	const super = "u-super-tw"
+	mustNoErr(t, e.Grant(super, "*", "*"))
+
+	has, grants, err := e.EffectivePermissions(super, PermQuery{TypeWideOnly: true})
+	mustNoErr(t, err)
+	if !has || len(grants) != 1 || grants[0].Object != "*:*" || !eqOps(grants[0].Operations, "*") {
+		t.Fatalf("wildcard under scope=type = %+v, want single *:* [*]", grants)
 	}
 }
