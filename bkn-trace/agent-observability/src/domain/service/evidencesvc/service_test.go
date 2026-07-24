@@ -192,6 +192,23 @@ func TestIngestRejectsInvalidTimestamp(t *testing.T) {
 	}
 }
 
+func TestIngestRejectsUnsupportedVisibilityState(t *testing.T) {
+	store := &fakeStore{}
+	service := New(store)
+	body := strings.Replace(validBatch(), `"visibility": "visible"`, `"visibility": "tenant_denied"`, 1)
+
+	_, validationErrors, err := service.Ingest(context.Background(), []byte(body))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !hasValidationCode(validationErrors, "BKN_TRACE_VISIBILITY_UNSUPPORTED") {
+		t.Fatalf("expected unsupported visibility error, got %+v", validationErrors)
+	}
+	if store.calls != 0 {
+		t.Fatalf("invalid batch must not be stored")
+	}
+}
+
 func TestIngestRejectsEmptyEvents(t *testing.T) {
 	store := &fakeStore{}
 	service := New(store)
@@ -309,6 +326,28 @@ func TestGetEvidenceChainMarksQueryTruncated(t *testing.T) {
 	}
 }
 
+func TestGetEvidenceChainSeparatesUnauthorizedRefsWithoutLeakingDetails(t *testing.T) {
+	store := &fakeStore{traces: []evidencevo.NormalizedTrace{evidenceChainTraceWithUnauthorizedRef("trace_chain_authz", "req_chain_authz")}}
+	service := New(store)
+
+	response, found, err := service.GetEvidenceChainByTraceID(context.Background(), "trace_chain_authz", evidencevo.EvidenceQueryOptions{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !found {
+		t.Fatal("expected evidence chain to be found")
+	}
+	if !response.Partial || !contains(response.PartialReasons, "evidence_ref_unauthorized") {
+		t.Fatalf("expected unauthorized partial reason, got: %+v", response)
+	}
+	if response.VisibilitySummary.UnauthorizedRefCount != 1 || response.VisibilitySummary.AuthorizedRefCount != 2 {
+		t.Fatalf("expected distinct authorized/unauthorized counts, got %+v", response.VisibilitySummary)
+	}
+	if len(response.Data.EvidenceRefs) != 1 || response.Data.EvidenceRefs[0]["ref_id"] != "row:visible" {
+		t.Fatalf("unauthorized evidence ref details must not leak: %+v", response.Data.EvidenceRefs)
+	}
+}
+
 func TestGetBusinessGraphByTraceIDReturnsClaimAndBusinessNodes(t *testing.T) {
 	store := &fakeStore{traces: []evidencevo.NormalizedTrace{queryTrace("trace_graph_001", "req_graph_001")}}
 	service := New(store)
@@ -359,6 +398,28 @@ func TestGetBusinessGraphByRequestIDHandlesHiddenAndUnresolvedRefs(t *testing.T)
 	}
 	if len(response.Data.Nodes) != 2 {
 		t.Fatalf("hidden/unresolved refs must not leak as graph nodes: %+v", response.Data.Nodes)
+	}
+}
+
+func TestGetBusinessGraphSeparatesUnauthorizedAndUnresolvedRefs(t *testing.T) {
+	store := &fakeStore{traces: []evidencevo.NormalizedTrace{businessGraphTraceWithUnauthorizedAndUnresolvedRefs("trace_graph_authz", "req_graph_authz")}}
+	service := New(store)
+
+	response, found, err := service.GetBusinessGraphByTraceID(context.Background(), "trace_graph_authz", evidencevo.EvidenceQueryOptions{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !found {
+		t.Fatal("expected business graph to be found")
+	}
+	if !response.Partial || !contains(response.PartialReasons, "business_ref_unauthorized") || !contains(response.PartialReasons, "business_ref_unresolved") {
+		t.Fatalf("expected unauthorized and unresolved partial reasons, got: %+v", response)
+	}
+	if response.VisibilitySummary.UnauthorizedRefCount != 1 || response.VisibilitySummary.UnresolvedRefCount != 1 {
+		t.Fatalf("expected distinct unauthorized/unresolved counts, got %+v", response.VisibilitySummary)
+	}
+	if response.Page.NodeCount != 2 || response.Page.EdgeCount != 1 {
+		t.Fatalf("unauthorized/unresolved refs must not leak as graph nodes or edges: page=%+v data=%+v", response.Page, response.Data)
 	}
 }
 
@@ -582,12 +643,31 @@ func queryTrace(traceID, requestID string) evidencevo.NormalizedTrace {
 	}
 }
 
+func evidenceChainTraceWithUnauthorizedRef(traceID, requestID string) evidencevo.NormalizedTrace {
+	trace := queryTrace(traceID, requestID)
+	trace.Events[1].Payload["evidence_refs"] = []any{
+		map[string]any{"ref_id": "row:visible", "ref_type": "row_ref", "visibility": "visible"},
+		map[string]any{"ref_id": "row:unauthorized", "ref_type": "row_ref", "visibility": "unauthorized", "policy_decision_ref": "policy:deny:2", "redaction_reason": "row_scope_denied"},
+	}
+	return trace
+}
+
 func businessGraphTraceWithGovernance(traceID, requestID string) evidencevo.NormalizedTrace {
 	trace := queryTrace(traceID, requestID)
 	trace.Events[2].Payload["business_refs"] = []any{
 		map[string]any{"ref_id": "object:customer", "ref_type": "object", "visibility": "visible", "version_status": "versioned"},
 		map[string]any{"ref_id": "object:hidden", "ref_type": "object", "visibility": "hidden"},
 		map[string]any{"ref_id": "object:deleted", "ref_type": "object", "visibility": "unresolved"},
+	}
+	return trace
+}
+
+func businessGraphTraceWithUnauthorizedAndUnresolvedRefs(traceID, requestID string) evidencevo.NormalizedTrace {
+	trace := queryTrace(traceID, requestID)
+	trace.Events[2].Payload["business_refs"] = []any{
+		map[string]any{"ref_id": "object:customer", "ref_type": "object", "visibility": "visible", "version_status": "versioned"},
+		map[string]any{"ref_id": "object:unauthorized", "ref_type": "object", "visibility": "unauthorized", "policy_decision_ref": "policy:deny:1", "redaction_reason": "tenant_scope_denied"},
+		map[string]any{"ref_id": "object:unresolved", "ref_type": "object", "visibility": "unresolved", "failure_status": "resolver_not_found"},
 	}
 	return trace
 }
