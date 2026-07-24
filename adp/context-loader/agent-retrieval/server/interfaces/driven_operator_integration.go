@@ -81,9 +81,6 @@ type SyncToolDependencyPackageRequest struct {
 type DrivenOperatorIntegration interface {
 	// GetToolDetail Get tool detail
 	GetToolDetail(ctx context.Context, req *GetToolDetailRequest) (*GetToolDetailResponse, error)
-	// GetOperatorMarketDetail 按 operator_id 获取算子市场详情（含算子 Schema），返回原始响应 JSON。
-	// 替代原 operator agent 内置工具 get_operator_schema。
-	GetOperatorMarketDetail(ctx context.Context, operatorID string) (string, error)
 	// GetMCPToolDetail Get MCP tool detail
 	GetMCPToolDetail(ctx context.Context, req *GetMCPToolDetailRequest) (*GetMCPToolDetailResponse, error)
 	// CallMCPTool Call MCP tool

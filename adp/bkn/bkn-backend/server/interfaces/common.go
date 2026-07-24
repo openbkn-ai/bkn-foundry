@@ -123,7 +123,6 @@ const (
 	MODULE_TYPE_OBJECT_TYPE            = "object_type"
 	MODULE_TYPE_RELATION_TYPE          = "relation_type"
 	MODULE_TYPE_ACTION_TYPE            = "action_type"
-	MODULE_TYPE_JOB                    = "job"
 	MODULE_TYPE_CONCEPT_GROUP          = "concept_group"
 	MODULE_TYPE_CONCEPT_GROUP_RELATION = "concept_group_relation"
 	MODULE_TYPE_ACTION_SCHEDULE        = "action_schedule"
@@ -137,127 +136,6 @@ const (
 
 	// moduleType + id + branch
 	KN_CONCEPT_DOCID_TEMPLATE = "%s-%s-%s-%s"
-)
-
-var (
-	KN_INDEX_SETTINGS = map[string]any{
-		"index": map[string]any{
-			"number_of_shards":    1,
-			"number_of_replicas":  0, // 与实际创建索引时保持一致
-			"refresh_interval":    "120s",
-			"translog.durability": "request",
-			"priority":            200,
-			// 当前版本OpenSearch KNN 不允许设置codec
-			// "codec":                                "zstd_no_dict",
-			"replication.type":                     "DOCUMENT",
-			"mapping.total_fields.limit":           2000,
-			"translog.sync_interval":               "120s",
-			"translog.flush_threshold_size":        "1024mb",
-			"merge.policy.max_merged_segment":      "2gb",
-			"merge.policy.segments_per_tier":       24,
-			"unassigned.node_left.delayed_timeout": "24h",
-			"highlight.max_analyzed_offset":        1200000,
-			"knn":                                  true,
-		},
-	}
-
-	KN_INDEX_DYNAMIC_TEMPLATES = []any{
-		map[string]any{
-			"string_fields": map[string]any{
-				"match":              "*",
-				"match_mapping_type": "string",
-				"mapping": map[string]any{
-					"type":     "text",
-					"analyzer": "standard",
-					"fields": map[string]any{
-						"keyword": map[string]any{
-							"type":         "keyword",
-							"ignore_above": 1024,
-						},
-					},
-				},
-			},
-		},
-	}
-
-	KN_INDEX_PROP_TYPE_MAPPING = map[string]any{
-		"boolean": map[string]any{
-			"type": "boolean",
-		},
-		"short": map[string]any{
-			"type": "short",
-		},
-		"int": map[string]any{
-			"type": "long",
-		},
-		"integer": map[string]any{
-			"type": "long",
-		},
-		"bigint": map[string]any{
-			"type": "long",
-		},
-		"long": map[string]any{
-			"type": "long",
-		},
-		"float": map[string]any{
-			"type": "float",
-		},
-		"double": map[string]any{
-			"type": "double",
-		},
-		"decimal": map[string]any{
-			"type": "double",
-		},
-		"timestamp": map[string]any{
-			"type":             "date",
-			"format":           "yyyy-MM-dd HH:mm:ss||yyyy-MM-dd HH:mm:ss.SSS||yyyy-MM-dd HH:mm:ss.SSSSSS||epoch_millis||epoch_second",
-			"ignore_malformed": true,
-		},
-		"datetime": map[string]any{
-			"type":             "date",
-			"format":           "yyyy-MM-dd HH:mm:ss||yyyy-MM-dd HH:mm:ss.SSS||yyyy-MM-dd HH:mm:ss.SSSSSS||strict_date_time_no_millis||strict_date_optional_time",
-			"ignore_malformed": true,
-		},
-		"date": map[string]any{
-			"type":             "date",
-			"format":           "strict_date",
-			"ignore_malformed": true,
-		},
-		"time": map[string]any{
-			"type":             "date",
-			"format":           "strict_hour_minute_second||strict_hour_minute_second_fraction",
-			"ignore_malformed": true,
-		},
-		"string": map[string]any{
-			"type":         "keyword",
-			"ignore_above": 1024,
-		},
-		"varchar": map[string]any{
-			"type":         "keyword",
-			"ignore_above": 1024,
-		},
-		"keyword": map[string]any{
-			"type":         "keyword",
-			"ignore_above": 1024,
-		},
-		"text": map[string]any{
-			"type":     "text",
-			"analyzer": "standard",
-		},
-		"vector": map[string]any{
-			"type":      "knn_vector",
-			"dimension": 768,
-			"method": map[string]any{
-				"name":       "hnsw",
-				"space_type": "cosinesimil",
-				"engine":     "lucene",
-				"parameters": map[string]any{
-					"ef_construction": 256,
-					"m":               48,
-				},
-			},
-		},
-	}
 )
 
 // 分页查询参数
@@ -300,14 +178,6 @@ func GenerateActionTypeAuditObject(id string, name string) audit.AuditObject {
 	}
 }
 
-func GenerateJobAuditObject(id string, name string) audit.AuditObject {
-	return audit.AuditObject{
-		Type: MODULE_TYPE_JOB,
-		ID:   id,
-		Name: name,
-	}
-}
-
 func GenerateConceptGroupAuditObject(id string, name string) audit.AuditObject {
 	return audit.AuditObject{
 		Type: MODULE_TYPE_CONCEPT_GROUP,
@@ -341,9 +211,12 @@ func GenerateMetricAuditObject(id string, name string) audit.AuditObject {
 }
 
 type ResourceInfo struct {
-	Type string `json:"type" mapstructure:"type"`
-	ID   string `json:"id" mapstructure:"id"`
-	Name string `json:"name" mapstructure:"name"`
+	Type       string `json:"type" mapstructure:"type"`
+	ID         string `json:"id" mapstructure:"id"`
+	Name       string `json:"name" mapstructure:"name"`
+	BoxID      string `json:"box_id,omitempty" mapstructure:"box_id"`
+	ToolID     string `json:"tool_id,omitempty" mapstructure:"tool_id"`
+	ResultPath string `json:"result_path,omitempty" mapstructure:"result_path"`
 }
 
 // 概念索引的id生成规则， kn_id + module_type + id + branch

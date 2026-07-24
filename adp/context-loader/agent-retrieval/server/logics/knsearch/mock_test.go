@@ -113,14 +113,6 @@ func (m *mockBknBackend) GetActionTypeDetail(ctx context.Context, knID string, a
 	return nil, nil
 }
 
-func (m *mockBknBackend) CreateFullBuildOntologyJob(ctx context.Context, knID string, req *interfaces.CreateFullBuildOntologyJobReq) (resp *interfaces.CreateJobResp, err error) {
-	return nil, nil
-}
-
-func (m *mockBknBackend) ListOntologyJobs(ctx context.Context, knID string, req *interfaces.ListOntologyJobsReq) (resp *interfaces.ListOntologyJobsResp, err error) {
-	return nil, nil
-}
-
 // mockOntologyQuery 模拟 DrivenOntologyQuery 接口
 type mockOntologyQuery struct {
 	instancesResp  *interfaces.QueryObjectInstancesResp

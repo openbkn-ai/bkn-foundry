@@ -6,7 +6,7 @@
 
 package interfaces
 
-// metric/operator 动态参数生成的入参类型。原由 agent-factory agent 消费，
+// Dynamic parameter requests are consumed by the direct LLM resolver.
 // 现由直连 LLM（knlogicpropertyresolver.dynamicParamsLLM）使用，序列化后作为 LLM user 消息。
 
 // MetricDynamicParamsGeneratorReq Metric Dynamic Params Generator Request
@@ -19,9 +19,10 @@ type MetricDynamicParamsGeneratorReq struct {
 	Timezone          string            `json:"timezone,omitempty"`
 }
 
-// OperatorDynamicParamsGeneratorReq Operator Dynamic Params Generator Request
-type OperatorDynamicParamsGeneratorReq struct {
-	OperatorID        string            `json:"operator_id"`
+// ToolDynamicParamsGeneratorReq describes a ToolBox logical-property request.
+type ToolDynamicParamsGeneratorReq struct {
+	BoxID             string            `json:"box_id"`
+	ToolID            string            `json:"tool_id"`
 	LogicProperty     *LogicPropertyDef `json:"logic_property"`
 	Query             string            `json:"query"`
 	UniqueIdentities  []map[string]any  `json:"unique_identities"`

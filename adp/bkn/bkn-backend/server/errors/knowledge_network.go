@@ -25,9 +25,6 @@ const (
 	BknBackend_KnowledgeNetwork_NullParameter_Name                 = "BknBackend.KnowledgeNetwork.NullParameter.Name"
 	BknBackend_KnowledgeNetwork_NullParameter_SourceObjectTypeId   = "BknBackend.KnowledgeNetwork.NullParameter.SourceObjectTypeId"
 
-	// 403
-	BknBackend_KnowledgeNetwork_Forbidden_HasRunningJob = "BknBackend.KnowledgeNetwork.Forbidden.HasRunningJob"
-
 	// 404
 	BknBackend_KnowledgeNetwork_NotFound = "BknBackend.KnowledgeNetwork.NotFound"
 
@@ -74,9 +71,6 @@ var (
 		BknBackend_KnowledgeNetwork_NullParameter_Direction,
 		BknBackend_KnowledgeNetwork_NullParameter_Name,
 		BknBackend_KnowledgeNetwork_NullParameter_SourceObjectTypeId,
-
-		// 403
-		BknBackend_KnowledgeNetwork_Forbidden_HasRunningJob,
 
 		// 404
 		BknBackend_KnowledgeNetwork_NotFound,

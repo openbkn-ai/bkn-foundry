@@ -8,6 +8,7 @@ package object_type
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"testing"
 
@@ -967,7 +968,7 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 			So(result.Datas[0]["logic_prop1"], ShouldNotBeNil)
 		})
 
-		Convey("成功 - 包含LOGIC_PROPERTY_TYPE_OPERATOR的逻辑属性", func() {
+		Convey("成功 - 包含工具逻辑属性", func() {
 			objectType := interfaces.ObjectType{
 				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
 					OTID: objectTypeID,
@@ -986,9 +987,10 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 					LogicProperties: []*interfaces.LogicProperty{
 						{
 							Name: "logic_prop1",
-							Type: interfaces.LOGIC_PROPERTY_TYPE_OPERATOR,
+							Type: interfaces.LOGIC_PROPERTY_TYPE_TOOL,
 							DataSource: &interfaces.ResourceInfo{
-								ID: "operator1",
+								BoxID:  "box1",
+								ToolID: "tool1",
 							},
 							Parameters: []interfaces.Parameter{
 								{
@@ -1185,6 +1187,100 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 
 		ctx := context.Background()
 
+		Convey("成功 - 执行工具箱逻辑属性", func() {
+			logicProp := &interfaces.LogicProperty{
+				Name: "logic_prop1",
+				Type: interfaces.LOGIC_PROPERTY_TYPE_TOOL,
+				DataSource: &interfaces.ResourceInfo{
+					Type:   interfaces.LOGIC_PROPERTY_TYPE_TOOL,
+					BoxID:  "box1",
+					ToolID: "tool1",
+				},
+				Parameters: []interfaces.Parameter{
+					{
+						Name:      "payload.id",
+						ValueFrom: interfaces.LOGIC_PARAMS_VALUE_FROM_INPUT,
+						Source:    interfaces.PARAMETER_BODY,
+					},
+				},
+			}
+			toolValue := interfaces.ToolProperty{
+				Parameters:    map[string]any{},
+				DynamicParams: map[string]any{"payload": map[string]any{"id": "123"}},
+			}
+			aoAccess.EXPECT().ExecuteTool(gomock.Any(), "box1", "tool1", gomock.Any()).DoAndReturn(
+				func(_ context.Context, _, _ string, request interfaces.ToolExecutionRequest) (any, error) {
+					So(request.Timeout, ShouldEqual, int64(300))
+					So(request.Body, ShouldResemble, map[string]any{"payload": map[string]any{"id": "123"}})
+					return map[string]any{"result": "success"}, nil
+				})
+
+			result, err := service.handleToolProperty(ctx, "logic_prop1", toolValue, logicProp,
+				map[string]map[string]any{"logic_prop1": {"payload": map[string]any{"id": "123"}}})
+			So(err, ShouldBeNil)
+			So(result, ShouldResemble, map[string]any{"result": "success"})
+		})
+
+		Convey("成功 - 提取工具箱逻辑属性嵌套结果", func() {
+			logicProp := &interfaces.LogicProperty{
+				Name: "logic_prop1",
+				Type: interfaces.LOGIC_PROPERTY_TYPE_TOOL,
+				DataSource: &interfaces.ResourceInfo{
+					Type:       interfaces.LOGIC_PROPERTY_TYPE_TOOL,
+					BoxID:      "box1",
+					ToolID:     "tool1",
+					ResultPath: "$.data.result",
+				},
+			}
+			toolValue := interfaces.ToolProperty{Parameters: map[string]any{}}
+			aoAccess.EXPECT().ExecuteTool(gomock.Any(), "box1", "tool1", gomock.Any()).
+				Return(map[string]any{"data": map[string]any{"result": "success"}}, nil)
+
+			result, err := service.handleToolProperty(ctx, "logic_prop1", toolValue, logicProp, nil)
+			So(err, ShouldBeNil)
+			So(result, ShouldEqual, "success")
+		})
+
+		Convey("成功 - 工具箱逻辑属性结果路径未命中时返回空值", func() {
+			logicProp := &interfaces.LogicProperty{
+				Name: "logic_prop1",
+				Type: interfaces.LOGIC_PROPERTY_TYPE_TOOL,
+				DataSource: &interfaces.ResourceInfo{
+					Type:       interfaces.LOGIC_PROPERTY_TYPE_TOOL,
+					BoxID:      "box1",
+					ToolID:     "tool1",
+					ResultPath: "$.data.result",
+				},
+			}
+			toolValue := interfaces.ToolProperty{Parameters: map[string]any{}}
+			aoAccess.EXPECT().ExecuteTool(gomock.Any(), "box1", "tool1", gomock.Any()).
+				Return(map[string]any{"data": map[string]any{}}, nil)
+
+			result, err := service.handleToolProperty(ctx, "logic_prop1", toolValue, logicProp, nil)
+			So(result, ShouldBeNil)
+			So(err, ShouldBeNil)
+		})
+
+		Convey("成功 - 工具箱逻辑属性结果不是 JSON 时返回空值", func() {
+			logicProp := &interfaces.LogicProperty{
+				Name: "logic_prop1",
+				Type: interfaces.LOGIC_PROPERTY_TYPE_TOOL,
+				DataSource: &interfaces.ResourceInfo{
+					Type:       interfaces.LOGIC_PROPERTY_TYPE_TOOL,
+					BoxID:      "box1",
+					ToolID:     "tool1",
+					ResultPath: "$.data.result",
+				},
+			}
+			toolValue := interfaces.ToolProperty{Parameters: map[string]any{}}
+			aoAccess.EXPECT().ExecuteTool(gomock.Any(), "box1", "tool1", gomock.Any()).
+				Return("not-json", nil)
+
+			result, err := service.handleToolProperty(ctx, "logic_prop1", toolValue, logicProp, nil)
+			So(result, ShouldBeNil)
+			So(err, ShouldBeNil)
+		})
+
 		Convey("成功 - 获取对象属性值", func() {
 			query := &interfaces.ObjectPropertyValueQuery{
 				KNID:         "kn1",
@@ -1271,7 +1367,7 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 					},
 					DataSource: &interfaces.ResourceInfo{
 						Type: interfaces.DATA_SOURCE_TYPE_RESOURCE,
-						ID: "res1",
+						ID:   "res1",
 					},
 				},
 			}
@@ -1412,7 +1508,7 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 			So(len(result.Datas), ShouldEqual, 1)
 		})
 
-		Convey("成功 - 包含算子类型逻辑属性", func() {
+		Convey("成功 - 包含工具类型逻辑属性", func() {
 			query := &interfaces.ObjectPropertyValueQuery{
 				KNID:         "kn1",
 				Branch:       "main",
@@ -1438,7 +1534,7 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 					LogicProperties: []*interfaces.LogicProperty{
 						{
 							Name: "logic_prop1",
-							Type: interfaces.LOGIC_PROPERTY_TYPE_OPERATOR,
+							Type: interfaces.LOGIC_PROPERTY_TYPE_TOOL,
 							Parameters: []interfaces.Parameter{
 								{
 									Name:      "param1",
@@ -1447,7 +1543,8 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 								},
 							},
 							DataSource: &interfaces.ResourceInfo{
-								ID: "operator1",
+								BoxID:  "box1",
+								ToolID: "tool1",
 							},
 						},
 					},
@@ -1457,22 +1554,14 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 				},
 			}
 
-			operatorInfo := interfaces.AgentOperator{
-				OperatorId: "operator1",
-				OperatorInfo: interfaces.OperatorInfo{
-					ExecutionMode: interfaces.OPERATOR_EXECUTION_MODE_SYNC,
-				},
-			}
-
 			omAccess.EXPECT().GetObjectType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(objectType, true, nil)
 			uAccess.EXPECT().GetViewDataByID(gomock.Any(), "view1", gomock.Any()).Return(interfaces.ViewData{
 				Datas: []map[string]any{
 					{
 						"id": "123",
-						"logic_prop1": interfaces.OperatorProperty{
-							PropertyType:    interfaces.LOGIC_PROPERTY_TYPE_OPERATOR,
-							MappingSourceId: "operator1",
-							Parameters:      map[string]any{},
+						"logic_prop1": interfaces.ToolProperty{
+							PropertyType: interfaces.LOGIC_PROPERTY_TYPE_TOOL,
+							Parameters:   map[string]any{},
 							DynamicParams: map[string]any{
 								"param1": "value1",
 							},
@@ -1481,15 +1570,14 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 				},
 				TotalCount: 1,
 			}, nil)
-			aoAccess.EXPECT().GetAgentOperatorByID(gomock.Any(), "operator1").Return(operatorInfo, nil)
-			aoAccess.EXPECT().ExecuteOperator(gomock.Any(), "operator1", gomock.Any()).Return(map[string]any{"result": "success"}, nil)
+			aoAccess.EXPECT().ExecuteTool(gomock.Any(), "box1", "tool1", gomock.Any()).Return(map[string]any{"result": "success"}, nil)
 
 			result, err := service.GetObjectPropertyValue(ctx, query)
 			So(err, ShouldBeNil)
 			So(len(result.Datas), ShouldEqual, 1)
 		})
 
-		Convey("失败 - 算子执行模式不是同步", func() {
+		Convey("失败 - 工具执行失败", func() {
 			query := &interfaces.ObjectPropertyValueQuery{
 				KNID:         "kn1",
 				Branch:       "main",
@@ -1515,7 +1603,7 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 					LogicProperties: []*interfaces.LogicProperty{
 						{
 							Name: "logic_prop1",
-							Type: interfaces.LOGIC_PROPERTY_TYPE_OPERATOR,
+							Type: interfaces.LOGIC_PROPERTY_TYPE_TOOL,
 							Parameters: []interfaces.Parameter{
 								{
 									Name:      "param1",
@@ -1524,7 +1612,8 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 								},
 							},
 							DataSource: &interfaces.ResourceInfo{
-								ID: "operator1",
+								BoxID:  "box1",
+								ToolID: "tool1",
 							},
 						},
 					},
@@ -1534,22 +1623,14 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 				},
 			}
 
-			operatorInfo := interfaces.AgentOperator{
-				OperatorId: "operator1",
-				OperatorInfo: interfaces.OperatorInfo{
-					ExecutionMode: "async", // 异步模式
-				},
-			}
-
 			omAccess.EXPECT().GetObjectType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(objectType, true, nil)
 			uAccess.EXPECT().GetViewDataByID(gomock.Any(), "view1", gomock.Any()).Return(interfaces.ViewData{
 				Datas: []map[string]any{
 					{
 						"id": "123",
-						"logic_prop1": interfaces.OperatorProperty{
-							PropertyType:    interfaces.LOGIC_PROPERTY_TYPE_OPERATOR,
-							MappingSourceId: "operator1",
-							Parameters:      map[string]any{},
+						"logic_prop1": interfaces.ToolProperty{
+							PropertyType: interfaces.LOGIC_PROPERTY_TYPE_TOOL,
+							Parameters:   map[string]any{},
 							DynamicParams: map[string]any{
 								"param1": "value1",
 							},
@@ -1558,14 +1639,14 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 				},
 				TotalCount: 1,
 			}, nil)
-			aoAccess.EXPECT().GetAgentOperatorByID(gomock.Any(), "operator1").Return(operatorInfo, nil)
+			aoAccess.EXPECT().ExecuteTool(gomock.Any(), "box1", "tool1", gomock.Any()).Return(nil, fmt.Errorf("tool failed"))
 
 			result, err := service.GetObjectPropertyValue(ctx, query)
 			So(err, ShouldNotBeNil)
 			So(len(result.Datas), ShouldEqual, 0)
 		})
 
-		Convey("失败 - 算子缺少动态参数", func() {
+		Convey("失败 - 工具缺少动态参数", func() {
 			query := &interfaces.ObjectPropertyValueQuery{
 				KNID:         "kn1",
 				Branch:       "main",
@@ -1587,7 +1668,7 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 					LogicProperties: []*interfaces.LogicProperty{
 						{
 							Name: "logic_prop1",
-							Type: interfaces.LOGIC_PROPERTY_TYPE_OPERATOR,
+							Type: interfaces.LOGIC_PROPERTY_TYPE_TOOL,
 							Parameters: []interfaces.Parameter{
 								{
 									Name:      "param1",
@@ -1596,7 +1677,8 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 								},
 							},
 							DataSource: &interfaces.ResourceInfo{
-								ID: "operator1",
+								BoxID:  "box1",
+								ToolID: "tool1",
 							},
 						},
 					},
@@ -1611,10 +1693,9 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 				Datas: []map[string]any{
 					{
 						"id": "123",
-						"logic_prop1": interfaces.OperatorProperty{
-							PropertyType:    interfaces.LOGIC_PROPERTY_TYPE_OPERATOR,
-							MappingSourceId: "operator1",
-							Parameters:      map[string]any{},
+						"logic_prop1": interfaces.ToolProperty{
+							PropertyType: interfaces.LOGIC_PROPERTY_TYPE_TOOL,
+							Parameters:   map[string]any{},
 							DynamicParams: map[string]any{
 								"param1": "value1", // 需要动态参数
 							},
@@ -1721,7 +1802,7 @@ func Test_generateExecRequest(t *testing.T) {
 			}
 			dynamicParams := map[string]any{}
 
-			result := generateExecRequest(configParams, parameters, dynamicParams)
+			result := generateToolExecutionRequest(configParams, parameters, dynamicParams)
 			So(result.Header["header_param"], ShouldEqual, "header_value")
 		})
 
@@ -1738,7 +1819,7 @@ func Test_generateExecRequest(t *testing.T) {
 			}
 			dynamicParams := map[string]any{}
 
-			result := generateExecRequest(configParams, parameters, dynamicParams)
+			result := generateToolExecutionRequest(configParams, parameters, dynamicParams)
 			So(result.Query["query_param"], ShouldEqual, "query_value")
 		})
 
@@ -1755,7 +1836,7 @@ func Test_generateExecRequest(t *testing.T) {
 			}
 			dynamicParams := map[string]any{}
 
-			result := generateExecRequest(configParams, parameters, dynamicParams)
+			result := generateToolExecutionRequest(configParams, parameters, dynamicParams)
 			So(result.Body["body_param"], ShouldEqual, "body_value")
 		})
 
@@ -1772,7 +1853,7 @@ func Test_generateExecRequest(t *testing.T) {
 			}
 			dynamicParams := map[string]any{}
 
-			result := generateExecRequest(configParams, parameters, dynamicParams)
+			result := generateToolExecutionRequest(configParams, parameters, dynamicParams)
 			So(result.Path["path_param"], ShouldEqual, "path_value")
 		})
 
@@ -1789,7 +1870,7 @@ func Test_generateExecRequest(t *testing.T) {
 				"dynamic_param": "dynamic_value",
 			}
 
-			result := generateExecRequest(configParams, parameters, dynamicParams)
+			result := generateToolExecutionRequest(configParams, parameters, dynamicParams)
 			So(result.Body["dynamic_param"], ShouldEqual, "dynamic_value")
 		})
 
@@ -1808,7 +1889,7 @@ func Test_generateExecRequest(t *testing.T) {
 			}
 			dynamicParams := map[string]any{}
 
-			result := generateExecRequest(configParams, parameters, dynamicParams)
+			result := generateToolExecutionRequest(configParams, parameters, dynamicParams)
 			nested, ok := result.Body["nested"].(map[string]any)
 			So(ok, ShouldBeTrue)
 			So(nested["param"], ShouldEqual, "nested_value")

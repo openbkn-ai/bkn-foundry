@@ -4,14 +4,15 @@
 
 // Package knlogicpropertyresolver
 // file: dynamic_params_llm.go
-// desc: metric/operator 动态参数生成由 agent-factory agent 改为直连 mf-model-api。
-//       prompt 从原 agent 定义提取并内置（见 prompts/ 目录），随服务发布，不再依赖
-//       agent-factory 中手动导入的 agent。
+// desc: metric/tool dynamic parameter generation is handled by mf-model-api.
+//
+//	prompt 从原 agent 定义提取并内置（见 prompts/ 目录），随服务发布，不再依赖
+//	agent-factory 中手动导入的 agent。
 package knlogicpropertyresolver
 
 import (
-	_ "embed"
 	"context"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -23,28 +24,28 @@ import (
 //go:embed prompts/metric_dynamic_params.md
 var metricDynamicParamsPrompt string
 
-//go:embed prompts/operator_dynamic_params.md
-var operatorDynamicParamsPrompt string
+//go:embed prompts/tool_dynamic_params.md
+var toolDynamicParamsPrompt string
 
-// dynamicParamsMaxTokens 动态参数生成单次回复上限。参数生成输出短，2000 足够覆盖 operator schema 较大的场景。
+// dynamicParamsMaxTokens is sufficient for dynamic parameter generation.
 const dynamicParamsMaxTokens = 2000
 
-// dynamicParamsLLM 直连 mf-model-api 生成 metric/operator 动态参数。
+// dynamicParamsLLM generates metric and ToolBox-tool dynamic parameters.
 // 不指定模型：mf-model-api 在 model 为空时解析系统默认大模型（t_llm_model.f_default=1，
 // 由管理员经 mf-model-manager /llm/default/edit 接口全局设置），与小模型同款机制，服务侧零配置。
 type dynamicParamsLLM struct {
-	logger         interfaces.Logger
-	mfModelClient  interfaces.DrivenMFModelAPIClient
-	operatorClient interfaces.DrivenOperatorIntegration // 拉取算子 Schema（替代 operator agent 内置 get_operator_schema 工具）
+	logger        interfaces.Logger
+	mfModelClient interfaces.DrivenMFModelAPIClient
+	toolClient    interfaces.DrivenOperatorIntegration
 }
 
 // newDynamicParamsLLM 构建直连 LLM 动态参数生成器。
 func newDynamicParamsLLM(
 	logger interfaces.Logger,
 	mfModelClient interfaces.DrivenMFModelAPIClient,
-	operatorClient interfaces.DrivenOperatorIntegration,
+	toolClient interfaces.DrivenOperatorIntegration,
 ) *dynamicParamsLLM {
-	return &dynamicParamsLLM{logger: logger, mfModelClient: mfModelClient, operatorClient: operatorClient}
+	return &dynamicParamsLLM{logger: logger, mfModelClient: mfModelClient, toolClient: toolClient}
 }
 
 // GenerateMetricParams 直连 LLM 生成 metric 类型动态参数。
@@ -80,46 +81,48 @@ func (d *dynamicParamsLLM) GenerateMetricParams(
 	return rawResult, nil, nil
 }
 
-// GenerateOperatorParams 直连 LLM 生成 operator 类型动态参数。
-// 先按 operator_id 拉取算子 Schema（替代原 agent 内置 get_operator_schema 工具），注入 prompt 后生成。
-// 返回值语义对齐原 agent：成功返回 dynamicParams，缺参返回 missingParams，二者互斥。
-func (d *dynamicParamsLLM) GenerateOperatorParams(
+// GenerateToolParams generates dynamic parameters from the selected ToolBox tool schema.
+func (d *dynamicParamsLLM) GenerateToolParams(
 	ctx context.Context,
-	req *interfaces.OperatorDynamicParamsGeneratorReq,
+	req *interfaces.ToolDynamicParamsGeneratorReq,
 	llmModel string,
 ) (dynamicParams map[string]any, missingParams *interfaces.MissingPropertyParams, err error) {
-	// 拉取算子 Schema（operator_id 缺失或拉取失败时降级为空 Schema，仍尝试生成）
-	var operatorSchema string
-	if req.OperatorID != "" {
-		operatorSchema, err = d.operatorClient.GetOperatorMarketDetail(ctx, req.OperatorID)
-		if err != nil {
-			d.logger.WithContext(ctx).Warnf("  ├─ [直连LLM] ⚠️ 拉取算子 Schema 失败(operator_id=%s)，降级空 Schema: %v", req.OperatorID, err)
-			operatorSchema = ""
+	var toolSchema string
+	if req.BoxID != "" && req.ToolID != "" {
+		tool, toolErr := d.toolClient.GetToolDetail(ctx, &interfaces.GetToolDetailRequest{
+			BoxID: req.BoxID, ToolID: req.ToolID,
+		})
+		if toolErr != nil {
+			d.logger.WithContext(ctx).Warnf("  ├─ [LLM] tool schema lookup failed(box_id=%s, tool_id=%s): %v",
+				req.BoxID, req.ToolID, toolErr)
+		} else if tool != nil {
+			toolSchema = utils.ObjectToJSON(tool.Metadata.APISpec)
 		}
 	}
 
-	userMsg := fmt.Sprintf("【输入】\n%s\n\n【算子的Schema信息】\n%s", utils.ObjectToJSON(req), operatorSchema)
-	d.logger.WithContext(ctx).Infof("  ├─ [直连LLM] Operator 入参: property=%s, operator_id=%s", req.LogicProperty.Name, req.OperatorID)
+	userMsg := fmt.Sprintf("【输入】\n%s\n\n【工具的 Schema 信息】\n%s", utils.ObjectToJSON(req), toolSchema)
+	d.logger.WithContext(ctx).Infof("  ├─ [LLM] Tool input: property=%s, box_id=%s, tool_id=%s",
+		req.LogicProperty.Name, req.BoxID, req.ToolID)
 
-	resultStr, err := d.chatJSON(ctx, operatorDynamicParamsPrompt, userMsg, llmModel)
+	resultStr, err := d.chatJSON(ctx, toolDynamicParamsPrompt, userMsg, llmModel)
 	if err != nil {
-		d.logger.WithContext(ctx).Errorf("  ├─ [直连LLM] ❌ Operator Chat 失败: %v", err)
+		d.logger.WithContext(ctx).Errorf("  ├─ [LLM] Tool chat failed: %v", err)
 		return nil, nil, err
 	}
 
 	var rawResult map[string]any
 	if err = json.Unmarshal([]byte(resultStr), &rawResult); err != nil {
-		d.logger.WithContext(ctx).Errorf("  ├─ [直连LLM] ❌ Operator JSON 解析失败: %v, raw=%s", err, resultStr)
-		return nil, nil, fmt.Errorf("unmarshal operator llm result failed: %w", err)
+		d.logger.WithContext(ctx).Errorf("  ├─ [LLM] Tool JSON parsing failed: %v, raw=%s", err, resultStr)
+		return nil, nil, fmt.Errorf("unmarshal tool llm result failed: %w", err)
 	}
 
 	if errorMsg, ok := rawResult["_error"].(string); ok {
 		missingParams = newMissingParams(req.LogicProperty.Name, errorMsg)
-		d.logger.WithContext(ctx).Warnf("  └─ [直连LLM] ⚠️ Operator 缺参: %s", errorMsg)
+		d.logger.WithContext(ctx).Warnf("  └─ [LLM] Tool missing parameters: %s", errorMsg)
 		return nil, missingParams, nil
 	}
 
-	d.logger.WithContext(ctx).Debugf("  └─ [直连LLM] ✅ Operator 成功: %+v", rawResult)
+	d.logger.WithContext(ctx).Debugf("  └─ [LLM] Tool generated parameters: %+v", rawResult)
 	return rawResult, nil, nil
 }
 

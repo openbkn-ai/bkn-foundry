@@ -76,7 +76,7 @@ func NewObjectTypeService(appSetting *common.AppSetting) interfaces.ObjectTypeSe
 	return otService
 }
 
-// validateObjectTypeStrictExternalDeps checks backing data view or vega resource, vector embedding models, and logic property metric/operator references.
+// validateObjectTypeStrictExternalDeps checks backing data view or vega resource, vector embedding models, and logic property references.
 func (ots *objectTypeService) validateObjectTypeStrictExternalDeps(ctx context.Context, objectType *interfaces.ObjectType) error {
 	if objectType.DataSource != nil && objectType.DataSource.ID != "" {
 		dsType := objectType.DataSource.Type
@@ -146,17 +146,11 @@ func (ots *objectTypeService) validateObjectTypeStrictExternalDeps(ctx context.C
 			if err := ots.validateLogicMetricProperty(ctx, objectType, lp); err != nil {
 				return err
 			}
-		case interfaces.LOGIC_PROPERTY_TYPE_OPERATOR:
-			op, err := ots.aoa.GetAgentOperatorByID(ctx, lp.DataSource.ID)
-			if err != nil {
+		case interfaces.LOGIC_PROPERTY_TYPE_TOOL:
+			if err := ots.aoa.GetToolByID(ctx, lp.DataSource.BoxID, lp.DataSource.ToolID); err != nil {
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-					WithErrorDetails(fmt.Sprintf("对象类[%s]逻辑属性[%s]的算子[%s]获取失败: %s",
-						objectType.OTName, lp.Name, lp.DataSource.ID, err.Error()))
-			}
-			if op.OperatorId == "" {
-				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-					WithErrorDetails(fmt.Sprintf("对象类[%s]逻辑属性[%s]的算子[%s]不存在",
-						objectType.OTName, lp.Name, lp.DataSource.ID))
+					WithErrorDetails(fmt.Sprintf("对象类[%s]逻辑属性[%s]的工具箱[%s]工具[%s]获取失败: %s",
+						objectType.OTName, lp.Name, lp.DataSource.BoxID, lp.DataSource.ToolID, err.Error()))
 			}
 		}
 	}
@@ -1885,8 +1879,6 @@ func (ots *objectTypeService) processObjectTypeDetails(ctx context.Context, obje
 					if logicProp.DataSource.ID != "" {
 						ots.enrichLogicMetricProperty(ctx, objectType, logicProp, j)
 					}
-				case interfaces.LOGIC_PROPERTY_TYPE_OPERATOR:
-					//todo: 算子的名称,前端翻译
 				}
 				// todo: 处理动态参数,动态参数统一放在一个新字段上,供统一召回的大模型使用(检索那边也需要处理一下)
 			}

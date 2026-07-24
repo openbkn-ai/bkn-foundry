@@ -32,12 +32,8 @@ type ServerSetting struct {
 	Language                 string        `mapstructure:"language"`
 	ReadTimeOut              time.Duration `mapstructure:"readTimeOut"`
 	WriteTimeout             time.Duration `mapstructure:"writeTimeOut"`
-	MaxConcurrentTasks       int           `mapstructure:"maxConcurrentTasks"`
-	ViewDataLimit            int           `mapstructure:"viewDataLimit"`
 	DefaultSmallModelName    string        `mapstructure:"defaultSmallModelName"`
 	DefaultSmallModelEnabled bool          `mapstructure:"defaultSmallModelEnabled"`
-	JobMaxRetryTimes         int           `mapstructure:"jobMaxRetryTimes"`
-	ReloadJobEnabled         bool          `mapstructure:"reloadJobEnabled"`
 	// Schedule worker settings
 	SchedulePollInterval int `mapstructure:"schedulePollInterval"` // in seconds, default 10
 	ScheduleLockTimeout  int `mapstructure:"scheduleLockTimeout"`  // in seconds, default 300 (5 min)

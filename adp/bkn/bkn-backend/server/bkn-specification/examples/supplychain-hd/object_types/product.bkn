@@ -30,13 +30,13 @@ tags: [供应链, 产品, 已审核]
 
 | Display Name | Type | Description |
 |--------------|------|-------------|
-| product_bom | operator |  |
+| product_bom | tool |  |
 
 **Source**
 
 | Source Type | Source ID | Source Name |
 |-------------|-----------|-------------|
-| operator | bom_tree_builder | bom_tree_builder |
+| tool | bom_tree_builder | bom_tree_builder |
 
 **Parameters**
 

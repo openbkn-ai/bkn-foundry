@@ -46,11 +46,6 @@ var objectNameErrorCode = map[string][]string{
 		berrors.BknBackend_ActionType_LengthExceeded_Name,
 	},
 
-	interfaces.MODULE_TYPE_JOB: {
-		berrors.BknBackend_Job_NullParameter_Name,
-		berrors.BknBackend_Job_LengthExceeded_Name,
-	},
-
 	interfaces.MODULE_TYPE_CONCEPT_GROUP: {
 		berrors.BknBackend_ConceptGroup_NullParameter_Name,
 		berrors.BknBackend_ConceptGroup_LengthExceeded_Name,

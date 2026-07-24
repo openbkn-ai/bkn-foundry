@@ -39,8 +39,8 @@ const (
 type LogicPropertyType string
 
 const (
-	LogicPropertyTypeMetric   LogicPropertyType = "metric"   // Metric type
-	LogicPropertyTypeOperator LogicPropertyType = "operator" // Operator type
+	LogicPropertyTypeMetric LogicPropertyType = "metric" // Metric type
+	LogicPropertyTypeTool   LogicPropertyType = "tool"   // Tool type
 )
 
 type KnBaseError struct {
@@ -72,7 +72,7 @@ type DataProperty struct {
 	// hyphens (-), and cannot start with underscore or hyphen
 	Name                string            `json:"name"`
 	DisplayName         string            `json:"display_name,omitempty"`         // Property display name
-	Type                string            `json:"type"`                           // Property data type. In addition to view field types, there are metric, objective, event, trace, log, operator
+	Type                string            `json:"type"`                           // Property data type.
 	Comment             string            `json:"comment,omitempty"`              // Comment
 	MappedField         any               `json:"mapped_field,omitempty"`         // View field info
 	ConditionOperations []KnOperationType `json:"condition_operations,omitempty"` // List of query condition operators supported by this data property
@@ -82,7 +82,7 @@ type DataProperty struct {
 type LogicPropertyDef struct {
 	Name        string              `json:"name"`
 	DisplayName string              `json:"display_name,omitempty"`
-	Type        LogicPropertyType   `json:"type"` // Logic property type: metric or operator
+	Type        LogicPropertyType   `json:"type"` // Logic property type: metric or tool
 	Comment     string              `json:"comment,omitempty"`
 	DataSource  map[string]any      `json:"data_source,omitempty"`
 	Parameters  []PropertyParameter `json:"parameters,omitempty"`
@@ -236,71 +236,6 @@ type MetricType struct {
 type MetricTypeConcepts struct {
 	Entries    []*MetricType `json:"entries"`               // Metric type data
 	TotalCount int64         `json:"total_count,omitempty"` // Total count
-}
-
-// OntologyJobState Ontology job state
-type OntologyJobState string
-
-const (
-	OntologyJobStatePending   OntologyJobState = "pending"   // Pending
-	OntologyJobStateRunning   OntologyJobState = "running"   // Running
-	OntologyJobStateCompleted OntologyJobState = "completed" // Completed
-	OntologyJobStateCanceled  OntologyJobState = "canceled"  // Canceled
-	OntologyJobStateFailed    OntologyJobState = "failed"    // Failed
-)
-
-// OntologyJobType Ontology job type
-type OntologyJobType string
-
-const (
-	OntologyJobTypeFull OntologyJobType = "full" // Full build job
-)
-
-// AccountInfo Account information
-type AccountInfo struct {
-	ID   string `json:"id"`   // Account ID
-	Type string `json:"type"` // Account type
-	Name string `json:"name"` // Account name
-}
-
-// CreateFullBuildOntologyJobReq Request to create full ontology build job
-type CreateFullBuildOntologyJobReq struct {
-	Name string `json:"name" validate:"required"` // Job name
-}
-
-// CreateJobResp Response when creating a job
-type CreateJobResp struct {
-	ID string `json:"id"` // Job ID
-}
-
-// OntologyJob Ontology job details
-type OntologyJob struct {
-	ID           string           `json:"id"`            // Job ID
-	Name         string           `json:"name"`          // Job name
-	KnID         string           `json:"kn_id"`         // Knowledge network ID
-	State        OntologyJobState `json:"state"`         // Job state
-	StateDetail  string           `json:"state_detail"`  // State details
-	Creator      *AccountInfo     `json:"creator"`       // Creator
-	CreateTime   int64            `json:"create_time"`   // Create time (timestamp)
-	FinishedTime int64            `json:"finished_time"` // Finished time (timestamp)
-	TimeCost     int64            `json:"time_cost"`     // Time cost (seconds)
-	JobType      OntologyJobType  `json:"job_type"`      // Job type
-}
-
-// ListOntologyJobsReq Request to list ontology jobs
-type ListOntologyJobsReq struct {
-	NamePattern string           `form:"name_pattern" json:"name_pattern"` // Job name pattern filter
-	State       OntologyJobState `form:"state" json:"state"`               // Job state filter
-	JobType     OntologyJobType  `form:"job_type" json:"job_type"`         // Job type filter
-	Limit       int              `form:"limit" json:"limit"`               // Return count
-	Direction   string           `form:"direction" json:"direction"`       // Sort direction (asc/desc)
-	Offset      int              `form:"offset" json:"offset"`             // Pagination offset
-}
-
-// ListOntologyJobsResp Response for listing ontology jobs
-type ListOntologyJobsResp struct {
-	Entries    []*OntologyJob `json:"entries"`     // Job list
-	TotalCount int64          `json:"total_count"` // Total count
 }
 
 // KnowledgeNetworkDetail Knowledge network detail with full schema
@@ -532,9 +467,4 @@ type BknBackendAccess interface {
 
 	// SearchMetricTypes Search metric types
 	SearchMetricTypes(ctx context.Context, query *QueryConceptsReq) (metricTypes *MetricTypeConcepts, err error)
-
-	// CreateFullBuildOntologyJob Create a full ontology build job
-	CreateFullBuildOntologyJob(ctx context.Context, knID string, req *CreateFullBuildOntologyJobReq) (resp *CreateJobResp, err error)
-	// ListOntologyJobs List ontology jobs with filters
-	ListOntologyJobs(ctx context.Context, knID string, req *ListOntologyJobsReq) (resp *ListOntologyJobsResp, err error)
 }

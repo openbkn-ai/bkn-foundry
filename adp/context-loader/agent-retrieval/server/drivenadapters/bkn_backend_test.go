@@ -549,28 +549,6 @@ func TestBknBackendAccess_NotFoundWithBodyUsesBknError(t *testing.T) {
 				return err
 			},
 		},
-		{
-			name: "CreateFullBuildOntologyJob",
-			expectHTTP: func(mockHTTPClient *mocks.MockHTTPClient, respBody []byte) {
-				mockHTTPClient.EXPECT().PostNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-					Return(http.StatusNotFound, respBody, nil)
-			},
-			call: func(ctx context.Context, client *bknBackendAccess) error {
-				_, err := client.CreateFullBuildOntologyJob(ctx, "kn-001", &interfaces.CreateFullBuildOntologyJobReq{Name: "full-build"})
-				return err
-			},
-		},
-		{
-			name: "ListOntologyJobs",
-			expectHTTP: func(mockHTTPClient *mocks.MockHTTPClient, respBody []byte) {
-				mockHTTPClient.EXPECT().GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-					Return(http.StatusNotFound, respBody, nil)
-			},
-			call: func(ctx context.Context, client *bknBackendAccess) error {
-				_, err := client.ListOntologyJobs(ctx, "kn-001", &interfaces.ListOntologyJobsReq{Limit: 10})
-				return err
-			},
-		},
 	}
 
 	for _, testCase := range testCases {

@@ -32,7 +32,6 @@ import (
 	"bkn-backend/logics/batchindex"
 	"bkn-backend/logics/business_system"
 	"bkn-backend/logics/concept_group"
-	"bkn-backend/logics/job"
 	"bkn-backend/logics/metric"
 	"bkn-backend/logics/object_type"
 	"bkn-backend/logics/permission"
@@ -54,7 +53,6 @@ type knowledgeNetworkService struct {
 	bss        interfaces.BusinessSystemService
 	cga        interfaces.ConceptGroupAccess
 	cgs        interfaces.ConceptGroupService
-	js         interfaces.JobService
 	kna        interfaces.KNAccess
 	ma         interfaces.MetricAccess
 	ms         interfaces.MetricService
@@ -80,7 +78,6 @@ func NewKNService(appSetting *common.AppSetting) interfaces.KNService {
 			cga:        logics.CGA,
 			cgs:        concept_group.NewConceptGroupService(appSetting),
 			db:         logics.DB,
-			js:         job.NewJobService(appSetting),
 			kna:        logics.KNA,
 			ma:         logics.MA,
 			ms:         metric.NewMetricService(appSetting),
@@ -960,26 +957,6 @@ func (kns *knowledgeNetworkService) DeleteKN(ctx context.Context, kn *interfaces
 		return err
 	}
 
-	// 获取业务知识网络下的所有任务
-	jobs, _, err := kns.js.ListJobs(ctx, interfaces.JobsQueryParams{
-		PaginationQueryParameters: interfaces.PaginationQueryParameters{
-			Sort:      interfaces.JOB_SORT["create_time"],
-			Direction: interfaces.DESC_DIRECTION,
-		},
-		KNID:   kn.KNID,
-		Branch: kn.Branch,
-		State:  []interfaces.JobState{interfaces.JobStateRunning},
-	})
-	if err != nil {
-		return err
-	}
-	if len(jobs) > 0 {
-		// 有运行中的任务，不允许删除
-		return rest.NewHTTPError(ctx, http.StatusForbidden,
-			berrors.BknBackend_KnowledgeNetwork_Forbidden_HasRunningJob).
-			WithErrorDetails("业务知识网络下有运行中的任务，不允许删除")
-	}
-
 	// 0. 开始事务
 	tx, err := kns.db.Begin()
 	if err != nil {
@@ -1022,7 +999,7 @@ func (kns *knowledgeNetworkService) DeleteKN(ctx context.Context, kn *interfaces
 		otellog.LogWarn(ctx, fmt.Sprintf("Delete kns number %v not equal 1!", rowsAffect))
 	}
 
-	// 删除业务知识网络下的所有对象类、关系类、行动类, 概念分组, 任务
+	// 删除业务知识网络下的所有对象类、关系类、行动类和概念分组
 	// 获取业务知识网络下的对象类id
 	err = kns.ots.DeleteObjectTypesByKnID(ctx, tx, kn.KNID, kn.Branch)
 	if err != nil {
@@ -1068,14 +1045,6 @@ func (kns *knowledgeNetworkService) DeleteKN(ctx context.Context, kn *interfaces
 	if err != nil {
 		logger.Errorf("DeleteConceptGroupsByKnID error: %s", err.Error())
 		span.SetStatus(codes.Error, "删除业务知识网络概念分组失败")
-		return err
-	}
-
-	// 删除业务知识网络下的所有任务
-	err = kns.js.DeleteJobsByKnID(ctx, tx, kn.KNID, kn.Branch)
-	if err != nil {
-		logger.Errorf("DeleteJobsByKnID error: %s", err.Error())
-		span.SetStatus(codes.Error, "删除业务知识网络任务失败")
 		return err
 	}
 

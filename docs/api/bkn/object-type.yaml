@@ -254,22 +254,23 @@ paths:
                           - name: end
                             value_from: input
                             value: ""
-                      - name: operator_test
-                        display_name: operator_test
-                        type: operator
-                        comment: pod的算子
+                      - name: tool_test
+                        display_name: tool_test
+                        type: tool
+                        comment: pod工具
                         index: true
                         data_source:
-                          type: operator
-                          id: pod_operator
+                          type: tool
+                          box_id: pod_toolbox
+                          tool_id: pod_tool
                         parameters:
-                          - name: operator_param1
+                          - name: tool_param1
                             value_from: property
                             value: id
-                          - name: operator_param2
+                          - name: tool_param2
                             value_from: property
                             value: pod_name
-                          - name: operator_param3
+                          - name: tool_param3
                             value_from: input
                             value: ""
                     primary_keys:
@@ -1068,23 +1069,24 @@ paths:
                               - name: end
                                 value_from: input
                                 value: ""
-                          - name: operator_test
-                            display_name: operator_test
-                            type: operator
-                            comment: pod的算子
+                          - name: tool_test
+                            display_name: tool_test
+                            type: tool
+                            comment: pod工具
                             index: true
                             data_source:
-                              type: operator
-                              id: pod_operator
+                              type: tool
+                              box_id: pod_toolbox
+                              tool_id: pod_tool
                               name: ""
                             parameters:
-                              - name: operator_param1
+                              - name: tool_param1
                                 value_from: property
                                 value: id
-                              - name: operator_param2
+                              - name: tool_param2
                                 value_from: property
                                 value: pod_name
-                              - name: operator_param3
+                              - name: tool_param3
                                 value_from: input
                                 value: ""
                         primary_keys:
@@ -1556,23 +1558,23 @@ paths:
                               - name: end
                                 value_from: input
                                 value: ""
-                          - name: operator_test
-                            display_name: operator_test
-                            type: operator
-                            comment: pod的算子
+                          - name: tool_test
+                            display_name: tool_test
+                            type: tool
+                            comment: pod工具
                             index: true
                             data_source:
-                              type: operator
-                              id: pod_operator
-                              name: ""
+                              type: tool
+                              box_id: pod_toolbox
+                              tool_id: pod_tool
                             parameters:
-                              - name: operator_param1
+                              - name: tool_param1
                                 value_from: property
                                 value: id
-                              - name: operator_param2
+                              - name: tool_param2
                                 value_from: property
                                 value: pod_name
-                              - name: operator_param3
+                              - name: tool_param3
                                 value_from: input
                                 value: ""
                         primary_keys:
@@ -1880,7 +1882,6 @@ components:
       description: 数据来源
       required:
         - type
-        - id
       type: object
       properties:
         type:
@@ -1909,7 +1910,7 @@ components:
           description: 属性显示名
           type: string
         type:
-          description: 属性数据类型。除了视图的字段类型之外，还有 metric、operator
+          description: 属性数据类型。除了视图的字段类型之外，还有 metric、tool
           type: string
         comment:
           description: 属性描述
@@ -1974,7 +1975,7 @@ components:
           description: 属性显示名
           type: string
         type:
-          description: 属性数据类型。除了视图的字段类型之外，还有 metric、operator
+          description: 属性数据类型。除了视图的字段类型之外，还有 metric、tool
           type: string
         comment:
           description: 属性描述
@@ -2240,10 +2241,19 @@ components:
           description: 数据来源类型
           enum:
             - metric
-            - operator
+            - tool
           type: string
         id:
-          description: 数据来源ID
+          description: 数据来源ID。当 type 为 metric 时必填。
+          type: string
+        box_id:
+          description: 工具箱ID。当 type 为 tool 时必填。
+          type: string
+        tool_id:
+          description: 工具ID。当 type 为 tool 时必填。
+          type: string
+        result_path:
+          description: 工具响应结果的可选 JSONPath。当 type 为 tool 时可配置；未配置时返回完整响应。
           type: string
         name:
           description: 名称。查看详情时返回。

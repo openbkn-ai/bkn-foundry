@@ -22,7 +22,6 @@ var (
 	CGA            interfaces.ConceptGroupAccess
 	DDA            interfaces.DataModelAccess
 	DVA            interfaces.DataViewAccess
-	JA             interfaces.JobAccess
 	KNA            interfaces.KNAccess
 	MA             interfaces.MetricAccess
 	MFA            interfaces.ModelFactoryAccess
@@ -65,10 +64,6 @@ func SetDataModelAccess(dda interfaces.DataModelAccess) {
 
 func SetDataViewAccess(dva interfaces.DataViewAccess) {
 	DVA = dva
-}
-
-func SetJobAccess(ja interfaces.JobAccess) {
-	JA = ja
 }
 
 func SetKNAccess(kna interfaces.KNAccess) {

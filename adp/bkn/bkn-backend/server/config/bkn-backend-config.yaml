@@ -4,12 +4,8 @@ server:
   language: zh-CN
   readTimeOut: 600
   writeTimeOut: 600
-  maxConcurrentTasks: 4
-  viewDataLimit: 1000
   defaultSmallModelName: embedding
   defaultSmallModelEnabled: false
-  jobMaxRetryTimes: 3
-  reloadJobEnabled: false
 log:
   logLevel: debug
   developMode: false

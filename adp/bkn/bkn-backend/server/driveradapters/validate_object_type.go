@@ -13,6 +13,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/PaesslerAG/jsonpath"
 	"github.com/dlclark/regexp2"
 	libCommon "github.com/openbkn-ai/bkn-comm-go/common"
 	"github.com/openbkn-ai/bkn-comm-go/rest"
@@ -254,38 +255,63 @@ func validateObjectTypeLogicProperties(ctx context.Context, objectType *interfac
 				WithErrorDetails(fmt.Sprintf("对象类[%s]逻辑属性[%s]的显示名称长度不能超过%d个字符", objectType.OTName, prop.Name, interfaces.OBJECT_NAME_MAX_LENGTH))
 		}
 
-		// type 非空且只支持 metric / operator
+		// type 非空且只支持 metric / tool
 		if prop.Type == "" {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
 				WithErrorDetails(fmt.Sprintf("对象类[%s]逻辑属性[%s]类型不能为空", objectType.OTName, prop.Name))
 		}
-		if prop.Type != interfaces.LOGIC_PROPERTY_TYPE_METRIC && prop.Type != interfaces.LOGIC_PROPERTY_TYPE_OPERATOR {
+		if prop.Type != interfaces.LOGIC_PROPERTY_TYPE_METRIC &&
+			prop.Type != interfaces.LOGIC_PROPERTY_TYPE_TOOL {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-				WithErrorDetails(fmt.Sprintf("对象类[%s]逻辑属性[%s]类型[%s]无效，只支持 metric, operator", objectType.OTName, prop.Name, prop.Type))
+				WithErrorDetails(fmt.Sprintf("对象类[%s]逻辑属性[%s]类型[%s]无效，只支持 metric, tool", objectType.OTName, prop.Name, prop.Type))
 		}
 
 		// 校验 data_source：
-		// - 严格模式：必须存在（type 和 id 均非空）
-		// - 非严格模式：可不存在；若存在，type 和 id 必须同时有效，不允许半填
-		if prop.DataSource != nil && (prop.DataSource.Type != "" || prop.DataSource.ID != "") {
-			// DataSource 存在，校验 type 和 id 必须同时填写
-			if prop.DataSource.Type == "" || prop.DataSource.ID == "" {
+		// - metric：type 和 id 必填
+		// - tool：type、box_id 和 tool_id 必填
+		// - 非严格模式：可不填；若填写，必须符合其类型的完整字段约束
+		if prop.DataSource != nil && (prop.DataSource.Type != "" || prop.DataSource.ID != "" ||
+			prop.DataSource.BoxID != "" || prop.DataSource.ToolID != "" || prop.DataSource.ResultPath != "") {
+			if prop.DataSource.Type == "" {
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-					WithErrorDetails(fmt.Sprintf("对象类[%s]逻辑属性[%s]的数据来源 type 和 id 必须同时填写", objectType.OTName, prop.Name))
+					WithErrorDetails(fmt.Sprintf("对象类[%s]逻辑属性[%s]的数据来源 type 不能为空", objectType.OTName, prop.Name))
 			}
 			if !interfaces.ValidLogicSourceTypes[prop.DataSource.Type] {
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-					WithErrorDetails(fmt.Sprintf("对象类[%s]逻辑属性[%s]的数据资源类型[%s]无效，只支持 metric, operator", objectType.OTName, prop.Name, prop.DataSource.Type))
+					WithErrorDetails(fmt.Sprintf("对象类[%s]逻辑属性[%s]的数据资源类型[%s]无效，只支持 metric, tool", objectType.OTName, prop.Name, prop.DataSource.Type))
 			}
 			if prop.Type != prop.DataSource.Type {
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
 					WithErrorDetails(fmt.Sprintf("对象类[%s]逻辑属性[%s]的数据类型[%s]与其所绑定的数据资源类型[%s]不一致",
 						objectType.OTName, prop.Name, prop.Type, prop.DataSource.Type))
 			}
+			if prop.DataSource.Type == interfaces.LOGIC_PROPERTY_TYPE_TOOL {
+				if prop.DataSource.BoxID == "" || prop.DataSource.ToolID == "" {
+					return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
+						WithErrorDetails(fmt.Sprintf("对象类[%s]逻辑属性[%s]的工具数据来源 box_id 和 tool_id 必须同时填写",
+							objectType.OTName, prop.Name))
+				}
+			} else if prop.DataSource.ID == "" {
+				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
+					WithErrorDetails(fmt.Sprintf("对象类[%s]逻辑属性[%s]的数据来源 type 和 id 必须同时填写",
+						objectType.OTName, prop.Name))
+			}
+			if prop.DataSource.ResultPath != "" {
+				if prop.DataSource.Type != interfaces.LOGIC_PROPERTY_TYPE_TOOL {
+					return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
+						WithErrorDetails(fmt.Sprintf("对象类[%s]逻辑属性[%s]的 result_path 仅支持 tool 类型的数据来源",
+							objectType.OTName, prop.Name))
+				}
+				if _, err := jsonpath.New(prop.DataSource.ResultPath); err != nil {
+					return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
+						WithErrorDetails(fmt.Sprintf("对象类[%s]逻辑属性[%s]的 result_path 不是合法的 JSONPath: %v",
+							objectType.OTName, prop.Name, err))
+				}
+			}
 		} else if strictMode {
-			// DataSource 不存在（nil 或 type/id 均为空），严格模式下报错
+			// DataSource 不存在，严格模式下报错
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-				WithErrorDetails(fmt.Sprintf("对象类[%s]逻辑属性[%s]的数据来源(type、id)不能为空", objectType.OTName, prop.Name))
+				WithErrorDetails(fmt.Sprintf("对象类[%s]逻辑属性[%s]的数据来源不能为空", objectType.OTName, prop.Name))
 		}
 
 		// 校验参数名称非空

@@ -23,7 +23,7 @@ type ResolveLogicPropertiesRequest struct {
 	// Optional fields
 	AdditionalContext string          `json:"additional_context,omitempty"`
 	Options           *ResolveOptions `json:"options,omitempty"`
-	// LLMModel per-request 覆盖 metric/operator 动态参数生成所用大模型；为空走系统默认大模型。仅供测试/验证指定模型。
+	// LLMModel overrides the model used for metric/tool dynamic parameter generation.
 	LLMModel string `json:"llm_model,omitempty"`
 
 	// Header fields
@@ -67,7 +67,7 @@ type ResolveDebugInfo struct {
 // AgentInfo Agent call information
 type AgentInfo struct {
 	// Property type
-	PropertyType string `json:"property_type"` // "metric" or "operator"
+	PropertyType string `json:"property_type"` // "metric" or "tool"
 
 	// Agent request parameters (stores Agent request structure directly)
 	Request AgentRequestDebugInfo `json:"request,omitempty"`
@@ -77,7 +77,7 @@ type AgentInfo struct {
 }
 
 // AgentRequestDebugInfo Agent request debug info
-// Directly stores Agent request structure: MetricDynamicParamsGeneratorReq or OperatorDynamicParamsGeneratorReq
+// Directly stores a MetricDynamicParamsGeneratorReq or ToolDynamicParamsGeneratorReq.
 type AgentRequestDebugInfo any
 
 // AgentResponseDebugInfo Agent response debug info

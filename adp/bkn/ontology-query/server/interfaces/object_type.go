@@ -16,8 +16,8 @@ const (
 	DATA_SOURCE_TYPE_RESOURCE  = "resource"
 
 	// 逻辑属性类型
-	LOGIC_PROPERTY_TYPE_METRIC   = "metric"
-	LOGIC_PROPERTY_TYPE_OPERATOR = "operator"
+	LOGIC_PROPERTY_TYPE_METRIC = "metric"
+	LOGIC_PROPERTY_TYPE_TOOL   = "tool"
 
 	// 逻辑属性参数来源类型
 	LOGIC_PARAMS_VALUE_FROM_PROP  = "property"
@@ -73,19 +73,13 @@ type MetricProperty struct {
 	DynamicParams        map[string]any `json:"dynamic_params"`
 }
 
-// 算子属性的计算参数
-type OperatorProperty struct {
+// ToolProperty holds execution parameters for a ToolBox-backed logical property.
+type ToolProperty struct {
 	PropertyType         string         `json:"property_type"`
 	MappingSourceId      string         `json:"mapping_source_id"`
 	HasAnyUnfilledParams bool           `json:"has_any_unfilled_params"`
 	Parameters           map[string]any `json:"parameters"`
 	DynamicParams        map[string]any `json:"dynamic_params"`
-}
-
-type OperatorParams struct {
-	Name      string `json:"name"`
-	Operation string `json:"operation,omitempty"`
-	Value     any    `json:"value,omitempty"`
 }
 
 type MetricFilters struct {
