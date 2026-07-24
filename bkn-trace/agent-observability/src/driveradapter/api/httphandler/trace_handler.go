@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/tracesvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/driveradapter/api/rdto"
@@ -143,6 +144,78 @@ func (h *TraceHandler) SearchTracesByConversationID(w http.ResponseWriter, r *ht
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(traceData)
+}
+
+func (h *TraceHandler) GetTraceSubresource(w http.ResponseWriter, r *http.Request) bool {
+	if !strings.HasSuffix(r.URL.Path, "/trace-graph") {
+		return false
+	}
+	h.GetTraceGraphByTraceID(w, r)
+	return true
+}
+
+// GetTraceGraphByTraceID godoc
+// @Summary Get trace graph by trace ID
+// @Description Returns normalized trace tree nodes, parent-child edges, status, duration, and partial reasons for a trace.
+// @Tags traces
+// @Produce json
+// @Param trace_id path string true "Trace ID"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} rdto.ErrorResponse
+// @Failure 404 {object} rdto.ErrorResponse
+// @Failure 405 {object} rdto.ErrorResponse
+// @Failure 500 {object} rdto.ErrorResponse
+// @Failure 504 {object} rdto.ErrorResponse
+// @Router /api/agent-observability/v1/traces/{trace_id}/trace-graph [get]
+func (h *TraceHandler) GetTraceGraphByTraceID(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, rdto.ErrorResponse{
+			Code:    "METHOD_NOT_ALLOWED",
+			Message: "only GET is supported",
+		})
+		return
+	}
+
+	traceID := traceIDFromTraceGraphPath(r.URL.Path)
+	if traceID == "" {
+		writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{
+			Code:    "INVALID_ARGUMENT",
+			Message: "trace_id is required",
+		})
+		return
+	}
+
+	response, found, err := h.traceQueryService.GetTraceGraphByTraceID(r.Context(), traceID)
+	if err != nil {
+		writeJSON(w, http.StatusGatewayTimeout, rdto.ErrorResponse{
+			Code:    "QUERY_FAILED",
+			Message: "failed to query trace graph",
+		})
+		return
+	}
+	if !found {
+		writeJSON(w, http.StatusNotFound, rdto.ErrorResponse{
+			Code:    "NOT_FOUND",
+			Message: "trace graph not found",
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, response)
+}
+
+func traceIDFromTraceGraphPath(path string) string {
+	const prefix = "/api/agent-observability/v1/traces/"
+	const suffix = "/trace-graph"
+	if !strings.HasPrefix(path, prefix) || !strings.HasSuffix(path, suffix) {
+		return ""
+	}
+	traceID := strings.TrimSuffix(strings.TrimPrefix(path, prefix), suffix)
+	traceID = strings.Trim(traceID, "/")
+	if strings.Contains(traceID, "/") {
+		return ""
+	}
+	return strings.TrimSpace(traceID)
 }
 
 func writeJSON(w http.ResponseWriter, statusCode int, payload any) {

@@ -257,6 +257,47 @@ paths:
       summary: Get evidence snapshot preview by trace ID
       tags:
       - evidence
+  /api/agent-observability/v1/traces/{trace_id}/trace-graph:
+    get:
+      description: Returns normalized trace tree nodes, parent-child edges, status,
+        duration, and partial reasons for a trace.
+      parameters:
+      - description: Trace ID
+        in: path
+        name: trace_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "405":
+          description: Method Not Allowed
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "504":
+          description: Gateway Timeout
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+      summary: Get trace graph by trace ID
+      tags:
+      - traces
   /api/agent-observability/v1/traces/by-conversation:
     get:
       consumes:
