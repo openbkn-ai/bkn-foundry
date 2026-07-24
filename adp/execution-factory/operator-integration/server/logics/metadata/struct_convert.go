@@ -7,6 +7,33 @@ import (
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/utils"
 )
 
+const (
+	legacyTimeoutParamName = "timeout"
+	legacyTimeoutParamIn   = "query"
+)
+
+// stripLegacyTimeoutParameter 去掉函数元数据里遗留的 timeout 查询参数。
+//
+// 执行超时曾被当成契约参数写进 api_spec，导致它和业务入参并列出现在
+// 工具 schema 里：Agent 会把它当成可传的参数去猜，按 schema 渲染的界面
+// 也会要求使用者为它选固定值或动态输入。生成侧已经不再写入，但升级前
+// 建的函数工具库里仍有这个字段，这里在读取时剥掉，免去一次数据迁移。
+//
+// 执行侧仍从请求的 query 读取 timeout，存量调用方不受影响。
+func stripLegacyTimeoutParameter(spec *interfaces.APISpec) {
+	if spec == nil || len(spec.Parameters) == 0 {
+		return
+	}
+	kept := make([]*interfaces.Parameter, 0, len(spec.Parameters))
+	for _, param := range spec.Parameters {
+		if param != nil && param.Name == legacyTimeoutParamName && param.In == legacyTimeoutParamIn {
+			continue
+		}
+		kept = append(kept, param)
+	}
+	spec.Parameters = kept
+}
+
 // MetadataDBToStruct 将数据库模型转换为元数据接口
 func MetadataDBToStruct(metadataDB interfaces.IMetadataDB) *interfaces.MetadataInfo {
 	switch v := metadataDB.(type) {
@@ -25,6 +52,7 @@ func MetadataDBToStruct(metadataDB interfaces.IMetadataDB) *interfaces.MetadataI
 			APISpec:     v.APISpec,
 		}
 		metadata := apimetadataDBToAPIMetadata(apiMetadataDB)
+		stripLegacyTimeoutParameter(metadata.APISpec)
 		dependencies := []interfaces.DependencyInfo{}
 		if v.GetDependencies() != "" {
 			dependencies = utils.JSONToObject[[]interfaces.DependencyInfo](v.GetDependencies())

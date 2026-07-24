@@ -37,13 +37,6 @@ func (s *ToolServiceImpl) UpdateToolBox(ctx context.Context, req *interfaces.Upd
 	if err != nil {
 		return
 	}
-	// 检查openapi类型的工具箱是否填写了服务地址
-	if req.MetadataType == interfaces.MetadataTypeAPI {
-		err = s.Validator.ValidatorURL(ctx, req.BoxSvcURL)
-		if err != nil {
-			return
-		}
-	}
 	// 检查分类是否存在
 	if !s.CategoryManager.CheckCategory(req.Category) {
 		err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtToolBoxCategoryTypeInvalid,
@@ -60,6 +53,18 @@ func (s *ToolServiceImpl) UpdateToolBox(ctx context.Context, req *interfaces.Upd
 	if !exist {
 		err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtToolBoxNotFound, "toolbox not found")
 		return
+	}
+	// 元数据类型建成后不再变化,编辑请求可以不带。不带时沿用已存值 ——
+	// 下面按类型分支,留空会让两个分支都不命中,元数据被静默跳过。
+	if req.MetadataType == "" {
+		req.MetadataType = interfaces.MetadataType(toolBox.MetadataType)
+	}
+	// 检查openapi类型的工具箱是否填写了服务地址
+	if req.MetadataType == interfaces.MetadataTypeAPI {
+		err = s.Validator.ValidatorURL(ctx, req.BoxSvcURL)
+		if err != nil {
+			return
+		}
 	}
 	// 检查工具箱名称是否存在
 	isNameChanged := toolBox.Name != req.BoxName
