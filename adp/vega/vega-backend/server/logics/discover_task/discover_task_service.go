@@ -161,19 +161,21 @@ func (dts *discoverTaskService) GetByID(ctx context.Context, id string) (*interf
 
 	task, err := dts.dta.GetByID(ctx, id)
 	if err != nil {
-		return nil, err
+		span.SetStatus(codes.Error, "Get discover task failed")
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_DiscoverTask_InternalError_GetFailed).
+			WithErrorDetails(err.Error())
 	}
 	if task == nil {
 		span.SetStatus(codes.Error, "Discover task not found")
 		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_DiscoverTask_NotFound)
 	}
 	if err := dts.populateDiscoverTaskReferences(ctx, []*interfaces.DiscoverTask{task}); err != nil {
-		return nil, err
+		span.RecordError(err)
+		logger.Warnf("Failed to populate discover task references: %v", err)
 	}
 	if err := dts.ums.GetAccountNames(ctx, []*interfaces.AccountInfo{&task.Creator}); err != nil {
-		span.SetStatus(codes.Error, "GetAccountNames error")
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			verrors.VegaBackend_DiscoverTask_InternalError_GetAccountNamesFailed).WithErrorDetails(err.Error())
+		span.RecordError(err)
+		logger.Warnf("Failed to populate discover task account names: %v", err)
 	}
 	return task, nil
 }
@@ -196,10 +198,13 @@ func (dts *discoverTaskService) List(ctx context.Context, params interfaces.Disc
 
 	tasks, total, err := dts.dta.List(ctx, params)
 	if err != nil {
-		return nil, 0, err
+		span.SetStatus(codes.Error, "List discover tasks failed")
+		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_DiscoverTask_InternalError_GetFailed).
+			WithErrorDetails(err.Error())
 	}
 	if err := dts.populateDiscoverTaskReferences(ctx, tasks); err != nil {
-		return nil, 0, err
+		span.RecordError(err)
+		logger.Warnf("Failed to populate discover task references: %v", err)
 	}
 
 	accountInfos := make([]*interfaces.AccountInfo, 0, len(tasks))
@@ -207,9 +212,8 @@ func (dts *discoverTaskService) List(ctx context.Context, params interfaces.Disc
 		accountInfos = append(accountInfos, &t.Creator)
 	}
 	if err := dts.ums.GetAccountNames(ctx, accountInfos); err != nil {
-		span.SetStatus(codes.Error, "GetAccountNames error")
-		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			verrors.VegaBackend_DiscoverTask_InternalError_GetAccountNamesFailed).WithErrorDetails(err.Error())
+		span.RecordError(err)
+		logger.Warnf("Failed to populate discover task account names: %v", err)
 	}
 	return tasks, total, nil
 }

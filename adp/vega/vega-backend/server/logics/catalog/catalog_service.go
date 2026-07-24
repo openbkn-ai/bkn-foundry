@@ -311,10 +311,8 @@ func (cs *catalogService) GetByID(ctx context.Context, id string, withSensitiveF
 	accountInfos := []*interfaces.AccountInfo{&catalog.Creator, &catalog.Updater}
 	err = cs.ums.GetAccountNames(ctx, accountInfos)
 	if err != nil {
-		span.SetStatus(codes.Error, "GetAccountNames error")
-
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			verrors.VegaBackend_Catalog_InternalError_GetAccountNamesFailed).WithErrorDetails(err.Error())
+		span.RecordError(err)
+		logger.Warnf("Failed to populate catalog account names: %v", err)
 	}
 
 	if !withSensitiveFields {
@@ -444,10 +442,8 @@ func (cs *catalogService) GetByIDs(ctx context.Context, ids []string) ([]*interf
 
 	err = cs.ums.GetAccountNames(ctx, accountInfos)
 	if err != nil {
-		span.SetStatus(codes.Error, "GetAccountNames error")
-
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			verrors.VegaBackend_Catalog_InternalError_GetAccountNamesFailed).WithErrorDetails(err.Error())
+		span.RecordError(err)
+		logger.Warnf("Failed to populate catalog account names: %v", err)
 	}
 
 	span.SetStatus(codes.Ok, "")
@@ -579,10 +575,8 @@ func (cs *catalogService) List(ctx context.Context, params interfaces.CatalogsQu
 
 	err = cs.ums.GetAccountNames(ctx, accountInfos)
 	if err != nil {
-		span.SetStatus(codes.Error, "GetAccountNames error")
-
-		return []*interfaces.Catalog{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			verrors.VegaBackend_Catalog_InternalError_GetFailed).WithErrorDetails(err.Error())
+		span.RecordError(err)
+		logger.Warnf("Failed to populate catalog account names: %v", err)
 	}
 
 	// 移除敏感字段，不返回给前端

@@ -9,6 +9,7 @@ package resource
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"net/http"
 	"testing"
@@ -147,7 +148,7 @@ func TestResourceServiceCheckExistByName(t *testing.T) {
 }
 
 func TestResourceServiceGetByID(t *testing.T) {
-	t.Run("get by idsuccess", func(t *testing.T) {
+	t.Run("keeps resource when account name lookup fails", func(t *testing.T) {
 		rs, mockRA, mockPS, _, mockUMS, _, _ := newTestService(t)
 		mockRA.EXPECT().GetByID(gomock.Any(), "r1").
 			Return(&interfaces.Resource{ID: "r1", Name: "test"}, nil)
@@ -156,7 +157,7 @@ func TestResourceServiceGetByID(t *testing.T) {
 			Return(map[string]interfaces.PermissionResourceOps{
 				"r1": {ResourceID: "r1", Operations: []string{"view_detail"}},
 			}, nil)
-		mockUMS.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
+		mockUMS.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(errors.New("user management unavailable"))
 
 		resource, err := rs.GetByID(context.Background(), "r1")
 		if err != nil {
