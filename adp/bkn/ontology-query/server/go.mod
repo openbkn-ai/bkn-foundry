@@ -22,6 +22,8 @@ require (
 require (
 	github.com/BurntSushi/toml v1.6.0 // indirect
 	github.com/IBM/sarama v1.50.3 // indirect
+	github.com/PaesslerAG/gval v1.0.0 // indirect
+	github.com/PaesslerAG/jsonpath v0.1.1 // indirect
 	github.com/avast/retry-go v3.0.0+incompatible // indirect
 	github.com/bytedance/gopkg v0.1.4 // indirect
 	github.com/bytedance/sonic/loader v0.5.1 // indirect

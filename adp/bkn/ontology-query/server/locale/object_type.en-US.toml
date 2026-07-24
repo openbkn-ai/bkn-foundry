@@ -44,13 +44,8 @@ Description = "Internal Error"
 Solution = "Please try again. If the error occurs again, please submit the work order or contact technical support."
 ErrorLink = "None"
 
-[OntologyQuery.ObjectType.InternalError.ExecuteOperatorFailed]
-Description = "Execute Operator Failed"
-Solution = "Please try again. If the error occurs again, please submit the work order or contact technical support."
-ErrorLink = "None"
-
-[OntologyQuery.ObjectType.InternalError.GetAgentOperatorByIDFailed]
-Description = "Get Agent Operator By ID Failed"
+[OntologyQuery.ObjectType.InternalError.ExecuteToolFailed]
+Description = "Execute Tool Failed"
 Solution = "Please try again. If the error occurs again, please submit the work order or contact technical support."
 ErrorLink = "None"
 

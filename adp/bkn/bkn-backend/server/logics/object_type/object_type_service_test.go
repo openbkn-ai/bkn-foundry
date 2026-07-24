@@ -1260,7 +1260,7 @@ func Test_objectTypeService_ValidateObjectTypes(t *testing.T) {
 			So(err, ShouldBeNil)
 		})
 
-		Convey("Fails strict mode when operator has empty operator_id\n", func() {
+		Convey("Fails strict mode when tool does not exist\n", func() {
 			objectTypes := []*interfaces.ObjectType{
 				{
 					ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
@@ -1268,10 +1268,11 @@ func Test_objectTypeService_ValidateObjectTypes(t *testing.T) {
 						LogicProperties: []*interfaces.LogicProperty{
 							{
 								Name: "lp1",
-								Type: interfaces.LOGIC_PROPERTY_TYPE_OPERATOR,
+								Type: interfaces.LOGIC_PROPERTY_TYPE_TOOL,
 								DataSource: &interfaces.ResourceInfo{
-									Type: interfaces.LOGIC_PROPERTY_TYPE_OPERATOR,
-									ID:   "op1",
+									Type:   interfaces.LOGIC_PROPERTY_TYPE_TOOL,
+									BoxID:  "box1",
+									ToolID: "tool1",
 								},
 							},
 						},
@@ -1281,12 +1282,12 @@ func Test_objectTypeService_ValidateObjectTypes(t *testing.T) {
 			}
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			expectImportModeOK()
-			aoa.EXPECT().GetAgentOperatorByID(gomock.Any(), "op1").Return(interfaces.AgentOperator{}, nil)
+			aoa.EXPECT().GetToolByID(gomock.Any(), "box1", "tool1").Return(sql.ErrNoRows)
 			err := service.ValidateObjectTypes(ctx, "kn1", interfaces.MAIN_BRANCH, objectTypes, true, nil, interfaces.ImportMode_Normal)
 			So(err, ShouldNotBeNil)
 		})
 
-		Convey("Success strict mode when operator exists\n", func() {
+		Convey("Success strict mode when tool binding resolves\n", func() {
 			objectTypes := []*interfaces.ObjectType{
 				{
 					ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
@@ -1294,10 +1295,11 @@ func Test_objectTypeService_ValidateObjectTypes(t *testing.T) {
 						LogicProperties: []*interfaces.LogicProperty{
 							{
 								Name: "lp1",
-								Type: interfaces.LOGIC_PROPERTY_TYPE_OPERATOR,
+								Type: interfaces.LOGIC_PROPERTY_TYPE_TOOL,
 								DataSource: &interfaces.ResourceInfo{
-									Type: interfaces.LOGIC_PROPERTY_TYPE_OPERATOR,
-									ID:   "op1",
+									Type:   interfaces.LOGIC_PROPERTY_TYPE_TOOL,
+									BoxID:  "box1",
+									ToolID: "tool1",
 								},
 							},
 						},
@@ -1307,7 +1309,34 @@ func Test_objectTypeService_ValidateObjectTypes(t *testing.T) {
 			}
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			expectImportModeOK()
-			aoa.EXPECT().GetAgentOperatorByID(gomock.Any(), "op1").Return(interfaces.AgentOperator{OperatorId: "op1"}, nil)
+			aoa.EXPECT().GetToolByID(gomock.Any(), "box1", "tool1").Return(nil)
+			err := service.ValidateObjectTypes(ctx, "kn1", interfaces.MAIN_BRANCH, objectTypes, true, nil, interfaces.ImportMode_Normal)
+			So(err, ShouldBeNil)
+		})
+
+		Convey("Success strict mode when tool exists\n", func() {
+			objectTypes := []*interfaces.ObjectType{
+				{
+					ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+						OTName: "ot1",
+						LogicProperties: []*interfaces.LogicProperty{
+							{
+								Name: "lp1",
+								Type: interfaces.LOGIC_PROPERTY_TYPE_TOOL,
+								DataSource: &interfaces.ResourceInfo{
+									Type:   interfaces.LOGIC_PROPERTY_TYPE_TOOL,
+									BoxID:  "box1",
+									ToolID: "tool1",
+								},
+							},
+						},
+					},
+					KNID: "kn1",
+				},
+			}
+			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			expectImportModeOK()
+			aoa.EXPECT().GetToolByID(gomock.Any(), "box1", "tool1").Return(nil)
 			err := service.ValidateObjectTypes(ctx, "kn1", interfaces.MAIN_BRANCH, objectTypes, true, nil, interfaces.ImportMode_Normal)
 			So(err, ShouldBeNil)
 		})

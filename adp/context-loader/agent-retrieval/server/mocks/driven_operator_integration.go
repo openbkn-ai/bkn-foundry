@@ -72,21 +72,6 @@ func (mr *MockDrivenOperatorIntegrationMockRecorder) GetMCPToolDetail(ctx, req a
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMCPToolDetail", reflect.TypeOf((*MockDrivenOperatorIntegration)(nil).GetMCPToolDetail), ctx, req)
 }
 
-// GetOperatorMarketDetail mocks base method.
-func (m *MockDrivenOperatorIntegration) GetOperatorMarketDetail(ctx context.Context, operatorID string) (string, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetOperatorMarketDetail", ctx, operatorID)
-	ret0, _ := ret[0].(string)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetOperatorMarketDetail indicates an expected call of GetOperatorMarketDetail.
-func (mr *MockDrivenOperatorIntegrationMockRecorder) GetOperatorMarketDetail(ctx, operatorID any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetOperatorMarketDetail", reflect.TypeOf((*MockDrivenOperatorIntegration)(nil).GetOperatorMarketDetail), ctx, operatorID)
-}
-
 // GetToolDetail mocks base method.
 func (m *MockDrivenOperatorIntegration) GetToolDetail(ctx context.Context, req *interfaces.GetToolDetailRequest) (*interfaces.GetToolDetailResponse, error) {
 	m.ctrl.T.Helper()

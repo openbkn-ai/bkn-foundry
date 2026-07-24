@@ -11,8 +11,8 @@ import "bkn-backend/interfaces/data_type"
 const (
 	MAX_PROPERTY_NUM = 1000
 	// 逻辑属性类型
-	LOGIC_PROPERTY_TYPE_METRIC   = "metric"
-	LOGIC_PROPERTY_TYPE_OPERATOR = "operator"
+	LOGIC_PROPERTY_TYPE_METRIC = "metric"
+	LOGIC_PROPERTY_TYPE_TOOL   = "tool"
 )
 
 var (
@@ -44,10 +44,10 @@ var (
 		data_type.DATATYPE_BOOLEAN:          true,
 	}
 
-	// 逻辑资源类型需有效，当前支持 metric, operator
+	// 逻辑资源类型需有效，当前支持 metric, tool
 	ValidLogicSourceTypes = map[string]bool{
-		LOGIC_PROPERTY_TYPE_METRIC:   true,
-		LOGIC_PROPERTY_TYPE_OPERATOR: true,
+		LOGIC_PROPERTY_TYPE_METRIC: true,
+		LOGIC_PROPERTY_TYPE_TOOL:   true,
 	}
 
 	// 有效的属性类型：integer, unsigned integer, float, decimal, string, text, date, timestamp, time, datetime, boolean, binary, json, vector, point, shape, ip。

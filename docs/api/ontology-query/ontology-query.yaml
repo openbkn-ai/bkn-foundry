@@ -108,8 +108,8 @@ paths:
                 获取指定对象类的对象实例-第一次请求-含属性计算参数-含对象类信息:
                   value:
                     object_type:
-                      id: pod_has_metric_and_operator
-                      name: pod_has_metric_and_operator
+                      id: pod_has_metric_and_tool
+                      name: pod_has_metric_and_tool
                       tags: []
                       comment: ""
                       icon: icon-dip-suanziguanli
@@ -343,13 +343,13 @@ paths:
                         vector_config:
                           dimension: 0
                       logic_properties:
-                      - name: operator_test
-                        display_name: operator_test
-                        type: operator
+                      - name: tool_test
+                        display_name: tool_test
+                        type: tool
                         comment: pod的算子
                         index: false
                         data_source:
-                          type: operator
+                          type: tool
                           id: 657a114e-2061-4314-8853-f84afecc5113
                         parameters:
                         - name: Authorization
@@ -406,8 +406,8 @@ paths:
                       s_create_time: 2025-06-20 11:15:53.000
                       pod_node_name: node-111-175
                       pod_create_time: "1750389421667"
-                      operator_test:
-                        property_type: operator
+                      tool_test:
+                        property_type: tool
                         mapping_source_id: 657a114e-2061-4314-8853-f84afecc5113
                         has_any_unfilled_params: false
                         parameters:
@@ -441,8 +441,8 @@ paths:
                 获取指定对象类的对象实例-非第一次请求-含属性计算参数-含对象类信息:
                   value:
                     object_type:
-                      id: pod_has_metric_and_operator
-                      name: pod_has_metric_and_operator
+                      id: pod_has_metric_and_tool
+                      name: pod_has_metric_and_tool
                       tags: []
                       comment: ""
                       icon: icon-dip-suanziguanli
@@ -676,13 +676,13 @@ paths:
                         vector_config:
                           dimension: 0
                       logic_properties:
-                      - name: operator_test
-                        display_name: operator_test
-                        type: operator
+                      - name: tool_test
+                        display_name: tool_test
+                        type: tool
                         comment: pod的算子
                         index: false
                         data_source:
-                          type: operator
+                          type: tool
                           id: 657a114e-2061-4314-8853-f84afecc5113
                         parameters:
                         - name: Authorization
@@ -739,8 +739,8 @@ paths:
                       s_create_time: 2025-06-20 11:15:53.000
                       pod_node_name: node-111-175
                       pod_create_time: "1750389421667"
-                      operator_test:
-                        property_type: operator
+                      tool_test:
+                        property_type: tool
                         mapping_source_id: 657a114e-2061-4314-8853-f84afecc5113
                         has_any_unfilled_params: false
                         parameters:
@@ -3316,7 +3316,7 @@ components:
           description: 属性显示名
           type: string
         type:
-          description: 属性数据类型。除了视图的字段类型之外，还有 metric、objective、event、trace、log、operator
+          description: 属性数据类型。除了视图的字段类型之外，还有 metric、objective、event、trace、log、tool
           type: string
         comment:
           description: 属性描述
@@ -3372,7 +3372,7 @@ components:
           description: 属性显示名
           type: string
         type:
-          description: 属性数据类型。除了视图的字段类型之外，还有 metric、objective、event、trace、log、operator
+          description: 属性数据类型。除了视图的字段类型之外，还有 metric、objective、event、trace、log、tool
           type: string
         comment:
           description: 属性描述
@@ -3399,7 +3399,7 @@ components:
           description: 数据来源类型
           enum:
           - metric
-          - operator
+          - tool
           type: string
         id:
           description: 数据来源ID

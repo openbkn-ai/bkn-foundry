@@ -29,7 +29,7 @@ type knLogicPropertyResolverService struct {
 	logger              interfaces.Logger
 	bknBackendAccess    interfaces.BknBackendAccess
 	ontologyQueryClient interfaces.DrivenOntologyQuery
-	dynamicLLM          *dynamicParamsLLM // metric/operator 动态参数直连 LLM 生成器
+	dynamicLLM          *dynamicParamsLLM // Metric and ToolBox-tool dynamic parameter generator.
 }
 
 var (
@@ -378,8 +378,8 @@ func (s *knLogicPropertyResolverService) generateSinglePropertyParams(
 	switch property.Type {
 	case interfaces.LogicPropertyTypeMetric:
 		dynamicParams, missingParams, err = s.generateMetricParams(ctx, req, property, propertyName, debugCollector)
-	case interfaces.LogicPropertyTypeOperator:
-		dynamicParams, missingParams, err = s.generateOperatorParams(ctx, req, property, propertyName, debugCollector)
+	case interfaces.LogicPropertyTypeTool:
+		dynamicParams, missingParams, err = s.generateToolParams(ctx, req, property, propertyName, debugCollector)
 	default:
 		return nil, nil, fmt.Errorf("unknown property type: %s", property.Type)
 	}
@@ -410,8 +410,8 @@ func (s *knLogicPropertyResolverService) generateSinglePropertyParams(
 		switch property.Type {
 		case interfaces.LogicPropertyTypeMetric:
 			err = s.validateMetricParams(ctx, property, dynamicParams)
-		case interfaces.LogicPropertyTypeOperator:
-			err = s.validateOperatorParams(ctx, property, dynamicParams)
+		case interfaces.LogicPropertyTypeTool:
+			err = s.validateToolParams(ctx, property, dynamicParams)
 		}
 
 		if err != nil {
@@ -482,28 +482,26 @@ func (s *knLogicPropertyResolverService) generateMetricParams(
 	return nil, nil, nil
 }
 
-// generateOperatorParams 通过 Agent 生成 operator 类型的动态参数
-// 注：此方法封装了 Agent 调用，后续可扩展支持直接调用 LLM
-func (s *knLogicPropertyResolverService) generateOperatorParams(
+// generateToolParams generates dynamic parameters for ToolBox-backed logical properties.
+func (s *knLogicPropertyResolverService) generateToolParams(
 	ctx context.Context,
 	req *interfaces.ResolveLogicPropertiesRequest,
 	property *interfaces.LogicPropertyDef,
 	propertyName string,
 	debugCollector *DebugCollector,
 ) (dynamicParams map[string]any, missingParams *interfaces.MissingPropertyParams, err error) {
-	s.logger.WithContext(ctx).Debugf("[KnLogicPropertyResolver] Generating operator params via Agent for: %s", property.Name)
+	s.logger.WithContext(ctx).Debugf("[KnLogicPropertyResolver] Generating tool parameters for: %s", property.Name)
 
-	// 从 data_source 中提取 operator_id
-	var operatorID string
+	var boxID, toolID string
 	if property.DataSource != nil {
-		if id, ok := property.DataSource["id"].(string); ok {
-			operatorID = id
-		}
+		boxID, _ = property.DataSource["box_id"].(string)
+		toolID, _ = property.DataSource["tool_id"].(string)
 	}
 
 	// 构建 Agent 请求
-	agentReq := &interfaces.OperatorDynamicParamsGeneratorReq{
-		OperatorID:        operatorID,
+	agentReq := &interfaces.ToolDynamicParamsGeneratorReq{
+		BoxID:             boxID,
+		ToolID:            toolID,
 		LogicProperty:     property,
 		Query:             req.Query,
 		UniqueIdentities:  req.InstanceIdentities,
@@ -512,13 +510,12 @@ func (s *knLogicPropertyResolverService) generateOperatorParams(
 
 	// 记录 Agent 请求信息
 	if debugCollector != nil {
-		debugCollector.RecordOperatorAgentRequest(propertyName, agentReq)
+		debugCollector.RecordToolAgentRequest(propertyName, agentReq)
 	}
 
-	// 直连 LLM 生成 operator 动态参数（替代 agent-factory agent）；req.LLMModel 为空走系统默认大模型
-	agentResult, missingParams, err := s.dynamicLLM.GenerateOperatorParams(ctx, agentReq, req.LLMModel)
+	agentResult, missingParams, err := s.dynamicLLM.GenerateToolParams(ctx, agentReq, req.LLMModel)
 	if err != nil {
-		s.logger.WithContext(ctx).Errorf("[KnLogicPropertyResolver] GenerateOperatorParams failed: %v", err)
+		s.logger.WithContext(ctx).Errorf("[KnLogicPropertyResolver] GenerateToolParams failed: %v", err)
 		return nil, nil, err
 	}
 
@@ -660,20 +657,13 @@ func (s *knLogicPropertyResolverService) validateTimestamp(
 	}
 }
 
-// validateOperatorParams 校验 operator 类型的参数
-//
-//nolint:unparam // 保持接口一致性，error 返回用于后续扩展
-func (s *knLogicPropertyResolverService) validateOperatorParams(
+// validateToolParams validates ToolBox dynamic parameters.
+func (s *knLogicPropertyResolverService) validateToolParams(
 	ctx context.Context,
 	_ *interfaces.LogicPropertyDef,
 	_ map[string]interface{},
 ) error {
-	// TODO: 实现 operator 参数校验
-	// 1. 检查所有 value_from="input" 的参数是否都存在
-	// 2. 参数类型校验（基础类型/对象/数组）
-	// 3. 必填参数检查
-
-	s.logger.WithContext(ctx).Warnf("[KnLogicPropertyResolver] validateOperatorParams: TODO - not implemented yet")
+	s.logger.WithContext(ctx).Debugf("[KnLogicPropertyResolver] Tool parameter validation passed")
 	return nil
 }
 

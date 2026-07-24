@@ -21,8 +21,7 @@ const (
 	OntologyQuery_ObjectType_SmallModelNotFound = "OntologyQuery.ObjectType.SmallModelNotFound"
 
 	// 500
-	OntologyQuery_ObjectType_InternalError_ExecuteOperatorFailed        = "OntologyQuery.ObjectType.InternalError.ExecuteOperatorFailed"
-	OntologyQuery_ObjectType_InternalError_GetAgentOperatorByIDFailed   = "OntologyQuery.ObjectType.InternalError.GetAgentOperatorByIDFailed"
+	OntologyQuery_ObjectType_InternalError_ExecuteToolFailed            = "OntologyQuery.ObjectType.InternalError.ExecuteToolFailed"
 	OntologyQuery_ObjectType_InternalError_GetMetricDataByIDFailed      = "OntologyQuery.ObjectType.InternalError.GetMetricDataByIDFailed"
 	OntologyQuery_ObjectType_InternalError_GetViewDataByIDFailed        = "OntologyQuery.ObjectType.InternalError.GetViewDataByIDFailed"
 	OntologyQuery_ObjectType_InternalError_GetObjectTypesByIDFailed     = "OntologyQuery.ObjectType.InternalError.GetObjectTypesByIDFailed"
@@ -46,8 +45,7 @@ var (
 		OntologyQuery_ObjectType_SmallModelNotFound,
 
 		// 500
-		OntologyQuery_ObjectType_InternalError_ExecuteOperatorFailed,
-		OntologyQuery_ObjectType_InternalError_GetAgentOperatorByIDFailed,
+		OntologyQuery_ObjectType_InternalError_ExecuteToolFailed,
 		OntologyQuery_ObjectType_InternalError_GetMetricDataByIDFailed,
 		OntologyQuery_ObjectType_InternalError_GetViewDataByIDFailed,
 		OntologyQuery_ObjectType_InternalError_GetObjectTypesByIDFailed,

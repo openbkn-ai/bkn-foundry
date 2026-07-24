@@ -47,10 +47,10 @@ func (dc *DebugCollector) RecordMetricAgentRequest(
 	dc.agentRequests[propertyName] = agentReq
 }
 
-// RecordOperatorAgentRequest 记录 Operator Agent 请求（直接存储 Agent 请求结构）
-func (dc *DebugCollector) RecordOperatorAgentRequest(
+// RecordToolAgentRequest stores a ToolBox-tool parameter generation request.
+func (dc *DebugCollector) RecordToolAgentRequest(
 	propertyName string,
-	agentReq *interfaces.OperatorDynamicParamsGeneratorReq,
+	agentReq *interfaces.ToolDynamicParamsGeneratorReq,
 ) {
 	// 直接存储 Agent 请求结构
 	dc.agentRequests[propertyName] = agentReq

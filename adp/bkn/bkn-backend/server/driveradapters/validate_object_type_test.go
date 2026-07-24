@@ -466,6 +466,135 @@ func Test_ValidateObjectType(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 
+		Convey("Success with valid tool logic property\n", func() {
+			ot := &interfaces.ObjectType{
+				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+					OTID:   "ot1",
+					OTName: "object1",
+					DataProperties: []*interfaces.DataProperty{
+						{
+							Name:        "prop1",
+							Type:        "string",
+							DisplayName: "prop1",
+						},
+					},
+					PrimaryKeys: []string{"prop1"},
+					DisplayKey:  "prop1",
+					LogicProperties: []*interfaces.LogicProperty{
+						{
+							Name:        "logic1",
+							Type:        interfaces.LOGIC_PROPERTY_TYPE_TOOL,
+							DisplayName: "logic1",
+							DataSource: &interfaces.ResourceInfo{
+								Type:   interfaces.LOGIC_PROPERTY_TYPE_TOOL,
+								BoxID:  "box1",
+								ToolID: "tool1",
+							},
+						},
+					},
+				},
+			}
+			err := ValidateObjectType(ctx, ot, true)
+			So(err, ShouldBeNil)
+		})
+
+		Convey("Success with valid tool logic property result path\n", func() {
+			ot := &interfaces.ObjectType{
+				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+					OTID:   "ot1",
+					OTName: "object1",
+					DataProperties: []*interfaces.DataProperty{
+						{
+							Name:        "prop1",
+							Type:        "string",
+							DisplayName: "prop1",
+						},
+					},
+					PrimaryKeys: []string{"prop1"},
+					DisplayKey:  "prop1",
+					LogicProperties: []*interfaces.LogicProperty{
+						{
+							Name:        "logic1",
+							Type:        interfaces.LOGIC_PROPERTY_TYPE_TOOL,
+							DisplayName: "logic1",
+							DataSource: &interfaces.ResourceInfo{
+								Type:       interfaces.LOGIC_PROPERTY_TYPE_TOOL,
+								BoxID:      "box1",
+								ToolID:     "tool1",
+								ResultPath: "$.data.result",
+							},
+						},
+					},
+				},
+			}
+			err := ValidateObjectType(ctx, ot, true)
+			So(err, ShouldBeNil)
+		})
+
+		Convey("Failed with invalid tool logic property result path\n", func() {
+			ot := &interfaces.ObjectType{
+				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+					OTID:   "ot1",
+					OTName: "object1",
+					DataProperties: []*interfaces.DataProperty{
+						{
+							Name:        "prop1",
+							Type:        "string",
+							DisplayName: "prop1",
+						},
+					},
+					PrimaryKeys: []string{"prop1"},
+					DisplayKey:  "prop1",
+					LogicProperties: []*interfaces.LogicProperty{
+						{
+							Name:        "logic1",
+							Type:        interfaces.LOGIC_PROPERTY_TYPE_TOOL,
+							DisplayName: "logic1",
+							DataSource: &interfaces.ResourceInfo{
+								Type:       interfaces.LOGIC_PROPERTY_TYPE_TOOL,
+								BoxID:      "box1",
+								ToolID:     "tool1",
+								ResultPath: "$.data[",
+							},
+						},
+					},
+				},
+			}
+			err := ValidateObjectType(ctx, ot, true)
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Failed with tool logic property missing tool id\n", func() {
+			ot := &interfaces.ObjectType{
+				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+					OTID:   "ot1",
+					OTName: "object1",
+					DataProperties: []*interfaces.DataProperty{
+						{
+							Name:        "prop1",
+							Type:        "string",
+							DisplayName: "prop1",
+						},
+					},
+					PrimaryKeys: []string{"prop1"},
+					DisplayKey:  "prop1",
+					LogicProperties: []*interfaces.LogicProperty{
+						{
+							Name:        "logic1",
+							Type:        interfaces.LOGIC_PROPERTY_TYPE_TOOL,
+							DisplayName: "logic1",
+							DataSource: &interfaces.ResourceInfo{
+								Type:  interfaces.LOGIC_PROPERTY_TYPE_TOOL,
+								BoxID: "box1",
+							},
+						},
+					},
+				},
+			}
+			err := ValidateObjectType(ctx, ot, true)
+			So(err, ShouldNotBeNil)
+		})
+
 		Convey("Success with valid logic property metric type\n", func() {
 			ot := &interfaces.ObjectType{
 				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{

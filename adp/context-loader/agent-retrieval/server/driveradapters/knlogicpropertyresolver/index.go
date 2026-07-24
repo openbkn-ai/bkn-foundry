@@ -53,7 +53,7 @@ func NewKnLogicPropertyResolverHandler() KnLogicPropertyResolverHandler {
 
 // ResolveLogicProperties 解析逻辑属性
 // @Summary 解析逻辑属性
-// @Description 基于 query + 上下文生成 dynamic_params，并调用底层 ontology-query 接口批量获取逻辑属性值（metric + operator）
+// @Description 基于 query + 上下文生成 dynamic_params，并调用底层 ontology-query 接口批量获取逻辑属性值（metric + tool）
 // @Tags kn-context-loader
 // @Accept json
 // @Produce json

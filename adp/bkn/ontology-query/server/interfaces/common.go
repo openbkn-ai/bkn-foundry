@@ -34,8 +34,7 @@ const (
 	VALUE_FROM_PROPERTY = "property"
 
 	// 属性类型
-	PROPERTY_TYPE_METRIC   = "metric"
-	PROPERTY_TYPE_OPERATOR = "operator"
+	PROPERTY_TYPE_METRIC = "metric"
 
 	// 排序方向
 	DESC_DIRECTION = "desc"
@@ -85,8 +84,11 @@ const (
 )
 
 type ResourceInfo struct {
-	Type string `json:"type"`
-	ID   string `json:"id"`
+	Type       string `json:"type"`
+	ID         string `json:"id"`
+	BoxID      string `json:"box_id,omitempty"`
+	ToolID     string `json:"tool_id,omitempty"`
+	ResultPath string `json:"result_path,omitempty"`
 }
 
 type CommonInfo struct {

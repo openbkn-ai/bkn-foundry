@@ -488,13 +488,13 @@ name: 产品
 
 | Display Name | Type | Description |
 |--------------|------|-------------|
-| product_bom | operator |  |
+| product_bom | tool |  |
 
 **Source**
 
 | Source Type | Source ID | Source Name |
 |-------------|-----------|-------------|
-| operator | bom_tree_builder | bom_tree_builder |
+| tool | bom_tree_builder | bom_tree_builder |
 
 **Parameters**
 
@@ -517,10 +517,10 @@ name: 产品
 	lp := ot.LogicProperties[0]
 	assert.Equal(t, "product_bom", lp.Name)
 	assert.Equal(t, "product_bom", lp.DisplayName)
-	assert.Equal(t, "operator", lp.Type)
+	assert.Equal(t, "tool", lp.Type)
 	require.NotNil(t, lp.DataSource)
 	assert.Equal(t, "bom_tree_builder", lp.DataSource.ID)
-	assert.Equal(t, "operator", lp.DataSource.Type)
+	assert.Equal(t, "tool", lp.DataSource.Type)
 	require.Len(t, lp.Parameters, 3)
 	assert.Equal(t, "timeout", lp.Parameters[0].Name)
 	assert.Equal(t, "const", lp.Parameters[2].Source)

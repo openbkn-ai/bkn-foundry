@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/PaesslerAG/jsonpath"
 	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-comm-go/logger"
 	"github.com/openbkn-ai/bkn-comm-go/otel/otellog"
@@ -273,7 +274,7 @@ func (*objectTypeService) processLogicProperties(ctx context.Context, resps *int
 				}
 				resps.Datas[i][logicProp.Name] = mProp
 
-			case interfaces.LOGIC_PROPERTY_TYPE_OPERATOR:
+			case interfaces.LOGIC_PROPERTY_TYPE_TOOL:
 				paramsJson := "{}"
 				dynamicParamsJson := "{}"
 				for _, param := range logicProp.Parameters {
@@ -319,16 +320,15 @@ func (*objectTypeService) processLogicProperties(ctx context.Context, resps *int
 							logicProp.Name, err.Error()))
 				}
 
-				oProp := interfaces.OperatorProperty{
-					PropertyType:    logicProp.Type,
-					MappingSourceId: logicProp.DataSource.ID,
-					Parameters:      params,
-					DynamicParams:   dynamicParams,
+				toolProp := interfaces.ToolProperty{
+					PropertyType:  logicProp.Type,
+					Parameters:    params,
+					DynamicParams: dynamicParams,
 				}
-				resps.Datas[i][logicProp.Name] = oProp
+				resps.Datas[i][logicProp.Name] = toolProp
 
 			default:
-				logger.Warnf("系统支持的逻辑属性类型有[metric, operator],当前请求的逻辑属性类型为[%s]，请求将不返回逻辑属性的计算参数", logicProp.Type)
+				logger.Warnf("系统支持的逻辑属性类型有[metric, tool],当前请求的逻辑属性类型为[%s]，请求将不返回逻辑属性的计算参数", logicProp.Type)
 			}
 		}
 	}
@@ -833,8 +833,8 @@ func (ots *objectTypeService) processLogicProperty(ctx context.Context,
 	switch logicProp.Type {
 	case interfaces.PROPERTY_TYPE_METRIC:
 		return ots.handleMetricProperty(ctx, knID, branch, otID, propName, propValue, logicProp, dynamicParams)
-	case interfaces.PROPERTY_TYPE_OPERATOR:
-		return ots.handleOperatorProperty(ctx, propName, propValue, logicProp, dynamicParams)
+	case interfaces.LOGIC_PROPERTY_TYPE_TOOL:
+		return ots.handleToolProperty(ctx, propName, propValue, logicProp, dynamicParams)
 	default:
 		logger.Warnf("不支持的逻辑属性类型: %s", logicProp.Type)
 		return nil, nil
@@ -920,56 +920,51 @@ func (ots *objectTypeService) handleMetricProperty(ctx context.Context,
 		metricValue.Parameters.Filters, metricParams, start, end, isInstant, step)
 }
 
-// handleOperatorProperty 处理算子类型逻辑属性
-func (ots *objectTypeService) handleOperatorProperty(ctx context.Context,
+// handleToolProperty handles logic properties backed by ToolBox tools.
+func (ots *objectTypeService) handleToolProperty(ctx context.Context,
 	propName string,
 	propValue any,
 	logicProp *interfaces.LogicProperty,
 	dynamicParams map[string]map[string]any) (any, error) {
 
-	operatorValue := propValue.(interfaces.OperatorProperty)
-
-	// 1. 指标需要动态参数，校验必要的动态参数是否已给
-	if _, dynamicParamExist := dynamicParams[propName]; !dynamicParamExist && len(operatorValue.DynamicParams) > 0 {
+	toolValue := propValue.(interfaces.ToolProperty)
+	if _, dynamicParamExist := dynamicParams[propName]; !dynamicParamExist && len(toolValue.DynamicParams) > 0 {
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
 			oerrors.OntologyQuery_ObjectType_InvalidParameter_DynamicParams).
-			WithErrorDetails(fmt.Sprintf("当前请求的逻辑属性[%s]所需的动态参数为空，需要参数%v，请在请求中填充动态参数", propName, operatorValue.DynamicParams))
+			WithErrorDetails(fmt.Sprintf("当前请求的逻辑属性[%s]所需的动态参数为空，需要参数%v，请在请求中填充动态参数",
+				propName, toolValue.DynamicParams))
 	}
 
-	// 1. 根据属性里配置的算子id先获取算子详情
-	operatorInfo, err := ots.aoAccess.GetAgentOperatorByID(ctx, logicProp.DataSource.ID)
+	toolRequest := generateToolExecutionRequest(logicProp.Parameters, toolValue.Parameters, dynamicParams[propName])
+	request := interfaces.ToolExecutionRequest{
+		Header:  toolRequest.Header,
+		Query:   toolRequest.Query,
+		Body:    toolRequest.Body,
+		Path:    toolRequest.Path,
+		Timeout: 300,
+	}
+	toolResult, err := ots.aoAccess.ExecuteTool(ctx, logicProp.DataSource.BoxID, logicProp.DataSource.ToolID, request)
 	if err != nil {
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			oerrors.OntologyQuery_ObjectType_InternalError_GetAgentOperatorByIDFailed).
-			WithErrorDetails(fmt.Sprintf("当前请求的逻辑属性[%s]是个算子，获取算子[%s]详情失败，error: %v",
-				propName, logicProp.DataSource.ID, err))
+			oerrors.OntologyQuery_ObjectType_InternalError_ExecuteToolFailed).
+			WithErrorDetails(fmt.Sprintf("当前请求的逻辑属性[%s]的工具箱[%s]工具[%s]执行失败，error:%v",
+				propName, logicProp.DataSource.BoxID, logicProp.DataSource.ToolID, err))
 	}
 
-	// 2. 从算子详情中读取execution_mode，算子为同步的才执行，若为异步，报错提示不支持
-	if operatorInfo.OperatorInfo.ExecutionMode != interfaces.OPERATOR_EXECUTION_MODE_SYNC {
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			oerrors.OntologyQuery_ObjectType_InternalError_GetAgentOperatorByIDFailed).
-			WithErrorDetails(fmt.Sprintf("当前请求的逻辑属性[%s]是个算子，算子[%s]的执行模式只支持同步，不支持异步", propName, logicProp.DataSource.ID))
+	if logicProp.DataSource.ResultPath != "" {
+		toolResult, err = jsonpath.Get(logicProp.DataSource.ResultPath, toolResult)
+		if err != nil {
+			return nil, fmt.Errorf("extract tool result with path %q: %w", logicProp.DataSource.ResultPath, err)
+		}
 	}
 
-	// 3. 代理执行算子
-	request := generateExecRequest(logicProp.Parameters, operatorValue.Parameters, dynamicParams[propName])
-	operatorResult, err := ots.aoAccess.ExecuteOperator(ctx, logicProp.DataSource.ID, request)
-	if err != nil {
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			oerrors.OntologyQuery_ObjectType_InternalError_ExecuteOperatorFailed).
-			WithErrorDetails(fmt.Sprintf("当前请求的逻辑属性[%s]是个算子，算子[%s]执行失败，error:%v",
-				propName, logicProp.DataSource.ID, err))
-	}
-
-	// 4. 返回算子执行结果
-	return operatorResult, nil
+	return toolResult, nil
 }
 
-func generateExecRequest(configParams []interfaces.Parameter, parameters map[string]any,
-	dynamicParams map[string]any) interfaces.OperatorExecutionRequest {
+func generateToolExecutionRequest(configParams []interfaces.Parameter, parameters map[string]any,
+	dynamicParams map[string]any) interfaces.ToolExecutionRequest {
 
-	operateExecRequest := interfaces.OperatorExecutionRequest{
+	toolExecRequest := interfaces.ToolExecutionRequest{
 		Header: map[string]any{},
 		Query:  map[string]any{},
 		Body:   map[string]any{},
@@ -991,16 +986,16 @@ func generateExecRequest(configParams []interfaces.Parameter, parameters map[str
 		// 根据source分配到不同的组
 		switch strings.ToLower(param.Source) {
 		case interfaces.PARAMETER_HEADER:
-			setNestedValue(operateExecRequest.Header, param.Name, value)
+			setNestedValue(toolExecRequest.Header, param.Name, value)
 		case interfaces.PARAMETER_QUERY:
-			setNestedValue(operateExecRequest.Query, param.Name, value)
+			setNestedValue(toolExecRequest.Query, param.Name, value)
 		case interfaces.PARAMETER_BODY:
-			setNestedValue(operateExecRequest.Body, param.Name, value)
+			setNestedValue(toolExecRequest.Body, param.Name, value)
 		case interfaces.PARAMETER_PATH:
-			setNestedValue(operateExecRequest.Path, param.Name, value)
+			setNestedValue(toolExecRequest.Path, param.Name, value)
 		}
 	}
-	return operateExecRequest
+	return toolExecRequest
 }
 
 // getNestedValue 从map中获取嵌套字段的值
