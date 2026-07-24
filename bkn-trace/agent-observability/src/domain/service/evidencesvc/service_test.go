@@ -453,6 +453,37 @@ func TestGetBusinessGraphReturnsMissingBusinessRefsPartial(t *testing.T) {
 	}
 }
 
+func TestGetSnapshotPreviewByTraceIDReturnsGovernedManifest(t *testing.T) {
+	store := &fakeStore{traces: []evidencevo.NormalizedTrace{queryTrace("trace_snapshot_001", "req_snapshot_001")}}
+	service := New(store)
+
+	response, found, err := service.GetSnapshotPreviewByTraceID(context.Background(), "trace_snapshot_001", evidencevo.EvidenceQueryOptions{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !found {
+		t.Fatal("expected snapshot preview to be found")
+	}
+	if response.TraceID != "trace_snapshot_001" || response.RequestID != "req_snapshot_001" {
+		t.Fatalf("unexpected identity: %+v", response)
+	}
+	if response.SnapshotRef.Mode != "preview" || response.SnapshotRef.URI != "" {
+		t.Fatalf("preview must not expose a persisted object storage uri: %+v", response.SnapshotRef)
+	}
+	if response.Manifest.ArtifactCount != 3 || response.Manifest.ClaimCount != 1 || response.Manifest.EvidenceRefCount != 1 || response.Manifest.BusinessRefCount != 1 {
+		t.Fatalf("unexpected manifest counts: %+v", response.Manifest)
+	}
+	if response.Manifest.ComplianceStatus != "preview/non-production compliance" || response.Manifest.DLPClassification != "metadata-only" {
+		t.Fatalf("unexpected governance fields: %+v", response.Manifest)
+	}
+	if !strings.HasPrefix(response.Manifest.ArtifactHash, "sha256:") || !strings.HasPrefix(response.Manifest.ManifestHash, "sha256:") {
+		t.Fatalf("expected sha256 hashes in manifest: %+v", response.Manifest)
+	}
+	if response.VisibilitySummary.HiddenRefCount != 1 || response.VisibilitySummary.AuthorizedRefCount != 2 {
+		t.Fatalf("unexpected visibility summary: %+v", response.VisibilitySummary)
+	}
+}
+
 func TestGetEvidenceChainByTraceIDNotFound(t *testing.T) {
 	service := New(&fakeStore{})
 

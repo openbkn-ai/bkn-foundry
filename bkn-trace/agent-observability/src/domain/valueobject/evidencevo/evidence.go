@@ -120,6 +120,41 @@ type EvidenceNodeResponse struct {
 	Data          map[string]any `json:"data"`
 }
 
+type SnapshotPreviewResponse struct {
+	TraceID           string            `json:"trace_id"`
+	RequestID         string            `json:"bkn.request.id"`
+	Partial           bool              `json:"partial"`
+	PartialReasons    []string          `json:"partial_reason"`
+	VisibilitySummary VisibilitySummary `json:"visibility_summary"`
+	SnapshotRef       SnapshotRef       `json:"snapshot_ref"`
+	Manifest          SnapshotManifest  `json:"manifest"`
+}
+
+type SnapshotRef struct {
+	SnapshotID string `json:"snapshot_id"`
+	Mode       string `json:"mode"`
+	URI        string `json:"uri,omitempty"`
+}
+
+type SnapshotManifest struct {
+	SchemaVersion     string            `json:"schema_version"`
+	Producer          string            `json:"producer"`
+	TraceID           string            `json:"trace_id"`
+	RequestID         string            `json:"bkn.request.id"`
+	ArtifactCount     int               `json:"artifact_count"`
+	ClaimCount        int               `json:"claim_count"`
+	EvidenceRefCount  int               `json:"evidence_ref_count"`
+	BusinessRefCount  int               `json:"business_ref_count"`
+	VisibilitySummary VisibilitySummary `json:"visibility_summary"`
+	ComplianceStatus  string            `json:"compliance_status"`
+	DLPClassification string            `json:"dlp_classification"`
+	RetentionPolicy   string            `json:"retention_policy"`
+	LegalHold         string            `json:"legal_hold"`
+	SignatureStatus   string            `json:"signature_status"`
+	ArtifactHash      string            `json:"artifact_hash"`
+	ManifestHash      string            `json:"manifest_hash"`
+}
+
 type BusinessGraphData struct {
 	Nodes []BusinessGraphNode `json:"nodes"`
 	Edges []BusinessGraphEdge `json:"edges"`

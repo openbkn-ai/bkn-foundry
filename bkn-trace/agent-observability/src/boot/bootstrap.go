@@ -58,6 +58,7 @@ func newApp(httpServerConfig conf.HTTPServerConfig, traceHandler *httphandler.Tr
 	mux.HandleFunc(APIBasePath+"/traces/_search", traceHandler.SearchTraces)
 	mux.HandleFunc(APIBasePath+"/traces/by-conversation", traceHandler.SearchTracesByConversationID)
 	mux.HandleFunc(APIBasePath+"/traces/by-request/business-graph", evidenceHandler.GetBusinessGraphByRequestID)
+	mux.HandleFunc(APIBasePath+"/traces/by-request/snapshot-preview", evidenceHandler.GetSnapshotPreviewByRequestID)
 	mux.HandleFunc(APIBasePath+"/traces/by-request", evidenceHandler.GetEvidenceChainByRequestID)
 	mux.HandleFunc(APIBasePath+"/traces/", evidenceHandler.GetTraceSubresource)
 	mux.HandleFunc(APIBasePath+"/evidence-nodes/", evidenceHandler.GetEvidenceNode)

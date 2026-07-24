@@ -2,6 +2,8 @@ package evidencesvc
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"regexp"
 	"sort"
@@ -183,6 +185,28 @@ func (s *Service) GetEvidenceNodeByRequestID(ctx context.Context, requestID stri
 	return findEvidenceNode(result.Traces, strings.TrimSpace(nodeID))
 }
 
+func (s *Service) GetSnapshotPreviewByTraceID(ctx context.Context, traceID string, options evidencevo.EvidenceQueryOptions) (evidencevo.SnapshotPreviewResponse, bool, error) {
+	result, err := s.store.GetEvidenceByTraceID(ctx, strings.TrimSpace(traceID), normalizeQueryOptions(options))
+	if err != nil {
+		return evidencevo.SnapshotPreviewResponse{}, false, err
+	}
+	if len(result.Traces) == 0 {
+		return evidencevo.SnapshotPreviewResponse{}, false, nil
+	}
+	return buildSnapshotPreview(result.Traces, result.Truncated), true, nil
+}
+
+func (s *Service) GetSnapshotPreviewByRequestID(ctx context.Context, requestID string, options evidencevo.EvidenceQueryOptions) (evidencevo.SnapshotPreviewResponse, bool, error) {
+	result, err := s.store.GetEvidenceByRequestID(ctx, strings.TrimSpace(requestID), normalizeQueryOptions(options))
+	if err != nil {
+		return evidencevo.SnapshotPreviewResponse{}, false, err
+	}
+	if len(result.Traces) == 0 {
+		return evidencevo.SnapshotPreviewResponse{}, false, nil
+	}
+	return buildSnapshotPreview(result.Traces, result.Truncated), true, nil
+}
+
 func buildEvidenceChain(traces []evidencevo.NormalizedTrace, truncated bool) evidencevo.EvidenceChainResponse {
 	response := evidencevo.EvidenceChainResponse{
 		TraceID:   traces[0].TraceID,
@@ -243,6 +267,61 @@ func buildEvidenceChain(traces []evidencevo.NormalizedTrace, truncated bool) evi
 	response.Page.EdgeCount = len(response.Data.EvidenceRefs) + len(response.Data.BusinessRefs)
 	response.Page.Truncated = truncated
 	return response
+}
+
+func buildSnapshotPreview(traces []evidencevo.NormalizedTrace, truncated bool) evidencevo.SnapshotPreviewResponse {
+	chain := buildEvidenceChain(traces, truncated)
+	artifactSummary := map[string]any{
+		"trace_id":           chain.TraceID,
+		"bkn.request.id":     chain.RequestID,
+		"claims":             chain.Data.Claims,
+		"evidence_refs":      chain.Data.EvidenceRefs,
+		"business_refs":      chain.Data.BusinessRefs,
+		"visibility_summary": chain.VisibilitySummary,
+		"partial":            chain.Partial,
+		"partial_reason":     chain.PartialReasons,
+	}
+	artifactHash := hashValue(artifactSummary)
+	manifest := evidencevo.SnapshotManifest{
+		SchemaVersion:     "bkn-trace-snapshot-preview/v1",
+		Producer:          "bkn-trace.agent-observability",
+		TraceID:           chain.TraceID,
+		RequestID:         chain.RequestID,
+		ArtifactCount:     chain.Page.NodeCount,
+		ClaimCount:        len(chain.Data.Claims),
+		EvidenceRefCount:  len(chain.Data.EvidenceRefs),
+		BusinessRefCount:  len(chain.Data.BusinessRefs),
+		VisibilitySummary: chain.VisibilitySummary,
+		ComplianceStatus:  "preview/non-production compliance",
+		DLPClassification: "metadata-only",
+		RetentionPolicy:   "policy-managed",
+		LegalHold:         "not_requested",
+		SignatureStatus:   "unsigned-preview",
+		ArtifactHash:      artifactHash,
+	}
+	manifest.ManifestHash = hashValue(manifest)
+	return evidencevo.SnapshotPreviewResponse{
+		TraceID:           chain.TraceID,
+		RequestID:         chain.RequestID,
+		Partial:           chain.Partial,
+		PartialReasons:    chain.PartialReasons,
+		VisibilitySummary: chain.VisibilitySummary,
+		SnapshotRef: evidencevo.SnapshotRef{
+			SnapshotID: "preview:" + strings.TrimPrefix(hashValue(map[string]string{
+				"trace_id":       chain.TraceID,
+				"bkn.request.id": chain.RequestID,
+				"artifact_hash":  artifactHash,
+			}), "sha256:")[:16],
+			Mode: "preview",
+		},
+		Manifest: manifest,
+	}
+}
+
+func hashValue(value any) string {
+	body, _ := json.Marshal(value)
+	sum := sha256.Sum256(body)
+	return "sha256:" + hex.EncodeToString(sum[:])
 }
 
 func findEvidenceNode(traces []evidencevo.NormalizedTrace, nodeID string) (evidencevo.EvidenceNodeResponse, bool, error) {
