@@ -62,17 +62,21 @@ jobs:
     # 逐事件放行：
     #   - workflow_dispatch：手动，总放行。
     #   - pull_request：只同仓 PR（fork 拿不到 secret，跳过避免红叉）。
-    #   - 评论/行内回复：必须挂在 PR 上、非 bot 自己发的、且发起者为
+    #   - 评论/行内回复：必须挂在 PR 上、PR 仍 open、非 bot 自己发的、且发起者为
     #     OWNER/MEMBER/COLLABORATOR，挡掉自我循环与 fork 陌生人的 pwn-request。
+    #     state == 'open' 让合并/关闭后的评论不再触发复评——merge 已不可逆，
+    #     再跑只是白费额度、在死 PR 上贴噪声。
     if: >
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) ||
       (github.event_name == 'pull_request_review_comment' &&
+       github.event.pull_request.state == 'open' &&
        github.event.pull_request.head.repo.full_name == github.repository &&
        github.event.sender.login != 'github-actions[bot]' &&
        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)) ||
       (github.event_name == 'issue_comment' &&
        github.event.issue.pull_request &&
+       github.event.issue.state == 'open' &&
        github.event.sender.login != 'github-actions[bot]' &&
        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
     runs-on: ubuntu-latest
