@@ -128,7 +128,7 @@ GET /api/agent-observability/v1/traces/{trace_id}/trace-graph
 }
 ```
 
-当 span 指向缺失父节点时，Trace Graph 不生成悬空边，并返回 `partial=true`、`partial_reason=["orphan_span"]`。
+Trace Graph 单次最多返回 1000 个 span 节点。命中上限时服务会使用 `limit+1` 查询探测截断，响应返回 `partial=true`、`partial_reason=["trace_query_truncated"]`，并设置 `page.truncated=true`。当 span 指向缺失父节点时，Trace Graph 不生成悬空边，并返回 `partial_reason=["orphan_span"]`。当 span 时间戳缺失、非法或结束时间早于开始时间时，节点耗时会归零，整体耗时不会返回负数，并返回 `partial_reason=["invalid_span_timestamp"]`。
 
 ### Evidence 写入安全边界
 

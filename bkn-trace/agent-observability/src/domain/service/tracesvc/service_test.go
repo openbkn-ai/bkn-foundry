@@ -3,6 +3,7 @@ package tracesvc
 import (
 	"context"
 	"encoding/json"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -69,6 +70,47 @@ func TestGetTraceGraphByTraceIDMarksOrphanSpanPartial(t *testing.T) {
 	}
 	if response.Page.NodeCount != 1 || response.Page.EdgeCount != 0 {
 		t.Fatalf("orphan span must not create dangling edge: %+v", response.Page)
+	}
+}
+
+func TestGetTraceGraphByTraceIDMarksQueryTruncated(t *testing.T) {
+	port := &fakeTracePort{result: opensearchvo.SearchResult(traceGraphTruncatedSearchResult())}
+	service := New(port)
+
+	response, found, err := service.GetTraceGraphByTraceID(context.Background(), "trace_graph_truncated")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !found {
+		t.Fatal("expected trace graph to be found")
+	}
+	if !strings.Contains(string(port.query), `"size":1001`) {
+		t.Fatalf("expected limit+1 query for truncation detection, got %s", string(port.query))
+	}
+	if !response.Partial || !contains(response.PartialReasons, "trace_query_truncated") {
+		t.Fatalf("expected truncation partial reason, got %+v", response)
+	}
+	if !response.Page.Truncated || response.Page.NodeCount != 1000 {
+		t.Fatalf("expected truncated page with capped nodes, got %+v", response.Page)
+	}
+}
+
+func TestGetTraceGraphByTraceIDClampsInvalidDurations(t *testing.T) {
+	port := &fakeTracePort{result: opensearchvo.SearchResult(traceGraphInvalidTimeSearchResult())}
+	service := New(port)
+
+	response, found, err := service.GetTraceGraphByTraceID(context.Background(), "trace_graph_bad_time")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !found {
+		t.Fatal("expected trace graph to be found")
+	}
+	if response.DurationNano < 0 || response.Data.Nodes[0].DurationNano < 0 {
+		t.Fatalf("durations must not be negative: %+v", response)
+	}
+	if !response.Partial || !contains(response.PartialReasons, "invalid_span_timestamp") {
+		t.Fatalf("expected invalid timestamp partial reason, got %+v", response)
 	}
 }
 
@@ -171,6 +213,50 @@ func traceGraphOrphanSearchResult() []byte {
                       "kind": "INTERNAL",
                       "startTimeUnixNano": "10",
                       "endTimeUnixNano": "20",
+                      "status": {"code": "STATUS_CODE_OK"}
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ]
+  }
+}`)
+}
+
+func traceGraphTruncatedSearchResult() []byte {
+	spans := make([]string, 0, 1001)
+	for i := 0; i < 1001; i++ {
+		parent := ""
+		if i > 0 {
+			parent = `,"parentSpanId":"span_0"`
+		}
+		spans = append(spans, `{"traceId":"trace_graph_truncated","spanId":"span_`+strconv.Itoa(i)+`"`+parent+`,"name":"step","kind":"INTERNAL","startTimeUnixNano":"`+strconv.Itoa(i)+`","endTimeUnixNano":"`+strconv.Itoa(i+1)+`","status":{"code":"STATUS_CODE_OK"}}`)
+	}
+	return []byte(`{"hits":{"hits":[{"_source":{"resourceSpans":[{"scopeSpans":[{"spans":[` + strings.Join(spans, ",") + `]}]}]}}]}}`)
+}
+
+func traceGraphInvalidTimeSearchResult() []byte {
+	return []byte(`{
+  "hits": {
+    "hits": [
+      {
+        "_source": {
+          "resourceSpans": [
+            {
+              "scopeSpans": [
+                {
+                  "spans": [
+                    {
+                      "traceId": "trace_graph_bad_time",
+                      "spanId": "bad_time",
+                      "name": "bad.time",
+                      "kind": "INTERNAL",
+                      "startTimeUnixNano": "20",
+                      "endTimeUnixNano": "bad",
                       "status": {"code": "STATUS_CODE_OK"}
                     }
                   ]

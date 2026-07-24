@@ -16,6 +16,8 @@ type TraceQueryService struct {
 	traceQueryPort tracequeryport.TraceQueryPort
 }
 
+const DefaultTraceGraphSpanLimit = 1000
+
 func New(traceQueryPort tracequeryport.TraceQueryPort) *TraceQueryService {
 	return &TraceQueryService{traceQueryPort: traceQueryPort}
 }
@@ -27,7 +29,7 @@ func (s *TraceQueryService) SearchTraces(ctx context.Context, query json.RawMess
 func (s *TraceQueryService) GetTraceGraphByTraceID(ctx context.Context, traceID string) (oteltracevo.TraceGraphResponse, bool, error) {
 	traceID = strings.TrimSpace(traceID)
 	query, err := json.Marshal(map[string]any{
-		"size": 1000,
+		"size": DefaultTraceGraphSpanLimit + 1,
 		"query": map[string]any{
 			"term": map[string]string{
 				"traceId.keyword": traceID,
@@ -51,7 +53,12 @@ func (s *TraceQueryService) GetTraceGraphByTraceID(ctx context.Context, traceID 
 	if len(spans) == 0 {
 		return oteltracevo.TraceGraphResponse{}, false, nil
 	}
-	return buildTraceGraph(traceID, spans), true, nil
+	truncated := false
+	if len(spans) > DefaultTraceGraphSpanLimit {
+		truncated = true
+		spans = spans[:DefaultTraceGraphSpanLimit]
+	}
+	return buildTraceGraph(traceID, spans, truncated), true, nil
 }
 
 type searchResponse struct {
@@ -102,10 +109,10 @@ func spansFromTraceData(traceData oteltracevo.TraceData, traceID string) []spanR
 	return records
 }
 
-func buildTraceGraph(traceID string, records []spanRecord) oteltracevo.TraceGraphResponse {
+func buildTraceGraph(traceID string, records []spanRecord, truncated bool) oteltracevo.TraceGraphResponse {
 	sort.SliceStable(records, func(i, j int) bool {
-		left := parseNano(records[i].Span.StartTimeUnixNano)
-		right := parseNano(records[j].Span.StartTimeUnixNano)
+		left, _ := parseNano(records[i].Span.StartTimeUnixNano)
+		right, _ := parseNano(records[j].Span.StartTimeUnixNano)
 		if left == right {
 			return records[i].Span.SpanID < records[j].Span.SpanID
 		}
@@ -121,8 +128,15 @@ func buildTraceGraph(traceID string, records []spanRecord) oteltracevo.TraceGrap
 	var minStart, maxEnd int64
 	for i, record := range records {
 		span := record.Span
-		start := parseNano(span.StartTimeUnixNano)
-		end := parseNano(span.EndTimeUnixNano)
+		start, startOK := parseNano(span.StartTimeUnixNano)
+		end, endOK := parseNano(span.EndTimeUnixNano)
+		duration := int64(0)
+		if !startOK || !endOK || end < start {
+			partialReasons["invalid_span_timestamp"] = struct{}{}
+			end = start
+		} else {
+			duration = end - start
+		}
 		if i == 0 || start < minStart {
 			minStart = start
 		}
@@ -144,7 +158,7 @@ func buildTraceGraph(traceID string, records []spanRecord) oteltracevo.TraceGrap
 			ErrorMessage: span.Status.Message,
 			StartNano:    start,
 			EndNano:      end,
-			DurationNano: end - start,
+			DurationNano: duration,
 		})
 	}
 	for _, node := range response.Data.Nodes {
@@ -163,8 +177,15 @@ func buildTraceGraph(traceID string, records []spanRecord) oteltracevo.TraceGrap
 		})
 	}
 	response.DurationNano = maxEnd - minStart
+	if response.DurationNano < 0 {
+		response.DurationNano = 0
+	}
 	response.Page.NodeCount = len(response.Data.Nodes)
 	response.Page.EdgeCount = len(response.Data.Edges)
+	response.Page.Truncated = truncated
+	if truncated {
+		partialReasons["trace_query_truncated"] = struct{}{}
+	}
 	response.PartialReasons = sortedKeys(partialReasons)
 	response.Partial = len(response.PartialReasons) > 0
 	return response
@@ -188,9 +209,9 @@ func spanStatus(status oteltracevo.Status) string {
 	}
 }
 
-func parseNano(value string) int64 {
-	parsed, _ := strconv.ParseInt(value, 10, 64)
-	return parsed
+func parseNano(value string) (int64, bool) {
+	parsed, err := strconv.ParseInt(value, 10, 64)
+	return parsed, err == nil
 }
 
 func sortedKeys(values map[string]struct{}) []string {
