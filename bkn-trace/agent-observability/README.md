@@ -10,6 +10,7 @@
 - Request 维度 Evidence Chain 查询接口：`GET /api/agent-observability/v1/traces/by-request?request_id=...`
 - Business Graph 查询接口：`GET /api/agent-observability/v1/traces/{trace_id}/business-graph`
 - Request 维度 Business Graph 查询接口：`GET /api/agent-observability/v1/traces/by-request/business-graph?request_id=...`
+- Evidence Node 查询接口：`GET /api/agent-observability/v1/evidence-nodes/{node_id}?trace_id=...`
 - OpenSearch 查询客户端
 - 阶段二 Evidence ingestion 校验、归一化和可替换存储接口，支持内存 store 与 OpenSearch evidence index store
 - Swagger 文档生成
@@ -31,7 +32,7 @@ make test
 GOCACHE=/tmp/openbkn-go-build-cache GOMODCACHE=/tmp/openbkn-go-mod-cache go test ./...
 ```
 
-阶段二 evidence ingestion 接口接受 `bkn.trace.schema.version=2.0.0` 的事件批次，包含 `trace` 与 `events`。当前版本先完成 contract 校验、敏感 payload 拒绝、归一化计数、最小 Evidence Chain 查询和 Business Graph 查询；默认使用内存 repository，生产或共享测试环境可切换到 OpenSearch evidence index store。
+阶段二 evidence ingestion 接口接受 `bkn.trace.schema.version=2.0.0` 的事件批次，包含 `trace` 与 `events`。当前版本先完成 contract 校验、敏感 payload 拒绝、归一化计数、最小 Evidence Chain 查询、Business Graph 查询和 Evidence Node 查询；默认使用内存 repository，生产或共享测试环境可切换到 OpenSearch evidence index store。
 
 ### Evidence Store
 
@@ -178,7 +179,24 @@ Business Graph 查询返回从 `business.refs.resolved` 派生的业务语义图
 }
 ```
 
-Business Graph 当前只消费已进入 BKN Trace 的 `business_refs`，并复用 `visibility` 做响应过滤。真实 BKN / Vega / Metric / Action resolver、按账号/租户的授权裁决、节点详情展开和持久化索引属于后续阶段。
+Business Graph 当前只消费已进入 BKN Trace 的 `business_refs`，并复用 `visibility` 做响应过滤。真实 BKN / Vega / Metric / Action resolver、按账号/租户的授权裁决和 resolver-backed 节点详情补全属于后续阶段。
+
+Evidence Node 查询用于打开单个可见节点详情：
+
+```http
+GET /api/agent-observability/v1/evidence-nodes/claim%3Aclaim_handler?trace_id=9c0d...
+GET /api/agent-observability/v1/evidence-nodes/business_ref%3Aobject%3Acustomer?request_id=req_handler_002
+```
+
+首版 node id 格式：
+
+```text
+claim:{claim_id}
+evidence_ref:{ref_id}
+business_ref:{ref_id}
+```
+
+查询必须提供且只能提供一个 scope：`trace_id` 或 `request_id`。当前阶段只返回 `visibility=visible` 的节点；`hidden`、`redacted`、`omitted`、`unresolved` 节点不会通过详情接口展开。真实 BKN / Vega / Metric / Action resolver、按账号/租户的授权裁决和隐藏节点可审计解释属于后续阶段。
 
 生成 Swagger 文档：
 

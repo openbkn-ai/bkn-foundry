@@ -109,6 +109,17 @@ type BusinessGraphResponse struct {
 	Data              BusinessGraphData `json:"data"`
 }
 
+type EvidenceNodeResponse struct {
+	TraceID       string         `json:"trace_id"`
+	RequestID     string         `json:"bkn.request.id"`
+	NodeID        string         `json:"node_id"`
+	NodeType      string         `json:"node_type"`
+	ClaimID       string         `json:"claim_id,omitempty"`
+	Visibility    string         `json:"visibility"`
+	VersionStatus string         `json:"version_status,omitempty"`
+	Data          map[string]any `json:"data"`
+}
+
 type BusinessGraphData struct {
 	Nodes []BusinessGraphNode `json:"nodes"`
 	Edges []BusinessGraphEdge `json:"edges"`

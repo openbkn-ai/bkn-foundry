@@ -4,6 +4,7 @@ import (
 	"crypto/subtle"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -328,6 +329,82 @@ func (h *EvidenceHandler) GetBusinessGraphByRequestID(w http.ResponseWriter, r *
 	writeJSON(w, http.StatusOK, response)
 }
 
+// GetEvidenceNode godoc
+// @Summary Get evidence node details
+// @Description Returns one visible claim, evidence ref, or business ref node scoped by trace_id or request_id.
+// @Tags evidence
+// @Produce json
+// @Param node_id path string true "Evidence node ID, for example claim:claim_001"
+// @Param trace_id query string false "Trace ID scope"
+// @Param request_id query string false "BKN request ID scope"
+// @Param limit query int false "Maximum evidence trace batches to read, 1..1000"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} rdto.ErrorResponse
+// @Failure 404 {object} rdto.ErrorResponse
+// @Failure 405 {object} rdto.ErrorResponse
+// @Failure 500 {object} rdto.ErrorResponse
+// @Router /api/agent-observability/v1/evidence-nodes/{node_id} [get]
+func (h *EvidenceHandler) GetEvidenceNode(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, rdto.ErrorResponse{
+			Code:    "METHOD_NOT_ALLOWED",
+			Message: "only GET is supported",
+		})
+		return
+	}
+
+	nodeID := evidenceNodeIDFromPath(r.URL.Path)
+	if nodeID == "" {
+		writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{
+			Code:    "INVALID_ARGUMENT",
+			Message: "node_id is required",
+		})
+		return
+	}
+
+	options, ok := evidenceQueryOptionsFromRequest(w, r)
+	if !ok {
+		return
+	}
+
+	traceID := strings.TrimSpace(r.URL.Query().Get("trace_id"))
+	requestID := strings.TrimSpace(r.URL.Query().Get("request_id"))
+	if (traceID == "" && requestID == "") || (traceID != "" && requestID != "") {
+		writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{
+			Code:    "INVALID_ARGUMENT",
+			Message: "exactly one of trace_id or request_id is required",
+		})
+		return
+	}
+
+	var (
+		response evidencevo.EvidenceNodeResponse
+		found    bool
+		err      error
+	)
+	if traceID != "" {
+		response, found, err = h.evidenceService.GetEvidenceNodeByTraceID(r.Context(), traceID, nodeID, options)
+	} else {
+		response, found, err = h.evidenceService.GetEvidenceNodeByRequestID(r.Context(), requestID, nodeID, options)
+	}
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, rdto.ErrorResponse{
+			Code:    "QUERY_FAILED",
+			Message: "failed to query evidence node",
+		})
+		return
+	}
+	if !found {
+		writeJSON(w, http.StatusNotFound, rdto.ErrorResponse{
+			Code:    "NOT_FOUND",
+			Message: "evidence node not found",
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, response)
+}
+
 func traceIDFromEvidenceChainPath(path string) string {
 	const prefix = "/api/agent-observability/v1/traces/"
 	const suffix = "/evidence-chain"
@@ -340,6 +417,18 @@ func traceIDFromEvidenceChainPath(path string) string {
 		return ""
 	}
 	return strings.TrimSpace(traceID)
+}
+
+func evidenceNodeIDFromPath(path string) string {
+	const prefix = "/api/agent-observability/v1/evidence-nodes/"
+	if !strings.HasPrefix(path, prefix) {
+		return ""
+	}
+	nodeID, err := url.PathUnescape(strings.TrimPrefix(path, prefix))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(nodeID)
 }
 
 func evidenceQueryOptionsFromRequest(w http.ResponseWriter, r *http.Request) (evidencevo.EvidenceQueryOptions, bool) {

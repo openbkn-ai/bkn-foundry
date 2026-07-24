@@ -465,6 +465,38 @@ func TestGetEvidenceChainByTraceIDNotFound(t *testing.T) {
 	}
 }
 
+func TestGetEvidenceNodeByTraceIDReturnsVisibleClaim(t *testing.T) {
+	store := &fakeStore{traces: []evidencevo.NormalizedTrace{queryTrace("trace_node_001", "req_node_001")}}
+	service := New(store)
+
+	response, found, err := service.GetEvidenceNodeByTraceID(context.Background(), "trace_node_001", "claim:claim_visible", evidencevo.EvidenceQueryOptions{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !found {
+		t.Fatal("expected evidence node to be found")
+	}
+	if response.NodeID != "claim:claim_visible" || response.NodeType != "claim" || response.TraceID != "trace_node_001" {
+		t.Fatalf("unexpected node response: %+v", response)
+	}
+	if response.Data["claim_id"] != "claim_visible" || response.Visibility != "visible" {
+		t.Fatalf("unexpected node data: %+v", response)
+	}
+}
+
+func TestGetEvidenceNodeByRequestIDDoesNotReturnHiddenRef(t *testing.T) {
+	store := &fakeStore{traces: []evidencevo.NormalizedTrace{queryTrace("trace_node_002", "req_node_002")}}
+	service := New(store)
+
+	_, found, err := service.GetEvidenceNodeByRequestID(context.Background(), "req_node_002", "evidence_ref:row:hidden", evidencevo.EvidenceQueryOptions{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if found {
+		t.Fatal("hidden evidence ref must not be returned as node detail")
+	}
+}
+
 func hasValidationCode(validationErrors evidencevo.ValidationErrors, code string) bool {
 	for _, validationError := range validationErrors {
 		if validationError.Code == code {
