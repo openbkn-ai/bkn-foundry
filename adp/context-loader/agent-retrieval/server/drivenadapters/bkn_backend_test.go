@@ -137,12 +137,35 @@ func TestGetObjectTypeDetail_Success(t *testing.T) {
 
 		// Mock HTTP 成功响应
 		mockHTTPClient.EXPECT().GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(200, []byte(`{"entries": [{"id": "ot-001", "name": "测试对象类"}]}`), nil)
+			Return(200, []byte(`{
+				"entries": [{
+					"id": "ot-001",
+					"name": "测试对象类",
+					"logic_properties": [{
+						"name": "tool_property",
+						"type": "tool",
+						"data_source": {
+							"type": "tool",
+							"box_id": "box-001",
+							"tool_id": "tool-001",
+							"result_path": "$.data.result"
+						}
+					}]
+				}]
+			}`), nil)
 
 		resp, err := client.GetObjectTypeDetail(ctx, "kn-001", []string{"ot-001"}, true)
 		convey.So(err, convey.ShouldBeNil)
 		convey.So(resp, convey.ShouldNotBeNil)
 		convey.So(len(resp), convey.ShouldEqual, 1)
+		convey.So(resp[0].LogicProperties, convey.ShouldHaveLength, 1)
+		convey.So(resp[0].LogicProperties[0].Type, convey.ShouldEqual, interfaces.LogicPropertyTypeTool)
+		convey.So(resp[0].LogicProperties[0].DataSource, convey.ShouldResemble, map[string]any{
+			"type":        "tool",
+			"box_id":      "box-001",
+			"tool_id":     "tool-001",
+			"result_path": "$.data.result",
+		})
 	})
 }
 
@@ -546,28 +569,6 @@ func TestBknBackendAccess_NotFoundWithBodyUsesBknError(t *testing.T) {
 			},
 			call: func(ctx context.Context, client *bknBackendAccess) error {
 				_, err := client.GetActionTypeDetail(ctx, "kn-001", []string{"at-001"}, true)
-				return err
-			},
-		},
-		{
-			name: "CreateFullBuildOntologyJob",
-			expectHTTP: func(mockHTTPClient *mocks.MockHTTPClient, respBody []byte) {
-				mockHTTPClient.EXPECT().PostNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-					Return(http.StatusNotFound, respBody, nil)
-			},
-			call: func(ctx context.Context, client *bknBackendAccess) error {
-				_, err := client.CreateFullBuildOntologyJob(ctx, "kn-001", &interfaces.CreateFullBuildOntologyJobReq{Name: "full-build"})
-				return err
-			},
-		},
-		{
-			name: "ListOntologyJobs",
-			expectHTTP: func(mockHTTPClient *mocks.MockHTTPClient, respBody []byte) {
-				mockHTTPClient.EXPECT().GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-					Return(http.StatusNotFound, respBody, nil)
-			},
-			call: func(ctx context.Context, client *bknBackendAccess) error {
-				_, err := client.ListOntologyJobs(ctx, "kn-001", &interfaces.ListOntologyJobsReq{Limit: 10})
 				return err
 			},
 		},

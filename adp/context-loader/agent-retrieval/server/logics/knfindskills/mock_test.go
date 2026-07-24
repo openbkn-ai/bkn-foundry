@@ -83,14 +83,6 @@ func (m *testBknBackend) GetActionTypeDetail(ctx context.Context, knID string, a
 	return nil, nil
 }
 
-func (m *testBknBackend) CreateFullBuildOntologyJob(ctx context.Context, knID string, req *interfaces.CreateFullBuildOntologyJobReq) (*interfaces.CreateJobResp, error) {
-	return nil, nil
-}
-
-func (m *testBknBackend) ListOntologyJobs(ctx context.Context, knID string, req *interfaces.ListOntologyJobsReq) (*interfaces.ListOntologyJobsResp, error) {
-	return nil, nil
-}
-
 // testOntologyQuery is a configurable mock for DrivenOntologyQuery
 type testOntologyQuery struct {
 	queryObjectInstancesFunc  func(ctx context.Context, req *interfaces.QueryObjectInstancesReq) (*interfaces.QueryObjectInstancesResp, error)

@@ -15,7 +15,6 @@ import (
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/driveradapters/knactionrecall"
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/driveradapters/knfindskills"
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/driveradapters/knlogicpropertyresolver"
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/driveradapters/knontologyjob"
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/driveradapters/knqueryobjectinstance"
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/driveradapters/knquerysubgraph"
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/driveradapters/knquerytools"
@@ -33,7 +32,6 @@ type restPrivateHandler struct {
 	KnQuerySubgraphHandler         knquerysubgraph.KnQuerySubgraphHandler
 	KnSearchHandler                knsearch.KnSearchHandler
 	MCPProxyHandler                mcpproxy.MCPProxyHandler
-	KnOntologyJobHandler           knontologyjob.KnOntologyJobHandler
 	KnFindSkillsHandler            knfindskills.KnFindSkillsHandler
 	KnQueryToolsHandler            knquerytools.KnQueryToolsHandler
 	Logger                         interfaces.Logger
@@ -49,7 +47,6 @@ func NewRestPrivateHandler(logger interfaces.Logger) interfaces.HTTPRouterInterf
 		KnQuerySubgraphHandler:         knquerysubgraph.NewKnQuerySubgraphHandler(),
 		KnSearchHandler:                knsearch.NewKnSearchHandler(),
 		MCPProxyHandler:                mcpproxy.NewMCPProxyHandler(),
-		KnOntologyJobHandler:           knontologyjob.NewKnOntologyJobHandler(),
 		KnFindSkillsHandler:            knfindskills.NewKnFindSkillsHandler(),
 		KnQueryToolsHandler:            knquerytools.NewKnQueryToolsHandler(),
 		Logger:                         logger,
@@ -73,8 +70,6 @@ func (r *restPrivateHandler) RegisterRouter(engine *gin.RouterGroup) {
 	engine.POST("/kn/search_schema", r.KnSearchHandler.SearchSchema)
 	engine.POST("/kn/kn_search", r.KnSearchHandler.KnSearch)
 	engine.POST("/kn/find_skills", r.KnFindSkillsHandler.FindSkills)
-	engine.POST("/kn/full_build_ontology", r.KnOntologyJobHandler.FullBuildOntology)
-	engine.GET("/kn/full_ontology_building_status", r.KnOntologyJobHandler.GetFullOntologyBuildingStatus)
 
 	// 同时作为 MCP 工具 + operator-integration toolbox(OpenAPI HTTP)入口
 	engine.POST("/kn/run_sql", r.KnQueryToolsHandler.RunSQL)

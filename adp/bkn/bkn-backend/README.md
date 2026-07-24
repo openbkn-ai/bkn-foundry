@@ -35,9 +35,6 @@
 ### 6. 数据源集成 (Data Source Integration)
 - **多源集成**: 基于VEGA实现多种数据源的集成
 
-### 6. 任务调度 (Job Scheduling)
-- **后台任务**: 异步任务处理
-
 ## 技术架构
 
 ### 技术栈
@@ -110,13 +107,6 @@ server/
 - **删除概念组**: `DELETE /api/bkn-backend/v1/knowledge-networks/{kn_id}/concept-groups/{id}`
 - **添加概念组成员**: `POST /api/bkn-backend/v1/knowledge-networks/{kn_id}/concept-groups/{id}/members`
 - **删除概念组成员**: `DELETE /api/bkn-backend/v1/knowledge-networks/{kn_id}/concept-groups/{id}/members/{member_id}`
-
-### 任务管理API
-- **获取任务列表**: `GET /api/bkn-backend/v1/jobs`
-- **创建任务**: `POST /api/bkn-backend/v1/jobs`
-- **获取任务详情**: `GET /api/bkn-backend/v1/jobs/{id}`
-- **删除任务**: `DELETE /api/bkn-backend/v1/jobs/{id}`
-- **获取子任务列表**: `GET /api/bkn-backend/v1/jobs/{id}/tasks`
 
 ### 内部接口
 - 相同路径，前缀改为 `/api/ontology-query/in/v1/`

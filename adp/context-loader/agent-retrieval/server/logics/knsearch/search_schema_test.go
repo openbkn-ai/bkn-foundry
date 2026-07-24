@@ -65,14 +65,6 @@ func (s *stubSearchSchemaBknBackend) SearchMetricTypes(ctx context.Context, req 
 	return &interfaces.MetricTypeConcepts{}, nil
 }
 
-func (s *stubSearchSchemaBknBackend) CreateFullBuildOntologyJob(_ context.Context, _ string, _ *interfaces.CreateFullBuildOntologyJobReq) (*interfaces.CreateJobResp, error) {
-	return nil, nil
-}
-
-func (s *stubSearchSchemaBknBackend) ListOntologyJobs(_ context.Context, _ string, _ *interfaces.ListOntologyJobsReq) (*interfaces.ListOntologyJobsResp, error) {
-	return nil, nil
-}
-
 func withStubSearchSchemaBknBackend(stub interfaces.BknBackendAccess, fn func()) {
 	old := newBknBackendAccess
 	newBknBackendAccess = func() interfaces.BknBackendAccess {

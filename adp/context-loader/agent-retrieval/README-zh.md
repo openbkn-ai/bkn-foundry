@@ -33,7 +33,6 @@ server/
 ├── driveradapters/     # HTTP/MCP 适配层
 │   ├── knactionrecall/
 │   ├── knlogicpropertyresolver/
-│   ├── knontologyjob/
 │   ├── knqueryobjectinstance/
 │   ├── knquerysubgraph/
 │   ├── knretrieval/

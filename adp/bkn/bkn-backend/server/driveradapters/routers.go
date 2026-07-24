@@ -27,7 +27,6 @@ import (
 	"bkn-backend/logics/auth"
 	"bkn-backend/logics/bkn"
 	"bkn-backend/logics/concept_group"
-	"bkn-backend/logics/job"
 	"bkn-backend/logics/knowledge_network"
 	metriclogics "bkn-backend/logics/metric"
 	"bkn-backend/logics/object_type"
@@ -46,7 +45,6 @@ type restHandler struct {
 	ass        interfaces.ActionScheduleService
 	ats        interfaces.ActionTypeService
 	cgs        interfaces.ConceptGroupService
-	js         interfaces.JobService
 	kns        interfaces.KNService
 	ots        interfaces.ObjectTypeService
 	rts        interfaces.RelationTypeService
@@ -62,7 +60,6 @@ func NewRestHandler(appSetting *common.AppSetting) RestHandler {
 		ass:        action_schedule.NewActionScheduleService(appSetting),
 		ats:        action_type.NewActionTypeService(appSetting),
 		cgs:        concept_group.NewConceptGroupService(appSetting),
-		js:         job.NewJobService(appSetting),
 		kns:        knowledge_network.NewKNService(appSetting),
 		ots:        object_type.NewObjectTypeService(appSetting),
 		rts:        relation_type.NewRelationTypeService(appSetting),
@@ -145,12 +142,6 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 		apiV1.PUT("/knowledge-networks/:kn_id/risk-types/:rt_id", r.verifyJsonContentType(), r.UpdateRiskTypeByEx)
 		apiV1.GET("/knowledge-networks/:kn_id/risk-types", r.ListRiskTypesByEx)
 		apiV1.GET("/knowledge-networks/:kn_id/risk-types/:rt_ids", r.GetRiskTypesByEx)
-
-		// 任务管理
-		apiV1.POST("/knowledge-networks/:kn_id/jobs", r.verifyJsonContentType(), r.CreateJobByEx)
-		apiV1.DELETE("/knowledge-networks/:kn_id/jobs/:job_ids", r.DeleteJobsByEx)
-		apiV1.GET("/knowledge-networks/:kn_id/jobs", r.ListJobsByEx)
-		apiV1.GET("/knowledge-networks/:kn_id/jobs/:job_id/tasks", r.ListTasksByEx)
 
 		// 行动计划管理
 		apiV1.POST("/knowledge-networks/:kn_id/action-schedules", r.verifyJsonContentType(), r.CreateActionScheduleByEx)
@@ -236,11 +227,6 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 		apiInV1.GET("/knowledge-networks/:kn_id/action-schedules", r.ListActionSchedulesByIn)
 		apiInV1.GET("/knowledge-networks/:kn_id/action-schedules/:schedule_id", r.GetActionScheduleByIn)
 
-		// 任务管理
-		apiInV1.POST("/knowledge-networks/:kn_id/jobs", r.verifyJsonContentType(), r.CreateJobByIn)
-		apiInV1.DELETE("/knowledge-networks/:kn_id/jobs/:job_ids", r.DeleteJobsByIn)
-		apiInV1.GET("/knowledge-networks/:kn_id/jobs", r.ListJobsByIn)
-		apiInV1.GET("/knowledge-networks/:kn_id/jobs/:job_id/tasks", r.ListTasksByIn)
 	}
 
 	logger.Info("RestHandler RegisterPublic")

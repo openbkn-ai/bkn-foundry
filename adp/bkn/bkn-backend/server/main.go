@@ -34,7 +34,6 @@ import (
 	"bkn-backend/drivenadapters/concept_group"
 	"bkn-backend/drivenadapters/data_model"
 	"bkn-backend/drivenadapters/data_view"
-	"bkn-backend/drivenadapters/job"
 	"bkn-backend/drivenadapters/knowledge_network"
 	"bkn-backend/drivenadapters/metric"
 	"bkn-backend/drivenadapters/model_factory"
@@ -46,7 +45,6 @@ import (
 	"bkn-backend/drivenadapters/user_mgmt"
 	"bkn-backend/drivenadapters/vega_backend"
 	"bkn-backend/driveradapters"
-	"bkn-backend/interfaces"
 	"bkn-backend/logics"
 	"bkn-backend/worker"
 )
@@ -56,7 +54,6 @@ type mgrService struct {
 	otelProviders  *otel.Providers
 	restHandler    driveradapters.RestHandler
 	conceptSyncer  *worker.ConceptSyncer
-	jobExecutor    interfaces.JobExecutor
 	scheduleWorker *worker.ScheduleWorker
 }
 
@@ -75,7 +72,6 @@ func (server *mgrService) start() {
 	logger.Info("Server Register API Success")
 
 	go server.conceptSyncer.Start()
-	go server.jobExecutor.Start()
 	go server.scheduleWorker.Start()
 
 	// 监听中断信号（SIGINT、SIGTERM）
@@ -167,7 +163,6 @@ func main() {
 	logics.SetConceptGroupAccess(concept_group.NewConceptGroupAccess(appSetting))
 	logics.SetDataModelAccess(data_model.NewDataModelAccess(appSetting))
 	logics.SetDataViewAccess(data_view.NewDataViewAccess(appSetting))
-	logics.SetJobAccess(job.NewJobAccess(appSetting))
 	logics.SetKNAccess(knowledge_network.NewKNAccess(appSetting))
 	logics.SetMetricAccess(metric.NewMetricAccess(appSetting))
 	logics.SetModelFactoryAccess(model_factory.NewModelFactoryAccess(appSetting))
@@ -183,7 +178,6 @@ func main() {
 		otelProviders:  otelProviders,
 		restHandler:    driveradapters.NewRestHandler(appSetting),
 		conceptSyncer:  worker.NewConceptSyncer(appSetting),
-		jobExecutor:    worker.NewJobExecutor(appSetting),
 		scheduleWorker: worker.NewScheduleWorker(appSetting),
 	}
 	server.start()
