@@ -80,7 +80,7 @@ func (m *cursorSessionManager) create(accountID, catalogID string, resourceIDs [
 	m.sessions[session.ID] = session
 	activeSessionsLen := len(m.sessions)
 	m.mu.Unlock()
-	logger.Infof("Cursor session created: catalog_id=%s, query_format=%s, active_sessions_len=%d", session.CatalogID, session.QueryFormat, activeSessionsLen)
+	logger.Debugf("Cursor session created: catalog_id=%s, query_format=%s, active_sessions_len=%d", session.CatalogID, session.QueryFormat, activeSessionsLen)
 	return session, nil
 }
 
@@ -113,7 +113,7 @@ func (m *cursorSessionManager) createResourceData(accountID string, resource *in
 	m.sessions[session.ID] = session
 	activeSessionsLen := len(m.sessions)
 	m.mu.Unlock()
-	logger.Infof("Cursor session created: catalog_id=%s, query_format=resource_data, active_sessions_len=%d", session.CatalogID, activeSessionsLen)
+	logger.Debugf("Cursor session created: catalog_id=%s, query_format=resource_data, active_sessions_len=%d", session.CatalogID, activeSessionsLen)
 	return session, nil
 }
 
@@ -152,7 +152,7 @@ func (m *cursorSessionManager) acquire(cursor string) (*interfaces.CursorSession
 		session.Unlock()
 		activeSessions := len(m.sessions)
 		m.mu.Unlock()
-		logger.Infof("Cursor session expired: catalog_id=%s, active_sessions=%d", session.CatalogID, activeSessions)
+		logger.Debugf("Cursor session expired: catalog_id=%s, active_sessions=%d", session.CatalogID, activeSessions)
 		return nil, false
 	}
 	m.mu.Unlock()
@@ -175,7 +175,7 @@ func (m *cursorSessionManager) closeSession(cursor string) {
 	activeSessions := len(m.sessions)
 	m.mu.Unlock()
 	if ok {
-		logger.Infof("Cursor session closed at final page: catalog_id=%s, active_sessions=%d", session.CatalogID, activeSessions)
+		logger.Debugf("Cursor session closed at final page: catalog_id=%s, active_sessions=%d", session.CatalogID, activeSessions)
 	}
 }
 
@@ -205,7 +205,7 @@ func (m *cursorSessionManager) removeExpiredLocked(nowSec int64) {
 		session.Unlock()
 		if expired {
 			m.removeLocked(id)
-			logger.Infof("Cursor session expired: catalog_id=%s, active_sessions=%d", session.CatalogID, len(m.sessions))
+			logger.Debugf("Cursor session expired: catalog_id=%s, active_sessions=%d", session.CatalogID, len(m.sessions))
 		}
 	}
 }

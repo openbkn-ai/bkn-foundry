@@ -59,11 +59,11 @@ migrations/
 
 ### 5. 文件头许可声明
 
-沿用现有 SQL 文件的许可头：
+`migrations/` 下的所有 SQL 文件（包括 `init.sql` 与 `NN-*.sql`）必须以以下
+Apache 2.0 许可证头开头：
 
 ```sql
 -- Copyright 2026 openbkn.ai
--- Copyright The kweaver.ai Authors.
 --
 -- Licensed under the Apache License, Version 2.0.
 -- See the LICENSE file in the project root for details.

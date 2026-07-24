@@ -1,3 +1,8 @@
+-- Copyright 2026 openbkn.ai
+--
+-- Licensed under the Apache License, Version 2.0.
+-- See the LICENSE file in the project root for details.
+
 -- ================================================================
 -- Sandbox Control Plane Database Schema for MariaDB
 -- Version: 0.3.2
