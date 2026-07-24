@@ -175,6 +175,43 @@ func TestDiscoverScheduleServiceGetListAndSimpleDelegates(t *testing.T) {
 	})
 }
 
+func TestDiscoverScheduleServicePopulatesCatalogName(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+	dsa := vmock.NewMockDiscoverScheduleAccess(ctrl)
+	cs := vmock.NewMockCatalogService(ctrl)
+	ums := vmock.NewMockUserMgmtService(ctrl)
+	service := &discoverScheduleService{dsa: dsa, cs: cs, ums: ums}
+
+	t.Run("list batches current page catalog ids", func(t *testing.T) {
+		schedules := []*interfaces.DiscoverSchedule{
+			{ID: "schedule-1", CatalogID: "catalog-1"},
+			{ID: "schedule-2", CatalogID: "catalog-1"},
+		}
+		dsa.EXPECT().List(gomock.Any(), gomock.Any()).Return(schedules, int64(2), nil)
+		cs.EXPECT().InternalGetByIDs(gomock.Any(), []string{"catalog-1"}).Return([]*interfaces.Catalog{{ID: "catalog-1", Name: "目录一"}}, nil)
+		ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Len(4)).Return(nil)
+
+		got, _, err := service.List(context.Background(), interfaces.DiscoverScheduleQueryParams{})
+
+		require.NoError(t, err)
+		assert.Equal(t, "目录一", got[0].CatalogName)
+		assert.Equal(t, "目录一", got[1].CatalogName)
+	})
+
+	t.Run("get populates catalog name", func(t *testing.T) {
+		schedule := &interfaces.DiscoverSchedule{ID: "schedule-3", CatalogID: "catalog-2"}
+		dsa.EXPECT().GetByID(gomock.Any(), "schedule-3").Return(schedule, nil)
+		cs.EXPECT().InternalGetByIDs(gomock.Any(), []string{"catalog-2"}).Return([]*interfaces.Catalog{{ID: "catalog-2", Name: "目录二"}}, nil)
+		ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
+
+		got, err := service.GetByID(context.Background(), "schedule-3")
+
+		require.NoError(t, err)
+		assert.Equal(t, "目录二", got.CatalogName)
+	})
+}
+
 func TestDiscoverScheduleServiceExecuteSchedule(t *testing.T) {
 	t.Run("rejects nil discover task service", func(t *testing.T) {
 		service := &discoverScheduleService{}

@@ -24,6 +24,7 @@ import (
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
 	"vega-backend/logics"
+	"vega-backend/logics/catalog"
 	"vega-backend/logics/user_mgmt"
 )
 
@@ -34,6 +35,7 @@ var (
 
 type discoverScheduleService struct {
 	appSetting *common.AppSetting
+	cs         interfaces.CatalogService
 	dsa        interfaces.DiscoverScheduleAccess
 	dts        interfaces.DiscoverTaskService
 	ums        interfaces.UserMgmtService
@@ -48,6 +50,7 @@ func NewDiscoverScheduleService(appSetting *common.AppSetting, dts interfaces.Di
 	dsServiceOnce.Do(func() {
 		dsService = &discoverScheduleService{
 			appSetting: appSetting,
+			cs:         catalog.NewCatalogService(appSetting),
 			dsa:        logics.DSA,
 			dts:        dts,
 			ums:        user_mgmt.NewUserMgmtService(appSetting),
@@ -117,6 +120,9 @@ func (dss *discoverScheduleService) GetByID(ctx context.Context, id string) (*in
 		return nil, err
 	}
 	if schedule != nil {
+		if err := dss.populateDiscoverScheduleReferences(ctx, []*interfaces.DiscoverSchedule{schedule}); err != nil {
+			return nil, err
+		}
 		if err := dss.ums.GetAccountNames(ctx, []*interfaces.AccountInfo{&schedule.Creator, &schedule.Updater}); err != nil {
 			span.SetStatus(codes.Error, "GetAccountNames error")
 			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
@@ -135,6 +141,9 @@ func (dss *discoverScheduleService) List(ctx context.Context, params interfaces.
 	if err != nil {
 		return nil, 0, err
 	}
+	if err := dss.populateDiscoverScheduleReferences(ctx, schedules); err != nil {
+		return nil, 0, err
+	}
 
 	accountInfos := make([]*interfaces.AccountInfo, 0, len(schedules)*2)
 	for _, s := range schedules {
@@ -146,6 +155,39 @@ func (dss *discoverScheduleService) List(ctx context.Context, params interfaces.
 			verrors.VegaBackend_DiscoverSchedule_InternalError_GetAccountNamesFailed).WithErrorDetails(err.Error())
 	}
 	return schedules, total, nil
+}
+
+// populateDiscoverScheduleReferences 批量补齐当前页调度关联目录的展示名称。
+func (dss *discoverScheduleService) populateDiscoverScheduleReferences(ctx context.Context, schedules []*interfaces.DiscoverSchedule) error {
+	catalogIDs := make([]string, 0, len(schedules))
+	seen := make(map[string]struct{}, len(schedules))
+	for _, schedule := range schedules {
+		if schedule.CatalogID == "" {
+			continue
+		}
+		if _, exists := seen[schedule.CatalogID]; !exists {
+			seen[schedule.CatalogID] = struct{}{}
+			catalogIDs = append(catalogIDs, schedule.CatalogID)
+		}
+	}
+	if len(catalogIDs) == 0 {
+		return nil
+	}
+
+	catalogs, err := dss.cs.InternalGetByIDs(ctx, catalogIDs)
+	if err != nil {
+		return err
+	}
+	catalogsByID := make(map[string]*interfaces.Catalog, len(catalogs))
+	for _, catalog := range catalogs {
+		catalogsByID[catalog.ID] = catalog
+	}
+	for _, schedule := range schedules {
+		if catalog := catalogsByID[schedule.CatalogID]; catalog != nil {
+			schedule.CatalogName = catalog.Name
+		}
+	}
+	return nil
 }
 
 // Update updates a discover schedule.

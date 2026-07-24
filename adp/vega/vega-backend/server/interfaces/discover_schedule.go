@@ -8,16 +8,17 @@ package interfaces
 
 // DiscoverSchedule represents a scheduled discover task configuration.
 type DiscoverSchedule struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	CatalogID string `json:"catalog_id"`
-	CronExpr  string `json:"cron_expr"`
-	StartTime int64  `json:"start_time"` // Unix timestamp in milliseconds
-	EndTime   int64  `json:"end_time"`   // Unix timestamp in milliseconds, 0 means no end time
-	Enabled   bool   `json:"enabled"`
-	Strategy  string `json:"strategy"` // Discover strategy: full_sync/create_only/cleanup_only
-	LastRun   int64  `json:"last_run"` // Unix timestamp in milliseconds of last execution
-	NextRun   int64  `json:"next_run"` // Unix timestamp in milliseconds of next scheduled execution
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	CatalogID   string `json:"catalog_id"`
+	CatalogName string `json:"catalog_name,omitempty"`
+	CronExpr    string `json:"cron_expr"`
+	StartTime   int64  `json:"start_time"` // Unix timestamp in milliseconds
+	EndTime     int64  `json:"end_time"`   // Unix timestamp in milliseconds, 0 means no end time
+	Enabled     bool   `json:"enabled"`
+	Strategy    string `json:"strategy"` // Discover strategy: full_sync/create_only/cleanup_only
+	LastRun     int64  `json:"last_run"` // Unix timestamp in milliseconds of last execution
+	NextRun     int64  `json:"next_run"` // Unix timestamp in milliseconds of next scheduled execution
 
 	Creator    AccountInfo `json:"creator"`
 	CreateTime int64       `json:"create_time"`
