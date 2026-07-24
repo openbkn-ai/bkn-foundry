@@ -17,7 +17,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 
-	"bkn-safe/internal/model"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
 // InitialPasswordEnv is the BKN_SAFE_INITIAL_PASSWORD value captured once at

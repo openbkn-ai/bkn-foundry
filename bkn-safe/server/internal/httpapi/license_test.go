@@ -19,14 +19,14 @@ import (
 	"github.com/openbkn-ai/licverify"
 	"gorm.io/gorm"
 
-	"bkn-safe/config"
-	"bkn-safe/internal/audit"
-	"bkn-safe/internal/auth"
-	"bkn-safe/internal/authz"
-	"bkn-safe/internal/database"
-	"bkn-safe/internal/directory"
-	"bkn-safe/internal/license"
-	"bkn-safe/internal/model"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/config"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/audit"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/auth"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/database"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/directory"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/license"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
 // newLicenseServer builds a full server with the license surfaces mounted: a

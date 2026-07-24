@@ -14,11 +14,11 @@ import (
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 
-	"bkn-safe/internal/audit"
-	"bkn-safe/internal/auth"
-	"bkn-safe/internal/authz"
-	"bkn-safe/internal/database"
-	"bkn-safe/internal/directory"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/audit"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/auth"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/database"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/directory"
 )
 
 // fakeClientManager is an in-memory ClientManager (clientID -> redirect_uris) so

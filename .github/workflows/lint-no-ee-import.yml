@@ -1,0 +1,60 @@
+name: lint-no-ee-import
+
+# The open-core model's single hard invariant: dependency direction is one-way,
+# ee -> core. This repository is the core and must never reference the private
+# enterprise repository.
+#
+# One `import "github.com/openbkn-ai/openbkn-ee/..."` anywhere here and the
+# public repo stops building for anyone without access to the private one —
+# which is every open source user. It is a fully broken build disguised as a
+# green one, because the machine that introduced it has the credentials.
+#
+# Design: license-server docs/design/open-core-gating.md §2.5 (铁律) and §3
+# discipline 5 ("纪律上 CI,不靠人记").
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: lint-no-ee-import-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  no-ee-import:
+    name: core must not reference ee
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Scan for enterprise imports
+        run: |
+          set -u
+          # Match the module path anywhere in Go source or module files. Scoped
+          # to the paths Go actually resolves, so documentation and design notes
+          # may still name the repository.
+          hits=$(grep -rn 'openbkn-ai/openbkn-ee' \
+                   --include='*.go' --include='go.mod' --include='go.sum' \
+                   . || true)
+
+          if [ -n "$hits" ]; then
+            echo "::error::core references the private enterprise repository. The open source build would break for everyone without access to it."
+            echo "$hits"
+            echo
+            echo "Fix: invert the dependency. Add an interface and a Register hook in"
+            echo "bkn-safe/server/extension (the socket), and implement it in openbkn-ee."
+            exit 1
+          fi
+          echo "No enterprise references in core."
+
+      - name: Core builds without any enterprise module
+        run: |
+          set -u
+          # The lint above is textual; this is the real proof. A community
+          # checkout with no access to the private repo must build.
+          cd bkn-safe/server
+          GOFLAGS=-mod=mod GOPRIVATE= GONOSUMDB= go build ./...

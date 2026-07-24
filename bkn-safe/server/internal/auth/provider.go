@@ -7,7 +7,7 @@ package auth
 import (
 	"context"
 
-	"bkn-safe/internal/model"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
 // ClientType values for the introspect ext.client_type claim (lib enum).

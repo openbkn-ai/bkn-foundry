@@ -15,7 +15,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"bkn-safe/internal/auth"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/auth"
 )
 
 // registerAuth mounts the hydra login/consent/device provider pages. hydra is

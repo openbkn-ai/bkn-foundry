@@ -11,7 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"bkn-safe/internal/authz"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
 )
 
 // TokenVerifier resolves a bearer access token to its subject (the accessor id),

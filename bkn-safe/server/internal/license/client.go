@@ -17,7 +17,7 @@ import (
 	"os"
 	"time"
 
-	"bkn-safe/config"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/config"
 )
 
 // ErrActivatedElsewhere is the issuer's 409: the license is already bound to a
