@@ -79,11 +79,12 @@ type EvidenceChainResponse struct {
 }
 
 type VisibilitySummary struct {
-	AuthorizedRefCount int `json:"authorized_ref_count"`
-	RedactedRefCount   int `json:"redacted_ref_count"`
-	HiddenRefCount     int `json:"hidden_ref_count"`
-	OmittedRefCount    int `json:"omitted_ref_count"`
-	UnresolvedRefCount int `json:"unresolved_ref_count"`
+	AuthorizedRefCount   int `json:"authorized_ref_count"`
+	RedactedRefCount     int `json:"redacted_ref_count"`
+	HiddenRefCount       int `json:"hidden_ref_count"`
+	OmittedRefCount      int `json:"omitted_ref_count"`
+	UnresolvedRefCount   int `json:"unresolved_ref_count"`
+	UnauthorizedRefCount int `json:"unauthorized_ref_count"`
 }
 
 type EvidencePage struct {

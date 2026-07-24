@@ -102,7 +102,7 @@ helm upgrade --install agent-observability charts/agent-observability \
 
 启用后，写入方需要携带 `Authorization: Bearer <strong-token>` 或 `X-BKN-Trace-Ingest-Token: <strong-token>`。未配置 `BKN_TRACE_EVIDENCE_INGEST_TOKEN` 时保持当前兼容行为，依赖平台网关/网络边界保护。
 
-当前阶段的 Evidence Chain 查询只依据事件生产方声明的 `visibility` 做响应过滤，不按调用者身份做细粒度可见性裁决。resolver-backed authorization、按账号/租户的 evidence ref 授权与审计将在后续持久化 evidence index 阶段接入。
+当前阶段的 Evidence Chain 查询依据事件生产方或 resolver 声明的 `visibility` 做响应过滤，并区分 `redacted`、`hidden`、`omitted`、`unresolved`、`unauthorized` 统计。`unauthorized` 引用只进入汇总和 `partial_reason[]`，不会展开 `ref_id`、`policy_decision_ref` 或其他节点详情。按调用者身份实时裁决、授权审计和 resolver-backed 节点详情补全仍属于后续阶段。
 
 Evidence Chain 查询返回稳定 envelope：
 
@@ -117,7 +117,8 @@ Evidence Chain 查询返回稳定 envelope：
     "redacted_ref_count": 0,
     "hidden_ref_count": 0,
     "omitted_ref_count": 0,
-    "unresolved_ref_count": 0
+    "unresolved_ref_count": 0,
+    "unauthorized_ref_count": 0
   },
   "page": {
     "next_cursor": null,
@@ -179,7 +180,7 @@ Business Graph 查询返回从 `business.refs.resolved` 派生的业务语义图
 }
 ```
 
-Business Graph 当前只消费已进入 BKN Trace 的 `business_refs`，并复用 `visibility` 做响应过滤。真实 BKN / Vega / Metric / Action resolver、按账号/租户的授权裁决和 resolver-backed 节点详情补全属于后续阶段。
+Business Graph 当前只消费已进入 BKN Trace 的 `business_refs`，并复用 `visibility` 做响应过滤。`unresolved` 与 `unauthorized` 会分别进入 `visibility_summary` 和 `partial_reason[]`，不会生成业务节点或边。真实 BKN / Vega / Metric / Action resolver、按账号/租户的实时授权裁决和 resolver-backed 节点详情补全属于后续阶段。
 
 Evidence Node 查询用于打开单个可见节点详情：
 
@@ -196,7 +197,7 @@ evidence_ref:{ref_id}
 business_ref:{ref_id}
 ```
 
-查询必须提供且只能提供一个 scope：`trace_id` 或 `request_id`。当前阶段只返回 `visibility=visible` 的节点；`hidden`、`redacted`、`omitted`、`unresolved` 节点不会通过详情接口展开。真实 BKN / Vega / Metric / Action resolver、按账号/租户的授权裁决和隐藏节点可审计解释属于后续阶段。
+查询必须提供且只能提供一个 scope：`trace_id` 或 `request_id`。当前阶段只返回 `visibility=visible` 的节点；`hidden`、`redacted`、`omitted`、`unresolved`、`unauthorized` 节点不会通过详情接口展开。真实 BKN / Vega / Metric / Action resolver、按账号/租户的实时授权裁决和隐藏节点可审计解释属于后续阶段。
 
 生成 Swagger 文档：
 

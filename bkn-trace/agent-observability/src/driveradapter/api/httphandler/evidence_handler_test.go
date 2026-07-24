@@ -254,6 +254,32 @@ func TestEvidenceHandlerReturnsSnapshotPreviewByRequest(t *testing.T) {
 	}
 }
 
+func TestEvidenceHandlerReportsUnauthorizedRefsWithoutLeakingDetails(t *testing.T) {
+	store := evidencestore.New()
+	handler := NewEvidenceHandler(evidencesvc.New(store))
+	ingestReq := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/evidence/events", strings.NewReader(unauthorizedHandlerBatch()))
+	ingestRec := httptest.NewRecorder()
+	handler.IngestEvidenceEvents(ingestRec, ingestReq)
+	if ingestRec.Code != http.StatusAccepted {
+		t.Fatalf("expected ingest 202, got %d: %s", ingestRec.Code, ingestRec.Body.String())
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/agent-observability/v1/traces/9c0d0000000000000000000000000003/evidence-chain", nil)
+	rec := httptest.NewRecorder()
+	handler.GetTraceSubresource(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `"unauthorized_ref_count":1`) || !strings.Contains(body, `"evidence_ref_unauthorized"`) {
+		t.Fatalf("expected unauthorized summary and partial reason: %s", body)
+	}
+	if strings.Contains(body, "row:unauthorized") || strings.Contains(body, "policy:deny:handler") {
+		t.Fatalf("unauthorized ref detail must not leak: %s", body)
+	}
+}
+
 func TestEvidenceHandlerReturnsEvidenceNodeByTrace(t *testing.T) {
 	store := evidencestore.New()
 	handler := NewEvidenceHandler(evidencesvc.New(store))
@@ -398,6 +424,70 @@ func validHandlerBusinessBatch() string {
             "label": "Customer",
             "visibility": "visible",
             "version_status": "versioned"
+          }
+        ]
+      }
+    }
+  ]
+}`
+}
+
+func unauthorizedHandlerBatch() string {
+	return `{
+  "bkn.trace.schema.version": "2.0.0",
+  "trace": {
+    "trace_id": "9c0d0000000000000000000000000003",
+    "bkn.request.id": "req_handler_003",
+    "traceparent": "00-9c0d0000000000000000000000000003-2f12000000000003-01",
+    "business_domain": "bd_demo",
+    "bkn.account.id": "acct_demo",
+    "bkn.account.type": "app"
+  },
+  "events": [
+    {
+      "event_id": "evt_claim_authz",
+      "event_type": "claim.created",
+      "bkn.trace.schema.version": "2.0.0",
+      "observed_at": "2026-07-22T04:00:00.000000000Z",
+      "emitted_at": "2026-07-22T04:00:00.001000000Z",
+      "producer_module": "third-party-agent",
+      "trace_id": "9c0d0000000000000000000000000003",
+      "span_id": "2f12000000000003",
+      "bkn.request.id": "req_handler_003",
+      "bkn.operation.name": "agent.answer",
+      "payload": {
+        "claim_id": "claim_handler_authz",
+        "claim_type": "answer",
+        "claim_hash": "sha256:claim-authz",
+        "visibility": "visible",
+        "version_status": "versioned"
+      }
+    },
+    {
+      "event_id": "evt_evidence_authz",
+      "event_type": "evidence.refs.created",
+      "bkn.trace.schema.version": "2.0.0",
+      "observed_at": "2026-07-22T04:00:00.002000000Z",
+      "emitted_at": "2026-07-22T04:00:00.003000000Z",
+      "producer_module": "bkn-trace",
+      "trace_id": "9c0d0000000000000000000000000003",
+      "span_id": "2f12000000000003",
+      "bkn.request.id": "req_handler_003",
+      "bkn.operation.name": "bkn_trace.resolve_evidence_refs",
+      "payload": {
+        "claim_id": "claim_handler_authz",
+        "evidence_refs": [
+          {
+            "ref_id": "row:visible",
+            "ref_type": "row_ref",
+            "visibility": "visible"
+          },
+          {
+            "ref_id": "row:unauthorized",
+            "ref_type": "row_ref",
+            "visibility": "unauthorized",
+            "policy_decision_ref": "policy:deny:handler",
+            "redaction_reason": "row_scope_denied"
           }
         ]
       }

@@ -71,6 +71,16 @@ var eventTypes = map[string]struct{}{
 	"action.result_recorded":      {},
 }
 
+var visibilityStates = map[string]struct{}{
+	"":             {},
+	"visible":      {},
+	"redacted":     {},
+	"hidden":       {},
+	"omitted":      {},
+	"unresolved":   {},
+	"unauthorized": {},
+}
+
 type Service struct {
 	store ievidencestore.EvidenceStorePort
 }
@@ -259,6 +269,12 @@ func buildEvidenceChain(traces []evidencevo.NormalizedTrace, truncated bool) evi
 	}
 	if truncated {
 		partialReasons["evidence_query_truncated"] = struct{}{}
+	}
+	if response.VisibilitySummary.UnauthorizedRefCount > 0 {
+		partialReasons["evidence_ref_unauthorized"] = struct{}{}
+	}
+	if response.VisibilitySummary.UnresolvedRefCount > 0 {
+		partialReasons["evidence_ref_unresolved"] = struct{}{}
 	}
 
 	response.PartialReasons = sortedKeys(partialReasons)
@@ -486,6 +502,9 @@ func buildBusinessGraph(traces []evidencevo.NormalizedTrace, truncated bool) evi
 	if response.VisibilitySummary.UnresolvedRefCount > 0 {
 		partialReasons["business_ref_unresolved"] = struct{}{}
 	}
+	if response.VisibilitySummary.UnauthorizedRefCount > 0 {
+		partialReasons["business_ref_unauthorized"] = struct{}{}
+	}
 	if len(response.Data.Nodes) == 0 {
 		partialReasons["empty_business_graph"] = struct{}{}
 	}
@@ -543,6 +562,8 @@ func countVisibility(item map[string]any, summary *evidencevo.VisibilitySummary)
 		summary.OmittedRefCount++
 	case "unresolved":
 		summary.UnresolvedRefCount++
+	case "unauthorized":
+		summary.UnauthorizedRefCount++
 	default:
 		summary.OmittedRefCount++
 	}
@@ -765,6 +786,7 @@ func checkClaim(payload map[string]any, base string, normalized *evidencevo.Norm
 	requiredStringField(payload, "claim_hash", base, errors)
 	requiredStringField(payload, "visibility", base, errors)
 	requiredStringField(payload, "version_status", base, errors)
+	checkVisibility(payload, base+".visibility", errors)
 	normalized.ClaimCount++
 	if claimID != "" {
 		normalized.ClaimIDs = append(normalized.ClaimIDs, claimID)
@@ -781,6 +803,13 @@ func checkRefs(payload map[string]any, base string, key string, knownClaims map[
 	refs := arrayField(payload, key)
 	if len(refs) == 0 {
 		add(errors, "BKN_TRACE_REQUIRED_FIELD_MISSING", base+"."+key, key+" must be a non-empty array")
+	}
+	for i, item := range refs {
+		ref, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		checkVisibility(ref, base+"."+key+"["+strconv.Itoa(i)+"].visibility", errors)
 	}
 }
 
@@ -811,6 +840,14 @@ func checkSensitive(value any, path string, errors *evidencevo.ValidationErrors)
 func forbiddenRawKey(key string) bool {
 	_, ok := forbiddenRawKeys[strings.ToLower(key)]
 	return ok
+}
+
+func checkVisibility(payload map[string]any, path string, errors *evidencevo.ValidationErrors) {
+	visibility, _ := stringField(payload, "visibility")
+	if _, ok := visibilityStates[visibility]; ok {
+		return
+	}
+	add(errors, "BKN_TRACE_VISIBILITY_UNSUPPORTED", path, "unsupported visibility state")
 }
 
 func validTraceparent(value string) bool {
