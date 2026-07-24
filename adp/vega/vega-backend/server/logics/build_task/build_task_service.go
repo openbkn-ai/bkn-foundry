@@ -413,6 +413,11 @@ func (bts *buildTaskService) GetByID(ctx context.Context, id string) (*interface
 		span.SetStatus(codes.Error, "Build task not found")
 		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_BuildTask_NotFound)
 	}
+	if err := bts.populateBuildTaskReferences(ctx, []*interfaces.BuildTask{buildTask}); err != nil {
+		span.SetStatus(codes.Error, "Populate build task references failed")
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_GetFailed).
+			WithErrorDetails(err.Error())
+	}
 
 	accountInfos := []*interfaces.AccountInfo{&buildTask.Creator}
 	if err := bts.ums.GetAccountNames(ctx, accountInfos); err != nil {
@@ -452,6 +457,61 @@ func (bts *buildTaskService) InternalUpdateStatus(ctx context.Context, tx *sql.T
 	defer span.End()
 
 	return bts.bta.UpdateStatus(ctx, tx, id, update, allowedStatuses...)
+}
+
+// populateBuildTaskReferences 批量补齐任务关联的资源与目录展示字段。它只查询当前
+// 返回的任务所引用的实体，避免任务列表由前端触发全量资源/目录加载。
+func (bts *buildTaskService) populateBuildTaskReferences(ctx context.Context, buildTasks []*interfaces.BuildTask) error {
+	if len(buildTasks) == 0 {
+		return nil
+	}
+
+	resourceIDs := make([]string, 0, len(buildTasks))
+	resourceIDSet := make(map[string]struct{}, len(buildTasks))
+	catalogIDs := make([]string, 0, len(buildTasks))
+	catalogIDSet := make(map[string]struct{}, len(buildTasks))
+	for _, buildTask := range buildTasks {
+		if buildTask.ResourceID != "" {
+			if _, exists := resourceIDSet[buildTask.ResourceID]; !exists {
+				resourceIDSet[buildTask.ResourceID] = struct{}{}
+				resourceIDs = append(resourceIDs, buildTask.ResourceID)
+			}
+		}
+		if buildTask.CatalogID != "" {
+			if _, exists := catalogIDSet[buildTask.CatalogID]; !exists {
+				catalogIDSet[buildTask.CatalogID] = struct{}{}
+				catalogIDs = append(catalogIDs, buildTask.CatalogID)
+			}
+		}
+	}
+
+	resources, err := bts.rs.InternalGetByIDs(ctx, resourceIDs)
+	if err != nil {
+		return err
+	}
+	resourcesByID := make(map[string]*interfaces.Resource, len(resources))
+	for _, resource := range resources {
+		resourcesByID[resource.ID] = resource
+	}
+
+	catalogs, err := bts.cs.InternalGetByIDs(ctx, catalogIDs)
+	if err != nil {
+		return err
+	}
+	catalogsByID := make(map[string]*interfaces.Catalog, len(catalogs))
+	for _, catalog := range catalogs {
+		catalogsByID[catalog.ID] = catalog
+	}
+
+	for _, buildTask := range buildTasks {
+		if resource := resourcesByID[buildTask.ResourceID]; resource != nil {
+			buildTask.ResourceName = resource.Name
+		}
+		if catalog := catalogsByID[buildTask.CatalogID]; catalog != nil {
+			buildTask.CatalogName = catalog.Name
+		}
+	}
+	return nil
 }
 
 func (bts *buildTaskService) InternalGetStatus(ctx context.Context, id string) (string, error) {
@@ -546,6 +606,11 @@ func (bts *buildTaskService) List(ctx context.Context, params interfaces.BuildTa
 	buildTasks, total, err := bts.bta.List(ctx, params)
 	if err != nil {
 		span.SetStatus(codes.Error, "List build tasks failed")
+		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_GetFailed).
+			WithErrorDetails(err.Error())
+	}
+	if err := bts.populateBuildTaskReferences(ctx, buildTasks); err != nil {
+		span.SetStatus(codes.Error, "Populate build task references failed")
 		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_GetFailed).
 			WithErrorDetails(err.Error())
 	}

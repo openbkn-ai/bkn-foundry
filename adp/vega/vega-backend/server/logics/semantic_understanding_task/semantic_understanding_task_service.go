@@ -31,6 +31,8 @@ import (
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
 	"vega-backend/logics"
+	"vega-backend/logics/catalog"
+	"vega-backend/logics/resource"
 	"vega-backend/logics/user_mgmt"
 )
 
@@ -44,8 +46,8 @@ const debugQueueSize = 100
 type semanticUnderstandingTaskService struct {
 	appSetting *common.AppSetting
 	client     *asynq.Client
-	ca         interfaces.CatalogAccess
-	ra         interfaces.ResourceAccess
+	cs         interfaces.CatalogService
+	rs         interfaces.ResourceService
 	suta       interfaces.SemanticUnderstandingTaskAccess
 	ums        interfaces.UserMgmtService
 
@@ -61,8 +63,8 @@ func NewSemanticUnderstandingTaskService(appSetting *common.AppSetting) interfac
 		sutService = &semanticUnderstandingTaskService{
 			appSetting: appSetting,
 			client:     client,
-			ca:         logics.CA,
-			ra:         logics.RA,
+			cs:         catalog.NewCatalogService(appSetting),
+			rs:         resource.NewResourceService(appSetting),
 			suta:       logics.SUTA,
 			ums:        user_mgmt.NewUserMgmtService(appSetting),
 
@@ -86,7 +88,7 @@ func (suts *semanticUnderstandingTaskService) CreateResourceTask(ctx context.Con
 			WithErrorDetails("resource_id is required")
 	}
 
-	resource, err := suts.ra.GetByID(ctx, resourceID)
+	resource, err := suts.rs.InternalGetByID(ctx, resourceID)
 	if err != nil {
 		span.SetStatus(codes.Error, "Get resource failed")
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_InternalError_FilterResourcesFailed).
@@ -116,7 +118,7 @@ func (suts *semanticUnderstandingTaskService) CreateCatalogTask(ctx context.Cont
 			WithErrorDetails("catalog_id is required")
 	}
 
-	catalog, err := suts.ca.GetByID(ctx, catalogID)
+	catalog, err := suts.cs.InternalGetByID(ctx, catalogID, false)
 	if err != nil {
 		span.SetStatus(codes.Error, "Get catalog failed")
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_InternalError_FilterResourcesFailed).
@@ -127,7 +129,7 @@ func (suts *semanticUnderstandingTaskService) CreateCatalogTask(ctx context.Cont
 		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound)
 	}
 
-	resources, err := suts.ra.GetByCatalogID(ctx, catalogID)
+	resources, err := suts.rs.InternalGetByCatalogID(ctx, catalogID)
 	if err != nil {
 		span.SetStatus(codes.Error, "Get catalog resources failed")
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_InternalError_FilterResourcesFailed).
@@ -220,6 +222,9 @@ func (suts *semanticUnderstandingTaskService) GetByID(ctx context.Context, id st
 		span.SetStatus(codes.Error, "Semantic understanding task not found")
 		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_SemanticUnderstandingTask_NotFound)
 	}
+	if err := suts.populateSemanticUnderstandingTaskReferences(ctx, []*interfaces.SemanticUnderstandingTask{task}); err != nil {
+		return nil, err
+	}
 	if err := suts.ums.GetAccountNames(ctx, []*interfaces.AccountInfo{&task.Creator}); err != nil {
 		span.SetStatus(codes.Error, "GetAccountNames error")
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
@@ -258,7 +263,62 @@ func (suts *semanticUnderstandingTaskService) List(ctx context.Context, params i
 		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_InternalError_FilterResourcesFailed).
 			WithErrorDetails(err.Error())
 	}
+	if err := suts.populateSemanticUnderstandingTaskReferences(ctx, tasks); err != nil {
+		return nil, 0, err
+	}
 	return tasks, total, nil
+}
+
+// populateSemanticUnderstandingTaskReferences 批量补齐当前页任务关联的目录与资源展示名称。
+func (suts *semanticUnderstandingTaskService) populateSemanticUnderstandingTaskReferences(ctx context.Context, tasks []*interfaces.SemanticUnderstandingTask) error {
+	catalogIDs := make([]string, 0, len(tasks))
+	catalogIDSet := make(map[string]struct{}, len(tasks))
+	resourceIDs := make([]string, 0, len(tasks))
+	resourceIDSet := make(map[string]struct{}, len(tasks))
+	for _, task := range tasks {
+		if task.CatalogID != "" {
+			if _, exists := catalogIDSet[task.CatalogID]; !exists {
+				catalogIDSet[task.CatalogID] = struct{}{}
+				catalogIDs = append(catalogIDs, task.CatalogID)
+			}
+		}
+		if task.ResourceID != "" {
+			if _, exists := resourceIDSet[task.ResourceID]; !exists {
+				resourceIDSet[task.ResourceID] = struct{}{}
+				resourceIDs = append(resourceIDs, task.ResourceID)
+			}
+		}
+	}
+
+	resourcesByID := make(map[string]*interfaces.Resource, len(resourceIDs))
+	if len(resourceIDs) > 0 {
+		resources, err := suts.rs.InternalGetByIDs(ctx, resourceIDs)
+		if err != nil {
+			return err
+		}
+		for _, resource := range resources {
+			resourcesByID[resource.ID] = resource
+		}
+	}
+	catalogsByID := make(map[string]*interfaces.Catalog, len(catalogIDs))
+	if len(catalogIDs) > 0 {
+		catalogs, err := suts.cs.InternalGetByIDs(ctx, catalogIDs)
+		if err != nil {
+			return err
+		}
+		for _, catalog := range catalogs {
+			catalogsByID[catalog.ID] = catalog
+		}
+	}
+	for _, task := range tasks {
+		if resource := resourcesByID[task.ResourceID]; resource != nil {
+			task.ResourceName = resource.Name
+		}
+		if catalog := catalogsByID[task.CatalogID]; catalog != nil {
+			task.CatalogName = catalog.Name
+		}
+	}
+	return nil
 }
 
 func (suts *semanticUnderstandingTaskService) Delete(ctx context.Context, ids []string, ignoreMissing bool) error {

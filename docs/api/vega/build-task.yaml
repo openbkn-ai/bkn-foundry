@@ -378,6 +378,12 @@ components:
         catalog_id:
           description: 关联 Catalog ID（冗余存储以加速过滤）
           type: string
+        resource_name:
+          description: 关联 Resource 的当前名称；响应时按当前任务集合批量补齐，不落库
+          type: string
+        catalog_name:
+          description: 关联 Catalog 的当前名称；响应时按当前任务集合批量补齐，不落库
+          type: string
         status:
           description: 状态
           type: string

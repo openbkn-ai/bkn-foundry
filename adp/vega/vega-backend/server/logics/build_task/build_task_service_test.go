@@ -25,6 +25,60 @@ import (
 	"vega-backend/logics"
 )
 
+func TestBuildTaskServicePopulatesTaskReferencesForListAndGet(t *testing.T) {
+	t.Run("list populates only referenced resources and catalogs", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+		mockRS := mock_interfaces.NewMockResourceService(ctrl)
+		mockUMS := mock_interfaces.NewMockUserMgmtService(ctrl)
+		service := &buildTaskService{bta: mockBTA, cs: mockCS, rs: mockRS, ums: mockUMS}
+		tasks := []*interfaces.BuildTask{
+			{ID: "task-1", ResourceID: "resource-1", CatalogID: "catalog-1"},
+			{ID: "task-2", ResourceID: "resource-2", CatalogID: "catalog-1"},
+		}
+
+		mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).Return(tasks, int64(2), nil)
+		mockRS.EXPECT().InternalGetByIDs(gomock.Any(), []string{"resource-1", "resource-2"}).Return([]*interfaces.Resource{
+			{ID: "resource-1", Name: "orders"},
+			{ID: "resource-2", Name: "customers"},
+		}, nil)
+		mockCS.EXPECT().InternalGetByIDs(gomock.Any(), []string{"catalog-1"}).Return([]*interfaces.Catalog{{ID: "catalog-1", Name: "production"}}, nil)
+		mockUMS.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
+
+		got, total, err := service.List(context.Background(), interfaces.BuildTasksQueryParams{})
+
+		require.NoError(t, err)
+		assert.Equal(t, int64(2), total)
+		assert.Equal(t, "orders", got[0].ResourceName)
+		assert.Equal(t, "customers", got[1].ResourceName)
+		assert.Equal(t, "production", got[0].CatalogName)
+	})
+
+	t.Run("get by id populates the same reference fields", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+		mockRS := mock_interfaces.NewMockResourceService(ctrl)
+		mockUMS := mock_interfaces.NewMockUserMgmtService(ctrl)
+		service := &buildTaskService{bta: mockBTA, cs: mockCS, rs: mockRS, ums: mockUMS}
+		task := &interfaces.BuildTask{ID: "task-1", ResourceID: "resource-1", CatalogID: "catalog-1"}
+
+		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").Return(task, nil)
+		mockRS.EXPECT().InternalGetByIDs(gomock.Any(), []string{"resource-1"}).Return([]*interfaces.Resource{
+			{ID: "resource-1", Name: "orders"},
+		}, nil)
+		mockCS.EXPECT().InternalGetByIDs(gomock.Any(), []string{"catalog-1"}).Return([]*interfaces.Catalog{{ID: "catalog-1", Name: "production"}}, nil)
+		mockUMS.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
+
+		got, err := service.GetByID(context.Background(), "task-1")
+
+		require.NoError(t, err)
+		assert.Equal(t, "orders", got.ResourceName)
+		assert.Equal(t, "production", got.CatalogName)
+	})
+}
+
 func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 	t.Run("rejects batch task without build key fields", func(t *testing.T) {
 		ctrl := gomock.NewController(t)

@@ -51,6 +51,10 @@ type ResourceService interface {
 
 	// InternalGetByID retrieves a Resource by ID for internal workers.
 	InternalGetByID(ctx context.Context, id string) (*Resource, error)
+	// InternalGetByIDs retrieves Resources for internal callers without permission filtering.
+	InternalGetByIDs(ctx context.Context, ids []string) ([]*Resource, error)
+	// InternalGetByCatalogID retrieves all Resources under a Catalog for internal callers.
+	InternalGetByCatalogID(ctx context.Context, catalogID string) ([]*Resource, error)
 	// InternalUpdate updates a Resource for internal workers.
 	InternalUpdate(ctx context.Context, tx *sql.Tx, resource *Resource) error
 	// InternalCreate creates a Resource for internal workers within a transaction.

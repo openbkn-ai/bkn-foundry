@@ -28,6 +28,7 @@ import (
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
 	"vega-backend/logics"
+	"vega-backend/logics/catalog"
 	"vega-backend/logics/user_mgmt"
 )
 
@@ -41,6 +42,7 @@ const debugQueueSize = 100
 type discoverTaskService struct {
 	appSetting *common.AppSetting
 	client     *asynq.Client
+	cs         interfaces.CatalogService
 	dta        interfaces.DiscoverTaskAccess
 	ums        interfaces.UserMgmtService
 
@@ -57,6 +59,7 @@ func NewDiscoverTaskService(appSetting *common.AppSetting) interfaces.DiscoverTa
 		dtService = &discoverTaskService{
 			appSetting: appSetting,
 			client:     client,
+			cs:         catalog.NewCatalogService(appSetting),
 			dta:        logics.DTA,
 			ums:        user_mgmt.NewUserMgmtService(appSetting),
 
@@ -164,6 +167,9 @@ func (dts *discoverTaskService) GetByID(ctx context.Context, id string) (*interf
 		span.SetStatus(codes.Error, "Discover task not found")
 		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_DiscoverTask_NotFound)
 	}
+	if err := dts.populateDiscoverTaskReferences(ctx, []*interfaces.DiscoverTask{task}); err != nil {
+		return nil, err
+	}
 	if err := dts.ums.GetAccountNames(ctx, []*interfaces.AccountInfo{&task.Creator}); err != nil {
 		span.SetStatus(codes.Error, "GetAccountNames error")
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
@@ -192,6 +198,9 @@ func (dts *discoverTaskService) List(ctx context.Context, params interfaces.Disc
 	if err != nil {
 		return nil, 0, err
 	}
+	if err := dts.populateDiscoverTaskReferences(ctx, tasks); err != nil {
+		return nil, 0, err
+	}
 
 	accountInfos := make([]*interfaces.AccountInfo, 0, len(tasks))
 	for _, t := range tasks {
@@ -203,6 +212,39 @@ func (dts *discoverTaskService) List(ctx context.Context, params interfaces.Disc
 			verrors.VegaBackend_DiscoverTask_InternalError_GetAccountNamesFailed).WithErrorDetails(err.Error())
 	}
 	return tasks, total, nil
+}
+
+// populateDiscoverTaskReferences 批量补齐当前页任务关联目录的展示名称。
+func (dts *discoverTaskService) populateDiscoverTaskReferences(ctx context.Context, tasks []*interfaces.DiscoverTask) error {
+	catalogIDs := make([]string, 0, len(tasks))
+	seen := make(map[string]struct{}, len(tasks))
+	for _, task := range tasks {
+		if task.CatalogID == "" {
+			continue
+		}
+		if _, exists := seen[task.CatalogID]; !exists {
+			seen[task.CatalogID] = struct{}{}
+			catalogIDs = append(catalogIDs, task.CatalogID)
+		}
+	}
+	if len(catalogIDs) == 0 {
+		return nil
+	}
+
+	catalogs, err := dts.cs.InternalGetByIDs(ctx, catalogIDs)
+	if err != nil {
+		return err
+	}
+	catalogsByID := make(map[string]*interfaces.Catalog, len(catalogs))
+	for _, catalog := range catalogs {
+		catalogsByID[catalog.ID] = catalog
+	}
+	for _, task := range tasks {
+		if catalog := catalogsByID[task.CatalogID]; catalog != nil {
+			task.CatalogName = catalog.Name
+		}
+	}
+	return nil
 }
 
 // UpdateStatus updates a DiscoverTask's status.

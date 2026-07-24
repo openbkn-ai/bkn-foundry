@@ -106,6 +106,43 @@ func TestDiscoverTaskServiceGetAndList(t *testing.T) {
 	})
 }
 
+func TestDiscoverTaskServicePopulatesCatalogName(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+	dta := vmock.NewMockDiscoverTaskAccess(ctrl)
+	cs := vmock.NewMockCatalogService(ctrl)
+	ums := vmock.NewMockUserMgmtService(ctrl)
+	service := &discoverTaskService{dta: dta, cs: cs, ums: ums}
+
+	t.Run("list batches current page catalog ids", func(t *testing.T) {
+		tasks := []*interfaces.DiscoverTask{
+			{ID: "task-1", CatalogID: "catalog-1"},
+			{ID: "task-2", CatalogID: "catalog-1"},
+		}
+		dta.EXPECT().List(gomock.Any(), gomock.Any()).Return(tasks, int64(2), nil)
+		cs.EXPECT().InternalGetByIDs(gomock.Any(), []string{"catalog-1"}).Return([]*interfaces.Catalog{{ID: "catalog-1", Name: "目录一"}}, nil)
+		ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Len(2)).Return(nil)
+
+		got, _, err := service.List(context.Background(), interfaces.DiscoverTaskQueryParams{})
+
+		require.NoError(t, err)
+		assert.Equal(t, "目录一", got[0].CatalogName)
+		assert.Equal(t, "目录一", got[1].CatalogName)
+	})
+
+	t.Run("get populates catalog name", func(t *testing.T) {
+		task := &interfaces.DiscoverTask{ID: "task-3", CatalogID: "catalog-2"}
+		dta.EXPECT().GetByID(gomock.Any(), "task-3").Return(task, nil)
+		cs.EXPECT().InternalGetByIDs(gomock.Any(), []string{"catalog-2"}).Return([]*interfaces.Catalog{{ID: "catalog-2", Name: "目录二"}}, nil)
+		ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
+
+		got, err := service.GetByID(context.Background(), "task-3")
+
+		require.NoError(t, err)
+		assert.Equal(t, "目录二", got.CatalogName)
+	})
+}
+
 func TestDiscoverTaskServiceUpdateAndExistence(t *testing.T) {
 	t.Run("delegates status update", func(t *testing.T) {
 		service, dta, _ := newTestDiscoverTaskService(t)

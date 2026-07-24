@@ -98,17 +98,17 @@ func TestSemanticUnderstandingTaskServiceCreate(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
 		taskAccess := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
-		resourceAccess := mock_interfaces.NewMockResourceAccess(ctrl)
+		resourceService := mock_interfaces.NewMockResourceService(ctrl)
 		service := &semanticUnderstandingTaskService{
 			suta:           taskAccess,
-			ra:             resourceAccess,
+			rs:             resourceService,
 			debugTaskQueue: make(chan *asynq.Task, 1),
 		}
 		ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: "u1", Type: interfaces.ACCESSOR_TYPE_USER})
 		var createdTask *interfaces.SemanticUnderstandingTask
 		var findHash string
 
-		resourceAccess.EXPECT().GetByID(gomock.Any(), "resource-1").Return(sampleSemanticResource(), nil)
+		resourceService.EXPECT().InternalGetByID(gomock.Any(), "resource-1").Return(sampleSemanticResource(), nil)
 		taskAccess.EXPECT().
 			FindActiveByInputHash(gomock.Any(), interfaces.SemanticUnderstandingTaskScopeResource, gomock.Any()).
 			DoAndReturn(func(_ context.Context, _ string, inputHash string) (*interfaces.SemanticUnderstandingTask, error) {
@@ -190,13 +190,13 @@ func TestSemanticUnderstandingTaskServiceCreate(t *testing.T) {
 		t.Cleanup(ctrl.Finish)
 		active := &interfaces.SemanticUnderstandingTask{ID: "semantic-task-1"}
 		taskAccess := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
-		catalogAccess := mock_interfaces.NewMockCatalogAccess(ctrl)
-		resourceAccess := mock_interfaces.NewMockResourceAccess(ctrl)
-		service := &semanticUnderstandingTaskService{suta: taskAccess, ca: catalogAccess, ra: resourceAccess}
+		catalogService := mock_interfaces.NewMockCatalogService(ctrl)
+		resourceService := mock_interfaces.NewMockResourceService(ctrl)
+		service := &semanticUnderstandingTaskService{suta: taskAccess, cs: catalogService, rs: resourceService}
 		var findScope string
 
-		catalogAccess.EXPECT().GetByID(gomock.Any(), "catalog-1").Return(&interfaces.Catalog{ID: "catalog-1", Name: "sales"}, nil)
-		resourceAccess.EXPECT().GetByCatalogID(gomock.Any(), "catalog-1").Return([]*interfaces.Resource{sampleSemanticResource()}, nil)
+		catalogService.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", false).Return(&interfaces.Catalog{ID: "catalog-1", Name: "sales"}, nil)
+		resourceService.EXPECT().InternalGetByCatalogID(gomock.Any(), "catalog-1").Return([]*interfaces.Resource{sampleSemanticResource()}, nil)
 		taskAccess.EXPECT().
 			FindActiveByInputHash(gomock.Any(), interfaces.SemanticUnderstandingTaskScopeCatalog, gomock.Any()).
 			DoAndReturn(func(_ context.Context, scope string, _ string) (*interfaces.SemanticUnderstandingTask, error) {
@@ -277,6 +277,51 @@ func TestSemanticUnderstandingTaskServiceGetByID(t *testing.T) {
 		assert.Nil(t, got)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "NotFound")
+	})
+}
+
+func TestSemanticUnderstandingTaskServicePopulatesReferenceNames(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+	taskAccess := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
+	catalogService := mock_interfaces.NewMockCatalogService(ctrl)
+	resourceService := mock_interfaces.NewMockResourceService(ctrl)
+	userMgmtService := mock_interfaces.NewMockUserMgmtService(ctrl)
+	service := &semanticUnderstandingTaskService{
+		suta: taskAccess,
+		cs:   catalogService,
+		rs:   resourceService,
+		ums:  userMgmtService,
+	}
+
+	t.Run("list batches current page reference ids", func(t *testing.T) {
+		tasks := []*interfaces.SemanticUnderstandingTask{
+			{ID: "task-1", CatalogID: "catalog-1", ResourceID: "resource-1"},
+			{ID: "task-2", CatalogID: "catalog-1", ResourceID: "resource-1"},
+		}
+		taskAccess.EXPECT().List(gomock.Any(), gomock.Any()).Return(tasks, int64(2), nil)
+		resourceService.EXPECT().InternalGetByIDs(gomock.Any(), []string{"resource-1"}).Return([]*interfaces.Resource{{ID: "resource-1", Name: "资源一"}}, nil)
+		catalogService.EXPECT().InternalGetByIDs(gomock.Any(), []string{"catalog-1"}).Return([]*interfaces.Catalog{{ID: "catalog-1", Name: "目录一"}}, nil)
+
+		got, _, err := service.List(context.Background(), interfaces.SemanticUnderstandingTaskQueryParams{})
+
+		require.NoError(t, err)
+		assert.Equal(t, "资源一", got[0].ResourceName)
+		assert.Equal(t, "目录一", got[1].CatalogName)
+	})
+
+	t.Run("get populates reference names", func(t *testing.T) {
+		task := &interfaces.SemanticUnderstandingTask{ID: "task-3", CatalogID: "catalog-2", ResourceID: "resource-2"}
+		taskAccess.EXPECT().GetByID(gomock.Any(), "task-3").Return(task, nil)
+		resourceService.EXPECT().InternalGetByIDs(gomock.Any(), []string{"resource-2"}).Return([]*interfaces.Resource{{ID: "resource-2", Name: "资源二"}}, nil)
+		catalogService.EXPECT().InternalGetByIDs(gomock.Any(), []string{"catalog-2"}).Return([]*interfaces.Catalog{{ID: "catalog-2", Name: "目录二"}}, nil)
+		userMgmtService.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
+
+		got, err := service.GetByID(context.Background(), "task-3")
+
+		require.NoError(t, err)
+		assert.Equal(t, "资源二", got.ResourceName)
+		assert.Equal(t, "目录二", got.CatalogName)
 	})
 }
 

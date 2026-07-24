@@ -43,4 +43,6 @@ type CatalogService interface {
 
 	// InternalGetByID retrieves a Catalog by ID for internal workers.
 	InternalGetByID(ctx context.Context, id string, withSensitiveFields bool) (*Catalog, error)
+	// InternalGetByIDs retrieves Catalogs for internal callers without permission filtering.
+	InternalGetByIDs(ctx context.Context, ids []string) ([]*Catalog, error)
 }

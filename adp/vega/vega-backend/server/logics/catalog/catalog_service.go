@@ -370,6 +370,24 @@ func (cs *catalogService) InternalGetByID(ctx context.Context, id string, withSe
 	return catalog, nil
 }
 
+// InternalGetByIDs 供服务端内部批量读取目录信息，不执行权限过滤或加载扩展字段。
+func (cs *catalogService) InternalGetByIDs(ctx context.Context, ids []string) ([]*interfaces.Catalog, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "CatalogService.InternalGetByIDs")
+	defer span.End()
+
+	if len(ids) == 0 {
+		span.SetStatus(codes.Ok, "")
+		return []*interfaces.Catalog{}, nil
+	}
+	catalogs, err := cs.ca.GetByIDs(ctx, ids)
+	if err != nil {
+		span.SetStatus(codes.Error, "Get catalogs failed")
+		return nil, err
+	}
+	span.SetStatus(codes.Ok, "")
+	return catalogs, nil
+}
+
 // GetByIDs retrieves a Catalog by IDs.
 func (cs *catalogService) GetByIDs(ctx context.Context, ids []string) ([]*interfaces.Catalog, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Get catalogs")

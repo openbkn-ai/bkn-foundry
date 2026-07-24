@@ -38,6 +38,7 @@ var (
 type DiscoverTask struct {
 	ID          string `json:"id"`
 	CatalogID   string `json:"catalog_id"`
+	CatalogName string `json:"catalog_name,omitempty"`
 	ScheduleID  string `json:"schedule_id"`
 	Strategy    string `json:"strategy"`     // Discover strategy: full_sync/create_only/cleanup_only
 	TriggerType string `json:"trigger_type"` // manual/scheduled

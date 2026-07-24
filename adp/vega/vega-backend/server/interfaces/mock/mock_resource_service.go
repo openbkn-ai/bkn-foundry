@@ -191,6 +191,21 @@ func (mr *MockResourceServiceMockRecorder) InternalCreate(ctx, tx, req any) *gom
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalCreate", reflect.TypeOf((*MockResourceService)(nil).InternalCreate), ctx, tx, req)
 }
 
+// InternalGetByCatalogID mocks base method.
+func (m *MockResourceService) InternalGetByCatalogID(ctx context.Context, catalogID string) ([]*interfaces.Resource, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InternalGetByCatalogID", ctx, catalogID)
+	ret0, _ := ret[0].([]*interfaces.Resource)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// InternalGetByCatalogID indicates an expected call of InternalGetByCatalogID.
+func (mr *MockResourceServiceMockRecorder) InternalGetByCatalogID(ctx, catalogID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalGetByCatalogID", reflect.TypeOf((*MockResourceService)(nil).InternalGetByCatalogID), ctx, catalogID)
+}
+
 // InternalGetByID mocks base method.
 func (m *MockResourceService) InternalGetByID(ctx context.Context, id string) (*interfaces.Resource, error) {
 	m.ctrl.T.Helper()
@@ -204,6 +219,21 @@ func (m *MockResourceService) InternalGetByID(ctx context.Context, id string) (*
 func (mr *MockResourceServiceMockRecorder) InternalGetByID(ctx, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalGetByID", reflect.TypeOf((*MockResourceService)(nil).InternalGetByID), ctx, id)
+}
+
+// InternalGetByIDs mocks base method.
+func (m *MockResourceService) InternalGetByIDs(ctx context.Context, ids []string) ([]*interfaces.Resource, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InternalGetByIDs", ctx, ids)
+	ret0, _ := ret[0].([]*interfaces.Resource)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// InternalGetByIDs indicates an expected call of InternalGetByIDs.
+func (mr *MockResourceServiceMockRecorder) InternalGetByIDs(ctx, ids any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalGetByIDs", reflect.TypeOf((*MockResourceService)(nil).InternalGetByIDs), ctx, ids)
 }
 
 // InternalUpdate mocks base method.

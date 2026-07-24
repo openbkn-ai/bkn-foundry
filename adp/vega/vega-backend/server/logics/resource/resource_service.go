@@ -373,6 +373,38 @@ func (rs *resourceService) InternalGetByID(ctx context.Context, id string) (*int
 	return rs.ra.GetByID(ctx, id)
 }
 
+// InternalGetByIDs 供服务端内部批量读取资源基础信息，不执行权限过滤或加载扩展字段。
+func (rs *resourceService) InternalGetByIDs(ctx context.Context, ids []string) ([]*interfaces.Resource, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ResourceService.InternalGetByIDs")
+	defer span.End()
+
+	if len(ids) == 0 {
+		span.SetStatus(codes.Ok, "")
+		return []*interfaces.Resource{}, nil
+	}
+	resources, err := rs.ra.GetByIDsBasic(ctx, ids)
+	if err != nil {
+		span.SetStatus(codes.Error, "Get resources failed")
+		return nil, err
+	}
+	span.SetStatus(codes.Ok, "")
+	return resources, nil
+}
+
+// InternalGetByCatalogID 供服务端内部读取目录下完整资源信息，不执行权限过滤。
+func (rs *resourceService) InternalGetByCatalogID(ctx context.Context, catalogID string) ([]*interfaces.Resource, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ResourceService.InternalGetByCatalogID")
+	defer span.End()
+
+	resources, err := rs.ra.GetByCatalogID(ctx, catalogID)
+	if err != nil {
+		span.SetStatus(codes.Error, "Get resources failed")
+		return nil, err
+	}
+	span.SetStatus(codes.Ok, "")
+	return resources, nil
+}
+
 // GetByIDs retrieves Resources by IDs.
 func (rs *resourceService) GetByIDs(ctx context.Context, ids []string) ([]*interfaces.Resource, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Get resources by IDs")
