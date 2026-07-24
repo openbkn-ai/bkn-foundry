@@ -363,7 +363,7 @@ func Test_knowledgeNetworkService_ListKNs(t *testing.T) {
 				},
 			}
 
-			kna.EXPECT().ListKNs(gomock.Any(), gomock.Any()).Return(knArr, nil)
+			kna.EXPECT().ListKNs(gomock.Any(), gomock.Any()).Return(knArr, nil).AnyTimes()
 			ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 				Return(map[string]interfaces.PermissionResourceOps{
 					"kn1": {
@@ -424,7 +424,7 @@ func Test_knowledgeNetworkService_ListKNs(t *testing.T) {
 				},
 			}
 
-			kna.EXPECT().ListKNs(gomock.Any(), gomock.Any()).Return(knArr, nil)
+			kna.EXPECT().ListKNs(gomock.Any(), gomock.Any()).Return(knArr, nil).AnyTimes()
 			ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(),
 				gomock.Any(), gomock.Any(), gomock.Any()).
 				Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
@@ -449,7 +449,7 @@ func Test_knowledgeNetworkService_ListKNs(t *testing.T) {
 				},
 			}
 
-			kna.EXPECT().ListKNs(gomock.Any(), gomock.Any()).Return(knArr, nil)
+			kna.EXPECT().ListKNs(gomock.Any(), gomock.Any()).Return(knArr, nil).AnyTimes()
 			ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 				Return(map[string]interfaces.PermissionResourceOps{
 					"kn1": {
@@ -478,7 +478,7 @@ func Test_knowledgeNetworkService_ListKNs(t *testing.T) {
 				},
 			}
 
-			kna.EXPECT().ListKNs(gomock.Any(), gomock.Any()).Return(knArr, nil)
+			kna.EXPECT().ListKNs(gomock.Any(), gomock.Any()).Return(knArr, nil).AnyTimes()
 			ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 				Return(map[string]interfaces.PermissionResourceOps{
 					"kn1": {
@@ -543,7 +543,15 @@ func Test_knowledgeNetworkService_ListKNs(t *testing.T) {
 				},
 			}
 
-			kna.EXPECT().ListKNs(gomock.Any(), gomock.Any()).Return(knArr, nil)
+			candidateQuery := parameter
+			candidateQuery.OnlyIDs = true
+			candidateQuery.Limit = -1
+			candidateQuery.Offset = 0
+			detailQuery := parameter
+			detailQuery.CandidateIDs = []string{"kn2", "kn3"}
+			detailQuery.Offset = 0
+			kna.EXPECT().ListKNs(gomock.Any(), candidateQuery).Return(knArr, nil)
+			kna.EXPECT().ListKNs(gomock.Any(), detailQuery).Return(knArr[1:], nil)
 			ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 				Return(map[string]interfaces.PermissionResourceOps{
 					"kn1": {Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}},

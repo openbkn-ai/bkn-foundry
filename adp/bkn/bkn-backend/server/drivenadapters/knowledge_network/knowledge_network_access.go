@@ -210,7 +210,7 @@ func (kna *knowledgeNetworkAccess) ListKNs(ctx context.Context, query interfaces
 		attr.Key("db_url").String(libdb.GetDBUrl()),
 		attr.Key("db_type").String(libdb.GetDBType()))
 
-	subBuilder := sq.Select(
+	columns := []string{
 		"f_id",
 		"f_name",
 		"f_tags",
@@ -226,14 +226,24 @@ func (kna *knowledgeNetworkAccess) ListKNs(ctx context.Context, query interfaces
 		"f_create_time",
 		"f_updater",
 		"f_updater_type",
-		"f_update_time").
-		From(KN_TABLE_NAME)
+		"f_update_time",
+	}
+	if query.OnlyIDs {
+		columns = []string{"f_id"}
+	}
+	subBuilder := sq.Select(columns...).From(KN_TABLE_NAME)
 
 	builder := processQueryCondition(query, subBuilder)
 
 	//排序
 	if query.Sort != "" {
 		builder = builder.OrderBy(fmt.Sprintf("%s %s", query.Sort, query.Direction))
+	}
+	if query.Limit > 0 {
+		builder = builder.Limit(uint64(query.Limit))
+		if query.Offset > 0 {
+			builder = builder.Offset(uint64(query.Offset))
+		}
 	}
 
 	sqlStr, vals, err := builder.ToSql()
@@ -256,6 +266,14 @@ func (kna *knowledgeNetworkAccess) ListKNs(ctx context.Context, query interfaces
 	for rows.Next() {
 		KN := interfaces.KN{
 			ModuleType: interfaces.MODULE_TYPE_KN,
+		}
+		if query.OnlyIDs {
+			if err := rows.Scan(&KN.KNID); err != nil {
+				otellog.LogError(ctx, "Row scan error", err)
+				return []*interfaces.KN{}, err
+			}
+			KNs = append(KNs, &KN)
+			continue
 		}
 		tagsStr := ""
 		err := rows.Scan(
@@ -562,6 +580,10 @@ func processQueryCondition(query interfaces.KNsQueryParams, subBuilder sq.Select
 
 	if query.BusinessDomain != "" {
 		subBuilder = subBuilder.Where(sq.Eq{"f_business_domain": query.BusinessDomain})
+	}
+
+	if len(query.CandidateIDs) > 0 {
+		subBuilder = subBuilder.Where(sq.Eq{"f_id": query.CandidateIDs})
 	}
 
 	return subBuilder

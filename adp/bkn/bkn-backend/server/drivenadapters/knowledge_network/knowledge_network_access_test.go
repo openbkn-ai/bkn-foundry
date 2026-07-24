@@ -327,7 +327,7 @@ func Test_knowledgeNetworkAccess_ListKNs(t *testing.T) {
 			}
 			sqlStrWithAll := fmt.Sprintf("SELECT f_id, f_name, f_tags, f_comment, f_icon, f_color, f_bkn_raw_content, f_skill_content, "+
 				"f_branch, f_business_domain, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time "+
-				"FROM %s WHERE (instr(f_name, ?) > 0 OR instr(f_id, ?) > 0) AND instr(f_tags, ?) > 0 AND f_business_domain = ? ORDER BY f_name ASC",
+				"FROM %s WHERE (instr(f_name, ?) > 0 OR instr(f_id, ?) > 0) AND instr(f_tags, ?) > 0 AND f_business_domain = ? ORDER BY f_name ASC LIMIT 20 OFFSET 10",
 				KN_TABLE_NAME)
 
 			rows := sqlmock.NewRows([]string{
@@ -336,7 +336,7 @@ func Test_knowledgeNetworkAccess_ListKNs(t *testing.T) {
 				"f_updater", "f_updater_type", "f_update_time",
 			})
 
-			smock.ExpectQuery(sqlStrWithAll).WithArgs().WillReturnRows(rows)
+			smock.ExpectQuery(sqlStrWithAll).WithArgs("test", "test", `"tag1"`, "domain1").WillReturnRows(rows)
 
 			kns, err := kna.ListKNs(testCtx, queryWithAll)
 			So(err, ShouldBeNil)

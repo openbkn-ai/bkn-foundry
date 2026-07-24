@@ -490,8 +490,11 @@ func (kns *knowledgeNetworkService) ListKNs(ctx context.Context, parameter inter
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "查询业务知识网络列表")
 	defer span.End()
 
-	//获取业务知识网络列表
-	KNArr, err := kns.kna.ListKNs(ctx, parameter)
+	candidateQuery := parameter
+	candidateQuery.OnlyIDs = true
+	candidateQuery.Limit = -1
+	candidateQuery.Offset = 0
+	KNArr, err := kns.kna.ListKNs(ctx, candidateQuery)
 	if err != nil {
 		logger.Errorf("ListKNs error: %s", err.Error())
 		span.SetStatus(codes.Error, "List knowledge networks error")
@@ -518,31 +521,46 @@ func (kns *knowledgeNetworkService) ListKNs(ctx context.Context, parameter inter
 		return []*interfaces.KN{}, 0, err
 	}
 
-	KNs := make([]*interfaces.KN, 0)
+	visibleKNIDs := make([]string, 0, len(KNArr))
 	for _, kn := range KNArr {
-		// 只留下有权限的模型
-		if resrc, exist := matchResoucesMap[kn.KNID]; exist {
-			kn.Operations = resrc.Operations // 用户当前有权限的操作
-			KNs = append(KNs, kn)
+		if _, exist := matchResoucesMap[kn.KNID]; exist {
+			visibleKNIDs = append(visibleKNIDs, kn.KNID)
 		}
 	}
-	total := len(KNs)
+	total := len(visibleKNIDs)
 
-	// limit = -1,则返回所有
+	if parameter.Limit == 0 {
+		span.SetStatus(codes.Ok, "")
+		return []*interfaces.KN{}, total, nil
+	}
 	if parameter.Limit != -1 {
-		// 分页
-		// 检查起始位置是否越界
-		if parameter.Offset < 0 || parameter.Offset >= len(KNs) {
+		if parameter.Offset < 0 || parameter.Offset >= total {
 			span.SetStatus(codes.Ok, "")
 			return []*interfaces.KN{}, total, nil
 		}
-		// 计算结束位置
 		end := parameter.Offset + parameter.Limit
-		if end > len(KNs) {
-			end = len(KNs)
+		if end > total {
+			end = total
 		}
+		visibleKNIDs = visibleKNIDs[parameter.Offset:end]
+	}
 
-		KNs = KNs[parameter.Offset:end]
+	detailQuery := parameter
+	detailQuery.CandidateIDs = visibleKNIDs
+	detailQuery.Limit = -1
+	detailQuery.Offset = 0
+	if parameter.Limit > 0 {
+		detailQuery.Limit = len(visibleKNIDs)
+	}
+	KNs, err := kns.kna.ListKNs(ctx, detailQuery)
+	if err != nil {
+		logger.Errorf("ListKNs detail error: %s", err.Error())
+		span.SetStatus(codes.Error, "List knowledge network details error")
+		return []*interfaces.KN{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(err.Error())
+	}
+	for _, kn := range KNs {
+		kn.Operations = matchResoucesMap[kn.KNID].Operations
 	}
 
 	accountInfos := make([]*interfaces.AccountInfo, 0, len(KNs)*2)

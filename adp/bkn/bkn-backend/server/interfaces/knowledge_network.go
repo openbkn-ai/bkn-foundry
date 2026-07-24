@@ -228,6 +228,10 @@ type KNsQueryParams struct {
 	Tag            string
 	BusinessDomain string
 	Branch         string
+	// CandidateIDs restricts an internal detail query to permission-filtered IDs.
+	CandidateIDs []string `json:"-" form:"-"`
+	// OnlyIDs avoids loading list detail before permission filtering.
+	OnlyIDs bool `json:"-" form:"-"`
 }
 
 // 概念搜索
