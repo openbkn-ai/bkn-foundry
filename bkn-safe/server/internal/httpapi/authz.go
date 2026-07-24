@@ -686,9 +686,17 @@ func grantsJSON(grants []authz.RoleGrant) []gin.H {
 	out := make([]gin.H, 0, len(grants))
 	for _, gr := range grants {
 		rtype, rid := splitObject(gr.Object)
+		// A nil slice encodes as JSON null, not []. Only scope=type can produce a
+		// row with no type-wide ops (the object-only accessor), so normalise here
+		// rather than leaving callers to guard against a shape they never saw
+		// before.
+		operations := gr.Operations
+		if operations == nil {
+			operations = []string{}
+		}
 		row := gin.H{
 			"resource":   gin.H{"type": rtype, "id": rid},
-			"operations": gr.Operations,
+			"operations": operations,
 		}
 		// Only the scope=type answer carries this; omitted elsewhere so the
 		// existing row shape is untouched.

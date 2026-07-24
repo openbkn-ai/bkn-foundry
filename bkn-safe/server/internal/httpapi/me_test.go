@@ -365,6 +365,12 @@ func TestMePermissionsScope(t *testing.T) {
 	if len(instRows["agent/*"]) != 1 || instRows["agent/*"][0] != "use" {
 		t.Errorf("agent instance_operations = %v, want [use]", instRows["agent/*"])
 	}
+	// That empty operations must serialise as [], never null — this is the only
+	// row shape that can have no type-wide ops, and a null would blow up callers
+	// that iterate it, defeating the very case this row exists for.
+	if !strings.Contains(w.Body.String(), `"operations":[],"resource":{"id":"*","type":"agent"}`) {
+		t.Errorf("object-only row must carry operations:[] — got %s", w.Body.String())
+	}
 
 	// scope=type composes with resource_type.
 	got = decode(tokReq(t, r, http.MethodGet, path+"?scope=type&resource_type=large_model", nil, "u1"))
