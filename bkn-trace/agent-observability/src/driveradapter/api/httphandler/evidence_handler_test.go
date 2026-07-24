@@ -209,6 +209,40 @@ func TestEvidenceHandlerReturnsBusinessGraphByRequest(t *testing.T) {
 	}
 }
 
+func TestEvidenceHandlerReturnsEvidenceNodeByTrace(t *testing.T) {
+	store := evidencestore.New()
+	handler := NewEvidenceHandler(evidencesvc.New(store))
+	ingestReq := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/evidence/events", strings.NewReader(validHandlerBatch()))
+	ingestRec := httptest.NewRecorder()
+	handler.IngestEvidenceEvents(ingestRec, ingestReq)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/agent-observability/v1/evidence-nodes/claim%3Aclaim_handler?trace_id=9c0d0000000000000000000000000001", nil)
+	rec := httptest.NewRecorder()
+	handler.GetEvidenceNode(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"node_id":"claim:claim_handler"`) || !strings.Contains(rec.Body.String(), `"node_type":"claim"`) {
+		t.Fatalf("unexpected body: %s", rec.Body.String())
+	}
+}
+
+func TestEvidenceHandlerRejectsEvidenceNodeWithoutScope(t *testing.T) {
+	handler := NewEvidenceHandler(evidencesvc.New(evidencestore.New()))
+	req := httptest.NewRequest(http.MethodGet, "/api/agent-observability/v1/evidence-nodes/claim%3Aclaim_handler", nil)
+	rec := httptest.NewRecorder()
+
+	handler.GetEvidenceNode(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "trace_id or request_id is required") {
+		t.Fatalf("unexpected body: %s", rec.Body.String())
+	}
+}
+
 func TestEvidenceHandlerReturnsNotFoundForUnknownTraceSubresource(t *testing.T) {
 	handler := NewEvidenceHandler(evidencesvc.New(evidencestore.New()))
 	req := httptest.NewRequest(http.MethodGet, "/api/agent-observability/v1/traces/9c0d0000000000000000000000000001/unknown", nil)

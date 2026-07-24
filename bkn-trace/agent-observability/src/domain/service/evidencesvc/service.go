@@ -167,6 +167,22 @@ func (s *Service) GetBusinessGraphByRequestID(ctx context.Context, requestID str
 	return buildBusinessGraph(result.Traces, result.Truncated), true, nil
 }
 
+func (s *Service) GetEvidenceNodeByTraceID(ctx context.Context, traceID string, nodeID string, options evidencevo.EvidenceQueryOptions) (evidencevo.EvidenceNodeResponse, bool, error) {
+	result, err := s.store.GetEvidenceByTraceID(ctx, strings.TrimSpace(traceID), normalizeQueryOptions(options))
+	if err != nil {
+		return evidencevo.EvidenceNodeResponse{}, false, err
+	}
+	return findEvidenceNode(result.Traces, strings.TrimSpace(nodeID))
+}
+
+func (s *Service) GetEvidenceNodeByRequestID(ctx context.Context, requestID string, nodeID string, options evidencevo.EvidenceQueryOptions) (evidencevo.EvidenceNodeResponse, bool, error) {
+	result, err := s.store.GetEvidenceByRequestID(ctx, strings.TrimSpace(requestID), normalizeQueryOptions(options))
+	if err != nil {
+		return evidencevo.EvidenceNodeResponse{}, false, err
+	}
+	return findEvidenceNode(result.Traces, strings.TrimSpace(nodeID))
+}
+
 func buildEvidenceChain(traces []evidencevo.NormalizedTrace, truncated bool) evidencevo.EvidenceChainResponse {
 	response := evidencevo.EvidenceChainResponse{
 		TraceID:   traces[0].TraceID,
@@ -227,6 +243,75 @@ func buildEvidenceChain(traces []evidencevo.NormalizedTrace, truncated bool) evi
 	response.Page.EdgeCount = len(response.Data.EvidenceRefs) + len(response.Data.BusinessRefs)
 	response.Page.Truncated = truncated
 	return response
+}
+
+func findEvidenceNode(traces []evidencevo.NormalizedTrace, nodeID string) (evidencevo.EvidenceNodeResponse, bool, error) {
+	if nodeID == "" {
+		return evidencevo.EvidenceNodeResponse{}, false, nil
+	}
+	for _, trace := range traces {
+		for _, event := range trace.Events {
+			switch event.EventType {
+			case "claim.created":
+				if response, ok := claimNodeFromEvent(trace, event, nodeID); ok {
+					return response, true, nil
+				}
+			case "evidence.refs.created":
+				if response, ok := refNodeFromEvent(trace, event, nodeID, "evidence_ref", "evidence_refs"); ok {
+					return response, true, nil
+				}
+			case "business.refs.resolved":
+				if response, ok := refNodeFromEvent(trace, event, nodeID, "business_ref", "business_refs"); ok {
+					return response, true, nil
+				}
+			}
+		}
+	}
+	return evidencevo.EvidenceNodeResponse{}, false, nil
+}
+
+func claimNodeFromEvent(trace evidencevo.NormalizedTrace, event evidencevo.EvidenceEvent, nodeID string) (evidencevo.EvidenceNodeResponse, bool) {
+	claimID, _ := stringField(event.Payload, "claim_id")
+	if claimID == "" || nodeID != "claim:"+claimID || !visible(event.Payload) {
+		return evidencevo.EvidenceNodeResponse{}, false
+	}
+	versionStatus, _ := stringField(event.Payload, "version_status")
+	return evidencevo.EvidenceNodeResponse{
+		TraceID:       trace.TraceID,
+		RequestID:     trace.RequestID,
+		NodeID:        nodeID,
+		NodeType:      "claim",
+		ClaimID:       claimID,
+		Visibility:    visibilityValue(event.Payload),
+		VersionStatus: versionStatus,
+		Data:          cloneMap(event.Payload),
+	}, true
+}
+
+func refNodeFromEvent(trace evidencevo.NormalizedTrace, event evidencevo.EvidenceEvent, nodeID string, nodeType string, payloadKey string) (evidencevo.EvidenceNodeResponse, bool) {
+	claimID, _ := stringField(event.Payload, "claim_id")
+	for _, item := range arrayField(event.Payload, payloadKey) {
+		ref, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		refID, _ := stringField(ref, "ref_id")
+		if refID == "" || nodeID != nodeType+":"+refID || !visible(ref) {
+			continue
+		}
+		versionStatus, _ := stringField(ref, "version_status")
+		return evidencevo.EvidenceNodeResponse{
+			TraceID:       trace.TraceID,
+			RequestID:     trace.RequestID,
+			NodeID:        nodeID,
+			NodeType:      nodeType,
+			ClaimID:       claimID,
+			Visibility:    visibilityValue(ref),
+			VersionStatus: versionStatus,
+			Data:          cloneMap(ref),
+		}, true
+	}
+	return evidencevo.EvidenceNodeResponse{}, false
 }
 
 func buildBusinessGraph(traces []evidencevo.NormalizedTrace, truncated bool) evidencevo.BusinessGraphResponse {
