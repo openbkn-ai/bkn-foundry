@@ -16,6 +16,78 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/api/agent-observability/v1/evidence-nodes/{node_id}": {
+            "get": {
+                "description": "Returns one visible claim, evidence ref, or business ref node scoped by trace_id or request_id.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "evidence"
+                ],
+                "summary": "Get evidence node details",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Evidence node ID, for example claim:claim_001",
+                        "name": "node_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Trace ID scope",
+                        "name": "trace_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "BKN request ID scope",
+                        "name": "request_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Maximum evidence trace batches to read, 1..1000",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "405": {
+                        "description": "Method Not Allowed",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/agent-observability/v1/evidence/events": {
             "post": {
                 "description": "Accepts claim.created, evidence.refs.created, and business.refs.resolved events and stores the normalized evidence model.",
@@ -194,6 +266,12 @@ const docTemplate = `{
                         "name": "request_id",
                         "in": "query",
                         "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Maximum evidence trace batches to read, 1..1000",
+                        "name": "limit",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -248,6 +326,72 @@ const docTemplate = `{
                         "name": "request_id",
                         "in": "query",
                         "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Maximum evidence trace batches to read, 1..1000",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "405": {
+                        "description": "Method Not Allowed",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/agent-observability/v1/traces/by-request/snapshot-preview": {
+            "get": {
+                "description": "Returns a metadata-only governed snapshot manifest preview without creating or exposing object storage locations.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "evidence"
+                ],
+                "summary": "Get evidence snapshot preview by BKN request ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "BKN request ID",
+                        "name": "request_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Maximum evidence trace batches to read, 1..1000",
+                        "name": "limit",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -302,6 +446,12 @@ const docTemplate = `{
                         "name": "trace_id",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Maximum evidence trace batches to read, 1..1000",
+                        "name": "limit",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -356,6 +506,72 @@ const docTemplate = `{
                         "name": "trace_id",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Maximum evidence trace batches to read, 1..1000",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "405": {
+                        "description": "Method Not Allowed",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/agent-observability/v1/traces/{trace_id}/snapshot-preview": {
+            "get": {
+                "description": "Returns a metadata-only governed snapshot manifest preview without creating or exposing object storage locations.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "evidence"
+                ],
+                "summary": "Get evidence snapshot preview by trace ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Trace ID",
+                        "name": "trace_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Maximum evidence trace batches to read, 1..1000",
+                        "name": "limit",
+                        "in": "query"
                     }
                 ],
                 "responses": {

@@ -209,6 +209,51 @@ func TestEvidenceHandlerReturnsBusinessGraphByRequest(t *testing.T) {
 	}
 }
 
+func TestEvidenceHandlerReturnsSnapshotPreviewByTraceWithoutStorageURI(t *testing.T) {
+	store := evidencestore.New()
+	handler := NewEvidenceHandler(evidencesvc.New(store))
+	ingestReq := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/evidence/events", strings.NewReader(validHandlerBusinessBatch()))
+	ingestRec := httptest.NewRecorder()
+	handler.IngestEvidenceEvents(ingestRec, ingestReq)
+	if ingestRec.Code != http.StatusAccepted {
+		t.Fatalf("expected ingest 202, got %d: %s", ingestRec.Code, ingestRec.Body.String())
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/agent-observability/v1/traces/9c0d0000000000000000000000000002/snapshot-preview", nil)
+	rec := httptest.NewRecorder()
+	handler.GetTraceSubresource(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `"mode":"preview"`) || !strings.Contains(body, `"manifest_hash":"sha256:`) {
+		t.Fatalf("expected snapshot preview manifest in body: %s", body)
+	}
+	if strings.Contains(body, `"uri"`) || strings.Contains(body, "s3://") || strings.Contains(body, "http://") || strings.Contains(body, "https://") {
+		t.Fatalf("snapshot preview must not expose object storage uri or bare urls: %s", body)
+	}
+}
+
+func TestEvidenceHandlerReturnsSnapshotPreviewByRequest(t *testing.T) {
+	store := evidencestore.New()
+	handler := NewEvidenceHandler(evidencesvc.New(store))
+	ingestReq := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/evidence/events", strings.NewReader(validHandlerBusinessBatch()))
+	ingestRec := httptest.NewRecorder()
+	handler.IngestEvidenceEvents(ingestRec, ingestReq)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/agent-observability/v1/traces/by-request/snapshot-preview?request_id=req_handler_002", nil)
+	rec := httptest.NewRecorder()
+	handler.GetSnapshotPreviewByRequestID(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"bkn.request.id":"req_handler_002"`) || !strings.Contains(rec.Body.String(), `"snapshot_ref"`) {
+		t.Fatalf("unexpected body: %s", rec.Body.String())
+	}
+}
+
 func TestEvidenceHandlerReturnsEvidenceNodeByTrace(t *testing.T) {
 	store := evidencestore.New()
 	handler := NewEvidenceHandler(evidencesvc.New(store))

@@ -158,6 +158,10 @@ func (h *EvidenceHandler) GetTraceSubresource(w http.ResponseWriter, r *http.Req
 		h.GetBusinessGraphByTraceID(w, r)
 		return
 	}
+	if strings.HasSuffix(r.URL.Path, "/snapshot-preview") {
+		h.GetSnapshotPreviewByTraceID(w, r)
+		return
+	}
 	writeJSON(w, http.StatusNotFound, rdto.ErrorResponse{
 		Code:    "NOT_FOUND",
 		Message: "trace subresource not found",
@@ -267,6 +271,116 @@ func (h *EvidenceHandler) GetEvidenceChainByRequestID(w http.ResponseWriter, r *
 		writeJSON(w, http.StatusNotFound, rdto.ErrorResponse{
 			Code:    "NOT_FOUND",
 			Message: "evidence chain not found",
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, response)
+}
+
+// GetSnapshotPreviewByTraceID godoc
+// @Summary Get evidence snapshot preview by trace ID
+// @Description Returns a metadata-only governed snapshot manifest preview without creating or exposing object storage locations.
+// @Tags evidence
+// @Produce json
+// @Param trace_id path string true "Trace ID"
+// @Param limit query int false "Maximum evidence trace batches to read, 1..1000"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} rdto.ErrorResponse
+// @Failure 404 {object} rdto.ErrorResponse
+// @Failure 405 {object} rdto.ErrorResponse
+// @Failure 500 {object} rdto.ErrorResponse
+// @Router /api/agent-observability/v1/traces/{trace_id}/snapshot-preview [get]
+func (h *EvidenceHandler) GetSnapshotPreviewByTraceID(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, rdto.ErrorResponse{
+			Code:    "METHOD_NOT_ALLOWED",
+			Message: "only GET is supported",
+		})
+		return
+	}
+
+	traceID := traceIDFromSnapshotPreviewPath(r.URL.Path)
+	if traceID == "" {
+		writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{
+			Code:    "INVALID_ARGUMENT",
+			Message: "trace_id is required",
+		})
+		return
+	}
+
+	options, ok := evidenceQueryOptionsFromRequest(w, r)
+	if !ok {
+		return
+	}
+
+	response, found, err := h.evidenceService.GetSnapshotPreviewByTraceID(r.Context(), traceID, options)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, rdto.ErrorResponse{
+			Code:    "QUERY_FAILED",
+			Message: "failed to query snapshot preview",
+		})
+		return
+	}
+	if !found {
+		writeJSON(w, http.StatusNotFound, rdto.ErrorResponse{
+			Code:    "NOT_FOUND",
+			Message: "snapshot preview not found",
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, response)
+}
+
+// GetSnapshotPreviewByRequestID godoc
+// @Summary Get evidence snapshot preview by BKN request ID
+// @Description Returns a metadata-only governed snapshot manifest preview without creating or exposing object storage locations.
+// @Tags evidence
+// @Produce json
+// @Param request_id query string true "BKN request ID"
+// @Param limit query int false "Maximum evidence trace batches to read, 1..1000"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} rdto.ErrorResponse
+// @Failure 404 {object} rdto.ErrorResponse
+// @Failure 405 {object} rdto.ErrorResponse
+// @Failure 500 {object} rdto.ErrorResponse
+// @Router /api/agent-observability/v1/traces/by-request/snapshot-preview [get]
+func (h *EvidenceHandler) GetSnapshotPreviewByRequestID(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, rdto.ErrorResponse{
+			Code:    "METHOD_NOT_ALLOWED",
+			Message: "only GET is supported",
+		})
+		return
+	}
+
+	requestID := strings.TrimSpace(r.URL.Query().Get("request_id"))
+	if requestID == "" {
+		writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{
+			Code:    "INVALID_ARGUMENT",
+			Message: "request_id is required",
+		})
+		return
+	}
+
+	options, ok := evidenceQueryOptionsFromRequest(w, r)
+	if !ok {
+		return
+	}
+
+	response, found, err := h.evidenceService.GetSnapshotPreviewByRequestID(r.Context(), requestID, options)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, rdto.ErrorResponse{
+			Code:    "QUERY_FAILED",
+			Message: "failed to query snapshot preview",
+		})
+		return
+	}
+	if !found {
+		writeJSON(w, http.StatusNotFound, rdto.ErrorResponse{
+			Code:    "NOT_FOUND",
+			Message: "snapshot preview not found",
 		})
 		return
 	}
@@ -450,6 +564,20 @@ func evidenceQueryOptionsFromRequest(w http.ResponseWriter, r *http.Request) (ev
 func traceIDFromBusinessGraphPath(path string) string {
 	const prefix = "/api/agent-observability/v1/traces/"
 	const suffix = "/business-graph"
+	if !strings.HasPrefix(path, prefix) || !strings.HasSuffix(path, suffix) {
+		return ""
+	}
+	traceID := strings.TrimSuffix(strings.TrimPrefix(path, prefix), suffix)
+	traceID = strings.Trim(traceID, "/")
+	if strings.Contains(traceID, "/") {
+		return ""
+	}
+	return strings.TrimSpace(traceID)
+}
+
+func traceIDFromSnapshotPreviewPath(path string) string {
+	const prefix = "/api/agent-observability/v1/traces/"
+	const suffix = "/snapshot-preview"
 	if !strings.HasPrefix(path, prefix) || !strings.HasSuffix(path, suffix) {
 		return ""
 	}

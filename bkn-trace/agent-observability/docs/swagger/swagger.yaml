@@ -14,6 +14,55 @@ info:
   title: Agent Observability API
   version: "1.0"
 paths:
+  /api/agent-observability/v1/evidence-nodes/{node_id}:
+    get:
+      description: Returns one visible claim, evidence ref, or business ref node scoped
+        by trace_id or request_id.
+      parameters:
+      - description: Evidence node ID, for example claim:claim_001
+        in: path
+        name: node_id
+        required: true
+        type: string
+      - description: Trace ID scope
+        in: query
+        name: trace_id
+        type: string
+      - description: BKN request ID scope
+        in: query
+        name: request_id
+        type: string
+      - description: Maximum evidence trace batches to read, 1..1000
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "405":
+          description: Method Not Allowed
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+      summary: Get evidence node details
+      tags:
+      - evidence
   /api/agent-observability/v1/evidence/events:
     post:
       consumes:
@@ -95,6 +144,10 @@ paths:
         name: trace_id
         required: true
         type: string
+      - description: Maximum evidence trace batches to read, 1..1000
+        in: query
+        name: limit
+        type: integer
       produces:
       - application/json
       responses:
@@ -132,6 +185,10 @@ paths:
         name: trace_id
         required: true
         type: string
+      - description: Maximum evidence trace batches to read, 1..1000
+        in: query
+        name: limit
+        type: integer
       produces:
       - application/json
       responses:
@@ -157,6 +214,47 @@ paths:
           schema:
             $ref: '#/definitions/rdto.ErrorResponse'
       summary: Get evidence chain by trace ID
+      tags:
+      - evidence
+  /api/agent-observability/v1/traces/{trace_id}/snapshot-preview:
+    get:
+      description: Returns a metadata-only governed snapshot manifest preview without
+        creating or exposing object storage locations.
+      parameters:
+      - description: Trace ID
+        in: path
+        name: trace_id
+        required: true
+        type: string
+      - description: Maximum evidence trace batches to read, 1..1000
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "405":
+          description: Method Not Allowed
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+      summary: Get evidence snapshot preview by trace ID
       tags:
       - evidence
   /api/agent-observability/v1/traces/by-conversation:
@@ -207,6 +305,10 @@ paths:
         name: request_id
         required: true
         type: string
+      - description: Maximum evidence trace batches to read, 1..1000
+        in: query
+        name: limit
+        type: integer
       produces:
       - application/json
       responses:
@@ -244,6 +346,10 @@ paths:
         name: request_id
         required: true
         type: string
+      - description: Maximum evidence trace batches to read, 1..1000
+        in: query
+        name: limit
+        type: integer
       produces:
       - application/json
       responses:
@@ -269,6 +375,47 @@ paths:
           schema:
             $ref: '#/definitions/rdto.ErrorResponse'
       summary: Get business semantic graph by BKN request ID
+      tags:
+      - evidence
+  /api/agent-observability/v1/traces/by-request/snapshot-preview:
+    get:
+      description: Returns a metadata-only governed snapshot manifest preview without
+        creating or exposing object storage locations.
+      parameters:
+      - description: BKN request ID
+        in: query
+        name: request_id
+        required: true
+        type: string
+      - description: Maximum evidence trace batches to read, 1..1000
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "405":
+          description: Method Not Allowed
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+      summary: Get evidence snapshot preview by BKN request ID
       tags:
       - evidence
 swagger: "2.0"
