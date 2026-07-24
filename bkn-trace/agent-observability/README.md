@@ -33,6 +33,31 @@ make test
 GOCACHE=/tmp/openbkn-go-build-cache GOMODCACHE=/tmp/openbkn-go-mod-cache go test ./...
 ```
 
+本地 E2E Lite 就绪性探测：
+
+```bash
+python3 scripts/test_bkn_trace_e2e_lite_probe.py
+python3 scripts/bkn_trace_e2e_lite_probe.py \
+  --base-url http://localhost \
+  --trace-id <trace_id> \
+  --request-id <bkn.request.id>
+```
+
+默认模式只探测真实 OpenBKN Gateway / BKN Trace API 是否可用，不写入集群、不创建索引、不使用 mock 数据。常见失败原因包括：Studio dev proxy 未启用、认证失败、BKN Trace API 未部署、trace/evidence OpenSearch index 缺失或 trace id 不存在。
+
+如果本地已经有 OTLP HTTP collector 和 BKN Trace API，可显式启用写入模式，生成一条最小真实 trace 和最小 evidence batch 后再查询：
+
+```bash
+python3 scripts/bkn_trace_e2e_lite_probe.py \
+  --base-url http://127.0.0.1:8080 \
+  --trace-id 33333333333333333333333333333333 \
+  --request-id req_bkn_trace_e2e_lite_probe_003 \
+  --emit-otlp-url http://127.0.0.1:4318/v1/traces \
+  --ingest-evidence
+```
+
+本地自签 HTTPS 网关可以加 `--insecure`。写入模式仍只写最小诊断 span、claim、evidence ref 和 business ref，不包含 prompt、完整 SQL、行级数据、token 或裸对象存储 URL。由于 collector 到 OpenSearch 可能存在短暂可见性延迟，查询类 endpoint 默认重试 3 次，可用 `--retries` 和 `--retry-delay` 调整。
+
 阶段二 evidence ingestion 接口接受 `bkn.trace.schema.version=2.0.0` 的事件批次，包含 `trace` 与 `events`。当前版本先完成 contract 校验、敏感 payload 拒绝、归一化计数、最小 Evidence Chain 查询、Business Graph 查询和 Evidence Node 查询；默认使用内存 repository，生产或共享测试环境可切换到 OpenSearch evidence index store。
 
 ### Evidence Store

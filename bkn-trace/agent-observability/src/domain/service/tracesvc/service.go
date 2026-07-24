@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/opensearchvo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/oteltracevo"
@@ -32,11 +33,16 @@ func (s *TraceQueryService) GetTraceGraphByTraceID(ctx context.Context, traceID 
 		"size": DefaultTraceGraphSpanLimit + 1,
 		"query": map[string]any{
 			"term": map[string]string{
-				"traceId.keyword": traceID,
+				"traceId": traceID,
 			},
 		},
 		"sort": []map[string]any{
-			{"startTimeUnixNano": map[string]string{"order": "asc"}},
+			{
+				"startTime": map[string]string{
+					"order":         "asc",
+					"unmapped_type": "date",
+				},
+			},
 		},
 	})
 	if err != nil {
@@ -75,6 +81,18 @@ type spanRecord struct {
 	ServiceName string
 }
 
+type ss4oFlatSpan struct {
+	TraceID      string             `json:"traceId"`
+	SpanID       string             `json:"spanId"`
+	ParentSpanID string             `json:"parentSpanId"`
+	Name         string             `json:"name"`
+	Kind         string             `json:"kind"`
+	StartTime    string             `json:"startTime"`
+	EndTime      string             `json:"endTime"`
+	Resource     map[string]string  `json:"resource"`
+	Status       oteltracevo.Status `json:"status"`
+}
+
 func spansFromSearchResult(result opensearchvo.SearchResult, traceID string) ([]spanRecord, error) {
 	var response searchResponse
 	if err := json.Unmarshal(result, &response); err != nil {
@@ -87,12 +105,37 @@ func spansFromSearchResult(result opensearchvo.SearchResult, traceID string) ([]
 			records = append(records, spansFromTraceData(traceData, traceID)...)
 			continue
 		}
+		var flatSpan ss4oFlatSpan
+		if err := json.Unmarshal(hit.Source, &flatSpan); err == nil && isSS4OFlatSpan(flatSpan, traceID) {
+			records = append(records, spanRecord{
+				Span: oteltracevo.Span{
+					TraceID:           flatSpan.TraceID,
+					SpanID:            flatSpan.SpanID,
+					ParentSpanID:      flatSpan.ParentSpanID,
+					Name:              flatSpan.Name,
+					Kind:              flatSpan.Kind,
+					StartTimeUnixNano: rfc3339ToNanoString(flatSpan.StartTime),
+					EndTimeUnixNano:   rfc3339ToNanoString(flatSpan.EndTime),
+					Status:            flatSpan.Status,
+				},
+				ServiceName: flatSpan.Resource["service.name"],
+			})
+			continue
+		}
 		var span oteltracevo.Span
-		if err := json.Unmarshal(hit.Source, &span); err == nil && span.TraceID == traceID {
+		if err := json.Unmarshal(hit.Source, &span); err == nil && isOTLPSpan(span, traceID) {
 			records = append(records, spanRecord{Span: span})
 		}
 	}
 	return records, nil
+}
+
+func isSS4OFlatSpan(span ss4oFlatSpan, traceID string) bool {
+	return span.TraceID == traceID && span.SpanID != "" && (span.StartTime != "" || span.EndTime != "")
+}
+
+func isOTLPSpan(span oteltracevo.Span, traceID string) bool {
+	return span.TraceID == traceID && span.SpanID != "" && (span.StartTimeUnixNano != "" || span.EndTimeUnixNano != "")
 }
 
 func spansFromTraceData(traceData oteltracevo.TraceData, traceID string) []spanRecord {
@@ -219,7 +262,7 @@ func resourceAttribute(resource oteltracevo.Resource, key string) string {
 }
 
 func spanStatus(status oteltracevo.Status) string {
-	switch status.Code {
+	switch strings.ToUpper(status.Code) {
 	case "STATUS_CODE_ERROR", "ERROR":
 		return "error"
 	default:
@@ -230,6 +273,14 @@ func spanStatus(status oteltracevo.Status) string {
 func parseNano(value string) (int64, bool) {
 	parsed, err := strconv.ParseInt(value, 10, 64)
 	return parsed, err == nil
+}
+
+func rfc3339ToNanoString(value string) string {
+	parsed, err := time.Parse(time.RFC3339Nano, value)
+	if err != nil {
+		return ""
+	}
+	return strconv.FormatInt(parsed.UnixNano(), 10)
 }
 
 func sortedKeys(values map[string]struct{}) []string {
