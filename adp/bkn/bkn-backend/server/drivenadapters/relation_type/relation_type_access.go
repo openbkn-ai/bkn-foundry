@@ -211,6 +211,12 @@ func (rta *relationTypeAccess) ListRelationTypes(ctx context.Context, query inte
 	if query.Sort != "" {
 		builder = builder.OrderBy(fmt.Sprintf("%s %s", query.Sort, query.Direction))
 	}
+	if query.Limit > 0 {
+		builder = builder.Limit(uint64(query.Limit))
+		if query.Offset > 0 {
+			builder = builder.Offset(uint64(query.Offset))
+		}
+	}
 
 	sqlStr, vals, err := builder.ToSql()
 	if err != nil {
