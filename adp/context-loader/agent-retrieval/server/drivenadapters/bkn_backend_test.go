@@ -137,35 +137,12 @@ func TestGetObjectTypeDetail_Success(t *testing.T) {
 
 		// Mock HTTP 成功响应
 		mockHTTPClient.EXPECT().GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(200, []byte(`{
-				"entries": [{
-					"id": "ot-001",
-					"name": "测试对象类",
-					"logic_properties": [{
-						"name": "tool_property",
-						"type": "tool",
-						"data_source": {
-							"type": "tool",
-							"box_id": "box-001",
-							"tool_id": "tool-001",
-							"result_path": "$.data.result"
-						}
-					}]
-				}]
-			}`), nil)
+			Return(200, []byte(`{"entries": [{"id": "ot-001", "name": "测试对象类"}]}`), nil)
 
 		resp, err := client.GetObjectTypeDetail(ctx, "kn-001", []string{"ot-001"}, true)
 		convey.So(err, convey.ShouldBeNil)
 		convey.So(resp, convey.ShouldNotBeNil)
 		convey.So(len(resp), convey.ShouldEqual, 1)
-		convey.So(resp[0].LogicProperties, convey.ShouldHaveLength, 1)
-		convey.So(resp[0].LogicProperties[0].Type, convey.ShouldEqual, interfaces.LogicPropertyTypeTool)
-		convey.So(resp[0].LogicProperties[0].DataSource, convey.ShouldResemble, map[string]any{
-			"type":        "tool",
-			"box_id":      "box-001",
-			"tool_id":     "tool-001",
-			"result_path": "$.data.result",
-		})
 	})
 }
 

@@ -41,7 +41,6 @@ type LogicPropertyType string
 const (
 	LogicPropertyTypeMetric   LogicPropertyType = "metric"   // Metric type
 	LogicPropertyTypeOperator LogicPropertyType = "operator" // Operator type
-	LogicPropertyTypeTool     LogicPropertyType = "tool"     // Tool type
 )
 
 type KnBaseError struct {
@@ -83,7 +82,7 @@ type DataProperty struct {
 type LogicPropertyDef struct {
 	Name        string              `json:"name"`
 	DisplayName string              `json:"display_name,omitempty"`
-	Type        LogicPropertyType   `json:"type"` // Logic property type
+	Type        LogicPropertyType   `json:"type"` // Logic property type: metric or operator
 	Comment     string              `json:"comment,omitempty"`
 	DataSource  map[string]any      `json:"data_source,omitempty"`
 	Parameters  []PropertyParameter `json:"parameters,omitempty"`
