@@ -8,6 +8,7 @@ package driveradapters
 
 import (
 	"bytes"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -249,6 +250,31 @@ func Test_KnowledgeNetworkRestHandler_DeleteKN(t *testing.T) {
 			engine.ServeHTTP(w, req)
 
 			So(w.Result().StatusCode, ShouldEqual, http.StatusNotFound)
+		})
+	})
+}
+
+func Test_KnowledgeNetworkRestHandler_QueryKNNamesByIDs(t *testing.T) {
+	Convey("Test QueryKNNamesByIDs", t, func() {
+		test := setGinMode()
+		defer test()
+
+		mockCtrl := gomock.NewController(t)
+		defer mockCtrl.Finish()
+		as := bmock.NewMockAuthService(mockCtrl)
+		kns := bmock.NewMockKNService(mockCtrl)
+		handler := MockNewKnowledgeNetworkRestHandler(&common.AppSetting{}, as, kns)
+		engine := gin.New()
+		handler.RegisterPublic(engine)
+
+		Convey("Rejects an unauthenticated request", func() {
+			as.EXPECT().VerifyToken(gomock.Any(), gomock.Any()).Return(hydra.Visitor{}, errors.New("invalid token"))
+			req := httptest.NewRequest(http.MethodPost, "/api/bkn-backend/v1/knowledge-networks/names",
+				bytes.NewBufferString(`{"ids":["kn1"]}`))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			engine.ServeHTTP(w, req)
+			So(w.Code, ShouldEqual, http.StatusUnauthorized)
 		})
 	})
 }
