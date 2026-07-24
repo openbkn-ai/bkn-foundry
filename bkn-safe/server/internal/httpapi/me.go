@@ -102,6 +102,11 @@ func registerMeReads(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB, dir *di
 	// Optional scope filters: ?resource_type=<T> narrows to one type;
 	// &resource_id=<id1,id2,...> (comma-separated) narrows the instance rows,
 	// keeping the type-wide id:"*" row. resource_id requires resource_type.
+	// ?scope=type drops instance exception rows entirely (only id:"*" rows and
+	// the wildcard row) — for the login/boot call that renders menus from
+	// type-level grants and discards instance rows anyway; with per-object
+	// grants those rows dominate the payload (#353). Conflicts with
+	// resource_id (asking for instance rows while dropping them) -> 400.
 	g.GET("/permissions", func(c *gin.Context) {
 		accessorID := c.GetString(ctxAccessorID)
 		isAdmin, err := e.CanAdmin(accessorID)
@@ -118,6 +123,19 @@ func registerMeReads(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB, dir *di
 				}
 			}
 		}
+		scope := c.Query("scope")
+		if scope != "" && scope != "type" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": `unknown scope: only "type" is supported`})
+			return
+		}
+		// scope 校验先于 resource_type 缺失校验:?scope=type&resource_id=m1 的真正
+		// 毛病是「要实例行又丢实例行」,补个 resource_type 也救不回来。若让
+		// "resource_id requires resource_type" 先命中,调用方会照文案加上
+		// resource_type 再撞一次 400,把真矛盾藏了一层。
+		if scope == "type" && len(resourceIDs) > 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "resource_id conflicts with scope=type"})
+			return
+		}
 		if len(resourceIDs) > 0 && resourceType == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "resource_id requires resource_type"})
 			return
@@ -125,6 +143,7 @@ func registerMeReads(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB, dir *di
 		_, grants, err := e.EffectivePermissions(accessorID, authz.PermQuery{
 			ResourceType: resourceType,
 			ResourceIDs:  resourceIDs,
+			TypeWideOnly: scope == "type",
 		})
 		if err != nil {
 			serverError(c, err)

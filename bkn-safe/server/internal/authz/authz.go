@@ -227,10 +227,14 @@ func groupGrantsByObject(rows [][]string) []RoleGrant {
 // PermQuery narrows an EffectivePermissions read. The zero value returns the
 // full effective set; ResourceType scopes to one type and ResourceIDs further
 // narrows the instance exception rows (ResourceIDs is only meaningful with a
-// ResourceType set).
+// ResourceType set). TypeWideOnly drops instance exception rows entirely —
+// for callers that only render type-level UI (menus/navigation) and would
+// discard per-instance rows anyway; with per-object grants those rows dominate
+// the payload (#353).
 type PermQuery struct {
 	ResourceType string   // "" = all types
 	ResourceIDs  []string // empty = all instances of the type
+	TypeWideOnly bool     // true = only id:"*" rows (and the wildcard row)
 }
 
 // EffectivePermissions returns the accessor's authorization as a COLLAPSED,
@@ -304,6 +308,9 @@ func (en *Enforcer) EffectivePermissions(accessorID string, q PermQuery) (hasWil
 		if rid == "*" {
 			// Type-wide row: always kept within scope; the frontend unions on it.
 			out = append(out, RoleGrant{Object: g.Object, Operations: g.Operations})
+			continue
+		}
+		if q.TypeWideOnly {
 			continue
 		}
 		// Instance row: keep only ops beyond the type-wide set; drop if fully

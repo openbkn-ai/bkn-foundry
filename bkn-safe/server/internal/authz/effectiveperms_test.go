@@ -232,3 +232,38 @@ func TestEffectivePermissionsScope(t *testing.T) {
 		t.Fatalf("resource:r1 = %v", idx["resource:r1"])
 	}
 }
+
+// TypeWideOnly drops every instance exception row — including instance-only
+// grants with no type-wide row — and composes with ResourceType.
+func TestEffectivePermissionsTypeWideOnly(t *testing.T) {
+	e := newTestEnforcer(t)
+	const user = "u-tw"
+	mustNoErr(t, e.GrantRolePermission("role-tw", "large_model", "*", "view"))
+	mustNoErr(t, e.AssignRole(user, "role-tw"))
+	mustNoErr(t, e.GrantObjectPermission(user, "large_model", "m1", "modify")) // surplus over type-wide
+	mustNoErr(t, e.GrantObjectPermission(user, "agent", "a1", "use"))          // instance-only, no type-wide row
+
+	has, grants, err := e.EffectivePermissions(user, PermQuery{TypeWideOnly: true})
+	mustNoErr(t, err)
+	if has {
+		t.Fatal("hasWildcard: want false")
+	}
+	idx := byObject(grants)
+	if !eqOps(idx["large_model:*"], "view") {
+		t.Errorf("large_model:* = %v, want [view]", idx["large_model:*"])
+	}
+	if _, ok := idx["large_model:m1"]; ok {
+		t.Errorf("surplus instance row must be dropped: %+v", grants)
+	}
+	if _, ok := idx["agent:a1"]; ok {
+		t.Errorf("instance-only grant must be dropped: %+v", grants)
+	}
+
+	// Composes with ResourceType: single type-wide row of the queried type.
+	_, grants, err = e.EffectivePermissions(user, PermQuery{ResourceType: "large_model", TypeWideOnly: true})
+	mustNoErr(t, err)
+	idx = byObject(grants)
+	if len(idx) != 1 || !eqOps(idx["large_model:*"], "view") {
+		t.Errorf("scoped type-wide = %+v, want only large_model:* [view]", grants)
+	}
+}

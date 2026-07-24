@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"bkn-safe/internal/model"
@@ -323,5 +324,42 @@ func TestMePermissionsScope(t *testing.T) {
 	// resource_id without resource_type -> 400.
 	if w := tokReq(t, r, http.MethodGet, path+"?resource_id=m1", nil, "u1"); w.Code != http.StatusBadRequest {
 		t.Errorf("resource_id without resource_type: want 400, got %d", w.Code)
+	}
+
+	// scope=type: only type-wide rows; every instance row (surplus or
+	// instance-only) is dropped.
+	got = decode(tokReq(t, r, http.MethodGet, path+"?scope=type", nil, "u1"))
+	if got["large_model/*"] == nil {
+		t.Errorf("type-wide large_model/* row missing under scope=type: %v", got)
+	}
+	for _, k := range []string{"large_model/m1", "large_model/m2", "agent/a1"} {
+		if _, ok := got[k]; ok {
+			t.Errorf("%s must be dropped under scope=type: %v", k, got)
+		}
+	}
+
+	// scope=type composes with resource_type.
+	got = decode(tokReq(t, r, http.MethodGet, path+"?scope=type&resource_type=large_model", nil, "u1"))
+	if len(got) != 1 || got["large_model/*"] == nil {
+		t.Errorf("scope=type&resource_type: want only large_model/*, got %v", got)
+	}
+
+	// Unknown scope value -> 400; scope=type with resource_id -> 400.
+	if w := tokReq(t, r, http.MethodGet, path+"?scope=instance", nil, "u1"); w.Code != http.StatusBadRequest {
+		t.Errorf("unknown scope: want 400, got %d", w.Code)
+	}
+	if w := tokReq(t, r, http.MethodGet, path+"?scope=type&resource_type=large_model&resource_id=m1", nil, "u1"); w.Code != http.StatusBadRequest {
+		t.Errorf("scope=type with resource_id: want 400, got %d", w.Code)
+	}
+
+	// scope=type + resource_id but NO resource_type: both rules would reject, and
+	// the scope conflict must win — telling the caller to add resource_type would
+	// send it into a second 400 on a request that can never be satisfied.
+	w := tokReq(t, r, http.MethodGet, path+"?scope=type&resource_id=m1", nil, "u1")
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("scope=type with bare resource_id: want 400, got %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "conflicts with scope=type") {
+		t.Errorf("want the scope-conflict error, got %s", w.Body.String())
 	}
 }
