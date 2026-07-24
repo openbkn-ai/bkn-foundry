@@ -46,7 +46,9 @@ type SemanticUnderstandingTask struct {
 	ID                   string      `json:"id"`
 	Scope                string      `json:"scope"`
 	CatalogID            string      `json:"catalog_id"`
+	CatalogName          string      `json:"catalog_name,omitempty"`
 	ResourceID           string      `json:"resource_id,omitempty"`
+	ResourceName         string      `json:"resource_name,omitempty"`
 	AgentTaskID          string      `json:"agent_task_id,omitempty"`
 	AgentID              string      `json:"agent_id"`
 	Input                string      `json:"input"`

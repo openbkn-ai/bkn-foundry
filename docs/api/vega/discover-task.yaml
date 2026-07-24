@@ -314,6 +314,9 @@ components:
         catalog_id:
           description: 关联 catalog ID
           type: string
+        catalog_name:
+          description: 关联 catalog 名称
+          type: string
         schedule_id:
           description: |
             关联的 DiscoverSchedule ID。trigger_type=manual 时为空字符串。

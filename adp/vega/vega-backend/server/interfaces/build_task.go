@@ -75,6 +75,9 @@ type BuildTask struct {
 	UpdateTime      int64                 `json:"update_time"`
 	IndexConfig     *BuildTaskIndexConfig `json:"index_config,omitempty"` // 创建 task 时从 resource 派生的索引配置快照
 	CatalogID       string                `json:"catalog_id"`
+	// 以下关联字段仅用于响应展示，不落库；由 service 按当前任务集合批量补齐。
+	ResourceName string `json:"resource_name,omitempty"`
+	CatalogName  string `json:"catalog_name,omitempty"`
 
 	// IndexHealth 为响应时计算的派生状态，**不落库**：让消费方无需自己推断
 	// "completed 其实是失败"。service 层在返回前填充。

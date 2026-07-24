@@ -181,7 +181,9 @@ components:
         id: { type: string }
         scope: { type: string, enum: [resource, catalog] }
         catalog_id: { type: string }
+        catalog_name: { type: string }
         resource_id: { type: string }
+        resource_name: { type: string }
         agent_task_id: { type: string }
         agent_id: { type: string }
         input: { type: string }
