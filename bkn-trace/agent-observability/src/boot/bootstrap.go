@@ -60,7 +60,12 @@ func newApp(httpServerConfig conf.HTTPServerConfig, traceHandler *httphandler.Tr
 	mux.HandleFunc(APIBasePath+"/traces/by-request/business-graph", evidenceHandler.GetBusinessGraphByRequestID)
 	mux.HandleFunc(APIBasePath+"/traces/by-request/snapshot-preview", evidenceHandler.GetSnapshotPreviewByRequestID)
 	mux.HandleFunc(APIBasePath+"/traces/by-request", evidenceHandler.GetEvidenceChainByRequestID)
-	mux.HandleFunc(APIBasePath+"/traces/", evidenceHandler.GetTraceSubresource)
+	mux.HandleFunc(APIBasePath+"/traces/", func(w http.ResponseWriter, r *http.Request) {
+		if traceHandler.GetTraceSubresource(w, r) {
+			return
+		}
+		evidenceHandler.GetTraceSubresource(w, r)
+	})
 	mux.HandleFunc(APIBasePath+"/evidence-nodes/", evidenceHandler.GetEvidenceNode)
 	mux.HandleFunc(APIBasePath+"/evidence/events", evidenceHandler.IngestEvidenceEvents)
 	mux.Handle(APIBasePath+"/swagger/", httpSwagger.Handler(

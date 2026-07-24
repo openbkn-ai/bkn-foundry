@@ -5,6 +5,7 @@
 当前提供：
 - Trace 原始 DSL 查询接口：`POST /api/agent-observability/v1/traces/_search`
 - Conversation 维度包装查询接口：`GET /api/agent-observability/v1/traces/by-conversation?conversation_id=...`
+- Trace Graph 查询接口：`GET /api/agent-observability/v1/traces/{trace_id}/trace-graph`
 - Evidence 事件接收接口：`POST /api/agent-observability/v1/evidence/events`
 - Evidence Chain 查询接口：`GET /api/agent-observability/v1/traces/{trace_id}/evidence-chain`
 - Request 维度 Evidence Chain 查询接口：`GET /api/agent-observability/v1/traces/by-request?request_id=...`
@@ -83,6 +84,51 @@ GET /api/agent-observability/v1/traces/by-request/business-graph?request_id=req_
 ```
 
 `limit` 取值范围为 `1..1000`，默认 `1000`。命中上限时响应会返回 `partial=true`、`partial_reason=["evidence_query_truncated"]`，并设置 `page.truncated=true`，调用方不得把该结果展示为完整证据链。
+
+Trace Graph 查询把 OTel spans 归一化为 trace tree：
+
+```http
+GET /api/agent-observability/v1/traces/{trace_id}/trace-graph
+```
+
+```json
+{
+  "trace_id": "9c0d...",
+  "status": "error",
+  "duration_nano": 110,
+  "partial": false,
+  "partial_reason": [],
+  "page": {
+    "node_count": 3,
+    "edge_count": 2,
+    "truncated": false
+  },
+  "data": {
+    "nodes": [
+      {
+        "span_id": "root",
+        "name": "POST /chat",
+        "kind": "SERVER",
+        "service_name": "bkn-agent",
+        "status": "ok",
+        "start_nano": 100,
+        "end_nano": 210,
+        "duration_nano": 110
+      }
+    ],
+    "edges": [
+      {
+        "id": "edge:1",
+        "parent_span_id": "root",
+        "child_span_id": "child",
+        "edge_type": "parent_child"
+      }
+    ]
+  }
+}
+```
+
+当 span 指向缺失父节点时，Trace Graph 不生成悬空边，并返回 `partial=true`、`partial_reason=["orphan_span"]`。
 
 ### Evidence 写入安全边界
 
