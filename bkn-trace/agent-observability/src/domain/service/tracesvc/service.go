@@ -53,6 +53,7 @@ func (s *TraceQueryService) GetTraceGraphByTraceID(ctx context.Context, traceID 
 	if len(spans) == 0 {
 		return oteltracevo.TraceGraphResponse{}, false, nil
 	}
+	spans = deduplicateSpanRecords(spans)
 	truncated := false
 	if len(spans) > DefaultTraceGraphSpanLimit {
 		truncated = true
@@ -107,6 +108,23 @@ func spansFromTraceData(traceData oteltracevo.TraceData, traceID string) []spanR
 		}
 	}
 	return records
+}
+
+func deduplicateSpanRecords(records []spanRecord) []spanRecord {
+	seen := map[string]struct{}{}
+	unique := make([]spanRecord, 0, len(records))
+	for _, record := range records {
+		if record.Span.SpanID == "" {
+			unique = append(unique, record)
+			continue
+		}
+		if _, ok := seen[record.Span.SpanID]; ok {
+			continue
+		}
+		seen[record.Span.SpanID] = struct{}{}
+		unique = append(unique, record)
+	}
+	return unique
 }
 
 func buildTraceGraph(traceID string, records []spanRecord, truncated bool) oteltracevo.TraceGraphResponse {

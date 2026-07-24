@@ -95,6 +95,25 @@ func TestGetTraceGraphByTraceIDMarksQueryTruncated(t *testing.T) {
 	}
 }
 
+func TestGetTraceGraphByTraceIDDeduplicatesRepeatedSpans(t *testing.T) {
+	port := &fakeTracePort{result: opensearchvo.SearchResult(traceGraphDuplicateSearchResult())}
+	service := New(port)
+
+	response, found, err := service.GetTraceGraphByTraceID(context.Background(), "trace_graph_duplicate")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !found {
+		t.Fatal("expected trace graph to be found")
+	}
+	if response.Page.NodeCount != 1 || len(response.Data.Nodes) != 1 {
+		t.Fatalf("expected duplicate span to be collapsed, got %+v", response)
+	}
+	if response.Data.Nodes[0].SpanID != "duplicate" || response.Data.Nodes[0].ServiceName != "bkn-agent" {
+		t.Fatalf("expected first span record to win, got %+v", response.Data.Nodes[0])
+	}
+}
+
 func TestGetTraceGraphByTraceIDClampsInvalidDurations(t *testing.T) {
 	port := &fakeTracePort{result: opensearchvo.SearchResult(traceGraphInvalidTimeSearchResult())}
 	service := New(port)
@@ -264,6 +283,54 @@ func traceGraphInvalidTimeSearchResult() []byte {
               ]
             }
           ]
+        }
+      }
+    ]
+  }
+}`)
+}
+
+func traceGraphDuplicateSearchResult() []byte {
+	return []byte(`{
+  "hits": {
+    "hits": [
+      {
+        "_source": {
+          "resourceSpans": [
+            {
+              "resource": {
+                "attributes": [
+                  {"key": "service.name", "value": {"stringValue": "bkn-agent"}}
+                ]
+              },
+              "scopeSpans": [
+                {
+                  "spans": [
+                    {
+                      "traceId": "trace_graph_duplicate",
+                      "spanId": "duplicate",
+                      "name": "agent.run",
+                      "kind": "SERVER",
+                      "startTimeUnixNano": "10",
+                      "endTimeUnixNano": "20",
+                      "status": {"code": "STATUS_CODE_OK"}
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "_source": {
+          "traceId": "trace_graph_duplicate",
+          "spanId": "duplicate",
+          "name": "agent.run.duplicate",
+          "kind": "SERVER",
+          "startTimeUnixNano": "10",
+          "endTimeUnixNano": "20",
+          "status": {"code": "STATUS_CODE_OK"}
         }
       }
     ]
