@@ -19,8 +19,12 @@ import (
 )
 
 const (
-	headerBKNRequestID    = "bkn-request-id"
-	headerLegacyRequestID = "x-request-id"
+	headerBKNRequestID        = "bkn-request-id"
+	headerLegacyRequestID     = "x-request-id"
+	headerBKNInteractionID    = "bkn-interaction-id"
+	headerBKNOperationID      = "bkn-operation-id"
+	headerBKNCausationEventID = "bkn-causation-event-id"
+	headerBKNClaimID          = "bkn-claim-id"
 )
 
 func bknTraceRequestContext(c *gin.Context, vis hydra.Visitor) bkntrace.RequestContext {
@@ -37,10 +41,15 @@ func bknTraceRequestContext(c *gin.Context, vis hydra.Visitor) bkntrace.RequestC
 		accountType = strings.TrimSpace(c.GetHeader(interfaces.HTTP_HEADER_ACCOUNT_TYPE))
 	}
 	return bkntrace.RequestContext{
-		RequestID:      requestID,
-		AccountID:      accountID,
-		AccountType:    accountType,
-		BusinessDomain: strings.TrimSpace(c.GetHeader(interfaces.HTTP_HEADER_BUSINESS_DOMAIN)),
+		RequestID:        requestID,
+		AccountID:        accountID,
+		AccountType:      accountType,
+		BusinessDomain:   strings.TrimSpace(c.GetHeader(interfaces.HTTP_HEADER_BUSINESS_DOMAIN)),
+		InteractionID:    strings.TrimSpace(c.GetHeader(headerBKNInteractionID)),
+		OperationID:      strings.TrimSpace(c.GetHeader(headerBKNOperationID)),
+		CausationEventID: strings.TrimSpace(c.GetHeader(headerBKNCausationEventID)),
+		ClaimID:          strings.TrimSpace(c.GetHeader(headerBKNClaimID)),
+		Attempt:          1,
 	}
 }
 

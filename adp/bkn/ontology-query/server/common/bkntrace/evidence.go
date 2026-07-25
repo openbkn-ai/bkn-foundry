@@ -25,7 +25,7 @@ import (
 )
 
 const (
-	ContractVersion = "2.0.0"
+	ContractVersion = "2.1.0"
 	ModuleName      = "bkn-ontology"
 )
 
@@ -51,10 +51,15 @@ const (
 type Event map[string]any
 
 type RequestContext struct {
-	RequestID      string
-	AccountID      string
-	AccountType    string
-	BusinessDomain string
+	RequestID        string
+	AccountID        string
+	AccountType      string
+	BusinessDomain   string
+	InteractionID    string
+	OperationID      string
+	CausationEventID string
+	ClaimID          string
+	Attempt          int
 }
 
 type DataQuerySubject struct {
@@ -83,13 +88,17 @@ type batch struct {
 }
 
 type eventContext struct {
-	traceID        string
-	spanID         string
-	traceparent    string
-	requestID      string
-	accountID      string
-	accountType    string
-	businessDomain string
+	traceID          string
+	spanID           string
+	traceparent      string
+	requestID        string
+	accountID        string
+	accountType      string
+	businessDomain   string
+	interactionID    string
+	operationID      string
+	causationEventID string
+	attempt          int
 }
 
 var (
@@ -121,7 +130,7 @@ func ClaimID(kind, subjectID string, value any) string {
 
 func BuildDataQueryEvents(ctx context.Context, reqCtx RequestContext, subject DataQuerySubject, refs []EvidenceRef) []Event {
 	ec, ok := contextFromRequest(ctx, reqCtx)
-	if !ok || len(refs) == 0 {
+	if !ok {
 		return nil
 	}
 	operation := strings.TrimSpace(subject.Operation)
@@ -129,55 +138,39 @@ func BuildDataQueryEvents(ctx context.Context, reqCtx RequestContext, subject Da
 		operation = "bkn.data.query"
 	}
 
-	evidenceRefs, evidenceRefsHash := normalizedRefs(refs)
+	queryType := strings.TrimSpace(subject.EntityKind)
+	readEvent := buildEvent(ec, "data.query.observed", operation, map[string]any{
+		"query_hash": strings.TrimSpace(subject.QueryHash), "query_type": queryType,
+		"row_count": subject.ReturnedCount, "truncated": subject.Truncated, "version_status": "unversioned",
+	})
+	events := []Event{readEvent}
+	claimID := strings.TrimSpace(reqCtx.ClaimID)
+	if claimID == "" {
+		return events
+	}
+	readEvent["claim_id"] = claimID
+	evidenceRefs, _ := normalizedRefs(refs)
 	if len(evidenceRefs) == 0 {
-		return nil
+		unresolvedEvent := buildEvent(ec, "business.refs.resolved", operation, map[string]any{
+			"claim_id":        claimID,
+			"resolver_status": "unresolved",
+			"business_refs":   []map[string]any{},
+		})
+		unresolvedEvent["claim_id"] = claimID
+		unresolvedEvent["causation_event_id"] = readEvent["event_id"]
+		return append(events, unresolvedEvent)
 	}
-
-	resultSummary := map[string]any{
-		"kn_id":              strings.TrimSpace(subject.KNID),
-		"branch":             strings.TrimSpace(subject.Branch),
-		"entity_kind":        strings.TrimSpace(subject.EntityKind),
-		"subject_id":         strings.TrimSpace(subject.SubjectID),
-		"query_hash":         strings.TrimSpace(subject.QueryHash),
-		"returned_count":     subject.ReturnedCount,
-		"total_count":        subject.TotalCount,
-		"truncated":          subject.Truncated,
-		"evidence_count":     len(evidenceRefs),
-		"evidence_refs_hash": evidenceRefsHash,
-		"operation":          operation,
-		"producer_module":    ModuleName,
-		"contract_version":   ContractVersion,
-	}
-	claimID := ClaimID(operation, subject.KNID+":"+subject.SubjectID, resultSummary)
-
-	return []Event{
-		buildEvent(ec, "claim.created", operation, map[string]any{
-			"claim_id":       claimID,
-			"claim_type":     "finding",
-			"claim_hash":     HashValue(resultSummary),
-			"visibility":     "visible",
-			"version_status": "unversioned",
-			"partial_reason": []string{"data_refs_unversioned"},
-			"subject_refs": map[string]any{
-				"kn_id":               strings.TrimSpace(subject.KNID),
-				"branch":              strings.TrimSpace(subject.Branch),
-				"entity_kind":         strings.TrimSpace(subject.EntityKind),
-				"subject_id":          strings.TrimSpace(subject.SubjectID),
-				"query_hash":          strings.TrimSpace(subject.QueryHash),
-				"evidence_refs_hash":  evidenceRefsHash,
-				"returned_ref_count":  len(evidenceRefs),
-				"returned_count":      subject.ReturnedCount,
-				"total_count":         subject.TotalCount,
-				"truncated":           subject.Truncated,
-				"data.classification": "internal",
-			},
-		}),
-		buildEvent(ec, "evidence.refs.created", operation, map[string]any{
-			"claim_id":      claimID,
-			"evidence_refs": evidenceRefs,
-		}),
-	}
+	evidenceEvent := buildEvent(ec, "evidence.refs.created", operation, map[string]any{
+		"claim_id": claimID, "evidence_refs": evidenceRefs,
+	})
+	evidenceEvent["claim_id"] = claimID
+	evidenceEvent["causation_event_id"] = readEvent["event_id"]
+	businessEvent := buildEvent(ec, "business.refs.resolved", operation, map[string]any{
+		"claim_id": claimID, "resolver_status": "resolved", "business_refs": businessRefs(refs),
+	})
+	businessEvent["claim_id"] = claimID
+	businessEvent["causation_event_id"] = evidenceEvent["event_id"]
+	return append(events, evidenceEvent, businessEvent)
 }
 
 func EmitDataQueryEvents(ctx context.Context, reqCtx RequestContext, subject DataQuerySubject, refs []EvidenceRef) {
@@ -338,25 +331,41 @@ func normalizedRefs(refs []EvidenceRef) ([]map[string]any, string) {
 			continue
 		}
 		summaryHash := HashValue(ref.Summary)
-		partialReasons := ref.PartialReasons
-		if len(partialReasons) == 0 {
-			partialReasons = []string{refType + "_unversioned"}
-		}
 		evidenceRefs = append(evidenceRefs, map[string]any{
 			"ref_id":         refID,
 			"ref_type":       refType,
 			"source_system":  ModuleName,
-			"summary":        ref.Summary,
 			"summary_hash":   summaryHash,
 			"validity":       "observed",
 			"version_status": "unversioned",
 			"visibility":     "visible",
-			"partial_reason": partialReasons,
 		})
 		refFingerprints = append(refFingerprints, refType+":"+refID+":"+summaryHash)
 	}
 	sort.Strings(refFingerprints)
 	return evidenceRefs, HashValue(refFingerprints)
+}
+
+func businessRefs(refs []EvidenceRef) []map[string]any {
+	result := make([]map[string]any, 0, len(refs))
+	for _, ref := range refs {
+		refID := strings.TrimSpace(ref.RefID)
+		if refID == "" {
+			continue
+		}
+		refType := "object"
+		switch strings.TrimSpace(ref.RefType) {
+		case RefTypeSchema:
+			refType = "relation"
+		case RefTypeMetric:
+			refType = "metric"
+		}
+		result = append(result, map[string]any{
+			"ref_id": refID, "ref_type": refType, "source_system": "bkn",
+			"validity": "available", "version_status": "unversioned", "visibility": "visible",
+		})
+	}
+	return result
 }
 
 func postBatch(ingestURL string, timeout time.Duration, payload batch) error {
@@ -420,19 +429,23 @@ func contextFromRequest(ctx context.Context, reqCtx RequestContext) (eventContex
 		businessDomain = accountID
 	}
 	return eventContext{
-		traceID:        spanContext.TraceID().String(),
-		spanID:         spanContext.SpanID().String(),
-		traceparent:    fmt.Sprintf("00-%s-%s-%s", spanContext.TraceID().String(), spanContext.SpanID().String(), flags),
-		requestID:      requestID,
-		accountID:      accountID,
-		accountType:    accountType,
-		businessDomain: businessDomain,
+		traceID:          spanContext.TraceID().String(),
+		spanID:           spanContext.SpanID().String(),
+		traceparent:      fmt.Sprintf("00-%s-%s-%s", spanContext.TraceID().String(), spanContext.SpanID().String(), flags),
+		requestID:        requestID,
+		accountID:        accountID,
+		accountType:      accountType,
+		businessDomain:   businessDomain,
+		interactionID:    nonEmptyID(reqCtx.InteractionID, "int_"),
+		operationID:      nonEmptyID(reqCtx.OperationID, "op_"),
+		causationEventID: strings.TrimSpace(reqCtx.CausationEventID),
+		attempt:          normalizedAttempt(reqCtx.Attempt),
 	}, true
 }
 
 func buildEvent(ec eventContext, eventType, operationName string, payload map[string]any) Event {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	return Event{
+	event := Event{
 		"event_id":                 "evt_" + randomHex(16),
 		"event_type":               eventType,
 		"bkn.trace.schema.version": ContractVersion,
@@ -443,8 +456,29 @@ func buildEvent(ec eventContext, eventType, operationName string, payload map[st
 		"span_id":                  ec.spanID,
 		"bkn.request.id":           ec.requestID,
 		"bkn.operation.name":       operationName,
+		"interaction_id":           ec.interactionID,
+		"operation_id":             ec.operationID,
+		"attempt":                  ec.attempt,
 		"payload":                  payload,
 	}
+	if ec.causationEventID != "" {
+		event["causation_event_id"] = ec.causationEventID
+	}
+	return event
+}
+
+func nonEmptyID(value, prefix string) string {
+	if value = strings.TrimSpace(value); value != "" {
+		return value
+	}
+	return prefix + randomHex(16)
+}
+
+func normalizedAttempt(attempt int) int {
+	if attempt > 0 {
+		return attempt
+	}
+	return 1
 }
 
 func randomHex(length int) string {

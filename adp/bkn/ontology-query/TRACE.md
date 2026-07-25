@@ -1,148 +1,65 @@
-# ontology-query Trace Contract
+# ontology-query BKN Trace 接入合同
 
-> 状态：阶段二数据证据接入合同
-> 适用版本：`bkn.trace.schema.version=2.0.0`
-> 依据：`bkn-docs/docs/foundry/bkn-trace/design/BKN Trace 设计.md`、`bkn-docs/docs/foundry/bkn-trace/design/BKN Trace 三段式实施计划.md`
+> 状态：BKN Trace 2.1 producer 实施基线
+> 适用版本：`bkn.trace.schema.version=2.1.0`
+> 权威依据：`bkn-docs/docs/foundry/bkn-trace/registry/核心业务事件注册表.md`
 
-## Module
+## 模块责任与事件归类
 
-- module name: `bkn-ontology`
-- observed service: `ontology-query`
-- owner: OpenBKN Foundry / BKN ontology
-- service identity: `ontology-query`
-- runtime: Go HTTP service
-- repository path: `adp/bkn/ontology-query`
-- contract version: `2.0.0`
+- 模块名：`bkn-ontology`，服务名：`ontology-query`。
+- 对象实例、关系路径和指标值查询返回的是业务实例数据，不是 schema 定义，因此记录为 `data.query.observed`。
+- schema/type 定义读取由 `bkn-backend` 记录为 `knowledge.read.observed`。
+- 本模块只记录查询事实，不解释查询结果、不创建结论，任何路径均不得生成 `claim.created`。
 
-## Entry Operations
+## 上下文传播
 
-| operation | trigger | required context | emitted spans | emitted events |
-| --- | --- | --- | --- | --- |
-| `bkn.object.query` | object instance query | `traceparent`、`bkn-request-id`、account/auth context | `bkn-ontology.request`、`bkn-ontology.instance.query` | `claim.created`、`evidence.refs.created` |
-| `bkn.relation.query` | subgraph/path query | `traceparent`、`bkn-request-id`、account/auth context | `bkn-ontology.request`、`bkn-ontology.instance.query` | `claim.created`、`evidence.refs.created` |
-| `bkn.action_type.get` | action type query | `traceparent`、`bkn-request-id`、account/auth context | `bkn-ontology.request`、`bkn-ontology.schema.lookup` | `schema.read` |
-| `bkn.metric.get` | metric data query | `traceparent`、`bkn-request-id`、account/auth context | `bkn-ontology.request`、`bkn-ontology.instance.query` | `claim.created`、`evidence.refs.created` |
-| `bkn.metric.dry_run` | metric dry-run query | `traceparent`、`bkn-request-id`、account/auth context | `bkn-ontology.request`、`bkn-ontology.instance.query` | `claim.created`、`evidence.refs.created` |
-
-## Inbound Context
-
-- accepted headers / metadata: `traceparent`、`bkn-request-id`、legacy `x-request-id`、`baggage`、`x-account-id`、`x-account-type`、`x-business-domain`。
-- `traceparent` parsing: global BKN middleware extracts W3C Trace Context before `TraceContextMiddleware` stores OpenBKN request context.
-- external trace trust policy: external trace must pass W3C validation before being treated as parent; unknown `tracestate` should not be propagated.
-- invalid context handling: invalid or missing request id is replaced by generated `req_<uuid>` value.
-- request id generation: `common.SetTraceContextToCtx` generates a request id when inbound `bkn-request-id` and `x-request-id` are missing or invalid.
-- tenant/account/auth context source: external endpoints use OAuth verification; internal endpoints use account headers. Request id is independent of account id and must not be placed in baggage.
-
-## Outbound Calls
-
-| target | protocol | propagated fields | baggage policy | timeout | retry |
-| --- | --- | --- | --- | --- | --- |
-| Vega backend | HTTP | `traceparent`、`bkn-request-id`、`x-request-id`、account headers | allowlist only | existing client timeout | existing retry policy |
-| BKN backend / ontology-manager | HTTP | `traceparent`、`bkn-request-id`、`x-request-id`、account headers | allowlist only | existing client timeout | existing retry policy |
-| Model factory | HTTP | `traceparent`、`bkn-request-id`、`x-request-id`、account headers | allowlist only | existing client timeout | existing retry policy |
-| Agent operator / Action services | HTTP | `traceparent`、`bkn-request-id`、`x-request-id`、account headers | allowlist only | existing client timeout | existing retry policy |
-
-Allowed baggage fields:
+入站解析并在出站 HTTP 调用中传播：
 
 ```text
-bkn.account.type
-bkn.runtime.env
+traceparent
+bkn-request-id
+x-request-id
+bkn-interaction-id
+bkn-operation-id
+bkn-causation-event-id
+bkn-claim-id
 ```
 
-## Logs
+`interaction_id`、`operation_id` 缺失时生成；`attempt` 由 producer 写入事件并默认为 `1`，不新增跨服务 header。`baggage` 仅保留 `bkn.account.type`、`bkn.runtime.env`，不得作为授权来源。Vega 出站调用统一使用 `common.MergeTraceHeaders`，传播三个因果 header，传播值不包含 SQL、查询参数、行数据或凭据。`bkn-claim-id` 仅在上游已有 claim 时作为条件关联，不得由读取模块生成。
 
-| log type | level | required fields | indexed fields | sensitive fields | example fixture |
-| --- | --- | --- | --- | --- | --- |
-| business | info | `trace_id`、`span_id`、`bkn.request.id`、`bkn.module.name`、`bkn.operation.name`、`bkn.status` | module、operation、status、kn id、object type | object instance full properties、row data | `fixtures/bkn-trace/positive.json` |
-| error | error | business fields + `error.category`、`error.code`、`error.retryable` | category、code、retryable | raw backend response、raw query payload | `fixtures/bkn-trace/sampling.json` |
-| audit | info | actor、policy、decision、resource ref | decision、object/resource class | raw resource content | `fixtures/bkn-trace/sampling.json` |
+## 事件规则
 
-## Spans
+| 操作 | 事件 | query_type |
+| --- | --- | --- |
+| 对象实例查询 | `data.query.observed` | `object_instance` |
+| 子图/关系路径查询 | `data.query.observed` | `relation_path` |
+| 指标查询/试算 | `data.query.observed` | `metric` |
 
-| span name | kind | required attributes | parent/link rule | error mapping |
-| --- | --- | --- | --- | --- |
-| `bkn-ontology.request` | server | module、operation、status、request id、kn id | HTTP entry span | validation/authz/data/schema |
-| `bkn-ontology.schema.lookup` | internal/client | kn id、object/action/metric ids、status | child of request span | schema lookup failures map to `schema` |
-| `bkn-ontology.instance.query` | internal/client | kn id、object type、row count、truncated、status | child of request span | query failures map to `data` or `dependency` |
+`data.query.observed.payload` 仅含 `query_hash`、`query_type`、`row_count`、`truncated`、`version_status`。完整 query、SQL、参数与返回行不进入事件。
 
-## Events
+只有收到上游 `bkn-claim-id` 时，才在读取事实之后生成：
 
-| event type | producer | payload summary | partial reason | retention class |
-| --- | --- | --- | --- | --- |
-| `schema.read` | ontology-query | kn id、object/action/metric ids、schema version | schema version missing / unauthorized | business event |
-| `object.query.executed` | ontology-query | object type、result count、truncated、classification | result truncated / data unavailable | business event |
-| `relation.query.executed` | ontology-query | relation path、node count、edge count、truncated | max path exceeded / unauthorized | business event |
-| `schema.change.requested` | BKN backend, not ontology-query | change summary and actor | not emitted by query service | audit event |
-| `claim.created` | ontology-query | kn id、branch、entity kind、subject id、query hash、returned count、evidence refs hash | data refs unversioned | business event |
-| `evidence.refs.created` | ontology-query | `row_ref`、`schema_ref`、`metric_ref` 的受控引用和 summary hash | row/schema/metric refs unversioned | business event |
+- `evidence.refs.created`：受控 row/schema/metric 引用，允许 hash、状态和可见性，不含 `summary` 或行结构。
+- `business.refs.resolved`：将引用解析为 object/relation/metric 业务引用。
 
-## Business Refs
+收到上游 claim 但没有可解析引用时，只追加 `business.refs.resolved`，设置 `resolver_status=unresolved` 且引用数组为空；不得伪造 ref。
 
-| ref type | field | resolver | version field | visibility rule |
-| --- | --- | --- | --- | --- |
-| knowledge network | `bkn.kn.id` | BKN/ontology resolver | schema version | account/domain policy |
-| object type | `bkn.object_type.id` | BKN/ontology resolver | schema version | account/domain policy |
-| object instance | `bkn.object_instance.ref` | BKN/ontology + Vega resolver | data snapshot / as_of | account/domain policy |
-| property | `bkn.property.id` | BKN/ontology resolver | schema version | account/domain policy |
-| relation type | `bkn.relation_type.id` | BKN/ontology resolver | schema version | account/domain policy |
-| metric | `bkn.metric.id` | BKN metric resolver | metric definition version | account/domain policy |
-| action type | `bkn.action_type.id` | BKN action resolver | action definition version | account/domain policy |
+没有上游 claim 时仅生成查询事实，避免把“读到了数据”错误表达为“形成了结论”。
 
-## Sensitive Data Rules
+## 安全边界
 
-- never log: token、authorization、cookie、完整 SQL、完整对象实例属性、行级数据、PII、连接串、对象存储裸 URL。
-- hash only: query body、large result summary、operator inputs。
-- runtime evidence event payload only contains safe query shape hash、row hash、counts、type/resource ids and controlled refs; full object instance properties and metric labels/values are not emitted.
-- controlled reference: `bkn.object_instance.ref`、row refs、snapshot refs。
-- redact: unauthorized object/resource detail、PII fields、policy restricted values。
-- `data.classification`: `public|internal|confidential|pii|secret`。
-- scanner patterns covered: token、authorization、cookie、SQL、PII、裸 URL、连接串。
+禁止完整 SQL、SQL 参数、对象实例属性、指标 label/value、PII、prompt、工具输入输出、token、Cookie、Authorization、连接串和对象存储裸 URL。`safeObjectQueryShape` 等逻辑只对受控查询形状求 hash；引用严格只保留 `ref_id/ref_type/source_system/validity/version_status/visibility/summary_hash`，所有 hash 均为 `sha256:<64 位小写十六进制>`。
 
-## Sampling
+## 验收
 
-- default: normal query success can follow platform sampling policy.
-- forced sampling: `error`、`timeout`、`denied`、authz failure、backend dependency failure、Action execution failure.
-- not sampled behavior: keep required business log and dropped counters.
-- dropped counters: S3 follow-up.
+- fixture：`fixtures/bkn-trace/phase2/ontology_data_evidence_l2_positive.json`。
+- Given 无上游 claim，When 对象/关系/指标查询成功，Then 只生成 `data.query.observed`。
+- Given 有上游 claim，When 查询成功，Then 追加受控 evidence/business refs，并绑定同一 claim。
+- Given 上游三类因果 header，When 调用 Vega，Then trace/request/interaction/operation/causation 保持传播。
+- Given 查询与结果含敏感内容，When 构造事件，Then payload 只出现 hash、计数、枚举与受控引用。
 
-## Retention And Alerts
+## 已知限制
 
-- log retention class: diagnostic/business logs.
-- event retention class: business event; error and denied paths forced retention.
-- audit retention class: policy decision and resource refs only, no raw source data.
-- health metrics: missing request id rate、missing traceparent rate、orphan span rate、event validation failure rate、sensitive field rejection count、dropped count。
-- alert thresholds: configured by deployment; sensitive field rejection and validation failure should alert immediately in CI.
-
-## Fixtures
-
-| fixture | path | purpose | expected result |
-| --- | --- | --- | --- |
-| positive | `fixtures/bkn-trace/positive.json` | schema/object/relation query baseline | pass |
-| negative | `fixtures/bkn-trace/negative_missing_request_id.json` | missing request id | fail |
-| propagation | `fixtures/bkn-trace/propagation.json` | object query propagation | pass |
-| sampling | `fixtures/bkn-trace/sampling.json` | forced sampled authz denial | pass |
-| phase2 ontology data evidence | `fixtures/bkn-trace/phase2/ontology_data_evidence_l2_positive.json` | object/subgraph/metric data refs baseline | pass |
-
-## Covered GWT
-
-- GWT-02 可信上游 Trace Context。
-- GWT-04 非法 traceparent / invalid context handling。
-- GWT-09 权限拒绝或脱敏。
-- GWT-10 敏感数据扫描。
-- GWT-13 字段索引分层。
-- GWT-15 partial evidence。
-
-## Known Gaps
-
-- legacy phase-one event names `schema.read`、`object.query.executed`、`relation.query.executed` are superseded by phase-two `claim.created` / `evidence.refs.created` for implemented data evidence paths.
-- evidence refs are currently unversioned row/schema/metric refs; snapshot refs and immutable evidence artifact storage remain a follow-up.
-- current code baseline wires Vega backend outbound trace headers; ontology-manager/model-factory/agent-operator should be migrated to `common.MergeTraceHeaders` in follow-up commits.
-- full registry validation and indexing policy validation currently rely on `bkn-docs` validator follow-up.
-- S3 health metrics are not implemented yet.
-
-## Owner Sign-off
-
-- owner: OpenBKN Foundry / BKN ontology
-- reviewed at: 2026-07-23
-- reviewer: pending
-- compatibility risk: low; new headers are additive and legacy `x-request-id` remains supported.
+- 数据快照锚点尚未接入，当前引用为 `unversioned`。
+- 当前已有 Vega 调用使用统一传播工具；其他新出站调用必须复用 `common.MergeTraceHeaders`。
+- 跨模块图组装、partial 计算、快照持久化与 Studio 展示由 BKN Trace 核心负责。

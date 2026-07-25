@@ -42,8 +42,12 @@ func TestTraceContextHelpers(t *testing.T) {
 func TestTraceContextFromHeaders(t *testing.T) {
 	convey.Convey("TraceContextFromHeaders accepts bkn-request-id and falls back to x-request-id", t, func() {
 		headers := map[string]string{
-			HeaderBKNRequestID: "req_01JZVALIDREQUESTID000000011",
-			HeaderBaggage:      "bkn.account.type=user,bkn.account.id=user-1,bkn.runtime.env=test",
+			HeaderBKNRequestID:        "req_01JZVALIDREQUESTID000000011",
+			HeaderBaggage:             "bkn.account.type=user,bkn.account.id=user-1,bkn.runtime.env=test",
+			HeaderBKNInteractionID:    "int_inbound_001",
+			HeaderBKNOperationID:      "op_inbound_001",
+			HeaderBKNCausationEventID: "evt_inbound_001",
+			HeaderBKNClaimID:          "claim_inbound_001",
 		}
 
 		traceCtx := TraceContextFromHeaders(func(key string) string { return headers[key] })
@@ -52,6 +56,11 @@ func TestTraceContextFromHeaders(t *testing.T) {
 
 		convey.So(ok, convey.ShouldBeTrue)
 		convey.So(traceCtx.RequestID, convey.ShouldEqual, "req_01JZVALIDREQUESTID000000011")
+		convey.So(traceCtx.InteractionID, convey.ShouldEqual, "int_inbound_001")
+		convey.So(traceCtx.OperationID, convey.ShouldEqual, "op_inbound_001")
+		convey.So(traceCtx.CausationEventID, convey.ShouldEqual, "evt_inbound_001")
+		convey.So(traceCtx.ClaimID, convey.ShouldEqual, "claim_inbound_001")
+		convey.So(traceCtx.Attempt, convey.ShouldEqual, 1)
 		convey.So(traceCtx.Baggage, convey.ShouldResemble, map[string]string{
 			"bkn.account.type": "user",
 			"bkn.runtime.env":  "test",
@@ -79,7 +88,11 @@ func TestBuildTraceHeaders(t *testing.T) {
 		})
 		ctx := trace.ContextWithSpanContext(context.Background(), spanCtx)
 		ctx = SetTraceContextToCtx(ctx, TraceContext{
-			RequestID: "req_01JZVALIDREQUESTID000000013",
+			RequestID:        "req_01JZVALIDREQUESTID000000013",
+			InteractionID:    "int_business_001",
+			OperationID:      "op_query_001",
+			CausationEventID: "evt_agent_001",
+			Attempt:          3,
 			Baggage: map[string]string{
 				"bkn.account.type": "service",
 				"bkn.account.id":   "user-1",
@@ -91,5 +104,8 @@ func TestBuildTraceHeaders(t *testing.T) {
 		convey.So(headers[HeaderLegacyRequestID], convey.ShouldEqual, "req_01JZVALIDREQUESTID000000013")
 		convey.So(headers[HeaderTraceparent], convey.ShouldEqual, "00-20212223242526272829303132333435-4041424344454647-01")
 		convey.So(headers[HeaderBaggage], convey.ShouldEqual, "bkn.account.type=service")
+		convey.So(headers[HeaderBKNInteractionID], convey.ShouldEqual, "int_business_001")
+		convey.So(headers[HeaderBKNOperationID], convey.ShouldEqual, "op_query_001")
+		convey.So(headers[HeaderBKNCausationEventID], convey.ShouldEqual, "evt_agent_001")
 	})
 }

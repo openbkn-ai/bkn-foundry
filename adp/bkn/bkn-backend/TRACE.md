@@ -1,79 +1,56 @@
-# bkn-backend Trace Contract
+# bkn-backend BKN Trace 接入合同
 
-> 状态：阶段二 L2 schema evidence 局部接入
-> 适用版本：`bkn.trace.schema.version=2.0.0`
-> 依据：`bkn-docs/docs/foundry/bkn-trace/design/BKN Trace 设计.md`
+> 状态：BKN Trace 2.1 producer 实施基线
+> 适用版本：`bkn.trace.schema.version=2.1.0`
+> 权威依据：`bkn-docs/docs/foundry/bkn-trace/registry/核心业务事件注册表.md`
 
-## Module
+## 模块责任
 
-- module name: `bkn-backend`
-- owner: OpenBKN Foundry / BKN Engine
-- service identity: `bkn-backend`
-- runtime: Go HTTP service
-- repository path: `adp/bkn/bkn-backend`
-- contract version: `2.0.0`
+- 模块名：`bkn-backend`。
+- 事实边界：对象类型、关系类型、行动类型和指标定义等知识网络 schema 读取。
+- 标准事实事件：`knowledge.read.observed`。
+- 本模块只记录读取事实，不解释结果、不创建结论，任何路径均不得生成 `claim.created`。
 
-## Entry Operations
+## 上下文合同
 
-| operation | trigger | required context | emitted spans | emitted events |
-| --- | --- | --- | --- | --- |
-| `bkn.schema.object_type.list` | `GET /knowledge-networks/:kn_id/object-types` | `traceparent`、`bkn-request-id`、account/auth context | existing server span | `claim.created`、`evidence.refs.created` |
-| `bkn.schema.object_type.get` | `GET /knowledge-networks/:kn_id/object-types/:ot_ids` | same | existing server span | `claim.created`、`evidence.refs.created` |
-| `bkn.schema.relation_type.list` | `GET /knowledge-networks/:kn_id/relation-types` | same | existing server span | `claim.created`、`evidence.refs.created` |
-| `bkn.schema.relation_type.get` | `GET /knowledge-networks/:kn_id/relation-types/:rt_ids` | same | existing server span | `claim.created`、`evidence.refs.created` |
-| `bkn.schema.action_type.list` | `GET /knowledge-networks/:kn_id/action-types` | same | existing server span | `claim.created`、`evidence.refs.created` |
-| `bkn.schema.action_type.get` | `GET /knowledge-networks/:kn_id/action-types/:at_ids` | same | existing server span | `claim.created`、`evidence.refs.created` |
-| `bkn.schema.metric.list` | `GET /knowledge-networks/:kn_id/metrics` | same | existing server span | `claim.created`、`evidence.refs.created` |
-| `bkn.schema.metric.get` | `GET /knowledge-networks/:kn_id/metrics/:metric_ids` | same | existing server span | `claim.created`、`evidence.refs.created` |
+入站接受 `traceparent`、`bkn-request-id`、`x-request-id`，以及：
 
-## Inbound Context
+```text
+bkn-interaction-id
+bkn-operation-id
+bkn-causation-event-id
+bkn-claim-id
+```
 
-- accepted headers: `traceparent`、`bkn-request-id`、legacy `x-request-id`、`x-account-id`、`x-account-type`、`x-business-domain`。
-- `traceparent` parsing: existing global middleware extracts W3C Trace Context into OTel context before handlers create server spans.
-- request id rule: evidence emission uses inbound `bkn-request-id` first, then `x-request-id`; when both are absent it generates `req_<xid>` only for evidence payload completeness.
-- account context source: external APIs use OAuth visitor; internal APIs use account headers through `visitor.GenerateVisitor(c)`; baggage is not an authorization source.
+- `interaction_id`、`operation_id` 缺失时为本次读取生成安全 ID。
+- `attempt` 由 producer 写入事件并默认归一为 `1`，不新增跨服务 header。
+- 没有直接上游业务事件时允许不设置 `causation_event_id`。
+- `bkn-claim-id` 只能表示上游已存在的 claim，不得在本模块内合成。
 
-## Phase 2 Evidence Event Rules
+## 事件规则
 
-- Successful schema read paths emit one `claim.created` event and one `evidence.refs.created` event after the service read succeeds and before the HTTP response is written.
-- Object type and relation type reads emit `schema_ref`; action type reads emit `action_ref`; metric reads emit `metric_ref`.
-- `claim.created.payload.claim_type` is `finding`; `claim_hash` is computed from safe result summary only.
-- `claim_id` / `claim_hash` must include a hash of the sorted `ref_id + ref_type + summary_hash` set so same-count list results with different schema refs remain distinguishable.
-- `evidence_refs[].summary` may contain IDs, `kn_id`, `branch`, type fields, counts, booleans and timestamps. It must not contain names, comments, property names, mapping rule details, action intent text, metric formula content, SQL, row data, prompt, tool input/output, token, cookie or authorization values.
-- `summary_hash` is always present and computed from the safe summary.
-- `version_status` is currently `unversioned`; refs must include `partial_reason` such as `schema_ref_unversioned`、`action_ref_unversioned`、`metric_ref_unversioned` until schema/snapshot versioning is connected.
-- Evidence event submission is controlled by `BKN_TRACE_EVIDENCE_INGEST_URL`; default is disabled and no business response changes.
-- Submission is asynchronous and fail-open; ingestion failures do not change API status or response body.
+| 条件 | 事件 | 约束 |
+| --- | --- | --- |
+| schema 读取成功 | `knowledge.read.observed` | payload 仅含 `kn_id`、`read_kind`、`version_status` |
+| 同时收到上游 `claim_id` 且存在受控引用 | `evidence.refs.created` | 关联读取事实，不含原始 summary/schema |
+| 同时收到上游 `claim_id` 且存在受控引用 | `business.refs.resolved` | 解析为 object/relation/action/metric 业务引用 |
+| 收到上游 `claim_id` 但没有可解析引用 | `business.refs.resolved` | `resolver_status=unresolved`，引用数组为空 |
+| 没有上游 `claim_id` | 不生成 refs 事件 | 防止把读取结果伪装成结论证据 |
 
-## Sensitive Data Rules
+`knowledge.read.observed.payload` 只允许 `kn_id`、`read_kind`、`version_status`、可选 `schema_version/business_refs`；当前实现只写前三项。引用只允许：`ref_id`、`ref_type`、`source_system`、`summary_hash`、`validity`、`version_status`、`visibility`。所有 hash 均为 `sha256:<64 位小写十六进制>`。当前 schema 版本锚点尚未接入，统一标记 `unversioned`。
 
-- never emit: token、authorization、cookie、完整 SQL、完整 prompt、完整 action intent、完整 metric formula、完整 mapping rules、字段名/字段说明、对象/关系/指标/行动名称、row data、PII、连接串、对象存储裸 URL。
-- hash only: request ID list, result summary, schema/action/metric safe summary.
-- controlled reference: `object_type:<id>`、`relation_type:<id>`、`action_type:<id>`、`metric:<id>`。
-- `data.classification`: current schema evidence events are `internal`.
+## 安全边界
 
-## Fixtures
+不得写入名称、注释、属性名、映射规则、行动意图、指标公式、SQL、行数据、prompt、工具输入输出、凭据、Cookie、token、连接串或对象存储裸 URL。提交由 `BKN_TRACE_EVIDENCE_INGEST_URL` 控制，异步且 fail-open，不改变业务响应。
 
-| fixture | path | purpose | expected result |
-| --- | --- | --- | --- |
-| phase2 positive | `fixtures/bkn-trace/phase2/bkn_schema_l2_positive.json` | object/relation/action/metric schema read L2 finding and evidence refs | pass |
+## 验收
 
-## Covered GWT
+- fixture：`fixtures/bkn-trace/phase2/bkn_schema_l2_positive.json`。
+- Given 无上游 claim，When schema 读取成功，Then 仅生成一个 `knowledge.read.observed`。
+- Given 有上游 claim，When schema 读取成功，Then 追加受控 evidence/business refs，且所有 refs 绑定该上游 claim。
+- Given schema 含敏感文本，When 构造事件，Then payload 不包含原始 schema 或 `summary`。
 
-- GWT-BKN-01 Given legal trace/request/account context, When object/relation/action/metric schema read succeeds, Then bkn-backend emits `claim.created` and `evidence.refs.created` tied to the same `trace_id`、`span_id`、`bkn.request.id`.
-- GWT-BKN-02 Given returned schema contains names, comments, property names, mapping rules, action intent or metric formula content, When evidence events are built, Then payload contains only refs/hash/counts/status and no raw schema content.
-- GWT-BKN-03 Given `BKN_TRACE_EVIDENCE_INGEST_URL` is not configured, When schema read succeeds, Then business response remains unchanged and no event submission occurs.
-- GWT-BKN-04 Given evidence ingest is unavailable, When asynchronous event submission fails, Then API status and response body remain unchanged.
+## 已知限制
 
-## Known Gaps
-
-- This contract covers schema read evidence from bkn-backend only; object instance data-chain evidence remains in ontology-query/context-loader/Vega paths.
-- Schema version and snapshot refs are not available yet, so refs are `unversioned`.
-- Cross-module Evidence Graph assembly, snapshot persistence and Studio visualization are owned by BKN Trace core service.
-
-## Owner Sign-off
-
-- owner: OpenBKN Foundry / BKN Engine
-- reviewed at: 2026-07-23
-- reviewer: pending
-- compatibility risk: low; event emission is disabled by default and fail-open when enabled.
+- schema/snapshot 不可变版本尚未接入，因此当前为 `unversioned`。
+- 跨模块图组装、partial 计算、快照持久化与 Studio 展示由 BKN Trace 核心负责。

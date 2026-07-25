@@ -25,10 +25,15 @@ func ontologyTraceRequestContext(c *gin.Context, ctx context.Context, visitor hy
 		businessDomain = strings.TrimSpace(traceContext.Baggage["business_domain"])
 	}
 	return bkntrace.RequestContext{
-		RequestID:      traceContext.RequestID,
-		AccountID:      visitor.ID,
-		AccountType:    string(visitor.Type),
-		BusinessDomain: businessDomain,
+		RequestID:        traceContext.RequestID,
+		AccountID:        visitor.ID,
+		AccountType:      string(visitor.Type),
+		BusinessDomain:   businessDomain,
+		InteractionID:    traceContext.InteractionID,
+		OperationID:      traceContext.OperationID,
+		CausationEventID: traceContext.CausationEventID,
+		ClaimID:          traceContext.ClaimID,
+		Attempt:          traceContext.Attempt,
 	}
 }
 

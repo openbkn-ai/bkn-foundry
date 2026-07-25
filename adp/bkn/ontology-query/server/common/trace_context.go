@@ -7,15 +7,20 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"go.opentelemetry.io/otel/trace"
 )
 
 const (
-	HeaderTraceparent     = "traceparent"
-	HeaderBKNRequestID    = "bkn-request-id"
-	HeaderLegacyRequestID = "x-request-id"
-	HeaderBaggage         = "baggage"
+	HeaderTraceparent         = "traceparent"
+	HeaderBKNRequestID        = "bkn-request-id"
+	HeaderLegacyRequestID     = "x-request-id"
+	HeaderBaggage             = "baggage"
+	HeaderBKNInteractionID    = "bkn-interaction-id"
+	HeaderBKNOperationID      = "bkn-operation-id"
+	HeaderBKNCausationEventID = "bkn-causation-event-id"
+	HeaderBKNClaimID          = "bkn-claim-id"
 )
 
 type traceContextKey string
@@ -26,13 +31,27 @@ var bknRequestIDRe = regexp.MustCompile(`^req_[A-Za-z0-9_-]{8,128}$`)
 
 // TraceContext carries the OpenBKN phase-one correlation context.
 type TraceContext struct {
-	RequestID string
-	Baggage   map[string]string
+	RequestID        string
+	InteractionID    string
+	OperationID      string
+	CausationEventID string
+	ClaimID          string
+	Attempt          int
+	Baggage          map[string]string
 }
 
 func SetTraceContextToCtx(ctx context.Context, traceContext TraceContext) context.Context {
 	if !IsValidBKNRequestID(traceContext.RequestID) {
 		traceContext.RequestID = NewBKNRequestID()
+	}
+	if strings.TrimSpace(traceContext.InteractionID) == "" {
+		traceContext.InteractionID = "int_" + randomTraceID()
+	}
+	if strings.TrimSpace(traceContext.OperationID) == "" {
+		traceContext.OperationID = "op_" + randomTraceID()
+	}
+	if traceContext.Attempt <= 0 {
+		traceContext.Attempt = 1
 	}
 	traceContext.Baggage = sanitizeBaggage(traceContext.Baggage)
 	return context.WithValue(ctx, keyTraceContext, traceContext)
@@ -49,8 +68,12 @@ func TraceContextFromHeaders(getHeader func(string) string) TraceContext {
 		requestID = strings.TrimSpace(getHeader(HeaderLegacyRequestID))
 	}
 	return TraceContext{
-		RequestID: requestID,
-		Baggage:   parseBaggage(getHeader(HeaderBaggage)),
+		RequestID:        requestID,
+		InteractionID:    strings.TrimSpace(getHeader(HeaderBKNInteractionID)),
+		OperationID:      strings.TrimSpace(getHeader(HeaderBKNOperationID)),
+		CausationEventID: strings.TrimSpace(getHeader(HeaderBKNCausationEventID)),
+		ClaimID:          strings.TrimSpace(getHeader(HeaderBKNClaimID)),
+		Baggage:          parseBaggage(getHeader(HeaderBaggage)),
 	}
 }
 
@@ -77,11 +100,27 @@ func BuildTraceHeaders(ctx context.Context) map[string]string {
 		if baggage := formatBaggage(traceContext.Baggage); baggage != "" {
 			headers[HeaderBaggage] = baggage
 		}
+		headers[HeaderBKNInteractionID] = traceContext.InteractionID
+		headers[HeaderBKNOperationID] = traceContext.OperationID
+		if traceContext.CausationEventID != "" {
+			headers[HeaderBKNCausationEventID] = traceContext.CausationEventID
+		}
+		if traceContext.ClaimID != "" {
+			headers[HeaderBKNClaimID] = traceContext.ClaimID
+		}
 	}
 	if traceparent := traceparentFromCtx(ctx); traceparent != "" {
 		headers[HeaderTraceparent] = traceparent
 	}
 	return headers
+}
+
+func randomTraceID() string {
+	var b [8]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return fmt.Sprintf("%016x", time.Now().UnixNano())
+	}
+	return fmt.Sprintf("%x", b)
 }
 
 func MergeTraceHeaders(ctx context.Context, headers map[string]string) map[string]string {
