@@ -152,7 +152,7 @@ def test_model_event_id_is_stable_for_same_operation_attempt():
         output="first response",
     )
 
-    assert first[0]["event_id"] == replay[0]["event_id"]
+    assert first == replay
     assert first[0]["attempt"] == 2
 
 

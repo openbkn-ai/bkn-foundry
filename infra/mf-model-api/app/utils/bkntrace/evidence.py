@@ -97,7 +97,7 @@ def build_model_call_events(
     if normalized_status == "error":
         payload["error_category"] = error_category or "unknown"
         payload["error_hash"] = hash_value({"operation": operation, "category": error_category or "unknown"})
-    now = _utc_now()
+    now = _stable_event_time(request_context, "model.call.observed")
     return [
         _build_event(request_context, "model.call.observed", operation, now, payload),
     ]
@@ -185,6 +185,19 @@ def _event_id(request_context: Dict[str, Any], event_type: str) -> str:
         str(request_context.get("attempt", 1)),
     ])
     return "evt_" + hashlib.sha256(identity.encode("utf-8")).hexdigest()[:24]
+
+
+def _stable_event_time(request_context: Dict[str, Any], event_type: str) -> str:
+    event_times = request_context.setdefault("_bkn_event_times", {})
+    if not isinstance(event_times, dict):
+        event_times = {}
+        request_context["_bkn_event_times"] = event_times
+    identity = ":".join([
+        request_context.get("operation_id", ""),
+        event_type,
+        str(request_context.get("attempt", 1)),
+    ])
+    return event_times.setdefault(identity, _utc_now())
 
 
 def _positive_int(value: Any) -> int:
