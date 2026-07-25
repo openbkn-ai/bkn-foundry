@@ -13,6 +13,10 @@ def test_build_model_call_events_hashes_prompt_output_and_preserves_context():
         "x-account-id": "acct_demo",
         "x-account-type": "user",
         "x-business-domain": "domain_demo",
+        "bkn-interaction-id": "interaction_model_001",
+        "bkn-operation-id": "operation_model_001",
+        "bkn-causation-event-id": "event_tool_called_001",
+        "bkn-attempt": "1",
     })
 
     events = evidence.build_model_call_events(
@@ -30,22 +34,126 @@ def test_build_model_call_events_hashes_prompt_output_and_preserves_context():
     )
 
     encoded = json.dumps(events, ensure_ascii=False)
-    assert len(events) == 2
+    assert len(events) == 1
     assert events[0]["trace_id"] == "81230000000000000000000000000001"
     assert events[0]["span_id"] == "8123000000000001"
     assert events[0]["bkn.request.id"] == "req_model_call_0001"
-    assert events[0]["event_type"] == "claim.created"
-    assert events[1]["event_type"] == "evidence.refs.created"
+    assert events[0]["event_type"] == "model.call.observed"
+    assert events[0]["interaction_id"] == "interaction_model_001"
+    assert events[0]["operation_id"] == "operation_model_001"
+    assert events[0]["causation_event_id"] == "event_tool_called_001"
+    assert events[0]["attempt"] == 1
     assert "客户张三" not in encoded
     assert "手机号" not in encoded
     assert "不能展示手机号" not in encoded
     assert "lookup_customer" not in encoded
     assert "prompt_hash" in encoded
     assert "output_hash" in encoded
-    assert "input_unit_count" in encoded
-    assert "input_token_count" not in encoded
+    assert "input_token_count" in encoded
+    assert "output_token_count" in encoded
+    assert "input_unit_count" not in encoded
     assert "prompt_tokens" not in encoded
     assert '"ref_type": "model_ref"' not in encoded
+    assert "claim.created" not in encoded
+    assert "evidence.refs.created" not in encoded
+    assert set(events[0]["payload"]) == {
+        "model_name",
+        "model_provider",
+        "status",
+        "input_token_count",
+        "output_token_count",
+        "prompt_hash",
+        "output_hash",
+    }
+
+
+def test_model_event_requires_business_causality_context():
+    ctx = evidence.build_request_context({
+        "traceparent": "00-81230000000000000000000000000001-8123000000000001-01",
+        "bkn-request-id": "req_model_call_0002",
+        "x-account-id": "acct_demo",
+        "x-business-domain": "domain_demo",
+    })
+
+    events = evidence.build_model_call_events(
+        ctx,
+        model_id="model_123",
+        model_name="gpt-demo",
+        model_provider="openai",
+        operation="model.chat.completions",
+        messages=[],
+        params={},
+        status="success",
+    )
+
+    assert events == []
+
+
+def test_failed_model_event_contains_only_safe_error_hash_and_category():
+    ctx = evidence.build_request_context({
+        "traceparent": "00-81230000000000000000000000000001-8123000000000001-01",
+        "bkn-request-id": "req_model_call_0003",
+        "x-account-id": "acct_demo",
+        "x-business-domain": "domain_demo",
+        "bkn-interaction-id": "interaction_model_003",
+        "bkn-operation-id": "operation_model_003",
+        "bkn-causation-event-id": "event_tool_called_003",
+    })
+
+    events = evidence.build_model_call_events(
+        ctx,
+        model_id="model_123",
+        model_name="gpt-demo",
+        model_provider="openai",
+        operation="model.chat.completions",
+        messages=[{"role": "user", "content": "private prompt"}],
+        params={},
+        status="failed",
+        error_category="dependency_error",
+    )
+
+    payload = events[0]["payload"]
+    assert payload["status"] == "error"
+    assert payload["error_category"] == "dependency_error"
+    assert payload["error_hash"].startswith("sha256:")
+    assert "private prompt" not in json.dumps(events)
+
+
+def test_model_event_id_is_stable_for_same_operation_attempt():
+    ctx = evidence.build_request_context({
+        "traceparent": "00-81230000000000000000000000000001-8123000000000001-01",
+        "bkn-request-id": "req_model_call_0004",
+        "bkn-interaction-id": "interaction_model_004",
+        "bkn-operation-id": "operation_model_004",
+        "bkn-causation-event-id": "event_tool_called_004",
+        "bkn-attempt": "2",
+    })
+
+    first = evidence.build_model_call_events(
+        ctx,
+        model_id="model_123",
+        model_name="gpt-demo",
+        model_provider="openai",
+        operation="model.chat.completions",
+        messages=[{"role": "user", "content": "first delivery"}],
+        params={},
+        status="success",
+        output="first response",
+    )
+    replay = evidence.build_model_call_events(
+        ctx,
+        model_id="model_123",
+        model_name="gpt-demo",
+        model_provider="openai",
+        operation="model.chat.completions",
+        messages=[{"role": "user", "content": "first delivery"}],
+        params={},
+        status="success",
+        output="first response",
+    )
+
+    assert first[0]["event_id"] == replay[0]["event_id"]
+    assert first[0]["attempt"] == 2
 
 
 def test_build_request_context_generates_safe_defaults_for_missing_headers():

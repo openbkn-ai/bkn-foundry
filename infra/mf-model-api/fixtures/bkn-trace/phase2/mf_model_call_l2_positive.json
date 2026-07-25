@@ -1,6 +1,8 @@
 {
-  "bkn.trace.schema.version": "2.0.0",
-  "fixture_id": "mf_model_api_phase2_model_call_l2_positive",
+  "bkn.trace.schema.version": "2.1.0",
+  "fixture_id": "mf_model_api_model_call_2_1_positive",
+  "fixture_type": "positive",
+  "scenario": "agent_calls_model_with_business_causality",
   "expected_result": "pass",
   "trace": {
     "trace_id": "81230000000000000000000000000001",
@@ -14,94 +16,66 @@
     {
       "span_id": "8123000000000001",
       "parent_span_id": null,
+      "name": "agent.run",
+      "kind": "server",
+      "bkn.module.name": "bkn-agent",
+      "bkn.operation.name": "agent.run",
+      "bkn.status": "ok",
+      "bkn.timestamp": "2026-07-25T10:20:00.000000000Z"
+    },
+    {
+      "span_id": "8123000000000002",
+      "parent_span_id": "8123000000000001",
       "name": "model.chat.completions",
-      "kind": "internal",
+      "kind": "client",
       "bkn.module.name": "mf-model-api",
       "bkn.operation.name": "model.chat.completions",
       "bkn.status": "ok",
-      "bkn.timestamp": "2026-07-25T10:20:00.000000Z"
+      "bkn.timestamp": "2026-07-25T10:20:00.100000000Z"
     }
   ],
   "events": [
     {
-      "event_id": "evt_mf_model_claim",
-      "event_type": "claim.created",
-      "bkn.trace.schema.version": "2.0.0",
-      "observed_at": "2026-07-25T10:20:00.001000Z",
-      "emitted_at": "2026-07-25T10:20:00.001000Z",
-      "producer_module": "mf-model-api",
+      "event_id": "evt_interaction_model_001",
+      "event_type": "agent.interaction.started",
+      "bkn.trace.schema.version": "2.1.0",
+      "observed_at": "2026-07-25T10:20:00.000000000Z",
+      "emitted_at": "2026-07-25T10:20:00.001000000Z",
+      "producer_module": "bkn-agent",
       "trace_id": "81230000000000000000000000000001",
       "span_id": "8123000000000001",
       "bkn.request.id": "req_mf_model_phase2_call_0001",
-      "bkn.operation.name": "model.chat.completions",
+      "bkn.operation.name": "agent.run",
+      "interaction_id": "interaction_model_001",
       "payload": {
-        "claim_id": "claim_mf_model_call_0001",
-        "claim_type": "finding",
-        "claim_hash": "sha256:mf_model_call_summary_hash_only",
-        "visibility": "visible",
-        "version_status": "unversioned",
-        "partial_reason": ["model_call_refs_unversioned"],
-        "subject_refs": {
-          "model_id": "model_demo",
-          "model_name": "gpt-demo",
-          "model_provider": "openai",
-          "status": "success",
-          "parameter_hash": "sha256:model_parameter_shape_hash_only",
-          "prompt_hash": "sha256:prompt_messages_hash_only",
-          "output_hash": "sha256:model_output_hash_only",
-          "input_unit_count": 12,
-          "output_unit_count": 8,
-          "error_category": "",
-          "evidence_refs_hash": "sha256:mf_model_evidence_refs_hash_only",
-          "data.classification": "internal"
-        }
+        "intent_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "mode": "task",
+        "agent_id": "business-agent"
       }
     },
     {
-      "event_id": "evt_mf_model_refs",
-      "event_type": "evidence.refs.created",
-      "bkn.trace.schema.version": "2.0.0",
-      "observed_at": "2026-07-25T10:20:00.002000Z",
-      "emitted_at": "2026-07-25T10:20:00.002000Z",
+      "event_id": "evt_model_call_001",
+      "event_type": "model.call.observed",
+      "bkn.trace.schema.version": "2.1.0",
+      "observed_at": "2026-07-25T10:20:00.100000000Z",
+      "emitted_at": "2026-07-25T10:20:00.101000000Z",
       "producer_module": "mf-model-api",
       "trace_id": "81230000000000000000000000000001",
-      "span_id": "8123000000000001",
+      "span_id": "8123000000000002",
       "bkn.request.id": "req_mf_model_phase2_call_0001",
       "bkn.operation.name": "model.chat.completions",
+      "interaction_id": "interaction_model_001",
+      "operation_id": "operation_model_001",
+      "causation_event_id": "evt_interaction_model_001",
+      "attempt": 1,
       "payload": {
-        "claim_id": "claim_mf_model_call_0001",
-        "evidence_refs": [
-          {
-            "ref_id": "source:model:model_demo",
-            "ref_type": "source_ref",
-            "source_system": "mf-model-api",
-            "summary_hash": "sha256:model_ref_summary_hash_only",
-            "validity": "observed",
-            "version_status": "unversioned",
-            "visibility": "visible",
-            "partial_reason": ["model_ref_unversioned"]
-          },
-          {
-            "ref_id": "source:message_hash:messages_hash",
-            "ref_type": "source_ref",
-            "source_system": "mf-model-api",
-            "summary_hash": "sha256:message_ref_summary_hash_only",
-            "validity": "observed",
-            "version_status": "unversioned",
-            "visibility": "visible",
-            "partial_reason": ["message_ref_hash_only"]
-          },
-          {
-            "ref_id": "source:model_result:result_hash",
-            "ref_type": "source_ref",
-            "source_system": "mf-model-api",
-            "summary_hash": "sha256:model_result_ref_summary_hash_only",
-            "validity": "observed",
-            "version_status": "unversioned",
-            "visibility": "visible",
-            "partial_reason": ["model_result_hash_only"]
-          }
-        ]
+        "model_name": "gpt-demo",
+        "model_provider": "openai-compatible",
+        "status": "ok",
+        "input_token_count": 12,
+        "output_token_count": 8,
+        "prompt_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "output_hash": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
       }
     }
   ]

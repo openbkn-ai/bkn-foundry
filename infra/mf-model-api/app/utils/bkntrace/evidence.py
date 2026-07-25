@@ -9,7 +9,7 @@ from typing import Any, Dict, Iterable, List, Optional
 import aiohttp
 
 
-CONTRACT_VERSION = "2.0.0"
+CONTRACT_VERSION = "2.1.0"
 MODULE_NAME = "mf-model-api"
 EVIDENCE_INGEST_URL_ENV = "BKN_TRACE_EVIDENCE_INGEST_URL"
 EVIDENCE_INGEST_TIMEOUT_MS_ENV = "BKN_TRACE_EVIDENCE_TIMEOUT_MS"
@@ -28,7 +28,7 @@ def hash_value(value: Any) -> str:
     return "sha256:" + hashlib.sha256(raw).hexdigest()
 
 
-def build_request_context(headers: Optional[Dict[str, str]], account_id: str = "", account_type: str = "user") -> Dict[str, str]:
+def build_request_context(headers: Optional[Dict[str, str]], account_id: str = "", account_type: str = "user") -> Dict[str, Any]:
     headers = headers or {}
     normalized = {str(k).lower(): str(v) for k, v in headers.items()}
     traceparent = normalized.get("traceparent", "").strip()
@@ -55,11 +55,15 @@ def build_request_context(headers: Optional[Dict[str, str]], account_id: str = "
         "account_id": normalized.get("x-account-id", "").strip() or account_id or "",
         "account_type": normalized.get("x-account-type", "").strip() or account_type or "user",
         "business_domain": normalized.get("x-business-domain", "").strip(),
+        "interaction_id": normalized.get("bkn-interaction-id", "").strip(),
+        "operation_id": normalized.get("bkn-operation-id", "").strip(),
+        "causation_event_id": normalized.get("bkn-causation-event-id", "").strip(),
+        "attempt": _positive_int(normalized.get("bkn-attempt", "1")),
     }
 
 
 def build_model_call_events(
-    request_context: Dict[str, str],
+    request_context: Dict[str, Any],
     *,
     model_id: str,
     model_name: str,
@@ -73,57 +77,33 @@ def build_model_call_events(
     output: Any = None,
     error_category: str = "",
 ) -> List[Dict[str, Any]]:
+    if not all(request_context.get(key) for key in ("interaction_id", "operation_id", "causation_event_id")):
+        return []
     safe_params = _safe_model_params(params)
-    subject_summary = {
-        "model_id": model_id,
+    normalized_status = "ok" if status == "success" else "error"
+    prompt_hash = hash_value({"messages": list(messages or []), "params": safe_params})
+    output_hash = hash_value(
+        output if output is not None else {"status": normalized_status, "error_category": error_category}
+    )
+    payload = {
         "model_name": model_name,
         "model_provider": model_provider,
-        "operation": operation,
-        "status": status,
-        "input_unit_count": int(input_token_count or 0),
-        "output_unit_count": int(output_token_count or 0),
-        "parameter_hash": hash_value(safe_params),
-        "prompt_hash": hash_value(list(messages or [])),
-        "output_hash": hash_value(output) if output is not None else "",
-        "error_category": error_category,
-        "producer_module": MODULE_NAME,
-        "contract_version": CONTRACT_VERSION,
+        "status": normalized_status,
+        "input_token_count": int(input_token_count or 0),
+        "output_token_count": int(output_token_count or 0),
+        "prompt_hash": prompt_hash,
+        "output_hash": output_hash,
     }
-    claim_id = _claim_id(operation, model_id or model_name, subject_summary)
-    refs = _model_evidence_refs(model_id, model_name, model_provider, subject_summary, safe_params)
+    if normalized_status == "error":
+        payload["error_category"] = error_category or "unknown"
+        payload["error_hash"] = hash_value({"operation": operation, "category": error_category or "unknown"})
     now = _utc_now()
-
     return [
-        _build_event(request_context, "claim.created", operation, now, {
-            "claim_id": claim_id,
-            "claim_type": "finding",
-            "claim_hash": hash_value(subject_summary),
-            "visibility": "visible",
-            "version_status": "unversioned",
-            "partial_reason": ["model_call_refs_unversioned"],
-            "subject_refs": {
-                "model_id": model_id,
-                "model_name": model_name,
-                "model_provider": model_provider,
-                "status": status,
-                "parameter_hash": subject_summary["parameter_hash"],
-                "prompt_hash": subject_summary["prompt_hash"],
-                "output_hash": subject_summary["output_hash"],
-                "input_unit_count": subject_summary["input_unit_count"],
-                "output_unit_count": subject_summary["output_unit_count"],
-                "error_category": error_category,
-                "evidence_refs_hash": hash_value([ref["summary_hash"] for ref in refs]),
-                "data.classification": "internal",
-            },
-        }),
-        _build_event(request_context, "evidence.refs.created", operation, now, {
-            "claim_id": claim_id,
-            "evidence_refs": refs,
-        }),
+        _build_event(request_context, "model.call.observed", operation, now, payload),
     ]
 
 
-def emit_model_call_events(request_context: Dict[str, str], events: List[Dict[str, Any]]) -> None:
+def emit_model_call_events(request_context: Dict[str, Any], events: List[Dict[str, Any]]) -> None:
     ingest_url = os.getenv(EVIDENCE_INGEST_URL_ENV, "").strip()
     if not ingest_url or not events:
         return
@@ -159,57 +139,9 @@ async def _post_batch(ingest_url: str, payload: Dict[str, Any]) -> None:
         return
 
 
-def _model_evidence_refs(
-    model_id: str,
-    model_name: str,
-    model_provider: str,
-    subject_summary: Dict[str, Any],
-    safe_params: Dict[str, Any],
-) -> List[Dict[str, Any]]:
-    model_summary = {
-        "kind": "model",
-        "model_id": model_id,
-        "model_name": model_name,
-        "model_provider": model_provider,
-        "version_status": "unversioned",
-    }
-    prompt_summary = {
-        "kind": "message_context",
-        "message_hash": subject_summary["prompt_hash"],
-        "parameter_hash": hash_value(safe_params),
-    }
-    output_summary = {
-        "kind": "model_result",
-        "status": subject_summary["status"],
-        "result_hash": subject_summary["output_hash"],
-        "input_unit_count": subject_summary["input_unit_count"],
-        "output_unit_count": subject_summary["output_unit_count"],
-        "error_category": subject_summary["error_category"],
-    }
-    return [
-        _ref(f"source:model:{model_id or hash_value(model_name)[7:23]}", "source_ref", model_summary, ["model_ref_unversioned"]),
-        _ref(f"source:message_hash:{subject_summary['prompt_hash'][7:31]}", "source_ref", prompt_summary, ["message_ref_hash_only"]),
-        _ref(f"source:model_result:{subject_summary['output_hash'][7:31] if subject_summary['output_hash'] else subject_summary['status']}", "source_ref", output_summary, ["model_result_hash_only"]),
-    ]
-
-
-def _ref(ref_id: str, ref_type: str, summary: Dict[str, Any], partial_reason: List[str]) -> Dict[str, Any]:
+def _build_event(request_context: Dict[str, Any], event_type: str, operation: str, now: str, payload: Dict[str, Any]) -> Dict[str, Any]:
     return {
-        "ref_id": ref_id,
-        "ref_type": ref_type,
-        "source_system": MODULE_NAME,
-        "summary_hash": hash_value(summary),
-        "summary": summary,
-        "validity": "observed",
-        "version_status": "unversioned",
-        "visibility": "visible",
-        "partial_reason": partial_reason,
-    }
-
-
-def _build_event(request_context: Dict[str, str], event_type: str, operation: str, now: str, payload: Dict[str, Any]) -> Dict[str, Any]:
-    return {
-        "event_id": "evt_" + secrets.token_hex(12),
+        "event_id": _event_id(request_context, event_type),
         "event_type": event_type,
         "bkn.trace.schema.version": CONTRACT_VERSION,
         "observed_at": now,
@@ -219,6 +151,10 @@ def _build_event(request_context: Dict[str, str], event_type: str, operation: st
         "span_id": request_context.get("span_id", ""),
         "bkn.request.id": request_context.get("request_id", ""),
         "bkn.operation.name": operation,
+        "interaction_id": request_context.get("interaction_id", ""),
+        "operation_id": request_context.get("operation_id", ""),
+        "causation_event_id": request_context.get("causation_event_id", ""),
+        "attempt": int(request_context.get("attempt", 1) or 1),
         "payload": payload,
     }
 
@@ -241,12 +177,22 @@ def _safe_model_params(params: Dict[str, Any]) -> Dict[str, Any]:
     return safe
 
 
-def _claim_id(operation: str, subject_id: str, value: Dict[str, Any]) -> str:
-    return "claim_" + hashlib.sha256(hash_value({
-        "operation": operation,
-        "subject_id": subject_id,
-        "value": value,
-    }).encode("utf-8")).hexdigest()[:24]
+def _event_id(request_context: Dict[str, Any], event_type: str) -> str:
+    identity = ":".join([
+        request_context.get("trace_id", ""),
+        request_context.get("operation_id", ""),
+        event_type,
+        str(request_context.get("attempt", 1)),
+    ])
+    return "evt_" + hashlib.sha256(identity.encode("utf-8")).hexdigest()[:24]
+
+
+def _positive_int(value: Any) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return 1
+    return parsed if parsed > 0 else 1
 
 
 def _utc_now() -> str:
