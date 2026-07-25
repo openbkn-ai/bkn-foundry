@@ -55,12 +55,15 @@ func NewApp() *App {
 
 func newApp(httpServerConfig conf.HTTPServerConfig, traceHandler *httphandler.TraceHandler, evidenceHandler *httphandler.EvidenceHandler) *App {
 	mux := http.NewServeMux()
-	mux.HandleFunc(APIBasePath+"/traces/_search", traceHandler.SearchTraces)
-	mux.HandleFunc(APIBasePath+"/traces/by-conversation", traceHandler.SearchTracesByConversationID)
+	mux.HandleFunc(APIBasePath+"/traces/_search", evidenceHandler.RequireTrustedQueryIdentity(traceHandler.SearchTraces))
+	mux.HandleFunc(APIBasePath+"/traces/by-conversation", evidenceHandler.RequireTrustedQueryIdentity(traceHandler.SearchTracesByConversationID))
 	mux.HandleFunc(APIBasePath+"/traces/by-request/business-graph", evidenceHandler.GetBusinessGraphByRequestID)
 	mux.HandleFunc(APIBasePath+"/traces/by-request/snapshot-preview", evidenceHandler.GetSnapshotPreviewByRequestID)
 	mux.HandleFunc(APIBasePath+"/traces/by-request", evidenceHandler.GetEvidenceChainByRequestID)
 	mux.HandleFunc(APIBasePath+"/traces/", func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/trace-graph") && !evidenceHandler.AuthorizeTechnicalTraceQuery(w, r) {
+			return
+		}
 		if traceHandler.GetTraceSubresource(w, r) {
 			return
 		}

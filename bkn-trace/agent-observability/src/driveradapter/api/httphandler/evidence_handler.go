@@ -16,21 +16,55 @@ import (
 
 const maxEvidenceBodyBytes = 1 << 20
 const evidenceIngestTokenEnv = "BKN_TRACE_EVIDENCE_INGEST_TOKEN"
+const evidenceAllowUnauthenticatedIngestEnv = "BKN_TRACE_ALLOW_UNAUTHENTICATED_INGEST"
 const evidenceIngestTokenHeader = "X-BKN-Trace-Ingest-Token"
+const evidenceQueryGatewayTokenEnv = "BKN_TRACE_QUERY_GATEWAY_TOKEN"
+const evidenceAllowUnauthenticatedQueryEnv = "BKN_TRACE_ALLOW_UNAUTHENTICATED_QUERY"
+const evidenceQueryGatewayTokenHeader = "X-BKN-Trace-Query-Token"
+
+type EvidenceHandlerSecurityConfig struct {
+	IngestToken                string
+	QueryGatewayToken          string
+	AllowUnauthenticatedIngest bool
+	AllowUnauthenticatedQuery  bool
+}
 
 type EvidenceHandler struct {
-	evidenceService *evidencesvc.Service
-	ingestToken     string
+	evidenceService            *evidencesvc.Service
+	ingestToken                string
+	queryGatewayToken          string
+	allowUnauthenticatedIngest bool
+	allowUnauthenticatedQuery  bool
 }
 
 func NewEvidenceHandler(evidenceService *evidencesvc.Service) *EvidenceHandler {
-	return NewEvidenceHandlerWithIngestToken(evidenceService, os.Getenv(evidenceIngestTokenEnv))
+	allowUnauthenticated := strings.EqualFold(strings.TrimSpace(os.Getenv(evidenceAllowUnauthenticatedIngestEnv)), "true")
+	allowUnauthenticatedQuery := strings.EqualFold(strings.TrimSpace(os.Getenv(evidenceAllowUnauthenticatedQueryEnv)), "true")
+	return NewEvidenceHandlerWithSecurityConfig(evidenceService, EvidenceHandlerSecurityConfig{
+		IngestToken:                os.Getenv(evidenceIngestTokenEnv),
+		QueryGatewayToken:          os.Getenv(evidenceQueryGatewayTokenEnv),
+		AllowUnauthenticatedIngest: allowUnauthenticated,
+		AllowUnauthenticatedQuery:  allowUnauthenticatedQuery,
+	})
 }
 
 func NewEvidenceHandlerWithIngestToken(evidenceService *evidencesvc.Service, ingestToken string) *EvidenceHandler {
+	return NewEvidenceHandlerWithSecurity(evidenceService, ingestToken, false)
+}
+
+func NewEvidenceHandlerWithSecurity(evidenceService *evidencesvc.Service, ingestToken string, allowUnauthenticatedIngest bool) *EvidenceHandler {
+	return NewEvidenceHandlerWithSecurityConfig(evidenceService, EvidenceHandlerSecurityConfig{
+		IngestToken: ingestToken, AllowUnauthenticatedIngest: allowUnauthenticatedIngest,
+	})
+}
+
+func NewEvidenceHandlerWithSecurityConfig(evidenceService *evidencesvc.Service, config EvidenceHandlerSecurityConfig) *EvidenceHandler {
 	return &EvidenceHandler{
-		evidenceService: evidenceService,
-		ingestToken:     strings.TrimSpace(ingestToken),
+		evidenceService:            evidenceService,
+		ingestToken:                strings.TrimSpace(config.IngestToken),
+		queryGatewayToken:          strings.TrimSpace(config.QueryGatewayToken),
+		allowUnauthenticatedIngest: config.AllowUnauthenticatedIngest,
+		allowUnauthenticatedQuery:  config.AllowUnauthenticatedQuery,
 	}
 }
 
@@ -125,7 +159,7 @@ func (h *EvidenceHandler) GetEvidenceChainByTraceID(w http.ResponseWriter, r *ht
 		return
 	}
 
-	options, ok := evidenceQueryOptionsFromRequest(w, r)
+	options, ok := h.evidenceQueryOptionsFromRequest(w, r)
 	if !ok {
 		return
 	}
@@ -182,7 +216,7 @@ func (h *EvidenceHandler) SearchEvidenceByTrace(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	options, ok := evidenceQueryOptionsFromRequest(w, r)
+	options, ok := h.evidenceQueryOptionsFromRequest(w, r)
 	if !ok {
 		return
 	}
@@ -265,7 +299,7 @@ func (h *EvidenceHandler) GetBusinessGraphByTraceID(w http.ResponseWriter, r *ht
 		return
 	}
 
-	options, ok := evidenceQueryOptionsFromRequest(w, r)
+	options, ok := h.evidenceQueryOptionsFromRequest(w, r)
 	if !ok {
 		return
 	}
@@ -320,7 +354,7 @@ func (h *EvidenceHandler) GetEvidenceChainByRequestID(w http.ResponseWriter, r *
 		return
 	}
 
-	options, ok := evidenceQueryOptionsFromRequest(w, r)
+	options, ok := h.evidenceQueryOptionsFromRequest(w, r)
 	if !ok {
 		return
 	}
@@ -375,7 +409,7 @@ func (h *EvidenceHandler) GetSnapshotPreviewByTraceID(w http.ResponseWriter, r *
 		return
 	}
 
-	options, ok := evidenceQueryOptionsFromRequest(w, r)
+	options, ok := h.evidenceQueryOptionsFromRequest(w, r)
 	if !ok {
 		return
 	}
@@ -430,7 +464,7 @@ func (h *EvidenceHandler) GetSnapshotPreviewByRequestID(w http.ResponseWriter, r
 		return
 	}
 
-	options, ok := evidenceQueryOptionsFromRequest(w, r)
+	options, ok := h.evidenceQueryOptionsFromRequest(w, r)
 	if !ok {
 		return
 	}
@@ -485,7 +519,7 @@ func (h *EvidenceHandler) GetBusinessGraphByRequestID(w http.ResponseWriter, r *
 		return
 	}
 
-	options, ok := evidenceQueryOptionsFromRequest(w, r)
+	options, ok := h.evidenceQueryOptionsFromRequest(w, r)
 	if !ok {
 		return
 	}
@@ -542,7 +576,7 @@ func (h *EvidenceHandler) GetEvidenceNode(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	options, ok := evidenceQueryOptionsFromRequest(w, r)
+	options, ok := h.evidenceQueryOptionsFromRequest(w, r)
 	if !ok {
 		return
 	}
@@ -611,10 +645,17 @@ func evidenceNodeIDFromPath(path string) string {
 	return strings.TrimSpace(nodeID)
 }
 
-func evidenceQueryOptionsFromRequest(w http.ResponseWriter, r *http.Request) (evidencevo.EvidenceQueryOptions, bool) {
+func (h *EvidenceHandler) evidenceQueryOptionsFromRequest(w http.ResponseWriter, r *http.Request) (evidencevo.EvidenceQueryOptions, bool) {
+	if !h.authorizeQueryGateway(w, r) {
+		return evidencevo.EvidenceQueryOptions{}, false
+	}
+	scope, ok := queryScopeFromRequest(w, r)
+	if !ok {
+		return evidencevo.EvidenceQueryOptions{}, false
+	}
 	rawLimit := strings.TrimSpace(r.URL.Query().Get("limit"))
 	if rawLimit == "" {
-		return evidencevo.EvidenceQueryOptions{}, true
+		return evidencevo.EvidenceQueryOptions{Scope: scope}, true
 	}
 	limit, err := strconv.Atoi(rawLimit)
 	if err != nil || limit <= 0 || limit > evidencesvc.MaxEvidenceQueryLimit {
@@ -624,7 +665,83 @@ func evidenceQueryOptionsFromRequest(w http.ResponseWriter, r *http.Request) (ev
 		})
 		return evidencevo.EvidenceQueryOptions{}, false
 	}
-	return evidencevo.EvidenceQueryOptions{Limit: limit}, true
+	return evidencevo.EvidenceQueryOptions{Limit: limit, Scope: scope}, true
+}
+
+func queryScopeFromRequest(w http.ResponseWriter, r *http.Request) (evidencevo.QueryScope, bool) {
+	accountID := strings.TrimSpace(r.Header.Get("x-account-id"))
+	accountType := strings.TrimSpace(r.Header.Get("x-account-type"))
+	tenantID := strings.TrimSpace(r.Header.Get("x-tenant-id"))
+	if tenantID == "" {
+		tenantID = strings.TrimSpace(r.Header.Get("x-bkn-tenant-id"))
+	}
+	businessDomain := strings.TrimSpace(r.Header.Get("x-business-domain"))
+	if accountID == "" || accountType == "" || strings.EqualFold(accountType, "anonymous") || tenantID == "" && businessDomain == "" {
+		writeJSON(w, http.StatusUnauthorized, rdto.ErrorResponse{
+			Code:    "QUERY_IDENTITY_REQUIRED",
+			Message: "trusted account and tenant or business domain context is required",
+		})
+		return evidencevo.QueryScope{}, false
+	}
+	return evidencevo.QueryScope{
+		TenantID: tenantID, BusinessDomain: businessDomain, AccountID: accountID, AccountType: accountType,
+	}, true
+}
+
+func (h *EvidenceHandler) RequireTrustedQueryIdentity(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !h.authorizeQueryGateway(w, r) {
+			return
+		}
+		if _, ok := queryScopeFromRequest(w, r); !ok {
+			return
+		}
+		next(w, r)
+	}
+}
+
+func (h *EvidenceHandler) authorizeQueryGateway(w http.ResponseWriter, r *http.Request) bool {
+	if h.queryGatewayToken == "" {
+		if h.allowUnauthenticatedQuery {
+			return true
+		}
+		writeJSON(w, http.StatusServiceUnavailable, rdto.ErrorResponse{
+			Code: "QUERY_AUTH_NOT_CONFIGURED", Message: "query gateway authentication is not configured",
+		})
+		return false
+	}
+	if secureTokenEqual(r.Header.Get(evidenceQueryGatewayTokenHeader), h.queryGatewayToken) {
+		return true
+	}
+	writeJSON(w, http.StatusUnauthorized, rdto.ErrorResponse{
+		Code: "QUERY_GATEWAY_AUTH_REQUIRED", Message: "trusted query gateway authentication is required",
+	})
+	return false
+}
+
+func (h *EvidenceHandler) AuthorizeTechnicalTraceQuery(w http.ResponseWriter, r *http.Request) bool {
+	const prefix = "/api/agent-observability/v1/traces/"
+	const suffix = "/trace-graph"
+	traceID := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, prefix), suffix)
+	traceID = strings.Trim(traceID, "/")
+	if traceID == "" || strings.Contains(traceID, "/") {
+		writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_ARGUMENT", Message: "trace_id is required"})
+		return false
+	}
+	options, ok := h.evidenceQueryOptionsFromRequest(w, r)
+	if !ok {
+		return false
+	}
+	_, found, err := h.evidenceService.GetEvidenceChainByTraceID(r.Context(), traceID, options)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, rdto.ErrorResponse{Code: "QUERY_FAILED", Message: "failed to authorize trace query"})
+		return false
+	}
+	if !found {
+		writeJSON(w, http.StatusNotFound, rdto.ErrorResponse{Code: "NOT_FOUND", Message: "trace not found"})
+		return false
+	}
+	return true
 }
 
 func traceIDFromBusinessGraphPath(path string) string {
@@ -657,7 +774,14 @@ func traceIDFromSnapshotPreviewPath(path string) string {
 
 func (h *EvidenceHandler) authorizeEvidenceIngest(w http.ResponseWriter, r *http.Request) bool {
 	if h.ingestToken == "" {
-		return true
+		if h.allowUnauthenticatedIngest {
+			return true
+		}
+		writeJSON(w, http.StatusServiceUnavailable, rdto.ErrorResponse{
+			Code:    "INGEST_AUTH_NOT_CONFIGURED",
+			Message: "evidence ingest authentication is not configured",
+		})
+		return false
 	}
 	if secureTokenEqual(r.Header.Get(evidenceIngestTokenHeader), h.ingestToken) {
 		return true

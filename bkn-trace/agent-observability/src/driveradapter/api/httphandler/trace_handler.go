@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/tracesvc"
@@ -12,10 +13,14 @@ import (
 
 type TraceHandler struct {
 	traceQueryService *tracesvc.TraceQueryService
+	allowRawQuery     bool
 }
 
 func NewTraceHandler(traceQueryService *tracesvc.TraceQueryService) *TraceHandler {
-	return &TraceHandler{traceQueryService: traceQueryService}
+	return &TraceHandler{
+		traceQueryService: traceQueryService,
+		allowRawQuery:     strings.EqualFold(strings.TrimSpace(os.Getenv("BKN_TRACE_ALLOW_RAW_TRACE_QUERY")), "true"),
+	}
 }
 
 // SearchTraces godoc
@@ -31,6 +36,10 @@ func NewTraceHandler(traceQueryService *tracesvc.TraceQueryService) *TraceHandle
 // @Failure 504 {object} rdto.ErrorResponse
 // @Router /api/agent-observability/v1/traces/_search [post]
 func (h *TraceHandler) SearchTraces(w http.ResponseWriter, r *http.Request) {
+	if !h.allowRawQuery {
+		writeJSON(w, http.StatusForbidden, rdto.ErrorResponse{Code: "RAW_TRACE_QUERY_DISABLED", Message: "unscoped raw trace query is disabled"})
+		return
+	}
 	if r.Method != http.MethodPost {
 		writeJSON(w, http.StatusMethodNotAllowed, rdto.ErrorResponse{
 			Code:    "METHOD_NOT_ALLOWED",
@@ -93,6 +102,10 @@ func (h *TraceHandler) SearchTraces(w http.ResponseWriter, r *http.Request) {
 // @Failure 504 {object} rdto.ErrorResponse
 // @Router /api/agent-observability/v1/traces/by-conversation [get]
 func (h *TraceHandler) SearchTracesByConversationID(w http.ResponseWriter, r *http.Request) {
+	if !h.allowRawQuery {
+		writeJSON(w, http.StatusForbidden, rdto.ErrorResponse{Code: "RAW_TRACE_QUERY_DISABLED", Message: "unscoped conversation trace query is disabled"})
+		return
+	}
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, rdto.ErrorResponse{
 			Code:    "METHOD_NOT_ALLOWED",

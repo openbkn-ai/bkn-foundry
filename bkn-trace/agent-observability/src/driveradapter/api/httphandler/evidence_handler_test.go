@@ -1,6 +1,7 @@
 package httphandler
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -10,8 +11,147 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/memoryaccess/evidencestore"
 )
 
-func TestEvidenceHandlerAcceptsValidBatch(t *testing.T) {
+func newDevEvidenceHandler(service *evidencesvc.Service) *EvidenceHandler {
+	return NewEvidenceHandlerWithSecurityConfig(service, EvidenceHandlerSecurityConfig{
+		AllowUnauthenticatedIngest: true,
+		AllowUnauthenticatedQuery:  true,
+	})
+}
+
+func authenticatedQueryRequest(method, target string, body io.Reader) *http.Request {
+	req := httptest.NewRequest(method, target, body)
+	req.Header.Set("x-account-id", "acct_demo")
+	req.Header.Set("x-account-type", "app")
+	req.Header.Set("x-business-domain", "bd_demo")
+	return req
+}
+
+func TestEvidenceHandlerFailsClosedWhenIngestTokenIsUnconfigured(t *testing.T) {
+	handler := NewEvidenceHandlerWithSecurity(evidencesvc.New(evidencestore.New()), "", false)
+	req := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/evidence/events", strings.NewReader(validHandlerBatch()))
+	rec := httptest.NewRecorder()
+
+	handler.IngestEvidenceEvents(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), "INGEST_AUTH_NOT_CONFIGURED") {
+		t.Fatalf("expected fail-closed configuration error, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestEvidenceHandlerDevelopmentBypassesDefaultToDisabled(t *testing.T) {
+	t.Setenv(evidenceIngestTokenEnv, "")
+	t.Setenv(evidenceQueryGatewayTokenEnv, "")
+	t.Setenv(evidenceAllowUnauthenticatedIngestEnv, "")
+	t.Setenv(evidenceAllowUnauthenticatedQueryEnv, "")
 	handler := NewEvidenceHandler(evidencesvc.New(evidencestore.New()))
+
+	ingestReq := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/evidence/events", strings.NewReader(validHandlerBatch()))
+	ingestRec := httptest.NewRecorder()
+	handler.IngestEvidenceEvents(ingestRec, ingestReq)
+	if ingestRec.Code != http.StatusServiceUnavailable || !strings.Contains(ingestRec.Body.String(), "INGEST_AUTH_NOT_CONFIGURED") {
+		t.Fatalf("unauthenticated ingest must default off, got %d: %s", ingestRec.Code, ingestRec.Body.String())
+	}
+
+	queryReq := authenticatedQueryRequest(http.MethodGet, "/api/agent-observability/v1/traces/missing/evidence-chain", nil)
+	queryRec := httptest.NewRecorder()
+	handler.GetEvidenceChainByTraceID(queryRec, queryReq)
+	if queryRec.Code != http.StatusServiceUnavailable || !strings.Contains(queryRec.Body.String(), "QUERY_AUTH_NOT_CONFIGURED") {
+		t.Fatalf("unauthenticated query must default off, got %d: %s", queryRec.Code, queryRec.Body.String())
+	}
+}
+
+func TestIngestDevelopmentBypassDoesNotEnableQueryBypass(t *testing.T) {
+	handler := NewEvidenceHandlerWithSecurity(evidencesvc.New(evidencestore.New()), "", true)
+	req := authenticatedQueryRequest(http.MethodGet, "/api/agent-observability/v1/traces/missing/evidence-chain", nil)
+	rec := httptest.NewRecorder()
+
+	handler.GetEvidenceChainByTraceID(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), "QUERY_AUTH_NOT_CONFIGURED") {
+		t.Fatalf("ingest development bypass must not enable query bypass, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestEvidenceHandlerRequiresTrustedQueryIdentity(t *testing.T) {
+	handler := newDevEvidenceHandler(evidencesvc.New(evidencestore.New()))
+	req := httptest.NewRequest(http.MethodGet, "/api/agent-observability/v1/traces/missing/evidence-chain", nil)
+	rec := httptest.NewRecorder()
+
+	handler.GetEvidenceChainByTraceID(rec, req)
+
+	if rec.Code != http.StatusUnauthorized || !strings.Contains(rec.Body.String(), "QUERY_IDENTITY_REQUIRED") {
+		t.Fatalf("expected trusted identity rejection, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestEvidenceHandlerRejectsForgedIdentityWithoutGatewayToken(t *testing.T) {
+	handler := NewEvidenceHandlerWithSecurityConfig(evidencesvc.New(evidencestore.New()), EvidenceHandlerSecurityConfig{
+		IngestToken: "producer-ingest-token", QueryGatewayToken: "gateway-query-token",
+	})
+	req := authenticatedQueryRequest(http.MethodGet, "/api/agent-observability/v1/traces/missing/evidence-chain", nil)
+	req.Header.Set("X-BKN-Trace-Ingest-Token", "producer-ingest-token")
+	rec := httptest.NewRecorder()
+
+	handler.GetEvidenceChainByTraceID(rec, req)
+
+	if rec.Code != http.StatusUnauthorized || !strings.Contains(rec.Body.String(), "QUERY_GATEWAY_AUTH_REQUIRED") {
+		t.Fatalf("producer token and forged identity must not authorize query, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestEvidenceHandlerFailsClosedWhenQueryGatewayTokenIsUnconfigured(t *testing.T) {
+	handler := NewEvidenceHandlerWithSecurityConfig(evidencesvc.New(evidencestore.New()), EvidenceHandlerSecurityConfig{})
+	req := authenticatedQueryRequest(http.MethodGet, "/api/agent-observability/v1/traces/missing/evidence-chain", nil)
+	rec := httptest.NewRecorder()
+
+	handler.GetEvidenceChainByTraceID(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), "QUERY_AUTH_NOT_CONFIGURED") {
+		t.Fatalf("missing query gateway auth must fail closed, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestEvidenceHandlerFiltersEvidenceByOwnership(t *testing.T) {
+	store := evidencestore.New()
+	handler := newDevEvidenceHandler(evidencesvc.New(store))
+	ingestReq := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/evidence/events", strings.NewReader(validHandlerBatch()))
+	ingestRec := httptest.NewRecorder()
+	handler.IngestEvidenceEvents(ingestRec, ingestReq)
+	if ingestRec.Code != http.StatusAccepted {
+		t.Fatalf("ingest failed: %d %s", ingestRec.Code, ingestRec.Body.String())
+	}
+
+	req := authenticatedQueryRequest(http.MethodGet, "/api/agent-observability/v1/traces/9c0d0000000000000000000000000001/evidence-chain", nil)
+	req.Header.Set("x-account-id", "acct_other")
+	rec := httptest.NewRecorder()
+	handler.GetEvidenceChainByTraceID(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("cross-account query must not reveal existence, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestEvidenceHandlerAuthorizesTechnicalTraceByEvidenceOwnership(t *testing.T) {
+	store := evidencestore.New()
+	handler := newDevEvidenceHandler(evidencesvc.New(store))
+	ingestReq := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/evidence/events", strings.NewReader(validHandlerBatch()))
+	ingestRec := httptest.NewRecorder()
+	handler.IngestEvidenceEvents(ingestRec, ingestReq)
+
+	allowed := authenticatedQueryRequest(http.MethodGet, "/api/agent-observability/v1/traces/9c0d0000000000000000000000000001/trace-graph", nil)
+	if rec := httptest.NewRecorder(); !handler.AuthorizeTechnicalTraceQuery(rec, allowed) {
+		t.Fatalf("owner must access technical trace: %d %s", rec.Code, rec.Body.String())
+	}
+	denied := authenticatedQueryRequest(http.MethodGet, allowed.URL.String(), nil)
+	denied.Header.Set("x-business-domain", "bd_other")
+	rec := httptest.NewRecorder()
+	if handler.AuthorizeTechnicalTraceQuery(rec, denied) || rec.Code != http.StatusNotFound {
+		t.Fatalf("cross-domain trace access must not reveal existence: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestEvidenceHandlerAcceptsValidBatch(t *testing.T) {
+	handler := newDevEvidenceHandler(evidencesvc.New(evidencestore.New()))
 	req := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/evidence/events", strings.NewReader(validHandlerBatch()))
 	rec := httptest.NewRecorder()
 
@@ -37,11 +177,8 @@ func TestEvidenceHandlerRejectsIngestWithoutConfiguredToken(t *testing.T) {
 		t.Fatalf("expected 401, got %d: %s", rec.Code, rec.Body.String())
 	}
 
-	queryReq := httptest.NewRequest(http.MethodGet, "/api/agent-observability/v1/traces/9c0d0000000000000000000000000001/evidence-chain", nil)
-	queryRec := httptest.NewRecorder()
-	handler.GetEvidenceChainByTraceID(queryRec, queryReq)
-	if queryRec.Code != http.StatusNotFound {
-		t.Fatalf("expected rejected event to stay unstored, got %d: %s", queryRec.Code, queryRec.Body.String())
+	if store.TraceCount("9c0d0000000000000000000000000001") != 0 {
+		t.Fatal("rejected event must stay unstored")
 	}
 }
 
@@ -72,7 +209,7 @@ func TestEvidenceHandlerAcceptsIngestTokenHeader(t *testing.T) {
 }
 
 func TestEvidenceHandlerRejectsSensitivePayload(t *testing.T) {
-	handler := NewEvidenceHandler(evidencesvc.New(evidencestore.New()))
+	handler := newDevEvidenceHandler(evidencesvc.New(evidencestore.New()))
 	req := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/evidence/events", strings.NewReader(strings.Replace(validHandlerBatch(), `"claim_hash": "sha256:claim"`, `"raw_sql": "select email from customer"`, 1)))
 	rec := httptest.NewRecorder()
 
@@ -87,7 +224,7 @@ func TestEvidenceHandlerRejectsSensitivePayload(t *testing.T) {
 }
 
 func TestEvidenceHandlerReturnsValidationErrorDetails(t *testing.T) {
-	handler := NewEvidenceHandler(evidencesvc.New(evidencestore.New()))
+	handler := newDevEvidenceHandler(evidencesvc.New(evidencestore.New()))
 	body := strings.Replace(validHandlerBatch(), `"claim_hash": "sha256:claim",`, "", 1)
 	body = strings.Replace(body, `"visibility": "visible",`, "", 1)
 	req := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/evidence/events", strings.NewReader(body))
@@ -108,7 +245,7 @@ func TestEvidenceHandlerReturnsValidationErrorDetails(t *testing.T) {
 
 func TestEvidenceHandlerReturnsEvidenceChainByTrace(t *testing.T) {
 	store := evidencestore.New()
-	handler := NewEvidenceHandler(evidencesvc.New(store))
+	handler := newDevEvidenceHandler(evidencesvc.New(store))
 	ingestReq := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/evidence/events", strings.NewReader(validHandlerBatch()))
 	ingestRec := httptest.NewRecorder()
 	handler.IngestEvidenceEvents(ingestRec, ingestReq)
@@ -116,7 +253,7 @@ func TestEvidenceHandlerReturnsEvidenceChainByTrace(t *testing.T) {
 		t.Fatalf("expected ingest 202, got %d: %s", ingestRec.Code, ingestRec.Body.String())
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/api/agent-observability/v1/traces/9c0d0000000000000000000000000001/evidence-chain", nil)
+	req := authenticatedQueryRequest(http.MethodGet, "/api/agent-observability/v1/traces/9c0d0000000000000000000000000001/evidence-chain", nil)
 	rec := httptest.NewRecorder()
 	handler.GetEvidenceChainByTraceID(rec, req)
 
@@ -133,12 +270,12 @@ func TestEvidenceHandlerReturnsEvidenceChainByTrace(t *testing.T) {
 
 func TestEvidenceHandlerReturnsEvidenceChainByRequest(t *testing.T) {
 	store := evidencestore.New()
-	handler := NewEvidenceHandler(evidencesvc.New(store))
+	handler := newDevEvidenceHandler(evidencesvc.New(store))
 	ingestReq := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/evidence/events", strings.NewReader(validHandlerBatch()))
 	ingestRec := httptest.NewRecorder()
 	handler.IngestEvidenceEvents(ingestRec, ingestReq)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/agent-observability/v1/traces/by-request?request_id=req_handler_001", nil)
+	req := authenticatedQueryRequest(http.MethodGet, "/api/agent-observability/v1/traces/by-request?request_id=req_handler_001", nil)
 	rec := httptest.NewRecorder()
 	handler.GetEvidenceChainByRequestID(rec, req)
 
@@ -152,12 +289,12 @@ func TestEvidenceHandlerReturnsEvidenceChainByRequest(t *testing.T) {
 
 func TestEvidenceHandlerSearchEvidenceByTraceCompatibilityEndpoint(t *testing.T) {
 	store := evidencestore.New()
-	handler := NewEvidenceHandler(evidencesvc.New(store))
+	handler := newDevEvidenceHandler(evidencesvc.New(store))
 	ingestReq := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/evidence/events", strings.NewReader(validHandlerBatch()))
 	ingestRec := httptest.NewRecorder()
 	handler.IngestEvidenceEvents(ingestRec, ingestReq)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/agent-observability/v1/evidence/by-trace?trace_id=9c0d0000000000000000000000000001", nil)
+	req := authenticatedQueryRequest(http.MethodGet, "/api/agent-observability/v1/evidence/by-trace?trace_id=9c0d0000000000000000000000000001", nil)
 	rec := httptest.NewRecorder()
 	handler.SearchEvidenceByTrace(rec, req)
 
@@ -170,8 +307,8 @@ func TestEvidenceHandlerSearchEvidenceByTraceCompatibilityEndpoint(t *testing.T)
 }
 
 func TestEvidenceHandlerRejectsInvalidEvidenceQueryLimit(t *testing.T) {
-	handler := NewEvidenceHandler(evidencesvc.New(evidencestore.New()))
-	req := httptest.NewRequest(http.MethodGet, "/api/agent-observability/v1/traces/by-request?request_id=req_handler_001&limit=0", nil)
+	handler := newDevEvidenceHandler(evidencesvc.New(evidencestore.New()))
+	req := authenticatedQueryRequest(http.MethodGet, "/api/agent-observability/v1/traces/by-request?request_id=req_handler_001&limit=0", nil)
 	rec := httptest.NewRecorder()
 
 	handler.GetEvidenceChainByRequestID(rec, req)
@@ -186,7 +323,7 @@ func TestEvidenceHandlerRejectsInvalidEvidenceQueryLimit(t *testing.T) {
 
 func TestEvidenceHandlerReturnsBusinessGraphByTrace(t *testing.T) {
 	store := evidencestore.New()
-	handler := NewEvidenceHandler(evidencesvc.New(store))
+	handler := newDevEvidenceHandler(evidencesvc.New(store))
 	ingestReq := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/evidence/events", strings.NewReader(validHandlerBusinessBatch()))
 	ingestRec := httptest.NewRecorder()
 	handler.IngestEvidenceEvents(ingestRec, ingestReq)
@@ -194,7 +331,7 @@ func TestEvidenceHandlerReturnsBusinessGraphByTrace(t *testing.T) {
 		t.Fatalf("expected ingest 202, got %d: %s", ingestRec.Code, ingestRec.Body.String())
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/api/agent-observability/v1/traces/9c0d0000000000000000000000000002/business-graph", nil)
+	req := authenticatedQueryRequest(http.MethodGet, "/api/agent-observability/v1/traces/9c0d0000000000000000000000000002/business-graph", nil)
 	rec := httptest.NewRecorder()
 	handler.GetTraceSubresource(rec, req)
 
@@ -211,12 +348,12 @@ func TestEvidenceHandlerReturnsBusinessGraphByTrace(t *testing.T) {
 
 func TestEvidenceHandlerReturnsBusinessGraphByRequest(t *testing.T) {
 	store := evidencestore.New()
-	handler := NewEvidenceHandler(evidencesvc.New(store))
+	handler := newDevEvidenceHandler(evidencesvc.New(store))
 	ingestReq := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/evidence/events", strings.NewReader(validHandlerBusinessBatch()))
 	ingestRec := httptest.NewRecorder()
 	handler.IngestEvidenceEvents(ingestRec, ingestReq)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/agent-observability/v1/traces/by-request/business-graph?request_id=req_handler_002", nil)
+	req := authenticatedQueryRequest(http.MethodGet, "/api/agent-observability/v1/traces/by-request/business-graph?request_id=req_handler_002", nil)
 	rec := httptest.NewRecorder()
 	handler.GetBusinessGraphByRequestID(rec, req)
 
@@ -230,7 +367,7 @@ func TestEvidenceHandlerReturnsBusinessGraphByRequest(t *testing.T) {
 
 func TestEvidenceHandlerReturnsSnapshotPreviewByTraceWithoutStorageURI(t *testing.T) {
 	store := evidencestore.New()
-	handler := NewEvidenceHandler(evidencesvc.New(store))
+	handler := newDevEvidenceHandler(evidencesvc.New(store))
 	ingestReq := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/evidence/events", strings.NewReader(validHandlerBusinessBatch()))
 	ingestRec := httptest.NewRecorder()
 	handler.IngestEvidenceEvents(ingestRec, ingestReq)
@@ -238,7 +375,7 @@ func TestEvidenceHandlerReturnsSnapshotPreviewByTraceWithoutStorageURI(t *testin
 		t.Fatalf("expected ingest 202, got %d: %s", ingestRec.Code, ingestRec.Body.String())
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/api/agent-observability/v1/traces/9c0d0000000000000000000000000002/snapshot-preview", nil)
+	req := authenticatedQueryRequest(http.MethodGet, "/api/agent-observability/v1/traces/9c0d0000000000000000000000000002/snapshot-preview", nil)
 	rec := httptest.NewRecorder()
 	handler.GetTraceSubresource(rec, req)
 
@@ -256,12 +393,12 @@ func TestEvidenceHandlerReturnsSnapshotPreviewByTraceWithoutStorageURI(t *testin
 
 func TestEvidenceHandlerReturnsSnapshotPreviewByRequest(t *testing.T) {
 	store := evidencestore.New()
-	handler := NewEvidenceHandler(evidencesvc.New(store))
+	handler := newDevEvidenceHandler(evidencesvc.New(store))
 	ingestReq := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/evidence/events", strings.NewReader(validHandlerBusinessBatch()))
 	ingestRec := httptest.NewRecorder()
 	handler.IngestEvidenceEvents(ingestRec, ingestReq)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/agent-observability/v1/traces/by-request/snapshot-preview?request_id=req_handler_002", nil)
+	req := authenticatedQueryRequest(http.MethodGet, "/api/agent-observability/v1/traces/by-request/snapshot-preview?request_id=req_handler_002", nil)
 	rec := httptest.NewRecorder()
 	handler.GetSnapshotPreviewByRequestID(rec, req)
 
@@ -275,7 +412,7 @@ func TestEvidenceHandlerReturnsSnapshotPreviewByRequest(t *testing.T) {
 
 func TestEvidenceHandlerReportsUnauthorizedRefsWithoutLeakingDetails(t *testing.T) {
 	store := evidencestore.New()
-	handler := NewEvidenceHandler(evidencesvc.New(store))
+	handler := newDevEvidenceHandler(evidencesvc.New(store))
 	ingestReq := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/evidence/events", strings.NewReader(unauthorizedHandlerBatch()))
 	ingestRec := httptest.NewRecorder()
 	handler.IngestEvidenceEvents(ingestRec, ingestReq)
@@ -283,7 +420,7 @@ func TestEvidenceHandlerReportsUnauthorizedRefsWithoutLeakingDetails(t *testing.
 		t.Fatalf("expected ingest 202, got %d: %s", ingestRec.Code, ingestRec.Body.String())
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/api/agent-observability/v1/traces/9c0d0000000000000000000000000003/evidence-chain", nil)
+	req := authenticatedQueryRequest(http.MethodGet, "/api/agent-observability/v1/traces/9c0d0000000000000000000000000003/evidence-chain", nil)
 	rec := httptest.NewRecorder()
 	handler.GetTraceSubresource(rec, req)
 
@@ -301,12 +438,12 @@ func TestEvidenceHandlerReportsUnauthorizedRefsWithoutLeakingDetails(t *testing.
 
 func TestEvidenceHandlerReturnsEvidenceNodeByTrace(t *testing.T) {
 	store := evidencestore.New()
-	handler := NewEvidenceHandler(evidencesvc.New(store))
+	handler := newDevEvidenceHandler(evidencesvc.New(store))
 	ingestReq := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/evidence/events", strings.NewReader(validHandlerBatch()))
 	ingestRec := httptest.NewRecorder()
 	handler.IngestEvidenceEvents(ingestRec, ingestReq)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/agent-observability/v1/evidence-nodes/claim%3Aclaim_handler?trace_id=9c0d0000000000000000000000000001", nil)
+	req := authenticatedQueryRequest(http.MethodGet, "/api/agent-observability/v1/evidence-nodes/claim%3Aclaim_handler?trace_id=9c0d0000000000000000000000000001", nil)
 	rec := httptest.NewRecorder()
 	handler.GetEvidenceNode(rec, req)
 
@@ -319,8 +456,8 @@ func TestEvidenceHandlerReturnsEvidenceNodeByTrace(t *testing.T) {
 }
 
 func TestEvidenceHandlerRejectsEvidenceNodeWithoutScope(t *testing.T) {
-	handler := NewEvidenceHandler(evidencesvc.New(evidencestore.New()))
-	req := httptest.NewRequest(http.MethodGet, "/api/agent-observability/v1/evidence-nodes/claim%3Aclaim_handler", nil)
+	handler := newDevEvidenceHandler(evidencesvc.New(evidencestore.New()))
+	req := authenticatedQueryRequest(http.MethodGet, "/api/agent-observability/v1/evidence-nodes/claim%3Aclaim_handler", nil)
 	rec := httptest.NewRecorder()
 
 	handler.GetEvidenceNode(rec, req)
@@ -334,8 +471,8 @@ func TestEvidenceHandlerRejectsEvidenceNodeWithoutScope(t *testing.T) {
 }
 
 func TestEvidenceHandlerReturnsNotFoundForUnknownTraceSubresource(t *testing.T) {
-	handler := NewEvidenceHandler(evidencesvc.New(evidencestore.New()))
-	req := httptest.NewRequest(http.MethodGet, "/api/agent-observability/v1/traces/9c0d0000000000000000000000000001/unknown", nil)
+	handler := newDevEvidenceHandler(evidencesvc.New(evidencestore.New()))
+	req := authenticatedQueryRequest(http.MethodGet, "/api/agent-observability/v1/traces/9c0d0000000000000000000000000001/unknown", nil)
 	rec := httptest.NewRecorder()
 
 	handler.GetTraceSubresource(rec, req)
@@ -346,8 +483,8 @@ func TestEvidenceHandlerReturnsNotFoundForUnknownTraceSubresource(t *testing.T) 
 }
 
 func TestEvidenceHandlerReturnsNotFoundForMissingEvidenceChain(t *testing.T) {
-	handler := NewEvidenceHandler(evidencesvc.New(evidencestore.New()))
-	req := httptest.NewRequest(http.MethodGet, "/api/agent-observability/v1/traces/missing/evidence-chain", nil)
+	handler := newDevEvidenceHandler(evidencesvc.New(evidencestore.New()))
+	req := authenticatedQueryRequest(http.MethodGet, "/api/agent-observability/v1/traces/missing/evidence-chain", nil)
 	rec := httptest.NewRecorder()
 
 	handler.GetEvidenceChainByTraceID(rec, req)

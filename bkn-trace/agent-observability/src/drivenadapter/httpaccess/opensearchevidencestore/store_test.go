@@ -152,6 +152,35 @@ func TestStoreEvidenceRejectsEventIDConflict(t *testing.T) {
 	}
 }
 
+func TestStoreEvidenceRejectsOwnershipDriftAtAtomicBoundary(t *testing.T) {
+	backend := newAggregateBackend()
+	store := New(newFakeOpenSearchClient(backend.roundTrip), "bkn-trace-evidence-test")
+	initial := normalizedTrace()
+	if err := store.StoreEvidence(context.Background(), initial); err != nil {
+		t.Fatalf("store initial trace: %v", err)
+	}
+	changed := normalizedTrace()
+	changed.Events[0].EventID = "evt_other_owner"
+	changed.AccountID = "acct_other"
+
+	err := store.StoreEvidence(context.Background(), changed)
+	if !errors.Is(err, ievidencestore.ErrOwnershipConflict) {
+		t.Fatalf("expected atomic ownership conflict, got %v", err)
+	}
+}
+
+func TestStoreEvidenceRejectsTraceCapacityBeforeWrite(t *testing.T) {
+	backend := newAggregateBackend()
+	store := New(newFakeOpenSearchClient(backend.roundTrip), "bkn-trace-evidence-test")
+	trace := normalizedTrace()
+	trace.Events[0].Payload["large"] = strings.Repeat("x", evidencevo.MaxTraceSerializedBytes)
+
+	err := store.StoreEvidence(context.Background(), trace)
+	if !errors.Is(err, ievidencestore.ErrTraceCapacityExceeded) {
+		t.Fatalf("expected trace capacity error, got %v", err)
+	}
+}
+
 func TestStoreEvidencePaginatesLegacyHistoryBeyondOneThousand(t *testing.T) {
 	searchCalls := 0
 	indexAttempts := 0
@@ -179,9 +208,13 @@ func TestStoreEvidencePaginatesLegacyHistoryBeyondOneThousand(t *testing.T) {
 			for i := start; i < end; i++ {
 				docID := fmt.Sprintf("legacy-%04d", i)
 				hits = append(hits, map[string]any{
-					"_id":     docID,
-					"sort":    []any{"2026-07-23T01:02:03Z", docID},
-					"_source": map[string]any{"document_id": docID, "trace_id": "trace_index_001", "bkn.request.id": "req_index_001", "events": []any{}, "ingested_at": "2026-07-23T01:02:03Z"},
+					"_id":  docID,
+					"sort": []any{"2026-07-23T01:02:03Z", docID},
+					"_source": map[string]any{
+						"document_id": docID, "trace_id": "trace_index_001", "bkn.request.id": "req_index_001",
+						"bkn.tenant.id": "tenant_index", "business_domain": "bd_index", "bkn.account.id": "acct_index", "bkn.account.type": "app",
+						"events": []any{}, "ingested_at": "2026-07-23T01:02:03Z",
+					},
 				})
 			}
 			searchCalls++
@@ -275,6 +308,31 @@ func TestGetEvidenceByTraceIDParsesSearchHits(t *testing.T) {
 	}
 	if !strings.Contains(string(queryBytes), `"document_id"`) {
 		t.Fatalf("expected stable document_id tiebreaker for search_after pagination, got %s", string(queryBytes))
+	}
+}
+
+func TestGetEvidenceByTraceIDPushesOwnershipScopeIntoSearch(t *testing.T) {
+	var query map[string]any
+	client := newFakeOpenSearchClient(func(r *http.Request) (*http.Response, error) {
+		if r.Method == http.MethodPut {
+			return jsonResponse(`{"acknowledged":true}`), nil
+		}
+		if err := json.NewDecoder(r.Body).Decode(&query); err != nil {
+			t.Fatalf("decode query: %v", err)
+		}
+		return jsonResponse(`{"hits":{"hits":[]}}`), nil
+	})
+	store := New(client, "bkn-trace-evidence-test")
+	scope := evidencevo.QueryScope{TenantID: "tenant_index", BusinessDomain: "bd_index", AccountID: "acct_index", AccountType: "app"}
+
+	if _, err := store.GetEvidenceByTraceID(context.Background(), "trace_index_001", evidencevo.EvidenceQueryOptions{Scope: scope}); err != nil {
+		t.Fatalf("query evidence: %v", err)
+	}
+	body, _ := json.Marshal(query)
+	for _, field := range []string{"bkn.tenant.id.keyword", "business_domain.keyword", "bkn.account.id.keyword", "bkn.account.type.keyword"} {
+		if !strings.Contains(string(body), field) {
+			t.Fatalf("ownership field %s missing from query: %s", field, body)
+		}
 	}
 }
 
@@ -473,6 +531,23 @@ func TestTwoStoreInstancesAtomicallyRejectActionFork(t *testing.T) {
 	}
 }
 
+func TestTwoStoreInstancesAtomicallyRejectCausationCycle(t *testing.T) {
+	backend := newAggregateBackend()
+	client := newFakeOpenSearchClient(backend.roundTrip)
+	stores := []*Store{New(client, "bkn-trace-evidence-test"), New(client, "bkn-trace-evidence-test")}
+	base := normalizedTrace()
+	base.Events = nil
+	first := base
+	first.Events = []evidencevo.EvidenceEvent{{EventID: "evt_a", EventType: "data.query.observed", CausationID: "evt_b", Payload: map[string]any{}}}
+	second := base
+	second.Events = []evidencevo.EvidenceEvent{{EventID: "evt_b", EventType: "retrieval.completed", CausationID: "evt_a", Payload: map[string]any{}}}
+
+	errs := runConcurrentStores(stores, []evidencevo.NormalizedTrace{first, second})
+	if countErrors(errs, nil) != 1 || countErrors(errs, ievidencestore.ErrCausationInvalid) != 1 {
+		t.Fatalf("expected one partial fact and one causation-cycle rejection, got %v", errs)
+	}
+}
+
 func runConcurrentStores(stores []*Store, traces []evidencevo.NormalizedTrace) []error {
 	var wg sync.WaitGroup
 	errs := make([]error, len(stores))
@@ -558,9 +633,13 @@ func (b *aggregateBackend) roundTrip(r *http.Request) (*http.Response, error) {
 
 func normalizedTrace() evidencevo.NormalizedTrace {
 	return evidencevo.NormalizedTrace{
-		TraceID:       "trace_index_001",
-		RequestID:     "req_index_001",
-		SchemaVersion: evidencevo.ContractVersion,
+		TraceID:        "trace_index_001",
+		RequestID:      "req_index_001",
+		TenantID:       "tenant_index",
+		BusinessDomain: "bd_index",
+		AccountID:      "acct_index",
+		AccountType:    "app",
+		SchemaVersion:  evidencevo.ContractVersion,
 		Events: []evidencevo.EvidenceEvent{
 			{
 				EventID:       "evt_claim",

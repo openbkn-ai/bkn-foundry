@@ -2,6 +2,7 @@ package evidencestore
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sync"
 
@@ -26,7 +27,7 @@ func (s *Store) StoreEvidence(_ context.Context, trace evidencevo.NormalizedTrac
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	existing := s.traces[trace.TraceID]
-	if violation := evidencevo.ValidateAppend(existing, trace.Events); violation != nil {
+	if violation := evidencevo.ValidateAppend(existing, trace); violation != nil {
 		switch violation.Kind {
 		case evidencevo.AppendViolationEventIDConflict:
 			return fmt.Errorf("%w: event_id %s", ievidencestore.ErrEventIDConflict, violation.EventID)
@@ -34,6 +35,8 @@ func (s *Store) StoreEvidence(_ context.Context, trace evidencevo.NormalizedTrac
 			return fmt.Errorf("%w: event_id %s", ievidencestore.ErrActionTransitionInvalid, violation.EventID)
 		case evidencevo.AppendViolationCausation:
 			return fmt.Errorf("%w: event_id %s", ievidencestore.ErrCausationInvalid, violation.EventID)
+		case evidencevo.AppendViolationOwnership:
+			return ievidencestore.ErrOwnershipConflict
 		}
 	}
 	novel, conflictID, err := evidencevo.NovelEvents(existing, trace.Events)
@@ -47,6 +50,18 @@ func (s *Store) StoreEvidence(_ context.Context, trace evidencevo.NormalizedTrac
 		return nil
 	}
 	trace = evidencevo.WithEvents(trace, novel)
+	allEvents := make([]evidencevo.EvidenceEvent, 0, len(novel))
+	for _, item := range existing {
+		allEvents = append(allEvents, item.Events...)
+	}
+	allEvents = append(allEvents, novel...)
+	serialized, err := json.Marshal(allEvents)
+	if err != nil {
+		return err
+	}
+	if len(allEvents) > evidencevo.MaxTraceEvents || len(serialized) > evidencevo.MaxTraceSerializedBytes {
+		return ievidencestore.ErrTraceCapacityExceeded
+	}
 	s.traces[trace.TraceID] = append(s.traces[trace.TraceID], trace)
 	s.requests[trace.RequestID] = append(s.requests[trace.RequestID], trace)
 	return nil
@@ -55,7 +70,7 @@ func (s *Store) StoreEvidence(_ context.Context, trace evidencevo.NormalizedTrac
 func (s *Store) GetEvidenceByTraceID(_ context.Context, traceID string, options evidencevo.EvidenceQueryOptions) (evidencevo.EvidenceQueryResult, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return limitedResult(s.traces[traceID], options.Limit), nil
+	return limitedResult(filterByScope(s.traces[traceID], options.Scope), options.Limit), nil
 }
 
 func (s *Store) GetEvidenceHistoryByTraceID(_ context.Context, traceID string) ([]evidencevo.NormalizedTrace, error) {
@@ -67,7 +82,20 @@ func (s *Store) GetEvidenceHistoryByTraceID(_ context.Context, traceID string) (
 func (s *Store) GetEvidenceByRequestID(_ context.Context, requestID string, options evidencevo.EvidenceQueryOptions) (evidencevo.EvidenceQueryResult, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return limitedResult(s.requests[requestID], options.Limit), nil
+	return limitedResult(filterByScope(s.requests[requestID], options.Scope), options.Limit), nil
+}
+
+func filterByScope(traces []evidencevo.NormalizedTrace, scope evidencevo.QueryScope) []evidencevo.NormalizedTrace {
+	if scope.AccountID == "" && scope.AccountType == "" && scope.TenantID == "" && scope.BusinessDomain == "" {
+		return traces
+	}
+	filtered := make([]evidencevo.NormalizedTrace, 0, len(traces))
+	for _, trace := range traces {
+		if evidencevo.MatchesScope(trace, scope) {
+			filtered = append(filtered, trace)
+		}
+	}
+	return filtered
 }
 
 func (s *Store) TraceCount(traceID string) int {

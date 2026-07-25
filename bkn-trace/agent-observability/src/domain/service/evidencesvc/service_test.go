@@ -3,6 +3,9 @@ package evidencesvc
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -90,6 +93,40 @@ func TestIngestAcceptsPhaseTwoEvidenceBatch(t *testing.T) {
 	}
 	if response.AcceptedEvents != 3 || response.ClaimCount != 1 || response.EvidenceRefCount != 1 || response.BusinessRefCount != 1 {
 		t.Fatalf("unexpected response counts: %+v", response)
+	}
+}
+
+func TestIngestAcceptsIntegratedProducerTwoPointOneFixtures(t *testing.T) {
+	_, sourceFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("locate test source")
+	}
+	repositoryRoot := filepath.Clean(filepath.Join(filepath.Dir(sourceFile), "..", "..", "..", "..", "..", ".."))
+	fixtures := []string{
+		filepath.Join(repositoryRoot, "adp", "context-loader", "agent-retrieval", "fixtures", "bkn-trace", "phase2", "retrieval_completed_2_1_positive.json"),
+		filepath.Join(repositoryRoot, "adp", "vega", "vega-backend", "fixtures", "bkn-trace", "phase2", "data_query_observed_2_1_positive.json"),
+	}
+	for _, fixture := range fixtures {
+		t.Run(filepath.Base(fixture), func(t *testing.T) {
+			body, err := os.ReadFile(fixture)
+			if err != nil {
+				t.Fatalf("read integrated producer fixture: %v", err)
+			}
+			var batch map[string]any
+			if err := json.Unmarshal(body, &batch); err != nil {
+				t.Fatalf("decode integrated producer fixture: %v", err)
+			}
+			trace := batch["trace"].(map[string]any)
+			trace["bkn.tenant.id"] = "tenant_fixture"
+			trace["business_domain"] = "domain_fixture"
+			trace["bkn.account.id"] = "account_fixture"
+			trace["bkn.account.type"] = "app"
+
+			_, validationErrors, err := New(evidencestore.New()).Ingest(context.Background(), mustJSON(t, batch))
+			if err != nil || len(validationErrors) > 0 {
+				t.Fatalf("integrated producer fixture must satisfy core contract: errors=%+v err=%v", validationErrors, err)
+			}
+		})
 	}
 }
 
@@ -519,8 +556,11 @@ func TestIngestEnforcesExactRefAllowlistAndHashFormat(t *testing.T) {
 
 func TestIngestRejectsSelfAndForwardCausation(t *testing.T) {
 	tests := map[string]func([]map[string]any){
-		"self":    func(events []map[string]any) { events[1]["causation_event_id"] = events[1]["event_id"] },
-		"forward": func(events []map[string]any) { events[1]["causation_event_id"] = events[2]["event_id"] },
+		"self": func(events []map[string]any) { events[1]["causation_event_id"] = events[1]["event_id"] },
+		"cycle": func(events []map[string]any) {
+			events[1]["causation_event_id"] = events[2]["event_id"]
+			events[2]["causation_event_id"] = events[1]["event_id"]
+		},
 	}
 	for name, mutate := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -532,6 +572,155 @@ func TestIngestRejectsSelfAndForwardCausation(t *testing.T) {
 			}
 			if !hasValidationPath(validationErrors, "causation_event_id") {
 				t.Fatalf("expected causation rejection, got %+v", validationErrors)
+			}
+		})
+	}
+}
+
+func TestAsyncFactCausationBecomesCompleteWhenParentArrives(t *testing.T) {
+	store := evidencestore.New()
+	service := New(store)
+	events := validTwoPointOneEvents()
+	child := cloneEventByType(t, events, "data.query.observed")
+	child["causation_event_id"] = "evt_interaction"
+
+	if _, validationErrors, err := service.Ingest(context.Background(), mustJSON(t, twoPointOneBatch([]map[string]any{child}))); err != nil || len(validationErrors) > 0 {
+		t.Fatalf("child fact must be accepted before its parent: errors=%+v err=%v", validationErrors, err)
+	}
+	first, found, err := service.GetEvidenceChainByTraceID(context.Background(), "11111111111111111111111111111111", evidencevo.EvidenceQueryOptions{})
+	if err != nil || !found || !first.Partial || !contains(first.PartialReasons, "causality_missing") {
+		t.Fatalf("missing parent must produce causality_missing: response=%+v found=%v err=%v", first, found, err)
+	}
+
+	parent := cloneEventByType(t, events, "agent.interaction.started")
+	if _, validationErrors, err := service.Ingest(context.Background(), mustJSON(t, twoPointOneBatch([]map[string]any{parent}))); err != nil || len(validationErrors) > 0 {
+		t.Fatalf("late parent must be accepted: errors=%+v err=%v", validationErrors, err)
+	}
+	second, found, err := service.GetEvidenceChainByTraceID(context.Background(), "11111111111111111111111111111111", evidencevo.EvidenceQueryOptions{})
+	if err != nil || !found || contains(second.PartialReasons, "causality_missing") {
+		t.Fatalf("late parent must resolve causality_missing: response=%+v found=%v err=%v", second, found, err)
+	}
+}
+
+func TestIngestRejectsTraceOwnershipDrift(t *testing.T) {
+	store := evidencestore.New()
+	service := New(store)
+	initial := removeEventTypes(validTwoPointOneEvents(), "data.query.observed", "retrieval.completed", "knowledge.read.observed", "model.call.observed", "claim.created", "evidence.refs.created", "business.refs.resolved", "action.recommended", "action.approval_requested", "action.approved", "action.executed", "action.result_recorded")
+	if _, validationErrors, err := service.Ingest(context.Background(), mustJSON(t, twoPointOneBatch(initial))); err != nil || len(validationErrors) > 0 {
+		t.Fatalf("initial ingest failed: errors=%+v err=%v", validationErrors, err)
+	}
+
+	tests := map[string]func(map[string]any){
+		"request": func(batch map[string]any) {
+			batch["trace"].(map[string]any)["bkn.request.id"] = "req_other"
+			batch["events"].([]map[string]any)[0]["bkn.request.id"] = "req_other"
+		},
+		"domain":  func(batch map[string]any) { batch["trace"].(map[string]any)["business_domain"] = "bd_other" },
+		"account": func(batch map[string]any) { batch["trace"].(map[string]any)["bkn.account.id"] = "acct_other" },
+	}
+	for name, mutate := range tests {
+		t.Run(name, func(t *testing.T) {
+			late := cloneEventByType(t, validTwoPointOneEvents(), "data.query.observed")
+			late["event_id"] = "evt_late_" + name
+			batch := twoPointOneBatch([]map[string]any{late})
+			mutate(batch)
+			_, validationErrors, err := service.Ingest(context.Background(), mustJSON(t, batch))
+			if err != nil || !hasValidationCode(validationErrors, "BKN_TRACE_OWNERSHIP_CONFLICT") {
+				t.Fatalf("expected ownership conflict: errors=%+v err=%v", validationErrors, err)
+			}
+		})
+	}
+}
+
+func TestIngestChecksOwnershipBeforeEventContent(t *testing.T) {
+	store := evidencestore.New()
+	service := New(store)
+	interaction := cloneEventByType(t, validTwoPointOneEvents(), "agent.interaction.started")
+	if _, validationErrors, err := service.Ingest(context.Background(), mustJSON(t, twoPointOneBatch([]map[string]any{interaction}))); err != nil || len(validationErrors) > 0 {
+		t.Fatalf("initial ingest failed: errors=%+v err=%v", validationErrors, err)
+	}
+	conflicting := cloneEventByType(t, validTwoPointOneEvents(), "agent.interaction.started")
+	conflicting["payload"].(map[string]any)["intent_hash"] = testHash("f")
+	batch := twoPointOneBatch([]map[string]any{conflicting})
+	batch["trace"].(map[string]any)["bkn.account.id"] = "acct_intruder"
+
+	_, validationErrors, err := service.Ingest(context.Background(), mustJSON(t, batch))
+	if err != nil || !hasValidationCode(validationErrors, "BKN_TRACE_OWNERSHIP_CONFLICT") || hasValidationCode(validationErrors, "BKN_TRACE_EVENT_ID_CONFLICT") {
+		t.Fatalf("ownership must be checked before event content: errors=%+v err=%v", validationErrors, err)
+	}
+}
+
+func TestIngestPreservesLegacyCausalityAfterTwoPointOneAppend(t *testing.T) {
+	store := evidencestore.New()
+	service := New(store)
+	if _, validationErrors, err := service.Ingest(context.Background(), []byte(validBatch())); err != nil || len(validationErrors) > 0 {
+		t.Fatalf("legacy ingest failed: errors=%+v err=%v", validationErrors, err)
+	}
+	late := cloneEventByType(t, validTwoPointOneEvents(), "agent.interaction.started")
+	late["trace_id"] = "8c0d0000000000000000000000000001"
+	late["bkn.request.id"] = "req_phase2_001"
+	batch := twoPointOneBatch([]map[string]any{late})
+	trace := batch["trace"].(map[string]any)
+	trace["trace_id"] = "8c0d0000000000000000000000000001"
+	trace["traceparent"] = "00-8c0d0000000000000000000000000001-1f12000000000001-01"
+	trace["bkn.request.id"] = "req_phase2_001"
+	trace["bkn.tenant.id"] = "tenant_demo"
+	trace["business_domain"] = ""
+	trace["bkn.account.id"] = "acct_demo"
+	trace["bkn.account.type"] = "app"
+	if _, validationErrors, err := service.Ingest(context.Background(), mustJSON(t, batch)); err != nil || len(validationErrors) > 0 {
+		t.Fatalf("2.1 append failed: errors=%+v err=%v", validationErrors, err)
+	}
+	response, found, err := service.GetEvidenceChainByTraceID(context.Background(), "8c0d0000000000000000000000000001", evidencevo.EvidenceQueryOptions{})
+	if err != nil || !found || !contains(response.PartialReasons, "causality_missing") {
+		t.Fatalf("mixed history must retain causality_missing: response=%+v found=%v err=%v", response, found, err)
+	}
+}
+
+func TestIngestRejectsInvalidTechnicalJoinAndTimestamp(t *testing.T) {
+	tests := map[string]func(map[string]any){
+		"traceparent join": func(batch map[string]any) {
+			batch["trace"].(map[string]any)["traceparent"] = "00-22222222222222222222222222222222-1000000000000001-01"
+		},
+		"span format": func(batch map[string]any) { batch["events"].([]map[string]any)[0]["span_id"] = "span-bad" },
+		"calendar time": func(batch map[string]any) {
+			batch["events"].([]map[string]any)[0]["observed_at"] = "2026-02-31T08:00:00Z"
+		},
+	}
+	for name, mutate := range tests {
+		t.Run(name, func(t *testing.T) {
+			batch := twoPointOneBatch([]map[string]any{cloneEventByType(t, validTwoPointOneEvents(), "agent.interaction.started")})
+			mutate(batch)
+			_, validationErrors, err := New(evidencestore.New()).Ingest(context.Background(), mustJSON(t, batch))
+			if err != nil || len(validationErrors) == 0 {
+				t.Fatalf("expected technical join rejection: errors=%+v err=%v", validationErrors, err)
+			}
+		})
+	}
+}
+
+func TestIngestRejectsSensitiveReferenceValues(t *testing.T) {
+	values := []string{
+		"https://bucket.example/evidence.json?X-Amz-Signature=secret",
+		"s3://evidence-bucket/snapshot.json",
+		"alice@example.com",
+		"13800138000",
+		"physical_table.customer_email",
+		"customer.email",
+		"table:customer",
+		"column:email",
+	}
+	for _, value := range values {
+		t.Run(value, func(t *testing.T) {
+			events := validTwoPointOneEvents()
+			for _, event := range events {
+				if event["event_type"] == "evidence.refs.created" {
+					event["payload"].(map[string]any)["evidence_refs"].([]any)[0].(map[string]any)["ref_id"] = value
+				}
+			}
+			_, validationErrors, err := New(evidencestore.New()).Ingest(context.Background(), mustJSON(t, twoPointOneBatch(events)))
+			if err != nil || !hasValidationCode(validationErrors, "BKN_TRACE_SENSITIVE_VALUE_LEAKED") {
+				t.Fatalf("expected sensitive ref rejection: errors=%+v err=%v", validationErrors, err)
 			}
 		})
 	}
@@ -587,6 +776,59 @@ func TestModelCallErrorRequiresSafeErrorSummary(t *testing.T) {
 	if err != nil || len(validationErrors) > 0 {
 		t.Fatalf("expected safe model error summary acceptance, errors=%+v err=%v", validationErrors, err)
 	}
+}
+
+func TestIngestEnforcesTwoPointOneRequiredTypesAndEnums(t *testing.T) {
+	tests := map[string]func([]map[string]any){
+		"retrieval source refs": func(events []map[string]any) {
+			delete(clonePayloadByType(t, events, "retrieval.completed"), "source_refs")
+		},
+		"retrieval count type": func(events []map[string]any) {
+			clonePayloadByType(t, events, "retrieval.completed")["candidate_count"] = "3"
+		},
+		"data version": func(events []map[string]any) {
+			delete(clonePayloadByType(t, events, "data.query.observed"), "version_status")
+		},
+		"data truncated type": func(events []map[string]any) {
+			clonePayloadByType(t, events, "data.query.observed")["truncated"] = "false"
+		},
+		"model status enum": func(events []map[string]any) {
+			clonePayloadByType(t, events, "model.call.observed")["status"] = "unknown"
+		},
+		"claim type enum": func(events []map[string]any) {
+			clonePayloadByType(t, events, "claim.created")["claim_type"] = "free_form"
+		},
+		"action result status enum": func(events []map[string]any) {
+			clonePayloadByType(t, events, "action.result_recorded")["status"] = "anything"
+		},
+		"claim source type": func(events []map[string]any) {
+			clonePayloadByType(t, events, "claim.created")["source_event_ids"] = []any{7}
+		},
+		"action target type": func(events []map[string]any) {
+			clonePayloadByType(t, events, "action.recommended")["target_refs"] = []any{false}
+		},
+	}
+	for name, mutate := range tests {
+		t.Run(name, func(t *testing.T) {
+			events := validTwoPointOneEvents()
+			mutate(events)
+			_, validationErrors, err := New(evidencestore.New()).Ingest(context.Background(), mustJSON(t, twoPointOneBatch(events)))
+			if err != nil || len(validationErrors) == 0 {
+				t.Fatalf("expected strict contract rejection: errors=%+v err=%v", validationErrors, err)
+			}
+		})
+	}
+}
+
+func clonePayloadByType(t *testing.T, events []map[string]any, eventType string) map[string]any {
+	t.Helper()
+	for _, event := range events {
+		if event["event_type"] == eventType {
+			return event["payload"].(map[string]any)
+		}
+	}
+	t.Fatalf("event type %s not found", eventType)
+	return nil
 }
 
 func TestIngestAtomicallyRejectsConcurrentActionForkInMemory(t *testing.T) {
@@ -820,8 +1062,8 @@ func TestIngestAllowsReferenceLikeStringsAndNonSensitiveKeySubstrings(t *testing
 	store := &fakeStore{}
 	service := New(store)
 	body := strings.Replace(validBatch(), `"version_status": "versioned"`, `"version_status": "versioned",
-        "source_url": "https://docs.example.com/source/123",
-        "owner_ref": "user@company.com",
+		"source_ref": "document:source:123",
+		"owner_ref": "account:company-user",
         "prompt_note": "prompt: is a label in external documentation",
         "token_bucket": "rate-limit-window",
         "cookie_policy": "same-site",
@@ -982,8 +1224,8 @@ func TestGetBusinessGraphByTraceIDReturnsClaimAndBusinessNodes(t *testing.T) {
 	if response.TraceID != "trace_graph_001" || response.RequestID != "req_graph_001" {
 		t.Fatalf("unexpected identity: %+v", response)
 	}
-	if response.Partial {
-		t.Fatalf("expected complete graph, got partial: %+v", response.PartialReasons)
+	if !response.Partial || !contains(response.PartialReasons, "resolver_unresolved") {
+		t.Fatalf("graph without an authorized query resolver must be partial: %+v", response.PartialReasons)
 	}
 	if response.Page.NodeCount != 2 || response.Page.EdgeCount != 1 {
 		t.Fatalf("unexpected page: %+v", response.Page)
@@ -994,8 +1236,44 @@ func TestGetBusinessGraphByTraceIDReturnsClaimAndBusinessNodes(t *testing.T) {
 	if len(response.Data.Nodes) != 2 || len(response.Data.Edges) != 1 {
 		t.Fatalf("unexpected graph size: %+v", response.Data)
 	}
+	for _, node := range response.Data.Nodes {
+		if strings.HasPrefix(node.ID, "business:") {
+			if node.Label != "" {
+				t.Fatalf("untrusted event label must not become a business display name: %+v", node)
+			}
+			if _, leaked := node.Properties["label"]; leaked {
+				t.Fatalf("untrusted event label must not leak through node properties: %+v", node)
+			}
+		}
+	}
 	if response.Data.Edges[0].SourceID != "claim:claim_visible" || response.Data.Edges[0].TargetID != "business:object:customer" {
 		t.Fatalf("unexpected edge: %+v", response.Data.Edges[0])
+	}
+}
+
+func TestBusinessGraphIgnoresUntrustedLegacyBusinessLabel(t *testing.T) {
+	trace := queryTrace("trace_graph_legacy_label", "req_graph_legacy_label")
+	ref := trace.Events[2].Payload["business_refs"].([]any)[0].(map[string]any)
+	ref["label"] = "Customer PII Display Name"
+	store := &fakeStore{traces: []evidencevo.NormalizedTrace{trace}}
+
+	response, found, err := New(store).GetBusinessGraphByTraceID(context.Background(), trace.TraceID, evidencevo.EvidenceQueryOptions{})
+	if err != nil || !found {
+		t.Fatalf("query legacy business graph: found=%v err=%v", found, err)
+	}
+	for _, node := range response.Data.Nodes {
+		if !strings.HasPrefix(node.ID, "business:") {
+			continue
+		}
+		if node.Label != "" {
+			t.Fatalf("legacy event label must not become a display name: %+v", node)
+		}
+		if _, leaked := node.Properties["label"]; leaked {
+			t.Fatalf("legacy event label must not leak through properties: %+v", node)
+		}
+	}
+	if !response.Partial || !contains(response.PartialReasons, "resolver_unresolved") {
+		t.Fatalf("unresolved display must remain explicit: %+v", response.PartialReasons)
 	}
 }
 
@@ -1343,11 +1621,12 @@ func validTwoPointOneEvents() []map[string]any {
 	dataQuery := traceFields("evt_data", "data.query.observed", "data.query", map[string]any{
 		"query_hash": testHash("2"), "query_type": "aggregate", "row_count": 12,
 		"resource_refs": []any{"resource:forecast"}, "field_refs": []any{"field:forecast_month"},
+		"truncated": false, "version_status": "versioned",
 	})
 	dataQuery["operation_id"] = "op_data_001"
 	dataQuery["causation_event_id"] = "evt_interaction"
 	retrieval := traceFields("evt_retrieval", "retrieval.completed", "retrieval.search", map[string]any{
-		"query_hash": testHash("3"), "candidate_count": 3, "truncated": false, "source_refs": []any{"schema:forecast"},
+		"query_hash": testHash("3"), "candidate_count": 3, "truncated": false, "source_refs": []any{"schema:forecast"}, "version_status": "versioned",
 	})
 	retrieval["operation_id"] = "op_retrieval_001"
 	retrieval["causation_event_id"] = "evt_interaction"
@@ -1484,7 +1763,7 @@ func queryTrace(traceID, requestID string) evidencevo.NormalizedTrace {
 				EventType: "business.refs.resolved",
 				Payload: map[string]any{
 					"claim_id":      "claim_visible",
-					"business_refs": []any{map[string]any{"ref_id": "object:customer", "ref_type": "object", "label": "Customer", "visibility": "visible", "version_status": "versioned"}},
+					"business_refs": []any{map[string]any{"ref_id": "object:customer", "ref_type": "object", "visibility": "visible", "version_status": "versioned"}},
 				},
 			},
 		},

@@ -43,6 +43,12 @@ spec:
               value: {{ .Values.evidence.index | quote }}
             - name: BKN_TRACE_EVIDENCE_STORE
               value: {{ .Values.evidence.store | quote }}
+            - name: BKN_TRACE_ALLOW_UNAUTHENTICATED_INGEST
+              value: {{ ternary "true" "false" .Values.evidence.ingestAuth.allowUnauthenticated | quote }}
+            - name: BKN_TRACE_ALLOW_RAW_TRACE_QUERY
+              value: {{ ternary "true" "false" .Values.evidence.rawTraceQuery.enabled | quote }}
+            - name: BKN_TRACE_ALLOW_UNAUTHENTICATED_QUERY
+              value: {{ ternary "true" "false" .Values.evidence.queryAuth.allowUnauthenticated | quote }}
             - name: OPENSEARCH_AUTH_ENABLED
               value: {{ ternary "true" "false" .Values.opensearch.auth.enabled | quote }}
             {{- if .Values.opensearch.auth.enabled }}
@@ -57,6 +63,13 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.evidence.ingestAuth.existingSecret | quote }}
                   key: {{ .Values.evidence.ingestAuth.secretKey | quote }}
+            {{- end }}
+            {{- if .Values.evidence.queryAuth.existingSecret }}
+            - name: BKN_TRACE_QUERY_GATEWAY_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.evidence.queryAuth.existingSecret | quote }}
+                  key: {{ .Values.evidence.queryAuth.secretKey | quote }}
             {{- end }}
           livenessProbe:
             tcpSocket:

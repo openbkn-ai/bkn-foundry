@@ -11,6 +11,8 @@ var (
 	ErrEventIDConflict         = errors.New("BKN_TRACE_EVENT_ID_CONFLICT")
 	ErrActionTransitionInvalid = errors.New("BKN_TRACE_ACTION_TRANSITION_INVALID")
 	ErrCausationInvalid        = errors.New("BKN_TRACE_CAUSATION_INVALID")
+	ErrOwnershipConflict       = errors.New("BKN_TRACE_OWNERSHIP_CONFLICT")
+	ErrTraceCapacityExceeded   = errors.New("BKN_TRACE_CAPACITY_EXCEEDED")
 )
 
 type EvidenceStorePort interface {

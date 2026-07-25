@@ -51,6 +51,18 @@ func TestTraceHandlerReturnsNotFoundForMissingTraceGraph(t *testing.T) {
 	}
 }
 
+func TestTraceHandlerDisablesUnscopedRawSearchByDefault(t *testing.T) {
+	handler := NewTraceHandler(tracesvc.New(&fakeTraceHandlerPort{result: opensearchvo.SearchResult(`{"hits":{"hits":[]}}`)}))
+	req := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/traces/_search", strings.NewReader(`{"query":{"match_all":{}}}`))
+	rec := httptest.NewRecorder()
+
+	handler.SearchTraces(rec, req)
+
+	if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "RAW_TRACE_QUERY_DISABLED") {
+		t.Fatalf("expected raw cross-tenant search to be disabled, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func handlerTraceGraphSearchResult() []byte {
 	return []byte(`{
   "hits": {

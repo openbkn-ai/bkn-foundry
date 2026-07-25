@@ -33,6 +33,10 @@ type document struct {
 	DocumentID       string                     `json:"document_id"`
 	TraceID          string                     `json:"trace_id"`
 	RequestID        string                     `json:"bkn.request.id"`
+	TenantID         string                     `json:"bkn.tenant.id,omitempty"`
+	BusinessDomain   string                     `json:"business_domain,omitempty"`
+	AccountID        string                     `json:"bkn.account.id"`
+	AccountType      string                     `json:"bkn.account.type"`
 	SchemaVersion    string                     `json:"bkn.trace.schema.version"`
 	Events           []evidencevo.EvidenceEvent `json:"events"`
 	ClaimIDs         []string                   `json:"claim_ids,omitempty"`
@@ -81,7 +85,7 @@ func (s *Store) StoreEvidence(ctx context.Context, trace evidencevo.NormalizedTr
 				return err
 			}
 		}
-		if err := appendViolationError(evidencevo.ValidateAppend(existing, trace.Events)); err != nil {
+		if err := appendViolationError(evidencevo.ValidateAppend(existing, trace)); err != nil {
 			return err
 		}
 		novel, conflictID, err := evidencevo.NovelEvents(existing, trace.Events)
@@ -101,6 +105,9 @@ func (s *Store) StoreEvidence(ctx context.Context, trace evidencevo.NormalizedTr
 		body, err := json.Marshal(doc)
 		if err != nil {
 			return fmt.Errorf("marshal evidence aggregate: %w", err)
+		}
+		if len(merged.Events) > evidencevo.MaxTraceEvents || len(body) > evidencevo.MaxTraceSerializedBytes {
+			return ievidencestore.ErrTraceCapacityExceeded
 		}
 		if found {
 			_, err = s.client.UpdateDocument(ctx, s.index, aggregateID, body, seqNo, primaryTerm)
@@ -126,6 +133,8 @@ func appendViolationError(violation *evidencevo.AppendViolation) error {
 		return fmt.Errorf("%w: event_id %s", ievidencestore.ErrActionTransitionInvalid, violation.EventID)
 	case evidencevo.AppendViolationCausation:
 		return fmt.Errorf("%w: event_id %s", ievidencestore.ErrCausationInvalid, violation.EventID)
+	case evidencevo.AppendViolationOwnership:
+		return ievidencestore.ErrOwnershipConflict
 	default:
 		return fmt.Errorf("unknown evidence append violation: %s", violation.Kind)
 	}
@@ -186,9 +195,18 @@ func (s *Store) search(ctx context.Context, field string, value string, options 
 	if limit <= 0 {
 		limit = maxEvidenceSearchResults
 	}
-	traces, err := s.searchAll(ctx, field, value)
+	traces, err := s.searchAllScoped(ctx, field, value, options.Scope)
 	if err != nil {
 		return evidencevo.EvidenceQueryResult{}, err
+	}
+	if options.Scope.AccountID != "" || options.Scope.AccountType != "" || options.Scope.TenantID != "" || options.Scope.BusinessDomain != "" {
+		filtered := make([]evidencevo.NormalizedTrace, 0, len(traces))
+		for _, trace := range traces {
+			if evidencevo.MatchesScope(trace, options.Scope) {
+				filtered = append(filtered, trace)
+			}
+		}
+		traces = filtered
 	}
 	result := evidencevo.EvidenceQueryResult{Traces: traces}
 	if len(result.Traces) > limit {
@@ -204,11 +222,25 @@ type evidenceHit struct {
 	Sort   []any
 }
 
-func (s *Store) searchPage(ctx context.Context, field, value string, size int, searchAfter []any) ([]evidenceHit, error) {
+func (s *Store) searchPage(ctx context.Context, field, value string, scope evidencevo.QueryScope, size int, searchAfter []any) ([]evidenceHit, error) {
+	must := []map[string]any{{"bool": exactTermQuery(field, value)}}
+	for _, item := range []struct {
+		field string
+		value string
+	}{
+		{"bkn.tenant.id", scope.TenantID},
+		{"business_domain", scope.BusinessDomain},
+		{"bkn.account.id", scope.AccountID},
+		{"bkn.account.type", scope.AccountType},
+	} {
+		if item.value != "" {
+			must = append(must, map[string]any{"bool": exactTermQuery(item.field, item.value)})
+		}
+	}
 	queryBody := map[string]any{
 		"size": size,
 		"query": map[string]any{
-			"bool": exactTermQuery(field, value),
+			"bool": map[string]any{"must": must},
 		},
 		"sort": []map[string]any{
 			{"ingested_at": map[string]any{"order": "asc"}},
@@ -241,10 +273,14 @@ func (s *Store) searchPage(ctx context.Context, field, value string, size int, s
 }
 
 func (s *Store) searchAll(ctx context.Context, field, value string) ([]evidencevo.NormalizedTrace, error) {
+	return s.searchAllScoped(ctx, field, value, evidencevo.QueryScope{})
+}
+
+func (s *Store) searchAllScoped(ctx context.Context, field, value string, scope evidencevo.QueryScope) ([]evidencevo.NormalizedTrace, error) {
 	allHits := []evidenceHit{}
 	var searchAfter []any
 	for {
-		hits, err := s.searchPage(ctx, field, value, evidenceSearchPageSize, searchAfter)
+		hits, err := s.searchPage(ctx, field, value, scope, evidenceSearchPageSize, searchAfter)
 		if err != nil {
 			return nil, err
 		}
@@ -291,12 +327,16 @@ func (s *Store) ensureIndex(ctx context.Context) error {
 	return nil
 }
 
-const evidenceIndexMapping = `{"settings":{"index.mapping.total_fields.limit":200},"mappings":{"dynamic":false,"properties":{"document_id":{"type":"keyword"},"trace_id":{"type":"keyword"},"bkn":{"properties":{"request":{"properties":{"id":{"type":"keyword"}}},"trace":{"properties":{"schema":{"properties":{"version":{"type":"keyword"}}}}}}},"events":{"type":"object","enabled":false},"claim_ids":{"type":"keyword"},"accepted_event_count":{"type":"integer"},"claim_count":{"type":"integer"},"evidence_ref_count":{"type":"integer"},"business_ref_count":{"type":"integer"},"ingested_at":{"type":"date"},"aggregate":{"type":"boolean"}}}}`
+const evidenceIndexMapping = `{"settings":{"index.mapping.total_fields.limit":200},"mappings":{"dynamic":false,"properties":{"document_id":{"type":"keyword"},"trace_id":{"type":"keyword"},"business_domain":{"type":"keyword"},"bkn":{"properties":{"tenant":{"properties":{"id":{"type":"keyword"}}},"account":{"properties":{"id":{"type":"keyword"},"type":{"type":"keyword"}}},"request":{"properties":{"id":{"type":"keyword"}}},"trace":{"properties":{"schema":{"properties":{"version":{"type":"keyword"}}}}}}},"events":{"type":"object","enabled":false},"claim_ids":{"type":"keyword"},"accepted_event_count":{"type":"integer"},"claim_count":{"type":"integer"},"evidence_ref_count":{"type":"integer"},"business_ref_count":{"type":"integer"},"ingested_at":{"type":"date"},"aggregate":{"type":"boolean"}}}}`
 
 func toDocument(trace evidencevo.NormalizedTrace, ingestedAt time.Time) document {
 	doc := document{
 		TraceID:          trace.TraceID,
 		RequestID:        trace.RequestID,
+		TenantID:         trace.TenantID,
+		BusinessDomain:   trace.BusinessDomain,
+		AccountID:        trace.AccountID,
+		AccountType:      trace.AccountType,
 		SchemaVersion:    trace.SchemaVersion,
 		Events:           trace.Events,
 		ClaimIDs:         trace.ClaimIDs,
@@ -314,6 +354,10 @@ func fromDocument(doc document) evidencevo.NormalizedTrace {
 	return evidencevo.NormalizedTrace{
 		TraceID:          doc.TraceID,
 		RequestID:        doc.RequestID,
+		TenantID:         doc.TenantID,
+		BusinessDomain:   doc.BusinessDomain,
+		AccountID:        doc.AccountID,
+		AccountType:      doc.AccountType,
 		SchemaVersion:    doc.SchemaVersion,
 		Events:           doc.Events,
 		ClaimIDs:         doc.ClaimIDs,

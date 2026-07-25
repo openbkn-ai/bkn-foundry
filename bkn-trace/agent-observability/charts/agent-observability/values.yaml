@@ -50,6 +50,13 @@ evidence:
   ingestAuth:
     existingSecret: ""
     secretKey: token
+    allowUnauthenticated: false
+  rawTraceQuery:
+    enabled: false
+  queryAuth:
+    existingSecret: ""
+    secretKey: token
+    allowUnauthenticated: false
 
 resources:
   limits:

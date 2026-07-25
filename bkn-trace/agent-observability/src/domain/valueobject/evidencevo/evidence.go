@@ -50,6 +50,10 @@ const (
 	AppendViolationEventIDConflict = "event_id_conflict"
 	AppendViolationCausation       = "causation_invalid"
 	AppendViolationAction          = "action_transition_invalid"
+	AppendViolationOwnership       = "ownership_conflict"
+	AppendViolationCapacity        = "trace_capacity_exceeded"
+	MaxTraceEvents                 = 10000
+	MaxTraceSerializedBytes        = 8 << 20
 )
 
 type AppendViolation struct {
@@ -100,7 +104,7 @@ func NovelEvents(existing []NormalizedTrace, incoming []EvidenceEvent) ([]Eviden
 }
 
 // ValidateAppend protects invariants that must be checked at the atomic storage boundary.
-func ValidateAppend(existing []NormalizedTrace, incoming []EvidenceEvent) *AppendViolation {
+func ValidateAppend(existing []NormalizedTrace, incoming NormalizedTrace) *AppendViolation {
 	priorEventIDs := map[string]struct{}{}
 	type actionState struct {
 		state       string
@@ -110,6 +114,9 @@ func ValidateAppend(existing []NormalizedTrace, incoming []EvidenceEvent) *Appen
 	}
 	actions := map[string]actionState{}
 	for _, trace := range existing {
+		if !SameOwnership(trace, incoming) {
+			return &AppendViolation{Kind: AppendViolationOwnership}
+		}
 		for _, event := range trace.Events {
 			priorEventIDs[event.EventID] = struct{}{}
 			if actionID := payloadString(event.Payload, "action_instance_id"); actionID != "" && isActionEvent(event.EventType) {
@@ -123,16 +130,23 @@ func ValidateAppend(existing []NormalizedTrace, incoming []EvidenceEvent) *Appen
 		}
 	}
 
-	novel, conflictID, err := NovelEvents(existing, incoming)
+	novel, conflictID, err := NovelEvents(existing, incoming.Events)
 	if err != nil || conflictID != "" {
 		return &AppendViolation{Kind: AppendViolationEventIDConflict, EventID: conflictID}
 	}
-	for _, event := range novel {
-		if event.CausationID != "" {
-			if _, ok := priorEventIDs[event.CausationID]; !ok {
-				return &AppendViolation{Kind: AppendViolationCausation, EventID: event.EventID}
-			}
+	causes := map[string]string{}
+	for _, trace := range existing {
+		for _, event := range trace.Events {
+			causes[event.EventID] = event.CausationID
 		}
+	}
+	for _, event := range novel {
+		causes[event.EventID] = event.CausationID
+	}
+	if eventID := causationCycleEventID(causes); eventID != "" {
+		return &AppendViolation{Kind: AppendViolationCausation, EventID: eventID}
+	}
+	for _, event := range novel {
 		if isActionEvent(event.EventType) {
 			actionID := payloadString(event.Payload, "action_instance_id")
 			previous, exists := actions[actionID]
@@ -163,6 +177,22 @@ func ValidateAppend(existing []NormalizedTrace, incoming []EvidenceEvent) *Appen
 		priorEventIDs[event.EventID] = struct{}{}
 	}
 	return nil
+}
+
+func causationCycleEventID(causes map[string]string) string {
+	for eventID := range causes {
+		seen := map[string]struct{}{}
+		for current := eventID; current != ""; current = causes[current] {
+			if _, ok := seen[current]; ok {
+				return eventID
+			}
+			seen[current] = struct{}{}
+			if _, known := causes[current]; !known {
+				break
+			}
+		}
+	}
+	return ""
 }
 
 func payloadString(payload map[string]any, key string) string {
@@ -223,6 +253,10 @@ func (e ValidationErrors) Error() string {
 type NormalizedTrace struct {
 	TraceID          string
 	RequestID        string
+	TenantID         string
+	BusinessDomain   string
+	AccountID        string
+	AccountType      string
 	SchemaVersion    string
 	Events           []EvidenceEvent
 	ClaimIDs         []string
@@ -234,6 +268,39 @@ type NormalizedTrace struct {
 
 type EvidenceQueryOptions struct {
 	Limit int
+	Scope QueryScope
+}
+
+type QueryScope struct {
+	TenantID       string
+	BusinessDomain string
+	AccountID      string
+	AccountType    string
+}
+
+func SameOwnership(existing NormalizedTrace, incoming NormalizedTrace) bool {
+	return existing.TraceID == incoming.TraceID &&
+		existing.RequestID == incoming.RequestID &&
+		existing.TenantID == incoming.TenantID &&
+		existing.BusinessDomain == incoming.BusinessDomain &&
+		existing.AccountID == incoming.AccountID &&
+		existing.AccountType == incoming.AccountType
+}
+
+func MatchesScope(trace NormalizedTrace, scope QueryScope) bool {
+	if trace.AccountID == "" || trace.AccountType == "" || trace.TenantID == "" && trace.BusinessDomain == "" {
+		return false
+	}
+	if trace.AccountID != scope.AccountID || trace.AccountType != scope.AccountType {
+		return false
+	}
+	if trace.TenantID != "" && trace.TenantID != scope.TenantID {
+		return false
+	}
+	if trace.BusinessDomain != "" && trace.BusinessDomain != scope.BusinessDomain {
+		return false
+	}
+	return true
 }
 
 type EvidenceQueryResult struct {

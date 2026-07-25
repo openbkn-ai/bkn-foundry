@@ -10,17 +10,20 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/ievidencestore"
 )
 
 var (
-	traceparentRE = regexp.MustCompile(`^00-([0-9a-f]{32})-([0-9a-f]{16})-[0-9a-f]{2}$`)
-	traceIDRE     = regexp.MustCompile(`^[0-9a-f]{32}$`)
-	requestIDRE   = regexp.MustCompile(`^req_[0-9A-Za-z_.-]+$`)
-	timestampRE   = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$`)
-	hashRE        = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
+	traceparentRE   = regexp.MustCompile(`^00-([0-9a-f]{32})-([0-9a-f]{16})-[0-9a-f]{2}$`)
+	traceIDRE       = regexp.MustCompile(`^[0-9a-f]{32}$`)
+	spanIDRE        = regexp.MustCompile(`^[0-9a-f]{16}$`)
+	requestIDRE     = regexp.MustCompile(`^req_[0-9A-Za-z_.-]+$`)
+	timestampRE     = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$`)
+	hashRE          = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
+	controlledRefRE = regexp.MustCompile(`^[a-z][a-z0-9_.-]*:[A-Za-z0-9][A-Za-z0-9_.:-]*$`)
 )
 
 var sensitivePatterns = []*regexp.Regexp{
@@ -36,6 +39,11 @@ var sensitivePatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?is)\bmerge\s+into\b`),
 	regexp.MustCompile(`(?is)\b(alter|drop|create|truncate)\s+(table|view|index|database|schema)\b`),
 	regexp.MustCompile(`(?is)\b(grant|revoke)\b.+\bon\b`),
+	regexp.MustCompile(`(?i)https?://`),
+	regexp.MustCompile(`(?i)\b(?:s3|oss|obs|cos|gs)://`),
+	regexp.MustCompile(`(?i)[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}`),
+	regexp.MustCompile(`(?:^|\D)1[3-9]\d{9}(?:\D|$)`),
+	regexp.MustCompile(`(?i)\b(?:physical[_-]?(?:table|field)|table[_-]?name|column[_-]?name|field[_-]?name)[.:/_-][A-Za-z0-9_.-]+`),
 }
 
 var forbiddenRawKeys = map[string]struct{}{
@@ -142,6 +150,8 @@ var twoPointOnePayloadFields = map[string]map[string]struct{}{
 	"action.result_recorded":    fields("action_instance_id", "result_hash", "artifact_ref", "task_ref", "status"),
 }
 
+var twoPointOneRefFields = fields("ref_id", "ref_type", "source_system", "validity", "version_status", "visibility", "summary_hash")
+
 func fields(names ...string) map[string]struct{} {
 	result := make(map[string]struct{}, len(names))
 	for _, name := range names {
@@ -204,6 +214,13 @@ func (s *Service) Ingest(ctx context.Context, body []byte) (evidencevo.IngestRes
 		if err != nil {
 			return evidencevo.IngestResponse{}, nil, err
 		}
+		for _, committed := range existing {
+			if !evidencevo.SameOwnership(committed, normalized) {
+				return evidencevo.IngestResponse{}, evidencevo.ValidationErrors{
+					evidencevo.NewValidationError("BKN_TRACE_OWNERSHIP_CONFLICT", "$.trace", "trace request or ownership differs from the committed trace"),
+				}, nil
+			}
+		}
 		validateTwoPointOneGraph(existing, &normalized, &validationErrors)
 		if len(validationErrors) > 0 {
 			return evidencevo.IngestResponse{}, validationErrors, nil
@@ -223,6 +240,14 @@ func (s *Service) Ingest(ctx context.Context, body []byte) (evidencevo.IngestRes
 		case errors.Is(err, ievidencestore.ErrCausationInvalid):
 			return evidencevo.IngestResponse{}, evidencevo.ValidationErrors{
 				evidencevo.NewValidationError("BKN_TRACE_REQUIRED_FIELD_MISSING", "$.events", "causation_event_id must reference a previously committed event"),
+			}, nil
+		case errors.Is(err, ievidencestore.ErrOwnershipConflict):
+			return evidencevo.IngestResponse{}, evidencevo.ValidationErrors{
+				evidencevo.NewValidationError("BKN_TRACE_OWNERSHIP_CONFLICT", "$.trace", "trace request or ownership differs from the committed trace"),
+			}, nil
+		case errors.Is(err, ievidencestore.ErrTraceCapacityExceeded):
+			return evidencevo.IngestResponse{}, evidencevo.ValidationErrors{
+				evidencevo.NewValidationError("BKN_TRACE_CAPACITY_EXCEEDED", "$.events", "trace event or serialized byte limit exceeded"),
 			}, nil
 		}
 		return evidencevo.IngestResponse{}, nil, err
@@ -332,13 +357,17 @@ func buildEvidenceChain(traces []evidencevo.NormalizedTrace, truncated bool) evi
 	knownEventIDs := map[string]struct{}{}
 	claimSourceEventIDs := []string{}
 
+	causationIDs := []string{}
 	for _, trace := range traces {
-		if trace.SchemaVersion == evidencevo.LegacyContractVersion {
-			partialReasons["causality_missing"] = struct{}{}
-		}
 		for _, event := range trace.Events {
+			if event.SchemaVersion == evidencevo.LegacyContractVersion || event.SchemaVersion == "" && trace.SchemaVersion == evidencevo.LegacyContractVersion {
+				partialReasons["causality_missing"] = struct{}{}
+			}
 			if event.EventID != "" {
 				knownEventIDs[event.EventID] = struct{}{}
+			}
+			if event.CausationID != "" {
+				causationIDs = append(causationIDs, event.CausationID)
 			}
 			switch event.EventType {
 			case "claim.created":
@@ -374,6 +403,11 @@ func buildEvidenceChain(traces []evidencevo.NormalizedTrace, truncated bool) evi
 	for _, sourceID := range claimSourceEventIDs {
 		if _, ok := knownEventIDs[sourceID]; !ok {
 			partialReasons["source_event_missing"] = struct{}{}
+		}
+	}
+	for _, causationID := range causationIDs {
+		if _, ok := knownEventIDs[causationID]; !ok {
+			partialReasons["causality_missing"] = struct{}{}
 		}
 	}
 
@@ -621,6 +655,7 @@ func buildBusinessGraph(traces []evidencevo.NormalizedTrace, truncated bool) evi
 						businessRefs[refID] = struct{}{}
 						response.VisibilitySummary.AuthorizedRefCount++
 					}
+					partialReasons["resolver_unresolved"] = struct{}{}
 					addBusinessNode(&response, businessNodes, refID, claimID, ref)
 					edgeType := businessEdgeType(ref)
 					if expanded {
@@ -977,17 +1012,25 @@ func addBusinessNode(response *evidencevo.BusinessGraphResponse, seen map[string
 	if nodeType == "" {
 		nodeType = "business_ref"
 	}
-	label, _ := stringField(ref, "label")
 	versionStatus, _ := stringField(ref, "version_status")
 	response.Data.Nodes = append(response.Data.Nodes, evidencevo.BusinessGraphNode{
 		ID:            "business:" + refID,
 		NodeType:      nodeType,
-		Label:         label,
 		ClaimID:       claimID,
 		VersionStatus: versionStatus,
 		Visibility:    visibilityValue(ref),
-		Properties:    cloneMap(ref),
+		Properties:    registeredRefProperties(ref),
 	})
+}
+
+func registeredRefProperties(ref map[string]any) map[string]any {
+	properties := make(map[string]any, len(twoPointOneRefFields))
+	for key := range twoPointOneRefFields {
+		if value, ok := ref[key]; ok {
+			properties[key] = value
+		}
+	}
+	return properties
 }
 
 func businessEdgeType(ref map[string]any) string {
@@ -1080,10 +1123,8 @@ func validateTwoPointOneGraph(existing []evidencevo.NormalizedTrace, incoming *e
 		}
 		seenIncoming[event.EventID] = hash
 
-		if event.CausationID != "" {
-			if _, ok := priorEventIDs[event.CausationID]; !ok {
-				add(validationErrors, "BKN_TRACE_REQUIRED_FIELD_MISSING", base+".causation_event_id", "causation_event_id must reference a previously observed event in the same trace")
-			}
+		if event.CausationID == event.EventID && event.CausationID != "" {
+			add(validationErrors, "BKN_TRACE_REQUIRED_FIELD_MISSING", base+".causation_event_id", "event cannot cause itself")
 		}
 		if eventNeedsClaim(event.EventType) && event.EventType != "claim.created" {
 			if _, ok := knownClaims[event.ClaimID]; event.ClaimID != "" && !ok {
@@ -1096,6 +1137,32 @@ func validateTwoPointOneGraph(existing []evidencevo.NormalizedTrace, incoming *e
 		priorEventIDs[event.EventID] = struct{}{}
 		if event.EventType == "claim.created" {
 			knownClaims[event.ClaimID] = struct{}{}
+		}
+	}
+	validateCausationCycles(existing, incoming.Events, validationErrors)
+}
+
+func validateCausationCycles(existing []evidencevo.NormalizedTrace, incoming []evidencevo.EvidenceEvent, validationErrors *evidencevo.ValidationErrors) {
+	causes := map[string]string{}
+	for _, trace := range existing {
+		for _, event := range trace.Events {
+			causes[event.EventID] = event.CausationID
+		}
+	}
+	for _, event := range incoming {
+		causes[event.EventID] = event.CausationID
+	}
+	for _, event := range incoming {
+		seen := map[string]struct{}{}
+		for current := event.EventID; current != ""; current = causes[current] {
+			if _, ok := seen[current]; ok {
+				add(validationErrors, "BKN_TRACE_REQUIRED_FIELD_MISSING", "$.events.causation_event_id", "causation_event_id must not form a cycle")
+				break
+			}
+			seen[current] = struct{}{}
+			if _, known := causes[current]; !known {
+				break
+			}
 		}
 	}
 }
@@ -1177,6 +1244,10 @@ func normalize(req evidencevo.IngestRequest, errors *evidencevo.ValidationErrors
 	normalized := evidencevo.NormalizedTrace{
 		TraceID:        req.Trace.TraceID,
 		RequestID:      req.Trace.RequestID,
+		TenantID:       req.Trace.TenantID,
+		BusinessDomain: req.Trace.BusinessDomain,
+		AccountID:      req.Trace.AccountID,
+		AccountType:    req.Trace.AccountType,
 		SchemaVersion:  req.SchemaVersion,
 		Events:         req.Events,
 		AcceptedEvents: len(req.Events),
@@ -1204,6 +1275,8 @@ func checkTrace(trace evidencevo.TraceContext, errors *evidencevo.ValidationErro
 	}
 	if trace.Traceparent != "" && !validTraceparent(trace.Traceparent) {
 		add(errors, "BKN_TRACE_INVALID_TRACEPARENT", "$.trace.traceparent", "invalid traceparent")
+	} else if match := traceparentRE.FindStringSubmatch(trace.Traceparent); len(match) == 3 && trace.TraceID != "" && match[1] != trace.TraceID {
+		add(errors, "BKN_TRACE_JOIN_FAILED", "$.trace.traceparent", "traceparent trace id must match trace.trace_id")
 	}
 }
 
@@ -1222,10 +1295,10 @@ func checkEvent(event *evidencevo.EvidenceEvent, i int, requestVersion string, k
 	if event.SchemaVersion != "" && (!evidencevo.SupportedContractVersion(event.SchemaVersion) || event.SchemaVersion != requestVersion) {
 		add(errors, "BKN_TRACE_SCHEMA_VERSION_UNSUPPORTED", base+".bkn.trace.schema.version", "event contract version must match the ingest envelope")
 	}
-	if event.ObservedAt != "" && !timestampRE.MatchString(event.ObservedAt) {
+	if event.ObservedAt != "" && !validTimestamp(event.ObservedAt) {
 		add(errors, "BKN_TRACE_INVALID_TIMESTAMP", base+".observed_at", "timestamp must be UTC RFC3339Nano")
 	}
-	if event.EmittedAt != "" && !timestampRE.MatchString(event.EmittedAt) {
+	if event.EmittedAt != "" && !validTimestamp(event.EmittedAt) {
 		add(errors, "BKN_TRACE_INVALID_TIMESTAMP", base+".emitted_at", "timestamp must be UTC RFC3339Nano")
 	}
 	registeredTypes := legacyEventTypes
@@ -1240,6 +1313,9 @@ func checkEvent(event *evidencevo.EvidenceEvent, i int, requestVersion string, k
 	if event.Payload == nil {
 		add(errors, "BKN_TRACE_REQUIRED_FIELD_MISSING", base+".payload", "payload must be an object")
 		return
+	}
+	if event.SpanID != "" && (!spanIDRE.MatchString(event.SpanID) || event.SpanID == strings.Repeat("0", 16)) {
+		add(errors, "BKN_TRACE_JOIN_FAILED", base+".span_id", "span_id must be 16 lowercase hex and non-zero")
 	}
 	if requestVersion == evidencevo.ContractVersion {
 		checkTwoPointOneEnvelope(event, base, errors)
@@ -1256,9 +1332,9 @@ func checkEvent(event *evidencevo.EvidenceEvent, i int, requestVersion string, k
 		checkRefs(event.Payload, base+".payload", "business_refs", knownClaims, requestVersion, errors)
 		normalized.BusinessRefCount += len(arrayField(event.Payload, "business_refs"))
 	case "tool.called":
-		checkToolCalled(event.Payload, base+".payload", errors)
+		checkToolCalled(event.Payload, base+".payload", requestVersion, errors)
 	case "tool.result.observed":
-		checkToolResultObserved(event.Payload, base+".payload", errors)
+		checkToolResultObserved(event.Payload, base+".payload", requestVersion, errors)
 	}
 }
 
@@ -1306,30 +1382,38 @@ func checkTwoPointOnePayload(event evidencevo.EvidenceEvent, base string, errors
 		requiredOneStringField(payload, []string{"agent_id", "app_ref"}, base, errors)
 	case "retrieval.completed":
 		requiredStringField(payload, "query_hash", base, errors)
-		requiredField(payload, "candidate_count", base, errors)
-		requiredField(payload, "truncated", base, errors)
+		requiredNonNegativeIntField(payload, "candidate_count", base, errors)
+		requiredBoolField(payload, "truncated", base, errors)
+		requiredFactRefArray(payload, "source_refs", base, errors)
+		requiredVersionStatus(payload, base, errors)
 	case "knowledge.read.observed":
 		requiredStringField(payload, "kn_id", base, errors)
 		requiredStringField(payload, "read_kind", base, errors)
-		requiredStringField(payload, "version_status", base, errors)
+		requiredVersionStatus(payload, base, errors)
+		requiredFactRefArray(payload, "business_refs", base, errors)
 	case "data.query.observed":
 		requiredStringField(payload, "query_hash", base, errors)
 		requiredStringField(payload, "query_type", base, errors)
-		requiredField(payload, "row_count", base, errors)
+		requiredNonNegativeIntField(payload, "row_count", base, errors)
+		requiredBoolField(payload, "truncated", base, errors)
+		requiredVersionStatus(payload, base, errors)
+		requiredOneFactRefArray(payload, []string{"resource_refs", "field_refs"}, base, errors)
 	case "model.call.observed":
 		for _, field := range []string{"model_name", "model_provider", "status", "prompt_hash", "output_hash"} {
 			requiredStringField(payload, field, base, errors)
 		}
 		for _, field := range []string{"input_token_count", "output_token_count"} {
-			requiredField(payload, field, base, errors)
+			requiredNonNegativeIntField(payload, field, base, errors)
 		}
-		if status, _ := stringField(payload, "status"); status == "error" {
+		status, _ := stringField(payload, "status")
+		requireEnum(status, []string{"ok", "success", "error"}, base+".status", errors)
+		if status == "error" {
 			requiredStringField(payload, "error_category", base, errors)
 			requiredStringField(payload, "error_hash", base, errors)
 		}
 	case "claim.created":
-		requiredArrayField(payload, "source_event_ids", base, errors)
-		requiredArrayField(payload, "operation_ids", base, errors)
+		requiredStringArrayField(payload, "source_event_ids", base, errors)
+		requiredStringArrayField(payload, "operation_ids", base, errors)
 	case "evidence.refs.created":
 		checkTwoPointOneRefs(payload, "evidence_refs", base, errors)
 	case "business.refs.resolved":
@@ -1342,7 +1426,7 @@ func checkTwoPointOnePayload(event evidencevo.EvidenceEvent, base string, errors
 		checkActionBase(payload, base, errors)
 		checkActionStatus(payload, "recommended", base, errors)
 		requiredStringField(payload, "action_type", base, errors)
-		requiredArrayField(payload, "target_refs", base, errors)
+		requiredStringArrayField(payload, "target_refs", base, errors)
 		requiredStringField(payload, "reason_hash", base, errors)
 	case "action.approval_requested":
 		checkActionBase(payload, base, errors)
@@ -1371,6 +1455,8 @@ func checkTwoPointOnePayload(event evidencevo.EvidenceEvent, base string, errors
 		checkActionBase(payload, base, errors)
 		requiredStringField(payload, "result_hash", base, errors)
 		requiredOneStringField(payload, []string{"artifact_ref", "task_ref"}, base, errors)
+		status, _ := stringField(payload, "status")
+		requireEnum(status, []string{"recorded", "created", "updated", "deleted", "success", "error"}, base+".status", errors)
 	}
 }
 
@@ -1406,35 +1492,104 @@ func checkActionBase(payload map[string]any, base string, errors *evidencevo.Val
 }
 
 func checkTwoPointOneRefs(payload map[string]any, key, base string, errors *evidencevo.ValidationErrors) {
-	allowedFields := fields("ref_id", "ref_type", "source_system", "validity", "version_status", "visibility", "summary_hash")
-	validValidity := fields("observed", "available", "unavailable", "expired", "partial")
-	validVersionStatus := fields("versioned", "unversioned", "not_auditable")
-	for i, item := range arrayField(payload, key) {
+	refs := arrayField(payload, key)
+	if len(refs) == 0 {
+		if key == "business_refs" {
+			if status, _ := stringField(payload, "resolver_status"); status == "unresolved" {
+				return
+			}
+		}
+		add(errors, "BKN_TRACE_REQUIRED_FIELD_MISSING", base+"."+key, key+" must be a non-empty reference array")
+		return
+	}
+	for i, item := range refs {
 		ref, ok := item.(map[string]any)
 		if !ok {
 			add(errors, "BKN_TRACE_REQUIRED_FIELD_MISSING", base+"."+key+"["+strconv.Itoa(i)+"]", "reference must be an object")
 			continue
 		}
+		checkTwoPointOneRef(ref, base+"."+key+"["+strconv.Itoa(i)+"]", errors)
+	}
+}
+
+func checkTwoPointOneRef(ref map[string]any, refBase string, errors *evidencevo.ValidationErrors) {
+	validValidity := fields("observed", "available", "unavailable", "expired", "partial")
+	validVersionStatus := fields("versioned", "unversioned", "not_auditable")
+	for field := range ref {
+		if _, ok := twoPointOneRefFields[field]; !ok {
+			add(errors, "BKN_TRACE_PAYLOAD_FIELD_UNSUPPORTED", refBase+"."+field, "reference field is not registered")
+		}
+	}
+	for _, field := range []string{"ref_id", "ref_type", "source_system", "validity", "version_status", "visibility"} {
+		requiredStringField(ref, field, refBase, errors)
+	}
+	if refID, _ := stringField(ref, "ref_id"); refID != "" && !validControlledRef(refID) {
+		add(errors, "BKN_TRACE_SENSITIVE_VALUE_LEAKED", refBase+".ref_id", "reference id must be a controlled namespaced identifier")
+	}
+	if validity, _ := stringField(ref, "validity"); validity != "" {
+		if _, ok := validValidity[validity]; !ok {
+			add(errors, "BKN_TRACE_REQUIRED_FIELD_MISSING", refBase+".validity", "unsupported reference validity")
+		}
+	}
+	if versionStatus, _ := stringField(ref, "version_status"); versionStatus != "" {
+		if _, ok := validVersionStatus[versionStatus]; !ok {
+			add(errors, "BKN_TRACE_REQUIRED_FIELD_MISSING", refBase+".version_status", "unsupported reference version_status")
+		}
+	}
+	checkVisibility(ref, refBase+".visibility", errors)
+}
+
+func requiredFactRefArray(payload map[string]any, key, base string, errors *evidencevo.ValidationErrors) {
+	refs := arrayField(payload, key)
+	if len(refs) == 0 {
+		add(errors, "BKN_TRACE_REQUIRED_FIELD_MISSING", base+"."+key, key+" must be a non-empty reference array")
+		return
+	}
+	checkFactRefs(refs, key, base, errors)
+}
+
+func requiredOneFactRefArray(payload map[string]any, keys []string, base string, errors *evidencevo.ValidationErrors) {
+	found := false
+	for _, key := range keys {
+		refs := arrayField(payload, key)
+		if len(refs) == 0 {
+			continue
+		}
+		found = true
+		checkFactRefs(refs, key, base, errors)
+	}
+	if !found {
+		add(errors, "BKN_TRACE_REQUIRED_FIELD_MISSING", base+"."+keys[0], "one of "+strings.Join(keys, " or ")+" must be a non-empty reference array")
+	}
+}
+
+func checkFactRefs(refs []any, key, base string, errors *evidencevo.ValidationErrors) {
+	for i, item := range refs {
 		refBase := base + "." + key + "[" + strconv.Itoa(i) + "]"
-		for field := range ref {
-			if _, ok := allowedFields[field]; !ok {
-				add(errors, "BKN_TRACE_PAYLOAD_FIELD_UNSUPPORTED", refBase+"."+field, "reference field is not registered")
+		switch ref := item.(type) {
+		case string:
+			if !validControlledRef(ref) {
+				add(errors, "BKN_TRACE_SENSITIVE_VALUE_LEAKED", refBase, "reference must be a controlled namespaced identifier")
 			}
+		case map[string]any:
+			checkTwoPointOneRef(ref, refBase, errors)
+		default:
+			add(errors, "BKN_TRACE_REQUIRED_FIELD_MISSING", refBase, "reference must be a controlled identifier or reference object")
 		}
-		for _, field := range []string{"ref_id", "ref_type", "source_system", "validity", "version_status", "visibility"} {
-			requiredStringField(ref, field, refBase, errors)
-		}
-		if validity, _ := stringField(ref, "validity"); validity != "" {
-			if _, ok := validValidity[validity]; !ok {
-				add(errors, "BKN_TRACE_REQUIRED_FIELD_MISSING", refBase+".validity", "unsupported reference validity")
-			}
-		}
-		if versionStatus, _ := stringField(ref, "version_status"); versionStatus != "" {
-			if _, ok := validVersionStatus[versionStatus]; !ok {
-				add(errors, "BKN_TRACE_REQUIRED_FIELD_MISSING", refBase+".version_status", "unsupported reference version_status")
-			}
-		}
-		checkVisibility(ref, refBase+".visibility", errors)
+	}
+}
+
+func validControlledRef(value string) bool {
+	value = strings.TrimSpace(value)
+	if !controlledRefRE.MatchString(value) {
+		return false
+	}
+	namespace, _, _ := strings.Cut(value, ":")
+	switch namespace {
+	case "table", "column", "physical_table", "physical_field":
+		return false
+	default:
+		return true
 	}
 }
 
@@ -1444,6 +1599,8 @@ func checkClaim(payload map[string]any, base string, normalized *evidencevo.Norm
 		add(errors, "BKN_TRACE_REQUIRED_FIELD_MISSING", base+".claim_id", "missing required field claim_id")
 	}
 	requiredStringField(payload, "claim_type", base, errors)
+	claimType, _ := stringField(payload, "claim_type")
+	requireEnum(claimType, []string{"answer", "structured_output", "finding", "recommendation", "action_decision", "eval_assertion"}, base+".claim_type", errors)
 	requiredStringField(payload, "claim_hash", base, errors)
 	requiredStringField(payload, "visibility", base, errors)
 	requiredStringField(payload, "version_status", base, errors)
@@ -1454,25 +1611,41 @@ func checkClaim(payload map[string]any, base string, normalized *evidencevo.Norm
 	}
 }
 
-func checkToolCalled(payload map[string]any, base string, errors *evidencevo.ValidationErrors) {
+func checkToolCalled(payload map[string]any, base string, requestVersion string, errors *evidencevo.ValidationErrors) {
 	requiredStringField(payload, "tool_id", base, errors)
 	requiredStringField(payload, "tool_name", base, errors)
 	requiredStringField(payload, "args_hash", base, errors)
 	requiredStringField(payload, "visibility", base, errors)
 	requiredStringField(payload, "version_status", base, errors)
+	if requestVersion == evidencevo.ContractVersion {
+		requiredVersionStatus(payload, base, errors)
+	}
 }
 
-func checkToolResultObserved(payload map[string]any, base string, errors *evidencevo.ValidationErrors) {
+func checkToolResultObserved(payload map[string]any, base string, requestVersion string, errors *evidencevo.ValidationErrors) {
 	requiredStringField(payload, "tool_id", base, errors)
 	requiredStringField(payload, "tool_name", base, errors)
 	requiredStringField(payload, "status", base, errors)
 	requiredStringField(payload, "visibility", base, errors)
-	requiredStringField(payload, "version_status", base, errors)
-	if status, ok := stringField(payload, "status"); ok && status == "success" {
-		requiredStringField(payload, "result_hash", base, errors)
+	status, ok := stringField(payload, "status")
+	if requestVersion != evidencevo.ContractVersion {
+		if ok && status == "success" {
+			requiredStringField(payload, "result_hash", base, errors)
+		} else if ok {
+			requiredStringField(payload, "error_hash", base, errors)
+		}
+		return
 	}
-	if status, ok := stringField(payload, "status"); ok && status != "success" {
+	requiredVersionStatus(payload, base, errors)
+	requireEnum(status, []string{"success", "error"}, base+".status", errors)
+	if ok && status == "success" {
+		requiredStringField(payload, "result_hash", base, errors)
+		requiredNonNegativeIntField(payload, "result_length", base, errors)
+		requiredNonNegativeIntField(payload, "result_count", base, errors)
+	}
+	if ok && status == "error" {
 		requiredStringField(payload, "error_hash", base, errors)
+		requiredStringField(payload, "error_category", base, errors)
 	}
 }
 
@@ -1545,6 +1718,14 @@ func validTraceparent(value string) bool {
 	return match[1] != strings.Repeat("0", 32) && match[2] != strings.Repeat("0", 16)
 }
 
+func validTimestamp(value string) bool {
+	if !timestampRE.MatchString(value) {
+		return false
+	}
+	parsed, err := time.Parse(time.RFC3339Nano, value)
+	return err == nil && parsed.Location() == time.UTC
+}
+
 func required(value string, path string, errors *evidencevo.ValidationErrors) {
 	if value == "" {
 		add(errors, "BKN_TRACE_REQUIRED_FIELD_MISSING", path, "missing required field")
@@ -1562,6 +1743,60 @@ func requiredField(payload map[string]any, key string, base string, errors *evid
 	if value, ok := payload[key]; !ok || value == nil {
 		add(errors, "BKN_TRACE_REQUIRED_FIELD_MISSING", base+"."+key, "missing required field "+key)
 	}
+}
+
+func requiredNonNegativeIntField(payload map[string]any, key string, base string, errors *evidencevo.ValidationErrors) {
+	value, ok := payload[key]
+	if !ok {
+		add(errors, "BKN_TRACE_REQUIRED_FIELD_MISSING", base+"."+key, "missing required field "+key)
+		return
+	}
+	number, ok := value.(float64)
+	if !ok || number < 0 || number != float64(int64(number)) {
+		add(errors, "BKN_TRACE_REQUIRED_FIELD_MISSING", base+"."+key, key+" must be a non-negative integer")
+	}
+}
+
+func requiredBoolField(payload map[string]any, key string, base string, errors *evidencevo.ValidationErrors) {
+	value, ok := payload[key]
+	if !ok {
+		add(errors, "BKN_TRACE_REQUIRED_FIELD_MISSING", base+"."+key, "missing required field "+key)
+		return
+	}
+	if _, ok := value.(bool); !ok {
+		add(errors, "BKN_TRACE_REQUIRED_FIELD_MISSING", base+"."+key, key+" must be a boolean")
+	}
+}
+
+func requiredStringArrayField(payload map[string]any, key string, base string, errors *evidencevo.ValidationErrors) {
+	values := arrayField(payload, key)
+	if len(values) == 0 {
+		add(errors, "BKN_TRACE_REQUIRED_FIELD_MISSING", base+"."+key, key+" must be a non-empty string array")
+		return
+	}
+	for i, value := range values {
+		if text, ok := value.(string); !ok || strings.TrimSpace(text) == "" {
+			add(errors, "BKN_TRACE_REQUIRED_FIELD_MISSING", base+"."+key+"["+strconv.Itoa(i)+"]", key+" entries must be non-empty strings")
+		}
+	}
+}
+
+func requiredVersionStatus(payload map[string]any, base string, errors *evidencevo.ValidationErrors) {
+	value, _ := stringField(payload, "version_status")
+	requiredStringField(payload, "version_status", base, errors)
+	requireEnum(value, []string{"versioned", "unversioned", "not_auditable"}, base+".version_status", errors)
+}
+
+func requireEnum(value string, allowed []string, path string, errors *evidencevo.ValidationErrors) {
+	if value == "" {
+		return
+	}
+	for _, item := range allowed {
+		if value == item {
+			return
+		}
+	}
+	add(errors, "BKN_TRACE_REQUIRED_FIELD_MISSING", path, "unsupported enum value")
 }
 
 func requiredArrayField(payload map[string]any, key string, base string, errors *evidencevo.ValidationErrors) {

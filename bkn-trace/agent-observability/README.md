@@ -171,9 +171,17 @@ helm upgrade --install agent-observability charts/agent-observability \
   -n observability
 ```
 
-启用后，写入方需要携带 `Authorization: Bearer <strong-token>` 或 `X-BKN-Trace-Ingest-Token: <strong-token>`。未配置 `BKN_TRACE_EVIDENCE_INGEST_TOKEN` 时保持当前兼容行为，依赖平台网关/网络边界保护。
+写入方需要携带 `Authorization: Bearer <strong-token>` 或 `X-BKN-Trace-Ingest-Token: <strong-token>`。生产环境未配置 `BKN_TRACE_EVIDENCE_INGEST_TOKEN` 时接口返回 `503 INGEST_AUTH_NOT_CONFIGURED`，不得 fail-open。仅本地开发和测试可显式设置 `BKN_TRACE_ALLOW_UNAUTHENTICATED_INGEST=true`；Helm 默认值为 `false`。
 
-当前阶段的 Evidence Chain 查询依据事件生产方或 resolver 声明的 `visibility` 做响应过滤，并区分 `redacted`、`hidden`、`omitted`、`unresolved`、`unauthorized` 统计。`unauthorized` 引用只进入汇总和 `partial_reason[]`，不会展开 `ref_id`、`policy_decision_ref` 或其他节点详情。按调用者身份实时裁决、授权审计和 resolver-backed 节点详情补全仍属于后续阶段。
+Evidence、Business Graph、Snapshot、Node 和技术 Trace Graph 查询必须同时经过两层校验：API 网关通过 `X-BKN-Trace-Query-Token` 提交独立网关凭据，并注入 `x-account-id`、`x-account-type`，以及 `x-business-domain` 或 `x-tenant-id`。Evidence 索引持久化 tenant/business domain/account 归属；持久化了多个归属维度时必须逐一匹配，查询在 OpenSearch 条件和返回层同时过滤。跨归属查询统一返回 404，不泄露 trace 是否存在。
+
+`BKN_TRACE_QUERY_GATEWAY_TOKEN` 必须与 ingest token 使用不同 Secret，只提供给 API 网关，不提供给 producer 或浏览器。producer 即使持有 ingest token并伪造身份 header，也不能调用查询接口。网关必须剥离外部调用方提交的 `X-BKN-Trace-Query-Token` 与身份 header，再从受控 Secret 和认证上下文重新注入。未配置 query gateway token 时生产查询返回 `503 QUERY_AUTH_NOT_CONFIGURED`；仅本地开发和测试可显式设置 `BKN_TRACE_ALLOW_UNAUTHENTICATED_QUERY=true`，Helm 默认关闭。
+
+查询仍依据事件生产方或 resolver 声明的 `visibility` 做节点级响应过滤，并区分 `redacted`、`hidden`、`omitted`、`unresolved`、`unauthorized` 统计。`unauthorized` 引用只进入汇总和 `partial_reason[]`，不会展开 `ref_id`、`policy_decision_ref` 或其他节点详情。更细粒度的对象/属性级实时策略裁决仍属于后续阶段。
+
+当前查询侧尚未接入受权 Resolver/display 服务，业务图节点因此只投影注册引用字段，不信任或返回事件中的 `label` 等显示信息；存在可见业务引用时返回 `partial=true` 与 `resolver_unresolved`。受权业务名称和详情补全由后续独立任务实现。
+
+原始 OpenSearch DSL 与 conversation 全局 Trace 查询无法基于当前 span 索引可靠完成租户过滤，生产默认关闭。只有隔离的开发环境可设置 `BKN_TRACE_ALLOW_RAW_TRACE_QUERY=true`；Studio 正式功能不得依赖该开关。
 
 Evidence Chain 查询返回稳定 envelope：
 
@@ -268,8 +276,11 @@ evidence_ref:{ref_id}
 business_ref:{ref_id}
 ```
 
-查询必须提供且只能提供一个 scope：`trace_id` 或 `request_id`。当前阶段只返回 `visibility=visible` 的节点；`hidden`、`redacted`、`omitted`、`unresolved`、`unauthorized` 节点不会通过详情接口展开。真实 BKN / Vega / Metric / Action resolver、按账号/租户的实时授权裁决和隐藏节点可审计解释属于后续阶段。
-阶段二 evidence ingestion 接口接受 `bkn.trace.schema.version=2.0.0` 的事件批次，包含 `trace` 与 `events`。当前版本完成 contract 校验、敏感 payload 拒绝、归一化计数，并写入 `OPENSEARCH_EVIDENCE_INDEX`，默认 `bkn-trace-evidence-v2`。索引只对 trace/request/count/时间等检索字段建索引，完整 `events` 保留在 `_source` 中用于证据链详情展示，避免业务 payload 触发动态 mapping 膨胀。
+查询必须提供且只能提供一个 scope：`trace_id` 或 `request_id`。当前阶段只返回 `visibility=visible` 的节点；`hidden`、`redacted`、`omitted`、`unresolved`、`unauthorized` 节点不会通过详情接口展开。
+
+Evidence ingestion 默认写入 `2.1.0`，读取兼容 `2.0.0`。2.1 事件执行精确 payload/ref allowlist、类型、枚举、hash、敏感值、trace/span/time join 校验。一般事实允许先于其父事件异步到达：首次查询返回 `causality_missing`，父事件补到后自动恢复完整；claim 的 `source_event_ids` 缺失仍返回 `source_event_missing`，Action 前态乱序继续原子拒绝。混合 2.0/2.1 历史按每个 event 的版本保留 `causality_missing`。
+
+OpenSearch 当前仍使用“单 trace 聚合文档 + OCC”保障 Action 状态和事件冲突原子性。为避免文档无限增长，单 trace 硬限制为 10,000 个事件且聚合 JSON 不超过 8 MiB，超限返回 `BKN_TRACE_CAPACITY_EXCEEDED`。该限制不是最终扩展方案；后续需要迁移为事件文档加状态投影，并使用 PIT 分页。旧索引中缺少 tenant/business domain/account 必要归属的 2.0 聚合文档默认不可查询、不可继续追加；`2.0` 兼容仅指已有归属事件的语义读取。缺失归属必须通过离线受控迁移补齐，不能由请求方认领。
 
 持久化 evidence 可通过以下接口回查：
 
