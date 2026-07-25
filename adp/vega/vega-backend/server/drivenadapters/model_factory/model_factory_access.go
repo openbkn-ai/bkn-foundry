@@ -52,9 +52,9 @@ func (mfa *modelFactoryAccess) GetModelByName(ctx context.Context, modelName str
 	defer span.End()
 
 	httpUrl := fmt.Sprintf("%s/api/private/mf-model-manager/v1/small-model/get_by_name?model_name=%s", mfa.mfManagerUrl, modelName)
-	headers := map[string]string{
+	headers := common.MergeTraceHeaders(ctx, map[string]string{
 		"Content-Type": "application/json",
-	}
+	})
 
 	// 发送GET请求获取模型
 	respCode, result, err := mfa.httpClient.GetNoUnmarshal(ctx, httpUrl, nil, headers)
@@ -98,9 +98,9 @@ func (mfa *modelFactoryAccess) GetVector(ctx context.Context, modelID string, wo
 	}
 
 	httpUrl := fmt.Sprintf("%s/api/private/mf-model-api/v1/small-model/embeddings", mfa.mfAPIUrl)
-	headers := map[string]string{
+	headers := common.MergeTraceHeaders(ctx, map[string]string{
 		"Content-Type": "application/json",
-	}
+	})
 
 	// 调用方传入的是已归一化的模型 id，必须发 model_id 字段。
 	// mf-model-api 的 embeddings 解析：model 字段只按 model_name 查、model_id 字段才按 id 查。

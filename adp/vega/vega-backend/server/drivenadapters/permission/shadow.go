@@ -17,6 +17,7 @@ import (
 
 	"github.com/bytedance/sonic"
 
+	"vega-backend/common"
 	"vega-backend/interfaces"
 )
 
@@ -100,6 +101,9 @@ func (c *safeClient) do(ctx context.Context, method, path string, body, out any)
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	for key, value := range common.BuildTraceHeaders(ctx) {
+		req.Header.Set(key, value)
+	}
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return err

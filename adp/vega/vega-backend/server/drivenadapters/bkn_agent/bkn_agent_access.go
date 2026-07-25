@@ -151,5 +151,5 @@ func bknAgentHeaders(ctx context.Context) (map[string]string, error) {
 		interfaces.HTTP_HEADER_ACCOUNT_TYPE: accountInfo.Type,
 	}
 
-	return headers, nil
+	return common.MergeTraceHeaders(ctx, headers), nil
 }

@@ -188,3 +188,23 @@ func bknAgentHeaderMatcher(accountID string, accountType string) gomock.Matcher 
 			headers[interfaces.HTTP_HEADER_ACCOUNT_TYPE] == accountType
 	})
 }
+
+func TestBknAgentHeadersPropagateBusinessCausality(t *testing.T) {
+	ctx := contextWithBknAgentAccount("vega-backend", interfaces.ACCESSOR_TYPE_APP)
+	ctx = common.SetTraceContextToCtx(ctx, common.TraceContext{
+		RequestID:        "req_vega_agent_header_0001",
+		InteractionID:    "int_vega_agent_header_0001",
+		OperationID:      "op_vega_agent_header_0001",
+		CausationEventID: "evt_vega_data_fact_0001",
+		ClaimID:          "claim_vega_agent_header_0001",
+		Attempt:          2,
+	})
+
+	headers, err := bknAgentHeaders(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "int_vega_agent_header_0001", headers[common.HeaderBKNInteractionID])
+	require.Equal(t, "op_vega_agent_header_0001", headers[common.HeaderBKNOperationID])
+	require.Equal(t, "evt_vega_data_fact_0001", headers[common.HeaderBKNCausationEventID])
+	require.Equal(t, "claim_vega_agent_header_0001", headers[common.HeaderBKNClaimID])
+	require.Equal(t, "2", headers[common.HeaderBKNAttempt])
+}

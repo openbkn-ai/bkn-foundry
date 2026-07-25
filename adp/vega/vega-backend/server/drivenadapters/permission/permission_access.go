@@ -73,9 +73,9 @@ func (pa *permissionAccess) CheckPermission(ctx context.Context, check interface
 		HttpMethodOverride: http.MethodGet,
 	})
 
-	headers := map[string]string{
+	headers := common.MergeTraceHeaders(ctx, map[string]string{
 		interfaces.CONTENT_TYPE_NAME: interfaces.CONTENT_TYPE_JSON,
-	}
+	})
 
 	check.Method = http.MethodGet
 	respCode, result, err := pa.httpClient.PostNoUnmarshal(ctx, httpUrl, headers, check)
@@ -167,9 +167,9 @@ func (pa *permissionAccess) CreateResources(ctx context.Context, policies []inte
 		HttpMethodOverride: http.MethodGet,
 	})
 
-	headers := map[string]string{
+	headers := common.MergeTraceHeaders(ctx, map[string]string{
 		interfaces.CONTENT_TYPE_NAME: interfaces.CONTENT_TYPE_JSON,
-	}
+	})
 
 	respCode, result, err := pa.httpClient.PostNoUnmarshal(ctx, httpUrl, headers, policies)
 	logger.Debugf("post [%s] finished, response code is [%d], result is [%s], error is [%v]", httpUrl, respCode, result, err)
@@ -232,9 +232,9 @@ func (pa *permissionAccess) DeleteResources(ctx context.Context, res []interface
 		HttpMethodOverride: http.MethodDelete,
 	})
 
-	headers := map[string]string{
+	headers := common.MergeTraceHeaders(ctx, map[string]string{
 		interfaces.CONTENT_TYPE_NAME: interfaces.CONTENT_TYPE_JSON,
-	}
+	})
 
 	st := map[string]any{
 		"method":    http.MethodDelete,
@@ -309,9 +309,9 @@ func (pa *permissionAccess) FilterResources(ctx context.Context,
 		HttpMethodOverride: http.MethodGet,
 	})
 
-	headers := map[string]string{
+	headers := common.MergeTraceHeaders(ctx, map[string]string{
 		interfaces.CONTENT_TYPE_NAME: interfaces.CONTENT_TYPE_JSON,
-	}
+	})
 
 	filter.Method = http.MethodGet
 	respCode, result, err := pa.httpClient.PostNoUnmarshal(ctx, httpUrl, headers, filter)
