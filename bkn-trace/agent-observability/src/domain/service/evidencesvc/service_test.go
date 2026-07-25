@@ -1134,6 +1134,74 @@ func TestGetBusinessGraphReturnsMissingBusinessRefsPartial(t *testing.T) {
 	}
 }
 
+func TestGetBusinessGraphProjectsFiveStageBusinessStory(t *testing.T) {
+	trace := evidencevo.NormalizedTrace{
+		TraceID: "trace_business_story", RequestID: "req_business_story",
+		Events: []evidencevo.EvidenceEvent{
+			{EventID: "evt_intent", EventType: "agent.interaction.started", InteractionID: "interaction_1", Payload: map[string]any{"intent_hash": "sha256:intent", "mode": "task", "agent_id": "agent_1"}},
+			{EventID: "evt_data", EventType: "data.query.observed", InteractionID: "interaction_1", OperationID: "operation_data", CausationID: "evt_intent", Payload: map[string]any{"query_hash": "sha256:query", "query_type": "aggregate", "row_count": 3, "truncated": false, "version_status": "versioned"}},
+			{EventID: "evt_claim", EventType: "claim.created", InteractionID: "interaction_1", CausationID: "evt_data", ClaimID: "claim_1", Payload: map[string]any{"claim_id": "claim_1", "claim_type": "answer", "claim_hash": "sha256:claim", "source_event_ids": []any{"evt_data"}, "operation_ids": []any{"operation_data"}, "visibility": "visible", "version_status": "versioned"}},
+			{EventID: "evt_evidence", EventType: "evidence.refs.created", InteractionID: "interaction_1", OperationID: "operation_data", CausationID: "evt_claim", ClaimID: "claim_1", Payload: map[string]any{"claim_id": "claim_1", "evidence_refs": []any{map[string]any{"ref_id": "resource:sales", "ref_type": "data_resource", "source_system": "vega", "validity": "observed", "version_status": "versioned", "visibility": "visible"}}}},
+			{EventID: "evt_business", EventType: "business.refs.resolved", InteractionID: "interaction_1", OperationID: "operation_data", CausationID: "evt_evidence", ClaimID: "claim_1", Payload: map[string]any{"claim_id": "claim_1", "resolver_status": "resolved", "business_refs": []any{map[string]any{"ref_id": "object:sales_order", "ref_type": "object", "source_system": "bkn", "validity": "available", "version_status": "versioned", "visibility": "visible"}}}},
+			{EventID: "evt_recommended", EventType: "action.recommended", InteractionID: "interaction_1", OperationID: "operation_action", CausationID: "evt_claim", ClaimID: "claim_1", Payload: map[string]any{"action_instance_id": "action_1", "action_type": "create_task", "target_refs": []any{"object:sales_order"}, "reason_hash": "sha256:reason", "status": "recommended"}},
+			{EventID: "evt_requested", EventType: "action.approval_requested", InteractionID: "interaction_1", OperationID: "operation_action", CausationID: "evt_recommended", ClaimID: "claim_1", Payload: map[string]any{"action_instance_id": "action_1", "policy_ref": "policy:review", "status": "approval_requested"}},
+			{EventID: "evt_approved", EventType: "action.approved", InteractionID: "interaction_1", OperationID: "operation_action", CausationID: "evt_requested", ClaimID: "claim_1", Payload: map[string]any{"action_instance_id": "action_1", "actor_ref": "account:reviewer", "policy_decision_ref": "decision:1", "status": "approved"}},
+			{EventID: "evt_executed", EventType: "action.executed", InteractionID: "interaction_1", OperationID: "operation_action", CausationID: "evt_approved", ClaimID: "claim_1", Payload: map[string]any{"action_instance_id": "action_1", "tool_ref": "tool:create_task", "status": "ok"}},
+			{EventID: "evt_result", EventType: "action.result_recorded", InteractionID: "interaction_1", OperationID: "operation_action", CausationID: "evt_executed", ClaimID: "claim_1", Payload: map[string]any{"action_instance_id": "action_1", "result_hash": "sha256:result", "task_ref": "task:1", "status": "created"}},
+		},
+	}
+	response, found, err := New(&fakeStore{traces: []evidencevo.NormalizedTrace{trace}}).GetBusinessGraphByTraceID(context.Background(), trace.TraceID, evidencevo.EvidenceQueryOptions{})
+	if err != nil || !found {
+		t.Fatalf("query failed: found=%v err=%v", found, err)
+	}
+	wantNodes := []string{"interaction:interaction_1", "event:evt_data", "evidence:resource:sales", "business:object:sales_order", "claim:claim_1", "action:action_1:recommended", "action:action_1:result_recorded"}
+	for _, id := range wantNodes {
+		if !graphHasNode(response.Data.Nodes, id) {
+			t.Fatalf("missing five-stage node %s: %+v", id, response.Data.Nodes)
+		}
+	}
+	wantEdges := []string{"caused_by", "supports", "uses_business_ref", "recommends", "transitions_to"}
+	for _, edgeType := range wantEdges {
+		if !graphHasEdgeType(response.Data.Edges, edgeType) {
+			t.Fatalf("missing semantic edge %s: %+v", edgeType, response.Data.Edges)
+		}
+	}
+
+	trace.Events[2].Payload["visibility"] = "hidden"
+	hidden, found, err := New(&fakeStore{traces: []evidencevo.NormalizedTrace{trace}}).GetBusinessGraphByTraceID(context.Background(), trace.TraceID, evidencevo.EvidenceQueryOptions{})
+	if err != nil || !found {
+		t.Fatalf("hidden claim query failed: found=%v err=%v", found, err)
+	}
+	for _, node := range hidden.Data.Nodes {
+		if node.ClaimID == "claim_1" || strings.HasPrefix(node.ID, "claim:claim_1") || strings.HasPrefix(node.ID, "action:action_1") {
+			t.Fatalf("hidden claim leaked through node: %+v", node)
+		}
+	}
+	for _, edge := range hidden.Data.Edges {
+		if strings.HasPrefix(edge.SourceID, "claim:claim_1") || strings.HasPrefix(edge.TargetID, "claim:claim_1") || strings.HasPrefix(edge.SourceID, "action:action_1") || strings.HasPrefix(edge.TargetID, "action:action_1") {
+			t.Fatalf("hidden claim leaked through edge: %+v", edge)
+		}
+	}
+}
+
+func graphHasNode(nodes []evidencevo.BusinessGraphNode, id string) bool {
+	for _, node := range nodes {
+		if node.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+func graphHasEdgeType(edges []evidencevo.BusinessGraphEdge, edgeType string) bool {
+	for _, edge := range edges {
+		if edge.EdgeType == edgeType {
+			return true
+		}
+	}
+	return false
+}
+
 func TestGetSnapshotPreviewByTraceIDReturnsGovernedManifest(t *testing.T) {
 	store := &fakeStore{traces: []evidencevo.NormalizedTrace{queryTrace("trace_snapshot_001", "req_snapshot_001")}}
 	service := New(store)

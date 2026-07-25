@@ -337,8 +337,13 @@ type BusinessGraphData struct {
 type BusinessGraphNode struct {
 	ID            string         `json:"id"`
 	NodeType      string         `json:"node_type"`
+	Stage         string         `json:"stage,omitempty"`
 	Label         string         `json:"label,omitempty"`
+	EventID       string         `json:"event_id,omitempty"`
+	InteractionID string         `json:"interaction_id,omitempty"`
+	OperationID   string         `json:"operation_id,omitempty"`
 	ClaimID       string         `json:"claim_id,omitempty"`
+	ActionID      string         `json:"action_instance_id,omitempty"`
 	VersionStatus string         `json:"version_status,omitempty"`
 	Visibility    string         `json:"visibility,omitempty"`
 	Properties    map[string]any `json:"properties,omitempty"`

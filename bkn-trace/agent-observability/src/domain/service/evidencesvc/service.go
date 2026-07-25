@@ -557,6 +557,7 @@ func buildBusinessGraph(traces []evidencevo.NormalizedTrace, truncated bool) evi
 	partialReasons := map[string]struct{}{}
 	edgeIndex := 0
 	businessRefEvents := 0
+	expanded := hasInteractionEvent(traces)
 
 	for _, trace := range traces {
 		for _, event := range trace.Events {
@@ -575,6 +576,12 @@ func buildBusinessGraph(traces []evidencevo.NormalizedTrace, truncated bool) evi
 				partialReasons["hidden_claim"] = struct{}{}
 			}
 		}
+	}
+
+	eventNodes := map[string]string{}
+	operationNodes := map[string][]string{}
+	if expanded {
+		eventNodes, operationNodes = projectExpandedBusinessNodes(&response, traces, visibleClaims, claimNodes)
 	}
 
 	for _, trace := range traces {
@@ -615,19 +622,26 @@ func buildBusinessGraph(traces []evidencevo.NormalizedTrace, truncated bool) evi
 						response.VisibilitySummary.AuthorizedRefCount++
 					}
 					addBusinessNode(&response, businessNodes, refID, claimID, ref)
-					if claimID != "" && !edgeSeen(edges, "claim:"+claimID, "business:"+refID, businessEdgeType(ref)) {
+					edgeType := businessEdgeType(ref)
+					if expanded {
+						edgeType = "uses_business_ref"
+					}
+					if claimID != "" && !edgeSeen(edges, "claim:"+claimID, "business:"+refID, edgeType) {
 						edgeIndex++
 						response.Data.Edges = append(response.Data.Edges, evidencevo.BusinessGraphEdge{
 							ID:         "edge:" + strconv.Itoa(edgeIndex),
 							SourceID:   "claim:" + claimID,
 							TargetID:   "business:" + refID,
-							EdgeType:   businessEdgeType(ref),
+							EdgeType:   edgeType,
 							Visibility: visibilityValue(ref),
 						})
 					}
 				}
 			}
 		}
+	}
+	if expanded {
+		projectExpandedBusinessEdges(&response, traces, eventNodes, operationNodes, visibleClaims, edges, &edgeIndex)
 	}
 
 	if len(knownClaims) == 0 {
@@ -655,6 +669,202 @@ func buildBusinessGraph(traces []evidencevo.NormalizedTrace, truncated bool) evi
 	response.Page.EdgeCount = len(response.Data.Edges)
 	response.Page.Truncated = truncated
 	return response
+}
+
+func hasInteractionEvent(traces []evidencevo.NormalizedTrace) bool {
+	for _, trace := range traces {
+		for _, event := range trace.Events {
+			if event.EventType == "agent.interaction.started" && event.InteractionID != "" && event.EventID != "" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func projectExpandedBusinessNodes(response *evidencevo.BusinessGraphResponse, traces []evidencevo.NormalizedTrace, visibleClaims map[string]struct{}, claimNodes map[string]struct{}) (map[string]string, map[string][]string) {
+	eventNodes := map[string]string{}
+	operationNodes := map[string][]string{}
+	seen := map[string]struct{}{}
+	for _, node := range response.Data.Nodes {
+		seen[node.ID] = struct{}{}
+	}
+	for _, trace := range traces {
+		for _, event := range trace.Events {
+			switch {
+			case event.EventType == "agent.interaction.started":
+				if event.InteractionID == "" || event.EventID == "" {
+					continue
+				}
+				nodeID := "interaction:" + event.InteractionID
+				addGraphNode(response, seen, evidencevo.BusinessGraphNode{
+					ID: nodeID, NodeType: "interaction", Stage: "intent", Label: "interaction",
+					EventID: event.EventID, InteractionID: event.InteractionID, Visibility: "visible", Properties: cloneMap(event.Payload),
+				})
+				eventNodes[event.EventID] = nodeID
+			case isExecutionFact(event.EventType):
+				if event.EventID == "" || !visible(event.Payload) {
+					continue
+				}
+				nodeID := "event:" + event.EventID
+				properties := cloneMap(event.Payload)
+				properties["event_type"] = event.EventType
+				properties["producer_module"] = event.Producer
+				properties["operation_name"] = event.OperationName
+				addGraphNode(response, seen, evidencevo.BusinessGraphNode{
+					ID: nodeID, NodeType: "operation", Stage: "execution", Label: event.EventType,
+					EventID: event.EventID, InteractionID: event.InteractionID, OperationID: event.OperationID,
+					ClaimID: event.ClaimID, Visibility: visibilityValue(event.Payload), Properties: properties,
+				})
+				eventNodes[event.EventID] = nodeID
+				if event.OperationID != "" {
+					operationNodes[event.OperationID] = append(operationNodes[event.OperationID], nodeID)
+				}
+			case event.EventType == "claim.created":
+				claimID, _ := stringField(event.Payload, "claim_id")
+				if _, ok := visibleClaims[claimID]; ok && event.EventID != "" {
+					eventNodes[event.EventID] = "claim:" + claimID
+				}
+			case event.EventType == "evidence.refs.created":
+				claimID, _ := stringField(event.Payload, "claim_id")
+				if _, ok := visibleClaims[claimID]; !ok {
+					continue
+				}
+				for _, item := range arrayField(event.Payload, "evidence_refs") {
+					ref, ok := item.(map[string]any)
+					if !ok || !visible(ref) {
+						if ok {
+							countVisibility(ref, &response.VisibilitySummary)
+						}
+						continue
+					}
+					refID, _ := stringField(ref, "ref_id")
+					if refID == "" {
+						continue
+					}
+					nodeID := "evidence:" + refID
+					if _, exists := seen[nodeID]; !exists {
+						response.VisibilitySummary.AuthorizedRefCount++
+					}
+					addGraphNode(response, seen, evidencevo.BusinessGraphNode{
+						ID: nodeID, NodeType: "evidence_ref", Stage: "evidence", Label: refID, ClaimID: claimID,
+						VersionStatus: stringValue(ref, "version_status"), Visibility: visibilityValue(ref), Properties: cloneMap(ref),
+					})
+				}
+			case strings.HasPrefix(event.EventType, "action."):
+				if _, ok := visibleClaims[event.ClaimID]; !ok || event.EventID == "" {
+					continue
+				}
+				actionID, _ := stringField(event.Payload, "action_instance_id")
+				if actionID == "" {
+					continue
+				}
+				state := strings.TrimPrefix(event.EventType, "action.")
+				nodeID := "action:" + actionID + ":" + state
+				addGraphNode(response, seen, evidencevo.BusinessGraphNode{
+					ID: nodeID, NodeType: "action", Stage: "action", Label: state, EventID: event.EventID,
+					InteractionID: event.InteractionID, OperationID: event.OperationID, ClaimID: event.ClaimID,
+					ActionID: actionID, Visibility: "visible", Properties: cloneMap(event.Payload),
+				})
+				eventNodes[event.EventID] = nodeID
+			}
+		}
+	}
+	for index := range response.Data.Nodes {
+		if response.Data.Nodes[index].NodeType == "claim" {
+			response.Data.Nodes[index].Stage = "claim"
+		}
+		if strings.HasPrefix(response.Data.Nodes[index].ID, "business:") {
+			response.Data.Nodes[index].Stage = "evidence"
+		}
+	}
+	return eventNodes, operationNodes
+}
+
+func projectExpandedBusinessEdges(response *evidencevo.BusinessGraphResponse, traces []evidencevo.NormalizedTrace, eventNodes map[string]string, operationNodes map[string][]string, visibleClaims map[string]struct{}, seen map[string]struct{}, edgeIndex *int) {
+	for _, trace := range traces {
+		for _, event := range trace.Events {
+			currentNode := eventNodes[event.EventID]
+			if currentNode != "" && event.CausationID != "" {
+				if causeNode := eventNodes[event.CausationID]; causeNode != "" {
+					appendGraphEdge(response, seen, edgeIndex, currentNode, causeNode, "caused_by", "visible")
+				}
+			}
+			switch event.EventType {
+			case "claim.created":
+				claimID, _ := stringField(event.Payload, "claim_id")
+				if _, ok := visibleClaims[claimID]; !ok {
+					continue
+				}
+				for _, sourceID := range stringArrayField(event.Payload, "source_event_ids") {
+					if sourceNode := eventNodes[sourceID]; sourceNode != "" {
+						appendGraphEdge(response, seen, edgeIndex, sourceNode, "claim:"+claimID, "supports", "visible")
+					}
+				}
+			case "evidence.refs.created":
+				claimID, _ := stringField(event.Payload, "claim_id")
+				if _, ok := visibleClaims[claimID]; !ok {
+					continue
+				}
+				for _, item := range arrayField(event.Payload, "evidence_refs") {
+					ref, ok := item.(map[string]any)
+					if !ok || !visible(ref) {
+						continue
+					}
+					refID, _ := stringField(ref, "ref_id")
+					if refID == "" {
+						continue
+					}
+					evidenceNode := "evidence:" + refID
+					appendGraphEdge(response, seen, edgeIndex, evidenceNode, "claim:"+claimID, "supports", visibilityValue(ref))
+					for _, operationNode := range operationNodes[event.OperationID] {
+						appendGraphEdge(response, seen, edgeIndex, operationNode, evidenceNode, "observed", visibilityValue(ref))
+					}
+				}
+			case "action.recommended":
+				if _, ok := visibleClaims[event.ClaimID]; ok && currentNode != "" {
+					appendGraphEdge(response, seen, edgeIndex, "claim:"+event.ClaimID, currentNode, "recommends", "visible")
+				}
+			}
+			if strings.HasPrefix(event.EventType, "action.") && event.EventType != "action.recommended" && currentNode != "" {
+				if previousNode := eventNodes[event.CausationID]; previousNode != "" {
+					appendGraphEdge(response, seen, edgeIndex, previousNode, currentNode, "transitions_to", "visible")
+				}
+			}
+		}
+	}
+}
+
+func isExecutionFact(eventType string) bool {
+	switch eventType {
+	case "retrieval.completed", "knowledge.read.observed", "data.query.observed", "model.call.observed", "tool.called", "tool.result.observed":
+		return true
+	default:
+		return false
+	}
+}
+
+func addGraphNode(response *evidencevo.BusinessGraphResponse, seen map[string]struct{}, node evidencevo.BusinessGraphNode) {
+	if _, ok := seen[node.ID]; ok {
+		return
+	}
+	seen[node.ID] = struct{}{}
+	response.Data.Nodes = append(response.Data.Nodes, node)
+}
+
+func appendGraphEdge(response *evidencevo.BusinessGraphResponse, seen map[string]struct{}, edgeIndex *int, sourceID, targetID, edgeType, visibility string) {
+	if sourceID == "" || targetID == "" || edgeSeen(seen, sourceID, targetID, edgeType) {
+		return
+	}
+	*edgeIndex++
+	response.Data.Edges = append(response.Data.Edges, evidencevo.BusinessGraphEdge{
+		ID: "edge:" + strconv.Itoa(*edgeIndex), SourceID: sourceID, TargetID: targetID, EdgeType: edgeType, Visibility: visibility,
+	})
+}
+
+func stringValue(value map[string]any, key string) string {
+	result, _ := stringField(value, key)
+	return result
 }
 
 func normalizeQueryOptions(options evidencevo.EvidenceQueryOptions) evidencevo.EvidenceQueryOptions {
