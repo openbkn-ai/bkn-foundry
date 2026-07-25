@@ -96,6 +96,7 @@ jobs:
       publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
       build-args: |
         BASE_IMAGE=ghcr.io/${{ github.repository_owner }}/sandbox-python-executor-base:v1
+        PREINSTALL_COMMON=true
 
   build-template-multi-language:
     needs: [test, build-multi-language-base]

@@ -42,6 +42,15 @@ class Settings(BaseModel):
             "directory, which is emptied before every dependency sync."
         ),
     )
+    common_install_path: str = Field(
+        default="/opt/sandbox-common",
+        description=(
+            "Directory holding common packages baked into the image (opt-in per "
+            "template). Like the SDK dir it survives dependency syncs; placed "
+            "after the dependency dir on PYTHONPATH so a function's own declared "
+            "dependencies still override these baseline versions."
+        ),
+    )
     pip_cache_path: str = Field(
         default="/tmp/pip-cache",
         description="Cache directory for pip install operations",
