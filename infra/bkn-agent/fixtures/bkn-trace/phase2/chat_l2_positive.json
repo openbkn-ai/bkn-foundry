@@ -1,11 +1,11 @@
 {
-  "bkn.trace.schema.version": "2.0.0",
-  "fixture_id": "bkn_agent_phase2_chat_l2_positive",
+  "bkn.trace.schema.version": "2.1.0",
+  "fixture_id": "bkn_agent_chat_business_causality_2_1_positive",
   "expected_result": "pass",
   "trace": {
     "trace_id": "7a210000000000000000000000000001",
     "traceparent": "00-7a210000000000000000000000000001-7a21000000000001-01",
-    "bkn.request.id": "req_bkn_agent_phase2_chat_0001",
+    "bkn.request.id": "req_bkn_agent_chat_0001",
     "business_domain": "acct_demo",
     "bkn.account.id": "acct_demo",
     "bkn.account.type": "user"
@@ -18,92 +18,91 @@
       "bkn.module.name": "bkn-agent",
       "bkn.operation.name": "bkn.agent.chat",
       "bkn.status": "ok",
-      "bkn.timestamp": "2026-07-22T10:00:00.000000Z"
+      "bkn.timestamp": "2026-07-25T10:00:00.000000Z"
     }
   ],
   "events": [
     {
-      "event_id": "evt_bkn_agent_chat_claim",
+      "event_id": "evt_agent_interaction_001",
+      "event_type": "agent.interaction.started",
+      "bkn.trace.schema.version": "2.1.0",
+      "observed_at": "2026-07-25T10:00:00.000000Z",
+      "emitted_at": "2026-07-25T10:00:00.000000Z",
+      "producer_module": "bkn-agent",
+      "trace_id": "7a210000000000000000000000000001",
+      "span_id": "7a21000000000001",
+      "bkn.request.id": "req_bkn_agent_chat_0001",
+      "bkn.operation.name": "bkn.agent.chat",
+      "interaction_id": "int_agent_chat_001",
+      "payload": {"intent_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111", "mode": "chat", "agent_id": "agent_demo"}
+    },
+    {
+      "event_id": "evt_tool_called_001",
+      "event_type": "tool.called",
+      "bkn.trace.schema.version": "2.1.0",
+      "observed_at": "2026-07-25T10:00:00.001000Z",
+      "emitted_at": "2026-07-25T10:00:00.001000Z",
+      "producer_module": "bkn-agent",
+      "trace_id": "7a210000000000000000000000000001",
+      "span_id": "7a21000000000001",
+      "bkn.request.id": "req_bkn_agent_chat_0001",
+      "bkn.operation.name": "bkn.agent.tool.call",
+      "interaction_id": "int_agent_chat_001",
+      "operation_id": "op_tool_001",
+      "causation_event_id": "evt_agent_interaction_001",
+      "attempt": 1,
+      "payload": {"tool_id": "query_object", "tool_name": "query_object", "args_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222", "visibility": "visible", "version_status": "unversioned"}
+    },
+    {
+      "event_id": "evt_tool_result_001",
+      "event_type": "tool.result.observed",
+      "bkn.trace.schema.version": "2.1.0",
+      "observed_at": "2026-07-25T10:00:00.002000Z",
+      "emitted_at": "2026-07-25T10:00:00.002000Z",
+      "producer_module": "bkn-agent",
+      "trace_id": "7a210000000000000000000000000001",
+      "span_id": "7a21000000000001",
+      "bkn.request.id": "req_bkn_agent_chat_0001",
+      "bkn.operation.name": "bkn.agent.tool.call",
+      "interaction_id": "int_agent_chat_001",
+      "operation_id": "op_tool_001",
+      "causation_event_id": "evt_tool_called_001",
+      "attempt": 1,
+      "payload": {"tool_id": "query_object", "tool_name": "query_object", "status": "success", "result_hash": "sha256:3333333333333333333333333333333333333333333333333333333333333333", "result_length": 128, "visibility": "visible", "version_status": "unversioned"}
+    },
+    {
+      "event_id": "evt_claim_001",
       "event_type": "claim.created",
-      "bkn.trace.schema.version": "2.0.0",
-      "observed_at": "2026-07-22T10:00:00.000000Z",
-      "emitted_at": "2026-07-22T10:00:00.001000Z",
+      "bkn.trace.schema.version": "2.1.0",
+      "observed_at": "2026-07-25T10:00:00.003000Z",
+      "emitted_at": "2026-07-25T10:00:00.003000Z",
       "producer_module": "bkn-agent",
       "trace_id": "7a210000000000000000000000000001",
       "span_id": "7a21000000000001",
-      "bkn.request.id": "req_bkn_agent_phase2_chat_0001",
+      "bkn.request.id": "req_bkn_agent_chat_0001",
       "bkn.operation.name": "bkn.agent.chat",
-      "payload": {
-        "claim_id": "claim_bkn_agent_chat_0001",
-        "claim_type": "answer",
-        "claim_hash": "sha256:answer_hash_only",
-        "visibility": "visible",
-        "version_status": "unversioned",
-        "partial_reason": ["source_refs_unversioned"],
-        "subject_refs": {
-          "agent_id": "agent_demo",
-          "thread_id": "thread_demo",
-          "prompt_source": "default",
-          "prompt_version": 3
-        }
-      }
+      "interaction_id": "int_agent_chat_001",
+      "causation_event_id": "evt_tool_result_001",
+      "claim_id": "claim_agent_chat_001",
+      "payload": {"claim_id": "claim_agent_chat_001", "claim_type": "answer", "claim_hash": "sha256:4444444444444444444444444444444444444444444444444444444444444444", "source_event_ids": ["evt_tool_result_001"], "operation_ids": ["op_tool_001"], "visibility": "visible", "version_status": "unversioned"}
     },
     {
-      "event_id": "evt_bkn_agent_chat_refs",
+      "event_id": "evt_evidence_refs_001",
       "event_type": "evidence.refs.created",
-      "bkn.trace.schema.version": "2.0.0",
-      "observed_at": "2026-07-22T10:00:00.002000Z",
-      "emitted_at": "2026-07-22T10:00:00.003000Z",
+      "bkn.trace.schema.version": "2.1.0",
+      "observed_at": "2026-07-25T10:00:00.004000Z",
+      "emitted_at": "2026-07-25T10:00:00.004000Z",
       "producer_module": "bkn-agent",
       "trace_id": "7a210000000000000000000000000001",
       "span_id": "7a21000000000001",
-      "bkn.request.id": "req_bkn_agent_phase2_chat_0001",
+      "bkn.request.id": "req_bkn_agent_chat_0001",
       "bkn.operation.name": "bkn.agent.chat",
-      "payload": {
-        "claim_id": "claim_bkn_agent_chat_0001",
-        "evidence_refs": [
-          {
-            "ref_id": "tool:search_schema",
-            "ref_type": "tool_result_ref",
-            "source_system": "bkn-agent",
-            "summary_hash": "sha256:tool_result_summary_hash_only",
-            "tool_name": "search_schema",
-            "validity": "observed",
-            "visibility": "visible",
-            "version_status": "unversioned",
-            "partial_reason": ["tool_result_unversioned"]
-          }
-        ]
-      }
-    },
-    {
-      "event_id": "evt_bkn_agent_chat_business_refs",
-      "event_type": "business.refs.resolved",
-      "bkn.trace.schema.version": "2.0.0",
-      "observed_at": "2026-07-22T10:00:00.004000Z",
-      "emitted_at": "2026-07-22T10:00:00.005000Z",
-      "producer_module": "bkn-agent",
-      "trace_id": "7a210000000000000000000000000001",
-      "span_id": "7a21000000000001",
-      "bkn.request.id": "req_bkn_agent_phase2_chat_0001",
-      "bkn.operation.name": "bkn.agent.chat",
-      "payload": {
-        "claim_id": "claim_bkn_agent_chat_0001",
-        "business_refs": [
-          {
-            "ref_id": "object:forecast_order",
-            "ref_type": "object",
-            "source_system": "bkn",
-            "summary_hash": "sha256:business_ref_summary_hash_only",
-            "label": "forecast_order",
-            "validity": "observed",
-            "visibility": "visible",
-            "version_status": "unversioned",
-            "resolver_status": "unresolved",
-            "partial_reason": ["business_ref_unversioned"]
-          }
-        ]
-      }
+      "interaction_id": "int_agent_chat_001",
+      "operation_id": "op_tool_001",
+      "causation_event_id": "evt_claim_001",
+      "claim_id": "claim_agent_chat_001",
+      "attempt": 1,
+      "payload": {"claim_id": "claim_agent_chat_001", "evidence_refs": [{"ref_id": "evt_tool_result_001", "ref_type": "tool_result_ref", "source_system": "bkn-agent", "validity": "observed", "version_status": "unversioned", "visibility": "visible"}]}
     }
   ]
 }

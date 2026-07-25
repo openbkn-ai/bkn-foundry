@@ -6,7 +6,7 @@ from fastapi import HTTPException
 from langchain_core.tools import StructuredTool
 
 from app.core import graph, tools
-from app import observability
+from app import evidence, observability
 from app.models import AgentOut
 
 
@@ -36,7 +36,7 @@ def test_max_tool_calls_enforced():
     assert calls == ["t1", "t2"]  # 第 3 次没真打下游
 
 
-def test_max_tool_calls_emits_budget_exhausted_event(monkeypatch):
+def test_max_tool_calls_does_not_emit_private_budget_event_to_2_1_index(monkeypatch):
     emitted = []
 
     async def fake_submit(events, account_id, account_type):
@@ -62,9 +62,7 @@ def test_max_tool_calls_emits_budget_exhausted_event(monkeypatch):
         observability.reset_context(token)
     assert "budget exhausted" in result1
     assert "budget exhausted" in result2
-    assert len(emitted) == 1
-    assert emitted[0]["event_type"] == "tool.budget.exhausted"
-    assert emitted[0]["payload"]["tool_name"] == "t1"
+    assert emitted == []
 
 
 def test_no_cap_when_unset():
@@ -73,6 +71,43 @@ def test_no_cap_when_unset():
     asyncio.run(same[0].coroutine(x="a"))
     asyncio.run(same[0].coroutine(x="b"))
     assert calls == ["t1", "t1"]
+
+
+def test_generic_tools_get_distinct_operations_and_dynamic_causality_headers(monkeypatch):
+    emitted = []
+    propagated = []
+
+    async def run(x: str = "") -> str:
+        propagated.append(observability.outbound_headers())
+        return '{"resource_id":"res-1"}'
+
+    async def fake_submit(events, account_id, account_type):
+        emitted.extend(events)
+
+    tool = StructuredTool.from_function(coroutine=run, name="external_tool", description="external")
+    monkeypatch.setattr(evidence, "submit_events", fake_submit)
+    trace_token = observability.set_context(
+        observability.TraceContext(
+            trace_id="1234567890abcdef1234567890abcdef",
+            request_id="req_generic_tool_001",
+            traceparent="00-1234567890abcdef1234567890abcdef-1234567890abcdef-01",
+            entry_boundary="external",
+        )
+    )
+    interaction_token = evidence.begin_interaction("question", "task", "agent-1", "bkn.agent.task")
+    try:
+        wrapped = tools.instrument_tool_calls([tool], "acct", "user")
+        asyncio.run(wrapped[0].coroutine(x="a"))
+        asyncio.run(wrapped[0].coroutine(x="b"))
+    finally:
+        evidence.end_interaction(interaction_token)
+        observability.reset_context(trace_token)
+
+    called = [event for event in emitted if event["event_type"] == "tool.called"]
+    assert len(called) == 2
+    assert called[0]["operation_id"] != called[1]["operation_id"]
+    assert propagated[0]["bkn-operation-id"] == called[0]["operation_id"]
+    assert propagated[1]["bkn-operation-id"] == called[1]["operation_id"]
 
 
 def _sub_agent(mode="task", status="published") -> AgentOut:

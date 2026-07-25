@@ -33,6 +33,51 @@ async def run_agent_once(
     response_format: Optional[dict[str, Any]] = None,
     task_id: Optional[str] = None,
 ) -> str:
+    if evidence.has_interaction():
+        return await _run_agent_once_core(
+            agent,
+            message,
+            prompt_vars,
+            skills,
+            prompt_override,
+            account_id,
+            account_type,
+            depth,
+            response_format,
+            task_id,
+        )
+    token = evidence.begin_interaction(message, "task", agent.agent_id, "bkn.agent.task")
+    try:
+        started = evidence.interaction_started_event()
+        await evidence.submit_events([started] if started else [], account_id, account_type)
+        return await _run_agent_once_core(
+            agent,
+            message,
+            prompt_vars,
+            skills,
+            prompt_override,
+            account_id,
+            account_type,
+            depth,
+            response_format,
+            task_id,
+        )
+    finally:
+        evidence.end_interaction(token)
+
+
+async def _run_agent_once_core(
+    agent: AgentOut,
+    message: str,
+    prompt_vars: dict[str, Any],
+    skills: list[str],
+    prompt_override: Optional[str],
+    account_id: str,
+    account_type: str,
+    depth: int,
+    response_format: Optional[dict[str, Any]] = None,
+    task_id: Optional[str] = None,
+) -> str:
     """一次性无状态执行：单次 graph run，无 checkpointer。被 /run 与 agent-as-tool 共用。
 
     response_format（JSON Schema）非空时走结构化输出：工具循环后再做一次结构化调用，
@@ -47,7 +92,7 @@ async def run_agent_once(
             "检查 agent-as-tool 引用链是否成环。",
         )
 
-    from app.core.tools import apply_tool_call_cap, load_tools  # 延迟导入破 tools↔runner 环
+    from app.core.tools import apply_tool_call_cap, instrument_tool_calls, load_tools  # 延迟导入破 tools↔runner 环
 
     async with SessionLocal() as session:
         system_prompt, prompt_source, prompt_version = await resolve_prompt(
@@ -56,6 +101,7 @@ async def run_agent_once(
     skill_ids = list(dict.fromkeys([*agent.skills, *skills]))
     system_prompt += await load_skills(skill_ids, account_id, account_type)
     tools = await load_tools(agent.tools, account_id, account_type, depth=depth)
+    tools = instrument_tool_calls(tools, account_id, account_type)
     limits = agent.limits
     max_turns = limits.max_turns if limits and limits.max_turns else config.DEFAULT_MAX_TURNS
     timeout_s = limits.timeout_s if limits and limits.timeout_s else config.DEFAULT_TIMEOUT_S
@@ -172,75 +218,47 @@ async def _emit_task_evidence(
 ) -> None:
     subject_id = task_id or agent.agent_id
     cid = evidence.claim_id(claim_type, subject_id, output)
-    tool_names = [
-        getattr(message, "name", "") or getattr(message, "tool_call_id", "")
-        for message in result_messages
-        if isinstance(message, ToolMessage)
-    ]
-    tool_outputs = [
-        {
-            "tool_name": getattr(message, "name", "") or getattr(message, "tool_call_id", ""),
-            "content": getattr(message, "content", None),
-        }
-        for message in result_messages
-        if isinstance(message, ToolMessage)
-    ]
+    source_event_ids, operation_ids, tool_outputs = evidence.adopted_sources()
+    if not source_event_ids or not operation_ids:
+        return
     business_refs = evidence.extract_business_refs_from_tool_outputs(tool_outputs)
-    events = [
-        evidence.claim_created(
-            claim_id_value=cid,
-            claim_type=claim_type,
-            claim_hash=evidence.hash_value(output),
-            operation_name="bkn.agent.task",
-            version_status="unversioned",
-            subject_refs={
-                "agent_id": agent.agent_id,
-                "task_id": task_id,
-                "prompt_source": prompt_source,
-                "prompt_version": prompt_version,
-                "response_format_schema_hash": evidence.schema_hash(response_format),
-            },
-            partial_reason=["source_refs_pending"] if not tool_names else ["source_refs_unversioned"],
-        )
-    ]
-    if response_format:
-        events.append(
-            evidence.structured_output_validated(
-                claim_id_value=cid,
-                schema_hash_value=evidence.schema_hash(response_format),
-                validation_path=structured_validation_path or "unknown",
-                valid=True,
-                operation_name="bkn.agent.structured_output",
-            )
-        )
-    if tool_names:
+    claim_event = evidence.claim_created(
+        claim_id_value=cid,
+        claim_type=claim_type,
+        claim_hash=evidence.hash_value(output),
+        operation_name="bkn.agent.task",
+        source_event_ids=source_event_ids,
+        operation_ids=operation_ids,
+        causation_event_id=source_event_ids[-1] if source_event_ids else None,
+    )
+    events = [claim_event]
+    if source_event_ids:
         events.append(
             evidence.evidence_refs_created(
                 claim_id_value=cid,
                 evidence_refs=[
                     {
-                        "ref_id": f"tool:{evidence.hash_value(name)[7:23]}",
+                        "ref_id": event_id,
                         "ref_type": "tool_result_ref",
                         "source_system": "bkn-agent",
-                        "summary_hash": evidence.hash_value({"tool_name": name}),
-                        "tool_name": name,
                         "validity": "observed",
                         "visibility": "visible",
                         "version_status": "unversioned",
-                        "partial_reason": ["tool_result_unversioned"],
                     }
-                    for name in dict.fromkeys(tool_names)
+                    for event_id in source_event_ids
                 ],
                 operation_name="bkn.agent.task",
+                operation_id=operation_ids[-1] if operation_ids else None,
+                causation_event_id=claim_event["event_id"] if claim_event else None,
             )
         )
-    if business_refs:
-        events.append(
-            evidence.business_refs_resolved(
-                claim_id_value=cid,
-                business_refs=business_refs,
-                operation_name="bkn.agent.task",
-                partial_reason=["business_refs_unversioned"],
-            )
+    events.append(
+        evidence.business_refs_resolved(
+            claim_id_value=cid,
+            business_refs=business_refs,
+            operation_name="bkn.agent.task",
+            operation_id=operation_ids[-1],
+            causation_event_id=claim_event["event_id"],
         )
+    )
     await evidence.submit_events([event for event in events if event], account_id, account_type)

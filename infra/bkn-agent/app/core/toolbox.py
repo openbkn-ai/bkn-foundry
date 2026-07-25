@@ -148,6 +148,7 @@ async def _execute(
     不抛异常击穿整轮对话。参数按元数据声明的位置分发到 body/query/path。"""
     url = f"{config.OPERATOR_INTEGRATION_BASE}/internal-v1/tool-box/{box_id}/proxy/{tool_id}"
     identity = {"x-account-id": account_id, "x-account-type": account_type}
+    operation_id, parent_event_id = evidence.new_operation()
     headers = {**identity, **observability.outbound_headers()}
     payload: dict[str, Any] = {"timeout": 60, "header": headers, "body": {}, "query": {}, "path": {}}
     by_field = {p.field: p for p in params}
@@ -169,7 +170,12 @@ async def _execute(
         toolbox_id=box_id,
         args_hash=args_hash,
         operation_name=operation_name,
+        operation_id=operation_id,
+        causation_event_id=parent_event_id,
     )
+    if start_event:
+        headers.update(evidence.operation_headers(operation_id, start_event["event_id"]))
+        payload["header"].update(evidence.operation_headers(operation_id, start_event["event_id"]))
 
     async def _finish(result: str, *, success: bool, status_code: int | None = None, error: str | None = None) -> str:
         result_event = evidence.tool_result_observed(
@@ -183,7 +189,11 @@ async def _execute(
             error_hash=evidence.hash_value(error or result) if not success else None,
             operation_name=operation_name,
             partial_reason=[] if success else ["tool_result_failed"],
+            operation_id=operation_id,
+            causation_event_id=start_event["event_id"] if start_event else parent_event_id or "",
         )
+        if result_event and success:
+            evidence.record_operation_result(result_event, tool_name=tool_name, content=result if success else None)
         await evidence.submit_events([event for event in [start_event, result_event] if event], account_id, account_type)
         return result
 
@@ -258,6 +268,7 @@ def _build_tool(box_id: str, info: dict, account_id: str, account_type: str) -> 
         name=name,
         description=description,
         args_schema=model,
+        metadata={"bkn_trace_native": True, "bkn_tool_id": tool_id},
     )
 
 

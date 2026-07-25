@@ -3,7 +3,8 @@ import os
 import re
 import uuid
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Optional
 
 logger = logging.getLogger("bkn-agent.otel")
@@ -18,6 +19,10 @@ _TRACEPARENT_RE = re.compile(r"^00-([0-9a-f]{32})-([0-9a-f]{16})-[0-9a-f]{2}$")
 _REQUEST_ID_RE = re.compile(r"^(req_[0-9A-Za-z_.-]+|[0-9A-Za-z_.-]{8,128})$")
 
 
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
+
+
 @dataclass(frozen=True)
 class TraceContext:
     trace_id: str
@@ -25,9 +30,13 @@ class TraceContext:
     traceparent: str
     entry_boundary: str
     upstream_span_id: Optional[str] = None
+    observed_at: str = field(default_factory=_utc_now)
 
 
 _current_context: ContextVar[Optional[TraceContext]] = ContextVar("bkn_trace_context", default=None)
+_current_operation_headers: ContextVar[dict[str, str]] = ContextVar(
+    "bkn_trace_operation_headers", default={}
+)
 
 
 OPENINFERENCE_REDACTION_DEFAULTS = {
@@ -169,7 +178,15 @@ def response_headers(ctx: Optional[TraceContext] = None) -> dict[str, str]:
 
 def outbound_headers(ctx: Optional[TraceContext] = None) -> dict[str, str]:
     """Trace context headers for downstream HTTP/toolbox/MCP calls."""
-    return response_headers(ctx)
+    return {**response_headers(ctx), **_current_operation_headers.get()}
+
+
+def set_operation_headers(headers: dict[str, str]):
+    return _current_operation_headers.set(dict(headers))
+
+
+def reset_operation_headers(token) -> None:
+    _current_operation_headers.reset(token)
 
 
 def enrich_error(content: dict) -> dict:

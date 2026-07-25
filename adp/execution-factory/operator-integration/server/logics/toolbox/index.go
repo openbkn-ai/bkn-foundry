@@ -9,6 +9,7 @@ import (
 
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/dbaccess"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/drivenadapters"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/bkntrace"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/validator"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
@@ -48,6 +49,7 @@ type ToolServiceImpl struct {
 	AuditLog              interfaces.LogModelOperator[*metric.AuditLogBuilderParams]
 	BusinessDomainService interfaces.IBusinessDomainService
 	MetadataService       interfaces.IMetadataService
+	ActionEvidence        bkntrace.Emitter
 }
 
 // NewToolServiceImpl 创建工具箱服务
@@ -69,6 +71,7 @@ func NewToolServiceImpl() interfaces.IToolService {
 			AuditLog:              metric.NewAuditLogBuilder(),
 			BusinessDomainService: business_domain.NewBusinessDomainService(),
 			MetadataService:       metadata.NewMetadataService(),
+			ActionEvidence:        bkntrace.NewHTTPEmitter(),
 		}
 	})
 	return toolService

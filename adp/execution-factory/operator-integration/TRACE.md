@@ -1,136 +1,124 @@
-# operator-integration Trace Contract
+# operator-integration BKN Trace 接入规范
 
-> 状态：阶段一模块接入合同
-> 适用版本：`bkn.trace.schema.version=1.0.0`
-> 依据：`bkn-docs/docs/foundry/bkn-trace/design/阶段一：OpenBKN 可观测记录规范与 Trace Context 基线.md`
+> 状态：2.1 Action 因果闭环实施基线
+> 更新时间：2026-07-25
+> 依据：`bkn-docs/docs/foundry/bkn-trace/registry/核心业务事件注册表.md`
 
-## Module
+## 1. 模块职责
 
-- module name: `action-execution`
-- observed service: `operator-integration`
-- owner: OpenBKN Foundry / execution-factory
-- service identity: `agent-operator-integration`
-- runtime: Go HTTP / MCP / toolbox / sandbox execution service
-- repository path: `adp/execution-factory/operator-integration`
-- contract version: `1.0.0`
+- 模块名：`action-execution`；观测服务：`operator-integration`。
+- 运行形态：Go HTTP/MCP/toolbox/sandbox 执行服务。
+- 代码路径：`adp/execution-factory/operator-integration`。
+- Trace span 使用 `1.0.0`，Evidence event 默认写入 `2.1.0`。
+- 本模块只陈述权限决策、执行尝试和执行结果，不代替 Agent 生成行动建议或审批申请。
 
-## Entry Operations
+## 2. Action 事实责任
 
-| operation | trigger | required context | emitted spans | emitted events |
-| --- | --- | --- | --- | --- |
-| `action.recommend` | action/tool recommendation created by upstream agent or workflow | `traceparent`、`bkn-request-id`、actor/policy context | `action-execution.request` | `action.recommended` |
-| `action.approve` | policy or user approval check | `traceparent`、`bkn-request-id`、actor/policy context | `action-execution.policy.check` | `action.approved` / `policy.denied` |
-| `action.execute` | operator proxy、MCP tool call、toolbox execution、function sandbox execution | `traceparent`、`bkn-request-id`、actor/action refs | `action-execution.request`、`action-execution.invoke` | `action.executed` / `action.failed` |
-| `action.result` | execution result returned or recorded | `traceparent`、`bkn-request-id`、action invocation refs | `action-execution.invoke` | `action.result_recorded` |
+| 事实 | 责任方 | 本模块行为 |
+| --- | --- | --- |
+| `action.recommended` | Agent、AI 应用或工作流 | 不生成；要求上游先写入 |
+| `action.approval_requested` | Agent、AI 应用或工作流 | 不生成；接收入站事件 ID 作为直接原因 |
+| `action.approved` / `action.rejected` | operator-integration 的真实权限边界 | 权限检查后生成 |
+| `action.executed` | operator-integration | 实际开始执行或执行尝试失败时生成 |
+| `action.result_recorded` | operator-integration | 记录结果哈希及受控 task/artifact ref |
 
-## Inbound Context
+上游必须先可靠提交 `recommended -> approval_requested`，再调用执行入口。execution 不根据工具参数猜测建议，不补造缺失的上游状态。
 
-- accepted headers / metadata: `traceparent`、`bkn-request-id`、legacy `x-request-id`、`baggage`、`x-account-id`、`x-account-type`、`x-business-domain`、`user_id`。
-- `traceparent` parsing: HTTP trace middleware extracts W3C Trace Context before `middlewareTraceContext` stores OpenBKN request context.
-- invalid context handling: invalid or missing request id is replaced by generated `req_<uuid>` value.
-- request id generation: `common.SetTraceContextToCtx` generates request id when inbound `bkn-request-id` and `x-request-id` are missing or invalid.
-- tenant/account/auth context source: public endpoints use token introspection / app key verification; internal endpoints use account headers.
-- baggage policy: only `bkn.account.type` and `bkn.runtime.env` are retained; actor id、account id、tenant/domain id、tool args、prompt、SQL、execution payload must not be propagated through baggage.
+## 3. 入口与上下文
 
-## Outbound Calls
-
-| target | protocol | propagated fields | baggage policy | timeout | retry |
-| --- | --- | --- | --- | --- | --- |
-| toolbox / imported tool target | HTTP | `traceparent`、`bkn-request-id`、`x-request-id`、account headers | allowlist only | existing proxy timeout | existing proxy policy |
-| MCP server | MCP / in-process / HTTP transport | request context on `context.Context` and supported metadata | allowlist only | existing MCP timeout | existing MCP policy |
-| sandbox control plane | HTTP / internal client | `traceparent`、`bkn-request-id`、account headers | allowlist only | execution timeout | sandbox policy |
-| authorization / bkn-safe | HTTP | `traceparent`、`bkn-request-id`、account headers | no raw actor identity in baggage | existing client timeout | existing client policy |
-
-Allowed baggage fields:
+Action 执行复用真实 toolbox `ExecuteTool` 权限与执行边界。除已有身份头外，必须携带：
 
 ```text
-bkn.account.type
-bkn.runtime.env
+traceparent
+bkn-request-id
+bkn-interaction-id
+bkn-operation-id
+bkn-causation-event-id
+bkn-claim-id
+bkn-attempt
+bkn-action-instance-id
+bkn-action-type
+bkn-action-reversible
+bkn-action-policy-ref
+bkn-action-observed-at
+bkn-action-approval-requested-event-id
+x-account-id
+x-account-type
+x-business-domain（缺失时暂以 account id 代替）
 ```
 
-## Logs
+- `bkn-action-approval-requested-event-id` 是 `approved/rejected` 的直接原因。
+- `bkn-operation-id` 在重试时保持不变，`bkn-attempt` 递增且进入 event ID。
+- 缺任一必要因果字段时保持原执行行为，但不创建孤立 Action 事件。
+- 当前自动测试策略只接受 `action_type=monitor`、`reversible=true`、`policy_ref=e2e-monitor-auto-approve`。
+- 其他 Action 不得被自动批准，也不得被普通工具调用误判为 Action。
 
-| log type | level | required fields | indexed fields | sensitive fields | example fixture |
-| --- | --- | --- | --- | --- | --- |
-| business | info | `trace_id`、`span_id`、`bkn.request.id`、`bkn.module.name`、`bkn.operation.name`、`bkn.status` | module、operation、status、action type、tool/operator id | complete tool args/result、sandbox stdout/stderr | `fixtures/bkn-trace/positive.json` |
-| error | error | business fields + `error.category`、`error.code`、`error.retryable` | category、code、retryable | raw dependency response、external payload | `fixtures/bkn-trace/sampling.json` |
-| audit | info | actor、policy、decision、resource ref、operation | decision、resource class | raw approval note、credential、target payload | `fixtures/bkn-trace/propagation.json` |
+## 4. 状态机与幂等
 
-## Spans
+本模块仅接续以下状态：
 
-| span name | kind | required attributes | parent/link rule | error mapping |
-| --- | --- | --- | --- | --- |
-| `action-execution.request` | server | module、operation、status、request id、action/tool/operator ref | HTTP entry span | validation/authz/dependency/tool |
-| `action-execution.policy.check` | internal/client | actor、policy decision、resource ref、status | child of request span | denied maps to `bkn.status=denied` |
-| `action-execution.invoke` | internal/client | action type、invocation ref、tool/operator id、status、duration | child/link from request span | dependency/tool/timeout |
+```text
+approval_requested -> approved | rejected
+approved -> executed
+executed -> result_recorded
+```
 
-## Events
+- `rejected` 是终态，拒绝后不得访问工具箱数据库、元数据或执行代理。
+- 权限通过但后续依赖失败时仍记录 `approved -> executed(error) -> result_recorded(error)`。
+- event ID 由 `action_instance_id + operation_id + attempt + event_type` 稳定派生。
+- 同一 attempt 重放相同事件内容必须完全一致；不同 attempt 不得复用 event ID。
 
-| event type | producer | payload summary | partial reason | retention class |
-| --- | --- | --- | --- | --- |
-| `action.recommended` | upstream agent / operator-integration | action type、recommendation hash、policy context | recommendation source partial | forced retention |
-| `action.approved` | operator-integration / policy service | actor ref、policy id、decision ref | policy service unavailable | audit |
-| `policy.denied` | operator-integration / policy service | actor ref、resource ref、reason code | redacted reason | forced retention |
-| `action.executed` | operator-integration | action invocation id、tool/operator ref、status | async result pending | forced retention |
-| `action.failed` | operator-integration | action invocation id、error code、retryable | dependency timeout / validation failed | forced retention |
-| `action.result_recorded` | operator-integration | action invocation id、result hash、classification | result redacted/truncated | business event |
+## 5. 精确 payload
 
-## Business Refs
+| 事件 | 允许字段 |
+| --- | --- |
+| `action.approved` / `action.rejected` | `action_instance_id`、`actor_ref`、`policy_decision_ref`、`status` |
+| `action.executed` | `action_instance_id`、`invocation_ref` 或 `tool_ref`、`status`、错误时的 `error_category/error_hash` |
+| `action.result_recorded` | `action_instance_id`、`result_hash`、`artifact_ref` 或 `task_ref`、`status` |
 
-| ref type | field | resolver | version field | visibility rule |
-| --- | --- | --- | --- | --- |
-| action type | `bkn.action_type.id` | BKN/ontology resolver | schema version | account/domain policy |
-| invocation | `bkn.action_invocation.id` | action execution resolver | invocation version / created_at | actor/policy visibility |
-| actor | `bkn.actor.id` | auth / bkn-safe resolver | token/session version | audit policy |
-| policy | `policy.id` / `bkn.auth.decision` | bkn-safe resolver | policy version | audit policy |
-| tool/operator | `bkn.tool.id` / `operator_id` | execution-factory resolver | release version | account/domain policy |
+所有哈希使用 `sha256:<64 位小写十六进制>`。actor、policy decision、tool、task 均使用不可逆受控引用；不得保存原始用户 ID、工具 ID 或审批意见。
 
-## Sensitive Data Rules
+## 6. Trace 与传播
 
-- never log: token、authorization、cookie、执行凭据、完整工具输入输出、完整函数代码、完整 stdout/stderr、完整外部响应、未脱敏审批备注、目标系统敏感 payload。
-- hash only: action input、tool args、tool result、sandbox stdout/stderr、external response summary。
-- controlled reference: action invocation、large execution artifact、approval evidence、external result artifact。
-- redact: unauthorized action detail、PII、secret connection metadata、credential-like values。
-- current code baseline: HTTP API logs record request body length/hash instead of raw body; function execution logs record stdout/stderr length/hash instead of raw output.
-
-## Sampling
-
-- default: normal successful read/metadata operations can follow platform sampling policy.
-- forced sampling: `error`、`timeout`、`denied`、`security/audit`、`action.recommended`、`action.approved`、`action.executed`、`action.failed`、`action.result_recorded`。
-- not sampled behavior: keep required business log and dropped counters.
-- dropped counters: S3 follow-up.
-
-## Fixtures
-
-| fixture | path | purpose | expected result |
+| 调用目标 | 协议 | 传播字段 | 约束 |
 | --- | --- | --- | --- |
-| positive | `fixtures/bkn-trace/positive.json` | recommendation baseline | pass |
-| negative | `fixtures/bkn-trace/negative_baggage.json` | forbidden actor id in baggage | fail |
-| propagation | `fixtures/bkn-trace/propagation.json` | execute keeps request context | pass |
-| sampling | `fixtures/bkn-trace/sampling.json` | policy denied forced sampled | pass |
+| toolbox/导入工具 | HTTP | trace、request、account 及受控 Action 上下文 | 不传播原始参数和结果 |
+| MCP server | MCP/HTTP | 当前 `context.Context` 支持的 trace 元数据 | baggage 仅 allowlist |
+| sandbox control plane | HTTP | trace、request、account | 使用既有执行超时 |
+| authorization/bkn-safe | HTTP | trace、request、account | baggage 不放 actor 原始标识 |
 
-## Covered GWT
+允许的 baggage 仅为 `bkn.account.type`、`bkn.runtime.env`。
 
-- GWT-01 无上游上下文。
-- GWT-02 可信上游 Trace Context。
-- GWT-05 baggage 违规。
-- GWT-07 后台/异步执行关联。
-- GWT-08 工具或依赖失败。
-- GWT-09 权限拒绝。
-- GWT-10 敏感数据扫描。
-- GWT-12 强制保留。
-- GWT-13 字段索引分层。
+## 7. 敏感数据边界
 
-## Known Gaps
+禁止进入 event、普通日志、span 和 Studio 响应：token、Authorization、Cookie、执行凭据、完整工具输入/输出、完整函数代码、stdout/stderr、外部响应、审批意见、SQL、PII、目标系统敏感 payload。
 
-- runtime `action.recommended/action.approved/action.executed/action.result_recorded` event emitters are not complete in this branch.
-- action invocation id is not yet normalized across operator proxy、MCP tool call、toolbox execution and sandbox execution.
-- policy decision events currently rely on existing audit log path; a dedicated BKN Trace event emitter is a follow-up.
-- full registry validation、indexing policy validation and S3 health metrics rely on bkn-docs validator/S3 follow-up.
+允许记录：安全枚举、长度/计数、完整 SHA-256、受控 action/tool/task/artifact/policy 引用。错误只记录类别和哈希，不记录错误原文。
 
-## Owner Sign-off
+## 8. Given-When-Then 验收
 
-- owner: OpenBKN Foundry / execution-factory
-- reviewed at: 2026-07-21
-- reviewer: pending
-- compatibility risk: low; new headers are additive and legacy `x-request-id` remains supported.
+- Given 上游已提交 recommendation 和 approval request，When 权限通过且执行成功，Then 仅新增 approved、executed、result_recorded。
+- Given 权限拒绝，When 进入真实权限边界，Then 仅新增 rejected，且不访问执行依赖。
+- Given 执行失败，When 权限已通过，Then executed/result 的 status 为 error，错误原文不可见。
+- Given 同一 operation/attempt 重放，When 重建事件，Then event ID 与完整内容一致。
+- Given 缺 Action 因果头或不是可撤销 monitor 测试策略，When 调用工具，Then 不生成 Action 事件。
+
+## 9. Fixture 与测试
+
+- 正向 fixture：`fixtures/bkn-trace/action_2_1_positive.json`。
+- 合同测试：`server/infra/bkntrace/evidence_test.go`。
+- 执行边界测试：`server/logics/toolbox/execute_trace_test.go`。
+- 验证命令：`go test ./server/infra/bkntrace ./server/logics/toolbox`。
+
+## 10. 当前边界
+
+- 本批先接入 toolbox `ExecuteTool`；MCP、operator proxy 和 sandbox 后续复用同一 helper。
+- `BKN_TRACE_EVIDENCE_INGEST_URL` 为空或写入失败时 fail-open，不改变业务响应。
+- 上游 recommendation/approval request 的可靠写入顺序由调用方或 SDK `flush` 保证。
+- 完整本地环境必须把 ingest URL 指向 agent-observability 真实地址。
+
+## 11. 责任确认
+
+- 责任方：OpenBKN Foundry / execution-factory。
+- 评审日期：待定。
+- 兼容风险：中；新增头均为可选，但只有完整 2.1 上下文才启用 Action 证据事件。

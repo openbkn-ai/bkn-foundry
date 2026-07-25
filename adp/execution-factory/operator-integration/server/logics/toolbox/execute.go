@@ -2,10 +2,12 @@ package toolbox
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
 
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/bkntrace"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/telemetry"
@@ -106,14 +108,45 @@ func (s *ToolServiceImpl) ExecuteTool(ctx context.Context, req *interfaces.Execu
 		}))
 		oteltrace.EndSpan(ctx, err)
 	}()
+	action, actionEnabled := bkntrace.ParseAction(req.Headers, req.BoxID, req.ToolID, req.UserID)
+	actionEvents := []bkntrace.Event{}
+	actionApproved := false
+	actionFinished := false
+	emitAction := func() {
+		if actionEnabled && s.ActionEvidence != nil {
+			s.ActionEvidence.Emit(ctx, action, actionEvents)
+		}
+	}
+	defer func() {
+		if actionEnabled && actionApproved && !actionFinished {
+			result, _ := json.Marshal(resp)
+			actionEvents = append(actionEvents, action.AfterExecution(result, err)...)
+			emitAction()
+		}
+	}()
 	var accessor *interfaces.AuthAccessor
 	accessor, err = s.AuthService.GetAccessor(ctx, req.UserID)
 	if err != nil {
+		if actionEnabled {
+			decision, _ := action.AfterPermission(err)
+			actionEvents = append(actionEvents, decision...)
+			emitAction()
+		}
 		return
 	}
 	err = s.AuthService.CheckExecutePermission(ctx, accessor, req.BoxID, interfaces.AuthResourceTypeToolBox)
 	if err != nil {
+		if actionEnabled {
+			decision, _ := action.AfterPermission(err)
+			actionEvents = append(actionEvents, decision...)
+			emitAction()
+		}
 		return
+	}
+	if actionEnabled {
+		decision, _ := action.AfterPermission(nil)
+		actionEvents = append(actionEvents, decision...)
+		actionApproved = true
 	}
 	// 检查工具箱是否存在
 	exist, toolBox, err := s.ToolBoxDB.SelectToolBox(ctx, req.BoxID)
@@ -145,6 +178,12 @@ func (s *ToolServiceImpl) ExecuteTool(ctx context.Context, req *interfaces.Execu
 		return
 	}
 	resp, err = s.executeTool(ctx, req, tool, toolBox.ServerURL)
+	if actionEnabled {
+		result, _ := json.Marshal(resp)
+		actionEvents = append(actionEvents, action.AfterExecution(result, err)...)
+		actionFinished = true
+		emitAction()
+	}
 	if err != nil {
 		return
 	}

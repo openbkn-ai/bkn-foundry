@@ -2,10 +2,11 @@
 import asyncio
 
 import pytest
+from langchain_mcp_adapters.interceptors import MCPToolCallRequest
 
 from app import evidence, observability
 from app.core import toolbox
-from app.core.tools import _mcp_connections, _toolbox_tools
+from app.core.tools import _mcp_connections, _toolbox_tools, _trace_mcp_call
 from app.errors import bad_request  # noqa: F401  (确认导出仍存在)
 
 _TOOL_INFO = {
@@ -74,6 +75,38 @@ _QUERY_TOOL_INFO = {
         },
     },
 }
+
+
+def test_mcp_interceptor_injects_operation_headers_at_call_time(monkeypatch):
+    monkeypatch.setattr(
+        observability,
+        "outbound_headers",
+        lambda: {
+            "bkn-interaction-id": "interaction-1",
+            "bkn-operation-id": "operation-1",
+            "bkn-causation-event-id": "event-1",
+        },
+    )
+    request = MCPToolCallRequest(
+        name="search",
+        args={"query": "redacted"},
+        server_name="test",
+        headers={"x-account-id": "account-1"},
+        runtime=None,
+    )
+
+    async def handler(actual):
+        return actual
+
+    actual = asyncio.run(_trace_mcp_call(request, handler))
+
+    assert actual.headers == {
+        "x-account-id": "account-1",
+        "bkn-interaction-id": "interaction-1",
+        "bkn-operation-id": "operation-1",
+        "bkn-causation-event-id": "event-1",
+    }
+
 
 
 def test_safe_name_sanitize_and_fallback():
@@ -310,6 +343,67 @@ def test_execute_emits_hash_only_tool_evidence(monkeypatch):
     assert "客户A风险升高" not in serialized
     assert submitted[0]["payload"]["args_hash"].startswith("sha256:")
     assert submitted[1]["payload"]["result_hash"].startswith("sha256:")
+
+
+def test_execute_assigns_operation_and_propagates_causality_headers(monkeypatch):
+    submitted = []
+    sent = {}
+
+    class _Resp:
+        status = 200
+
+        async def text(self):
+            return '{"status_code":200,"body":{"resource_id":"res-1"}}'
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+    class _Session:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        def post(self, url, json=None, headers=None):
+            sent.update(headers=headers, payload=json)
+            return _Resp()
+
+    async def fake_submit(events, account_id, account_type):
+        submitted.extend(events)
+
+    token = observability.set_context(
+        observability.TraceContext(
+            trace_id="1234567890abcdef1234567890abcdef",
+            request_id="req_toolbox_causality_001",
+            traceparent="00-1234567890abcdef1234567890abcdef-abcdef1234567890-01",
+            entry_boundary="external",
+            upstream_span_id="abcdef1234567890",
+        )
+    )
+    interaction_token = evidence.begin_interaction("hello", "task", "agent-1", "bkn.agent.task")
+    try:
+        monkeypatch.setattr(toolbox.aiohttp, "ClientSession", _Session)
+        monkeypatch.setattr(evidence, "submit_events", fake_submit)
+        asyncio.run(toolbox._execute("box-1", "tool-1", "monitor", "POST", {}, [], "acct", "user"))
+    finally:
+        evidence.end_interaction(interaction_token)
+        observability.reset_context(token)
+
+    called, result = submitted
+    assert called["event_type"] == "tool.called"
+    assert result["event_type"] == "tool.result.observed"
+    assert called["operation_id"] == result["operation_id"]
+    assert result["causation_event_id"] == called["event_id"]
+    assert sent["headers"]["bkn-interaction-id"] == called["interaction_id"]
+    assert sent["headers"]["bkn-operation-id"] == called["operation_id"]
+    assert sent["headers"]["bkn-causation-event-id"] == called["event_id"]
 
 
 def test_build_tool_survives_bad_args_schema(monkeypatch):

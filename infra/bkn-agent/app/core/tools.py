@@ -14,6 +14,12 @@ from app.errors import bad_request
 logger = logging.getLogger("bkn-agent.tools")
 
 
+async def _trace_mcp_call(request, handler):
+    """At the transport boundary, bind the MCP call to the current tool operation."""
+    headers = {**(request.headers or {}), **observability.outbound_headers()}
+    return await handler(request.override(headers=headers))
+
+
 def _mcp_connections(tool_refs: list[dict], account_id: str, account_type: str) -> dict[str, dict]:
     """agent.tools 中 type=mcp 的显式外部 MCP 端点。平台内置工具不走这里
     （统一从执行工厂 toolbox 装载，见 load_tools）。"""
@@ -164,7 +170,7 @@ async def load_tools(
     tools: list[Any] = await _toolbox_tools(tool_refs, account_id, account_type)
     conns = _mcp_connections(tool_refs, account_id, account_type)
     if conns:
-        client = MultiServerMCPClient(conns)
+        client = MultiServerMCPClient(conns, tool_interceptors=[_trace_mcp_call])
         tools.extend(await client.get_tools())
     for ref in tool_refs:
         if ref.get("type") == "agent":
@@ -186,6 +192,75 @@ async def load_tools(
         deduped.append(t)
     deduped.append(builtin)
     return deduped
+
+
+def instrument_tool_calls(tools: list[Any], account_id: str, account_type: str) -> list[Any]:
+    """Give every non-native LangChain tool call its own causal operation.
+
+    Toolbox tools already emit at the HTTP boundary and carry a native marker,
+    so wrapping them again would create duplicate business events.
+    """
+    instrumented: list[Any] = []
+    for tool in tools:
+        metadata = dict(getattr(tool, "metadata", None) or {})
+        inner = getattr(tool, "coroutine", None)
+        if inner is None or metadata.get("bkn_trace_native"):
+            instrumented.append(tool)
+            continue
+        tool_name = str(getattr(tool, "name", "tool"))
+        tool_id = str(metadata.get("bkn_tool_id") or tool_name)
+
+        async def _traced(__inner=inner, __tool_name=tool_name, __tool_id=tool_id, **kwargs):
+            operation_id, parent_event_id = evidence.new_operation()
+            called = evidence.tool_called(
+                tool_id=__tool_id,
+                tool_name=__tool_name,
+                toolbox_id=None,
+                args_hash=evidence.hash_value(kwargs),
+                operation_name="bkn.agent.tool.call",
+                operation_id=operation_id,
+                causation_event_id=parent_event_id,
+            )
+            headers = evidence.operation_headers(operation_id, called["event_id"] if called else parent_event_id or "")
+            header_token = observability.set_operation_headers(headers)
+            try:
+                result = await __inner(**kwargs)
+            except Exception as exc:
+                observed = evidence.tool_result_observed(
+                    tool_id=__tool_id,
+                    tool_name=__tool_name,
+                    toolbox_id=None,
+                    result_hash=None,
+                    result_length=None,
+                    success=False,
+                    operation_name="bkn.agent.tool.call",
+                    error_hash=evidence.hash_value(f"{type(exc).__name__}:{exc}"),
+                    operation_id=operation_id,
+                    causation_event_id=called["event_id"] if called else parent_event_id or "",
+                )
+                await evidence.submit_events([event for event in (called, observed) if event], account_id, account_type)
+                raise
+            finally:
+                observability.reset_operation_headers(header_token)
+            result_text = result if isinstance(result, str) else str(result)
+            observed = evidence.tool_result_observed(
+                tool_id=__tool_id,
+                tool_name=__tool_name,
+                toolbox_id=None,
+                result_hash=evidence.hash_value(result),
+                result_length=len(result_text),
+                success=True,
+                operation_name="bkn.agent.tool.call",
+                operation_id=operation_id,
+                causation_event_id=called["event_id"] if called else parent_event_id or "",
+            )
+            if observed:
+                evidence.record_operation_result(observed, tool_name=__tool_name, content=result)
+            await evidence.submit_events([event for event in (called, observed) if event], account_id, account_type)
+            return result
+
+        instrumented.append(tool.model_copy(update={"coroutine": _traced}))
+    return instrumented
 
 
 def apply_tool_call_cap(
