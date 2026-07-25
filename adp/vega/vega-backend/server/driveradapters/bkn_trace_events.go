@@ -25,10 +25,15 @@ func vegaTraceRequestContext(c *gin.Context, ctx context.Context) bkntrace.Reque
 		businessDomain = strings.TrimSpace(traceContext.Baggage["business_domain"])
 	}
 	return bkntrace.RequestContext{
-		RequestID:      traceContext.RequestID,
-		AccountID:      accountInfo.ID,
-		AccountType:    accountInfo.Type,
-		BusinessDomain: businessDomain,
+		RequestID:        traceContext.RequestID,
+		AccountID:        accountInfo.ID,
+		AccountType:      accountInfo.Type,
+		BusinessDomain:   businessDomain,
+		InteractionID:    traceContext.InteractionID,
+		OperationID:      traceContext.OperationID,
+		CausationEventID: traceContext.CausationEventID,
+		ClaimID:          traceContext.ClaimID,
+		Attempt:          traceContext.Attempt,
 	}
 }
 

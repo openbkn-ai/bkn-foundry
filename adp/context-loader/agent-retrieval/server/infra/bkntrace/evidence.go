@@ -25,7 +25,7 @@ import (
 )
 
 const (
-	ContractVersion = "2.0.0"
+	ContractVersion = "2.1.0"
 	ModuleName      = "context-loader"
 )
 
@@ -51,12 +51,17 @@ type batch struct {
 }
 
 type eventContext struct {
-	traceID     string
-	spanID      string
-	traceparent string
-	requestID   string
-	accountID   string
-	accountType string
+	traceID          string
+	spanID           string
+	traceparent      string
+	requestID        string
+	accountID        string
+	accountType      string
+	interactionID    string
+	operationID      string
+	causationEventID string
+	claimID          string
+	attempt          int
 }
 
 func HashValue(value any) string {
@@ -66,15 +71,6 @@ func HashValue(value any) string {
 	}
 	sum := sha256.Sum256(raw)
 	return "sha256:" + hex.EncodeToString(sum[:])
-}
-
-func ClaimID(kind, subjectID string, value any) string {
-	sum := sha256.Sum256([]byte(HashValue(map[string]any{
-		"kind":       kind,
-		"subject_id": subjectID,
-		"value":      value,
-	})))
-	return "claim_" + hex.EncodeToString(sum[:])[:24]
 }
 
 func EvidenceEnabled() bool {
@@ -108,43 +104,7 @@ func BuildSearchSchemaEvents(ctx context.Context, req *interfaces.SearchSchemaRe
 		return nil
 	}
 	refs := schemaEvidenceRefs(resp)
-	if len(refs) == 0 {
-		return nil
-	}
-
-	resultSummary := map[string]any{
-		"kn_id":               resolvedKnID(req),
-		"query_hash":          HashValue(strings.TrimSpace(req.Query)),
-		"object_type_count":   len(resp.ObjectTypes),
-		"relation_type_count": len(resp.RelationTypes),
-		"action_type_count":   len(resp.ActionTypes),
-		"metric_type_count":   len(resp.MetricTypes),
-	}
-	claimID := ClaimID("context_loader.search_schema", resolvedKnID(req), resultSummary)
-
-	return []Event{
-		buildEvent(ec, "claim.created", "context.search_schema", map[string]any{
-			"claim_id":       claimID,
-			"claim_type":     "finding",
-			"claim_hash":     HashValue(resultSummary),
-			"visibility":     "visible",
-			"version_status": "unversioned",
-			"partial_reason": []string{"schema_refs_unversioned"},
-			"subject_refs": map[string]any{
-				"kn_id":               resolvedKnID(req),
-				"query_hash":          resultSummary["query_hash"],
-				"max_concepts":        maxConcepts(req),
-				"include_columns":     boolValue(req.IncludeColumns),
-				"schema_brief":        boolValue(req.SchemaBrief),
-				"returned_ref_count":  len(refs),
-				"data.classification": "internal",
-			},
-		}),
-		buildEvent(ec, "evidence.refs.created", "context.search_schema", map[string]any{
-			"claim_id":      claimID,
-			"evidence_refs": refs,
-		}),
-	}
+	return buildRetrievalEvents(ec, "context.search_schema", HashValue(strings.TrimSpace(req.Query)), len(refs), false, refs)
 }
 
 func BuildQueryObjectInstanceEvents(ctx context.Context, req *interfaces.QueryObjectInstancesReq, resp *interfaces.QueryObjectInstancesResp) []Event {
@@ -153,48 +113,7 @@ func BuildQueryObjectInstanceEvents(ctx context.Context, req *interfaces.QueryOb
 		return nil
 	}
 	refs := objectInstanceEvidenceRefs(req, resp)
-	if len(refs) == 0 {
-		return nil
-	}
-
-	resultSummary := map[string]any{
-		"kn_id":          queryObjectKnID(req),
-		"object_type_id": queryObjectTypeID(req),
-		"condition_hash": queryObjectConditionHash(req),
-		"result_count":   len(resp.Data),
-		"truncated":      queryObjectTruncated(req, resp),
-	}
-	claimID := ClaimID("context_loader.query_object_instance", queryObjectTypeID(req), resultSummary)
-
-	partialReason := []string{"row_refs_unversioned"}
-	if queryObjectTruncated(req, resp) {
-		partialReason = append(partialReason, "result_truncated")
-	}
-
-	return []Event{
-		buildEvent(ec, "claim.created", "context.query_object", map[string]any{
-			"claim_id":       claimID,
-			"claim_type":     "finding",
-			"claim_hash":     HashValue(resultSummary),
-			"visibility":     "visible",
-			"version_status": "unversioned",
-			"partial_reason": partialReason,
-			"subject_refs": map[string]any{
-				"kn_id":               queryObjectKnID(req),
-				"object_type_id":      queryObjectTypeID(req),
-				"condition_hash":      resultSummary["condition_hash"],
-				"properties_hash":     queryObjectPropertiesHash(req),
-				"limit":               queryObjectLimit(req),
-				"returned_ref_count":  len(refs),
-				"truncated":           queryObjectTruncated(req, resp),
-				"data.classification": "internal",
-			},
-		}),
-		buildEvent(ec, "evidence.refs.created", "context.query_object", map[string]any{
-			"claim_id":      claimID,
-			"evidence_refs": refs,
-		}),
-	}
+	return buildRetrievalEvents(ec, "context.query_object", queryObjectConditionHash(req), len(refs), queryObjectTruncated(req, resp), refs)
 }
 
 func BuildQueryInstanceSubgraphEvents(ctx context.Context, req *interfaces.QueryInstanceSubgraphReq, resp *interfaces.QueryInstanceSubgraphResp) []Event {
@@ -203,45 +122,52 @@ func BuildQueryInstanceSubgraphEvents(ctx context.Context, req *interfaces.Query
 		return nil
 	}
 	refs, refsTruncated := subgraphEvidenceRefs(resp)
-	if len(refs) == 0 {
-		return nil
-	}
+	return buildRetrievalEvents(ec, "context.query_instance_subgraph", querySubgraphPathHash(req), len(refs), refsTruncated, refs)
+}
 
-	resultSummary := map[string]any{
-		"kn_id":                querySubgraphKnID(req),
-		"path_hash":            querySubgraphPathHash(req),
-		"entry_count":          subgraphEntryCount(resp),
-		"include_logic_params": querySubgraphIncludeLogicParams(req),
+func buildRetrievalEvents(ec eventContext, operation, queryHash string, candidateCount int, truncated bool, refs []map[string]any) []Event {
+	fact := buildEvent(ec, "retrieval.completed", operation, map[string]any{
+		"query_hash":      queryHash,
+		"candidate_count": candidateCount,
+		"truncated":       truncated,
+		"version_status":  "unversioned",
+		"source_refs":     refs,
+	}, ec.claimID, ec.causationEventID)
+	events := []Event{fact}
+	if ec.claimID == "" {
+		return events
 	}
-	claimID := ClaimID("context_loader.query_instance_subgraph", querySubgraphKnID(req), resultSummary)
-
-	partialReason := []string{"row_refs_unversioned", "schema_refs_unversioned"}
-	if refsTruncated {
-		partialReason = append(partialReason, "refs_truncated")
-	}
-
-	return []Event{
-		buildEvent(ec, "claim.created", "context.query_instance_subgraph", map[string]any{
-			"claim_id":       claimID,
-			"claim_type":     "finding",
-			"claim_hash":     HashValue(resultSummary),
-			"visibility":     "visible",
-			"version_status": "unversioned",
-			"partial_reason": partialReason,
-			"subject_refs": map[string]any{
-				"kn_id":                querySubgraphKnID(req),
-				"path_hash":            resultSummary["path_hash"],
-				"returned_ref_count":   len(refs),
-				"include_logic_params": querySubgraphIncludeLogicParams(req),
-				"refs_truncated":       refsTruncated,
-				"data.classification":  "internal",
-			},
-		}),
-		buildEvent(ec, "evidence.refs.created", "context.query_instance_subgraph", map[string]any{
-			"claim_id":      claimID,
+	causationID := fact["event_id"].(string)
+	if len(refs) > 0 {
+		evidence := buildEvent(ec, "evidence.refs.created", operation, map[string]any{
+			"claim_id":      ec.claimID,
 			"evidence_refs": refs,
-		}),
+		}, ec.claimID, causationID)
+		events = append(events, evidence)
+		causationID = evidence["event_id"].(string)
 	}
+	businessRefs := resolvedBusinessRefs(refs)
+	resolverStatus := "resolved"
+	if len(businessRefs) == 0 {
+		resolverStatus = "unresolved"
+	}
+	events = append(events, buildEvent(ec, "business.refs.resolved", operation, map[string]any{
+		"claim_id":        ec.claimID,
+		"business_refs":   businessRefs,
+		"resolver_status": resolverStatus,
+	}, ec.claimID, causationID))
+	return events
+}
+
+func resolvedBusinessRefs(refs []map[string]any) []map[string]any {
+	result := make([]map[string]any, 0, len(refs))
+	for _, ref := range refs {
+		if firstString(ref, "ref_type") == "row_ref" {
+			continue
+		}
+		result = append(result, ref)
+	}
+	return result
 }
 
 func SubmitEvents(ctx context.Context, logger interfaces.Logger, req any, events []Event) {
@@ -352,23 +278,37 @@ func contextFromRequest(ctx context.Context, req any) (eventContext, bool) {
 			accountType = strings.TrimSpace(schemaReq.XAccountType)
 		}
 	}
+	interactionID := strings.TrimSpace(traceContext.InteractionID)
+	operationID := strings.TrimSpace(traceContext.OperationID)
+	if interactionID == "" || operationID == "" {
+		return eventContext{}, false
+	}
 	flags := "00"
 	if spanContext.TraceFlags().IsSampled() {
 		flags = "01"
 	}
+	attempt := traceContext.Attempt
+	if attempt < 1 || attempt > 1000 {
+		attempt = 1
+	}
 	return eventContext{
-		traceID:     spanContext.TraceID().String(),
-		spanID:      spanContext.SpanID().String(),
-		traceparent: fmt.Sprintf("00-%s-%s-%s", spanContext.TraceID().String(), spanContext.SpanID().String(), flags),
-		requestID:   traceContext.RequestID,
-		accountID:   accountID,
-		accountType: accountType,
+		traceID:          spanContext.TraceID().String(),
+		spanID:           spanContext.SpanID().String(),
+		traceparent:      fmt.Sprintf("00-%s-%s-%s", spanContext.TraceID().String(), spanContext.SpanID().String(), flags),
+		requestID:        traceContext.RequestID,
+		accountID:        accountID,
+		accountType:      accountType,
+		interactionID:    interactionID,
+		operationID:      operationID,
+		causationEventID: strings.TrimSpace(traceContext.CausationEventID),
+		claimID:          strings.TrimSpace(traceContext.ClaimID),
+		attempt:          attempt,
 	}, true
 }
 
-func buildEvent(ec eventContext, eventType, operationName string, payload map[string]any) Event {
+func buildEvent(ec eventContext, eventType, operationName string, payload map[string]any, claimID, causationEventID string) Event {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	return Event{
+	event := Event{
 		"event_id":                 "evt_" + randomHex(16),
 		"event_type":               eventType,
 		"bkn.trace.schema.version": ContractVersion,
@@ -379,8 +319,18 @@ func buildEvent(ec eventContext, eventType, operationName string, payload map[st
 		"span_id":                  ec.spanID,
 		"bkn.request.id":           ec.requestID,
 		"bkn.operation.name":       operationName,
+		"interaction_id":           ec.interactionID,
+		"operation_id":             ec.operationID,
+		"attempt":                  ec.attempt,
 		"payload":                  payload,
 	}
+	if causationEventID != "" {
+		event["causation_event_id"] = causationEventID
+	}
+	if claimID != "" {
+		event["claim_id"] = claimID
+	}
+	return event
 }
 
 func randomHex(length int) string {
@@ -426,7 +376,6 @@ func conceptRefs(kind, refType string, items []any) []map[string]any {
 			"validity":       "observed",
 			"version_status": "unversioned",
 			"visibility":     "visible",
-			"partial_reason": []string{"schema_ref_unversioned"},
 		})
 	}
 	return refs
@@ -499,17 +448,6 @@ func resolvedKnID(req *interfaces.SearchSchemaReq) string {
 	return strings.TrimSpace(req.KnID)
 }
 
-func maxConcepts(req *interfaces.SearchSchemaReq) int {
-	if req == nil || req.MaxConcepts == nil {
-		return 0
-	}
-	return *req.MaxConcepts
-}
-
-func boolValue(value *bool) bool {
-	return value != nil && *value
-}
-
 func objectInstanceEvidenceRefs(req *interfaces.QueryObjectInstancesReq, resp *interfaces.QueryObjectInstancesResp) []map[string]any {
 	if req == nil || resp == nil || len(resp.Data) == 0 {
 		return nil
@@ -531,7 +469,6 @@ func objectInstanceEvidenceRefs(req *interfaces.QueryObjectInstancesReq, resp *i
 			"validity":       "observed",
 			"version_status": "unversioned",
 			"visibility":     "visible",
-			"partial_reason": []string{"row_ref_unversioned"},
 		})
 	}
 	return refs
@@ -561,13 +498,6 @@ func queryObjectConditionHash(req *interfaces.QueryObjectInstancesReq) string {
 	})
 }
 
-func queryObjectPropertiesHash(req *interfaces.QueryObjectInstancesReq) string {
-	if req == nil {
-		return HashValue(nil)
-	}
-	return HashValue(req.Properties)
-}
-
 func queryObjectTruncated(req *interfaces.QueryObjectInstancesReq, resp *interfaces.QueryObjectInstancesResp) bool {
 	if resp == nil {
 		return false
@@ -595,13 +525,6 @@ func queryObjectTypeID(req *interfaces.QueryObjectInstancesReq) string {
 	return strings.TrimSpace(req.OtID)
 }
 
-func queryObjectLimit(req *interfaces.QueryObjectInstancesReq) int {
-	if req == nil {
-		return 0
-	}
-	return req.Limit
-}
-
 func subgraphEvidenceRefs(resp *interfaces.QueryInstanceSubgraphResp) ([]map[string]any, bool) {
 	if resp == nil || resp.Entries == nil {
 		return nil, false
@@ -619,7 +542,6 @@ func subgraphEvidenceRefs(resp *interfaces.QueryInstanceSubgraphResp) ([]map[str
 				"validity":       "observed",
 				"version_status": "unversioned",
 				"visibility":     "visible",
-				"partial_reason": []string{"row_ref_unversioned"},
 			}
 			if !appendEvidenceRef(&refs, seen, ref) {
 				truncated = true
@@ -641,7 +563,6 @@ func subgraphEvidenceRefs(resp *interfaces.QueryInstanceSubgraphResp) ([]map[str
 				"validity":       "observed",
 				"version_status": "unversioned",
 				"visibility":     "visible",
-				"partial_reason": []string{"schema_ref_unversioned"},
 			}
 			if !appendEvidenceRef(&refs, seen, ref) {
 				truncated = true
@@ -723,34 +644,11 @@ func isRelationContainerKey(key string) bool {
 	}
 }
 
-func querySubgraphKnID(req *interfaces.QueryInstanceSubgraphReq) string {
-	if req == nil {
-		return ""
-	}
-	return strings.TrimSpace(req.KnID)
-}
-
 func querySubgraphPathHash(req *interfaces.QueryInstanceSubgraphReq) string {
 	if req == nil {
 		return HashValue(nil)
 	}
 	return HashValue(req.RelationTypePaths)
-}
-
-func querySubgraphIncludeLogicParams(req *interfaces.QueryInstanceSubgraphReq) bool {
-	return req != nil && req.IncludeLogicParams
-}
-
-func subgraphEntryCount(resp *interfaces.QueryInstanceSubgraphResp) int {
-	if resp == nil || resp.Entries == nil {
-		return 0
-	}
-	switch entries := resp.Entries.(type) {
-	case []any:
-		return len(entries)
-	default:
-		return 1
-	}
 }
 
 func hashSuffix(value any) string {

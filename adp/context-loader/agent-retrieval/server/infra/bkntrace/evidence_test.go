@@ -31,13 +31,84 @@ func testTraceContext() context.Context {
 	})
 	ctx := trace.ContextWithSpanContext(context.Background(), spanContext)
 	ctx = common.SetTraceContextToCtx(ctx, common.TraceContext{
-		RequestID: "req_context_loader_phase2_0001",
+		RequestID:        "req_context_loader_phase2_0001",
+		InteractionID:    "int_context_loader_0001",
+		OperationID:      "op_context_retrieval_0001",
+		CausationEventID: "evt_agent_tool_called_0001",
+		Attempt:          2,
 	})
 	ctx = common.SetAccountAuthContextToCtx(ctx, &interfaces.AccountAuthContext{
 		AccountID:   "acct_demo",
 		AccountType: interfaces.AccessorType("user"),
 	})
 	return ctx
+}
+
+func testTraceContextWithClaim() context.Context {
+	ctx := testTraceContext()
+	traceContext, _ := common.GetTraceContextFromCtx(ctx)
+	traceContext.ClaimID = "claim_agent_answer_0001"
+	return common.SetTraceContextToCtx(ctx, traceContext)
+}
+
+func TestBuildSearchSchemaEventsEmitsFactWithoutManufacturingClaim(t *testing.T) {
+	maxConcepts := 5
+	events := BuildSearchSchemaEvents(testTraceContext(), &interfaces.SearchSchemaReq{
+		Query: "customer risk", KnID: "kn_demo", MaxConcepts: &maxConcepts,
+	}, &interfaces.SearchSchemaResp{ObjectTypes: []any{map[string]any{"concept_id": "customer"}}})
+	if len(events) != 1 {
+		t.Fatalf("len(events)=%d, want one fact event without upstream claim", len(events))
+	}
+	if events[0]["event_type"] != "retrieval.completed" {
+		t.Fatalf("event_type=%v, want retrieval.completed", events[0]["event_type"])
+	}
+	if events[0]["bkn.trace.schema.version"] != "2.1.0" {
+		t.Fatalf("schema version=%v, want 2.1.0", events[0]["bkn.trace.schema.version"])
+	}
+	for key, want := range map[string]any{
+		"interaction_id":     "int_context_loader_0001",
+		"operation_id":       "op_context_retrieval_0001",
+		"causation_event_id": "evt_agent_tool_called_0001",
+		"attempt":            2,
+	} {
+		if events[0][key] != want {
+			t.Fatalf("%s=%v, want %v", key, events[0][key], want)
+		}
+	}
+	raw, _ := json.Marshal(events)
+	if strings.Contains(string(raw), "claim.created") || strings.Contains(string(raw), "claim_id") {
+		t.Fatalf("producer manufactured a claim: %s", raw)
+	}
+}
+
+func TestBuildSearchSchemaEventsAddsRefsOnlyForUpstreamClaim(t *testing.T) {
+	maxConcepts := 5
+	events := BuildSearchSchemaEvents(testTraceContextWithClaim(), &interfaces.SearchSchemaReq{
+		Query: "customer risk", KnID: "kn_demo", MaxConcepts: &maxConcepts,
+	}, &interfaces.SearchSchemaResp{ObjectTypes: []any{map[string]any{"concept_id": "customer", "summary": "raw"}}})
+	if len(events) != 3 {
+		t.Fatalf("len(events)=%d, want fact, evidence refs and business refs", len(events))
+	}
+	for index, eventType := range []string{"retrieval.completed", "evidence.refs.created", "business.refs.resolved"} {
+		if events[index]["event_type"] != eventType {
+			t.Fatalf("events[%d].event_type=%v, want %s", index, events[index]["event_type"], eventType)
+		}
+		if events[index]["claim_id"] != "claim_agent_answer_0001" {
+			t.Fatalf("events[%d].claim_id=%v", index, events[index]["claim_id"])
+		}
+	}
+	assertOnlyKeys(t, events[0]["payload"].(map[string]any), "query_hash", "candidate_count", "truncated", "version_status", "source_refs")
+	assertOnlyKeys(t, events[1]["payload"].(map[string]any), "claim_id", "evidence_refs")
+	assertOnlyKeys(t, events[2]["payload"].(map[string]any), "claim_id", "resolver_status", "business_refs")
+	for _, ref := range events[1]["payload"].(map[string]any)["evidence_refs"].([]map[string]any) {
+		assertOnlyKeys(t, ref, "ref_id", "ref_type", "source_system", "validity", "version_status", "visibility", "summary_hash")
+	}
+	raw, _ := json.Marshal(events)
+	for _, forbidden := range []string{"claim.created", `"summary":`, "customer risk"} {
+		if strings.Contains(string(raw), forbidden) {
+			t.Fatalf("forbidden producer payload %q: %s", forbidden, raw)
+		}
+	}
 }
 
 func TestBuildSearchSchemaEventsUsesHashAndRefsOnly(t *testing.T) {
@@ -75,17 +146,17 @@ func TestBuildSearchSchemaEventsUsesHashAndRefsOnly(t *testing.T) {
 		},
 	}
 
-	events := BuildSearchSchemaEvents(testTraceContext(), req, resp)
-	if len(events) != 2 {
-		t.Fatalf("len(events)=%d, want 2", len(events))
+	events := BuildSearchSchemaEvents(testTraceContextWithClaim(), req, resp)
+	if len(events) != 3 {
+		t.Fatalf("len(events)=%d, want 3", len(events))
 	}
 	raw, err := json.Marshal(events)
 	if err != nil {
 		t.Fatalf("marshal events: %v", err)
 	}
 	text := string(raw)
-	if !strings.Contains(text, `"event_type":"claim.created"`) {
-		t.Fatalf("missing claim.created event: %s", text)
+	if !strings.Contains(text, `"event_type":"retrieval.completed"`) {
+		t.Fatalf("missing retrieval.completed event: %s", text)
 	}
 	if !strings.Contains(text, `"event_type":"evidence.refs.created"`) {
 		t.Fatalf("missing evidence.refs.created event: %s", text)
@@ -144,29 +215,29 @@ func TestBuildQueryObjectInstanceEventsUsesRowRefsOnly(t *testing.T) {
 		SearchAfter: []any{"cursor_001"},
 	}
 
-	events := BuildQueryObjectInstanceEvents(testTraceContext(), req, resp)
-	if len(events) != 2 {
-		t.Fatalf("len(events)=%d, want 2", len(events))
+	events := BuildQueryObjectInstanceEvents(testTraceContextWithClaim(), req, resp)
+	if len(events) != 3 {
+		t.Fatalf("len(events)=%d, want fact, evidence refs and unresolved business refs", len(events))
 	}
 	raw, err := json.Marshal(events)
 	if err != nil {
 		t.Fatalf("marshal events: %v", err)
 	}
 	text := string(raw)
-	if !strings.Contains(text, `"event_type":"claim.created"`) {
-		t.Fatalf("missing claim.created event: %s", text)
+	if !strings.Contains(text, `"event_type":"retrieval.completed"`) {
+		t.Fatalf("missing retrieval.completed event: %s", text)
 	}
 	if !strings.Contains(text, `"event_type":"evidence.refs.created"`) {
 		t.Fatalf("missing evidence.refs.created event: %s", text)
 	}
+	if !strings.Contains(text, `"resolver_status":"unresolved"`) || !strings.Contains(text, `"business_refs":[]`) {
+		t.Fatalf("missing explicit unresolved business refs: %s", text)
+	}
 	if !strings.Contains(text, `"ref_type":"row_ref"`) {
 		t.Fatalf("missing row_ref evidence: %s", text)
 	}
-	if !strings.Contains(text, `"condition_hash":"sha256:`) {
-		t.Fatalf("missing condition hash: %s", text)
-	}
-	if !strings.Contains(text, `"properties_hash":"sha256:`) {
-		t.Fatalf("missing properties hash: %s", text)
+	if !strings.Contains(text, `"query_hash":"sha256:`) {
+		t.Fatalf("missing safe query hash: %s", text)
 	}
 	if !strings.Contains(text, `"truncated":true`) {
 		t.Fatalf("missing truncation signal: %s", text)
@@ -174,6 +245,19 @@ func TestBuildQueryObjectInstanceEventsUsesRowRefsOnly(t *testing.T) {
 	for _, leaked := range []string{"18800001111", "Alice", "cust_001", "customer_name"} {
 		if strings.Contains(text, leaked) {
 			t.Fatalf("event leaked raw object query content %q: %s", leaked, text)
+		}
+	}
+}
+
+func assertOnlyKeys(t *testing.T, value map[string]any, allowed ...string) {
+	t.Helper()
+	allowedSet := make(map[string]struct{}, len(allowed))
+	for _, key := range allowed {
+		allowedSet[key] = struct{}{}
+	}
+	for key := range value {
+		if _, ok := allowedSet[key]; !ok {
+			t.Fatalf("unregistered key %q in %#v", key, value)
 		}
 	}
 }
@@ -262,17 +346,17 @@ func TestBuildQueryInstanceSubgraphEventsUsesHashAndRefsOnly(t *testing.T) {
 		},
 	}
 
-	events := BuildQueryInstanceSubgraphEvents(testTraceContext(), req, resp)
-	if len(events) != 2 {
-		t.Fatalf("len(events)=%d, want 2", len(events))
+	events := BuildQueryInstanceSubgraphEvents(testTraceContextWithClaim(), req, resp)
+	if len(events) != 3 {
+		t.Fatalf("len(events)=%d, want 3", len(events))
 	}
 	raw, err := json.Marshal(events)
 	if err != nil {
 		t.Fatalf("marshal events: %v", err)
 	}
 	text := string(raw)
-	if !strings.Contains(text, `"event_type":"claim.created"`) {
-		t.Fatalf("missing claim.created event: %s", text)
+	if !strings.Contains(text, `"event_type":"retrieval.completed"`) {
+		t.Fatalf("missing retrieval.completed event: %s", text)
 	}
 	if !strings.Contains(text, `"event_type":"evidence.refs.created"`) {
 		t.Fatalf("missing evidence.refs.created event: %s", text)
@@ -286,8 +370,8 @@ func TestBuildQueryInstanceSubgraphEventsUsesHashAndRefsOnly(t *testing.T) {
 	if !strings.Contains(text, `"ref_type":"schema_ref"`) {
 		t.Fatalf("missing schema_ref evidence: %s", text)
 	}
-	if !strings.Contains(text, `"path_hash":"sha256:`) {
-		t.Fatalf("missing relation path hash: %s", text)
+	if !strings.Contains(text, `"query_hash":"sha256:`) {
+		t.Fatalf("missing safe path query hash: %s", text)
 	}
 	for _, leaked := range []string{"cust_001", "ord_001", "Alice", "18800001111", "Sensitive Address", "target_instance_phone"} {
 		if strings.Contains(text, leaked) {
@@ -350,8 +434,8 @@ func TestBuildQueryInstanceSubgraphEventsCapsEvidenceRefs(t *testing.T) {
 	if got := strings.Count(text, `"ref_type":"row_ref"`); got != maxSubgraphEvidenceRefs {
 		t.Fatalf("row_ref count=%d, want capped %d: %s", got, maxSubgraphEvidenceRefs, text)
 	}
-	if !strings.Contains(text, `"refs_truncated"`) {
-		t.Fatalf("missing refs_truncated partial reason: %s", text)
+	if !strings.Contains(text, `"truncated":true`) {
+		t.Fatalf("missing truncation signal: %s", text)
 	}
 }
 

@@ -6,16 +6,22 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"go.opentelemetry.io/otel/trace"
 )
 
 const (
-	HeaderTraceparent     = "traceparent"
-	HeaderBKNRequestID    = "bkn-request-id"
-	HeaderLegacyRequestID = "x-request-id"
-	HeaderBaggage         = "baggage"
+	HeaderTraceparent         = "traceparent"
+	HeaderBKNRequestID        = "bkn-request-id"
+	HeaderLegacyRequestID     = "x-request-id"
+	HeaderBaggage             = "baggage"
+	HeaderBKNInteractionID    = "bkn-interaction-id"
+	HeaderBKNOperationID      = "bkn-operation-id"
+	HeaderBKNCausationEventID = "bkn-causation-event-id"
+	HeaderBKNClaimID          = "bkn-claim-id"
+	HeaderBKNAttempt          = "bkn-attempt"
 )
 
 type traceContextKey string
@@ -26,15 +32,29 @@ var bknRequestIDRe = regexp.MustCompile(`^req_[A-Za-z0-9_-]{8,128}$`)
 
 // TraceContext carries the OpenBKN phase-one correlation context.
 type TraceContext struct {
-	RequestID string
-	Baggage   map[string]string
+	RequestID        string
+	Baggage          map[string]string
+	InteractionID    string
+	OperationID      string
+	CausationEventID string
+	ClaimID          string
+	Attempt          int
 }
+
+var businessTraceIDRe = regexp.MustCompile(`^(int|op|evt|claim)_[A-Za-z0-9_-]{8,128}$`)
 
 func SetTraceContextToCtx(ctx context.Context, traceContext TraceContext) context.Context {
 	if !IsValidBKNRequestID(traceContext.RequestID) {
 		traceContext.RequestID = NewBKNRequestID()
 	}
 	traceContext.Baggage = sanitizeBaggage(traceContext.Baggage)
+	traceContext.InteractionID = sanitizeBusinessTraceID(traceContext.InteractionID, "int_")
+	traceContext.OperationID = sanitizeBusinessTraceID(traceContext.OperationID, "op_")
+	traceContext.CausationEventID = sanitizeBusinessTraceID(traceContext.CausationEventID, "evt_")
+	traceContext.ClaimID = sanitizeBusinessTraceID(traceContext.ClaimID, "claim_")
+	if traceContext.Attempt < 1 || traceContext.Attempt > 1000 {
+		traceContext.Attempt = 1
+	}
 	return context.WithValue(ctx, keyTraceContext, traceContext)
 }
 
@@ -48,9 +68,18 @@ func TraceContextFromHeaders(getHeader func(string) string) TraceContext {
 	if requestID == "" {
 		requestID = strings.TrimSpace(getHeader(HeaderLegacyRequestID))
 	}
+	attempt, _ := strconv.Atoi(strings.TrimSpace(getHeader(HeaderBKNAttempt)))
+	if attempt < 1 || attempt > 1000 {
+		attempt = 1
+	}
 	return TraceContext{
-		RequestID: requestID,
-		Baggage:   parseBaggage(getHeader(HeaderBaggage)),
+		RequestID:        requestID,
+		Baggage:          parseBaggage(getHeader(HeaderBaggage)),
+		InteractionID:    sanitizeBusinessTraceID(getHeader(HeaderBKNInteractionID), "int_"),
+		OperationID:      sanitizeBusinessTraceID(getHeader(HeaderBKNOperationID), "op_"),
+		CausationEventID: sanitizeBusinessTraceID(getHeader(HeaderBKNCausationEventID), "evt_"),
+		ClaimID:          sanitizeBusinessTraceID(getHeader(HeaderBKNClaimID), "claim_"),
+		Attempt:          attempt,
 	}
 }
 
@@ -77,11 +106,48 @@ func BuildTraceHeaders(ctx context.Context) map[string]string {
 		if baggage := formatBaggage(traceContext.Baggage); baggage != "" {
 			headers[HeaderBaggage] = baggage
 		}
+		setBusinessTraceHeaders(headers, traceContext)
 	}
 	if traceparent := traceparentFromCtx(ctx); traceparent != "" {
 		headers[HeaderTraceparent] = traceparent
 	}
 	return headers
+}
+
+func setBusinessTraceHeaders(header map[string]string, traceContext TraceContext) {
+	for key, value := range map[string]string{
+		HeaderBKNInteractionID:    traceContext.InteractionID,
+		HeaderBKNOperationID:      traceContext.OperationID,
+		HeaderBKNCausationEventID: traceContext.CausationEventID,
+		HeaderBKNClaimID:          traceContext.ClaimID,
+	} {
+		if value != "" {
+			header[key] = value
+		}
+	}
+	if traceContext.OperationID != "" && traceContext.Attempt > 0 {
+		header[HeaderBKNAttempt] = strconv.Itoa(traceContext.Attempt)
+	}
+}
+
+// StripBusinessTraceHeaders removes OpenBKN-only causality before an untrusted outbound hop.
+func StripBusinessTraceHeaders(header map[string]string) {
+	for key := range header {
+		for _, protected := range []string{HeaderBKNInteractionID, HeaderBKNOperationID, HeaderBKNCausationEventID, HeaderBKNClaimID, HeaderBKNAttempt} {
+			if strings.EqualFold(key, protected) {
+				delete(header, key)
+				break
+			}
+		}
+	}
+}
+
+func sanitizeBusinessTraceID(value, prefix string) string {
+	value = strings.TrimSpace(value)
+	if !strings.HasPrefix(value, prefix) || !businessTraceIDRe.MatchString(value) {
+		return ""
+	}
+	return value
 }
 
 func MergeTraceHeaders(ctx context.Context, headers map[string]string) map[string]string {

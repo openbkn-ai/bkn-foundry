@@ -125,3 +125,62 @@ func TestGetHeaderFromCtxPropagatesTraceContext(t *testing.T) {
 		convey.So(header[HeaderBaggage], convey.ShouldEqual, "bkn.account.type=service,bkn.runtime.env=test")
 	})
 }
+
+func TestBusinessCausalityHeadersAreValidatedAndPropagated(t *testing.T) {
+	convey.Convey("valid business causality is propagated", t, func() {
+		ctx := SetTraceContextToCtx(context.Background(), TraceContext{
+			RequestID:        "req_01JZVALIDREQUESTID000000005",
+			InteractionID:    "int_business_trace_0001",
+			OperationID:      "op_context_retrieval_0001",
+			CausationEventID: "evt_agent_tool_called_0001",
+			ClaimID:          "claim_agent_answer_0001",
+			Attempt:          2,
+		})
+
+		header := GetHeaderFromCtx(ctx)
+		convey.So(header[HeaderBKNInteractionID], convey.ShouldEqual, "int_business_trace_0001")
+		convey.So(header[HeaderBKNOperationID], convey.ShouldEqual, "op_context_retrieval_0001")
+		convey.So(header[HeaderBKNCausationEventID], convey.ShouldEqual, "evt_agent_tool_called_0001")
+		convey.So(header[HeaderBKNClaimID], convey.ShouldEqual, "claim_agent_answer_0001")
+		convey.So(header[HeaderBKNAttempt], convey.ShouldEqual, "2")
+	})
+
+	convey.Convey("invalid inbound business causality is removed at the boundary", t, func() {
+		headers := map[string]string{
+			HeaderBKNRequestID:        "req_01JZVALIDREQUESTID000000006",
+			HeaderBKNInteractionID:    "../../interaction",
+			HeaderBKNOperationID:      "raw sql select * from users",
+			HeaderBKNCausationEventID: "evt ok with spaces",
+			HeaderBKNClaimID:          "claim<script>",
+			HeaderBKNAttempt:          "-1",
+		}
+		ctx := SetTraceContextToCtx(context.Background(), TraceContextFromHeaders(func(key string) string { return headers[key] }))
+		traceCtx, ok := GetTraceContextFromCtx(ctx)
+		convey.So(ok, convey.ShouldBeTrue)
+		convey.So(traceCtx.InteractionID, convey.ShouldBeEmpty)
+		convey.So(traceCtx.OperationID, convey.ShouldBeEmpty)
+		convey.So(traceCtx.CausationEventID, convey.ShouldBeEmpty)
+		convey.So(traceCtx.ClaimID, convey.ShouldBeEmpty)
+		convey.So(traceCtx.Attempt, convey.ShouldEqual, 1)
+	})
+
+	convey.Convey("business causality is stripped before an untrusted outbound hop", t, func() {
+		header := map[string]string{
+			HeaderTraceparent:         "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+			HeaderBKNRequestID:        "req_01JZVALIDREQUESTID000000007",
+			HeaderBKNInteractionID:    "int_business_trace_0001",
+			HeaderBKNOperationID:      "op_context_retrieval_0001",
+			HeaderBKNCausationEventID: "evt_agent_tool_called_0001",
+			HeaderBKNClaimID:          "claim_agent_answer_0001",
+			HeaderBKNAttempt:          "2",
+		}
+		StripBusinessTraceHeaders(header)
+		convey.So(header[HeaderTraceparent], convey.ShouldNotBeEmpty)
+		convey.So(header[HeaderBKNRequestID], convey.ShouldNotBeEmpty)
+		convey.So(header[HeaderBKNInteractionID], convey.ShouldBeEmpty)
+		convey.So(header[HeaderBKNOperationID], convey.ShouldBeEmpty)
+		convey.So(header[HeaderBKNCausationEventID], convey.ShouldBeEmpty)
+		convey.So(header[HeaderBKNClaimID], convey.ShouldBeEmpty)
+		convey.So(header[HeaderBKNAttempt], convey.ShouldBeEmpty)
+	})
+}

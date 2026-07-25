@@ -1,0 +1,76 @@
+{
+  "bkn.trace.schema.version": "2.1.0",
+  "fixture_id": "vega_data_query_observed_2_1_positive",
+  "expected_result": "pass",
+  "trace": {
+    "trace_id": "73230000000000000000000000000001",
+    "traceparent": "00-73230000000000000000000000000001-7323000000000001-01",
+    "bkn.request.id": "req_vega_data_2_1_0001"
+  },
+  "spans": [
+    {
+      "span_id": "7323000000000001",
+      "parent_span_id": null,
+      "name": "vega-data.query",
+      "kind": "internal",
+      "bkn.module.name": "vega-data",
+      "bkn.operation.name": "data.resource.query",
+      "bkn.status": "ok",
+      "bkn.timestamp": "2026-07-25T13:30:00.000000000Z"
+    }
+  ],
+  "events": [
+    {
+      "event_id": "evt_agent_started_2301",
+      "event_type": "agent.interaction.started",
+      "bkn.trace.schema.version": "2.1.0",
+      "observed_at": "2026-07-25T13:30:00.001000000Z",
+      "emitted_at": "2026-07-25T13:30:00.002000000Z",
+      "producer_module": "third-party-agent",
+      "trace_id": "73230000000000000000000000000001",
+      "span_id": "7323000000000001",
+      "bkn.request.id": "req_vega_data_2_1_0001",
+      "bkn.operation.name": "agent.run",
+      "interaction_id": "int_vega_data_2301",
+      "payload": {
+        "intent_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "mode": "task",
+        "app_ref": "app:external-agent"
+      }
+    },
+    {
+      "event_id": "evt_data_fact_2301",
+      "event_type": "data.query.observed",
+      "bkn.trace.schema.version": "2.1.0",
+      "observed_at": "2026-07-25T13:30:00.010000000Z",
+      "emitted_at": "2026-07-25T13:30:00.011000000Z",
+      "producer_module": "vega-data",
+      "trace_id": "73230000000000000000000000000001",
+      "span_id": "7323000000000001",
+      "bkn.request.id": "req_vega_data_2_1_0001",
+      "bkn.operation.name": "data.resource.query",
+      "interaction_id": "int_vega_data_2301",
+      "operation_id": "op_vega_data_2301",
+      "causation_event_id": "evt_agent_started_2301",
+      "attempt": 1,
+      "payload": {
+        "query_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "query_type": "data.resource.query",
+        "row_count": 1,
+        "truncated": false,
+        "version_status": "unversioned",
+        "resource_refs": [
+          {
+            "ref_id": "resource:res_demo",
+            "ref_type": "resource_ref",
+            "source_system": "vega-data",
+            "summary_hash": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+            "validity": "observed",
+            "version_status": "unversioned",
+            "visibility": "visible"
+          }
+        ]
+      }
+    }
+  ]
+}

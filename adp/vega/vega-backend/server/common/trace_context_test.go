@@ -83,3 +83,55 @@ func TestBuildTraceHeaders(t *testing.T) {
 	require.Equal(t, "00-60616263646566676869707172737475-8081828384858687-01", headers[HeaderTraceparent])
 	require.Equal(t, "bkn.account.type=service", headers[HeaderBaggage])
 }
+
+func TestBusinessCausalityHeadersAreValidatedAndPropagated(t *testing.T) {
+	ctx := SetTraceContextToCtx(context.Background(), TraceContext{
+		RequestID:        "req_01JZVALIDREQUESTID000000024",
+		InteractionID:    "int_business_trace_0001",
+		OperationID:      "op_data_query_0001",
+		CausationEventID: "evt_retrieval_completed_0001",
+		ClaimID:          "claim_agent_answer_0001",
+		Attempt:          3,
+	})
+	headers := BuildTraceHeaders(ctx)
+	require.Equal(t, "int_business_trace_0001", headers[HeaderBKNInteractionID])
+	require.Equal(t, "op_data_query_0001", headers[HeaderBKNOperationID])
+	require.Equal(t, "evt_retrieval_completed_0001", headers[HeaderBKNCausationEventID])
+	require.Equal(t, "claim_agent_answer_0001", headers[HeaderBKNClaimID])
+	require.Equal(t, "3", headers[HeaderBKNAttempt])
+
+	invalid := map[string]string{
+		HeaderBKNRequestID:        "req_01JZVALIDREQUESTID000000025",
+		HeaderBKNInteractionID:    "bad interaction",
+		HeaderBKNOperationID:      "../bad-operation",
+		HeaderBKNCausationEventID: "evt<script>",
+		HeaderBKNClaimID:          "claim with spaces",
+		HeaderBKNAttempt:          "0",
+	}
+	traceCtx := TraceContextFromHeaders(func(key string) string { return invalid[key] })
+	require.Empty(t, traceCtx.InteractionID)
+	require.Empty(t, traceCtx.OperationID)
+	require.Empty(t, traceCtx.CausationEventID)
+	require.Empty(t, traceCtx.ClaimID)
+	require.Equal(t, 1, traceCtx.Attempt)
+}
+
+func TestStripBusinessTraceHeadersAtUntrustedBoundary(t *testing.T) {
+	headers := map[string]string{
+		HeaderTraceparent:         "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+		HeaderBKNRequestID:        "req_01JZVALIDREQUESTID000000026",
+		HeaderBKNInteractionID:    "int_business_trace_0001",
+		HeaderBKNOperationID:      "op_data_query_0001",
+		HeaderBKNCausationEventID: "evt_retrieval_completed_0001",
+		HeaderBKNClaimID:          "claim_agent_answer_0001",
+		HeaderBKNAttempt:          "3",
+	}
+	StripBusinessTraceHeaders(headers)
+	require.NotEmpty(t, headers[HeaderTraceparent])
+	require.NotEmpty(t, headers[HeaderBKNRequestID])
+	require.Empty(t, headers[HeaderBKNInteractionID])
+	require.Empty(t, headers[HeaderBKNOperationID])
+	require.Empty(t, headers[HeaderBKNCausationEventID])
+	require.Empty(t, headers[HeaderBKNClaimID])
+	require.Empty(t, headers[HeaderBKNAttempt])
+}

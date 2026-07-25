@@ -1,0 +1,196 @@
+{
+  "bkn.trace.schema.version": "2.1.0",
+  "fixture_id": "context_loader_retrieval_completed_2_1_positive",
+  "expected_result": "pass",
+  "trace": {
+    "trace_id": "71230000000000000000000000000001",
+    "traceparent": "00-71230000000000000000000000000001-7123000000000001-01",
+    "bkn.request.id": "req_context_loader_2_1_0001"
+  },
+  "spans": [
+    {
+      "span_id": "7123000000000001",
+      "parent_span_id": null,
+      "name": "context-loader.search",
+      "kind": "internal",
+      "bkn.module.name": "context-loader",
+      "bkn.operation.name": "context.search_schema",
+      "bkn.status": "ok",
+      "bkn.timestamp": "2026-07-25T13:00:00.000000000Z"
+    }
+  ],
+  "events": [
+    {
+      "event_id": "evt_agent_started_2101",
+      "event_type": "agent.interaction.started",
+      "bkn.trace.schema.version": "2.1.0",
+      "observed_at": "2026-07-25T13:00:00.001000000Z",
+      "emitted_at": "2026-07-25T13:00:00.002000000Z",
+      "producer_module": "third-party-agent",
+      "trace_id": "71230000000000000000000000000001",
+      "span_id": "7123000000000001",
+      "bkn.request.id": "req_context_loader_2_1_0001",
+      "bkn.operation.name": "agent.run",
+      "interaction_id": "int_context_loader_2101",
+      "payload": {
+        "intent_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "mode": "task",
+        "app_ref": "app:external-agent"
+      }
+    },
+    {
+      "event_id": "evt_retrieval_fact_2101",
+      "event_type": "retrieval.completed",
+      "bkn.trace.schema.version": "2.1.0",
+      "observed_at": "2026-07-25T13:00:00.010000000Z",
+      "emitted_at": "2026-07-25T13:00:00.011000000Z",
+      "producer_module": "context-loader",
+      "trace_id": "71230000000000000000000000000001",
+      "span_id": "7123000000000001",
+      "bkn.request.id": "req_context_loader_2_1_0001",
+      "bkn.operation.name": "context.search_schema",
+      "interaction_id": "int_context_loader_2101",
+      "operation_id": "op_context_retrieval_2101",
+      "causation_event_id": "evt_agent_started_2101",
+      "attempt": 1,
+      "payload": {
+        "query_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "candidate_count": 1,
+        "truncated": false,
+        "version_status": "unversioned",
+        "source_refs": [
+          {
+            "ref_id": "object_type:customer",
+            "ref_type": "schema_ref",
+            "source_system": "context-loader",
+            "summary_hash": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+            "validity": "observed",
+            "version_status": "unversioned",
+            "visibility": "visible"
+          }
+        ]
+      }
+    },
+    {
+      "event_id": "evt_claim_created_2101",
+      "event_type": "claim.created",
+      "bkn.trace.schema.version": "2.1.0",
+      "observed_at": "2026-07-25T13:00:00.020000000Z",
+      "emitted_at": "2026-07-25T13:00:00.021000000Z",
+      "producer_module": "third-party-agent",
+      "trace_id": "71230000000000000000000000000001",
+      "span_id": "7123000000000001",
+      "bkn.request.id": "req_context_loader_2_1_0001",
+      "bkn.operation.name": "agent.claim.create",
+      "interaction_id": "int_context_loader_2101",
+      "causation_event_id": "evt_retrieval_fact_2101",
+      "claim_id": "claim_agent_answer_2101",
+      "payload": {
+        "claim_id": "claim_agent_answer_2101",
+        "claim_type": "answer",
+        "claim_hash": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+        "source_event_ids": ["evt_retrieval_fact_2101"],
+        "operation_ids": ["op_context_retrieval_2101"],
+        "visibility": "visible",
+        "version_status": "unversioned"
+      }
+    },
+    {
+      "event_id": "evt_retrieval_resolve_2101",
+      "event_type": "retrieval.completed",
+      "bkn.trace.schema.version": "2.1.0",
+      "observed_at": "2026-07-25T13:00:00.030000000Z",
+      "emitted_at": "2026-07-25T13:00:00.031000000Z",
+      "producer_module": "context-loader",
+      "trace_id": "71230000000000000000000000000001",
+      "span_id": "7123000000000001",
+      "bkn.request.id": "req_context_loader_2_1_0001",
+      "bkn.operation.name": "context.search_schema",
+      "interaction_id": "int_context_loader_2101",
+      "operation_id": "op_context_resolve_2101",
+      "causation_event_id": "evt_claim_created_2101",
+      "claim_id": "claim_agent_answer_2101",
+      "attempt": 1,
+      "payload": {
+        "query_hash": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+        "candidate_count": 1,
+        "truncated": false,
+        "version_status": "unversioned",
+        "source_refs": [
+          {
+            "ref_id": "object_type:customer",
+            "ref_type": "schema_ref",
+            "source_system": "context-loader",
+            "summary_hash": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+            "validity": "observed",
+            "version_status": "unversioned",
+            "visibility": "visible"
+          }
+        ]
+      }
+    },
+    {
+      "event_id": "evt_evidence_refs_2101",
+      "event_type": "evidence.refs.created",
+      "bkn.trace.schema.version": "2.1.0",
+      "observed_at": "2026-07-25T13:00:00.032000000Z",
+      "emitted_at": "2026-07-25T13:00:00.033000000Z",
+      "producer_module": "context-loader",
+      "trace_id": "71230000000000000000000000000001",
+      "span_id": "7123000000000001",
+      "bkn.request.id": "req_context_loader_2_1_0001",
+      "bkn.operation.name": "context.search_schema",
+      "interaction_id": "int_context_loader_2101",
+      "operation_id": "op_context_resolve_2101",
+      "causation_event_id": "evt_retrieval_resolve_2101",
+      "claim_id": "claim_agent_answer_2101",
+      "attempt": 1,
+      "payload": {
+        "claim_id": "claim_agent_answer_2101",
+        "evidence_refs": [
+          {
+            "ref_id": "object_type:customer",
+            "ref_type": "schema_ref",
+            "source_system": "context-loader",
+            "summary_hash": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+            "validity": "observed",
+            "version_status": "unversioned",
+            "visibility": "visible"
+          }
+        ]
+      }
+    },
+    {
+      "event_id": "evt_business_refs_2101",
+      "event_type": "business.refs.resolved",
+      "bkn.trace.schema.version": "2.1.0",
+      "observed_at": "2026-07-25T13:00:00.034000000Z",
+      "emitted_at": "2026-07-25T13:00:00.035000000Z",
+      "producer_module": "context-loader",
+      "trace_id": "71230000000000000000000000000001",
+      "span_id": "7123000000000001",
+      "bkn.request.id": "req_context_loader_2_1_0001",
+      "bkn.operation.name": "context.search_schema",
+      "interaction_id": "int_context_loader_2101",
+      "operation_id": "op_context_resolve_2101",
+      "causation_event_id": "evt_evidence_refs_2101",
+      "claim_id": "claim_agent_answer_2101",
+      "attempt": 1,
+      "payload": {
+        "claim_id": "claim_agent_answer_2101",
+        "resolver_status": "resolved",
+        "business_refs": [
+          {
+            "ref_id": "object_type:customer",
+            "ref_type": "schema_ref",
+            "source_system": "context-loader",
+            "summary_hash": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+            "validity": "observed",
+            "version_status": "unversioned",
+            "visibility": "visible"
+          }
+        ]
+      }
+    }
+  ]
+}
