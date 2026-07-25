@@ -2,6 +2,7 @@ from fastapi.responses import JSONResponse
 from app.logs.stand_log import StandLogger
 from app.mydb.ConnectUtil import redis_util, get_redis_util
 from app.utils import llm_utils
+from app.utils.bkntrace import evidence as bkntrace_evidence
 from app.utils.llm_utils import openai_series_stream, OpenAIClientRequest
 from app.utils.param_verify_utils import *
 from app.utils.reshape_utils import *
@@ -14,7 +15,7 @@ eng_dict = {
 }
 
 
-async def used_model_openai(request, user_id, language, func_module):
+async def used_model_openai(request, user_id, language, func_module, trace_headers=None):
     if "stream" not in request.keys():
         stream = True
     else:
@@ -88,6 +89,7 @@ async def used_model_openai(request, user_id, language, func_module):
     context_size = model_data["f_max_model_len"]
     model_id = model_data["f_model_id"]
     quota = model_data["f_quota"]
+    trace_context = bkntrace_evidence.build_request_context(trace_headers, account_id=user_id, account_type="user")
     if quota:
         quota_cache_key = f"{user_id}:dip:model-api:llm-quota:{model_name}:list"
         res = await redis_util.get_str(quota_cache_key)
@@ -156,6 +158,7 @@ async def used_model_openai(request, user_id, language, func_module):
                 tools=request.get("tools", None),
                 tool_choice=request.get("tool_choice", None)
             )
+            openai_client.trace_context = trace_context
             if stream:
                 return EventSourceResponse(
                     openai_client.chat_completion_stream_openai(messages, user_id, True, func_module, request["cache"]),

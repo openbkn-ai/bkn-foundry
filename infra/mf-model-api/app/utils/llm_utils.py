@@ -19,6 +19,7 @@ from app.core.config import base_config
 from app.dao.llm_model_dao import llm_model_dao
 from app.interfaces import logics
 from app.logs.stand_log import StandLogger
+from app.utils.bkntrace import evidence as bkntrace_evidence
 from app.utils.observability.observability_log import get_logger
 
 from app.utils.str_util import generate_random_string, has_common_substring
@@ -47,6 +48,7 @@ class OpenAIClient:
         self.stop = stop
         self.tools = tools
         self.tool_choice = tool_choice
+        self.trace_context = None
 
     async def openai_chat_completion(self, message):
         start = time.time()
@@ -150,6 +152,7 @@ class OpenAIClientRequest:
         self.stop = stop
         self.tools = tools
         self.tool_choice = tool_choice
+        self.trace_context = None
 
     async def chat_completion(self, messages, user_id, func_module, cache=False):  # 写一版直接请求url的，便于传入工具
         if messages[len(messages) - 1]["role"] != "user" and self.api_model.find("qianxun") != -1:
@@ -200,6 +203,14 @@ class OpenAIClientRequest:
                             f'{{"model_name":{self.api_model},"resourece_type":"LLM","user_id":{user_id},'
                             f'"prompt_tokens":{prompt_tokens},"completion_tokens":{completion_tokens},'
                             f'"total_tokens":{total_tokens},"func_module":{func_module},"status":"success"}}')
+                    self._emit_bkn_trace_evidence(
+                        messages=messages,
+                        params=params,
+                        status="success",
+                        input_token_count=prompt_tokens,
+                        output_token_count=completion_tokens,
+                        output=result,
+                    )
                     return result
                 else:
                     tmp_map = result
@@ -213,6 +224,13 @@ class OpenAIClientRequest:
                             f'{{"model_name":{self.api_model},"resourece_type":"LLM","user_id":{user_id},'
                             f'"prompt_tokens":0,"completion_tokens":0,'
                             f'"total_tokens":0,"func_module":{func_module},"status":"failed"}}')
+                    self._emit_bkn_trace_evidence(
+                        messages=messages,
+                        params=params,
+                        status="failed",
+                        output=error_dict,
+                        error_category="model_provider_error",
+                    )
                     return error_dict
 
     async def chat_completion_stream_openai(self, messages, user_id, return_info, func_module, cache=False):
@@ -341,6 +359,14 @@ class OpenAIClientRequest:
                                 f'{{"model_name":{self.api_model},"resourece_type":"LLM","user_id":{user_id},'
                                 f'"prompt_tokens":{prompt_tokens},"completion_tokens":{completion_tokens},'
                                 f'"total_tokens":{prompt_tokens + completion_tokens},"func_module":{func_module},"status":"success"}}')
+                        self._emit_bkn_trace_evidence(
+                            messages=messages,
+                            params=params,
+                            status="success",
+                            input_token_count=prompt_tokens,
+                            output_token_count=completion_tokens,
+                            output={"content_hash_source": ans},
+                        )
             except aiohttp.ClientError as e:
                 if retry_time <= 0:
                     error_dict = ModelFactory_ModelController_Model_Error_Error.copy()
@@ -353,6 +379,12 @@ class OpenAIClientRequest:
                             f'{{"model_name":{self.api_model},"resourece_type":"LLM","user_id":{user_id},'
                             f'"prompt_tokens":0,"completion_tokens":0,'
                             f'"total_tokens":0,"func_module":{func_module},"status":"failed"}}')
+                    self._emit_bkn_trace_evidence(
+                        messages=messages,
+                        params=params,
+                        status="failed",
+                        error_category="dependency_error",
+                    )
                     return
                 else:
                     StandLogger.warn(f"大模型: {self.api_model} 连接失败，1秒后重试")
@@ -364,7 +396,32 @@ class OpenAIClientRequest:
                         f'{{"model_name":{self.api_model},"resourece_type":"LLM","user_id":{user_id},'
                         f'"prompt_tokens":0,"completion_tokens":0,'
                         f'"total_tokens":0,"func_module":{func_module},"status":"failed"}}')
+                self._emit_bkn_trace_evidence(
+                    messages=messages,
+                    params=locals().get("params", {}),
+                    status="failed",
+                    error_category="internal_error",
+                )
                 raise e
+
+    def _emit_bkn_trace_evidence(self, *, messages, params, status, input_token_count=0, output_token_count=0, output=None, error_category=""):
+        if not self.trace_context or not bkntrace_evidence.evidence_enabled():
+            return
+        events = bkntrace_evidence.build_model_call_events(
+            self.trace_context,
+            model_id=self.model_id,
+            model_name=self.api_model,
+            model_provider="openai",
+            operation="model.chat.completions",
+            messages=messages,
+            params=params,
+            status=status,
+            input_token_count=input_token_count,
+            output_token_count=output_token_count,
+            output=output,
+            error_category=error_category,
+        )
+        bkntrace_evidence.emit_model_call_events(self.trace_context, events)
 
 
 def prompt(ai_system, ai_user, ai_assistant, ai_history):

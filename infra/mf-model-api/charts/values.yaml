@@ -37,6 +37,11 @@ bknSafe:
   directoryProvider: ""
   url: ""
 
+bknTrace:
+  evidence:
+    ingestUrl: ""
+    timeoutMs: "1000"
+
 nodeSelector: {}
 
 depServices:
