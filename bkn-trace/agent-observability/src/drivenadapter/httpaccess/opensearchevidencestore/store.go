@@ -16,11 +16,11 @@ import (
 const maxEvidenceSearchResults = 1000
 
 type Store struct {
-	client *opensearch.Client
-	index  string
-	now    func() time.Time
-	once   sync.Once
-	err    error
+	client       *opensearch.Client
+	index        string
+	now          func() time.Time
+	ensureMu     sync.Mutex
+	indexEnsured bool
 }
 
 type document struct {
@@ -122,10 +122,16 @@ func (s *Store) search(ctx context.Context, field string, value string, options 
 }
 
 func (s *Store) ensureIndex(ctx context.Context) error {
-	s.once.Do(func() {
-		s.err = s.client.EnsureIndex(ctx, s.index, []byte(evidenceIndexMapping))
-	})
-	return s.err
+	s.ensureMu.Lock()
+	defer s.ensureMu.Unlock()
+	if s.indexEnsured {
+		return nil
+	}
+	if err := s.client.EnsureIndex(ctx, s.index, []byte(evidenceIndexMapping)); err != nil {
+		return err
+	}
+	s.indexEnsured = true
+	return nil
 }
 
 const evidenceIndexMapping = `{"settings":{"index.mapping.total_fields.limit":200},"mappings":{"dynamic":false,"properties":{"document_id":{"type":"keyword"},"trace_id":{"type":"keyword"},"bkn":{"properties":{"request":{"properties":{"id":{"type":"keyword"}}},"trace":{"properties":{"schema":{"properties":{"version":{"type":"keyword"}}}}}}},"events":{"type":"object","enabled":false},"claim_ids":{"type":"keyword"},"accepted_event_count":{"type":"integer"},"claim_count":{"type":"integer"},"evidence_ref_count":{"type":"integer"},"business_ref_count":{"type":"integer"},"ingested_at":{"type":"date"}}}}`

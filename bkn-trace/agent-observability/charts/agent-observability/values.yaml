@@ -65,7 +65,7 @@ affinity: {}
 
 opensearch:
   endpoint:  http://opensearch-cluster-master.resource.svc.cluster.local:9200
-  traceIndex: ss4o_traces-default-namespace
+  traceIndex: ss4o_traces-default-anyshare
   auth:
     enabled: false
     username: ""

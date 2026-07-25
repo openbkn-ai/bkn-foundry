@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -183,6 +184,41 @@ func TestGetEvidenceByTraceIDFetchesLimitPlusOneAndTruncates(t *testing.T) {
 	}
 	if !result.Truncated || len(result.Traces) != 1 {
 		t.Fatalf("expected truncated single result, got %+v", result)
+	}
+}
+
+func TestStoreEvidenceRetriesEnsureIndexAfterTransientFailure(t *testing.T) {
+	ensureAttempts := 0
+	indexAttempts := 0
+	client := newFakeOpenSearchClient(func(r *http.Request) (*http.Response, error) {
+		if r.Method == http.MethodPut && r.URL.Path == "/bkn-trace-evidence-test" {
+			ensureAttempts++
+			if ensureAttempts == 1 {
+				return nil, errors.New("opensearch temporarily unavailable")
+			}
+			return jsonResponse(`{"acknowledged":true}`), nil
+		}
+		if r.Method == http.MethodPut && strings.HasPrefix(r.URL.Path, "/bkn-trace-evidence-test/_doc/") {
+			indexAttempts++
+			return jsonResponse(`{"result":"created"}`), nil
+		}
+		t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+		return nil, nil
+	})
+
+	store := New(client, "bkn-trace-evidence-test")
+
+	if err := store.StoreEvidence(context.Background(), normalizedTrace()); err == nil {
+		t.Fatal("expected first ensure index attempt to fail")
+	}
+	if err := store.StoreEvidence(context.Background(), normalizedTrace()); err != nil {
+		t.Fatalf("expected second store evidence to retry and pass: %v", err)
+	}
+	if ensureAttempts != 2 {
+		t.Fatalf("expected ensure index to retry after failure, got %d attempts", ensureAttempts)
+	}
+	if indexAttempts != 1 {
+		t.Fatalf("expected document indexed once after successful ensure, got %d", indexAttempts)
 	}
 }
 
