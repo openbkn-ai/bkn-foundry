@@ -3,12 +3,27 @@ package opensearch
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
+
+var (
+	ErrDocumentNotFound = errors.New("opensearch document not found")
+	ErrVersionConflict  = errors.New("opensearch version conflict")
+)
+
+type Document struct {
+	Source      []byte
+	SeqNo       int64
+	PrimaryTerm int64
+}
 
 type Client struct {
 	baseURL    string
@@ -73,9 +88,58 @@ func (c *Client) Search(ctx context.Context, index string, query []byte) ([]byte
 }
 
 func (c *Client) IndexDocument(ctx context.Context, index string, documentID string, body []byte) ([]byte, error) {
-	url := fmt.Sprintf("%s/%s/_doc/%s", c.baseURL, strings.TrimLeft(index, "/"), strings.TrimLeft(documentID, "/"))
+	requestURL := fmt.Sprintf("%s/%s/_doc/%s", c.baseURL, strings.TrimLeft(index, "/"), strings.TrimLeft(documentID, "/"))
+	return c.putDocument(ctx, requestURL, body)
+}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut, url, bytes.NewReader(body))
+func (c *Client) CreateDocument(ctx context.Context, index string, documentID string, body []byte) ([]byte, error) {
+	requestURL := fmt.Sprintf("%s/%s/_doc/%s?op_type=create", c.baseURL, strings.TrimLeft(index, "/"), url.PathEscape(strings.TrimLeft(documentID, "/")))
+	return c.putDocument(ctx, requestURL, body)
+}
+
+func (c *Client) UpdateDocument(ctx context.Context, index string, documentID string, body []byte, seqNo, primaryTerm int64) ([]byte, error) {
+	requestURL := fmt.Sprintf("%s/%s/_doc/%s?if_seq_no=%s&if_primary_term=%s", c.baseURL, strings.TrimLeft(index, "/"), url.PathEscape(strings.TrimLeft(documentID, "/")), strconv.FormatInt(seqNo, 10), strconv.FormatInt(primaryTerm, 10))
+	return c.putDocument(ctx, requestURL, body)
+}
+
+func (c *Client) GetDocument(ctx context.Context, index string, documentID string) (Document, error) {
+	requestURL := fmt.Sprintf("%s/%s/_doc/%s", c.baseURL, strings.TrimLeft(index, "/"), url.PathEscape(strings.TrimLeft(documentID, "/")))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)
+	if err != nil {
+		return Document{}, fmt.Errorf("create opensearch get request: %w", err)
+	}
+	if c.auth.Enabled {
+		req.SetBasicAuth(c.auth.Username, c.auth.Password)
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return Document{}, fmt.Errorf("execute opensearch get request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return Document{}, fmt.Errorf("read opensearch get response: %w", err)
+	}
+	if resp.StatusCode == http.StatusNotFound {
+		return Document{}, ErrDocumentNotFound
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return Document{}, fmt.Errorf("opensearch get failed with status %d: %s", resp.StatusCode, string(body))
+	}
+	var response struct {
+		Source      json.RawMessage `json:"_source"`
+		SeqNo       int64           `json:"_seq_no"`
+		PrimaryTerm int64           `json:"_primary_term"`
+	}
+	if err := json.Unmarshal(body, &response); err != nil {
+		return Document{}, fmt.Errorf("decode opensearch get response: %w", err)
+	}
+	return Document{Source: response.Source, SeqNo: response.SeqNo, PrimaryTerm: response.PrimaryTerm}, nil
+}
+
+func (c *Client) putDocument(ctx context.Context, requestURL string, body []byte) ([]byte, error) {
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, requestURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("create opensearch index request: %w", err)
 	}
@@ -98,6 +162,9 @@ func (c *Client) IndexDocument(ctx context.Context, index string, documentID str
 		return nil, fmt.Errorf("read opensearch index response: %w", err)
 	}
 
+	if resp.StatusCode == http.StatusConflict {
+		return nil, ErrVersionConflict
+	}
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		return nil, fmt.Errorf("opensearch index failed with status %d: %s", resp.StatusCode, string(respBody))
 	}

@@ -5,14 +5,17 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/infra/opensearch"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/ievidencestore"
 )
 
 func TestStoreEvidenceIndexesNormalizedTrace(t *testing.T) {
@@ -29,6 +32,9 @@ func TestStoreEvidenceIndexesNormalizedTrace(t *testing.T) {
 		}
 		if r.Method == http.MethodPost && r.URL.Path == "/bkn-trace-evidence-test/_search" {
 			return jsonResponse(`{"hits":{"hits":[]}}`), nil
+		}
+		if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/bkn-trace-evidence-test/_doc/") {
+			return statusJSONResponse(http.StatusNotFound, `{"found":false}`), nil
 		}
 		if r.Method == http.MethodPut && strings.HasPrefix(r.URL.Path, "/bkn-trace-evidence-test/_doc/") {
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -47,8 +53,11 @@ func TestStoreEvidenceIndexesNormalizedTrace(t *testing.T) {
 		t.Fatalf("store evidence: %v", err)
 	}
 
-	if len(paths) != 3 || paths[0] != "/bkn-trace-evidence-test" || paths[1] != "/bkn-trace-evidence-test/_search" || !strings.HasPrefix(paths[2], "/bkn-trace-evidence-test/_doc/") {
+	if len(paths) != 4 || paths[0] != "/bkn-trace-evidence-test" || !strings.HasPrefix(paths[1], "/bkn-trace-evidence-test/_doc/") || paths[2] != "/bkn-trace-evidence-test/_search" || !strings.HasPrefix(paths[3], "/bkn-trace-evidence-test/_doc/") {
 		t.Fatalf("unexpected request paths: %v", paths)
+	}
+	if paths[1] != paths[3] || !strings.Contains(paths[1], "aggregate-") {
+		t.Fatalf("expected deterministic aggregate document id, got %v", paths)
 	}
 	mappingBytes, _ := json.Marshal(indexMapping)
 	if !strings.Contains(string(mappingBytes), `"events":{"enabled":false,"type":"object"}`) {
@@ -72,15 +81,20 @@ func TestStoreEvidenceTreatsIdenticalEventReplayAsIdempotent(t *testing.T) {
 		if r.Method == http.MethodPut && r.URL.Path == "/bkn-trace-evidence-test" {
 			return jsonResponse(`{"acknowledged":true}`), nil
 		}
-		if r.Method == http.MethodPost && r.URL.Path == "/bkn-trace-evidence-test/_search" {
+		if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/bkn-trace-evidence-test/_doc/") {
 			if !indexed {
-				return jsonResponse(`{"hits":{"hits":[]}}`), nil
+				return statusJSONResponse(http.StatusNotFound, `{"found":false}`), nil
 			}
-			body, err := json.Marshal(toDocument(normalizedTrace(), time.Date(2026, 7, 23, 1, 2, 3, 0, time.UTC)))
+			doc := toDocument(normalizedTrace(), time.Date(2026, 7, 23, 1, 2, 3, 0, time.UTC))
+			doc.Aggregate = true
+			body, err := json.Marshal(doc)
 			if err != nil {
 				t.Fatalf("marshal existing document: %v", err)
 			}
-			return jsonResponse(`{"hits":{"hits":[{"_source":` + string(body) + `}]}}`), nil
+			return jsonResponse(`{"_seq_no":0,"_primary_term":1,"_source":` + string(body) + `}`), nil
+		}
+		if r.Method == http.MethodPost && r.URL.Path == "/bkn-trace-evidence-test/_search" {
+			return jsonResponse(`{"hits":{"hits":[]}}`), nil
 		}
 		if r.Method == http.MethodPut && strings.HasPrefix(r.URL.Path, "/bkn-trace-evidence-test/_doc/") {
 			indexed = true
@@ -115,8 +129,8 @@ func TestStoreEvidenceRejectsEventIDConflict(t *testing.T) {
 		if r.Method == http.MethodPut && r.URL.Path == "/bkn-trace-evidence-test" {
 			return jsonResponse(`{"acknowledged":true}`), nil
 		}
-		if r.Method == http.MethodPost && r.URL.Path == "/bkn-trace-evidence-test/_search" {
-			return jsonResponse(`{"hits":{"hits":[{"_source":` + string(existingBody) + `}]}}`), nil
+		if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/bkn-trace-evidence-test/_doc/") {
+			return jsonResponse(`{"_seq_no":3,"_primary_term":1,"_source":` + string(existingBody) + `}`), nil
 		}
 		if r.Method == http.MethodPut && strings.HasPrefix(r.URL.Path, "/bkn-trace-evidence-test/_doc/") {
 			indexAttempts++
@@ -138,23 +152,40 @@ func TestStoreEvidenceRejectsEventIDConflict(t *testing.T) {
 	}
 }
 
-func TestStoreEvidenceRejectsWriteWhenIdempotencyHistoryIsTruncated(t *testing.T) {
-	hits := make([]map[string]any, maxEvidenceSearchResults+1)
-	for i := range hits {
-		hits[i] = map[string]any{"_source": map[string]any{
-			"trace_id": "trace_index_001", "bkn.request.id": "req_index_001", "events": []any{},
-		}}
-	}
-	responseBody, err := json.Marshal(map[string]any{"hits": map[string]any{"hits": hits}})
-	if err != nil {
-		t.Fatalf("marshal search response: %v", err)
-	}
+func TestStoreEvidencePaginatesLegacyHistoryBeyondOneThousand(t *testing.T) {
+	searchCalls := 0
 	indexAttempts := 0
 	client := newFakeOpenSearchClient(func(r *http.Request) (*http.Response, error) {
 		if r.Method == http.MethodPut && r.URL.Path == "/bkn-trace-evidence-test" {
 			return jsonResponse(`{"acknowledged":true}`), nil
 		}
+		if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/bkn-trace-evidence-test/_doc/") {
+			return statusJSONResponse(http.StatusNotFound, `{"found":false}`), nil
+		}
 		if r.Method == http.MethodPost && r.URL.Path == "/bkn-trace-evidence-test/_search" {
+			var query map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&query); err != nil {
+				t.Fatalf("decode paged query: %v", err)
+			}
+			if searchCalls > 0 && query["search_after"] == nil {
+				t.Fatal("subsequent legacy history page must use search_after")
+			}
+			start := searchCalls * evidenceSearchPageSize
+			end := start + evidenceSearchPageSize
+			if end > 1001 {
+				end = 1001
+			}
+			hits := make([]map[string]any, 0, end-start)
+			for i := start; i < end; i++ {
+				docID := fmt.Sprintf("legacy-%04d", i)
+				hits = append(hits, map[string]any{
+					"_id":     docID,
+					"sort":    []any{"2026-07-23T01:02:03Z", docID},
+					"_source": map[string]any{"document_id": docID, "trace_id": "trace_index_001", "bkn.request.id": "req_index_001", "events": []any{}, "ingested_at": "2026-07-23T01:02:03Z"},
+				})
+			}
+			searchCalls++
+			responseBody, _ := json.Marshal(map[string]any{"hits": map[string]any{"hits": hits}})
 			return jsonResponse(string(responseBody)), nil
 		}
 		if r.Method == http.MethodPut && strings.HasPrefix(r.URL.Path, "/bkn-trace-evidence-test/_doc/") {
@@ -166,12 +197,11 @@ func TestStoreEvidenceRejectsWriteWhenIdempotencyHistoryIsTruncated(t *testing.T
 	})
 	store := New(client, "bkn-trace-evidence-test")
 
-	err = store.StoreEvidence(context.Background(), normalizedTrace())
-	if err == nil || !strings.Contains(err.Error(), "idempotency history is truncated") {
-		t.Fatalf("expected fail-closed truncated history error, got %v", err)
+	if err := store.StoreEvidence(context.Background(), normalizedTrace()); err != nil {
+		t.Fatalf("expected paged migration to succeed, got %v", err)
 	}
-	if indexAttempts != 0 {
-		t.Fatalf("must not write with incomplete idempotency history, got %d writes", indexAttempts)
+	if searchCalls != 3 || indexAttempts != 1 {
+		t.Fatalf("expected three search pages and one aggregate create, searches=%d writes=%d", searchCalls, indexAttempts)
 	}
 }
 
@@ -243,8 +273,8 @@ func TestGetEvidenceByTraceIDParsesSearchHits(t *testing.T) {
 	if !strings.Contains(string(queryBytes), `"trace_id.keyword"`) {
 		t.Fatalf("expected keyword exact term fallback, got %s", string(queryBytes))
 	}
-	if strings.Contains(string(queryBytes), `"document_id"`) {
-		t.Fatalf("document_id sort requires explicit mapping and must not be emitted, got %s", string(queryBytes))
+	if !strings.Contains(string(queryBytes), `"document_id"`) {
+		t.Fatalf("expected stable document_id tiebreaker for search_after pagination, got %s", string(queryBytes))
 	}
 }
 
@@ -271,7 +301,66 @@ func TestGetEvidenceByRequestIDUsesRequestIDField(t *testing.T) {
 	}
 }
 
-func TestGetEvidenceByTraceIDFetchesLimitPlusOneAndTruncates(t *testing.T) {
+func TestGetEvidenceByRequestIDFindsAggregateAfterOneThousandLegacyDocuments(t *testing.T) {
+	searchCalls := 0
+	aggregate := toDocument(normalizedTrace(), time.Date(2026, 7, 23, 2, 0, 0, 0, time.UTC))
+	aggregate.Aggregate = true
+	client := newFakeOpenSearchClient(func(r *http.Request) (*http.Response, error) {
+		if r.Method == http.MethodPut && r.URL.Path == "/bkn-trace-evidence-test" {
+			return jsonResponse(`{"acknowledged":true}`), nil
+		}
+		if r.Method != http.MethodPost || r.URL.Path != "/bkn-trace-evidence-test/_search" {
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+		}
+		start := searchCalls * evidenceSearchPageSize
+		end := start + evidenceSearchPageSize
+		if end > 1002 {
+			end = 1002
+		}
+		hits := make([]map[string]any, 0, end-start)
+		for i := start; i < end; i++ {
+			docID := fmt.Sprintf("legacy-%04d", i)
+			source := any(map[string]any{"document_id": docID, "trace_id": "trace_index_001", "bkn.request.id": "req_index_001", "events": []any{}, "ingested_at": "2026-07-23T01:02:03Z"})
+			if i == 1001 {
+				docID = aggregate.DocumentID
+				source = aggregate
+			}
+			hits = append(hits, map[string]any{"_id": docID, "sort": []any{"2026-07-23T01:02:03Z", docID}, "_source": source})
+		}
+		searchCalls++
+		responseBody, _ := json.Marshal(map[string]any{"hits": map[string]any{"hits": hits}})
+		return jsonResponse(string(responseBody)), nil
+	})
+
+	result, err := New(client, "bkn-trace-evidence-test").GetEvidenceByRequestID(context.Background(), "req_index_001", evidencevo.EvidenceQueryOptions{})
+	if err != nil {
+		t.Fatalf("query evidence: %v", err)
+	}
+	if searchCalls != 3 || result.Truncated || len(result.Traces) != 1 || result.Traces[0].ClaimCount != 1 {
+		t.Fatalf("expected complete aggregate after paged legacy history, calls=%d result=%+v", searchCalls, result)
+	}
+}
+
+func TestTracesFromHitsKeepsEveryAggregateForSharedRequest(t *testing.T) {
+	legacy := toDocument(normalizedTrace(), time.Now())
+	firstAggregate := legacy
+	firstAggregate.Aggregate = true
+	secondTrace := normalizedTrace()
+	secondTrace.TraceID = "trace_index_002"
+	secondAggregate := toDocument(secondTrace, time.Now())
+	secondAggregate.Aggregate = true
+
+	traces := tracesFromHits([]evidenceHit{
+		{Source: legacy},
+		{Source: firstAggregate},
+		{Source: secondAggregate},
+	})
+	if len(traces) != 2 || traces[0].TraceID != "trace_index_001" || traces[1].TraceID != "trace_index_002" {
+		t.Fatalf("expected both request aggregates without legacy duplicate, got %+v", traces)
+	}
+}
+
+func TestGetEvidenceByTraceIDTraversesHistoryBeforeApplyingResponseLimit(t *testing.T) {
 	var query map[string]any
 	client := newFakeOpenSearchClient(func(r *http.Request) (*http.Response, error) {
 		if r.Method == http.MethodPut && r.URL.Path == "/bkn-trace-evidence-test" {
@@ -296,8 +385,8 @@ func TestGetEvidenceByTraceIDFetchesLimitPlusOneAndTruncates(t *testing.T) {
 	if err != nil {
 		t.Fatalf("query evidence: %v", err)
 	}
-	if query["size"] != float64(2) {
-		t.Fatalf("expected size limit+1, got %+v", query["size"])
+	if query["size"] != float64(evidenceSearchPageSize) {
+		t.Fatalf("expected internal paged history query, got %+v", query["size"])
 	}
 	if !result.Truncated || len(result.Traces) != 1 {
 		t.Fatalf("expected truncated single result, got %+v", result)
@@ -318,6 +407,9 @@ func TestStoreEvidenceRetriesEnsureIndexAfterTransientFailure(t *testing.T) {
 		if r.Method == http.MethodPut && strings.HasPrefix(r.URL.Path, "/bkn-trace-evidence-test/_doc/") {
 			indexAttempts++
 			return jsonResponse(`{"result":"created"}`), nil
+		}
+		if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/bkn-trace-evidence-test/_doc/") {
+			return statusJSONResponse(http.StatusNotFound, `{"found":false}`), nil
 		}
 		if r.Method == http.MethodPost && r.URL.Path == "/bkn-trace-evidence-test/_search" {
 			return jsonResponse(`{"hits":{"hits":[]}}`), nil
@@ -340,6 +432,128 @@ func TestStoreEvidenceRetriesEnsureIndexAfterTransientFailure(t *testing.T) {
 	if indexAttempts != 1 {
 		t.Fatalf("expected document indexed once after successful ensure, got %d", indexAttempts)
 	}
+}
+
+func TestTwoStoreInstancesAtomicallyRejectEventIDConflict(t *testing.T) {
+	backend := newAggregateBackend()
+	client := newFakeOpenSearchClient(backend.roundTrip)
+	stores := []*Store{New(client, "bkn-trace-evidence-test"), New(client, "bkn-trace-evidence-test")}
+	traces := []evidencevo.NormalizedTrace{normalizedTrace(), normalizedTrace()}
+	traces[1].Events[0].Payload["claim_id"] = "claim_changed"
+
+	errs := runConcurrentStores(stores, traces)
+	if countErrors(errs, nil) != 1 || countErrors(errs, ievidencestore.ErrEventIDConflict) != 1 {
+		t.Fatalf("expected one commit and one event-id conflict, got %v", errs)
+	}
+}
+
+func TestTwoStoreInstancesAtomicallyRejectActionFork(t *testing.T) {
+	backend := newAggregateBackend()
+	client := newFakeOpenSearchClient(backend.roundTrip)
+	first := New(client, "bkn-trace-evidence-test")
+	second := New(client, "bkn-trace-evidence-test")
+	base := evidencevo.NormalizedTrace{
+		TraceID: "trace_action", RequestID: "req_action", SchemaVersion: evidencevo.ContractVersion,
+		Events: []evidencevo.EvidenceEvent{
+			{EventID: "evt_recommended", EventType: "action.recommended", OperationID: "op_action", ClaimID: "claim_action", Payload: map[string]any{"action_instance_id": "action_1"}},
+			{EventID: "evt_requested", EventType: "action.approval_requested", OperationID: "op_action", ClaimID: "claim_action", CausationID: "evt_recommended", Payload: map[string]any{"action_instance_id": "action_1"}},
+		},
+	}
+	if err := first.StoreEvidence(context.Background(), base); err != nil {
+		t.Fatalf("store action setup: %v", err)
+	}
+	approved := base
+	approved.Events = []evidencevo.EvidenceEvent{{EventID: "evt_approved", EventType: "action.approved", OperationID: "op_action", ClaimID: "claim_action", CausationID: "evt_requested", Payload: map[string]any{"action_instance_id": "action_1"}}}
+	rejected := base
+	rejected.Events = []evidencevo.EvidenceEvent{{EventID: "evt_rejected", EventType: "action.rejected", OperationID: "op_action", ClaimID: "claim_action", CausationID: "evt_requested", Payload: map[string]any{"action_instance_id": "action_1"}}}
+
+	errs := runConcurrentStores([]*Store{first, second}, []evidencevo.NormalizedTrace{approved, rejected})
+	if countErrors(errs, nil) != 1 || countErrors(errs, ievidencestore.ErrActionTransitionInvalid) != 1 {
+		t.Fatalf("expected one action branch and one transition conflict, got %v", errs)
+	}
+}
+
+func runConcurrentStores(stores []*Store, traces []evidencevo.NormalizedTrace) []error {
+	var wg sync.WaitGroup
+	errs := make([]error, len(stores))
+	for i := range stores {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			errs[i] = stores[i].StoreEvidence(context.Background(), traces[i])
+		}(i)
+	}
+	wg.Wait()
+	return errs
+}
+
+func countErrors(errs []error, target error) int {
+	count := 0
+	for _, err := range errs {
+		if target == nil && err == nil || target != nil && errors.Is(err, target) {
+			count++
+		}
+	}
+	return count
+}
+
+type aggregateBackend struct {
+	mu   sync.Mutex
+	docs map[string]struct {
+		body []byte
+		seq  int64
+	}
+}
+
+func newAggregateBackend() *aggregateBackend {
+	return &aggregateBackend{docs: map[string]struct {
+		body []byte
+		seq  int64
+	}{}}
+}
+
+func (b *aggregateBackend) roundTrip(r *http.Request) (*http.Response, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if r.Method == http.MethodPut && r.URL.Path == "/bkn-trace-evidence-test" {
+		return jsonResponse(`{"acknowledged":true}`), nil
+	}
+	if r.Method == http.MethodPost && r.URL.Path == "/bkn-trace-evidence-test/_search" {
+		return jsonResponse(`{"hits":{"hits":[]}}`), nil
+	}
+	if !strings.HasPrefix(r.URL.Path, "/bkn-trace-evidence-test/_doc/") {
+		return nil, fmt.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+	}
+	id := strings.TrimPrefix(r.URL.Path, "/bkn-trace-evidence-test/_doc/")
+	stored, exists := b.docs[id]
+	if r.Method == http.MethodGet {
+		if !exists {
+			return statusJSONResponse(http.StatusNotFound, `{"found":false}`), nil
+		}
+		return jsonResponse(fmt.Sprintf(`{"_seq_no":%d,"_primary_term":1,"_source":%s}`, stored.seq, stored.body)), nil
+	}
+	if r.Method != http.MethodPut {
+		return nil, fmt.Errorf("unexpected document method %s", r.Method)
+	}
+	if r.URL.Query().Get("op_type") == "create" && exists {
+		return statusJSONResponse(http.StatusConflict, `{"error":{"type":"version_conflict_engine_exception"}}`), nil
+	}
+	if expected := r.URL.Query().Get("if_seq_no"); expected != "" && (!exists || expected != fmt.Sprint(stored.seq)) {
+		return statusJSONResponse(http.StatusConflict, `{"error":{"type":"version_conflict_engine_exception"}}`), nil
+	}
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		return nil, err
+	}
+	nextSeq := int64(0)
+	if exists {
+		nextSeq = stored.seq + 1
+	}
+	b.docs[id] = struct {
+		body []byte
+		seq  int64
+	}{body: append([]byte(nil), body...), seq: nextSeq}
+	return jsonResponse(`{"result":"updated"}`), nil
 }
 
 func normalizedTrace() evidencevo.NormalizedTrace {
@@ -379,8 +593,12 @@ func newFakeOpenSearchClient(fn roundTripFunc) *opensearch.Client {
 }
 
 func jsonResponse(body string) *http.Response {
+	return statusJSONResponse(http.StatusOK, body)
+}
+
+func statusJSONResponse(status int, body string) *http.Response {
 	return &http.Response{
-		StatusCode: http.StatusOK,
+		StatusCode: status,
 		Header:     http.Header{"Content-Type": []string{"application/json"}},
 		Body:       io.NopCloser(bytes.NewBufferString(body)),
 	}

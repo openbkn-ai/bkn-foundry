@@ -20,6 +20,7 @@ var (
 	traceIDRE     = regexp.MustCompile(`^[0-9a-f]{32}$`)
 	requestIDRE   = regexp.MustCompile(`^req_[0-9A-Za-z_.-]+$`)
 	timestampRE   = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$`)
+	hashRE        = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 )
 
 var sensitivePatterns = []*regexp.Regexp{
@@ -28,39 +29,56 @@ var sensitivePatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)\b(access|refresh|id)[_-]?token\s*[:=]\s*[A-Za-z0-9._-]+`),
 	regexp.MustCompile(`(?i)\bapi[_-]?key\s*[:=]\s*[A-Za-z0-9._-]+`),
 	regexp.MustCompile(`(?i)\bcookie\s*[:=]\s*\S+`),
-	regexp.MustCompile(`(?is)\bselect\s+.+\s+from\b`),
+	regexp.MustCompile(`(?is)\bselect\b.+\bfrom\b`),
+	regexp.MustCompile(`(?is)\bupdate\b.+\bset\b`),
+	regexp.MustCompile(`(?is)\binsert\s+into\b`),
+	regexp.MustCompile(`(?is)\bdelete\s+from\b`),
+	regexp.MustCompile(`(?is)\bmerge\s+into\b`),
+	regexp.MustCompile(`(?is)\b(alter|drop|create|truncate)\s+(table|view|index|database|schema)\b`),
+	regexp.MustCompile(`(?is)\b(grant|revoke)\b.+\bon\b`),
 }
 
 var forbiddenRawKeys = map[string]struct{}{
-	"access-token":    {},
-	"access_token":    {},
-	"api-key":         {},
-	"api_key":         {},
-	"authorization":   {},
-	"cookie":          {},
-	"id-token":        {},
-	"id_token":        {},
-	"raw-answer":      {},
-	"raw-input":       {},
-	"raw-output":      {},
-	"raw-prompt":      {},
-	"raw-sql":         {},
-	"raw-tool-args":   {},
-	"raw-tool-io":     {},
-	"raw-tool-result": {},
-	"raw_answer":      {},
-	"raw_input":       {},
-	"raw_output":      {},
-	"raw_prompt":      {},
-	"raw_sql":         {},
-	"raw_tool_args":   {},
-	"raw_tool_io":     {},
-	"raw_tool_result": {},
-	"refresh-token":   {},
-	"refresh_token":   {},
-	"row-data":        {},
-	"row_data":        {},
-	"token":           {},
+	"access-token":     {},
+	"access_token":     {},
+	"api-key":          {},
+	"api_key":          {},
+	"authorization":    {},
+	"cookie":           {},
+	"id-token":         {},
+	"id_token":         {},
+	"password":         {},
+	"private-key":      {},
+	"private_key":      {},
+	"prompt":           {},
+	"user-question":    {},
+	"user_question":    {},
+	"approval-comment": {},
+	"approval_comment": {},
+	"sql":              {},
+	"sql-params":       {},
+	"sql_params":       {},
+	"raw-answer":       {},
+	"raw-input":        {},
+	"raw-output":       {},
+	"raw-prompt":       {},
+	"raw-sql":          {},
+	"raw-tool-args":    {},
+	"raw-tool-io":      {},
+	"raw-tool-result":  {},
+	"raw_answer":       {},
+	"raw_input":        {},
+	"raw_output":       {},
+	"raw_prompt":       {},
+	"raw_sql":          {},
+	"raw_tool_args":    {},
+	"raw_tool_io":      {},
+	"raw_tool_result":  {},
+	"refresh-token":    {},
+	"refresh_token":    {},
+	"row-data":         {},
+	"row_data":         {},
+	"token":            {},
 }
 
 var legacyEventTypes = map[string]struct{}{
@@ -81,21 +99,56 @@ var legacyEventTypes = map[string]struct{}{
 }
 
 var twoPointOneEventTypes = func() map[string]struct{} {
-	types := make(map[string]struct{}, len(legacyEventTypes)+5)
-	for eventType := range legacyEventTypes {
-		types[eventType] = struct{}{}
-	}
+	types := make(map[string]struct{}, 16)
 	for _, eventType := range []string{
 		"agent.interaction.started",
 		"retrieval.completed",
 		"knowledge.read.observed",
 		"data.query.observed",
 		"model.call.observed",
+		"tool.called",
+		"tool.result.observed",
+		"claim.created",
+		"evidence.refs.created",
+		"business.refs.resolved",
+		"action.recommended",
+		"action.approval_requested",
+		"action.approved",
+		"action.rejected",
+		"action.executed",
+		"action.result_recorded",
 	} {
 		types[eventType] = struct{}{}
 	}
 	return types
 }()
+
+var twoPointOnePayloadFields = map[string]map[string]struct{}{
+	"agent.interaction.started": fields("intent_hash", "mode", "agent_id", "app_ref"),
+	"retrieval.completed":       fields("query_hash", "candidate_count", "truncated", "source_refs", "version_status"),
+	"knowledge.read.observed":   fields("kn_id", "read_kind", "business_refs", "version_status", "schema_version"),
+	"data.query.observed":       fields("query_hash", "query_type", "row_count", "resource_refs", "field_refs", "truncated", "version_status", "as_of"),
+	"model.call.observed":       fields("model_name", "model_provider", "status", "input_token_count", "output_token_count", "prompt_hash", "output_hash", "error_category", "error_hash"),
+	"tool.called":               fields("tool_id", "tool_name", "args_hash", "visibility", "version_status"),
+	"tool.result.observed":      fields("tool_id", "tool_name", "status", "result_hash", "result_length", "result_count", "error_hash", "error_category", "visibility", "version_status"),
+	"claim.created":             fields("claim_id", "claim_type", "claim_hash", "source_event_ids", "operation_ids", "version_status", "visibility"),
+	"evidence.refs.created":     fields("claim_id", "evidence_refs"),
+	"business.refs.resolved":    fields("claim_id", "resolver_status", "business_refs"),
+	"action.recommended":        fields("action_instance_id", "action_type", "target_refs", "reason_hash", "status"),
+	"action.approval_requested": fields("action_instance_id", "policy_ref", "status"),
+	"action.approved":           fields("action_instance_id", "actor_ref", "policy_decision_ref", "status"),
+	"action.rejected":           fields("action_instance_id", "actor_ref", "policy_decision_ref", "status"),
+	"action.executed":           fields("action_instance_id", "invocation_ref", "tool_ref", "status", "error_category", "error_hash"),
+	"action.result_recorded":    fields("action_instance_id", "result_hash", "artifact_ref", "task_ref", "status"),
+}
+
+func fields(names ...string) map[string]struct{} {
+	result := make(map[string]struct{}, len(names))
+	for _, name := range names {
+		result[name] = struct{}{}
+	}
+	return result
+}
 
 var visibilityStates = map[string]struct{}{
 	"":             {},
@@ -147,20 +200,29 @@ func (s *Service) Ingest(ctx context.Context, body []byte) (evidencevo.IngestRes
 	}
 
 	if req.SchemaVersion == evidencevo.ContractVersion {
-		existing, err := s.store.GetEvidenceByTraceID(ctx, req.Trace.TraceID, evidencevo.EvidenceQueryOptions{Limit: MaxEvidenceQueryLimit})
+		existing, err := s.store.GetEvidenceHistoryByTraceID(ctx, req.Trace.TraceID)
 		if err != nil {
 			return evidencevo.IngestResponse{}, nil, err
 		}
-		validateTwoPointOneGraph(existing.Traces, &normalized, &validationErrors)
+		validateTwoPointOneGraph(existing, &normalized, &validationErrors)
 		if len(validationErrors) > 0 {
 			return evidencevo.IngestResponse{}, validationErrors, nil
 		}
 	}
 
 	if err := s.store.StoreEvidence(ctx, normalized); err != nil {
-		if errors.Is(err, ievidencestore.ErrEventIDConflict) {
+		switch {
+		case errors.Is(err, ievidencestore.ErrEventIDConflict):
 			return evidencevo.IngestResponse{}, evidencevo.ValidationErrors{
 				evidencevo.NewValidationError("BKN_TRACE_EVENT_ID_CONFLICT", "$.events", "event_id already exists with different content"),
+			}, nil
+		case errors.Is(err, ievidencestore.ErrActionTransitionInvalid):
+			return evidencevo.IngestResponse{}, evidencevo.ValidationErrors{
+				evidencevo.NewValidationError("BKN_TRACE_ACTION_TRANSITION_INVALID", "$.events", "action state changed before this append committed"),
+			}, nil
+		case errors.Is(err, ievidencestore.ErrCausationInvalid):
+			return evidencevo.IngestResponse{}, evidencevo.ValidationErrors{
+				evidencevo.NewValidationError("BKN_TRACE_REQUIRED_FIELD_MISSING", "$.events", "causation_event_id must reference a previously committed event"),
 			}, nil
 		}
 		return evidencevo.IngestResponse{}, nil, err
@@ -267,11 +329,22 @@ func buildEvidenceChain(traces []evidencevo.NormalizedTrace, truncated bool) evi
 	knownClaims := map[string]struct{}{}
 	claimRefs := map[string]struct{}{}
 	partialReasons := map[string]struct{}{}
+	knownEventIDs := map[string]struct{}{}
+	claimSourceEventIDs := []string{}
 
 	for _, trace := range traces {
+		if trace.SchemaVersion == evidencevo.LegacyContractVersion {
+			partialReasons["causality_missing"] = struct{}{}
+		}
 		for _, event := range trace.Events {
+			if event.EventID != "" {
+				knownEventIDs[event.EventID] = struct{}{}
+			}
 			switch event.EventType {
 			case "claim.created":
+				for _, sourceID := range stringArrayField(event.Payload, "source_event_ids") {
+					claimSourceEventIDs = append(claimSourceEventIDs, sourceID)
+				}
 				if visible(event.Payload) {
 					response.Data.Claims = append(response.Data.Claims, cloneMap(event.Payload))
 				} else {
@@ -287,12 +360,20 @@ func buildEvidenceChain(traces []evidencevo.NormalizedTrace, truncated bool) evi
 				}
 				response.Data.EvidenceRefs = appendVisibleRefs(response.Data.EvidenceRefs, arrayField(event.Payload, "evidence_refs"), &response.VisibilitySummary)
 			case "business.refs.resolved":
+				if resolverStatus, _ := stringField(event.Payload, "resolver_status"); resolverStatus == "partial" || resolverStatus == "unresolved" {
+					partialReasons["business_ref_unresolved"] = struct{}{}
+				}
 				claimID, _ := stringField(event.Payload, "claim_id")
 				if claimID != "" {
 					claimRefs[claimID] = struct{}{}
 				}
 				response.Data.BusinessRefs = appendVisibleRefs(response.Data.BusinessRefs, arrayField(event.Payload, "business_refs"), &response.VisibilitySummary)
 			}
+		}
+	}
+	for _, sourceID := range claimSourceEventIDs {
+		if _, ok := knownEventIDs[sourceID]; !ok {
+			partialReasons["source_event_missing"] = struct{}{}
 		}
 	}
 
@@ -325,6 +406,17 @@ func buildEvidenceChain(traces []evidencevo.NormalizedTrace, truncated bool) evi
 	response.Page.EdgeCount = len(response.Data.EvidenceRefs) + len(response.Data.BusinessRefs)
 	response.Page.Truncated = truncated
 	return response
+}
+
+func stringArrayField(payload map[string]any, key string) []string {
+	values := arrayField(payload, key)
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		if text, ok := value.(string); ok && text != "" {
+			result = append(result, text)
+		}
+	}
+	return result
 }
 
 func buildSnapshotPreview(traces []evidencevo.NormalizedTrace, truncated bool) evidencevo.SnapshotPreviewResponse {
@@ -489,6 +581,9 @@ func buildBusinessGraph(traces []evidencevo.NormalizedTrace, truncated bool) evi
 		for _, event := range trace.Events {
 			if event.EventType == "business.refs.resolved" {
 				businessRefEvents++
+				if resolverStatus, _ := stringField(event.Payload, "resolver_status"); resolverStatus == "partial" || resolverStatus == "unresolved" {
+					partialReasons["business_ref_unresolved"] = struct{}{}
+				}
 				claimID, _ := stringField(event.Payload, "claim_id")
 				if claimID == "" {
 					partialReasons["missing_claim"] = struct{}{}
@@ -733,11 +828,11 @@ func validateTwoPointOneGraph(existing []evidencevo.NormalizedTrace, incoming *e
 	storedHashes := map[string]string{}
 	knownClaims := map[string]struct{}{}
 	actions := map[string]actionState{}
-	allEventIDs := map[string]struct{}{}
+	priorEventIDs := map[string]struct{}{}
 
 	for _, trace := range existing {
 		for _, event := range trace.Events {
-			allEventIDs[event.EventID] = struct{}{}
+			priorEventIDs[event.EventID] = struct{}{}
 			hash, err := event.ContentHash()
 			if err == nil {
 				storedHashes[event.EventID] = hash
@@ -753,13 +848,6 @@ func validateTwoPointOneGraph(existing []evidencevo.NormalizedTrace, incoming *e
 			}
 		}
 	}
-	for _, event := range incoming.Events {
-		allEventIDs[event.EventID] = struct{}{}
-		if event.EventType == "claim.created" {
-			knownClaims[event.ClaimID] = struct{}{}
-		}
-	}
-
 	seenIncoming := map[string]string{}
 	for i, event := range incoming.Events {
 		base := path("events", i)
@@ -783,17 +871,21 @@ func validateTwoPointOneGraph(existing []evidencevo.NormalizedTrace, incoming *e
 		seenIncoming[event.EventID] = hash
 
 		if event.CausationID != "" {
-			if _, ok := allEventIDs[event.CausationID]; !ok {
-				add(validationErrors, "BKN_TRACE_REQUIRED_FIELD_MISSING", base+".causation_event_id", "causation_event_id must reference an event in the same trace")
+			if _, ok := priorEventIDs[event.CausationID]; !ok {
+				add(validationErrors, "BKN_TRACE_REQUIRED_FIELD_MISSING", base+".causation_event_id", "causation_event_id must reference a previously observed event in the same trace")
 			}
 		}
-		if eventNeedsClaim(event.EventType) {
+		if eventNeedsClaim(event.EventType) && event.EventType != "claim.created" {
 			if _, ok := knownClaims[event.ClaimID]; event.ClaimID != "" && !ok {
 				add(validationErrors, "BKN_TRACE_UNKNOWN_CLAIM_ID", base+".claim_id", "event must reference a known claim_id in the same trace")
 			}
 		}
 		if strings.HasPrefix(event.EventType, "action.") {
 			validateActionTransition(actions, event, base, validationErrors)
+		}
+		priorEventIDs[event.EventID] = struct{}{}
+		if event.EventType == "claim.created" {
+			knownClaims[event.ClaimID] = struct{}{}
 		}
 	}
 }
@@ -988,6 +1080,15 @@ func eventNeedsClaim(eventType string) bool {
 
 func checkTwoPointOnePayload(event evidencevo.EvidenceEvent, base string, errors *evidencevo.ValidationErrors) {
 	payload := event.Payload
+	checkHashFields(payload, base, errors)
+	allowed, registered := twoPointOnePayloadFields[event.EventType]
+	if registered {
+		for key := range payload {
+			if _, ok := allowed[key]; !ok {
+				add(errors, "BKN_TRACE_PAYLOAD_FIELD_UNSUPPORTED", base+"."+key, "payload field is not registered for this event type")
+			}
+		}
+	}
 	switch event.EventType {
 	case "agent.interaction.started":
 		requiredStringField(payload, "intent_hash", base, errors)
@@ -1012,6 +1113,10 @@ func checkTwoPointOnePayload(event evidencevo.EvidenceEvent, base string, errors
 		for _, field := range []string{"input_token_count", "output_token_count"} {
 			requiredField(payload, field, base, errors)
 		}
+		if status, _ := stringField(payload, "status"); status == "error" {
+			requiredStringField(payload, "error_category", base, errors)
+			requiredStringField(payload, "error_hash", base, errors)
+		}
 	case "claim.created":
 		requiredArrayField(payload, "source_event_ids", base, errors)
 		requiredArrayField(payload, "operation_ids", base, errors)
@@ -1019,25 +1124,69 @@ func checkTwoPointOnePayload(event evidencevo.EvidenceEvent, base string, errors
 		checkTwoPointOneRefs(payload, "evidence_refs", base, errors)
 	case "business.refs.resolved":
 		requiredStringField(payload, "resolver_status", base, errors)
+		if status, _ := stringField(payload, "resolver_status"); status != "resolved" && status != "partial" && status != "unresolved" {
+			add(errors, "BKN_TRACE_REQUIRED_FIELD_MISSING", base+".resolver_status", "resolver_status must be resolved, partial, or unresolved")
+		}
 		checkTwoPointOneRefs(payload, "business_refs", base, errors)
 	case "action.recommended":
 		checkActionBase(payload, base, errors)
+		checkActionStatus(payload, "recommended", base, errors)
 		requiredStringField(payload, "action_type", base, errors)
+		requiredArrayField(payload, "target_refs", base, errors)
 		requiredStringField(payload, "reason_hash", base, errors)
 	case "action.approval_requested":
 		checkActionBase(payload, base, errors)
+		checkActionStatus(payload, "approval_requested", base, errors)
 		requiredStringField(payload, "policy_ref", base, errors)
-	case "action.approved", "action.rejected":
+	case "action.approved":
 		checkActionBase(payload, base, errors)
+		checkActionStatus(payload, "approved", base, errors)
+		requiredStringField(payload, "actor_ref", base, errors)
+		requiredStringField(payload, "policy_decision_ref", base, errors)
+	case "action.rejected":
+		checkActionBase(payload, base, errors)
+		checkActionStatus(payload, "rejected", base, errors)
 		requiredStringField(payload, "actor_ref", base, errors)
 		requiredStringField(payload, "policy_decision_ref", base, errors)
 	case "action.executed":
 		checkActionBase(payload, base, errors)
 		requiredOneStringField(payload, []string{"invocation_ref", "tool_ref"}, base, errors)
+		if status, _ := stringField(payload, "status"); status == "error" {
+			requiredStringField(payload, "error_category", base, errors)
+			requiredStringField(payload, "error_hash", base, errors)
+		} else if status != "ok" && status != "success" {
+			add(errors, "BKN_TRACE_REQUIRED_FIELD_MISSING", base+".status", "action.executed status must be ok, success, or error")
+		}
 	case "action.result_recorded":
 		checkActionBase(payload, base, errors)
 		requiredStringField(payload, "result_hash", base, errors)
 		requiredOneStringField(payload, []string{"artifact_ref", "task_ref"}, base, errors)
+	}
+}
+
+func checkHashFields(value any, path string, errors *evidencevo.ValidationErrors) {
+	switch typed := value.(type) {
+	case map[string]any:
+		for key, child := range typed {
+			childPath := path + "." + key
+			if strings.HasSuffix(key, "_hash") {
+				text, ok := child.(string)
+				if !ok || !hashRE.MatchString(text) {
+					add(errors, "BKN_TRACE_REQUIRED_FIELD_MISSING", childPath, "hash must use sha256:<64 lowercase hex> format")
+				}
+			}
+			checkHashFields(child, childPath, errors)
+		}
+	case []any:
+		for i, child := range typed {
+			checkHashFields(child, path+"["+strconv.Itoa(i)+"]", errors)
+		}
+	}
+}
+
+func checkActionStatus(payload map[string]any, expected string, base string, errors *evidencevo.ValidationErrors) {
+	if status, ok := stringField(payload, "status"); ok && status != "" && status != expected {
+		add(errors, "BKN_TRACE_REQUIRED_FIELD_MISSING", base+".status", "action status must match event type")
 	}
 }
 
@@ -1047,6 +1196,9 @@ func checkActionBase(payload map[string]any, base string, errors *evidencevo.Val
 }
 
 func checkTwoPointOneRefs(payload map[string]any, key, base string, errors *evidencevo.ValidationErrors) {
+	allowedFields := fields("ref_id", "ref_type", "source_system", "validity", "version_status", "visibility", "summary_hash")
+	validValidity := fields("observed", "available", "unavailable", "expired", "partial")
+	validVersionStatus := fields("versioned", "unversioned", "not_auditable")
 	for i, item := range arrayField(payload, key) {
 		ref, ok := item.(map[string]any)
 		if !ok {
@@ -1054,9 +1206,25 @@ func checkTwoPointOneRefs(payload map[string]any, key, base string, errors *evid
 			continue
 		}
 		refBase := base + "." + key + "[" + strconv.Itoa(i) + "]"
+		for field := range ref {
+			if _, ok := allowedFields[field]; !ok {
+				add(errors, "BKN_TRACE_PAYLOAD_FIELD_UNSUPPORTED", refBase+"."+field, "reference field is not registered")
+			}
+		}
 		for _, field := range []string{"ref_id", "ref_type", "source_system", "validity", "version_status", "visibility"} {
 			requiredStringField(ref, field, refBase, errors)
 		}
+		if validity, _ := stringField(ref, "validity"); validity != "" {
+			if _, ok := validValidity[validity]; !ok {
+				add(errors, "BKN_TRACE_REQUIRED_FIELD_MISSING", refBase+".validity", "unsupported reference validity")
+			}
+		}
+		if versionStatus, _ := stringField(ref, "version_status"); versionStatus != "" {
+			if _, ok := validVersionStatus[versionStatus]; !ok {
+				add(errors, "BKN_TRACE_REQUIRED_FIELD_MISSING", refBase+".version_status", "unsupported reference version_status")
+			}
+		}
+		checkVisibility(ref, refBase+".visibility", errors)
 	}
 }
 
@@ -1106,7 +1274,11 @@ func checkRefs(payload map[string]any, base string, key string, knownClaims map[
 		add(errors, "BKN_TRACE_UNKNOWN_CLAIM_ID", base+".claim_id", "refs must point to a known claim_id in the same batch")
 	}
 	refs := arrayField(payload, key)
-	if len(refs) == 0 {
+	allowEmptyUnresolvedBusinessRefs := requestVersion == evidencevo.ContractVersion && key == "business_refs"
+	if status, _ := stringField(payload, "resolver_status"); status != "unresolved" {
+		allowEmptyUnresolvedBusinessRefs = false
+	}
+	if len(refs) == 0 && !allowEmptyUnresolvedBusinessRefs {
 		add(errors, "BKN_TRACE_REQUIRED_FIELD_MISSING", base+"."+key, key+" must be a non-empty array")
 	}
 	for i, item := range refs {

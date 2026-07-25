@@ -46,6 +46,17 @@ type EvidenceEvent struct {
 	Payload       map[string]any `json:"payload"`
 }
 
+const (
+	AppendViolationEventIDConflict = "event_id_conflict"
+	AppendViolationCausation       = "causation_invalid"
+	AppendViolationAction          = "action_transition_invalid"
+)
+
+type AppendViolation struct {
+	Kind    string
+	EventID string
+}
+
 func (e EvidenceEvent) ContentHash() (string, error) {
 	body, err := json.Marshal(e)
 	if err != nil {
@@ -86,6 +97,85 @@ func NovelEvents(existing []NormalizedTrace, incoming []EvidenceEvent) ([]Eviden
 		novel = append(novel, event)
 	}
 	return novel, "", nil
+}
+
+// ValidateAppend protects invariants that must be checked at the atomic storage boundary.
+func ValidateAppend(existing []NormalizedTrace, incoming []EvidenceEvent) *AppendViolation {
+	priorEventIDs := map[string]struct{}{}
+	type actionState struct {
+		state       string
+		claimID     string
+		operationID string
+		lastEventID string
+	}
+	actions := map[string]actionState{}
+	for _, trace := range existing {
+		for _, event := range trace.Events {
+			priorEventIDs[event.EventID] = struct{}{}
+			if actionID := payloadString(event.Payload, "action_instance_id"); actionID != "" && isActionEvent(event.EventType) {
+				actions[actionID] = actionState{
+					state:       actionEventState(event.EventType),
+					claimID:     event.ClaimID,
+					operationID: event.OperationID,
+					lastEventID: event.EventID,
+				}
+			}
+		}
+	}
+
+	novel, conflictID, err := NovelEvents(existing, incoming)
+	if err != nil || conflictID != "" {
+		return &AppendViolation{Kind: AppendViolationEventIDConflict, EventID: conflictID}
+	}
+	for _, event := range novel {
+		if event.CausationID != "" {
+			if _, ok := priorEventIDs[event.CausationID]; !ok {
+				return &AppendViolation{Kind: AppendViolationCausation, EventID: event.EventID}
+			}
+		}
+		if isActionEvent(event.EventType) {
+			actionID := payloadString(event.Payload, "action_instance_id")
+			previous, exists := actions[actionID]
+			expectedPrevious := map[string]string{
+				"action.approval_requested": "recommended",
+				"action.approved":           "approval_requested",
+				"action.rejected":           "approval_requested",
+				"action.executed":           "approved",
+				"action.result_recorded":    "executed",
+			}[event.EventType]
+			valid := event.EventType == "action.recommended" && !exists
+			if event.EventType != "action.recommended" {
+				valid = exists && previous.state == expectedPrevious && event.CausationID == previous.lastEventID
+			}
+			if exists && (previous.claimID != event.ClaimID || previous.operationID != event.OperationID) {
+				valid = false
+			}
+			if !valid {
+				return &AppendViolation{Kind: AppendViolationAction, EventID: event.EventID}
+			}
+			actions[actionID] = actionState{
+				state:       actionEventState(event.EventType),
+				claimID:     event.ClaimID,
+				operationID: event.OperationID,
+				lastEventID: event.EventID,
+			}
+		}
+		priorEventIDs[event.EventID] = struct{}{}
+	}
+	return nil
+}
+
+func payloadString(payload map[string]any, key string) string {
+	value, _ := payload[key].(string)
+	return value
+}
+
+func isActionEvent(eventType string) bool {
+	return len(eventType) > len("action.") && eventType[:len("action.")] == "action."
+}
+
+func actionEventState(eventType string) string {
+	return eventType[len("action."):]
 }
 
 func WithEvents(trace NormalizedTrace, events []EvidenceEvent) NormalizedTrace {
