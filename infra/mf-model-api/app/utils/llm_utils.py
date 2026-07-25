@@ -411,23 +411,26 @@ class OpenAIClientRequest:
                 raise e
 
     def _emit_bkn_trace_evidence(self, *, messages, params, status, input_token_count=0, output_token_count=0, output=None, error_category=""):
-        if not self.trace_context or not bkntrace_evidence.evidence_enabled():
+        try:
+            if not self.trace_context or not bkntrace_evidence.evidence_enabled():
+                return
+            events = bkntrace_evidence.build_model_call_events(
+                self.trace_context,
+                model_id=self.model_id,
+                model_name=self.api_model,
+                model_provider="openai",
+                operation="model.chat.completions",
+                messages=messages,
+                params=params,
+                status=status,
+                input_token_count=input_token_count,
+                output_token_count=output_token_count,
+                output=output,
+                error_category=error_category,
+            )
+            bkntrace_evidence.emit_model_call_events(self.trace_context, events)
+        except Exception:
             return
-        events = bkntrace_evidence.build_model_call_events(
-            self.trace_context,
-            model_id=self.model_id,
-            model_name=self.api_model,
-            model_provider="openai",
-            operation="model.chat.completions",
-            messages=messages,
-            params=params,
-            status=status,
-            input_token_count=input_token_count,
-            output_token_count=output_token_count,
-            output=output,
-            error_category=error_category,
-        )
-        bkntrace_evidence.emit_model_call_events(self.trace_context, events)
 
 
 def prompt(ai_system, ai_user, ai_assistant, ai_history):

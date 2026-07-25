@@ -13,6 +13,7 @@ CONTRACT_VERSION = "2.0.0"
 MODULE_NAME = "mf-model-api"
 EVIDENCE_INGEST_URL_ENV = "BKN_TRACE_EVIDENCE_INGEST_URL"
 EVIDENCE_INGEST_TIMEOUT_MS_ENV = "BKN_TRACE_EVIDENCE_TIMEOUT_MS"
+_background_tasks = set()
 
 
 def evidence_enabled() -> bool:
@@ -142,7 +143,9 @@ def emit_model_call_events(request_context: Dict[str, str], events: List[Dict[st
         loop = asyncio.get_running_loop()
     except RuntimeError:
         return
-    loop.create_task(_post_batch(ingest_url, payload))
+    task = loop.create_task(_post_batch(ingest_url, payload))
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
 
 
 async def _post_batch(ingest_url: str, payload: Dict[str, Any]) -> None:
