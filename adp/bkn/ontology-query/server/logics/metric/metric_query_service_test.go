@@ -24,6 +24,88 @@ import (
 	omock "ontology-query/interfaces/mock"
 )
 
+func Test_metricGroupByDimensions_analysisDimensions(t *testing.T) {
+	Convey("metricGroupByDimensions respects analysis_dimensions\n", t, func() {
+		propMap := map[string]*cond.DataProperty{
+			"warehouse_id": {Name: "warehouse_id", MappedField: cond.Field{Name: "warehouse_id_res"}},
+			"item_code":    {Name: "item_code", MappedField: cond.Field{Name: "item_code_res"}},
+			"region":       {Name: "region", MappedField: cond.Field{Name: "region_res"}},
+		}
+		def := &interfaces.MetricDefinition{
+			CalculationFormula: &interfaces.MetricCalculationFormula{
+				GroupBy: []interfaces.MetricGroupBy{{Property: "region"}},
+			},
+			AnalysisDimensions: []interfaces.MetricAnalysisDimension{
+				{Name: "warehouse_id"},
+				{Name: "item_code"},
+			},
+		}
+
+		Convey("Without request analysis_dimensions uses calculation_formula.group_by only\n", func() {
+			dims, err := metricGroupByDimensions(def, &interfaces.MetricQueryRequest{}, propMap)
+			So(err, ShouldBeNil)
+			So(len(dims), ShouldEqual, 1)
+			So(dims[0].PropertyName, ShouldEqual, "region")
+			So(dims[0].ResourceFieldName, ShouldEqual, "region_res")
+		})
+
+		Convey("Request analysis_dimensions intersects with definition and preserves query order\n", func() {
+			dims, err := metricGroupByDimensions(def, &interfaces.MetricQueryRequest{
+				AnalysisDimensions: []string{"item_code", "warehouse_id", "unknown"},
+			}, propMap)
+			So(err, ShouldBeNil)
+			So(len(dims), ShouldEqual, 2)
+			So(dims[0].PropertyName, ShouldEqual, "item_code")
+			So(dims[0].ResourceFieldName, ShouldEqual, "item_code_res")
+			So(dims[1].PropertyName, ShouldEqual, "warehouse_id")
+			So(dims[1].ResourceFieldName, ShouldEqual, "warehouse_id_res")
+		})
+	})
+}
+
+func Test_metricQueryService_buildResourceDataQueryParams_analysisDimensions(t *testing.T) {
+	Convey("buildResourceDataQueryParams pushes analysis_dimensions to group_by\n", t, func() {
+		ctx := context.Background()
+		svc := &metricQueryService{appSetting: &common.AppSetting{}}
+		def := &interfaces.MetricDefinition{
+			TimeDimension: &interfaces.MetricTimeDimension{Property: "evt_time"},
+			CalculationFormula: &interfaces.MetricCalculationFormula{
+				Aggregation: interfaces.MetricAggregation{Property: "amount", Aggr: "sum"},
+			},
+			AnalysisDimensions: []interfaces.MetricAnalysisDimension{
+				{Name: "warehouse_id"},
+				{Name: "item_code"},
+			},
+		}
+		ot := interfaces.ObjectType{
+			ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+				DataProperties: []cond.DataProperty{
+					{Name: "amount", Type: dtype.DATATYPE_DOUBLE, MappedField: cond.Field{Name: "amount_res"}},
+					{Name: "evt_time", Type: dtype.DATATYPE_DATETIME, MappedField: cond.Field{Name: "evt_time_res"}},
+					{Name: "warehouse_id", Type: dtype.DATATYPE_STRING, MappedField: cond.Field{Name: "warehouse_id_res"}},
+					{Name: "item_code", Type: dtype.DATATYPE_STRING, MappedField: cond.Field{Name: "item_code_res"}},
+				},
+			},
+		}
+		instant := false
+		step := "year"
+		start := int64(1_000)
+		end := int64(2_000)
+
+		params, trend, err := svc.buildResourceDataQueryParams(ctx, def, &interfaces.MetricQueryRequest{
+			AnalysisDimensions: []string{"warehouse_id", "item_code"},
+			Time:               &interfaces.MetricTimeWindow{Start: &start, End: &end, Instant: &instant, Step: &step},
+		}, ot)
+		So(err, ShouldBeNil)
+		So(trend, ShouldNotBeNil)
+		So(len(params.GroupBy), ShouldEqual, 3)
+		So(params.GroupBy[0]["property"], ShouldEqual, "warehouse_id_res")
+		So(params.GroupBy[1]["property"], ShouldEqual, "item_code_res")
+		So(params.GroupBy[2]["property"], ShouldEqual, "evt_time_res")
+		So(params.GroupBy[2]["calendar_interval"], ShouldEqual, "year")
+	})
+}
+
 func Test_metricQueryService_QueryMetricData(t *testing.T) {
 	Convey("QueryMetricData\n", t, func() {
 		ctx := context.Background()

@@ -313,18 +313,18 @@ func (s *metricQueryService) buildResourceDataQueryParams(ctx context.Context, d
 		"alias":    "__value",
 	}
 
-	// 处理分组字段
+	// 处理分组字段（calculation_formula.group_by + 请求 analysis_dimensions，与 metricGroupByDimensions 一致）
+	groupDims, err := metricGroupByDimensions(def, metricQuery, propMap)
+	if err != nil {
+		return nil, nil, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_Metric_InvalidParameter).
+			WithErrorDetails(err.Error())
+	}
 	var gb []map[string]any
-	if len(metricFormula.GroupBy) > 0 {
-		gb = make([]map[string]any, 0, len(metricFormula.GroupBy))
-		for _, g := range metricFormula.GroupBy {
-			resProp, err := mapDataPropertyToResourceField(g.Property, propMap)
-			if err != nil {
-				return nil, nil, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_Metric_InvalidParameter).
-					WithErrorDetails(err.Error())
-			}
+	if len(groupDims) > 0 {
+		gb = make([]map[string]any, 0, len(groupDims)+1)
+		for _, d := range groupDims {
 			gb = append(gb, map[string]any{
-				"property": resProp,
+				"property": d.ResourceFieldName,
 			})
 		}
 	}
@@ -430,8 +430,15 @@ func metricGroupByDimensions(def *interfaces.MetricDefinition, query *interfaces
 		return nil, fmt.Errorf("propMap is required for group by dimension mapping")
 	}
 	defined := make(map[string]struct{})
-	var ordered []string
-	add := func(s string) {
+	var defaultOrdered []string
+	addDefined := func(s string) {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			return
+		}
+		defined[s] = struct{}{}
+	}
+	addDefault := func(s string) {
 		s = strings.TrimSpace(s)
 		if s == "" {
 			return
@@ -440,17 +447,20 @@ func metricGroupByDimensions(def *interfaces.MetricDefinition, query *interfaces
 			return
 		}
 		defined[s] = struct{}{}
-		ordered = append(ordered, s)
+		defaultOrdered = append(defaultOrdered, s)
 	}
 	if def.CalculationFormula != nil {
 		for _, g := range def.CalculationFormula.GroupBy {
-			add(g.Property)
+			addDefault(g.Property)
 		}
+	}
+	for _, ad := range def.AnalysisDimensions {
+		addDefined(ad.Name)
 	}
 
 	var propertyNames []string
 	if query == nil || len(query.AnalysisDimensions) == 0 {
-		propertyNames = ordered
+		propertyNames = defaultOrdered
 	} else {
 		seen := make(map[string]struct{})
 		for _, a := range query.AnalysisDimensions {
