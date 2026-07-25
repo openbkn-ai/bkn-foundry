@@ -1,6 +1,15 @@
 package evidencevo
 
-const ContractVersion = "2.0.0"
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+)
+
+const (
+	ContractVersion       = "2.1.0"
+	LegacyContractVersion = "2.0.0"
+)
 
 type IngestRequest struct {
 	SchemaVersion string          `json:"bkn.trace.schema.version"`
@@ -29,7 +38,81 @@ type EvidenceEvent struct {
 	SpanID        string         `json:"span_id"`
 	RequestID     string         `json:"bkn.request.id"`
 	OperationName string         `json:"bkn.operation.name"`
+	InteractionID string         `json:"interaction_id,omitempty"`
+	OperationID   string         `json:"operation_id,omitempty"`
+	CausationID   string         `json:"causation_event_id,omitempty"`
+	ClaimID       string         `json:"claim_id,omitempty"`
+	Attempt       int            `json:"attempt,omitempty"`
 	Payload       map[string]any `json:"payload"`
+}
+
+func (e EvidenceEvent) ContentHash() (string, error) {
+	body, err := json.Marshal(e)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(body)
+	return hex.EncodeToString(sum[:]), nil
+}
+
+func SupportedContractVersion(version string) bool {
+	return version == LegacyContractVersion || version == ContractVersion
+}
+
+func NovelEvents(existing []NormalizedTrace, incoming []EvidenceEvent) ([]EvidenceEvent, string, error) {
+	hashes := map[string]string{}
+	for _, trace := range existing {
+		for _, event := range trace.Events {
+			hash, err := event.ContentHash()
+			if err != nil {
+				return nil, "", err
+			}
+			hashes[event.EventID] = hash
+		}
+	}
+	novel := make([]EvidenceEvent, 0, len(incoming))
+	for _, event := range incoming {
+		hash, err := event.ContentHash()
+		if err != nil {
+			return nil, "", err
+		}
+		if existingHash, ok := hashes[event.EventID]; ok {
+			if existingHash != hash {
+				return nil, event.EventID, nil
+			}
+			continue
+		}
+		hashes[event.EventID] = hash
+		novel = append(novel, event)
+	}
+	return novel, "", nil
+}
+
+func WithEvents(trace NormalizedTrace, events []EvidenceEvent) NormalizedTrace {
+	trace.Events = events
+	trace.AcceptedEvents = len(events)
+	trace.ClaimIDs = nil
+	trace.ClaimCount = 0
+	trace.EvidenceRefCount = 0
+	trace.BusinessRefCount = 0
+	for _, event := range events {
+		switch event.EventType {
+		case "claim.created":
+			trace.ClaimCount++
+			if claimID, ok := event.Payload["claim_id"].(string); ok && claimID != "" {
+				trace.ClaimIDs = append(trace.ClaimIDs, claimID)
+			}
+		case "evidence.refs.created":
+			if refs, ok := event.Payload["evidence_refs"].([]any); ok {
+				trace.EvidenceRefCount += len(refs)
+			}
+		case "business.refs.resolved":
+			if refs, ok := event.Payload["business_refs"].([]any); ok {
+				trace.BusinessRefCount += len(refs)
+			}
+		}
+	}
+	return trace
 }
 
 type ValidationError struct {

@@ -11,6 +11,7 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/infra/opensearch"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/ievidencestore"
 )
 
 const maxEvidenceSearchResults = 1000
@@ -20,6 +21,7 @@ type Store struct {
 	index        string
 	now          func() time.Time
 	ensureMu     sync.Mutex
+	writeMu      sync.Mutex
 	indexEnsured bool
 }
 
@@ -57,6 +59,26 @@ func (s *Store) StoreEvidence(ctx context.Context, trace evidencevo.NormalizedTr
 	if err := s.ensureIndex(ctx); err != nil {
 		return err
 	}
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	existing, err := s.search(ctx, "trace_id", trace.TraceID, evidencevo.EvidenceQueryOptions{Limit: maxEvidenceSearchResults})
+	if err != nil {
+		return err
+	}
+	if existing.Truncated {
+		return fmt.Errorf("evidence idempotency history is truncated for trace %s", trace.TraceID)
+	}
+	novel, conflictID, err := evidencevo.NovelEvents(existing.Traces, trace.Events)
+	if err != nil {
+		return err
+	}
+	if conflictID != "" {
+		return fmt.Errorf("%w: event_id %s", ievidencestore.ErrEventIDConflict, conflictID)
+	}
+	if len(novel) == 0 {
+		return nil
+	}
+	trace = evidencevo.WithEvents(trace, novel)
 
 	doc := toDocument(trace, s.now().UTC())
 	body, err := json.Marshal(doc)

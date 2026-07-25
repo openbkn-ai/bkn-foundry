@@ -2,9 +2,11 @@ package evidencestore
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/ievidencestore"
 )
 
 type Store struct {
@@ -23,6 +25,17 @@ func New() *Store {
 func (s *Store) StoreEvidence(_ context.Context, trace evidencevo.NormalizedTrace) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	novel, conflictID, err := evidencevo.NovelEvents(s.traces[trace.TraceID], trace.Events)
+	if err != nil {
+		return err
+	}
+	if conflictID != "" {
+		return fmt.Errorf("%w: event_id %s", ievidencestore.ErrEventIDConflict, conflictID)
+	}
+	if len(novel) == 0 {
+		return nil
+	}
+	trace = evidencevo.WithEvents(trace, novel)
 	s.traces[trace.TraceID] = append(s.traces[trace.TraceID], trace)
 	s.requests[trace.RequestID] = append(s.requests[trace.RequestID], trace)
 	return nil

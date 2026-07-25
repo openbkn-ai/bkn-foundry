@@ -21,19 +21,23 @@ func TestStoreEvidenceIndexesNormalizedTrace(t *testing.T) {
 	var body map[string]any
 	client := newFakeOpenSearchClient(func(r *http.Request) (*http.Response, error) {
 		paths = append(paths, r.URL.Path)
-		if r.Method != http.MethodPut {
-			t.Fatalf("expected PUT, got %s", r.Method)
-		}
-		if r.URL.Path == "/bkn-trace-evidence-test" {
+		if r.Method == http.MethodPut && r.URL.Path == "/bkn-trace-evidence-test" {
 			if err := json.NewDecoder(r.Body).Decode(&indexMapping); err != nil {
 				t.Fatalf("decode index mapping: %v", err)
 			}
 			return jsonResponse(`{"acknowledged":true}`), nil
 		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			t.Fatalf("decode document body: %v", err)
+		if r.Method == http.MethodPost && r.URL.Path == "/bkn-trace-evidence-test/_search" {
+			return jsonResponse(`{"hits":{"hits":[]}}`), nil
 		}
-		return jsonResponse(`{"result":"created"}`), nil
+		if r.Method == http.MethodPut && strings.HasPrefix(r.URL.Path, "/bkn-trace-evidence-test/_doc/") {
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode document body: %v", err)
+			}
+			return jsonResponse(`{"result":"created"}`), nil
+		}
+		t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+		return nil, nil
 	})
 
 	store := New(client, "bkn-trace-evidence-test")
@@ -43,18 +47,131 @@ func TestStoreEvidenceIndexesNormalizedTrace(t *testing.T) {
 		t.Fatalf("store evidence: %v", err)
 	}
 
-	if len(paths) != 2 || paths[0] != "/bkn-trace-evidence-test" || !strings.HasPrefix(paths[1], "/bkn-trace-evidence-test/_doc/") {
+	if len(paths) != 3 || paths[0] != "/bkn-trace-evidence-test" || paths[1] != "/bkn-trace-evidence-test/_search" || !strings.HasPrefix(paths[2], "/bkn-trace-evidence-test/_doc/") {
 		t.Fatalf("unexpected request paths: %v", paths)
 	}
 	mappingBytes, _ := json.Marshal(indexMapping)
 	if !strings.Contains(string(mappingBytes), `"events":{"enabled":false,"type":"object"}`) {
 		t.Fatalf("events must not create dynamic mappings: %s", string(mappingBytes))
 	}
+	if strings.Contains(string(mappingBytes), `"payload"`) {
+		t.Fatalf("payload must not have an indexed mapping: %s", string(mappingBytes))
+	}
 	if body["trace_id"] != "trace_index_001" || body["bkn.request.id"] != "req_index_001" {
 		t.Fatalf("unexpected identity fields: %+v", body)
 	}
 	if body["ingested_at"] != "2026-07-23T01:02:03.000000004Z" {
 		t.Fatalf("unexpected ingested_at: %+v", body["ingested_at"])
+	}
+}
+
+func TestStoreEvidenceTreatsIdenticalEventReplayAsIdempotent(t *testing.T) {
+	indexed := false
+	indexAttempts := 0
+	client := newFakeOpenSearchClient(func(r *http.Request) (*http.Response, error) {
+		if r.Method == http.MethodPut && r.URL.Path == "/bkn-trace-evidence-test" {
+			return jsonResponse(`{"acknowledged":true}`), nil
+		}
+		if r.Method == http.MethodPost && r.URL.Path == "/bkn-trace-evidence-test/_search" {
+			if !indexed {
+				return jsonResponse(`{"hits":{"hits":[]}}`), nil
+			}
+			body, err := json.Marshal(toDocument(normalizedTrace(), time.Date(2026, 7, 23, 1, 2, 3, 0, time.UTC)))
+			if err != nil {
+				t.Fatalf("marshal existing document: %v", err)
+			}
+			return jsonResponse(`{"hits":{"hits":[{"_source":` + string(body) + `}]}}`), nil
+		}
+		if r.Method == http.MethodPut && strings.HasPrefix(r.URL.Path, "/bkn-trace-evidence-test/_doc/") {
+			indexed = true
+			indexAttempts++
+			return jsonResponse(`{"result":"created"}`), nil
+		}
+		t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+		return nil, nil
+	})
+	store := New(client, "bkn-trace-evidence-test")
+
+	if err := store.StoreEvidence(context.Background(), normalizedTrace()); err != nil {
+		t.Fatalf("first store: %v", err)
+	}
+	if err := store.StoreEvidence(context.Background(), normalizedTrace()); err != nil {
+		t.Fatalf("idempotent replay: %v", err)
+	}
+	if indexAttempts != 1 {
+		t.Fatalf("expected one index write, got %d", indexAttempts)
+	}
+}
+
+func TestStoreEvidenceRejectsEventIDConflict(t *testing.T) {
+	existing := normalizedTrace()
+	existingDoc := toDocument(existing, time.Date(2026, 7, 23, 1, 2, 3, 0, time.UTC))
+	existingBody, err := json.Marshal(existingDoc)
+	if err != nil {
+		t.Fatalf("marshal existing document: %v", err)
+	}
+	indexAttempts := 0
+	client := newFakeOpenSearchClient(func(r *http.Request) (*http.Response, error) {
+		if r.Method == http.MethodPut && r.URL.Path == "/bkn-trace-evidence-test" {
+			return jsonResponse(`{"acknowledged":true}`), nil
+		}
+		if r.Method == http.MethodPost && r.URL.Path == "/bkn-trace-evidence-test/_search" {
+			return jsonResponse(`{"hits":{"hits":[{"_source":` + string(existingBody) + `}]}}`), nil
+		}
+		if r.Method == http.MethodPut && strings.HasPrefix(r.URL.Path, "/bkn-trace-evidence-test/_doc/") {
+			indexAttempts++
+			return jsonResponse(`{"result":"created"}`), nil
+		}
+		t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+		return nil, nil
+	})
+	store := New(client, "bkn-trace-evidence-test")
+	changed := normalizedTrace()
+	changed.Events[0].Payload["claim_id"] = "claim_changed"
+
+	err = store.StoreEvidence(context.Background(), changed)
+	if err == nil || !strings.Contains(err.Error(), "BKN_TRACE_EVENT_ID_CONFLICT") {
+		t.Fatalf("expected event id conflict, got %v", err)
+	}
+	if indexAttempts != 0 {
+		t.Fatalf("conflicting event must not be indexed, got %d writes", indexAttempts)
+	}
+}
+
+func TestStoreEvidenceRejectsWriteWhenIdempotencyHistoryIsTruncated(t *testing.T) {
+	hits := make([]map[string]any, maxEvidenceSearchResults+1)
+	for i := range hits {
+		hits[i] = map[string]any{"_source": map[string]any{
+			"trace_id": "trace_index_001", "bkn.request.id": "req_index_001", "events": []any{},
+		}}
+	}
+	responseBody, err := json.Marshal(map[string]any{"hits": map[string]any{"hits": hits}})
+	if err != nil {
+		t.Fatalf("marshal search response: %v", err)
+	}
+	indexAttempts := 0
+	client := newFakeOpenSearchClient(func(r *http.Request) (*http.Response, error) {
+		if r.Method == http.MethodPut && r.URL.Path == "/bkn-trace-evidence-test" {
+			return jsonResponse(`{"acknowledged":true}`), nil
+		}
+		if r.Method == http.MethodPost && r.URL.Path == "/bkn-trace-evidence-test/_search" {
+			return jsonResponse(string(responseBody)), nil
+		}
+		if r.Method == http.MethodPut && strings.HasPrefix(r.URL.Path, "/bkn-trace-evidence-test/_doc/") {
+			indexAttempts++
+			return jsonResponse(`{"result":"created"}`), nil
+		}
+		t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+		return nil, nil
+	})
+	store := New(client, "bkn-trace-evidence-test")
+
+	err = store.StoreEvidence(context.Background(), normalizedTrace())
+	if err == nil || !strings.Contains(err.Error(), "idempotency history is truncated") {
+		t.Fatalf("expected fail-closed truncated history error, got %v", err)
+	}
+	if indexAttempts != 0 {
+		t.Fatalf("must not write with incomplete idempotency history, got %d writes", indexAttempts)
 	}
 }
 
@@ -201,6 +318,9 @@ func TestStoreEvidenceRetriesEnsureIndexAfterTransientFailure(t *testing.T) {
 		if r.Method == http.MethodPut && strings.HasPrefix(r.URL.Path, "/bkn-trace-evidence-test/_doc/") {
 			indexAttempts++
 			return jsonResponse(`{"result":"created"}`), nil
+		}
+		if r.Method == http.MethodPost && r.URL.Path == "/bkn-trace-evidence-test/_search" {
+			return jsonResponse(`{"hits":{"hits":[]}}`), nil
 		}
 		t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
 		return nil, nil

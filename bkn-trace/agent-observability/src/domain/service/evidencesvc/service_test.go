@@ -2,10 +2,12 @@ package evidencesvc
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/memoryaccess/evidencestore"
 )
 
 type fakeStore struct {
@@ -15,6 +17,16 @@ type fakeStore struct {
 
 func (s *fakeStore) StoreEvidence(_ context.Context, _ evidencevo.NormalizedTrace) error {
 	s.calls++
+	return nil
+}
+
+type capturingStore struct {
+	fakeStore
+}
+
+func (s *capturingStore) StoreEvidence(_ context.Context, trace evidencevo.NormalizedTrace) error {
+	s.calls++
+	s.traces = append(s.traces, trace)
 	return nil
 }
 
@@ -67,6 +79,256 @@ func TestIngestAcceptsPhaseTwoEvidenceBatch(t *testing.T) {
 	}
 	if response.AcceptedEvents != 3 || response.ClaimCount != 1 || response.EvidenceRefCount != 1 || response.BusinessRefCount != 1 {
 		t.Fatalf("unexpected response counts: %+v", response)
+	}
+}
+
+func TestContractVersionDefaultsToTwoPointOne(t *testing.T) {
+	if evidencevo.ContractVersion != "2.1.0" {
+		t.Fatalf("expected default contract version 2.1.0, got %s", evidencevo.ContractVersion)
+	}
+}
+
+func TestIngestAcceptsTwoPointOneBusinessEventsAndPreservesCausality(t *testing.T) {
+	store := &capturingStore{}
+	service := New(store)
+
+	response, validationErrors, err := service.Ingest(context.Background(), mustJSON(t, twoPointOneBatch(validTwoPointOneEvents())))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(validationErrors) > 0 {
+		t.Fatalf("unexpected validation errors: %+v", validationErrors)
+	}
+	if response.SchemaVersion != "2.1.0" || response.AcceptedEvents != len(validTwoPointOneEvents()) {
+		t.Fatalf("unexpected response: %+v", response)
+	}
+	if len(store.traces) != 1 {
+		t.Fatalf("expected one stored trace, got %d", len(store.traces))
+	}
+	event := store.traces[0].Events[1]
+	encoded, marshalErr := json.Marshal(event)
+	if marshalErr != nil {
+		t.Fatalf("marshal stored event: %v", marshalErr)
+	}
+	stored := string(encoded)
+	for _, expected := range []string{
+		`"interaction_id":"int_001"`,
+		`"operation_id":"op_data_001"`,
+		`"causation_event_id":"evt_interaction"`,
+		`"attempt":1`,
+	} {
+		if !strings.Contains(stored, expected) {
+			t.Fatalf("stored event missing %s: %s", expected, stored)
+		}
+	}
+}
+
+func TestIngestDefaultsTwoPointOneAttemptToOne(t *testing.T) {
+	store := &capturingStore{}
+	service := New(store)
+	events := validTwoPointOneEvents()
+	delete(events[1], "attempt")
+
+	_, validationErrors, err := service.Ingest(context.Background(), mustJSON(t, twoPointOneBatch(events)))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(validationErrors) > 0 {
+		t.Fatalf("unexpected validation errors: %+v", validationErrors)
+	}
+	encoded, marshalErr := json.Marshal(store.traces[0].Events[1])
+	if marshalErr != nil {
+		t.Fatalf("marshal stored event: %v", marshalErr)
+	}
+	if !strings.Contains(string(encoded), `"attempt":1`) {
+		t.Fatalf("expected default attempt 1, got %s", encoded)
+	}
+}
+
+func TestIngestRejectsUnknownTwoPointOneMinorVersion(t *testing.T) {
+	service := New(&fakeStore{})
+	body := mustJSON(t, twoPointOneBatch(validTwoPointOneEvents()))
+	body = []byte(strings.ReplaceAll(string(body), "2.1.0", "2.2.0"))
+
+	_, validationErrors, err := service.Ingest(context.Background(), body)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !hasValidationCode(validationErrors, "BKN_TRACE_SCHEMA_VERSION_UNSUPPORTED") {
+		t.Fatalf("expected unsupported schema version, got %+v", validationErrors)
+	}
+}
+
+func TestIngestRejectsMissingTwoPointOnePublicFields(t *testing.T) {
+	service := New(&fakeStore{})
+	events := validTwoPointOneEvents()
+	delete(events[1], "interaction_id")
+	delete(events[1], "operation_id")
+	delete(events[1], "causation_event_id")
+
+	_, validationErrors, err := service.Ingest(context.Background(), mustJSON(t, twoPointOneBatch(events)))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, field := range []string{"interaction_id", "operation_id", "causation_event_id"} {
+		if !hasValidationPath(validationErrors, field) {
+			t.Fatalf("expected missing %s validation, got %+v", field, validationErrors)
+		}
+	}
+}
+
+func TestIngestValidatesRegisteredTwoPointOneEventPayloads(t *testing.T) {
+	tests := []struct {
+		eventType string
+		field     string
+	}{
+		{eventType: "agent.interaction.started", field: "intent_hash"},
+		{eventType: "retrieval.completed", field: "candidate_count"},
+		{eventType: "knowledge.read.observed", field: "kn_id"},
+		{eventType: "data.query.observed", field: "query_hash"},
+		{eventType: "model.call.observed", field: "model_name"},
+		{eventType: "action.recommended", field: "reason_hash"},
+		{eventType: "action.approval_requested", field: "policy_ref"},
+		{eventType: "action.approved", field: "actor_ref"},
+		{eventType: "action.rejected", field: "policy_decision_ref"},
+		{eventType: "action.executed", field: "status"},
+		{eventType: "action.result_recorded", field: "result_hash"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.eventType+" requires "+tt.field, func(t *testing.T) {
+			events := validTwoPointOneEvents()
+			if tt.eventType == "action.rejected" {
+				rejected := cloneEventByType(t, events, "action.approved")
+				rejected["event_id"] = "evt_action_rejected"
+				rejected["event_type"] = "action.rejected"
+				rejected["payload"].(map[string]any)["status"] = "rejected"
+				events = append(removeEventTypes(events, "action.approved", "action.executed", "action.result_recorded"), rejected)
+			}
+			for _, event := range events {
+				if event["event_type"] == tt.eventType {
+					delete(event["payload"].(map[string]any), tt.field)
+				}
+			}
+			service := New(&fakeStore{})
+			_, validationErrors, err := service.Ingest(context.Background(), mustJSON(t, twoPointOneBatch(events)))
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !hasValidationPath(validationErrors, tt.field) {
+				t.Fatalf("expected required field %s, got %+v", tt.field, validationErrors)
+			}
+		})
+	}
+}
+
+func TestIngestIsIdempotentForSameEventIDAndContent(t *testing.T) {
+	store := evidencestore.New()
+	service := New(store)
+	body := mustJSON(t, twoPointOneBatch(validTwoPointOneEvents()[:2]))
+
+	for i := 0; i < 2; i++ {
+		_, validationErrors, err := service.Ingest(context.Background(), body)
+		if err != nil {
+			t.Fatalf("ingest %d: %v", i+1, err)
+		}
+		if len(validationErrors) > 0 {
+			t.Fatalf("ingest %d validation errors: %+v", i+1, validationErrors)
+		}
+	}
+	if got := store.TraceCount("11111111111111111111111111111111"); got != 1 {
+		t.Fatalf("expected one stored trace after idempotent replay, got %d", got)
+	}
+}
+
+func TestIngestRejectsSameEventIDWithDifferentContent(t *testing.T) {
+	store := evidencestore.New()
+	service := New(store)
+	body := mustJSON(t, twoPointOneBatch(validTwoPointOneEvents()[:2]))
+	if _, validationErrors, err := service.Ingest(context.Background(), body); err != nil || len(validationErrors) > 0 {
+		t.Fatalf("first ingest failed: errors=%+v err=%v", validationErrors, err)
+	}
+	changed := strings.Replace(string(body), "sha256:query", "sha256:changed", 1)
+
+	_, validationErrors, err := service.Ingest(context.Background(), []byte(changed))
+	if err != nil {
+		t.Fatalf("expected domain validation, got infrastructure error: %v", err)
+	}
+	if !hasValidationCode(validationErrors, "BKN_TRACE_EVENT_ID_CONFLICT") {
+		t.Fatalf("expected event id conflict, got %+v", validationErrors)
+	}
+	if got := store.TraceCount("11111111111111111111111111111111"); got != 1 {
+		t.Fatalf("conflicting replay must not be stored, got %d traces", got)
+	}
+}
+
+func TestIngestRejectsActionExecutionBeforeApproval(t *testing.T) {
+	events := validTwoPointOneEvents()
+	events = removeEventTypes(events, "action.approval_requested", "action.approved")
+	service := New(evidencestore.New())
+
+	_, validationErrors, err := service.Ingest(context.Background(), mustJSON(t, twoPointOneBatch(events)))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !hasValidationCode(validationErrors, "BKN_TRACE_ACTION_TRANSITION_INVALID") {
+		t.Fatalf("expected invalid action transition, got %+v", validationErrors)
+	}
+}
+
+func TestIngestRejectsActionAfterRejectedTerminalStateAcrossBatches(t *testing.T) {
+	store := evidencestore.New()
+	service := New(store)
+	events := validTwoPointOneEvents()
+	rejected := cloneEventByType(t, events, "action.approved")
+	rejected["event_id"] = "evt_action_rejected"
+	rejected["event_type"] = "action.rejected"
+	rejected["payload"].(map[string]any)["status"] = "rejected"
+	first := removeEventTypes(events, "action.approved", "action.executed", "action.result_recorded")
+	first = append(first, rejected)
+	if _, validationErrors, err := service.Ingest(context.Background(), mustJSON(t, twoPointOneBatch(first))); err != nil || len(validationErrors) > 0 {
+		t.Fatalf("rejected lifecycle setup failed: errors=%+v err=%v", validationErrors, err)
+	}
+	executed := cloneEventByType(t, events, "action.executed")
+	executed["causation_event_id"] = "evt_action_rejected"
+
+	_, validationErrors, err := service.Ingest(context.Background(), mustJSON(t, twoPointOneBatch([]map[string]any{executed})))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !hasValidationCode(validationErrors, "BKN_TRACE_ACTION_TRANSITION_INVALID") {
+		t.Fatalf("expected rejected terminal state violation, got %+v", validationErrors)
+	}
+}
+
+func TestIngestRejectsActionIdentityDrift(t *testing.T) {
+	events := validTwoPointOneEvents()
+	for _, event := range events {
+		if event["event_type"] == "action.executed" {
+			event["claim_id"] = "claim_other"
+		}
+	}
+	service := New(evidencestore.New())
+
+	_, validationErrors, err := service.Ingest(context.Background(), mustJSON(t, twoPointOneBatch(events)))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !hasValidationCode(validationErrors, "BKN_TRACE_ACTION_TRANSITION_INVALID") {
+		t.Fatalf("expected action identity drift rejection, got %+v", validationErrors)
+	}
+}
+
+func TestIngestTwoPointOneSensitiveFieldProtection(t *testing.T) {
+	events := validTwoPointOneEvents()
+	events[1]["payload"].(map[string]any)["raw_sql"] = "select email from customer"
+	service := New(evidencestore.New())
+
+	_, validationErrors, err := service.Ingest(context.Background(), mustJSON(t, twoPointOneBatch(events)))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !hasValidationCode(validationErrors, "BKN_TRACE_FORBIDDEN_RAW_PAYLOAD_FIELD") {
+		t.Fatalf("expected sensitive field rejection, got %+v", validationErrors)
 	}
 }
 
@@ -631,6 +893,155 @@ func hasValidationCode(validationErrors evidencevo.ValidationErrors, code string
 		}
 	}
 	return false
+}
+
+func hasValidationPath(validationErrors evidencevo.ValidationErrors, field string) bool {
+	for _, validationError := range validationErrors {
+		if strings.HasSuffix(validationError.Path, "."+field) {
+			return true
+		}
+	}
+	return false
+}
+
+func mustJSON(t *testing.T, value any) []byte {
+	t.Helper()
+	body, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("marshal test fixture: %v", err)
+	}
+	return body
+}
+
+func twoPointOneBatch(events []map[string]any) map[string]any {
+	return map[string]any{
+		"bkn.trace.schema.version": "2.1.0",
+		"trace": map[string]any{
+			"trace_id":         "11111111111111111111111111111111",
+			"traceparent":      "00-11111111111111111111111111111111-1000000000000001-01",
+			"bkn.request.id":   "req_biz_001",
+			"bkn.tenant.id":    "tenant_e2e",
+			"business_domain":  "supplychain_e2e",
+			"bkn.account.id":   "account_e2e_admin",
+			"bkn.account.type": "user",
+		},
+		"events": events,
+	}
+}
+
+func validTwoPointOneEvents() []map[string]any {
+	traceFields := func(eventID, eventType, operationName string, payload map[string]any) map[string]any {
+		return map[string]any{
+			"event_id": eventID, "event_type": eventType, "bkn.trace.schema.version": "2.1.0",
+			"observed_at": "2026-07-25T08:00:00.000000000Z", "emitted_at": "2026-07-25T08:00:00.001000000Z",
+			"producer_module": "bkn-agent", "trace_id": "11111111111111111111111111111111",
+			"span_id": "1000000000000001", "bkn.request.id": "req_biz_001", "bkn.operation.name": operationName,
+			"interaction_id": "int_001", "attempt": 1, "payload": payload,
+		}
+	}
+	interaction := traceFields("evt_interaction", "agent.interaction.started", "agent.run", map[string]any{
+		"intent_hash": "sha256:intent", "mode": "task", "agent_id": "supplychain-assistant",
+	})
+	dataQuery := traceFields("evt_data", "data.query.observed", "data.query", map[string]any{
+		"query_hash": "sha256:query", "query_type": "aggregate", "row_count": 12,
+		"resource_refs": []any{"resource:forecast"}, "field_refs": []any{"field:forecast_month"},
+	})
+	dataQuery["operation_id"] = "op_data_001"
+	dataQuery["causation_event_id"] = "evt_interaction"
+	retrieval := traceFields("evt_retrieval", "retrieval.completed", "retrieval.search", map[string]any{
+		"query_hash": "sha256:retrieval", "candidate_count": 3, "truncated": false, "source_refs": []any{"schema:forecast"},
+	})
+	retrieval["operation_id"] = "op_retrieval_001"
+	retrieval["causation_event_id"] = "evt_interaction"
+	knowledge := traceFields("evt_knowledge", "knowledge.read.observed", "knowledge.read", map[string]any{
+		"kn_id": "supplychain", "read_kind": "object_relation_schema", "version_status": "versioned", "business_refs": []any{"object:forecast"},
+	})
+	knowledge["operation_id"] = "op_knowledge_001"
+	knowledge["causation_event_id"] = "evt_retrieval"
+	model := traceFields("evt_model", "model.call.observed", "model.chat", map[string]any{
+		"model_name": "test-model", "model_provider": "openai-compatible", "status": "ok",
+		"input_token_count": 10, "output_token_count": 5, "prompt_hash": "sha256:prompt", "output_hash": "sha256:output",
+	})
+	model["operation_id"] = "op_model_001"
+	model["causation_event_id"] = "evt_data"
+	claim := traceFields("evt_claim", "claim.created", "agent.claim.create", map[string]any{
+		"claim_id": "claim_001", "claim_type": "answer", "claim_hash": "sha256:claim",
+		"source_event_ids": []any{"evt_data", "evt_model"}, "operation_ids": []any{"op_data_001", "op_model_001"},
+		"version_status": "versioned", "visibility": "visible",
+	})
+	claim["causation_event_id"] = "evt_model"
+	claim["claim_id"] = "claim_001"
+	evidenceRefs := traceFields("evt_evidence", "evidence.refs.created", "agent.evidence.link", map[string]any{
+		"claim_id": "claim_001", "evidence_refs": []any{map[string]any{
+			"ref_id": "resource:forecast", "ref_type": "data_resource", "source_system": "vega",
+			"validity": "observed", "version_status": "versioned", "visibility": "visible",
+		}},
+	})
+	evidenceRefs["operation_id"] = "op_data_001"
+	evidenceRefs["causation_event_id"] = "evt_claim"
+	evidenceRefs["claim_id"] = "claim_001"
+	businessRefs := traceFields("evt_business", "business.refs.resolved", "agent.business.resolve", map[string]any{
+		"claim_id": "claim_001", "resolver_status": "resolved", "business_refs": []any{map[string]any{
+			"ref_id": "object:forecast", "ref_type": "object", "source_system": "bkn",
+			"validity": "available", "version_status": "versioned", "visibility": "visible",
+		}},
+	})
+	businessRefs["operation_id"] = "op_knowledge_001"
+	businessRefs["causation_event_id"] = "evt_claim"
+	businessRefs["claim_id"] = "claim_001"
+	action := func(id, kind, cause string, payload map[string]any) map[string]any {
+		event := traceFields(id, kind, kind, payload)
+		event["operation_id"] = "op_action_001"
+		event["causation_event_id"] = cause
+		event["claim_id"] = "claim_001"
+		return event
+	}
+	recommended := action("evt_action_recommended", "action.recommended", "evt_claim", map[string]any{
+		"action_instance_id": "action_001", "action_type": "create_forecast_monitor", "reason_hash": "sha256:reason", "status": "recommended",
+	})
+	requested := action("evt_action_requested", "action.approval_requested", "evt_action_recommended", map[string]any{
+		"action_instance_id": "action_001", "policy_ref": "policy:monitor", "status": "approval_requested",
+	})
+	approved := action("evt_action_approved", "action.approved", "evt_action_requested", map[string]any{
+		"action_instance_id": "action_001", "actor_ref": "account:admin", "policy_decision_ref": "decision:allow", "status": "approved",
+	})
+	executed := action("evt_action_executed", "action.executed", "evt_action_approved", map[string]any{
+		"action_instance_id": "action_001", "invocation_ref": "tool:create_monitor", "status": "ok",
+	})
+	result := action("evt_action_result", "action.result_recorded", "evt_action_executed", map[string]any{
+		"action_instance_id": "action_001", "result_hash": "sha256:result", "task_ref": "monitor:001", "status": "created",
+	})
+	return []map[string]any{interaction, dataQuery, retrieval, knowledge, model, claim, evidenceRefs, businessRefs, recommended, requested, approved, executed, result}
+}
+
+func removeEventTypes(events []map[string]any, eventTypes ...string) []map[string]any {
+	removed := map[string]struct{}{}
+	for _, eventType := range eventTypes {
+		removed[eventType] = struct{}{}
+	}
+	result := make([]map[string]any, 0, len(events))
+	for _, event := range events {
+		if _, ok := removed[event["event_type"].(string)]; !ok {
+			result = append(result, event)
+		}
+	}
+	return result
+}
+
+func cloneEventByType(t *testing.T, events []map[string]any, eventType string) map[string]any {
+	t.Helper()
+	for _, event := range events {
+		if event["event_type"] == eventType {
+			body := mustJSON(t, event)
+			var clone map[string]any
+			if err := json.Unmarshal(body, &clone); err != nil {
+				t.Fatalf("clone event: %v", err)
+			}
+			return clone
+		}
+	}
+	t.Fatalf("event type %s not found", eventType)
+	return nil
 }
 
 func contains(values []string, target string) bool {
