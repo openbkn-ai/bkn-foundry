@@ -149,6 +149,72 @@ func (h *EvidenceHandler) GetEvidenceChainByTraceID(w http.ResponseWriter, r *ht
 	writeJSON(w, http.StatusOK, response)
 }
 
+// SearchEvidenceByTrace godoc
+// @Summary Query evidence chain by trace ID or BKN request ID
+// @Description Backward-compatible endpoint for SDK/Studio callers. Returns the normalized evidence-chain response for trace_id or request_id.
+// @Tags evidence
+// @Produce json
+// @Param trace_id query string false "Trace ID"
+// @Param request_id query string false "BKN request ID"
+// @Param limit query int false "Maximum evidence trace batches to read, 1..1000"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} rdto.ErrorResponse
+// @Failure 404 {object} rdto.ErrorResponse
+// @Failure 405 {object} rdto.ErrorResponse
+// @Failure 500 {object} rdto.ErrorResponse
+// @Router /api/agent-observability/v1/evidence/by-trace [get]
+func (h *EvidenceHandler) SearchEvidenceByTrace(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, rdto.ErrorResponse{
+			Code:    "METHOD_NOT_ALLOWED",
+			Message: "only GET is supported",
+		})
+		return
+	}
+
+	traceID := strings.TrimSpace(r.URL.Query().Get("trace_id"))
+	requestID := strings.TrimSpace(r.URL.Query().Get("request_id"))
+	if (traceID == "") == (requestID == "") {
+		writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{
+			Code:    "INVALID_ARGUMENT",
+			Message: "exactly one of trace_id or request_id is required",
+		})
+		return
+	}
+
+	options, ok := evidenceQueryOptionsFromRequest(w, r)
+	if !ok {
+		return
+	}
+
+	var (
+		response evidencevo.EvidenceChainResponse
+		found    bool
+		err      error
+	)
+	if traceID != "" {
+		response, found, err = h.evidenceService.GetEvidenceChainByTraceID(r.Context(), traceID, options)
+	} else {
+		response, found, err = h.evidenceService.GetEvidenceChainByRequestID(r.Context(), requestID, options)
+	}
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, rdto.ErrorResponse{
+			Code:    "QUERY_FAILED",
+			Message: "failed to query evidence chain",
+		})
+		return
+	}
+	if !found {
+		writeJSON(w, http.StatusNotFound, rdto.ErrorResponse{
+			Code:    "NOT_FOUND",
+			Message: "evidence chain not found",
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, response)
+}
+
 func (h *EvidenceHandler) GetTraceSubresource(w http.ResponseWriter, r *http.Request) {
 	if strings.HasSuffix(r.URL.Path, "/evidence-chain") {
 		h.GetEvidenceChainByTraceID(w, r)

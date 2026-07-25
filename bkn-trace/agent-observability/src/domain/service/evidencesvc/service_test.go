@@ -70,6 +70,25 @@ func TestIngestAcceptsPhaseTwoEvidenceBatch(t *testing.T) {
 	}
 }
 
+func TestIngestAcceptsHashOnlyToolEvents(t *testing.T) {
+	store := &fakeStore{}
+	service := New(store)
+
+	response, validationErrors, err := service.Ingest(context.Background(), []byte(toolEventsBatch()))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(validationErrors) > 0 {
+		t.Fatalf("unexpected validation errors: %+v", validationErrors)
+	}
+	if store.calls != 1 {
+		t.Fatalf("expected evidence to be stored once, got %d", store.calls)
+	}
+	if response.AcceptedEvents != 2 || response.ClaimCount != 0 || response.EvidenceRefCount != 0 || response.BusinessRefCount != 0 {
+		t.Fatalf("unexpected response counts: %+v", response)
+	}
+}
+
 func TestIngestRejectsMissingClaimID(t *testing.T) {
 	store := &fakeStore{}
 	service := New(store)
@@ -102,6 +121,22 @@ func TestIngestRejectsSensitivePayload(t *testing.T) {
 	}
 	if validationErrors[0].Code != "BKN_TRACE_FORBIDDEN_RAW_PAYLOAD_FIELD" {
 		t.Fatalf("unexpected error code: %+v", validationErrors[0])
+	}
+	if store.calls != 0 {
+		t.Fatalf("invalid batch must not be stored")
+	}
+}
+
+func TestIngestRejectsRawToolPayload(t *testing.T) {
+	store := &fakeStore{}
+	service := New(store)
+
+	_, validationErrors, err := service.Ingest(context.Background(), []byte(rawToolPayloadBatch()))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !hasValidationCode(validationErrors, "BKN_TRACE_FORBIDDEN_RAW_PAYLOAD_FIELD") {
+		t.Fatalf("expected raw tool payload rejection, got %+v", validationErrors)
 	}
 	if store.calls != 0 {
 		t.Fatalf("invalid batch must not be stored")
@@ -795,6 +830,64 @@ func missingClaimIDBatch() string {
 }`
 }
 
+func toolEventsBatch() string {
+	return `{
+  "bkn.trace.schema.version": "2.0.0",
+  "trace": {
+    "trace_id": "8c0d0000000000000000000000000006",
+    "bkn.request.id": "req_phase2_tool_006",
+    "traceparent": "00-8c0d0000000000000000000000000006-1f12000000000006-01",
+    "business_domain": "bd_demo",
+    "bkn.account.id": "acct_demo",
+    "bkn.account.type": "app"
+  },
+  "events": [
+    {
+      "event_id": "evt_tool_called",
+      "event_type": "tool.called",
+      "bkn.trace.schema.version": "2.0.0",
+      "observed_at": "2026-07-22T04:00:00.000000000Z",
+      "emitted_at": "2026-07-22T04:00:00.001000000Z",
+      "producer_module": "bkn-agent",
+      "trace_id": "8c0d0000000000000000000000000006",
+      "span_id": "1f12000000000006",
+      "bkn.request.id": "req_phase2_tool_006",
+      "bkn.operation.name": "bkn.agent.tool.call",
+      "payload": {
+        "tool_id": "tool_query_object",
+        "tool_name": "query_object_instance",
+        "toolbox_id": "box_contextloader",
+        "args_hash": "sha256:args",
+        "visibility": "visible",
+        "version_status": "unversioned"
+      }
+    },
+    {
+      "event_id": "evt_tool_result",
+      "event_type": "tool.result.observed",
+      "bkn.trace.schema.version": "2.0.0",
+      "observed_at": "2026-07-22T04:00:00.002000000Z",
+      "emitted_at": "2026-07-22T04:00:00.003000000Z",
+      "producer_module": "bkn-agent",
+      "trace_id": "8c0d0000000000000000000000000006",
+      "span_id": "1f12000000000006",
+      "bkn.request.id": "req_phase2_tool_006",
+      "bkn.operation.name": "bkn.agent.tool.call",
+      "payload": {
+        "tool_id": "tool_query_object",
+        "tool_name": "query_object_instance",
+        "toolbox_id": "box_contextloader",
+        "result_hash": "sha256:result",
+        "result_length": 123,
+        "status": "success",
+        "visibility": "visible",
+        "version_status": "unversioned"
+      }
+    }
+  ]
+}`
+}
+
 func sensitiveBatch() string {
 	return `{
   "bkn.trace.schema.version": "2.0.0",
@@ -858,6 +951,10 @@ func unknownClaimIDBatch() string {
     }
   ]
 }`
+}
+
+func rawToolPayloadBatch() string {
+	return strings.Replace(toolEventsBatch(), `"result_hash": "sha256:result",`, `"raw_tool_result": "customer email is alice@example.com",`, 1)
 }
 
 func emptyEventsBatch() string {

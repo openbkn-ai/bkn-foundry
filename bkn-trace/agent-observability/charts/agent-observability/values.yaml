@@ -34,7 +34,7 @@ ingress:
 
 evidence:
   store: memory
-  index: bkn-trace-evidence-v1
+  index: bkn-trace-evidence-v2
   indexManagement:
     enabled: false
     maxResultWindow: 10000
@@ -65,7 +65,7 @@ affinity: {}
 
 opensearch:
   endpoint:  http://opensearch-cluster-master.resource.svc.cluster.local:9200
-  traceIndex: ss4o_traces-default-anyshare
+  traceIndex: ss4o_traces-default-namespace
   auth:
     enabled: false
     username: ""

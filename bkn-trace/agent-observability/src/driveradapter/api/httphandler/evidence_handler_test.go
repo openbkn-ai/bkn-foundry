@@ -150,6 +150,25 @@ func TestEvidenceHandlerReturnsEvidenceChainByRequest(t *testing.T) {
 	}
 }
 
+func TestEvidenceHandlerSearchEvidenceByTraceCompatibilityEndpoint(t *testing.T) {
+	store := evidencestore.New()
+	handler := NewEvidenceHandler(evidencesvc.New(store))
+	ingestReq := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/evidence/events", strings.NewReader(validHandlerBatch()))
+	ingestRec := httptest.NewRecorder()
+	handler.IngestEvidenceEvents(ingestRec, ingestReq)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/agent-observability/v1/evidence/by-trace?trace_id=9c0d0000000000000000000000000001", nil)
+	rec := httptest.NewRecorder()
+	handler.SearchEvidenceByTrace(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"trace_id":"9c0d0000000000000000000000000001"`) {
+		t.Fatalf("unexpected body: %s", rec.Body.String())
+	}
+}
+
 func TestEvidenceHandlerRejectsInvalidEvidenceQueryLimit(t *testing.T) {
 	handler := NewEvidenceHandler(evidencesvc.New(evidencestore.New()))
 	req := httptest.NewRequest(http.MethodGet, "/api/agent-observability/v1/traces/by-request?request_id=req_handler_001&limit=0", nil)

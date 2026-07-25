@@ -32,7 +32,7 @@ func NewOpenSearchConfig() OpenSearchConfig {
 
 	evidenceIndex := os.Getenv("OPENSEARCH_EVIDENCE_INDEX")
 	if evidenceIndex == "" {
-		evidenceIndex = "bkn-trace-evidence-v1"
+		evidenceIndex = "bkn-trace-evidence-v2"
 	}
 
 	return OpenSearchConfig{

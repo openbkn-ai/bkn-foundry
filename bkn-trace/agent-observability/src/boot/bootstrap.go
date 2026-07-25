@@ -68,6 +68,7 @@ func newApp(httpServerConfig conf.HTTPServerConfig, traceHandler *httphandler.Tr
 	})
 	mux.HandleFunc(APIBasePath+"/evidence-nodes/", evidenceHandler.GetEvidenceNode)
 	mux.HandleFunc(APIBasePath+"/evidence/events", evidenceHandler.IngestEvidenceEvents)
+	mux.HandleFunc(APIBasePath+"/evidence/by-trace", evidenceHandler.SearchEvidenceByTrace)
 	mux.Handle(APIBasePath+"/swagger/", httpSwagger.Handler(
 		httpSwagger.URL(APIBasePath+"/swagger/doc.json"),
 	))

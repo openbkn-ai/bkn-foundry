@@ -30,6 +30,25 @@ class TraceContext:
 _current_context: ContextVar[Optional[TraceContext]] = ContextVar("bkn_trace_context", default=None)
 
 
+OPENINFERENCE_REDACTION_DEFAULTS = {
+    "OPENINFERENCE_HIDE_INPUTS": "true",
+    "OPENINFERENCE_HIDE_OUTPUTS": "true",
+    "OPENINFERENCE_HIDE_INPUT_MESSAGES": "true",
+    "OPENINFERENCE_HIDE_OUTPUT_MESSAGES": "true",
+    "OPENINFERENCE_HIDE_INPUT_TEXT": "true",
+    "OPENINFERENCE_HIDE_OUTPUT_TEXT": "true",
+    "OPENINFERENCE_HIDE_LLM_INVOCATION_PARAMETERS": "true",
+    "OPENINFERENCE_HIDE_LLM_TOOLS": "true",
+    "OPENINFERENCE_HIDE_PROMPTS": "true",
+}
+
+
+def configure_openinference_redaction() -> None:
+    """Default LangChain/OpenInference spans to hash-only BKN Trace safety."""
+    for key, value in OPENINFERENCE_REDACTION_DEFAULTS.items():
+        os.environ.setdefault(key, value)
+
+
 def setup_otel(app) -> None:
     """OTel GenAI 链路：openinference LangChain instrumentation（不自研埋点层）
     + FastAPI 入口 span，OTLP HTTP 导出到平台 otelcol-contrib。失败降级为不埋点，不影响服务。"""
@@ -37,6 +56,7 @@ def setup_otel(app) -> None:
     if os.getenv("OTEL_ENABLED", "true").lower() != "true":
         return
     try:
+        configure_openinference_redaction()
         from openinference.instrumentation.langchain import LangChainInstrumentor
         from opentelemetry import trace
         from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
@@ -145,6 +165,11 @@ def response_headers(ctx: Optional[TraceContext] = None) -> dict[str, str]:
         LEGACY_REQUEST_ID_HEADER: ctx.request_id,
         "traceparent": ctx.traceparent,
     }
+
+
+def outbound_headers(ctx: Optional[TraceContext] = None) -> dict[str, str]:
+    """Trace context headers for downstream HTTP/toolbox/MCP calls."""
+    return response_headers(ctx)
 
 
 def enrich_error(content: dict) -> dict:

@@ -31,29 +31,35 @@ var sensitivePatterns = []*regexp.Regexp{
 }
 
 var forbiddenRawKeys = map[string]struct{}{
-	"access-token":  {},
-	"access_token":  {},
-	"api-key":       {},
-	"api_key":       {},
-	"authorization": {},
-	"cookie":        {},
-	"id-token":      {},
-	"id_token":      {},
-	"raw-answer":    {},
-	"raw-input":     {},
-	"raw-output":    {},
-	"raw-prompt":    {},
-	"raw-sql":       {},
-	"raw_answer":    {},
-	"raw_input":     {},
-	"raw_output":    {},
-	"raw_prompt":    {},
-	"raw_sql":       {},
-	"refresh-token": {},
-	"refresh_token": {},
-	"row-data":      {},
-	"row_data":      {},
-	"token":         {},
+	"access-token":    {},
+	"access_token":    {},
+	"api-key":         {},
+	"api_key":         {},
+	"authorization":   {},
+	"cookie":          {},
+	"id-token":        {},
+	"id_token":        {},
+	"raw-answer":      {},
+	"raw-input":       {},
+	"raw-output":      {},
+	"raw-prompt":      {},
+	"raw-sql":         {},
+	"raw-tool-args":   {},
+	"raw-tool-io":     {},
+	"raw-tool-result": {},
+	"raw_answer":      {},
+	"raw_input":       {},
+	"raw_output":      {},
+	"raw_prompt":      {},
+	"raw_sql":         {},
+	"raw_tool_args":   {},
+	"raw_tool_io":     {},
+	"raw_tool_result": {},
+	"refresh-token":   {},
+	"refresh_token":   {},
+	"row-data":        {},
+	"row_data":        {},
+	"token":           {},
 }
 
 var eventTypes = map[string]struct{}{
@@ -63,6 +69,8 @@ var eventTypes = map[string]struct{}{
 	"structured_output.validated": {},
 	"agent_as_tool.invoked":       {},
 	"tool.budget.exhausted":       {},
+	"tool.called":                 {},
+	"tool.result.observed":        {},
 	"action.recommended":          {},
 	"action.approval_requested":   {},
 	"action.approved":             {},
@@ -774,6 +782,10 @@ func checkEvent(event evidencevo.EvidenceEvent, i int, knownClaims map[string]st
 	case "business.refs.resolved":
 		checkRefs(event.Payload, base+".payload", "business_refs", knownClaims, errors)
 		normalized.BusinessRefCount += len(arrayField(event.Payload, "business_refs"))
+	case "tool.called":
+		checkToolCalled(event.Payload, base+".payload", errors)
+	case "tool.result.observed":
+		checkToolResultObserved(event.Payload, base+".payload", errors)
 	}
 }
 
@@ -790,6 +802,28 @@ func checkClaim(payload map[string]any, base string, normalized *evidencevo.Norm
 	normalized.ClaimCount++
 	if claimID != "" {
 		normalized.ClaimIDs = append(normalized.ClaimIDs, claimID)
+	}
+}
+
+func checkToolCalled(payload map[string]any, base string, errors *evidencevo.ValidationErrors) {
+	requiredStringField(payload, "tool_id", base, errors)
+	requiredStringField(payload, "tool_name", base, errors)
+	requiredStringField(payload, "args_hash", base, errors)
+	requiredStringField(payload, "visibility", base, errors)
+	requiredStringField(payload, "version_status", base, errors)
+}
+
+func checkToolResultObserved(payload map[string]any, base string, errors *evidencevo.ValidationErrors) {
+	requiredStringField(payload, "tool_id", base, errors)
+	requiredStringField(payload, "tool_name", base, errors)
+	requiredStringField(payload, "status", base, errors)
+	requiredStringField(payload, "visibility", base, errors)
+	requiredStringField(payload, "version_status", base, errors)
+	if status, ok := stringField(payload, "status"); ok && status == "success" {
+		requiredStringField(payload, "result_hash", base, errors)
+	}
+	if status, ok := stringField(payload, "status"); ok && status != "success" {
+		requiredStringField(payload, "error_hash", base, errors)
 	}
 }
 

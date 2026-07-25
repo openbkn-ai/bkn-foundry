@@ -3,8 +3,9 @@ import asyncio
 
 import pytest
 
+from app import evidence, observability
 from app.core import toolbox
-from app.core.tools import _toolbox_tools
+from app.core.tools import _mcp_connections, _toolbox_tools
 from app.errors import bad_request  # noqa: F401  (确认导出仍存在)
 
 _TOOL_INFO = {
@@ -118,8 +119,8 @@ def test_execute_payload_routing(monkeypatch):
     """POST 参数进 body、GET 进 query；身份 header 双份（外层请求 + 转发 header）。"""
     captured = {}
 
-    async def fake_execute(box_id, tool_id, method, args, params, account_id, account_type):
-        captured.update(box=box_id, tool=tool_id, method=method, args=args, aid=account_id)
+    async def fake_execute(box_id, tool_id, tool_name, method, args, params, account_id, account_type):
+        captured.update(box=box_id, tool=tool_id, tool_name=tool_name, method=method, args=args, aid=account_id)
         return "ok"
 
     monkeypatch.setattr(toolbox, "_execute", fake_execute)
@@ -127,6 +128,7 @@ def test_execute_payload_routing(monkeypatch):
     out = asyncio.run(tool.coroutine(query="q", limit=None))
     assert out == "ok"
     assert captured["box"] == "b-1" and captured["tool"] == "t-1"
+    assert captured["tool_name"] == "list_knowledge_networks"
     assert captured["aid"] == "u-9"
 
 
@@ -163,12 +165,151 @@ def test_execute_splits_query_and_body_by_declared_location(monkeypatch):
     monkeypatch.setattr(toolbox.aiohttp, "ClientSession", _Session)
     _, params = toolbox._args_model("query_object_instance", _QUERY_TOOL_INFO["metadata"])
     out = asyncio.run(
-        toolbox._execute("b-1", "t-2", "POST", {"kn_id": "kn1", "ot_id": "ot1", "limit": 5}, params, "u-9", "user")
+        toolbox._execute("b-1", "t-2", "query_object_instance", "POST", {"kn_id": "kn1", "ot_id": "ot1", "limit": 5}, params, "u-9", "user")
     )
     assert '"ok": true' in out
     assert sent["payload"]["query"] == {"kn_id": "kn1", "ot_id": "ot1"}
     assert sent["payload"]["body"] == {"limit": 5}
     assert sent["payload"]["header"]["x-account-id"] == "u-9"
+
+
+def test_execute_propagates_trace_context_to_proxy_and_downstream_payload(monkeypatch):
+    """E2E-1 回归：bkn-agent -> toolbox proxy -> 下游 OpenBKN 必须保留 trace/request id。"""
+    sent = {}
+    traceparent = "00-1234567890abcdef1234567890abcdef-abcdef1234567890-01"
+
+    class _Resp:
+        status = 200
+
+        async def text(self):
+            return '{"status_code": 200, "body": {"ok": true}}'
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+    class _Session:
+        def __init__(self, *a, **k):
+            pass
+
+        def post(self, url, json=None, headers=None):
+            sent.update(url=url, payload=json, headers=headers)
+            return _Resp()
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+    ctx = observability.TraceContext(
+        trace_id="1234567890abcdef1234567890abcdef",
+        request_id="req_toolbox_trace_001",
+        traceparent=traceparent,
+        entry_boundary="external",
+        upstream_span_id="abcdef1234567890",
+    )
+    token = observability.set_context(ctx)
+    try:
+        monkeypatch.setattr(toolbox.aiohttp, "ClientSession", _Session)
+        _, params = toolbox._args_model("query_object_instance", _QUERY_TOOL_INFO["metadata"])
+        out = asyncio.run(
+            toolbox._execute(
+                "b-1",
+                "t-2",
+                "query_object_instance",
+                "POST",
+                {"kn_id": "kn1", "ot_id": "ot1", "limit": 5},
+                params,
+                "u-9",
+                "user",
+            )
+        )
+    finally:
+        observability.reset_context(token)
+
+    assert '"ok": true' in out
+    expected = {
+        "traceparent": traceparent,
+        "bkn-request-id": "req_toolbox_trace_001",
+        "x-request-id": "req_toolbox_trace_001",
+        "x-trace-id": "1234567890abcdef1234567890abcdef",
+    }
+    for key, value in expected.items():
+        assert sent["headers"][key] == value
+        assert sent["payload"]["header"][key] == value
+
+
+def test_execute_emits_hash_only_tool_evidence(monkeypatch):
+    """E2E-1 回归：工具调用要形成证据事件，但不能泄露参数值或结果正文。"""
+    submitted = []
+    traceparent = "00-1234567890abcdef1234567890abcdef-abcdef1234567890-01"
+
+    class _Resp:
+        status = 200
+
+        async def text(self):
+            return '{"status_code": 200, "body": {"answer": "客户A风险升高"}}'
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+    class _Session:
+        def __init__(self, *a, **k):
+            pass
+
+        def post(self, url, json=None, headers=None):
+            return _Resp()
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+    async def fake_submit(events, account_id, account_type):
+        submitted.extend(events)
+
+    ctx = observability.TraceContext(
+        trace_id="1234567890abcdef1234567890abcdef",
+        request_id="req_toolbox_evidence_001",
+        traceparent=traceparent,
+        entry_boundary="external",
+        upstream_span_id="abcdef1234567890",
+    )
+    token = observability.set_context(ctx)
+    try:
+        monkeypatch.setattr(toolbox.aiohttp, "ClientSession", _Session)
+        monkeypatch.setattr(evidence, "submit_events", fake_submit)
+        _, params = toolbox._args_model("query_object_instance", _QUERY_TOOL_INFO["metadata"])
+        out = asyncio.run(
+            toolbox._execute(
+                "b-1",
+                "t-2",
+                "query_object_instance",
+                "POST",
+                {"kn_id": "kn1", "ot_id": "ot1", "limit": 5},
+                params,
+                "u-9",
+                "user",
+            )
+        )
+    finally:
+        observability.reset_context(token)
+
+    assert "客户A风险升高" in out
+    assert [event["event_type"] for event in submitted] == ["tool.called", "tool.result.observed"]
+    serialized = str(submitted)
+    assert "kn1" not in serialized
+    assert "ot1" not in serialized
+    assert "客户A风险升高" not in serialized
+    assert submitted[0]["payload"]["args_hash"].startswith("sha256:")
+    assert submitted[1]["payload"]["result_hash"].startswith("sha256:")
 
 
 def test_build_tool_survives_bad_args_schema(monkeypatch):
@@ -195,6 +336,34 @@ def test_default_toolbox_degrades_but_explicit_ref_fails(monkeypatch):
 
     with pytest.raises(RuntimeError):
         asyncio.run(_toolbox_tools([{"type": "toolbox", "box_id": "box-x"}], "u", "user"))
+
+
+def test_mcp_connections_propagate_trace_context():
+    """E2E-1 回归：外部 MCP 工具连接也必须保留 bkn-agent 当前 trace context。"""
+    traceparent = "00-fedcba0987654321fedcba0987654321-0123456789abcdef-01"
+    ctx = observability.TraceContext(
+        trace_id="fedcba0987654321fedcba0987654321",
+        request_id="req_mcp_trace_001",
+        traceparent=traceparent,
+        entry_boundary="external",
+        upstream_span_id="0123456789abcdef",
+    )
+    token = observability.set_context(ctx)
+    try:
+        conns = _mcp_connections(
+            [{"type": "mcp", "name": "openbkn-mcp", "url": "http://mcp.example/sse"}],
+            "u-9",
+            "user",
+        )
+    finally:
+        observability.reset_context(token)
+
+    headers = conns["openbkn-mcp"]["headers"]
+    assert headers["x-account-id"] == "u-9"
+    assert headers["traceparent"] == traceparent
+    assert headers["bkn-request-id"] == "req_mcp_trace_001"
+    assert headers["x-request-id"] == "req_mcp_trace_001"
+    assert headers["x-trace-id"] == "fedcba0987654321fedcba0987654321"
 
 
 def test_explicit_box_error_is_classified(monkeypatch):

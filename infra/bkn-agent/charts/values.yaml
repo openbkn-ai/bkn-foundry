@@ -53,7 +53,7 @@ runtime:
 observability:
   otelEnabled: "true"
   otlpEndpoint: "http://otelcol-contrib:4318"
-  bknTraceEvidenceIngestUrl: ""
+  bknTraceEvidenceIngestUrl: "http://agent-observability:8080/api/agent-observability/v1/evidence/events"
   bknTraceEvidenceTimeoutS: "3"
 
 nodeSelector: {}

@@ -75,6 +75,35 @@
           }
         ]
       }
+    },
+    {
+      "event_id": "evt_bkn_agent_chat_business_refs",
+      "event_type": "business.refs.resolved",
+      "bkn.trace.schema.version": "2.0.0",
+      "observed_at": "2026-07-22T10:00:00.004000Z",
+      "emitted_at": "2026-07-22T10:00:00.005000Z",
+      "producer_module": "bkn-agent",
+      "trace_id": "7a210000000000000000000000000001",
+      "span_id": "7a21000000000001",
+      "bkn.request.id": "req_bkn_agent_phase2_chat_0001",
+      "bkn.operation.name": "bkn.agent.chat",
+      "payload": {
+        "claim_id": "claim_bkn_agent_chat_0001",
+        "business_refs": [
+          {
+            "ref_id": "object:forecast_order",
+            "ref_type": "object",
+            "source_system": "bkn",
+            "summary_hash": "sha256:business_ref_summary_hash_only",
+            "label": "forecast_order",
+            "validity": "observed",
+            "visibility": "visible",
+            "version_status": "unversioned",
+            "resolver_status": "unresolved",
+            "partial_reason": ["business_ref_unversioned"]
+          }
+        ]
+      }
     }
   ]
 }

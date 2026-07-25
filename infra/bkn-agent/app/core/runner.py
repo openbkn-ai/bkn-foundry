@@ -177,6 +177,15 @@ async def _emit_task_evidence(
         for message in result_messages
         if isinstance(message, ToolMessage)
     ]
+    tool_outputs = [
+        {
+            "tool_name": getattr(message, "name", "") or getattr(message, "tool_call_id", ""),
+            "content": getattr(message, "content", None),
+        }
+        for message in result_messages
+        if isinstance(message, ToolMessage)
+    ]
+    business_refs = evidence.extract_business_refs_from_tool_outputs(tool_outputs)
     events = [
         evidence.claim_created(
             claim_id_value=cid,
@@ -223,6 +232,15 @@ async def _emit_task_evidence(
                     for name in dict.fromkeys(tool_names)
                 ],
                 operation_name="bkn.agent.task",
+            )
+        )
+    if business_refs:
+        events.append(
+            evidence.business_refs_resolved(
+                claim_id_value=cid,
+                business_refs=business_refs,
+                operation_name="bkn.agent.task",
+                partial_reason=["business_refs_unversioned"],
             )
         )
     await evidence.submit_events([event for event in events if event], account_id, account_type)

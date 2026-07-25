@@ -15,15 +15,22 @@ import (
 )
 
 func TestStoreEvidenceIndexesNormalizedTrace(t *testing.T) {
-	var path string
+	var paths []string
+	var indexMapping map[string]any
 	var body map[string]any
 	client := newFakeOpenSearchClient(func(r *http.Request) (*http.Response, error) {
-		path = r.URL.Path
+		paths = append(paths, r.URL.Path)
 		if r.Method != http.MethodPut {
 			t.Fatalf("expected PUT, got %s", r.Method)
 		}
+		if r.URL.Path == "/bkn-trace-evidence-test" {
+			if err := json.NewDecoder(r.Body).Decode(&indexMapping); err != nil {
+				t.Fatalf("decode index mapping: %v", err)
+			}
+			return jsonResponse(`{"acknowledged":true}`), nil
+		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			t.Fatalf("decode request body: %v", err)
+			t.Fatalf("decode document body: %v", err)
 		}
 		return jsonResponse(`{"result":"created"}`), nil
 	})
@@ -35,8 +42,12 @@ func TestStoreEvidenceIndexesNormalizedTrace(t *testing.T) {
 		t.Fatalf("store evidence: %v", err)
 	}
 
-	if !strings.HasPrefix(path, "/bkn-trace-evidence-test/_doc/") {
-		t.Fatalf("unexpected index path: %s", path)
+	if len(paths) != 2 || paths[0] != "/bkn-trace-evidence-test" || !strings.HasPrefix(paths[1], "/bkn-trace-evidence-test/_doc/") {
+		t.Fatalf("unexpected request paths: %v", paths)
+	}
+	mappingBytes, _ := json.Marshal(indexMapping)
+	if !strings.Contains(string(mappingBytes), `"events":{"enabled":false,"type":"object"}`) {
+		t.Fatalf("events must not create dynamic mappings: %s", string(mappingBytes))
 	}
 	if body["trace_id"] != "trace_index_001" || body["bkn.request.id"] != "req_index_001" {
 		t.Fatalf("unexpected identity fields: %+v", body)
@@ -48,7 +59,12 @@ func TestStoreEvidenceIndexesNormalizedTrace(t *testing.T) {
 
 func TestGetEvidenceByTraceIDParsesSearchHits(t *testing.T) {
 	var query map[string]any
+	var ensured bool
 	client := newFakeOpenSearchClient(func(r *http.Request) (*http.Response, error) {
+		if r.Method == http.MethodPut && r.URL.Path == "/bkn-trace-evidence-test" {
+			ensured = true
+			return jsonResponse(`{"acknowledged":true}`), nil
+		}
 		if r.Method != http.MethodPost {
 			t.Fatalf("expected POST, got %s", r.Method)
 		}
@@ -96,6 +112,9 @@ func TestGetEvidenceByTraceIDParsesSearchHits(t *testing.T) {
 	if err != nil {
 		t.Fatalf("query evidence: %v", err)
 	}
+	if !ensured {
+		t.Fatal("expected evidence index to be ensured before search")
+	}
 	if len(result.Traces) != 1 {
 		t.Fatalf("expected one trace, got %d", len(result.Traces))
 	}
@@ -114,6 +133,9 @@ func TestGetEvidenceByTraceIDParsesSearchHits(t *testing.T) {
 func TestGetEvidenceByRequestIDUsesRequestIDField(t *testing.T) {
 	var query map[string]any
 	client := newFakeOpenSearchClient(func(r *http.Request) (*http.Response, error) {
+		if r.Method == http.MethodPut && r.URL.Path == "/bkn-trace-evidence-test" {
+			return jsonResponse(`{"acknowledged":true}`), nil
+		}
 		if err := json.NewDecoder(r.Body).Decode(&query); err != nil {
 			t.Fatalf("decode query: %v", err)
 		}
@@ -134,6 +156,9 @@ func TestGetEvidenceByRequestIDUsesRequestIDField(t *testing.T) {
 func TestGetEvidenceByTraceIDFetchesLimitPlusOneAndTruncates(t *testing.T) {
 	var query map[string]any
 	client := newFakeOpenSearchClient(func(r *http.Request) (*http.Response, error) {
+		if r.Method == http.MethodPut && r.URL.Path == "/bkn-trace-evidence-test" {
+			return jsonResponse(`{"acknowledged":true}`), nil
+		}
 		if err := json.NewDecoder(r.Body).Decode(&query); err != nil {
 			t.Fatalf("decode query: %v", err)
 		}

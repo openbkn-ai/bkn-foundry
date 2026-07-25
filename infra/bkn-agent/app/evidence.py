@@ -15,6 +15,30 @@ logger = logging.getLogger("bkn-agent.evidence")
 
 CONTRACT_VERSION = "2.0.0"
 _background: set[asyncio.Task] = set()
+_BUSINESS_REF_FIELDS: dict[str, tuple[str, str]] = {
+    "kn_id": ("object", "bkn"),
+    "knowledge_network_id": ("object", "bkn"),
+    "object_type": ("object", "bkn"),
+    "object_type_id": ("object", "bkn"),
+    "ot_id": ("object", "bkn"),
+    "property": ("property", "bkn"),
+    "property_id": ("property", "bkn"),
+    "property_name": ("property", "bkn"),
+    "relation_type": ("relation", "bkn"),
+    "relation_type_id": ("relation", "bkn"),
+    "rt_id": ("relation", "bkn"),
+    "action_type": ("action", "bkn"),
+    "action_type_id": ("action", "bkn"),
+    "logic_property": ("logic", "bkn"),
+    "logical_property": ("logic", "bkn"),
+    "metric_id": ("metric", "bkn"),
+    "catalog_id": ("data", "vega-data"),
+    "resource_id": ("data", "vega-data"),
+    "data_view_id": ("data", "vega-data"),
+    "table_id": ("data", "vega-data"),
+    "field_id": ("data", "vega-data"),
+    "field_name": ("data", "vega-data"),
+}
 
 
 def hash_value(value: Any) -> str:
@@ -153,6 +177,78 @@ def evidence_refs_created(
     return _event("evidence.refs.created", operation_name, payload)
 
 
+def business_refs_resolved(
+    *,
+    claim_id_value: str,
+    business_refs: list[dict[str, Any]],
+    operation_name: str,
+    partial_reason: list[str] | None = None,
+) -> dict[str, Any] | None:
+    payload: dict[str, Any] = {
+        "claim_id": claim_id_value,
+        "business_refs": business_refs,
+    }
+    if partial_reason:
+        payload["partial_reason"] = partial_reason
+    return _event("business.refs.resolved", operation_name, payload)
+
+
+def extract_business_refs_from_tool_outputs(tool_outputs: list[dict[str, Any]], max_refs: int = 20) -> list[dict[str, Any]]:
+    refs: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str]] = set()
+
+    def add_ref(key: str, value: Any, tool_name: str) -> None:
+        if len(refs) >= max_refs or not isinstance(value, str) or not value.strip() or len(value) > 200:
+            return
+        ref_type, source_system = _BUSINESS_REF_FIELDS[key]
+        ref_value = value.strip()
+        dedupe_key = (ref_type, source_system, ref_value)
+        if dedupe_key in seen:
+            return
+        seen.add(dedupe_key)
+        ref_hash = hash_value({"type": ref_type, "source": source_system, "value": ref_value})
+        refs.append(
+            {
+                "ref_id": f"{ref_type}:{ref_hash[7:23]}",
+                "ref_type": ref_type,
+                "source_system": source_system,
+                "summary_hash": ref_hash,
+                "label": ref_value,
+                "tool_name": tool_name,
+                "validity": "observed",
+                "visibility": "visible",
+                "version_status": "unversioned",
+                "resolver_status": "unresolved",
+                "partial_reason": ["business_ref_unversioned"],
+            }
+        )
+
+    def walk(value: Any, tool_name: str, depth: int = 0) -> None:
+        if depth > 5 or len(refs) >= max_refs:
+            return
+        if isinstance(value, dict):
+            for key, child in value.items():
+                normalized_key = str(key).lower()
+                if normalized_key in _BUSINESS_REF_FIELDS:
+                    add_ref(normalized_key, child, tool_name)
+                walk(child, tool_name, depth + 1)
+        elif isinstance(value, list):
+            for item in value[:50]:
+                walk(item, tool_name, depth + 1)
+
+    for output in tool_outputs:
+        tool_name = str(output.get("tool_name") or "")
+        content = output.get("content")
+        parsed: Any = content
+        if isinstance(content, str):
+            try:
+                parsed = json.loads(content)
+            except ValueError:
+                continue
+        walk(parsed, tool_name)
+    return refs
+
+
 def structured_output_validated(
     *,
     claim_id_value: str,
@@ -188,6 +284,58 @@ def tool_budget_exhausted(
             "partial_reason": ["tool_budget_exhausted"],
         },
     )
+
+
+def tool_called(
+    *,
+    tool_id: str,
+    tool_name: str,
+    toolbox_id: str | None,
+    args_hash: str,
+    operation_name: str,
+) -> dict[str, Any] | None:
+    return _event(
+        "tool.called",
+        operation_name,
+        {
+            "tool_id": tool_id,
+            "tool_name": tool_name,
+            "toolbox_id": toolbox_id,
+            "args_hash": args_hash,
+            "visibility": "visible",
+            "version_status": "unversioned",
+        },
+    )
+
+
+def tool_result_observed(
+    *,
+    tool_id: str,
+    tool_name: str,
+    toolbox_id: str | None,
+    result_hash: str | None,
+    result_length: int | None,
+    success: bool,
+    operation_name: str,
+    status_code: int | None = None,
+    error_hash: str | None = None,
+    partial_reason: list[str] | None = None,
+) -> dict[str, Any] | None:
+    payload: dict[str, Any] = {
+        "tool_id": tool_id,
+        "tool_name": tool_name,
+        "toolbox_id": toolbox_id,
+        "result_hash": result_hash,
+        "result_length": result_length,
+        "status": "success" if success else "failed",
+        "status_code": status_code,
+        "error_hash": error_hash,
+        "visibility": "visible",
+        "version_status": "unversioned",
+    }
+    if partial_reason:
+        payload["partial_reason"] = partial_reason
+    return _event("tool.result.observed", operation_name, payload)
 
 
 def agent_as_tool_invoked(

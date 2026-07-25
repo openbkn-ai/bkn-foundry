@@ -1,6 +1,10 @@
 import asyncio
 
+from langchain_core.messages import ToolMessage
+
 from app import evidence, observability
+from app.core import runner
+from app.models import AgentOut
 
 
 def _ctx():
@@ -101,3 +105,82 @@ def test_submit_events_schedules_background_send(monkeypatch):
         asyncio.run(drive())
     finally:
         observability.reset_context(token)
+
+
+def test_extract_business_refs_from_structured_tool_outputs_without_raw_rows():
+    refs = evidence.extract_business_refs_from_tool_outputs(
+        [
+            {
+                "tool_name": "query_object_instance",
+                "content": {
+                    "kn_id": "supplychain_hd0202",
+                    "object_type": "forecast_order",
+                    "rows": [{"customer_name": "客户A", "amount": 100}],
+                    "resource_id": "res_forecast_001",
+                },
+            }
+        ]
+    )
+
+    serialized = str(refs)
+    assert {ref["ref_type"] for ref in refs} >= {"object", "data"}
+    assert "supplychain_hd0202" in serialized
+    assert "forecast_order" in serialized
+    assert "res_forecast_001" in serialized
+    assert "客户A" not in serialized
+    assert "amount" not in serialized
+    assert all(ref["summary_hash"].startswith("sha256:") for ref in refs)
+    assert all(ref["resolver_status"] == "unresolved" for ref in refs)
+
+
+def test_task_evidence_attaches_business_refs_to_claim(monkeypatch):
+    submitted = []
+
+    async def fake_submit(events, account_id, account_type):
+        submitted.extend(events)
+
+    agent = AgentOut(
+        name="agent",
+        mode="task",
+        model="",
+        tools=[],
+        skills=[],
+        status="published",
+        agent_id="agent-1",
+        create_user="u",
+        update_user="u",
+        create_time=0,
+        update_time=0,
+    )
+    token = observability.set_context(_ctx())
+    try:
+        monkeypatch.setattr(runner.evidence, "submit_events", fake_submit)
+        asyncio.run(
+            runner._emit_task_evidence(
+                agent=agent,
+                task_id="task-1",
+                prompt_source="default",
+                prompt_version="1",
+                account_id="acct-1",
+                account_type="user",
+                output="建议查看预测单。",
+                claim_type="answer",
+                response_format=None,
+                structured_validation_path=None,
+                result_messages=[
+                    ToolMessage(
+                        content='{"kn_id":"supplychain_hd0202","object_type":"forecast_order","resource_id":"res_forecast_001"}',
+                        tool_call_id="call-1",
+                        name="query_object_instance",
+                    )
+                ],
+            )
+        )
+    finally:
+        observability.reset_context(token)
+
+    event_types = [event["event_type"] for event in submitted]
+    assert event_types == ["claim.created", "evidence.refs.created", "business.refs.resolved"]
+    business_event = submitted[2]
+    assert business_event["payload"]["claim_id"] == submitted[0]["payload"]["claim_id"]
+    assert {ref["ref_type"] for ref in business_event["payload"]["business_refs"]} >= {"object", "data"}

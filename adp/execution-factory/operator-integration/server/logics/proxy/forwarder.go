@@ -68,7 +68,7 @@ func (f *forwarder) ForwardStream(ctx context.Context, req *interfaces.HTTPReque
 		err = myErr.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 		return nil, err
 	}
-	httpReq, err := f.buildRequest(req)
+	httpReq, err := f.buildRequest(ctx, req)
 	if err != nil {
 		headerWriter.WriteHeader(http.StatusInternalServerError)
 		f.logger.WithContext(ctx).Warnf("build request failed, err: %v", err)
@@ -152,7 +152,7 @@ func (f *forwarder) Forward(ctx context.Context, req *interfaces.HTTPRequest) (*
 	client := f.pool.GetClient(req.Timeout)
 
 	// 构建HTTP请求
-	httpReq, err := f.buildRequest(req)
+	httpReq, err := f.buildRequest(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build request: %w", err)
 	}
@@ -175,7 +175,7 @@ func (f *forwarder) Forward(ctx context.Context, req *interfaces.HTTPRequest) (*
 }
 
 // buildRequest 根据请求参数构建HTTP请求
-func (f *forwarder) buildRequest(req *interfaces.HTTPRequest) (*http.Request, error) {
+func (f *forwarder) buildRequest(ctx context.Context, req *interfaces.HTTPRequest) (*http.Request, error) {
 	// 处理URL和路径参数
 	requestURL := req.URL
 	if len(req.PathParams) > 0 {
@@ -290,11 +290,13 @@ func (f *forwarder) buildRequest(req *interfaces.HTTPRequest) (*http.Request, er
 		return nil, err
 	}
 
-	// 设置请求头
-	if req.Headers != nil {
-		for key, value := range req.Headers {
-			httpReq.Header.Set(key, fmt.Sprintf("%v", value))
-		}
+	// 设置请求头，并用当前请求上下文补齐 trace/request id，保证代理链路可聚合。
+	headers := map[string]string{}
+	for key, value := range req.Headers {
+		headers[key] = fmt.Sprintf("%v", value)
+	}
+	for key, value := range common.MergeTraceHeaders(ctx, headers) {
+		httpReq.Header.Set(key, value)
 	}
 
 	// 如果Content-Type未在请求头中设置，但我们有确定的类型，则设置它

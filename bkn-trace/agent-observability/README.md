@@ -269,6 +269,14 @@ business_ref:{ref_id}
 ```
 
 查询必须提供且只能提供一个 scope：`trace_id` 或 `request_id`。当前阶段只返回 `visibility=visible` 的节点；`hidden`、`redacted`、`omitted`、`unresolved`、`unauthorized` 节点不会通过详情接口展开。真实 BKN / Vega / Metric / Action resolver、按账号/租户的实时授权裁决和隐藏节点可审计解释属于后续阶段。
+阶段二 evidence ingestion 接口接受 `bkn.trace.schema.version=2.0.0` 的事件批次，包含 `trace` 与 `events`。当前版本完成 contract 校验、敏感 payload 拒绝、归一化计数，并写入 `OPENSEARCH_EVIDENCE_INDEX`，默认 `bkn-trace-evidence-v2`。索引只对 trace/request/count/时间等检索字段建索引，完整 `events` 保留在 `_source` 中用于证据链详情展示，避免业务 payload 触发动态 mapping 膨胀。
+
+持久化 evidence 可通过以下接口回查：
+
+```text
+GET /api/agent-observability/v1/evidence/by-trace?trace_id=<trace_id>
+GET /api/agent-observability/v1/evidence/by-trace?request_id=<bkn.request.id>
+```
 
 生成 Swagger 文档：
 

@@ -22,6 +22,7 @@ from fastapi import HTTPException
 from langchain_core.tools import StructuredTool
 from pydantic import ConfigDict, Field, create_model
 
+from app import evidence, observability
 from app.config import config
 from app.errors import bad_request, err
 
@@ -136,6 +137,7 @@ def _args_model(tool_name: str, metadata: dict) -> tuple[Any, list[_Param]]:
 async def _execute(
     box_id: str,
     tool_id: str,
+    tool_name: str,
     method: str,
     args: dict,
     params: list[_Param],
@@ -146,7 +148,8 @@ async def _execute(
     不抛异常击穿整轮对话。参数按元数据声明的位置分发到 body/query/path。"""
     url = f"{config.OPERATOR_INTEGRATION_BASE}/internal-v1/tool-box/{box_id}/proxy/{tool_id}"
     identity = {"x-account-id": account_id, "x-account-type": account_type}
-    payload: dict[str, Any] = {"timeout": 60, "header": identity, "body": {}, "query": {}, "path": {}}
+    headers = {**identity, **observability.outbound_headers()}
+    payload: dict[str, Any] = {"timeout": 60, "header": headers, "body": {}, "query": {}, "path": {}}
     by_field = {p.field: p for p in params}
     fallback = "query" if method.upper() in ("GET", "DELETE") else "body"
     for field, value in args.items():
@@ -158,26 +161,71 @@ async def _execute(
             payload["path"][wire] = str(value)
         else:
             payload[bucket][wire] = value
-    try:
-        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=90)) as http:
-            async with http.post(url, json=payload, headers=identity) as resp:
-                text = await resp.text()
-                if not 200 <= resp.status < 300:
-                    return f"tool call failed: HTTP {resp.status} {text[:500]}"
-    except Exception as e:
-        return f"tool call failed: {e}"
-    try:
-        data = json.loads(text)
-    except ValueError:
-        return text
-    if data.get("error"):
-        return f"tool error: {data['error']}"
-    status_code = data.get("status_code") or 0
-    body = data.get("body")
-    body_text = body if isinstance(body, str) else json.dumps(body, ensure_ascii=False)
-    if status_code >= 400:
-        return f"tool target failed: HTTP {status_code} {body_text[:800]}"
-    return body_text
+    operation_name = "bkn.agent.tool.call"
+    args_hash = evidence.hash_value({"body": payload["body"], "query": payload["query"], "path": payload["path"]})
+    start_event = evidence.tool_called(
+        tool_id=tool_id,
+        tool_name=tool_name,
+        toolbox_id=box_id,
+        args_hash=args_hash,
+        operation_name=operation_name,
+    )
+
+    async def _finish(result: str, *, success: bool, status_code: int | None = None, error: str | None = None) -> str:
+        result_event = evidence.tool_result_observed(
+            tool_id=tool_id,
+            tool_name=tool_name,
+            toolbox_id=box_id,
+            result_hash=evidence.hash_value(result) if success else None,
+            result_length=len(result) if success else None,
+            success=success,
+            status_code=status_code,
+            error_hash=evidence.hash_value(error or result) if not success else None,
+            operation_name=operation_name,
+            partial_reason=[] if success else ["tool_result_failed"],
+        )
+        await evidence.submit_events([event for event in [start_event, result_event] if event], account_id, account_type)
+        return result
+
+    with observability.span(
+        operation_name,
+        {
+            "bkn.toolbox.id": box_id,
+            "bkn.tool.id": tool_id,
+            "bkn.tool.name": tool_name,
+            "bkn.tool.args_hash": args_hash,
+        },
+    ):
+        try:
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=90)) as http:
+                async with http.post(url, json=payload, headers=headers) as resp:
+                    text = await resp.text()
+                    if not 200 <= resp.status < 300:
+                        return await _finish(
+                            f"tool call failed: HTTP {resp.status} {text[:500]}",
+                            success=False,
+                            status_code=resp.status,
+                            error=text,
+                        )
+        except Exception as e:
+            return await _finish(f"tool call failed: {e}", success=False, error=f"{type(e).__name__}: {e}")
+        try:
+            data = json.loads(text)
+        except ValueError:
+            return await _finish(text, success=True, status_code=200)
+        if data.get("error"):
+            return await _finish(f"tool error: {data['error']}", success=False, error=str(data["error"]))
+        status_code = data.get("status_code") or 0
+        body = data.get("body")
+        body_text = body if isinstance(body, str) else json.dumps(body, ensure_ascii=False)
+        if status_code >= 400:
+            return await _finish(
+                f"tool target failed: HTTP {status_code} {body_text[:800]}",
+                success=False,
+                status_code=status_code,
+                error=body_text,
+            )
+        return await _finish(body_text, success=True, status_code=status_code)
 
 
 def _build_tool(box_id: str, info: dict, account_id: str, account_type: str) -> StructuredTool | None:
@@ -203,7 +251,7 @@ def _build_tool(box_id: str, info: dict, account_id: str, account_type: str) -> 
         return None
 
     async def call(**kwargs) -> str:
-        return await _execute(box_id, tool_id, method, kwargs, params, account_id, account_type)
+        return await _execute(box_id, tool_id, name, method, kwargs, params, account_id, account_type)
 
     return StructuredTool.from_function(
         coroutine=call,
@@ -217,35 +265,42 @@ async def _list_tools(box_id: str, account_id: str, account_type: str) -> list[d
     """拉取一个 box 的工具列表。工厂 4xx（box 不存在/无权限）= 调用方配置问题 → 400；
     5xx 与网络故障 = 下游不可用 → 502。都走平台错误封套。"""
     url = f"{config.OPERATOR_INTEGRATION_BASE}/internal-v1/tool-box/{box_id}/tools/list"
-    headers = {"x-account-id": account_id, "x-account-type": account_type}
+    headers = {"x-account-id": account_id, "x-account-type": account_type, **observability.outbound_headers()}
     infos: list[dict] = []
     page = 1
     try:
-        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as http:
-            while True:
-                params = {"page": page, "page_size": 100, "all": "true"}
-                async with http.get(url, params=params, headers=headers) as resp:
-                    body = await resp.text()
-                    if 400 <= resp.status < 500:
-                        raise bad_request(
-                            "ToolRef.BoxUnavailable",
-                            "引用的工具箱不可用",
-                            f"toolbox {box_id}: HTTP {resp.status} {body[:300]}",
-                            "检查 agent.tools 里的 box_id 是否存在、当前账户是否有权访问。",
-                        )
-                    if resp.status != 200:
-                        raise err(
-                            502,
-                            "Toolbox.Upstream",
-                            "算子工厂不可用",
-                            f"toolbox {box_id} list failed: HTTP {resp.status} {body[:300]}",
-                            "稍后重试；持续失败检查 operator-integration。",
-                        )
-                    data = json.loads(body)
-                infos.extend(data.get("tools") or [])
-                if not data.get("has_next"):
-                    return infos
-                page += 1
+        with observability.span(
+            "bkn.agent.toolbox.list",
+            {
+                "bkn.toolbox.id": box_id,
+                "bkn.operation.name": "bkn.agent.toolbox.list",
+            },
+        ):
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as http:
+                while True:
+                    params = {"page": page, "page_size": 100, "all": "true"}
+                    async with http.get(url, params=params, headers=headers) as resp:
+                        body = await resp.text()
+                        if 400 <= resp.status < 500:
+                            raise bad_request(
+                                "ToolRef.BoxUnavailable",
+                                "引用的工具箱不可用",
+                                f"toolbox {box_id}: HTTP {resp.status} {body[:300]}",
+                                "检查 agent.tools 里的 box_id 是否存在、当前账户是否有权访问。",
+                            )
+                        if resp.status != 200:
+                            raise err(
+                                502,
+                                "Toolbox.Upstream",
+                                "算子工厂不可用",
+                                f"toolbox {box_id} list failed: HTTP {resp.status} {body[:300]}",
+                                "稍后重试；持续失败检查 operator-integration。",
+                            )
+                        data = json.loads(body)
+                    infos.extend(data.get("tools") or [])
+                    if not data.get("has_next"):
+                        return infos
+                    page += 1
     except HTTPException:
         raise
     except Exception as e:  # 连接失败/超时/响应体畸形

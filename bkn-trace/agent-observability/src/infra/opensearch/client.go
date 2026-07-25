@@ -104,3 +104,39 @@ func (c *Client) IndexDocument(ctx context.Context, index string, documentID str
 
 	return respBody, nil
 }
+
+func (c *Client) EnsureIndex(ctx context.Context, index string, mapping []byte) error {
+	url := fmt.Sprintf("%s/%s", c.baseURL, strings.TrimLeft(index, "/"))
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, url, bytes.NewReader(mapping))
+	if err != nil {
+		return fmt.Errorf("create opensearch create-index request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	if c.auth.Enabled {
+		req.SetBasicAuth(c.auth.Username, c.auth.Password)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("execute opensearch create-index request: %w", err)
+	}
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("read opensearch create-index response: %w", err)
+	}
+
+	if resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices {
+		return nil
+	}
+	if resp.StatusCode == http.StatusBadRequest && strings.Contains(string(body), "resource_already_exists_exception") {
+		return nil
+	}
+
+	return fmt.Errorf("opensearch create-index failed with status %d: %s", resp.StatusCode, string(body))
+}

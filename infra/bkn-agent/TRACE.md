@@ -19,7 +19,7 @@
 | `bkn-agent.health` | `GET /api/v1/health` | optional upstream `traceparent` / `bkn-request-id` | FastAPI server span | none |
 | `bkn-agent.agent.*` | agent CRUD routes | account identity, request context | FastAPI server span | none in phase one |
 | `bkn-agent.chat` | `POST /api/bkn-agent/v1/chat` | account identity, agent id, optional thread id | FastAPI server span, `agent.chat` business span, LangChain spans when OTel enabled | SSE meta/token/tool/error/done；成功输出 emit `claim.created`，工具引用 emit `evidence.refs.created`，结构化输出 emit `structured_output.validated` |
-| `bkn-agent.task` | `POST /api/bkn-agent/v1/run` / `POST /invoke/{agent_id}` | account identity, agent id, task context | FastAPI server span, `agent.task` business span, LangChain spans when OTel enabled | task status persisted in DB；成功输出 emit `claim.created`；结构化输出 emit `structured_output.validated`；tool result refs emit `evidence.refs.created` |
+| `bkn-agent.task` | `POST /api/bkn-agent/v1/run` / `POST /invoke/{agent_id}` | account identity, agent id, task context | FastAPI server span, `agent.task` business span, LangChain spans when OTel enabled | task status persisted in DB；成功输出 emit `claim.created`；结构化输出 emit `structured_output.validated`；tool result refs emit `evidence.refs.created`；显式业务字段 emit `business.refs.resolved` |
 
 ## Inbound Context
 
@@ -34,8 +34,8 @@
 
 | target | protocol | propagated fields | baggage policy | timeout | retry |
 | --- | --- | --- | --- | --- | --- |
-| toolbox / MCP tools | HTTP / MCP adapter | phase-one propagation pending in toolbox client | baggage not propagated | existing tool timeout policy | existing retry policy |
-| model provider | OpenAI-compatible HTTP through LangChain | OTel instrumentation when enabled | baggage not propagated | model/provider config | provider policy |
+| toolbox / MCP tools | HTTP / MCP adapter | `traceparent`, `bkn.request.id`, `x-request-id`, account identity | baggage not propagated | existing tool timeout policy | existing retry policy |
+| model provider | OpenAI-compatible HTTP through LangChain | OTel instrumentation when enabled; OpenInference input/output/tool/prompt attributes hidden by default | baggage not propagated | model/provider config | provider policy |
 | checkpoint store | MySQL | request context not propagated | baggage not propagated | DB config | DB driver policy |
 | BKN Trace evidence ingest | HTTP POST | `traceparent`, `bkn.request.id`, account identity in event batch | baggage not propagated | `BKN_TRACE_EVIDENCE_TIMEOUT_S` default 3s | no retry; fail-open with warning |
 
@@ -54,6 +54,8 @@
 | FastAPI server span | server | `bkn.request.id`, `trace_id`, route, status when OTel enabled | follows OTel FastAPI instrumentation | HTTP status |
 | `agent.chat` | internal | `bkn.agent.id`, `bkn.thread.id`, `bkn.prompt.source`, `bkn.prompt.version`, `bkn.request.id` | child of request span when active | stream error event in phase one |
 | `agent.task` | internal | `bkn.agent.id`, `task.depth`, `bkn.prompt.source`, `bkn.prompt.version`, `bkn.request.id` | child of request span when active | exception maps to task failure |
+| `bkn.agent.toolbox.list` | internal | `bkn.toolbox.id`, `bkn.request.id` | child of request/task span when active | toolbox list error envelope |
+| `bkn.agent.tool.call` | internal | `bkn.toolbox.id`, `bkn.tool.id`, `bkn.tool.name`, `bkn.tool.args_hash`, `bkn.request.id` | child of request/task span when active | tool call returns sanitized failure text |
 
 ## Events
 
@@ -65,8 +67,10 @@
 | `structured_output.validated` | `bkn-agent` | claim id, response format schema hash, validation result, `validation_path=native|fallback` | none | evidence event |
 | `tool.budget.exhausted` | `bkn-agent` | max tool call cap and sanitized tool name | `tool_budget_exhausted` | evidence event |
 | `agent_as_tool.invoked` | `bkn-agent` | parent thread id, child task id, child agent id, depth, message hash | none | evidence event |
+| `tool.called` | `bkn-agent` | toolbox id, tool id/name, `args_hash`; no raw args | none | evidence event |
+| `tool.result.observed` | `bkn-agent` | toolbox id, tool id/name, result hash/length or error hash; no raw result | `tool_result_failed` on failure | evidence event |
+| `business.refs.resolved` | `bkn-agent` | final task claim linked to explicit refs parsed from structured tool output keys such as `kn_id`, `object_type`, `relation_type`, `action_type`, `resource_id`, `catalog_id`; emitted as registered business dimensions `object/relation/action/data/logic/metric`; no row payload | `business_refs_unversioned` and `resolver_status=unresolved` until downstream resolver supplies versions | evidence event |
 | `task.status.changed` | pending follow-up | task old/new status and failure summary | not implemented in this PR | business event |
-| `tool.called` / `tool.failed` | pending follow-up | tool id/name and hash-only args/result | toolbox client propagation pending | business event |
 
 ## Business Refs
 
@@ -82,13 +86,14 @@
 - never log: authorization, cookie, access token, full prompt, full model output, full tool args/result
 - hash only: prompt/tool/model payload evidence, user message, model answer, structured output
 - controlled reference: future evidence snapshot refs
+- explicit business refs only: bkn-agent may emit business refs from structured identifier fields, but must not infer refs from free text or persist row-level payload
 - redact: HTTP error responses use short error summaries
 - `data.classification`: not emitted by bkn-agent phase-one code yet
 
 ## Evidence Submission
 
-- default mode: disabled when `BKN_TRACE_EVIDENCE_INGEST_URL` is empty; bkn-agent still constructs events in code paths but does not submit.
-- enabled mode: POST phase-two batch to `BKN_TRACE_EVIDENCE_INGEST_URL`.
+- default chart mode: POST phase-two batch to `http://agent-observability:8080/api/agent-observability/v1/evidence/events`.
+- disabled mode: set `BKN_TRACE_EVIDENCE_INGEST_URL` empty; bkn-agent still constructs events in code paths but does not submit.
 - fail behavior: fail-open with warning; bkn-agent response, task execution and tool execution must not depend on BKN Trace availability.
 - account context: event batch includes `bkn.account.id` / `bkn.account.type`; `business_domain` is temporarily set to account id until upstream business domain propagation is available.
 - payload boundary: never submit raw prompt, raw user message, raw answer, raw SQL, row data, token, cookie, authorization, or object storage URL.
@@ -122,9 +127,8 @@
 
 ## Known Gaps
 
-- toolbox/MCP outbound propagation is not fully implemented yet.
 - source refs from context-loader/BKN/Vega/Action are represented only as tool-call refs until downstream modules emit L2/L3 business refs.
 - task status changed events are still DB state transitions, not BKN Trace events.
-- evidence submission requires `BKN_TRACE_EVIDENCE_INGEST_URL`; default deployment keeps it empty until bkn-trace ingestion service address is configured.
+- evidence submission requires `BKN_TRACE_EVIDENCE_INGEST_URL`; local/full OpenBKN chart defaults to agent-observability ingestion, while minimal deployments can explicitly set it empty.
 - forced sampling and dropped counters are not implemented yet.
 - `business_domain` is temporarily derived from account id; dedicated business-domain propagation is a follow-up.

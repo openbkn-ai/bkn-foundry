@@ -5,7 +5,7 @@ import aiohttp
 from langchain_core.tools import StructuredTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
-from app import evidence
+from app import evidence, observability
 from app.config import config
 from app.core.skills import normalize_skill_id
 from app.core.toolbox import load_toolbox_tools
@@ -17,7 +17,7 @@ logger = logging.getLogger("bkn-agent.tools")
 def _mcp_connections(tool_refs: list[dict], account_id: str, account_type: str) -> dict[str, dict]:
     """agent.tools 中 type=mcp 的显式外部 MCP 端点。平台内置工具不走这里
     （统一从执行工厂 toolbox 装载，见 load_tools）。"""
-    headers = {"x-account-id": account_id, "x-account-type": account_type}
+    headers = {"x-account-id": account_id, "x-account-type": account_type, **observability.outbound_headers()}
     conns: dict[str, dict] = {}
     for i, ref in enumerate(tool_refs):
         kind = ref.get("type")
@@ -137,7 +137,7 @@ def _read_skill_file_tool(account_id: str, account_type: str) -> StructuredTool:
         skill_id 与 path 取 system prompt 中该技能条目列出的值。"""
         sid = normalize_skill_id(skill_id)
         url = f"{config.OPERATOR_INTEGRATION_BASE}/internal-v1/skills/{sid}/files/read"
-        headers = {"x-account-id": account_id, "x-account-type": account_type}
+        headers = {"x-account-id": account_id, "x-account-type": account_type, **observability.outbound_headers()}
         async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as session:
             # 字段名是 rel_path，执行工厂侧 validate:"required"；发过 path 会 400
             async with session.post(url, json={"rel_path": path}, headers=headers) as resp:
