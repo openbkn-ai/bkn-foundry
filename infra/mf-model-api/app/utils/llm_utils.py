@@ -281,6 +281,12 @@ class OpenAIClientRequest:
                         if response.status != 200:
                             error_dict = ModelFactory_ModelController_Model_Error_Error.copy()
                             error_dict["description"] = error_dict["detail"] = await response.text()
+                            self._emit_bkn_trace_evidence(
+                                messages=messages,
+                                params=params,
+                                status="failed",
+                                error_category="model_provider_error",
+                            )
                             yield "--error--" + json.dumps(error_dict, ensure_ascii=False)
                             return
                         ans = ""
