@@ -7,11 +7,13 @@
 package httpapi
 
 import (
+	"log/slog"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/adminwrite"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/audit"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/auth"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
@@ -114,6 +116,14 @@ func New(deps Deps) *gin.Engine {
 		registerRoleBindings(admin, deps.Enforcer, deps.DB)
 		registerRoles(admin, deps.Enforcer, deps.DB)
 		registerObjectGrants(admin, deps.Enforcer, deps.DB)
+		// rbac_basic write routes (custom role create/update/delete + role
+		// permission grant/revoke) are mounted by the enterprise build through
+		// the adminwrite socket. In a community binary no mounter was registered,
+		// so Mount is a no-op and those endpoints stay absent (404). The guarded
+		// operations live in newAdminWriteServices; ee owns only the HTTP shape.
+		if adminwrite.Mount(admin, newAdminWriteServices(deps.Enforcer, deps.DB)) {
+			slog.Info("rbac_basic admin write routes mounted (enterprise build)")
+		}
 		// Global AppKey oversight: list/revoke any user's keys.
 		if apiKeys != nil {
 			registerAdminAPIKeys(admin, apiKeys, deps.Enforcer)

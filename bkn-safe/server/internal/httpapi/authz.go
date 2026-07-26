@@ -13,7 +13,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
-	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/auth"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
@@ -496,164 +495,12 @@ func registerRoles(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 		c.JSON(http.StatusOK, gin.H{"accessor_ids": members})
 	})
 
-	// POST /roles — create a custom role. source is forced to "custom" (the API
-	// cannot mint system/business roles). { id?, name, description? } -> { id }
-	g.POST("/roles", RequirePermission(e, "admin-role", "create"), func(c *gin.Context) {
-		var req struct {
-			ID          string `json:"id"`
-			Name        string `json:"name" binding:"required"`
-			Description string `json:"description"`
-		}
-		if !bind(c, &req) {
-			return
-		}
-		if req.ID == "" {
-			req.ID = auth.NewID()
-		}
-		role := model.Role{
-			ID: req.ID, Name: req.Name, Description: req.Description,
-			Source: model.RoleSourceCustom,
-		}
-		if err := db.WithContext(c.Request.Context()).Create(&role).Error; err != nil {
-			serverError(c, err)
-			return
-		}
-		c.JSON(http.StatusCreated, gin.H{"id": role.ID})
-	})
-
-	// PUT /roles/:id — rename / re-describe a CUSTOM role. Built-in roles are
-	// rejected with 403. { name?, description? }
-	g.PUT("/roles/:id", RequirePermission(e, "admin-role", "edit"), func(c *gin.Context) {
-		role, _ := loadRole(c, db, c.Param("id"))
-		if role == nil {
-			return
-		}
-		if role.BuiltIn() {
-			c.JSON(http.StatusForbidden, gin.H{"error": "built-in role is immutable"})
-			return
-		}
-		var req struct {
-			Name        *string `json:"name"`
-			Description *string `json:"description"`
-		}
-		if !bind(c, &req) {
-			return
-		}
-		fields := map[string]any{}
-		if req.Name != nil {
-			fields["name"] = *req.Name
-		}
-		if req.Description != nil {
-			fields["description"] = *req.Description
-		}
-		if len(fields) == 0 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "no updatable fields provided"})
-			return
-		}
-		if err := db.WithContext(c.Request.Context()).Model(&model.Role{}).
-			Where("id = ?", role.ID).Updates(fields).Error; err != nil {
-			serverError(c, err)
-			return
-		}
-		c.Status(http.StatusNoContent)
-	})
-
-	// DELETE /roles/:id — delete a CUSTOM role and purge its casbin bindings and
-	// permission grants. Built-in roles are rejected with 403.
-	g.DELETE("/roles/:id", RequirePermission(e, "admin-role", "delete"), func(c *gin.Context) {
-		role, _ := loadRole(c, db, c.Param("id"))
-		if role == nil {
-			return
-		}
-		if role.BuiltIn() {
-			c.JSON(http.StatusForbidden, gin.H{"error": "built-in role is immutable"})
-			return
-		}
-		if err := db.WithContext(c.Request.Context()).Delete(&model.Role{}, "id = ?", role.ID).Error; err != nil {
-			serverError(c, err)
-			return
-		}
-		if err := e.RemoveRoleCompletely(role.ID); err != nil {
-			serverError(c, err)
-			return
-		}
-		c.Status(http.StatusNoContent)
-	})
-
-	// POST /roles/:id/permissions — grant a CUSTOM role an op over a resource
-	// pattern (id "*" = whole type). { resource{type,id}, operations:[...] }
-	g.POST("/roles/:id/permissions", RequirePermission(e, "admin-authz", "grant"), func(c *gin.Context) {
-		role, _ := loadRole(c, db, c.Param("id"))
-		if role == nil {
-			return
-		}
-		if role.BuiltIn() {
-			c.JSON(http.StatusForbidden, gin.H{"error": "built-in role permissions are seed-managed"})
-			return
-		}
-		var req struct {
-			Resource   resourceRef `json:"resource" binding:"required"`
-			Operations []string    `json:"operations" binding:"required"`
-		}
-		if !bind(c, &req) {
-			return
-		}
-		// A wildcard resource TYPE (or operation) makes the policy match every
-		// object in the system — the same shape as the seeded super_admin grant.
-		// Minting that from a custom role turns this route into an escalation
-		// path. A wildcard resource ID stays allowed: "whole type" is this
-		// route's documented purpose and is what the admin console sends.
-		if err := rejectWildcardGrant(req.Resource.Type, req.Operations); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
-		}
-		// Same invariant the object-grant route enforces: administrative
-		// capability comes from a seeded role binding, never from a grant handed
-		// out at runtime. Without this, a custom role could be given
-		// safe_admin:console:manage and then bound to its own author. Today no
-		// role that can reach this route lacks that capability already, so this
-		// is defence in depth rather than a live hole — but that is a property of
-		// the current grant matrix, not of the code, and splitting out a
-		// role-management role would quietly turn it into one.
-		if req.Resource.Type == adminConsoleResourceType {
-			c.JSON(http.StatusForbidden, gin.H{"error": "admin console capability is granted by role binding, not by role permissions"})
-			return
-		}
-		for _, op := range req.Operations {
-			if err := e.GrantRolePermission(role.ID, req.Resource.Type, req.Resource.ID, op); err != nil {
-				serverError(c, err)
-				return
-			}
-		}
-		c.Status(http.StatusNoContent)
-	})
-
-	// DELETE /roles/:id/permissions — revoke a CUSTOM role's ops over a resource
-	// pattern. { resource{type,id}, operations:[...] }
-	g.DELETE("/roles/:id/permissions", RequirePermission(e, "admin-authz", "revoke"), func(c *gin.Context) {
-		role, _ := loadRole(c, db, c.Param("id"))
-		if role == nil {
-			return
-		}
-		if role.BuiltIn() {
-			c.JSON(http.StatusForbidden, gin.H{"error": "built-in role permissions are seed-managed"})
-			return
-		}
-		var req struct {
-			Resource   resourceRef `json:"resource" binding:"required"`
-			Operations []string    `json:"operations" binding:"required"`
-		}
-		if !bind(c, &req) {
-			return
-		}
-		for _, op := range req.Operations {
-			if err := e.RevokeRolePermission(role.ID, req.Resource.Type, req.Resource.ID, op); err != nil {
-				serverError(c, err)
-				return
-			}
-		}
-		c.Status(http.StatusNoContent)
-	})
+	// Write routes (POST/PUT/DELETE /roles, POST/DELETE /roles/:id/permissions)
+	// are the rbac_basic sample: they are mounted by the enterprise build via
+	// the extension/adminwrite socket, not here. A community binary never mounts
+	// them, so probing them returns 404 — the endpoint does not exist rather
+	// than existing-but-refusing. See router.go's adminwrite.Mount and
+	// adminwrite_svc.go for the guarded operations they call. (#277/#278)
 }
 
 // loadRole fetches a role by id, writing a 404 and returning nil when missing
