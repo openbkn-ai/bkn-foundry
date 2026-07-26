@@ -5,7 +5,7 @@ import pytest
 
 from app import evidence, observability
 from app.core import toolbox
-from app.core.tools import _mcp_connections, _toolbox_tools
+from app.core.tools import _derive_agent_tool_name, _mcp_connections, _toolbox_tools
 from app.errors import bad_request  # noqa: F401  (确认导出仍存在)
 
 _TOOL_INFO = {
@@ -411,3 +411,27 @@ def test_explicit_box_error_is_classified(monkeypatch):
     with pytest.raises(HTTPException) as e2:
         asyncio.run(toolbox._list_tools("b-1", "u", "user"))
     assert e2.value.status_code == 502 and "Upstream" in e2.value.detail["code"]
+
+
+_OPENAI_NAME_RE = __import__("re").compile(r"^[a-zA-Z0-9_-]{1,64}$")
+
+
+def test_agent_as_tool_name_is_openai_legal():
+    # Chinese agent name: must not leak non-ASCII into the tool name (the bug —
+    # `agent_语义理解` 400s the model every call). The derived form keeps the
+    # ASCII `agent_` prefix, so it stays legal without hitting the id fallback.
+    n = _derive_agent_tool_name({}, "语义理解", "abcdef123456")
+    assert _OPENAI_NAME_RE.match(n), n
+    assert "语" not in n
+
+    # Over-long name is truncated to 64.
+    assert len(_derive_agent_tool_name({}, "a" * 200, "x")) == 64
+
+    # An ASCII agent name stays readable.
+    assert _derive_agent_tool_name({}, "translator", "x") == "agent_translator"
+
+    # An explicit AgentToolRef.name wins but is still sanitized/bounded; an
+    # all-non-ASCII explicit name (no `agent_` prefix) hits the id fallback.
+    assert _derive_agent_tool_name({"name": "我的工具"}, "translator", "abcdef1234") == "tool_abcdef12"
+    assert _derive_agent_tool_name({"name": "my_tool"}, "translator", "x") == "my_tool"
+    assert _OPENAI_NAME_RE.match(_derive_agent_tool_name({"name": "工具" * 40}, "x", "abcdef1234"))
