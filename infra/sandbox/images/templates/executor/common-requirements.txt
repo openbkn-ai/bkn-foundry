@@ -1,13 +1,15 @@
-# Common packages pre-installed into the user-function venv (/opt/sandbox-venv).
+# Common packages baked into the template image's baseline dir (/opt/sandbox-common).
 #
 # Purpose: most sandbox functions need a small, stable data/IO stack. Baking it
 # into the template image avoids per-session pip installs and works in no-egress
 # deployments (runtime pip cannot reach the internet there).
 #
 # These are DIRECT deps only. The image build runs `pip install --target
-# /opt/sandbox-venv -r` on this file; the resolved transitive set is what ends up
-# in the image. Per-session dependency installs (also --target /opt/sandbox-venv)
-# can add packages or override versions on top of this baseline.
+# /opt/sandbox-common -r` on this file; the resolved transitive set is what ends
+# up in the image. /opt/sandbox-common survives dependency syncs (unlike
+# /opt/sandbox-venv, which is wiped each sync) and sits after it on PYTHONPATH,
+# so per-session dependency installs (--target /opt/sandbox-venv) still override
+# these baseline versions.
 #
 # Pins target Python 3.11 (the base image runtime) and the stable numpy 1.x
 # stack, chosen for maximum compatibility with existing functions (numpy 2.x

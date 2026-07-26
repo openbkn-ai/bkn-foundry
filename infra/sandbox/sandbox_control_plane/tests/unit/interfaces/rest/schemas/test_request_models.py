@@ -60,6 +60,33 @@ class TestCreateSessionRequest:
         with pytest.raises(ValidationError):
             CreateSessionRequest(cpu=cpu)
 
+    @pytest.mark.parametrize(
+        "bad_id",
+        [
+            "foo; rm -rf /",
+            "$(touch /tmp/x)",
+            "a`id`b",
+            "../other-session",
+            "sess/../../etc",
+            "a/b",
+            "with space",
+            "a|b",
+            "a&b",
+        ],
+    )
+    def test_rejects_unsafe_id(self, bad_id):
+        # id/template_id 会经 workspace_path 落入以 root 运行的 s3fs 挂载脚本：
+        # shell 元字符 -> 命令注入；'/'、'..' -> 前缀逃逸、绕过会话隔离。
+        with pytest.raises(ValidationError):
+            CreateSessionRequest(id=bad_id)
+        with pytest.raises(ValidationError):
+            CreateSessionRequest(template_id=bad_id)
+
+    def test_accepts_safe_id_and_template_id(self):
+        request = CreateSessionRequest(id="sess_aoi_0", template_id="python-basic")
+        assert request.id == "sess_aoi_0"
+        assert request.template_id == "python-basic"
+
     def test_accepts_custom_python_package_index_url(self):
         request = CreateSessionRequest(
             python_package_index_url="https://mirror.example.com/simple/"
