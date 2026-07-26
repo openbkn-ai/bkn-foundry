@@ -107,10 +107,14 @@ class BubblewrapRunner:
             "bwrap",
             # Filesystem isolation
             "--ro-bind", "/usr", "/usr",
-            "--ro-bind", "/lib", "/lib",
-            "--ro-bind", "/lib64", "/lib64",
-            "--ro-bind", "/bin", "/bin",
-            "--ro-bind", "/sbin", "/sbin",
+            # /lib, /lib64, /bin, /sbin are usrmerge symlinks or absent on some
+            # base images (arm64 python:3.11-slim has no /lib64; /lib etc. are
+            # symlinks into /usr). Use --ro-bind-try so bwrap skips a missing
+            # source instead of aborting the whole sandbox.
+            "--ro-bind-try", "/lib", "/lib",
+            "--ro-bind-try", "/lib64", "/lib64",
+            "--ro-bind-try", "/bin", "/bin",
+            "--ro-bind-try", "/sbin", "/sbin",
             # Session-installed third-party dependencies remain read-only during execution.
             "--ro-bind", dependency_path, dependency_path,
             # sandbox_sdk lives outside the dependency directory, which is wiped
