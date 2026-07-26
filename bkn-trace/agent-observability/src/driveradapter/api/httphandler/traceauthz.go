@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/conf"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/driveradapter/api/rdto"
 )
 
 // accountAttrField is the indexed OpenSearch field carrying the account that
@@ -99,11 +100,52 @@ func (a traceReadAuthz) authorize(id identity, body json.RawMessage) (effective 
 		slog.Info("trace read would be account-scoped", "mode", "shadow", "account_id", id.accountID, "action", "allowed_unscoped")
 		return body, 0, ""
 	}
+	// A top-level aggregation can escape the query scope: a `global` aggregation
+	// ignores the query entirely, and a `top_hits` sub-aggregation then returns
+	// raw documents from every account. Scoping only the query would leave that
+	// path open, so an account-scoped read may not carry aggregations at all.
+	// Admin callers (handled above) are unaffected.
+	if hasAggregations(body) {
+		return nil, http.StatusBadRequest, "aggregations are not permitted on account-scoped trace reads"
+	}
 	scoped, err := scopeQueryToAccount(body, id.accountID)
 	if err != nil {
 		return nil, http.StatusBadRequest, fmt.Sprintf("cannot scope query: %v", err)
 	}
 	return scoped, 0, ""
+}
+
+// hasAggregations reports whether the search body carries a top-level
+// aggregation (either spelling). Non-object bodies are handled downstream by
+// scopeQueryToAccount; here they simply carry no aggregations.
+func hasAggregations(body json.RawMessage) bool {
+	var root map[string]json.RawMessage
+	if err := json.Unmarshal(body, &root); err != nil {
+		return false
+	}
+	_, aggs := root["aggs"]
+	_, aggregations := root["aggregations"]
+	return aggs || aggregations
+}
+
+// RequireReadIdentity is a middleware that, in enforce mode, refuses any trace
+// read that carries no account identity. It is applied to EVERY read route, so
+// the "anyone reachable reads anything" hole is closed uniformly — including
+// the evidence-read and trace-graph endpoints whose per-account document
+// scoping is a tracked follow-up. In shadow mode it is a pass-through.
+func RequireReadIdentity(cfg conf.TraceReadAuthzConfig, next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if cfg.Enforce {
+			if id := identityFromRequest(r); !id.present {
+				writeJSON(w, http.StatusUnauthorized, rdto.ErrorResponse{
+					Code:    "UNAUTHORIZED",
+					Message: "trace read requires an authenticated account",
+				})
+				return
+			}
+		}
+		next(w, r)
+	}
 }
 
 // scopeQueryToAccount rewrites an OpenSearch search body so it can only match

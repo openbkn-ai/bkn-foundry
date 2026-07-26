@@ -55,20 +55,31 @@ func NewApp() *App {
 
 func newApp(httpServerConfig conf.HTTPServerConfig, traceHandler *httphandler.TraceHandler, evidenceHandler *httphandler.EvidenceHandler) *App {
 	mux := http.NewServeMux()
-	mux.HandleFunc(APIBasePath+"/traces/_search", traceHandler.SearchTraces)
-	mux.HandleFunc(APIBasePath+"/traces/by-conversation", traceHandler.SearchTracesByConversationID)
-	mux.HandleFunc(APIBasePath+"/traces/by-request/business-graph", evidenceHandler.GetBusinessGraphByRequestID)
-	mux.HandleFunc(APIBasePath+"/traces/by-request/snapshot-preview", evidenceHandler.GetSnapshotPreviewByRequestID)
-	mux.HandleFunc(APIBasePath+"/traces/by-request", evidenceHandler.GetEvidenceChainByRequestID)
-	mux.HandleFunc(APIBasePath+"/traces/", func(w http.ResponseWriter, r *http.Request) {
+
+	// readAuth wraps every trace/evidence READ route. In enforce mode it refuses
+	// a caller with no account identity, closing the unauthenticated-read hole
+	// uniformly across all read endpoints — not only the two that additionally
+	// scope by account. In shadow mode it is a pass-through. The evidence WRITE
+	// route (/evidence/events) is excluded: it keeps its own ingest-token guard.
+	readAuthCfg := conf.NewTraceReadAuthzConfig()
+	readAuth := func(h http.HandlerFunc) http.HandlerFunc {
+		return httphandler.RequireReadIdentity(readAuthCfg, h)
+	}
+
+	mux.HandleFunc(APIBasePath+"/traces/_search", readAuth(traceHandler.SearchTraces))
+	mux.HandleFunc(APIBasePath+"/traces/by-conversation", readAuth(traceHandler.SearchTracesByConversationID))
+	mux.HandleFunc(APIBasePath+"/traces/by-request/business-graph", readAuth(evidenceHandler.GetBusinessGraphByRequestID))
+	mux.HandleFunc(APIBasePath+"/traces/by-request/snapshot-preview", readAuth(evidenceHandler.GetSnapshotPreviewByRequestID))
+	mux.HandleFunc(APIBasePath+"/traces/by-request", readAuth(evidenceHandler.GetEvidenceChainByRequestID))
+	mux.HandleFunc(APIBasePath+"/traces/", readAuth(func(w http.ResponseWriter, r *http.Request) {
 		if traceHandler.GetTraceSubresource(w, r) {
 			return
 		}
 		evidenceHandler.GetTraceSubresource(w, r)
-	})
-	mux.HandleFunc(APIBasePath+"/evidence-nodes/", evidenceHandler.GetEvidenceNode)
+	}))
+	mux.HandleFunc(APIBasePath+"/evidence-nodes/", readAuth(evidenceHandler.GetEvidenceNode))
 	mux.HandleFunc(APIBasePath+"/evidence/events", evidenceHandler.IngestEvidenceEvents)
-	mux.HandleFunc(APIBasePath+"/evidence/by-trace", evidenceHandler.SearchEvidenceByTrace)
+	mux.HandleFunc(APIBasePath+"/evidence/by-trace", readAuth(evidenceHandler.SearchEvidenceByTrace))
 	mux.Handle(APIBasePath+"/swagger/", httpSwagger.Handler(
 		httpSwagger.URL(APIBasePath+"/swagger/doc.json"),
 	))

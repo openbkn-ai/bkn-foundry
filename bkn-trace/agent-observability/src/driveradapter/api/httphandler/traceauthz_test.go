@@ -146,3 +146,59 @@ func TestShadowAllowsUnauthenticated(t *testing.T) {
 		t.Fatalf("shadow mode must not block missing identity, got %d", rec.Code)
 	}
 }
+
+func TestEnforceRejectsAggregationsFromScopedCaller(t *testing.T) {
+	// A global aggregation escapes the query scope; a scoped caller must not be
+	// able to send one. Reject the whole request rather than silently drop aggs.
+	h, port := handlerWith(enforce)
+	rec := httptest.NewRecorder()
+	body := `{"query":{"match_all":{}},"aggs":{"all":{"global":{},"aggs":{"docs":{"top_hits":{}}}}}}`
+	h.SearchTraces(rec, searchReq(body, "bkn.account.type=user,bkn.account.id=u-9"))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("scoped caller with aggs must be 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if port.last != nil {
+		t.Fatal("nothing should reach OpenSearch when aggs are rejected")
+	}
+}
+
+func TestAdminMayUseAggregations(t *testing.T) {
+	// Admins are not scoped, so aggregations are fine for them.
+	h, port := handlerWith(enforce)
+	rec := httptest.NewRecorder()
+	body := `{"aggs":{"by_svc":{"terms":{"field":"x"}}}}`
+	h.SearchTraces(rec, searchReq(body, "bkn.account.type=admin,bkn.account.id=a-1"))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("admin with aggs should pass, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(string(port.last), "aggs") {
+		t.Fatalf("admin aggs should reach OpenSearch unchanged: %s", port.last)
+	}
+}
+
+func TestRequireReadIdentityEnforceRejectsMissing(t *testing.T) {
+	called := false
+	next := func(w http.ResponseWriter, r *http.Request) { called = true; w.WriteHeader(http.StatusOK) }
+	mw := RequireReadIdentity(enforce, next)
+
+	rec := httptest.NewRecorder()
+	mw(rec, httptest.NewRequest(http.MethodGet, "/x", nil)) // no baggage
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("enforce + no identity: want 401, got %d", rec.Code)
+	}
+	if called {
+		t.Fatal("handler must not run when identity is missing under enforce")
+	}
+}
+
+func TestRequireReadIdentityShadowPassesThrough(t *testing.T) {
+	called := false
+	next := func(w http.ResponseWriter, r *http.Request) { called = true; w.WriteHeader(http.StatusOK) }
+	mw := RequireReadIdentity(shadow, next)
+
+	rec := httptest.NewRecorder()
+	mw(rec, httptest.NewRequest(http.MethodGet, "/x", nil))
+	if !called || rec.Code != http.StatusOK {
+		t.Fatalf("shadow must pass through, got code=%d called=%v", rec.Code, called)
+	}
+}
