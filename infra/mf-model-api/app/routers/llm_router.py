@@ -96,4 +96,7 @@ async def llm_used_openai2(request: LLMUsedOpenAI, head_request: Request):
     userId, language, role = await get_user_info(head_request)
     headers = head_request.headers
     func_module = headers.get('x-func-module', "")
-    return await used_model_openai(request.dict(), userId, language, func_module, dict(headers))
+    # Public route enforces large_model:execute (private=False); the S2S
+    # private_route keeps the default (private=True) and skips, matching
+    # small_model.
+    return await used_model_openai(request.dict(), userId, language, func_module, dict(headers), role=role, private=False)
