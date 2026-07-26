@@ -6,16 +6,27 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/conf"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/tracesvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/driveradapter/api/rdto"
 )
 
 type TraceHandler struct {
 	traceQueryService *tracesvc.TraceQueryService
+	authz             traceReadAuthz
 }
 
 func NewTraceHandler(traceQueryService *tracesvc.TraceQueryService) *TraceHandler {
-	return &TraceHandler{traceQueryService: traceQueryService}
+	return NewTraceHandlerWithAuthz(traceQueryService, conf.NewTraceReadAuthzConfig())
+}
+
+// NewTraceHandlerWithAuthz builds the handler with an explicit read-authz
+// config (tests inject enforce/shadow directly).
+func NewTraceHandlerWithAuthz(traceQueryService *tracesvc.TraceQueryService, authzCfg conf.TraceReadAuthzConfig) *TraceHandler {
+	return &TraceHandler{
+		traceQueryService: traceQueryService,
+		authz:             newTraceReadAuthz(authzCfg),
+	}
 }
 
 // SearchTraces godoc
@@ -65,7 +76,16 @@ func (h *TraceHandler) SearchTraces(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	traceData, err := h.traceQueryService.SearchTraces(r.Context(), raw)
+	// Read authorization: scope the query to the caller's account (or reject an
+	// unauthenticated caller when enforcing). In shadow mode this passes the
+	// query through unchanged and only logs.
+	effective, status, message := h.authz.authorize(identityFromRequest(r), raw)
+	if status != 0 {
+		writeJSON(w, status, rdto.ErrorResponse{Code: "FORBIDDEN", Message: message})
+		return
+	}
+
+	traceData, err := h.traceQueryService.SearchTraces(r.Context(), effective)
 	if err != nil {
 		writeJSON(w, http.StatusGatewayTimeout, rdto.ErrorResponse{
 			Code:    "QUERY_FAILED",
@@ -132,7 +152,16 @@ func (h *TraceHandler) SearchTracesByConversationID(w http.ResponseWriter, r *ht
 		return
 	}
 
-	traceData, err := h.traceQueryService.SearchTraces(r.Context(), query)
+	// Same read authorization as _search: the conversation filter is scoped to
+	// the caller's account, so one account cannot read another's conversation
+	// by id.
+	effective, status, message := h.authz.authorize(identityFromRequest(r), query)
+	if status != 0 {
+		writeJSON(w, status, rdto.ErrorResponse{Code: "FORBIDDEN", Message: message})
+		return
+	}
+
+	traceData, err := h.traceQueryService.SearchTraces(r.Context(), effective)
 	if err != nil {
 		writeJSON(w, http.StatusGatewayTimeout, rdto.ErrorResponse{
 			Code:    "QUERY_FAILED",
