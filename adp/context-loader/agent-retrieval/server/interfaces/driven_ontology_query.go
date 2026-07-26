@@ -55,6 +55,63 @@ type QueryObjectInstancesResp struct {
 	SearchAfter []any `json:"search_after,omitempty"`
 }
 
+// StripInstanceScores 删除每条对象实例结果里的 _score 字段。
+//
+// 仅当本次查询是纯结构化过滤（无 knn / match 打分算子）时才应调用：这类查询在
+// OpenSearch 侧落成 term/terms/range/prefix/regexp/exists 等常量打分查询，无过滤时
+// 退化为 match_all，二者都给每条命中赋同一个常量分（通常 1.0），不存在相关度排序语义，
+// 透给调用方只会误导其以为结果按相关度排序（见 #236）。
+// knn / 全文 match 会逐条打真实相关度分，此时不得剥除——由调用方用
+// HasScoringOperator 判定后决定是否调用本方法。
+func (r *QueryObjectInstancesResp) StripInstanceScores() {
+	if r == nil {
+		return
+	}
+	for _, item := range r.Data {
+		if m, ok := item.(map[string]any); ok {
+			delete(m, "_score")
+		}
+	}
+}
+
+// scoringOperators 是会产生真实相关度分（逐条不同）的算子集合；其余结构化算子在
+// OpenSearch 侧是常量打分，_score 无排序语义。
+var scoringOperators = map[KnOperationType]struct{}{
+	KnOperationTypeKnn:   {}, // 向量近邻，按相似度打分
+	KnOperationTypeMatch: {}, // 全文匹配，按相关度打分
+}
+
+// HasScoringOperator 判断本次查询是否使用了会产生相关度评分的算子（knn / match），
+// 用于决定响应是否保留 _score（#236）。会同时检查 filters 语法糖与已展开的
+// condition 树，故调用时机无关（展开前后都正确）。
+func (r *QueryObjectInstancesReq) HasScoringOperator() bool {
+	if r == nil {
+		return false
+	}
+	for _, f := range r.Filters {
+		if _, ok := scoringOperators[f.Op]; ok {
+			return true
+		}
+	}
+	return condHasScoringOperator(r.Cond)
+}
+
+// condHasScoringOperator 递归判断 condition 树里是否含打分算子。
+func condHasScoringOperator(c *KnCondition) bool {
+	if c == nil {
+		return false
+	}
+	if _, ok := scoringOperators[c.Operation]; ok {
+		return true
+	}
+	for _, sub := range c.SubConditions {
+		if condHasScoringOperator(sub) {
+			return true
+		}
+	}
+	return false
+}
+
 // QueryLogicPropertiesReq Request for querying logic properties values
 type QueryLogicPropertiesReq struct {
 	KnID               string                   `json:"kn_id"`
