@@ -9,6 +9,7 @@ package drivenadapters
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -106,6 +107,7 @@ func (o *ontologyQueryClient) QueryObjectInstances(ctx context.Context, req *int
 	_, respBody, err := o.httpClient.Post(ctx, url, header, req)
 	if err != nil {
 		o.logger.WithContext(ctx).Warnf("[OntologyQuery#QueryObjectInstances] QueryObjectInstances request failed, err: %v", err)
+		err = classifyQueryError(ctx, err)
 		return
 	}
 	resp = &interfaces.QueryObjectInstancesResp{}
@@ -117,6 +119,34 @@ func (o *ontologyQueryClient) QueryObjectInstances(ctx context.Context, req *int
 		return
 	}
 	return
+}
+
+// classifyQueryError re-maps a downstream client error (4xx) from ontology-query
+// into a clean bad-request. The shared HTTP client flattens every non-2xx into
+// CommonExternalServerError ("调用依赖服务异常"), which mislabels a caller mistake
+// — most notably a knn condition on a non-vector string field
+// ("OntologyQuery.InvalidParameter.Condition: left field is not a vector field")
+// — as a dependency outage, so the caller cannot tell "my query is wrong" from
+// "the service is down". A 4xx is the caller's, so surface it as a 400 with the
+// downstream detail intact; a 5xx (or a transport error, which carries no HTTP
+// code) stays as-is.
+//
+// agent-retrieval deliberately does NOT pre-validate that a field is a vector
+// field before forwarding: a property's condition_operations list is declared
+// by the client at KN-build time and stored as-is (untrusted), so a field
+// marked "knn" may still not be backed by a vector mapping, and vice versa. The
+// downstream ontology-query verdict is the only authoritative signal, so the
+// fix is to surface it clearly rather than guess here.
+func classifyQueryError(ctx context.Context, err error) error {
+	var he *infraErr.HTTPError
+	if errors.As(err, &he) && he.HTTPCode >= http.StatusBadRequest && he.HTTPCode < http.StatusInternalServerError {
+		details := he.ErrorDetails
+		if details == nil {
+			details = he.Error()
+		}
+		return infraErr.DefaultHTTPError(ctx, http.StatusBadRequest, details)
+	}
+	return err
 }
 
 // QueryLogicProperties 查询逻辑属性值
