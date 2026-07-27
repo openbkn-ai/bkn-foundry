@@ -60,12 +60,12 @@ usage() {
     echo "  opensearch uninstall          Uninstall OpenSearch (optionally purge PVC)"
     echo "  ingress-nginx install         Install ingress-nginx-controller"
     echo "  ingress-nginx uninstall       Uninstall ingress-nginx-controller"
-    echo "  bkn-foundry install          Install BKN Foundry services; auto-installs K8s/data services if missing"
-    echo "  bkn-foundry download         Download/update BKN Foundry charts into deploy/.tmp/charts"
-    echo "  bkn-foundry uninstall        Uninstall BKN Foundry services"
-    echo "  bkn-foundry status           Show BKN Foundry services status"
+    echo "  openbkn install              Install BKN Foundry services; auto-installs K8s/data services if missing"
+    echo "  openbkn download             Download/update BKN Foundry charts into deploy/.tmp/charts"
+    echo "  openbkn uninstall            Uninstall BKN Foundry services"
+    echo "  openbkn status               Show BKN Foundry services status"
     echo "                                Use --set to pass custom values to all charts"
-    echo "  all install                   Run full initialization (k8s + mariadb + redis + ingress-nginx)"
+    echo "  infra install                Install Kubernetes and platform data services"
     echo ""
     echo "Examples:"
     echo "  $0 k8s install                # Initialize K8s master node with default settings"
@@ -95,7 +95,7 @@ usage() {
     echo "  $0 config generate            # Generate/update ~/.openbkn-ai/config.yaml"
     echo "                                Console admin initial password: prompted on first generation (Enter = random);"
     echo "                                preset with BKN_SAFE_INITIAL_PASSWORD=...; recorded as bknSafe.initialPassword."
-    echo "  $0 all install                # Full initialization with all components"
+    echo "  $0 infra install             # Install infrastructure only"
     echo ""
     echo "Global Options (must appear BEFORE <module> <action>, e.g. $0 --distro=k8s bkn-foundry install):"
     echo "                                Trailing flags like ... install --distro=k8s are NOT parsed here;"
@@ -617,6 +617,26 @@ main() {
         return 0
     fi
     
+    # Handle ingress-nginx module
+    if [[ "${module}" == "ingress-nginx" ]]; then
+        case "${action}" in
+            install|init)
+                check_root
+                install_ingress_nginx
+                ;;
+            uninstall)
+                check_root
+                uninstall_ingress_nginx
+                ;;
+            *)
+                log_error "Unknown ingress-nginx action: ${action}"
+                usage
+                exit 1
+                ;;
+        esac
+        return 0
+    fi
+
     # Handle mariadb module
     if [[ "${module}" == "mariadb" ]]; then
         case "${action}" in
@@ -719,63 +739,8 @@ main() {
         return 0
     fi
     
-    # Handle ingress-nginx module
-    if [[ "${module}" == "ingress-nginx" ]]; then
-        case "${action}" in
-            install|init)
-                check_root
-                install_ingress_nginx
-                ;;
-            uninstall)
-                check_root
-                uninstall_ingress_nginx
-                ;;
-            *)
-                log_error "Unknown ingress-nginx action: ${action}"
-                usage
-                exit 1
-                ;;
-        esac
-        return 0
-    fi
-    
-    # Handle bkn-foundry module
-    if [[ "${module}" == "bkn-foundry" ]] || [[ "${module}" == "foundry" ]] || [[ "${module}" == "core" ]]; then
-        case "${action}" in
-            install|init)
-                parse_openbkn_args "install" "$@"
-                confirm_access_address_before_install
-                install_openbkn
-                ;;
-            download)
-                parse_openbkn_args "download" "$@"
-                download_openbkn
-                ;;
-            uninstall)
-                parse_openbkn_args "uninstall" "$@"
-                uninstall_openbkn
-                ;;
-            status)
-                parse_openbkn_args "status" "$@"
-                show_install_status
-                ;;
-            publish-status)
-                parse_openbkn_args "status" "$@"
-                gen_install_status_json
-                ;;
-            *)
-                log_error "Unknown bkn-foundry action: ${action}"
-                usage
-                exit 1
-                ;;
-        esac
-        return 0
-    fi
-    
-
-    # Handle all/infra module (infrastructure: k8s + data services)
-    # 'all' is an alias for 'infra' for backward compatibility
-    if [[ "${module}" == "all" ]] || [[ "${module}" == "infra" ]]; then
+    # Handle infra module (infrastructure: k8s + data services)
+    if [[ "${module}" == "infra" ]]; then
         case "${action}" in
             install|init)
                 log_info "=========================================="
@@ -803,57 +768,35 @@ main() {
         return 0
     fi
     
-    # Handle bkn module (application services)
-    if [[ "${module}" == "bkn" ]]; then
+    # Handle OpenBKN application module. bkn-foundry/foundry/bkn remain compatibility aliases.
+    if [[ "${module}" == "openbkn" ]] \
+        || [[ "${module}" == "bkn-foundry" ]] \
+        || [[ "${module}" == "foundry" ]] \
+        || [[ "${module}" == "bkn" ]]; then
         case "${action}" in
-            init)
-                check_root
-                log_info "=========================================="
-                log_info "  Deploying BKN Foundry Application Services"
-                log_info "=========================================="
-                
-                # Parse common args for all bkn services
-                while [[ $# -gt 0 ]]; do
-                    case "$1" in
-                        --version=*)
-                            HELM_CHART_VERSION="${1#*=}"
-                            shift
-                            ;;
-                        --version)
-                            HELM_CHART_VERSION="$2"
-                            shift 2
-                            ;;
-                        --helm_repo=*)
-                            HELM_CHART_REPO_URL="${1#*=}"
-                            shift
-                            ;;
-                        --helm_repo)
-                            HELM_CHART_REPO_URL="$2"
-                            shift 2
-                            ;;
-                        *)
-                            shift
-                            ;;
-                    esac
-                done
-                
-                # Install all BKN Foundry services in order
+            install|init)
+                parse_openbkn_args "install" "$@"
+                confirm_access_address_before_install
                 install_openbkn
-
-                log_info "BKN Foundry application services deployment completed!"
+                ;;
+            download)
+                parse_openbkn_args "download" "$@"
+                download_openbkn
                 ;;
             uninstall)
-                check_root
-                log_info "Uninstalling BKN Foundry application services..."
-                uninstall_openbkn || true
-                log_info "BKN Foundry application services uninstalled!"
+                parse_openbkn_args "uninstall" "$@"
+                uninstall_openbkn
                 ;;
             status)
-                log_info "BKN Foundry application services status:"
-                show_openbkn_status
+                parse_openbkn_args "status" "$@"
+                show_install_status
+                ;;
+            publish-status)
+                parse_openbkn_args "status" "$@"
+                gen_install_status_json
                 ;;
             *)
-                log_error "Unknown bkn action: ${action}"
+                log_error "Unknown openbkn action: ${action}"
                 usage
                 exit 1
                 ;;

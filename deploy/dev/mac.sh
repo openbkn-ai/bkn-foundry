@@ -72,7 +72,7 @@ Commands:
   doctor [--fix] [-y|--yes]        Check toolchain; --fix runs brew after confirm (use -y to skip prompt)
   cluster up|down|status           kind cluster + ingress-nginx (kind manifest)
   data-services install|uninstall  Platform data layer (optional before Core: bkn-foundry install runs it automatically on mac); uninstall tears down bundled charts
-  bkn-foundry <action> ...         Delegates to deploy.sh (aliases: foundry, bkn-core, core)
+  openbkn <action> ...             Delegates to deploy.sh (aliases: bkn-foundry, foundry, bkn)
   onboard [args ...]               Runs deploy/onboard.sh
 
 Examples:
@@ -89,7 +89,7 @@ Examples:
 
 Environment:
   KIND_CLUSTER_NAME       Default: bkn-dev
-  CONFIG_YAML_PATH        Default: ${mac_cfg} when unset (bkn-foundry|core|data-services)
+  CONFIG_YAML_PATH        Default: ${mac_cfg} when unset (openbkn|data-services)
 
 Note: data-services install runs deploy.sh data-services (Helm charts into the current kube context). Other deploy.sh modules on mac still skip host k3s bootstrap unless you install infra yourself. See ${readme}.
 
@@ -217,7 +217,7 @@ main() {
             fi
             exec bash "${DEPLOY_ROOT}/deploy.sh" data-services "$@"
             ;;
-        bkn-foundry | foundry | bkn-core | core)
+        openbkn | bkn-foundry | foundry | bkn)
             mac_require_darwin
             if ! mac_doctor; then
                 exit 1
@@ -246,7 +246,7 @@ main() {
                 esac
             done
             if [[ ${#_kw_pos[@]} -eq 0 ]]; then
-                mac_log_error "bkn-foundry|core needs an action (e.g. download, install, status)."
+                mac_log_error "openbkn needs an action (e.g. download, install, status)."
                 exit 1
             fi
             local -a _kw_final=("${_kw_pos[@]}")

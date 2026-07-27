@@ -5,7 +5,7 @@
 # BKN Foundry install-status — two views over one collector
 # (scripts/lib/install_status.py):
 #   show_install_status()      — Layer 1: live, detailed table for operators on
-#                                the server (`deploy.sh core status`).
+#                                the server (`deploy.sh openbkn status`).
 #   gen_install_status_json()  — Layer 2: regenerate the non-sensitive JSON
 #                                snapshot + publish the static /install-status
 #                                ingress endpoint. Called at the end of
@@ -128,7 +128,7 @@ _status_apply_endpoint() {
 # --set auth.enabled=false. That is a SUPPORTED, normal state: bkn-safe is
 # optional. Detect it so install-status reports an absent bkn-safe as
 # "skipped", not "missing". Signals: the install-time --set (CORE_SET_VALUES,
-# present right after install) or, for a standalone status run, a deployed core
+# present right after install) or, for a standalone status run, a deployed OpenBKN
 # service running AUTH_ENABLED=false.
 _status_auth_disabled() {
     local ns="$1" v

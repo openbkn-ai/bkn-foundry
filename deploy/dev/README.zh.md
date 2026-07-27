@@ -30,7 +30,7 @@ cd bkn-foundry/deploy   # 在此目录执行 bash ./dev/mac.sh ...（与 deploy.
 
 ### 操作流程
 
-在 **`deploy/`** 下执行；用 **bash** 调用（如 `bash ./dev/mac.sh ...`）。**`bkn-foundry` / `core`** 封装默认装**全量（含必选的 bkn-safe）。
+在 **`deploy/`** 下执行；用 **bash** 调用（如 `bash ./dev/mac.sh ...`）。**`openbkn` / `bkn-foundry`** 封装默认装**全量（含必选的 bkn-safe）。
 
 | 步骤 | 命令 | 是否必需？ |
 |------|------|------------|
