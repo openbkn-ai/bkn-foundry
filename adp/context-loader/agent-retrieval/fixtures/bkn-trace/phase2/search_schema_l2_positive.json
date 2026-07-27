@@ -1,12 +1,13 @@
 {
-  "bkn.trace.schema.version": "2.0.0",
+  "bkn.trace.schema.version": "2.1.0",
   "fixture_id": "context_loader_phase2_search_schema_l2_positive",
+  "fixture_type": "positive",
   "expected_result": "pass",
   "trace": {
     "trace_id": "71210000000000000000000000000001",
     "traceparent": "00-71210000000000000000000000000001-7121000000000001-01",
     "bkn.request.id": "req_context_loader_phase2_search_0001",
-    "business_domain": "acct_demo",
+    "business_domain": "domain_demo",
     "bkn.account.id": "acct_demo",
     "bkn.account.type": "service"
   },
@@ -19,80 +20,72 @@
       "bkn.module.name": "context-loader",
       "bkn.operation.name": "context.search_schema",
       "bkn.status": "ok",
-      "bkn.timestamp": "2026-07-23T10:00:00.000000Z"
+      "bkn.timestamp": "2026-07-25T10:00:00.000000Z"
     }
   ],
   "events": [
     {
-      "event_id": "evt_context_loader_search_claim",
-      "event_type": "claim.created",
-      "bkn.trace.schema.version": "2.0.0",
-      "observed_at": "2026-07-23T10:00:00.001000Z",
-      "emitted_at": "2026-07-23T10:00:00.002000Z",
-      "producer_module": "context-loader",
+      "event_id": "evt_agent_started_context_search_001",
+      "event_type": "agent.interaction.started",
+      "bkn.trace.schema.version": "2.1.0",
+      "observed_at": "2026-07-25T10:00:00.000000Z",
+      "emitted_at": "2026-07-25T10:00:00.000000Z",
+      "producer_module": "third-party-agent",
       "trace_id": "71210000000000000000000000000001",
       "span_id": "7121000000000001",
       "bkn.request.id": "req_context_loader_phase2_search_0001",
-      "bkn.operation.name": "context.search_schema",
+      "bkn.operation.name": "agent.run",
+      "interaction_id": "interaction_context_search_001",
       "payload": {
-        "claim_id": "claim_context_loader_search_0001",
-        "claim_type": "finding",
-        "claim_hash": "sha256:search_result_summary_hash_only",
-        "visibility": "visible",
-        "version_status": "unversioned",
-        "partial_reason": ["schema_refs_unversioned"],
-        "subject_refs": {
-          "kn_id": "kn_demo",
-          "query_hash": "sha256:query_hash_only",
-          "max_concepts": 5,
-          "returned_ref_count": 3,
-          "data.classification": "internal"
-        }
+        "intent_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "mode": "task",
+        "app_ref": "app:external-agent"
       }
     },
     {
-      "event_id": "evt_context_loader_search_refs",
-      "event_type": "evidence.refs.created",
-      "bkn.trace.schema.version": "2.0.0",
-      "observed_at": "2026-07-23T10:00:00.003000Z",
-      "emitted_at": "2026-07-23T10:00:00.004000Z",
+      "event_id": "evt_c5cb61173b4afc68fb6474d97580262ec2070b98be6e6d5b9bbf7e8a7b6007e0",
+      "event_type": "retrieval.completed",
+      "bkn.trace.schema.version": "2.1.0",
+      "observed_at": "2026-07-25T10:00:00.001000Z",
+      "emitted_at": "2026-07-25T10:00:00.001000Z",
       "producer_module": "context-loader",
       "trace_id": "71210000000000000000000000000001",
       "span_id": "7121000000000001",
       "bkn.request.id": "req_context_loader_phase2_search_0001",
       "bkn.operation.name": "context.search_schema",
+      "interaction_id": "interaction_context_search_001",
+      "operation_id": "op_context_search_001",
+      "causation_event_id": "evt_agent_started_context_search_001",
+      "attempt": 1,
       "payload": {
-        "claim_id": "claim_context_loader_search_0001",
-        "evidence_refs": [
+        "query_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "candidate_count": 3,
+        "truncated": false,
+        "version_status": "unversioned",
+        "source_refs": [
           {
-            "ref_id": "object_type:customer",
-            "ref_type": "schema_ref",
+            "ref_id": "object:kn_demo:customer",
+            "ref_type": "object",
             "source_system": "context-loader",
-            "summary_hash": "sha256:object_type_summary_hash_only",
             "validity": "observed",
             "version_status": "unversioned",
-            "visibility": "visible",
-            "partial_reason": ["schema_ref_unversioned"]
+            "visibility": "visible"
           },
           {
-            "ref_id": "relation_type:customer_has_order",
-            "ref_type": "schema_ref",
+            "ref_id": "relation:kn_demo:customer_has_order",
+            "ref_type": "relation",
             "source_system": "context-loader",
-            "summary_hash": "sha256:relation_type_summary_hash_only",
             "validity": "observed",
             "version_status": "unversioned",
-            "visibility": "visible",
-            "partial_reason": ["schema_ref_unversioned"]
+            "visibility": "visible"
           },
           {
-            "ref_id": "action_type:notify_owner",
-            "ref_type": "action_ref",
+            "ref_id": "action_type:kn_demo:notify_owner",
+            "ref_type": "action",
             "source_system": "context-loader",
-            "summary_hash": "sha256:action_type_summary_hash_only",
             "validity": "observed",
             "version_status": "unversioned",
-            "visibility": "visible",
-            "partial_reason": ["schema_ref_unversioned"]
+            "visibility": "visible"
           }
         ]
       }

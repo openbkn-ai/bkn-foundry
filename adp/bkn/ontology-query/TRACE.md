@@ -1,65 +1,46 @@
 # ontology-query BKN Trace 接入合同
 
-> 状态：BKN Trace 2.1 producer 实施基线
-> 适用版本：`bkn.trace.schema.version=2.1.0`
+> 状态：BKN Trace 2.1 生产者实施基线
+> 更新时间：2026-07-25
 > 权威依据：`bkn-docs/docs/foundry/bkn-trace/registry/核心业务事件注册表.md`
 
-## 模块责任与事件归类
+## 一、模块责任
 
 - 模块名：`bkn-ontology`，服务名：`ontology-query`。
-- 对象实例、关系路径和指标值查询返回的是业务实例数据，不是 schema 定义，因此记录为 `data.query.observed`。
-- schema/type 定义读取由 `bkn-backend` 记录为 `knowledge.read.observed`。
-- 本模块只记录查询事实，不解释查询结果、不创建结论，任何路径均不得生成 `claim.created`。
+- 对象实例、关系路径和指标查询记录为 `data.query.observed`；schema 定义读取由 `bkn-backend` 记录。
+- 本模块只记录查询事实，不创建或绑定 claim。Agent/AI 应用形成结论后，使用返回的事实事件 ID 建立证据关系。
 
-## 上下文传播
+## 二、上下文、子操作与重放
 
-入站解析并在出站 HTTP 调用中传播：
+入站要求 trace/request/account、`bkn-interaction-id`、`bkn-operation-id`、`bkn-attempt` 和 `bkn-event-observed-at`；有直接原因时携带 `bkn-causation-event-id`。ID 不要求固定前缀，只校验安全字符和长度。
 
-```text
-traceparent
-bkn-request-id
-x-request-id
-bkn-interaction-id
-bkn-operation-id
-bkn-causation-event-id
-bkn-claim-id
-```
+- `event_id = evt_ + sha256(trace_id|operation_id|event_type|attempt)`。
+- 调用方必须在首次调用时确定并在重放时复用完整 envelope，尤其是 `observed_at`。
+- 缺少或非法 `observed_at`、interaction 或 operation 时不产生核心事实，不能用 `time.Now()` 重建同 ID 的新事件。
+- 事实 ID 通过响应头 `bkn-evidence-event-id` 返回。
+- 下游调用应派生新的 child `operation_id`，保留直接 `causation_event_id`；同一父 operation 下同名多次调用必须使用稳定调用序号或调用方显式提供子 operation，不能默认复用造成碰撞。
 
-`interaction_id`、`operation_id` 缺失时生成；`attempt` 由 producer 写入事件并默认为 `1`，不新增跨服务 header。`baggage` 仅保留 `bkn.account.type`、`bkn.runtime.env`，不得作为授权来源。Vega 出站调用统一使用 `common.MergeTraceHeaders`，传播三个因果 header，传播值不包含 SQL、查询参数、行数据或凭据。`bkn-claim-id` 仅在上游已有 claim 时作为条件关联，不得由读取模块生成。
+## 三、事实与受控引用
 
-## 事件规则
+`data.query.observed.payload` 仅允许 `query_hash/query_type/row_count/truncated/as_of/version_status/resource_refs/field_refs`。
 
-| 操作 | 事件 | query_type |
-| --- | --- | --- |
-| 对象实例查询 | `data.query.observed` | `object_instance` |
-| 子图/关系路径查询 | `data.query.observed` | `relation_path` |
-| 指标查询/试算 | `data.query.observed` | `metric` |
+- 对象、关系路径和指标来源进入 `resource_refs`，但保持真实 `ref_type=object|relation|metric`；注册业务字段进入 `field_refs`。
+- BKN 引用必须全限定为 `object:<kn_id>:<object_type_id>`、`relation:<kn_id>:<relation_type_id>`、`metric:<kn_id>:<metric_id>`；不得产生 `object_type:<id>` 等无法授权解析的短引用。
+- 不从返回行生成引用，不记录对象实例内容、关系实例内容、指标值、物理表名或物理字段名。
+- 引用仅允许 `ref_id/ref_type/source_system/validity/version_status/visibility/summary_hash（可选）`。
+- 即使收到上游 claim，本模块也只生成查询事实，不在事实阶段追加 claim 绑定事件。
 
-`data.query.observed.payload` 仅含 `query_hash`、`query_type`、`row_count`、`truncated`、`version_status`。完整 query、SQL、参数与返回行不进入事件。
+## 四、可靠性与安全
 
-只有收到上游 `bkn-claim-id` 时，才在读取事实之后生成：
+上报最多三次，HTTP 非 2xx 判失败；队列满和最终失败写日志。上报异步且失败开放。禁止 SQL、参数、查询正文、行数据、PII、prompt、工具输入输出、凭据和裸 URL。当前没有持久 outbox，进程退出可能丢失内存事件。
 
-- `evidence.refs.created`：受控 row/schema/metric 引用，允许 hash、状态和可见性，不含 `summary` 或行结构。
-- `business.refs.resolved`：将引用解析为 object/relation/metric 业务引用。
-
-收到上游 claim 但没有可解析引用时，只追加 `business.refs.resolved`，设置 `resolver_status=unresolved` 且引用数组为空；不得伪造 ref。
-
-没有上游 claim 时仅生成查询事实，避免把“读到了数据”错误表达为“形成了结论”。
-
-## 安全边界
-
-禁止完整 SQL、SQL 参数、对象实例属性、指标 label/value、PII、prompt、工具输入输出、token、Cookie、Authorization、连接串和对象存储裸 URL。`safeObjectQueryShape` 等逻辑只对受控查询形状求 hash；引用严格只保留 `ref_id/ref_type/source_system/validity/version_status/visibility/summary_hash`，所有 hash 均为 `sha256:<64 位小写十六进制>`。
-
-## 验收
+## 五、验收
 
 - fixture：`fixtures/bkn-trace/phase2/ontology_data_evidence_l2_positive.json`。
-- Given 无上游 claim，When 对象/关系/指标查询成功，Then 只生成 `data.query.observed`。
-- Given 有上游 claim，When 查询成功，Then 追加受控 evidence/business refs，并绑定同一 claim。
-- Given 上游三类因果 header，When 调用 Vega，Then trace/request/interaction/operation/causation 保持传播。
-- Given 查询与结果含敏感内容，When 构造事件，Then payload 只出现 hash、计数、枚举与受控引用。
+- Given 对象/关系/指标查询，When 构造事实，Then payload 只含查询摘要、计数和受控 resource/field refs。
+- Given 返回结果含敏感行内容，Then行内容及物理名不进入事件。
+- Given 相同完整 envelope 重放，Then event ID 与时间戳一致；缺少原始 observed time 时拒绝产出。
 
-## 已知限制
+## 六、已知限制
 
-- 数据快照锚点尚未接入，当前引用为 `unversioned`。
-- 当前已有 Vega 调用使用统一传播工具；其他新出站调用必须复用 `common.MergeTraceHeaders`。
-- 跨模块图组装、partial 计算、快照持久化与 Studio 展示由 BKN Trace 核心负责。
+数据快照版本和持久 outbox 尚未接入，当前为 `unversioned`；全局证据图由 BKN Trace 核心组装。

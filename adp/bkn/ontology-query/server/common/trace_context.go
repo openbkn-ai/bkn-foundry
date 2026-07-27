@@ -3,9 +3,12 @@ package common
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -21,6 +24,9 @@ const (
 	HeaderBKNOperationID      = "bkn-operation-id"
 	HeaderBKNCausationEventID = "bkn-causation-event-id"
 	HeaderBKNClaimID          = "bkn-claim-id"
+	HeaderBKNAttempt          = "bkn-attempt"
+	HeaderBKNEventObservedAt  = "bkn-event-observed-at"
+	HeaderBusinessDomain      = "x-business-domain"
 )
 
 type traceContextKey string
@@ -28,15 +34,18 @@ type traceContextKey string
 const keyTraceContext traceContextKey = "bkn_trace_context"
 
 var bknRequestIDRe = regexp.MustCompile(`^req_[A-Za-z0-9_-]{8,128}$`)
+var businessTraceIDRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`)
 
 // TraceContext carries the OpenBKN phase-one correlation context.
 type TraceContext struct {
 	RequestID        string
+	BusinessDomain   string
 	InteractionID    string
 	OperationID      string
 	CausationEventID string
 	ClaimID          string
 	Attempt          int
+	ObservedAt       string
 	Baggage          map[string]string
 }
 
@@ -44,15 +53,18 @@ func SetTraceContextToCtx(ctx context.Context, traceContext TraceContext) contex
 	if !IsValidBKNRequestID(traceContext.RequestID) {
 		traceContext.RequestID = NewBKNRequestID()
 	}
-	if strings.TrimSpace(traceContext.InteractionID) == "" {
-		traceContext.InteractionID = "int_" + randomTraceID()
+	traceContext.BusinessDomain = sanitizeBusinessTraceID(traceContext.BusinessDomain)
+	if traceContext.BusinessDomain == "" {
+		traceContext.BusinessDomain = sanitizeBusinessTraceID(traceContext.Baggage["business_domain"])
 	}
-	if strings.TrimSpace(traceContext.OperationID) == "" {
-		traceContext.OperationID = "op_" + randomTraceID()
-	}
+	traceContext.InteractionID = sanitizeBusinessTraceID(traceContext.InteractionID)
+	traceContext.OperationID = sanitizeBusinessTraceID(traceContext.OperationID)
+	traceContext.CausationEventID = sanitizeBusinessTraceID(traceContext.CausationEventID)
+	traceContext.ClaimID = sanitizeBusinessTraceID(traceContext.ClaimID)
 	if traceContext.Attempt <= 0 {
 		traceContext.Attempt = 1
 	}
+	traceContext.ObservedAt = validatedObservedAt(traceContext.ObservedAt)
 	traceContext.Baggage = sanitizeBaggage(traceContext.Baggage)
 	return context.WithValue(ctx, keyTraceContext, traceContext)
 }
@@ -67,13 +79,17 @@ func TraceContextFromHeaders(getHeader func(string) string) TraceContext {
 	if requestID == "" {
 		requestID = strings.TrimSpace(getHeader(HeaderLegacyRequestID))
 	}
+	baggage := parseBaggage(getHeader(HeaderBaggage))
 	return TraceContext{
 		RequestID:        requestID,
-		InteractionID:    strings.TrimSpace(getHeader(HeaderBKNInteractionID)),
-		OperationID:      strings.TrimSpace(getHeader(HeaderBKNOperationID)),
-		CausationEventID: strings.TrimSpace(getHeader(HeaderBKNCausationEventID)),
-		ClaimID:          strings.TrimSpace(getHeader(HeaderBKNClaimID)),
-		Baggage:          parseBaggage(getHeader(HeaderBaggage)),
+		BusinessDomain:   firstNonEmpty(getHeader(HeaderBusinessDomain), baggage["business_domain"]),
+		InteractionID:    sanitizeBusinessTraceID(getHeader(HeaderBKNInteractionID)),
+		OperationID:      sanitizeBusinessTraceID(getHeader(HeaderBKNOperationID)),
+		CausationEventID: sanitizeBusinessTraceID(getHeader(HeaderBKNCausationEventID)),
+		ClaimID:          sanitizeBusinessTraceID(getHeader(HeaderBKNClaimID)),
+		Attempt:          parseAttempt(getHeader(HeaderBKNAttempt)),
+		ObservedAt:       validatedObservedAt(getHeader(HeaderBKNEventObservedAt)),
+		Baggage:          baggage,
 	}
 }
 
@@ -100,13 +116,24 @@ func BuildTraceHeaders(ctx context.Context) map[string]string {
 		if baggage := formatBaggage(traceContext.Baggage); baggage != "" {
 			headers[HeaderBaggage] = baggage
 		}
-		headers[HeaderBKNInteractionID] = traceContext.InteractionID
-		headers[HeaderBKNOperationID] = traceContext.OperationID
+		if traceContext.InteractionID != "" {
+			headers[HeaderBKNInteractionID] = traceContext.InteractionID
+		}
+		if traceContext.OperationID != "" {
+			headers[HeaderBKNOperationID] = traceContext.OperationID
+		}
+		if traceContext.BusinessDomain != "" {
+			headers[HeaderBusinessDomain] = traceContext.BusinessDomain
+		}
 		if traceContext.CausationEventID != "" {
 			headers[HeaderBKNCausationEventID] = traceContext.CausationEventID
 		}
 		if traceContext.ClaimID != "" {
 			headers[HeaderBKNClaimID] = traceContext.ClaimID
+		}
+		headers[HeaderBKNAttempt] = strconv.Itoa(traceContext.Attempt)
+		if traceContext.ObservedAt != "" {
+			headers[HeaderBKNEventObservedAt] = traceContext.ObservedAt
 		}
 	}
 	if traceparent := traceparentFromCtx(ctx); traceparent != "" {
@@ -115,12 +142,20 @@ func BuildTraceHeaders(ctx context.Context) map[string]string {
 	return headers
 }
 
-func randomTraceID() string {
-	var b [8]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		return fmt.Sprintf("%016x", time.Now().UnixNano())
+func parseAttempt(value string) int {
+	attempt, _ := strconv.Atoi(strings.TrimSpace(value))
+	if attempt < 1 || attempt > 1000 {
+		return 1
 	}
-	return fmt.Sprintf("%x", b)
+	return attempt
+}
+
+func validatedObservedAt(value string) string {
+	value = strings.TrimSpace(value)
+	if _, err := time.Parse(time.RFC3339Nano, value); err == nil {
+		return value
+	}
+	return ""
 }
 
 func MergeTraceHeaders(ctx context.Context, headers map[string]string) map[string]string {
@@ -133,6 +168,50 @@ func MergeTraceHeaders(ctx context.Context, headers map[string]string) map[strin
 	return headers
 }
 
+func BuildTraceHeadersForChildOperation(ctx context.Context, operationName string, callOrdinal int) map[string]string {
+	traceContext, ok := GetTraceContextFromCtx(ctx)
+	if !ok {
+		return BuildTraceHeaders(ctx)
+	}
+	traceContext.OperationID = childOperationID(traceContext.OperationID, operationName, traceContext.Attempt, callOrdinal)
+	return BuildTraceHeaders(SetTraceContextToCtx(ctx, traceContext))
+}
+
+func MergeTraceHeadersForChildOperation(ctx context.Context, headers map[string]string, operationName string, callOrdinal int) map[string]string {
+	if headers == nil {
+		headers = map[string]string{}
+	}
+	for key, value := range BuildTraceHeadersForChildOperation(ctx, operationName, callOrdinal) {
+		headers[key] = value
+	}
+	return headers
+}
+
+func childOperationID(parentOperationID, operationName string, attempt, callOrdinal int) string {
+	if callOrdinal < 1 {
+		callOrdinal = 1
+	}
+	sum := sha256.Sum256([]byte(fmt.Sprintf("%s|%s|%d|%d", parentOperationID, strings.TrimSpace(operationName), attempt, callOrdinal)))
+	return "op_" + hex.EncodeToString(sum[:])
+}
+
+func sanitizeBusinessTraceID(value string) string {
+	value = strings.TrimSpace(value)
+	if !businessTraceIDRe.MatchString(value) {
+		return ""
+	}
+	return value
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value = strings.TrimSpace(value); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
 func sanitizeBaggage(baggage map[string]string) map[string]string {
 	if len(baggage) == 0 {
 		return nil
@@ -140,7 +219,7 @@ func sanitizeBaggage(baggage map[string]string) map[string]string {
 	cleaned := map[string]string{}
 	for key, value := range baggage {
 		switch key {
-		case "bkn.account.type", "bkn.runtime.env":
+		case "bkn.account.type", "bkn.runtime.env", "business_domain":
 			cleaned[key] = value
 		}
 	}

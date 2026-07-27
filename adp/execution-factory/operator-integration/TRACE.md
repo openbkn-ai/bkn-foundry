@@ -44,10 +44,12 @@ bkn-action-observed-at
 bkn-action-approval-requested-event-id
 x-account-id
 x-account-type
-x-business-domain（缺失时暂以 account id 代替）
+x-business-domain
 ```
 
 - `bkn-action-approval-requested-event-id` 是 `approved/rejected` 的直接原因。
+- `traceparent` 必须是原始合法 W3C 值，并原样进入 2.1 ingest envelope。
+- `x-business-domain` 必须为真实业务域，缺失时不启用 Action evidence，禁止以 account id 代替。
 - `bkn-operation-id` 在重试时保持不变，`bkn-attempt` 递增且进入 event ID。
 - 缺任一必要因果字段时保持原执行行为，但不创建孤立 Action 事件。
 - 当前自动测试策略只接受 `action_type=monitor`、`reversible=true`、`policy_ref=e2e-monitor-auto-approve`。
@@ -67,6 +69,9 @@ executed -> result_recorded
 - 权限通过但后续依赖失败时仍记录 `approved -> executed(error) -> result_recorded(error)`。
 - event ID 由 `action_instance_id + operation_id + attempt + event_type` 稳定派生。
 - 同一 attempt 重放相同事件内容必须完全一致；不同 attempt 不得复用 event ID。
+- 权限通过并成功提交 approved 后，必须在真实副作用前通过 Redis `SETNX` 原子取得 `action_instance_id + attempt` 执行权；取得失败不得执行。
+- 执行结果写入持久 gate 后，重试只返回缓存结果并补发终态 evidence，不重复副作用。
+- 各阶段以 approval_requested 时间为基线使用确定性微秒偏移，保证 observed_at 不同且重放稳定。
 
 ## 5. 精确 payload
 
@@ -102,6 +107,9 @@ executed -> result_recorded
 - Given 执行失败，When 权限已通过，Then executed/result 的 status 为 error，错误原文不可见。
 - Given 同一 operation/attempt 重放，When 重建事件，Then event ID 与完整内容一致。
 - Given 缺 Action 因果头或不是可撤销 monitor 测试策略，When 调用工具，Then 不生成 Action 事件。
+- Given 多个相同 action/attempt 并发请求，When 抵达副作用边界，Then只有一个取得执行权。
+- Given 副作用已完成但终态 evidence 上报失败，When 客户端重试，Then补发终态 evidence 并返回缓存结果，不再次执行工具。
+- Given ingest 返回非 2xx 或超时，When 提交 Action 事实，Then有界重试并将最终失败返回调用路径。
 
 ## 9. Fixture 与测试
 
@@ -110,11 +118,13 @@ executed -> result_recorded
 - 执行边界测试：`server/logics/toolbox/execute_trace_test.go`。
 - 验证命令：`go test ./server/infra/bkntrace ./server/logics/toolbox`。
 
-## 10. 当前边界
+## 10. 可靠性与当前边界
 
 - 本批先接入 toolbox `ExecuteTool`；MCP、operator proxy 和 sandbox 后续复用同一 helper。
-- `BKN_TRACE_EVIDENCE_INGEST_URL` 为空或写入失败时 fail-open，不改变业务响应。
-- 上游 recommendation/approval request 的可靠写入顺序由调用方或 SDK `flush` 保证。
+- Action 路径在 emitter 未配置、非 2xx、超时或 approved 未确认时 fail-closed，不执行副作用；普通非 Action 工具调用保持原行为。
+- HTTP emitter 使用有界重试，原始序列化 event 与时间戳不变。
+- Redis gate 不设 TTL，防止重启后重复副作用。若进程在副作用完成后、结果写入 gate 前崩溃，状态会永久停留 `executing` 并拒绝重试，需要人工对账；本批未实现事务型执行日志/outbox。
+- 上游 recommendation/approval request 必须先确认写入；operator 不补造父事实。
 - 完整本地环境必须把 ingest URL 指向 agent-observability 真实地址。
 
 ## 11. 责任确认

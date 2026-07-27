@@ -66,7 +66,7 @@ func (o *operatorIntegrationClient) GetToolDetail(ctx context.Context, req *inte
 	// 记录请求日志
 	o.logger.WithContext(ctx).Debugf("[OperatorIntegration#GetToolDetail] URL: %s", url)
 
-	header := common.GetHeaderFromCtx(ctx)
+	header := common.GetHeaderForChildOperation(ctx, "operator.tool.get", 1)
 
 	_, respBody, err := o.httpClient.Get(ctx, url, nil, header)
 	if err != nil {
@@ -97,7 +97,7 @@ func (o *operatorIntegrationClient) GetMCPToolDetail(ctx context.Context, req *i
 	// 记录请求日志
 	o.logger.WithContext(ctx).Debugf("[OperatorIntegration#GetMCPToolDetail] URL: %s", url)
 
-	header := common.GetHeaderFromCtx(ctx)
+	header := common.GetHeaderForChildOperation(ctx, "operator.mcp_tool.get", 1)
 	_, respBody, err := o.httpClient.Get(ctx, url, nil, header)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#GetMCPToolDetail] Request failed, err: %v", err)
@@ -134,7 +134,7 @@ func (o *operatorIntegrationClient) CallMCPTool(ctx context.Context, req *interf
 	// 记录请求日志
 	o.logger.WithContext(ctx).Debugf("[OperatorIntegration#CallMCPTool] URL: %s, Tool: %s", url, req.ToolName)
 
-	header := common.GetHeaderFromCtx(ctx)
+	header := common.GetHeaderForChildOperation(ctx, "operator.mcp_tool.call", 1)
 
 	// 构建请求体
 	reqBody := map[string]interface{}{
@@ -170,7 +170,7 @@ func (o *operatorIntegrationClient) SyncToolDependencyPackage(ctx context.Contex
 		return infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError, fmt.Sprintf("构建工具依赖导入请求失败: %v", err))
 	}
 
-	headers := common.GetHeaderFromCtx(ctx)
+	headers := common.GetHeaderForChildOperation(ctx, "operator.tool_dependency.sync", 1)
 	headers["Content-Type"] = contentType
 	headers[string(interfaces.HeaderXBusinessDomain)] = interfaces.DefaultBusinessDomainID
 	if accountID, ok := headers[string(interfaces.HeaderXAccountID)]; !ok || accountID == "" {

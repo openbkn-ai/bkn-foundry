@@ -54,11 +54,11 @@
       }
     },
     {
-      "event_id": "evt_model_call_001",
+      "event_id": "evt_39536d8811d827195fc0aa5e0261f7e0e87e5944302788dfa7e800cab5623aeb",
       "event_type": "model.call.observed",
       "bkn.trace.schema.version": "2.1.0",
       "observed_at": "2026-07-25T10:20:00.100000000Z",
-      "emitted_at": "2026-07-25T10:20:00.101000000Z",
+      "emitted_at": "2026-07-25T10:20:00.100000000Z",
       "producer_module": "mf-model-api",
       "trace_id": "81230000000000000000000000000001",
       "span_id": "8123000000000002",

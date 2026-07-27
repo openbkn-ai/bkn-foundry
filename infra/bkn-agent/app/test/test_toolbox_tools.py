@@ -1,7 +1,9 @@
 """执行工厂 toolbox 工具装载（工具面收敛，替代 agent-retrieval 专用 MCP 通道）。"""
 import asyncio
+import hashlib
 
 import pytest
+from langchain_core.messages import ToolMessage
 from langchain_mcp_adapters.interceptors import MCPToolCallRequest
 
 from app import evidence, observability
@@ -152,7 +154,17 @@ def test_execute_payload_routing(monkeypatch):
     """POST 参数进 body、GET 进 query；身份 header 双份（外层请求 + 转发 header）。"""
     captured = {}
 
-    async def fake_execute(box_id, tool_id, tool_name, method, args, params, account_id, account_type):
+    async def fake_execute(
+        box_id,
+        tool_id,
+        tool_name,
+        method,
+        args,
+        params,
+        account_id,
+        account_type,
+        expected_fact_event_type=None,
+    ):
         captured.update(box=box_id, tool=tool_id, tool_name=tool_name, method=method, args=args, aid=account_id)
         return "ok"
 
@@ -163,6 +175,52 @@ def test_execute_payload_routing(monkeypatch):
     assert captured["box"] == "b-1" and captured["tool"] == "t-1"
     assert captured["tool_name"] == "list_knowledge_networks"
     assert captured["aid"] == "u-9"
+
+
+def test_build_context_loader_retrieval_tool_declares_expected_fact_event(monkeypatch):
+    captured = {}
+    search_schema_info = {
+        **_TOOL_INFO,
+        "tool_id": "tool-search-schema",
+        "name": "search_schema",
+        "metadata": {
+            **_TOOL_INFO["metadata"],
+            "path": "/api/agent-retrieval/in/v1/kn/search_schema",
+        },
+    }
+
+    async def fake_execute(
+        box_id,
+        tool_id,
+        tool_name,
+        method,
+        args,
+        params,
+        account_id,
+        account_type,
+        expected_fact_event_type=None,
+    ):
+        captured["expected_fact_event_type"] = expected_fact_event_type
+        return "ok"
+
+    monkeypatch.setattr(toolbox, "_execute", fake_execute)
+
+    tool = toolbox._build_tool(
+        "box-context-loader", search_schema_info, "account-1", "user"
+    )
+    result = asyncio.run(tool.coroutine(query="采购履约风险"))
+
+    assert result == "ok"
+    assert captured["expected_fact_event_type"] == "retrieval.completed"
+
+
+def test_external_tool_with_context_loader_path_does_not_declare_fact_event():
+    metadata = {
+        "server_url": "https://tools.example.com",
+        "path": "/api/agent-retrieval/in/v1/kn/search_schema",
+    }
+
+    assert toolbox._expected_fact_event_type("external-box", metadata) is None
 
 
 def test_execute_splits_query_and_body_by_declared_location(monkeypatch):
@@ -404,6 +462,123 @@ def test_execute_assigns_operation_and_propagates_causality_headers(monkeypatch)
     assert sent["headers"]["bkn-interaction-id"] == called["interaction_id"]
     assert sent["headers"]["bkn-operation-id"] == called["operation_id"]
     assert sent["headers"]["bkn-causation-event-id"] == called["event_id"]
+    assert "bkn-claim-id" not in sent["headers"]
+    assert not any(key.startswith("bkn-action-") for key in sent["headers"])
+
+
+def test_context_loader_search_without_receipt_links_real_retrieval_event_to_claim_sources(
+    monkeypatch,
+):
+    submitted = []
+
+    class _Resp:
+        status = 200
+
+        async def text(self):
+            return (
+                '{"status_code":200,"headers":{},'
+                '"body":{"object_types":[{"concept_id":"purchase_order"}],'
+                '"relation_types":[{"concept_id":"contains_material"}]}}'
+            )
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+    class _Session:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        def post(self, url, json=None, headers=None):
+            return _Resp()
+
+    async def fake_submit(events, account_id, account_type):
+        submitted.extend(events)
+        return True
+
+    ctx = observability.TraceContext(
+        trace_id="ce31e2d297bd4ee0b1313ca3bdcd1acf",
+        request_id="req_real_retrieval_001",
+        traceparent=(
+            "00-ce31e2d297bd4ee0b1313ca3bdcd1acf-abcdef1234567890-01"
+        ),
+        entry_boundary="external",
+        upstream_span_id="abcdef1234567890",
+        tenant_id="tenant-demo",
+        business_domain="bd-public",
+    )
+    token = observability.set_context(ctx)
+    interaction_token = evidence.begin_interaction(
+        "分析采购履约风险", "task", "agent-1", "bkn.agent.task"
+    )
+    try:
+        monkeypatch.setattr(toolbox.aiohttp, "ClientSession", _Session)
+        monkeypatch.setattr(evidence, "submit_events", fake_submit)
+        result = asyncio.run(
+            toolbox._execute(
+                "box-context-loader",
+                "tool-search-schema",
+                "search_schema",
+                "POST",
+                {"kn_id": "supply-chain", "query": "采购履约风险"},
+                [],
+                "account-1",
+                "user",
+                expected_fact_event_type="retrieval.completed",
+            )
+        )
+        operation_id = submitted[0]["operation_id"]
+        expected_event_id = "evt_" + hashlib.sha256(
+            (
+                f"{ctx.trace_id}|{operation_id}|retrieval.completed|1"
+            ).encode("utf-8")
+        ).hexdigest()
+        model_headers = evidence.model_context_headers(
+            [ToolMessage(content=result, tool_call_id="call-search-schema")],
+            "op-model-final",
+        )
+        evidence.record_model_fact(
+            event_id="evt-model-final",
+            operation_id="op-model-final",
+            adopted_source_event_ids=[expected_event_id],
+        )
+        source_ids, operation_ids, evidence_refs, business_refs = (
+            evidence.adopted_sources()
+        )
+        claim = evidence.claim_created(
+            claim_id_value="claim-real-retrieval",
+            claim_type="answer",
+            claim_hash=evidence.hash_value("存在采购履约风险"),
+            operation_name="bkn.agent.task",
+            source_event_ids=source_ids,
+            operation_ids=operation_ids,
+            causation_event_id=source_ids[-1],
+        )
+    finally:
+        evidence.end_interaction(interaction_token)
+        observability.reset_context(token)
+
+    assert model_headers["bkn-candidate-source-event-ids"] == (
+        f'["{expected_event_id}"]'
+    )
+    assert source_ids == [expected_event_id, "evt-model-final"]
+    assert operation_ids == [operation_id, "op-model-final"]
+    assert claim["payload"]["source_event_ids"] == [
+        expected_event_id,
+        "evt-model-final",
+    ]
+    assert evidence_refs == []
+    assert business_refs == []
+    assert "purchase_order" not in str(evidence_refs)
+    assert "contains_material" not in str(business_refs)
 
 
 def test_build_tool_survives_bad_args_schema(monkeypatch):
@@ -414,6 +589,39 @@ def test_build_tool_survives_bad_args_schema(monkeypatch):
 
     monkeypatch.setattr(toolbox, "_args_model", boom)
     assert toolbox._build_tool("b-1", _TOOL_INFO, "u", "user") is None
+
+
+def test_args_model_accepts_wire_parameters_with_leading_underscores():
+    metadata = {
+        "api_spec": {
+            "request_body": {
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "type": "object",
+                            "required": ["_action_type"],
+                            "properties": {
+                                "_action_type": {"type": "string"},
+                                "__logic_property": {"type": "string"},
+                            },
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    model, params = toolbox._args_model("execute_action", metadata)
+    values = model.model_validate(
+        {"p__action_type": "monitor", "p___logic_property": "risk_level"}
+    )
+
+    assert values.p__action_type == "monitor"
+    assert values.p___logic_property == "risk_level"
+    assert [(item.field, item.wire) for item in params] == [
+        ("p__action_type", "_action_type"),
+        ("p___logic_property", "__logic_property"),
+    ]
 
 
 def test_default_toolbox_degrades_but_explicit_ref_fails(monkeypatch):

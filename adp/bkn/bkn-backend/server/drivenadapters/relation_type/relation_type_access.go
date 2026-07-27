@@ -70,12 +70,12 @@ func (rta *relationTypeAccess) CheckRelationTypeExistByID(ctx context.Context, k
 		Where(sq.Eq{"f_id": rtID}).
 		ToSql()
 	if err != nil {
-		otellog.LogError(ctx, "Failed to build the sql of get relation type id by f_id, error", err)
+		common.LogSafeError(ctx, "Failed to build the sql of get relation type id by f_id, error", err)
 		return "", false, err
 	}
 
 	// 记录处理的 sql 字符串
-	otellog.LogInfo(ctx, fmt.Sprintf("获取关系类信息的 sql 语句: %s", sqlStr))
+	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	var name string
 	err = rta.db.QueryRow(sqlStr, vals...).Scan(&name)
@@ -84,7 +84,7 @@ func (rta *relationTypeAccess) CheckRelationTypeExistByID(ctx context.Context, k
 		span.SetStatus(codes.Ok, "")
 		return "", false, nil
 	} else if err != nil {
-		otellog.LogError(ctx, "Row scan failed, err", err)
+		common.LogSafeError(ctx, "Row scan failed, err", err)
 		return "", false, err
 	}
 
@@ -108,7 +108,7 @@ func (rta *relationTypeAccess) CreateRelationType(ctx context.Context, tx *sql.T
 	// 2.0 序列化数据来源
 	mappingRulesBytes, err := sonic.Marshal(relationType.MappingRules)
 	if err != nil {
-		logger.Errorf("Failed to marshal MappingRules, err: %v", err.Error())
+		logger.Errorf("Failed to marshal MappingRules, err: %v", common.SafeErrorSummary(err))
 		return err
 	}
 
@@ -156,16 +156,16 @@ func (rta *relationTypeAccess) CreateRelationType(ctx context.Context, tx *sql.T
 			relationType.UpdateTime).
 		ToSql()
 	if err != nil {
-		otellog.LogError(ctx, "Failed to build the sql of insert relation type, error", err)
+		common.LogSafeError(ctx, "Failed to build the sql of insert relation type, error", err)
 		return err
 	}
 
 	// 记录处理的 sql 字符串
-	otellog.LogInfo(ctx, fmt.Sprintf("创建关系类的 sql 语句: %s", sqlStr))
+	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	_, err = tx.Exec(sqlStr, vals...)
 	if err != nil {
-		otellog.LogError(ctx, "Insert data error", err)
+		common.LogSafeError(ctx, "Insert data error", err)
 		return err
 	}
 
@@ -220,16 +220,16 @@ func (rta *relationTypeAccess) ListRelationTypes(ctx context.Context, query inte
 
 	sqlStr, vals, err := builder.ToSql()
 	if err != nil {
-		otellog.LogError(ctx, "Failed to build the sql of select relation types, error", err)
+		common.LogSafeError(ctx, "Failed to build the sql of select relation types, error", err)
 		return []*interfaces.RelationType{}, err
 	}
 
 	// 记录处理的 sql 字符串
-	otellog.LogInfo(ctx, fmt.Sprintf("查询关系类列表的 sql 语句: %s; queryParams: %v", sqlStr, query))
+	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	rows, err := rta.db.Query(sqlStr, vals...)
 	if err != nil {
-		otellog.LogError(ctx, "List data error", err)
+		common.LogSafeError(ctx, "List data error", err)
 		return []*interfaces.RelationType{}, err
 	}
 	defer func() { _ = rows.Close() }()
@@ -263,7 +263,7 @@ func (rta *relationTypeAccess) ListRelationTypes(ctx context.Context, query inte
 			&relationType.UpdateTime,
 		)
 		if err != nil {
-			otellog.LogError(ctx, "Row scan error", err)
+			common.LogSafeError(ctx, "Row scan error", err)
 			return []*interfaces.RelationType{}, err
 		}
 
@@ -275,7 +275,7 @@ func (rta *relationTypeAccess) ListRelationTypes(ctx context.Context, query inte
 			var mappings []interfaces.Mapping
 			err = sonic.Unmarshal(mappingRulesBytes, &mappings)
 			if err != nil {
-				otellog.LogError(ctx, "Failed to unmarshal mappingRules after getting relation type, err", err)
+				common.LogSafeError(ctx, "Failed to unmarshal mappingRules after getting relation type, err", err)
 				return []*interfaces.RelationType{}, err
 			}
 			relationType.MappingRules = mappings
@@ -284,7 +284,7 @@ func (rta *relationTypeAccess) ListRelationTypes(ctx context.Context, query inte
 			var mappings interfaces.InDirectMapping
 			err = sonic.Unmarshal(mappingRulesBytes, &mappings)
 			if err != nil {
-				otellog.LogError(ctx, "Failed to unmarshal mappingRules after getting relation type, err", err)
+				common.LogSafeError(ctx, "Failed to unmarshal mappingRules after getting relation type, err", err)
 				return []*interfaces.RelationType{}, err
 			}
 			relationType.MappingRules = &mappings
@@ -293,7 +293,7 @@ func (rta *relationTypeAccess) ListRelationTypes(ctx context.Context, query inte
 			var fcj interfaces.FilteredCrossJoinMapping
 			err = sonic.Unmarshal(mappingRulesBytes, &fcj)
 			if err != nil {
-				otellog.LogError(ctx, "Failed to unmarshal mappingRules after getting relation type, err", err)
+				common.LogSafeError(ctx, "Failed to unmarshal mappingRules after getting relation type, err", err)
 				return []*interfaces.RelationType{}, err
 			}
 			relationType.MappingRules = &fcj
@@ -320,17 +320,17 @@ func (rta *relationTypeAccess) GetRelationTypesTotal(ctx context.Context, query 
 
 	sqlStr, vals, err := builder.ToSql()
 	if err != nil {
-		otellog.LogError(ctx, "Failed to build the sql of select relation types total, error", err)
+		common.LogSafeError(ctx, "Failed to build the sql of select relation types total, error", err)
 		return 0, err
 	}
 
 	// 记录处理的 sql 字符串
-	otellog.LogInfo(ctx, fmt.Sprintf("查询关系类总数的 sql 语句: %s; queryParams: %v", sqlStr, query))
+	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	total := 0
 	err = rta.db.QueryRow(sqlStr, vals...).Scan(&total)
 	if err != nil {
-		otellog.LogError(ctx, "Get relation type total error", err)
+		common.LogSafeError(ctx, "Get relation type total error", err)
 		return 0, err
 	}
 
@@ -373,12 +373,12 @@ func (rta *relationTypeAccess) GetRelationTypeByID(ctx context.Context, knID str
 		Where(sq.Eq{"f_id": rtID}).
 		ToSql()
 	if err != nil {
-		otellog.LogError(ctx, "Failed to build the sql of select relation type by id, error", err)
+		common.LogSafeError(ctx, "Failed to build the sql of select relation type by id, error", err)
 		return nil, err
 	}
 
 	// 记录处理的 sql 字符串
-	otellog.LogInfo(ctx, fmt.Sprintf("查询关系类列表的 sql 语句: %s.", sqlStr))
+	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	relationType := interfaces.RelationType{
 		ModuleType: interfaces.MODULE_TYPE_RELATION_TYPE,
@@ -409,7 +409,7 @@ func (rta *relationTypeAccess) GetRelationTypeByID(ctx context.Context, knID str
 		&relationType.UpdateTime,
 	)
 	if err != nil {
-		otellog.LogError(ctx, "Row scan error", err)
+		common.LogSafeError(ctx, "Row scan error", err)
 		return nil, err
 	}
 
@@ -421,7 +421,7 @@ func (rta *relationTypeAccess) GetRelationTypeByID(ctx context.Context, knID str
 		var mappings []interfaces.Mapping
 		err = sonic.Unmarshal(mappingRulesBytes, &mappings)
 		if err != nil {
-			otellog.LogError(ctx, "Failed to unmarshal mappingRules after getting relation type, err", err)
+			common.LogSafeError(ctx, "Failed to unmarshal mappingRules after getting relation type, err", err)
 			return nil, err
 		}
 		relationType.MappingRules = mappings
@@ -430,7 +430,7 @@ func (rta *relationTypeAccess) GetRelationTypeByID(ctx context.Context, knID str
 		var mappings interfaces.InDirectMapping
 		err = sonic.Unmarshal(mappingRulesBytes, &mappings)
 		if err != nil {
-			otellog.LogError(ctx, "Failed to unmarshal mappingRules after getting relation type, err", err)
+			common.LogSafeError(ctx, "Failed to unmarshal mappingRules after getting relation type, err", err)
 			return nil, err
 		}
 		relationType.MappingRules = &mappings
@@ -439,7 +439,7 @@ func (rta *relationTypeAccess) GetRelationTypeByID(ctx context.Context, knID str
 		var fcj interfaces.FilteredCrossJoinMapping
 		err = sonic.Unmarshal(mappingRulesBytes, &fcj)
 		if err != nil {
-			otellog.LogError(ctx, "Failed to unmarshal mappingRules after getting relation type, err", err)
+			common.LogSafeError(ctx, "Failed to unmarshal mappingRules after getting relation type, err", err)
 			return nil, err
 		}
 		relationType.MappingRules = &fcj
@@ -484,16 +484,16 @@ func (rta *relationTypeAccess) GetRelationTypesByIDs(ctx context.Context, knID s
 		Where(sq.Eq{"f_id": rtIDs}).
 		ToSql()
 	if err != nil {
-		otellog.LogError(ctx, "Failed to build the sql of select relation type by id, error", err)
+		common.LogSafeError(ctx, "Failed to build the sql of select relation type by id, error", err)
 		return []*interfaces.RelationType{}, err
 	}
 
 	// 记录处理的 sql 字符串
-	otellog.LogInfo(ctx, fmt.Sprintf("查询关系类列表的 sql 语句: %s.", sqlStr))
+	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	rows, err := rta.db.Query(sqlStr, vals...)
 	if err != nil {
-		otellog.LogError(ctx, "List data error", err)
+		common.LogSafeError(ctx, "List data error", err)
 		return []*interfaces.RelationType{}, err
 	}
 	defer func() { _ = rows.Close() }()
@@ -529,7 +529,7 @@ func (rta *relationTypeAccess) GetRelationTypesByIDs(ctx context.Context, knID s
 		)
 
 		if err != nil {
-			otellog.LogError(ctx, "Row scan error", err)
+			common.LogSafeError(ctx, "Row scan error", err)
 			return []*interfaces.RelationType{}, err
 		}
 
@@ -541,7 +541,7 @@ func (rta *relationTypeAccess) GetRelationTypesByIDs(ctx context.Context, knID s
 			var mappings []interfaces.Mapping
 			err = sonic.Unmarshal(mappingRulesBytes, &mappings)
 			if err != nil {
-				otellog.LogError(ctx, "Failed to unmarshal mappingRules after getting relation type, err", err)
+				common.LogSafeError(ctx, "Failed to unmarshal mappingRules after getting relation type, err", err)
 				return []*interfaces.RelationType{}, err
 			}
 			relationType.MappingRules = mappings
@@ -550,7 +550,7 @@ func (rta *relationTypeAccess) GetRelationTypesByIDs(ctx context.Context, knID s
 			var mappings interfaces.InDirectMapping
 			err = sonic.Unmarshal(mappingRulesBytes, &mappings)
 			if err != nil {
-				otellog.LogError(ctx, "Failed to unmarshal mappingRules after getting relation type, err", err)
+				common.LogSafeError(ctx, "Failed to unmarshal mappingRules after getting relation type, err", err)
 				return []*interfaces.RelationType{}, err
 			}
 			relationType.MappingRules = &mappings
@@ -559,7 +559,7 @@ func (rta *relationTypeAccess) GetRelationTypesByIDs(ctx context.Context, knID s
 			var fcj interfaces.FilteredCrossJoinMapping
 			err = sonic.Unmarshal(mappingRulesBytes, &fcj)
 			if err != nil {
-				otellog.LogError(ctx, "Failed to unmarshal mappingRules after getting relation type, err", err)
+				common.LogSafeError(ctx, "Failed to unmarshal mappingRules after getting relation type, err", err)
 				return []*interfaces.RelationType{}, err
 			}
 			relationType.MappingRules = &fcj
@@ -586,7 +586,7 @@ func (rta *relationTypeAccess) UpdateRelationType(ctx context.Context, tx *sql.T
 	// 2.0 序列化数据来源
 	mappingRulesBytes, err := sonic.Marshal(relationType.MappingRules)
 	if err != nil {
-		logger.Errorf("Failed to marshal MappingRules, err: %v", err.Error())
+		logger.Errorf("Failed to marshal MappingRules, err: %v", common.SafeErrorSummary(err))
 		return err
 	}
 
@@ -611,30 +611,30 @@ func (rta *relationTypeAccess) UpdateRelationType(ctx context.Context, tx *sql.T
 		Where(sq.Eq{"f_kn_id": relationType.KNID}).
 		ToSql()
 	if err != nil {
-		otellog.LogError(ctx, "Failed to build the sql of update relation type by relation type id, error", err)
+		common.LogSafeError(ctx, "Failed to build the sql of update relation type by relation type id, error", err)
 		return err
 	}
 
 	// 记录处理的 sql 字符串
-	otellog.LogInfo(ctx, fmt.Sprintf("修改关系类的 sql 语句: %s", sqlStr))
+	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	ret, err := tx.Exec(sqlStr, vals...)
 	if err != nil {
-		otellog.LogError(ctx, "update relation type error", err)
+		common.LogSafeError(ctx, "update relation type error", err)
 		return err
 	}
 
 	//sql语句影响的行数
 	RowsAffected, err := ret.RowsAffected()
 	if err != nil {
-		otellog.LogError(ctx, "Get RowsAffected error", err)
+		common.LogSafeError(ctx, "Get RowsAffected error", err)
 		return err
 	}
 
 	if RowsAffected != 1 {
 		// 影响行数不等于1不报错，更新操作已经发生
-		otellog.LogWarn(ctx, fmt.Sprintf("Update %s RowsAffected not equal 1, RowsAffected is %d, RelationType is %v",
-			relationType.RTID, RowsAffected, relationType))
+		otellog.LogWarn(ctx, fmt.Sprintf("Update relation type affected unexpected row count: relation_type_id=%s, rows=%d",
+			relationType.RTID, RowsAffected))
 	}
 
 	span.SetStatus(codes.Ok, "")
@@ -661,29 +661,29 @@ func (rta *relationTypeAccess) DeleteRelationTypesByIDs(ctx context.Context, tx 
 		Where(sq.Eq{"f_id": rtIDs}).
 		ToSql()
 	if err != nil {
-		otellog.LogError(ctx, "Failed to build the sql of delete relation type by relation type id, error", err)
+		common.LogSafeError(ctx, "Failed to build the sql of delete relation type by relation type id, error", err)
 		return 0, err
 	}
 
 	// 记录处理的 sql 字符串
-	otellog.LogInfo(ctx, fmt.Sprintf("删除关系类的 sql 语句: %s; 删除的关系类ids: %v", sqlStr, rtIDs))
+	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	ret, err := tx.Exec(sqlStr, vals...)
 	if err != nil {
-		otellog.LogError(ctx, "Delete data error", err)
+		common.LogSafeError(ctx, "Delete data error", err)
 		return 0, err
 	}
 
 	//sql语句影响的行数
 	RowsAffected, err := ret.RowsAffected()
 	if err != nil {
-		otellog.LogError(ctx, "Get RowsAffected error", err)
+		common.LogSafeError(ctx, "Get RowsAffected error", err)
 		return 0, err
 	}
 
 	if RowsAffected != int64(len(rtIDs)) {
-		otellog.LogWarn(ctx, fmt.Sprintf("Delete %d RowsAffected not equal %d, rtIDs is %v",
-			len(rtIDs), RowsAffected, rtIDs))
+		otellog.LogWarn(ctx, fmt.Sprintf("Delete relation types affected unexpected row count: requested_count=%d, rows=%d",
+			len(rtIDs), RowsAffected))
 	}
 
 	logger.Infof("RowsAffected: %d", RowsAffected)
@@ -705,23 +705,23 @@ func (rta *relationTypeAccess) DeleteRelationTypesByKnID(ctx context.Context, tx
 		Where(sq.Eq{"f_branch": branch}).
 		ToSql()
 	if err != nil {
-		otellog.LogError(ctx, "Failed to build the sql of delete relation type by relation type id, error", err)
+		common.LogSafeError(ctx, "Failed to build the sql of delete relation type by relation type id, error", err)
 		return 0, err
 	}
 
 	// 记录处理的 sql 字符串
-	otellog.LogInfo(ctx, fmt.Sprintf("删除关系类的 sql 语句: %s; 删除的关系类kn_id: %s, branch: %s", sqlStr, knID, branch))
+	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	ret, err := tx.Exec(sqlStr, vals...)
 	if err != nil {
-		otellog.LogError(ctx, "Delete data error", err)
+		common.LogSafeError(ctx, "Delete data error", err)
 		return 0, err
 	}
 
 	//sql语句影响的行数
 	RowsAffected, err := ret.RowsAffected()
 	if err != nil {
-		otellog.LogError(ctx, "Get RowsAffected error", err)
+		common.LogSafeError(ctx, "Get RowsAffected error", err)
 		return 0, err
 	}
 
@@ -746,16 +746,16 @@ func (rta *relationTypeAccess) GetRelationTypeIDsByKnID(ctx context.Context, knI
 		Where(sq.Eq{"f_branch": branch}).
 		ToSql()
 	if err != nil {
-		otellog.LogError(ctx, "Failed to build the sql of select relation type by id, error", err)
+		common.LogSafeError(ctx, "Failed to build the sql of select relation type by id, error", err)
 		return nil, err
 	}
 
 	// 记录处理的 sql 字符串
-	otellog.LogInfo(ctx, fmt.Sprintf("查询关系类列表的 sql 语句: %s.", sqlStr))
+	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	rows, err := rta.db.Query(sqlStr, vals...)
 	if err != nil {
-		otellog.LogError(ctx, "List data error", err)
+		common.LogSafeError(ctx, "List data error", err)
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
@@ -770,7 +770,7 @@ func (rta *relationTypeAccess) GetRelationTypeIDsByKnID(ctx context.Context, knI
 		)
 
 		if err != nil {
-			otellog.LogError(ctx, "Row scan error", err)
+			common.LogSafeError(ctx, "Row scan error", err)
 			return nil, err
 		}
 
@@ -856,16 +856,16 @@ func (rta *relationTypeAccess) GetAllRelationTypesByKnID(ctx context.Context, kn
 		ToSql()
 
 	if err != nil {
-		otellog.LogError(ctx, "Failed to build the sql of select relation types, error", err)
+		common.LogSafeError(ctx, "Failed to build the sql of select relation types, error", err)
 		return map[string]*interfaces.RelationType{}, err
 	}
 
 	// 记录处理的 sql 字符串
-	otellog.LogInfo(ctx, fmt.Sprintf("查询关系类列表的 sql 语句: %s; knID: %s", sqlStr, knID))
+	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	rows, err := rta.db.Query(sqlStr, vals...)
 	if err != nil {
-		otellog.LogError(ctx, "List data error", err)
+		common.LogSafeError(ctx, "List data error", err)
 		return map[string]*interfaces.RelationType{}, err
 	}
 	defer func() { _ = rows.Close() }()
@@ -899,7 +899,7 @@ func (rta *relationTypeAccess) GetAllRelationTypesByKnID(ctx context.Context, kn
 			&relationType.UpdateTime,
 		)
 		if err != nil {
-			otellog.LogError(ctx, "Row scan error", err)
+			common.LogSafeError(ctx, "Row scan error", err)
 			return map[string]*interfaces.RelationType{}, err
 		}
 
@@ -911,7 +911,7 @@ func (rta *relationTypeAccess) GetAllRelationTypesByKnID(ctx context.Context, kn
 			var mappings []interfaces.Mapping
 			err = sonic.Unmarshal(mappingRulesBytes, &mappings)
 			if err != nil {
-				otellog.LogError(ctx, "Failed to unmarshal mappingRules after getting relation type, err", err)
+				common.LogSafeError(ctx, "Failed to unmarshal mappingRules after getting relation type, err", err)
 				return map[string]*interfaces.RelationType{}, err
 			}
 			relationType.MappingRules = mappings
@@ -920,7 +920,7 @@ func (rta *relationTypeAccess) GetAllRelationTypesByKnID(ctx context.Context, kn
 			var mappings interfaces.InDirectMapping
 			err = sonic.Unmarshal(mappingRulesBytes, &mappings)
 			if err != nil {
-				otellog.LogError(ctx, "Failed to unmarshal mappingRules after getting relation type, err", err)
+				common.LogSafeError(ctx, "Failed to unmarshal mappingRules after getting relation type, err", err)
 				return map[string]*interfaces.RelationType{}, err
 			}
 			relationType.MappingRules = &mappings
@@ -929,7 +929,7 @@ func (rta *relationTypeAccess) GetAllRelationTypesByKnID(ctx context.Context, kn
 			var fcj interfaces.FilteredCrossJoinMapping
 			err = sonic.Unmarshal(mappingRulesBytes, &fcj)
 			if err != nil {
-				otellog.LogError(ctx, "Failed to unmarshal mappingRules after getting relation type, err", err)
+				common.LogSafeError(ctx, "Failed to unmarshal mappingRules after getting relation type, err", err)
 				return map[string]*interfaces.RelationType{}, err
 			}
 			relationType.MappingRules = &fcj

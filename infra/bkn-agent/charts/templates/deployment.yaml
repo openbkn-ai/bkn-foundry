@@ -90,6 +90,15 @@ spec:
               value: {{ .Values.observability.otlpEndpoint | quote }}
             - name: BKN_TRACE_EVIDENCE_INGEST_URL
               value: {{ .Values.observability.bknTraceEvidenceIngestUrl | quote }}
+            - name: BKN_TRACE_ARTIFACT_INGEST_URL
+              value: {{ .Values.observability.bknTraceArtifactIngestUrl | quote }}
+            {{- if .Values.observability.bknTraceEvidenceIngestTokenSecretName }}
+            - name: BKN_TRACE_EVIDENCE_INGEST_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.observability.bknTraceEvidenceIngestTokenSecretName | quote }}
+                  key: {{ .Values.observability.bknTraceEvidenceIngestTokenSecretKey | quote }}
+            {{- end }}
             - name: BKN_TRACE_EVIDENCE_TIMEOUT_S
               value: {{ .Values.observability.bknTraceEvidenceTimeoutS | quote }}
           volumeMounts:

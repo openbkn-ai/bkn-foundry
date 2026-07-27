@@ -90,6 +90,19 @@ spec:
             value: {{ .Values.bknSafe.directoryProvider | quote }}
           - name: BKN_SAFE_URL
             value: {{ .Values.bknSafe.url | quote }}
+          {{- if .Values.bknTrace.evidence.ingestUrl }}
+          - name: BKN_TRACE_EVIDENCE_INGEST_URL
+            value: {{ .Values.bknTrace.evidence.ingestUrl | quote }}
+          - name: BKN_TRACE_EVIDENCE_TIMEOUT_MS
+            value: {{ .Values.bknTrace.evidence.timeoutMs | quote }}
+          {{- end }}
+          {{- if .Values.bknTrace.evidence.ingestTokenSecretName }}
+          - name: BKN_TRACE_EVIDENCE_INGEST_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Values.bknTrace.evidence.ingestTokenSecretName | quote }}
+                key: {{ .Values.bknTrace.evidence.ingestTokenSecretKey | quote }}
+          {{- end }}
           - name: POD_IP
             valueFrom:
               fieldRef:

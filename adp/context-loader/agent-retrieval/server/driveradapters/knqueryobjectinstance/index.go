@@ -98,7 +98,9 @@ func (h *knQueryObjectInstanceHandler) QueryObjectInstance(c *gin.Context) {
 		rest.ReplyError(c, err)
 		return
 	}
-	bkntrace.EmitQueryObjectInstanceEvents(c.Request.Context(), h.Logger, req, resp)
+	if eventID := bkntrace.EmitQueryObjectInstanceEvents(c.Request.Context(), h.Logger, req, resp); eventID != "" {
+		c.Header("bkn-evidence-event-id", eventID)
+	}
 
 	// 返回成功响应
 	rest.ReplyOK(c, http.StatusOK, resp)

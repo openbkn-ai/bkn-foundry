@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"sync"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/memoryaccess/evidencestore"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/ibusinessresolver"
 )
 
 type fakeStore struct {
@@ -26,6 +28,17 @@ func (s *fakeStore) StoreEvidence(_ context.Context, _ evidencevo.NormalizedTrac
 
 type capturingStore struct {
 	fakeStore
+}
+
+type fakeBusinessResolver struct {
+	requests    []ibusinessresolver.ResolveRequest
+	resolutions []ibusinessresolver.Resolution
+	err         error
+}
+
+func (r *fakeBusinessResolver) ResolveBusinessRefs(_ context.Context, request ibusinessresolver.ResolveRequest) ([]ibusinessresolver.Resolution, error) {
+	r.requests = append(r.requests, request)
+	return r.resolutions, r.err
 }
 
 func (s *capturingStore) StoreEvidence(_ context.Context, trace evidencevo.NormalizedTrace) error {
@@ -153,6 +166,10 @@ func TestIngestAcceptsTwoPointOneBusinessEventsAndPreservesCausality(t *testing.
 	if len(store.traces) != 1 {
 		t.Fatalf("expected one stored trace, got %d", len(store.traces))
 	}
+	conversation := reflect.ValueOf(store.traces[0]).FieldByName("ConversationID")
+	if !conversation.IsValid() || conversation.String() != "agent:thread_supply_chain" {
+		t.Fatalf("normalized trace dropped bkn.conversation.id: %+v", store.traces[0])
+	}
 	event := store.traces[0].Events[1]
 	encoded, marshalErr := json.Marshal(event)
 	if marshalErr != nil {
@@ -167,6 +184,38 @@ func TestIngestAcceptsTwoPointOneBusinessEventsAndPreservesCausality(t *testing.
 	} {
 		if !strings.Contains(stored, expected) {
 			t.Fatalf("stored event missing %s: %s", expected, stored)
+		}
+	}
+}
+
+func TestIngestRejectsInvalidConversationAndInteractionIDs(t *testing.T) {
+	service := New(evidencestore.New())
+	tests := []struct {
+		field  string
+		mutate func(map[string]any)
+	}{
+		{
+			field: "bkn.conversation.id",
+			mutate: func(batch map[string]any) {
+				batch["trace"].(map[string]any)["bkn.conversation.id"] = "invalid conversation"
+			},
+		},
+		{
+			field: "interaction_id",
+			mutate: func(batch map[string]any) {
+				batch["events"].([]map[string]any)[0]["interaction_id"] = "invalid interaction"
+			},
+		},
+	}
+	for _, testCase := range tests {
+		batch := twoPointOneBatch(validTwoPointOneEvents())
+		testCase.mutate(batch)
+		_, validationErrors, err := service.Ingest(context.Background(), mustJSON(t, batch))
+		if err != nil {
+			t.Fatalf("ingest: %v", err)
+		}
+		if !hasValidationPath(validationErrors, testCase.field) {
+			t.Fatalf("%s must fail validation: %+v", testCase.field, validationErrors)
 		}
 	}
 }
@@ -196,7 +245,7 @@ func TestIngestDefaultsTwoPointOneAttemptToOne(t *testing.T) {
 func TestIngestRejectsUnknownTwoPointOneMinorVersion(t *testing.T) {
 	service := New(&fakeStore{})
 	body := mustJSON(t, twoPointOneBatch(validTwoPointOneEvents()))
-	body = []byte(strings.ReplaceAll(string(body), "2.1.0", "2.2.0"))
+	body = []byte(strings.ReplaceAll(string(body), "2.1.0", "2.1.1"))
 
 	_, validationErrors, err := service.Ingest(context.Background(), body)
 	if err != nil {
@@ -212,7 +261,11 @@ func TestIngestRejectsMissingTwoPointOnePublicFields(t *testing.T) {
 	events := validTwoPointOneEvents()
 	delete(events[1], "interaction_id")
 	delete(events[1], "operation_id")
-	delete(events[1], "causation_event_id")
+	for _, event := range events {
+		if event["event_type"] == "evidence.refs.created" {
+			delete(event, "causation_event_id")
+		}
+	}
 
 	_, validationErrors, err := service.Ingest(context.Background(), mustJSON(t, twoPointOneBatch(events)))
 	if err != nil {
@@ -266,6 +319,76 @@ func TestIngestValidatesRegisteredTwoPointOneEventPayloads(t *testing.T) {
 				t.Fatalf("expected required field %s, got %+v", tt.field, validationErrors)
 			}
 		})
+	}
+}
+
+func TestIngestAcceptsDirectRootKnowledgeReadWithoutFabricatedCausation(t *testing.T) {
+	knowledge := cloneEventByType(t, validTwoPointOneEvents(), "knowledge.read.observed")
+	delete(knowledge, "causation_event_id")
+
+	_, validationErrors, err := New(evidencestore.New()).Ingest(
+		context.Background(),
+		mustJSON(t, twoPointOneBatch([]map[string]any{knowledge})),
+	)
+	if err != nil {
+		t.Fatalf("unexpected infrastructure error: %v", err)
+	}
+	if len(validationErrors) > 0 {
+		t.Fatalf("direct root fact must not require fabricated causation: %+v", validationErrors)
+	}
+}
+
+func TestDirectKnowledgeReadExposesBusinessRefsWithoutFabricatingClaim(t *testing.T) {
+	knowledge := cloneEventByType(t, validTwoPointOneEvents(), "knowledge.read.observed")
+	delete(knowledge, "causation_event_id")
+	knowledge["payload"].(map[string]any)["business_refs"] = []any{map[string]any{
+		"ref_id": "object:supplychain:forecast", "ref_type": "object", "source_system": "bkn",
+		"validity": "available", "version_status": "unversioned", "visibility": "visible",
+	}}
+	store := evidencestore.New()
+	service := New(store)
+
+	ingested, validationErrors, err := service.Ingest(
+		context.Background(),
+		mustJSON(t, twoPointOneBatch([]map[string]any{knowledge})),
+	)
+	if err != nil || len(validationErrors) > 0 {
+		t.Fatalf("ingest failed: errors=%+v err=%v", validationErrors, err)
+	}
+	if ingested.BusinessRefCount != 1 || ingested.ClaimCount != 0 {
+		t.Fatalf("root fact counts must preserve business refs without claim: %+v", ingested)
+	}
+
+	chain, found, err := service.GetEvidenceChainByTraceID(
+		context.Background(),
+		"11111111111111111111111111111111",
+		evidencevo.EvidenceQueryOptions{},
+	)
+	if err != nil || !found {
+		t.Fatalf("query evidence chain: found=%v err=%v", found, err)
+	}
+	if len(chain.Data.BusinessRefs) != 1 || chain.Data.BusinessRefs[0]["ref_id"] != "object:supplychain:forecast" {
+		t.Fatalf("knowledge business refs missing from evidence chain: %+v", chain.Data.BusinessRefs)
+	}
+	if len(chain.Data.Claims) != 0 || !chain.Partial || !contains(chain.PartialReasons, "missing_claim") {
+		t.Fatalf("root fact must stay claim-free and explicit about partiality: %+v", chain)
+	}
+
+	graph, found, err := service.GetBusinessGraphByTraceID(
+		context.Background(),
+		"11111111111111111111111111111111",
+		evidencevo.EvidenceQueryOptions{},
+	)
+	if err != nil || !found {
+		t.Fatalf("query business graph: found=%v err=%v", found, err)
+	}
+	if !graphHasNode(graph.Data.Nodes, "event:evt_knowledge") ||
+		!graphHasNode(graph.Data.Nodes, "business:object:supplychain:forecast") ||
+		!graphHasEdgeType(graph.Data.Edges, "uses_business_ref") {
+		t.Fatalf("root fact business story missing: %+v", graph.Data)
+	}
+	if contains(graph.PartialReasons, "missing_business_refs") || !contains(graph.PartialReasons, "missing_claim") {
+		t.Fatalf("root fact partial reasons are misleading: %+v", graph.PartialReasons)
 	}
 }
 
@@ -723,6 +846,32 @@ func TestIngestRejectsSensitiveReferenceValues(t *testing.T) {
 				t.Fatalf("expected sensitive ref rejection: errors=%+v err=%v", validationErrors, err)
 			}
 		})
+	}
+}
+
+func TestIngestRejectsAmbiguousShortBusinessReference(t *testing.T) {
+	events := validTwoPointOneEvents()
+	for _, event := range events {
+		if event["event_type"] == "business.refs.resolved" {
+			event["payload"].(map[string]any)["business_refs"].([]any)[0].(map[string]any)["ref_id"] = "object:customer"
+		}
+	}
+	_, validationErrors, err := New(evidencestore.New()).Ingest(context.Background(), mustJSON(t, twoPointOneBatch(events)))
+	if err != nil || !hasValidationCode(validationErrors, "BKN_TRACE_REFERENCE_ID_INVALID") {
+		t.Fatalf("expected short business ref rejection: errors=%+v err=%v", validationErrors, err)
+	}
+}
+
+func TestIngestRejectsAmbiguousShortActionTarget(t *testing.T) {
+	events := validTwoPointOneEvents()
+	for _, event := range events {
+		if event["event_type"] == "action.recommended" {
+			event["payload"].(map[string]any)["target_refs"] = []any{"object:customer"}
+		}
+	}
+	_, validationErrors, err := New(evidencestore.New()).Ingest(context.Background(), mustJSON(t, twoPointOneBatch(events)))
+	if err != nil || !hasValidationCode(validationErrors, "BKN_TRACE_REFERENCE_ID_INVALID") {
+		t.Fatalf("expected short action target rejection: errors=%+v err=%v", validationErrors, err)
 	}
 }
 
@@ -1246,8 +1395,152 @@ func TestGetBusinessGraphByTraceIDReturnsClaimAndBusinessNodes(t *testing.T) {
 			}
 		}
 	}
-	if response.Data.Edges[0].SourceID != "claim:claim_visible" || response.Data.Edges[0].TargetID != "business:object:customer" {
+	if response.Data.Edges[0].SourceID != "claim:claim_visible" || response.Data.Edges[0].TargetID != "business:object:kn_demo:customer" {
 		t.Fatalf("unexpected edge: %+v", response.Data.Edges[0])
+	}
+}
+
+func TestBusinessGraphAddsDisplayOnlyFromAuthorizedResolver(t *testing.T) {
+	store := &fakeStore{traces: []evidencevo.NormalizedTrace{queryTrace("trace_graph_display", "req_graph_display")}}
+	resolver := &fakeBusinessResolver{resolutions: []ibusinessresolver.Resolution{{
+		RefID: "object:kn_demo:customer", Visibility: "visible", Display: &evidencevo.BusinessDisplay{
+			Name: "客户", BusinessPath: []string{"客户管理", "客户"}, ControlledSummary: "客户主数据对象",
+			ResolutionStatus: "resolved", SourceVersion: "schema-v7",
+		},
+	}}}
+	scope := evidencevo.QueryScope{TenantID: "tenant_1", BusinessDomain: "domain_1", AccountID: "user_1", AccountType: "user"}
+
+	response, found, err := NewWithBusinessResolver(store, resolver).GetBusinessGraphByTraceID(
+		context.Background(), "trace_graph_display", evidencevo.EvidenceQueryOptions{Scope: scope},
+	)
+	if err != nil || !found {
+		t.Fatalf("query resolved graph: found=%v err=%v", found, err)
+	}
+	if len(resolver.requests) != 1 || resolver.requests[0].Scope != scope {
+		t.Fatalf("resolver must receive trusted query scope: %+v", resolver.requests)
+	}
+	if len(resolver.requests[0].Refs) != 1 || resolver.requests[0].Refs[0].RefID != "object:kn_demo:customer" {
+		t.Fatalf("resolver must receive controlled refs: %+v", resolver.requests[0].Refs)
+	}
+	node := businessNodeByID(t, response.Data.Nodes, "business:object:kn_demo:customer")
+	if node.Display == nil || node.Display.Name != "客户" || strings.Join(node.Display.BusinessPath, "/") != "客户管理/客户" {
+		t.Fatalf("expected authorized controlled display: %+v", node)
+	}
+	if contains(response.PartialReasons, "resolver_unresolved") {
+		t.Fatalf("resolved graph must clear resolver_unresolved: %+v", response.PartialReasons)
+	}
+}
+
+func TestBusinessGraphPromotesClaimedRetrievalSourceToResolvedBusinessEvidence(t *testing.T) {
+	trace := evidencevo.NormalizedTrace{
+		TraceID: "trace_claimed_retrieval", RequestID: "req_claimed_retrieval",
+		Events: []evidencevo.EvidenceEvent{
+			{
+				EventID: "evt_retrieval", EventType: "retrieval.completed",
+				InteractionID: "interaction_1", OperationID: "operation_query",
+				Payload: map[string]any{
+					"source_refs": []any{map[string]any{
+						"ref_id":   "object:supplychain_hd0202:supplychain_hd0202_forecast",
+						"ref_type": "object", "source_system": "bkn",
+						"validity": "observed", "version_status": "unversioned", "visibility": "visible",
+					}},
+				},
+			},
+			{
+				EventID: "evt_claim", EventType: "claim.created", InteractionID: "interaction_1",
+				ClaimID: "claim_forecast_zero", Payload: map[string]any{
+					"claim_id": "claim_forecast_zero", "claim_type": "answer",
+					"claim_hash": "sha256:claim", "visibility": "visible", "version_status": "unversioned",
+					"source_event_ids": []any{"evt_retrieval"}, "operation_ids": []any{"operation_query"},
+				},
+			},
+			{
+				EventID: "evt_unresolved", EventType: "business.refs.resolved",
+				InteractionID: "interaction_1", OperationID: "operation_query",
+				ClaimID: "claim_forecast_zero", Payload: map[string]any{
+					"claim_id": "claim_forecast_zero", "resolver_status": "unresolved",
+					"business_refs": []any{},
+				},
+			},
+		},
+	}
+	resolver := &fakeBusinessResolver{resolutions: []ibusinessresolver.Resolution{{
+		RefID:      "object:supplychain_hd0202:supplychain_hd0202_forecast",
+		Visibility: "visible",
+		Display: &evidencevo.BusinessDisplay{
+			Name: "产品需求预测单", BusinessPath: []string{"供应链", "产品需求预测单"},
+			ResolutionStatus: "resolved", SourceVersion: "main",
+		},
+	}}}
+	scope := evidencevo.QueryScope{
+		BusinessDomain: "bd_public", AccountID: "user_1", AccountType: "user",
+	}
+
+	response, found, err := NewWithBusinessResolver(
+		&fakeStore{traces: []evidencevo.NormalizedTrace{trace}}, resolver,
+	).GetBusinessGraphByTraceID(
+		context.Background(), trace.TraceID, evidencevo.EvidenceQueryOptions{Scope: scope},
+	)
+
+	if err != nil || !found {
+		t.Fatalf("query graph: found=%v err=%v", found, err)
+	}
+	node := businessNodeByID(
+		t, response.Data.Nodes,
+		"business:object:supplychain_hd0202:supplychain_hd0202_forecast",
+	)
+	if node.Display == nil || node.Display.Name != "产品需求预测单" {
+		t.Fatalf("claimed retrieval source must become resolved business evidence: %+v", node)
+	}
+	if node.Stage != "evidence" {
+		t.Fatalf("resolved business reference must be projected into evidence stage: %+v", node)
+	}
+	if contains(response.PartialReasons, "business_ref_unresolved") ||
+		contains(response.PartialReasons, "missing_business_refs") ||
+		contains(response.PartialReasons, "resolver_unresolved") {
+		t.Fatalf("resolved claimed source must clear business-ref partial reasons: %+v", response.PartialReasons)
+	}
+	if len(resolver.requests) != 1 || len(resolver.requests[0].Refs) != 1 {
+		t.Fatalf("resolver must receive claimed retrieval source ref: %+v", resolver.requests)
+	}
+}
+
+func TestBusinessGraphResolverUnauthorizedDoesNotLeakRefOrDisplay(t *testing.T) {
+	store := &fakeStore{traces: []evidencevo.NormalizedTrace{queryTrace("trace_graph_resolver_denied", "req_graph_resolver_denied")}}
+	resolver := &fakeBusinessResolver{resolutions: []ibusinessresolver.Resolution{{
+		RefID: "object:kn_demo:customer", Visibility: "unauthorized",
+	}}}
+	scope := evidencevo.QueryScope{BusinessDomain: "domain_1", AccountID: "user_2", AccountType: "user"}
+
+	response, found, err := NewWithBusinessResolver(store, resolver).GetBusinessGraphByTraceID(
+		context.Background(), "trace_graph_resolver_denied", evidencevo.EvidenceQueryOptions{Scope: scope},
+	)
+	if err != nil || !found {
+		t.Fatalf("query denied graph: found=%v err=%v", found, err)
+	}
+	for _, node := range response.Data.Nodes {
+		if strings.Contains(node.ID, "object:kn_demo:customer") || node.Display != nil {
+			t.Fatalf("unauthorized resolver result leaked node or display: %+v", node)
+		}
+	}
+	if response.VisibilitySummary.UnauthorizedRefCount != 1 || !contains(response.PartialReasons, "business_ref_unauthorized") {
+		t.Fatalf("expected unauthorized governance result: %+v", response)
+	}
+}
+
+func TestBusinessGraphWithoutClaimSourceMarksContentUnavailable(t *testing.T) {
+	store := &fakeStore{traces: []evidencevo.NormalizedTrace{queryTrace("trace_claim_content", "req_claim_content")}}
+
+	response, found, err := New(store).GetBusinessGraphByTraceID(context.Background(), "trace_claim_content", evidencevo.EvidenceQueryOptions{})
+	if err != nil || !found {
+		t.Fatalf("query graph: found=%v err=%v", found, err)
+	}
+	if !contains(response.PartialReasons, "claim_content_unavailable") {
+		t.Fatalf("claim type/hash without authorized source must be explicitly partial: %+v", response.PartialReasons)
+	}
+	claim := businessNodeByID(t, response.Data.Nodes, "claim:claim_visible")
+	if claim.Display != nil || claim.Label != "" {
+		t.Fatalf("claim type must not masquerade as business conclusion: %+v", claim)
 	}
 }
 
@@ -1420,8 +1713,8 @@ func TestGetBusinessGraphProjectsFiveStageBusinessStory(t *testing.T) {
 			{EventID: "evt_data", EventType: "data.query.observed", InteractionID: "interaction_1", OperationID: "operation_data", CausationID: "evt_intent", Payload: map[string]any{"query_hash": "sha256:query", "query_type": "aggregate", "row_count": 3, "truncated": false, "version_status": "versioned"}},
 			{EventID: "evt_claim", EventType: "claim.created", InteractionID: "interaction_1", CausationID: "evt_data", ClaimID: "claim_1", Payload: map[string]any{"claim_id": "claim_1", "claim_type": "answer", "claim_hash": "sha256:claim", "source_event_ids": []any{"evt_data"}, "operation_ids": []any{"operation_data"}, "visibility": "visible", "version_status": "versioned"}},
 			{EventID: "evt_evidence", EventType: "evidence.refs.created", InteractionID: "interaction_1", OperationID: "operation_data", CausationID: "evt_claim", ClaimID: "claim_1", Payload: map[string]any{"claim_id": "claim_1", "evidence_refs": []any{map[string]any{"ref_id": "resource:sales", "ref_type": "data_resource", "source_system": "vega", "validity": "observed", "version_status": "versioned", "visibility": "visible"}}}},
-			{EventID: "evt_business", EventType: "business.refs.resolved", InteractionID: "interaction_1", OperationID: "operation_data", CausationID: "evt_evidence", ClaimID: "claim_1", Payload: map[string]any{"claim_id": "claim_1", "resolver_status": "resolved", "business_refs": []any{map[string]any{"ref_id": "object:sales_order", "ref_type": "object", "source_system": "bkn", "validity": "available", "version_status": "versioned", "visibility": "visible"}}}},
-			{EventID: "evt_recommended", EventType: "action.recommended", InteractionID: "interaction_1", OperationID: "operation_action", CausationID: "evt_claim", ClaimID: "claim_1", Payload: map[string]any{"action_instance_id": "action_1", "action_type": "create_task", "target_refs": []any{"object:sales_order"}, "reason_hash": "sha256:reason", "status": "recommended"}},
+			{EventID: "evt_business", EventType: "business.refs.resolved", InteractionID: "interaction_1", OperationID: "operation_data", CausationID: "evt_evidence", ClaimID: "claim_1", Payload: map[string]any{"claim_id": "claim_1", "resolver_status": "resolved", "business_refs": []any{map[string]any{"ref_id": "object:kn_demo:sales_order", "ref_type": "object", "source_system": "bkn", "validity": "available", "version_status": "versioned", "visibility": "visible"}}}},
+			{EventID: "evt_recommended", EventType: "action.recommended", InteractionID: "interaction_1", OperationID: "operation_action", CausationID: "evt_claim", ClaimID: "claim_1", Payload: map[string]any{"action_instance_id": "action_1", "action_type": "create_task", "target_refs": []any{"object:kn_demo:sales_order"}, "reason_hash": "sha256:reason", "status": "recommended"}},
 			{EventID: "evt_requested", EventType: "action.approval_requested", InteractionID: "interaction_1", OperationID: "operation_action", CausationID: "evt_recommended", ClaimID: "claim_1", Payload: map[string]any{"action_instance_id": "action_1", "policy_ref": "policy:review", "status": "approval_requested"}},
 			{EventID: "evt_approved", EventType: "action.approved", InteractionID: "interaction_1", OperationID: "operation_action", CausationID: "evt_requested", ClaimID: "claim_1", Payload: map[string]any{"action_instance_id": "action_1", "actor_ref": "account:reviewer", "policy_decision_ref": "decision:1", "status": "approved"}},
 			{EventID: "evt_executed", EventType: "action.executed", InteractionID: "interaction_1", OperationID: "operation_action", CausationID: "evt_approved", ClaimID: "claim_1", Payload: map[string]any{"action_instance_id": "action_1", "tool_ref": "tool:create_task", "status": "ok"}},
@@ -1432,7 +1725,7 @@ func TestGetBusinessGraphProjectsFiveStageBusinessStory(t *testing.T) {
 	if err != nil || !found {
 		t.Fatalf("query failed: found=%v err=%v", found, err)
 	}
-	wantNodes := []string{"interaction:interaction_1", "event:evt_data", "evidence:resource:sales", "business:object:sales_order", "claim:claim_1", "action:action_1:recommended", "action:action_1:result_recorded"}
+	wantNodes := []string{"interaction:interaction_1", "event:evt_data", "evidence:resource:sales", "business:object:kn_demo:sales_order", "claim:claim_1", "action:action_1:recommended", "action:action_1:result_recorded"}
 	for _, id := range wantNodes {
 		if !graphHasNode(response.Data.Nodes, id) {
 			t.Fatalf("missing five-stage node %s: %+v", id, response.Data.Nodes)
@@ -1469,6 +1762,17 @@ func graphHasNode(nodes []evidencevo.BusinessGraphNode, id string) bool {
 		}
 	}
 	return false
+}
+
+func businessNodeByID(t *testing.T, nodes []evidencevo.BusinessGraphNode, id string) evidencevo.BusinessGraphNode {
+	t.Helper()
+	for _, node := range nodes {
+		if node.ID == id {
+			return node
+		}
+	}
+	t.Fatalf("business graph node %s not found: %+v", id, nodes)
+	return evidencevo.BusinessGraphNode{}
 }
 
 func graphHasEdgeType(edges []evidencevo.BusinessGraphEdge, edgeType string) bool {
@@ -1586,13 +1890,14 @@ func twoPointOneBatch(events []map[string]any) map[string]any {
 	return map[string]any{
 		"bkn.trace.schema.version": "2.1.0",
 		"trace": map[string]any{
-			"trace_id":         "11111111111111111111111111111111",
-			"traceparent":      "00-11111111111111111111111111111111-1000000000000001-01",
-			"bkn.request.id":   "req_biz_001",
-			"bkn.tenant.id":    "tenant_e2e",
-			"business_domain":  "supplychain_e2e",
-			"bkn.account.id":   "account_e2e_admin",
-			"bkn.account.type": "user",
+			"trace_id":            "11111111111111111111111111111111",
+			"traceparent":         "00-11111111111111111111111111111111-1000000000000001-01",
+			"bkn.request.id":      "req_biz_001",
+			"bkn.conversation.id": "agent:thread_supply_chain",
+			"bkn.tenant.id":       "tenant_e2e",
+			"business_domain":     "supplychain_e2e",
+			"bkn.account.id":      "account_e2e_admin",
+			"bkn.account.type":    "user",
 		},
 		"events": events,
 	}
@@ -1620,7 +1925,7 @@ func validTwoPointOneEvents() []map[string]any {
 	})
 	dataQuery := traceFields("evt_data", "data.query.observed", "data.query", map[string]any{
 		"query_hash": testHash("2"), "query_type": "aggregate", "row_count": 12,
-		"resource_refs": []any{"resource:forecast"}, "field_refs": []any{"field:forecast_month"},
+		"resource_refs": []any{"resource:forecast"}, "field_refs": []any{"field:forecast:forecast_month"},
 		"truncated": false, "version_status": "versioned",
 	})
 	dataQuery["operation_id"] = "op_data_001"
@@ -1631,7 +1936,7 @@ func validTwoPointOneEvents() []map[string]any {
 	retrieval["operation_id"] = "op_retrieval_001"
 	retrieval["causation_event_id"] = "evt_interaction"
 	knowledge := traceFields("evt_knowledge", "knowledge.read.observed", "knowledge.read", map[string]any{
-		"kn_id": "supplychain", "read_kind": "object_relation_schema", "version_status": "versioned", "business_refs": []any{"object:forecast"},
+		"kn_id": "supplychain", "read_kind": "object_relation_schema", "version_status": "versioned", "business_refs": []any{"object:supplychain:forecast"},
 	})
 	knowledge["operation_id"] = "op_knowledge_001"
 	knowledge["causation_event_id"] = "evt_retrieval"
@@ -1659,7 +1964,7 @@ func validTwoPointOneEvents() []map[string]any {
 	evidenceRefs["claim_id"] = "claim_001"
 	businessRefs := traceFields("evt_business", "business.refs.resolved", "agent.business.resolve", map[string]any{
 		"claim_id": "claim_001", "resolver_status": "resolved", "business_refs": []any{map[string]any{
-			"ref_id": "object:forecast", "ref_type": "object", "source_system": "bkn",
+			"ref_id": "object:supplychain:forecast", "ref_type": "object", "source_system": "bkn",
 			"validity": "available", "version_status": "versioned", "visibility": "visible",
 		}},
 	})
@@ -1763,7 +2068,7 @@ func queryTrace(traceID, requestID string) evidencevo.NormalizedTrace {
 				EventType: "business.refs.resolved",
 				Payload: map[string]any{
 					"claim_id":      "claim_visible",
-					"business_refs": []any{map[string]any{"ref_id": "object:customer", "ref_type": "object", "visibility": "visible", "version_status": "versioned"}},
+					"business_refs": []any{map[string]any{"ref_id": "object:kn_demo:customer", "ref_type": "object", "visibility": "visible", "version_status": "versioned"}},
 				},
 			},
 		},
@@ -1782,9 +2087,9 @@ func evidenceChainTraceWithUnauthorizedRef(traceID, requestID string) evidencevo
 func businessGraphTraceWithGovernance(traceID, requestID string) evidencevo.NormalizedTrace {
 	trace := queryTrace(traceID, requestID)
 	trace.Events[2].Payload["business_refs"] = []any{
-		map[string]any{"ref_id": "object:customer", "ref_type": "object", "visibility": "visible", "version_status": "versioned"},
-		map[string]any{"ref_id": "object:hidden", "ref_type": "object", "visibility": "hidden"},
-		map[string]any{"ref_id": "object:deleted", "ref_type": "object", "visibility": "unresolved"},
+		map[string]any{"ref_id": "object:kn_demo:customer", "ref_type": "object", "visibility": "visible", "version_status": "versioned"},
+		map[string]any{"ref_id": "object:kn_demo:hidden", "ref_type": "object", "visibility": "hidden"},
+		map[string]any{"ref_id": "object:kn_demo:deleted", "ref_type": "object", "visibility": "unresolved"},
 	}
 	return trace
 }
@@ -1792,9 +2097,9 @@ func businessGraphTraceWithGovernance(traceID, requestID string) evidencevo.Norm
 func businessGraphTraceWithUnauthorizedAndUnresolvedRefs(traceID, requestID string) evidencevo.NormalizedTrace {
 	trace := queryTrace(traceID, requestID)
 	trace.Events[2].Payload["business_refs"] = []any{
-		map[string]any{"ref_id": "object:customer", "ref_type": "object", "visibility": "visible", "version_status": "versioned"},
-		map[string]any{"ref_id": "object:unauthorized", "ref_type": "object", "visibility": "unauthorized", "policy_decision_ref": "policy:deny:1", "redaction_reason": "tenant_scope_denied"},
-		map[string]any{"ref_id": "object:unresolved", "ref_type": "object", "visibility": "unresolved", "failure_status": "resolver_not_found"},
+		map[string]any{"ref_id": "object:kn_demo:customer", "ref_type": "object", "visibility": "visible", "version_status": "versioned"},
+		map[string]any{"ref_id": "object:kn_demo:unauthorized", "ref_type": "object", "visibility": "unauthorized", "policy_decision_ref": "policy:deny:1", "redaction_reason": "tenant_scope_denied"},
+		map[string]any{"ref_id": "object:kn_demo:unresolved", "ref_type": "object", "visibility": "unresolved", "failure_status": "resolver_not_found"},
 	}
 	return trace
 }
@@ -1808,8 +2113,8 @@ func businessGraphTraceWithBusinessBeforeClaim(traceID, requestID string) eviden
 func businessGraphTraceWithDuplicateRefs(traceID, requestID string) evidencevo.NormalizedTrace {
 	trace := queryTrace(traceID, requestID)
 	trace.Events[2].Payload["business_refs"] = []any{
-		map[string]any{"ref_id": "object:customer", "ref_type": "object", "visibility": "visible", "version_status": "versioned"},
-		map[string]any{"ref_id": "object:customer", "ref_type": "object", "visibility": "visible", "version_status": "versioned"},
+		map[string]any{"ref_id": "object:kn_demo:customer", "ref_type": "object", "visibility": "visible", "version_status": "versioned"},
+		map[string]any{"ref_id": "object:kn_demo:customer", "ref_type": "object", "visibility": "visible", "version_status": "versioned"},
 	}
 	trace.Events = append(trace.Events, trace.Events[2])
 	return trace

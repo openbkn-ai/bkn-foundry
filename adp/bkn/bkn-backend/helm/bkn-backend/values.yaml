@@ -165,3 +165,10 @@ resources:
   limits:
     cpu: 2
     memory: 4Gi
+
+bknTrace:
+  evidence:
+    ingestUrl: ""
+    timeoutMs: "2000"
+    ingestTokenSecretName: ""
+    ingestTokenSecretKey: "ingest-token"

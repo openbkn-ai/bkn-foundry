@@ -87,6 +87,13 @@ spec:
               - name: BKN_TRACE_EVIDENCE_TIMEOUT_MS
                 value: {{ .Values.observability.evidence.timeout_ms | quote }}
             {{- end}}
+            {{- if .Values.observability.evidence.ingest_token_secret_name }}
+              - name: BKN_TRACE_EVIDENCE_INGEST_TOKEN
+                valueFrom:
+                  secretKeyRef:
+                    name: {{ .Values.observability.evidence.ingest_token_secret_name | quote }}
+                    key: {{ .Values.observability.evidence.ingest_token_secret_key | quote }}
+            {{- end}}
 
           ports:
             - name: public-port

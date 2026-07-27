@@ -9,11 +9,11 @@ package bkntrace
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -31,6 +31,7 @@ const (
 
 const (
 	envEvidenceIngestURL       = "BKN_TRACE_EVIDENCE_INGEST_URL"
+	envEvidenceIngestToken     = "BKN_TRACE_EVIDENCE_INGEST_TOKEN"
 	envEvidenceIngestTimeoutMS = "BKN_TRACE_EVIDENCE_TIMEOUT_MS"
 )
 
@@ -57,11 +58,15 @@ type eventContext struct {
 	requestID        string
 	accountID        string
 	accountType      string
+	tenantID         string
+	businessDomain   string
+	conversationID   string
 	interactionID    string
 	operationID      string
 	causationEventID string
 	claimID          string
 	attempt          int
+	observedAt       string
 }
 
 func HashValue(value any) string {
@@ -77,25 +82,41 @@ func EvidenceEnabled() bool {
 	return evidenceIngestURL() != ""
 }
 
-func EmitSearchSchemaEvents(ctx context.Context, logger interfaces.Logger, req *interfaces.SearchSchemaReq, resp *interfaces.SearchSchemaResp) {
+func EmitSearchSchemaEvents(ctx context.Context, logger interfaces.Logger, req *interfaces.SearchSchemaReq, resp *interfaces.SearchSchemaResp) string {
 	if !EvidenceEnabled() {
-		return
+		return ""
 	}
-	SubmitEvents(ctx, logger, req, BuildSearchSchemaEvents(ctx, req, resp))
+	return submitAndReturnFirstEventID(ctx, logger, req, BuildSearchSchemaEvents(ctx, req, resp))
 }
 
-func EmitQueryObjectInstanceEvents(ctx context.Context, logger interfaces.Logger, req *interfaces.QueryObjectInstancesReq, resp *interfaces.QueryObjectInstancesResp) {
+func EmitQueryObjectInstanceEvents(ctx context.Context, logger interfaces.Logger, req *interfaces.QueryObjectInstancesReq, resp *interfaces.QueryObjectInstancesResp) string {
 	if !EvidenceEnabled() {
-		return
+		return ""
 	}
-	SubmitEvents(ctx, logger, req, BuildQueryObjectInstanceEvents(ctx, req, resp))
+	return submitAndReturnFirstEventID(ctx, logger, req, BuildQueryObjectInstanceEvents(ctx, req, resp))
 }
 
-func EmitQueryInstanceSubgraphEvents(ctx context.Context, logger interfaces.Logger, req *interfaces.QueryInstanceSubgraphReq, resp *interfaces.QueryInstanceSubgraphResp) {
+func EmitQueryInstanceSubgraphEvents(ctx context.Context, logger interfaces.Logger, req *interfaces.QueryInstanceSubgraphReq, resp *interfaces.QueryInstanceSubgraphResp) string {
 	if !EvidenceEnabled() {
-		return
+		return ""
 	}
-	SubmitEvents(ctx, logger, req, BuildQueryInstanceSubgraphEvents(ctx, req, resp))
+	return submitAndReturnFirstEventID(ctx, logger, req, BuildQueryInstanceSubgraphEvents(ctx, req, resp))
+}
+
+func EmitRunSQLEvents(ctx context.Context, logger interfaces.Logger, sql string, resourceIDs []string, resp *interfaces.VegaRawQueryResp) string {
+	if !EvidenceEnabled() {
+		return ""
+	}
+	return submitAndReturnFirstEventID(ctx, logger, nil, BuildRunSQLEvents(ctx, sql, resourceIDs, resp))
+}
+
+func submitAndReturnFirstEventID(ctx context.Context, logger interfaces.Logger, req any, events []Event) string {
+	SubmitEvents(ctx, logger, req, events)
+	if len(events) == 0 {
+		return ""
+	}
+	eventID, _ := events[0]["event_id"].(string)
+	return eventID
 }
 
 func BuildSearchSchemaEvents(ctx context.Context, req *interfaces.SearchSchemaReq, resp *interfaces.SearchSchemaResp) []Event {
@@ -103,7 +124,7 @@ func BuildSearchSchemaEvents(ctx context.Context, req *interfaces.SearchSchemaRe
 	if !ok {
 		return nil
 	}
-	refs := schemaEvidenceRefs(resp)
+	refs := schemaEvidenceRefs(resolvedKnID(req), resp)
 	return buildRetrievalEvents(ec, "context.search_schema", HashValue(strings.TrimSpace(req.Query)), len(refs), false, refs)
 }
 
@@ -113,7 +134,11 @@ func BuildQueryObjectInstanceEvents(ctx context.Context, req *interfaces.QueryOb
 		return nil
 	}
 	refs := objectInstanceEvidenceRefs(req, resp)
-	return buildRetrievalEvents(ec, "context.query_object", queryObjectConditionHash(req), len(refs), queryObjectTruncated(req, resp), refs)
+	candidateCount := 0
+	if resp != nil {
+		candidateCount = len(resp.Data)
+	}
+	return buildRetrievalEvents(ec, "context.query_object", queryObjectConditionHash(req), candidateCount, queryObjectTruncated(req, resp), refs)
 }
 
 func BuildQueryInstanceSubgraphEvents(ctx context.Context, req *interfaces.QueryInstanceSubgraphReq, resp *interfaces.QueryInstanceSubgraphResp) []Event {
@@ -121,8 +146,52 @@ func BuildQueryInstanceSubgraphEvents(ctx context.Context, req *interfaces.Query
 	if !ok {
 		return nil
 	}
-	refs, refsTruncated := subgraphEvidenceRefs(resp)
+	refs, refsTruncated := subgraphEvidenceRefs(req, resp)
 	return buildRetrievalEvents(ec, "context.query_instance_subgraph", querySubgraphPathHash(req), len(refs), refsTruncated, refs)
+}
+
+func BuildRunSQLEvents(ctx context.Context, sql string, resourceIDs []string, resp *interfaces.VegaRawQueryResp) []Event {
+	ec, ok := contextFromRequest(ctx, nil)
+	if !ok {
+		return nil
+	}
+	refs := make([]map[string]any, 0, len(resourceIDs))
+	seen := map[string]struct{}{}
+	for _, resourceID := range resourceIDs {
+		resourceID = strings.TrimSpace(resourceID)
+		if resourceID == "" {
+			continue
+		}
+		if _, exists := seen[resourceID]; exists {
+			continue
+		}
+		seen[resourceID] = struct{}{}
+		refs = append(refs, map[string]any{
+			"ref_id":         "resource:" + resourceID,
+			"ref_type":       "data_resource",
+			"source_system":  "vega",
+			"validity":       "observed",
+			"version_status": "unversioned",
+			"visibility":     "visible",
+		})
+	}
+	count := 0
+	truncated := false
+	if resp != nil {
+		count = len(resp.Entries)
+		truncated = resp.Paging != nil && resp.Paging.NextCursor != nil
+		if resp.TotalCount != nil && *resp.TotalCount > int64(count) {
+			truncated = true
+		}
+	}
+	return buildRetrievalEvents(
+		ec,
+		"context.run_sql",
+		HashValue(strings.TrimSpace(sql)),
+		count,
+		truncated,
+		refs,
+	)
 }
 
 func buildRetrievalEvents(ec eventContext, operation, queryHash string, candidateCount int, truncated bool, refs []map[string]any) []Event {
@@ -132,42 +201,8 @@ func buildRetrievalEvents(ec eventContext, operation, queryHash string, candidat
 		"truncated":       truncated,
 		"version_status":  "unversioned",
 		"source_refs":     refs,
-	}, ec.claimID, ec.causationEventID)
-	events := []Event{fact}
-	if ec.claimID == "" {
-		return events
-	}
-	causationID := fact["event_id"].(string)
-	if len(refs) > 0 {
-		evidence := buildEvent(ec, "evidence.refs.created", operation, map[string]any{
-			"claim_id":      ec.claimID,
-			"evidence_refs": refs,
-		}, ec.claimID, causationID)
-		events = append(events, evidence)
-		causationID = evidence["event_id"].(string)
-	}
-	businessRefs := resolvedBusinessRefs(refs)
-	resolverStatus := "resolved"
-	if len(businessRefs) == 0 {
-		resolverStatus = "unresolved"
-	}
-	events = append(events, buildEvent(ec, "business.refs.resolved", operation, map[string]any{
-		"claim_id":        ec.claimID,
-		"business_refs":   businessRefs,
-		"resolver_status": resolverStatus,
-	}, ec.claimID, causationID))
-	return events
-}
-
-func resolvedBusinessRefs(refs []map[string]any) []map[string]any {
-	result := make([]map[string]any, 0, len(refs))
-	for _, ref := range refs {
-		if firstString(ref, "ref_type") == "row_ref" {
-			continue
-		}
-		result = append(result, ref)
-	}
-	return result
+	}, "", ec.causationEventID)
+	return []Event{fact}
 }
 
 func SubmitEvents(ctx context.Context, logger interfaces.Logger, req any, events []Event) {
@@ -183,17 +218,22 @@ func SubmitEvents(ctx context.Context, logger interfaces.Logger, req any, events
 		return
 	}
 	timeout := evidenceTimeout()
+	traceBlock := map[string]any{
+		"trace_id":         ec.traceID,
+		"traceparent":      ec.traceparent,
+		"bkn.request.id":   ec.requestID,
+		"bkn.tenant.id":    ec.tenantID,
+		"business_domain":  ec.businessDomain,
+		"bkn.account.id":   ec.accountID,
+		"bkn.account.type": ec.accountType,
+	}
+	if ec.conversationID != "" {
+		traceBlock["bkn.conversation.id"] = ec.conversationID
+	}
 	payload := batch{
 		ContractVersion: ContractVersion,
-		Trace: map[string]any{
-			"trace_id":         ec.traceID,
-			"traceparent":      ec.traceparent,
-			"bkn.request.id":   ec.requestID,
-			"business_domain":  ec.accountID,
-			"bkn.account.id":   ec.accountID,
-			"bkn.account.type": ec.accountType,
-		},
-		Events: events,
+		Trace:           traceBlock,
+		Events:          events,
 	}
 
 	select {
@@ -201,16 +241,35 @@ func SubmitEvents(ctx context.Context, logger interfaces.Logger, req any, events
 	default:
 		if logger != nil {
 			logger.WithContext(ctx).Warn("BKN Trace evidence ingestion dropped: in-flight limit reached")
+		} else {
+			log.Printf("BKN Trace evidence ingestion dropped: in-flight limit reached")
 		}
 		return
 	}
 
 	go func() {
 		defer func() { <-evidenceInFlight }()
-		if err := postBatch(ingestURL, timeout, payload); err != nil && logger != nil {
-			logger.WithContext(ctx).Warnf("BKN Trace evidence ingestion unavailable: %v", err)
+		if err := postBatchWithRetry(ingestURL, timeout, payload); err != nil {
+			if logger != nil {
+				logger.WithContext(ctx).Warnf("BKN Trace evidence ingestion unavailable: %v", err)
+			} else {
+				log.Printf("BKN Trace evidence ingestion unavailable: %v", err)
+			}
 		}
 	}()
+}
+
+func postBatchWithRetry(ingestURL string, timeout time.Duration, payload batch) error {
+	var err error
+	for attempt := 0; attempt < 3; attempt++ {
+		if err = postBatch(ingestURL, timeout, payload); err == nil {
+			return nil
+		}
+		if attempt < 2 {
+			time.Sleep(time.Duration(attempt+1) * 20 * time.Millisecond)
+		}
+	}
+	return err
 }
 
 func postBatch(ingestURL string, timeout time.Duration, payload batch) error {
@@ -226,6 +285,9 @@ func postBatch(ingestURL string, timeout time.Duration, payload batch) error {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if token := strings.TrimSpace(os.Getenv(envEvidenceIngestToken)); token != "" {
+		req.Header.Set("X-BKN-Trace-Ingest-Token", token)
+	}
 
 	resp, err := evidenceHTTPClient.Do(req)
 	if err != nil {
@@ -263,6 +325,13 @@ func contextFromRequest(ctx context.Context, req any) (eventContext, bool) {
 	if !ok || !common.IsValidBKNRequestID(traceContext.RequestID) {
 		return eventContext{}, false
 	}
+	if !traceContext.ObservedAtProvided {
+		return eventContext{}, false
+	}
+	observedAt := strings.TrimSpace(traceContext.ObservedAt)
+	if _, err := time.Parse(time.RFC3339Nano, observedAt); err != nil {
+		return eventContext{}, false
+	}
 	authContext, _ := common.GetAccountAuthContextFromCtx(ctx)
 	accountID := ""
 	accountType := ""
@@ -298,18 +367,22 @@ func contextFromRequest(ctx context.Context, req any) (eventContext, bool) {
 		requestID:        traceContext.RequestID,
 		accountID:        accountID,
 		accountType:      accountType,
+		tenantID:         strings.TrimSpace(traceContext.TenantID),
+		businessDomain:   strings.TrimSpace(traceContext.BusinessDomain),
+		conversationID:   strings.TrimSpace(traceContext.ConversationID),
 		interactionID:    interactionID,
 		operationID:      operationID,
 		causationEventID: strings.TrimSpace(traceContext.CausationEventID),
 		claimID:          strings.TrimSpace(traceContext.ClaimID),
 		attempt:          attempt,
+		observedAt:       observedAt,
 	}, true
 }
 
 func buildEvent(ec eventContext, eventType, operationName string, payload map[string]any, claimID, causationEventID string) Event {
-	now := time.Now().UTC().Format(time.RFC3339Nano)
+	now := ec.observedAt
 	event := Event{
-		"event_id":                 "evt_" + randomHex(16),
+		"event_id":                 stableEventID(ec.traceID, ec.operationID, eventType, ec.attempt),
 		"event_type":               eventType,
 		"bkn.trace.schema.version": ContractVersion,
 		"observed_at":              now,
@@ -333,31 +406,24 @@ func buildEvent(ec eventContext, eventType, operationName string, payload map[st
 	return event
 }
 
-func randomHex(length int) string {
-	if length <= 0 {
-		return ""
-	}
-	buf := make([]byte, (length+1)/2)
-	if _, err := rand.Read(buf); err != nil {
-		sum := sha256.Sum256([]byte(time.Now().UTC().Format(time.RFC3339Nano)))
-		return hex.EncodeToString(sum[:])[:length]
-	}
-	return hex.EncodeToString(buf)[:length]
+func stableEventID(traceID, operationID, eventType string, attempt int) string {
+	sum := sha256.Sum256([]byte(fmt.Sprintf("%s|%s|%s|%d", traceID, operationID, eventType, attempt)))
+	return "evt_" + hex.EncodeToString(sum[:])
 }
 
-func schemaEvidenceRefs(resp *interfaces.SearchSchemaResp) []map[string]any {
-	if resp == nil {
+func schemaEvidenceRefs(knID string, resp *interfaces.SearchSchemaResp) []map[string]any {
+	if resp == nil || strings.TrimSpace(knID) == "" {
 		return nil
 	}
 	refs := make([]map[string]any, 0, len(resp.ObjectTypes)+len(resp.RelationTypes)+len(resp.ActionTypes)+len(resp.MetricTypes))
-	refs = append(refs, conceptRefs("object_type", "schema_ref", resp.ObjectTypes)...)
-	refs = append(refs, conceptRefs("relation_type", "schema_ref", resp.RelationTypes)...)
-	refs = append(refs, conceptRefs("action_type", "action_ref", resp.ActionTypes)...)
-	refs = append(refs, conceptRefs("metric_type", "metric_ref", resp.MetricTypes)...)
+	refs = append(refs, conceptRefs("object", "object", knID, resp.ObjectTypes)...)
+	refs = append(refs, conceptRefs("relation", "relation", knID, resp.RelationTypes)...)
+	refs = append(refs, conceptRefs("action_type", "action", knID, resp.ActionTypes)...)
+	refs = append(refs, conceptRefs("metric", "metric", knID, resp.MetricTypes)...)
 	return refs
 }
 
-func conceptRefs(kind, refType string, items []any) []map[string]any {
+func conceptRefs(kind, refType, knID string, items []any) []map[string]any {
 	refs := make([]map[string]any, 0, len(items))
 	for _, item := range items {
 		itemMap, ok := asMap(item)
@@ -369,7 +435,7 @@ func conceptRefs(kind, refType string, items []any) []map[string]any {
 			continue
 		}
 		refs = append(refs, map[string]any{
-			"ref_id":         kind + ":" + id,
+			"ref_id":         kind + ":" + knID + ":" + id,
 			"ref_type":       refType,
 			"source_system":  ModuleName,
 			"summary_hash":   HashValue(safeConceptSummary(kind, itemMap)),
@@ -449,29 +515,28 @@ func resolvedKnID(req *interfaces.SearchSchemaReq) string {
 }
 
 func objectInstanceEvidenceRefs(req *interfaces.QueryObjectInstancesReq, resp *interfaces.QueryObjectInstancesResp) []map[string]any {
-	if req == nil || resp == nil || len(resp.Data) == 0 {
+	if req == nil {
 		return nil
 	}
-	refs := make([]map[string]any, 0, len(resp.Data))
-	for index, item := range resp.Data {
-		identity, ok := objectInstanceIdentity(item)
-		if !ok {
-			identity = map[string]any{
-				"row_index": index,
-				"row_hash":  HashValue(item),
-			}
+	knID := queryObjectKnID(req)
+	objectTypeID := queryObjectTypeID(req)
+	if knID == "" || objectTypeID == "" {
+		return nil
+	}
+	refs := []map[string]any{controlledRef("object:"+knID+":"+objectTypeID, "object")}
+	for _, propertyID := range req.Properties {
+		if propertyID = strings.TrimSpace(propertyID); propertyID != "" {
+			refs = append(refs, controlledRef("property:"+knID+":"+objectTypeID+":"+propertyID, "property"))
 		}
-		refs = append(refs, map[string]any{
-			"ref_id":         "object_instance:" + queryObjectTypeID(req) + ":" + hashSuffix(identity),
-			"ref_type":       "row_ref",
-			"source_system":  ModuleName,
-			"summary_hash":   HashValue(map[string]any{"identity_hash": HashValue(identity), "object_type_id": queryObjectTypeID(req)}),
-			"validity":       "observed",
-			"version_status": "unversioned",
-			"visibility":     "visible",
-		})
 	}
 	return refs
+}
+
+func controlledRef(refID, refType string) map[string]any {
+	return map[string]any{
+		"ref_id": refID, "ref_type": refType, "source_system": "bkn",
+		"validity": "observed", "version_status": "unversioned", "visibility": "visible",
+	}
 }
 
 func objectInstanceIdentity(item any) (map[string]any, bool) {
@@ -525,46 +590,24 @@ func queryObjectTypeID(req *interfaces.QueryObjectInstancesReq) string {
 	return strings.TrimSpace(req.OtID)
 }
 
-func subgraphEvidenceRefs(resp *interfaces.QueryInstanceSubgraphResp) ([]map[string]any, bool) {
+func subgraphEvidenceRefs(req *interfaces.QueryInstanceSubgraphReq, resp *interfaces.QueryInstanceSubgraphResp) ([]map[string]any, bool) {
 	if resp == nil || resp.Entries == nil {
 		return nil, false
 	}
 	refs := make([]map[string]any, 0)
 	seen := make(map[string]struct{})
 	truncated := false
-	walkSubgraphValue(resp.Entries, func(item map[string]any) bool {
-		if identity, ok := objectInstanceIdentity(item); ok {
-			ref := map[string]any{
-				"ref_id":         "subgraph_instance:" + hashSuffix(identity),
-				"ref_type":       "row_ref",
-				"source_system":  ModuleName,
-				"summary_hash":   HashValue(map[string]any{"identity_hash": HashValue(identity)}),
-				"validity":       "observed",
-				"version_status": "unversioned",
-				"visibility":     "visible",
-			}
-			if !appendEvidenceRef(&refs, seen, ref) {
-				truncated = true
-				return false
-			}
-		}
-		return true
-	})
-	if truncated {
-		return refs, true
+	if req == nil {
+		return refs, false
 	}
-	walkRelationContainers(resp.Entries, func(item map[string]any) bool {
-		if relationID := firstString(item, "relation_type_id", "relation_type"); relationID != "" {
-			ref := map[string]any{
-				"ref_id":         "relation_type:" + relationID,
-				"ref_type":       "schema_ref",
-				"source_system":  ModuleName,
-				"summary_hash":   HashValue(map[string]any{"relation_id": relationID}),
-				"validity":       "observed",
-				"version_status": "unversioned",
-				"visibility":     "visible",
-			}
-			if !appendEvidenceRef(&refs, seen, ref) {
+	walkSubgraphValue(req.RelationTypePaths, func(item map[string]any) bool {
+		knID := strings.TrimSpace(req.KnID)
+		for _, candidate := range []struct{ key, prefix, refType string }{
+			{"source_ot_id", "object:", "object"},
+			{"target_ot_id", "object:", "object"},
+			{"relation_type_id", "relation:", "relation"},
+		} {
+			if id := firstString(item, candidate.key); knID != "" && id != "" && !appendEvidenceRef(&refs, seen, controlledRef(candidate.prefix+knID+":"+id, candidate.refType)) {
 				truncated = true
 				return false
 			}

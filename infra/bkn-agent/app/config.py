@@ -44,7 +44,17 @@ class Config:
     # BKN Trace phase-two evidence ingestion. Empty URL = construct evidence facts
     # locally but do not submit them, so bkn-agent can deploy before bkn-trace.
     BKN_TRACE_EVIDENCE_INGEST_URL = _env("BKN_TRACE_EVIDENCE_INGEST_URL", "")
+    BKN_TRACE_ARTIFACT_INGEST_URL = _env("BKN_TRACE_ARTIFACT_INGEST_URL", "")
+    BKN_TRACE_EVIDENCE_INGEST_TOKEN = _env("BKN_TRACE_EVIDENCE_INGEST_TOKEN", "")
     BKN_TRACE_EVIDENCE_TIMEOUT_S = float(_env("BKN_TRACE_EVIDENCE_TIMEOUT_S", "3"))
+    BKN_TRACE_EVIDENCE_MAX_ATTEMPTS = int(_env("BKN_TRACE_EVIDENCE_MAX_ATTEMPTS", "3"))
+    BKN_TRACE_EVIDENCE_RETRY_BACKOFF_S = float(
+        _env("BKN_TRACE_EVIDENCE_RETRY_BACKOFF_S", "0.1")
+    )
+    BKN_TRACE_EVIDENCE_DRAIN_TIMEOUT_S = float(
+        _env("BKN_TRACE_EVIDENCE_DRAIN_TIMEOUT_S", "5")
+    )
+    BKN_TRACE_MODEL_SOURCE_LIMIT = int(_env("BKN_TRACE_MODEL_SOURCE_LIMIT", "20"))
 
     # checkpointer: memory | mysql
     CHECKPOINTER_BACKEND = _env("CHECKPOINTER_BACKEND", "mysql")

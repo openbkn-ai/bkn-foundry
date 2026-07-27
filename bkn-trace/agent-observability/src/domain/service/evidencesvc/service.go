@@ -13,7 +13,10 @@ import (
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iartifactstore"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/ibusinessresolver"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/ievidencestore"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iprojectionsource"
 )
 
 var (
@@ -21,9 +24,11 @@ var (
 	traceIDRE       = regexp.MustCompile(`^[0-9a-f]{32}$`)
 	spanIDRE        = regexp.MustCompile(`^[0-9a-f]{16}$`)
 	requestIDRE     = regexp.MustCompile(`^req_[0-9A-Za-z_.-]+$`)
+	correlationIDRE = regexp.MustCompile(`^[0-9A-Za-z_.:-]{1,128}$`)
 	timestampRE     = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$`)
 	hashRE          = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 	controlledRefRE = regexp.MustCompile(`^[a-z][a-z0-9_.-]*:[A-Za-z0-9][A-Za-z0-9_.:-]*$`)
+	artifactRefRE   = regexp.MustCompile(`^artifact:[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$`)
 )
 
 var sensitivePatterns = []*regexp.Regexp{
@@ -150,6 +155,38 @@ var twoPointOnePayloadFields = map[string]map[string]struct{}{
 	"action.result_recorded":    fields("action_instance_id", "result_hash", "artifact_ref", "task_ref", "status"),
 }
 
+var twoPointTwoEventTypes = func() map[string]struct{} {
+	types := make(map[string]struct{}, len(twoPointOneEventTypes)+1)
+	for eventType := range twoPointOneEventTypes {
+		types[eventType] = struct{}{}
+	}
+	types["logic.execution.observed"] = struct{}{}
+	return types
+}()
+
+var twoPointTwoPayloadFields = func() map[string]map[string]struct{} {
+	payloadFields := make(map[string]map[string]struct{}, len(twoPointOnePayloadFields)+1)
+	for eventType, allowed := range twoPointOnePayloadFields {
+		copied := make(map[string]struct{}, len(allowed)+2)
+		for field := range allowed {
+			copied[field] = struct{}{}
+		}
+		payloadFields[eventType] = copied
+	}
+	payloadFields["agent.interaction.started"]["question_artifact_ref"] = struct{}{}
+	payloadFields["data.query.observed"]["query_artifact_ref"] = struct{}{}
+	payloadFields["data.query.observed"]["result_artifact_ref"] = struct{}{}
+	payloadFields["claim.created"]["result_artifact_ref"] = struct{}{}
+	payloadFields["action.recommended"]["reason_artifact_ref"] = struct{}{}
+	payloadFields["action.recommended"]["input_artifact_ref"] = struct{}{}
+	delete(payloadFields["action.result_recorded"], "artifact_ref")
+	payloadFields["action.result_recorded"]["result_artifact_ref"] = struct{}{}
+	payloadFields["logic.execution.observed"] = fields(
+		"logic_ref", "input_artifact_ref", "result_artifact_ref", "status",
+	)
+	return payloadFields
+}()
+
 var twoPointOneRefFields = fields("ref_id", "ref_type", "source_system", "validity", "version_status", "visibility", "summary_hash")
 
 func fields(names ...string) map[string]struct{} {
@@ -171,7 +208,10 @@ var visibilityStates = map[string]struct{}{
 }
 
 type Service struct {
-	store ievidencestore.EvidenceStorePort
+	store            ievidencestore.EvidenceStorePort
+	artifactStore    iartifactstore.ArtifactStorePort
+	projectionSource iprojectionsource.ProjectionSourcePort
+	businessResolver ibusinessresolver.BusinessResolverPort
 }
 
 const (
@@ -180,7 +220,171 @@ const (
 )
 
 func New(store ievidencestore.EvidenceStorePort) *Service {
-	return &Service{store: store}
+	service := &Service{store: store}
+	if artifactStore, ok := store.(iartifactstore.ArtifactStorePort); ok {
+		service.artifactStore = artifactStore
+	}
+	if projectionSource, ok := store.(iprojectionsource.ProjectionSourcePort); ok {
+		service.projectionSource = projectionSource
+	}
+	return service
+}
+
+func NewWithBusinessResolver(store ievidencestore.EvidenceStorePort, resolver ibusinessresolver.BusinessResolverPort) *Service {
+	service := New(store)
+	service.businessResolver = resolver
+	return service
+}
+
+func NewWithArtifactStore(store ievidencestore.EvidenceStorePort, artifactStore iartifactstore.ArtifactStorePort) *Service {
+	service := New(store)
+	service.artifactStore = artifactStore
+	return service
+}
+
+func NewWithProjectionSource(store ievidencestore.EvidenceStorePort, projectionSource iprojectionsource.ProjectionSourcePort) *Service {
+	service := New(store)
+	service.projectionSource = projectionSource
+	return service
+}
+
+func (s *Service) IngestArtifact(ctx context.Context, body []byte) (evidencevo.ArtifactIngestResponse, evidencevo.ValidationErrors, error) {
+	var artifact evidencevo.EvidenceArtifact
+	if err := json.Unmarshal(body, &artifact); err != nil {
+		return evidencevo.ArtifactIngestResponse{}, evidencevo.ValidationErrors{
+			evidencevo.NewValidationError("BKN_TRACE_INVALID_JSON", "$", "request body must match evidence artifact schema"),
+		}, nil
+	}
+	artifact, validationErrors := evidencevo.NormalizeArtifact(artifact)
+	if len(validationErrors) > 0 {
+		return evidencevo.ArtifactIngestResponse{}, validationErrors, nil
+	}
+	if s.artifactStore == nil {
+		return evidencevo.ArtifactIngestResponse{}, nil, errors.New("evidence artifact store is not configured")
+	}
+	if artifact.TraceID != "" {
+		existing, err := s.store.GetEvidenceHistoryByTraceID(ctx, artifact.TraceID)
+		if err != nil {
+			return evidencevo.ArtifactIngestResponse{}, nil, err
+		}
+		for _, trace := range existing {
+			if !artifactMatchesTrace(artifact, trace) {
+				return evidencevo.ArtifactIngestResponse{}, evidencevo.ValidationErrors{
+					evidencevo.NewValidationError("BKN_TRACE_OWNERSHIP_CONFLICT", "$", "artifact request or ownership differs from the committed trace"),
+				}, nil
+			}
+		}
+		if validationErrors := validateArtifactRoleAgainstTraces(artifact, existing); len(validationErrors) > 0 {
+			return evidencevo.ArtifactIngestResponse{}, validationErrors, nil
+		}
+	}
+	created, err := s.artifactStore.StoreArtifact(ctx, artifact)
+	if errors.Is(err, iartifactstore.ErrArtifactIDConflict) {
+		return evidencevo.ArtifactIngestResponse{}, evidencevo.ValidationErrors{
+			evidencevo.NewValidationError("BKN_TRACE_ARTIFACT_ID_CONFLICT", "$.artifact_id", "artifact_id already exists with different content or ownership"),
+		}, nil
+	}
+	if err != nil {
+		return evidencevo.ArtifactIngestResponse{}, nil, err
+	}
+	return evidencevo.ArtifactIngestResponse{
+		ArtifactID: artifact.ArtifactID, ArtifactType: artifact.ArtifactType,
+		RequestID: artifact.RequestID, TraceID: artifact.TraceID,
+		ContentHash: artifact.ContentHash, Created: created,
+	}, nil, nil
+}
+
+func (s *Service) GetArtifact(ctx context.Context, artifactID string, scope evidencevo.QueryScope) (evidencevo.EvidenceArtifact, bool, error) {
+	if s.artifactStore == nil {
+		return evidencevo.EvidenceArtifact{}, false, errors.New("evidence artifact store is not configured")
+	}
+	if !trustedQueryScope(scope) {
+		return evidencevo.EvidenceArtifact{}, false, nil
+	}
+	if artifactID != strings.TrimSpace(artifactID) || !evidencevo.ValidArtifactID(artifactID) {
+		return evidencevo.EvidenceArtifact{}, false, nil
+	}
+	artifact, found, err := s.artifactStore.GetArtifact(ctx, artifactID, scope)
+	if err != nil || !found {
+		return evidencevo.EvidenceArtifact{}, found, err
+	}
+	authorized, err := s.authorizeArtifactRefs(ctx, artifact, scope)
+	if err != nil {
+		return evidencevo.EvidenceArtifact{}, false, err
+	}
+	if !authorized {
+		return evidencevo.EvidenceArtifact{}, false, nil
+	}
+	return artifact, true, nil
+}
+
+func (s *Service) authorizeArtifactRefs(ctx context.Context, artifact evidencevo.EvidenceArtifact, scope evidencevo.QueryScope) (bool, error) {
+	refs := make([]ibusinessresolver.BusinessRef, 0, len(artifact.BusinessRefs)+1)
+	seen := map[string]struct{}{}
+	appendRef := func(refID string) {
+		refID = strings.TrimSpace(refID)
+		if refID == "" {
+			return
+		}
+		if _, exists := seen[refID]; exists {
+			return
+		}
+		seen[refID] = struct{}{}
+		parts := strings.Split(refID, ":")
+		refType := ""
+		if len(parts) > 0 {
+			refType = parts[0]
+		}
+		refs = append(refs, ibusinessresolver.BusinessRef{RefID: refID, RefType: refType})
+	}
+	if resolverSupportsArtifactRef(artifact.SourceRef) {
+		appendRef(artifact.SourceRef)
+	}
+	for _, refID := range artifact.BusinessRefs {
+		appendRef(refID)
+	}
+	if len(refs) == 0 {
+		return true, nil
+	}
+	if s.businessResolver == nil {
+		return false, nil
+	}
+	resolutions, err := s.businessResolver.ResolveBusinessRefs(ctx, ibusinessresolver.ResolveRequest{Scope: scope, Refs: refs})
+	if err != nil {
+		return false, err
+	}
+	visible := map[string]bool{}
+	for _, resolution := range resolutions {
+		visible[resolution.RefID] = visibleResolution(resolution)
+	}
+	for _, ref := range refs {
+		if !visible[ref.RefID] {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+func resolverSupportsArtifactRef(refID string) bool {
+	prefix, _, ok := strings.Cut(strings.TrimSpace(refID), ":")
+	if !ok {
+		return false
+	}
+	switch prefix {
+	case "kn", "object", "relation", "action_type", "metric", "property", "resource", "field":
+		return true
+	default:
+		return false
+	}
+}
+
+func artifactMatchesTrace(artifact evidencevo.EvidenceArtifact, trace evidencevo.NormalizedTrace) bool {
+	return artifact.TraceID == trace.TraceID &&
+		artifact.RequestID == trace.RequestID &&
+		artifact.TenantID == trace.TenantID &&
+		artifact.BusinessDomain == trace.BusinessDomain &&
+		artifact.AccountID == trace.AccountID &&
+		artifact.AccountType == trace.AccountType
 }
 
 func (s *Service) Ingest(ctx context.Context, body []byte) (evidencevo.IngestResponse, evidencevo.ValidationErrors, error) {
@@ -209,7 +413,7 @@ func (s *Service) Ingest(ctx context.Context, body []byte) (evidencevo.IngestRes
 		return evidencevo.IngestResponse{}, validationErrors, nil
 	}
 
-	if req.SchemaVersion == evidencevo.ContractVersion {
+	if req.SchemaVersion == evidencevo.ContractVersion || req.SchemaVersion == evidencevo.ArtifactContractVersion {
 		existing, err := s.store.GetEvidenceHistoryByTraceID(ctx, req.Trace.TraceID)
 		if err != nil {
 			return evidencevo.IngestResponse{}, nil, err
@@ -294,7 +498,7 @@ func (s *Service) GetBusinessGraphByTraceID(ctx context.Context, traceID string,
 	if len(result.Traces) == 0 {
 		return evidencevo.BusinessGraphResponse{}, false, nil
 	}
-	return buildBusinessGraph(result.Traces, result.Truncated), true, nil
+	return s.buildBusinessGraph(ctx, result.Traces, result.Truncated, options.Scope), true, nil
 }
 
 func (s *Service) GetBusinessGraphByRequestID(ctx context.Context, requestID string, options evidencevo.EvidenceQueryOptions) (evidencevo.BusinessGraphResponse, bool, error) {
@@ -305,7 +509,7 @@ func (s *Service) GetBusinessGraphByRequestID(ctx context.Context, requestID str
 	if len(result.Traces) == 0 {
 		return evidencevo.BusinessGraphResponse{}, false, nil
 	}
-	return buildBusinessGraph(result.Traces, result.Truncated), true, nil
+	return s.buildBusinessGraph(ctx, result.Traces, result.Truncated, options.Scope), true, nil
 }
 
 func (s *Service) GetEvidenceNodeByTraceID(ctx context.Context, traceID string, nodeID string, options evidencevo.EvidenceQueryOptions) (evidencevo.EvidenceNodeResponse, bool, error) {
@@ -355,11 +559,13 @@ func buildEvidenceChain(traces []evidencevo.NormalizedTrace, truncated bool) evi
 	claimRefs := map[string]struct{}{}
 	partialReasons := map[string]struct{}{}
 	knownEventIDs := map[string]struct{}{}
+	businessRefIDs := map[string]struct{}{}
 	claimSourceEventIDs := []string{}
 
 	causationIDs := []string{}
 	for _, trace := range traces {
 		for _, event := range trace.Events {
+			response.Data.ArtifactLinks = append(response.Data.ArtifactLinks, artifactLinksFromEvent(event)...)
 			if event.SchemaVersion == evidencevo.LegacyContractVersion || event.SchemaVersion == "" && trace.SchemaVersion == evidencevo.LegacyContractVersion {
 				partialReasons["causality_missing"] = struct{}{}
 			}
@@ -396,7 +602,9 @@ func buildEvidenceChain(traces []evidencevo.NormalizedTrace, truncated bool) evi
 				if claimID != "" {
 					claimRefs[claimID] = struct{}{}
 				}
-				response.Data.BusinessRefs = appendVisibleRefs(response.Data.BusinessRefs, arrayField(event.Payload, "business_refs"), &response.VisibilitySummary)
+				response.Data.BusinessRefs = appendVisibleRefsUnique(response.Data.BusinessRefs, arrayField(event.Payload, "business_refs"), &response.VisibilitySummary, businessRefIDs)
+			case "knowledge.read.observed":
+				response.Data.BusinessRefs = appendVisibleRefsUnique(response.Data.BusinessRefs, arrayField(event.Payload, "business_refs"), &response.VisibilitySummary, businessRefIDs)
 			}
 		}
 	}
@@ -436,10 +644,53 @@ func buildEvidenceChain(traces []evidencevo.NormalizedTrace, truncated bool) evi
 
 	response.PartialReasons = sortedKeys(partialReasons)
 	response.Partial = len(response.PartialReasons) > 0
-	response.Page.NodeCount = len(response.Data.Claims) + len(response.Data.EvidenceRefs) + len(response.Data.BusinessRefs)
-	response.Page.EdgeCount = len(response.Data.EvidenceRefs) + len(response.Data.BusinessRefs)
+	response.Page.NodeCount = len(response.Data.Claims) + len(response.Data.EvidenceRefs) + len(response.Data.BusinessRefs) + len(response.Data.ArtifactLinks)
+	response.Page.EdgeCount = len(response.Data.EvidenceRefs) + len(response.Data.BusinessRefs) + len(response.Data.ArtifactLinks)
 	response.Page.Truncated = truncated
 	return response
+}
+
+func artifactLinksFromEvent(event evidencevo.EvidenceEvent) []evidencevo.ArtifactLink {
+	roles := evidencevo.ArtifactLinkRoles(event.EventType)
+	links := make([]evidencevo.ArtifactLink, 0, len(roles))
+	for _, role := range roles {
+		artifactRef, _ := stringField(event.Payload, role.Field)
+		if !artifactRefRE.MatchString(artifactRef) {
+			continue
+		}
+		links = append(links, evidencevo.ArtifactLink{
+			ArtifactRef: artifactRef, ArtifactType: role.ExpectedTypes[0], Role: role.Field,
+			EventID: event.EventID, EventType: event.EventType,
+			OperationID: event.OperationID, ClaimID: event.ClaimID,
+		})
+	}
+	return links
+}
+
+func validateArtifactRoleAgainstTraces(
+	artifact evidencevo.EvidenceArtifact,
+	traces []evidencevo.NormalizedTrace,
+) evidencevo.ValidationErrors {
+	var validationErrors evidencevo.ValidationErrors
+	for _, trace := range traces {
+		for _, event := range trace.Events {
+			for _, role := range evidencevo.ArtifactLinkRoles(event.EventType) {
+				ref, _ := stringField(event.Payload, role.Field)
+				artifactID, ok := evidencevo.ArtifactIDFromReference(ref)
+				if !ok || artifactID != artifact.ArtifactID {
+					continue
+				}
+				if !evidencevo.ArtifactTypeMatchesRole(artifact.ArtifactType, role) {
+					validationErrors = append(validationErrors, evidencevo.NewValidationError(
+						"BKN_TRACE_ARTIFACT_TYPE_MISMATCH",
+						"$.artifact_type",
+						"artifact_type does not match event link role "+event.EventType+"."+role.Field,
+					))
+				}
+			}
+		}
+	}
+	return validationErrors
 }
 
 func stringArrayField(payload map[string]any, key string) []string {
@@ -523,7 +774,7 @@ func findEvidenceNode(traces []evidencevo.NormalizedTrace, nodeID string) (evide
 				if response, ok := refNodeFromEvent(trace, event, nodeID, "evidence_ref", "evidence_refs"); ok {
 					return response, true, nil
 				}
-			case "business.refs.resolved":
+			case "business.refs.resolved", "knowledge.read.observed":
 				if response, ok := refNodeFromEvent(trace, event, nodeID, "business_ref", "business_refs"); ok {
 					return response, true, nil
 				}
@@ -577,7 +828,9 @@ func refNodeFromEvent(trace evidencevo.NormalizedTrace, event evidencevo.Evidenc
 	return evidencevo.EvidenceNodeResponse{}, false
 }
 
-func buildBusinessGraph(traces []evidencevo.NormalizedTrace, truncated bool) evidencevo.BusinessGraphResponse {
+func (s *Service) buildBusinessGraph(ctx context.Context, traces []evidencevo.NormalizedTrace, truncated bool, scope evidencevo.QueryScope) evidencevo.BusinessGraphResponse {
+	resolutions, resolverAttempted, resolverFailed := s.resolveBusinessRefs(ctx, traces, scope)
+	claimedSourceEvents := visibleClaimSourceEvents(traces)
 	response := evidencevo.BusinessGraphResponse{
 		TraceID:   traces[0].TraceID,
 		RequestID: traces[0].RequestID,
@@ -591,7 +844,8 @@ func buildBusinessGraph(traces []evidencevo.NormalizedTrace, truncated bool) evi
 	partialReasons := map[string]struct{}{}
 	edgeIndex := 0
 	businessRefEvents := 0
-	expanded := hasInteractionEvent(traces)
+	producerReportedUnresolved := false
+	expanded := hasBusinessExecutionEnvelope(traces)
 
 	for _, trace := range traces {
 		for _, event := range trace.Events {
@@ -605,6 +859,7 @@ func buildBusinessGraph(traces []evidencevo.NormalizedTrace, truncated bool) evi
 			if claimID != "" && visible(event.Payload) {
 				visibleClaims[claimID] = struct{}{}
 				addClaimNode(&response, claimNodes, event.Payload, claimID)
+				partialReasons["claim_content_unavailable"] = struct{}{}
 			} else if !visible(event.Payload) {
 				countVisibility(event.Payload, &response.VisibilitySummary)
 				partialReasons["hidden_claim"] = struct{}{}
@@ -620,10 +875,91 @@ func buildBusinessGraph(traces []evidencevo.NormalizedTrace, truncated bool) evi
 
 	for _, trace := range traces {
 		for _, event := range trace.Events {
+			if claimIDs := claimedSourceEvents[event.EventID]; len(claimIDs) > 0 {
+				refs := claimedFactBusinessRefs(event)
+				if len(refs) > 0 {
+					businessRefEvents++
+				}
+				for _, item := range refs {
+					ref, ok := item.(map[string]any)
+					if !ok {
+						partialReasons["business_ref_invalid"] = struct{}{}
+						continue
+					}
+					if !visible(ref) {
+						countVisibility(ref, &response.VisibilitySummary)
+						continue
+					}
+					refID, _ := stringField(ref, "ref_id")
+					if refID == "" {
+						partialReasons["business_ref_id_missing"] = struct{}{}
+						continue
+					}
+					resolution, resolved := resolutions[refID]
+					if resolved && !visibleResolution(resolution) {
+						countResolverVisibility(resolution.Visibility, &response.VisibilitySummary)
+						partialReasons["business_ref_"+resolution.Visibility] = struct{}{}
+						continue
+					}
+					if _, seen := businessRefs[refID]; !seen {
+						businessRefs[refID] = struct{}{}
+						response.VisibilitySummary.AuthorizedRefCount++
+					}
+					var display *evidencevo.BusinessDisplay
+					if resolved && resolution.Display != nil && resolution.Display.ResolutionStatus == "resolved" {
+						display = resolution.Display
+					} else {
+						partialReasons["resolver_unresolved"] = struct{}{}
+					}
+					addBusinessNode(&response, businessNodes, refID, claimIDs[0], ref, display)
+					if operationNode := eventNodes[event.EventID]; operationNode != "" {
+						appendGraphEdge(&response, edges, &edgeIndex, operationNode, "business:"+refID, "uses_business_ref", visibilityValue(ref))
+					}
+				}
+			}
+			if event.EventType == "knowledge.read.observed" {
+				businessRefEvents++
+				for _, item := range arrayField(event.Payload, "business_refs") {
+					ref, ok := item.(map[string]any)
+					if !ok {
+						partialReasons["business_ref_invalid"] = struct{}{}
+						continue
+					}
+					if !visible(ref) {
+						countVisibility(ref, &response.VisibilitySummary)
+						continue
+					}
+					refID, _ := stringField(ref, "ref_id")
+					if refID == "" {
+						partialReasons["business_ref_id_missing"] = struct{}{}
+						continue
+					}
+					resolution, resolved := resolutions[refID]
+					if resolved && !visibleResolution(resolution) {
+						countResolverVisibility(resolution.Visibility, &response.VisibilitySummary)
+						partialReasons["business_ref_"+resolution.Visibility] = struct{}{}
+						continue
+					}
+					if _, seen := businessRefs[refID]; !seen {
+						businessRefs[refID] = struct{}{}
+						response.VisibilitySummary.AuthorizedRefCount++
+					}
+					var display *evidencevo.BusinessDisplay
+					if resolved && resolution.Display != nil && resolution.Display.ResolutionStatus == "resolved" {
+						display = resolution.Display
+					} else {
+						partialReasons["resolver_unresolved"] = struct{}{}
+					}
+					addBusinessNode(&response, businessNodes, refID, "", ref, display)
+					if operationNode := eventNodes[event.EventID]; operationNode != "" {
+						appendGraphEdge(&response, edges, &edgeIndex, operationNode, "business:"+refID, "uses_business_ref", visibilityValue(ref))
+					}
+				}
+			}
 			if event.EventType == "business.refs.resolved" {
 				businessRefEvents++
 				if resolverStatus, _ := stringField(event.Payload, "resolver_status"); resolverStatus == "partial" || resolverStatus == "unresolved" {
-					partialReasons["business_ref_unresolved"] = struct{}{}
+					producerReportedUnresolved = true
 				}
 				claimID, _ := stringField(event.Payload, "claim_id")
 				if claimID == "" {
@@ -651,12 +987,23 @@ func buildBusinessGraph(traces []evidencevo.NormalizedTrace, truncated bool) evi
 						partialReasons["business_ref_id_missing"] = struct{}{}
 						continue
 					}
+					resolution, resolved := resolutions[refID]
+					if resolved && !visibleResolution(resolution) {
+						countResolverVisibility(resolution.Visibility, &response.VisibilitySummary)
+						partialReasons["business_ref_"+resolution.Visibility] = struct{}{}
+						continue
+					}
 					if _, ok := businessRefs[refID]; !ok {
 						businessRefs[refID] = struct{}{}
 						response.VisibilitySummary.AuthorizedRefCount++
 					}
-					partialReasons["resolver_unresolved"] = struct{}{}
-					addBusinessNode(&response, businessNodes, refID, claimID, ref)
+					var display *evidencevo.BusinessDisplay
+					if resolved && resolution.Display != nil && resolution.Display.ResolutionStatus == "resolved" {
+						display = resolution.Display
+					} else {
+						partialReasons["resolver_unresolved"] = struct{}{}
+					}
+					addBusinessNode(&response, businessNodes, refID, claimID, ref, display)
 					edgeType := businessEdgeType(ref)
 					if expanded {
 						edgeType = "uses_business_ref"
@@ -688,6 +1035,10 @@ func buildBusinessGraph(traces []evidencevo.NormalizedTrace, truncated bool) evi
 	if response.VisibilitySummary.UnresolvedRefCount > 0 {
 		partialReasons["business_ref_unresolved"] = struct{}{}
 	}
+	_, resolverUnresolved := partialReasons["resolver_unresolved"]
+	if producerReportedUnresolved && (len(businessRefs) == 0 || resolverUnresolved) {
+		partialReasons["business_ref_unresolved"] = struct{}{}
+	}
 	if response.VisibilitySummary.UnauthorizedRefCount > 0 {
 		partialReasons["business_ref_unauthorized"] = struct{}{}
 	}
@@ -696,6 +1047,9 @@ func buildBusinessGraph(traces []evidencevo.NormalizedTrace, truncated bool) evi
 	}
 	if truncated {
 		partialReasons["evidence_query_truncated"] = struct{}{}
+	}
+	if resolverAttempted && resolverFailed {
+		partialReasons["resolver_failed"] = struct{}{}
 	}
 
 	response.PartialReasons = sortedKeys(partialReasons)
@@ -706,10 +1060,123 @@ func buildBusinessGraph(traces []evidencevo.NormalizedTrace, truncated bool) evi
 	return response
 }
 
-func hasInteractionEvent(traces []evidencevo.NormalizedTrace) bool {
+func (s *Service) resolveBusinessRefs(ctx context.Context, traces []evidencevo.NormalizedTrace, scope evidencevo.QueryScope) (map[string]ibusinessresolver.Resolution, bool, bool) {
+	result := map[string]ibusinessresolver.Resolution{}
+	if s.businessResolver == nil || !trustedQueryScope(scope) {
+		return result, false, false
+	}
+	refs := make([]ibusinessresolver.BusinessRef, 0)
+	seen := map[string]struct{}{}
+	claimedSourceEvents := visibleClaimSourceEvents(traces)
+	for _, trace := range traces {
+		for _, event := range trace.Events {
+			items := []any{}
+			if event.EventType == "business.refs.resolved" || event.EventType == "knowledge.read.observed" {
+				items = append(items, arrayField(event.Payload, "business_refs")...)
+			}
+			if _, claimed := claimedSourceEvents[event.EventID]; claimed {
+				items = append(items, claimedFactBusinessRefs(event)...)
+			}
+			for _, item := range items {
+				ref, ok := item.(map[string]any)
+				if !ok || !visible(ref) {
+					continue
+				}
+				refID := stringValue(ref, "ref_id")
+				if refID == "" {
+					continue
+				}
+				key := refID + "\x00" + stringValue(ref, "ref_type") + "\x00" + stringValue(ref, "source_system")
+				if _, exists := seen[key]; exists {
+					continue
+				}
+				seen[key] = struct{}{}
+				refs = append(refs, ibusinessresolver.BusinessRef{
+					RefID: refID, RefType: stringValue(ref, "ref_type"), SourceSystem: stringValue(ref, "source_system"),
+					VersionStatus: stringValue(ref, "version_status"),
+				})
+			}
+		}
+	}
+	if len(refs) == 0 {
+		return result, false, false
+	}
+	resolved, err := s.businessResolver.ResolveBusinessRefs(ctx, ibusinessresolver.ResolveRequest{Scope: scope, Refs: refs})
+	if err != nil {
+		return result, true, true
+	}
+	for _, resolution := range resolved {
+		if resolution.RefID != "" {
+			result[resolution.RefID] = resolution
+		}
+	}
+	return result, true, false
+}
+
+func visibleClaimSourceEvents(traces []evidencevo.NormalizedTrace) map[string][]string {
+	result := map[string][]string{}
+	for _, trace := range traces {
+		for _, event := range trace.Events {
+			if event.EventType != "claim.created" || !visible(event.Payload) {
+				continue
+			}
+			claimID := stringValue(event.Payload, "claim_id")
+			if claimID == "" {
+				continue
+			}
+			for _, item := range arrayField(event.Payload, "source_event_ids") {
+				eventID, ok := item.(string)
+				if !ok || eventID == "" {
+					continue
+				}
+				duplicate := false
+				for _, existing := range result[eventID] {
+					if existing == claimID {
+						duplicate = true
+						break
+					}
+				}
+				if !duplicate {
+					result[eventID] = append(result[eventID], claimID)
+				}
+			}
+		}
+	}
+	return result
+}
+
+func claimedFactBusinessRefs(event evidencevo.EvidenceEvent) []any {
+	switch event.EventType {
+	case "retrieval.completed":
+		return arrayField(event.Payload, "source_refs")
+	case "data.query.observed":
+		refs := append([]any{}, arrayField(event.Payload, "resource_refs")...)
+		return append(refs, arrayField(event.Payload, "field_refs")...)
+	default:
+		return nil
+	}
+}
+
+func trustedQueryScope(scope evidencevo.QueryScope) bool {
+	return strings.TrimSpace(scope.AccountID) != "" && strings.TrimSpace(scope.AccountType) != "" &&
+		(strings.TrimSpace(scope.TenantID) != "" || strings.TrimSpace(scope.BusinessDomain) != "")
+}
+
+func visibleResolution(resolution ibusinessresolver.Resolution) bool {
+	return resolution.Visibility == "" || resolution.Visibility == "visible" || resolution.Visibility == "redacted"
+}
+
+func countResolverVisibility(visibility string, summary *evidencevo.VisibilitySummary) {
+	countVisibility(map[string]any{"visibility": visibility}, summary)
+}
+
+func hasBusinessExecutionEnvelope(traces []evidencevo.NormalizedTrace) bool {
 	for _, trace := range traces {
 		for _, event := range trace.Events {
 			if event.EventType == "agent.interaction.started" && event.InteractionID != "" && event.EventID != "" {
+				return true
+			}
+			if isExecutionFact(event.EventType) && event.InteractionID != "" && event.OperationID != "" && event.EventID != "" {
 				return true
 			}
 		}
@@ -803,6 +1270,18 @@ func projectExpandedBusinessNodes(response *evidencevo.BusinessGraphResponse, tr
 				})
 				eventNodes[event.EventID] = nodeID
 			}
+			for _, link := range artifactLinksFromEvent(event) {
+				addGraphNode(response, seen, evidencevo.BusinessGraphNode{
+					ID: link.ArtifactRef, NodeType: "artifact", Stage: "artifact",
+					Label: string(link.ArtifactType), EventID: event.EventID,
+					OperationID: event.OperationID, ClaimID: event.ClaimID,
+					Visibility: "visible", Properties: map[string]any{
+						"artifact_ref":  link.ArtifactRef,
+						"artifact_type": link.ArtifactType,
+						"role":          link.Role,
+					},
+				})
+			}
 		}
 	}
 	for index := range response.Data.Nodes {
@@ -866,13 +1345,24 @@ func projectExpandedBusinessEdges(response *evidencevo.BusinessGraphResponse, tr
 					appendGraphEdge(response, seen, edgeIndex, previousNode, currentNode, "transitions_to", "visible")
 				}
 			}
+			for _, link := range artifactLinksFromEvent(event) {
+				if currentNode == "" {
+					continue
+				}
+				switch link.Role {
+				case "question_artifact_ref", "query_artifact_ref", "input_artifact_ref":
+					appendGraphEdge(response, seen, edgeIndex, link.ArtifactRef, currentNode, "provides_input_to", "visible")
+				default:
+					appendGraphEdge(response, seen, edgeIndex, currentNode, link.ArtifactRef, "produces", "visible")
+				}
+			}
 		}
 	}
 }
 
 func isExecutionFact(eventType string) bool {
 	switch eventType {
-	case "retrieval.completed", "knowledge.read.observed", "data.query.observed", "model.call.observed", "tool.called", "tool.result.observed":
+	case "retrieval.completed", "knowledge.read.observed", "data.query.observed", "logic.execution.observed", "model.call.observed", "tool.called", "tool.result.observed":
 		return true
 	default:
 		return false
@@ -917,6 +1407,29 @@ func appendVisibleRefs(target []map[string]any, refs []any, summary *evidencevo.
 		ref, ok := item.(map[string]any)
 		if !ok {
 			continue
+		}
+		if visible(ref) {
+			target = append(target, cloneMap(ref))
+			summary.AuthorizedRefCount++
+			continue
+		}
+		countVisibility(ref, summary)
+	}
+	return target
+}
+
+func appendVisibleRefsUnique(target []map[string]any, refs []any, summary *evidencevo.VisibilitySummary, seen map[string]struct{}) []map[string]any {
+	for _, item := range refs {
+		ref, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		refID, _ := stringField(ref, "ref_id")
+		if refID != "" {
+			if _, exists := seen[refID]; exists {
+				continue
+			}
+			seen[refID] = struct{}{}
 		}
 		if visible(ref) {
 			target = append(target, cloneMap(ref))
@@ -978,12 +1491,10 @@ func addClaimNode(response *evidencevo.BusinessGraphResponse, seen map[string]st
 		return
 	}
 	seen[claimID] = struct{}{}
-	label, _ := stringField(payload, "claim_type")
 	versionStatus, _ := stringField(payload, "version_status")
 	response.Data.Nodes = append(response.Data.Nodes, evidencevo.BusinessGraphNode{
 		ID:            "claim:" + claimID,
 		NodeType:      "claim",
-		Label:         label,
 		ClaimID:       claimID,
 		VersionStatus: versionStatus,
 		Visibility:    visibilityValue(payload),
@@ -1003,7 +1514,7 @@ func ensureSyntheticClaimNode(response *evidencevo.BusinessGraphResponse, seen m
 	})
 }
 
-func addBusinessNode(response *evidencevo.BusinessGraphResponse, seen map[string]struct{}, refID string, claimID string, ref map[string]any) {
+func addBusinessNode(response *evidencevo.BusinessGraphResponse, seen map[string]struct{}, refID string, claimID string, ref map[string]any, display *evidencevo.BusinessDisplay) {
 	if _, ok := seen[refID]; ok {
 		return
 	}
@@ -1016,9 +1527,11 @@ func addBusinessNode(response *evidencevo.BusinessGraphResponse, seen map[string
 	response.Data.Nodes = append(response.Data.Nodes, evidencevo.BusinessGraphNode{
 		ID:            "business:" + refID,
 		NodeType:      nodeType,
+		Stage:         "evidence",
 		ClaimID:       claimID,
 		VersionStatus: versionStatus,
 		Visibility:    visibilityValue(ref),
+		Display:       display,
 		Properties:    registeredRefProperties(ref),
 	})
 }
@@ -1244,6 +1757,7 @@ func normalize(req evidencevo.IngestRequest, errors *evidencevo.ValidationErrors
 	normalized := evidencevo.NormalizedTrace{
 		TraceID:        req.Trace.TraceID,
 		RequestID:      req.Trace.RequestID,
+		ConversationID: req.Trace.ConversationID,
 		TenantID:       req.Trace.TenantID,
 		BusinessDomain: req.Trace.BusinessDomain,
 		AccountID:      req.Trace.AccountID,
@@ -1272,6 +1786,9 @@ func checkTrace(trace evidencevo.TraceContext, errors *evidencevo.ValidationErro
 	}
 	if trace.RequestID != "" && !requestIDRE.MatchString(trace.RequestID) {
 		add(errors, "BKN_TRACE_REQUIRED_FIELD_MISSING", "$.trace.bkn.request.id", "missing valid bkn.request.id")
+	}
+	if trace.ConversationID != "" && !correlationIDRE.MatchString(trace.ConversationID) {
+		add(errors, "BKN_TRACE_CORRELATION_ID_INVALID", "$.trace.bkn.conversation.id", "conversation id must be an opaque correlation identifier")
 	}
 	if trace.Traceparent != "" && !validTraceparent(trace.Traceparent) {
 		add(errors, "BKN_TRACE_INVALID_TRACEPARENT", "$.trace.traceparent", "invalid traceparent")
@@ -1306,6 +1823,9 @@ func checkEvent(event *evidencevo.EvidenceEvent, i int, requestVersion string, k
 	if requestVersion == evidencevo.ContractVersion {
 		registeredTypes = twoPointOneEventTypes
 		unsupportedCode = "BKN_TRACE_EVENT_TYPE_UNSUPPORTED"
+	} else if requestVersion == evidencevo.ArtifactContractVersion {
+		registeredTypes = twoPointTwoEventTypes
+		unsupportedCode = "BKN_TRACE_EVENT_TYPE_UNSUPPORTED"
 	}
 	if _, ok := registeredTypes[event.EventType]; event.EventType != "" && !ok {
 		add(errors, unsupportedCode, base+".event_type", "event type is not registered for this contract version")
@@ -1317,12 +1837,18 @@ func checkEvent(event *evidencevo.EvidenceEvent, i int, requestVersion string, k
 	if event.SpanID != "" && (!spanIDRE.MatchString(event.SpanID) || event.SpanID == strings.Repeat("0", 16)) {
 		add(errors, "BKN_TRACE_JOIN_FAILED", base+".span_id", "span_id must be 16 lowercase hex and non-zero")
 	}
-	if requestVersion == evidencevo.ContractVersion {
+	if requestVersion == evidencevo.ContractVersion || requestVersion == evidencevo.ArtifactContractVersion {
 		checkTwoPointOneEnvelope(event, base, errors)
-		checkTwoPointOnePayload(*event, base+".payload", errors)
+		if requestVersion == evidencevo.ArtifactContractVersion {
+			checkTwoPointTwoPayload(*event, base+".payload", errors)
+		} else {
+			checkTwoPointOnePayload(*event, base+".payload", errors)
+		}
 	}
 
 	switch event.EventType {
+	case "knowledge.read.observed":
+		normalized.BusinessRefCount += len(arrayField(event.Payload, "business_refs"))
 	case "claim.created":
 		checkClaim(event.Payload, base+".payload", normalized, errors)
 	case "evidence.refs.created":
@@ -1338,8 +1864,56 @@ func checkEvent(event *evidencevo.EvidenceEvent, i int, requestVersion string, k
 	}
 }
 
+func checkTwoPointTwoPayload(event evidencevo.EvidenceEvent, base string, errors *evidencevo.ValidationErrors) {
+	payload := event.Payload
+	allowed, registered := twoPointTwoPayloadFields[event.EventType]
+	switch event.EventType {
+	case "logic.execution.observed":
+		checkRegisteredPayloadFields(payload, base, allowed, registered, errors)
+		checkHashFields(payload, base, errors)
+		requiredStringField(payload, "logic_ref", base, errors)
+		if logicRef, _ := stringField(payload, "logic_ref"); logicRef != "" && !validControlledRef(logicRef) {
+			add(errors, "BKN_TRACE_REQUIRED_FIELD_MISSING", base+".logic_ref", "logic_ref must be a controlled namespaced reference")
+		}
+		requiredArtifactRef(payload, "input_artifact_ref", base, errors)
+		requiredArtifactRef(payload, "result_artifact_ref", base, errors)
+		requiredStringField(payload, "status", base, errors)
+		if status, _ := stringField(payload, "status"); status != "" {
+			requireEnum(status, []string{"ok", "success", "error"}, base+".status", errors)
+		}
+	default:
+		checkRegisteredTwoPointOnePayload(event, base, allowed, registered, true, errors)
+		switch event.EventType {
+		case "agent.interaction.started":
+			requiredArtifactRef(payload, "question_artifact_ref", base, errors)
+		case "data.query.observed":
+			requiredArtifactRef(payload, "query_artifact_ref", base, errors)
+			requiredArtifactRef(payload, "result_artifact_ref", base, errors)
+		case "claim.created":
+			requiredArtifactRef(payload, "result_artifact_ref", base, errors)
+		case "action.recommended":
+			requiredArtifactRef(payload, "input_artifact_ref", base, errors)
+		case "action.result_recorded":
+			requiredArtifactRef(payload, "result_artifact_ref", base, errors)
+		}
+	}
+}
+
+func requiredArtifactRef(payload map[string]any, field, base string, errors *evidencevo.ValidationErrors) {
+	requiredStringField(payload, field, base, errors)
+	if value, _ := stringField(payload, field); value != "" && !artifactRefRE.MatchString(value) {
+		add(errors, "BKN_TRACE_REQUIRED_FIELD_MISSING", base+"."+field, field+" must be an opaque artifact:<id> reference")
+	}
+}
+
 func checkTwoPointOneEnvelope(event *evidencevo.EvidenceEvent, base string, errors *evidencevo.ValidationErrors) {
 	required(event.InteractionID, base+".interaction_id", errors)
+	if event.InteractionID != "" && !correlationIDRE.MatchString(event.InteractionID) {
+		add(errors, "BKN_TRACE_CORRELATION_ID_INVALID", base+".interaction_id", "interaction id must be an opaque correlation identifier")
+	}
+	if event.OperationID != "" && !correlationIDRE.MatchString(event.OperationID) {
+		add(errors, "BKN_TRACE_CORRELATION_ID_INVALID", base+".operation_id", "operation id must be an opaque correlation identifier")
+	}
 	if event.Attempt == 0 {
 		event.Attempt = 1
 	}
@@ -1349,7 +1923,7 @@ func checkTwoPointOneEnvelope(event *evidencevo.EvidenceEvent, base string, erro
 	if event.EventType != "agent.interaction.started" && event.EventType != "claim.created" {
 		required(event.OperationID, base+".operation_id", errors)
 	}
-	if event.EventType != "agent.interaction.started" {
+	if eventRequiresCausation(event.EventType) {
 		required(event.CausationID, base+".causation_event_id", errors)
 	}
 	if eventNeedsClaim(event.EventType) {
@@ -1360,21 +1934,30 @@ func checkTwoPointOneEnvelope(event *evidencevo.EvidenceEvent, base string, erro
 	}
 }
 
+func eventRequiresCausation(eventType string) bool {
+	switch eventType {
+	case "agent.interaction.started", "claim.created",
+		"retrieval.completed", "knowledge.read.observed", "data.query.observed",
+		"model.call.observed", "tool.called":
+		return false
+	default:
+		return true
+	}
+}
+
 func eventNeedsClaim(eventType string) bool {
 	return eventType == "claim.created" || eventType == "evidence.refs.created" || eventType == "business.refs.resolved" || strings.HasPrefix(eventType, "action.")
 }
 
 func checkTwoPointOnePayload(event evidencevo.EvidenceEvent, base string, errors *evidencevo.ValidationErrors) {
+	allowed, registered := twoPointOnePayloadFields[event.EventType]
+	checkRegisteredTwoPointOnePayload(event, base, allowed, registered, false, errors)
+}
+
+func checkRegisteredTwoPointOnePayload(event evidencevo.EvidenceEvent, base string, allowed map[string]struct{}, registered bool, artifactLinked bool, errors *evidencevo.ValidationErrors) {
 	payload := event.Payload
 	checkHashFields(payload, base, errors)
-	allowed, registered := twoPointOnePayloadFields[event.EventType]
-	if registered {
-		for key := range payload {
-			if _, ok := allowed[key]; !ok {
-				add(errors, "BKN_TRACE_PAYLOAD_FIELD_UNSUPPORTED", base+"."+key, "payload field is not registered for this event type")
-			}
-		}
-	}
+	checkRegisteredPayloadFields(payload, base, allowed, registered, errors)
 	switch event.EventType {
 	case "agent.interaction.started":
 		requiredStringField(payload, "intent_hash", base, errors)
@@ -1427,6 +2010,7 @@ func checkTwoPointOnePayload(event evidencevo.EvidenceEvent, base string, errors
 		checkActionStatus(payload, "recommended", base, errors)
 		requiredStringField(payload, "action_type", base, errors)
 		requiredStringArrayField(payload, "target_refs", base, errors)
+		checkControlledStringRefs(payload, "target_refs", base, errors)
 		requiredStringField(payload, "reason_hash", base, errors)
 	case "action.approval_requested":
 		checkActionBase(payload, base, errors)
@@ -1454,9 +2038,22 @@ func checkTwoPointOnePayload(event evidencevo.EvidenceEvent, base string, errors
 	case "action.result_recorded":
 		checkActionBase(payload, base, errors)
 		requiredStringField(payload, "result_hash", base, errors)
-		requiredOneStringField(payload, []string{"artifact_ref", "task_ref"}, base, errors)
+		if !artifactLinked {
+			requiredOneStringField(payload, []string{"artifact_ref", "task_ref"}, base, errors)
+		}
 		status, _ := stringField(payload, "status")
 		requireEnum(status, []string{"recorded", "created", "updated", "deleted", "success", "error"}, base+".status", errors)
+	}
+}
+
+func checkRegisteredPayloadFields(payload map[string]any, base string, allowed map[string]struct{}, registered bool, errors *evidencevo.ValidationErrors) {
+	if !registered {
+		return
+	}
+	for key := range payload {
+		if _, ok := allowed[key]; !ok {
+			add(errors, "BKN_TRACE_PAYLOAD_FIELD_UNSUPPORTED", base+"."+key, "payload field is not registered for this event type")
+		}
 	}
 }
 
@@ -1523,8 +2120,12 @@ func checkTwoPointOneRef(ref map[string]any, refBase string, errors *evidencevo.
 	for _, field := range []string{"ref_id", "ref_type", "source_system", "validity", "version_status", "visibility"} {
 		requiredStringField(ref, field, refBase, errors)
 	}
-	if refID, _ := stringField(ref, "ref_id"); refID != "" && !validControlledRef(refID) {
-		add(errors, "BKN_TRACE_SENSITIVE_VALUE_LEAKED", refBase+".ref_id", "reference id must be a controlled namespaced identifier")
+	if refID, _ := stringField(ref, "ref_id"); refID != "" {
+		if !validControlledRef(refID) {
+			add(errors, "BKN_TRACE_SENSITIVE_VALUE_LEAKED", refBase+".ref_id", "reference id must be a controlled namespaced identifier")
+		} else if !validQualifiedRef(refID) {
+			add(errors, "BKN_TRACE_REFERENCE_ID_INVALID", refBase+".ref_id", "business reference id must include its knowledge-network or resource scope")
+		}
 	}
 	if validity, _ := stringField(ref, "validity"); validity != "" {
 		if _, ok := validValidity[validity]; !ok {
@@ -1570,11 +2171,28 @@ func checkFactRefs(refs []any, key, base string, errors *evidencevo.ValidationEr
 		case string:
 			if !validControlledRef(ref) {
 				add(errors, "BKN_TRACE_SENSITIVE_VALUE_LEAKED", refBase, "reference must be a controlled namespaced identifier")
+			} else if !validQualifiedRef(ref) {
+				add(errors, "BKN_TRACE_REFERENCE_ID_INVALID", refBase, "business reference id must include its knowledge-network or resource scope")
 			}
 		case map[string]any:
 			checkTwoPointOneRef(ref, refBase, errors)
 		default:
 			add(errors, "BKN_TRACE_REQUIRED_FIELD_MISSING", refBase, "reference must be a controlled identifier or reference object")
+		}
+	}
+}
+
+func checkControlledStringRefs(payload map[string]any, key, base string, errors *evidencevo.ValidationErrors) {
+	for i, item := range arrayField(payload, key) {
+		ref, ok := item.(string)
+		if !ok || ref == "" {
+			continue
+		}
+		path := base + "." + key + "[" + strconv.Itoa(i) + "]"
+		if !validControlledRef(ref) {
+			add(errors, "BKN_TRACE_SENSITIVE_VALUE_LEAKED", path, "reference must be a controlled namespaced identifier")
+		} else if !validQualifiedRef(ref) {
+			add(errors, "BKN_TRACE_REFERENCE_ID_INVALID", path, "business reference id must include its knowledge-network or resource scope")
 		}
 	}
 }
@@ -1588,6 +2206,25 @@ func validControlledRef(value string) bool {
 	switch namespace {
 	case "table", "column", "physical_table", "physical_field":
 		return false
+	default:
+		return true
+	}
+}
+
+func validQualifiedRef(value string) bool {
+	parts := strings.Split(strings.TrimSpace(value), ":")
+	for _, part := range parts {
+		if part == "" {
+			return false
+		}
+	}
+	switch parts[0] {
+	case "kn", "resource":
+		return len(parts) == 2
+	case "object", "relation", "action_type", "metric", "field":
+		return len(parts) == 3
+	case "property":
+		return len(parts) == 4
 	default:
 		return true
 	}
@@ -1657,7 +2294,8 @@ func checkRefs(payload map[string]any, base string, key string, knownClaims map[
 		add(errors, "BKN_TRACE_UNKNOWN_CLAIM_ID", base+".claim_id", "refs must point to a known claim_id in the same batch")
 	}
 	refs := arrayField(payload, key)
-	allowEmptyUnresolvedBusinessRefs := requestVersion == evidencevo.ContractVersion && key == "business_refs"
+	allowEmptyUnresolvedBusinessRefs := (requestVersion == evidencevo.ContractVersion ||
+		requestVersion == evidencevo.ArtifactContractVersion) && key == "business_refs"
 	if status, _ := stringField(payload, "resolver_status"); status != "unresolved" {
 		allowEmptyUnresolvedBusinessRefs = false
 	}

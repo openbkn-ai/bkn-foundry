@@ -89,7 +89,7 @@ func (c *mfModelAPIClient) Chat(ctx context.Context, req *interfaces.LLMChatReq)
 	}
 
 	// 获取Header（统一方式）
-	header := common.GetHeaderFromCtx(ctx)
+	header := common.GetHeaderForChildOperation(ctx, "model.chat", 1)
 	header[rest.ContentTypeKey] = rest.ContentTypeJSON
 
 	c.logger.WithContext(ctx).Debugf("[MFModelAPIClient#Chat] URL: %s", url)
@@ -147,7 +147,7 @@ func (c *mfModelAPIClient) Rerank(ctx context.Context, query string, documents [
 	}
 
 	// 获取Header（统一方式）
-	header := common.GetHeaderFromCtx(ctx)
+	header := common.GetHeaderForChildOperation(ctx, "model.rerank", 1)
 	header[rest.ContentTypeKey] = rest.ContentTypeJSON
 
 	c.logger.WithContext(ctx).Debugf("[MFModelAPIClient#Rerank] URL: %s, query: %s, docs count: %d",

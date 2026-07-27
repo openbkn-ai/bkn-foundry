@@ -27,6 +27,23 @@ import (
 )
 
 func TestPermissionAccessCheckPermission(t *testing.T) {
+	t.Run("forks child operation and propagates replay envelope", func(t *testing.T) {
+		access, call := newMockPermissionAccess(t, http.StatusOK, []byte(`{"result":true}`), nil)
+		ctx := common.SetTraceContextToCtx(context.Background(), common.TraceContext{
+			RequestID: "req_vega_permission_child_001", InteractionID: "interaction-1",
+			OperationID: "parent-operation", CausationEventID: "parent-event", Attempt: 2,
+			ObservedAt: "2026-07-25T08:00:00Z", ObservedAtProvided: true,
+		})
+
+		_, err := access.CheckPermission(ctx, samplePermissionCheck())
+		require.NoError(t, err)
+		assert.NotEmpty(t, call.headers[common.HeaderBKNOperationID])
+		assert.NotEqual(t, "parent-operation", call.headers[common.HeaderBKNOperationID])
+		assert.Equal(t, "parent-event", call.headers[common.HeaderBKNCausationEventID])
+		assert.Equal(t, "2", call.headers[common.HeaderBKNAttempt])
+		assert.Equal(t, "2026-07-25T08:00:00Z", call.headers[common.HeaderBKNEventObservedAt])
+	})
+
 	t.Run("returns decision", func(t *testing.T) {
 		access, call := newMockPermissionAccess(t, http.StatusOK, []byte(`{"result":true}`), nil)
 

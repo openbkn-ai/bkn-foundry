@@ -86,19 +86,24 @@ func TestBuildTraceHeaders(t *testing.T) {
 
 func TestBusinessCausalityHeadersAreValidatedAndPropagated(t *testing.T) {
 	ctx := SetTraceContextToCtx(context.Background(), TraceContext{
-		RequestID:        "req_01JZVALIDREQUESTID000000024",
-		InteractionID:    "int_business_trace_0001",
-		OperationID:      "op_data_query_0001",
-		CausationEventID: "evt_retrieval_completed_0001",
-		ClaimID:          "claim_agent_answer_0001",
-		Attempt:          3,
+		RequestID:          "req_01JZVALIDREQUESTID000000024",
+		BusinessDomain:     "domain-finance-001",
+		InteractionID:      "third-party-interaction-0001",
+		OperationID:        "data-query-0001",
+		CausationEventID:   "retrieval-completed-0001",
+		ClaimID:            "agent-answer-0001",
+		Attempt:            3,
+		ObservedAt:         "2026-07-25T08:00:00Z",
+		ObservedAtProvided: true,
 	})
 	headers := BuildTraceHeaders(ctx)
-	require.Equal(t, "int_business_trace_0001", headers[HeaderBKNInteractionID])
-	require.Equal(t, "op_data_query_0001", headers[HeaderBKNOperationID])
-	require.Equal(t, "evt_retrieval_completed_0001", headers[HeaderBKNCausationEventID])
-	require.Equal(t, "claim_agent_answer_0001", headers[HeaderBKNClaimID])
+	require.Equal(t, "domain-finance-001", headers[HeaderBusinessDomain])
+	require.Equal(t, "third-party-interaction-0001", headers[HeaderBKNInteractionID])
+	require.Equal(t, "data-query-0001", headers[HeaderBKNOperationID])
+	require.Equal(t, "retrieval-completed-0001", headers[HeaderBKNCausationEventID])
+	require.Equal(t, "agent-answer-0001", headers[HeaderBKNClaimID])
 	require.Equal(t, "3", headers[HeaderBKNAttempt])
+	require.Contains(t, headers[HeaderBaggage], "business_domain=domain-finance-001")
 
 	invalid := map[string]string{
 		HeaderBKNRequestID:        "req_01JZVALIDREQUESTID000000025",
@@ -114,6 +119,32 @@ func TestBusinessCausalityHeadersAreValidatedAndPropagated(t *testing.T) {
 	require.Empty(t, traceCtx.CausationEventID)
 	require.Empty(t, traceCtx.ClaimID)
 	require.Equal(t, 1, traceCtx.Attempt)
+}
+
+func TestBuildTraceHeadersForChildOperation(t *testing.T) {
+	ctx := SetTraceContextToCtx(context.Background(), TraceContext{
+		RequestID: "req_01JZVALIDREQUESTID000000027", InteractionID: "interaction-1",
+		OperationID: "parent-operation", CausationEventID: "parent-event", Attempt: 2,
+	})
+	first := BuildTraceHeadersForChildOperation(ctx, "model.chat", 1)
+	second := BuildTraceHeadersForChildOperation(ctx, "model.chat", 1)
+	third := BuildTraceHeadersForChildOperation(ctx, "model.chat", 2)
+	require.NotEqual(t, "parent-operation", first[HeaderBKNOperationID])
+	require.Equal(t, first[HeaderBKNOperationID], second[HeaderBKNOperationID])
+	require.NotEqual(t, first[HeaderBKNOperationID], third[HeaderBKNOperationID])
+	require.Equal(t, "parent-event", first[HeaderBKNCausationEventID])
+	require.Equal(t, "2", first[HeaderBKNAttempt])
+}
+
+func TestMergeTraceHeadersForChildOperationKeepsCallerHeaders(t *testing.T) {
+	ctx := SetTraceContextToCtx(context.Background(), TraceContext{
+		RequestID: "req_01JZVALIDREQUESTID000000028", InteractionID: "interaction-1",
+		OperationID: "parent-operation", CausationEventID: "parent-event", Attempt: 2,
+	})
+	headers := MergeTraceHeadersForChildOperation(ctx, map[string]string{"Content-Type": "application/json"}, "permission.resource.check", 2)
+	require.Equal(t, "application/json", headers["Content-Type"])
+	require.NotEqual(t, "parent-operation", headers[HeaderBKNOperationID])
+	require.Equal(t, "parent-event", headers[HeaderBKNCausationEventID])
 }
 
 func TestStripBusinessTraceHeadersAtUntrustedBoundary(t *testing.T) {

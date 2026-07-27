@@ -1,9 +1,11 @@
 package rdto
 
 type ErrorResponse struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
-	Details any    `json:"details,omitempty"`
+	ErrorCode string `json:"error_code"`
+	Code      string `json:"code,omitempty"`
+	Message   string `json:"message"`
+	TraceID   string `json:"trace_id"`
+	Details   any    `json:"details,omitempty"`
 }
 
 type TraceSearchByConversationResponse struct {

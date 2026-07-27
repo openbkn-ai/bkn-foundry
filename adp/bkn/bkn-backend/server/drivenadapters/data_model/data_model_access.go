@@ -70,10 +70,9 @@ func (dda *dataModelAccess) GetMetricModelByID(ctx context.Context, id string) (
 
 	respCode, respData, err := dda.httpClient.GetNoUnmarshal(ctx, httpUrl, nil, headers)
 	if err != nil {
-		errDetails := fmt.Sprintf("GetMetricModelByID http request failed: %s", err.Error())
-		otellog.LogError(ctx, errDetails, nil)
+		common.LogSafeError(ctx, "GetMetricModelByID http request failed", err)
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http get models failed")
-		return nil, fmt.Errorf("get request method failed: %s", err)
+		return nil, fmt.Errorf("data model dependency request failed")
 	}
 
 	if respCode == http.StatusNotFound {
@@ -85,23 +84,23 @@ func (dda *dataModelAccess) GetMetricModelByID(ctx context.Context, id string) (
 	}
 
 	if respCode != http.StatusOK {
-		logger.Errorf("get metric model failed: %s", respData)
+		logger.Errorf("get metric model failed: response_code=%d, %s", respCode, common.SafeTextSummary("response", string(respData)))
 
 		var baseError rest.BaseError
 		if err = sonic.Unmarshal(respData, &baseError); err != nil {
-			otellog.LogError(ctx, err.Error(), nil)
+			common.LogSafeError(ctx, "Unmarshal metric model error response failed", err)
 			oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmarshal baseError failed")
-			return nil, err
+			return nil, fmt.Errorf("data model dependency returned HTTP %d", respCode)
 		}
 
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", baseError.Description, baseError.ErrorDetails), nil)
+		common.LogSafeError(ctx, "GetMetricModelByID returned non-success status", fmt.Errorf("HTTP %d", respCode))
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status code is not 200")
-		return nil, fmt.Errorf("GetMetricModelByID failed: %s", baseError.ErrorDetails)
+		return nil, fmt.Errorf("data model dependency returned HTTP %d", respCode)
 	}
 
 	var models []*interfaces.MetricModel
 	if err = sonic.Unmarshal(respData, &models); err != nil {
-		otellog.LogError(ctx, err.Error(), nil)
+		common.LogSafeError(ctx, "Unmarshal metric model info failed", err)
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmarshal metric model info failed")
 		return nil, err
 	}

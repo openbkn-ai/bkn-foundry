@@ -27,6 +27,8 @@ func TestTraceContextHelpers(t *testing.T) {
 			"bkn.account.type": "service",
 			"bkn.runtime.env":  "test",
 		})
+		convey.So(traceCtx.InteractionID, convey.ShouldBeEmpty)
+		convey.So(traceCtx.OperationID, convey.ShouldBeEmpty)
 	})
 
 	convey.Convey("SetTraceContextToCtx generates a request id when missing or invalid", t, func() {
@@ -37,6 +39,23 @@ func TestTraceContextHelpers(t *testing.T) {
 		convey.So(traceCtx.RequestID, convey.ShouldStartWith, "req_")
 		convey.So(IsValidBKNRequestID(traceCtx.RequestID), convey.ShouldBeTrue)
 	})
+}
+
+func TestBuildTraceHeadersForChildOperation(t *testing.T) {
+	ctx := SetTraceContextToCtx(context.Background(), TraceContext{
+		RequestID: "req_01JZVALIDREQUESTID000000014", BusinessDomain: "domain-demo",
+		InteractionID: "third-party-interaction", OperationID: "parent-operation",
+		CausationEventID: "parent-event", Attempt: 2, ObservedAt: "2026-07-25T08:00:00Z",
+	})
+	first := BuildTraceHeadersForChildOperation(ctx, "vega.resource.query", 1)
+	replay := BuildTraceHeadersForChildOperation(ctx, "vega.resource.query", 1)
+	second := BuildTraceHeadersForChildOperation(ctx, "vega.resource.query", 2)
+	if first[HeaderBKNOperationID] == "parent-operation" || first[HeaderBKNOperationID] != replay[HeaderBKNOperationID] || first[HeaderBKNOperationID] == second[HeaderBKNOperationID] {
+		t.Fatalf("child operation identity is not stable and collision-free: %#v %#v %#v", first, replay, second)
+	}
+	if first[HeaderBKNCausationEventID] != "parent-event" || first[HeaderBusinessDomain] != "domain-demo" || first[HeaderBKNEventObservedAt] != "2026-07-25T08:00:00Z" {
+		t.Fatalf("replay envelope was not propagated: %#v", first)
+	}
 }
 
 func TestTraceContextFromHeaders(t *testing.T) {

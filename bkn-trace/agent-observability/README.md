@@ -173,6 +173,8 @@ helm upgrade --install agent-observability charts/agent-observability \
 
 写入方需要携带 `Authorization: Bearer <strong-token>` 或 `X-BKN-Trace-Ingest-Token: <strong-token>`。生产环境未配置 `BKN_TRACE_EVIDENCE_INGEST_TOKEN` 时接口返回 `503 INGEST_AUTH_NOT_CONFIGURED`，不得 fail-open。仅本地开发和测试可显式设置 `BKN_TRACE_ALLOW_UNAUTHENTICATED_INGEST=true`；Helm 默认值为 `false`。
 
+Studio 查询使用用户 OAuth access token。核心服务通过 `BKN_TRACE_HYDRA_ADMIN_URL` 调用 Hydra introspection，从 token 派生可信 `account_id/account_type`，拒绝客户端自报身份与 token 不一致的请求；当前业务域由 Studio 发送。解析 BKN/Vega 业务名称时只在内存中向授权下游转发该 Bearer，不能写入日志、事件、索引或响应。服务到服务查询仍可配置独立的 `BKN_TRACE_QUERY_GATEWAY_TOKEN`，不得把该 token 放入浏览器。
+
 Evidence、Business Graph、Snapshot、Node 和技术 Trace Graph 查询必须同时经过两层校验：API 网关通过 `X-BKN-Trace-Query-Token` 提交独立网关凭据，并注入 `x-account-id`、`x-account-type`，以及 `x-business-domain` 或 `x-tenant-id`。Evidence 索引持久化 tenant/business domain/account 归属；持久化了多个归属维度时必须逐一匹配，查询在 OpenSearch 条件和返回层同时过滤。跨归属查询统一返回 404，不泄露 trace 是否存在。
 
 `BKN_TRACE_QUERY_GATEWAY_TOKEN` 必须与 ingest token 使用不同 Secret，只提供给 API 网关，不提供给 producer 或浏览器。producer 即使持有 ingest token并伪造身份 header，也不能调用查询接口。网关必须剥离外部调用方提交的 `X-BKN-Trace-Query-Token` 与身份 header，再从受控 Secret 和认证上下文重新注入。未配置 query gateway token 时生产查询返回 `503 QUERY_AUTH_NOT_CONFIGURED`；仅本地开发和测试可显式设置 `BKN_TRACE_ALLOW_UNAUTHENTICATED_QUERY=true`，Helm 默认关闭。
@@ -242,16 +244,21 @@ Business Graph 查询返回从 `business.refs.resolved` 派生的业务语义图
         "claim_id": "claim_handler_business"
       },
       {
-        "id": "business:object:customer",
+        "id": "business:object:kn_demo:customer",
         "node_type": "object",
-        "label": "Customer"
+        "display": {
+          "name": "客户",
+          "business_path": ["客户"],
+          "resolution_status": "resolved",
+          "source_version": "main"
+        }
       }
     ],
     "edges": [
       {
         "id": "edge:1",
         "source_id": "claim:claim_handler_business",
-        "target_id": "business:object:customer",
+        "target_id": "business:object:kn_demo:customer",
         "edge_type": "claim_to_object"
       }
     ]

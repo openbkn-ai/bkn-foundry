@@ -232,6 +232,7 @@ def instrument_tool_calls(tools: list[Any], account_id: str, account_type: str) 
                     toolbox_id=None,
                     result_hash=None,
                     result_length=None,
+                    result_count=None,
                     success=False,
                     operation_name="bkn.agent.tool.call",
                     error_hash=evidence.hash_value(f"{type(exc).__name__}:{exc}"),
@@ -249,13 +250,17 @@ def instrument_tool_calls(tools: list[Any], account_id: str, account_type: str) 
                 toolbox_id=None,
                 result_hash=evidence.hash_value(result),
                 result_length=len(result_text),
+                result_count=evidence.result_count(result),
                 success=True,
                 operation_name="bkn.agent.tool.call",
                 operation_id=operation_id,
                 causation_event_id=called["event_id"] if called else parent_event_id or "",
             )
-            if observed:
-                evidence.record_operation_result(observed, tool_name=__tool_name, content=result)
+            evidence.record_fact_receipt(
+                operation_id=operation_id,
+                body=result if isinstance(result, dict) else None,
+                context_hash=evidence.tool_message_context_hash(result),
+            )
             await evidence.submit_events([event for event in (called, observed) if event], account_id, account_type)
             return result
 

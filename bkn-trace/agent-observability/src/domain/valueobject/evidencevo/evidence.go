@@ -21,6 +21,7 @@ type TraceContext struct {
 	TraceID        string `json:"trace_id"`
 	Traceparent    string `json:"traceparent"`
 	RequestID      string `json:"bkn.request.id"`
+	ConversationID string `json:"bkn.conversation.id,omitempty"`
 	TenantID       string `json:"bkn.tenant.id,omitempty"`
 	BusinessDomain string `json:"business_domain,omitempty"`
 	AccountID      string `json:"bkn.account.id"`
@@ -71,7 +72,7 @@ func (e EvidenceEvent) ContentHash() (string, error) {
 }
 
 func SupportedContractVersion(version string) bool {
-	return version == LegacyContractVersion || version == ContractVersion
+	return version == LegacyContractVersion || version == ContractVersion || version == ArtifactContractVersion
 }
 
 func NovelEvents(existing []NormalizedTrace, incoming []EvidenceEvent) ([]EvidenceEvent, string, error) {
@@ -230,6 +231,10 @@ func WithEvents(trace NormalizedTrace, events []EvidenceEvent) NormalizedTrace {
 			if refs, ok := event.Payload["business_refs"].([]any); ok {
 				trace.BusinessRefCount += len(refs)
 			}
+		case "knowledge.read.observed":
+			if refs, ok := event.Payload["business_refs"].([]any); ok {
+				trace.BusinessRefCount += len(refs)
+			}
 		}
 	}
 	return trace
@@ -253,6 +258,7 @@ func (e ValidationErrors) Error() string {
 type NormalizedTrace struct {
 	TraceID          string
 	RequestID        string
+	ConversationID   string
 	TenantID         string
 	BusinessDomain   string
 	AccountID        string
@@ -276,15 +282,21 @@ type QueryScope struct {
 	BusinessDomain string
 	AccountID      string
 	AccountType    string
+	Authorization  string `json:"-"`
 }
 
 func SameOwnership(existing NormalizedTrace, incoming NormalizedTrace) bool {
 	return existing.TraceID == incoming.TraceID &&
 		existing.RequestID == incoming.RequestID &&
+		compatibleOptionalIdentity(existing.ConversationID, incoming.ConversationID) &&
 		existing.TenantID == incoming.TenantID &&
 		existing.BusinessDomain == incoming.BusinessDomain &&
 		existing.AccountID == incoming.AccountID &&
 		existing.AccountType == incoming.AccountType
+}
+
+func compatibleOptionalIdentity(existing, incoming string) bool {
+	return existing == "" || incoming == "" || existing == incoming
 }
 
 func MatchesScope(trace NormalizedTrace, scope QueryScope) bool {
@@ -335,9 +347,20 @@ type EvidencePage struct {
 }
 
 type EvidenceChainData struct {
-	Claims       []map[string]any `json:"claims"`
-	EvidenceRefs []map[string]any `json:"evidence_refs"`
-	BusinessRefs []map[string]any `json:"business_refs"`
+	Claims        []map[string]any `json:"claims"`
+	EvidenceRefs  []map[string]any `json:"evidence_refs"`
+	BusinessRefs  []map[string]any `json:"business_refs"`
+	ArtifactLinks []ArtifactLink   `json:"artifact_links"`
+}
+
+type ArtifactLink struct {
+	ArtifactRef  string       `json:"artifact_ref"`
+	ArtifactType ArtifactType `json:"artifact_type"`
+	Role         string       `json:"role"`
+	EventID      string       `json:"event_id"`
+	EventType    string       `json:"event_type"`
+	OperationID  string       `json:"operation_id,omitempty"`
+	ClaimID      string       `json:"claim_id,omitempty"`
 }
 
 type BusinessGraphResponse struct {
@@ -402,18 +425,27 @@ type BusinessGraphData struct {
 }
 
 type BusinessGraphNode struct {
-	ID            string         `json:"id"`
-	NodeType      string         `json:"node_type"`
-	Stage         string         `json:"stage,omitempty"`
-	Label         string         `json:"label,omitempty"`
-	EventID       string         `json:"event_id,omitempty"`
-	InteractionID string         `json:"interaction_id,omitempty"`
-	OperationID   string         `json:"operation_id,omitempty"`
-	ClaimID       string         `json:"claim_id,omitempty"`
-	ActionID      string         `json:"action_instance_id,omitempty"`
-	VersionStatus string         `json:"version_status,omitempty"`
-	Visibility    string         `json:"visibility,omitempty"`
-	Properties    map[string]any `json:"properties,omitempty"`
+	ID            string           `json:"id"`
+	NodeType      string           `json:"node_type"`
+	Stage         string           `json:"stage,omitempty"`
+	Label         string           `json:"label,omitempty"`
+	EventID       string           `json:"event_id,omitempty"`
+	InteractionID string           `json:"interaction_id,omitempty"`
+	OperationID   string           `json:"operation_id,omitempty"`
+	ClaimID       string           `json:"claim_id,omitempty"`
+	ActionID      string           `json:"action_instance_id,omitempty"`
+	VersionStatus string           `json:"version_status,omitempty"`
+	Visibility    string           `json:"visibility,omitempty"`
+	Display       *BusinessDisplay `json:"display,omitempty"`
+	Properties    map[string]any   `json:"properties,omitempty"`
+}
+
+type BusinessDisplay struct {
+	Name              string   `json:"name"`
+	BusinessPath      []string `json:"business_path,omitempty"`
+	ControlledSummary string   `json:"controlled_summary,omitempty"`
+	ResolutionStatus  string   `json:"resolution_status"`
+	SourceVersion     string   `json:"source_version,omitempty"`
 }
 
 type BusinessGraphEdge struct {

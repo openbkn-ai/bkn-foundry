@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import json
 import re
 import time
@@ -30,7 +31,103 @@ _TOKENIZER_LOCK = threading.RLock()
 _MAX_CACHE_SIZE = 5  # 限制最大缓存数量
 
 
-class OpenAIClient:
+class BKNTraceModelMixin:
+    trace_context = None
+    bkn_trace_provider = "other"
+
+    def _emit_bkn_trace_evidence(self, *, messages, params, status, input_token_count=0,
+                                 output_token_count=0, output=None, error_category=""):
+        try:
+            if not self.trace_context or not bkntrace_evidence.evidence_enabled():
+                return
+            events = bkntrace_evidence.build_model_call_events(
+                self.trace_context,
+                model_id=self.model_id,
+                model_name=self.api_model,
+                model_provider=self.bkn_trace_provider,
+                operation="model.chat.completions",
+                messages=messages,
+                params=params,
+                status=status,
+                input_token_count=input_token_count,
+                output_token_count=output_token_count,
+                output=output,
+                error_category=error_category,
+            )
+            bkntrace_evidence.emit_model_call_events(self.trace_context, events)
+        except Exception:
+            StandLogger.warn("BKN Trace model evidence emission failed")
+            return
+
+
+def emit_model_result(client, messages, params, result):
+    failed = isinstance(result, dict) and "detail" in result
+    usage = result.get("usage", {}) if isinstance(result, dict) else {}
+    client._emit_bkn_trace_evidence(
+        messages=messages,
+        params=params,
+        status="failed" if failed else "success",
+        input_token_count=usage.get("prompt_tokens", 0),
+        output_token_count=usage.get("completion_tokens", 0),
+        output=result,
+        error_category="model_provider_error" if failed else "",
+    )
+
+
+async def trace_model_stream(client, stream, messages, params):
+    digest = hashlib.sha256()
+    emitted = False
+    try:
+        async for chunk in stream:
+            terminal = _is_terminal_model_chunk(chunk)
+            if not terminal:
+                digest.update(str(chunk).encode("utf-8"))
+            else:
+                client._emit_bkn_trace_evidence(
+                    messages=messages, params=params, status="success",
+                    output={"stream_hash": "sha256:" + digest.hexdigest()},
+                )
+                emitted = True
+            yield chunk
+    except Exception:
+        client._emit_bkn_trace_evidence(
+            messages=messages, params=params, status="failed",
+            error_category="model_provider_error",
+        )
+        raise
+    if not emitted:
+        client._emit_bkn_trace_evidence(
+            messages=messages, params=params, status="success",
+            output={"stream_hash": "sha256:" + digest.hexdigest()},
+        )
+
+
+def _is_terminal_model_chunk(chunk):
+    if isinstance(chunk, bytes):
+        chunk = chunk.decode("utf-8", errors="ignore")
+    if not isinstance(chunk, str):
+        return False
+    return chunk.strip() in {"[DONE]", "data: [DONE]"}
+
+
+async def emit_model_fact_before_terminal(
+        client, *, messages, params, input_token_count, output_token_count,
+        output_hash_source, usage_chunk=None, emit_terminal=True):
+    client._emit_bkn_trace_evidence(
+        messages=messages,
+        params=params,
+        status="success",
+        input_token_count=input_token_count,
+        output_token_count=output_token_count,
+        output={"content_hash_source": output_hash_source},
+    )
+    if usage_chunk is not None:
+        yield usage_chunk
+    if emit_terminal:
+        yield "[DONE]"
+
+
+class OpenAIClient(BKNTraceModelMixin):
     def __init__(self, api_key, api_model, temperature, top_p, top_k, frequency_penalty,
                  presence_penalty, max_tokens, base_url, stop=None, tools=None, tool_choice=None):
         self.llm_type = "openai",
@@ -134,7 +231,8 @@ class OpenAIClient:
         # print(res_mess)
 
 
-class OpenAIClientRequest:
+class OpenAIClientRequest(BKNTraceModelMixin):
+    bkn_trace_provider = "openai"
     def __init__(self, api_url, api_model, api_key, model_id,
                  temperature, top_p, frequency_penalty, presence_penalty, max_tokens, top_k=1, response_format={},
                  stop=None, tools=None, tool_choice=None):
@@ -321,6 +419,7 @@ class OpenAIClientRequest:
                                 yield chunk
                             elif chunk == "data: [DONE]":
                                 # end_time = time.time()
+                                usage_chunk = None
                                 if return_info:
                                     if completion_tokens == 0:
                                         completion_tokens = token_len
@@ -350,29 +449,31 @@ class OpenAIClientRequest:
 
                                         }
                                         if token_yield == False:
-                                            yield json.dumps(usage_res, ensure_ascii=False)
+                                            usage_chunk = json.dumps(usage_res, ensure_ascii=False)
                                     # yield "--info--" + str(json.dumps({"time": str(end_time - start_time),
                                     #                                    "token_len": completion_tokens,
                                     #                                    "prompt_tokens": prompt_tokens}))
-                                    yield "[DONE]"
+                                log_info = logics.AddModelUsedAudit(
+                                    model_id=self.model_id, user_id=user_id, input_tokens=prompt_tokens,
+                                    output_tokens=completion_tokens)
+                                await add_llm_model_call_log(log_info)
+                                if get_logger():
+                                    get_logger().info(
+                                        f'{{"model_name":{self.api_model},"resourece_type":"LLM","user_id":{user_id},'
+                                        f'"prompt_tokens":{prompt_tokens},"completion_tokens":{completion_tokens},'
+                                        f'"total_tokens":{prompt_tokens + completion_tokens},"func_module":{func_module},"status":"success"}}')
+                                async for terminal_chunk in emit_model_fact_before_terminal(
+                                        self,
+                                        messages=messages,
+                                        params=params,
+                                        input_token_count=prompt_tokens,
+                                        output_token_count=completion_tokens,
+                                        output_hash_source=ans,
+                                        usage_chunk=usage_chunk,
+                                        emit_terminal=return_info):
+                                    yield terminal_chunk
+                                return
                                 # yield "--end--"
-                        log_info = logics.AddModelUsedAudit(
-                            model_id=self.model_id, user_id=user_id, input_tokens=prompt_tokens,
-                            output_tokens=completion_tokens)
-                        await add_llm_model_call_log(log_info)
-                        if get_logger():
-                            get_logger().info(
-                                f'{{"model_name":{self.api_model},"resourece_type":"LLM","user_id":{user_id},'
-                                f'"prompt_tokens":{prompt_tokens},"completion_tokens":{completion_tokens},'
-                                f'"total_tokens":{prompt_tokens + completion_tokens},"func_module":{func_module},"status":"success"}}')
-                        self._emit_bkn_trace_evidence(
-                            messages=messages,
-                            params=params,
-                            status="success",
-                            input_token_count=prompt_tokens,
-                            output_token_count=completion_tokens,
-                            output={"content_hash_source": ans},
-                        )
             except aiohttp.ClientError as e:
                 if retry_time <= 0:
                     error_dict = ModelFactory_ModelController_Model_Error_Error.copy()
@@ -409,29 +510,6 @@ class OpenAIClientRequest:
                     error_category="internal_error",
                 )
                 raise e
-
-    def _emit_bkn_trace_evidence(self, *, messages, params, status, input_token_count=0, output_token_count=0, output=None, error_category=""):
-        try:
-            if not self.trace_context or not bkntrace_evidence.evidence_enabled():
-                return
-            events = bkntrace_evidence.build_model_call_events(
-                self.trace_context,
-                model_id=self.model_id,
-                model_name=self.api_model,
-                model_provider="openai",
-                operation="model.chat.completions",
-                messages=messages,
-                params=params,
-                status=status,
-                input_token_count=input_token_count,
-                output_token_count=output_token_count,
-                output=output,
-                error_category=error_category,
-            )
-            bkntrace_evidence.emit_model_call_events(self.trace_context, events)
-        except Exception:
-            return
-
 
 def prompt(ai_system, ai_user, ai_assistant, ai_history):
     messages = []
@@ -508,7 +586,8 @@ async def openai_series_stream(types, api_key, api_model, ai_system, ai_history,
         return JSONResponse(status_code=500, content=ModelTimeoutError)
 
 
-class BaiduTianchenClient:
+class BaiduTianchenClient(BKNTraceModelMixin):
+    bkn_trace_provider = "baidu_tianchen"
     def __init__(self, api_url, api_model, model_id, temperature, top_p, max_tokens, frequency_penalty,
                  ClientId, OperationCode, presence_penalty, top_k=1, stop=None):
         self.api_url = api_url
@@ -846,7 +925,8 @@ class BaiduTianchenClient:
 
 
 # 百度大模型类
-class BaiduClient:
+class BaiduClient(BKNTraceModelMixin):
+    bkn_trace_provider = "baidu"
     def __init__(self, api_url, api_model, api_key, model_id, temperature, top_p, max_tokens, frequency_penalty,
                  presence_penalty, secret_key, top_k=1, stop=None):
         self.api_url = api_url
@@ -1258,7 +1338,8 @@ class BaiduClient:
 
 
 # 其他模型类
-class OtherClient:
+class OtherClient(BKNTraceModelMixin):
+    bkn_trace_provider = "other"
     def __init__(self, api_url, api_model, api_key, model_id,
                  temperature, top_p, frequency_penalty, presence_penalty, max_tokens, top_k=1, response_format={},
                  stop=None, model_type="llm", tools=None, tool_choice=None):
@@ -1834,7 +1915,8 @@ class OtherClient:
                 return
 
 
-class ClaudeClient:
+class ClaudeClient(BKNTraceModelMixin):
+    bkn_trace_provider = "claude"
     def __init__(self, api_url, api_model, api_key, model_id,
                  temperature, top_p, frequency_penalty, presence_penalty, max_tokens, top_k=1, system=[],
                  tools=None, tool_choice=None):

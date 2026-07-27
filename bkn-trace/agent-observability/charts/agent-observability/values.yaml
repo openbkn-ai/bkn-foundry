@@ -56,7 +56,14 @@ evidence:
   queryAuth:
     existingSecret: ""
     secretKey: token
+    hydraAdminURL: http://bkn-safe-hydra-admin:4445
     allowUnauthenticated: false
+
+businessResolver:
+  enabled: false
+  bknBaseURL: ""
+  vegaBaseURL: ""
+  timeout: 3s
 
 resources:
   limits:

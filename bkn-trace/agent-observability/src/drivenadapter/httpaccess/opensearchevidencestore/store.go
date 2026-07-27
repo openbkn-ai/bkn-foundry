@@ -22,17 +22,20 @@ const (
 )
 
 type Store struct {
-	client       *opensearch.Client
-	index        string
-	now          func() time.Time
-	ensureMu     sync.Mutex
-	indexEnsured bool
+	client               *opensearch.Client
+	index                string
+	now                  func() time.Time
+	ensureMu             sync.Mutex
+	indexEnsured         bool
+	artifactEnsureMu     sync.Mutex
+	artifactIndexEnsured bool
 }
 
 type document struct {
 	DocumentID       string                     `json:"document_id"`
 	TraceID          string                     `json:"trace_id"`
 	RequestID        string                     `json:"bkn.request.id"`
+	ConversationID   string                     `json:"bkn.conversation.id,omitempty"`
 	TenantID         string                     `json:"bkn.tenant.id,omitempty"`
 	BusinessDomain   string                     `json:"business_domain,omitempty"`
 	AccountID        string                     `json:"bkn.account.id"`
@@ -44,6 +47,7 @@ type document struct {
 	ClaimCount       int                        `json:"claim_count"`
 	EvidenceRefCount int                        `json:"evidence_ref_count"`
 	BusinessRefCount int                        `json:"business_ref_count"`
+	ObservedStart    string                     `json:"observed_start,omitempty"`
 	IngestedAt       string                     `json:"ingested_at"`
 	Aggregate        bool                       `json:"aggregate,omitempty"`
 }
@@ -327,12 +331,13 @@ func (s *Store) ensureIndex(ctx context.Context) error {
 	return nil
 }
 
-const evidenceIndexMapping = `{"settings":{"index.mapping.total_fields.limit":200},"mappings":{"dynamic":false,"properties":{"document_id":{"type":"keyword"},"trace_id":{"type":"keyword"},"business_domain":{"type":"keyword"},"bkn":{"properties":{"tenant":{"properties":{"id":{"type":"keyword"}}},"account":{"properties":{"id":{"type":"keyword"},"type":{"type":"keyword"}}},"request":{"properties":{"id":{"type":"keyword"}}},"trace":{"properties":{"schema":{"properties":{"version":{"type":"keyword"}}}}}}},"events":{"type":"object","enabled":false},"claim_ids":{"type":"keyword"},"accepted_event_count":{"type":"integer"},"claim_count":{"type":"integer"},"evidence_ref_count":{"type":"integer"},"business_ref_count":{"type":"integer"},"ingested_at":{"type":"date"},"aggregate":{"type":"boolean"}}}}`
+const evidenceIndexMapping = `{"settings":{"index.mapping.total_fields.limit":200},"mappings":{"dynamic":false,"properties":{"document_id":{"type":"keyword"},"trace_id":{"type":"keyword"},"business_domain":{"type":"keyword"},"bkn":{"properties":{"conversation":{"properties":{"id":{"type":"keyword"}}},"tenant":{"properties":{"id":{"type":"keyword"}}},"account":{"properties":{"id":{"type":"keyword"},"type":{"type":"keyword"}}},"request":{"properties":{"id":{"type":"keyword"}}},"trace":{"properties":{"schema":{"properties":{"version":{"type":"keyword"}}}}}}},"events":{"type":"object","enabled":false},"claim_ids":{"type":"keyword"},"accepted_event_count":{"type":"integer"},"claim_count":{"type":"integer"},"evidence_ref_count":{"type":"integer"},"business_ref_count":{"type":"integer"},"observed_start":{"type":"date"},"ingested_at":{"type":"date"},"aggregate":{"type":"boolean"}}}}`
 
 func toDocument(trace evidencevo.NormalizedTrace, ingestedAt time.Time) document {
 	doc := document{
 		TraceID:          trace.TraceID,
 		RequestID:        trace.RequestID,
+		ConversationID:   trace.ConversationID,
 		TenantID:         trace.TenantID,
 		BusinessDomain:   trace.BusinessDomain,
 		AccountID:        trace.AccountID,
@@ -344,16 +349,32 @@ func toDocument(trace evidencevo.NormalizedTrace, ingestedAt time.Time) document
 		ClaimCount:       trace.ClaimCount,
 		EvidenceRefCount: trace.EvidenceRefCount,
 		BusinessRefCount: trace.BusinessRefCount,
+		ObservedStart:    traceObservedStart(trace),
 		IngestedAt:       ingestedAt.Format(time.RFC3339Nano),
 	}
 	doc.DocumentID = evidenceDocumentID(doc)
 	return doc
 }
 
+func traceObservedStart(trace evidencevo.NormalizedTrace) string {
+	var earliest time.Time
+	for _, event := range trace.Events {
+		observedAt, err := time.Parse(time.RFC3339Nano, event.ObservedAt)
+		if err == nil && (earliest.IsZero() || observedAt.Before(earliest)) {
+			earliest = observedAt
+		}
+	}
+	if earliest.IsZero() {
+		return ""
+	}
+	return earliest.Format(time.RFC3339Nano)
+}
+
 func fromDocument(doc document) evidencevo.NormalizedTrace {
 	return evidencevo.NormalizedTrace{
 		TraceID:          doc.TraceID,
 		RequestID:        doc.RequestID,
+		ConversationID:   doc.ConversationID,
 		TenantID:         doc.TenantID,
 		BusinessDomain:   doc.BusinessDomain,
 		AccountID:        doc.AccountID,

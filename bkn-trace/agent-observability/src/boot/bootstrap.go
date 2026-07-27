@@ -9,6 +9,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/conf"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/evidencesvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/tracesvc"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/businessresolver"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/opensearchevidencestore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/opensearchtraceaccess"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/memoryaccess/evidencestore"
@@ -29,6 +30,7 @@ func NewApp() *App {
 	httpServerConfig := conf.NewHTTPServerConfig()
 	openSearchConfig := conf.NewOpenSearchConfig()
 	evidenceConfig := conf.NewEvidenceConfig()
+	resolverConfig := conf.NewBusinessResolverConfig()
 	docs.SwaggerInfo.BasePath = APIBasePath
 
 	openSearchClient := opensearch.New(
@@ -48,6 +50,10 @@ func NewApp() *App {
 		evidenceStore = opensearchevidencestore.New(openSearchClient, openSearchConfig.EvidenceIndex)
 	}
 	evidenceService := evidencesvc.New(evidenceStore)
+	if resolverConfig.Enabled {
+		resolver := businessresolver.New(resolverConfig.BKNBaseURL, resolverConfig.VegaBaseURL, &http.Client{Timeout: resolverConfig.Timeout})
+		evidenceService = evidencesvc.NewWithBusinessResolver(evidenceStore, resolver)
+	}
 	evidenceHandler := httphandler.NewEvidenceHandler(evidenceService)
 
 	return newApp(httpServerConfig, traceHandler, evidenceHandler)
@@ -71,7 +77,19 @@ func newApp(httpServerConfig conf.HTTPServerConfig, traceHandler *httphandler.Tr
 	})
 	mux.HandleFunc(APIBasePath+"/evidence-nodes/", evidenceHandler.GetEvidenceNode)
 	mux.HandleFunc(APIBasePath+"/evidence/events", evidenceHandler.IngestEvidenceEvents)
+	mux.HandleFunc(APIBasePath+"/evidence/artifacts", evidenceHandler.IngestEvidenceArtifact)
+	mux.HandleFunc(APIBasePath+"/evidence/artifacts/", evidenceHandler.GetEvidenceArtifact)
 	mux.HandleFunc(APIBasePath+"/evidence/by-trace", evidenceHandler.SearchEvidenceByTrace)
+	mux.HandleFunc(APIBasePath+"/requests", evidenceHandler.ListRequests)
+	mux.HandleFunc(APIBasePath+"/interactions/", evidenceHandler.GetInteractionSummary)
+	mux.HandleFunc(APIBasePath+"/requests/", func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/traces") {
+			evidenceHandler.ListRequestTraces(w, r)
+			return
+		}
+		evidenceHandler.GetRequestSummary(w, r)
+	})
+	mux.HandleFunc(APIBasePath+"/trace-executions", evidenceHandler.ListTraceExecutions)
 	mux.Handle(APIBasePath+"/swagger/", httpSwagger.Handler(
 		httpSwagger.URL(APIBasePath+"/swagger/doc.json"),
 	))

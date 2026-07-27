@@ -41,6 +41,8 @@ bknTrace:
   evidence:
     ingestUrl: ""
     timeoutMs: "1000"
+    ingestTokenSecretName: ""
+    ingestTokenSecretKey: "ingest-token"
 
 nodeSelector: {}
 

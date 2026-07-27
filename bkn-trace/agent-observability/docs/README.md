@@ -1,5 +1,6 @@
-# Docs Index
+# BKN Trace API 文档
 
-| 需求名称 | PRD | Design | 更新时间 | 负责人 | 状态 | 说明 |
-|------|------|------|------|------|------|------|
-| Agent 可观测系统 | [prd/agent-tracing-system-prd.md](./prd/agent-tracing-system-prd.md) | [design/agent-tracing-system-design.md](./design/agent-tracing-system-design.md) | 2026-03-18 | evan.guo | Draft | Agent 四层链路观测、Trace 查询、Collector 接入与部署设计 |
+- [OpenAPI JSON](./swagger/swagger.json)
+- [OpenAPI YAML](./swagger/swagger.yaml)
+
+接口文档由代码注解生成，不在本仓库重复维护需求和设计资料。BKN Trace 的需求、设计与实施计划统一维护在 `bkn-docs/docs/foundry/bkn-trace/`。

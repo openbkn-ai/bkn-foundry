@@ -12,7 +12,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-comm-go/hydra"
-	"github.com/openbkn-ai/bkn-comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 	"go.opentelemetry.io/otel/codes"
 
@@ -47,7 +46,7 @@ func (haa *hydraAuthAccess) VerifyToken(ctx context.Context, c *gin.Context) (hy
 
 	visitor, err := haa.hydra.VerifyToken(ctx, c)
 	if err != nil {
-		otellog.LogError(ctx, "Verify token failed", err)
+		common.LogSafeError(ctx, "Verify token failed", err)
 		return visitor, err
 	}
 

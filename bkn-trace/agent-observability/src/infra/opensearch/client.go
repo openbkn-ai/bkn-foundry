@@ -202,8 +202,43 @@ func (c *Client) EnsureIndex(ctx context.Context, index string, mapping []byte) 
 		return nil
 	}
 	if resp.StatusCode == http.StatusBadRequest && strings.Contains(string(body), "resource_already_exists_exception") {
-		return nil
+		return c.ensureMapping(ctx, index, mapping)
 	}
 
 	return fmt.Errorf("opensearch create-index failed with status %d: %s", resp.StatusCode, string(body))
+}
+
+func (c *Client) ensureMapping(ctx context.Context, index string, indexDefinition []byte) error {
+	var definition struct {
+		Mappings json.RawMessage `json:"mappings"`
+	}
+	if err := json.Unmarshal(indexDefinition, &definition); err != nil {
+		return fmt.Errorf("decode opensearch index mapping: %w", err)
+	}
+	if len(definition.Mappings) == 0 {
+		return fmt.Errorf("opensearch index definition is missing mappings")
+	}
+
+	requestURL := fmt.Sprintf("%s/%s/_mapping", c.baseURL, strings.TrimLeft(index, "/"))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, requestURL, bytes.NewReader(definition.Mappings))
+	if err != nil {
+		return fmt.Errorf("create opensearch update-mapping request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if c.auth.Enabled {
+		req.SetBasicAuth(c.auth.Username, c.auth.Password)
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("execute opensearch update-mapping request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("read opensearch update-mapping response: %w", err)
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return fmt.Errorf("opensearch update-mapping failed with status %d: %s", resp.StatusCode, string(body))
+	}
+	return nil
 }

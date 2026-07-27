@@ -15,6 +15,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
@@ -172,5 +173,30 @@ func TestMFModelAPIClient_Rerank(t *testing.T) {
 
 	if resp.Results[0].RelevanceScore != 0.9 {
 		t.Errorf("Expected first score 0.9, got %f", resp.Results[0].RelevanceScore)
+	}
+}
+
+func TestMFModelAPIClientRerankForksChildOperation(t *testing.T) {
+	var captured map[string]string
+	mockHTTP := &mockHTTPClient{handlerFunc: func(_ context.Context, _, _ string, header map[string]string, _ interface{}) (int, interface{}, error) {
+		captured = header
+		return http.StatusOK, interfaces.RerankResp{}, nil
+	}}
+	client := &mfModelAPIClient{logger: &mockLogger{}, baseURL: "http://model", httpClient: mockHTTP}
+	ctx := common.SetTraceContextToCtx(context.Background(), common.TraceContext{
+		RequestID: "req_context_model_child_001", InteractionID: "interaction-1",
+		OperationID: "parent-operation", CausationEventID: "parent-event", Attempt: 2,
+		ObservedAt: "2026-07-25T08:00:00Z", ObservedAtProvided: true,
+	})
+
+	_, err := client.Rerank(ctx, "query", []string{"document"}, "model")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if captured[common.HeaderBKNOperationID] == "" || captured[common.HeaderBKNOperationID] == "parent-operation" {
+		t.Fatalf("downstream operation was not forked: %#v", captured)
+	}
+	if captured[common.HeaderBKNCausationEventID] != "parent-event" || captured[common.HeaderBKNAttempt] != "2" || captured[common.HeaderBKNEventObservedAt] != "2026-07-25T08:00:00Z" {
+		t.Fatalf("business causality envelope was not propagated: %#v", captured)
 	}
 }

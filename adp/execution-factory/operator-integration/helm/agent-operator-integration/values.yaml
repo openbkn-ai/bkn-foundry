@@ -230,6 +230,10 @@ observability:
   trace:
     enabled: false
     sampling_rate: 1.0
+  evidence:
+    ingest_url: ""
+    ingest_token_secret_name: ""
+    ingest_token_secret_key: "ingest-token"
   log:
     enabled: false
     level: info

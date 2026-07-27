@@ -54,7 +54,10 @@ observability:
   otelEnabled: "true"
   otlpEndpoint: "http://otelcol-contrib:4318"
   bknTraceEvidenceIngestUrl: "http://agent-observability:8080/api/agent-observability/v1/evidence/events"
+  bknTraceArtifactIngestUrl: "http://agent-observability:8080/api/agent-observability/v1/evidence/artifacts"
   bknTraceEvidenceTimeoutS: "3"
+  bknTraceEvidenceIngestTokenSecretName: ""
+  bknTraceEvidenceIngestTokenSecretKey: "ingest-token"
 
 nodeSelector: {}
 

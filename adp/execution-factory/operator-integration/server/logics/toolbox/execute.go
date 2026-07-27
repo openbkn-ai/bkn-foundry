@@ -111,17 +111,30 @@ func (s *ToolServiceImpl) ExecuteTool(ctx context.Context, req *interfaces.Execu
 	action, actionEnabled := bkntrace.ParseAction(req.Headers, req.BoxID, req.ToolID, req.UserID)
 	actionEvents := []bkntrace.Event{}
 	actionApproved := false
+	actionClaimed := false
 	actionFinished := false
-	emitAction := func() {
+	emitAction := func() error {
 		if actionEnabled && s.ActionEvidence != nil {
-			s.ActionEvidence.Emit(ctx, action, actionEvents)
+			return s.ActionEvidence.Emit(ctx, action, actionEvents)
 		}
+		return nil
 	}
 	defer func() {
 		if actionEnabled && actionApproved && !actionFinished {
 			result, _ := json.Marshal(resp)
+			if actionClaimed && s.ActionExecutions != nil {
+				if gateErr := s.ActionExecutions.Complete(ctx, action, result, err != nil); gateErr != nil {
+					err = gateErr
+				}
+			}
 			actionEvents = append(actionEvents, action.AfterExecution(result, err)...)
-			emitAction()
+			if emitErr := emitAction(); emitErr != nil {
+				if err == nil {
+					err = emitErr
+				} else {
+					s.Logger.WithContext(ctx).Errorf("bkn trace terminal evidence emit failed: %T", emitErr)
+				}
+			}
 		}
 	}()
 	var accessor *interfaces.AuthAccessor
@@ -130,7 +143,9 @@ func (s *ToolServiceImpl) ExecuteTool(ctx context.Context, req *interfaces.Execu
 		if actionEnabled {
 			decision, _ := action.AfterPermission(err)
 			actionEvents = append(actionEvents, decision...)
-			emitAction()
+			if emitErr := emitAction(); emitErr != nil {
+				s.Logger.WithContext(ctx).Errorf("bkn trace rejected evidence emit failed: %T", emitErr)
+			}
 		}
 		return
 	}
@@ -139,7 +154,9 @@ func (s *ToolServiceImpl) ExecuteTool(ctx context.Context, req *interfaces.Execu
 		if actionEnabled {
 			decision, _ := action.AfterPermission(err)
 			actionEvents = append(actionEvents, decision...)
-			emitAction()
+			if emitErr := emitAction(); emitErr != nil {
+				s.Logger.WithContext(ctx).Errorf("bkn trace rejected evidence emit failed: %T", emitErr)
+			}
 		}
 		return
 	}
@@ -147,6 +164,41 @@ func (s *ToolServiceImpl) ExecuteTool(ctx context.Context, req *interfaces.Execu
 		decision, _ := action.AfterPermission(nil)
 		actionEvents = append(actionEvents, decision...)
 		actionApproved = true
+		if emitErr := emitAction(); emitErr != nil {
+			err = emitErr
+			actionFinished = true
+			return
+		}
+		actionEvents = nil
+		if s.ActionExecutions == nil {
+			err = bkntrace.ErrActionExecutionStore
+			actionFinished = true
+			return
+		}
+		state, gateErr := s.ActionExecutions.Acquire(ctx, action)
+		if gateErr != nil {
+			err = gateErr
+			actionFinished = true
+			return
+		}
+		if state.Completed {
+			actionFinished = true
+			var replayErr error
+			if state.Failed {
+				replayErr = bkntrace.ErrActionReplayFailed
+			}
+			actionEvents = append(actionEvents, action.AfterExecution(state.Result, replayErr)...)
+			if emitErr := emitAction(); emitErr != nil {
+				err = emitErr
+				return
+			}
+			if len(state.Result) > 0 {
+				_ = json.Unmarshal(state.Result, &resp)
+			}
+			err = replayErr
+			return
+		}
+		actionClaimed = state.Acquired
 	}
 	// 检查工具箱是否存在
 	exist, toolBox, err := s.ToolBoxDB.SelectToolBox(ctx, req.BoxID)
@@ -180,9 +232,14 @@ func (s *ToolServiceImpl) ExecuteTool(ctx context.Context, req *interfaces.Execu
 	resp, err = s.executeTool(ctx, req, tool, toolBox.ServerURL)
 	if actionEnabled {
 		result, _ := json.Marshal(resp)
+		if gateErr := s.ActionExecutions.Complete(ctx, action, result, err != nil); gateErr != nil {
+			err = gateErr
+		}
 		actionEvents = append(actionEvents, action.AfterExecution(result, err)...)
 		actionFinished = true
-		emitAction()
+		if emitErr := emitAction(); emitErr != nil && err == nil {
+			err = emitErr
+		}
 	}
 	if err != nil {
 		return

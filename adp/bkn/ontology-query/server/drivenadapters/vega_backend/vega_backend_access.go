@@ -14,12 +14,12 @@ import (
 	"net/url"
 	"sync"
 
-	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-comm-go/logger"
 	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-comm-go/rest"
 
 	"ontology-query/common"
+	"ontology-query/common/bkntrace"
 	"ontology-query/interfaces"
 )
 
@@ -52,11 +52,11 @@ func (v *vegaBackendAccess) buildHeaders(ctx context.Context) map[string]string 
 		accountInfo = ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
 	}
 	// 用当前token的用户去访问vega
-	return common.MergeTraceHeaders(ctx, map[string]string{
+	return common.MergeTraceHeadersForChildOperation(ctx, map[string]string{
 		interfaces.CONTENT_TYPE_NAME:        interfaces.CONTENT_TYPE_JSON,
 		interfaces.HTTP_HEADER_ACCOUNT_ID:   accountInfo.ID,
 		interfaces.HTTP_HEADER_ACCOUNT_TYPE: accountInfo.Type,
-	})
+	}, "vega.resource.query", 1)
 }
 
 func (v *vegaBackendAccess) QueryResourceData(ctx context.Context, resourceID string, params *interfaces.ResourceDataQueryParams) (*interfaces.DatasetQueryResponse, error) {
@@ -68,8 +68,7 @@ func (v *vegaBackendAccess) QueryResourceData(ctx context.Context, resourceID st
 	headers[interfaces.HTTP_HEADER_METHOD_OVERRIDE] = http.MethodGet
 
 	respCode, respData, err := v.httpClient.PostNoUnmarshal(ctx, httpURL, headers, params)
-	paramsJSON, _ := sonic.Marshal(params)
-	logger.Debugf("QueryResourceData [%s] request [%s] code [%d] err [%v]", httpURL, string(paramsJSON), respCode, err)
+	logger.Debugf("QueryResourceData [%s] query_hash [%s] code [%d] err [%v]", httpURL, bkntrace.HashValue(params), respCode, err)
 	if err != nil {
 		return nil, fmt.Errorf("QueryResourceData http request failed: %w", err)
 	}

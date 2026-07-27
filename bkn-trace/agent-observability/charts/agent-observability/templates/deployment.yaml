@@ -49,6 +49,18 @@ spec:
               value: {{ ternary "true" "false" .Values.evidence.rawTraceQuery.enabled | quote }}
             - name: BKN_TRACE_ALLOW_UNAUTHENTICATED_QUERY
               value: {{ ternary "true" "false" .Values.evidence.queryAuth.allowUnauthenticated | quote }}
+            {{- if .Values.evidence.queryAuth.hydraAdminURL }}
+            - name: BKN_TRACE_HYDRA_ADMIN_URL
+              value: {{ .Values.evidence.queryAuth.hydraAdminURL | quote }}
+            {{- end }}
+            {{- if .Values.businessResolver.enabled }}
+            - name: BKN_TRACE_BKN_RESOLVER_URL
+              value: {{ .Values.businessResolver.bknBaseURL | quote }}
+            - name: BKN_TRACE_VEGA_RESOLVER_URL
+              value: {{ .Values.businessResolver.vegaBaseURL | quote }}
+            - name: BKN_TRACE_RESOLVER_TIMEOUT
+              value: {{ .Values.businessResolver.timeout | quote }}
+            {{- end }}
             - name: OPENSEARCH_AUTH_ENABLED
               value: {{ ternary "true" "false" .Values.opensearch.auth.enabled | quote }}
             {{- if .Values.opensearch.auth.enabled }}

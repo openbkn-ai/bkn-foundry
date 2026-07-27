@@ -48,8 +48,7 @@ async def run_agent_once(
         )
     token = evidence.begin_interaction(message, "task", agent.agent_id, "bkn.agent.task")
     try:
-        started = evidence.interaction_started_event()
-        await evidence.submit_events([started] if started else [], account_id, account_type)
+        await evidence.submit_interaction_started(account_id, account_type)
         return await _run_agent_once_core(
             agent,
             message,
@@ -218,10 +217,19 @@ async def _emit_task_evidence(
 ) -> None:
     subject_id = task_id or agent.agent_id
     cid = evidence.claim_id(claim_type, subject_id, output)
-    source_event_ids, operation_ids, tool_outputs = evidence.adopted_sources()
+    source_event_ids, operation_ids, evidence_refs, business_refs = evidence.adopted_sources()
     if not source_event_ids or not operation_ids:
         return
-    business_refs = evidence.extract_business_refs_from_tool_outputs(tool_outputs)
+    artifact = evidence.result_artifact(
+        output,
+        claim_id_value=cid,
+        business_refs=business_refs,
+        account_id=account_id,
+        account_type=account_type,
+    )
+    artifact_confirmed = await evidence.submit_artifact(artifact)
+    if not artifact_confirmed:
+        return
     claim_event = evidence.claim_created(
         claim_id_value=cid,
         claim_type=claim_type,
@@ -230,23 +238,14 @@ async def _emit_task_evidence(
         source_event_ids=source_event_ids,
         operation_ids=operation_ids,
         causation_event_id=source_event_ids[-1] if source_event_ids else None,
+        result_artifact_ref=evidence.artifact_ref(artifact),
     )
     events = [claim_event]
-    if source_event_ids:
+    if evidence_refs:
         events.append(
             evidence.evidence_refs_created(
                 claim_id_value=cid,
-                evidence_refs=[
-                    {
-                        "ref_id": event_id,
-                        "ref_type": "tool_result_ref",
-                        "source_system": "bkn-agent",
-                        "validity": "observed",
-                        "visibility": "visible",
-                        "version_status": "unversioned",
-                    }
-                    for event_id in source_event_ids
-                ],
+                evidence_refs=evidence_refs,
                 operation_name="bkn.agent.task",
                 operation_id=operation_ids[-1] if operation_ids else None,
                 causation_event_id=claim_event["event_id"] if claim_event else None,

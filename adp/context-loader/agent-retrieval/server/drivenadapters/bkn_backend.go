@@ -51,7 +51,7 @@ func NewBknBackendAccess() interfaces.BknBackendAccess {
 // ListKnowledgeNetworks 列出知识网络（GET /in/v1/knowledge-networks），用于让外部发现 kn_id。
 func (b *bknBackendAccess) ListKnowledgeNetworks(ctx context.Context, req *interfaces.ListKnReq) (resp *interfaces.ListKnResp, err error) {
 	src := fmt.Sprintf("%s/in/v1/knowledge-networks", b.baseURL)
-	header := common.GetHeaderFromCtx(ctx)
+	header := common.GetHeaderForChildOperation(ctx, "bkn.knowledge_network.list", 1)
 	header[rest.ContentTypeKey] = rest.ContentTypeJSON
 
 	queryValues := url.Values{}
@@ -114,7 +114,7 @@ func (b *bknBackendAccess) ListKnowledgeNetworks(ctx context.Context, req *inter
 // 对应 Python 的 _get_knowledge_network_detail
 func (b *bknBackendAccess) GetKnowledgeNetworkDetail(ctx context.Context, knID string) (*interfaces.KnowledgeNetworkDetail, error) {
 	src := fmt.Sprintf("%s/in/v1/knowledge-networks/%s", b.baseURL, knID)
-	header := common.GetHeaderFromCtx(ctx)
+	header := common.GetHeaderForChildOperation(ctx, "bkn.knowledge_network.get", 1)
 	header[rest.ContentTypeKey] = rest.ContentTypeJSON
 
 	queryValues := url.Values{}
@@ -170,7 +170,7 @@ func (b *bknBackendAccess) GetKnowledgeNetworkDetail(ctx context.Context, knID s
 // SearchObjectTypes 搜索对象类
 func (b *bknBackendAccess) SearchObjectTypes(ctx context.Context, query *interfaces.QueryConceptsReq) (objectTypes *interfaces.ObjectTypeConcepts, err error) {
 	src := fmt.Sprintf("%s/in/v1/knowledge-networks/%s/object-types", b.baseURL, query.KnID)
-	header := common.GetHeaderFromCtx(ctx)
+	header := common.GetHeaderForChildOperation(ctx, "bkn.object_type.search", 1)
 	header["Content-Type"] = "application/json"
 	header["x-http-method-override"] = "GET"
 	respCode, respBody, err := b.httpClient.PostNoUnmarshal(ctx, src, header, query)
@@ -223,7 +223,7 @@ func (b *bknBackendAccess) SearchObjectTypes(ctx context.Context, query *interfa
 // GetObjectTypeDetail 获取对象类详情
 func (b *bknBackendAccess) GetObjectTypeDetail(ctx context.Context, knID string, otIds []string, includeDetail bool) ([]*interfaces.ObjectType, error) {
 	src := fmt.Sprintf("%s/in/v1/knowledge-networks/%s/object-types/%s", b.baseURL, knID, strings.Join(otIds, ","))
-	header := common.GetHeaderFromCtx(ctx)
+	header := common.GetHeaderForChildOperation(ctx, "bkn.object_type.get", 1)
 	header[rest.ContentTypeKey] = rest.ContentTypeJSON
 	header["x-http-method-override"] = "GET"
 	queryValues := url.Values{}
@@ -282,7 +282,7 @@ func (b *bknBackendAccess) GetObjectTypeDetail(ctx context.Context, knID string,
 // SearchRelationTypes 搜索关系类
 func (b *bknBackendAccess) SearchRelationTypes(ctx context.Context, query *interfaces.QueryConceptsReq) (releationTypes *interfaces.RelationTypeConcepts, err error) {
 	src := fmt.Sprintf("%s/in/v1/knowledge-networks/%s/relation-types", b.baseURL, query.KnID)
-	header := common.GetHeaderFromCtx(ctx)
+	header := common.GetHeaderForChildOperation(ctx, "bkn.relation_type.search", 1)
 	header[rest.ContentTypeKey] = rest.ContentTypeJSON
 	header["x-http-method-override"] = "GET"
 	respCode, respBody, err := b.httpClient.PostNoUnmarshal(ctx, src, header, query)
@@ -334,7 +334,7 @@ func (b *bknBackendAccess) SearchRelationTypes(ctx context.Context, query *inter
 // GetRelationTypeDetail 获取关系类详情
 func (b *bknBackendAccess) GetRelationTypeDetail(ctx context.Context, knID string, rtIDs []string, includeDetail bool) ([]*interfaces.RelationType, error) {
 	src := fmt.Sprintf("%s/in/v1/knowledge-networks/%s/relation-types/%s", b.baseURL, knID, strings.Join(rtIDs, ","))
-	header := common.GetHeaderFromCtx(ctx)
+	header := common.GetHeaderForChildOperation(ctx, "bkn.relation_type.get", 1)
 	header[rest.ContentTypeKey] = rest.ContentTypeJSON
 	header["x-http-method-override"] = "GET"
 	queryValues := url.Values{}
@@ -391,7 +391,7 @@ func (b *bknBackendAccess) GetRelationTypeDetail(ctx context.Context, knID strin
 // SearchActionTypes 搜索行动类
 func (b *bknBackendAccess) SearchActionTypes(ctx context.Context, query *interfaces.QueryConceptsReq) (actionTypes *interfaces.ActionTypeConcepts, err error) {
 	src := fmt.Sprintf("%s/in/v1/knowledge-networks/%s/action-types", b.baseURL, query.KnID)
-	header := common.GetHeaderFromCtx(ctx)
+	header := common.GetHeaderForChildOperation(ctx, "bkn.action_type.search", 1)
 	header[rest.ContentTypeKey] = rest.ContentTypeJSON
 	header["x-http-method-override"] = "GET"
 	respCode, respBody, err := b.httpClient.PostNoUnmarshal(ctx, src, header, query)
@@ -443,7 +443,7 @@ func (b *bknBackendAccess) SearchActionTypes(ctx context.Context, query *interfa
 // SearchMetricTypes 搜索指标类
 func (b *bknBackendAccess) SearchMetricTypes(ctx context.Context, query *interfaces.QueryConceptsReq) (metricTypes *interfaces.MetricTypeConcepts, err error) {
 	src := fmt.Sprintf("%s/in/v1/knowledge-networks/%s/metrics", b.baseURL, query.KnID)
-	header := common.GetHeaderFromCtx(ctx)
+	header := common.GetHeaderForChildOperation(ctx, "bkn.metric.search", 1)
 	header[rest.ContentTypeKey] = rest.ContentTypeJSON
 	header["x-http-method-override"] = "GET"
 	respCode, respBody, err := b.httpClient.PostNoUnmarshal(ctx, src, header, query)
@@ -495,7 +495,7 @@ func (b *bknBackendAccess) SearchMetricTypes(ctx context.Context, query *interfa
 // GetActionTypeDetail 获取行动类详情
 func (b *bknBackendAccess) GetActionTypeDetail(ctx context.Context, knID string, atIDs []string, includeDetail bool) ([]*interfaces.ActionType, error) {
 	src := fmt.Sprintf("%s/in/v1/knowledge-networks/%s/action-types/%s", b.baseURL, knID, strings.Join(atIDs, ","))
-	header := common.GetHeaderFromCtx(ctx)
+	header := common.GetHeaderForChildOperation(ctx, "bkn.action_type.get", 1)
 	header[rest.ContentTypeKey] = rest.ContentTypeJSON
 	header["x-http-method-override"] = "GET"
 	queryValues := url.Values{}

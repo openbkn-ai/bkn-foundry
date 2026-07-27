@@ -72,13 +72,12 @@ func (dva *dataViewAccess) GetDataViewByID(ctx context.Context, id string) (*int
 	}
 
 	respCode, respData, err := dva.httpClient.GetNoUnmarshal(ctx, httpUrl, nil, headers)
-	logger.Debugf("get [%s] finished, response code is [%d], result is [%s], error is [%v]", httpUrl, respCode, respData, err)
+	logger.Debugf("GetDataViewByID finished, response code is [%d], %s", respCode, common.SafeErrorSummary(err))
 
 	if err != nil {
-		errDetails := fmt.Sprintf("GetDataViewByID http request failed: %s", err.Error())
-		otellog.LogError(ctx, errDetails, nil)
+		common.LogSafeError(ctx, "GetDataViewByID http request failed", err)
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http get view failed")
-		return nil, fmt.Errorf("get request method failed: %s", err)
+		return nil, fmt.Errorf("data view dependency request failed")
 	}
 
 	if respCode == http.StatusNotFound {
@@ -90,23 +89,23 @@ func (dva *dataViewAccess) GetDataViewByID(ctx context.Context, id string) (*int
 	}
 
 	if respCode != http.StatusOK {
-		logger.Errorf("get data view failed: %s", respData)
+		logger.Errorf("get data view failed: response_code=%d, %s", respCode, common.SafeTextSummary("response", string(respData)))
 
 		var baseError rest.BaseError
 		if err = sonic.Unmarshal(respData, &baseError); err != nil {
-			otellog.LogError(ctx, err.Error(), nil)
+			common.LogSafeError(ctx, "Unmarshal data view error response failed", err)
 			oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmarshal baseError failed")
-			return nil, err
+			return nil, fmt.Errorf("GetDataViewByIDs failed: dependency returned HTTP %d", respCode)
 		}
 
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", baseError.Description, baseError.ErrorDetails), nil)
+		common.LogSafeError(ctx, "GetDataViewByID returned non-success status", fmt.Errorf("HTTP %d", respCode))
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status code is not 200")
-		return nil, fmt.Errorf("GetDataViewByIDs failed: %s", baseError.ErrorDetails)
+		return nil, fmt.Errorf("GetDataViewByIDs failed: dependency returned HTTP %d", respCode)
 	}
 
 	var views []*interfaces.DataView
 	if err = sonic.Unmarshal(respData, &views); err != nil {
-		otellog.LogError(ctx, "Unmarshal data view failed", err)
+		common.LogSafeError(ctx, "Unmarshal data view failed", err)
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmarshal data view info failed")
 		return nil, err
 	}
@@ -171,18 +170,18 @@ func (dva *dataViewAccess) GetDataStart(ctx context.Context, id string,
 	}
 
 	respCode, respData, err := dva.httpClient.PostNoUnmarshal(ctx, httpUrl, headers, params)
-	logger.Debugf("post [%s] finished, response code is [%d], result is [%s], error is [%v]", httpUrl, respCode, respData, err)
+	logger.Debugf("GetDataStart finished, response code is [%d], %s", respCode, common.SafeErrorSummary(err))
 
 	if err != nil {
-		errDetails := fmt.Sprintf("GetDataStart http request failed: response code is [%d], result is [%s], error is [%v]", respCode, respData, err)
-		otellog.LogError(ctx, errDetails, nil)
+		common.LogSafeError(ctx, "GetDataStart http request failed", err)
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http post failed")
-		return nil, err
+		return nil, fmt.Errorf("data view dependency request failed")
 	}
 
 	if respCode != http.StatusOK {
-		err = fmt.Errorf("DataPlatform get_data_start error: response code is [%d], result is [%s]", respCode, respData)
-		otellog.LogError(ctx, err.Error(), nil)
+		err = fmt.Errorf("DataPlatform get_data_start returned HTTP %d", respCode)
+		common.LogSafeError(ctx, "GetDataStart returned non-success status", err)
+		logger.Debugf("GetDataStart response: %s", common.SafeTextSummary("response", string(respData)))
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status code is not 200")
 		return nil, err
 	}
@@ -191,8 +190,7 @@ func (dva *dataViewAccess) GetDataStart(ctx context.Context, id string,
 	d := decoder.NewDecoder(string(respData))
 	d.UseInt64()
 	if err = d.Decode(&result); err != nil {
-		errDetails := fmt.Sprintf("GetDataStart unmarshal result failed: %s", err.Error())
-		otellog.LogError(ctx, errDetails, nil)
+		common.LogSafeError(ctx, "GetDataStart unmarshal result failed", err)
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmarshal result failed")
 		return nil, err
 	}
@@ -229,18 +227,18 @@ func (dva *dataViewAccess) GetDataNext(ctx context.Context, id string,
 	}
 
 	respCode, respData, err := dva.httpClient.PostNoUnmarshal(ctx, httpUrl, headers, params)
-	logger.Debugf("post [%s] finished, response code is [%d], result is [%s], error is [%v]", httpUrl, respCode, respData, err)
+	logger.Debugf("GetDataNext finished, response code is [%d], %s", respCode, common.SafeErrorSummary(err))
 
 	if err != nil {
-		errDetails := fmt.Sprintf("GetDataNext http request failed: response code is [%d], result is [%s], error is [%v]", respCode, respData, err)
-		otellog.LogError(ctx, errDetails, nil)
+		common.LogSafeError(ctx, "GetDataNext http request failed", err)
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http post failed")
-		return nil, err
+		return nil, fmt.Errorf("data view dependency request failed")
 	}
 
 	if respCode != http.StatusOK {
-		err = fmt.Errorf("DataPlatform get_data_next error: response code is [%d], result is [%s]", respCode, respData)
-		otellog.LogError(ctx, err.Error(), nil)
+		err = fmt.Errorf("DataPlatform get_data_next returned HTTP %d", respCode)
+		common.LogSafeError(ctx, "GetDataNext returned non-success status", err)
+		logger.Debugf("GetDataNext response: %s", common.SafeTextSummary("response", string(respData)))
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status code is not 200")
 		return nil, err
 	}
@@ -249,8 +247,7 @@ func (dva *dataViewAccess) GetDataNext(ctx context.Context, id string,
 	d := decoder.NewDecoder(string(respData))
 	d.UseInt64()
 	if err = d.Decode(&result); err != nil {
-		errDetails := fmt.Sprintf("GetDataNext unmarshal result failed: %s", err.Error())
-		otellog.LogError(ctx, errDetails, nil)
+		common.LogSafeError(ctx, "GetDataNext unmarshal result failed", err)
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmarshal result failed")
 		return nil, err
 	}

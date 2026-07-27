@@ -16,7 +16,7 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
-        "/api/agent-observability/v1/evidence-nodes/{node_id}": {
+        "/evidence-nodes/{node_id}": {
             "get": {
                 "description": "Returns one visible claim, evidence ref, or business ref node scoped by trace_id or request_id.",
                 "produces": [
@@ -57,8 +57,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/evidencevo.EvidenceNodeResponse"
                         }
                     },
                     "400": {
@@ -88,7 +87,188 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/agent-observability/v1/evidence/events": {
+        "/evidence/artifacts": {
+            "post": {
+                "description": "Stores authorized business content separately from evidence events. Inline content and snapshot_ref are mutually exclusive.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "evidence"
+                ],
+                "summary": "Ingest a BKN Trace 2.2 evidence artifact",
+                "parameters": [
+                    {
+                        "description": "BKN Trace 2.2 evidence artifact",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/evidencevo.EvidenceArtifact"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/evidencevo.ArtifactIngestResponse"
+                        }
+                    },
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/evidencevo.ArtifactIngestResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/evidence/artifacts/{artifact_id}": {
+            "get": {
+                "description": "Returns artifact content only when all persisted ownership dimensions match the trusted query identity.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "evidence"
+                ],
+                "summary": "Get an authorized evidence artifact by ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Artifact ID",
+                        "name": "artifact_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/evidencevo.EvidenceArtifact"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/evidence/by-trace": {
+            "get": {
+                "description": "Backward-compatible endpoint for SDK/Studio callers. Returns the normalized evidence-chain response for trace_id or request_id.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "evidence"
+                ],
+                "summary": "Query evidence chain by trace ID or BKN request ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Trace ID",
+                        "name": "trace_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "BKN request ID",
+                        "name": "request_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Maximum evidence trace batches to read, 1..1000",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/evidencevo.EvidenceChainResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "405": {
+                        "description": "Method Not Allowed",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/evidence/events": {
             "post": {
                 "description": "Accepts claim.created, evidence.refs.created, and business.refs.resolved events and stores the normalized evidence model.",
                 "consumes": [
@@ -116,8 +296,7 @@ const docTemplate = `{
                     "202": {
                         "description": "Accepted",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/evidencevo.IngestResponse"
                         }
                     },
                     "400": {
@@ -141,7 +320,349 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/agent-observability/v1/traces/_search": {
+        "/requests": {
+            "get": {
+                "description": "Returns stable request summaries generated from authorized evidence and artifacts.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "requests"
+                ],
+                "summary": "List observable business requests",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Page size, 1..200",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Opaque pagination cursor",
+                        "name": "cursor",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "One user interaction ID",
+                        "name": "interaction_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Caller-owned conversation ID",
+                        "name": "conversation_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Started at or after this RFC3339 timestamp",
+                        "name": "from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Started at or before this RFC3339 timestamp",
+                        "name": "to",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Execution status",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Agent or application",
+                        "name": "agent_or_app",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Business domain",
+                        "name": "business_domain",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Knowledge network",
+                        "name": "knowledge_network",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Evidence completeness",
+                        "name": "evidence_completeness",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Question, result, ID, business ref, or error keyword",
+                        "name": "keyword",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/evidencevo.RequestSummaryPage"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/requests/{request_id}": {
+            "get": {
+                "description": "Returns an authorized request summary and its business-content availability.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "requests"
+                ],
+                "summary": "Get one observable business request",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "BKN request ID",
+                        "name": "request_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/evidencevo.RequestSummary"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/requests/{request_id}/traces": {
+            "get": {
+                "description": "Supports one business request to multiple distributed traces and returns request_id on every trace.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "requests"
+                ],
+                "summary": "List technical traces belonging to a business request",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "BKN request ID",
+                        "name": "request_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page size, 1..200",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Opaque pagination cursor",
+                        "name": "cursor",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "One user interaction ID",
+                        "name": "interaction_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Caller-owned conversation ID",
+                        "name": "conversation_id",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/evidencevo.TraceSummaryPage"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/trace-executions": {
+            "get": {
+                "description": "Returns stable trace summaries with reverse request links, generated from authorized trace evidence.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "traces"
+                ],
+                "summary": "List technical trace executions",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Page size, 1..200",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Opaque pagination cursor",
+                        "name": "cursor",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "One user interaction ID",
+                        "name": "interaction_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Caller-owned conversation ID",
+                        "name": "conversation_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Exact trace ID; bypasses list projection scan",
+                        "name": "trace_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Started at or after this RFC3339 timestamp",
+                        "name": "from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Started at or before this RFC3339 timestamp",
+                        "name": "to",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Execution status",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Agent or application",
+                        "name": "agent_or_app",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Business domain",
+                        "name": "business_domain",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Trace, request, operation, or error keyword",
+                        "name": "keyword",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/evidencevo.TraceSummaryPage"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/traces/_search": {
             "post": {
                 "description": "Proxy raw OpenSearch DSL to the configured trace index and return the original OpenSearch response body.",
                 "consumes": [
@@ -193,7 +714,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/agent-observability/v1/traces/by-conversation": {
+        "/traces/by-conversation": {
             "get": {
                 "description": "Build a term filter automatically using attributes.gen_ai.conversation.id.keyword and return the original OpenSearch response body.",
                 "consumes": [
@@ -249,7 +770,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/agent-observability/v1/traces/by-request": {
+        "/traces/by-request": {
             "get": {
                 "description": "Returns normalized claim, evidence refs, business refs, pagination, partial reasons, and visibility summary for a request.",
                 "produces": [
@@ -278,8 +799,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/evidencevo.EvidenceChainResponse"
                         }
                     },
                     "400": {
@@ -309,7 +829,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/agent-observability/v1/traces/by-request/business-graph": {
+        "/traces/by-request/business-graph": {
             "get": {
                 "description": "Returns claim and business semantic nodes/edges derived from business.refs.resolved events.",
                 "produces": [
@@ -338,8 +858,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/evidencevo.BusinessGraphResponse"
                         }
                     },
                     "400": {
@@ -369,7 +888,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/agent-observability/v1/traces/by-request/snapshot-preview": {
+        "/traces/by-request/snapshot-preview": {
             "get": {
                 "description": "Returns a metadata-only governed snapshot manifest preview without creating or exposing object storage locations.",
                 "produces": [
@@ -398,8 +917,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/evidencevo.SnapshotPreviewResponse"
                         }
                     },
                     "400": {
@@ -429,7 +947,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/agent-observability/v1/traces/{trace_id}/business-graph": {
+        "/traces/{trace_id}/business-graph": {
             "get": {
                 "description": "Returns claim and business semantic nodes/edges derived from business.refs.resolved events.",
                 "produces": [
@@ -458,8 +976,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/evidencevo.BusinessGraphResponse"
                         }
                     },
                     "400": {
@@ -489,7 +1006,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/agent-observability/v1/traces/{trace_id}/evidence-chain": {
+        "/traces/{trace_id}/evidence-chain": {
             "get": {
                 "description": "Returns normalized claim, evidence refs, business refs, pagination, partial reasons, and visibility summary for a trace.",
                 "produces": [
@@ -518,8 +1035,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/evidencevo.EvidenceChainResponse"
                         }
                     },
                     "400": {
@@ -549,7 +1065,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/agent-observability/v1/traces/{trace_id}/snapshot-preview": {
+        "/traces/{trace_id}/snapshot-preview": {
             "get": {
                 "description": "Returns a metadata-only governed snapshot manifest preview without creating or exposing object storage locations.",
                 "produces": [
@@ -578,8 +1094,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/evidencevo.SnapshotPreviewResponse"
                         }
                     },
                     "400": {
@@ -609,7 +1124,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/agent-observability/v1/traces/{trace_id}/trace-graph": {
+        "/traces/{trace_id}/trace-graph": {
             "get": {
                 "description": "Returns normalized trace tree nodes, parent-child edges, status, duration, and partial reasons for a trace.",
                 "produces": [
@@ -668,9 +1183,787 @@ const docTemplate = `{
                     }
                 }
             }
+        },
+        "/interactions/{interaction_id}": {
+            "get": {
+                "description": "Aggregates every authorized request and trace in one caller-owned interaction.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "interactions"
+                ],
+                "summary": "Get one observable business interaction",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "BKN interaction ID",
+                        "name": "interaction_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/evidencevo.InteractionSummary"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
+        "evidencevo.ActionSummary": {
+            "type": "object",
+            "properties": {
+                "approved": {
+                    "type": "integer"
+                },
+                "completed": {
+                    "type": "integer"
+                },
+                "executed": {
+                    "type": "integer"
+                },
+                "last_status": {
+                    "type": "string"
+                },
+                "recommended": {
+                    "type": "integer"
+                }
+            }
+        },
+        "evidencevo.ArtifactIngestResponse": {
+            "type": "object",
+            "properties": {
+                "artifact_id": {
+                    "type": "string"
+                },
+                "artifact_type": {
+                    "$ref": "#/definitions/evidencevo.ArtifactType"
+                },
+                "bkn.request.id": {
+                    "type": "string"
+                },
+                "content_hash": {
+                    "type": "string"
+                },
+                "created": {
+                    "type": "boolean"
+                },
+                "trace_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "evidencevo.ArtifactLink": {
+            "type": "object",
+            "properties": {
+                "artifact_ref": {
+                    "type": "string"
+                },
+                "artifact_type": {
+                    "$ref": "#/definitions/evidencevo.ArtifactType"
+                },
+                "claim_id": {
+                    "type": "string"
+                },
+                "event_id": {
+                    "type": "string"
+                },
+                "event_type": {
+                    "type": "string"
+                },
+                "operation_id": {
+                    "type": "string"
+                },
+                "role": {
+                    "type": "string"
+                }
+            }
+        },
+        "evidencevo.ArtifactType": {
+            "type": "string",
+            "enum": [
+                "question",
+                "result",
+                "query",
+                "data_result",
+                "logic_execution",
+                "action_input",
+                "action_result"
+            ],
+            "x-enum-varnames": [
+                "ArtifactTypeQuestion",
+                "ArtifactTypeResult",
+                "ArtifactTypeQuery",
+                "ArtifactTypeDataResult",
+                "ArtifactTypeLogicExecution",
+                "ArtifactTypeActionInput",
+                "ArtifactTypeActionResult"
+            ]
+        },
+        "evidencevo.BusinessDisplay": {
+            "type": "object",
+            "properties": {
+                "business_path": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "controlled_summary": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "resolution_status": {
+                    "type": "string"
+                },
+                "source_version": {
+                    "type": "string"
+                }
+            }
+        },
+        "evidencevo.BusinessGraphData": {
+            "type": "object",
+            "properties": {
+                "edges": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/evidencevo.BusinessGraphEdge"
+                    }
+                },
+                "nodes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/evidencevo.BusinessGraphNode"
+                    }
+                }
+            }
+        },
+        "evidencevo.BusinessGraphEdge": {
+            "type": "object",
+            "properties": {
+                "edge_type": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "source_id": {
+                    "type": "string"
+                },
+                "target_id": {
+                    "type": "string"
+                },
+                "visibility": {
+                    "type": "string"
+                }
+            }
+        },
+        "evidencevo.BusinessGraphNode": {
+            "type": "object",
+            "properties": {
+                "action_instance_id": {
+                    "type": "string"
+                },
+                "claim_id": {
+                    "type": "string"
+                },
+                "display": {
+                    "$ref": "#/definitions/evidencevo.BusinessDisplay"
+                },
+                "event_id": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "interaction_id": {
+                    "type": "string"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "node_type": {
+                    "type": "string"
+                },
+                "operation_id": {
+                    "type": "string"
+                },
+                "properties": {
+                    "type": "object",
+                    "additionalProperties": {}
+                },
+                "stage": {
+                    "type": "string"
+                },
+                "version_status": {
+                    "type": "string"
+                },
+                "visibility": {
+                    "type": "string"
+                }
+            }
+        },
+        "evidencevo.BusinessGraphResponse": {
+            "type": "object",
+            "properties": {
+                "bkn.request.id": {
+                    "type": "string"
+                },
+                "data": {
+                    "$ref": "#/definitions/evidencevo.BusinessGraphData"
+                },
+                "page": {
+                    "$ref": "#/definitions/evidencevo.EvidencePage"
+                },
+                "partial": {
+                    "type": "boolean"
+                },
+                "partial_reason": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "trace_id": {
+                    "type": "string"
+                },
+                "visibility_summary": {
+                    "$ref": "#/definitions/evidencevo.VisibilitySummary"
+                }
+            }
+        },
+        "evidencevo.EvidenceArtifact": {
+            "type": "object",
+            "properties": {
+                "agent_or_app": {
+                    "type": "string"
+                },
+                "artifact_id": {
+                    "type": "string"
+                },
+                "artifact_type": {
+                    "$ref": "#/definitions/evidencevo.ArtifactType"
+                },
+                "as_of": {
+                    "type": "string"
+                },
+                "bkn.account.id": {
+                    "type": "string"
+                },
+                "bkn.account.type": {
+                    "type": "string"
+                },
+                "bkn.request.id": {
+                    "type": "string"
+                },
+                "bkn.tenant.id": {
+                    "type": "string"
+                },
+                "business_domain": {
+                    "type": "string"
+                },
+                "business_refs": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "claim_id": {
+                    "type": "string"
+                },
+                "content": {},
+                "content_hash": {
+                    "type": "string"
+                },
+                "content_type": {
+                    "type": "string"
+                },
+                "initiator": {
+                    "type": "string"
+                },
+                "interaction_id": {
+                    "type": "string"
+                },
+                "observed_at": {
+                    "type": "string"
+                },
+                "operation_id": {
+                    "type": "string"
+                },
+                "schema_version": {
+                    "type": "string"
+                },
+                "snapshot_ref": {
+                    "type": "string"
+                },
+                "source_ref": {
+                    "type": "string"
+                },
+                "source_version": {
+                    "type": "string"
+                },
+                "trace_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "evidencevo.EvidenceChainData": {
+            "type": "object",
+            "properties": {
+                "artifact_links": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/evidencevo.ArtifactLink"
+                    }
+                },
+                "business_refs": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": {}
+                    }
+                },
+                "claims": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": {}
+                    }
+                },
+                "evidence_refs": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": {}
+                    }
+                }
+            }
+        },
+        "evidencevo.EvidenceChainResponse": {
+            "type": "object",
+            "properties": {
+                "bkn.request.id": {
+                    "type": "string"
+                },
+                "data": {
+                    "$ref": "#/definitions/evidencevo.EvidenceChainData"
+                },
+                "page": {
+                    "$ref": "#/definitions/evidencevo.EvidencePage"
+                },
+                "partial": {
+                    "type": "boolean"
+                },
+                "partial_reason": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "trace_id": {
+                    "type": "string"
+                },
+                "visibility_summary": {
+                    "$ref": "#/definitions/evidencevo.VisibilitySummary"
+                }
+            }
+        },
+        "evidencevo.EvidenceNodeResponse": {
+            "type": "object",
+            "properties": {
+                "bkn.request.id": {
+                    "type": "string"
+                },
+                "claim_id": {
+                    "type": "string"
+                },
+                "data": {
+                    "type": "object",
+                    "additionalProperties": {}
+                },
+                "node_id": {
+                    "type": "string"
+                },
+                "node_type": {
+                    "type": "string"
+                },
+                "trace_id": {
+                    "type": "string"
+                },
+                "version_status": {
+                    "type": "string"
+                },
+                "visibility": {
+                    "type": "string"
+                }
+            }
+        },
+        "evidencevo.EvidencePage": {
+            "type": "object",
+            "properties": {
+                "edge_count": {
+                    "type": "integer"
+                },
+                "next_cursor": {
+                    "type": "string"
+                },
+                "node_count": {
+                    "type": "integer"
+                },
+                "truncated": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "evidencevo.IngestResponse": {
+            "type": "object",
+            "properties": {
+                "accepted_event_count": {
+                    "type": "integer"
+                },
+                "bkn.request.id": {
+                    "type": "string"
+                },
+                "bkn.trace.schema.version": {
+                    "type": "string"
+                },
+                "business_ref_count": {
+                    "type": "integer"
+                },
+                "claim_count": {
+                    "type": "integer"
+                },
+                "evidence_ref_count": {
+                    "type": "integer"
+                },
+                "trace_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "evidencevo.RequestSummary": {
+            "type": "object",
+            "properties": {
+                "action_summary": {
+                    "$ref": "#/definitions/evidencevo.ActionSummary"
+                },
+                "agent_or_app": {
+                    "type": "string"
+                },
+                "business_domain": {
+                    "type": "string"
+                },
+                "business_refs": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "completed_at": {
+                    "type": "string"
+                },
+                "conversation_id": {
+                    "type": "string"
+                },
+                "duration_ms": {
+                    "type": "integer"
+                },
+                "error_summary": {
+                    "type": "string"
+                },
+                "interaction_id": {
+                    "type": "string"
+                },
+                "evidence_completeness": {
+                    "type": "string"
+                },
+                "initiator": {
+                    "type": "string"
+                },
+                "knowledge_networks": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "partial_reasons": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "question_preview": {
+                    "type": "string"
+                },
+                "request_id": {
+                    "type": "string"
+                },
+                "result_preview": {
+                    "type": "string"
+                },
+                "started_at": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "trace_count": {
+                    "type": "integer"
+                }
+            }
+        },
+        "evidencevo.RequestSummaryPage": {
+            "type": "object",
+            "properties": {
+                "entries": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/evidencevo.RequestSummary"
+                    }
+                },
+                "next_cursor": {
+                    "type": "string"
+                },
+                "partial": {
+                    "type": "boolean"
+                },
+                "partial_reasons": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                },
+                "truncated": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "evidencevo.SnapshotManifest": {
+            "type": "object",
+            "properties": {
+                "artifact_count": {
+                    "type": "integer"
+                },
+                "artifact_hash": {
+                    "type": "string"
+                },
+                "bkn.request.id": {
+                    "type": "string"
+                },
+                "business_ref_count": {
+                    "type": "integer"
+                },
+                "claim_count": {
+                    "type": "integer"
+                },
+                "compliance_status": {
+                    "type": "string"
+                },
+                "dlp_classification": {
+                    "type": "string"
+                },
+                "evidence_ref_count": {
+                    "type": "integer"
+                },
+                "legal_hold": {
+                    "type": "string"
+                },
+                "manifest_hash": {
+                    "type": "string"
+                },
+                "producer": {
+                    "type": "string"
+                },
+                "retention_policy": {
+                    "type": "string"
+                },
+                "schema_version": {
+                    "type": "string"
+                },
+                "signature_status": {
+                    "type": "string"
+                },
+                "trace_id": {
+                    "type": "string"
+                },
+                "visibility_summary": {
+                    "$ref": "#/definitions/evidencevo.VisibilitySummary"
+                }
+            }
+        },
+        "evidencevo.SnapshotPreviewResponse": {
+            "type": "object",
+            "properties": {
+                "bkn.request.id": {
+                    "type": "string"
+                },
+                "manifest": {
+                    "$ref": "#/definitions/evidencevo.SnapshotManifest"
+                },
+                "partial": {
+                    "type": "boolean"
+                },
+                "partial_reason": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "snapshot_ref": {
+                    "$ref": "#/definitions/evidencevo.SnapshotRef"
+                },
+                "trace_id": {
+                    "type": "string"
+                },
+                "visibility_summary": {
+                    "$ref": "#/definitions/evidencevo.VisibilitySummary"
+                }
+            }
+        },
+        "evidencevo.SnapshotRef": {
+            "type": "object",
+            "properties": {
+                "mode": {
+                    "type": "string"
+                },
+                "snapshot_id": {
+                    "type": "string"
+                },
+                "uri": {
+                    "type": "string"
+                }
+            }
+        },
+        "evidencevo.TraceSummary": {
+            "type": "object",
+            "properties": {
+                "agent_or_app": {
+                    "type": "string"
+                },
+                "business_domain": {
+                    "type": "string"
+                },
+                "completed_at": {
+                    "type": "string"
+                },
+                "conversation_id": {
+                    "type": "string"
+                },
+                "duration_ms": {
+                    "type": "integer"
+                },
+                "error_summary": {
+                    "type": "string"
+                },
+                "interaction_id": {
+                    "type": "string"
+                },
+                "request_id": {
+                    "type": "string"
+                },
+                "root_operation": {
+                    "type": "string"
+                },
+                "span_count": {
+                    "type": "integer"
+                },
+                "started_at": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "trace_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "evidencevo.TraceSummaryPage": {
+            "type": "object",
+            "properties": {
+                "entries": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/evidencevo.TraceSummary"
+                    }
+                },
+                "next_cursor": {
+                    "type": "string"
+                },
+                "partial": {
+                    "type": "boolean"
+                },
+                "partial_reasons": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                },
+                "truncated": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "evidencevo.VisibilitySummary": {
+            "type": "object",
+            "properties": {
+                "authorized_ref_count": {
+                    "type": "integer"
+                },
+                "hidden_ref_count": {
+                    "type": "integer"
+                },
+                "omitted_ref_count": {
+                    "type": "integer"
+                },
+                "redacted_ref_count": {
+                    "type": "integer"
+                },
+                "unauthorized_ref_count": {
+                    "type": "integer"
+                },
+                "unresolved_ref_count": {
+                    "type": "integer"
+                }
+            }
+        },
         "rdto.ErrorResponse": {
             "type": "object",
             "properties": {
@@ -678,8 +1971,49 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "details": {},
+                "error_code": {
+                    "type": "string"
+                },
                 "message": {
                     "type": "string"
+                },
+                "trace_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "evidencevo.InteractionSummary": {
+            "type": "object",
+            "properties": {
+                "completed_at": {
+                    "type": "string"
+                },
+                "conversation_id": {
+                    "type": "string"
+                },
+                "duration_ms": {
+                    "type": "integer"
+                },
+                "interaction_id": {
+                    "type": "string"
+                },
+                "requests": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/evidencevo.RequestSummary"
+                    }
+                },
+                "started_at": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "traces": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/evidencevo.TraceSummary"
+                    }
                 }
             }
         }

@@ -148,7 +148,7 @@ func (rqs *rawQueryService) executeInitialSQLQuery(ctx context.Context, req *int
 		result.TotalCount = nil
 	}
 	result.Warnings = append(result.Warnings, prepared.warnings...)
-	return result, nil
+	return withExecutedResourceIDs(result, prepared.resourceIDs), nil
 }
 
 func (rqs *rawQueryService) executeInitialSQLCursor(ctx context.Context, req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
@@ -352,7 +352,7 @@ func (rqs *rawQueryService) executeSQLCursorPage(ctx context.Context, session *i
 		result.TotalCount = nil
 	}
 	result.Warnings = append(result.Warnings, warnings...)
-	return result, nil
+	return withExecutedResourceIDs(result, session.ResourceIDs), nil
 }
 
 func accountIDFromContext(ctx context.Context) string {
@@ -571,7 +571,7 @@ func (rqs *rawQueryService) executeOpenSearchCursorPage(ctx context.Context, ses
 		result.TotalCount = nil
 	}
 	result.Warnings = append(result.Warnings, warnings...)
-	return result, nil
+	return withExecutedResourceIDs(result, session.ResourceIDs), nil
 }
 
 func (rqs *rawQueryService) executeInitialDSLQuery(ctx context.Context, req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
@@ -670,7 +670,15 @@ func (rqs *rawQueryService) executeInitialDSLQuery(ctx context.Context, req *int
 	if !req.NeedTotal {
 		result.TotalCount = nil
 	}
-	return result, nil
+	return withExecutedResourceIDs(result, []string{resourceID}), nil
+}
+
+func withExecutedResourceIDs(result *interfaces.RawQueryResponse, resourceIDs []string) *interfaces.RawQueryResponse {
+	if result == nil {
+		return nil
+	}
+	result.ResourceIDs = append([]string(nil), resourceIDs...)
+	return result
 }
 
 func queryExecutionContext(ctx context.Context, queryTimeoutSec int) (context.Context, context.CancelFunc) {

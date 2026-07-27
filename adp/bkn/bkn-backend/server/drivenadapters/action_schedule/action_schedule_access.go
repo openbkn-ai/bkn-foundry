@@ -60,14 +60,14 @@ func (a *actionScheduleAccess) CreateSchedule(ctx context.Context, tx *sql.Tx, s
 
 	instanceIdentitiesStr, err := sonic.MarshalString(schedule.InstanceIdentities)
 	if err != nil {
-		logger.Errorf("Failed to marshal _instance_identities: %s", err.Error())
+		logger.Errorf("Failed to marshal _instance_identities: %s", common.SafeErrorSummary(err))
 		span.SetStatus(codes.Error, "Marshal _instance_identities failed")
 		return err
 	}
 
 	dynamicParamsStr, err := sonic.MarshalString(schedule.DynamicParams)
 	if err != nil {
-		logger.Errorf("Failed to marshal dynamic_params: %s", err.Error())
+		logger.Errorf("Failed to marshal dynamic_params: %s", common.SafeErrorSummary(err))
 		span.SetStatus(codes.Error, "Marshal dynamic_params failed")
 		return err
 	}
@@ -110,12 +110,12 @@ func (a *actionScheduleAccess) CreateSchedule(ctx context.Context, tx *sql.Tx, s
 			schedule.UpdateTime,
 		).ToSql()
 	if err != nil {
-		logger.Errorf("Failed to build insert sql: %s", err.Error())
+		logger.Errorf("Failed to build insert sql: %s", common.SafeErrorSummary(err))
 		span.SetStatus(codes.Error, "Build sql failed")
 		return err
 	}
 
-	otellog.LogInfo(ctx, fmt.Sprintf("Create schedule sql: %s", sqlStr))
+	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	if tx != nil {
 		_, err = tx.ExecContext(ctx, sqlStr, vals...)
@@ -123,7 +123,7 @@ func (a *actionScheduleAccess) CreateSchedule(ctx context.Context, tx *sql.Tx, s
 		_, err = a.db.ExecContext(ctx, sqlStr, vals...)
 	}
 	if err != nil {
-		logger.Errorf("Insert schedule error: %v", err)
+		logger.Errorf("Insert schedule error: %s", common.SafeErrorSummary(err))
 		span.SetStatus(codes.Error, "Insert data error")
 		return err
 	}
@@ -152,7 +152,7 @@ func (a *actionScheduleAccess) UpdateSchedule(ctx context.Context, tx *sql.Tx, s
 	if schedule.InstanceIdentities != nil {
 		instanceIdentitiesStr, err := sonic.MarshalString(schedule.InstanceIdentities)
 		if err != nil {
-			logger.Errorf("Failed to marshal _instance_identities: %s", err.Error())
+			logger.Errorf("Failed to marshal _instance_identities: %s", common.SafeErrorSummary(err))
 			span.SetStatus(codes.Error, "Marshal _instance_identities failed")
 			return err
 		}
@@ -161,7 +161,7 @@ func (a *actionScheduleAccess) UpdateSchedule(ctx context.Context, tx *sql.Tx, s
 	if schedule.DynamicParams != nil {
 		dynamicParamsStr, err := sonic.MarshalString(schedule.DynamicParams)
 		if err != nil {
-			logger.Errorf("Failed to marshal dynamic_params: %s", err.Error())
+			logger.Errorf("Failed to marshal dynamic_params: %s", common.SafeErrorSummary(err))
 			span.SetStatus(codes.Error, "Marshal dynamic_params failed")
 			return err
 		}
@@ -177,12 +177,12 @@ func (a *actionScheduleAccess) UpdateSchedule(ctx context.Context, tx *sql.Tx, s
 
 	sqlStr, vals, err := builder.ToSql()
 	if err != nil {
-		logger.Errorf("Failed to build update sql: %s", err.Error())
+		logger.Errorf("Failed to build update sql: %s", common.SafeErrorSummary(err))
 		span.SetStatus(codes.Error, "Build sql failed")
 		return err
 	}
 
-	otellog.LogInfo(ctx, fmt.Sprintf("Update schedule sql: %s", sqlStr))
+	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	if tx != nil {
 		_, err = tx.ExecContext(ctx, sqlStr, vals...)
@@ -190,7 +190,7 @@ func (a *actionScheduleAccess) UpdateSchedule(ctx context.Context, tx *sql.Tx, s
 		_, err = a.db.ExecContext(ctx, sqlStr, vals...)
 	}
 	if err != nil {
-		logger.Errorf("Update schedule error: %v", err)
+		logger.Errorf("Update schedule error: %s", common.SafeErrorSummary(err))
 		span.SetStatus(codes.Error, "Update data error")
 		return err
 	}
@@ -243,7 +243,7 @@ func (a *actionScheduleAccess) DeleteSchedules(ctx context.Context, tx *sql.Tx, 
 		return err
 	}
 
-	otellog.LogInfo(ctx, fmt.Sprintf("Delete schedules sql: %s", sqlStr))
+	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	if tx != nil {
 		_, err = tx.ExecContext(ctx, sqlStr, vals...)
@@ -370,7 +370,7 @@ func (a *actionScheduleAccess) ListSchedules(ctx context.Context, query interfac
 		return nil, err
 	}
 
-	otellog.LogInfo(ctx, fmt.Sprintf("List schedules sql: %s", sqlStr))
+	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	rows, err := a.db.QueryContext(ctx, sqlStr, vals...)
 	if err != nil {
@@ -450,7 +450,7 @@ func (a *actionScheduleAccess) TryAcquireLock(ctx context.Context, scheduleID, p
 
 	result, err := a.db.ExecContext(ctx, sqlStr, podID, now, scheduleID, now, staleTime)
 	if err != nil {
-		logger.Errorf("TryAcquireLock error: %v", err)
+		logger.Errorf("TryAcquireLock error: %s", common.SafeErrorSummary(err))
 		span.SetStatus(codes.Error, "Lock acquisition failed")
 		return 0, err
 	}
@@ -477,7 +477,7 @@ func (a *actionScheduleAccess) ReleaseLock(ctx context.Context, scheduleID, podI
 
 	_, err := a.db.ExecContext(ctx, sqlStr, lastRunTime, nextRunTime, scheduleID, podID)
 	if err != nil {
-		logger.Errorf("ReleaseLock error: %v", err)
+		logger.Errorf("ReleaseLock error: %s", common.SafeErrorSummary(err))
 		span.SetStatus(codes.Error, "Lock release failed")
 		return err
 	}
@@ -609,14 +609,14 @@ func (a *actionScheduleAccess) scanSchedule(row *sql.Row) (*interfaces.ActionSch
 
 	if instanceIdentitiesStr != "" {
 		if err := sonic.UnmarshalString(instanceIdentitiesStr, &schedule.InstanceIdentities); err != nil {
-			logger.Warnf("Failed to unmarshal _instance_identities for schedule %s: %v", schedule.ID, err)
+			logger.Warnf("Failed to unmarshal _instance_identities for schedule %s: %s", schedule.ID, common.SafeErrorSummary(err))
 			// Initialize to empty slice to avoid nil pointer issues
 			schedule.InstanceIdentities = []map[string]any{}
 		}
 	}
 	if dynamicParamsStr != "" {
 		if err := sonic.UnmarshalString(dynamicParamsStr, &schedule.DynamicParams); err != nil {
-			logger.Warnf("Failed to unmarshal dynamic_params for schedule %s: %v", schedule.ID, err)
+			logger.Warnf("Failed to unmarshal dynamic_params for schedule %s: %s", schedule.ID, common.SafeErrorSummary(err))
 			// Initialize to empty map to avoid nil pointer issues
 			schedule.DynamicParams = map[string]any{}
 		}
@@ -661,14 +661,14 @@ func (a *actionScheduleAccess) scanScheduleFromRows(rows *sql.Rows) (*interfaces
 
 	if instanceIdentitiesStr != "" {
 		if err := sonic.UnmarshalString(instanceIdentitiesStr, &schedule.InstanceIdentities); err != nil {
-			logger.Warnf("Failed to unmarshal _instance_identities for schedule %s: %v", schedule.ID, err)
+			logger.Warnf("Failed to unmarshal _instance_identities for schedule %s: %s", schedule.ID, common.SafeErrorSummary(err))
 			// Initialize to empty slice to avoid nil pointer issues
 			schedule.InstanceIdentities = []map[string]any{}
 		}
 	}
 	if dynamicParamsStr != "" {
 		if err := sonic.UnmarshalString(dynamicParamsStr, &schedule.DynamicParams); err != nil {
-			logger.Warnf("Failed to unmarshal dynamic_params for schedule %s: %v", schedule.ID, err)
+			logger.Warnf("Failed to unmarshal dynamic_params for schedule %s: %s", schedule.ID, common.SafeErrorSummary(err))
 			// Initialize to empty map to avoid nil pointer issues
 			schedule.DynamicParams = map[string]any{}
 		}

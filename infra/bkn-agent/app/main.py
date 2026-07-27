@@ -9,7 +9,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.bootstrap import toolbox_sync
 from app.models import ErrorEnvelope
-from app import observability
+from app import evidence, observability
 from app.observability import setup_otel
 from app.routers import agents, chat, impex, prompts, tasks, threads
 
@@ -42,7 +42,10 @@ async def _recover_stale_tasks() -> None:
 async def _lifespan(app: FastAPI):
     await _recover_stale_tasks()
     toolbox_sync.start_startup_sync()
-    yield
+    try:
+        yield
+    finally:
+        await evidence.drain_pending()
 
 
 app = FastAPI(title="bkn-agent", version=VERSION, docs_url=None, redoc_url=None, lifespan=_lifespan)

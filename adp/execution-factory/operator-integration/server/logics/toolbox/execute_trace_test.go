@@ -15,8 +15,33 @@ import (
 
 type captureActionEmitter struct{ events []bkntrace.Event }
 
-func (e *captureActionEmitter) Emit(_ context.Context, _ bkntrace.Action, events []bkntrace.Event) {
+func (e *captureActionEmitter) Emit(_ context.Context, _ bkntrace.Action, events []bkntrace.Event) error {
 	e.events = append(e.events, events...)
+	return nil
+}
+
+type completedActionGate struct{ acquireCalls int }
+
+func (g *completedActionGate) Acquire(_ context.Context, _ bkntrace.Action) (bkntrace.ExecutionState, error) {
+	g.acquireCalls++
+	return bkntrace.ExecutionState{
+		Completed: true,
+		Result:    []byte(`{"status_code":200,"body":{"deduplicated":true}}`),
+	}, nil
+}
+
+type acquiredActionGate struct{}
+
+func (g *acquiredActionGate) Acquire(context.Context, bkntrace.Action) (bkntrace.ExecutionState, error) {
+	return bkntrace.ExecutionState{Acquired: true}, nil
+}
+
+func (g *acquiredActionGate) Complete(context.Context, bkntrace.Action, []byte, bool) error {
+	return nil
+}
+
+func (g *completedActionGate) Complete(context.Context, bkntrace.Action, []byte, bool) error {
+	return errors.New("completed replay must not complete twice")
 }
 
 func actionHeaders() map[string]any {
@@ -31,6 +56,35 @@ func actionHeaders() map[string]any {
 		"bkn-action-approval-requested-event-id": "evt_action_approval_requested_001",
 		"bkn-attempt":                            "2",
 		"x-account-id":                           "acct-test", "x-account-type": "user",
+		"x-business-domain": "domain-supply-chain",
+	}
+}
+
+func TestExecuteToolReturnsCompletedActionWithoutTouchingExecutionDependencies(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	auth := mocks.NewMockIAuthorizationService(ctrl)
+	gate := &completedActionGate{}
+	emitter := &captureActionEmitter{}
+	service := &ToolServiceImpl{
+		AuthService: auth, Logger: logger.DefaultLogger(),
+		ActionEvidence: emitter, ActionExecutions: gate,
+	}
+	accessor := &interfaces.AuthAccessor{ID: "user-secret"}
+	auth.EXPECT().GetAccessor(gomock.Any(), "user-secret").Return(accessor, nil)
+	auth.EXPECT().CheckExecutePermission(gomock.Any(), accessor, "box-secret", interfaces.AuthResourceTypeToolBox).Return(nil)
+
+	resp, err := service.ExecuteTool(context.Background(), &interfaces.ExecuteToolReq{
+		UserID: "user-secret", BoxID: "box-secret", ToolID: "tool-secret",
+		HTTPRequestParams: interfaces.HTTPRequestParams{Headers: actionHeaders()},
+	})
+	if err != nil || resp == nil || resp.StatusCode != 200 {
+		t.Fatalf("cached action result not returned: resp=%#v err=%v", resp, err)
+	}
+	if gate.acquireCalls != 1 {
+		t.Fatalf("gate acquire calls=%d", gate.acquireCalls)
+	}
+	if len(emitter.events) != 3 || emitter.events[1].EventType != "action.executed" || emitter.events[2].EventType != "action.result_recorded" {
+		t.Fatalf("completed replay did not restore terminal evidence: %#v", emitter.events)
 	}
 }
 
@@ -65,7 +119,7 @@ func TestExecuteToolRecordsApprovedFailureAsHashOnlyTerminalLifecycle(t *testing
 	emitter := &captureActionEmitter{}
 	service := &ToolServiceImpl{
 		AuthService: auth, ToolBoxDB: toolboxDB, ToolDB: toolDB, MetadataService: metadata,
-		Logger: logger.DefaultLogger(), ActionEvidence: emitter,
+		Logger: logger.DefaultLogger(), ActionEvidence: emitter, ActionExecutions: &acquiredActionGate{},
 	}
 	accessor := &interfaces.AuthAccessor{ID: "user-secret"}
 	auth.EXPECT().GetAccessor(gomock.Any(), "user-secret").Return(accessor, nil)

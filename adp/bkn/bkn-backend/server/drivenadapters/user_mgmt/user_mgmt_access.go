@@ -15,7 +15,6 @@ import (
 
 	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-comm-go/logger"
-	"github.com/openbkn-ai/bkn-comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-comm-go/rest"
 	"go.opentelemetry.io/otel/codes"
@@ -120,18 +119,18 @@ func (uma *userMgmtAccess) GetAccountNames(ctx context.Context, accountInfos []*
 
 	// 发送POST请求获取用户信息
 	respCode, result, err := uma.httpClient.PostNoUnmarshal(ctx, httpUrl, headers, requestBody)
-	logger.Debugf("post [%s] finished, response code is [%d], result is [%s], error is [%v]", httpUrl, respCode, result, err)
+	logger.Debugf("GetAccountNames finished, response code is [%d], %s", respCode, common.SafeErrorSummary(err))
 
 	if err != nil {
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http get account names failed")
-		otellog.LogError(ctx, "Get account names request failed", err)
+		common.LogSafeError(ctx, "Get account names request failed", err)
 		return fmt.Errorf("get account names request failed: %w", err)
 	}
 
 	if respCode != 200 {
 		err := fmt.Errorf("get account names request failed with status code: %d", respCode)
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 200")
-		otellog.LogError(ctx, "Get account names request failed", err)
+		common.LogSafeError(ctx, "Get account names request failed", err)
 		return err
 	}
 
@@ -150,7 +149,7 @@ func (uma *userMgmtAccess) GetAccountNames(ctx context.Context, accountInfos []*
 
 	if err := sonic.Unmarshal(result, &response); err != nil {
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmarshal account names response failed")
-		otellog.LogError(ctx, "Unmarshal account names response failed", err)
+		common.LogSafeError(ctx, "Unmarshal account names response failed", err)
 		return fmt.Errorf("unmarshal account names response failed: %w", err)
 	}
 

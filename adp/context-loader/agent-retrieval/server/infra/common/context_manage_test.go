@@ -127,22 +127,63 @@ func TestGetHeaderFromCtxPropagatesTraceContext(t *testing.T) {
 }
 
 func TestBusinessCausalityHeadersAreValidatedAndPropagated(t *testing.T) {
+	convey.Convey("caller-owned conversation id is propagated without being generated", t, func() {
+		headers := map[string]string{
+			HeaderBKNRequestID:    "req_01JZVALIDREQUESTID000000009",
+			"bkn-conversation-id": "agent:thread_supply_chain",
+		}
+		ctx := SetTraceContextToCtx(context.Background(), TraceContextFromHeaders(func(key string) string {
+			return headers[key]
+		}))
+
+		header := GetHeaderFromCtx(ctx)
+		convey.So(header["bkn-conversation-id"], convey.ShouldEqual, "agent:thread_supply_chain")
+
+		degraded := GetHeaderFromCtx(SetTraceContextToCtx(context.Background(), TraceContext{
+			RequestID: "req_01JZVALIDREQUESTID000000010",
+		}))
+		_, generated := degraded["bkn-conversation-id"]
+		convey.So(generated, convey.ShouldBeFalse)
+	})
+
 	convey.Convey("valid business causality is propagated", t, func() {
 		ctx := SetTraceContextToCtx(context.Background(), TraceContext{
-			RequestID:        "req_01JZVALIDREQUESTID000000005",
-			InteractionID:    "int_business_trace_0001",
-			OperationID:      "op_context_retrieval_0001",
-			CausationEventID: "evt_agent_tool_called_0001",
-			ClaimID:          "claim_agent_answer_0001",
-			Attempt:          2,
+			RequestID:          "req_01JZVALIDREQUESTID000000005",
+			TenantID:           "tenant-supply-chain",
+			BusinessDomain:     "domain-sales-001",
+			InteractionID:      "third-party-interaction-0001",
+			OperationID:        "context-retrieval-0001",
+			CausationEventID:   "agent-tool-called-0001",
+			ClaimID:            "agent-answer-0001",
+			Attempt:            2,
+			ObservedAt:         "2026-07-25T08:00:00Z",
+			ObservedAtProvided: true,
 		})
 
 		header := GetHeaderFromCtx(ctx)
-		convey.So(header[HeaderBKNInteractionID], convey.ShouldEqual, "int_business_trace_0001")
-		convey.So(header[HeaderBKNOperationID], convey.ShouldEqual, "op_context_retrieval_0001")
-		convey.So(header[HeaderBKNCausationEventID], convey.ShouldEqual, "evt_agent_tool_called_0001")
-		convey.So(header[HeaderBKNClaimID], convey.ShouldEqual, "claim_agent_answer_0001")
+		convey.So(header[HeaderTenantID], convey.ShouldEqual, "tenant-supply-chain")
+		convey.So(header[HeaderBusinessDomain], convey.ShouldEqual, "domain-sales-001")
+		convey.So(header[HeaderBKNInteractionID], convey.ShouldEqual, "third-party-interaction-0001")
+		convey.So(header[HeaderBKNOperationID], convey.ShouldEqual, "context-retrieval-0001")
+		convey.So(header[HeaderBKNCausationEventID], convey.ShouldEqual, "agent-tool-called-0001")
+		convey.So(header[HeaderBKNClaimID], convey.ShouldEqual, "agent-answer-0001")
 		convey.So(header[HeaderBKNAttempt], convey.ShouldEqual, "2")
+		convey.So(header[HeaderBaggage], convey.ShouldContainSubstring, "business_domain=domain-sales-001")
+	})
+
+	convey.Convey("child operation is deterministic and does not reuse its parent operation", t, func() {
+		ctx := SetTraceContextToCtx(context.Background(), TraceContext{
+			RequestID: "req_01JZVALIDREQUESTID000000008", InteractionID: "interaction-1",
+			OperationID: "parent-operation", CausationEventID: "parent-event", Attempt: 2,
+		})
+		first := GetHeaderForChildOperation(ctx, "ontology.object.query", 1)
+		second := GetHeaderForChildOperation(ctx, "ontology.object.query", 1)
+		third := GetHeaderForChildOperation(ctx, "ontology.object.query", 2)
+		convey.So(first[HeaderBKNOperationID], convey.ShouldNotEqual, "parent-operation")
+		convey.So(first[HeaderBKNOperationID], convey.ShouldEqual, second[HeaderBKNOperationID])
+		convey.So(first[HeaderBKNOperationID], convey.ShouldNotEqual, third[HeaderBKNOperationID])
+		convey.So(first[HeaderBKNCausationEventID], convey.ShouldEqual, "parent-event")
+		convey.So(first[HeaderBKNAttempt], convey.ShouldEqual, "2")
 	})
 
 	convey.Convey("invalid inbound business causality is removed at the boundary", t, func() {
@@ -168,6 +209,7 @@ func TestBusinessCausalityHeadersAreValidatedAndPropagated(t *testing.T) {
 		header := map[string]string{
 			HeaderTraceparent:         "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
 			HeaderBKNRequestID:        "req_01JZVALIDREQUESTID000000007",
+			"bkn-conversation-id":     "agent:thread_supply_chain",
 			HeaderBKNInteractionID:    "int_business_trace_0001",
 			HeaderBKNOperationID:      "op_context_retrieval_0001",
 			HeaderBKNCausationEventID: "evt_agent_tool_called_0001",
@@ -177,6 +219,7 @@ func TestBusinessCausalityHeadersAreValidatedAndPropagated(t *testing.T) {
 		StripBusinessTraceHeaders(header)
 		convey.So(header[HeaderTraceparent], convey.ShouldNotBeEmpty)
 		convey.So(header[HeaderBKNRequestID], convey.ShouldNotBeEmpty)
+		convey.So(header["bkn-conversation-id"], convey.ShouldBeEmpty)
 		convey.So(header[HeaderBKNInteractionID], convey.ShouldBeEmpty)
 		convey.So(header[HeaderBKNOperationID], convey.ShouldBeEmpty)
 		convey.So(header[HeaderBKNCausationEventID], convey.ShouldBeEmpty)

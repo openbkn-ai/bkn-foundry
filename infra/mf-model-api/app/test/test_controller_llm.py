@@ -166,4 +166,3 @@ class TestUsedModelOpenai:
                     result = await used_model_openai(request, "user1", "zh", "test")
                     # 流式返回应该是EventSourceResponse
                     assert result is not None
-

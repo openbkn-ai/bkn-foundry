@@ -1,12 +1,13 @@
 {
-  "bkn.trace.schema.version": "2.0.0",
-  "fixture_id": "context_loader_phase2_query_object_instance_l2_positive",
+  "bkn.trace.schema.version": "2.1.0",
+  "fixture_id": "context_loader_phase2_query_object_l2_positive",
+  "fixture_type": "positive",
   "expected_result": "pass",
   "trace": {
     "trace_id": "71220000000000000000000000000001",
     "traceparent": "00-71220000000000000000000000000001-7122000000000001-01",
     "bkn.request.id": "req_context_loader_phase2_query_object_0001",
-    "business_domain": "acct_demo",
+    "business_domain": "domain_demo",
     "bkn.account.id": "acct_demo",
     "bkn.account.type": "service"
   },
@@ -19,73 +20,64 @@
       "bkn.module.name": "context-loader",
       "bkn.operation.name": "context.query_object",
       "bkn.status": "ok",
-      "bkn.timestamp": "2026-07-23T11:00:00.000000Z"
+      "bkn.timestamp": "2026-07-25T11:00:00.000000Z"
     }
   ],
   "events": [
     {
-      "event_id": "evt_context_loader_query_object_claim",
-      "event_type": "claim.created",
-      "bkn.trace.schema.version": "2.0.0",
-      "observed_at": "2026-07-23T11:00:00.001000Z",
-      "emitted_at": "2026-07-23T11:00:00.002000Z",
-      "producer_module": "context-loader",
+      "event_id": "evt_agent_started_context_object_001",
+      "event_type": "agent.interaction.started",
+      "bkn.trace.schema.version": "2.1.0",
+      "observed_at": "2026-07-25T11:00:00.000000Z",
+      "emitted_at": "2026-07-25T11:00:00.000000Z",
+      "producer_module": "third-party-agent",
       "trace_id": "71220000000000000000000000000001",
       "span_id": "7122000000000001",
       "bkn.request.id": "req_context_loader_phase2_query_object_0001",
-      "bkn.operation.name": "context.query_object",
+      "bkn.operation.name": "agent.run",
+      "interaction_id": "interaction_context_query_object_001",
       "payload": {
-        "claim_id": "claim_context_loader_query_object_0001",
-        "claim_type": "finding",
-        "claim_hash": "sha256:query_object_summary_hash_only",
-        "visibility": "visible",
-        "version_status": "unversioned",
-        "partial_reason": ["row_refs_unversioned", "result_truncated"],
-        "subject_refs": {
-          "kn_id": "kn_demo",
-          "object_type_id": "customer",
-          "condition_hash": "sha256:condition_hash_only",
-          "properties_hash": "sha256:properties_hash_only",
-          "limit": 10,
-          "returned_ref_count": 2,
-          "truncated": true,
-          "data.classification": "internal"
-        }
+        "intent_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "mode": "task",
+        "app_ref": "app:external-agent"
       }
     },
     {
-      "event_id": "evt_context_loader_query_object_refs",
-      "event_type": "evidence.refs.created",
-      "bkn.trace.schema.version": "2.0.0",
-      "observed_at": "2026-07-23T11:00:00.003000Z",
-      "emitted_at": "2026-07-23T11:00:00.004000Z",
+      "event_id": "evt_f0e936acea0888a08a459fa92d175755452119173e477cb697605dcd099acb4f",
+      "event_type": "retrieval.completed",
+      "bkn.trace.schema.version": "2.1.0",
+      "observed_at": "2026-07-25T11:00:00.001000Z",
+      "emitted_at": "2026-07-25T11:00:00.001000Z",
       "producer_module": "context-loader",
       "trace_id": "71220000000000000000000000000001",
       "span_id": "7122000000000001",
       "bkn.request.id": "req_context_loader_phase2_query_object_0001",
       "bkn.operation.name": "context.query_object",
+      "interaction_id": "interaction_context_query_object_001",
+      "operation_id": "op_context_query_object_001",
+      "causation_event_id": "evt_agent_started_context_object_001",
+      "attempt": 1,
       "payload": {
-        "claim_id": "claim_context_loader_query_object_0001",
-        "evidence_refs": [
+        "query_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "candidate_count": 2,
+        "truncated": true,
+        "version_status": "unversioned",
+        "source_refs": [
           {
-            "ref_id": "object_instance:customer:instance_hash_0001",
-            "ref_type": "row_ref",
-            "source_system": "context-loader",
-            "summary_hash": "sha256:row_ref_summary_hash_only_0001",
+            "ref_id": "object:kn_demo:customer",
+            "ref_type": "object",
+            "source_system": "bkn",
             "validity": "observed",
             "version_status": "unversioned",
-            "visibility": "visible",
-            "partial_reason": ["row_ref_unversioned"]
+            "visibility": "visible"
           },
           {
-            "ref_id": "object_instance:customer:instance_hash_0002",
-            "ref_type": "row_ref",
-            "source_system": "context-loader",
-            "summary_hash": "sha256:row_ref_summary_hash_only_0002",
+            "ref_id": "property:kn_demo:customer:risk_level",
+            "ref_type": "property",
+            "source_system": "bkn",
             "validity": "observed",
             "version_status": "unversioned",
-            "visibility": "visible",
-            "partial_reason": ["row_ref_unversioned"]
+            "visibility": "visible"
           }
         ]
       }

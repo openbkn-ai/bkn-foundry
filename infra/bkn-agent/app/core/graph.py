@@ -73,8 +73,16 @@ async def stream_chat(
         )
         tools = instrument_tool_calls(tools, account_id, account_type)
         limits = agent.limits or None
-        max_turns = limits.max_turns if limits and limits.max_turns else config.DEFAULT_MAX_TURNS
-        timeout_s = limits.timeout_s if limits and limits.timeout_s else config.DEFAULT_TIMEOUT_S
+        max_turns = (
+            limits.max_turns
+            if limits and limits.max_turns
+            else config.DEFAULT_MAX_TURNS
+        )
+        timeout_s = (
+            limits.timeout_s
+            if limits and limits.timeout_s
+            else config.DEFAULT_TIMEOUT_S
+        )
         max_out = limits.max_output_tokens if limits else None
         model = build_chat_model(agent.model, max_output_tokens=max_out)
         tools = apply_tool_call_cap(
@@ -100,16 +108,22 @@ async def stream_chat(
         answer_parts: list[str] = []
         tool_names: list[str] = []
         interaction_token = evidence.begin_interaction(
-            req.message, "chat", agent.agent_id, "bkn.agent.chat"
+            req.message,
+            "chat",
+            agent.agent_id,
+            "bkn.agent.chat",
+            conversation_id=thread_id,
         )
         try:
-            started = evidence.interaction_started_event()
-            await evidence.submit_events([started] if started else [], account_id, account_type)
+            await evidence.submit_interaction_started(account_id, account_type)
             yield _sse("meta", {"thread_id": thread_id, "agent_id": agent.agent_id})
             with observability.span("agent.chat", span_attrs):
                 async with open_checkpointer() as checkpointer:
                     graph = create_agent(
-                        model, tools, system_prompt=system_prompt, checkpointer=checkpointer
+                        model,
+                        tools,
+                        system_prompt=system_prompt,
+                        checkpointer=checkpointer,
                     )
                     cfg = {
                         "configurable": {"thread_id": thread_id},
@@ -118,24 +132,39 @@ async def stream_chat(
                     try:
                         async with asyncio.timeout(timeout_s):
                             async for chunk, meta in graph.astream(
-                                {"messages": [("user", req.message)]}, cfg, stream_mode="messages"
+                                {"messages": [("user", req.message)]},
+                                cfg,
+                                stream_mode="messages",
                             ):
                                 if isinstance(chunk, AIMessageChunk):
                                     if chunk.content:
-                                        answer_parts.append(chunk.content if isinstance(chunk.content, str) else str(chunk.content))
+                                        answer_parts.append(
+                                            chunk.content
+                                            if isinstance(chunk.content, str)
+                                            else str(chunk.content)
+                                        )
                                         yield _sse("token", {"content": chunk.content})
                                     for tc in chunk.tool_call_chunks or []:
                                         if tc.get("name"):
                                             tool_names.append(tc["name"])
-                                            yield _sse("tool_call", {"name": tc["name"]})
+                                            yield _sse(
+                                                "tool_call", {"name": tc["name"]}
+                                            )
                             if req.response_format:
                                 # 工具循环后单独抽结构化（原生优先→提示词降级），受同一 timeout 约束
                                 state = await graph.aget_state(cfg)
                                 struct_model = build_chat_model(
-                                    agent.model, streaming=False, max_output_tokens=max_out
+                                    agent.model,
+                                    streaming=False,
+                                    max_output_tokens=max_out,
                                 )
-                                obj, validation_path = await structured_extract_with_path(
-                                    struct_model, state.values["messages"], req.response_format
+                                (
+                                    obj,
+                                    validation_path,
+                                ) = await structured_extract_with_path(
+                                    struct_model,
+                                    state.values["messages"],
+                                    req.response_format,
                                 )
                                 yield _sse("structured", {"content": obj})
                                 await _emit_chat_evidence(
@@ -167,10 +196,20 @@ async def stream_chat(
                                 )
                         yield _sse("done", {"thread_id": thread_id})
                     except TimeoutError:
-                        yield _sse("error", {"code": "BknAgent.Chat.Timeout", "detail": f"超过 {timeout_s}s"})
+                        yield _sse(
+                            "error",
+                            {
+                                "code": "BknAgent.Chat.Timeout",
+                                "detail": f"超过 {timeout_s}s",
+                            },
+                        )
                     except Exception as e:  # 错误必须显式送到流上，不静默吞
-                        yield _sse("error", {"code": "BknAgent.Chat.Failed", "detail": str(e)})
-        except Exception as e:  # 组装阶段（checkpointer/graph 建立）异常也要送 error，不裸断流
+                        yield _sse(
+                            "error", {"code": "BknAgent.Chat.Failed", "detail": str(e)}
+                        )
+        except (
+            Exception
+        ) as e:  # 组装阶段（checkpointer/graph 建立）异常也要送 error，不裸断流
             yield _sse("error", {"code": "BknAgent.Chat.Failed", "detail": str(e)})
         finally:  # 正常结束、客户端断连（GeneratorExit）、异常，都要放位
             evidence.end_interaction(interaction_token)
@@ -194,8 +233,20 @@ async def _emit_chat_evidence(
     tool_names: list[str],
 ) -> None:
     cid = evidence.claim_id(claim_type, thread_id, output)
-    source_event_ids, operation_ids, tool_outputs = evidence.adopted_sources()
+    source_event_ids, operation_ids, evidence_refs, business_refs = (
+        evidence.adopted_sources()
+    )
     if not source_event_ids or not operation_ids:
+        return
+    artifact = evidence.result_artifact(
+        output,
+        claim_id_value=cid,
+        business_refs=business_refs,
+        account_id=account_id,
+        account_type=account_type,
+    )
+    artifact_confirmed = await evidence.submit_artifact(artifact)
+    if not artifact_confirmed:
         return
     claim_event = evidence.claim_created(
         claim_id_value=cid,
@@ -205,30 +256,19 @@ async def _emit_chat_evidence(
         source_event_ids=source_event_ids,
         operation_ids=operation_ids,
         causation_event_id=source_event_ids[-1] if source_event_ids else None,
+        result_artifact_ref=evidence.artifact_ref(artifact),
     )
     events = [claim_event]
-    if source_event_ids:
-        refs = [
-            {
-                "ref_id": event_id,
-                "ref_type": "tool_result_ref",
-                "source_system": "bkn-agent",
-                "validity": "observed",
-                "visibility": "visible",
-                "version_status": "unversioned",
-            }
-            for event_id in source_event_ids
-        ]
+    if evidence_refs:
         events.append(
             evidence.evidence_refs_created(
                 claim_id_value=cid,
-                evidence_refs=refs,
+                evidence_refs=evidence_refs,
                 operation_name="bkn.agent.chat",
                 operation_id=operation_ids[-1] if operation_ids else None,
                 causation_event_id=claim_event["event_id"] if claim_event else None,
             )
         )
-    business_refs = evidence.extract_business_refs_from_tool_outputs(tool_outputs)
     events.append(
         evidence.business_refs_resolved(
             claim_id_value=cid,
@@ -238,13 +278,17 @@ async def _emit_chat_evidence(
             causation_event_id=claim_event["event_id"],
         )
     )
-    await evidence.submit_events([event for event in events if event], account_id, account_type)
+    await evidence.submit_events(
+        [event for event in events if event], account_id, account_type
+    )
 
 
 def _text(content) -> str:
     if isinstance(content, str):
         return content
-    return "".join(p.get("text", "") if isinstance(p, dict) else str(p) for p in content)
+    return "".join(
+        p.get("text", "") if isinstance(p, dict) else str(p) for p in content
+    )
 
 
 async def read_thread_messages(thread_id: str) -> list[ThreadMessage]:

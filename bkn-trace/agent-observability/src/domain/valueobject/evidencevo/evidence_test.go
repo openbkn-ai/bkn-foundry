@@ -1,6 +1,20 @@
 package evidencevo
 
-import "testing"
+import (
+	"encoding/json"
+	"strings"
+	"testing"
+)
+
+func TestQueryScopeNeverSerializesAuthorization(t *testing.T) {
+	body, err := json.Marshal(QueryScope{AccountID: "account_a", Authorization: "Bearer secret-user-token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(body), "secret-user-token") || strings.Contains(string(body), "Authorization") {
+		t.Fatalf("query authorization leaked into JSON: %s", body)
+	}
+}
 
 func TestMatchesScopeRequiresEveryPersistedOwnershipDimension(t *testing.T) {
 	trace := NormalizedTrace{
@@ -40,6 +54,24 @@ func TestSameOwnershipComparesEveryPersistedDimension(t *testing.T) {
 		if SameOwnership(existing, incoming) {
 			t.Fatalf("ownership drift must be rejected: existing=%+v incoming=%+v", existing, incoming)
 		}
+	}
+}
+
+func TestSameOwnershipAllowsConversationMigrationButRejectsConversationDrift(t *testing.T) {
+	base := NormalizedTrace{
+		TraceID: "trace_owned", RequestID: "req_owned",
+		TenantID: "tenant_a", BusinessDomain: "domain_a",
+		AccountID: "account_a", AccountType: "user",
+	}
+	withConversation := base
+	withConversation.ConversationID = "conversation_a"
+	if !SameOwnership(base, withConversation) || !SameOwnership(withConversation, base) {
+		t.Fatal("an optional conversation id must be addable across contract migration")
+	}
+	drifted := withConversation
+	drifted.ConversationID = "conversation_b"
+	if SameOwnership(withConversation, drifted) {
+		t.Fatal("two different non-empty conversation ids must conflict")
 	}
 }
 

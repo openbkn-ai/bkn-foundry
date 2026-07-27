@@ -51,11 +51,11 @@
       }
     },
     {
-      "event_id": "evt_bkn_schema_read_001",
+      "event_id": "evt_0c2ccc805f600437adbc26377ebb13ead7580bd11be8e6c0e027a51baa058cc6",
       "event_type": "knowledge.read.observed",
       "bkn.trace.schema.version": "2.1.0",
       "observed_at": "2026-07-25T14:30:00.001000Z",
-      "emitted_at": "2026-07-25T14:30:00.002000Z",
+      "emitted_at": "2026-07-25T14:30:00.001000Z",
       "producer_module": "bkn-backend",
       "trace_id": "71310000000000000000000000000001",
       "span_id": "7131000000000001",
@@ -68,7 +68,33 @@
       "payload": {
         "kn_id": "kn_demo",
         "read_kind": "object_type",
-        "version_status": "unversioned"
+        "version_status": "unversioned",
+        "business_refs": [
+          {
+            "ref_id": "object:kn_demo:customer",
+            "ref_type": "object",
+            "source_system": "bkn",
+            "validity": "available",
+            "version_status": "unversioned",
+            "visibility": "visible"
+          },
+          {
+            "ref_id": "property:kn_demo:customer:risk_level",
+            "ref_type": "property",
+            "source_system": "bkn",
+            "validity": "available",
+            "version_status": "unversioned",
+            "visibility": "visible"
+          },
+          {
+            "ref_id": "relation:kn_demo:customer_has_order",
+            "ref_type": "relation",
+            "source_system": "bkn",
+            "validity": "available",
+            "version_status": "unversioned",
+            "visibility": "visible"
+          }
+        ]
       }
     }
   ]

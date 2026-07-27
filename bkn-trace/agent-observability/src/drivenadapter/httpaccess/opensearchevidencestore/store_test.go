@@ -66,11 +66,18 @@ func TestStoreEvidenceIndexesNormalizedTrace(t *testing.T) {
 	if strings.Contains(string(mappingBytes), `"payload"`) {
 		t.Fatalf("payload must not have an indexed mapping: %s", string(mappingBytes))
 	}
-	if body["trace_id"] != "trace_index_001" || body["bkn.request.id"] != "req_index_001" {
+	if body["trace_id"] != "trace_index_001" || body["bkn.request.id"] != "req_index_001" ||
+		body["bkn.conversation.id"] != "conversation_index_001" {
 		t.Fatalf("unexpected identity fields: %+v", body)
+	}
+	if !strings.Contains(string(mappingBytes), `"conversation":{"properties":{"id":{"type":"keyword"}}}`) {
+		t.Fatalf("conversation id must be indexed for cross-request lookup: %s", string(mappingBytes))
 	}
 	if body["ingested_at"] != "2026-07-23T01:02:03.000000004Z" {
 		t.Fatalf("unexpected ingested_at: %+v", body["ingested_at"])
+	}
+	if body["observed_start"] != "2026-07-22T04:00:00Z" {
+		t.Fatalf("evidence document must persist a reliable event-time projection: %+v", body["observed_start"])
 	}
 }
 
@@ -492,6 +499,44 @@ func TestStoreEvidenceRetriesEnsureIndexAfterTransientFailure(t *testing.T) {
 	}
 }
 
+func TestStoreEvidenceUpdatesMappingForExistingIndex(t *testing.T) {
+	mappingUpdates := 0
+	client := newFakeOpenSearchClient(func(r *http.Request) (*http.Response, error) {
+		switch {
+		case r.Method == http.MethodPut && r.URL.Path == "/bkn-trace-evidence-test":
+			return statusJSONResponse(http.StatusBadRequest, `{"error":{"type":"resource_already_exists_exception"}}`), nil
+		case r.Method == http.MethodPut && r.URL.Path == "/bkn-trace-evidence-test/_mapping":
+			mappingUpdates++
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				t.Fatalf("read mapping update: %v", err)
+			}
+			for _, field := range []string{`"business_domain"`, `"account"`, `"tenant"`} {
+				if !strings.Contains(string(body), field) {
+					t.Fatalf("mapping update missing %s: %s", field, body)
+				}
+			}
+			return jsonResponse(`{"acknowledged":true}`), nil
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/bkn-trace-evidence-test/_doc/"):
+			return statusJSONResponse(http.StatusNotFound, `{"found":false}`), nil
+		case r.Method == http.MethodPost && r.URL.Path == "/bkn-trace-evidence-test/_search":
+			return jsonResponse(`{"hits":{"hits":[]}}`), nil
+		case r.Method == http.MethodPut && strings.HasPrefix(r.URL.Path, "/bkn-trace-evidence-test/_doc/"):
+			return jsonResponse(`{"result":"created"}`), nil
+		default:
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+			return nil, nil
+		}
+	})
+
+	if err := New(client, "bkn-trace-evidence-test").StoreEvidence(context.Background(), normalizedTrace()); err != nil {
+		t.Fatalf("store evidence: %v", err)
+	}
+	if mappingUpdates != 1 {
+		t.Fatalf("existing index mapping updates=%d, want 1", mappingUpdates)
+	}
+}
+
 func TestTwoStoreInstancesAtomicallyRejectEventIDConflict(t *testing.T) {
 	backend := newAggregateBackend()
 	client := newFakeOpenSearchClient(backend.roundTrip)
@@ -635,6 +680,7 @@ func normalizedTrace() evidencevo.NormalizedTrace {
 	return evidencevo.NormalizedTrace{
 		TraceID:        "trace_index_001",
 		RequestID:      "req_index_001",
+		ConversationID: "conversation_index_001",
 		TenantID:       "tenant_index",
 		BusinessDomain: "bd_index",
 		AccountID:      "acct_index",
@@ -645,6 +691,7 @@ func normalizedTrace() evidencevo.NormalizedTrace {
 				EventID:       "evt_claim",
 				EventType:     "claim.created",
 				SchemaVersion: evidencevo.ContractVersion,
+				ObservedAt:    "2026-07-22T04:00:00Z",
 				TraceID:       "trace_index_001",
 				RequestID:     "req_index_001",
 				Payload: map[string]any{

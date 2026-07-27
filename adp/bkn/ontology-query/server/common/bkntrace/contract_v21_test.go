@@ -11,7 +11,6 @@ package bkntrace
 
 import (
 	"encoding/json"
-	"regexp"
 	"strings"
 	"testing"
 )
@@ -26,7 +25,10 @@ func TestBuildDataQueryEventsV21RecordsFactWithoutFabricatingClaim(t *testing.T)
 	events := BuildDataQueryEvents(testTraceContext(), req, DataQuerySubject{
 		EntityKind: EntityKindObjectInstance, Operation: "bkn.object.query", KNID: "kn_demo", Branch: "main", SubjectID: "customer",
 		QueryHash: HashValue("safe shape"), ReturnedCount: 1, TotalCount: 1,
-	}, []EvidenceRef{{RefID: "object_instance:customer:abc", RefType: RefTypeRow, Summary: map[string]any{"row": "secret"}}})
+	}, []EvidenceRef{
+		{RefID: "object:kn_demo:customer", RefType: RefTypeObject},
+		{RefID: "property:kn_demo:customer:risk_level", RefType: RefTypeProperty},
+	})
 
 	if len(events) != 1 {
 		t.Fatalf("len(events)=%d, want one observed query event", len(events))
@@ -40,15 +42,20 @@ func TestBuildDataQueryEventsV21RecordsFactWithoutFabricatingClaim(t *testing.T)
 			t.Fatalf("%s=%#v, want %#v", key, event[key], want)
 		}
 	}
+	assertPayloadKeys(t, event, "query_hash", "query_type", "row_count", "truncated", "version_status", "resource_refs", "field_refs")
+	payload := event["payload"].(map[string]any)
+	if len(payload["resource_refs"].([]map[string]any)) != 1 || len(payload["field_refs"].([]map[string]any)) != 1 {
+		t.Fatalf("query refs missing: %#v", payload)
+	}
 	raw, _ := json.Marshal(events)
-	for _, forbidden := range []string{"claim.created", "evidence.refs.created", "business.refs.resolved", "summary", "row\"", "secret"} {
+	for _, forbidden := range []string{"claim.created", "evidence.refs.created", "business.refs.resolved", "claim_id", "summary", "row\"", "secret"} {
 		if strings.Contains(string(raw), forbidden) {
 			t.Fatalf("events contain forbidden value %q: %s", forbidden, raw)
 		}
 	}
 }
 
-func TestBuildDataQueryEventsV21AddsRefsOnlyForUpstreamClaim(t *testing.T) {
+func TestBuildDataQueryEventsV21DoesNotBindFactToUpstreamClaim(t *testing.T) {
 	req := testRequestContext()
 	req.InteractionID = "int_query_002"
 	req.OperationID = "op_query_002"
@@ -57,44 +64,32 @@ func TestBuildDataQueryEventsV21AddsRefsOnlyForUpstreamClaim(t *testing.T) {
 	events := BuildDataQueryEvents(testTraceContext(), req, DataQuerySubject{
 		EntityKind: EntityKindMetric, Operation: "bkn.metric.get", KNID: "kn_demo", Branch: "main", SubjectID: "risk_score",
 		QueryHash: HashValue("safe shape"), ReturnedCount: 1,
-	}, []EvidenceRef{{RefID: "metric:risk_score", RefType: RefTypeMetric, Summary: map[string]any{"labels": "secret"}}})
+	}, []EvidenceRef{{RefID: "metric:kn_demo:risk_score", RefType: RefTypeMetric}})
 
-	if len(events) != 3 || events[1]["event_type"] != "evidence.refs.created" || events[2]["event_type"] != "business.refs.resolved" {
+	if len(events) != 1 {
 		t.Fatalf("unexpected events: %#v", events)
 	}
-	for _, event := range events {
-		if event["claim_id"] != "claim_upstream_002" {
-			t.Fatalf("claim_id=%#v", event["claim_id"])
-		}
+	if _, exists := events[0]["claim_id"]; exists {
+		t.Fatalf("fact event must not bind claim: %#v", events[0])
 	}
-	assertPayloadKeys(t, events[0], "query_hash", "query_type", "row_count", "truncated", "version_status")
-	assertPayloadKeys(t, events[1], "claim_id", "evidence_refs")
-	assertPayloadKeys(t, events[2], "claim_id", "resolver_status", "business_refs")
-	refs := events[1]["payload"].(map[string]any)["evidence_refs"].([]map[string]any)
-	assertRefKeys(t, refs[0])
-	if !regexp.MustCompile(`^sha256:[0-9a-f]{64}$`).MatchString(refs[0]["summary_hash"].(string)) {
-		t.Fatalf("invalid summary_hash: %#v", refs[0]["summary_hash"])
-	}
-	raw, _ := json.Marshal(events)
-	for _, forbidden := range []string{"claim.created", "summary\"", "labels", "secret", "subject_refs", "partial_reason"} {
-		if strings.Contains(string(raw), forbidden) {
-			t.Fatalf("events contain forbidden value %q: %s", forbidden, raw)
-		}
+	if strings.Contains(mustJSON(events), "claim_upstream_002") {
+		t.Fatalf("upstream claim leaked into fact: %s", mustJSON(events))
 	}
 }
 
-func TestBuildDataQueryEventsV21ReportsUnresolvedWithoutLeakingRef(t *testing.T) {
+func TestBuildDataQueryEventsV21StableReplay(t *testing.T) {
 	req := testRequestContext()
-	req.ClaimID = "claim_upstream_unresolved"
-	events := BuildDataQueryEvents(testTraceContext(), req, DataQuerySubject{EntityKind: EntityKindObjectInstance, QueryHash: HashValue("empty")}, nil)
-	if len(events) != 2 || events[1]["event_type"] != "business.refs.resolved" {
-		t.Fatalf("unexpected unresolved events: %#v", events)
+	subject := DataQuerySubject{EntityKind: EntityKindMetric, QueryHash: HashValue("same")}
+	first := BuildDataQueryEvents(testTraceContext(), req, subject, []EvidenceRef{{RefID: "metric:kn_demo:risk", RefType: RefTypeMetric}})
+	second := BuildDataQueryEvents(testTraceContext(), req, subject, []EvidenceRef{{RefID: "metric:kn_demo:risk", RefType: RefTypeMetric}})
+	if first[0]["event_id"] != second[0]["event_id"] {
+		t.Fatalf("event_id is not replay stable: %q != %q", first[0]["event_id"], second[0]["event_id"])
 	}
-	payload := events[1]["payload"].(map[string]any)
-	if payload["resolver_status"] != "unresolved" || len(payload["business_refs"].([]map[string]any)) != 0 {
-		t.Fatalf("unexpected unresolved payload: %#v", payload)
-	}
-	assertPayloadKeys(t, events[1], "claim_id", "resolver_status", "business_refs")
+}
+
+func mustJSON(value any) string {
+	raw, _ := json.Marshal(value)
+	return string(raw)
 }
 
 func assertPayloadKeys(t *testing.T, event Event, allowed ...string) {

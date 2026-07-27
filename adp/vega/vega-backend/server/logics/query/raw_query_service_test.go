@@ -8,6 +8,7 @@ package query
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"sync/atomic"
@@ -131,6 +132,23 @@ func TestRawQueryTotalCount(t *testing.T) {
 
 	_, err = rawQueryTotalCount(&interfaces.RawQueryResponse{Entries: []map[string]any{{rawQueryTotalCountColumn: "invalid"}}})
 	require.Error(t, err)
+}
+
+func TestWithExecutedResourceIDsCarriesInternalEvidenceBindings(t *testing.T) {
+	result := &interfaces.RawQueryResponse{
+		Entries: []map[string]any{{"order_id": "PO-2024-001"}},
+	}
+	resourceIDs := []string{"res_purchase_order", "res_supplier"}
+
+	got := withExecutedResourceIDs(result, resourceIDs)
+	resourceIDs[0] = "mutated"
+
+	require.Same(t, result, got)
+	assert.Equal(t, []string{"res_purchase_order", "res_supplier"}, got.ResourceIDs)
+	raw, err := json.Marshal(got)
+	require.NoError(t, err)
+	assert.NotContains(t, string(raw), "ResourceIDs")
+	assert.NotContains(t, string(raw), "res_purchase_order")
 }
 
 func TestRawQueryServiceValidateRequest(t *testing.T) {

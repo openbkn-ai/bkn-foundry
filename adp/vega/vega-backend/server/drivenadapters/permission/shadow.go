@@ -101,7 +101,7 @@ func (c *safeClient) do(ctx context.Context, method, path string, body, out any)
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	for key, value := range common.BuildTraceHeaders(ctx) {
+	for key, value := range common.BuildTraceHeadersForChildOperation(ctx, "permission.shadow", 1) {
 		req.Header.Set(key, value)
 	}
 	resp, err := c.http.Do(req)

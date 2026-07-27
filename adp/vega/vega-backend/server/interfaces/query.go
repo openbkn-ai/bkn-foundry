@@ -69,6 +69,7 @@ type RawQueryResponse struct {
 	Warnings    []string         `json:"warnings,omitempty"`    // 非阻断告警（如 deprecated 资源命中提示）
 	Paging      *PagingResponse  `json:"paging,omitempty"`
 	SearchAfter []any            `json:"-"` // OpenSearch internal cursor state
+	ResourceIDs []string         `json:"-"` // Resolved resources used by the executed query.
 }
 
 // ColumnInfo 列信息

@@ -13,7 +13,6 @@ import (
 	"sync"
 
 	"github.com/openbkn-ai/bkn-comm-go/logger"
-	"github.com/openbkn-ai/bkn-comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-comm-go/rest"
 	attr "go.opentelemetry.io/otel/attribute"
@@ -79,18 +78,17 @@ func (bsa *businessSystemAccess) BindResource(ctx context.Context, bd_id string,
 		"type":  rtype,
 	}
 	respCode, respData, err := bsa.httpClient.PostNoUnmarshal(ctx, httpUrl, headers, body)
-	logger.Debugf("BindResource [%s] finished, response code is [%d], result is [%s], error is [%v]", httpUrl, respCode, respData, err)
+	logger.Debugf("BindResource finished, response code is [%d], %s", respCode, common.SafeErrorSummary(err))
 
 	if err != nil {
-		errDetails := fmt.Sprintf("BindResource http request failed: %s", err.Error())
-		otellog.LogError(ctx, errDetails, nil)
+		common.LogSafeError(ctx, "BindResource http request failed", err)
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http bind resource failed")
-		return fmt.Errorf("BindResource http request failed: %s", err)
+		return fmt.Errorf("business system dependency request failed")
 	}
 
 	if respCode != http.StatusOK {
-		logger.Errorf("BindResource failed: %s", respData)
-		err = fmt.Errorf("BindResource failed: %s", respData)
+		logger.Errorf("BindResource failed: response_code=%d, %s", respCode, common.SafeTextSummary("response", string(respData)))
+		err = fmt.Errorf("BindResource returned HTTP %d", respCode)
 		return err
 	}
 
@@ -125,18 +123,17 @@ func (bsa *businessSystemAccess) UnbindResource(ctx context.Context, bd_id strin
 	}
 
 	respCode, respData, err := bsa.httpClient.DeleteNoUnmarshal(ctx, httpUrl, headers)
-	logger.Debugf("UnbindResource [%s] finished, response code is [%d], result is [%s], error is [%v]", httpUrl, respCode, respData, err)
+	logger.Debugf("UnbindResource finished, response code is [%d], %s", respCode, common.SafeErrorSummary(err))
 
 	if err != nil {
-		errDetails := fmt.Sprintf("UnbindResource http request failed: %s", err.Error())
-		otellog.LogError(ctx, errDetails, nil)
+		common.LogSafeError(ctx, "UnbindResource http request failed", err)
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http unbind resource failed")
-		return fmt.Errorf("UnbindResource http request failed: %s", err)
+		return fmt.Errorf("business system dependency request failed")
 	}
 
 	if respCode != http.StatusOK {
-		logger.Errorf("UnbindResource failed: %s", respData)
-		err = fmt.Errorf("UnbindResource failed: %s", respData)
+		logger.Errorf("UnbindResource failed: response_code=%d, %s", respCode, common.SafeTextSummary("response", string(respData)))
+		err = fmt.Errorf("UnbindResource returned HTTP %d", respCode)
 		return err
 	}
 

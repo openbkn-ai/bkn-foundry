@@ -22,18 +22,21 @@ func vegaTraceRequestContext(c *gin.Context, ctx context.Context) bkntrace.Reque
 	accountInfo, _ := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
 	businessDomain := strings.TrimSpace(c.GetHeader("x-business-domain"))
 	if businessDomain == "" {
-		businessDomain = strings.TrimSpace(traceContext.Baggage["business_domain"])
+		businessDomain = strings.TrimSpace(traceContext.BusinessDomain)
 	}
 	return bkntrace.RequestContext{
-		RequestID:        traceContext.RequestID,
-		AccountID:        accountInfo.ID,
-		AccountType:      accountInfo.Type,
-		BusinessDomain:   businessDomain,
-		InteractionID:    traceContext.InteractionID,
-		OperationID:      traceContext.OperationID,
-		CausationEventID: traceContext.CausationEventID,
-		ClaimID:          traceContext.ClaimID,
-		Attempt:          traceContext.Attempt,
+		RequestID:          traceContext.RequestID,
+		AccountID:          accountInfo.ID,
+		AccountType:        accountInfo.Type,
+		TenantID:           strings.TrimSpace(c.GetHeader("x-tenant-id")),
+		BusinessDomain:     businessDomain,
+		InteractionID:      traceContext.InteractionID,
+		OperationID:        traceContext.OperationID,
+		CausationEventID:   traceContext.CausationEventID,
+		ClaimID:            traceContext.ClaimID,
+		Attempt:            traceContext.Attempt,
+		ObservedAt:         traceContext.ObservedAt,
+		ObservedAtProvided: traceContext.ObservedAtProvided,
 	}
 }
 
@@ -51,7 +54,9 @@ func emitResourceReadEvidence(c *gin.Context, ctx context.Context, operation str
 		subject.ResourceID = resources[0].ID
 		subject.CatalogID = resources[0].CatalogID
 	}
-	bkntrace.EmitDataQueryEvents(ctx, vegaTraceRequestContext(c, ctx), subject, bkntrace.ResourceRefs(resources))
+	if eventID := bkntrace.EmitDataQueryEvents(ctx, vegaTraceRequestContext(c, ctx), subject, bkntrace.ResourceRefs(resources)); eventID != "" {
+		c.Header("bkn-evidence-event-id", eventID)
+	}
 }
 
 func emitResourceDataEvidence(c *gin.Context, ctx context.Context, resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams, result *interfaces.ResourceDataQueryResult) {
@@ -68,7 +73,114 @@ func emitResourceDataEvidence(c *gin.Context, ctx context.Context, resource *int
 		TotalCount:    result.TotalCount,
 		Truncated:     resourceDataEvidenceTruncated(result),
 	}
-	bkntrace.EmitDataQueryEvents(ctx, vegaTraceRequestContext(c, ctx), subject, refs)
+	queryContent, resultContent := resourceDataArtifactContent(resource, params, result)
+	if eventID := bkntrace.EmitDataQueryEvidence(
+		ctx, vegaTraceRequestContext(c, ctx), subject, refs, queryContent, resultContent,
+	); eventID != "" {
+		c.Header("bkn-evidence-event-id", eventID)
+	}
+}
+
+func emitRawQueryEvidence(c *gin.Context, ctx context.Context, req *interfaces.RawQueryRequest, resp *interfaces.RawQueryResponse) {
+	if !bkntrace.EvidenceEnabled() || req == nil || resp == nil {
+		return
+	}
+	subject, refs := rawQueryEvidenceDetails(req, resp)
+	if len(resp.ResourceIDs) == 1 {
+		subject.ResourceID = strings.TrimSpace(resp.ResourceIDs[0])
+	}
+	queryContent, resultContent := rawQueryArtifactContent(req, resp)
+	if eventID := bkntrace.EmitDataQueryEvidence(
+		ctx, vegaTraceRequestContext(c, ctx), subject, refs, queryContent, resultContent,
+	); eventID != "" {
+		c.Header("bkn-evidence-event-id", eventID)
+	}
+}
+
+func resourceDataArtifactContent(
+	resource *interfaces.Resource,
+	params *interfaces.ResourceDataQueryParams,
+	result *interfaces.ResourceDataQueryResult,
+) (map[string]any, map[string]any) {
+	queryContent := map[string]any{
+		"resource_id": resource.ID,
+		"catalog_id":  resource.CatalogID,
+	}
+	if params != nil {
+		queryContent["offset"] = params.Offset
+		queryContent["limit"] = params.Limit
+		queryContent["paging"] = params.Paging
+		queryContent["sort"] = params.Sort
+		queryContent["filter_condition"] = params.FilterCondition
+		queryContent["output_fields"] = params.OutputFields
+		queryContent["need_total"] = params.NeedTotal
+		queryContent["query_type"] = params.QueryType
+		queryContent["aggregation"] = params.Aggregation
+		queryContent["group_by"] = params.GroupBy
+		queryContent["having"] = params.Having
+	}
+	resultContent := map[string]any{
+		"entries":     result.Entries,
+		"total_count": result.TotalCount,
+		"paging":      result.Paging,
+		"truncated":   resourceDataEvidenceTruncated(result),
+	}
+	return queryContent, resultContent
+}
+
+func rawQueryArtifactContent(
+	req *interfaces.RawQueryRequest,
+	resp *interfaces.RawQueryResponse,
+) (map[string]any, map[string]any) {
+	queryContent := map[string]any{}
+	if req != nil {
+		queryContent["query"] = req.Query
+		queryContent["query_format"] = req.QueryFormat
+		queryContent["input_dialect"] = req.InputDialect
+		queryContent["paging"] = req.Paging
+		queryContent["query_timeout_sec"] = req.QueryTimeoutSec
+		queryContent["need_total"] = req.NeedTotal
+	}
+	resultContent := map[string]any{}
+	if resp != nil {
+		resultContent["columns"] = resp.Columns
+		resultContent["entries"] = resp.Entries
+		resultContent["total_count"] = resp.TotalCount
+		resultContent["warnings"] = resp.Warnings
+		resultContent["paging"] = resp.Paging
+	}
+	return queryContent, resultContent
+}
+
+func rawQueryEvidenceDetails(
+	req *interfaces.RawQueryRequest,
+	resp *interfaces.RawQueryResponse,
+) (bkntrace.DataQuerySubject, []bkntrace.EvidenceRef) {
+	subject := bkntrace.DataQuerySubject{Operation: "data.raw_query"}
+	if req != nil {
+		subject.QueryHash = bkntrace.HashValue(req.Query)
+	}
+	if resp == nil {
+		return subject, nil
+	}
+	subject.ReturnedCount = len(resp.Entries)
+	if resp.TotalCount != nil {
+		subject.TotalCount = *resp.TotalCount
+	}
+	subject.Truncated = resp.Paging != nil && resp.Paging.NextCursor != nil
+	if !subject.Truncated && subject.TotalCount > 0 {
+		subject.Truncated = int64(subject.ReturnedCount) < subject.TotalCount
+	}
+	refs := make([]bkntrace.EvidenceRef, 0, len(resp.ResourceIDs))
+	for _, resourceID := range resp.ResourceIDs {
+		if resourceID = strings.TrimSpace(resourceID); resourceID != "" {
+			refs = append(refs, bkntrace.EvidenceRef{
+				RefID:   "resource:" + resourceID,
+				RefType: bkntrace.RefTypeResource,
+			})
+		}
+	}
+	return subject, refs
 }
 
 func resourceDataEvidenceTruncated(result *interfaces.ResourceDataQueryResult) bool {

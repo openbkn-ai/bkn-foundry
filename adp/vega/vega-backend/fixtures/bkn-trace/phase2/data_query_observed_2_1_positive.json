@@ -39,11 +39,11 @@
       }
     },
     {
-      "event_id": "evt_data_fact_2301",
+      "event_id": "evt_199da6ac3b5555c5e2361b3ff3975379256bbd30b222b8092560b2e70a720768",
       "event_type": "data.query.observed",
       "bkn.trace.schema.version": "2.1.0",
       "observed_at": "2026-07-25T13:30:00.010000000Z",
-      "emitted_at": "2026-07-25T13:30:00.011000000Z",
+      "emitted_at": "2026-07-25T13:30:00.010000000Z",
       "producer_module": "vega-data",
       "trace_id": "73230000000000000000000000000001",
       "span_id": "7323000000000001",
@@ -62,9 +62,18 @@
         "resource_refs": [
           {
             "ref_id": "resource:res_demo",
-            "ref_type": "resource_ref",
+            "ref_type": "resource",
             "source_system": "vega-data",
-            "summary_hash": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+            "validity": "observed",
+            "version_status": "unversioned",
+            "visibility": "visible"
+          }
+        ],
+        "field_refs": [
+          {
+            "ref_id": "field:res_demo:3333333333333333",
+            "ref_type": "field",
+            "source_system": "vega-data",
             "validity": "observed",
             "version_status": "unversioned",
             "visibility": "visible"

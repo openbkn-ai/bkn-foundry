@@ -15,7 +15,6 @@ import (
 
 	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-comm-go/logger"
-	"github.com/openbkn-ai/bkn-comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-comm-go/rest"
 	"go.opentelemetry.io/otel/codes"
@@ -72,7 +71,7 @@ func (mfa *modelFactoryAccess) GetDefaultModel(ctx context.Context) (*interfaces
 	// 优先取接口式系统默认(运行时可配，mf-model-manager 单一真相源，带 TTL 缓存)
 	model, err := mfa.getDefaultModelFromAPI(ctx, interfaces.SMALL_MODEL_TYPE_EMBEDDING)
 	if err != nil {
-		logger.Errorf("Get default embedding model from mf-model-manager failed: %v", err)
+		logger.Errorf("Get default embedding model from mf-model-manager failed: %s", common.SafeErrorSummary(err))
 		return nil, fmt.Errorf("get default embedding model failed: %w", err)
 	}
 	if model != nil {
@@ -112,10 +111,10 @@ func (mfa *modelFactoryAccess) getDefaultModelFromAPI(ctx context.Context, model
 	}
 
 	respCode, result, err := mfa.httpClient.GetNoUnmarshal(ctx, httpUrl, nil, headers)
-	logger.Debugf("get [%s] finished, response code is [%d], result is [%s], error is [%v]", httpUrl, respCode, result, err)
+	logger.Debugf("GetDefaultModel finished, response code is [%d], %s", respCode, common.SafeErrorSummary(err))
 	if err != nil {
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http get default model failed")
-		otellog.LogError(ctx, "Get default model request failed", err)
+		common.LogSafeError(ctx, "Get default model request failed", err)
 		return nil, fmt.Errorf("get default model request failed: %w", err)
 	}
 	if respCode == http.StatusNotFound {
@@ -132,16 +131,17 @@ func (mfa *modelFactoryAccess) getDefaultModelFromAPI(ctx context.Context, model
 		return nil, nil
 	}
 	if respCode != http.StatusOK {
-		err := fmt.Errorf("get default model request failed with status code: %d, %s", respCode, result)
+		err := fmt.Errorf("get default model request failed with status code: %d", respCode)
+		logger.Debugf("GetDefaultModel response: %s", common.SafeTextSummary("response", string(result)))
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 200")
-		otellog.LogError(ctx, "Get default model request failed", err)
+		common.LogSafeError(ctx, "Get default model request failed", err)
 		return nil, err
 	}
 
 	smallModel := interfaces.SmallModel{}
 	if err := sonic.Unmarshal(result, &smallModel); err != nil {
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmarshal default model response failed")
-		otellog.LogError(ctx, "Unmarshal default model response failed", err)
+		common.LogSafeError(ctx, "Unmarshal default model response failed", err)
 		return nil, fmt.Errorf("unmarshal default model response failed: %w", err)
 	}
 
@@ -181,23 +181,24 @@ func (mfa *modelFactoryAccess) GetModelByID(ctx context.Context, modelID string)
 
 	// 发送GET请求获取模型
 	respCode, result, err := mfa.httpClient.GetNoUnmarshal(ctx, httpUrl, nil, headers)
-	logger.Debugf("get [%s] finished, response code is [%d], result is [%s], error is [%v]", httpUrl, respCode, result, err)
+	logger.Debugf("GetModelByID finished, response code is [%d], %s", respCode, common.SafeErrorSummary(err))
 
 	if err != nil {
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http get model failed")
-		otellog.LogError(ctx, "Get model request failed", err)
+		common.LogSafeError(ctx, "Get model request failed", err)
 		return nil, fmt.Errorf("get model request failed: %w", err)
 	}
 
 	if respCode == http.StatusNotFound {
-		logger.Warnf("Get model request failed with status code: %d, %s", respCode, result)
+		logger.Warnf("Get model request failed with status code: %d", respCode)
 		oteltrace.AddHttpAttrs4Ok(span, respCode)
 		return nil, nil
 	}
 	if respCode != http.StatusOK {
-		err := fmt.Errorf("get model request failed with status code: %d, %s", respCode, result)
+		err := fmt.Errorf("get model request failed with status code: %d", respCode)
+		logger.Debugf("GetModelByID response: %s", common.SafeTextSummary("response", string(result)))
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 200")
-		otellog.LogError(ctx, "Get model request failed", err)
+		common.LogSafeError(ctx, "Get model request failed", err)
 		return nil, err
 	}
 
@@ -205,7 +206,7 @@ func (mfa *modelFactoryAccess) GetModelByID(ctx context.Context, modelID string)
 	smallModel := interfaces.SmallModel{}
 	if err := sonic.Unmarshal(result, &smallModel); err != nil {
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmarshal model response failed")
-		otellog.LogError(ctx, "Unmarshal model response failed", err)
+		common.LogSafeError(ctx, "Unmarshal model response failed", err)
 		return nil, fmt.Errorf("unmarshal model response failed: %w", err)
 	}
 
@@ -233,23 +234,24 @@ func (mfa *modelFactoryAccess) GetModelByName(ctx context.Context, modelName str
 
 	// 发送GET请求获取模型
 	respCode, result, err := mfa.httpClient.GetNoUnmarshal(ctx, httpUrl, nil, headers)
-	logger.Debugf("get [%s] finished, response code is [%d], result is [%s], error is [%v]", httpUrl, respCode, result, err)
+	logger.Debugf("GetModelByName finished, response code is [%d], %s", respCode, common.SafeErrorSummary(err))
 
 	if err != nil {
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http get model by name failed")
-		otellog.LogError(ctx, "Get model request failed", err)
+		common.LogSafeError(ctx, "Get model request failed", err)
 		return nil, fmt.Errorf("get model request failed: %w", err)
 	}
 
 	if respCode == http.StatusNotFound {
-		logger.Warnf("Get model request failed with status code: %d, %s", respCode, result)
+		logger.Warnf("Get model request failed with status code: %d", respCode)
 		oteltrace.AddHttpAttrs4Ok(span, respCode)
 		return nil, nil
 	}
 	if respCode != http.StatusOK {
-		err := fmt.Errorf("get model request failed with status code: %d, %s", respCode, result)
+		err := fmt.Errorf("get model request failed with status code: %d", respCode)
+		logger.Debugf("GetModelByName response: %s", common.SafeTextSummary("response", string(result)))
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 200")
-		otellog.LogError(ctx, "Get model request failed", err)
+		common.LogSafeError(ctx, "Get model request failed", err)
 		return nil, err
 	}
 
@@ -257,7 +259,7 @@ func (mfa *modelFactoryAccess) GetModelByName(ctx context.Context, modelName str
 	smallModel := interfaces.SmallModel{}
 	if err := sonic.Unmarshal(result, &smallModel); err != nil {
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmarshal model response failed")
-		otellog.LogError(ctx, "Unmarshal model response failed", err)
+		common.LogSafeError(ctx, "Unmarshal model response failed", err)
 		return nil, fmt.Errorf("unmarshal model response failed: %w", err)
 	}
 
@@ -323,21 +325,20 @@ func (mfa *modelFactoryAccess) GetVector(ctx context.Context,
 		// 发送POST请求获取向量
 		respCode, result, err := mfa.httpClient.PostNoUnmarshal(ctx, httpUrl, headers, requestBody)
 
-		// 打印日志
-		modelInfo, _ := sonic.Marshal(model)
-		logger.Debugf("post [%s] finished, small model info: [%s], response code is [%d], error is [%v]",
-			httpUrl, modelInfo, respCode, err)
+		logger.Debugf("GetVector finished, batch_size=[%d], response code is [%d], %s",
+			len(currentWords), respCode, common.SafeErrorSummary(err))
 
 		if err != nil {
 			oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http get vector failed")
-			otellog.LogError(ctx, "Get vector request failed", err)
+			common.LogSafeError(ctx, "Get vector request failed", err)
 			return nil, fmt.Errorf("get vector request failed: %w", err)
 		}
 
 		if respCode != 200 {
-			err := fmt.Errorf("get vector request failed with status code: %d, %s", respCode, result)
+			err := fmt.Errorf("get vector request failed with status code: %d", respCode)
+			logger.Debugf("GetVector response: %s", common.SafeTextSummary("response", string(result)))
 			oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 200")
-			otellog.LogError(ctx, "Get vector request failed", err)
+			common.LogSafeError(ctx, "Get vector request failed", err)
 			return nil, err
 		}
 
@@ -348,7 +349,7 @@ func (mfa *modelFactoryAccess) GetVector(ctx context.Context,
 
 		if err := sonic.Unmarshal(result, &response); err != nil {
 			oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmarshal vector response failed")
-			otellog.LogError(ctx, "Unmarshal vector response failed", err)
+			common.LogSafeError(ctx, "Unmarshal vector response failed", err)
 			return nil, fmt.Errorf("unmarshal vector response failed: %w", err)
 		}
 		logger.Debugf("vectorized result length is [%d]", len(response.Data))
@@ -356,7 +357,7 @@ func (mfa *modelFactoryAccess) GetVector(ctx context.Context,
 		// 检查返回的向量数量是否与输入文本数量一致
 		if len(response.Data) != len(currentWords) {
 			err := fmt.Errorf("vector count mismatch: expected %d, got %d", len(currentWords), len(response.Data))
-			otellog.LogError(ctx, "Vector count mismatch", err)
+			common.LogSafeError(ctx, "Vector count mismatch", err)
 			return nil, err
 		}
 

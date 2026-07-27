@@ -8,7 +8,9 @@ package driveradapters
 
 import (
 	"context"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-comm-go/hydra"
@@ -25,6 +27,9 @@ const (
 	headerBKNOperationID      = "bkn-operation-id"
 	headerBKNCausationEventID = "bkn-causation-event-id"
 	headerBKNClaimID          = "bkn-claim-id"
+	headerBKNAttempt          = "bkn-attempt"
+	headerBKNEventObservedAt  = "bkn-event-observed-at"
+	headerBKNEvidenceEventID  = "bkn-evidence-event-id"
 )
 
 func bknTraceRequestContext(c *gin.Context, vis hydra.Visitor) bkntrace.RequestContext {
@@ -40,16 +45,37 @@ func bknTraceRequestContext(c *gin.Context, vis hydra.Visitor) bkntrace.RequestC
 	if accountType == "" {
 		accountType = strings.TrimSpace(c.GetHeader(interfaces.HTTP_HEADER_ACCOUNT_TYPE))
 	}
+	attempt, _ := strconv.Atoi(strings.TrimSpace(c.GetHeader(headerBKNAttempt)))
+	if attempt < 1 || attempt > 1000 {
+		attempt = 1
+	}
+	interactionID := strings.TrimSpace(c.GetHeader(headerBKNInteractionID))
+	if interactionID == "" {
+		interactionID = "int_" + xid.New().String()
+	}
+	operationID := strings.TrimSpace(c.GetHeader(headerBKNOperationID))
+	if operationID == "" {
+		operationID = "op_" + xid.New().String()
+	}
+	observedAt := strings.TrimSpace(c.GetHeader(headerBKNEventObservedAt))
+	if observedAt == "" {
+		observedAt = time.Now().UTC().Format(time.RFC3339Nano)
+	}
+	c.Header(headerBKNRequestID, requestID)
+	c.Header(headerBKNInteractionID, interactionID)
+	c.Header(headerBKNOperationID, operationID)
+	c.Header(headerBKNEventObservedAt, observedAt)
 	return bkntrace.RequestContext{
 		RequestID:        requestID,
 		AccountID:        accountID,
 		AccountType:      accountType,
 		BusinessDomain:   strings.TrimSpace(c.GetHeader(interfaces.HTTP_HEADER_BUSINESS_DOMAIN)),
-		InteractionID:    strings.TrimSpace(c.GetHeader(headerBKNInteractionID)),
-		OperationID:      strings.TrimSpace(c.GetHeader(headerBKNOperationID)),
+		InteractionID:    interactionID,
+		OperationID:      operationID,
 		CausationEventID: strings.TrimSpace(c.GetHeader(headerBKNCausationEventID)),
 		ClaimID:          strings.TrimSpace(c.GetHeader(headerBKNClaimID)),
-		Attempt:          1,
+		Attempt:          attempt,
+		ObservedAt:       observedAt,
 	}
 }
 
@@ -57,7 +83,7 @@ func emitObjectTypeSchemaRead(ctx context.Context, c *gin.Context, vis hydra.Vis
 	if !bkntrace.EvidenceEnabled() {
 		return
 	}
-	bkntrace.EmitSchemaReadEvents(ctx, bknTraceRequestContext(c, vis), bkntrace.ReadSubject{
+	eventID := bkntrace.EmitSchemaReadEvents(ctx, bknTraceRequestContext(c, vis), bkntrace.ReadSubject{
 		EntityKind:    bkntrace.EntityKindObjectType,
 		Operation:     operation,
 		KNID:          knID,
@@ -66,13 +92,14 @@ func emitObjectTypeSchemaRead(ctx context.Context, c *gin.Context, vis hydra.Vis
 		ReturnedCount: len(items),
 		TotalCount:    total,
 	}, bkntrace.ObjectTypeRefs(items))
+	setEvidenceEventHeader(c, eventID)
 }
 
 func emitRelationTypeSchemaRead(ctx context.Context, c *gin.Context, vis hydra.Visitor, operation, knID, branch string, requestedIDs []string, items []*interfaces.RelationType, total int64) {
 	if !bkntrace.EvidenceEnabled() {
 		return
 	}
-	bkntrace.EmitSchemaReadEvents(ctx, bknTraceRequestContext(c, vis), bkntrace.ReadSubject{
+	eventID := bkntrace.EmitSchemaReadEvents(ctx, bknTraceRequestContext(c, vis), bkntrace.ReadSubject{
 		EntityKind:    bkntrace.EntityKindRelationType,
 		Operation:     operation,
 		KNID:          knID,
@@ -81,13 +108,14 @@ func emitRelationTypeSchemaRead(ctx context.Context, c *gin.Context, vis hydra.V
 		ReturnedCount: len(items),
 		TotalCount:    total,
 	}, bkntrace.RelationTypeRefs(items))
+	setEvidenceEventHeader(c, eventID)
 }
 
 func emitActionTypeSchemaRead(ctx context.Context, c *gin.Context, vis hydra.Visitor, operation, knID, branch string, requestedIDs []string, items []*interfaces.ActionType, total int64) {
 	if !bkntrace.EvidenceEnabled() {
 		return
 	}
-	bkntrace.EmitSchemaReadEvents(ctx, bknTraceRequestContext(c, vis), bkntrace.ReadSubject{
+	eventID := bkntrace.EmitSchemaReadEvents(ctx, bknTraceRequestContext(c, vis), bkntrace.ReadSubject{
 		EntityKind:    bkntrace.EntityKindActionType,
 		Operation:     operation,
 		KNID:          knID,
@@ -96,13 +124,14 @@ func emitActionTypeSchemaRead(ctx context.Context, c *gin.Context, vis hydra.Vis
 		ReturnedCount: len(items),
 		TotalCount:    total,
 	}, bkntrace.ActionTypeRefs(items))
+	setEvidenceEventHeader(c, eventID)
 }
 
 func emitMetricSchemaRead(ctx context.Context, c *gin.Context, vis hydra.Visitor, operation, knID, branch string, requestedIDs []string, items []*interfaces.MetricDefinition, total int64) {
 	if !bkntrace.EvidenceEnabled() {
 		return
 	}
-	bkntrace.EmitSchemaReadEvents(ctx, bknTraceRequestContext(c, vis), bkntrace.ReadSubject{
+	eventID := bkntrace.EmitSchemaReadEvents(ctx, bknTraceRequestContext(c, vis), bkntrace.ReadSubject{
 		EntityKind:    bkntrace.EntityKindMetric,
 		Operation:     operation,
 		KNID:          knID,
@@ -111,6 +140,13 @@ func emitMetricSchemaRead(ctx context.Context, c *gin.Context, vis hydra.Visitor
 		ReturnedCount: len(items),
 		TotalCount:    total,
 	}, bkntrace.MetricRefs(items))
+	setEvidenceEventHeader(c, eventID)
+}
+
+func setEvidenceEventHeader(c *gin.Context, eventID string) {
+	if strings.TrimSpace(eventID) != "" {
+		c.Header(headerBKNEvidenceEventID, eventID)
+	}
 }
 
 func firstNonEmptyHeader(c *gin.Context, names ...string) string {

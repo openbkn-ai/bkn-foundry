@@ -48,7 +48,7 @@ func NewVegaAccess() interfaces.DrivenVega {
 // RawQuery 调用 vega 内网原始查询接口执行 SQL。
 func (v *vegaAccess) RawQuery(ctx context.Context, req *interfaces.VegaRawQueryReq) (*interfaces.VegaRawQueryResp, error) {
 	src := fmt.Sprintf("%s/in/v1/resources/query", v.baseURL)
-	header := common.GetHeaderFromCtx(ctx)
+	header := common.GetHeaderForChildOperation(ctx, "vega.raw_query", 1)
 	header[rest.ContentTypeKey] = rest.ContentTypeJSON
 
 	respCode, respBody, err := v.httpClient.PostNoUnmarshal(ctx, src, header, req)
@@ -96,7 +96,7 @@ type vegaCatalogEnvelope struct {
 
 // GetResourceConnectorType resource_id -> catalog_id -> connector_type（两跳）。
 func (v *vegaAccess) GetResourceConnectorType(ctx context.Context, resourceID string) (string, error) {
-	header := common.GetHeaderFromCtx(ctx)
+	header := common.GetHeaderForChildOperation(ctx, "vega.resource.connector_type", 1)
 	header[rest.ContentTypeKey] = rest.ContentTypeJSON
 
 	// 1) resource -> catalog_id
@@ -145,7 +145,7 @@ type vegaResourceFullEnvelope struct {
 // ListResources 列出可查询的数据资源。授权由 vega 在该 /in 端点按账户 view_detail 强制，
 // 本方法仅透传账户头并组装过滤/分页查询参数。
 func (v *vegaAccess) ListResources(ctx context.Context, req *interfaces.VegaListResourcesReq) (*interfaces.VegaListResourcesResp, error) {
-	header := common.GetHeaderFromCtx(ctx)
+	header := common.GetHeaderForChildOperation(ctx, "vega.resource.list", 1)
 	header[rest.ContentTypeKey] = rest.ContentTypeJSON
 
 	params := url.Values{}
@@ -189,7 +189,7 @@ func (v *vegaAccess) ListResources(ctx context.Context, req *interfaces.VegaList
 // GetResource 取单个资源（含物理列）。vega get-by-id 返回 entries 信封，取首条。
 // 资源不存在或调用账户无权时 vega 返回非 2xx，本方法透传为错误。
 func (v *vegaAccess) GetResource(ctx context.Context, resourceID string) (*interfaces.VegaResource, error) {
-	header := common.GetHeaderFromCtx(ctx)
+	header := common.GetHeaderForChildOperation(ctx, "vega.resource.get", 1)
 	header[rest.ContentTypeKey] = rest.ContentTypeJSON
 
 	src := fmt.Sprintf("%s/in/v1/resources/%s", v.baseURL, url.PathEscape(resourceID))

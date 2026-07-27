@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/drivenadapters"
+	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/bkntrace"
 	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
@@ -73,7 +74,7 @@ func (s *knRunSQLService) RunSQL(ctx context.Context, req *RunSQLReq) (*interfac
 		return nil, ErrNoResourcePlaceholder
 	}
 
-	return s.vega.RawQuery(ctx, &interfaces.VegaRawQueryReq{
+	resp, err := s.vega.RawQuery(ctx, &interfaces.VegaRawQueryReq{
 		Query:           req.SQL,
 		QueryFormat:     "sql",
 		InputDialect:    "trino",
@@ -83,4 +84,9 @@ func (s *knRunSQLService) RunSQL(ctx context.Context, req *RunSQLReq) (*interfac
 			Limit: 10000,
 		},
 	})
+	if err != nil {
+		return nil, err
+	}
+	bkntrace.EmitRunSQLEvents(ctx, nil, req.SQL, resourceIDs, resp)
+	return resp, nil
 }

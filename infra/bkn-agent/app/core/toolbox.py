@@ -16,6 +16,7 @@ import logging
 import re
 from dataclasses import dataclass
 from typing import Any, Optional
+from urllib.parse import urlsplit
 
 import aiohttp
 from fastapi import HTTPException
@@ -41,6 +42,11 @@ _TYPE_MAP = {
 _NAME_RE = re.compile(r"[^a-zA-Z0-9_-]")
 # 身份头由 runtime 注入（/in 约定），不交给 LLM 决策
 _IDENTITY_HEADERS = {"x-account-id", "x-account-type", "user_id"}
+_CONTEXT_LOADER_RETRIEVAL_PATHS = {
+    "/api/agent-retrieval/in/v1/kn/search_schema",
+    "/api/agent-retrieval/in/v1/kn/query_object_instance",
+    "/api/agent-retrieval/in/v1/kn/query_instance_subgraph",
+}
 
 
 @dataclass(frozen=True)
@@ -63,7 +69,7 @@ def _safe_name(name: str, tool_id: str) -> str:
 def _safe_field(name: str, taken: set[str]) -> str:
     """参数名 → python 合法且非保留的字段名（pydantic create_model 要求）。"""
     field = re.sub(r"[^0-9a-zA-Z_]", "_", name or "")
-    if not field or field[0].isdigit():
+    if not field or field[0].isdigit() or field.startswith("_"):
         field = f"p_{field}"
     if keyword.iskeyword(field):
         field = f"{field}_"
@@ -143,6 +149,7 @@ async def _execute(
     params: list[_Param],
     account_id: str,
     account_type: str,
+    expected_fact_event_type: str | None = None,
 ) -> str:
     """经执行代理调用工具。工具级失败以字符串返回给 LLM（可自我修正），
     不抛异常击穿整轮对话。参数按元数据声明的位置分发到 body/query/path。"""
@@ -177,13 +184,22 @@ async def _execute(
         headers.update(evidence.operation_headers(operation_id, start_event["event_id"]))
         payload["header"].update(evidence.operation_headers(operation_id, start_event["event_id"]))
 
-    async def _finish(result: str, *, success: bool, status_code: int | None = None, error: str | None = None) -> str:
+    async def _finish(
+        result: str,
+        *,
+        success: bool,
+        status_code: int | None = None,
+        error: str | None = None,
+        result_value: Any = None,
+    ) -> str:
         result_event = evidence.tool_result_observed(
             tool_id=tool_id,
             tool_name=tool_name,
             toolbox_id=box_id,
             result_hash=evidence.hash_value(result) if success else None,
             result_length=len(result) if success else None,
+            result_count=evidence.result_count(result_value if result_value is not None else result)
+            if success else None,
             success=success,
             status_code=status_code,
             error_hash=evidence.hash_value(error or result) if not success else None,
@@ -192,8 +208,6 @@ async def _execute(
             operation_id=operation_id,
             causation_event_id=start_event["event_id"] if start_event else parent_event_id or "",
         )
-        if result_event and success:
-            evidence.record_operation_result(result_event, tool_name=tool_name, content=result if success else None)
         await evidence.submit_events([event for event in [start_event, result_event] if event], account_id, account_type)
         return result
 
@@ -228,6 +242,15 @@ async def _execute(
         status_code = data.get("status_code") or 0
         body = data.get("body")
         body_text = body if isinstance(body, str) else json.dumps(body, ensure_ascii=False)
+        evidence.record_fact_receipt(
+            operation_id=operation_id,
+            headers=data.get("headers") if isinstance(data.get("headers"), dict) else {},
+            body=body,
+            context_hash=evidence.tool_message_context_hash(body_text),
+            expected_event_type=(
+                expected_fact_event_type if status_code < 400 else None
+            ),
+        )
         if status_code >= 400:
             return await _finish(
                 f"tool target failed: HTTP {status_code} {body_text[:800]}",
@@ -235,7 +258,9 @@ async def _execute(
                 status_code=status_code,
                 error=body_text,
             )
-        return await _finish(body_text, success=True, status_code=status_code)
+        return await _finish(
+            body_text, success=True, status_code=status_code, result_value=body
+        )
 
 
 def _build_tool(box_id: str, info: dict, account_id: str, account_type: str) -> StructuredTool | None:
@@ -252,6 +277,7 @@ def _build_tool(box_id: str, info: dict, account_id: str, account_type: str) -> 
     if name != raw_name:  # LLM 见到的名字与注册名不同，日志留映射便于排障
         logger.info("[Toolbox] tool name sanitized: %r -> %s (id=%s)", raw_name, name, tool_id)
     description = info.get("description") or metadata.get("summary") or name
+    expected_fact_event_type = _expected_fact_event_type(box_id, metadata)
 
     # 单个工具元数据坏（非法参数名、schema 畸形）不应连累整箱工具装载
     try:
@@ -261,7 +287,17 @@ def _build_tool(box_id: str, info: dict, account_id: str, account_type: str) -> 
         return None
 
     async def call(**kwargs) -> str:
-        return await _execute(box_id, tool_id, name, method, kwargs, params, account_id, account_type)
+        return await _execute(
+            box_id,
+            tool_id,
+            name,
+            method,
+            kwargs,
+            params,
+            account_id,
+            account_type,
+            expected_fact_event_type=expected_fact_event_type,
+        )
 
     return StructuredTool.from_function(
         coroutine=call,
@@ -270,6 +306,16 @@ def _build_tool(box_id: str, info: dict, account_id: str, account_type: str) -> 
         args_schema=model,
         metadata={"bkn_trace_native": True, "bkn_tool_id": tool_id},
     )
+
+
+def _expected_fact_event_type(box_id: str, metadata: dict[str, Any]) -> str | None:
+    path = str(metadata.get("path") or "").rstrip("/")
+    if path not in _CONTEXT_LOADER_RETRIEVAL_PATHS:
+        return None
+    host = urlsplit(str(metadata.get("server_url") or "")).hostname or ""
+    if host == "agent-retrieval" or box_id in config.default_toolboxes:
+        return "retrieval.completed"
+    return None
 
 
 async def _list_tools(box_id: str, account_id: str, account_type: str) -> list[dict]:

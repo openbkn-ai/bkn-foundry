@@ -79,13 +79,13 @@ func (pa *permissionAccess) CheckPermission(ctx context.Context, check interface
 
 	check.Method = http.MethodGet
 	respCode, result, err := pa.httpClient.PostNoUnmarshal(ctx, httpUrl, headers, check)
-	logger.Debugf("post [%s] finished, response code is [%d], result is [%s], error is [%v]", httpUrl, respCode, result, err)
+	logger.Debugf("CheckPermission finished, response code is [%d], %s", respCode, common.SafeErrorSummary(err))
 
 	if err != nil {
 		// 添加异常时的 trace 属性
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http Post Failed")
 		// 记录异常日志
-		otellog.LogError(ctx, "Post operation-check request failed", err)
+		common.LogSafeError(ctx, "Post operation-check request failed", err)
 		return false, fmt.Errorf("post operation-check request failed: %v", err)
 	}
 
@@ -96,7 +96,7 @@ func (pa *permissionAccess) CheckPermission(ctx context.Context, check interface
 			// 添加异常时的 trace 属性
 			oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmalshal PermissionError failed")
 			// 记录异常日志
-			otellog.LogError(ctx, "Unmalshal PermissionError failed", err)
+			common.LogSafeError(ctx, "Unmalshal PermissionError failed", err)
 			return false, err
 		}
 
@@ -115,7 +115,7 @@ func (pa *permissionAccess) CheckPermission(ctx context.Context, check interface
 		// 添加异常时的 trace 属性
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 200")
 		// 记录异常日志
-		otellog.LogError(ctx, "Post operation-check failed", httpErr)
+		common.LogSafeError(ctx, "Post operation-check failed", httpErr)
 		return false, httpErr
 	}
 
@@ -133,7 +133,7 @@ func (pa *permissionAccess) CheckPermission(ctx context.Context, check interface
 		// 添加异常时的 trace 属性
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmalshal operation-check result failed")
 		// 记录异常日志
-		otellog.LogError(ctx, "Unmalshal operation-check result failed", err)
+		common.LogSafeError(ctx, "Unmalshal operation-check result failed", err)
 		return false, err
 	}
 
@@ -168,13 +168,13 @@ func (pa *permissionAccess) CreateResources(ctx context.Context, policies []inte
 	}
 
 	respCode, result, err := pa.httpClient.PostNoUnmarshal(ctx, httpUrl, headers, policies)
-	logger.Debugf("post [%s] finished, response code is [%d], result is [%s], error is [%v]", httpUrl, respCode, result, err)
+	logger.Debugf("CreateResources finished, response code is [%d], %s", respCode, common.SafeErrorSummary(err))
 
 	if err != nil {
 		// 添加异常时的 trace 属性
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http Post Failed")
 		// 记录异常日志
-		otellog.LogError(ctx, "Post create policy request failed", err)
+		common.LogSafeError(ctx, "Post create policy request failed", err)
 		return fmt.Errorf("post create policy request failed: %v", err)
 	}
 
@@ -185,7 +185,7 @@ func (pa *permissionAccess) CreateResources(ctx context.Context, policies []inte
 			// 添加异常时的 trace 属性
 			oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmalshal PermissionError failed")
 			// 记录异常日志
-			otellog.LogError(ctx, "Unmalshal PermissionError failed", err)
+			common.LogSafeError(ctx, "Unmalshal PermissionError failed", err)
 			return err
 		}
 
@@ -202,7 +202,7 @@ func (pa *permissionAccess) CreateResources(ctx context.Context, policies []inte
 		// 添加异常时的 trace 属性
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 200")
 		// 记录异常日志
-		otellog.LogError(ctx, "Post create policy failed", httpErr)
+		common.LogSafeError(ctx, "Post create policy failed", httpErr)
 		return httpErr
 	}
 
@@ -235,13 +235,13 @@ func (pa *permissionAccess) DeleteResources(ctx context.Context, res []interface
 	}
 
 	respCode, result, err := pa.httpClient.PostNoUnmarshal(ctx, createUrl, headers, st)
-	logger.Debugf("post [%s] finished, response code is [%d], result is [%s], error is [%v]", createUrl, respCode, result, err)
+	logger.Debugf("DeleteResources finished, response code is [%d], %s", respCode, common.SafeErrorSummary(err))
 
 	if err != nil {
 		// 添加异常时的 trace 属性
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http Post Failed")
 		// 记录异常日志
-		otellog.LogError(ctx, "Post delete policy request failed", err)
+		common.LogSafeError(ctx, "Post delete policy request failed", err)
 		return fmt.Errorf("post delete policy request failed: %v", err)
 	}
 
@@ -252,7 +252,7 @@ func (pa *permissionAccess) DeleteResources(ctx context.Context, res []interface
 			// 添加异常时的 trace 属性
 			oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmalshal PermissionError failed")
 			// 记录异常日志
-			otellog.LogError(ctx, "Unmalshal PermissionError failed", err)
+			common.LogSafeError(ctx, "Unmalshal PermissionError failed", err)
 			return err
 		}
 
@@ -269,7 +269,7 @@ func (pa *permissionAccess) DeleteResources(ctx context.Context, res []interface
 		// 添加异常时的 trace 属性
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 200")
 		// 记录异常日志
-		otellog.LogError(ctx, "Post delete policy failed", httpErr)
+		common.LogSafeError(ctx, "Post delete policy failed", httpErr)
 		return httpErr
 	}
 
@@ -305,13 +305,13 @@ func (pa *permissionAccess) FilterResources(ctx context.Context,
 
 	filter.Method = http.MethodGet
 	respCode, result, err := pa.httpClient.PostNoUnmarshal(ctx, httpUrl, headers, filter)
-	logger.Debugf("post [%s] finished, response code is [%d], result is [%s], error is [%v]", httpUrl, respCode, result, err)
+	logger.Debugf("FilterResources finished, response code is [%d], %s", respCode, common.SafeErrorSummary(err))
 
 	if err != nil {
 		// 添加异常时的 trace 属性
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http Post Failed")
 		// 记录异常日志
-		otellog.LogError(ctx, "Post resource-filter request failed", err)
+		common.LogSafeError(ctx, "Post resource-filter request failed", err)
 		return map[string]interfaces.PermissionResourceOps{}, fmt.Errorf("post resource-filter request failed: %v", err)
 	}
 
@@ -322,7 +322,7 @@ func (pa *permissionAccess) FilterResources(ctx context.Context,
 			// 添加异常时的 trace 属性
 			oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmalshal PermissionError failed")
 			// 记录异常日志
-			otellog.LogError(ctx, "Unmalshal PermissionError failed", err)
+			common.LogSafeError(ctx, "Unmalshal PermissionError failed", err)
 			return map[string]interfaces.PermissionResourceOps{}, err
 		}
 
@@ -340,7 +340,7 @@ func (pa *permissionAccess) FilterResources(ctx context.Context,
 		// 添加异常时的 trace 属性
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 200")
 		// 记录异常日志
-		otellog.LogError(ctx, "Post resource-filter failed", httpErr)
+		common.LogSafeError(ctx, "Post resource-filter failed", httpErr)
 		return map[string]interfaces.PermissionResourceOps{}, httpErr
 	}
 
@@ -361,7 +361,7 @@ func (pa *permissionAccess) FilterResources(ctx context.Context,
 		// 添加异常时的 trace 属性
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmalshal resource-filter result failed")
 		// 记录异常日志
-		otellog.LogError(ctx, "Unmalshal resource-filter result failed", err)
+		common.LogSafeError(ctx, "Unmalshal resource-filter result failed", err)
 		return map[string]interfaces.PermissionResourceOps{}, err
 	}
 

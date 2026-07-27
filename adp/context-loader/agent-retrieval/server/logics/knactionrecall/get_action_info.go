@@ -144,7 +144,7 @@ func (s *knActionRecallServiceImpl) GetActionInfo(ctx context.Context, req *inte
 	}
 
 	// 11. 构建headers
-	headers := common.GetHeaderFromCtx(ctx)
+	headers := common.GetHeaderForChildOperation(ctx, "ontology.action.execute", 1)
 
 	return &interfaces.KnActionRecallResponse{
 		Headers:      headers,

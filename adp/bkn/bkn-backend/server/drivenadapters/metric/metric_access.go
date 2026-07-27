@@ -55,7 +55,7 @@ func jsonOrNull(v any) interface{} {
 	}
 	b, err := json.Marshal(v)
 	if err != nil {
-		logger.Errorf("metric jsonOrNull marshal error: %v", err)
+		logger.Errorf("metric jsonOrNull marshal error: %v", common.SafeErrorSummary(err))
 		return nil
 	}
 	return string(b)
@@ -97,7 +97,7 @@ func scanMetricFromRow(scanner interface {
 	)
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
-			logger.Errorf("metric row scan error: %v", err)
+			logger.Errorf("metric row scan error: %v", common.SafeErrorSummary(err))
 		}
 		return nil, err
 	}
@@ -109,20 +109,20 @@ func scanMetricFromRow(scanner interface {
 	if timeDim.Valid && timeDim.String != "" {
 		var td interfaces.MetricTimeDimension
 		if err := json.Unmarshal([]byte(timeDim.String), &td); err != nil {
-			logger.Errorf("unmarshal metric f_time_dimension: %v", err)
+			logger.Errorf("unmarshal metric f_time_dimension: %v", common.SafeErrorSummary(err))
 			return nil, fmt.Errorf("unmarshal metric time_dimension: %w", err)
 		}
 		metric.TimeDimension = &td
 	}
 	if calcFormula.Valid && calcFormula.String != "" {
 		if err := json.Unmarshal([]byte(calcFormula.String), &metric.CalculationFormula); err != nil {
-			logger.Errorf("unmarshal metric f_calculation_formula: %v", err)
+			logger.Errorf("unmarshal metric f_calculation_formula: %v", common.SafeErrorSummary(err))
 			return nil, fmt.Errorf("unmarshal metric calculation_formula: %w", err)
 		}
 	}
 	if analysisDim.Valid && analysisDim.String != "" {
 		if err := json.Unmarshal([]byte(analysisDim.String), &metric.AnalysisDimensions); err != nil {
-			logger.Errorf("unmarshal metric f_analysis_dimensions: %v", err)
+			logger.Errorf("unmarshal metric f_analysis_dimensions: %v", common.SafeErrorSummary(err))
 			return nil, fmt.Errorf("unmarshal metric analysis_dimensions: %w", err)
 		}
 	}
@@ -191,8 +191,8 @@ func (ma *metricAccess) CreateMetric(ctx context.Context, tx *sql.Tx, def *inter
 		).
 		ToSql()
 	if err != nil {
-		logger.Errorf("CreateMetric build sql error: %v", err)
-		span.SetStatus(codes.Error, err.Error())
+		logger.Errorf("CreateMetric build sql error: %v", common.SafeErrorSummary(err))
+		span.SetStatus(codes.Error, common.SafeErrorSummary(err))
 		return err
 	}
 	if tx != nil {
@@ -201,8 +201,8 @@ func (ma *metricAccess) CreateMetric(ctx context.Context, tx *sql.Tx, def *inter
 		_, err = ma.db.Exec(sqlStr, vals...)
 	}
 	if err != nil {
-		logger.Errorf("CreateMetric insert metric definition error: %v", err)
-		span.SetStatus(codes.Error, err.Error())
+		logger.Errorf("CreateMetric insert metric definition error: %v", common.SafeErrorSummary(err))
+		span.SetStatus(codes.Error, common.SafeErrorSummary(err))
 		return err
 	}
 	span.SetStatus(codes.Ok, "")
@@ -221,8 +221,8 @@ func (ma *metricAccess) CheckMetricExistByID(ctx context.Context, knID string, b
 		Where(sq.Eq{"f_id": metricID}).
 		ToSql()
 	if err != nil {
-		logger.Errorf("CheckMetricExistByID build sql error: %v", err)
-		span.SetStatus(codes.Error, err.Error())
+		logger.Errorf("CheckMetricExistByID build sql error: %v", common.SafeErrorSummary(err))
+		span.SetStatus(codes.Error, common.SafeErrorSummary(err))
 		return "", false, err
 	}
 	var name string
@@ -232,8 +232,8 @@ func (ma *metricAccess) CheckMetricExistByID(ctx context.Context, knID string, b
 		return "", false, nil
 	}
 	if err != nil {
-		logger.Errorf("CheckMetricExistByID scan error: %v", err)
-		span.SetStatus(codes.Error, err.Error())
+		logger.Errorf("CheckMetricExistByID scan error: %v", common.SafeErrorSummary(err))
+		span.SetStatus(codes.Error, common.SafeErrorSummary(err))
 		return "", false, err
 	}
 	span.SetStatus(codes.Ok, "")
@@ -252,8 +252,8 @@ func (ma *metricAccess) CheckMetricExistByName(ctx context.Context, knID string,
 		Where(sq.Eq{"f_name": name}).
 		ToSql()
 	if err != nil {
-		logger.Errorf("CheckMetricExistByName build sql error: %v", err)
-		span.SetStatus(codes.Error, err.Error())
+		logger.Errorf("CheckMetricExistByName build sql error: %v", common.SafeErrorSummary(err))
+		span.SetStatus(codes.Error, common.SafeErrorSummary(err))
 		return "", false, err
 	}
 	var id string
@@ -263,8 +263,8 @@ func (ma *metricAccess) CheckMetricExistByName(ctx context.Context, knID string,
 		return "", false, nil
 	}
 	if err != nil {
-		logger.Errorf("CheckMetricExistByName scan error: %v", err)
-		span.SetStatus(codes.Error, err.Error())
+		logger.Errorf("CheckMetricExistByName scan error: %v", common.SafeErrorSummary(err))
+		span.SetStatus(codes.Error, common.SafeErrorSummary(err))
 		return "", false, err
 	}
 	span.SetStatus(codes.Ok, "")
@@ -311,14 +311,14 @@ func (ma *metricAccess) GetMetricByID(ctx context.Context, knID string, branch s
 		Where(sq.Eq{"f_id": metricID}).
 		ToSql()
 	if err != nil {
-		logger.Errorf("GetMetricByID build sql error: %v", err)
-		span.SetStatus(codes.Error, err.Error())
+		logger.Errorf("GetMetricByID build sql error: %v", common.SafeErrorSummary(err))
+		span.SetStatus(codes.Error, common.SafeErrorSummary(err))
 		return nil, err
 	}
 	row := ma.db.QueryRow(sqlStr, vals...)
 	metric, err := scanMetricFromRow(row)
 	if err != nil {
-		span.SetStatus(codes.Error, err.Error())
+		span.SetStatus(codes.Error, common.SafeErrorSummary(err))
 		return nil, err
 	}
 	span.SetStatus(codes.Ok, "")
@@ -342,14 +342,14 @@ func (ma *metricAccess) GetMetricsByIDs(ctx context.Context, knID string, branch
 		Where(sq.Eq{"f_id": metricIDs}).
 		ToSql()
 	if err != nil {
-		logger.Errorf("GetMetricsByIDs build sql error: %v", err)
-		span.SetStatus(codes.Error, err.Error())
+		logger.Errorf("GetMetricsByIDs build sql error: %v", common.SafeErrorSummary(err))
+		span.SetStatus(codes.Error, common.SafeErrorSummary(err))
 		return nil, err
 	}
 	rows, err := ma.db.Query(sqlStr, vals...)
 	if err != nil {
-		logger.Errorf("GetMetricsByIDs query error: %v", err)
-		span.SetStatus(codes.Error, err.Error())
+		logger.Errorf("GetMetricsByIDs query error: %v", common.SafeErrorSummary(err))
+		span.SetStatus(codes.Error, common.SafeErrorSummary(err))
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
@@ -358,14 +358,14 @@ func (ma *metricAccess) GetMetricsByIDs(ctx context.Context, knID string, branch
 	for rows.Next() {
 		metric, err := scanMetricFromRow(rows)
 		if err != nil {
-			span.SetStatus(codes.Error, err.Error())
+			span.SetStatus(codes.Error, common.SafeErrorSummary(err))
 			return nil, err
 		}
 		metrics = append(metrics, metric)
 	}
 	if err := rows.Err(); err != nil {
-		logger.Errorf("GetMetricsByIDs rows error: %v", err)
-		span.SetStatus(codes.Error, err.Error())
+		logger.Errorf("GetMetricsByIDs rows error: %v", common.SafeErrorSummary(err))
+		span.SetStatus(codes.Error, common.SafeErrorSummary(err))
 		return nil, err
 	}
 	span.SetStatus(codes.Ok, "")
@@ -416,14 +416,14 @@ func (ma *metricAccess) ListMetrics(ctx context.Context, query interfaces.Metric
 
 	sqlStr, vals, err := builder.ToSql()
 	if err != nil {
-		logger.Errorf("ListMetrics build sql error: %v", err)
-		span.SetStatus(codes.Error, err.Error())
+		logger.Errorf("ListMetrics build sql error: %v", common.SafeErrorSummary(err))
+		span.SetStatus(codes.Error, common.SafeErrorSummary(err))
 		return nil, err
 	}
 	rows, err := ma.db.Query(sqlStr, vals...)
 	if err != nil {
-		logger.Errorf("ListMetrics query error: %v", err)
-		span.SetStatus(codes.Error, err.Error())
+		logger.Errorf("ListMetrics query error: %v", common.SafeErrorSummary(err))
+		span.SetStatus(codes.Error, common.SafeErrorSummary(err))
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
@@ -432,14 +432,14 @@ func (ma *metricAccess) ListMetrics(ctx context.Context, query interfaces.Metric
 	for rows.Next() {
 		metric, err := scanMetricFromRow(rows)
 		if err != nil {
-			span.SetStatus(codes.Error, err.Error())
+			span.SetStatus(codes.Error, common.SafeErrorSummary(err))
 			return nil, err
 		}
 		metrics = append(metrics, metric)
 	}
 	if err := rows.Err(); err != nil {
-		logger.Errorf("ListMetrics rows error: %v", err)
-		span.SetStatus(codes.Error, err.Error())
+		logger.Errorf("ListMetrics rows error: %v", common.SafeErrorSummary(err))
+		span.SetStatus(codes.Error, common.SafeErrorSummary(err))
 		return nil, err
 	}
 	span.SetStatus(codes.Ok, "")
@@ -454,15 +454,15 @@ func (ma *metricAccess) GetMetricsTotal(ctx context.Context, query interfaces.Me
 	builder := processMetricQueryCondition(query, subBuilder)
 	sqlStr, vals, err := builder.ToSql()
 	if err != nil {
-		logger.Errorf("GetMetricsTotal build sql error: %v", err)
-		span.SetStatus(codes.Error, err.Error())
+		logger.Errorf("GetMetricsTotal build sql error: %v", common.SafeErrorSummary(err))
+		span.SetStatus(codes.Error, common.SafeErrorSummary(err))
 		return 0, err
 	}
 	var total int
 	err = ma.db.QueryRow(sqlStr, vals...).Scan(&total)
 	if err != nil {
-		logger.Errorf("GetMetricsTotal scan error: %v", err)
-		span.SetStatus(codes.Error, err.Error())
+		logger.Errorf("GetMetricsTotal scan error: %v", common.SafeErrorSummary(err))
+		span.SetStatus(codes.Error, common.SafeErrorSummary(err))
 		return 0, err
 	}
 	span.SetStatus(codes.Ok, "")
@@ -497,31 +497,31 @@ func (ma *metricAccess) UpdateMetric(ctx context.Context, tx *sql.Tx, metric *in
 		Where(sq.Eq{"f_branch": metric.Branch}).
 		ToSql()
 	if err != nil {
-		logger.Errorf("UpdateMetric build sql error: %v", err)
-		span.SetStatus(codes.Error, err.Error())
+		logger.Errorf("UpdateMetric build sql error: %v", common.SafeErrorSummary(err))
+		span.SetStatus(codes.Error, common.SafeErrorSummary(err))
 		return err
 	}
 	ret, err := tx.Exec(sqlStr, vals...)
 	if err != nil {
-		logger.Errorf("update metric definition error: %v\n", err)
-		span.SetStatus(codes.Error, fmt.Sprintf("Update metric definition error: %v", err.Error()))
+		logger.Errorf("update metric definition error: %v\n", common.SafeErrorSummary(err))
+		span.SetStatus(codes.Error, fmt.Sprintf("Update metric definition error: %v", common.SafeErrorSummary(err)))
 		return err
 	}
 
 	//sql语句影响的行数
 	RowsAffected, err := ret.RowsAffected()
 	if err != nil {
-		logger.Errorf("Get RowsAffected error: %v\n", err)
-		span.SetStatus(codes.Error, fmt.Sprintf("Get RowsAffected error: %v", err.Error()))
+		logger.Errorf("Get RowsAffected error: %v\n", common.SafeErrorSummary(err))
+		span.SetStatus(codes.Error, fmt.Sprintf("Get RowsAffected error: %v", common.SafeErrorSummary(err)))
 		return err
 	}
 
 	if RowsAffected != 1 {
 		// 影响行数不等于1不报错，更新操作已经发生
-		logger.Errorf("UPDATE %d RowsAffected not equal 1, RowsAffected is %d, Metric is %v",
-			metric.ID, RowsAffected, metric)
-		span.SetStatus(codes.Error, fmt.Sprintf("Update %s RowsAffected not equal 1, RowsAffected is %d, Metric is %v",
-			metric.ID, RowsAffected, metric))
+		logger.Errorf("Update metric affected unexpected row count: metric_id=%s, rows=%d",
+			metric.ID, RowsAffected)
+		span.SetStatus(codes.Error, fmt.Sprintf("Update metric affected unexpected row count: metric_id=%s, rows=%d",
+			metric.ID, RowsAffected))
 	}
 	span.SetStatus(codes.Ok, "")
 	return nil
@@ -541,33 +541,33 @@ func (ma *metricAccess) DeleteMetricsByIDs(ctx context.Context, tx *sql.Tx, knID
 		Where(sq.Eq{"f_id": metricIDs}).
 		ToSql()
 	if err != nil {
-		logger.Errorf("DeleteMetricsByIDs build sql error: %v", err)
-		span.SetStatus(codes.Error, err.Error())
+		logger.Errorf("DeleteMetricsByIDs build sql error: %v", common.SafeErrorSummary(err))
+		span.SetStatus(codes.Error, common.SafeErrorSummary(err))
 		return err
 	}
 	ret, err := tx.Exec(sqlStr, vals...)
 	if err != nil {
-		logger.Errorf("delete metric definition error: %v\n", err)
-		span.SetStatus(codes.Error, fmt.Sprintf("Delete metric definition error: %v", err.Error()))
+		logger.Errorf("delete metric definition error: %v\n", common.SafeErrorSummary(err))
+		span.SetStatus(codes.Error, fmt.Sprintf("Delete metric definition error: %v", common.SafeErrorSummary(err)))
 		return err
 	}
 
 	//sql语句影响的行数
 	RowsAffected, err := ret.RowsAffected()
 	if err != nil {
-		logger.Errorf("Delete Metrics By IDs[%v] RowsAffected error: %v\n", metricIDs, err)
-		span.SetStatus(codes.Error, fmt.Sprintf("Delete Metrics By IDs[%v] RowsAffected error: %v", metricIDs, err.Error()))
+		logger.Errorf("Delete metrics RowsAffected error: requested_count=%d, %s\n", len(metricIDs), common.SafeErrorSummary(err))
+		span.SetStatus(codes.Error, fmt.Sprintf("Delete metrics RowsAffected error: requested_count=%d, %s", len(metricIDs), common.SafeErrorSummary(err)))
 		return err
 	}
 
 	if RowsAffected != int64(len(metricIDs)) {
 		// 影响行数不等于删除的指标数量不报错，删除操作已经发生
-		logger.Warnf("DELETE metrics by ids[%v] RowsAffected not equal %d",
-			metricIDs, RowsAffected)
-		span.SetStatus(codes.Error, fmt.Sprintf("Delete metrics by ids[%v] RowsAffected not equal %d",
-			metricIDs, RowsAffected))
+		logger.Warnf("Delete metrics affected unexpected row count: requested_count=%d, rows=%d",
+			len(metricIDs), RowsAffected)
+		span.SetStatus(codes.Error, fmt.Sprintf("Delete metrics affected unexpected row count: requested_count=%d, rows=%d",
+			len(metricIDs), RowsAffected))
 	}
-	logger.Infof("Delete Metrics By IDs[%v] RowsAffected: %d", metricIDs, RowsAffected)
+	logger.Infof("Delete metrics completed: requested_count=%d, rows=%d", len(metricIDs), RowsAffected)
 	span.SetStatus(codes.Ok, "")
 	return nil
 }
@@ -582,14 +582,14 @@ func (ma *metricAccess) GetMetricIDsByKnID(ctx context.Context, knID string, bra
 		Where(sq.Eq{"f_branch": branch}).
 		ToSql()
 	if err != nil {
-		logger.Errorf("GetMetricIDsByKnID build sql error: %v", err)
-		span.SetStatus(codes.Error, err.Error())
+		logger.Errorf("GetMetricIDsByKnID build sql error: %v", common.SafeErrorSummary(err))
+		span.SetStatus(codes.Error, common.SafeErrorSummary(err))
 		return nil, err
 	}
 	rows, err := ma.db.Query(sqlStr, vals...)
 	if err != nil {
-		logger.Errorf("GetMetricIDsByKnID query error: %v", err)
-		span.SetStatus(codes.Error, err.Error())
+		logger.Errorf("GetMetricIDsByKnID query error: %v", common.SafeErrorSummary(err))
+		span.SetStatus(codes.Error, common.SafeErrorSummary(err))
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
@@ -598,15 +598,15 @@ func (ma *metricAccess) GetMetricIDsByKnID(ctx context.Context, knID string, bra
 	for rows.Next() {
 		var id string
 		if err := rows.Scan(&id); err != nil {
-			logger.Errorf("GetMetricIDsByKnID scan error: %v", err)
-			span.SetStatus(codes.Error, err.Error())
+			logger.Errorf("GetMetricIDsByKnID scan error: %v", common.SafeErrorSummary(err))
+			span.SetStatus(codes.Error, common.SafeErrorSummary(err))
 			return nil, err
 		}
 		ids = append(ids, id)
 	}
 	if err := rows.Err(); err != nil {
-		logger.Errorf("GetMetricIDsByKnID rows error: %v", err)
-		span.SetStatus(codes.Error, err.Error())
+		logger.Errorf("GetMetricIDsByKnID rows error: %v", common.SafeErrorSummary(err))
+		span.SetStatus(codes.Error, common.SafeErrorSummary(err))
 		return nil, err
 	}
 	span.SetStatus(codes.Ok, "")
@@ -622,20 +622,20 @@ func (ma *metricAccess) DeleteMetricsByKnID(ctx context.Context, tx *sql.Tx, knI
 		Where(sq.Eq{"f_branch": branch}).
 		ToSql()
 	if err != nil {
-		logger.Errorf("DeleteMetricsByKnID by kn_id=%s branch=%s build sql error: %v", knID, branch, err)
-		span.SetStatus(codes.Error, err.Error())
+		logger.Errorf("DeleteMetricsByKnID by kn_id=%s branch=%s build sql error: %v", knID, branch, common.SafeErrorSummary(err))
+		span.SetStatus(codes.Error, common.SafeErrorSummary(err))
 		return 0, err
 	}
 	ret, err := tx.Exec(sqlStr, vals...)
 	if err != nil {
-		logger.Errorf("DeleteMetricsByKnID by kn_id=%s branch=%s exec error: %v", knID, branch, err)
-		span.SetStatus(codes.Error, err.Error())
+		logger.Errorf("DeleteMetricsByKnID by kn_id=%s branch=%s exec error: %v", knID, branch, common.SafeErrorSummary(err))
+		span.SetStatus(codes.Error, common.SafeErrorSummary(err))
 		return 0, err
 	}
 	n, err := ret.RowsAffected()
 	if err != nil {
-		logger.Errorf("DeleteMetricsByKnID by kn_id=%s branch=%s RowsAffected error: %v", knID, branch, err)
-		span.SetStatus(codes.Error, err.Error())
+		logger.Errorf("DeleteMetricsByKnID by kn_id=%s branch=%s RowsAffected error: %v", knID, branch, common.SafeErrorSummary(err))
+		span.SetStatus(codes.Error, common.SafeErrorSummary(err))
 		return 0, err
 	}
 	logger.Infof("DeleteMetricsByKnID by kn_id=%s branch=%s RowsAffected=%d", knID, branch, n)

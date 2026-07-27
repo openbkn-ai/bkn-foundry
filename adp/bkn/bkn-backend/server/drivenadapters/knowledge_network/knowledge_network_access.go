@@ -70,12 +70,12 @@ func (kna *knowledgeNetworkAccess) CheckKNExistByID(ctx context.Context,
 		Where(sq.Eq{"f_branch": branch}).
 		ToSql()
 	if err != nil {
-		otellog.LogError(ctx, "Failed to build the sql of get id by f_id, error", err)
+		common.LogSafeError(ctx, "Failed to build the sql of get id by f_id, error", err)
 		return "", false, err
 	}
 
 	// 记录处理的 sql 字符串
-	otellog.LogInfo(ctx, fmt.Sprintf("获取业务知识网络信息的 sql 语句: %s", sqlStr))
+	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	var name string
 	err = kna.db.QueryRow(sqlStr, vals...).Scan(&name)
@@ -84,7 +84,7 @@ func (kna *knowledgeNetworkAccess) CheckKNExistByID(ctx context.Context,
 		span.SetStatus(codes.Ok, "")
 		return "", false, nil
 	} else if err != nil {
-		otellog.LogError(ctx, "Row scan failed, err", err)
+		common.LogSafeError(ctx, "Row scan failed, err", err)
 		return "", false, err
 	}
 
@@ -110,12 +110,12 @@ func (oma *knowledgeNetworkAccess) CheckKNExistByName(ctx context.Context,
 		Where(sq.Eq{"f_branch": branch}).
 		ToSql()
 	if err != nil {
-		otellog.LogError(ctx, "Failed to build the sql of get id by name, error", err)
+		common.LogSafeError(ctx, "Failed to build the sql of get id by name, error", err)
 		return "", false, err
 	}
 
 	// 记录处理的 sql 字符串
-	otellog.LogInfo(ctx, fmt.Sprintf("获取业务知识网络信息的 sql 语句: %s", sqlStr))
+	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	var knID string
 	err = oma.db.QueryRow(sqlStr, vals...).Scan(
@@ -126,7 +126,7 @@ func (oma *knowledgeNetworkAccess) CheckKNExistByName(ctx context.Context,
 		span.SetStatus(codes.Ok, "")
 		return "", false, nil
 	} else if err != nil {
-		otellog.LogError(ctx, "Row scan failed, err", err)
+		common.LogSafeError(ctx, "Row scan failed, err", err)
 		return "", false, err
 	}
 
@@ -184,16 +184,16 @@ func (kna *knowledgeNetworkAccess) CreateKN(ctx context.Context, tx *sql.Tx, KN 
 			KN.UpdateTime).
 		ToSql()
 	if err != nil {
-		otellog.LogError(ctx, "Failed to build the sql of insert knowledge network, error", err)
+		common.LogSafeError(ctx, "Failed to build the sql of insert knowledge network, error", err)
 		return err
 	}
 
 	// 记录处理的 sql 字符串
-	otellog.LogInfo(ctx, fmt.Sprintf("创建业务知识网络的 sql 语句: %s", sqlStr))
+	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	_, err = tx.Exec(sqlStr, vals...)
 	if err != nil {
-		otellog.LogError(ctx, "Insert data error", err)
+		common.LogSafeError(ctx, "Insert data error", err)
 		return err
 	}
 
@@ -248,16 +248,16 @@ func (kna *knowledgeNetworkAccess) ListKNs(ctx context.Context, query interfaces
 
 	sqlStr, vals, err := builder.ToSql()
 	if err != nil {
-		otellog.LogError(ctx, "Failed to build the sql of select knowledge networks, error", err)
+		common.LogSafeError(ctx, "Failed to build the sql of select knowledge networks, error", err)
 		return []*interfaces.KN{}, err
 	}
 
 	// 记录处理的 sql 字符串
-	otellog.LogInfo(ctx, fmt.Sprintf("查询业务知识网络列表的 sql 语句: %s; queryParams: %v", sqlStr, query))
+	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	rows, err := kna.db.Query(sqlStr, vals...)
 	if err != nil {
-		otellog.LogError(ctx, "List data error", err)
+		common.LogSafeError(ctx, "List data error", err)
 		return []*interfaces.KN{}, err
 	}
 	defer func() { _ = rows.Close() }()
@@ -269,7 +269,7 @@ func (kna *knowledgeNetworkAccess) ListKNs(ctx context.Context, query interfaces
 		}
 		if query.OnlyIDs {
 			if err := rows.Scan(&KN.KNID); err != nil {
-				otellog.LogError(ctx, "Row scan error", err)
+				common.LogSafeError(ctx, "Row scan error", err)
 				return []*interfaces.KN{}, err
 			}
 			KNs = append(KNs, &KN)
@@ -295,7 +295,7 @@ func (kna *knowledgeNetworkAccess) ListKNs(ctx context.Context, query interfaces
 			&KN.UpdateTime,
 		)
 		if err != nil {
-			otellog.LogError(ctx, "Row scan error", err)
+			common.LogSafeError(ctx, "Row scan error", err)
 			return []*interfaces.KN{}, err
 		}
 
@@ -321,17 +321,17 @@ func (kna *knowledgeNetworkAccess) GetKNsTotal(ctx context.Context, query interf
 
 	sqlStr, vals, err := builder.ToSql()
 	if err != nil {
-		otellog.LogError(ctx, "Failed to build the sql of select knowledge networks total, error", err)
+		common.LogSafeError(ctx, "Failed to build the sql of select knowledge networks total, error", err)
 		return 0, err
 	}
 
 	// 记录处理的 sql 字符串
-	otellog.LogInfo(ctx, fmt.Sprintf("查询业务知识网络总数的 sql 语句: %s; queryParams: %v", sqlStr, query))
+	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	total := 0
 	err = kna.db.QueryRow(sqlStr, vals...).Scan(&total)
 	if err != nil {
-		otellog.LogError(ctx, "Get knowledge network totals error", err)
+		common.LogSafeError(ctx, "Get knowledge network totals error", err)
 		return 0, err
 	}
 
@@ -371,12 +371,12 @@ func (kna *knowledgeNetworkAccess) GetKNByID(ctx context.Context,
 		Where(sq.Eq{"f_branch": branch}).
 		ToSql()
 	if err != nil {
-		otellog.LogError(ctx, "Failed to build the sql of select knowledge network by id, error", err)
+		common.LogSafeError(ctx, "Failed to build the sql of select knowledge network by id, error", err)
 		return nil, err
 	}
 
 	// 记录处理的 sql 字符串
-	otellog.LogInfo(ctx, fmt.Sprintf("查询业务知识网络列表的 sql 语句: %s.", sqlStr))
+	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	tagsStr := ""
 	KN := interfaces.KN{
@@ -405,7 +405,7 @@ func (kna *knowledgeNetworkAccess) GetKNByID(ctx context.Context,
 		span.SetStatus(codes.Ok, "")
 		return nil, nil
 	} else if err != nil {
-		otellog.LogError(ctx, "Get knowledge network by id error", err)
+		common.LogSafeError(ctx, "Get knowledge network by id error", err)
 		return nil, err
 	}
 
@@ -444,30 +444,30 @@ func (kna *knowledgeNetworkAccess) UpdateKN(ctx context.Context, tx *sql.Tx, kn 
 		Where(sq.Eq{"f_id": kn.KNID}).
 		ToSql()
 	if err != nil {
-		otellog.LogError(ctx, "Failed to build the sql of update knowledge network by knowledge network_id, error", err)
+		common.LogSafeError(ctx, "Failed to build the sql of update knowledge network by knowledge network_id, error", err)
 		return err
 	}
 
 	// 记录处理的 sql 字符串
-	otellog.LogInfo(ctx, fmt.Sprintf("修改业务知识网络的 sql 语句: %s", sqlStr))
+	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	ret, err := tx.Exec(sqlStr, vals...)
 	if err != nil {
-		otellog.LogError(ctx, "Update data error", err)
+		common.LogSafeError(ctx, "Update data error", err)
 		return err
 	}
 
 	//sql语句影响的行数
 	RowsAffected, err := ret.RowsAffected()
 	if err != nil {
-		otellog.LogError(ctx, "Get RowsAffected error", err)
+		common.LogSafeError(ctx, "Get RowsAffected error", err)
 		return err
 	}
 
 	if RowsAffected != 1 {
 		// 影响行数不等于1不报错，更新操作已经发生
-		otellog.LogWarn(ctx, fmt.Sprintf("Update %s RowsAffected not equal 1, RowsAffected is %d, KN is %v",
-			kn.KNID, RowsAffected, kn))
+		otellog.LogWarn(ctx, fmt.Sprintf("Update knowledge network affected unexpected row count: knowledge_network_id=%s, rows=%d",
+			kn.KNID, RowsAffected))
 	}
 
 	span.SetStatus(codes.Ok, "")
@@ -493,23 +493,23 @@ func (kna *knowledgeNetworkAccess) UpdateKNDetail(ctx context.Context,
 		Where(sq.Eq{"f_branch": branch}).
 		ToSql()
 	if err != nil {
-		otellog.LogError(ctx, "Failed to build the sql of update knowledge network detail by knowledge network_id, error", err)
+		common.LogSafeError(ctx, "Failed to build the sql of update knowledge network detail by knowledge network_id, error", err)
 		return err
 	}
 
 	// 记录处理的 sql 字符串
-	otellog.LogInfo(ctx, fmt.Sprintf("修改业务知识网络详情的 sql 语句: %s", sqlStr))
+	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	ret, err := kna.db.Exec(sqlStr, vals...)
 	if err != nil {
-		otellog.LogError(ctx, "Update data error", err)
+		common.LogSafeError(ctx, "Update data error", err)
 		return err
 	}
 
 	//sql语句影响的行数
 	RowsAffected, err := ret.RowsAffected()
 	if err != nil {
-		otellog.LogError(ctx, "Get RowsAffected error", err)
+		common.LogSafeError(ctx, "Get RowsAffected error", err)
 		return err
 	}
 
@@ -537,23 +537,23 @@ func (kna *knowledgeNetworkAccess) DeleteKN(ctx context.Context,
 		Where(sq.Eq{"f_branch": branch}).
 		ToSql()
 	if err != nil {
-		otellog.LogError(ctx, "Failed to build the sql of delete knowledge network by knowledge network_id, error", err)
+		common.LogSafeError(ctx, "Failed to build the sql of delete knowledge network by knowledge network_id, error", err)
 		return 0, err
 	}
 
 	// 记录处理的 sql 字符串
-	otellog.LogInfo(ctx, fmt.Sprintf("删除业务知识网络的 sql 语句: %s; 删除的id: %s", sqlStr, knID))
+	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	ret, err := tx.Exec(sqlStr, vals...)
 	if err != nil {
-		otellog.LogError(ctx, "Delete data error", err)
+		common.LogSafeError(ctx, "Delete data error", err)
 		return 0, err
 	}
 
 	//sql语句影响的行数
 	RowsAffected, err := ret.RowsAffected()
 	if err != nil {
-		otellog.LogError(ctx, "Get RowsAffected error", err)
+		common.LogSafeError(ctx, "Get RowsAffected error", err)
 		return 0, err
 	}
 
@@ -655,7 +655,7 @@ func (kna *knowledgeNetworkAccess) GetNeighborPathsBatch(ctx context.Context, ot
 
 		sqlStr, vals, err = subBuilder.ToSql()
 		if err != nil {
-			otellog.LogError(ctx, "Failed to build the sql of select model by id, error", err)
+			common.LogSafeError(ctx, "Failed to build the sql of select model by id, error", err)
 			return nil, err
 		}
 	case interfaces.DIRECTION_BACKWARD:
@@ -692,7 +692,7 @@ func (kna *knowledgeNetworkAccess) GetNeighborPathsBatch(ctx context.Context, ot
 
 		sqlStr, vals, err = subBuilder.ToSql()
 		if err != nil {
-			otellog.LogError(ctx, "Failed to build the sql of select model by id, error", err)
+			common.LogSafeError(ctx, "Failed to build the sql of select model by id, error", err)
 			return nil, err
 		}
 	case interfaces.DIRECTION_BIDIRECTIONAL:
@@ -757,12 +757,12 @@ func (kna *knowledgeNetworkAccess) GetNeighborPathsBatch(ctx context.Context, ot
 
 		sqlStr1, vals1, err := subBuilder1.ToSql()
 		if err != nil {
-			otellog.LogError(ctx, "Failed to build the sql of select model by id, error", err)
+			common.LogSafeError(ctx, "Failed to build the sql of select model by id, error", err)
 			return nil, err
 		}
 		sqlStr2, vals2, err := subBuilder2.ToSql()
 		if err != nil {
-			otellog.LogError(ctx, "Failed to build the sql of select model by id, error", err)
+			common.LogSafeError(ctx, "Failed to build the sql of select model by id, error", err)
 			return nil, err
 		}
 
@@ -773,7 +773,7 @@ func (kna *knowledgeNetworkAccess) GetNeighborPathsBatch(ctx context.Context, ot
 
 	rows, err := kna.db.Query(sqlStr, vals...)
 	if err != nil {
-		otellog.LogError(ctx, "List data error", err)
+		common.LogSafeError(ctx, "List data error", err)
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
@@ -816,34 +816,34 @@ func (kna *knowledgeNetworkAccess) GetNeighborPathsBatch(ctx context.Context, ot
 		// 2.0 反序列化dMappingRules
 		err = sonic.Unmarshal(mappingRulesBytes, &relationType.MappingRules)
 		if err != nil {
-			otellog.LogError(ctx, "Failed to unmarshal mappingRules after getting relation type, err", err)
+			common.LogSafeError(ctx, "Failed to unmarshal mappingRules after getting relation type, err", err)
 			return nil, err
 		}
 		// 2.0 反序列化datasource
 		err = sonic.Unmarshal(dataSourceBytes, &neighbor.DataSource)
 		if err != nil {
-			otellog.LogError(ctx, "Failed to unmarshal dataSource after getting object type, err", err)
+			common.LogSafeError(ctx, "Failed to unmarshal dataSource after getting object type, err", err)
 			return nil, err
 		}
 
 		// 2.1 反序列化DataProperties
 		err = sonic.Unmarshal(dataPropertiesBytes, &neighbor.DataProperties)
 		if err != nil {
-			otellog.LogError(ctx, "Failed to unmarshal dataProperties after getting object type, err", err)
+			common.LogSafeError(ctx, "Failed to unmarshal dataProperties after getting object type, err", err)
 			return nil, err
 		}
 
 		// 2.2 反序列化LogicProperties
 		err = sonic.Unmarshal(logicPropertiesBytes, &neighbor.LogicProperties)
 		if err != nil {
-			otellog.LogError(ctx, "Failed to unmarshal logicProperties after getting object type, err", err)
+			common.LogSafeError(ctx, "Failed to unmarshal logicProperties after getting object type, err", err)
 			return nil, err
 		}
 
 		// 2.3 反序列化主键
 		err = sonic.Unmarshal(primaryKeysBytes, &neighbor.PrimaryKeys)
 		if err != nil {
-			otellog.LogError(ctx, "Failed to unmarshal primaryKeys after getting object type, err", err)
+			common.LogSafeError(ctx, "Failed to unmarshal primaryKeys after getting object type, err", err)
 			return nil, err
 		}
 
@@ -901,16 +901,16 @@ func (kna *knowledgeNetworkAccess) GetAllKNs(ctx context.Context) (map[string]*i
 		From(KN_TABLE_NAME).
 		ToSql()
 	if err != nil {
-		otellog.LogError(ctx, "Failed to build the sql of select knowledge networks, error", err)
+		common.LogSafeError(ctx, "Failed to build the sql of select knowledge networks, error", err)
 		return map[string]*interfaces.KN{}, err
 	}
 
 	// 记录处理的 sql 字符串
-	otellog.LogInfo(ctx, fmt.Sprintf("查询业务知识网络列表的 sql 语句: %s; queryParams: %v", sqlStr, vals))
+	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	rows, err := kna.db.Query(sqlStr, vals...)
 	if err != nil {
-		otellog.LogError(ctx, "List data error", err)
+		common.LogSafeError(ctx, "List data error", err)
 		return map[string]*interfaces.KN{}, err
 	}
 	defer func() { _ = rows.Close() }()
@@ -939,7 +939,7 @@ func (kna *knowledgeNetworkAccess) GetAllKNs(ctx context.Context) (map[string]*i
 			&KN.UpdateTime,
 		)
 		if err != nil {
-			otellog.LogError(ctx, "Row scan error", err)
+			common.LogSafeError(ctx, "Row scan error", err)
 			return map[string]*interfaces.KN{}, err
 		}
 
@@ -976,16 +976,16 @@ func (kna *knowledgeNetworkAccess) GetKNNamesByIDs(ctx context.Context,
 		Where(sq.Eq{"f_branch": branch}).
 		ToSql()
 	if err != nil {
-		otellog.LogError(ctx, "Failed to build the sql of select knowledge network names by ids, error", err)
+		common.LogSafeError(ctx, "Failed to build the sql of select knowledge network names by ids, error", err)
 		return nil, err
 	}
 
 	// 记录处理的 sql 字符串
-	otellog.LogInfo(ctx, fmt.Sprintf("按ID批量查询业务知识网络名称的 sql 语句: %s; ids: %v", sqlStr, ids))
+	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	rows, err := kna.db.Query(sqlStr, vals...)
 	if err != nil {
-		otellog.LogError(ctx, "List data error", err)
+		common.LogSafeError(ctx, "List data error", err)
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
@@ -993,7 +993,7 @@ func (kna *knowledgeNetworkAccess) GetKNNamesByIDs(ctx context.Context,
 	for rows.Next() {
 		entry := &interfaces.KNNameEntry{}
 		if err := rows.Scan(&entry.ID, &entry.Name); err != nil {
-			otellog.LogError(ctx, "Row scan error", err)
+			common.LogSafeError(ctx, "Row scan error", err)
 			return nil, err
 		}
 		entries = append(entries, entry)
@@ -1025,16 +1025,16 @@ func (kna *knowledgeNetworkAccess) ListKnSrcs(ctx context.Context,
 	}
 	sqlStr, vals, err := builder.ToSql()
 	if err != nil {
-		otellog.LogError(ctx, "Failed to build the sql of select knowledge networks, error", err)
+		common.LogSafeError(ctx, "Failed to build the sql of select knowledge networks, error", err)
 		return []interfaces.PermissionResource{}, err
 	}
 
 	// 记录处理的 sql 字符串
-	otellog.LogInfo(ctx, fmt.Sprintf("查询业务知识网络资源列表的 sql 语句: %s; queryParams: %v", sqlStr, query))
+	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	rows, err := kna.db.Query(sqlStr, vals...)
 	if err != nil {
-		otellog.LogError(ctx, "List data error", err)
+		common.LogSafeError(ctx, "List data error", err)
 		return []interfaces.PermissionResource{}, err
 	}
 	defer func() { _ = rows.Close() }()
@@ -1049,7 +1049,7 @@ func (kna *knowledgeNetworkAccess) ListKnSrcs(ctx context.Context,
 			&src.Name,
 		)
 		if err != nil {
-			otellog.LogError(ctx, "Row scan error", err)
+			common.LogSafeError(ctx, "Row scan error", err)
 			return []interfaces.PermissionResource{}, err
 		}
 		srcs = append(srcs, src)

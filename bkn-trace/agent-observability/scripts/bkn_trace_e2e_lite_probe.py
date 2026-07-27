@@ -262,7 +262,7 @@ def build_evidence_payload(trace_id: str, span_id: str, request_id: str) -> dict
                     "claim_id": "claim_e2e_lite",
                     "business_refs": [
                         {
-                            "ref_id": "object:e2e_customer",
+                            "ref_id": "object:kn_e2e:e2e_customer",
                             "ref_type": "object",
                             "label": "E2E Customer",
                             "visibility": "visible",

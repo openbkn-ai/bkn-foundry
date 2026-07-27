@@ -38,12 +38,13 @@ type Event struct {
 }
 
 type Action struct {
-	traceID, spanID, requestID, interactionID, operationID string
-	causationEventID, claimID, instanceID, observedAt      string
-	approvalRequestedEventID                               string
-	actionType, policyRef, actorRef, toolRef               string
-	accountID, accountType, businessDomain                 string
-	attempt                                                int
+	traceparent, traceID, spanID, requestID           string
+	interactionID, operationID                        string
+	causationEventID, claimID, instanceID, observedAt string
+	approvalRequestedEventID                          string
+	actionType, policyRef, actorRef, toolRef          string
+	accountID, accountType, businessDomain            string
+	attempt                                           int
 }
 
 func ParseAction(headers map[string]any, boxID, toolID, userID string) (Action, bool) {
@@ -62,8 +63,10 @@ func ParseAction(headers map[string]any, boxID, toolID, userID string) (Action, 
 		attempt = 1
 	}
 	traceID, spanID := parseTraceparent(get("traceparent"))
+	traceparent := get("traceparent")
+	_, timestampErr := time.Parse(time.RFC3339Nano, get("bkn-action-observed-at"))
 	action := Action{
-		traceID: traceID, spanID: spanID, requestID: get("bkn-request-id"),
+		traceparent: traceparent, traceID: traceID, spanID: spanID, requestID: get("bkn-request-id"),
 		interactionID: get("bkn-interaction-id"), operationID: get("bkn-operation-id"),
 		causationEventID: get("bkn-causation-event-id"), claimID: get("bkn-claim-id"),
 		instanceID: get("bkn-action-instance-id"), actionType: get("bkn-action-type"),
@@ -75,14 +78,11 @@ func ParseAction(headers map[string]any, boxID, toolID, userID string) (Action, 
 		businessDomain: get("x-business-domain"),
 		attempt:        attempt,
 	}
-	if action.businessDomain == "" {
-		action.businessDomain = action.accountID
-	}
 	complete := action.traceID != "" && action.spanID != "" && action.requestID != "" &&
 		action.interactionID != "" && action.operationID != "" && action.causationEventID != "" &&
 		action.claimID != "" && action.instanceID != "" && action.observedAt != "" &&
 		action.approvalRequestedEventID != "" &&
-		action.accountID != "" && action.accountType != "" && action.businessDomain != ""
+		action.accountID != "" && action.accountType != "" && action.businessDomain != "" && timestampErr == nil
 	safePolicy := action.actionType == "monitor" && strings.EqualFold(get("bkn-action-reversible"), "true") &&
 		action.policyRef == "e2e-monitor-auto-approve"
 	return action, complete && safePolicy
@@ -131,9 +131,15 @@ func (a Action) Complete(permissionErr error, result []byte, executionErr error)
 }
 
 func (a Action) event(eventType, cause string, payload map[string]any) Event {
+	stageOffset := map[string]time.Duration{
+		"action.approved": 1, "action.rejected": 1,
+		"action.executed": 2, "action.result_recorded": 3,
+	}[eventType] * time.Microsecond
+	observed, _ := time.Parse(time.RFC3339Nano, a.observedAt)
+	stageObservedAt := observed.Add(stageOffset).UTC().Format(time.RFC3339Nano)
 	return Event{
 		EventID: a.eventID(eventType), EventType: eventType, SchemaVersion: schemaVersion,
-		ObservedAt: a.observedAt, EmittedAt: a.observedAt, ProducerModule: "operator-integration",
+		ObservedAt: stageObservedAt, EmittedAt: stageObservedAt, ProducerModule: "operator-integration",
 		TraceID: a.traceID, SpanID: a.spanID, RequestID: a.requestID,
 		OperationName: "action.execute", InteractionID: a.interactionID, OperationID: a.operationID,
 		CausationEventID: cause, ClaimID: a.claimID, Attempt: a.attempt, Payload: payload,
@@ -145,43 +151,74 @@ func (a Action) eventID(eventType string) string {
 }
 
 type Emitter interface {
-	Emit(ctx context.Context, action Action, events []Event)
+	Emit(ctx context.Context, action Action, events []Event) error
 }
 
 type HTTPEmitter struct {
-	URL    string
-	Client *http.Client
+	URL          string
+	Token        string
+	Client       *http.Client
+	MaxAttempts  int
+	RetryBackoff time.Duration
 }
 
 func NewHTTPEmitter() *HTTPEmitter {
-	return &HTTPEmitter{URL: os.Getenv("BKN_TRACE_EVIDENCE_INGEST_URL"), Client: &http.Client{Timeout: 3 * time.Second}}
+	return &HTTPEmitter{
+		URL: os.Getenv("BKN_TRACE_EVIDENCE_INGEST_URL"), Token: os.Getenv("BKN_TRACE_EVIDENCE_INGEST_TOKEN"),
+		Client:      &http.Client{Timeout: 3 * time.Second},
+		MaxAttempts: 3, RetryBackoff: 100 * time.Millisecond,
+	}
 }
 
-func (e *HTTPEmitter) Emit(ctx context.Context, action Action, events []Event) {
+func (e *HTTPEmitter) Emit(ctx context.Context, action Action, events []Event) error {
 	if e == nil || e.URL == "" || len(events) == 0 {
-		return
+		return errors.New("bkn trace evidence emitter is not configured")
 	}
 	body, err := json.Marshal(map[string]any{
 		"bkn.trace.schema.version": schemaVersion,
 		"trace": map[string]any{
-			"trace_id": action.traceID, "bkn.request.id": action.requestID,
+			"trace_id": action.traceID, "traceparent": action.traceparent,
+			"bkn.request.id":  action.requestID,
 			"business_domain": action.businessDomain, "bkn.account.id": action.accountID,
 			"bkn.account.type": action.accountType,
 		},
 		"events": events,
 	})
 	if err != nil {
-		return
+		return err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, e.URL, bytes.NewReader(body))
-	if err != nil {
-		return
+	attempts := e.MaxAttempts
+	if attempts < 1 {
+		attempts = 1
 	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := e.Client.Do(req)
-	if err == nil {
-		_ = resp.Body.Close()
+	var lastErr error
+	for attempt := 1; attempt <= attempts; attempt++ {
+		req, reqErr := http.NewRequestWithContext(ctx, http.MethodPost, e.URL, bytes.NewReader(body))
+		if reqErr != nil {
+			return reqErr
+		}
+		req.Header.Set("Content-Type", "application/json")
+		if token := strings.TrimSpace(e.Token); token != "" {
+			req.Header.Set("X-BKN-Trace-Ingest-Token", token)
+		}
+		resp, doErr := e.Client.Do(req)
+		if doErr == nil && resp != nil {
+			_ = resp.Body.Close()
+			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+				return nil
+			}
+			doErr = errors.New("bkn trace evidence ingest returned " + resp.Status)
+		}
+		lastErr = doErr
+		if attempt < attempts && e.RetryBackoff > 0 {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(e.RetryBackoff * time.Duration(attempt)):
+			}
+		}
 	}
+	return lastErr
 }
 
 func MustJSON(value any) []byte {
@@ -194,7 +231,13 @@ func MustJSON(value any) []byte {
 
 func parseTraceparent(value string) (string, string) {
 	parts := strings.Split(strings.ToLower(strings.TrimSpace(value)), "-")
-	if len(parts) != 4 || len(parts[1]) != 32 || len(parts[2]) != 16 {
+	if len(parts) != 4 || parts[0] != "00" || len(parts[1]) != 32 || len(parts[2]) != 16 || len(parts[3]) != 2 {
+		return "", ""
+	}
+	if _, err := hex.DecodeString(parts[1] + parts[2] + parts[3]); err != nil {
+		return "", ""
+	}
+	if parts[1] == strings.Repeat("0", 32) || parts[2] == strings.Repeat("0", 16) {
 		return "", ""
 	}
 	return parts[1], parts[2]

@@ -72,6 +72,13 @@ spec:
               value: {{ .Values.bknSafe.url | quote }}
             - name: BKN_TRACE_EVIDENCE_INGEST_URL
               value: {{ .Values.bknTrace.evidence.ingestUrl | quote }}
+            {{- if .Values.bknTrace.evidence.ingestTokenSecretName }}
+            - name: BKN_TRACE_EVIDENCE_INGEST_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.bknTrace.evidence.ingestTokenSecretName | quote }}
+                  key: {{ .Values.bknTrace.evidence.ingestTokenSecretKey | quote }}
+            {{- end }}
             - name: BKN_TRACE_EVIDENCE_TIMEOUT_MS
               value: {{ .Values.bknTrace.evidence.timeoutMs | quote }}
             - name: RDSHOST

@@ -1,6 +1,7 @@
 package httphandler
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -108,6 +109,75 @@ func TestEvidenceHandlerFailsClosedWhenQueryGatewayTokenIsUnconfigured(t *testin
 
 	if rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), "QUERY_AUTH_NOT_CONFIGURED") {
 		t.Fatalf("missing query gateway auth must fail closed, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestEvidenceHandlerAuthenticatesStudioQueryWithHydra(t *testing.T) {
+	hydra := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/admin/oauth2/introspect" || r.FormValue("token") != "studio-token" {
+			t.Fatalf("unexpected introspection request: %s token=%q", r.URL.Path, r.FormValue("token"))
+		}
+		_, _ = io.WriteString(w, `{"active":true,"sub":"acct_demo","client_id":"openbkn-studio","ext":{"visitor_type":"realname"}}`)
+	}))
+	defer hydra.Close()
+
+	handler := NewEvidenceHandlerWithSecurityConfig(evidencesvc.New(evidencestore.New()), EvidenceHandlerSecurityConfig{
+		HydraAdminURL: hydra.URL,
+	})
+	req := httptest.NewRequest(http.MethodGet, "/api/agent-observability/v1/traces/missing/evidence-chain", nil)
+	req.Header.Set("Authorization", "Bearer studio-token")
+	req.Header.Set("x-business-domain", "bd_demo")
+	rec := httptest.NewRecorder()
+
+	handler.GetEvidenceChainByTraceID(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("valid OAuth query must reach scoped lookup, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if req.Header.Get("x-account-id") != "acct_demo" || req.Header.Get("x-account-type") != "user" {
+		t.Fatalf("trusted OAuth identity was not derived: headers=%v", req.Header)
+	}
+}
+
+func TestEvidenceHandlerRejectsOAuthIdentityMismatch(t *testing.T) {
+	hydra := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"active":true,"sub":"acct_demo","client_id":"openbkn-studio","ext":{"visitor_type":"user"}}`)
+	}))
+	defer hydra.Close()
+
+	handler := NewEvidenceHandlerWithSecurityConfig(evidencesvc.New(evidencestore.New()), EvidenceHandlerSecurityConfig{
+		HydraAdminURL: hydra.URL,
+	})
+	req := authenticatedQueryRequest(http.MethodGet, "/api/agent-observability/v1/traces/missing/evidence-chain", nil)
+	req.Header.Set("Authorization", "Bearer studio-token")
+	req.Header.Set("x-account-id", "forged-account")
+	rec := httptest.NewRecorder()
+
+	handler.GetEvidenceChainByTraceID(rec, req)
+
+	if rec.Code != http.StatusUnauthorized || !strings.Contains(rec.Body.String(), "QUERY_IDENTITY_MISMATCH") {
+		t.Fatalf("forged OAuth identity must be rejected, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestEvidenceHandlerRejectsInactiveOAuthToken(t *testing.T) {
+	hydra := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"active":false}`)
+	}))
+	defer hydra.Close()
+
+	handler := NewEvidenceHandlerWithSecurityConfig(evidencesvc.New(evidencestore.New()), EvidenceHandlerSecurityConfig{
+		HydraAdminURL: hydra.URL,
+	})
+	req := httptest.NewRequest(http.MethodGet, "/api/agent-observability/v1/traces/missing/evidence-chain", nil)
+	req.Header.Set("Authorization", "Bearer inactive-token")
+	req.Header.Set("x-business-domain", "bd_demo")
+	rec := httptest.NewRecorder()
+
+	handler.GetEvidenceChainByTraceID(rec, req)
+
+	if rec.Code != http.StatusUnauthorized || !strings.Contains(rec.Body.String(), "QUERY_OAUTH_REQUIRED") {
+		t.Fatalf("inactive OAuth token must be rejected, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 
@@ -341,7 +411,7 @@ func TestEvidenceHandlerReturnsBusinessGraphByTrace(t *testing.T) {
 	if !strings.Contains(rec.Body.String(), `"nodes"`) || !strings.Contains(rec.Body.String(), `"edges"`) {
 		t.Fatalf("expected graph data in body: %s", rec.Body.String())
 	}
-	if !strings.Contains(rec.Body.String(), `"target_id":"business:object:customer"`) {
+	if !strings.Contains(rec.Body.String(), `"target_id":"business:object:kn_demo:customer"`) {
 		t.Fatalf("expected business node edge in body: %s", rec.Body.String())
 	}
 }
@@ -494,6 +564,277 @@ func TestEvidenceHandlerReturnsNotFoundForMissingEvidenceChain(t *testing.T) {
 	}
 }
 
+func TestEvidenceHandlerIngestsAndQueriesAuthorizedArtifact(t *testing.T) {
+	handler := newDevEvidenceHandler(evidencesvc.New(evidencestore.New()))
+	ingestReq := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/evidence/artifacts", strings.NewReader(validHandlerArtifact()))
+	ingestRec := httptest.NewRecorder()
+
+	handler.IngestEvidenceArtifact(ingestRec, ingestReq)
+
+	if ingestRec.Code != http.StatusCreated || !strings.Contains(ingestRec.Body.String(), `"created":true`) {
+		t.Fatalf("expected artifact created, got %d: %s", ingestRec.Code, ingestRec.Body.String())
+	}
+
+	queryReq := authenticatedQueryRequest(http.MethodGet, "/api/agent-observability/v1/evidence/artifacts/artifact_handler_001", nil)
+	queryReq.Header.Set("x-tenant-id", "tenant_demo")
+	queryRec := httptest.NewRecorder()
+	handler.GetEvidenceArtifact(queryRec, queryReq)
+
+	if queryRec.Code != http.StatusOK || !strings.Contains(queryRec.Body.String(), "用户原始问题") {
+		t.Fatalf("expected authorized artifact content, got %d: %s", queryRec.Code, queryRec.Body.String())
+	}
+}
+
+func TestEvidenceHandlerArtifactQueryDoesNotLeakUnauthorizedPreview(t *testing.T) {
+	handler := newDevEvidenceHandler(evidencesvc.New(evidencestore.New()))
+	ingestReq := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/evidence/artifacts", strings.NewReader(validHandlerArtifact()))
+	ingestRec := httptest.NewRecorder()
+	handler.IngestEvidenceArtifact(ingestRec, ingestReq)
+	if ingestRec.Code != http.StatusCreated {
+		t.Fatalf("seed artifact: %d %s", ingestRec.Code, ingestRec.Body.String())
+	}
+
+	queryReq := authenticatedQueryRequest(http.MethodGet, "/api/agent-observability/v1/evidence/artifacts/artifact_handler_001", nil)
+	queryReq.Header.Set("x-tenant-id", "tenant_demo")
+	queryReq.Header.Set("x-account-id", "other-account")
+	queryRec := httptest.NewRecorder()
+	handler.GetEvidenceArtifact(queryRec, queryReq)
+
+	if queryRec.Code != http.StatusNotFound || strings.Contains(queryRec.Body.String(), "用户原始问题") {
+		t.Fatalf("unauthorized artifact must look absent without preview leak, got %d: %s", queryRec.Code, queryRec.Body.String())
+	}
+}
+
+func TestEvidenceHandlerRejectsSecretBearingArtifact(t *testing.T) {
+	handler := newDevEvidenceHandler(evidencesvc.New(evidencestore.New()))
+	body := strings.Replace(validHandlerArtifact(), `"text":"用户原始问题"`, `"Authorization":"Bearer secret"`, 1)
+	req := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/evidence/artifacts", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	handler.IngestEvidenceArtifact(rec, req)
+
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "ARTIFACT_SECRET_FORBIDDEN") || strings.Contains(rec.Body.String(), "Bearer secret") {
+		t.Fatalf("expected non-leaking secret rejection, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestEvidenceHandlerReturnsConflictForArtifactIDReuse(t *testing.T) {
+	handler := newDevEvidenceHandler(evidencesvc.New(evidencestore.New()))
+	firstReq := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/evidence/artifacts", strings.NewReader(validHandlerArtifact()))
+	firstRec := httptest.NewRecorder()
+	handler.IngestEvidenceArtifact(firstRec, firstReq)
+	if firstRec.Code != http.StatusCreated {
+		t.Fatalf("seed artifact: %d %s", firstRec.Code, firstRec.Body.String())
+	}
+	conflicting := strings.Replace(validHandlerArtifact(), "用户原始问题", "不同问题", 1)
+	secondReq := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/evidence/artifacts", strings.NewReader(conflicting))
+	secondRec := httptest.NewRecorder()
+
+	handler.IngestEvidenceArtifact(secondRec, secondReq)
+
+	if secondRec.Code != http.StatusConflict || !strings.Contains(secondRec.Body.String(), "BKN_TRACE_ARTIFACT_ID_CONFLICT") {
+		t.Fatalf("expected artifact conflict, got %d: %s", secondRec.Code, secondRec.Body.String())
+	}
+}
+
+func TestEvidenceHandlerListsBusinessRequestsAndRequestDetail(t *testing.T) {
+	handler := newDevEvidenceHandler(evidencesvc.New(evidencestore.New()))
+	artifactReq := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/evidence/artifacts", strings.NewReader(validHandlerArtifact()))
+	artifactRec := httptest.NewRecorder()
+	handler.IngestEvidenceArtifact(artifactRec, artifactReq)
+	if artifactRec.Code != http.StatusCreated {
+		t.Fatalf("seed artifact: %d %s", artifactRec.Code, artifactRec.Body.String())
+	}
+	eventReq := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/evidence/events", strings.NewReader(validHandlerArtifactEventBatch()))
+	eventRec := httptest.NewRecorder()
+	handler.IngestEvidenceEvents(eventRec, eventReq)
+	if eventRec.Code != http.StatusAccepted {
+		t.Fatalf("seed artifact-linked event: %d %s", eventRec.Code, eventRec.Body.String())
+	}
+
+	listReq := authenticatedQueryRequest(http.MethodGet, "/api/agent-observability/v1/requests?keyword=原始问题&limit=10", nil)
+	listReq.Header.Set("x-tenant-id", "tenant_demo")
+	listRec := httptest.NewRecorder()
+	handler.ListRequests(listRec, listReq)
+	if listRec.Code != http.StatusOK || !strings.Contains(listRec.Body.String(), `"request_id":"req_artifact_handler"`) ||
+		!strings.Contains(listRec.Body.String(), "用户原始问题") {
+		t.Fatalf("expected business request list, got %d: %s", listRec.Code, listRec.Body.String())
+	}
+
+	detailReq := authenticatedQueryRequest(http.MethodGet, "/api/agent-observability/v1/requests/req_artifact_handler", nil)
+	detailReq.Header.Set("x-tenant-id", "tenant_demo")
+	detailRec := httptest.NewRecorder()
+	handler.GetRequestSummary(detailRec, detailReq)
+	if detailRec.Code != http.StatusOK || !strings.Contains(detailRec.Body.String(), "用户原始问题") {
+		t.Fatalf("expected request detail, got %d: %s", detailRec.Code, detailRec.Body.String())
+	}
+}
+
+func TestEvidenceHandlerListsRequestTracesAndTechnicalExecutions(t *testing.T) {
+	handler := newDevEvidenceHandler(evidencesvc.New(evidencestore.New()))
+	ingestReq := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/evidence/events", strings.NewReader(validHandlerBatch()))
+	ingestRec := httptest.NewRecorder()
+	handler.IngestEvidenceEvents(ingestRec, ingestReq)
+	if ingestRec.Code != http.StatusAccepted {
+		t.Fatalf("seed evidence: %d %s", ingestRec.Code, ingestRec.Body.String())
+	}
+
+	requestTracesReq := authenticatedQueryRequest(http.MethodGet, "/api/agent-observability/v1/requests/req_handler_001/traces", nil)
+	requestTracesRec := httptest.NewRecorder()
+	handler.ListRequestTraces(requestTracesRec, requestTracesReq)
+	if requestTracesRec.Code != http.StatusOK || !strings.Contains(requestTracesRec.Body.String(), `"request_id":"req_handler_001"`) ||
+		!strings.Contains(requestTracesRec.Body.String(), `"trace_id":"9c0d0000000000000000000000000001"`) {
+		t.Fatalf("expected request traces, got %d: %s", requestTracesRec.Code, requestTracesRec.Body.String())
+	}
+
+	executionsReq := authenticatedQueryRequest(http.MethodGet, "/api/agent-observability/v1/trace-executions?status=running", nil)
+	executionsRec := httptest.NewRecorder()
+	handler.ListTraceExecutions(executionsRec, executionsReq)
+	if executionsRec.Code != http.StatusOK || !strings.Contains(executionsRec.Body.String(), `"trace_id":"9c0d0000000000000000000000000001"`) {
+		t.Fatalf("expected technical execution list, got %d: %s", executionsRec.Code, executionsRec.Body.String())
+	}
+}
+
+func TestEvidenceHandlerRejectsInvalidSummaryPaginationAndTime(t *testing.T) {
+	handler := newDevEvidenceHandler(evidencesvc.New(evidencestore.New()))
+	for _, target := range []string{
+		"/api/agent-observability/v1/requests?limit=201",
+		"/api/agent-observability/v1/requests?from=not-a-time",
+		"/api/agent-observability/v1/trace-executions?cursor=not-a-cursor",
+	} {
+		req := authenticatedQueryRequest(http.MethodGet, target, nil)
+		rec := httptest.NewRecorder()
+		if strings.Contains(target, "trace-executions") {
+			handler.ListTraceExecutions(rec, req)
+		} else {
+			handler.ListRequests(rec, req)
+		}
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("expected invalid summary query rejection for %s, got %d: %s", target, rec.Code, rec.Body.String())
+		}
+	}
+}
+
+func TestNewAPIErrorResponseIncludesStandardTraceFieldsAndCompatibilityCode(t *testing.T) {
+	const traceID = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	handler := newDevEvidenceHandler(evidencesvc.New(evidencestore.New()))
+	req := authenticatedQueryRequest(http.MethodGet, "/api/agent-observability/v1/requests?limit=201", nil)
+	req.Header.Set("traceparent", "00-"+traceID+"-bbbbbbbbbbbbbbbb-01")
+	rec := httptest.NewRecorder()
+
+	handler.ListRequests(rec, req)
+
+	if rec.Code != http.StatusBadRequest || rec.Header().Get("x-trace-id") != traceID {
+		t.Fatalf("standard trace response header is required: status=%d headers=%+v", rec.Code, rec.Header())
+	}
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body["error_code"] != "INVALID_ARGUMENT" || body["trace_id"] != traceID ||
+		body["code"] != "INVALID_ARGUMENT" {
+		t.Fatalf("error must expose standard fields and legacy code: %s", rec.Body.String())
+	}
+}
+
+func TestNewAPISuccessResponseIncludesPropagatedTraceHeader(t *testing.T) {
+	const traceID = "cccccccccccccccccccccccccccccccc"
+	handler := newDevEvidenceHandler(evidencesvc.New(evidencestore.New()))
+	req := authenticatedQueryRequest(http.MethodGet, "/api/agent-observability/v1/requests", nil)
+	req.Header.Set("traceparent", "00-"+traceID+"-dddddddddddddddd-01")
+	rec := httptest.NewRecorder()
+
+	handler.ListRequests(rec, req)
+
+	if rec.Code != http.StatusOK || rec.Header().Get("x-trace-id") != traceID {
+		t.Fatalf("success response must propagate trace id: status=%d headers=%+v body=%s", rec.Code, rec.Header(), rec.Body.String())
+	}
+}
+
+func TestArtifactIDPathUsesSameSafeFormatAsArtifactIngest(t *testing.T) {
+	if got := artifactIDFromPath("/api/agent-observability/v1/evidence/artifacts/artifact_valid-01"); got != "artifact_valid-01" {
+		t.Fatalf("valid artifact id must remain queryable: %q", got)
+	}
+	for _, path := range []string{
+		"/api/agent-observability/v1/evidence/artifacts/artifact%2Fchild",
+		"/api/agent-observability/v1/evidence/artifacts/artifact%20child",
+		"/api/agent-observability/v1/evidence/artifacts/%09artifact",
+	} {
+		if got := artifactIDFromPath(path); got != "" {
+			t.Fatalf("unsafe encoded artifact path must be rejected: path=%q id=%q", path, got)
+		}
+	}
+}
+
+func TestInteractionSummaryPathRejectsNestedOrEmptyIDs(t *testing.T) {
+	if got := interactionIDFromSummaryPath("/api/agent-observability/v1/interactions/int_supply_chain"); got != "int_supply_chain" {
+		t.Fatalf("unexpected interaction id: %q", got)
+	}
+	for _, path := range []string{
+		"/api/agent-observability/v1/interactions/",
+		"/api/agent-observability/v1/interactions/int%2Fchild",
+	} {
+		if got := interactionIDFromSummaryPath(path); got != "" {
+			t.Fatalf("unsafe interaction path must be rejected: path=%q id=%q", path, got)
+		}
+	}
+}
+
+func validHandlerArtifact() string {
+	return `{
+	  "artifact_id": "artifact_handler_001",
+	  "artifact_type": "question",
+	  "bkn.request.id": "req_artifact_handler",
+	  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+	  "interaction_id": "interaction_handler",
+	  "operation_id": "operation_handler",
+	  "source_ref": "interaction:interaction_handler",
+	  "content_type": "application/json",
+	  "schema_version": "2.2.0",
+	  "observed_at": "2026-07-26T08:00:00Z",
+	  "content": {"text":"用户原始问题"},
+	  "bkn.tenant.id": "tenant_demo",
+	  "business_domain": "bd_demo",
+	  "bkn.account.id": "acct_demo",
+	  "bkn.account.type": "app"
+	}`
+}
+
+func validHandlerArtifactEventBatch() string {
+	return `{
+	  "bkn.trace.schema.version": "2.2.0",
+	  "trace": {
+	    "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+	    "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-2f12000000000003-01",
+	    "bkn.request.id": "req_artifact_handler",
+	    "bkn.tenant.id": "tenant_demo",
+	    "business_domain": "bd_demo",
+	    "bkn.account.id": "acct_demo",
+	    "bkn.account.type": "app"
+	  },
+	  "events": [{
+	    "event_id": "evt_artifact_question",
+	    "event_type": "agent.interaction.started",
+	    "bkn.trace.schema.version": "2.2.0",
+	    "observed_at": "2026-07-26T08:00:00.000000000Z",
+	    "emitted_at": "2026-07-26T08:00:00.001000000Z",
+	    "producer_module": "bkn-agent",
+	    "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+	    "span_id": "2f12000000000003",
+	    "bkn.request.id": "req_artifact_handler",
+	    "bkn.operation.name": "agent.run",
+	    "interaction_id": "interaction_handler",
+	    "attempt": 1,
+	    "payload": {
+	      "intent_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+	      "mode": "task",
+	      "agent_id": "agent-handler",
+	      "question_artifact_ref": "artifact:artifact_handler_001"
+	    }
+	  }]
+	}`
+}
+
 func validHandlerBatch() string {
 	return `{
   "bkn.trace.schema.version": "2.0.0",
@@ -575,7 +916,7 @@ func validHandlerBusinessBatch() string {
         "claim_id": "claim_handler_business",
         "business_refs": [
           {
-            "ref_id": "object:customer",
+            "ref_id": "object:kn_demo:customer",
             "ref_type": "object",
             "label": "Customer",
             "visibility": "visible",

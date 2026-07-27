@@ -50,12 +50,14 @@ type ToolServiceImpl struct {
 	BusinessDomainService interfaces.IBusinessDomainService
 	MetadataService       interfaces.IMetadataService
 	ActionEvidence        bkntrace.Emitter
+	ActionExecutions      bkntrace.ExecutionGate
 }
 
 // NewToolServiceImpl 创建工具箱服务
 func NewToolServiceImpl() interfaces.IToolService {
 	tOnce.Do(func() {
 		conf := config.NewConfigLoader()
+		redisClient, _, _ := conf.RedisConfig.GetClient()
 		toolService = &ToolServiceImpl{
 			DBTx:                  dbaccess.NewBaseTx(),
 			ToolBoxDB:             dbaccess.NewToolboxDB(),
@@ -72,6 +74,7 @@ func NewToolServiceImpl() interfaces.IToolService {
 			BusinessDomainService: business_domain.NewBusinessDomainService(),
 			MetadataService:       metadata.NewMetadataService(),
 			ActionEvidence:        bkntrace.NewHTTPEmitter(),
+			ActionExecutions:      bkntrace.NewRedisExecutionGate(redisClient),
 		}
 	})
 	return toolService

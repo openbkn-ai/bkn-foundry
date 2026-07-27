@@ -100,7 +100,7 @@ func (o *ontologyQueryClient) QueryObjectInstances(ctx context.Context, req *int
 
 	uri := fmt.Sprintf(queryObjectInstancesURI, req.KnID, req.OtID, req.IncludeTypeInfo, req.IncludeLogicParams)
 	url := fmt.Sprintf("%s%s", o.baseURL, uri)
-	header := common.GetHeaderFromCtx(ctx)
+	header := common.GetHeaderForChildOperation(ctx, "ontology.object.query", 1)
 	header[rest.ContentTypeKey] = rest.ContentTypeJSON
 	header["x-http-method-override"] = "GET"
 	_, respBody, err := o.httpClient.Post(ctx, url, header, req)
@@ -136,7 +136,7 @@ func (o *ontologyQueryClient) QueryLogicProperties(ctx context.Context, req *int
 	o.logger.WithContext(ctx).Debugf("  ├─ [ontology-query 调用] URL: %s", url)
 	o.logger.WithContext(ctx).Debugf("  ├─ [ontology-query 请求] Body: %s", string(bodyJSON))
 
-	header := common.GetHeaderFromCtx(ctx)
+	header := common.GetHeaderForChildOperation(ctx, "ontology.logic_property.query", 1)
 	header[rest.ContentTypeKey] = rest.ContentTypeJSON
 	header["x-http-method-override"] = "GET"
 
@@ -176,7 +176,7 @@ func (o *ontologyQueryClient) QueryActions(ctx context.Context, req *interfaces.
 	o.logger.WithContext(ctx).Debugf("[OntologyQuery#QueryActions] URL: %s", url)
 	o.logger.WithContext(ctx).Debugf("[OntologyQuery#QueryActions] Request Body: %s", string(bodyJSON))
 
-	header := common.GetHeaderFromCtx(ctx)
+	header := common.GetHeaderForChildOperation(ctx, "ontology.action.query", 1)
 	header[rest.ContentTypeKey] = rest.ContentTypeJSON
 	header["x-http-method-override"] = "GET"
 
@@ -224,7 +224,7 @@ func (o *ontologyQueryClient) ExecuteActions(ctx context.Context, req *interface
 	o.logger.WithContext(ctx).Debugf("[OntologyQuery#ExecuteActions] URL: %s, instances: %d, dynamic_param_keys: %v",
 		url, len(req.InstanceIdentities), dynamicParamKeys)
 
-	header := common.GetHeaderFromCtx(ctx)
+	header := common.GetHeaderForChildOperation(ctx, "ontology.action.execute", 1)
 	header[rest.ContentTypeKey] = rest.ContentTypeJSON
 
 	_, respBody, err := o.httpClient.Post(ctx, url, header, body)
@@ -256,7 +256,7 @@ func (o *ontologyQueryClient) GetActionExecution(ctx context.Context, req *inter
 
 	o.logger.WithContext(ctx).Debugf("[OntologyQuery#GetActionExecution] URL: %s", reqURL)
 
-	header := common.GetHeaderFromCtx(ctx)
+	header := common.GetHeaderForChildOperation(ctx, "ontology.action_execution.get", 1)
 	header[rest.ContentTypeKey] = rest.ContentTypeJSON
 
 	_, respBody, err := o.httpClient.Get(ctx, reqURL, nil, header)
@@ -316,7 +316,7 @@ func (o *ontologyQueryClient) ListActionExecutions(ctx context.Context, req *int
 
 	o.logger.WithContext(ctx).Debugf("[OntologyQuery#ListActionExecutions] URL: %s?%s", reqURL, query.Encode())
 
-	header := common.GetHeaderFromCtx(ctx)
+	header := common.GetHeaderForChildOperation(ctx, "ontology.action_execution.list", 1)
 	header[rest.ContentTypeKey] = rest.ContentTypeJSON
 
 	_, respBody, err := o.httpClient.Get(ctx, reqURL, query, header)
@@ -367,7 +367,7 @@ func (o *ontologyQueryClient) QueryInstanceSubgraph(ctx context.Context, req *in
 	o.logger.WithContext(ctx).Debugf("[OntologyQuery#QueryInstanceSubgraph] Request Body: %s", string(bodyJSON))
 
 	// 构建请求头
-	header := common.GetHeaderFromCtx(ctx)
+	header := common.GetHeaderForChildOperation(ctx, "ontology.subgraph.query", 1)
 	header[rest.ContentTypeKey] = rest.ContentTypeJSON
 	header["x-http-method-override"] = "GET"
 

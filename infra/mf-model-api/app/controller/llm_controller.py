@@ -90,6 +90,7 @@ async def used_model_openai(request, user_id, language, func_module, trace_heade
     model_id = model_data["f_model_id"]
     quota = model_data["f_quota"]
     trace_context = bkntrace_evidence.build_request_context(trace_headers, account_id=user_id, account_type="user")
+    trace_receipt_headers = bkntrace_evidence.model_receipt_headers(trace_context)
     if quota:
         quota_cache_key = f"{user_id}:dip:model-api:llm-quota:{model_name}:list"
         res = await redis_util.get_str(quota_cache_key)
@@ -162,13 +163,13 @@ async def used_model_openai(request, user_id, language, func_module, trace_heade
             if stream:
                 return EventSourceResponse(
                     openai_client.chat_completion_stream_openai(messages, user_id, True, func_module, request["cache"]),
-                    ping=3600)
+                    ping=3600, headers=trace_receipt_headers)
             else:
                 res = await openai_client.chat_completion(messages, user_id, func_module, request["cache"])
                 if "detail" in res.keys():
                     return JSONResponse(status_code=500, content=res)
                 else:
-                    return JSONResponse(status_code=200, content=res)
+                    return JSONResponse(status_code=200, content=res, headers=trace_receipt_headers)
         except Exception as e:
             StandLogger.error(e.args)
             return JSONResponse(status_code=500, content=ModelFactory_ModelController_Model_ConnectError_Error)
@@ -191,16 +192,20 @@ async def used_model_openai(request, user_id, language, func_module, trace_heade
                 tools=request.get("tools", None),
                 tool_choice=request.get("tool_choice", None)
             )
+            claude_client.trace_context = trace_context
             if stream:
                 return EventSourceResponse(
-                    claude_client.chat_completion_stream_openai(messages, user_id, func_module, request["cache"]),
-                    ping=3600)
+                    llm_utils.trace_model_stream(claude_client,
+                        claude_client.chat_completion_stream_openai(messages, user_id, func_module, request["cache"]),
+                        messages, request),
+                    ping=3600, headers=trace_receipt_headers)
             else:
                 res = await claude_client.chat_completion(messages, user_id, func_module, request["cache"])
+                llm_utils.emit_model_result(claude_client, messages, request, res)
                 if "detail" in res.keys():
                     return JSONResponse(status_code=500, content=res)
                 else:
-                    return JSONResponse(status_code=200, content=res)
+                    return JSONResponse(status_code=200, content=res, headers=trace_receipt_headers)
         except Exception as e:
             StandLogger.error(e.args)
             return JSONResponse(status_code=500, content=ModelFactory_ModelController_Model_ConnectError_Error)
@@ -221,16 +226,20 @@ async def used_model_openai(request, user_id, language, func_module, trace_heade
             stop=request["stop"],
             secret_key=config["secret_key"]
         )
+        baidu_client.trace_context = trace_context
         if stream:
             return EventSourceResponse(
-                baidu_client.chat_completion_stream_openai(messages, user_id, True, func_module, request["cache"]),
-                ping=3600)
+                llm_utils.trace_model_stream(baidu_client,
+                    baidu_client.chat_completion_stream_openai(messages, user_id, True, func_module, request["cache"]),
+                    messages, request),
+                ping=3600, headers=trace_receipt_headers)
         else:
             res = await baidu_client.chat_completion(messages, user_id, func_module, request["cache"])
+            llm_utils.emit_model_result(baidu_client, messages, request, res)
             if "detail" in res.keys():
                 return JSONResponse(status_code=500, content=res)
             else:
-                return JSONResponse(status_code=200, content=res)
+                return JSONResponse(status_code=200, content=res, headers=trace_receipt_headers)
     elif model_series.lower() == "baidu_tianchen":
         config = json.loads(model_data["f_model_config"].replace("'", '"'))
         from app.utils.llm_utils import BaiduTianchenClient
@@ -249,16 +258,20 @@ async def used_model_openai(request, user_id, language, func_module, trace_heade
                 OperationCode=config['OperationCode'],
                 ClientId=config['ClientId']
             )
+            baidu_tianchen_client.trace_context = trace_context
             if stream:
                 return EventSourceResponse(
-                    baidu_tianchen_client.chat_completion_stream_openai(messages, user_id, True, request["cache"]),
-                    ping=3600)
+                    llm_utils.trace_model_stream(baidu_tianchen_client,
+                        baidu_tianchen_client.chat_completion_stream_openai(messages, user_id, True, request["cache"]),
+                        messages, request),
+                    ping=3600, headers=trace_receipt_headers)
             else:
                 res = await baidu_tianchen_client.chat_completion(messages, user_id, request["cache"])
+                llm_utils.emit_model_result(baidu_tianchen_client, messages, request, res)
                 if "detail" in res.keys():
                     return JSONResponse(status_code=500, content=res)
                 else:
-                    return JSONResponse(status_code=200, content=res)
+                    return JSONResponse(status_code=200, content=res, headers=trace_receipt_headers)
         except Exception as e:
             return JSONResponse(status_code=500, content=ModelFactory_ModelController_Model_ConnectError_Error)
     else:
@@ -282,16 +295,20 @@ async def used_model_openai(request, user_id, language, func_module, trace_heade
                 tools=request.get("tools", None),
                 tool_choice=request.get("tool_choice", None)
             )
+            other_client.trace_context = trace_context
             if stream:
                 return EventSourceResponse(
-                    other_client.chat_completion_stream_openai(messages, user_id, True, model_data, func_module),
-                    ping=3600)
+                    llm_utils.trace_model_stream(other_client,
+                        other_client.chat_completion_stream_openai(messages, user_id, True, model_data, func_module),
+                        messages, request),
+                    ping=3600, headers=trace_receipt_headers)
             else:
                 res = await other_client.chat_completion(messages, user_id, func_module)
+                llm_utils.emit_model_result(other_client, messages, request, res)
                 if "detail" in res.keys():
                     return JSONResponse(status_code=500, content=res)
                 else:
-                    return JSONResponse(status_code=200, content=res)
+                    return JSONResponse(status_code=200, content=res, headers=trace_receipt_headers)
         except Exception as e:
             StandLogger.error(f"call llmModelError {config['api_model']} error params={messages},error={e}")
             return JSONResponse(status_code=500, content=ModelFactory_ModelController_Model_ConnectError_Error)

@@ -34,7 +34,7 @@ func NewTraceHandler(traceQueryService *tracesvc.TraceQueryService) *TraceHandle
 // @Failure 400 {object} rdto.ErrorResponse
 // @Failure 405 {object} rdto.ErrorResponse
 // @Failure 504 {object} rdto.ErrorResponse
-// @Router /api/agent-observability/v1/traces/_search [post]
+// @Router /traces/_search [post]
 func (h *TraceHandler) SearchTraces(w http.ResponseWriter, r *http.Request) {
 	if !h.allowRawQuery {
 		writeJSON(w, http.StatusForbidden, rdto.ErrorResponse{Code: "RAW_TRACE_QUERY_DISABLED", Message: "unscoped raw trace query is disabled"})
@@ -100,7 +100,7 @@ func (h *TraceHandler) SearchTraces(w http.ResponseWriter, r *http.Request) {
 // @Failure 405 {object} rdto.ErrorResponse
 // @Failure 500 {object} rdto.ErrorResponse
 // @Failure 504 {object} rdto.ErrorResponse
-// @Router /api/agent-observability/v1/traces/by-conversation [get]
+// @Router /traces/by-conversation [get]
 func (h *TraceHandler) SearchTracesByConversationID(w http.ResponseWriter, r *http.Request) {
 	if !h.allowRawQuery {
 		writeJSON(w, http.StatusForbidden, rdto.ErrorResponse{Code: "RAW_TRACE_QUERY_DISABLED", Message: "unscoped conversation trace query is disabled"})
@@ -179,7 +179,7 @@ func (h *TraceHandler) GetTraceSubresource(w http.ResponseWriter, r *http.Reques
 // @Failure 405 {object} rdto.ErrorResponse
 // @Failure 500 {object} rdto.ErrorResponse
 // @Failure 504 {object} rdto.ErrorResponse
-// @Router /api/agent-observability/v1/traces/{trace_id}/trace-graph [get]
+// @Router /traces/{trace_id}/trace-graph [get]
 func (h *TraceHandler) GetTraceGraphByTraceID(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, rdto.ErrorResponse{
@@ -232,6 +232,17 @@ func traceIDFromTraceGraphPath(path string) string {
 }
 
 func writeJSON(w http.ResponseWriter, statusCode int, payload any) {
+	traceID := ensureWriterTraceID(w)
+	if response, ok := payload.(rdto.ErrorResponse); ok {
+		if response.ErrorCode == "" {
+			response.ErrorCode = response.Code
+		}
+		if response.Code == "" {
+			response.Code = response.ErrorCode
+		}
+		response.TraceID = traceID
+		payload = response
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	_ = json.NewEncoder(w).Encode(payload)

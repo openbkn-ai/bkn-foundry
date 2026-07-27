@@ -9,14 +9,15 @@ package bkntrace
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"log"
 	"net/http"
 	"os"
-	"sort"
 	"strings"
 	"time"
 
@@ -25,34 +26,64 @@ import (
 )
 
 const (
-	ContractVersion = "2.1.0"
-	ModuleName      = "vega-data"
+	ContractVersion         = "2.1.0"
+	ArtifactContractVersion = "2.2.0"
+	ModuleName              = "vega-data"
 )
 
 const (
 	envEvidenceIngestURL       = "BKN_TRACE_EVIDENCE_INGEST_URL"
+	envArtifactIngestURL       = "BKN_TRACE_ARTIFACT_INGEST_URL"
+	envEvidenceIngestToken     = "BKN_TRACE_EVIDENCE_INGEST_TOKEN"
 	envEvidenceIngestTimeoutMS = "BKN_TRACE_EVIDENCE_TIMEOUT_MS"
 )
 
 const maxInFlightEvidenceBatches = 64
+const maxEvidenceErrorBodyBytes = 8 << 10
 
 const (
-	RefTypeResource = "resource_ref"
-	RefTypeRow      = "row_ref"
+	RefTypeResource        = "resource"
+	RefTypeField           = "field"
+	ArtifactTypeQuery      = "query"
+	ArtifactTypeDataResult = "data_result"
 )
 
 type Event map[string]any
 
+type Artifact struct {
+	ArtifactID     string   `json:"artifact_id"`
+	ArtifactType   string   `json:"artifact_type"`
+	RequestID      string   `json:"bkn.request.id"`
+	TraceID        string   `json:"trace_id,omitempty"`
+	InteractionID  string   `json:"interaction_id,omitempty"`
+	OperationID    string   `json:"operation_id,omitempty"`
+	SourceRef      string   `json:"source_ref,omitempty"`
+	BusinessRefs   []string `json:"business_refs,omitempty"`
+	ContentType    string   `json:"content_type"`
+	SchemaVersion  string   `json:"schema_version"`
+	ObservedAt     string   `json:"observed_at"`
+	ContentHash    string   `json:"content_hash,omitempty"`
+	Content        any      `json:"content"`
+	TenantID       string   `json:"bkn.tenant.id,omitempty"`
+	BusinessDomain string   `json:"business_domain,omitempty"`
+	AccountID      string   `json:"bkn.account.id"`
+	AccountType    string   `json:"bkn.account.type"`
+	AgentOrApp     string   `json:"agent_or_app,omitempty"`
+}
+
 type RequestContext struct {
-	RequestID        string
-	AccountID        string
-	AccountType      string
-	BusinessDomain   string
-	InteractionID    string
-	OperationID      string
-	CausationEventID string
-	ClaimID          string
-	Attempt          int
+	RequestID          string
+	AccountID          string
+	AccountType        string
+	TenantID           string
+	BusinessDomain     string
+	InteractionID      string
+	OperationID        string
+	CausationEventID   string
+	ClaimID            string
+	Attempt            int
+	ObservedAt         string
+	ObservedAtProvided bool
 }
 
 type DataQuerySubject struct {
@@ -84,12 +115,32 @@ type eventContext struct {
 	requestID        string
 	accountID        string
 	accountType      string
+	tenantID         string
 	businessDomain   string
 	interactionID    string
 	operationID      string
 	causationEventID string
 	claimID          string
 	attempt          int
+	observedAt       string
+}
+
+type evidenceHTTPError struct {
+	statusCode     int
+	validationCode string
+}
+
+func (e *evidenceHTTPError) Error() string {
+	if e.validationCode != "" {
+		return fmt.Sprintf("HTTP %d (%s)", e.statusCode, e.validationCode)
+	}
+	return fmt.Sprintf("HTTP %d", e.statusCode)
+}
+
+func (e *evidenceHTTPError) retryable() bool {
+	return e.statusCode == http.StatusRequestTimeout ||
+		e.statusCode == http.StatusTooManyRequests ||
+		e.statusCode >= http.StatusInternalServerError
 }
 
 var (
@@ -110,6 +161,82 @@ func HashValue(value any) string {
 	return "sha256:" + hex.EncodeToString(sum[:])
 }
 
+func ArtifactContentHash(value any) string {
+	var body bytes.Buffer
+	encoder := json.NewEncoder(&body)
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode(value); err != nil {
+		return HashValue(value)
+	}
+	raw := bytes.TrimSuffix(body.Bytes(), []byte("\n"))
+	sum := sha256.Sum256(raw)
+	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
+func BuildDataQueryEvidence(
+	ctx context.Context,
+	reqCtx RequestContext,
+	subject DataQuerySubject,
+	refs []EvidenceRef,
+	queryContent any,
+	resultContent any,
+) ([]Artifact, []Event) {
+	ec, ok := contextFromRequest(ctx, reqCtx)
+	if !ok || queryContent == nil || resultContent == nil {
+		return nil, nil
+	}
+	operation := strings.TrimSpace(subject.Operation)
+	if operation == "" {
+		operation = "data.resource.query"
+	}
+	queryArtifact := buildArtifact(ec, subject, refs, ArtifactTypeQuery, queryContent)
+	resultArtifact := buildArtifact(ec, subject, refs, ArtifactTypeDataResult, resultContent)
+
+	resourceRefs, fieldRefs := normalizedRefs(refs)
+	queryHash := strings.TrimSpace(subject.QueryHash)
+	if queryHash == "" {
+		queryHash = HashValue(queryContent)
+	}
+	event := buildEvent(ec, "data.query.observed", operation, map[string]any{
+		"query_hash":          queryHash,
+		"query_type":          operation,
+		"row_count":           subject.ReturnedCount,
+		"truncated":           subject.Truncated,
+		"version_status":      "unversioned",
+		"resource_refs":       resourceRefs,
+		"field_refs":          fieldRefs,
+		"query_artifact_ref":  "artifact:" + queryArtifact.ArtifactID,
+		"result_artifact_ref": "artifact:" + resultArtifact.ArtifactID,
+	}, "", ec.causationEventID)
+	event["bkn.trace.schema.version"] = ArtifactContractVersion
+	return []Artifact{queryArtifact, resultArtifact}, []Event{event}
+}
+
+func buildArtifact(ec eventContext, subject DataQuerySubject, refs []EvidenceRef, artifactType string, content any) Artifact {
+	businessRefs := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		if refID := strings.TrimSpace(ref.RefID); refID != "" {
+			businessRefs = append(businessRefs, refID)
+		}
+	}
+	sourceRef := ""
+	if resourceID := strings.TrimSpace(subject.ResourceID); resourceID != "" {
+		sourceRef = "resource:" + resourceID
+	}
+	return Artifact{
+		ArtifactID: "art_" + shortHash(HashValue([]string{
+			ec.traceID, ec.requestID, ec.interactionID, ec.operationID, artifactType,
+		})),
+		ArtifactType: artifactType, RequestID: ec.requestID, TraceID: ec.traceID,
+		InteractionID: ec.interactionID, OperationID: ec.operationID, SourceRef: sourceRef,
+		BusinessRefs: businessRefs, ContentType: "application/json",
+		SchemaVersion: ArtifactContractVersion, ObservedAt: ec.observedAt,
+		Content: content,
+		TenantID: ec.tenantID, BusinessDomain: ec.businessDomain,
+		AccountID: ec.accountID, AccountType: ec.accountType, AgentOrApp: ModuleName,
+	}
+}
+
 func BuildDataQueryEvents(ctx context.Context, reqCtx RequestContext, subject DataQuerySubject, refs []EvidenceRef) []Event {
 	ec, ok := contextFromRequest(ctx, reqCtx)
 	if !ok {
@@ -120,7 +247,7 @@ func BuildDataQueryEvents(ctx context.Context, reqCtx RequestContext, subject Da
 		operation = "data.resource.query"
 	}
 
-	evidenceRefs, _ := normalizedRefs(refs)
+	resourceRefs, fieldRefs := normalizedRefs(refs)
 	queryHash := strings.TrimSpace(subject.QueryHash)
 	if queryHash == "" {
 		queryHash = HashValue(nil)
@@ -131,39 +258,73 @@ func BuildDataQueryEvents(ctx context.Context, reqCtx RequestContext, subject Da
 		"row_count":      subject.ReturnedCount,
 		"truncated":      subject.Truncated,
 		"version_status": "unversioned",
-		"resource_refs":  evidenceRefs,
-	}, ec.claimID, ec.causationEventID)
-	events := []Event{fact}
-	if ec.claimID == "" {
-		return events
-	}
-	causationID := fact["event_id"].(string)
-	if len(evidenceRefs) > 0 {
-		evidence := buildEvent(ec, "evidence.refs.created", operation, map[string]any{
-			"claim_id":      ec.claimID,
-			"evidence_refs": evidenceRefs,
-		}, ec.claimID, causationID)
-		events = append(events, evidence)
-		causationID = evidence["event_id"].(string)
-	}
-	businessRefs := resolvedBusinessRefs(evidenceRefs)
-	resolverStatus := "resolved"
-	if len(businessRefs) == 0 {
-		resolverStatus = "unresolved"
-	}
-	events = append(events, buildEvent(ec, "business.refs.resolved", operation, map[string]any{
-		"claim_id":        ec.claimID,
-		"business_refs":   businessRefs,
-		"resolver_status": resolverStatus,
-	}, ec.claimID, causationID))
-	return events
+		"resource_refs":  resourceRefs,
+		"field_refs":     fieldRefs,
+	}, "", ec.causationEventID)
+	return []Event{fact}
 }
 
-func EmitDataQueryEvents(ctx context.Context, reqCtx RequestContext, subject DataQuerySubject, refs []EvidenceRef) {
+func EmitDataQueryEvents(ctx context.Context, reqCtx RequestContext, subject DataQuerySubject, refs []EvidenceRef) string {
 	if !EvidenceEnabled() {
-		return
+		return ""
 	}
-	SubmitEvents(ctx, reqCtx, BuildDataQueryEvents(ctx, reqCtx, subject, refs))
+	events := BuildDataQueryEvents(ctx, reqCtx, subject, refs)
+	SubmitEvents(ctx, reqCtx, events)
+	if len(events) == 0 {
+		return ""
+	}
+	eventID, _ := events[0]["event_id"].(string)
+	return eventID
+}
+
+func EmitDataQueryEvidence(
+	ctx context.Context,
+	reqCtx RequestContext,
+	subject DataQuerySubject,
+	refs []EvidenceRef,
+	queryContent any,
+	resultContent any,
+) string {
+	if !EvidenceEnabled() || artifactIngestURL() == "" {
+		return ""
+	}
+	artifacts, events := BuildDataQueryEvidence(ctx, reqCtx, subject, refs, queryContent, resultContent)
+	if len(artifacts) != 2 || len(events) != 1 {
+		return ""
+	}
+	ec, ok := contextFromRequest(ctx, reqCtx)
+	if !ok {
+		return ""
+	}
+	payload := batch{
+		ContractVersion: ArtifactContractVersion,
+		Trace: map[string]any{
+			"trace_id": ec.traceID, "traceparent": ec.traceparent, "bkn.request.id": ec.requestID,
+			"bkn.tenant.id": ec.tenantID, "business_domain": ec.businessDomain,
+			"bkn.account.id": ec.accountID, "bkn.account.type": ec.accountType,
+		},
+		Events: events,
+	}
+	select {
+	case evidenceInFlight <- struct{}{}:
+	default:
+		log.Printf("BKN Trace evidence ingestion dropped: in-flight limit reached")
+		return ""
+	}
+	go func() {
+		defer func() { <-evidenceInFlight }()
+		for _, artifact := range artifacts {
+			if err := postArtifactWithRetry(artifactIngestURL(), evidenceTimeout(), artifact); err != nil {
+				log.Printf("BKN Trace artifact ingestion unavailable: %v", err)
+				return
+			}
+		}
+		if err := postBatchWithRetry(evidenceIngestURL(), evidenceTimeout(), payload); err != nil {
+			log.Printf("BKN Trace evidence ingestion unavailable: %v", err)
+		}
+	}()
+	eventID, _ := events[0]["event_id"].(string)
+	return eventID
 }
 
 func SubmitEvents(ctx context.Context, reqCtx RequestContext, events []Event) {
@@ -185,6 +346,7 @@ func SubmitEvents(ctx context.Context, reqCtx RequestContext, events []Event) {
 			"trace_id":         ec.traceID,
 			"traceparent":      ec.traceparent,
 			"bkn.request.id":   ec.requestID,
+			"bkn.tenant.id":    ec.tenantID,
 			"business_domain":  ec.businessDomain,
 			"bkn.account.id":   ec.accountID,
 			"bkn.account.type": ec.accountType,
@@ -195,14 +357,51 @@ func SubmitEvents(ctx context.Context, reqCtx RequestContext, events []Event) {
 	select {
 	case evidenceInFlight <- struct{}{}:
 	default:
+		log.Printf("BKN Trace evidence ingestion dropped: in-flight limit reached")
 		return
 	}
 
 	timeout := evidenceTimeout()
 	go func() {
 		defer func() { <-evidenceInFlight }()
-		_ = postBatch(ingestURL, timeout, payload)
+		if err := postBatchWithRetry(ingestURL, timeout, payload); err != nil {
+			log.Printf("BKN Trace evidence ingestion unavailable: %v", err)
+		}
 	}()
+}
+
+func postBatchWithRetry(ingestURL string, timeout time.Duration, payload batch) error {
+	var err error
+	for attempt := 0; attempt < 3; attempt++ {
+		if err = postBatch(ingestURL, timeout, payload); err == nil {
+			return nil
+		}
+		var httpErr *evidenceHTTPError
+		if errors.As(err, &httpErr) && !httpErr.retryable() {
+			return err
+		}
+		if attempt < 2 {
+			time.Sleep(time.Duration(attempt+1) * 20 * time.Millisecond)
+		}
+	}
+	return err
+}
+
+func postArtifactWithRetry(ingestURL string, timeout time.Duration, artifact Artifact) error {
+	var err error
+	for attempt := 0; attempt < 3; attempt++ {
+		if err = postArtifact(ingestURL, timeout, artifact); err == nil {
+			return nil
+		}
+		var httpErr *evidenceHTTPError
+		if errors.As(err, &httpErr) && !httpErr.retryable() {
+			return err
+		}
+		if attempt < 2 {
+			time.Sleep(time.Duration(attempt+1) * 20 * time.Millisecond)
+		}
+	}
+	return err
 }
 
 func ResourceRefs(items []*interfaces.Resource) []EvidenceRef {
@@ -225,6 +424,14 @@ func ResourceRefs(items []*interfaces.Resource) []EvidenceRef {
 				"update_time":           item.UpdateTime,
 			},
 		})
+		for _, property := range item.SchemaDefinition {
+			if property == nil || strings.TrimSpace(property.Name) == "" {
+				continue
+			}
+			refs = append(refs, EvidenceRef{
+				RefID: "field:" + strings.TrimSpace(item.ID) + ":" + shortHash(HashValue(property.Name)), RefType: RefTypeField,
+			})
+		}
 	}
 	return refs
 }
@@ -233,62 +440,45 @@ func ResourceRowRefs(resource *interfaces.Resource, rows []map[string]any) []Evi
 	if resource == nil || strings.TrimSpace(resource.ID) == "" {
 		return nil
 	}
-	refs := make([]EvidenceRef, 0, len(rows))
-	for i, row := range rows {
-		rowHash := HashValue(row)
-		refs = append(refs, EvidenceRef{
-			RefID:   fmt.Sprintf("resource_row:%s:%s", strings.TrimSpace(resource.ID), shortHash(rowHash)),
-			RefType: RefTypeRow,
-			Summary: map[string]any{
-				"kind":        "resource_row",
-				"resource_id": strings.TrimSpace(resource.ID),
-				"catalog_id":  strings.TrimSpace(resource.CatalogID),
-				"category":    strings.TrimSpace(resource.Category),
-				"row_index":   i,
-				"row_hash":    rowHash,
-			},
-		})
-	}
-	return refs
+	return []EvidenceRef{{RefID: "resource:" + strings.TrimSpace(resource.ID), RefType: RefTypeResource}}
 }
 
-func normalizedRefs(refs []EvidenceRef) ([]map[string]any, string) {
-	evidenceRefs := make([]map[string]any, 0, len(refs))
-	refFingerprints := make([]string, 0, len(refs))
+func normalizedRefs(refs []EvidenceRef) ([]map[string]any, []map[string]any) {
+	resourceRefs := make([]map[string]any, 0, len(refs))
+	fieldRefs := make([]map[string]any, 0, len(refs))
 	for _, ref := range refs {
 		refID := strings.TrimSpace(ref.RefID)
 		refType := strings.TrimSpace(ref.RefType)
 		if refID == "" || refType == "" {
 			continue
 		}
-		summaryHash := HashValue(ref.Summary)
-		evidenceRefs = append(evidenceRefs, map[string]any{
+		controlled := map[string]any{
 			"ref_id":         refID,
 			"ref_type":       refType,
 			"source_system":  ModuleName,
-			"summary_hash":   summaryHash,
 			"validity":       "observed",
 			"version_status": "unversioned",
 			"visibility":     "visible",
-		})
-		refFingerprints = append(refFingerprints, refType+":"+refID+":"+summaryHash)
-	}
-	sort.Strings(refFingerprints)
-	return evidenceRefs, HashValue(refFingerprints)
-}
-
-func resolvedBusinessRefs(refs []map[string]any) []map[string]any {
-	result := make([]map[string]any, 0, len(refs))
-	for _, ref := range refs {
-		if ref["ref_type"] == RefTypeRow {
-			continue
 		}
-		result = append(result, ref)
+		switch refType {
+		case RefTypeResource:
+			resourceRefs = append(resourceRefs, controlled)
+		case RefTypeField:
+			fieldRefs = append(fieldRefs, controlled)
+		}
 	}
-	return result
+	return resourceRefs, fieldRefs
 }
 
 func postBatch(ingestURL string, timeout time.Duration, payload batch) error {
+	return postJSON(ingestURL, timeout, payload)
+}
+
+func postArtifact(ingestURL string, timeout time.Duration, artifact Artifact) error {
+	return postJSON(ingestURL, timeout, artifact)
+}
+
+func postJSON(ingestURL string, timeout time.Duration, payload any) error {
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return err
@@ -301,6 +491,9 @@ func postBatch(ingestURL string, timeout time.Duration, payload batch) error {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if token := strings.TrimSpace(os.Getenv(envEvidenceIngestToken)); token != "" {
+		req.Header.Set("X-BKN-Trace-Ingest-Token", token)
+	}
 
 	resp, err := evidenceHTTPClient.Do(req)
 	if err != nil {
@@ -308,13 +501,27 @@ func postBatch(ingestURL string, timeout time.Duration, payload batch) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= http.StatusBadRequest {
-		return fmt.Errorf("HTTP %d", resp.StatusCode)
+		response := struct {
+			Code string `json:"code"`
+		}{}
+		body, readErr := io.ReadAll(io.LimitReader(resp.Body, maxEvidenceErrorBodyBytes))
+		if readErr == nil {
+			_ = json.Unmarshal(body, &response)
+		}
+		return &evidenceHTTPError{
+			statusCode:     resp.StatusCode,
+			validationCode: strings.TrimSpace(response.Code),
+		}
 	}
 	return nil
 }
 
 func evidenceIngestURL() string {
 	return strings.TrimSpace(os.Getenv(envEvidenceIngestURL))
+}
+
+func artifactIngestURL() string {
+	return strings.TrimSpace(os.Getenv(envArtifactIngestURL))
 }
 
 func evidenceTimeout() time.Duration {
@@ -338,6 +545,13 @@ func contextFromRequest(ctx context.Context, reqCtx RequestContext) (eventContex
 	accountID := strings.TrimSpace(reqCtx.AccountID)
 	accountType := strings.TrimSpace(reqCtx.AccountType)
 	if requestID == "" || accountID == "" || accountType == "" {
+		return eventContext{}, false
+	}
+	if !reqCtx.ObservedAtProvided {
+		return eventContext{}, false
+	}
+	observedAt := strings.TrimSpace(reqCtx.ObservedAt)
+	if _, err := time.Parse(time.RFC3339Nano, observedAt); err != nil {
 		return eventContext{}, false
 	}
 	interactionID := strings.TrimSpace(reqCtx.InteractionID)
@@ -364,19 +578,21 @@ func contextFromRequest(ctx context.Context, reqCtx RequestContext) (eventContex
 		requestID:        requestID,
 		accountID:        accountID,
 		accountType:      accountType,
+		tenantID:         strings.TrimSpace(reqCtx.TenantID),
 		businessDomain:   businessDomain,
 		interactionID:    interactionID,
 		operationID:      operationID,
 		causationEventID: strings.TrimSpace(reqCtx.CausationEventID),
 		claimID:          strings.TrimSpace(reqCtx.ClaimID),
 		attempt:          attempt,
+		observedAt:       observedAt,
 	}, true
 }
 
 func buildEvent(ec eventContext, eventType, operationName string, payload map[string]any, claimID, causationEventID string) Event {
-	now := time.Now().UTC().Format(time.RFC3339Nano)
+	now := ec.observedAt
 	event := Event{
-		"event_id":                 "evt_" + randomHex(16),
+		"event_id":                 stableEventID(ec.traceID, ec.operationID, eventType, ec.attempt),
 		"event_type":               eventType,
 		"bkn.trace.schema.version": ContractVersion,
 		"observed_at":              now,
@@ -400,16 +616,9 @@ func buildEvent(ec eventContext, eventType, operationName string, payload map[st
 	return event
 }
 
-func randomHex(length int) string {
-	if length <= 0 {
-		return ""
-	}
-	buf := make([]byte, (length+1)/2)
-	if _, err := rand.Read(buf); err != nil {
-		sum := sha256.Sum256([]byte(time.Now().UTC().Format(time.RFC3339Nano)))
-		return hex.EncodeToString(sum[:])[:length]
-	}
-	return hex.EncodeToString(buf)[:length]
+func stableEventID(traceID, operationID, eventType string, attempt int) string {
+	sum := sha256.Sum256([]byte(fmt.Sprintf("%s|%s|%s|%d", traceID, operationID, eventType, attempt)))
+	return "evt_" + hex.EncodeToString(sum[:])
 }
 
 func shortHash(hash string) string {

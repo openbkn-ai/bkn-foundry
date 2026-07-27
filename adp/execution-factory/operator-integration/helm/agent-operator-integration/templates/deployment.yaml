@@ -84,6 +84,17 @@ spec:
                 value: {{ .Values.auth.enabled | quote }}
               - name: BUSINESS_DOMAIN_ENABLED
                 value: {{ .Values.businessDomain.enabled | quote }}
+            {{- if .Values.observability.evidence.ingest_url }}
+              - name: BKN_TRACE_EVIDENCE_INGEST_URL
+                value: {{ .Values.observability.evidence.ingest_url | quote }}
+            {{- end}}
+            {{- if .Values.observability.evidence.ingest_token_secret_name }}
+              - name: BKN_TRACE_EVIDENCE_INGEST_TOKEN
+                valueFrom:
+                  secretKeyRef:
+                    name: {{ .Values.observability.evidence.ingest_token_secret_name | quote }}
+                    key: {{ .Values.observability.evidence.ingest_token_secret_key | quote }}
+            {{- end}}
 
           ports:
             - name: public-port

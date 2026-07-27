@@ -1,12 +1,12 @@
 {
-  "bkn.trace.schema.version": "2.1.0",
-  "fixture_id": "bkn_agent_chat_business_causality_2_1_positive",
+  "bkn.trace.schema.version": "2.2.0",
+  "fixture_id": "bkn_agent_chat_business_causality_2_2_positive",
   "expected_result": "pass",
   "trace": {
     "trace_id": "7a210000000000000000000000000001",
     "traceparent": "00-7a210000000000000000000000000001-7a21000000000001-01",
     "bkn.request.id": "req_bkn_agent_chat_0001",
-    "business_domain": "acct_demo",
+    "business_domain": "domain_customer_risk",
     "bkn.account.id": "acct_demo",
     "bkn.account.type": "user"
   },
@@ -21,11 +21,49 @@
       "bkn.timestamp": "2026-07-25T10:00:00.000000Z"
     }
   ],
+  "artifacts": [
+    {
+      "artifact_id": "art_agent_question_001",
+      "artifact_type": "question",
+      "bkn.request.id": "req_bkn_agent_chat_0001",
+      "trace_id": "7a210000000000000000000000000001",
+      "interaction_id": "int_agent_chat_001",
+      "content_type": "application/json",
+      "schema_version": "2.2.0",
+      "observed_at": "2026-07-25T10:00:00.000000Z",
+      "content_hash": "sha256:6df400bbf4f51642d6752f0cecfa9b9c1968cd0e4ec6cc4e7e2201e16f0c760c",
+      "content": "客户 A 的风险为什么上升？",
+      "business_domain": "domain_customer_risk",
+      "bkn.account.id": "acct_demo",
+      "bkn.account.type": "user",
+      "agent_or_app": "agent_demo"
+    },
+    {
+      "artifact_id": "art_agent_result_001",
+      "artifact_type": "result",
+      "bkn.request.id": "req_bkn_agent_chat_0001",
+      "trace_id": "7a210000000000000000000000000001",
+      "interaction_id": "int_agent_chat_001",
+      "claim_id": "claim_agent_chat_001",
+      "business_refs": [
+        "bkn://domain/domain-customer-risk/knowledge-network/kn-risk/object-type/customer/object/customer-001"
+      ],
+      "content_type": "application/json",
+      "schema_version": "2.2.0",
+      "observed_at": "2026-07-25T10:00:00.003000Z",
+      "content_hash": "sha256:55133a7db97a59b21f7624cb25cd55f420920620facd67355129007308bf1a24",
+      "content": "客户 A 的风险上升，因为近 7 天投诉增加。",
+      "business_domain": "domain_customer_risk",
+      "bkn.account.id": "acct_demo",
+      "bkn.account.type": "user",
+      "agent_or_app": "agent_demo"
+    }
+  ],
   "events": [
     {
       "event_id": "evt_agent_interaction_001",
       "event_type": "agent.interaction.started",
-      "bkn.trace.schema.version": "2.1.0",
+      "bkn.trace.schema.version": "2.2.0",
       "observed_at": "2026-07-25T10:00:00.000000Z",
       "emitted_at": "2026-07-25T10:00:00.000000Z",
       "producer_module": "bkn-agent",
@@ -34,12 +72,12 @@
       "bkn.request.id": "req_bkn_agent_chat_0001",
       "bkn.operation.name": "bkn.agent.chat",
       "interaction_id": "int_agent_chat_001",
-      "payload": {"intent_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111", "mode": "chat", "agent_id": "agent_demo"}
+      "payload": {"intent_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111", "mode": "chat", "agent_id": "agent_demo", "question_artifact_ref": "artifact:art_agent_question_001"}
     },
     {
       "event_id": "evt_tool_called_001",
       "event_type": "tool.called",
-      "bkn.trace.schema.version": "2.1.0",
+      "bkn.trace.schema.version": "2.2.0",
       "observed_at": "2026-07-25T10:00:00.001000Z",
       "emitted_at": "2026-07-25T10:00:00.001000Z",
       "producer_module": "bkn-agent",
@@ -56,7 +94,7 @@
     {
       "event_id": "evt_tool_result_001",
       "event_type": "tool.result.observed",
-      "bkn.trace.schema.version": "2.1.0",
+      "bkn.trace.schema.version": "2.2.0",
       "observed_at": "2026-07-25T10:00:00.002000Z",
       "emitted_at": "2026-07-25T10:00:00.002000Z",
       "producer_module": "bkn-agent",
@@ -68,12 +106,29 @@
       "operation_id": "op_tool_001",
       "causation_event_id": "evt_tool_called_001",
       "attempt": 1,
-      "payload": {"tool_id": "query_object", "tool_name": "query_object", "status": "success", "result_hash": "sha256:3333333333333333333333333333333333333333333333333333333333333333", "result_length": 128, "visibility": "visible", "version_status": "unversioned"}
+      "payload": {"tool_id": "query_object", "tool_name": "query_object", "status": "success", "result_hash": "sha256:3333333333333333333333333333333333333333333333333333333333333333", "result_length": 128, "result_count": 3, "visibility": "visible", "version_status": "unversioned"}
+    },
+    {
+      "event_id": "evt_model_call_001",
+      "event_type": "model.call.observed",
+      "bkn.trace.schema.version": "2.2.0",
+      "observed_at": "2026-07-25T10:00:00.002500Z",
+      "emitted_at": "2026-07-25T10:00:00.002500Z",
+      "producer_module": "mf-model-api",
+      "trace_id": "7a210000000000000000000000000001",
+      "span_id": "7a21000000000001",
+      "bkn.request.id": "req_bkn_agent_chat_0001",
+      "bkn.operation.name": "model.chat.completions",
+      "interaction_id": "int_agent_chat_001",
+      "operation_id": "op_model_001",
+      "causation_event_id": "evt_tool_result_001",
+      "attempt": 1,
+      "payload": {"model_name": "model_ref_001", "model_provider": "provider_ref_001", "status": "success", "input_token_count": 128, "output_token_count": 32, "prompt_hash": "sha256:5555555555555555555555555555555555555555555555555555555555555555", "output_hash": "sha256:6666666666666666666666666666666666666666666666666666666666666666"}
     },
     {
       "event_id": "evt_claim_001",
       "event_type": "claim.created",
-      "bkn.trace.schema.version": "2.1.0",
+      "bkn.trace.schema.version": "2.2.0",
       "observed_at": "2026-07-25T10:00:00.003000Z",
       "emitted_at": "2026-07-25T10:00:00.003000Z",
       "producer_module": "bkn-agent",
@@ -82,14 +137,14 @@
       "bkn.request.id": "req_bkn_agent_chat_0001",
       "bkn.operation.name": "bkn.agent.chat",
       "interaction_id": "int_agent_chat_001",
-      "causation_event_id": "evt_tool_result_001",
+      "causation_event_id": "evt_model_call_001",
       "claim_id": "claim_agent_chat_001",
-      "payload": {"claim_id": "claim_agent_chat_001", "claim_type": "answer", "claim_hash": "sha256:4444444444444444444444444444444444444444444444444444444444444444", "source_event_ids": ["evt_tool_result_001"], "operation_ids": ["op_tool_001"], "visibility": "visible", "version_status": "unversioned"}
+      "payload": {"claim_id": "claim_agent_chat_001", "claim_type": "answer", "claim_hash": "sha256:4444444444444444444444444444444444444444444444444444444444444444", "source_event_ids": ["evt_model_call_001"], "operation_ids": ["op_model_001"], "result_artifact_ref": "artifact:art_agent_result_001", "visibility": "visible", "version_status": "unversioned"}
     },
     {
       "event_id": "evt_evidence_refs_001",
       "event_type": "evidence.refs.created",
-      "bkn.trace.schema.version": "2.1.0",
+      "bkn.trace.schema.version": "2.2.0",
       "observed_at": "2026-07-25T10:00:00.004000Z",
       "emitted_at": "2026-07-25T10:00:00.004000Z",
       "producer_module": "bkn-agent",
@@ -98,11 +153,29 @@
       "bkn.request.id": "req_bkn_agent_chat_0001",
       "bkn.operation.name": "bkn.agent.chat",
       "interaction_id": "int_agent_chat_001",
-      "operation_id": "op_tool_001",
+      "operation_id": "op_model_001",
       "causation_event_id": "evt_claim_001",
       "claim_id": "claim_agent_chat_001",
       "attempt": 1,
-      "payload": {"claim_id": "claim_agent_chat_001", "evidence_refs": [{"ref_id": "evt_tool_result_001", "ref_type": "tool_result_ref", "source_system": "bkn-agent", "validity": "observed", "version_status": "unversioned", "visibility": "visible"}]}
+      "payload": {"claim_id": "claim_agent_chat_001", "evidence_refs": [{"ref_id": "model-output:666666666666666666666666", "ref_type": "model_output", "source_system": "mf-model-api", "validity": "observed", "version_status": "versioned", "visibility": "visible"}]}
+    },
+    {
+      "event_id": "evt_business_refs_001",
+      "event_type": "business.refs.resolved",
+      "bkn.trace.schema.version": "2.2.0",
+      "observed_at": "2026-07-25T10:00:00.004100Z",
+      "emitted_at": "2026-07-25T10:00:00.004100Z",
+      "producer_module": "bkn-agent",
+      "trace_id": "7a210000000000000000000000000001",
+      "span_id": "7a21000000000001",
+      "bkn.request.id": "req_bkn_agent_chat_0001",
+      "bkn.operation.name": "bkn.agent.chat",
+      "interaction_id": "int_agent_chat_001",
+      "operation_id": "op_model_001",
+      "causation_event_id": "evt_claim_001",
+      "claim_id": "claim_agent_chat_001",
+      "attempt": 1,
+      "payload": {"claim_id": "claim_agent_chat_001", "resolver_status": "resolved", "business_refs": [{"ref_id": "bkn://domain/domain-customer-risk/knowledge-network/kn-risk/object-type/customer/object/customer-001", "ref_type": "object", "source_system": "bkn", "validity": "observed", "version_status": "versioned", "visibility": "visible"}]}
     }
   ]
 }

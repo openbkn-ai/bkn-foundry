@@ -18,11 +18,13 @@ import (
 	"ontology-query/interfaces"
 )
 
+const headerBKNEvidenceEventID = "bkn-evidence-event-id"
+
 func ontologyTraceRequestContext(c *gin.Context, ctx context.Context, visitor hydra.Visitor) bkntrace.RequestContext {
 	traceContext, _ := common.GetTraceContextFromCtx(ctx)
 	businessDomain := strings.TrimSpace(c.GetHeader("x-business-domain"))
 	if businessDomain == "" {
-		businessDomain = strings.TrimSpace(traceContext.Baggage["business_domain"])
+		businessDomain = strings.TrimSpace(traceContext.BusinessDomain)
 	}
 	return bkntrace.RequestContext{
 		RequestID:        traceContext.RequestID,
@@ -34,6 +36,7 @@ func ontologyTraceRequestContext(c *gin.Context, ctx context.Context, visitor hy
 		CausationEventID: traceContext.CausationEventID,
 		ClaimID:          traceContext.ClaimID,
 		Attempt:          traceContext.Attempt,
+		ObservedAt:       traceContext.ObservedAt,
 	}
 }
 
@@ -52,8 +55,9 @@ func emitObjectQueryEvidence(c *gin.Context, ctx context.Context, visitor hydra.
 		TotalCount:    result.TotalCount,
 		Truncated:     query.Limit > 0 && len(result.Datas) >= query.Limit,
 	}
-	bkntrace.EmitDataQueryEvents(ctx, ontologyTraceRequestContext(c, ctx, visitor), subject,
+	eventID := bkntrace.EmitDataQueryEvents(ctx, ontologyTraceRequestContext(c, ctx, visitor), subject,
 		bkntrace.ObjectRowRefs(query.KNID, query.Branch, query.ObjectTypeID, result.Datas))
+	setEvidenceEventHeader(c, eventID)
 }
 
 func emitSubgraphEvidence(c *gin.Context, ctx context.Context, visitor hydra.Visitor, knID, branch, operation string, queryShape any, result *interfaces.ObjectSubGraph) {
@@ -71,8 +75,9 @@ func emitSubgraphEvidence(c *gin.Context, ctx context.Context, visitor hydra.Vis
 		TotalCount:    result.TotalCount,
 		Truncated:     result.TotalCount > 0 && int64(len(result.RelationPaths)) < result.TotalCount,
 	}
-	bkntrace.EmitDataQueryEvents(ctx, ontologyTraceRequestContext(c, ctx, visitor), subject,
+	eventID := bkntrace.EmitDataQueryEvents(ctx, ontologyTraceRequestContext(c, ctx, visitor), subject,
 		bkntrace.SubgraphRefs(knID, branch, result))
+	setEvidenceEventHeader(c, eventID)
 }
 
 func emitSubgraphEntriesEvidence(c *gin.Context, ctx context.Context, visitor hydra.Visitor, knID, branch string, queryShape any, result interfaces.PathsEntries) {
@@ -83,7 +88,7 @@ func emitSubgraphEntriesEvidence(c *gin.Context, ctx context.Context, visitor hy
 	for i := range result.Entries {
 		refs = append(refs, bkntrace.SubgraphRefs(knID, branch, &result.Entries[i])...)
 	}
-	bkntrace.EmitDataQueryEvents(ctx, ontologyTraceRequestContext(c, ctx, visitor), bkntrace.DataQuerySubject{
+	eventID := bkntrace.EmitDataQueryEvents(ctx, ontologyTraceRequestContext(c, ctx, visitor), bkntrace.DataQuerySubject{
 		EntityKind:    bkntrace.EntityKindRelationPath,
 		Operation:     "bkn.relation.query",
 		KNID:          knID,
@@ -92,6 +97,7 @@ func emitSubgraphEntriesEvidence(c *gin.Context, ctx context.Context, visitor hy
 		QueryHash:     bkntrace.HashValue(queryShape),
 		ReturnedCount: len(result.Entries),
 	}, refs)
+	setEvidenceEventHeader(c, eventID)
 }
 
 func emitMetricEvidence(c *gin.Context, traceCtx context.Context, visitor hydra.Visitor, knID, branch, metricID, operation string, queryShape any, result *interfaces.MetricData) {
@@ -107,8 +113,15 @@ func emitMetricEvidence(c *gin.Context, traceCtx context.Context, visitor hydra.
 		QueryHash:     bkntrace.HashValue(queryShape),
 		ReturnedCount: len(result.Datas),
 	}
-	bkntrace.EmitDataQueryEvents(traceCtx, ontologyTraceRequestContext(c, traceCtx, visitor), subject,
+	eventID := bkntrace.EmitDataQueryEvents(traceCtx, ontologyTraceRequestContext(c, traceCtx, visitor), subject,
 		bkntrace.MetricDataRefs(knID, branch, metricID, result.Datas))
+	setEvidenceEventHeader(c, eventID)
+}
+
+func setEvidenceEventHeader(c *gin.Context, eventID string) {
+	if strings.TrimSpace(eventID) != "" {
+		c.Header(headerBKNEvidenceEventID, eventID)
+	}
 }
 
 func safeObjectQueryShape(query *interfaces.ObjectQueryBaseOnObjectType) map[string]any {

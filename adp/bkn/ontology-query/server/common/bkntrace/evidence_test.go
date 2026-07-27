@@ -9,11 +9,19 @@ package bkntrace
 import (
 	"context"
 	"encoding/json"
+	"io"
+	"net/http"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"go.opentelemetry.io/otel/trace"
 )
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (fn roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) { return fn(req) }
 
 func testTraceContext() context.Context {
 	sc := trace.NewSpanContext(trace.SpanContextConfig{
@@ -27,6 +35,49 @@ func testRequestContext() RequestContext {
 	return RequestContext{
 		RequestID: "req_ontology_data_0001", AccountID: "acct_demo", AccountType: "user", BusinessDomain: "domain_demo",
 		InteractionID: "int_data_query_001", OperationID: "op_data_query_001", CausationEventID: "evt_tool_called_001", Attempt: 1,
+		ObservedAt: "2026-07-25T08:00:00Z",
+	}
+}
+
+func TestBuildDataQueryEventsRejectsMissingReplayEnvelope(t *testing.T) {
+	req := testRequestContext()
+	req.ObservedAt = ""
+	if events := BuildDataQueryEvents(testTraceContext(), req, DataQuerySubject{EntityKind: EntityKindMetric}, nil); len(events) != 0 {
+		t.Fatalf("missing bkn-event-observed-at must not create conflicting replay: %#v", events)
+	}
+}
+
+func TestPostBatchWithRetryRetriesNon2xx(t *testing.T) {
+	previous := evidenceHTTPClient
+	t.Cleanup(func() { evidenceHTTPClient = previous })
+	var calls atomic.Int32
+	evidenceHTTPClient = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		status := http.StatusServiceUnavailable
+		if calls.Add(1) == 3 {
+			status = http.StatusNoContent
+		}
+		return &http.Response{StatusCode: status, Body: io.NopCloser(strings.NewReader(""))}, nil
+	})}
+	if err := postBatchWithRetry("http://trace.local", time.Second, batch{}); err != nil {
+		t.Fatal(err)
+	}
+	if calls.Load() != 3 {
+		t.Fatalf("calls=%d, want 3", calls.Load())
+	}
+}
+
+func TestPostBatchSendsDedicatedIngestToken(t *testing.T) {
+	t.Setenv("BKN_TRACE_EVIDENCE_INGEST_TOKEN", "producer-token")
+	previous := evidenceHTTPClient
+	t.Cleanup(func() { evidenceHTTPClient = previous })
+	evidenceHTTPClient = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if got := req.Header.Get("X-BKN-Trace-Ingest-Token"); got != "producer-token" {
+			t.Fatalf("ingest token header=%q", got)
+		}
+		return &http.Response{StatusCode: http.StatusNoContent, Body: io.NopCloser(strings.NewReader(""))}, nil
+	})}
+	if err := postBatch("http://trace.local", time.Second, batch{}); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -42,43 +93,36 @@ func TestBuildDataQueryEventsRecordsDataWithoutFabricatingClaim(t *testing.T) {
 		`"interaction_id":"int_data_query_001"`, `"operation_id":"op_data_query_001"`,
 		`"causation_event_id":"evt_tool_called_001"`, `"query_type":"object_instance"`,
 		`"query_hash":"sha256:`, `"row_count":1`, `"truncated":false`,
+		`"ref_id":"object:kn_demo:customer"`, `"ref_type":"object"`,
 	}, []string{`"event_type":"claim.created"`, `"event_type":"evidence.refs.created"`, `"event_type":"business.refs.resolved"`, `"summary":`, "Sensitive Customer", "13800000000", "phone"})
 }
 
-func TestBuildDataQueryEventsLinksControlledRefsOnlyWithUpstreamClaim(t *testing.T) {
+func TestBuildDataQueryEventsKeepsFactRefsIndependentFromUpstreamClaim(t *testing.T) {
 	req := testRequestContext()
 	req.ClaimID = "claim_agent_002"
 	events := BuildDataQueryEvents(testTraceContext(), req, DataQuerySubject{
 		EntityKind: EntityKindObjectInstance, Operation: "bkn.object.query", KNID: "kn_demo", Branch: "main", SubjectID: "customer", QueryHash: HashValue("safe-shape"), ReturnedCount: 1,
-	}, []EvidenceRef{{RefID: "object_instance:customer:hash", RefType: RefTypeRow, Summary: map[string]any{"row": "must-not-appear"}}})
+	}, []EvidenceRef{{RefID: "object:kn_demo:customer", RefType: RefTypeObject, Summary: map[string]any{"row": "must-not-appear"}}})
 
-	assertSafeEvents(t, events, 3, []string{
-		`"event_type":"data.query.observed"`, `"event_type":"evidence.refs.created"`, `"event_type":"business.refs.resolved"`,
-		`"claim_id":"claim_agent_002"`, `"ref_id":"object_instance:customer:hash"`, `"summary_hash":"sha256:`,
-		`"resolver_status":"resolved"`,
-	}, []string{`"event_type":"claim.created"`, `"summary":`, "must-not-appear"})
+	assertSafeEvents(t, events, 1, []string{
+		`"event_type":"data.query.observed"`, `"ref_id":"object:kn_demo:customer"`, `"ref_type":"object"`,
+	}, []string{`"event_type":"claim.created"`, `"event_type":"evidence.refs.created"`, `"event_type":"business.refs.resolved"`, `"claim_id":"claim_agent_002"`, `"summary":`, "must-not-appear"})
 }
 
-func TestBuildDataQueryEventsGeneratesCausalIDs(t *testing.T) {
+func TestBuildDataQueryEventsRejectsMissingCausalIDs(t *testing.T) {
 	req := testRequestContext()
 	req.InteractionID, req.OperationID, req.CausationEventID = "", "", ""
-	events := BuildDataQueryEvents(testTraceContext(), req, DataQuerySubject{EntityKind: EntityKindMetric, QueryHash: HashValue("q")}, []EvidenceRef{{RefID: "metric:risk", RefType: RefTypeMetric}})
-	if len(events) != 1 {
-		t.Fatalf("len(events)=%d, want 1", len(events))
-	}
-	for _, key := range []string{"interaction_id", "operation_id"} {
-		value, _ := events[0][key].(string)
-		if strings.TrimSpace(value) == "" {
-			t.Fatalf("%s not generated: %#v", key, events[0])
-		}
+	events := BuildDataQueryEvents(testTraceContext(), req, DataQuerySubject{EntityKind: EntityKindMetric, QueryHash: HashValue("q")}, []EvidenceRef{{RefID: "metric:kn_demo:risk", RefType: RefTypeMetric}})
+	if len(events) != 0 {
+		t.Fatalf("missing interaction/operation must not create an unstable envelope: %#v", events)
 	}
 }
 
 func TestBuildDataQueryEventsRequiresTraceAndRequest(t *testing.T) {
-	if got := BuildDataQueryEvents(context.Background(), testRequestContext(), DataQuerySubject{}, []EvidenceRef{{RefID: "row:x", RefType: RefTypeRow}}); len(got) != 0 {
+	if got := BuildDataQueryEvents(context.Background(), testRequestContext(), DataQuerySubject{}, []EvidenceRef{{RefID: "object:kn_demo:x", RefType: RefTypeObject}}); len(got) != 0 {
 		t.Fatalf("events without trace=%d", len(got))
 	}
-	if got := BuildDataQueryEvents(testTraceContext(), RequestContext{}, DataQuerySubject{}, []EvidenceRef{{RefID: "row:x", RefType: RefTypeRow}}); len(got) != 0 {
+	if got := BuildDataQueryEvents(testTraceContext(), RequestContext{}, DataQuerySubject{}, []EvidenceRef{{RefID: "object:kn_demo:x", RefType: RefTypeObject}}); len(got) != 0 {
 		t.Fatalf("events without request=%d", len(got))
 	}
 }

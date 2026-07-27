@@ -167,6 +167,8 @@ observability:
   evidence:
     ingest_url: ""
     timeout_ms: 2000
+    ingest_token_secret_name: ""
+    ingest_token_secret_key: "ingest-token"
   log:
     enabled: false
     level: info
