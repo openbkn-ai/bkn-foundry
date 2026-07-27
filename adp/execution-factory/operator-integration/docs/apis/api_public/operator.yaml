@@ -1399,12 +1399,15 @@ components:
           description: "算子版本"
         header:
           type: object
-          description: "请求头"
+          description: >-
+            下游请求头。传输层请求头（Host、Connection、Transfer-Encoding、Content-Length 等）由平台接管，
+            传入即丢弃；身份请求头（x-account-id、x-account-type、user_id）一律以本次调用的认证账户为准，
+            传入值会被覆盖。
           additionalProperties:
             type: object
         body:
           type: object
-          description: "请求体"
+          description: "请求体。GET/HEAD 传空对象时不会向下游发送请求体"
         query:
           type: object
           description: "查询参数"

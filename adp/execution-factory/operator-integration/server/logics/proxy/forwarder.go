@@ -207,7 +207,14 @@ func (f *forwarder) buildRequest(ctx context.Context, req *interfaces.HTTPReques
 	// forceContentType 表示编码过程重算出的 Content-Type 必须覆盖调用方传入的同名请求头
 	var forceContentType bool
 
-	if req.Body != nil {
+	// GET/HEAD 语义上没有请求体，而调试面板对无 body 的接口固定发 "body": {}，
+	// 直接按普通请求体处理会给下游带上空 JSON 体和 Content-Type，部分服务端会直接拒绝。
+	payload := req.Body
+	if isBodylessMethod(req.Method) && isEmptyBody(payload) {
+		payload = nil
+	}
+
+	if payload != nil {
 		// 检查Content-Type头
 		contentType = ""
 		if req.Headers != nil {
@@ -222,7 +229,7 @@ func (f *forwarder) buildRequest(ctx context.Context, req *interfaces.HTTPReques
 		switch {
 		case strings.Contains(contentType, "application/json"):
 			// JSON格式
-			jsonData, err := json.Marshal(req.Body)
+			jsonData, err := json.Marshal(payload)
 			if err != nil {
 				return nil, err
 			}
@@ -232,7 +239,7 @@ func (f *forwarder) buildRequest(ctx context.Context, req *interfaces.HTTPReques
 			formData := url.Values{}
 
 			// 尝试将body转换为map
-			if bodyMap, ok := req.Body.(map[string]interface{}); ok {
+			if bodyMap, ok := payload.(map[string]interface{}); ok {
 				for key, value := range bodyMap {
 					formData.Add(key, fmt.Sprintf("%v", value))
 				}
@@ -244,7 +251,7 @@ func (f *forwarder) buildRequest(ctx context.Context, req *interfaces.HTTPReques
 			writer := multipart.NewWriter(body)
 
 			// 尝试将body转换为map
-			if bodyMap, ok := req.Body.(map[string]interface{}); ok {
+			if bodyMap, ok := payload.(map[string]interface{}); ok {
 				for key, value := range bodyMap {
 					fw, err := writer.CreateFormField(key)
 					if err != nil {
@@ -264,17 +271,17 @@ func (f *forwarder) buildRequest(ctx context.Context, req *interfaces.HTTPReques
 			reqBody = body
 		case strings.Contains(contentType, "text/plain"):
 			// 文本格式
-			reqBody = strings.NewReader(fmt.Sprintf("%v", req.Body))
+			reqBody = strings.NewReader(fmt.Sprintf("%v", payload))
 		case strings.Contains(contentType, "text/event-stream"):
 			// SSE格式
-			reqBody = strings.NewReader(fmt.Sprintf("%v", req.Body))
+			reqBody = strings.NewReader(fmt.Sprintf("%v", payload))
 		case strings.Contains(contentType, "application/stream+json"), // HTTP Streaming格式
 			strings.Contains(contentType, "application/x-ndjson"),      // NDJSON格式
 			strings.Contains(contentType, "application/x-json-stream"): // HTTP Streaming格式
 			// HTTP Streaming格式
-			reqBody = strings.NewReader(fmt.Sprintf("%v", req.Body))
+			reqBody = strings.NewReader(fmt.Sprintf("%v", payload))
 		default:
-			jsonData, err := json.Marshal(req.Body)
+			jsonData, err := json.Marshal(payload)
 			if err != nil {
 				return nil, err
 			}
@@ -295,6 +302,9 @@ func (f *forwarder) buildRequest(ctx context.Context, req *interfaces.HTTPReques
 	}
 
 	// 设置请求头，并用当前请求上下文补齐 trace/request id，保证代理链路可聚合。
+	// 公开接口的 header 由调用方直接填写，身份头必须回填成本次请求的认证账户。
+	isPublic := common.IsPublicAPIFromCtx(ctx)
+	auth, _ := common.GetAccountAuthContextFromCtx(ctx)
 	headers := map[string]string{}
 	for key, value := range req.Headers {
 		// 传输层请求头由转发器与 Go HTTP 客户端接管，调用方手填只会让实际请求与预览对不上
@@ -302,6 +312,20 @@ func (f *forwarder) buildRequest(ctx context.Context, req *interfaces.HTTPReques
 			if f.logger != nil {
 				f.logger.WithContext(ctx).Debugf("drop transport-layer header from caller: %s", key)
 			}
+			continue
+		}
+		if isPublic && isIdentityHeader(key) {
+			resolved, ok := resolveIdentityHeader(key, auth)
+			if !ok {
+				if f.logger != nil {
+					f.logger.WithContext(ctx).Warnf("drop identity header %s: no authenticated account in context", key)
+				}
+				continue
+			}
+			if f.logger != nil && resolved != fmt.Sprintf("%v", value) {
+				f.logger.WithContext(ctx).Warnf("override caller-supplied identity header %s with authenticated account", key)
+			}
+			headers[key] = resolved
 			continue
 		}
 		headers[key] = fmt.Sprintf("%v", value)
@@ -336,6 +360,72 @@ var transportHeaders = map[string]struct{}{
 func isTransportHeader(key string) bool {
 	_, ok := transportHeaders[strings.ToLower(strings.TrimSpace(key))]
 	return ok
+}
+
+// identityHeaders 身份请求头：内置工具箱把它们声明成普通 OpenAPI header 参数，
+// 下游 /in 接口不验 token、直接据此判定调用者身份并做 per-account 授权。
+// 公开接口（调试与执行）的 header 完全由调用方填写，放任透传等于允许冒充任意账户，
+// 因此这里统一回填成本次请求认证出来的账户。内部接口维持透传，运行时按 /in 约定注入身份。
+var identityHeaders = map[string]struct{}{
+	"x-account-id":   {},
+	"x-account-type": {},
+	"user_id":        {},
+	"x-user-id":      {},
+}
+
+// isIdentityHeader 判断请求头是否属于身份请求头（大小写不敏感）。
+func isIdentityHeader(key string) bool {
+	_, ok := identityHeaders[strings.ToLower(strings.TrimSpace(key))]
+	return ok
+}
+
+// resolveIdentityHeader 返回身份请求头应有的值；返回 false 表示拿不到认证账户，该请求头必须丢弃。
+func resolveIdentityHeader(key string, auth *interfaces.AccountAuthContext) (string, bool) {
+	if auth == nil || auth.AccountID == "" {
+		return "", false
+	}
+	if strings.EqualFold(strings.TrimSpace(key), "x-account-type") {
+		if auth.AccountType == "" {
+			return "", false
+		}
+		return string(auth.AccountType), true
+	}
+	return auth.AccountID, true
+}
+
+// bodylessMethods 语义上不带请求体的方法。
+var bodylessMethods = map[string]struct{}{
+	http.MethodGet:  {},
+	http.MethodHead: {},
+}
+
+// isBodylessMethod 判断方法是否语义上不带请求体（大小写不敏感，空方法按 GET 处理）。
+func isBodylessMethod(method string) bool {
+	normalized := strings.ToUpper(strings.TrimSpace(method))
+	if normalized == "" {
+		normalized = http.MethodGet
+	}
+	_, ok := bodylessMethods[normalized]
+	return ok
+}
+
+// isEmptyBody 判断请求体是否为空信封：调试面板对无 body 的接口固定发 "body": {}，
+// 只有空值才当作没有请求体，非空 body 仍按调用方声明的方式编码发出。
+func isEmptyBody(body interface{}) bool {
+	switch value := body.(type) {
+	case nil:
+		return true
+	case map[string]interface{}:
+		return len(value) == 0
+	case map[string]string:
+		return len(value) == 0
+	case []interface{}:
+		return len(value) == 0
+	case string:
+		return value == ""
+	default:
+		return false
+	}
 }
 
 // pathPlaceholderPattern 匹配路径里形如 {name} 的占位符。
