@@ -197,7 +197,12 @@ func validateBuildTaskAnalyzers(ctx context.Context, indexManager interfaces.Loc
 		return nil
 	}
 	if err := indexManager.ValidateAnalyzers(ctx, analyzers); err != nil {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_Analyzer).
+		var unavailableErr *interfaces.AnalyzerUnavailableError
+		if errors.As(err, &unavailableErr) {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_Analyzer).
+				WithErrorDetails(unavailableErr.Error())
+		}
+		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_ValidateAnalyzerFailed).
 			WithErrorDetails(err.Error())
 	}
 	return nil

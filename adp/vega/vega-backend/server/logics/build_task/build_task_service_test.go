@@ -41,7 +41,11 @@ func TestBuildTaskServiceRejectsUnavailableFieldAnalyzerBeforePersistence(t *tes
 	mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 	mockRS := mock_interfaces.NewMockResourceService(ctrl)
 	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
-	validator := &analyzerValidatingIndexManager{err: errors.New("analyzer \"hanlp_index\" for field \"status\" is unavailable")}
+	validator := &analyzerValidatingIndexManager{err: &interfaces.AnalyzerUnavailableError{
+		Analyzer: "hanlp_index",
+		Fields:   []string{"status"},
+		Detail:   "analyzer not found",
+	}}
 	service := &buildTaskService{
 		bta:            mockBTA,
 		cs:             mockCS,
@@ -71,6 +75,19 @@ func TestBuildTaskServiceRejectsUnavailableFieldAnalyzerBeforePersistence(t *tes
 	httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidParameter_Analyzer)
 	assert.Contains(t, httpErr.BaseError.ErrorDetails, "status")
 	assert.Equal(t, map[string]string{"coupon_code": "standard", "status": "hanlp_index"}, validator.captured)
+}
+
+func TestValidateBuildTaskAnalyzersReturnsInternalErrorForTransportFailure(t *testing.T) {
+	validator := &analyzerValidatingIndexManager{err: errors.New("connect OpenSearch: connection refused")}
+	buildTask := &interfaces.BuildTask{IndexConfig: &interfaces.BuildTaskIndexConfig{
+		Features: map[string]interfaces.BuildTaskFieldIndexFeature{
+			"status": {Fulltext: &interfaces.BuildTaskFulltextConfig{Analyzer: "hanlp_index"}},
+		},
+	}}
+
+	err := validateBuildTaskAnalyzers(context.Background(), validator, buildTask)
+	httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InternalError_ValidateAnalyzerFailed)
+	assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
 }
 
 func TestBuildTaskServicePopulatesTaskReferencesForListAndGet(t *testing.T) {

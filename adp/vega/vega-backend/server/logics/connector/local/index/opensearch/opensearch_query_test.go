@@ -90,6 +90,33 @@ func TestValidateAnalyzersChecksEachDistinctAnalyzerOnce(t *testing.T) {
 	assert.Equal(t, 2, requests)
 }
 
+func TestValidateAnalyzersReturnsUnavailableErrorForOpenSearchResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/_analyze", r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, err := w.Write([]byte(`{"error":"analyzer not found"}`))
+		require.NoError(t, err)
+	}))
+	t.Cleanup(server.Close)
+
+	serverURL, err := url.Parse(server.URL)
+	require.NoError(t, err)
+	host, portText, err := net.SplitHostPort(serverURL.Host)
+	require.NoError(t, err)
+	port, err := strconv.Atoi(portText)
+	require.NoError(t, err)
+	connector := &OpenSearchConnector{Config: &opensearchConfig{Host: host, Port: port}}
+
+	err = connector.ValidateAnalyzers(context.Background(), map[string]string{
+		"status": "hanlp_index",
+	})
+	var unavailableErr *interfaces.AnalyzerUnavailableError
+	require.ErrorAs(t, err, &unavailableErr)
+	assert.Equal(t, "hanlp_index", unavailableErr.Analyzer)
+	assert.Equal(t, []string{"status"}, unavailableErr.Fields)
+}
+
 func TestExecuteRawQueryFlattensAggregationsIntoEntries(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

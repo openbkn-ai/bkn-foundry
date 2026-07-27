@@ -28,11 +28,12 @@ const (
 	VegaBackend_BuildTask_ActiveIndexInUse       = "VegaBackend.BuildTask.ActiveIndexInUse"
 
 	// 500 Internal Server Error
-	VegaBackend_BuildTask_InternalError_CreateFailed          = "VegaBackend.BuildTask.InternalError.CreateFailed"
-	VegaBackend_BuildTask_InternalError_GetFailed             = "VegaBackend.BuildTask.InternalError.GetFailed"
-	VegaBackend_BuildTask_InternalError_UpdateFailed          = "VegaBackend.BuildTask.InternalError.UpdateFailed"
-	VegaBackend_BuildTask_InternalError_DeleteFailed          = "VegaBackend.BuildTask.InternalError.DeleteFailed"
-	VegaBackend_BuildTask_InternalError_GetAccountNamesFailed = "VegaBackend.BuildTask.InternalError.GetAccountNamesFailed"
+	VegaBackend_BuildTask_InternalError_CreateFailed           = "VegaBackend.BuildTask.InternalError.CreateFailed"
+	VegaBackend_BuildTask_InternalError_GetFailed              = "VegaBackend.BuildTask.InternalError.GetFailed"
+	VegaBackend_BuildTask_InternalError_UpdateFailed           = "VegaBackend.BuildTask.InternalError.UpdateFailed"
+	VegaBackend_BuildTask_InternalError_DeleteFailed           = "VegaBackend.BuildTask.InternalError.DeleteFailed"
+	VegaBackend_BuildTask_InternalError_GetAccountNamesFailed  = "VegaBackend.BuildTask.InternalError.GetAccountNamesFailed"
+	VegaBackend_BuildTask_InternalError_ValidateAnalyzerFailed = "VegaBackend.BuildTask.InternalError.ValidateAnalyzerFailed"
 )
 
 var BuildTaskErrCodeList = []string{
@@ -60,4 +61,5 @@ var BuildTaskErrCodeList = []string{
 	VegaBackend_BuildTask_InternalError_UpdateFailed,
 	VegaBackend_BuildTask_InternalError_DeleteFailed,
 	VegaBackend_BuildTask_InternalError_GetAccountNamesFailed,
+	VegaBackend_BuildTask_InternalError_ValidateAnalyzerFailed,
 }

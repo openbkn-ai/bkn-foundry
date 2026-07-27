@@ -73,7 +73,11 @@ func (c *OpenSearchConnector) ValidateAnalyzers(ctx context.Context, analyzers m
 		if resp.IsError() {
 			detail := resp.String()
 			_ = resp.Body.Close()
-			return fmt.Errorf("analyzer %q for fields %q is unavailable: %s", analyzer, strings.Join(fields, ", "), detail)
+			return &interfaces.AnalyzerUnavailableError{
+				Analyzer: analyzer,
+				Fields:   fields,
+				Detail:   detail,
+			}
 		}
 		_ = resp.Body.Close()
 	}

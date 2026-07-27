@@ -6,7 +6,23 @@
 
 package interfaces
 
-import "context"
+import (
+	"context"
+	"fmt"
+	"strings"
+)
+
+// AnalyzerUnavailableError indicates that OpenSearch accepted the validation
+// request but could not resolve the configured analyzer.
+type AnalyzerUnavailableError struct {
+	Analyzer string
+	Fields   []string
+	Detail   string
+}
+
+func (e *AnalyzerUnavailableError) Error() string {
+	return fmt.Sprintf("analyzer %q for fields %q is unavailable: %s", e.Analyzer, strings.Join(e.Fields, ", "), e.Detail)
+}
 
 //go:generate mockgen -source ../interfaces/connector_interface.go -destination ../interfaces/mock/mock_connector_interface.go
 

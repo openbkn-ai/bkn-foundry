@@ -43,6 +43,11 @@ Description = "创建构建任务失败"
 Solution = "请联系管理员"
 ErrorLink = "暂无"
 
+[VegaBackend.BuildTask.InternalError.ValidateAnalyzerFailed]
+Description = "校验全文分词器失败"
+Solution = "请检查 OpenSearch 连接后重试"
+ErrorLink = "暂无"
+
 [VegaBackend.BuildTask.InternalError.GetFailed]
 Description = "获取构建任务失败"
 Solution = "请联系管理员"

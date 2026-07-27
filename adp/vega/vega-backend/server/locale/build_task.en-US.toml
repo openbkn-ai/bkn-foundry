@@ -43,6 +43,11 @@ Description = "Failed to create build task"
 Solution = "Please contact the administrator"
 ErrorLink = "No solution"
 
+[VegaBackend.BuildTask.InternalError.ValidateAnalyzerFailed]
+Description = "Failed to validate full-text analyzer"
+Solution = "Check the OpenSearch connection and try again"
+ErrorLink = "No solution"
+
 [VegaBackend.BuildTask.InternalError.GetFailed]
 Description = "Failed to get build task"
 Solution = "Please contact the administrator"
