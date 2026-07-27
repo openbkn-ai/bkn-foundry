@@ -1401,7 +1401,7 @@ components:
           type: object
           description: >-
             下游请求头。传输层请求头（Host、Connection、Transfer-Encoding、Content-Length 等）由平台接管，
-            传入即丢弃；身份请求头（x-account-id、x-account-type、user_id）一律以本次调用的认证账户为准，
+            传入即丢弃；身份请求头（x-account-id、x-account-type、user_id、x-user-id）一律以本次调用的认证账户为准，
             传入值会被覆盖。
           additionalProperties:
             type: object
