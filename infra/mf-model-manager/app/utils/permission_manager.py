@@ -1,3 +1,4 @@
+import asyncio
 import os
 
 import aiohttp
@@ -295,22 +296,27 @@ class PermissionManager:
         existing small_model path.
 
         AUTH disabled -> everything passes. A "*" operation yields none (matches
-        the ISF filter dropping them). bkn-safe authoritative checks each id;
-        otherwise the ISF resource-filter endpoint decides in one batch.
+        the ISF filter dropping them). bkn-safe authoritative checks each id
+        concurrently; otherwise the ISF resource-filter endpoint decides in one
+        batch.
+
+        Fail-closed on error: a per-id check that raises is NOT swallowed into
+        "not authorized" — that would silently drop models from the list on a
+        transient blip and show the user an incomplete set with no error. The
+        exception propagates so the caller returns 500 instead of a plausible
+        short list.
         """
         if not base_config.AUTH_ENABLED:
             return list(candidate_ids)
         if operation == "*":
             return []
         if self._bkn_safe_authoritative():
-            allowed = []
-            for mid in candidate_ids:
-                try:
-                    if await self._bkn_safe_check(user_id, resource_type, mid, operation):
-                        allowed.append(mid)
-                except Exception as e:
-                    StandLogger.error(e.args)
-            return allowed
+            # Concurrent per-id checks (serial N round-trips is the #357 timeout
+            # shape). gather propagates the first exception -> fail-closed.
+            results = await asyncio.gather(
+                *[self._bkn_safe_check(user_id, resource_type, mid, operation) for mid in candidate_ids]
+            )
+            return [mid for mid, ok in zip(candidate_ids, results) if ok]
         # ISF legacy: batch resource-filter.
         resources = [{"id": mid, "type": resource_type, "name": resource_name} for mid in candidate_ids]
         payload = {

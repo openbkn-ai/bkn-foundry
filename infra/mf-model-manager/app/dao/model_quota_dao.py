@@ -318,7 +318,9 @@ class ModelQuotaDao():
                 right join t_llm_model on t_llm_model.f_model_id = t_model_quota_config.f_model_id
                 where ({where_clause[6:]}) {id_filter}"""
         if api_model is not None and api_model != "":
-            sql += " and BINARY t_llm_model.f_model = %s " % api_model
+            # 存量缺陷(#213 顺修):裸 %s 未加引号,api_model 非空时拼出语法错误的 SQL;
+            # 对齐同方法第二段的 '%s' 写法。恰在本 PR 收窄的非 admin 授权查询路径上。
+            sql += " and BINARY t_llm_model.f_model = '%s' " % api_model
         if quota is not None:
             if quota:
                 sql += " and t_llm_model.f_quota = 1 "

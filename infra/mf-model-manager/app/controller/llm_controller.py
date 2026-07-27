@@ -1067,6 +1067,11 @@ async def get_overview_data(userId, language, model_id, start_time, end_time, ro
                 if not await permission_manager.check_display(userId, role, "large_model", model_id):
                     return JSONResponse(status_code=403, content=NotPermissionError)
             else:
+                # 口径说明:此处 authorized 仅作准入门禁(有无任一授权模型),用于消除
+                # 空权限用户的误导性全 0 总览。聚合本身不再按 authorized 集收窄——DAO 侧
+                # 对非 admin 已附加 and d.f_user_id='{userId}'(llm_model_dao 435/459),
+                # 总览统计的是调用者自身跨模型的用量,不构成越权;列表按授权收窄、总览按
+                # 自身用量,两处口径不同,勿误读为总览也已逐模型过滤。
                 candidate_ids = [m['f_model_id'] for m in llm_model_dao.get_all_model_list()]
                 authorized = await permission_manager.filter_authorized_ids(
                     user_id=userId, role=role, candidate_ids=candidate_ids,
