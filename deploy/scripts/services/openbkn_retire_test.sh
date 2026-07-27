@@ -56,7 +56,7 @@ helm() {
 }
 
 # 用可控清单覆盖真实退役清单，避免测试跟随 capabilities-lab 之类真实条目漂移。
-_CORE_RETIRED_RELEASES=("svc-a|reason a" "svc-b|reason b|含额外竖线")
+_OPENBKN_RETIRED_RELEASES=("svc-a|reason a" "svc-b|reason b|含额外竖线")
 
 calls() { tr '\n' ' ' <"${CALLS_FILE}" | sed 's/ $//'; }
 reset() { : >"${CALLS_FILE}"; }
