@@ -54,5 +54,39 @@ func Test_PromoteLegacyLeafWithSubConds(t *testing.T) {
 			So(got.Operation, ShouldEqual, OperationAnd)
 			So(len(got.SubConds), ShouldEqual, 2)
 		})
+
+		Convey("preserves RemainCfg when promoting match leaf with sub_conditions", func() {
+			cfg := &CondCfg{
+				Name:      "title",
+				Operation: OperationMatch,
+				ValueOptCfg: ValueOptCfg{
+					Value: "uav",
+				},
+				RemainCfg: map[string]any{
+					"fields":     []any{"title", "desc"},
+					"match_type": "best_fields",
+				},
+				SubConds: []*CondCfg{
+					{
+						Name:      "status",
+						Operation: OperationEq,
+						ValueOptCfg: ValueOptCfg{
+							Value: "active",
+						},
+					},
+				},
+			}
+
+			got := PromoteLegacyLeafWithSubConds(cfg)
+			So(got, ShouldNotBeNil)
+			So(got.Operation, ShouldEqual, OperationAnd)
+			So(len(got.SubConds), ShouldEqual, 2)
+			So(got.SubConds[0].Operation, ShouldEqual, OperationMatch)
+			So(got.SubConds[0].RemainCfg["match_type"], ShouldEqual, "best_fields")
+			fields, ok := got.SubConds[0].RemainCfg["fields"].([]any)
+			So(ok, ShouldBeTrue)
+			So(fields, ShouldResemble, []any{"title", "desc"})
+			So(got.SubConds[1].Name, ShouldEqual, "status")
+		})
 	})
 }

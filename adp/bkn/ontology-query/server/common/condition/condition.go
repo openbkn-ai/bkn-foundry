@@ -243,6 +243,7 @@ func PromoteLegacyLeafWithSubConds(cfg *CondCfg) *CondCfg {
 		Name:         cfg.Name,
 		Operation:    cfg.Operation,
 		ValueOptCfg:  cfg.ValueOptCfg,
+		RemainCfg:    cfg.RemainCfg,
 		NameField:    cfg.NameField,
 	}
 	subs := make([]*CondCfg, 0, 1+len(cfg.SubConds))
