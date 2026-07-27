@@ -141,6 +141,24 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 		httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidParameter_BuildKeyFields)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
 	})
+	t.Run("rejects streaming task without build key fields", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockRS := mock_interfaces.NewMockResourceService(ctrl)
+		service := &buildTaskService{rs: mockRS}
+
+		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(&interfaces.Resource{
+			ID:        "resource-1",
+			CatalogID: "catalog-1",
+			Category:  interfaces.ResourceCategoryTable,
+		}, nil)
+
+		_, err := service.Create(context.Background(), &interfaces.CreateBuildTaskRequest{
+			ResourceID: "resource-1",
+			Mode:       interfaces.BuildTaskModeStreaming,
+		})
+		httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidParameter_BuildKeyFields)
+		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+	})
 
 	t.Run("rejects disabled catalog", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
@@ -188,6 +206,40 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 		})
 
 		requireHTTPError(t, err, verrors.VegaBackend_BuildTask_Exist)
+	})
+	t.Run("allows streaming task with a build key and no physical primary key", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+		mockRS := mock_interfaces.NewMockResourceService(ctrl)
+		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+		neutralizeEnqueue(t, ctrl)
+		service := &buildTaskService{
+			debugTaskQueue: make(chan *asynq.Task, 10),
+			cs:             mockCS,
+			rs:             mockRS,
+			bta:            mockBTA,
+		}
+
+		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(&interfaces.Resource{
+			ID:        "resource-1",
+			CatalogID: "catalog-1",
+			Category:  interfaces.ResourceCategoryTable,
+			IndexConfig: &interfaces.ResourceIndexConfig{
+				BuildKeyFields: []string{"supplier_id"},
+			},
+			SchemaDefinition: []*interfaces.Property{{Name: "supplier_id"}},
+		}, nil)
+		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
+			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
+		mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).Return(nil, int64(0), nil)
+		mockBTA.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
+
+		_, err := service.Create(context.Background(), &interfaces.CreateBuildTaskRequest{
+			ResourceID: "resource-1",
+			Mode:       interfaces.BuildTaskModeStreaming,
+		})
+
+		require.NoError(t, err)
 	})
 	t.Run("rejects execute type for streaming", func(t *testing.T) {
 		ctrl := gomock.NewController(t)

@@ -129,11 +129,9 @@ func (bts *buildTaskService) Create(ctx context.Context, req *interfaces.CreateB
 		span.SetStatus(codes.Error, "Invalid execute type")
 		return "", err
 	}
-	if req.Mode == interfaces.BuildTaskModeBatch {
-		if err := validateBatchBuildKeyFields(ctx, resource); err != nil {
-			span.SetStatus(codes.Error, "Invalid batch build key fields")
-			return "", err
-		}
+	if err := validateBuildKeyFields(ctx, resource); err != nil {
+		span.SetStatus(codes.Error, "Invalid build key fields")
+		return "", err
 	}
 
 	cat, err := bts.cs.GetByID(ctx, resource.CatalogID, false)
@@ -157,20 +155,6 @@ func (bts *buildTaskService) Create(ctx context.Context, req *interfaces.CreateB
 		return "", err
 	}
 
-	if req.Mode == interfaces.BuildTaskModeStreaming {
-		primaryKeys := []any{}
-		if resource.SourceMetadata != nil {
-			if v, ok := resource.SourceMetadata["primary_keys"]; ok {
-				primaryKeys = v.([]any)
-			}
-		}
-		if len(primaryKeys) == 0 {
-			span.SetStatus(codes.Error, "Resource has no primary key for build task")
-			return "", rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InternalError_CreateFailed).
-				WithErrorDetails("Resource has no primary key")
-		}
-	}
-
 	buildTask, err := bts.newBuildTaskFromCreateRequest(ctx, resource, req)
 	if err != nil {
 		return "", err
@@ -192,10 +176,10 @@ func (bts *buildTaskService) Create(ctx context.Context, req *interfaces.CreateB
 	return buildTask.ID, nil
 }
 
-func validateBatchBuildKeyFields(ctx context.Context, resource *interfaces.Resource) error {
+func validateBuildKeyFields(ctx context.Context, resource *interfaces.Resource) error {
 	if resource.IndexConfig == nil || len(resource.IndexConfig.BuildKeyFields) == 0 {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_BuildKeyFields).
-			WithErrorDetails("batch build task requires at least one build_key_fields entry")
+			WithErrorDetails("build task requires at least one build_key_fields entry")
 	}
 	return nil
 }
