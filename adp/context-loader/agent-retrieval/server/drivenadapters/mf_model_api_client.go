@@ -75,17 +75,28 @@ type chatCompletionsResp struct {
 func (c *mfModelAPIClient) Chat(ctx context.Context, req *interfaces.LLMChatReq) (string, error) {
 	url := fmt.Sprintf("%s%s", c.baseURL, chatCompletionsURI)
 
-	// 构建请求体
+	// 构建请求体。
+	// temperature / frequency_penalty / presence_penalty 的 0 是合法业务取值（区间分别为
+	// [0,2] 与 [-2,2]），恒发；top_p / top_k / max_tokens 的合法区间不含 0
+	// （0 < top_p ≤ 1、top_k ≥ 1、max_tokens ≥ 10），调用方未设置时的 Go 零值不能当成业务
+	// 参数发出去，否则 mf-model-api 直接 400（issue #450）。此处用 map 组装，struct 上的
+	// omitempty 不生效，必须显式判零。
 	reqBody := map[string]interface{}{
 		"model":             req.Model,
 		"messages":          req.Messages,
 		"stream":            false, // 非流式
 		"temperature":       req.Temperature,
-		"top_k":             req.TopK,
-		"top_p":             req.TopP,
 		"frequency_penalty": req.FrequencyPenalty,
 		"presence_penalty":  req.PresencePenalty,
-		"max_tokens":        req.MaxTokens,
+	}
+	if req.TopP > 0 {
+		reqBody["top_p"] = req.TopP
+	}
+	if req.TopK > 0 {
+		reqBody["top_k"] = req.TopK
+	}
+	if req.MaxTokens > 0 {
+		reqBody["max_tokens"] = req.MaxTokens
 	}
 
 	// 获取Header（统一方式）
