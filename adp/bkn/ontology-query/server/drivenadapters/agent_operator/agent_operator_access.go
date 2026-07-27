@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -179,7 +180,7 @@ func (aoa *agentOperatorAccess) ExecuteMCP(ctx context.Context, mcpID string,
 	logger.Debugf("post [%s] with headers[%v] finished, request is [%v] response code is [%d], error is [%v], 耗时: %dms",
 		url, headers, execRequest, respCode, err, time.Now().UnixMilli()-start)
 
-	mcpResult := executionResult{}
+	mcpResult := mcpCallToolResult{}
 
 	if err != nil {
 		logger.Errorf("MCP execution request failed: %v", err)
@@ -211,16 +212,55 @@ func (aoa *agentOperatorAccess) ExecuteMCP(ctx context.Context, mcpID string,
 		return mcpResult, err
 	}
 
-	// status_code 在100-300间才算成功
-	if http.StatusContinue <= mcpResult.StatusCode &&
-		mcpResult.StatusCode < http.StatusMultipleChoices {
-		return mcpResult.Body, nil
-	} else {
-		resByte, err := json.Marshal(mcpResult)
-		if err != nil {
-			logger.Errorf("marshal MCP result failed: %v\n", err)
-			return mcpResult, err
-		}
-		return nil, fmt.Errorf("execute MCP failed: %v", string(resByte))
+	// MCP 协议以 is_error 表达工具自身的失败，不存在 HTTP status_code
+	if mcpResult.IsError {
+		return nil, fmt.Errorf("execute MCP failed: %v", mcpResult.normalize())
 	}
+
+	return mcpResult.normalize(), nil
+}
+
+// mcpCallToolResult 对应执行工厂 MCP 代理的返回结构（POST /mcp/proxy/{mcp_id}/tool/call）：
+// {"content":[{"type":"text","text":"..."}],"is_error":false}
+// 与 tool-box 代理的 executionResult{status_code,body} 不同，不可混用。
+type mcpCallToolResult struct {
+	Content []map[string]any `json:"content"`
+	IsError bool             `json:"is_error"`
+}
+
+// normalize 把 MCP content 块压成便于下游消费的结果。
+//
+// 结果恒为 JSON 对象：执行记录落在 OpenSearch 的 results.result 字段上，该字段已按 object
+// 映射（tool 类型返回的是 HTTP body 对象），返回裸标量会触发 mapper_parsing_exception 导致
+// 整条执行记录写不进去。同理，同一字段名在不同执行间必须保持同一类型，故按内容形态分键：
+//   - 全 text 块且拼接后是 JSON 对象：直接返回该对象
+//   - 全 text 块且拼接后是 JSON 数组：{"items": [...]}
+//   - 其余全 text 块（纯文本或 JSON 标量）：{"text": "..."}
+//   - 含非 text 块（图片、资源等）：{"content": [...]}
+func (r mcpCallToolResult) normalize() map[string]any {
+	texts := make([]string, 0, len(r.Content))
+	for _, item := range r.Content {
+		text, ok := item["text"].(string)
+		if !ok || item["type"] != "text" {
+			return map[string]any{"content": r.Content}
+		}
+		texts = append(texts, text)
+	}
+
+	if len(texts) == 0 {
+		return map[string]any{"content": r.Content}
+	}
+
+	joined := strings.Join(texts, "\n")
+	var parsed any
+	if err := json.Unmarshal([]byte(joined), &parsed); err == nil {
+		switch v := parsed.(type) {
+		case map[string]any:
+			return v
+		case []any:
+			return map[string]any{"items": v}
+		}
+	}
+
+	return map[string]any{"text": joined}
 }

@@ -313,6 +313,8 @@ func (s *actionSchedulerService) executeAsync(execution *interfaces.ActionExecut
 		case interfaces.ActionSourceTypeTool:
 			result, execErr = ExecuteTool(ctx, s.aoAccess, actionType, params)
 		case interfaces.ActionSourceTypeMCP:
+			// MCP 工具自带入参 schema，未在行动类声明的 dynamic_params 也要透传
+			params = buildMCPParameters(params, req.DynamicParams)
 			result, execErr = ExecuteMCP(ctx, s.aoAccess, actionType, params)
 		default:
 			execErr = fmt.Errorf("unsupported action source type: %s", actionType.ActionSource.Type)

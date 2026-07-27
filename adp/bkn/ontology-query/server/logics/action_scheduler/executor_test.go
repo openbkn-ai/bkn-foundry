@@ -427,3 +427,35 @@ func Test_MCPExecutionRequest(t *testing.T) {
 		})
 	})
 }
+
+func Test_buildMCPParameters(t *testing.T) {
+	Convey("Test buildMCPParameters", t, func() {
+		Convey("行动类未声明参数时 dynamic_params 直通", func() {
+			merged := buildMCPParameters(map[string]any{}, map[string]any{
+				"resource_id": "res_001",
+				"limit":       10,
+			})
+
+			So(len(merged), ShouldEqual, 2)
+			So(merged["resource_id"], ShouldEqual, "res_001")
+			So(merged["limit"], ShouldEqual, 10)
+		})
+
+		Convey("行动类声明的参数覆盖同名 dynamic_params", func() {
+			merged := buildMCPParameters(
+				map[string]any{"city": "上海"},
+				map[string]any{"city": "北京", "limit": 5},
+			)
+
+			So(merged["city"], ShouldEqual, "上海")
+			So(merged["limit"], ShouldEqual, 5)
+		})
+
+		Convey("两侧均为空时返回空 map 而非 nil", func() {
+			merged := buildMCPParameters(nil, nil)
+
+			So(merged, ShouldNotBeNil)
+			So(len(merged), ShouldEqual, 0)
+		})
+	})
+}

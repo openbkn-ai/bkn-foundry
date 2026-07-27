@@ -33,19 +33,17 @@ func ExecuteMCP(ctx context.Context, aoAccess interfaces.AgentOperatorAccess, ac
 		toolName = source.ToolID
 	}
 
-	// Build MCP execution request using ActionType.Parameters configuration
-	mcpParams := buildMCPParameters(actionType.Parameters, params)
-
+	// params 由调用方经 buildExecutionParams + buildMCPParameters 组装好，此处直接使用
 	mcpRequest := interfaces.MCPExecutionRequest{
 		McpID:      source.McpID,
 		ToolName:   toolName,
-		Parameters: mcpParams,
+		Parameters: params,
 		Timeout:    mcpExecutionTimeoutSeconds,
 	}
 
 	mcpID := source.McpID
 
-	logger.Debugf("Executing MCP: mcp_id=%s, tool_name=%s, params=%+v", mcpID, toolName, mcpParams)
+	logger.Debugf("Executing MCP: mcp_id=%s, tool_name=%s, params=%+v", mcpID, toolName, params)
 
 	// Execute through agent-operator-integration MCP endpoint
 	execCtx, cancel := context.WithTimeout(ctx, time.Duration(mcpRequest.Timeout)*time.Second)
@@ -61,15 +59,19 @@ func ExecuteMCP(ctx context.Context, aoAccess interfaces.AgentOperatorAccess, ac
 	return result, nil
 }
 
-// buildMCPParameters builds parameters for MCP execution based on ActionType.Parameters configuration
-// Note: params already contains processed values from buildExecutionParams
-func buildMCPParameters(configParams []interfaces.Parameter, params map[string]any) map[string]any {
-	// If no parameters configured, use params directly (backward compatible)
-	if len(configParams) == 0 {
-		return params
+// buildMCPParameters 合并 MCP 工具的调用参数。
+//
+// MCP 工具的入参 schema 由工具自身声明（get_action_info 直接把 input_schema 暴露为
+// dynamic_params），行动类不必逐项声明 parameters；因此未声明的 dynamic_params 也要透传，
+// 否则 MCP 工具会收到空参数。行动类声明过的参数（const/property/input 映射结果）优先级更高，
+// 同名时覆盖直通值。MCP 不区分 header/query/path/body，全部平铺。
+func buildMCPParameters(params map[string]any, dynamicParams map[string]any) map[string]any {
+	merged := make(map[string]any, len(params)+len(dynamicParams))
+	for k, v := range dynamicParams {
+		merged[k] = v
 	}
-
-	// For MCP, params already contains the processed values from buildExecutionParams
-	// Just return params directly since MCP doesn't distinguish between header/body/query/path
-	return params
+	for k, v := range params {
+		merged[k] = v
+	}
+	return merged
 }
