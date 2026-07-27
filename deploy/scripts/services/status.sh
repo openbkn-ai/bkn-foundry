@@ -124,7 +124,7 @@ _status_apply_endpoint() {
 
 # Layer 2 — regenerate the non-sensitive JSON snapshot and publish the endpoint.
 # Never fails the install: best-effort, warns on error.
-# Auth is disabled (no bkn-safe stack) when installed with --minimum /
+# Auth is disabled (no bkn-safe stack) only when explicitly disabled via Helm values.
 # --set auth.enabled=false. That is a SUPPORTED, normal state: bkn-safe is
 # optional. Detect it so install-status reports an absent bkn-safe as
 # "skipped", not "missing". Signals: the install-time --set (CORE_SET_VALUES,

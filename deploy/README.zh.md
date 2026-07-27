@@ -18,11 +18,11 @@
 
 单节点 kubeadm 流程为 **`bash ./deploy.sh k8s install`**（`deploy/scripts/services/k8s.sh`）。若 `kubectl` 已可用，`ensure_k8s` 会跳过重复安装；随后 **`ensure_platform_prerequisites`** 会安装随平台一起交付的 **data-services**（MariaDB、Redis、Kafka、OpenSearch 等），再装 Core。**macOS kind** 不写宿主机 kubeadm：**`OPENBKN_SKIP_PLATFORM_BOOTSTRAP` 下，`bkn-foundry install` 会先跑与 `data-services install` 相同的 Helm 数据层**，见下文 macOS。历史写法 **`kubeadm`** 仍可作为 **`k8s`** 的别名。
 
-**`deploy.sh` 全局参数**（`--distro`、`-y`、`--force-upgrade`、`--config` 等）必须写在**子模块名之前**。正确：`bash ./deploy.sh --distro=k3s bkn-foundry install --minimum`。错误：`bash ./deploy.sh bkn-foundry install --minimum --distro=k3s`（末尾的 `--distro` 不会按全局参数解析）。不想改命令顺序时可用：`export KUBE_DISTRO=k3s` 再执行 `bash ./deploy.sh bkn-foundry install --minimum`。
+**`deploy.sh` 全局参数**（`--distro`、`-y`、`--force-upgrade`、`--config` 等）必须写在**子模块名之前**。正确：`bash ./deploy.sh --distro=k3s bkn-foundry install`。错误：`bash ./deploy.sh bkn-foundry install --distro=k3s`（末尾的 `--distro` 不会按全局参数解析）。不想改命令顺序时可用：`export KUBE_DISTRO=k3s` 再执行 `bash ./deploy.sh bkn-foundry install`。
 
 ```bash
 bash ./deploy.sh k8s install
-bash ./deploy.sh bkn-foundry install --minimum
+bash ./deploy.sh bkn-foundry install
 ```
 
 ### k3s（可选 — 轻量单节点）
@@ -35,8 +35,8 @@ cd bkn-foundry/deploy
 bash ./deploy.sh k3s install
 
 # 与 k3s 对齐 distro，供 preflight 与平台 bootstrap 使用：
-bash ./deploy.sh --distro=k3s bkn-foundry install --minimum
-# 或：export KUBE_DISTRO=k3s && bash ./deploy.sh bkn-foundry install --minimum
+bash ./deploy.sh --distro=k3s bkn-foundry install
+# 或：export KUBE_DISTRO=k3s && bash ./deploy.sh bkn-foundry install
 ```
 
 查看状态：`bash ./deploy.sh k3s status`；卸载：`bash ./deploy.sh k3s uninstall`。
@@ -101,17 +101,11 @@ sudo bash ./preflight.sh --help         # 全部参数（--role、--skip、--rep
 #（与 deploy 共用环境变量 KUBE_DISTRO=k3s）
 
 # 3. 安装 BKN Foundry
-# 最小化安装 — 首次体验推荐
-bash ./deploy.sh bkn-foundry install --minimum
-# 默认走 kubeadm（k8s）。若改用单节点 k3s（--distro 须写在 bkn-foundry 之前）：
-# bash ./deploy.sh --distro=k3s bkn-foundry install --minimum
-# 或：export KUBE_DISTRO=k3s && bash ./deploy.sh bkn-foundry install --minimum
-# 等价于:
-# bash ./deploy.sh bkn-foundry install --set auth.enabled=false --set businessDomain.enabled=false
-
-# 完整安装（包含 auth 和 business-domain 模块）
+# 安装 BKN Foundry 全量服务
 bash ./deploy.sh bkn-foundry install
-
+# 默认走 kubeadm（k8s）。若改用单节点 k3s（--distro 须写在 bkn-foundry 之前）：
+# bash ./deploy.sh --distro=k3s bkn-foundry install
+# 或：export KUBE_DISTRO=k3s && bash ./deploy.sh bkn-foundry install
 # 脚本会交互式提示输入访问地址，并自动检测 API Server 地址。
 
 # 或显式指定地址（跳过交互提示）：
@@ -164,7 +158,7 @@ sudo bash ./onboard.sh --help # 全部参数（--config=models.yaml、--enable-b
 ./scripts/gen-dev-manifest.sh --branch=fix/my-thing --out=/tmp/m.yaml
 
 # 用生成的 manifest 安装
-sudo bash ./deploy.sh --distro=k3s bkn-foundry install --minimum --version_file=/tmp/m.yaml
+sudo bash ./deploy.sh --distro=k3s bkn-foundry install --version_file=/tmp/m.yaml
 ```
 
 逐 chart 解析（stable 优先）：`--branch` 最新构建 → 最新 stable → `--base` 最新构建 → 报错。
@@ -209,12 +203,12 @@ sudo bash ./deploy.sh bkn-foundry install --version_file=/tmp/m.yaml --registry=
 ```bash
 # 设置 CPU 和内存请求
 OPENBKN_CORE_REQ_CPU=200m OPENBKN_CORE_REQ_MEM=512Mi \
-  sudo bash ./deploy.sh bkn-foundry install --minimum
+  sudo bash ./deploy.sh bkn-foundry install
 
 # 设置完整的资源限制
 OPENBKN_CORE_REQ_CPU=200m OPENBKN_CORE_REQ_MEM=512Mi \
   OPENBKN_CORE_LIM_CPU=2 OPENBKN_CORE_LIM_MEM=2Gi \
-  sudo bash ./deploy.sh bkn-foundry install --minimum
+  sudo bash ./deploy.sh bkn-foundry install
 ```
 
 | 环境变量 | 说明 | 示例值 |

@@ -1388,7 +1388,7 @@ preflight_check_target_tools() {
                 preflight_ok "helm not on PATH yet (normal before bootstrap). deploy.sh ensure_k3s runs install_helm before k3s — no manual install required for the k3s path."
             fi
         else
-            preflight_strict_warn_or_fail "helm not found (deploy.sh bkn-core install requires Helm v3; sudo bash ./preflight.sh --fix → helm-v3 will install it)"
+            preflight_strict_warn_or_fail "helm not found (deploy.sh bkn-foundry install requires Helm v3; sudo bash ./preflight.sh --fix → helm-v3 will install it)"
         fi
     fi
 

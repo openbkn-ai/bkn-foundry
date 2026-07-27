@@ -30,7 +30,7 @@ On **Apple Silicon** Macs, kind nodes are **linux/arm64** by default. Charts pul
 
 ## Order of operations
 
-Run from the **`deploy/`** directory (`cd deploy` in this repo). Invoke **`mac.sh` with bash** (e.g. `bash ./dev/mac.sh ...`). **`bkn-foundry` / `core`:** the wrapper installs the **full stack including bkn-safe** (auth is mandatory now). The old no-auth `--minimum` mode has been removed.
+Run from the **`deploy/`** directory (`cd deploy` in this repo). Invoke **`mac.sh` with bash** (e.g. `bash ./dev/mac.sh ...`). **`bkn-foundry` / `core`:** the wrapper installs the **full stack including bkn-safe** (auth is mandatory now).
 
 | Step | Command | Required? |
 |------|---------|-----------|

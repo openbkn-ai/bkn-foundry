@@ -40,7 +40,6 @@ declare -a CORE_SQL_MODULES=(
 
 # Parse bkn-foundry command arguments
 parse_openbkn_args() {
-    local action="$1"
     shift
 
     while [[ $# -gt 0 ]]; do
@@ -767,7 +766,7 @@ install_openbkn() {
 
     log_info "BKN Foundry services installation completed."
 
-    # 退役已被别处接管/下线的历史 release（见 _CORE_RETIRED_RELEASES）。
+    # 退役已被别处接管/下线的历史 release（见 _OPENBKN_RETIRED_RELEASES）。
     # 放在装完全部在册 release 之后：确保承接方已就绪，退役旧 release 不留服务空窗。
     _openbkn_uninstall_retired_releases "${namespace}"
 
@@ -829,7 +828,7 @@ install_openbkn() {
 # 通用 prune —— 那样任何 manifest 笔误都会误删。
 #
 # 格式：每行一个 "<release>|<原因，含关联 issue/PR>"。
-_CORE_RETIRED_RELEASES=(
+_OPENBKN_RETIRED_RELEASES=(
     "capabilities-lab|合并进 operator-integration（#324/#350）；旧 Ingress 与 agent-operator-integration 的 /api/capabilities-lab/v1 同 path"
 )
 
@@ -850,13 +849,13 @@ _openbkn_should_show_bkn_safe_initial_password() {
     [[ "${release_existed_before_install}" != "true" && -n "${initial_password}" ]]
 }
 
-# 逐条退役 _CORE_RETIRED_RELEASES 中仍存在的 release。
+# 逐条退役 _OPENBKN_RETIRED_RELEASES 中仍存在的 release。
 # 幂等：不存在则跳过。失败只告警不中断——退役失败不应让整个 install/upgrade 挂掉。
 # 由 install_openbkn 在装完全部在册 release 之后调用，确保承接方已就绪、无服务空窗。
 _openbkn_uninstall_retired_releases() {
     local namespace="$1"
     local entry release_name reason
-    for entry in "${_CORE_RETIRED_RELEASES[@]}"; do
+    for entry in "${_OPENBKN_RETIRED_RELEASES[@]}"; do
         release_name="${entry%%|*}"
         reason="${entry#*|}"
         if _openbkn_release_exists "${release_name}" "${namespace}"; then

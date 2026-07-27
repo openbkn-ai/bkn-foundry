@@ -93,7 +93,7 @@ Environment:
 
 Note: data-services install runs deploy.sh data-services (Helm charts into the current kube context). Other deploy.sh modules on mac still skip host k3s bootstrap unless you install infra yourself. See ${readme}.
 
-Default: full install — bkn-safe is a mandatory module (the old no-auth --minimum mode has been removed).
+Default: full install — bkn-safe is a mandatory module.
 
 EOF
 }
@@ -232,8 +232,7 @@ main() {
             # kind already has ingress-nginx; ensure_data_services (pulled in by bkn-foundry install) must not add a second controller.
             export AUTO_INSTALL_INGRESS_NGINX="${AUTO_INSTALL_INGRESS_NGINX:-false}"
             export AUTO_INSTALL_LOCALPV="${AUTO_INSTALL_LOCALPV:-true}"
-            # bkn-safe is a mandatory module; the old no-auth --minimum mode is removed,
-            # so arguments pass through verbatim.
+            # bkn-safe is mandatory; pass supported arguments through verbatim.
             local -a _kw_pos=()
             local _a _kw_saw_full=false
             for _a in "$@"; do

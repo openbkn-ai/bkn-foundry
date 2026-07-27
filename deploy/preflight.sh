@@ -56,7 +56,7 @@ usage() {
     echo "  --distro=k8s|k3s     Same as deploy.sh (default: k8s = kubeadm/package stack). Use k3s for single-node lightweight."
     echo "                       Exported as KUBE_DISTRO (and PREFLIGHT_KUBE_DISTRO); legacy kubeadm = k8s."
     echo "  deploy.sh note:      For deploy.sh, --distro must appear BEFORE the module (e.g. deploy.sh --distro=k8s"
-    echo "                       bkn-core install --minimum). Trailing ... install --minimum --distro=k8s is ignored;"
+    echo "                       bkn-foundry install). Trailing ... install --distro=k8s is ignored;"
     echo "                       use KUBE_DISTRO=k8s or move the flag (same as -y, --force-upgrade)."
     echo ""
     echo "Environment:"
@@ -306,20 +306,19 @@ if [[ "${PREFLIGHT_OUTPUT_JSON}" != "true" ]]; then
             echo "  Suggested next step (skip install, just configure / verify):"
             echo "    - Node/bkn on an admin host: default preflight is check-only; run sudo bash ./preflight.sh --fix to opt in to help installing Node ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR}+ and CLIs (y/N per step)"
             echo "    - Configure models / BKN search:    sudo bash ./onboard.sh   (Linux; macOS dev: bash ./dev/mac.sh onboard)"
-            echo "    - Check status:                     sudo bash ./deploy.sh bkn-core status"
-            echo "    - Only if you really want to upgrade: sudo bash ./deploy.sh bkn-core install --force-upgrade"
+            echo "    - Check status:                     sudo bash ./deploy.sh bkn-foundry status"
+            echo "    - Only if you really want to upgrade: sudo bash ./deploy.sh bkn-foundry install --force-upgrade"
         else
             echo ""
             echo "  However, ${_pf_bad}/${_pf_total} release(s) are NOT in 'deployed' state."
             echo "  Suggested next step:"
             echo "    - Inspect:  helm list -A | grep -iE 'bkn|isf|dip'"
-            echo "    - Repair:   sudo bash ./deploy.sh bkn-core install --force-upgrade"
+            echo "    - Repair:   sudo bash ./deploy.sh bkn-foundry install --force-upgrade"
         fi
     else
         if [[ ${exit_code} -eq 0 ]]; then
             echo "  No BKN Foundry releases detected. Environment looks ready for a first-time install:"
-            echo "    sudo bash ./deploy.sh bkn-core install --minimum    # try first / for evaluation"
-            echo "    sudo bash ./deploy.sh bkn-core install              # full install (auth + business-domain)"
+            echo "    sudo bash ./deploy.sh bkn-foundry install              # install the full stack"
             echo ""
             echo "  After deploy: from this repo's deploy/ directory run sudo bash ./onboard.sh (Linux; macOS dev uses plain bash; needs Node ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR}+ + bkn CLI on that host)."
             echo "  If this host still lacks Node/CLIs: sudo bash ./preflight.sh --fix"
@@ -329,8 +328,7 @@ if [[ "${PREFLIGHT_OUTPUT_JSON}" != "true" ]]; then
             echo "    sudo bash ./preflight.sh --fix          # applies safe fixes / opt-in tooling (y/N unless -y)"
             echo "    sudo bash ./preflight.sh --check-only   # re-check until blocking [FAIL] items are addressed (or sudo bash ./preflight.sh --check-only --lenient if you accept the caveats)"
             echo "  Only then install:"
-            echo "    sudo bash ./deploy.sh bkn-core install --minimum    # try first / for evaluation"
-            echo "    sudo bash ./deploy.sh bkn-core install              # full install (auth + business-domain)"
+            echo "    sudo bash ./deploy.sh bkn-foundry install              # install the full stack"
             echo "  Finally: sudo bash ./onboard.sh from deploy/ (Linux; macOS dev uses plain bash. Node ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR}+ + bkn on PATH; sudo bash ./preflight.sh --fix helps install tooling on this machine)."
         fi
     fi

@@ -205,7 +205,7 @@ mac_doctor_apply_fixes() {
 # Inspect Docker engine memory budget and warn when it is too low for BKN Foundry
 # + bundled data services (mariadb/redis/kafka/opensearch). Warning only —
 # does NOT set fail=1, since the user can still proceed (just slower / OOM-prone).
-# Threshold defaults are tuned for --minimum profile + data-services on kind:
+# Threshold defaults are tuned for the full profile + data-services on kind:
 #   < MIN  -> WARNING (highly likely to OOM-loop, e.g. redis crash-restart)
 #   < REC -> WARNING + hint (below recommended budget for full Core + data-services)
 #   >= REC -> OK
@@ -385,9 +385,9 @@ mac_prepare_isf_https() {
     # If bkn-foundry releases already exist they were rendered with the old http
     # accessAddress; refresh them so the in-cluster URLs/issuers match the new https.
     if helm list -n "${ns}" -q 2>/dev/null | grep -qE '.'; then
-        mac_log_info "bkn-foundry releases already in ${ns}; running 'bkn-foundry install --minimum' to refresh accessAddress (https/443)"
-        bash "${DEPLOY_ROOT}/deploy.sh" bkn-foundry install --minimum || \
-            mac_log_warn "bkn-foundry refresh failed; you may need to re-run 'mac.sh bkn-foundry install --minimum' manually"
+        mac_log_info "bkn-foundry releases already in ${ns}; running 'bkn-foundry install' to refresh accessAddress (https/443)"
+        bash "${DEPLOY_ROOT}/deploy.sh" bkn-foundry install || \
+            mac_log_warn "bkn-foundry refresh failed; you may need to re-run 'mac.sh bkn-foundry install' manually"
     fi
 }
 

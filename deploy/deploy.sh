@@ -61,7 +61,6 @@ usage() {
     echo "  ingress-nginx install         Install ingress-nginx-controller"
     echo "  ingress-nginx uninstall       Uninstall ingress-nginx-controller"
     echo "  bkn-foundry install          Install BKN Foundry services; auto-installs K8s/data services if missing"
-    echo "  bkn-foundry install          On BYOK (OPENBKN_SKIP_PLATFORM_BOOTSTRAP=true), runs ensure_data_services first unless OPENBKN_SKIP_DATA_SERVICES_BUNDLE=true"
     echo "  bkn-foundry download         Download/update BKN Foundry charts into deploy/.tmp/charts"
     echo "  bkn-foundry uninstall        Uninstall BKN Foundry services"
     echo "  bkn-foundry status           Show BKN Foundry services status"
@@ -80,7 +79,6 @@ usage() {
     echo "  $0 mariadb uninstall --force  # Force uninstall (WARNING: breaks bkn-foundry)"
     echo "  $0 mariadb uninstall --delete-data  # Uninstall MariaDB and delete PVC (data loss!)"
     echo "  $0 redis install              # Install Redis"
-    echo "  $0 redis uninstall            # Uninstall Redis"
     echo "  $0 redis uninstall                         # Uninstall Redis (PVCs deleted by default)"
     echo "  REDIS_PURGE_PVC=false $0 redis uninstall   # Uninstall Redis but keep PVCs"
     echo "  $0 kafka install              # Install Kafka"
@@ -701,26 +699,6 @@ main() {
         return 0
     fi
 
-    # Handle mongodb module (disabled)
-    # if [[ "${module}" == "mongodb" ]]; then
-    #     case "${action}" in
-    #         install|init)
-    #             check_root
-    #             # install_mongodb  # MongoDB disabled
-    #             ;;
-    #         uninstall)
-    #             check_root
-    #             # uninstall_mongodb  # MongoDB disabled
-    #             ;;
-    #         *)
-    #             log_error "Unknown mongodb action: ${action}"
-    #             usage
-    #             exit 1
-    #             ;;
-    #     esac
-    #     return 0
-    # fi
-
     # Handle kafka module
     if [[ "${module}" == "kafka" ]]; then
         case "${action}" in
@@ -800,52 +778,19 @@ main() {
     if [[ "${module}" == "all" ]] || [[ "${module}" == "infra" ]]; then
         case "${action}" in
             install|init)
-                check_root
                 log_info "=========================================="
                 log_info "  Deploying Infrastructure (K8s + Data Services)"
                 log_info "=========================================="
-                
-                # Pre-install dependencies (containerd, k8s, helm) before k8s init
-                log_info "Pre-installing dependencies..."
-                detect_package_manager
-                install_containerd
-                install_kubernetes
-                install_helm
-                
-                check_prerequisites
-                init_k8s_master
-                allow_master_scheduling
-                install_cni
-                wait_for_dns
-
-                if [[ "${AUTO_INSTALL_LOCALPV}" == "true" ]]; then
-                    if [[ -z "$(kubectl get storageclass --no-headers 2>/dev/null)" ]]; then
-                        install_localpv
-                    fi
-                fi
-                install_mariadb
-                install_redis
-                install_kafka
-                # install_mongodb  # MongoDB disabled
-                if [[ "${AUTO_INSTALL_INGRESS_NGINX}" == "true" ]]; then
-                    install_ingress_nginx
-                fi
-                install_opensearch
-                if [[ "${AUTO_GENERATE_CONFIG}" == "true" ]]; then
-                    generate_config_yaml
-                fi
+                main k8s install
+                main data-services install
                 show_status
                 log_info "Infrastructure deployment completed!"
                 ;;
             reset)
                 check_root
                 log_info "Resetting infrastructure..."
-                uninstall_opensearch || true
-                uninstall_ingress_nginx || true
-                # uninstall_mongodb || true  # MongoDB disabled
-                uninstall_kafka || true
-                uninstall_redis || true
-                uninstall_mariadb || true
+                main data-services uninstall || true
+                main ingress-nginx uninstall || true
                 reset_k8s
                 log_info "Infrastructure reset completed!"
                 ;;
@@ -859,11 +804,10 @@ main() {
     fi
     
     # Handle bkn module (application services)
-    if [[ "${module}" == "bkn" ]] || [[ "${module}" == "bkn" ]]; then
+    if [[ "${module}" == "bkn" ]]; then
         case "${action}" in
             init)
                 check_root
-                shift 2
                 log_info "=========================================="
                 log_info "  Deploying BKN Foundry Application Services"
                 log_info "=========================================="
