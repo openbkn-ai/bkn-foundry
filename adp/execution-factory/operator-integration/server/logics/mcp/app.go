@@ -37,16 +37,9 @@ func (s *mcpServiceImpl) GetMCPInstanceConfig(ctx context.Context, mcpID string,
 		return nil, err
 	}
 
-	// 组装配置信息
+	// 组装配置信息（custom 型已在上面提前返回，这里只剩工具导入型）
 	var config *interfaces.MCPInstancConfigInfo
 	switch release.CreationType {
-	case interfaces.MCPCreationTypeCustom.String():
-		config = &interfaces.MCPInstancConfigInfo{
-			MCPID:   release.MCPID,
-			Mode:    mode,
-			URL:     release.URL,
-			Headers: utils.JSONToObject[map[string]string](release.Headers),
-		}
 	case interfaces.MCPCreationTypeToolImported.String():
 		config = &interfaces.MCPInstancConfigInfo{
 			MCPID:   release.MCPID,
