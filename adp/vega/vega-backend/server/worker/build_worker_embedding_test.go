@@ -154,14 +154,14 @@ func TestEmbeddingWorkerExecuteEmbedding(t *testing.T) {
 		assert.Contains(t, err.Error(), "use of closed network connection")
 	})
 
-	t.Run("end sentinel switches local index and completes task", func(t *testing.T) {
+	t.Run("end sentinel completes progress from total when synced count is stale", func(t *testing.T) {
 		ew, ts, ka := newEmbeddingLoopWorker(t)
 		ctrl := gomock.NewController(t)
 		rs := vmock.NewMockResourceService(ctrl)
 		ew.rs = rs
 		resource, task := embeddingLoopFixtures()
 		resource.LocalIndexName = interfaces.BuildIndexName("r1", "old-task")
-		task.SyncedCount = 7
+		task.SyncedCount = 1330
 		wantIndexName := interfaces.BuildIndexName("r1", "t1")
 
 		expectEmbeddingKafkaSession(ka)
@@ -178,20 +178,52 @@ func TestEmbeddingWorkerExecuteEmbedding(t *testing.T) {
 				return nil
 			})
 		ts.EXPECT().InternalGetByID(gomock.Any(), "t1").
-			Return(&interfaces.BuildTask{ID: "t1", SyncedCount: 7}, nil)
+			Return(&interfaces.BuildTask{ID: "t1", SyncedCount: 1330, TotalCount: 50000}, nil)
 		ts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1", gomock.Any()).
 			DoAndReturn(func(_ context.Context, _ *sql.Tx, _ string, update interfaces.BuildTaskUpdate, _ ...string) (bool, error) {
 				require.NotNil(t, update.Status)
+				require.NotNil(t, update.SyncedCount)
 				require.NotNil(t, update.VectorizedCount)
 				require.NotNil(t, update.FailureDetail)
 				assert.Equal(t, interfaces.BuildTaskStatusCompleted, *update.Status)
-				assert.Equal(t, int64(7), *update.VectorizedCount)
+				assert.Equal(t, int64(50000), *update.SyncedCount)
+				assert.Equal(t, int64(50000), *update.VectorizedCount)
 				assert.Equal(t, "", *update.FailureDetail)
 				return true, nil
 			})
 
 		require.NoError(t, ew.executeEmbedding(context.Background(), resource, task))
 		assert.Equal(t, wantIndexName, resource.LocalIndexName)
+	})
+
+	t.Run("end sentinel keeps synced count unchanged when fresh task lookup fails", func(t *testing.T) {
+		ew, ts, ka := newEmbeddingLoopWorker(t)
+		ctrl := gomock.NewController(t)
+		rs := vmock.NewMockResourceService(ctrl)
+		ew.rs = rs
+		resource, task := embeddingLoopFixtures()
+
+		expectEmbeddingKafkaSession(ka)
+		ts.EXPECT().InternalGetStatus(gomock.Any(), "t1").Return(interfaces.BuildTaskStatusRunning, nil)
+		ka.EXPECT().ReadMessage(gomock.Any(), gomock.Any()).
+			Return(kafka.Message{Value: []byte(`{"document_id":"` + interfaces.EmptyDocumentID + `"}`)}, nil)
+		ka.EXPECT().CommitMessages(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		ka.EXPECT().ReadMessage(gomock.Any(), gomock.Any()).
+			Return(kafka.Message{}, context.DeadlineExceeded).
+			Times(embeddingDrainEmptyPolls)
+		rs.EXPECT().InternalUpdate(gomock.Any(), nil, resource).Return(nil)
+		ts.EXPECT().InternalGetByID(gomock.Any(), "t1").Return(nil, errors.New("database unavailable"))
+		ts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1", gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ *sql.Tx, _ string, update interfaces.BuildTaskUpdate, _ ...string) (bool, error) {
+				require.NotNil(t, update.Status)
+				require.Nil(t, update.SyncedCount)
+				require.NotNil(t, update.VectorizedCount)
+				assert.Equal(t, interfaces.BuildTaskStatusCompleted, *update.Status)
+				assert.Equal(t, int64(7), *update.VectorizedCount)
+				return true, nil
+			})
+
+		require.NoError(t, ew.executeEmbedding(context.Background(), resource, task))
 	})
 }
 
