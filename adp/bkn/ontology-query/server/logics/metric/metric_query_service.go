@@ -313,8 +313,12 @@ func (s *metricQueryService) buildResourceDataQueryParams(ctx context.Context, d
 		"alias":    "__value",
 	}
 
-	// 处理分组字段（calculation_formula.group_by + 请求 analysis_dimensions，与 metricGroupByDimensions 一致）
-	groupDims, err := metricGroupByDimensions(def, metricQuery, propMap)
+	// Keep the pushed group-by fields aligned with the dimensions used by result conversion.
+	excludedGroupByResourceField := ""
+	if trend != nil {
+		excludedGroupByResourceField = trend.timeResField
+	}
+	groupDims, err := metricGroupByDimensions(def, metricQuery, propMap, excludedGroupByResourceField)
 	if err != nil {
 		return nil, nil, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_Metric_InvalidParameter).
 			WithErrorDetails(err.Error())
@@ -420,31 +424,30 @@ type metricGroupByDimension struct {
 	ResourceFieldName string
 }
 
-// metricGroupByDimensions 从 def 与 query 收集维度顺序（与下推时 group 维度一致，顺序：先 group_by 后 analysis_dimensions 去重），
-// 并对每一项解析出 resource 列名。当 query 带 analysis_dimensions 时，只保留在定义与请求的交集中，顺序与 query 一致；交集为空则返回空 slice。
-func metricGroupByDimensions(def *interfaces.MetricDefinition, query *interfaces.MetricQueryRequest, propMap map[string]*cond.DataProperty) ([]metricGroupByDimension, error) {
+// metricGroupByDimensions resolves definition and request dimensions to resource fields.
+// When request analysis_dimensions are present, only requested definition dimensions are kept in request order.
+// excludedResourceField prevents trend queries from grouping the time field twice, including through property aliases.
+func metricGroupByDimensions(def *interfaces.MetricDefinition, query *interfaces.MetricQueryRequest,
+	propMap map[string]*cond.DataProperty, excludedResourceField string) ([]metricGroupByDimension, error) {
 	if def == nil {
 		return nil, nil
 	}
 	if propMap == nil {
 		return nil, fmt.Errorf("propMap is required for group by dimension mapping")
 	}
-	timeProperty := ""
-	if def.TimeDimension != nil {
-		timeProperty = strings.TrimSpace(def.TimeDimension.Property)
-	}
+	excludedResourceField = strings.TrimSpace(excludedResourceField)
 	defined := make(map[string]struct{})
 	var defaultOrdered []string
 	addDefined := func(s string) {
 		s = strings.TrimSpace(s)
-		if s == "" || s == timeProperty {
+		if s == "" {
 			return
 		}
 		defined[s] = struct{}{}
 	}
 	addDefault := func(s string) {
 		s = strings.TrimSpace(s)
-		if s == "" || s == timeProperty {
+		if s == "" {
 			return
 		}
 		if _, ok := defined[s]; ok {
@@ -488,6 +491,9 @@ func metricGroupByDimensions(def *interfaces.MetricDefinition, query *interfaces
 		res, err := mapDataPropertyToResourceField(p, propMap)
 		if err != nil {
 			return nil, err
+		}
+		if res == excludedResourceField {
+			continue
 		}
 		out = append(out, metricGroupByDimension{PropertyName: p, ResourceFieldName: res})
 	}
@@ -590,13 +596,13 @@ func vegaEntriesToMetricData(ctx context.Context, def interfaces.MetricDefinitio
 	samePeriodDatas *interfaces.DatasetQueryResponse, query *interfaces.MetricQueryRequest,
 	trend *trendMeta, vegaFetchDur int64, propMap map[string]*cond.DataProperty) (interfaces.MetricResponse, error) {
 
-	groupDims, err := metricGroupByDimensions(&def, query, propMap)
-	if err != nil {
-		return interfaces.MetricResponse{}, err
-	}
-
 	if trend != nil {
 		return convertVegaDatas2TimeSeries(ctx, def, datas, samePeriodDatas, query, trend, vegaFetchDur, propMap)
+	}
+
+	groupDims, err := metricGroupByDimensions(&def, query, propMap, "")
+	if err != nil {
+		return interfaces.MetricResponse{}, err
 	}
 
 	entries := []map[string]any(nil)
@@ -991,7 +997,7 @@ func convert2TimeSeries(ctx context.Context, def interfaces.MetricDefinition, da
 		return seriesMap, nil
 	}
 	fillNull := query != nil && query.FillNull
-	groupDims, err := metricGroupByDimensions(&def, query, propMap)
+	groupDims, err := metricGroupByDimensions(&def, query, propMap, trend.timeResField)
 	if err != nil {
 		return nil, err
 	}
