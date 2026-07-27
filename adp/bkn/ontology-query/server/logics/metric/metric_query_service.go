@@ -429,18 +429,22 @@ func metricGroupByDimensions(def *interfaces.MetricDefinition, query *interfaces
 	if propMap == nil {
 		return nil, fmt.Errorf("propMap is required for group by dimension mapping")
 	}
+	timeProperty := ""
+	if def.TimeDimension != nil {
+		timeProperty = strings.TrimSpace(def.TimeDimension.Property)
+	}
 	defined := make(map[string]struct{})
 	var defaultOrdered []string
 	addDefined := func(s string) {
 		s = strings.TrimSpace(s)
-		if s == "" {
+		if s == "" || s == timeProperty {
 			return
 		}
 		defined[s] = struct{}{}
 	}
 	addDefault := func(s string) {
 		s = strings.TrimSpace(s)
-		if s == "" {
+		if s == "" || s == timeProperty {
 			return
 		}
 		if _, ok := defined[s]; ok {

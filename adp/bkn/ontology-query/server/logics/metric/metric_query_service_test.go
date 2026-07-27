@@ -30,14 +30,17 @@ func Test_metricGroupByDimensions_analysisDimensions(t *testing.T) {
 			"warehouse_id": {Name: "warehouse_id", MappedField: cond.Field{Name: "warehouse_id_res"}},
 			"item_code":    {Name: "item_code", MappedField: cond.Field{Name: "item_code_res"}},
 			"region":       {Name: "region", MappedField: cond.Field{Name: "region_res"}},
+			"evt_time":     {Name: "evt_time", MappedField: cond.Field{Name: "evt_time_res"}},
 		}
 		def := &interfaces.MetricDefinition{
+			TimeDimension: &interfaces.MetricTimeDimension{Property: "evt_time"},
 			CalculationFormula: &interfaces.MetricCalculationFormula{
 				GroupBy: []interfaces.MetricGroupBy{{Property: "region"}},
 			},
 			AnalysisDimensions: []interfaces.MetricAnalysisDimension{
 				{Name: "warehouse_id"},
 				{Name: "item_code"},
+				{Name: "evt_time"},
 			},
 		}
 
@@ -59,6 +62,16 @@ func Test_metricGroupByDimensions_analysisDimensions(t *testing.T) {
 			So(dims[0].ResourceFieldName, ShouldEqual, "item_code_res")
 			So(dims[1].PropertyName, ShouldEqual, "warehouse_id")
 			So(dims[1].ResourceFieldName, ShouldEqual, "warehouse_id_res")
+		})
+
+		Convey("Request time_dimension property is ignored even when listed as analysis dimension\n", func() {
+			dims, err := metricGroupByDimensions(def, &interfaces.MetricQueryRequest{
+				AnalysisDimensions: []string{"evt_time", "warehouse_id"},
+			}, propMap)
+			So(err, ShouldBeNil)
+			So(len(dims), ShouldEqual, 1)
+			So(dims[0].PropertyName, ShouldEqual, "warehouse_id")
+			So(dims[0].ResourceFieldName, ShouldEqual, "warehouse_id_res")
 		})
 	})
 }
@@ -103,6 +116,59 @@ func Test_metricQueryService_buildResourceDataQueryParams_analysisDimensions(t *
 		So(params.GroupBy[1]["property"], ShouldEqual, "item_code_res")
 		So(params.GroupBy[2]["property"], ShouldEqual, "evt_time_res")
 		So(params.GroupBy[2]["calendar_interval"], ShouldEqual, "year")
+
+		params, trend, err = svc.buildResourceDataQueryParams(ctx, def, &interfaces.MetricQueryRequest{
+			AnalysisDimensions: []string{"warehouse_id", "evt_time"},
+			Time:               &interfaces.MetricTimeWindow{Start: &start, End: &end, Instant: &instant, Step: &step},
+		}, ot)
+		So(err, ShouldBeNil)
+		So(trend, ShouldNotBeNil)
+		So(len(params.GroupBy), ShouldEqual, 2)
+		So(params.GroupBy[0]["property"], ShouldEqual, "warehouse_id_res")
+		So(params.GroupBy[1]["property"], ShouldEqual, "evt_time_res")
+		So(params.GroupBy[1]["calendar_interval"], ShouldEqual, "year")
+	})
+}
+
+func Test_convert2TimeSeries_excludesTrendTimeFromDimensions(t *testing.T) {
+	Convey("convert2TimeSeries excludes trend time_dimension from analysis dimension series key\n", t, func() {
+		ctx := context.Background()
+		def := interfaces.MetricDefinition{
+			TimeDimension: &interfaces.MetricTimeDimension{Property: "evt_time"},
+			AnalysisDimensions: []interfaces.MetricAnalysisDimension{
+				{Name: "warehouse_id"},
+				{Name: "evt_time"},
+			},
+		}
+		propMap := map[string]*cond.DataProperty{
+			"warehouse_id": {Name: "warehouse_id", MappedField: cond.Field{Name: "warehouse_id_res"}},
+			"evt_time":     {Name: "evt_time", MappedField: cond.Field{Name: "evt_time_res"}},
+		}
+		step := "day"
+		query := &interfaces.MetricQueryRequest{
+			AnalysisDimensions: []string{"warehouse_id", "evt_time"},
+			Time:               &interfaces.MetricTimeWindow{Step: &step},
+		}
+		trend := &trendMeta{
+			step:         step,
+			timeProperty: "evt_time",
+			timeResField: "evt_time_res",
+		}
+		datas := &interfaces.DatasetQueryResponse{
+			Entries: []map[string]any{
+				{"warehouse_id_res": "wh-1", "evt_time_res": int64(1_700_000_000_000), "__value": 1.0},
+				{"warehouse_id_res": "wh-1", "evt_time_res": int64(1_700_086_400_000), "__value": 2.0},
+			},
+		}
+
+		series, err := convert2TimeSeries(ctx, def, datas, query, trend, propMap, false)
+		So(err, ShouldBeNil)
+		So(len(series), ShouldEqual, 1)
+		for _, item := range series {
+			So(item.Labels, ShouldResemble, map[string]string{"warehouse_id": "wh-1"})
+			So(len(item.Times), ShouldEqual, 2)
+			So(item.Values, ShouldResemble, []any{1.0, 2.0})
+		}
 	})
 }
 
