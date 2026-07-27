@@ -407,19 +407,34 @@ func mergeCompleted(completed *time.Time, value string) {
 }
 
 func eventIsTerminal(event EvidenceEvent, artifacts []EvidenceArtifact) bool {
-	if event.EventType == "action.result_recorded" {
+	switch event.EventType {
+	case "action.result_recorded", "retrieval.completed":
 		return true
+	case "data.query.observed":
+		return eventReferencesArtifactType(event, artifacts, "result_artifact_ref", ArtifactTypeDataResult)
+	case "logic.execution.observed":
+		return eventReferencesArtifactType(event, artifacts, "result_artifact_ref", ArtifactTypeLogicExecution)
 	}
 	if event.EventType == "claim.created" {
-		resultRef, _ := summaryStringField(event.Payload, "result_artifact_ref")
-		artifactID, ok := ArtifactIDFromReference(resultRef)
-		if !ok {
-			return false
-		}
-		for _, artifact := range artifacts {
-			if artifact.ArtifactID == artifactID && artifact.ArtifactType == ArtifactTypeResult {
-				return true
-			}
+		return eventReferencesArtifactType(event, artifacts, "result_artifact_ref", ArtifactTypeResult)
+	}
+	return false
+}
+
+func eventReferencesArtifactType(
+	event EvidenceEvent,
+	artifacts []EvidenceArtifact,
+	field string,
+	artifactType ArtifactType,
+) bool {
+	ref, _ := summaryStringField(event.Payload, field)
+	artifactID, ok := ArtifactIDFromReference(ref)
+	if !ok {
+		return false
+	}
+	for _, artifact := range artifacts {
+		if artifact.ArtifactID == artifactID && artifact.ArtifactType == artifactType {
+			return true
 		}
 	}
 	return false

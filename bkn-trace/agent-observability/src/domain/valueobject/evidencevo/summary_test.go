@@ -147,6 +147,58 @@ func TestBuildExecutionSummariesDoesNotInferAgentRootOrCompletionFromProducerOpe
 	}
 }
 
+func TestBuildExecutionSummariesCompletesFinishedRetrievalAndDataQueryRequests(t *testing.T) {
+	retrieval := NormalizedTrace{
+		TraceID: "trace_retrieval_completed", RequestID: "req_retrieval_completed",
+		SchemaVersion: ArtifactContractVersion,
+		Events: []EvidenceEvent{{
+			EventID: "event_retrieval_completed", EventType: "retrieval.completed",
+			ObservedAt: "2026-07-27T09:00:00Z", EmittedAt: "2026-07-27T09:00:01Z",
+			TraceID: "trace_retrieval_completed", RequestID: "req_retrieval_completed",
+			OperationName: "context.search_schema",
+			Payload:       map[string]any{"candidate_count": 1, "truncated": false},
+		}},
+	}
+	data := NormalizedTrace{
+		TraceID: "trace_data_completed", RequestID: "req_data_completed",
+		SchemaVersion: ArtifactContractVersion,
+		Events: []EvidenceEvent{{
+			EventID: "event_data_completed", EventType: "data.query.observed",
+			ObservedAt: "2026-07-27T09:00:02Z", EmittedAt: "2026-07-27T09:00:03Z",
+			TraceID: "trace_data_completed", RequestID: "req_data_completed",
+			OperationName: "data.query",
+			Payload: map[string]any{
+				"result_artifact_ref": "artifact:data_query_result",
+			},
+		}},
+	}
+	result := summaryArtifact(
+		t,
+		"data_query_result",
+		ArtifactTypeDataResult,
+		data.TraceID,
+		map[string]any{"entries": []any{}},
+	)
+	result.RequestID = data.RequestID
+	result.ObservedAt = "2026-07-27T09:00:03Z"
+
+	requests, traces := BuildExecutionSummaries(
+		[]NormalizedTrace{retrieval, data},
+		[]EvidenceArtifact{result},
+	)
+
+	for _, request := range requests {
+		if request.Status != "completed" || request.CompletedAt == "" {
+			t.Fatalf("finished operation request must be terminal: %+v", request)
+		}
+	}
+	for _, trace := range traces {
+		if trace.Status != "completed" || trace.CompletedAt == "" {
+			t.Fatalf("finished operation trace must be terminal: %+v", trace)
+		}
+	}
+}
+
 func TestBuildExecutionSummariesUsesOnlyArtifactsExplicitlyReferencedByEvents(t *testing.T) {
 	trace := NormalizedTrace{
 		TraceID: "trace_linked", RequestID: "req_summary",
