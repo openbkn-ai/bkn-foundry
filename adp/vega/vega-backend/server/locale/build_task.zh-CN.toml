@@ -18,6 +18,11 @@ Description = "批量构建键无效"
 Solution = "请在资源 index_config 中配置至少一个存在于 schema 的 build_key_fields 字段"
 ErrorLink = "暂无"
 
+[VegaBackend.BuildTask.InvalidParameter.Analyzer]
+Description = "全文分词器不可用"
+Solution = "请选择 OpenSearch 已安装的分词器，或将受影响字段改为使用资源默认分词器"
+ErrorLink = "暂无"
+
 [VegaBackend.BuildTask.InvalidStateTransition]
 Description = "构建任务状态转移非法"
 Solution = "检查当前状态；start 要求 status 为 init 或 stopped；stop 要求 status 为 running"

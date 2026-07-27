@@ -103,6 +103,7 @@ type IndexConnector interface {
 	Update(ctx context.Context, name string, schemaDefinition []*Property) error
 	Delete(ctx context.Context, name string) error
 	CheckExist(ctx context.Context, name string) (bool, error)
+	ValidateAnalyzers(ctx context.Context, analyzers map[string]string) error
 	CreateDocuments(ctx context.Context, name string, documents []map[string]any) ([]string, error)
 	GetDocument(ctx context.Context, name string, docID string) (map[string]any, error)
 	DeleteDocument(ctx context.Context, name string, docID string) error

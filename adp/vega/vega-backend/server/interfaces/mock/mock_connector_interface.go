@@ -1877,6 +1877,20 @@ func (mr *MockIndexConnectorMockRecorder) UpsertDocuments(ctx, name, updateReque
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertDocuments", reflect.TypeOf((*MockIndexConnector)(nil).UpsertDocuments), ctx, name, updateRequests)
 }
 
+// ValidateAnalyzers mocks base method.
+func (m *MockIndexConnector) ValidateAnalyzers(ctx context.Context, analyzers map[string]string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ValidateAnalyzers", ctx, analyzers)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ValidateAnalyzers indicates an expected call of ValidateAnalyzers.
+func (mr *MockIndexConnectorMockRecorder) ValidateAnalyzers(ctx, analyzers any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValidateAnalyzers", reflect.TypeOf((*MockIndexConnector)(nil).ValidateAnalyzers), ctx, analyzers)
+}
+
 // MockAPIConnector is a mock of APIConnector interface.
 type MockAPIConnector struct {
 	ctrl     *gomock.Controller

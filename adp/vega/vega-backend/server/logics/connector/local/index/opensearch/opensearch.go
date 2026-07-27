@@ -11,6 +11,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/bytedance/sonic"
@@ -34,6 +35,49 @@ type OpenSearchConnector struct {
 	enabled bool
 	Config  *opensearchConfig
 	client  *opensearch.Client
+}
+
+// ValidateAnalyzers verifies that each field's configured analyzer is available
+// in the connected OpenSearch cluster before a build task is persisted.
+func (c *OpenSearchConnector) ValidateAnalyzers(ctx context.Context, analyzers map[string]string) error {
+	if err := c.Connect(ctx); err != nil {
+		return err
+	}
+
+	analyzerFields := map[string][]string{}
+	for field, configuredAnalyzer := range analyzers {
+		analyzer := strings.TrimSpace(configuredAnalyzer)
+		if analyzer != "" {
+			analyzerFields[analyzer] = append(analyzerFields[analyzer], field)
+		}
+	}
+	analyzerNames := make([]string, 0, len(analyzerFields))
+	for analyzer := range analyzerFields {
+		analyzerNames = append(analyzerNames, analyzer)
+	}
+	sort.Strings(analyzerNames)
+	for _, analyzer := range analyzerNames {
+		fields := analyzerFields[analyzer]
+		sort.Strings(fields)
+		body, err := sonic.Marshal(map[string]any{"analyzer": analyzer, "text": "bkn"})
+		if err != nil {
+			return fmt.Errorf("marshal analyzer validation request: %w", err)
+		}
+		resp, err := c.client.Indices.Analyze(
+			c.client.Indices.Analyze.WithContext(ctx),
+			c.client.Indices.Analyze.WithBody(bytes.NewReader(body)),
+		)
+		if err != nil {
+			return fmt.Errorf("validate analyzer %q for fields %q: %w", analyzer, strings.Join(fields, ", "), err)
+		}
+		if resp.IsError() {
+			detail := resp.String()
+			_ = resp.Body.Close()
+			return fmt.Errorf("analyzer %q for fields %q is unavailable: %s", analyzer, strings.Join(fields, ", "), detail)
+		}
+		_ = resp.Body.Close()
+	}
+	return nil
 }
 
 // NewOpenSearchConnector 创建 OpenSearch connector 构建器

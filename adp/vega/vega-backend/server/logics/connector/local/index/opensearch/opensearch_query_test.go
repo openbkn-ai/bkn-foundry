@@ -62,6 +62,34 @@ func TestOpenSearchQueryTracksTotalOnlyWhenRequested(t *testing.T) {
 	assert.Equal(t, true, (<-queries)["track_total_hits"])
 }
 
+func TestValidateAnalyzersChecksEachDistinctAnalyzerOnce(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/_analyze", r.URL.Path)
+		requests++
+		w.Header().Set("Content-Type", "application/json")
+		_, err := w.Write([]byte(`{"tokens":[]}`))
+		require.NoError(t, err)
+	}))
+	t.Cleanup(server.Close)
+
+	serverURL, err := url.Parse(server.URL)
+	require.NoError(t, err)
+	host, portText, err := net.SplitHostPort(serverURL.Host)
+	require.NoError(t, err)
+	port, err := strconv.Atoi(portText)
+	require.NoError(t, err)
+	connector := &OpenSearchConnector{Config: &opensearchConfig{Host: host, Port: port}}
+
+	err = connector.ValidateAnalyzers(context.Background(), map[string]string{
+		"coupon_code": "standard",
+		"name":        "standard",
+		"status":      "ik_max_word",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 2, requests)
+}
+
 func TestExecuteRawQueryFlattensAggregationsIntoEntries(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

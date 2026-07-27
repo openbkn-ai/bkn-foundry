@@ -25,6 +25,54 @@ import (
 	"vega-backend/logics"
 )
 
+type analyzerValidatingIndexManager struct {
+	interfaces.LocalIndexManager
+	err      error
+	captured map[string]string
+}
+
+func (m *analyzerValidatingIndexManager) ValidateAnalyzers(_ context.Context, analyzers map[string]string) error {
+	m.captured = analyzers
+	return m.err
+}
+
+func TestBuildTaskServiceRejectsUnavailableFieldAnalyzerBeforePersistence(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+	mockRS := mock_interfaces.NewMockResourceService(ctrl)
+	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+	validator := &analyzerValidatingIndexManager{err: errors.New("analyzer \"hanlp_index\" for field \"status\" is unavailable")}
+	service := &buildTaskService{
+		bta:            mockBTA,
+		cs:             mockCS,
+		debugTaskQueue: make(chan *asynq.Task, 1),
+		lim:            validator,
+		rs:             mockRS,
+	}
+
+	mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(&interfaces.Resource{
+		ID:        "resource-1",
+		CatalogID: "catalog-1",
+		Category:  interfaces.ResourceCategoryTable,
+		IndexConfig: &interfaces.ResourceIndexConfig{
+			BuildKeyFields:          []string{"id"},
+			DefaultFulltextAnalyzer: "standard",
+		},
+		SchemaDefinition: []*interfaces.Property{
+			{Name: "id"},
+			{Name: "coupon_code", Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Fulltext, Config: map[string]any{"analyzer": "standard"}}}},
+			{Name: "status", Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Fulltext, Config: map[string]any{"analyzer": "hanlp_index"}}}},
+		},
+	}, nil)
+	mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
+	mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).Return(nil, int64(0), nil)
+
+	_, err := service.Create(context.Background(), &interfaces.CreateBuildTaskRequest{ResourceID: "resource-1", Mode: interfaces.BuildTaskModeBatch})
+	httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidParameter_Analyzer)
+	assert.Contains(t, httpErr.BaseError.ErrorDetails, "status")
+	assert.Equal(t, map[string]string{"coupon_code": "standard", "status": "hanlp_index"}, validator.captured)
+}
+
 func TestBuildTaskServicePopulatesTaskReferencesForListAndGet(t *testing.T) {
 	t.Run("list populates only referenced resources and catalogs", func(t *testing.T) {
 		ctrl := gomock.NewController(t)

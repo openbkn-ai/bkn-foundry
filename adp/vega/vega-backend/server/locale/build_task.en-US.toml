@@ -18,6 +18,11 @@ Description = "Invalid batch build key fields"
 Solution = "Configure at least one build_key_fields field from the resource schema in index_config"
 ErrorLink = "No solution"
 
+[VegaBackend.BuildTask.InvalidParameter.Analyzer]
+Description = "Unavailable full-text analyzer"
+Solution = "Choose an analyzer installed in OpenSearch, or update the affected field to use the resource default"
+ErrorLink = "No solution"
+
 [VegaBackend.BuildTask.InvalidStateTransition]
 Description = "Invalid build task state transition"
 Solution = "Check current task status; start requires status in {init, stopped}; stop requires status == running"

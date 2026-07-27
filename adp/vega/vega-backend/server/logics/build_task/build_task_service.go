@@ -159,6 +159,10 @@ func (bts *buildTaskService) Create(ctx context.Context, req *interfaces.CreateB
 	if err != nil {
 		return "", err
 	}
+	if err := validateBuildTaskAnalyzers(ctx, bts.lim, buildTask); err != nil {
+		span.SetStatus(codes.Error, "Invalid fulltext analyzer")
+		return "", err
+	}
 
 	if err := bts.bta.Create(ctx, buildTask); err != nil {
 		otellog.LogError(ctx, "Create build task failed", err)
@@ -174,6 +178,29 @@ func (bts *buildTaskService) Create(ctx context.Context, req *interfaces.CreateB
 
 	span.SetStatus(codes.Ok, "")
 	return buildTask.ID, nil
+}
+
+func validateBuildTaskAnalyzers(ctx context.Context, indexManager interfaces.LocalIndexManager, buildTask *interfaces.BuildTask) error {
+	if indexManager == nil {
+		return nil
+	}
+	analyzers := map[string]string{}
+	if buildTask == nil || buildTask.IndexConfig == nil {
+		return nil
+	}
+	for field, feature := range buildTask.IndexConfig.Features {
+		if feature.Fulltext != nil && strings.TrimSpace(feature.Fulltext.Analyzer) != "" {
+			analyzers[field] = feature.Fulltext.Analyzer
+		}
+	}
+	if len(analyzers) == 0 {
+		return nil
+	}
+	if err := indexManager.ValidateAnalyzers(ctx, analyzers); err != nil {
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_Analyzer).
+			WithErrorDetails(err.Error())
+	}
+	return nil
 }
 
 func validateBuildKeyFields(ctx context.Context, resource *interfaces.Resource) error {

@@ -71,6 +71,11 @@ func (lim *localIndexManager) CheckExist(ctx context.Context, indexName string) 
 	return lim.c.CheckExist(ctx, indexName)
 }
 
+// ValidateAnalyzers delegates analyzer availability checks to the local index connector.
+func (lim *localIndexManager) ValidateAnalyzers(ctx context.Context, analyzers map[string]string) error {
+	return lim.c.ValidateAnalyzers(ctx, analyzers)
+}
+
 func (lim *localIndexManager) ListDocuments(ctx context.Context, indexName string, res *interfaces.Resource, params *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
 	queryResult, err := lim.c.ExecuteQuery(ctx, indexName, res, params)
 	if err != nil {
