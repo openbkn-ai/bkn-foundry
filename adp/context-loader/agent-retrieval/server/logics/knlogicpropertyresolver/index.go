@@ -99,11 +99,24 @@ func (s *knLogicPropertyResolverService) ResolveLogicProperties(
 	// Step 4: 生成 dynamic_params
 	s.logger.WithContext(ctx).Debugf("[Step 2] 生成 dynamic_params（Agent 并发调用）")
 	startTime := time.Now()
-	dynamicParams, missingParams, err := s.generateDynamicParams(ctx, req, logicPropertiesDef, debugCollector)
+	dynamicParams, missingParams, genFailures, err := s.generateDynamicParams(ctx, req, logicPropertiesDef, debugCollector)
 	generateParamsDuration := time.Since(startTime)
 	if err != nil {
 		s.logger.WithContext(ctx).Errorf("[Step 2] ❌ 失败: %v", err)
 		return nil, err
+	}
+
+	// 参数生成失败（LLM / 依赖服务异常）优先于缺参上报：这不是调用方少传参数，
+	// 而是服务端链路故障，必须原样透出上游 code/detail，不能伪装成 MISSING_INPUT_PARAMS。
+	if len(genFailures) > 0 {
+		s.logger.WithContext(ctx).Errorf("[Step 2] ❌ 参数生成失败: %d 个属性", len(genFailures))
+		if req.Options.ReturnDebug {
+			return &interfaces.ResolveLogicPropertiesResponse{
+				Datas: []map[string]any{},
+				Debug: debugCollector.BuildDebugInfo(),
+			}, nil
+		}
+		return nil, s.buildGenerationFailedError(ctx, genFailures)
 	}
 
 	// 如果有缺参，根据是否开启 debug 决定处理方式
@@ -262,7 +275,8 @@ func (s *knLogicPropertyResolverService) generateDynamicParams(
 	req *interfaces.ResolveLogicPropertiesRequest,
 	logicPropertiesDef map[string]*interfaces.LogicPropertyDef,
 	debugCollector *DebugCollector,
-) (dynamicParams map[string]interface{}, missingParams []interfaces.MissingPropertyParams, err error) {
+) (dynamicParams map[string]interface{}, missingParams []interfaces.MissingPropertyParams,
+	genFailures []interfaces.MissingPropertyParams, err error) {
 	s.logger.WithContext(ctx).Debugf("[KnLogicPropertyResolver] Generating dynamic params for %d properties", len(logicPropertiesDef))
 
 	// 获取并发配置
@@ -320,6 +334,7 @@ func (s *knLogicPropertyResolverService) generateDynamicParams(
 	// Step 3: 收集结果
 	dynamicParams = make(map[string]interface{})
 	missingParams = []interfaces.MissingPropertyParams{}
+	genFailures = []interfaces.MissingPropertyParams{}
 
 	for range len(tasks) {
 		result := <-results
@@ -332,8 +347,10 @@ func (s *knLogicPropertyResolverService) generateDynamicParams(
 			if debugCollector != nil {
 				debugCollector.RecordAgentResponseError(result.Name, result.Error.Error())
 			}
-			// 将错误转换为缺参（让上游知道哪个 property 失败了）
-			missingParams = append(missingParams, interfaces.MissingPropertyParams{
+			// 生成失败（LLM / 依赖服务异常）与「模型判定缺参」是两回事，单独归集：
+			// 混进 missingParams 会让依赖服务的 4xx/5xx 被包装成 MISSING_INPUT_PARAMS，
+			// 掩盖真实根因（issue #450）。
+			genFailures = append(genFailures, interfaces.MissingPropertyParams{
 				Property: result.Name,
 				ErrorMsg: fmt.Sprintf("generate params failed: %v", result.Error),
 			})
@@ -356,10 +373,10 @@ func (s *knLogicPropertyResolverService) generateDynamicParams(
 		}
 	}
 
-	s.logger.WithContext(ctx).Debugf("[KnLogicPropertyResolver] Generated dynamic params for %d properties, %d missing",
-		len(dynamicParams), len(missingParams))
+	s.logger.WithContext(ctx).Debugf("[KnLogicPropertyResolver] Generated dynamic params for %d properties, %d missing, %d failed",
+		len(dynamicParams), len(missingParams), len(genFailures))
 
-	return dynamicParams, missingParams, nil
+	return dynamicParams, missingParams, genFailures, nil
 }
 
 // generateSinglePropertyParams 生成单个 property 的 dynamic_params
@@ -722,4 +739,22 @@ func (s *knLogicPropertyResolverService) buildMissingParamsError(
 
 	// 返回为 HTTPError
 	return errors.DefaultHTTPError(ctx, http.StatusBadRequest, fmt.Sprintf("%+v", missingError))
+}
+
+// buildGenerationFailedError 构建参数生成失败错误。与缺参区分开：这里是 LLM 或依赖服务
+// 故障，属服务端问题（500），错误消息保留上游 code/detail 便于定位。
+func (s *knLogicPropertyResolverService) buildGenerationFailedError(
+	ctx context.Context,
+	failures []interfaces.MissingPropertyParams,
+) error {
+	errorMsg := ""
+	for i, f := range failures {
+		if i > 0 {
+			errorMsg += "; "
+		}
+		errorMsg += fmt.Sprintf("%s: %s", f.Property, f.ErrorMsg)
+	}
+
+	return errors.DefaultHTTPError(ctx, http.StatusInternalServerError,
+		fmt.Sprintf("DYNAMIC_PARAMS_GENERATION_FAILED: 动态参数生成失败（LLM 或依赖服务异常，非缺少入参）: %s", errorMsg))
 }
