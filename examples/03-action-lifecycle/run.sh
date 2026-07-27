@@ -59,6 +59,45 @@ DB_PASS="${DB_PASS:?Set DB_PASS in .env}"
 DB_HOST_SEED="${DB_HOST_SEED:-$DB_HOST}"
 export NODE_TLS_REJECT_UNAUTHORIZED="${NODE_TLS_REJECT_UNAUTHORIZED:-0}"
 
+# ── openbkn multipart workaround (CLI ≥ 0.1.1) ────────────────────────────────
+# A platform that remembers `-k` (tlsInsecure in ~/.bkn) makes the CLI route
+# every request through undici, which does not recognise the global FormData it
+# builds uploads with: the body degrades to text/plain and `tool upload` fails
+# with 400 "unsupported content type". Setting NODE_TLS_REJECT_UNAUTHORIZED is
+# not enough — the stored flag is what picks the code path. So run against an
+# explicit token and an empty config dir, which keeps the CLI on the plain
+# `fetch` path, and let the env var cover the self-signed certificate.
+# Remove this block once the CLI ships the fix.
+_bkn_multipart_workaround() {
+    command -v openbkn >/dev/null 2>&1 || return 0
+    local cfg="${BKN_CONFIG_DIR:-$HOME/.bkn}" base insecure tok
+    base="$(env -u BKN_TOKEN openbkn --json auth status 2>/dev/null |
+        python3 -c 'import json,sys
+try: print(json.load(sys.stdin).get("baseUrl") or "")
+except Exception: pass' 2>/dev/null)" || true
+    [ -n "$base" ] || return 0
+    insecure="$(python3 -c '
+import base64, glob, json, os, sys
+cfg, base = sys.argv[1], sys.argv[2]
+key = base64.urlsafe_b64encode(base.encode()).decode().rstrip("=")
+for p in glob.glob(os.path.join(cfg, "platforms", key, "users", "*", "token.json")):
+    try:
+        if json.load(open(p)).get("tlsInsecure"):
+            print("1"); break
+    except Exception:
+        pass
+' "$cfg" "$base" 2>/dev/null)" || true
+    [ -n "$insecure" ] || return 0
+    tok="$(env -u BKN_TOKEN openbkn auth token 2>/dev/null | tr -d '[:space:]')" || true
+    [ -n "$tok" ] || return 0
+    export BKN_BASE_URL="${BKN_BASE_URL:-$base}"
+    export BKN_TOKEN="$tok"
+    export BKN_CONFIG_DIR="$SCRIPT_DIR/.tmp/openbkn-config"
+    mkdir -p "$BKN_CONFIG_DIR"
+    echo "  note: platform remembers -k; using an explicit token so uploads stay multipart" >&2
+}
+_bkn_multipart_workaround
+
 MYSQL_BIN="${MYSQL_BIN:-mysql}"
 if ! command -v "$MYSQL_BIN" >/dev/null 2>&1; then
     for _p in "$(brew --prefix mysql-client 2>/dev/null)/bin/mysql" /opt/homebrew/opt/mysql-client/bin/mysql /usr/local/opt/mysql-client/bin/mysql; do

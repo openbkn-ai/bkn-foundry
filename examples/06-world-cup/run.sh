@@ -100,6 +100,54 @@ set -a
 [ -f "$SCRIPT_DIR/.env" ] && source "$SCRIPT_DIR/.env"
 set +a
 
+# ── openbkn multipart workaround (CLI ≥ 0.1.1) ────────────────────────────────
+# A platform that remembers `-k` (tlsInsecure in ~/.bkn) makes the CLI route
+# every request through undici, which does not recognise the global FormData it
+# builds uploads with: the body degrades to text/plain and `bkn push` /
+# `tool upload` fail with 400 "Content-Type isn't multipart/form-data".
+# NODE_TLS_REJECT_UNAUTHORIZED alone does not help — the stored flag is what
+# picks the code path. So run against an explicit token and an empty config
+# dir, which keeps the CLI on the plain `fetch` path, and let the env var cover
+# the self-signed certificate. Remove this block once the CLI ships the fix.
+export NODE_TLS_REJECT_UNAUTHORIZED="${NODE_TLS_REJECT_UNAUTHORIZED:-0}"
+#
+# Re-run before every step: an explicit token is not auto-refreshed, and the
+# CSV import alone can outlive one, so each step mints a fresh one from the
+# real config store (remembered in _BKN_STORE_DIR once the swap has happened).
+_bkn_multipart_workaround() {
+    command -v openbkn >/dev/null 2>&1 || return 0
+    local cfg="${_BKN_STORE_DIR:-${BKN_CONFIG_DIR:-$HOME/.bkn}}" base insecure tok
+    base="$(env -u BKN_TOKEN BKN_CONFIG_DIR="$cfg" openbkn --json auth status 2>/dev/null |
+        python3 -c 'import json,sys
+try: print(json.load(sys.stdin).get("baseUrl") or "")
+except Exception: pass' 2>/dev/null)" || true
+    [ -n "$base" ] || return 0
+    insecure="$(python3 -c '
+import base64, glob, json, os, sys
+cfg, base = sys.argv[1], sys.argv[2]
+key = base64.urlsafe_b64encode(base.encode()).decode().rstrip("=")
+for p in glob.glob(os.path.join(cfg, "platforms", key, "users", "*", "token.json")):
+    try:
+        if json.load(open(p)).get("tlsInsecure"):
+            print("1"); break
+    except Exception:
+        pass
+' "$cfg" "$base" 2>/dev/null)" || true
+    [ -n "$insecure" ] || return 0
+    tok="$(env -u BKN_TOKEN BKN_CONFIG_DIR="$cfg" openbkn auth token 2>/dev/null | tr -d '[:space:]')" || true
+    [ -n "$tok" ] || return 0
+    export _BKN_STORE_DIR="$cfg"
+    export BKN_BASE_URL="${BKN_BASE_URL:-$base}"
+    export BKN_TOKEN="$tok"
+    export BKN_CONFIG_DIR="$SCRIPT_DIR/.tmp/openbkn-config"
+    mkdir -p "$BKN_CONFIG_DIR"
+    [ -n "${_BKN_WORKAROUND_NOTED:-}" ] || {
+        echo "  note: platform remembers -k; using an explicit token so uploads stay multipart" >&2
+        export _BKN_WORKAROUND_NOTED=1
+    }
+}
+_bkn_multipart_workaround
+
 if [ -n "${BKN_BASE_URL:-}" ]; then
     KWEAV=(openbkn --json --base-url "${BKN_BASE_URL}")
 else
@@ -867,6 +915,7 @@ run_step() {
     else
         [ "$n" -ge "$FROM" ] || return 0
     fi
+    _bkn_multipart_workaround
     case "$n" in
         1) step_1_download ;;
         2) step_2_import ;;
