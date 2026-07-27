@@ -876,7 +876,9 @@ func (h *EvidenceHandler) authorizeOAuthQuery(w http.ResponseWriter, r *http.Req
 		writeJSON(w, http.StatusServiceUnavailable, rdto.ErrorResponse{Code: "QUERY_OAUTH_UNAVAILABLE", Message: "OAuth introspection is unavailable"})
 		return false
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		writeJSON(w, http.StatusServiceUnavailable, rdto.ErrorResponse{Code: "QUERY_OAUTH_UNAVAILABLE", Message: "OAuth introspection is unavailable"})
 		return false

@@ -191,7 +191,9 @@ func (r *Resolver) getJSON(ctx context.Context, scope evidencevo.QueryScope, bas
 	if err != nil {
 		return 0, err
 	}
-	defer response.Body.Close()
+	defer func() {
+		_ = response.Body.Close()
+	}()
 	if response.StatusCode != http.StatusOK {
 		if response.StatusCode >= 500 {
 			return response.StatusCode, fmt.Errorf("resolver upstream returned %d", response.StatusCode)

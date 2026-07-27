@@ -577,9 +577,7 @@ func buildEvidenceChain(traces []evidencevo.NormalizedTrace, truncated bool) evi
 			}
 			switch event.EventType {
 			case "claim.created":
-				for _, sourceID := range stringArrayField(event.Payload, "source_event_ids") {
-					claimSourceEventIDs = append(claimSourceEventIDs, sourceID)
-				}
+				claimSourceEventIDs = append(claimSourceEventIDs, stringArrayField(event.Payload, "source_event_ids")...)
 				if visible(event.Payload) {
 					response.Data.Claims = append(response.Data.Claims, cloneMap(event.Payload))
 				} else {
@@ -1706,7 +1704,7 @@ func validateActionTransition(actions map[string]actionState, event evidencevo.E
 		"action.executed":           "approved",
 		"action.result_recorded":    "executed",
 	}[event.EventType]
-	valid := true
+	var valid bool
 	if event.EventType == "action.recommended" {
 		valid = !exists
 	} else {
@@ -1820,10 +1818,11 @@ func checkEvent(event *evidencevo.EvidenceEvent, i int, requestVersion string, k
 	}
 	registeredTypes := legacyEventTypes
 	unsupportedCode := "BKN_TRACE_EVENT_TYPE_UNREGISTERED"
-	if requestVersion == evidencevo.ContractVersion {
+	switch requestVersion {
+	case evidencevo.ContractVersion:
 		registeredTypes = twoPointOneEventTypes
 		unsupportedCode = "BKN_TRACE_EVENT_TYPE_UNSUPPORTED"
-	} else if requestVersion == evidencevo.ArtifactContractVersion {
+	case evidencevo.ArtifactContractVersion:
 		registeredTypes = twoPointTwoEventTypes
 		unsupportedCode = "BKN_TRACE_EVENT_TYPE_UNSUPPORTED"
 	}
@@ -2377,12 +2376,6 @@ func requiredStringField(payload map[string]any, key string, base string, errors
 	}
 }
 
-func requiredField(payload map[string]any, key string, base string, errors *evidencevo.ValidationErrors) {
-	if value, ok := payload[key]; !ok || value == nil {
-		add(errors, "BKN_TRACE_REQUIRED_FIELD_MISSING", base+"."+key, "missing required field "+key)
-	}
-}
-
 func requiredNonNegativeIntField(payload map[string]any, key string, base string, errors *evidencevo.ValidationErrors) {
 	value, ok := payload[key]
 	if !ok {
@@ -2435,12 +2428,6 @@ func requireEnum(value string, allowed []string, path string, errors *evidencevo
 		}
 	}
 	add(errors, "BKN_TRACE_REQUIRED_FIELD_MISSING", path, "unsupported enum value")
-}
-
-func requiredArrayField(payload map[string]any, key string, base string, errors *evidencevo.ValidationErrors) {
-	if len(arrayField(payload, key)) == 0 {
-		add(errors, "BKN_TRACE_REQUIRED_FIELD_MISSING", base+"."+key, key+" must be a non-empty array")
-	}
 }
 
 func requiredOneStringField(payload map[string]any, keys []string, base string, errors *evidencevo.ValidationErrors) {

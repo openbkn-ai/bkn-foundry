@@ -157,9 +157,9 @@ func (s *Store) listArtifactProjection(ctx context.Context, query iprojectionsou
 }
 
 func matchesProjectionTrace(trace evidencevo.NormalizedTrace, query iprojectionsource.Query) bool {
-	if !((query.RequestID == "" || trace.RequestID == query.RequestID) &&
-		(query.TraceID == "" || trace.TraceID == query.TraceID) &&
-		(query.BusinessDomain == "" || trace.BusinessDomain == query.BusinessDomain)) {
+	if query.RequestID != "" && trace.RequestID != query.RequestID ||
+		query.TraceID != "" && trace.TraceID != query.TraceID ||
+		query.BusinessDomain != "" && trace.BusinessDomain != query.BusinessDomain {
 		return false
 	}
 	if query.From.IsZero() && query.To.IsZero() {
