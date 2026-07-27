@@ -231,7 +231,7 @@ func buildArtifact(ec eventContext, subject DataQuerySubject, refs []EvidenceRef
 		InteractionID: ec.interactionID, OperationID: ec.operationID, SourceRef: sourceRef,
 		BusinessRefs: businessRefs, ContentType: "application/json",
 		SchemaVersion: ArtifactContractVersion, ObservedAt: ec.observedAt,
-		Content: content,
+		Content:  content,
 		TenantID: ec.tenantID, BusinessDomain: ec.businessDomain,
 		AccountID: ec.accountID, AccountType: ec.accountType, AgentOrApp: ModuleName,
 	}
