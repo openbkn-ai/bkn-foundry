@@ -308,7 +308,7 @@ async def edit_model(model_para, userId, language, role=""):
 
 
 # 获取大模型列表函数
-async def source_model(userId, language, page, size, name, order, series, rule, api_model, model_type, quota):
+async def source_model(userId, language, page, size, name, order, series, rule, api_model, model_type, quota, role=""):
     name = name.strip()
     error = llm_source_verify(order, page, size, rule, series, name, model_type)
     if error:
@@ -326,8 +326,17 @@ async def source_model(userId, language, page, size, name, order, series, rule, 
                 result = await reshape_source(result, total)
                 return JSONResponse(status_code=200, content=result)
             else:
+                # 授权过滤（#213）：普通用户只看有 large_model:display 授权的模型。
+                # 未授权任何模型 → 空列表；否则把授权 id 集下推进配额查询（查询层过滤，分页正确）。
+                candidate_ids = [m['f_model_id'] for m in llm_model_dao.get_all_model_list()]
+                permission_ids = await permission_manager.filter_authorized_ids(
+                    user_id=userId, role=role, candidate_ids=candidate_ids,
+                    resource_type="large_model", resource_name="大模型", operation="display")
+                if not permission_ids:
+                    return JSONResponse(status_code=200, content={"count": 0, "data": []})
                 datas = await model_quota_controller.get_user_quote_model_list(userId, page, size, name, api_model,
-                                                                               order, rule, quota, model_type)
+                                                                               order, rule, quota, model_type,
+                                                                               permission_ids=permission_ids)
                 result = {
                     "count": datas["total"],
                     "data": datas["res"]
@@ -947,12 +956,17 @@ async def encode_endpoint(params_json, userId, language):
     #     return JSONResponse(status_code=500, content=UnknownError)
 
 
-async def get_monitor_data(userId, language, model_id):
+async def get_monitor_data(userId, language, model_id, role=""):
     try:
         if not model_id:
             error_dict = ModelFactory_Router_ParamError_ParamMissing_Error.copy()
             error_dict["deatil"] = "Param model_id is required"
             return JSONResponse(status_code=400, content=error_dict)
+        # 授权（#213）：无该模型 display 权限的用户不得看统计（此前返全 0，误导为「没被调用」）。
+        # admin 用户与 AUTH 关闭在 check_display 内部短路放行。
+        if userId != "266c6a42-6131-4d62-8f39-853e7093701c" and \
+                not await permission_manager.check_display(userId, role, "large_model", model_id):
+            return JSONResponse(status_code=403, content=NotPermissionError)
         result = llm_model_dao.get_monitor_data(model_id)
         output_token_speed_list = []
         total_token_speed_list = []
@@ -1043,8 +1057,22 @@ async def edit_default_model(model_para, userId, language):
         return JSONResponse(status_code=500, content=DataBaseError)
 
 
-async def get_overview_data(userId, language, model_id, start_time, end_time):
+async def get_overview_data(userId, language, model_id, start_time, end_time, role=""):
     try:
+        # 授权（#213）：指定 model_id 时校验其 display 权限；未指定（聚合全部）时要求
+        # 至少对一个大模型有 display 权限,否则空权限用户会看到全 0 的误导性总览。
+        # admin 与 AUTH 关闭在内部短路放行。
+        if base_config.AUTH_ENABLED and userId != "266c6a42-6131-4d62-8f39-853e7093701c":
+            if model_id:
+                if not await permission_manager.check_display(userId, role, "large_model", model_id):
+                    return JSONResponse(status_code=403, content=NotPermissionError)
+            else:
+                candidate_ids = [m['f_model_id'] for m in llm_model_dao.get_all_model_list()]
+                authorized = await permission_manager.filter_authorized_ids(
+                    user_id=userId, role=role, candidate_ids=candidate_ids,
+                    resource_type="large_model", resource_name="大模型", operation="display")
+                if not authorized:
+                    return JSONResponse(status_code=403, content=NotPermissionError)
         if not start_time:
             error_dict = ModelFactory_Router_ParamError_ParamMissing_Error.copy()
             error_dict["detail"] = "Param start_time is required"

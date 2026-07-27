@@ -284,8 +284,19 @@ class ModelQuotaDao():
         return res
 
     @connect_execute_close_db
-    def get_user_quota_model_by_user_id(self, userId, page, size, api_model, order, rule, quota, model_type, connection,
-                                        cursor):
+    def get_user_quota_model_by_user_id(self, userId, page, size, api_model, order, rule, quota, model_type,
+                                        permission_ids=None, connection=None, cursor=None):
+        # Authorization filter (#213): when permission_ids is passed, restrict
+        # every query to those model ids so an unauthorized model never appears —
+        # applied at the query level so pagination/count stay correct. None means
+        # no filtering (auth disabled / admin); an empty list means "authorized
+        # for nothing" and short-circuits to an empty result.
+        id_filter = ""
+        if permission_ids is not None:
+            if not permission_ids:
+                return [], [], 0, []
+            _quoted = ",".join("'" + str(_i).replace("'", "").replace(";", "") + "'" for _i in permission_ids)
+            id_filter = f" and t_llm_model.f_model_id in ({_quoted})"
         # 构建基础WHERE条件
         if model_type:
             where_clause = f"""where (t_llm_model.f_model_type = '{model_type}' and t_llm_model.f_quota = 0 and (t_user_quota_config.f_user_id is null or t_user_quota_config.f_user_id = '{userId}'))
@@ -305,7 +316,7 @@ class ModelQuotaDao():
                 from t_model_quota_config 
                 left join t_user_quota_config on t_user_quota_config.f_model_conf = t_model_quota_config.f_id 
                 right join t_llm_model on t_llm_model.f_model_id = t_model_quota_config.f_model_id
-                {where_clause}"""
+                where ({where_clause[6:]}) {id_filter}"""
         if api_model is not None and api_model != "":
             sql += " and BINARY t_llm_model.f_model = %s " % api_model
         if quota is not None:
@@ -339,7 +350,7 @@ class ModelQuotaDao():
                         from t_model_quota_config 
                         left join t_user_quota_config on t_user_quota_config.f_model_conf = t_model_quota_config.f_id 
                         right join t_llm_model on t_llm_model.f_model_id = t_model_quota_config.f_model_id
-                        {where_clause2}"""
+                        where ({where_clause2[6:]}) {id_filter}"""
         if api_model is not None and api_model != "":
             sql += "and BINARY t_llm_model.f_model = '%s' " % api_model
         if quota is not None:
@@ -371,7 +382,7 @@ class ModelQuotaDao():
                                         from t_model_quota_config 
                                         left join t_user_quota_config on t_user_quota_config.f_model_conf = t_model_quota_config.f_id 
                                         right join t_llm_model on t_llm_model.f_model_id = t_model_quota_config.f_model_id
-                                        {where_clause3}"""
+                                        where ({where_clause3[6:]}) {id_filter}"""
         if rule != "":
             sql += " order by t_llm_model.f_" + rule
         if order == "desc":
@@ -399,8 +410,15 @@ class ModelQuotaDao():
     @connect_execute_close_db
     def get_user_quota_model_by_user_id_name_fuzzy(self, userId, page, size, name, api_model, order, rule, quota,
                                                    model_type,
-                                                   connection, cursor):
+                                                   permission_ids=None, connection=None, cursor=None):
         admin_id = "266c6a42-6131-4d62-8f39-853e7093701c"
+        # Authorization filter (#213), same contract as get_user_quota_model_by_user_id.
+        id_filter = ""
+        if permission_ids is not None:
+            if not permission_ids:
+                return [], [], 0, []
+            _quoted = ",".join("'" + str(_i).replace("'", "").replace(";", "") + "'" for _i in permission_ids)
+            id_filter = f" and t_llm_model.f_model_id in ({_quoted})"
         
         # 构建基础WHERE条件
         if model_type:
@@ -424,7 +442,7 @@ class ModelQuotaDao():
                         from t_model_quota_config 
                         left join t_user_quota_config on t_user_quota_config.f_model_conf = t_model_quota_config.f_id 
                         right join t_llm_model on t_llm_model.f_model_id = t_model_quota_config.f_model_id 
-                        {where_clause}"""
+                        where ({where_clause[6:]}) {id_filter}"""
         if api_model is not None and api_model != "":
             sql += " and BINARY t_llm_model.f_model = '%s' " % api_model
         if rule != "":
@@ -453,7 +471,7 @@ class ModelQuotaDao():
                                 from t_model_quota_config 
                                 left join t_user_quota_config on t_user_quota_config.f_model_conf = t_model_quota_config.f_id 
                                 right join t_llm_model on t_llm_model.f_model_id = t_model_quota_config.f_model_id 
-                                {where_clause2}"""
+                                where ({where_clause2[6:]}) {id_filter}"""
         if api_model is not None and api_model != "":
             sql += "and BINARY t_llm_model.f_model = '%s' " % api_model
         if rule != "":
@@ -479,7 +497,7 @@ class ModelQuotaDao():
                                 from t_model_quota_config 
                                 left join t_user_quota_config on t_user_quota_config.f_model_conf = t_model_quota_config.f_id 
                                 right join t_llm_model on t_llm_model.f_model_id = t_model_quota_config.f_model_id 
-                                {where_clause3}"""
+                                where ({where_clause3[6:]}) {id_filter}"""
         if rule != "":
             sql += " order by t_llm_model.f_" + rule
         if order == "desc":

@@ -57,7 +57,7 @@ async def edit_llm(request: Request, model_para: dict = Body(...)):
 async def source_llm(request: Request, page, size, order='desc', rule='update_time', series='all', name='',
                      api_model='', model_type='', quota: bool = Query(default=None)):
     userId, language, role = await get_user_info(request)
-    return await source_model(userId, language, page, size, name, order, series, rule, api_model, model_type, quota)
+    return await source_model(userId, language, page, size, name, order, series, rule, api_model, model_type, quota, role)
 
 
 # 大模型按 id 批量取名接口
@@ -164,7 +164,7 @@ async def llm_used_openai2(request: LLMUsedOpenAI, head_request: Request):
 @llm_route.get("/llm/monitor/list")
 async def monitor_llm(request: Request, model_id):
     userId, language, role = await get_user_info(request)
-    return await get_monitor_data(userId, language, model_id)
+    return await get_monitor_data(userId, language, model_id, role)
 
 
 @llm_route.post("/llm/default/edit")
@@ -176,4 +176,4 @@ async def edit_default_llm(request: Request, model_para: dict = Body(...)):
 @llm_route.get("/llm/monitor/overview")
 async def get_performance_analysis(request: Request, start_time="", end_time="", model_id=""):
     userId, language, role = await get_user_info(request)
-    return await get_overview_data(userId, language, model_id, start_time, end_time)
+    return await get_overview_data(userId, language, model_id, start_time, end_time, role)

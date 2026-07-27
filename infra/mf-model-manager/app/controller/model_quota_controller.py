@@ -591,15 +591,15 @@ async def delete_user_model_quota_config(conf_id_list, user_id: str):
                             content=error_dict)
 
 
-async def get_user_quote_model_list(userId, page, size, name, api_model, order, rule, quota, model_type):
+async def get_user_quote_model_list(userId, page, size, name, api_model, order, rule, quota, model_type, permission_ids=None):
     try:
         if name is None or name == "":
             user_quote_list, total_list, total, user_quota_token_used_list = model_quota_dao.get_user_quota_model_by_user_id(
-                userId, page, size, api_model, order, rule, quota,model_type)
+                userId, page, size, api_model, order, rule, quota, model_type, permission_ids=permission_ids)
         else:
             user_quote_list, total_list, total, user_quota_token_used_list = model_quota_dao.get_user_quota_model_by_user_id_name_fuzzy(
                 userId, page, size, name,
-                api_model, order, rule, quota, model_type)
+                api_model, order, rule, quota, model_type, permission_ids=permission_ids)
         model_list = []
         for item in total_list:
             if item["f_model"] not in model_list:

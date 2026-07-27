@@ -285,6 +285,61 @@ class PermissionManager:
             StandLogger.error(e.args)
         return operation_ids
 
+    async def filter_authorized_ids(self, user_id: str, role: str, candidate_ids: list,
+                                    resource_type: str, resource_name: str,
+                                    operation: str = "display") -> list:
+        """Generic per-caller resource filter: keep only the candidate ids the
+        user is authorized for. Unlike get_permission_ids (which is coupled to
+        small_model_dao), the candidate id set is passed in, so it works for any
+        resource type — large_model list uses it, and it does not disturb the
+        existing small_model path.
+
+        AUTH disabled -> everything passes. A "*" operation yields none (matches
+        the ISF filter dropping them). bkn-safe authoritative checks each id;
+        otherwise the ISF resource-filter endpoint decides in one batch.
+        """
+        if not base_config.AUTH_ENABLED:
+            return list(candidate_ids)
+        if operation == "*":
+            return []
+        if self._bkn_safe_authoritative():
+            allowed = []
+            for mid in candidate_ids:
+                try:
+                    if await self._bkn_safe_check(user_id, resource_type, mid, operation):
+                        allowed.append(mid)
+                except Exception as e:
+                    StandLogger.error(e.args)
+            return allowed
+        # ISF legacy: batch resource-filter.
+        resources = [{"id": mid, "type": resource_type, "name": resource_name} for mid in candidate_ids]
+        payload = {
+            "method": "GET",
+            "accessor": {"id": user_id, "type": role},
+            "resources": resources,
+            "operation": [operation],
+        }
+        try:
+            session = await self.get_session()
+            async with session.post(
+                    self.resource_filter_url,
+                    json=payload,
+                    headers={'Content-Type': 'application/json'}
+            ) as response:
+                if response.status == 200:
+                    result = await response.json()
+                    return [item['id'] for item in result]
+        except Exception as e:
+            StandLogger.error(e.args)
+        return []
+
+    async def check_display(self, user_id: str, role: str, resource_type: str, resource_id: str) -> bool:
+        """Single-resource display check, for endpoints keyed by one model id
+        (e.g. model statistics). AUTH disabled -> allowed."""
+        return await self.check_single_permission(
+            user_id=user_id, resource_id=resource_id, operations="display",
+            resource_type=resource_type, role=role)
+
     async def delete_permission(self, resource_type: str, resource_ids: list) -> bool:
         if not base_config.AUTH_ENABLED:
             return True
