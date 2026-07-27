@@ -58,8 +58,8 @@ type HavingClause struct {
 type ResourceDataQueryParams struct {
 	// Offset and Limit remain internal connector inputs. The HTTP contract uses
 	// Paging so Raw Query and Resource Data share the same request shape.
-	Offset int           `json:"-"`
-	Limit  int           `json:"-"`
+	Offset int `json:"-"`
+	Limit  int `json:"-"`
 	// LegacyLimit/LegacyOffset accept older callers that still send top-level
 	// limit/offset. ValidateResourceDataQueryParams maps them into Paging when
 	// paging is unset (openbkn-ai/bkn-foundry#475).
