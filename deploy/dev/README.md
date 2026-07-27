@@ -57,7 +57,7 @@ docker stop $(docker ps -q --filter "label=io.x-k8s.kind.cluster=${CLUSTER}")
 
 Resume: `docker start $(docker ps -aq --filter "label=io.x-k8s.kind.cluster=${CLUSTER}")` (reuse the same `CLUSTER`).
 
-**Teardown (delete the cluster):** Optionally `bash ./dev/mac.sh data-services uninstall` (tear down MariaDB/Redis/Kafka/ZK/OpenSearch Helm releases; keeps kind), then `bash ./dev/mac.sh cluster down` (runs `kind delete cluster`; destroys the cluster).
+**Teardown (delete the cluster):** Optionally `bash ./dev/mac.sh data-services uninstall` (tear down MariaDB/Redis/Kafka/OpenSearch Helm releases; keeps kind), then `bash ./dev/mac.sh cluster down` (runs `kind delete cluster`; destroys the cluster).
 
 Config: copy [`dev/conf/mac-config.yaml.example`](conf/mac-config.yaml.example) to **`dev/conf/mac-config.yaml`** (one-time). The real **`mac-config.yaml` is gitignored** so generated passwords are not committed; adjust `accessAddress` and registry as needed.  
 `bkn-dip` is not wired in `mac.sh` (use Linux `deploy.sh`).
