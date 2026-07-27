@@ -52,11 +52,6 @@ mac_common_init() {
     export OPENBKN_CORE_REQ_MEM="${OPENBKN_CORE_REQ_MEM:-64Mi}"
     export OPENBKN_CORE_LIM_CPU="${OPENBKN_CORE_LIM_CPU:-2}"
     export OPENBKN_CORE_LIM_MEM="${OPENBKN_CORE_LIM_MEM:-2Gi}"
-    # ISF (chart defaults: limits 1-8Gi). Symmetric with core; only used when --auth.enabled=true.
-    export OPENBKN_ISF_REQ_CPU="${OPENBKN_ISF_REQ_CPU:-50m}"
-    export OPENBKN_ISF_REQ_MEM="${OPENBKN_ISF_REQ_MEM:-64Mi}"
-    export OPENBKN_ISF_LIM_CPU="${OPENBKN_ISF_LIM_CPU:-2}"
-    export OPENBKN_ISF_LIM_MEM="${OPENBKN_ISF_LIM_MEM:-2Gi}"
 }
 
 mac_require_darwin() {
