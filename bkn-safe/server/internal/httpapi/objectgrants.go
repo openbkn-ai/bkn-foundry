@@ -32,10 +32,19 @@ import (
 // dead policy that never matches at enforce time (see RolePermissions path for
 // the role-based alternative).
 func registerObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
-	// GET /policies?resource_type=&resource_id= — every accessor's grants on one
-	// resource, including grants inherited through roles (the "who can do what on
-	// this object"审查 view). -> { entries:[ { accessor_id, resource{type,id},
-	// operations:[...] } ] }
+	// GET /policies?resource_type=&resource_id= — the p-lines written directly
+	// against this exact object key, grouped by subject. -> { entries:[
+	// { accessor_id, resource{type,id}, operations:[...] } ] }
+	//
+	// Scope, stated precisely because "who can act on this object" is easy to
+	// over-read: accessor_id is the policy SUBJECT verbatim, so a role-held grant
+	// appears as the role's id, unmarked and NOT expanded into its members; and a
+	// type-wide grant ("type:*", e.g. a role or super-admin holding the whole
+	// type) does not match a concrete resource_id and is absent. The result is
+	// therefore the direct grant table for one instance, not the effective user
+	// set. That is the same contract the internal endpoint has always had —
+	// interpretation stays with the caller — and per-accessor effective
+	// permissions remain GET /me/permissions's job.
 	//
 	// This is the token-gated twin of the internal GET /api/safe/v1/authz/policies:
 	// that one is ClusterIP-only and unauthenticated (service-to-service), and the
