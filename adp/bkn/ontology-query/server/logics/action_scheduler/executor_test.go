@@ -7,11 +7,15 @@
 package action_scheduler
 
 import (
+	"context"
 	"testing"
+	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
+	"go.uber.org/mock/gomock"
 
 	"ontology-query/interfaces"
+	omock "ontology-query/interfaces/mock"
 )
 
 func Test_ExecuteTool_Validation(t *testing.T) {
@@ -47,6 +51,36 @@ func Test_ExecuteTool_Validation(t *testing.T) {
 			So(actionType.ActionSource.ToolID, ShouldEqual, "tool_001")
 			So(params["target_ip"], ShouldEqual, "192.168.1.1")
 		})
+	})
+}
+
+func Test_ExecuteTool_UsesContextDeadline(t *testing.T) {
+	Convey("ExecuteTool should bound downstream tool-box calls with a context deadline", t, func() {
+		mockCtrl := gomock.NewController(t)
+		defer mockCtrl.Finish()
+
+		aoAccess := omock.NewMockAgentOperatorAccess(mockCtrl)
+		actionType := &interfaces.ActionType{
+			ActionSource: interfaces.ActionSource{
+				Type:   interfaces.ActionSourceTypeTool,
+				BoxID:  "box_001",
+				ToolID: "tool_001",
+			},
+		}
+
+		aoAccess.EXPECT().ExecuteTool(gomock.Any(), "box_001", "tool_001", gomock.Any()).DoAndReturn(
+			func(ctx context.Context, boxID, toolID string, req interfaces.ToolExecutionRequest) (any, error) {
+				deadline, ok := ctx.Deadline()
+				So(ok, ShouldBeTrue)
+				So(time.Until(deadline), ShouldBeGreaterThan, 0)
+				So(req.Timeout, ShouldEqual, toolExecutionTimeoutSeconds)
+				return map[string]any{"ok": true}, nil
+			})
+
+		result, err := ExecuteTool(context.Background(), aoAccess, actionType, map[string]any{"id": "1"})
+
+		So(err, ShouldBeNil)
+		So(result, ShouldResemble, map[string]any{"ok": true})
 	})
 }
 

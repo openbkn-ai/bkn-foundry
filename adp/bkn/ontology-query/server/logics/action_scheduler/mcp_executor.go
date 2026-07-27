@@ -9,11 +9,14 @@ package action_scheduler
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/openbkn-ai/bkn-comm-go/logger"
 
 	"ontology-query/interfaces"
 )
+
+const mcpExecutionTimeoutSeconds int64 = 60
 
 // ExecuteMCP executes an MCP-based action through agent-operator-integration
 // API: POST /mcp/proxy/{mcp_id}/tool/call
@@ -37,7 +40,7 @@ func ExecuteMCP(ctx context.Context, aoAccess interfaces.AgentOperatorAccess, ac
 		McpID:      source.McpID,
 		ToolName:   toolName,
 		Parameters: mcpParams,
-		Timeout:    60, // Default 60 seconds timeout
+		Timeout:    mcpExecutionTimeoutSeconds,
 	}
 
 	mcpID := source.McpID
@@ -45,7 +48,10 @@ func ExecuteMCP(ctx context.Context, aoAccess interfaces.AgentOperatorAccess, ac
 	logger.Debugf("Executing MCP: mcp_id=%s, tool_name=%s, params=%+v", mcpID, toolName, mcpParams)
 
 	// Execute through agent-operator-integration MCP endpoint
-	result, err := aoAccess.ExecuteMCP(ctx, mcpID, toolName, mcpRequest)
+	execCtx, cancel := context.WithTimeout(ctx, time.Duration(mcpRequest.Timeout)*time.Second)
+	defer cancel()
+
+	result, err := aoAccess.ExecuteMCP(execCtx, mcpID, toolName, mcpRequest)
 	if err != nil {
 		logger.Errorf("MCP execution failed: %v", err)
 		return nil, fmt.Errorf("MCP execution failed: %w", err)
