@@ -15,6 +15,12 @@ import (
 //
 // 判定复用 ResourceListIDs：类型级授权（含超管）会直接返回 ResourceIDAll，一次调用即可覆盖
 // 通配场景，无需按 ID 逐个回源。
+//
+// 刻意只按 view 判定，不含 execute/public_access：names 服务于管理态（对象级授权页的名称
+// 回显），口径与管理态列表一致——skill 列表、工具箱列表、算子列表都只按 view 过滤
+// （见 logics/skill/registry.go:945、logics/toolbox/toolbox.go:199、logics/operator/query.go:294）。
+// 市场态列表走的是另一套口径（只按 public_access，见 logics/operator/market.go:266），
+// 因此若将来市场页要复用批量取名，应另开按 public_access 过滤的入口，而不是放宽这里。
 func FilterViewableIDs(ctx context.Context, authService interfaces.IAuthorizationService, userID string,
 	ids []string, resourceType interfaces.AuthResourceType) ([]string, error) {
 	if !common.IsPublicAPIFromCtx(ctx) || len(ids) == 0 {
