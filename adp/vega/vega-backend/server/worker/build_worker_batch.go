@@ -158,17 +158,6 @@ func advanceCursor(cursor []interfaces.KeyValue, keys []string, lastItem map[str
 
 // executeBuild executes the build logic
 func (bbw *batchBuildWorker) executeBuild(ctx context.Context, resource *interfaces.Resource, buildTaskInfo *interfaces.BuildTask, executeType string) error {
-	hasEmbedding := buildTaskHasEmbedding(buildTaskInfo)
-	// 两个操作均幂等（embedding 任务靠 asynq TaskID 去重，索引已存在则跳过），
-	// 不能只在 init 时执行：stop→start 重启后老 embedding worker 已退出，
-	// 若不补发，文档 ID 堆积在 Kafka 无消费者，向量化永远停滞
-	if hasEmbedding {
-		err := sendEmbeddingTask(bbw.client, buildTaskInfo.ID)
-		if err != nil {
-			return fmt.Errorf("send embedding task failed: %w", err)
-		}
-		logger.Infof("Embedding task sent for task %s", buildTaskInfo.ID)
-	}
 	indexName := getIndexName(resource.ID, buildTaskInfo.ID)
 	err := createManagedLocalIndex(ctx, bbw.lim, indexName, buildTaskInfo, resource)
 	if err != nil {
@@ -265,6 +254,7 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, resource *interfa
 		}
 	}
 
+	hasEmbedding := buildTaskHasEmbedding(buildTaskInfo)
 	var writer *kafka.Writer
 	if hasEmbedding {
 		topic := getEmbeddingTopic(resource.ID, buildTaskInfo.ID)
@@ -279,6 +269,16 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, resource *interfa
 			return fmt.Errorf("failed to create Kafka topic: %w", err)
 		}
 		defer bbw.kafkaAccess.CloseWriter(writer)
+	}
+	// 索引、数据源连接与 Kafka writer/topic 均是 embedding 的前置条件。
+	// 只有全部准备成功后才投递子任务，避免主任务早期失败时已启动的 worker
+	// 覆写 failed 状态或持续重试。投递使用确定性 TaskID 去重，stop→start
+	// 重启时仍可安全补发。
+	if hasEmbedding {
+		if err := sendEmbeddingTask(bbw.client, buildTaskInfo.ID); err != nil {
+			return fmt.Errorf("send embedding task failed: %w", err)
+		}
+		logger.Infof("Embedding task sent for task %s", buildTaskInfo.ID)
 	}
 
 	syncedCount := buildTaskInfo.SyncedCount

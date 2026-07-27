@@ -77,6 +77,10 @@ func (ew *embeddingWorker) HandleTask(ctx context.Context, task *asynq.Task) err
 		// Task not found, return nil
 		return nil
 	}
+	if isBuildTaskTerminal(buildTaskInfo.Status) {
+		logger.Infof("Task %s is %s, skip embedding", taskID, buildTaskInfo.Status)
+		return nil
+	}
 	// 异步任务无原始请求上下文，以任务创建者身份执行下游权限检查
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, buildTaskInfo.Creator)
 	logger.Infof("Starting embedding for task: %s, resource: %s", taskID, buildTaskInfo.ResourceID)
@@ -96,13 +100,6 @@ func (ew *embeddingWorker) HandleTask(ctx context.Context, task *asynq.Task) err
 			return fmt.Errorf("update build task status failed: %w", err)
 		}
 		return nil
-	}
-
-	// Update task status to running
-	update := interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusRunning)
-	_, err = ew.bts.InternalUpdateStatus(ctx, nil, taskID, update)
-	if err != nil {
-		return fmt.Errorf("update build task status failed: %w", err)
 	}
 
 	// Execute embedding
@@ -174,6 +171,10 @@ func (ew *embeddingWorker) executeEmbedding(ctx context.Context, resource *inter
 			logger.Errorf("Failed to get task status: %v", err)
 			ew.pause(retryInterval)
 			continue
+		}
+		if isBuildTaskTerminal(taskStatus) {
+			logger.Infof("Task %s is %s, stop embedding", buildTaskInfo.ID, taskStatus)
+			return nil
 		}
 
 		// Handle stopping status

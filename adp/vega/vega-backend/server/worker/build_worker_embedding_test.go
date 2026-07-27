@@ -24,6 +24,27 @@ import (
 )
 
 func TestEmbeddingWorkerHandleTask(t *testing.T) {
+	t.Run("skips terminal task without reviving it", func(t *testing.T) {
+		for _, status := range []string{
+			interfaces.BuildTaskStatusFailed,
+			interfaces.BuildTaskStatusStopped,
+			interfaces.BuildTaskStatusCompleted,
+		} {
+			t.Run(status, func(t *testing.T) {
+				ctrl := gomock.NewController(t)
+				bts := vmock.NewMockBuildTaskService(ctrl)
+				ew := &embeddingWorker{bts: bts}
+
+				bts.EXPECT().InternalGetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{
+					ID: "t1", ResourceID: "r1", Status: status,
+				}, nil)
+
+				task := asynq.NewTask("build:embedding", workerBuildTaskPayload(t, interfaces.EmbeddingBuildTaskMessage{TaskID: "t1"}))
+				require.NoError(t, ew.HandleTask(context.Background(), task))
+			})
+		}
+	})
+
 	t.Run("injects creator into downstream context", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		bts := vmock.NewMockBuildTaskService(ctrl)
@@ -56,6 +77,20 @@ func TestEmbeddingWorkerHandleTask(t *testing.T) {
 }
 
 func TestEmbeddingWorkerExecuteEmbedding(t *testing.T) {
+	t.Run("stops without retry when batch task becomes failed", func(t *testing.T) {
+		ew, ts, ka := newEmbeddingLoopWorker(t)
+		resource, task := embeddingLoopFixtures()
+
+		expectEmbeddingKafkaSession(ka)
+		gomock.InOrder(
+			ts.EXPECT().InternalGetStatus(gomock.Any(), "t1").Return(interfaces.BuildTaskStatusRunning, nil),
+			ka.EXPECT().ReadMessage(gomock.Any(), gomock.Any()).Return(kafka.Message{}, context.DeadlineExceeded),
+			ts.EXPECT().InternalGetStatus(gomock.Any(), "t1").Return(interfaces.BuildTaskStatusFailed, nil),
+		)
+
+		require.NoError(t, ew.executeEmbedding(context.Background(), resource, task))
+	})
+
 	t.Run("ctx canceled returns error for requeue", func(t *testing.T) {
 		ew, ts, ka := newEmbeddingLoopWorker(t)
 		resource, task := embeddingLoopFixtures()
