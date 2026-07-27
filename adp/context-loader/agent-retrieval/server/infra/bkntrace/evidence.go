@@ -51,12 +51,14 @@ type batch struct {
 }
 
 type eventContext struct {
-	traceID     string
-	spanID      string
-	traceparent string
-	requestID   string
-	accountID   string
-	accountType string
+	traceID        string
+	spanID         string
+	traceparent    string
+	requestID      string
+	conversationID string
+	interactionID  string
+	accountID      string
+	accountType    string
 }
 
 func HashValue(value any) string {
@@ -257,17 +259,25 @@ func SubmitEvents(ctx context.Context, logger interfaces.Logger, req any, events
 		return
 	}
 	timeout := evidenceTimeout()
+	traceBlock := map[string]any{
+		"trace_id":         ec.traceID,
+		"traceparent":      ec.traceparent,
+		"bkn.request.id":   ec.requestID,
+		"business_domain":  ec.accountID,
+		"bkn.account.id":   ec.accountID,
+		"bkn.account.type": ec.accountType,
+	}
+	// 只有调用方真的传了才带上；缺失时不补造，由 BKN Trace 查询侧按 request id 降级成单请求交互。
+	if ec.conversationID != "" {
+		traceBlock["bkn.conversation.id"] = ec.conversationID
+	}
+	if ec.interactionID != "" {
+		traceBlock["bkn.interaction.id"] = ec.interactionID
+	}
 	payload := batch{
 		ContractVersion: ContractVersion,
-		Trace: map[string]any{
-			"trace_id":         ec.traceID,
-			"traceparent":      ec.traceparent,
-			"bkn.request.id":   ec.requestID,
-			"business_domain":  ec.accountID,
-			"bkn.account.id":   ec.accountID,
-			"bkn.account.type": ec.accountType,
-		},
-		Events: events,
+		Trace:           traceBlock,
+		Events:          events,
 	}
 
 	select {
@@ -357,12 +367,14 @@ func contextFromRequest(ctx context.Context, req any) (eventContext, bool) {
 		flags = "01"
 	}
 	return eventContext{
-		traceID:     spanContext.TraceID().String(),
-		spanID:      spanContext.SpanID().String(),
-		traceparent: fmt.Sprintf("00-%s-%s-%s", spanContext.TraceID().String(), spanContext.SpanID().String(), flags),
-		requestID:   traceContext.RequestID,
-		accountID:   accountID,
-		accountType: accountType,
+		traceID:        spanContext.TraceID().String(),
+		spanID:         spanContext.SpanID().String(),
+		traceparent:    fmt.Sprintf("00-%s-%s-%s", spanContext.TraceID().String(), spanContext.SpanID().String(), flags),
+		requestID:      traceContext.RequestID,
+		conversationID: traceContext.ConversationID,
+		interactionID:  traceContext.InteractionID,
+		accountID:      accountID,
+		accountType:    accountType,
 	}, true
 }
 

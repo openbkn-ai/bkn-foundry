@@ -25,21 +25,32 @@
 
 ## Inbound Context
 
-- accepted headers / metadata: `traceparent`、`bkn-request-id`、legacy `x-request-id`、`baggage`、`x-account-id`、`x-account-type`、`user_id`。
+- accepted headers / metadata: `traceparent`、`bkn-request-id`、legacy `x-request-id`、`baggage`、`bkn-conversation-id`、`bkn-interaction-id`、`x-account-id`、`x-account-type`、`user_id`。
 - `traceparent` parsing: HTTP trace middleware extracts W3C Trace Context into OTel context; invalid external trace must not be propagated as an internal parent.
 - external trace trust policy: external trace can be linked or used as parent only after format validation and boundary classification.
 - invalid context handling: invalid or missing request id is replaced by a generated `req_<uuid>` value.
 - request id generation: `SetTraceContextToCtx` generates a request id when inbound `bkn-request-id` and `x-request-id` are missing or invalid.
 - tenant/account/auth context source: auth middleware reads account headers or public token introspection result; request id is independent of account id and must not be placed in baggage.
 
+### Conversation And Interaction Correlation
+
+- `bkn-conversation-id` groups one business conversation; `bkn-interaction-id` groups one user question and the multiple context calls it triggers. Both are caller-owned correlation labels only.
+- caller ownership: only the caller (third-party agent, AI application, bkn-agent, SDK/CLI user) knows where a conversation or one round of analysis starts and ends, so only the caller may mint these ids. context-loader never generates, infers, or reuses them; it never derives them from time proximity, SQL text, or natural language.
+- accepted format: `^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`; an issuer prefix such as `agent:thread_x` is allowed so a caller-side id keeps its origin. Blank or malformed values are dropped, never rejected with an error.
+- degraded mode: with no inbound conversation/interaction id the request stays a single-request trace, exactly as before; BKN Trace query side may present such a request as a derived single-request interaction, but nothing is written as if the caller had supplied an id.
+- authorization boundary: these ids are correlation labels only. They must never take part in authorization, tenant/business-domain resolution, rate limiting, or cache keys, and they must never be placed in baggage.
+- MCP boundary: `Mcp-Session-Id` is a transport session and is not a business conversation; it is not read as a conversation id by this module.
+
 ## Outbound Calls
 
 | target | protocol | propagated fields | baggage policy | timeout | retry |
 | --- | --- | --- | --- | --- | --- |
-| BKN backend / ontology | HTTP | `traceparent`、`bkn-request-id`、`x-request-id`、account headers | allowlist only | existing client timeout | existing retry policy |
-| Vega/data | HTTP | `traceparent`、`bkn-request-id`、`x-request-id`、account headers | allowlist only | existing client timeout | existing retry policy |
-| Operator integration / toolbox | HTTP | `traceparent`、`bkn-request-id`、`x-request-id`、account headers | allowlist only | existing client timeout | existing retry policy |
-| MCP tools | MCP metadata / returned headers | `bkn-request-id`、account headers、allowed baggage | allowlist only | caller controlled | caller controlled |
+| BKN backend / ontology | HTTP | `traceparent`、`bkn-request-id`、`x-request-id`、`bkn-conversation-id`、`bkn-interaction-id`、account headers | allowlist only | existing client timeout | existing retry policy |
+| Vega/data | HTTP | `traceparent`、`bkn-request-id`、`x-request-id`、`bkn-conversation-id`、`bkn-interaction-id`、account headers | allowlist only | existing client timeout | existing retry policy |
+| Operator integration / toolbox | HTTP | `traceparent`、`bkn-request-id`、`x-request-id`、`bkn-conversation-id`、`bkn-interaction-id`、account headers | allowlist only | existing client timeout | existing retry policy |
+| MCP tools | MCP metadata / returned headers | `bkn-request-id`、`bkn-conversation-id`、`bkn-interaction-id`、account headers、allowed baggage | allowlist only | caller controlled | caller controlled |
+
+Conversation and interaction ids are only emitted when the caller supplied them; an absent id is omitted from the outbound request rather than replaced by a generated value.
 
 Allowed baggage fields:
 
@@ -92,6 +103,7 @@ Trust policy:
 - `context.query_instance_subgraph` 的 `evidence_refs` 最多保留 100 条，超过后 `subject_refs.refs_truncated=true` 且 `partial_reason` 包含 `refs_truncated`；关系类型只从 `relation`、`relations`、`relation_path(s)`、`relation_type(s)` 等关系容器提取，不从普通实例字段启发式提取。
 - `version_status` 当前为 `unversioned`，schema refs 必须携带 `partial_reason=["schema_ref_unversioned"]`，row refs 必须携带 `partial_reason=["row_ref_unversioned"]`；后续接入 BKN schema version / snapshot 后才能改为 `versioned`。
 - 证据事件上报由 `BKN_TRACE_EVIDENCE_INGEST_URL` 控制，默认关闭；开启后异步提交，不阻塞 schema 检索主路径。
+- 上报批次的 `trace` 块在调用方传入时携带 `bkn.conversation.id` 与 `bkn.interaction.id`，缺失时整个字段不出现；这两个字段只用于把同一轮分析的多次调用归到一起，不改变 claim/evidence payload 的哈希与引用规则。
 - 上报失败只记录 warning，不改变业务响应；BKN Trace 核心服务负责后续 Evidence Graph 汇聚、查询、快照和 Studio 可视化。
 
 ## Business Refs
@@ -164,6 +176,7 @@ Trust policy:
 
 - runtime L2 emitter currently covers `context.search_schema`、`context.query_object` row refs and `context.query_instance_subgraph` row/schema refs; `run_sql` and resolver-level source refs remain follow-up.
 - cross-module global Evidence Graph assembly is owned by BKN Trace core service, not by context-loader.
+- BKN Trace ingestion does not yet persist or index `bkn.conversation.id` / `bkn.interaction.id`, and no query endpoint groups traces by interaction; until that lands the ids propagate and are submitted but cannot be queried back.
 - full registry validation and indexing policy validation currently rely on `bkn-docs` validator follow-up.
 - audit-grade evidence snapshot, versioned schema refs, source data snapshot refs, and Studio visualization belong to later BKN Trace phases.
 - S3 health metrics are not implemented yet.

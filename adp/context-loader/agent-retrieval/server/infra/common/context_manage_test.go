@@ -2,6 +2,7 @@ package common
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/smartystreets/goconvey/convey"
@@ -123,5 +124,89 @@ func TestGetHeaderFromCtxPropagatesTraceContext(t *testing.T) {
 
 		header := GetHeaderFromCtx(ctx)
 		convey.So(header[HeaderBaggage], convey.ShouldEqual, "bkn.account.type=service,bkn.runtime.env=test")
+	})
+}
+
+func TestTraceContextCorrelationIDs(t *testing.T) {
+	convey.Convey("TraceContextFromHeaders reads conversation and interaction ids", t, func() {
+		headers := map[string]string{
+			HeaderBKNRequestID:      "req_01JZVALIDREQUESTID000000010",
+			HeaderBKNConversationID: " agent:thread_abc ",
+			HeaderBKNInteractionID:  "itr_2026072701",
+		}
+		traceCtx := TraceContextFromHeaders(func(key string) string { return headers[key] })
+
+		convey.So(traceCtx.ConversationID, convey.ShouldEqual, "agent:thread_abc")
+		convey.So(traceCtx.InteractionID, convey.ShouldEqual, "itr_2026072701")
+	})
+
+	convey.Convey("SetTraceContextToCtx keeps valid correlation ids and never generates them", t, func() {
+		ctx := SetTraceContextToCtx(context.Background(), TraceContext{
+			RequestID:      "req_01JZVALIDREQUESTID000000011",
+			ConversationID: "agent:thread_abc",
+			InteractionID:  "itr_2026072701",
+		})
+		traceCtx, ok := GetTraceContextFromCtx(ctx)
+		convey.So(ok, convey.ShouldBeTrue)
+		convey.So(traceCtx.ConversationID, convey.ShouldEqual, "agent:thread_abc")
+		convey.So(traceCtx.InteractionID, convey.ShouldEqual, "itr_2026072701")
+
+		degraded := SetTraceContextToCtx(context.Background(), TraceContext{
+			RequestID: "req_01JZVALIDREQUESTID000000012",
+		})
+		degradedCtx, ok := GetTraceContextFromCtx(degraded)
+		convey.So(ok, convey.ShouldBeTrue)
+		convey.So(degradedCtx.ConversationID, convey.ShouldBeEmpty)
+		convey.So(degradedCtx.InteractionID, convey.ShouldBeEmpty)
+	})
+
+	convey.Convey("SetTraceContextToCtx drops malformed correlation ids", t, func() {
+		ctx := SetTraceContextToCtx(context.Background(), TraceContext{
+			RequestID:      "req_01JZVALIDREQUESTID000000013",
+			ConversationID: "bad id with spaces",
+			InteractionID:  strings.Repeat("a", 129),
+		})
+		traceCtx, ok := GetTraceContextFromCtx(ctx)
+		convey.So(ok, convey.ShouldBeTrue)
+		convey.So(traceCtx.ConversationID, convey.ShouldBeEmpty)
+		convey.So(traceCtx.InteractionID, convey.ShouldBeEmpty)
+	})
+}
+
+func TestGetHeaderFromCtxPropagatesCorrelationIDs(t *testing.T) {
+	convey.Convey("GetHeaderFromCtx forwards conversation and interaction ids when present", t, func() {
+		ctx := SetTraceContextToCtx(context.Background(), TraceContext{
+			RequestID:      "req_01JZVALIDREQUESTID000000014",
+			ConversationID: "agent:thread_abc",
+			InteractionID:  "itr_2026072701",
+		})
+
+		header := GetHeaderFromCtx(ctx)
+		convey.So(header[HeaderBKNConversationID], convey.ShouldEqual, "agent:thread_abc")
+		convey.So(header[HeaderBKNInteractionID], convey.ShouldEqual, "itr_2026072701")
+	})
+
+	convey.Convey("GetHeaderFromCtx omits correlation headers when the caller sent none", t, func() {
+		ctx := SetTraceContextToCtx(context.Background(), TraceContext{
+			RequestID: "req_01JZVALIDREQUESTID000000015",
+		})
+
+		header := GetHeaderFromCtx(ctx)
+		_, hasConversation := header[HeaderBKNConversationID]
+		_, hasInteraction := header[HeaderBKNInteractionID]
+		convey.So(hasConversation, convey.ShouldBeFalse)
+		convey.So(hasInteraction, convey.ShouldBeFalse)
+	})
+
+	convey.Convey("correlation ids never leak into baggage", t, func() {
+		ctx := SetTraceContextToCtx(context.Background(), TraceContext{
+			RequestID:      "req_01JZVALIDREQUESTID000000016",
+			ConversationID: "agent:thread_abc",
+			InteractionID:  "itr_2026072701",
+			Baggage:        map[string]string{"bkn.runtime.env": "test"},
+		})
+
+		header := GetHeaderFromCtx(ctx)
+		convey.So(header[HeaderBaggage], convey.ShouldEqual, "bkn.runtime.env=test")
 	})
 }

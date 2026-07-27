@@ -20,10 +20,12 @@ import (
 )
 
 const (
-	HeaderTraceparent     = "traceparent"
-	HeaderBKNRequestID    = "bkn-request-id"
-	HeaderLegacyRequestID = "x-request-id"
-	HeaderBaggage         = "baggage"
+	HeaderTraceparent       = "traceparent"
+	HeaderBKNRequestID      = "bkn-request-id"
+	HeaderLegacyRequestID   = "x-request-id"
+	HeaderBaggage           = "baggage"
+	HeaderBKNConversationID = "bkn-conversation-id"
+	HeaderBKNInteractionID  = "bkn-interaction-id"
 )
 
 type traceContextKey string
@@ -32,10 +34,19 @@ const keyTraceContext traceContextKey = "bkn_trace_context"
 
 var bknRequestIDRe = regexp.MustCompile(`^req_[A-Za-z0-9_-]{8,128}$`)
 
+// correlationIDRe 约束会话/交互 id 的字符集：允许调用方带 issuer 前缀（如 `agent:thread_x`），
+// 拒绝空白、控制字符和超长值，避免非法值污染 header 与证据事件。
+var correlationIDRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`)
+
 // TraceContext carries the OpenBKN phase-one correlation context.
+//
+// ConversationID/InteractionID 只做关联标签：由调用方生成并传入，本服务只透传，
+// 不生成、不推断，也不参与任何鉴权、限流或缓存判定。
 type TraceContext struct {
-	RequestID string
-	Baggage   map[string]string
+	RequestID      string
+	ConversationID string
+	InteractionID  string
+	Baggage        map[string]string
 }
 
 // GetLanguageFromCtx 从context中获取语言设置
@@ -97,6 +108,10 @@ func SetTraceContextToCtx(ctx context.Context, traceContext TraceContext) contex
 	if !IsValidBKNRequestID(traceContext.RequestID) {
 		traceContext.RequestID = NewBKNRequestID()
 	}
+	// 会话/交互 id 缺失或非法时直接丢弃：本轮降级为单请求 trace，绝不在服务端补造，
+	// 否则每次调用都会生成一个与 request id 一一对应的假分组。
+	traceContext.ConversationID = sanitizeCorrelationID(traceContext.ConversationID)
+	traceContext.InteractionID = sanitizeCorrelationID(traceContext.InteractionID)
 	traceContext.Baggage = sanitizeBaggage(traceContext.Baggage)
 	return context.WithValue(ctx, keyTraceContext, traceContext)
 }
@@ -112,13 +127,28 @@ func TraceContextFromHeaders(getHeader func(string) string) TraceContext {
 		requestID = strings.TrimSpace(getHeader(HeaderLegacyRequestID))
 	}
 	return TraceContext{
-		RequestID: requestID,
-		Baggage:   parseBaggage(getHeader(HeaderBaggage)),
+		RequestID:      requestID,
+		ConversationID: strings.TrimSpace(getHeader(HeaderBKNConversationID)),
+		InteractionID:  strings.TrimSpace(getHeader(HeaderBKNInteractionID)),
+		Baggage:        parseBaggage(getHeader(HeaderBaggage)),
 	}
 }
 
 func IsValidBKNRequestID(requestID string) bool {
 	return bknRequestIDRe.MatchString(requestID)
+}
+
+// IsValidCorrelationID 判断调用方传入的会话/交互 id 是否可透传。
+func IsValidCorrelationID(id string) bool {
+	return correlationIDRe.MatchString(id)
+}
+
+func sanitizeCorrelationID(id string) string {
+	id = strings.TrimSpace(id)
+	if !IsValidCorrelationID(id) {
+		return ""
+	}
+	return id
 }
 
 func NewBKNRequestID() string {
@@ -144,6 +174,13 @@ func GetHeaderFromCtx(ctx context.Context) (header map[string]string) {
 	if ok {
 		header[HeaderBKNRequestID] = traceContext.RequestID
 		header[HeaderLegacyRequestID] = traceContext.RequestID
+		// 缺失即不下发，保持下游「无上游会话则降级为单请求」的语义。
+		if traceContext.ConversationID != "" {
+			header[HeaderBKNConversationID] = traceContext.ConversationID
+		}
+		if traceContext.InteractionID != "" {
+			header[HeaderBKNInteractionID] = traceContext.InteractionID
+		}
 		if baggage := formatBaggage(outboundBaggage(traceContext.Baggage, authContext)); baggage != "" {
 			header[HeaderBaggage] = baggage
 		}
