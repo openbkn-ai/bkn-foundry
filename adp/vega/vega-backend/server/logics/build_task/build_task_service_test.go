@@ -882,6 +882,65 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 
 		require.NoError(t, service.Start(context.Background(), "task-1", false))
 	})
+	t.Run("rejects unavailable analyzer before updating status or enqueueing", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+		mockRS := mock_interfaces.NewMockResourceService(ctrl)
+		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+		validator := &analyzerValidatingIndexManager{err: &interfaces.AnalyzerUnavailableError{
+			Analyzer: "hanlp_index",
+			Fields:   []string{"status"},
+			Detail:   "analyzer not found",
+		}}
+		service := &buildTaskService{
+			debugTaskQueue: make(chan *asynq.Task, 10),
+			bta:            mockBTA,
+			cs:             mockCS,
+			lim:            validator,
+			rs:             mockRS,
+		}
+		task := &interfaces.BuildTask{
+			ID:         "task-1",
+			ResourceID: "resource-1",
+			CatalogID:  "catalog-1",
+			Status:     interfaces.BuildTaskStatusStopped,
+			IndexConfig: &interfaces.BuildTaskIndexConfig{Features: map[string]interfaces.BuildTaskFieldIndexFeature{
+				"status": {Fulltext: &interfaces.BuildTaskFulltextConfig{Analyzer: "hanlp_index"}},
+			}},
+		}
+		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").Return(task, nil)
+		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
+			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
+		mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTask, int64, error) {
+				if len(params.Statuses) == 1 && params.Statuses[0] == interfaces.BuildTaskStatusCompleted {
+					return nil, int64(0), nil
+				}
+				return nil, int64(0), nil
+			}).Times(2)
+		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(&interfaces.Resource{
+			ID:        "resource-1",
+			CatalogID: "catalog-1",
+			SchemaDefinition: []*interfaces.Property{{
+				Name: "status",
+				Features: []interfaces.PropertyFeature{{
+					FeatureType: interfaces.PropertyFeatureType_Fulltext,
+					Config:      map[string]any{"analyzer": "hanlp_index"},
+				}},
+			}},
+		}, nil)
+
+		err := service.Start(context.Background(), "task-1", false)
+		httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidParameter_Analyzer)
+		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+		assert.Contains(t, httpErr.BaseError.ErrorDetails, "status")
+		assert.Equal(t, map[string]string{"status": "hanlp_index"}, validator.captured)
+		select {
+		case queued := <-service.DebugTaskQueue():
+			t.Fatalf("expected no queued task, got %s", queued.Type())
+		default:
+		}
+	})
 }
 
 func assertCatalogDisabledError(t *testing.T, err error) {

@@ -694,6 +694,10 @@ func (bts *buildTaskService) Start(ctx context.Context, taskID string, reset boo
 		span.SetStatus(codes.Error, "Build task is no longer current")
 		return err
 	}
+	if err := validateBuildTaskAnalyzers(ctx, bts.lim, buildTask); err != nil {
+		span.SetStatus(codes.Error, "Invalid fulltext analyzer")
+		return err
+	}
 
 	// 入队前先置回 init：worker 出队时会跳过 stopped/stopping 的任务
 	// （防止排队中被停止的任务复活），stopped 状态直接入队会被误跳过。

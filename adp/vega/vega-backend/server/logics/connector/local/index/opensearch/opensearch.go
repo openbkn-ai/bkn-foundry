@@ -11,6 +11,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"net/http"
 	"sort"
 	"strings"
 
@@ -70,7 +71,7 @@ func (c *OpenSearchConnector) ValidateAnalyzers(ctx context.Context, analyzers m
 		if err != nil {
 			return fmt.Errorf("validate analyzer %q for fields %q: %w", analyzer, strings.Join(fields, ", "), err)
 		}
-		if resp.IsError() {
+		if resp.StatusCode == http.StatusBadRequest {
 			detail := resp.String()
 			_ = resp.Body.Close()
 			return &interfaces.AnalyzerUnavailableError{
@@ -78,6 +79,11 @@ func (c *OpenSearchConnector) ValidateAnalyzers(ctx context.Context, analyzers m
 				Fields:   fields,
 				Detail:   detail,
 			}
+		}
+		if resp.IsError() {
+			detail := resp.String()
+			_ = resp.Body.Close()
+			return fmt.Errorf("validate analyzer %q for fields %q: OpenSearch returned %s: %s", analyzer, strings.Join(fields, ", "), resp.Status(), detail)
 		}
 		_ = resp.Body.Close()
 	}

@@ -8,6 +8,7 @@ package opensearch
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -115,6 +116,34 @@ func TestValidateAnalyzersReturnsUnavailableErrorForOpenSearchResponse(t *testin
 	require.ErrorAs(t, err, &unavailableErr)
 	assert.Equal(t, "hanlp_index", unavailableErr.Analyzer)
 	assert.Equal(t, []string{"status"}, unavailableErr.Fields)
+}
+
+func TestValidateAnalyzersReturnsDependencyErrorForNonBadRequestResponse(t *testing.T) {
+	for _, statusCode := range []int{http.StatusUnauthorized, http.StatusInternalServerError} {
+		t.Run(http.StatusText(statusCode), func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				require.Equal(t, "/_analyze", r.URL.Path)
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(statusCode)
+				_, err := w.Write([]byte(`{"error":"dependency failure"}`))
+				require.NoError(t, err)
+			}))
+			t.Cleanup(server.Close)
+
+			serverURL, err := url.Parse(server.URL)
+			require.NoError(t, err)
+			host, portText, err := net.SplitHostPort(serverURL.Host)
+			require.NoError(t, err)
+			port, err := strconv.Atoi(portText)
+			require.NoError(t, err)
+			connector := &OpenSearchConnector{Config: &opensearchConfig{Host: host, Port: port}}
+
+			err = connector.ValidateAnalyzers(context.Background(), map[string]string{"status": "hanlp_index"})
+			require.Error(t, err)
+			var unavailableErr *interfaces.AnalyzerUnavailableError
+			assert.False(t, errors.As(err, &unavailableErr))
+		})
+	}
 }
 
 func TestExecuteRawQueryFlattensAggregationsIntoEntries(t *testing.T) {
