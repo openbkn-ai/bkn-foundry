@@ -143,6 +143,7 @@
         "CategoryNotFound": "Category not found",
         "CategoryNameExist": "Category name already exists",
         "ProxyForwardFailed": "Request forwarding failed",
+        "ProxyPathParamMissing": "Path parameter \"%s\" is missing, the URL template is not fully resolved",
         "OpenAPISyntaxInvalid": "OpenAPI syntax is invalid, please check if it conforms to the OpenAPI 3.0 specification",
         "OpenAPIInvalidPath": "OpenAPI path is invalid, please check if it conforms to the OpenAPI 3.0 specification",
         "OpenAPIInvalidParameterRequired": "Parameter \"%s\" is required, please check if there is any missing parameter",
@@ -201,6 +202,7 @@
         "MCPDescLimit": "MCP description exceeds maximum length (%d characters)",
         "OperatorStatusInvalid": "Please refresh the page and try again",
         "ProxyForwardFailed": "Please check if the request is correct, or try again later",
+        "ProxyPathParamMissing": "Please fill in the missing path parameters and try again",
         "CommonImportDataEmpty": "Please check if the import data is correct",
         "SandboxRuntimeExecuteCodeFailed": "Sandbox runtime execute code failed, please check if the code is correct",
         "PypiParserFailed": "Example: Official PyPI source: https://pypi.org/simple/, Tsinghua source: https://pypi.tuna.tsinghua.edu.cn/simple/"

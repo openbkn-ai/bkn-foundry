@@ -112,6 +112,8 @@ const (
 const (
 	// 请求转发失败，请检查是否可用，或稍后重试
 	ErrExtProxyForwardFailed ErrorCode = "ProxyForwardFailed"
+	// 路径参数缺失，URL 模板中仍有未替换的占位符
+	ErrExtProxyPathParamMissing ErrorCode = "ProxyPathParamMissing"
 )
 
 // common拓展错误码定义

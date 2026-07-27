@@ -143,6 +143,7 @@
         "CategoryNotFound": "算子分类不存在",
         "CategoryNameExist": "算子分类名称已存在",
         "ProxyForwardFailed": "请求转发失败",
+        "ProxyPathParamMissing": "路径参数“%s”缺失，URL 模板未完成替换",
         "OpenAPISyntaxInvalid": "文件格式不正确，请检查是否符合OpenAPI 3.0规范",
         "OpenAPIInvalidPath": "API路径定义缺失或格式错误，请检查路径定义是否正确",
         "OpenAPIInvalidParameterRequired": "参数“%s”缺少必需字段，请检查是否有缺失参数",
@@ -201,6 +202,7 @@
         "MCPDescLimit": "MCP描述长度不能超过%d个字符",
         "OperatorStatusInvalid": "请刷新页面后重试",
         "ProxyForwardFailed": "请检查请求是否正确，或稍后重试",
+        "ProxyPathParamMissing": "请补齐路径参数后重试",
         "CommonImportDataEmpty": "请检查导入数据是否正确",
         "PypiParserFailed": "示例：官方Pypi源地址：https://pypi.org/simple/，清华源地址：https://pypi.tuna.tsinghua.edu.cn/simple/"
     },

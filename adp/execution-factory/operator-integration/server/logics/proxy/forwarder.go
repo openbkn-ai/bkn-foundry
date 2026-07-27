@@ -9,6 +9,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -180,10 +181,17 @@ func (f *forwarder) buildRequest(ctx context.Context, req *interfaces.HTTPReques
 	requestURL := req.URL
 	if len(req.PathParams) > 0 {
 		for key, value := range req.PathParams {
-			requestURL = strings.Replace(requestURL, fmt.Sprintf("{%s}", key), value, -1)
-			requestURL = strings.Replace(requestURL, fmt.Sprintf(":{%s}", key), value, -1)
-			requestURL = strings.Replace(requestURL, fmt.Sprintf(":%s", key), value, -1)
+			// ":{key}" 必须先于 "{key}" 替换，否则会先命中 "{key}" 而在 URL 里留下多余的冒号
+			requestURL = strings.ReplaceAll(requestURL, fmt.Sprintf(":{%s}", key), value)
+			requestURL = strings.ReplaceAll(requestURL, fmt.Sprintf("{%s}", key), value)
+			requestURL = strings.ReplaceAll(requestURL, fmt.Sprintf(":%s", key), value)
 		}
+	}
+	// 路径模板仍有未替换的占位符时直接拒绝，避免把 "/market/{operator_id}" 这类无效 URL 发给下游
+	if unresolved := unresolvedPathPlaceholders(requestURL); len(unresolved) > 0 {
+		missing := strings.Join(unresolved, ", ")
+		return nil, myErr.NewHTTPError(ctx, http.StatusBadRequest, myErr.ErrExtProxyPathParamMissing,
+			fmt.Sprintf("unresolved path placeholder(s) [%s] in url %s", missing, requestURL), missing)
 	}
 	// 处理查询参数
 	if len(req.QueryParams) > 0 {
@@ -204,6 +212,8 @@ func (f *forwarder) buildRequest(ctx context.Context, req *interfaces.HTTPReques
 	// 处理请求体
 	var reqBody io.Reader
 	var contentType string
+	// forceContentType 表示编码过程重算出的 Content-Type 必须覆盖调用方传入的同名请求头
+	var forceContentType bool
 
 	if req.Body != nil {
 		// 检查Content-Type头
@@ -255,8 +265,10 @@ func (f *forwarder) buildRequest(ctx context.Context, req *interfaces.HTTPReques
 				}
 			}
 
-			contentType = writer.FormDataContentType()
 			_ = writer.Close()
+			// writer 生成的 Content-Type 带 boundary，必须覆盖调用方自带的 multipart 头，否则下游无法解析
+			contentType = writer.FormDataContentType()
+			forceContentType = true
 			reqBody = body
 		case strings.Contains(contentType, "text/plain"):
 			// 文本格式
@@ -293,6 +305,13 @@ func (f *forwarder) buildRequest(ctx context.Context, req *interfaces.HTTPReques
 	// 设置请求头，并用当前请求上下文补齐 trace/request id，保证代理链路可聚合。
 	headers := map[string]string{}
 	for key, value := range req.Headers {
+		// 传输层请求头由转发器与 Go HTTP 客户端接管，调用方手填只会让实际请求与预览对不上
+		if isTransportHeader(key) {
+			if f.logger != nil {
+				f.logger.WithContext(ctx).Debugf("drop transport-layer header from caller: %s", key)
+			}
+			continue
+		}
 		headers[key] = fmt.Sprintf("%v", value)
 	}
 	for key, value := range common.MergeTraceHeaders(ctx, headers) {
@@ -300,11 +319,52 @@ func (f *forwarder) buildRequest(ctx context.Context, req *interfaces.HTTPReques
 	}
 
 	// 如果Content-Type未在请求头中设置，但我们有确定的类型，则设置它
-	if contentType != "" && httpReq.Header.Get("Content-Type") == "" {
+	if contentType != "" && (forceContentType || httpReq.Header.Get("Content-Type") == "") {
 		httpReq.Header.Set("Content-Type", contentType)
 	}
 
 	return httpReq, nil
+}
+
+// transportHeaders 由转发链路自身接管的传输层请求头，调用方传入时一律丢弃。
+var transportHeaders = map[string]struct{}{
+	"host":              {},
+	"content-length":    {},
+	"transfer-encoding": {},
+	"connection":        {},
+	"keep-alive":        {},
+	"proxy-connection":  {},
+	"te":                {},
+	"trailer":           {},
+	"upgrade":           {},
+	"expect":            {},
+}
+
+// isTransportHeader 判断请求头是否属于传输层请求头（大小写不敏感）。
+func isTransportHeader(key string) bool {
+	_, ok := transportHeaders[strings.ToLower(strings.TrimSpace(key))]
+	return ok
+}
+
+// pathPlaceholderPattern 匹配路径里形如 {name} 的占位符。
+var pathPlaceholderPattern = regexp.MustCompile(`\{([^{}/]+)\}`)
+
+// unresolvedPathPlaceholders 返回 URL 路径中仍未被 path 参数替换的占位符名称。
+// 只检查路径部分：query 与 fragment 里的花括号可能是业务值，冒号形式无法与端口号区分，都不参与判断。
+func unresolvedPathPlaceholders(rawURL string) []string {
+	target := rawURL
+	if parsed, err := url.Parse(rawURL); err == nil {
+		target = parsed.Path
+	}
+	matches := pathPlaceholderPattern.FindAllStringSubmatch(target, -1)
+	if len(matches) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(matches))
+	for _, match := range matches {
+		names = append(names, match[1])
+	}
+	return names
 }
 
 // processResponse 处理HTTP响应
