@@ -269,8 +269,7 @@ paths:
                       creation_type: custom
                       mode: sse
                       category: other_category
-                    connection_info:
-                      sse_url: "http://localhost:8080/api/agent-operator-integration/v1/mcp/app/1/sse?token=token信息"
+                    connection_info: null
                 customStream:
                   summary: 自定义Stream MCP Server
                   value:
@@ -281,8 +280,7 @@ paths:
                       creation_type: custom
                       mode: stream
                       category: other_category
-                    connection_info:
-                      stream_url: "http://localhost:8080/api/agent-operator-integration/v1/mcp/app/1/mcp?token=token信息"
+                    connection_info: null
                 toolImported:
                   summary: 工具导入 MCP Server
                   value:
@@ -680,8 +678,7 @@ paths:
                       creation_type: custom
                       mode: sse
                       category: other_category
-                    connection_info:
-                      sse_url: "http://localhost:8080/api/agent-operator-integration/v1/mcp/app/1/sse?token=token信息"
+                    connection_info: null
                 customStream:
                   summary: 自定义Stream MCP Server
                   value:
@@ -692,8 +689,7 @@ paths:
                       creation_type: custom
                       mode: stream
                       category: other_category
-                    connection_info:
-                      stream_url: "http://localhost:8080/api/agent-operator-integration/v1/mcp/app/1/mcp?token=token信息"
+                    connection_info: null
                 toolImported:
                   summary: 工具导入 MCP Server
                   value:
