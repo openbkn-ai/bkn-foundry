@@ -178,15 +178,7 @@ func (f *forwarder) Forward(ctx context.Context, req *interfaces.HTTPRequest) (*
 // buildRequest 根据请求参数构建HTTP请求
 func (f *forwarder) buildRequest(ctx context.Context, req *interfaces.HTTPRequest) (*http.Request, error) {
 	// 处理URL和路径参数
-	requestURL := req.URL
-	if len(req.PathParams) > 0 {
-		for key, value := range req.PathParams {
-			// ":{key}" 必须先于 "{key}" 替换，否则会先命中 "{key}" 而在 URL 里留下多余的冒号
-			requestURL = strings.ReplaceAll(requestURL, fmt.Sprintf(":{%s}", key), value)
-			requestURL = strings.ReplaceAll(requestURL, fmt.Sprintf("{%s}", key), value)
-			requestURL = strings.ReplaceAll(requestURL, fmt.Sprintf(":%s", key), value)
-		}
-	}
+	requestURL := substitutePathParams(req.URL, req.PathParams)
 	// 路径模板仍有未替换的占位符时直接拒绝，避免把 "/market/{operator_id}" 这类无效 URL 发给下游
 	if unresolved := unresolvedPathPlaceholders(requestURL); len(unresolved) > 0 {
 		missing := strings.Join(unresolved, ", ")
@@ -348,6 +340,36 @@ func isTransportHeader(key string) bool {
 
 // pathPlaceholderPattern 匹配路径里形如 {name} 的占位符。
 var pathPlaceholderPattern = regexp.MustCompile(`\{([^{}/]+)\}`)
+
+// colonParamPattern 匹配 ":name" 形式的占位符，并要求后面是非标识符字符或结尾。
+// 少了这个边界，参数 id 会把 "/users/:identifier" 里的 ":id" 前缀也换掉，剩下半截 "entifier"。
+func colonParamPattern(key string) *regexp.Regexp {
+	return regexp.MustCompile(`:` + regexp.QuoteMeta(key) + `([^A-Za-z0-9_]|$)`)
+}
+
+// substitutePathParams 把 path 参数按 "{name}"、":{name}"、":name" 三种写法替换进 URL。
+//
+// 值一律按路径段转义：path 参数在 OpenAPI 里是单个路径段，未转义的 "/"、"?"、"#"
+// 会改变整条 URL 的结构——调用方本想传 ID，却能把下游请求改写成另一个路径、或凭空
+// 追加 query。目标 URL 由工具元数据决定、调试界面不允许改，这里是最后一道闸。
+func substitutePathParams(rawURL string, params map[string]string) string {
+	if len(params) == 0 {
+		return rawURL
+	}
+
+	for key, value := range params {
+		escaped := url.PathEscape(value)
+		// ":{key}" 必须先于 "{key}" 替换，否则会先命中 "{key}" 而在 URL 里留下多余的冒号
+		rawURL = strings.ReplaceAll(rawURL, ":{"+key+"}", escaped)
+		rawURL = strings.ReplaceAll(rawURL, "{"+key+"}", escaped)
+		// 用 Func 版本替换：转义后的值可能含 "$"，走 ReplaceAllString 会被当成分组引用。
+		rawURL = colonParamPattern(key).ReplaceAllStringFunc(rawURL, func(match string) string {
+			return escaped + match[len(key)+1:]
+		})
+	}
+
+	return rawURL
+}
 
 // unresolvedPathPlaceholders 返回 URL 路径中仍未被 path 参数替换的占位符名称。
 // 只检查路径部分：query 与 fragment 里的花括号可能是业务值，冒号形式无法与端口号区分，都不参与判断。
