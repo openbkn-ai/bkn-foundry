@@ -1108,8 +1108,11 @@ func (kns *knowledgeNetworkService) batchGetViewData(ctx context.Context,
 		var backingRows []map[string]any
 		if backingType == interfaces.DATA_SOURCE_TYPE_RESOURCE {
 			params := &interfaces.ResourceDataQueryParams{
-				NeedTotal:       viewQuery.NeedTotal,
-				Limit:           viewQuery.Limit,
+				NeedTotal: viewQuery.NeedTotal,
+				Paging: interfaces.ResourceDataPagingRequest{
+					Mode:  "single",
+					Limit: viewQuery.Limit,
+				},
 				Sort:            viewQuery.Sort,
 				SearchAfter:     viewQuery.SearchAfter,
 				FilterCondition: logics.CondCfgToFilterMap(viewQuery.Filters),

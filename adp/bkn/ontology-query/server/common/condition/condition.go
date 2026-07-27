@@ -41,6 +41,7 @@ func NewCondition(ctx context.Context, cfg *CondCfg, fieldScope uint8, fieldsMap
 	if cfg == nil {
 		return nil, nil
 	}
+	cfg = PromoteLegacyLeafWithSubConds(cfg)
 	switch cfg.Operation {
 	case OperationAnd:
 		cond, err = newAndCond(ctx, cfg, fieldScope, fieldsMap)
@@ -198,6 +199,7 @@ func RewriteCondition(ctx context.Context, cfg *CondCfg, fieldsMap map[string]*D
 	if cfg == nil {
 		return nil, nil
 	}
+	cfg = PromoteLegacyLeafWithSubConds(cfg)
 	switch cfg.Operation {
 	case OperationAnd:
 		viewCfg, err = rewriteAndCondition(ctx, cfg, fieldsMap, vectorizer)
@@ -211,6 +213,48 @@ func RewriteCondition(ctx context.Context, cfg *CondCfg, fieldsMap map[string]*D
 	}
 
 	return viewCfg, nil
+}
+
+// PromoteLegacyLeafWithSubConds lifts malformed condition trees where a comparison
+// leaf also carries sub_conditions (Studio multi-row before and-normalization)
+// into an explicit and node so rewrite recurses into every leaf.
+func PromoteLegacyLeafWithSubConds(cfg *CondCfg) *CondCfg {
+	if cfg == nil {
+		return nil
+	}
+	if cfg.Operation == OperationAnd || cfg.Operation == OperationOr {
+		if len(cfg.SubConds) == 0 {
+			return cfg
+		}
+		promoted := make([]*CondCfg, 0, len(cfg.SubConds))
+		for _, sub := range cfg.SubConds {
+			promoted = append(promoted, PromoteLegacyLeafWithSubConds(sub))
+		}
+		out := *cfg
+		out.SubConds = promoted
+		return &out
+	}
+	if len(cfg.SubConds) == 0 {
+		return cfg
+	}
+
+	leaf := &CondCfg{
+		ObjectTypeID: cfg.ObjectTypeID,
+		Name:         cfg.Name,
+		Operation:    cfg.Operation,
+		ValueOptCfg:  cfg.ValueOptCfg,
+		NameField:    cfg.NameField,
+	}
+	subs := make([]*CondCfg, 0, 1+len(cfg.SubConds))
+	subs = append(subs, leaf)
+	for _, sub := range cfg.SubConds {
+		subs = append(subs, PromoteLegacyLeafWithSubConds(sub))
+	}
+	return &CondCfg{
+		ObjectTypeID: cfg.ObjectTypeID,
+		Operation:    OperationAnd,
+		SubConds:     subs,
+	}
 }
 
 func rewriteCondWithOpr(ctx context.Context, cfg *CondCfg, fieldsMap map[string]*DataProperty,

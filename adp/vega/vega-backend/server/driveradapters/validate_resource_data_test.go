@@ -30,6 +30,24 @@ func TestValidateResourceDataQueryParams(t *testing.T) {
 		assert.Equal(t, interfaces.DefaultPageLimit, params.Limit)
 	})
 
+	t.Run("maps legacy top-level limit into paging", func(t *testing.T) {
+		params := &interfaces.ResourceDataQueryParams{
+			LegacyLimit:  10000,
+			LegacyOffset: 10,
+		}
+
+		err := ValidateResourceDataQueryParams(ctx, params)
+
+		require.NoError(t, err)
+		assert.Equal(t, 10000, params.Limit)
+		assert.Equal(t, 10, params.Offset)
+		assert.Equal(t, interfaces.PagingModeSingle, params.Paging.Mode)
+		assert.Equal(t, 10000, params.Paging.Limit)
+		assert.Equal(t, 10, params.Paging.Offset)
+		assert.Equal(t, 0, params.LegacyLimit)
+		assert.Equal(t, 0, params.LegacyOffset)
+	})
+
 	t.Run("accepts valid flat query with filter and aggregation", func(t *testing.T) {
 		params := &interfaces.ResourceDataQueryParams{
 			Format: interfaces.Format_Flat,

@@ -67,8 +67,9 @@ func (v *vegaBackendAccess) QueryResourceData(ctx context.Context, resourceID st
 	headers := v.buildHeaders(ctx)
 	headers[interfaces.HTTP_HEADER_METHOD_OVERRIDE] = http.MethodGet
 
-	respCode, respData, err := v.httpClient.PostNoUnmarshal(ctx, httpURL, headers, params)
-	logger.Debugf("QueryResourceData [%s] query_hash [%s] code [%d] err [%v]", httpURL, bkntrace.HashValue(params), respCode, err)
+	request := normalizeResourceDataQueryParams(params)
+	respCode, respData, err := v.httpClient.PostNoUnmarshal(ctx, httpURL, headers, request)
+	logger.Debugf("QueryResourceData [%s] query_hash [%s] code [%d] err [%v]", httpURL, bkntrace.HashValue(request), respCode, err)
 	if err != nil {
 		return nil, fmt.Errorf("QueryResourceData http request failed: %w", err)
 	}
@@ -80,4 +81,28 @@ func (v *vegaBackendAccess) QueryResourceData(ctx context.Context, resourceID st
 		return nil, fmt.Errorf("unmarshal QueryResourceData response: %w", err)
 	}
 	return &response, nil
+}
+
+// normalizeResourceDataQueryParams copies Limit/Offset helpers into paging so the
+// outbound body matches vega-backend's paging contract (DefaultPageLimit otherwise).
+func normalizeResourceDataQueryParams(params *interfaces.ResourceDataQueryParams) *interfaces.ResourceDataQueryParams {
+	if params == nil {
+		return &interfaces.ResourceDataQueryParams{
+			Paging: interfaces.ResourceDataPagingRequest{Mode: "single"},
+		}
+	}
+	request := *params
+	if request.Paging.Cursor == "" && request.Paging.Mode == "" {
+		request.Paging.Mode = "single"
+		if request.Paging.Limit == 0 {
+			request.Paging.Limit = request.Limit
+		}
+		if request.Paging.Offset == 0 {
+			request.Paging.Offset = request.Offset
+		}
+	}
+	// Keep helpers out of the wire payload (json:"-"), paging carries the values.
+	request.Limit = 0
+	request.Offset = 0
+	return &request
 }

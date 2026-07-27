@@ -74,6 +74,14 @@ func ValidateResourceDataQueryParams(ctx context.Context, params *interfaces.Res
 
 func validateResourceDataPaging(ctx context.Context, params *interfaces.ResourceDataQueryParams) error {
 	paging := params.Paging
+	// Backward compatibility: map deprecated top-level limit/offset into paging
+	// when the caller has not provided a paging object (foundry#475).
+	if paging.Cursor == "" && paging.Mode == "" && paging.Limit == 0 && paging.Offset == 0 {
+		if params.LegacyLimit != 0 || params.LegacyOffset != 0 {
+			paging.Limit = params.LegacyLimit
+			paging.Offset = params.LegacyOffset
+		}
+	}
 	if paging.Mode == interfaces.PagingModeCursor && paging.Limit == 0 {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Limit).
 			WithErrorDetails("paging.limit is required for cursor paging")
@@ -81,6 +89,8 @@ func validateResourceDataPaging(ctx context.Context, params *interfaces.Resource
 	params.Paging = paging.Normalized()
 	params.Offset = params.Paging.Offset
 	params.Limit = params.Paging.Limit
+	params.LegacyLimit = 0
+	params.LegacyOffset = 0
 	if params.Paging.Mode == interfaces.PagingModeCursor {
 		if params.Offset < 0 {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Offset).
