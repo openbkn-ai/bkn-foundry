@@ -61,6 +61,7 @@ var (
 		http.StatusNotImplemented:      "NotImplemented",
 		http.StatusServiceUnavailable:  "ServiceUnavailable",
 		http.StatusRequestTimeout:      "RequestTimeout",
+		http.StatusGatewayTimeout:      "GatewayTimeout",
 	}
 )
 

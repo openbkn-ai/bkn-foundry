@@ -79,6 +79,7 @@ const (
 	ErrExtMCPUnSupportDelete       ErrorCode = "MCPUnSupportDelete"       // 当前MCP不允许删除
 	ErrExtMCPParseFailed           ErrorCode = "MCPParseFailed"           // MCP解析失败
 	ErrExtMCPServerNotAccessible   ErrorCode = "MCPServerNotAccessible"   // MCP Server 无法访问
+	ErrExtMCPServerAuthFailed      ErrorCode = "MCPServerAuthFailed"      // MCP Server 鉴权失败，上游返回%d
 	ErrExtMCPListToolsFailed       ErrorCode = "MCPListToolsFailed"       // 无法获取当前MCP服务下的工具列表
 	ErrExtMCPCallToolFailed        ErrorCode = "MCPCallToolFailed"        // 调用MCP工具失败
 	ErrExtMCPDescLimit             ErrorCode = "MCPDescLimit"             // MCP描述长度不能超过%d个字符
