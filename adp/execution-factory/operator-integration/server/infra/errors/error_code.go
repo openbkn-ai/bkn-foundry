@@ -87,6 +87,8 @@ const (
 	ErrExtMCPToolNameDuplicate     ErrorCode = "MCPToolNameDuplicate"     // MCP工具名称重复
 	ErrExtMCPInstanceAlreadyExists ErrorCode = "MCPInstanceAlreadyExists" // MCP实例已存在
 	ErrExtMCPInstanceNotFound      ErrorCode = "MCPInstanceNotFound"      // MCP实例不存在
+	// ErrExtMCPServerEndpointUnsupported 自定义型MCP只代理外部服务，平台侧不提供接入地址
+	ErrExtMCPServerEndpointUnsupported ErrorCode = "MCPServerEndpointUnsupported"
 )
 
 // 算子分类拓展错误码定义

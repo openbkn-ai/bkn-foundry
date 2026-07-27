@@ -20,48 +20,26 @@ const (
 
 // generateExternalConnectionInfo 生成对外MCP Server连接信息
 func (s *mcpServiceImpl) generateExternalConnectionInfo(mcpID string,
-	mode interfaces.MCPMode,
 	creationType interfaces.MCPCreationType,
 ) (connectionInfo *interfaces.MCPConnectionInfo) {
 	connectionInfo = &interfaces.MCPConnectionInfo{}
-	switch creationType {
-	case interfaces.MCPCreationTypeToolImported:
-		// 生成SSE URL
-		connectionInfo.SSEURL = strings.NewReplacer(
-			":mcp_id", mcpID,
-		).Replace(externalMCPSSEURI)
-
-		// 生成Stream URL
-		connectionInfo.StreamURL = strings.NewReplacer(
-			":mcp_id", mcpID,
-		).Replace(externalMCPStreamURI)
-	case interfaces.MCPCreationTypeCustom:
-		// 如果Mode为stream, 则使用stream url
-		if mode == interfaces.MCPModeStream {
-			connectionInfo.StreamURL = strings.NewReplacer(
-				":mcp_id", mcpID,
-			).Replace(externalMCPStreamURI)
-		}
-		// 如果mode为sse, 则使用sse url
-		if mode == interfaces.MCPModeSSE {
-			connectionInfo.SSEURL = strings.NewReplacer(
-				":mcp_id", mcpID,
-			).Replace(externalMCPSSEURI)
-		}
-	default:
-		// 如果Mode为stream, 则使用stream url
-		if mode == interfaces.MCPModeStream {
-			connectionInfo.StreamURL = strings.NewReplacer(
-				":mcp_id", mcpID,
-			).Replace(externalMCPStreamURI)
-		}
-		// 如果mode为sse, 则使用sse url
-		if mode == interfaces.MCPModeSSE {
-			connectionInfo.SSEURL = strings.NewReplacer(
-				":mcp_id", mcpID,
-			).Replace(externalMCPSSEURI)
-		}
+	// 只有工具导入型 MCP 由平台自己承载实例，app endpoint 才有东西可服务；
+	// 自定义型（代理外部 MCP）平台侧只是客户端，没有本地实例，
+	// 发出去的 app endpoint 地址必然 404，因此不返回连接信息，
+	// 上游接入请直接使用配置中填写的 URL。
+	if creationType != interfaces.MCPCreationTypeToolImported {
+		return nil
 	}
+
+	// 生成SSE URL
+	connectionInfo.SSEURL = strings.NewReplacer(
+		":mcp_id", mcpID,
+	).Replace(externalMCPSSEURI)
+
+	// 生成Stream URL
+	connectionInfo.StreamURL = strings.NewReplacer(
+		":mcp_id", mcpID,
+	).Replace(externalMCPStreamURI)
 	return
 }
 

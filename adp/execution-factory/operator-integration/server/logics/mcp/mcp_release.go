@@ -211,7 +211,7 @@ func (s *mcpServiceImpl) GetReleaseDetail(ctx context.Context, req *interfaces.M
 	releaseInfo.ReleaseUser = utils.GetValueOrDefault(userMap, release.ReleaseUser, interfaces.UnknownUser)
 
 	// 生成MCP Server连接信息
-	connectionInfo := s.generateExternalConnectionInfo(release.MCPID, interfaces.MCPMode(release.Mode), interfaces.MCPCreationType(release.CreationType))
+	connectionInfo := s.generateExternalConnectionInfo(release.MCPID, interfaces.MCPCreationType(release.CreationType))
 
 	resp = &interfaces.MCPServerReleaseDetailResponse{
 		MCPServerDetailResponse: interfaces.MCPServerDetailResponse{

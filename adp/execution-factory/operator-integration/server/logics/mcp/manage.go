@@ -583,7 +583,7 @@ func (s *mcpServiceImpl) GetDetail(ctx context.Context, req *interfaces.MCPServe
 
 	// 当前状态为发布状态时，生成MCP Server连接信息
 	if mcpConfigDB.Status == string(interfaces.BizStatusPublished) {
-		response.ConnectionInfo = s.generateExternalConnectionInfo(mcpConfigDB.MCPID, mcpConfig.Mode, mcpConfig.CreationType)
+		response.ConnectionInfo = s.generateExternalConnectionInfo(mcpConfigDB.MCPID, mcpConfig.CreationType)
 	}
 
 	// 组装MCP工具配置信息
