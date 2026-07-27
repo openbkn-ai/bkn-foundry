@@ -133,6 +133,25 @@ class TestBubblewrapRunnerInit:
 
         assert (settings.dependency_install_path, settings.dependency_install_path) in ro_bind_pairs
 
+    def test_base_args_bind_common_dir_after_dependency_on_pythonpath(self):
+        """Common baked dir is bound and ordered after the dependency dir so a
+        function's declared dependencies still override the baked baseline."""
+        from pathlib import Path
+        from executor.infrastructure.isolation.bwrap import BubblewrapRunner
+
+        runner = BubblewrapRunner(Path("/tmp/workspace"))
+        args = runner._base_args
+
+        ro_bind_indices = [index for index, value in enumerate(args) if value == "--ro-bind"]
+        ro_bind_pairs = [(args[index + 1], args[index + 2]) for index in ro_bind_indices]
+        assert (settings.common_install_path, settings.common_install_path) in ro_bind_pairs
+
+        pythonpath = args[args.index("PYTHONPATH") + 1]
+        entries = pythonpath.split(":")
+        assert entries.index(settings.dependency_install_path) < entries.index(
+            settings.common_install_path
+        )
+
     def test_inject_env_args_adds_setenv_before_separator(self):
         """Test environment variables are injected into bwrap command."""
         from pathlib import Path

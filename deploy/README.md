@@ -18,11 +18,11 @@ This `deploy` directory provides scripts to install BKN Foundry along with its d
 
 Single-node kubeadm flow is **`bash ./deploy.sh k8s install`** (`deploy/scripts/services/k8s.sh`). Product modules reuse an existing cluster when `kubectl` already works (`ensure_k8s` skips reinstall), then **`ensure_platform_prerequisites`** installs the bundled **data-services** layer (MariaDB, Redis, Kafka, OpenSearch, …) before Core. **macOS kind** skips host kubeadm but **`bkn-foundry install` still runs `ensure_data_services` first** (see macOS section). Legacy **`kubeadm`** is still accepted as an alias for **`k8s`**.
 
-**`deploy.sh` global flags** (`--distro`, `-y`, `--force-upgrade`, `--config`, …) must appear **before** the module name. Correct: `bash ./deploy.sh --distro=k3s bkn-foundry install --minimum`. Wrong: `bash ./deploy.sh bkn-foundry install --minimum --distro=k3s` (that `--distro` is not read as a global option). Equivalent without moving flags: `export KUBE_DISTRO=k3s` then `bash ./deploy.sh bkn-foundry install --minimum`.
+**`deploy.sh` global flags** (`--distro`, `-y`, `--force-upgrade`, `--config`, …) must appear **before** the module name. Correct: `bash ./deploy.sh --distro=k3s bkn-foundry install`. Wrong: `bash ./deploy.sh bkn-foundry install --distro=k3s` (that `--distro` is not read as a global option). Equivalent without moving flags: `export KUBE_DISTRO=k3s` then `bash ./deploy.sh bkn-foundry install`.
 
 ```bash
 bash ./deploy.sh k8s install
-bash ./deploy.sh bkn-foundry install --minimum
+bash ./deploy.sh bkn-foundry install
 ```
 
 ### k3s (optional — lightweight single-node)
@@ -35,8 +35,8 @@ cd bkn-foundry/deploy
 bash ./deploy.sh k3s install
 
 # Align distro with k3s for preflight and platform bootstrap:
-bash ./deploy.sh --distro=k3s bkn-foundry install --minimum
-# or: export KUBE_DISTRO=k3s && bash ./deploy.sh bkn-foundry install --minimum
+bash ./deploy.sh --distro=k3s bkn-foundry install
+# or: export KUBE_DISTRO=k3s && bash ./deploy.sh bkn-foundry install
 ```
 
 Check status: `bash ./deploy.sh k3s status` — remove: `bash ./deploy.sh k3s uninstall`.
@@ -63,7 +63,7 @@ bash ./dev/mac.sh bkn-foundry install   # full stack incl. mandatory bkn-safe (a
 # add leading -y for non-interactive (deploy.sh / onboard)
 ```
 
-Config defaults: `dev/conf/mac-config.yaml`. `isf` / `etrino` (`vega`) are delegated to `deploy.sh` — see [dev/README.md](dev/README.md).
+Config defaults: `dev/conf/mac-config.yaml`. `isf` is delegated to `deploy.sh` — see [dev/README.md](dev/README.md).
 
 ## 🚀 Quick Start
 
@@ -102,17 +102,11 @@ sudo bash ./preflight.sh --help         # all flags (--role, --skip, --report, -
 # (same as env KUBE_DISTRO=k3s — shared with deploy.sh)
 
 # 3. Install BKN Foundry
-# Minimum installation — recommended for first-time experience
-bash ./deploy.sh bkn-foundry install --minimum
-# Default is kubeadm (k8s). For single-node k3s instead (--distro must be BEFORE bkn-foundry):
-# bash ./deploy.sh --distro=k3s bkn-foundry install --minimum
-# or: export KUBE_DISTRO=k3s && bash ./deploy.sh bkn-foundry install --minimum
-# Equivalent to:
-# bash ./deploy.sh bkn-foundry install --set auth.enabled=false --set businessDomain.enabled=false
-
-# Full installation (includes auth & business-domain modules)
+# Install BKN Foundry full stack
 bash ./deploy.sh bkn-foundry install
-
+# Default is kubeadm (k8s). For single-node k3s instead (--distro must be BEFORE bkn-foundry):
+# bash ./deploy.sh --distro=k3s bkn-foundry install
+# or: export KUBE_DISTRO=k3s && bash ./deploy.sh bkn-foundry install
 # The script will interactively prompt for the access address and auto-detect the API server address.
 
 # Or specify addresses explicitly (skips interactive prompts):
@@ -166,7 +160,7 @@ chart's version from GHCR and writes a manifest you pass with `--version_file`:
 ./scripts/gen-dev-manifest.sh --branch=fix/my-thing --out=/tmp/m.yaml
 
 # install the generated manifest
-sudo bash ./deploy.sh --distro=k3s bkn-foundry install --minimum --version_file=/tmp/m.yaml
+sudo bash ./deploy.sh --distro=k3s bkn-foundry install --version_file=/tmp/m.yaml
 ```
 
 Per-chart resolution (stable-first): `--branch` newest build → latest stable →
@@ -215,12 +209,12 @@ You can set Kubernetes resource requests and limits for all Core services via en
 ```bash
 # Set CPU and memory requests
 OPENBKN_CORE_REQ_CPU=200m OPENBKN_CORE_REQ_MEM=512Mi \
-  sudo bash ./deploy.sh bkn-foundry install --minimum
+  sudo bash ./deploy.sh bkn-foundry install
 
 # Set full resource limits
 OPENBKN_CORE_REQ_CPU=200m OPENBKN_CORE_REQ_MEM=512Mi \
   OPENBKN_CORE_LIM_CPU=2 OPENBKN_CORE_LIM_MEM=2Gi \
-  sudo bash ./deploy.sh bkn-foundry install --minimum
+  sudo bash ./deploy.sh bkn-foundry install
 ```
 
 | Environment Variable | Description | Example Values |

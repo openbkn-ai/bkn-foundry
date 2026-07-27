@@ -97,7 +97,7 @@ type ActionTypeWithKeyField struct {
 	ActionIntent string           `json:"action_intent,omitempty" mapstructure:"action_intent"`
 	ObjectTypeID string           `json:"object_type_id" mapstructure:"object_type_id"`
 	ObjectType   SimpleObjectType `json:"object_type,omitempty" mapstructure:"object_type"` // 翻译绑定的对象类
-	Condition    *ActionCondCfg   `json:"cond,omitempty" mapstructure:"cond"`
+	Condition    *ActionCondCfg   `json:"condition,omitempty" mapstructure:"condition"`
 	Affect       *ActionAffect    `json:"affect" mapstructure:"affect"`
 	// ImpactContracts 与原生请求互斥（不得同时自拟多行又与 affect 混搭）；仅 affect 时在 validate 中补一行，expected_operation 取 action_type，并保留 affect。
 	ImpactContracts []ImpactContractItem `json:"impact_contracts,omitempty" mapstructure:"impact_contracts"`

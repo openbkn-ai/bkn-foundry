@@ -41,15 +41,6 @@ depServices:
     port: 9200
     protocol: https
     version: ""
-  mongodb:
-    source_type: internal
-    host: 'mongodb.resource.svc.cluster.local'
-    port: 28000
-    user: 'admin'
-    password: ''
-    replicaSet: 'rs0'
-    options:
-      authSource: 'admin'
   rds:
     admin_key: ''
     host: 'mariadb.resource.svc.cluster.local'

@@ -139,6 +139,9 @@ func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfa
 	if accountInfo := ctx.Value(interfaces.ACCOUNT_INFO_KEY); accountInfo != nil {
 		executor = accountInfo.(interfaces.AccountInfo)
 	}
+	if businessDomain := ctx.Value(interfaces.BUSINESS_DOMAIN_KEY); businessDomain != nil && req.BusinessDomain == "" {
+		req.BusinessDomain = businessDomain.(string)
+	}
 
 	// Reserved: Permission check hook
 	if s.permissionCheckHook != nil {
@@ -246,6 +249,9 @@ func (s *actionSchedulerService) executeAsync(execution *interfaces.ActionExecut
 	ctx := context.Background()
 	// Restore account info from execution record for downstream API calls (user_id header)
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, execution.Executor)
+	if req.BusinessDomain != "" {
+		ctx = context.WithValue(ctx, interfaces.BUSINESS_DOMAIN_KEY, req.BusinessDomain)
+	}
 
 	logger.Infof("Starting async execution: %s, total objects: %d", execution.ID, len(req.Instances))
 
@@ -264,9 +270,7 @@ func (s *actionSchedulerService) executeAsync(execution *interfaces.ActionExecut
 	cancelled := false
 
 	for i, objData := range req.ObjDatas {
-		// Check cancellation status at the start of each batch
-		if i%batchSize == 0 && i > 0 {
-			// Check if execution has been cancelled
+		if shouldCheckExecutionCancellation(i, len(req.ObjDatas)) {
 			if s.isExecutionCancelled(ctx, execution.KNID, execution.ID) {
 				logger.Infof("Execution %s cancelled, stopping at object %d/%d", execution.ID, i, len(req.ObjDatas))
 				cancelled = true
@@ -281,10 +285,6 @@ func (s *actionSchedulerService) executeAsync(execution *interfaces.ActionExecut
 				}
 				break
 			}
-
-			// Batch update: save current progress
-			s.updateExecutionProgress(ctx, execution, successCount, failedCount, allResults)
-			logger.Debugf("Execution %s progress: %d/%d completed", execution.ID, i, len(req.ObjDatas))
 		}
 
 		startTime := time.Now().UnixMilli()
@@ -342,6 +342,12 @@ func (s *actionSchedulerService) executeAsync(execution *interfaces.ActionExecut
 			})
 			successCount++
 		}
+
+		completedCount := i + 1
+		if shouldUpdateExecutionProgress(completedCount, len(req.ObjDatas)) {
+			s.updateExecutionProgress(ctx, execution, successCount, failedCount, allResults)
+			logger.Debugf("Execution %s progress: %d/%d completed", execution.ID, completedCount, len(req.ObjDatas))
+		}
 	}
 
 	// Determine final status
@@ -372,6 +378,14 @@ func (s *actionSchedulerService) executeAsync(execution *interfaces.ActionExecut
 
 	logger.Infof("Completed async execution: %s, success: %d, failed: %d, cancelled: %d",
 		execution.ID, successCount, failedCount, cancelledCount)
+}
+
+func shouldCheckExecutionCancellation(index, total int) bool {
+	return index == 0 || total <= batchSize || index%batchSize == 0
+}
+
+func shouldUpdateExecutionProgress(completed, total int) bool {
+	return total <= batchSize || completed%batchSize == 0
 }
 
 // isExecutionCancelled checks if the execution has been cancelled

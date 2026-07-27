@@ -1,0 +1,136 @@
+// Copyright openbkn.ai
+//
+// Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
+package httpapi
+
+import (
+	"context"
+	"errors"
+	"fmt"
+
+	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
+
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/adminwrite"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/auth"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
+)
+
+// adminWriteServices is core's implementation of adminwrite.Services. It is the
+// place the rbac_basic write guards live, so they hold regardless of what the
+// ee HTTP layer does: a wrong or malicious ee handler still cannot mint a
+// system role, escape the built-in immutability, hand out a wildcard grant, or
+// confer the admin-console capability. ee owns the HTTP shape; the rules are
+// here, next to the engine.
+type adminWriteServices struct {
+	e  *authz.Enforcer
+	db *gorm.DB
+}
+
+// newAdminWriteServices builds the core service surface passed to the ee
+// write-route mounter.
+func newAdminWriteServices(e *authz.Enforcer, db *gorm.DB) adminwrite.Services {
+	return &adminWriteServices{e: e, db: db}
+}
+
+// RequirePermission hands ee core's RBAC middleware, so a write route keeps the
+// same per-caller check its community read sibling uses. The license layer
+// (RequireFeature) is ee's to add on top.
+func (s *adminWriteServices) RequirePermission(resourceType, op string) gin.HandlerFunc {
+	return RequirePermission(s.e, resourceType, op)
+}
+
+// CreateRole creates a custom role. Source is forced to custom — the API can
+// never mint a system or business role, whichever id or name is asked for.
+func (s *adminWriteServices) CreateRole(ctx context.Context, spec adminwrite.RoleSpec) (string, error) {
+	id := spec.ID
+	if id == "" {
+		id = auth.NewID()
+	}
+	role := model.Role{
+		ID: id, Name: spec.Name, Description: spec.Description,
+		Source: model.RoleSourceCustom,
+	}
+	if err := s.db.WithContext(ctx).Create(&role).Error; err != nil {
+		return "", err
+	}
+	return role.ID, nil
+}
+
+// UpdateRole renames/re-describes a custom role. Built-ins are immutable.
+func (s *adminWriteServices) UpdateRole(ctx context.Context, id string, patch adminwrite.RolePatch) error {
+	role, err := s.loadCustomRole(ctx, id)
+	if err != nil {
+		return err
+	}
+	fields := map[string]any{}
+	if patch.Name != nil {
+		fields["name"] = *patch.Name
+	}
+	if patch.Description != nil {
+		fields["description"] = *patch.Description
+	}
+	if len(fields) == 0 {
+		return fmt.Errorf("%w: no updatable fields provided", adminwrite.ErrInvalid)
+	}
+	return s.db.WithContext(ctx).Model(&model.Role{}).Where("id = ?", role.ID).Updates(fields).Error
+}
+
+// DeleteRole deletes a custom role and purges its casbin bindings and grants.
+func (s *adminWriteServices) DeleteRole(ctx context.Context, id string) error {
+	role, err := s.loadCustomRole(ctx, id)
+	if err != nil {
+		return err
+	}
+	if err := s.db.WithContext(ctx).Delete(&model.Role{}, "id = ?", role.ID).Error; err != nil {
+		return err
+	}
+	return s.e.RemoveRoleCompletely(role.ID)
+}
+
+// GrantRolePermission grants a custom role an op over a resource pattern. It
+// refuses the two wildcard forms that would make the policy match everything,
+// and refuses the admin-console capability outright: administrative capability
+// comes from a seeded role binding, never from a grant handed out at runtime,
+// or this route becomes an admin-promotion route.
+func (s *adminWriteServices) GrantRolePermission(ctx context.Context, roleID, resourceType, resourceID, op string) error {
+	role, err := s.loadCustomRole(ctx, roleID)
+	if err != nil {
+		return err
+	}
+	if err := rejectWildcardGrant(resourceType, []string{op}); err != nil {
+		return fmt.Errorf("%w: %s", adminwrite.ErrInvalid, err.Error())
+	}
+	if resourceType == adminConsoleResourceType {
+		return fmt.Errorf("%w: admin console capability is granted by role binding, not by role permissions", adminwrite.ErrForbidden)
+	}
+	return s.e.GrantRolePermission(role.ID, resourceType, resourceID, op)
+}
+
+// RevokeRolePermission revokes a custom role's op over a resource pattern.
+func (s *adminWriteServices) RevokeRolePermission(ctx context.Context, roleID, resourceType, resourceID, op string) error {
+	role, err := s.loadCustomRole(ctx, roleID)
+	if err != nil {
+		return err
+	}
+	return s.e.RevokeRolePermission(role.ID, resourceType, resourceID, op)
+}
+
+// loadCustomRole fetches a role and rejects built-ins. It maps to the
+// adminwrite sentinels so ee need not know the model.
+func (s *adminWriteServices) loadCustomRole(ctx context.Context, id string) (*model.Role, error) {
+	var role model.Role
+	err := s.db.WithContext(ctx).First(&role, "id = ?", id).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, adminwrite.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	if role.BuiltIn() {
+		return nil, adminwrite.ErrImmutable
+	}
+	return &role, nil
+}

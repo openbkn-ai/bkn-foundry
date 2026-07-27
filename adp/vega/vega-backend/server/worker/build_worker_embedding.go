@@ -77,6 +77,10 @@ func (ew *embeddingWorker) HandleTask(ctx context.Context, task *asynq.Task) err
 		// Task not found, return nil
 		return nil
 	}
+	if isBuildTaskTerminal(buildTaskInfo.Status) {
+		logger.Infof("Task %s is %s, skip embedding", taskID, buildTaskInfo.Status)
+		return nil
+	}
 	// 异步任务无原始请求上下文，以任务创建者身份执行下游权限检查
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, buildTaskInfo.Creator)
 	logger.Infof("Starting embedding for task: %s, resource: %s", taskID, buildTaskInfo.ResourceID)
@@ -96,13 +100,6 @@ func (ew *embeddingWorker) HandleTask(ctx context.Context, task *asynq.Task) err
 			return fmt.Errorf("update build task status failed: %w", err)
 		}
 		return nil
-	}
-
-	// Update task status to running
-	update := interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusRunning)
-	_, err = ew.bts.InternalUpdateStatus(ctx, nil, taskID, update)
-	if err != nil {
-		return fmt.Errorf("update build task status failed: %w", err)
 	}
 
 	// Execute embedding
@@ -174,6 +171,10 @@ func (ew *embeddingWorker) executeEmbedding(ctx context.Context, resource *inter
 			logger.Errorf("Failed to get task status: %v", err)
 			ew.pause(retryInterval)
 			continue
+		}
+		if isBuildTaskTerminal(taskStatus) {
+			logger.Infof("Task %s is %s, stop embedding", buildTaskInfo.ID, taskStatus)
+			return nil
 		}
 
 		// Handle stopping status
@@ -311,25 +312,39 @@ func (ew *embeddingWorker) executeEmbedding(ctx context.Context, resource *inter
 				}
 
 				// 哨兵到达说明同步侧已发完、且组内已消费全部文档消息。
-				// 同任务可能短暂存在两个消费者（asynq 重投的旧实例 + 新一轮入队的实例），
-				// 单分区下旧实例抢走文档、新实例只读到哨兵，内存计数只覆盖自己的切片；
-				// 以最新 synced - 已知失败 为下限、synced 为上限对齐：
-				// 向量数不可能超过同步数，历史重放/恢复续跑造成的虚高一并封顶
+				// total_count 是批量构建的权威完成数量；synced_count 可能因最后一次
+				// 进度写入未落账而滞后，不能用它封顶完成态进度。
+				finalSyncedCount := buildTaskInfo.SyncedCount
 				finalCount := totalProcessed
+				hasFreshProgress := false
 				if fresh, err := ew.bts.InternalGetByID(ctx, buildTaskInfo.ID); err == nil && fresh != nil {
-					if c := fresh.SyncedCount - int64(len(stillFailed)); c > finalCount {
-						logger.Infof("Embedding count for task %s aligned to synced: local=%d, final=%d (split consumers suspected)", buildTaskInfo.ID, totalProcessed, c)
-						finalCount = c
+					hasFreshProgress = true
+					finalSyncedCount = fresh.SyncedCount
+					if fresh.TotalCount > 0 {
+						finalSyncedCount = fresh.TotalCount
 					}
-					if finalCount > fresh.SyncedCount {
-						logger.Infof("Embedding count for task %s capped at synced: local=%d, synced=%d (replayed messages suspected)", buildTaskInfo.ID, finalCount, fresh.SyncedCount)
-						finalCount = fresh.SyncedCount
+				}
+				if hasFreshProgress {
+					targetVectorizedCount := finalSyncedCount - int64(len(stillFailed))
+					if targetVectorizedCount < 0 {
+						targetVectorizedCount = 0
+					}
+					if targetVectorizedCount > finalCount {
+						logger.Infof("Embedding count for task %s aligned to completed total: local=%d, final=%d", buildTaskInfo.ID, totalProcessed, targetVectorizedCount)
+						finalCount = targetVectorizedCount
+					}
+					if finalCount > finalSyncedCount {
+						logger.Infof("Embedding count for task %s capped at completed total: local=%d, total=%d", buildTaskInfo.ID, finalCount, finalSyncedCount)
+						finalCount = finalSyncedCount
 					}
 				}
 
 				update := interfaces.NewBuildTaskUpdate().
 					WithStatus(interfaces.BuildTaskStatusCompleted).
 					WithVectorizedCount(finalCount)
+				if hasFreshProgress {
+					update = update.WithSyncedCount(finalSyncedCount)
+				}
 				// 重试耗尽的文档如实记录到 failure_detail（与 error_msg 区分：completed 但向量不全时，
 				// failure_detail 说明缺了哪些；error_msg 仅留给整任务硬失败）。显式置空以清除上一轮重建的陈旧明细。
 				update = update.WithFailureDetail("")

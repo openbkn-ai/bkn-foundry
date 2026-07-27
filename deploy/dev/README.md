@@ -30,7 +30,7 @@ On **Apple Silicon** Macs, kind nodes are **linux/arm64** by default. Charts pul
 
 ## Order of operations
 
-Run from the **`deploy/`** directory (`cd deploy` in this repo). Invoke **`mac.sh` with bash** (e.g. `bash ./dev/mac.sh ...`). **`bkn-foundry` / `core`:** the wrapper installs the **full stack including bkn-safe** (auth is mandatory now). The old no-auth `--minimum` mode has been removed.
+Run from the **`deploy/`** directory (`cd deploy` in this repo). Invoke **`mac.sh` with bash** (e.g. `bash ./dev/mac.sh ...`). **`openbkn` / `bkn-foundry`:** the wrapper installs the **full stack including bkn-safe** (auth is mandatory now).
 
 | Step | Command | Required? |
 |------|---------|-----------|
@@ -42,7 +42,7 @@ Run from the **`deploy/`** directory (`cd deploy` in this repo). Invoke **`mac.s
 | 6 | `bash ./dev/mac.sh bkn-foundry install` | **Yes** — deploy Core (full stack incl. bkn-safe); runs bundled data-services beforehand unless skipped |
 | 7 | `bash ./dev/mac.sh onboard` | Optional (models/BKN; needs `bkn` CLI; add `-y` to skip prompts) |
 
-Optional (same `deploy.sh` Helm paths as Linux; you need a working cluster + values that match your dependencies): `bash ./dev/mac.sh isf install|download|uninstall|status`, `bash ./dev/mac.sh etrino install|...` (Vega stack; **`vega` is an alias of `etrino`**). ISF may require DB/config beyond the minimal mac sample—see Linux `deploy.sh` help and your `CONFIG_YAML_PATH`.
+Optional (same `deploy.sh` Helm paths as Linux; you need a working cluster + values that match your dependencies): `bash ./dev/mac.sh isf install|download|uninstall|status`. ISF may require DB/config beyond the minimal mac sample—see Linux `deploy.sh` help and your `CONFIG_YAML_PATH`.
 
 **Minimal path:** `cluster up` → `bkn-foundry install` (runs **data-services** first). If you skip that bundle (`OPENBKN_SKIP_DATA_SERVICES_BUNDLE=true`), you must provide reachable DB/Kafka/etc. yourself or run **`data-services install`** beforehand.
 
@@ -57,7 +57,7 @@ docker stop $(docker ps -q --filter "label=io.x-k8s.kind.cluster=${CLUSTER}")
 
 Resume: `docker start $(docker ps -aq --filter "label=io.x-k8s.kind.cluster=${CLUSTER}")` (reuse the same `CLUSTER`).
 
-**Teardown (delete the cluster):** Optionally `bash ./dev/mac.sh data-services uninstall` (tear down MariaDB/Redis/Kafka/ZK/OpenSearch Helm releases; keeps kind), then `bash ./dev/mac.sh cluster down` (runs `kind delete cluster`; destroys the cluster).
+**Teardown (delete the cluster):** Optionally `bash ./dev/mac.sh data-services uninstall` (tear down MariaDB/Redis/Kafka/OpenSearch Helm releases; keeps kind), then `bash ./dev/mac.sh cluster down` (runs `kind delete cluster`; destroys the cluster).
 
 Config: copy [`dev/conf/mac-config.yaml.example`](conf/mac-config.yaml.example) to **`dev/conf/mac-config.yaml`** (one-time). The real **`mac-config.yaml` is gitignored** so generated passwords are not committed; adjust `accessAddress` and registry as needed.  
 `bkn-dip` is not wired in `mac.sh` (use Linux `deploy.sh`).

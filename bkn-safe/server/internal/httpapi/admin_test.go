@@ -18,12 +18,13 @@ import (
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 
-	"bkn-safe/internal/audit"
-	"bkn-safe/internal/auth"
-	"bkn-safe/internal/authz"
-	"bkn-safe/internal/database"
-	"bkn-safe/internal/directory"
-	"bkn-safe/internal/model"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/adminwrite"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/audit"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/auth"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/database"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/directory"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
 // stubVerifier maps a bearer token straight to its subject: the token string IS
@@ -60,6 +61,13 @@ func newAdminServer(t *testing.T) (*gin.Engine, *authz.Enforcer, *gorm.DB, *auth
 		t.Fatalf("grant super-admin: %v", err)
 	}
 	users := auth.NewUserStore(db)
+	// Mount the rbac_basic write routes for the test. In production these are
+	// mounted only by the enterprise build (behind RequireFeature); a community
+	// deployment registers no mounter and the routes 404. Core tests register
+	// the raw Routes mounter so they exercise the RBAC + guarded-service chain
+	// exactly as before — the license layer is ee's and is tested there.
+	adminwrite.ResetForTest()
+	adminwrite.RegisterMounter(adminwrite.Routes)
 	r := New(Deps{
 		Enforcer: e, DB: db, Directory: directory.New(db), Users: users,
 		Audit:         audit.New(db),

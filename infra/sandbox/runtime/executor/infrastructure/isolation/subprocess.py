@@ -345,7 +345,8 @@ console.log(JSON.stringify(result));
     def _build_pythonpath(self, existing_pythonpath: str | None) -> str:
         dependency_path = settings.dependency_install_path
         sdk_path = settings.sdk_install_path
-        parts = [sdk_path, dependency_path]
+        common_path = settings.common_install_path
+        parts = [sdk_path, dependency_path, common_path]
         if existing_pythonpath:
             parts.append(existing_pythonpath)
         return ":".join(parts)

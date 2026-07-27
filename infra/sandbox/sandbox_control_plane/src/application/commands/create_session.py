@@ -5,6 +5,7 @@
 扩展支持依赖安装，按照 sandbox-design-v2.1.md 章节 5 设计。
 """
 
+import re
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
@@ -37,6 +38,15 @@ class CreateSessionCommand:
         """初始化后验证"""
         if self.timeout <= 0:
             raise ValueError("timeout must be positive")
+
+        # 安全关键：id / template_id 会经 workspace_path 落入以 root 运行的 s3fs
+        # 挂载脚本（k8s/docker scheduler）。严格白名单兜底，防 shell 命令注入与
+        # 前缀逃逸；request schema 已在入口校验，此处覆盖不经 schema 的调用路径。
+        for _name, _val in (("id", self.id), ("template_id", self.template_id)):
+            if _val is not None and not re.match(r"^[A-Za-z0-9_-]+$", _val):
+                raise ValueError(
+                    f"{_name} may only contain letters, digits, '_' and '-'"
+                )
 
         # 设置默认值
         if self.resource_limit is None:

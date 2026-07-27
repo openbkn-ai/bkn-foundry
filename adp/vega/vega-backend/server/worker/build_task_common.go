@@ -140,6 +140,13 @@ func isAsynqFinalRetry(ctx context.Context) bool {
 	return retryCount >= maxRetry
 }
 
+// isBuildTaskTerminal reports statuses that background workers must never revive.
+func isBuildTaskTerminal(status string) bool {
+	return status == interfaces.BuildTaskStatusFailed ||
+		status == interfaces.BuildTaskStatusStopped ||
+		status == interfaces.BuildTaskStatusCompleted
+}
+
 // createManagedLocalIndex creates a build-task local index through LocalIndexManager.
 func createManagedLocalIndex(ctx context.Context, lim interfaces.LocalIndexManager, indexName string, buildTask *interfaces.BuildTask, resource *interfaces.Resource) error {
 	schema, err := buildLocalIndexSchema(buildTask, resource)

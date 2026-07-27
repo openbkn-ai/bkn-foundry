@@ -112,6 +112,24 @@ class CreateSessionRequest(BaseModel):
         None, max_length=512, description="Python 软件包仓库地址，默认 https://pypi.org/simple/"
     )
 
+    @field_validator("id", "template_id")
+    @classmethod
+    def validate_identifier(cls, v: Optional[str]) -> Optional[str]:
+        """
+        会话 ID / 模板 ID 只允许字母、数字、下划线、连字符。
+
+        安全关键：id 会经 workspace_path 落入以 root 运行的 s3fs 挂载脚本
+        （k8s/docker scheduler）。放行 shell 元字符会造成 root 命令注入，放行
+        '/'、'..' 会造成前缀逃逸、绕过会话间隔离。此处严格白名单从入口拦住。
+        """
+        if v is None:
+            return v
+        if not re.match(r"^[A-Za-z0-9_-]+$", v):
+            raise ValueError(
+                "id and template_id may only contain letters, digits, '_' and '-'"
+            )
+        return v
+
     @field_validator("cpu")
     @classmethod
     def validate_cpu(cls, v: str) -> str:

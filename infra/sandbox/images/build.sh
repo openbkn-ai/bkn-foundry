@@ -23,6 +23,10 @@ PYTHON_IMAGE_MIRROR="${PYTHON_IMAGE_MIRROR:-docker.m.daocloud.io/library/python:
 GO_DOWNLOAD_BASE="${GO_DOWNLOAD_BASE:-}"
 GO_DOWNLOAD_MIRROR="${GO_DOWNLOAD_MIRROR:-https://mirrors.ustc.edu.cn/golang}"
 TEMPLATES="${TEMPLATES:-python-basic multi-language}"
+# Space-separated templates that get the common data-science stack pre-installed
+# into /opt/sandbox-common (see templates/executor/common-requirements.txt).
+# Others stay lean. multi-language is intentionally excluded (not Python-data focused).
+PREINSTALL_COMMON_TEMPLATES="${PREINSTALL_COMMON_TEMPLATES:-python-basic}"
 TEMPLATE_IMAGE_TAG="${TEMPLATE_IMAGE_TAG:-${PROJECT_VERSION}}"
 BUILD_PYTHON_BASE="${BUILD_PYTHON_BASE:-false}"
 BUILD_MULTI_BASE="${BUILD_MULTI_BASE:-false}"
@@ -296,12 +300,18 @@ build_templates() {
         base_image="$(get_template_base_image "$template")"
         template_description="$(get_template_description "$template")"
 
+        local preinstall_common="false"
+        case " ${PREINSTALL_COMMON_TEMPLATES} " in
+            *" ${template} "*) preinstall_common="true" ;;
+        esac
+
         docker build \
             -f "$dockerfile" \
             --build-arg "BASE_IMAGE=${base_image}" \
             --build-arg "TEMPLATE_NAME=${template}" \
             --build-arg "TEMPLATE_DESCRIPTION=${template_description}" \
             --build-arg "TEMPLATE_VERSION=${image_tag}" \
+            --build-arg "PREINSTALL_COMMON=${preinstall_common}" \
             $build_args \
             -t "${image_name}:${image_tag}" \
             -t "${image_name}:latest" \

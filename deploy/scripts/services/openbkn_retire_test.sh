@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# _core_uninstall_retired_releases 的行为测试（无需集群）。
+# _openbkn_uninstall_retired_releases 的行为测试（无需集群）。
 # 与 deploy/scripts/lib/preflight_checks_test.sh 同风格：source 真实脚本、mock
 # 外部命令、断言计数。
 #
@@ -20,9 +20,9 @@ check() {
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
-# core.sh 顶层只有变量赋值与函数定义，source 不触发任何执行。
-# shellcheck source=../services/core.sh
-source "${SCRIPT_DIR}/scripts/services/core.sh"
+# openbkn.sh 顶层只有变量赋值与函数定义，source 不触发任何执行。
+# shellcheck source=../services/openbkn.sh
+source "${SCRIPT_DIR}/scripts/services/openbkn.sh"
 
 # --- mock 外部依赖 ------------------------------------------------------------
 # 日志：静音，避免污染测试输出。
@@ -56,7 +56,7 @@ helm() {
 }
 
 # 用可控清单覆盖真实退役清单，避免测试跟随 capabilities-lab 之类真实条目漂移。
-_CORE_RETIRED_RELEASES=("svc-a|reason a" "svc-b|reason b|含额外竖线")
+_OPENBKN_RETIRED_RELEASES=("svc-a|reason a" "svc-b|reason b|含额外竖线")
 
 calls() { tr '\n' ' ' <"${CALLS_FILE}" | sed 's/ $//'; }
 reset() { : >"${CALLS_FILE}"; }
@@ -65,28 +65,28 @@ reset() { : >"${CALLS_FILE}"; }
 HELM_EXISTS="svc-a svc-b"
 HELM_UNINSTALL_FAIL=""
 reset
-_core_uninstall_retired_releases "ns" >/dev/null 2>&1
+_openbkn_uninstall_retired_releases "ns" >/dev/null 2>&1
 check "both-exist-both-uninstalled" "$(calls)" "svc-a svc-b"
 
 # --- 用例2：只有 svc-a 存在 → 只卸 svc-a（幂等：不存在的跳过）---
 HELM_EXISTS="svc-a"
 HELM_UNINSTALL_FAIL=""
 reset
-_core_uninstall_retired_releases "ns" >/dev/null 2>&1
+_openbkn_uninstall_retired_releases "ns" >/dev/null 2>&1
 check "only-existing-uninstalled" "$(calls)" "svc-a"
 
 # --- 用例3：都不存在 → 一个都不卸 ---
 HELM_EXISTS=""
 HELM_UNINSTALL_FAIL=""
 reset
-_core_uninstall_retired_releases "ns" >/dev/null 2>&1
+_openbkn_uninstall_retired_releases "ns" >/dev/null 2>&1
 check "none-exist-none-uninstalled" "$(calls)" ""
 
 # --- 用例4：svc-a 卸载失败 → 不中断，继续卸 svc-b ---
 HELM_EXISTS="svc-a svc-b"
 HELM_UNINSTALL_FAIL="svc-a"
 reset
-_core_uninstall_retired_releases "ns"
+_openbkn_uninstall_retired_releases "ns"
 rc=$?
 check "failure-does-not-abort-rc" "${rc}" "0"
 check "failure-continues-to-next" "$(calls)" "svc-a svc-b"
@@ -96,14 +96,14 @@ check "failure-continues-to-next" "$(calls)" "svc-a svc-b"
 HELM_EXISTS="svc-b"
 HELM_UNINSTALL_FAIL=""
 reset
-_core_uninstall_retired_releases "ns" >/dev/null 2>&1
+_openbkn_uninstall_retired_releases "ns" >/dev/null 2>&1
 check "reason-with-pipe-parses-release" "$(calls)" "svc-b"
 
 rm -f "${CALLS_FILE}"
 
 if [[ "${ONE_FAILED}" -eq 0 ]]; then
-    echo "core_retire_test: all ${PASS} checks passed"
+    echo "openbkn_retire_test: all ${PASS} checks passed"
     exit 0
 fi
-echo "core_retire_test: FAILED"
+echo "openbkn_retire_test: FAILED"
 exit 1

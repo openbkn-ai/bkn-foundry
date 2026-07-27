@@ -72,7 +72,7 @@ When reporting a bug, please provide the following information:
   - Module affected (e.g. `adp/bkn`, `adp/vega/vega-backend`, `infra/sandbox`)
   - Runtime (Java / Go / Python / Node — and version, e.g. JDK 17, Go 1.23, Python 3.11)
   - OS (Linux distro + kernel, macOS, Windows)
-  - Cluster (single-node K3s / kubeadm / managed K8s) and how it was installed (`deploy.sh core install [--minimum]`)
+  - Cluster (single-node K3s / kubeadm / managed K8s) and how it was installed (`deploy.sh bkn-foundry install`)
   - Storage backends as relevant (MariaDB / DM8, OpenSearch, Redis, Kafka)
 
 - **Reproduction Steps**: Clear, step-by-step instructions to reproduce the issue
@@ -91,7 +91,7 @@ When reporting a bug, please provide the following information:
 - Module: adp/bkn
 - Runtime: JDK 17
 - OS: Linux Ubuntu 22.04
-- Cluster: single-node K3s (deploy.sh core install)
+- Cluster: single-node K3s (deploy.sh bkn-foundry install)
 - Database: MariaDB 11.4
 
 **Steps to Reproduce:**
@@ -566,8 +566,7 @@ Each module's `README.md` / `AGENTS.md` lists the exact prerequisites, build com
 
    ```bash
    cd deploy
-   ./deploy.sh core install --minimum    # quick try
-   # or full install: ./deploy.sh core install
+   ./deploy.sh bkn-foundry install
    ```
 
 ---

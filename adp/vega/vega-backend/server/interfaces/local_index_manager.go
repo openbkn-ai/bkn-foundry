@@ -16,6 +16,7 @@ type LocalIndexManager interface {
 	UpdateIndex(ctx context.Context, indexName string, schema []*Property) error
 	DeleteIndex(ctx context.Context, indexName string) error
 	CheckExist(ctx context.Context, indexName string) (bool, error)
+	ValidateAnalyzers(ctx context.Context, analyzers map[string]string) error
 
 	ListDocuments(ctx context.Context, indexName string, res *Resource, params *ResourceDataQueryParams) ([]map[string]any, int64, error)
 	GetDocument(ctx context.Context, indexName string, docID string) (map[string]any, error)

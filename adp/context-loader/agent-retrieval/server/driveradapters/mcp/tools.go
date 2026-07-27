@@ -111,6 +111,11 @@ func handleQueryObjectInstance(ontologyQuery interfaces.DrivenOntologyQuery) fun
 		}
 		bkntrace.EmitQueryObjectInstanceEvents(ctx, nil, queryReq, resp)
 		resp.ObjectConcept = nil
+		// 纯结构化过滤无相关度评分，剥除恒定的 _score 避免误导调用方；
+		// knn / match 有真实相关度分则保留（#236）。
+		if !queryReq.HasScoringOperator() {
+			resp.StripInstanceScores()
+		}
 		result, err := BuildMCPToolResult(resp, format)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil

@@ -10,11 +10,14 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/openbkn-ai/bkn-comm-go/logger"
 
 	"ontology-query/interfaces"
 )
+
+const toolExecutionTimeoutSeconds int64 = 300
 
 // ExecuteTool executes a tool-based action through tool-box API
 // API: POST /tool-box/{box_id}/proxy/{tool_id}
@@ -28,12 +31,15 @@ func ExecuteTool(ctx context.Context, aoAccess interfaces.AgentOperatorAccess, a
 
 	// Build tool execution request using ActionType.Parameters configuration
 	execRequest := buildToolExecutionRequest(actionType.Parameters, params)
-	execRequest.Timeout = 300 // 5 minutes timeout
+	execRequest.Timeout = toolExecutionTimeoutSeconds
 
 	logger.Debugf("Executing tool: box_id=%s, tool_id=%s, request=%+v", source.BoxID, source.ToolID, execRequest)
 
 	// Execute through tool-box API
-	result, err := aoAccess.ExecuteTool(ctx, source.BoxID, source.ToolID, execRequest)
+	execCtx, cancel := context.WithTimeout(ctx, time.Duration(execRequest.Timeout)*time.Second)
+	defer cancel()
+
+	result, err := aoAccess.ExecuteTool(execCtx, source.BoxID, source.ToolID, execRequest)
 	if err != nil {
 		logger.Errorf("Tool execution failed: %v", err)
 		return nil, fmt.Errorf("tool execution failed: %w", err)

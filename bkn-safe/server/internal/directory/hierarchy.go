@@ -10,7 +10,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"bkn-safe/internal/model"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
 // This file adds the org-hierarchy read surface the DA umcmp client needs:

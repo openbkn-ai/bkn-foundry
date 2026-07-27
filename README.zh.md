@@ -124,7 +124,7 @@ openbkn <command> --help         # 查看某命令的帮助，例如 openbkn bkn
 
 完整产品文档参见[文档中心](help/README.md)（[中文](help/zh/README.md) / [EN](help/en/README.md)）。
 
-> **完整安装（未加 `--minimum`）？** 用 `openbkn admin` 子命令进行用户、组织、角色、模型与审计管理 — 详见下文 [平台管理](#toc-kweaver-admin)。
+> **完成全量安装后**，使用 `openbkn admin` 子命令进行用户、组织、角色、模型与审计管理 — 详见下文 [平台管理](#toc-kweaver-admin)。
 
 <a id="toc-kweaver-core"></a>
 
@@ -325,7 +325,7 @@ const results  = await bkn.kn.search("<kn-id>", "供应链有哪些风险？");
 
 ## 🛡️ 平台管理
 
-平台管理（用户、组织、角色、模型、审计）**已内置在同一个 `openbkn` CLI** 的 `openbkn admin` 子命令下——无需独立的管理工具。`admin` 命令主要操作**完整安装**（`auth.enabled=true`、`businessDomain.enabled=true`）带的服务；`--minimum` 安装下大多返回 401 / 404（正常裁剪）。
+平台管理（用户、组织、角色、模型、审计）**已内置在同一个 `openbkn` CLI** 的 `openbkn admin` 子命令下——无需独立的管理工具。`admin` 命令操作**完整安装**（`auth.enabled=true`、`businessDomain.enabled=true`）提供的服务。
 
 ```bash
 openbkn admin org tree                          # 列出部门

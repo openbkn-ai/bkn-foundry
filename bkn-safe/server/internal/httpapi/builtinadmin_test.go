@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"testing"
 
-	"bkn-safe/internal/model"
-	"bkn-safe/internal/seed"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/seed"
 )
 
 // TestBuiltInAdminUserProtected verifies the user-admin API refuses to delete or

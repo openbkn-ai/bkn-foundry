@@ -337,41 +337,40 @@ class K8sScheduler(IContainerScheduler):
             )
             bucket = s3_workspace["bucket"]
 
-            # S3 挂载脚本（使用 bucket 挂载 + bind mount 方案）
+            # S3 挂载脚本（先建会话前缀，再只挂本会话前缀到 /workspace，不暴露整个 bucket）
             s3_prefix = s3_workspace["prefix"].rstrip("/")
             mount_script = f"""#!/bin/sh
 set -e
 
-echo "📂 Mounting S3 bucket {bucket} to /mnt/s3-root (session: {session_id})..."
+echo "📂 Preparing S3 workspace {bucket}:/{s3_prefix} (session: {session_id})..."
 
-# 挂载整个 S3 bucket 到临时位置（uid=1000,gid=1000 让挂载点对 sandbox 用户可访问）
-mkdir -p /mnt/s3-root
-s3fs {bucket} /mnt/s3-root \\
+# 1) 先以 root 临时挂整桶（仅 root 可见、不 allow_other），创建会话前缀后立即卸载。
+#    s3fs 无法挂载不存在的前缀，需先确保前缀对象存在。executor 之后才以 sandbox
+#    用户启动，用户代码永远看不到这个临时挂载点。
+mkdir -p /mnt/s3-init
+s3fs {bucket} /mnt/s3-init \\
+    -o url={minio_url} \\
+    -o use_path_request_style \\
+    -o passwd_file=/etc/s3fs-passwd/s3fs-passwd
+mkdir -p "/mnt/s3-init/{s3_prefix}"
+umount /mnt/s3-init || fusermount -u /mnt/s3-init
+rmdir /mnt/s3-init
+
+# 2) 只把本会话前缀挂到 /workspace。不挂整个 bucket —— 整桶挂载（allow_other）会让
+#    任意会话读写/删除其它会话的数据，是跨会话数据泄露/破坏面；按前缀挂载后代码
+#    只能触及自己的 /workspace。
+s3fs {bucket}:/{s3_prefix} /workspace \\
     -o url={minio_url} \\
     -o use_path_request_style \\
     -o allow_other \\
     -o uid=1000 \\
     -o gid=1000 \\
-    -o passwd_file=/etc/s3fs-passwd/s3fs-passwd &
+    -o passwd_file=/etc/s3fs-passwd/s3fs-passwd
 
-S3FS_PID=$!
-echo "s3fs started with PID: $S3FS_PID"
+# 3) 校验确实挂上了 s3fs，避免静默回落到本地 emptyDir 导致数据不落 MinIO。
+mount | grep -q "on /workspace type fuse" || {{ echo "❌ s3fs failed to mount /workspace" >&2; exit 1; }}
 
-# 等待挂载完成
-sleep 2
-
-# 创建 session workspace 目录（使用完整 S3 前缀）
-SESSION_PATH="/mnt/s3-root/{s3_prefix}"
-echo "Ensuring session workspace exists: $SESSION_PATH"
-mkdir -p "$SESSION_PATH"
-
-# 使用 bind mount 将 S3 路径挂载到 /workspace（/workspace 是 emptyDir 挂载点）
-mount --bind "$SESSION_PATH" /workspace
-
-# 验证 bind mount
-echo "Workspace bind mounted: $(ls -la /workspace)"
-
-echo "✅ S3 bucket mounted and workspace linked successfully"
+echo "✅ Session workspace mounted (scoped to {s3_prefix})"
 ls -la /workspace/
 
 """

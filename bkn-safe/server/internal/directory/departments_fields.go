@@ -11,7 +11,7 @@ import (
 	"net/mail"
 	"strings"
 
-	"bkn-safe/internal/model"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
 // ErrDuplicateDepartmentCode is returned when a non-empty department code is

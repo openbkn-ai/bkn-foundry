@@ -50,7 +50,6 @@ DEP_WHITELIST = {
     "redis":      ["connectType", "sourceType"],          # connectInfo handled below
     "mq":         ["mqType", "mqHost", "mqPort"],          # auth.mechanism handled below
     "opensearch": ["distribution", "host", "port", "protocol"],
-    "mongodb":    ["host", "port", "replicaSet"],          # options.authSource handled below
     # External / non-deployed endpoint (VLM doc structure extraction) — all
     # connection fields, no credentials.
     "structure-extractor": ["privateHost", "privatePort", "serverUrl",
@@ -332,10 +331,6 @@ def collect_dep_services(config_path):
             mech = (spec.get("auth", {}) or {}).get("mechanism")
             if mech is not None:
                 safe["mechanism"] = mech
-        if name == "mongodb":
-            asrc = (spec.get("options", {}) or {}).get("authSource")
-            if asrc is not None:
-                safe["authSource"] = asrc
         # kind: in-cluster (a *.svc.cluster.local dep) vs external (a private/host
         # endpoint reached over the node network, e.g. structure-extractor).
         host = (safe.get("host") or safe.get("mqHost") or safe.get("sentinelHost")

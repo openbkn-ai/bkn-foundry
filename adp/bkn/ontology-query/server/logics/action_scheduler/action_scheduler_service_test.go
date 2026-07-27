@@ -500,6 +500,81 @@ func Test_ActionExecution_Snapshot(t *testing.T) {
 	})
 }
 
+func Test_executeAsync_ContextAndProgress(t *testing.T) {
+	Convey("executeAsync should restore business domain and flush small-run progress", t, func() {
+		mockCtrl := gomock.NewController(t)
+		defer mockCtrl.Finish()
+
+		aoAccess := omock.NewMockAgentOperatorAccess(mockCtrl)
+		logsService := omock.NewMockActionLogsService(mockCtrl)
+		service := &actionSchedulerService{
+			aoAccess:    aoAccess,
+			logsService: logsService,
+		}
+
+		execution := &interfaces.ActionExecution{
+			ID:           "exec_001",
+			KNID:         "kn_001",
+			Status:       interfaces.ExecutionStatusPending,
+			TotalCount:   1,
+			StartTime:    1700000000000,
+			SuccessCount: 0,
+			FailedCount:  0,
+			Executor: interfaces.AccountInfo{
+				ID:   "user_001",
+				Type: "user",
+			},
+		}
+		actionType := &interfaces.ActionType{
+			ActionSource: interfaces.ActionSource{
+				Type:   interfaces.ActionSourceTypeTool,
+				BoxID:  "box_001",
+				ToolID: "tool_001",
+			},
+			Parameters: []interfaces.Parameter{},
+		}
+		req := &interfaces.ActionExecutionRequest{
+			BusinessDomain: "domain_001",
+			Instances: []interfaces.ObjectSystemInfo{
+				{InstanceIdentity: map[string]any{"id": "1"}},
+			},
+			ObjDatas: []map[string]any{
+				{"id": "1"},
+			},
+		}
+
+		var progressUpdates []map[string]any
+		logsService.EXPECT().UpdateExecution(gomock.Any(), "kn_001", "exec_001", gomock.Any()).DoAndReturn(
+			func(ctx context.Context, knID, execID string, updates map[string]any) error {
+				if _, ok := updates["success_count"]; ok {
+					progressUpdates = append(progressUpdates, updates)
+				}
+				return nil
+			}).AnyTimes()
+		logsService.EXPECT().GetExecution(gomock.Any(), gomock.Any()).Return(&interfaces.ActionExecution{
+			Status: interfaces.ExecutionStatusRunning,
+		}, nil).AnyTimes()
+		aoAccess.EXPECT().ExecuteTool(gomock.Any(), "box_001", "tool_001", gomock.Any()).DoAndReturn(
+			func(ctx context.Context, boxID, toolID string, execRequest interfaces.ToolExecutionRequest) (any, error) {
+				So(ctx.Value(interfaces.ACCOUNT_INFO_KEY), ShouldResemble, execution.Executor)
+				So(ctx.Value(interfaces.BUSINESS_DOMAIN_KEY), ShouldEqual, "domain_001")
+				_, ok := ctx.Deadline()
+				So(ok, ShouldBeTrue)
+				return map[string]any{"checked": true}, nil
+			})
+
+		service.executeAsync(execution, actionType, req)
+
+		So(len(progressUpdates), ShouldBeGreaterThanOrEqualTo, 1)
+		So(progressUpdates[0]["success_count"], ShouldEqual, 1)
+		So(progressUpdates[0]["failed_count"], ShouldEqual, 0)
+		results, ok := progressUpdates[0]["results"].([]interfaces.ObjectExecutionResult)
+		So(ok, ShouldBeTrue)
+		So(len(results), ShouldEqual, 1)
+		So(results[0].Status, ShouldEqual, interfaces.ObjectStatusSuccess)
+	})
+}
+
 func Test_ExecuteAction_InputDynamicParamsValidation(t *testing.T) {
 	Convey("行动执行：行动类含 input 参数时，dynamic_params 未给齐则返回 400", t, func() {
 		mockCtrl := gomock.NewController(t)

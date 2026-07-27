@@ -16,7 +16,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"bkn-safe/internal/model"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
 // KeyPrefix marks an AppKey credential. The MCP/REST gateway branches on this

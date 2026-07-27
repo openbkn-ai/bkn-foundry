@@ -5,15 +5,15 @@
 # BKN Foundry install-status — two views over one collector
 # (scripts/lib/install_status.py):
 #   show_install_status()      — Layer 1: live, detailed table for operators on
-#                                the server (`deploy.sh core status`).
+#                                the server (`deploy.sh openbkn status`).
 #   gen_install_status_json()  — Layer 2: regenerate the non-sensitive JSON
 #                                snapshot + publish the static /install-status
 #                                ingress endpoint. Called at the end of
-#                                install_core, and reusable standalone.
+#                                install_openbkn, and reusable standalone.
 #
-# Depends on core.sh helpers (_core_resolve_target_namespace,
-# _core_auto_resolve_version_manifest, CORE_VERSION_MANIFEST_FILE) — source AFTER
-# core.sh in deploy.sh.
+# Depends on openbkn.sh helpers (_openbkn_resolve_target_namespace,
+# _openbkn_auto_resolve_version_manifest, CORE_VERSION_MANIFEST_FILE) — source AFTER
+# openbkn.sh in deploy.sh.
 
 INSTALL_STATUS_PY="${SCRIPT_DIR}/scripts/lib/install_status.py"
 INSTALL_STATUS_DIR="${SCRIPT_DIR}/conf/install-status"
@@ -46,7 +46,7 @@ _status_detect_ingress_class() {
 
 # Resolve the release manifest path (auto-embedded if not set on the CLI).
 _status_require_manifest() {
-    _core_auto_resolve_version_manifest || true
+    _openbkn_auto_resolve_version_manifest || true
     if [[ -z "${CORE_VERSION_MANIFEST_FILE:-}" || ! -f "${CORE_VERSION_MANIFEST_FILE}" ]]; then
         log_error "No release manifest resolved; cannot collect install status."
         return 1
@@ -58,7 +58,7 @@ _status_require_manifest() {
 # helm revision/status, workload ready, drift/missing flags).
 show_install_status() {
     local namespace
-    namespace="$(_core_resolve_target_namespace)"
+    namespace="$(_openbkn_resolve_target_namespace)"
     _status_require_manifest || return 1
 
     if ! command -v python3 >/dev/null 2>&1; then
@@ -124,11 +124,11 @@ _status_apply_endpoint() {
 
 # Layer 2 — regenerate the non-sensitive JSON snapshot and publish the endpoint.
 # Never fails the install: best-effort, warns on error.
-# Auth is disabled (no bkn-safe stack) when installed with --minimum /
+# Auth is disabled (no bkn-safe stack) only when explicitly disabled via Helm values.
 # --set auth.enabled=false. That is a SUPPORTED, normal state: bkn-safe is
 # optional. Detect it so install-status reports an absent bkn-safe as
 # "skipped", not "missing". Signals: the install-time --set (CORE_SET_VALUES,
-# present right after install) or, for a standalone status run, a deployed core
+# present right after install) or, for a standalone status run, a deployed OpenBKN
 # service running AUTH_ENABLED=false.
 _status_auth_disabled() {
     local ns="$1" v
@@ -143,7 +143,7 @@ _status_auth_disabled() {
 
 gen_install_status_json() {
     local namespace
-    namespace="$(_core_resolve_target_namespace)"
+    namespace="$(_openbkn_resolve_target_namespace)"
 
     if ! command -v python3 >/dev/null 2>&1; then
         log_warn "python3 not found; skipping install-status snapshot."

@@ -4,6 +4,7 @@ from app.mydb.ConnectUtil import redis_util, get_redis_util
 from app.utils import llm_utils
 from app.utils.bkntrace import evidence as bkntrace_evidence
 from app.utils.llm_utils import openai_series_stream, OpenAIClientRequest
+from app.utils.permission_manager import permission_manager
 from app.utils.param_verify_utils import *
 from app.utils.reshape_utils import *
 from sse_starlette import EventSourceResponse
@@ -15,7 +16,7 @@ eng_dict = {
 }
 
 
-async def used_model_openai(request, user_id, language, func_module, trace_headers=None):
+async def used_model_openai(request, user_id, language, func_module, trace_headers=None, role=None, private=True):
     if "stream" not in request.keys():
         stream = True
     else:
@@ -89,6 +90,17 @@ async def used_model_openai(request, user_id, language, func_module, trace_heade
     context_size = model_data["f_max_model_len"]
     model_id = model_data["f_model_id"]
     quota = model_data["f_quota"]
+    # Object-level authorization on the execute face, mirroring small_model
+    # (small_model_controller.py). Only the public route enforces (private=False);
+    # the S2S private route skips, by the same convention. resource_type is
+    # large_model so a caller must hold large_model:execute on this model.
+    # AUTH_ENABLED=false short-circuits inside check_single_permission.
+    if not private:
+        permission = await permission_manager.check_single_permission(
+            user_id=user_id, resource_id=model_id, operations="execute",
+            resource_type="large_model", role=role)
+        if not permission:
+            return JSONResponse(status_code=403, content=NotPermissionError)
     trace_context = bkntrace_evidence.build_request_context(trace_headers, account_id=user_id, account_type="user")
     trace_receipt_headers = bkntrace_evidence.model_receipt_headers(trace_context)
     if quota:

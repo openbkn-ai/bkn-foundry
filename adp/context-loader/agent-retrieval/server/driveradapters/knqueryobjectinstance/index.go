@@ -102,6 +102,12 @@ func (h *knQueryObjectInstanceHandler) QueryObjectInstance(c *gin.Context) {
 		c.Header("bkn-evidence-event-id", eventID)
 	}
 
+	// 纯结构化过滤无相关度评分，剥除恒定的 _score 避免误导调用方；
+	// knn / match 有真实相关度分则保留（#236）。
+	if !req.HasScoringOperator() {
+		resp.StripInstanceScores()
+	}
+
 	// 返回成功响应
 	rest.ReplyOK(c, http.StatusOK, resp)
 }

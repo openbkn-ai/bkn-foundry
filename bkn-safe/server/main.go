@@ -5,100 +5,30 @@
 // Command bkn-safe is the ISF replacement auth service: authentication
 // (hydra login/consent/device provider), authorization (Casbin), and user
 // management (directory + LDAP). hydra issues the tokens.
+//
+// This is the community entry point. It registers no extensions, so the paid
+// enterprise code is not merely switched off here — it is not in the binary.
+// The enterprise entry point lives in the private openbkn-ee repository and
+// differs only by its Setup calls between Boot and Run.
 package main
 
 import (
-	"context"
 	"flag"
 	"log/slog"
 	"os"
 
-	"bkn-safe/config"
-	"bkn-safe/internal/audit"
-	"bkn-safe/internal/auth"
-	"bkn-safe/internal/authz"
-	"bkn-safe/internal/database"
-	"bkn-safe/internal/directory"
-	"bkn-safe/internal/httpapi"
-	"bkn-safe/internal/license"
-	"bkn-safe/internal/seed"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/app"
 )
 
 func main() {
 	configPath := flag.String("config", "", "YAML config file (overrides defaults; env SAFE_CONFIG if unset)")
 	flag.Parse()
 
-	cfg, err := config.LoadWithOptions(config.LoadOptions{ConfigPath: *configPath})
+	a, err := app.Boot(app.Options{ConfigPath: *configPath})
 	if err != nil {
-		fatal("load config", err)
+		fatal("boot", err)
 	}
-	if *configPath != "" || os.Getenv("SAFE_CONFIG") != "" {
-		path := *configPath
-		if path == "" {
-			path = os.Getenv("SAFE_CONFIG")
-		}
-		slog.Info("config loaded", "file", path)
-	}
-
-	db, err := database.Open(cfg.DB)
-	if err != nil {
-		fatal("open database", err)
-	}
-	if err := database.Migrate(db); err != nil {
-		fatal("migrate", err)
-	}
-
-	enforcer, err := authz.New(db)
-	if err != nil {
-		fatal("init authz", err)
-	}
-
-	if cfg.SeedOnStart {
-		if err := seed.Apply(db, enforcer); err != nil {
-			fatal("seed", err)
-		}
-		slog.Info("seed applied (roles + catalog + grants)")
-	}
-
-	userStore := auth.NewUserStore(db)
-	hydraAdmin := auth.NewHydraAdmin(cfg.Hydra.AdminURL)
-
-	// Authenticator: local bcrypt store, plus LDAP federation when configured
-	// (local first, then LDAP).
-	var authenticator auth.Authenticator = userStore
-	if cfg.LDAP.Enabled() {
-		authenticator = auth.NewChain(userStore, auth.NewLDAPAuthenticator(cfg.LDAP, db))
-		slog.Info("LDAP federation enabled", "url", cfg.LDAP.URL)
-	}
-	provider := auth.NewProvider(authenticator, hydraAdmin, userStore)
-	dir := directory.New(db)
-	auditStore := audit.New(db)
-
-	// Cluster license hub: hold the one .lic, be the only egress to the
-	// license-server, distribute to modules. Licensing must never block the
-	// auth service itself — on failure (e.g. no resolvable instance
-	// fingerprint) bkn-safe runs without the license surface.
-	licSvc, err := license.New(db, cfg.License, auditStore)
-	if err != nil {
-		slog.Error("license hub disabled", "err", err)
-		licSvc = nil
-	} else {
-		go licSvc.Run(context.Background())
-		slog.Info("license hub enabled", "instance_fp", licSvc.Fingerprint(), "server_url", cfg.License.ServerURL)
-	}
-
-	r := httpapi.New(httpapi.Deps{
-		Enforcer:  enforcer,
-		DB:        db,
-		Provider:  provider,
-		Hydra:     hydraAdmin,
-		Directory: dir,
-		Users:     userStore,
-		Audit:     auditStore,
-		License:   licSvc,
-	})
-	slog.Info("bkn-safe listening", "addr", cfg.HTTPAddr)
-	if err := r.Run(cfg.HTTPAddr); err != nil {
+	if err := a.Run(); err != nil {
 		fatal("http serve", err)
 	}
 }

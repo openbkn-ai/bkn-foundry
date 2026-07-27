@@ -28,10 +28,9 @@ source "${SCRIPT_DIR}/scripts/services/storage.sh"
 source "${SCRIPT_DIR}/scripts/services/mariadb.sh"
 source "${SCRIPT_DIR}/scripts/services/redis.sh"
 source "${SCRIPT_DIR}/scripts/services/kafka.sh"
-# source "${SCRIPT_DIR}/scripts/services/mongodb.sh"  # MongoDB disabled
 source "${SCRIPT_DIR}/scripts/services/ingress_nginx.sh"
 source "${SCRIPT_DIR}/scripts/services/opensearch.sh"
-source "${SCRIPT_DIR}/scripts/services/core.sh"
+source "${SCRIPT_DIR}/scripts/services/openbkn.sh"
 source "${SCRIPT_DIR}/scripts/services/status.sh"
 
 usage() {
@@ -60,13 +59,12 @@ usage() {
     echo "  opensearch uninstall          Uninstall OpenSearch (optionally purge PVC)"
     echo "  ingress-nginx install         Install ingress-nginx-controller"
     echo "  ingress-nginx uninstall       Uninstall ingress-nginx-controller"
-    echo "  bkn-foundry install          Install BKN Foundry services; auto-installs K8s/data services if missing"
-    echo "  bkn-foundry install          On BYOK (OPENBKN_SKIP_PLATFORM_BOOTSTRAP=true), runs ensure_data_services first unless OPENBKN_SKIP_DATA_SERVICES_BUNDLE=true"
-    echo "  bkn-foundry download         Download/update BKN Foundry charts into deploy/.tmp/charts"
-    echo "  bkn-foundry uninstall        Uninstall BKN Foundry services"
-    echo "  bkn-foundry status           Show BKN Foundry services status"
+    echo "  openbkn install              Install BKN Foundry services; auto-installs K8s/data services if missing"
+    echo "  openbkn download             Download/update BKN Foundry charts into deploy/.tmp/charts"
+    echo "  openbkn uninstall            Uninstall BKN Foundry services"
+    echo "  openbkn status               Show BKN Foundry services status"
     echo "                                Use --set to pass custom values to all charts"
-    echo "  all install                   Run full initialization (k8s + mariadb + redis + ingress-nginx)"
+    echo "  infra install                Install Kubernetes and platform data services"
     echo ""
     echo "Examples:"
     echo "  $0 k8s install                # Initialize K8s master node with default settings"
@@ -80,7 +78,6 @@ usage() {
     echo "  $0 mariadb uninstall --force  # Force uninstall (WARNING: breaks bkn-foundry)"
     echo "  $0 mariadb uninstall --delete-data  # Uninstall MariaDB and delete PVC (data loss!)"
     echo "  $0 redis install              # Install Redis"
-    echo "  $0 redis uninstall            # Uninstall Redis"
     echo "  $0 redis uninstall                         # Uninstall Redis (PVCs deleted by default)"
     echo "  REDIS_PURGE_PVC=false $0 redis uninstall   # Uninstall Redis but keep PVCs"
     echo "  $0 kafka install              # Install Kafka"
@@ -97,7 +94,7 @@ usage() {
     echo "  $0 config generate            # Generate/update ~/.openbkn-ai/config.yaml"
     echo "                                Console admin initial password: prompted on first generation (Enter = random);"
     echo "                                preset with BKN_SAFE_INITIAL_PASSWORD=...; recorded as bknSafe.initialPassword."
-    echo "  $0 all install                # Full initialization with all components"
+    echo "  $0 infra install             # Install infrastructure only"
     echo ""
     echo "Global Options (must appear BEFORE <module> <action>, e.g. $0 --distro=k8s bkn-foundry install):"
     echo "                                Trailing flags like ... install --distro=k8s are NOT parsed here;"
@@ -619,6 +616,26 @@ main() {
         return 0
     fi
     
+    # Handle ingress-nginx module
+    if [[ "${module}" == "ingress-nginx" ]]; then
+        case "${action}" in
+            install|init)
+                check_root
+                install_ingress_nginx
+                ;;
+            uninstall)
+                check_root
+                uninstall_ingress_nginx
+                ;;
+            *)
+                log_error "Unknown ingress-nginx action: ${action}"
+                usage
+                exit 1
+                ;;
+        esac
+        return 0
+    fi
+
     # Handle mariadb module
     if [[ "${module}" == "mariadb" ]]; then
         case "${action}" in
@@ -701,26 +718,6 @@ main() {
         return 0
     fi
 
-    # Handle mongodb module (disabled)
-    # if [[ "${module}" == "mongodb" ]]; then
-    #     case "${action}" in
-    #         install|init)
-    #             check_root
-    #             # install_mongodb  # MongoDB disabled
-    #             ;;
-    #         uninstall)
-    #             check_root
-    #             # uninstall_mongodb  # MongoDB disabled
-    #             ;;
-    #         *)
-    #             log_error "Unknown mongodb action: ${action}"
-    #             usage
-    #             exit 1
-    #             ;;
-    #     esac
-    #     return 0
-    # fi
-
     # Handle kafka module
     if [[ "${module}" == "kafka" ]]; then
         case "${action}" in
@@ -741,144 +738,23 @@ main() {
         return 0
     fi
     
-    # Handle ingress-nginx module
-    if [[ "${module}" == "ingress-nginx" ]]; then
+    # Handle infra module (infrastructure: k8s + data services)
+    if [[ "${module}" == "infra" ]]; then
         case "${action}" in
             install|init)
-                check_root
-                install_ingress_nginx
-                ;;
-            uninstall)
-                check_root
-                uninstall_ingress_nginx
-                ;;
-            *)
-                log_error "Unknown ingress-nginx action: ${action}"
-                usage
-                exit 1
-                ;;
-        esac
-        return 0
-    fi
-    
-    # Handle bkn-foundry module
-    if [[ "${module}" == "bkn-foundry" ]] || [[ "${module}" == "foundry" ]] || [[ "${module}" == "bkn-foundry" ]] || [[ "${module}" == "core" ]]; then
-        case "${action}" in
-            install|init)
-                parse_core_args "install" "$@"
-                confirm_access_address_before_install
-                install_core
-                ;;
-            download)
-                parse_core_args "download" "$@"
-                download_core
-                ;;
-            uninstall)
-                parse_core_args "uninstall" "$@"
-                uninstall_core
-                ;;
-            status)
-                parse_core_args "status" "$@"
-                show_install_status
-                ;;
-            publish-status)
-                parse_core_args "status" "$@"
-                gen_install_status_json
-                ;;
-            *)
-                log_error "Unknown bkn-foundry action: ${action}"
-                usage
-                exit 1
-                ;;
-        esac
-        return 0
-    fi
-    
-
-    # Handle etrino module
-    if [[ "${module}" == "etrino" ]]; then
-        local etrino_script="${SCRIPT_DIR}/scripts/services/etrino.sh"
-        if [[ ! -f "${etrino_script}" ]]; then
-            log_error "Etrino script not found at ${etrino_script}"
-            exit 1
-        fi
-
-        case "${action}" in
-            install|init)
-                if [[ "${OPENBKN_SKIP_PLATFORM_BOOTSTRAP:-false}" != "true" ]]; then
-                    check_root
-                fi
-                CONFIG_FILE="${CONFIG_YAML_PATH}" bash "${etrino_script}" install "$@"
-                ;;
-            status)
-                CONFIG_FILE="${CONFIG_YAML_PATH}" bash "${etrino_script}" status "$@"
-                ;;
-            uninstall)
-                if [[ "${OPENBKN_SKIP_PLATFORM_BOOTSTRAP:-false}" != "true" ]]; then
-                    check_root
-                fi
-                CONFIG_FILE="${CONFIG_YAML_PATH}" bash "${etrino_script}" uninstall "$@"
-                ;;
-            *)
-                log_error "Unknown etrino action: ${action}"
-                usage
-                exit 1
-                ;;
-        esac
-        return 0
-    fi
-
-    # Handle all/infra module (infrastructure: k8s + data services)
-    # 'all' is an alias for 'infra' for backward compatibility
-    if [[ "${module}" == "all" ]] || [[ "${module}" == "infra" ]]; then
-        case "${action}" in
-            install|init)
-                check_root
                 log_info "=========================================="
                 log_info "  Deploying Infrastructure (K8s + Data Services)"
                 log_info "=========================================="
-                
-                # Pre-install dependencies (containerd, k8s, helm) before k8s init
-                log_info "Pre-installing dependencies..."
-                detect_package_manager
-                install_containerd
-                install_kubernetes
-                install_helm
-                
-                check_prerequisites
-                init_k8s_master
-                allow_master_scheduling
-                install_cni
-                wait_for_dns
-
-                if [[ "${AUTO_INSTALL_LOCALPV}" == "true" ]]; then
-                    if [[ -z "$(kubectl get storageclass --no-headers 2>/dev/null)" ]]; then
-                        install_localpv
-                    fi
-                fi
-                install_mariadb
-                install_redis
-                install_kafka
-                # install_mongodb  # MongoDB disabled
-                if [[ "${AUTO_INSTALL_INGRESS_NGINX}" == "true" ]]; then
-                    install_ingress_nginx
-                fi
-                install_opensearch
-                if [[ "${AUTO_GENERATE_CONFIG}" == "true" ]]; then
-                    generate_config_yaml
-                fi
+                main k8s install
+                main data-services install
                 show_status
                 log_info "Infrastructure deployment completed!"
                 ;;
             reset)
                 check_root
                 log_info "Resetting infrastructure..."
-                uninstall_opensearch || true
-                uninstall_ingress_nginx || true
-                # uninstall_mongodb || true  # MongoDB disabled
-                uninstall_kafka || true
-                uninstall_redis || true
-                uninstall_mariadb || true
+                main data-services uninstall || true
+                main ingress-nginx uninstall || true
                 reset_k8s
                 log_info "Infrastructure reset completed!"
                 ;;
@@ -891,164 +767,35 @@ main() {
         return 0
     fi
     
-    # Handle bkn module (application services)
-    if [[ "${module}" == "bkn" ]] || [[ "${module}" == "bkn" ]]; then
+    # Handle OpenBKN application module. bkn-foundry/foundry/bkn remain compatibility aliases.
+    if [[ "${module}" == "openbkn" ]] \
+        || [[ "${module}" == "bkn-foundry" ]] \
+        || [[ "${module}" == "foundry" ]] \
+        || [[ "${module}" == "bkn" ]]; then
         case "${action}" in
-            init)
-                check_root
-                shift 2
-                log_info "=========================================="
-                log_info "  Deploying BKN Foundry Application Services"
-                log_info "=========================================="
-                
-                # Parse common args for all bkn services
-                while [[ $# -gt 0 ]]; do
-                    case "$1" in
-                        --version=*)
-                            HELM_CHART_VERSION="${1#*=}"
-                            shift
-                            ;;
-                        --version)
-                            HELM_CHART_VERSION="$2"
-                            shift 2
-                            ;;
-                        --helm_repo=*)
-                            HELM_CHART_REPO_URL="${1#*=}"
-                            shift
-                            ;;
-                        --helm_repo)
-                            HELM_CHART_REPO_URL="$2"
-                            shift 2
-                            ;;
-                        *)
-                            shift
-                            ;;
-                    esac
-                done
-                
-                # Install all BKN Foundry services in order
-                install_core
-
-                log_info "BKN Foundry application services deployment completed!"
+            install|init)
+                parse_openbkn_args "install" "$@"
+                confirm_access_address_before_install
+                install_openbkn
+                ;;
+            download)
+                parse_openbkn_args "download" "$@"
+                download_openbkn
                 ;;
             uninstall)
-                check_root
-                log_info "Uninstalling BKN Foundry application services..."
-                uninstall_core || true
-                log_info "BKN Foundry application services uninstalled!"
+                parse_openbkn_args "uninstall" "$@"
+                uninstall_openbkn
                 ;;
             status)
-                log_info "BKN Foundry application services status:"
-                show_core_status
+                parse_openbkn_args "status" "$@"
+                show_install_status
+                ;;
+            publish-status)
+                parse_openbkn_args "status" "$@"
+                gen_install_status_json
                 ;;
             *)
-                log_error "Unknown bkn action: ${action}"
-                usage
-                exit 1
-                ;;
-        esac
-        return 0
-    fi
-    
-    # Handle full module (complete deployment: infra + bkn)
-    if [[ "${module}" == "full" ]]; then
-        case "${action}" in
-            init)
-                check_root
-                shift 2
-                log_info "╔════════════════════════════════════════════════════════════════╗"
-                log_info "║       Full Deployment: Infrastructure + BKN Foundry Services       ║"
-                log_info "╚════════════════════════════════════════════════════════════════╝"
-                
-                # Save args for bkn
-                local bkn_args=("$@")
-                
-                # Step 1: Deploy infrastructure
-                log_info ""
-                log_info "Step 1/2: Deploying Infrastructure..."
-                log_info ""
-                
-                detect_package_manager
-                install_containerd
-                install_kubernetes
-                install_helm
-                
-                check_prerequisites
-                init_k8s_master
-                allow_master_scheduling
-                install_cni
-                wait_for_dns
-
-                if [[ "${AUTO_INSTALL_LOCALPV}" == "true" ]]; then
-                    if [[ -z "$(kubectl get storageclass --no-headers 2>/dev/null)" ]]; then
-                        install_localpv
-                    fi
-                fi
-                install_mariadb
-                install_redis
-                install_kafka
-                # install_mongodb  # MongoDB disabled
-                if [[ "${AUTO_INSTALL_INGRESS_NGINX}" == "true" ]]; then
-                    install_ingress_nginx
-                fi
-                install_opensearch
-                if [[ "${AUTO_GENERATE_CONFIG}" == "true" ]]; then
-                    generate_config_yaml
-                fi
-
-                # Step 2: Deploy BKN Foundry services
-                log_info ""
-                log_info "Step 2/2: Deploying BKN Foundry Application Services..."
-                log_info ""
-                
-                # Parse bkn args
-                for arg in "${bkn_args[@]}"; do
-                    case "$arg" in
-                        --version=*)
-                            HELM_CHART_VERSION="${arg#*=}"
-                            ;;
-                        --helm_repo=*)
-                            HELM_CHART_REPO_URL="${arg#*=}"
-                            ;;
-                    esac
-                done
-                
-                install_studio
-                install_bkn
-                install_vega
-                install_agentoperator
-                install_sandboxruntime
-
-                show_status
-                log_info ""
-                log_info "╔════════════════════════════════════════════════════════════════╗"
-                log_info "║                   Full Deployment Completed!                   ║"
-                log_info "╚════════════════════════════════════════════════════════════════╝"
-                ;;
-            reset)
-                check_root
-                log_info "Full reset: Uninstalling all components..."
-                
-                # Uninstall BKN Foundry services first
-                uninstall_sandboxruntime || true
-                uninstall_agentoperator || true
-                uninstall_bkn || true
-                uninstall_vega || true
-                uninstall_studio || true
-
-                # Then uninstall infrastructure
-                uninstall_opensearch || true
-                uninstall_ingress_nginx || true
-                # uninstall_mongodb || true  # MongoDB disabled
-                uninstall_kafka || true
-                uninstall_redis || true
-                uninstall_mariadb || true
-                reset_k8s
-                
-                log_info "Full reset completed!"
-                ;;
-            *)
-                log_error "Unknown full action: ${action}"
+                log_error "Unknown openbkn action: ${action}"
                 usage
                 exit 1
                 ;;

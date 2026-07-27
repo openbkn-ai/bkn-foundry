@@ -114,7 +114,7 @@ bkn_helm_uninstall_if_not_deployed() {
 
 # Bundled Bitnami charts (Kafka, etc.) embed bitnami/common templates that require a current Helm 3.x
 # (older clients may parse templates as empty → Helm error "no objects visited").
-KWEAVER_HELM_MIN_SEMVER="${KWEAVER_HELM_MIN_SEMVER:-3.10.0}"
+OPENBKN_HELM_MIN_SEMVER="${OPENBKN_HELM_MIN_SEMVER:-3.10.0}"
 
 bkn_semver_ge() {
     local have="$1"
@@ -134,13 +134,13 @@ bkn_require_helm_min_for_bitnami() {
     local cur
     cur="$(bkn_helm_client_semver)"
     if [[ -z "${cur}" ]]; then
-        log_error "Could not parse Helm client version. Install Helm ${KWEAVER_HELM_MIN_SEMVER}+ (e.g. macOS: brew upgrade helm)."
+        log_error "Could not parse Helm client version. Install Helm ${OPENBKN_HELM_MIN_SEMVER}+ (e.g. macOS: brew upgrade helm)."
         return 1
     fi
-    if bkn_semver_ge "${cur}" "${KWEAVER_HELM_MIN_SEMVER}"; then
+    if bkn_semver_ge "${cur}" "${OPENBKN_HELM_MIN_SEMVER}"; then
         return 0
     fi
-    log_error "Helm ${cur} is too old for bundled data-service charts (Kafka/OpenSearch use Bitnami common; need >= ${KWEAVER_HELM_MIN_SEMVER})."
+    log_error "Helm ${cur} is too old for bundled data-service charts (Kafka/OpenSearch use Bitnami common; need >= ${OPENBKN_HELM_MIN_SEMVER})."
     log_error "Fix (macOS): brew install helm && hash -r   — or put a newer helm before stale /usr/local/bin/helm in PATH."
     return 1
 }
@@ -1319,17 +1319,9 @@ bkn_apply_k3s_lightweight_defaults() {
     : "${OPENBKN_CORE_REQ_MEM:=128Mi}"
     : "${OPENBKN_CORE_LIM_CPU:=2}"
     : "${OPENBKN_CORE_LIM_MEM:=2Gi}"
-    # ISF (Information Security Fabric) charts (chart defaults: limits 1-8Gi, some unset).
-    # Same uniform ceiling as core; auth-heavy services rarely need more in dev.
-    : "${KWEAVER_ISF_REQ_CPU:=100m}"
-    : "${KWEAVER_ISF_REQ_MEM:=128Mi}"
-    : "${KWEAVER_ISF_LIM_CPU:=2}"
-    : "${KWEAVER_ISF_LIM_MEM:=2Gi}"
     export REDIS_MAXMEMORY REDIS_MEMORY_REQUEST REDIS_MEMORY_LIMIT REDIS_CPU_REQUEST \
            OPENSEARCH_MEMORY_REQUEST OPENSEARCH_MEMORY_LIMIT \
-           OPENBKN_CORE_REQ_CPU OPENBKN_CORE_REQ_MEM OPENBKN_CORE_LIM_CPU OPENBKN_CORE_LIM_MEM \
-           KWEAVER_CORE_REQ_CPU KWEAVER_CORE_REQ_MEM KWEAVER_CORE_LIM_CPU KWEAVER_CORE_LIM_MEM \
-           KWEAVER_ISF_REQ_CPU KWEAVER_ISF_REQ_MEM KWEAVER_ISF_LIM_CPU KWEAVER_ISF_LIM_MEM
+           OPENBKN_CORE_REQ_CPU OPENBKN_CORE_REQ_MEM OPENBKN_CORE_LIM_CPU OPENBKN_CORE_LIM_MEM
 }
 bkn_apply_k3s_lightweight_defaults
 
@@ -1404,30 +1396,6 @@ OPENSEARCH_PURGE_PVC="${OPENSEARCH_PURGE_PVC:-false}"
 OPENSEARCH_INITIAL_ADMIN_PASSWORD="${OPENSEARCH_INITIAL_ADMIN_PASSWORD:-}"
 OPENSEARCH_SYSCTL_INIT_ENABLED="${OPENSEARCH_SYSCTL_INIT_ENABLED:-true}"
 OPENSEARCH_SYSCTL_VM_MAX_MAP_COUNT="${OPENSEARCH_SYSCTL_VM_MAX_MAP_COUNT:-262144}"
-
-# MongoDB Configuration
-LOCAL_MONGODB_CHARTS_DIR="${LOCAL_MONGODB_CHARTS_DIR:-${SCRIPT_DIR}/charts/mongodb}"
-MONGODB_CHART_TGZ="${MONGODB_CHART_TGZ:-${SCRIPT_DIR}/charts/mongodb-1.0.0.tgz}"
-MONGODB_NAMESPACE="${MONGODB_NAMESPACE:-${RESOURCE_NAMESPACE}}"
-MONGODB_RELEASE_NAME="${MONGODB_RELEASE_NAME:-mongodb}"
-MONGODB_IMAGE="${MONGODB_IMAGE:-}"
-MONGODB_IMAGE_REPOSITORY="${MONGODB_IMAGE_REPOSITORY:-swr.cn-east-3.myhuaweicloud.com/openbkn-ai/bkn/mongo}"
-MONGODB_IMAGE_TAG="${MONGODB_IMAGE_TAG:-2.1.0-feature-mongo-4.4.30}"
-MONGODB_REPLICAS="${MONGODB_REPLICAS:-1}"
-MONGODB_REPLSET_ENABLED="${MONGODB_REPLSET_ENABLED:-true}"  # Default: single-node replica set mode (requires keyfile)
-MONGODB_REPLSET_NAME="${MONGODB_REPLSET_NAME:-rs0}"
-MONGODB_SERVICE_TYPE="${MONGODB_SERVICE_TYPE:-ClusterIP}"
-MONGODB_SERVICE_PORT="${MONGODB_SERVICE_PORT:-30280}"
-MONGODB_WIRED_TIGER_CACHE_SIZE_GB="${MONGODB_WIRED_TIGER_CACHE_SIZE_GB:-4}"
-MONGODB_STORAGE_CLASS="${MONGODB_STORAGE_CLASS:-}"
-MONGODB_STORAGE_SIZE="${MONGODB_STORAGE_SIZE:-10Gi}"
-MONGODB_SECRET_NAME="${MONGODB_SECRET_NAME:-mongodb-secret}"
-MONGODB_SECRET_USERNAME="${MONGODB_SECRET_USERNAME:-admin}"
-MONGODB_SECRET_PASSWORD="${MONGODB_SECRET_PASSWORD:-}"
-MONGODB_RESOURCES_REQUESTS_CPU="${MONGODB_RESOURCES_REQUESTS_CPU:-100m}"
-MONGODB_RESOURCES_REQUESTS_MEMORY="${MONGODB_RESOURCES_REQUESTS_MEMORY:-128Mi}"
-MONGODB_RESOURCES_LIMITS_CPU="${MONGODB_RESOURCES_LIMITS_CPU:-1}"
-MONGODB_RESOURCES_LIMITS_MEMORY="${MONGODB_RESOURCES_LIMITS_MEMORY:-1Gi}"
 
 # Ingress-Nginx Configuration
 INGRESS_NGINX_HTTP_PORT="${INGRESS_NGINX_HTTP_PORT:-80}"
@@ -1518,7 +1486,7 @@ k8s_is_running() {
 # Idempotent single-node k3s path: Helm + k3s (built-in CNI/storage/DNS) + ingress-nginx.
 # Requires deploy.sh to source scripts/services/k3s.sh before this runs.
 ensure_k3s() {
-    if [[ "${KWEAVER_K8S_ENSURED:-false}" == "true" ]]; then
+    if [[ "${OPENBKN_K8S_ENSURED:-false}" == "true" ]]; then
         return 0
     fi
 
@@ -1529,7 +1497,7 @@ ensure_k3s() {
         elif [[ -f /etc/rancher/k3s/k3s.yaml ]]; then
             export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
         fi
-        export KWEAVER_K8S_ENSURED="true"
+        export OPENBKN_K8S_ENSURED="true"
         return 0
     fi
 
@@ -1542,18 +1510,18 @@ ensure_k3s() {
         install_ingress_nginx || return 1
     fi
 
-    export KWEAVER_K8S_ENSURED="true"
+    export OPENBKN_K8S_ENSURED="true"
     log_info "k3s-based platform bootstrap completed."
 }
 
 ensure_k8s() {
-    if [[ "${KWEAVER_K8S_ENSURED:-false}" == "true" ]]; then
+    if [[ "${OPENBKN_K8S_ENSURED:-false}" == "true" ]]; then
         return 0
     fi
 
     if k8s_is_running; then
         log_info "Kubernetes cluster detected, skipping K8s installation."
-        export KWEAVER_K8S_ENSURED="true"
+        export OPENBKN_K8S_ENSURED="true"
         return 0
     fi
 
@@ -1580,12 +1548,12 @@ ensure_k8s() {
         install_ingress_nginx || return 1
     fi
 
-    export KWEAVER_K8S_ENSURED="true"
+    export OPENBKN_K8S_ENSURED="true"
     log_info "K8s installation completed."
 }
 
 ensure_data_services() {
-    if [[ "${KWEAVER_DATA_SERVICES_ENSURED:-false}" == "true" ]]; then
+    if [[ "${OPENBKN_DATA_SERVICES_ENSURED:-false}" == "true" ]]; then
         return 0
     fi
 
@@ -1603,7 +1571,7 @@ ensure_data_services() {
         generate_config_yaml || return 1
     fi
 
-    export KWEAVER_DATA_SERVICES_ENSURED="true"
+    export OPENBKN_DATA_SERVICES_ENSURED="true"
 }
 
 # Delete Kubernetes Job objects in a namespace whose names match an ERE (grep -E).
@@ -1642,13 +1610,13 @@ uninstall_platform_data_services() {
 }
 
 ensure_platform_prerequisites() {
-    if [[ "${KWEAVER_PLATFORM_PREREQUISITES_DONE:-false}" == "true" ]]; then
+    if [[ "${OPENBKN_PLATFORM_PREREQUISITES_DONE:-false}" == "true" ]]; then
         return 0
     fi
 
     # Mac / bring-your-own-cluster: skip k3s/kubeadm + bundled data services (e.g. deploy/dev/mac.sh + kind).
-    if [[ "${KWEAVER_SKIP_PLATFORM_BOOTSTRAP:-false}" == "true" ]]; then
-        export KWEAVER_PLATFORM_PREREQUISITES_DONE="true"
+    if [[ "${OPENBKN_SKIP_PLATFORM_BOOTSTRAP:-false}" == "true" ]]; then
+        export OPENBKN_PLATFORM_PREREQUISITES_DONE="true"
         return 0
     fi
 
@@ -1667,7 +1635,7 @@ ensure_platform_prerequisites() {
 
     ensure_data_services || return 1
 
-    export KWEAVER_PLATFORM_PREREQUISITES_DONE="true"
+    export OPENBKN_PLATFORM_PREREQUISITES_DONE="true"
 }
 
 get_access_address_field() {
@@ -1761,8 +1729,8 @@ resolve_openbkn_image_registry() {
     fi
 
     if [[ -n "${raw_registry}" ]]; then
-        if declare -F _core_resolve_registry >/dev/null 2>&1; then
-            _core_resolve_registry "${raw_registry}"
+        if declare -F _openbkn_resolve_registry >/dev/null 2>&1; then
+            _openbkn_resolve_registry "${raw_registry}"
             return 0
         fi
 

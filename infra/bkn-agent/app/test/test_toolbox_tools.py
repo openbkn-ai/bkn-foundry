@@ -1,4 +1,5 @@
 """执行工厂 toolbox 工具装载（工具面收敛，替代 agent-retrieval 专用 MCP 通道）。"""
+
 import asyncio
 import hashlib
 
@@ -8,7 +9,12 @@ from langchain_mcp_adapters.interceptors import MCPToolCallRequest
 
 from app import evidence, observability
 from app.core import toolbox
-from app.core.tools import _mcp_connections, _toolbox_tools, _trace_mcp_call
+from app.core.tools import (
+    _derive_agent_tool_name,
+    _mcp_connections,
+    _toolbox_tools,
+    _trace_mcp_call,
+)
 from app.errors import bad_request  # noqa: F401  (确认导出仍存在)
 
 _TOOL_INFO = {
@@ -57,20 +63,39 @@ _QUERY_TOOL_INFO = {
         "method": "POST",
         "api_spec": {
             "parameters": [
-                {"name": "kn_id", "in": "query", "required": True, "schema": {"type": "string"}},
-                {"name": "ot_id", "in": "query", "required": True, "schema": {"type": "string"}},
-                {"name": "x-account-id", "in": "header", "required": False, "schema": {"type": "string"}},
+                {
+                    "name": "kn_id",
+                    "in": "query",
+                    "required": True,
+                    "schema": {"type": "string"},
+                },
+                {
+                    "name": "ot_id",
+                    "in": "query",
+                    "required": True,
+                    "schema": {"type": "string"},
+                },
+                {
+                    "name": "x-account-id",
+                    "in": "header",
+                    "required": False,
+                    "schema": {"type": "string"},
+                },
             ],
             "request_body": {
                 "content": {
-                    "application/json": {"schema": {"$ref": "#/components/schemas/QueryReq"}}
+                    "application/json": {
+                        "schema": {"$ref": "#/components/schemas/QueryReq"}
+                    }
                 }
             },
             "components": {
                 "schemas": {
                     "QueryReq": {
                         "type": "object",
-                        "properties": {"limit": {"type": "integer", "description": "条数"}},
+                        "properties": {
+                            "limit": {"type": "integer", "description": "条数"}
+                        },
                     }
                 }
             },
@@ -110,7 +135,6 @@ def test_mcp_interceptor_injects_operation_headers_at_call_time(monkeypatch):
     }
 
 
-
 def test_safe_name_sanitize_and_fallback():
     assert toolbox._safe_name("get_kn_detail", "x") == "get_kn_detail"
     assert toolbox._safe_name("含 空格-中文", "abcdef1234") == "tool_abcdef12"
@@ -131,10 +155,14 @@ def test_args_model_required_and_optional():
 
 def test_args_model_includes_query_params_and_resolves_ref():
     """P0 回归：必填 query 参数（kn_id/ot_id）必须进 args model，身份 header 必须排除。"""
-    model, params = toolbox._args_model("query_object_instance", _QUERY_TOOL_INFO["metadata"])
+    model, params = toolbox._args_model(
+        "query_object_instance", _QUERY_TOOL_INFO["metadata"]
+    )
     fields = model.model_fields
     assert fields["kn_id"].is_required() and fields["ot_id"].is_required()
-    assert "limit" in fields and not fields["limit"].is_required()  # $ref body schema 解析
+    assert (
+        "limit" in fields and not fields["limit"].is_required()
+    )  # $ref body schema 解析
     assert "x-account-id" not in fields and "x_account_id" not in fields  # 身份不给 LLM
     loc = {p.wire: p.location for p in params}
     assert loc == {"kn_id": "query", "ot_id": "query", "limit": "body"}
@@ -165,7 +193,14 @@ def test_execute_payload_routing(monkeypatch):
         account_type,
         expected_fact_event_type=None,
     ):
-        captured.update(box=box_id, tool=tool_id, tool_name=tool_name, method=method, args=args, aid=account_id)
+        captured.update(
+            box=box_id,
+            tool=tool_id,
+            tool_name=tool_name,
+            method=method,
+            args=args,
+            aid=account_id,
+        )
         return "ok"
 
     monkeypatch.setattr(toolbox, "_execute", fake_execute)
@@ -254,9 +289,20 @@ def test_execute_splits_query_and_body_by_declared_location(monkeypatch):
             return False
 
     monkeypatch.setattr(toolbox.aiohttp, "ClientSession", _Session)
-    _, params = toolbox._args_model("query_object_instance", _QUERY_TOOL_INFO["metadata"])
+    _, params = toolbox._args_model(
+        "query_object_instance", _QUERY_TOOL_INFO["metadata"]
+    )
     out = asyncio.run(
-        toolbox._execute("b-1", "t-2", "query_object_instance", "POST", {"kn_id": "kn1", "ot_id": "ot1", "limit": 5}, params, "u-9", "user")
+        toolbox._execute(
+            "b-1",
+            "t-2",
+            "query_object_instance",
+            "POST",
+            {"kn_id": "kn1", "ot_id": "ot1", "limit": 5},
+            params,
+            "u-9",
+            "user",
+        )
     )
     assert '"ok": true' in out
     assert sent["payload"]["query"] == {"kn_id": "kn1", "ot_id": "ot1"}
@@ -305,7 +351,9 @@ def test_execute_propagates_trace_context_to_proxy_and_downstream_payload(monkey
     token = observability.set_context(ctx)
     try:
         monkeypatch.setattr(toolbox.aiohttp, "ClientSession", _Session)
-        _, params = toolbox._args_model("query_object_instance", _QUERY_TOOL_INFO["metadata"])
+        _, params = toolbox._args_model(
+            "query_object_instance", _QUERY_TOOL_INFO["metadata"]
+        )
         out = asyncio.run(
             toolbox._execute(
                 "b-1",
@@ -377,7 +425,9 @@ def test_execute_emits_hash_only_tool_evidence(monkeypatch):
     try:
         monkeypatch.setattr(toolbox.aiohttp, "ClientSession", _Session)
         monkeypatch.setattr(evidence, "submit_events", fake_submit)
-        _, params = toolbox._args_model("query_object_instance", _QUERY_TOOL_INFO["metadata"])
+        _, params = toolbox._args_model(
+            "query_object_instance", _QUERY_TOOL_INFO["metadata"]
+        )
         out = asyncio.run(
             toolbox._execute(
                 "b-1",
@@ -394,7 +444,10 @@ def test_execute_emits_hash_only_tool_evidence(monkeypatch):
         observability.reset_context(token)
 
     assert "客户A风险升高" in out
-    assert [event["event_type"] for event in submitted] == ["tool.called", "tool.result.observed"]
+    assert [event["event_type"] for event in submitted] == [
+        "tool.called",
+        "tool.result.observed",
+    ]
     serialized = str(submitted)
     assert "kn1" not in serialized
     assert "ot1" not in serialized
@@ -445,11 +498,17 @@ def test_execute_assigns_operation_and_propagates_causality_headers(monkeypatch)
             upstream_span_id="abcdef1234567890",
         )
     )
-    interaction_token = evidence.begin_interaction("hello", "task", "agent-1", "bkn.agent.task")
+    interaction_token = evidence.begin_interaction(
+        "hello", "task", "agent-1", "bkn.agent.task"
+    )
     try:
         monkeypatch.setattr(toolbox.aiohttp, "ClientSession", _Session)
         monkeypatch.setattr(evidence, "submit_events", fake_submit)
-        asyncio.run(toolbox._execute("box-1", "tool-1", "monitor", "POST", {}, [], "acct", "user"))
+        asyncio.run(
+            toolbox._execute(
+                "box-1", "tool-1", "monitor", "POST", {}, [], "acct", "user"
+            )
+        )
     finally:
         evidence.end_interaction(interaction_token)
         observability.reset_context(token)
@@ -507,9 +566,7 @@ def test_context_loader_search_without_receipt_links_real_retrieval_event_to_cla
     ctx = observability.TraceContext(
         trace_id="ce31e2d297bd4ee0b1313ca3bdcd1acf",
         request_id="req_real_retrieval_001",
-        traceparent=(
-            "00-ce31e2d297bd4ee0b1313ca3bdcd1acf-abcdef1234567890-01"
-        ),
+        traceparent=("00-ce31e2d297bd4ee0b1313ca3bdcd1acf-abcdef1234567890-01"),
         entry_boundary="external",
         upstream_span_id="abcdef1234567890",
         tenant_id="tenant-demo",
@@ -536,11 +593,12 @@ def test_context_loader_search_without_receipt_links_real_retrieval_event_to_cla
             )
         )
         operation_id = submitted[0]["operation_id"]
-        expected_event_id = "evt_" + hashlib.sha256(
-            (
-                f"{ctx.trace_id}|{operation_id}|retrieval.completed|1"
-            ).encode("utf-8")
-        ).hexdigest()
+        expected_event_id = (
+            "evt_"
+            + hashlib.sha256(
+                (f"{ctx.trace_id}|{operation_id}|retrieval.completed|1").encode("utf-8")
+            ).hexdigest()
+        )
         model_headers = evidence.model_context_headers(
             [ToolMessage(content=result, tool_call_id="call-search-schema")],
             "op-model-final",
@@ -637,7 +695,9 @@ def test_default_toolbox_degrades_but_explicit_ref_fails(monkeypatch):
     assert tools == []
 
     with pytest.raises(RuntimeError):
-        asyncio.run(_toolbox_tools([{"type": "toolbox", "box_id": "box-x"}], "u", "user"))
+        asyncio.run(
+            _toolbox_tools([{"type": "toolbox", "box_id": "box-x"}], "u", "user")
+        )
 
 
 def test_mcp_connections_propagate_trace_context():
@@ -713,3 +773,22 @@ def test_explicit_box_error_is_classified(monkeypatch):
     with pytest.raises(HTTPException) as e2:
         asyncio.run(toolbox._list_tools("b-1", "u", "user"))
     assert e2.value.status_code == 502 and "Upstream" in e2.value.detail["code"]
+
+
+_OPENAI_NAME_RE = __import__("re").compile(r"^[a-zA-Z0-9_-]{1,64}$")
+
+
+def test_agent_as_tool_name_is_openai_legal():
+    name = _derive_agent_tool_name({}, "语义理解", "abcdef123456")
+    assert _OPENAI_NAME_RE.match(name), name
+    assert "语" not in name
+    assert len(_derive_agent_tool_name({}, "a" * 200, "x")) == 64
+    assert _derive_agent_tool_name({}, "translator", "x") == "agent_translator"
+    assert (
+        _derive_agent_tool_name({"name": "我的工具"}, "translator", "abcdef1234")
+        == "tool_abcdef12"
+    )
+    assert _derive_agent_tool_name({"name": "my_tool"}, "translator", "x") == "my_tool"
+    assert _OPENAI_NAME_RE.match(
+        _derive_agent_tool_name({"name": "工具" * 40}, "x", "abcdef1234")
+    )

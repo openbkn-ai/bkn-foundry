@@ -8,8 +8,8 @@ import (
 	"context"
 	"testing"
 
-	"bkn-safe/internal/authz"
-	"bkn-safe/internal/model"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
 func TestListUsersFiltersAndEnrichment(t *testing.T) {

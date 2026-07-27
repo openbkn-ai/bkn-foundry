@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"bkn-safe/internal/model"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
 func TestMeAuthGate(t *testing.T) {

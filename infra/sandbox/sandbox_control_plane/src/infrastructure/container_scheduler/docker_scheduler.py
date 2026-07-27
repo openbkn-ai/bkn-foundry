@@ -171,29 +171,31 @@ set -e
 echo "{s3_access_key}:{s3_secret_key}" > /tmp/.passwd-s3fs
 chmod 600 /tmp/.passwd-s3fs
 
-# 1. 创建 S3 挂载点（注意：不是直接挂到 /workspace）
-echo "Mounting S3 bucket {s3_bucket}..."
-mkdir -p /mnt/s3-root
-s3fs {s3_bucket} /mnt/s3-root \\
+# 1) 先以 root 临时挂整桶（不 allow_other），创建会话前缀后立即卸载。
+#    s3fs 无法挂载不存在的前缀，需先确保前缀对象存在。用户代码看不到此临时挂载点。
+mkdir -p /mnt/s3-init
+s3fs {s3_bucket} /mnt/s3-init \\
+    -o passwd_file=/tmp/.passwd-s3fs \\
+    -o url={s3_endpoint_url or "https://s3.amazonaws.com"} \\
+    {path_style_option}
+mkdir -p "/mnt/s3-init/{s3_prefix}"
+umount /mnt/s3-init || fusermount -u /mnt/s3-init
+rmdir /mnt/s3-init
+
+# 2) 只把本会话前缀挂到 /workspace，不挂整个 bucket。整桶挂载会让任意会话读写/删除
+#    其它会话的数据，是跨会话数据泄露/破坏面；按前缀挂载后代码只能触及自己的 /workspace。
+echo "Mounting S3 workspace {s3_bucket}:/{s3_prefix} to /workspace..."
+mkdir -p /workspace
+s3fs {s3_bucket}:/{s3_prefix} /workspace \\
     -o passwd_file=/tmp/.passwd-s3fs \\
     -o url={s3_endpoint_url or "https://s3.amazonaws.com"} \\
     {path_style_option} \\
     -o allow_other \\
     -o umask=000
 
-# 2. 创建 session workspace 目录（如果不存在）
-SESSION_PATH="/mnt/s3-root/{s3_prefix}"
-echo "Ensuring session workspace exists: $SESSION_PATH"
-mkdir -p "$SESSION_PATH"
-
-# 3. 确保 /workspace 挂载点存在
-mkdir -p /workspace
-
-# 4. 使用 bind mount 将 session 目录覆盖到 /workspace
-mount --bind "$SESSION_PATH" /workspace
-
-# 5. 验证挂载结果
-echo "Workspace bind mounted: $(ls -la /workspace)"
+# 3) 校验确实挂上了 s3fs，避免静默回落到本地目录。
+mount | grep -q "on /workspace type fuse" || {{ echo "s3fs failed to mount /workspace" >&2; exit 1; }}
+echo "Workspace mounted (scoped to {s3_prefix}): $(ls -la /workspace)"
 
 # ========== ✅ 新增：安装依赖 ==========
 {dependency_install_script}

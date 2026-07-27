@@ -27,8 +27,16 @@ var metricDynamicParamsPrompt string
 //go:embed prompts/tool_dynamic_params.md
 var toolDynamicParamsPrompt string
 
-// dynamicParamsMaxTokens is sufficient for dynamic parameter generation.
-const dynamicParamsMaxTokens = 2000
+// 动态参数生成的采样参数，取值与 rerank_llm 配置默认一致（temperature=0 / top_k=2 / top_p=0.5）：
+// 这里要的是结构化 JSON 的确定性输出，不是发散。top_p / top_k 必须显式设置——留空走 Go 零值，
+// 而 mf-model-api 要求 0 < top_p ≤ 1、top_k ≥ 1，零值直接 400（issue #450）。
+const (
+	// dynamicParamsMaxTokens is sufficient for dynamic parameter generation.
+	dynamicParamsMaxTokens   = 2000
+	dynamicParamsTemperature = 0.0
+	dynamicParamsTopK        = 2
+	dynamicParamsTopP        = 0.5
+)
 
 // dynamicParamsLLM generates metric and ToolBox-tool dynamic parameters.
 // 不指定模型：mf-model-api 在 model 为空时解析系统默认大模型（t_llm_model.f_default=1，
@@ -135,7 +143,10 @@ func (d *dynamicParamsLLM) chatJSON(ctx context.Context, systemPrompt, userJSON,
 			{Role: "system", Content: systemPrompt},
 			{Role: "user", Content: userJSON},
 		},
-		MaxTokens: dynamicParamsMaxTokens,
+		Temperature: dynamicParamsTemperature,
+		TopK:        dynamicParamsTopK,
+		TopP:        dynamicParamsTopP,
+		MaxTokens:   dynamicParamsMaxTokens,
 	}
 	content, err := d.mfModelClient.Chat(ctx, req)
 	if err != nil {

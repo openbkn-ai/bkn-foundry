@@ -7,19 +7,32 @@ import (
 	"os"
 	"strings"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/conf"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/tracesvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/driveradapter/api/rdto"
 )
 
 type TraceHandler struct {
 	traceQueryService *tracesvc.TraceQueryService
+	authz             traceReadAuthz
 	allowRawQuery     bool
 }
 
 func NewTraceHandler(traceQueryService *tracesvc.TraceQueryService) *TraceHandler {
 	return &TraceHandler{
 		traceQueryService: traceQueryService,
+		authz:             newTraceReadAuthz(conf.NewTraceReadAuthzConfig()),
 		allowRawQuery:     strings.EqualFold(strings.TrimSpace(os.Getenv("BKN_TRACE_ALLOW_RAW_TRACE_QUERY")), "true"),
+	}
+}
+
+// NewTraceHandlerWithAuthz builds the handler with an explicit read-authz
+// config (tests inject enforce/shadow directly).
+func NewTraceHandlerWithAuthz(traceQueryService *tracesvc.TraceQueryService, authzCfg conf.TraceReadAuthzConfig) *TraceHandler {
+	return &TraceHandler{
+		traceQueryService: traceQueryService,
+		authz:             newTraceReadAuthz(authzCfg),
+		allowRawQuery:     true,
 	}
 }
 
@@ -34,7 +47,7 @@ func NewTraceHandler(traceQueryService *tracesvc.TraceQueryService) *TraceHandle
 // @Failure 400 {object} rdto.ErrorResponse
 // @Failure 405 {object} rdto.ErrorResponse
 // @Failure 504 {object} rdto.ErrorResponse
-// @Router /traces/_search [post]
+// @Router /api/agent-observability/v1/traces/_search [post]
 func (h *TraceHandler) SearchTraces(w http.ResponseWriter, r *http.Request) {
 	if !h.allowRawQuery {
 		writeJSON(w, http.StatusForbidden, rdto.ErrorResponse{Code: "RAW_TRACE_QUERY_DISABLED", Message: "unscoped raw trace query is disabled"})
@@ -74,7 +87,16 @@ func (h *TraceHandler) SearchTraces(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	traceData, err := h.traceQueryService.SearchTraces(r.Context(), raw)
+	// Read authorization: scope the query to the caller's account (or reject an
+	// unauthenticated caller when enforcing). In shadow mode this passes the
+	// query through unchanged and only logs.
+	effective, status, message := h.authz.authorize(identityFromRequest(r), raw)
+	if status != 0 {
+		writeJSON(w, status, rdto.ErrorResponse{Code: "FORBIDDEN", Message: message})
+		return
+	}
+
+	traceData, err := h.traceQueryService.SearchTraces(r.Context(), effective)
 	if err != nil {
 		writeJSON(w, http.StatusGatewayTimeout, rdto.ErrorResponse{
 			Code:    "QUERY_FAILED",
@@ -100,7 +122,7 @@ func (h *TraceHandler) SearchTraces(w http.ResponseWriter, r *http.Request) {
 // @Failure 405 {object} rdto.ErrorResponse
 // @Failure 500 {object} rdto.ErrorResponse
 // @Failure 504 {object} rdto.ErrorResponse
-// @Router /traces/by-conversation [get]
+// @Router /api/agent-observability/v1/traces/by-conversation [get]
 func (h *TraceHandler) SearchTracesByConversationID(w http.ResponseWriter, r *http.Request) {
 	if !h.allowRawQuery {
 		writeJSON(w, http.StatusForbidden, rdto.ErrorResponse{Code: "RAW_TRACE_QUERY_DISABLED", Message: "unscoped conversation trace query is disabled"})
@@ -145,7 +167,16 @@ func (h *TraceHandler) SearchTracesByConversationID(w http.ResponseWriter, r *ht
 		return
 	}
 
-	traceData, err := h.traceQueryService.SearchTraces(r.Context(), query)
+	// Same read authorization as _search: the conversation filter is scoped to
+	// the caller's account, so one account cannot read another's conversation
+	// by id.
+	effective, status, message := h.authz.authorize(identityFromRequest(r), query)
+	if status != 0 {
+		writeJSON(w, status, rdto.ErrorResponse{Code: "FORBIDDEN", Message: message})
+		return
+	}
+
+	traceData, err := h.traceQueryService.SearchTraces(r.Context(), effective)
 	if err != nil {
 		writeJSON(w, http.StatusGatewayTimeout, rdto.ErrorResponse{
 			Code:    "QUERY_FAILED",
@@ -179,7 +210,7 @@ func (h *TraceHandler) GetTraceSubresource(w http.ResponseWriter, r *http.Reques
 // @Failure 405 {object} rdto.ErrorResponse
 // @Failure 500 {object} rdto.ErrorResponse
 // @Failure 504 {object} rdto.ErrorResponse
-// @Router /traces/{trace_id}/trace-graph [get]
+// @Router /api/agent-observability/v1/traces/{trace_id}/trace-graph [get]
 func (h *TraceHandler) GetTraceGraphByTraceID(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, rdto.ErrorResponse{

@@ -532,24 +532,6 @@ curl -sk "https://<访问地址>/health" || true
 
 ---
 
-## 🧮 可选：Etrino（数据视图自定义 SQL）
-
-仅安装 **BKN Foundry** 时，`openbkn dataview query <id>` 不带 `--sql` 通常已可用（按视图定义分页查询等）。
-
-> ⚠️ `openbkn dataview query --sql "..."` 自定义 SQL 依赖集群内的 `vega-calculate-coordinator`，由 **Etrino** 相关 Chart 提供（与 `vega-hdfs`、`vega-calculate`（内含 coordinator）、`vega-metadata` 一并部署）。
-
-在已存在 Core 的集群上，使用 `deploy.sh` 的 `etrino` 子命令即可：
-
-```bash
-./deploy.sh etrino install
-./deploy.sh etrino status
-./deploy.sh etrino uninstall
-```
-
-> 💡 如需指定配置文件，可附加 `--config=/path/to/config.yaml`。安装会检查 Helm、为节点打标签、创建 HDFS 所需目录、添加 Helm 仓库别名 `myrepo`（`https://kweaver-ai.github.io/helm-repo/`），依次安装 `vega-hdfs → vega-calculate → vega-metadata`。请保证节点磁盘与资源足够，镜像仓库对你的环境可达（chart 默认镜像可能与 Core 所用仓库不同，必要时在 values 或 chart 升级中覆盖 `image.registry` 等）。
-
----
-
 ## 🧠 配置模型
 
 BKN Foundry 默认不包含预置模型。如需使用 **语义搜索**（`openbkn bkn search`）或 **Agent 对话**，需先注册 LLM 与 Embedding 小模型。

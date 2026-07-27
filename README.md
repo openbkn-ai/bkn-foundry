@@ -60,10 +60,7 @@ sudo bash ./preflight.sh --help         # all flags (--role, --skip, --report, -
 ```bash
 # (Same deploy/ directory as step 2)
 
-# Equivalent to:
-# ./deploy.sh core install --set auth.enabled=false --set businessDomain.enabled=false
-
-# Full installation (includes auth & business-domain modules)
+# Install the full BKN Foundry stack
 ./deploy.sh bkn-foundry install
 
 # Or specify addresses explicitly (skips interactive prompts):
@@ -106,9 +103,7 @@ sudo bash ./onboard.sh --help # all flags (--config=models.yaml, --enable-bkn-se
    BKN Foundry is backend-only and does not provide a web console. On the machine you use to reach the cluster (laptop, bastion, etc.), use the BKN CLI from [**bkn-sdk**](https://github.com/openbkn-ai/bkn-sdk): either `npm install -g @openbkn/bkn-sdk` or `npx openbkn` (no global install; see [OpenBKN SDK](#toc-bkn-sdk) below). Then run:
 
 ```bash
-# Minimum install (no auth):
-openbkn auth login https://<node-ip> -k
-# Full install: sign in as the user onboard.sh created (default password 111111 unless you overrode it):
+# Sign in as the user onboard.sh created (default password 111111 unless you overrode it):
 openbkn auth login https://<node-ip> -u test -p '<password>' -k
 
 openbkn bkn list
@@ -126,7 +121,7 @@ openbkn <command> --help         # help for a specific command, e.g. openbkn bkn
 
 For full product documentation, see the [Documentation](help/README.md) ([EN](help/en/README.md) / [中文](help/zh/README.md)).
 
-> **Did a full install (without `--minimum`)?** Use the `openbkn admin` subcommands to manage users, organizations, roles, models, and audit logs — see [Administration](#toc-kweaver-admin) below.
+> **After a full install**, use the `openbkn admin` subcommands to manage users, organizations, roles, models, and audit logs — see [Administration](#toc-kweaver-admin) below.
 
 <a id="toc-kweaver-core"></a>
 
@@ -327,7 +322,7 @@ For streaming and the full resource API (`bkn.kn`, `bkn.context`, `bkn.models`, 
 
 ## 🛡️ Administration
 
-Platform administration (users, organizations, roles, models, audit) is **built into the same `openbkn` CLI** under the `openbkn admin` subcommands — there is no separate admin tool. Most `admin` commands target services that come with a **full install** (`auth.enabled=true`, `businessDomain.enabled=true`); on a `--minimum` install they return 401 / 404 (expected).
+Platform administration (users, organizations, roles, models, audit) is **built into the same `openbkn` CLI** under the `openbkn admin` subcommands — there is no separate admin tool. These commands target services included in the **full install** (`auth.enabled=true`, `businessDomain.enabled=true`).
 
 ```bash
 openbkn admin org tree                          # list departments

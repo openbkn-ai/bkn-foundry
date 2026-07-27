@@ -30,7 +30,7 @@ cd bkn-foundry/deploy   # 在此目录执行 bash ./dev/mac.sh ...（与 deploy.
 
 ### 操作流程
 
-在 **`deploy/`** 下执行；用 **bash** 调用（如 `bash ./dev/mac.sh ...`）。**`bkn-foundry` / `core`** 封装默认装**全量（含必选的 bkn-safe）**；旧的无认证 `--minimum` 模式已移除。
+在 **`deploy/`** 下执行；用 **bash** 调用（如 `bash ./dev/mac.sh ...`）。**`openbkn` / `bkn-foundry`** 封装默认装**全量（含必选的 bkn-safe）。
 
 | 步骤 | 命令 | 是否必需？ |
 |------|------|------------|
@@ -42,7 +42,7 @@ cd bkn-foundry/deploy   # 在此目录执行 bash ./dev/mac.sh ...（与 deploy.
 | 6 | `bash ./dev/mac.sh bkn-foundry install` | **必须** — 部署 Core（全量含 bkn-safe）；默认**先装捆绑 data-services** |
 | 7 | `bash ./dev/mac.sh onboard` | **可选**（需 `bkn` CLI；`-y` 少交互） |
 
-其它与 Linux **`deploy.sh`** 相同（须集群就绪、[`CONFIG_YAML_PATH`](conf/mac-config.yaml) 等与安装一致）：`bash ./dev/mac.sh isf install|download|uninstall|status`，`bash ./dev/mac.sh etrino …`（Vega；**`vega`** 为 **`etrino`** 别名）。ISF 对 DB/配置要求常更高。**未接入 `mac.sh`：**`bkn-dip`。
+其它与 Linux **`deploy.sh`** 相同（须集群就绪、[`CONFIG_YAML_PATH`](conf/mac-config.yaml) 等与安装一致）：`bash ./dev/mac.sh isf install|download|uninstall|status`。ISF 对 DB/配置要求常更高。**未接入 `mac.sh`：**`bkn-dip`。
 
 **最短路径：**`cluster up` → `bkn-foundry install`（**先装数据层**）。若 **`OPENBKN_SKIP_DATA_SERVICES_BUNDLE=true`**，须自备 DB/Kafka 等可达实例，或先执行 **`data-services install`**。
 

@@ -8,7 +8,7 @@ from langchain_mcp_adapters.client import MultiServerMCPClient
 from app import evidence, observability
 from app.config import config
 from app.core.skills import normalize_skill_id
-from app.core.toolbox import load_toolbox_tools
+from app.core.toolbox import _safe_name, load_toolbox_tools
 from app.errors import bad_request
 
 logger = logging.getLogger("bkn-agent.tools")
@@ -132,9 +132,25 @@ async def _agent_tool(
             await dao.set_task_status(session, task.task_id, "succeeded", output=output)
         return output
 
-    name = ref.get("name") or f"agent_{sub_agent.name}"
+    name = _derive_agent_tool_name(ref, sub_agent.name, sub_agent.agent_id)
     description = ref.get("description") or f"调用子 agent「{sub_agent.name}」完成一次性任务。"
     return StructuredTool.from_function(coroutine=call_sub_agent, name=name, description=description)
+
+
+def _derive_agent_tool_name(ref: dict, agent_name: str, agent_id: str) -> str:
+    """OpenAI-legal tool name for an agent-as-tool.
+
+    AgentSpec.name allows Chinese and up to 100 chars, but an OpenAI function
+    name must be ASCII [a-zA-Z0-9_-] and <=64 — so a raw `agent_{name}` like
+    `agent_语义理解` makes the model 400 on every call before the tool even
+    runs, and agent-as-tool is a core capability with a wide blast radius. Run
+    the explicit (AgentToolRef.name) or derived name through the same sanitizer
+    the toolbox tools use: it strips illegal chars, truncates to 64, and falls
+    back to `tool_{agent_id前缀}` when nothing usable survives. Semantics are
+    carried by the description instead.
+    """
+    raw_name = ref.get("name") or f"agent_{agent_name}"
+    return _safe_name(raw_name, agent_id)
 
 
 def _read_skill_file_tool(account_id: str, account_type: str) -> StructuredTool:

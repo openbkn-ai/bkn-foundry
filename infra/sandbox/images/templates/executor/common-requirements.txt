@@ -1,0 +1,38 @@
+# Common packages baked into the template image's baseline dir (/opt/sandbox-common).
+#
+# Purpose: most sandbox functions need a small, stable data/IO stack. Baking it
+# into the template image avoids per-session pip installs and works in no-egress
+# deployments (runtime pip cannot reach the internet there).
+#
+# These are DIRECT deps only. The image build runs `pip install --target
+# /opt/sandbox-common -r` on this file; the resolved transitive set is what ends
+# up in the image. /opt/sandbox-common survives dependency syncs (unlike
+# /opt/sandbox-venv, which is wiped each sync) and sits after it on PYTHONPATH,
+# so per-session dependency installs (--target /opt/sandbox-venv) still override
+# these baseline versions.
+#
+# Pins target Python 3.11 (the base image runtime) and the stable numpy 1.x
+# stack, chosen for maximum compatibility with existing functions (numpy 2.x
+# introduces breaking changes and, at 2.5+, drops Python 3.11). Bump deliberately.
+
+# --- Core: data science (covers most functions) ---
+numpy==1.26.4
+pandas==2.2.3
+scipy==1.13.1
+scikit-learn==1.5.2
+statsmodels==0.14.4
+
+# --- Common: high-frequency, lightweight helpers ---
+python-dateutil==2.9.0.post0
+pytz==2024.2
+pydantic==2.9.2
+PyYAML==6.0.2
+jsonschema==4.23.0
+requests==2.32.3
+httpx==0.27.2
+
+# --- Optional: enable per scenario (uncomment to bake in) ---
+# openpyxl==3.1.5          # Excel read/write
+# lxml==5.3.0              # XML/HTML parsing
+# beautifulsoup4==4.12.3   # HTML scraping
+# tiktoken==0.8.0          # LLM token counting

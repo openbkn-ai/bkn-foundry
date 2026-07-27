@@ -299,48 +299,6 @@ STORAGE_EOF
         opensearch_configured=true
     fi
 
-    # MongoDB - only generate config if MongoDB is installed
-    local mongodb_ns="${MONGODB_NAMESPACE}"
-    # Prefer a stable service name "mongodb" (release name) for clients: mongodb.<ns>.svc.cluster.local
-    local mongodb_host="${MONGODB_RELEASE_NAME}.${mongodb_ns}.svc.cluster.local"
-    local mongodb_port="28000"
-    local mongodb_user="${MONGODB_SECRET_USERNAME}"
-    local mongodb_password="${MONGODB_SECRET_PASSWORD}"
-    local mongodb_configured=false
-    
-    # Check if MongoDB secret exists (indicates MongoDB is installed)
-    if kubectl -n "${mongodb_ns}" get secret "${MONGODB_SECRET_NAME}" >/dev/null 2>&1; then
-        mongodb_configured=true
-        if [[ -z "${mongodb_password}" ]]; then
-            # Try to get password from secret
-            mongodb_password=$(kubectl -n "${mongodb_ns}" get secret "${MONGODB_SECRET_NAME}" -o jsonpath='{.data.password}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
-        fi
-    fi
-    
-    # MongoDB connection parameters (config.yaml schema expected by bkn-cli)
-    # Set replicaSet based on whether replica set is enabled
-    local mongodb_replica_set=""
-    if [[ "${mongodb_configured}" == "true" ]]; then
-        # Check if replica set is enabled by checking StatefulSet args or using default config
-        # First, try to detect from StatefulSet
-        local sts_replset
-        sts_replset=$(kubectl -n "${mongodb_ns}" get statefulset "${MONGODB_RELEASE_NAME}-mongodb" -o jsonpath='{.spec.template.spec.containers[0].args[*]}' 2>/dev/null | grep -o "replSet [^ ]*" | awk '{print $2}' || echo "")
-        if [[ -n "${sts_replset}" ]]; then
-            mongodb_replica_set="${sts_replset}"
-        elif [[ "${MONGODB_REPLSET_ENABLED:-true}" == "true" ]]; then
-            # Use default from script variable (default is true for single-node replica set)
-            mongodb_replica_set="${MONGODB_REPLSET_NAME:-rs0}"
-        fi
-        # If keyfile exists in secret, it's likely replica set mode
-        local has_keyfile
-        has_keyfile=$(kubectl -n "${mongodb_ns}" get secret "${MONGODB_SECRET_NAME}" -o jsonpath='{.data.mongodb\.keyfile}' 2>/dev/null || echo "")
-        if [[ -n "${has_keyfile}" ]] && [[ -z "${mongodb_replica_set}" ]]; then
-            mongodb_replica_set="${MONGODB_REPLSET_NAME:-rs0}"
-        fi
-    fi
-    # Always use admin as authSource
-    local mongodb_auth_source="admin"
-
     # Kafka
     local kafka_ns="${KAFKA_NAMESPACE}"
     local kafka_mechanism="${KAFKA_SASL_MECHANISM}"
@@ -365,23 +323,6 @@ STORAGE_EOF
     local kafka_host=""
     if [[ "${kafka_configured}" == "true" ]]; then
         kafka_host="${kafka_svc}.${kafka_ns}.svc.cluster.local"
-    fi
-
-    # Build MongoDB config section if MongoDB is installed
-    local mongodb_section=""
-    if [[ "${mongodb_configured}" == "true" ]]; then
-        mongodb_section=$(cat <<MONGODB_EOF
-  mongodb:
-    source_type: internal
-    host: $(yaml_quote "${mongodb_host}")
-    port: ${mongodb_port}
-    user: $(yaml_quote "${mongodb_user}")
-    password: $(yaml_quote "${mongodb_password}")
-    replicaSet: $(yaml_quote "${mongodb_replica_set}")
-    options:
-      authSource: $(yaml_quote "${mongodb_auth_source}")
-MONGODB_EOF
-)
     fi
 
     # Ingress-Nginx - detect actual IngressClass name
@@ -535,12 +476,11 @@ HYDRA_EOF
 )
 
     local dep_services_section=""
-    if [[ -n "${mq_section}${opensearch_section}${mongodb_section}${rds_section}${redis_section}${hydra_section}" ]]; then
+    if [[ -n "${mq_section}${opensearch_section}${rds_section}${redis_section}${hydra_section}" ]]; then
         dep_services_section=$(cat <<DEP_EOF
 depServices:
 ${mq_section}
 ${opensearch_section}
-${mongodb_section}
 ${rds_section}
 ${redis_section}
 ${hydra_section}
@@ -619,7 +559,6 @@ EOF
 
     log_info "Wrote config file: ${out}"
     local included_services=()
-    [[ "${mongodb_configured}" == "true" ]] && included_services+=("MongoDB")
     [[ "${ingress_class_configured}" == "true" ]] && included_services+=("Ingress-Nginx")
     [[ "${redis_configured}" == "true" ]] && included_services+=("Redis")
     [[ "${kafka_configured}" == "true" ]] && included_services+=("Kafka")

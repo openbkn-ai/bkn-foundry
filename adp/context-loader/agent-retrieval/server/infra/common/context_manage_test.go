@@ -2,6 +2,7 @@ package common
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/smartystreets/goconvey/convey"
@@ -225,5 +226,36 @@ func TestBusinessCausalityHeadersAreValidatedAndPropagated(t *testing.T) {
 		convey.So(header[HeaderBKNCausationEventID], convey.ShouldBeEmpty)
 		convey.So(header[HeaderBKNClaimID], convey.ShouldBeEmpty)
 		convey.So(header[HeaderBKNAttempt], convey.ShouldBeEmpty)
+	})
+}
+
+func TestCallerCorrelationIDsAreValidatedWithoutGeneration(t *testing.T) {
+	convey.Convey("valid caller ids are propagated and invalid ids are dropped", t, func() {
+		headers := map[string]string{
+			HeaderBKNRequestID:      "req_01JZVALIDREQUESTID000000010",
+			HeaderBKNConversationID: " agent:thread_abc ",
+			HeaderBKNInteractionID:  "itr_2026072701",
+		}
+		traceCtx := TraceContextFromHeaders(func(key string) string { return headers[key] })
+		convey.So(traceCtx.ConversationID, convey.ShouldEqual, "agent:thread_abc")
+		convey.So(traceCtx.InteractionID, convey.ShouldEqual, "itr_2026072701")
+
+		invalid := SetTraceContextToCtx(context.Background(), TraceContext{
+			RequestID:      "req_01JZVALIDREQUESTID000000013",
+			ConversationID: "bad id with spaces",
+			InteractionID:  strings.Repeat("a", 129),
+		})
+		invalidCtx, ok := GetTraceContextFromCtx(invalid)
+		convey.So(ok, convey.ShouldBeTrue)
+		convey.So(invalidCtx.ConversationID, convey.ShouldBeEmpty)
+		convey.So(invalidCtx.InteractionID, convey.ShouldBeEmpty)
+
+		degraded := GetHeaderFromCtx(SetTraceContextToCtx(context.Background(), TraceContext{
+			RequestID: "req_01JZVALIDREQUESTID000000015",
+		}))
+		_, hasConversation := degraded[HeaderBKNConversationID]
+		_, hasInteraction := degraded[HeaderBKNInteractionID]
+		convey.So(hasConversation, convey.ShouldBeFalse)
+		convey.So(hasInteraction, convey.ShouldBeFalse)
 	})
 }

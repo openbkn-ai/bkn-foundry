@@ -28,9 +28,9 @@ import (
 	"github.com/openbkn-ai/licverify/keys"
 	"gorm.io/gorm"
 
-	"bkn-safe/config"
-	"bkn-safe/internal/audit"
-	"bkn-safe/internal/model"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/config"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/audit"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
 const rowID = "current"
@@ -124,6 +124,27 @@ func NewWithKeyTable(db *gorm.DB, cfg config.LicenseConfig, aud *audit.Store, ke
 
 // State returns the current gating snapshot (atomic, hot-path safe).
 func (s *Service) State() licverify.Snapshot { return s.guard.State() }
+
+// FeatureEnabled reports whether the license currently carries a paid feature.
+// It reads the live snapshot on every call and caches nothing, so a hot-reload,
+// an expiry, or a revocation takes effect everywhere without a restart
+// (open-core-gating §2.7 rule 5).
+//
+// Only StateValid and StateGrace carry paid features. Every other state — a
+// license that lapsed past grace, an unverifiable file, a fresh install inside
+// its trial window, an unactivated cluster — resolves to the community feature
+// set. That is a downgrade of paid capability only: community capability is not
+// gated at all, and data stays readable and exportable in every state.
+func (s *Service) FeatureEnabled(name string) bool {
+	snap := s.guard.State()
+	if snap.State != licverify.StateValid && snap.State != licverify.StateGrace {
+		return false
+	}
+	if snap.Payload == nil {
+		return false // a valid state always carries a payload; never gate on a nil deref
+	}
+	return snap.Payload.HasFeature(name)
+}
 
 // Fingerprint returns this cluster's instance fingerprint. Available with or
 // without a license — the activation guide shows it before anything is imported.

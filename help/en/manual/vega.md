@@ -176,7 +176,7 @@ Placeholders: `{{.<resource_id>}}` or `{{<resource_id>}}` (Vega resource id) are
 | Structured | `openbkn vega query execute` | vega-backend | Same-catalog JOINs, filter DSL |
 | Direct SQL | `openbkn vega sql` | vega-backend | Complex SQL, aggregations, placeholders |
 | Resource data | `openbkn vega resource query <id> -d {...}` | vega-backend | Single resource, filters, `search_after` |
-| Dataview `--sql` | `openbkn dataview query ... --sql` | mdl-uniquery + **Trino** (Etrino) | Cross-engine SQL via coordinator |
+| Dataview `--sql` | `openbkn dataview query ... --sql` | mdl-uniquery + separately managed **Trino** | Cross-engine SQL via coordinator |
 
 TypeScript: `bkn.vega.sql(body)` for direct SQL; the structured `query/execute` endpoint has no typed helper — reach it via `bkn.call('/api/vega-backend/v1/query/execute', { method: 'POST', body })`.
 
@@ -205,7 +205,7 @@ openbkn dataview query <dataview_id> --sql "SELECT order_id, amount FROM mysql_d
 openbkn dataview query <dataview_id> --sql "SELECT COUNT(*) AS total FROM mysql_demo.\"sales\".\"orders\""
 ```
 
-**Custom SQL (`--sql`) and Etrino**: Without `--sql`, `dataview query` uses the view’s stored definition and talks to the data source directly. With `--sql`, traffic goes through **`vega-calculate-coordinator`** (Hetu/Presto–style engine), which is **not** in the default BKN Foundry manifest. Install the **Etrino** charts: `vega-hdfs`, `vega-calculate` (includes the coordinator), and `vega-metadata`. Run `./deploy.sh etrino install` from the `deploy` directory to install Etrino only. **Use fully-qualified `catalog."schema"."table"` names for ad-hoc SQL.** See **Optional: Etrino** in [Install and deploy](../install.md).
+**Custom SQL (`--sql`)**: Without `--sql`, `dataview query` uses the view’s stored definition and talks to the data source directly. With `--sql`, traffic requires a separately managed **`vega-calculate-coordinator`** (Hetu/Presto–style engine), which is not included or installed by the BKN Foundry deployment scripts. **Use fully-qualified `catalog."schema"."table"` names for ad-hoc SQL.**
 
 **`dataview get` response fields (for custom `--sql`)**: The JSON from `openbkn dataview get <view_id> --pretty` includes the following; names match REST and the TypeScript SDK.
 

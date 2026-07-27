@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -603,5 +604,68 @@ func TestPostBatchSendsDedicatedIngestToken(t *testing.T) {
 	})}
 	if err := postBatch("http://trace.local", time.Second, batch{}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func captureIngestedTrace(t *testing.T, ctx context.Context) map[string]any {
+	t.Helper()
+	bodies := make(chan []byte, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body := make([]byte, r.ContentLength)
+		if _, err := io.ReadFull(r.Body, body); err != nil {
+			t.Errorf("read ingest body: %v", err)
+		}
+		select {
+		case bodies <- body:
+		default:
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	t.Setenv(envEvidenceIngestURL, server.URL)
+	t.Setenv(envEvidenceIngestTimeoutMS, "500")
+
+	SubmitEvents(ctx, nil, nil, []Event{{"event_type": "claim.created"}})
+
+	select {
+	case body := <-bodies:
+		var payload struct {
+			Trace map[string]any `json:"trace"`
+		}
+		if err := json.Unmarshal(body, &payload); err != nil {
+			t.Fatalf("decode ingest body: %v", err)
+		}
+		return payload.Trace
+	case <-time.After(2 * time.Second):
+		t.Fatalf("expected evidence ingestion request")
+		return nil
+	}
+}
+
+func TestSubmitEventsCarriesCorrelationIDs(t *testing.T) {
+	ctx := common.SetTraceContextToCtx(testTraceContext(), common.TraceContext{
+		RequestID:      "req_context_loader_phase2_0002",
+		ConversationID: "agent:thread_abc",
+		InteractionID:  "itr_2026072701",
+	})
+
+	traceBlock := captureIngestedTrace(t, ctx)
+	if got := traceBlock["bkn.conversation.id"]; got != "agent:thread_abc" {
+		t.Fatalf("expected conversation id in trace block, got %v", got)
+	}
+	if got := traceBlock["bkn.interaction.id"]; got != "itr_2026072701" {
+		t.Fatalf("expected interaction id in trace block, got %v", got)
+	}
+}
+
+func TestSubmitEventsOmitsCorrelationIDsWhenAbsent(t *testing.T) {
+	traceBlock := captureIngestedTrace(t, testTraceContext())
+
+	if _, ok := traceBlock["bkn.conversation.id"]; ok {
+		t.Fatalf("expected no conversation id when the caller sent none")
+	}
+	if _, ok := traceBlock["bkn.interaction.id"]; ok {
+		t.Fatalf("expected no interaction id when the caller sent none")
 	}
 }

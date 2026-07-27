@@ -9,6 +9,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/agiledragon/gomonkey/v2"
 	"github.com/bytedance/sonic"
 	"github.com/hibiken/asynq"
 	"github.com/stretchr/testify/assert"
@@ -109,6 +110,45 @@ func TestBatchBuildWorkerHandleTask(t *testing.T) {
 		task := asynq.NewTask("build:batch", workerBuildTaskPayload(t, interfaces.BatchBuildTaskMessage{TaskID: "t1"}))
 		require.NoError(t, bbw.HandleTask(context.Background(), task))
 		assert.Equal(t, interfaces.BuildIndexName("r1", "old-task"), resource.LocalIndexName)
+	})
+}
+
+func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
+	t.Run("does not dispatch embedding when index creation fails", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		lim := vmock.NewMockLocalIndexManager(ctrl)
+		enqueueCalled := false
+		patches := gomonkey.ApplyFunc(sendEmbeddingTask,
+			func(*asynq.Client, string) error {
+				enqueueCalled = true
+				return nil
+			})
+		defer patches.Reset()
+		bbw := &batchBuildWorker{lim: lim}
+		resource := &interfaces.Resource{
+			ID: "r1",
+			SchemaDefinition: []*interfaces.Property{
+				{
+					Name: "content", Type: interfaces.DataType_String,
+					Features: []interfaces.PropertyFeature{{FeatureType: interfaces.DataType_Vector}},
+				},
+			},
+		}
+		buildTask := &interfaces.BuildTask{
+			ID: "t1",
+			IndexConfig: &interfaces.BuildTaskIndexConfig{Features: map[string]interfaces.BuildTaskFieldIndexFeature{
+				"content": {Vector: &interfaces.BuildTaskEmbeddingConfig{ModelID: "m1", Dimensions: 3}},
+			}},
+		}
+
+		lim.EXPECT().CheckExist(gomock.Any(), interfaces.BuildIndexName("r1", "t1")).Return(false, nil)
+		lim.EXPECT().CreateIndex(gomock.Any(), interfaces.BuildIndexName("r1", "t1"), gomock.Any()).
+			Return(errors.New("opensearch unavailable"))
+
+		err := bbw.executeBuild(context.Background(), resource, buildTask, interfaces.BuildTaskExecuteTypeIncremental)
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "create local index failed: opensearch unavailable")
+		assert.False(t, enqueueCalled)
 	})
 }
 

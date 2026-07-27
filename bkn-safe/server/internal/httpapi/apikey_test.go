@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"bkn-safe/internal/auth"
-	"bkn-safe/internal/model"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/auth"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
 const (

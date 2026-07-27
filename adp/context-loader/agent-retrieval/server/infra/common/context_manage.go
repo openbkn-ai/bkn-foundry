@@ -45,7 +45,9 @@ const keyTraceContext traceContextKey = "bkn_trace_context"
 
 var bknRequestIDRe = regexp.MustCompile(`^req_[A-Za-z0-9_-]{8,128}$`)
 
-// TraceContext carries the OpenBKN phase-one correlation context.
+// TraceContext carries OpenBKN correlation and business causality context.
+// ConversationID and InteractionID are caller-owned correlation labels. This
+// service validates and propagates them, but never creates or infers them.
 type TraceContext struct {
 	RequestID          string
 	TenantID           string
@@ -183,6 +185,10 @@ func TraceContextFromHeaders(getHeader func(string) string) TraceContext {
 
 func IsValidBKNRequestID(requestID string) bool {
 	return bknRequestIDRe.MatchString(requestID)
+}
+
+func IsValidCorrelationID(id string) bool {
+	return businessTraceIDRe.MatchString(strings.TrimSpace(id))
 }
 
 func NewBKNRequestID() string {

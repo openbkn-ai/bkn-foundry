@@ -17,6 +17,7 @@ const (
 	VegaBackend_BuildTask_InvalidParameter_ResourceID     = "VegaBackend.BuildTask.InvalidParameter.ResourceID"
 	VegaBackend_BuildTask_InvalidParameter_Mode           = "VegaBackend.BuildTask.InvalidParameter.Mode"
 	VegaBackend_BuildTask_InvalidParameter_BuildKeyFields = "VegaBackend.BuildTask.InvalidParameter.BuildKeyFields"
+	VegaBackend_BuildTask_InvalidParameter_Analyzer       = "VegaBackend.BuildTask.InvalidParameter.Analyzer"
 
 	// 404 Not Found
 	VegaBackend_BuildTask_NotFound = "VegaBackend.BuildTask.NotFound"
@@ -27,11 +28,12 @@ const (
 	VegaBackend_BuildTask_ActiveIndexInUse       = "VegaBackend.BuildTask.ActiveIndexInUse"
 
 	// 500 Internal Server Error
-	VegaBackend_BuildTask_InternalError_CreateFailed          = "VegaBackend.BuildTask.InternalError.CreateFailed"
-	VegaBackend_BuildTask_InternalError_GetFailed             = "VegaBackend.BuildTask.InternalError.GetFailed"
-	VegaBackend_BuildTask_InternalError_UpdateFailed          = "VegaBackend.BuildTask.InternalError.UpdateFailed"
-	VegaBackend_BuildTask_InternalError_DeleteFailed          = "VegaBackend.BuildTask.InternalError.DeleteFailed"
-	VegaBackend_BuildTask_InternalError_GetAccountNamesFailed = "VegaBackend.BuildTask.InternalError.GetAccountNamesFailed"
+	VegaBackend_BuildTask_InternalError_CreateFailed           = "VegaBackend.BuildTask.InternalError.CreateFailed"
+	VegaBackend_BuildTask_InternalError_GetFailed              = "VegaBackend.BuildTask.InternalError.GetFailed"
+	VegaBackend_BuildTask_InternalError_UpdateFailed           = "VegaBackend.BuildTask.InternalError.UpdateFailed"
+	VegaBackend_BuildTask_InternalError_DeleteFailed           = "VegaBackend.BuildTask.InternalError.DeleteFailed"
+	VegaBackend_BuildTask_InternalError_GetAccountNamesFailed  = "VegaBackend.BuildTask.InternalError.GetAccountNamesFailed"
+	VegaBackend_BuildTask_InternalError_ValidateAnalyzerFailed = "VegaBackend.BuildTask.InternalError.ValidateAnalyzerFailed"
 )
 
 var BuildTaskErrCodeList = []string{
@@ -43,6 +45,7 @@ var BuildTaskErrCodeList = []string{
 	VegaBackend_BuildTask_InvalidParameter_ResourceID,
 	VegaBackend_BuildTask_InvalidParameter_Mode,
 	VegaBackend_BuildTask_InvalidParameter_BuildKeyFields,
+	VegaBackend_BuildTask_InvalidParameter_Analyzer,
 
 	// 404 Not Found
 	VegaBackend_BuildTask_NotFound,
@@ -58,4 +61,5 @@ var BuildTaskErrCodeList = []string{
 	VegaBackend_BuildTask_InternalError_UpdateFailed,
 	VegaBackend_BuildTask_InternalError_DeleteFailed,
 	VegaBackend_BuildTask_InternalError_GetAccountNamesFailed,
+	VegaBackend_BuildTask_InternalError_ValidateAnalyzerFailed,
 }

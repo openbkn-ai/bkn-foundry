@@ -25,6 +25,71 @@ import (
 	"vega-backend/logics"
 )
 
+type analyzerValidatingIndexManager struct {
+	interfaces.LocalIndexManager
+	err      error
+	captured map[string]string
+}
+
+func (m *analyzerValidatingIndexManager) ValidateAnalyzers(_ context.Context, analyzers map[string]string) error {
+	m.captured = analyzers
+	return m.err
+}
+
+func TestBuildTaskServiceRejectsUnavailableFieldAnalyzerBeforePersistence(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+	mockRS := mock_interfaces.NewMockResourceService(ctrl)
+	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+	validator := &analyzerValidatingIndexManager{err: &interfaces.AnalyzerUnavailableError{
+		Analyzer: "hanlp_index",
+		Fields:   []string{"status"},
+		Detail:   "analyzer not found",
+	}}
+	service := &buildTaskService{
+		bta:            mockBTA,
+		cs:             mockCS,
+		debugTaskQueue: make(chan *asynq.Task, 1),
+		lim:            validator,
+		rs:             mockRS,
+	}
+
+	mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(&interfaces.Resource{
+		ID:        "resource-1",
+		CatalogID: "catalog-1",
+		Category:  interfaces.ResourceCategoryTable,
+		IndexConfig: &interfaces.ResourceIndexConfig{
+			BuildKeyFields:          []string{"id"},
+			DefaultFulltextAnalyzer: "standard",
+		},
+		SchemaDefinition: []*interfaces.Property{
+			{Name: "id"},
+			{Name: "coupon_code", Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Fulltext, Config: map[string]any{"analyzer": "standard"}}}},
+			{Name: "status", Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Fulltext, Config: map[string]any{"analyzer": "hanlp_index"}}}},
+		},
+	}, nil)
+	mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
+	mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).Return(nil, int64(0), nil)
+
+	_, err := service.Create(context.Background(), &interfaces.CreateBuildTaskRequest{ResourceID: "resource-1", Mode: interfaces.BuildTaskModeBatch})
+	httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidParameter_Analyzer)
+	assert.Contains(t, httpErr.BaseError.ErrorDetails, "status")
+	assert.Equal(t, map[string]string{"coupon_code": "standard", "status": "hanlp_index"}, validator.captured)
+}
+
+func TestValidateBuildTaskAnalyzersReturnsInternalErrorForTransportFailure(t *testing.T) {
+	validator := &analyzerValidatingIndexManager{err: errors.New("connect OpenSearch: connection refused")}
+	buildTask := &interfaces.BuildTask{IndexConfig: &interfaces.BuildTaskIndexConfig{
+		Features: map[string]interfaces.BuildTaskFieldIndexFeature{
+			"status": {Fulltext: &interfaces.BuildTaskFulltextConfig{Analyzer: "hanlp_index"}},
+		},
+	}}
+
+	err := validateBuildTaskAnalyzers(context.Background(), validator, buildTask)
+	httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InternalError_ValidateAnalyzerFailed)
+	assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
+}
+
 func TestBuildTaskServicePopulatesTaskReferencesForListAndGet(t *testing.T) {
 	t.Run("list populates only referenced resources and catalogs", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
@@ -141,6 +206,24 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 		httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidParameter_BuildKeyFields)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
 	})
+	t.Run("rejects streaming task without build key fields", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockRS := mock_interfaces.NewMockResourceService(ctrl)
+		service := &buildTaskService{rs: mockRS}
+
+		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(&interfaces.Resource{
+			ID:        "resource-1",
+			CatalogID: "catalog-1",
+			Category:  interfaces.ResourceCategoryTable,
+		}, nil)
+
+		_, err := service.Create(context.Background(), &interfaces.CreateBuildTaskRequest{
+			ResourceID: "resource-1",
+			Mode:       interfaces.BuildTaskModeStreaming,
+		})
+		httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidParameter_BuildKeyFields)
+		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+	})
 
 	t.Run("rejects disabled catalog", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
@@ -188,6 +271,40 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 		})
 
 		requireHTTPError(t, err, verrors.VegaBackend_BuildTask_Exist)
+	})
+	t.Run("allows streaming task with a build key and no physical primary key", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+		mockRS := mock_interfaces.NewMockResourceService(ctrl)
+		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+		neutralizeEnqueue(t, ctrl)
+		service := &buildTaskService{
+			debugTaskQueue: make(chan *asynq.Task, 10),
+			cs:             mockCS,
+			rs:             mockRS,
+			bta:            mockBTA,
+		}
+
+		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(&interfaces.Resource{
+			ID:        "resource-1",
+			CatalogID: "catalog-1",
+			Category:  interfaces.ResourceCategoryTable,
+			IndexConfig: &interfaces.ResourceIndexConfig{
+				BuildKeyFields: []string{"supplier_id"},
+			},
+			SchemaDefinition: []*interfaces.Property{{Name: "supplier_id"}},
+		}, nil)
+		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
+			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
+		mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).Return(nil, int64(0), nil)
+		mockBTA.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
+
+		_, err := service.Create(context.Background(), &interfaces.CreateBuildTaskRequest{
+			ResourceID: "resource-1",
+			Mode:       interfaces.BuildTaskModeStreaming,
+		})
+
+		require.NoError(t, err)
 	})
 	t.Run("rejects execute type for streaming", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
@@ -764,6 +881,65 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 		}, nil)
 
 		require.NoError(t, service.Start(context.Background(), "task-1", false))
+	})
+	t.Run("rejects unavailable analyzer before updating status or enqueueing", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+		mockRS := mock_interfaces.NewMockResourceService(ctrl)
+		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+		validator := &analyzerValidatingIndexManager{err: &interfaces.AnalyzerUnavailableError{
+			Analyzer: "hanlp_index",
+			Fields:   []string{"status"},
+			Detail:   "analyzer not found",
+		}}
+		service := &buildTaskService{
+			debugTaskQueue: make(chan *asynq.Task, 10),
+			bta:            mockBTA,
+			cs:             mockCS,
+			lim:            validator,
+			rs:             mockRS,
+		}
+		task := &interfaces.BuildTask{
+			ID:         "task-1",
+			ResourceID: "resource-1",
+			CatalogID:  "catalog-1",
+			Status:     interfaces.BuildTaskStatusStopped,
+			IndexConfig: &interfaces.BuildTaskIndexConfig{Features: map[string]interfaces.BuildTaskFieldIndexFeature{
+				"status": {Fulltext: &interfaces.BuildTaskFulltextConfig{Analyzer: "hanlp_index"}},
+			}},
+		}
+		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").Return(task, nil)
+		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
+			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
+		mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTask, int64, error) {
+				if len(params.Statuses) == 1 && params.Statuses[0] == interfaces.BuildTaskStatusCompleted {
+					return nil, int64(0), nil
+				}
+				return nil, int64(0), nil
+			}).Times(2)
+		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(&interfaces.Resource{
+			ID:        "resource-1",
+			CatalogID: "catalog-1",
+			SchemaDefinition: []*interfaces.Property{{
+				Name: "status",
+				Features: []interfaces.PropertyFeature{{
+					FeatureType: interfaces.PropertyFeatureType_Fulltext,
+					Config:      map[string]any{"analyzer": "hanlp_index"},
+				}},
+			}},
+		}, nil)
+
+		err := service.Start(context.Background(), "task-1", false)
+		httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidParameter_Analyzer)
+		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+		assert.Contains(t, httpErr.BaseError.ErrorDetails, "status")
+		assert.Equal(t, map[string]string{"status": "hanlp_index"}, validator.captured)
+		select {
+		case queued := <-service.DebugTaskQueue():
+			t.Fatalf("expected no queued task, got %s", queued.Type())
+		default:
+		}
 	})
 }
 

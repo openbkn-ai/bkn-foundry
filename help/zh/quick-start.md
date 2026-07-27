@@ -344,7 +344,7 @@ openbkn dataview query <view_id> --sql "SELECT supplier_name, city FROM <catalog
 
 其中 `<catalog>` 须替换为该数据源在 **Vega** 中注册得到的 **catalog id**（见 `openbkn vega catalog list`），**不要**用视图逻辑名或裸表名代替；`"supply_chain"`、`"supplier_entity"` 分别对应源库中的 database/schema 与物理表名。**可靠做法**：`openbkn dataview get <view_id>` 取响应中的 **`meta_table_name`** 字段，在 SQL 中原样引用；`sql_str`、`fields` 含义见 [VEGA](manual/vega.md)「数据视图」中的字段表。
 
-仅 **Core** 部署时，`dataview query` 不带 `--sql` 可做分页、选列等结构化查询；**`--sql` 复杂自定义 SQL** 需要 **`vega-calculate-coordinator`**，由 **Etrino** 套件提供（`vega-hdfs`、`vega-calculate`、`vega-metadata`）。在 `deploy` 目录执行 `./deploy.sh etrino install` 即可。详见 [安装与部署](install.md) 与 [VEGA](manual/vega.md)。
+仅 **Core** 部署时，`dataview query` 不带 `--sql` 可做分页、选列等结构化查询；**`--sql` 复杂自定义 SQL** 需要单独维护的 **`vega-calculate-coordinator`**，BKN Foundry 部署脚本不再安装该组件。详见 [VEGA](manual/vega.md)。
 
 ---
 

@@ -7,7 +7,7 @@ package seed
 import (
 	"testing"
 
-	"bkn-safe/internal/authz"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
 )
 
 // TestRoleResourceMatrix is the authz equivalence / no-leak proof: default

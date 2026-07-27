@@ -92,6 +92,7 @@ func (r *restHandler) ExecuteAction(c *gin.Context, visitor hydra.Visitor) {
 	req.KNID = knID
 	req.Branch = branch
 	req.ActionTypeID = atID
+	req.BusinessDomain = businessDomain
 
 	// Note: _instance_identities is optional
 	// If not provided, the action will apply to all entities matching the action type's conditions

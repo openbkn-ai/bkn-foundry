@@ -17,6 +17,7 @@
 
 ```text
 x-business-domain
+bkn-conversation-id
 bkn-interaction-id
 bkn-operation-id
 bkn-causation-event-id
@@ -26,6 +27,7 @@ bkn-event-observed-at
 ```
 
 - `business_domain` 来自 `x-business-domain` 或受控 baggage 的 `business_domain`，不得错误使用 `account_id` 代替。
+- conversation/interaction 由调用方拥有；Context Loader 仅校验、透传和记录，缺失时不生成，`Mcp-Session-Id` 也不得替代业务 conversation。
 - 业务因果 ID 只校验安全长度和字符，不强制固定前缀；非法值在边界丢弃。
 - `bkn-event-observed-at` 只有在入站明确提供且为 UTC RFC3339Nano 时标记为可重放；本地为技术日志生成的当前时间不能用于核心事实。
 - 缺失 interaction、operation 或可靠 observed time 时，不生成核心事实。
@@ -66,4 +68,4 @@ bkn-event-observed-at
 
 ## 七、已知限制
 
-`run_sql`、版本化引用、持久 outbox、快照与全局图组装仍由后续工作和 BKN Trace 核心承担。
+版本化引用、持久 outbox 和快照仍由后续工作承担；`run_sql` 已记录安全查询摘要、结果规模和业务资源引用，全局图与跨 request/trace 的 Interaction 聚合由 BKN Trace Core 承担。
