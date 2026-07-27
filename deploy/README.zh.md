@@ -62,7 +62,7 @@ bash ./dev/mac.sh bkn-foundry install   # 全量含必选 bkn-safe（认证已�
 # 可选：bash ./dev/mac.sh onboard；需非交互时在命令前加 -y
 ```
 
-默认配置：`dev/conf/mac-config.yaml`。`isf` / `etrino`（`vega`）会转调 `deploy.sh` —— 见 [dev/README.zh.md](dev/README.zh.md)。
+默认配置：`dev/conf/mac-config.yaml`。`isf` 会转调 `deploy.sh` —— 见 [dev/README.zh.md](dev/README.zh.md)。
 
 ## 🚀 Quick Start
 

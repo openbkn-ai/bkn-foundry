@@ -31,7 +31,7 @@ source "${SCRIPT_DIR}/scripts/services/kafka.sh"
 # source "${SCRIPT_DIR}/scripts/services/mongodb.sh"  # MongoDB disabled
 source "${SCRIPT_DIR}/scripts/services/ingress_nginx.sh"
 source "${SCRIPT_DIR}/scripts/services/opensearch.sh"
-source "${SCRIPT_DIR}/scripts/services/core.sh"
+source "${SCRIPT_DIR}/scripts/services/openbkn.sh"
 source "${SCRIPT_DIR}/scripts/services/status.sh"
 
 usage() {
@@ -762,27 +762,27 @@ main() {
     fi
     
     # Handle bkn-foundry module
-    if [[ "${module}" == "bkn-foundry" ]] || [[ "${module}" == "foundry" ]] || [[ "${module}" == "bkn-foundry" ]] || [[ "${module}" == "core" ]]; then
+    if [[ "${module}" == "bkn-foundry" ]] || [[ "${module}" == "foundry" ]] || [[ "${module}" == "core" ]]; then
         case "${action}" in
             install|init)
-                parse_core_args "install" "$@"
+                parse_openbkn_args "install" "$@"
                 confirm_access_address_before_install
-                install_core
+                install_openbkn
                 ;;
             download)
-                parse_core_args "download" "$@"
-                download_core
+                parse_openbkn_args "download" "$@"
+                download_openbkn
                 ;;
             uninstall)
-                parse_core_args "uninstall" "$@"
-                uninstall_core
+                parse_openbkn_args "uninstall" "$@"
+                uninstall_openbkn
                 ;;
             status)
-                parse_core_args "status" "$@"
+                parse_openbkn_args "status" "$@"
                 show_install_status
                 ;;
             publish-status)
-                parse_core_args "status" "$@"
+                parse_openbkn_args "status" "$@"
                 gen_install_status_json
                 ;;
             *)
@@ -794,39 +794,6 @@ main() {
         return 0
     fi
     
-
-    # Handle etrino module
-    if [[ "${module}" == "etrino" ]]; then
-        local etrino_script="${SCRIPT_DIR}/scripts/services/etrino.sh"
-        if [[ ! -f "${etrino_script}" ]]; then
-            log_error "Etrino script not found at ${etrino_script}"
-            exit 1
-        fi
-
-        case "${action}" in
-            install|init)
-                if [[ "${OPENBKN_SKIP_PLATFORM_BOOTSTRAP:-false}" != "true" ]]; then
-                    check_root
-                fi
-                CONFIG_FILE="${CONFIG_YAML_PATH}" bash "${etrino_script}" install "$@"
-                ;;
-            status)
-                CONFIG_FILE="${CONFIG_YAML_PATH}" bash "${etrino_script}" status "$@"
-                ;;
-            uninstall)
-                if [[ "${OPENBKN_SKIP_PLATFORM_BOOTSTRAP:-false}" != "true" ]]; then
-                    check_root
-                fi
-                CONFIG_FILE="${CONFIG_YAML_PATH}" bash "${etrino_script}" uninstall "$@"
-                ;;
-            *)
-                log_error "Unknown etrino action: ${action}"
-                usage
-                exit 1
-                ;;
-        esac
-        return 0
-    fi
 
     # Handle all/infra module (infrastructure: k8s + data services)
     # 'all' is an alias for 'infra' for backward compatibility
@@ -927,128 +894,22 @@ main() {
                 done
                 
                 # Install all BKN Foundry services in order
-                install_core
+                install_openbkn
 
                 log_info "BKN Foundry application services deployment completed!"
                 ;;
             uninstall)
                 check_root
                 log_info "Uninstalling BKN Foundry application services..."
-                uninstall_core || true
+                uninstall_openbkn || true
                 log_info "BKN Foundry application services uninstalled!"
                 ;;
             status)
                 log_info "BKN Foundry application services status:"
-                show_core_status
+                show_openbkn_status
                 ;;
             *)
                 log_error "Unknown bkn action: ${action}"
-                usage
-                exit 1
-                ;;
-        esac
-        return 0
-    fi
-    
-    # Handle full module (complete deployment: infra + bkn)
-    if [[ "${module}" == "full" ]]; then
-        case "${action}" in
-            init)
-                check_root
-                shift 2
-                log_info "╔════════════════════════════════════════════════════════════════╗"
-                log_info "║       Full Deployment: Infrastructure + BKN Foundry Services       ║"
-                log_info "╚════════════════════════════════════════════════════════════════╝"
-                
-                # Save args for bkn
-                local bkn_args=("$@")
-                
-                # Step 1: Deploy infrastructure
-                log_info ""
-                log_info "Step 1/2: Deploying Infrastructure..."
-                log_info ""
-                
-                detect_package_manager
-                install_containerd
-                install_kubernetes
-                install_helm
-                
-                check_prerequisites
-                init_k8s_master
-                allow_master_scheduling
-                install_cni
-                wait_for_dns
-
-                if [[ "${AUTO_INSTALL_LOCALPV}" == "true" ]]; then
-                    if [[ -z "$(kubectl get storageclass --no-headers 2>/dev/null)" ]]; then
-                        install_localpv
-                    fi
-                fi
-                install_mariadb
-                install_redis
-                install_kafka
-                # install_mongodb  # MongoDB disabled
-                if [[ "${AUTO_INSTALL_INGRESS_NGINX}" == "true" ]]; then
-                    install_ingress_nginx
-                fi
-                install_opensearch
-                if [[ "${AUTO_GENERATE_CONFIG}" == "true" ]]; then
-                    generate_config_yaml
-                fi
-
-                # Step 2: Deploy BKN Foundry services
-                log_info ""
-                log_info "Step 2/2: Deploying BKN Foundry Application Services..."
-                log_info ""
-                
-                # Parse bkn args
-                for arg in "${bkn_args[@]}"; do
-                    case "$arg" in
-                        --version=*)
-                            HELM_CHART_VERSION="${arg#*=}"
-                            ;;
-                        --helm_repo=*)
-                            HELM_CHART_REPO_URL="${arg#*=}"
-                            ;;
-                    esac
-                done
-                
-                install_studio
-                install_bkn
-                install_vega
-                install_agentoperator
-                install_sandboxruntime
-
-                show_status
-                log_info ""
-                log_info "╔════════════════════════════════════════════════════════════════╗"
-                log_info "║                   Full Deployment Completed!                   ║"
-                log_info "╚════════════════════════════════════════════════════════════════╝"
-                ;;
-            reset)
-                check_root
-                log_info "Full reset: Uninstalling all components..."
-                
-                # Uninstall BKN Foundry services first
-                uninstall_sandboxruntime || true
-                uninstall_agentoperator || true
-                uninstall_bkn || true
-                uninstall_vega || true
-                uninstall_studio || true
-
-                # Then uninstall infrastructure
-                uninstall_opensearch || true
-                uninstall_ingress_nginx || true
-                # uninstall_mongodb || true  # MongoDB disabled
-                uninstall_kafka || true
-                uninstall_redis || true
-                uninstall_mariadb || true
-                reset_k8s
-                
-                log_info "Full reset completed!"
-                ;;
-            *)
-                log_error "Unknown full action: ${action}"
                 usage
                 exit 1
                 ;;

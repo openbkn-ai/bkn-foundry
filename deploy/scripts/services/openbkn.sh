@@ -1,8 +1,8 @@
 
-# Default bkn-foundry namespace
+# Default OpenBKN namespace
 CORE_NAMESPACE="${CORE_NAMESPACE:-openbkn}"
 
-# Set to true in parse_core_args when user passes --namespace/--namespace=… (overrides namespace: in YAML).
+# Set to true in parse_openbkn_args when user passes --namespace/--namespace=… (overrides namespace: in YAML).
 CORE_NAMESPACE_FROM_CLI="${CORE_NAMESPACE_FROM_CLI:-false}"
 
 # Default local charts directory
@@ -10,7 +10,7 @@ CORE_LOCAL_CHARTS_DIR="${CORE_LOCAL_CHARTS_DIR:-}"
 CORE_VERSION_MANIFEST_FILE="${CORE_VERSION_MANIFEST_FILE:-}"
 
 # --registry=<swr|ghcr|FULL>: alias for image.registry. Empty means "not set on
-# CLI"; the swr default is applied in _core_apply_default_set_values only when the
+# CLI"; the swr default is applied in _openbkn_apply_default_set_values only when the
 # user did not pass --registry nor an explicit --set image.registry=...
 CORE_IMAGE_REGISTRY="${CORE_IMAGE_REGISTRY:-}"
 
@@ -39,7 +39,7 @@ declare -a CORE_SQL_MODULES=(
 )
 
 # Parse bkn-foundry command arguments
-parse_core_args() {
+parse_openbkn_args() {
     local action="$1"
     shift
 
@@ -168,7 +168,7 @@ parse_core_args() {
 }
 
 # Target namespace: explicit --namespace overrides `namespace:` in CONFIG_YAML_PATH (avoids uninstall missing releases when YAML drifted from the cluster).
-_core_resolve_target_namespace() {
+_openbkn_resolve_target_namespace() {
     if [[ "${CORE_NAMESPACE_FROM_CLI:-false}" == true ]]; then
         printf '%s' "${CORE_NAMESPACE}"
         return 0
@@ -183,7 +183,7 @@ _core_resolve_target_namespace() {
 }
 
 # Resolve local charts directory for bkn-foundry
-_core_resolve_charts_dir() {
+_openbkn_resolve_charts_dir() {
     if [[ -n "${CORE_LOCAL_CHARTS_DIR}" ]]; then
         if [[ -d "${CORE_LOCAL_CHARTS_DIR}" ]]; then
             echo "${CORE_LOCAL_CHARTS_DIR}"
@@ -191,7 +191,7 @@ _core_resolve_charts_dir() {
     fi
 }
 
-_core_download_charts_dir() {
+_openbkn_download_charts_dir() {
     if [[ -n "${CORE_LOCAL_CHARTS_DIR}" ]]; then
         ensure_charts_dir "${CORE_LOCAL_CHARTS_DIR}"
         return 0
@@ -200,7 +200,7 @@ _core_download_charts_dir() {
     ensure_charts_dir "$(resolve_shared_charts_dir)"
 }
 
-_core_auto_resolve_version_manifest() {
+_openbkn_auto_resolve_version_manifest() {
     if [[ -n "${CORE_VERSION_MANIFEST_FILE:-}" ]]; then
         return 0
     fi
@@ -216,8 +216,8 @@ _core_auto_resolve_version_manifest() {
     fi
 }
 
-_core_require_version_manifest() {
-    _core_auto_resolve_version_manifest
+_openbkn_require_version_manifest() {
+    _openbkn_auto_resolve_version_manifest
 
     if [[ -z "${CORE_VERSION_MANIFEST_FILE:-}" ]]; then
         log_error "No release manifest found for bkn-foundry. Provide --version or --version_file."
@@ -225,20 +225,20 @@ _core_require_version_manifest() {
     fi
 }
 
-_core_resolve_release_version() {
+_openbkn_resolve_release_version() {
     local release_name="$1"
-    _core_require_version_manifest || return 1
+    _openbkn_require_version_manifest || return 1
     resolve_release_chart_version "${CORE_VERSION_MANIFEST_FILE:-}" "bkn-foundry" "${HELM_CHART_VERSION:-}" "${release_name}" "${HELM_CHART_VERSION:-}"
 }
 
-_core_resolve_chart_name() {
+_openbkn_resolve_chart_name() {
     local release_name="$1"
-    _core_require_version_manifest || return 1
+    _openbkn_require_version_manifest || return 1
     resolve_release_chart_name "${CORE_VERSION_MANIFEST_FILE:-}" "bkn-foundry" "${HELM_CHART_VERSION:-}" "${release_name}" "${release_name}"
 }
 
-_core_release_names() {
-    _core_require_version_manifest || return 1
+_openbkn_release_names() {
+    _openbkn_require_version_manifest || return 1
     get_release_manifest_release_names "${CORE_VERSION_MANIFEST_FILE}" "bkn-foundry" "${HELM_CHART_VERSION:-}"
 }
 
@@ -247,16 +247,16 @@ _core_release_names() {
 # working offline while the repo carries no release manifest (pre-first-release).
 # log_error writes to stdout, so the probe must swallow BOTH streams or the
 # error text would be captured into the release-name list.
-_core_release_names_or_installed() {
+_openbkn_release_names_or_installed() {
     local namespace="$1"
-    if _core_require_version_manifest >/dev/null 2>&1; then
+    if _openbkn_require_version_manifest >/dev/null 2>&1; then
         get_release_manifest_release_names "${CORE_VERSION_MANIFEST_FILE}" "bkn-foundry" "${HELM_CHART_VERSION:-}"
         return 0
     fi
     helm list -q -n "${namespace}" 2>/dev/null || true
 }
 
-init_core_databases() {
+init_openbkn_databases() {
     local sql_base_dir
     sql_base_dir="$(resolve_versioned_sql_dir "bkn-foundry" "${HELM_CHART_VERSION:-}")"
 
@@ -268,7 +268,7 @@ init_core_databases() {
 
     # If the manifest declares a stage:pre data-migrator release, the chart
     # hook owns DB init; the script must not also run the SQL files.
-    _core_require_version_manifest || return 1
+    _openbkn_require_version_manifest || return 1
     if should_skip_db_init_for_manifest "${CORE_VERSION_MANIFEST_FILE}"; then
         log_info "bkn-foundry manifest ${CORE_VERSION_MANIFEST_FILE} has pre-stage data-migrator, skipping SQL initialization"
         return 0
@@ -293,35 +293,35 @@ init_core_databases() {
     done
 }
 
-download_core() {
+download_openbkn() {
     log_info "Downloading BKN Foundry charts..."
     ensure_helm_available
-    _core_resolve_latest_manifest || return 1
-    _core_require_version_manifest || return 1
+    _openbkn_resolve_latest_manifest || return 1
+    _openbkn_require_version_manifest || return 1
 
     HELM_CHART_REPO_NAME="${HELM_CHART_REPO_NAME:-openbkn}"
     HELM_CHART_REPO_URL="${HELM_CHART_REPO_URL:-https://openbkn-ai.github.io/helm-repo/}"
 
     local charts_dir
-    charts_dir="$(_core_download_charts_dir)"
+    charts_dir="$(_openbkn_download_charts_dir)"
 
     parse_manifest_source "${CORE_VERSION_MANIFEST_FILE:-}"
     ensure_chart_source "${HELM_CHART_REPO_NAME}" "${HELM_CHART_REPO_URL}"
 
     local -a release_names=()
-    bkn_mapfile_compat release_names _core_release_names
+    bkn_mapfile_compat release_names _openbkn_release_names
     local release_name
     local release_version
     local chart_name
     for release_name in "${release_names[@]}"; do
-        release_version="$(_core_resolve_release_version "${release_name}")"
-        chart_name="$(_core_resolve_chart_name "${release_name}")"
+        release_version="$(_openbkn_resolve_release_version "${release_name}")"
+        chart_name="$(_openbkn_resolve_chart_name "${release_name}")"
         download_chart_to_cache "${charts_dir}" "${HELM_CHART_REPO_NAME}" "${chart_name}" "${release_version}" "${FORCE_REFRESH_CHARTS:-false}"
     done
 }
 
 # Find local chart tgz for a given release name
-_core_find_local_chart() {
+_openbkn_find_local_chart() {
     local charts_dir="$1"
     local chart_name="$2"
     find_cached_chart_tgz "${charts_dir}" "${chart_name}"
@@ -333,7 +333,7 @@ _core_find_local_chart() {
 # explicit password — no baked-in default). Applied BEFORE CORE_SET_VALUES so an
 # explicit --set config.initialPassword=... still wins.
 CORE_RELEASE_EXTRA_SETS=()
-_core_release_extra_sets() {
+_openbkn_release_extra_sets() {
     local release_name="$1"
     CORE_RELEASE_EXTRA_SETS=()
     if [[ "${release_name}" == "bkn-safe" ]]; then
@@ -348,22 +348,22 @@ _core_release_extra_sets() {
 }
 
 # Install a single bkn-foundry release from a local .tgz
-_install_core_release_local() {
+_install_openbkn_release_local() {
     local release_name="$1"
     local charts_dir="$2"
     local namespace="$3"
     local requested_version
     local chart_name
 
-    requested_version="$(_core_resolve_release_version "${release_name}")"
-    chart_name="$(_core_resolve_chart_name "${release_name}")"
+    requested_version="$(_openbkn_resolve_release_version "${release_name}")"
+    chart_name="$(_openbkn_resolve_chart_name "${release_name}")"
 
     local chart_tgz=""
     if [[ -n "${requested_version}" ]]; then
         chart_tgz="$(find_cached_chart_tgz_by_version "${charts_dir}" "${chart_name}" "${requested_version}" || true)"
     fi
     if [[ -z "${chart_tgz}" ]]; then
-        chart_tgz="$(_core_find_local_chart "${charts_dir}" "${chart_name}")"
+        chart_tgz="$(_openbkn_find_local_chart "${charts_dir}" "${chart_name}")"
     fi
 
     if [[ -z "${chart_tgz}" ]]; then
@@ -391,7 +391,7 @@ _install_core_release_local() {
 
     # Per-release values first, then all --set values (so explicit --set wins)
     local set_value
-    _core_release_extra_sets "${release_name}"
+    _openbkn_release_extra_sets "${release_name}"
     for set_value in "${CORE_RELEASE_EXTRA_SETS[@]}"; do
         helm_args+=("--set" "${set_value}")
     done
@@ -408,13 +408,13 @@ _install_core_release_local() {
 }
 
 # Install a single bkn-foundry release from a Helm repository
-_install_core_release_repo() {
+_install_openbkn_release_repo() {
     local release_name="$1"
     local namespace="$2"
     local helm_repo_name="$3"
     local release_version="$4"
     local chart_name
-    chart_name="$(_core_resolve_chart_name "${release_name}")"
+    chart_name="$(_openbkn_resolve_chart_name "${release_name}")"
 
     local chart_ref
     chart_ref="$(build_chart_ref "${helm_repo_name}" "${chart_name}")"
@@ -461,7 +461,7 @@ _install_core_release_repo() {
 
     # Per-release values first, then all --set values (so explicit --set wins)
     local set_value
-    _core_release_extra_sets "${release_name}"
+    _openbkn_release_extra_sets "${release_name}"
     for set_value in "${CORE_RELEASE_EXTRA_SETS[@]}"; do
         helm_args+=("--set" "${set_value}")
     done
@@ -482,7 +482,7 @@ _install_core_release_repo() {
 #   ghcr -> ghcr.io/openbkn-ai
 #   *    -> used verbatim (treated as a full registry/namespace)
 # In offline mode, all registries resolve to ${OFFLINE_REGISTRY}/openbkn-ai
-_core_resolve_registry() {
+_openbkn_resolve_registry() {
     local raw="$1"
     # In offline mode, always use offline registry
     if [[ "${OFFLINE_MODE}" == "true" ]]; then
@@ -498,7 +498,7 @@ _core_resolve_registry() {
 
 # True if the active CONFIG_YAML_PATH sets image.registry (so we must not
 # clobber it with the swr default — e.g. mac-config.yaml pins its own registry).
-_core_config_sets_image_registry() {
+_openbkn_config_sets_image_registry() {
     [[ -n "${CONFIG_YAML_PATH:-}" && -f "${CONFIG_YAML_PATH}" ]] || return 1
     awk '
         /^image:[[:space:]]*$/ {inimg=1; next}
@@ -510,7 +510,7 @@ _core_config_sets_image_registry() {
 
 # Inject default --set values for bkn-foundry if user did not override them.
 # Currently: businessDomain.enabled defaults to false at install time.
-_core_apply_default_set_values() {
+_openbkn_apply_default_set_values() {
     # image.registry precedence in ONLINE mode: explicit --set image.registry=… wins;
     # else an explicit --registry flag is applied; else if CONFIG_YAML_PATH already sets
     # image.registry we respect it (don't clobber a config's registry, e.g. the
@@ -522,21 +522,21 @@ _core_apply_default_set_values() {
     # Highest priority: offline mode
     if [[ "${OFFLINE_MODE}" == "true" ]]; then
         local _reg_resolved
-        _reg_resolved="$(_core_resolve_registry "offline")"
+        _reg_resolved="$(_openbkn_resolve_registry "offline")"
         CORE_SET_VALUES+=("image.registry=${_reg_resolved}")
         log_info "Offline mode: Forcing image.registry=${_reg_resolved} via --set (overrides config.yaml)"
     elif get_set_value "image.registry" "${CORE_SET_VALUES[@]}" >/dev/null 2>&1; then
         : # user passed --set image.registry=… explicitly; do not override
     elif [[ -n "${CORE_IMAGE_REGISTRY}" ]]; then
         local _reg_resolved
-        _reg_resolved="$(_core_resolve_registry "${CORE_IMAGE_REGISTRY}")"
+        _reg_resolved="$(_openbkn_resolve_registry "${CORE_IMAGE_REGISTRY}")"
         CORE_SET_VALUES+=("image.registry=${_reg_resolved}")
         log_info "Image registry applied: --set image.registry=${_reg_resolved} (from --registry=${CORE_IMAGE_REGISTRY})"
-    elif _core_config_sets_image_registry; then
+    elif _openbkn_config_sets_image_registry; then
         log_info "Image registry: using image.registry from ${CONFIG_YAML_PATH} (pass --registry=swr|ghcr to override)."
     else
         local _reg_resolved
-        _reg_resolved="$(_core_resolve_registry "swr")"
+        _reg_resolved="$(_openbkn_resolve_registry "swr")"
         CORE_SET_VALUES+=("image.registry=${_reg_resolved}")
         log_info "Image registry default applied: --set image.registry=${_reg_resolved} (override with --registry=ghcr or --set image.registry=...)."
     fi
@@ -554,25 +554,25 @@ _core_apply_default_set_values() {
     #   - k3s    : see bkn_apply_k3s_lightweight_defaults in common.sh
     # Apply uniformly to every Core release; per-release tuning (e.g. larger limit for
     # ontology-query) can be added later if a service consistently OOMs at install time.
-    local _core_resource_set
-    _core_resource_set=0
+    local _openbkn_resource_set
+    _openbkn_resource_set=0
     if [[ -n "${OPENBKN_CORE_REQ_CPU:-}" ]]; then
         CORE_SET_VALUES+=("resources.requests.cpu=${OPENBKN_CORE_REQ_CPU}")
-        _core_resource_set=1
+        _openbkn_resource_set=1
     fi
     if [[ -n "${OPENBKN_CORE_REQ_MEM:-}" ]]; then
         CORE_SET_VALUES+=("resources.requests.memory=${OPENBKN_CORE_REQ_MEM}")
-        _core_resource_set=1
+        _openbkn_resource_set=1
     fi
     if [[ -n "${OPENBKN_CORE_LIM_CPU:-}" ]]; then
         CORE_SET_VALUES+=("resources.limits.cpu=${OPENBKN_CORE_LIM_CPU}")
-        _core_resource_set=1
+        _openbkn_resource_set=1
     fi
     if [[ -n "${OPENBKN_CORE_LIM_MEM:-}" ]]; then
         CORE_SET_VALUES+=("resources.limits.memory=${OPENBKN_CORE_LIM_MEM}")
-        _core_resource_set=1
+        _openbkn_resource_set=1
     fi
-    if [[ "${_core_resource_set}" == "1" ]]; then
+    if [[ "${_openbkn_resource_set}" == "1" ]]; then
         log_info "bkn-foundry resource overrides applied (uniform): req cpu=${OPENBKN_CORE_REQ_CPU:-<chart>} mem=${OPENBKN_CORE_REQ_MEM:-<chart>} / lim cpu=${OPENBKN_CORE_LIM_CPU:-<chart>} mem=${OPENBKN_CORE_LIM_MEM:-<chart>}"
     fi
 }
@@ -650,7 +650,7 @@ EOF
 # --version_file / --latest): the newest embedded release manifest; when the
 # repo carries none (pre-first-release), fall back to following the newest
 # main build per chart (same resolution as --latest).
-_core_resolve_latest_manifest() {
+_openbkn_resolve_latest_manifest() {
     # --version=dev: named alias for the follow-main channel (same as --latest).
     # Cleared so downstream chart-version resolution never sees "dev" as a version.
     if [[ "${HELM_CHART_VERSION:-}" == "dev" ]]; then
@@ -689,15 +689,15 @@ _core_resolve_latest_manifest() {
 }
 
 # Install BKN Foundry services via Helm
-install_core() {
+install_openbkn() {
     log_info "Installing BKN Foundry services via Helm..."
-    _core_resolve_latest_manifest || return 1
+    _openbkn_resolve_latest_manifest || return 1
    if [[ "${OFFLINE_MODE}" != "true" ]]; then
         setup_dockerhub_mirror "${CORE_DOCKERHUB_MIRROR}"
     fi
 
-    _core_require_version_manifest || return 1
-    _core_apply_default_set_values
+    _openbkn_require_version_manifest || return 1
+    _openbkn_apply_default_set_values
 
     if ! ensure_platform_prerequisites; then
         log_error "Failed to ensure platform prerequisites for BKN Foundry"
@@ -716,12 +716,12 @@ install_core() {
     fi
 
     local namespace
-    namespace="$(_core_resolve_target_namespace)"
+    namespace="$(_openbkn_resolve_target_namespace)"
 
     kubectl create namespace "${namespace}" 2>/dev/null || true
 
     local charts_dir
-    charts_dir="$(_core_resolve_charts_dir)"
+    charts_dir="$(_openbkn_resolve_charts_dir)"
 
     local use_local=false
     if [[ -n "${charts_dir}" && -d "${charts_dir}" ]]; then
@@ -743,25 +743,25 @@ install_core() {
     log_info "Target namespace: ${namespace}"
 
     local bkn_safe_existed_before_install="false"
-    if _core_release_exists "bkn-safe" "${namespace}"; then
+    if _openbkn_release_exists "bkn-safe" "${namespace}"; then
         bkn_safe_existed_before_install="true"
     fi
 
-    if ! init_core_databases; then
+    if ! init_openbkn_databases; then
         log_error "Failed to initialize BKN Foundry databases"
         return 1
     fi
 
     local -a release_names=()
-    bkn_mapfile_compat release_names _core_release_names
+    bkn_mapfile_compat release_names _openbkn_release_names
 
     local release_version
     for release_name in "${release_names[@]}"; do
-        release_version="$(_core_resolve_release_version "${release_name}")"
+        release_version="$(_openbkn_resolve_release_version "${release_name}")"
         if [[ "${use_local}" == "true" ]]; then
-            _install_core_release_local "${release_name}" "${charts_dir}" "${namespace}"
+            _install_openbkn_release_local "${release_name}" "${charts_dir}" "${namespace}"
         else
-            _install_core_release_repo "${release_name}" "${namespace}" "${HELM_CHART_REPO_NAME}" "${release_version}"
+            _install_openbkn_release_repo "${release_name}" "${namespace}" "${HELM_CHART_REPO_NAME}" "${release_version}"
         fi
     done
 
@@ -769,7 +769,7 @@ install_core() {
 
     # 退役已被别处接管/下线的历史 release（见 _CORE_RETIRED_RELEASES）。
     # 放在装完全部在册 release 之后：确保承接方已就绪，退役旧 release 不留服务空窗。
-    _core_uninstall_retired_releases "${namespace}"
+    _openbkn_uninstall_retired_releases "${namespace}"
 
     # Publish the non-sensitive install-status snapshot + /install-status endpoint.
     # Best-effort: never fails the install.
@@ -800,7 +800,7 @@ install_core() {
     # operator must take away from this summary, but only on the first install.
     local _initial_pwd
     _initial_pwd="$(config_yaml_top_field bknSafe initialPassword)"
-    if _core_should_show_bkn_safe_initial_password "${bkn_safe_existed_before_install}" "${_initial_pwd}"; then
+    if _openbkn_should_show_bkn_safe_initial_password "${bkn_safe_existed_before_install}" "${_initial_pwd}"; then
         echo ""
         echo "  Console sign-in (a password change is forced on first login):"
         echo ""
@@ -835,7 +835,7 @@ _CORE_RETIRED_RELEASES=(
 
 # 判断某个 Helm release 是否存在（任意状态：deployed/failed/pending 皆算）。
 # 与 is_helm_installed 不同——后者只认 deployed；退役需要把处于任何状态的残留都清掉。
-_core_release_exists() {
+_openbkn_release_exists() {
     local release="$1"
     local ns="$2"
     helm status "${release}" -n "${ns}" >/dev/null 2>&1
@@ -844,7 +844,7 @@ _core_release_exists() {
 # Decide whether the bkn-safe initial password should be shown in the install
 # summary. Only a fresh install should reveal it; upgrades/retries stay quiet
 # even if config.yaml still carries bknSafe.initialPassword.
-_core_should_show_bkn_safe_initial_password() {
+_openbkn_should_show_bkn_safe_initial_password() {
     local release_existed_before_install="$1"
     local initial_password="$2"
     [[ "${release_existed_before_install}" != "true" && -n "${initial_password}" ]]
@@ -852,14 +852,14 @@ _core_should_show_bkn_safe_initial_password() {
 
 # 逐条退役 _CORE_RETIRED_RELEASES 中仍存在的 release。
 # 幂等：不存在则跳过。失败只告警不中断——退役失败不应让整个 install/upgrade 挂掉。
-# 由 install_core 在装完全部在册 release 之后调用，确保承接方已就绪、无服务空窗。
-_core_uninstall_retired_releases() {
+# 由 install_openbkn 在装完全部在册 release 之后调用，确保承接方已就绪、无服务空窗。
+_openbkn_uninstall_retired_releases() {
     local namespace="$1"
     local entry release_name reason
     for entry in "${_CORE_RETIRED_RELEASES[@]}"; do
         release_name="${entry%%|*}"
         reason="${entry#*|}"
-        if _core_release_exists "${release_name}" "${namespace}"; then
+        if _openbkn_release_exists "${release_name}" "${namespace}"; then
             log_warn "Retiring release '${release_name}' (${reason})"
             local helm_err
             if helm_err=$(helm uninstall "${release_name}" -n "${namespace}" 2>&1); then
@@ -872,15 +872,15 @@ _core_uninstall_retired_releases() {
 }
 
 # Uninstall BKN Foundry services
-uninstall_core() {
+uninstall_openbkn() {
     log_info "Uninstalling BKN Foundry services..."
 
     local namespace
-    namespace="$(_core_resolve_target_namespace)"
+    namespace="$(_openbkn_resolve_target_namespace)"
     log_info "Helm target namespace: ${namespace}"
 
     local -a release_names=()
-    bkn_mapfile_compat release_names _core_release_names_or_installed "${namespace}"
+    bkn_mapfile_compat release_names _openbkn_release_names_or_installed "${namespace}"
     for ((i=${#release_names[@]}-1; i>=0; i--)); do
         local release_name="${release_names[$i]}"
         log_info "Uninstalling ${release_name}..."
@@ -906,17 +906,17 @@ uninstall_core() {
 }
 
 # Show BKN Foundry services status
-show_core_status() {
+show_openbkn_status() {
     log_info "BKN Foundry services status:"
 
     local namespace
-    namespace="$(_core_resolve_target_namespace)"
+    namespace="$(_openbkn_resolve_target_namespace)"
 
     log_info "Namespace: ${namespace}"
     log_info ""
 
     local -a release_names=()
-    bkn_mapfile_compat release_names _core_release_names_or_installed "${namespace}"
+    bkn_mapfile_compat release_names _openbkn_release_names_or_installed "${namespace}"
     for release_name in "${release_names[@]}"; do
         if helm status "${release_name}" -n "${namespace}" >/dev/null 2>&1; then
             local status

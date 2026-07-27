@@ -432,7 +432,7 @@ openbkn dataview query <view_id> --sql "SELECT supplier_name, city FROM <catalog
 
 `<catalog>` must be the **Vega catalog id** for that data source (see `openbkn vega catalog list`); `"supply_chain"` / `"supplier_entity"` map to the source database/schema and table. **Reliable approach**: copy the **`meta_table_name`** field from **`openbkn dataview get <view_id>`** into your SQL. For `sql_str`, `fields`, and the field table, see the Dataview section in [VEGA](manual/vega.md).
 
-On a **Core-only** install, `dataview query` without `--sql` supports structured reads (pagination, column selection, etc.). **Ad-hoc `--sql`** requires **`vega-calculate-coordinator`**, shipped as part of the **Etrino** stack (`vega-hdfs`, `vega-calculate`, `vega-metadata`). From the `deploy` directory run `./deploy.sh etrino install`. See [Install and deploy](install.md) and [VEGA](manual/vega.md).
+On a **Core-only** install, `dataview query` without `--sql` supports structured reads (pagination, column selection, etc.). **Ad-hoc `--sql`** requires a separately managed **`vega-calculate-coordinator`**, which is not installed by the BKN Foundry deployment scripts. See [VEGA](manual/vega.md).
 
 ---
 

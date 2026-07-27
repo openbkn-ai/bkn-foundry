@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# _core_should_show_bkn_safe_initial_password 的行为测试（无需集群）。
+# _openbkn_should_show_bkn_safe_initial_password 的行为测试（无需集群）。
 set -uo pipefail
 
 ONE_FAILED=0
@@ -12,8 +12,8 @@ check() {
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
-# shellcheck source=../services/core.sh
-source "${SCRIPT_DIR}/scripts/services/core.sh"
+# shellcheck source=../services/openbkn.sh
+source "${SCRIPT_DIR}/scripts/services/openbkn.sh"
 
 run_case() {
     local name="$1"
@@ -21,7 +21,7 @@ run_case() {
     local initial_pwd="$3"
     local want_rc="$4"
 
-    if _core_should_show_bkn_safe_initial_password "${existed_before}" "${initial_pwd}"; then
+    if _openbkn_should_show_bkn_safe_initial_password "${existed_before}" "${initial_pwd}"; then
         check "${name}" "0" "${want_rc}"
     else
         check "${name}" "1" "${want_rc}"
@@ -41,8 +41,8 @@ run_case "fresh-install-empty-hides" "false" "" "1"
 run_case "upgrade-empty-hides" "true" "" "1"
 
 if [[ "${ONE_FAILED}" -eq 0 ]]; then
-    echo "core_initial_password_test: all ${PASS} checks passed"
+    echo "openbkn_initial_password_test: all ${PASS} checks passed"
     exit 0
 fi
-echo "core_initial_password_test: FAILED"
+echo "openbkn_initial_password_test: FAILED"
 exit 1

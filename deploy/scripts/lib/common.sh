@@ -1761,8 +1761,8 @@ resolve_openbkn_image_registry() {
     fi
 
     if [[ -n "${raw_registry}" ]]; then
-        if declare -F _core_resolve_registry >/dev/null 2>&1; then
-            _core_resolve_registry "${raw_registry}"
+        if declare -F _openbkn_resolve_registry >/dev/null 2>&1; then
+            _openbkn_resolve_registry "${raw_registry}"
             return 0
         fi
 

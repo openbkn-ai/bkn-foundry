@@ -297,23 +297,6 @@ main() {
             fi
             exec bash "${DEPLOY_ROOT}/deploy.sh" isf "$@"
             ;;
-        etrino | vega)
-            mac_require_darwin
-            if ! mac_doctor; then
-                exit 1
-            fi
-            if ! mac_kube_context_guard; then
-                exit 1
-            fi
-            if [[ -z "${CONFIG_YAML_PATH:-}" ]]; then
-                export CONFIG_YAML_PATH="${MAC_DEV_ROOT}/conf/mac-config.yaml"
-            fi
-            export OPENBKN_SKIP_PLATFORM_BOOTSTRAP="${OPENBKN_SKIP_PLATFORM_BOOTSTRAP:-true}"
-            if [[ ${#global_flags[@]} -gt 0 ]]; then
-                exec bash "${DEPLOY_ROOT}/deploy.sh" "${global_flags[@]}" etrino "$@"
-            fi
-            exec bash "${DEPLOY_ROOT}/deploy.sh" etrino "$@"
-            ;;
         onboard)
             mac_require_darwin
             if ! mac_doctor; then

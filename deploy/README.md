@@ -63,7 +63,7 @@ bash ./dev/mac.sh bkn-foundry install   # full stack incl. mandatory bkn-safe (a
 # add leading -y for non-interactive (deploy.sh / onboard)
 ```
 
-Config defaults: `dev/conf/mac-config.yaml`. `isf` / `etrino` (`vega`) are delegated to `deploy.sh` — see [dev/README.md](dev/README.md).
+Config defaults: `dev/conf/mac-config.yaml`. `isf` is delegated to `deploy.sh` — see [dev/README.md](dev/README.md).
 
 ## 🚀 Quick Start
 

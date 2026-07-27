@@ -176,7 +176,7 @@ SQL 中可使用占位符 `{{.<资源ID>}}` 或 `{{<资源ID>}}`（资源 ID 为
 | 结构化查询 | `openbkn vega query execute` | vega-backend | 同 Catalog 多表 JOIN、统一 filter DSL |
 | 直连 SQL | `openbkn vega sql` | vega-backend | 复杂 SQL、聚合、占位符引用资源 |
 | 单资源数据 API | `openbkn vega resource query <id> -d {...}` | vega-backend | 单表过滤、sort、`search_after` 分页 |
-| Dataview + `--sql` | `openbkn dataview query ... --sql` | mdl-uniquery + **Trino**（Etrino） | 跨源/复杂 SQL 经计算集群（需单独安装 Etrino） |
+| Dataview + `--sql` | `openbkn dataview query ... --sql` | mdl-uniquery + 单独维护的 **Trino** | 跨源/复杂 SQL 经计算集群 |
 
 TypeScript：直连 SQL 用 typed 方法 `bkn.vega.sql({ resource_type, query })`；结构化 `query/execute` 无 typed 方法，用 `bkn.call('/api/vega-backend/v1/query/execute', { method: 'POST', body })`。
 
@@ -205,7 +205,7 @@ openbkn dataview query dv_001 \
   --sql "SELECT customer_name, order_count FROM mysql_demo.\"sales\".\"customer_orders\" WHERE region = '华东' LIMIT 20"
 ```
 
-**自定义 SQL（`--sql`）与 Etrino**：不带 `--sql` 时，`dataview query` 使用视图内建定义，走直连数据源；`--sql` 会经 `vega-gateway-pro` 调用 **`vega-calculate-coordinator`**（Hetu/Presto 系引擎），该组件不在 BKN Foundry 默认清单中，需部署 **Etrino 相关 Chart**：`vega-hdfs`、`vega-calculate`（内含 coordinator）、`vega-metadata`。在 `deploy` 目录执行 `./deploy.sh etrino install` 即可单独安装 Etrino。**复杂 SQL 请使用 catalog.`"schema"."table"` 全限定名。** 步骤见 [安装与部署](../install.md) 中的「可选：Etrino」。
+**自定义 SQL（`--sql`）**：不带 `--sql` 时，`dataview query` 使用视图内建定义，走直连数据源；`--sql` 依赖单独维护的 **`vega-calculate-coordinator`**（Hetu/Presto 系引擎），BKN Foundry 部署脚本不再包含或安装该组件。**复杂 SQL 请使用 catalog.`"schema"."table"` 全限定名。**
 
 **`dataview get` 响应字段（自定义 `--sql` 时）**：`openbkn dataview get <view_id> --pretty` 返回的 JSON 中，与表引用直接相关的是下表（字段名与 REST / TypeScript SDK 一致）。
 
