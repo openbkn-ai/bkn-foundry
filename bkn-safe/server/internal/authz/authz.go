@@ -533,7 +533,7 @@ func (en *Enforcer) ListObjectGrants(accessorID, resourceType, resourceID string
 // one per op. The "edit a grant" write behind the admin object-grant page
 // (POST /policies only adds, never prunes). Passing no ops clears the grant.
 func (en *Enforcer) SetObjectPermissions(accessorID, resourceType, resourceID string, ops []string) error {
-	if err := en.RemoveAccessorResourcePolicies(accessorID, resourceType, resourceID); err != nil {
+	if _, err := en.RemoveAccessorResourcePolicies(accessorID, resourceType, resourceID); err != nil {
 		return err
 	}
 	for _, op := range ops {
@@ -548,9 +548,24 @@ func (en *Enforcer) SetObjectPermissions(accessorID, resourceType, resourceID st
 // concrete resource instance (revoke a single grantee's grant), leaving other
 // accessors' grants on the same resource intact — unlike RemoveResourcePolicies,
 // which wipes the resource for everyone on delete. Idempotent.
-func (en *Enforcer) RemoveAccessorResourcePolicies(accessorID, resourceType, resourceID string) error {
-	_, err := en.e.RemoveFilteredPolicy(0, accessorID, obj(resourceType, resourceID))
-	return err
+//
+// Returns how many p-lines were removed, so a caller can tell an effective
+// revoke from a no-op one (a request naming a grant that does not exist).
+// Nothing about the outcome changes with the count — the operation is idempotent
+// either way — but the audit trail needs the distinction: "revoked 3 ops" and
+// "matched nothing" are different administrative facts.
+func (en *Enforcer) RemoveAccessorResourcePolicies(accessorID, resourceType, resourceID string) (int, error) {
+	rows, err := en.e.GetFilteredPolicy(0, accessorID, obj(resourceType, resourceID))
+	if err != nil {
+		return 0, err
+	}
+	if len(rows) == 0 {
+		return 0, nil
+	}
+	if _, err := en.e.RemoveFilteredPolicy(0, accessorID, obj(resourceType, resourceID)); err != nil {
+		return 0, err
+	}
+	return len(rows), nil
 }
 
 // splitObjectKey splits a casbin object key "type:id" on the FIRST colon (the

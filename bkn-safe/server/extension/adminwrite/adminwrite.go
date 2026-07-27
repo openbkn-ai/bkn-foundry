@@ -87,6 +87,40 @@ type Services interface {
 	RevokeRolePermission(ctx context.Context, roleID, resourceType, resourceID, op string) error
 }
 
+// PermissionPoint is one (resource type, operation) RBAC permission point, e.g.
+// {"admin-role", "permissions"}.
+type PermissionPoint struct {
+	ResourceType string
+	Op           string
+}
+
+// AnyPermissionRequirer is an OPTIONAL extension of Services: a middleware that
+// passes when the caller holds ANY of several permission points. It exists for
+// routes whose guarding point was renamed — the canonical point plus the point
+// that used to guard the same operation, so custom roles built on the old point
+// survive the upgrade.
+//
+// It is a separate interface rather than a Services method so that adding it
+// does not break existing Services implementations (notably ee's test doubles).
+// requireAnyPermission falls back to the canonical point alone when the
+// implementation does not provide it.
+type AnyPermissionRequirer interface {
+	RequireAnyPermission(points ...PermissionPoint) gin.HandlerFunc
+}
+
+// requireAnyPermission returns the any-of middleware when svc supports it, or
+// the single-point middleware for points[0] (the canonical point) when it does
+// not. Callers must list the canonical point first.
+func requireAnyPermission(svc Services, points ...PermissionPoint) gin.HandlerFunc {
+	if len(points) == 0 {
+		panic("adminwrite: requireAnyPermission needs at least one point")
+	}
+	if r, ok := svc.(AnyPermissionRequirer); ok {
+		return r.RequireAnyPermission(points...)
+	}
+	return svc.RequirePermission(points[0].ResourceType, points[0].Op)
+}
+
 // Mounter registers the rbac_basic write routes onto g using svc. The ee build
 // provides one; the community build leaves it nil, so the routes never exist.
 type Mounter func(g *gin.RouterGroup, svc Services)

@@ -44,7 +44,7 @@
       "role_name": "security",
       "resource_type": "admin-role",
       "id_pattern": "*",
-      "operations": ["view", "create", "edit", "delete", "members"]
+      "operations": ["view", "create", "edit", "delete", "members", "permissions"]
     },
     {
       "role_id": "d8998f72-ad03-11e8-aa06-000c29358ad6",

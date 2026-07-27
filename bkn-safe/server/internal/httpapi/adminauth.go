@@ -6,6 +6,7 @@ package httpapi
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -84,6 +85,58 @@ func authorizePermission(c *gin.Context, e *authz.Enforcer, resourceType, op str
 		return false
 	}
 	return true
+}
+
+// PermissionPoint is one (resource type, operation) admin permission point, e.g.
+// {"admin-role", "permissions"}.
+type PermissionPoint struct {
+	ResourceType string
+	Op           string
+}
+
+func (p PermissionPoint) String() string { return p.ResourceType + ":" + p.Op }
+
+// RequireAnyPermission guards an admin operation that accepts MORE THAN ONE
+// permission point, passing when the caller holds any of them. Its only intended
+// use is a renamed point: list the canonical point FIRST and the superseded one
+// after it, so a deployment whose custom roles were granted the old point keeps
+// working across the upgrade.
+//
+// Seeded roles need no such grace — reconcileSeedRoles rewrites their grants
+// from grants.json on every boot — but CUSTOM roles are never rewritten, so a
+// hard switch would silently lock out any custom role built on the old point.
+// Passing via a superseded point is logged (accessor + point + route) so the
+// grace period can be ended on evidence rather than on a guess: once the logs
+// are quiet, drop the legacy point and go back to RequirePermission.
+func RequireAnyPermission(e *authz.Enforcer, points ...PermissionPoint) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		sub := c.GetString(ctxAccessorID)
+		if sub == "" {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing authenticated accessor"})
+			return
+		}
+		names := make([]string, 0, len(points))
+		for i, p := range points {
+			names = append(names, p.String())
+			ok, err := e.Check(sub, p.ResourceType, "*", p.Op)
+			if err != nil {
+				c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+			if !ok {
+				continue
+			}
+			if i > 0 {
+				slog.Warn("admin request authorized via a superseded permission point",
+					"accessor_id", sub, "point", p.String(), "canonical_point", points[0].String(),
+					"method", c.Request.Method, "path", c.FullPath())
+			}
+			c.Next()
+			return
+		}
+		c.AbortWithStatusJSON(http.StatusForbidden,
+			gin.H{"error": "not authorized for any of " + strings.Join(names, ", ")})
+	}
 }
 
 // RequireUser is the gin middleware guarding self-service APIs (/me). It only

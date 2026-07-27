@@ -42,6 +42,17 @@ func (s *adminWriteServices) RequirePermission(resourceType, op string) gin.Hand
 	return RequirePermission(s.e, resourceType, op)
 }
 
+// RequireAnyPermission implements adminwrite.AnyPermissionRequirer: the same RBAC
+// middleware, for a route that accepts more than one permission point (a renamed
+// point plus the one it superseded).
+func (s *adminWriteServices) RequireAnyPermission(points ...adminwrite.PermissionPoint) gin.HandlerFunc {
+	corePoints := make([]PermissionPoint, 0, len(points))
+	for _, p := range points {
+		corePoints = append(corePoints, PermissionPoint{ResourceType: p.ResourceType, Op: p.Op})
+	}
+	return RequireAnyPermission(s.e, corePoints...)
+}
+
 // CreateRole creates a custom role. Source is forced to custom — the API can
 // never mint a system or business role, whichever id or name is asked for.
 func (s *adminWriteServices) CreateRole(ctx context.Context, spec adminwrite.RoleSpec) (string, error) {

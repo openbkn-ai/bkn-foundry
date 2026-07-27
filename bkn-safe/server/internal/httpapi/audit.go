@@ -66,6 +66,7 @@ func auditMiddleware(store *audit.Store, dir *directory.Service, db *gorm.DB) gi
 				targetName = name
 			}
 		}
+		detail = withAuditOutcome(detail, c)
 		if err := store.Record(c.Request.Context(), audit.Entry{
 			ActorID:    c.GetString(ctxAccessorID),
 			Method:     c.Request.Method,
@@ -114,6 +115,49 @@ func auditDetail(raw []byte) string {
 	}
 	if len(b) > maxAuditDetail {
 		return string(b[:maxAuditDetail])
+	}
+	return string(b)
+}
+
+// ctxAuditOutcome is the gin context key under which a handler stashes outcome
+// facts for the audit trail — things only the handler knows and the request body
+// does not say, e.g. how many grants a revoke actually removed.
+const ctxAuditOutcome = "audit_outcome"
+
+// setAuditOutcome records outcome facts for the audit Detail of the current
+// request. Safe to call on a request that is not audited (auditing off, or a
+// read): the value is then simply never consumed.
+func setAuditOutcome(c *gin.Context, outcome map[string]any) {
+	c.Set(ctxAuditOutcome, outcome)
+}
+
+// withAuditOutcome folds any handler-supplied outcome facts into the Detail
+// snapshot under "_outcome". The request-body keys are left untouched, so a
+// reader sees both what was asked for and what happened. Detail stays capped at
+// maxAuditDetail; if the merged form would not fit, the original snapshot is
+// kept — the body is the more important half, and a truncated JSON fragment
+// would be unparseable for whoever reads the log.
+func withAuditOutcome(detail string, c *gin.Context) string {
+	raw, ok := c.Get(ctxAuditOutcome)
+	if !ok {
+		return detail
+	}
+	outcome, ok := raw.(map[string]any)
+	if !ok || len(outcome) == 0 {
+		return detail
+	}
+	m := map[string]any{}
+	if detail != "" {
+		if err := json.Unmarshal([]byte(detail), &m); err != nil {
+			// Detail was truncated mid-JSON (oversized body). Record the outcome
+			// alone rather than dropping it.
+			m = map[string]any{}
+		}
+	}
+	m["_outcome"] = outcome
+	b, err := json.Marshal(m)
+	if err != nil || len(b) > maxAuditDetail {
+		return detail
 	}
 	return string(b)
 }

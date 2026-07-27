@@ -32,6 +32,40 @@ import (
 // dead policy that never matches at enforce time (see RolePermissions path for
 // the role-based alternative).
 func registerObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
+	// GET /policies?resource_type=&resource_id= — every accessor's grants on one
+	// resource, including grants inherited through roles (the "who can do what on
+	// this object"审查 view). -> { entries:[ { accessor_id, resource{type,id},
+	// operations:[...] } ] }
+	//
+	// This is the token-gated twin of the internal GET /api/safe/v1/authz/policies:
+	// that one is ClusterIP-only and unauthenticated (service-to-service), and the
+	// gateway does not expose it, so a console user reviewing policies had no
+	// endpoint to call. Reads are gated on admin-authz:view, which the audit role
+	// holds — policy review is exactly its job — while the write points
+	// (grant/revoke) stay out of its grant set.
+	g.GET("/policies", RequirePermission(e, "admin-authz", "view"), func(c *gin.Context) {
+		resourceType := objectGrantQueryParam(c, "resource_type", "obj_type")
+		resourceID := objectGrantQueryParam(c, "resource_id", "obj_id")
+		if resourceType == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "resource_type required"})
+			return
+		}
+		policies, err := e.ResourcePolicies(resourceType, resourceID)
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		entries := make([]gin.H, 0, len(policies))
+		for _, p := range policies {
+			entries = append(entries, gin.H{
+				"accessor_id": p.AccessorID,
+				"resource":    gin.H{"type": resourceType, "id": resourceID},
+				"operations":  p.Operations,
+			})
+		}
+		c.JSON(http.StatusOK, gin.H{"entries": entries})
+	})
+
 	// GET /object-grants?accessor_id=&resource_type=&resource_id=&search=&offset=&limit=
 	// Aliases: obj_type=resource_type, obj_id=resource_id.
 	// -> { entries:[...], total, summary?:{ grants, objects, grantees } }
@@ -243,7 +277,18 @@ func registerObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 
 	// DELETE /object-grants — revoke one user's grant on one concrete resource
 	// instance, leaving other grantees on the same resource untouched.
-	// { accessor_id, resource{type,id} }
+	// { accessor_id, resource{type,id} } -> 204.
+	//
+	// Idempotent BY DESIGN: a request naming a grant that does not exist (already
+	// revoked, wrong accessor, wrong instance) still answers 204, so a retry or a
+	// double-click is safe. The distinction the caller cannot see is recorded in
+	// the audit trail instead — Detail carries _outcome.removed, the number of
+	// p-lines actually dropped, so 0 is auditable as "matched nothing".
+	//
+	// The resource TYPE is validated against the catalog even though revoking an
+	// unregistered type would harmlessly match nothing: a typo'd type is a silent
+	// no-op the operator would read as a successful revoke, which is the worst
+	// possible outcome for a security operation.
 	g.DELETE("/object-grants", RequirePermission(e, "admin-authz", "revoke"), func(c *gin.Context) {
 		var req struct {
 			AccessorID string      `json:"accessor_id" binding:"required"`
@@ -256,10 +301,21 @@ func registerObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "object grants target a concrete resource id (not \"*\")"})
 			return
 		}
-		if err := e.RemoveAccessorResourcePolicies(req.AccessorID, req.Resource.Type, req.Resource.ID); err != nil {
+		valid, err := catalogOpSet(db, req.Resource.Type)
+		if err != nil {
 			serverError(c, err)
 			return
 		}
+		if len(valid) == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "unknown resource type: " + req.Resource.Type})
+			return
+		}
+		removed, err := e.RemoveAccessorResourcePolicies(req.AccessorID, req.Resource.Type, req.Resource.ID)
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		setAuditOutcome(c, map[string]any{"removed": removed})
 		c.Status(http.StatusNoContent)
 	})
 }

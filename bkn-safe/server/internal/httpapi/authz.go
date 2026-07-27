@@ -481,6 +481,25 @@ func registerRoles(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 		c.JSON(http.StatusOK, body)
 	})
 
+	// GET /roles/:id/permissions — the role's permission grants.
+	// -> { permissions:[ { resource{type,id}, operations:[...] } ] }
+	// The same list GET /roles/:id embeds, as a standalone read so the console's
+	// role-permission editor (and an auditor reviewing one role) can pull it
+	// without the members payload. Read point is admin-role:view; the write twins
+	// live on the rbac_basic socket behind admin-role:permissions.
+	g.GET("/roles/:id/permissions", RequirePermission(e, "admin-role", "view"), func(c *gin.Context) {
+		role, _ := loadRole(c, db, c.Param("id"))
+		if role == nil {
+			return
+		}
+		grants, err := e.RolePermissions(role.ID)
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"permissions": grantsJSON(grants)})
+	})
+
 	// GET /roles/:id/members — accessor ids bound to the role. -> { accessor_ids:[...] }
 	g.GET("/roles/:id/members", RequirePermission(e, "admin-role", "view"), func(c *gin.Context) {
 		role, _ := loadRole(c, db, c.Param("id"))

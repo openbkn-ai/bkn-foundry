@@ -162,7 +162,7 @@ func TestThreeAdminRolesUseEndpointLevelPermissions(t *testing.T) {
 	grantRoleOps(t, e, adminRole, "admin-user", "view", "create", "edit", "delete", "toggle", "reset-password")
 	grantRoleOps(t, e, adminRole, "admin-dept", "view", "create", "edit", "delete", "members")
 	grantRoleOps(t, e, securityRole, "admin-user", "view", "toggle", "reset-password")
-	grantRoleOps(t, e, securityRole, "admin-role", "view", "create", "edit", "delete", "members")
+	grantRoleOps(t, e, securityRole, "admin-role", "view", "create", "edit", "delete", "members", "permissions")
 	grantRoleOps(t, e, securityRole, "admin-authz", "view", "grant", "revoke")
 	grantRoleOps(t, e, auditRole, "admin-user", "view")
 	grantRoleOps(t, e, auditRole, "admin-role", "view")
@@ -188,6 +188,20 @@ func TestThreeAdminRolesUseEndpointLevelPermissions(t *testing.T) {
 		return gin.H{"id": name, "name": name}
 	}
 	bindTarget := gin.H{"accessor_id": "target-user", "role_id": "target-role"}
+	// Authorization-management payloads: an object grant on a concrete catalog
+	// instance, and a role-permission grant over the whole catalog type.
+	seedCatalogOps(t, db, "catalog", "view_detail")
+	grantObject := gin.H{
+		"accessor_id": "target-user",
+		"resource":    gin.H{"type": "catalog", "id": "c1"},
+		"operations":  []string{"view_detail"},
+	}
+	revokeObject := gin.H{"accessor_id": "target-user", "resource": gin.H{"type": "catalog", "id": "c1"}}
+	rolePermission := gin.H{"resource": gin.H{"type": "catalog", "id": "*"}, "operations": []string{"view_detail"}}
+	const (
+		rolePermsPath = "/api/safe/v1/admin/roles/target-role/permissions"
+		policiesPath  = "/api/safe/v1/admin/policies?resource_type=catalog&resource_id=c1"
+	)
 
 	cases := []struct {
 		name, token, method, path string
@@ -208,6 +222,23 @@ func TestThreeAdminRolesUseEndpointLevelPermissions(t *testing.T) {
 		{"audit cannot create role", auditUser, http.MethodPost, "/api/safe/v1/admin/roles", createRole("audit-role-created"), http.StatusForbidden},
 		{"audit cannot bind role", auditUser, http.MethodPost, "/api/safe/v1/admin/role-bindings", bindTarget, http.StatusForbidden},
 		{"audit reads audit", auditUser, http.MethodGet, "/api/safe/v1/admin/audit-logs", nil, http.StatusOK},
+
+		// Authorization management: security owns the writes, audit reviews them,
+		// admin (system operations) holds neither.
+		{"admin cannot grant object", adminUser, http.MethodPost, objectGrantsPath, grantObject, http.StatusForbidden},
+		{"admin cannot revoke object", adminUser, http.MethodDelete, objectGrantsPath, revokeObject, http.StatusForbidden},
+		{"admin cannot configure role permissions", adminUser, http.MethodPost, rolePermsPath, rolePermission, http.StatusForbidden},
+		{"admin cannot review policies", adminUser, http.MethodGet, policiesPath, nil, http.StatusForbidden},
+		{"security grants object", securityUser, http.MethodPost, objectGrantsPath, grantObject, http.StatusNoContent},
+		{"security reviews policies", securityUser, http.MethodGet, policiesPath, nil, http.StatusOK},
+		{"security configures role permissions", securityUser, http.MethodPost, rolePermsPath, rolePermission, http.StatusNoContent},
+		{"security revokes role permissions", securityUser, http.MethodDelete, rolePermsPath, rolePermission, http.StatusNoContent},
+		{"security revokes object", securityUser, http.MethodDelete, objectGrantsPath, revokeObject, http.StatusNoContent},
+		{"audit reviews policies", auditUser, http.MethodGet, policiesPath, nil, http.StatusOK},
+		{"audit reads role permissions", auditUser, http.MethodGet, rolePermsPath, nil, http.StatusOK},
+		{"audit cannot grant object", auditUser, http.MethodPost, objectGrantsPath, grantObject, http.StatusForbidden},
+		{"audit cannot revoke object", auditUser, http.MethodDelete, objectGrantsPath, revokeObject, http.StatusForbidden},
+		{"audit cannot configure role permissions", auditUser, http.MethodPost, rolePermsPath, rolePermission, http.StatusForbidden},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

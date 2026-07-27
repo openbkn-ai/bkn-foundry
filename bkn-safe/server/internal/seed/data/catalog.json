@@ -216,7 +216,8 @@
         {"id": "create", "name": "新建角色"},
         {"id": "edit", "name": "编辑角色"},
         {"id": "delete", "name": "删除角色"},
-        {"id": "members", "name": "成员管理"}
+        {"id": "members", "name": "成员管理"},
+        {"id": "permissions", "name": "角色权限配置"}
       ]
     },
     {

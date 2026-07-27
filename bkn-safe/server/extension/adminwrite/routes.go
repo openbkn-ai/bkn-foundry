@@ -79,7 +79,18 @@ func Routes(g *gin.RouterGroup, svc Services) {
 
 	// POST /roles/:id/permissions — grant a custom role an op over a resource
 	// pattern (id "*" = whole type). { resource{type,id}, operations:[...] }
-	g.POST("/roles/:id/permissions", svc.RequirePermission("admin-authz", "grant"), func(c *gin.Context) {
+	//
+	// Guarded by admin-role:permissions: shaping a ROLE's permission set is role
+	// management, distinct from admin-authz:grant, which hands one concrete object
+	// to one concrete user (object-grants). Separating them lets a deployment give
+	// out "may shape roles" and "may grant objects" independently. admin-authz:grant
+	// stays accepted for the deprecation window because it is what this route
+	// required before the split — custom roles carrying only the old point keep
+	// working, and each such call is logged (see RequireAnyPermission).
+	g.POST("/roles/:id/permissions", requireAnyPermission(svc,
+		PermissionPoint{ResourceType: "admin-role", Op: "permissions"},
+		PermissionPoint{ResourceType: "admin-authz", Op: "grant"},
+	), func(c *gin.Context) {
 		req, ok := bindPermReq(c)
 		if !ok {
 			return
@@ -94,7 +105,12 @@ func Routes(g *gin.RouterGroup, svc Services) {
 	})
 
 	// DELETE /roles/:id/permissions — revoke a custom role's ops over a pattern.
-	g.DELETE("/roles/:id/permissions", svc.RequirePermission("admin-authz", "revoke"), func(c *gin.Context) {
+	// Same point split as the POST above; admin-authz:revoke stays accepted for
+	// the deprecation window.
+	g.DELETE("/roles/:id/permissions", requireAnyPermission(svc,
+		PermissionPoint{ResourceType: "admin-role", Op: "permissions"},
+		PermissionPoint{ResourceType: "admin-authz", Op: "revoke"},
+	), func(c *gin.Context) {
 		req, ok := bindPermReq(c)
 		if !ok {
 			return
