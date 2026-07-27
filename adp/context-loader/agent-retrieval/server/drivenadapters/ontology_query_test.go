@@ -369,6 +369,35 @@ func TestQueryObjectInstances_DownstreamBadRequestRemappedToBadRequest(t *testin
 	})
 }
 
+// TestQueryObjectInstances_DownstreamNotFoundKeepsCode 下游 404（如 kn_id/ot_id
+// 不存在）须保留 404 语义,不被压成 400「参数错误」。
+func TestQueryObjectInstances_DownstreamNotFoundKeepsCode(t *testing.T) {
+	convey.Convey("downstream 404 stays NotFound, not collapsed to 400", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockLogger := mocks.NewMockLogger(ctrl)
+		mockHTTPClient := mocks.NewMockHTTPClient(ctrl)
+		mockLogger.EXPECT().WithContext(gomock.Any()).Return(mockLogger).AnyTimes()
+		mockLogger.EXPECT().Warnf(gomock.Any(), gomock.Any()).AnyTimes()
+
+		client := &ontologyQueryClient{logger: mockLogger, baseURL: "http://x", httpClient: mockHTTPClient}
+		ctx := context.Background()
+		req := &interfaces.QueryObjectInstancesReq{KnID: "missing", OtID: "ot-001", Limit: 10}
+
+		wrapped := infraErr.NewHTTPError(ctx, http.StatusNotFound, infraErr.ErrExtCommonExternalServerError, "knowledge network not found")
+		mockHTTPClient.EXPECT().Post(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(http.StatusNotFound, nil, wrapped)
+
+		_, err := client.QueryObjectInstances(ctx, req)
+		var he *infraErr.HTTPError
+		convey.So(errors.As(err, &he), convey.ShouldBeTrue)
+		convey.So(he.HTTPCode, convey.ShouldEqual, http.StatusNotFound)
+		convey.So(strings.Contains(he.Code, "NotFound"), convey.ShouldBeTrue)
+		convey.So(strings.Contains(he.Code, "CommonExternalServerError"), convey.ShouldBeFalse)
+	})
+}
+
 // TestQueryObjectInstances_DownstreamServerErrorUntouched 下游 5xx（真服务故障）
 // 与传输错误(无 HTTP 码)保持原样,不误降为 400。
 func TestQueryObjectInstances_DownstreamServerErrorUntouched(t *testing.T) {

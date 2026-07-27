@@ -121,15 +121,20 @@ func (o *ontologyQueryClient) QueryObjectInstances(ctx context.Context, req *int
 	return
 }
 
-// classifyQueryError re-maps a downstream client error (4xx) from ontology-query
-// into a clean bad-request. The shared HTTP client flattens every non-2xx into
+// classifyQueryError re-classifies a downstream client error (4xx) from
+// ontology-query. The shared HTTP client flattens every non-2xx into
 // CommonExternalServerError ("调用依赖服务异常"), which mislabels a caller mistake
 // — most notably a knn condition on a non-vector string field
 // ("OntologyQuery.InvalidParameter.Condition: left field is not a vector field")
 // — as a dependency outage, so the caller cannot tell "my query is wrong" from
-// "the service is down". A 4xx is the caller's, so surface it as a 400 with the
-// downstream detail intact; a 5xx (or a transport error, which carries no HTTP
-// code) stays as-is.
+// "the service is down".
+//
+// A 4xx is the caller's, so re-map it away from the dependency-error class while
+// PRESERVING the downstream status code: a 400 stays a BadRequest, a 404 stays a
+// NotFound (e.g. an unknown kn_id/ot_id), a 403 a Forbidden — collapsing them all
+// to 400 would lose that distinction. The downstream detail is carried through so
+// the caller sees the actionable cause. A 5xx genuinely IS a dependency fault, so
+// it (and a transport error, which carries no HTTP code) stays as CommonExternalServerError.
 //
 // agent-retrieval deliberately does NOT pre-validate that a field is a vector
 // field before forwarding: a property's condition_operations list is declared
@@ -144,7 +149,7 @@ func classifyQueryError(ctx context.Context, err error) error {
 		if details == nil {
 			details = he.Error()
 		}
-		return infraErr.DefaultHTTPError(ctx, http.StatusBadRequest, details)
+		return infraErr.DefaultHTTPError(ctx, he.HTTPCode, details)
 	}
 	return err
 }
