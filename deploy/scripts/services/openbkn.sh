@@ -903,27 +903,3 @@ uninstall_openbkn() {
 
     log_info "BKN Foundry services uninstallation completed."
 }
-
-# Show BKN Foundry services status
-show_openbkn_status() {
-    log_info "BKN Foundry services status:"
-
-    local namespace
-    namespace="$(_openbkn_resolve_target_namespace)"
-
-    log_info "Namespace: ${namespace}"
-    log_info ""
-
-    local -a release_names=()
-    bkn_mapfile_compat release_names _openbkn_release_names_or_installed "${namespace}"
-    for release_name in "${release_names[@]}"; do
-        if helm status "${release_name}" -n "${namespace}" >/dev/null 2>&1; then
-            local status
-            status=$(helm status "${release_name}" -n "${namespace}" -o json 2>/dev/null \
-                | grep -o '"status":"[^"]*"' | head -1 | cut -d'"' -f4)
-            log_info "  ✓ ${release_name}: ${status}"
-        else
-            log_info "  ✗ ${release_name}: not installed"
-        fi
-    done
-}
