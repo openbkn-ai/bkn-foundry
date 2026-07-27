@@ -1323,12 +1323,20 @@ func (r *skillRegistry) GetSkillDetail(ctx context.Context, req *interfaces.GetS
 	return skillInfo, nil
 }
 
-// GetSkillNamesByIDs 按技能ID批量取名(轻量只读，不存在的ID略过；不做对象级授权校验)
+// GetSkillNamesByIDs 按技能ID批量取名(轻量只读，不存在的ID略过)
+// 公开面按查看权限过滤：无权限的ID与不存在的ID一样静默略过。
 func (r *skillRegistry) GetSkillNamesByIDs(ctx context.Context, ids []string) (resp *interfaces.BatchNamesResp, err error) {
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
 	resp = &interfaces.BatchNamesResp{Entries: []*interfaces.NameEntry{}}
 	ids = utils.UniqueStrings(ids)
+	if len(ids) == 0 {
+		return
+	}
+	ids, err = auth.FilterViewableIDs(ctx, r.AuthService, "", ids, interfaces.AuthResourceTypeSkill)
+	if err != nil {
+		return nil, err
+	}
 	if len(ids) == 0 {
 		return
 	}

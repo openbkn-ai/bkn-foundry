@@ -15,6 +15,34 @@ import (
 	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 )
 
+// requireOperatorTypePermission 校验调用方在算子类型上持有指定操作权限。
+//
+// 分类是全局分类法，不隶属于任何单个算子，没有资源 ID 可判，因此按类型级（ResourceIDAll）
+// 判定，口径与 logics/auth/decision.go 中 CheckCreatePermission 一致。
+//
+// 仅在公开面生效：内部面（internal-v1）由服务间调用，启动期的内置分类灌入走的也是这条路
+// （见 driveradapters/category/init_data.go），沿用服务内既有惯用法跳过判定。
+// 读接口（GetCategoryList）不判：分类法只是名称字典，不含租户数据，收紧会打断非超管前端。
+func (c *categoryManager) requireOperatorTypePermission(ctx context.Context, userID string,
+	operation interfaces.AuthOperationType) error {
+	if !common.IsPublicAPIFromCtx(ctx) {
+		return nil
+	}
+	accessor, err := c.AuthService.GetAccessor(ctx, userID)
+	if err != nil {
+		return err
+	}
+	authorized, err := c.AuthService.OperationCheckAll(ctx, accessor,
+		interfaces.ResourceIDAll, interfaces.AuthResourceTypeOperator, operation)
+	if err != nil {
+		return err
+	}
+	if !authorized {
+		return errors.NewHTTPError(ctx, http.StatusForbidden, errors.ErrExtCommonOperationForbidden, nil)
+	}
+	return nil
+}
+
 // GetCategoryName 获取分类名称
 func (c *categoryManager) GetCategoryName(ctx context.Context, category interfaces.BizCategory) (categoryName string) {
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
@@ -111,6 +139,9 @@ func (c *categoryManager) getCategorySystem(ctx context.Context) *interfaces.Cat
 func (c *categoryManager) UpdateCategory(ctx context.Context, req *interfaces.UpdateCategoryReq) (resp *interfaces.UpdateCategoryResp, err error) {
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
+	if err = c.requireOperatorTypePermission(ctx, req.UserID, interfaces.AuthOperationTypeModify); err != nil {
+		return
+	}
 	// 校验分类名称
 	err = c.Validator.ValidatorCategoryName(ctx, req.CategoryName)
 	if err != nil {
@@ -161,6 +192,9 @@ func (c *categoryManager) UpdateCategory(ctx context.Context, req *interfaces.Up
 func (c *categoryManager) CreateCategory(ctx context.Context, req *interfaces.CreateCategoryReq) (resp *interfaces.CreateCategoryResp, err error) {
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
+	if err = c.requireOperatorTypePermission(ctx, req.UserID, interfaces.AuthOperationTypeCreate); err != nil {
+		return
+	}
 	// 校验分类名称
 	err = c.Validator.ValidatorCategoryName(ctx, req.CategoryName)
 	if err != nil {
@@ -225,6 +259,9 @@ func (c *categoryManager) BatchCreateCategory(ctx context.Context, req []*interf
 func (c *categoryManager) DeleteCategory(ctx context.Context, req *interfaces.DeleteCategoryReq) (err error) {
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
+	if err = c.requireOperatorTypePermission(ctx, req.UserID, interfaces.AuthOperationTypeDelete); err != nil {
+		return
+	}
 	if string(req.CategoryType) == interfaces.CategoryTypeOther.String() {
 		return errors.DefaultHTTPError(ctx, http.StatusForbidden, "category_type: "+interfaces.CategoryTypeOther.String()+" is a built-in system category and cannot be deleted")
 	}

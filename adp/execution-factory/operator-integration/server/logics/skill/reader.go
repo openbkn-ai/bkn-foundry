@@ -185,6 +185,27 @@ func (r *skillReader) GetSkillReleaseHistory(ctx context.Context, req *interface
 		"skill_id": req.SkillID,
 	})
 
+	// 如果是外部接口，口径与同文件其余只读接口一致：执行、公共访问、查看三者有其一即可
+	if common.IsPublicAPIFromCtx(ctx) {
+		var accessor *interfaces.AuthAccessor
+		accessor, err = r.AuthService.GetAccessor(ctx, req.UserID)
+		if err != nil {
+			return nil, err
+		}
+		var authorized bool
+		authorized, err = r.AuthService.OperationCheckAny(ctx, accessor, req.SkillID, interfaces.AuthResourceTypeSkill,
+			interfaces.AuthOperationTypeExecute, interfaces.AuthOperationTypePublicAccess, interfaces.AuthOperationTypeView)
+		if err != nil {
+			return nil, err
+		}
+		if !authorized {
+			r.Logger.WithContext(ctx).Errorf("user has no permission to view release history of skill %s", req.SkillID)
+			err = errors.NewHTTPError(ctx, http.StatusForbidden, errors.ErrExtCommonOperationForbidden,
+				fmt.Sprintf("user has no permission to view release history of skill %s", req.SkillID))
+			return nil, err
+		}
+	}
+
 	histories, err := r.releaseHistoryRepo.SelectBySkillID(ctx, nil, req.SkillID)
 	if err != nil {
 		return nil, errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())

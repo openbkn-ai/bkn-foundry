@@ -1,0 +1,45 @@
+package auth
+
+import (
+	"context"
+
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/common"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
+)
+
+// FilterViewableIDs 在公开面按查看权限过滤资源ID，内部面原样返回。
+//
+// 用于 /operator/names、/tool-box/names、/skills/names 这类批量取名接口：它们本就对不存在的
+// ID 静默略过，因此无权限的 ID 同样略过而不是整体 403——否则 403 与 200 的差异本身就成了
+// 存在性探测信道。
+//
+// 判定复用 ResourceListIDs：类型级授权（含超管）会直接返回 ResourceIDAll，一次调用即可覆盖
+// 通配场景，无需按 ID 逐个回源。
+func FilterViewableIDs(ctx context.Context, authService interfaces.IAuthorizationService, userID string,
+	ids []string, resourceType interfaces.AuthResourceType) ([]string, error) {
+	if !common.IsPublicAPIFromCtx(ctx) || len(ids) == 0 {
+		return ids, nil
+	}
+	accessor, err := authService.GetAccessor(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	authorizedIDs, err := authService.ResourceListIDs(ctx, accessor, resourceType, interfaces.AuthOperationTypeView)
+	if err != nil {
+		return nil, err
+	}
+	allowed := make(map[string]struct{}, len(authorizedIDs))
+	for _, id := range authorizedIDs {
+		if id == interfaces.ResourceIDAll {
+			return ids, nil
+		}
+		allowed[id] = struct{}{}
+	}
+	filtered := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if _, ok := allowed[id]; ok {
+			filtered = append(filtered, id)
+		}
+	}
+	return filtered, nil
+}

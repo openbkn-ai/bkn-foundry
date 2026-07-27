@@ -9,12 +9,14 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/dbaccess"
+	infracommon "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/config"
 	oerrors "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/errors"
 	infralock "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/lock"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces/model"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/auth"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -33,6 +35,7 @@ type skillIndexBuildService struct {
 	skillRepo           model.ISkillRepository
 	releaseRepo         model.ISkillReleaseDB
 	indexSync           interfaces.SkillIndexSyncService
+	authService         interfaces.IAuthorizationService
 	assignLockerFactory func(taskID string) skillIndexBuildAssignLocker
 	enablePeriodicFull  bool
 	periodicFullEvery   time.Duration
@@ -63,6 +66,7 @@ func NewSkillIndexBuildService() interfaces.SkillIndexBuildService {
 			skillRepo:           dbaccess.NewSkillRepositoryDB(),
 			releaseRepo:         dbaccess.NewSkillReleaseDB(),
 			indexSync:           NewSkillIndexSyncService(),
+			authService:         auth.NewAuthServiceImpl(),
 			assignLockerFactory: newSkillIndexBuildAssignLockerFactory(),
 			enablePeriodicFull:  conf.SkillIndexBuildConfig.EnablePeriodicFullScan,
 			periodicFullEvery:   periodicEvery,
@@ -73,7 +77,37 @@ func NewSkillIndexBuildService() interfaces.SkillIndexBuildService {
 	return skillIndexBuildInst
 }
 
+// requireSkillTypePermission 校验调用方在 Skill 类型上持有指定操作权限。
+//
+// 索引构建任务面向全量 Skill，不隶属于任何单个 Skill，没有资源 ID 可判，因此按类型级
+// （ResourceIDAll）判定，口径与 logics/auth/decision.go 中 CheckCreatePermission 一致。
+//
+// 仅在公开面生效。内部面（internal-v1）由服务间调用、周期调度器与重试 worker 触发，
+// 沿用服务内既有惯用法（见 logics/skill/reader.go:70）跳过判定，避免打断现有调用方。
+func (s *skillIndexBuildService) requireSkillTypePermission(ctx context.Context, userID string,
+	operation interfaces.AuthOperationType) error {
+	if !infracommon.IsPublicAPIFromCtx(ctx) {
+		return nil
+	}
+	accessor, err := s.authService.GetAccessor(ctx, userID)
+	if err != nil {
+		return err
+	}
+	authorized, err := s.authService.OperationCheckAll(ctx, accessor,
+		interfaces.ResourceIDAll, interfaces.AuthResourceTypeSkill, operation)
+	if err != nil {
+		return err
+	}
+	if !authorized {
+		return oerrors.NewHTTPError(ctx, http.StatusForbidden, oerrors.ErrExtCommonOperationForbidden, nil)
+	}
+	return nil
+}
+
 func (s *skillIndexBuildService) CreateTask(ctx context.Context, req *interfaces.CreateSkillIndexBuildTaskReq) (*interfaces.CreateSkillIndexBuildTaskResp, error) {
+	if err := s.requireSkillTypePermission(ctx, req.UserID, interfaces.AuthOperationTypeModify); err != nil {
+		return nil, err
+	}
 	resp, err := s.createTask(ctx, req.UserID, req.ExecuteType)
 	if err != nil {
 		return nil, err
@@ -180,6 +214,9 @@ func (s *skillIndexBuildService) QueryTaskList(ctx context.Context, req *interfa
 }
 
 func (s *skillIndexBuildService) CancelTask(ctx context.Context, req *interfaces.CancelSkillIndexBuildTaskReq) (*interfaces.CancelSkillIndexBuildTaskResp, error) {
+	if err := s.requireSkillTypePermission(ctx, req.UserID, interfaces.AuthOperationTypeModify); err != nil {
+		return nil, err
+	}
 	task, err := s.taskRepo.SelectByTaskID(ctx, nil, req.TaskID)
 	if err != nil {
 		return nil, oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
@@ -208,6 +245,9 @@ func (s *skillIndexBuildService) CancelTask(ctx context.Context, req *interfaces
 }
 
 func (s *skillIndexBuildService) RetryTask(ctx context.Context, req *interfaces.RetrySkillIndexBuildTaskReq) (*interfaces.RetrySkillIndexBuildTaskResp, error) {
+	if err := s.requireSkillTypePermission(ctx, req.UserID, interfaces.AuthOperationTypeModify); err != nil {
+		return nil, err
+	}
 	task, err := s.taskRepo.SelectByTaskID(ctx, nil, req.TaskID)
 	if err != nil {
 		return nil, oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())

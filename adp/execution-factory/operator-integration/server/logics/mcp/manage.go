@@ -41,6 +41,18 @@ func (s *mcpServiceImpl) ParseSSE(ctx context.Context, req *interfaces.MCPParseS
 	// 记录可观测
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
+	// 解析动作会驱动服务端向调用方给定的 URL 发起出站请求，是新建 MCP Server 的前置步骤，
+	// 因此按与 AddMCPServer 相同的类型级新建权限判定；内部面不受影响。
+	if icommon.IsPublicAPIFromCtx(ctx) {
+		var accessor *interfaces.AuthAccessor
+		accessor, err = s.AuthService.GetAccessor(ctx, "")
+		if err != nil {
+			return
+		}
+		if err = s.AuthService.CheckCreatePermission(ctx, accessor, interfaces.AuthResourceTypeMCP); err != nil {
+			return
+		}
+	}
 	mcpCoreInfo := interfaces.MCPCoreConfigInfo{
 		Mode:    req.Mode,
 		URL:     req.URL,

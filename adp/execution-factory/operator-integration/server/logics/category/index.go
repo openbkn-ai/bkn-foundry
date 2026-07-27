@@ -9,25 +9,28 @@ import (
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/validator"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces/model"
+	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/auth"
 )
 
 // categoryManager 分类管理器
 type categoryManager struct {
-	logger     interfaces.Logger
-	DBTx       model.DBTx
-	DBCategory model.DBCategory
-	Validator  interfaces.Validator
-	Cache      interfaces.Cache
+	logger      interfaces.Logger
+	DBTx        model.DBTx
+	DBCategory  model.DBCategory
+	Validator   interfaces.Validator
+	Cache       interfaces.Cache
+	AuthService interfaces.IAuthorizationService
 }
 
 // NewCategoryManager 创建分类管理器
 func NewCategoryManager() interfaces.CategoryManager {
 	c := &categoryManager{
-		logger:     config.NewConfigLoader().GetLogger(),
-		DBTx:       dbaccess.NewBaseTx(),
-		DBCategory: dbaccess.NewCategoryDBSingleton(),
-		Validator:  validator.NewValidator(),
-		Cache:      cache.NewInMemoryCache(),
+		logger:      config.NewConfigLoader().GetLogger(),
+		DBTx:        dbaccess.NewBaseTx(),
+		DBCategory:  dbaccess.NewCategoryDBSingleton(),
+		Validator:   validator.NewValidator(),
+		Cache:       cache.NewInMemoryCache(),
+		AuthService: auth.NewAuthServiceImpl(),
 	}
 	// 从数据库中加载分类信息到缓存中
 	categoryDBList, err := c.DBCategory.SelectList(context.Background(), nil)
