@@ -10,6 +10,8 @@ on:
       - '**/migrations/**'                          # rebuild when any service's SQL changes
       - '.github/workflows/release-data-migrator.yml'
       - '.github/workflows/reusable-*.yml'
+      # 版本冻结提交（release/<x.y.z> 分支）触发全量重建
+      - 'VERSION'
   workflow_dispatch:
     inputs:
       publish:
