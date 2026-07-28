@@ -84,17 +84,18 @@ func Test_ResourceRestHandler_ListResources(t *testing.T) {
 		assert.Contains(t, w.Body.String(), "invalid status: unknown")
 	})
 
-	t.Run("success list resources with name category and status", func(t *testing.T) {
+	t.Run("success list resources with schema", func(t *testing.T) {
 		engine, rs := setup(t)
 		rs.EXPECT().List(gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, params interfaces.ResourcesQueryParams) ([]*interfaces.Resource, int64, error) {
 				assert.Equal(t, "orders", params.Name)
 				assert.Equal(t, interfaces.ResourceCategoryDataset, params.Category)
 				assert.Equal(t, interfaces.ResourceStatusActive, params.Status)
+				assert.Equal(t, "external_data", params.Schema)
 				return []*interfaces.Resource{}, int64(0), nil
 			})
 
-		req := httptest.NewRequest(http.MethodGet, url+"?name=orders&category=dataset&status=active", nil)
+		req := httptest.NewRequest(http.MethodGet, url+"?name=orders&category=dataset&status=active&schema=external_data", nil)
 		w := httptest.NewRecorder()
 
 		engine.ServeHTTP(w, req)

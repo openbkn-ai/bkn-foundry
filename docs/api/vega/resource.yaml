@@ -98,8 +98,8 @@ paths:
               - disabled
               - deprecated
               - stale
-        - name: database
-          description: 按所属 database 过滤（实例级 catalog 时有意义）
+        - name: schema
+          description: 按所属 schema 过滤；过滤在服务端计数和分页之前完成
           in: query
           schema:
             type: string
@@ -600,8 +600,8 @@ components:
         last_discover_status:
           description: 最近一次资源发现的观察状态
           type: string
-        database:
-          description: 所属数据库（实例级 Catalog 时填充）
+        schema:
+          description: 所属 schema，由发现流程写入
           type: string
         source_identifier:
           description: 源端标识（原始表名 / 路径 / topic 名等）
@@ -714,7 +714,8 @@ components:
             - disabled
             - deprecated
             - stale
-        database:
+        schema:
+          description: 所属 schema，由发现流程写入
           type: string
         source_identifier:
           type: string
