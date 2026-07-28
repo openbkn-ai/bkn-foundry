@@ -30,6 +30,7 @@ func Test_metricGroupByDimensions_analysisDimensions(t *testing.T) {
 			"warehouse_id": {Name: "warehouse_id", MappedField: cond.Field{Name: "warehouse_id_res"}},
 			"item_code":    {Name: "item_code", MappedField: cond.Field{Name: "item_code_res"}},
 			"region":       {Name: "region", MappedField: cond.Field{Name: "region_res"}},
+			"region_alias": {Name: "region_alias", MappedField: cond.Field{Name: "region_res"}},
 			"evt_time":     {Name: "evt_time", MappedField: cond.Field{Name: "evt_time_res"}},
 			"time_alias":   {Name: "time_alias", MappedField: cond.Field{Name: "evt_time_res"}},
 		}
@@ -41,6 +42,7 @@ func Test_metricGroupByDimensions_analysisDimensions(t *testing.T) {
 			AnalysisDimensions: []interfaces.MetricAnalysisDimension{
 				{Name: "warehouse_id"},
 				{Name: "item_code"},
+				{Name: "region_alias"},
 				{Name: "evt_time"},
 				{Name: "time_alias"},
 			},
@@ -66,6 +68,18 @@ func Test_metricGroupByDimensions_analysisDimensions(t *testing.T) {
 			So(dims[1].ResourceFieldName, ShouldEqual, "item_code_res")
 			So(dims[2].PropertyName, ShouldEqual, "warehouse_id")
 			So(dims[2].ResourceFieldName, ShouldEqual, "warehouse_id_res")
+		})
+
+		Convey("Request analysis_dimensions skips properties mapped to an existing fixed resource field\n", func() {
+			dims, err := metricGroupByDimensions(def, &interfaces.MetricQueryRequest{
+				AnalysisDimensions: []string{"region_alias", "warehouse_id"},
+			}, propMap, "")
+			So(err, ShouldBeNil)
+			So(len(dims), ShouldEqual, 2)
+			So(dims[0].PropertyName, ShouldEqual, "region")
+			So(dims[0].ResourceFieldName, ShouldEqual, "region_res")
+			So(dims[1].PropertyName, ShouldEqual, "warehouse_id")
+			So(dims[1].ResourceFieldName, ShouldEqual, "warehouse_id_res")
 		})
 
 		Convey("Non-trend request keeps time_dimension property as an analysis dimension\n", func() {
