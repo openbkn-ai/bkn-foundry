@@ -41,6 +41,7 @@ func buildTaskColumns() []string {
 		"f_resource_id",
 		"f_catalog_id",
 		"f_mode",
+		"f_execute_type",
 		"f_index_config",
 
 		"f_status",
@@ -76,6 +77,7 @@ func scanBuildTask(scanner buildTaskScanner) (*interfaces.BuildTask, error) {
 		&buildTask.ResourceID,
 		&buildTask.CatalogID,
 		&buildTask.Mode,
+		&buildTask.ExecuteType,
 		&indexConfigJSON,
 		&buildTask.Status,
 		&buildTask.TotalCount,
@@ -130,6 +132,7 @@ func (bta *buildTaskAccess) Create(ctx context.Context, buildTask *interfaces.Bu
 			buildTask.ResourceID,
 			buildTask.CatalogID,
 			buildTask.Mode,
+			buildTask.ExecuteType,
 			indexConfigJSON,
 			buildTask.Status,
 			buildTask.TotalCount,

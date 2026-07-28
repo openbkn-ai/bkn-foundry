@@ -19,8 +19,10 @@ import (
 
 // BatchBuildTaskMessage represents a build task message.
 type BatchBuildTaskMessage struct {
-	TaskID      string `json:"task_id"`
-	ExecuteType string `json:"execute_type"`
+	TaskID string `json:"task_id"`
+	// Reset is a one-off execution override. The worker otherwise uses the
+	// execute type persisted on the build task.
+	Reset bool `json:"reset,omitempty"`
 }
 
 type BatchBuildWorker interface {

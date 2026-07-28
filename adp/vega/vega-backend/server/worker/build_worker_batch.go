@@ -121,8 +121,10 @@ func (bbw *batchBuildWorker) HandleTask(ctx context.Context, task *asynq.Task) e
 		return nil
 	}
 
-	// Execute build
-	err = bbw.executeBuild(ctx, resource, buildTaskInfo, msg.ExecuteType)
+	// Execute type belongs to the persisted task. reset is only a one-off
+	// override for this run, forcing a full rebuild.
+	executeType := batchBuildExecuteType(buildTaskInfo, msg.Reset)
+	err = bbw.executeBuild(ctx, resource, buildTaskInfo, executeType)
 	if err != nil {
 		// Update task status to failed
 		logger.Errorf("Build failed for task %s: %w", taskID, err)
@@ -138,6 +140,18 @@ func (bbw *batchBuildWorker) HandleTask(ctx context.Context, task *asynq.Task) e
 
 	logger.Infof("Build completed for task: %s, resource: %s", taskID, resourceID)
 	return nil
+}
+
+func batchBuildExecuteType(buildTask *interfaces.BuildTask, reset bool) string {
+	if reset {
+		return interfaces.BuildTaskExecuteTypeFull
+	}
+	// Empty execute_type belongs to legacy rows created before it was persisted.
+	// Their historical behavior was full build.
+	if buildTask != nil && buildTask.ExecuteType == interfaces.BuildTaskExecuteTypeIncremental {
+		return interfaces.BuildTaskExecuteTypeIncremental
+	}
+	return interfaces.BuildTaskExecuteTypeFull
 }
 
 // advanceCursor 把批读游标推进到本批最后一行的键值。

@@ -133,6 +133,7 @@ func (bts *buildTaskService) Create(ctx context.Context, req *interfaces.CreateB
 		span.SetStatus(codes.Error, "Invalid build key fields")
 		return "", err
 	}
+	req.ExecuteType = executeType
 
 	cat, err := bts.cs.GetByID(ctx, resource.CatalogID, false)
 	if err != nil {
@@ -172,7 +173,7 @@ func (bts *buildTaskService) Create(ctx context.Context, req *interfaces.CreateB
 
 	// 创建即入队执行：客户端创建后不会再调 /start，不入队任务会永远停在 init（界面"排队中"）。
 	// 入队失败仅记日志，任务保持 init，可由 /start 重新触发
-	if err := bts.enqueueTask(ctx, buildTask, executeType); err != nil {
+	if err := bts.enqueueTask(ctx, buildTask, false); err != nil {
 		otellog.LogError(ctx, "Enqueue build task failed", err)
 	}
 
@@ -217,9 +218,12 @@ func validateBuildKeyFields(ctx context.Context, resource *interfaces.Resource) 
 }
 
 func normalizeCreateBuildTaskExecuteType(ctx context.Context, req *interfaces.CreateBuildTaskRequest) (string, error) {
-	if req.Mode == interfaces.BuildTaskModeStreaming && req.ExecuteType != "" {
-		return "", rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidExecuteType).
-			WithErrorDetails("execute_type is only supported for batch build tasks")
+	if req.Mode == interfaces.BuildTaskModeStreaming {
+		if req.ExecuteType != "" {
+			return "", rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidExecuteType).
+				WithErrorDetails("execute_type is only supported for batch build tasks")
+		}
+		return "", nil
 	}
 	if req.ExecuteType == "" {
 		return interfaces.BuildTaskExecuteTypeFull, nil
@@ -260,14 +264,15 @@ func (bts *buildTaskService) newBuildTaskFromCreateRequest(ctx context.Context, 
 
 	now := time.Now().UnixMilli()
 	buildTask := &interfaces.BuildTask{
-		ID:         xid.New().String(),
-		ResourceID: resource.ID,
-		CatalogID:  resource.CatalogID,
-		Status:     interfaces.BuildTaskStatusInit,
-		Mode:       req.Mode,
-		Creator:    accountInfo,
-		CreateTime: now,
-		UpdateTime: now,
+		ID:          xid.New().String(),
+		ResourceID:  resource.ID,
+		CatalogID:   resource.CatalogID,
+		Status:      interfaces.BuildTaskStatusInit,
+		Mode:        req.Mode,
+		ExecuteType: req.ExecuteType,
+		Creator:     accountInfo,
+		CreateTime:  now,
+		UpdateTime:  now,
 	}
 
 	if err := bts.fillBuildTaskIndexSnapshot(ctx, resource, buildTask); err != nil {
@@ -376,10 +381,10 @@ func (bts *buildTaskService) normalizeEmbeddingModel(ctx context.Context, embedd
 }
 
 // enqueueTask 按任务模式投递到 asynq 队列。
-func (bts *buildTaskService) enqueueTask(_ context.Context, buildTask *interfaces.BuildTask, executeType string) error {
+func (bts *buildTaskService) enqueueTask(_ context.Context, buildTask *interfaces.BuildTask, reset bool) error {
 	payload, err := sonic.Marshal(&interfaces.BatchBuildTaskMessage{
-		TaskID:      buildTask.ID,
-		ExecuteType: executeType,
+		TaskID: buildTask.ID,
+		Reset:  reset,
 	})
 	if err != nil {
 		return err
@@ -711,11 +716,7 @@ func (bts *buildTaskService) Start(ctx context.Context, taskID string, reset boo
 		}
 	}
 
-	executeType := interfaces.BuildTaskExecuteTypeIncremental
-	if reset {
-		executeType = interfaces.BuildTaskExecuteTypeFull
-	}
-	if err := bts.enqueueTask(ctx, buildTask, executeType); err != nil {
+	if err := bts.enqueueTask(ctx, buildTask, reset); err != nil {
 		otellog.LogError(ctx, "Enqueue build task failed", err)
 	}
 
