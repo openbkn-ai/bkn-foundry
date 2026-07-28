@@ -75,6 +75,62 @@ func TestGetArtifactReturnsOnlyArtifactVisibleToScope(t *testing.T) {
 	}
 }
 
+func TestGetArtifactReturnsOwnedContentWhenBusinessResolverIsUnavailable(t *testing.T) {
+	store := evidencestore.New()
+	artifact, validationErrors := evidencevo.NormalizeArtifact(evidencevo.EvidenceArtifact{
+		ArtifactID: "artifact_unresolved_ref_service", ArtifactType: evidencevo.ArtifactTypeDataResult,
+		RequestID: "req_unresolved_ref", TraceID: "4bf92f3577b34da6a3ce929d0e0e4736",
+		BusinessRefs: []string{"object:kn_sales:order"},
+		ContentType: "application/json", SchemaVersion: evidencevo.ArtifactContractVersion,
+		ObservedAt: "2026-07-26T08:00:00Z", Content: map[string]any{"count": 12},
+		TenantID: "tenant_demo", BusinessDomain: "bd_demo", AccountID: "acct_demo", AccountType: "app",
+	})
+	if len(validationErrors) != 0 {
+		t.Fatalf("normalize artifact: %+v", validationErrors)
+	}
+	if _, err := store.StoreArtifact(context.Background(), artifact); err != nil {
+		t.Fatal(err)
+	}
+
+	got, found, err := NewWithArtifactStore(store, store).GetArtifact(context.Background(), artifact.ArtifactID, evidencevo.QueryScope{
+		TenantID: "tenant_demo", BusinessDomain: "bd_demo", AccountID: "acct_demo", AccountType: "app",
+	})
+
+	if err != nil || !found || got.Content == nil {
+		t.Fatalf("owned artifact content must remain readable when resolver is unavailable: artifact=%+v found=%v err=%v", got, found, err)
+	}
+}
+
+func TestGetArtifactReturnsOwnedContentWhenBusinessResolverCannotResolveRef(t *testing.T) {
+	store := evidencestore.New()
+	artifact, validationErrors := evidencevo.NormalizeArtifact(evidencevo.EvidenceArtifact{
+		ArtifactID: "artifact_missing_resolution_service", ArtifactType: evidencevo.ArtifactTypeDataResult,
+		RequestID: "req_missing_resolution", TraceID: "4bf92f3577b34da6a3ce929d0e0e4736",
+		BusinessRefs: []string{"object:kn_sales:order"},
+		ContentType: "application/json", SchemaVersion: evidencevo.ArtifactContractVersion,
+		ObservedAt: "2026-07-26T08:00:00Z", Content: map[string]any{"count": 12},
+		TenantID: "tenant_demo", BusinessDomain: "bd_demo", AccountID: "acct_demo", AccountType: "app",
+	})
+	if len(validationErrors) != 0 {
+		t.Fatalf("normalize artifact: %+v", validationErrors)
+	}
+	if _, err := store.StoreArtifact(context.Background(), artifact); err != nil {
+		t.Fatal(err)
+	}
+	resolver := &fakeBusinessResolver{}
+
+	got, found, err := NewWithBusinessResolver(store, resolver).GetArtifact(context.Background(), artifact.ArtifactID, evidencevo.QueryScope{
+		TenantID: "tenant_demo", BusinessDomain: "bd_demo", AccountID: "acct_demo", AccountType: "app",
+	})
+
+	if err != nil || !found || got.Content == nil {
+		t.Fatalf("owned artifact content must remain readable when refs are unresolved: artifact=%+v found=%v err=%v", got, found, err)
+	}
+	if len(resolver.requests) != 1 {
+		t.Fatalf("resolver should still be called for audit context: %+v", resolver.requests)
+	}
+}
+
 func TestGetArtifactRequiresResolverAuthorizationForSourceAndBusinessRefs(t *testing.T) {
 	store := evidencestore.New()
 	artifact, validationErrors := evidencevo.NormalizeArtifact(evidencevo.EvidenceArtifact{

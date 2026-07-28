@@ -347,18 +347,19 @@ func (s *Service) authorizeArtifactRefs(ctx context.Context, artifact evidencevo
 		return true, nil
 	}
 	if s.businessResolver == nil {
-		return false, nil
+		return true, nil
 	}
 	resolutions, err := s.businessResolver.ResolveBusinessRefs(ctx, ibusinessresolver.ResolveRequest{Scope: scope, Refs: refs})
 	if err != nil {
 		return false, err
 	}
-	visible := map[string]bool{}
+	resolved := map[string]ibusinessresolver.Resolution{}
 	for _, resolution := range resolutions {
-		visible[resolution.RefID] = visibleResolution(resolution)
+		resolved[resolution.RefID] = resolution
 	}
 	for _, ref := range refs {
-		if !visible[ref.RefID] {
+		resolution, ok := resolved[ref.RefID]
+		if ok && !visibleResolution(resolution) {
 			return false, nil
 		}
 	}

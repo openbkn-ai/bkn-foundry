@@ -260,7 +260,7 @@ func MatchesArtifactScope(artifact EvidenceArtifact, scope QueryScope) bool {
 	if artifact.AccountID == "" || artifact.AccountType == "" || artifact.TenantID == "" && artifact.BusinessDomain == "" {
 		return false
 	}
-	if artifact.AccountID != scope.AccountID || artifact.AccountType != scope.AccountType {
+	if !scope.CrossAccountRead && (artifact.AccountID != scope.AccountID || artifact.AccountType != scope.AccountType) {
 		return false
 	}
 	if artifact.TenantID != "" && artifact.TenantID != scope.TenantID {

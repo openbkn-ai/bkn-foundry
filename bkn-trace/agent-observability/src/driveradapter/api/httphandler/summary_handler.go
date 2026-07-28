@@ -212,7 +212,7 @@ func (h *EvidenceHandler) summaryQueryOptionsFromRequest(w http.ResponseWriter, 
 	if !h.authorizeQueryGateway(w, r) {
 		return evidencevo.SummaryQueryOptions{}, false
 	}
-	scope, ok := queryScopeFromRequest(w, r)
+	scope, ok := h.queryScopeFromRequest(w, r)
 	if !ok {
 		return evidencevo.SummaryQueryOptions{}, false
 	}

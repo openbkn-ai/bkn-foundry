@@ -278,11 +278,12 @@ type EvidenceQueryOptions struct {
 }
 
 type QueryScope struct {
-	TenantID       string
-	BusinessDomain string
-	AccountID      string
-	AccountType    string
-	Authorization  string `json:"-"`
+	TenantID         string
+	BusinessDomain   string
+	AccountID        string
+	AccountType      string
+	CrossAccountRead bool   `json:"-"`
+	Authorization    string `json:"-"`
 }
 
 func SameOwnership(existing NormalizedTrace, incoming NormalizedTrace) bool {
@@ -303,7 +304,7 @@ func MatchesScope(trace NormalizedTrace, scope QueryScope) bool {
 	if trace.AccountID == "" || trace.AccountType == "" || trace.TenantID == "" && trace.BusinessDomain == "" {
 		return false
 	}
-	if trace.AccountID != scope.AccountID || trace.AccountType != scope.AccountType {
+	if !scope.CrossAccountRead && (trace.AccountID != scope.AccountID || trace.AccountType != scope.AccountType) {
 		return false
 	}
 	if trace.TenantID != "" && trace.TenantID != scope.TenantID {

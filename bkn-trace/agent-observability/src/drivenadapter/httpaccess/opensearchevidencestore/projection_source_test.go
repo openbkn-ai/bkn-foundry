@@ -396,6 +396,24 @@ func TestOpenSearchProjectionSourceStopsAtScanCapAndMarksTruncated(t *testing.T)
 	}
 }
 
+func TestOwnershipMustSkipsAccountFiltersForCrossAccountReaders(t *testing.T) {
+	must := ownershipMust(evidencevo.QueryScope{
+		TenantID: "tenant_index", BusinessDomain: "bd_index",
+		AccountID: "admin_index", AccountType: "super_admin", CrossAccountRead: true,
+	})
+	body, err := json.Marshal(must)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rendered := string(body)
+	if !strings.Contains(rendered, "bkn.tenant.id") || !strings.Contains(rendered, "business_domain") {
+		t.Fatalf("cross-account readers must still be constrained by tenant/domain: %s", rendered)
+	}
+	if strings.Contains(rendered, "bkn.account.id") || strings.Contains(rendered, "bkn.account.type") {
+		t.Fatalf("cross-account projection must not push owner account filters: %s", rendered)
+	}
+}
+
 func mustTime(t *testing.T, value string) time.Time {
 	t.Helper()
 	parsed, err := time.Parse(time.RFC3339Nano, value)

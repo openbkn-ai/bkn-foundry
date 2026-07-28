@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/conf"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/evidencesvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/driveradapter/api/rdto"
@@ -33,6 +34,7 @@ type EvidenceHandlerSecurityConfig struct {
 	QueryHTTPClient            *http.Client
 	AllowUnauthenticatedIngest bool
 	AllowUnauthenticatedQuery  bool
+	QueryAdminTypes            map[string]bool
 }
 
 type EvidenceHandler struct {
@@ -43,6 +45,7 @@ type EvidenceHandler struct {
 	queryHTTPClient            *http.Client
 	allowUnauthenticatedIngest bool
 	allowUnauthenticatedQuery  bool
+	queryAdminTypes            map[string]bool
 }
 
 func NewEvidenceHandler(evidenceService *evidencesvc.Service) *EvidenceHandler {
@@ -72,6 +75,10 @@ func NewEvidenceHandlerWithSecurityConfig(evidenceService *evidencesvc.Service, 
 	if queryHTTPClient == nil {
 		queryHTTPClient = &http.Client{Timeout: 3 * time.Second}
 	}
+	queryAdminTypes := config.QueryAdminTypes
+	if queryAdminTypes == nil {
+		queryAdminTypes = conf.NewTraceReadAuthzConfig().AdminTypes
+	}
 	return &EvidenceHandler{
 		evidenceService:            evidenceService,
 		ingestToken:                strings.TrimSpace(config.IngestToken),
@@ -80,6 +87,7 @@ func NewEvidenceHandlerWithSecurityConfig(evidenceService *evidencesvc.Service, 
 		queryHTTPClient:            queryHTTPClient,
 		allowUnauthenticatedIngest: config.AllowUnauthenticatedIngest,
 		allowUnauthenticatedQuery:  config.AllowUnauthenticatedQuery,
+		queryAdminTypes:            queryAdminTypes,
 	}
 }
 
@@ -769,7 +777,7 @@ func (h *EvidenceHandler) evidenceQueryOptionsFromRequest(w http.ResponseWriter,
 	if !h.authorizeQueryGateway(w, r) {
 		return evidencevo.EvidenceQueryOptions{}, false
 	}
-	scope, ok := queryScopeFromRequest(w, r)
+	scope, ok := h.queryScopeFromRequest(w, r)
 	if !ok {
 		return evidencevo.EvidenceQueryOptions{}, false
 	}
@@ -788,7 +796,7 @@ func (h *EvidenceHandler) evidenceQueryOptionsFromRequest(w http.ResponseWriter,
 	return evidencevo.EvidenceQueryOptions{Limit: limit, Scope: scope}, true
 }
 
-func queryScopeFromRequest(w http.ResponseWriter, r *http.Request) (evidencevo.QueryScope, bool) {
+func (h *EvidenceHandler) queryScopeFromRequest(w http.ResponseWriter, r *http.Request) (evidencevo.QueryScope, bool) {
 	accountID := strings.TrimSpace(r.Header.Get("x-account-id"))
 	accountType := strings.TrimSpace(r.Header.Get("x-account-type"))
 	tenantID := strings.TrimSpace(r.Header.Get("x-tenant-id"))
@@ -803,10 +811,14 @@ func queryScopeFromRequest(w http.ResponseWriter, r *http.Request) (evidencevo.Q
 		})
 		return evidencevo.QueryScope{}, false
 	}
-	return evidencevo.QueryScope{
+	scope := evidencevo.QueryScope{
 		TenantID: tenantID, BusinessDomain: businessDomain, AccountID: accountID, AccountType: accountType,
 		Authorization: strings.TrimSpace(r.Header.Get("Authorization")),
-	}, true
+	}
+	if h.queryAdminTypes[accountType] {
+		scope.CrossAccountRead = true
+	}
+	return scope, true
 }
 
 func (h *EvidenceHandler) RequireTrustedQueryIdentity(next http.HandlerFunc) http.HandlerFunc {
@@ -814,7 +826,7 @@ func (h *EvidenceHandler) RequireTrustedQueryIdentity(next http.HandlerFunc) htt
 		if !h.authorizeQueryGateway(w, r) {
 			return
 		}
-		if _, ok := queryScopeFromRequest(w, r); !ok {
+		if _, ok := h.queryScopeFromRequest(w, r); !ok {
 			return
 		}
 		next(w, r)
@@ -825,13 +837,16 @@ func (h *EvidenceHandler) authorizeQueryGateway(w http.ResponseWriter, r *http.R
 	if h.queryGatewayToken != "" && secureTokenEqual(r.Header.Get(evidenceQueryGatewayTokenHeader), h.queryGatewayToken) {
 		return true
 	}
+	if h.hydraAdminURL != "" && strings.TrimSpace(r.Header.Get("Authorization")) != "" {
+		return h.authorizeOAuthQuery(w, r)
+	}
+	if h.allowUnauthenticatedQuery {
+		return true
+	}
 	if h.hydraAdminURL != "" {
 		return h.authorizeOAuthQuery(w, r)
 	}
 	if h.queryGatewayToken == "" {
-		if h.allowUnauthenticatedQuery {
-			return true
-		}
 		writeJSON(w, http.StatusServiceUnavailable, rdto.ErrorResponse{
 			Code: "QUERY_AUTH_NOT_CONFIGURED", Message: "query gateway authentication is not configured",
 		})

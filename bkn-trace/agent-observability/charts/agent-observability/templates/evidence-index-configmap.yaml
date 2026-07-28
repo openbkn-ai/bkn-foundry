@@ -24,6 +24,7 @@ data:
           "document_id": { "type": "keyword" },
           "trace_id": { "type": "keyword" },
           "bkn.request.id": { "type": "keyword" },
+          "bkn.conversation.id": { "type": "keyword" },
           "bkn.tenant.id": { "type": "keyword" },
           "business_domain": { "type": "keyword" },
           "bkn.account.id": { "type": "keyword" },
@@ -34,10 +35,15 @@ data:
           "claim_count": { "type": "integer" },
           "evidence_ref_count": { "type": "integer" },
           "business_ref_count": { "type": "integer" },
+          "observed_start": {
+            "type": "date",
+            "format": "strict_date_optional_time_nanos||strict_date_optional_time||epoch_millis"
+          },
           "ingested_at": {
             "type": "date",
             "format": "strict_date_optional_time_nanos||strict_date_optional_time||epoch_millis"
           },
+          "aggregate": { "type": "boolean" },
           "events": {
             "type": "object",
             "enabled": false
