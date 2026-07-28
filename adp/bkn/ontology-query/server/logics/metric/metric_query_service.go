@@ -425,7 +425,8 @@ type metricGroupByDimension struct {
 }
 
 // metricGroupByDimensions resolves definition and request dimensions to resource fields.
-// When request analysis_dimensions are present, only requested definition dimensions are kept in request order.
+// calculation_formula.group_by is the fixed grouping baseline; request analysis_dimensions append valid drill-down
+// dimensions in request order.
 // excludedResourceField prevents trend queries from grouping the time field twice, including through property aliases.
 func metricGroupByDimensions(def *interfaces.MetricDefinition, query *interfaces.MetricQueryRequest,
 	propMap map[string]*cond.DataProperty, excludedResourceField string) ([]metricGroupByDimension, error) {
@@ -465,11 +466,12 @@ func metricGroupByDimensions(def *interfaces.MetricDefinition, query *interfaces
 		addDefined(ad.Name)
 	}
 
-	var propertyNames []string
-	if query == nil || len(query.AnalysisDimensions) == 0 {
-		propertyNames = defaultOrdered
-	} else {
-		seen := make(map[string]struct{})
+	propertyNames := append([]string(nil), defaultOrdered...)
+	seen := make(map[string]struct{}, len(propertyNames))
+	for _, p := range propertyNames {
+		seen[p] = struct{}{}
+	}
+	if query != nil && len(query.AnalysisDimensions) > 0 {
 		for _, a := range query.AnalysisDimensions {
 			p := strings.TrimSpace(a)
 			if p == "" {
@@ -487,6 +489,7 @@ func metricGroupByDimensions(def *interfaces.MetricDefinition, query *interfaces
 	}
 
 	out := make([]metricGroupByDimension, 0, len(propertyNames))
+	seenResourceFields := make(map[string]struct{}, len(propertyNames))
 	for _, p := range propertyNames {
 		res, err := mapDataPropertyToResourceField(p, propMap)
 		if err != nil {
@@ -495,6 +498,10 @@ func metricGroupByDimensions(def *interfaces.MetricDefinition, query *interfaces
 		if res == excludedResourceField {
 			continue
 		}
+		if _, dup := seenResourceFields[res]; dup {
+			continue
+		}
+		seenResourceFields[res] = struct{}{}
 		out = append(out, metricGroupByDimension{PropertyName: p, ResourceFieldName: res})
 	}
 	return out, nil
