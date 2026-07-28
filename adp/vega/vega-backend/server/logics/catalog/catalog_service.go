@@ -205,6 +205,12 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 	}
 
 	now := time.Now().UnixMilli()
+	healthStatus := interfaces.CatalogHealthStatusUnchecked
+	healthResult := ""
+	if catalogType == interfaces.CatalogTypePhysical {
+		healthStatus = interfaces.CatalogHealthStatusHealthy
+		healthResult = "Connection test succeeded."
+	}
 	id := req.ID
 	if id == "" {
 		id = xid.New().String()
@@ -221,8 +227,9 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 		ConnectorCfg:       req.ConnectorCfg,
 		HealthCheckEnabled: true,
 		CatalogHealthCheckStatus: interfaces.CatalogHealthCheckStatus{
-			HealthCheckStatus: interfaces.CatalogHealthStatusUnchecked,
+			HealthCheckStatus: healthStatus,
 			LastCheckTime:     now,
+			HealthCheckResult: healthResult,
 		},
 		Creator:    accountInfo,
 		CreateTime: now,
@@ -644,6 +651,12 @@ func (cs *catalogService) Update(ctx context.Context, catalog *interfaces.Catalo
 		}
 		defer func() { _ = connector.Close(ctx) }()
 
+		catalog.CatalogHealthCheckStatus = interfaces.CatalogHealthCheckStatus{
+			HealthCheckStatus: interfaces.CatalogHealthStatusHealthy,
+			LastCheckTime:     time.Now().UnixMilli(),
+			HealthCheckResult: "Connection test succeeded.",
+		}
+
 		// req.ConnectorConfig 已在 validateAndDecryptSensitiveFields 中加上 ENC: 前缀
 		catalog.ConnectorCfg = req.ConnectorCfg
 	}
@@ -862,9 +875,82 @@ func (cs *catalogService) TestConnection(ctx context.Context, catalog *interface
 		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound)
 	}
 
-	result := catalog.CatalogHealthCheckStatus
+	if catalog.ConnectorType == "" {
+		result := interfaces.CatalogHealthCheckStatus{
+			HealthCheckStatus: interfaces.CatalogHealthStatusUnhealthy,
+			LastCheckTime:     time.Now().UnixMilli(),
+			HealthCheckResult: "Logical catalogs do not support connection tests.",
+		}
+		span.SetStatus(codes.Ok, "")
+		return &result, nil
+	}
+
+	persisted, err := cs.ca.GetByID(ctx, catalog.ID)
+	if err != nil {
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_Catalog_InternalError_GetFailed).WithErrorDetails(err.Error())
+	}
+	if persisted == nil {
+		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound)
+	}
+	sensitiveFields := factory.GetFactory().GetSensitiveFields(persisted.ConnectorType)
+	config, err := cs.decryptSensitiveFields(sensitiveFields, persisted.ConnectorCfg)
+	if err != nil {
+		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+			verrors.VegaBackend_Catalog_InvalidParameter_SensitiveFieldNotEncrypted).WithErrorDetails(err.Error())
+	}
+	result, err := cs.probeConnection(ctx, persisted.ConnectorType, interfaces.ConnectorConfig(config))
+	if err != nil {
+		return nil, err
+	}
+	if err := cs.ca.UpdateHealthCheckStatus(ctx, persisted.ID, *result); err != nil {
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_Catalog_InternalError_UpdateFailed).WithErrorDetails(err.Error())
+	}
 	span.SetStatus(codes.Ok, "")
-	return &result, nil
+	return result, nil
+}
+
+// TestConnectionConfig tests an unpersisted physical catalog configuration without creating a Catalog.
+func (cs *catalogService) TestConnectionConfig(ctx context.Context,
+	req *interfaces.CatalogConnectionTestRequest) (*interfaces.CatalogHealthCheckStatus, error) {
+	if req == nil || req.ConnectorType == "" {
+		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Catalog_InvalidParameter)
+	}
+
+	if err := cs.ps.CheckPermission(ctx, interfaces.PermissionResource{
+		Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG, ID: interfaces.RESOURCE_ID_ALL,
+	}, []string{interfaces.OPERATION_TYPE_CREATE}); err != nil {
+		return nil, err
+	}
+
+	sensitiveFields := factory.GetFactory().GetSensitiveFields(req.ConnectorType)
+	decryptedConfig, err := cs.validateAndDecryptSensitiveFields(sensitiveFields, req.ConnectorCfg)
+	if err != nil {
+		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+			verrors.VegaBackend_Catalog_InvalidParameter_SensitiveFieldNotEncrypted).WithErrorDetails(err.Error())
+	}
+	return cs.probeConnection(ctx, req.ConnectorType, interfaces.ConnectorConfig(decryptedConfig))
+}
+
+func (cs *catalogService) probeConnection(ctx context.Context, connectorType string,
+	config interfaces.ConnectorConfig) (*interfaces.CatalogHealthCheckStatus, error) {
+	connector, err := factory.GetFactory().CreateConnectorInstance(ctx, connectorType, config)
+	if err != nil {
+		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+			verrors.VegaBackend_Catalog_InternalError_CreateFailed).WithErrorDetails(err.Error())
+	}
+	defer func() { _ = connector.Close(ctx) }()
+
+	result := &interfaces.CatalogHealthCheckStatus{LastCheckTime: time.Now().UnixMilli()}
+	if err := connector.TestConnection(ctx); err != nil {
+		result.HealthCheckStatus = interfaces.CatalogHealthStatusUnhealthy
+		result.HealthCheckResult = "Connection test failed."
+		return result, nil
+	}
+	result.HealthCheckStatus = interfaces.CatalogHealthStatusHealthy
+	result.HealthCheckResult = "Connection test succeeded."
+	return result, nil
 }
 
 // validateAndDecryptSensitiveFields 验证敏感字段是否为合法 RSA 密文，

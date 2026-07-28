@@ -670,6 +670,48 @@ func (r *restHandler) getCatalogHealthStatus(c *gin.Context, visitor hydra.Visit
 
 // ========== TestConnection ==========
 
+// TestConnectionConfigByEx handles POST /api/vega-backend/v1/catalogs/test-connection (External).
+func (r *restHandler) TestConnectionConfigByEx(c *gin.Context) {
+	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	if err != nil {
+		return
+	}
+	r.testConnectionConfig(c, visitor)
+}
+
+// TestConnectionConfigByIn handles POST /api/vega-backend/in/v1/catalogs/test-connection (Internal).
+func (r *restHandler) TestConnectionConfigByIn(c *gin.Context) {
+	r.testConnectionConfig(c, visitor.GenerateVisitor(c))
+}
+
+func (r *restHandler) testConnectionConfig(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+
+	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: visitor.ID, Type: string(visitor.Type)})
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	var req interfaces.CatalogConnectionTestRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+			WithErrorDetails(err.Error())
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+	status, err := r.cs.TestConnectionConfig(ctx, &req)
+	if err != nil {
+		httpErr := err.(*rest.HTTPError)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+	rest.ReplyOK(c, http.StatusOK, map[string]any{
+		"success": status.HealthCheckStatus == interfaces.CatalogHealthStatusHealthy,
+		"message": status.HealthCheckResult,
+	})
+}
+
 // TestConnectionByEx handles POST /api/vega-backend/v1/catalogs/:id/test-connection (External)
 func (r *restHandler) TestConnectionByEx(c *gin.Context) {
 	// 外网接口：校验token

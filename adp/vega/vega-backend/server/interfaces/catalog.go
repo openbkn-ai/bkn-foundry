@@ -96,3 +96,9 @@ type CatalogRequest struct {
 	// Extensions 根对象出现该键（含 null 需客户端避免）时整包替换；指针为 nil 表示请求体未携带该字段
 	Extensions *map[string]string `json:"extensions,omitempty"`
 }
+
+// CatalogConnectionTestRequest represents an unpersisted physical catalog connection test.
+type CatalogConnectionTestRequest struct {
+	ConnectorType string          `json:"connector_type"`
+	ConnectorCfg  ConnectorConfig `json:"connector_config"`
+}

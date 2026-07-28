@@ -236,6 +236,21 @@ func (mr *MockCatalogServiceMockRecorder) TestConnection(ctx, catalog any) *gomo
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TestConnection", reflect.TypeOf((*MockCatalogService)(nil).TestConnection), ctx, catalog)
 }
 
+// TestConnectionConfig mocks base method.
+func (m *MockCatalogService) TestConnectionConfig(ctx context.Context, req *interfaces.CatalogConnectionTestRequest) (*interfaces.CatalogHealthCheckStatus, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "TestConnectionConfig", ctx, req)
+	ret0, _ := ret[0].(*interfaces.CatalogHealthCheckStatus)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// TestConnectionConfig indicates an expected call of TestConnectionConfig.
+func (mr *MockCatalogServiceMockRecorder) TestConnectionConfig(ctx, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TestConnectionConfig", reflect.TypeOf((*MockCatalogService)(nil).TestConnectionConfig), ctx, req)
+}
+
 // Update mocks base method.
 func (m *MockCatalogService) Update(ctx context.Context, catalog *interfaces.Catalog, req *interfaces.CatalogRequest) error {
 	m.ctrl.T.Helper()

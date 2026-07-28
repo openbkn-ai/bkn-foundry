@@ -262,7 +262,7 @@ func TestCatalogServiceCheckExistByName(t *testing.T) {
 }
 
 func TestCatalogServiceCreate(t *testing.T) {
-	t.Run("create missing enabled defaults to disabled and unchecked", func(t *testing.T) {
+	t.Run("create logical catalog defaults to disabled and unchecked", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
 		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
@@ -362,7 +362,7 @@ func TestCatalogServiceTestConnection(t *testing.T) {
 			t.Fatal("expected error for nil catalog")
 		}
 	})
-	t.Run("test connection valid", func(t *testing.T) {
+	t.Run("test connection logical catalog returns an explicit failure", func(t *testing.T) {
 		cs := &catalogService{}
 		catalog := &interfaces.Catalog{
 			CatalogHealthCheckStatus: interfaces.CatalogHealthCheckStatus{
@@ -374,8 +374,11 @@ func TestCatalogServiceTestConnection(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if result.HealthCheckStatus != interfaces.CatalogHealthStatusHealthy {
-			t.Errorf("expected healthy status, got %s", result.HealthCheckStatus)
+		if result.HealthCheckStatus != interfaces.CatalogHealthStatusUnhealthy {
+			t.Errorf("expected unhealthy status, got %s", result.HealthCheckStatus)
+		}
+		if result.HealthCheckResult == "" {
+			t.Fatal("expected an explicit logical catalog failure message")
 		}
 	})
 }
