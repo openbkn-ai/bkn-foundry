@@ -93,7 +93,7 @@ func (dtw *DiscoverTaskWorker) enrichTableMetadata(ctx context.Context, tableCon
 		}
 
 		// 填充 Resource 元数据 ：schema_definition 字段
-		resource.Database = table.Database
+		resource.Schema = table.Schema
 		resource.SchemaDefinition = []*interfaces.Property{}
 		for _, column := range table.Columns {
 			resource.SchemaDefinition = append(resource.SchemaDefinition, &interfaces.Property{
@@ -260,7 +260,7 @@ func (dtw *DiscoverTaskWorker) createResource(ctx context.Context, catalog *inte
 		Description:      table.Description,
 		Category:         interfaces.ResourceCategoryTable,
 		Status:           interfaces.ResourceStatusActive,
-		Database:         table.Database,
+		Schema:           table.Schema,
 		SourceIdentifier: sourceIdentifier,
 		SourceMetadata: map[string]any{
 			"original_name":        sourceIdentifier,

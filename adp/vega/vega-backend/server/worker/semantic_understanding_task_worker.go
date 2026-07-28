@@ -627,7 +627,7 @@ func (sutw *SemanticUnderstandingTaskWorker) applyCatalogResult(ctx context.Cont
 				Description:     nextDescription,
 				Category:        current.Category,
 				Status:          current.Status,
-				Database:        current.Database,
+				Schema:          current.Schema,
 				SourceMetadata:  current.SourceMetadata,
 				IndexConfig:     current.IndexConfig,
 				LogicDefinition: nextLogicDefinition,
