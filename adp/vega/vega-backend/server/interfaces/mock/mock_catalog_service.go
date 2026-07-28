@@ -72,18 +72,18 @@ func (mr *MockCatalogServiceMockRecorder) CheckExistByName(ctx, name any) *gomoc
 }
 
 // Create mocks base method.
-func (m *MockCatalogService) Create(ctx context.Context, req *interfaces.CatalogRequest) (string, error) {
+func (m *MockCatalogService) Create(ctx context.Context, req *interfaces.CatalogRequest, allowUnhealthy bool) (string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Create", ctx, req)
+	ret := m.ctrl.Call(m, "Create", ctx, req, allowUnhealthy)
 	ret0, _ := ret[0].(string)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Create indicates an expected call of Create.
-func (mr *MockCatalogServiceMockRecorder) Create(ctx, req any) *gomock.Call {
+func (mr *MockCatalogServiceMockRecorder) Create(ctx, req, allowUnhealthy any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockCatalogService)(nil).Create), ctx, req)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockCatalogService)(nil).Create), ctx, req, allowUnhealthy)
 }
 
 // DeleteByIDs mocks base method.
@@ -252,17 +252,17 @@ func (mr *MockCatalogServiceMockRecorder) TestConnectionConfig(ctx, req any) *go
 }
 
 // Update mocks base method.
-func (m *MockCatalogService) Update(ctx context.Context, catalog *interfaces.Catalog, req *interfaces.CatalogRequest) error {
+func (m *MockCatalogService) Update(ctx context.Context, catalog *interfaces.Catalog, req *interfaces.CatalogRequest, allowUnhealthy bool) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Update", ctx, catalog, req)
+	ret := m.ctrl.Call(m, "Update", ctx, catalog, req, allowUnhealthy)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Update indicates an expected call of Update.
-func (mr *MockCatalogServiceMockRecorder) Update(ctx, catalog, req any) *gomock.Call {
+func (mr *MockCatalogServiceMockRecorder) Update(ctx, catalog, req, allowUnhealthy any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Update", reflect.TypeOf((*MockCatalogService)(nil).Update), ctx, catalog, req)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Update", reflect.TypeOf((*MockCatalogService)(nil).Update), ctx, catalog, req, allowUnhealthy)
 }
 
 // UpdateMetadata mocks base method.

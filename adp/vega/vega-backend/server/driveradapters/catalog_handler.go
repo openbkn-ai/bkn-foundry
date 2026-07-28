@@ -29,6 +29,19 @@ import (
 	"vega-backend/interfaces"
 )
 
+func parseAllowUnhealthy(ctx context.Context, c *gin.Context) (bool, error) {
+	value := strings.TrimSpace(c.Query("allow_unhealthy"))
+	if value == "" {
+		return false, nil
+	}
+	allowUnhealthy, err := strconv.ParseBool(value)
+	if err != nil {
+		return false, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Catalog_InvalidParameter).
+			WithErrorDetails(fmt.Sprintf("invalid allow_unhealthy: %s", value))
+	}
+	return allowUnhealthy, nil
+}
+
 // ========== ListCatalogs ==========
 
 // ListCatalogsByEx handles GET /api/vega-backend/v1/catalogs (External)
@@ -192,6 +205,14 @@ func (r *restHandler) createCatalog(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 
+	allowUnhealthy, err := parseAllowUnhealthy(ctx, c)
+	if err != nil {
+		httpErr := err.(*rest.HTTPError)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
 	// Check if name exists
 	exists, err := r.cs.CheckExistByName(ctx, req.Name)
 	if err != nil {
@@ -227,7 +248,7 @@ func (r *restHandler) createCatalog(c *gin.Context, visitor hydra.Visitor) {
 		}
 	}
 
-	id, err := r.cs.Create(ctx, &req)
+	id, err := r.cs.Create(ctx, &req, allowUnhealthy)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -379,6 +400,14 @@ func (r *restHandler) updateCatalog(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 
+	allowUnhealthy, err := parseAllowUnhealthy(ctx, c)
+	if err != nil {
+		httpErr := err.(*rest.HTTPError)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
 	// Check if id exists
 	catalog, err := r.cs.GetByID(ctx, id, false)
 	if err != nil {
@@ -424,7 +453,7 @@ func (r *restHandler) updateCatalog(c *gin.Context, visitor hydra.Visitor) {
 		}
 	}
 
-	if err := r.cs.Update(ctx, catalog, &req); err != nil {
+	if err := r.cs.Update(ctx, catalog, &req, allowUnhealthy); err != nil {
 		httpErr := err.(*rest.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)

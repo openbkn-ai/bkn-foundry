@@ -214,8 +214,8 @@ func Test_CatalogRestHandler_CreateCatalog(t *testing.T) {
 		engine, cs, _ := setupCatalogHandlerTest(t)
 		cs.EXPECT().CheckExistByName(gomock.Any(), "catalog").Return(false, nil)
 		cs.EXPECT().CheckExistByID(gomock.Any(), "catalog-1").Return(false, nil)
-		cs.EXPECT().Create(gomock.Any(), gomock.Any()).
-			DoAndReturn(func(_ context.Context, req *interfaces.CatalogRequest) (string, error) {
+		cs.EXPECT().Create(gomock.Any(), gomock.Any(), false).
+			DoAndReturn(func(_ context.Context, req *interfaces.CatalogRequest, _ bool) (string, error) {
 				assert.Equal(t, "catalog", req.Name)
 				return "catalog-1", nil
 			})
@@ -228,6 +228,33 @@ func Test_CatalogRestHandler_CreateCatalog(t *testing.T) {
 
 		require.Equal(t, http.StatusCreated, w.Result().StatusCode)
 		assert.Contains(t, w.Body.String(), `"id":"catalog-1"`)
+	})
+
+	t.Run("passes allow_unhealthy query parameter to service", func(t *testing.T) {
+		engine, cs, _ := setupCatalogHandlerTest(t)
+		cs.EXPECT().CheckExistByName(gomock.Any(), "catalog").Return(false, nil)
+		cs.EXPECT().CheckExistByID(gomock.Any(), "catalog-1").Return(false, nil)
+		cs.EXPECT().Create(gomock.Any(), gomock.Any(), true).Return("catalog-1", nil)
+
+		req := httptest.NewRequest(http.MethodPost, url+"?allow_unhealthy=true", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusCreated, w.Result().StatusCode)
+	})
+
+	t.Run("rejects invalid allow_unhealthy query parameter", func(t *testing.T) {
+		engine, _, _ := setupCatalogHandlerTest(t)
+
+		req := httptest.NewRequest(http.MethodPost, url+"?allow_unhealthy=invalid", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
 	})
 
 	t.Run("rejects duplicate name", func(t *testing.T) {
@@ -471,8 +498,8 @@ func Test_CatalogRestHandler_UpdateAllowsDatabaseChange(t *testing.T) {
 					"database": "db1",
 				},
 			}, nil)
-		cs.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any()).
-			DoAndReturn(func(_ context.Context, _ *interfaces.Catalog, req *interfaces.CatalogRequest) error {
+		cs.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any(), false).
+			DoAndReturn(func(_ context.Context, _ *interfaces.Catalog, req *interfaces.CatalogRequest, _ bool) error {
 				assert.Equal(t, "db2", req.ConnectorCfg["database"])
 				return nil
 			})
@@ -486,6 +513,29 @@ func Test_CatalogRestHandler_UpdateAllowsDatabaseChange(t *testing.T) {
 
 		require.Equal(t, http.StatusNoContent, w.Result().StatusCode)
 	})
+}
+
+func Test_CatalogRestHandler_UpdatePassesAllowUnhealthy(t *testing.T) {
+	restoreGinMode := setGinMode()
+	defer restoreGinMode()
+
+	engine, cs, _ := setupCatalogHandlerTest(t)
+	cs.EXPECT().GetByID(gomock.Any(), "catalog-1", false).Return(&interfaces.Catalog{
+		ID:            "catalog-1",
+		Name:          "catalog",
+		Enabled:       true,
+		ConnectorType: "mariadb",
+	}, nil)
+	cs.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any(), true).Return(nil)
+
+	body := `{"id":"catalog-1","name":"catalog","enabled":true,"connector_type":"mariadb","connector_config":{}}`
+	req := httptest.NewRequest(http.MethodPut, "/api/vega-backend/in/v1/catalogs/catalog-1?allow_unhealthy=true", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	engine.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusNoContent, w.Result().StatusCode)
 }
 
 func Test_CatalogRestHandler_DiscoverRejectsDisabledCatalog(t *testing.T) {

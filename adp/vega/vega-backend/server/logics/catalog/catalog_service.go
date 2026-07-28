@@ -152,7 +152,7 @@ func (cs *catalogService) filterCatalogResources(ctx context.Context, ids []stri
 }
 
 // Create creates a new Catalog.
-func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogRequest) (string, error) {
+func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogRequest, allowUnhealthy bool) (string, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Create catalog")
 	defer span.End()
 
@@ -174,6 +174,8 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 	}
 
 	catalogType := interfaces.CatalogTypePhysical
+	healthStatus := interfaces.CatalogHealthStatusUnchecked
+	healthResult := ""
 	if req.ConnectorType == "" {
 		catalogType = interfaces.CatalogTypeLogical
 	} else {
@@ -198,19 +200,20 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 		if err := connector.TestConnection(ctx); err != nil {
 			otellog.LogError(ctx, "Failed to test connection to data source", err)
 			_ = connector.Close(ctx)
-			return "", rest.NewHTTPError(ctx, http.StatusBadRequest,
-				verrors.VegaBackend_Catalog_InternalError_TestConnectionFailed).WithErrorDetails(err.Error())
+			if !allowUnhealthy {
+				return "", rest.NewHTTPError(ctx, http.StatusBadRequest,
+					verrors.VegaBackend_Catalog_InternalError_TestConnectionFailed).WithErrorDetails(err.Error())
+			}
+			healthStatus = interfaces.CatalogHealthStatusUnhealthy
+			healthResult = "Connection test failed."
+		} else {
+			defer func() { _ = connector.Close(ctx) }()
+			healthStatus = interfaces.CatalogHealthStatusHealthy
+			healthResult = "Connection test succeeded."
 		}
-		defer func() { _ = connector.Close(ctx) }()
 	}
 
 	now := time.Now().UnixMilli()
-	healthStatus := interfaces.CatalogHealthStatusUnchecked
-	healthResult := ""
-	if catalogType == interfaces.CatalogTypePhysical {
-		healthStatus = interfaces.CatalogHealthStatusHealthy
-		healthResult = "Connection test succeeded."
-	}
 	id := req.ID
 	if id == "" {
 		id = xid.New().String()
@@ -596,7 +599,7 @@ func (cs *catalogService) List(ctx context.Context, params interfaces.CatalogsQu
 }
 
 // Update updates a Catalog.
-func (cs *catalogService) Update(ctx context.Context, catalog *interfaces.Catalog, req *interfaces.CatalogRequest) error {
+func (cs *catalogService) Update(ctx context.Context, catalog *interfaces.Catalog, req *interfaces.CatalogRequest, allowUnhealthy bool) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Update catalog")
 	defer span.End()
 
@@ -646,15 +649,23 @@ func (cs *catalogService) Update(ctx context.Context, catalog *interfaces.Catalo
 		if err := connector.TestConnection(ctx); err != nil {
 			otellog.LogError(ctx, "Failed to test connection to data source", err)
 			_ = connector.Close(ctx)
-			return rest.NewHTTPError(ctx, http.StatusBadRequest,
-				verrors.VegaBackend_Catalog_InternalError_TestConnectionFailed).WithErrorDetails(err.Error())
-		}
-		defer func() { _ = connector.Close(ctx) }()
+			if !allowUnhealthy {
+				return rest.NewHTTPError(ctx, http.StatusBadRequest,
+					verrors.VegaBackend_Catalog_InternalError_TestConnectionFailed).WithErrorDetails(err.Error())
+			}
+			catalog.CatalogHealthCheckStatus = interfaces.CatalogHealthCheckStatus{
+				HealthCheckStatus: interfaces.CatalogHealthStatusUnhealthy,
+				LastCheckTime:     time.Now().UnixMilli(),
+				HealthCheckResult: "Connection test failed.",
+			}
+		} else {
+			defer func() { _ = connector.Close(ctx) }()
 
-		catalog.CatalogHealthCheckStatus = interfaces.CatalogHealthCheckStatus{
-			HealthCheckStatus: interfaces.CatalogHealthStatusHealthy,
-			LastCheckTime:     time.Now().UnixMilli(),
-			HealthCheckResult: "Connection test succeeded.",
+			catalog.CatalogHealthCheckStatus = interfaces.CatalogHealthCheckStatus{
+				HealthCheckStatus: interfaces.CatalogHealthStatusHealthy,
+				LastCheckTime:     time.Now().UnixMilli(),
+				HealthCheckResult: "Connection test succeeded.",
+			}
 		}
 
 		// req.ConnectorConfig 已在 validateAndDecryptSensitiveFields 中加上 ENC: 前缀

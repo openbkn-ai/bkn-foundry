@@ -284,7 +284,7 @@ func TestCatalogServiceCreate(t *testing.T) {
 		cs := &catalogService{ca: mockCA, ps: mockPS}
 		_, err := cs.Create(context.Background(), &interfaces.CatalogRequest{
 			Name: "catalog",
-		})
+		}, false)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -312,7 +312,7 @@ func TestCatalogServiceCreate(t *testing.T) {
 		_, err := cs.Create(context.Background(), &interfaces.CatalogRequest{
 			Name:    "catalog",
 			Enabled: true,
-		})
+		}, false)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -347,7 +347,7 @@ func TestCatalogServiceCreate(t *testing.T) {
 		_, err := cs.Create(context.Background(), &interfaces.CatalogRequest{
 			Name:     "internal-catalog",
 			Internal: true,
-		})
+		}, false)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}

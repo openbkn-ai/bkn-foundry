@@ -188,8 +188,20 @@ paths:
         创建一个新的 catalog。`name` 全局唯一，已存在时返回 409。
         `connector_type` 必须是已注册且 enabled 的连接器类型。
 
+        物理 Catalog 会在持久化前执行一次连接测试。默认连接失败返回 400，且不会创建 Catalog；
+        可传 `allow_unhealthy=true` 保存该 Catalog，并将其健康状态记为 `unhealthy`。
+
         可选 **`extensions`**：与 `t_catalog` 插入 **同一事务**内写入 `t_entity_extension`。
         响应体 `CatalogRef` 返回 `extensions`，与持久化一致。
+      parameters:
+        - name: allow_unhealthy
+          in: query
+          description: |
+            是否在物理 Catalog 的连接测试失败时仍继续创建。默认 `false`；为 `true` 时创建成功，
+            但初始健康状态为 `unhealthy`。配置校验、敏感字段解密或连接器创建失败仍返回 400。
+          schema:
+            type: boolean
+            default: false
       requestBody:
         required: true
         content:
@@ -277,8 +289,20 @@ paths:
         `connector_config` 可修改；修改影响发现范围的字段后，旧 Resource 会在下一次
         discover 对齐时标记为 `stale`。
 
+        修改物理 Catalog 配置时会先执行连接测试。默认连接失败返回 400，且不会持久化更新；
+        可传 `allow_unhealthy=true` 保存更新，并将健康状态记为 `unhealthy`。
+
         **extensions**：请求体若包含 **`extensions` 键**（含空对象 `{}`），则对该 catalog **整包替换**
         `t_entity_extension` 中 `f_entity_id = id` 的全部行；**键未出现**则不修改副表。
+      parameters:
+        - name: allow_unhealthy
+          in: query
+          description: |
+            是否在物理 Catalog 的连接测试失败时仍继续更新。默认 `false`；为 `true` 时更新成功，
+            但健康状态为 `unhealthy`。配置校验、敏感字段解密或连接器创建失败仍返回 400。
+          schema:
+            type: boolean
+            default: false
       requestBody:
         required: true
         content:
@@ -350,6 +374,38 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+  /catalogs/test-connection:
+    post:
+      summary: 预检未保存的 Catalog 连接配置
+      description: |
+        使用请求中的 `connector_type` 与 `connector_config` 执行一次同步连接测试。
+        本接口不创建或更新 Catalog，也不持久化健康状态；适用于创建或编辑表单保存前的“测试连接”。
+
+        探测结果通过响应体 `success` 字段返回；目标不可达不视为 HTTP 错误：
+        - 连通 → 200 `{ success: true, message }`
+        - 连不通 → 200 `{ success: false, message }`
+        - 非 2xx 仅用于请求、鉴权、参数校验或服务内部错误。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CatalogConnectionTestRequest"
+      responses:
+        "200":
+          description: 探测完成（成功或失败均返回，业务结果看 `success` 字段）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TestConnectionResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "406":
+          $ref: "#/components/responses/NotAcceptable"
         "500":
           $ref: "#/components/responses/InternalServerError"
   /catalogs/{id}/health-status:
@@ -653,6 +709,20 @@ components:
           type: string
         extensions:
           $ref: "#/components/schemas/EntityExtensions"
+    CatalogConnectionTestRequest:
+      description: 未保存的物理 Catalog 连接测试请求
+      type: object
+      required:
+        - connector_type
+        - connector_config
+      properties:
+        connector_type:
+          description: 已注册且 enabled 的连接器类型标识
+          type: string
+        connector_config:
+          description: 用于本次探测的连接器配置；字段由 ConnectorType.field_config 决定
+          type: object
+          additionalProperties: true
     CatalogHealthStatusEntry:
       description: catalog 健康状态条目
       type: object
