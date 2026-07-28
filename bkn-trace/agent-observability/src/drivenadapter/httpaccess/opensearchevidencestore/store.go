@@ -237,6 +237,9 @@ func (s *Store) searchPage(ctx context.Context, field, value string, scope evide
 		{"bkn.account.id", scope.AccountID},
 		{"bkn.account.type", scope.AccountType},
 	} {
+		if scope.CrossAccountRead && (item.field == "bkn.account.id" || item.field == "bkn.account.type") {
+			continue
+		}
 		if item.value != "" {
 			must = append(must, map[string]any{"bool": exactTermQuery(item.field, item.value)})
 		}
@@ -331,7 +334,7 @@ func (s *Store) ensureIndex(ctx context.Context) error {
 	return nil
 }
 
-const evidenceIndexMapping = `{"settings":{"index.mapping.total_fields.limit":200},"mappings":{"dynamic":false,"properties":{"document_id":{"type":"keyword"},"trace_id":{"type":"keyword"},"business_domain":{"type":"keyword"},"bkn":{"properties":{"conversation":{"properties":{"id":{"type":"keyword"}}},"tenant":{"properties":{"id":{"type":"keyword"}}},"account":{"properties":{"id":{"type":"keyword"},"type":{"type":"keyword"}}},"request":{"properties":{"id":{"type":"keyword"}}},"trace":{"properties":{"schema":{"properties":{"version":{"type":"keyword"}}}}}}},"events":{"type":"object","enabled":false},"claim_ids":{"type":"keyword"},"accepted_event_count":{"type":"integer"},"claim_count":{"type":"integer"},"evidence_ref_count":{"type":"integer"},"business_ref_count":{"type":"integer"},"observed_start":{"type":"date"},"ingested_at":{"type":"date"},"aggregate":{"type":"boolean"}}}}`
+const evidenceIndexMapping = `{"settings":{"index.mapping.total_fields.limit":200},"mappings":{"dynamic":false,"properties":{"document_id":{"type":"keyword"},"trace_id":{"type":"keyword"},"business_domain":{"type":"keyword"},"bkn":{"properties":{"conversation":{"properties":{"id":{"type":"keyword"}}},"tenant":{"properties":{"id":{"type":"keyword"}}},"account":{"properties":{"id":{"type":"keyword"},"type":{"type":"keyword"}}},"request":{"properties":{"id":{"type":"keyword"}}},"trace":{"properties":{"schema":{"properties":{"version":{"type":"keyword"}}}}}}},"events":{"type":"object","enabled":false},"claim_ids":{"type":"keyword"},"accepted_event_count":{"type":"integer"},"claim_count":{"type":"integer"},"evidence_ref_count":{"type":"integer"},"business_ref_count":{"type":"integer"},"observed_start":{"type":"date","format":"strict_date_optional_time_nanos||strict_date_optional_time||epoch_millis"},"ingested_at":{"type":"date","format":"strict_date_optional_time_nanos||strict_date_optional_time||epoch_millis"},"aggregate":{"type":"boolean"}}}}`
 
 func toDocument(trace evidencevo.NormalizedTrace, ingestedAt time.Time) document {
 	doc := document{

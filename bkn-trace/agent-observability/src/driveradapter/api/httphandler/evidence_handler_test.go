@@ -695,6 +695,53 @@ func TestEvidenceHandlerListsRequestTracesAndTechnicalExecutions(t *testing.T) {
 	}
 }
 
+func TestEvidenceHandlerAdminReadsEvidenceAcrossAccountsWithinBusinessDomain(t *testing.T) {
+	handler := newDevEvidenceHandler(evidencesvc.New(evidencestore.New()))
+	ingestReq := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/evidence/events", strings.NewReader(validHandlerBatch()))
+	ingestRec := httptest.NewRecorder()
+	handler.IngestEvidenceEvents(ingestRec, ingestReq)
+	if ingestRec.Code != http.StatusAccepted {
+		t.Fatalf("seed evidence: %d %s", ingestRec.Code, ingestRec.Body.String())
+	}
+
+	userReq := authenticatedQueryRequest(http.MethodGet, "/api/agent-observability/v1/requests?limit=10", nil)
+	userReq.Header.Set("x-account-id", "other_user")
+	userReq.Header.Set("x-account-type", "user")
+	userRec := httptest.NewRecorder()
+	handler.ListRequests(userRec, userReq)
+	if userRec.Code != http.StatusOK || strings.Contains(userRec.Body.String(), `"request_id":"req_handler_001"`) {
+		t.Fatalf("normal cross-account user must not see evidence, got %d: %s", userRec.Code, userRec.Body.String())
+	}
+
+	adminReq := authenticatedQueryRequest(http.MethodGet, "/api/agent-observability/v1/requests?limit=10", nil)
+	adminReq.Header.Set("x-account-id", "admin_user")
+	adminReq.Header.Set("x-account-type", "super_admin")
+	adminRec := httptest.NewRecorder()
+	handler.ListRequests(adminRec, adminReq)
+	if adminRec.Code != http.StatusOK || !strings.Contains(adminRec.Body.String(), `"request_id":"req_handler_001"`) {
+		t.Fatalf("admin must see same-domain evidence, got %d: %s", adminRec.Code, adminRec.Body.String())
+	}
+
+	chainReq := authenticatedQueryRequest(http.MethodGet, "/api/agent-observability/v1/traces/9c0d0000000000000000000000000001/evidence-chain", nil)
+	chainReq.Header.Set("x-account-id", "admin_user")
+	chainReq.Header.Set("x-account-type", "super_admin")
+	chainRec := httptest.NewRecorder()
+	handler.GetTraceSubresource(chainRec, chainReq)
+	if chainRec.Code != http.StatusOK || !strings.Contains(chainRec.Body.String(), `"claim_id":"claim_handler"`) {
+		t.Fatalf("admin must read same-domain evidence chain, got %d: %s", chainRec.Code, chainRec.Body.String())
+	}
+
+	otherDomainReq := authenticatedQueryRequest(http.MethodGet, "/api/agent-observability/v1/requests?limit=10", nil)
+	otherDomainReq.Header.Set("x-account-id", "admin_user")
+	otherDomainReq.Header.Set("x-account-type", "super_admin")
+	otherDomainReq.Header.Set("x-business-domain", "other_domain")
+	otherDomainRec := httptest.NewRecorder()
+	handler.ListRequests(otherDomainRec, otherDomainReq)
+	if otherDomainRec.Code != http.StatusOK || strings.Contains(otherDomainRec.Body.String(), `"request_id":"req_handler_001"`) {
+		t.Fatalf("admin cross-account read must stay domain-scoped, got %d: %s", otherDomainRec.Code, otherDomainRec.Body.String())
+	}
+}
+
 func TestEvidenceHandlerRejectsInvalidSummaryPaginationAndTime(t *testing.T) {
 	handler := newDevEvidenceHandler(evidencesvc.New(evidencestore.New()))
 	for _, target := range []string{

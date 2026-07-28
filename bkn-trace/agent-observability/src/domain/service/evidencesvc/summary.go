@@ -505,6 +505,9 @@ func addSummaryResolverRef(
 }
 
 func summaryArtifactRefsAuthorized(artifact evidencevo.EvidenceArtifact, authorized map[string]struct{}) bool {
+	if len(authorized) == 0 {
+		return true
+	}
 	refs := make([]string, 0, len(artifact.BusinessRefs)+1)
 	if resolverSupportsArtifactRef(artifact.SourceRef) {
 		refs = append(refs, strings.TrimSpace(artifact.SourceRef))
