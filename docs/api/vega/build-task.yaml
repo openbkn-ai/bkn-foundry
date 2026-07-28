@@ -224,9 +224,9 @@ paths:
       summary: 启动构建任务
       description: |
         合法状态转移：`status ∈ {init, stopped, completed, failed}` → `running`。
-        `failed` 允许重启。batch 任务在 `reset=false` 时恢复创建时持久化的
-        `execute_type`：incremental 使用 `synced_mark` 续跑，full 保持全量语义。
-        `reset=true` 仅覆盖本次执行为 full 并从头开始，不修改原始 `execute_type`；
+        `failed` 允许重启。batch 任务默认按 `synced_mark` 续跑；incremental 任务始终
+        保持增量续跑，`reset` 对它无效。full 任务仅在 `reset=true` 时清除进度并从头重建，
+        不修改原始 `execute_type`；
         worker 实际开始执行时会清空 `error_msg`。
 
         **响应 status 滞后**：HTTP 202 表示"启动指令已被接受并入队"，**不**表示
@@ -513,7 +513,7 @@ components:
       type: object
       properties:
         reset:
-          description: 为 true 时仅本次忽略已有 `synced_mark` 并按 full 从头执行；不会改变任务持久化的原始 `execute_type`
+          description: 仅对原始 `execute_type=full` 的任务有效；为 true 时忽略 `synced_mark` 并从头执行。incremental 任务始终续跑，不会改变原始 `execute_type`
           type: boolean
           default: false
     ListBuildTasks:

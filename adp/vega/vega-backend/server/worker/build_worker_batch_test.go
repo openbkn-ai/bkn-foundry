@@ -27,9 +27,10 @@ func TestBatchBuildExecuteType(t *testing.T) {
 	}
 
 	assert.Equal(t, interfaces.BuildTaskExecuteTypeIncremental, batchBuildExecuteType(incrementalTask, false))
-	assert.Equal(t, interfaces.BuildTaskExecuteTypeFull, batchBuildExecuteType(incrementalTask, true))
-	assert.Equal(t, interfaces.BuildTaskExecuteTypeFull,
-		batchBuildExecuteType(&interfaces.BuildTask{Mode: interfaces.BuildTaskModeBatch}, false))
+	assert.Equal(t, interfaces.BuildTaskExecuteTypeIncremental, batchBuildExecuteType(incrementalTask, true))
+	fullTask := &interfaces.BuildTask{Mode: interfaces.BuildTaskModeBatch, ExecuteType: interfaces.BuildTaskExecuteTypeFull}
+	assert.Equal(t, interfaces.BuildTaskExecuteTypeIncremental, batchBuildExecuteType(fullTask, false))
+	assert.Equal(t, interfaces.BuildTaskExecuteTypeFull, batchBuildExecuteType(fullTask, true))
 }
 
 func TestBatchBuildWorkerHandleTask(t *testing.T) {

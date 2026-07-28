@@ -143,15 +143,17 @@ func (bbw *batchBuildWorker) HandleTask(ctx context.Context, task *asynq.Task) e
 }
 
 func batchBuildExecuteType(buildTask *interfaces.BuildTask, reset bool) string {
+	// Incremental tasks keep using their existing index and checkpoint. They
+	// cannot be reset into a full rebuild because that index is not disposable.
+	if buildTask.ExecuteType == interfaces.BuildTaskExecuteTypeIncremental {
+		return interfaces.BuildTaskExecuteTypeIncremental
+	}
+	// A full task normally resumes from its checkpoint after a failure. reset is
+	// meaningful only for it and starts the same task from the beginning.
 	if reset {
 		return interfaces.BuildTaskExecuteTypeFull
 	}
-	// Empty execute_type belongs to legacy rows created before it was persisted.
-	// Their historical behavior was full build.
-	if buildTask != nil && buildTask.ExecuteType == interfaces.BuildTaskExecuteTypeIncremental {
-		return interfaces.BuildTaskExecuteTypeIncremental
-	}
-	return interfaces.BuildTaskExecuteTypeFull
+	return interfaces.BuildTaskExecuteTypeIncremental
 }
 
 // advanceCursor 把批读游标推进到本批最后一行的键值。

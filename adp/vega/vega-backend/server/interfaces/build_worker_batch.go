@@ -20,8 +20,8 @@ import (
 // BatchBuildTaskMessage represents a build task message.
 type BatchBuildTaskMessage struct {
 	TaskID string `json:"task_id"`
-	// Reset is a one-off execution override. The worker otherwise uses the
-	// execute type persisted on the build task.
+	// Reset requests a fresh run for a persisted full task. It is ignored for
+	// incremental tasks, which must retain their checkpoint and index.
 	Reset bool `json:"reset,omitempty"`
 }
 
