@@ -127,8 +127,8 @@ func (dtw *DiscoverTaskWorker) discoverCatalog(ctx context.Context, catalog *int
 	}
 	defer func() { _ = connector.Close(ctx) }()
 
-	// Update catalog metadata
 	if meta, err := connector.GetMetadata(ctx); err == nil {
+		catalog.Metadata = meta
 		if err := dtw.cs.UpdateMetadata(ctx, catalog.ID, meta); err != nil {
 			logger.Errorf("Failed to update catalog metadata: %v", err)
 		}
