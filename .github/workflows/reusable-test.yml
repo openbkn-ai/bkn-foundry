@@ -59,7 +59,10 @@ jobs:
             # clean, immutable image/chart set across all services.
             VERSION="${REF_NAME#v}"
           elif [[ "$REF_NAME" == release/* ]]; then
-            VERSION="$BASE_VERSION"
+            # Release branches use a stable, Helm-compatible version:
+            # release/0.1.2 -> 0.1.2-release.
+            RELEASE_VERSION="${REF_NAME#release/}"
+            VERSION="${RELEASE_VERSION}-release"
           else
             SANITIZED_BRANCH="$(echo "$REF_NAME" | tr '[:upper:]' '[:lower:]' | sed -E 's#[^0-9a-zA-Z.-]+#-#g; s#-+#-#g; s#^[.-]+##; s#[.-]+$##')"
             # Embed the commit time (Asia/Shanghai, fixed-width YYYYMMDDHHMMSS) so the
