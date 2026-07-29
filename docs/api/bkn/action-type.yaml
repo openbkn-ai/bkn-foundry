@@ -525,20 +525,11 @@ components:
     ConceptTypeResponse:
       description: 对象类、关系类、行动类的查询返回结构
       required:
-        - concept_type
         - id
         - name
         - tags
-        - groups
       type: object
       properties:
-        concept_type:
-          description: 概念类型
-          enum:
-            - object_type
-            - relation_type
-            - action_type
-          type: string
         id:
           description: 概念id
           type: string
@@ -745,7 +736,6 @@ components:
         **[已废弃]** 列表/详情中为兼容回填的单行影响；推荐使用响应中的 `impact_contracts`。
         详见 `docs/design/bkn/features/action_type_rebuild/DESIGN.md` §7.5。
       required:
-        - object_type
         - comment
         - object_type_id
       type: object
@@ -805,7 +795,6 @@ components:
     ActionTypeSearchResponse:
       description: 行动类检索返回结果
       required:
-        - groups
         - type
         - entries
       type: object
@@ -1113,12 +1102,10 @@ components:
       required:
         - action_type
         - comment
-        - groups
         - id
         - kn_id
         - name
         - tags
-        - condition
         - affect
         - action_source
         - parameters
@@ -1132,7 +1119,6 @@ components:
         - updater
         - create_time
         - creator
-        - object_type
       type: object
       properties:
         id:
@@ -1230,12 +1216,10 @@ components:
       required:
         - action_type
         - comment
-        - groups
         - id
         - kn_id
         - name
         - tags
-        - condition
         - affect
         - action_source
         - parameters

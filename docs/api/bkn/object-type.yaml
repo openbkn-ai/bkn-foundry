@@ -1843,20 +1843,11 @@ components:
     ConceptTypeResponse:
       description: 对象类、关系类、行动类的查询返回结构
       required:
-        - concept_type
         - id
         - name
         - tags
-        - groups
       type: object
       properties:
-        concept_type:
-          description: 概念类型
-          enum:
-            - object_type
-            - relation_type
-            - action_type
-          type: string
         id:
           description: 概念id
           type: string
@@ -2255,7 +2246,6 @@ components:
         - comment
         - tags
         - kn_id
-        - groups
         - data_source
         - data_properties
         - primary_keys
@@ -2265,8 +2255,6 @@ components:
         - branch
         - color
         - icon
-        - logic_properties
-        - concept_groups
         - creator
         - update_time
         - updater
@@ -2392,7 +2380,6 @@ components:
     ObjectTypeSearchResponse:
       description: 对象类检索返回结果
       required:
-        - groups
         - type
         - entries
       type: object

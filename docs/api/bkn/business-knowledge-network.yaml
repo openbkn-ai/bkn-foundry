@@ -368,20 +368,11 @@ components:
     ConceptTypeResponse:
       description: 对象类、关系类、行动类的查询返回结构
       required:
-        - concept_type
         - id
         - name
         - tags
-        - groups
       type: object
       properties:
-        concept_type:
-          description: 概念类型
-          enum:
-            - object_type
-            - relation_type
-            - action_type
-          type: string
         id:
           description: 概念id
           type: string
@@ -666,7 +657,6 @@ components:
       description: |
         **[已废弃]** 请改用 `impact_contracts`。DESIGN §5.9。
       required:
-        - object_type
         - comment
       type: object
       properties:
@@ -1438,31 +1428,21 @@ components:
       required:
         - action_type
         - comment
-        - groups
         - id
         - kn_id
         - name
         - tags
-        - object_type
-        - condition
         - affect
         - action_source
         - parameters
         - schedule
-        - concept_type
         - branch
         - color
-        - concept_groups
         - icon
         - object_type_id
         - object_type_name
       type: object
       properties:
-        concept_type:
-          description: 概念类型
-          enum:
-            - action_type
-          type: string
         id:
           description: 行动类ID
           type: string
@@ -1560,25 +1540,16 @@ components:
         - comment
         - tags
         - kn_id
-        - groups
         - data_source
         - data_properties
         - primary_keys
         - display_key
         - type
-        - concept_type
         - branch
         - color
         - icon
-        - logic_properties
-        - concept_groups
       type: object
       properties:
-        concept_type:
-          description: 概念类型
-          enum:
-            - object_type
-          type: string
         id:
           description: 对象类ID
           type: string
@@ -1646,21 +1617,14 @@ components:
     RelationTypeDetail:
       description: 关系类
       required:
-        - source_object_type
-        - target_object_type
         - type
-        - direct_mapping_rules
         - comment
-        - data_view_mapping_rules
-        - groups
         - id
         - kn_id
         - name
         - tags
-        - concept_type
         - branch
         - color
-        - concept_groups
         - icon
         - mapping_rules
         - source_object_type_id
@@ -1669,11 +1633,6 @@ components:
         - target_object_type_name
       type: object
       properties:
-        concept_type:
-          description: 概念类型
-          enum:
-            - relation_type
-          type: string
         id:
           description: 关系类ID
           type: string

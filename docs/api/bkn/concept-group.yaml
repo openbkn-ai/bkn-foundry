@@ -394,7 +394,6 @@ components:
         - icon
         - id
         - name
-        - statistics
         - tags
         - update_time
         - updater
@@ -506,7 +505,6 @@ components:
         - branch
         - color
         - comment
-        - condition
         - create_time
         - creator
         - icon
@@ -514,7 +512,6 @@ components:
         - kn_id
         - module_type
         - name
-        - object_type
         - object_type_id
         - parameters
         - schedule
@@ -634,7 +631,6 @@ components:
       description: |
         **[已废弃]** 请消费 `impact_contracts`。
       required:
-        - object_type
         - comment
         - object_type_id
       type: object
@@ -760,7 +756,6 @@ components:
         - branch
         - color
         - comment
-        - concept_groups
         - create_time
         - creator
         - data_properties
@@ -769,7 +764,6 @@ components:
         - icon
         - id
         - kn_id
-        - logic_properties
         - module_type
         - name
         - primary_keys
@@ -1029,10 +1023,8 @@ components:
         - kn_id
         - mapping_rules
         - name
-        - source_object_type
         - source_object_type_id
         - tags
-        - target_object_type
         - target_object_type_id
         - type
         - update_time
@@ -1226,7 +1218,6 @@ components:
     ConceptGroupDetail:
       description: 概念分组详情
       required:
-        - action_types
         - branch
         - color
         - comment
@@ -1236,7 +1227,6 @@ components:
         - id
         - name
         - object_types
-        - relation_types
         - tags
         - update_time
         - updater

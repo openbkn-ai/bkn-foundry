@@ -405,7 +405,6 @@ components:
     MetricSearchResponse:
       description: 指标概念检索返回结果（与 ObjectTypeSearchResponse 同构）
       required:
-        - groups
         - type
         - entries
       type: object

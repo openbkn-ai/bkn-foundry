@@ -1127,7 +1127,6 @@ components:
         - comment
         - tags
         - kn_id
-        - groups
         - data_source
         - data_properties
         - primary_keys
@@ -1137,8 +1136,6 @@ components:
         - branch
         - color
         - icon
-        - logic_properties
-        - concept_groups
         - creator
         - update_time
         - updater
@@ -1501,13 +1498,8 @@ components:
     RelationTypeDetail:
       description: 关系类
       required:
-        - source_object_type
-        - target_object_type
         - type
-        - direct_mapping_rules
         - comment
-        - data_view_mapping_rules
-        - groups
         - id
         - kn_id
         - name
@@ -1590,18 +1582,12 @@ components:
     RelationType:
       description: 关系类
       required:
-        - source_object_type
-        - target_object_type
         - type
-        - direct_mapping_rules
         - comment
-        - data_view_mapping_rules
-        - groups
         - id
         - kn_id
         - name
         - tags
-        - concept_type
         - branch
         - color
         - icon
@@ -1614,11 +1600,6 @@ components:
         - update_time
       type: object
       properties:
-        concept_type:
-          description: 概念类型
-          enum:
-            - relation_type
-          type: string
         id:
           description: 关系类ID
           type: string
@@ -1679,7 +1660,6 @@ components:
     RelationTypeSearchResponse:
       description: 关系类检索返回结果
       required:
-        - groups
         - type
         - entries
       type: object
@@ -1699,7 +1679,6 @@ components:
       description: 概念路径
       required:
         - object_types
-        - relation_types
         - length
       type: object
       properties:
@@ -1723,7 +1702,6 @@ components:
         - name
         - data_source
         - data_properties
-        - logic_properties
         - primary_keys
         - display_key
       type: object
@@ -1763,7 +1741,7 @@ components:
         - source_object_type_id
         - target_object_type_id
         - type
-        - MappingRules
+        - mapping_rules
       type: object
       properties:
         id:
