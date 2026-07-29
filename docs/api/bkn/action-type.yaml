@@ -462,7 +462,7 @@ paths:
 
         **响应**：HTTP 200 时 `valid`/`detail` 同其它 validate 接口；参数与鉴权错误为非 2xx。
 
-        **内部接口**：`POST /api/bkn-backend/in/v1/.../action-types/validation` 与 `POST /api/ontology-manager/in/v1/.../action-types/validation`；Header 解析访问者，无 OAuth。
+        **内部接口**：`POST /api/bkn-backend/in/v1/.../action-types/validation`；Header 解析访问者，无 OAuth。
       parameters:
         - name: kn_id
           description: 业务知识网络ID

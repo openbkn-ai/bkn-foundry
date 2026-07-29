@@ -1908,7 +1908,7 @@ paths:
 
         **响应**：HTTP 200 时 body 中 `valid` 为 `true` 表示通过；为 `false` 时带 `detail`（服务端 error.Error()）。请求参数/鉴权/资源不存在等错误仍为非 2xx。
 
-        **内部接口**：`POST /api/bkn-backend/in/v1/.../object-types/validation` 与 `POST /api/ontology-manager/in/v1/.../object-types/validation`，其余相同；Header 解析访问者，无 OAuth。
+        **内部接口**：`POST /api/bkn-backend/in/v1/.../object-types/validation`，其余相同；Header 解析访问者，无 OAuth。
       parameters:
         - name: kn_id
           description: 业务知识网络ID

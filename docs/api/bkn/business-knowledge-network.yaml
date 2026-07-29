@@ -246,7 +246,7 @@ paths:
         **响应**：HTTP 200 表示请求已处理完成。响应体 `valid` 为 `true` 表示校验通过；为 `false` 表示校验未通过或服务端在校验过程中返回错误，原因见 `detail`（为服务端错误的 `Error()` 字符串，可能为结构化错误 JSON）。  
         请求体无法解析、`strict_mode` 非法、知识网络不存在或无权限等仍返回非 2xx（如 400/403），不返回上述 `valid`/`detail` 包。
 
-        **内部接口**：与上述请求/响应一致，路径为 `POST /api/bkn-backend/in/v1/knowledge-networks/{kn_id}/validation` 或 `POST /api/ontology-manager/in/v1/knowledge-networks/{kn_id}/validation`；访问者从 Header 解析，不经过 OAuth。
+        **内部接口**：与上述请求/响应一致，路径为 `POST /api/bkn-backend/in/v1/knowledge-networks/{kn_id}/validation`；访问者从 Header 解析，不经过 OAuth。
       parameters:
         - name: kn_id
           description: 业务知识网络ID

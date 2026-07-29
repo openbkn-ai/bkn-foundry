@@ -5167,7 +5167,7 @@ components:
           type: integer
           format: int64
         action_type_snapshot:
-          description: 执行时的行动类配置快照（与 ontology-manager 返回一致）
+          description: 执行时的行动类配置快照（与 bkn-backend 返回一致）
           type: object
           additionalProperties: true
 
