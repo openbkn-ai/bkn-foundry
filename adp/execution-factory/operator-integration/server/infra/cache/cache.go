@@ -4,7 +4,7 @@ package cache
 import (
 	"sync"
 
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 )
 
 // InMemoryCache is a simple in-memory cache implementation.

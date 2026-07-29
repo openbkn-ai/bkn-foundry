@@ -11,8 +11,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/capabilitieslab/client"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/capabilitieslab/model"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/capabilitieslab/client"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/capabilitieslab/model"
 )
 
 func (s *Service) CreateFunctionCapability(

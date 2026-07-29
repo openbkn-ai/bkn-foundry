@@ -3,7 +3,7 @@ package auth
 import (
 	"context"
 
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 )
 
 // CreateOwnerPolicy 创建owner权限

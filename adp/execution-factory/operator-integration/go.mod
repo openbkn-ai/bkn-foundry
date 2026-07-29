@@ -1,4 +1,4 @@
-module github.com/openbkn-ai/adp/execution-factory/operator-integration
+module github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration
 
 go 1.25.0
 

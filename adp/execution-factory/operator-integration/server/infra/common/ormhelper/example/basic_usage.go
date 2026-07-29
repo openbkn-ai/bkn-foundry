@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
 )
 
 var (

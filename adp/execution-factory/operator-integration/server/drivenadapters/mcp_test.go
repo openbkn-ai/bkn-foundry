@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/errors"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 )
 
 // mcp-go v0.37.0 两种传输在鉴权被拒时产生的错误文本（含本仓 performHandshake 的包装前缀）

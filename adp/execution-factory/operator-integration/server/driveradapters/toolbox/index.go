@@ -7,10 +7,10 @@ import (
 	"sync"
 
 	"github.com/gin-gonic/gin"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/config"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/validator"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
-	ltoolbox "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/toolbox"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/validator"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
+	ltoolbox "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/toolbox"
 )
 
 // ToolBoxHandler 工具箱操作接口

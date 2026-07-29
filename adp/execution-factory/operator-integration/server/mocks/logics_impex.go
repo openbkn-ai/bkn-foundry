@@ -14,7 +14,7 @@ import (
 	sql "database/sql"
 	reflect "reflect"
 
-	interfaces "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
+	interfaces "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	gomock "go.uber.org/mock/gomock"
 )
 

@@ -7,7 +7,7 @@ package logic
 import (
 	"strings"
 
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/capabilitieslab/model"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/capabilitieslab/model"
 )
 
 func filterCapabilitiesByStatus(items []model.Capability, status string) []model.Capability {

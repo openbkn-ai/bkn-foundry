@@ -4,9 +4,9 @@ import (
 	"sync"
 
 	"github.com/gin-gonic/gin"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/config"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
-	logicsskill "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/skill"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
+	logicsskill "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/skill"
 )
 
 type SkillHandler interface {

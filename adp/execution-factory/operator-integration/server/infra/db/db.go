@@ -7,8 +7,8 @@ import (
 	"database/sql"
 	"sync"
 
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/config"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/telemetry"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/telemetry"
 	"github.com/qustavo/sqlhooks/v2"
 
 	// _ 注册openbkn-rds驱动

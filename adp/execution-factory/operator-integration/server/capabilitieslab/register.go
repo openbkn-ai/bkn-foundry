@@ -18,11 +18,11 @@ package capabilitieslab
 import (
 	"github.com/gin-gonic/gin"
 
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/capabilitieslab/client"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/capabilitieslab/config"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/capabilitieslab/handler"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/capabilitieslab/logic"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/capabilitieslab/observability"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/capabilitieslab/client"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/capabilitieslab/config"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/capabilitieslab/handler"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/capabilitieslab/logic"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/capabilitieslab/observability"
 )
 
 // RegisterRouter 在给定路由组上装配 capabilities-lab 的中间件链与全部路由。
