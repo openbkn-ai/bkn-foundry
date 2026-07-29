@@ -141,10 +141,17 @@ class SpecLoader:
                              depth + 1, seen, required, out)
             return out
 
-        # additionalProperties: true 表示该节点显式允许任意字段(opaque 内容,
-        # 如工具执行结果)。记一个通配标记,其下实际返回的字段不算「未声明」。
-        if schema.get("additionalProperties") is True and prefix:
+        # additionalProperties 表示该节点的 key 是开放的:
+        #   true      —— 完全 opaque(如工具执行结果)
+        #   {schema}  —— key 任意、值符合该 schema(如 map[string]FieldConfig)
+        # 两种都用 "<prefix>.*" 这个通配路径表示,实际返回的 key 会被归一化到它。
+        ap = schema.get("additionalProperties")
+        if prefix and ap is True:
             out.setdefault(prefix + ".*", ("any", False))
+        elif prefix and isinstance(ap, dict) and ap:
+            out.setdefault(prefix + ".*", ("object", False))
+            self.field_paths(ap, doc, path, prefix + ".*",
+                             depth + 1, seen, False, out)
 
         req_names = set(schema.get("required") or [])
         for name, sub in (schema.get("properties") or {}).items():
@@ -569,12 +576,36 @@ def render(ops, ids, args):
             continue
         doc, act = op["doc_fields"], op["actual"]
         # 实际返回了、文档没写
-        # 声明了 additionalProperties: true 的节点,其下任意字段都算已声明
-        opaque = tuple(k[:-1] for k in doc if k.endswith(".*"))
-        missing = [k for k in act
-                   if k not in doc
-                   and (k[:-2] if k.endswith("[]") else k + "[]") not in doc
-                   and not k.startswith(opaque)]
+        # 开放 key 的节点(additionalProperties):把实际路径里紧跟其后的那一
+        # 段折成 "*",再和文档比。例:field_config.username.name 在文档里对应
+        # field_config.*.name。
+        # additionalProperties: true  -> 整棵子树放行(内容完全 opaque)
+        # additionalProperties: {..}  -> key 折成 "*" 后继续逐字段比对
+        free = tuple(k[:-2] + "." for k in doc
+                     if k.endswith(".*") and doc[k][0] == "any")
+        typed = sorted((k[:-2] for k in doc
+                        if k.endswith(".*") and doc[k][0] != "any"),
+                       key=len, reverse=True)
+
+        def canon(k):
+            for base in typed:
+                if k.startswith(base + "."):
+                    rest = k[len(base) + 1:].split(".", 1)
+                    return base + ".*" + ("." + rest[1] if len(rest) > 1 else "")
+            return k
+
+        def known(k):
+            if free and k.startswith(free):
+                return True
+            for cand in (k, canon(k)):
+                if cand in doc:
+                    return True
+                alt = cand[:-2] if cand.endswith("[]") else cand + "[]"
+                if alt in doc:
+                    return True
+            return False
+
+        missing = [k for k in act if not known(k)]
         # 类型不符
         badtype = [(k, doc[k][0], act[k]) for k in doc
                    if k in act and not type_ok(doc[k][0], act[k])]
@@ -586,7 +617,7 @@ def render(ops, ids, args):
             alt = k[:-2] if k.endswith("[]") else k + "[]"
             return k in act or alt in act
 
-        absent_all = [k for k in doc if not k.endswith(".*") and not satisfied(k)
+        absent_all = [k for k in doc if ".*" not in k and not satisfied(k)
                       and not any(k.startswith(e) for e in empties)]
         # 父级本身就没返回时,其子路径是连带的,不重复报
         absent_roots = []
