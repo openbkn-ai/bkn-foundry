@@ -167,6 +167,20 @@ func (b *toolBuilder) claimName(name, key string) {
 // The tool set is fixed here, so this must run after the extension registry is
 // frozen — app.Run does the freezing, then builds the handlers.
 func NewMCPHandler() http.Handler {
+	streamableServer := server.NewStreamableHTTPServer(newMCPServer(),
+		server.WithHTTPContextFunc(func(ctx context.Context, r *http.Request) context.Context {
+			return r.Context()
+		}),
+		server.WithEndpointPath(endpointPath),
+	)
+
+	return streamableServer
+}
+
+// newMCPServer assembles the tool surface. It is separate from NewMCPHandler so
+// that tests can read the assembled tool set directly instead of driving a
+// JSON-RPC handshake over HTTP to find out what was registered.
+func newMCPServer() *server.MCPServer {
 	localeBundle := loadMCPLocaleBundle(mcpLocaleFromEnv())
 	mcpServer := server.NewMCPServer(serverName, serverVersion,
 		server.WithToolCapabilities(true),
@@ -210,14 +224,7 @@ func NewMCPHandler() http.Handler {
 
 	b.addExtras()
 
-	streamableServer := server.NewStreamableHTTPServer(mcpServer,
-		server.WithHTTPContextFunc(func(ctx context.Context, r *http.Request) context.Context {
-			return r.Context()
-		}),
-		server.WithEndpointPath(endpointPath),
-	)
-
-	return streamableServer
+	return mcpServer
 }
 
 func newToolWithSchemas(name, description string, input, output json.RawMessage) mcp.Tool {
