@@ -56,6 +56,23 @@ paths:
           schema:
             type: string
           in: query
+        - name: branch
+          description: 分支，默认 main
+          schema:
+            type: string
+            default: main
+          in: query
+        - name: need_total
+          description: 是否返回 total_count，默认 true
+          schema:
+            type: boolean
+            default: true
+          in: query
+        - name: search_after
+          description: 深翻页游标，逗号分隔；传入后 offset 失效
+          schema:
+            type: string
+          in: query
       responses:
         "200":
           content:
@@ -599,6 +616,27 @@ paths:
             type: string
           in: header
           required: true
+        - name: branch
+          description: 分支，默认 main
+          schema:
+            type: string
+            default: main
+          in: query
+        - name: import_mode
+          description: |
+            导入模式。`normal` 遇到同名概念报错；`overwrite` 覆盖同名概念；
+            `ignore` 跳过同名概念。默认 `normal`。
+          schema:
+            type: string
+            enum: [normal, overwrite, ignore]
+            default: normal
+          in: query
+        - name: strict_mode
+          description: 是否校验依赖对象存在性，默认 true。为空时回退读取已废弃的 validate_dependency
+          schema:
+            type: boolean
+            default: true
+          in: query
       responses:
         "201":
           content:
@@ -1624,13 +1662,6 @@ paths:
             type: boolean
             default: true
           in: query
-        - name: validate_dependency
-          deprecated: true
-          description: "[已废弃] 请使用 strict_mode。兼容保留，strict_mode 为空时会读取此参数"
-          schema:
-            type: boolean
-            default: true
-          in: query
       responses:
         "204":
           description: ok
@@ -1665,10 +1696,11 @@ paths:
             type: string
           in: path
           required: true
-        - name: include_detail
-          description: 是否包含说明书信息，默认false，不包含。
+        - name: branch
+          description: 分支，默认 main
           schema:
-            type: boolean
+            type: string
+            default: main
           in: query
       responses:
         "200":
@@ -1700,6 +1732,12 @@ paths:
             type: boolean
             default: false
           in: query
+        - name: branch
+          description: 分支，默认 main
+          schema:
+            type: string
+            default: main
+          in: query
       responses:
         "204":
           description: ok
@@ -1719,6 +1757,101 @@ paths:
             type: string
         in: path
         required: true
+  /api/bkn-backend/v1/knowledge-networks/{kn_id}/object-types/{ot_ids}/sample-data:
+    get:
+      tags:
+        - ObjectType
+      summary: 查询对象类的样例数据
+      operationId: getObjectTypeSampleData
+      description: |
+        按对象类返回若干条真实对象实例，用于建模阶段核对映射是否正确。
+        `columns` 给出列的展示顺序与标题，`entries` 的元素结构随对象类的
+        属性定义而变，因此不做固定字段声明。
+      security:
+        - OAuth2: []
+      parameters:
+        - name: kn_id
+          description: 业务知识网络 ID
+          schema:
+            type: string
+          in: path
+          required: true
+        - name: ot_ids
+          description: 对象类 ID
+          schema:
+            type: string
+          in: path
+          required: true
+        - name: branch
+          description: 分支，默认 main
+          schema:
+            type: string
+            default: main
+          in: query
+        - name: limit
+          description: 返回条数，默认 20
+          schema:
+            type: integer
+            default: 20
+          in: query
+        - name: offset
+          description: 偏移量，默认 0
+          schema:
+            type: integer
+            default: 0
+          in: query
+        - name: need_total
+          description: 是否返回 total_count，默认 true
+          schema:
+            type: boolean
+            default: true
+          in: query
+        - name: search_after
+          description: 深翻页游标，逗号分隔；传入后 offset 失效
+          schema:
+            type: string
+          in: query
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  name:
+                    description: 对象类显示名
+                    type: string
+                  columns:
+                    description: 列定义，决定展示顺序与标题
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        data_index:
+                          description: 对应 entries 元素中的属性名
+                          type: string
+                        title:
+                          description: 列标题
+                          type: string
+                  entries:
+                    description: 样例数据行，元素的属性随对象类定义而变
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  total_count:
+                    description: 总条数，need_total=false 时不返回
+                    type: integer
+                    format: int64
+        '400':
+          description: 请求参数错误
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
+        '401':
+          description: 未授权
   /api/bkn-backend/v1/knowledge-networks/{kn_id}/object-types/{ob_id}/data_properties/{property_names}:
     put:
       parameters:
@@ -1775,7 +1908,7 @@ paths:
 
         **响应**：HTTP 200 时 body 中 `valid` 为 `true` 表示通过；为 `false` 时带 `detail`（服务端 error.Error()）。请求参数/鉴权/资源不存在等错误仍为非 2xx。
 
-        **内部接口**：`POST /api/bkn-backend/in/v1/.../object-types/validation` 与 `POST /api/ontology-manager/in/v1/.../object-types/validation`，其余相同；Header 解析访问者，无 OAuth。
+        **内部接口**：`POST /api/bkn-backend/in/v1/.../object-types/validation`，其余相同；Header 解析访问者，无 OAuth。
       parameters:
         - name: kn_id
           description: 业务知识网络ID
@@ -1848,20 +1981,11 @@ components:
     ConceptTypeResponse:
       description: 对象类、关系类、行动类的查询返回结构
       required:
-        - concept_type
         - id
         - name
         - tags
-        - groups
       type: object
       properties:
-        concept_type:
-          description: 概念类型
-          enum:
-            - object_type
-            - relation_type
-            - action_type
-          type: string
         id:
           description: 概念id
           type: string
@@ -2032,11 +2156,10 @@ components:
         - creator
         - create_time
         - tags
-        - updator
+        - updater
         - update_time
         - branch
         - color
-        - detail
         - icon
       type: object
       properties:
@@ -2064,22 +2187,17 @@ components:
           description: 分支ID
           type: string
         creator:
-          description: 创建人ID
-          type: string
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         create_time:
           format: int64
           description: 创建时间
           type: integer
-        updator:
-          description: 最近一次修改人
-          type: string
+        updater:
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         update_time:
           format: int64
           description: 最近一次更新时间
           type: integer
-        detail:
-          description: 说明书。按需返回，若指定了include_detail=true，则返回，否则不返回
-          type: string
     ReqObjectType:
       description: 对象类创建信息
       required:
@@ -2266,7 +2384,6 @@ components:
         - comment
         - tags
         - kn_id
-        - groups
         - data_source
         - data_properties
         - primary_keys
@@ -2276,13 +2393,10 @@ components:
         - branch
         - color
         - icon
-        - logic_properties
-        - concept_groups
         - creator
         - update_time
         - updater
         - create_time
-        - detail
       type: object
       properties:
         id:
@@ -2338,27 +2452,53 @@ components:
           description: 对象实例的显示属性
           type: string
         creator:
-          description: 创建人ID
-          type: string
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         create_time:
           format: int64
           description: 创建时间
           type: integer
         updater:
-          description: 最近一次修改人
-          type: string
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         update_time:
           format: int64
           description: 最近一次更新时间
           type: integer
-        detail:
-          description: 说明书。按需返回，若指定了include_detail=true，则返回，否则不返回。列表查询时不返回此字段
-          type: string
         module_type:
           description: 模块类型
           enum:
             - object_type
           type: string
+        incremental_key:
+          description: 增量同步所依据的属性名
+          type: string
+        status:
+          description: 对象类的索引状态（由 Vega 侧索引信息汇总）
+          type: object
+          properties:
+            incremental_key:
+              description: 增量同步所依据的属性名
+              type: string
+            incremental_value:
+              description: 最近一次增量同步到的位点值
+              type: string
+            index:
+              description: 关联的索引名
+              type: string
+            index_available:
+              description: 索引是否可用
+              type: boolean
+            doc_count:
+              description: 索引内文档数
+              type: integer
+              format: int64
+            storage_size:
+              description: 索引占用的存储字节数
+              type: integer
+              format: int64
+            update_time:
+              description: 索引状态更新时间
+              type: integer
+              format: int64
     ConceptGroup:
       description: 概念分组
       required:
@@ -2372,6 +2512,33 @@ components:
         name:
           description: 概念分组名称
           type: string
+        module_type:
+          description: 概念所属模块类型
+          type: string
+        tags:
+          description: 标签
+          type: array
+          items:
+            type: string
+        comment:
+          description: 描述
+          type: string
+        icon:
+          description: 图标
+          type: string
+        color:
+          description: 颜色
+          type: string
+        kn_id:
+          description: 所属知识网络 ID
+          type: string
+        branch:
+          description: 所属分支
+          type: string
+        creator:
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
+        updater:
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
     override:
       oneOf:
         - type: object
@@ -2381,7 +2548,7 @@ components:
         mapping:
           x-http-method-override:POST: "#/components/schemas/ReqObjectTypes"
           x-http-method-override:GET: "#/components/schemas/override--get"
-        propertyName": x-http-method-override
+        propertyName: x-http-method-override
       description: post 重载批量创建、对象类检索接口
       type: object
     Sort:
@@ -2409,7 +2576,6 @@ components:
     ObjectTypeSearchResponse:
       description: 对象类检索返回结果
       required:
-        - groups
         - type
         - entries
       type: object
@@ -2590,7 +2756,6 @@ components:
             - id
             - name
             - comment
-            - detail
             - data_properties.name
             - data_properties.display_name
             - data_properties.comment
@@ -2619,7 +2784,6 @@ components:
             - id
             - name
             - comment
-            - detail
             - data_properties.name
             - data_properties.display_name
             - data_properties.comment
@@ -2648,7 +2812,6 @@ components:
             - id
             - name
             - comment
-            - detail
             - data_properties.name
             - data_properties.display_name
             - data_properties.comment
@@ -2679,7 +2842,6 @@ components:
             - id
             - name
             - comment
-            - detail
             - data_properties.name
             - data_properties.display_name
             - data_properties.comment
@@ -2709,7 +2871,6 @@ components:
             - id
             - name
             - comment
-            - detail
             - data_properties.name
             - data_properties.display_name
             - data_properties.comment
@@ -2739,7 +2900,6 @@ components:
             - id
             - name
             - comment
-            - detail
             - data_properties.name
             - data_properties.display_name
             - data_properties.comment
@@ -2803,7 +2963,6 @@ components:
             - id
             - name
             - comment
-            - detail
             - data_properties.name
             - data_properties.display_name
             - data_properties.comment
@@ -2833,7 +2992,6 @@ components:
           enum:
             - name
             - comment
-            - detail
             - "*"
             - data_properties.name
             - data_properties.display_name
@@ -2863,7 +3021,6 @@ components:
           enum:
             - name
             - comment
-            - detail
             - "*"
             - data_properties.name
             - data_properties.display_name

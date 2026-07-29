@@ -19,6 +19,17 @@ paths:
           schema:
             type: string
           in: query
+        - name: include_statistics
+          description: 是否计算并返回 statistics 概念统计，默认 false
+          schema:
+            type: boolean
+            default: false
+          in: query
+        - name: mode
+          description: 返回视图模式，为空时返回默认视图
+          schema:
+            type: string
+          in: query
       responses:
         "200":
           content:
@@ -52,13 +63,6 @@ paths:
             type: boolean
             default: true
           in: query
-        - name: validate_dependency
-          deprecated: true
-          description: "[已废弃] 请使用 strict_mode。兼容保留，strict_mode 为空时会读取此参数"
-          schema:
-            type: boolean
-            default: true
-          in: query
       responses:
         "204":
           description: ok
@@ -71,6 +75,12 @@ paths:
         - name: group_id
           in: path
           required: true
+        - name: branch
+          description: 分支，默认 main
+          schema:
+            type: string
+            default: main
+          in: query
       responses:
         "204":
           description: ok
@@ -133,6 +143,12 @@ paths:
           description: 根据标签精准查询，默认为空.
           schema:
             type: string
+          in: query
+        - name: branch
+          description: 分支，默认 main
+          schema:
+            type: string
+            default: main
           in: query
       responses:
         "200":
@@ -219,13 +235,6 @@ paths:
             type: boolean
             default: true
           in: query
-        - name: validate_dependency
-          deprecated: true
-          description: "[已废弃] 请使用 strict_mode。兼容保留，strict_mode 为空时会读取此参数"
-          schema:
-            type: boolean
-            default: true
-          in: query
       responses:
         "201":
           description: 添加成功
@@ -249,6 +258,12 @@ paths:
         - name: ot_ids
           in: path
           required: true
+        - name: branch
+          description: 分支，默认 main
+          schema:
+            type: string
+            default: main
+          in: query
       responses:
         "204":
           description: 移除成功
@@ -272,7 +287,7 @@ paths:
 
         **响应**：HTTP 200 时 `valid`/`detail` 语义同知识网络校验接口；参数与鉴权错误为非 2xx。
 
-        **内部接口**：同路径语义，`POST /api/bkn-backend/in/v1/.../concept-groups/validation` 与 `POST /api/ontology-manager/in/v1/.../concept-groups/validation`；Header 解析访问者，无 OAuth。
+        **内部接口**：同路径语义，`POST /api/bkn-backend/in/v1/.../concept-groups/validation`；Header 解析访问者，无 OAuth。
       parameters:
         - name: kn_id
           description: 业务知识网络ID
@@ -391,14 +406,12 @@ components:
         - comment
         - create_time
         - creator
-        - detail
         - icon
         - id
         - name
-        - statistics
         - tags
         - update_time
-        - updator
+        - updater
       type: object
       properties:
         id:
@@ -428,28 +441,31 @@ components:
           $ref: "#/components/schemas/Statistics"
           description: 概念统计信息
         creator:
-          description: 创建人ID
-          type: string
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         create_time:
           format: int64
           description: 创建时间
           type: integer
-        updator:
-          description: 最近一次修改人
-          type: string
+        updater:
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         update_time:
           format: int64
           description: 最近一次更新时间
           type: integer
-        detail:
-          description: 说明书。
+        kn_id:
+          description: 所属知识网络 ID
+          type: string
+        object_type_ids:
+          description: 该概念组包含的对象类 ID 列表
+          type: array
+          items:
+            type: string
+        module_type:
+          description: 概念所属模块类型
           type: string
     Statistics:
       description: 概念统计信息
       required:
-        - object_type_totals
-        - relation_type_totals
-        - action_type_totals
         - action_types_total
         - object_types_total
         - relation_types_total
@@ -463,6 +479,15 @@ components:
           type: integer
         action_types_total:
           description: 行动类数量
+          type: integer
+        concept_groups_total:
+          description: 概念组数量
+          type: integer
+        risk_types_total:
+          description: 风险类数量
+          type: integer
+        metrics_total:
+          description: 指标数量
           type: integer
     DataSource:
       description: 资源来源
@@ -512,16 +537,13 @@ components:
         - branch
         - color
         - comment
-        - condition
         - create_time
         - creator
-        - detail
         - icon
         - id
         - kn_id
         - module_type
         - name
-        - object_type
         - object_type_id
         - parameters
         - schedule
@@ -601,22 +623,17 @@ components:
           $ref: "#/components/schemas/Schedule"
           description: 行动监听参数配置
         creator:
-          description: 创建人ID
-          type: string
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         create_time:
           format: int64
           description: 创建时间
           type: integer
         updater:
-          description: 最近一次修改人
-          type: string
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         update_time:
           format: int64
           description: 最近一次更新时间
           type: integer
-        detail:
-          description: 说明书。按需返回，若指定了include_detail=true，则返回，否则不返回
-          type: string
         module_type:
           description: 模块类型
           enum:
@@ -646,7 +663,6 @@ components:
       description: |
         **[已废弃]** 请消费 `impact_contracts`。
       required:
-        - object_type
         - comment
         - object_type_id
       type: object
@@ -772,17 +788,14 @@ components:
         - branch
         - color
         - comment
-        - concept_groups
         - create_time
         - creator
         - data_properties
         - data_source
-        - detail
         - display_key
         - icon
         - id
         - kn_id
-        - logic_properties
         - module_type
         - name
         - primary_keys
@@ -844,27 +857,53 @@ components:
           description: 对象实例的显示属性
           type: string
         creator:
-          description: 创建人ID
-          type: string
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         create_time:
           format: int64
           description: 创建时间
           type: integer
         updater:
-          description: 最近一次修改人
-          type: string
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         update_time:
           format: int64
           description: 最近一次更新时间
           type: integer
-        detail:
-          description: 说明书。按需返回，若指定了include_detail=true，则返回，否则不返回。列表查询时不返回此字段
-          type: string
         module_type:
           description: 模块类型
           enum:
             - object_type
           type: string
+        incremental_key:
+          description: 增量同步所依据的属性名
+          type: string
+        status:
+          description: 对象类的索引状态（由 Vega 侧索引信息汇总）
+          type: object
+          properties:
+            incremental_key:
+              description: 增量同步所依据的属性名
+              type: string
+            incremental_value:
+              description: 最近一次增量同步到的位点值
+              type: string
+            index:
+              description: 关联的索引名
+              type: string
+            index_available:
+              description: 索引是否可用
+              type: boolean
+            doc_count:
+              description: 索引内文档数
+              type: integer
+              format: int64
+            storage_size:
+              description: 索引占用的存储字节数
+              type: integer
+              format: int64
+            update_time:
+              description: 索引状态更新时间
+              type: integer
+              format: int64
     DataProperty:
       description: 数据属性
       required:
@@ -1042,16 +1081,13 @@ components:
         - comment
         - create_time
         - creator
-        - detail
         - icon
         - id
         - kn_id
         - mapping_rules
         - name
-        - source_object_type
         - source_object_type_id
         - tags
-        - target_object_type
         - target_object_type_id
         - type
         - update_time
@@ -1110,22 +1146,17 @@ components:
             - $ref: "#/components/schemas/FilteredCrossJoinMappingRule"
           description: 关联的匹配规则。`direct` 时为 Mapping 数组；`data_view` 时为 DataViewMappingRule；`filtered_cross_join`（FCJ）时为 FilteredCrossJoinMappingRule。
         creator:
-          description: 创建人ID
-          type: string
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         create_time:
           format: int64
           description: 创建时间
           type: integer
         updater:
-          description: 最近一次修改人
-          type: string
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         update_time:
           format: int64
           description: 最近一次更新时间
           type: integer
-        detail:
-          description: 说明书。按需返回，若指定了include_detail=true，则返回，否则不返回。列表查询时不返回此字段。
-          type: string
     DirectMappingRules:
       description: 直接关联
       type: array
@@ -1250,21 +1281,18 @@ components:
     ConceptGroupDetail:
       description: 概念分组详情
       required:
-        - action_types
         - branch
         - color
         - comment
         - create_time
         - creator
-        - detail
         - icon
         - id
         - name
         - object_types
-        - relation_types
         - tags
         - update_time
-        - updator
+        - updater
         - kn_id
       type: object
       properties:
@@ -1310,19 +1338,17 @@ components:
           items:
             $ref: "#/components/schemas/ActionTypeDetail"
         creator:
-          description: 创建人ID
-          type: string
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         create_time:
           format: int64
           description: 创建时间
           type: integer
-        updator:
-          description: 最近一次修改人
-          type: string
+        updater:
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         update_time:
           format: int64
           description: 最近一次更新时间
           type: integer
-        detail:
-          description: 说明书。
+        module_type:
+          description: 概念所属模块类型
           type: string

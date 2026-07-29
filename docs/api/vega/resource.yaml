@@ -238,7 +238,15 @@ paths:
       description: |
         按 ids 批量取 Resource。**整体事务语义**：任一 id 不存在返回 404
         `VegaBackend.Resource.NotFound`，`error_details` 含具体缺失 id。
+        传 `ignore_missing=true` 可放宽为跳过缺失 id、只返回存在的那些。
         每条 `Resource` 含 **`extensions`**（无副表行时为 `{}`）。
+      parameters:
+        - name: ignore_missing
+          description: 容忍缺失 ID，跳过而非报 404，默认 false
+          schema:
+            type: boolean
+            default: false
+          in: query
       responses:
         "200":
           description: ok

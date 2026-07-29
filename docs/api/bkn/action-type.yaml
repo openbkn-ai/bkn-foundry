@@ -72,6 +72,12 @@ paths:
           schema:
             type: string
           in: query
+        - name: branch
+          description: 分支，默认 main
+          schema:
+            type: string
+            default: main
+          in: query
       responses:
         "200":
           content:
@@ -189,13 +195,6 @@ paths:
             type: boolean
             default: true
           in: query
-        - name: validate_dependency
-          deprecated: true
-          description: "[已废弃] 请使用 strict_mode。兼容保留，strict_mode 为空时会读取此参数"
-          schema:
-            type: boolean
-            default: true
-          in: query
         - name: x-http-method-override
           description: 重载请求头
           schema:
@@ -205,6 +204,12 @@ paths:
             type: string
           in: header
           required: true
+        - name: branch
+          description: 分支，默认 main
+          schema:
+            type: string
+            default: main
+          in: query
       responses:
         "200":
           content:
@@ -378,13 +383,6 @@ paths:
             type: boolean
             default: true
           in: query
-        - name: validate_dependency
-          deprecated: true
-          description: "[已废弃] 请使用 strict_mode。兼容保留，strict_mode 为空时会读取此参数"
-          schema:
-            type: boolean
-            default: true
-          in: query
       responses:
         "204":
           description: ok
@@ -401,10 +399,11 @@ paths:
   /api/bkn-backend/v1/knowledge-networks/{kn_id}/action-types/{at_ids}:
     get:
       parameters:
-        - name: include_detail
-          description: 是否包含说明书信息，默认false，不包含。
+        - name: branch
+          description: 分支，默认 main
           schema:
-            type: boolean
+            type: string
+            default: main
           in: query
       responses:
         "200":
@@ -430,6 +429,12 @@ paths:
               type: string
           in: path
           required: true
+        - name: branch
+          description: 分支，默认 main
+          schema:
+            type: string
+            default: main
+          in: query
       responses:
         "204":
           description: 删除成功
@@ -457,7 +462,7 @@ paths:
 
         **响应**：HTTP 200 时 `valid`/`detail` 同其它 validate 接口；参数与鉴权错误为非 2xx。
 
-        **内部接口**：`POST /api/bkn-backend/in/v1/.../action-types/validation` 与 `POST /api/ontology-manager/in/v1/.../action-types/validation`；Header 解析访问者，无 OAuth。
+        **内部接口**：`POST /api/bkn-backend/in/v1/.../action-types/validation`；Header 解析访问者，无 OAuth。
       parameters:
         - name: kn_id
           description: 业务知识网络ID
@@ -530,20 +535,11 @@ components:
     ConceptTypeResponse:
       description: 对象类、关系类、行动类的查询返回结构
       required:
-        - concept_type
         - id
         - name
         - tags
-        - groups
       type: object
       properties:
-        concept_type:
-          description: 概念类型
-          enum:
-            - object_type
-            - relation_type
-            - action_type
-          type: string
         id:
           description: 概念id
           type: string
@@ -595,7 +591,6 @@ components:
       description: |
         **[已废弃]** 请使用 `impact_contracts`（`ImpactContractItem` 数组）声明影响面。仅存单行影响时的兼容写法仍可能被服务端接受并折合为一元数组。
         详见 `docs/design/bkn/features/action_type_rebuild/DESIGN.md` §5.9、§7.5。
-      required: []
       type: object
       properties:
         comment:
@@ -744,14 +739,15 @@ components:
         color:
           description: 对象类颜色
           type: string
+        branch:
+          description: 所属分支
+          type: string
     AffectDetail:
       deprecated: true
       description: |
         **[已废弃]** 列表/详情中为兼容回填的单行影响；推荐使用响应中的 `impact_contracts`。
         详见 `docs/design/bkn/features/action_type_rebuild/DESIGN.md` §7.5。
       required:
-        - object_type
-        - comment
         - object_type_id
       type: object
       properties:
@@ -810,7 +806,6 @@ components:
     ActionTypeSearchResponse:
       description: 行动类检索返回结果
       required:
-        - groups
         - type
         - entries
       type: object
@@ -1118,12 +1113,10 @@ components:
       required:
         - action_type
         - comment
-        - groups
         - id
         - kn_id
         - name
         - tags
-        - condition
         - affect
         - action_source
         - parameters
@@ -1137,7 +1130,6 @@ components:
         - updater
         - create_time
         - creator
-        - object_type
       type: object
       properties:
         id:
@@ -1214,22 +1206,17 @@ components:
           $ref: "#/components/schemas/Schedule"
           description: 行动监听参数配置
         creator:
-          description: 创建人ID
-          type: string
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         create_time:
           format: int64
           description: 创建时间
           type: integer
         updater:
-          description: 最近一次修改人
-          type: string
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         update_time:
           format: int64
           description: 最近一次更新时间
           type: integer
-        detail:
-          description: 说明书。按需返回，若指定了include_detail=true，则返回，否则不返回
-          type: string
         module_type:
           description: 模块类型
           enum:
@@ -1240,12 +1227,10 @@ components:
       required:
         - action_type
         - comment
-        - groups
         - id
         - kn_id
         - name
         - tags
-        - condition
         - affect
         - action_source
         - parameters
@@ -1331,27 +1316,36 @@ components:
           $ref: "#/components/schemas/Schedule"
           description: 行动监听参数配置
         creator:
-          description: 创建人ID
-          type: string
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         create_time:
           format: int64
           description: 创建时间
           type: integer
         updater:
-          description: 最近一次修改人
-          type: string
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         update_time:
           format: int64
           description: 最近一次更新时间
           type: integer
-        detail:
-          description: 说明书。按需返回，若指定了include_detail=true，则返回，否则不返回
-          type: string
         module_type:
           description: 模块类型
           enum:
             - action_type
           type: string
+        object_type:
+          description: 行动所属对象类的概要信息
+          type: object
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+            branch:
+              type: string
+            icon:
+              type: string
+            color:
+              type: string
     condition_or:
       description: or 的过滤条件
       required:
@@ -1383,7 +1377,6 @@ components:
             - id
             - name
             - comment
-            - detail
           type: string
         operation:
           description: 操作符
@@ -1406,7 +1399,6 @@ components:
             - id
             - name
             - comment
-            - detail
           type: string
         operation:
           description: 操作符
@@ -1429,7 +1421,6 @@ components:
             - id
             - name
             - comment
-            - detail
           type: string
         operation:
           description: 操作符
@@ -1454,7 +1445,6 @@ components:
             - id
             - name
             - comment
-            - detail
           type: string
         operation:
           description: 操作符
@@ -1478,7 +1468,6 @@ components:
             - id
             - name
             - comment
-            - detail
           type: string
         operation:
           description: 操作符
@@ -1502,7 +1491,6 @@ components:
             - id
             - name
             - comment
-            - detail
           type: string
         operation:
           description: 操作符
@@ -1559,7 +1547,6 @@ components:
             - id
             - name
             - comment
-            - detail
           type: string
         operation:
           description: 操作符
@@ -1583,7 +1570,6 @@ components:
           enum:
             - name
             - comment
-            - detail
             - "*"
           type: string
         operation:
@@ -1607,7 +1593,6 @@ components:
           enum:
             - name
             - comment
-            - detail
             - "*"
           type: string
         operation:

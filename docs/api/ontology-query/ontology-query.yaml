@@ -63,6 +63,12 @@ paths:
           type: string
         in: path
         required: true
+      - name: branch
+        description: 分支，默认 main
+        schema:
+          type: string
+          default: main
+        in: query
       - name: include_type_info
         description: "是否包含对象类信息, 默认false，不包含"
         schema:
@@ -2611,6 +2617,12 @@ paths:
             type: integer
             default: 20
           in: query
+        - name: offset
+          description: 偏移量，默认 0；与 search_after 互斥，传了 search_after 后本参数失效
+          schema:
+            type: integer
+            default: 0
+          in: query
         - name: need_total
           description: 是否需要返回总数
           schema:
@@ -3206,7 +3218,6 @@ components:
       - update_time
       - updater
       - create_time
-      - detail
       type: object
       properties:
         id:
@@ -3262,22 +3273,17 @@ components:
           description: 对象实例的显示属性
           type: string
         creator:
-          description: 创建人ID
-          type: string
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         create_time:
           format: int64
           description: 创建时间
           type: integer
         updater:
-          description: 最近一次修改人
-          type: string
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         update_time:
           format: int64
           description: 最近一次更新时间
           type: integer
-        detail:
-          description: 说明书。按需返回，若指定了include_detail=true，则返回，否则不返回。列表查询时不返回此字段
-          type: string
         module_type:
           description: 模块类型
           enum:
@@ -3678,7 +3684,6 @@ components:
       deprecated: true
       description: |
         **[已废弃]** 使用 `impact_contracts`。
-      required: []
       type: object
       properties:
         comment:
@@ -3927,7 +3932,6 @@ components:
           description: 对象实例的显示属性值。显示属性只选一个，所以这里直接展示值即可。默认返回，当 exclude_system_properties 排除时，不返回。
     ObjectInfo:
       description: 对象信息
-      required: []
       type: object
       properties:
         _instance_id:
@@ -5163,10 +5167,15 @@ components:
           type: integer
           format: int64
         action_type_snapshot:
-          description: 执行时的行动类配置快照（与 ontology-manager 返回一致）
+          description: 执行时的行动类配置快照（与 bkn-backend 返回一致）
           type: object
           additionalProperties: true
 
+        action_source:
+          oneOf:
+            - $ref: '#/components/schemas/ToolSource'
+            - $ref: '#/components/schemas/MCPSource'
+          description: 行动绑定的执行资源（工具箱工具或 MCP 工具）
     ObjectExecutionResult:
       description: 单个对象的执行结果
       type: object
@@ -5199,6 +5208,27 @@ components:
           type: integer
           format: int64
 
+        _instance_id:
+          description: 对象实例 ID（系统属性）
+          type: string
+        _instance_identity:
+          description: 对象实例主键标识（系统属性）
+          type: object
+          properties:
+            key_id:
+              description: 主键属性值
+              type: string
+        _display:
+          description: 对象实例的显示名（系统属性）
+          type: string
+        start_time:
+          description: 该对象执行开始时间
+          type: integer
+          format: int64
+        end_time:
+          description: 该对象执行结束时间
+          type: integer
+          format: int64
     ActionLogQuery:
       description: 行动执行日志查询
       type: object

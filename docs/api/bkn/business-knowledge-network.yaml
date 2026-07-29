@@ -82,6 +82,12 @@ paths:
             type: boolean
             default: true
           in: query
+        - name: branch
+          description: 分支，默认 main
+          schema:
+            type: string
+            default: main
+          in: query
       requestBody:
         content:
           application/json:
@@ -115,6 +121,21 @@ paths:
             type: boolean
           in: query
           required: false
+        - name: branch
+          description: 分支，默认 main
+          schema:
+            type: string
+            default: main
+          in: query
+        - name: detail_level
+          description: |
+            返回详略。`full` 返回完整定义；`summary` 只返回概念的标识与名称，
+            用于大型知识网络的渐进式加载。默认 `full`。
+          schema:
+            type: string
+            enum: [full, summary]
+            default: full
+          in: query
       responses:
         "200":
           content:
@@ -169,12 +190,14 @@ paths:
             type: boolean
             default: true
           in: query
-        - name: validate_dependency
-          deprecated: true
-          description: "[已废弃] 请使用 strict_mode。兼容保留，strict_mode 为空时会读取此参数"
+        - name: import_mode
+          description: |
+            导入模式。`normal` 遇到同名概念报错；`overwrite` 覆盖同名概念；
+            `ignore` 跳过同名概念。默认 `normal`。
           schema:
-            type: boolean
-            default: true
+            type: string
+            enum: [normal, overwrite, ignore]
+            default: normal
           in: query
       requestBody:
         content:
@@ -194,6 +217,12 @@ paths:
             type: string
           in: path
           required: true
+        - name: branch
+          description: 分支，默认 main
+          schema:
+            type: string
+            default: main
+          in: query
       responses:
         "204":
           description: 删除成功
@@ -217,7 +246,7 @@ paths:
         **响应**：HTTP 200 表示请求已处理完成。响应体 `valid` 为 `true` 表示校验通过；为 `false` 表示校验未通过或服务端在校验过程中返回错误，原因见 `detail`（为服务端错误的 `Error()` 字符串，可能为结构化错误 JSON）。  
         请求体无法解析、`strict_mode` 非法、知识网络不存在或无权限等仍返回非 2xx（如 400/403），不返回上述 `valid`/`detail` 包。
 
-        **内部接口**：与上述请求/响应一致，路径为 `POST /api/bkn-backend/in/v1/knowledge-networks/{kn_id}/validation` 或 `POST /api/ontology-manager/in/v1/knowledge-networks/{kn_id}/validation`；访问者从 Header 解析，不经过 OAuth。
+        **内部接口**：与上述请求/响应一致，路径为 `POST /api/bkn-backend/in/v1/knowledge-networks/{kn_id}/validation`；访问者从 Header 解析，不经过 OAuth。
       parameters:
         - name: kn_id
           description: 业务知识网络ID
@@ -368,20 +397,11 @@ components:
     ConceptTypeResponse:
       description: 对象类、关系类、行动类的查询返回结构
       required:
-        - concept_type
         - id
         - name
         - tags
-        - groups
       type: object
       properties:
-        concept_type:
-          description: 概念类型
-          enum:
-            - object_type
-            - relation_type
-            - action_type
-          type: string
         id:
           description: 概念id
           type: string
@@ -666,7 +686,6 @@ components:
       description: |
         **[已废弃]** 请改用 `impact_contracts`。DESIGN §5.9。
       required:
-        - object_type
         - comment
       type: object
       properties:
@@ -775,7 +794,6 @@ components:
           type: string
     UpdateBranch:
       description: 更新分支信息。只能修改分支的标签、描述
-      required: []
       type: object
       properties:
         tags:
@@ -1438,32 +1456,21 @@ components:
       required:
         - action_type
         - comment
-        - groups
         - id
         - kn_id
         - name
         - tags
-        - object_type
-        - condition
         - affect
         - action_source
         - parameters
         - schedule
-        - concept_type
         - branch
         - color
-        - concept_groups
-        - detail
         - icon
         - object_type_id
         - object_type_name
       type: object
       properties:
-        concept_type:
-          description: 概念类型
-          enum:
-            - action_type
-          type: string
         id:
           description: 行动类ID
           type: string
@@ -1538,9 +1545,6 @@ components:
         schedule:
           $ref: "#/components/schemas/Schedule"
           description: 行动监听参数配置
-        detail:
-          description: 说明书。按需返回，若指定了include_detail=true，则返回，否则不返回
-          type: string
     ListKN:
       description: 业务知识网络列表
       required:
@@ -1564,25 +1568,16 @@ components:
         - comment
         - tags
         - kn_id
-        - groups
         - data_source
         - data_properties
         - primary_keys
         - display_key
         - type
-        - concept_type
         - branch
         - color
         - icon
-        - logic_properties
-        - concept_groups
       type: object
       properties:
-        concept_type:
-          description: 概念类型
-          enum:
-            - object_type
-          type: string
         id:
           description: 对象类ID
           type: string
@@ -1636,40 +1631,28 @@ components:
           description: 对象实例的显示属性
           type: string
         creator:
-          description: 创建人ID
-          type: string
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         create_time:
           format: int64
           description: 创建时间
           type: integer
         updater:
-          description: 最近一次修改人
-          type: string
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         update_time:
           format: int64
           description: 最近一次更新时间
           type: integer
-        detail:
-          description: 说明书。按需返回，若指定了include_detail=true，则返回，否则不返回
-          type: string
     RelationTypeDetail:
       description: 关系类
       required:
-        - source_object_type
-        - target_object_type
         - type
-        - direct_mapping_rules
         - comment
-        - data_view_mapping_rules
-        - groups
         - id
         - kn_id
         - name
         - tags
-        - concept_type
         - branch
         - color
-        - concept_groups
         - icon
         - mapping_rules
         - source_object_type_id
@@ -1678,11 +1661,6 @@ components:
         - target_object_type_name
       type: object
       properties:
-        concept_type:
-          description: 概念类型
-          enum:
-            - relation_type
-          type: string
         id:
           description: 关系类ID
           type: string
@@ -1740,22 +1718,17 @@ components:
             - $ref: "#/components/schemas/FilteredCrossJoinMappingRule"
           description: "关联的匹配规则。direct 为键映射；data_view 参考 DataViewMappingRule；filtered_cross_join（FCJ）参考 FilteredCrossJoinMappingRule。直接关联时是一个 map，标记的是起点对象匹配属性1: 终点对象匹配属性1"
         creator:
-          description: 创建人ID
-          type: string
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         create_time:
           format: int64
           description: 创建时间
           type: integer
         updater:
-          description: 最近一次修改人
-          type: string
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         update_time:
           format: int64
           description: 最近一次更新时间
           type: integer
-        detail:
-          description: 说明书。按需返回，若指定了include_detail=true，则返回，否则不返回
-          type: string
     Statistics:
       description: 概念统计信息
       required:
@@ -1807,22 +1780,17 @@ components:
           description: 分支ID
           type: string
         creator:
-          description: 创建人ID
-          type: string
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         create_time:
           format: int64
           description: 创建时间
           type: integer
-        updator:
-          description: 最近一次修改人
-          type: string
+        updater:
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         update_time:
           format: int64
           description: 最近一次更新时间
           type: integer
-        detail:
-          description: 说明书。
-          type: string
     KnowledgeNetworkDetail:
       description: 业务知识网络详情
       required:
@@ -1832,13 +1800,12 @@ components:
         - creator
         - create_time
         - tags
-        - updator
+        - updater
         - update_time
         - branch
         - color
         - icon
         - updater
-        - detail
       type: object
       properties:
         id:
@@ -1865,22 +1832,17 @@ components:
           description: 分支ID
           type: string
         creator:
-          description: 创建人ID
-          type: string
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         create_time:
           format: int64
           description: 创建时间
           type: integer
         updater:
-          description: 最近一次修改人
-          type: string
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         update_time:
           format: int64
           description: 最近一次更新时间
           type: integer
-        detail:
-          description: 说明书。
-          type: string
         statistics:
           $ref: "#/components/schemas/Statistics"
           description: 概念统计信息。当include_statistics为true时才计算概念统计信息
@@ -1904,3 +1866,15 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ActionTypeDetail"
+
+        business_domain:
+          description: 业务域标识
+          type: string
+        module_type:
+          description: 概念所属模块类型
+          type: string
+        operations:
+          description: 当前访问者对该资源可执行的操作码列表（由授权服务下发）
+          type: array
+          items:
+            type: string

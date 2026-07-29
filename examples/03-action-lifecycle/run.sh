@@ -128,7 +128,7 @@ cleanup() {
     echo "=== Cleanup ==="
     [ -n "$SCHED_ID" ] && openbkn bkn action-schedule delete "$KN_ID" "$SCHED_ID" 2>/dev/null \
         && echo "  Deleted action-schedule $SCHED_ID" || true
-    [ -n "$AT_ID" ] && openbkn call "/api/ontology-manager/v1/knowledge-networks/$KN_ID/action-types/$AT_ID?branch=main" -X DELETE 2>/dev/null \
+    [ -n "$AT_ID" ] && openbkn call "/api/bkn-backend/v1/knowledge-networks/$KN_ID/action-types/$AT_ID?branch=main" -X DELETE 2>/dev/null \
         && echo "  Deleted action-type $AT_ID" || true
     [ -n "$BOX_ID" ] && openbkn toolbox delete "$BOX_ID" -y 2>/dev/null \
         && echo "  Deleted toolbox $BOX_ID" || true
@@ -323,7 +323,7 @@ body = {
 print(json.dumps(body))
 ")
 
-AT_JSON=$(openbkn --json call "/api/ontology-manager/v1/knowledge-networks/$KN_ID/action-types?branch=main" -X POST -H "Content-Type: application/json" -d "{\"entries\":[$AT_BODY]}")
+AT_JSON=$(openbkn --json call "/api/bkn-backend/v1/knowledge-networks/$KN_ID/action-types?branch=main" -X POST -H "Content-Type: application/json" -d "{\"entries\":[$AT_BODY]}")
 debug_dump_json "action-type create" "$AT_JSON"
 AT_ID=$(echo "$AT_JSON" | python3 -c "
 import sys,json
