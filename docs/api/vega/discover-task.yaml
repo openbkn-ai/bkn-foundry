@@ -290,6 +290,15 @@ components:
         unchanged_count:
           description: 本次发现未变化的资源数
           type: integer
+        updated_count:
+          description: 本次发现属性有变化、已更新的资源数
+          type: integer
+        restored_count:
+          description: 本次发现由失效恢复为可用的资源数
+          type: integer
+        failed_count:
+          description: 本次发现处理失败的资源数
+          type: integer
         message:
           description: 执行说明
           type: string
