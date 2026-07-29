@@ -5161,6 +5161,11 @@ components:
           type: object
           additionalProperties: true
 
+        action_source:
+          oneOf:
+            - $ref: '#/components/schemas/ToolSource'
+            - $ref: '#/components/schemas/MCPSource'
+          description: 行动绑定的执行资源（工具箱工具或 MCP 工具）
     ObjectExecutionResult:
       description: 单个对象的执行结果
       type: object
@@ -5193,6 +5198,27 @@ components:
           type: integer
           format: int64
 
+        _instance_id:
+          description: 对象实例 ID（系统属性）
+          type: string
+        _instance_identity:
+          description: 对象实例主键标识（系统属性）
+          type: object
+          properties:
+            key_id:
+              description: 主键属性值
+              type: string
+        _display:
+          description: 对象实例的显示名（系统属性）
+          type: string
+        start_time:
+          description: 该对象执行开始时间
+          type: integer
+          format: int64
+        end_time:
+          description: 该对象执行结束时间
+          type: integer
+          format: int64
     ActionLogQuery:
       description: 行动执行日志查询
       type: object

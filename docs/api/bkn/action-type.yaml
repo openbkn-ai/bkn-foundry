@@ -739,7 +739,6 @@ components:
         **[已废弃]** 列表/详情中为兼容回填的单行影响；推荐使用响应中的 `impact_contracts`。
         详见 `docs/design/bkn/features/action_type_rebuild/DESIGN.md` §7.5。
       required:
-        - comment
         - object_type_id
       type: object
       properties:
