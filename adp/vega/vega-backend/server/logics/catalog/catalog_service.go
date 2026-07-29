@@ -29,6 +29,7 @@ import (
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
 	"vega-backend/logics"
+	"vega-backend/logics/catalog_health_check_schedule"
 	"vega-backend/logics/connector/factory"
 	"vega-backend/logics/extensions"
 	"vega-backend/logics/local_index"
@@ -56,6 +57,7 @@ type catalogService struct {
 	ps         interfaces.PermissionService
 	ums        interfaces.UserMgmtService
 	bta        interfaces.BuildTaskAccess // 删 catalog 时级联清其下资源的构建任务/索引
+	hcss       interfaces.CatalogHealthCheckScheduleService
 	lim        interfaces.LocalIndexManager
 }
 
@@ -70,15 +72,22 @@ func NewCatalogService(appSetting *common.AppSetting) interfaces.CatalogService 
 				logger.Fatalf("Failed to create RSA cipher: %v", err)
 			}
 		}
+
+		hcss := catalog_health_check_schedule.NewCatalogHealthCheckScheduleService(appSetting)
+		lim := local_index.NewLocalIndexManager(appSetting)
+		ps := permission.NewPermissionService(appSetting)
+		ums := user_mgmt.NewUserMgmtService(appSetting)
 		cService = &catalogService{
 			appSetting: appSetting,
 			cipher:     cipher,
-			ca:         logics.CA,
-			ra:         logics.RA,
-			ps:         permission.NewPermissionService(appSetting),
-			ums:        user_mgmt.NewUserMgmtService(appSetting),
-			bta:        logics.BTA,
-			lim:        local_index.NewLocalIndexManager(appSetting),
+
+			bta:  logics.BTA,
+			ca:   logics.CA,
+			hcss: hcss,
+			lim:  lim,
+			ps:   ps,
+			ra:   logics.RA,
+			ums:  ums,
 		}
 	})
 	return cService
@@ -247,6 +256,11 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 			verrors.VegaBackend_Catalog_InternalError_CreateFailed).WithErrorDetails(err.Error())
 	}
 
+	if err := cs.createHealthCheckSchedule(ctx, catalog, req.HealthCheckSchedule); err != nil {
+		span.SetStatus(codes.Error, "Create catalog health check schedule failed")
+		return "", err
+	}
+
 	if req.Extensions != nil {
 		if err := extensions.ValidateEntityExtensionsMap(ctx, *req.Extensions); err != nil {
 			_ = cs.ca.DeleteByIDs(ctx, []string{catalog.ID})
@@ -277,6 +291,17 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 
 	span.SetStatus(codes.Ok, "")
 	return catalog.ID, nil
+}
+
+func (cs *catalogService) createHealthCheckSchedule(ctx context.Context, catalog *interfaces.Catalog, req *interfaces.CatalogHealthCheckScheduleRequest) error {
+	if catalog.Type != interfaces.CatalogTypePhysical {
+		return nil
+	}
+	if _, err := cs.hcss.Create(ctx, catalog, req); err != nil {
+		_ = cs.ca.DeleteByIDs(ctx, []string{catalog.ID})
+		return err
+	}
+	return nil
 }
 
 // Get retrieves a Catalog by ID.
@@ -806,6 +831,12 @@ func (cs *catalogService) DeleteByIDs(ctx context.Context, ids []string) error {
 
 	if err := cs.ca.DeleteByIDs(ctx, ids); err != nil {
 		span.SetStatus(codes.Error, "Delete catalogs failed")
+		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_Catalog_InternalError_DeleteFailed).WithErrorDetails(err.Error())
+	}
+
+	if err := cs.hcss.DeleteByCatalogIDs(ctx, ids); err != nil {
+		span.SetStatus(codes.Error, "Delete catalog health check schedules failed")
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Catalog_InternalError_DeleteFailed).WithErrorDetails(err.Error())
 	}

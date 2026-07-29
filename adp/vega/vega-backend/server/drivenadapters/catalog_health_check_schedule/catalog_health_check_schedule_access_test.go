@@ -36,6 +36,19 @@ func TestCatalogHealthCheckScheduleAccessCreate(t *testing.T) {
 		require.NoError(t, access.Create(context.Background(), schedule))
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
+
+	t.Run("propagates insert error", func(t *testing.T) {
+		access, mock, cleanup := newCatalogHealthCheckScheduleAccessMock(t)
+		defer cleanup()
+		insertErr := sql.ErrConnDone
+		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO t_catalog_health_check_schedule (f_catalog_id,f_mode,f_cron_expr,f_last_run,f_next_run,f_creator,f_creator_type,f_create_time,f_updater,f_updater_type,f_update_time) VALUES (?,?,?,?,?,?,?,?,?,?,?)")).
+			WithArgs("catalog-1", "inherit", "", int64(0), int64(0), "", "", int64(0), "", "", int64(0)).WillReturnError(insertErr)
+
+		err := access.Create(context.Background(), &interfaces.CatalogHealthCheckSchedule{CatalogID: "catalog-1", Mode: interfaces.CatalogHealthCheckScheduleModeInherit})
+
+		require.ErrorIs(t, err, insertErr)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
 }
 
 func TestCatalogHealthCheckScheduleAccessGetByCatalogID(t *testing.T) {
@@ -81,6 +94,20 @@ func TestCatalogHealthCheckScheduleAccessUpdate(t *testing.T) {
 		require.NoError(t, access.Update(context.Background(), schedule))
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
+
+	t.Run("propagates update error", func(t *testing.T) {
+		access, mock, cleanup := newCatalogHealthCheckScheduleAccessMock(t)
+		defer cleanup()
+		updateErr := sql.ErrConnDone
+		schedule := &interfaces.CatalogHealthCheckSchedule{CatalogID: "catalog-1", Mode: interfaces.CatalogHealthCheckScheduleModeInherit}
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_catalog_health_check_schedule SET f_mode = ?, f_cron_expr = ?, f_next_run = ?, f_updater = ?, f_updater_type = ?, f_update_time = ? WHERE f_catalog_id = ?")).
+			WithArgs("inherit", "", int64(0), "", "", int64(0), "catalog-1").WillReturnError(updateErr)
+
+		err := access.Update(context.Background(), schedule)
+
+		require.ErrorIs(t, err, updateErr)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
 }
 
 func TestCatalogHealthCheckScheduleAccessDeleteByCatalogIDs(t *testing.T) {
@@ -99,6 +126,19 @@ func TestCatalogHealthCheckScheduleAccessDeleteByCatalogIDs(t *testing.T) {
 		defer cleanup()
 
 		require.NoError(t, access.DeleteByCatalogIDs(context.Background(), nil))
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("propagates delete error", func(t *testing.T) {
+		access, mock, cleanup := newCatalogHealthCheckScheduleAccessMock(t)
+		defer cleanup()
+		deleteErr := sql.ErrConnDone
+		mock.ExpectExec(regexp.QuoteMeta("DELETE FROM t_catalog_health_check_schedule WHERE f_catalog_id IN (?)")).
+			WithArgs("catalog-1").WillReturnError(deleteErr)
+
+		err := access.DeleteByCatalogIDs(context.Background(), []string{"catalog-1"})
+
+		require.ErrorIs(t, err, deleteErr)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 }

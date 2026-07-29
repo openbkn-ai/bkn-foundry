@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
 	"vega-backend/interfaces"
@@ -352,6 +353,48 @@ func TestCatalogServiceCreate(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
+	t.Run("physical catalog creates default inherit schedule", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockHCSS := mock_interfaces.NewMockCatalogHealthCheckScheduleService(ctrl)
+		mockHCSS.EXPECT().Create(gomock.Any(), gomock.AssignableToTypeOf(&interfaces.Catalog{}), nil).Return(&interfaces.CatalogHealthCheckSchedule{}, nil)
+
+		cs := &catalogService{hcss: mockHCSS}
+		err := cs.createHealthCheckSchedule(context.Background(), &interfaces.Catalog{
+			ID:   "catalog-1",
+			Type: interfaces.CatalogTypePhysical,
+		}, nil)
+
+		require.NoError(t, err)
+	})
+
+	t.Run("logical catalog does not create schedule", func(t *testing.T) {
+		cs := &catalogService{}
+
+		err := cs.createHealthCheckSchedule(context.Background(), &interfaces.Catalog{
+			ID:   "catalog-1",
+			Type: interfaces.CatalogTypeLogical,
+		}, &interfaces.CatalogHealthCheckScheduleRequest{Mode: interfaces.CatalogHealthCheckScheduleModeEnabled, CronExpr: "*/5 * * * *"})
+
+		require.NoError(t, err)
+	})
+
+	t.Run("removes catalog when schedule creation fails", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
+		mockHCSS := mock_interfaces.NewMockCatalogHealthCheckScheduleService(ctrl)
+		createErr := errors.New("schedule insert failed")
+		catalog := &interfaces.Catalog{ID: "catalog-1", Type: interfaces.CatalogTypePhysical}
+
+		mockHCSS.EXPECT().Create(gomock.Any(), catalog, gomock.Any()).Return(nil, createErr)
+		mockCA.EXPECT().DeleteByIDs(gomock.Any(), []string{"catalog-1"}).Return(nil)
+
+		cs := &catalogService{ca: mockCA, hcss: mockHCSS}
+		err := cs.createHealthCheckSchedule(context.Background(), catalog, &interfaces.CatalogHealthCheckScheduleRequest{
+			Mode: interfaces.CatalogHealthCheckScheduleModeEnabled, CronExpr: "*/5 * * * *",
+		})
+
+		require.ErrorIs(t, err, createErr)
+	})
 }
 
 func TestCatalogServiceTestConnection(t *testing.T) {
@@ -637,6 +680,7 @@ func TestCatalogServiceDeleteByIDs(t *testing.T) {
 		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
 		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
 		mockRA := mock_interfaces.NewMockResourceAccess(ctrl)
+		mockHCSS := mock_interfaces.NewMockCatalogHealthCheckScheduleService(ctrl)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
 
@@ -650,10 +694,11 @@ func TestCatalogServiceDeleteByIDs(t *testing.T) {
 		mockLIM.EXPECT().DeleteIndex(gomock.Any(), interfaces.BuildIndexName("r1", "t1")).Return(nil)
 		mockBTA.EXPECT().Delete(gomock.Any(), "t1").Return(nil)
 		mockCA.EXPECT().DeleteByIDs(gomock.Any(), []string{"c1"}).Return(nil)
+		mockHCSS.EXPECT().DeleteByCatalogIDs(gomock.Any(), []string{"c1"}).Return(nil)
 		mockRA.EXPECT().DeleteByCatalogIDs(gomock.Any(), []string{"c1"}).Return(nil)
 		mockPS.EXPECT().DeleteResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_CATALOG, []string{"c1"}).Return(nil)
 
-		cs := &catalogService{ca: mockCA, ps: mockPS, ra: mockRA, bta: mockBTA, lim: mockLIM}
+		cs := &catalogService{ca: mockCA, ps: mockPS, ra: mockRA, bta: mockBTA, lim: mockLIM, hcss: mockHCSS}
 		if err := cs.DeleteByIDs(context.Background(), []string{"c1"}); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}

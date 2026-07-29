@@ -28,6 +28,7 @@ import (
 	"vega-backend/drivenadapters/bkn_agent"
 	"vega-backend/drivenadapters/build_task"
 	"vega-backend/drivenadapters/catalog"
+	"vega-backend/drivenadapters/catalog_health_check_schedule"
 	"vega-backend/drivenadapters/connector_type"
 	"vega-backend/drivenadapters/discover_schedule"
 	"vega-backend/drivenadapters/discover_task"
@@ -137,6 +138,7 @@ func main() {
 	logics.SetAsynqAccess(asynq.NewAsynqAccess(appSetting))
 	logics.SetBuildTaskAccess(build_task.NewBuildTaskAccess(appSetting))
 	logics.SetCatalogAccess(catalog.NewCatalogAccess(appSetting))
+	logics.SetCatalogHealthCheckScheduleAccess(catalog_health_check_schedule.NewCatalogHealthCheckScheduleAccess(appSetting))
 	logics.SetConnectorTypeAccess(connector_type.NewConnectorTypeAccess(appSetting))
 	logics.SetDiscoverScheduleAccess(discover_schedule.NewDiscoverScheduleAccess(appSetting))
 	logics.SetDiscoverTaskAccess(discover_task.NewDiscoverTaskAccess(appSetting))

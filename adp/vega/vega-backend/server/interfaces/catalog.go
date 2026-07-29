@@ -95,6 +95,9 @@ type CatalogRequest struct {
 
 	// Extensions 根对象出现该键（含 null 需客户端避免）时整包替换；指针为 nil 表示请求体未携带该字段
 	Extensions *map[string]string `json:"extensions,omitempty"`
+
+	// HealthCheckSchedule 仅在创建物理目录时生效；nil 时创建 inherit 模式的默认 Schedule。
+	HealthCheckSchedule *CatalogHealthCheckScheduleRequest `json:"health_check_schedule,omitempty"`
 }
 
 // CatalogConnectionTestRequest represents an unpersisted physical catalog connection test.
