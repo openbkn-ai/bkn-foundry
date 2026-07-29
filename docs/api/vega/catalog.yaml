@@ -477,6 +477,9 @@ components:
         type:
           description: 账号类型（user / app / anonymous 等）
           type: string
+        name:
+          description: 账号显示名
+          type: string
     Catalog:
       description: Catalog（数据目录）实体
       type: object

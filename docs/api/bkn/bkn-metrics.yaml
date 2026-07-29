@@ -63,6 +63,16 @@ paths:
           schema:
             type: string
           in: query
+        - name: scope_type
+          description: 按指标作用域类型过滤（如 object_type / relation_type）
+          schema:
+            type: string
+          in: query
+        - name: scope_ref
+          description: 按指标作用域所指向的概念 ID 过滤
+          schema:
+            type: string
+          in: query
       responses:
         "200":
           description: ok
@@ -108,6 +118,15 @@ paths:
           schema:
             type: boolean
             default: true
+          in: query
+        - name: import_mode
+          description: |
+            导入模式。`normal` 遇到同名概念报错；`overwrite` 覆盖同名概念；
+            `ignore` 跳过同名概念。默认 `normal`。
+          schema:
+            type: string
+            enum: [normal, overwrite, ignore]
+            default: normal
           in: query
       responses:
         "201":
@@ -405,7 +424,6 @@ components:
     MetricSearchResponse:
       description: 指标概念检索返回结果（与 ObjectTypeSearchResponse 同构）
       required:
-        - groups
         - type
         - entries
       type: object

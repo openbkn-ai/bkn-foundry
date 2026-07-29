@@ -142,7 +142,7 @@ paths:
         required: true
         schema:
           type: string
-      - name: doc_id
+      - name: doc_ids
         description: |
           文档 ID 列表，逗号分隔（单条即长度 1 的退化情形）。
           缺失 id 静默跳过；本端点不接受 `?ignore_missing` 参数。
@@ -172,6 +172,22 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalServerError"
+  /resources/{id}/data/{doc_id}:
+    # 单条读写走 doc_id；批量删除走上面的 doc_ids。服务端是两条独立路由
+    # （GET / PUT 取 :doc_id，DELETE 取 :doc_ids），不是同一个参数。
+    parameters:
+      - name: id
+        description: Resource ID
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: doc_id
+        description: 单个文档 ID
+        in: path
+        required: true
+        schema:
+          type: string
     get:
       summary: 获取单条文档
       description: |
@@ -215,7 +231,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/IdsResponse"
+                $ref: "#/components/schemas/IdResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -428,7 +444,7 @@ components:
           type: [integer, "null"]
           format: int64
     IdsResponse:
-      description: 写入操作的响应，含成功的文档 ID 数组
+      description: 批量写入操作的响应，含成功的文档 ID 数组
       type: object
       required:
         - ids
@@ -438,3 +454,12 @@ components:
           type: array
           items:
             type: string
+    IdResponse:
+      description: 单条写入操作的响应。服务端返回的是单数 `id`，不是 `ids` 数组
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          description: 文档 ID
+          type: string

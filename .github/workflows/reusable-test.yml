@@ -59,16 +59,19 @@ jobs:
             # clean, immutable image/chart set across all services.
             VERSION="${REF_NAME#v}"
           elif [[ "$REF_NAME" == release/* ]]; then
-            # release/<x.y.z> 分支发布裸版本号（无分支后缀），会覆盖同名制品。
-            # 因此分支名必须与根 VERSION 一致：分支刚从 main 拉出、版本冻结提交
-            # 尚未落地时，VERSION 还是上一个版本，此时构建会覆盖已发布的制品。
+            # 分支名必须与根 VERSION 一致：分支刚从 main 拉出、版本冻结提交尚未
+            # 落地时，VERSION 还是上一个版本，此时构建出的制品版本号会指向错误的
+            # 发布周期（例如在 release/0.1.2 上产出 0.1.1-release）。
             BRANCH_VERSION="${REF_NAME#release/}"
             if [[ "$BRANCH_VERSION" != "$BASE_VERSION" ]]; then
               echo "::error::分支 $REF_NAME 与根 VERSION($BASE_VERSION) 不一致，拒绝构建：" \
-                   "裸版本号会覆盖已发布的 $BASE_VERSION 制品。请先提交版本冻结（VERSION -> $BRANCH_VERSION）。"
+                   "请先提交版本冻结（VERSION -> $BRANCH_VERSION）。"
               exit 1
             fi
-            VERSION="$BASE_VERSION"
+            # Release branches use a stable, Helm-compatible version:
+            # release/0.1.2 -> 0.1.2-release. 裸版本号只由 tag 产出，保证 GA 制品
+            # 不会被后续 release 分支推送覆盖。
+            VERSION="${BASE_VERSION}-release"
           else
             SANITIZED_BRANCH="$(echo "$REF_NAME" | tr '[:upper:]' '[:lower:]' | sed -E 's#[^0-9a-zA-Z.-]+#-#g; s#-+#-#g; s#^[.-]+##; s#[.-]+$##')"
             # Embed the commit time (Asia/Shanghai, fixed-width YYYYMMDDHHMMSS) so the

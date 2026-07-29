@@ -1,0 +1,29 @@
+# 跨模块复用的通用 schema 片段。
+# 与 errors.yaml / auth.yaml 一样，本文件是 $ref 片段，不作独立文档 lint，
+# 其正确性由引用它的模块文档解析时连带校验。
+openapi: 3.0.3
+info:
+  title: shared common schemas
+  version: 0.1.2
+paths: {}
+components:
+  schemas:
+    AccountInfo:
+      type: object
+      description: |
+        操作者信息。服务端返回的是对象而非裸 ID —— 对应 Go 侧
+        `interfaces.AccountInfo{ID, Type, Name}`。
+      properties:
+        id:
+          type: string
+          description: 账号 ID
+        type:
+          type: string
+          description: 账号类型（如 user / app）
+        name:
+          type: string
+          description: 账号显示名
+      example:
+        id: a0f02238-6cec-11f0-82bb-fa1c4529a151
+        type: user
+        name: Administrator

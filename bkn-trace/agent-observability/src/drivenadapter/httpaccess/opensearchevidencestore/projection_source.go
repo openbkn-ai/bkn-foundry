@@ -309,6 +309,9 @@ func ownershipMust(scope evidencevo.QueryScope) []map[string]any {
 		{"bkn.account.id", scope.AccountID},
 		{"bkn.account.type", scope.AccountType},
 	} {
+		if scope.CrossAccountRead && (item.field == "bkn.account.id" || item.field == "bkn.account.type") {
+			continue
+		}
 		if item.value != "" {
 			must = append(must, map[string]any{"bool": exactTermQuery(item.field, item.value)})
 		}
