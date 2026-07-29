@@ -10,6 +10,10 @@ langgraph~=1.2.9
 langchain-core~=1.4.9
 langchain-openai~=1.3.5
 langchain-mcp-adapters~=0.3.0
+# mcp 是 langchain-mcp-adapters 的传递依赖，后者只声明 mcp>=1.24.0 无上界。
+# mcp 2.0.0（2026-07-28）移除了 mcp.shared.context.RequestContext，adapters 0.3.1
+# 仍在 import 它，解到 2.x 会让服务在 import 阶段直接崩。锁在 1.x 线。
+mcp~=1.29.0
 langgraph-checkpoint-mysql~=3.0.0
 
 # 数据与外呼

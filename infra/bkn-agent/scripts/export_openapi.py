@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""导出冻结契约 docs/api/bkn-agent.yaml（#212 spec 先行流程）。
+"""导出冻结契约 docs/api/bkn-agent/bkn-agent.yaml（#212 spec 先行流程）。
 
 用法（infra/bkn-agent 下）：python scripts/export_openapi.py
 改 API 后必须重跑本脚本并将 spec diff 一并提交，否则 test_contract.py 红。
@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.main import app  # noqa: E402
 
-OUT = Path(__file__).resolve().parents[3] / "docs" / "api" / "bkn-agent.yaml"
+OUT = Path(__file__).resolve().parents[3] / "docs" / "api" / "bkn-agent" / "bkn-agent.yaml"
 
 
 def main() -> None:
