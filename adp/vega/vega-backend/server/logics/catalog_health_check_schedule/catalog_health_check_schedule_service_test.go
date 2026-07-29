@@ -11,11 +11,13 @@ import (
 	"database/sql"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"vega-backend/common"
 	"vega-backend/interfaces"
 	vmock "vega-backend/interfaces/mock"
 )
@@ -40,15 +42,19 @@ func TestCatalogHealthCheckScheduleServiceCreate(t *testing.T) {
 	t.Run("creates default inherit schedule without modify permission check", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		sa := vmock.NewMockCatalogHealthCheckScheduleAccess(ctrl)
-		service := &catalogHealthCheckScheduleService{sa: sa}
+		service := &catalogHealthCheckScheduleService{
+			appSetting: &common.AppSetting{CatalogHealthCheck: common.CatalogHealthCheckConfig{CronExpr: "0 * * * *"}},
+			sa:         sa,
+		}
 		account := interfaces.AccountInfo{ID: "user-1", Type: interfaces.ACCESSOR_TYPE_USER}
 		ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY, account)
+		beforeCreate := time.Now().UnixMilli()
 
 		sa.EXPECT().Create(gomock.Any(), gomock.AssignableToTypeOf(&interfaces.CatalogHealthCheckSchedule{})).DoAndReturn(func(_ context.Context, schedule *interfaces.CatalogHealthCheckSchedule) error {
 			assert.Equal(t, "catalog-1", schedule.CatalogID)
 			assert.Equal(t, interfaces.CatalogHealthCheckScheduleModeInherit, schedule.Mode)
 			assert.Empty(t, schedule.CronExpr)
-			assert.Zero(t, schedule.NextRun)
+			assert.Greater(t, schedule.NextRun, beforeCreate)
 			assert.Equal(t, account, schedule.Creator)
 			assert.Equal(t, account, schedule.Updater)
 			return nil
@@ -214,13 +220,19 @@ func TestCatalogHealthCheckScheduleServiceUpdate(t *testing.T) {
 		assert.Same(t, current, got)
 	})
 
-	t.Run("clears cron when changing to inherit", func(t *testing.T) {
+	t.Run("clears cron and schedules the next global run when changing to inherit", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		ca := vmock.NewMockCatalogAccess(ctrl)
 		sa := vmock.NewMockCatalogHealthCheckScheduleAccess(ctrl)
 		ps := vmock.NewMockPermissionService(ctrl)
-		service := &catalogHealthCheckScheduleService{ca: ca, sa: sa, ps: ps}
+		service := &catalogHealthCheckScheduleService{
+			appSetting: &common.AppSetting{CatalogHealthCheck: common.CatalogHealthCheckConfig{CronExpr: "0 * * * *"}},
+			ca:         ca,
+			sa:         sa,
+			ps:         ps,
+		}
 		current := &interfaces.CatalogHealthCheckSchedule{CatalogID: "catalog-1", CronExpr: "0 * * * *", NextRun: 456}
+		beforeUpdate := time.Now().UnixMilli()
 
 		ca.EXPECT().GetByID(gomock.Any(), "catalog-1").Return(&interfaces.Catalog{ID: "catalog-1", Type: interfaces.CatalogTypePhysical}, nil)
 		ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG, ID: "catalog-1"}, []string{interfaces.OPERATION_TYPE_MODIFY}).Return(nil)
@@ -233,7 +245,7 @@ func TestCatalogHealthCheckScheduleServiceUpdate(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Empty(t, got.CronExpr)
-		assert.Zero(t, got.NextRun)
+		assert.Greater(t, got.NextRun, beforeUpdate)
 	})
 
 	t.Run("returns schedule access error", func(t *testing.T) {

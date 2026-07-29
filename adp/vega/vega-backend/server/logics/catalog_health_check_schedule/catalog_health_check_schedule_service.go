@@ -32,6 +32,8 @@ var (
 	chcsService     interfaces.CatalogHealthCheckScheduleService
 )
 
+const defaultCatalogHealthCheckCronExpr = "0 * * * *"
+
 type catalogHealthCheckScheduleService struct {
 	appSetting *common.AppSetting
 	ca         interfaces.CatalogAccess
@@ -80,7 +82,8 @@ func (chcss *catalogHealthCheckScheduleService) Create(ctx context.Context, cata
 			verrors.VegaBackend_Catalog_InvalidParameter).WithErrorDetails(err.Error())
 	}
 
-	now := time.Now().UnixMilli()
+	nowTime := time.Now()
+	now := nowTime.UnixMilli()
 	account := interfaces.AccountInfo{}
 	if value := ctx.Value(interfaces.ACCOUNT_INFO_KEY); value != nil {
 		account = value.(interfaces.AccountInfo)
@@ -97,13 +100,15 @@ func (chcss *catalogHealthCheckScheduleService) Create(ctx context.Context, cata
 
 	if req.Mode == interfaces.CatalogHealthCheckScheduleModeEnabled {
 		schedule.CronExpr = req.CronExpr
-		next, err := cron.ParseStandard(req.CronExpr)
+	}
+	if req.Mode != interfaces.CatalogHealthCheckScheduleModeDisabled {
+		nextRun, err := chcss.nextRun(req.Mode, req.CronExpr, nowTime)
 		if err != nil {
 			span.SetStatus(codes.Error, "Invalid cron expression")
 			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
 				verrors.VegaBackend_Catalog_InvalidParameter).WithErrorDetails(fmt.Sprintf("invalid cron_expr: %v", err))
 		}
-		schedule.NextRun = next.Next(time.Now()).UnixMilli()
+		schedule.NextRun = nextRun
 	}
 
 	if err := chcss.sa.Create(ctx, schedule); err != nil {
@@ -174,7 +179,8 @@ func (chcss *catalogHealthCheckScheduleService) Update(ctx context.Context, cata
 		return nil, err
 	}
 
-	now := time.Now().UnixMilli()
+	nowTime := time.Now()
+	now := nowTime.UnixMilli()
 	account := interfaces.AccountInfo{}
 	if value := ctx.Value(interfaces.ACCOUNT_INFO_KEY); value != nil {
 		account = value.(interfaces.AccountInfo)
@@ -193,18 +199,19 @@ func (chcss *catalogHealthCheckScheduleService) Update(ctx context.Context, cata
 	switch req.Mode {
 	case interfaces.CatalogHealthCheckScheduleModeInherit:
 		schedule.CronExpr = ""
-		schedule.NextRun = 0
 	case interfaces.CatalogHealthCheckScheduleModeEnabled:
 		schedule.CronExpr = req.CronExpr
-		next, parseErr := cron.ParseStandard(req.CronExpr)
+	case interfaces.CatalogHealthCheckScheduleModeDisabled:
+		schedule.NextRun = 0
+	}
+	if req.Mode != interfaces.CatalogHealthCheckScheduleModeDisabled {
+		nextRun, parseErr := chcss.nextRun(req.Mode, req.CronExpr, nowTime)
 		if parseErr != nil {
 			span.SetStatus(codes.Error, "Invalid cron expression")
 			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
 				verrors.VegaBackend_Catalog_InvalidParameter).WithErrorDetails(fmt.Sprintf("invalid cron_expr: %v", parseErr))
 		}
-		schedule.NextRun = next.Next(time.Now()).UnixMilli()
-	case interfaces.CatalogHealthCheckScheduleModeDisabled:
-		schedule.NextRun = 0
+		schedule.NextRun = nextRun
 	}
 
 	if err := chcss.sa.Update(ctx, schedule); err != nil {
@@ -215,6 +222,21 @@ func (chcss *catalogHealthCheckScheduleService) Update(ctx context.Context, cata
 
 	span.SetStatus(codes.Ok, "")
 	return schedule, nil
+}
+
+func (chcss *catalogHealthCheckScheduleService) nextRun(mode, cronExpr string, now time.Time) (int64, error) {
+	if mode == interfaces.CatalogHealthCheckScheduleModeInherit {
+		cronExpr = defaultCatalogHealthCheckCronExpr
+		if chcss.appSetting != nil && chcss.appSetting.CatalogHealthCheck.CronExpr != "" {
+			cronExpr = chcss.appSetting.CatalogHealthCheck.CronExpr
+		}
+	}
+
+	schedule, err := cron.ParseStandard(cronExpr)
+	if err != nil {
+		return 0, err
+	}
+	return schedule.Next(now).UnixMilli(), nil
 }
 
 func (chcss *catalogHealthCheckScheduleService) DeleteByCatalogIDs(ctx context.Context, catalogIDs []string) error {
