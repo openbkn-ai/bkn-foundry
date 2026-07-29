@@ -391,14 +391,13 @@ components:
         - comment
         - create_time
         - creator
-        - detail
         - icon
         - id
         - name
         - statistics
         - tags
         - update_time
-        - updator
+        - updater
       type: object
       properties:
         id:
@@ -428,22 +427,17 @@ components:
           $ref: "#/components/schemas/Statistics"
           description: 概念统计信息
         creator:
-          description: 创建人ID
-          type: string
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         create_time:
           format: int64
           description: 创建时间
           type: integer
-        updator:
-          description: 最近一次修改人
-          type: string
+        updater:
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         update_time:
           format: int64
           description: 最近一次更新时间
           type: integer
-        detail:
-          description: 说明书。
-          type: string
     Statistics:
       description: 概念统计信息
       required:
@@ -515,7 +509,6 @@ components:
         - condition
         - create_time
         - creator
-        - detail
         - icon
         - id
         - kn_id
@@ -601,22 +594,17 @@ components:
           $ref: "#/components/schemas/Schedule"
           description: 行动监听参数配置
         creator:
-          description: 创建人ID
-          type: string
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         create_time:
           format: int64
           description: 创建时间
           type: integer
         updater:
-          description: 最近一次修改人
-          type: string
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         update_time:
           format: int64
           description: 最近一次更新时间
           type: integer
-        detail:
-          description: 说明书。按需返回，若指定了include_detail=true，则返回，否则不返回
-          type: string
         module_type:
           description: 模块类型
           enum:
@@ -777,7 +765,6 @@ components:
         - creator
         - data_properties
         - data_source
-        - detail
         - display_key
         - icon
         - id
@@ -844,22 +831,17 @@ components:
           description: 对象实例的显示属性
           type: string
         creator:
-          description: 创建人ID
-          type: string
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         create_time:
           format: int64
           description: 创建时间
           type: integer
         updater:
-          description: 最近一次修改人
-          type: string
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         update_time:
           format: int64
           description: 最近一次更新时间
           type: integer
-        detail:
-          description: 说明书。按需返回，若指定了include_detail=true，则返回，否则不返回。列表查询时不返回此字段
-          type: string
         module_type:
           description: 模块类型
           enum:
@@ -1042,7 +1024,6 @@ components:
         - comment
         - create_time
         - creator
-        - detail
         - icon
         - id
         - kn_id
@@ -1110,22 +1091,17 @@ components:
             - $ref: "#/components/schemas/FilteredCrossJoinMappingRule"
           description: 关联的匹配规则。`direct` 时为 Mapping 数组；`data_view` 时为 DataViewMappingRule；`filtered_cross_join`（FCJ）时为 FilteredCrossJoinMappingRule。
         creator:
-          description: 创建人ID
-          type: string
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         create_time:
           format: int64
           description: 创建时间
           type: integer
         updater:
-          description: 最近一次修改人
-          type: string
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         update_time:
           format: int64
           description: 最近一次更新时间
           type: integer
-        detail:
-          description: 说明书。按需返回，若指定了include_detail=true，则返回，否则不返回。列表查询时不返回此字段。
-          type: string
     DirectMappingRules:
       description: 直接关联
       type: array
@@ -1256,7 +1232,6 @@ components:
         - comment
         - create_time
         - creator
-        - detail
         - icon
         - id
         - name
@@ -1264,7 +1239,7 @@ components:
         - relation_types
         - tags
         - update_time
-        - updator
+        - updater
         - kn_id
       type: object
       properties:
@@ -1310,19 +1285,14 @@ components:
           items:
             $ref: "#/components/schemas/ActionTypeDetail"
         creator:
-          description: 创建人ID
-          type: string
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         create_time:
           format: int64
           description: 创建时间
           type: integer
-        updator:
-          description: 最近一次修改人
-          type: string
+        updater:
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         update_time:
           format: int64
           description: 最近一次更新时间
           type: integer
-        detail:
-          description: 说明书。
-          type: string

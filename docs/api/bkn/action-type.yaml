@@ -401,11 +401,6 @@ paths:
   /api/bkn-backend/v1/knowledge-networks/{kn_id}/action-types/{at_ids}:
     get:
       parameters:
-        - name: include_detail
-          description: 是否包含说明书信息，默认false，不包含。
-          schema:
-            type: boolean
-          in: query
       responses:
         "200":
           content:
@@ -1214,22 +1209,17 @@ components:
           $ref: "#/components/schemas/Schedule"
           description: 行动监听参数配置
         creator:
-          description: 创建人ID
-          type: string
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         create_time:
           format: int64
           description: 创建时间
           type: integer
         updater:
-          description: 最近一次修改人
-          type: string
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         update_time:
           format: int64
           description: 最近一次更新时间
           type: integer
-        detail:
-          description: 说明书。按需返回，若指定了include_detail=true，则返回，否则不返回
-          type: string
         module_type:
           description: 模块类型
           enum:
@@ -1331,22 +1321,17 @@ components:
           $ref: "#/components/schemas/Schedule"
           description: 行动监听参数配置
         creator:
-          description: 创建人ID
-          type: string
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         create_time:
           format: int64
           description: 创建时间
           type: integer
         updater:
-          description: 最近一次修改人
-          type: string
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         update_time:
           format: int64
           description: 最近一次更新时间
           type: integer
-        detail:
-          description: 说明书。按需返回，若指定了include_detail=true，则返回，否则不返回
-          type: string
         module_type:
           description: 模块类型
           enum:
@@ -1383,7 +1368,6 @@ components:
             - id
             - name
             - comment
-            - detail
           type: string
         operation:
           description: 操作符
@@ -1406,7 +1390,6 @@ components:
             - id
             - name
             - comment
-            - detail
           type: string
         operation:
           description: 操作符
@@ -1429,7 +1412,6 @@ components:
             - id
             - name
             - comment
-            - detail
           type: string
         operation:
           description: 操作符
@@ -1454,7 +1436,6 @@ components:
             - id
             - name
             - comment
-            - detail
           type: string
         operation:
           description: 操作符
@@ -1478,7 +1459,6 @@ components:
             - id
             - name
             - comment
-            - detail
           type: string
         operation:
           description: 操作符
@@ -1502,7 +1482,6 @@ components:
             - id
             - name
             - comment
-            - detail
           type: string
         operation:
           description: 操作符
@@ -1559,7 +1538,6 @@ components:
             - id
             - name
             - comment
-            - detail
           type: string
         operation:
           description: 操作符
@@ -1583,7 +1561,6 @@ components:
           enum:
             - name
             - comment
-            - detail
             - "*"
           type: string
         operation:
@@ -1607,7 +1584,6 @@ components:
           enum:
             - name
             - comment
-            - detail
             - "*"
           type: string
         operation:

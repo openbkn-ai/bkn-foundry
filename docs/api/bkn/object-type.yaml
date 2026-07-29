@@ -1665,11 +1665,6 @@ paths:
             type: string
           in: path
           required: true
-        - name: include_detail
-          description: 是否包含说明书信息，默认false，不包含。
-          schema:
-            type: boolean
-          in: query
       responses:
         "200":
           content:
@@ -2032,11 +2027,10 @@ components:
         - creator
         - create_time
         - tags
-        - updator
+        - updater
         - update_time
         - branch
         - color
-        - detail
         - icon
       type: object
       properties:
@@ -2064,22 +2058,17 @@ components:
           description: 分支ID
           type: string
         creator:
-          description: 创建人ID
-          type: string
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         create_time:
           format: int64
           description: 创建时间
           type: integer
-        updator:
-          description: 最近一次修改人
-          type: string
+        updater:
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         update_time:
           format: int64
           description: 最近一次更新时间
           type: integer
-        detail:
-          description: 说明书。按需返回，若指定了include_detail=true，则返回，否则不返回
-          type: string
     ReqObjectType:
       description: 对象类创建信息
       required:
@@ -2282,7 +2271,6 @@ components:
         - update_time
         - updater
         - create_time
-        - detail
       type: object
       properties:
         id:
@@ -2338,22 +2326,17 @@ components:
           description: 对象实例的显示属性
           type: string
         creator:
-          description: 创建人ID
-          type: string
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         create_time:
           format: int64
           description: 创建时间
           type: integer
         updater:
-          description: 最近一次修改人
-          type: string
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         update_time:
           format: int64
           description: 最近一次更新时间
           type: integer
-        detail:
-          description: 说明书。按需返回，若指定了include_detail=true，则返回，否则不返回。列表查询时不返回此字段
-          type: string
         module_type:
           description: 模块类型
           enum:
@@ -2590,7 +2573,6 @@ components:
             - id
             - name
             - comment
-            - detail
             - data_properties.name
             - data_properties.display_name
             - data_properties.comment
@@ -2619,7 +2601,6 @@ components:
             - id
             - name
             - comment
-            - detail
             - data_properties.name
             - data_properties.display_name
             - data_properties.comment
@@ -2648,7 +2629,6 @@ components:
             - id
             - name
             - comment
-            - detail
             - data_properties.name
             - data_properties.display_name
             - data_properties.comment
@@ -2679,7 +2659,6 @@ components:
             - id
             - name
             - comment
-            - detail
             - data_properties.name
             - data_properties.display_name
             - data_properties.comment
@@ -2709,7 +2688,6 @@ components:
             - id
             - name
             - comment
-            - detail
             - data_properties.name
             - data_properties.display_name
             - data_properties.comment
@@ -2739,7 +2717,6 @@ components:
             - id
             - name
             - comment
-            - detail
             - data_properties.name
             - data_properties.display_name
             - data_properties.comment
@@ -2803,7 +2780,6 @@ components:
             - id
             - name
             - comment
-            - detail
             - data_properties.name
             - data_properties.display_name
             - data_properties.comment
@@ -2833,7 +2809,6 @@ components:
           enum:
             - name
             - comment
-            - detail
             - "*"
             - data_properties.name
             - data_properties.display_name
@@ -2863,7 +2838,6 @@ components:
           enum:
             - name
             - comment
-            - detail
             - "*"
             - data_properties.name
             - data_properties.display_name

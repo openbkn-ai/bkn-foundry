@@ -350,11 +350,6 @@ paths:
             type: string
           in: path
           required: true
-        - name: include_detail
-          description: 是否包含说明书信息，默认false，不包含。
-          schema:
-            type: boolean
-          in: query
       responses:
         "200":
           content:
@@ -1203,15 +1198,13 @@ components:
           description: 对象实例的显示属性
           type: string
         creator:
-          description: 创建人ID
-          type: string
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         create_time:
           format: int64
           description: 创建时间
           type: integer
         updater:
-          description: 最近一次修改人
-          type: string
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         update_time:
           format: int64
           description: 最近一次更新时间
@@ -1583,22 +1576,17 @@ components:
             - $ref: "#/components/schemas/FilteredCrossJoinMappingRule"
           description: 关联的匹配规则。`direct` 时为 Mapping 数组；`data_view` 时为 DataViewMappingRule；`filtered_cross_join` 时为 FilteredCrossJoinMappingRule。
         creator:
-          description: 创建人ID
-          type: string
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         create_time:
           format: int64
           description: 创建时间
           type: integer
         updater:
-          description: 最近一次修改人
-          type: string
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         update_time:
           format: int64
           description: 最近一次更新时间
           type: integer
-        detail:
-          description: 说明书。按需返回，若指定了include_detail=true，则返回，否则不返回。列表查询时不返回此字段。
-          type: string
     RelationType:
       description: 关系类
       required:
@@ -1677,22 +1665,17 @@ components:
             - $ref: "#/components/schemas/FilteredCrossJoinMappingRule"
           description: 关联的匹配规则。`direct` 时为 Mapping 数组；`data_view` 时为 DataViewMappingRule；`filtered_cross_join` 时为 FilteredCrossJoinMappingRule。
         creator:
-          description: 创建人ID
-          type: string
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         create_time:
           format: int64
           description: 创建时间
           type: integer
         updater:
-          description: 最近一次修改人
-          type: string
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         update_time:
           format: int64
           description: 最近一次更新时间
           type: integer
-        detail:
-          description: 说明书。按需返回，若指定了include_detail=true，则返回，否则不返回。列表查询时不返回此字段。
-          type: string
     RelationTypeSearchResponse:
       description: 关系类检索返回结果
       required:
@@ -1982,7 +1965,6 @@ components:
             - id
             - name
             - comment
-            - detail
           type: string
         operation:
           description: 操作符
@@ -2005,7 +1987,6 @@ components:
             - id
             - name
             - comment
-            - detail
           type: string
         operation:
           description: 操作符
@@ -2028,7 +2009,6 @@ components:
             - id
             - name
             - comment
-            - detail
           type: string
         operation:
           description: 操作符
@@ -2053,7 +2033,6 @@ components:
             - id
             - name
             - comment
-            - detail
           type: string
         operation:
           description: 操作符
@@ -2077,7 +2056,6 @@ components:
             - id
             - name
             - comment
-            - detail
           type: string
         operation:
           description: 操作符
@@ -2101,7 +2079,6 @@ components:
             - id
             - name
             - comment
-            - detail
           type: string
         operation:
           description: 操作符
@@ -2158,7 +2135,6 @@ components:
             - id
             - name
             - comment
-            - detail
           type: string
         operation:
           description: 操作符
@@ -2182,7 +2158,6 @@ components:
           enum:
             - name
             - comment
-            - detail
             - "*"
           type: string
         operation:
@@ -2206,7 +2181,6 @@ components:
           enum:
             - name
             - comment
-            - detail
             - "*"
           type: string
         operation:

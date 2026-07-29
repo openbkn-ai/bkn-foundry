@@ -1453,7 +1453,6 @@ components:
         - branch
         - color
         - concept_groups
-        - detail
         - icon
         - object_type_id
         - object_type_name
@@ -1538,9 +1537,6 @@ components:
         schedule:
           $ref: "#/components/schemas/Schedule"
           description: 行动监听参数配置
-        detail:
-          description: 说明书。按需返回，若指定了include_detail=true，则返回，否则不返回
-          type: string
     ListKN:
       description: 业务知识网络列表
       required:
@@ -1636,22 +1632,17 @@ components:
           description: 对象实例的显示属性
           type: string
         creator:
-          description: 创建人ID
-          type: string
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         create_time:
           format: int64
           description: 创建时间
           type: integer
         updater:
-          description: 最近一次修改人
-          type: string
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         update_time:
           format: int64
           description: 最近一次更新时间
           type: integer
-        detail:
-          description: 说明书。按需返回，若指定了include_detail=true，则返回，否则不返回
-          type: string
     RelationTypeDetail:
       description: 关系类
       required:
@@ -1740,22 +1731,17 @@ components:
             - $ref: "#/components/schemas/FilteredCrossJoinMappingRule"
           description: "关联的匹配规则。direct 为键映射；data_view 参考 DataViewMappingRule；filtered_cross_join（FCJ）参考 FilteredCrossJoinMappingRule。直接关联时是一个 map，标记的是起点对象匹配属性1: 终点对象匹配属性1"
         creator:
-          description: 创建人ID
-          type: string
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         create_time:
           format: int64
           description: 创建时间
           type: integer
         updater:
-          description: 最近一次修改人
-          type: string
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         update_time:
           format: int64
           description: 最近一次更新时间
           type: integer
-        detail:
-          description: 说明书。按需返回，若指定了include_detail=true，则返回，否则不返回
-          type: string
     Statistics:
       description: 概念统计信息
       required:
@@ -1807,22 +1793,17 @@ components:
           description: 分支ID
           type: string
         creator:
-          description: 创建人ID
-          type: string
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         create_time:
           format: int64
           description: 创建时间
           type: integer
-        updator:
-          description: 最近一次修改人
-          type: string
+        updater:
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         update_time:
           format: int64
           description: 最近一次更新时间
           type: integer
-        detail:
-          description: 说明书。
-          type: string
     KnowledgeNetworkDetail:
       description: 业务知识网络详情
       required:
@@ -1832,13 +1813,12 @@ components:
         - creator
         - create_time
         - tags
-        - updator
+        - updater
         - update_time
         - branch
         - color
         - icon
         - updater
-        - detail
       type: object
       properties:
         id:
@@ -1865,22 +1845,17 @@ components:
           description: 分支ID
           type: string
         creator:
-          description: 创建人ID
-          type: string
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         create_time:
           format: int64
           description: 创建时间
           type: integer
         updater:
-          description: 最近一次修改人
-          type: string
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         update_time:
           format: int64
           description: 最近一次更新时间
           type: integer
-        detail:
-          description: 说明书。
-          type: string
         statistics:
           $ref: "#/components/schemas/Statistics"
           description: 概念统计信息。当include_statistics为true时才计算概念统计信息
