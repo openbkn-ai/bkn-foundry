@@ -19,6 +19,17 @@ paths:
           schema:
             type: string
           in: query
+        - name: include_statistics
+          description: 是否计算并返回 statistics 概念统计，默认 false
+          schema:
+            type: boolean
+            default: false
+          in: query
+        - name: mode
+          description: 返回视图模式，为空时返回默认视图
+          schema:
+            type: string
+          in: query
       responses:
         "200":
           content:
@@ -52,13 +63,6 @@ paths:
             type: boolean
             default: true
           in: query
-        - name: validate_dependency
-          deprecated: true
-          description: "[已废弃] 请使用 strict_mode。兼容保留，strict_mode 为空时会读取此参数"
-          schema:
-            type: boolean
-            default: true
-          in: query
       responses:
         "204":
           description: ok
@@ -71,6 +75,12 @@ paths:
         - name: group_id
           in: path
           required: true
+        - name: branch
+          description: 分支，默认 main
+          schema:
+            type: string
+            default: main
+          in: query
       responses:
         "204":
           description: ok
@@ -133,6 +143,12 @@ paths:
           description: 根据标签精准查询，默认为空.
           schema:
             type: string
+          in: query
+        - name: branch
+          description: 分支，默认 main
+          schema:
+            type: string
+            default: main
           in: query
       responses:
         "200":
@@ -219,13 +235,6 @@ paths:
             type: boolean
             default: true
           in: query
-        - name: validate_dependency
-          deprecated: true
-          description: "[已废弃] 请使用 strict_mode。兼容保留，strict_mode 为空时会读取此参数"
-          schema:
-            type: boolean
-            default: true
-          in: query
       responses:
         "201":
           description: 添加成功
@@ -249,6 +258,12 @@ paths:
         - name: ot_ids
           in: path
           required: true
+        - name: branch
+          description: 分支，默认 main
+          schema:
+            type: string
+            default: main
+          in: query
       responses:
         "204":
           description: 移除成功

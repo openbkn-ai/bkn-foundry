@@ -72,6 +72,12 @@ paths:
           schema:
             type: string
           in: query
+        - name: branch
+          description: 分支，默认 main
+          schema:
+            type: string
+            default: main
+          in: query
       responses:
         "200":
           content:
@@ -189,13 +195,6 @@ paths:
             type: boolean
             default: true
           in: query
-        - name: validate_dependency
-          deprecated: true
-          description: "[已废弃] 请使用 strict_mode。兼容保留，strict_mode 为空时会读取此参数"
-          schema:
-            type: boolean
-            default: true
-          in: query
         - name: x-http-method-override
           description: 重载请求头
           schema:
@@ -205,6 +204,12 @@ paths:
             type: string
           in: header
           required: true
+        - name: branch
+          description: 分支，默认 main
+          schema:
+            type: string
+            default: main
+          in: query
       responses:
         "200":
           content:
@@ -378,13 +383,6 @@ paths:
             type: boolean
             default: true
           in: query
-        - name: validate_dependency
-          deprecated: true
-          description: "[已废弃] 请使用 strict_mode。兼容保留，strict_mode 为空时会读取此参数"
-          schema:
-            type: boolean
-            default: true
-          in: query
       responses:
         "204":
           description: ok
@@ -401,6 +399,12 @@ paths:
   /api/bkn-backend/v1/knowledge-networks/{kn_id}/action-types/{at_ids}:
     get:
       parameters:
+        - name: branch
+          description: 分支，默认 main
+          schema:
+            type: string
+            default: main
+          in: query
       responses:
         "200":
           content:
@@ -425,6 +429,12 @@ paths:
               type: string
           in: path
           required: true
+        - name: branch
+          description: 分支，默认 main
+          schema:
+            type: string
+            default: main
+          in: query
       responses:
         "204":
           description: 删除成功
@@ -581,7 +591,6 @@ components:
       description: |
         **[已废弃]** 请使用 `impact_contracts`（`ImpactContractItem` 数组）声明影响面。仅存单行影响时的兼容写法仍可能被服务端接受并折合为一元数组。
         详见 `docs/design/bkn/features/action_type_rebuild/DESIGN.md` §5.9、§7.5。
-      required: []
       type: object
       properties:
         comment:

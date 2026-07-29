@@ -56,6 +56,23 @@ paths:
           schema:
             type: string
           in: query
+        - name: branch
+          description: 分支，默认 main
+          schema:
+            type: string
+            default: main
+          in: query
+        - name: need_total
+          description: 是否返回 total_count，默认 true
+          schema:
+            type: boolean
+            default: true
+          in: query
+        - name: search_after
+          description: 深翻页游标，逗号分隔；传入后 offset 失效
+          schema:
+            type: string
+          in: query
       responses:
         "200":
           content:
@@ -599,6 +616,27 @@ paths:
             type: string
           in: header
           required: true
+        - name: branch
+          description: 分支，默认 main
+          schema:
+            type: string
+            default: main
+          in: query
+        - name: import_mode
+          description: |
+            导入模式。`normal` 遇到同名概念报错；`overwrite` 覆盖同名概念；
+            `ignore` 跳过同名概念。默认 `normal`。
+          schema:
+            type: string
+            enum: [normal, overwrite, ignore]
+            default: normal
+          in: query
+        - name: strict_mode
+          description: 是否校验依赖对象存在性，默认 true。为空时回退读取已废弃的 validate_dependency
+          schema:
+            type: boolean
+            default: true
+          in: query
       responses:
         "201":
           content:
@@ -1624,13 +1662,6 @@ paths:
             type: boolean
             default: true
           in: query
-        - name: validate_dependency
-          deprecated: true
-          description: "[已废弃] 请使用 strict_mode。兼容保留，strict_mode 为空时会读取此参数"
-          schema:
-            type: boolean
-            default: true
-          in: query
       responses:
         "204":
           description: ok
@@ -1665,6 +1696,12 @@ paths:
             type: string
           in: path
           required: true
+        - name: branch
+          description: 分支，默认 main
+          schema:
+            type: string
+            default: main
+          in: query
       responses:
         "200":
           content:
@@ -1695,6 +1732,12 @@ paths:
             type: boolean
             default: false
           in: query
+        - name: branch
+          description: 分支，默认 main
+          schema:
+            type: string
+            default: main
+          in: query
       responses:
         "204":
           description: ok
@@ -1714,6 +1757,101 @@ paths:
             type: string
         in: path
         required: true
+  /api/bkn-backend/v1/knowledge-networks/{kn_id}/object-types/{ot_ids}/sample-data:
+    get:
+      tags:
+        - ObjectType
+      summary: 查询对象类的样例数据
+      operationId: getObjectTypeSampleData
+      description: |
+        按对象类返回若干条真实对象实例，用于建模阶段核对映射是否正确。
+        `columns` 给出列的展示顺序与标题，`entries` 的元素结构随对象类的
+        属性定义而变，因此不做固定字段声明。
+      security:
+        - OAuth2: []
+      parameters:
+        - name: kn_id
+          description: 业务知识网络 ID
+          schema:
+            type: string
+          in: path
+          required: true
+        - name: ot_ids
+          description: 对象类 ID
+          schema:
+            type: string
+          in: path
+          required: true
+        - name: branch
+          description: 分支，默认 main
+          schema:
+            type: string
+            default: main
+          in: query
+        - name: limit
+          description: 返回条数，默认 20
+          schema:
+            type: integer
+            default: 20
+          in: query
+        - name: offset
+          description: 偏移量，默认 0
+          schema:
+            type: integer
+            default: 0
+          in: query
+        - name: need_total
+          description: 是否返回 total_count，默认 true
+          schema:
+            type: boolean
+            default: true
+          in: query
+        - name: search_after
+          description: 深翻页游标，逗号分隔；传入后 offset 失效
+          schema:
+            type: string
+          in: query
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  name:
+                    description: 对象类显示名
+                    type: string
+                  columns:
+                    description: 列定义，决定展示顺序与标题
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        data_index:
+                          description: 对应 entries 元素中的属性名
+                          type: string
+                        title:
+                          description: 列标题
+                          type: string
+                  entries:
+                    description: 样例数据行，元素的属性随对象类定义而变
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  total_count:
+                    description: 总条数，need_total=false 时不返回
+                    type: integer
+                    format: int64
+        '400':
+          description: 请求参数错误
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
+        '401':
+          description: 未授权
   /api/bkn-backend/v1/knowledge-networks/{kn_id}/object-types/{ob_id}/data_properties/{property_names}:
     put:
       parameters:

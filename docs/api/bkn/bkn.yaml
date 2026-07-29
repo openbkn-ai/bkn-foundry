@@ -7,10 +7,6 @@ info:
   contact:
     name: BKN Foundry Team
 
-servers:
-  - url: http://localhost:13014
-    description: Local development server
-
 security:
   - OAuth2: []
   - InternalAuth: []
@@ -57,6 +53,28 @@ paths:
           description: 业务域
           schema:
             type: string
+        - name: import_mode
+          description: |
+            导入模式。`normal` 遇到同名概念报错；`overwrite` 覆盖同名概念；
+            `ignore` 跳过同名概念。默认 `normal`。
+          schema:
+            type: string
+            enum: [normal, overwrite, ignore]
+            default: normal
+          in: query
+        - name: strict_mode
+          description: 是否校验依赖对象存在性，默认 true。为空时回退读取已废弃的 validate_dependency
+          schema:
+            type: boolean
+            default: true
+          in: query
+        - name: validate_dependency
+          deprecated: true
+          description: "[已废弃] 请使用 strict_mode。兼容保留，strict_mode 为空时会读取此参数"
+          schema:
+            type: boolean
+            default: true
+          in: query
       responses:
         '200':
           description: 导入成功
@@ -191,6 +209,19 @@ paths:
             type: integer
             format: int64
             default: 10
+        - name: sort
+          description: 排序字段，默认 name
+          schema:
+            type: string
+            default: name
+          in: query
+        - name: direction
+          description: 排序方向，默认 desc
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+          in: query
       responses:
         '200':
           description: ok

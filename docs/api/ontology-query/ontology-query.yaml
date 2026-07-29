@@ -63,6 +63,12 @@ paths:
           type: string
         in: path
         required: true
+      - name: branch
+        description: 分支，默认 main
+        schema:
+          type: string
+          default: main
+        in: query
       - name: include_type_info
         description: "是否包含对象类信息, 默认false，不包含"
         schema:
@@ -2611,6 +2617,12 @@ paths:
             type: integer
             default: 20
           in: query
+        - name: offset
+          description: 偏移量，默认 0；与 search_after 互斥，传了 search_after 后本参数失效
+          schema:
+            type: integer
+            default: 0
+          in: query
         - name: need_total
           description: 是否需要返回总数
           schema:
@@ -3672,7 +3684,6 @@ components:
       deprecated: true
       description: |
         **[已废弃]** 使用 `impact_contracts`。
-      required: []
       type: object
       properties:
         comment:
@@ -3921,7 +3932,6 @@ components:
           description: 对象实例的显示属性值。显示属性只选一个，所以这里直接展示值即可。默认返回，当 exclude_system_properties 排除时，不返回。
     ObjectInfo:
       description: 对象信息
-      required: []
       type: object
       properties:
         _instance_id:
