@@ -43,12 +43,35 @@ func TestCatalogHealthCheckWorkerRunDue(t *testing.T) {
 	w.runDue()
 }
 
-func TestCatalogHealthCheckWorkerRunDueRecoversPanic(t *testing.T) {
+func TestCatalogHealthCheckWorkerRunDueRecoversAccessPanic(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	t.Cleanup(ctrl.Finish)
 	sa := vmock.NewMockCatalogHealthCheckScheduleAccess(ctrl)
 	w := newCatalogHealthCheckWorker(&common.AppSetting{}, vmock.NewMockCatalogService(ctrl), sa)
-	sa.EXPECT().ListDue(gomock.Any(), gomock.Any()).Return([]*interfaces.CatalogHealthCheckSchedule{nil}, nil)
+	sa.EXPECT().ListDue(gomock.Any(), gomock.Any()).Do(
+		func(context.Context, int64) { panic("access panic") },
+	)
+
+	assert.NotPanics(t, w.runDue)
+}
+
+func TestCatalogHealthCheckWorkerRunDueContinuesAfterSchedulePanic(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+	cs := vmock.NewMockCatalogService(ctrl)
+	sa := vmock.NewMockCatalogHealthCheckScheduleAccess(ctrl)
+	w := newCatalogHealthCheckWorker(&common.AppSetting{}, cs, sa)
+	first := &interfaces.CatalogHealthCheckSchedule{CatalogID: "catalog-1", Mode: interfaces.CatalogHealthCheckScheduleModeInherit}
+	second := &interfaces.CatalogHealthCheckSchedule{CatalogID: "catalog-2", Mode: interfaces.CatalogHealthCheckScheduleModeInherit}
+
+	gomock.InOrder(
+		sa.EXPECT().ListDue(gomock.Any(), gomock.Any()).Return([]*interfaces.CatalogHealthCheckSchedule{first, second}, nil),
+		cs.EXPECT().TestConnection(gomock.Any(), &interfaces.Catalog{ID: "catalog-1", ConnectorType: "scheduled"}).Do(
+			func(context.Context, *interfaces.Catalog) { panic("connector panic") },
+		),
+		cs.EXPECT().TestConnection(gomock.Any(), &interfaces.Catalog{ID: "catalog-2", ConnectorType: "scheduled"}).Return(&interfaces.CatalogHealthCheckStatus{}, nil),
+		sa.EXPECT().UpdateRunMetadata(gomock.Any(), "catalog-2", gomock.Any(), gomock.Any()).Return(nil),
+	)
 
 	assert.NotPanics(t, w.runDue)
 }
