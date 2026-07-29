@@ -187,9 +187,10 @@ paths:
         - name: resource_type
           in: query
           required: true
-          description: 资源类型，如 `kn`
+          description: 资源类型。当前实现只识别 `kn`（知识网络），传其他值返回空结果
           schema:
             type: string
+            enum: [kn]
         - name: keyword
           in: query
           description: 名称关键字过滤，默认空

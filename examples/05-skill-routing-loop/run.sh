@@ -97,11 +97,11 @@ trap cleanup EXIT
 # poll the latest job until it reaches a terminal state.
 bkn_build_wait() { # <kn_id> <timeout_s>
     local kn="$1" timeout="${2:-60}" state
-    openbkn call "/api/ontology-manager/v1/knowledge-networks/$kn/jobs" -X POST \
+    openbkn call "/api/bkn-backend/v1/knowledge-networks/$kn/jobs" -X POST \
         -H "Content-Type: application/json" \
         -d "{\"name\":\"ex05_build_$(date +%s)\",\"job_type\":\"full\"}" >/dev/null 2>&1 || return 1
     for _ in $(seq 1 $((timeout / 3))); do
-        state=$(openbkn --json call "/api/ontology-manager/v1/knowledge-networks/$kn/jobs?limit=1&direction=desc" 2>/dev/null \
+        state=$(openbkn --json call "/api/bkn-backend/v1/knowledge-networks/$kn/jobs?limit=1&direction=desc" 2>/dev/null \
             | python3 -c "import json,sys
 d=json.load(sys.stdin)
 jobs=d if isinstance(d,list) else d.get('entries',[])

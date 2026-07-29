@@ -27,10 +27,18 @@
 | 🟧 mf-model-manager | [`mf-model-manager/`](mf-model-manager/) | 模型工厂。**仅部分**：目前只覆盖大模型的连通性测试、默认模型设置与用量总览，其余接口（小模型、配额、提示词等）尚未文档化 |
 
 > 未文档化的服务：`context-loader`、`execution-factory`、`bkn-safe`。
->
-> bkn-backend 另有一整套 `/api/ontology-manager/v1` 历史别名路由，与
-> `/api/bkn-backend/v1` 逐条等价且当前可用，本文档不收录；新接入方一律用
-> `/api/bkn-backend/v1`。
+
+### ⚠️ `/api/ontology-manager/v1` 是历史别名，不要再用
+
+bkn-backend 同时注册了 `/api/bkn-backend/v1` 与 `/api/ontology-manager/v1`
+两套外部路由，逐条等价（内部面的 `in/v1` 同理）。后者是 monorepo 重构
+（#111）时为兼容旧调用方保留的别名，helm ingress 至今仍暴露它。
+
+**规范前缀是 `/api/bkn-backend/v1`**，本文档只按它编写：
+
+- 仓库内的服务调用一律走 `/api/bkn-backend/v1`（128 处），无一处使用别名；
+- 唯一残留的使用方是 examples 脚本，已切到规范前缀；
+- 别名路由暂不下线，避免破坏存量客户端；待确认外部无调用后再移除。
 
 ## 🔗 共享定义
 

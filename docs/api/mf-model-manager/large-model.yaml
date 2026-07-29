@@ -178,7 +178,67 @@ paths:
             application/json:
               schema:
                 type: object
-                additionalProperties: true
+                properties:
+                  summary:
+                    description: 时间范围内的汇总指标
+                    type: object
+                    properties:
+                      total_usage:
+                        description: 调用次数
+                        type: integer
+                      total_tokens:
+                        description: token 总量
+                        type: integer
+                      input_tokens:
+                        description: 输入 token 数
+                        type: integer
+                      output_tokens:
+                        description: 输出 token 数
+                        type: integer
+                      avg_response_time:
+                        description: 平均响应耗时
+                        type: number
+                      error_rate:
+                        description: 错误率
+                        type: number
+                  trends:
+                    description: 按天聚合的趋势序列
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        date:
+                          description: 日期，格式 `YYYY-MM-DD`
+                          type: string
+                        input_tokens:
+                          description: 当日输入 token 数
+                          type: integer
+                        output_tokens:
+                          description: 当日输出 token 数
+                          type: integer
+                        avg_total_time:
+                          description: 当日平均总耗时
+                          type: number
+                        avg_first_time:
+                          description: 当日平均首 token 耗时
+                          type: number
+                        avg_rate:
+                          description: 当日平均出字速率
+                          type: number
+                  qps_data:
+                    description: QPS 序列，按 5 分钟粒度聚合
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        date:
+                          description: 时间点，格式 `YYYY-MM-DD HH:mm:00`
+                          type: string
+                        avg_qps:
+                          description: |
+                            平均 QPS。服务端固定格式化为 6 位小数的**字符串**
+                            （如 `"0.000000"`），不是数值类型。
+                          type: string
         '400':
           description: Missing or invalid date range
           content:
