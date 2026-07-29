@@ -84,6 +84,21 @@ func (mr *MockCatalogHealthCheckScheduleAccessMockRecorder) GetByCatalogID(ctx, 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByCatalogID", reflect.TypeOf((*MockCatalogHealthCheckScheduleAccess)(nil).GetByCatalogID), ctx, catalogID)
 }
 
+// ListDue mocks base method.
+func (m *MockCatalogHealthCheckScheduleAccess) ListDue(ctx context.Context, now int64) ([]*interfaces.CatalogHealthCheckSchedule, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListDue", ctx, now)
+	ret0, _ := ret[0].([]*interfaces.CatalogHealthCheckSchedule)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListDue indicates an expected call of ListDue.
+func (mr *MockCatalogHealthCheckScheduleAccessMockRecorder) ListDue(ctx, now any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListDue", reflect.TypeOf((*MockCatalogHealthCheckScheduleAccess)(nil).ListDue), ctx, now)
+}
+
 // Update mocks base method.
 func (m *MockCatalogHealthCheckScheduleAccess) Update(ctx context.Context, schedule *interfaces.CatalogHealthCheckSchedule) error {
 	m.ctrl.T.Helper()
@@ -96,4 +111,18 @@ func (m *MockCatalogHealthCheckScheduleAccess) Update(ctx context.Context, sched
 func (mr *MockCatalogHealthCheckScheduleAccessMockRecorder) Update(ctx, schedule any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Update", reflect.TypeOf((*MockCatalogHealthCheckScheduleAccess)(nil).Update), ctx, schedule)
+}
+
+// UpdateRunMetadata mocks base method.
+func (m *MockCatalogHealthCheckScheduleAccess) UpdateRunMetadata(ctx context.Context, catalogID string, lastRun, nextRun int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateRunMetadata", ctx, catalogID, lastRun, nextRun)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateRunMetadata indicates an expected call of UpdateRunMetadata.
+func (mr *MockCatalogHealthCheckScheduleAccessMockRecorder) UpdateRunMetadata(ctx, catalogID, lastRun, nextRun any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateRunMetadata", reflect.TypeOf((*MockCatalogHealthCheckScheduleAccess)(nil).UpdateRunMetadata), ctx, catalogID, lastRun, nextRun)
 }

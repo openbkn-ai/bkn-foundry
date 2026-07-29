@@ -167,6 +167,12 @@ func main() {
 	logger.Info("VEGA Manager Init Scheduler Success")
 	defer sw.Stop()
 
+	chcw := worker.NewCatalogHealthCheckWorker(appSetting)
+	if err := chcw.Start(); err != nil {
+		logger.Fatalf("Failed to start catalog health check worker: %v", err)
+	}
+	logger.Info("VEGA Manager Init Catalog Health Check Worker Success")
+
 	// 创建并启动服务
 	server := &mgrService{
 		appSetting:    appSetting,

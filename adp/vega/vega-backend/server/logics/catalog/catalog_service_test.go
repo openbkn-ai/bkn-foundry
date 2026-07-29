@@ -12,10 +12,13 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"vega-backend/common"
 	"vega-backend/interfaces"
 	mock_interfaces "vega-backend/interfaces/mock"
 )
@@ -423,6 +426,38 @@ func TestCatalogServiceTestConnection(t *testing.T) {
 		if result.HealthCheckResult == "" {
 			t.Fatal("expected an explicit logical catalog failure message")
 		}
+	})
+}
+
+func TestCatalogServiceTestConnectorConnection(t *testing.T) {
+	t.Run("passes configured timeout to connector", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		connector := mock_interfaces.NewMockConnector(ctrl)
+		cs := &catalogService{appSetting: &common.AppSetting{CatalogHealthCheck: common.CatalogHealthCheckConfig{Timeout: 2 * time.Second}}}
+
+		connector.EXPECT().TestConnection(gomock.Any()).DoAndReturn(func(ctx context.Context) error {
+			deadline, ok := ctx.Deadline()
+			require.True(t, ok)
+			assert.WithinDuration(t, time.Now().Add(2*time.Second), deadline, 100*time.Millisecond)
+			return nil
+		})
+
+		require.NoError(t, cs.testConnectorConnection(context.Background(), connector))
+	})
+
+	t.Run("uses default timeout when configuration is absent", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		connector := mock_interfaces.NewMockConnector(ctrl)
+		cs := &catalogService{}
+
+		connector.EXPECT().TestConnection(gomock.Any()).DoAndReturn(func(ctx context.Context) error {
+			deadline, ok := ctx.Deadline()
+			require.True(t, ok)
+			assert.WithinDuration(t, time.Now().Add(defaultConnectionTestTimeout), deadline, 100*time.Millisecond)
+			return nil
+		})
+
+		require.NoError(t, cs.testConnectorConnection(context.Background(), connector))
 	})
 }
 

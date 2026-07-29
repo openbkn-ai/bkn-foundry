@@ -13,4 +13,7 @@ type CatalogHealthCheckScheduleAccess interface {
 	GetByCatalogID(ctx context.Context, catalogID string) (*CatalogHealthCheckSchedule, error)
 	Update(ctx context.Context, schedule *CatalogHealthCheckSchedule) error
 	DeleteByCatalogIDs(ctx context.Context, catalogIDs []string) error
+
+	ListDue(ctx context.Context, now int64) ([]*CatalogHealthCheckSchedule, error)
+	UpdateRunMetadata(ctx context.Context, catalogID string, lastRun, nextRun int64) error
 }

@@ -42,6 +42,7 @@ const (
 	EncryptedPrefix = "ENC:"
 
 	catalogAuthResourcePermissionBatchSize = 10000
+	defaultConnectionTestTimeout           = 30 * time.Second
 )
 
 var (
@@ -206,7 +207,7 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 				verrors.VegaBackend_Catalog_InternalError_CreateFailed).WithErrorDetails(err.Error())
 		}
 
-		if err := connector.TestConnection(ctx); err != nil {
+		if err := cs.testConnectorConnection(ctx, connector); err != nil {
 			otellog.LogError(ctx, "Failed to test connection to data source", err)
 			_ = connector.Close(ctx)
 			if !allowUnhealthy {
@@ -671,7 +672,7 @@ func (cs *catalogService) Update(ctx context.Context, catalog *interfaces.Catalo
 				verrors.VegaBackend_Catalog_InternalError_CreateFailed).WithErrorDetails(err.Error())
 		}
 
-		if err := connector.TestConnection(ctx); err != nil {
+		if err := cs.testConnectorConnection(ctx, connector); err != nil {
 			otellog.LogError(ctx, "Failed to test connection to data source", err)
 			_ = connector.Close(ctx)
 			if !allowUnhealthy {
@@ -984,8 +985,10 @@ func (cs *catalogService) probeConnection(ctx context.Context, connectorType str
 	}
 	defer func() { _ = connector.Close(ctx) }()
 
-	result := &interfaces.CatalogHealthCheckStatus{LastCheckTime: time.Now().UnixMilli()}
-	if err := connector.TestConnection(ctx); err != nil {
+	result := &interfaces.CatalogHealthCheckStatus{
+		LastCheckTime: time.Now().UnixMilli(),
+	}
+	if err := cs.testConnectorConnection(ctx, connector); err != nil {
 		result.HealthCheckStatus = interfaces.CatalogHealthStatusUnhealthy
 		result.HealthCheckResult = "Connection test failed."
 		return result, nil
@@ -993,6 +996,17 @@ func (cs *catalogService) probeConnection(ctx context.Context, connectorType str
 	result.HealthCheckStatus = interfaces.CatalogHealthStatusHealthy
 	result.HealthCheckResult = "Connection test succeeded."
 	return result, nil
+}
+
+func (cs *catalogService) testConnectorConnection(ctx context.Context, connector interfaces.Connector) error {
+	timeout := defaultConnectionTestTimeout
+	if cs.appSetting != nil && cs.appSetting.CatalogHealthCheck.Timeout > 0 {
+		timeout = cs.appSetting.CatalogHealthCheck.Timeout
+	}
+	testCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	return connector.TestConnection(testCtx)
 }
 
 // validateAndDecryptSensitiveFields 验证敏感字段是否为合法 RSA 密文，

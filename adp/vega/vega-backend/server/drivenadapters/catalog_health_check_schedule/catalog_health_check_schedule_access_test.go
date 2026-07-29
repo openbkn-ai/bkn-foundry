@@ -19,11 +19,11 @@ import (
 	"vega-backend/interfaces"
 )
 
-func newCatalogHealthCheckScheduleAccessMock(t *testing.T) (*scheduleAccess, sqlmock.Sqlmock, func()) {
+func newCatalogHealthCheckScheduleAccessMock(t *testing.T) (*catalogHealthCheckScheduleAccess, sqlmock.Sqlmock, func()) {
 	t.Helper()
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	return &scheduleAccess{db: db}, mock, func() { _ = db.Close() }
+	return &catalogHealthCheckScheduleAccess{db: db}, mock, func() { _ = db.Close() }
 }
 
 func TestCatalogHealthCheckScheduleAccessCreate(t *testing.T) {
@@ -74,6 +74,37 @@ func TestCatalogHealthCheckScheduleAccessGetByCatalogID(t *testing.T) {
 	})
 }
 
+func TestCatalogHealthCheckScheduleAccessListDue(t *testing.T) {
+	t.Run("returns due schedules for enabled physical catalogs", func(t *testing.T) {
+		access, mock, cleanup := newCatalogHealthCheckScheduleAccessMock(t)
+		defer cleanup()
+
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT s.f_catalog_id, s.f_mode, s.f_cron_expr, s.f_last_run, s.f_next_run, s.f_creator, s.f_creator_type, s.f_create_time, s.f_updater, s.f_updater_type, s.f_update_time FROM t_catalog_health_check_schedule s JOIN t_catalog c ON c.f_id = s.f_catalog_id WHERE s.f_mode IN (?,?) AND s.f_next_run <= ? AND c.f_enabled = ? AND c.f_type = ? ORDER BY s.f_next_run ASC")).
+			WithArgs("inherit", "enabled", int64(100), true, "physical").
+			WillReturnRows(sqlmock.NewRows(scheduleColumns()).AddRow("catalog-1", "inherit", "", 0, 0, "", "", 0, "", "", 0))
+
+		schedules, err := access.ListDue(context.Background(), 100)
+
+		require.NoError(t, err)
+		require.Len(t, schedules, 1)
+		assert.Equal(t, "catalog-1", schedules[0].CatalogID)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("propagates query error", func(t *testing.T) {
+		access, mock, cleanup := newCatalogHealthCheckScheduleAccessMock(t)
+		defer cleanup()
+
+		queryErr := sql.ErrConnDone
+		mock.ExpectQuery("SELECT s.f_catalog_id").WillReturnError(queryErr)
+
+		_, err := access.ListDue(context.Background(), 100)
+
+		require.ErrorIs(t, err, queryErr)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+}
+
 func TestCatalogHealthCheckScheduleAccessUpdate(t *testing.T) {
 	t.Run("updates configuration without modifying last run", func(t *testing.T) {
 		access, mock, cleanup := newCatalogHealthCheckScheduleAccessMock(t)
@@ -104,6 +135,35 @@ func TestCatalogHealthCheckScheduleAccessUpdate(t *testing.T) {
 			WithArgs("inherit", "", int64(0), "", "", int64(0), "catalog-1").WillReturnError(updateErr)
 
 		err := access.Update(context.Background(), schedule)
+
+		require.ErrorIs(t, err, updateErr)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+}
+
+func TestCatalogHealthCheckScheduleAccessUpdateRunMetadata(t *testing.T) {
+	t.Run("updates runtime metadata without modifying configuration or audit fields", func(t *testing.T) {
+		access, mock, cleanup := newCatalogHealthCheckScheduleAccessMock(t)
+		defer cleanup()
+
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_catalog_health_check_schedule SET f_last_run = ?, f_next_run = ? WHERE f_catalog_id = ?")).
+			WithArgs(int64(100), int64(200), "catalog-1").
+			WillReturnResult(sqlmock.NewResult(0, 1))
+
+		require.NoError(t, access.UpdateRunMetadata(context.Background(), "catalog-1", 100, 200))
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("propagates update error", func(t *testing.T) {
+		access, mock, cleanup := newCatalogHealthCheckScheduleAccessMock(t)
+		defer cleanup()
+
+		updateErr := sql.ErrConnDone
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_catalog_health_check_schedule SET f_last_run = ?, f_next_run = ? WHERE f_catalog_id = ?")).
+			WithArgs(int64(100), int64(200), "catalog-1").
+			WillReturnError(updateErr)
+
+		err := access.UpdateRunMetadata(context.Background(), "catalog-1", 100, 200)
 
 		require.ErrorIs(t, err, updateErr)
 		require.NoError(t, mock.ExpectationsWereMet())
