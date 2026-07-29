@@ -2330,6 +2330,37 @@ components:
           enum:
             - object_type
           type: string
+        incremental_key:
+          description: 增量同步所依据的属性名
+          type: string
+        status:
+          description: 对象类的索引状态（由 Vega 侧索引信息汇总）
+          type: object
+          properties:
+            incremental_key:
+              description: 增量同步所依据的属性名
+              type: string
+            incremental_value:
+              description: 最近一次增量同步到的位点值
+              type: string
+            index:
+              description: 关联的索引名
+              type: string
+            index_available:
+              description: 索引是否可用
+              type: boolean
+            doc_count:
+              description: 索引内文档数
+              type: integer
+              format: int64
+            storage_size:
+              description: 索引占用的存储字节数
+              type: integer
+              format: int64
+            update_time:
+              description: 索引状态更新时间
+              type: integer
+              format: int64
     ConceptGroup:
       description: 概念分组
       required:
@@ -2343,6 +2374,33 @@ components:
         name:
           description: 概念分组名称
           type: string
+        module_type:
+          description: 概念所属模块类型
+          type: string
+        tags:
+          description: 标签
+          type: array
+          items:
+            type: string
+        comment:
+          description: 描述
+          type: string
+        icon:
+          description: 图标
+          type: string
+        color:
+          description: 颜色
+          type: string
+        kn_id:
+          description: 所属知识网络 ID
+          type: string
+        branch:
+          description: 所属分支
+          type: string
+        creator:
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
+        updater:
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
     override:
       oneOf:
         - type: object

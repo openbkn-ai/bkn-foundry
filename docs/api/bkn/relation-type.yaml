@@ -1098,6 +1098,9 @@ components:
         color:
           description: 对象类颜色
           type: string
+        branch:
+          description: 所属分支
+          type: string
     Path:
       description: 路径
       required:
@@ -1579,6 +1582,9 @@ components:
           format: int64
           description: 最近一次更新时间
           type: integer
+        module_type:
+          description: 概念所属模块类型
+          type: string
     RelationType:
       description: 关系类
       required:
@@ -1657,6 +1663,37 @@ components:
           format: int64
           description: 最近一次更新时间
           type: integer
+        source_object_type:
+          description: 起点对象类的概要信息
+          type: object
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+            branch:
+              type: string
+            icon:
+              type: string
+            color:
+              type: string
+        target_object_type:
+          description: 终点对象类的概要信息
+          type: object
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+            branch:
+              type: string
+            icon:
+              type: string
+            color:
+              type: string
+        module_type:
+          description: 概念所属模块类型
+          type: string
     RelationTypeSearchResponse:
       description: 关系类检索返回结果
       required:

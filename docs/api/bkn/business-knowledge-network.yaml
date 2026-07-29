@@ -1838,3 +1838,15 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ActionTypeDetail"
+
+        business_domain:
+          description: 业务域标识
+          type: string
+        module_type:
+          description: 概念所属模块类型
+          type: string
+        operations:
+          description: 当前访问者对该资源可执行的操作码列表（由授权服务下发）
+          type: array
+          items:
+            type: string

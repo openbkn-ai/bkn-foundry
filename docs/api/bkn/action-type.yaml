@@ -730,6 +730,9 @@ components:
         color:
           description: 对象类颜色
           type: string
+        branch:
+          description: 所属分支
+          type: string
     AffectDetail:
       deprecated: true
       description: |
@@ -1321,6 +1324,20 @@ components:
           enum:
             - action_type
           type: string
+        object_type:
+          description: 行动所属对象类的概要信息
+          type: object
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+            branch:
+              type: string
+            icon:
+              type: string
+            color:
+              type: string
     condition_or:
       description: or 的过滤条件
       required:
