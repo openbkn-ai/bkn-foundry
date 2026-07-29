@@ -179,7 +179,7 @@ paths:
       tags:
         - BKN
       summary: 列出资源
-      description: 按资源类型分页列出资源（统一资源平台）。当前支持 `resource_type=kn`（知识网络）。
+      description: 按资源类型分页列出资源（统一资源平台）。当前支持 `resource_type=knowledge_network`（知识网络）。
       operationId: listResources
       security:
         - OAuth2: []
@@ -187,10 +187,16 @@ paths:
         - name: resource_type
           in: query
           required: true
-          description: 资源类型。当前实现只识别 `kn`（知识网络），传其他值返回空结果
+          description: |
+            资源类型。当前实现只识别 `knowledge_network`（知识网络），
+            对应 `interfaces.RESOURCE_TYPE_KN`。
+
+            传其他值不报错，而是走 default 分支**返回 200 且响应体为空**
+            （不是空列表，是完全没有 body）。取值写错时的表现是客户端
+            JSON 解析失败或拿不到任何数据，而不是 400。
           schema:
             type: string
-            enum: [kn]
+            enum: [knowledge_network]
         - name: keyword
           in: query
           description: 名称关键字过滤，默认空
