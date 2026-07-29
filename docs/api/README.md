@@ -18,13 +18,19 @@
 
 ## 🗂️ 模块一览
 
-| 模块 | 目录 | 说明 |
+| 模块 | 目录 | 覆盖情况 |
 |---|---|---|
-| 🟦 bkn-backend | [`bkn/`](bkn/) | 业务知识网络：对象类 / 关系类 / 行动类 / 概念组 / 指标 / 导入导出 |
-| 🟩 ontology-query | [`ontology-query/`](ontology-query/) | 本体查询 / 语义检索 |
-| 🟨 vega-backend | [`vega/`](vega/) | 数据可观测：目录 / 资源 / 连接器 / 构建任务 / 发现任务 / 原生查询 |
+| 🟦 bkn-backend | [`bkn/`](bkn/) | 业务知识网络：对象类 / 关系类 / 行动类 / 概念组 / 指标 / 导入导出。**全量** |
+| 🟩 ontology-query | [`ontology-query/`](ontology-query/) | 本体查询 / 语义检索 / 行动执行与日志。**全量** |
+| 🟨 vega-backend | [`vega/`](vega/) | 数据可观测：目录 / 资源 / 连接器 / 构建任务 / 发现任务 / 原生查询。**全量** |
+| 🟪 bkn-agent | [`bkn-agent/`](bkn-agent/) | Agent 运行时：agent CRUD / 对话 / 任务 / 提示词 / 导入导出。**全量** |
+| 🟧 mf-model-manager | [`mf-model-manager/`](mf-model-manager/) | 模型工厂。**仅部分**：目前只覆盖大模型的连通性测试、默认模型设置与用量总览，其余接口（小模型、配额、提示词等）尚未文档化 |
 
-> 待补写模块（各自独立 PR）：`context-loader`、`execution-factory`、`bkn-safe`、`mf-model`。
+> 未文档化的服务：`context-loader`、`execution-factory`、`bkn-safe`。
+>
+> bkn-backend 另有一整套 `/api/ontology-manager/v1` 历史别名路由，与
+> `/api/bkn-backend/v1` 逐条等价且当前可用，本文档不收录；新接入方一律用
+> `/api/bkn-backend/v1`。
 
 ## 🔗 共享定义
 

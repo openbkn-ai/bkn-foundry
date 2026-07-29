@@ -2548,7 +2548,7 @@ components:
         mapping:
           x-http-method-override:POST: "#/components/schemas/ReqObjectTypes"
           x-http-method-override:GET: "#/components/schemas/override--get"
-        propertyName": x-http-method-override
+        propertyName: x-http-method-override
       description: post 重载批量创建、对象类检索接口
       type: object
     Sort:

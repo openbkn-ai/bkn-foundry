@@ -1407,7 +1407,7 @@ components:
         mapping:
           x-http-method-override:POST: "#/components/schemas/ReqRelationTypes"
           x-http-method-override:GET: "#/components/schemas/override--get"
-        propertyName": x-http-method-override
+        propertyName: x-http-method-override
       description: post 重载批量创建、关系类检索接口
       type: object
     override--get:
