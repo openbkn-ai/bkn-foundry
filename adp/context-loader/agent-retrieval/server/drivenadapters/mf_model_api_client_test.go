@@ -10,7 +10,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
 // chatOKResp 构造一个能被 chatCompletionsResp 解析的成功响应

@@ -9,8 +9,8 @@ package mcp
 import (
 	"github.com/mark3labs/mcp-go/mcp"
 
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/rest"
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/utils"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/rest"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/utils"
 )
 
 // GetResponseFormatFromRequest 从 MCP CallToolRequest 的 arguments 中解析 response_format，未传时默认 toon

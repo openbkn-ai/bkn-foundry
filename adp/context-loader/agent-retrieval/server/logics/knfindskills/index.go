@@ -17,12 +17,12 @@ import (
 
 	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/drivenadapters"
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/common"
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/config"
-	infraErr "github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/errors"
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/localize"
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/drivenadapters"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/config"
+	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/localize"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
 var requiredSkillsDataProperties = []string{"skill_id", "name"}

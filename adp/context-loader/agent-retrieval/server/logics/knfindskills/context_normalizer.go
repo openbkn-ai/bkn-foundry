@@ -10,8 +10,8 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/config"
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/config"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
 // NormalizeAndDetectMode validates the request and determines the recall mode.

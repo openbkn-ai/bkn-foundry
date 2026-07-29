@@ -8,7 +8,7 @@
 package validator
 
 import (
-	myErr "github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/errors"
+	myErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 )
 
 // TagToErrorType Validate tag 映射到错误分类
