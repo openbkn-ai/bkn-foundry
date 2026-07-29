@@ -23,7 +23,7 @@ uvicorn main:app --port 30800
 
 ## API
 
-契约冻结于 `docs/api/bkn-agent.yaml`（OpenAPI 3.1，#212）。改 API 走 spec 先行：
+契约冻结于 `docs/api/bkn-agent/bkn-agent.yaml`（OpenAPI 3.1，#212）。改 API 走 spec 先行：
 先改实现里的路由/模型并跑 `python scripts/export_openapi.py` 重新导出，
 `app/test/test_contract.py` 强制 spec 与实现一致。
 
