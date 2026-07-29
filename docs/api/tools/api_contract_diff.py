@@ -351,6 +351,31 @@ def _q(s):
     return "'" + s.replace("'", "'\\''") + "'" if re.search(r"[\s\"'$]", s) else s
 
 
+def sample_value(param):
+    """给必填 query 参数造一个合规取值。
+
+    不猜业务语义，只按 schema 声明来：example > default > enum 首项 >
+    按 type/format 生成。造不出来就返回 None，让调用方把该接口标为
+    「需要人工提供参数」而不是发一个必然 400 的请求。
+    """
+    sch = param.get("schema") or {}
+    for src in (param.get("example"), sch.get("example"), sch.get("default")):
+        if src is not None:
+            return str(src)
+    if sch.get("enum"):
+        return str(sch["enum"][0])
+    fmt, typ = sch.get("format"), sch.get("type")
+    if fmt == "date":
+        return "2000-01-01"
+    if fmt == "date-time":
+        return "2000-01-01T00:00:00Z"
+    if typ in ("integer", "number"):
+        return str(sch.get("minimum", 0))
+    if typ == "boolean":
+        return "false"
+    return None
+
+
 # --------------------------------------------------------------------------
 # 路径参数发现
 # --------------------------------------------------------------------------
@@ -530,6 +555,23 @@ def main():
         if not host:
             op["skip"] = "无服务地址映射"
             continue
+        # 必填 query 参数不带就是必然 400，按 schema 造一个合规取值
+        required_q = [p for p in op["params"]
+                      if p.get("in") == "query" and p.get("required")]
+        qs, unfillable = [], []
+        for p in required_q:
+            v = sample_value(p)
+            if v is None:
+                unfillable.append(p.get("name"))
+            else:
+                qs.append(f"{p['name']}={v}")
+        if unfillable:
+            op["skip"] = "必填 query 参数无法自动取值 " + ",".join(unfillable)
+            continue
+        if qs:
+            url = url + ("&" if "?" in url else "?") + "&".join(qs)
+            op["filled_query"] = qs
+
         rid = f"op{i}"
         h = dict(headers)
         body = None
