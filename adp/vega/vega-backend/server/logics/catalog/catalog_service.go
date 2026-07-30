@@ -45,6 +45,7 @@ const (
 
 	catalogAuthResourcePermissionBatchSize = 10000
 	defaultConnectionTestTimeout           = 30 * time.Second
+	connectorInitializationFailedResult    = "Connector initialization failed."
 	connectionTestFailedResult             = "Connection test failed."
 )
 
@@ -224,7 +225,7 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 		if err != nil {
 			otellog.LogError(ctx, "Failed to create connector", err)
 			return "", rest.NewHTTPError(ctx, http.StatusBadRequest,
-				verrors.VegaBackend_Catalog_InternalError_CreateFailed).WithErrorDetails(err.Error())
+				verrors.VegaBackend_Catalog_InternalError_CreateFailed).WithErrorDetails(connectorInitializationFailedResult)
 		}
 
 		if err := cs.testConnectorConnection(ctx, connector); err != nil {
@@ -697,7 +698,7 @@ func (cs *catalogService) Update(ctx context.Context, catalog *interfaces.Catalo
 		if err != nil {
 			otellog.LogError(ctx, "Failed to create connector", err)
 			return rest.NewHTTPError(ctx, http.StatusBadRequest,
-				verrors.VegaBackend_Catalog_InternalError_CreateFailed).WithErrorDetails(err.Error())
+				verrors.VegaBackend_Catalog_InternalError_CreateFailed).WithErrorDetails(connectorInitializationFailedResult)
 		}
 
 		if err := cs.testConnectorConnection(ctx, connector); err != nil {
@@ -1067,8 +1068,9 @@ func (cs *catalogService) probeConnection(ctx context.Context, connectorType str
 	config interfaces.ConnectorConfig) (*interfaces.CatalogHealthCheckStatus, error) {
 	connector, err := factory.GetFactory().CreateConnectorInstance(ctx, connectorType, config)
 	if err != nil {
+		otellog.LogError(ctx, "Failed to create connector", err)
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
-			verrors.VegaBackend_Catalog_InternalError_CreateFailed).WithErrorDetails(err.Error())
+			verrors.VegaBackend_Catalog_InternalError_CreateFailed).WithErrorDetails(connectorInitializationFailedResult)
 	}
 	defer func() { _ = connector.Close(ctx) }()
 

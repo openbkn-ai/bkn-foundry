@@ -49,6 +49,34 @@ func (m *mockCipher) Signature(data string) (string, error) {
 	return "", nil
 }
 
+func patchConnectorInitializationError(t *testing.T, connectorErr error) {
+	t.Helper()
+
+	patches := gomonkey.ApplyFunc(factory.GetFactory, func() *factory.ConnectorFactory {
+		return &factory.ConnectorFactory{}
+	})
+	patches.ApplyMethod(&factory.ConnectorFactory{}, "GetSensitiveFields",
+		func(*factory.ConnectorFactory, string) []string {
+			return nil
+		})
+	patches.ApplyMethod(&factory.ConnectorFactory{}, "CreateConnectorInstance",
+		func(*factory.ConnectorFactory, context.Context, string, interfaces.ConnectorConfig) (interfaces.Connector, error) {
+			return nil, connectorErr
+		})
+	t.Cleanup(patches.Reset)
+}
+
+func requireRedactedConnectorInitializationError(t *testing.T, err error, sensitiveError string) {
+	t.Helper()
+
+	var httpErr *rest.HTTPError
+	require.ErrorAs(t, err, &httpErr)
+	assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+	assert.Equal(t, verrors.VegaBackend_Catalog_InternalError_CreateFailed, httpErr.BaseError.ErrorCode)
+	assert.NotContains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), sensitiveError)
+	assert.Contains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), connectorInitializationFailedResult)
+}
+
 func TestValidateAndDecryptSensitiveFields(t *testing.T) {
 	t.Run("validate and decrypt no cipher", func(t *testing.T) {
 		cs := &catalogService{cipher: nil}
@@ -274,6 +302,23 @@ func TestCatalogServiceCheckExistByName(t *testing.T) {
 }
 
 func TestCatalogServiceCreate(t *testing.T) {
+	t.Run("does not expose connector initialization error", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		sensitiveError := "invalid endpoint db.internal with token secret"
+
+		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		patchConnectorInitializationError(t, errors.New(sensitiveError))
+
+		cs := &catalogService{ps: mockPS}
+		_, err := cs.Create(context.Background(), &interfaces.CatalogRequest{
+			Name:          "physical-catalog",
+			ConnectorType: "mariadb",
+		}, false)
+
+		requireRedactedConnectorInitializationError(t, err, sensitiveError)
+	})
+
 	t.Run("rejects physical internal catalog before permission check", func(t *testing.T) {
 		cs := &catalogService{}
 
@@ -523,6 +568,23 @@ func TestCatalogServiceCreate(t *testing.T) {
 }
 
 func TestCatalogServiceTestConnection(t *testing.T) {
+	t.Run("does not expose connector initialization error during preflight", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		sensitiveError := "invalid endpoint db.internal with token secret"
+
+		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		patchConnectorInitializationError(t, errors.New(sensitiveError))
+
+		cs := &catalogService{ps: mockPS}
+		result, err := cs.TestConnectionConfig(context.Background(), &interfaces.CatalogConnectionTestRequest{
+			ConnectorType: "mariadb",
+		})
+
+		assert.Nil(t, result)
+		requireRedactedConnectorInitializationError(t, err, sensitiveError)
+	})
+
 	t.Run("returns not found for missing catalog", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		ca := mock_interfaces.NewMockCatalogAccess(ctrl)
@@ -633,6 +695,26 @@ func TestCatalogServiceTestConnectorConnection(t *testing.T) {
 }
 
 func TestCatalogServiceUpdate(t *testing.T) {
+	t.Run("does not expose connector initialization error", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		sensitiveError := "invalid endpoint db.internal with token secret"
+
+		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		patchConnectorInitializationError(t, errors.New(sensitiveError))
+
+		cs := &catalogService{ps: mockPS}
+		err := cs.Update(context.Background(), &interfaces.Catalog{
+			ID:   "catalog-1",
+			Name: "physical-catalog",
+		}, &interfaces.CatalogRequest{
+			Name:          "physical-catalog",
+			ConnectorType: "mariadb",
+		}, false)
+
+		requireRedactedConnectorInitializationError(t, err, sensitiveError)
+	})
+
 	t.Run("does not expose connector error when connection test fails", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
