@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    name: ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Vet
+        # kingbase/gokb has pre-existing unreachable-code findings; exclude until cleaned up
+        run: |
+          packages="$(go list ./... | grep -v '/db/driver/kingbase/gokb$')"
+          go vet $packages
+
+      - name: Test
+        # db/driver (+ mysql/dmdb/kingbase) tests require live DB env vars (e.g. MYSQL_TEST_PORT)
+        run: |
+          packages="$(go list ./... | grep -Ev '/db/driver($|/(mysql|dmdb|kingbase)$)')"
+          go test $packages
