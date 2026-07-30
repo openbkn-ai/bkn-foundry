@@ -52,3 +52,12 @@ jobs:
 
       - name: Test
         run: go test $(go list ./... | grep -Ev '/db/driver($|/(mysql|dmdb|kingbase)$)')
+
+      # entitlement ships two mutually exclusive gates behind build tags, and
+      # the default job only ever compiles one of them. Without this step the
+      # development stub could stop building — or stop denying — and nothing
+      # would notice until someone tried to run a validation build.
+      - name: Build and test the ee_dev variant
+        run: |
+          go build -tags ee_dev ./...
+          go test -tags ee_dev ./entitlement/...
