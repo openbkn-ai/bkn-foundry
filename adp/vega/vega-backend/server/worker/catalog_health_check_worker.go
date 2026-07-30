@@ -99,9 +99,10 @@ func (w *CatalogHealthCheckWorker) runDue() {
 }
 
 func (w *CatalogHealthCheckWorker) runCatalogHealthCheck(ctx context.Context, schedule *interfaces.CatalogHealthCheckSchedule) {
+	catalogID := schedule.CatalogID
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			logger.Errorf("Run catalog health check panicked: catalog_id=%s, error=%v", schedule.CatalogID, recovered)
+			logger.Errorf("Run catalog health check panicked: catalog_id=%s, error=%v", catalogID, recovered)
 		}
 	}()
 

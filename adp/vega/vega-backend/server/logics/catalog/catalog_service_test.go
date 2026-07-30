@@ -511,7 +511,7 @@ func TestCatalogServiceTestConnectorConnection(t *testing.T) {
 	t.Run("uses default timeout when configuration is absent", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		connector := mock_interfaces.NewMockConnector(ctrl)
-		cs := &catalogService{}
+		cs := &catalogService{appSetting: &common.AppSetting{}}
 
 		connector.EXPECT().TestConnection(gomock.Any()).DoAndReturn(func(ctx context.Context) error {
 			deadline, ok := ctx.Deadline()
