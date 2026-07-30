@@ -325,6 +325,11 @@ print(json.dumps(out))
 
 
 class Executor:
+    # probe 内部每个请求 20s 超时且串行，外层按请求数给出上界，
+    # 再留 60s 覆盖 ssh 握手与 kubectl exec 建流。
+    PER_REQUEST_TIMEOUT = 20
+    SETUP_TIMEOUT = 60
+
     def __init__(self, args):
         self.args = args
 
@@ -332,15 +337,23 @@ class Executor:
         if not requests:
             return {}
         payload = json.dumps(requests)
+        timeout = self.SETUP_TIMEOUT + self.PER_REQUEST_TIMEOUT * len(requests)
         if self.args.exec_mode == "direct":
-            proc = subprocess.run([sys.executable, "-c", PROBE_SRC], input=payload,
-                                  capture_output=True, text=True)
+            cmd = [sys.executable, "-c", PROBE_SRC]
         else:
             remote = ["kubectl", "exec", "-n", self.args.namespace, "-i",
                       self.args.exec_pod, "--", "python3", "-c", PROBE_SRC]
-            cmd = ["ssh", self.args.ssh] + [" ".join(_q(c) for c in remote)] \
+            # BatchMode 让缺密钥时立即失败而非等交互输入，ConnectTimeout 兜住网络不通
+            cmd = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
+                   self.args.ssh, " ".join(_q(c) for c in remote)] \
                 if self.args.ssh else remote
-            proc = subprocess.run(cmd, input=payload, capture_output=True, text=True)
+        try:
+            proc = subprocess.run(cmd, input=payload, capture_output=True,
+                                  text=True, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            raise RuntimeError(
+                f"probe 执行超时({timeout}s，{len(requests)} 个请求)："
+                "ssh 或目标 pod 无响应") from None
         if proc.returncode != 0:
             raise RuntimeError(f"probe 执行失败: {proc.stderr[:400]}")
         line = proc.stdout.strip().splitlines()[-1] if proc.stdout.strip() else "[]"

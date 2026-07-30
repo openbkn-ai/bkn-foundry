@@ -44,6 +44,10 @@ python3 docs/api/tools/api_contract_diff.py --spec-dir docs/api \
 
 退出码：`0` 无缺口，`1` 有缺口，`2` 执行错误。
 
+远端执行带超时：ssh 用 `BatchMode` + `ConnectTimeout=10` 快速失败，外层按请求数
+设上界（每请求 20s + 60s 建连余量）。ssh 或目标 pod 无响应时按执行错误退出，不会
+无限期挂住。
+
 ## 只读保证
 
 - 只发 `GET`。
@@ -81,16 +85,11 @@ python3 docs/api/tools/api_contract_diff.py --spec-dir docs/api \
   报告末尾按原因列出。
 - **内部面与外部面有差异**。`auth-resources`、`connector-types`、bkn `/resources` 只有外部面，
   用 `--face in` 会 404，这几个必须带 token 跑。
-- **嵌套深度上限 4 层**，递归 schema（如 `condition.sub_conditions`）到环即停。
+- **嵌套深度上限 7 层**（脚本 `MAX_DEPTH`），递归 schema（如 `condition.sub_conditions`）
+  到引用环即停。
 
-## 定时任务
+## 为什么没有定时任务
 
-`.github/workflows/api-contract-diff.yml`：手动触发 + 每周一定时。
-
-公共 runner 访问不到内网环境，需要二选一：
-
-- 配置 self-hosted runner，设仓库变量 `CONTRACT_RUNNER` 指向它；
-- 或配置 `secrets.CONTRACT_SSH_KEY` 走跳板。
-
-另需 `secrets.CONTRACT_ACCOUNT_ID`（内部面）或 `secrets.CONTRACT_TOKEN`（外部面）。
-两者都没配时 job 会**显式跳过并告警**，不会给出「通过」的假象。
+本工具必须连真实环境，而公共 runner 访问不到内网。要挂 CI 需要先具备 self-hosted
+runner 或跳板机，再把环境地址与凭据配成仓库 secrets。这套前提目前不具备，因此暂以
+手动执行为主，仓库里也没有对应的 workflow。
