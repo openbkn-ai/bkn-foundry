@@ -743,15 +743,19 @@ func (cs *catalogService) Update(ctx context.Context, catalog *interfaces.Catalo
 	tx, err := cs.db.BeginTx(ctx, nil)
 	if err != nil {
 		span.SetStatus(codes.Error, "Update catalog transaction failed")
+		otellog.LogError(ctx, "Update catalog transaction failed", err)
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			verrors.VegaBackend_Catalog_InternalError_UpdateFailed).WithErrorDetails(err.Error())
+			verrors.VegaBackend_Catalog_InternalError_UpdateFailed).
+			WithErrorDetails("failed to update catalog")
 	}
 	defer func() { _ = tx.Rollback() }()
 
 	if err := cs.ca.Update(ctx, tx, catalog); err != nil {
 		span.SetStatus(codes.Error, "Update catalog failed")
+		otellog.LogError(ctx, "Update catalog failed", err)
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			verrors.VegaBackend_Catalog_InternalError_UpdateFailed).WithErrorDetails(err.Error())
+			verrors.VegaBackend_Catalog_InternalError_UpdateFailed).
+			WithErrorDetails("failed to update catalog")
 	}
 
 	if req.Extensions != nil {
@@ -760,14 +764,18 @@ func (cs *catalogService) Update(ctx context.Context, catalog *interfaces.Catalo
 		}
 		if err := entityextension.NewStore(cs.appSetting).Replace(ctx, tx, entityextension.KindCatalog, catalog.ID, *req.Extensions); err != nil {
 			span.SetStatus(codes.Error, "Replace catalog extensions failed")
+			otellog.LogError(ctx, "Replace catalog extensions failed", err)
 			return rest.NewHTTPError(ctx, http.StatusInternalServerError,
-				verrors.VegaBackend_Catalog_InternalError_UpdateFailed).WithErrorDetails(err.Error())
+				verrors.VegaBackend_Catalog_InternalError_UpdateFailed).
+				WithErrorDetails("failed to update catalog")
 		}
 	}
 	if err := tx.Commit(); err != nil {
 		span.SetStatus(codes.Error, "Commit catalog update transaction failed")
+		otellog.LogError(ctx, "Commit catalog update transaction failed", err)
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			verrors.VegaBackend_Catalog_InternalError_UpdateFailed).WithErrorDetails(err.Error())
+			verrors.VegaBackend_Catalog_InternalError_UpdateFailed).
+			WithErrorDetails("failed to update catalog")
 	}
 
 	// 请求更新资源名称的接口，更新资源的名称
@@ -977,8 +985,10 @@ func (cs *catalogService) TestConnection(ctx context.Context, catalogID string) 
 
 	catalog, err := cs.ca.GetByID(ctx, catalogID)
 	if err != nil {
+		otellog.LogError(ctx, "Get catalog for connection test failed", err)
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			verrors.VegaBackend_Catalog_InternalError_GetFailed).WithErrorDetails(err.Error())
+			verrors.VegaBackend_Catalog_InternalError_GetFailed).
+			WithErrorDetails("failed to get catalog for connection test")
 	}
 	if catalog == nil {
 		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound)
@@ -1042,8 +1052,10 @@ func (cs *catalogService) testCatalogConnection(
 		return nil, err
 	}
 	if err := cs.ca.UpdateHealthCheckStatus(ctx, catalog.ID, *result); err != nil {
+		otellog.LogError(ctx, "Update catalog health check status failed", err)
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			verrors.VegaBackend_Catalog_InternalError_UpdateFailed).WithErrorDetails(err.Error())
+			verrors.VegaBackend_Catalog_InternalError_UpdateFailed).
+			WithErrorDetails("failed to update catalog health check status")
 	}
 	return result, nil
 }

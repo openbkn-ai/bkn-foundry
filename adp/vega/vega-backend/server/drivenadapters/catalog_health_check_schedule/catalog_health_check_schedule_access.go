@@ -273,15 +273,26 @@ func (chcsa *catalogHealthCheckScheduleAccess) Update(ctx context.Context, s *in
 		return err
 	}
 
-	_, err = chcsa.db.ExecContext(ctx, query, args...)
+	result, err := chcsa.db.ExecContext(ctx, query, args...)
 	if err != nil {
 		span.SetStatus(codes.Error, "Update failed")
 		otellog.LogError(ctx, "Update catalog health check schedule failed", err)
 		return err
 	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		span.SetStatus(codes.Error, "Get affected rows failed")
+		otellog.LogError(ctx, "Get updated catalog health check schedule rows failed", err)
+		return err
+	}
+	if affected == 0 {
+		span.SetStatus(codes.Error, "Schedule not found")
+		otellog.LogError(ctx, "Update catalog health check schedule failed", sql.ErrNoRows)
+		return sql.ErrNoRows
+	}
 
 	span.SetStatus(codes.Ok, "")
-	return err
+	return nil
 }
 
 func (chcsa *catalogHealthCheckScheduleAccess) UpdateRunMetadata(

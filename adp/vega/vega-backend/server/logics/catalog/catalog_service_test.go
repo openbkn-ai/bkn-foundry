@@ -609,6 +609,67 @@ func TestCatalogServiceTestConnection(t *testing.T) {
 		assert.Equal(t, http.StatusNotFound, httpErr.HTTPCode)
 		assert.Nil(t, result)
 	})
+	t.Run("redacts catalog query error", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		ca := mock_interfaces.NewMockCatalogAccess(ctrl)
+		ps := mock_interfaces.NewMockPermissionService(ctrl)
+		sensitiveError := "select t_catalog failed at db.internal"
+		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		ca.EXPECT().GetByID(gomock.Any(), "catalog-1").Return(nil, errors.New(sensitiveError))
+
+		cs := &catalogService{ca: ca, ps: ps}
+		result, err := cs.TestConnection(context.Background(), "catalog-1")
+
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_Catalog_InternalError_GetFailed, httpErr.BaseError.ErrorCode)
+		assert.Contains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), "failed to get catalog for connection test")
+		assert.NotContains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), sensitiveError)
+		assert.Nil(t, result)
+	})
+	t.Run("redacts health status update error", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		ca := mock_interfaces.NewMockCatalogAccess(ctrl)
+		ps := mock_interfaces.NewMockPermissionService(ctrl)
+		connector := mock_interfaces.NewMockConnector(ctrl)
+		sensitiveError := "update t_catalog health status failed at db.internal"
+
+		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		ca.EXPECT().GetByID(gomock.Any(), "catalog-1").Return(&interfaces.Catalog{
+			ID:            "catalog-1",
+			Type:          interfaces.CatalogTypePhysical,
+			ConnectorType: "mariadb",
+		}, nil)
+		connector.EXPECT().TestConnection(gomock.Any()).Return(nil)
+		connector.EXPECT().Close(gomock.Any()).Return(nil)
+		ca.EXPECT().UpdateHealthCheckStatus(gomock.Any(), "catalog-1", gomock.Any()).
+			Return(errors.New(sensitiveError))
+
+		patches := gomonkey.ApplyFunc(factory.GetFactory, func() *factory.ConnectorFactory {
+			return &factory.ConnectorFactory{}
+		})
+		patches.ApplyMethod(&factory.ConnectorFactory{}, "GetSensitiveFields",
+			func(*factory.ConnectorFactory, string) []string {
+				return nil
+			})
+		patches.ApplyMethod(&factory.ConnectorFactory{}, "CreateConnectorInstance",
+			func(*factory.ConnectorFactory, context.Context, string, interfaces.ConnectorConfig) (interfaces.Connector, error) {
+				return connector, nil
+			})
+		t.Cleanup(patches.Reset)
+
+		cs := &catalogService{appSetting: &common.AppSetting{}, ca: ca, ps: ps}
+		result, err := cs.TestConnection(context.Background(), "catalog-1")
+
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_Catalog_InternalError_UpdateFailed, httpErr.BaseError.ErrorCode)
+		assert.Contains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), "failed to update catalog health check status")
+		assert.NotContains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), sensitiveError)
+		assert.Nil(t, result)
+	})
 	t.Run("test connection logical catalog returns an explicit failure", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
@@ -795,7 +856,8 @@ func TestCatalogServiceUpdate(t *testing.T) {
 		require.NoError(t, err)
 		t.Cleanup(func() { _ = db.Close() })
 
-		replaceErr := errors.New("replace extensions failed")
+		sensitiveError := "replace t_entity_extension failed at db.internal"
+		replaceErr := errors.New(sensitiveError)
 		patches := gomonkey.NewPatches()
 		t.Cleanup(patches.Reset)
 		patches.ApplyFunc(entityextension.NewStore, func(_ *common.AppSetting) *entityextension.Store {
@@ -829,8 +891,12 @@ func TestCatalogServiceUpdate(t *testing.T) {
 			Extensions: &extensionValues,
 		}, false)
 
-		require.Error(t, err)
-		assert.ErrorContains(t, err, replaceErr.Error())
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_Catalog_InternalError_UpdateFailed, httpErr.BaseError.ErrorCode)
+		assert.Contains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), "failed to update catalog")
+		assert.NotContains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), sensitiveError)
 		require.NoError(t, sqlMock.ExpectationsWereMet())
 	})
 }

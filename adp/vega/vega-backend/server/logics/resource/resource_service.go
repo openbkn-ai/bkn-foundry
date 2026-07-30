@@ -270,7 +270,8 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 	if err != nil {
 		otellog.LogError(ctx, "Create resource transaction failed", err)
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			verrors.VegaBackend_Resource_InternalError_CreateFailed).WithErrorDetails(err.Error())
+			verrors.VegaBackend_Resource_InternalError_CreateFailed).
+			WithErrorDetails("failed to create resource")
 	}
 	defer func() { _ = tx.Rollback() }()
 
@@ -278,21 +279,22 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 	if err != nil {
 		otellog.LogError(ctx, "Create resource failed", err)
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_CreateFailed).
-			WithErrorDetails(err.Error())
+			WithErrorDetails("failed to create resource")
 	}
 
 	if req.Extensions != nil {
 		if err := entityextension.NewStore(rs.appSetting).Replace(ctx, tx, entityextension.KindResource, resource.ID, *req.Extensions); err != nil {
-			logger.Errorf("Replace resource extensions failed: %v", err)
 			span.SetStatus(codes.Error, "Replace resource extensions failed")
+			otellog.LogError(ctx, "Replace resource extensions failed", err)
 			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_CreateFailed).
-				WithErrorDetails(err.Error())
+				WithErrorDetails("failed to create resource")
 		}
 	}
 	if err := tx.Commit(); err != nil {
 		otellog.LogError(ctx, "Commit resource creation transaction failed", err)
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			verrors.VegaBackend_Resource_InternalError_CreateFailed).WithErrorDetails(err.Error())
+			verrors.VegaBackend_Resource_InternalError_CreateFailed).
+			WithErrorDetails("failed to create resource")
 	}
 
 	switch resource.Category {
@@ -751,28 +753,34 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 	tx, err := rs.db.BeginTx(ctx, nil)
 	if err != nil {
 		span.SetStatus(codes.Error, "Update resource transaction failed")
+		otellog.LogError(ctx, "Update resource transaction failed", err)
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			verrors.VegaBackend_Resource_InternalError_UpdateFailed).WithErrorDetails(err.Error())
+			verrors.VegaBackend_Resource_InternalError_UpdateFailed).
+			WithErrorDetails("failed to update resource")
 	}
 	defer func() { _ = tx.Rollback() }()
 
 	if err := rs.ra.Update(ctx, tx, resource); err != nil {
 		span.SetStatus(codes.Error, "Update resource failed")
+		otellog.LogError(ctx, "Update resource failed", err)
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_UpdateFailed).
-			WithErrorDetails(err.Error())
+			WithErrorDetails("failed to update resource")
 	}
 
 	if req.Extensions != nil {
 		if err := entityextension.NewStore(rs.appSetting).Replace(ctx, tx, entityextension.KindResource, resource.ID, *req.Extensions); err != nil {
 			span.SetStatus(codes.Error, "Replace resource extensions failed")
+			otellog.LogError(ctx, "Replace resource extensions failed", err)
 			return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_UpdateFailed).
-				WithErrorDetails(err.Error())
+				WithErrorDetails("failed to update resource")
 		}
 	}
 	if err := tx.Commit(); err != nil {
 		span.SetStatus(codes.Error, "Commit resource update transaction failed")
+		otellog.LogError(ctx, "Commit resource update transaction failed", err)
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			verrors.VegaBackend_Resource_InternalError_UpdateFailed).WithErrorDetails(err.Error())
+			verrors.VegaBackend_Resource_InternalError_UpdateFailed).
+			WithErrorDetails("failed to update resource")
 	}
 
 	span.SetStatus(codes.Ok, "")

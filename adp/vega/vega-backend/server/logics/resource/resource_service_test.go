@@ -420,7 +420,8 @@ func TestResourceServiceCreate(t *testing.T) {
 		rs.db = db
 		rs.appSetting = &common.AppSetting{}
 
-		replaceErr := errors.New("replace extensions failed")
+		sensitiveError := "replace t_entity_extension failed at db.internal"
+		replaceErr := errors.New(sensitiveError)
 		patches := gomonkey.NewPatches()
 		t.Cleanup(patches.Reset)
 		patches.ApplyFunc(entityextension.NewStore, func(_ *common.AppSetting) *entityextension.Store {
@@ -448,8 +449,12 @@ func TestResourceServiceCreate(t *testing.T) {
 			Extensions: &extensionValues,
 		})
 
-		require.Error(t, err)
-		assert.ErrorContains(t, err, replaceErr.Error())
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_Resource_InternalError_CreateFailed, httpErr.BaseError.ErrorCode)
+		assert.Contains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), "failed to create resource")
+		assert.NotContains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), sensitiveError)
 		require.NoError(t, sqlMock.ExpectationsWereMet())
 	})
 
@@ -733,7 +738,8 @@ func TestResourceServiceUpdate(t *testing.T) {
 		rs.db = db
 		rs.appSetting = &common.AppSetting{}
 
-		replaceErr := errors.New("replace extensions failed")
+		sensitiveError := "replace t_entity_extension failed at db.internal"
+		replaceErr := errors.New(sensitiveError)
 		patches := gomonkey.NewPatches()
 		t.Cleanup(patches.Reset)
 		patches.ApplyFunc(entityextension.NewStore, func(_ *common.AppSetting) *entityextension.Store {
@@ -765,8 +771,12 @@ func TestResourceServiceUpdate(t *testing.T) {
 			Extensions: &extensionValues,
 		})
 
-		require.Error(t, err)
-		assert.ErrorContains(t, err, replaceErr.Error())
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_Resource_InternalError_UpdateFailed, httpErr.BaseError.ErrorCode)
+		assert.Contains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), "failed to update resource")
+		assert.NotContains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), sensitiveError)
 		require.NoError(t, sqlMock.ExpectationsWereMet())
 	})
 

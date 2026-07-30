@@ -183,6 +183,41 @@ func TestCatalogHealthCheckScheduleAccessUpdate(t *testing.T) {
 		require.ErrorIs(t, err, updateErr)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
+
+	t.Run("returns not found when no schedule is updated", func(t *testing.T) {
+		access, mock, cleanup := newCatalogHealthCheckScheduleAccessMock(t)
+		defer cleanup()
+		schedule := &interfaces.CatalogHealthCheckSchedule{
+			CatalogID: "missing",
+			Mode:      interfaces.CatalogHealthCheckScheduleModeInherit,
+		}
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_catalog_health_check_schedule SET f_mode = ?, f_cron_expr = ?, f_next_run = ?, f_updater = ?, f_updater_type = ?, f_update_time = ? WHERE f_catalog_id = ?")).
+			WithArgs("inherit", "", int64(0), "", "", int64(0), "missing").
+			WillReturnResult(sqlmock.NewResult(0, 0))
+
+		err := access.Update(context.Background(), schedule)
+
+		require.ErrorIs(t, err, sql.ErrNoRows)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("propagates affected rows error", func(t *testing.T) {
+		access, mock, cleanup := newCatalogHealthCheckScheduleAccessMock(t)
+		defer cleanup()
+		affectedRowsErr := sql.ErrConnDone
+		schedule := &interfaces.CatalogHealthCheckSchedule{
+			CatalogID: "catalog-1",
+			Mode:      interfaces.CatalogHealthCheckScheduleModeInherit,
+		}
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_catalog_health_check_schedule SET f_mode = ?, f_cron_expr = ?, f_next_run = ?, f_updater = ?, f_updater_type = ?, f_update_time = ? WHERE f_catalog_id = ?")).
+			WithArgs("inherit", "", int64(0), "", "", int64(0), "catalog-1").
+			WillReturnResult(sqlmock.NewErrorResult(affectedRowsErr))
+
+		err := access.Update(context.Background(), schedule)
+
+		require.ErrorIs(t, err, affectedRowsErr)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
 }
 
 func TestCatalogHealthCheckScheduleAccessUpdateRunMetadata(t *testing.T) {
