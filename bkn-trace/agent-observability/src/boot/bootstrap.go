@@ -307,7 +307,10 @@ func newApp(
 		evidenceHandler.GetTraceSubresource(w, r)
 	}))
 	mux.HandleFunc(APIBasePath+"/evidence-nodes/", readAuth(evidenceHandler.GetEvidenceNode))
-	mux.HandleFunc(APIBasePath+"/evidence/events", ledgerHandler.Ingest)
+	mux.HandleFunc(
+		APIBasePath+"/evidence/events",
+		evidenceHandler.RequireTrustedLifecycleIdentity(ledgerHandler.Ingest),
+	)
 	mux.HandleFunc(APIBasePath+"/evidence/artifacts", evidenceHandler.IngestEvidenceArtifact)
 	mux.HandleFunc(APIBasePath+"/evidence/artifacts/", readAuth(evidenceHandler.GetEvidenceArtifact))
 	mux.HandleFunc(APIBasePath+"/evidence/by-trace", readAuth(evidenceHandler.SearchEvidenceByTrace))

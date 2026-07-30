@@ -136,13 +136,39 @@ func TestRetryWindowExpiryMovesEventToDLQ(t *testing.T) {
 	}
 }
 
+func TestProjectionWorkerContinuesAfterLeaseIsLost(t *testing.T) {
+	t.Parallel()
+
+	store := &fakeOutboxStore{
+		items: []iprojectionoutbox.Item{
+			{ID: 1, EventID: "evt-lost"},
+			{ID: 2, EventID: "evt-current"},
+		},
+		markDeliveredErrors: map[uint64]error{
+			1: iprojectionoutbox.ErrLeaseLost,
+		},
+	}
+	worker := projectorsvc.NewWorker(
+		store, &fakeProjectionSink{}, projectorsvc.WorkerOptions{},
+	)
+
+	result, err := worker.RunOnce(context.Background())
+	if err != nil {
+		t.Fatalf("lease loss must not abort the batch: %v", err)
+	}
+	if result.Delivered != 1 || len(store.delivered) != 1 || store.delivered[0] != 2 {
+		t.Fatalf("worker did not continue after lease loss: result=%#v store=%#v", result, store)
+	}
+}
+
 type fakeOutboxStore struct {
-	items     []iprojectionoutbox.Item
-	retried   []iprojectionoutbox.Item
-	delivered []uint64
-	dead      []uint64
-	deadCode  string
-	retryAt   time.Time
+	items               []iprojectionoutbox.Item
+	retried             []iprojectionoutbox.Item
+	delivered           []uint64
+	dead                []uint64
+	deadCode            string
+	retryAt             time.Time
+	markDeliveredErrors map[uint64]error
 }
 
 func (s *fakeOutboxStore) Lease(_ context.Context, _ int, _ time.Duration) ([]iprojectionoutbox.Item, error) {
@@ -151,6 +177,9 @@ func (s *fakeOutboxStore) Lease(_ context.Context, _ int, _ time.Duration) ([]ip
 	return items, nil
 }
 func (s *fakeOutboxStore) MarkDelivered(_ context.Context, item iprojectionoutbox.Item) error {
+	if err := s.markDeliveredErrors[item.ID]; err != nil {
+		return err
+	}
 	s.delivered = append(s.delivered, item.ID)
 	return nil
 }

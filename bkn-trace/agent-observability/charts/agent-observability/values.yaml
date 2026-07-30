@@ -66,15 +66,15 @@ businessResolver:
   timeout: 3s
 
 core:
-  # MariaDB is the authoritative store in deployed environments. Use memory
-  # only for isolated local tests that do not claim durable lifecycle support.
-  store: mariadb
+  # Keep existing trace/evidence reads available after an upgrade. Enable
+  # MariaDB explicitly only after its Secret and database are ready.
+  store: memory
   autoMigrate: true
   abandonInterval: 30s
   oneShotIdleTTL: 15m
   evidenceCollectionState: enabled
   projection:
-    enabled: true
+    enabled: false
     index: bkn-trace-core
     interval: 1s
     rebuildVersion: bkn-trace-core-v013

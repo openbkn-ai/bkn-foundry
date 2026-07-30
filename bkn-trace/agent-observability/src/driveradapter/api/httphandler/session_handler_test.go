@@ -13,7 +13,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/driveradapter/api/httphandler"
 )
 
-func TestEnsureConversationUsesTrustedHeadersAndIgnoresBodyIdentity(t *testing.T) {
+func TestEnsureConversationRejectsBodyIdentityFields(t *testing.T) {
 	t.Parallel()
 
 	handler := httphandler.NewSessionHandler(sessionsvc.New(sessionstore.New(), sessionsvc.Options{}))
@@ -29,15 +29,13 @@ func TestEnsureConversationUsesTrustedHeadersAndIgnoresBodyIdentity(t *testing.T
 
 	handler.EnsureCurrentConversation(response, request)
 
-	if response.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d: %s", response.Code, response.Body.String())
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", response.Code, response.Body.String())
 	}
-	var conversation sessionvo.Conversation
-	if err := json.Unmarshal(response.Body.Bytes(), &conversation); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if conversation.Owner.TenantID != "tenant-1" || conversation.Owner.EffectiveSubjectID != "user-1" {
-		t.Fatalf("body identity overrode trusted headers: %#v", conversation.Owner)
+	var envelope lifecycleTestErrorEnvelope
+	decodeLifecycleResponse(t, response, &envelope)
+	if envelope.Error.Code != "conversation_required" {
+		t.Fatalf("unexpected identity-field rejection: %#v", envelope.Error)
 	}
 }
 

@@ -856,6 +856,13 @@ func (h *EvidenceHandler) RequireTrustedLifecycleIdentity(next http.HandlerFunc)
 		}
 		r.Header.Set("X-BKN-Tenant-ID", scope.TenantID)
 		r.Header.Set("X-Business-Domain-ID", scope.BusinessDomain)
+		if _, ok := trustedOwnerFromRequest(r); !ok {
+			writeLifecycleError(
+				w, r, http.StatusUnauthorized, "permission_denied",
+				"trusted gateway must provide the complete lifecycle owner identity",
+			)
+			return
+		}
 
 		next(w, r)
 	}

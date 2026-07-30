@@ -3,6 +3,7 @@ package projectorsvc
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"math/big"
 	"time"
 
@@ -72,6 +73,9 @@ func (w *Worker) RunOnce(ctx context.Context) (RunResult, error) {
 		projectionErr := w.sink.Project(ctx, item)
 		if projectionErr == nil {
 			if err := w.store.MarkDelivered(ctx, item); err != nil {
+				if errors.Is(err, iprojectionoutbox.ErrLeaseLost) {
+					continue
+				}
 				return result, err
 			}
 			result.Delivered++
@@ -89,6 +93,9 @@ func (w *Worker) RunOnce(ctx context.Context) (RunResult, error) {
 				failureClass = "retry_window_expired"
 			}
 			if err := w.store.MoveToDLQ(ctx, item, failureClass); err != nil {
+				if errors.Is(err, iprojectionoutbox.ErrLeaseLost) {
+					continue
+				}
 				return result, err
 			}
 			result.Dead++
@@ -96,6 +103,9 @@ func (w *Worker) RunOnce(ctx context.Context) (RunResult, error) {
 		}
 		delay := w.options.FullJitter(retryDelay(item.Attempts + 1))
 		if err := w.store.MarkRetry(ctx, item, "projection_failed", w.options.Now().UTC().Add(delay)); err != nil {
+			if errors.Is(err, iprojectionoutbox.ErrLeaseLost) {
+				continue
+			}
 			return result, err
 		}
 		result.Retried++

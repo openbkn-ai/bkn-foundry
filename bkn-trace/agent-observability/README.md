@@ -157,21 +157,35 @@ Trace Graph 单次最多返回 1000 个 span 节点。命中上限时服务会�
 
 ### Evidence 写入安全边界
 
-`POST /api/agent-observability/v1/evidence/events` 是写接口，生产环境必须通过平台网关鉴权保护，或配置服务内最小 ingest token：
+`POST /api/agent-observability/v1/evidence/events` 是权威 Ledger 写接口，生产环境必须同时经过平台可信网关身份校验和服务内 ingest token 校验。网关必须剥离外部调用方提交的 owner header，并从认证上下文重新注入完整 owner tuple；服务不接受请求 body 自报 owner。
 
 ```bash
 kubectl create secret generic bkn-trace-evidence-ingest \
   --from-literal=token='<strong-token>' \
+  -n observability
+
+kubectl create secret generic bkn-trace-query-gateway \
+  --from-literal=token='<different-strong-token>' \
+  -n observability
+
+kubectl create secret generic bkn-trace-core-mariadb \
+  --from-literal=dsn='<user>:<password>@tcp(<host>:3306)/<database>?parseTime=true' \
   -n observability
 ```
 
 ```bash
 helm upgrade --install agent-observability charts/agent-observability \
   --set evidence.ingestAuth.existingSecret=bkn-trace-evidence-ingest \
+  --set evidence.queryAuth.existingSecret=bkn-trace-query-gateway \
+  --set core.store=mariadb \
+  --set core.mariadb.existingSecret=bkn-trace-core-mariadb \
+  --set core.projection.enabled=true \
   -n observability
 ```
 
-写入方需要携带 `Authorization: Bearer <strong-token>` 或 `X-BKN-Trace-Ingest-Token: <strong-token>`。生产环境未配置 `BKN_TRACE_EVIDENCE_INGEST_TOKEN` 时接口返回 `503 INGEST_AUTH_NOT_CONFIGURED`，不得 fail-open。仅本地开发和测试可显式设置 `BKN_TRACE_ALLOW_UNAUTHENTICATED_INGEST=true`；Helm 默认值为 `false`。
+内部写入方需要携带 `X-BKN-Trace-Ingest-Token` 和由网关注入的 `X-BKN-Trace-Query-Token`，以及 tenant、business domain、application principal、effective subject type/id 和可选 delegation 构成的 owner tuple。生产环境未配置相应凭据时接口拒绝写入，不得 fail-open。仅本地开发和测试可显式设置 `BKN_TRACE_ALLOW_UNAUTHENTICATED_INGEST=true`；该开关只绕过 ingest token，不能绕过可信网关身份边界，Helm 默认值为 `false`。
+
+Chart 默认使用 memory store 且关闭 Core projection，以保证存量 trace/evidence 读取在普通 chart 升级时不会因缺少新 Secret 而中断。该默认值不代表具备 durable lifecycle；生产启用受管 Conversation / Interaction 时必须显式采用上面的 MariaDB 与 projection 配置。
 
 Studio 查询使用用户 OAuth access token。核心服务通过 `BKN_TRACE_HYDRA_ADMIN_URL` 调用 Hydra introspection，从 token 派生可信 `account_id/account_type`，拒绝客户端自报身份与 token 不一致的请求；当前业务域由 Studio 发送。解析 BKN/Vega 业务名称时只在内存中向授权下游转发该 Bearer，不能写入日志、事件、索引或响应。服务到服务查询仍可配置独立的 `BKN_TRACE_QUERY_GATEWAY_TOKEN`，不得把该 token 放入浏览器。
 

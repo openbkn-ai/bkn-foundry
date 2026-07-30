@@ -208,6 +208,39 @@ func TestLifecycleIdentityRejectsAnonymousQueryCompatibilityMode(t *testing.T) {
 	}
 }
 
+func TestLifecycleIdentityRejectsIncompleteOwnerTupleAtGatewayBoundary(t *testing.T) {
+	handler := NewEvidenceHandlerWithSecurityConfig(
+		evidencesvc.New(evidencestore.New()),
+		EvidenceHandlerSecurityConfig{QueryGatewayToken: "trusted-gateway-token"},
+	)
+	nextCalled := false
+	next := handler.RequireTrustedLifecycleIdentity(func(
+		http.ResponseWriter, *http.Request,
+	) {
+		nextCalled = true
+	})
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/api/agent-observability/v1/conversations:ensure-current",
+		nil,
+	)
+	request.Header.Set("X-BKN-Trace-Query-Token", "trusted-gateway-token")
+	request.Header.Set("x-account-id", "subject-1")
+	request.Header.Set("x-account-type", "service")
+	request.Header.Set("x-business-domain", "domain-1")
+	request.Header.Set("x-tenant-id", "tenant-1")
+	response := httptest.NewRecorder()
+
+	next(response, request)
+
+	if response.Code != http.StatusUnauthorized || nextCalled {
+		t.Fatalf(
+			"incomplete owner tuple must be rejected at the gateway boundary: %d %s",
+			response.Code, response.Body.String(),
+		)
+	}
+}
+
 func TestEvidenceHandlerRejectsOAuthIdentityMismatch(t *testing.T) {
 	hydra := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, `{"active":true,"sub":"acct_demo","client_id":"openbkn-studio","ext":{"visitor_type":"user"}}`)

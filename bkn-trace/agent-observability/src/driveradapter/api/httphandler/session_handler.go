@@ -41,12 +41,6 @@ type ensureConversationRequest struct {
 	ExternalConversationKey string `json:"external_conversation_key"`
 	IdempotencyKey          string `json:"idempotency_key"`
 	OneShot                 bool   `json:"one_shot"`
-	TenantID                string `json:"tenant_id,omitempty"`
-	BusinessDomainID        string `json:"business_domain_id,omitempty"`
-	ApplicationPrincipalID  string `json:"application_principal_id,omitempty"`
-	EffectiveSubjectType    string `json:"effective_subject_type,omitempty"`
-	EffectiveSubjectID      string `json:"effective_subject_id,omitempty"`
-	DelegationID            string `json:"delegation_id,omitempty"`
 }
 
 type startInteractionRequest struct {

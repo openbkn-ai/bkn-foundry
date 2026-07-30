@@ -3,6 +3,7 @@ package projectionrebuildsvc
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iprojectionrebuild"
 )
@@ -60,7 +61,7 @@ func (s *Service) Rebuild(ctx context.Context, projectorID, alias, indexVersion 
 			}
 		}
 		if err := s.target.ValidateVersion(ctx, indexVersion, items); err != nil {
-			return Result{}, ErrProjectionValidation
+			return Result{}, fmt.Errorf("validate authoritative projection: %w", err)
 		}
 		last := items[len(items)-1]
 		afterType, afterID = last.AggregateType, last.AggregateID
@@ -90,7 +91,7 @@ func (s *Service) Rebuild(ctx context.Context, projectorID, alias, indexVersion 
 				checkpoint = item.ID
 			}
 			if err := s.target.ValidateVersion(ctx, indexVersion, items); err != nil {
-				return Result{}, ErrProjectionValidation
+				return Result{}, fmt.Errorf("validate projection history: %w", err)
 			}
 			if err := s.source.SaveProjectionCheckpoint(
 				ctx, projectorID, indexVersion, checkpoint,

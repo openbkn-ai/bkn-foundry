@@ -53,6 +53,26 @@ func TestRebuildDoesNotSwitchAliasWhenDocumentContentValidationFails(t *testing.
 	}
 }
 
+func TestRebuildPreservesProjectionInfrastructureFailure(t *testing.T) {
+	t.Parallel()
+
+	infrastructureErr := errors.New("OpenSearch timeout")
+	source := &fakeSource{authoritative: []iprojectionoutbox.Item{
+		projectionItem("conversation", "conv-1", `{"status":"active"}`),
+	}}
+	target := newFakeTarget()
+	target.validateErr = infrastructureErr
+	service := projectionrebuildsvc.New(source, target, projectionrebuildsvc.Options{})
+
+	_, err := service.Rebuild(context.Background(), "core", "alias", "version")
+	if !errors.Is(err, infrastructureErr) {
+		t.Fatalf("projection infrastructure failure was replaced: %v", err)
+	}
+	if errors.Is(err, projectionrebuildsvc.ErrProjectionValidation) {
+		t.Fatalf("infrastructure failure was misclassified as data divergence: %v", err)
+	}
+}
+
 func TestRebuildCatchesUpEventsCommittedDuringSnapshotBeforeAliasSwitch(t *testing.T) {
 	t.Parallel()
 
@@ -185,10 +205,11 @@ func (s *fakeSource) SaveProjectionCheckpoint(_ context.Context, _, _ string, va
 }
 
 type fakeTarget struct {
-	documents map[string][]byte
-	corrupt   bool
-	alias     string
-	version   string
+	documents   map[string][]byte
+	corrupt     bool
+	validateErr error
+	alias       string
+	version     string
 }
 
 func newFakeTarget() *fakeTarget {
@@ -211,6 +232,9 @@ func (t *fakeTarget) ValidateVersion(
 	_ string,
 	items []iprojectionoutbox.Item,
 ) error {
+	if t.validateErr != nil {
+		return t.validateErr
+	}
 	for _, item := range items {
 		if !bytes.Equal(t.documents[iprojectionoutbox.DocumentID(item)], item.Payload) {
 			return projectionrebuildsvc.ErrProjectionValidation

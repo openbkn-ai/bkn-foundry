@@ -3,6 +3,15 @@ set -euo pipefail
 
 chart_dir="${1:-charts/agent-observability}"
 default_rendered="$(helm template agent-observability "${chart_dir}")"
+if grep -Fq "BKN_TRACE_CORE_MARIADB_DSN" <<<"${default_rendered}"; then
+  echo "default chart must not require the MariaDB Core secret" >&2
+  exit 1
+fi
+if ! grep -A1 -Fq "name: BKN_TRACE_PROJECTION_ENABLED
+              value: \"false\"" <<<"${default_rendered}"; then
+  echo "Core projection must be disabled by default" >&2
+  exit 1
+fi
 if grep -Fq "agent-observability-evidence-index-template" <<<"${default_rendered}"; then
   echo "evidence index template must not render by default" >&2
   exit 1
