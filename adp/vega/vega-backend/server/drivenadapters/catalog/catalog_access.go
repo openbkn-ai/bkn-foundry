@@ -90,7 +90,6 @@ func (ca *catalogAccess) Create(ctx context.Context, tx *sql.Tx, catalog *interf
 			"f_connector_type",
 			"f_connector_config",
 			"f_metadata",
-			"f_health_check_enabled",
 			"f_health_check_status",
 			"f_last_check_time",
 			"f_health_check_result",
@@ -112,7 +111,6 @@ func (ca *catalogAccess) Create(ctx context.Context, tx *sql.Tx, catalog *interf
 			catalog.ConnectorType,
 			connectorConfigStr,
 			metadataStr,
-			catalog.HealthCheckEnabled,
 			catalog.HealthCheckStatus,
 			catalog.LastCheckTime,
 			catalog.HealthCheckResult,
@@ -162,7 +160,6 @@ func (ca *catalogAccess) GetByID(ctx context.Context, id string) (*interfaces.Ca
 		"f_connector_type",
 		"f_connector_config",
 		"f_metadata",
-		"f_health_check_enabled",
 		"f_health_check_status",
 		"f_last_check_time",
 		"f_health_check_result",
@@ -198,7 +195,6 @@ func (ca *catalogAccess) GetByID(ctx context.Context, id string) (*interfaces.Ca
 		&catalog.ConnectorType,
 		&connectorConfigStr,
 		&metadataStr,
-		&catalog.HealthCheckEnabled,
 		&catalog.HealthCheckStatus,
 		&catalog.LastCheckTime,
 		&catalog.HealthCheckResult,
@@ -268,7 +264,6 @@ func (ca *catalogAccess) GetByIDs(ctx context.Context, ids []string) ([]*interfa
 		"f_connector_type",
 		"f_connector_config",
 		"f_metadata",
-		"f_health_check_enabled",
 		"f_health_check_status",
 		"f_last_check_time",
 		"f_health_check_result",
@@ -313,7 +308,6 @@ func (ca *catalogAccess) GetByIDs(ctx context.Context, ids []string) ([]*interfa
 			&catalog.ConnectorType,
 			&connectorConfigStr,
 			&metadataStr,
-			&catalog.HealthCheckEnabled,
 			&catalog.HealthCheckStatus,
 			&catalog.LastCheckTime,
 			&catalog.HealthCheckResult,
@@ -391,7 +385,6 @@ func (ca *catalogAccess) GetByName(ctx context.Context, name string) (*interface
 		"f_connector_type",
 		"f_connector_config",
 		"f_metadata",
-		"f_health_check_enabled",
 		"f_health_check_status",
 		"f_last_check_time",
 		"f_health_check_result",
@@ -427,7 +420,6 @@ func (ca *catalogAccess) GetByName(ctx context.Context, name string) (*interface
 		&catalog.ConnectorType,
 		&connectorConfigStr,
 		&metadataStr,
-		&catalog.HealthCheckEnabled,
 		&catalog.HealthCheckStatus,
 		&catalog.LastCheckTime,
 		&catalog.HealthCheckResult,
@@ -605,7 +597,6 @@ func (ca *catalogAccess) List(ctx context.Context, params interfaces.CatalogsQue
 		catalogExtCol(params, "f_connector_type"),
 		catalogExtCol(params, "f_connector_config"),
 		catalogExtCol(params, "f_metadata"),
-		catalogExtCol(params, "f_health_check_enabled"),
 		catalogExtCol(params, "f_health_check_status"),
 		catalogExtCol(params, "f_last_check_time"),
 		catalogExtCol(params, "f_health_check_result"),
@@ -702,7 +693,6 @@ func (ca *catalogAccess) List(ctx context.Context, params interfaces.CatalogsQue
 			&catalog.ConnectorType,
 			&connectorConfigStr,
 			&metadataStr,
-			&catalog.HealthCheckEnabled,
 			&catalog.HealthCheckStatus,
 			&catalog.LastCheckTime,
 			&catalog.HealthCheckResult,
@@ -850,7 +840,6 @@ func (ca *catalogAccess) Update(ctx context.Context, tx *sql.Tx, catalog *interf
 		Set("f_connector_type", catalog.ConnectorType).
 		Set("f_connector_config", string(connectorConfigBytes)).
 		Set("f_metadata", string(metadataBytes)).
-		Set("f_health_check_enabled", catalog.HealthCheckEnabled).
 		Set("f_health_check_status", catalog.HealthCheckStatus).
 		Set("f_last_check_time", catalog.LastCheckTime).
 		Set("f_health_check_result", catalog.HealthCheckResult).

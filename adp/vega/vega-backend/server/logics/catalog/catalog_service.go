@@ -243,16 +243,15 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 		id = xid.New().String()
 	}
 	catalog := &interfaces.Catalog{
-		ID:                 id,
-		Name:               req.Name,
-		Tags:               req.Tags,
-		Description:        req.Description,
-		Type:               catalogType,
-		Enabled:            req.Enabled,
-		Internal:           req.Internal,
-		ConnectorType:      req.ConnectorType,
-		ConnectorCfg:       req.ConnectorCfg,
-		HealthCheckEnabled: true,
+		ID:            id,
+		Name:          req.Name,
+		Tags:          req.Tags,
+		Description:   req.Description,
+		Type:          catalogType,
+		Enabled:       req.Enabled,
+		Internal:      req.Internal,
+		ConnectorType: req.ConnectorType,
+		ConnectorCfg:  req.ConnectorCfg,
 		CatalogHealthCheckStatus: interfaces.CatalogHealthCheckStatus{
 			HealthCheckStatus: healthStatus,
 			LastCheckTime:     now,

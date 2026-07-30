@@ -663,9 +663,6 @@ components:
           additionalProperties: true
         extensions:
           $ref: "#/components/schemas/EntityExtensions"
-        health_check_enabled:
-          description: 是否开启周期健康检查
-          type: boolean
         health_check_status:
           description: 最近一次健康检查状态
           type: string

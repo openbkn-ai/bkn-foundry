@@ -5,6 +5,9 @@
 
 USE openbkn;
 
+ALTER TABLE t_catalog
+    DROP COLUMN IF EXISTS f_health_check_enabled;
+
 CREATE TABLE IF NOT EXISTS t_catalog_health_check_schedule (
     f_catalog_id              VARCHAR(40) NOT NULL COMMENT '所属 Catalog ID，同时为主键',
     f_mode                    VARCHAR(16) NOT NULL DEFAULT 'inherit' COMMENT '调度模式: inherit, enabled, disabled',

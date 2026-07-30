@@ -44,7 +44,6 @@ type Catalog struct {
 	// Extensions 业务域外扁平 KV（t_entity_extension）；列表默认省略，详情或非省略时返回
 	Extensions map[string]string `json:"extensions,omitempty"`
 
-	HealthCheckEnabled bool `json:"health_check_enabled"`
 	CatalogHealthCheckStatus
 
 	Creator    AccountInfo `json:"creator"`

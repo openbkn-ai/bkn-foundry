@@ -115,7 +115,6 @@ CREATE TABLE IF NOT EXISTS t_catalog (
     f_metadata                MEDIUMTEXT NOT NULL COMMENT '自动发现的元数据（JSON格式），如数据库版本、schema快照等',
 
     -- 状态管理
-    f_health_check_enabled    BOOLEAN NOT NULL DEFAULT TRUE COMMENT '是否启用健康检查',
     f_health_check_status     VARCHAR(20) NOT NULL DEFAULT 'unchecked' COMMENT '连接状态: unchecked, healthy, degraded, unhealthy, offline',
     f_last_check_time         BIGINT(20) NOT NULL DEFAULT 0 COMMENT '最后健康检查时间',
     f_health_check_result     TEXT NOT NULL COMMENT '健康检查结果',
