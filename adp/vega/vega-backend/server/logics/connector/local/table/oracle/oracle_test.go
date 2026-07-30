@@ -144,6 +144,27 @@ func TestOracleConnectorClose(t *testing.T) {
 	})
 }
 
+func TestOracleConnectorPing(t *testing.T) {
+	t.Run("honors context deadline", func(t *testing.T) {
+		db, mock, err := sqlmock.New(sqlmock.MonitorPingsOption(true))
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = db.Close() })
+
+		connector := &OracleConnector{db: db, connected: true}
+		mock.ExpectPing().WillDelayFor(time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+		defer cancel()
+
+		startedAt := time.Now()
+		err = connector.Ping(ctx)
+
+		require.Error(t, err)
+		require.ErrorIs(t, ctx.Err(), context.DeadlineExceeded)
+		assert.Less(t, time.Since(startedAt), 500*time.Millisecond)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+}
+
 func newOracleConnectorMock(t *testing.T, schemas []string) (*OracleConnector, sqlmock.Sqlmock, func()) {
 	t.Helper()
 
