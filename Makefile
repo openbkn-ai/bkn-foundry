@@ -71,9 +71,11 @@ api-docs:
 	@echo "done -> $(GEN_DIR)/"
 
 ## 模块显示标题（index 分区标题用）。未列出的模块回落为目录名。
-MODTITLE_bkn            := BKN
-MODTITLE_ontology-query := Ontology 查询
-MODTITLE_vega           := VEGA 引擎
+MODTITLE_bkn               := BKN
+MODTITLE_bkn-agent         := BKN 专属 Agent
+MODTITLE_mf-model-manager  := 模型管理
+MODTITLE_ontology-query    := Ontology 查询
+MODTITLE_vega              := VEGA 引擎
 
 ## 模块中文描述（index 卡片副标题用）。未列出的模块回落为空。
 MODDESC_bkn            := 业务知识网络：对象类 / 关系类 / 行动类 / 概念组 / 指标 / 导入导出
