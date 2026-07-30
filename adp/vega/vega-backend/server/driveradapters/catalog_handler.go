@@ -728,6 +728,7 @@ func (r *restHandler) testConnectionConfig(c *gin.Context, visitor hydra.Visitor
 		rest.ReplyError(c, httpErr)
 		return
 	}
+
 	status, err := r.cs.TestConnectionConfig(ctx, &req)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
@@ -735,6 +736,8 @@ func (r *restHandler) testConnectionConfig(c *gin.Context, visitor hydra.Visitor
 		rest.ReplyError(c, httpErr)
 		return
 	}
+
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	rest.ReplyOK(c, http.StatusOK, map[string]any{
 		"success": status.HealthCheckStatus == interfaces.CatalogHealthStatusHealthy,
 		"message": status.HealthCheckResult,

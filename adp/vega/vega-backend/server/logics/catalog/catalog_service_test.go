@@ -416,7 +416,8 @@ func TestCatalogServiceCreate(t *testing.T) {
 		require.NoError(t, err)
 		t.Cleanup(func() { _ = db.Close() })
 
-		createErr := errors.New("create catalog failed")
+		sensitiveError := "insert into t_catalog failed at db.internal"
+		createErr := errors.New(sensitiveError)
 		sqlMock.ExpectBegin()
 		sqlMock.ExpectRollback()
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
@@ -425,7 +426,12 @@ func TestCatalogServiceCreate(t *testing.T) {
 		cs := &catalogService{db: db, ca: mockCA, ps: mockPS}
 		_, err = cs.Create(context.Background(), &interfaces.CatalogRequest{Name: "catalog"}, false)
 
-		require.Error(t, err)
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_Catalog_InternalError_CreateFailed, httpErr.BaseError.ErrorCode)
+		assert.Contains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), "failed to create catalog")
+		assert.NotContains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), sensitiveError)
 		require.NoError(t, sqlMock.ExpectationsWereMet())
 	})
 
@@ -1110,6 +1116,41 @@ func TestCatalogServiceDeleteByIDs(t *testing.T) {
 		if err := cs.DeleteByIDs(context.Background(), []string{"c1"}); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
+		require.NoError(t, sqlMock.ExpectationsWereMet())
+	})
+	t.Run("redacts schedule deletion error and rolls back transaction", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
+		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		mockHCSS := mock_interfaces.NewMockCatalogHealthCheckScheduleService(ctrl)
+		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+		mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
+		db, sqlMock, err := sqlmock.New()
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = db.Close() })
+
+		sensitiveError := "delete from t_catalog_health_check_schedule failed at db.internal"
+		sqlMock.ExpectBegin()
+		sqlMock.ExpectRollback()
+		mockCA.EXPECT().ListInternalIDs(gomock.Any()).Return([]string{}, nil)
+		mockPS.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_CATALOG,
+			[]string{"c1"}, gomock.Any(), true, gomock.Any()).
+			Return(map[string]interfaces.PermissionResourceOps{"c1": {ResourceID: "c1"}}, nil)
+		mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).Return(nil, int64(0), nil)
+		mockHCSS.EXPECT().DeleteByCatalogIDs(gomock.Any(), gomock.Not(nil), []string{"c1"}).
+			Return(errors.New(sensitiveError))
+
+		cs := &catalogService{
+			db: db, ca: mockCA, ps: mockPS, bta: mockBTA, lim: mockLIM, hcss: mockHCSS,
+		}
+		err = cs.DeleteByIDs(context.Background(), []string{"c1"})
+
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_Catalog_InternalError_DeleteFailed, httpErr.BaseError.ErrorCode)
+		assert.Contains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), "failed to delete catalog")
+		assert.NotContains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), sensitiveError)
 		require.NoError(t, sqlMock.ExpectationsWereMet())
 	})
 	t.Run("delete by ids refuses when task running", func(t *testing.T) {

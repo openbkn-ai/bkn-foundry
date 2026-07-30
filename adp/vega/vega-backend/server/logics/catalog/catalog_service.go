@@ -229,7 +229,7 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 		}
 
 		if err := cs.testConnectorConnection(ctx, connector); err != nil {
-			otellog.LogError(ctx, "Failed to test connection to data source", errors.New(connectionTestFailedResult))
+			otellog.LogError(ctx, "Failed to test connection to data source", err)
 			_ = connector.Close(ctx)
 			if !allowUnhealthy {
 				return "", rest.NewHTTPError(ctx, http.StatusBadRequest,
@@ -281,7 +281,8 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 	if err != nil {
 		otellog.LogError(ctx, "Create catalog transaction failed", err)
 		return "", rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			verrors.VegaBackend_Catalog_InternalError_CreateFailed).WithErrorDetails(err.Error())
+			verrors.VegaBackend_Catalog_InternalError_CreateFailed).
+			WithErrorDetails("failed to create catalog")
 	}
 	defer func() { _ = tx.Rollback() }()
 
@@ -302,7 +303,8 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 			return "", httpErr
 		}
 		return "", rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			verrors.VegaBackend_Catalog_InternalError_CreateFailed).WithErrorDetails(err.Error())
+			verrors.VegaBackend_Catalog_InternalError_CreateFailed).
+			WithErrorDetails("failed to create catalog")
 	}
 
 	// 注册资源
@@ -702,7 +704,7 @@ func (cs *catalogService) Update(ctx context.Context, catalog *interfaces.Catalo
 		}
 
 		if err := cs.testConnectorConnection(ctx, connector); err != nil {
-			otellog.LogError(ctx, "Failed to test connection to data source", errors.New(connectionTestFailedResult))
+			otellog.LogError(ctx, "Failed to test connection to data source", err)
 			_ = connector.Close(ctx)
 			if !allowUnhealthy {
 				return rest.NewHTTPError(ctx, http.StatusBadRequest,
@@ -876,8 +878,10 @@ func (cs *catalogService) DeleteByIDs(ctx context.Context, ids []string) error {
 	tx, err := cs.db.BeginTx(ctx, nil)
 	if err != nil {
 		span.SetStatus(codes.Error, "Delete catalog transaction failed")
+		otellog.LogError(ctx, "Delete catalog transaction failed", err)
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			verrors.VegaBackend_Catalog_InternalError_DeleteFailed).WithErrorDetails(err.Error())
+			verrors.VegaBackend_Catalog_InternalError_DeleteFailed).
+			WithErrorDetails("failed to delete catalog")
 	}
 	defer func() { _ = tx.Rollback() }()
 
@@ -893,8 +897,10 @@ func (cs *catalogService) DeleteByIDs(ctx context.Context, ids []string) error {
 	}
 	if err != nil {
 		span.SetStatus(codes.Error, "Delete catalog transaction failed")
+		otellog.LogError(ctx, "Delete catalog transaction failed", err)
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			verrors.VegaBackend_Catalog_InternalError_DeleteFailed).WithErrorDetails(err.Error())
+			verrors.VegaBackend_Catalog_InternalError_DeleteFailed).
+			WithErrorDetails("failed to delete catalog")
 	}
 
 	//  清除资源策略，按内部/普通目录分组删除对应类型的策略
@@ -1078,6 +1084,7 @@ func (cs *catalogService) probeConnection(ctx context.Context, connectorType str
 		LastCheckTime: time.Now().UnixMilli(),
 	}
 	if err := cs.testConnectorConnection(ctx, connector); err != nil {
+		otellog.LogError(ctx, "Failed to test connection to data source", err)
 		result.HealthCheckStatus = interfaces.CatalogHealthStatusUnhealthy
 		result.HealthCheckResult = connectionTestFailedResult
 		return result, nil
