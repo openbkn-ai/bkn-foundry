@@ -9,7 +9,6 @@ import (
 	"context"
 	"errors"
 	"testing"
-	"time"
 
 	"github.com/robfig/cron/v3"
 	"github.com/stretchr/testify/assert"
@@ -23,10 +22,19 @@ import (
 
 func newCatalogHealthCheckWorker(appSetting *common.AppSetting, cs interfaces.CatalogService,
 	chcsa interfaces.CatalogHealthCheckScheduleAccess) *CatalogHealthCheckWorker {
+	defaultCronExpr := catalogHealthCheckDefaultCronExpr
+	if appSetting.CatalogHealthCheck.CronExpr != "" {
+		defaultCronExpr = appSetting.CatalogHealthCheck.CronExpr
+	}
+	defaultCronSchedule, err := cron.ParseStandard(defaultCronExpr)
+	if err != nil {
+		panic(err)
+	}
 	return &CatalogHealthCheckWorker{
-		appSetting: appSetting,
-		cs:         cs,
-		chcsa:      chcsa,
+		appSetting:          appSetting,
+		defaultCronSchedule: defaultCronSchedule,
+		cs:                  cs,
+		chcsa:               chcsa,
 	}
 }
 
@@ -134,29 +142,4 @@ func TestCatalogHealthCheckWorkerStart(t *testing.T) {
 
 		require.NoError(t, w.Start())
 	})
-
-	t.Run("rejects invalid platform cron", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		t.Cleanup(ctrl.Finish)
-		w := newCatalogHealthCheckWorker(&common.AppSetting{CatalogHealthCheck: common.CatalogHealthCheckConfig{
-			WorkerEnabled: true,
-			CronExpr:      "not a cron",
-		}}, vmock.NewMockCatalogService(ctrl), vmock.NewMockCatalogHealthCheckScheduleAccess(ctrl))
-
-		require.Error(t, w.Start())
-	})
-}
-
-func TestCatalogHealthCheckWorkerDefaultCronExpr(t *testing.T) {
-	w := newCatalogHealthCheckWorker(nil, nil, nil)
-	assert.Equal(t, catalogHealthCheckDefaultCronExpr, w.defaultCronExpr())
-	assert.Equal(t, time.Hour, cronDuration(t, w.defaultCronExpr()))
-}
-
-func cronDuration(t *testing.T, expr string) time.Duration {
-	t.Helper()
-	schedule, err := cron.ParseStandard(expr)
-	require.NoError(t, err)
-	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	return schedule.Next(now).Sub(now)
 }

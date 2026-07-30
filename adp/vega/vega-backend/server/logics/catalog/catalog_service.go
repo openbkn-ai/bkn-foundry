@@ -1020,7 +1020,7 @@ func (cs *catalogService) probeConnection(ctx context.Context, connectorType str
 
 func (cs *catalogService) testConnectorConnection(ctx context.Context, connector interfaces.Connector) error {
 	timeout := defaultConnectionTestTimeout
-	if cs.appSetting != nil && cs.appSetting.CatalogHealthCheck.Timeout > 0 {
+	if cs.appSetting.CatalogHealthCheck.Timeout > 0 {
 		timeout = cs.appSetting.CatalogHealthCheck.Timeout
 	}
 	testCtx, cancel := context.WithTimeout(ctx, timeout)

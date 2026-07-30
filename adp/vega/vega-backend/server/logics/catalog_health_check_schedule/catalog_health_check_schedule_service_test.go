@@ -13,14 +13,21 @@ import (
 	"testing"
 	"time"
 
+	"github.com/robfig/cron/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"vega-backend/common"
 	"vega-backend/interfaces"
 	vmock "vega-backend/interfaces/mock"
 )
+
+func newCatalogHealthCheckScheduleServiceForTest(t *testing.T) *catalogHealthCheckScheduleService {
+	t.Helper()
+	defaultCronSchedule, err := cron.ParseStandard(defaultCatalogHealthCheckCronExpr)
+	require.NoError(t, err)
+	return &catalogHealthCheckScheduleService{defaultCronSchedule: defaultCronSchedule}
+}
 
 func TestCatalogHealthCheckScheduleServiceGetByCatalogID(t *testing.T) {
 	t.Run("delegates to schedule access", func(t *testing.T) {
@@ -42,10 +49,8 @@ func TestCatalogHealthCheckScheduleServiceCreate(t *testing.T) {
 	t.Run("creates default inherit schedule without modify permission check", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		sa := vmock.NewMockCatalogHealthCheckScheduleAccess(ctrl)
-		service := &catalogHealthCheckScheduleService{
-			appSetting: &common.AppSetting{CatalogHealthCheck: common.CatalogHealthCheckConfig{CronExpr: "0 * * * *"}},
-			sa:         sa,
-		}
+		service := newCatalogHealthCheckScheduleServiceForTest(t)
+		service.sa = sa
 		account := interfaces.AccountInfo{ID: "user-1", Type: interfaces.ACCESSOR_TYPE_USER}
 		ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY, account)
 		beforeCreate := time.Now().UnixMilli()
@@ -80,7 +85,8 @@ func TestCatalogHealthCheckScheduleServiceCreate(t *testing.T) {
 	t.Run("returns schedule access create error", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		sa := vmock.NewMockCatalogHealthCheckScheduleAccess(ctrl)
-		service := &catalogHealthCheckScheduleService{sa: sa}
+		service := newCatalogHealthCheckScheduleServiceForTest(t)
+		service.sa = sa
 		createErr := errors.New("schedule insert failed")
 		sa.EXPECT().Create(gomock.Any(), gomock.Any(), gomock.Any()).Return(createErr)
 
@@ -153,7 +159,10 @@ func TestCatalogHealthCheckScheduleServiceUpdate(t *testing.T) {
 		ca := vmock.NewMockCatalogAccess(ctrl)
 		sa := vmock.NewMockCatalogHealthCheckScheduleAccess(ctrl)
 		ps := vmock.NewMockPermissionService(ctrl)
-		service := &catalogHealthCheckScheduleService{ca: ca, sa: sa, ps: ps}
+		service := newCatalogHealthCheckScheduleServiceForTest(t)
+		service.ca = ca
+		service.sa = sa
+		service.ps = ps
 		current := &interfaces.CatalogHealthCheckSchedule{CatalogID: "catalog-1"}
 
 		ca.EXPECT().GetByID(gomock.Any(), "catalog-1").Return(&interfaces.Catalog{ID: "catalog-1", Type: interfaces.CatalogTypePhysical, Internal: true}, nil)
@@ -172,7 +181,10 @@ func TestCatalogHealthCheckScheduleServiceUpdate(t *testing.T) {
 		ca := vmock.NewMockCatalogAccess(ctrl)
 		sa := vmock.NewMockCatalogHealthCheckScheduleAccess(ctrl)
 		ps := vmock.NewMockPermissionService(ctrl)
-		service := &catalogHealthCheckScheduleService{ca: ca, sa: sa, ps: ps}
+		service := newCatalogHealthCheckScheduleServiceForTest(t)
+		service.ca = ca
+		service.sa = sa
+		service.ps = ps
 
 		ca.EXPECT().GetByID(gomock.Any(), "catalog-1").Return(&interfaces.Catalog{ID: "catalog-1", Type: interfaces.CatalogTypePhysical}, nil)
 		ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG, ID: "catalog-1"}, []string{interfaces.OPERATION_TYPE_MODIFY}).Return(nil)
@@ -225,12 +237,10 @@ func TestCatalogHealthCheckScheduleServiceUpdate(t *testing.T) {
 		ca := vmock.NewMockCatalogAccess(ctrl)
 		sa := vmock.NewMockCatalogHealthCheckScheduleAccess(ctrl)
 		ps := vmock.NewMockPermissionService(ctrl)
-		service := &catalogHealthCheckScheduleService{
-			appSetting: &common.AppSetting{CatalogHealthCheck: common.CatalogHealthCheckConfig{CronExpr: "0 * * * *"}},
-			ca:         ca,
-			sa:         sa,
-			ps:         ps,
-		}
+		service := newCatalogHealthCheckScheduleServiceForTest(t)
+		service.ca = ca
+		service.sa = sa
+		service.ps = ps
 		current := &interfaces.CatalogHealthCheckSchedule{CatalogID: "catalog-1", CronExpr: "0 * * * *", NextRun: 456}
 		beforeUpdate := time.Now().UnixMilli()
 
@@ -253,7 +263,10 @@ func TestCatalogHealthCheckScheduleServiceUpdate(t *testing.T) {
 		ca := vmock.NewMockCatalogAccess(ctrl)
 		sa := vmock.NewMockCatalogHealthCheckScheduleAccess(ctrl)
 		ps := vmock.NewMockPermissionService(ctrl)
-		service := &catalogHealthCheckScheduleService{ca: ca, sa: sa, ps: ps}
+		service := newCatalogHealthCheckScheduleServiceForTest(t)
+		service.ca = ca
+		service.sa = sa
+		service.ps = ps
 		accessErr := errors.New("database unavailable")
 
 		ca.EXPECT().GetByID(gomock.Any(), "catalog-1").Return(&interfaces.Catalog{ID: "catalog-1", Type: interfaces.CatalogTypePhysical}, nil)
@@ -273,7 +286,10 @@ func TestCatalogHealthCheckScheduleServiceUpdate(t *testing.T) {
 		ca := vmock.NewMockCatalogAccess(ctrl)
 		sa := vmock.NewMockCatalogHealthCheckScheduleAccess(ctrl)
 		ps := vmock.NewMockPermissionService(ctrl)
-		service := &catalogHealthCheckScheduleService{ca: ca, sa: sa, ps: ps}
+		service := newCatalogHealthCheckScheduleServiceForTest(t)
+		service.ca = ca
+		service.sa = sa
+		service.ps = ps
 		current := &interfaces.CatalogHealthCheckSchedule{CatalogID: "catalog-1"}
 		updateErr := errors.New("schedule update failed")
 

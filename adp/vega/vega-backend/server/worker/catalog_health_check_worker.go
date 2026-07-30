@@ -31,37 +31,37 @@ var (
 
 // CatalogHealthCheckWorker executes due physical Catalog health checks in-process.
 type CatalogHealthCheckWorker struct {
-	appSetting *common.AppSetting
-	cs         interfaces.CatalogService
-	chcsa      interfaces.CatalogHealthCheckScheduleAccess
+	appSetting          *common.AppSetting
+	defaultCronSchedule cron.Schedule
+	cs                  interfaces.CatalogService
+	chcsa               interfaces.CatalogHealthCheckScheduleAccess
 }
 
 func NewCatalogHealthCheckWorker(appSetting *common.AppSetting) *CatalogHealthCheckWorker {
 	chcWorkerOnce.Do(func() {
+		defaultCronExpr := catalogHealthCheckDefaultCronExpr
+		if appSetting.CatalogHealthCheck.CronExpr != "" {
+			defaultCronExpr = appSetting.CatalogHealthCheck.CronExpr
+		}
+		defaultCronSchedule, err := cron.ParseStandard(defaultCronExpr)
+		if err != nil {
+			logger.Fatalf("Invalid global catalog health check cron expression: %v", err)
+		}
 		cs := catalog.NewCatalogService(appSetting)
 		chcWorker = &CatalogHealthCheckWorker{
-			appSetting: appSetting,
-			cs:         cs,
-			chcsa:      logics.CHCSA,
+			appSetting:          appSetting,
+			defaultCronSchedule: defaultCronSchedule,
+			cs:                  cs,
+			chcsa:               logics.CHCSA,
 		}
 	})
 	return chcWorker
 }
 
-func (w *CatalogHealthCheckWorker) defaultCronExpr() string {
-	if w.appSetting != nil && w.appSetting.CatalogHealthCheck.CronExpr != "" {
-		return w.appSetting.CatalogHealthCheck.CronExpr
-	}
-	return catalogHealthCheckDefaultCronExpr
-}
-
 func (w *CatalogHealthCheckWorker) Start() error {
-	if w.appSetting == nil || !w.appSetting.CatalogHealthCheck.WorkerEnabled {
+	if !w.appSetting.CatalogHealthCheck.WorkerEnabled {
 		logger.Info("Catalog health check worker is disabled")
 		return nil
-	}
-	if _, err := cron.ParseStandard(w.defaultCronExpr()); err != nil {
-		return err
 	}
 
 	go w.run()
@@ -109,14 +109,16 @@ func (w *CatalogHealthCheckWorker) runCatalogHealthCheck(ctx context.Context, sc
 		return
 	}
 
-	cronExpr := schedule.CronExpr
+	var cronSchedule cron.Schedule
 	if schedule.Mode == interfaces.CatalogHealthCheckScheduleModeInherit {
-		cronExpr = w.defaultCronExpr()
-	}
-	cronSchedule, err := cron.ParseStandard(cronExpr)
-	if err != nil {
-		logger.Errorf("Parse catalog health check cron expression failed: catalog_id=%s, error=%v", schedule.CatalogID, err)
-		return
+		cronSchedule = w.defaultCronSchedule
+	} else {
+		var err error
+		cronSchedule, err = cron.ParseStandard(schedule.CronExpr)
+		if err != nil {
+			logger.Errorf("Parse catalog health check cron expression failed: catalog_id=%s, error=%v", schedule.CatalogID, err)
+			return
+		}
 	}
 
 	if _, err := w.cs.TestConnection(ctx, &interfaces.Catalog{ID: schedule.CatalogID, ConnectorType: "scheduled"}); err != nil {

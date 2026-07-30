@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/openbkn-ai/bkn-comm-go/logger"
 	"github.com/openbkn-ai/bkn-comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-comm-go/rest"
@@ -36,20 +37,30 @@ var (
 const defaultCatalogHealthCheckCronExpr = "0 * * * *"
 
 type catalogHealthCheckScheduleService struct {
-	appSetting *common.AppSetting
-	ca         interfaces.CatalogAccess
-	sa         interfaces.CatalogHealthCheckScheduleAccess
-	ps         interfaces.PermissionService
+	appSetting          *common.AppSetting
+	defaultCronSchedule cron.Schedule
+	ca                  interfaces.CatalogAccess
+	sa                  interfaces.CatalogHealthCheckScheduleAccess
+	ps                  interfaces.PermissionService
 }
 
 func NewCatalogHealthCheckScheduleService(appSetting *common.AppSetting) interfaces.CatalogHealthCheckScheduleService {
 	chcsServiceOnce.Do(func() {
+		defaultCronExpr := defaultCatalogHealthCheckCronExpr
+		if appSetting.CatalogHealthCheck.CronExpr != "" {
+			defaultCronExpr = appSetting.CatalogHealthCheck.CronExpr
+		}
+		defaultCronSchedule, err := cron.ParseStandard(defaultCronExpr)
+		if err != nil {
+			logger.Fatalf("Invalid global catalog health check cron expression: %v", err)
+		}
 		ps := permission.NewPermissionService(appSetting)
 		chcsService = &catalogHealthCheckScheduleService{
-			appSetting: appSetting,
-			ca:         logics.CA,
-			sa:         logics.CHCSA,
-			ps:         ps,
+			appSetting:          appSetting,
+			defaultCronSchedule: defaultCronSchedule,
+			ca:                  logics.CA,
+			sa:                  logics.CHCSA,
+			ps:                  ps,
 		}
 	})
 	return chcsService
@@ -227,10 +238,7 @@ func (chcss *catalogHealthCheckScheduleService) Update(ctx context.Context, cata
 
 func (chcss *catalogHealthCheckScheduleService) nextRun(mode, cronExpr string, now time.Time) (int64, error) {
 	if mode == interfaces.CatalogHealthCheckScheduleModeInherit {
-		cronExpr = defaultCatalogHealthCheckCronExpr
-		if chcss.appSetting != nil && chcss.appSetting.CatalogHealthCheck.CronExpr != "" {
-			cronExpr = chcss.appSetting.CatalogHealthCheck.CronExpr
-		}
+		return chcss.defaultCronSchedule.Next(now).UnixMilli(), nil
 	}
 
 	schedule, err := cron.ParseStandard(cronExpr)
