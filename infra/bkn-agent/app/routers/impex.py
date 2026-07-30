@@ -11,12 +11,11 @@ import time
 
 from fastapi import APIRouter, Depends
 from pydantic import ValidationError
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import dao
 from app.auth import Account, get_account
-from app.bootstrap import toolbox_sync
+from app.core import impex as impex_core
 from app.db import get_session
 from app.errors import bad_request, not_found
 from app.models import (
@@ -24,7 +23,6 @@ from app.models import (
     AgentSpec,
     ExportPackage,
     ExportRequest,
-    ImportItemResult,
     ImportRequest,
     ImportResult,
     PromptExport,
@@ -73,71 +71,4 @@ async def import_agents(
     account: Account = Depends(get_account),
     session: AsyncSession = Depends(get_session),
 ):
-    results: list[ImportItemResult] = []
-    warnings: list[str] = []
-    package_ids = {item.agent_id for item in req.package.items}
-
-    for item in req.package.items:
-        prompt_action = "none"
-        # 先检后写：prompt 与 agent 分两次 commit，写到一半再发现冲突就回不去了
-        # （rollback 撤不掉已提交的 prompt 新版本，线上 agent 会静默换词）
-        conflict = await dao.check_import_conflict(
-            session,
-            item.agent_id,
-            item.spec.name,
-            item.prompt.prompt_id if item.prompt else None,
-            item.prompt.name if item.prompt else None,
-            account.account_id,
-        )
-        if conflict:
-            results.append(
-                ImportItemResult(
-                    agent_id=item.agent_id, name=item.spec.name, action="failed", error=conflict
-                )
-            )
-            continue
-        try:
-            # 单事务：prompt 与 agent 都 flush（commit=False），末尾一起 commit。
-            # 任一步失败整体 rollback——不再出现「prompt 新版本已生效但 agent 导入失败」的半写。
-            if item.prompt:
-                prompt_action = await dao.upsert_prompt_with_id(
-                    session,
-                    item.prompt.prompt_id,
-                    item.prompt.name,
-                    item.prompt.content,
-                    item.prompt.vars_schema,
-                    account.account_id,
-                    commit=False,
-                )
-            agent, action = await dao.upsert_agent_with_id(
-                session, item.agent_id, item.spec, account.account_id, commit=False
-            )
-            await session.commit()
-        except (ValueError, IntegrityError) as e:  # 并发占名：ValueError 预检 / IntegrityError 唯一键兜底
-            await session.rollback()  # 未提交，prompt 也一并撤销，不留半写
-            results.append(
-                ImportItemResult(
-                    agent_id=item.agent_id,
-                    name=item.spec.name,
-                    action="failed",
-                    prompt_action="none",  # 整体回滚，prompt 未生效
-                    error=str(e),
-                )
-            )
-            continue
-        results.append(
-            ImportItemResult(
-                agent_id=agent.agent_id, name=agent.name, action=action, prompt_action=prompt_action
-            )
-        )
-        for ref in item.spec.tools:
-            if ref.get("type") == "agent":
-                ref_id = ref.get("agent_id") or ""
-                if ref_id not in package_ids and not await dao.get_agent(session, ref_id):
-                    warnings.append(
-                        f"agent {item.spec.name} 引用的子 agent {ref_id} 不在包内也不在目标环境"
-                    )
-
-    if any(r.action in ("created", "updated") for r in results):
-        toolbox_sync.schedule_resync()  # published agent 上架/更新到执行工厂
-    return ImportResult(results=results, warnings=warnings)
+    return await impex_core.import_items(session, req.package.items, account.account_id)
