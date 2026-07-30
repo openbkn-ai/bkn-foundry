@@ -47,8 +47,11 @@ func NewStore(appSetting *common.AppSetting) *Store {
 	return st
 }
 
-// Replace 整包替换某实体下的全部 KV（空 map 表示删除全部行）
+// Replace 在调用方事务内整包替换某实体下的全部 KV（空 map 表示删除全部行）
 func (s *Store) Replace(ctx context.Context, tx *sql.Tx, kind string, entityID string, kv map[string]string) error {
+	if tx == nil {
+		return fmt.Errorf("transaction is required")
+	}
 	if err := s.deleteByEntityID(ctx, tx, kind, entityID); err != nil {
 		return err
 	}
@@ -61,11 +64,7 @@ func (s *Store) Replace(ctx context.Context, tx *sql.Tx, kind string, entityID s
 		if err != nil {
 			return err
 		}
-		if tx != nil {
-			_, err = tx.ExecContext(ctx, q, args...)
-		} else {
-			_, err = s.db.ExecContext(ctx, q, args...)
-		}
+		_, err = tx.ExecContext(ctx, q, args...)
 		if err != nil {
 			return err
 		}

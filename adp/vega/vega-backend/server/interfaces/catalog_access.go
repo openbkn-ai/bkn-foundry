@@ -32,7 +32,7 @@ type CatalogAccess interface {
 	// ListInternalIDs 列出所有系统内部目录的 ID（用于权限校验时按 internal_catalog 类型分组）。
 	ListInternalIDs(ctx context.Context) ([]string, error)
 	// Update updates a Catalog.
-	Update(ctx context.Context, catalog *Catalog) error
+	Update(ctx context.Context, tx *sql.Tx, catalog *Catalog) error
 	// DeleteByIDs deletes Catalogs by IDs.
 	DeleteByIDs(ctx context.Context, tx *sql.Tx, ids []string) error
 	// UpdateHealthCheckStatus updates Catalog health check status.

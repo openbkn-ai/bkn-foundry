@@ -54,15 +54,7 @@ func NewResourceAccess(appSetting *common.AppSetting) interfaces.ResourceAccess 
 }
 
 // Create creates ra new Resource.
-func (ra *resourceAccess) Create(ctx context.Context, resource *interfaces.Resource) error {
-	return ra.create(ctx, nil, resource)
-}
-
-func (ra *resourceAccess) CreateWithTx(ctx context.Context, tx *sql.Tx, resource *interfaces.Resource) error {
-	return ra.create(ctx, tx, resource)
-}
-
-func (ra *resourceAccess) create(ctx context.Context, tx *sql.Tx, resource *interfaces.Resource) error {
+func (ra *resourceAccess) Create(ctx context.Context, tx *sql.Tx, resource *interfaces.Resource) error {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Insert into resource")
 	defer span.End()
 

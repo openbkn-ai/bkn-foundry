@@ -723,7 +723,15 @@ func (cs *catalogService) Update(ctx context.Context, catalog *interfaces.Catalo
 	catalog.Updater = accountInfo
 	catalog.UpdateTime = now
 
-	if err := cs.ca.Update(ctx, catalog); err != nil {
+	tx, err := cs.db.BeginTx(ctx, nil)
+	if err != nil {
+		span.SetStatus(codes.Error, "Update catalog transaction failed")
+		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_Catalog_InternalError_UpdateFailed).WithErrorDetails(err.Error())
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if err := cs.ca.Update(ctx, tx, catalog); err != nil {
 		span.SetStatus(codes.Error, "Update catalog failed")
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Catalog_InternalError_UpdateFailed).WithErrorDetails(err.Error())
@@ -733,11 +741,16 @@ func (cs *catalogService) Update(ctx context.Context, catalog *interfaces.Catalo
 		if err := extensions.ValidateEntityExtensionsMap(ctx, *req.Extensions); err != nil {
 			return err
 		}
-		if err := entityextension.NewStore(cs.appSetting).Replace(ctx, nil, entityextension.KindCatalog, catalog.ID, *req.Extensions); err != nil {
+		if err := entityextension.NewStore(cs.appSetting).Replace(ctx, tx, entityextension.KindCatalog, catalog.ID, *req.Extensions); err != nil {
 			span.SetStatus(codes.Error, "Replace catalog extensions failed")
 			return rest.NewHTTPError(ctx, http.StatusInternalServerError,
 				verrors.VegaBackend_Catalog_InternalError_UpdateFailed).WithErrorDetails(err.Error())
 		}
+	}
+	if err := tx.Commit(); err != nil {
+		span.SetStatus(codes.Error, "Commit catalog update transaction failed")
+		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_Catalog_InternalError_UpdateFailed).WithErrorDetails(err.Error())
 	}
 
 	// 请求更新资源名称的接口，更新资源的名称

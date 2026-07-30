@@ -18,11 +18,24 @@ import (
 )
 
 func TestStoreReplace(t *testing.T) {
+	t.Run("rejects calls without transaction", func(t *testing.T) {
+		store, mock, cleanup := newStoreMock(t)
+		defer cleanup()
+
+		err := store.Replace(context.Background(), nil, KindCatalog, "catalog-1", map[string]string{"owner": "team-a"})
+
+		require.EqualError(t, err, "transaction is required")
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
 	t.Run("replaces existing kv", func(t *testing.T) {
 		store, mock, cleanup := newStoreMock(t)
 		defer cleanup()
 		mock.MatchExpectationsInOrder(false)
 
+		mock.ExpectBegin()
+		tx, err := store.db.BeginTx(context.Background(), nil)
+		require.NoError(t, err)
 		mock.ExpectExec(regexp.QuoteMeta("DELETE FROM t_entity_extension WHERE f_entity_id = ? AND f_entity_kind = ?")).
 			WithArgs("catalog-1", KindCatalog).
 			WillReturnResult(sqlmock.NewResult(0, 2))
@@ -33,12 +46,14 @@ func TestStoreReplace(t *testing.T) {
 			WithArgs(KindCatalog, "catalog-1", "env", "prod", sqlmock.AnyArg(), sqlmock.AnyArg()).
 			WillReturnResult(sqlmock.NewResult(2, 1))
 
-		err := store.Replace(context.Background(), nil, KindCatalog, "catalog-1", map[string]string{
+		err = store.Replace(context.Background(), tx, KindCatalog, "catalog-1", map[string]string{
 			"owner": "team-a",
 			"env":   "prod",
 		})
 
 		require.NoError(t, err)
+		mock.ExpectCommit()
+		require.NoError(t, tx.Commit())
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
@@ -46,11 +61,16 @@ func TestStoreReplace(t *testing.T) {
 		store, mock, cleanup := newStoreMock(t)
 		defer cleanup()
 
+		mock.ExpectBegin()
+		tx, err := store.db.BeginTx(context.Background(), nil)
+		require.NoError(t, err)
 		mock.ExpectExec(regexp.QuoteMeta("DELETE FROM t_entity_extension WHERE f_entity_id = ? AND f_entity_kind = ?")).
 			WithArgs("resource-1", KindResource).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
-		require.NoError(t, store.Replace(context.Background(), nil, KindResource, "resource-1", map[string]string{}))
+		require.NoError(t, store.Replace(context.Background(), tx, KindResource, "resource-1", map[string]string{}))
+		mock.ExpectCommit()
+		require.NoError(t, tx.Commit())
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 }

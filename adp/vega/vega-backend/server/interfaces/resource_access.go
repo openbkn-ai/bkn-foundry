@@ -16,9 +16,7 @@ import (
 //go:generate mockgen -source ../interfaces/resource_access.go -destination ../interfaces/mock/mock_resource_access.go
 type ResourceAccess interface {
 	// Create creates a new Resource.
-	Create(ctx context.Context, resource *Resource) error
-	// CreateWithTx creates a new Resource within a transaction.
-	CreateWithTx(ctx context.Context, tx *sql.Tx, resource *Resource) error
+	Create(ctx context.Context, tx *sql.Tx, resource *Resource) error
 	// GetByID retrieves a Resource by ID.
 	GetByID(ctx context.Context, id string) (*Resource, error)
 	// GetByIDs retrieves Resources by IDs.

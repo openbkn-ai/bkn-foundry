@@ -66,7 +66,23 @@ func TestResourceAccessCreate(t *testing.T) {
 			).
 			WillReturnResult(sqlmock.NewResult(1, 1))
 
-		require.NoError(t, access.Create(context.Background(), sampleResource()))
+		require.NoError(t, access.Create(context.Background(), nil, sampleResource()))
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("creates resource with transaction", func(t *testing.T) {
+		access, mock, cleanup := newResourceAccessMock(t)
+		defer cleanup()
+
+		mock.ExpectBegin()
+		tx, err := access.db.BeginTx(context.Background(), nil)
+		require.NoError(t, err)
+		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO t_resource")).
+			WillReturnResult(sqlmock.NewResult(1, 1))
+
+		require.NoError(t, access.Create(context.Background(), tx, sampleResource()))
+		mock.ExpectCommit()
+		require.NoError(t, tx.Commit())
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 }

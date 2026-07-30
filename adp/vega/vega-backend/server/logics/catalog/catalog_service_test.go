@@ -17,12 +17,14 @@ import (
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/agiledragon/gomonkey/v2"
 	"github.com/openbkn-ai/bkn-comm-go/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
 	"vega-backend/common"
+	"vega-backend/drivenadapters/entityextension"
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
 	mock_interfaces "vega-backend/interfaces/mock"
@@ -521,6 +523,78 @@ func TestCatalogServiceTestConnectorConnection(t *testing.T) {
 		})
 
 		require.NoError(t, cs.testConnectorConnection(context.Background(), connector))
+	})
+}
+
+func TestCatalogServiceUpdate(t *testing.T) {
+	t.Run("uses transaction when extensions are omitted", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
+		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		db, sqlMock, err := sqlmock.New()
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = db.Close() })
+
+		sqlMock.ExpectBegin()
+		sqlMock.ExpectCommit()
+		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		mockCA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any()).Return(nil)
+
+		cs := &catalogService{db: db, ca: mockCA, ps: mockPS}
+		err = cs.Update(context.Background(), &interfaces.Catalog{
+			ID:   "catalog-1",
+			Name: "catalog",
+		}, &interfaces.CatalogRequest{Name: "catalog"}, false)
+
+		require.NoError(t, err)
+		require.NoError(t, sqlMock.ExpectationsWereMet())
+	})
+
+	t.Run("rolls back catalog and extensions when extension replacement fails", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
+		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		db, sqlMock, err := sqlmock.New()
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = db.Close() })
+
+		replaceErr := errors.New("replace extensions failed")
+		patches := gomonkey.NewPatches()
+		t.Cleanup(patches.Reset)
+		patches.ApplyFunc(entityextension.NewStore, func(_ *common.AppSetting) *entityextension.Store {
+			return &entityextension.Store{}
+		})
+		patches.ApplyMethod(&entityextension.Store{}, "Replace",
+			func(_ *entityextension.Store, _ context.Context, tx *sql.Tx, kind, entityID string, _ map[string]string) error {
+				require.NotNil(t, tx)
+				assert.Equal(t, entityextension.KindCatalog, kind)
+				assert.Equal(t, "catalog-1", entityID)
+				return replaceErr
+			})
+
+		sqlMock.ExpectBegin()
+		sqlMock.ExpectRollback()
+		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		mockCA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any()).Return(nil)
+
+		extensionValues := map[string]string{"owner": "team-a"}
+		cs := &catalogService{
+			appSetting: &common.AppSetting{},
+			db:         db,
+			ca:         mockCA,
+			ps:         mockPS,
+		}
+		err = cs.Update(context.Background(), &interfaces.Catalog{
+			ID:   "catalog-1",
+			Name: "catalog",
+		}, &interfaces.CatalogRequest{
+			Name:       "catalog",
+			Extensions: &extensionValues,
+		}, false)
+
+		require.Error(t, err)
+		assert.ErrorContains(t, err, replaceErr.Error())
+		require.NoError(t, sqlMock.ExpectationsWereMet())
 	})
 }
 

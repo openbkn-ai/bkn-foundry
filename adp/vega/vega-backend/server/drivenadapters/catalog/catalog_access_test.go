@@ -404,7 +404,23 @@ func TestCatalogAccessUpdate(t *testing.T) {
 			WithArgs(catalog.Name, `"tag-a","tag-b"`, catalog.Description, catalog.Enabled, catalog.ConnectorType, `{"host":"127.0.0.1"}`, `{"region":"cn"}`, catalog.HealthCheckEnabled, catalog.HealthCheckStatus, catalog.LastCheckTime, catalog.HealthCheckResult, catalog.Updater.ID, catalog.Updater.Type, catalog.UpdateTime, catalog.ID).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
-		require.NoError(t, access.Update(context.Background(), catalog))
+		require.NoError(t, access.Update(context.Background(), nil, catalog))
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("updates catalog with transaction", func(t *testing.T) {
+		access, mock, cleanup := newCatalogAccessMock(t)
+		defer cleanup()
+
+		mock.ExpectBegin()
+		tx, err := access.db.BeginTx(context.Background(), nil)
+		require.NoError(t, err)
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_catalog SET")).
+			WillReturnResult(sqlmock.NewResult(0, 1))
+
+		require.NoError(t, access.Update(context.Background(), tx, sampleCatalog()))
+		mock.ExpectCommit()
+		require.NoError(t, tx.Commit())
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 }

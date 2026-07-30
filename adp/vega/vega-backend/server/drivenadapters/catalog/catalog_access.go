@@ -822,7 +822,7 @@ func (ca *catalogAccess) ListAuthResources(ctx context.Context, params interface
 }
 
 // Update updates ca Catalog.
-func (ca *catalogAccess) Update(ctx context.Context, catalog *interfaces.Catalog) error {
+func (ca *catalogAccess) Update(ctx context.Context, tx *sql.Tx, catalog *interfaces.Catalog) error {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Update catalog")
 	defer span.End()
 
@@ -864,7 +864,11 @@ func (ca *catalogAccess) Update(ctx context.Context, catalog *interfaces.Catalog
 		return err
 	}
 
-	_, err = ca.db.ExecContext(ctx, sqlStr, vals...)
+	if tx != nil {
+		_, err = tx.ExecContext(ctx, sqlStr, vals...)
+	} else {
+		_, err = ca.db.ExecContext(ctx, sqlStr, vals...)
+	}
 	if err != nil {
 		span.SetStatus(codes.Error, "Update failed")
 		return err

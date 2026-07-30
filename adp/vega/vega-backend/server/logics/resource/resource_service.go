@@ -53,6 +53,7 @@ var activeResourceBuildTaskStatuses = []string{
 
 type resourceService struct {
 	appSetting *common.AppSetting
+	db         *sql.DB
 	cs         interfaces.CatalogService
 	ds         interfaces.DatasetService
 	ps         interfaces.PermissionService
@@ -68,6 +69,7 @@ func NewResourceService(appSetting *common.AppSetting) interfaces.ResourceServic
 	rServiceOnce.Do(func() {
 		rService = &resourceService{
 			appSetting: appSetting,
+			db:         logics.DB,
 			cs:         catalog.NewCatalogService(appSetting),
 			ds:         dataset.NewDatasetService(appSetting),
 			ps:         permission.NewPermissionService(appSetting),
@@ -264,7 +266,15 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 		UpdateTime:       now,
 	}
 
-	err = rs.ra.Create(ctx, resource)
+	tx, err := rs.db.BeginTx(ctx, nil)
+	if err != nil {
+		otellog.LogError(ctx, "Create resource transaction failed", err)
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_Resource_InternalError_CreateFailed).WithErrorDetails(err.Error())
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	err = rs.ra.Create(ctx, tx, resource)
 	if err != nil {
 		otellog.LogError(ctx, "Create resource failed", err)
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_CreateFailed).
@@ -272,13 +282,17 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 	}
 
 	if req.Extensions != nil {
-		if err := entityextension.NewStore(rs.appSetting).Replace(ctx, nil, entityextension.KindResource, resource.ID, *req.Extensions); err != nil {
-			_ = rs.ra.DeleteByIDs(ctx, []string{resource.ID})
+		if err := entityextension.NewStore(rs.appSetting).Replace(ctx, tx, entityextension.KindResource, resource.ID, *req.Extensions); err != nil {
 			logger.Errorf("Replace resource extensions failed: %v", err)
 			span.SetStatus(codes.Error, "Replace resource extensions failed")
 			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_CreateFailed).
 				WithErrorDetails(err.Error())
 		}
+	}
+	if err := tx.Commit(); err != nil {
+		otellog.LogError(ctx, "Commit resource creation transaction failed", err)
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_Resource_InternalError_CreateFailed).WithErrorDetails(err.Error())
 	}
 
 	switch resource.Category {
@@ -734,18 +748,31 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 	resource.Updater = accountInfo
 	resource.UpdateTime = now
 
-	if err := rs.ra.Update(ctx, nil, resource); err != nil {
+	tx, err := rs.db.BeginTx(ctx, nil)
+	if err != nil {
+		span.SetStatus(codes.Error, "Update resource transaction failed")
+		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_Resource_InternalError_UpdateFailed).WithErrorDetails(err.Error())
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if err := rs.ra.Update(ctx, tx, resource); err != nil {
 		span.SetStatus(codes.Error, "Update resource failed")
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_UpdateFailed).
 			WithErrorDetails(err.Error())
 	}
 
 	if req.Extensions != nil {
-		if err := entityextension.NewStore(rs.appSetting).Replace(ctx, nil, entityextension.KindResource, resource.ID, *req.Extensions); err != nil {
+		if err := entityextension.NewStore(rs.appSetting).Replace(ctx, tx, entityextension.KindResource, resource.ID, *req.Extensions); err != nil {
 			span.SetStatus(codes.Error, "Replace resource extensions failed")
 			return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_UpdateFailed).
 				WithErrorDetails(err.Error())
 		}
+	}
+	if err := tx.Commit(); err != nil {
+		span.SetStatus(codes.Error, "Commit resource update transaction failed")
+		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_Resource_InternalError_UpdateFailed).WithErrorDetails(err.Error())
 	}
 
 	span.SetStatus(codes.Ok, "")
@@ -966,7 +993,7 @@ func (rs *resourceService) InternalCreate(ctx context.Context, tx *sql.Tx, req *
 		Updater:          accountInfo,
 		UpdateTime:       now,
 	}
-	if err := rs.ra.CreateWithTx(ctx, tx, resource); err != nil {
+	if err := rs.ra.Create(ctx, tx, resource); err != nil {
 		return nil, err
 	}
 	return resource, nil
