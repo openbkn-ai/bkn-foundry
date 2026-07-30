@@ -33,6 +33,22 @@ uvicorn main:app --port 30800
 agent 定义+prompt 当前版本，保留原 id upsert 幂等，同名不同 id 记 failed 不中断，
 跨环境引用缺失记 warning）。
 
+## 内置 agent 预置
+
+平台内置 agent 的定义随代码走，启动时幂等写库（`app/bootstrap/preset_sync.py`，
+包在 `app/bootstrap/presets/*.yaml`）。目前有 Vega 语义理解的两个：
+`resource-semantic-understanding`、`catalog-semantic-understanding`——
+id 被 vega-backend 硬编码引用，改名即断。
+
+文件形态 = `/export` 响应里的 items 列表，提示词用 `|-` 块标量，便于评审与回滚。
+维护方式：在环境里调好 → `POST /export` → 把 items 粘回 YAML。段落保持单行、与库内
+内容逐字一致，否则每次启动都会多发一个提示词版本。
+
+写入复用 `/import` 的按条 upsert（`app/core/impex.py`），但不查归属（内置 agent 是
+平台资产，存量环境里可能由工程师手工建过）。`model` 与 `limits` 归环境管：已存在的
+agent 保留库内现值，包里 `model` 恒为空即走系统默认大模型。预置失败只记 ERROR
+日志，不阻断启动。
+
 ## 算子工厂注册
 
 published 状态的 agent 自动注册进算子工厂 toolbox（`app/bootstrap/toolbox_sync.py`，

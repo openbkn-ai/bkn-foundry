@@ -7,7 +7,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.bootstrap import toolbox_sync
+from app.bootstrap import preset_sync, toolbox_sync
 from app.models import ErrorEnvelope
 from app import evidence, observability
 from app.observability import setup_otel
@@ -41,6 +41,8 @@ async def _recover_stale_tasks() -> None:
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     await _recover_stale_tasks()
+    # 预置排在工厂同步之前：内置 agent 先入库，紧随其后的启动全量同步自然带上它们
+    await preset_sync.sync_presets()
     toolbox_sync.start_startup_sync()
     try:
         yield
