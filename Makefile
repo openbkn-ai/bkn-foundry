@@ -12,9 +12,17 @@ TPL_DIR      := $(API_DIR)/_templates
 # 用 $(API_DIR)/*/. 强制只匹配目录（GNU make 的 */ 通配会把 README.md 也算进来），
 # $(dir ...) 取目录路径，再 notdir 取目录名。
 MODULE_DIRS  := $(dir $(wildcard $(API_DIR)/*/.))
-MODULES      := $(filter-out _shared _generated _templates,$(foreach d,$(MODULE_DIRS),$(notdir $(patsubst %/,%,$(d)))))
+MODULES      := $(filter-out _shared _generated _templates tools,$(foreach d,$(MODULE_DIRS),$(notdir $(patsubst %/,%,$(d)))))
 
-.PHONY: api-docs api-docs-html api-docs-lint api-docs-clean print-modtitle print-moddesc print-resname
+# 契约巡检:实际返回 vs 文档。默认打开发 VM 的内部面(免 token)。
+CONTRACT_SSH        ?= parallels@10.211.55.4
+CONTRACT_NS         ?= openbkn
+CONTRACT_POD        ?= deploy/bkn-agent
+CONTRACT_FACE       ?= in
+CONTRACT_ACCOUNT_ID ?= 266c6a42-6131-4d62-8f39-853e7093701c
+CONTRACT_OUT        ?= $(GEN_DIR)/contract-report.md
+
+.PHONY: api-docs api-docs-html api-docs-lint api-docs-clean api-contract-diff print-modtitle print-moddesc print-resname
 
 ## api-docs-lint: 校验各模块 OpenAPI 文档合法且 $ref（含共享 schema）可解析。
 ## _shared/ 是 $ref 片段（无 openapi/info/paths 顶层），不作独立文档 lint，
@@ -26,6 +34,19 @@ api-docs-lint:
 	    npx @redocly/cli lint --config .redocly.yaml "$$y"; \
 	  done; \
 	done
+
+## api-contract-diff: 拿运行中的服务真实返回，逐字段比对文档声明的 200 响应 schema。
+## lint 只能证明文档「自洽」，这个 target 证明文档「与实现一致」——类型写错、
+## 字段拼错、实际多返回的字段，只有真打接口才能发现。
+## 只发 GET（只读），退出码非 0 表示存在缺口。变量见文件头 CONTRACT_* 。
+api-contract-diff:
+	@python3 $(API_DIR)/tools/api_contract_diff.py \
+	  --spec-dir $(API_DIR) \
+	  --face $(CONTRACT_FACE) \
+	  --exec-mode kubectl --ssh $(CONTRACT_SSH) \
+	  --namespace $(CONTRACT_NS) --exec-pod $(CONTRACT_POD) \
+	  --account-id $(CONTRACT_ACCOUNT_ID) \
+	  --out $(CONTRACT_OUT) --json-out $(CONTRACT_OUT:.md=.json)
 
 ## api-docs: 渲染各模块 YAML 为 Markdown，输出到 _generated/<module>.md。
 ## 本地按需生成（喂飞书 / 离线阅读等），产物不进 git、CI 不渲染。

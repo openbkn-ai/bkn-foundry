@@ -4,11 +4,17 @@ name: ci-docs-api
 #  - PR 触碰 docs/api 时：校验 OpenAPI YAML（$ref 可解析等）。
 #  - push 到 main 后：渲染交互式 HTML（redocly）并发布到 GitHub Pages，供开发者
 #    在线查看（_generated/ 产物一律不进 git，见 .gitignore）。
+#  - 手动 workflow_dispatch（从 main 分发，填 ref=v0.1.2）：补发某个历史版本。
 #
 # 真相源永远是 YAML。
 #
 # 前置：GitHub Pages 发布需在仓库 Settings → Pages 里把 Source 设为
 # "GitHub Actions"（一次性设置）。
+#
+# 注意：github-pages 环境的 deployment branch policy 只放行 main 分支，tag push
+# 会在环境闸门被直接拒（"Tag ... is not allowed to deploy to github-pages"）。
+# 因此发布历史版本走 workflow_dispatch：run 的 ref 是 main（过闸门），代码 checkout
+# 到目标 tag。tag push 仍保留触发，环境放行 tag 后即自动生效。
 
 on:
   pull_request:
@@ -31,10 +37,12 @@ on:
       - '.github/workflows/ci-docs-api.yml'
     tags:
       - 'v*'   # 打版本 tag（如 v0.3.0）时归档一套固定版本文档
-
-concurrency:
-  group: ci-docs-api-${{ github.ref }}
-  cancel-in-progress: true
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: '要发布的 git ref（tag 名，如 v0.1.2）；留空则按当前分支发布 main 开发版'
+        required: false
+        default: ''
 
 permissions:
   contents: write   # 归档 gh-pages 分支需要
@@ -46,6 +54,9 @@ jobs:
     # PR 时校验 OpenAPI YAML
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    concurrency:
+      group: ci-docs-api-lint-${{ github.ref }}
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
 
@@ -60,16 +71,25 @@ jobs:
         run: make api-docs-lint
 
   pages:
-    # push 到 main（发布 main 开发版文档）或打 v* tag（归档该版本）后：渲染 HTML，按版本
-    # 累积到 gh-pages 分支的 versions/<ver>/，重建带版本下拉的顶层入口，再发布 Pages。
-    # 历史版本一旦发布即固定，不再重渲。
-    if: github.event_name == 'push'
+    # push 到 main（发布 main 开发版文档）、打 v* tag（归档该版本）或手动补发后：渲染
+    # HTML，按版本累积到 gh-pages 分支的 versions/<ver>/，重建带版本下拉的顶层入口，
+    # 再发布 Pages。历史版本一旦发布即固定，不再重渲。
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
+    # 全局串行：这个 job 会读改 gh-pages 上累积的 versions/，并发会互相覆盖，
+    # 所以按单一组排队且不取消在跑的（cancel 会丢掉刚发布版本的归档）。
+    concurrency:
+      group: ci-docs-api-publish
+      cancel-in-progress: false
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          # 手动补发历史版本时，workflow 定义取自 main（含本文件的修复），
+          # 但 docs/api 内容取自目标 tag。
+          ref: ${{ inputs.ref || github.ref }}
 
       - uses: actions/setup-node@v4
         with:
@@ -85,10 +105,14 @@ jobs:
         env:
           REF_TYPE: ${{ github.ref_type }}
           REF_NAME: ${{ github.ref_name }}
+          INPUT_REF: ${{ inputs.ref }}
         run: |
           set -euo pipefail
-          # 版本名：tag → tag 名（如 v0.3.0）；main 分支 → main（持续更新的开发版文档）
-          if [ "$REF_TYPE" = "tag" ]; then
+          # 版本名：手动补发 → 输入的 ref；tag push → tag 名（如 v0.3.0）；
+          # main 分支 → main（持续更新的开发版文档）
+          if [ -n "${INPUT_REF:-}" ]; then
+            VER="$INPUT_REF"
+          elif [ "$REF_TYPE" = "tag" ]; then
             VER="$REF_NAME"
           else
             VER="main"
@@ -150,16 +174,23 @@ jobs:
 
       - name: Persist versions to gh-pages branch (archive)
         env:
-          REF_NAME: ${{ github.ref_name }}
+          REF_NAME: ${{ inputs.ref || github.ref_name }}
         run: |
           set -euo pipefail
-          git config user.name  'github-actions[bot]'
-          git config user.email 'github-actions[bot]@users.noreply.github.com'
           # 把 site/ 内容推到 gh-pages 分支作为历史归档（下次发布从这里累积）
           cd site
           git init -q
           git checkout -q -b gh-pages
+          # 身份必须在 site/ 这个新仓库里配：在仓库根配的是 local scope，git init 后
+          # 继承不到，commit 会以 "Author identity unknown" 失败，导致 gh-pages 永远
+          # 建不起来、版本无从累积。
+          git config user.name  'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
           git add -A
-          git commit -q -m "docs(api): publish API docs site ($REF_NAME)" || { echo "nothing to persist"; exit 0; }
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "nothing to persist"; exit 0
+          fi
+          # 不吞错：commit/push 失败必须让这一步红，否则归档静默丢失。
+          git commit -q -m "docs(api): publish API docs site ($REF_NAME)"
           git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" gh-pages
           echo "📚 archived to gh-pages branch."
