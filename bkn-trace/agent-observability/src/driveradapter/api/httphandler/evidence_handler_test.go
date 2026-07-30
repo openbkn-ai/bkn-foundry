@@ -139,6 +139,75 @@ func TestEvidenceHandlerAuthenticatesStudioQueryWithHydra(t *testing.T) {
 	}
 }
 
+func TestLifecycleIdentityRejectsOAuthUntilTenantDomainAuthorizationIsDelegated(t *testing.T) {
+	hydra := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/admin/oauth2/introspect" || r.FormValue("token") != "lifecycle-token" {
+			t.Fatalf("unexpected introspection request: %s token=%q", r.URL.Path, r.FormValue("token"))
+		}
+		_, _ = io.WriteString(w, `{"active":true,"sub":"user-authenticated","client_id":"agent-authenticated","ext":{"visitor_type":"user"}}`)
+	}))
+	defer hydra.Close()
+
+	handler := NewEvidenceHandlerWithSecurityConfig(evidencesvc.New(evidencestore.New()), EvidenceHandlerSecurityConfig{
+		HydraAdminURL: hydra.URL,
+	})
+	nextCalled := false
+	next := handler.RequireTrustedLifecycleIdentity(func(w http.ResponseWriter, r *http.Request) {
+		nextCalled = true
+		w.WriteHeader(http.StatusNoContent)
+	})
+	request := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/conversations:ensure-current", nil)
+	request.Header.Set("Authorization", "Bearer lifecycle-token")
+	request.Header.Set("X-BKN-Tenant-ID", "tenant-1")
+	request.Header.Set("X-Business-Domain", "domain-1")
+	request.Header.Set("X-BKN-Application-Principal-ID", "forged-app")
+	request.Header.Set("X-BKN-Effective-Subject-Type", "service")
+	request.Header.Set("X-BKN-Effective-Subject-ID", "forged-subject")
+	request.Header.Set("X-BKN-Delegation-ID", "forged-delegation")
+	response := httptest.NewRecorder()
+
+	next(response, request)
+
+	if response.Code != http.StatusUnauthorized || nextCalled {
+		t.Fatalf(
+			"OAuth without authorized tenant/domain context must be rejected: %d %s",
+			response.Code, response.Body.String(),
+		)
+	}
+}
+
+func TestLifecycleIdentityRejectsAnonymousQueryCompatibilityMode(t *testing.T) {
+	handler := NewEvidenceHandlerWithSecurityConfig(
+		evidencesvc.New(evidencestore.New()),
+		EvidenceHandlerSecurityConfig{AllowUnauthenticatedQuery: true},
+	)
+	nextCalled := false
+	next := handler.RequireTrustedLifecycleIdentity(func(
+		http.ResponseWriter, *http.Request,
+	) {
+		nextCalled = true
+	})
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/api/agent-observability/v1/conversations:ensure-current",
+		nil,
+	)
+	request.Header.Set("X-BKN-Tenant-ID", "forged-tenant")
+	request.Header.Set("X-Business-Domain", "forged-domain")
+	request.Header.Set("X-BKN-Application-Principal-ID", "forged-app")
+	request.Header.Set("X-BKN-Effective-Subject-ID", "forged-subject")
+	response := httptest.NewRecorder()
+
+	next(response, request)
+
+	if response.Code != http.StatusUnauthorized || nextCalled {
+		t.Fatalf(
+			"anonymous query compatibility must not authorize lifecycle writes: %d %s",
+			response.Code, response.Body.String(),
+		)
+	}
+}
+
 func TestEvidenceHandlerRejectsOAuthIdentityMismatch(t *testing.T) {
 	hydra := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, `{"active":true,"sub":"acct_demo","client_id":"openbkn-studio","ext":{"visitor_type":"user"}}`)

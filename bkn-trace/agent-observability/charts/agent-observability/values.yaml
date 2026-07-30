@@ -65,6 +65,23 @@ businessResolver:
   vegaBaseURL: ""
   timeout: 3s
 
+core:
+  # MariaDB is the authoritative store in deployed environments. Use memory
+  # only for isolated local tests that do not claim durable lifecycle support.
+  store: mariadb
+  autoMigrate: true
+  abandonInterval: 30s
+  oneShotIdleTTL: 15m
+  evidenceCollectionState: enabled
+  projection:
+    enabled: true
+    index: bkn-trace-core
+    interval: 1s
+    rebuildVersion: bkn-trace-core-v013
+  mariadb:
+    existingSecret: bkn-trace-core-mariadb
+    dsnKey: dsn
+
 resources:
   limits:
     cpu: 500m

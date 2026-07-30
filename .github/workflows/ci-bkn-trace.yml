@@ -1,8 +1,5 @@
 name: ci-bkn-trace
 
-# Compile gate for PRs touching bkn-trace. Build-only for now; add `go test`
-# once the test harness is CI-ready.
-
 on:
   pull_request:
     paths:
@@ -14,8 +11,34 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: trace-ci-password
+          MARIADB_DATABASE: bkn_trace_ci
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "healthcheck.sh --connect --innodb_initialized"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      opensearch:
+        image: opensearchproject/opensearch:2.19.4
+        env:
+          discovery.type: single-node
+          DISABLE_SECURITY_PLUGIN: "true"
+          OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m
+        ports:
+          - 9200:9200
+        options: >-
+          --health-cmd "curl --fail http://localhost:9200/_cluster/health || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 30
     defaults:
       run:
         working-directory: bkn-trace/agent-observability
@@ -24,4 +47,25 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: bkn-trace/agent-observability/go.mod
-      - run: go build ./...
+      - name: Unit tests
+        run: make test
+      - name: Race tests
+        run: make test-race
+      - name: MariaDB lifecycle, fault and rebuild integration tests
+        env:
+          BKN_TRACE_TEST_MARIADB_DSN: root:trace-ci-password@tcp(127.0.0.1:3306)/bkn_trace_ci?parseTime=true&multiStatements=true
+          BKN_TRACE_TEST_OPENSEARCH_ENDPOINT: http://127.0.0.1:9200
+        run: make test-integration
+      - name: MariaDB capacity smoke
+        env:
+          BKN_TRACE_TEST_MARIADB_DSN: root:trace-ci-password@tcp(127.0.0.1:3306)/bkn_trace_ci?parseTime=true&multiStatements=true
+        run: make test-performance
+      - name: OpenSearch projection and alias integration test
+        env:
+          BKN_TRACE_TEST_OPENSEARCH_ENDPOINT: http://127.0.0.1:9200
+        run: make test-opensearch-integration
+      - name: Build
+        run: make build
+      - uses: azure/setup-helm@v4
+      - name: Helm lint
+        run: make helm-lint

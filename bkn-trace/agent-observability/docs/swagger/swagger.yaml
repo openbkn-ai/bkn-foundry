@@ -1,820 +1,6 @@
-swagger: '2.0'
-info:
-  description: APIs for querying agent traces from OpenSearch.
-  title: Agent Observability API
-  contact: {}
-  version: '1.0'
 basePath: /api/agent-observability/v1
-paths:
-  /evidence-nodes/{node_id}:
-    get:
-      description: Returns one visible claim, evidence ref, or business ref node scoped by trace_id or request_id.
-      produces:
-      - application/json
-      tags:
-      - evidence
-      summary: Get evidence node details
-      parameters:
-      - type: string
-        description: Evidence node ID, for example claim:claim_001
-        name: node_id
-        in: path
-        required: true
-      - type: string
-        description: Trace ID scope
-        name: trace_id
-        in: query
-      - type: string
-        description: BKN request ID scope
-        name: request_id
-        in: query
-      - type: integer
-        description: Maximum evidence trace batches to read, 1..1000
-        name: limit
-        in: query
-      responses:
-        '200':
-          description: OK
-          schema:
-            $ref: '#/definitions/evidencevo.EvidenceNodeResponse'
-        '400':
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        '404':
-          description: Not Found
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        '405':
-          description: Method Not Allowed
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        '500':
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-  /evidence/artifacts:
-    post:
-      description: Stores authorized business content separately from evidence events. Inline content and snapshot_ref are mutually exclusive.
-      consumes:
-      - application/json
-      produces:
-      - application/json
-      tags:
-      - evidence
-      summary: Ingest a BKN Trace 2.2 evidence artifact
-      parameters:
-      - description: BKN Trace 2.2 evidence artifact
-        name: request
-        in: body
-        required: true
-        schema:
-          $ref: '#/definitions/evidencevo.EvidenceArtifact'
-      responses:
-        '200':
-          description: OK
-          schema:
-            $ref: '#/definitions/evidencevo.ArtifactIngestResponse'
-        '201':
-          description: Created
-          schema:
-            $ref: '#/definitions/evidencevo.ArtifactIngestResponse'
-        '400':
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        '401':
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        '409':
-          description: Conflict
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        '500':
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-  /evidence/artifacts/{artifact_id}:
-    get:
-      description: Returns artifact content only when all persisted ownership dimensions match the trusted query identity.
-      produces:
-      - application/json
-      tags:
-      - evidence
-      summary: Get an authorized evidence artifact by ID
-      parameters:
-      - type: string
-        description: Artifact ID
-        name: artifact_id
-        in: path
-        required: true
-      responses:
-        '200':
-          description: OK
-          schema:
-            $ref: '#/definitions/evidencevo.EvidenceArtifact'
-        '400':
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        '401':
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        '404':
-          description: Not Found
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        '500':
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-  /evidence/by-trace:
-    get:
-      description: Backward-compatible endpoint for SDK/Studio callers. Returns the normalized evidence-chain response for trace_id or request_id.
-      produces:
-      - application/json
-      tags:
-      - evidence
-      summary: Query evidence chain by trace ID or BKN request ID
-      parameters:
-      - type: string
-        description: Trace ID
-        name: trace_id
-        in: query
-      - type: string
-        description: BKN request ID
-        name: request_id
-        in: query
-      - type: integer
-        description: Maximum evidence trace batches to read, 1..1000
-        name: limit
-        in: query
-      responses:
-        '200':
-          description: OK
-          schema:
-            $ref: '#/definitions/evidencevo.EvidenceChainResponse'
-        '400':
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        '404':
-          description: Not Found
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        '405':
-          description: Method Not Allowed
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        '500':
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-  /evidence/events:
-    post:
-      description: Accepts claim.created, evidence.refs.created, and business.refs.resolved events and stores the normalized evidence model.
-      consumes:
-      - application/json
-      produces:
-      - application/json
-      tags:
-      - evidence
-      summary: Ingest BKN Trace phase-two evidence events
-      parameters:
-      - description: BKN Trace phase-two evidence event batch
-        name: request
-        in: body
-        required: true
-        schema:
-          type: string
-      responses:
-        '202':
-          description: Accepted
-          schema:
-            $ref: '#/definitions/evidencevo.IngestResponse'
-        '400':
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        '405':
-          description: Method Not Allowed
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        '500':
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-  /requests:
-    get:
-      description: Returns stable request summaries generated from authorized evidence and artifacts.
-      produces:
-      - application/json
-      tags:
-      - requests
-      summary: List observable business requests
-      parameters:
-      - type: integer
-        description: Page size, 1..200
-        name: limit
-        in: query
-      - type: string
-        description: Opaque pagination cursor
-        name: cursor
-        in: query
-      - type: string
-        description: One user interaction ID
-        name: interaction_id
-        in: query
-      - type: string
-        description: Caller-owned conversation ID
-        name: conversation_id
-        in: query
-      - type: string
-        description: Started at or after this RFC3339 timestamp
-        name: from
-        in: query
-      - type: string
-        description: Started at or before this RFC3339 timestamp
-        name: to
-        in: query
-      - type: string
-        description: Execution status
-        name: status
-        in: query
-      - type: string
-        description: Agent or application
-        name: agent_or_app
-        in: query
-      - type: string
-        description: Business domain
-        name: business_domain
-        in: query
-      - type: string
-        description: Knowledge network
-        name: knowledge_network
-        in: query
-      - type: string
-        description: Evidence completeness
-        name: evidence_completeness
-        in: query
-      - type: string
-        description: Question, result, ID, business ref, or error keyword
-        name: keyword
-        in: query
-      responses:
-        '200':
-          description: OK
-          schema:
-            $ref: '#/definitions/evidencevo.RequestSummaryPage'
-        '400':
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        '401':
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        '500':
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-  /requests/{request_id}:
-    get:
-      description: Returns an authorized request summary and its business-content availability.
-      produces:
-      - application/json
-      tags:
-      - requests
-      summary: Get one observable business request
-      parameters:
-      - type: string
-        description: BKN request ID
-        name: request_id
-        in: path
-        required: true
-      responses:
-        '200':
-          description: OK
-          schema:
-            $ref: '#/definitions/evidencevo.RequestSummary'
-        '400':
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        '401':
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        '404':
-          description: Not Found
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        '500':
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-  /requests/{request_id}/traces:
-    get:
-      description: Supports one business request to multiple distributed traces and returns request_id on every trace.
-      produces:
-      - application/json
-      tags:
-      - requests
-      summary: List technical traces belonging to a business request
-      parameters:
-      - type: string
-        description: BKN request ID
-        name: request_id
-        in: path
-        required: true
-      - type: integer
-        description: Page size, 1..200
-        name: limit
-        in: query
-      - type: string
-        description: Opaque pagination cursor
-        name: cursor
-        in: query
-      - type: string
-        description: One user interaction ID
-        name: interaction_id
-        in: query
-      - type: string
-        description: Caller-owned conversation ID
-        name: conversation_id
-        in: query
-      responses:
-        '200':
-          description: OK
-          schema:
-            $ref: '#/definitions/evidencevo.TraceSummaryPage'
-        '400':
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        '401':
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        '500':
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-  /trace-executions:
-    get:
-      description: Returns stable trace summaries with reverse request links, generated from authorized trace evidence.
-      produces:
-      - application/json
-      tags:
-      - traces
-      summary: List technical trace executions
-      parameters:
-      - type: integer
-        description: Page size, 1..200
-        name: limit
-        in: query
-      - type: string
-        description: Opaque pagination cursor
-        name: cursor
-        in: query
-      - type: string
-        description: One user interaction ID
-        name: interaction_id
-        in: query
-      - type: string
-        description: Caller-owned conversation ID
-        name: conversation_id
-        in: query
-      - type: string
-        description: Exact trace ID; bypasses list projection scan
-        name: trace_id
-        in: query
-      - type: string
-        description: Started at or after this RFC3339 timestamp
-        name: from
-        in: query
-      - type: string
-        description: Started at or before this RFC3339 timestamp
-        name: to
-        in: query
-      - type: string
-        description: Execution status
-        name: status
-        in: query
-      - type: string
-        description: Agent or application
-        name: agent_or_app
-        in: query
-      - type: string
-        description: Business domain
-        name: business_domain
-        in: query
-      - type: string
-        description: Trace, request, operation, or error keyword
-        name: keyword
-        in: query
-      responses:
-        '200':
-          description: OK
-          schema:
-            $ref: '#/definitions/evidencevo.TraceSummaryPage'
-        '400':
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        '401':
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        '500':
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-  /traces/_search:
-    post:
-      description: Proxy raw OpenSearch DSL to the configured trace index and return the original OpenSearch response body.
-      consumes:
-      - application/json
-      produces:
-      - application/json
-      tags:
-      - traces
-      summary: Search traces with raw OpenSearch DSL
-      parameters:
-      - description: OpenSearch DSL JSON body
-        name: request
-        in: body
-        required: true
-        schema:
-          type: string
-      responses:
-        '200':
-          description: Raw OpenSearch search response
-          schema:
-            type: string
-        '400':
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        '405':
-          description: Method Not Allowed
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        '504':
-          description: Gateway Timeout
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-  /traces/by-conversation:
-    get:
-      description: Build a term filter automatically using attributes.gen_ai.conversation.id.keyword and return the original OpenSearch response body.
-      consumes:
-      - application/json
-      produces:
-      - application/json
-      tags:
-      - traces
-      summary: Search traces by conversation ID
-      parameters:
-      - type: string
-        description: Conversation ID
-        name: conversation_id
-        in: query
-        required: true
-      responses:
-        '200':
-          description: Raw OpenSearch search response
-          schema:
-            type: string
-        '400':
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        '405':
-          description: Method Not Allowed
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        '500':
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        '504':
-          description: Gateway Timeout
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-  /traces/by-request:
-    get:
-      description: Returns normalized claim, evidence refs, business refs, pagination, partial reasons, and visibility summary for a request.
-      produces:
-      - application/json
-      tags:
-      - evidence
-      summary: Get evidence chain by BKN request ID
-      parameters:
-      - type: string
-        description: BKN request ID
-        name: request_id
-        in: query
-        required: true
-      - type: integer
-        description: Maximum evidence trace batches to read, 1..1000
-        name: limit
-        in: query
-      responses:
-        '200':
-          description: OK
-          schema:
-            $ref: '#/definitions/evidencevo.EvidenceChainResponse'
-        '400':
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        '404':
-          description: Not Found
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        '405':
-          description: Method Not Allowed
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        '500':
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-  /traces/by-request/business-graph:
-    get:
-      description: Returns claim and business semantic nodes/edges derived from business.refs.resolved events.
-      produces:
-      - application/json
-      tags:
-      - evidence
-      summary: Get business semantic graph by BKN request ID
-      parameters:
-      - type: string
-        description: BKN request ID
-        name: request_id
-        in: query
-        required: true
-      - type: integer
-        description: Maximum evidence trace batches to read, 1..1000
-        name: limit
-        in: query
-      responses:
-        '200':
-          description: OK
-          schema:
-            $ref: '#/definitions/evidencevo.BusinessGraphResponse'
-        '400':
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        '404':
-          description: Not Found
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        '405':
-          description: Method Not Allowed
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        '500':
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-  /traces/by-request/snapshot-preview:
-    get:
-      description: Returns a metadata-only governed snapshot manifest preview without creating or exposing object storage locations.
-      produces:
-      - application/json
-      tags:
-      - evidence
-      summary: Get evidence snapshot preview by BKN request ID
-      parameters:
-      - type: string
-        description: BKN request ID
-        name: request_id
-        in: query
-        required: true
-      - type: integer
-        description: Maximum evidence trace batches to read, 1..1000
-        name: limit
-        in: query
-      responses:
-        '200':
-          description: OK
-          schema:
-            $ref: '#/definitions/evidencevo.SnapshotPreviewResponse'
-        '400':
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        '404':
-          description: Not Found
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        '405':
-          description: Method Not Allowed
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        '500':
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-  /traces/{trace_id}/business-graph:
-    get:
-      description: Returns claim and business semantic nodes/edges derived from business.refs.resolved events.
-      produces:
-      - application/json
-      tags:
-      - evidence
-      summary: Get business semantic graph by trace ID
-      parameters:
-      - type: string
-        description: Trace ID
-        name: trace_id
-        in: path
-        required: true
-      - type: integer
-        description: Maximum evidence trace batches to read, 1..1000
-        name: limit
-        in: query
-      responses:
-        '200':
-          description: OK
-          schema:
-            $ref: '#/definitions/evidencevo.BusinessGraphResponse'
-        '400':
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        '404':
-          description: Not Found
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        '405':
-          description: Method Not Allowed
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        '500':
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-  /traces/{trace_id}/evidence-chain:
-    get:
-      description: Returns normalized claim, evidence refs, business refs, pagination, partial reasons, and visibility summary for a trace.
-      produces:
-      - application/json
-      tags:
-      - evidence
-      summary: Get evidence chain by trace ID
-      parameters:
-      - type: string
-        description: Trace ID
-        name: trace_id
-        in: path
-        required: true
-      - type: integer
-        description: Maximum evidence trace batches to read, 1..1000
-        name: limit
-        in: query
-      responses:
-        '200':
-          description: OK
-          schema:
-            $ref: '#/definitions/evidencevo.EvidenceChainResponse'
-        '400':
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        '404':
-          description: Not Found
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        '405':
-          description: Method Not Allowed
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        '500':
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-  /traces/{trace_id}/snapshot-preview:
-    get:
-      description: Returns a metadata-only governed snapshot manifest preview without creating or exposing object storage locations.
-      produces:
-      - application/json
-      tags:
-      - evidence
-      summary: Get evidence snapshot preview by trace ID
-      parameters:
-      - type: string
-        description: Trace ID
-        name: trace_id
-        in: path
-        required: true
-      - type: integer
-        description: Maximum evidence trace batches to read, 1..1000
-        name: limit
-        in: query
-      responses:
-        '200':
-          description: OK
-          schema:
-            $ref: '#/definitions/evidencevo.SnapshotPreviewResponse'
-        '400':
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        '404':
-          description: Not Found
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        '405':
-          description: Method Not Allowed
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        '500':
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-  /traces/{trace_id}/trace-graph:
-    get:
-      description: Returns normalized trace tree nodes, parent-child edges, status, duration, and partial reasons for a trace.
-      produces:
-      - application/json
-      tags:
-      - traces
-      summary: Get trace graph by trace ID
-      parameters:
-      - type: string
-        description: Trace ID
-        name: trace_id
-        in: path
-        required: true
-      responses:
-        '200':
-          description: OK
-          schema:
-            type: object
-            additionalProperties: true
-        '400':
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        '404':
-          description: Not Found
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        '405':
-          description: Method Not Allowed
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        '500':
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        '504':
-          description: Gateway Timeout
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-  /interactions/{interaction_id}:
-    get:
-      description: Aggregates every authorized request and trace in one caller-owned interaction.
-      produces:
-      - application/json
-      tags:
-      - interactions
-      summary: Get one observable business interaction
-      parameters:
-      - type: string
-        description: BKN interaction ID
-        name: interaction_id
-        in: path
-        required: true
-      responses:
-        '200':
-          description: OK
-          schema:
-            $ref: '#/definitions/evidencevo.InteractionSummary'
-        '400':
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        '401':
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        '404':
-          description: Not Found
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        '500':
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
 definitions:
   evidencevo.ActionSummary:
-    type: object
     properties:
       approved:
         type: integer
@@ -826,8 +12,8 @@ definitions:
         type: string
       recommended:
         type: integer
-  evidencevo.ArtifactIngestResponse:
     type: object
+  evidencevo.ArtifactIngestResponse:
     properties:
       artifact_id:
         type: string
@@ -841,8 +27,8 @@ definitions:
         type: boolean
       trace_id:
         type: string
-  evidencevo.ArtifactLink:
     type: object
+  evidencevo.ArtifactLink:
     properties:
       artifact_ref:
         type: string
@@ -858,8 +44,8 @@ definitions:
         type: string
       role:
         type: string
+    type: object
   evidencevo.ArtifactType:
-    type: string
     enum:
     - question
     - result
@@ -868,6 +54,7 @@ definitions:
     - logic_execution
     - action_input
     - action_result
+    type: string
     x-enum-varnames:
     - ArtifactTypeQuestion
     - ArtifactTypeResult
@@ -877,12 +64,11 @@ definitions:
     - ArtifactTypeActionInput
     - ArtifactTypeActionResult
   evidencevo.BusinessDisplay:
-    type: object
     properties:
       business_path:
-        type: array
         items:
           type: string
+        type: array
       controlled_summary:
         type: string
       name:
@@ -891,19 +77,19 @@ definitions:
         type: string
       source_version:
         type: string
-  evidencevo.BusinessGraphData:
     type: object
+  evidencevo.BusinessGraphData:
     properties:
       edges:
-        type: array
         items:
           $ref: '#/definitions/evidencevo.BusinessGraphEdge'
-      nodes:
         type: array
+      nodes:
         items:
           $ref: '#/definitions/evidencevo.BusinessGraphNode'
-  evidencevo.BusinessGraphEdge:
+        type: array
     type: object
+  evidencevo.BusinessGraphEdge:
     properties:
       edge_type:
         type: string
@@ -915,8 +101,8 @@ definitions:
         type: string
       visibility:
         type: string
-  evidencevo.BusinessGraphNode:
     type: object
+  evidencevo.BusinessGraphNode:
     properties:
       action_instance_id:
         type: string
@@ -937,16 +123,16 @@ definitions:
       operation_id:
         type: string
       properties:
-        type: object
         additionalProperties: {}
+        type: object
       stage:
         type: string
       version_status:
         type: string
       visibility:
         type: string
-  evidencevo.BusinessGraphResponse:
     type: object
+  evidencevo.BusinessGraphResponse:
     properties:
       bkn.request.id:
         type: string
@@ -957,15 +143,15 @@ definitions:
       partial:
         type: boolean
       partial_reason:
-        type: array
         items:
           type: string
+        type: array
       trace_id:
         type: string
       visibility_summary:
         $ref: '#/definitions/evidencevo.VisibilitySummary'
-  evidencevo.EvidenceArtifact:
     type: object
+  evidencevo.EvidenceArtifact:
     properties:
       agent_or_app:
         type: string
@@ -986,9 +172,9 @@ definitions:
       business_domain:
         type: string
       business_refs:
-        type: array
         items:
           type: string
+        type: array
       claim_id:
         type: string
       content: {}
@@ -1014,30 +200,30 @@ definitions:
         type: string
       trace_id:
         type: string
-  evidencevo.EvidenceChainData:
     type: object
+  evidencevo.EvidenceChainData:
     properties:
       artifact_links:
-        type: array
         items:
           $ref: '#/definitions/evidencevo.ArtifactLink'
+        type: array
       business_refs:
-        type: array
         items:
-          type: object
           additionalProperties: {}
+          type: object
+        type: array
       claims:
-        type: array
         items:
-          type: object
           additionalProperties: {}
+          type: object
+        type: array
       evidence_refs:
-        type: array
         items:
-          type: object
           additionalProperties: {}
-  evidencevo.EvidenceChainResponse:
+          type: object
+        type: array
     type: object
+  evidencevo.EvidenceChainResponse:
     properties:
       bkn.request.id:
         type: string
@@ -1048,23 +234,23 @@ definitions:
       partial:
         type: boolean
       partial_reason:
-        type: array
         items:
           type: string
+        type: array
       trace_id:
         type: string
       visibility_summary:
         $ref: '#/definitions/evidencevo.VisibilitySummary'
-  evidencevo.EvidenceNodeResponse:
     type: object
+  evidencevo.EvidenceNodeResponse:
     properties:
       bkn.request.id:
         type: string
       claim_id:
         type: string
       data:
-        type: object
         additionalProperties: {}
+        type: object
       node_id:
         type: string
       node_type:
@@ -1075,8 +261,8 @@ definitions:
         type: string
       visibility:
         type: string
-  evidencevo.EvidencePage:
     type: object
+  evidencevo.EvidencePage:
     properties:
       edge_count:
         type: integer
@@ -1086,8 +272,8 @@ definitions:
         type: integer
       truncated:
         type: boolean
-  evidencevo.IngestResponse:
     type: object
+  evidencevo.IngestResponse:
     properties:
       accepted_event_count:
         type: integer
@@ -1103,8 +289,31 @@ definitions:
         type: integer
       trace_id:
         type: string
-  evidencevo.RequestSummary:
     type: object
+  evidencevo.InteractionSummary:
+    properties:
+      completed_at:
+        type: string
+      conversation_id:
+        type: string
+      duration_ms:
+        type: integer
+      interaction_id:
+        type: string
+      requests:
+        items:
+          $ref: '#/definitions/evidencevo.RequestSummary'
+        type: array
+      started_at:
+        type: string
+      status:
+        type: string
+      traces:
+        items:
+          $ref: '#/definitions/evidencevo.TraceSummary'
+        type: array
+    type: object
+  evidencevo.RequestSummary:
     properties:
       action_summary:
         $ref: '#/definitions/evidencevo.ActionSummary'
@@ -1113,9 +322,9 @@ definitions:
       business_domain:
         type: string
       business_refs:
-        type: array
         items:
           type: string
+        type: array
       completed_at:
         type: string
       conversation_id:
@@ -1124,20 +333,20 @@ definitions:
         type: integer
       error_summary:
         type: string
-      interaction_id:
-        type: string
       evidence_completeness:
         type: string
       initiator:
         type: string
+      interaction_id:
+        type: string
       knowledge_networks:
-        type: array
         items:
           type: string
+        type: array
       partial_reasons:
-        type: array
         items:
           type: string
+        type: array
       question_preview:
         type: string
       request_id:
@@ -1150,27 +359,27 @@ definitions:
         type: string
       trace_count:
         type: integer
-  evidencevo.RequestSummaryPage:
     type: object
+  evidencevo.RequestSummaryPage:
     properties:
       entries:
-        type: array
         items:
           $ref: '#/definitions/evidencevo.RequestSummary'
+        type: array
       next_cursor:
         type: string
       partial:
         type: boolean
       partial_reasons:
-        type: array
         items:
           type: string
+        type: array
       total:
         type: integer
       truncated:
         type: boolean
-  evidencevo.SnapshotManifest:
     type: object
+  evidencevo.SnapshotManifest:
     properties:
       artifact_count:
         type: integer
@@ -1204,8 +413,8 @@ definitions:
         type: string
       visibility_summary:
         $ref: '#/definitions/evidencevo.VisibilitySummary'
-  evidencevo.SnapshotPreviewResponse:
     type: object
+  evidencevo.SnapshotPreviewResponse:
     properties:
       bkn.request.id:
         type: string
@@ -1214,17 +423,17 @@ definitions:
       partial:
         type: boolean
       partial_reason:
-        type: array
         items:
           type: string
+        type: array
       snapshot_ref:
         $ref: '#/definitions/evidencevo.SnapshotRef'
       trace_id:
         type: string
       visibility_summary:
         $ref: '#/definitions/evidencevo.VisibilitySummary'
-  evidencevo.SnapshotRef:
     type: object
+  evidencevo.SnapshotRef:
     properties:
       mode:
         type: string
@@ -1232,8 +441,8 @@ definitions:
         type: string
       uri:
         type: string
-  evidencevo.TraceSummary:
     type: object
+  evidencevo.TraceSummary:
     properties:
       agent_or_app:
         type: string
@@ -1261,27 +470,27 @@ definitions:
         type: string
       trace_id:
         type: string
-  evidencevo.TraceSummaryPage:
     type: object
+  evidencevo.TraceSummaryPage:
     properties:
       entries:
-        type: array
         items:
           $ref: '#/definitions/evidencevo.TraceSummary'
+        type: array
       next_cursor:
         type: string
       partial:
         type: boolean
       partial_reasons:
-        type: array
         items:
           type: string
+        type: array
       total:
         type: integer
       truncated:
         type: boolean
-  evidencevo.VisibilitySummary:
     type: object
+  evidencevo.VisibilitySummary:
     properties:
       authorized_ref_count:
         type: integer
@@ -1295,8 +504,275 @@ definitions:
         type: integer
       unresolved_ref_count:
         type: integer
-  rdto.ErrorResponse:
     type: object
+  httphandler.closeConversationRequest:
+    properties:
+      idempotency_key:
+        type: string
+    type: object
+  httphandler.conversationPage:
+    properties:
+      entries:
+        items:
+          $ref: '#/definitions/sessionvo.Conversation'
+        type: array
+      next_cursor:
+        type: string
+    type: object
+  httphandler.ensureConversationRequest:
+    properties:
+      application_principal_id:
+        type: string
+      business_domain_id:
+        type: string
+      delegation_id:
+        type: string
+      effective_subject_id:
+        type: string
+      effective_subject_type:
+        type: string
+      external_conversation_key:
+        type: string
+      idempotency_key:
+        type: string
+      one_shot:
+        type: boolean
+      tenant_id:
+        type: string
+    type: object
+  httphandler.ensureOperationRequest:
+    properties:
+      causation_event_ids:
+        items:
+          type: string
+        type: array
+      lease_epoch:
+        type: integer
+      lease_token:
+        type: string
+      normalized_input_hash:
+        type: string
+      operation_key:
+        type: string
+      parent_operation_id:
+        type: string
+      required:
+        type: boolean
+      tool_name:
+        type: string
+    type: object
+  httphandler.evidenceEventRequest:
+    properties:
+      artifact_refs:
+        items:
+          type: string
+        type: array
+      attempt:
+        type: integer
+      business_domain_id:
+        type: string
+      business_refs:
+        items:
+          $ref: '#/definitions/sessionvo.BusinessRef'
+        type: array
+      causation_event_ids:
+        items:
+          type: string
+        type: array
+      conversation_id:
+        type: string
+      emitted_at:
+        type: string
+      envelope:
+        items:
+          type: integer
+        type: array
+      event_id:
+        type: string
+      event_type:
+        type: string
+      interaction_id:
+        type: string
+      observed_at:
+        type: string
+      operation_id:
+        type: string
+      payload_hash:
+        type: string
+      producer_epoch:
+        type: integer
+      producer_id:
+        type: string
+      producer_sequence:
+        type: integer
+      producer_stream_id:
+        type: string
+      request_id:
+        type: string
+      schema_version:
+        type: string
+      span_id:
+        type: string
+      started_at:
+        type: string
+      tenant_id:
+        type: string
+      trace_id:
+        type: string
+    type: object
+  httphandler.finishAttemptRequest:
+    properties:
+      artifact_refs:
+        items:
+          type: string
+        type: array
+      business_refs:
+        items:
+          $ref: '#/definitions/sessionvo.BusinessRef'
+        type: array
+      evidence_durability:
+        $ref: '#/definitions/sessionvo.EvidenceDurability'
+      observed_evidence_refs:
+        items:
+          type: string
+        type: array
+      partial_reasons:
+        items:
+          type: string
+        type: array
+      payload_hash:
+        type: string
+      receipt_id:
+        type: string
+      request_id:
+        type: string
+      retryable:
+        type: boolean
+      trace_id:
+        type: string
+    type: object
+  httphandler.interactionLeaseRequest:
+    properties:
+      lease_epoch:
+        type: integer
+      lease_token:
+        type: string
+    type: object
+  httphandler.lifecycleError:
+    properties:
+      code:
+        enum:
+        - conversation_required
+        - conversation_not_found
+        - conversation_closed
+        - conversation_expired
+        - conversation_owner_mismatch
+        - interaction_required
+        - interaction_in_progress
+        - interaction_terminal
+        - operation_required
+        - idempotency_conflict
+        - event_payload_conflict
+        - producer_sequence_conflict
+        - invalid_evidence_event
+        - receipt_pending
+        - terminal_conflict
+        - closure_manifest_invalid
+        - feature_not_installed
+        - capability_not_licensed
+        - permission_denied
+        - resource_not_disclosed
+        - internal_error
+        type: string
+      current_status:
+        type: string
+      message:
+        type: string
+      request_id:
+        type: string
+      required_action:
+        type: string
+      retry_after_ms:
+        type: integer
+      retryable:
+        type: boolean
+    type: object
+  httphandler.lifecycleErrorEnvelope:
+    properties:
+      error:
+        $ref: '#/definitions/httphandler.lifecycleError'
+    type: object
+  httphandler.operationResult:
+    properties:
+      operation:
+        $ref: '#/definitions/sessionvo.Operation'
+      receipt:
+        $ref: '#/definitions/sessionvo.Receipt'
+    type: object
+  httphandler.requestPage:
+    properties:
+      entries:
+        items:
+          $ref: '#/definitions/sessionvo.RequestSummary'
+        type: array
+      next_cursor:
+        type: string
+    type: object
+  httphandler.resumeConversationRequest:
+    properties:
+      conversation_id:
+        type: string
+    type: object
+  httphandler.startInteractionRequest:
+    properties:
+      idempotency_key:
+        type: string
+      lease_seconds:
+        type: integer
+    type: object
+  httphandler.terminalInteractionRequest:
+    properties:
+      answer_artifact_ref:
+        type: string
+      assembler_deadline:
+        type: string
+      claims:
+        items:
+          type: string
+        type: array
+      completion_manifest_version:
+        type: string
+      completion_reason:
+        type: string
+      expected_operations:
+        items:
+          $ref: '#/definitions/sessionvo.ExpectedOperation'
+        type: array
+      expected_receipts:
+        items:
+          $ref: '#/definitions/sessionvo.ExpectedReceipt'
+        type: array
+      lease_epoch:
+        type: integer
+      lease_token:
+        type: string
+      terminal_idempotency_key:
+        type: string
+    type: object
+  ledgervo.DurableAck:
+    properties:
+      durable_ack:
+        type: boolean
+      event_id:
+        type: string
+      ingest_sequence:
+        type: integer
+      ingested_at:
+        type: string
+      replayed:
+        type: boolean
+    type: object
+  rdto.ErrorResponse:
     properties:
       code:
         type: string
@@ -1307,26 +783,1943 @@ definitions:
         type: string
       trace_id:
         type: string
-  evidencevo.InteractionSummary:
     type: object
+  sessionvo.AttemptStatus:
+    enum:
+    - pending
+    - completed
+    - failed
+    type: string
+    x-enum-varnames:
+    - AttemptPending
+    - AttemptCompleted
+    - AttemptFailed
+  sessionvo.BusinessRef:
     properties:
-      completed_at:
+      as_of:
+        type: string
+      business_domain_id:
+        type: string
+      display_hint:
+        type: string
+      ref_id:
+        type: string
+      ref_type:
+        type: string
+      version:
+        type: string
+    type: object
+  sessionvo.ClosureManifest:
+    properties:
+      answer_artifact_ref:
+        type: string
+      assembler_deadline:
+        type: string
+      claims:
+        items:
+          type: string
+        type: array
+      completion_manifest_version:
+        type: string
+      completion_reason:
+        type: string
+      expected_operations:
+        items:
+          $ref: '#/definitions/sessionvo.ExpectedOperation'
+        type: array
+      expected_receipts:
+        items:
+          $ref: '#/definitions/sessionvo.ExpectedReceipt'
+        type: array
+      system_partial_reasons:
+        items:
+          type: string
+        type: array
+    type: object
+  sessionvo.Conversation:
+    properties:
+      closed_at:
         type: string
       conversation_id:
         type: string
-      duration_ms:
+      created_at:
+        type: string
+      external_conversation_key:
+        type: string
+      generation:
         type: integer
+      one_shot:
+        type: boolean
+      owner:
+        $ref: '#/definitions/sessionvo.Owner'
+      row_version:
+        type: integer
+      status:
+        $ref: '#/definitions/sessionvo.ConversationStatus'
+      updated_at:
+        type: string
+    type: object
+  sessionvo.ConversationStatus:
+    enum:
+    - active
+    - closed
+    - expired
+    type: string
+    x-enum-varnames:
+    - ConversationActive
+    - ConversationClosed
+    - ConversationExpired
+  sessionvo.EvidenceDurability:
+    enum:
+    - pending
+    - durable
+    - failed
+    type: string
+    x-enum-varnames:
+    - DurabilityPending
+    - DurabilityDurable
+    - DurabilityFailed
+  sessionvo.EvidenceStatus:
+    enum:
+    - not_applicable
+    - assembling
+    - complete
+    - partial
+    - failed
+    type: string
+    x-enum-varnames:
+    - EvidenceNotApplicable
+    - EvidenceAssembling
+    - EvidenceComplete
+    - EvidencePartial
+    - EvidenceFailed
+  sessionvo.ExpectedOperation:
+    properties:
+      operation_id:
+        type: string
+      required:
+        type: boolean
+    type: object
+  sessionvo.ExpectedReceipt:
+    properties:
+      receipt_id:
+        type: string
+      required:
+        type: boolean
+    type: object
+  sessionvo.Interaction:
+    properties:
+      closure_manifest:
+        $ref: '#/definitions/sessionvo.ClosureManifest'
+      conversation_id:
+        type: string
+      created_at:
+        type: string
+      evidence_status:
+        $ref: '#/definitions/sessionvo.EvidenceStatus'
+      execution_status:
+        $ref: '#/definitions/sessionvo.InteractionStatus'
       interaction_id:
         type: string
-      requests:
-        type: array
-        items:
-          $ref: '#/definitions/evidencevo.RequestSummary'
-      started_at:
+      lease_epoch:
+        type: integer
+      lease_expires_at:
         type: string
-      status:
+      lease_token:
         type: string
-      traces:
-        type: array
+      lease_version:
+        type: integer
+      ordinal:
+        type: integer
+      row_version:
+        type: integer
+      terminal_at:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  sessionvo.InteractionStatus:
+    enum:
+    - active
+    - completed
+    - failed
+    - canceled
+    - handed_off
+    - abandoned
+    type: string
+    x-enum-varnames:
+    - InteractionActive
+    - InteractionCompleted
+    - InteractionFailed
+    - InteractionCanceled
+    - InteractionHandedOff
+    - InteractionAbandoned
+  sessionvo.Operation:
+    properties:
+      attempt:
+        type: integer
+      attempt_status:
+        $ref: '#/definitions/sessionvo.AttemptStatus'
+      causation_event_ids:
         items:
-          $ref: '#/definitions/evidencevo.TraceSummary'
+          type: string
+        type: array
+      conversation_id:
+        type: string
+      created_at:
+        type: string
+      interaction_id:
+        type: string
+      normalized_input_hash:
+        type: string
+      operation_id:
+        type: string
+      operation_key:
+        type: string
+      parent_operation_id:
+        type: string
+      retryable:
+        type: boolean
+      row_version:
+        type: integer
+      tool_name:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  sessionvo.Owner:
+    properties:
+      application_principal_id:
+        type: string
+      business_domain_id:
+        type: string
+      delegation_id:
+        type: string
+      effective_subject_id:
+        type: string
+      effective_subject_type:
+        $ref: '#/definitions/sessionvo.SubjectType'
+      tenant_id:
+        type: string
+    type: object
+  sessionvo.Receipt:
+    properties:
+      artifact_refs:
+        items:
+          type: string
+        type: array
+      attempt:
+        type: integer
+      business_refs:
+        items:
+          $ref: '#/definitions/sessionvo.BusinessRef'
+        type: array
+      causation_event_ids:
+        items:
+          type: string
+        type: array
+      conversation_id:
+        type: string
+      evidence_durability:
+        $ref: '#/definitions/sessionvo.EvidenceDurability'
+      interaction_id:
+        type: string
+      issued_at:
+        type: string
+      normalized_input_hash:
+        type: string
+      observed_evidence_refs:
+        items:
+          type: string
+        type: array
+      operation_id:
+        type: string
+      operation_key:
+        type: string
+      owner:
+        $ref: '#/definitions/sessionvo.Owner'
+      partial_reasons:
+        items:
+          type: string
+        type: array
+      payload_hash:
+        type: string
+      receipt_id:
+        type: string
+      receipt_status:
+        $ref: '#/definitions/sessionvo.ReceiptStatus'
+      request_id:
+        type: string
+      required:
+        type: boolean
+      row_version:
+        type: integer
+      schema_version:
+        type: string
+      terminal_at:
+        type: string
+      tool_name:
+        type: string
+      trace_id:
+        type: string
+    type: object
+  sessionvo.ReceiptStatus:
+    enum:
+    - pending
+    - completed
+    - failed
+    type: string
+    x-enum-varnames:
+    - ReceiptPending
+    - ReceiptCompleted
+    - ReceiptFailed
+  sessionvo.RequestSummary:
+    properties:
+      conversation_id:
+        type: string
+      interaction_id:
+        type: string
+      operation_count:
+        type: integer
+      receipt_count:
+        type: integer
+      request_id:
+        type: string
+      trace_ids:
+        items:
+          type: string
+        type: array
+      updated_at:
+        type: string
+    type: object
+  sessionvo.SubjectType:
+    enum:
+    - user
+    - service
+    type: string
+    x-enum-varnames:
+    - SubjectUser
+    - SubjectService
+info:
+  contact: {}
+  description: APIs for querying agent traces from OpenSearch.
+  title: Agent Observability API
+  version: "1.0"
+paths:
+  /api/agent-observability/v1/traces/_search:
+    post:
+      consumes:
+      - application/json
+      description: Proxy raw OpenSearch DSL to the configured trace index and return
+        the original OpenSearch response body.
+      parameters:
+      - description: OpenSearch DSL JSON body
+        in: body
+        name: request
+        required: true
+        schema:
+          type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Raw OpenSearch search response
+          schema:
+            type: string
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "405":
+          description: Method Not Allowed
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "504":
+          description: Gateway Timeout
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+      summary: Search traces with raw OpenSearch DSL
+      tags:
+      - traces
+  /api/agent-observability/v1/traces/{trace_id}/trace-graph:
+    get:
+      description: Returns normalized trace tree nodes, parent-child edges, status,
+        duration, and partial reasons for a trace.
+      parameters:
+      - description: Trace ID
+        in: path
+        name: trace_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "405":
+          description: Method Not Allowed
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "504":
+          description: Gateway Timeout
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+      summary: Get trace graph by trace ID
+      tags:
+      - traces
+  /api/agent-observability/v1/traces/by-conversation:
+    get:
+      consumes:
+      - application/json
+      description: Build a term filter automatically using attributes.gen_ai.conversation.id.keyword
+        and return the original OpenSearch response body.
+      parameters:
+      - description: Conversation ID
+        in: query
+        name: conversation_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Raw OpenSearch search response
+          schema:
+            type: string
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "405":
+          description: Method Not Allowed
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "504":
+          description: Gateway Timeout
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+      summary: Search traces by conversation ID
+      tags:
+      - traces
+  /conversations:
+    get:
+      parameters:
+      - description: Page size, 1..100
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httphandler.conversationPage'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+      summary: List managed Conversations in the authorized owner scope
+      tags:
+      - lifecycle
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Managed Conversation request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/httphandler.ensureConversationRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/sessionvo.Conversation'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+      summary: Create or return the current managed Conversation
+      tags:
+      - lifecycle
+  /conversations/{conversation_id}:
+    get:
+      parameters:
+      - description: Conversation ID
+        in: path
+        name: conversation_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/sessionvo.Conversation'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+      summary: Get one managed Conversation
+      tags:
+      - lifecycle
+  /conversations/{conversation_id}/close:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Conversation ID
+        in: path
+        name: conversation_id
+        required: true
+        type: string
+      - description: Idempotent close request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/httphandler.closeConversationRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/sessionvo.Conversation'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+      summary: Close one managed Conversation
+      tags:
+      - lifecycle
+  /conversations/{conversation_id}/interactions:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Conversation ID
+        in: path
+        name: conversation_id
+        required: true
+        type: string
+      - description: Interaction start request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/httphandler.startInteractionRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/sessionvo.Interaction'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+      summary: Start one managed Interaction
+      tags:
+      - lifecycle
+  /conversations/{conversation_id}/interactions/{interaction_id}/operations:ensure:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Conversation ID
+        in: path
+        name: conversation_id
+        required: true
+        type: string
+      - description: Interaction ID
+        in: path
+        name: interaction_id
+        required: true
+        type: string
+      - description: Operation intent
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/httphandler.ensureOperationRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/httphandler.operationResult'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+      summary: Ensure an idempotent Operation intent and durable Receipt
+      tags:
+      - lifecycle
+  /conversations:create-new-generation:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: New generation request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/httphandler.ensureConversationRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/sessionvo.Conversation'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+      summary: Create a new managed Conversation generation
+      tags:
+      - lifecycle
+  /conversations:ensure-current:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Managed Conversation request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/httphandler.ensureConversationRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/sessionvo.Conversation'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+      summary: Ensure the current managed Conversation
+      tags:
+      - lifecycle
+  /conversations:resume-by-id:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Conversation resume request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/httphandler.resumeConversationRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/sessionvo.Conversation'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+      summary: Resume an active managed Conversation by Core ID
+      tags:
+      - lifecycle
+  /evidence-nodes/{node_id}:
+    get:
+      description: Returns one visible claim, evidence ref, or business ref node scoped
+        by trace_id or request_id.
+      parameters:
+      - description: Evidence node ID, for example claim:claim_001
+        in: path
+        name: node_id
+        required: true
+        type: string
+      - description: Trace ID scope
+        in: query
+        name: trace_id
+        type: string
+      - description: BKN request ID scope
+        in: query
+        name: request_id
+        type: string
+      - description: Maximum evidence trace batches to read, 1..1000
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/evidencevo.EvidenceNodeResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "405":
+          description: Method Not Allowed
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+      summary: Get evidence node details
+      tags:
+      - evidence
+  /evidence/artifacts:
+    post:
+      consumes:
+      - application/json
+      description: Stores authorized business content separately from evidence events.
+        Inline content and snapshot_ref are mutually exclusive.
+      parameters:
+      - description: BKN Trace 2.2 evidence artifact
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/evidencevo.EvidenceArtifact'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/evidencevo.ArtifactIngestResponse'
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/evidencevo.ArtifactIngestResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+      summary: Ingest a BKN Trace 2.2 evidence artifact
+      tags:
+      - evidence
+  /evidence/artifacts/{artifact_id}:
+    get:
+      description: Returns artifact content only when all persisted ownership dimensions
+        match the trusted query identity.
+      parameters:
+      - description: Artifact ID
+        in: path
+        name: artifact_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/evidencevo.EvidenceArtifact'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+      summary: Get an authorized evidence artifact by ID
+      tags:
+      - evidence
+  /evidence/by-trace:
+    get:
+      description: Backward-compatible endpoint for SDK/Studio callers. Returns the
+        normalized evidence-chain response for trace_id or request_id.
+      parameters:
+      - description: Trace ID
+        in: query
+        name: trace_id
+        type: string
+      - description: BKN request ID
+        in: query
+        name: request_id
+        type: string
+      - description: Maximum evidence trace batches to read, 1..1000
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/evidencevo.EvidenceChainResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "405":
+          description: Method Not Allowed
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+      summary: Query evidence chain by trace ID or BKN request ID
+      tags:
+      - evidence
+  /evidence/events:
+    post:
+      consumes:
+      - application/json
+      description: Commits the immutable Evidence Ledger record and Projection Outbox
+        in one transaction before returning durable_ack.
+      parameters:
+      - description: BKN Trace 3.0 evidence event
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/httphandler.evidenceEventRequest'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/ledgervo.DurableAck'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+      summary: Durably ingest one BKN Trace 3.0 evidence event
+      tags:
+      - evidence
+  /interactions/{interaction_id}:
+    get:
+      parameters:
+      - description: Interaction ID
+        in: path
+        name: interaction_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/sessionvo.Interaction'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+      summary: Get one managed Interaction
+      tags:
+      - lifecycle
+  /interactions/{interaction_id}/cancel:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Interaction ID
+        in: path
+        name: interaction_id
+        required: true
+        type: string
+      - description: Terminal closure manifest
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/httphandler.terminalInteractionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/sessionvo.Interaction'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+      summary: Cancel one managed Interaction
+      tags:
+      - lifecycle
+  /interactions/{interaction_id}/complete:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Interaction ID
+        in: path
+        name: interaction_id
+        required: true
+        type: string
+      - description: Terminal closure manifest
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/httphandler.terminalInteractionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/sessionvo.Interaction'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+      summary: Complete one managed Interaction
+      tags:
+      - lifecycle
+  /interactions/{interaction_id}/fail:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Interaction ID
+        in: path
+        name: interaction_id
+        required: true
+        type: string
+      - description: Terminal closure manifest
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/httphandler.terminalInteractionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/sessionvo.Interaction'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+      summary: Fail one managed Interaction
+      tags:
+      - lifecycle
+  /interactions/{interaction_id}/handoff:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Interaction ID
+        in: path
+        name: interaction_id
+        required: true
+        type: string
+      - description: Terminal closure manifest
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/httphandler.terminalInteractionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/sessionvo.Interaction'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+      summary: Hand off one managed Interaction
+      tags:
+      - lifecycle
+  /operations/{operation_id}:
+    get:
+      parameters:
+      - description: Operation ID
+        in: path
+        name: operation_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/sessionvo.Operation'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+      summary: Get one Operation
+      tags:
+      - lifecycle
+  /operations/{operation_id}/attempts:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Operation ID
+        in: path
+        name: operation_id
+        required: true
+        type: string
+      - description: Current Interaction lease
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/httphandler.interactionLeaseRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/httphandler.operationResult'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+      summary: Start the next retry attempt for an Operation
+      tags:
+      - lifecycle
+  /operations/{operation_id}/attempts/{attempt}:complete:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Operation ID
+        in: path
+        name: operation_id
+        required: true
+        type: string
+      - description: Attempt number
+        in: path
+        name: attempt
+        required: true
+        type: integer
+      - description: Durable operation result
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/httphandler.finishAttemptRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httphandler.operationResult'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+      summary: Complete one Operation attempt
+      tags:
+      - lifecycle
+  /operations/{operation_id}/attempts/{attempt}:fail:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Operation ID
+        in: path
+        name: operation_id
+        required: true
+        type: string
+      - description: Attempt number
+        in: path
+        name: attempt
+        required: true
+        type: integer
+      - description: Durable operation failure
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/httphandler.finishAttemptRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httphandler.operationResult'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+      summary: Fail one Operation attempt
+      tags:
+      - lifecycle
+  /receipts/{receipt_id}:
+    get:
+      parameters:
+      - description: Receipt ID
+        in: path
+        name: receipt_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/sessionvo.Receipt'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+      summary: Get one durable Receipt
+      tags:
+      - lifecycle
+  /requests:
+    get:
+      parameters:
+      - description: Page size, 1..100
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httphandler.requestPage'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+      summary: List request projections from durable Receipts
+      tags:
+      - lifecycle
+  /requests/{request_id}:
+    get:
+      parameters:
+      - description: Request ID
+        in: path
+        name: request_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/sessionvo.RequestSummary'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+      summary: Get one request projection from durable Receipts
+      tags:
+      - lifecycle
+  /requests/{request_id}/traces:
+    get:
+      description: Supports one business request to multiple distributed traces and
+        returns request_id on every trace.
+      parameters:
+      - description: BKN request ID
+        in: path
+        name: request_id
+        required: true
+        type: string
+      - description: Page size, 1..200
+        in: query
+        name: limit
+        type: integer
+      - description: Opaque pagination cursor
+        in: query
+        name: cursor
+        type: string
+      - description: Caller-owned conversation ID
+        in: query
+        name: conversation_id
+        type: string
+      - description: One user interaction ID
+        in: query
+        name: interaction_id
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/evidencevo.TraceSummaryPage'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+      summary: List technical traces belonging to a business request
+      tags:
+      - requests
+  /trace-executions:
+    get:
+      description: Returns stable trace summaries with reverse request links, generated
+        from authorized trace evidence.
+      parameters:
+      - description: Page size, 1..200
+        in: query
+        name: limit
+        type: integer
+      - description: Opaque pagination cursor
+        in: query
+        name: cursor
+        type: string
+      - description: Exact trace ID; bypasses list projection scan
+        in: query
+        name: trace_id
+        type: string
+      - description: Caller-owned conversation ID
+        in: query
+        name: conversation_id
+        type: string
+      - description: One user interaction ID
+        in: query
+        name: interaction_id
+        type: string
+      - description: Started at or after this RFC3339 timestamp
+        in: query
+        name: from
+        type: string
+      - description: Started at or before this RFC3339 timestamp
+        in: query
+        name: to
+        type: string
+      - description: Execution status
+        in: query
+        name: status
+        type: string
+      - description: Agent or application
+        in: query
+        name: agent_or_app
+        type: string
+      - description: Business domain
+        in: query
+        name: business_domain
+        type: string
+      - description: Trace, request, operation, or error keyword
+        in: query
+        name: keyword
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/evidencevo.TraceSummaryPage'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+      summary: List technical trace executions
+      tags:
+      - traces
+  /traces/{trace_id}/business-graph:
+    get:
+      description: Returns claim and business semantic nodes/edges derived from business.refs.resolved
+        events.
+      parameters:
+      - description: Trace ID
+        in: path
+        name: trace_id
+        required: true
+        type: string
+      - description: Maximum evidence trace batches to read, 1..1000
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/evidencevo.BusinessGraphResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "405":
+          description: Method Not Allowed
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+      summary: Get business semantic graph by trace ID
+      tags:
+      - evidence
+  /traces/{trace_id}/evidence-chain:
+    get:
+      description: Returns normalized claim, evidence refs, business refs, pagination,
+        partial reasons, and visibility summary for a trace.
+      parameters:
+      - description: Trace ID
+        in: path
+        name: trace_id
+        required: true
+        type: string
+      - description: Maximum evidence trace batches to read, 1..1000
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/evidencevo.EvidenceChainResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "405":
+          description: Method Not Allowed
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+      summary: Get evidence chain by trace ID
+      tags:
+      - evidence
+  /traces/{trace_id}/snapshot-preview:
+    get:
+      description: Returns a metadata-only governed snapshot manifest preview without
+        creating or exposing object storage locations.
+      parameters:
+      - description: Trace ID
+        in: path
+        name: trace_id
+        required: true
+        type: string
+      - description: Maximum evidence trace batches to read, 1..1000
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/evidencevo.SnapshotPreviewResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "405":
+          description: Method Not Allowed
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+      summary: Get evidence snapshot preview by trace ID
+      tags:
+      - evidence
+  /traces/by-request:
+    get:
+      description: Returns normalized claim, evidence refs, business refs, pagination,
+        partial reasons, and visibility summary for a request.
+      parameters:
+      - description: BKN request ID
+        in: query
+        name: request_id
+        required: true
+        type: string
+      - description: Maximum evidence trace batches to read, 1..1000
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/evidencevo.EvidenceChainResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "405":
+          description: Method Not Allowed
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+      summary: Get evidence chain by BKN request ID
+      tags:
+      - evidence
+  /traces/by-request/business-graph:
+    get:
+      description: Returns claim and business semantic nodes/edges derived from business.refs.resolved
+        events.
+      parameters:
+      - description: BKN request ID
+        in: query
+        name: request_id
+        required: true
+        type: string
+      - description: Maximum evidence trace batches to read, 1..1000
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/evidencevo.BusinessGraphResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "405":
+          description: Method Not Allowed
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+      summary: Get business semantic graph by BKN request ID
+      tags:
+      - evidence
+  /traces/by-request/snapshot-preview:
+    get:
+      description: Returns a metadata-only governed snapshot manifest preview without
+        creating or exposing object storage locations.
+      parameters:
+      - description: BKN request ID
+        in: query
+        name: request_id
+        required: true
+        type: string
+      - description: Maximum evidence trace batches to read, 1..1000
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/evidencevo.SnapshotPreviewResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "405":
+          description: Method Not Allowed
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+      summary: Get evidence snapshot preview by BKN request ID
+      tags:
+      - evidence
+swagger: "2.0"

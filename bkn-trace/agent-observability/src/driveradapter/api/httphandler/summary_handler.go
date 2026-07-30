@@ -34,7 +34,6 @@ import (
 // @Failure 400 {object} rdto.ErrorResponse
 // @Failure 401 {object} rdto.ErrorResponse
 // @Failure 500 {object} rdto.ErrorResponse
-// @Router /requests [get]
 func (h *EvidenceHandler) ListRequests(w http.ResponseWriter, r *http.Request) {
 	ensureResponseTraceID(w, r)
 	if r.Method != http.MethodGet {
@@ -64,7 +63,6 @@ func (h *EvidenceHandler) ListRequests(w http.ResponseWriter, r *http.Request) {
 // @Failure 401 {object} rdto.ErrorResponse
 // @Failure 404 {object} rdto.ErrorResponse
 // @Failure 500 {object} rdto.ErrorResponse
-// @Router /requests/{request_id} [get]
 func (h *EvidenceHandler) GetRequestSummary(w http.ResponseWriter, r *http.Request) {
 	ensureResponseTraceID(w, r)
 	if r.Method != http.MethodGet {
@@ -103,7 +101,6 @@ func (h *EvidenceHandler) GetRequestSummary(w http.ResponseWriter, r *http.Reque
 // @Failure 401 {object} rdto.ErrorResponse
 // @Failure 404 {object} rdto.ErrorResponse
 // @Failure 500 {object} rdto.ErrorResponse
-// @Router /interactions/{interaction_id} [get]
 func (h *EvidenceHandler) GetInteractionSummary(w http.ResponseWriter, r *http.Request) {
 	ensureResponseTraceID(w, r)
 	if r.Method != http.MethodGet {
