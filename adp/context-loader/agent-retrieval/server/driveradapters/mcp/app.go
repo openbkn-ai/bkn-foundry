@@ -34,9 +34,9 @@ const (
 	toolKeyQueryInstanceSubgraph    = "query_instance_subgraph"
 	toolKeyGetLogicPropertiesValues = "get_logic_properties_values"
 	toolKeyGetActionInfo            = "get_action_info"
-	toolKeyExecuteAction           = "execute_action"
-	toolKeyGetActionExecution      = "get_action_execution"
-	toolKeyListActionExecutions    = "list_action_executions"
+	toolKeyExecuteAction            = "execute_action"
+	toolKeyGetActionExecution       = "get_action_execution"
+	toolKeyListActionExecutions     = "list_action_executions"
 	toolKeyFindSkills               = "find_skills"
 	toolKeyListKnowledgeNetworks    = "list_knowledge_networks"
 	toolKeyGetKnDetail              = "get_kn_detail"
@@ -86,142 +86,71 @@ run_sql 占位符示例（id 必须来自 search_schema / list_resources 的真�
 
 // NewMCPHandler creates an http.Handler for the MCP Streamable HTTP Server.
 // Tool metadata comes from schemas/tools_meta.json; schemas from schemas/*.json.
+//
+// The tool set is fixed here, so this runs after the assembly registry is
+// frozen — app.Run freezes first, then builds handlers. What each caller is
+// shown is decided per request against the licence, not here.
 func NewMCPHandler() http.Handler {
-	localeBundle := loadMCPLocaleBundle(mcpLocaleFromEnv())
-	mcpServer := server.NewMCPServer(serverName, serverVersion,
-		server.WithToolCapabilities(true),
-		server.WithInstructions(localeBundle.ServerInstructions()),
-	)
-
-	knSearchService := knsearch.NewKnSearchService()
-	searchSchemaName, searchSchemaDesc := localeBundle.ToolMeta(toolKeySearchSchema)
-	searchSchemaInput, searchSchemaOutput := localeBundle.ToolSchemas(toolKeySearchSchema)
-	mcpServer.AddTool(
-		newToolWithSchemas(searchSchemaName, searchSchemaDesc, searchSchemaInput, searchSchemaOutput),
-		handleSearchSchema(knSearchService),
-	)
-
-	ontologyQuery := drivenadapters.NewOntologyQueryAccess()
-	queryObjectInstanceName, queryObjectInstanceDesc := localeBundle.ToolMeta(toolKeyQueryObjectInstance)
-	qoiInput, qoiOutput := localeBundle.ToolSchemas(toolKeyQueryObjectInstance)
-	mcpServer.AddTool(
-		newToolWithSchemas(queryObjectInstanceName, queryObjectInstanceDesc, qoiInput, qoiOutput),
-		handleQueryObjectInstance(ontologyQuery),
-	)
-
-	knQuerySubgraphService := logicsKqs.NewKnQuerySubgraphService()
-	queryInstanceSubgraphName, queryInstanceSubgraphDesc := localeBundle.ToolMeta(toolKeyQueryInstanceSubgraph)
-	qisInput, qisOutput := localeBundle.ToolSchemas(toolKeyQueryInstanceSubgraph)
-	mcpServer.AddTool(
-		newToolWithSchemas(queryInstanceSubgraphName, queryInstanceSubgraphDesc, qisInput, qisOutput),
-		handleQueryInstanceSubgraph(knQuerySubgraphService),
-	)
-
-	getLogicPropertiesValuesService := logicsKlp.NewKnLogicPropertyResolverService()
-	getLogicPropertiesValuesName, getLogicPropertiesValuesDesc := localeBundle.ToolMeta(toolKeyGetLogicPropertiesValues)
-	glpvInput, glpvOutput := localeBundle.ToolSchemas(toolKeyGetLogicPropertiesValues)
-	mcpServer.AddTool(
-		newToolWithSchemas(getLogicPropertiesValuesName, getLogicPropertiesValuesDesc, glpvInput, glpvOutput),
-		handleGetLogicPropertiesValues(getLogicPropertiesValuesService),
-	)
-
-	getActionInfoService := logicsKar.NewKnActionRecallService()
-	getActionInfoName, getActionInfoDesc := localeBundle.ToolMeta(toolKeyGetActionInfo)
-	gaiInput, gaiOutput := localeBundle.ToolSchemas(toolKeyGetActionInfo)
-	mcpServer.AddTool(
-		newToolWithSchemas(getActionInfoName, getActionInfoDesc, gaiInput, gaiOutput),
-		handleGetActionInfo(getActionInfoService),
-	)
-
-	executeActionName, executeActionDesc := localeBundle.ToolMeta(toolKeyExecuteAction)
-	eaInput, eaOutput := localeBundle.ToolSchemas(toolKeyExecuteAction)
-	mcpServer.AddTool(
-		newToolWithSchemas(executeActionName, executeActionDesc, eaInput, eaOutput),
-		handleExecuteAction(getActionInfoService),
-	)
-
-	getActionExecutionName, getActionExecutionDesc := localeBundle.ToolMeta(toolKeyGetActionExecution)
-	gaeInput, gaeOutput := localeBundle.ToolSchemas(toolKeyGetActionExecution)
-	mcpServer.AddTool(
-		newToolWithSchemas(getActionExecutionName, getActionExecutionDesc, gaeInput, gaeOutput),
-		handleGetActionExecution(getActionInfoService),
-	)
-
-	listActionExecutionsName, listActionExecutionsDesc := localeBundle.ToolMeta(toolKeyListActionExecutions)
-	laeInput, laeOutput := localeBundle.ToolSchemas(toolKeyListActionExecutions)
-	mcpServer.AddTool(
-		newToolWithSchemas(listActionExecutionsName, listActionExecutionsDesc, laeInput, laeOutput),
-		handleListActionExecutions(getActionInfoService),
-	)
-
-	findSkillsService := logicsFs.NewFindSkillsService()
-	findSkillsName, findSkillsDesc := localeBundle.ToolMeta(toolKeyFindSkills)
-	fsInput, fsOutput := localeBundle.ToolSchemas(toolKeyFindSkills)
-	mcpServer.AddTool(
-		newToolWithSchemas(findSkillsName, findSkillsDesc, fsInput, fsOutput),
-		handleFindSkills(findSkillsService),
-	)
-
-	bknBackend := drivenadapters.NewBknBackendAccess()
-	listKnName, listKnDesc := localeBundle.ToolMeta(toolKeyListKnowledgeNetworks)
-	listKnInput, listKnOutput := localeBundle.ToolSchemas(toolKeyListKnowledgeNetworks)
-	mcpServer.AddTool(
-		newToolWithSchemas(listKnName, listKnDesc, listKnInput, listKnOutput),
-		handleListKnowledgeNetworks(bknBackend),
-	)
-
-	getKnDetailName, getKnDetailDesc := localeBundle.ToolMeta(toolKeyGetKnDetail)
-	knDetailInput, knDetailOutput := localeBundle.ToolSchemas(toolKeyGetKnDetail)
-	mcpServer.AddTool(
-		newToolWithSchemas(getKnDetailName, getKnDetailDesc, knDetailInput, knDetailOutput),
-		handleGetKnDetail(bknBackend),
-	)
-
-	getObjectTypesName, getObjectTypesDesc := loadToolMeta(toolKeyGetObjectTypes)
-	objectTypesInput, objectTypesOutput := loadToolSchemas(toolKeyGetObjectTypes)
-	mcpServer.AddTool(
-		newToolWithSchemas(getObjectTypesName, getObjectTypesDesc, objectTypesInput, objectTypesOutput),
-		handleGetObjectTypes(bknBackend),
-	)
-
-	getRelationTypesName, getRelationTypesDesc := loadToolMeta(toolKeyGetRelationTypes)
-	relationTypesInput, relationTypesOutput := loadToolSchemas(toolKeyGetRelationTypes)
-	mcpServer.AddTool(
-		newToolWithSchemas(getRelationTypesName, getRelationTypesDesc, relationTypesInput, relationTypesOutput),
-		handleGetRelationTypes(bknBackend),
-	)
-
-	runSQLService := knrunsql.NewKnRunSQLService()
-	runSQLName, runSQLDesc := localeBundle.ToolMeta(toolKeyRunSQL)
-	runSQLInput, runSQLOutput := localeBundle.ToolSchemas(toolKeyRunSQL)
-	mcpServer.AddTool(
-		newToolWithSchemas(runSQLName, runSQLDesc, runSQLInput, runSQLOutput),
-		handleRunSQL(runSQLService),
-	)
-
-	resourcesService := knresources.NewKnResourcesService()
-	listResourcesName, listResourcesDesc := localeBundle.ToolMeta(toolKeyListResources)
-	listResourcesInput, listResourcesOutput := localeBundle.ToolSchemas(toolKeyListResources)
-	mcpServer.AddTool(
-		newToolWithSchemas(listResourcesName, listResourcesDesc, listResourcesInput, listResourcesOutput),
-		handleListResources(resourcesService),
-	)
-
-	describeResourceName, describeResourceDesc := localeBundle.ToolMeta(toolKeyDescribeResource)
-	describeResourceInput, describeResourceOutput := localeBundle.ToolSchemas(toolKeyDescribeResource)
-	mcpServer.AddTool(
-		newToolWithSchemas(describeResourceName, describeResourceDesc, describeResourceInput, describeResourceOutput),
-		handleDescribeResource(resourcesService),
-	)
-
-	streamableServer := server.NewStreamableHTTPServer(mcpServer,
+	srv, _ := newMCPServer()
+	return server.NewStreamableHTTPServer(srv,
 		server.WithHTTPContextFunc(func(ctx context.Context, r *http.Request) context.Context {
 			return r.Context()
 		}),
 		server.WithEndpointPath(endpointPath),
 	)
+}
 
-	return streamableServer
+// newMCPServer assembles the tool surface and returns the builder alongside it,
+// so /mcp/info can apply the same licence decisions as tools/list. Split out of
+// NewMCPHandler so tests can read the assembled set directly instead of driving
+// a JSON-RPC handshake to find out what was registered.
+func newMCPServer() (*server.MCPServer, *toolBuilder) {
+	localeBundle := loadMCPLocaleBundle(mcpLocaleFromEnv())
+	b := newToolBuilder(localeBundle)
+
+	knSearchService := knsearch.NewKnSearchService()
+	b.add(toolKeySearchSchema, handleSearchSchema(knSearchService))
+
+	ontologyQuery := drivenadapters.NewOntologyQueryAccess()
+	b.add(toolKeyQueryObjectInstance, handleQueryObjectInstance(ontologyQuery))
+
+	knQuerySubgraphService := logicsKqs.NewKnQuerySubgraphService()
+	b.add(toolKeyQueryInstanceSubgraph, handleQueryInstanceSubgraph(knQuerySubgraphService))
+
+	getLogicPropertiesValuesService := logicsKlp.NewKnLogicPropertyResolverService()
+	b.add(toolKeyGetLogicPropertiesValues, handleGetLogicPropertiesValues(getLogicPropertiesValuesService))
+
+	getActionInfoService := logicsKar.NewKnActionRecallService()
+	b.add(toolKeyGetActionInfo, handleGetActionInfo(getActionInfoService))
+	b.add(toolKeyExecuteAction, handleExecuteAction(getActionInfoService))
+	b.add(toolKeyGetActionExecution, handleGetActionExecution(getActionInfoService))
+	b.add(toolKeyListActionExecutions, handleListActionExecutions(getActionInfoService))
+
+	findSkillsService := logicsFs.NewFindSkillsService()
+	b.add(toolKeyFindSkills, handleFindSkills(findSkillsService))
+
+	bknBackend := drivenadapters.NewBknBackendAccess()
+	b.add(toolKeyListKnowledgeNetworks, handleListKnowledgeNetworks(bknBackend))
+	b.add(toolKeyGetKnDetail, handleGetKnDetail(bknBackend))
+	b.addEmbedded(toolKeyGetObjectTypes, handleGetObjectTypes(bknBackend))
+	b.addEmbedded(toolKeyGetRelationTypes, handleGetRelationTypes(bknBackend))
+
+	runSQLService := knrunsql.NewKnRunSQLService()
+	b.add(toolKeyRunSQL, handleRunSQL(runSQLService))
+
+	resourcesService := knresources.NewKnResourcesService()
+	b.add(toolKeyListResources, handleListResources(resourcesService))
+	b.add(toolKeyDescribeResource, handleDescribeResource(resourcesService))
+
+	b.addExtras()
+
+	mcpServer := server.NewMCPServer(serverName, serverVersion,
+		server.WithToolCapabilities(true),
+		server.WithInstructions(localeBundle.ServerInstructions()),
+		server.WithToolFilter(b.filter),
+	)
+	b.attach(mcpServer)
+	return mcpServer, b
 }
 
 func newToolWithSchemas(name, description string, input, output json.RawMessage) mcp.Tool {
