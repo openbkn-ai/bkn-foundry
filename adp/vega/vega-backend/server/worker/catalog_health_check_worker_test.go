@@ -74,10 +74,10 @@ func TestCatalogHealthCheckWorkerRunDueContinuesAfterSchedulePanic(t *testing.T)
 
 	gomock.InOrder(
 		sa.EXPECT().ListDue(gomock.Any(), gomock.Any()).Return([]*interfaces.CatalogHealthCheckSchedule{first, second}, nil),
-		cs.EXPECT().TestConnection(gomock.Any(), &interfaces.Catalog{ID: "catalog-1", ConnectorType: "scheduled"}).Do(
+		cs.EXPECT().InternalTestConnection(gomock.Any(), &interfaces.Catalog{ID: "catalog-1", ConnectorType: "scheduled"}).Do(
 			func(context.Context, *interfaces.Catalog) { panic("connector panic") },
 		),
-		cs.EXPECT().TestConnection(gomock.Any(), &interfaces.Catalog{ID: "catalog-2", ConnectorType: "scheduled"}).Return(&interfaces.CatalogHealthCheckStatus{}, nil),
+		cs.EXPECT().InternalTestConnection(gomock.Any(), &interfaces.Catalog{ID: "catalog-2", ConnectorType: "scheduled"}).Return(&interfaces.CatalogHealthCheckStatus{}, nil),
 		sa.EXPECT().UpdateRunMetadata(gomock.Any(), "catalog-2", second.UpdateTime, gomock.Any(), gomock.Any()).Return(nil),
 	)
 
@@ -97,7 +97,7 @@ func TestCatalogHealthCheckWorkerRunCatalogHealthCheck(t *testing.T) {
 			UpdateTime: 123,
 		}
 
-		cs.EXPECT().TestConnection(gomock.Any(), &interfaces.Catalog{ID: "catalog-1", ConnectorType: "scheduled"}).Return(&interfaces.CatalogHealthCheckStatus{}, nil)
+		cs.EXPECT().InternalTestConnection(gomock.Any(), &interfaces.Catalog{ID: "catalog-1", ConnectorType: "scheduled"}).Return(&interfaces.CatalogHealthCheckStatus{}, nil)
 		sa.EXPECT().UpdateRunMetadata(gomock.Any(), "catalog-1", int64(123), gomock.Any(), gomock.Any()).DoAndReturn(
 			func(_ context.Context, _ string, _ int64, lastRun, nextRun int64) error {
 				assert.Greater(t, lastRun, int64(0))
@@ -132,7 +132,7 @@ func TestCatalogHealthCheckWorkerRunCatalogHealthCheck(t *testing.T) {
 			CatalogID: "catalog-1",
 			Mode:      interfaces.CatalogHealthCheckScheduleModeInherit,
 		}
-		cs.EXPECT().TestConnection(gomock.Any(), gomock.Any()).Return(nil, errors.New("connection unavailable"))
+		cs.EXPECT().InternalTestConnection(gomock.Any(), gomock.Any()).Return(nil, errors.New("connection unavailable"))
 
 		w.runCatalogHealthCheck(context.Background(), schedule)
 	})

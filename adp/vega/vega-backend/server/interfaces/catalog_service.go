@@ -47,4 +47,6 @@ type CatalogService interface {
 	InternalGetByID(ctx context.Context, id string, withSensitiveFields bool) (*Catalog, error)
 	// InternalGetByIDs retrieves Catalogs for internal callers without permission filtering.
 	InternalGetByIDs(ctx context.Context, ids []string) ([]*Catalog, error)
+	// InternalTestConnection tests catalog connection without user permission checks.
+	InternalTestConnection(ctx context.Context, catalog *Catalog) (*CatalogHealthCheckStatus, error)
 }

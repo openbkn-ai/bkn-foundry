@@ -160,6 +160,21 @@ func (mr *MockCatalogServiceMockRecorder) InternalGetByIDs(ctx, ids any) *gomock
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalGetByIDs", reflect.TypeOf((*MockCatalogService)(nil).InternalGetByIDs), ctx, ids)
 }
 
+// InternalTestConnection mocks base method.
+func (m *MockCatalogService) InternalTestConnection(ctx context.Context, catalog *interfaces.Catalog) (*interfaces.CatalogHealthCheckStatus, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InternalTestConnection", ctx, catalog)
+	ret0, _ := ret[0].(*interfaces.CatalogHealthCheckStatus)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// InternalTestConnection indicates an expected call of InternalTestConnection.
+func (mr *MockCatalogServiceMockRecorder) InternalTestConnection(ctx, catalog any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalTestConnection", reflect.TypeOf((*MockCatalogService)(nil).InternalTestConnection), ctx, catalog)
+}
+
 // List mocks base method.
 func (m *MockCatalogService) List(ctx context.Context, params interfaces.CatalogsQueryParams) ([]*interfaces.Catalog, int64, error) {
 	m.ctrl.T.Helper()

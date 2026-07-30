@@ -443,6 +443,7 @@ paths:
       description: |
         以当前持久化的 `connector_config` 真实建立一次到数据源的连接，验证连通性。
         与 `health-status`（异步定时检查的最近结果）不同，本端点是**同步实时探测**。
+        调用者必须拥有目标 Catalog 的 `modify` 权限。
 
         探测结果通过响应体 `success` 字段返回；连不通**不**视为 HTTP 错误：
         - 连通 → 200 `{ success: true, message }`
@@ -457,6 +458,8 @@ paths:
                 $ref: "#/components/schemas/TestConnectionResult"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
         "500":
@@ -536,6 +539,12 @@ components:
             $ref: "../_shared/errors.yaml#/components/schemas/Error"
     Unauthorized:
       description: 未授权（OAuth Token 校验失败）
+      content:
+        application/json:
+          schema:
+            $ref: "../_shared/errors.yaml#/components/schemas/Error"
+    Forbidden:
+      description: 权限不足
       content:
         application/json:
           schema:

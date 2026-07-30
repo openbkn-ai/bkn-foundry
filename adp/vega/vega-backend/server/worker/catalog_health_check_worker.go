@@ -122,7 +122,10 @@ func (w *CatalogHealthCheckWorker) runCatalogHealthCheck(ctx context.Context, sc
 		}
 	}
 
-	if _, err := w.cs.TestConnection(ctx, &interfaces.Catalog{ID: schedule.CatalogID, ConnectorType: "scheduled"}); err != nil {
+	if _, err := w.cs.InternalTestConnection(
+		ctx,
+		&interfaces.Catalog{ID: schedule.CatalogID, ConnectorType: "scheduled"},
+	); err != nil {
 		logger.Errorf("Run catalog health check failed: catalog_id=%s, error=%v", schedule.CatalogID, err)
 		return
 	}

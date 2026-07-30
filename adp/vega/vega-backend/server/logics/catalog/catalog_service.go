@@ -951,13 +951,52 @@ func (cs *catalogService) TestConnection(ctx context.Context, catalog *interface
 		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound)
 	}
 
+	if err := cs.ps.CheckPermission(ctx, interfaces.PermissionResource{
+		Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG,
+		ID:   catalog.ID,
+	}, []string{interfaces.OPERATION_TYPE_MODIFY}); err != nil {
+		span.SetStatus(codes.Error, "Check catalog modify permission failed")
+		return nil, err
+	}
+
+	result, err := cs.testCatalogConnection(ctx, catalog)
+	if err != nil {
+		span.SetStatus(codes.Error, "Test catalog connection failed")
+		return nil, err
+	}
+	span.SetStatus(codes.Ok, "")
+	return result, nil
+}
+
+// InternalTestConnection tests catalog connection for internal workers.
+func (cs *catalogService) InternalTestConnection(
+	ctx context.Context, catalog *interfaces.Catalog,
+) (*interfaces.CatalogHealthCheckStatus, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Test catalog connection internally")
+	defer span.End()
+
+	result, err := cs.testCatalogConnection(ctx, catalog)
+	if err != nil {
+		span.SetStatus(codes.Error, "Test catalog connection failed")
+		return nil, err
+	}
+	span.SetStatus(codes.Ok, "")
+	return result, nil
+}
+
+func (cs *catalogService) testCatalogConnection(
+	ctx context.Context, catalog *interfaces.Catalog,
+) (*interfaces.CatalogHealthCheckStatus, error) {
+	if catalog == nil {
+		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound)
+	}
+
 	if catalog.ConnectorType == "" {
 		result := interfaces.CatalogHealthCheckStatus{
 			HealthCheckStatus: interfaces.CatalogHealthStatusUnhealthy,
 			LastCheckTime:     time.Now().UnixMilli(),
 			HealthCheckResult: "Logical catalogs do not support connection tests.",
 		}
-		span.SetStatus(codes.Ok, "")
 		return &result, nil
 	}
 
@@ -983,7 +1022,6 @@ func (cs *catalogService) TestConnection(ctx context.Context, catalog *interface
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Catalog_InternalError_UpdateFailed).WithErrorDetails(err.Error())
 	}
-	span.SetStatus(codes.Ok, "")
 	return result, nil
 }
 

@@ -474,13 +474,21 @@ func TestCatalogServiceTestConnection(t *testing.T) {
 		}
 	})
 	t.Run("test connection logical catalog returns an explicit failure", func(t *testing.T) {
-		cs := &catalogService{}
+		ctrl := gomock.NewController(t)
+		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
 		catalog := &interfaces.Catalog{
+			ID: "catalog-1",
 			CatalogHealthCheckStatus: interfaces.CatalogHealthCheckStatus{
 				HealthCheckStatus: interfaces.CatalogHealthStatusHealthy,
 				LastCheckTime:     1234567890,
 			},
 		}
+		mockPS.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+			Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG,
+			ID:   "catalog-1",
+		}, []string{interfaces.OPERATION_TYPE_MODIFY}).Return(nil)
+
+		cs := &catalogService{ps: mockPS}
 		result, err := cs.TestConnection(context.Background(), catalog)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -491,6 +499,31 @@ func TestCatalogServiceTestConnection(t *testing.T) {
 		if result.HealthCheckResult == "" {
 			t.Fatal("expected an explicit logical catalog failure message")
 		}
+	})
+
+	t.Run("rejects manual connection test without modify permission", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		permissionErr := errors.New("modify permission denied")
+		catalog := &interfaces.Catalog{ID: "catalog-1", ConnectorType: "mysql"}
+		mockPS.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+			Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG,
+			ID:   "catalog-1",
+		}, []string{interfaces.OPERATION_TYPE_MODIFY}).Return(permissionErr)
+
+		cs := &catalogService{ps: mockPS}
+		result, err := cs.TestConnection(context.Background(), catalog)
+
+		require.ErrorIs(t, err, permissionErr)
+		assert.Nil(t, result)
+	})
+
+	t.Run("internal connection test bypasses user permission checks", func(t *testing.T) {
+		cs := &catalogService{}
+		result, err := cs.InternalTestConnection(context.Background(), &interfaces.Catalog{ID: "catalog-1"})
+
+		require.NoError(t, err)
+		assert.Equal(t, interfaces.CatalogHealthStatusUnhealthy, result.HealthCheckStatus)
 	})
 }
 
