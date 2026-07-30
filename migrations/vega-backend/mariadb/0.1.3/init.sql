@@ -385,6 +385,7 @@ CREATE TABLE IF NOT EXISTS t_build_task (
     f_catalog_id              VARCHAR(40) NOT NULL DEFAULT '' COMMENT '所属catalog ID',
 
     f_mode                    VARCHAR(20) NOT NULL COMMENT '任务模式: full, incremental, realtime',
+    f_execute_type            VARCHAR(20) NOT NULL DEFAULT '' COMMENT 'batch 执行类型: full, incremental；空表示 streaming 任务',
 
     -- 任务索引配置
     f_index_config            TEXT NOT NULL DEFAULT '' COMMENT '索引配置快照(JSON)',
