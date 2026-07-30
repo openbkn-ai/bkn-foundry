@@ -232,6 +232,7 @@ usage() {
     echo "  Why sudo on Linux: deploy.sh runs as root and writes \$HOME/.openbkn-ai/config.yaml under /root/.openbkn-ai/ (mode 700); onboard.sh also writes \$HOME/.bkn auth state. sudo keeps both pointing at the same root home (silence the startup hint with ONBOARD_SUDO_HINT_DISABLED=1; not needed on macOS dev)."
     echo "  (no flags)                Interactive: nvm+Node 22 and npm -g (Y/n) in your terminal, then models/BKN"
     echo "  -y, --yes                 Auto nvm+Node 22, npm -g, [test] user+roles (no Y/n)"
+    echo "  --offline                 Do not access npm registry; require openbkn to be preinstalled"
     echo "  --config=PATH            YAML: deploy/conf/models.yaml.example; model prompts off, but nvm/bkn still Y/n in a TTY (use -y to skip those asks)"
     echo "  --skip-test-user         Do not offer: openbkn admin user test + all roles"
     echo ""
@@ -271,6 +272,8 @@ for _ob_arg in "$@"; do
         -h | --help) usage; exit 0 ;;
         --config=*) INTERACTIVE="false" ;;
         -y | --yes) ONBOARD_ASSUME_YES="true" ;;
+        --offline) export OFFLINE_MODE="true" ;;
+        --enable-bkn-search) ENABLE_BKN_ONLY="true" ;;
         --skip-test-user|--skip-isf-test-user) ONBOARD_SKIP_TEST_USER="true" ;;
     esac
 done
@@ -410,6 +413,10 @@ onboard_ensure_bkn_cli() {
     if command -v openbkn &>/dev/null; then
         return 0
     fi
+    if [[ "${OFFLINE_MODE:-false}" == "true" ]]; then
+        log_error "openbkn not in PATH. --offline requires a preinstalled CLI; install @openbkn/bkn-sdk before entering the offline environment."
+        exit 1
+    fi
     if ! command -v npm &>/dev/null; then
         log_error "openbkn not in PATH and npm not found. With nvm+Node, npm should exist; re-open a shell and re-run."
         exit 1
@@ -453,6 +460,9 @@ onboard_upgrade_bkn_cli() {
     if [[ "${OFFLINE_MODE:-false}" == "true" ]]; then
         return 0
     fi
+    if [[ "${ENABLE_BKN_ONLY:-false}" == "true" ]]; then
+        return 0
+    fi
     if ! command -v openbkn &>/dev/null; then
         return 0
     fi
@@ -478,6 +488,7 @@ onboard_prepend_npm_global_bin_to_path() {
 }
 
 onboard_ensure_node_22
+onboard_prepend_npm_global_bin_to_path
 onboard_upgrade_bkn_cli
 onboard_ensure_bkn_cli
 if ! command -v kubectl &>/dev/null; then
@@ -513,6 +524,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         -y | --yes)
             ONBOARD_ASSUME_YES="true"
+            shift
+            ;;
+        --offline)
+            export OFFLINE_MODE="true"
             shift
             ;;
         --skip-test-user|--skip-isf-test-user)
