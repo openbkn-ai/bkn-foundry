@@ -443,9 +443,19 @@ onboard_ensure_bkn_cli() {
     log_info "openbkn: $(openbkn --version 2>/dev/null | head -1)"
 }
 
-# Keep the openbkn CLI current on every onboard run. An upgrade failure is
-# non-fatal: continue with the version already installed on the host.
+# Keep an already-installed openbkn CLI current on onboard runs. Do not bypass
+# the existing install consent path, the explicit npm-write escape hatch, or
+# offline operation. An upgrade failure is non-fatal.
 onboard_upgrade_bkn_cli() {
+    if [[ "${ONBOARD_SKIP_OPENBKN_INSTALL:-false}" == "true" ]]; then
+        return 0
+    fi
+    if [[ "${OFFLINE_MODE:-false}" == "true" ]]; then
+        return 0
+    fi
+    if ! command -v openbkn &>/dev/null; then
+        return 0
+    fi
     if ! npm i -g @openbkn/bkn-sdk; then
         log_warn "npm i -g @openbkn/bkn-sdk failed; continuing with the existing openbkn CLI."
         return 0
