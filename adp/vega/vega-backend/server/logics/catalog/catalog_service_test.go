@@ -274,6 +274,22 @@ func TestCatalogServiceCheckExistByName(t *testing.T) {
 }
 
 func TestCatalogServiceCreate(t *testing.T) {
+	t.Run("rejects physical internal catalog before permission check", func(t *testing.T) {
+		cs := &catalogService{}
+
+		_, err := cs.Create(context.Background(), &interfaces.CatalogRequest{
+			Name:          "internal-physical-catalog",
+			Internal:      true,
+			ConnectorType: interfaces.ConnectorTypePostgreSQL,
+		}, false)
+
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_Catalog_InvalidParameter, httpErr.BaseError.ErrorCode)
+		assert.Contains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), "internal catalogs must be logical")
+	})
+
 	t.Run("does not expose connector error when connection test fails", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockPS := mock_interfaces.NewMockPermissionService(ctrl)

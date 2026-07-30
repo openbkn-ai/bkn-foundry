@@ -172,6 +172,13 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Create catalog")
 	defer span.End()
 
+	if req.Internal && req.ConnectorType != "" {
+		span.SetStatus(codes.Error, "Physical catalog cannot be internal")
+		return "", rest.NewHTTPError(ctx, http.StatusBadRequest,
+			verrors.VegaBackend_Catalog_InvalidParameter).
+			WithErrorDetails("internal catalogs must be logical")
+	}
+
 	// 判断userid是否有创建业务知识网络的权限（策略决策）；
 	// 内部目录按 internal_catalog 类型校验，默认仅超级管理员/系统 S2S 身份可建
 	authType := catalogAuthResourceType(req.Internal)

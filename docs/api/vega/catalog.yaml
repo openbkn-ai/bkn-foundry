@@ -742,7 +742,7 @@ components:
           type: object
           additionalProperties: true
         internal:
-          description: 是否创建为内部 Catalog；省略时为 `false`
+          description: 仅 POST 创建 logical Catalog 时可设为 `true`；与非空 `connector_type` 同时提供返回 400。省略时为 `false`，PUT 时忽略。
           type: boolean
         extensions:
           $ref: "#/components/schemas/EntityExtensions"
