@@ -590,7 +590,7 @@ type catalogAgentInputResource struct {
 	ID               string                         `json:"id"`
 	Name             string                         `json:"name"`
 	Description      string                         `json:"description,omitempty"`
-	Database         string                         `json:"database,omitempty"`
+	Schema           string                         `json:"schema,omitempty"`
 	SourceIdentifier string                         `json:"source_identifier"`
 	Keys             *catalogAgentInputResourceKeys `json:"keys,omitempty"`
 	Fields           []catalogAgentInputProperty    `json:"fields"`
@@ -688,7 +688,7 @@ func buildCatalogAgentInputResource(resource *interfaces.Resource) catalogAgentI
 		ID:               resource.ID,
 		Name:             resource.Name,
 		Description:      resource.Description,
-		Database:         resource.Schema,
+		Schema:           resource.Schema,
 		SourceIdentifier: resource.SourceIdentifier,
 		Keys:             buildCatalogAgentInputResourceKeys(resource.SourceMetadata),
 		Fields:           buildCatalogAgentInputProperties(resource.SchemaDefinition),

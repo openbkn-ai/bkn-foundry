@@ -74,6 +74,8 @@ func TestBuildCatalogSemanticUnderstandingInput(t *testing.T) {
 	resources := got["resources"].([]any)
 	require.Len(t, resources, 1)
 	resource := resources[0].(map[string]any)
+	assert.Equal(t, "ecommerce", resource["schema"])
+	assert.NotContains(t, resource, "database")
 	assert.NotContains(t, resource, "schema_definition")
 	fields := resource["fields"].([]any)
 	require.Len(t, fields, 1)
