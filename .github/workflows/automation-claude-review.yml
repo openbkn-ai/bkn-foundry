@@ -140,12 +140,53 @@ jobs:
             - 不确定的推测标注为「待确认」，不要当成缺陷断言。
             - 没问题就说没问题，不要为了凑数提格式化/命名类的琐碎意见。
 
+            评审的对象是**改动带来的整体影响**，不是这份 diff 的文本。diff 只是入口，
+            每一处改动都要先回答：谁在依赖它、它原本承诺了什么、改完之后这些承诺是否
+            仍然成立。至少覆盖下面四个面，逐个用 `git grep` / 读源码确认，而不是推测：
+
+            - **调用方与被调方**：改动的函数、接口、字段，找出全部引用点逐个核对新语义
+              是否仍然成立；跨服务调用要把另一侧的实现一起读，别只看本服务这一半。
+            - **跨模块契约**：同一能力在 REST 路由、MCP 工具定义、.adp 描述、SDK、CLI
+              等多处各有一份声明，必须同步改。只改其中一处就是线上不一致。
+            - **配置与部署面**：Helm values、configmap、环境变量、chart 默认值的改动，
+              要分别核存量环境升级（沿用旧值会不会失效、缺省值会不会被覆盖）与全新安装
+              两条路径。
+            - **数据面**：落库字段、索引结构、消息体格式的变化，要确认存量数据仍能被新
+              代码正确读出；滚动升级期间新旧版本并存，两边必须互相兼容。
+
+            顶层结论里要点明这次改动的影响范围（波及哪些服务、接口、存量数据），
+            而不只是逐行问题清单。
+
+            以下三类改动，只读 diff 必然看不出问题，必须走出 diff 去核源码
+            （本仓已因「只读 diff」连续三轮漏过一个阻断项）：
+
+            - **整份新增的快照类文件**（migrations/*/init.sql、lock 文件、各种生成物）：
+              不要只读新文件本身。必须 `git show <ref>:<上一版本的同名文件>` 取出前一版
+              逐行比对，确认差异只有本次改动应有的那几处。「全量快照」最容易夹带无关
+              漂移——丢列、改名、复活已废弃的列——而这些在 diff 里全是 `+`，读不出来。
+            - **字段 / 参数的改名或删除**：定义其语义的文件通常不在 diff 里。除了
+              `git grep` 旧名确认无残留，还要读**配置与校验定义**（例如连接器
+              field_config 中某项是否 `Required: false`、是否允许留空），确认新逻辑
+              没有把原本合法的取值判成非法、把可选配置当成必填。
+            - **被删掉的代码**：先问它在维护什么不变量、当初为什么要写。删掉一个分支
+              等于不再保证那个不变量，必须确认对应的输入形态确实已经不存在，而不是
+              「当前主路径不会产生」——存量数据仍会产生。
+
+            数据库迁移改动必须分别核**全新安装**与**存量升级**两条路径：data-migrator
+            全新安装只执行最大版本目录的 init.sql，升级只按序执行 NN-*.sql 并跳过
+            init.sql（见 data-migrator/server/migrate/script_selector.py）。两条路径得出的
+            最终 schema 必须一致，且都要与代码实际引用的列对齐——把相关 f_ 列名
+            `git grep` 到 drivenadapters 层逐一核对。
+
             这次可能是复评（作者推了新提交或回复了评论）。先把现状摸清再下结论：
             - `gh pr view "$PR_NUMBER" --json reviewDecision,reviewRequests,comments`
               以及 `gh api "repos/${{ github.repository }}/pulls/$PR_NUMBER/comments"`
               读回你之前留下的 inline 评论与其下的回复，弄清哪些「待确认」项
               PR 发起者已经回应、哪些还悬着。
             - `gh pr checks "$PR_NUMBER"` 看必需检查当前状态。
+            - 复评不等于只核这份待确认清单。上一轮漏掉的问题按定义不在清单里，因此
+              仍要按上面「必须走出 diff」三条重新过一遍全量改动，尤其是首轮之后
+              新增的文件。只核清单会让每一轮都收敛在已知项上，漏报永远补不回来。
 
             按下面的优先级落成一次 PR review（不是普通评论），三选一：
 
@@ -172,8 +213,8 @@ jobs:
           # 补齐只读检视工具（Read/Grep/Glob/LS + git diff/log/show）与 PR review/checks/api
           # 并放宽轮次上限。
           claude_args: |
-            --model claude-opus-4-8
-            --effort high
+            --model claude-opus-5
+            --effort xhigh
             --max-turns 60
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Read,Grep,Glob,LS,Bash(gh pr comment:*),Bash(gh pr review:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr checks:*),Bash(gh api:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*)"
 
