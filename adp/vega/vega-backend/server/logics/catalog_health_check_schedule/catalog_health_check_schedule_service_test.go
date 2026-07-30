@@ -10,6 +10,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"net/http"
 	"testing"
 	"time"
@@ -20,6 +21,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
 	vmock "vega-backend/interfaces/mock"
 )
@@ -44,6 +46,39 @@ func TestCatalogHealthCheckScheduleServiceGetByCatalogID(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Same(t, expected, got)
+	})
+
+	t.Run("returns internal error when schedule does not exist", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		sa := vmock.NewMockCatalogHealthCheckScheduleAccess(ctrl)
+		service := &catalogHealthCheckScheduleService{sa: sa}
+		sa.EXPECT().GetByCatalogID(gomock.Any(), "catalog-1").Return(nil, sql.ErrNoRows)
+
+		got, err := service.GetByCatalogID(context.Background(), "catalog-1")
+
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_Catalog_InternalError_GetFailed, httpErr.BaseError.ErrorCode)
+		assert.NotContains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), sql.ErrNoRows.Error())
+		assert.Nil(t, got)
+	})
+
+	t.Run("redacts database errors", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		sa := vmock.NewMockCatalogHealthCheckScheduleAccess(ctrl)
+		service := &catalogHealthCheckScheduleService{sa: sa}
+		sensitiveError := "dial tcp db.internal:3306: connection refused"
+		sa.EXPECT().GetByCatalogID(gomock.Any(), "catalog-1").Return(nil, errors.New(sensitiveError))
+
+		got, err := service.GetByCatalogID(context.Background(), "catalog-1")
+
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_Catalog_InternalError_GetFailed, httpErr.BaseError.ErrorCode)
+		assert.NotContains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), sensitiveError)
+		assert.Nil(t, got)
 	})
 }
 
@@ -158,7 +193,7 @@ func TestCatalogHealthCheckScheduleServiceUpdate(t *testing.T) {
 		assert.Nil(t, got)
 	})
 
-	t.Run("returns catalog access error", func(t *testing.T) {
+	t.Run("redacts catalog access error", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		ca := vmock.NewMockCatalogAccess(ctrl)
 		service := &catalogHealthCheckScheduleService{ca: ca}
@@ -167,7 +202,11 @@ func TestCatalogHealthCheckScheduleServiceUpdate(t *testing.T) {
 
 		got, err := service.Update(context.Background(), "catalog-1", &interfaces.CatalogHealthCheckScheduleRequest{Mode: interfaces.CatalogHealthCheckScheduleModeInherit})
 
-		require.ErrorIs(t, err, catalogErr)
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_Catalog_InternalError_GetFailed, httpErr.BaseError.ErrorCode)
+		assert.NotContains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), catalogErr.Error())
 		assert.Nil(t, got)
 	})
 
@@ -230,7 +269,11 @@ func TestCatalogHealthCheckScheduleServiceUpdate(t *testing.T) {
 			CronExpr: "0 * * * *",
 		})
 
-		require.ErrorIs(t, err, sql.ErrNoRows)
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_Catalog_InternalError_GetFailed, httpErr.BaseError.ErrorCode)
+		assert.NotContains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), sql.ErrNoRows.Error())
 		assert.Nil(t, got)
 	})
 
@@ -293,7 +336,7 @@ func TestCatalogHealthCheckScheduleServiceUpdate(t *testing.T) {
 		assert.Greater(t, got.NextRun, beforeUpdate)
 	})
 
-	t.Run("returns schedule access error", func(t *testing.T) {
+	t.Run("redacts schedule access error", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		ca := vmock.NewMockCatalogAccess(ctrl)
 		sa := vmock.NewMockCatalogHealthCheckScheduleAccess(ctrl)
@@ -312,11 +355,15 @@ func TestCatalogHealthCheckScheduleServiceUpdate(t *testing.T) {
 			Mode: interfaces.CatalogHealthCheckScheduleModeInherit,
 		})
 
-		require.ErrorIs(t, err, accessErr)
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_Catalog_InternalError_GetFailed, httpErr.BaseError.ErrorCode)
+		assert.NotContains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), accessErr.Error())
 		assert.Nil(t, got)
 	})
 
-	t.Run("returns schedule update error", func(t *testing.T) {
+	t.Run("redacts schedule update error", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		ca := vmock.NewMockCatalogAccess(ctrl)
 		sa := vmock.NewMockCatalogHealthCheckScheduleAccess(ctrl)
@@ -335,7 +382,11 @@ func TestCatalogHealthCheckScheduleServiceUpdate(t *testing.T) {
 
 		got, err := service.Update(context.Background(), "catalog-1", &interfaces.CatalogHealthCheckScheduleRequest{Mode: interfaces.CatalogHealthCheckScheduleModeInherit})
 
-		require.ErrorIs(t, err, updateErr)
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_Catalog_InternalError_UpdateFailed, httpErr.BaseError.ErrorCode)
+		assert.NotContains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), updateErr.Error())
 		assert.Nil(t, got)
 	})
 }

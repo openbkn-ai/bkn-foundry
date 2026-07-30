@@ -8,6 +8,7 @@ package driveradapters
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -71,6 +72,22 @@ func TestCatalogHealthCheckScheduleHandlerGet(t *testing.T) {
 		assert.Contains(t, w.Body.String(), verrors.VegaBackend_Catalog_InvalidParameter)
 		assert.Contains(t, w.Body.String(), "only supported for physical catalogs")
 	})
+
+	t.Run("redacts unexpected schedule errors", func(t *testing.T) {
+		engine, cs, hcss := setupCatalogHealthCheckScheduleHandlerTest(t)
+		sensitiveError := "dial tcp db.internal:3306: connection refused"
+		cs.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
+			Return(&interfaces.Catalog{ID: "catalog-1", Type: interfaces.CatalogTypePhysical}, nil)
+		hcss.EXPECT().GetByCatalogID(gomock.Any(), "catalog-1").Return(nil, errors.New(sensitiveError))
+
+		req := httptest.NewRequest(http.MethodGet, "/api/vega-backend/in/v1/catalogs/catalog-1/health-check-schedule", nil)
+		w := httptest.NewRecorder()
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusInternalServerError, w.Code)
+		assert.Contains(t, w.Body.String(), verrors.VegaBackend_Catalog_InternalError)
+		assert.NotContains(t, w.Body.String(), sensitiveError)
+	})
 }
 
 func TestCatalogHealthCheckScheduleHandlerUpdate(t *testing.T) {
@@ -106,5 +123,20 @@ func TestCatalogHealthCheckScheduleHandlerUpdate(t *testing.T) {
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		assert.Contains(t, w.Body.String(), verrors.VegaBackend_Catalog_InvalidParameter)
 		assert.Contains(t, w.Body.String(), "cron_expr is required")
+	})
+
+	t.Run("redacts unexpected schedule errors", func(t *testing.T) {
+		engine, _, hcss := setupCatalogHealthCheckScheduleHandlerTest(t)
+		sensitiveError := "dial tcp db.internal:3306: connection refused"
+		hcss.EXPECT().Update(gomock.Any(), "catalog-1", gomock.Any()).Return(nil, errors.New(sensitiveError))
+
+		req := httptest.NewRequest(http.MethodPut, "/api/vega-backend/in/v1/catalogs/catalog-1/health-check-schedule", strings.NewReader(`{"mode":"inherit"}`))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusInternalServerError, w.Code)
+		assert.Contains(t, w.Body.String(), verrors.VegaBackend_Catalog_InternalError)
+		assert.NotContains(t, w.Body.String(), sensitiveError)
 	})
 }

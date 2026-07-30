@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-comm-go/hydra"
+	"github.com/openbkn-ai/bkn-comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-comm-go/rest"
 	attr "go.opentelemetry.io/otel/attribute"
@@ -52,7 +53,7 @@ func (r *restHandler) getCatalogHealthCheckSchedule(c *gin.Context, v hydra.Visi
 
 	schedule, err := r.hcss.GetByCatalogID(ctx, catalogID)
 	if err != nil {
-		replyCatalogHealthCheckScheduleError(ctx, c, err, http.StatusNotFound)
+		replyCatalogHealthCheckScheduleError(ctx, c, err)
 		return
 	}
 
@@ -95,7 +96,7 @@ func (r *restHandler) updateCatalogHealthCheckSchedule(c *gin.Context, v hydra.V
 
 	schedule, err := r.hcss.Update(ctx, catalogID, &req)
 	if err != nil {
-		replyCatalogHealthCheckScheduleError(ctx, c, err, http.StatusInternalServerError)
+		replyCatalogHealthCheckScheduleError(ctx, c, err)
 		return
 	}
 
@@ -106,7 +107,7 @@ func (r *restHandler) updateCatalogHealthCheckSchedule(c *gin.Context, v hydra.V
 func (r *restHandler) requirePhysicalCatalog(ctx context.Context, c *gin.Context, catalogID string) bool {
 	catalog, err := r.cs.GetByID(ctx, catalogID, false)
 	if err != nil {
-		replyCatalogHealthCheckScheduleError(ctx, c, err, http.StatusInternalServerError)
+		replyCatalogHealthCheckScheduleError(ctx, c, err)
 		return false
 	}
 
@@ -120,11 +121,12 @@ func (r *restHandler) requirePhysicalCatalog(ctx context.Context, c *gin.Context
 	return true
 }
 
-func replyCatalogHealthCheckScheduleError(ctx context.Context, c *gin.Context, err error, fallbackStatus int) {
+func replyCatalogHealthCheckScheduleError(ctx context.Context, c *gin.Context, err error) {
 	httpErr, ok := err.(*rest.HTTPError)
 	if !ok {
-		httpErr = rest.NewHTTPError(ctx, fallbackStatus,
-			verrors.VegaBackend_Catalog_InternalError).WithErrorDetails(err.Error())
+		otellog.LogError(ctx, "Handle catalog health check schedule request failed", err)
+		httpErr = rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_Catalog_InternalError)
 	}
 
 	rest.ReplyError(c, httpErr)

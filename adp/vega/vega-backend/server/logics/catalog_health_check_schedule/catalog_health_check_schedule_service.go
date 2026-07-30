@@ -145,7 +145,9 @@ func (chcss *catalogHealthCheckScheduleService) GetByCatalogID(ctx context.Conte
 	if err != nil {
 		span.SetStatus(codes.Error, "Get health check schedule failed")
 		otellog.LogError(ctx, "Get catalog health check schedule failed", err)
-		return nil, err
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_Catalog_InternalError_GetFailed).
+			WithErrorDetails("failed to get catalog health check schedule")
 	}
 
 	span.SetStatus(codes.Ok, "")
@@ -170,7 +172,9 @@ func (chcss *catalogHealthCheckScheduleService) Update(ctx context.Context, cata
 	if err != nil {
 		span.SetStatus(codes.Error, "Get catalog failed")
 		otellog.LogError(ctx, "Get catalog for health check schedule failed", err)
-		return nil, err
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_Catalog_InternalError_GetFailed).
+			WithErrorDetails("failed to get catalog for health check schedule")
 	}
 	if catalog == nil {
 		span.SetStatus(codes.Error, "Catalog not found")
@@ -206,7 +210,9 @@ func (chcss *catalogHealthCheckScheduleService) Update(ctx context.Context, cata
 	if err != nil {
 		span.SetStatus(codes.Error, "Get health check schedule failed")
 		otellog.LogError(ctx, "Get catalog health check schedule failed", err)
-		return nil, err
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_Catalog_InternalError_GetFailed).
+			WithErrorDetails("failed to get catalog health check schedule")
 	}
 
 	schedule.Mode = req.Mode
@@ -233,7 +239,9 @@ func (chcss *catalogHealthCheckScheduleService) Update(ctx context.Context, cata
 	if err := chcss.sa.Update(ctx, schedule); err != nil {
 		span.SetStatus(codes.Error, "Update health check schedule failed")
 		otellog.LogError(ctx, "Update catalog health check schedule failed", err)
-		return nil, err
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_Catalog_InternalError_UpdateFailed).
+			WithErrorDetails("failed to update catalog health check schedule")
 	}
 
 	span.SetStatus(codes.Ok, "")
