@@ -10,7 +10,7 @@ public /install-status ingress endpoint).
 
 Invoked from scripts/services/status.sh:
   python3 install_status.py --namespace NS --manifest MANIFEST.yaml \
-      --config CONFIG_YAML --product bkn-foundry --format table|json
+      --config CONFIG_YAML --product openbkn --format table|json
 
 Two outputs, ONE collector:
   - table  : live, detailed — expected vs deployed chart version, app version,
@@ -497,7 +497,7 @@ def main():
     ap.add_argument("--namespace", required=True)
     ap.add_argument("--manifest", required=True)
     ap.add_argument("--config", default="")
-    ap.add_argument("--product", default="bkn-foundry")
+    ap.add_argument("--product", default="openbkn")
     ap.add_argument("--format", choices=["table", "json"], default="table")
     ap.add_argument("--no-health", action="store_true",
                     help="skip per-service health probing (faster)")
@@ -514,10 +514,11 @@ def main():
     # caller didn't pass --optional-releases (config.yaml is the source of truth).
     if not auth["enabled"] and "bkn-safe" not in optional:
         optional.append("bkn-safe")
-    product, product_version, rows = collect_releases(
+    manifest_product, product_version, rows = collect_releases(
         args.namespace, args.manifest, optional)
-    if not product:
-        product = args.product
+    # The manifest identifies the release bundle, while --product controls the
+    # user-facing name in the status table and JSON snapshot.
+    product = args.product or manifest_product
     meta, deps = ({}, [])
     if args.config:
         meta, deps = collect_dep_services(args.config)

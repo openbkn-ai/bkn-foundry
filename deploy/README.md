@@ -285,7 +285,7 @@ kubectl get pods -A
 
 ### Install status & health
 
-`bkn-foundry status` prints a live, detailed table for operators on the server — for
+`openbkn status` prints a live, detailed table for operators on the server — for
 every release in the manifest it shows the **expected vs deployed** chart version,
 app version, helm revision/status, workload ready count (`DRIFT`/`MISSING`
 flagged), the bundled dependency services, and a per-service **application health**

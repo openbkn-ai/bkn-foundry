@@ -281,7 +281,7 @@ kubectl get pods -A
 
 ### 安装状态与健康
 
-`bkn-foundry status` 输出一张实时详细表(供服务器上运维查看):对清单里每个 release 显示
+`openbkn status` 输出一张实时详细表(供服务器上运维查看):对清单里每个 release 显示
 **期望版本 vs 实际部署版本**、app 版本、helm revision/状态、workload ready 数(标记
 `DRIFT`/`MISSING`)、内置依赖服务,以及逐服务的**应用健康**(经 apiserver service proxy
 探测:`/health/ready` → `/api/v1/health` → `/healthz` → `/health`,分类为

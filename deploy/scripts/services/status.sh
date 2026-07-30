@@ -70,7 +70,7 @@ show_install_status() {
         --namespace "${namespace}" \
         --manifest "${CORE_VERSION_MANIFEST_FILE}" \
         --config "${CONFIG_YAML_PATH:-}" \
-        --product "bkn-foundry" \
+        --product "openbkn" \
         --format table
 }
 
@@ -166,7 +166,7 @@ gen_install_status_json() {
             --namespace "${namespace}" \
             --manifest "${CORE_VERSION_MANIFEST_FILE}" \
             --config "${CONFIG_YAML_PATH:-}" \
-            --product "bkn-foundry" \
+            --product "openbkn" \
             "${optional_args[@]}" \
             --format json > "${tmp}" 2>/dev/null; then
         log_warn "Failed to generate install-status JSON; skipping."
