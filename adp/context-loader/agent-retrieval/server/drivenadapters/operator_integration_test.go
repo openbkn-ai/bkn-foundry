@@ -18,8 +18,8 @@ import (
 	"github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/interfaces"
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/mocks"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/mocks"
 )
 
 // TestGetToolDetail_Success 测试 GetToolDetail 成功场景

@@ -19,11 +19,11 @@ import (
 
 	"github.com/bytedance/sonic"
 
-	infraErr "github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/errors"
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/logger"
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/telemetry"
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/interfaces"
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/utils"
+	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/logger"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/telemetry"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/utils"
 )
 
 // httpClient HTTP客户端结构

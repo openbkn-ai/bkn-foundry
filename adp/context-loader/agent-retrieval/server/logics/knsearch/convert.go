@@ -12,7 +12,7 @@ package knsearch
 import (
 	"encoding/json"
 
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
 // KnSearchReqToLocal 将 KnSearchReq 转为 KnSearchLocalRequest

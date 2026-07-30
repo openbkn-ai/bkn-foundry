@@ -10,8 +10,8 @@ import (
 
 	"go.uber.org/mock/gomock"
 
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/interfaces"
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/mocks"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/mocks"
 )
 
 // noopLogger 空实现，避免为每条日志写 gomock 期望

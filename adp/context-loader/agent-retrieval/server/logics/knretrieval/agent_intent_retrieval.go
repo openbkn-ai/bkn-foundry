@@ -11,7 +11,7 @@ import (
 
 	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
 // AgentIntentRetrieval 语义检索。
