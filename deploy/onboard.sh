@@ -415,7 +415,7 @@ onboard_ensure_bkn_cli() {
         exit 1
     fi
     if [[ "${ONBOARD_SKIP_OPENBKN_INSTALL:-false}" == "true" ]]; then
-        log_error "openbkn not in PATH. Install: npm i -g @openbkn/bkn-sdk@alpha  (or unset ONBOARD_SKIP_OPENBKN_INSTALL to allow this script to run npm -g.)"
+        log_error "openbkn not in PATH. Install: npm i -g @openbkn/bkn-sdk  (or unset ONBOARD_SKIP_OPENBKN_INSTALL to allow this script to run npm -g.)"
         exit 1
     fi
     if [[ "${ONBOARD_ASSUME_YES}" == "true" ]]; then
@@ -424,15 +424,15 @@ onboard_ensure_bkn_cli() {
         echo ""
         read -r -p "openbkn CLI not in PATH. Install @openbkn/bkn-sdk globally now? (npm i -g) [Y/n]: " _obk
         if [[ "${_obk}" =~ ^[Nn] ]]; then
-            log_error "openbkn is required. Run:  npm i -g @openbkn/bkn-sdk@alpha"
+            log_error "openbkn is required. Run:  npm i -g @openbkn/bkn-sdk"
             exit 1
         fi
     else
-        log_error "openbkn not in PATH. In a TTY you get a Y/n prompt; without a TTY use  $0 -y  or install: npm i -g @openbkn/bkn-sdk@alpha"
+        log_error "openbkn not in PATH. In a TTY you get a Y/n prompt; without a TTY use  $0 -y  or install: npm i -g @openbkn/bkn-sdk"
         exit 1
     fi
-    if ! npm i -g @openbkn/bkn-sdk@alpha; then
-        log_error "npm i -g @openbkn/bkn-sdk@alpha failed. Check registry/proxy, or EACCES (avoid sudo; use nvm user prefix.)"
+    if ! npm i -g @openbkn/bkn-sdk; then
+        log_error "npm i -g @openbkn/bkn-sdk failed. Check registry/proxy, or EACCES (avoid sudo; use nvm user prefix.)"
         exit 1
     fi
     hash -r 2>/dev/null || true
@@ -440,6 +440,17 @@ onboard_ensure_bkn_cli() {
         log_error "openbkn still not on PATH. Add npm global bin to PATH, e.g.:  export PATH=\"\$(npm config get prefix 2>/dev/null)/bin:\$PATH\""
         exit 1
     fi
+    log_info "openbkn: $(openbkn --version 2>/dev/null | head -1)"
+}
+
+# Keep the openbkn CLI current on every onboard run. An upgrade failure is
+# non-fatal: continue with the version already installed on the host.
+onboard_upgrade_bkn_cli() {
+    if ! npm i -g @openbkn/bkn-sdk; then
+        log_warn "npm i -g @openbkn/bkn-sdk failed; continuing with the existing openbkn CLI."
+        return 0
+    fi
+    hash -r 2>/dev/null || true
     log_info "openbkn: $(openbkn --version 2>/dev/null | head -1)"
 }
 
@@ -457,6 +468,7 @@ onboard_prepend_npm_global_bin_to_path() {
 }
 
 onboard_ensure_node_22
+onboard_upgrade_bkn_cli
 onboard_ensure_bkn_cli
 if ! command -v kubectl &>/dev/null; then
     log_error "kubectl not found"
