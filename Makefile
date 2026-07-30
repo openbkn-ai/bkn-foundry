@@ -78,11 +78,16 @@ MODTITLE_ontology-query    := Ontology 查询
 MODTITLE_vega              := VEGA 引擎
 
 ## 模块中文描述（index 卡片副标题用）。未列出的模块回落为空。
-MODDESC_bkn            := 业务知识网络：对象类 / 关系类 / 行动类 / 概念组 / 指标 / 导入导出
-MODDESC_ontology-query := 本体查询与语义检索
-MODDESC_vega           := 数据可观测：目录 / 资源 / 连接器 / 构建任务 / 发现任务 / 原生查询
+MODDESC_bkn               := 业务知识网络：对象类 / 关系类 / 行动类 / 概念组 / 指标 / 导入导出
+MODDESC_bkn-agent         := Agent 运行时：Agent 增删改查 / 对话与调用 / 任务 / 提示词版本 / 会话 / 导入导出
+MODDESC_mf-model-manager  := 模型工厂：大模型连通性测试 / 默认模型设置 / 调用监控
+MODDESC_ontology-query    := 本体查询与语义检索
+MODDESC_vega              := 数据可观测：目录 / 资源 / 连接器 / 构建任务 / 发现任务 / 原生查询
 
 # 资源中文名（侧栏显示用；未列出的回落为文件名）
+RESNAME_bkn-agent                 := Agent 运行时
+RESNAME_large-model               := 大模型
+RESNAME_semantic-understanding-task := 语义理解任务
 RESNAME_action-schedules          := 行动调度
 RESNAME_action-type               := 行动类
 RESNAME_bkn-metrics               := 指标
