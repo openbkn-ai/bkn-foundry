@@ -11,16 +11,19 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/openbkn-ai/bkn-comm-go/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
 	"vega-backend/common"
+	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
 	mock_interfaces "vega-backend/interfaces/mock"
 )
@@ -321,6 +324,28 @@ func TestCatalogServiceCreate(t *testing.T) {
 		require.Error(t, err)
 		require.NoError(t, sqlMock.ExpectationsWereMet())
 	})
+
+	t.Run("rejects health check schedule for logical catalog before persistence", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+
+		cs := &catalogService{ps: mockPS}
+		_, err := cs.Create(context.Background(), &interfaces.CatalogRequest{
+			Name: "logical-catalog",
+			HealthCheckSchedule: &interfaces.CatalogHealthCheckScheduleRequest{
+				Mode:     interfaces.CatalogHealthCheckScheduleModeEnabled,
+				CronExpr: "*/5 * * * *",
+			},
+		}, false)
+
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_Catalog_InvalidParameter, httpErr.BaseError.ErrorCode)
+		assert.Contains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), "only supported for physical catalogs")
+	})
+
 	t.Run("create enabled true", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
@@ -410,13 +435,13 @@ func TestCatalogServiceCreate(t *testing.T) {
 		require.NoError(t, err)
 	})
 
-	t.Run("logical catalog does not create schedule", func(t *testing.T) {
+	t.Run("logical catalog without schedule does not create one", func(t *testing.T) {
 		cs := &catalogService{}
 
 		err := cs.createHealthCheckSchedule(context.Background(), nil, &interfaces.Catalog{
 			ID:   "catalog-1",
 			Type: interfaces.CatalogTypeLogical,
-		}, &interfaces.CatalogHealthCheckScheduleRequest{Mode: interfaces.CatalogHealthCheckScheduleModeEnabled, CronExpr: "*/5 * * * *"})
+		}, nil)
 
 		require.NoError(t, err)
 	})

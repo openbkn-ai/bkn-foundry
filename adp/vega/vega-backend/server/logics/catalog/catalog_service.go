@@ -192,6 +192,11 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 	healthResult := ""
 	if req.ConnectorType == "" {
 		catalogType = interfaces.CatalogTypeLogical
+		if req.HealthCheckSchedule != nil {
+			return "", rest.NewHTTPError(ctx, http.StatusBadRequest,
+				verrors.VegaBackend_Catalog_InvalidParameter).
+				WithErrorDetails("health check schedules are only supported for physical catalogs")
+		}
 	} else {
 		// 验证敏感字段是否为合法 RSA 密文，获取明文用于连接测试
 		sensitiveFields := factory.GetFactory().GetSensitiveFields(req.ConnectorType)
