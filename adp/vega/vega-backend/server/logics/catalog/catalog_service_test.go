@@ -337,7 +337,7 @@ func TestCatalogServiceCreate(t *testing.T) {
 			Name: "logical-catalog",
 			HealthCheckSchedule: &interfaces.CatalogHealthCheckScheduleRequest{
 				Mode:     interfaces.CatalogHealthCheckScheduleModeEnabled,
-				CronExpr: "*/5 * * * *",
+				CronExpr: "0 * * * *",
 			},
 		}, false)
 
@@ -458,7 +458,7 @@ func TestCatalogServiceCreate(t *testing.T) {
 
 		cs := &catalogService{hcss: mockHCSS}
 		err := cs.createHealthCheckSchedule(context.Background(), nil, catalog, &interfaces.CatalogHealthCheckScheduleRequest{
-			Mode: interfaces.CatalogHealthCheckScheduleModeEnabled, CronExpr: "*/5 * * * *",
+			Mode: interfaces.CatalogHealthCheckScheduleModeEnabled, CronExpr: "0 * * * *",
 		})
 
 		require.ErrorIs(t, err, createErr)

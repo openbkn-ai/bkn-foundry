@@ -17,6 +17,7 @@ import (
 	"vega-backend/interfaces"
 	"vega-backend/logics"
 	"vega-backend/logics/catalog"
+	catalog_health_check_schedule "vega-backend/logics/catalog_health_check_schedule"
 )
 
 const (
@@ -43,7 +44,7 @@ func NewCatalogHealthCheckWorker(appSetting *common.AppSetting) *CatalogHealthCh
 		if appSetting.CatalogHealthCheck.CronExpr != "" {
 			defaultCronExpr = appSetting.CatalogHealthCheck.CronExpr
 		}
-		defaultCronSchedule, err := cron.ParseStandard(defaultCronExpr)
+		defaultCronSchedule, err := catalog_health_check_schedule.ParseCronExpr(defaultCronExpr)
 		if err != nil {
 			logger.Fatalf("Invalid global catalog health check cron expression: %v", err)
 		}
@@ -124,7 +125,7 @@ func (w *CatalogHealthCheckWorker) runCatalogHealthCheck(ctx context.Context, sc
 		cronSchedule = w.defaultCronSchedule
 	} else {
 		var err error
-		cronSchedule, err = cron.ParseStandard(schedule.CronExpr)
+		cronSchedule, err = catalog_health_check_schedule.ParseCronExpr(schedule.CronExpr)
 		if err != nil {
 			logger.Errorf("Parse catalog health check cron expression failed: catalog_id=%s, error=%v", schedule.CatalogID, err)
 			return

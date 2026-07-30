@@ -50,7 +50,7 @@ func NewCatalogHealthCheckScheduleService(appSetting *common.AppSetting) interfa
 		if appSetting.CatalogHealthCheck.CronExpr != "" {
 			defaultCronExpr = appSetting.CatalogHealthCheck.CronExpr
 		}
-		defaultCronSchedule, err := cron.ParseStandard(defaultCronExpr)
+		defaultCronSchedule, err := ParseCronExpr(defaultCronExpr)
 		if err != nil {
 			logger.Fatalf("Invalid global catalog health check cron expression: %v", err)
 		}
@@ -241,7 +241,7 @@ func (chcss *catalogHealthCheckScheduleService) nextRun(mode, cronExpr string, n
 		return chcss.defaultCronSchedule.Next(now).UnixMilli(), nil
 	}
 
-	schedule, err := cron.ParseStandard(cronExpr)
+	schedule, err := ParseCronExpr(cronExpr)
 	if err != nil {
 		return 0, err
 	}

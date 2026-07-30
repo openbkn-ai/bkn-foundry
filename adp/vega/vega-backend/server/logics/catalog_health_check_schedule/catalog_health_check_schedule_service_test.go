@@ -10,9 +10,11 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"net/http"
 	"testing"
 	"time"
 
+	"github.com/openbkn-ai/bkn-comm-go/rest"
 	"github.com/robfig/cron/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -79,6 +81,23 @@ func TestCatalogHealthCheckScheduleServiceCreate(t *testing.T) {
 		})
 
 		require.ErrorContains(t, err, "cron_expr is required")
+		assert.Nil(t, got)
+	})
+
+	t.Run("rejects custom schedule more frequent than hourly before persistence", func(t *testing.T) {
+		service := &catalogHealthCheckScheduleService{}
+
+		got, err := service.Create(context.Background(), nil,
+			&interfaces.Catalog{ID: "catalog-1", Type: interfaces.CatalogTypePhysical},
+			&interfaces.CatalogHealthCheckScheduleRequest{
+				Mode:     interfaces.CatalogHealthCheckScheduleModeEnabled,
+				CronExpr: "*/30 * * * *",
+			},
+		)
+
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
 		assert.Nil(t, got)
 	})
 
@@ -192,7 +211,7 @@ func TestCatalogHealthCheckScheduleServiceUpdate(t *testing.T) {
 
 		got, err := service.Update(context.Background(), "catalog-1", &interfaces.CatalogHealthCheckScheduleRequest{
 			Mode:     interfaces.CatalogHealthCheckScheduleModeEnabled,
-			CronExpr: "*/5 * * * *",
+			CronExpr: "0 * * * *",
 		})
 
 		require.ErrorIs(t, err, sql.ErrNoRows)

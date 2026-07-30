@@ -21,11 +21,12 @@ func TestValidateRequest(t *testing.T) {
 		wantErr string
 	}{
 		{name: "accepts inherit", req: &interfaces.CatalogHealthCheckScheduleRequest{Mode: interfaces.CatalogHealthCheckScheduleModeInherit}},
-		{name: "accepts enabled cron", req: &interfaces.CatalogHealthCheckScheduleRequest{Mode: interfaces.CatalogHealthCheckScheduleModeEnabled, CronExpr: "*/5 * * * *"}},
+		{name: "accepts enabled cron", req: &interfaces.CatalogHealthCheckScheduleRequest{Mode: interfaces.CatalogHealthCheckScheduleModeEnabled, CronExpr: "0 * * * *"}},
 		{name: "accepts disabled with retained cron", req: &interfaces.CatalogHealthCheckScheduleRequest{Mode: interfaces.CatalogHealthCheckScheduleModeDisabled, CronExpr: "*/5 * * * *"}},
 		{name: "rejects nil request", wantErr: "required"},
 		{name: "rejects inherit cron", req: &interfaces.CatalogHealthCheckScheduleRequest{Mode: interfaces.CatalogHealthCheckScheduleModeInherit, CronExpr: "*/5 * * * *"}, wantErr: "must be empty"},
 		{name: "rejects missing enabled cron", req: &interfaces.CatalogHealthCheckScheduleRequest{Mode: interfaces.CatalogHealthCheckScheduleModeEnabled}, wantErr: "required"},
+		{name: "rejects enabled cron more frequent than hourly", req: &interfaces.CatalogHealthCheckScheduleRequest{Mode: interfaces.CatalogHealthCheckScheduleModeEnabled, CronExpr: "*/30 * * * *"}, wantErr: "minimum interval is 1 hour"},
 		{name: "rejects invalid mode", req: &interfaces.CatalogHealthCheckScheduleRequest{Mode: "unknown"}, wantErr: "invalid mode"},
 	}
 	for _, tt := range tests {

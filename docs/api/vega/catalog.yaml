@@ -773,7 +773,7 @@ components:
           type: string
           enum: [inherit, enabled, disabled]
         cron_expr:
-          description: 仅当 `mode=enabled` 时必填的健康检查 Cron 表达式；最短允许频率由服务端限制。PUT 的 `mode=disabled` 忽略该字段并保留已有自定义 Cron
+          description: 仅当 `mode=enabled` 时必填的健康检查 Cron 表达式；相邻两次执行的间隔不得短于 1 小时。PUT 的 `mode=disabled` 忽略该字段并保留已有自定义 Cron
           type: string
           minLength: 1
     CatalogHealthCheckSchedule:
@@ -797,7 +797,7 @@ components:
           type: integer
           format: int64
         next_run:
-          description: 下次计划执行时间，Unix 毫秒时间戳；`disabled` 与 `inherit` 初始化时为 0
+          description: 下次计划执行时间，Unix 毫秒时间戳；`disabled` 时为 0，创建或切换为 `inherit` 时按平台全局 Cron 计算为未来时间
           type: integer
           format: int64
         creator:

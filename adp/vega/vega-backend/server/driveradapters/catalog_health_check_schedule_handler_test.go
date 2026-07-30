@@ -82,16 +82,16 @@ func TestCatalogHealthCheckScheduleHandlerUpdate(t *testing.T) {
 		cs.EXPECT().GetByID(gomock.Any(), "catalog-1", false).Return(&interfaces.Catalog{ID: "catalog-1", Type: interfaces.CatalogTypePhysical}, nil)
 		hcss.EXPECT().Update(gomock.Any(), "catalog-1", &interfaces.CatalogHealthCheckScheduleRequest{
 			Mode:     interfaces.CatalogHealthCheckScheduleModeEnabled,
-			CronExpr: "*/5 * * * *",
-		}).Return(&interfaces.CatalogHealthCheckSchedule{CatalogID: "catalog-1", Mode: interfaces.CatalogHealthCheckScheduleModeEnabled, CronExpr: "*/5 * * * *"}, nil)
+			CronExpr: "0 * * * *",
+		}).Return(&interfaces.CatalogHealthCheckSchedule{CatalogID: "catalog-1", Mode: interfaces.CatalogHealthCheckScheduleModeEnabled, CronExpr: "0 * * * *"}, nil)
 
-		req := httptest.NewRequest(http.MethodPut, "/api/vega-backend/in/v1/catalogs/catalog-1/health-check-schedule", strings.NewReader(`{"mode":"enabled","cron_expr":"*/5 * * * *"}`))
+		req := httptest.NewRequest(http.MethodPut, "/api/vega-backend/in/v1/catalogs/catalog-1/health-check-schedule", strings.NewReader(`{"mode":"enabled","cron_expr":"0 * * * *"}`))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 		engine.ServeHTTP(w, req)
 
 		require.Equal(t, http.StatusOK, w.Code)
-		assert.Contains(t, w.Body.String(), `"cron_expr":"*/5 * * * *"`)
+		assert.Contains(t, w.Body.String(), `"cron_expr":"0 * * * *"`)
 	})
 
 	t.Run("returns validation error from service", func(t *testing.T) {
