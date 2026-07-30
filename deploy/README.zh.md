@@ -12,11 +12,11 @@
 
 ## Linux：默认 `k8s`（kubeadm）与可选 k3s
 
-**`KUBE_DISTRO` 默认为 `k8s`**（包管理安装 Kubernetes + 单节点 **kubeadm**）。**k3s** 为可选的更轻的单节点栈。若已用 `deploy.sh k3s install` 装好集群，后续的 **`preflight.sh`** / **`bkn-foundry`** 请保持 distro 一致：在子模块名前加 **`--distro=k3s`**，或 **`export KUBE_DISTRO=k3s`**，否则 `preflight` 可能报 k3s 与 kubeadm 路径不一致，bootstrap 行为也容易对不上。
+**`KUBE_DISTRO` 默认为 `k8s`**（包管理安装 Kubernetes + 单节点 **kubeadm**）。**k3s** 为可选的更轻的单节点栈。若已用 `deploy.sh k3s install` 装好集群，后续的 **`preflight.sh`** / **`openbkn`** 请保持 distro 一致：在子模块名前加 **`--distro=k3s`**，或 **`export KUBE_DISTRO=k3s`**，否则 `preflight` 可能报 k3s 与 kubeadm 路径不一致，bootstrap 行为也容易对不上。
 
 ### kubeadm / `KUBE_DISTRO=k8s`（默认）
 
-单节点 kubeadm 流程为 **`bash ./deploy.sh k8s install`**（`deploy/scripts/services/k8s.sh`）。若 `kubectl` 已可用，`ensure_k8s` 会跳过重复安装；随后 **`ensure_platform_prerequisites`** 会安装随平台一起交付的 **data-services**（MariaDB、Redis、Kafka、OpenSearch 等），再装 Core。**macOS kind** 不写宿主机 kubeadm：**`OPENBKN_SKIP_PLATFORM_BOOTSTRAP` 下，`bkn-foundry install` 会先跑与 `data-services install` 相同的 Helm 数据层**，见下文 macOS。历史写法 **`kubeadm`** 仍可作为 **`k8s`** 的别名。
+单节点 kubeadm 流程为 **`bash ./deploy.sh k8s install`**（`deploy/scripts/services/k8s.sh`）。若 `kubectl` 已可用，`ensure_k8s` 会跳过重复安装；随后 **`ensure_platform_prerequisites`** 会安装随平台一起交付的 **data-services**（MariaDB、Redis、Kafka、OpenSearch 等），再装 Core。**macOS kind** 不写宿主机 kubeadm：**`OPENBKN_SKIP_PLATFORM_BOOTSTRAP` 下，`openbkn install` 会先跑与 `data-services install` 相同的 Helm 数据层**，见下文 macOS。历史写法 **`kubeadm`** 仍可作为 **`k8s`** 的别名。
 
 **`deploy.sh` 全局参数**（`--distro`、`-y`、`--force-upgrade`、`--config` 等）必须写在**子模块名之前**。正确：`bash ./deploy.sh --distro=k3s openbkn install`。错误：`bash ./deploy.sh openbkn install --distro=k3s`（末尾的 `--distro` 不会按全局参数解析）。不想改命令顺序时可用：`export KUBE_DISTRO=k3s` 再执行 `bash ./deploy.sh openbkn install`。
 
@@ -49,7 +49,7 @@ bash ./deploy.sh --distro=k3s openbkn install
 
 ### macOS（可选 — 本机 kind 开发）
 
-**仅供 Mac 上做验证；正式安装请以本文 Linux 章节为准。** 本机用 **kind** 起 Kubernetes，不在 Mac 上跑 `preflight.sh` / `k3s install`。**`mac.sh` 设置 `OPENBKN_SKIP_PLATFORM_BOOTSTRAP`**。**`bkn-foundry install` 会先执行 `ensure_data_services`**（与单独跑 `data-services install` 一致：MariaDB、Redis、Kafka、OpenSearch）；**`mac.sh` 默认 `AUTO_INSTALL_INGRESS_NGINX=false`**，避免重复装 ingress。需要跳过自带数据层时使用 **`OPENBKN_SKIP_DATA_SERVICES_BUNDLE=true`**（高级用法 / 外接中间件）。仍可单独执行 **`data-services install`** 只做数据层或刷新。**Apple Silicon：** kind 节点为 **arm64**；**步骤见 [dev/README.zh.md](dev/README.zh.md)。**
+**仅供 Mac 上做验证；正式安装请以本文 Linux 章节为准。** 本机用 **kind** 起 Kubernetes，不在 Mac 上跑 `preflight.sh` / `k3s install`。**`mac.sh` 设置 `OPENBKN_SKIP_PLATFORM_BOOTSTRAP`**。**`openbkn install` 会先执行 `ensure_data_services`**（与单独跑 `data-services install` 一致：MariaDB、Redis、Kafka、OpenSearch）；**`mac.sh` 默认 `AUTO_INSTALL_INGRESS_NGINX=false`**，避免重复装 ingress。需要跳过自带数据层时使用 **`OPENBKN_SKIP_DATA_SERVICES_BUNDLE=true`**（高级用法 / 外接中间件）。仍可单独执行 **`data-services install`** 只做数据层或刷新。**Apple Silicon：** kind 节点为 **arm64**；**步骤见 [dev/README.zh.md](dev/README.zh.md)。**
 
 ```bash
 cd deploy   # 仓库的 deploy/ 目录
@@ -178,7 +178,7 @@ sudo bash ./deploy.sh --distro=k3s openbkn install --version_file=/tmp/m.yaml
 
 ### 受限网络安装（国内 / 连不上 docker.io / GHCR 拉取慢）
 
-集群连不上 `docker.io` 或拉不动 GHCR 镜像层（read timeout）时，`bkn-foundry install` 支持
+集群连不上 `docker.io` 或拉不动 GHCR 镜像层（read timeout）时，`openbkn install` 支持
 三个参数，让**脚本自己处理**——无需手动 `crictl pull`/重打 tag：
 
 - **`--registry=<swr / ghcr / host/ns>`** —— **BKN 镜像**以及内置 **数据服务 / ingress** 镜像的 registry（`--set image.registry` 的糖）。`swr` → `swr.cn-east-3.myhuaweicloud.com/openbkn-ai`，`ghcr` → `ghcr.io/openbkn-ai`。优先级：显式 `--set image.registry=…` > `--registry` > `--config` YAML 里已有的 `image.registry`（尊重，如 `dev/conf/mac-config.yaml`）> 默认 `swr`（当配置文件未设置 `image.registry` 时）。SWR 与 GHCR 同步同样的 `…-main.<日期>.sha…` 构建 tag。
@@ -194,7 +194,7 @@ sudo bash ./deploy.sh openbkn install --version_file=/tmp/m.yaml --registry=swr
 ```
 
 > 提交的迁移会修复 DB schema 漂移（如 `vega-backend` 0.9.x），但只在 **data-migrator
-> pre-install job 运行时**生效——即走 `bkn-foundry install`，不是裸 `kubectl set image`。
+> pre-install job 运行时**生效——即走 `openbkn install`，不是裸 `kubectl set image`。
 
 ### 资源配置
 
@@ -269,10 +269,10 @@ Core 应用层包括数据服务管理、应用部署和任务编排相关的 ch
 ./deploy.sh openbkn install
 
 # 查看 Core 状态
-./deploy.sh bkn-foundry status
+./deploy.sh openbkn status
 
 # 卸载 Core
-./deploy.sh bkn-foundry uninstall
+./deploy.sh openbkn uninstall
 
 # 集群与 Pod 状态
 kubectl get nodes
@@ -289,11 +289,11 @@ kubectl get pods -A
 
 ```bash
 # 实时详细状态表(版本、ready、drift、服务健康)
-./deploy.sh bkn-foundry status
+./deploy.sh openbkn status
 
 # 不重装,(重新)发布非敏感 JSON 快照 + /install-status 端点。
-# `bkn-foundry install` 结束时会自动执行。
-./deploy.sh bkn-foundry publish-status
+# `openbkn install` 结束时会自动执行。
+./deploy.sh openbkn publish-status
 ```
 
 同时通过 ingress 以**非敏感**面板对外提供(由一个极小的 nginx 托管 ConfigMap,见
@@ -330,11 +330,11 @@ deploy/
 
 ## 🗑️ Uninstall
 
-`bash deploy.sh bkn-foundry uninstall` 只卸载 Core 应用层。
+`bash deploy.sh openbkn uninstall` 只卸载 Core 应用层。
 
 ```bash
 # 1. 卸载 Core 应用层
-./deploy.sh bkn-foundry uninstall
+./deploy.sh openbkn uninstall
 
 ```
 `bash deploy.sh k8s reset` 重置 Kubernetes 集群，包括数据服务和core。

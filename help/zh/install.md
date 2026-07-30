@@ -236,8 +236,8 @@ export INGRESS_NGINX_HTTPS_PORT=8443
 ### 🧾 常用命令
 
 ```bash
-./deploy.sh bkn-foundry status
-./deploy.sh bkn-foundry uninstall
+./deploy.sh openbkn status
+./deploy.sh openbkn uninstall
 ./deploy.sh --help
 ```
 
@@ -510,7 +510,7 @@ kubectl get pods -A
 ### 🩺 部署脚本状态
 
 ```bash
-./deploy.sh bkn-foundry status
+./deploy.sh openbkn status
 ```
 
 ### 🔑 CLI 登录与验证

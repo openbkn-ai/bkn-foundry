@@ -12,11 +12,11 @@ This `deploy` directory provides scripts to install BKN Foundry along with its d
 
 ## Linux: default `k8s` (kubeadm) vs optional k3s
 
-**`KUBE_DISTRO` defaults to `k8s`** (package-manager Kubernetes + **kubeadm** on a single node). **k3s** is an optional lighter single-node stack. If you install k3s with `deploy.sh k3s install`, keep **`preflight.sh`** / **`bkn-foundry`** aligned by passing **`--distro=k3s`** **before** the module (or **`export KUBE_DISTRO=k3s`**) — otherwise `preflight` may flag a k3s/kubeadm mismatch and installs can disagree on bootstrap.
+**`KUBE_DISTRO` defaults to `k8s`** (package-manager Kubernetes + **kubeadm** on a single node). **k3s** is an optional lighter single-node stack. If you install k3s with `deploy.sh k3s install`, keep **`preflight.sh`** / **`openbkn`** aligned by passing **`--distro=k3s`** **before** the module (or **`export KUBE_DISTRO=k3s`**) — otherwise `preflight` may flag a k3s/kubeadm mismatch and installs can disagree on bootstrap.
 
 ### kubeadm / `KUBE_DISTRO=k8s` (default)
 
-Single-node kubeadm flow is **`bash ./deploy.sh k8s install`** (`deploy/scripts/services/k8s.sh`). Product modules reuse an existing cluster when `kubectl` already works (`ensure_k8s` skips reinstall), then **`ensure_platform_prerequisites`** installs the bundled **data-services** layer (MariaDB, Redis, Kafka, OpenSearch, …) before Core. **macOS kind** skips host kubeadm but **`bkn-foundry install` still runs `ensure_data_services` first** (see macOS section). Legacy **`kubeadm`** is still accepted as an alias for **`k8s`**.
+Single-node kubeadm flow is **`bash ./deploy.sh k8s install`** (`deploy/scripts/services/k8s.sh`). Product modules reuse an existing cluster when `kubectl` already works (`ensure_k8s` skips reinstall), then **`ensure_platform_prerequisites`** installs the bundled **data-services** layer (MariaDB, Redis, Kafka, OpenSearch, …) before Core. **macOS kind** skips host kubeadm but **`openbkn install` still runs `ensure_data_services` first** (see macOS section). Legacy **`kubeadm`** is still accepted as an alias for **`k8s`**.
 
 **`deploy.sh` global flags** (`--distro`, `-y`, `--force-upgrade`, `--config`, …) must appear **before** the module name. Correct: `bash ./deploy.sh --distro=k3s openbkn install`. Wrong: `bash ./deploy.sh openbkn install --distro=k3s` (that `--distro` is not read as a global option). Equivalent without moving flags: `export KUBE_DISTRO=k3s` then `bash ./deploy.sh openbkn install`.
 
@@ -49,7 +49,7 @@ On the **same Linux host as k3s**, use the file **`/etc/rancher/k3s/k3s.yaml`** 
 
 ### macOS (optional — local dev with kind)
 
-**Use this only for Mac validation; for real installs use Linux above.** Local Kubernetes via **kind** — no `preflight.sh` / `k3s` on the Mac host. **`mac.sh` sets `OPENBKN_SKIP_PLATFORM_BOOTSTRAP`** (no host k3s/kubeadm bootstrap). **`bkn-foundry install` now runs `ensure_data_services` first** — same Helm layer as **`data-services install`** (MariaDB, Redis, Kafka, OpenSearch); **`mac.sh` defaults `AUTO_INSTALL_INGRESS_NGINX=false`** so kind’s existing ingress is not duplicated. Set **`OPENBKN_SKIP_DATA_SERVICES_BUNDLE=true`** to skip bundled data installs (advanced / external infra). **`data-services install`** alone remains useful to pre-stage or refresh the data layer. **Apple Silicon:** kind nodes are **arm64**; use arm64/multi-arch images (see `dev/conf/mac-config.yaml`). **Step order:** [dev/README.md](dev/README.md).
+**Use this only for Mac validation; for real installs use Linux above.** Local Kubernetes via **kind** — no `preflight.sh` / `k3s` on the Mac host. **`mac.sh` sets `OPENBKN_SKIP_PLATFORM_BOOTSTRAP`** (no host k3s/kubeadm bootstrap). **`openbkn install` now runs `ensure_data_services` first** — same Helm layer as **`data-services install`** (MariaDB, Redis, Kafka, OpenSearch); **`mac.sh` defaults `AUTO_INSTALL_INGRESS_NGINX=false`** so kind’s existing ingress is not duplicated. Set **`OPENBKN_SKIP_DATA_SERVICES_BUNDLE=true`** to skip bundled data installs (advanced / external infra). **`data-services install`** alone remains useful to pre-stage or refresh the data layer. **Apple Silicon:** kind nodes are **arm64**; use arm64/multi-arch images (see `dev/conf/mac-config.yaml`). **Step order:** [dev/README.md](dev/README.md).
 
 ```bash
 cd deploy   # repository deploy/ directory
@@ -183,7 +183,7 @@ build of every component** use `--latest` — it resolves each chart to its newe
 ### Install behind a restricted network (CN / no docker.io / slow GHCR)
 
 On clusters that can't reach `docker.io` or pull GHCR image blobs (read timeouts),
-`bkn-foundry install` accepts three flags so the **script** handles it — no manual
+`openbkn install` accepts three flags so the **script** handles it — no manual
 `crictl pull`/retag:
 
 - **`--registry=<swr / ghcr / host/ns>`** — image registry for **BKN images** and the bundled **data-service / ingress** images (sugar for `--set image.registry`). `swr` → `swr.cn-east-3.myhuaweicloud.com/openbkn-ai`, `ghcr` → `ghcr.io/openbkn-ai`. Precedence: explicit `--set image.registry=…` > `--registry` > an `image.registry` already in your `--config` YAML (respected, e.g. `dev/conf/mac-config.yaml`) > default `swr` (when config file does not set `image.registry`). SWR mirrors the same `…-main.<date>.sha…` build tags as GHCR.
@@ -199,7 +199,7 @@ sudo bash ./deploy.sh openbkn install --version_file=/tmp/m.yaml --registry=swr
 ```
 
 > The committed migrations fix any DB-schema drift (e.g. `vega-backend` 0.9.x), but
-> only run when the **data-migrator pre-install job** runs — i.e. via `bkn-foundry install`,
+> only run when the **data-migrator pre-install job** runs — i.e. via `openbkn install`,
 > not a bare `kubectl set image`.
 
 ### Resource Configuration
@@ -273,10 +273,10 @@ The Core application layer includes charts for data services management, applica
 ./deploy.sh openbkn install
 
 # Show Core status
-./deploy.sh bkn-foundry status
+./deploy.sh openbkn status
 
 # Uninstall Core
-./deploy.sh bkn-foundry uninstall
+./deploy.sh openbkn uninstall
 
 # Cluster and Pod status
 kubectl get nodes
@@ -294,11 +294,11 @@ section (probed via the apiserver service proxy: `/health/ready` → `/api/v1/he
 
 ```bash
 # Detailed live status table (versions, ready, drift, service health)
-./deploy.sh bkn-foundry status
+./deploy.sh openbkn status
 
 # (Re)publish the non-sensitive JSON snapshot + the /install-status endpoint
-# without reinstalling. Runs automatically at the end of `bkn-foundry install`.
-./deploy.sh bkn-foundry publish-status
+# without reinstalling. Runs automatically at the end of `openbkn install`.
+./deploy.sh openbkn publish-status
 ```
 
 A **non-sensitive** dashboard is also served, unauthenticated, through the ingress
@@ -338,11 +338,11 @@ deploy/
 
 ## 🗑️ Uninstall
 
-`bash deploy.sh bkn-foundry uninstall` removes only the Core application layer.
+`bash deploy.sh openbkn uninstall` removes only the Core application layer.
 
 ```bash
 # Remove the Core application layer
-./deploy.sh bkn-foundry uninstall
+./deploy.sh openbkn uninstall
 ```
 
 `bash deploy.sh k8s reset` resets the Kubernetes cluster, including data services and core.

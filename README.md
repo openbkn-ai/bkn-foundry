@@ -81,7 +81,7 @@ kubectl get nodes
 kubectl get pods -A
 
 # Check service status
-./deploy.sh bkn-foundry status
+./deploy.sh openbkn status
 ```
 
 5. **Post-install bootstrap with `onboard.sh`** (recommended)

@@ -82,7 +82,7 @@ kubectl get nodes
 kubectl get pods -A
 
 # 检查服务状态
-./deploy.sh bkn-foundry status
+./deploy.sh openbkn status
 ```
 
 5. **安装后引导：`onboard.sh`**（推荐）
