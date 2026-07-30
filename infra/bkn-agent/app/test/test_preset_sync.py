@@ -56,6 +56,21 @@ def test_preset_package_is_valid_and_matches_vega_contract():
         assert not item.prompt.content.endswith("\n")
 
 
+def test_load_presets_skips_dotfiles(tmp_path):
+    """macOS 打包会混进 ._xxx.yaml（AppleDouble），解析它必炸整个预置。"""
+    (tmp_path / "._real.yaml").write_bytes(b"\x00\x05\x16\x07AppleDouble")
+    (tmp_path / "real.yaml").write_text(
+        "- agent_id: a1\n"
+        "  spec:\n"
+        "    agent_id: a1\n"
+        "    name: 自检\n"
+        "    mode: task\n",
+        encoding="utf-8",
+    )
+    items = preset_sync.load_presets(tmp_path)
+    assert [i.agent_id for i in items] == ["a1"]
+
+
 def test_preset_limits_cap_output_tokens():
     # provider 默认输出上限常在 4096，catalog 语义理解的长 JSON 会被截断
     for item in preset_sync.load_presets():

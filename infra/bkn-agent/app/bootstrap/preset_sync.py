@@ -39,7 +39,7 @@ PRESET_ACCOUNT_ID = "system"
 _RETRY_DELAYS = (1, 2, 4)
 
 
-def load_presets(directory: Path = PRESET_DIR) -> list[AgentExportItem]:
+def load_presets(directory: Path | None = None) -> list[AgentExportItem]:
     """读预置目录下全部 YAML。文件形态 = /export 响应里的 items 列表（不含
     exported_at/format——它们是导出时刻的元信息，进 git 只会每次都变）。
 
@@ -48,7 +48,9 @@ def load_presets(directory: Path = PRESET_DIR) -> list[AgentExportItem]:
     无限重试才暴露。
     """
     items: list[AgentExportItem] = []
-    for path in sorted(directory.glob("*.yaml")):
+    for path in sorted((directory or PRESET_DIR).glob("*.yaml")):
+        if path.name.startswith("."):
+            continue  # macOS 打包混进来的 ._xxx.yaml 之类：不是预置包，解析必炸
         raw = yaml.safe_load(path.read_text(encoding="utf-8")) or []
         items.extend(AgentExportItem(**entry) for entry in raw)
     return items
