@@ -400,11 +400,12 @@ func (h *SessionHandler) handleOperationSubresource(w http.ResponseWriter, r *ht
 	}
 	var operation sessionvo.Operation
 	var receipt sessionvo.Receipt
-	if action == "complete" {
+	switch action {
+	case "complete":
 		operation, receipt, err = h.service.CompleteOperationAttempt(r.Context(), command)
-	} else if action == "fail" {
+	case "fail":
 		operation, receipt, err = h.service.FailOperationAttempt(r.Context(), command)
-	} else {
+	default:
 		writeLifecycleError(w, r, http.StatusNotFound, "operation_required", "attempt action was not found")
 		return
 	}

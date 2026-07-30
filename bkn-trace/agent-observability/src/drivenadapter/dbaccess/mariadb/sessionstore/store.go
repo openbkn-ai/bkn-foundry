@@ -228,7 +228,7 @@ func (t *transaction) ListConversations(owner sessionvo.Owner, limit int) []sess
 		t.err = err
 		return nil
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var result []sessionvo.Conversation
 	for rows.Next() {
 		value, scanErr := scanConversationRows(rows)
@@ -411,7 +411,7 @@ func (t *transaction) ListOperations(interactionID string) []sessionvo.Operation
 		t.err = err
 		return nil
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var result []sessionvo.Operation
 	for rows.Next() {
 		value, scanErr := scanOperationRows(rows)
@@ -494,7 +494,7 @@ func (t *transaction) ListReceipts(interactionID string) []sessionvo.Receipt {
 		t.err = err
 		return nil
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var result []sessionvo.Receipt
 	for rows.Next() {
 		value, scanErr := scanReceiptRows(rows)
@@ -582,7 +582,7 @@ func (t *transaction) ListRequests(owner sessionvo.Owner, limit int) []sessionvo
 		t.err = err
 		return nil
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var result []sessionvo.RequestSummary
 	for rows.Next() {
 		var value sessionvo.RequestSummary
@@ -658,7 +658,7 @@ func (t *transaction) listRequestTraceIDs(owner sessionvo.Owner, requestID strin
 		t.err = err
 		return nil
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var result []string
 	for rows.Next() {
 		var traceID string
@@ -686,7 +686,7 @@ func (t *transaction) ListExpiredActiveInteractions(limit int) []sessionvo.Inter
 		t.err = err
 		return nil
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var result []sessionvo.Interaction
 	for rows.Next() {
 		interaction, scanErr := scanInteractionRows(rows)
@@ -721,7 +721,7 @@ func (t *transaction) ListIdleOneShotConversations(
 		t.err = err
 		return nil
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var result []sessionvo.Conversation
 	for rows.Next() {
 		conversation, scanErr := scanConversationRows(rows)
@@ -749,7 +749,7 @@ func (t *transaction) ListAssemblyDueInteractions(limit int) []sessionvo.Interac
 		t.err = err
 		return nil
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var result []sessionvo.Interaction
 	for rows.Next() {
 		interaction, scanErr := scanInteractionRows(rows)
@@ -793,7 +793,7 @@ func (t *transaction) ListAssemblyRevisions(interactionID string) []sessionvo.As
 		t.err = err
 		return nil
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var result []sessionvo.AssemblyRevision
 	for rows.Next() {
 		var value sessionvo.AssemblyRevision

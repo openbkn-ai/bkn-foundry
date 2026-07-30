@@ -35,7 +35,7 @@ func (s *Store) ScanProjectionHistory(
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var result []iprojectionoutbox.Item
 	for rows.Next() {
 		var item iprojectionoutbox.Item
@@ -120,7 +120,7 @@ func (s *Store) scanConversationProjection(
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var result []iprojectionoutbox.Item
 	for rows.Next() {
 		value, err := scanConversationRows(rows)
@@ -146,7 +146,7 @@ func (s *Store) scanInteractionProjection(
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var result []iprojectionoutbox.Item
 	for rows.Next() {
 		value, err := scanInteractionRows(rows)
@@ -172,7 +172,7 @@ func (s *Store) scanOperationProjection(
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var result []iprojectionoutbox.Item
 	for rows.Next() {
 		value, err := scanOperationRows(rows)
@@ -198,7 +198,7 @@ func (s *Store) scanReceiptProjection(
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var result []iprojectionoutbox.Item
 	for rows.Next() {
 		value, err := scanReceiptRows(rows)
@@ -224,7 +224,7 @@ func (s *Store) scanEvidenceEventProjection(
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var result []iprojectionoutbox.Item
 	for rows.Next() {
 		var item iprojectionoutbox.Item
@@ -252,7 +252,7 @@ func (s *Store) scanAssemblyRevisionProjection(
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var result []iprojectionoutbox.Item
 	for rows.Next() {
 		var value sessionvo.AssemblyRevision

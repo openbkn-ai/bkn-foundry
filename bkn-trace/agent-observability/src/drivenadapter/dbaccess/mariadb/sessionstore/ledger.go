@@ -265,7 +265,7 @@ func verifyCausationAcyclic(ctx context.Context, tx *sql.Tx, event ledgervo.Even
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	events := []ledgervo.Event{event}
 	for rows.Next() {
 		var envelope []byte
