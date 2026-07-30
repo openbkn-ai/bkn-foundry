@@ -313,7 +313,7 @@ def _expected_fact_event_type(box_id: str, metadata: dict[str, Any]) -> str | No
     if path not in _CONTEXT_LOADER_RETRIEVAL_PATHS:
         return None
     host = urlsplit(str(metadata.get("server_url") or "")).hostname or ""
-    if host == "agent-retrieval" or box_id in config.default_toolboxes:
+    if host == "agent-retrieval":
         return "retrieval.completed"
     return None
 

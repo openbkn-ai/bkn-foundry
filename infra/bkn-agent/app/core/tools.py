@@ -46,8 +46,12 @@ def _mcp_connections(tool_refs: list[dict], account_id: str, account_type: str) 
 async def _toolbox_tools(
     tool_refs: list[dict], account_id: str, account_type: str
 ) -> list[StructuredTool]:
-    """执行工厂 toolbox 装载：默认 box（可配，拉不到降级告警不击穿对话）
-    + agent.tools 中 type=toolbox 的显式引用（失败报错）。"""
+    """执行工厂 toolbox 装载：只装 agent.tools 中 type=toolbox 的显式引用（失败报错）。
+
+    没有隐式挂载的默认 box——agent.tools 就是工具全集，零声明即零工具。
+    「用到才加载」在机制上不成立：工具调用要求候选工具在请求发出前全部声明，
+    模型只能从该列表里选，所以收敛只能由定义方在装载前做。
+    """
     box_ids: list[str] = []
     for ref in tool_refs:
         if ref.get("type") == "toolbox":
@@ -58,13 +62,6 @@ async def _toolbox_tools(
     tools: list[StructuredTool] = []
     for box_id in dict.fromkeys(box_ids):
         tools.extend(await load_toolbox_tools(box_id, account_id, account_type))
-    for box_id in config.default_toolboxes:
-        if box_id in box_ids:
-            continue
-        try:
-            tools.extend(await load_toolbox_tools(box_id, account_id, account_type))
-        except Exception as e:
-            logger.warning("[Toolbox] default box %s unavailable, degraded: %s", box_id, e)
     return tools
 
 
@@ -182,6 +179,7 @@ async def load_tools(
     account_type: str,
     depth: int = 0,
     parent_thread_id: str | None = None,
+    skill_ids: list[str] | None = None,
 ) -> list[Any]:
     tools: list[Any] = await _toolbox_tools(tool_refs, account_id, account_type)
     conns = _mcp_connections(tool_refs, account_id, account_type)
@@ -192,11 +190,16 @@ async def load_tools(
         if ref.get("type") == "agent":
             tools.append(await _agent_tool(ref, account_id, account_type, depth, parent_thread_id))
 
+    # 内置 read_skill_file 从不单独把图撑出 tools 节点：它要么随已有工具搭车，
+    # 要么在声明了技能（它唯一的读取对象）时才挂。零工具零技能的 agent 若只为它
+    # 长出一个 tools 节点，模型仍可能空转一轮工具调用——这正是 #447 的形状。
+    mount_skill_reader = bool(tools) or bool(skill_ids)
+
     # 名字冲突去重（保留先到：显式 toolbox > 默认 box > mcp > agent）。
-    # 内置 read_skill_file 预占名字：它是技能加载的一等能力（设计不变量），
+    # 挂载时 read_skill_file 预占名字：它是技能加载的一等能力（设计不变量），
     # 不能被同名的用户工具挤掉——反过来挤掉那个用户工具并告警。
-    builtin = _read_skill_file_tool(account_id, account_type)
-    seen: set[str] = {builtin.name}
+    builtin = _read_skill_file_tool(account_id, account_type) if mount_skill_reader else None
+    seen: set[str] = {builtin.name} if builtin else set()
     deduped: list[Any] = []
     for t in tools:
         name = getattr(t, "name", None)
@@ -206,7 +209,8 @@ async def load_tools(
         if name:
             seen.add(name)
         deduped.append(t)
-    deduped.append(builtin)
+    if builtin:
+        deduped.append(builtin)
     return deduped
 
 

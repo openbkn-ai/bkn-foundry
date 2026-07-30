@@ -24,14 +24,6 @@ class Config:
     )
     DEFAULT_MODEL = _env("BKN_AGENT_DEFAULT_MODEL", "")
 
-    # 工具面：执行工厂 toolbox（统一工具平面）。默认给每个 agent 挂载的 box
-    # 列表（逗号分隔），默认 = contextloader 内置工具集；置空则不默认挂载。
-    # 默认 box 拉取失败降级告警不击穿对话；显式 type=toolbox 引用失败则报错。
-    DEFAULT_TOOLBOXES = _env(
-        "BKN_AGENT_DEFAULT_TOOLBOXES",
-        "e521d454-4a0b-4dc9-8a28-d0986de1cef9",
-    )
-
     # 算子工厂（operator-integration）：published agent 注册为 toolbox 工具（#212）；
     # 工具面与技能面统一走这里的 internal-v1（#322 把技能面从 capabilities-lab 收敛过来）
     OPERATOR_INTEGRATION_BASE = _env("OPERATOR_INTEGRATION_BASE", "http://agent-operator-integration:9000/api/agent-operator-integration")
@@ -67,10 +59,6 @@ class Config:
     DEFAULT_TIMEOUT_S = int(_env("BKN_AGENT_TIMEOUT_S", "300"))
 
     SKILL_CACHE_TTL_S = int(_env("BKN_AGENT_SKILL_TTL", "60"))
-
-    @property
-    def default_toolboxes(self) -> list[str]:
-        return [b.strip() for b in self.DEFAULT_TOOLBOXES.split(",") if b.strip()]
 
     @property
     def db_url(self) -> str:

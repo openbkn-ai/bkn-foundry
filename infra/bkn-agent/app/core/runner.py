@@ -99,7 +99,9 @@ async def _run_agent_once_core(
         )
     skill_ids = list(dict.fromkeys([*agent.skills, *skills]))
     system_prompt += await load_skills(skill_ids, account_id, account_type)
-    tools = await load_tools(agent.tools, account_id, account_type, depth=depth)
+    tools = await load_tools(
+        agent.tools, account_id, account_type, depth=depth, skill_ids=skill_ids
+    )
     tools = instrument_tool_calls(tools, account_id, account_type)
     limits = agent.limits
     max_turns = limits.max_turns if limits and limits.max_turns else config.DEFAULT_MAX_TURNS
